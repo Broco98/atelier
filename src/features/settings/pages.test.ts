@@ -33,8 +33,8 @@ describe("설정 항목", () => {
   // **항목 아래의 하위 주소도 그 항목이다**(spec 레이아웃 티켓 11) — 편집기는 설정 한 열 밖의 별도
   // 화면이지만 설정 nav는 「spec 레이아웃」을 켠 채로 두고, 머리의 위치도 그 항목에서 이어진다.
   it.each([
+    ["/settings/spec-layout/edit", "spec-layout"],
     ["/settings/spec-layout/atelier", "spec-layout"],
-    ["/settings/spec-layout/maison", "spec-layout"],
   ] as const)("하위 주소 %s는 %s 항목이다", (pathname, key) => {
     expect(settingsItemOf(pathname)).toBe(key);
   });

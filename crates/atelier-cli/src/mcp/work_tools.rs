@@ -211,10 +211,7 @@ impl AtelierServer {
                 // 붙이는 자리가 `partial_failure` 안이 아니라 여기인 것은 그 함수를
                 // `atelier_attach_project`와 함께 쓰기 때문이다 — attach는 spec을 쓰기 직전의
                 // 호출이 아니다.
-                match self.spec_layout_guidance() {
-                    Ok(guidance) => answer.content.push(ContentBlock::text(guidance)),
-                    Err(e) => return Ok(kernel_error(e)),
-                }
+                answer.content.push(ContentBlock::text(self.spec_layout_guidance()));
                 Ok(answer)
             }
             Err(e) => Ok(kernel_error(e)),

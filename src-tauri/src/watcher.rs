@@ -57,12 +57,11 @@ fn watches() -> Vec<Watch> {
         relevant: works_change_is_relevant,
     }));
     // spec 레이아웃 폴더(spec 레이아웃 결정 22) — 에이전트가 저장하거나 손으로 고친 레이아웃을 설정의
-    // 「spec 레이아웃」과 spec 패널 탭이 따라온다. 모드가 둘이어도 폴더는 하나이고(`<id>/`가 그 안에
-    // 나란히 산다) 이벤트도 하나다 — 근거는 위 works의 그것과 같다. 반응성도 spec 라이브 리로드와
-    // 같은 값이다(spec 레이아웃 구현 스펙 3절: 기존 감시와 같은 규격).
+    // 「spec 레이아웃」과 spec 패널 탭이 따라온다. 레이아웃은 이 폴더 안의 `atelier/`에 살고 이벤트는
+    // 하나다. 반응성도 spec 라이브 리로드와 같은 값이다(spec 레이아웃 구현 스펙 3절: 기존 감시와 같은 규격).
     //
     // 기동 때 폴더를 만드는 것은 다른 감시와 같다(`spawn_watch`). 빈 `layouts/`는 resolve에 아무
-    // 영향이 없다 — resolve는 `<id>/`만 본다. 「읽기는 아무것도 쓰지 않는다」는 엔진의 약속이고
+    // 영향이 없다 — resolve는 `atelier/`만 본다. 「읽기는 아무것도 쓰지 않는다」는 엔진의 약속이고
     // 감시자는 앱의 것이다.
     all.push(Watch {
         dir: atelier_core::layouts_dir(),
@@ -92,7 +91,7 @@ fn works_change_is_relevant(path: &Path) -> bool {
 }
 
 /// 레이아웃 폴더 아래는 점 파일만 거른다 — 저장의 원자적 쓰기가 남기는 tmp 단계다. 나머지는 모두
-/// 소식이다: `layout.json`도, 어느 깊이의 템플릿도, 되돌리기로 사라지는 `<id>/` 폴더 자체도.
+/// 소식이다: `layout.json`도, 어느 깊이의 템플릿도, 되돌리기로 사라지는 `atelier/` 폴더 자체도.
 /// works의 체크아웃 거르기(`trees/`)는 빌리지 않는다 — 레이아웃에는 체크아웃이 없고, 템플릿 파일은
 /// 레이아웃 폴더 안의 `trees/`라는 하위 폴더에도 설 수 있다(손으로 적은 템플릿 경로는 폴더 안 어느
 /// 상대 경로든 된다).
@@ -194,7 +193,7 @@ mod tests {
 
     /// **레이아웃 폴더도 기존 감시와 같은 규격으로 본다**(spec 레이아웃 결정 22). 에이전트가 레이아웃을
     /// 저장하거나 사람이 손으로 고치면 설정의 「spec 레이아웃」과 `spec` 패널 탭이 따라와야 한다.
-    /// 템플릿은 `<id>/` 아래 하위 폴더에도 서므로 재귀다 — 한 겹만 보면 `tickets/` 아래 템플릿을
+    /// 템플릿은 `atelier/` 아래 하위 폴더에도 서므로 재귀다 — 한 겹만 보면 `tickets/` 아래 템플릿을
     /// 고쳐도 화면이 안 바뀐다. 이벤트 이름이 틀리면 아무도 안 듣는 종이 울린다.
     #[test]
     fn the_layouts_folder_is_watched_recursively_and_rings_layouts_changed() {
@@ -202,7 +201,7 @@ mod tests {
         assert_eq!(
             watch.recursive,
             RecursiveMode::Recursive,
-            "레이아웃 폴더가 한 겹만 감시된다 — <id>/ 아래를 고쳐도 화면이 안 바뀐다"
+            "레이아웃 폴더가 한 겹만 감시된다 — atelier/ 아래를 고쳐도 화면이 안 바뀐다"
         );
         assert_eq!(watch.event, "layouts:changed", "레이아웃 감시가 다른 이름을 쏜다 — 아무도 안 듣는다");
         assert_eq!(watch.debounce, Duration::from_millis(300));
@@ -219,10 +218,10 @@ mod tests {
         let layouts = atelier_core::layouts_dir();
         let relevant = watch_on(&layouts).relevant;
         assert!(relevant(&layouts.join("atelier/layout.json")));
-        assert!(relevant(&layouts.join("maison/decisions.md")));
+        assert!(relevant(&layouts.join("atelier/decisions.md")));
         assert!(relevant(&layouts.join("atelier/tickets/ticket.md")), "하위 폴더의 템플릿이 안 들린다");
         assert!(relevant(&layouts.join("atelier/trees/a.md")), "works의 체크아웃 거르기가 레이아웃에 샌다");
-        // 되돌리기는 모드의 폴더를 통째로 지운다
+        // 되돌리기는 레이아웃 폴더를 통째로 지운다
         assert!(relevant(&layouts.join("atelier")));
         for dotfile in [
             "atelier/.layout.json.4242.0.tmp",

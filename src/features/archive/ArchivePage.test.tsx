@@ -126,7 +126,6 @@ describe("아카이브 트리는 받은 spec 트리를 spec/ 아래에 그린다
       "spec/tickets/할일.md",
     ],
     specTree: {
-      layoutId: "atelier",
       fallback: null,
       defaultDoc: "overview.md",
       items: [

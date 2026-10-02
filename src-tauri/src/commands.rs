@@ -71,7 +71,7 @@ pub async fn delete_project(slug: String) -> CmdResult<()> {
 
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
 // 규칙은 코어의 `with_spec_trees` 한 자리에 있고 여기는 그것을 부르기만 한다 — L4 다리도 같은
-// 입구를 부른다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`).
+// 입구를 부른다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/atelier/`).
 //
 // 나머지 쓰기(`set_work_*`)의 답은 뷰 그대로다. 화면이 그 답을 캐시에 안 쓰고 목록을 다시
 // 읽기 때문이다(`hooks.ts`). 옮기기만 다르다 — 그 답으로 목록 캐시를 갈아 끼우므로, 트리가
@@ -85,7 +85,7 @@ pub async fn delete_project(slug: String) -> CmdResult<()> {
 pub async fn list_works(mode: Mode) -> CmdResult<Vec<WorkWithSpecTree>> {
     tauri::async_runtime::spawn_blocking(move || {
         let works = atelier_core::list_works(&works_dir(mode)).map_err(err)?;
-        atelier_core::with_spec_trees(&atelier_core::data_root(), mode, works).map_err(err)
+        Ok(atelier_core::with_spec_trees(&atelier_core::data_root(), works))
     })
     .await
     .map_err(|e| format!("목록을 읽지 못했습니다: {e}"))?
@@ -95,8 +95,7 @@ pub async fn list_works(mode: Mode) -> CmdResult<Vec<WorkWithSpecTree>> {
 pub async fn get_work(mode: Mode, slug: String) -> CmdResult<WorkWithSpecTree> {
     let work = atelier_core::get_work(&works_dir(mode), &slug).map_err(err)?;
     // 하나를 넣으면 하나가 나온다. 입구가 목록을 받는 것은 목록의 resolve를 한 번으로 묶는 모양이라서다
-    let mut works =
-        atelier_core::with_spec_trees(&atelier_core::data_root(), mode, vec![work]).map_err(err)?;
+    let mut works = atelier_core::with_spec_trees(&atelier_core::data_root(), vec![work]);
     Ok(works.remove(0))
 }
 
@@ -128,7 +127,7 @@ pub async fn move_work(
 ) -> CmdResult<Vec<WorkWithSpecTree>> {
     let works =
         atelier_core::move_work(&works_dir(mode), &slug, pinned, before.as_deref()).map_err(err)?;
-    atelier_core::with_spec_trees(&atelier_core::data_root(), mode, works).map_err(err)
+    Ok(atelier_core::with_spec_trees(&atelier_core::data_root(), works))
 }
 
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
@@ -171,7 +170,7 @@ pub async fn list_archive(mode: Mode) -> CmdResult<Vec<ArchiveEntry>> {
 #[tauri::command]
 pub async fn list_archived_docs(mode: Mode, slug: String) -> CmdResult<ArchivedDocs> {
     let docs = atelier_core::list_archived_docs(&archive_dir(mode), &slug).map_err(err)?;
-    atelier_core::with_archived_spec_tree(&atelier_core::data_root(), mode, docs).map_err(err)
+    Ok(atelier_core::with_archived_spec_tree(&atelier_core::data_root(), docs))
 }
 
 /// 아카이브된 work의 문서 하나. 경로는 **work 루트 기준**이다 (`record.md`, `spec/overview.md`) —
@@ -481,54 +480,50 @@ pub async fn uninstall_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>>
 }
 
 // spec 레이아웃(spec 레이아웃 구현 스펙 3절). 규칙은 전부 코어의 레이아웃 저장소에 있고 여기는 그것을
-// 부르기만 한다 — L4 다리도 같은 입구를 부른다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에
-// 산다(`layouts/<id>/`). 인자가 있으면 이름은 `id`다: 모드 명령이 아니라 레이아웃 id를 받는다.
+// 부르기만 한다 — L4 다리도 같은 입구를 부른다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래의 고정
+// 경로에 산다(`layouts/atelier/`). 레이아웃은 하나라 어느 것인지 묻는 인자가 없다(ui-refresh 결정 23).
 
-/// 모드 둘의 레이아웃 상태 — 설정의 「spec 레이아웃」 페이지가 그린다. 아무것도 쓰지 않는다.
+/// 레이아웃의 상태 — 설정의 「spec 레이아웃」 페이지가 그린다. 아무것도 쓰지 않는다.
 #[tauri::command]
-pub async fn spec_layout_states() -> CmdResult<Vec<atelier_core::LayoutState>> {
-    Ok(atelier_core::layout_states(&atelier_core::data_root()))
+pub async fn spec_layout_state() -> CmdResult<atelier_core::LayoutState> {
+    Ok(atelier_core::layout_state(&atelier_core::data_root()))
 }
 
-/// 모드의 레이아웃을 기본값으로 되돌린다 — 그 모드의 레이아웃 폴더를 지운다(spec 레이아웃 결정 7).
-/// 깨진 폴더도 지운다. 확인은 화면이 먼저 묻는다. 에이전트에게는 이 길이 없다(spec 레이아웃 결정 21).
-/// id는 모드 이름 둘만 받는다.
+/// 레이아웃을 기본값으로 되돌린다 — 레이아웃 폴더를 지운다(spec 레이아웃 결정 7). 깨진 폴더도 지운다.
+/// 확인은 화면이 먼저 묻는다. 에이전트에게는 이 길이 없다(spec 레이아웃 결정 21).
 #[tauri::command]
-pub async fn revert_spec_layout(id: String) -> CmdResult<()> {
-    atelier_core::revert_layout(&atelier_core::data_root(), &id).map_err(err)
+pub async fn revert_spec_layout() -> CmdResult<()> {
+    atelier_core::revert_layout(&atelier_core::data_root()).map_err(err)
 }
 
-/// 편집기가 여는 모드의 레이아웃 — 디스크 형식 그대로의 레이아웃과 템플릿 본문, 경고. 깨졌으면 오류와
-/// 원문이다(편집기는 그때 편집 UI를 세우지 않는다). 아무것도 쓰지 않는다. id는 모드 이름 둘만 받는다.
+/// 편집기가 여는 레이아웃 — 디스크 형식 그대로의 레이아웃과 템플릿 본문, 경고. 깨졌으면 오류와
+/// 원문이다(편집기는 그때 편집 UI를 세우지 않는다). 아무것도 쓰지 않는다.
 #[tauri::command]
-pub async fn read_spec_layout(id: String) -> CmdResult<atelier_core::LayoutRead> {
-    atelier_core::read_layout(&atelier_core::data_root(), &id).map_err(err)
+pub async fn read_spec_layout() -> CmdResult<atelier_core::LayoutRead> {
+    Ok(atelier_core::read_layout(&atelier_core::data_root()))
 }
 
 /// 편집기의 저장. 템플릿은 늘 전부 받는다. **검증이 거절하면 거절이 아니라 답이다** — 위치가 붙은
 /// 오류가 성공 응답의 데이터(`{ errors }`)로 가고 아무것도 쓰지 않는다. 명령이 거절하는 것은 쓰다가
-/// 실패한 것(IO)과 모드 이름이 아닌 id뿐이다. `layout`은 값으로 받는다 — 구조체로 받으면 모르는 키가
-/// 역직렬화에서 떨어진다.
+/// 실패한 것(IO)뿐이다. `layout`은 값으로 받는다 — 구조체로 받으면 모르는 키가 역직렬화에서 떨어진다.
 #[tauri::command]
 pub async fn write_spec_layout(
-    id: String,
     layout: serde_json::Value,
     templates: std::collections::BTreeMap<String, String>,
 ) -> CmdResult<atelier_core::SaveOutcome> {
-    atelier_core::save_layout(&atelier_core::data_root(), &id, layout, &templates).map_err(err)
+    atelier_core::save_layout(&atelier_core::data_root(), layout, &templates).map_err(err)
 }
 
 /// 편집기의 미리보기(티켓 14) — 저장하지 않은 초안을 저장하면 에이전트가 받을 안내문과 그 안의 항목의 줄,
 /// 검증 오류, 경고. 편집기는 초안이 바뀔 때마다 부른다 — 팝업을 닫은 동안에도 오류가 서고 저장이 잠긴다.
 /// 오류의 모양은 저장(`write_spec_layout`)과 같다. **디스크에 쓰지 않는다.** 규칙은 코어의 미리보기 함수에
-/// 있다 — 여기에 두면 L4 다리가 같은 규칙을 한 벌 더 가진다. id는 모드 이름 둘만 받는다.
+/// 있다 — 여기에 두면 L4 다리가 같은 규칙을 한 벌 더 가진다.
 #[tauri::command]
 pub async fn render_spec_layout(
-    id: String,
     layout: serde_json::Value,
     templates: std::collections::BTreeMap<String, String>,
 ) -> CmdResult<atelier_core::LayoutPreview> {
-    atelier_core::preview_layout(&atelier_core::data_root(), &id, layout, &templates).map_err(err)
+    Ok(atelier_core::preview_layout(&atelier_core::data_root(), layout, &templates))
 }
 
 /// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는

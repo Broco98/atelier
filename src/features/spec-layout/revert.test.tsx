@@ -5,7 +5,7 @@ import type { SpecLayoutState } from "./types";
 
 // 「기본값으로 되돌리기」의 확인 창(spec 레이아웃 티켓 10). 되돌리기는 레이아웃 폴더를 **폴더째**
 // 지운다 — 템플릿도, 레이아웃이 모르는 파일도 함께 사라진다. 그래서 창은 지울 폴더와 사라지는 것의 수를
-// 적는다. 수는 엔진의 상태가 준 그대로다(`spec_layout_states`) — 여기서 폴더를 세지 않는다.
+// 적는다. 수는 엔진의 상태가 준 그대로다(`spec_layout_state`) — 여기서 폴더를 세지 않는다.
 //
 // 창은 앱의 창 하나(`AppDialog`)가 그리는데, 그 창은 Base UI AlertDialog라 포털로 서고 포털은 정적 렌더에서
 // 아무것도 그리지 않는다. 그래서 물음을 올린 뒤 **스토어에 선 물음**을 읽는다 — 창의 글이 프로미스 뒤에 있어
@@ -17,7 +17,6 @@ afterEach(() => {
 });
 
 const state = (overrides: Partial<SpecLayoutState>): SpecLayoutState => ({
-  id: "atelier",
   folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [],

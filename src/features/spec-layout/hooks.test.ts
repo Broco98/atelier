@@ -9,8 +9,8 @@ import { archivedDocsQuery, archiveQuery } from "@/features/archive/hooks";
 import { worksQuery } from "@/features/works/hooks";
 import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorkView } from "@/features/works/types";
-import { invalidateSpecLayout, specLayoutReadQuery, specLayoutStatesQuery } from "./hooks";
-import type { LayoutId, SpecLayoutRead, SpecLayoutState } from "./types";
+import { invalidateSpecLayout, specLayoutReadQuery, specLayoutStateQuery } from "./hooks";
+import type { SpecLayoutRead, SpecLayoutState } from "./types";
 
 // **레이아웃이 바뀌면 그것에서 나온 것이 모두 낡는다**(spec 레이아웃 결정 22, 구현 스펙 3절). 레이아웃
 // 상태·읽기 쿼리, 그리고 spec 트리를 싣고 오는 work 목록과 아카이브 문서 목록이다. 넷 중 하나라도 빠지면
@@ -25,21 +25,29 @@ const docsKey = archivedDocsQuery("치운-가").queryKey;
 
 const RECORD_ONLY: ArchivedDocs = {
   docs: ["record.md"],
-  specTree: { layoutId: "atelier", fallback: null, defaultDoc: null, items: [] },
+  specTree: { fallback: null, defaultDoc: null, items: [] },
 };
 
-const BROKEN_READ = (id: LayoutId): SpecLayoutRead => ({
-  id,
-  folder: `~/.atelier/layouts/${id}`,
+const BROKEN_READ: SpecLayoutRead = {
+  folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [{ path: null, message: "layout.json is missing" }],
   raw: null,
-});
+};
+
+const BUILTIN_STATE: SpecLayoutState = {
+  folder: "~/.atelier/layouts/atelier",
+  edited: false,
+  errors: [],
+  fallback: null,
+  templateCount: 0,
+  otherFileCount: 0,
+};
 
 function seeded() {
   const client = new QueryClient();
-  client.setQueryData(specLayoutStatesQuery().queryKey, [] as SpecLayoutState[]);
-  client.setQueryData(specLayoutReadQuery("atelier").queryKey, BROKEN_READ("atelier"));
+  client.setQueryData(specLayoutStateQuery().queryKey, BUILTIN_STATE);
+  client.setQueryData(specLayoutReadQuery().queryKey, BROKEN_READ);
   client.setQueryData(worksQuery().queryKey, [] as WorkView[]);
   client.setQueryData(archiveQuery().queryKey, [] as ArchiveEntry[]);
   client.setQueryData(docsKey, RECORD_ONLY);
@@ -53,7 +61,7 @@ describe("레이아웃이 바뀌었다고 알리는 문", () => {
   it("레이아웃 상태를 지운다", () => {
     const client = seeded();
     void invalidateSpecLayout(client);
-    expect(invalidated(client, specLayoutStatesQuery().queryKey)).toBe(true);
+    expect(invalidated(client, specLayoutStateQuery().queryKey)).toBe(true);
   });
 
   // 편집기(티켓 11)는 다시 읽힌 읽기로 밖 변경을 안다(티켓 15) — 되돌리거나 감시가 울렸는데 옛 읽기가
@@ -61,7 +69,7 @@ describe("레이아웃이 바뀌었다고 알리는 문", () => {
   it("레이아웃 읽기를 지운다", () => {
     const client = seeded();
     void invalidateSpecLayout(client);
-    expect(invalidated(client, specLayoutReadQuery("atelier").queryKey)).toBe(true);
+    expect(invalidated(client, specLayoutReadQuery().queryKey)).toBe(true);
   });
 
   // spec 트리는 work 응답에 실려 온다(구현 스펙 3절) — 목록을 다시 읽어야 트리가 바뀐다.

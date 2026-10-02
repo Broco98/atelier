@@ -167,16 +167,13 @@ impl AtelierServer {
         // 아카이브 안내는 브랜치의 유무로 갈린다 — `atelier_archive_work`가 쓰는 것과 **같은
         // 값**이다. 다른 값으로 가르면 방금 치운 work를 두 도구가 다르게 설명한다.
         //
-        // 진행 중인 work에는 **이 서버 모드의 spec 레이아웃**을 render한 글이 선다. 조회는 문서를
+        // 진행 중인 work에는 **spec 레이아웃**을 render한 글이 선다. 조회는 문서를
         // 쓰기 직전에 일어나므로 여기가 이 안내의 정확한 자리다 — 상주 지침을 늘리지 않는다.
         // 커널의 뷰가 아니라 도구 계층이 덧붙인다: 레이아웃은 work의 데이터가 아니다.
         let note = match (origin, view.work.branch.is_some()) {
             ("archive", true) => ARCHIVED_NOTE_WITH_CODE.to_string(),
             ("archive", false) => ARCHIVED_NOTE_WITHOUT_CODE.to_string(),
-            _ => match self.spec_layout_guidance() {
-                Ok(guidance) => guidance,
-                Err(e) => return Ok(kernel_error(e)),
-            },
+            _ => self.spec_layout_guidance(),
         };
         // JSON이 먼저다 — 기계가 읽는 값이고, 안내는 그 뒤에 붙는다
         Ok(CallToolResult::success(vec![

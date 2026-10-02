@@ -1,11 +1,6 @@
 // spec 레이아웃의 응답 모양. **정본은 엔진이다**(`crates/atelier-core/src/layout/`) — 여기는 그
-// 응답의 타입이고, 규칙은 한 줄도 없다(결정 13).
-
-/**
- * 레이아웃 id. **값은 `"atelier"` 하나다**(ui-refresh 결정 3) — 엔진이 아직 id를 받고 돌려주므로 타입이 남았다.
- * 판 02의 05가 id째 걷는다(ui-refresh 결정 23).
- */
-export type LayoutId = "atelier";
+// 응답의 타입이고, 규칙은 한 줄도 없다(결정 13). 레이아웃은 하나라 어느 것인지 가리키는 id가 없다(ui-refresh
+// 결정 23) — 폴더는 고정 경로(`~/.atelier/layouts/atelier/`)다.
 
 /**
  * 화면에 적는 레이아웃의 이름. 설정 「spec 레이아웃」의 행 머리 · 편집기의 위치 · 되돌리기 창이 함께 읽는다 —
@@ -23,11 +18,10 @@ export interface LayoutError {
 }
 
 /**
- * 레이아웃 하나의 상태 — 엔진의 `layout_states`가 준 그대로다(`spec_layout_states`). 설정 화면은
+ * 레이아웃의 상태 — 엔진의 `layout_state`가 준 그대로다(`spec_layout_state`). 설정 화면은
  * resolve 규칙을 다시 계산하지 않고 이것을 그리기만 한다.
  */
 export interface SpecLayoutState {
-  id: LayoutId;
   /** 레이아웃 폴더 — 홈은 `~`로 줄였고 끝에 `/`가 없다. 폴더가 없어도 온다: 참조가 그 자리다. */
   folder: string;
   /** 내장본을 가린 폴더가 있는가. 읽지 못하는 폴더도 가린 것이다. */
@@ -69,7 +63,6 @@ export type TemplateBodies = Record<string, string>;
 
 /** 읽을 수 있는 레이아웃(`read_spec_layout`). 폴더가 없으면 내장본이다(`edited: false`). */
 export interface ReadableSpecLayout {
-  id: LayoutId;
   /** 레이아웃 폴더 — 홈은 `~`로 줄였고 끝에 `/`가 없다. 폴더가 없어도 온다: 처음 저장하면 거기 선다. */
   folder: string;
   edited: boolean;
@@ -82,7 +75,6 @@ export interface ReadableSpecLayout {
 
 /** 읽지 못하는 레이아웃 — 까닭(오류 전부)과 원문. 편집기는 이때 편집 UI를 세우지 않는다. */
 export interface UnreadableSpecLayout {
-  id: LayoutId;
   folder: string;
   edited: boolean;
   errors: LayoutError[];

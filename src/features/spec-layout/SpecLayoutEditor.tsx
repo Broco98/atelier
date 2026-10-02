@@ -76,18 +76,17 @@ import {
   LAYOUT_NAME,
   type LayoutEntryJson,
   type LayoutError,
-  type LayoutId,
   type SpecLayoutRead,
   type TemplateBodies,
   type UnreadableSpecLayout,
 } from "./types";
 
 // 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 한 열(620px) 안이 아니라 설정 nav
-// 항목 「spec 레이아웃」의 하위 주소(`/settings/spec-layout/<id>`)에 선 **별도 화면**이다 — 트리와 고른 항목,
+// 항목 「spec 레이아웃」의 하위 주소(`/settings/spec-layout/edit`)에 선 **별도 화면**이다 — 트리와 고른 항목,
 // 두 열이 설정 한 열에 들지 않는다. 설정 nav는 그대로 서고 「spec 레이아웃」이 켜져 있다.
 //
 // **이 화면의 주된 쓰임은 마지막 손질이다**(결정 20). 레이아웃은 대부분 에이전트가 고치고, 사람은 여기서
-// 한 칸을 고친다. 그래서 머리에는 뒤로, 위치, 「LLM이 받는 텍스트」, 저장만 둔다 — id, 배지, 오류 개수, 「저장하지
+// 한 칸을 고친다. 그래서 머리에는 뒤로, 위치, 「LLM이 받는 텍스트」, 저장만 둔다 — 배지, 오류 개수, 「저장하지
 // 않은 변경」, 부탁 버튼, 설명 문구, 도움말은 두지 않는다(구현 스펙 5절 「배치」).
 //
 // **규칙이 없다**(결정 13). 초안을 고치는 것은 `draft.ts`의 순수 함수이고, 이름 틀이 맞는지·폴더에 자식이
@@ -104,8 +103,8 @@ import {
 // 따라가고, 있으면 머리 아래의 배너로 한쪽을 고르게 한다(`outside.ts`).
 
 /** 편집기 주소를 연다 — 레이아웃을 읽어, 읽을 수 있으면 편집 UI를, 없으면 까닭과 돌아가는 길을 세운다. */
-function SpecLayoutEditor({ id, sidebarOpen }: { id: LayoutId; sidebarOpen: boolean }) {
-  const read = useQuery(specLayoutReadQuery(id));
+function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
+  const read = useQuery(specLayoutReadQuery());
   const navigate = useNavigate();
   // 뒤로는 「spec 레이아웃」 설정 페이지다 — 편집기로 오는 문이 거기 한 곳(레이아웃 행의 [편집])이라, 히스토리를 되감지
   // 않고 늘 그 자리로 간다. 주소로 바로 와도 같은 곳에 선다. 저장하지 않은 초안이 있으면 떠나기 전에 묻는다(티켓 15).
@@ -115,7 +114,7 @@ function SpecLayoutEditor({ id, sidebarOpen }: { id: LayoutId; sidebarOpen: bool
   // 한 번 읽었으면 그 뒤로 다시 읽히는 것은 편집 화면이 받는다 — 밖에서 깨지거나 고쳐져도 화면이 내려가지 않아야
   // 초안이 산다(티켓 15).
   if (data !== undefined) {
-    return <EditorScreen id={id} read={data} sidebarOpen={sidebarOpen} onBack={back} />;
+    return <EditorScreen read={data} sidebarOpen={sidebarOpen} onBack={back} />;
   }
   return (
     <EditorFrame sidebarOpen={sidebarOpen} onBack={back}>
@@ -147,12 +146,10 @@ interface Outside {
  * (`judgeOutside`). 합치지는 않는다. 읽은 것이 깨졌으면 초안이 없는 동안 「읽지 못함」 화면이다.
  */
 function EditorScreen({
-  id,
   read,
   sidebarOpen,
   onBack,
 }: {
-  id: LayoutId;
   read: SpecLayoutRead;
   sidebarOpen: boolean;
   onBack: () => void;
@@ -195,7 +192,7 @@ function EditorScreen({
   // 초안마다 엔진에 묻는 미리보기 — 그 답의 오류가 항목 아래에 서고, 글이 팝업에 선다. 팝업을 닫은 동안에도 묻는다.
   // 답은 디스크에도 달려(초안에 본문이 없는 템플릿은 그 파일이 있는지를 본다) 레이아웃 폴더를 다시 읽은 것이 바뀌면
   // 고치지 않은 초안도 다시 묻는다 — 밖 변경 배너가 선 동안에도, 유지한 뒤에도 답이 새 디스크의 것이다.
-  const { preview, reserve } = useDraftPreview(id, draft, read);
+  const { preview, reserve } = useDraftPreview(draft, read);
   // 팝업을 여는 머리의 버튼 — 팝업이 닫히면 포커스가 여기로 돌아온다(`PreviewDialog`).
   const opener = useRef<HTMLButtonElement>(null);
   // **제 저장** — 쓰였으면 기준본이 저장한 것이 되고, 선 배너는 걷힌다(저장이 밖의 변경을 덮었다). 그래서 제 저장이
@@ -221,7 +218,7 @@ function EditorScreen({
     const saved = draft;
     const refused = reserve(saved);
     try {
-      const answer = await write.mutateAsync({ id, ...saved });
+      const answer = await write.mutateAsync(saved);
       if (answer.errors.length === 0) return true;
       refused({ text: null, lines: [], errors: answer.errors, warnings: [] });
     } catch (e) {

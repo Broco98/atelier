@@ -11,7 +11,6 @@ import type { ReadableSpecLayout, SpecLayoutRead, UnreadableSpecLayout } from ".
 /** 편집기가 연 레이아웃 — 레이아웃 폴더의 것이다(`edited`). 손으로 적은 모르는 키와 템플릿 하나가 있다. */
 function opened(): ReadableSpecLayout {
   return {
-    id: "atelier",
     folder: "~/.atelier/layouts/atelier",
     edited: true,
     layout: {
@@ -43,7 +42,6 @@ function changed(): ReadableSpecLayout {
 /** 밖에서 `layout.json`을 깨뜨린 뒤 다시 읽은 것 — 엔진이 그 파일에 내는 오류와 원문이다. */
 function broken(): UnreadableSpecLayout {
   return {
-    id: "atelier",
     folder: "~/.atelier/layouts/atelier",
     edited: true,
     errors: [{ path: [1], message: '`kind` is missing ("file" or "folder")' }],
@@ -54,7 +52,6 @@ function broken(): UnreadableSpecLayout {
 /** 폴더가 지워져(손으로, 또는 설정의 되돌리기로) 다시 읽은 것 — 내장본이다. */
 function builtin(): ReadableSpecLayout {
   return {
-    id: "atelier",
     folder: "~/.atelier/layouts/atelier",
     edited: false,
     layout: {

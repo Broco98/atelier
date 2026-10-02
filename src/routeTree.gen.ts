@@ -25,7 +25,8 @@ import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
 import { Route as SettingsSpecLayoutIndexRouteImport } from './routes/settings.spec-layout.index'
-import { Route as SettingsSpecLayoutIdRouteImport } from './routes/settings.spec-layout.$id'
+import { Route as SettingsSpecLayoutSplatRouteImport } from './routes/settings.spec-layout.$'
+import { Route as SettingsSpecLayoutEditRouteImport } from './routes/settings.spec-layout.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -107,9 +108,14 @@ const SettingsSpecLayoutIndexRoute = SettingsSpecLayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsSpecLayoutRoute,
 } as any)
-const SettingsSpecLayoutIdRoute = SettingsSpecLayoutIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
+const SettingsSpecLayoutSplatRoute = SettingsSpecLayoutSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => SettingsSpecLayoutRoute,
+} as any)
+const SettingsSpecLayoutEditRoute = SettingsSpecLayoutEditRouteImport.update({
+  id: '/edit',
+  path: '/edit',
   getParentRoute: () => SettingsSpecLayoutRoute,
 } as any)
 
@@ -129,7 +135,8 @@ export interface FileRoutesByFullPath {
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/works/': typeof WorksIndexRoute
-  '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
+  '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
+  '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -146,7 +153,8 @@ export interface FileRoutesByTo {
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/works': typeof WorksIndexRoute
-  '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
+  '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
+  '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -166,7 +174,8 @@ export interface FileRoutesById {
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/works/': typeof WorksIndexRoute
-  '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
+  '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
+  '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -187,7 +196,8 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/settings/'
     | '/works/'
-    | '/settings/spec-layout/$id'
+    | '/settings/spec-layout/$'
+    | '/settings/spec-layout/edit'
     | '/settings/spec-layout/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -204,7 +214,8 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/works'
-    | '/settings/spec-layout/$id'
+    | '/settings/spec-layout/$'
+    | '/settings/spec-layout/edit'
     | '/settings/spec-layout'
   id:
     | '__root__'
@@ -223,7 +234,8 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/settings/'
     | '/works/'
-    | '/settings/spec-layout/$id'
+    | '/settings/spec-layout/$'
+    | '/settings/spec-layout/edit'
     | '/settings/spec-layout/'
   fileRoutesById: FileRoutesById
 }
@@ -354,23 +366,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSpecLayoutIndexRouteImport
       parentRoute: typeof SettingsSpecLayoutRoute
     }
-    '/settings/spec-layout/$id': {
-      id: '/settings/spec-layout/$id'
-      path: '/$id'
-      fullPath: '/settings/spec-layout/$id'
-      preLoaderRoute: typeof SettingsSpecLayoutIdRouteImport
+    '/settings/spec-layout/$': {
+      id: '/settings/spec-layout/$'
+      path: '/$'
+      fullPath: '/settings/spec-layout/$'
+      preLoaderRoute: typeof SettingsSpecLayoutSplatRouteImport
+      parentRoute: typeof SettingsSpecLayoutRoute
+    }
+    '/settings/spec-layout/edit': {
+      id: '/settings/spec-layout/edit'
+      path: '/edit'
+      fullPath: '/settings/spec-layout/edit'
+      preLoaderRoute: typeof SettingsSpecLayoutEditRouteImport
       parentRoute: typeof SettingsSpecLayoutRoute
     }
   }
 }
 
 interface SettingsSpecLayoutRouteChildren {
-  SettingsSpecLayoutIdRoute: typeof SettingsSpecLayoutIdRoute
+  SettingsSpecLayoutSplatRoute: typeof SettingsSpecLayoutSplatRoute
+  SettingsSpecLayoutEditRoute: typeof SettingsSpecLayoutEditRoute
   SettingsSpecLayoutIndexRoute: typeof SettingsSpecLayoutIndexRoute
 }
 
 const SettingsSpecLayoutRouteChildren: SettingsSpecLayoutRouteChildren = {
-  SettingsSpecLayoutIdRoute: SettingsSpecLayoutIdRoute,
+  SettingsSpecLayoutSplatRoute: SettingsSpecLayoutSplatRoute,
+  SettingsSpecLayoutEditRoute: SettingsSpecLayoutEditRoute,
   SettingsSpecLayoutIndexRoute: SettingsSpecLayoutIndexRoute,
 }
 

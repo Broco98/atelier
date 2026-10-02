@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "./evidence";
-import { BROKEN_LAYOUT_STATE, BUILTIN_LAYOUT_STATE, SPEC_LAYOUT_STATES } from "./fixtures";
+import { BROKEN_LAYOUT_STATE, BUILTIN_LAYOUT_STATE, SPEC_LAYOUT_STATE } from "./fixtures";
 import {
   callCount,
   clipboardWrites,
   installFixtureBackend,
-  ipcCallArgs,
+  ipcCalls,
   ipcFailure,
   recordClipboard,
+  SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
 } from "./harness";
 
@@ -27,11 +28,13 @@ const 다시읽기 = (page: Page) => page.getByRole("button", { name: "Atelier �
 // 검사는 「메시지」라 부른다(`CONTEXT.md` 「알림 띠」).
 const 메시지 = (page: Page) => page.getByRole("status").filter({ hasText: "참조를 복사했어요" });
 
-test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가고 레이아웃 한 행이 선다", async ({ page }) => {
+test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가고 Atelier 한 행이 서며, [편집]이 고정 주소의 편집기로 간다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
   await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toBeVisible();
-  expect(await callCount(page, "spec_layout_states")).toBe(0);
+  expect(await callCount(page, "spec_layout_state")).toBe(0);
 
   // 넷째 줄은 **맨 뒤**다 — `/settings`는 여전히 첫 항목(터미널)으로 넘긴다.
   const 항목 = aside(page).getByRole("button", { name: "spec 레이아웃", exact: true });
@@ -39,19 +42,23 @@ test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가
   await expect(page).toHaveURL("/settings/spec-layout");
   await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃$/);
   await expect(항목.locator("xpath=..")).toHaveClass(/selected-row/);
-  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(0);
+  await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(0);
 
-  // **레이아웃은 하나다** — 백엔드는 아직 둘째 줄(id `maison`)을 함께 주지만 프런트가 거른다(ui-refresh 결정 22 ·
-  // 05에서 그 줄과 거르기가 함께 사라진다). 픽스처의 기본 답이 그 둘째 줄을 싣는다(`STALE_LAYOUT_STATE`).
+  // **레이아웃은 하나다**(ui-refresh 결정 23) — 상태 명령은 인자 없이 나가 한 벌을 답하고, 행은 그 하나다.
+  expect(new Set(await ipcCalls(page, "spec_layout_state"))).toEqual(new Set(["spec_layout_state"]));
   await expect(page.locator("main li")).toHaveCount(1);
-  const [atelier] = SPEC_LAYOUT_STATES;
-  await expect(행(page)).toContainText(`${atelier.folder}/`);
-  await expect(행(page)).toContainText(`템플릿 ${atelier.templateCount}개`);
+  await expect(행(page)).toContainText(`${SPEC_LAYOUT_STATE.folder}/`);
+  await expect(행(page)).toContainText(`템플릿 ${SPEC_LAYOUT_STATE.templateCount}개`);
   // 읽을 수 있는 행에는 [다시 읽기]가 없다
   await expect(다시읽기(page)).toHaveCount(0);
   // 설정 초안의 저장 버튼을 지나지 않는다. (게이트 밖인지는 아래 시나리오가 잰다 — 이 fixture의
   // `read_settings`는 성공하므로 여기서는 게이트 안이어도 행이 선다.)
   await expect(page.getByRole("button", { name: "저장", exact: true })).toHaveCount(0);
+
+  // 편집기는 id 없는 고정 주소다(ui-refresh 결정 23)
+  await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
+  await expect(page.getByRole("treeitem", { name: "overview.md", exact: true })).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -74,7 +81,7 @@ test("설정 파일을 읽지 못해도 「spec 레이아웃」의 행이 선다
 // 그 참조와 다음에 할 일을 적는다.
 test("[부탁]을 누르면 레이아웃 참조가 클립보드로 가고, 화면 아래 메시지에 적힌다", async ({ page }) => {
   // 폴더가 아직 없는 레이아웃이다 — 붙여 받은 에이전트의 도구가 내장본을 돌려준다.
-  await installFixtureBackend(page, { spec_layout_states: [BUILTIN_LAYOUT_STATE] });
+  await installFixtureBackend(page, { spec_layout_state: BUILTIN_LAYOUT_STATE });
   await recordClipboard(page);
   await page.goto("/settings/spec-layout");
   await expect(page.locator("main li")).toHaveCount(1);
@@ -104,7 +111,7 @@ test("[부탁]을 누르면 레이아웃 참조가 클립보드로 가고, 화�
 });
 
 test("읽지 못한 행은 이유를 보이고, [다시 읽기]가 상태 명령을 다시 부른다", async ({ page }) => {
-  await installFixtureBackend(page, { spec_layout_states: [BROKEN_LAYOUT_STATE] });
+  await installFixtureBackend(page, { spec_layout_state: BROKEN_LAYOUT_STATE });
   await page.goto("/settings/spec-layout");
 
   await expect(행(page)).toContainText("읽지 못해 내장본으로 보여 주고 있어요");
@@ -112,10 +119,10 @@ test("읽지 못한 행은 이유를 보이고, [다시 읽기]가 상태 명령
   // 읽지 못하는 행에도 [부탁]이 있다 — 에이전트가 원문과 오류를 읽고 고친다.
   await expect(부탁(page)).toBeVisible();
 
-  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(0);
-  const before = await callCount(page, "spec_layout_states");
+  await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(0);
+  const before = await callCount(page, "spec_layout_state");
   await 다시읽기(page).click();
-  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(before);
+  await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(before);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -124,7 +131,7 @@ test("읽지 못한 행은 이유를 보이고, [다시 읽기]가 상태 명령
 // spec 트리도 바뀌므로 그 문은 spec 트리를 싣고 오는 work 목록까지 지운다(3절). 상태 행만 다시 부르면 손으로 고친
 // 레이아웃이 행에서는 「고침」인데 spec 패널 탭의 트리는 옛 모양인 채 남는다.
 test("[다시 읽기]는 감시가 놓친 변경을 대신 알린다 — spec 트리를 싣고 오는 work 목록도 다시 부른다", async ({ page }) => {
-  await installFixtureBackend(page, { spec_layout_states: [BROKEN_LAYOUT_STATE] });
+  await installFixtureBackend(page, { spec_layout_state: BROKEN_LAYOUT_STATE });
   await page.goto("/settings/spec-layout");
   await expect(행(page)).toContainText("읽지 못해 내장본으로 보여 주고 있어요");
 
@@ -164,8 +171,8 @@ test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되
   await 되돌리기항목(page).click();
   const dialog = 확인창(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText(`${SPEC_LAYOUT_STATES[0].folder}/ 폴더를 지워요.`);
-  await expect(dialog).toContainText(`템플릿 ${SPEC_LAYOUT_STATES[0].templateCount}개`);
+  await expect(dialog).toContainText(`${SPEC_LAYOUT_STATE.folder}/ 폴더를 지워요.`);
+  await expect(dialog).toContainText(`템플릿 ${SPEC_LAYOUT_STATE.templateCount}개`);
   // 창이 떠 있는 동안에도 아직 아무것도 지우지 않았다
   expect(await callCount(page, "revert_spec_layout")).toBe(0);
 
@@ -182,14 +189,14 @@ test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("[되돌리기]를 고르면 그 레이아웃의 id로 되돌리기가 한 번 나가고, 상태를 다시 부르고, 메시지가 선다", async ({
+test("[되돌리기]를 고르면 되돌리기가 인자 없이 한 번 나가고, 상태를 다시 부르고, 메시지가 선다", async ({
   page,
 }) => {
-  await installFixtureBackend(page, { spec_layout_states: [BROKEN_LAYOUT_STATE] });
+  await installFixtureBackend(page, { spec_layout_state: BROKEN_LAYOUT_STATE });
   await page.goto("/settings/spec-layout");
   await expect(page.locator("main li")).toHaveCount(1);
-  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(0);
-  const before = await callCount(page, "spec_layout_states");
+  await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(0);
+  const before = await callCount(page, "spec_layout_state");
 
   // 읽지 못한 행도 가린 폴더가 있으므로 되돌릴 수 있다 — 깨진 폴더도 되돌리기는 늘 된다
   await 메뉴(page).click();
@@ -203,10 +210,10 @@ test("[되돌리기]를 고르면 그 레이아웃의 id로 되돌리기가 한 
   await expect(되돌린메시지(page)).toBeVisible();
   await expect(되돌린메시지(page)).toContainText(`${BROKEN_LAYOUT_STATE.folder}/`);
 
-  const reverts = await ipcCallArgs(page, "revert_spec_layout", "id");
-  expect(reverts.map(({ args }) => args)).toEqual([{ id: "atelier" }]);
+  // 레이아웃은 하나라 무엇을 되돌릴지 묻는 인자가 없다(ui-refresh 결정 23)
+  expect(await ipcCalls(page, "revert_spec_layout")).toEqual(["revert_spec_layout"]);
   // 감시 이벤트를 기다리지 않는다 — 되돌린 쪽이 스스로 상태를 다시 읽는다
-  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(before);
+  await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(before);
 
   await 되돌린메시지(page).getByRole("button", { name: "닫기", exact: true }).click();
   await expect(되돌린메시지(page)).toHaveCount(0);

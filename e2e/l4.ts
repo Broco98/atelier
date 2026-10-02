@@ -90,8 +90,8 @@ export function seedArchivedWork(home: string, slug: string, title: string, file
  *
  * 다리에는 감시자가 없다 — 앱이 이미 읽은 뒤에 심었다면 다시 읽어야 따라온다.
  */
-export function seedLayout(home: string, id: "atelier", layout: unknown): string {
-  const folder = join(home, "layouts", id);
+export function seedLayout(home: string, layout: unknown): string {
+  const folder = join(home, "layouts", "atelier");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "layout.json"), JSON.stringify(layout));
   return folder;

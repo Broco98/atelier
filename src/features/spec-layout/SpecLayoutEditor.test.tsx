@@ -357,7 +357,6 @@ describe("검증 오류", () => {
 // 주소로 바로 와도 같다. 고치는 길은 설정 행의 에이전트에게 부탁, 손으로 고치기, 되돌리기다.
 describe("읽지 못하는 레이아웃", () => {
   const broken: UnreadableSpecLayout = {
-    id: "atelier",
     folder: "~/.atelier/layouts/atelier",
     edited: true,
     errors: [

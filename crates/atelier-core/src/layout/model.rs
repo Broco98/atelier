@@ -6,7 +6,7 @@
 /// spec 폴더 하나의 모양. **맨 위 항목(`root`) 하나만 갖는다** — 맨 위 항목이 spec 폴더 자신이고,
 /// 그 설명이 방침 문단이다(결정 10).
 ///
-/// 표시 이름이 없다(결정 25). 레이아웃의 id(모드 이름)가 곧 이름이다.
+/// 표시 이름이 없다(결정 25). 레이아웃은 하나라 이름이 필요 없다 — 화면은 상수 `Atelier`로 부른다(ui-refresh 결정 23).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SpecLayout {
     pub root: LayoutEntry,

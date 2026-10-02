@@ -291,8 +291,8 @@ describe("마지막 주소", () => {
     expect(shellStore.state.lastPlace).toBe("/works/work-a");
 
     // 설정의 하위 주소도 적지 않는다 — 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11).
-    await router.navigate({ to: "/settings/spec-layout/$id", params: { id: "atelier" } });
-    expect(router.state.location.pathname).toBe("/settings/spec-layout/atelier");
+    await router.navigate({ to: "/settings/spec-layout/edit" });
+    expect(router.state.location.pathname).toBe("/settings/spec-layout/edit");
     expect(shellStore.state.lastPlace).toBe("/works/work-a");
   });
 });
@@ -638,23 +638,27 @@ describe("설정 화면의 주소", () => {
 
   // 「spec 레이아웃」의 편집기는 그 항목 아래의 하위 주소다(spec 레이아웃 티켓 11) — 설정 한 열의 본문이
   // 아니라 제 라우트에 선다. 항목 라우트에 Outlet이 없으면 주소는 맞는데 편집기가 안 선다: 매치로 본다.
-  it.each(["atelier"] as const)("`/settings/spec-layout/%s`는 편집기 화면에 선다", async (id) => {
-    const { router } = setup([`/settings/spec-layout/${id}`]);
+  // 레이아웃은 하나라 주소에 id가 없다(ui-refresh 결정 23).
+  it("`/settings/spec-layout/edit`는 편집기 화면에 선다", async () => {
+    const { router } = setup(["/settings/spec-layout/edit"]);
     await router.load();
-    expect(router.state.location.pathname).toBe(`/settings/spec-layout/${id}`);
+    expect(router.state.location.pathname).toBe("/settings/spec-layout/edit");
     const routes = router.state.matches.map((match) => match.routeId);
-    expect(routes).toContain("/settings/spec-layout/$id");
+    expect(routes).toContain("/settings/spec-layout/edit");
     expect(routes).not.toContain("/settings/spec-layout/");
   });
 
-  // 레이아웃 id는 `atelier` 하나다(판 02의 05가 id째 걷는다). 모르는 id로 온 주소는 부를 레이아웃이 없다 —
-  // 「spec 레이아웃」 페이지로 치환한다. 칸은 늘지 않는다.
-  it.each(["gallery", "maison"])("모르는 id(%s)의 편집기 주소는 「spec 레이아웃」 페이지로 치환된다", async (id) => {
-    const { router, history } = setup([`/settings/spec-layout/${id}`]);
-    await router.load();
-    expect(router.state.location.pathname).toBe("/settings/spec-layout");
-    expect(history.length).toBe(1);
-  });
+  // 모르는 하위 주소는 부를 화면이 없다 — 「spec 레이아웃」 페이지로 치환한다. 칸은 늘지 않는다. id를 실었던 옛
+  // 편집기 주소(`atelier`)도 그렇다.
+  it.each(["atelier", "maison", "gallery", "edit/more"])(
+    "모르는 하위 주소(%s)는 「spec 레이아웃」 페이지로 치환된다",
+    async (rest) => {
+      const { router, history } = setup([`/settings/spec-layout/${rest}`]);
+      await router.load();
+      expect(router.state.location.pathname).toBe("/settings/spec-layout");
+      expect(history.length).toBe(1);
+    },
+  );
 
   // 터미널을 쓰다 ⌘,로 열고 되돌아오는 흐름이다 — 한 칸이어야 뒤로가기 한 번에 돌아온다.
   it("설정을 열면 한 칸이 남고 뒤로가기로 보던 작업에 돌아온다", async () => {

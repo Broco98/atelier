@@ -1,23 +1,16 @@
-//! 코드 내장본 둘 — `atelier`와 `maison`.
+//! 코드 내장본 — 레이아웃 폴더가 없을 때 쓰는 레이아웃.
 //!
 //! **내용은 이 기능 전의 안내문 그대로다**(결정 8). 그때 `atelier_get_work`가 싣던 고정 문자열의
 //! 다섯 이름과 그 뜻을 데이터로 옮겼다. 달라진 것은 표기뿐이다 — `NN-<name>/`이 `{n}-{name}/`이
 //! 되고, 「normally inside its NN- folder」는 들여쓰기가 대신 말한다(구현 스펙 7절 허용 차이 1).
 //!
-//! 두 벌은 이번에는 **id만 다르고 내용이 같다.** Maison에 맞는 모양은 사용자가 설정에서 직접
-//! 만든다 — 그래서 벌을 하나로 합치지 않고 모드마다 따로 낸다. 합쳐 두면 한쪽을 고치는 날 둘이
-//! 함께 바뀐다.
-//!
 //! 내장본에는 템플릿이 없다. 템플릿은 경로로 건네므로 디스크에 있어야 한다(결정 5·7).
 
 use super::model::{EntryKind, LayoutEntry, SpecLayout};
-use crate::Mode;
 
-/// 그 모드의 코드 내장본. 레이아웃 폴더가 없거나, 있어도 읽지 못할 때 도착하는 곳이다.
-pub fn builtin_layout(mode: Mode) -> SpecLayout {
-    match mode {
-        Mode::Atelier | Mode::Maison => five_names(),
-    }
+/// 코드 내장본. 레이아웃 폴더가 없거나, 있어도 읽지 못할 때 도착하는 곳이다.
+pub fn builtin_layout() -> SpecLayout {
+    five_names()
 }
 
 /// 방침 문단 — 이 기능 전 안내문의 첫 문단(「Five folder names …」 한 문장을 뺀 나머지)과
@@ -103,8 +96,8 @@ mod tests {
 
     /// 내장본이 에이전트에게 나가는 글 전문. 템플릿 판정도 물러서기도 없다 — 내장본에는 둘 다
     /// 생길 수 없다.
-    fn rendered(mode: Mode) -> String {
-        render_layout(&builtin_layout(mode), None, None).text
+    fn rendered() -> String {
+        render_layout(&builtin_layout(), None, None).text
     }
 
     /// **기대값 파일이 스냅샷이다** — 이 저장소에는 스냅샷 크레이트가 없고 새 의존성을 들이지
@@ -112,15 +105,10 @@ mod tests {
     /// 14칸)에 두 칸을 더한 16이다. 파일이 줄바꿈으로 끝나는 것은 편집기 관습이라 여기서 맞춘다.
     ///
     /// 바뀌면 빨개지는 것이 요점이다. 기대값을 다시 적을 때 뜻을 잃지 않았는지는 아래
-    /// `the_builtins_still_say_everything_the_fixed_guidance_said`가 따로 본다.
+    /// `the_builtin_still_says_everything_the_fixed_guidance_said`가 따로 본다.
     #[test]
-    fn each_builtin_renders_exactly_its_expected_file() {
-        for (mode, expected) in [
-            (Mode::Atelier, include_str!("expected/atelier.txt")),
-            (Mode::Maison, include_str!("expected/maison.txt")),
-        ] {
-            assert_eq!(format!("{}\n", rendered(mode)), expected, "{mode} 내장본의 안내문이 바뀌었다");
-        }
+    fn the_builtin_renders_exactly_its_expected_file() {
+        assert_eq!(format!("{}\n", rendered()), include_str!("expected/atelier.txt"), "내장본의 안내문이 바뀌었다");
     }
 
     /// 이 기능 전의 고정 안내문을 **문장마다** 나눠, 문장마다 뜻을 대표하는 구절 하나. 표기가
@@ -159,28 +147,22 @@ mod tests {
     ];
 
     #[test]
-    fn the_builtins_still_say_everything_the_fixed_guidance_said() {
-        for mode in [Mode::Atelier, Mode::Maison] {
-            let text = rendered(mode);
-            for (what, phrase) in MEANING {
-                assert!(text.contains(phrase), "{mode} 내장본이 뜻을 잃었다 ({what}): {phrase}\n{text}");
-            }
-            let lines: Vec<&str> = text.lines().collect();
-            for (head, meaning) in NAMES {
-                let line = lines
-                    .iter()
-                    .find(|line| line.starts_with(head))
-                    .unwrap_or_else(|| panic!("{mode} 내장본이 이름을 잃었다: {head:?}\n{text}"));
-                assert!(line.contains(meaning), "{mode} 내장본의 {head:?} 줄이 뜻을 잃었다: {line}");
-            }
-            let iteration = lines.iter().position(|line| line.starts_with("  {n}-{name}/ "));
-            let tickets = lines.iter().position(|line| line.starts_with("    tickets/ "));
-            assert_eq!(
-                tickets,
-                iteration.map(|i| i + 1),
-                "{mode} 내장본에서 tickets/가 판 안에 서지 않는다:\n{text}"
-            );
+    fn the_builtin_still_says_everything_the_fixed_guidance_said() {
+        let text = rendered();
+        for (what, phrase) in MEANING {
+            assert!(text.contains(phrase), "내장본이 뜻을 잃었다 ({what}): {phrase}\n{text}");
         }
+        let lines: Vec<&str> = text.lines().collect();
+        for (head, meaning) in NAMES {
+            let line = lines
+                .iter()
+                .find(|line| line.starts_with(head))
+                .unwrap_or_else(|| panic!("내장본이 이름을 잃었다: {head:?}\n{text}"));
+            assert!(line.contains(meaning), "내장본의 {head:?} 줄이 뜻을 잃었다: {line}");
+        }
+        let iteration = lines.iter().position(|line| line.starts_with("  {n}-{name}/ "));
+        let tickets = lines.iter().position(|line| line.starts_with("    tickets/ "));
+        assert_eq!(tickets, iteration.map(|i| i + 1), "내장본에서 tickets/가 판 안에 서지 않는다:\n{text}");
     }
 
     /// 항목과 그 아래 모든 층의 아이콘 이름.
@@ -226,29 +208,25 @@ mod tests {
         // 표를 못 읽은 것이 「다 있다」로 읽히지 않게 — 몸통에 항목 줄이 하나도 없으면 빨갛다
         assert!(!entries.is_empty(), "SPEC_ICONS 표에서 항목 줄을 하나도 못 읽었다");
 
-        for mode in [Mode::Atelier, Mode::Maison] {
-            let mut icons = Vec::new();
-            icons_in(&builtin_layout(mode).root, &mut icons);
-            // 못 읽은 것이 「다 있다」로 읽히지 않게 — 내장본에는 아이콘이 다섯 있다
-            assert_eq!(icons.len(), 5, "{mode} 내장본의 아이콘 수가 바뀌었다: {icons:?}");
-            for icon in icons {
-                let key = format!("\"{icon}\":");
-                assert!(
-                    entries.iter().any(|line| line.starts_with(&key)),
-                    "{mode} 내장본의 아이콘 '{icon}'이 앱의 아이콘 표에 없다"
-                );
-            }
+        let mut icons = Vec::new();
+        icons_in(&builtin_layout().root, &mut icons);
+        // 못 읽은 것이 「다 있다」로 읽히지 않게 — 내장본에는 아이콘이 다섯 있다
+        assert_eq!(icons.len(), 5, "내장본의 아이콘 수가 바뀌었다: {icons:?}");
+        for icon in icons {
+            let key = format!("\"{icon}\":");
+            assert!(
+                entries.iter().any(|line| line.starts_with(&key)),
+                "내장본의 아이콘 '{icon}'이 앱의 아이콘 표에 없다"
+            );
         }
     }
 
     /// **한 안내문에 두 표기가 섞이지 않는다.** 판을 `NN-`으로도 `{n}`으로도 말하면 에이전트는
     /// 둘이 다른 것인 줄 안다.
     #[test]
-    fn the_builtins_name_the_iteration_one_way_only() {
-        for mode in [Mode::Atelier, Mode::Maison] {
-            let text = rendered(mode);
-            assert!(text.contains("{n}-{name}/"), "{mode} 내장본이 판을 안 말한다: {text}");
-            assert!(!text.contains("NN-"), "{mode} 내장본에 옛 표기가 남았다: {text}");
-        }
+    fn the_builtin_names_the_iteration_one_way_only() {
+        let text = rendered();
+        assert!(text.contains("{n}-{name}/"), "내장본이 판을 안 말한다: {text}");
+        assert!(!text.contains("NN-"), "내장본에 옛 표기가 남았다: {text}");
     }
 }

@@ -98,7 +98,7 @@ test("데이터 루트에 레이아웃 폴더를 심고 다시 읽으면 spec �
   expect(await treeOf("list_works", {})).toEqual(builtin);
 
   // 사람이 손으로 두는 것과 같다 — 다리에는 감시자가 없으니 다시 읽어야 따라온다.
-  seedLayout(home, "atelier", {
+  seedLayout(home, {
     root: { children: [{ pattern: "plan.md", kind: "file", icon: "scale", description: "계획" }] },
   });
   await page.reload();

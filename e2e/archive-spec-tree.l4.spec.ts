@@ -24,9 +24,9 @@ test("다리의 아카이브 문서 답이 모드의 레이아웃으로 spec/ �
     "spec/plan.md": "# 계획\n\n계획의 본문이다.\n",
     "spec/tickets/할일.md": "# 할 일\n",
   });
-  // 모드의 레이아웃 폴더 — 내장본이면 `overview.md`가 나침반을 받는다. 이것을 심어야 앱이 이름이
+  // 레이아웃 폴더 — 내장본이면 `overview.md`가 나침반을 받는다. 이것을 심어야 앱이 이름이
   // 아니라 엔진의 답을 그리는지가 갈린다: 이름으로 알아보던 앱은 여기서도 `overview.md`에 나침반을 준다.
-  seedLayout(home, "atelier", {
+  seedLayout(home, {
     root: { children: [{ pattern: "plan.md", kind: "file", icon: "scale", description: "계획" }] },
   });
   await installRealBackend(page, sandbox);
@@ -42,7 +42,7 @@ test("다리의 아카이브 문서 답이 모드의 레이아웃으로 spec/ �
   // 문서 목록은 커널이 준 그대로 곁에 선다 — work 폴더 기준이고 기록이 맨 앞이다.
   expect(answer.docs).toEqual(["record.md", "spec/overview.md", "spec/plan.md", "spec/tickets/할일.md"]);
   // 트리는 `spec/` 아래만, spec 기준 경로로 — 심은 레이아웃의 자리를 받은 `plan.md`가 먼저 선다.
-  expect(answer.specTree.layoutId).toBe("atelier");
+  expect(answer.specTree.fallback).toBeNull();
   expect(answer.specTree.items.map(({ name, path, icon }) => ({ name, path, icon }))).toEqual([
     { name: "plan.md", path: "plan.md", icon: "scale" },
     { name: "overview.md", path: "overview.md", icon: null },

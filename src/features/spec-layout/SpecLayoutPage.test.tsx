@@ -8,7 +8,6 @@ import type { SpecLayoutState } from "./types";
 // 적어 넣고 행의 모양만 잰다. 클릭은 L3가 잰다(jsdom이 없다).
 
 const builtin: SpecLayoutState = {
-  id: "atelier",
   folder: "~/.atelier/layouts/atelier",
   edited: false,
   errors: [],
@@ -33,10 +32,10 @@ const broken: SpecLayoutState = {
   otherFileCount: 2,
 };
 
-function render(states: SpecLayoutState[]): string {
+function render(state: SpecLayoutState): string {
   return renderToStaticMarkup(
     <SpecLayoutSection
-      states={states}
+      state={state}
       onAsk={() => {}}
       onEdit={() => {}}
       onReread={() => {}}
@@ -64,17 +63,17 @@ function buttonsOf(html: string): string[] {
   );
 }
 
-// 레이아웃은 하나라 행도 하나다(ui-refresh 결정 3). 행의 세 모양(내장본 · 고침 · 읽지 못함)을 그 한 행으로 잰다.
+// 레이아웃은 하나라 행도 하나다(ui-refresh 결정 3 · 23). 행의 세 모양(내장본 · 고침 · 읽지 못함)을 그 한 행으로 잰다.
 describe("레이아웃 행", () => {
   it("Atelier 한 행이 테두리 있는 목록 하나에 선다", () => {
-    const html = render([builtin]);
+    const html = render(builtin);
     expect(html.match(/<ul\b/g)).toHaveLength(1);
     expect(html.match(/<li\b/g)).toHaveLength(1);
     expect(rowOf(html)).toContain(">Atelier</span>");
   });
 
   it("내장본 행은 그대로라고 적고, 고침 표시도 폴더 경로도 없다", () => {
-    const row = rowOf(render([builtin]));
+    const row = rowOf(render(builtin));
     expect(textOf(row)).toContain("내장본 그대로예요");
     expect(textOf(row)).not.toContain("고침");
     expect(textOf(row)).not.toContain("~/.atelier/layouts/atelier");
@@ -82,7 +81,7 @@ describe("레이아웃 행", () => {
   });
 
   it("고친 행은 가린 폴더 경로와 템플릿 개수를 적는다", () => {
-    const row = rowOf(render([edited]));
+    const row = rowOf(render(edited));
     expect(row).toContain(">고침</span>");
     expect(textOf(row)).toContain("~/.atelier/layouts/atelier/");
     expect(textOf(row)).toContain("템플릿 2개");
@@ -93,7 +92,7 @@ describe("레이아웃 행", () => {
   // 읽지 못한 행도 가린 폴더가 있으므로 고친 행이다(구현 스펙 5절). 앰버 한 줄이 「내장본으로 물러섰다」를
   // 말하고, 이유는 엔진이 준 글 그대로다 — 에이전트가 물러선 안내문에서 받는 것과 같은 까닭이다.
   it("읽지 못한 행은 앰버 한 줄과 이유 한 줄, 그리고 [다시 읽기]를 둔다", () => {
-    const row = rowOf(render([broken]));
+    const row = rowOf(render(broken));
     expect(row).toContain(">고침</span>");
     expect(row).toMatch(/<span class="[^"]*text-amber-[^"]*">읽지 못해 내장본으로 보여 주고 있어요<\/span>/);
     expect(textOf(row)).toContain("~/.atelier/layouts/atelier/");
@@ -116,11 +115,11 @@ describe("레이아웃 행", () => {
       ["고친 행", edited],
       ["읽지 못한 행", broken],
     ] as const) {
-      const menu = rowOf(render([state])).match(/<button\b[^>]*aria-label="Atelier 레이아웃 메뉴"[^>]*>/g);
+      const menu = rowOf(render(state)).match(/<button\b[^>]*aria-label="Atelier 레이아웃 메뉴"[^>]*>/g);
       expect(menu, `${name}의 ⋯`).toHaveLength(1);
       expect(menu![0]).toContain('aria-haspopup="menu"');
     }
-    const builtins = render([builtin]);
+    const builtins = render(builtin);
     expect(builtins).not.toContain("레이아웃 메뉴");
     expect(builtins).not.toContain('aria-haspopup="menu"');
   });
@@ -128,15 +127,15 @@ describe("레이아웃 행", () => {
   // [편집]은 편집기(티켓 11)를 연다. 읽지 못하는 레이아웃은 편집기가 열 것이 없다 — 그 행에는 [편집] 대신
   // [다시 읽기]가 선다(위 시나리오). 내장본 행에도 [편집]이 있다: 처음 저장하면 레이아웃 폴더가 생긴다.
   it("[편집]은 읽을 수 있는 행에만 서고, [부탁] 뒤에 선다", () => {
-    const edit = rowOf(render([edited])).match(/<button\b[^>]*aria-label="Atelier 레이아웃 편집"[^>]*>/g);
+    const edit = rowOf(render(edited)).match(/<button\b[^>]*aria-label="Atelier 레이아웃 편집"[^>]*>/g);
     expect(edit).toHaveLength(1);
-    expect(rowOf(render([broken]))).not.toContain("레이아웃 편집");
-    expect(buttonsOf(rowOf(render([builtin])))).toEqual(["부탁", "편집"]);
+    expect(rowOf(render(broken))).not.toContain("레이아웃 편집");
+    expect(buttonsOf(rowOf(render(builtin)))).toEqual(["부탁", "편집"]);
   });
 
   it("[부탁]은 폴더가 없는 행에도, 읽지 못하는 행에도 있다", () => {
     for (const state of [builtin, broken]) {
-      expect(buttonsOf(rowOf(render([state])))).toContain("부탁");
+      expect(buttonsOf(rowOf(render(state)))).toContain("부탁");
     }
   });
 });

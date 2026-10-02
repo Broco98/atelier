@@ -321,7 +321,6 @@ describe("WorkPanel spec 탭", () => {
   const layered: Partial<WorkView> = {
     specFiles: ["01-첫째/plan.md", "02-둘째/plan.md", "overview.md"],
     specTree: {
-      layoutId: "atelier",
       fallback: null,
       defaultDoc: "overview.md",
       items: [

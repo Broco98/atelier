@@ -57,7 +57,6 @@ export function judgeOutside(
  */
 export function savedBaseline(before: SpecLayoutRead, saved: LayoutDraft): ReadableSpecLayout {
   return {
-    id: before.id,
     folder: before.folder,
     edited: true,
     layout: saved.layout,

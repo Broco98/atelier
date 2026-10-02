@@ -18,7 +18,6 @@ use serde::Serialize;
 use super::classify::{classify, SpecTree};
 use super::resolve::{resolve_layout, Resolved};
 use crate::work::WorkView;
-use crate::{Mode, Result};
 
 /// 앱 쪽 work 하나 — 커널의 뷰에 그 work의 spec 트리를 더한 것.
 ///
@@ -44,19 +43,11 @@ pub fn classify_works(resolved: &Resolved, works: Vec<WorkView>) -> Vec<WorkWith
         .collect()
 }
 
-/// 트리 덧붙이기의 입구 — 데이터 루트와 모드로 레이아웃을 **한 번** 풀고 목록 전체에 쓴다.
-///
-/// work 지정 레이아웃은 아직 넘기지 않는다(결정 16). 그날 고칠 자리가 여기다 — work마다 제
-/// `work.json`의 값을 넘기게 되면 한 번 풀기는 레이아웃 id마다 한 번이 된다.
+/// 트리 덧붙이기의 입구 — 데이터 루트에서 레이아웃을 **한 번** 풀고 목록 전체에 쓴다.
 ///
 /// 단건 조회도 이 입구를 지난다. 하나를 넣으면 하나가 나온다.
-pub fn with_spec_trees(
-    data_root: &Path,
-    mode: Mode,
-    works: Vec<WorkView>,
-) -> Result<Vec<WorkWithSpecTree>> {
-    let resolved = resolve_layout(data_root, mode, None)?;
-    Ok(classify_works(&resolved, works))
+pub fn with_spec_trees(data_root: &Path, works: Vec<WorkView>) -> Vec<WorkWithSpecTree> {
+    classify_works(&resolve_layout(data_root), works)
 }
 
 /// 아카이브 문서 경로에서 spec 아래를 가르는 앞머리. 아카이브의 경로는 work 폴더 기준이다.
@@ -85,15 +76,10 @@ pub fn classify_archived_docs(resolved: &Resolved, docs: Vec<String>) -> Archive
     ArchivedDocs { docs, spec_tree }
 }
 
-/// 아카이브 쪽 트리 덧붙이기의 입구 — work 쪽 입구(`with_spec_trees`)와 같이 데이터 루트와 모드로
-/// 레이아웃을 풀어 쓴다. 아카이브된 work도 **지금 그 모드의 레이아웃**으로 그린다.
-pub fn with_archived_spec_tree(
-    data_root: &Path,
-    mode: Mode,
-    docs: Vec<String>,
-) -> Result<ArchivedDocs> {
-    let resolved = resolve_layout(data_root, mode, None)?;
-    Ok(classify_archived_docs(&resolved, docs))
+/// 아카이브 쪽 트리 덧붙이기의 입구 — work 쪽 입구(`with_spec_trees`)와 같이 데이터 루트에서
+/// 레이아웃을 풀어 쓴다. 아카이브된 work도 **지금의 레이아웃**으로 그린다.
+pub fn with_archived_spec_tree(data_root: &Path, docs: Vec<String>) -> ArchivedDocs {
+    classify_archived_docs(&resolve_layout(data_root), docs)
 }
 
 #[cfg(test)]
@@ -137,11 +123,10 @@ mod tests {
         tree.items.iter().map(|item| (item.name.as_str(), item.icon.as_deref())).collect()
     }
 
-    /// 모드의 내장 레이아웃이 풀린 모양 — 데이터 루트에 레이아웃 폴더가 없을 때 입구가 짓는 것이다.
-    fn builtin(mode: Mode) -> Resolved {
+    /// 내장 레이아웃이 풀린 모양 — 데이터 루트에 레이아웃 폴더가 없을 때 입구가 짓는 것이다.
+    fn builtin() -> Resolved {
         Resolved {
-            id: mode,
-            layout: builtin_layout(mode),
+            layout: builtin_layout(),
             source: LayoutSource::Builtin,
             templates: None,
             fallback: None,
@@ -160,7 +145,6 @@ mod tests {
     #[test]
     fn each_work_gets_the_tree_of_its_own_files() {
         let resolved = Resolved {
-            id: Mode::Maison,
             layout: SpecLayout {
                 root: LayoutEntry {
                     children: vec![
@@ -185,7 +169,6 @@ mod tests {
         assert_eq!(a.view.spec_files, ["zeta.md", "plan.md"]);
         assert_eq!(top(&a.spec_tree), [("plan.md", Some("scale")), ("zeta.md", None)]);
         assert_eq!(a.spec_tree.default_doc.as_deref(), Some("plan.md"));
-        assert_eq!(a.spec_tree.layout_id, Mode::Maison);
 
         assert_eq!(b.view.work.slug, "b");
         assert_eq!(top(&b.spec_tree), [("notes", Some("book-open")), ("alpha.md", None)]);
@@ -197,32 +180,30 @@ mod tests {
     /// 아래로 들어가면 앱의 work 타입이 통째로 어긋난다.
     #[test]
     fn the_answer_is_the_view_spread_out_with_a_spec_tree_beside_it() {
-        let works = classify_works(&builtin(Mode::Atelier), vec![view("a", &["overview.md"])]);
+        let works = classify_works(&builtin(), vec![view("a", &["overview.md"])]);
         let json = serde_json::to_value(&works).unwrap();
         assert_eq!(json[0]["slug"], "a", "{json}");
         assert_eq!(json[0]["specFiles"], serde_json::json!(["overview.md"]), "{json}");
         assert_eq!(json[0]["specDir"], "~/.atelier/works/a/spec", "{json}");
-        assert_eq!(json[0]["specTree"]["layoutId"], "atelier", "{json}");
         assert_eq!(json[0]["specTree"]["defaultDoc"], "overview.md", "{json}");
         assert_eq!(json[0]["specTree"]["items"][0]["icon"], "compass", "{json}");
         assert!(json[0].get("view").is_none(), "뷰가 펼쳐지지 않았다: {json}");
     }
 
-    /// 입구 — 데이터 루트와 모드로 레이아웃을 풀어 목록 전체에 쓴다. 모드의 레이아웃 폴더가 있으면
-    /// 그것을 따르고, 없으면 내장본을 따른다. 저쪽 모드의 폴더는 이쪽을 바꾸지 않는다.
+    /// 입구 — 데이터 루트에서 레이아웃을 풀어 목록 전체에 쓴다. 레이아웃 폴더가 있으면 그것을 따르고,
+    /// 없으면 내장본을 따른다.
     #[test]
-    fn the_entry_follows_the_modes_layout_folder_and_falls_to_the_builtin_without_one() {
+    fn the_entry_follows_the_layout_folder_and_falls_to_the_builtin_without_one() {
         let root = tempfile::tempdir().unwrap();
         let files = ["overview.md", "plan.md"];
-        let trees = |mode| {
-            with_spec_trees(root.path(), mode, vec![view("a", &files)])
-                .unwrap()
+        let trees = || {
+            with_spec_trees(root.path(), vec![view("a", &files)])
                 .into_iter()
                 .map(|work| work.spec_tree)
                 .collect::<Vec<_>>()
         };
 
-        let [builtin] = trees(Mode::Atelier).try_into().unwrap();
+        let [builtin] = trees().try_into().unwrap();
         assert_eq!(top(&builtin), [("overview.md", Some("compass")), ("plan.md", None)]);
         assert_eq!(builtin.default_doc.as_deref(), Some("overview.md"));
 
@@ -231,14 +212,10 @@ mod tests {
             r#"{ "root": { "children": [ { "pattern": "plan.md", "kind": "file", "icon": "scale" } ] } }"#,
         );
 
-        let [planted] = trees(Mode::Atelier).try_into().unwrap();
+        let [planted] = trees().try_into().unwrap();
         assert_eq!(top(&planted), [("plan.md", Some("scale")), ("overview.md", None)]);
         assert_eq!(planted.default_doc.as_deref(), Some("plan.md"));
-        assert_eq!((planted.layout_id, planted.fallback), (Mode::Atelier, None));
-
-        let [maison] = trees(Mode::Maison).try_into().unwrap();
-        assert_eq!(top(&maison), [("overview.md", Some("compass")), ("plan.md", None)]);
-        assert_eq!(maison.layout_id, Mode::Maison);
+        assert_eq!(planted.fallback, None);
     }
 
     /// 트리 전체의 경로를 깊이 우선으로.
@@ -264,7 +241,7 @@ mod tests {
         ]
         .map(String::from)
         .to_vec();
-        let archived = classify_archived_docs(&builtin(Mode::Atelier), docs.clone());
+        let archived = classify_archived_docs(&builtin(), docs.clone());
 
         assert_eq!(archived.docs, docs);
         let tree = &archived.spec_tree;
@@ -279,7 +256,7 @@ mod tests {
         assert_eq!(tree.default_doc.as_deref(), Some("overview.md"));
 
         // spec 파일이 하나도 없으면 트리가 비고 기본 문서도 없다 — 기록만으로는 서지 않는다
-        let bare = classify_archived_docs(&builtin(Mode::Atelier), vec!["record.md".to_string()]);
+        let bare = classify_archived_docs(&builtin(), vec!["record.md".to_string()]);
         assert_eq!(bare.docs, ["record.md"]);
         assert!(bare.spec_tree.items.is_empty(), "{bare:?}");
         assert_eq!(bare.spec_tree.default_doc, None);
@@ -290,20 +267,19 @@ mod tests {
     #[test]
     fn the_archive_answer_carries_the_docs_and_the_spec_tree_together() {
         let archived = classify_archived_docs(
-            &builtin(Mode::Maison),
+            &builtin(),
             vec!["record.md".to_string(), "spec/overview.md".to_string()],
         );
         let json = serde_json::to_value(&archived).unwrap();
         assert_eq!(json["docs"], serde_json::json!(["record.md", "spec/overview.md"]), "{json}");
-        assert_eq!(json["specTree"]["layoutId"], "maison", "{json}");
         assert_eq!(json["specTree"]["items"][0]["path"], "overview.md", "{json}");
         assert_eq!(json["specTree"]["items"][0]["icon"], "compass", "{json}");
     }
 
-    /// 아카이브의 입구도 모드의 레이아웃 폴더를 따른다. 심은 레이아웃이 `record.md`라는 파일 항목을
+    /// 아카이브의 입구도 레이아웃 폴더를 따른다. 심은 레이아웃이 `record.md`라는 파일 항목을
     /// 둬도 기록은 트리에 들지 않는다 — 가르는 것은 `spec/` 아래뿐이다.
     #[test]
-    fn the_archive_entry_follows_the_modes_layout_folder() {
+    fn the_archive_entry_follows_the_layout_folder() {
         let root = tempfile::tempdir().unwrap();
         plant_layout(
             root.path(),
@@ -314,15 +290,9 @@ mod tests {
         );
         let docs = ["record.md", "spec/overview.md", "spec/plan.md"].map(String::from).to_vec();
 
-        let planted = with_archived_spec_tree(root.path(), Mode::Atelier, docs.clone()).unwrap();
+        let planted = with_archived_spec_tree(root.path(), docs.clone());
         assert_eq!(top(&planted.spec_tree), [("plan.md", Some("scale")), ("overview.md", None)]);
         assert_eq!(planted.spec_tree.default_doc.as_deref(), Some("plan.md"));
-        assert_eq!(planted.spec_tree.layout_id, Mode::Atelier);
         assert_eq!(planted.docs, docs);
-
-        // 저쪽 모드의 폴더는 이쪽을 바꾸지 않는다 — Maison은 내장본이다
-        let maison = with_archived_spec_tree(root.path(), Mode::Maison, docs).unwrap();
-        assert_eq!(top(&maison.spec_tree), [("overview.md", Some("compass")), ("plan.md", None)]);
-        assert_eq!(maison.spec_tree.layout_id, Mode::Maison);
     }
 }

@@ -79,8 +79,8 @@ pub fn archive_dir(mode: Mode) -> PathBuf {
     archive_in(&mode_home(mode))
 }
 
-/// spec 레이아웃 폴더들의 자리. 앱의 감시자가 이 폴더를 본다(spec 레이아웃 결정 22). 모드를 안 받는
-/// 까닭은 아래 `layouts_in`과 같다 — 두 모드의 레이아웃이 이 안에 `<id>/`로 나란히 산다.
+/// spec 레이아웃 폴더의 자리. 앱의 감시자가 이 폴더를 본다(spec 레이아웃 결정 22). 모드를 안 받는
+/// 까닭은 아래 `layouts_in`과 같다 — 레이아웃은 이 안의 `atelier/`에 산다.
 pub fn layouts_dir() -> PathBuf {
     layouts_in(&data_root())
 }
@@ -109,9 +109,8 @@ pub(crate) fn archive_in(root: &Path) -> PathBuf {
     root.join("archive")
 }
 
-/// spec 레이아웃 폴더들의 자리. **모드를 안 받는다** — 모드별 홈이 아니라 데이터 루트 아래 하나이고,
-/// 두 모드의 레이아웃이 그 안에 `<id>/`로 나란히 산다(spec 레이아웃 구현 스펙 1절 「resolve」).
-/// 어느 모드의 서버든 두 모드의 레이아웃을 읽고 고칠 수 있어야 하기 때문이다.
+/// spec 레이아웃 폴더의 자리. **모드를 안 받는다** — 모드별 홈이 아니라 데이터 루트 아래 하나이고,
+/// 레이아웃은 그 안의 고정 경로 `atelier/`에 산다(ui-refresh 결정 23, `layout::resolve`의 `layout_folder`).
 pub(crate) fn layouts_in(root: &Path) -> PathBuf {
     root.join("layouts")
 }

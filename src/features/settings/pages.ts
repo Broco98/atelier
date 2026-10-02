@@ -42,7 +42,7 @@ export function settingsItem(key: SettingsItemKey): (typeof SETTINGS_ITEMS)[numb
 
 /**
  * 이 주소가 선 설정 항목. 설정 밖이거나 치환 전의 `/settings`면 `null`이다. **항목 아래의 하위 주소도
- * 그 항목이다** — 「spec 레이아웃」의 편집기(`/settings/spec-layout/<id>`, spec 레이아웃 티켓 11)는 설정
+ * 그 항목이다** — 「spec 레이아웃」의 편집기(`/settings/spec-layout/edit`, spec 레이아웃 티켓 11)는 설정
  * 한 열 밖의 별도 화면이지만, 거기서도 설정 nav는 그 항목을 켠 채로 둔다.
  *
  * **원시값을 돌려준다** — 앱 셸이 이것을 주소 select로 구독하므로(`AppShell.tsx`) 객체를 주면

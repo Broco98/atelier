@@ -37,8 +37,6 @@ export interface SpecTreeItem {
  * 값이 이미 정했다. 필드 이름이 코어의 JSON과 한 글자도 다르지 않아야 한다.
  */
 export interface SpecTree {
-  /** 코어가 아직 싣는 레이아웃 id. 값은 `"atelier"` 하나다(ui-refresh 결정 23 — 이 칸은 레이아웃 id를 걷을 때 사라진다). */
-  layoutId: "atelier";
   /** 레이아웃 폴더를 못 써서 내장본으로 물러섰다면 그 까닭. */
   fallback: string | null;
   /** 처음 열 문서(spec 기준 경로). 파일이 하나도 없으면 `null`이다. */

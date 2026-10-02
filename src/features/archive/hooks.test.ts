@@ -15,7 +15,7 @@ const docsKey = archivedDocsQuery("치운-가").queryKey;
 // 문서 목록의 답 하나 — 목록과 spec 트리가 한 답으로 온다. 여기서 재는 것은 캐시 키라 트리는 비어 있다.
 const RECORD_ONLY: ArchivedDocs = {
   docs: ["record.md"],
-  specTree: { layoutId: "atelier", fallback: null, defaultDoc: null, items: [] },
+  specTree: { fallback: null, defaultDoc: null, items: [] },
 };
 
 function seeded() {

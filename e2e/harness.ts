@@ -1065,8 +1065,8 @@ export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 �
 /** 주인 잃은 셸 토스트의 문구(프로세스 스펙 S45). */
 export const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
 
-/** spec 레이아웃 편집기(Atelier 레이아웃)의 주소. */
-export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/atelier";
+/** spec 레이아웃 편집기의 주소 — 레이아웃은 하나라 고정 경로다(ui-refresh 결정 23). */
+export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/edit";
 
 /**
  * **떠날 때 확인**(spec 레이아웃 티켓 15 · spec 레이아웃 결정 27) — 저장하지 않은 초안을 두고 편집기를 떠나는 이동을 라우터의
@@ -1582,6 +1582,15 @@ export async function ipcCallArgs(
       }
       return { call, args: args as Record<string, unknown> };
     });
+}
+
+/**
+ * 그 커맨드로 나간 호출들, 기록 그대로 — 인자가 있으면 이름 뒤에 ` {…}`가 붙는다. **인자 없이 나가야 하는** 커맨드가
+ * 정말 빈손으로 나갔는지 잰다(`["revert_spec_layout"]`). `ipcCallArgs`는 늘 실리는 키를 요구해서 그것을 못 잰다.
+ */
+export async function ipcCalls(page: Page, command: string): Promise<string[]> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls.filter((call) => call === command || call.startsWith(`${command} `));
 }
 
 /**

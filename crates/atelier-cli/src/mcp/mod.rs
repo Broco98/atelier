@@ -103,22 +103,16 @@ impl AtelierServer {
         self.shared_projects.as_deref()
     }
 
-    /// 에이전트가 받는 spec 레이아웃 안내 — 이 서버 모드의 레이아웃을 render한 글이다.
+    /// 에이전트가 받는 spec 레이아웃 안내 — 레이아웃을 render한 글이다. 실패하지 않는다: 레이아웃 폴더를 못
+    /// 쓰면 내장본으로 물러선 안내문이다(spec 레이아웃 결정 15).
     ///
     /// **호출마다 resolve를 새로 부른다**(spec 레이아웃 결정 9). 기동 때 한 번 읽어 두면 세션 도중에 레이아웃을
     /// 고쳐도 셸을 다시 띄울 때까지 옛 안내가 나간다 — 상주 지침에서 파일 이름을 뺀 까닭과 같다.
-    ///
-    /// work 지정은 아직 아무도 안 넘긴다(spec 레이아웃 결정 16). 그래서 resolve가 실패할 길이 지금은 없지만,
-    /// 실패하면 도구 오류로 올린다 — 안내 없는 응답을 성공으로 내면 에이전트는 모양을 지어낸다.
-    fn spec_layout_guidance(&self) -> atelier_core::Result<String> {
-        let resolved = atelier_core::resolve_layout(&self.data_root, self.mode, None)?;
+    fn spec_layout_guidance(&self) -> String {
+        let resolved = atelier_core::resolve_layout(&self.data_root);
         // 경고(빠진 템플릿)는 설정 화면이 보이는 것이다 — 에이전트에게는 빠진 줄로 충분하다.
-        Ok(atelier_core::render_layout(
-            &resolved.layout,
-            resolved.templates.as_ref(),
-            resolved.fallback.as_ref(),
-        )
-        .text)
+        atelier_core::render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref())
+            .text
     }
 
     /// Maison이면 프로젝트를 건드리는 호출을 **도구 오류**로 되돌려 보낸다.

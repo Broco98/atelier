@@ -5,7 +5,7 @@ import { invalidateWorks } from "@/features/works/hooks";
 import { specLayoutApi } from "./api";
 import type { LayoutDraft } from "./draft";
 import { latestPreview, PREVIEW_DELAY_MS, type DraftPreview } from "./preview";
-import type { LayoutId, LayoutPreview, SpecLayoutRead } from "./types";
+import type { LayoutPreview, SpecLayoutRead } from "./types";
 
 // ["spec-layout"]으로 시작하는 쿼리(상태, 편집기의 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
 // 폴더가 바뀌면 둘 다 낡는다(구현 스펙 3절).
@@ -64,10 +64,10 @@ export function useFollowLayoutChanges() {
  * 위 문을 열면 다시 읽는다. 에이전트가 레이아웃을 고쳤는데 옛 상태가 서 있으면 사람은 부탁이 안 먹었다고
  * 읽는다.
  */
-export const specLayoutStatesQuery = () =>
+export const specLayoutStateQuery = () =>
   queryOptions({
-    queryKey: [...SPEC_LAYOUT_KEY, "states"],
-    queryFn: specLayoutApi.states,
+    queryKey: [...SPEC_LAYOUT_KEY, "state"],
+    queryFn: specLayoutApi.state,
   });
 
 /**
@@ -76,16 +76,11 @@ export const specLayoutStatesQuery = () =>
  * 그 뒤에 다시 읽힌 답은 초안을 덮지 않고 기준본과 견준다(티켓 15, `judgeOutside`) — 초안이 없을 때만 조용히
  * 따라간다.
  */
-export const specLayoutReadQuery = (id: LayoutId) =>
+export const specLayoutReadQuery = () =>
   queryOptions({
-    queryKey: [...SPEC_LAYOUT_KEY, "read", id],
-    queryFn: () => specLayoutApi.read(id),
+    queryKey: [...SPEC_LAYOUT_KEY, "read"],
+    queryFn: specLayoutApi.read,
   });
-
-/** 편집기가 저장에 싣는 것 — 레이아웃 id와, 초안의 레이아웃과 템플릿 본문 전부. */
-export interface LayoutWrite extends LayoutDraft {
-  id: LayoutId;
-}
 
 /**
  * 편집기의 저장(티켓 11). 템플릿은 늘 전부 넘긴다. 답의 `errors`가 비어 있으면 썼다 — 그때만 **위 문을
@@ -96,10 +91,10 @@ export interface LayoutWrite extends LayoutDraft {
  * 저장이 부른 다시 읽기가 도착할 때 기준본이 이미 저장본이어야, 그 답이 밖 변경이 아니라 무시(판정 1번)로 걸린다.
  * 그래서 빠뜨릴 수 없는 인자다: 없이 저장하면 제 저장을 밖 변경으로 읽는다.
  */
-export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
+export function useWriteSpecLayout(onWritten: (written: LayoutDraft) => void) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, layout, templates }: LayoutWrite) => specLayoutApi.write(id, layout, templates),
+    mutationFn: ({ layout, templates }: LayoutDraft) => specLayoutApi.write(layout, templates),
     onSuccess: (answer, written) => {
       if (answer.errors.length > 0) return undefined;
       onWritten(written);
@@ -121,7 +116,7 @@ export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
 export function useRevertSpecLayout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: LayoutId) => specLayoutApi.revert(id),
+    mutationFn: () => specLayoutApi.revert(),
     onSuccess: () => invalidateSpecLayout(queryClient),
   });
 }
@@ -150,7 +145,7 @@ export function useRevertSpecLayout() {
  *
  * 초안이 없으면(`null` — 밖에서 깨져 편집기가 「읽지 못함」 화면이다, 티켓 15) 묻지 않는다.
  */
-export function useDraftPreview(id: LayoutId, draft: LayoutDraft | null, disk: SpecLayoutRead) {
+export function useDraftPreview(draft: LayoutDraft | null, disk: SpecLayoutRead) {
   const [preview, setPreview] = useState<DraftPreview | null>(null);
   const seq = useRef(0);
 
@@ -164,12 +159,12 @@ export function useDraftPreview(id: LayoutId, draft: LayoutDraft | null, disk: S
     if (draft === null) return;
     const timer = window.setTimeout(() => {
       const arrive = reserve(draft);
-      specLayoutApi.render(id, draft.layout, draft.templates).then(arrive, (e: unknown) =>
+      specLayoutApi.render(draft.layout, draft.templates).then(arrive, (e: unknown) =>
         arrive({ text: null, lines: [], errors: [{ path: null, message: String(e) }], warnings: [] }),
       );
     }, PREVIEW_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [id, draft, disk, reserve]);
+  }, [draft, disk, reserve]);
 
   return { preview, reserve };
 }

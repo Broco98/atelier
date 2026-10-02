@@ -69,8 +69,7 @@ const specFolder = (path: string, children: SpecTreeItem[]): SpecTreeItem => ({
   children,
 });
 /** 문서가 하나도 없는 work의 트리 — 기본 문서도 없다. */
-const emptySpecTree = (layoutId: SpecTree["layoutId"]): SpecTree => ({
-  layoutId,
+const emptySpecTree = (): SpecTree => ({
   fallback: null,
   defaultDoc: null,
   items: [],
@@ -116,7 +115,6 @@ export const WORKS: WorkView[] = [
     // 내장본의 자리를 받는 것은 `overview.md`뿐이고 기본 문서도 그것이다. 나머지는 맞지 않은 것이라
     // 맨 뒤에 코드포인트순으로 선다(폴더는 이름 뒤에 `/`를 붙여 견준다).
     specTree: {
-      layoutId: "atelier",
       fallback: null,
       defaultDoc: "overview.md",
       items: [
@@ -139,7 +137,7 @@ export const WORKS: WorkView[] = [
     specDir: "~/.atelier/works/plain-work/spec",
     // **빈 spec 폴더의 work.** 트리도 비고 기본 문서가 없다 — 화면은 「아직 spec이 없어요」로 선다.
     specFiles: [],
-    specTree: emptySpecTree("atelier"),
+    specTree: emptySpecTree(),
   },
   // **프로젝트가 둘인 work**(UI개선 결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
   // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
@@ -180,7 +178,6 @@ export const WORKS: WorkView[] = [
     specFiles: ["넓은.md", "다이어그램.md"],
     // 내장본의 어느 자리에도 안 맞는다 — 기본 문서 후보가 없어 첫 파일이 기본 문서다.
     specTree: {
-      layoutId: "atelier",
       fallback: null,
       defaultDoc: "넓은.md",
       items: [specFile("넓은.md"), specFile("다이어그램.md")],
@@ -293,40 +290,22 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
 };
 
 /**
- * 레이아웃 상태(spec 레이아웃 티켓 08) — 고친 폴더(템플릿 1개)다. 모양은 엔진의 `layout_states`가 내는
+ * 레이아웃 상태(spec 레이아웃 티켓 08) — 고친 폴더(템플릿 1개)다. 모양은 엔진의 `layout_state`가 내는
  * 그대로이고(다리로 실물과 맞춰 봤다), 폴더는 기본 데이터 루트에서 홈을 `~`로 줄인 경로다 — 설정 페이지는
  * 이것에 `/`만 붙여 참조로 복사한다.
  */
-export const SPEC_LAYOUT_STATES: SpecLayoutState[] = [
-  {
-    id: "atelier",
-    folder: "~/.atelier/layouts/atelier",
-    edited: true,
-    errors: [],
-    fallback: null,
-    templateCount: 1,
-    otherFileCount: 0,
-  },
-];
-
-/**
- * **`atelier`가 아닌 id를 단 상태 한 줄** — Rust `spec_layout_states`가 판 02의 05까지 함께 내는 둘째 줄이다.
- * 화면은 받은 id가 `"atelier"`가 아니면 버린다(`spec-layout/api.ts`, ui-refresh 결정 22). 기본 답에 실어 두어 그
- * 거르기를 이 층이 잰다 — 05에서 이 줄과 거르기를 함께 지운다.
- */
-export const STALE_LAYOUT_STATE: Omit<SpecLayoutState, "id"> & { id: string } = {
-  id: "maison",
-  folder: "~/.atelier/layouts/maison",
-  edited: false,
+export const SPEC_LAYOUT_STATE: SpecLayoutState = {
+  folder: "~/.atelier/layouts/atelier",
+  edited: true,
   errors: [],
   fallback: null,
-  templateCount: 0,
+  templateCount: 1,
   otherFileCount: 0,
 };
 
 /** 폴더가 아직 없는 레이아웃 — 내장본 그대로다. 되돌릴 것이 없어 ⋯ 메뉴가 안 선다. */
 export const BUILTIN_LAYOUT_STATE: SpecLayoutState = {
-  ...SPEC_LAYOUT_STATES[0],
+  ...SPEC_LAYOUT_STATE,
   edited: false,
   templateCount: 0,
 };
@@ -336,7 +315,6 @@ export const BUILTIN_LAYOUT_STATE: SpecLayoutState = {
  * 엔진이 그 파일에 내는 것 그대로다. 무엇이 템플릿인지 모르므로 템플릿 개수가 없다.
  */
 export const BROKEN_LAYOUT_STATE: SpecLayoutState = {
-  id: "atelier",
   folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
@@ -352,7 +330,6 @@ export const BROKEN_LAYOUT_STATE: SpecLayoutState = {
  * 둘이 저장에 실려야 한다. 템플릿 본문은 저장에 **늘 전부** 돌아간다.
  */
 export const SPEC_LAYOUT_READ: ReadableSpecLayout = {
-  id: "atelier",
   folder: "~/.atelier/layouts/atelier",
   edited: true,
   layout: {
@@ -401,7 +378,6 @@ export const MISSING_TEMPLATE_READ: ReadableSpecLayout = {
  * 레이아웃(티켓 15)도 이 답이다 — 그쪽은 도중에 읽기의 답으로 갈아 끼운다.
  */
 export const UNREADABLE_ATELIER_READ: UnreadableSpecLayout = {
-  id: "atelier",
   folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
@@ -650,22 +626,19 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
       preview: "[[hooks.Stop]]",
     },
   ] satisfies HookStatus[],
-  // 설정의 「spec 레이아웃」 페이지가 열릴 때와 [다시 읽기]에 나간다(spec 레이아웃 티켓 08). **모드를
-  // 안 받는다** — 인자 없이 레이아웃 전부를 답한다. 둘째 줄은 화면이 거르는 줄이다(`STALE_LAYOUT_STATE`).
-  // 태우는 시나리오는 `spec-layout-page.spec.ts`다.
-  spec_layout_states: [...SPEC_LAYOUT_STATES, STALE_LAYOUT_STATE],
+  // 설정의 「spec 레이아웃」 페이지가 열릴 때와 [다시 읽기]에 나간다(spec 레이아웃 티켓 08). **인자가
+  // 없다** — 레이아웃은 하나다(ui-refresh 결정 23). 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  spec_layout_state: SPEC_LAYOUT_STATE,
   // 설정의 ⋯ → 「기본값으로 되돌리기」가 확인을 거친 뒤에 나간다(티켓 10). 답은 쓰이지 않는다 — 화면은
-  // 「실패하지 않았다」만 보고 상태를 다시 부른다. **인자 이름이 `id`라 모드 명령이 아니다** — 어느 id든
-  // 같은 답을 받는다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  // 「실패하지 않았다」만 보고 상태를 다시 부른다. 인자가 없다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
   revert_spec_layout: null,
-  // 편집기가 열릴 때 한 번 나간다(티켓 11). 어느 id든 같은 답을 받는다 — 인자 이름이 `id`라 모드 표가 아니다.
-  // 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  // 편집기가 열릴 때 한 번 나간다(티켓 11). 인자가 없다. 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   read_spec_layout: SPEC_LAYOUT_READ,
   // 편집기의 [저장]이 나간다(티켓 11). **검증 거절도 성공 답이다** — 오류를 재는 시나리오는 이것을 오류
   // 데이터로 덮어쓴다(`ipcFailure`가 아니다). 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   write_spec_layout: SPEC_LAYOUT_SAVED,
   // 편집기가 초안이 바뀔 때마다 짧은 지연 뒤에 나간다 — 연 초안에도 한 번 나간다(티켓 14). 그래서 **편집기를 여는
-  // 시나리오는 모두 이것을 부르고**, 저장 버튼은 지금 초안의 답이 도착해야 풀린다. 어느 id든 같은 답을 받는다. 오류를
+  // 시나리오는 모두 이것을 부르고**, 저장 버튼은 지금 초안의 답이 도착해야 풀린다. 초안이 무엇이든 같은 답을 받는다. 오류를
   // 재는 시나리오는 이것을 오류 데이터로 덮어쓴다. 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   render_spec_layout: SPEC_LAYOUT_RENDERED,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
@@ -820,7 +793,6 @@ export const ARCHIVED_DOCS: Record<string, ArchivedDocs> = {
   "shipped-work": {
     docs: ["record.md", "spec/증거/샷.png", "spec/목업/조각.html", "spec/tickets/할일.md"],
     specTree: {
-      layoutId: "atelier",
       fallback: null,
       defaultDoc: "tickets/할일.md",
       items: [
@@ -830,7 +802,7 @@ export const ARCHIVED_DOCS: Record<string, ArchivedDocs> = {
       ],
     },
   },
-  "bare-archive": { docs: [], specTree: emptySpecTree("atelier") },
+  "bare-archive": { docs: [], specTree: emptySpecTree() },
 };
 
 /**

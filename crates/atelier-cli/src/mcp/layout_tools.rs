@@ -1,15 +1,15 @@
 //! spec 레이아웃 도구 — 에이전트가 레이아웃을 읽고 고쳐 저장하는 길(결정 20). 엔진 저장소를
 //! 부르는 얇은 어댑터다: 검증도, 쓰는 순서도, 템플릿 규칙도 저장소 한 벌에 산다(결정 13).
 //!
-//! **도구는 둘뿐이다.** 되돌리기는 사람이 설정 페이지에서 한다(결정 21). 만들기·지우기·모드 선택은
+//! **도구는 둘뿐이다.** 되돌리기는 사람이 설정 페이지에서 한다(결정 21). 만들기·지우기·고르기는
 //! 기능 자체가 없다(결정 25). 서버는 `settings.json`을 읽지 않는다.
 //!
 //! **「spec 문서용 도구는 없다」는 그대로다** — 이 도구들은 spec 문서가 아니라 그 문서들이 놓일
 //! 모양(레이아웃)을 다룬다.
 //!
-//! 어느 모드의 서버든 두 모드의 레이아웃을 다룬다. 레이아웃 폴더는 모드별 홈이 아니라 데이터 루트
-//! 아래 하나라서다. 그래서 Maison 서버에서 이 둘은 Room 도구 쪽에 들고, 설명에 프로젝트 도구 이름도
-//! Maison에 없는 낱말도 쓰지 않는다.
+//! 레이아웃은 하나라 두 도구 모두 고르는 인자가 없다(ui-refresh 결정 22 · 23). 모르는 인자는 거절한다 —
+//! 옛 호출이 실은 `id`를 조용히 무시하면, 다른 레이아웃을 고른 줄 아는 에이전트가 하나뿐인 레이아웃을
+//! 덮어쓴다.
 
 use std::collections::BTreeMap;
 
@@ -61,21 +61,19 @@ Each error names its entry by its place under `root`, such as `root.children[1].
 
 Templates are Markdown files in the layout folder, next to `layout.json`. A template path is relative to that folder and may go into sub-folders (`iteration/plan.md`). `templates` maps those paths to bodies. A template left out of `templates` keeps the body it has now, so pass only the ones you change. A template that no entry points to any more is deleted by the save. Files the layout never pointed to are left alone."#;
 
-/// `atelier_get_spec_layout`의 인자.
+/// `atelier_get_spec_layout`의 인자 — **없다.** 빈 구조체를 두는 것은 모르는 인자를 거절하려서다: 인자가
+/// 없는 도구는 받은 인자를 보지도 않아, 옛 호출의 `id`가 조용히 지나간다(모듈 머리말).
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
-pub struct GetSpecLayoutParams {
-    /// Whose layout to read: "atelier" or "maison". Omit it to read this server's own mode.
-    pub id: Option<String>,
-}
+#[serde(deny_unknown_fields)]
+pub struct GetSpecLayoutParams {}
 
 /// `atelier_save_spec_layout`의 인자. **`layout`은 JSON 값 그대로 받는다** — 구조체로 받으면
-/// 모르는 키가 역직렬화에서 떨어진다(결정 3의 「열어 둠」).
+/// 모르는 키가 역직렬화에서 떨어진다(결정 3의 「열어 둠」). 인자 자체의 모르는 키는 거절한다(모듈 머리말).
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+#[serde(deny_unknown_fields)]
 pub struct SaveSpecLayoutParams {
-    /// Whose layout to save: "atelier" or "maison". Always pass it, even for this server's own mode.
-    pub id: String,
     /// The whole layout in its `layout.json` form, as atelier_get_spec_layout returns it — keep the
     /// keys you did not change, including ones you do not know.
     pub layout: Value,
@@ -93,12 +91,11 @@ fn error_lines(errors: &[LayoutError]) -> String {
 #[tool_router(router = layout_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
-        description = "Read the spec layout of a mode: how the documents in a `specDir` are \
-                       arranged, the guidance atelier_get_work and atelier_start_work carry. \
-                       `~/.atelier/layouts/<id>/` refers to the layout of that mode (`atelier` or \
-                       `maison`). Do not edit the files there yourself; read and save the layout \
-                       with atelier_get_spec_layout and atelier_save_spec_layout. Omit `id` for \
-                       this server's own mode. Answers with the layout in its `layout.json` form, \
+        description = "Read the spec layout: how the documents in a `specDir` are arranged, the \
+                       guidance atelier_get_work and atelier_start_work carry. \
+                       `~/.atelier/layouts/atelier/` refers to this layout. Do not edit the files \
+                       there yourself; read and save the layout with atelier_get_spec_layout and \
+                       atelier_save_spec_layout. Answers with the layout in its `layout.json` form, \
                        the template bodies, the guidance it renders to, warnings, and whether it \
                        was edited — a layout never edited is the built-in one. A layout that \
                        cannot be read comes back as its errors and the file as it is. The answer \
@@ -107,14 +104,9 @@ impl AtelierServer {
     )]
     async fn atelier_get_spec_layout(
         &self,
-        Parameters(GetSpecLayoutParams { id }): Parameters<GetSpecLayoutParams>,
+        Parameters(GetSpecLayoutParams {}): Parameters<GetSpecLayoutParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        // 빼면 이 서버의 모드다 — 모드는 기동 때 정해진 프로세스의 성질이다.
-        let id = id.unwrap_or_else(|| self.mode.as_str().to_string());
-        let read = match atelier_core::read_layout(&self.data_root, &id) {
-            Ok(read) => read,
-            Err(e) => return Ok(kernel_error(e)),
-        };
+        let read = atelier_core::read_layout(&self.data_root);
         let note = match &read.content {
             LayoutContent::Readable { rendered, .. } => rendered.text.clone(),
             // 깨졌으면 원문과 오류 전부다 — 에이전트는 그것을 고쳐 다시 저장한다. 고칠지는 사용자가
@@ -139,12 +131,12 @@ impl AtelierServer {
     }
 
     #[tool(
-        description = "Save the spec layout of a mode, checked before anything is written. \
-                       `~/.atelier/layouts/<id>/` refers to the layout of that mode (`atelier` or \
-                       `maison`). Do not edit the files there yourself; read and save the layout \
-                       with atelier_get_spec_layout and atelier_save_spec_layout. Read it first \
-                       and pass the whole layout back with your changes. The first save of a mode \
-                       creates its folder, which then takes the place of the built-in layout. \
+        description = "Save the spec layout, checked before anything is written. \
+                       `~/.atelier/layouts/atelier/` refers to this layout. Do not edit the files \
+                       there yourself; read and save the layout with atelier_get_spec_layout and \
+                       atelier_save_spec_layout. Read it first and pass the whole layout back with \
+                       your changes. The first save creates that folder, which then takes the \
+                       place of the built-in layout. \
                        A layout that fails the check is refused with each error and where it is, \
                        and nothing is written. Templates the layout no longer points to are \
                        deleted. On success it answers with the guidance agents now get from \
@@ -161,13 +153,13 @@ impl AtelierServer {
     )]
     async fn atelier_save_spec_layout(
         &self,
-        Parameters(SaveSpecLayoutParams { id, layout, templates }): Parameters<SaveSpecLayoutParams>,
+        Parameters(SaveSpecLayoutParams { layout, templates }): Parameters<SaveSpecLayoutParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        match atelier_core::save_layout(&self.data_root, &id, layout, &templates) {
+        match atelier_core::save_layout(&self.data_root, layout, &templates) {
             // 저장한 레이아웃의 안내문 — 다음 `atelier_get_work`부터 에이전트가 받는 글이다. 에이전트가
             // 그것을 사용자에게 보여 준다(결정 20).
             Ok(SaveOutcome::Saved(rendered)) => Ok(CallToolResult::success(vec![
-                ContentBlock::json(json!({ "id": id, "warnings": rendered.warnings }))?,
+                ContentBlock::json(json!({ "warnings": rendered.warnings }))?,
                 ContentBlock::text(rendered.text),
             ])),
             Ok(SaveOutcome::Refused(errors)) => Ok(CallToolResult::error(vec![
