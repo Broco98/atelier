@@ -283,7 +283,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
           </div>
         }
         footer={
-          <div className="border-t px-3 py-2 text-caption leading-normal text-tertiary">
+          <div className="border-t px-3 py-2 text-caption text-tertiary">
             baseBranch 설정만 바꿔요 — checkout은 하지 않아요
           </div>
         }

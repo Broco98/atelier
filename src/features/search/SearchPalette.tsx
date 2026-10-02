@@ -168,6 +168,10 @@ export function SearchList({
         ref={inputRef}
         // 팔레트에 제목이 없다(결정 17) — 이 칸이 첫 줄이라 아래 목록과 선 하나로 갈린다.
         variant="flush"
+        // DS 팔레트의 입력 줄(`.at-palette-input`)이다 — 높이 52 · 글자 14 · 좌우 18이라 글자가 아래 글리프 칸과
+        // 한 세로선에 선다(6 + 12). 부품의 `flush`는 판 03이 팔레트 몫으로 남긴 채라 그 값을 여기서 준다
+        // (ui-refresh 결정 25 · 판 06 티켓 08 — 부품 파일은 이 판에서 고치지 않는다).
+        className="h-13 px-4.5 text-row"
         type="text"
         value={query}
         onChange={(event) => onQuery(event.target.value)}
@@ -203,9 +207,11 @@ export function SearchList({
                   낸다. 머리는 `role="option"`이 아니라 방향키가 여기 서지 않는다: 서면
                   Enter가 갈 곳이 없는 자리가 생긴다. */}
               {(at === 0 || hits[at - 1].kind !== hit.kind) && (
+                // 무리 머리는 DS `.at-palette-cap`이다 — 12px 구획 머리 색, 안쪽 10 12 4. 좌우가 줄과 같아 글자가
+                // 글리프 칸과 한 세로선이다(ui-refresh 결정 25).
                 <p
                   data-head=""
-                  className="shrink-0 px-2.5 pb-0.5 pt-2 text-caption text-muted-foreground first:pt-0.5"
+                  className="shrink-0 px-3 pt-2.5 pb-1 text-caption text-section"
                 >
                   {GROUP_NAMES[hit.kind]}
                 </p>
@@ -221,9 +227,9 @@ export function SearchList({
                 aria-selected={at === selected}
                 onClick={() => onGo(hit)}
                 className={cn(
-                  // 간격이 **9px**인 것은 사이드바 규격이다(결정 17·18) — 슬롯 17px과
-                  // 합쳐 거터가 26px이 되고, 그 값이 사이드바 nav 줄의 글자 시작점과 같다.
-                  "flex shrink-0 items-baseline gap-[9px] rounded-lg px-2.5 py-1.5 outline-none",
+                  // DS 팔레트 행(`.at-palette-row`)이다 — 36px · 모서리 10 · 안쪽 0 12 · 틈 10(ui-refresh 결정 6 · 25).
+                  // 슬롯 17px과 틈이 합쳐 거터가 27px이고, 켜진 줄은 `state-2`다.
+                  "flex h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 outline-none",
                   at === selected ? "bg-state-2" : "hover:bg-state-1",
                 )}
               >
@@ -236,9 +242,8 @@ export function SearchList({
                     **내용폭**의 1/3이라 padding이 그 바닥까지 175.3px → 166.7px로 깎는다.
                     자식은 내용폭을 안 바꾼다.
 
-                    **`self-center`가 필요하다** — 줄이 `items-baseline`이라 없으면 글리프가
-                    글자 베이스라인에 앉아 사이드바(`items-center`)와 세로 위치가 갈린다. */}
-                <span data-gutter="" className="size-[17px] shrink-0 self-center">
+                    글리프는 줄(`items-center`)의 세로 가운데에 서고, 색은 DS 팔레트의 글리프 색이다. */}
+                <span data-gutter="" className="size-[17px] shrink-0 text-muted-foreground">
                   {Glyph !== null && <Glyph className="size-[17px]" strokeWidth={1.7} />}
                 </span>
                 {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
@@ -247,11 +252,11 @@ export function SearchList({
                     길면 0이 되고 줄이 가로로 넘친다.
 
                     **그 숫자는 스니펫에 바닥이 생기기 전의 것이다.** 지금 스니펫은
-                    `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 26px이
+                    `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 27px이
                     나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
-                <span className="truncate text-row tracking-[-0.01em]">{name}</span>
+                <span className="truncate text-row">{name}</span>
                 {detail !== undefined && (
-                  <span className="truncate text-caption text-tertiary">{detail}</span>
+                  <span className="truncate text-ui text-tertiary">{detail}</span>
                 )}
                 {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6). 코어는
                     맞은 문단을 통째로 펴서 보내고, 「한 줄에 얼마나 보일까」는 화면 폭이
@@ -259,13 +264,13 @@ export function SearchList({
                     (같은 실측에서 175px·한글 13자). 남는 폭이 그보다 넓으면 그만큼 다
                     갖고(`grow`), 모자라면 이름과 경로가 대신 줄어든다. */}
                 {snippet !== undefined && (
-                  <span className="shrink-0 grow basis-1/3 truncate text-caption text-tertiary">
+                  <span className="shrink-0 grow basis-1/3 truncate text-ui text-tertiary">
                     {snippet}
                   </span>
                 )}
                 {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
                 {isArchived(hit) && (
-                  <span className="ml-auto shrink-0 text-meta text-muted-foreground">
+                  <span className="ml-auto shrink-0 text-caption text-tertiary">
                     아카이브
                   </span>
                 )}
@@ -276,7 +281,7 @@ export function SearchList({
         {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
             여기 서지 않는다(`role="option"`이 없다). */}
         {state === "ready" && hits.length === 0 && (
-          <p data-note="" className="px-2.5 py-1.5 text-ui text-muted-foreground">
+          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
             맞는 것이 없습니다
           </p>
         )}
@@ -285,7 +290,7 @@ export function SearchList({
             (`showProblem`의 「…하지 못했습니다」). **이유는 안 적는다** — 여기로 오는 것은
             IO 오류뿐이라 사용자 손에 고칠 것이 없고, 다시 치는 것이 곧 다시 묻는 것이다. */}
         {state === "failed" && (
-          <p data-note="" className="px-2.5 py-1.5 text-ui text-muted-foreground">
+          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
             검색하지 못했습니다
           </p>
         )}

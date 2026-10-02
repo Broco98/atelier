@@ -1077,7 +1077,7 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
             이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 「불러오는 중」이 한 번 더 읽힌다.
             움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
         <Spinner aria-hidden className="size-6 text-primary" />
-        <span className="mt-1 text-body font-semibold tracking-[-0.01em]">{verb} 중…</span>
+        <span className="mt-1 text-body font-semibold">{verb} 중…</span>
         <span className="text-ui text-tertiary">{detail}</span>
       </div>
     </div>
@@ -1128,7 +1128,7 @@ function StatusMenu({ work }: { work: WorkView }) {
               <DropdownMenuRadioItem key={status} value={status} label={option.label}>
                 <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
                 <span className="min-w-0 flex-1 truncate font-medium">{option.label}</span>
-                <span className="shrink-0 text-meta text-tertiary">{option.desc}</span>
+                <span className="shrink-0 text-caption text-tertiary">{option.desc}</span>
               </DropdownMenuRadioItem>
             );
           })}

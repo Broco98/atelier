@@ -305,7 +305,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
-            <span id={noteId} className="text-caption leading-[1.5] text-tertiary">
+            <span id={noteId} className="text-caption text-tertiary">
               폴더를 지우고 내장본으로 돌아가요
             </span>
           </span>
