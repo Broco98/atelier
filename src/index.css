@@ -225,7 +225,7 @@
          rounded-lg      10    탭 · 목록 행 · 메뉴 행 · 폼 컨트롤 · 툴팁(`--radius` 그대로다)
          rounded-card    16    카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
          rounded-inner    8    10px 컨트롤 **안에** 드는 것 — 세그먼트 칩 · kbd · 24px 이하 툴바 칸
-         rounded-inline   6    문서 안 인라인 코드만
+         rounded-inline   6    문서 안 인라인 코드 · 트리의 확장자 꼬리표
        툴팁 화살표는 Tailwind 기본 `rounded-xs`(2px)다. 아래 `sm` · `md` · `xl` …은 registry가 깐 값이고
        앱 코드는 쓰지 않는다 — 단계 밖 이름이다. `rounded-[…]`(px · `min()` · `calc()`)는 `type-scale.test.ts`가
        막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가 이 이름들을 모서리로 아는지도 같은 검사가 잰다.

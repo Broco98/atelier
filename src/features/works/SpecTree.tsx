@@ -6,14 +6,21 @@ import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
 
-// 접기 행 하나의 규격. 폴더 행이 쓴다.
+// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-ui` · 글리프와 이름 사이 7px · hover
+// state-1. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `muted-foreground`다(Archive · Main 프로토타입). 고른 행은
+// `selected-row`에 굵기 500이다.
+//
+// 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-1 rounded-lg text-left text-ui text-tertiary transition-colors hover:bg-state-1";
+  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-ui text-muted-foreground transition-colors hover:bg-state-1";
+
+// 줄 사이는 사이드바 · 아카이브 목록과 같은 2px 틈이다(DS `.at-tree`). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
+const ROWS = "flex flex-col gap-(--row-gap)";
 
 // 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
 // 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
-// 정해지지 않은 수라 클래스로 못 적어서다.
-const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+// 정해지지 않은 수라 클래스로 못 적어서다. 아카이브 목록은 트리 아래 빈 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
+export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
 
 interface TreeProps {
   // 엔진이 가른 spec 트리의 첫 층 — `spec/` 바로 아래의 파일·폴더들. **받은 순서 그대로
@@ -26,9 +33,12 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
+  // 첫 층의 깊이(생략 시 0). 아카이브는 트리를 아카이브 행 아래 한 단 들여 세운다 — 행과 같은 x에서 시작하면 문서
+  // 줄이 아카이브 행과 한 층으로 읽힌다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다).
+  depth?: number;
 }
 
-function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트(패널 토글)를 넘어 살지
   // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
   // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
@@ -42,15 +52,17 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
   // Collapsible은 **다음** 상태를 알린다 — 받은 값을 그대로 적는다.
   const setOpen = (path: string, open: boolean) => setToggled((prev) => ({ ...prev, [path]: open }));
   return (
-    <TreeRows
-      items={items}
-      depth={0}
-      current={current}
-      isOpen={(item) => toggled[item.path] ?? openByDefault(item)}
-      onOpenChange={setOpen}
-      onSelect={onSelect}
-      onCopy={onCopy}
-    />
+    <div className={cn(ROWS, "shrink-0")}>
+      <TreeRows
+        items={items}
+        depth={depth}
+        current={current}
+        isOpen={(item) => toggled[item.path] ?? openByDefault(item)}
+        onOpenChange={setOpen}
+        onSelect={onSelect}
+        onCopy={onCopy}
+      />
+    </div>
   );
 }
 
@@ -94,14 +106,18 @@ function TreeRows({
               key={item.path}
               open={expanded}
               onOpenChange={(open) => onOpenChange(item.path, open)}
-              className="flex flex-col"
+              className={ROWS}
             >
               <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
+                {/* 셰브론은 12px tertiary이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
                 <ChevronRight
-                  className={cn("size-3 shrink-0 transition-[rotate] duration-150", expanded && "rotate-90")}
+                  className={cn(
+                    "-mr-[3px] size-3 shrink-0 text-tertiary transition-[rotate] duration-150",
+                    expanded && "rotate-90",
+                  )}
                   strokeWidth={2.2}
                 />
                 <FolderGlyph icon={item.icon} />
@@ -109,7 +125,7 @@ function TreeRows({
                     디스크의 이름과 어긋나면 안 된다. 판 폴더 이름은 길어서 자른다 */}
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </CollapsibleTrigger>
-              <CollapsibleContent className="flex flex-col">
+              <CollapsibleContent className={ROWS}>
                 <TreeRows
                   items={item.children}
                   depth={depth + 1}
@@ -131,6 +147,7 @@ function TreeRows({
         //
         // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
         // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
+        // 글자색은 고르든 안 고르든 본문 색이다 — 고른 행은 면과 굵기가 말한다(DS `.at-tree-row.is-on`).
         // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
         // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
         // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
@@ -142,9 +159,7 @@ function TreeRows({
             <div
               className={cn(
                 "group flex h-7 items-center rounded-lg pr-1 text-ui transition-colors",
-                item.path === current
-                  ? "selected-row font-medium"
-                  : "text-muted-foreground hover:bg-state-1",
+                item.path === current ? "selected-row font-medium" : "hover:bg-state-1",
               )}
             >
               {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
@@ -154,7 +169,7 @@ function TreeRows({
                 type="button"
                 onClick={() => onSelect(item.path)}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
+                  "flex h-full min-w-0 flex-1 items-center gap-[7px] text-left",
                   onCopy && "pr-1.5",
                 )}
                 style={treeIndent(depth)}
@@ -185,7 +200,8 @@ function TreeRows({
   );
 }
 
-const GLYPH = "size-3 shrink-0 text-tertiary";
+// 폴더 · 파일 행의 글리프는 14px tertiary다(DS `.at-tree-row .ic`).
+const GLYPH = "size-3.5 shrink-0 text-tertiary";
 
 // 폴더 행의 글리프 — 항목이 준 아이콘이다. 없거나 표에 없는 이름이면 아무것도 안 그린다:
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
@@ -199,7 +215,8 @@ function FolderGlyph({ icon }: { icon: string | null }) {
 // 된다 — 이름으로 행을 찾는 L3·L4가 그것을 딛는다(spec 레이아웃 구현 스펙 4절).
 //
 // 아이콘이 없거나 표에 없는 이름이면 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
-// 아니라 파일의 성질이라 남는다.
+// 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-mono-micro` — 10 / 14 · 500)에 문서 안 인라인
+// 코드와 같은 옅은 면 · `rounded-inline`이고 테두리가 없다(ui-refresh 결정 16 · 25).
 function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const Glyph = specIconOf(icon);
   if (Glyph) return <Glyph className={GLYPH} strokeWidth={1.9} />;
@@ -207,7 +224,7 @@ function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-inner border bg-inset px-1 py-px font-mono text-mono-micro font-medium leading-[1.4] text-tertiary">
+    <span className="shrink-0 rounded-inline bg-group px-1 font-mono text-mono-micro text-tertiary">
       {ext}
     </span>
   );

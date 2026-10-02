@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 //
 // **반경도 같은 방식으로 DS 단계로만 적는다**(ui-refresh 결정 6 · 25). 알약(`rounded-pill`) · 원형
 // (`rounded-full`) · 10(`rounded-lg`) · 16(`rounded-card`)의 세 단계와, 10px 컨트롤 안에 드는 것의
-// `rounded-inner`(8) · 문서 안 인라인 코드의 `rounded-inline`(6)이다. 모서리 열 가지(2 · 5 · 6 · 7 · 8 ·
+// `rounded-inner`(8) · 문서 안 인라인 코드와 트리 확장자 꼬리표의 `rounded-inline`(6)이다. 모서리 열 가지(2 · 5 · 6 · 7 · 8 ·
 // 9 · 10 · 12 · 13 · 14px)가 손으로 적은 `rounded-[Npx]`로 그렇게 생겼다.
 //
 // **`rounded-[…]`는 px 숫자만이 아니라 식(`min()` · `calc()`)까지 막는다.** registry가 들여온
@@ -197,7 +197,7 @@ describe("반경 단계", () => {
   });
 
   it("반경을 임의 값으로 적지 않는다", () => {
-    // 실패하면 그 자리를 단계로 옮긴다 — 2px(툴팁 화살표) → xs, 5 · 6px → inner(문서 안 인라인 코드만 inline),
+    // 실패하면 그 자리를 단계로 옮긴다 — 2px(툴팁 화살표) → xs, 5 · 6px → inner(문서 안 인라인 코드 · 트리 확장자 꼬리표는 inline),
     // 7 · 8 · 9 · 10px과 `min()` · `calc()` → lg(10px 컨트롤 **안에** 드는 칩 · kbd · 24px 이하 툴바 칸은 inner),
     // 12 · 13 · 14px → card다. 아이콘 버튼은 full이다.
     expect(offenders(/(?<![\w-])rounded(?:-[trblxyse]{1,2})?-\[[^\]]*\]/g)).toEqual([]);

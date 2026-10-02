@@ -14,12 +14,18 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import SpecTree from "@/features/works/SpecTree";
+import SpecTree, { treeIndent } from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
 import { ARCHIVE_COPY, narrowedNotice } from "./archive-copy";
 import { archiveTreeItems } from "./archive-tree";
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
+
+/**
+ * 펼친 문서 트리가 서는 깊이 — 아카이브 행 아래 한 단이다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다). 행과 같은 x에
+ * 서면 문서 줄이 아카이브 행과 한 층으로 읽힌다. 「남은 문서가 없어요」도 같은 자리에 선다.
+ */
+const TREE_DEPTH = 1;
 
 /** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 설명으로 간다(아래 버튼 주석). */
 const SORT_HELP = "아카이브한 날짜 기준 정렬";
@@ -245,6 +251,9 @@ function ArchiveList({
 // 문서 트리는 패널이다. 패널은 180ms로 접히는 변형(`fold`)이고 닫혀도 마운트된 채다(`keepMounted`) —
 // 그래야 펼치는 쪽도 움직이고, 한 번 편 트리의 폴더 접힘이 항목을 접었다 펴도 남는다. 닫힌 패널은
 // 부품이 `inert`로 막는다: 접히는 동안 아직 보이는 문서 줄에 포커스와 포인터가 닿으면 안 된다.
+//
+// 행의 규격은 DS `.at-archive-row`다(ui-refresh 결정 6 · 25) — 32px · 안쪽 0 10px · 모서리 10 · hover state-1, 폴더 글리프 15px
+// tertiary, 제목 `text-row`(14 · 400) 본문 색, 오른쪽 날짜 `text-caption` tertiary 고정폭 숫자.
 function ArchiveRow({
   entry,
   expanded,
@@ -275,7 +284,7 @@ function ArchiveRow({
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
-      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-[9px] text-left text-muted-foreground transition-colors hover:bg-state-1">
+      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-2.5 text-left transition-colors hover:bg-state-1">
         {/* 펼쳤는지는 폴더 아이콘 하나가 말한다 — 늘 보이므로 hover해 보지 않아도 어느 것이
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}
@@ -284,27 +293,32 @@ function ArchiveRow({
         ) : (
           <Folder className="size-[15px] shrink-0 text-tertiary" strokeWidth={1.7} />
         )}
-        <span className="min-w-0 flex-1 truncate text-row font-medium">{entry.title}</span>
-        {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다 */}
-        <span className="shrink-0 text-caption text-tertiary">
+        <span className="min-w-0 flex-1 truncate text-row">{entry.title}</span>
+        {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다. 숫자가 고정폭이라 날짜의 오른쪽 끝이 줄마다
+            같은 x에 선다. */}
+        <span className="shrink-0 pl-2 text-caption text-tertiary tabular-nums">
           {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
         </span>
       </CollapsibleTrigger>
 
       <CollapsibleContent variant="fold" keepMounted>
-        <div className="flex flex-col pt-[3px]">
+        {/* 행과 첫 문서 줄 사이도 줄 사이와 같은 2px 틈이다(DS `.at-tree`). 접힌 동안은 안쪽 칸이 이 틈까지 가린다. */}
+        <div className="flex flex-col pt-(--row-gap)">
           {/* 도착 전에는 아무 말도 하지 않는다 — 빈 배열과 "아직 안 읽었다"를 같이 다루면
               펼치는 순간 "없어요"가 한 프레임 스쳤다가 트리로 바뀐다 */}
           {isPending ? null : items.length > 0 ? (
             // 경로는 모두 work 폴더 기준이다(`archiveTreeItems`) — 선택 표시·복사·읽기가 그대로 쓴다
             <SpecTree
               items={items}
+              depth={TREE_DEPTH}
               current={currentDoc}
               onSelect={(path) => onSelectDoc(entry.slug, path)}
               onCopy={(path) => onCopyDoc(entry.slug, path)}
             />
           ) : (
-            <span className="px-[9px] py-1.5 text-ui text-tertiary">남은 문서가 없어요</span>
+            <span className="py-1.5 pr-2.5 text-ui text-tertiary" style={treeIndent(TREE_DEPTH)}>
+              남은 문서가 없어요
+            </span>
           )}
         </div>
       </CollapsibleContent>
