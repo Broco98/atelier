@@ -20,6 +20,7 @@ import {
 import type { ListedItem, ShellNode, TreeInput } from "./shell-tree";
 import { metricsOf as 지표, NO_METRICS, poolShell, processRow as 행, snapshotFixture } from "./process-fixture";
 import type { PoolShell, ProcessRow } from "./types";
+import type { WorkStatus } from "@/features/works/types";
 
 // 프로세스 티켓 27 — **`Processes`의 셸 묶음이 서는 차례**(프로세스 결정 9 · 10 · 프로세스 스펙 S53). 화면은 앱 전체를 work → 셸 →
 // 자손으로 세운다 — work 행(최상위 터미널이면 `Terminal`)이 맨 윗단이다. 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 ·
@@ -51,7 +52,9 @@ const 풀 = (ptyId: number, shellKey: string, lastOutputMs = 1_000, metrics = NO
 const 스냅샷 = (pool: PoolShell[], descendants: Record<string, ProcessRow[]> = {}, helpers: ProcessRow[] = []) =>
   snapshotFixture({ pool, verdict: { descendants, helpers: helpers.map((row) => row.id) } });
 
-const 목록 = (...items: Array<[slug: string, title: string]>): ListedItem[] => items.map(([slug, title]) => ({ slug, title }));
+/** 목록의 work — 상태를 안 주면 active다(차례와 이름을 재는 검사는 상태를 안 본다). */
+const 목록 = (...items: Array<[slug: string, title: string, status?: WorkStatus]>): ListedItem[] =>
+  items.map(([slug, title, status = "active"]) => ({ slug, title, status }));
 
 /** 트리를 한 줄씩 편 모양 — 층이 곧 깊이다. 무엇이 어느 층에 어느 차례로 서는지를 한 번에 본다. */
 function 편모양(input: TreeInput): string[] {
@@ -97,15 +100,18 @@ describe("묶음 순서 — work → 셸 → 자손", () => {
     expect(편모양(input)).toEqual(["1 고정된 일", "2 G-3", "1 그냥 일", "2 G-2", "1 Terminal", "2 G-1"]);
   });
 
-  it("work 행은 목록의 제목과 그 work의 셸을 든다 — 셸은 탭의 차례다", () => {
+  // 상태는 work 행 앞의 글리프다(사이드바와 같은 것 — ui-refresh 판 06). 최상위 터미널은 work이 아니라 상태가 없다.
+  it("work 행은 목록의 제목 · 상태와 그 work의 셸을 든다 — 셸은 탭의 차례다", () => {
     const [work, terminal] = shellTree(
       기본({
         shells: [칸(5, "G-5"), 칸(2, "G-2"), 칸(9, "G-9", { owner: ownerOf() })],
-        list: 목록(["plain-work", "그냥 일"]),
+        list: 목록(["plain-work", "그냥 일", "review"]),
         snapshot: 스냅샷([풀(2, "G-2"), 풀(5, "G-5"), 풀(9, "G-9")]),
       }),
     );
     expect(work.name).toBe("그냥 일");
+    expect(work.status).toBe("review");
+    expect(terminal.status).toBeNull();
     expect(work.owner).toBe(ownerOf("plain-work"));
     // 스토어의 칸 순서(= 탭 줄의 차례)다. 풀은 pty id 순이라 그것을 따르면 탭을 옮겨도 화면이 안 따라온다.
     expect(work.shells.map((node) => node.shell.id)).toEqual([5, 2]);
@@ -126,6 +132,8 @@ describe("묶음 순서 — work → 셸 → 자손", () => {
       snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")]),
     });
     expect(편모양(input)).toEqual(["1 그냥 일", "2 G-3", "1 gone-work", "2 G-2", "1 Terminal", "2 G-1"]);
+    // 목록에 없으니 상태도 모른다 — 글리프 없이 선다.
+    expect(shellTree(input).map((group) => group.status)).toEqual(["active", null, null]);
   });
 
   it("목록이 아직 없어도 선다 — 이름은 slug다", () => {

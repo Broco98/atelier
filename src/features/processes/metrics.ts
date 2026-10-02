@@ -39,8 +39,16 @@ export function formatCpu(percent: number | null): string {
 
 /** LISTEN 포트 — 받은 차례(백엔드가 오름차순으로 준다)로 「:5173 · :24678」. 없으면 빈 글자다: 포트가 없는 것은 모르는 것이 아니다. */
 export function formatPorts(ports: ReadonlyArray<number>): string {
-  return ports.map((port) => `:${port}`).join(" · ");
+  return ports.map(formatPort).join(PORT_SEPARATOR);
 }
+
+/** 포트 하나 — 「:5173」. 행의 포트 칩 하나가 이 글자다(칩 사이에 `PORT_SEPARATOR`를 숨겨 두면 칸의 글자가 `formatPorts`와 같다). */
+export function formatPort(port: number): string {
+  return `:${port}`;
+}
+
+/** 포트 사이의 글자. */
+export const PORT_SEPARATOR = " · ";
 
 /**
  * 여러 프로세스의 합 — 셸 행(셸의 트리)과 work 행(그 work의 셸들)의 숫자. 메모리와 CPU는 **읽은 것끼리** 더하고, 아무것도 못 읽었으면

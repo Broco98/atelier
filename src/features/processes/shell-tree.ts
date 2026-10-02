@@ -4,6 +4,7 @@ import { attentionOn, runningSubagents, signalOf } from "@/features/terminal/she
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import { runningOn, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { Shell, ShellOwner } from "@/features/terminal/shell-registry";
+import type { WorkStatus } from "@/features/works/types";
 import { sumMetrics } from "./metrics";
 import { byStart, identityKey, processLabel, processTree, withMemory, type ProcessNode } from "./process-tree";
 import type { PoolShell, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
@@ -16,10 +17,14 @@ import type { PoolShell, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./t
 // 스냅샷의 판정 결과다(`verdict.descendants`, 키가 셸 키). 스토어의 셸이 든 셸 키(`Shell.shellKey`, 티켓 23)가 그 둘을 잇는다.
 // 스토어의 `id`나 pty id로 잇지 않는다: 앞은 프런트가 따로 발급한 번호이고, 뒤는 다른 실행에서 같은 번호가 된다.
 
-/** work 목록 중 이 묶음이 읽는 것 — 사이드바가 그리는 차례(고정 먼저)와 제목. 목록 쿼리의 `WorkView`가 그대로 들어온다. */
+/**
+ * work 목록 중 이 묶음이 읽는 것 — 사이드바가 그리는 차례(고정 먼저)와 제목, 상태(work 행 앞의 글리프 — 사이드바와 같은 것). 목록
+ * 쿼리의 `WorkView`가 그대로 들어온다.
+ */
 export interface ListedItem {
   slug: string;
   title: string;
+  status: WorkStatus;
 }
 
 export interface TreeInput {
@@ -35,6 +40,8 @@ export interface GroupNode {
   owner: ShellOwner;
   /** 목록의 제목. 목록에 없으면 slug, 최상위 터미널이면 nav의 `Terminal`이다. */
   name: string;
+  /** 목록의 상태. 목록에 없거나(모른다) 최상위 터미널이면(work이 아니다) 없다. */
+  status: WorkStatus | null;
   shells: ReadonlyArray<ShellNode>;
 }
 
@@ -76,7 +83,7 @@ export function shellTree({ shells, list, snapshot }: TreeInput): GroupNode[] {
     return at < 0 ? list.length : at;
   };
   return [...byOwner]
-    .map(([owner, nodes]) => ({ owner, name: groupName(owner, list), shells: nodes }))
+    .map(([owner, nodes]) => ({ owner, ...listed(owner, list), shells: nodes }))
     // 안정 정렬이라 목록에 없는 work끼리는 셸이 먼저 뜬 차례로 선다.
     .sort((a, b) => rank(a.owner) - rank(b.owner));
 }
@@ -110,7 +117,7 @@ function nodesByOwner(shells: ReadonlyArray<Shell>, snapshot: ProcessSnapshot): 
 export function ownerlessGroups({ shells, snapshot }: Pick<TreeInput, "shells" | "snapshot">): GroupNode[] {
   return [...nodesByOwner(shells.filter((shell) => shell.ownerless), snapshot)].map(([owner, nodes]) => ({
     owner,
-    name: groupName(owner, []),
+    ...listed(owner, []),
     shells: nodes,
   }));
 }
@@ -202,13 +209,14 @@ export function offscreenRowLabel(node: OffscreenNode, now: number): string {
 }
 
 /**
- * work 행의 이름 — 목록의 제목, 목록에 없으면 slug다. 최상위 터미널은 **nav의 `Terminal` 라벨이다**(`TERMINAL_LABEL`) — 그 셸이 사는
- * 곳이 그 nav가 가는 화면이라 같은 글자여야 한다.
+ * work 행의 이름과 상태 — 목록의 제목 · 상태, 목록에 없으면 slug이고 상태는 모른다. 최상위 터미널은 **nav의 `Terminal` 라벨이다**
+ * (`TERMINAL_LABEL`) — 그 셸이 사는 곳이 그 nav가 가는 화면이라 같은 글자여야 한다. work이 아니라 상태가 없다.
  */
-function groupName(owner: ShellOwner, listed: ReadonlyArray<ListedItem>): string {
+function listed(owner: ShellOwner, list: ReadonlyArray<ListedItem>): Pick<GroupNode, "name" | "status"> {
   const slug = slugOfOwner(owner);
-  if (slug === null) return TERMINAL_LABEL;
-  return listed.find((item) => item.slug === slug)?.title ?? slug;
+  if (slug === null) return { name: TERMINAL_LABEL, status: null };
+  const item = list.find((one) => one.slug === slug);
+  return { name: item?.title ?? slug, status: item?.status ?? null };
 }
 
 /**

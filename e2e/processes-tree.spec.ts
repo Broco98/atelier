@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./evidence";
+import { expect, test, type Locator, type Page } from "./evidence";
 import { answerByArg, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
@@ -122,6 +122,51 @@ test("자손 행의 이름에 스냅샷의 명령줄이 툴팁으로 서고, 줄
     await expect(button).toBeVisible();
     expect(await button.evaluate((element) => element.closest("[title]")?.getAttribute("title") ?? null), name).toBeNull();
   }
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/** 그 요소가 눈에 보이는 정도 — 자신과 조상의 불투명도를 곱한다(숨김은 줄 끝 동작 칸이 든다). */
+const 불투명도 = (element: Locator) =>
+  element.evaluate((node) => {
+    let opacity = 1;
+    for (let at: Element | null = node; at !== null; at = at.parentElement) opacity *= Number(getComputedStyle(at).opacity);
+    return opacity;
+  });
+
+// **프로세스 줄의 [끝내기] · ⋯은 손이 닿을 때만 선다**(ui-refresh 「같은 날 더 정한 것」 — Processes 다시 그림): 줄에 포인터가
+// 있거나 키보드 포커스가 줄 안에 들면 보인다. 자리는 늘 차지한다(불투명도만 바뀐다 — 숫자 칸이 흔들리지 않는다). 셸 줄의 [이동] ·
+// [닫기]는 늘 보인다 — 셸을 닫는 길이 숨지 않는다.
+test("프로세스 줄의 [끝내기] · ⋯은 줄에 포인터나 포커스가 있을 때만 보이고, 셸 줄의 [이동] · [닫기]는 늘 보인다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷([1]) });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await navButton(page, "Processes").click();
+
+  const node = 트리(page).getByRole("treeitem", { name: "node", exact: true });
+  const 동작 = [
+    node.getByRole("button", { name: "끝내기", exact: true }),
+    node.getByRole("button", { name: "프로세스 메뉴", exact: true }),
+  ];
+  const 셸동작 = ["이동", "닫기"].map((name) => 셸행(page, 1).getByRole("button", { name, exact: true }));
+  const 요약 = page.getByRole("region", { name: "요약", exact: true });
+
+  // 포인터가 트리 밖이다 — 프로세스 줄의 동작은 숨고, 셸 줄의 동작은 선다.
+  await 요약.hover();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(0);
+  for (const button of 셸동작) expect(await 불투명도(button)).toBe(1);
+
+  // 줄에 포인터를 올리면 선다. 떠나면 다시 숨는다.
+  await node.hover();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(1);
+  await 요약.hover();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(0);
+
+  // 키보드 포커스가 줄 안에 들면 포인터 없이도 선다.
+  await 동작[0].focus();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(1);
+  for (const button of 셸동작) expect(await 불투명도(button)).toBe(1);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

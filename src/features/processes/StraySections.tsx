@@ -1,3 +1,4 @@
+import { AppWindow, CircleAlert, CircleQuestionMark, ShieldCheck } from "lucide-react";
 import { askThenEnd, endProcesses } from "./actions";
 import { instanceGroups, instanceRowLabel, tidyUnknownAsk, type InstanceGroup } from "./process-groups";
 import {
@@ -11,7 +12,7 @@ import {
   strayTree,
   type ProcessNode,
 } from "./process-tree";
-import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
+import { BLOCK, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
 import type { ProcessSnapshot } from "./types";
 
 /**
@@ -39,12 +40,14 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
     <>
       {confirmed.length > 0 && (
         <Section
+          icon={CircleAlert}
+          warn
           title="확정 고아"
           note={processCount(confirmed.length)}
           // 묻지 않는다(프로세스 결정 6) — 누른 순간 화면에 보인 신원 전부다.
           action={<RowButton onClick={() => void endProcesses(identitiesOf(confirmed))}>정리</RowButton>}
         >
-          <div role="tree" aria-label="확정 고아" className="flex flex-col gap-0.5">
+          <div role="tree" aria-label="확정 고아" className={BLOCK}>
             {confirmed.map((node) => (
               <StrayRow key={keyOf(node)} node={node} level={node.depth} menu />
             ))}
@@ -53,13 +56,14 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
       )}
       {unknown.length > 0 && (
         <Section
+          icon={CircleQuestionMark}
           title="출처 불명"
           note={processCount(unknown.length)}
           action={
             <RowButton onClick={() => void askThenEnd(tidyUnknownAsk(unknown.length), identitiesOf(unknown))}>정리</RowButton>
           }
         >
-          <div role="tree" aria-label="출처 불명" className="flex flex-col gap-0.5">
+          <div role="tree" aria-label="출처 불명" className={BLOCK}>
             {unknown.map((node) => (
               <StrayRow key={keyOf(node)} node={node} level={node.depth} menu />
             ))}
@@ -68,11 +72,12 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
       )}
       {instances.length > 0 && (
         <Section
+          icon={AppWindow}
           title="다른 인스턴스"
           note={processCount(instances.reduce((sum, group) => sum + group.nodes.length, 0))}
           action={<ViewOnly />}
         >
-          <div role="tree" aria-label="다른 인스턴스" className="flex flex-col gap-0.5">
+          <div role="tree" aria-label="다른 인스턴스" className={BLOCK}>
             {instances.map((group) => (
               <InstanceRows key={group.generation ?? ""} group={group} />
             ))}
@@ -80,8 +85,8 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
         </Section>
       )}
       {exceptions.length > 0 && (
-        <Section title="예외" note={processCount(exceptions.length)} action={<ViewOnly />}>
-          <div role="tree" aria-label="예외" className="flex flex-col gap-0.5">
+        <Section icon={ShieldCheck} title="예외" note={processCount(exceptions.length)} action={<ViewOnly />}>
+          <div role="tree" aria-label="예외" className={BLOCK}>
             {exceptions.map((node) => (
               <StrayRow key={keyOf(node)} node={node} level={node.depth} />
             ))}
@@ -94,7 +99,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
 
 const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 
-/** 프로세스 결정 10 그림의 「보기 전용」 — 동작 자리에 선다. 버튼이 아니다. */
+/** 프로세스 결정 10 그림의 「보기 전용」 — 구획 머리의 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {
   return <span className="shrink-0 px-2 text-caption text-tertiary">보기 전용</span>;
 }
@@ -106,28 +111,29 @@ function ViewOnly() {
 function StrayRow({ node, level, menu = false }: { node: ProcessNode; level: number; menu?: boolean }) {
   const { row } = node;
   return (
-    <TreeRow level={level} label={processRowLabel(row)} className="text-ui text-muted-foreground">
-      <span title={row.command ?? undefined} className="min-w-0 flex-1 truncate">
+    <TreeRow
+      level={level}
+      label={processRowLabel(row)}
+      kind="process"
+      metrics={row.metrics}
+      actions={menu && <RowMenu name={exceptionName(row)} />}
+    >
+      <span title={row.command ?? undefined} className="min-w-0 truncate">
         {processLabel(row)}
       </span>
-      <Figures metrics={row.metrics} />
-      <Actions>{menu && <RowMenu name={exceptionName(row)} />}</Actions>
     </TreeRow>
   );
 }
 
 /**
- * 다른 인스턴스의 실행 하나 — 머리 줄(빌드 종류 · 버전, 그 실행의 합)과 그 밑의 트리. 머리 줄은 포트 칸이 없다(work 행과 같다). 동작은
- * 없다.
+ * 다른 인스턴스의 실행 하나 — 머리 줄(빌드 종류 · 버전, 그 실행의 합)과 그 밑의 트리. 머리 줄은 셸 줄의 규격이고 포트 칸이 없다(work
+ * 행과 같다). 동작은 없다.
  */
 function InstanceRows({ group }: { group: InstanceGroup }) {
   return (
     <>
-      <TreeRow level={1} label={instanceRowLabel(group)}>
-        <span className="min-w-0 truncate text-ui font-medium">{group.label}</span>
-        <span className="flex-1" />
-        <Figures metrics={group.totals} ports={false} />
-        <Actions />
+      <TreeRow level={1} label={instanceRowLabel(group)} kind="shell" metrics={group.totals} ports={false}>
+        <span className="min-w-0 truncate font-medium">{group.label}</span>
       </TreeRow>
       {group.nodes.map((node) => (
         <StrayRow key={keyOf(node)} node={node} level={1 + node.depth} />

@@ -24,11 +24,14 @@ import type { ProcessSnapshot } from "@/features/processes/types";
 const [project] = PROJECTS;
 
 /**
- * 요약 카드의 셸 수. **카드 안에서 찾는다** — 스토어가 모르는 풀의 셸은 두 박자 뒤 「화면 밖 셸」 묶음에 서고(티켓 32) 그 머리도
- * 「셸 N개」라, 화면 전체에서 찾으면 같은 글자가 둘이다.
+ * 요약 카드의 셸 수 — 「셸」 타일의 큰 수(`data-figure="shells"`)다. **카드 안에서 찾는다** — 스토어가 모르는 풀의 셸은 두 박자 뒤
+ * 「화면 밖 셸」 묶음에 서고(티켓 32) 그 머리도 셸 수를 말해, 화면 전체에서 찾으면 같은 수가 둘이다.
  */
 const shellCount = (page: Page, count: number) =>
-  page.getByRole("region", { name: "요약", exact: true }).getByText(`셸 ${count}개`, { exact: true });
+  page
+    .getByRole("region", { name: "요약", exact: true })
+    .locator('[data-figure="shells"]')
+    .filter({ hasText: new RegExp(`^${count}개$`) });
 
 /**
  * 풀에 셸이 `keys`만큼 선 스냅샷. 화면은 앱 전체를 보인다(프로세스 결정 9). 셸 키의 세대는 픽스처의 것이 아니다: 이 검사는 스토어의 셸과 잇지 않는다(27의 몫).
