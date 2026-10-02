@@ -19,7 +19,7 @@ import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import useSplitRatio from "@/components/shell/useSplitRatio";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
-import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { PANEL_MOTION, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -800,7 +800,7 @@ function WorksPage({
         column={leftColumn}
         width={`calc((100% - var(--gap)) * ${splitSize.ratio} + var(--gap))`}
         // 더블클릭으로 반반에 돌아갈 때만 애니메이션한다(useSplitRatio의 `snapping`).
-        // 값은 패널이 접히는 것과 같다 — 같은 화면에서 두 폭이 다른 속도로 움직이면
+        // 값은 패널이 접히는 것과 같다(`PANEL_MOTION`) — 같은 화면에서 두 폭이 다른 속도로 움직이면
         // 한 동작으로 안 읽힌다.
         snapping={splitSize.snapping}
         onFocus={focusColumn}
@@ -999,7 +999,8 @@ function SplitColumn({
       className={cn(
         "relative flex min-w-0",
         leads ? "shrink-0 pr-(--gap)" : "flex-1",
-        snapping && "transition-[width] duration-[220ms] ease-panel",
+        snapping && PANEL_MOTION,
+        snapping && "transition-[width]",
       )}
     >
       <Card

@@ -266,7 +266,7 @@ function SidebarFrame({
       <div
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col pb-2.5",
-          foldingInnerClass(open, "max-w-full"),
+          foldingInnerClass(open),
         )}
       >
         {/* traffic light strip — same height as the main header (the header no

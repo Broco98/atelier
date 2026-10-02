@@ -65,12 +65,13 @@ function Frame<Id extends string>({ sidebarOpen, titlebar, list, panel, rail, ov
         <TitleBar sidebarOpen={sidebarOpen}>{titlebar}</TitleBar>
         {/* 카드 줄. 사이드바가 열렸으면 왼쪽 틈이 0이다 — 사이드바 쪽 여백이 그 틈으로 보인다(프로토타입 `.at-main` ·
             `.at-sidebar`). 사이드바가 접히면 카드가 창 왼쪽 틈까지 넓어진다. 여백은 바탕 줄의 여백과 같은 곡선으로
-            따라온다 — 사이드바 폭 트랜지션과 곡선이 다르면 카드 모서리가 자리를 지나쳤다 되돌아온다(index.css의 `--panel-ease`).
-            `relative`는 `overlay`의 기준이다. */}
+            따라온다 — 사이드바 폭 트랜지션(`PANEL_MOTION`)과 박자가 다르면 카드 모서리가 자리를 지나쳤다 되돌아온다(index.css의
+            `--panel-ease`). `relative`는 `overlay`의 기준이다. */}
         <div
           data-tauri-drag-region
           className={cn(
-            "relative flex min-h-0 flex-1 pr-(--gap) transition-[padding] duration-[220ms] ease-panel",
+            "relative flex min-h-0 flex-1 pr-(--gap) transition-[padding]",
+            PANEL_MOTION,
             sidebarOpen ? "pl-0" : "pl-(--gap)",
           )}
         >
@@ -116,7 +117,7 @@ function ListBox({ slot }: { slot: SideSlot }) {
         data-tauri-drag-region
         className={cn(
           "flex h-full w-[calc(var(--panel-width)+var(--gap))] shrink-0 pr-(--gap)",
-          foldingInnerClass(open, "max-w-full"),
+          foldingInnerClass(open),
         )}
       >
         <Card label={label} className="flex-1">
@@ -171,7 +172,7 @@ function PanelBox({ id, slot }: { id: string; slot: SideSlot }) {
         data-tauri-drag-region
         className={cn(
           "flex h-full w-[calc(var(--work-panel-width)+var(--gap))] shrink-0 pl-(--gap)",
-          foldingInnerClass(open, "max-w-full"),
+          foldingInnerClass(open),
         )}
       >
         <Card label={label} className="flex-1">
@@ -189,7 +190,7 @@ function PanelBox({ id, slot }: { id: string; slot: SideSlot }) {
  *
  * **신호등 inset은 이 줄 하나만 계산한다.** 왼쪽 여백은 사이드바가 열렸으면 `--tab-lead`(사이드바 경계에서 재는 거리),
  * 접혔으면 `--titlebar-inset-tabs`(셸 컨트롤 뒤 같은 거리)다 — 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직인다
- * (index.css의 `[data-titlebar]`). 여백은 사이드바 폭과 같은 곡선(`ease-panel`)으로 따라온다. 오른쪽 여백은 카드 줄의 오른쪽
+ * (index.css의 `[data-titlebar]`). 여백은 사이드바 폭과 같은 박자(`PANEL_MOTION`)로 따라온다. 오른쪽 여백은 카드 줄의 오른쪽
  * 틈과 같은 값이라 오른쪽 끝 조작이 카드 모서리와 한 줄에 선다.
  *
  * 줄 안의 버튼들은 이 속성이 없으므로 그대로 눌린다 — 칸 사이 빈 자리와 끄는 여백은 탭 줄이 제 자식에 단다.
@@ -208,7 +209,8 @@ function TitleBar({
       data-tauri-drag-region
       className={cn(
         // 아래 경계선이 없다 — 바탕이 선으로 잘리지 않고 카드 줄로 이어진다.
-        "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-(--gap) transition-[padding] duration-[220ms] ease-panel",
+        "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-(--gap) transition-[padding]",
+        PANEL_MOTION,
         sidebarOpen ? "pl-(--tab-lead)" : "pl-(--titlebar-inset-tabs)",
         className,
       )}

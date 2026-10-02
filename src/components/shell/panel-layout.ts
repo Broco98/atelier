@@ -1,6 +1,8 @@
-// 셸 틀의 **배치 규격** 두 가지 — 탭 줄을 이는 본문 열의 바닥, 그리고 그 바닥을 위해 자리를 내주는 접히는
-// 패널(사이드바 · 작업 패널)의 트랜지션. 둘이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이 바닥을
-// 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다.
+// 셸 틀의 **배치 규격** — 탭 줄을 이는 본문 열의 바닥(`TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
+// 패널(사이드바 · 목록 칸 · 작업 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass`), 그리고 작업 패널 카드의 기본
+// 폭(`WORK_PANEL_WIDTH`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이 바닥을 들면 패널이 좁게
+// 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 기본 폭은 그 패널 칸의 값이고
+// 작업 화면과 spec 레이아웃 편집기 두 기능이 함께 읽어 어느 한쪽 폴더에 두지 않는다.
 //
 // **기능 폴더 밖에 산다.** 한때 `TAB_ROW_COLUMN`이 `features/terminal/ShellTabs`에서 나와 문서 뷰어
 // (`SpecViewer`)가 그것을 import했다 — 그 바람에 보관함 화면까지 터미널 모듈을 끌어왔다. 이 규격은 탭 줄의
@@ -42,22 +44,23 @@ export const WORK_PANEL_WIDTH = 330;
  * 길이가 아래 `foldingInnerClass`의 `max-width` 지연과 **같은 수여야 한다** — 다르면 좁게 선 패널을 펼 때
  * 안쪽 열이 폭이 다 오기 전에 잘리거나(지연이 짧다) 다 온 뒤에 한 번 더 되흐른다(길다). 그 같음은
  * `panel-layout.test.ts`가 두 문자열에서 수를 읽어 든다.
+ *
+ * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 사이드바 폭을 따라오는 공용 틀의 여백(바탕 줄 · 카드 줄,
+ * `Frame`)과 분할 열 폭이 훌쩍 뛰는 순간(`WorksPage`의 분할 열). 제 리터럴로 다시 적으면 한쪽만 고친 날 카드 모서리가
+ * 사이드바 경계를 지나쳤다 되돌아온다.
  */
 export const PANEL_MOTION = "duration-[220ms] ease-panel";
 
 /**
- * 접히는 패널 **안쪽 열**의 클래스 — 사이드바와 작업 패널이 같은 장치를 쓴다.
+ * 접히는 패널 **안쪽 열**의 클래스 — 사이드바 · 목록 칸 · 작업 패널이 같은 장치를 쓴다.
  *
- * 안쪽은 접히는 동안 고정 폭이라 되흐르지 않고, **펴진 뒤에만** 바깥 폭을 상한(`cap`)으로 받는다: 펼 때는
+ * 안쪽은 접히는 동안 고정 폭이라 되흐르지 않고, **펴진 뒤에만** 바깥 폭을 상한(`max-w-full`)으로 받는다: 펼 때는
  * 폭 트랜지션이 끝난 뒤 `max-width`가 그 자리로 한 번에 넘어가고(지연 = 바깥 길이 · 길이 0), 접을 때는
  * 곧장 걷힌다. 걷힌 값이 `none`이 아니라 `100vw`인 것은 `none`과 백분율은 보간할 수 없는 쌍이라 지연 자체가
- * 안 걸려서다.
- *
- * `cap`은 부르는 쪽이 **리터럴로** 적는다(Tailwind가 소스에서 클래스를 읽는다) — 지금은 사이드바 · 목록 칸 ·
- * 작업 패널 모두 `max-w-full`이다(사이드바는 오른쪽 경계선이 있던 동안 그 밑 1px까지 더 들었다).
+ * 안 걸려서다. 상한이 셋 모두 바깥 폭 그대로인 것은 어느 바깥 상자에도 오른쪽 경계선이 없어서다(ui-refresh 결정 4).
  */
-export function foldingInnerClass(open: boolean, cap: string): string {
+export function foldingInnerClass(open: boolean): string {
   return open
-    ? `${cap} transition-[opacity,max-width] opacity-100 delay-[0s,220ms] duration-[220ms,0s]`
+    ? "max-w-full transition-[opacity,max-width] opacity-100 delay-[0s,220ms] duration-[220ms,0s]"
     : "max-w-[100vw] opacity-0 transition-opacity duration-150";
 }
