@@ -87,6 +87,34 @@ export function subtreeAt(nodes: ReadonlyArray<ProcessNode>, at: number): Proces
   return ids;
 }
 
+/** 접힘을 지나 보이는 줄 하나(`shownNodes`) — 편 줄 그대로에 자리와 부모인지를 더한다. */
+export interface ShownNode extends ProcessNode {
+  /** 편 줄 안의 자리 — [끝내기]가 이 자리로 그 트리 전부를 넘긴다(`subtreeAt`). 접힘과 상관없다. */
+  at: number;
+  /** 밑에 줄이 있다 — 셰브론이 서는 줄이다. 접혀 있어도 그대로다. */
+  parent: boolean;
+}
+
+/**
+ * **「무엇이 보이나」**(ui-refresh 결정 28) — 깊이 우선으로 편 줄에서 접힌 줄의 밑을 뺀다. 접힌 줄 자신은 선다. 그 밑은 그 줄 뒤로 더
+ * 깊은 줄이 이어지는 데까지다(`subtreeAt`과 같은 경계). 줄은 평평한 채다(S58) — 중첩 묶음을 들이지 않고 안 보일 줄을 안 그린다.
+ *
+ * 접힌 키는 `identityKey`다. 이 줄들에 없는 키(그 프로세스가 끝났다)나 밑에 줄이 없는 줄의 키는 아무것도 가리지 않는다 — 사라진 키를
+ * 잊는 것은 화면이 한다.
+ */
+export function shownNodes(nodes: ReadonlyArray<ProcessNode>, closed: ReadonlySet<string>): ShownNode[] {
+  const shown: ShownNode[] = [];
+  // 지금 접혀 있는 줄의 깊이 — 그보다 깊은 줄은 그 밑이라 안 선다.
+  let foldedAt: number | null = null;
+  nodes.forEach((node, at) => {
+    if (foldedAt !== null && node.depth > foldedAt) return;
+    const parent = (nodes[at + 1]?.depth ?? 0) > node.depth;
+    shown.push({ ...node, at, parent });
+    foldedAt = parent && closed.has(identityKey(node.row.id)) ? node.depth : null;
+  });
+  return shown;
+}
+
 // ── 줄의 이름(S58) — 행마다 한 문장이다. 스크린리더가 트리를 줄로 읽을 때 그 줄이 무엇인지가 이 이름에서 끝난다.
 //
 // **메모리는 이름의 끝 조각이다**(티켓 28). 표기는 행의 칸과 같은 함수(`formatMemory`)라 눈과 귀가 같은 숫자를 받는다. 못 읽었으면

@@ -772,6 +772,12 @@ body.dragging-row * {
     [data-slot="collapsible-content"] {
         transition: none;
     }
+
+    /* Processes의 접는 셰브론(ui-refresh 결정 28 — `tree-rows.tsx`의 `FoldChevron`)은 돌지 않고 바로 바뀐다 —
+       그 패널이 움직임 없이 접히는 것과 같은 한 동작이다. */
+    [data-fold-chevron] {
+        transition: none;
+    }
 }
 
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —

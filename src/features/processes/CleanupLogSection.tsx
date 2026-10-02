@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { ChevronRight, History } from "lucide-react";
+import { History } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
 import { eventKeys, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
-import { useCleanupLog } from "./hooks";
+import type { SectionFold } from "./folds";
 import { processCount } from "./process-tree";
-import { BLOCK, Section } from "./tree-rows";
+import { BLOCK, FoldChevron, Section } from "./tree-rows";
 import type { CleanupEvent } from "./types";
 
 /**
@@ -13,13 +12,12 @@ import type { CleanupEvent } from "./types";
  * 줄(까닭 · 대상 수 · 때)이고 새것부터다(Rust가 그 차례로 준다 — 최근 100건). 줄을 누르면 펼쳐져 대상마다 이름 · 결과 · 명령줄이
  * 선다. 보기만 한다 — 기록을 지우는 길은 없다.
  *
- * 기록은 스냅샷이 올 때마다 한 번 묻는다(`useCleanupLog`) — 도착한 때는 화면이 넘긴다(스냅샷 박자를 또 걸지 않게). 기록이 없으면 이
- * 묶음은 안 선다(다른 묶음과 같다).
+ * 기록은 화면이 스냅샷이 올 때마다 한 번 물어 넘긴다(`useCleanupLog`) — 어느 구획이 섰는지가 접힘의 기억에 들어서다. 기록이 없으면 이
+ * 묶음은 안 선다(다른 묶음과 같다). 구획은 접어 연다 — 참고용이다(ui-refresh 결정 28). 머리의 수는 접혀 있어도 선다.
  */
-function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
-  const { data: events = [] } = useCleanupLog(snapshotAt);
+function CleanupLogSection({ events, fold }: { events: ReadonlyArray<CleanupEvent>; fold: SectionFold }) {
   // 펼친 사건 — 사건의 열쇠로 든다(`eventKeys` — 목록 안 자리가 아니다). 박자마다 새 목록이 와도, 새 사건이 맨 위에 서도 펼친 것이
-  // 그대로다.
+  // 그대로다. 구획을 접었다 펴도 그대로다 — 구획의 몸이 내려가도 이 상태는 구획 밖(이 묶음)에 산다.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   if (events.length === 0) return null;
   const keys = eventKeys(events);
@@ -34,7 +32,7 @@ function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
     });
 
   return (
-    <Section icon={History} title="정리 기록" note={`기록 ${events.length}건`}>
+    <Section icon={History} title="정리 기록" note={`기록 ${events.length}건`} fold={fold}>
       <ol aria-label="정리 기록" className={BLOCK}>
         {events.map((event, at) => {
           const key = keys[at];
@@ -68,8 +66,8 @@ function EventRow({
         aria-label={eventLabel(event)}
         className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover"
       >
-        <span aria-hidden className="grid w-4.5 shrink-0 place-items-center">
-          <ChevronRight className={cn("size-3 text-tertiary transition-transform", open && "rotate-90")} />
+        <span className="grid w-4.5 shrink-0 place-items-center text-tertiary">
+          <FoldChevron open={open} />
         </span>
         <span className="shrink-0 text-ui font-medium">{reasonLabel(event.reason)}</span>
         <span className="shrink-0 text-caption text-muted-foreground">{processCount(event.targets.length)}</span>

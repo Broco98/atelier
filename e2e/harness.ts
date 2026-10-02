@@ -1478,6 +1478,17 @@ export async function 시계를세운다(page: Page): Promise<void> {
 }
 
 /**
+ * `Processes`의 스냅샷 박자(2초) 둘을 **흐르는 시계로** 넘긴다 — 둘째 물음이 나갔으면 첫 답은 이미 그려졌다. 「박자가 와도 그대로다」를
+ * 잴 때 쓴다(ui-refresh 결정 28의 접힘). 시계를 세운 검사는 `runFor`로 한 박자씩 넘긴다(`processes-shells.spec.ts`의 `다음박자`).
+ */
+export async function 스냅샷두박자(page: Page): Promise<void> {
+  const before = await callCount(page, "processes_snapshot");
+  await expect
+    .poll(() => callCount(page, "processes_snapshot"), { timeout: 10_000, message: "스냅샷 박자가 두 번 안 왔다" })
+    .toBeGreaterThanOrEqual(before + 2);
+}
+
+/**
  * 독 배지로 나간 값들, 나간 순서대로. `undefined`는 「배지를 없앤다」이고 와이어에서는 키가
  * 통째로 빠지므로(`JSON.stringify`) 여기서는 `null`로 온다.
  */

@@ -1,10 +1,12 @@
 import { Fragment, useId, useState } from "react";
-import { Ellipsis, type LucideIcon } from "lucide-react";
+import { ChevronRight, Ellipsis, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { keepAsException } from "./actions";
+import type { RowFold, SectionFold } from "./folds";
 import { PORT_SEPARATOR, formatCpu, formatMemory, formatPort, formatPorts } from "./metrics";
 import type { ProcessMetrics } from "./types";
 
@@ -40,16 +42,39 @@ export function ColumnHead() {
   );
 }
 
-/** 셰브론 자리(18px) — 구획 머리와 줄의 이름 앞에 비워 둔다. 접힘(판 06 티켓 05)이 여기 선다. */
+/**
+ * 접는 셰브론 — 12px이고 펼치면 90° 돈다(DS `.at-pr-chev` — 160ms, 패널과 같은 곡선). 동작 줄이기면 돌지 않고 바뀐다(`index.css`의
+ * 줄임 규칙이 `data-fold-chevron`의 전이를 끈다). 구획 머리 · 줄 · 정리 기록의 사건 줄이 같은 것을 쓴다.
+ *
+ * 전이 목록에 transform이 아니라 rotate를 적는다 — Tailwind v4의 `rotate-*`는 독립 rotate 속성이다(`SpecTree`의 같은 주석).
+ */
+export function FoldChevron({ open }: { open: boolean }) {
+  return (
+    <ChevronRight
+      aria-hidden
+      data-fold-chevron=""
+      className={cn("size-3 shrink-0 transition-[rotate] duration-160 ease-panel", open && "rotate-90")}
+      strokeWidth={2.2}
+    />
+  );
+}
+
+/** 셰브론 자리(18px) — 자식이 없는 줄은 이 자리를 비워 둔다(열이 맞게). */
 function FoldSlot() {
   return <span aria-hidden className="w-4.5 shrink-0" />;
 }
 
 /**
- * 구획 하나 — 머리 줄(셰브론 자리 · 아이콘 · 제목 · 수 · 동작)과 그 몸(묶음). **영역의 이름이 제목이다**(`aria-labelledby`) —
- * 스크린리더가 구획 사이를 건너뛰고, 검사가 구획을 이름으로 찾는다. 수(`note`)는 제목 밖에 둔다: 이름에 들면 박자마다 영역의 이름이
- * 바뀐다. 무엇을 세는지는 구획마다 다르다(프로세스 · 셸 · 기록) — 그래서 글자로 받는다. 동작([정리] · [모두 닫기] · 「보기 전용」)은
- * 늘 보인다.
+ * 구획 하나 — 머리 줄(셰브론 · 아이콘 · 제목 · 수 · 동작)과 그 몸(묶음). **영역의 이름이 제목이다**(`aria-labelledby`가 제목 글자를
+ * 가리킨다) — 스크린리더가 구획 사이를 건너뛰고, 검사가 구획을 이름으로 찾는다. 수(`note`)는 제목 밖에 둔다: 이름에 들면 박자마다 영역의
+ * 이름이 바뀐다. 무엇을 세는지는 구획마다 다르다(프로세스 · 셸 · 기록) — 그래서 글자로 받는다. 동작([정리] · [모두 닫기] · 「보기
+ * 전용」)은 늘 보인다 — 접혀 있어도 누른다.
+ *
+ * **구획이 접힌다**(ui-refresh 결정 28). 여닫음은 앱의 여닫이 부품이 든다(`Collapsible` — 정리 기록의 사건 줄 · Archive 목록과 같은
+ * 부품). 트리거는 `<h3>` 안의 버튼(셰브론 · 아이콘 · 제목)이라 `aria-expanded`를 스스로 달고, 수와 동작은 버튼 밖이다 — 버튼 안의 버튼은
+ * 없고, 이름에 수가 안 든다. 누르는 자리는 머리 줄 전체로 넓힌다(버튼의 `::after`가 줄을 덮고 동작 칸이 그 위에 선다 — 프로토타입의
+ * `<summary>`가 줄 전체다). 몸은 180ms로 접히는 변형(`fold`)이고 닫히면 내려간다 — 접힌 동안은 부품 규칙대로 `inert`다. 처음 상태와
+ * 기억은 화면이 든다(`SectionFold`).
  */
 export function Section({
   icon: Icon,
@@ -57,6 +82,7 @@ export function Section({
   title,
   note,
   action,
+  fold,
   children,
 }: {
   icon: LucideIcon;
@@ -65,22 +91,38 @@ export function Section({
   title: string;
   note: string;
   action?: React.ReactNode;
+  fold: SectionFold;
   children: React.ReactNode;
 }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className="mt-2 flex flex-col gap-1">
-      <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg pr-1 pl-1.5 hover:bg-state-1">
-        <FoldSlot />
-        <Icon aria-hidden className={cn("size-3.5 shrink-0", warn ? "text-wait-ink" : "text-tertiary")} />
-        <h3 id={id} className="shrink-0 text-ui font-semibold">
-          {title}
+    <Collapsible
+      open={fold.open}
+      onOpenChange={fold.onOpenChange}
+      render={<section aria-labelledby={id} />}
+      className="mt-2 flex flex-col"
+    >
+      <div className="relative flex h-8 min-w-0 items-center gap-1.5 rounded-lg pr-1 pl-1.5 hover:bg-state-1">
+        <h3 className="flex min-w-0 shrink-0">
+          <CollapsibleTrigger className="flex min-w-0 items-center gap-1.5 text-left text-ui font-semibold after:absolute after:inset-0 after:rounded-lg">
+            <span className="grid w-4.5 shrink-0 place-items-center text-tertiary">
+              <FoldChevron open={fold.open} />
+            </span>
+            <Icon aria-hidden className={cn("size-3.5 shrink-0", warn ? "text-wait-ink" : "text-tertiary")} />
+            <span id={id} className="truncate">
+              {title}
+            </span>
+          </CollapsibleTrigger>
         </h3>
         <span className="ml-0.5 min-w-0 truncate text-caption text-muted-foreground">{note}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-0.5">{action}</span>
+        {/* 머리 줄을 덮은 트리거의 누르는 자리 위에 선다(`relative` — 같은 쌓임에서 뒤에 그려진다). */}
+        <span className="relative ml-auto flex shrink-0 items-center gap-0.5">{action}</span>
       </div>
-      {children}
-    </section>
+      <CollapsibleContent variant="fold">
+        {/* 머리와 몸 사이 4px도 접힌다 — 패널 밖에 두면 접힌 머리 밑에 틈이 남는다. */}
+        <div className="pt-1">{children}</div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -102,8 +144,12 @@ const KIND: Record<RowKind, string> = {
  * 조각(이름 · 상태 · 버튼)을 이어 읽으면 「zsh 조용함 2h 이동 닫기」가 된다.
  *
  * 들여쓰기는 깊이마다 18px **안내선** 한 칸이다 — 위 줄의 셰브론 자리 가운데에서 내려오는 1px 선이라 어느 줄 밑인지가 읽힌다. 이름
- * 앞의 18px은 셰브론 자리다(`FoldSlot`). 그 뒤가 이름 칸의 내용(`children` — 글리프 · 이름 · 수 · 상태)이다. 숫자 칸과 동작 칸은 열의
- * 격자에 선다(`COLUMNS`).
+ * 앞의 18px은 셰브론 자리다. 그 뒤가 이름 칸의 내용(`children` — 글리프 · 이름 · 수 · 상태)이다. 숫자 칸과 동작 칸은 열의 격자에
+ * 선다(`COLUMNS`).
+ *
+ * **자식이 있는 줄은 접힌다**(ui-refresh 결정 28, `fold`). 그 자리에 셰브론 버튼이 서고(Tab으로 닿는다 — 이름은 「<줄 이름> 접기」 ·
+ * 「<줄 이름> 펼치기」), 줄이 `aria-expanded`를 단다. 줄의 접근성 이름(한 문장)은 그대로다. 밑의 줄을 그리지 않는 것은 부르는 쪽이다
+ * — 줄은 평평한 채다(S58, 중첩 `group`이 없다). 자식이 없는 줄은 같은 18px을 비운다.
  *
  * **프로세스 줄의 동작([끝내기] · ⋯)은 손이 닿을 때만 보인다**(ui-refresh 「같은 날 더 정한 것」) — 줄에 포인터가 있거나 키보드
  * 포커스가 줄 안에 있거나 그 줄의 메뉴가 열려 있을 때다. 불투명도만 바꾼다: 자리는 늘 차지해 숫자 칸이 흔들리지 않고, 숨은 동안에도
@@ -120,6 +166,7 @@ export function TreeRow({
   metrics,
   ports = true,
   share = null,
+  fold,
   actions,
   className,
   children,
@@ -134,6 +181,8 @@ export function TreeRow({
   ports?: boolean;
   /** 메모리 칸 앞 막대의 몫(0–100, `memoryShare`) — 작업 줄만 싣는다. 없으면 막대를 안 그린다. */
   share?: number | null;
+  /** 자식이 있는 줄의 여닫음. 없으면 접을 것이 없는 줄이다. */
+  fold?: RowFold;
   actions?: React.ReactNode;
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
@@ -141,6 +190,7 @@ export function TreeRow({
       role="treeitem"
       aria-level={level}
       aria-label={label}
+      aria-expanded={fold?.open}
       className={cn("group/row", COLUMNS, "items-center rounded-lg hover:bg-state-2", KIND[kind], className)}
       {...rest}
     >
@@ -148,7 +198,7 @@ export function TreeRow({
         {Array.from({ length: level - 1 }, (_, at) => (
           <Guide key={at} />
         ))}
-        <FoldSlot />
+        {fold ? <FoldButton fold={fold} /> : <FoldSlot />}
         {children}
       </span>
       {metrics ? (
@@ -170,6 +220,23 @@ export function TreeRow({
         {actions}
       </span>
     </div>
+  );
+}
+
+/**
+ * 줄의 셰브론 버튼 — 셰브론 자리(18px)를 채운다. hover는 줄 끝 글자 버튼과 같은 한 단 짙은 겹이다(`RowButton` — 줄의 hover 위에서
+ * 갈려 보이게). 이름이 지금 할 일(접기 · 펼치기)을 말하므로 버튼에는 `aria-expanded`를 안 단다 — 펼침은 줄이 말한다.
+ */
+function FoldButton({ fold }: { fold: RowFold }) {
+  return (
+    <button
+      type="button"
+      aria-label={`${fold.name} ${fold.open ? "접기" : "펼치기"}`}
+      onClick={fold.onToggle}
+      className="grid size-4.5 shrink-0 place-items-center rounded-inner text-tertiary transition-colors hover:bg-state-3 hover:text-foreground"
+    >
+      <FoldChevron open={fold.open} />
+    </button>
   );
 }
 

@@ -420,6 +420,12 @@ test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, �
   const log = 묶음(page, "정리 기록");
   await expect(log).toBeVisible();
   await expect(log.getByText("기록 3건", { exact: true })).toBeVisible();
+  // 구획은 접혀 연다 — 참고용이다(ui-refresh 결정 28). 머리와 수는 서고 사건 줄은 안 그려진다. 머리를 눌러 편다.
+  const 머리 = 버튼(log, "정리 기록");
+  await expect(머리).toHaveAttribute("aria-expanded", "false");
+  await expect(log.getByRole("list", { name: "정리 기록", exact: true })).toHaveCount(0);
+  await 머리.click();
+  await expect(머리).toHaveAttribute("aria-expanded", "true");
 
   const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
   // 차례가 기록의 차례다 — 새것부터. 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다. 사건마다 목록의 한 항목이다.
@@ -464,6 +470,8 @@ test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 
   await installFixtureBackend(page, { processes_cleanup_log: 기록 });
   await page.goto("/processes");
   const log = 묶음(page, "정리 기록");
+  // 구획은 접혀 연다(ui-refresh 결정 28) — 먼저 편다.
+  await 버튼(log, "정리 기록").click();
   const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
   await expect(사건들).toHaveCount(3);
   const 시작정리 = 버튼(log, eventLabel(기록[1]));

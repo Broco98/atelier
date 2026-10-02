@@ -1,5 +1,5 @@
 import { sumMetrics } from "./metrics";
-import { processCount, processTree, withMemory, type ProcessNode } from "./process-tree";
+import { processCount, processTree, strayTree, withMemory, type ProcessNode } from "./process-tree";
 import type { OtherInstance, ProcessIdentity, ProcessMetrics, ProcessSnapshot } from "./types";
 
 // **`Processes`의 다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31). 다른 인스턴스를 실행마다
@@ -73,6 +73,27 @@ export function instanceGroups(snapshot: ProcessSnapshot): InstanceGroup[] {
   const unclaimed = Object.keys(byKey).filter((key) => !claimed.has(key));
   const rest = group(null, buildLabel({ build: null, version: null }), unclaimed);
   return rest.nodes.length > 0 ? [...groups, rest] : groups;
+}
+
+/**
+ * **셸 묶음 밑의 네 묶음**(티켓 31) — 확정 고아 · 출처 불명은 갈래마다 한 트리(`strayTree`), 다른 인스턴스는 실행마다
+ * (`instanceGroups`), 예외는 그 트리다. 빈 묶음은 빈 배열이다 — 그 구획은 안 선다. 화면이 한 번 펴서 구획마다 나눠 준다: 어느 구획이
+ * 섰는지가 접힘의 기억에도 든다(ui-refresh 결정 28 — 비었다가 새로 선 구획은 처음 상태로 선다).
+ */
+export interface Strays {
+  confirmed: ProcessNode[];
+  unknown: ProcessNode[];
+  instances: InstanceGroup[];
+  exceptions: ProcessNode[];
+}
+
+export function straysOf(snapshot: ProcessSnapshot): Strays {
+  return {
+    confirmed: strayTree(snapshot.verdict.orphans.confirmed),
+    unknown: strayTree(snapshot.verdict.orphans.unknown),
+    instances: instanceGroups(snapshot),
+    exceptions: processTree(snapshot.verdict.exceptions),
+  };
 }
 
 /** 실행 줄의 접근성 이름 — 「빌드, 프로세스 N개, 메모리」 한 문장(S58). 메모리는 그 실행의 합이다. */
