@@ -142,15 +142,53 @@ function ListBox({ slot }: { slot: SideSlot }) {
 }
 
 /**
- * 오른쪽 패널 칸의 자리 — 바깥 상자(두 번째 `<aside>`, 끌기 영역, 카드 쪽 틈을 안쪽 여백으로 든다)와 카드 하나. 접힘 트랜지션 ·
- * 틈 가운데의 손잡이 · 폭 저장은 이 자리를 처음 쓰는 작업 화면이 채운다(판 04 티켓 03).
+ * 오른쪽 작업 패널 칸(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 바깥 상자가 두 번째 `<aside>`이고(e2e `tab-row-floor`가 `aside`
+ * 순서를 잰다) **폭이 「왼쪽 틈 + 카드」다** — 접히면 둘이 함께 0이 되어 문서 카드가 오른쪽 틈 끝까지 넓어진다. 틈은 안쪽 열의
+ * 왼쪽 여백이고, 손잡이는 그 틈의 가운데에 선다(여전히 `aside`의 자손이다). 목록 칸과 같은 짜임이고 다른 것은 줄어드는 몫이다.
+ *
+ * 폭은 **카드의 폭**이다(`--work-panel-width` — 목록 칸의 `--panel-width`와 이름을 가른 것은 같은 이름이 두 상자에서 다른 값을
+ * 들면 어느 쪽이 이겼는지가 상속 자리에 달려서다). 틈은 그 위에 더해 그린다.
+ *
+ * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--work-panel-min`, 폭 훅이 받은 값)까지 문서 카드에 자리를
+ * 내주고, 문서 카드에는 **그 최소 폭만큼은 남긴다**(`max-width`) — 패널이 탭 줄 아래 카드 줄로 내려와 탭 줄과 폭을 다투지 않게
+ * 되면서, 한때 탭 줄의 바닥이 문서 열에 남겨 주던 자리를 이 상한이 대신 남긴다. 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은
+ * 그대로라 창을 넓히면 돌아온다.
+ *
+ * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 줄의
+ * min-content에 들어가게 하던 장치다. 카드 줄은 이제 제 폭을 바깥에 안 알리지만(`TAB_ROW_COLUMN`) 칸의 성질로 그대로 둔다 —
+ * 넓은 트리 이름이 칸의 폭을 정하지 않는다. 최소 폭은 **펼 때만** 트랜지션한다 — 펴는 순간 곧장 서면 0에서 최소 폭으로 튄 뒤
+ * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바 · 목록 칸과 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
+ * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
  */
 function PanelBox({ slot }: { slot: SideSlot }) {
+  const { open, size, label, children } = slot;
   return (
-    <aside data-tauri-drag-region hidden={!slot.open} className="flex shrink-0 pl-(--gap)">
-      <Card label={slot.label} style={{ width: slot.size.width }}>
-        {slot.children}
-      </Card>
+    <aside
+      data-tauri-drag-region
+      style={{ "--work-panel-width": `${size.width}px`, "--work-panel-min": `${size.min}px` } as CSSProperties}
+      className={cn(
+        "relative flex overflow-hidden contain-inline-size",
+        !size.dragging && PANEL_MOTION,
+        !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
+        open
+          ? "max-w-[calc(100%-var(--work-panel-min))] basis-[calc(var(--work-panel-width)+var(--gap))] min-w-[calc(var(--work-panel-min)+var(--gap))]"
+          : "basis-0 min-w-0",
+      )}
+    >
+      {/* 접히는 동안 글이 되흐르지 않게 안쪽은 고정 폭이고, **펴진 뒤에만** 바깥 폭을 상한으로 받는다 — 좁게 선 칸에서 카드
+          오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass`에 있다. */}
+      <div
+        data-tauri-drag-region
+        className={cn(
+          "flex h-full w-[calc(var(--work-panel-width)+var(--gap))] shrink-0 pl-(--gap)",
+          foldingInnerClass(open, "max-w-full"),
+        )}
+      >
+        <Card label={label} className="flex-1">
+          {children}
+        </Card>
+      </div>
+      {open && <ResizeHandle control={size} seat="gap" />}
     </aside>
   );
 }
@@ -264,17 +302,21 @@ function CardHead({
   meta,
   end,
   children,
+  ...marks
 }: {
   lead?: ReactNode;
   /** 뿌리부터 지금 선 곳까지(`Crumbs`). 마지막이 지금 선 곳이다. */
   crumbs?: readonly string[];
   meta?: ReactNode;
   end?: ReactNode;
-  /** 캡슐 자리에 서는 다른 것 — 목록 카드 머리의 검색칸. */
+  /** 캡슐 자리에 서는 다른 것 — 목록 카드 머리의 검색칸 · 작업 패널의 탭. */
   children?: ReactNode;
+  /** 검사가 머리를 정체성으로 집는 표식(분할 열 머리의 `data-column` 등) — 모양(클래스)으로 집으면 규격을 손보는 날 샌다. */
+  [mark: `data-${string}`]: string | undefined;
 }) {
   return (
     <div
+      {...marks}
       data-slot="card-head"
       className="flex h-(--card-head) shrink-0 items-center gap-1.5 px-[calc(var(--card-pad)-14px)]"
     >

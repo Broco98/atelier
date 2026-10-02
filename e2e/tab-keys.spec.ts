@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness";
 
@@ -128,9 +128,8 @@ test("탭을 누르면 본문이 그 칸의 것으로 바뀐다", async ({ page 
 // 패널이 이미 마운트돼 있어 바로 바뀌어도 싸다). 안 보이는 패널도 마운트된 채라(`keepMounted`) `spec`에서 접어 둔
 // 폴더가 `info`에 다녀와도 접혀 있다.
 //
-// 탭 줄은 창을 끄는 자리다. Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 탭을 감싼 목록(tablist)에
-// 속성이 없으면 탭 사이 틈이 끌기 영역에서 빠진다. 그래서 `elementFromPoint`가 돌려준 요소 자신을 잰다(조상에
-// 있는 것은 Tauri에게 없는 것이다). 문서는 `specWork`의 트리다 — 폴더 「증거」가 있다.
+// 탭 줄은 이제 **창을 끄는 자리가 아니다** — 패널 카드 안의 카드 머리라서다(ui-refresh 결정 4 · 5). 창을 끄는 자리는 바탕 줄과
+// 회색 틈이 맡고, 그것은 `e2e/frame.spec.ts`가 잰다. 문서는 `specWork`의 트리다 — 폴더 「증거」가 있다.
 
 const 패널탭 = (page: Page, name: "spec" | "info") => page.getByRole("tab", { name, exact: true });
 /** 켜진 패널만 잡힌다 — 숨은 패널은 `hidden`이라 접근성 트리에 없다. */
@@ -183,34 +182,5 @@ test("`spec`에서 접은 폴더는 `info`에 다녀와도 접혀 있다 — 안
 
   await 패널탭(page, "spec").click();
   await expect(folder).toHaveAttribute("aria-expanded", "false");
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("패널 탭 줄의 빈 자리와 탭 사이 틈은 창을 끄는 자리다 — 그 자리의 요소 자신에 끌기 속성이 있다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${specWork.slug}`);
-  const boxOf = async (target: Locator) => {
-    const box = await target.boundingBox();
-    if (!box) throw new Error("상자를 못 읽었다");
-    return box;
-  };
-  const spec = await boxOf(패널탭(page, "spec"));
-  const info = await boxOf(패널탭(page, "info"));
-  // 탭 줄 오른쪽의 문서/원문 토글 — 탭과 그 사이가 줄의 빈 자리다.
-  const source = await boxOf(page.getByRole("button", { name: "문서로 보기", exact: true }));
-  const draggable = (x: number, y: number) =>
-    page.evaluate(
-      ([px, py]) => document.elementFromPoint(px, py)?.hasAttribute("data-tauri-drag-region") ?? null,
-      [x, y],
-    );
-  const y = spec.y + spec.height / 2;
-
-  // 앵커: 두 탭 사이에 틈이 있고, info 뒤에 빈 자리가 있다 — 없으면 아래 두 점이 탭 위에 떨어진다.
-  expect(info.x - (spec.x + spec.width)).toBeGreaterThan(1);
-  expect(source.x - (info.x + info.width)).toBeGreaterThan(1);
-  expect(await draggable((spec.x + spec.width + info.x) / 2, y), "탭 사이 틈").toBe(true);
-  expect(await draggable((info.x + info.width + source.x) / 2, y), "줄의 빈 자리").toBe(true);
-  // 대조: 탭 위는 누르는 자리다 — 줄 전체가 끌기 영역이 된 것과 가른다.
-  expect(await draggable(spec.x + spec.width / 2, y), "탭 위").toBe(false);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

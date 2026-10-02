@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { SourceToggle } from "@/components/ui/SourceToggle";
+import { CardHead } from "@/components/shell/Frame";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Hint } from "@/components/ui/tooltip";
-import { foldingInnerClass, PANEL_MOTION } from "@/components/shell/panel-layout";
-import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
@@ -18,26 +15,12 @@ interface WorkPanelProps {
   onSelectFile: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
   onCopy: (text: string) => void;
-  // 탭 바 오른쪽 끝의 ×가 부른다. 헤더의 여는 아이콘과 짝이라 여는 길과 닫는 길이
+  // 패널 머리 오른쪽 끝의 ×가 부른다. 바탕 줄의 여는 아이콘과 짝이라 여는 길과 닫는 길이
   // 각각 하나다 — 접기 단축키(⌘Enter)와 같은 state를 뒤집는다.
   onClose: () => void;
   // 정보 탭의 프로젝트 이름을 누르면 그 프로젝트 상세로 간다.
   onOpenProject: (slug: string) => void;
-  // `</>`가 켜져 있는가 — **사람이 정한 값**이지 본문이 지금 무엇이냐가 아니다.
-  // 그 둘은 토글을 무시하는 파일에서 갈린다 (아래 sourceLocked — 어느 파일이 그런지는
-  // `doc-refs`의 표가 든다).
-  //
-  // **이 패널은 그 상태를 소유하지 않는다.** 바꾸는 대상이 본문이라 주인은 화면(WorksPage)이고
-  // 여기에는 버튼만 산다 (결정 6). 이 패널이 본문의 형제로 올라오면서(결정 49) 둘의 공통
-  // 조상이 화면뿐이 됐다. 그래서 패널을 닫으면 토글이 함께 사라져 그때의 보기가 양방향으로
-  // 잠긴다 — 알고 받아들인 대가이고, 되돌리는 길은 패널을 다시 여는 것이다.
-  sourceOn: boolean;
-  // 토글이 잠겼는가. 본문이 이 토글을 안 따르는 파일(그림, 그리고 md도 html도 아닌 것)은
-  // 켜든 끄든 같은 것이 서므로 — 어느 파일이 그런지는 `doc-refs`의 표가 든다 — 살아 있으면서
-  // 아무 일도 하지 않는 버튼이 되지 않게 흐리고 누를 수 없게 한다 (결정 21).
-  sourceLocked: boolean;
-  onToggleSource: () => void;
-  // 펼쳐져 있는가. 접힘은 폭 트랜지션이라 패널은 언제나 마운트된 채다.
+  // 펼쳐져 있는가. 접힘은 폭 트랜지션이라(공용 틀의 패널 칸) 패널은 언제나 마운트된 채다.
   open: boolean;
 }
 
@@ -46,6 +29,9 @@ type PanelTab = "spec" | "info";
 // 작업 패널 — `spec | info` 두 탭. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가
 // **사이드바 가지로 갔다**(결정 71). 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가
 // 화면마다 갈린다. PR 연동 카드는 v2.
+//
+// **카드 안만 그린다**(ui-refresh 결정 4 · 27). 바깥 상자(두 번째 `aside`) · 카드 · 왼쪽 틈 · 폭 손잡이 · 접힘은 공용 틀(`Frame`)의
+// 패널 칸이 들고, 폭 훅은 화면(`WorksPage`)이 불러 그 칸에 건넨다 — 목록 칸과 같은 나눔이다.
 function WorkPanel({
   work,
   currentFile,
@@ -53,31 +39,15 @@ function WorkPanel({
   onCopy,
   onClose,
   onOpenProject,
-  sourceOn,
-  sourceLocked,
-  onToggleSource,
   open,
 }: WorkPanelProps) {
   const { data: projects } = useProjects();
-  // 화면 오른쪽에 놓인 패널이다 — 핸들이 왼쪽 가장자리에 붙고 왼쪽으로 끌면 넓어진다.
-  // 저장 키는 이 패널 전용이다: 목록 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다.
-  // 기본 폭 330 — 296은 좁았다. 여기 들어오는 것이 **경로와 파일 이름**이라 꼬리가 잘리면
-  // 판·티켓 문서가 서로 구분되지 않는다.
-  //
-  // **이 값은 계산이 아니라 사용자가 끌어서 고른 폭이다** (2026-08-17, 실측 326.38px을
-  // 반올림). 한 번 420으로 올렸다가 사람이 그 자리에서 다시 줄인 값이라, 여기서 폭을
-  // 조정할 때는 계산으로 덮지 말고 같은 방식으로 다시 물어볼 것.
-  //
-  // 참고로 본문이 버티는 폭은 이보다 넉넉하다 — 본문 열은 좌우 거터 48px씩(bodyColumn의
-  // px-12)을 떼고 남는 폭에 글을 앉히므로, 창 1280·사이드바 280에서도 글자 자리가
-  // 1280-280-330-96 = 574px 남는다. 최대 560은 목록 패널 둘과 같은 값이다.
-  const size = useResizableWidth("work-panel-width", 330, 260, 560, "right");
   // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
   // 넘어 살지 않는다"** 는 계약이 그 언마운트에 기대고 있었으므로, 접힐 때 안쪽만 새로
   // 세워 그 일을 대신한다.
   //
-  // **다시 세우는 것은 안쪽뿐이다.** 바깥 aside까지 key로 갈면 새 요소의 첫 계산 스타일이
-  // 이미 w-0·opacity-0이라 트랜지션이 출발할 자리가 없어져 패널이 뚝 끊긴다 —
+  // **다시 세우는 것은 안쪽뿐이다.** 바깥 상자까지 key로 갈면 새 요소의 첫 계산 스타일이
+  // 이미 접힌 폭이라 트랜지션이 출발할 자리가 없어져 패널이 뚝 끊긴다 —
   // CSS 트랜지션은 요소의 초기 스타일에서는 돌지 않는다.
   //
   // 열려 있다가 닫힐 때만 센다. 닫힌 채로 마운트되는 경로(패널을 접어 둔 채 다른 작업으로
@@ -130,170 +100,59 @@ function WorkPanel({
   );
 
   return (
-    // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
-    // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
-    // 떠 있는 카드가 아니라 영역을 차지하는 surface다. **구분은 왼쪽 경계선 하나가 맡는다** —
-    // 표면색은 본문과 같은 bg-background다 (아래 카드 주석). 카드였던 시절에는 bg-panel과
-    // 옅은 경계선이 함께 구분했는데, 컬럼이 되면서 배경이 그 일에서 빠졌다.
-    <aside
-      // 폭은 한 곳에만 적는다 — 바깥이 접히는 폭이고 안쪽이 그 폭으로 버틴다.
-      // 둘이 갈리면 접히는 동안 글이 되흐른다 (목록 패널 둘과 같은 방식).
-      //
-      // 이름이 --panel-width가 아닌 이유는 **상속 충돌 하나**다. 이 패널도 이제 드래그로
-      // 폭이 바뀌니 "저쪽만 드래그해 바꾼 폭을 담는다"는 근거는 더 이상 없다. 남는 이유는
-      // 상속뿐이다 — 같은 이름을 쓰면 어느 쪽이 이겼는지가 위치에 달리게 된다.
-      // 사이드바가 자기 키(--sidebar-width)를 따로 갖는 것과 같은 이유다.
-      style={
-        {
-          "--work-panel-width": `${size.width}px`,
-          "--work-panel-min": `${size.min}px`,
-        } as React.CSSProperties
-      }
-      className={cn(
-        // 좌측 사이드바·목록 패널과 **같은 폭 접기**다: 넘침을 감춘 상자의 폭을 0으로 보내고
-        // 안쪽은 고정 폭을 유지한다. 220ms·--ease-panel도 그쪽과 같은 값을 읽는다.
-        //
-        // 다른 점은 테두리 하나뿐이다. 저쪽은 aside가 구분선을 그려서 접을 때 border-color와
-        // border-r-0까지 함께 보내야 하지만(그 1px이 남으면 폭 바닥이 0이 아니다), 이 패널의
-        // 테두리는 안쪽 카드에 있어 폭과 함께 사라진다. 그래서 트랜지션 목록이 width 하나다.
-        //
-        // translateX로 옆으로 밀어내는 방식은 **이미 실패한 길이다** — 패널이 본문 스크롤
-        // 영역의 형제가 된 뒤로 제 상자 밖 넘침을 문서가 받아, 애니메이션이 도는 동안
-        // 가로 스크롤이 깜빡인다. 다시 시도하지 말 것.
-        //
-        // relative는 폭 조절 핸들이 이 상자의 왼쪽 가장자리를 기준으로 서기 위한 것이다.
-        //
-        // **이 패널은 탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다), 끄는 최소
-        // 폭(`--work-panel-min`, 폭 훅이 받은 값)까지만 준다. 900px 창에서 이 패널이 고정 폭을
-        // 들던 때 탭 줄이 290px을 받아 셸 칸 상자가 0px이 됐다(`panel-layout`의 `TAB_ROW_COLUMN`).
-        // 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
-        //
-        // 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 **행의
-        // min-content에 이 패널이 최소 폭으로만 들어가게** 하려서다. `width`를 적으면 그 값(저장한
-        // 폭)이 min-content로 세어져, 행이 사이드바에 필요 이상의 자리를 요구하고 줄어들 차례를
-        // 이 패널이 아니라 사이드바가 먼저 받는다.
-        //
-        // 최소 폭은 **펼 때만** 트랜지션한다. 펴는 순간 최소 폭이 곧장 서면 패널이 0에서 260으로
-        // 튄 뒤 자란다. 접을 때 트랜지션하면 그 사이 조작 줄에 펼치기 버튼이 먼저 서서 줄이 늘고,
-        // 아직 남은 최소 폭 때문에 모자란 자리를 사이드바가 한 프레임 내줬다 되돌린다(900px 실측).
-        "relative overflow-hidden contain-inline-size",
-        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다 (목록 패널 둘과 같다)
-        !size.dragging && PANEL_MOTION,
-        !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
-        open ? "basis-(--work-panel-width) min-w-(--work-panel-min)" : "basis-0 min-w-0",
-      )}
-    >
-      {/* 폭이 도는 동안 글이 되흐르지 않도록 안쪽은 고정 폭이다.
+    // 패널 카드의 몸이 곧 Tabs의 뿌리다 — 머리와 두 패널이 그 직계 자식으로 선다. 패널은 상자가 없어서(`TabsContent`의
+    // contents) 안의 스크롤 상자가 이 뿌리의 flex 자식으로 남는다(SpecTab 머리말의 계약).
+    //
+    // 어느 탭을 보고 있는지는 주소에 넣지 않는다: 탭을 바꿀 때마다 히스토리가 쌓여 문서 사이 뒤로가기를 묻어버린다. 주소를
+    // 정본으로 삼은 대상은 **문서**이지 훑기 상태가 아니다 (이슈 #25).
+    <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 pb-2">
+      {/* 머리는 카드 머리(48px)다(ui-refresh 결정 5) — 카드 안이라 창 끌기 자리가 아니다(바탕 줄과 회색 틈이 그 일을 한다).
+          탭 바는 카드에 고정되고 세로 스크롤은 각 탭 안에서만 돈다. 아래에 선이 없다 — 카드 머리는 선으로 몸과 갈리지 않는다.
 
-          **다만 선 뒤에는 바깥 폭을 넘지 않는다**(`max-w-full`). 패널이 탭 줄에 자리를 내줘
-          저장한 폭보다 좁게 서면 고정 폭 그대로는 오른쪽(`</>`·`×`)이 잘린다. 그 상한이 접히는
-          동안에도 걸려 있으면 안쪽이 바깥 폭을 따라가며 되흐르므로, **펴진 뒤에만** 건다 — 박자와
-          까닭은 사이드바와 함께 쓰는 `panel-layout`의 `foldingInnerClass`에 있다. 좁게 선 채 펼 때만
-          끝에서 한 번 맞춰진다. */}
-      <div
-        className={cn(
-          "flex h-full w-(--work-panel-width) flex-col",
-          foldingInnerClass(open, "max-w-full"),
-        )}
-      >
-        {/* **떠 있는 카드가 아니라 창 끝에서 끝까지 가는 컬럼이다.** 화면 머리행과 같은 층에
-            서면서 바깥 여백과 둥근 모서리가 설 자리를 잃었다 — 창 위·아래 끝에서 카드가
-            잘린 것처럼 보인다. 본문과의 구분은 왼쪽 경계선 하나가 맡는다 (사이드바와 같은 방식). */}
-        {/* 패널 카드가 곧 Tabs의 뿌리다 — 탭 줄과 두 패널이 카드의 직계 자식으로 선다. 패널은 상자가 없어서
-            (`TabsContent`의 contents) 안의 스크롤 상자가 카드의 flex 자식으로 남는다(SpecTab 머리말의 계약). */}
-        <Tabs
-          value={tab}
-          onValueChange={setTab}
-          className="min-h-0 flex-1 overflow-hidden border-l bg-background pb-2"
-        >
-          {/* 탭 바는 카드에 고정된다 — 세로 스크롤은 각 탭 안에서만 돈다.
-              어느 탭을 보고 있는지는 주소에 넣지 않는다: 탭을 바꿀 때마다 히스토리가 쌓여
-              문서 사이 뒤로가기를 묻어버린다. 주소를 정본으로 삼은 대상은 **문서**이지 훑기
-              상태가 아니다 (이슈 #25). */}
-          {/* 높이는 **타이틀바 높이를 그대로 읽는다** — 이 행과 화면 브레드크럼이 같은 층에
-              나란히 서므로, 값을 손으로 적으면 그 높이가 바뀔 때 여기만 남아 어긋난다.
-              드래그 영역인 것도 같은 이유다: 이 행이 없으면 창 오른쪽 위 **패널 폭만큼은**
-              창을 끌 수 없다 (PageHeader가 같은 속성을 단다). 여기에 숫자를 적지 않는 것은
-              그 폭이 드래그로 바뀌기 때문이다 — 적으면 다음에 폭이 바뀔 때 이 줄만 낡는다. */}
-          {/* 오른쪽 여백은 **PageHeader와 같은 pr-4다.** 이 행의 ×와 헤더의 여는 버튼은
-              같은 화면에 함께 나오지 않아(하나가 뜨면 다른 하나가 사라진다) 어긋나 있어도
-              나란히 재 볼 수가 없고, 토글할 때 버튼이 튀는 것으로만 보인다. */}
-          <div
-            data-tauri-drag-region
-            className="flex h-(--titlebar-height) shrink-0 items-center gap-1 pl-2 pr-4"
+          탭은 스크린리더에 탭으로 읽히고 ←/→로 옮긴다(결정 9). 옮기면 곧바로 켜진다(S18) — 두 패널이 이미 마운트돼 있어
+          바로 바뀌어도 싸다. 라벨은 소문자 영어다(결정 41) — 탭 줄의 `spec`과 같은 어휘여야 한 층으로 읽힌다. 문장 속
+          한국어는 그대로다(CONTEXT.md).
+
+          문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 왼쪽 문서라 **문서 카드 머리**로 갔다(ui-refresh 판 04). */}
+      <CardHead
+        end={
+          <Hint
+            text="작업 패널 접기"
+            announce="name"
+            type="button"
+            onClick={onClose}
+            className="icon-button-quiet text-tertiary"
           >
-            {/* 스크린리더에 탭으로 읽히고 ←/→로 옮긴다(결정 9). 옮기면 곧바로 켜진다(S18) — 두 패널이 이미
-                마운트돼 있어 바로 바뀌어도 싸다.
-
-                **목록에도 끌기 속성을 단다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 —
-                탭을 감싼 이 상자에 없으면 탭 사이 틈이 창 끌기에서 빠진다. 목록이 내용 폭만 차지해서 그 오른쪽의
-                빈 자리는 줄(위 div)의 것이다.
-
-                라벨은 소문자 영어다(결정 41) — 사이드바 가지의 `spec`·`terminal`과 같은
-                어휘여야 한 층으로 읽힌다. 문장 속 한국어는 그대로다(CONTEXT.md). */}
-            <TabsList data-tauri-drag-region activateOnFocus>
-              <TabsTrigger value="spec">spec</TabsTrigger>
-              <TabsTrigger value="info">info</TabsTrigger>
-            </TabsList>
-            {/* 문서/원문 — 이 컨트롤만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
-                두 칸으로 갈린 근거는 SourceToggle 주석에 있다(결정 33). 탭 목록 밖의 형제다 —
-                탭이 아니라 본문을 고르는 것이라 ←/→가 여기로 건너오지 않는다.
-
-                **선 칸은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 토글을 무시하는
-                파일(그림, 그리고 md도 html도 아닌 것)에서 본문이 무엇으로 섰는지까지 켜짐으로
-                그리면, 트리에서 파일을 오갈 때마다 누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다.
-                그 파일들에서 본문이 토글과 **무관하게** 정해지는 것은 `doc-refs`의 표가 든다 —
-                잠김을 말하는 것은 흐림이지 켜짐이 아니다.
-
-                잠김은 흐림과 포인터 차단이 **함께** 간다. 흐리게만 하면 눌리는데 아무 일도
-                일어나지 않는 오늘 그대로이고, 결정 21이 없애려는 것이 바로 그 어긋남이다.
-                왜 잠겼는지를 툴팁으로 말하지 않는다 — 잠긴 칸은 네이티브 `disabled`라 툴팁을 달지 않는다(S23).
-                흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
-            <SourceToggle
-              on={sourceOn}
-              locked={sourceLocked}
-              onChange={onToggleSource}
-              className="ml-auto"
-            />
-            <Hint
-              text="작업 패널 접기"
-              announce="name"
-              type="button"
-              onClick={onClose}
-              className="icon-button-quiet text-tertiary"
-            >
-              <X className="size-4" strokeWidth={2} />
-            </Hint>
-          </div>
-          {/* 머리행 아래에 선이 없다. 이 행은 화면 브레드크럼과 **같은 층**인데 그쪽이
-              "아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다"를 이미
-              정해 뒀다 (PageHeader). 나란히 선 두 행 중 하나만 밑줄을 그으면 그 층이
-              반쪽만 잘린 것처럼 읽힌다. 본문과 패널의 구분은 왼쪽 경계선이 맡는다. */}
-          {/* **보이지 않는 탭도 마운트된 채로 둔다**(`keepMounted`, 결정 9) — 언마운트하면 info를
-              보고 spec으로 돌아왔을 때 접어 둔 판·폴더가 도로 펴져 있다. 숨은 패널은 Base UI가
-              `hidden`과 `inert`로 가린다. */}
-          <TabsContent value="spec" keepMounted>
-            <SpecTab
-              key={treeGeneration}
-              items={work.specTree.items}
-              current={currentFile}
-              onSelect={onSelectFile}
-              onCopy={(path) => onCopy(specRef(work.slug, path))}
-            />
-          </TabsContent>
-          <TabsContent value="info" keepMounted>
-            <WorkInfo
-              work={work}
-              bases={bases}
-              onCopy={onCopy}
-              onOpenProject={onOpenProject}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {open && <ResizeHandle control={size} />}
-    </aside>
+            <X className="size-4" strokeWidth={2} />
+          </Hint>
+        }
+      >
+        <TabsList activateOnFocus>
+          <TabsTrigger value="spec">spec</TabsTrigger>
+          <TabsTrigger value="info">info</TabsTrigger>
+        </TabsList>
+      </CardHead>
+      {/* **보이지 않는 탭도 마운트된 채로 둔다**(`keepMounted`, 결정 9) — 언마운트하면 info를
+          보고 spec으로 돌아왔을 때 접어 둔 판·폴더가 도로 펴져 있다. 숨은 패널은 Base UI가
+          `hidden`과 `inert`로 가린다. */}
+      <TabsContent value="spec" keepMounted>
+        <SpecTab
+          key={treeGeneration}
+          items={work.specTree.items}
+          current={currentFile}
+          onSelect={onSelectFile}
+          onCopy={(path) => onCopy(specRef(work.slug, path))}
+        />
+      </TabsContent>
+      <TabsContent value="info" keepMounted>
+        <WorkInfo
+          work={work}
+          bases={bases}
+          onCopy={onCopy}
+          onOpenProject={onOpenProject}
+        />
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -304,8 +163,8 @@ function WorkPanel({
 // 기준 `overview.md` 다음 자리에 최신이 위로 선다. 레이아웃이 물러섰어도 여기서는 말하지 않는다.
 // 트리는 이미 내장본으로 갈려 왔고, 알리는 곳은 설정 페이지다(spec 레이아웃 구현 스펙 4절).
 //
-// **돌려주는 스크롤 영역이 패널 카드의 직계 flex 자식이어야 한다** — 그것이 계약이다.
-// 탭 바는 카드에 고정되고 트리만 세로로 스크롤한다. 한 겹 감싸면 flex-1이 카드가 아니라
+// **돌려주는 스크롤 영역이 패널 몸(Tabs 뿌리)의 직계 flex 자식이어야 한다** — 그것이 계약이다.
+// 탭 바는 카드에 고정되고 트리만 세로로 스크롤한다. 한 겹 감싸면 flex-1이 패널 몸이 아니라
 // 그 껍데기를 기준으로 잡혀 경계가 옮겨가고, 카드의 넘침 감춤에 트리가 잘린다.
 // 탭 패널(`TabsContent`, `tabs.tsx`)이 제 상자 없이(display:contents) 서는 이유가 그것이다.
 function SpecTab({

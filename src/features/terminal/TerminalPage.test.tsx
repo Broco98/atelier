@@ -60,7 +60,7 @@ describe("최상위 터미널의 머리행", () => {
     terminalStore.setState(() => seed(2, TOP).state);
     const markup = html(true);
     expect(kindsOf(markup)).toEqual(["shell", "shell", "new"]);
-    // 머리행이 **하나뿐이다** — 브레드크럼(`PageHeader`)이 남아 있으면 층이 둘이 되고,
+    // 머리행이 **하나뿐이다** — 브레드크럼 머리가 남아 있으면 층이 둘이 되고,
     // 창을 끄는 자리와 신호등 회피 여백도 둘로 갈린다.
     expect(markup.split("<header").length - 1).toBe(1);
   });
@@ -107,7 +107,7 @@ describe("최상위 터미널의 머리행", () => {
   });
 
   it("창을 끌 수 있다", () => {
-    // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — `PageHeader`가 지고 있던 몫을
+    // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — 옛 브레드크럼 머리가 지고 있던 몫을
     // 바탕 줄(`Frame`의 `TitleBar`)이 그대로 물려받는다.
     terminalStore.setState(() => seed(1, TOP).state);
     expect(headerTag(html(true))).toContain("data-tauri-drag-region");

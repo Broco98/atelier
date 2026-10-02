@@ -61,3 +61,12 @@ export async function loadTerminalSettings(): Promise<void> {
 export function useShellBackground(): string | undefined {
   return useStore(terminalSettingsStore, (settings) => terminalThemeFor(terminalLook(settings).theme).background);
 }
+
+/**
+ * 지금 설정으로 셸이 쓰는 글자색 — 위 바탕색의 짝이다. 분할의 터미널 열 머리(36px, 터미널 카드 바탕 위)가 이것으로 셸 이름과
+ * `×`를 칠한다 — 앱 토큰은 흰 바탕을 위한 값이라 어두운 테마의 카드 위에서 묻히고, 셸과 머리가 다른 글자색이면 한 카드가 둘로
+ * 읽힌다. 정본은 같은 테마(`terminal-theme.ts`)다.
+ */
+export function useShellForeground(): string | undefined {
+  return useStore(terminalSettingsStore, (settings) => terminalThemeFor(terminalLook(settings).theme).foreground);
+}

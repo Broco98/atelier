@@ -7,9 +7,8 @@ import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 
-// 이 패널은 화면 **오른쪽**에 있어 핸들이 왼쪽 가장자리에 붙고 끄는 방향의 부호가 반대다.
-// 호출부가 side를 빠뜨리거나 "left"로 적으면 핸들이 패널 건너편으로 가 잡을 곳이 사라지는데,
-// 훅 쪽 테스트는 이 배선을 보지 못한다.
+// 이 컴포넌트는 작업 패널 **카드 안**(머리의 탭 · ×와 두 탭의 몸)을 그린다. 바깥 상자(두 번째 `aside`) · 카드 · 틈 · 폭
+// 손잡이 · 접힘은 공용 틀의 패널 칸이 들어(ui-refresh 결정 27) 그 단언은 화면을 통째로 그리는 `WorksPage.test.tsx`에 있다.
 //
 // WorkPanel은 프로젝트 목록을 스스로 조회해 **정보 탭에 값으로 내려준다.** 그래서 여기가
 // 로딩·미등록·등록됨 셋을 가르는 유일한 자리다 — 정보 탭 본문은 순수 표현이라 받은 prop만
@@ -18,24 +17,13 @@ import { specDocs, workFixture } from "./work-fixture";
 // **로딩 중 값은 빈 배열이 아니라 `undefined`다.** 그 둘이 같아지면(`= []` 기본값) 목록이
 // 오기 전과 등록이 사라진 뒤가 구분되지 않아, 정상 등록된 프로젝트에도 "알 수 없다"가
 // 스친다. 아래 테스트 넷이 그 갈림을 고정한다.
-//
-// 폭은 localStorage에서 읽어 온다.
 
 const work: WorkView = workFixture(specDocs(["overview.md"]));
 
 // projects를 넘기지 않으면 조회가 **pending 그대로다** — 정적 렌더는 이펙트를 돌리지 않아
 // 요청이 나가지 않는다. 값을 넘기면 캐시에서 그대로 읽힌다.
-//
-// source는 소스 토글의 상태다. 이 패널은 그것을 소유하지 않고 **보여주기만** 하므로
-// 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 화면(WorksPage) 쪽 계약이다.
-// on은 사람이 정한 켜짐이고, locked는 이 파일에서 토글이 먹지 않는다는 뜻이다. **둘은 독립이다.**
 
-function render(
-  open: boolean,
-  override: Partial<WorkView> = {},
-  projects?: ProjectView[],
-  source: { on: boolean; locked: boolean } = { on: false, locked: false },
-): string {
+function render(open: boolean, override: Partial<WorkView> = {}, projects?: ProjectView[]): string {
   const client = new QueryClient();
   if (projects !== undefined) client.setQueryData(projectsQuery().queryKey, projects);
   return renderToStaticMarkup(
@@ -47,9 +35,6 @@ function render(
         onCopy={() => {}}
         onClose={() => {}}
         onOpenProject={() => {}}
-        sourceOn={source.on}
-        sourceLocked={source.locked}
-        onToggleSource={() => {}}
         open={open}
       />
     </QueryClientProvider>,
@@ -93,76 +78,6 @@ function stubEmptyStorage() {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
 }
 
-describe("WorkPanel 폭 조절", () => {
-  beforeEach(stubEmptyStorage);
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("펼쳐져 있으면 왼쪽 가장자리에 핸들이 선다", () => {
-    const markup = render(true);
-    expect(markup).toMatch(/cursor-col-resize/);
-    // 핸들과 심 라인 둘 다 왼쪽에 붙어야 한다 — 오른쪽이면 패널 건너편이다.
-    // 끝을 막는 이유: `left-0`은 `left-0.5`의 앞머리라, 이 머리행 어딘가에 0.5짜리 붙임이
-    // 하나 생기면(소스 토글의 미끄러지는 칩이 그랬다) 세는 수가 저 혼자 늘어난다.
-    expect(markup.match(/left-0(?![.\d])/g)).toHaveLength(2);
-    // 핸들은 absolute다. 이 상자가 기준이 아니면 조상 어딘가를 기준으로 서서
-    // 화면 엉뚱한 곳에 붙는데, 마크업만 보면 멀쩡하다.
-    expect(markup).toMatch(/<aside [^>]*class="[^"]*\brelative\b/);
-  });
-
-  it("폭을 다른 패널과 따로 기억한다", () => {
-    const asked: string[] = [];
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => {
-        asked.push(key);
-        return null;
-      },
-      setItem: () => {},
-    });
-    render(true);
-    // 사이드바·목록 패널의 키를 건드리면 폭 범위가 다른 둘이 서로를 덮는다
-    expect(asked).not.toHaveLength(0);
-    expect(asked).not.toContain("sidebar-width");
-    expect(asked).not.toContain("panel-width");
-    expect(asked).not.toContain("archive-panel-width");
-  });
-
-  it("접혀 있으면 핸들이 없다", () => {
-    expect(render(false)).not.toMatch(/cursor-col-resize/);
-  });
-
-  it("기본 폭 330으로 서고, 바깥과 안쪽이 같은 폭을 읽는다", () => {
-    const markup = render(true);
-    expect(markup).toMatch(/--work-panel-width:\s*330px/);
-    // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다 — 핸들도 서고
-    // 커서도 뜨는데 끌어도 1px도 안 움직인다. 바깥은 접히는 폭이고 안쪽은 그 폭으로
-    // 버티는 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다 — 바깥은
-    // flex 기준(`basis`)으로, 안쪽은 폭으로 읽는다(바깥이 탭 줄에 자리를 내줄 수 있어야 해서다).
-    expect(markup.match(/basis-\(--work-panel-width\)/g)).toHaveLength(1);
-    expect(markup.match(/ w-\(--work-panel-width\)/g)).toHaveLength(1);
-  });
-
-  it("줄어들어도 끄는 최소 폭 아래로는 안 준다 — 그 수는 폭 훅이 정한 것 하나다", () => {
-    // 창이 좁으면 이 패널이 탭 줄에 자리를 내준다(`TAB_ROW_COLUMN`). 그 바닥이 끄는 최소 폭과
-    // 갈리면 끌어서는 못 만드는 폭으로 선다 — 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다.
-    const markup = render(true);
-    expect(markup).toMatch(/--work-panel-min:\s*260px/);
-    // 뿌리 태그를 먼저 집는다 — 못 집으면 실패한다. 없는 태그에 대한 「shrink-0이 없다」는 늘 참이다.
-    const root = /<aside[^>]*>/.exec(markup)?.[0];
-    if (!root) throw new Error("패널 aside가 없다");
-    expect(root).toContain("min-w-(--work-panel-min)");
-    expect(root).not.toContain("shrink-0");
-  });
-
-  it("지난번에 바꾼 폭으로 다시 선다", () => {
-    // **기본 폭과 다른 값이어야 한다.** 같으면 저장값을 통째로 무시해도 이 검사가 초록이라
-    // 아무것도 지키지 못한다 (기본 폭을 296에서 420으로 올릴 때 실제로 그렇게 될 뻔했다).
-    vi.stubGlobal("localStorage", { getItem: () => "500", setItem: () => {} });
-    expect(render(true)).toMatch(/--work-panel-width:\s*500px/);
-  });
-});
-
 // 탭 전환 자체(클릭)는 여기서 볼 수 없다 — 이 seam은 정적 마크업이라 이벤트가 돌지 않는다.
 // 대신 **첫 화면의 구조**를 못 박는다: 탭 바가 서 있는가, 세 탭이 함께 마운트돼 있는가,
 // 스크롤 경계가 여전히 패널 카드에 있는가.
@@ -202,7 +117,7 @@ describe("WorkPanel 두 탭", () => {
   });
 
   it("탭 규격이 헤더 뷰 탭과 같은 가족이다", () => {
-    // 이 탭과 헤더의 `spec` 뷰 탭은 **같은 44px 층에 24px 간격으로** 서고, 글자도 켜짐도
+    // 이 탭과 탭 줄의 `spec` 칸은 한 화면에서 「무엇을 볼까」를 고르는 한 가족이라 글자도 켜짐도
     // 같다. 정본이 둘의 반지름·글자 크기·굵기를 맞추고 높이만 2px 낮춘 이유가 그것이다.
     // 처음에는 없어진 헤더 [소스] 토글의 규격(h-6 · radius 8 · 12.5px)을 물려받고 있었는데,
     // 그것은 **토글의 규격이지 탭의 규격이 아니다.**
@@ -374,142 +289,25 @@ describe("WorkPanel spec 탭", () => {
   });
 });
 
-// `</>`는 **왼쪽 본문**을 바꾸는데 오른쪽 패널 머리행에 앉는다 (결정 6). 그래서 이 seam이
-// 보는 것은 "무엇을 바꾸는가"가 아니라 **버튼이 받은 두 값을 그대로 그리는가**다 —
-// 본문과 켜짐이 같은 식에서 나오는지는 화면(WorksPage) 쪽에서 본다.
+// 문서/원문 전환은 **이 패널에 없다**(ui-refresh 판 04) — 바꾸는 것이 왼쪽 문서라 문서 카드 머리로 갔다. 한때 이 패널 머리행에
+// 앉아 「본문을 바꾸는 유일한 컨트롤」이었는데, 그것이 남아 있으면 같은 일을 하는 버튼이 한 화면에 둘이 된다. 문서 카드 머리
+// 쪽 단언은 `WorksPage.test.tsx`에, 두 칸이 받은 값을 그대로 그리는가는 부품의 검사(`SourceToggle.test.tsx`)에 있다.
 describe("WorkPanel 소스 토글", () => {
   beforeEach(stubEmptyStorage);
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  const LABEL = 'aria-label="원문 보기"';
-
-  // 여는 태그만 잘라낸다 — 클래스와 속성을 함께 봐야 "꺼짐 어휘"와 "잠김"이 갈린다
-  function toggle(markup: string): string {
-    return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
-  }
-
-  const DOC_LABEL = 'aria-label="문서로 보기"';
-
-  /** 두 칸을 감싸는 그룹의 여는 태그 — `role="group"`이 그 표식이다(판 4부터 ToggleGroup이 그린다). */
-  function well(markup: string): string {
-    return markup.match(/<div[^>]*role="group"[^>]*>/)?.[0] ?? "";
-  }
-
-  function docTab(markup: string): string {
-    return markup.match(new RegExp(`<button[^>]*${DOC_LABEL}[^>]*>`))?.[0] ?? "";
-  }
-
-  /** 두 칸 사이를 미끄러지는 칩의 여는 태그 — segment-on이 그 표식이다(알약에서는 회색 원이다). */
-  function chip(markup: string): string {
-    return markup.match(/<span[^>]*segment-on[^>]*>/)?.[0] ?? "";
-  }
-
-  /**
-   * 칩이 오른쪽(`</>`) 칸에 서 있는가. 왼쪽은 옮김이 없는 자리다. 알약 칸 26px + 칸 사이 2px이다
-   * (ui-refresh 결정 7의 B — `segment-group.tsx`의 `pill`).
-   */
-  const SLID = "translate-x-[28px]";
-
-  it("탭 바 오른쪽 끝, ×보다 왼쪽에 선다", () => {
+  it("원문 전환이 패널에 없다", () => {
     const markup = render(true);
-    // 자리를 못 박는 이유: 이 컨트롤이 ×보다 오른쪽으로 가면 창을 닫는 버튼이 안쪽으로 밀려
-    // 다른 패널들의 × 위치와 어긋난다. 오른쪽 끝은 창을 닫는 자리다.
-    const source = markup.indexOf(LABEL);
-    const close = markup.indexOf('aria-label="작업 패널 접기"');
-    expect(source).toBeGreaterThan(-1);
-    expect(close).toBeGreaterThan(source);
-    // 순서만으로는 모자라다. 오른쪽 끝으로 밀어내는 것은 ml-auto인데 그것이 ×로 옮겨가면
-    // 둘의 순서는 그대로인 채 컨트롤만 `정보` 옆에 붙는다 — 마크업 순서로는 안 보인다.
-    // 미는 것은 이제 칸이 아니라 **두 칸을 감싼 상자**다(결정 33).
-    expect(well(markup)).toContain("ml-auto");
-    expect(markup.slice(close)).not.toContain("ml-auto");
-    // 글리프는 `</>` 하나뿐이다 — Code(꺾쇠 둘)와 달리 CodeXml만 슬래시를 가진다
-    expect(markup).toMatch(/lucide-code-xml\b/);
-  });
-
-  // 결정 33 — **어느 모드인지가 색이 아니라 자리로 읽힌다.** 두 칸 중 하나만 서 있다.
-  // 이 한 줄이 없으면 둘 다 서거나 둘 다 안 선 판이 「좀 흐리네」로 지나간다.
-  it("두 칸 중 정확히 한 칸만 서 있다", () => {
-    for (const on of [false, true]) {
-      const markup = render(true, {}, undefined, { on, locked: false });
-      // 칩은 하나뿐이라 「둘 다 섰다」는 마크업에서 불가능하다. 남은 질문은 **어느 자리냐**다.
-      expect(chip(markup)).toBeTruthy();
-      expect(chip(markup).includes(SLID)).toBe(on);
-      expect(docTab(markup)).toContain(`aria-pressed="${!on}"`);
-      expect(toggle(markup)).toContain(`aria-pressed="${on}"`);
-    }
-  });
-
-  it("예쁜 보기에서는 `</>` 칸이 안 서 있고 누를 수 있다", () => {
-    const button = toggle(render(true));
-    expect(button).toContain('aria-pressed="false"');
-    expect(button).not.toMatch(/\sdisabled=""/);
-    // 안 선 칸은 **배경을 안 켠다**(결정 31) — 선 칸을 말하는 칩이 회색 원이라 hover 바탕을 얹으면
-    // 서 있는 칸과 구분이 안 된다.
-    expect(button).toContain("tint-hover");
-    expect(button).not.toContain("quiet-hover");
-  });
-
-  it("소스 보기에서는 `</>` 칸이 떠오른다", () => {
-    const markup = render(true, {}, undefined, { on: true, locked: false });
-    const button = toggle(markup);
-    expect(button).toContain('aria-pressed="true"');
-    // 떠오름은 칸이 아니라 그 칸으로 미끄러져 온 칩이 말한다(SourceToggle 주석).
-    expect(chip(markup)).toContain(SLID);
-    // 서 있는 칸에는 hover 규칙이 없다 — 겹치면 유틸리티 정렬 순서가 승자를 정한다
-    // (index.css의 quiet-hover 주석). 눌리기는 한다(누르면 뒤집힌다) — 다만 그 사실을
-    // 말하는 것은 배경이 아니라 **떠올라 있음**이다.
-    expect(button).not.toContain("tint-hover");
-    expect(button).not.toContain("quiet-hover");
-  });
-
-  it("잠기면 흐려지고 눌리지 않는다", () => {
-    // 토글을 무시하는 파일은 켜든 끄든 같은 것이 선다 (결정 6·21). 흐리게만 하고
-    // disabled를 빠뜨리면 눌리는데 아무 일도 없는 오늘 그대로다 — 둘을 함께 본다.
-    const button = toggle(render(true, {}, undefined, { on: false, locked: true }));
-    expect(button).toMatch(/\sdisabled=""/);
-    expect(button).toContain("disabled:pointer-events-none");
-    expect(button).toMatch(/disabled:opacity-\d+/);
-  });
-
-  it("잠김이 켜짐을 만들지 않는다", () => {
-    // 잠김과 켜짐은 **독립이다.** 토글을 무시하는 파일도 본문은 코드뷰이므로 "본문이 소스니까
-    // 켜진 것"으로 그리고 싶어지는데, 그러면 트리에서 토글을 따르는 파일과 무시하는 파일을
-    // 오갈 때마다 누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다. 잠김을 말하는 것은 흐림이지
-    // 켜짐이 아니다.
-    const button = toggle(render(true, {}, undefined, { on: false, locked: true }));
-    expect(button).toContain('aria-pressed="false"');
-    expect(button).not.toContain("toggle-on");
-  });
-
-  it("켜 둔 채 잠기면 켜짐이 유지된다", () => {
-    // 반대 방향도 못 박는다 — 잠김이 켜짐을 **끄지도** 않는다. 사람이 켜 둔 값은
-    // 토글을 무시하는 파일을 스쳐도 그대로여야 다시 md로 돌아왔을 때 소스 보기가 살아 있다.
-    const markup = render(true, {}, undefined, { on: true, locked: true });
-    const button = toggle(markup);
-    expect(button).toContain('aria-pressed="true"');
-    expect(chip(markup)).toContain(SLID);
-    expect(button).toMatch(/\sdisabled=""/);
-    // 칩은 disabled를 못 받는다(버튼이 아니다) — 흐림을 따로 주지 않으면 두 칸이 흐린
-    // 위에서 칩 혼자 또렷하게 서 있다.
-    expect(chip(markup)).toMatch(/\bopacity-40\b/);
-  });
-
-  // 두 칸을 **함께** 잠근다. 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
-  // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
-  it("잠기면 두 칸이 함께 잠긴다", () => {
-    const markup = render(true, {}, undefined, { on: false, locked: true });
-    for (const tag of [docTab(markup), toggle(markup)]) {
-      expect(tag).toMatch(/\sdisabled=""/);
-      expect(tag).toContain("disabled:pointer-events-none");
-    }
+    expect(markup).not.toContain('aria-label="원문 보기"');
+    expect(markup).not.toContain('aria-label="문서로 보기"');
+    // 머리에 남는 것은 탭과 닫는 `×`다 — 이것이 없으면 위 부재가 「머리가 통째로 안 섰다」로도 초록이다.
+    expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 });
 
-// 이 패널은 화면 머리행과 **같은 층의 옆 컬럼**이다 — 창 맨 위에서 시작해 아래까지 내려온다.
-// 그래서 탭 행이 브레드크럼과 같은 높이에 서야 두 층이 한 줄로 읽힌다.
+// 이 패널은 바탕 줄 아래에 뜬 카드다(ui-refresh 결정 4) — 머리는 다른 카드와 같은 카드 머리(48px)다.
 describe("WorkPanel 머리행", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -518,17 +316,18 @@ describe("WorkPanel 머리행", () => {
     vi.unstubAllGlobals();
   });
 
-  it("탭 행이 타이틀바 높이를 그대로 읽는다", () => {
-    // 값을 손으로 적으면(h-11 같은 것) 타이틀바 높이가 바뀔 때 이 줄만 남아 어긋난다.
-    // 두 층이 어긋난 것은 화면을 열어 보기 전에는 드러나지 않는다.
-    expect(render(true)).toContain("h-(--titlebar-height)");
+  it("탭 행이 카드 머리 높이를 그대로 읽는다", () => {
+    // 값을 손으로 적으면(h-12 같은 것) 카드 머리 높이가 바뀔 때 이 줄만 남아 옆 문서 카드의 머리와 어긋난다.
+    // 머리는 카드 안이라 창을 끄는 자리가 아니다 — 그 일은 바탕 줄과 회색 틈이 한다.
+    const markup = render(true);
+    expect(markup).toContain("h-(--card-head)");
+    expect(markup).not.toContain("h-(--titlebar-height)");
+    expect(markup).not.toContain("data-tauri-drag-region");
   });
 
-  it("떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼이다", () => {
-    // 전체 높이를 차지하는 surface라 둥근 모서리와 바깥 여백이 설 자리가 없다 —
-    // 창 위·아래 끝에서 카드가 잘린 것처럼 보인다. 본문과의 구분은 경계선 하나가 맡는다.
-    const markup = render(true);
-    expect(markup).toContain("border-l");
-    expect(markup).not.toContain("rounded-[16px]");
+  it("왼쪽 경계선이 없다 — 문서와의 구분은 틈이 맡는다", () => {
+    // ui-refresh 결정 4로 **뒤집혔다**: 한때 창 끝에서 끝까지 가는 컬럼이라 경계선 하나가 본문과 갈랐는데, 이제 패널은
+    // 바탕 위에 뜬 둥근 카드이고(그 카드는 공용 틀이 그린다 — `WorksPage.test.tsx`) 사이 틈이 구분을 맡는다.
+    expect(render(true)).not.toContain("border-l");
   });
 });

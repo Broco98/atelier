@@ -287,10 +287,10 @@ function SidebarFrame({
 function asideClass(open: boolean, dragging: boolean): string {
   return cn(
     // **탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다) 끄는 최소 폭(`--sidebar-min`)
-    // 까지만 준다. 작업 패널이 먼저 제 최소 폭까지 주고도 탭 줄이 모자랄 때(넓혀 둔 사이드바 ·
-    // 900px 창) 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`). 다른 화면의 본문은 자리를
-    // 요구하지 않아 그 화면들에서는 늘 고른 폭이다. 최소 폭을 **펼 때만** 트랜지션하는 이유는
-    // 작업 패널 주석과 같다.
+    // 까지만 준다. 탭 줄이 모자랄 때 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`) — 작업 패널은 줄 아래
+    // 카드 줄에 서서(ui-refresh 결정 4) 줄과 폭을 다투지 않으므로, 이제 그 차례는 앱 창의 최소 폭(900) 아래에서만
+    // 온다(e2e `tab-row.ts`의 `BELOW_APP_MIN`). 다른 화면의 본문은 자리를 요구하지 않아 그 화면들에서는 늘 고른 폭이다.
+    // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     "relative overflow-hidden border-r bg-sidebar",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)

@@ -1,8 +1,16 @@
 import type { Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import { expect, test, type Locator, type Page } from "./evidence";
-import { ARCHIVE, PROJECTS } from "./fixtures";
-import { installFixtureBackend, SPEC_LAYOUT_EDITOR, unknownIpcCalls, 툴팁 } from "./harness";
+import { ARCHIVE, PROJECTS, WORKS } from "./fixtures";
+import {
+  clipboardWrites,
+  installFixtureBackend,
+  recordClipboard,
+  SPEC_LAYOUT_EDITOR,
+  startSplitDrag,
+  unknownIpcCalls,
+  툴팁,
+} from "./harness";
 
 // 판 04 티켓 01 — 공용 틀(`Frame`, ui-refresh 결정 4 · 5 · 27). 탭이 없거나 패널이 없는 화면이 옅은 회색 바탕 위의 둥근
 // 카드로 뜨고, 바탕 줄(`<header>`)은 그 위 44px에 선다.
@@ -49,7 +57,7 @@ for (const screen of SCREENS) {
     await page.goto(screen.url);
     await expect(page.locator("main")).toHaveCount(1);
 
-    // 머리는 바탕 줄 하나이고(ui-refresh 결정 5 — `PageHeader`의 44px 머리가 카드 안에 따로 서지 않는다), `aside`는 사이드바뿐이다.
+    // 머리는 바탕 줄 하나이고(ui-refresh 결정 5 — 옛 브레드크럼 머리의 44px 층이 카드 위에 따로 서지 않는다), `aside`는 사이드바뿐이다.
     await expect(page.locator("header")).toHaveCount(1);
     await expect(page.locator("aside")).toHaveCount(1);
 
@@ -283,3 +291,120 @@ for (const screen of LIST_SCREENS) {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
+
+// 판 04 티켓 03 — **작업 화면**(ui-refresh 결정 4 · 5 · 15). 바탕 줄 아래에 문서 카드(`<main>`)와 작업 패널 카드가 각자 뜨고, 사이
+// 틈은 `--gap`이다. 패널의 바깥 상자는 여전히 두 번째 `aside`이고 폭이 「왼쪽 틈 + 카드」라, 접으면 틈이 카드와 함께 0으로 접혀
+// 문서 카드가 오른쪽 틈 끝까지 넓어진다. 폭 손잡이는 그 틈의 가운데다(목록 칸과 같은 자리).
+const [pinnedWork, plainWork] = WORKS;
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
+
+test("Works: 바탕 줄 아래에 문서 카드와 작업 패널 카드가 틈 --gap으로 서고, 패널을 접으면 문서 카드가 오른쪽 틈 끝까지 넓어진다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const doc = page.locator("main");
+  const panel = 작업패널(page);
+  await expect(panel).toBeVisible();
+
+  // 머리는 바탕 줄 하나이고, `aside`는 사이드바와 작업 패널 둘이다 — 패널 카드는 두 번째 `aside` 안에 선다.
+  await expect(page.locator("header")).toHaveCount(1);
+  await expect(page.locator("aside")).toHaveCount(2);
+  expect(await panel.evaluate((el) => el.closest("aside") === document.querySelectorAll("aside")[1])).toBe(true);
+
+  const gap = await token(page, "--gap");
+  const titlebar = await token(page, "--titlebar-height");
+  const viewport = page.viewportSize()!;
+  const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
+  const [card, side] = [await boxOf(doc), await boxOf(panel)];
+  expect(card.y, "문서 카드 위").toBe(titlebar);
+  expect(side.y, "패널 카드 위").toBe(titlebar);
+  expect(card.x, "문서 카드 왼쪽").toBe(edge);
+  expect(side.x - card.right, "문서와 패널 사이 틈").toBe(gap);
+  expect(viewport.width - side.right, "패널 오른쪽 틈").toBe(gap);
+  expect(viewport.height - side.bottom, "패널 아래 틈").toBe(gap);
+
+  // 손잡이는 그 틈의 가운데이고 여전히 두 번째 `aside`의 자손이다. 드러난 틈은 창을 끄는 자리이고, 카드 안은 아니다.
+  // 틈의 가운데 5px은 손잡이가 덮으므로 끄는 자리는 그 양옆이다 — 카드 바로 왼쪽 1px을 잰다(소수 좌표는 브라우저가
+  // 반올림해 카드 안으로 떨어질 수 있다).
+  const handle = await boxOf(page.locator("aside").nth(1).locator(HANDLE));
+  expect(handle.x + handle.width / 2, "손잡이 가운데").toBe(card.right + gap / 2);
+  const middleY = side.y + side.height / 2;
+  expect(await draggable(page, side.x - 1, middleY), "패널 카드 왼쪽 틈").toBe(true);
+  expect(await draggable(page, side.x + side.width / 2, side.bottom + gap / 2), "패널 카드 아래 틈").toBe(true);
+  expect(await draggable(page, side.x + side.width / 2, side.bottom - 4), "패널 카드 안").toBe(false);
+
+  // ⌘Enter로 접으면 틈이 카드와 함께 접혀 문서 카드가 오른쪽 틈 끝까지 넓어진다 — 닫힌 칸 옆에 틈이 겹쳐 남지 않는다.
+  await page.keyboard.press("Meta+Enter");
+  await expect.poll(async () => (await boxOf(doc)).right).toBe(viewport.width - gap);
+  await page.getByRole("button", { name: "작업 패널 펼치기", exact: true }).click();
+  await expect.poll(async () => (await boxOf(panel)).x - (await boxOf(doc)).right).toBe(gap);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 문서 카드 머리(ui-refresh 결정 5 · 7의 B) — 「지금 보는 것」의 캡슐 `slug › spec › … › 파일`과 원문 전환 · 경로 복사가 선다. 복사는
+// 새 동작이 아니라 트리의 경로 복사가 선 자리 하나가 더 생긴 것이라, **같은 값**을 클립보드에 넣는다.
+test("Works: 문서 카드 머리에 slug › spec › … › 파일 캡슐과 원문 전환 · 경로 복사가 서고, 복사가 트리의 경로 복사와 같은 값을 낸다", async ({
+  page,
+}) => {
+  const file = "목업/조각.html";
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent(file)}`);
+  const doc = page.locator("main");
+  const crumbs = doc.getByRole("navigation", { name: "위치", exact: true });
+  await expect(crumbs).toBeVisible();
+  expect(await crumbs.locator("span").allTextContents()).toEqual([pinnedWork.slug, "spec", "목업", "조각.html"]);
+  await expect(doc.getByRole("button", { name: "원문 보기", exact: true })).toBeVisible();
+
+  await doc.getByRole("button", { name: "경로 복사", exact: true }).click();
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
+
+  // 트리의 같은 문서 행에서 복사한다 — 두 자리가 같은 글자를 내야 한다.
+  const row = 작업패널(page).getByRole("button", { name: "HTML 조각.html", exact: true });
+  await row.hover();
+  await 작업패널(page).getByRole("button", { name: "조각.html 경로 복사", exact: true }).click();
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
+  const [fromHead, fromTree] = await clipboardWrites(page);
+  expect(fromHead).toBe(fromTree);
+  expect(fromHead).toBe(`~/.atelier/works/${pinnedWork.slug}/spec/${file}`);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 덮는 것의 기준 상자(판 04 「지키는 것」) — 놓기 겹판과 토스트는 `Frame`의 `overlay` 칸이라 **카드 줄**에 선다. 카드 줄이 바탕 줄
+// 아래에서 시작하므로 겹판이 패널까지 덮어도 끄는 것이 출발한 줄은 안 덮고(결정 12), 토스트는 카드 줄의 아래 가운데다. 카드 줄은
+// 창 아래 틈(`--gap`) 위에서 끝나므로 겹판도 거기서 끝난다 — 한때(이 티켓 전) 겹판은 창 바닥까지 갔다.
+test("Works: 셸 칸을 끄는 동안 겹판이 카드 줄을 덮고 바탕 줄은 안 덮고, 토스트는 카드 줄 아래 가운데에 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  const shellTab = page.locator('[data-tab="shell"] button[aria-pressed]');
+  await expect(shellTab).toBeVisible();
+  await expect(작업패널(page)).toBeVisible();
+
+  const titlebar = await token(page, "--titlebar-height");
+  const viewport = page.viewportSize()!;
+  const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
+  const from = await startSplitDrag(page, await boxOf(shellTab));
+  const cover = await boxOf(page.locator("[data-drop-half]").first().locator(".."));
+  expect(cover.y, "겹판 위 — 바탕 줄 아래").toBe(titlebar);
+  expect(cover.x, "겹판 왼쪽").toBe(edge);
+  expect(cover.right, "겹판 오른쪽 — 패널까지 덮는다").toBe(viewport.width);
+  expect(cover.bottom, "겹판 아래 — 카드 줄의 바닥").toBe(viewport.height - (await token(page, "--gap")));
+  // 출발한 줄로 되돌아와 놓으면 아무 일도 안 난다 — 그 줄은 겹판 밖이다.
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.up();
+  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/split=/);
+
+  // 토스트 — 셸 0개 화면에서도 서는 말이 아니라, 이 화면이 내는 복사 확인으로 세운다.
+  await recordClipboard(page);
+  await page.reload();
+  await 작업패널(page).getByRole("tab", { name: "info", exact: true }).click();
+  await 작업패널(page).getByRole("button", { name: `slug ${plainWork.slug}`, exact: true }).click();
+  const toast = page.getByRole("region", { name: "메시지", exact: true }).locator('[data-slot="toast"]');
+  await expect(toast).toBeVisible();
+  const box = await boxOf(toast);
+  expect(Math.abs(box.x + box.width / 2 - (edge + viewport.width) / 2), "토스트 가운데").toBeLessThanOrEqual(1);
+  expect(box.bottom, "토스트 아래 — 카드 줄 안").toBeLessThan(viewport.height);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

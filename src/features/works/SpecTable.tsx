@@ -135,14 +135,16 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
           반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다.
           opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다.
           도움말은 다이어그램의 여는 버튼과 같은 글자의 툴팁이다(틀이 단다). 이름(「표를 …」)이 이미 그 말을 해서
-          제 이름을 들고 간다 */}
+          제 이름을 들고 간다.
+          **열 손잡이(`z-10`)보다 위에 선다(`z-20`).** 열 경계가 이 버튼 밑에 오면 손잡이가 클릭을 가로채, 드러난 버튼이
+          안 눌린다 — 문서 카드의 폭에 따라 우연히 서는 겹침이라(ui-refresh 판 04에서 본문 폭이 바뀌자 드러났다) 순서로 막는다. */}
       <FullscreenModal
         name="표"
         label="표"
         trigger={
           <button
             aria-label="표를 전체화면으로 보기"
-            className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+            className="icon-button pointer-events-none absolute right-1.5 top-1.5 z-20 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
           />
         }
       >

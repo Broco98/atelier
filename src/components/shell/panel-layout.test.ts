@@ -16,8 +16,9 @@ describe("접히는 패널의 박자", () => {
     expect(foldingInnerClass(false, "max-w-full")).not.toContain("max-w-full");
   });
 
-  it("사이드바와 작업 패널이 둘 다 이 규격을 쓴다 — 제 리터럴로 박자를 다시 적지 않는다", () => {
-    for (const path of ["src/components/shell/Sidebar.tsx", "src/features/works/WorkPanel.tsx"]) {
+  // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — 목록 칸과 함께 `Frame.tsx`에 산다.
+  it("사이드바와 공용 틀의 칸(목록 · 작업 패널)이 이 규격을 쓴다 — 제 리터럴로 박자를 다시 적지 않는다", () => {
+    for (const path of ["src/components/shell/Sidebar.tsx", "src/components/shell/Frame.tsx"]) {
       const source = readFileSync(path, "utf8");
       expect(source, path).toContain("foldingInnerClass(open");
       expect(source, path).toContain("PANEL_MOTION");

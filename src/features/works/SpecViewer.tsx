@@ -29,7 +29,6 @@ import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
@@ -40,12 +39,6 @@ import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
-  // 화면의 머리행(브레드크럼)을 **본문 열 안에** 그린다.
-  //
-  // 작업 패널은 머리행과 **같은 층의 옆 컬럼**이다 — 창 맨 위에서 시작해 아래까지
-  // 내려온다. 그래서 머리행이 패널 위를 지나갈 수 없고, 화면이 그것을 자기 자리에서
-  // 그리면 패널은 그 아래에서 시작하게 된다. 슬롯으로 받아 본문 열이 이고 있는 이유다.
-  header?: React.ReactNode;
   // 본문이 넓어지는 조건 — 접을 수 있는 것을 **둘 다** 접었을 때만이다(결정 5·13).
   // 패널 자체는 이제 이 컴포넌트가 그리지 않지만(결정 49), 그 폭은 여전히 본문 폭을 정한다.
   panelOpen: boolean;
@@ -67,7 +60,6 @@ interface SpecViewerProps {
 
 function SpecViewer({
   work,
-  header,
   panelOpen,
   sidebarOpen,
   file,
@@ -133,47 +125,40 @@ function SpecViewer({
   };
 
   return (
-    // 본문 열 — 스크롤 경계는 여기까지다. 작업 패널은 이 열의 형제이고 **이제 화면이
-    // 그린다**(결정 49). 머리행이 여기 안에 있는 것은 그대로다: 패널이 이 열의 형제이자
-    // **머리행과 같은 층**이라(창 맨 위에서 시작한다) 머리행은 이 열의 폭만 차지해야 한다.
+    // 문서 카드의 몸(ui-refresh 결정 4 · 5) — 카드와 그 머리(캡슐 · 원문 전환 · 경로 복사)는 화면(`WorksPage`)이 세우고, 이 컴포넌트는
+    // 카드 안에서 도는 스크롤 상자 하나를 낸다. 스크롤 경계는 여기까지다 — 카드 머리는 카드에 고정되고 글만 구른다. 이 상자가
+    // **카드의 직계 flex 자식**이어야 남는 높이를 차지한다(한 겹 감싸면 `flex-1`이 그 껍데기를 기준으로 잡힌다).
     //
-    // 이 열을 감싸던 행(min-w-0을 들고 있던 자리)은 화면으로 올라갔다 — 그 행이 있던 이유가
-    // "본문과 패널을 나란히 세우는 것" 하나였고, 그 일이 여기서 사라졌다.
-    //
-    // **바닥은 머리행(탭 줄)의 폭이다**(`TAB_ROW_COLUMN`). 문서가 아무리 넓어도 그 폭은 바닥에
-    // 안 섞인다 — 넓은 표·코드는 아래 스크롤 영역 안에서 가로로 스크롤한다.
-    <main className={cn("relative flex min-h-0 flex-1 flex-col", TAB_ROW_COLUMN)}>
-      {header}
-      {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
-      <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-        <div className="flex min-h-full min-w-0 flex-col">
-          {files.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center p-10">
-              <Empty>
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <FileText strokeWidth={1.6} />
-                  </EmptyMedia>
-                  <EmptyTitle>아직 spec이 없어요</EmptyTitle>
-                  <EmptyDescription>AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.</EmptyDescription>
-                </EmptyHeader>
-                {/* **경로를 여기서 짓지 않는다.** 사람이 그대로 붙여 넣으라고 내놓는 줄이라
-                    참조 생성기가 내는 것과 **글자까지 같아야** 한다. 갈리면 화면이 시킨 자리와
-                    에이전트가 읽는 자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
-                    `SpecViewer.test.tsx`의 소스 검사가 리터럴이 들어오는 것을 막는다. */}
-                <EmptyContent>
-                  <code className="select-all rounded-lg border bg-inset px-2.5 py-1.5 font-mono text-mono-sm text-muted-foreground">
-                    {specDirRef(work.slug)}
-                  </code>
-                </EmptyContent>
-              </Empty>
-            </div>
-          ) : (
-            bodyView(body)
-          )}
-        </div>
+    // 탭 줄의 바닥(`TAB_ROW_COLUMN`)은 이제 공용 틀의 본문 열이 든다 — 넓은 표 · 코드가 그 바닥에 안 섞이는 것도 그쪽 일이다.
+    // 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다.
+    <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+      <div className="flex min-h-full min-w-0 flex-col">
+        {files.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center p-10">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileText strokeWidth={1.6} />
+                </EmptyMedia>
+                <EmptyTitle>아직 spec이 없어요</EmptyTitle>
+                <EmptyDescription>AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.</EmptyDescription>
+              </EmptyHeader>
+              {/* **경로를 여기서 짓지 않는다.** 사람이 그대로 붙여 넣으라고 내놓는 줄이라
+                  참조 생성기가 내는 것과 **글자까지 같아야** 한다. 갈리면 화면이 시킨 자리와
+                  에이전트가 읽는 자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
+                  `SpecViewer.test.tsx`의 소스 검사가 리터럴이 들어오는 것을 막는다. */}
+              <EmptyContent>
+                <code className="select-all rounded-lg border bg-inset px-2.5 py-1.5 font-mono text-mono-sm text-muted-foreground">
+                  {specDirRef(work.slug)}
+                </code>
+              </EmptyContent>
+            </Empty>
+          </div>
+        ) : (
+          bodyView(body)
+        )}
       </div>
-    </main>
+    </div>
   );
 }
 

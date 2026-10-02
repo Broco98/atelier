@@ -9,7 +9,7 @@ export interface ResizableWidth {
   width: number;
   /**
    * 끄는 최소 폭. 패널이 창이 좁아 저장한 폭보다 좁게 설 때의 바닥도 **이 값 하나다** — 끌어서는
-   * 못 만드는 폭으로 서지 않게 같은 수를 CSS 변수로 내린다(Sidebar · WorkPanel).
+   * 못 만드는 폭으로 서지 않게 같은 수를 CSS 변수로 내린다(Sidebar · `Frame`의 작업 패널 칸).
    */
   min: number;
   dragging: boolean;
@@ -56,6 +56,17 @@ export function nextWidth({
   return Math.round(Math.min(max, Math.max(min, raw)));
 }
 
+/**
+ * 손잡이가 얹힌 칸이 지금 그려진 폭 — 손잡이의 부모 상자의 폭이다. **틈 자리(`seat="gap"`)면 그 상자가 「카드 + 틈」이라 틈을
+ * 뺀다** — 저장하는 폭이 카드의 폭이고(틈은 더하지 않는다), 좁게 선 칸에서 틈만큼 넓게 읽으면 첫 움직임에 손잡이가 그만큼 튄다.
+ * 틈의 값은 토큰(`--gap`)에서 읽는다 — 숫자를 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다.
+ */
+function drawnWidth(handle: HTMLElement): number | undefined {
+  const box = handle.parentElement?.getBoundingClientRect().width;
+  if (box === undefined || handle.dataset.seat !== "gap") return box;
+  return box - (parseFloat(getComputedStyle(handle).getPropertyValue("--gap")) || 0);
+}
+
 /** 끌기로 치는 최소 이동(px). 이보다 덜 움직인 눌림은 폭을 안 바꾸고 저장도 안 바꾼다. */
 const RESIZE_THRESHOLD = 3;
 
@@ -97,10 +108,10 @@ function useResizableWidth(
       onPointerDown: (e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         // **그려진 폭에서 출발한다 — 저장된 폭이 아니다.** 창이 좁으면 사이드바·작업 패널이
-        // 탭 줄에 자리를 내주느라 저장된 폭보다 좁게 서는데(`TAB_ROW_COLUMN` 주석), 저장값에서
+        // 자리를 내주느라 저장된 폭보다 좁게 서는데(`TAB_ROW_COLUMN` 주석 · `Frame`의 패널 칸), 저장값에서
         // 출발하면 첫 움직임에 그 차이만큼 손잡이가 포인터에서 떨어져 튄다. 핸들의 부모가 곧
-        // 그 패널이다(아래 `ResizeHandle` 머리말).
-        const drawn = e.currentTarget.parentElement?.getBoundingClientRect().width;
+        // 그 패널이다(아래 `ResizeHandle` 머리말). 틈 자리 손잡이의 부모는 「카드 + 틈」 상자라 틈을 빼야 카드의 폭이다.
+        const drawn = drawnWidth(e.currentTarget);
         start.current = {
           x: e.clientX,
           width: drawn ? Math.min(width, Math.round(drawn)) : width,
@@ -125,7 +136,7 @@ function useResizableWidth(
           min,
           max,
         });
-        // **좁게 선 패널은 그려진 폭보다 넓게 못 선다** — 탭 줄의 바닥이 막는다. 그 너머로 끈 폭을 그대로
+        // **좁게 선 패널은 그려진 폭보다 넓게 못 선다** — 탭 줄의 바닥(사이드바) · 문서 카드의 바닥(작업 패널)이 막는다. 그 너머로 끈 폭을 그대로
         // 받으면 화면은 안 움직이는데 떼는 순간 「그려진 폭 + 끈 거리」가 고른 폭(저장값)을 덮는다. 그래서
         // 출발한 그려진 폭 이상이면 저장값을 그대로 둔다 — 안쪽으로 끌 때만 폭이 바뀐다. 좁게 서지 않은
         // 패널은 출발 폭이 곧 저장값이라 이 갈래가 아무 일도 안 한다.
@@ -151,9 +162,9 @@ function useResizableWidth(
 // 시작할 때 그 부모의 그려진 폭을 출발 폭으로 잰다(좁게 선 패널에서 안 튀게). 한 겹 감싸면 감싼 상자의 폭을 잰다.
 // 호버 시 세로 중앙이 가장 밝고 위아래로 갈수록 옅어지는 은은한 글로우 라인.
 //
-// **`seat="gap"`이면 카드 옆 틈의 가운데에 선다**(판 04 「손잡이는 틈 안에 선다」 — 공용 틀의 목록 칸). 그 부모는 「카드 + 틈」
-// 상자라 그려진 폭이 틈만큼 넓게 읽히지만, 출발 폭은 저장값과의 작은 쪽이라(`onPointerDown`) 좁게 서지 않는 칸에서는 저장값
-// 그대로다. 글로우 선도 틈의 가운데다 — 카드 모서리에 붙이면 선이 둥근 모서리를 따라 잘린 것처럼 보인다.
+// **`seat="gap"`이면 카드 옆 틈의 가운데에 선다**(판 04 「손잡이는 틈 안에 선다」 — 공용 틀의 목록 칸 · 작업 패널 칸 · 분할의 두 열).
+// 그 부모는 「카드 + 틈」 상자라, 출발 폭을 잴 때 틈을 뺀다(`drawnWidth` — 자리를 `data-seat`로 싣는다). 글로우 선도 틈의
+// 가운데다 — 카드 모서리에 붙이면 선이 둥근 모서리를 따라 잘린 것처럼 보인다.
 export function ResizeHandle({
   control,
   seat = "edge",
@@ -182,6 +193,7 @@ export function ResizeHandle({
   return (
     <div
       {...control.handleProps}
+      data-seat={seat}
       // **앱 툴팁이 아니라 `title`로 남는다**(S29). 이름이 따로 없는 손잡이라 이것이 유일한 설명이고, 버튼이 아니라
       // 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다. 사이드바 폭 조절은 결정 3의 「그대로」 쪽이기도 하다.
       title="드래그로 폭 조절 · 더블클릭으로 기본 폭"

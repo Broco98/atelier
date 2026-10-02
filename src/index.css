@@ -90,10 +90,10 @@
     --term-inset: 12px;
 }
 
-/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 바탕 줄(`Frame`의 `TitleBar`)과 브레드크럼 머리(`PageHeader`)가
-   --titlebar-inset-tabs / --titlebar-inset을 읽어 신호등·셸 컨트롤을 피한다. 카드 머리는 바탕 줄 아래에 서서 피할 것이 없다.
+/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 바탕 줄(`Frame`의 `TitleBar`) 하나가 --tab-lead /
+   --titlebar-inset-tabs를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리는 바탕 줄 아래에 서서 피할 것이 없다.
    컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고,
-   그 뒤 12px를 띄운 곳부터 페이지 콘텐츠가 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
+   그 뒤 --tab-lead를 띄운 곳부터 탭 줄이 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
@@ -116,10 +116,6 @@
     --titlebar-controls-width: calc(
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
-    /* 셸 헤더는 글자가 놓이는 자리라 컨트롤 간격보다 넉넉히 띄운다 */
-    --titlebar-inset: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) + 12px
-    );
     /* **탭 줄이 왼쪽의 것과 벌어지는 거리 — 한 값이다**(결정 24).
        사이드바가 열렸으면 그 경계선에서, 접혔으면 셸 컨트롤에서 재는데 **두 경우가 같은 값을
        쓴다.** 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직이고, 화면으로는
@@ -127,7 +123,7 @@
 
        값이 --titlebar-control-gap인 것은 이 줄의 첫 칸이 **글자가 아니기 때문이다** — 결정 10이
        제목을 빼면서 그 자리에 알약(`spec`)이나 버튼(`+`)이 섰고, 그것들은 제 상자에 여백을 이미
-       갖고 있다. 브레드크럼용 --titlebar-inset(12px)을 그대로 쓰면 그만큼 더 벌어져 첫 칸만
+       갖고 있다. 글자 머리(옛 브레드크럼)가 쓰던 12px 띄움을 그대로 쓰면 그만큼 더 벌어져 첫 칸만
        혼자 떨어져 보인다. */
     --tab-lead: var(--titlebar-control-gap);
     /* 사이드바가 접혔을 때 — 위 거리를 셸 컨트롤 끝에서 잰 값이다. */
@@ -629,7 +625,7 @@
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
    (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다.
    **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `sidebar-accent` 원이고 그림자가
-   없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`WorkPanel.test.tsx`). */
+   없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`SourceToggle.test.tsx`). */
 @utility segment-on {
   background-color: var(--background);
   box-shadow:

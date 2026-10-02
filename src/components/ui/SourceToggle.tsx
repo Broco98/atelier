@@ -18,8 +18,8 @@ const CELLS = ["doc", "source"] as const;
 // 것은 「반대로 간다」 하나뿐이고, 아무 일도 안 일어나는 자리는 그저 안 듣는 버튼으로 읽힌다.
 // 두 칸은 **모드를 읽는 자리**이지 각자 목적지를 가진 두 버튼이 아니다.
 //
-// 잠김도 그대로 흐림 + 포인터 차단이다(`ignoresSourceToggle`이 참인 파일 · spec 0개 ·
-// 터미널 탭 — 어느 파일이 토글을 무시하는지는 `doc-refs`의 표가 든다).
+// 잠김도 그대로 흐림 + 포인터 차단이다(`ignoresSourceToggle`이 참인 파일 · spec 0개 —
+// 어느 파일이 토글을 무시하는지는 `doc-refs`의 표가 든다).
 // **두 칸을 함께 잠근다**: 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
 // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
 //
@@ -35,7 +35,7 @@ export function SourceToggle({
   onChange,
   className,
 }: {
-  /** 지금 원문 보기인가. 사람이 정한 값이지 본문이 소스인가가 아니다(WorkPanel 주석). */
+  /** 지금 원문 보기인가. 사람이 정한 값이지 본문이 소스인가가 아니다(`WorksPage`의 `showSource` 주석). */
   on: boolean;
   locked?: boolean;
   onChange: (source: boolean) => void;
