@@ -7,7 +7,6 @@ import {
   Copy,
   Folder,
   MoreHorizontal,
-  PanelRight,
   Pencil,
   Trash2,
   X,
@@ -75,7 +74,7 @@ import { dropSplit, otherTab } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
 import { specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
-import WorkPanel from "./WorkPanel";
+import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
 import WorkMetaMenu from "./WorkMetaMenu";
 import WorkRenameDialog from "./WorkRenameDialog";
 import {
@@ -215,12 +214,31 @@ function WorksPage({
     : remove.isPending
       ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
       : null;
-  // 작업 패널 접기 — 여는 버튼(바탕 줄)과 닫는 `×`(패널 머리) · ⌘Enter가 이 값 하나를 뒤집는다.
+  // 작업 패널 접기 — 레일 맨 위의 패널 토글 · ⌘Enter가 이 값 하나를 뒤집고, 켜진 레일 칸을 다시 누르면 닫는다(ui-refresh
+  // 결정 9). 한때 흩어져 있던 둘(바탕 줄의 여는 버튼과 패널 머리의 닫는 `×`)이 그 토글 하나로 합쳐졌다.
   //
   // **초기값이 분할 여부를 본다**(결정 88). `?split=lr`로 새로 뜨거나 새로고침하면 아래
   // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
   // `claude` TUI가 깨진다」가 그대로 재현된다.
   const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
+  // 레일에서 고른 칸(`spec` · `info`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(결정 10) 고르는 자리와 그리는
+  // 자리가 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지 않는다.
+  //
+  // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
+  // key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워졌기 때문이다. 그것은 코드가 아니라 **구조에서 나온
+  // 성질**이었고 되살리지 않는다. 이 화면은 작업을 옮겨도 같은 인스턴스라 이 값도 그대로 따라온다. 패널 접기는 언마운트가
+  // 아니라 폭 트랜지션이라 접었다 펴도, 본문 왕복(spec ↔ terminal)에도 유지된다.
+  const [panelView, setPanelView] = useState<PanelView>("spec");
+  // 레일 칸을 눌렀다(결정 9 · 10). **켜진 칸을 다시 누르면 닫힌다** — 켜짐은 「열렸고 그 칸이 골라졌다」이므로 닫힌 채 누른
+  // 칸은 켜진 칸이 아니다: 그 칸으로 연다. 다른 칸이면 그 칸으로 바꾼다. 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
+  const pickPanelView = (next: PanelView) => {
+    if (workPanelOpen && next === panelView) {
+      setWorkPanelOpen(false);
+      return;
+    }
+    setPanelView(next);
+    setWorkPanelOpen(true);
+  };
   // 작업 패널 카드의 폭. 칸(바깥 상자 · 틈 · 손잡이 · 접힘)은 공용 틀이 그리고 폭은 여기서 건넨다(ui-refresh 결정 27 — 목록 칸과
   // 같은 나눔). 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 서고 왼쪽으로 끌면 넓어진다. 저장 키는 이 패널 전용이다: 목록
   // 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
@@ -262,7 +280,7 @@ function WorksPage({
   // 소스 보기의 주인이 **여기다.** 버튼은 문서 카드 머리에 있고(ui-refresh 판 04 — 한때 패널 머리행에 있었다) 그것이 바꾸는
   // 것은 카드의 몸(SpecViewer)이라, 머리를 세우는 이 화면이 함께 든다(결정 6·22).
   // 한때 SpecViewer의 지역 상태였고 그 컴포넌트의 `key={slug}` 덕에 "작업을 옮기면 예쁜
-  // 보기로 돌아온다"가 공짜로 따라왔는데, 그 공짜는 결정 49가 패널 탭에서 걷어낸 것과
+  // 보기로 돌아온다"가 공짜로 따라왔는데, 그 공짜는 결정 49가 고른 패널 칸에서 걷어낸 것과
   // **같은 종류의 것**이라 여기서도 되살리지 않는다. 사람이 켠 값은 작업을 옮겨도 그대로다.
   const [showSource, setShowSource] = useState(false);
 
@@ -548,8 +566,8 @@ function WorksPage({
       onSlot={hoverSlot}
       onDropSlot={dropShellOnSlot}
       dragging={drag.source !== null}
-      // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
-      // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
+      // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할. 탭은 왼쪽부터
+      // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다. 패널 토글은 이 줄 밖, 레일 맨 위에 선다(ui-refresh 결정 9).
       //
       // 상태 배지가 여기 있는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면
       // 상태를 바꾸는 데 클릭이 두 번 든다. ⓘ·⋯는 브레드크럼에 있던 것이 제목과 함께
@@ -594,27 +612,6 @@ function WorksPage({
             >
               <Columns2 className="size-4" strokeWidth={2} />
             </Hint>
-            {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
-                그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
-                사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다.
-
-                여는 길은 이 버튼 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로 두면
-                닫는 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
-
-                닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
-                따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다. */}
-            {!workPanelOpen && (
-              <Hint
-                text="작업 패널 펼치기"
-                announce="name"
-                type="button"
-                onClick={() => setWorkPanelOpen(true)}
-                aria-expanded={false}
-                className="icon-button-quiet text-tertiary"
-              >
-                <PanelRight className="size-4" strokeWidth={2} />
-              </Hint>
-            )}
           </>
         )
       }
@@ -861,15 +858,29 @@ function WorksPage({
     <Frame
       sidebarOpen={sidebarOpen}
       titlebar={tabRow}
+      // 레일(ui-refresh 결정 9 · 10) — 패널 토글과 `spec` · `info` 칸. 패널과 같은 조건으로 선다: 고른 작업이 없으면 열 패널이
+      // 없어 레일도 없다(그때 본문 열의 오른쪽 틈 하나가 창 끝이다). **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을
+      // 뺐던 까닭(결정 11 — 그때 패널이 거기 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
+      rail={
+        panelWork
+          ? {
+              open: workPanelOpen,
+              onToggle: () => setWorkPanelOpen((open) => !open),
+              items: PANEL_VIEWS,
+              active: panelView,
+              onPick: pickPanelView,
+            }
+          : undefined
+      }
       panel={
         // **작업 패널을 그리는 유일한 자리다**(결정 49). 1판은 여기와 SpecViewer 둘에서
         // 그려서 뷰 탭을 오갈 때마다 인스턴스가 갈렸다.
         //
-        // **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 탭이 spec으로
+        // **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 칸이 spec으로
         // 리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
         // 나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
-        // (a) 본문을 오가도(spec ↔ terminal) 패널 탭이 유지된다 — `info`를 보던 채로
-        //     본문만 갈아탈 수 있다는 뜻이다.
+        // (a) 본문을 오가도(spec ↔ terminal) 고른 칸이 유지된다 — `info`를 보던 채로
+        //     본문만 갈아탈 수 있다는 뜻이다(고른 칸은 이 화면이 든다 — 위 `panelView`).
         // (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
         //     전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
         //     기본값(최신 판만 펼침)으로 뜬다.
@@ -886,10 +897,10 @@ function WorksPage({
               children: (
                 <WorkPanel
                   work={panelWork}
+                  view={panelView}
                   currentFile={currentSpec}
                   onSelectFile={selectFromTree}
                   onCopy={copyText}
-                  onClose={() => setWorkPanelOpen(false)}
                   onOpenProject={onOpenProject}
                   open={workPanelOpen}
                 />

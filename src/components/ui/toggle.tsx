@@ -20,8 +20,8 @@ const toggleVariants = cva(
         icon: "icon-button",
         // 다이어그램 머리 줄의 툴바 버튼 — 배율 글자(「100%」)가 들어가는 이웃들과 한 줄에 서서 정사각이 아니다.
         toolbar: "h-[22px] min-w-[22px] rounded-inner px-1 text-caption font-normal",
-        // 설정 칩(테마·글꼴 프리셋) — 디자인 시스템의 칩(`.at-chip`)이다. 높이 · 모서리 · 글자가 작업 패널 탭(tabs.tsx)과
-        // 같고, 켜진 칩만 굵다(`.at-chip.on`) — 꺼진 칩은 400 · muted-foreground다(다른 크기의 꺼진 가지는 tertiary). 켜짐의
+        // 설정 칩(테마·글꼴 프리셋) — 디자인 시스템의 칩(`.at-chip`)이다. 높이 · 모서리 · 글자는 28px ·
+        // 10px · 13px이고, 켜진 칩만 굵다(`.at-chip.on`) — 꺼진 칩은 400 · muted-foreground다(다른 크기의 꺼진 가지는 tertiary). 켜짐의
         // 바탕(state-3)과 글자색은 뿌리의 `toggle-on`이 든다.
         chip: "h-7 min-w-7 rounded-lg px-2.5 text-ui font-normal text-muted-foreground aria-pressed:font-medium",
       },

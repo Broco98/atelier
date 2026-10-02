@@ -164,7 +164,8 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
 
-  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 헤더에 여는 버튼이 서 있는 것이 그 모습이다.
+  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 레일의 패널 토글이 「펼치기」인 것이 그 모습이다. 누르면 이름이
+  // 「접기」로 바뀌어(ui-refresh 결정 9) 이 이름의 버튼이 없어진다.
   const opener = page.getByRole("button", { name: "작업 패널 펼치기" });
   await expect(opener).toBeVisible();
   await opener.click();

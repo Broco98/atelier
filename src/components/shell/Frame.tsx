@@ -1,9 +1,9 @@
-import type { CSSProperties, ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import { Crumbs } from "@/components/ui/crumbs";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
 import { foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN } from "./panel-layout";
+import Rail, { type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-chrome`) 위에 44px 바탕 줄이 서고, 그 아래 목록 · 본문 · 패널이
@@ -12,7 +12,7 @@ import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 //
 //   뿌리(bg-chrome) ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 바탕 줄 `<header>`(TitleBar)
 //                  │                                 └ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈) ─ list · 본문 카드 · panel · overlay
-//                  └ 레일 열(rail이 있을 때만)
+//                  └ 레일 열(rail이 있을 때만, 오른쪽 틈) ─ 패널 토글(바탕 줄 띠의 가운데) · 칸 묶음(카드 줄 꼭대기부터)
 //
 // **틈도 창을 끄는 자리다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 회색 틈이 드러나는 상자(뿌리 ·
 // 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자) 모두에 단다. 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. 카드
@@ -28,23 +28,7 @@ export interface SideSlot {
   children: ReactNode;
 }
 
-/** 레일의 칸 하나 — 소문자 영어 이름(`spec` · `info`, CONTEXT.md)이다. 칸은 목록으로 받아 뒤에 더해진다. */
-export interface RailItem {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-/** 작업 화면의 레일(ui-refresh 결정 9 · 10) — 패널 토글 하나와 칸 묶음. 켜진 칸을 다시 고르면 부르는 쪽이 닫는다. */
-export interface RailProps {
-  open: boolean;
-  onToggle: () => void;
-  items: readonly RailItem[];
-  active: string;
-  onPick: (id: string) => void;
-}
-
-interface FrameProps {
+interface FrameProps<Id extends string> {
   /** 사이드바가 열렸나 — 바탕 줄의 왼쪽 여백과 카드 줄의 왼쪽 틈이 이것으로 갈린다. */
   sidebarOpen: boolean;
   /** 바탕 줄에 서는 것(탭 줄). 없으면 창을 끄기만 하는 빈 줄이다(ui-refresh 결정 5 — 탭이 없는 화면). */
@@ -56,8 +40,11 @@ interface FrameProps {
   list?: SideSlot;
   /** 오른쪽 작업 패널 카드 — 바깥 상자가 두 번째 `<aside>`다. */
   panel?: SideSlot;
-  /** 작업 화면의 레일 열. */
-  rail?: RailProps;
+  /**
+   * 작업 화면의 레일 열(`Rail`) — 패널 토글과 칸 묶음. 작업을 고른 작업 화면만 건넨다 — 없으면 레일 열이 없고 본문 열의
+   * 오른쪽 틈 하나가 창 끝이다. 칸의 id 타입(`Id`)이 부르는 쪽의 것 그대로 `onPick`까지 간다.
+   */
+  rail?: RailProps<Id>;
   /**
    * 카드 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 카드 줄이 바탕 줄 **아래**에서 시작하므로 머리행을 빼는 계산 없이
    * 「끄는 것이 출발한 줄은 덮지 않는다」가 상자로 선다.
@@ -67,7 +54,9 @@ interface FrameProps {
   children: ReactNode;
 }
 
-function Frame({ sidebarOpen, titlebar, list, panel, rail, overlay, children }: FrameProps) {
+function Frame<Id extends string>({ sidebarOpen, titlebar, list, panel, rail, overlay, children }: FrameProps<Id>) {
+  // 레일의 토글 · 칸이 가리키는 패널 칸(`aria-controls`). 둘을 이 틀이 함께 그리므로 이음도 여기서 짓는다 — 화면은 모른다.
+  const panelId = useId();
   return (
     // **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)이 사이드바에게 자리를
     // 요구하는 길이다. 카드 줄은 제 내용 폭을 안 알리므로(아래) 넓은 문서 · xterm이 그 바닥을 부풀리지 않는다.
@@ -87,15 +76,13 @@ function Frame({ sidebarOpen, titlebar, list, panel, rail, overlay, children }: 
         >
           {list && <ListBox slot={list} />}
           {children}
-          {panel && <PanelBox slot={panel} />}
+          {panel && <PanelBox id={panelId} slot={panel} />}
           {overlay}
         </div>
       </div>
-      {rail && (
-        // 레일 열의 자리(ui-refresh 결정 10). 패널 토글과 칸 묶음은 이 열에 선다 — 판 04 티켓 04가 채운다. 왼쪽 틈은 본문
-        // 열의 오른쪽 틈(바탕 줄 · 카드 줄의 `pr-(--gap)`)이다.
-        <div data-tauri-drag-region className="w-(--rail) shrink-0 box-content pr-(--gap)" />
-      )}
+      {/* 레일 열(ui-refresh 결정 10) — 본문 열의 형제라 바탕 줄 `<header>` 밖이다. 왼쪽 틈은 본문 열의 오른쪽 틈(바탕 줄 · 카드
+          줄의 `pr-(--gap)`)이다. 늘 그 자리에 서고(`shrink-0`) 탭 줄의 바닥을 위해 자리를 내주는 것은 작업 패널, 그다음 사이드바다. */}
+      {rail && <Rail {...rail} controls={panel ? panelId : undefined} />}
     </div>
   );
 }
@@ -159,11 +146,14 @@ function ListBox({ slot }: { slot: SideSlot }) {
  * 넓은 트리 이름이 칸의 폭을 정하지 않는다. 최소 폭은 **펼 때만** 트랜지션한다 — 펴는 순간 곧장 서면 0에서 최소 폭으로 튄 뒤
  * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바 · 목록 칸과 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
  * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
+ *
+ * `id`는 레일의 토글 · 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
  */
-function PanelBox({ slot }: { slot: SideSlot }) {
+function PanelBox({ id, slot }: { id: string; slot: SideSlot }) {
   const { open, size, label, children } = slot;
   return (
     <aside
+      id={id}
       data-tauri-drag-region
       style={{ "--work-panel-width": `${size.width}px`, "--work-panel-min": `${size.min}px` } as CSSProperties}
       className={cn(
@@ -309,7 +299,7 @@ function CardHead({
   crumbs?: readonly string[];
   meta?: ReactNode;
   end?: ReactNode;
-  /** 캡슐 자리에 서는 다른 것 — 목록 카드 머리의 검색칸 · 작업 패널의 탭. */
+  /** 캡슐 자리에 서는 다른 것 — 목록 카드 머리의 검색칸 · 작업 패널 머리의 제목(고른 레일 칸). */
   children?: ReactNode;
   /** 검사가 머리를 정체성으로 집는 표식(분할 열 머리의 `data-column` 등) — 모양(클래스)으로 집으면 규격을 손보는 날 샌다. */
   [mark: `data-${string}`]: string | undefined;

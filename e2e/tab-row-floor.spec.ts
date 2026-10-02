@@ -54,15 +54,20 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    const close = document.querySelector('aside button[aria-label$="패널 접기"]')?.getBoundingClientRect();
+    // 패널 토글은 레일 열(패널 카드 오른쪽, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    const toggle = document
+      .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
+      ?.getBoundingClientRect();
     const panelAside = document.querySelectorAll("aside")[1] as HTMLElement | undefined;
     return {
       viewport: window.innerWidth,
       pageSpill: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       sidebar: Math.round(sidebar.width),
       panel: panel ? { left: panel.left, width: Math.round(panel.width), right: panel.right } : null,
-      // 패널 머리행 오른쪽 끝의 `×` — 패널이 창 안에 있어도 안쪽 열이 잘리면 이것이 먼저 사라진다.
-      closeRight: close ? close.right : null,
+      // 패널 칸(두 번째 `aside`)의 오른쪽 끝 — 패널이 창 안에 있어도 안쪽 열이 잘리면 카드 오른쪽이 이 끝을 넘는다. 한때는
+      // 패널 머리 오른쪽 끝의 `×`로 쟀는데, 그 버튼이 레일의 패널 토글로 합쳐져 패널 밖으로 나갔다.
+      panelBoxRight: panelAside ? panelAside.getBoundingClientRect().right : null,
+      toggleRight: toggle ? toggle.right : null,
       // 패널이 **제 안에서 가로로 밀려 있지 않다** — 넘침을 감춘 상자라도 `scrollLeft`가 서면(Playwright가 잘린
       // 버튼을 누르려 스크롤해 들인다) `×`는 창 안인데 왼쪽이 가려진다. 안쪽 열의 왼쪽도 상자 왼쪽이어야 한다.
       panelScroll: panelAside
@@ -86,7 +91,9 @@ function expectFits(layout: Layout, at: string) {
   expect(layout.strip, says).toBeGreaterThanOrEqual(layout.cell);
   if (layout.panel) {
     expect(layout.panel.right, says).toBeLessThanOrEqual(layout.viewport + 0.5);
-    expect(layout.closeRight!, says).toBeLessThanOrEqual(layout.panel.right + 0.5);
+    expect(layout.panel.right, says).toBeLessThanOrEqual(layout.panelBoxRight! + 0.5);
+    // 패널을 여닫는 토글도 창 안이다 — 레일 열은 늘 그 자리이고 자리를 내주는 것은 패널 · 사이드바다(판 04 「지키는 것」).
+    expect(layout.toggleRight!, says).toBeLessThanOrEqual(layout.viewport + 0.5);
     expect(layout.panelScroll!.scrollLeft, says).toBe(0);
     expect(Math.abs(layout.panelScroll!.innerShift), says).toBeLessThanOrEqual(0.5);
   }
