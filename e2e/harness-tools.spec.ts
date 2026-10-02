@@ -17,7 +17,6 @@ import {
   unknownIpcCalls,
   workRow,
 } from "./harness";
-import type { Mode } from "@/mode";
 
 // **하네스의 도구 넷이 스스로를 잰다**(프로세스 관리 티켓 01). 이 도구들은 뒤 장의 L3가 딛는다 —
 // 12의 MCP 아카이브 흉내(인자별 답 · 답 바꾸기), 14의 구독 · 호출 수(모든 구독에 쏘기 · 붙잡기),
@@ -333,7 +332,7 @@ test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를
   // 안전장치 — 덮어쓰기와 같다. 모르는 이름 · 모르는 모드 · 모드를 빠뜨림 · 모드로 안 갈리는 커맨드에 모드.
   await expect(replaceAnswer(page, "no_such_command", null)).rejects.toThrow("no_such_command");
   // 와이어에서 온 모드가 아무 문자열일 수 있다는 것을 흉내 낸다 — 캐스트가 이 줄의 요점이다.
-  await expect(replaceAnswer(page, "list_works", [], "masion" as Mode)).rejects.toThrow("masion");
+  await expect(replaceAnswer(page, "list_works", [], "masion" as "atelier")).rejects.toThrow("masion");
   await expect(replaceAnswer(page, "list_works", [])).rejects.toThrow("list_works");
   await expect(replaceAnswer(page, "pty_close_check", QUIET_SHELL, "atelier")).rejects.toThrow(
     "pty_close_check",

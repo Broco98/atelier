@@ -1,10 +1,9 @@
 import { askDanger } from "@/components/ui/confirm-store";
 import { layoutDirRef } from "@/features/works/refs";
-import { modeNameOf } from "@/mode";
-import type { SpecLayoutState } from "./types";
+import { LAYOUT_NAME, type SpecLayoutState } from "./types";
 
 /**
- * 「기본값으로 되돌리기」를 묻는다(spec 레이아웃 티켓 10 · 결정 7). 되돌리기는 모드의 레이아웃 폴더를
+ * 「기본값으로 되돌리기」를 묻는다(spec 레이아웃 티켓 10 · 결정 7). 되돌리기는 레이아웃 폴더를
  * **폴더째** 지운다 — 템플릿도, 레이아웃이 모르는 파일도 함께 사라진다. 그래서 창은 지울 폴더와
  * 사라지는 것의 수를 적고, 되돌린 뒤의 뜻(다음 호출부터 에이전트가 받는 것)을 적는다.
  *
@@ -19,7 +18,7 @@ import type { SpecLayoutState } from "./types";
  */
 export function askRevert(state: SpecLayoutState): Promise<boolean> {
   return askDanger(
-    `${modeNameOf(state.id)} 레이아웃을 기본값으로 되돌릴까요?`,
+    `${LAYOUT_NAME} 레이아웃을 기본값으로 되돌릴까요?`,
     `${layoutDirRef(state.folder)} 폴더를 지워요. ${goneOf(state)}가 함께 사라져요.\n` +
       "다음 호출부터 에이전트는 내장 안내문을 받아요.",
     "되돌리기",

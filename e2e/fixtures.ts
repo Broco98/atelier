@@ -16,7 +16,6 @@ import type {
   UnreadableSpecLayout,
   ReadableSpecLayout,
 } from "@/features/spec-layout/types";
-import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
 // 생기면 무엇이 기대값인지가 테스트 수만큼 갈라진다.
@@ -311,8 +310,8 @@ export const SPEC_LAYOUT_STATES: SpecLayoutState[] = [
 ];
 
 /**
- * **모드가 아닌 id를 단 상태 한 줄** — Rust `spec_layout_states`가 판 02의 05까지 함께 내는 둘째 줄이다.
- * 화면은 받은 id가 `Mode`가 아니면 버린다(`spec-layout/api.ts`, ui-refresh 결정 22). 기본 답에 실어 두어 그
+ * **`atelier`가 아닌 id를 단 상태 한 줄** — Rust `spec_layout_states`가 판 02의 05까지 함께 내는 둘째 줄이다.
+ * 화면은 받은 id가 `"atelier"`가 아니면 버린다(`spec-layout/api.ts`, ui-refresh 결정 22). 기본 답에 실어 두어 그
  * 거르기를 이 층이 잰다 — 05에서 이 줄과 거르기를 함께 지운다.
  */
 export const STALE_LAYOUT_STATE: Omit<SpecLayoutState, "id"> & { id: string } = {
@@ -922,7 +921,7 @@ export const answerByArg = (arg: string, answers: Readonly<Record<string, unknow
  * (`ModeAnswer` 머리말). 한 방향만 잠그면 새로 모드를 받기 시작한 커맨드가 **어느 표에도
  * 없는 채로** 초록이 되고, 그러면 위 음성 케이스가 그것을 안 본다.
  */
-export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
+export const FIXTURE_BY_MODE: Record<string, Record<"atelier", ModeAnswer>> = {
   list_works: { atelier: { value: WORKS } },
   /**
    * **칸이 빈 둘.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가

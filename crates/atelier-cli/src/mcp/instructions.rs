@@ -275,26 +275,12 @@ mod tests {
         .expect("refs.ts moved; update this test and the instructions together")
     }
 
-    /// 앱이 내보내는 참조의 **뿌리**를 읽는다 (src/mode.ts의 모드 표).
+    /// 앱이 내는 참조의 뿌리 둘 — (`refs.ts`의 상수 이름, 뿌리).
     ///
-    /// 형식은 계속 `refs.ts`가 짓지만, 세계마다 다른 앞머리는 #186에서 그 파일을 떠나
-    /// 모드 표 한 곳으로 모였다 — 리터럴이 사는 파일을 읽어야 결합이 성립한다.
-    /// 파일이 사라지면 여기서 터진다 — 못 읽으면 통과가 아니다.
-    fn mode_ts() -> String {
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/mode.ts"))
-            .expect("mode.ts moved; update this test and the instructions together")
-    }
-
-    /// 세계마다 참조 뿌리 둘 — (벌 이름, 지침, work 뿌리, 아카이브 뿌리).
-    ///
-    /// **표를 돈다**(위 `SETS`와 같은 규율). 뿌리는 세계마다 다르지만 맞대는 **모양**은
-    /// 하나라, 벌별로 검사를 손으로 하나씩 두면 셋째 벌이 생기는 날 그 세계만 결합 없이
-    /// 산다 — 실제로 Maison 벌이 한 판 동안 절반만 물려 있었다.
-    ///
-    /// `MAISON` 벌은 이 표에 없다 — 앱이 Maison 참조를 내지 않으므로 그 뿌리를 앱과 맞댈
+    /// `MAISON` 벌은 맞대지 않는다 — 앱이 Maison 참조를 내지 않으므로 그 뿌리를 앱과 맞댈
     /// 까닭이 없다(ui-refresh 결정 3).
-    const REFERENCE_ROOTS: [(&str, &str, &str, &str); 1] =
-        [("Atelier", ATELIER, "~/.atelier/works/", "~/.atelier/archive/")];
+    const REFERENCE_ROOTS: [(&str, &str); 2] =
+        [("WORK_ROOT", "~/.atelier/works/"), ("ARCHIVE_ROOT", "~/.atelier/archive/")];
 
     /// **공통** — 블록 참조 형식은 프론트엔드(src/features/works/refs.ts)가 만들고
     /// 이 지침이 해석한다. 한쪽만 바뀌면 앱이 복사해준 참조를 에이전트가
@@ -303,8 +289,7 @@ mod tests {
     ///
     /// **줄범위 꼬리표는 뿌리와 무관하다** — refs.ts의 `withLines`가 한 자리에서 만들어
     /// 두 뿌리에 같은 모양으로 붙으므로, 형식 쪽은 두 벌 다 같은 검사를 받는다.
-    /// 뿌리는 세계마다 달라 아래 `the_instructions_read_the_roots_the_app_writes` 하나가
-    /// `REFERENCE_ROOTS` 표를 돌며 든다 — 벌별 검사 둘이던 자리다(#186이 합쳤다).
+    /// 뿌리는 아래 `the_instructions_read_the_roots_the_app_writes`가 든다.
     #[test]
     fn refs_ts_still_emits_the_same_line_range_shape() {
         let refs_ts = refs_ts();
@@ -317,62 +302,34 @@ mod tests {
         }
     }
 
-    /// **공통** — 앱이 내는 뿌리와 지침이 읽는 뿌리가 세계마다 같아야 한다. 한쪽만 바뀌면
-    /// 앱이 복사해 준 참조가 에이전트에게는 없는 경로가 된다 (Maison에서는 더 나쁘다:
-    /// 뿌리가 조용히 `works/`로 되돌아가면 Room 에이전트가 남의 일 폴더를 열어 본다).
+    /// 앱이 내는 뿌리와 지침이 읽는 뿌리가 같아야 한다. 한쪽만 바뀌면 앱이 복사해 준 참조가
+    /// 에이전트에게는 없는 경로가 된다.
     ///
-    /// **필드 이름까지 붙여 잰다.** 뿌리 리터럴이 `refs.ts`에서 `mode.ts`로 옮겨 오면서
-    /// 읽는 파일이 표 하나가 아니라 주석이 긴 파일이 됐다 — 맨 글자로만 찾으면 예시로
-    /// 적힌 경로 하나가 검사를 대신 통과시킨다. `work: "…"`는 그 표에만 있는 모양이다.
+    /// **이름까지 붙여 잰다.** `refs.ts`는 주석이 긴 파일이라 맨 글자로만 찾으면 예시로
+    /// 적힌 경로 하나가 검사를 대신 통과시킨다. `WORK_ROOT = "…"`는 그 상수 선언에만 있는
+    /// 모양이고, 생성기가 그 상수를 실제로 쓰는지는 `refs.test.ts`가 뿌리 글자를 세어 지킨다.
     #[test]
     fn the_instructions_read_the_roots_the_app_writes() {
-        let mode_ts = mode_ts();
         let refs_ts = refs_ts();
-        for (mode, text, work, archive) in REFERENCE_ROOTS {
-            // 앱 쪽 — 모드 표가 이 세계의 뿌리 둘을 그대로 든다.
-            for (field, root) in [("work", work), ("archive", archive)] {
-                assert!(
-                    mode_ts.contains(&format!("{field}: {root:?}")),
-                    "{mode} 뿌리가 mode.ts의 모드 표에 없다: {field}: {root:?}"
-                );
-                // **그리고 emitter에는 그 글자가 없다.** 이 검사가 `mode.ts`만 읽게 되면서
-                // 「그 표를 읽는 것이 `refs.ts`다」가 주석 하나로만 서 있게 됐다 — 누가 뿌리를
-                // 저기 인라인으로 되돌린 뒤 표를 안 고치면 표는 죽은 값이 되고, 앱이
-                // 클립보드로 내는 참조와 이 지침이 갈린 채 L0~L3가 전부 초록이다.
-                //
-                // **「부른다」가 아니라 「글자가 없다」로 잰다.** `refPrefixesOf`를 찾는
-                // 모양은 주석 한 줄로도 충족돼 fail-open이고, 이쪽은 주석에 적어도 빨개진다
-                // (SidebarWorkList.test.tsx의 같은 규율).
-                assert!(
-                    !refs_ts.contains(root),
-                    "refs.ts가 {mode} 뿌리를 글자로 들고 있다 — 모드 표를 안 읽는다: {root}"
-                );
-            }
-            // 지침 쪽 — 같은 뿌리를 예시 문장이 읽는다. 아카이브 화면도 클립보드로 참조를
-            // 내보내므로(ArchivePage) 뿌리가 둘이면 가드도 둘이어야 한다.
-            // 예시의 파일 이름도 자리 표시자다 — 이름이 남으면 `overview.md`가 없는 레이아웃에서
-            // 에이전트가 지침 안의 유일한 spec 파일 이름을 계속 본다(spec 레이아웃 결정 9).
+        for (name, root) in REFERENCE_ROOTS {
+            // 앱 쪽 — `refs.ts`가 그 뿌리를 상수로 든다.
             assert!(
-                text.contains(&format!("{work}<slug>/spec/<file>.md:L19-27")),
-                "{mode} 벌이 work 뿌리를 잃었다: {work}"
+                refs_ts.contains(&format!("{name} = {root:?}")),
+                "refs.ts에 뿌리 상수가 없다: {name} = {root:?}"
             );
-            assert!(
-                text.contains(&format!("{archive}<slug>/")),
-                "앱이 아카이브 참조를 복사해 주는데 {mode} 벌이 그 뿌리를 모른다: {archive}"
-            );
-            // 그리고 **저쪽 세계의 뿌리는 한 글자도 없다.** 위 두 줄만으로는 두 뿌리를
-            // 나란히 적어 둔 벌도 초록이다 — 그런 벌을 읽은 에이전트는 남의 세계를 연다.
-            for (other, _, other_work, other_archive) in REFERENCE_ROOTS {
-                if other == mode {
-                    continue;
-                }
-                for root in [other_work, other_archive] {
-                    assert!(
-                        !text.contains(root),
-                        "{mode} 벌이 {other} 뿌리를 가리킨다 — 에이전트가 남의 폴더를 연다: {root}"
-                    );
-                }
-            }
         }
+        let [(_, work), (_, archive)] = REFERENCE_ROOTS;
+        // 지침 쪽 — 같은 뿌리를 예시 문장이 읽는다. 아카이브 화면도 클립보드로 참조를
+        // 내보내므로(ArchivePage) 뿌리가 둘이면 가드도 둘이어야 한다.
+        // 예시의 파일 이름도 자리 표시자다 — 이름이 남으면 `overview.md`가 없는 레이아웃에서
+        // 에이전트가 지침 안의 유일한 spec 파일 이름을 계속 본다(spec 레이아웃 결정 9).
+        assert!(
+            ATELIER.contains(&format!("{work}<slug>/spec/<file>.md:L19-27")),
+            "ATELIER 벌이 work 뿌리를 잃었다: {work}"
+        );
+        assert!(
+            ATELIER.contains(&format!("{archive}<slug>/")),
+            "앱이 아카이브 참조를 복사해 주는데 ATELIER 벌이 그 뿌리를 모른다: {archive}"
+        );
     }
 }

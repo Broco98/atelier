@@ -246,9 +246,8 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     // 1인지를 보므로, 이름이 바뀌어 스캔이 헛돌면 그것도 여기서 터진다(fail-closed).
     expect(countOf(sidebar, "new Map(works.map(")).toBe(1);
     expect(countOf(sidebar, "titles.get(")).toBe(1);
-    // 주석에 이름이 나오는 것까지 세지 않으려고 코드 모양 그대로 집는다. 소유자가
-    // `<모드>:<slug>`가 된 뒤로 삼항이 아니라 이른 반환이다 — 최상위 판정이 `slugOfOwner`를
-    // 한 번 지나야 해서 한 식으로 안 접힌다.
+    // 주석에 이름이 나오는 것까지 세지 않으려고 코드 모양 그대로 집는다. 삼항이 아니라 이른
+    // 반환이다 — 최상위 판정이 `slugOfOwner`를 한 번 지나야 해서 한 식으로 안 접힌다.
     expect(countOf(sidebar, "return TERMINAL_LABEL;")).toBe(1);
   });
 
@@ -307,14 +306,8 @@ describe("사이드바 최상단은 신호등 띠이고 그 아래가 nav다", (
     expect(app.slice(0, nav)).not.toMatch(/\n\s*<(?!SidebarFrame|nav)[A-Za-z]/);
   });
 
-  it("nav가 **그 모드의 배열**을 돈다", () => {
-    expect(sidebar).toContain("navItemsOf(mode).map(");
-  });
-
-  it("어느 자리도 모드를 리터럴로 눕히지 않는다", () => {
-    // **이 파일에 모드의 이름이 리터럴로 박히면 안 된다.** 목록과 nav가 받는 값이 전부 하나
-    // (`mode`)에서 나와야 두 자리가 함께 움직인다.
-    expect(sidebar).not.toContain('"atelier"');
+  it("nav가 **`navItems` 배열**을 돈다", () => {
+    expect(sidebar).toContain("navItems.map(");
   });
 });
 
@@ -344,7 +337,7 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
   it("그 갈래에는 돌아가기와 항목만 서고, nav·띠·목록·바닥 Settings는 없다", () => {
     expect(branch).toContain("<SettingsNav");
     for (const gone of [
-      "navItemsOf(",
+      "navItems.map(",
       "<AttentionBand",
       "<SidebarWorkList",
       'label="Settings"',

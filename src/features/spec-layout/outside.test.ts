@@ -51,7 +51,7 @@ function broken(): UnreadableSpecLayout {
   };
 }
 
-/** 폴더가 지워져(손으로, 또는 설정의 되돌리기로) 다시 읽은 것 — 그 모드의 내장본이다. */
+/** 폴더가 지워져(손으로, 또는 설정의 되돌리기로) 다시 읽은 것 — 내장본이다. */
 function builtin(): ReadableSpecLayout {
   return {
     id: "atelier",

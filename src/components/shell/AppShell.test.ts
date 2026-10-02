@@ -4,10 +4,10 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 
-// 이 셸의 리렌더 최적화는 **구독을 나눠 둔 모양 자체**다: 활성 nav 항목·설정 활성·지금 세계
-// 셋을 각각 원시값으로 구독해서, 주소의 slug가 바뀌어도(작업을 고를 때마다다) 셸이 다시
-// 그려지지 않는다. 셋을 한 select로 묶어 객체를 돌려주면 값이 매번 새 객체라 걸러지지 않고,
-// 그 순간 이 최적화가 통째로 죽는다 — 화면으로는 「좀 무겁다」로만 보인다.
+// 이 셸의 리렌더 최적화는 **구독을 나눠 둔 모양 자체**다: 활성 nav 항목·설정 활성 둘을 각각
+// 원시값으로 구독해서, 주소의 slug가 바뀌어도(작업을 고를 때마다다) 셸이 다시 그려지지 않는다.
+// 둘을 한 select로 묶어 객체를 돌려주면 값이 매번 새 객체라 걸러지지 않고, 그 순간 이 최적화가
+// 통째로 죽는다 — 화면으로는 「좀 무겁다」로만 보인다.
 //
 // 렌더로는 못 잰다(이 저장소의 L2에는 DOM이 없고, 정적 마크업에는 리렌더가 없다). 그래서
 // **모양이 아니라 수와 금지된 한 조각**을 센다: 파싱이 없어 파서가 샐 자리도 없다.
@@ -18,11 +18,11 @@ describe("앱 셸의 라우터 구독", () => {
   // **구독 수와 select 수를 함께 센다.** 개수만 세면 `useRouterState()`를 select 없이 부르는
   // 변형이 그대로 통과하는데, 그 순간 셸이 라우터 상태 **전체**를 구독해 작업을 하나 고를
   // 때마다(주소의 slug가 바뀔 때마다) 통째로 리렌더한다 — 이 파일이 지키려는 그 최적화가
-  // 정확히 죽고, 화면으로는 「좀 무겁다」로만 보인다. 둘이 함께 3이어야 셋이 전부 좁혀져
+  // 정확히 죽고, 화면으로는 「좀 무겁다」로만 보인다. 둘이 함께 2여야 둘이 전부 좁혀져
   // 있다는 뜻이 된다.
-  it("셋으로 갈리고 셋 다 좁혀져 있다", () => {
-    expect(countOf(source, "useRouterState(")).toBe(3);
-    expect(countOf(source, "select:")).toBe(3);
+  it("둘로 갈리고 둘 다 좁혀져 있다", () => {
+    expect(countOf(source, "useRouterState(")).toBe(2);
+    expect(countOf(source, "select:")).toBe(2);
   });
 
   // `=> ({ … })`도 `=> { … }`도 걸린다. 뒤쪽은 원시값을 돌려주는 블록일 수도 있지만, 그때는
@@ -30,7 +30,7 @@ describe("앱 셸의 라우터 구독", () => {
   //
   // 매개변수 괄호는 **선택이다.** 이 저장소에는 prettier도 eslint도 없어(package.json의
   // scripts가 전부다) 괄호를 강제하는 것이 아무것도 없는데, 괄호를 필수로 요구하면
-  // `select: state => ({ … })` 한 모양이 조용히 통과한다 — 괄호 하나 차이로 셋이 한 객체로
+  // `select: state => ({ … })` 한 모양이 조용히 통과한다 — 괄호 하나 차이로 둘이 한 객체로
   // 합쳐져 최적화가 통째로 죽는 그 변형이다. 메서드 축약형(`select(state) { … }`)은 `select:`가
   // 아예 없어 위 개수 검사에도 안 걸리므로 여기서 따로 막는다.
   it("어느 select도 객체를 새로 짓지 않는다", () => {
@@ -38,24 +38,6 @@ describe("앱 셸의 라우터 구독", () => {
       /select:\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)(?::[^=]+)?\s*=>\s*\(?\s*\{/,
     );
     expect(source).not.toMatch(/select\s*\(/);
-  });
-});
-
-// 셸이 드는 모드의 **배선**. 값을 어디서 읽어 어디로 내리는지는 렌더가 필요해 여기서도 소스로 잰다(위
-// 머리말과 같은 근거) — `Sidebar`는 `terminal-store` 사슬 때문에 이 저장소의 마크업 seam에서 아예 안 선다.
-describe("셸이 모드를 내려 준다", () => {
-  it("셸이 그 모드를 사이드바에만 내려 준다", () => {
-    // 이 값에서 nav 배열이 나온다. 작업 목록 · 팔레트 · 주인 확인은 모드를 받지 않는다.
-    expect(countOf(source, "mode={mode}")).toBe(1);
-    expect(source).toContain("<SearchPalette open=");
-    expect(source).toContain("<ShellOwners />");
-  });
-
-  it("그 모드를 `/settings`가 눕히지 않는 쪽에서 읽는다", () => {
-    // `/settings`는 모드를 안 싣는다. 마지막 모드를 얹는 합성이 `shellMode`이고, 그것이 여기 서야
-    // 그 화면에서 떠나온 모드를 든다.
-    expect(source).toContain("shellMode(state.location.pathname)");
-    expect(source).not.toContain("modeOf(");
   });
 });
 

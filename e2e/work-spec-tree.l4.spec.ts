@@ -32,7 +32,7 @@ function plantDoc(home: string, slug: string, name: string, body: string) {
 /** 문서의 본문 한 줄 — 머리말은 문서마다 같아(`# 개요`) 어느 것이 열렸는지 못 가른다. */
 const overviewOf = (title: string) => `${title}의 개요다.`;
 
-test("작업 행을 끌어 놓은 뒤에도 그 세계의 work을 열면 기본 문서가 열린다", async ({ page, sandbox }) => {
+test("작업 행을 끌어 놓은 뒤에도 work을 열면 기본 문서가 열린다", async ({ page, sandbox }) => {
   const { home } = sandbox;
   const works = [
     { slug: "셋째", title: "셋째 작업", createdAt: "2026-08-01" },
@@ -50,7 +50,7 @@ test("작업 행을 끌어 놓은 뒤에도 그 세계의 work을 열면 기본 
   await expect.poll(() => shownWorkOrder(page)).toEqual(["첫째", "둘째", "셋째"]);
 
   // **옮기기의 답이 목록 캐시를 갈아 끼운다**(`moveWorkOptions`의 3) — 감시자가 없는 이 층에서는 그
-  // 답이 곧 화면이다. 그 답에 트리가 없으면 이 세계의 work이 전부 기본 문서를 잃는다.
+  // 답이 곧 화면이다. 그 답에 트리가 없으면 목록의 work이 전부 기본 문서를 잃는다.
   const listed = await callCount(page, "list_works");
   await dragRowOnto(page, "셋째", workRow(page, "첫째"), "upper");
   await expect.poll(() => shownWorkOrder(page)).toEqual(["셋째", "첫째", "둘째"]);

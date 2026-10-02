@@ -158,6 +158,22 @@ test("설정 밖에서 ⌘,는 설정을 연다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 앱을 켜면 늘 작업 화면이다(판 02 「묻지 않고 기본값으로 둔 것」). 앞 판이 남긴 `last-mode`는 읽지도 다시 적지도 않는다
+// (ui-refresh 결정 23) — 키 이름을 글자로 적는 것은 그것이 앱이 더는 모르는 옛 키이기 때문이다. 정규화가 어느 work을 고르는지는
+// 라우터 seam이 잰다.
+test("앱을 켜면 작업 화면이고, 앞 판이 남긴 `last-mode`를 다시 적지 않는다", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("last-mode", "maison"));
+  await installFixtureBackend(page);
+  await page.goto("/");
+  await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/works\/[^/]+$/);
+
+  // 다른 화면을 지나도 그대로다 — 마지막 자리는 세션 기억이다.
+  await aside(page).getByRole("button", { name: "Terminal", exact: true }).click();
+  await expect(page).toHaveURL("/terminal");
+  expect(await page.evaluate(() => localStorage.getItem("last-mode"))).toBe("maison");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 결정 27 — 항목을 몇 번 옮겼든 **한 번에**, 들어오기 직전에 보던 곳으로.
 test.describe("앱으로 돌아가기", () => {
   test("work 탭을 보다 들어가 항목을 두 번 옮겨도 그 work·탭으로 돌아간다", async ({ page }) => {

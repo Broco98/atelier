@@ -3,7 +3,7 @@ import { dialogStore } from "@/components/ui/confirm-store";
 import { askRevert } from "./revert";
 import type { SpecLayoutState } from "./types";
 
-// 「기본값으로 되돌리기」의 확인 창(spec 레이아웃 티켓 10). 되돌리기는 모드의 레이아웃 폴더를 **폴더째**
+// 「기본값으로 되돌리기」의 확인 창(spec 레이아웃 티켓 10). 되돌리기는 레이아웃 폴더를 **폴더째**
 // 지운다 — 템플릿도, 레이아웃이 모르는 파일도 함께 사라진다. 그래서 창은 지울 폴더와 사라지는 것의 수를
 // 적는다. 수는 엔진의 상태가 준 그대로다(`spec_layout_states`) — 여기서 폴더를 세지 않는다.
 //

@@ -40,7 +40,6 @@ import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec
 import { layoutDirRef } from "@/features/works/refs";
 import { armDrag, cancelPress, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
-import { modeNameOf, type Mode } from "@/mode";
 import {
   addEntry,
   contentOf,
@@ -73,12 +72,14 @@ import { useConfirmLeave } from "./leave";
 import { judgeOutside, savedBaseline, type BannerVerdict } from "./outside";
 import { canSave } from "./preview";
 import PreviewDialog from "./PreviewDialog";
-import type {
-  LayoutEntryJson,
-  LayoutError,
-  SpecLayoutRead,
-  TemplateBodies,
-  UnreadableSpecLayout,
+import {
+  LAYOUT_NAME,
+  type LayoutEntryJson,
+  type LayoutError,
+  type LayoutId,
+  type SpecLayoutRead,
+  type TemplateBodies,
+  type UnreadableSpecLayout,
 } from "./types";
 
 // 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 한 열(620px) 안이 아니라 설정 nav
@@ -103,10 +104,10 @@ import type {
 // 따라가고, 있으면 머리 아래의 배너로 한쪽을 고르게 한다(`outside.ts`).
 
 /** 편집기 주소를 연다 — 레이아웃을 읽어, 읽을 수 있으면 편집 UI를, 없으면 까닭과 돌아가는 길을 세운다. */
-function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean }) {
+function SpecLayoutEditor({ id, sidebarOpen }: { id: LayoutId; sidebarOpen: boolean }) {
   const read = useQuery(specLayoutReadQuery(id));
   const navigate = useNavigate();
-  // 뒤로는 「spec 레이아웃」 설정 페이지다 — 편집기로 오는 문이 거기 한 곳(모드 행의 [편집])이라, 히스토리를 되감지
+  // 뒤로는 「spec 레이아웃」 설정 페이지다 — 편집기로 오는 문이 거기 한 곳(레이아웃 행의 [편집])이라, 히스토리를 되감지
   // 않고 늘 그 자리로 간다. 주소로 바로 와도 같은 곳에 선다. 저장하지 않은 초안이 있으면 떠나기 전에 묻는다(티켓 15).
   const back = () => void navigate({ to: "/settings/spec-layout" });
   const data = read.data;
@@ -117,7 +118,7 @@ function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean 
     return <EditorScreen id={id} read={data} sidebarOpen={sidebarOpen} onBack={back} />;
   }
   return (
-    <EditorFrame id={id} sidebarOpen={sidebarOpen} onBack={back}>
+    <EditorFrame sidebarOpen={sidebarOpen} onBack={back}>
       {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 편집 화면의 「읽지 못함」이다. */}
       {read.error !== null && (
         <div className="flex max-w-[620px] flex-col items-start gap-3 px-8 pt-2">
@@ -151,7 +152,7 @@ function EditorScreen({
   sidebarOpen,
   onBack,
 }: {
-  id: Mode;
+  id: LayoutId;
   read: SpecLayoutRead;
   sidebarOpen: boolean;
   onBack: () => void;
@@ -234,7 +235,7 @@ function EditorScreen({
 
   if (view === null) {
     return (
-      <EditorFrame id={id} sidebarOpen={sidebarOpen} onBack={onBack}>
+      <EditorFrame sidebarOpen={sidebarOpen} onBack={onBack}>
         {"errors" in baseline && <UnreadableLayout read={baseline} onBack={onBack} />}
       </EditorFrame>
     );
@@ -242,7 +243,6 @@ function EditorScreen({
 
   return (
     <EditorFrame
-      id={id}
       sidebarOpen={sidebarOpen}
       onBack={onBack}
       actions={
@@ -359,23 +359,21 @@ export function OutsideBanner({
 }
 
 /**
- * 편집기의 틀 — 머리(뒤로 · 위치 · 동작)와 본문. 위치는 세 칸이다: `Settings / spec 레이아웃 / <모드 이름>`.
+ * 편집기의 틀 — 머리(뒤로 · 위치 · 동작)와 본문. 위치는 세 칸이다: `Settings / spec 레이아웃 / Atelier`.
  * 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
  */
 function EditorFrame({
-  id,
   sidebarOpen,
   onBack,
   actions,
   children,
 }: {
-  id: Mode;
   sidebarOpen: boolean;
   onBack: () => void;
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const name = modeNameOf(id);
+  const name = LAYOUT_NAME;
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="relative flex min-w-0 flex-1 flex-col">
@@ -1268,7 +1266,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
 
 /**
  * 읽지 못하는 레이아웃(티켓 11) — **편집 UI를 세우지 않는다.** 까닭(엔진이 준 오류 전부)과 설정으로
- * 돌아가는 길만 보인다. 고치는 길은 설정의 모드 행에 있다: 에이전트에게 부탁, 손으로 고치기, 되돌리기.
+ * 돌아가는 길만 보인다. 고치는 길은 설정의 레이아웃 행에 있다: 에이전트에게 부탁, 손으로 고치기, 되돌리기.
  * 어느 쪽이든 감시가 따라온다.
  */
 export function UnreadableLayout({

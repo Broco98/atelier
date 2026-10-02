@@ -18,7 +18,6 @@ import {
   WORKS,
 } from "./fixtures";
 import type { WorkView } from "@/features/works/types";
-import type { Mode } from "@/mode";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -119,7 +118,7 @@ interface FixtureTables {
    * 전부 모드를 받는다(#187). 이름 표의 인자별 답은 `answerByArg`가 같은 모양으로 연다.
    *
    * 값이 `Record<string, …>`인 것은 와이어에서 온 `mode`가 아무 문자열일 수 있어서다:
-   * `Mode`로 좁히면 그 인덱싱에 캐스트가 필요해지고, 캐스트는 모르는 값을 아는 값처럼 만든다.
+   * `"atelier"`로 좁히면 그 인덱싱에 캐스트가 필요해지고, 캐스트는 모르는 값을 아는 값처럼 만든다.
    * L4는 진짜 백엔드가 답하므로 비어 있다 — 거기서 `mode`를 빠뜨린 호출은 하네스가 아니라
    * **다리가** 거절한다(`crates/atelier-test-bridge`).
    */
@@ -426,7 +425,7 @@ export async function replaceAnswer(
   page: Page,
   command: string,
   answer: unknown,
-  mode?: Mode,
+  mode?: "atelier",
 ): Promise<void> {
   let entry: ModeAnswer;
   if (Object.prototype.hasOwnProperty.call(FIXTURE_BY_MODE, command)) {
@@ -792,7 +791,7 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
  * **떠나는 화면이 서 있을 때 부르지 않는다.** 목록에서 slug가 빠지면 그 work을 보던 화면은 다른 work으로 옮겨 가므로
  * (`-works-view.tsx`의 정규화), 도착을 본 **뒤에** 부른다(`shell-ownerless.spec.ts`의 `arrived`).
  */
-export async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: string[]): Promise<void> {
+export async function archiveByMcp(page: Page, mode: "atelier", list: WorkView[], ...slugs: string[]): Promise<void> {
   await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)), mode);
   await fireEvent(page, "works:changed", null);
 }

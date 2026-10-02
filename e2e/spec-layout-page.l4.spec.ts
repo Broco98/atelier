@@ -11,7 +11,7 @@ import { expect, seedLayout, seedWork, test } from "./l4";
 // `spec_layout_states` → 다리 → 코어의 `layout_states`가 데이터 루트의 레이아웃 폴더를 읽는다. 참조도
 // 엔진이 준 폴더 경로로 지어지므로, 옮긴 데이터 루트(임시 폴더)에서는 그 절대 경로가 화면 아래 메시지에 선다.
 //
-// 다리는 판 02의 05까지 레이아웃 상태를 둘 준다 — 화면은 `Mode`가 아닌 id를 거른다(ui-refresh 결정 22).
+// 다리는 판 02의 05까지 레이아웃 상태를 둘 준다 — 화면은 `atelier`가 아닌 id를 거른다(ui-refresh 결정 22).
 const 행 = (page: Page) => page.locator("main li").filter({ has: page.getByText("Atelier", { exact: true }) });
 
 /** 다리가 준 상태 중 Atelier 레이아웃의 것. */

@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { archiveRef, layoutDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
-// 그래서 아래 기대값은 뿌리 표를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
-// 표에서 뽑아 조립하면 이 파일은 구현을 베껴 적은 꼴이 되어, 앞머리가 통째로 뒤바뀌어도
+// 그래서 아래 기대값은 `refs.ts`의 뿌리 상수를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
+// 그 상수에서 뽑아 조립하면 이 파일은 구현을 베껴 적은 꼴이 되어, 앞머리가 통째로 뒤바뀌어도
 // 초록으로 남는다.
 
 /** 앱이 내는 참조의 뿌리 둘. 아래 기대값과 맨 아래 소스 검사가 함께 읽는다. */
@@ -69,31 +69,25 @@ describe("레이아웃 참조", () => {
   });
 });
 
-// **뿌리가 표에서 온다는 것 자체를 잰다.** MCP 지침의 뿌리 검사(`instructions.rs`)는 뿌리를 든 표(`mode.ts`)를
-// 읽는다 — 이 파일이 그 표를 읽는다는 사실은 파일 머리 주석만 말한다. `refPrefixesOf`의 프로덕션 소비자가 여기
-// 하나뿐이라, 그 연결이 끊기면 표는 죽은 값이 되고 앱이 내보내는 참조와 지침이 갈린 채 L0~L3가 전부 초록이다:
-// 누군가 뿌리를 여기 인라인으로 되돌린 뒤 뿌리를 옮기면 위 기대 문자열만 고치면 되고, Rust 검사는 옛 값을
-// 표에서 찾아 통과한다.
+// **뿌리는 이 파일의 상수 하나씩이다.** MCP 지침의 뿌리 검사(`instructions.rs`)는 `refs.ts`에서 그 상수 선언을 글자로
+// 찾는다 — 생성기가 뿌리를 글자로 따로 들면 상수는 죽은 값이 되고, 앱이 내보내는 참조와 지침이 갈린 채 L0~L3가
+// 전부 초록이다: 누군가 생성기 하나에 새 뿌리를 인라인으로 적은 뒤 위 기대 문자열만 고치면 Rust 검사는 옛 값을
+// 상수에서 찾아 통과한다. 그래서 뿌리 글자가 파일에 **한 번씩만** 서는지 센다(쓰지 않는 상수는 L0가 문다).
 //
 // **fail-closed다**: 파일이 옮겨지면 readFileSync가 던진다. 「못 찾았으니 깨끗하다」로
 // 떨어지는 길이 없어야 검사다(SpecViewer.test.tsx의 같은 관용구).
-describe("뿌리는 이 파일에 없다", () => {
+describe("뿌리는 이 파일의 상수 하나씩이다", () => {
   const src = readFileSync(fileURLToPath(new URL("./refs.ts", import.meta.url)), "utf8");
+  const countOf = (literal: string) => src.split(literal).length - 1;
 
-  it("네 생성기의 앞머리가 뿌리 표에서 온다", () => {
-    // 뿌리는 둘이고 둘 다 표에서 꺼낸다 — 한쪽만 표를 보면 아카이브 참조만 조용히 낡는다.
-    expect(src).toMatch(/refPrefixesOf\("atelier"\)\.work/);
-    expect(src).toMatch(/refPrefixesOf\("atelier"\)\.archive/);
+  it("뿌리 글자가 상수 선언에만 선다", () => {
+    expect(countOf(WORK_ROOT), "work 뿌리").toBe(1);
+    expect(countOf(ARCHIVE_ROOT), "archive 뿌리").toBe(1);
   });
 
-  // 레이아웃 뿌리는 표에도 없다 — 코어가 준 경로를 받는다(위 「레이아웃 참조」). 여기 글자로 서면
+  // 레이아웃 뿌리는 여기 없다 — 코어가 준 경로를 받는다(위 「레이아웃 참조」). 여기 글자로 서면
   // 그 경로를 안 읽고 지은 것이다.
   it("레이아웃 뿌리가 글자로 없다", () => {
     expect(src).not.toContain("layouts/");
-  });
-
-  it("표가 드는 뿌리가 글자로 하나도 없다", () => {
-    expect(src, "work 뿌리").not.toContain(WORK_ROOT);
-    expect(src, "archive 뿌리").not.toContain(ARCHIVE_ROOT);
   });
 });

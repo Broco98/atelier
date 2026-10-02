@@ -4,7 +4,7 @@ import { isAtOrUnder } from "@/lib/path-prefix";
 /**
  * 설정으로 들어가는 주소. **문 셋이 다 여기로 간다**(사이드바 바닥 · ⌘, · 팔레트) — 첫 항목으로
  * 치환되는 것은 라우트(`settings.index.tsx`)의 일이고, 문은 어느 항목이 첫째인지 모른다.
- * 팔레트 목적지(`mode.ts`의 `SETTINGS_PLACE`)도 리터럴을 다시 적지 않고 이 값을 가져다 쓴다.
+ * 팔레트 목적지(`search/destinations.ts`의 `SETTINGS_PLACE`)도 리터럴을 다시 적지 않고 이 값을 가져다 쓴다.
  */
 export const SETTINGS_ENTRY = "/settings";
 

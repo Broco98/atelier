@@ -1,13 +1,11 @@
 import { Store } from "@tanstack/react-store";
+import { inSettings } from "@/features/settings/pages";
 import { readStored, writeStored } from "@/lib/stored";
 import { workSlugOf } from "@/lib/path-prefix";
-import { modeFrom, placeModeOf } from "@/mode";
 import { recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
-import type { Mode } from "@/mode";
 
 const SIDEBAR_OPEN_KEY = "sidebar-open";
-const LAST_MODE_KEY = "last-mode";
 
 // 셸이 소유하는 상태. 라우트 트리의 뿌리(AppShell)와 각 라우트가 함께 읽는데
 // <Outlet/> 너머로는 props를 내릴 수 없어 스토어에 둔다.
@@ -30,7 +28,7 @@ export interface ShellState {
    * 위치이지 설정이 아니라 세션에만 산다 — 앱을 껐다 켜면 첫 화면으로 뜬다. 주소까지 영속시키면
    * 어제 보던 문서가 오늘의 첫 화면이 된다.
    */
-  lastPlace: Record<Mode, string | null>;
+  lastPlace: string | null;
 }
 
 // 저장소를 만지는 문은 `readStored` · `writeStored`뿐이다(`lib/stored.ts`) — 부를 때마다 확인하고
@@ -41,7 +39,7 @@ export const shellStore = new Store<ShellState>({
   projectSlug: null,
   workSlug: null,
   archiveSlug: null,
-  lastPlace: { atelier: null },
+  lastPlace: null,
 });
 
 export function toggleSidebar() {
@@ -53,50 +51,27 @@ export function toggleSidebar() {
 }
 
 /**
- * 마지막으로 있던 모드. `/`가 이 값을 읽어 첫 화면을 정한다.
+ * 이 주소에 도착했다고 적어 둔다 — **세션 동안만**이다(`lastPlace` 머리말). 저장소에는 아무것도 안 적는다.
  *
- * 적힌 값은 `modeFrom`으로 **검증해** 읽는다 — 모르는 값이면 Atelier다. 지운 모드 이름이 남아 있어도
- * 그렇다(ui-refresh 결정 23 — 남은 키는 해가 없다).
- */
-export function lastMode(): Mode {
-  return modeFrom(readStored(LAST_MODE_KEY)) ?? "atelier";
-}
-
-/**
- * 셸이 드는 모드. **모드를 안 싣는 주소에서는 떠나온 모드를 이어 든다.**
- *
- * 저장소를 읽는 것은 `placeModeOf`가 `null`을 주는 자리(`/`·`/settings`)뿐이다. 모드 밖 주소는
- * `rememberVisit`이 어느 칸에도 안 적는다.
- */
-export function shellMode(pathname: string): Mode {
-  return placeModeOf(pathname) ?? lastMode();
-}
-
-/**
- * 이 주소에 도착했다고 적어 둔다 — **마지막 모드(영속)와 마지막 주소(세션)를 함께.**
- *
- * 모드를 안 싣는 주소(`/`·`/settings`)는 **어느 칸에도 안 적는다**(`placeModeOf`) — 적으면 설정을
- * 열었다는 이유로 「앱으로 돌아가기」가 설정으로 돌아간다.
+ * `/`와 설정은 **안 적는다.** `/`는 어디로 갈지 정하기만 하고 머물지 않는 자리이고, 설정을 적으면 설정을
+ * 열었다는 이유로 「앱으로 돌아가기」가 설정으로 돌아간다. 설정은 그 아래 항목 페이지(UI개선 결정 22)와
+ * 「spec 레이아웃」 편집기까지 접두사로 본다(`inSettings`) — 문의 가드가 묻는 경계와 같은 것이다.
  */
 export function rememberVisit(pathname: string): void {
-  const mode = placeModeOf(pathname);
-  if (!mode) return;
-  writeStored(LAST_MODE_KEY, mode);
+  if (pathname === "/" || inSettings(pathname)) return;
   shellStore.setState((state) =>
-    state.lastPlace[mode] === pathname
-      ? state
-      : { ...state, lastPlace: { ...state.lastPlace, [mode]: pathname } },
+    state.lastPlace === pathname ? state : { ...state, lastPlace: pathname },
   );
 }
 
 /**
  * 앱으로 **들어갈 때 하는 이동 전체** — 설정의 「앱으로 돌아가기」(UI개선 결정 27)가 딛는 몸통이다.
  * 앱 셸은 이 함수를 부르기만 한다: 셸이 `lastPlace`를 읽고 목적지를 스스로 지으면 이 함수를 재는
- * 검사들이 초록인 채로 화면의 규칙만 갈린다(`AppShell.test.ts`).
+ * 검사들이 초록인 채로 화면의 규칙만 갈린다(`router.test.ts`).
  *
- * 마지막 주소가 없으면 **목록 주소**다(앱을 켜자마자 ⌘, 등). 무선택 주소라 도착하자마자
+ * 마지막 주소가 없으면 **작업 목록 주소**다(앱을 켜자마자 ⌘, 등). 무선택 주소라 도착하자마자
  * 정규화 리다이렉트를 한 번 더 타지만 그 리다이렉트가 replace라 히스토리는 그래도 한 칸이다
- * (`router.test.ts`). 마지막 자리 기억은 모드를 싣는 **모든 주소**를 적으므로(`rememberVisit`)
+ * (`router.test.ts`). 마지막 자리 기억은 설정과 `/` 밖의 **모든 주소**를 적으므로(`rememberVisit`)
  * `/projects`·`/terminal`·`/archive`에서 들어온 설정도 그 주소로 돌아간다.
  *
  * **항목 주소면 그 항목의 마지막 화면을 씨앗으로 얹는다**(결정 77·97). `lastPlace`가 드는 것은
@@ -106,8 +81,8 @@ export function rememberVisit(pathname: string): void {
  * 붙여 경고한 「빠뜨린 문 하나」가 정확히 이 모양이고, Projects 문이 실제로 그랬다. 설정에서
  * 돌아간 work이 보던 탭으로 서는 것도 이 씨앗이다.
  */
-export function modeEntryTarget(mode: Mode): { to: string; search?: WorkSearch } {
-  const to = shellStore.state.lastPlace[mode] ?? "/works";
+export function appReturnTarget(): { to: string; search?: WorkSearch } {
+  const to = shellStore.state.lastPlace ?? "/works";
   // 목록·터미널·아카이브 주소에는 씨앗이 없다 — `workSlugOf`가 `null`을 주는 것이 그 사실이고,
   // 그 화면들은 `search`를 안 쓴다. 첫 화면(무선택 주소)도 여기로 떨어져 정규화가 씨앗을 얹는다.
   const slug = workSlugOf(to);

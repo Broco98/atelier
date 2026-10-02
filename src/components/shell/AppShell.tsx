@@ -14,7 +14,6 @@ import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/feat
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
-import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
@@ -28,21 +27,14 @@ import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
-import { modeEntryTarget, shellMode, shellStore, toggleSidebar } from "./shell-store";
-import type { NavKey } from "./nav-items";
+import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
+import { navItems, type NavKey } from "./nav-items";
 
 function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   // 타이틀바 왼쪽 여백은 index.css의 [data-titlebar]가 계산한다 — 전체화면 여부만 여기서 알려준다
   const fullscreen = useIsFullscreen();
   const navigate = useNavigate();
-  // 지금 모드. **셋째 구독이고 값은 원시값이다** — 아래 둘과 한 select로 묶어
-  // 객체 하나로 돌려주면 매번 새 객체라 걸러내지 못해 주소가 바뀔 때마다 셸 전체가
-  // 리렌더한다(아래 두 주석이 지키는 그 최적화).
-  //
-  // `modeOf`가 아니라 `shellMode`인 것은 **`/settings`가 모드 밖이기 때문**이다 — 그 주소에서는
-  // 떠나온 모드를 이어 든다(설정에는 nav가 없다 — UI개선 결정 21).
-  const mode = useRouterState({ select: (state) => shellMode(state.location.pathname) });
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
   // 사이드바 목록에서 그 작업 행이 강조되는 것으로 드러난다.
@@ -50,13 +42,12 @@ function AppShell() {
   // 바뀔 때마다) 셸 전체가 리렌더한다. 여기서 걸러 두면 활성 항목이 실제로 바뀔 때만 돈다.
   const activeKey = useRouterState({
     select: (state): NavKey | null =>
-      navItemsOf(mode).find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
+      navItems.find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
   });
   // 설정은 `navItems`에 없다(결정 51) — 판정도 따로 한 줄이다. 값은 **지금 선 설정 항목**이고
   // 설정 밖이면 `null`이다(UI개선 결정 21): 이 하나가 「사이드바가 설정 nav인가」와 「어느 항목이
   // 켜졌나」를 함께 답해서, 불리언에서 넓혀도 구독 수가 그대로다. 위 select에 합쳐 객체 하나로
-  // 돌려주지 않는 이유는 그 주석과 같다: 매번 새 객체를 돌려주면 걸러내지 못해 주소가 바뀔 때마다
-  // 셸 전체가 리렌더한다.
+  // 돌려주지 않는다 — 매번 새 객체를 돌려주면 걸러내지 못해 주소가 바뀔 때마다 셸 전체가 리렌더한다.
   const currentSettingsItem = useRouterState({
     select: (state) => settingsItemOf(state.location.pathname),
   });
@@ -266,7 +257,6 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
-          mode={mode}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
@@ -275,8 +265,8 @@ function AppShell() {
             // (두 목적지 모두 목록이 화면에 상주하므로 "목록으로 돌아가기"가 따로 필요 없다.)
             //
             // 목적지는 사이드바가 그리는 **같은 배열**에서 나온다(#183). 없는 key가 오면
-            // `navTargetOf`가 `undefined`를 준다 — 아래 가드가 그때 아무 데도 안 간다.
-            const target = navTargetOf(mode, key);
+            // `undefined`다 — 아래 가드가 그때 아무 데도 안 간다.
+            const target = navItems.find((item) => item.key === key)?.to;
             if (!target || key === activeKey) return;
             void navigate({ to: target });
           }}
@@ -291,9 +281,8 @@ function AppShell() {
           onPickSettingsItem={(key) => void navigate({ to: settingsItem(key).to })}
           onLeaveSettings={() => {
             // 들어오기 직전 자리로 **한 번에** 간다(결정 27) — 항목을 몇 번 옮겼든 뒤로가기가
-            // 아니라 push다. 넘기는 것은 **떠나온 모드 그대로**다: 설정은 모드를 안 실어 위
-            // `mode`가 곧 떠나온 모드다. 목적지 규칙은 하나도 여기 없다(`shell-store`).
-            void navigate(modeEntryTarget(mode));
+            // 아니라 push다. 목적지 규칙은 하나도 여기 없다(`shell-store`).
+            void navigate(appReturnTarget());
           }}
         />
         <Outlet />

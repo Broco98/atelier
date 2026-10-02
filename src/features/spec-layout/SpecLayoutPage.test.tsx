@@ -64,7 +64,7 @@ function buttonsOf(html: string): string[] {
   );
 }
 
-// 모드는 Atelier 하나라 행도 하나다(ui-refresh 결정 3). 행의 세 모양(내장본 · 고침 · 읽지 못함)을 그 한 행으로 잰다.
+// 레이아웃은 하나라 행도 하나다(ui-refresh 결정 3). 행의 세 모양(내장본 · 고침 · 읽지 못함)을 그 한 행으로 잰다.
 describe("레이아웃 행", () => {
   it("Atelier 한 행이 테두리 있는 목록 하나에 선다", () => {
     const html = render([builtin]);
@@ -126,7 +126,7 @@ describe("레이아웃 행", () => {
   });
 
   // [편집]은 편집기(티켓 11)를 연다. 읽지 못하는 레이아웃은 편집기가 열 것이 없다 — 그 행에는 [편집] 대신
-  // [다시 읽기]가 선다(위 시나리오). 내장본 행에도 [편집]이 있다: 처음 저장하면 그 모드의 폴더가 생긴다.
+  // [다시 읽기]가 선다(위 시나리오). 내장본 행에도 [편집]이 있다: 처음 저장하면 레이아웃 폴더가 생긴다.
   it("[편집]은 읽을 수 있는 행에만 서고, [부탁] 뒤에 선다", () => {
     const edit = rowOf(render([edited])).match(/<button\b[^>]*aria-label="Atelier 레이아웃 편집"[^>]*>/g);
     expect(edit).toHaveLength(1);

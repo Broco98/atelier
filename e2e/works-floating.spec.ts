@@ -34,7 +34,7 @@ const [pinnedWork, plainWork, multiWork] = WORKS;
 const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).animationName);
 
 /**
- * 머리행의 ⋯ — 작업 메뉴를 여는 버튼. 이름이 세계를 탄다(`itemNameOf`): 여기는 Atelier라 「작업 메뉴」다.
+ * 머리행의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」).
  * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });

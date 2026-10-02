@@ -24,10 +24,9 @@ import type { BandRow } from "@/features/terminal/shell-attention";
 import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import ProcessesNavMeta from "@/features/processes/ProcessesNavMeta";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
-import { navItemsOf, type Mode } from "@/mode";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { foldingInnerClass, PANEL_MOTION } from "./panel-layout";
-import { TERMINAL_LABEL, type NavKey } from "./nav-items";
+import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useGoToShell from "./useGoToShell";
@@ -35,11 +34,6 @@ import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResiz
 
 interface SidebarProps {
   open: boolean;
-  /**
-   * 지금 모드. nav에 서는 항목과 상주 목록이 읽는 루트가 이 값 하나에서 나온다. 셸이 읽어
-   * 내린다(AppShell).
-   */
-  mode: Mode;
   // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
   activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
@@ -67,7 +61,6 @@ const GUTTER = "pl-2 pr-2";
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
   open,
-  mode,
   activeKey,
   onSelect,
   currentSettingsItem,
@@ -118,7 +111,7 @@ function Sidebar({
   // 띠의 줄을 누르면 그 셸로 간다 — ⌘J(방금 부른 셸로)와 **같은 길**이다(`useGoToShell`).
   const openBand = useGoToShell();
 
-  // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — 모드 전환·nav·띠·작업 목록·바닥 Settings가
+  // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — nav·띠·작업 목록·바닥 Settings가
   // 빠지고 「← 앱으로 돌아가기」와 항목만 선다.
   //
   // **훅을 다 부른 뒤, 이 컴포넌트 안에서 가른다.** 사이드바를 통째로 바꿔 끼우면 위의 알림 제목
@@ -152,9 +145,9 @@ function Sidebar({
     <SidebarFrame open={open} size={size}>
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
       <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
-        {/* **그 모드의 배열을 돈다**(#183) — 활성 판정도 같은 배열을 본다. 배열이 사는 자리는
-            `@/mode`의 표 하나다. */}
-        {navItemsOf(mode).map((item) => (
+        {/* **`navItems`를 돈다**(#183) — 활성 판정(AppShell)과 팔레트의 「가는 곳」(`destinations.ts`)도 같은
+            배열을 본다. */}
+        {navItems.map((item) => (
           <SidebarItem
             key={item.key}
             icon={item.icon}
