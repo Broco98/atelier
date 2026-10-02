@@ -265,9 +265,9 @@ function EditorScreen({
             <Eye data-icon="inline-start" aria-hidden strokeWidth={1.9} />
             LLM이 받는 텍스트
           </Button>
-          {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이고, 카드 머리라 알약 크기에 선다. 글자는 주 버튼의
-              굵기(500)다 — 알약 크기의 400은 흰 알약의 것이다(DS `.at-pill.primary`). */}
-          <Button size="pill" className="font-medium" onClick={() => void save()} disabled={!enabled}>
+          {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이고, 카드 머리라 알약 크기에 선다. 파란 알약은 글자가
+              주 버튼의 굵기(500)다 — 부품이 든다(DS `.at-pill.primary`). */}
+          <Button size="pill" onClick={() => void save()} disabled={!enabled}>
             {write.isPending ? "저장 중…" : "저장"}
           </Button>
         </>
@@ -619,14 +619,14 @@ function TreeTools({
 }) {
   return (
     <div role="toolbar" aria-label="항목 편집" className="flex min-w-0 flex-1 items-center gap-1.5">
-      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 카드 머리 알약의 작은
-          것이다 — 새 크기를 두지 않고 `pill`에 높이 · 좌우만 덮는다(Archive 정렬 알약과 같다). */}
+      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 작은 흰 알약이다
+          (`size="pill-sm"` — Archive 정렬 알약과 같다). */}
       {(["file", "folder"] as const).map((kind) => (
         <Hint
           key={kind}
           text={ADD_LABEL[kind]}
           aria-label={ADD_LABEL[kind]}
-          render={<Button variant="outline" size="pill" className="h-7 px-3" onClick={() => onAdd(kind)} />}
+          render={<Button variant="outline" size="pill-sm" onClick={() => onAdd(kind)} />}
         >
           <Plus aria-hidden strokeWidth={2} />
           {kind === "file" ? "파일" : "폴더"}

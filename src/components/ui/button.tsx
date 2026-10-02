@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 뿌리의 투명 테두리·bg-clip-padding을 걷었다(채운 버튼이 제 높이 그대로 칠해진다 — 테두리는 outline만 든다), 모서리·글자를 뿌리에서 크기로 옮겼다, 포커스 링 border-ring·ring-3→ring-2 ring-ring/50(destructive도 같은 링), 누를 때 1px 내려앉기(active translate)를 걷었다, disabled 50%→40%, 채운 면 bg-primary→bg-primary-strong(흰 글자를 얹는 파랑 면 — #4d81ef 위 흰 글자는 3.68:1이라 한 단 짙은 면에서 4.69:1, ui-refresh 결정 11 · handoff)이고 hover bg-primary/80→같은 면에 검정 8%, outline·ghost의 hover bg-muted→quiet-hover · 펼침 aria-expanded:bg-muted→toggle-on, ghost의 평소 글자 muted-foreground. 크기는 앱의 글자 버튼 셋이다: default(주 버튼 — 32px · 10px 모서리 · 좌우 16px · 14px), sm(쪽 동작 — 28px · 9px · 11px · 13.5px), 새 크기 dialog(창 바닥 — 28px · 8px · 12px · 12.5px). xs 글자 text-xs→11.5px. 변형 soft(primary/10 바탕에 primary-ink 글자, hover에 /15)를 더했다. link의 글자 text-primary→text-link. 머리 컨트롤 크기 둘을 더했다(ui-refresh 결정 5 · 6, DS `.at-pill` · `.at-icon-btn.outline`): pill(카드 머리의 글자 알약 — 32px · rounded-pill · 좌우 14px · 글리프 사이 6px · text-ui · 400 · 글리프 14px), icon-round(카드 머리의 원형 아이콘 버튼 — 32px 원). 둘 다 outline과 함께 흰 바탕 · 안쪽 1px border-pill · hover에 state-1 한 겹이고, 폼의 outline(그 밖의 크기)은 흰 바탕 · 테두리 border-border→border-strong · hover quiet-hover다(DS `.at-btn.outline`).
+// 앱 규격으로 고친 자리: 뿌리의 투명 테두리·bg-clip-padding을 걷었다(채운 버튼이 제 높이 그대로 칠해진다 — 테두리는 outline만 든다), 모서리·글자를 뿌리에서 크기로 옮겼다, 포커스 링 border-ring·ring-3→ring-2 ring-ring/50(destructive도 같은 링), 누를 때 1px 내려앉기(active translate)를 걷었다, disabled 50%→40%, 채운 면 bg-primary→bg-primary-strong(흰 글자를 얹는 파랑 면 — #4d81ef 위 흰 글자는 3.68:1이라 한 단 짙은 면에서 4.69:1, ui-refresh 결정 11 · handoff)이고 hover bg-primary/80→같은 면에 검정 8%, outline·ghost의 hover bg-muted→quiet-hover · 펼침 aria-expanded:bg-muted→toggle-on, ghost의 평소 글자 muted-foreground. 크기는 앱의 글자 버튼 셋이다: default(주 버튼 — 32px · 10px 모서리 · 좌우 16px · 14px), sm(쪽 동작 — 28px · 9px · 11px · 13.5px), 새 크기 dialog(창 바닥 — 28px · 8px · 12px · 12.5px). xs 글자 text-xs→11.5px. 변형 soft(primary/10 바탕에 primary-ink 글자, hover에 /15)를 더했다. link의 글자 text-primary→text-link. 머리 컨트롤 크기 셋을 더했다(ui-refresh 결정 5 · 6, DS `.at-pill` · `.at-pill.sm` · `.at-icon-btn.outline`): pill(카드 머리의 글자 알약 — 32px · rounded-pill · 좌우 14px · 글리프 사이 6px · text-ui · 400 · 글리프 14px), pill-sm(작은 알약 — 28px · 좌우 12px, 나머지는 pill과 같다), icon-round(카드 머리의 원형 아이콘 버튼 — 32px 원). 셋 다 outline과 함께 흰 바탕 · 안쪽 1px border-pill · hover에 state-1 한 겹 · 펼친 메뉴 트리거(aria-haspopup=menu)만 state-2 한 겹이고, default와 함께인 알약은 글자가 500이다(DS `.at-pill.primary`). 폼의 outline(그 밖의 크기)은 흰 바탕 · 테두리 border-border→border-strong · hover quiet-hover다(DS `.at-btn.outline`).
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
@@ -45,6 +45,9 @@ const buttonVariants = cva(
         // 카드 머리의 글자 알약 — 「폴더 열기」 · 「제거」처럼 카드 머리 끝에 서는 동작(ui-refresh 결정 5 · 6). 글자는 굵지
         // 않다 — 폼 버튼(500)과 갈리는 자리다(DS `.at-pill`).
         pill: "h-8 gap-1.5 rounded-pill px-3.5 text-ui font-normal [&_svg:not([class*='size-'])]:size-3.5",
+        // 작은 알약 — 카드 머리 아래 한 줄이나 트리 카드 머리처럼 32px 알약이 줄을 채우는 자리(Archive의 정렬 · 거르기,
+        // 레이아웃 편집기의 파일 · 폴더 추가). 높이와 좌우만 `pill`과 갈린다(DS `.at-pill.sm`).
+        "pill-sm": "h-7 gap-1.5 rounded-pill px-3 text-ui font-normal [&_svg:not([class*='size-'])]:size-3.5",
         // 카드 머리의 원형 아이콘 버튼 — 복사 · 목록 접기(ui-refresh 결정 6). 크기는 `icon`과 같고, outline과 함께 서는
         // 모양이 갈린다(DS `.at-icon-btn.outline`).
         "icon-round": "size-8 rounded-full",
@@ -52,12 +55,21 @@ const buttonVariants = cva(
     },
     compoundVariants: [
       // 머리 컨트롤의 흰 알약 · 흰 원 — 안쪽 1px `border-pill`이고, hover는 흰 바탕 위에 state-1 한 겹이다(바탕을 투명한
-      // 회색으로 갈면 카드 밖 바탕이 비친다). 펼친 메뉴의 트리거는 한 단 더 짙다(state-2).
+      // 회색으로 갈면 카드 밖 바탕이 비친다). 펼친 메뉴의 트리거는 한 단 더 짙다(state-2). **그 겹은 메뉴 트리거
+      // (`aria-haspopup="menu"`)만 입는다** — 목록 패널 토글처럼 `aria-expanded`로 「펼쳐져 있다」를 말하는 버튼은 평소 흰
+      // 원 그대로 선다.
       {
         variant: "outline",
-        size: ["pill", "icon-round"],
+        size: ["pill", "pill-sm", "icon-round"],
         class:
-          "inset-ring inset-ring-border-pill hover:bg-[image:linear-gradient(var(--state-1),var(--state-1))] aria-expanded:bg-[image:linear-gradient(var(--state-2),var(--state-2))]",
+          "inset-ring inset-ring-border-pill hover:bg-[image:linear-gradient(var(--state-1),var(--state-1))] aria-[haspopup=menu]:aria-expanded:bg-[image:linear-gradient(var(--state-2),var(--state-2))]",
+      },
+      // 파란 알약 — 카드 머리의 주 동작(레이아웃 편집기의 「저장」). 글자가 주 버튼의 굵기(500)다 — 알약 크기의 400은 흰
+      // 알약의 것이다(DS `.at-pill.primary`).
+      {
+        variant: "default",
+        size: ["pill", "pill-sm"],
+        class: "font-medium",
       },
       // 폼의 흰 버튼 — 테두리가 border-strong이고 hover는 버튼 hover(state-2), 펼침은 켜짐(state-3)이다.
       {

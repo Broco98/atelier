@@ -31,17 +31,18 @@ const TREE_DEPTH = 1;
 const SORT_HELP = "아카이브한 날짜 기준 정렬";
 
 /**
- * 정렬 · 거르기 알약 — 카드 머리 알약(`size="pill"`)의 작은 것이다(DS `.at-pill.sm` — 28px · 좌우 12). 흰 알약이라 줄에 눌리면
- * 거르기의 글자가 말줄임으로 줄어든다(`min-w-0 shrink`).
+ * 정렬 · 거르기 알약 — 작은 흰 알약이다(`size="pill-sm"`, DS `.at-pill.sm`). 줄에 눌리면 거르기의 글자가 말줄임으로
+ * 줄어든다(`min-w-0 shrink` — 버튼은 평소 안 줄어든다).
  */
-const SMALL_PILL = cn(buttonVariants({ variant: "outline", size: "pill" }), "h-7 min-w-0 shrink px-3");
+const SMALL_PILL = cn(buttonVariants({ variant: "outline", size: "pill-sm" }), "min-w-0 shrink");
 
 /**
  * 거른 동안의 켜짐(state-3) — 흰 알약 위에 한 겹 얹는다(머리 컨트롤의 hover · 펼침이 같은 방식으로 겹을 얹는다). hover · 펼침의
- * 옅은 겹이 켜짐을 덮지 않게 세 자리를 같은 값으로 묶는다.
+ * 옅은 겹이 켜짐을 덮지 않게 세 자리를 같은 값으로 묶는다 — 펼침은 부품이 메뉴 트리거에만 주는 겹이라 같은 조건으로 적는다.
+ * 켜짐은 알약의 모양이 아니라 이 거르개의 상태라 부품에 두지 않는다.
  */
 const FILTER_ON =
-  "bg-[image:linear-gradient(var(--state-3),var(--state-3))] hover:bg-[image:linear-gradient(var(--state-3),var(--state-3))] aria-expanded:bg-[image:linear-gradient(var(--state-3),var(--state-3))]";
+  "bg-[image:linear-gradient(var(--state-3),var(--state-3))] hover:bg-[image:linear-gradient(var(--state-3),var(--state-3))] aria-[haspopup=menu]:aria-expanded:bg-[image:linear-gradient(var(--state-3),var(--state-3))]";
 
 /**
  * 거르개 값의 보이는 이름. 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 거르개의 글자 · 툴팁 · 설명과 메뉴의 줄이
