@@ -798,7 +798,7 @@ void onShellAttention((changed) => {
  * (`nextOnRunning` — 위 `onPtyRunning`).
  *
  * **누가 말했는지는 `null`이다.** PTY는 그 바이트가 어느 프로세스에서 나왔는지 안 적는다 —
- * 이 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다(`SignalView.running`). 서브에이전트 수와 멈춤도 이 길은
+ * 이 갈래의 상태에는 말한 에이전트가 없다(`Attention.agent`). 서브에이전트 수와 멈춤도 이 길은
  * 모른다(`NO_HOOK_TURN`) — 그 둘은 훅 처리기가 접어 싣는 값이다.
  *
  * **번호를 안 옮긴다.** 여기 오는 것은 xterm 인스턴스의 **레지스트리 id**라 훅 길이 하는

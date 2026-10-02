@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { agentMarkOf } from "./agent-mark";
 
 // 결정 15. 「도는 것」의 이름(백엔드가 준 원문)을 **단색 실루엣**으로 바꾸는 자리.
-// 이 모듈이 앱에서 그 매핑을 아는 유일한 곳이다 — 탭 칸(결정 4)과 사이드바 행이 같은
+// 이 모듈이 앱에서 그 매핑을 아는 유일한 곳이다 — 탭 칸(결정 4)과 Processes의 셸 행이 같은
 // 것을 보게 하려면 표가 하나여야 한다.
 const draw = (name: string) => {
   const mark = agentMarkOf(name);

@@ -7,7 +7,6 @@ import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
 import {
   ownerOf,
-  runningAgentsOf,
   shellCountsOf,
   shellsOf,
   slugOfOwner,
@@ -79,7 +78,7 @@ function Sidebar({
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
   // 소유자는 최상위 터미널의 것이다(빈 글자 `""`).
   const topShells = useStore(terminalStore, (state) => shellsOf(state, ownerOf()).length);
-  // **화면값은 한 번에 읽어 내린다**(#203). 종류·수와 반대 방향인 것은 값의 모양 때문이다:
+  // **화면값은 한 번에 읽어 내린다**(#203). 행마다 고르는 시각(`RowMetaFor`)과 반대 방향인 것은 값의 모양 때문이다:
   // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
   // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
   const signals = useStore(terminalStore, (state) => signalsOf(state), shallow);
@@ -136,7 +135,7 @@ function Sidebar({
   // 행의 오른쪽 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미 쓰는 그
   // 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지 않는다. **셸 수는
   // 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8) — 행마다 구독하는 것은
-  // 「도는 것」과 신호 하나씩이다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
+  // 신호 하나다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
   const renderRowMeta = (work: WorkView) => (
     <RowMetaFor owner={ownerOf(work.slug)} shellCount={shellCounts[work.slug] ?? 0} />
   );
@@ -159,10 +158,9 @@ function Sidebar({
             // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
             // 그 화면에 들어가야만 보인다.
             //
-            // **개수가 아니라 메타 슬롯이다**(결정 4·13). 같은 어휘를 쓰므로 최상위
-            // 셸에서 claude가 돌면 여기에도 로고가 뜬다 — 무리가 하나뿐일 때 숫자가
-            // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
-            // 선다」도 슬롯 안으로 내려갔다.
+            // **개수가 아니라 메타 슬롯이다**(결정 4·13). work 행과 같은 어휘(`⌨ 셸 수`)로
+            // 서고, 최상위 셸에서 claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13).
+            // 「없으면 아무것도 안 선다」도 슬롯 안으로 내려갔다.
             //
             // **`Processes`의 메타는 앱 전체다**(프로세스 결정 9 · 11) — 메모리 합계와 손볼
             // 것의 `●`. 요약 폴러(10초)가 그 안에 산다.
@@ -348,8 +346,8 @@ function SettingsNav({
  *
  * 이 한 겹이 필요한 이유는 값의 모양이다: `bandRows`는 **객체 배열**을 새로 지어 돌려주므로
  * 기본 얕은 비교는 늘 어긋나고, 그러면 셸이 프롬프트마다 쏘는 OSC 타이틀 하나에, 1초 폴링의
- * 「도는 것」 한 칸에, 띠가 통째로 다시 그려진다 — `runningAgentsOf` 머리말이 목록에서 든
- * 바로 그 함정이고, 여기서는 목록이 아니라 띠가 그 자리에 선다.
+ * 「도는 것」 한 칸에, 띠가 통째로 다시 그려진다 — 회차마다 새 객체를 주는 셀렉터의 그 함정이고
+ * (`signalsOf` 머리말), 여기서는 목록이 아니라 띠가 그 자리에 선다.
  *
  * 안쪽을 `shallow`로 견주는 것은 줄이 **원시값만** 담기 때문이다(`BandRow`). 한 겹 더 깊은
  * 비교가 필요해지는 날은 줄에 객체가 들어오는 날이고, 그때는 이 비교가 아니라 그 값을 다시 봐야 한다.
@@ -430,18 +428,16 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
  * 아는 자리가 여기라서 그림(`ShellMeta`·`SignalMeta`)과 갈렸다 — 그쪽은 터미널을 모르는 순수
  * 컴포넌트라 정적 마크업 seam에 산다.
  *
- * **갈래가 둘이다**: 그 행의 셸이 부르거나 돌면 **그 셸의 신호**(마크 + 경과, 도는 중은 마크 —
- * `SignalMeta`)이고, 조용하면 종류·수(`ShellMeta`)다. 가름이 **한 컴포넌트 안**인 것이 요점이다 —
- * 조건을 둘로 나누면 레인은 부르는데 메타는 종류·수인 화면이 한 프레임 난다. 이름이
- * `ShellMetaFor`가 아닌 것은 그 때문이다: 이 자리가 고르는 것은 셸 메타가 아니라 **오른쪽 메타
- * 전체**다. (두 줄 행에서는 이 자리가 둘째 줄 전체를 골라 `SubrowFor`였다 — S5.)
+ * **갈래가 둘이다**: 그 행의 셸이 부르거나 돌면 **그 셸의 신호**(부르면 경과, 돌면 비움 —
+ * `SignalMeta`)이고, 조용하면 셸 수(`ShellMeta`)다. 에이전트 마크는 어느 갈래에도 없다(ui-refresh
+ * 결정 13). 가름이 **한 컴포넌트 안**인 것이 요점이다 — 조건을 둘로 나누면 레인은 부르는데
+ * 메타는 셸 수인 화면이 한 프레임 난다. 이름이 `ShellMetaFor`가 아닌 것은 그 때문이다: 이 자리가
+ * 고르는 것은 셸 메타가 아니라 **오른쪽 메타 전체**다. (두 줄 행에서는 이 자리가 둘째 줄 전체를
+ * 골라 `SubrowFor`였다 — S5.)
  *
- * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
- * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
- * `Record<slug, string[]>`로 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고,
- * work 하나에서 명령이 시작될 때마다 **목록 전체가** 다시 그려진다(`runningAgentsOf`
- * 머리말이 그 근거를 든다). 행마다 자기 것을 고르면 안 바뀐 행은 같은 배열을 받아 그
- * 자리에 머문다.
+ * **신호는 행마다 자기 것을 고른다.** 화면값과 시각이 한 묶음이라 문자열 하나로 안 접히고, 위에서
+ * Record로 한 번에 읽어 내리면 안쪽 객체가 회차마다 새것이라 얕은 비교가 늘 어긋나 셸 하나가
+ * 말할 때마다 **목록 전체가** 다시 그려진다. 행마다 고르면 안 바뀐 행은 같은 값을 받아 그 자리에 머문다.
  *
  * **개수는 반대로 위에서 한 번에 읽어 prop으로 내려온다**(`shellCounts`) — 그 값은 셸이
  * 열리고 닫힐 때만 바뀌어 얕은 비교가 실제로 걸린다(결정 8). 둘이 갈리는 자리가 여기다.
@@ -451,13 +447,12 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
  * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
 function RowMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
-  const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
-  // **신호의 셋**(종류·시각·마크의 재료, #203). 위 Record에 못 태우는 것은 문자열 하나로
-  // 안 접히기 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 종류·수와 **같은
-  // 자리에서** 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로
-  // 나뉘면 레인은 부르는데 메타는 종류·수인 화면이 한 프레임 난다.
+  // **신호의 셋**(종류·말·시각, #203). 위 Record에 못 태우는 것은 문자열 하나로 안 접히기
+  // 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 셸 수를 받는 **같은 자리에서**
+  // 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로 나뉘면 레인은
+  // 부르는데 메타는 셸 수인 화면이 한 프레임 난다.
   //
-  // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 넷**이라서다(`SignalView`). 값이 없을
+  // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 셋**이라서다(`SignalView`). 값이 없을
   // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`). 그중 말(`message`)은 이
   // 자리가 안 그리지만(말은 카드와 설명이 `callingNotesOf`로 읽는다) 셀렉터를 가르지 않는다 —
   // 고르는 함수가 레인·카드와 같은 `topSignalView` 하나인 것이 스토리 39의 전부라서다.
@@ -469,16 +464,16 @@ function RowMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: numb
   const now = useNow(signal !== null && showsElapsed(signal.kind));
 
   if (signal !== null) {
-    return <SignalMeta kind={signal.kind} running={signal.running} since={signal.since} now={now} />;
+    return <SignalMeta kind={signal.kind} since={signal.since} now={now} />;
   }
-  return <ShellMeta shellCount={shellCount} running={running} />;
+  return <ShellMeta shellCount={shellCount} />;
 }
 
 /**
  * 그 자리가 그릴 화면값. **최상위 셸(nav `Terminal`)은 여기서 아무것도 안 그린다.**
  *
  * 스펙의 Out of Scope가 「셸 메타 규격의 nav `Terminal` 변경」을 이 판에서 빼 뒀다 — 그 행은
- * 종류·수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 알림 띠다(#204, 결정 13의
+ * 셸 수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 알림 띠다(#204, 결정 13의
  * 다섯째). work 행과 **같은 구독 컴포넌트**를 쓰기 때문에 이 가름이 빠지기 쉬운데, 빠지면
  * nav 행이 work 행의 어휘를 반쯤 흉내 낸다 — 실제로 한 번 그렇게 났고 L3가 잡았다.
  */
@@ -546,7 +541,7 @@ function SidebarItem({
   onClick: () => void;
   /**
    * 이 항목이 안고 있는 셸의 **메타**(결정 13). 개수가 아니라 슬롯인 것은 그 값이 터미널
-   * 스토어를 구독해야 나오기 때문이고, 「없으면 아무것도 안 선다」는 규칙도 그 안으로
+   * 스토어를 구독해야 나오기 때문이고(셸 수 · Processes의 메모리), 「없으면 아무것도 안 선다」는 규칙도 그 안으로
    * 내려갔다 — `ShellMeta`가 셸 0개일 때 아무것도 돌려주지 않는다.
    */
   meta?: ReactNode;
@@ -572,8 +567,8 @@ function SidebarItem({
           그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
           **그 계약이 사는 자리는 둘이다** — 여기와 work 행의 오른쪽 메타(판 05 결정 13의 「두
           자리」). 두 줄 행에서는 work 행이 메타를 둘째 줄로 내려 여기 하나였다가, 행이 한 줄로
-          돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `ShellMeta`
-          하나가 들고(오른쪽 여백까지), work 행의 신호 갈래(`SignalMeta`)가 같은 규격을 따른다.
+          돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `row-meta`
+          하나가 들고(오른쪽 여백까지), 셸 수(`ShellMeta`)와 work 행의 신호 갈래(`SignalMeta` — 경과)가 그것을 부른다.
           「같은 x에 오른쪽 끝이 선다」는 두 자리 다 L3가 실측으로 잰다(works-sidebar.spec.ts). */}
       {meta}
     </div>

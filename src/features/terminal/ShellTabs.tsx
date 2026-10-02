@@ -604,11 +604,10 @@ const ShellTab = memo(function ShellTab({
   // 사라지는 실물 사고를 냈고 사용처가 0이 되어 지워졌다(결정 104).
   const name = shellRowName(shell);
   const end = shellEndLabels(shell);
-  // 결정 4 — **탭 줄은 칸마다**다. 사이드바가 줄 전체로 말하는 것(`runningAgentsOf`)과
-  // 갈리는 자리이고, 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
+  // 결정 4 — **탭 줄은 칸마다**다. 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
   // 갈린다. 판정도 표도 새로 짓지 않는다: 「끝난 칸은 아무것도 안 돈다」는 `runningOn`
   // 하나가 알고(`shell.running`을 직접 읽으면 죽은 칸에 로고가 굳는다), 이름→그림은
-  // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
+  // `agentMarkOf` 하나가 안다 — Processes의 셸 행과 갈리면 같은 상태가 두 말을 한다.
   const running = runningOn(shell);
   const mark = agentMarkOf(running);
   // **물들임의 값도 칸마다다**(결정 6). 판정은 `signalOf` 하나이고 — 행도 띠도 알림도 그

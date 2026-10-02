@@ -1,9 +1,8 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Hint } from "@/components/ui/tooltip";
 import type { BandRow } from "@/features/terminal/shell-attention";
-import { SIGNAL_LABEL, SignalLane, formatElapsed, type CallingKind } from "./shell-signal";
+import { SIGNAL_LABEL, SignalElapsed, SignalLane, type CallingKind } from "./shell-signal";
 
 // 알림 띠(#204, 결정 5·8 · 이름은 `sidebar-active-band` 결정 13). 사이드바 목록 **위**, nav 아래에 서서 **부르는 셸만**
 // 한 줄씩 모은다 — 열여덟 행을 훑는 대신 여기만 본다. 부르는 것이 하나도 없으면 **띠 자체가
@@ -194,7 +193,8 @@ function MoreToggle({
 }
 
 /**
- * 줄 하나 — `점 · 제목 · (셸 이름) · 마크 · 경과`, 28px(결정 5).
+ * 줄 하나 — `점 · 제목 · (셸 이름) · 경과`, 28px(결정 5). 에이전트 마크는 없다(ui-refresh 결정 13 —
+ * 무엇이 도는지는 호버 카드와 셸 탭이 말한다).
  *
  * **행(#203)과 어휘가 같고 규격이 다르다.** 점은 같은 조각(`SignalLane`)이고 말도 같은
  * 표(`SIGNAL_LABEL`)에서 오지만, 이 줄은 한 줄이라 message를 안 싣는다 — 띠는 「누가
@@ -219,7 +219,6 @@ function BandLine({
   now: number;
   onOpen: (item: BandItem) => void;
 }) {
-  const mark = agentMarkOf(item.running);
   return (
     <button
       type="button"
@@ -241,7 +240,7 @@ function BandLine({
       <span className="flex size-3.5 shrink-0 items-center justify-center">
         <SignalLane kind={item.kind} />
       </span>
-      {/* **좁아지면 이 상자만 줄어든다**(스토리 34) — 점·마크·경과는 `shrink-0`이라
+      {/* **좁아지면 이 상자만 줄어든다**(스토리 34) — 점·경과는 `shrink-0`이라
           사이드바를 좁혀도 신호부터 죽지 않고 글자가 먼저 잘린다. 끝은 `…`이 아니라
           오른쪽 페이드다(행 제목과 같은 규칙, `index.css`의 `[data-fade]`). */}
       <span data-fade="" className="min-w-0 flex-1 whitespace-nowrap">
@@ -250,17 +249,8 @@ function BandLine({
             밖에 세우면 이 조각이 폭을 먹어 제목이 그만큼 먼저 잘린다. */}
         {item.shellName !== null && <span className="text-tertiary"> {item.shellName}</span>}
       </span>
-      {mark && (
-        // 이름은 눈이 아니라 접근성으로만 읽는다 — 행 오른쪽 메타의 마크(`SignalMeta`)와 같은
-        // 규칙이고, 색도 `currentColor`라 상태색으로 안 물든다(판 04 결정 15).
-        <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
-          <mark.Glyph className="size-3" />
-        </span>
-      )}
-      {/* 부차 정보라 한 단 내려간다 — 행 오른쪽 메타의 경과와 같은 규격이다(구현 결정 4). */}
-      <span data-elapsed="" className="shrink-0 text-meta tabular-nums text-tertiary">
-        {formatElapsed(now - item.since)}
-      </span>
+      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — 상태색의 잉크, DS `.at-row-meta.wait`). */}
+      <SignalElapsed kind={item.kind} ms={now - item.since} />
     </button>
   );
 }

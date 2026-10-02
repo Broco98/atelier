@@ -12,7 +12,6 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  markRunning,
   ptyGrids,
   refuseFirstSpawn,
   releaseCommand,
@@ -201,7 +200,7 @@ test("떼어진 채 뜬 셸이 처음 보일 때 PTY 격자가 화면 격자로 
 //
 // 첫 화면에 들어오자마자 다른 work·`/terminal`로 옮기면 **켜져 있던 칸까지** 떼어진다 — 화면이
 // 통째로 내려가서다. 두고 온 셸도 뒤에서 떠야 한다. 사람에게 그것이 보이는 자리는 사이드바다:
-// 그 work 행이 그 셸에서 도는 것을 말한다(결정 2).
+// 그 work 행이 그 셸을 셸 수로 센다(결정 2 · ui-refresh 결정 13).
 //
 // **두고 오는 셸은 사람이 연 칸(`+`)이다.** 화면이 저절로 띄운 셸은 입력 없이 떠나면 닫힌다(프로세스
 // 결정 7) — 글꼴이 오기 전에는 xterm이 안 열려 칠 수도 없으니, 그 셸은 떠나는 순간 뜨지도 않고 사라진다.
@@ -224,10 +223,11 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   const [workCwd, topCwd] = await spawnedCwds(page);
   expect(workCwd, "첫 spawn이 work 셸이 아니다").not.toEqual(topCwd);
 
-  // pty 1 = 두고 온 work 셸. 그 work 행에 로고가 서야 한다 — 최상위 셸에 앉으면 nav 행에 선다.
-  await markRunning(page, "claude", 1);
-  await expect(page.locator(`[data-shells="${plainWork.slug}"]`).getByRole("img", { name: "claude" })).toHaveCount(1);
-  await expect(page.locator("nav").getByRole("img", { name: "claude" })).toHaveCount(0);
+  // 두고 온 work 셸은 그 work 행이 센다 — 셸 수 `1`. 최상위 셸은 nav `Terminal`이 따로 센다(`1`).
+  await expect(page.locator(`[data-shells="${plainWork.slug}"]`)).toHaveText("1");
+  await expect(
+    page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).locator("xpath=.."),
+  ).toContainText("1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

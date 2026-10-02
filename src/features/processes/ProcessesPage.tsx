@@ -313,7 +313,7 @@ function ShellRows({
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (
-            // 마크는 「누구」다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalMeta`와 같은 규칙).
+            // 마크는 「누구」다 — 이름은 접근성으로만 한 번 더 읽힌다(셸 탭 칸의 마크와 같은 규칙).
             <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
               <mark.Glyph className="size-3" />
             </span>

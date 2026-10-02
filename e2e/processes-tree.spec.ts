@@ -162,7 +162,7 @@ test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 
   await expect(셸행(page, 3)).toHaveAttribute("aria-label", "zsh, 조용함 2h");
   await expect(셸행(page, 3)).toContainText("조용함");
   await expect(셸행(page, 4)).toHaveAttribute("aria-label", "zsh, claude");
-  // 마크는 에이전트의 것이다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalMeta`와 같은 규칙).
+  // 마크는 에이전트의 것이다 — 이름은 접근성으로만 한 번 더 읽힌다(셸 탭 칸의 마크와 같은 규칙).
   await expect(셸행(page, 4).getByRole("img", { name: "claude", exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

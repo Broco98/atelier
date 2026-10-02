@@ -18,7 +18,6 @@ const 줄 = (over: Partial<BandItem> = {}): BandItem => ({
   title: "그냥 일",
   shellName: null,
   kind: "waiting",
-  running: "claude",
   since: 0,
   ...over,
 });
@@ -48,9 +47,9 @@ const textOf = (markup: string) => markup.replace(/<[^>]*>/g, "");
  * 줄 **버튼**들의 접근성 이름. 이 띠에서 「어느 줄이 섰나」를 정직하게 세는 자리다.
  *
  * 좁히는 것이 둘이다.
- * - `<button`으로 좁힌다 — 에이전트 글리프도 `aria-label`을 다는 `role="img"` 상자라(판 04
- *   결정 15의 그 규칙), 속성만 훑으면 줄 하나가 둘로 세어져 상한을 재는 검사가 통째로
- *   거짓이 된다.
+ * - `<button`으로 좁힌다 — 줄의 이름은 줄 **버튼**의 것이다. 한때 줄 안의 에이전트 글리프도
+ *   `aria-label`을 단 `role="img"` 상자라 속성만 훑으면 줄 하나가 둘로 세어졌다. 그 글리프는
+ *   빠졌지만(ui-refresh 결정 13) 무엇을 세는지는 그대로 버튼이다.
  * - `aria-expanded`를 단 버튼은 뺀다 — ⌄/⌃ 토글도 아이콘 버튼이라 이름을 `aria-label`로
  *   달고(`sidebar-active-band` 결정 15), 그것을 세면 넷·다섯 줄 검사의 수가 하나씩 는다. 펼침을 말하는 것은
  *   토글뿐이라 그 속성이 둘을 가른다.
@@ -164,17 +163,21 @@ describe("줄 하나", () => {
       .toEqual(["그냥 일 vite — 나를 기다림"]);
   });
 
-  it("마크와 경과가 함께 선다", () => {
-    const markup = band([줄({ running: "codex", since: 0 })], { now: 125_000 });
-    expect(markup).toContain('aria-label="codex"');
-    expect(textOf(markup)).toContain("2m");
+  // **줄에 에이전트 마크가 없다**(ui-refresh 결정 13). 줄이 말하는 것은 점 · 제목 · 경과이고,
+  // 무엇이 도는지는 호버 카드와 셸 탭이 말한다.
+  it("줄에 `role=\"img\"`가 없고, 경과가 선다", () => {
+    const markup = band([줄({ since: 0 })], { now: 125_000 });
+    expect(markup).not.toContain('role="img"');
+    expect(표식글자(markup, "data-elapsed")).toBe("2m");
+    expect(이름들(markup)).toEqual(["그냥 일 — 나를 기다림"]);
   });
 
-  // 마크가 없는 줄도 선다 — 훅도 벨도 누가 말했는지 모를 때가 있다(`bandRows`의 셋째 갈래).
-  it("도는 것도 말한 에이전트도 없으면 마크만 빠진다", () => {
-    const markup = band([줄({ running: null })]);
-    expect(이름들(markup)).toEqual(["그냥 일 — 나를 기다림"]);
-    expect(markup).not.toContain('role="img"');
+  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS `.at-row-meta.wait`).
+  it.each([
+    ["waiting", "text-wait-ink"],
+    ["done", "text-done-ink"],
+  ] as const)("%s 줄의 경과는 상태색의 잉크다", (kind, ink) => {
+    expect(여는태그(band([줄({ kind })]), "data-elapsed")).toContain(ink);
   });
 });
 
@@ -211,7 +214,7 @@ describe("띠는 목록 위에 뜬 상자다", () => {
 
 // **스토리 34** — 사이드바를 좁혀도 띠가 먼저 죽지 않는다. 실제로 무엇이 줄어드는지는
 // 진짜 레이아웃이 있어야 나므로 L3가 재고, 여기서는 그것을 가능하게 하는 **규격**을 본다:
-// 글자 상자만 줄어들 수 있고 점·마크·경과는 안 줄어든다.
+// 글자 상자만 줄어들 수 있고 점·경과는 안 줄어든다.
 describe("좁아지면 글자가 먼저 잘린다", () => {
   it("말 상자만 줄어들고 경과는 안 줄어든다", () => {
     const markup = band([줄({ since: 0 })], { now: 1000 });

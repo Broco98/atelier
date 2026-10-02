@@ -687,7 +687,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
       seen: false,
       source: "osc",
       // **OSC·벨은 누가 말했는지를 모른다.** 본문이 어느 프로세스에서 나왔는지 PTY는 안
-      // 적는다 — 그 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다.
+      // 적는다.
       agent: null,
       // 서브에이전트도 모른다 — 수는 처리기가 접어 싣는 훅 길의 값이고, 낸 서브에이전트는 훅 페이로드의 칸이다.
       subagents: 0,
@@ -752,8 +752,8 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     });
   });
 
-  // **누가 말했는가는 상태와 함께 앉는다**(#203). 초록을 만드는 이벤트가 왔을 때 그 셸에서
-  // 도는 것은 이미 없으므로, 이 값이 안 실리면 행의 오른쪽 메타가 마크를 낼 재료가 없다.
+  // **누가 말했는가는 상태와 함께 앉는다**(#203). 한때 행 오른쪽 메타의 마크가 이 값을 읽었다 —
+  // 사이드바에서 마크가 빠졌어도(ui-refresh 결정 13) 판정의 계약(`applySignal`)이라 값은 그대로 싣는다.
   it("훅이 말한 상태는 그 에이전트를 함께 싣는다", () => {
     const 상태값 = nextAttention(null, hook("codex", "Stop", { last_assistant_message: "PR #174 열었다" }, { stopped: true }));
     expect(상태값?.agent).toBe("codex");
@@ -1235,13 +1235,13 @@ describe("work 하나의 값은 최고 하나다", () => {
 });
 
 // **행이 그리는 것은 값 하나가 아니라 한 줄이다**(#203). 레인의 점·스피너는 화면값이 정하지만
-// 오른쪽 메타와 카드는 그 값을 **낸 셸**의 시각과 마크와 말까지 든다 — 그 넷이 다른 함수에서 나오면
+// 오른쪽 메타와 카드는 그 값을 **낸 셸**의 시각과 말까지 든다 — 그 셋이 다른 함수에서 나오면
 // 행이 「A 셸의 색으로 B 셸의 말」을 적을 수 있다. 스토리 79가 막으려는 어긋남이 그것이라
 // 이기는 셸을 고르는 자리를 하나로 둔다.
 describe("행이 읽는 한 줄", () => {
   const 칸이 = (over: Partial<Shell>): Shell => ({ ...칸(null), ...over });
 
-  it("이긴 셸의 말·시각·도는 것이 값과 함께 나온다", () => {
+  it("이긴 셸의 말·시각이 값과 함께 나온다", () => {
     const list = [
       칸이({ id: 1, attention: 상태({ kind: "done", message: "PR 열었다", since: 30 }), running: "codex" }),
       칸이({ id: 2, attention: 상태({ kind: "waiting", message: "커밋할까요?", since: 50 }), running: "claude" }),
@@ -1250,33 +1250,7 @@ describe("행이 읽는 한 줄", () => {
       kind: "waiting",
       message: "커밋할까요?",
       since: 50,
-      running: "claude",
     });
-  });
-
-  // **마크도 죽은 칸을 딛고 온다.** `runningOn`이 끝난 칸의 마지막 값을 가리는 것과 같은
-  // 가름이라, 여기서 `shell.running`을 그냥 읽으면 죽은 셸의 로고가 행에 남는다.
-  it("도는 것도 말한 에이전트도 없으면 마크가 없다", () => {
-    const list = [칸이({ id: 1, attention: 상태({ kind: "waiting", agent: null }), running: null })];
-    expect(topSignalView(list)?.running).toBeNull();
-  });
-
-  // **초록 행에 마크가 서는 자리가 여기다.** 초록은 **남는** 값이라(`end`가 안 본 확인할 것을 남긴다 —
-  // 프로세스 결정 13) 그 셸에서 에이전트가 나간 뒤에도 선다: 세션이 끝나면 1초 폴링이 다음 바퀴에
-  // `running`을 눕히고, 벨은 정의상 「아는 에이전트 마크가 없을 때」만 초록이 된다. 그래서 마크의 재료를 「지금
-  // 도는 것」에서만 뽑으면 그 초록 행의 오른쪽 메타는 **늘** 경과뿐이고, 티켓과 스펙이 못박은
-  // `[마크] [말] [경과]` 셋이 그 갈래에서만 조용히 깨진다(목업의 초록 예시가 바로 `codex`
-  // 셸이다). 상태가 「누가 말했나」를 함께 들고 다니는 것이 그 자리를 메운다.
-  it("세션이 끝나 도는 것이 없어도 말한 에이전트가 마크를 낸다", () => {
-    const list = [칸이({ id: 1, attention: 상태({ kind: "done", agent: "codex" }), running: null })];
-    expect(topSignalView(list)?.running).toBe("codex");
-  });
-
-  // 지금 도는 것이 있으면 그쪽이 이긴다 — 「이 셸이 지금 무엇을 물고 있나」가 더 새로운
-  // 사실이다. 훅이 claude라고 말한 뒤 사람이 codex를 띄웠으면 행은 codex를 보여야 한다.
-  it("도는 것이 있으면 그것이 마크를 낸다", () => {
-    const list = [칸이({ id: 1, attention: 상태({ kind: "done", agent: "claude" }), running: "codex" })];
-    expect(topSignalView(list)?.running).toBe("codex");
   });
 
   it("화면값이 없으면 줄도 없다", () => {
@@ -1366,7 +1340,7 @@ describe("띠에 서는 목록", () => {
 
 // **띠가 그리는 줄**(#204). 위 `callingShells`가 「누가 부르나」와 그 차례를 정하고, 여기서
 // 줄 하나가 지는 것이 붙는다 — 어느 화면으로 가는가(`owner`) · 어느 칸을 켜는가(`id`) ·
-// 마크의 재료 · 그리고 **셸 이름을 붙이는가**.
+// 그리고 **셸 이름을 붙이는가**.
 //
 // 셸 이름의 조건이 이 함수 안에 있는 이유는 그것이 **줄 하나로는 못 내는 판정**이기
 // 때문이다: 「이 work에서 부르는 셸이 둘 이상인가」는 목록 전체를 봐야 안다. 그리는 쪽에
@@ -1434,18 +1408,6 @@ describe("띠의 줄", () => {
     expect(rows.map((row) => row.shellName)).toEqual([null, null]);
   });
 
-  // **마크의 재료는 행과 같은 규칙이다**(`topSignalView`) — 지금 도는 것이 먼저이고,
-  // 없으면 그 상태를 말한 에이전트다. 초록 줄에 마크가 서는 자리가 그 둘째 갈래다.
-  it("도는 것이 먼저, 없으면 말한 에이전트가 마크를 낸다", () => {
-    const rows = bandRows(
-      화면(
-        칸이({ id: 1, owner: 소유("가"), running: "codex", attention: 상태({ kind: "waiting", since: 10, agent: "claude" }) }),
-        칸이({ id: 2, owner: 소유("나"), running: null, attention: 상태({ kind: "waiting", since: 20, agent: "claude" }) }),
-        칸이({ id: 3, owner: 소유("다"), running: null, attention: 상태({ kind: "waiting", since: 30, agent: null }) }),
-      ),
-    );
-    expect(rows.map((row) => row.running)).toEqual(["codex", "claude", null]);
-  });
 });
 
 // **「봤다」의 판정은 여기 하나다**(결정 7). 탭 물들임(#205)과 알림 억제(#206)가 같은 함수를

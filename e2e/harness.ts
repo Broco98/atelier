@@ -745,7 +745,7 @@ export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator(
 
 /**
  * 그 work 행의 **오른쪽 메타** — 2열에 핀과 겹쳐 서는 칸(`sidebar-active-band` S4). 싣는 것이
- * 행의 화면값에 따라 갈린다: 부르면 마크와 경과, 돌면 마크, 조용하면 종류·수. **셸이 없는 행에는
+ * 행의 화면값에 따라 갈린다: 부르면 경과, 돌면 비움, 조용하면 셸 수(ui-refresh 결정 13). **셸이 없는 행에는
  * 이 칸이 없다** — 그래서 「비어 있다」는 행(`workRow`)이 선 것을 앵커로 두고 이것이 0인가로 잰다.
  */
 export const 오른쪽메타 = (page: Page, slug: string) =>
@@ -1097,9 +1097,10 @@ export async function markRunning(page: Page, running: string, ptyId = 1): Promi
     );
 
   const mark = page.locator(`[role="img"][aria-label*="${running}"]`);
-  // **부르기 전 수보다 늘었는가**를 본다 — 「하나라도 있는가」가 아니다. 이 마크는 탭 칸만이
-  // 아니라 사이드바 work 행과 nav `Terminal` 행에도 서므로, 같은 에이전트가 화면 어딘가에 이미
-  // 있으면 값이 대상 pty에 **안 앉아도** 첫 바퀴에 성공으로 돌아간다. 그러면 위 「모르는 id를
+  // **부르기 전 수보다 늘었는가**를 본다 — 「하나라도 있는가」가 아니다. 이 마크는 지금 화면의
+  // 셸 탭 칸마다(그리고 Processes의 셸 행에) 서므로, 같은 에이전트가 다른 칸에 이미 있으면 값이
+  // 대상 pty에 **안 앉아도** 첫 바퀴에 성공으로 돌아간다. 사이드바에는 마크가 없다(ui-refresh
+  // 결정 13) — 그래서 **대상 셸의 칸이 지금 화면의 탭 줄에 있어야** 이 기다림이 선다. 그러면 위 「모르는 id를
   // 주면 던진다」가 거짓말이 되고, 같은 에이전트를 셸 둘에 앉히는 그림(티켓 #203~#205)에서
   // 정확히 그 fail-open이 난다 — 이 저장소의 검사는 fail-closed여야 한다.
   const before = await mark.count();

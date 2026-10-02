@@ -110,7 +110,7 @@ function 행(state: ShellsState): string {
           // 행마다 따로다.
           const view = topSignalView(shellsOf(state, ownerOf(work.slug)));
           return view === null ? null : (
-            <SignalMeta kind={view.kind} running={view.running} since={view.since} now={view.since} />
+            <SignalMeta kind={view.kind} since={view.since} now={view.since} />
           );
         },
       }}
