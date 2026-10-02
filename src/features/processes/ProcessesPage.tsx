@@ -66,7 +66,7 @@ import type { CleanupEvent, PoolShell } from "./types";
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
  *
- * **구획과 트리가 접힌다**(ui-refresh 결정 28). 처음 상태는 결정 28의 표이고(`OPEN_AT_FIRST` — 줄은 다 펼침), 손으로 바꾼 것은 이 화면이
+ * **구획과 트리가 접힌다**(ui-refresh 결정 28). 처음 상태는 ui-refresh 결정 28의 표이고(`OPEN_AT_FIRST` — 줄은 다 펼침), 손으로 바꾼 것은 이 화면이
  * 든다(`useFolds`) — 박자마다 새 스냅샷이 와도 남고, 화면을 떠났다 오면 표로 돌아간다.
  */
 function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
@@ -318,9 +318,9 @@ function useClosedOffscreen(pool: ReadonlyArray<PoolShell> | undefined): [Readon
 }
 
 /**
- * **이 화면의 접힘**(ui-refresh 결정 28) — 손으로 바꾼 구획과 접은 줄. 처음 상태는 규칙이다: 구획은 결정 28의 표(`OPEN_AT_FIRST`), 줄은
+ * **이 화면의 접힘**(ui-refresh 결정 28) — 손으로 바꾼 구획과 접은 줄. 처음 상태는 규칙이다: 구획은 ui-refresh 결정 28의 표(`OPEN_AT_FIRST`), 줄은
  * 다 펼침. 그래서 표와 다른 구획과 접은 줄의 키만 든다. **상태는 이 화면의 것이다**(`useState`) — 박자마다 새 스냅샷이 와도 남고,
- * 화면을 떠나면 잊는다. 저장소를 두지 않는다(결정 28이 기각했다 — 올 때마다 할 일이 펼쳐져 있다).
+ * 화면을 떠나면 잊는다. 저장소를 두지 않는다(ui-refresh 결정 28이 기각했다 — 올 때마다 할 일이 펼쳐져 있다).
  *
  * 선 구획과 설 수 있는 줄(`live`)을 새로 본 렌더에서 그 밖의 것을 잊는다(렌더 중 상태 갱신 — `useClosedOffscreen`과 같은 수법).
  * 비어서 안 선 구획은 다시 설 때 처음 상태로 서고, 사라진 줄의 키는 다음 스냅샷에서 잊는다. 첫 스냅샷 전(`undefined`)에는 잊지 않는다.

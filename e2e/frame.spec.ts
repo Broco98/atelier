@@ -468,7 +468,7 @@ test("Works: 레일 열이 바탕 오른쪽 끝에 서고 — 토글은 바탕 �
   expect(await draggable(page, railMiddle, knob.y + knob.height / 2), "토글").toBe(false);
   expect(await draggable(page, railMiddle, pills.y + pills.height / 4), "칸").toBe(false);
 
-  // 패널을 닫아도 레일은 그 자리다 — 칸으로 다시 열 길이 닫힌 패널과 함께 사라지지 않는다(결정 10).
+  // 패널을 닫아도 레일은 그 자리다 — 칸으로 다시 열 길이 닫힌 패널과 함께 사라지지 않는다(ui-refresh 결정 10).
   await toggle.click();
   const closed = page.getByRole("button", { name: "작업 패널 펼치기", exact: true });
   await expect(closed).toHaveAttribute("aria-expanded", "false");

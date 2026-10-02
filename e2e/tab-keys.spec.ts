@@ -169,7 +169,7 @@ test("레일 칸을 누르면 그 패널이 서고, 켜진 칸을 다시 누르�
   await expect(slug행(page)).toHaveAccessibleDescription("slug 복사");
   await expect(작업패널(page).getByRole("button", { name: /^작업 폴더 / })).toHaveAccessibleDescription("경로 복사");
 
-  // 켜진 칸을 다시 누르면 닫힌다(ui-refresh 결정 9). 켜진 칸이 없어지고, 레일은 그 자리에 남는다(결정 10).
+  // 켜진 칸을 다시 누르면 닫힌다(ui-refresh 결정 9). 켜진 칸이 없어지고, 레일은 그 자리에 남는다(ui-refresh 결정 10).
   await info.click();
   await expect(토글(page)).toHaveAttribute("aria-expanded", "false");
   await expect(토글(page)).toHaveAccessibleName("작업 패널 펼치기");

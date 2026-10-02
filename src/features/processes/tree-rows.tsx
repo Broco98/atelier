@@ -345,8 +345,8 @@ export function RowButton({ onClick, children }: { onClick: () => void; children
  * 기본 — 마우스로 열면 팝업 자신이 포커스를 받는다. 셸 열기 `+`는 앱이 따로 켜 주지만(sidebar-active-band S10) 이 메뉴는 작업 ⋯처럼
  * 부품의 기본대로 둔다). Esc · 바깥 누르기는 닫기만 하고 포커스를 여는 버튼으로 돌려준다. 버튼은 이름이 없는 아이콘 버튼이라 툴팁 글자가 곧 이름이다(`Hint`, sidebar-active-band S28 — 작업
  * ⋯와 같다). 이 버튼을 감싸는 것에는 `title`을 걸지 않는다 — 브라우저 툴팁이 이 툴팁과 겹친다(명령줄은 이름 글자에 — `TreeRow`). 모양과 크기(24px)는 `icon-button` 한 곳이 든다. 켜짐이 있는 아이콘 버튼이라 hover는 꺼진
- * 가지 안에만 둔다 — 줄 끝 글자 버튼(`RowButton`)과 같은 한 단 짙은 겹이다(줄의 hover 위에서 갈려 보이게). 항목의 모양 · 폭은 부품의
- * 기본값이고, 이름은 작업 ⋯의 항목처럼 굵다.
+ * 가지 안에만 둔다 — 줄 끝 글자 버튼(`RowButton`)과 같은 한 단 짙은 겹이다(줄의 hover 위에서 갈려 보이게). 항목의 모양 · 폭 · 굵기는
+ * 부품의 기본값이다(DS `.at-menu-row` — 400) — 작업 ⋯ 메뉴와 같이 여기서 덧칠하지 않는다.
  */
 export function RowMenu({ name }: { name: string }) {
   const [open, setOpen] = useState(false);

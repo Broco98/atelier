@@ -4,14 +4,14 @@ import type { GroupNode } from "./shell-tree";
 import type { ProcessIdentity, ProcessSnapshot } from "./types";
 
 // **`Processes`의 접힘**(ui-refresh 결정 28 · 「같은 날 더 정한 것」 — 사용자 요청으로 더한 동작). 구획과 트리의 줄이 접힌다. 처음
-// 상태는 규칙(결정 28의 표)이 정하고, 손으로 바꾼 것은 화면에 있는 동안만 기억한다 — 상태는 화면이 든다(`ProcessesPage`의
+// 상태는 규칙(ui-refresh 결정 28의 표)이 정하고, 손으로 바꾼 것은 화면에 있는 동안만 기억한다 — 상태는 화면이 든다(`ProcessesPage`의
 // `useFolds`). 여기는 그 규칙과 키다. 순수 함수다. 트리에서 무엇이 보이는지는 프로세스 줄의 도구다(`process-tree.ts`의 `shownNodes`).
 
 /** 구획 — 화면에 선 차례다. */
 export type SectionId = "works" | "ownerless" | "offscreen" | "confirmed" | "unknown" | "instances" | "exceptions" | "log";
 
 /**
- * **결정 28의 표** — 정리할 것이 있는 구획(작업 · 주인 잃은 셸 · 화면 밖 셸 · 확정 고아)은 펼쳐 열고, 보기 전용이거나 참고용인 구획
+ * **ui-refresh 결정 28의 표** — 정리할 것이 있는 구획(작업 · 주인 잃은 셸 · 화면 밖 셸 · 확정 고아)은 펼쳐 열고, 보기 전용이거나 참고용인 구획
  * (출처 불명 · 다른 인스턴스 · 예외 · 정리 기록)은 접어 연다. 올 때마다 할 일이 펼쳐져 있다.
  */
 export const OPEN_AT_FIRST: Readonly<Record<SectionId, boolean>> = {

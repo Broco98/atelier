@@ -221,7 +221,7 @@ function WorksPage({
   // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
   // `claude` TUI가 깨진다」가 그대로 재현된다.
   const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
-  // 레일에서 고른 칸(`spec` · `info`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(결정 10) 고르는 자리와 그리는
+  // 레일에서 고른 칸(`spec` · `info`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는
   // 자리가 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지 않는다.
   //
   // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
@@ -229,7 +229,7 @@ function WorksPage({
   // 성질**이었고 되살리지 않는다. 이 화면은 작업을 옮겨도 같은 인스턴스라 이 값도 그대로 따라온다. 패널 접기는 언마운트가
   // 아니라 폭 트랜지션이라 접었다 펴도, 본문 왕복(spec ↔ terminal)에도 유지된다.
   const [panelView, setPanelView] = useState<PanelView>("spec");
-  // 레일 칸을 눌렀다(결정 9 · 10). **켜진 칸을 다시 누르면 닫힌다** — 켜짐은 「열렸고 그 칸이 골라졌다」이므로 닫힌 채 누른
+  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). **켜진 칸을 다시 누르면 닫힌다** — 켜짐은 「열렸고 그 칸이 골라졌다」이므로 닫힌 채 누른
   // 칸은 켜진 칸이 아니다: 그 칸으로 연다. 다른 칸이면 그 칸으로 바꾼다. 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
   const pickPanelView = (next: PanelView) => {
     if (workPanelOpen && next === panelView) {
@@ -791,7 +791,7 @@ function WorksPage({
   // 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 —
   // 1판은 호출부가 둘이라 인스턴스도 둘이었다.
   const body = split !== null && specBody && terminalBody ? (
-    // 분할 — `<main>` 안에 열 카드 둘이 틈(`--gap`)을 두고 선다(결정 15). 이 상자는 카드가 아니라 회색 바탕이 드러나는 자리라
+    // 분할 — `<main>` 안에 열 카드 둘이 틈(`--gap`)을 두고 선다(ui-refresh 결정 15). 이 상자는 카드가 아니라 회색 바탕이 드러나는 자리라
     // 창을 끄는 자리다(`Frame` 머리말 — 틈이 드러나는 상자는 모두 단다). 분모가 이 상자의 폭(틈을 뺀 값)이라 비율 훅이 가리킨다.
     <main ref={splitHost} data-tauri-drag-region className="flex min-h-0 min-w-0 flex-1">
       {/* **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와 같은 관용구). 비율은 **틈을 뺀 폭**에
