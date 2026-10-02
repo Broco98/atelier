@@ -38,8 +38,7 @@ pub struct InstanceRecord {
     pub updated_us: u64,
 }
 
-/// 판정을 부르는 때. 스펙은 「모드」라 부르지만 이 저장소에서 모드는 세계(Atelier · Maison)라 이름을
-/// 달리 쓴다.
+/// 판정을 부르는 때. 스펙은 「모드」라 부른다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Occasion {
     Normal,

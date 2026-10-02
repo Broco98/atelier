@@ -109,7 +109,7 @@ import { appToasts } from "@/components/shell/app-toast";
 import { terminalApi } from "./api";
 import { applyNotifySettings } from "./notify-settings";
 import { ptyIdOf } from "./shell-key";
-import { ownerlessNotice, ownerlessToastId } from "./shell-owners";
+import { OWNERLESS_TOAST_ID, ownerlessNotice } from "./shell-owners";
 import { NO_SHELLS, ownerOf, topTerminal } from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
 import {
@@ -184,7 +184,7 @@ interface SpawnedShell {
 }
 
 /** 셸을 하나 열고(기본은 최상위 터미널) 띄우기 답이 앉을 때까지 기다린다. */
-async function openShellSpawned(origin: ShellOrigin = topTerminal("atelier")): Promise<SpawnedShell> {
+async function openShellSpawned(origin: ShellOrigin = topTerminal()): Promise<SpawnedShell> {
   const before = terminalStore.state.shells.length;
   openNewShell(origin);
   const shell = terminalStore.state.shells[before];
@@ -268,7 +268,7 @@ describe("첫 사람 입력 — 스토어를 거쳐", () => {
   // 적혀, 답이 앉는 자리가 **셸이 태어나기 전 시각**을 백엔드에 다시 알렸다 — 그 셸의 자손이 모두 「입력 뒤에 뜬 것」으로 읽혀
   // 도우미가 도우미로 안 갈렸다(판정은 첫 입력 전에 태어난 자손을 도우미로 가른다).
   it("셸 띄우기 답이 오기 전에 친 키는 첫 입력이 아니다 — 그 키는 셸에 안 닿는다", async () => {
-    openNewShell(topTerminal("atelier"));
+    openNewShell(topTerminal());
     const shell = terminalStore.state.shells[terminalStore.state.shells.length - 1];
     const term = fake.terms[fake.terms.length - 1];
     // 답 전이다 — 스토어는 아직 셸 키를 모른다.
@@ -339,15 +339,15 @@ describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
   // 구현 기록 12 · 32의 남은 것. 주인 잃은 셸 토스트(동작 토스트 — 누르거나 닫을 때까지 남는다)의 N은 **살아 있는** 주인 잃은 셸이다.
   // 한때 그 N은 세울 때만 지어져, 그 셸이 스스로 끝나거나 `Processes`에서 닫혀도 「아직 도는 것이 있어요」가 옛 수로 남았다.
   // 고치는 길은 **고치기만** 한다(`update`) — 새로 세우면(`add`) 사람이 이미 닫은 토스트가 셸 하나 닫힐 때마다 되살아난다.
-  const 사라진work = (slug: string): ShellOrigin => ({ mode: "atelier", owner: ownerOf("atelier", slug), project: null, cwd: `~/${slug}` });
-  const 토스트 = ownerlessToastId("atelier");
+  const 사라진work = (slug: string): ShellOrigin => ({ owner: ownerOf(slug), project: null, cwd: `~/${slug}` });
+  const 토스트 = OWNERLESS_TOAST_ID;
   const 목록 = { status: "success" as const, data: [] };
 
   /** 그 work의 셸 `count`개를 열고, 그 work이 목록에서 사라진 것을 알린다 — 셸이 모두 주인 잃은 셸이 된다(조용한지 모른다). */
   async function 주인잃은셸(slug: string, count: number) {
     const shells = [];
     for (let n = 0; n < count; n += 1) shells.push(await openShellSpawned(사라진work(slug)));
-    await settleOwners("atelier", 목록);
+    await settleOwners(목록);
     for (const one of shells) expect(terminalStore.state.shells.find((shell) => shell.id === one.id)?.ownerless).toBe(true);
     return shells;
   }
@@ -369,11 +369,11 @@ describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
   it("주인 잃은 셸 하나가 닫히면 토스트의 N이 줄고, 마지막이 닫히면 토스트가 내려간다", async () => {
     const [a, b] = await 주인잃은셸("gone", 2);
     // 앵커 — 세웠다(새 주인 잃은 셸이 생겼다).
-    expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice("atelier", 2) }));
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice(2) }));
 
     // `Processes`의 한 줄 닫기 — 셸 닫기 확인을 거치는 길이다.
     await requestCloseShell(a.id);
-    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 1) });
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice(1) });
     expect(close).not.toHaveBeenCalledWith(토스트);
 
     await requestCloseShell(b.id);
@@ -391,17 +391,17 @@ describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
     update.mockClear();
 
     await requestCloseShell(a.id);
-    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 3) });
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice(3) });
 
     // 조용해진 셸 하나(b)만 닫힌다 — 나머지는 답이 없어 조용한지 모른다.
     vi.mocked(terminalApi.closeChecks).mockResolvedValueOnce({ [b.ptyId]: { command: false, descendants: 0 } });
     await closeQuietShells();
     expect(terminalStore.state.shells.some((shell) => shell.id === b.id)).toBe(false);
-    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 2) });
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice(2) });
 
     // 스스로 끝남 — 정상 종료는 목록에서 빠지고, 이유가 있는 끝은 목록에 남지만 더는 살아 있는 셸이 아니다.
     exitFrame(c.channel, { exitCode: 0, signal: null });
-    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 1) });
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice(1) });
     exitFrame(d.channel, { exitCode: 1, signal: null });
     expect(terminalStore.state.shells.some((shell) => shell.id === d.id)).toBe(true);
     expect(close).toHaveBeenLastCalledWith(토스트);
@@ -416,6 +416,6 @@ describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
     add.mockClear();
 
     await 주인잃은셸("gone-too", 1);
-    expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice("atelier", 2) }));
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice(2) }));
   });
 });

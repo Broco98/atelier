@@ -1,5 +1,3 @@
-import type { Mode } from "@/mode";
-
 // draft는 "아직 시작 전"을 **선언**한 것이다 — 프로젝트 유무에서 파생되지 않는다.
 export type WorkStatus = "draft" | "active" | "review" | "done";
 
@@ -39,8 +37,7 @@ export interface SpecTreeItem {
  * 값이 이미 정했다. 필드 이름이 코어의 JSON과 한 글자도 다르지 않아야 한다.
  */
 export interface SpecTree {
-  layoutId: Mode;
-  /** 모드의 레이아웃 폴더를 못 써서 내장본으로 물러섰다면 그 까닭. */
+  /** 레이아웃 폴더를 못 써서 내장본으로 물러섰다면 그 까닭. */
   fallback: string | null;
   /** 처음 열 문서(spec 기준 경로). 파일이 하나도 없으면 `null`이다. */
   defaultDoc: string | null;

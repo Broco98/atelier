@@ -1,7 +1,6 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { Mode } from "@/mode";
 import { test as base } from "./evidence";
 
 // L4가 쓰는 임시 세상. 테스트마다 새로 만들고 끝나면 지운다.
@@ -85,14 +84,14 @@ export function seedArchivedWork(home: string, slug: string, title: string, file
 }
 
 /**
- * 모드의 레이아웃 폴더를 **손으로 심는다** — 사람이 `~/.atelier/layouts/<mode>/`를 두는 것과 같다.
+ * 레이아웃 폴더를 **손으로 심는다** — 사람이 `~/.atelier/layouts/atelier/`를 두는 것과 같다.
  * 경로는 데이터 루트의 저장 모양 그대로다(spec 레이아웃 결정 6) — `work.json`처럼 여러 spec이 베껴
  * 쓰면 그 모양이 바뀌는 날 고칠 자리가 여럿이 된다. 폴더를 돌려주므로 템플릿 파일을 곁에 둘 수 있다.
  *
  * 다리에는 감시자가 없다 — 앱이 이미 읽은 뒤에 심었다면 다시 읽어야 따라온다.
  */
-export function seedLayout(home: string, mode: Mode, layout: unknown): string {
-  const folder = join(home, "layouts", mode);
+export function seedLayout(home: string, layout: unknown): string {
+  const folder = join(home, "layouts", "atelier");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "layout.json"), JSON.stringify(layout));
   return folder;

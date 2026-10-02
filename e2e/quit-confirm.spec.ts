@@ -8,7 +8,6 @@ import {
   ipcFailure,
   openShell,
   readIpcRecord,
-  typeIntoShell,
   unknownIpcCalls,
   셸입력,
   시계를세운다,
@@ -112,40 +111,6 @@ test("물음이 「모름」이면 안 도는 것으로 센다", async ({ page }
   await fireQuitRequest(page);
 
   await expect(quitDialog(page)).toContainText("셸 2 · 명령이 도는 셸 0");
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// **두 세계를 합친다.** 지금 서 있는 세계만 세면 Maison 화면에서 끌 때 Atelier 셸이 수에서 빠지는데,
-// 종료는 두 세계의 셸을 함께 죽인다.
-test("Atelier와 Maison의 셸이 합쳐 세진다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
-  await page.goto("/terminal");
-  await awaitSpawned(page, 1);
-  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7). 쓴 셸을 두고 건넌다.
-  await typeIntoShell(page);
-
-  // 주소를 직접 치면 페이지가 새로 떠 스토어가 비므로 앱 안의 클릭으로 건넌다(`terminal-worlds.spec.ts`).
-  await page
-    .getByRole("group", { name: "모드 선택" })
-    .getByRole("button", { name: "Maison", exact: true })
-    .click();
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
-  await expect(page).toHaveURL("/maison/terminal");
-  // **주소가 먼저 바뀌고 화면이 뒤따른다** — 그 틈에 `awaitSpawned`를 부르면 아직 서 있는 Atelier 칸을
-  // 세고 곧바로 돌아와, Maison 셸이 pty를 갖기 전에 쏜다(실측: 여덟 번에 한 번 「셸 1」). 그래서 이
-  // 세계의 spawn이 나간 것을 먼저 본다.
-  await expect
-    .poll(async () =>
-      ((await readIpcRecord(page))?.calls ?? []).some((call) =>
-        call.startsWith('pty_spawn {"mode":"maison"'),
-      ),
-    )
-    .toBe(true);
-  await awaitSpawned(page, 1);
-
-  await fireQuitRequest(page);
-
-  await expect(quitDialog(page)).toContainText("셸 2 · 명령이 도는 셸 2");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

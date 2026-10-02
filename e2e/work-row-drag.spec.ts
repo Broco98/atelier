@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "./evidence";
-import { ROOMS, ROOMS_MOVED, WORKS, WORKS_MOVED } from "./fixtures";
+import { WORKS, WORKS_MOVED } from "./fixtures";
 import {
   awaitSpawned,
+  callCount,
   dragRowOnto,
   fireEvent,
   hoverRowPoint,
@@ -11,6 +12,7 @@ import {
   markRunning,
   pickUpRow,
   pointIn,
+  replaceAnswer,
   shownWorkOrder,
   unknownIpcCalls,
   workRow,
@@ -79,7 +81,7 @@ test("끄는 동안 틈 선이 서고, 놓으면 move_work가 나가고 그 작�
 
   await page.mouse.up();
   await expect.poll(() => moves(page)).toEqual([
-    { mode: "atelier", slug: multiWork.slug, pinned: false, before: plainWork.slug },
+    { slug: multiWork.slug, pinned: false, before: plainWork.slug },
   ]);
   // 끌어 놓은 행은 **안 열린다** — 놓는 순간의 클릭을 제스처가 삼킨다.
   await stayedHome(page);
@@ -129,7 +131,7 @@ test.describe("놓은 구획이 고정 여부를 정한다", () => {
     await openList(page);
     await dragRowOnto(page, plainWork.slug, workRow(page, multiWork.slug), "lower");
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "atelier", slug: plainWork.slug, pinned: false, before: null },
+      { slug: plainWork.slug, pinned: false, before: null },
     ]);
   });
 
@@ -137,7 +139,7 @@ test.describe("놓은 구획이 고정 여부를 정한다", () => {
     await openList(page);
     await dragRowOnto(page, plainWork.slug, workRow(page, pinnedWork.slug), "upper");
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
+      { slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
     ]);
   });
 
@@ -145,7 +147,7 @@ test.describe("놓은 구획이 고정 여부를 정한다", () => {
     await openList(page);
     await dragRowOnto(page, pinnedWork.slug, workRow(page, plainWork.slug), "lower");
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "atelier", slug: pinnedWork.slug, pinned: false, before: multiWork.slug },
+      { slug: pinnedWork.slug, pinned: false, before: multiWork.slug },
     ]);
   });
 });
@@ -155,7 +157,7 @@ test.describe("구획 머리 위에 놓으면 그 구획 맨 위", () => {
     await openList(page);
     await dragRowOnto(page, multiWork.slug, headOf(page, "works"), "middle");
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "atelier", slug: multiWork.slug, pinned: false, before: plainWork.slug },
+      { slug: multiWork.slug, pinned: false, before: plainWork.slug },
     ]);
   });
 
@@ -166,7 +168,7 @@ test.describe("구획 머리 위에 놓으면 그 구획 맨 위", () => {
 
     await dragRowOnto(page, plainWork.slug, headOf(page, "pinned"), "middle");
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
+      { slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
     ]);
   });
 });
@@ -274,7 +276,7 @@ test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", 
   await page.mouse.up();
 
   await expect.poll(() => moves(page)).toEqual([
-    { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
+    { slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
   ]);
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
 });
@@ -318,22 +320,8 @@ test("끄는 도중 띠가 서서 목록이 내려앉아도 놓은 틈이 포인
   await page.mouse.up();
 
   await expect.poll(() => moves(page)).toEqual([
-    { mode: "atelier", slug: multiWork.slug, pinned: false, before: plainWork.slug },
+    { slug: multiWork.slug, pinned: false, before: plainWork.slug },
   ]);
-});
-
-test("Maison Room도 같은 손짓이고 `mode: \"maison\"`이 실린다", async ({ page }) => {
-  const [firstRoom, secondRoom] = ROOMS;
-  await installFixtureBackend(page);
-  await page.goto(`/maison/rooms/${firstRoom.slug}`);
-  await expect(page.locator("[data-work-row]")).toHaveCount(ROOMS.length);
-
-  await dragRowOnto(page, secondRoom.slug, workRow(page, firstRoom.slug), "upper");
-  await expect.poll(() => moves(page)).toEqual([
-    { mode: "maison", slug: secondRoom.slug, pinned: false, before: firstRoom.slug },
-  ]);
-  await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(ROOMS_MOVED));
-  await expect(page).toHaveURL(new RegExp(`/maison/rooms/${firstRoom.slug}`));
 });
 
 // **낙관적 목록과 응답이 갈리는 끌기**를 고른다 — `고정` 행을 `작업` 끝으로. 낙관적으로는 그 행이
@@ -346,7 +334,7 @@ test("move_work의 응답으로 화면이 그 순서로 선다", async ({ page }
 
   await dragRowOnto(page, pinnedWork.slug, workRow(page, multiWork.slug), "lower");
   await expect.poll(() => moves(page)).toEqual([
-    { mode: "atelier", slug: pinnedWork.slug, pinned: false, before: null },
+    { slug: pinnedWork.slug, pinned: false, before: null },
   ]);
   await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(WORKS_MOVED));
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -358,23 +346,24 @@ test("move_work의 응답으로 화면이 그 순서로 선다", async ({ page }
 
 const emptySlot = (page: Page, section: "pinned" | "works") => page.locator(`[data-empty-slot="${section}"]`);
 
-test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", () => {
-  const [firstRoom, secondRoom] = ROOMS;
+test.describe("빈 `고정` 받침(고정이 하나도 없는 목록)", () => {
+  // 목록이 뜬 뒤에 고정을 푼 목록으로 갈고 재조회를 부른다.
+  const unpinned = WORKS.map((work) => ({ ...work, pinned: false }));
 
-  async function openRooms(page: Page) {
-    await installFixtureBackend(page);
-    await page.goto(`/maison/rooms/${firstRoom.slug}`);
-    await expect(page.locator("[data-work-row]")).toHaveCount(ROOMS.length);
+  async function openUnpinned(page: Page) {
+    await openList(page);
+    await replaceAnswer(page, "list_works", unpinned);
+    await fireEvent(page, "works:changed", null);
     // 전제: 고정이 0개라 머리도 받침도 없다.
-    expect(ROOMS.some((room) => room.pinned)).toBe(false);
     await expect(headOf(page, "pinned")).toHaveCount(0);
+    await expect(page.locator("[data-work-row]")).toHaveCount(unpinned.length);
   }
 
   test("끄는 동안만 서고, 거기 놓으면 `pinned: true, before: null`", async ({ page }) => {
-    await openRooms(page);
+    await openUnpinned(page);
     await expect(emptySlot(page, "pinned")).toHaveCount(0);
 
-    await pickUpRow(page, secondRoom.slug);
+    await pickUpRow(page, plainWork.slug);
     await expect(emptySlot(page, "pinned")).toBeVisible();
     await hoverRowPoint(page, emptySlot(page, "pinned"), "middle");
     // 받침에 놓일 때는 선 대신 받침이 밝아진다.
@@ -383,14 +372,14 @@ test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", (
     await page.mouse.up();
 
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "maison", slug: secondRoom.slug, pinned: true, before: null },
+      { slug: plainWork.slug, pinned: true, before: null },
     ]);
-    await expect(page).toHaveURL(new RegExp(`/maison/rooms/${firstRoom.slug}`));
+    await stayedHome(page);
   });
 
   test("놓지 않고 목록 밖에서 떼면 받침이 사라지고 명령이 안 나간다", async ({ page }) => {
-    await openRooms(page);
-    await pickUpRow(page, secondRoom.slug);
+    await openUnpinned(page);
+    await pickUpRow(page, plainWork.slug);
     await hoverRowPoint(page, emptySlot(page, "pinned"), "middle");
     await expect(emptySlot(page, "pinned")).toHaveAttribute("data-lit", "");
 
@@ -424,7 +413,7 @@ test("긴 목록의 아래 가장자리에 머물면 목록이 구르고, 구른
   await expect(line(page)).toBeVisible();
   await page.mouse.up();
   await expect.poll(() => moves(page)).toEqual([
-    { mode: "atelier", slug: pinnedWork.slug, pinned: false, before: multiWork.slug },
+    { slug: pinnedWork.slug, pinned: false, before: multiWork.slug },
   ]);
 });
 
@@ -436,7 +425,7 @@ test("끄는 도중 `works:changed`가 와도 목록이 같으면 끌기가 살�
   await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
   await expect(line(page)).toBeVisible();
 
-  const listed = async () => (await ipcCallArgs(page, "list_works", "mode")).length;
+  const listed = () => callCount(page, "list_works");
   const before = await listed();
   await fireEvent(page, "works:changed", null);
   await expect.poll(listed).toBeGreaterThan(before);
@@ -446,7 +435,7 @@ test("끄는 도중 `works:changed`가 와도 목록이 같으면 끌기가 살�
   await expect(workRow(page, plainWork.slug)).toHaveCSS("opacity", "0.4");
   await page.mouse.up();
   await expect.poll(() => moves(page)).toEqual([
-    { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
+    { slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
   ]);
   await stayedHome(page);
 });

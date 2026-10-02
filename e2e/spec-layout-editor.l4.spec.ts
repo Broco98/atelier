@@ -34,7 +34,7 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   // 폴더가 없으니 내장본이다 — `overview.md`가 맨 앞 항목이라 기본 문서다.
   await page.goto("/works/첫째");
   await expect(page.getByText("첫째 작업의 개요다.")).toBeVisible();
-  const [before] = (await askBackend(page, "list_works", { mode: "atelier" })) as WorkView[];
+  const [before] = (await askBackend(page, "list_works", {})) as WorkView[];
   expect(before.specTree.defaultDoc).toBe("overview.md");
 
   // 앱 안에서 설정으로 간다 — 새로 읽으면 캐시가 사라져 무효화를 잴 수 없다.
@@ -42,7 +42,7 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   await aside.getByRole("button", { name: "Settings", exact: true }).click();
   await aside.getByRole("button", { name: "spec 레이아웃", exact: true }).click();
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
-  await expect(page).toHaveURL("/settings/spec-layout/atelier");
+  await expect(page).toHaveURL("/settings/spec-layout/edit");
   // 내장본의 첫 최상위 항목을 골라 둔 채로 열린다
   await expect(이름틀(page)).toHaveValue("overview.md");
 
@@ -66,7 +66,7 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   // 감시자 없이도 work 목록이 다시 불렸다 — 저장한 쪽의 무효화다
   await expect.poll(() => callCount(page, "list_works")).toBeGreaterThan(listed);
 
-  const [after] = (await askBackend(page, "list_works", { mode: "atelier" })) as WorkView[];
+  const [after] = (await askBackend(page, "list_works", {})) as WorkView[];
   expect(after.specTree.defaultDoc).toBe("plan.md");
   expect(after.specTree.items[0]).toMatchObject({ name: "plan.md", kind: "file", icon: "compass" });
 
@@ -107,21 +107,20 @@ test("다리의 미리보기가 누락 템플릿을 저장 전에 그 항목의 
       ],
     },
   };
-  const folder = seedLayout(home, "atelier", layout);
+  const folder = seedLayout(home, layout);
   writeFileSync(join(folder, "decisions.md"), "# 결정\n");
   const before = filesIn(folder);
   await installRealBackend(page, sandbox);
-  await page.goto("/settings/spec-layout/atelier");
+  await page.goto("/settings/spec-layout/edit");
 
   // 다리가 엔진의 답을 준다 — 디스크에도 초안에도 본문이 없는 템플릿은 그 항목 자리의 오류이고 글이 없다
   const message = 'template "gone.md" is neither given nor in the layout folder';
-  expect(await askBackend(page, "render_spec_layout", { id: "atelier", layout, templates: {} })).toEqual({
+  expect(await askBackend(page, "render_spec_layout", { layout, templates: {} })).toEqual({
     text: null,
     lines: [],
     errors: [{ path: [1], message }],
     warnings: [],
   } satisfies LayoutPreview);
-  await expect(askBackend(page, "render_spec_layout", { id: "../..", layout, templates: {} })).rejects.toThrow();
 
   const 누락행 = page.getByRole("treeitem", { name: /^gone\.md/ });
   await expect(누락행).toContainText("검증 오류");
@@ -152,11 +151,7 @@ test("다리의 미리보기가 누락 템플릿을 저장 전에 그 항목의 
   await 저장(page).click();
   await expect.poll(() => existsSync(join(folder, "gone.md"))).toBe(true);
   const saved = JSON.parse(readFileSync(join(folder, "layout.json"), "utf8"));
-  const after = (await askBackend(page, "render_spec_layout", {
-    id: "atelier",
-    layout: saved,
-    templates: {},
-  })) as LayoutPreview;
+  const after = (await askBackend(page, "render_spec_layout", { layout: saved, templates: {} })) as LayoutPreview;
   expect(after.text!.split("\n")).toEqual(shown);
 
   expect(await unknownIpcCalls(page)).toEqual([]);

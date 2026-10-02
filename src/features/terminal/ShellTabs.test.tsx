@@ -39,11 +39,10 @@ import type { Attention } from "./shell-attention";
 
 // **소유자는 `ownerOf`가 짓는다**(결정 10) — 이 줄이 받는 값과 셸에 앉는 값이 같은 함수에서
 // 나와야 「이 화면의 셸만 그린다」가 실제로 그 화면을 재는 것이 된다.
-const ownerFor = (slug: string) => ownerOf("atelier", slug);
+const ownerFor = (slug: string) => ownerOf(slug);
 const WORK = ownerFor("가");
 
 const origin = (project: string | null, cwd: string | null): ShellOrigin => ({
-  mode: "atelier",
   owner: WORK,
   project,
   cwd,
@@ -156,7 +155,7 @@ describe("줄에 서는 것과 그 순서", () => {
     const 가 = opened(2);
     const 나 = opened(
       3,
-      { mode: "atelier", owner: ownerFor("나"), project: null, cwd: "~/x" },
+      { owner: ownerFor("나"), project: null, cwd: "~/x" },
       가.state,
     );
     expect(shellCellsOf(render(나.state, { owner: ownerFor("가") }))).toHaveLength(2);
@@ -786,7 +785,6 @@ describe("`+`", () => {
     // **결정 23이 결정 30을 뒤집었다.** 한때 남의 work의 셸 여덟이 이 줄의 `+`를 잠갔는데,
     // 그 화면에는 칸이 하나도 없어 왜 잠겼는지가 안 보였다.
     const 남 = opened(MAX_SHELLS, {
-      mode: "atelier",
       owner: ownerFor("남"),
       project: null,
       cwd: "~/x",
@@ -795,7 +793,7 @@ describe("`+`", () => {
 
     const 나 = opened(
       MAX_SHELLS,
-      { mode: "atelier", owner: ownerFor("나"), project: null, cwd: "~/x" },
+      { owner: ownerFor("나"), project: null, cwd: "~/x" },
       남,
     ).state;
     const plus = plusOf(render(나, { owner: ownerFor("나") }));

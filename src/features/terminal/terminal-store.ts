@@ -13,7 +13,6 @@ import { viewAction } from "@/components/shell/processes-view";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { windowFocused } from "@/lib/window-focus";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
-import type { Mode } from "@/mode";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import {
@@ -84,7 +83,7 @@ import type { AnswerKey, InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
 import { nextRecall, recallTarget } from "./shell-recall";
 import type { RecallTarget } from "./shell-recall";
-import { ownerlessWorldOf, ownerlessNotice, ownerlessToastId, vanishedOwners } from "./shell-owners";
+import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
 import { attachWebgl, closeWebgl, failWebgl, loseWebgl, NO_WEBGL_SEATS } from "./shell-webgl";
 import type { WebglSeats } from "./shell-webgl";
@@ -144,7 +143,7 @@ interface ShellInstance {
   // `cwd`가 `null`이면 데이터 루트다(최상위 터미널).
   //
   // **새 칸의 자리가 아니다.** 셸 안 ⌘T는 이 값의 `owner`로 화면에 요청만 보내고, 자리는
-  // 화면의 기본 자리 함수가 정한다(UI개선 결정 19). 여기서 읽는 것은 spawn의 세계·cwd와 그 소유자다.
+  // 화면의 기본 자리 함수가 정한다(UI개선 결정 19). 여기서 읽는 것은 spawn의 cwd와 그 소유자다.
   origin: ShellOrigin;
   fontsReady: boolean;
   opened: boolean;
@@ -253,9 +252,9 @@ function openShellQuietly(origin: ShellOrigin, auto: boolean): OpenedShell | nul
  * 셸을 하나 띄운다 — **사람이 누른 길이다**: `+`와 ⌘T. **상한에서는 열지 않고 알리기만
  * 한다**(결정 30·47).
  *
- * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `topTerminal(mode)`, Work 화면은
- * ⌘T와 `+` 메뉴의 「모든 프로젝트」가 `workDefaultOrigin(mode, work)`(UI개선 결정 18·19), 메뉴의
- * 프로젝트 줄이 `workShellOrigin(mode, work, project)`. 뒤 함수가 `null`을 주면 여기까지 오지 않는다.
+ * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `topTerminal()`, Work 화면은
+ * ⌘T와 `+` 메뉴의 「모든 프로젝트」가 `workDefaultOrigin(work)`(UI개선 결정 18·19), 메뉴의
+ * 프로젝트 줄이 `workShellOrigin(work, project)`. 뒤 함수가 `null`을 주면 여기까지 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
   const opened = openShellQuietly(origin, false);
@@ -383,7 +382,7 @@ function hasShell(id: number): boolean {
 // **끄는 셸이 목록에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
 // (정상 종료 · `×`·⌘W · 아카이빙의 회수) 모두 이 스토어의 상태를 바꾸므로, 길마다 부르는 대신 **상태를
 // 보고** 거둔다 — 한 길만 빠뜨리면 받침이 선 채 없는 셸로 분할이 켜진다. 두 화면(work · `/terminal`)이
-// 같은 이것을 딛는다. 비교는 id로만 한다: 소유자 키는 세계(Atelier·Maison)마다 다르지만 id는 하나다.
+// 같은 이것을 딛는다. 비교는 id로만 한다: 소유자 키는 화면마다 다르지만 id는 하나다.
 // 끝났어도 목록에 남은 칸(0 아닌 코드 · 시그널 — `markExited`)은 살아 있는 원천이라 끌기가 산다.
 // **판정하는 자리는 이 구독 하나다.** 받는 자리(`dropShellOnSlot` · 본문 받침의 `dropHere`)는 다시 보지
 // 않는다 — 구독이 상태 변경과 같은 틱에 끌기를 걷어 받침도 틈도 사라지므로 거기까지 닿을 길이 없고,
@@ -511,13 +510,13 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
  * 부르는 쪽은 **닫는 자리**(`path`)를 말한다 — 까닭은 그 자리로 표가 고른다(`CLOSE_REASONS` · 티켓 11).
  */
 function closeShell(id: number, path: ClosePath): void {
-  // 주인 잃은 셸이면 그 세계 — 빼기 **전에** 읽는다.
-  const world = ownerlessWorldOf(terminalStore.state, id);
+  // 주인 잃은 셸인가 — 빼기 **전에** 읽는다.
+  const wasOwnerless = isOwnerlessShell(id);
   const instance = instances.get(id);
   if (instance) disposeInstance(instance, path);
   terminalStore.setState((state) => removeShell(state, id));
-  // 주인 잃은 셸이 닫혔다 — 그 세계의 토스트의 N을 맞춘다(떠 있을 때만 — `refreshOwnerless`).
-  if (world !== null) refreshOwnerless(world);
+  // 주인 잃은 셸이 닫혔다 — 토스트의 N을 맞춘다(떠 있을 때만 — `refreshOwnerless`).
+  if (wasOwnerless) refreshOwnerless();
 }
 
 /**
@@ -550,8 +549,8 @@ function shellCloseDialog(body: string): Promise<boolean> {
 }
 
 /**
- * 종료 확인이 적을 수(UI개선 결정 15 · 프로세스 스펙 S18). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는
- * 세계마다 갈리지 않고 한 벌이다(owner가 세계를 싣는다). 명령이 도는지와 띄운 프로세스 수는 셸 닫기 확인과 **같은
+ * 종료 확인이 적을 수(UI개선 결정 15 · 프로세스 스펙 S18). **모든 화면의** 목록 전부를 센다 — 이 스토어는
+ * 화면마다 갈리지 않고 한 벌이다(owner가 화면을 싣는다). 명령이 도는지와 띄운 프로세스 수는 셸 닫기 확인과 **같은
  * 물음**을 셸 여럿에 한 번에 보내 지금 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 레지스트리의 한 자리
  * (`spawnedOf`)가 알고, 아카이브 창의 M(`countSpawned`)도 그것을 딛는다.
  */
@@ -999,7 +998,7 @@ export function holdOwner(owner: ShellOwner): () => void {
 }
 
 /**
- * 그 세계의 목록이 새로 앉았다 — **slug가 사라진 work의 셸을 다룬다**(프로세스 결정 4 · 티켓 12). 부르는 자리는 앱 루트
+ * work 목록이 새로 앉았다 — **slug가 사라진 work의 셸을 다룬다**(프로세스 결정 4 · 티켓 12). 부르는 자리는 앱 루트
  * 하나다(`ShellOwners`): 목록 쿼리가 성공으로 앉을 때마다.
  *
  * 1. 사라진 owner를 찾는다(`vanishedOwners` — 실패 · 로딩이면 판단 안 함, 제외 창 · 이미 주인 잃은 셸은 뺀다).
@@ -1012,8 +1011,8 @@ export function holdOwner(owner: ShellOwner): () => void {
  * **물음을 기다린 뒤 다시 본다.** 그사이 사람이 UI로 아카이브를 시작했거나(제외 창) 셸이 닫혔을 수 있다 — 기다리기 전에
  * 고른 목록을 그대로 믿으면 사람이 확인한 셸이 주인 잃은 셸로 선다.
  */
-export async function settleOwners(mode: Mode, result: ListResult | undefined): Promise<void> {
-  const gone = vanishedOwners(terminalStore.state, mode, result, heldOwners);
+export async function settleOwners(result: ListResult | undefined): Promise<void> {
+  const gone = vanishedOwners(terminalStore.state, result, heldOwners);
   const ids = terminalStore.state.shells
     .filter((shell) => gone.includes(shell.owner) && !judging.has(shell.id))
     .map((shell) => shell.id);
@@ -1030,71 +1029,71 @@ export async function settleOwners(mode: Mode, result: ListResult | undefined): 
     }
     if (left.length === 0) return;
     terminalStore.setState((state) => markOwnerless(state, left));
-    showOwnerless(mode);
+    showOwnerless();
   } finally {
     for (const id of ids) judging.delete(id);
   }
 }
 
 /**
- * 그 세계의 주인 잃은 셸 토스트가 말할 것 — id와 문구(티켓 12). N은 **살아 있는** 주인 잃은 셸이다(`liveOwnerlessOf`). 살아 있는
+ * 주인 잃은 셸 토스트가 말할 것 — id와 문구(티켓 12). N은 **살아 있는** 주인 잃은 셸이다(`liveOwnerlessOf`). 살아 있는
  * 것이 없으면 `null`이다 — 「아직 도는 것이 있어요」가 거짓이 된다. 세우기(`showOwnerless`)와 고치기(`refreshOwnerless`)가 같은 N과
  * 같은 말을 이 한 자리에서 짓는다.
  */
-function ownerlessToastOf(mode: Mode): { id: string; text: string } | null {
-  const count = liveOwnerlessOf(terminalStore.state, mode).length;
-  return count === 0 ? null : { id: ownerlessToastId(mode), text: ownerlessNotice(mode, count) };
+function ownerlessToastOf(): { id: string; text: string } | null {
+  const count = liveOwnerlessOf(terminalStore.state).length;
+  return count === 0 ? null : { id: OWNERLESS_TOAST_ID, text: ownerlessNotice(count) };
 }
 
 /**
- * 그 세계의 주인 잃은 셸 토스트를 **세운다**(티켓 12) — 새 주인 잃은 셸이 생긴 순간이다(`settleOwners`). **동작 토스트다** — 자기
- * id를 써서(`ownerlessToastId`) 다시 오면 그 자리를 고치고, 사람이 닫았으면 다시 선다(새로 알릴 것이 생겼다). 누르거나 닫을 때까지
+ * 주인 잃은 셸 토스트를 **세운다**(티켓 12) — 새 주인 잃은 셸이 생긴 순간이다(`settleOwners`). **동작 토스트다** — 자기
+ * id를 써서(`OWNERLESS_TOAST_ID`) 다시 오면 그 자리를 고치고, 사람이 닫았으면 다시 선다(새로 알릴 것이 생겼다). 누르거나 닫을 때까지
  * 남는다. 도는 것이 없으면 세우지 않는다.
  */
-function showOwnerless(mode: Mode): void {
-  const toast = ownerlessToastOf(mode);
+function showOwnerless(): void {
+  const toast = ownerlessToastOf();
   if (toast === null) return;
   showAppToast({
     ...toast,
     // [보기]는 `Processes`의 주인 잃은 셸 묶음으로 간다(티켓 32 · 프로세스 스펙 S15). [모두 닫기]가 앞이다 — 이 토스트의
     // 주된 동작이다.
-    actions: [{ label: "모두 닫기", run: () => void closeOwnerless([mode]) }, viewAction(toast.id)],
+    actions: [{ label: "모두 닫기", run: () => void closeOwnerless() }, viewAction(toast.id)],
   });
 }
 
 /**
- * 주인 잃은 셸이 닫히거나 스스로 끝났다 — 그 세계의 토스트를 **떠 있을 때만** 지금 수로 **고치고**, 살아 있는 것이 안 남았으면 내린다
+ * 주인 잃은 셸이 닫히거나 스스로 끝났다 — 토스트를 **떠 있을 때만** 지금 수로 **고치고**, 살아 있는 것이 안 남았으면 내린다
  * (구현 기록 12 · 32의 남은 것 — 한때 N은 세울 때만 지어져, 셸이 닫혀도 옛 수로 남았다). 부르는 자리는 둘이다: 셸 닫기의 한
  * 길(`closeShell` — `Processes`의 한 줄 · [조용한 셸 모두 닫기] · [모두 닫기]가 모두 지난다)과 종료 프레임(스스로 끝남 — `spawn`).
  *
  * **세우지 않는다.** 여기서 `showOwnerless`를 부르면(`appToasts.add`) 사람이 이미 [×]로 닫은 동작 토스트가 셸 하나 닫힐 때마다 다시
  * 선다. 고치기는 떠 있지 않은 id에 아무것도 안 하고(`retextAppToast`), 내리기도 없는 id에는 아무 일도 안 한다.
  */
-function refreshOwnerless(mode: Mode): void {
-  const toast = ownerlessToastOf(mode);
-  if (toast === null) appToasts.close(ownerlessToastId(mode));
+function refreshOwnerless(): void {
+  const toast = ownerlessToastOf();
+  if (toast === null) appToasts.close(OWNERLESS_TOAST_ID);
   else retextAppToast(toast.id, toast.text);
 }
 
 /**
- * [모두 닫기] — 받은 세계들의 주인 잃은 셸을 **한 번 묻고** 모두 닫는다(티켓 12). 셸마다 닫기 확인 창(08)을 띄우면 창이 N번
+ * [모두 닫기] — 주인 잃은 셸을 **한 번 묻고** 모두 닫는다(티켓 12). 셸마다 닫기 확인 창(08)을 띄우면 창이 N번
  * 뜬다. 창은 N과, 그 셸들에서 띄워 함께 끝날 프로세스 수 M을 말한다(M은 배치 물음 한 번 — 못 얻으면 안 붙는다).
  *
  * 닫는 길은 셸 닫기이고 까닭은 **「셸 닫기」**다 — 사람이 누른 닫기라 판 04의 `●`를 켜지 않는다(프로세스 스펙 S41).
  * 끝난 칸도 함께 거둔다(`ownerlessOf`). 살아 있는 것이 없으면 물을 것이 없어 묻지 않는다. 취소하면 토스트는 그대로 남는다.
  *
- * **부르는 곳이 둘이다 — 같은 함수다**(티켓 32). 토스트는 그 세계 하나를 넘기고, `Processes`의 주인 잃은 셸 묶음은 두 세계를
- * 넘긴다 — 그 화면은 앱 전체를 보인다(프로세스 결정 9). 두 세계의 셸도 창은 한 번이고, 닫은 세계들의 토스트를 함께 내린다.
+ * **부르는 곳이 둘이다 — 같은 함수다**(티켓 32). 토스트의 [모두 닫기]와 `Processes`의 주인 잃은 셸 묶음이다. 어느 쪽에서
+ * 닫아도 토스트를 함께 내린다.
  */
-export async function closeOwnerless(modes: ReadonlyArray<Mode>): Promise<void> {
-  const live = modes.flatMap((mode) => liveOwnerlessOf(terminalStore.state, mode));
+export async function closeOwnerless(): Promise<void> {
+  const live = liveOwnerlessOf(terminalStore.state);
   if (live.length > 0) {
     const spawned = await countSpawned(live, fetchCloseChecks);
     const body = ownerlessCloseNotice(live.length, spawned);
     if (!(await askDialog({ title: "주인 잃은 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
   }
-  for (const mode of modes) appToasts.close(ownerlessToastId(mode));
-  for (const shell of modes.flatMap((mode) => ownerlessOf(terminalStore.state, mode))) closeShell(shell.id, "ownerless");
+  appToasts.close(OWNERLESS_TOAST_ID);
+  for (const shell of ownerlessOf(terminalStore.state)) closeShell(shell.id, "ownerless");
 }
 
 /**
@@ -1102,11 +1101,11 @@ export async function closeOwnerless(modes: ReadonlyArray<Mode>): Promise<void> 
  * `Processes`로 간다(프로세스 스펙 S14 · 티켓 32): 그 work은 목록에 없어 가면 없는 work으로 간다.
  */
 export function isOwnerlessShell(id: number): boolean {
-  return ownerlessWorldOf(terminalStore.state, id) !== null;
+  return terminalStore.state.shells.find((shell) => shell.id === id)?.ownerless === true;
 }
 
 /**
- * [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — **두 세계의** 살아 있는 셸을 배치 물음 **한 번**으로 보고, 명령도 사람이
+ * [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — **모든 화면의** 살아 있는 셸을 배치 물음 **한 번**으로 보고, 명령도 사람이
  * 띄운 자손도 없는 셸만 한 번 묻고 닫는다. 무엇이 조용한지는 `quietShellsOf`가 혼자 정한다(모르면 조용하지 않다).
  *
  * **닫을 것이 없으면 묻지 않고 짧은 토스트로 끝낸다** — 「조용한 셸 0개를 닫아요」 창은 물을 것이 없는 물음이고, 버튼이 아무
@@ -1748,7 +1747,7 @@ async function spawn(instance: ShellInstance) {
         return;
       }
       instance.ptyId = null;
-      const world = ownerlessWorldOf(terminalStore.state, instance.id);
+      const wasOwnerless = isOwnerlessShell(instance.id);
       terminalStore.setState((state) => markExited(state, instance.id, frame));
       // **결정 48의 나머지 반쪽이 여기다.** 정상 종료한 칸은 목록에서 스스로 빠지는데,
       // 빠지면 그 칸은 다시 그려지지 않아 `×`가 영영 안 생긴다 — 즉 `closeShell`이 그 id로
@@ -1763,25 +1762,14 @@ async function spawn(instance: ShellInstance) {
         disposeInstance(instance, null);
       }
       // 주인 잃은 셸이 스스로 끝났다 — 빠졌든(정상 종료) 이유를 읽으라고 남았든 더는 살아 있는 셸이 아니다(`refreshOwnerless`).
-      if (world !== null) refreshOwnerless(world);
+      if (wasOwnerless) refreshOwnerless();
     };
 
     // `~` 축약 표기를 그대로 넘긴다 — 펴는 것은 `expand_home`을 가진 백엔드 한 곳이다
     // (결정 25). `null`이면 데이터 루트이고 그 자리가 어디인지도 백엔드만 안다.
     const cols = instance.term.cols;
     const rows = instance.term.rows;
-    // **세계도 함께 나간다**(결정 10). cwd가 `null`인 최상위 셸은 백엔드가 그 세계의 홈에
-    // 세우고, 셸 env의 `ATELIER_MODE`도 이 값이 정한다 — 안 실으면 백엔드가 인자를 거절해
-    // 셸이 아예 안 뜨고(#187), 저쪽 세계의 값을 실으면 Maison 터미널이 Atelier 홈에서
-    // 조용히 뜬다.
-    // **owner를 파싱해서 뽑지 않는다** — origin이 `Mode`로 직접 든다(`ShellOrigin.mode`).
-    const spawned = await terminalApi.spawn(
-      instance.origin.mode,
-      instance.origin.cwd,
-      cols,
-      rows,
-      channel,
-    );
+    const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);
     // **이 왕복 사이에 `×`가 눌렸을 수 있다.** 그때 `closeShell`은 `ptyId`가 아직 null이라
     // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
     // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —

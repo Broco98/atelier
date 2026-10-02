@@ -18,10 +18,10 @@ import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
 
 /**
- * 소유자 키 하나. **모드를 여기서만 적는다** — 이 파일이 재는 것은 알림 판정이라 세계는
- * 배경이다. 인자가 없으면 그 세계의 최상위 셸.
+ * 소유자 키 하나. **키를 짓는 자리를 여기 하나로 둔다** — 이 파일이 재는 것은 알림 판정이라 소유자는
+ * 배경이다. 인자가 없으면 최상위 터미널의 셸(빈 키 `""`).
  */
-const 소유 = (slug = "") => ownerOf("atelier", slug);
+const 소유 = (slug = "") => ownerOf(slug);
 
 // 알림 판정 seam(#206 · 스토리 81). 순수 함수 하나가 대상이라 렌더도 DOM도 없이 기본
 // 환경(node)에서 돈다 — `shell-attention.test.ts`가 선례다.

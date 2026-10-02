@@ -14,7 +14,6 @@ import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/feat
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
-import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
@@ -22,51 +21,33 @@ import ShellReclaim from "./ShellReclaim";
 import ShellOwners from "./ShellOwners";
 import { showAppToast } from "./app-toast";
 import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
-import { onViewProcesses, processesAddress } from "./processes-view";
+import { onViewProcesses } from "./processes-view";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
-import {
-  modeEntryTarget,
-  modeSwitchTarget,
-  shellMode,
-  shellStore,
-  toggleSidebar,
-} from "./shell-store";
-import type { NavKey } from "./nav-items";
+import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
+import { navItems, type NavKey } from "./nav-items";
 
 function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   // 타이틀바 왼쪽 여백은 index.css의 [data-titlebar]가 계산한다 — 전체화면 여부만 여기서 알려준다
   const fullscreen = useIsFullscreen();
   const navigate = useNavigate();
-  // 지금 어느 세계인가. **셋째 구독이고 값은 원시값이다** — 아래 둘과 한 select로 묶어
-  // 객체 하나로 돌려주면 매번 새 객체라 걸러내지 못해 주소가 바뀔 때마다 셸 전체가
-  // 리렌더한다(아래 두 주석이 지키는 그 최적화). 문자열 하나면 세계를 건널 때만 돈다.
-  //
-  // `modeOf`가 아니라 `shellMode`인 것은 **`/settings`가 세계 밖이기 때문**이다 — 접두사가
-  // 없어 `modeOf`는 그 주소를 늘 Atelier로 눕히고, 그러면 Maison에서 설정을 연 채 누른 ⌘K가
-  // 저쪽 세계를 뒤지고 「앱으로 돌아가기」가 Atelier로 간다(설정에는 nav가 없다 — UI개선 결정 21).
-  const mode = useRouterState({ select: (state) => shellMode(state.location.pathname) });
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
   // 사이드바 목록에서 그 작업 행이 강조되는 것으로 드러난다.
   // 파생을 select 안에서 끝낸다 — 밖에서 pathname을 구독하면 작업을 고를 때마다(주소의 slug가
   // 바뀔 때마다) 셸 전체가 리렌더한다. 여기서 걸러 두면 활성 항목이 실제로 바뀔 때만 돈다.
-  //
-  // **훑는 배열이 모드의 것이다.** Atelier 배열로 `/maison/terminal`을 재면 접두사가 하나도
-  // 안 맞아 활성 표시가 통째로 사라진다 — 그 세계에도 Terminal은 서 있는데.
   const activeKey = useRouterState({
     select: (state): NavKey | null =>
-      navItemsOf(mode).find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
+      navItems.find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
   });
   // 설정은 `navItems`에 없다(결정 51) — 판정도 따로 한 줄이다. 값은 **지금 선 설정 항목**이고
   // 설정 밖이면 `null`이다(UI개선 결정 21): 이 하나가 「사이드바가 설정 nav인가」와 「어느 항목이
   // 켜졌나」를 함께 답해서, 불리언에서 넓혀도 구독 수가 그대로다. 위 select에 합쳐 객체 하나로
-  // 돌려주지 않는 이유는 그 주석과 같다: 매번 새 객체를 돌려주면 걸러내지 못해 주소가 바뀔 때마다
-  // 셸 전체가 리렌더한다.
+  // 돌려주지 않는다 — 매번 새 객체를 돌려주면 걸러내지 못해 주소가 바뀔 때마다 셸 전체가 리렌더한다.
   const currentSettingsItem = useRouterState({
     select: (state) => settingsItemOf(state.location.pathname),
   });
@@ -97,7 +78,7 @@ function AppShell() {
   // 아래가 바뀔 때마다 쏜다 — 에이전트가 spec을 쓰는 동안은 쉬지 않고 온다. 목록을 쓰는 훅이 저마다 들으면 부르는
   // 자리(사이드바 · 작업 화면 · 프로젝트 상세 · 아카이브 …)마다 구독이 붙어, 이벤트 한 번에 조회가 그 수만큼 돌았다(작업
   // 화면에서 넷). 셸은 어느 화면에서든 서 있으므로 여기서 한 번이면 다 덮는다. 조회 중에 온 것의 합치기, 옮기기 중 미룸,
-  // 아카이브 목록과 저쪽 세계는 무효화 문(`invalidateWorks`)이 든다 — 이 자리는 배선뿐이다. 이벤트의 모양이 바뀌어도
+  // 아카이브 목록은 무효화 문(`invalidateWorks`)이 든다 — 이 자리는 배선뿐이다. 이벤트의 모양이 바뀌어도
   // (감시자가 경로를 싣는 날) 여기 한 자리만 고친다. 이벤트에는 기다릴 사람이 없어 반환을 버린다.
   const queryClient = useQueryClient();
   useEffect(() => {
@@ -167,17 +148,13 @@ function AppShell() {
   }, []);
 
   // **`Processes`로 가는 문의 길을 건다**(프로세스 스펙 S15 · S14 · 티켓 32). 토스트의 [보기]와 띠의 주인 잃은 셸 줄은 React
-  // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다. 주소는
-  // **부를 때** 읽는다(`router.state`) — 구독하면 셸의 주소 구독이 하나 는다. 무엇을 여는지는 `processesAddress`가 혼자 안다.
+  // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다.
+  // 「목적지를 짓고 → 닿음을 걸고 → 이동한다」의 순서는 `navigateThen`이 든다.
   //
   // **가서 할 일(토스트 내리기)은 닿은 순간이다**(`navigateThen`의 `processes` 칸 — develop 머지). 이 셸은 설정에도 서고, spec
-  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다. 「목적지를 짓고 → 닿음을 걸고 →
-  // 이동한다」의 순서는 그 함수가 든다(`useGoToShell`과 같은 함수).
+  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다(`useGoToShell`과 같은 함수).
   useEffect(
-    () =>
-      onViewProcesses((arrived) =>
-        navigateThen(router, { to: processesAddress(router.state.location.pathname) }, arrived, "processes"),
-      ),
+    () => onViewProcesses((arrived) => navigateThen(router, { to: "/processes" }, arrived, "processes")),
     [router],
   );
 
@@ -280,20 +257,6 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
-          mode={mode}
-          onPickMode={(pick) => {
-            // 목적지가 nav와 규칙이 다르다 — 그 세계의 **마지막 주소**이고 없으면 첫 화면이며,
-            // 항목 주소면 그 항목의 마지막 화면이 씨앗으로 얹힌다. 규칙은 하나도 여기 없다
-            // (`shell-store`의 `modeSwitchTarget`): 「같은 세계면 아무 데도 안 간다」도 그 씨앗도
-            // 답의 일부라, 셋 중 하나라도 이 자리에서 다시 지으면 그 함수를 재는 검사들이 초록인
-            // 채로 화면의 규칙만 갈린다. 그래서 **이동 전체를 받아 그대로 넘긴다.**
-            //
-            // 떠나온 세계로 **위 `mode`를 넘긴다** — 셸이 이미 든 값을 두고 주소를 다시 읽으면
-            // 세계를 판정하는 자리가 둘이 된다. (설정에는 세그먼트가 없다 — UI개선 결정 21.)
-            const go = modeSwitchTarget(mode, pick);
-            if (!go) return;
-            void navigate(go);
-          }}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
@@ -301,11 +264,9 @@ function AppShell() {
             // 뒤로가기를 눌러도 화면이 그대로인 죽은 항목이 된다.
             // (두 목적지 모두 목록이 화면에 상주하므로 "목록으로 돌아가기"가 따로 필요 없다.)
             //
-            // 목적지도 **그 세계의 배열**에서 나온다 — Maison에서 Terminal을 눌렀는데
-            // Atelier의 `/terminal`로 가면 nav 한 번에 세계를 떠난다. 사이드바가 이제 같은
-            // 배열을 그리므로(#183) 그 세계에 없는 key는 여기 올 일이 없고, 그래도 오면
-            // `navTargetOf`가 `undefined`를 준다 — 아래 가드가 그때 아무 데도 안 간다.
-            const target = navTargetOf(mode, key);
+            // 목적지는 사이드바가 그리는 **같은 배열**에서 나온다(#183). 없는 key가 오면
+            // `undefined`다 — 아래 가드가 그때 아무 데도 안 간다.
+            const target = navItems.find((item) => item.key === key)?.to;
             if (!target || key === activeKey) return;
             void navigate({ to: target });
           }}
@@ -320,10 +281,8 @@ function AppShell() {
           onPickSettingsItem={(key) => void navigate({ to: settingsItem(key).to })}
           onLeaveSettings={() => {
             // 들어오기 직전 자리로 **한 번에** 간다(결정 27) — 항목을 몇 번 옮겼든 뒤로가기가
-            // 아니라 push다. 넘기는 것은 **떠나온 모드 그대로**다: 설정은 세계를 안 실어 위
-            // `mode`가 곧 떠나온 세계이고, 세그먼트 함수(`modeSwitchTarget`)를 부르면 같은
-            // 세계라 늘 `null`이 나온다. 목적지 규칙은 하나도 여기 없다(`shell-store`).
-            void navigate(modeEntryTarget(mode));
+            // 아니라 push다. 목적지 규칙은 하나도 여기 없다(`shell-store`).
+            void navigate(appReturnTarget());
           }}
         />
         <Outlet />
@@ -340,11 +299,8 @@ function AppShell() {
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야
           하는 물음이 위다. 둘 다 `body` 끝의 포털로 서고 뜰 때 붙으므로, 나중에 뜬 확인 창이 늘
-          위다. 포커스도 확인 창으로 가서, Esc 한 번은 확인 창만 닫는다.
-
-          **세계는 셸이 정한 것을 그대로 내린다** — 팔레트가 주소를 다시 되짚으면 `/settings`가
-          늘 Atelier로 눕는다(위 `mode`의 주석이 든 그 성질). 여기 값은 이미 그것을 넘겼다. */}
-      <SearchPalette mode={mode} open={searchOpen} onClose={() => setSearchOpen(false)} />
+          위다. 포커스도 확인 창으로 가서, Esc 한 번은 확인 창만 닫는다. */}
+      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       {/* 이 work의 토스트(프로세스 스펙 P2). 셸에 서서 어느 화면에서든 보인다 — 자리와 Provider의
           범위는 그 파일이 든다. */}
       <AppToasts />
@@ -352,8 +308,8 @@ function AppShell() {
           셸 한 자리에 선다 — 라우터 구독은 제 파일에 있다(위 구독 셋을 늘리지 않는다). */}
       <ShellReclaim />
       {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
-          찾는다. 지금 세계의 목록을 관찰하므로 **세계를 받는다**. 쿼리 구독은 제 파일에 있다. */}
-      <ShellOwners mode={mode} />
+          찾는다. 쿼리 구독은 제 파일에 있다. */}
+      <ShellOwners />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />

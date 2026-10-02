@@ -7,13 +7,12 @@ import {
   installFixtureBackend,
   kills,
   markRunning,
-  modeButton,
   navButton,
   openShell,
   typeIntoShell,
   unknownIpcCalls,
   글자대비,
-  두세계에셸을띄운다,
+  셸셋을띄운다,
   셸입력,
   칸들,
 } from "./harness";
@@ -23,7 +22,7 @@ import type { ProcessSnapshot } from "@/features/processes/types";
 // 프로세스 티켓 27 — **`Processes`에서 셸과 자손 트리를 보고 이동하거나 닫는다**(프로세스 결정 9 · 10 · 프로세스 스펙 S32 · S53 ·
 // S58 · P1, 스토리 60 · 79 · 80 · 85 · 88 · 98 · 100 · 102).
 //
-// 묶음의 층과 차례(지금 세계 먼저 · 사이드바 순서 · 시작 순 · 셸 키로 잇기)와 상태 칸의 갈래는 L2가 표로 잰다(`shell-tree.test.ts` ·
+// 묶음의 층과 차례(사이드바 순서 · 시작 순 · 셸 키로 잇기)와 상태 칸의 갈래는 L2가 표로 잰다(`shell-tree.test.ts` ·
 // `process-tree.test.ts`). 여기서 보는 것은 그 표가 **진짜 스토어(진짜로 띄운 셸) · 진짜 스냅샷 폴러 · 진짜 라우터 · 진짜 포커스 ·
 // 진짜 확인 창**을 지나 화면에 서는가다 — 스토어는 xterm을 들여 노드 seam에 없다.
 //
@@ -69,31 +68,27 @@ function 스냅샷(ptys: number[], withTree = true): ProcessSnapshot {
   });
 }
 
-test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 · 셸 행 · 자손 행 · 셸 도우미의 옅은 줄이 선다", async ({ page }) => {
-  await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3, 4]) });
-  await 두세계에셸을띄운다(page);
+test("work 행이 맨 윗단이고 그 아래 셸 행 · 자손 행 · 셸 도우미의 옅은 줄이 선다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3]) });
+  await 셸셋을띄운다(page);
 
-  // Maison에서 연다 — Maison이 맨 위다.
   await navButton(page, "Processes").click();
-  await expect(page).toHaveURL("/maison/processes");
+  await expect(page).toHaveURL("/processes");
   await expect(셸행(page, 1)).toBeVisible();
   expect(await 줄들(page)).toEqual([
-    { level: "1", name: "Maison, 지금 세계" },
-    { level: "2", name: "Terminal, 셸 1개" },
-    { level: "3", name: "zsh, 조용함 2h" },
-    { level: "1", name: "Atelier" },
-    // work 행 — 이름(목록의 제목)과 셸 수. 프로세스 결정 10 그림의 「process-manager · 셸 2」가 이 줄이다.
-    { level: "2", name: `${plainWork.title}, 셸 2개` },
+    // work 행이 맨 윗단이다 — 이름(목록의 제목)과 셸 수. 프로세스 결정 10 그림의
+    // 「process-manager · 셸 2」가 이 줄이다.
+    { level: "1", name: `${plainWork.title}, 셸 2개` },
     // 명령 없이 사람이 띄운 것만 남은 셸 — 도우미는 안 센다.
-    { level: "3", name: "zsh, 띄운 프로세스 2개" },
-    { level: "4", name: "셸 도우미, gitstatusd-darwin-arm64" },
-    { level: "4", name: "node" },
-    { level: "5", name: "esbuild" },
-    { level: "3", name: "zsh, 조용함 2h" },
-    { level: "2", name: "Terminal, 셸 1개" },
-    { level: "3", name: "zsh, 조용함 2h" },
+    { level: "2", name: "zsh, 띄운 프로세스 2개" },
+    { level: "3", name: "셸 도우미, gitstatusd-darwin-arm64" },
+    { level: "3", name: "node" },
+    { level: "4", name: "esbuild" },
+    { level: "2", name: "zsh, 조용함 2h" },
+    { level: "1", name: "Terminal, 셸 1개" },
+    { level: "2", name: "zsh, 조용함 2h" },
   ]);
-  // 스토어가 모르는 풀의 셸(`l3-99`)은 이 묶음에 없다 — 32의 화면 밖 셸이다. 앵커는 위에서 선 셸 넷이다.
+  // 스토어가 모르는 풀의 셸(`l3-99`)은 이 묶음에 없다 — 32의 화면 밖 셸이다. 앵커는 위에서 선 셸 셋이다.
   await expect(트리(page).locator(`[data-shell-key="${shellKeyOf(99)}"]`)).toHaveCount(0);
 
   // **셸 도우미는 옅게 선다**(P1) — 사람이 띄운 것과 한 무게로 읽히면 섞인다. 옆의 자손 행보다 글자가 옅다 — 바탕과의 대비가
@@ -102,26 +97,6 @@ test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 �
   const 자손 = 트리(page).getByRole("treeitem", { name: "node", exact: true });
   const [도우미대비, 자손대비] = [await 글자대비(도우미), await 글자대비(자손)];
   expect(도우미대비, `셸 도우미 ${도우미대비.toFixed(2)} · 자손 ${자손대비.toFixed(2)}`).toBeLessThan(자손대비);
-
-  // Atelier로 건너가 연다 — 이제 Atelier가 맨 위다. 같은 화면이 지금 세계만 바꿔 세운다.
-  await modeButton(page, "Atelier").click();
-  await navButton(page, "Processes").click();
-  await expect(page).toHaveURL("/processes");
-  await expect.poll(async () => (await 줄들(page))[0]).toEqual({ level: "1", name: "Atelier, 지금 세계" });
-  expect((await 줄들(page)).map((row) => row.name)).toEqual([
-    "Atelier, 지금 세계",
-    `${plainWork.title}, 셸 2개`,
-    "zsh, 띄운 프로세스 2개",
-    "셸 도우미, gitstatusd-darwin-arm64",
-    "node",
-    "esbuild",
-    "zsh, 조용함 2h",
-    "Terminal, 셸 1개",
-    "zsh, 조용함 2h",
-    "Maison",
-    "Terminal, 셸 1개",
-    "zsh, 조용함 2h",
-  ]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -204,7 +179,7 @@ test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입�
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  // 같은 세계의 다른 화면 — 그 work의 첫 셸(켜진 칸은 둘째다)로 간다.
+  // 다른 화면 — 그 work의 첫 셸(켜진 칸은 둘째다)로 간다.
   await navButton(page, "Processes").click();
   await 셸행(page, 1).getByRole("button", { name: "이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}\\?.*tab=terminal`));
@@ -241,7 +216,7 @@ test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫�
   // 앵커: 닫기 전 물음이 나갔고 그 답으로 닫았다 — 묻기 전에 닫은 것이 아니다.
   await expect
     .poll(() => kills(page))
-    .toEqual([{ id: 1, reason: "shellClose", owner: "atelier:" }]);
+    .toEqual([{ id: 1, reason: "shellClose", owner: "" }]);
   expect(await callCount(page, "pty_close_check")).toBe(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(셸행(page, 1)).toHaveCount(0);
@@ -272,10 +247,10 @@ test("셸 묶음이 트리 역할이고, 셸 행의 접근성 이름이 이름�
   await expect(트리(page)).toBeVisible();
   await expect(트리(page).getByRole("treeitem", { name: "zsh, 띄운 프로세스 2개", exact: true })).toHaveAttribute(
     "aria-level",
-    "3",
+    "2",
   );
   const 줄 = await 줄들(page);
-  expect(줄.map((row) => row.level)).toEqual(["1", "2", "3", "4", "4", "5"]);
+  expect(줄.map((row) => row.level)).toEqual(["1", "2", "3", "3", "4"]);
   // 이름 없는 줄이 없다 — 트리에 선 모든 줄이 한 문장으로 읽힌다.
   expect(줄.every((row) => (row.name ?? "").length > 0)).toBe(true);
   expect(await unknownIpcCalls(page)).toEqual([]);

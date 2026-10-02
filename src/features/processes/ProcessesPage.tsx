@@ -1,12 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import PageHeader from "@/components/shell/PageHeader";
 import { SignalLane } from "@/components/shell/shell-signal";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Button } from "@/components/ui/button";
-import { modeOfOwner, shellRowName, slugOfOwner, type Shell } from "@/features/terminal/shell-registry";
+import { shellRowName, slugOfOwner, type Shell } from "@/features/terminal/shell-registry";
 import {
   closeOffscreenShell,
   closeOwnerless,
@@ -15,7 +15,6 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import { worksQuery } from "@/features/works/hooks";
-import { ALL_MODES, modeNameOf, type Mode } from "@/mode";
 import { askThenEnd } from "./actions";
 import CleanupLogSection from "./CleanupLogSection";
 import { useProcessSnapshot } from "./hooks";
@@ -27,7 +26,6 @@ import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
 import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
 import {
-  CURRENT_WORLD,
   HELPER_LABEL,
   groupRowLabel,
   groupTotals,
@@ -36,7 +34,6 @@ import {
   offscreenRowLabel,
   offscreenShells,
   offscreenStateOf,
-  ownerlessGroupRowLabel,
   ownerlessGroups,
   poolKey,
   shellCount,
@@ -45,7 +42,6 @@ import {
   shellTotals,
   shellTree,
   stateText,
-  worldRowLabel,
   type ListedItem,
   type PoolBeat,
   type ShellNode,
@@ -55,28 +51,23 @@ import {
 import type { PoolShell } from "./types";
 
 /**
- * `Processes` 화면(프로세스 결정 8 · 9 · 10). 아틀리에가 띄운 셸과 그 셸에서 뜬 프로세스를 **앱 전체**로 보인다 — 두 세계의
- * 주소(`/processes` · `/maison/processes`)가 이 화면 하나를 연다. 「지금 무엇이 내 컴퓨터를 먹나」에 답하는 화면이라 세계로
- * 나누면 절반이 안 보인다.
+ * `Processes` 화면(프로세스 결정 8 · 9 · 10). 아틀리에가 띄운 셸과 그 셸에서 뜬 프로세스를 **앱 전체**로 보인다 — 「지금 무엇이
+ * 내 컴퓨터를 먹나」에 답하는 화면이다.
  *
- * **세계를 받는 것은 차례 때문이다**(티켓 27) — 지금 세계가 맨 위에 선다. 무엇을 보이는지는 세계와 상관없다.
- *
- * 셸 묶음은 세계 → work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work 행은 그
+ * 셸 묶음은 work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work 행은 그
  * 트리의 합이다. 맨 위에 요약 카드(티켓 30)가 서고, 셸 묶음 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 확정 고아 · 출처 불명 · 다른
  * 인스턴스 · 예외(티켓 31 — `StraySections`), 정리 기록(티켓 32 — `CleanupLogSection`)이 차례로 선다. 자손 행에는 [끝내기]와 행
  * 메뉴(「예외로 두기」)가 선다. 머리에는 [조용한 셸 모두 닫기](티켓 32)가 선다.
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
  */
-function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean }) {
+function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const { data: snapshot, dataUpdatedAt } = useProcessSnapshot();
   // **이 화면이 서 있는 동안이 「화면이 열려 있다」다**(티켓 29) — nav 메타의 `●`가 창 포커스와 함께 이것으로 「봤다」를 가른다.
   useEffect(() => openProcessesScreen(), []);
-  // 스토어의 셸 전부 — 두 세계의 것이 한 벌이다(owner가 세계를 싣는다). 상태 칸이 셸 상태를 읽으므로 좁히지 않는다.
+  // 스토어의 셸 전부 — 화면마다 갈리지 않고 한 벌이다(owner가 화면을 싣는다). 상태 칸이 셸 상태를 읽으므로 좁히지 않는다.
   const shells = useStore(terminalStore, (state) => state.shells);
-  const lists = useWorldLists(
-    ALL_MODES.filter((one) => shells.some((shell) => modeOfOwner(shell.owner) === one && slugOfOwner(shell.owner) !== null)),
-  );
+  const list = useWorkList(shells.some((shell) => slugOfOwner(shell.owner) !== null));
   const goToShell = useGoToShell();
   // **보는 동안 이 화면이 보인 손볼 것도 본 것이다**(티켓 29 · S41 — `useSeeWhileLooking`). nav 메타의 요약은 최대 20초 늦다 — 그것으로만
   // 앉히면 이 스냅샷(2초)에 먼저 선 출처 불명 · 정리 기록이 떠난 뒤 늦은 요약에 실려 `●`를 켠다. 이름은 요약과 같은 이름이다.
@@ -89,8 +80,8 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
   const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
   const [closedOffscreen, markOffscreenClosed] = useClosedOffscreen(snapshot?.pool);
 
-  const tree = snapshot ? shellTree({ current: mode, shells, lists, snapshot }) : [];
-  const ownerless = snapshot ? ownerlessGroups({ current: mode, shells, snapshot }) : [];
+  const tree = snapshot ? shellTree({ shells, list, snapshot }) : [];
+  const ownerless = snapshot ? ownerlessGroups({ shells, snapshot }) : [];
   const offscreen = snapshot ? offscreenShells({ shells, snapshot, previous, closed: closedOffscreen }) : [];
   // **경과의 지금은 스냅샷이 도착한 때다**(`dataUpdatedAt`). 박자(2초)마다 새 값이라 경과가 그만큼씩 늙는다 — 따로 시계를 켜지
   // 않는다. 박자가 멎으면(창이 가려짐) 경과도 멎는데, 그동안은 아무도 안 본다.
@@ -103,7 +94,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
           root="Processes"
           inset={!sidebarOpen}
           actions={
-            // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 두 세계의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
+            // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
             // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
             // 모양은 쪽 동작의 버튼(`Button` ghost · sm — 설정의 「다시 읽기」와 같은 가족)이다.
             <Button variant="ghost" size="sm" onClick={() => void closeQuietShells()}>
@@ -115,61 +106,52 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
           {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — `PageHeader`는 제목 역할이 없는 글자라(설정 화면과 같은
               사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
           <h2 className="sr-only">Processes</h2>
-          {/* 요약 카드(티켓 30) — 합계 · 추이 · CPU · 수들 · 앱 본체. 셸 수(풀의 셸, 두 세계의 것이 함께)도 여기 선다. */}
+          {/* 요약 카드(티켓 30) — 합계 · 추이 · CPU · 수들 · 앱 본체. 셸 수(풀의 셸)도 여기 선다. */}
           <SummaryCard snapshot={snapshot} />
           {tree.length > 0 && (
             // **트리 역할이다**(S58) — 스크린리더가 행마다 깊이를 읽는다. 줄은 평평하게 서고 깊이는 `aria-level`이 말한다(중첩
             // `group` 대신). 줄마다 접근성 이름이 한 문장이라 안의 글자 조각을 이어 읽지 않는다.
             <div role="tree" aria-label="셸" className="mt-4 flex flex-col gap-0.5">
-              {tree.map((world) => (
-                <Fragment key={world.mode}>
-                  <TreeRow level={1} label={worldRowLabel(world)} className="mt-3 first:mt-0">
-                    <span className="text-[12.5px] font-semibold">{modeNameOf(world.mode)}</span>
-                    {world.current && <span className="text-[12px] text-tertiary">{CURRENT_WORLD}</span>}
+              {tree.map((group) => (
+                <Fragment key={group.owner}>
+                  {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
+                      한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. */}
+                  <TreeRow level={1} label={groupRowLabel(group)}>
+                    <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
+                    <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
+                    <span className="flex-1" />
+                    <Figures metrics={groupTotals(group)} ports={false} />
+                    <Actions />
                   </TreeRow>
-                  {world.groups.map((group) => (
-                    <Fragment key={group.owner}>
-                      {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
-                          한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. */}
-                      <TreeRow level={2} label={groupRowLabel(group)}>
-                        <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
-                        <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
-                        <span className="flex-1" />
-                        <Figures metrics={groupTotals(group)} ports={false} />
-                        <Actions />
-                      </TreeRow>
-                      {group.shells.map((node) => (
-                        <StoreShellRows
-                          key={node.shell.id}
-                          node={node}
-                          level={3}
-                          now={now}
-                          // [이동] — 띠의 줄 · ⌘J와 같은 길이다(`useGoToShell`): 셸 주인의 세계로 화면을 옮기고, 켜고, 포커스를
-                          // 데려온다(티켓 16).
-                          onGo={() => goToShell({ id: node.shell.id, owner: node.shell.owner })}
-                        />
-                      ))}
-                    </Fragment>
+                  {group.shells.map((node) => (
+                    <StoreShellRows
+                      key={node.shell.id}
+                      node={node}
+                      level={2}
+                      now={now}
+                      // [이동] — 띠의 줄 · ⌘J와 같은 길이다(`useGoToShell`): 셸 주인의 화면으로 옮기고, 켜고, 포커스를
+                      // 데려온다(티켓 16).
+                      onGo={() => goToShell({ id: node.shell.id, owner: node.shell.owner })}
+                    />
                   ))}
                 </Fragment>
               ))}
             </div>
           )}
           {ownerless.length > 0 && (
-            // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 조용하지 않아 남은 셸. 두 세계의 것이 work마다
-            // 선다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 두 세계를 넘기고 한 번 묻는다. [이동]은 없다: 그 work은
+            // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 조용하지 않아 남은 셸. work마다
+            // 선다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 한 번 묻는다. [이동]은 없다: 그 work은
             // 목록에 없어 갈 화면이 없다.
             <Section
               title="주인 잃은 셸"
               note={shellCount(ownerless.reduce((sum, group) => sum + group.shells.length, 0))}
-              action={<RowButton onClick={() => void closeOwnerless(ALL_MODES)}>모두 닫기</RowButton>}
+              action={<RowButton onClick={() => void closeOwnerless()}>모두 닫기</RowButton>}
             >
               <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col gap-0.5">
                 {ownerless.map((group) => (
                   <Fragment key={group.owner}>
-                    <TreeRow level={1} label={ownerlessGroupRowLabel(group)}>
+                    <TreeRow level={1} label={groupRowLabel(group)}>
                       <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
-                      <span className="shrink-0 text-[12px] text-tertiary">{modeNameOf(modeOfOwner(group.owner))}</span>
                       <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
                       <span className="flex-1" />
                       <Figures metrics={groupTotals(group)} ports={false} />
@@ -220,22 +202,17 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
 const NOTHING_SHOWN: ReadonlyArray<string> = [];
 
 /**
- * 셸이 선 세계의 목록 — work 행의 이름과 차례(사이드바 순서)가 여기서 온다. 사이드바가 이미 보는 지금 세계의 것은 캐시에 있어 곧바로
- * 선다 — 다만 그 캐시가 `worksQuery`의 `staleTime`보다 오래됐으면 이 화면이 설 때 한 번 다시 읽는다(react-query의 마운트 재조회).
- * 저쪽 세계의 것은 **그 세계에 work의 셸이 있을 때만** 묻는다 — 목록 조회는 워크트리마다 `git status`라 셸 없는 세계를 화면을 열
- * 때마다 읽을 까닭이 없다. 최상위 터미널의 셸만 있는 세계도 안 묻는다(이름이 nav의 `Terminal`이다).
+ * work 목록 — work 행의 이름과 차례(사이드바 순서)가 여기서 온다. 사이드바가 이미 보는 목록이라 캐시에 있어 곧바로 선다 — 다만 그
+ * 캐시가 `worksQuery`의 `staleTime`보다 오래됐으면 이 화면이 설 때 한 번 다시 읽는다(react-query의 마운트 재조회). **work의 셸이 있을
+ * 때만** 묻는다 — 목록 조회는 워크트리마다 `git status`라, 최상위 터미널의 셸만 있으면(이름이 nav의 `Terminal`이다) 읽을 까닭이 없다.
  */
-function useWorldLists(worlds: ReadonlyArray<Mode>): Partial<Record<Mode, ReadonlyArray<ListedItem>>> {
-  const results = useQueries({
-    queries: ALL_MODES.map((one) => ({ ...worksQuery(one), enabled: worlds.includes(one) })),
-  });
-  const lists: Partial<Record<Mode, ReadonlyArray<ListedItem>>> = {};
-  ALL_MODES.forEach((one, at) => {
-    const data = results[at]?.data;
-    if (data) lists[one] = data;
-  });
-  return lists;
+function useWorkList(enabled: boolean): ReadonlyArray<ListedItem> {
+  const { data } = useQuery({ ...worksQuery(), enabled });
+  return data ?? NO_LIST;
 }
+
+/** 목록 전의 빈 목록 — 늘 같은 배열이다. */
+const NO_LIST: ReadonlyArray<ListedItem> = [];
 
 /**
  * 바로 앞 박자 — 화면 밖 셸은 **두 박자 연달아 스토어가 모른** 셸만 센다(`offscreenShells`). 스냅샷이 도착한 때(`dataUpdatedAt`)로
@@ -297,8 +274,8 @@ function StoreShellRows({ node, level, now, onGo }: { node: ShellNode; level: nu
 }
 
 /**
- * 셸 하나의 줄들 — 셸 행, 셸 도우미의 옅은 줄, 사람이 띄운 자손의 트리. 셸 행의 깊이는 부르는 쪽이 준다(세계 트리는 3 — 세계 → work
- * → 셸, 주인 잃은 셸은 2, 화면 밖 셸은 1). 셸 행의 숫자는 그 셸의 트리 합이다(셸 프로세스 · 도우미 · 자손 — `shellTotals`). 스토어의
+ * 셸 하나의 줄들 — 셸 행, 셸 도우미의 옅은 줄, 사람이 띄운 자손의 트리. 셸 행의 깊이는 부르는 쪽이 준다(셸 묶음과 주인 잃은 셸은
+ * 2 — work → 셸, 화면 밖 셸은 1). 셸 행의 숫자는 그 셸의 트리 합이다(셸 프로세스 · 도우미 · 자손 — `shellTotals`). 스토어의
  * 셸과 화면 밖 셸(스토어의 칸이 없다)이 같은 줄로 선다 — 이름 · 상태 · 접근성 이름만 부르는 쪽이 짓는다.
  */
 function ShellRows({

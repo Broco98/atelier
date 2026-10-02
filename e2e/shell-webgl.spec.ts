@@ -55,7 +55,7 @@ async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
   await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
 }
 
-/** nav의 `Terminal` — 그 세계의 최상위 터미널도 셸 화면이다. 들어가면 셸이 저절로 하나 뜬다. */
+/** nav의 `Terminal` — 최상위 터미널도 셸 화면이다. 들어가면 셸이 저절로 하나 뜬다. */
 async function toTerminal(page: Page): Promise<void> {
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");

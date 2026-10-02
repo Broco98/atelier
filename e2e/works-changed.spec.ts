@@ -1,17 +1,14 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { ARCHIVE, MAISON_LANDING_ROOM, PROJECTS, WORKS } from "./fixtures";
+import { ARCHIVE, PROJECTS, WORKS } from "./fixtures";
 import {
-  awaitSpawned,
   callCount,
   callsSinceRelease,
   fireEventToAll,
   heldCalls,
   holdCommand,
   installFixtureBackend,
-  ipcCallArgs,
   liveSubscriptions,
-  modeButton,
   releaseCommand,
   steadyCount,
   unknownIpcCalls,
@@ -83,32 +80,11 @@ test("작업 화면 · 프로젝트 상세 · 아카이브에 차례로 서도 w
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 계측(판 02): 이벤트 한 번에 도는 `list_works` — 바꾸기 전 4, 뒤 1. 저쪽 세계에 셸이 있으면 2다(S13 — 그 세계의 목록도
-// 같은 무효화에서 함께 읽는다).
-test("이벤트를 모든 구독에 한 번 쏘면 list_works가 한 번 나간다 — 저쪽 세계를 owner로 가진 셸이 있으면 두 번", async ({
-  page,
-}) => {
+// 계측(판 02): 이벤트 한 번에 도는 `list_works` — 바꾸기 전 4, 뒤 1.
+test("이벤트를 모든 구독에 한 번 쏘면 list_works가 한 번 나간다", async ({ page }) => {
   await installFixtureBackend(page);
-  const listsOf = async (mode: string) =>
-    (await ipcCallArgs(page, "list_works", "mode")).filter(({ args }) => args.mode === mode).length;
-
   await openWork(page);
   expect(await firedCalls(page, "list_works")).toBe(1);
-
-  // ── Maison에 셸 하나를 두고 돌아온다(`shell-ownerless.spec.ts`의 저쪽 세계 검사와 같은 길) ──
-  await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
-  await page.locator('[data-tab="new"]').click();
-  await awaitSpawned(page, 1);
-  await modeButton(page, "Atelier").click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
-  await expect(page.locator('[data-tab="spec"]')).toBeVisible();
-
-  const atelierBefore = await listsOf("atelier");
-  const maisonBefore = await listsOf("maison");
-  expect(await firedCalls(page, "list_works")).toBe(2);
-  expect(await listsOf("atelier")).toBe(atelierBefore + 1);
-  expect(await listsOf("maison")).toBe(maisonBefore + 1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

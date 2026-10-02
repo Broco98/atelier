@@ -11,7 +11,6 @@ import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
-import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
@@ -56,31 +55,23 @@ const countOf = (text: string, literal: string) => text.split(literal).length - 
 // 화면이 토스트 자리(Viewport)를 그리는데 그것은 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트
 // Provider를 렌더 도우미도 싼다(S14). 정적 렌더라 구독은 안 걸리고 자리만 선다.
 //
-// **세계는 기본값을 단 뒤쪽 인자다**(결정 10). 이 화면의 조회는 전부 `mode`에서 나오는데(`ownerOf(mode,
-// …)`) 그 값이 한쪽으로 누워도 화면은 「셸이 안 서네」로만 보인다 — 두 세계에 같은 slug를
-// 세워 재려면 렌더가 세계를 받아야 한다. 기본값이 Atelier라 세계를 안 넘기는 기존 호출은 그대로
-// Atelier를 잰다.
-//
 // `bodies`는 문서 본문이다(경로 → 글). 캐시에 심어 두면 본문이 그대로 그려진다 — **어느 문서가
-// 열렸는지를 본문으로** 재는 자리가 쓴다. 세계 **뒤에** 두는 것도 같은 까닭이다 — 기본값이 있어
-// 기존 호출이 바뀌지 않는다(앞에 두면 세계를 넘기는 호출마다 빈 `{}`를 적어야 한다).
+// 열렸는지를 본문으로** 재는 자리가 쓴다. 맨 **뒤에** 두는 것은 기본값이 있어 기존 호출이 바뀌지 않게 하려는 것이다.
 function render(
   overrides: Partial<WorkView> = {},
   tab: ViewTab = "spec",
   split: SplitSide | null = null,
-  mode: Mode = "atelier",
   bodies: Record<string, string> = {},
 ): string {
   const client = new QueryClient();
-  client.setQueryData(worksQuery(mode).queryKey, [{ ...work, ...overrides }]);
+  client.setQueryData(worksQuery().queryKey, [{ ...work, ...overrides }]);
   for (const [path, body] of Object.entries(bodies)) {
-    client.setQueryData(specFileQuery(mode, work.slug, path).queryKey, body);
+    client.setQueryData(specFileQuery(work.slug, path).queryKey, body);
   }
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <WorksPage
-          mode={mode}
           sidebarOpen
           selectedSlug={work.slug}
           currentFile={null}
@@ -288,27 +279,10 @@ describe("WorksPage 머리행 배치", () => {
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
 
-  // **이름표가 세계를 탄다.** ⓘ·⋯·패널 여닫이·제목 편집의 접근성 이름이 전부 리터럴
-  // 「작업 …」이었다 — 이 판이 사이드바·본문·아카이브·⋯ 메뉴의 문장은 갈라 놓고 화면의
-  // **이름표**는 안 집었고, 그래서 Maison에서 스크린 리더가 Room을 통째로 「작업」이라
-  // 불렀다(CONTEXT.md 「Room」 항목이 금지한 것).
-  //
-  // **화면을 통째로 훑는다.** 이름표를 하나씩 세면 새 이름표가 하나 늘 때 그것만 조용히
-  // Atelier 말로 남는다 — 이 자리가 정확히 그렇게 생긴 구멍이었다.
-  it("Maison 화면에는 「작업」이라는 말이 한 군데도 없다", () => {
-    const markup = render({}, "spec", null, "maison");
-    expect(markup).not.toContain("작업");
-    // fail-closed: 화면이 통째로 안 서면 위 줄은 「없다」가 아니라 「아무것도 없다」다.
-    expect(markup).toContain('aria-label="Room 메뉴"');
-    expect(markup).toContain('aria-label="Room 메타"');
-  });
-
-  // 반대쪽. 이 줄이 없으면 두 세계를 다 Room 어휘로 눕혀도 위 검사가 초록이다.
-  it("Atelier 화면의 이름표는 한 글자도 안 바뀐다", () => {
+  it("화면의 이름표는 한 글자도 안 바뀐다", () => {
     const markup = render();
     expect(markup).toContain('aria-label="작업 메뉴"');
     expect(markup).toContain('aria-label="작업 메타"');
-    expect(markup).not.toContain("Room");
   });
 
   it("조작이 전부 오른쪽 끝 한 묶음에 있다", () => {
@@ -408,7 +382,7 @@ describe("WorksPage 터미널 탭", () => {
     const call = worksPage.indexOf("await call();");
     // `await` **뒤에서** 찾는다 — 같은 문구가 위쪽 주석에도 나온다(실측으로 걸렸다).
     const bail = worksPage.indexOf("return;", worksPage.indexOf("하지 못했습니다", call));
-    const reap = worksPage.indexOf("closeShellsOf(ownerOf(mode, work.slug))");
+    const reap = worksPage.indexOf("closeShellsOf(ownerOf(work.slug))");
 
     expect(call, "await call()을 찾지 못했다").toBeGreaterThan(-1);
     // 실패하면 **거두지 않고 돌아간다** — 이 return이 빠지면 거부당한 Work의 셸이 죽는다.
@@ -425,12 +399,12 @@ describe("WorksPage 터미널 탭", () => {
   it("제외 창은 확인 뒤 · 코어 호출 전에 열고, 회수 뒤에 닫으며, 실패하면 곧바로 닫는다", () => {
     const worksPage = source("WorksPage.tsx");
     const asked = worksPage.indexOf("if (!(await askDanger(");
-    const hold = worksPage.indexOf("const release = holdOwner(ownerOf(mode, work.slug));");
+    const hold = worksPage.indexOf("const release = holdOwner(ownerOf(work.slug));");
     const call = worksPage.indexOf("await call();");
     const failed = worksPage.indexOf("} catch (e) {", call);
     const earlyRelease = worksPage.indexOf("release();", failed);
     const problem = worksPage.indexOf("await showProblem(", failed);
-    const reap = worksPage.indexOf("closeShellsOf(ownerOf(mode, work.slug));");
+    const reap = worksPage.indexOf("closeShellsOf(ownerOf(work.slug));");
     const lateRelease = worksPage.indexOf("release();", reap);
 
     expect(asked, "확인 창을 찾지 못했다").toBeGreaterThan(-1);
@@ -627,7 +601,7 @@ describe("WorksPage 기본 문서", () => {
     markup.match(/<div class="[^"]*\bselected-row\b[^"]*">[\s\S]*?<\/button>/)?.[0] ?? "";
 
   it("fixture 트리의 기본 문서로 연다", () => {
-    const markup = render(specDocs(files, "overview.md"), "spec", null, "atelier", bodies);
+    const markup = render(specDocs(files, "overview.md"), "spec", null, bodies);
     expect(selectedRow(markup)).toContain(">overview.md<");
     expect(markup).toContain(bodies["overview.md"]);
     expect(markup).not.toContain(bodies["plan.md"]);
@@ -636,7 +610,7 @@ describe("WorksPage 기본 문서", () => {
   it("기본 문서가 overview.md가 아닌 트리를 넣으면 그 문서가 열린다", () => {
     // `overview.md`가 목록에 **있는데도** 트리가 고른 것이 열려야 한다 — 없으면 이름으로 고르던
     // 옛 규칙도 둘째 파일로 떨어져 같은 답을 낸다.
-    const markup = render(specDocs(files, "plan.md"), "spec", null, "atelier", bodies);
+    const markup = render(specDocs(files, "plan.md"), "spec", null, bodies);
     expect(selectedRow(markup)).toContain(">plan.md<");
     expect(selectedRow(markup)).not.toContain(">overview.md<");
     expect(markup).toContain(bodies["plan.md"]);
@@ -717,14 +691,11 @@ describe("WorksPage ⌘Enter", () => {
     // 모든 키가 셸을 여는데, 그렇게 뒤집어도 초록이었다. 리터럴 그대로 못박는다.
     expect(worksPage).toContain("if (!opensShellFromWindow(e)) return;");
     // 딛고 선 작업. `selected`로 바꾸면 본문이 보여주는 셸과 **다른 작업의** 셸이 열린다.
-    // **세계가 origin에 실린다**(결정 10) — 어긋나면 이 화면이 저쪽 루트의 work에서 셸을
-    // 열고, `pty_spawn`도 그 세계의 홈에서 뜬다(둘 다 멀쩡한 값이라 아무도 안 나무란다).
-    //
     // **기본 자리 함수다 — `null`이 없다**(UI개선 결정 17~19). 옛 `workShellOrigin(…, null)`은 멀티
     // 프로젝트 work에서 `null`을 줘 ⌘T가 조용히 안 먹었다(스토리 45). 그 함수는 「고른
     // 프로젝트」와 「들어갈 때」의 것으로 남는다.
-    expect(worksPage).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
-    expect(worksPage).not.toContain("workShellOrigin(mode, panelWork, null)");
+    expect(worksPage).toContain("openNewShell(workDefaultOrigin(panelWork));");
+    expect(worksPage).not.toContain("workShellOrigin(panelWork, null)");
     // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
     expect(worksPage).toContain("onSelectTab(\"terminal\")");
     // **셸 안 ⌘T도 이 자리로 온다**(UI개선 결정 19). xterm 핸들러는 요청만 보내고 화면이 연다 —
@@ -752,8 +723,8 @@ describe("WorksPage ⌘Enter", () => {
     const worksPage = source("WorksPage.tsx");
     expect(worksPage).toContain("const nav = shellNavFromWindow(e);");
     // 세는 것이 이 work의 셸이 아니면, 사이드바에 펼쳐 둔 **남의 셸까지** 세게 된다.
-    // 조회하는 소유자에도 세계가 실려야 한다 — 짓는 함수가 하나라 여는 자리와 갈릴 수 없다.
-    expect(worksPage).toContain("const owner = ownerOf(mode, panelWork.slug);");
+    // 조회하는 소유자도 여는 자리와 같은 함수(`ownerOf`)에서 나온다 — 짓는 함수가 하나라 갈릴 수 없다.
+    expect(worksPage).toContain("const owner = ownerOf(panelWork.slug);");
     expect(worksPage).toContain("const shells = shellsOf(state, owner);");
     // ⌘1만 spec이고 나머지는 한 칸 밀린다. 안 밀면 ⌘1이 spec이면서 첫 셸이 되고,
     // 마지막 셸은 영영 못 고른다.
@@ -793,8 +764,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     terminalStore.setState(() => NO_SHELLS);
   });
 
-  // **비우지 않고 얹는다.** 두 세계에 같은 slug가 함께 서 있을 때 무엇이 줄에 서는가가
-  // 결정 10의 물음이라(아래 「저쪽 세계」 케이스), 심을 때마다 비우면 그 물음이 사라진다.
+  // **비우지 않고 얹는다.** 여러 셸이 함께 서 있을 때 무엇이 줄에 서는가를 재야 해서다.
   // 새고 나가지 않는 것은 `afterEach`가 든다.
   function seedOrigin(origin: ShellOrigin, count = 1): void {
     terminalStore.setState((state) => {
@@ -807,7 +777,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // **소유자는 `ownerOf`가 짓는다**(결정 10) — 화면이 조회하는 것과 같은 함수여야 여기서
   // 띄운 셸이 그 줄에 선다. slug를 그냥 넘기면 이 파일만 옛 키를 쓰며 조용히 빈 줄을 잰다.
   function seed(count: number, slug: string, cwd: string): void {
-    seedOrigin({ mode: "atelier", owner: ownerOf("atelier", slug), project: null, cwd }, count);
+    seedOrigin({ owner: ownerOf(slug), project: null, cwd }, count);
   }
 
   const headerOf = (markup: string) => markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
@@ -836,49 +806,12 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     terminalStore.setState(
       (state) =>
         openShell(state, {
-          mode: "atelier",
-          owner: ownerOf("atelier", "남"),
+          owner: ownerOf("남"),
           project: null,
           cwd: "~/x",
         })!.state,
     );
     expect(kindsOf(headerOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
-  });
-
-  // 결정 10 — **두 루트에 같은 slug가 설 수 있다.** 코어의 유일성은 한 루트 쌍 안에서만 보므로
-  // Atelier의 `some-work`와 Maison의 `some-work`가 함께 있고, 이 화면의 조회가 `mode`를 안
-  // 실으면 Maison work 화면의 줄에 **Atelier 셸들**이 선다. `+`로 연 Maison 셸은 origin이
-  // 제대로 maison이라 그 줄에 영영 안 서서 눌러도 아무 일이 없는 칸이 되고, ⌘W와 `sameScreen`은
-  // `tabOwner`(maison)를 보므로 키가 겨누는 칸과 눈에 보이는 칸이 갈린다.
-  //
-  // **값으로 잰다.** 이 파일의 다른 렌더가 전부 Atelier라 「한쪽 세계로 눕는다」는 변형이
-  // 여기 오기 전까지 무변화였다(실측: `owner={ownerOf("atelier", panelWork.slug)}`로 바꿔도
-  // 966개가 전부 초록이었다).
-  it("저쪽 세계의 같은 이름 셸은 이 줄에 안 선다", () => {
-    seed(2, work.slug, "~/x");
-    expect(kindsOf(headerOf(render({}, "spec", null, "maison")))).toEqual(["spec", "new"]);
-    // 그리고 이쪽 세계의 셸은 **선다** — 없으면 위가 「Maison에서는 아무것도 안 그린다」로도
-    // 통과한다.
-    seedOrigin({ mode: "maison", owner: ownerOf("maison", work.slug), project: null, cwd: "~/x" });
-    expect(kindsOf(headerOf(render({}, "spec", null, "maison")))).toEqual(["spec", "shell", "new"]);
-  });
-
-  // 결정 104 — 분할 열 머리의 이름도 **그 세계의** 켜진 셸에서 온다. 탭 줄과 갈리면 한 화면에
-  // 이름이 둘이 되는데, 두 세계에 같은 slug가 있을 때만 갈리므로 Atelier만 재는 렌더로는
-  // 영영 안 보인다.
-  it("분할 열 머리의 이름도 그 세계의 셸에서 온다", () => {
-    // **프로젝트 이름으로 가른다.** 두 셸 다 타이틀이 없어 이름이 같아지므로(`shellRowName`),
-    // 이 갈래가 없으면 어느 세계의 이름이 섰는지 마크업으로 못 가른다.
-    seedOrigin({
-      mode: "atelier",
-      owner: ownerOf("atelier", work.slug),
-      project: "아뜰리에",
-      cwd: "~/x",
-    });
-    seedOrigin({ mode: "maison", owner: ownerOf("maison", work.slug), project: "메종", cwd: "~/x" });
-    const head = render(specDocs(["overview.md"]), "terminal", "lr", "maison");
-    expect(head).toContain("메종");
-    expect(head).not.toContain("아뜰리에");
   });
 
   it("세로 목록의 둘째 줄은 안 따라온다", () => {
@@ -899,19 +832,18 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   });
 
   it("고른 작업이 없으면 탭 줄이 아니라 화면 이름이 선다", () => {
-    // **뒤가 빈 소유자 키는 그 세계의 최상위 터미널이다**(결정 10). 고른 작업이 없는 화면이
-    // 소유자를 세우면 그 자리가 비어 `ownerOf(mode, undefined)` → `"atelier:"`가 되는데,
+    // **빈 소유자 키 `""`는 최상위 터미널이다**(ui-refresh 결정 23). 고른 작업이 없는 화면이
+    // 소유자를 세우면 그 자리가 비어 `ownerOf(undefined)` → `""`가 되는데,
     // 그러면 `/terminal`의 셸이 work 화면의 줄에 서고 `+`는 열 자리가 없어 눌러도 아무 일이
     // 없는 버튼이 된다(결정 11·21이 금지하는 것). 그래서 여기 심는 것이 **최상위 셸**이다 —
     // 화면이 그 키를 짓지 않는다는 것이 이 케이스가 재는 전부다.
-    seedOrigin(topTerminal("atelier"), 2);
+    seedOrigin(topTerminal(), 2);
     const client = new QueryClient();
-    client.setQueryData(worksQuery("atelier").queryKey, []);
+    client.setQueryData(worksQuery().queryKey, []);
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ToastProvider>
           <WorksPage
-            mode="atelier"
             sidebarOpen
             selectedSlug={null}
             currentFile={null}
@@ -956,7 +888,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
       `onDragTab={(shellId, from) => {
-        const owner = ownerOf(mode, panelWork.slug);
+        const owner = ownerOf(panelWork.slug);
         armDrag(
           shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
           from,
@@ -976,41 +908,21 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   });
 });
 
-// 결정 10 — **이 화면의 조회는 하나도 한 세계로 눕지 않는다.** 사이드바는 세계 이름이
-// 리터럴로 박히는 것 자체를 금지해 같은 것을 지키는데(Sidebar.test.tsx의 「어느 자리도 한
-// 세계로 눕지 않는다」), 이 화면은 빈 화면 문구와 프로젝트 조건이 세계 이름을 **정당하게**
-// 들어서 그 포괄 금지를 그대로 못 쓴다.
-//
-// 그래서 **소유자를 짓는 자리마다** 못박는다. 눈에 보이는 둘(탭 줄·분할 열 머리)은 위에서
-// 값으로 재고, 여기 남은 둘은 렌더로 못 본다 — 하나는 이펙트가 읽는 셀렉터이고 하나는
-// 버튼을 눌러야 서는 확인 대화 안이다. 리터럴 하나를 통째로 세면 파싱이 없어 샐 자리도 없다.
-describe("WorksPage 셸 조회가 한 세계로 눕지 않는다", () => {
+// **이 화면의 셸 조회는 이 work의 주인 키를 딛는다**(셸 주인이 slug다 — ui-refresh 결정 23). **소유자를 짓는 자리마다**
+// 못박는다. 눈에 보이는 둘(탭 줄·분할 열 머리)은 위에서 값으로 재고, 여기 남은 둘은 렌더로 못 본다 — 하나는 이펙트가
+// 읽는 셀렉터이고 하나는 버튼을 눌러야 서는 확인 대화 안이다. 리터럴 하나를 통째로 세면 파싱이 없어 샐 자리도 없다.
+describe("WorksPage 셸 조회가 이 work의 것이다", () => {
   const worksPage = source("WorksPage.tsx");
 
-  // 분할을 걷는 판단이 세는 개수다. 한쪽으로 누우면 Maison에서 마지막 셸을 닫아도 분할이
-  // 안 걷히고(저쪽 세계의 셸이 남아 있어 0이 안 된다), Atelier에서 남의 셸을 닫으면 걷힌다.
-  it("분할을 걷는 셸 수가 그 세계의 것이다", () => {
-    expect(countOf(worksPage, "shellsOf(state, ownerOf(mode, panelWork.slug)).length")).toBe(1);
+  // 분할을 걷는 판단이 세는 개수다. 남의 셸을 세면 이 work의 마지막 셸을 닫아도 분할이 안 걷히고, 남의 셸을 닫으면 걷힌다.
+  it("분할을 걷는 셸 수가 이 work의 것이다", () => {
+    expect(countOf(worksPage, "shellsOf(state, ownerOf(panelWork.slug)).length")).toBe(1);
   });
 
-  // 「셸 N개가 닫혀요」의 N(결정 26). 한쪽으로 누우면 Maison Room을 아카이브할 때 저쪽 세계의
-  // 수를 말하고 — 0이라 아예 안 묻고 — 정작 닫히는 것은 이 세계의 셸들이다.
-  it("아카이브 확인이 말하는 수가 그 세계의 것이다", () => {
-    expect(countOf(worksPage, "runningShellsOf(state, ownerOf(mode, work.slug))")).toBe(1);
-  });
-
-  // 세계 이름이 리터럴로 서는 자리가 **하나도 없다.** 한때 하나 있었다 — 빈 화면이 프로젝트
-  // 등록을 권하는 조건(`mode === "atelier" && !projectsPending …`)이었고, 그 물음이 화면
-  // 여섯과 훅 하나에 같은 모양으로 흩어져 있다가 `@/mode`의 `hasProjects`로 이름을 얻으면서
-  // 여기서도 사라졌다. 리터럴이 하나라도 다시 서면 그것은 조회가 누웠거나 표를 안 읽은
-  // 것이므로 여기서 먼저 빨개진다.
-  //
-  // **fail-closed로 짠다**: 리터럴 0개만 재면 이 화면이 모드를 통째로 잊어도 초록이다.
-  // 세계를 함수에 넘기는 모양이 살아 있는지를 함께 든다.
-  it("세계 이름 리터럴이 하나도 없다", () => {
-    expect(countOf(worksPage, '"atelier"')).toBe(0);
-    expect(countOf(worksPage, '"maison"')).toBe(0);
-    expect(worksPage).toContain("hasProjects(mode) && !projectsPending");
+  // 「셸 N개가 닫혀요」의 N(결정 26). 남의 셸을 세면 엉뚱한 수를 말하고 — 0이라 아예 안 묻고 — 정작 닫히는 것은 이
+  // work의 셸들이다.
+  it("아카이브 확인이 말하는 수가 이 work의 것이다", () => {
+    expect(countOf(worksPage, "runningShellsOf(state, ownerOf(work.slug))")).toBe(1);
   });
 });
 
@@ -1025,14 +937,13 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     terminalStore.setState(() => NO_SHELLS);
   });
 
-  const ownerFor = (slug: string) => ownerOf("atelier", slug);
+  const ownerFor = (slug: string) => ownerOf(slug);
   function seed(origin: ShellOrigin): number {
     const opened = openShell(NO_SHELLS, origin)!;
     terminalStore.setState(() => opened.state);
     return opened.id;
   }
   const workSeat = (slug: string): ShellOrigin => ({
-    mode: "atelier",
     owner: ownerFor(slug),
     project: null,
     cwd: "~/x",
@@ -1052,26 +963,14 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
   it("고른 작업이 없으면 최상위 터미널의 셸을 닫지 않는다", () => {
     // **`null`은 「고른 작업이 없다」다** — 최상위 터미널이 아니다. 그 가드를 지우고 그냥
     // `activeIdOf`를 부르면 이제는 L0가 먼저 막지만(소유자가 늘 문자열이다), 가드가 없어지는
-    // 대신 `ownerOf(mode, panelWork?.slug)` 꼴이 들어오면 **뒤가 빈 키**가 되어 work 화면의
-    // ⌘W가 그 세계의 최상위 셸을 죽인다. 그 갈래를 여기서 못박는다.
-    seed(topTerminal("atelier"));
+    // 대신 `ownerOf(panelWork?.slug)` 꼴이 들어오면 **빈 키 `""`**가 되어 work 화면의
+    // ⌘W가 최상위 셸을 죽인다. 그 갈래를 여기서 못박는다.
+    seed(topTerminal());
     expect(shellClosedByTab("terminal", null, terminalStore.state)).toBeNull();
   });
 
   it("그 화면의 셸이 0개면 닫을 것이 없다", () => {
     seed(workSeat("남"));
-    expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
-  });
-
-  // 결정 10. 두 루트에 **같은 slug**가 설 수 있다 — 소유자에 세계가 안 실리면 Maison의
-  // 같은 이름 work에서 연 셸을 Atelier 화면의 ⌘W가 죽인다.
-  it("저쪽 세계의 같은 이름 셸도 안 닫는다", () => {
-    seed({
-      mode: "maison",
-      owner: ownerOf("maison", work.slug),
-      project: null,
-      cwd: "~/x",
-    });
     expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
   });
 
@@ -1101,17 +1000,17 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
   it("상한에서 셸을 열려 하면 잠긴 `+`와 **같은 문장**이 온다", () => {
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
-      state = openShell(state, topTerminal("atelier"))!.state;
+      state = openShell(state, topTerminal())!.state;
     }
     terminalStore.setState(() => state);
 
     const heard: string[] = [];
     const stop = onShellOpenRejected((notice) => heard.push(notice));
     // ⌘T가 부르는 그 함수다. 상한에서는 인스턴스를 만들기 전에 돌아오므로 xterm이 안 뜬다.
-    openNewShell(topTerminal("atelier"));
+    openNewShell(topTerminal());
     stop();
 
-    expect(heard).toEqual([shellCapNotice(terminalStore.state, topTerminal("atelier").owner)]);
+    expect(heard).toEqual([shellCapNotice(terminalStore.state, topTerminal().owner)]);
     expect(heard[0]).toContain(`${MAX_SHELLS}개까지`);
   });
 
@@ -1135,13 +1034,13 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     // 화면이 언마운트된 뒤에도 듣고 있으면 사라진 화면의 setState가 불린다.
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
-      state = openShell(state, topTerminal("atelier"))!.state;
+      state = openShell(state, topTerminal())!.state;
     }
     terminalStore.setState(() => state);
 
     const heard: string[] = [];
     onShellOpenRejected((notice) => heard.push(notice))();
-    openNewShell(topTerminal("atelier"));
+    openNewShell(topTerminal());
     expect(heard).toEqual([]);
   });
 
@@ -1169,22 +1068,20 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     // (`openNewShell`)으로 연다(위 「⌘T를 window에서 듣고…」가 그 리터럴을 못박는다).
     const store = source("../terminal/terminal-store.ts");
     expect(store).toContain('if (route.hotkey === "new") requestNewShell(instance.origin.owner);');
-    expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
+    expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(panelWork));");
   });
 });
 
 describe("셸 안 ⌘T의 요청은 그 셸의 화면에만 간다", () => {
   // UI개선 결정 19. 셸 안 ⌘T는 요청만 보내고 **그 셸의 소유자 화면**이 연다. 가려 받는 규칙이 화면마다
   // 있으면 규칙을 잊은 화면 하나가 남의 셸의 ⌘T에 제 셸을 연다 — 한 번 눌러 두 화면에 셸이
-  // 선다. 그래서 가르는 자리는 스토어 하나이고, 이 검사가 그 자리를 값으로 잰다. 같은 slug가
-  // 두 세계에 설 수 있어(결정 10) 세계만 다른 소유자도 남이다.
+  // 선다. 그래서 가르는 자리는 스토어 하나이고, 이 검사가 그 자리를 값으로 잰다.
   it("구독한 소유자의 요청만 듣고, 끊으면 안 듣는다", () => {
-    const mine = ownerOf("atelier", "가");
+    const mine = ownerOf("가");
     let heard = 0;
     const stop = onNewShellRequested(mine, () => heard++);
-    requestNewShell(ownerOf("atelier", "나"));
-    requestNewShell(ownerOf("maison", "가"));
-    requestNewShell(ownerOf("atelier"));
+    requestNewShell(ownerOf("나"));
+    requestNewShell(ownerOf());
     expect(heard, "남의 셸의 요청을 들었다").toBe(0);
     requestNewShell(mine);
     expect(heard).toBe(1);
@@ -1312,15 +1209,14 @@ it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 �
 // 고른 항목이 하나도 없을 때의 본문. 목록을 비우고 `selectedSlug`를 `null`로 두면 그 화면이
 // 선다 — 프로젝트 목록은 캐시에 심어야 「아직 안 왔다」(`isPending`)와 「하나도 없다」가
 // 갈린다.
-function renderEmpty(mode: Mode, projects: ProjectView[] = []): string {
+function renderEmpty(projects: ProjectView[] = []): string {
   const client = new QueryClient();
-  client.setQueryData(worksQuery(mode).queryKey, []);
-  client.setQueryData(projectsQuery("atelier").queryKey, projects);
+  client.setQueryData(worksQuery().queryKey, []);
+  client.setQueryData(projectsQuery().queryKey, projects);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <WorksPage
-          mode={mode}
           sidebarOpen
           selectedSlug={null}
           currentFile={null}
@@ -1348,76 +1244,38 @@ const PROJECT: ProjectView = {
   missing: false,
 };
 
-// **빈 화면이 세계를 탄다**(US 22). 낱말의 계약은 `work-sections.test.ts`가 글자까지 재고,
-// 여기서 보는 것은 **화면이 그 표를 실제로 부르는가**다 — 사이드바만 갈리고 본문이 안 갈린
-// 채로 두 층이 따로 초록이던 자리가 정확히 여기다.
+// 빈 화면의 말(US 22). 낱말의 계약은 `work-sections.test.ts`가 글자까지 재고,
+// 여기서 보는 것은 **화면이 그 표를 실제로 부르는가**다.
 describe("아무것도 안 골랐을 때의 본문", () => {
   beforeEach(() => {
     // 분할 비율이 여기서 읽힌다 — 이 화면은 고른 것이 없어도 그 훅을 먼저 부른다.
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
 
-  // **머리도 그 세계의 이름을 인다.** 낱말은 `work-sections.test.ts`가 글자까지 재고 여기서
-  // 보는 것은 화면이 그 표를 부르는가다 — 이 자리가 리터럴 `"Works"`였고, 같은 화면 본문이
-  // 이미 「아직 Room이 없어요」라고 말하고 있었다(한 화면에 두 세계의 말).
-  it("Maison 머리가 `Rooms`이고 `Works`가 아니다", () => {
-    const html = renderEmpty("maison");
-    expect(html).toContain(">Rooms<");
-    expect(html).not.toContain(">Works<");
-  });
-
-  // 반대쪽. 이 줄이 없으면 두 세계를 다 `Rooms`로 눕혀도 위 검사가 초록이다.
-  it("Atelier 머리는 그대로 `Works`다", () => {
-    const html = renderEmpty("atelier");
+  it("머리는 그대로 `Works`다", () => {
+    const html = renderEmpty();
     expect(html).toContain(">Works<");
   });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("Atelier 문구 셋이 그대로 선다", () => {
-    const html = renderEmpty("atelier", [PROJECT]);
+  it("문구 셋이 그대로 선다", () => {
+    const html = renderEmpty([PROJECT]);
     expect(html).toContain("아직 작업이 없어요");
     expect(html).toContain("작업은 Claude Code에서 시작돼요.");
     expect(html).toContain("새 작업");
   });
 
-  // 따옴표가 `&quot;`로 이스케이프돼 나오므로 `atelier로 "새 작업" 시작해줘`를 통째로
-  // 붙들지 않는다 — 「Atelier의 말이 안 남았다」는 어휘 조각으로 센다.
-  it("Maison에서는 Room 어휘로 말하고 Atelier의 말이 한 조각도 안 남는다", () => {
-    const html = renderEmpty("maison", [PROJECT]);
-    expect(html).toContain("아직 Room이 없어요");
-    expect(html).toContain("Room은 Terminal에서 claude에게 부탁해서 만들어요.");
-    expect(html).toContain("새 Room 만들어줘");
-    expect(html).not.toContain("작업");
-    expect(html).not.toContain("Claude Code");
-    expect(html).not.toContain("atelier로");
-  });
-
-  // **프로젝트 갈래가 Maison에서 아예 안 선다**(결정 17). 프로젝트가 0개인 것은 이 세계의
-  // 정상 상태다 — 쿼리가 Atelier에서만 켜지므로(`useProjects`) 저 세계에서는 **늘** 0개이고,
-  // 그때 갈래가 참으로 누우면 Maison 한가운데가 「먼저 프로젝트를 등록해요」라고 말한다.
-  it("Maison에서는 프로젝트가 0개여도 등록을 시키지 않는다", () => {
-    const html = renderEmpty("maison", []);
-    expect(html).not.toContain("먼저 프로젝트를 등록해요");
-    expect(html).not.toContain("폴더 등록해줘");
-    expect(html).toContain("아직 Room이 없어요");
-  });
-
-  // 반대쪽 증거. 이 갈래가 Atelier에서는 그대로 살아 있어야 한다 — 위 검사가 「어디서도 안
-  // 뜬다」로 통과하면 첫 실행의 안내가 통째로 사라진 것을 못 본다.
-  it("Atelier에서는 프로젝트가 0개면 등록으로 이끈다", () => {
-    const html = renderEmpty("atelier", []);
+  // 반대쪽 증거 — 프로젝트가 0개면 첫 실행의 안내가 선다.
+  it("프로젝트가 0개면 등록으로 이끈다", () => {
+    const html = renderEmpty([]);
     expect(html).toContain("먼저 프로젝트를 등록해요");
     expect(html).toContain("폴더 등록해줘");
   });
 });
 
-// **프로젝트를 고르는 `+`는 Atelier의 것이다**(US 26). 갈리는 값(`projects`)이 워크트리에서
-// 나오고 Maison에는 워크트리가 없으니 저 세계에서는 어차피 안 물어야 맞다 — 그런데 그
-// 사실을 지키는 것이 **코어의 거절 하나뿐**이라, 손으로 고친 work.json 하나면 저 세계의
-// Room에도 프로젝트가 실려 와 이 줄이 없는 워크트리를 고르는 메뉴를 연다. 그래서 값이
-// 왔다고 가정하고 두 세계를 함께 잰다 — 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다.
+// **프로젝트를 고르는 `+`**(US 26). 갈리는 값(`projects`)이 워크트리에서 나온다.
 describe("프로젝트를 고르는 `+`", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -1437,23 +1295,19 @@ describe("프로젝트를 고르는 `+`", () => {
     ],
   };
 
-  it("Atelier에서 워크트리가 둘이면 어디에 열지 물어본다", () => {
-    expect(asks(render(twoTrees, "spec", null, "atelier"))).toBe(true);
-  });
-
-  it("Maison에서는 같은 값이 와도 묻지 않는다", () => {
-    expect(asks(render(twoTrees, "spec", null, "maison"))).toBe(false);
+  it("워크트리가 둘이면 어디에 열지 물어본다", () => {
+    expect(asks(render(twoTrees, "spec", null))).toBe(true);
   });
 });
 
 // 확인 대화의 문장은 `askDanger` 프로미스 뒤에 있어 이 저장소의 정적 마크업 seam에 아예
 // 안 걸린다 — 낱말의 계약은 `work-menu-copy.test.ts`가 글자까지 재고, 여기서 보는 것은
 // **화면이 그 표를 부르는가**뿐이다(`work-sections`·`archive-copy`와 같은 나눔).
-describe("⋯ 메뉴의 확인 대화가 세계를 탄다", () => {
+describe("⋯ 메뉴의 확인 대화", () => {
   it("문장을 손으로 안 적고 표에서 꺼낸다", () => {
     const worksPage = source("WorksPage.tsx");
-    expect(worksPage).toContain("archiveConfirmBody(mode)");
-    expect(worksPage).toContain("removeConfirmBody(mode)");
+    expect(worksPage).toContain("ARCHIVE_CONFIRM_BODY");
+    expect(worksPage).toContain("REMOVE_CONFIRM_BODY");
     // **리터럴이 남아 있으면 안 된다.** 표를 부르면서 옛 문장을 그대로 둔 판은 위 두 줄로는
     // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
     expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");

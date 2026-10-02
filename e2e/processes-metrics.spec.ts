@@ -28,7 +28,7 @@ const GiB = 1024 * MiB;
 
 const 트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
 const 셸행 = (page: Page, pty: number) => 트리(page).locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
-const work행 = (page: Page) => 트리(page).locator('[role="treeitem"][aria-level="2"]');
+const work행 = (page: Page) => 트리(page).locator('[role="treeitem"][aria-level="1"]');
 const 칸 = (row: Locator, cell: "memory" | "cpu" | "ports") => row.locator(`[data-cell="${cell}"]`);
 
 /** env를 읽은 행(`envReadRow`). 이 파일이 재는 것은 숫자라 지표를 늘 준다. */
@@ -97,8 +97,8 @@ test("work 행 · 셸 행 · 자손 행에 메모리 · CPU · 포트 칸이 서
   await expect(칸(work행(page), "ports")).toHaveCount(0);
 
   // 자손 행 — 그 프로세스 하나의 숫자.
-  const vite = 트리(page).locator('[role="treeitem"][aria-level="4"]', { hasText: "node" });
-  const esbuild = 트리(page).locator('[role="treeitem"][aria-level="5"]', { hasText: "esbuild" });
+  const vite = 트리(page).locator('[role="treeitem"][aria-level="3"]', { hasText: "node" });
+  const esbuild = 트리(page).locator('[role="treeitem"][aria-level="4"]', { hasText: "esbuild" });
   await expect(칸(vite, "memory")).toHaveText(formatMemory(1.2 * GiB));
   await expect(칸(vite, "cpu")).toHaveText(formatCpu(null));
   await expect(칸(vite, "ports")).toHaveText(formatPorts([5173]));
@@ -125,7 +125,7 @@ test("셸 행의 접근성 이름이 「셸 이름, 상태, 메모리」 한 문
   await expect(work행(page)).toHaveAttribute("aria-label", `${plainWork.title}, 셸 2개, ${formatMemory(work메모리)}`);
   await expect(트리(page).getByRole("treeitem", { name: `node, ${formatMemory(1.2 * GiB)}`, exact: true })).toHaveAttribute(
     "aria-level",
-    "4",
+    "3",
   );
   // 셸 도우미 줄은 숫자를 안 단다 — 그 몫은 셸 행의 합에 들었다.
   await expect(트리(page).locator("[data-helper]")).toHaveAttribute("aria-label", "셸 도우미, gitstatusd");

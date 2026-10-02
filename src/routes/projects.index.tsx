@@ -6,10 +6,7 @@ import ProjectsView from "./-projects-view";
 // works.index.tsx와 같은 규칙 — 근거는 그쪽 주석에 적었다
 export const Route = createFileRoute("/projects/")({
   beforeLoad: async ({ context }) => {
-    const projects = await context.queryClient
-      // 이 라우트 자체가 Atelier 주소다 — 모드를 물을 자리가 없다.
-      .ensureQueryData(projectsQuery("atelier"))
-      .catch(() => []);
+    const projects = await context.queryClient.ensureQueryData(projectsQuery()).catch(() => []);
     const slug = pickSlug(shellStore.state.projectSlug, projects);
     if (slug) throw redirect({ to: "/projects/$slug", params: { slug } });
   },

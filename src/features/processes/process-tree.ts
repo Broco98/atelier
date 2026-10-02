@@ -6,7 +6,7 @@ import type { ProcessIdentity, ProcessRow } from "./types";
 // 사는 자리가 여기 하나다. 순수 함수다.
 //
 // 이 줄을 「자손」으로 부르지 않는다 — 예외 · 고아 · 다른 인스턴스의 줄은 셸의 자손이 아니다(CONTEXT 「예외」 · 「고아」). 셸 · work ·
-// 세계의 층은 `shell-tree.ts`가, 다른 인스턴스를 실행마다 묶는 것과 확인 창의 말은 `process-groups.ts`가 짓고, 둘 다 이 도구를 딛는다.
+// 셸 묶음의 층은 `shell-tree.ts`가, 다른 인스턴스를 실행마다 묶는 것과 확인 창의 말은 `process-groups.ts`가 짓고, 둘 다 이 도구를 딛는다.
 
 /**
  * 신원을 한 글자로 — 집합과 줄의 열쇠. pid만으로는 재사용을 못 가른다(프로세스 결정 3).

@@ -8,17 +8,15 @@ import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import {
   ArgAnswers,
-  FIXTURE_BY_MODE,
   FIXTURE_COMMANDS,
   FIXTURE_GENERATION,
   FIXTURE_INCREMENTING_KEYS,
   FIXTURE_SHELL_NAME,
   type Incrementing,
-  type ModeAnswer,
+  type AnswerEntry,
   WORKS,
 } from "./fixtures";
 import type { WorkView } from "@/features/works/types";
-import type { Mode } from "@/mode";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -103,33 +101,21 @@ const LISTEN = "plugin:event|listen";
 const UNLISTEN = "plugin:event|unlisten";
 
 /**
- * 브라우저가 답을 찾는 표 둘이 붙는 전역. 페이지가 뜬 뒤 답을 가는 `replaceAnswer`가 여기를 고친다 —
+ * 브라우저가 답을 찾는 표가 붙는 전역. 페이지가 뜬 뒤 답을 가는 `replaceAnswer`가 여기를 고친다 —
  * 초기화 스크립트의 인자는 뜰 때 한 번 굳으므로 그 뒤에 고칠 자리가 따로 있어야 한다.
  */
 const TABLES_KEY = "__ATELIER_FIXTURE_TABLES__";
 
-/** 브라우저 안의 두 표. 두 표의 줄이 **같은 모양**이다(`ModeAnswer`) — 같은 규칙으로 푼다(`pick`). */
+/** 브라우저 안의 표. 줄마다 같은 규칙으로 푼다(`pick`). */
 interface FixtureTables {
-  /** 이름으로 답하는 커맨드: 커맨드 이름 → 한 줄. */
-  byName: Record<string, ModeAnswer>;
-  /**
-   * **모드로 갈리는** 커맨드의 답: 커맨드 이름 → 모드 → 그 몫. `byName`보다 먼저 보고,
-   * 여기 있는 커맨드는 **그 표로 안 떨어진다** — 못 찾으면 문다(`fixtures.ts`의 머리말).
-   * 인자를 한 겹 더 봐야 하는 커맨드(문서 읽기 · 아카이브 문서 목록)도 여기서 함께 든다 — 그것들이
-   * 전부 모드를 받는다(#187). 이름 표의 인자별 답은 `answerByArg`가 같은 모양으로 연다.
-   *
-   * 값이 `Record<string, …>`인 것은 와이어에서 온 `mode`가 아무 문자열일 수 있어서다:
-   * `Mode`로 좁히면 그 인덱싱에 캐스트가 필요해지고, 캐스트는 모르는 값을 아는 값처럼 만든다.
-   * L4는 진짜 백엔드가 답하므로 비어 있다 — 거기서 `mode`를 빠뜨린 호출은 하네스가 아니라
-   * **다리가** 거절한다(`crates/atelier-test-bridge`).
-   */
-  byMode: Record<string, Record<string, ModeAnswer>>;
+  /** 커맨드 이름 → 한 줄. 인자별 답은 `answerByArg`가 같은 모양(`AnswerEntry`)으로 연다. */
+  byName: Record<string, AnswerEntry>;
 }
 
-/** addInitScript는 인자를 하나만 넘긴다 — 두 표와 전역 이름들을 같이 싣는다. */
+/** addInitScript는 인자를 하나만 넘긴다 — 표와 전역 이름들을 같이 싣는다. */
 interface InitArgs extends FixtureTables {
   recordKey: string;
-  /** 두 표가 붙는 전역(`TABLES_KEY`). */
+  /** 표가 붙는 전역(`TABLES_KEY`). */
   tablesKey: string;
   /** 구독의 와이어 이름(`LISTEN`). 브라우저 쪽이 모듈 상수를 못 읽어 함께 싣는다. */
   listen: string;
@@ -147,23 +133,24 @@ interface InitArgs extends FixtureTables {
 
 /**
  * 표에 적힌 답 하나를 **브라우저가 푸는 줄**로 바꾼다. 값 하나면 `value`, 인자별 답(`answerByArg`)이면
- * `arg` · `answers`이고, 그때 `fallback`에 값이 있으면 그것이 인자에 맞는 답이 없을 때의 기본 답이 된다.
+ * `arg` · `answers`이고, 인자에 맞는 답이 없을 때의 기본 답은 그 답의 `otherwise`, 없으면 `fallback`의 값이다.
  * 한 벌로 두는 것은 덮어쓰기와 답 바꾸기가 **같은 기본 답**으로 떨어져야 해서다 — 한쪽만 바뀌면 같은
  * `answerByArg`가 두 자리에서 다른 답을 준다.
  */
-function entryOf(answer: unknown, fallback?: ModeAnswer): ModeAnswer {
+function entryOf(answer: unknown, fallback?: AnswerEntry): AnswerEntry {
   if (!(answer instanceof ArgAnswers)) return { value: answer };
+  const otherwise =
+    answer.otherwise ??
+    (fallback && Object.prototype.hasOwnProperty.call(fallback, "value") ? { value: fallback.value } : undefined);
   return {
     arg: answer.arg,
     answers: { ...answer.answers },
-    ...(fallback && Object.prototype.hasOwnProperty.call(fallback, "value")
-      ? { value: fallback.value }
-      : {}),
+    ...(otherwise ? { value: otherwise.value } : {}),
   };
 }
 
-/** 이름 표 한 벌을 브라우저가 푸는 줄들로. */
-const entriesOf = (table: Record<string, unknown>): Record<string, ModeAnswer> =>
+/** 고정 표 한 벌을 브라우저가 푸는 줄들로. */
+const entriesOf = (table: Record<string, unknown>): Record<string, AnswerEntry> =>
   Object.fromEntries(Object.entries(table).map(([cmd, answer]) => [cmd, entryOf(answer)]));
 
 /**
@@ -189,17 +176,13 @@ export async function installFixtureBackend(
     // 지나가고, 검사는 고정 표의 답을 받은 채로 「설정이 이랬는데도 조용했다」를 초록으로
     // 낸다 — 그 침묵이 이 층에서 가장 읽기 어려운 실패다. 인자별 답도 같은 문을 지난다.
     if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, cmd)) {
-      const hint = Object.prototype.hasOwnProperty.call(FIXTURE_BY_MODE, cmd)
-        ? " — 모드 표의 커맨드는 페이지가 뜬 뒤 replaceAnswer로 바꿉니다"
-        : "";
-      throw new Error(`덮어쓸 커맨드가 고정 답 표에 없습니다: ${cmd}${hint}`);
+      throw new Error(`덮어쓸 커맨드가 고정 답 표에 없습니다: ${cmd}`);
     }
     byName[cmd] = entryOf(answer, byName[cmd]);
   }
   await install(page, {
     byName,
     bridgeName: null,
-    byMode: FIXTURE_BY_MODE,
     incrementing: FIXTURE_INCREMENTING_KEYS,
   });
 }
@@ -222,7 +205,6 @@ export async function installRealBackend(
   await install(page, {
     byName: entriesOf({ ...PLUGINS, "plugin:dialog|open": pickedFolder }),
     bridgeName: BRIDGE_FN,
-    byMode: {},
     incrementing: {},
   });
 }
@@ -230,7 +212,7 @@ export async function installRealBackend(
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { byName, bridgeName, byMode, incrementing }: Omit<InitArgs, "recordKey" | "tablesKey" | "listen" | "failureKey">,
+  { byName, bridgeName, incrementing }: Omit<InitArgs, "recordKey" | "tablesKey" | "listen" | "failureKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -241,7 +223,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ byName, byMode, recordKey, tablesKey, listen, failureKey, bridgeName, incrementing }: InitArgs) => {
+  await page.addInitScript(({ byName, recordKey, tablesKey, listen, failureKey, bridgeName, incrementing }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -260,9 +242,9 @@ async function install(
 
     const has = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 
-    // 두 표를 전역에 건다 — 뜬 뒤에 답을 가는 자리(`replaceAnswer`)가 이것을 고친다. 인자로 온
+    // 표를 전역에 건다 — 뜬 뒤에 답을 가는 자리(`replaceAnswer`)가 이것을 고친다. 인자로 온
     // 표는 페이지마다 새로 풀린 사본이라 고쳐도 다음 페이지로 안 샌다.
-    const tables: FixtureTables = { byName, byMode };
+    const tables: FixtureTables = { byName };
     (window as unknown as Record<string, FixtureTables>)[tablesKey] = tables;
 
     // 수를 올리는 커맨드가 지금까지 몇 번 불렸는가. 브라우저 안에서만 산다 — 답을 만드는
@@ -270,9 +252,7 @@ async function install(
     const seen = new Map<string, number>();
 
     // 답 하나에 **회차를 얹는다.** 올릴 커맨드가 아니면 받은 것을 그대로 돌려주므로 모든
-    // 답이 이 문을 지나도 된다 — 그것이 요점이다: 답을 내는 갈래가 둘인데(모드 표·이름 표)
-    // 한쪽만 이 일을 하면 그 표로 옮겨 간 커맨드가 조용히 고정 id로 돌아간다. 실제로
-    // `pty_spawn`이 #187에서 모드 표로 옮겨 갔다.
+    // 답이 이 문을 지나도 된다.
     const bump = (cmd: string, answer: unknown) => {
       if (!Object.prototype.hasOwnProperty.call(incrementing, cmd)) return answer;
       const { key, follow } = incrementing[cmd];
@@ -294,8 +274,7 @@ async function install(
       return { ...(answer as Record<string, unknown>), [key]: next, ...followed };
     };
 
-    // 고른 답을 내보낸다 — 거절 표시면 던지고, 아니면 회차를 얹는다. 두 표가 **같은 문**을 지난다:
-    // 거절도 회차도 한쪽 표에만 있으면 그 표로 옮겨 간 커맨드가 조용히 다른 답을 받는다.
+    // 고른 답을 내보낸다 — 거절 표시면 던지고, 아니면 회차를 얹는다.
     const deliver = (cmd: string, answer: unknown) => {
       if (typeof answer === "object" && answer !== null && has(answer, failureKey)) {
         throw (answer as Record<string, string>)[failureKey];
@@ -306,7 +285,7 @@ async function install(
     // 표의 한 줄에서 이 부름의 답을 고른다. 못 고르면 이 표시를 돌려준다 — `null`도 `undefined`도
     // 멀쩡한 답일 수 있어 값으로는 「없다」를 못 적는다.
     const NO_ANSWER = Symbol("답 없음");
-    const pick = (entry: ModeAnswer, args: unknown): unknown => {
+    const pick = (entry: AnswerEntry, args: unknown): unknown => {
       if (entry.arg !== undefined && entry.answers !== undefined) {
         const raw = (args as Record<string, unknown> | undefined)?.[entry.arg];
         // **인자가 아예 없으면 문다** — 인자 이름이 바뀐 것이다. 기본 답으로 떨어지게 두면 그 개명이
@@ -347,23 +326,6 @@ async function install(
         listens += 1;
         return listens;
       }
-      // **모드로 갈리는 커맨드가 맨 먼저다.** 그리고 여기 있는 커맨드는 아래 이름 표로 **안
-      // 떨어진다** — 답을 못 찾으면 그 표가 아니라 화이트리스트 탐지기로 간다. 실물 백엔드는
-      // `mode`를 필수로 받지만(#187) 그 거절은 L3에 안 온다: 여기서 백엔드 노릇을 하는 것이
-      // 이 표라, 아래로 떨어지게 두면 `mode`가 없거나 모르는 값인 호출이 조용히 Atelier
-      // 데이터를 받아 「Maison 화면에 Atelier 것이 떴다」가 아무 데도 안 걸린다.
-      // 그 물림을 음성 케이스로 세우는 자리는 `mode-fail-closed.spec.ts`다.
-      if (has(tables.byMode, cmd)) {
-        const forCmd = tables.byMode[cmd];
-        const mode = (args as Record<string, unknown> | undefined)?.mode;
-        const answer =
-          typeof mode === "string" && has(forCmd, mode) ? pick(forCmd[mode], args) : NO_ANSWER;
-        if (answer !== NO_ANSWER) return deliver(cmd, answer);
-        // 인자를 함께 적는다 — 「`mode`가 없었나」와 「그 모드에 그 경로가 없었나」가
-        // 실패 문구에서 갈려야 다음 수정이 정해진다.
-        record.unknown.push(`${cmd}${detail}`);
-        throw new Error(`하네스가 모드로 답하지 못하는 IPC 호출입니다: ${cmd}${detail}`);
-      }
       if (has(tables.byName, cmd)) {
         const answer = pick(tables.byName[cmd], args);
         if (answer !== NO_ANSWER) return deliver(cmd, answer);
@@ -386,7 +348,6 @@ async function install(
     });
   }, {
     byName,
-    byMode,
     recordKey: IPC_RECORD_KEY,
     tablesKey: TABLES_KEY,
     listen: LISTEN,
@@ -397,15 +358,14 @@ async function install(
 }
 
 /**
- * **페이지가 뜬 뒤에 커맨드 하나의 답을 갈아 끼운다**(프로세스 관리 티켓 01). 모드 표의 커맨드는 `mode`의
- * 한 칸을, 이름 표의 커맨드는 그 이름을 간다. 값 자리에 `answerByArg`를 넣으면 인자마다 갈리고, 맞는 답이
- * 없는 인자는 **고정 표의 기본 답**을 받는다(덮어쓰기와 같은 `entryOf`) — 앞서 간 답이 아니다.
+ * **페이지가 뜬 뒤에 커맨드 하나의 답을 갈아 끼운다**(프로세스 관리 티켓 01). 값 자리에 `answerByArg`를 넣으면 인자마다
+ * 갈리고, 맞는 답이 없는 인자는 **고정 표의 기본 답**을 받는다(덮어쓰기와 같은 `entryOf`) — 앞서 간 답이 아니다.
  *
  * **무엇을 재려고 있는가**: 시나리오 도중에 백엔드의 답이 바뀌는 것. 덮어쓰기(`installFixtureBackend`)는
- * 페이지가 뜰 때 초기화 스크립트 인자로 한 번 굳고, 모드 표(`list_works`)는 그마저 막혀 있다. 그래서
- * 「MCP로 아카이브된 work이 목록에서 빠진다」(첫 조회에는 있고 `works:changed` 뒤의 조회에는 없다)나
- * 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채** 초록이다. 「밖에서 레이아웃이
- * 바뀌었다」(spec 레이아웃 티켓 15)도 같다 — 처음부터 다른 답이면 편집기가 그것을 기준본으로 읽는다.
+ * 페이지가 뜰 때 초기화 스크립트 인자로 한 번 굳는다. 그래서 「MCP로 아카이브된 work이 목록에서 빠진다」(첫 조회에는
+ * 있고 `works:changed` 뒤의 조회에는 없다)나 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채**
+ * 초록이다. 「밖에서 레이아웃이 바뀌었다」(spec 레이아웃 티켓 15)도 같다 — 처음부터 다른 답이면 편집기가 그것을 기준본으로
+ * 읽는다.
  *
  * **도중에 답을 가는 도구는 이것 하나다.** 한때 `invoke`를 감싸 답만 바꿔 돌려주는 둘째 도구가 있었는데, 그 답은
  * 거절(`ipcFailure`) · 회차(`bump`)의 문(`deliver`)을 건너뛰었고 둘을 겹치면 어느 쪽이 이기는지 정해진 데가 없었다.
@@ -416,54 +376,27 @@ async function install(
  *   부른다. 바꾼 뒤 그 목록의 이벤트(`works:changed` 등)를 쏘고, 「바뀐 것이 섰다」를 본다. 「안 바뀌었다」를
  *   재려면 조회가 **다시 나갔다**는 앵커(`callCount`)를 먼저 본다.
  * - 새로고침하면 처음 표로 돌아간다 — 표는 페이지마다 새로 풀린다.
- * - 모드 표는 **그 모드의 칸만** 간다. 칸에 있던 인자별 답도 함께 가므로, `read_spec_file`처럼 경로로
- *   갈리는 칸에 값 하나를 넣으면 모든 경로가 그 값을 받는다.
+ * - 줄의 인자별 답도 함께 간다 — `read_spec_file`처럼 경로로 갈리는 줄에 값 하나를 넣으면 모든 경로가 그 값을 받는다.
  *
- * 안전장치는 덮어쓰기와 같다: 표에 없는 이름 · 표에 없는 모드는 던진다. 모드 표의 커맨드에 모드를
- * 빠뜨려도, 이름 표의 커맨드에 모드를 줘도 던진다 — 어느 표의 어느 줄을 갈았는지가 흐려지면 그 검사는
- * 무엇을 잰 것인지 아무도 모른다.
+ * 안전장치는 덮어쓰기와 같다: 표에 없는 이름은 던진다.
  */
-export async function replaceAnswer(
-  page: Page,
-  command: string,
-  answer: unknown,
-  mode?: Mode,
-): Promise<void> {
-  let entry: ModeAnswer;
-  if (Object.prototype.hasOwnProperty.call(FIXTURE_BY_MODE, command)) {
-    if (mode === undefined) {
-      throw new Error(`모드 표의 커맨드는 어느 모드의 답을 바꿀지 함께 줘야 합니다: ${command}`);
-    }
-    const forCmd: Record<string, ModeAnswer> = FIXTURE_BY_MODE[command];
-    if (!Object.prototype.hasOwnProperty.call(forCmd, mode)) {
-      throw new Error(`모드 표에 없는 모드입니다: ${command}.${mode}`);
-    }
-    entry = entryOf(answer, forCmd[mode]);
-  } else if (Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
-    if (mode !== undefined) {
-      throw new Error(`이 커맨드는 모드로 갈리지 않습니다 — 이름으로 바꿉니다: ${command} (${mode})`);
-    }
-    entry = entryOf(answer, entryOf(FIXTURE_COMMANDS[command]));
-  } else {
+export async function replaceAnswer(page: Page, command: string, answer: unknown): Promise<void> {
+  if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
     throw new Error(`바꿀 커맨드가 고정 답 표에 없습니다: ${command}`);
   }
+  const entry = entryOf(answer, entryOf(FIXTURE_COMMANDS[command]));
   await page.evaluate(
-    ({ tablesKey, command, mode, entry }) => {
+    ({ tablesKey, command, entry }) => {
       const tables = (window as unknown as Record<string, FixtureTables | undefined>)[tablesKey];
       if (!tables) throw new Error("installFixtureBackend를 먼저 깔아야 한다");
-      const has = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
       // 위에서 고정 표로 걸렀어도 **이 페이지의 표로 한 번 더 본다** — L4의 표(`installRealBackend`)에는
       // 우리 커맨드가 없어, 거기서 부르면 여기서 문다.
-      if (mode === null) {
-        if (!has(tables.byName, command)) throw new Error(`이 페이지의 이름 표에 없다: ${command}`);
-        tables.byName[command] = entry;
-        return;
+      if (!Object.prototype.hasOwnProperty.call(tables.byName, command)) {
+        throw new Error(`이 페이지의 표에 없다: ${command}`);
       }
-      const forCmd = has(tables.byMode, command) ? tables.byMode[command] : null;
-      if (!forCmd || !has(forCmd, mode)) throw new Error(`이 페이지의 모드 표에 없다: ${command}.${mode}`);
-      forCmd[mode] = entry;
+      tables.byName[command] = entry;
     },
-    { tablesKey: TABLES_KEY, command, mode: mode ?? null, entry },
+    { tablesKey: TABLES_KEY, command, entry },
   );
 }
 
@@ -494,7 +427,7 @@ export async function askBackend(
 /**
  * `askBackend`처럼 IPC 입구로 한 번 묻되, **답이든 거절이든 그대로 들고 나온다** — 거절은 `error`에 문자열로 싣는다. 거절을
  * `page.evaluate` 밖으로 던지게 두면 검사가 그 자리에서 죽어, 「하네스가 물었다」와 「엉뚱한 데서 터졌다」가 갈리지 않는다.
- * 하네스의 답과 물림을 재는 자리(`mode-fail-closed.spec.ts` · `harness-tools.spec.ts`)가 딛는다.
+ * 하네스의 답과 물림을 재는 자리(`harness-tools.spec.ts`)가 딛는다.
  */
 export async function askBackendSettled(
   page: Page,
@@ -557,8 +490,7 @@ export async function spawnedCwds(page: Page): Promise<string[]> {
  * 앞머리로 세면 뒷날 `pty_write_*` 같은 이웃 커맨드가 함께 세어진다.
  */
 export async function callCount(page: Page, command: string): Promise<number> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  return calls.filter((call) => call === command || call.startsWith(`${command} `)).length;
+  return (await ipcCalls(page, command)).length;
 }
 
 /**
@@ -785,7 +717,7 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
 }
 
 /**
- * **MCP가 그 work(Room)들을 아카이브했다** — 그 세계의 목록 답(`list_works`)에서 slug를 빼고 `works:changed`를 쏜다(프로세스 티켓
+ * **MCP가 그 work들을 아카이브했다** — 목록 답(`list_works`)에서 slug를 빼고 `works:changed`를 쏜다(프로세스 티켓
  * 12). 목록을 쥔 코어는 다른 프로세스(MCP 서버)가 바꿨고, 앱은 감시자의 이벤트 뒤의 목록 재조회로만 안다 — 그래서 이 층의 흉내는
  * 답을 갈고(`replaceAnswer`) 그 이벤트를 쏘는 것이다. 새 답은 `list`에서 `slugs`를 뺀 것이다 — 앞서 뺀 slug도 계속 빠져 있어야
  * 하면 다시 준다(답을 통째로 갈므로).
@@ -793,8 +725,8 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
  * **떠나는 화면이 서 있을 때 부르지 않는다.** 목록에서 slug가 빠지면 그 work을 보던 화면은 다른 work으로 옮겨 가므로
  * (`-works-view.tsx`의 정규화), 도착을 본 **뒤에** 부른다(`shell-ownerless.spec.ts`의 `arrived`).
  */
-export async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: string[]): Promise<void> {
-  await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)), mode);
+export async function archiveByMcp(page: Page, list: WorkView[], ...slugs: string[]): Promise<void> {
+  await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)));
   await fireEvent(page, "works:changed", null);
 }
 
@@ -1034,10 +966,6 @@ export const navButtons = (page: Page) => page.locator("aside nav").getByRole("b
 export const navButton = (page: Page, label: string) =>
   page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
-/** 사이드바의 세계 고르기(`Atelier` · `Maison`). */
-export const modeButton = (page: Page, label: "Atelier" | "Maison") =>
-  page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-
 /** `Processes` 화면의 제목 — 머리의 글자는 제목 역할이 없어(`PageHeader`) 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
@@ -1068,12 +996,11 @@ export const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
 /** 셸 스스로 끝남 토스트의 문구 — 셸이 끝나며 그 셸에서 띄운 것을 `count`개 끝냈다(프로세스 스펙 S49). */
 export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
 
-/** 주인 잃은 셸 토스트의 문구. 화면의 말(`itemNameOf`)을 따라 Atelier의 work은 「작업」, Maison은 「Room」이다(프로세스 스펙 S45). */
-export const ownerlessText = (count: number, item: "작업" | "Room" = "작업") =>
-  `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
+/** 주인 잃은 셸 토스트의 문구(프로세스 스펙 S45). */
+export const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
 
-/** spec 레이아웃 편집기(Atelier 레이아웃)의 주소. */
-export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/atelier";
+/** spec 레이아웃 편집기의 주소 — 레이아웃은 하나라 고정 경로다(ui-refresh 결정 23). */
+export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/edit";
 
 /**
  * **떠날 때 확인**(spec 레이아웃 티켓 15 · spec 레이아웃 결정 27) — 저장하지 않은 초안을 두고 편집기를 떠나는 이동을 라우터의
@@ -1299,11 +1226,11 @@ export async function 둘째가말할자리(page: Page): Promise<void> {
 }
 
 /**
- * 두 세계에 셸을 띄운다 — `그냥 일`(`WORKS[1]`)에 둘(pty 1 · 2), Atelier `Terminal`에 하나(pty 3), Maison `Terminal`에 하나(pty 4).
+ * 셸 셋을 띄운다 — `그냥 일`(`WORKS[1]`)에 둘(pty 1 · 2), `Terminal`에 하나(pty 3).
  * 저절로 뜬 셸은 입력 없이 화면을 떠나면 닫히므로(프로세스 결정 7) 한 글자씩 친다. 화면 이동은 앱 안에서 한다 — 주소로 다시 열면
- * 스토어가 비워진다. 끝나면 Maison `Terminal`에 서 있다.
+ * 스토어가 비워진다. 끝나면 `Terminal`에 서 있다.
  */
-export async function 두세계에셸을띄운다(page: Page): Promise<void> {
+export async function 셸셋을띄운다(page: Page): Promise<void> {
   await page.goto(`/works/${WORKS[1].slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
@@ -1312,13 +1239,6 @@ export async function 두세계에셸을띄운다(page: Page): Promise<void> {
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-
-  await modeButton(page, "Maison").click();
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/maison/terminal");
-  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(4);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 }
@@ -1596,6 +1516,15 @@ export async function ipcCallArgs(
       }
       return { call, args: args as Record<string, unknown> };
     });
+}
+
+/**
+ * 그 커맨드로 나간 호출들, 기록 그대로 — 인자가 있으면 이름 뒤에 ` {…}`가 붙는다. **인자 없이 나가야 하는** 커맨드가
+ * 정말 빈손으로 나갔는지 잰다(`["revert_spec_layout"]`). `ipcCallArgs`는 늘 실리는 키를 요구해서 그것을 못 잰다.
+ */
+export async function ipcCalls(page: Page, command: string): Promise<string[]> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls.filter((call) => call === command || call.startsWith(`${command} `));
 }
 
 /**

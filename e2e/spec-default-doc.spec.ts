@@ -1,13 +1,12 @@
 import { expect, test } from "./evidence";
-import { ROOMS, WORKS } from "./fixtures";
+import { WORKS } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 
-const [pinnedWork, plainWork] = WORKS;
-const [, room] = ROOMS;
+const [pinnedWork, plainWork, multiWork] = WORKS;
 
 // spec 레이아웃 티켓 04 — **주소에 문서가 없으면 work 화면은 spec 트리의 기본 문서를 연다**(결정 14).
-// 이 두 fixture(pinned-work는 `overview.md`가 있고 reading-room은 `개요.md` 하나뿐)는 옛 이름
-// 규칙(`overview.md`, 없으면 첫 파일)으로도 같은 문서가 나온다 — 여기서 재는 것은 두 세계에서 화면이
+// 이 두 fixture(pinned-work는 `overview.md`가 있고 multi-work은 `넓은.md` · `다이어그램.md`뿐)는 옛 이름
+// 규칙(`overview.md`, 없으면 첫 파일)으로도 같은 문서가 나온다 — 여기서 재는 것은 두 work에서 화면이
 // `specTree.defaultDoc`을 열고 그것 하나만 읽는다는 것까지다. 트리 규칙과 이름 규칙을 가르는 것은
 // L2(`WorksPage.test.tsx` 「기본 문서가 overview.md가 아닌 트리를 넣으면 그 문서가 열린다」)와
 // L4(`work-spec-tree.l4.spec.ts`의 레이아웃 폴더 심기)다. 트리는 fixture가 손으로 적은 것이고
@@ -20,7 +19,7 @@ test("work 화면이 spec 트리의 기본 문서로 선다", async ({ page }) =
 
   for (const [path, work] of [
     [`/works/${pinnedWork.slug}`, pinnedWork],
-    [`/maison/rooms/${room.slug}`, room],
+    [`/works/${multiWork.slug}`, multiWork],
   ] as const) {
     await page.goto(path);
     const defaultDoc = work.specTree.defaultDoc;

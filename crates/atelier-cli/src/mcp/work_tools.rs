@@ -6,7 +6,7 @@
 use atelier_core::WorkReport;
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData};
 
-use super::{kernel_error, AtelierServer, DO_NOT_CALL_PROJECT_TOOLS};
+use super::{kernel_error, AtelierServer};
 
 /// 커널이 성공분을 유지한 채 돌려준 부분 실패를 **실행 오류**로 올린다 (Δ12 · D5).
 ///
@@ -164,34 +164,10 @@ impl AtelierServer {
         &self,
         Parameters(StartWorkParams { title, slug, projects, branch }): Parameters<StartWorkParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        // **`branch`도 함께 막는다.** 프로젝트가 없어도 `branch`가 오면 커널이 그것을
-        // work.json에 적는다 — 오류도 워크트리도 없이 Room이 브랜치를 갖는다(결정 17이
-        // 깨지는데 아무도 안 본다). 신규든 재개든 같은 문을 지나므로, 이미 있는 slug로
-        // 다시 불러 브랜치만 얹는 길도 여기서 함께 닫힌다.
-        if !projects.is_empty() || branch.is_some() {
-            // **무엇이 걸렸는지 이름으로 적는다** — 「둘 다 안 된다」만 오면 에이전트는 어느
-            // 쪽이 문제인지 몰라 하나만 빼고 다시 부른다. 이 표면의 오류는 실패한 입력을
-            // 늘 그대로 싣는다 (tool_error.rs의 계약).
-            let mut carried = Vec::new();
-            if !projects.is_empty() {
-                carried.push(format!("`projects` ({})", projects.join(", ")));
-            }
-            if let Some(branch) = &branch {
-                carried.push(format!("`branch` ({branch})"));
-            }
-            if let Some(refusal) = self.refuse_project_work(&format!(
-                "This call carries {}. Call atelier_start_work again with neither: a Room is \
-                 its folder and its spec documents, and nothing else.",
-                carried.join(" and ")
-            )) {
-                return Ok(refusal);
-            }
-        }
         match atelier_core::start_work(
             &self.works_root,
             &self.archive_root,
-            // Maison에서는 「없음」이다 — 등록부를 안 읽고, `projects`가 오면 커널이 거절한다.
-            self.shared_projects_root(),
+            &self.projects_root,
             &title,
             slug.as_deref(),
             &projects,
@@ -211,10 +187,7 @@ impl AtelierServer {
                 // 붙이는 자리가 `partial_failure` 안이 아니라 여기인 것은 그 함수를
                 // `atelier_attach_project`와 함께 쓰기 때문이다 — attach는 spec을 쓰기 직전의
                 // 호출이 아니다.
-                match self.spec_layout_guidance() {
-                    Ok(guidance) => answer.content.push(ContentBlock::text(guidance)),
-                    Err(e) => return Ok(kernel_error(e)),
-                }
+                answer.content.push(ContentBlock::text(self.spec_layout_guidance()));
                 Ok(answer)
             }
             Err(e) => Ok(kernel_error(e)),
@@ -243,11 +216,6 @@ impl AtelierServer {
             AttachProjectParams,
         >,
     ) -> Result<CallToolResult, ErrorData> {
-        // 이 도구만 커널 시그니처가 「없음」을 못 받는다 — 등록부가 본질적으로 늘 필요하다.
-        // 그래서 거절이 여기 어댑터에 있다 (스펙의 프로젝트 루트 네 갈래 중 넷째).
-        if let Some(refusal) = self.refuse_project_work(DO_NOT_CALL_PROJECT_TOOLS) {
-            return Ok(refusal);
-        }
         match atelier_core::attach_project(
             &self.works_root,
             &self.projects_root,
@@ -412,9 +380,8 @@ impl AtelierServer {
         match atelier_core::archive_work(
             &self.works_root,
             &self.archive_root,
-            // 기록 렌더가 base 브랜치 한 줄에만 쓴다. Maison에는 프로젝트가 없으므로
-            // 프로젝트 0개와 같은 갈래로 지난다.
-            self.shared_projects_root(),
+            // 기록 렌더가 base 브랜치 한 줄에만 쓴다.
+            &self.projects_root,
             &work_slug,
         ) {
             // 프로젝트가 없던 work는 브랜치도 워크트리도 없다 — "브랜치는 남아 있다"가

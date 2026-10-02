@@ -29,10 +29,10 @@ test("설정 「spec 레이아웃」 페이지에서 레이아웃 폴더가 바�
 }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/spec-layout");
-  await expect(page.locator("main li")).toHaveCount(2);
+  await expect(page.locator("main li")).toHaveCount(1);
 
-  await ringAndAwait(page, "spec_layout_states");
-  await expect(page.locator("main li")).toHaveCount(2);
+  await ringAndAwait(page, "spec_layout_state");
+  await expect(page.locator("main li")).toHaveCount(1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

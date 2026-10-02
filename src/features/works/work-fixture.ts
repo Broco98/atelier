@@ -7,7 +7,7 @@ import type { SpecTree, SpecTreeItem, WorkView } from "./types";
 // 테스트 파일이 아니다 — `*.test.ts`면 vitest가 이것을 테스트로 돌린다. 앱 코드는 이것을 부르지 않는다.
 
 /** spec 문서가 하나도 없는 work의 트리 — 기본 문서도 없다. */
-const EMPTY_SPEC_TREE: SpecTree = { layoutId: "atelier", fallback: null, defaultDoc: null, items: [] };
+const EMPTY_SPEC_TREE: SpecTree = { fallback: null, defaultDoc: null, items: [] };
 
 /**
  * 기본 work. 프로젝트도 워크트리도 spec 문서도 없는 Atelier work이다 — 무엇이 있어야 하는

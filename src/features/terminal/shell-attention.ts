@@ -2,9 +2,8 @@ import { agentMarkOf } from "@/components/ui/agent-mark";
 import { foldHookState, subagentOf } from "./agents";
 import type { AgentSignal, DialogKind } from "./agents/types";
 import type { AnswerKey } from "./shell-input";
-import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
+import { markSeen, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
-import type { Mode } from "@/mode";
 import type { CallingKind, CallingNote, ShellSignal } from "@/components/shell/shell-signal";
 import type { ShellHookState } from "./types";
 
@@ -688,13 +687,11 @@ export function callingNote(shells: ReadonlyArray<Shell>): CallingNote | null {
  * **최상위 셸은 안 든다** — 어느 work의 것도 아니라 행이 없다(`shellCountsOf`와 같은 가름).
  * 그 셸이 부르는 것은 nav `Terminal`과 띠가 받는다(#204).
  *
- * **그 세계의 것만, 키는 slug다** — `shellCountsOf`와 같은 사정이다. 목록은 터미널을 모르므로
- * (SidebarWorkList의 import 계약) 소유자로 키를 주면 `work.slug`로 꺼내다 늘 빈손이 되고,
- * 그때 행은 「신호가 없다」로 조용히 그려진다. 두 루트에 같은 slug가 설 수 있어 거르는 것도
- * 여기서 함께 한다 — 안 거르면 저쪽 세계의 셸이 이 행을 물들인다.
+ * **키는 slug다** — `shellCountsOf`와 같은 사정이다. 목록은 터미널을 모르므로
+ * (SidebarWorkList의 import 계약) `work.slug`로 꺼낸다.
  */
-export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellSignal> {
-  return perWork(state, mode, topSignal);
+export function signalsOf(state: ShellsState): Record<string, ShellSignal> {
+  return perWork(state, topSignal);
 }
 
 /**
@@ -702,29 +699,27 @@ export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellS
  * 카드와 행 버튼에 나눠 준다 — 설명은 버튼의 속성이고 카드는 값을 받으므로 슬롯으로는 두 자리에
  * 안 닿는다(목록 파일의 `signals` 주석과 같은 사정).
  *
- * **가르는 규칙은 `signalsOf`와 같다** — 그 세계의 것만, 키는 slug, 값이 없는 work은 키가 없다,
+ * **가르는 규칙은 `signalsOf`와 같다** — 키는 slug, 값이 없는 work은 키가 없다,
  * 최상위 셸은 안 든다. 두 Record가 같은 자리(`perWork`)에서 나오므로 레인과 말이 서로 다른
  * work 묶음을 볼 일이 없다.
  *
  * **값이 객체라 얕은 비교가 안 먹는다.** 읽는 쪽(`Sidebar`)이 한 겹 더 벗긴 비교를 쓴다.
  * 부르는 셸이 없으면 빈 Record이고, 대개의 목록에서 이 값은 비어 있다.
  */
-export function callingNotesOf(state: ShellsState, mode: Mode): Record<string, CallingNote> {
-  return perWork(state, mode, callingNote);
+export function callingNotesOf(state: ShellsState): Record<string, CallingNote> {
+  return perWork(state, callingNote);
 }
 
 /**
- * 그 세계의 work마다 셸을 모아 `pick`으로 값 하나를 고른다. `null`이면 키를 안 둔다.
- * `signalsOf`와 `callingNotesOf`의 가름(세계 · 최상위 · slug 키, 그 머리말)이 이 한 자리에 있다.
+ * work마다 셸을 모아 `pick`으로 값 하나를 고른다. `null`이면 키를 안 둔다.
+ * `signalsOf`와 `callingNotesOf`의 가름(최상위 · slug 키, 그 머리말)이 이 한 자리에 있다.
  */
 function perWork<T>(
   state: ShellsState,
-  mode: Mode,
   pick: (shells: ReadonlyArray<Shell>) => T | null,
 ): Record<string, T> {
   const groups = new Map<string, Shell[]>();
   for (const shell of state.shells) {
-    if (modeOfOwner(shell.owner) !== mode) continue;
     const slug = slugOfOwner(shell.owner);
     if (slug === null) continue;
     const group = groups.get(slug);
@@ -841,13 +836,12 @@ export interface BandRow {
   /** 레지스트리의 칸 번호. 누르면 이 칸이 켜진다(`selectShell`). */
   id: number;
   /**
-   * 어느 화면인가 — **소유자 키 그대로**다(`<모드>:<slug>`). slug가 비었으면 최상위 셸이고
-   * 누르면 그 세계의 터미널로 간다(결정 13).
+   * 어느 화면인가 — **소유자 키 그대로**다(work의 slug, 최상위 셸이면 빈 글자). 최상위 셸이면
+   * 누르면 터미널로 간다(결정 13).
    *
-   * 줄이 이미 한 세계로 걸러져 나오므로 slug만 실어도 이 화면은 정해진다. 그런데도 키를
-   * 통째로 싣는 것은 **알림이 같은 키를 싣기 때문이다**(`NotifyShell.owner`) — 제목을 붙이는
-   * 함수는 하나이고(`Sidebar`의 `titleResolver`) 띠와 알림이 그것을 나눠 쓴다. 모양이 갈리면
-   * 그 함수가 한쪽에서 늘 빈손이 되는데, 화면에는 「제목 자리에 슬러그가 떴다」로만 보인다.
+   * **알림이 같은 키를 싣는다**(`NotifyShell.owner`) — 제목을 붙이는 함수는 하나이고(`Sidebar`의
+   * `titleResolver`) 띠와 알림이 그것을 나눠 쓴다. 모양이 갈리면 그 함수가 한쪽에서 늘 빈손이
+   * 되는데, 화면에는 「제목 자리에 슬러그가 떴다」로만 보인다.
    */
   owner: ShellOwner;
   /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다(`CallingKind`). */
@@ -874,13 +868,8 @@ export interface BandRow {
  * 무리를 가르는 키가 `owner`인 것은 **켜지는 자리가 화면마다 따로이기 때문이다**
  * (`activeByOwner`) — 최상위 셸 둘이 부르면 그 둘도 서로 갈려야 한다.
  */
-export function bandRows(state: ShellsState, mode: Mode): ReadonlyArray<BandRow> {
-  const calling = callingShells(
-    // **이 세계의 셸만 선다**(결정 10). 저쪽 세계가 부르는 것을 여기 세우면 누를 자리가 없다 —
-    // 줄의 제목은 이 세계의 목록에서 오고(`titleResolver`) 가는 곳도 이 세계의 주소다. 저쪽에
-    // 도는 것을 알리는 자리는 세그먼트의 점이고, 그것은 판 02다.
-    state.shells.filter((shell) => modeOfOwner(shell.owner) === mode),
-  );
+export function bandRows(state: ShellsState): ReadonlyArray<BandRow> {
+  const calling = callingShells(state.shells);
 
   // 화면마다 **부르는** 셸이 몇인가. 조용한 형제는 안 센다 — 이름이 붙는 근거는 「띠에서
   // 두 줄이 같은 제목으로 선다」이지 「그 work에 셸이 여럿이다」가 아니다.

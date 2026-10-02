@@ -4,20 +4,18 @@ use rmcp::{
     handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData,
 };
 
-use super::{kernel_error, AtelierServer, DO_NOT_CALL_PROJECT_TOOLS};
+use super::{kernel_error, AtelierServer};
 
 /// 아카이브에서 온 응답에 붙는 안내. spec 레이아웃 안내 자리를 대신한다 — 아카이브된 work에
 /// "여기에 spec을 쓰라"고 안내하면 정확히 막으려던 실수를 시키게 된다.
 ///
 /// **두 벌인 이유.** 「워크트리는 사라졌고 브랜치는 저장소에 남아 있다」는 브랜치가 있던
-/// work에만 참이다. 프로젝트 0개로 끝난 work — Maison의 Room은 **전부** 이쪽이다 — 에게
-/// 그 문장을 주면 에이전트가 없는 브랜치를 찾으러 간다. 가리키는 `record.md`와도 어긋난다:
+/// work에만 참이다. 프로젝트 0개로 끝난 work에게 그 문장을 주면 에이전트가 없는 브랜치를
+/// 찾으러 간다. 가리키는 `record.md`와도 어긋난다:
 /// 프로젝트가 없으면 그 문서에 git 좌표 섹션이 아예 안 실린다 (커널의
-/// `record_without_a_project_registry_is_the_same_document`가 그 모양을 못박는다).
+/// `record_for_a_work_without_projects_is_the_header_alone`가 그 모양을 못박는다).
 ///
-/// 이 응답 본문은 `#[tool(description = ...)]`과 달리 `&self` 메서드가 내보내므로 **갈 수
-/// 있다** — 「도구 설명은 모드별로 못 가른다」는 #180의 전제가 여기엔 안 걸린다. 옆자리
-/// `atelier_archive_work`가 같은 이유로 이미 `branch`의 유무로 안내를 갈라 두었고, 갈림의
+/// 옆자리 `atelier_archive_work`가 같은 이유로 이미 `branch`의 유무로 안내를 갈라 두었고, 갈림의
 /// 기준도 같은 값이어야 한다: 같은 work를 두 도구가 다르게 말하면 안 된다.
 ///
 /// 두 벌이 통째로 적혀 있는 것은 의도다. 공통 부분을 조각으로 빼면 문장이 어디서 갈리는지가
@@ -30,7 +28,7 @@ holds the git coordinates of what was actually done. Do not write into `specDir`
 is the record of what happened and archiving is not undone; start a new work for anything that \
 continues from here.";
 
-/// 프로젝트도 브랜치도 없던 work — Room을 포함한다. **찾으러 갈 곳이 없다고 말한다.**
+/// 프로젝트도 브랜치도 없던 work. **찾으러 갈 곳이 없다고 말한다.**
 const ARCHIVED_NOTE_WITHOUT_CODE: &str = "\
 This work is archived (`origin` is \"archive\"): it has been put away and no longer appears in \
 atelier_list_works. It had no project and no branch, so there is nothing to look for in any \
@@ -53,8 +51,8 @@ pub struct GetWorkParams {
 
 #[tool_router(router = read_router, vis = "pub")]
 impl AtelierServer {
-    // 「먼저 이것을 부르라」는 순서는 설명에서 뺐다 — 그 절차는 Atelier에만 있고 설명은
-    // 모드별로 못 가른다 (#180). 무엇을 돌려주는지와 브랜치 이름의 출처는 남는다.
+    // 「먼저 이것을 부르라」는 순서는 설명에 없다 — 절차는 지침이 든다. 무엇을 돌려주는지와 브랜치 이름의
+    // 출처는 남는다.
     #[tool(
         description = "List the registered Atelier projects: slug, display name, folder path, \
                        baseBranch, description, and `git` — which carries `localBranches`, the \
@@ -65,20 +63,14 @@ impl AtelierServer {
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn atelier_list_projects(&self) -> Result<CallToolResult, ErrorData> {
-        // Maison에는 등록부가 없다 — 읽기 전용이라도 저쪽 세계의 목록을 보여 주면
-        // 에이전트가 그중 하나를 골라 붙이려 든다 (결정 17).
-        if let Some(refusal) = self.refuse_project_work(DO_NOT_CALL_PROJECT_TOOLS) {
-            return Ok(refusal);
-        }
         match atelier_core::list_projects(&self.projects_root) {
             Ok(views) => Ok(CallToolResult::success(vec![ContentBlock::json(&views)?])),
             Err(e) => Ok(kernel_error(e)),
         }
     }
 
-    // 정의 문장(「work는 하나의 기능」)은 지침으로 옮겼다 — Maison에서 이 목록이 돌려주는
-    // 것은 Room이라 「기능」도 「공유 브랜치」도 참이 아니다. 프로젝트·브랜치·워크트리는
-    // **조건절 안에서만** 말한다.
+    // 정의 문장(「work는 하나의 기능」)은 지침에 있다. 프로젝트·브랜치·워크트리는 **조건절 안에서만**
+    // 말한다 — 프로젝트 없는 work에는 셋 다 없다.
     //
     // 순서 문장(UI개선 결정 2 · 스토리 33): 순서는 사람이 앱에서 끌어 정한다. 도구가 없다고
     // 말하지 않으면 에이전트가 없는 도구를 찾거나 `.order.json`을 손으로 고친다.
@@ -167,16 +159,13 @@ impl AtelierServer {
         // 아카이브 안내는 브랜치의 유무로 갈린다 — `atelier_archive_work`가 쓰는 것과 **같은
         // 값**이다. 다른 값으로 가르면 방금 치운 work를 두 도구가 다르게 설명한다.
         //
-        // 진행 중인 work에는 **이 서버 모드의 spec 레이아웃**을 render한 글이 선다. 조회는 문서를
+        // 진행 중인 work에는 **spec 레이아웃**을 render한 글이 선다. 조회는 문서를
         // 쓰기 직전에 일어나므로 여기가 이 안내의 정확한 자리다 — 상주 지침을 늘리지 않는다.
         // 커널의 뷰가 아니라 도구 계층이 덧붙인다: 레이아웃은 work의 데이터가 아니다.
         let note = match (origin, view.work.branch.is_some()) {
             ("archive", true) => ARCHIVED_NOTE_WITH_CODE.to_string(),
             ("archive", false) => ARCHIVED_NOTE_WITHOUT_CODE.to_string(),
-            _ => match self.spec_layout_guidance() {
-                Ok(guidance) => guidance,
-                Err(e) => return Ok(kernel_error(e)),
-            },
+            _ => self.spec_layout_guidance(),
         };
         // JSON이 먼저다 — 기계가 읽는 값이고, 안내는 그 뒤에 붙는다
         Ok(CallToolResult::success(vec![
@@ -213,7 +202,7 @@ mod tests {
             }
         }
         // 갈리는 대목 — 브랜치·워크트리·git 좌표는 **코드가 있던 쪽에만** 있다.
-        // 없던 쪽에 새어 들어오면 Room의 에이전트가 없는 브랜치를 찾으러 간다.
+        // 없던 쪽에 새어 들어오면 에이전트가 없는 브랜치를 찾으러 간다.
         for presupposing in ["worktrees", "branch is still", "git coordinates"] {
             assert!(
                 ARCHIVED_NOTE_WITH_CODE.contains(presupposing),

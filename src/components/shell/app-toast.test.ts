@@ -43,7 +43,7 @@ describe("토스트의 수명", () => {
   it("버튼이 여럿인 동작 토스트는 받은 차례로 버튼을 든다", () => {
     const ran: string[] = [];
     const options = toastOptionsOf({
-      id: "ownerless:atelier",
+      id: "ownerless",
       text: "아카이브된 작업의 셸 1개에 아직 도는 것이 있어요",
       actions: [
         { label: "모두 닫기", run: () => ran.push("모두 닫기") },

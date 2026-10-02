@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import {
   BUSY_SHELL,
-  MAISON_LANDING_ROOM,
   shellExitEnded,
   shellKeyOf,
   startupCleaned,
@@ -32,23 +31,22 @@ import {
 import { poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 
 // 프로세스 티켓 32 — **토스트의 [보기]가 `Processes`로 간다**(프로세스 스펙 S15 · P2, 스토리 94 · 101). 시작 정리(티켓 10) · 주인
-// 잃은 셸(티켓 12) · 셸 스스로 끝남(티켓 13)의 토스트가 [보기]를 들고, 누르면 토스트가 내려가고 **지금 세계의** `Processes`가
+// 잃은 셸(티켓 12) · 셸 스스로 끝남(티켓 13)의 토스트가 [보기]를 들고, 누르면 토스트가 내려가고 `Processes`가
 // 열린다. [보기]를 든 토스트는 동작 토스트라 누를 때까지 남는다 — 시작 정리 · 셸 스스로 끝남은 1.6초 뒤 사라지던 짧은 토스트였다.
 //
-// 가는 주소를 짓는 규칙(세계 · 설정)과 문 하나에 길을 거는 규칙은 L2가 잰다(`processes-view.test.ts`). 여기서 보는 것은 그 문이
+// 가는 주소를 짓는 규칙과 문 하나에 길을 거는 규칙은 L2가 잰다(`processes-view.test.ts`). 여기서 보는 것은 그 문이
 // **진짜 라우터**에 걸려 화면이 옮겨 가는가다.
 
 const [, plainWork] = WORKS;
 
-// Maison에서 연다 — 화면은 앱 전체라(프로세스 결정 9) 보러 가려고 세계를 건너지 않는다. 가는 곳이 그 세계의 주소다.
-test("시작 정리 토스트의 [보기]를 누르면 토스트가 내려가고 지금 세계의 Processes로 간다", async ({ page }) => {
+test("시작 정리 토스트의 [보기]를 누르면 토스트가 내려가고 Processes로 간다", async ({ page }) => {
   await installFixtureBackend(page, { startup_report: startupCleaned(2) });
-  await page.goto(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
+  await page.goto(`/works/${plainWork.slug}`);
   const toast = toastOf(page, cleanupText(2));
   await expect(toast).toBeVisible();
 
   await toast.getByRole("button", { name: "보기", exact: true }).click();
-  await expect(page).toHaveURL("/maison/processes");
+  await expect(page).toHaveURL("/processes");
   await expect(processesTitle(page)).toBeVisible();
   await expect(toast).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -78,7 +76,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button", { name: /^(모두 닫기|보기)$/ })).toHaveText(["모두 닫기", "보기"]);
@@ -144,7 +142,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
   await typeIntoShell(page);
   await 편집기에초안(page);
   // 셸의 claude가 MCP로 그 work을 아카이브한다 — 명령이 도는 셸이 남아 주인 잃은 셸 토스트가 설정 화면에 선다.
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
 

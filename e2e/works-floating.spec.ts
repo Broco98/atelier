@@ -34,7 +34,7 @@ const [pinnedWork, plainWork, multiWork] = WORKS;
 const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).animationName);
 
 /**
- * 머리행의 ⋯ — 작업 메뉴를 여는 버튼. 이름이 세계를 탄다(`itemNameOf`): 여기는 Atelier라 「작업 메뉴」다.
+ * 머리행의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」).
  * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
@@ -103,7 +103,7 @@ test("상태 배지는 메뉴를 연다고 말하고, 지금 상태가 선택됨
   await expect(badge).toHaveAttribute("aria-expanded", "false");
   await expect
     .poll(async () => (await ipcCallArgs(page, "set_work_status", "status")).map(({ args }) => args))
-    .toEqual([{ mode: "atelier", slug: pinnedWork.slug, status: "review" }]);
+    .toEqual([{ slug: pinnedWork.slug, status: "review" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -222,7 +222,7 @@ test("Enter면 앞뒤 공백을 뗀 이름으로 제목 IPC가 나가고, 창이
   await expect(작업메뉴(page)).toBeFocused();
   await expect
     .poll(async () => (await ipcCallArgs(page, "set_work_title", "title")).map(({ args }) => args))
-    .toEqual([{ mode: "atelier", slug: plainWork.slug, title: "새 이름" }]);
+    .toEqual([{ slug: plainWork.slug, title: "새 이름" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
