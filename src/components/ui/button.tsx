@@ -33,7 +33,7 @@ const buttonVariants = cva(
         // 쪽 동작 — 「다시 읽기」, 훅의 「설치」·「제거」, 목록 빈칸의 「프로젝트 등록」.
         sm: "h-7 gap-1 rounded-lg px-[11px] text-ui in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-[9px] has-data-[icon=inline-start]:pl-[9px] [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 rounded-lg px-2.5 text-ui has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        // 창 바닥 — 확인 창과 이름 바꾸기 창의 버튼. 창의 글(13px)보다 한 단 작다.
+        // 창 바닥 — 확인 창과 이름 바꾸기 창의 버튼. 글자는 창의 글과 같은 `text-ui`이고, 높이가 주 버튼(32)보다 한 단 낮은 28이다.
         dialog:
           "h-7 gap-1 rounded-lg px-3 text-ui [&_svg:not([class*='size-'])]:size-3.5",
         icon: "size-8 rounded-full",

@@ -27,8 +27,8 @@ const CONTENT_WIDTH = {
 } as const
 
 // 항목 한 줄의 크기. 보통은 menu-row(32px 한 줄)다. `note`는 이름 아래 설명 한 줄을 이는 두 줄 항목이라
-// 높이가 내용을 따르고 아이콘이 이름 줄에 맞게 위로 선다. 가로 규격(안쪽 9px · 모서리 · 틈 8px)을 옮겨 적지
-// 않고 menu-row를 부른다(S40 — 규격은 index.css 한 곳) — 고정 높이만 `h-auto`로 풀고, 위로 맞춤과 위아래 7px을
+// 높이가 내용을 따르고 아이콘이 이름 줄에 맞게 위로 선다. 가로 규격(좌우 안쪽 · 모서리 · 글리프 사이)을 옮겨
+// 적지 않고 menu-row를 부른다(S40 — 규격은 index.css 한 곳) — 고정 높이만 `h-auto`로 풀고, 위로 맞춤과 위아래 7px을
 // 더한다. 덮는 코어 유틸리티는 menu-row 뒤에 선다 — 커스텀 @utility가 앞에 선다(index.css `floating-card` 주석 ·
 // toggle.tsx 머리말).
 const ITEM_SIZE = {

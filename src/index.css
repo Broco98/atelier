@@ -227,7 +227,8 @@
        툴팁 화살표는 Tailwind 기본 `rounded-xs`(2px)다. 아래 `sm` · `md` · `xl` …은 registry가 깐 값이고
        앱 코드는 쓰지 않는다 — 단계 밖 이름이다. `rounded-[…]`(px · `min()` · `calc()`)는 `type-scale.test.ts`가
        막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가 이 이름들을 모서리로 아는지도 같은 검사가 잰다.
-       `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로 옮기기 전의 기록이다. */
+       `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로 옮기기 전의 기록이다 —
+       머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
     --radius-card: 16px;
     --radius-pill: 9999px;
     --radius-inner: 8px;
@@ -264,7 +265,7 @@
    아무 CSS도 안 나와 조용히 부모 크기를 물려받으므로, 이름 단계와 `text-[Npx]`는 `type-scale.test.ts`가
    막는다. 클래스 합치기(`lib/utils.ts`의 `cn`)도 이 이름들을 크기로 알아야 한다 — 같은 검사가 잰다.
    `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 글자 px는 단계로 옮기기 전의 기록이다 —
-   지금 크기는 클래스의 단계가 든다.
+   지금 크기는 클래스의 단계가 들고, 머리말에서도 단계 이름(`text-ui` …)으로 적힌 것이 지금 값이다.
 
    **글자색 `--text-tertiary` · `--text-section`은 여기 들이지 않는다**(`:root`의 주석) — 이 블록에
    들면 글자 크기로 읽힌다. */
