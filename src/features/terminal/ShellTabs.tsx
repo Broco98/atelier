@@ -352,7 +352,7 @@ function ShellTabs({
       {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
           고정된다. ⌘W가 여기서 아무 일도 안 하는 것(결정 13)이 같은 말이다.
 
-          닫는 버튼이 없어 칸이 버튼 하나로 끝나므로 켜짐 표시(`toggle-on`)와 그것을 말하는
+          닫는 버튼이 없어 칸이 버튼 하나로 끝나므로 켜짐 표시(`tab-on`)와 그것을 말하는
           속성(`aria-pressed`)이 **같은 요소**에 붙는다. 아래 셸 칸은 형제 버튼 둘이라
           그럴 수 없다 — 그쪽 주석이 이유를 든다.
 
@@ -382,11 +382,14 @@ function ShellTabs({
             // **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를
             // 가르는 안은 실물에서 접었다 — 그 칸만 규격이 갈리면 줄에서 튄다. 「다른 종류」는
             // 옆의 세로선 하나가 말한다.
-            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui transition-colors",
-            spec.on ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
+            //
+            // **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고
+            // 켜진 칸은 흰 면(`tab-on`)이다. 꺼진 칸의 글리프만 흐리다(`.at-tab .ic`).
+            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-foreground transition-colors",
+            spec.on ? "tab-on font-medium" : "hover:bg-state-1",
           )}
         >
-          <File className="size-3.5 shrink-0" strokeWidth={1.8} />
+          <File className={cn("size-3.5 shrink-0", !spec.on && "text-tertiary")} strokeWidth={1.8} />
           <span className="min-w-0 truncate">spec</span>
         </button>
       )}
@@ -561,8 +564,13 @@ function PlusButton({
         // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
         // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
         // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
+        //
+        // 올리거나 누를 때의 면은 바탕의 한 단(`chrome-hover`)이다(ui-refresh 결정 18 · DS `.at-icon-btn.on-chrome`) —
+        // 카드 위 버튼의 `quiet-hover`(state-2)는 회색 바탕에서 거의 안 보인다. 레일 토글과 같은 어휘다(`Rail.tsx`).
         "-ml-0.5 shrink-0 text-tertiary",
-        full ? "icon-button opacity-40" : "icon-button-quiet",
+        full
+          ? "icon-button opacity-40"
+          : "icon-button transition-colors hover:bg-chrome-hover hover:text-foreground active:bg-chrome-hover",
         className,
       )}
       {...props}
@@ -640,8 +648,9 @@ const ShellTab = memo(function ShellTab({
     // 바깥이 가진 padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무
     // 일이 없는 죽은 자리가 된다(커밋 c0978b1이 spec 트리에서 없앤 것).
     //
-    // hover는 **꺼진 가지 안에만** 둔다. toggle-on이 자기 hover를 품으므로 함께 얹으면
-    // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+    // hover는 **꺼진 가지 안에만** 둔다. 켜진 칸의 흰 면(`tab-on`)은 hover에 안 바뀌는데(DS `.at-tab.is-on:hover`),
+    // 꺼진 칸의 hover를 함께 얹으면 배경 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고) —
+    // 지면 켜진 칸이 가리킬 때마다 회색으로 꺼진다.
     // 꺼진 칸이 `quiet-hover`(2)가 아니라 1인 것은 2가 **행이 선택된** 농도라서다 —
     // 꺼진 칸을 2로 밝히면 「선택됨」으로 읽힌다.
     //
@@ -675,7 +684,9 @@ const ShellTab = memo(function ShellTab({
       // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
       data-shell-key={shell.shellKey ?? undefined}
       className={cn(
-        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui transition-colors",
+        // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18의 「탭 글자 `#191c1f`」) — 켜짐을 글자색으로
+        // 가르지 않는다. 그것은 켜진 칸의 흰 면이 한다.
+        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-foreground transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
         // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
         // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.
@@ -688,19 +699,15 @@ const ShellTab = memo(function ShellTab({
         // 물들어 에이전트 마크까지 상태색을 받는다 — 잉크가 붙는 자리는 이름 글자 하나이고
         // 그 근거는 `signalTint` 머리말이 든다. 그래서 물든 칸도 회색 잉크를 그대로 쓴다.
         //
-        // **물들면 회색 배경이 물러난다**(결정 6). 켜진 칸의 `toggle-on`까지 그렇다 —
+        // **물들면 켜짐의 면이 물러난다**(결정 6). 켜진 칸의 흰 면(`tab-on`)까지 그렇다 —
         // 「부르는 탭」이 「고른 탭」보다 위 사실이라, 둘을 겹쳐 두면 유틸리티 정렬 순서가
         // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49).
-        tint === null
-          ? active
-            ? "toggle-on"
-            : "text-muted-foreground hover:bg-state-1"
-          : cn("text-muted-foreground", tint.cell),
+        tint === null ? (active ? "tab-on" : "hover:bg-state-1") : tint.cell,
       )}
     >
       {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
           분할 중에는 켜진 칸이 둘인데(결정 12) tablist에서 selected가 둘이면 잘못된
-          ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+`toggle-on`으로 말하고
+          ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고
           있어(분할 토글·소스 토글) 새 어휘를 들이면 화면 안에서 말이 두 벌이 된다.
 
           이름 버튼이 자기 오른쪽 여백까지 품는다. h-full은 칸 높이 전체가 눌리게 한다 —
@@ -773,7 +780,7 @@ const ShellTab = memo(function ShellTab({
             그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
             안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로
             쓴 것과 정면으로 어긋난다.
-            직접 선언한 색이라 켜진 칸의 toggle-on 글자색에 안 덮인다. */}
+            직접 선언한 색이라 칸의 본문 글자색에 안 덮인다. */}
         {end && <span className="shrink-0 text-tertiary">{end.mark}</span>}
       </Hint>
       {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span

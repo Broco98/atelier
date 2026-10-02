@@ -458,9 +458,9 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
 });
 
 describe("켜짐을 말하는 법", () => {
-  it("`aria-pressed`와 `toggle-on`으로 말한다 — `role=\"tab\"`을 쓰지 않는다", () => {
+  it("`aria-pressed`와 켜짐 면(`tab-on`)으로 말한다 — `role=\"tab\"`을 쓰지 않는다", () => {
     // 분할이면 **켜진 탭이 둘**이다(결정 12) — tablist에서 `aria-selected`가 둘이면 잘못된
-    // ARIA다. 이 저장소는 켜짐을 이미 `aria-pressed`+`toggle-on`으로 말하고 있어서(분할
+    // ARIA다. 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고 있어서(분할
     // 토글·소스 토글), 새 어휘를 들이지 않는 쪽이 화면 전체와 한 말을 쓴다.
     const markup = render(opened(2).state);
     expect(markup).not.toMatch(/role="tab/);
@@ -472,7 +472,9 @@ describe("켜짐을 말하는 법", () => {
     const markup = render(opened(3).state);
     const cells = cellsOf(markup);
     expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"'))).toHaveLength(1);
-    expect(cells.filter((cell) => cell.markup.includes("toggle-on"))).toHaveLength(1);
+    // 켜짐 면은 바탕 줄의 흰 탭이다(ui-refresh 결정 18) — 회색 `toggle-on`이 아니다.
+    expect(cells.filter((cell) => cell.markup.includes("tab-on"))).toHaveLength(1);
+    expect(cells.filter((cell) => cell.markup.includes("toggle-on"))).toHaveLength(0);
   });
 
   it("본문이 문서면 켜진 칸이 `spec` 하나다", () => {
@@ -491,10 +493,10 @@ describe("켜짐을 말하는 법", () => {
   });
 
   it("한 요소에 hover 규칙이 두 벌 얹히지 않는다", () => {
-    // toggle-on은 자기 hover를 품는다. 꺼진 칸의 hover가 같은 요소에 함께 오면 어느 쪽이
-    // 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+    // 켜진 칸의 흰 면(`tab-on`)은 hover에 안 바뀐다. 꺼진 칸의 hover가 같은 요소에 함께 오면 어느 쪽이
+    // 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고) — 지면 켜진 칸이 가리킬 때마다 회색이 된다.
     const classes = [...render(opened(3).state).matchAll(/class="([^"]*)"/g)].map((m) => m[1]);
-    expect(classes.filter((one) => /toggle-on/.test(one) && /hover:/.test(one))).toEqual([]);
+    expect(classes.filter((one) => /tab-on/.test(one) && /hover:/.test(one))).toEqual([]);
   });
 });
 
@@ -882,12 +884,12 @@ describe("칸이 물든다", () => {
   });
 
   it("켜진 칸이 기다리면 앰버가 회색을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
-    // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 `toggle-on`이 물러난다 — 안 물러나면
+    // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 켜짐 면(`tab-on`)이 물러난다 — 안 물러나면
     // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
     // 회색 채움이 하던 말을 테두리가 받는다.
     const 켜진기다림 = 물든칸("waiting", { active: true });
     expect(켜진기다림).toContain("bg-wait-soft");
-    expect(켜진기다림).not.toContain("toggle-on");
+    expect(켜진기다림).not.toContain("tab-on");
     // **`ring`이지 `border`가 아니다**(스토리 54) — 그림자는 폭을 안 먹는다. 아래 「폭·위치」
     // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
     expect(켜진기다림).toContain("ring-1");
@@ -935,9 +937,8 @@ describe("칸이 물든다", () => {
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
     // 받는다」가 그 자리를 따로 지킨다).
     const 색어휘 = new Set([
-      "text-muted-foreground",
       "hover:bg-state-1",
-      "toggle-on",
+      "tab-on",
       "font-medium",
       "bg-wait-soft",
       "bg-done-soft",
@@ -995,7 +996,7 @@ describe("칸이 물든다", () => {
     // 내내 색을 띤 채라 「부른다」가 뜻을 잃는다.
     for (const kind of ["working", null] as const) {
       const 칸 = 물든칸(kind);
-      expect(칸, String(kind)).toContain("text-muted-foreground");
+      expect(칸, String(kind)).toContain("hover:bg-state-1");
       expect(칸, String(kind)).not.toContain("bg-wait-soft");
       expect(칸, String(kind)).not.toContain("bg-done-soft");
     }
