@@ -149,7 +149,7 @@ describe("WorkInfo 프로젝트가 0개인 작업", () => {
     expect(markup).toContain("아직 프로젝트가 없어요.");
     expect(rowValue(markup, "slug")).toBe("some-work");
     expect(rowValue(markup, "생성일")).toBe("2026-08-16");
-    expect(markup).toContain(">문서 4<");
+    expect(rowValue(markup, "문서")).toBe("4");
   });
 
   it("브랜치가 있으면 안내 문구와 브랜치 줄이 함께 나오고 뒷문장이 빠진다", () => {
@@ -196,15 +196,16 @@ describe("WorkInfo 작업 · 문서 구획", () => {
     expect(rowValue(markup, "작업 폴더")).toBe("~/.atelier/works/some-work/");
   });
 
-  it("개수는 「문서 M」 하나다", () => {
+  it("개수는 「문서」 줄 하나다", () => {
     // 판을 세던 것이 사라졌다(spec 레이아웃 결정 24) — 폴더가 곧 개념이라 판이라는 세는 말을 화면이
     // 따로 갖지 않는다. `(전체)`는 spec 탭의 `Documents` 구획(판 밖 문서만)과 가르려고 붙였던 꼬리라,
     // 구획이 없어지면서 가를 상대가 없다. 문서 개수는 판 안 문서를 **포함한** spec 파일 전부다.
+    // 「이름 | 값」 두 칸의 한 줄이다(프로토타입 Works-info의 `문서 | 16`).
     const markup = render();
-    expect(markup).toContain(">문서 4<");
+    expect(rowValue(markup, "문서")).toBe("4");
     expect(markup).not.toMatch(/판 \d/);
     expect(markup).not.toContain("(전체)");
-    expect(render({ specFiles: ["overview.md"] })).toContain(">문서 1<");
+    expect(rowValue(render({ specFiles: ["overview.md"] }), "문서")).toBe("1");
   });
 
   it("경로는 공통 접두어를 한 번만 쓴다", () => {
@@ -217,6 +218,36 @@ describe("WorkInfo 작업 · 문서 구획", () => {
     // 주는 유일한 부분만 잘려 나간다. 접두어가 세 번 나오면 그 상태다. 맨 위 복사 묶음은 제 기준 행을 따로 들어
     // (아래 「맨 위 복사 묶음」) 구획 안에서 센다.
     expect(sections(markup).match(/~\/\.atelier\/works\/some-work\//g)).toHaveLength(1);
+  });
+});
+
+// 맨 위 묶음 아래 구획 셋의 모양(프로토타입 Works-info — DS `.at-subhead` · `.at-props.narrow`). 판 04가 「info 패널 아래 구획들의
+// 모양(속성 표 · 소제목)」을 판 06에 넘겼고(04 티켓 05 「하지 않는 것」), PR 2 최종 리뷰(P06-1)가 그 몫을 메웠다.
+describe("WorkInfo 구획의 모양", () => {
+  it("구획 제목은 본문 색 13px · 600이다 — 옅은 소제목이 아니다", () => {
+    // 제목 바로 뒤에 그 구획의 줄 묶음이 선다 — 같은 글자의 이름 칸(「문서」 줄)과 가르는 고리다.
+    const titles = [...render().matchAll(/<span class="([^"]*)">(작업|프로젝트|문서)<\/span><div/g)];
+    expect(titles.map((m) => m[2])).toEqual(["작업", "프로젝트", "문서"]);
+    for (const [, cls] of titles) {
+      expect(cls).toMatch(/\btext-ui\b/);
+      expect(cls).toMatch(/\bfont-semibold\b/);
+      expect(cls).not.toMatch(/\btext-(tertiary|muted-foreground|caption)\b/);
+    }
+  });
+
+  it("프로젝트 이름은 첫 줄의 이름 칸이고, base는 그 줄의 값 칸이다 — 상세로 가는 버튼 밖이다", () => {
+    // 버튼은 이름(`aria-label`)을 따로 들어 그 안의 글자를 읽지 않는다 — base가 버튼 안이면 스크린리더에 안 읽힌다.
+    const markup = render();
+    const button = markup.match(/<button[^>]*aria-label="atelier 프로젝트 상세로 이동"[^>]*>([\s\S]*?)<\/button>/)?.[1];
+    expect(button, "프로젝트 버튼을 찾지 못했다").toBeDefined();
+    expect(button).toContain(">atelier<");
+    expect(button).not.toContain("develop");
+    expect(markup).toMatch(/aria-label="atelier 프로젝트 상세로 이동"[\s\S]*?<\/button><span[^>]*>[\s\S]*?lucide-arrow-right[\s\S]*?>develop</);
+  });
+
+  it("변경이 있으면 「변경 | 변경 있음」 줄이 선다", () => {
+    expect(rowValue(render(), "변경")).toBeNull();
+    expect(rowValue(render({ worktrees: [{ ...work.worktrees[0], dirty: true }] }), "변경")).toBe("변경 있음");
   });
 });
 

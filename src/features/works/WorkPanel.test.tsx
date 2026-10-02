@@ -221,11 +221,10 @@ describe("WorkPanel 머리와 두 몸", () => {
     expect(empty).toContain("trees/atelier/");
     // 등록은 돼 있다 — "알 수 없다"는 다른 사실이라 여기서 나오면 안 된다
     expect(empty).not.toContain("알 수 없다");
-    expect(empty).not.toContain("font-mono text-mono-sm text-tertiary");
+    // base 값의 표식은 앞의 → 글리프다 — 그 칸에만 선다(맨 위 브랜치 줄의 꼬리는 글리프 없이 글자뿐이다).
+    expect(empty).not.toMatch(/lucide-arrow-right/);
     // 같은 자리에 진짜 base가 오면 그 줄이 선다 — 위 부재가 "원래 없는 줄"이 아님을 못 박는다
-    expect(render(true, oneProject, [project("atelier", "develop")])).toContain(
-      "font-mono text-mono-sm text-tertiary",
-    );
+    expect(render(true, oneProject, [project("atelier", "develop")])).toMatch(/lucide-arrow-right/);
   });
 
   it("목록이 왔는데 그 프로젝트가 없으면 등록이 사라진 것이다", () => {
