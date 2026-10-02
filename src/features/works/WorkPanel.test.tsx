@@ -214,9 +214,9 @@ describe("WorkPanel 머리와 두 몸", () => {
   it("base가 빈 문자열이면 그 줄을 아예 그리지 않는다", () => {
     // 코어가 빈 base_branch를 막지 않는다 — 이름은 EmptyName으로 거부하는데 base는 검증이
     // 없고, MCP의 atelier_edit_project가 값을 그대로 통과시킨다. 받는 자리를 `??`로 쓰면
-    // ""가 null이 되지 않아 info 몸은 `base !== null`이 참이라 **뒤에 아무것도 없는 →
-    // 글리프만** 그린다. 같은 값을 ⓘ 팝오버는 truthy로 봐서 꼬리를 안 그리므로,
-    // 한 값이 두 화면에서 다르게 읽힌다. 값을 정하는 이 한 곳에서 `||`로 접는다.
+    // ""가 null이 되지 않아 프로젝트 구획은 `base !== null`이 참이라 **뒤에 아무것도 없는 →
+    // 글리프만** 그린다. 같은 값을 맨 위 브랜치 줄은 truthy로 봐서 꼬리를 안 그리므로,
+    // 한 값이 두 자리에서 다르게 읽힌다. 값을 정하는 이 한 곳에서 `||`로 접는다.
     const empty = render(true, oneProject, [project("atelier", "")]);
     expect(empty).toContain("trees/atelier/");
     // 등록은 돼 있다 — "알 수 없다"는 다른 사실이라 여기서 나오면 안 된다

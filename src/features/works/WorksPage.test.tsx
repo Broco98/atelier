@@ -129,7 +129,7 @@ describe("WorksPage 패널 토글과 레일", () => {
   });
 
   it("바탕 줄 조작에 「작업 패널 펼치기」가 없다 — 토글은 바탕 줄 밖 레일에 선다", () => {
-    // 조작은 상태 · ⓘ · ⋯ · 분할이다. 접혀 있을 때 바탕 줄에 펼치기가 하나 더 서던 갈래가 없어졌다.
+    // 조작은 상태 · ⋯ · 분할이다(ui-refresh 결정 14). 접혀 있을 때 바탕 줄에 펼치기가 하나 더 서던 갈래가 없어졌다.
     for (const split of [null, "lr"] as const) {
       const header = render(specDocs(["overview.md"]), "spec", split).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
       expect(header, `${split}`).not.toBe("");
@@ -321,25 +321,29 @@ describe("WorksPage 머리행 배치", () => {
     return header(markup).match(/<div data-tab-actions[^>]*>([\s\S]*)<\/div><\/header>/)?.[1] ?? "";
   }
 
-  it("ⓘ 다음이 ⋯다", () => {
-    const h = header(render());
-    const info = h.indexOf('aria-label="작업 메타"');
-    const menu = h.indexOf('aria-label="작업 메뉴"');
-    expect(info).toBeGreaterThan(-1);
-    expect(menu).toBeGreaterThan(info);
+  it("상태 다음이 ⋯, 그다음이 분할이고 「작업 메타」가 없다", () => {
+    // ui-refresh 결정 14 — 바탕 줄 조작은 상태 · ⋯ · 분할이다(패널 토글은 레일 맨 위). 상태 배지와 ⋯ 사이에 서던 ⓘ
+    // 팝오버(「작업 메타」)가 걷히고, 그 복사 줄 셋은 info 맨 위로 올라갔다 — 레일의 info와 ⓘ 둘이 위아래로 붙지 않는다.
+    const a = actions(render());
+    const status = a.indexOf('aria-description="상태 변경"');
+    const menu = a.indexOf('aria-label="작업 메뉴"');
+    const split = a.indexOf('aria-label="분할"');
+    expect(status).toBeGreaterThan(-1);
+    expect(menu).toBeGreaterThan(status);
+    expect(split).toBeGreaterThan(menu);
+    expect(render()).not.toContain("작업 메타");
   });
 
-  it("맞붙어 선 ⓘ와 ⋯가 같은 상자를 쓴다", () => {
-    // 둘 사이에 여백이 없다(그 묶음에 gap이 없다). 그래서 hover 배경이 한 버튼에서 다음
-    // 버튼으로 **끊김 없이** 옮겨가고, 상자가 다르면 그 순간 배경이 커졌다 작아진다.
+  it("⋯와 분할이 같은 상자를 쓴다", () => {
+    // 줄 안에서 이웃한 두 아이콘 버튼의 상자가 다르면 hover 배경이 한 버튼에서 다음으로 옮겨갈 때 커졌다 작아진다.
     // 눈으로는 "살짝 튄다"로만 보여서, 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에 안 드러난다.
     // ⋯가 22px·radius 7이었던 것은 옛 이웃인 상태 배지에 맞춘 값인데, 그 배지가 오른쪽
     // actions로 가면서 맞출 상대가 24px 아이콘 버튼으로 바뀌었다.
-    const h = header(render());
+    const tags = header(render()).match(/<button[^>]*>/g) ?? [];
     const box = (label: string) =>
-      h.match(new RegExp(`<button[^>]*aria-label="${label}"[^>]*class="([^"]*)"`))?.[1] ?? "";
-    expect(box("작업 메타")).toMatch(/\bicon-button/);
-    expect(box("작업 메뉴")).toMatch(/\bicon-button/);
+      tags.find((tag) => tag.includes(`aria-label="${label}"`))?.match(/class="([^"]*)"/)?.[1] ?? "";
+    expect(box("작업 메뉴")).toMatch(/\bicon-button\b/);
+    expect(box("분할")).toMatch(/\bicon-button\b/);
     // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
@@ -347,11 +351,11 @@ describe("WorksPage 머리행 배치", () => {
   it("화면의 이름표는 한 글자도 안 바뀐다", () => {
     const markup = render();
     expect(markup).toContain('aria-label="작업 메뉴"');
-    expect(markup).toContain('aria-label="작업 메타"');
+    expect(markup).toContain('aria-label="분할"');
   });
 
   it("조작이 전부 오른쪽 끝 한 묶음에 있다", () => {
-    // 결정 10. 상태 배지 · ⓘ · ⋯ · 분할이 한 자리에 모인다(패널 토글은 바탕 줄 밖 레일에 선다 — ui-refresh 결정 9 ·
+    // 결정 10. 상태 배지 · ⋯ · 분할이 한 자리에 모인다(패널 토글은 바탕 줄 밖 레일에 선다 — ui-refresh 결정 9 ·
     // 위 「WorksPage 패널 토글과 레일」).
     //
     // **왼쪽에 남는 것이 있으면 안 된다.** 하나라도 왼쪽에 남으면 탭이 늘고 줄 때마다
@@ -361,7 +365,6 @@ describe("WorksPage 머리행 배치", () => {
     for (const one of [
       // 도움말 「상태 변경」은 툴팁이라 정적 마크업에 없다 — 이름(지금 상태)보다 더 말하던 그 말은 설명으로 남는다(S28).
       'aria-description="상태 변경"',
-      'aria-label="작업 메타"',
       'aria-label="작업 메뉴"',
       'aria-label="분할"',
     ]) {

@@ -131,7 +131,7 @@ test("읽지 못한 행은 이유를 보이고, [다시 읽기]가 상태 명령
 
 // [다시 읽기]는 감시가 놓친 경우를 메우는 버튼이다(구현 스펙 5절) — 감시와 같은 문을 타야 한다. 레이아웃이 바뀌면
 // spec 트리도 바뀌므로 그 문은 spec 트리를 싣고 오는 work 목록까지 지운다(3절). 상태 행만 다시 부르면 손으로 고친
-// 레이아웃이 행에서는 「고침」인데 spec 패널 탭의 트리는 옛 모양인 채 남는다.
+// 레이아웃이 행에서는 「고침」인데 `spec` 패널의 트리는 옛 모양인 채 남는다.
 test("[다시 읽기]는 감시가 놓친 변경을 대신 알린다 — spec 트리를 싣고 오는 work 목록도 다시 부른다", async ({ page }) => {
   await installFixtureBackend(page, { spec_layout_state: BROKEN_LAYOUT_STATE });
   await page.goto("/settings/spec-layout");

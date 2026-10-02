@@ -14,7 +14,7 @@ import {
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
-// 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · ⓘ 메타 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
+// 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · info 맨 위의 복사 줄 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
 // 셸 열기 `+`는 셸 열기 spec(`shell-picker.spec.ts`)이, 아카이브 거르개는 아카이브 문서 spec이,
 // 기준 브랜치는 프로젝트 목록 spec이 든다.
 //
@@ -34,10 +34,12 @@ const [pinnedWork, plainWork, multiWork] = WORKS;
 const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).animationName);
 
 /**
- * 머리행의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」).
- * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
+ * 바탕 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
+
+/** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — 복사 줄 절과 토스트 절이 함께 쓴다. */
+const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
 // 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라
@@ -285,67 +287,50 @@ for (const [what, cancel] of [
   });
 }
 
-// ── ⓘ 메타 (스토리 64~66, S35 · S39) ──
-// 머리행의 ⓘ가 작은 카드(Popover)를 연다. 행은 복사 버튼이다 — 누르면 그 값이 클립보드로 가고 카드가 닫힌다(복사가
-// 끝났다는 신호가 카드가 사라지는 것이다). 열리면 첫 행이 포커스를 받고(부품 기본), Esc로 닫으면 ⓘ로 돌아온다.
-// 트리거의 도움말 「메타」는 툴팁이다(S39 — 판 4의 규칙을 앞당겼다).
+// ── info 맨 위의 복사 줄 (스토리 64~66, S35 · ui-refresh 결정 14) ──
+// 작업 정보는 레일의 `info` 한 곳에 모인다 — 바탕 줄의 ⓘ 팝오버가 걷히고, 그 복사 줄 셋(브랜치 · 작업 폴더 · 워크트리)이
+// info 패널 맨 위 묶음으로 올라왔다. 행은 복사 버튼이다 — 누르면(Enter 포함) 그 값이 클립보드로 가고 「… 복사됨」 토스트가
+// 선다. 패널의 다른 복사 행과 같은 길이다.
 //
 // 클립보드는 **쓰기를 적는** 하네스 손잡이로 잰다(S35) — WebKit에서 클립보드를 읽는 길은 확인되지 않았다.
 // 첫 행은 브랜치다: 고정된 일에는 브랜치가 있고, 꼬리의 base(`main`)는 행의 이름에 붙어 따라온다.
+// 키로 누른다 — WebKit은 버튼을 눌러도 포커스를 주지 않는다. 시계는 토스트 절(아래)과 같은 까닭으로 세운다.
 //
-// Tab으로 행 사이를 옮기는 것(스토리 64의 가운데)은 여기서 못 잰다 — WebKit의 Tab은 버튼을 건너뛴다. 판 3 실물
-// 확인(「전체 키보드 접근」)이 본다. 복사 아이콘이 포커스에 보이는 것(스토리 66)도 모양이라 실물 확인의 몫이다.
+// Tab으로 행 사이를 옮기는 것(스토리 64의 가운데)은 여기서 못 잰다 — WebKit의 Tab은 버튼을 건너뛴다. 복사 아이콘의
+// 모양도 실물 확인의 몫이다.
 
-const 메타 = (page: Page) => page.getByRole("button", { name: "작업 메타", exact: true });
-// 카드는 트리거와 같은 이름을 단 `dialog`다(모달이 아니라 그 밖이 가려지지 않는다).
-const 메타카드 = (page: Page) => page.getByRole("dialog", { name: "작업 메타" });
+const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 
-test("ⓘ를 누르면 첫 복사 행이 포커스를 받고, Enter면 그 값이 클립보드로 가고 카드가 닫힌다", async ({ page }) => {
+test("레일 `info`를 열면 맨 위 첫 행이 브랜치이고, Enter면 그 값이 클립보드로 가고 토스트가 선다 — 접힌 워크트리 줄은 전체 경로를 낸다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
+  await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
-  const card = 메타카드(page);
-
-  await 메타(page).click();
-  await expect(card).toBeVisible();
-  // 첫 행이 브랜치 행이다 — 「첫 버튼이 포커스」만 보면 행 순서가 뒤집혀도 초록이다.
-  const branchRow = card.getByRole("button", { name: new RegExp(`^${pinnedWork.branch}\\b`) });
-  await expect(card.getByRole("button").first()).toBeFocused();
-  await expect(branchRow).toBeFocused();
+  await page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name: "info", exact: true }).click();
+  const panel = 작업패널(page);
+  // 첫 버튼이 브랜치 행이다 — 「브랜치 행이 있다」만 보면 행 순서가 뒤집혀도 초록이다. 숨은 `spec` 몸은 접근성 트리에 없다.
+  const branchRow = panel.getByRole("button").first();
+  await expect(branchRow).toHaveAccessibleName(`${pinnedWork.branch} main`);
   // 행의 이름은 값이고, 도움말 「복사」(툴팁)는 이름보다 더 말하는 것이라 설명으로 남는다(S28).
   await expect(branchRow).toHaveAccessibleDescription("복사");
 
+  await 시계를세운다(page);
+  await branchRow.focus();
   await page.keyboard.press("Enter");
 
-  await expect(card).toHaveCount(0);
+  // 나가는 값은 브랜치 이름 그대로다 — 꼬리의 base는 보이는 글자일 뿐 클립보드로 가지 않는다.
   await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch]);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
+  await expect(메시지(page)).toHaveText(`${pinnedWork.branch} 복사됨`);
+  // 토스트는 포커스를 가져가지 않는다(스토리 91) — 다음 행으로 이어 누를 수 있다.
+  await expect(branchRow).toBeFocused();
 
-// 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」).
-test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로 닫으면 복사 없이 포커스가 ⓘ로 돌아온다", async ({
-  page,
-}) => {
-  await installFixtureBackend(page);
-  await recordClipboard(page);
-  await page.goto(`/works/${pinnedWork.slug}`);
-  const info = 메타(page);
-  const card = 메타카드(page);
-  const tooltip = 툴팁(page);
-
-  await info.focus();
-  await expect(tooltip).toHaveText("메타");
-
-  await page.keyboard.press("Enter");
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("button").first()).toBeFocused();
-
-  await page.keyboard.press("Escape");
-
-  // 앵커: 카드가 닫혔다. 그다음에 포커스의 자리와 「안 복사했다」를 잰다.
-  await expect(card).toHaveCount(0);
-  await expect(info).toBeFocused();
-  expect(await clipboardWrites(page)).toEqual([]);
+  // 워크트리 줄은 작업 폴더 기준으로 **접혀 보이고**, 한 번 누르면 접히지 않은 전체 경로가 나간다 — 보이는 꼬리가
+  // 클립보드로 가면 붙여 넣은 경로가 다른 곳을 가리킨다. 이름 전체로 집는다: 아래 「프로젝트」 구획의 worktree 줄은
+  // 라벨이 이름 앞에 붙는다.
+  await panel.getByRole("button", { name: "trees/billing/", exact: true }).click();
+  const worktree = `${pinnedWork.worktrees[0].path}/`;
+  await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch, worktree]);
+  await expect(메시지(page)).toHaveText(`${worktree} 복사됨`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -358,8 +343,6 @@ test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로
 // **시계는 페이지를 열기 전에 걸고(`page.clock`), 복사 직전에 세운다.** 토스트는 1.6초면 사라져서, 저절로 흐르는
 // 시계로는 느린 기계에서 단언이 그 창을 놓칠 수 있다. 1.6초를 재는 것은 아카이브 문서 spec이다 — 두 화면이 같은
 // 부품·같은 호출이다. 세운 시계에서는 사라지는 전이의 프레임(rAF)이 안 와서, 사라짐을 볼 때는 시계를 다시 흐르게 둔다.
-
-const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
 
 // 터미널 탭에서 잰다 — 토스트가 SpecViewer 안에 살던 앞 판에는 **이 탭에서 트리를 복사하면 아무 말이 없었다**(결정 47).
 test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영역에 「… 복사됨」이 선다", async ({ page }) => {

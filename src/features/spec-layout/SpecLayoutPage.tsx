@@ -136,7 +136,7 @@ export function SpecLayoutSection({
   return (
     <section className="flex flex-col gap-5 pt-2">
       <p className="text-ui leading-[1.7] text-tertiary">
-        <code>spec</code> 패널 탭과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
+        <code>spec</code> 패널과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
         <strong className="font-medium">부탁</strong>을 누르면 참조가 복사돼요 —
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
       </p>
@@ -324,12 +324,12 @@ export function CopiedNotice({ reference, onClose }: { reference: string; onClos
 
 /**
  * 되돌린 뒤의 짧은 메시지(티켓 10 · 프로토타입). 지운 폴더와, 되돌린 것이 어디까지 따라가는가를 적는다 —
- * `spec` 패널 탭의 트리도, 에이전트가 다음 호출부터 받는 안내문도 내장본이다.
+ * `spec` 패널의 트리도, 에이전트가 다음 호출부터 받는 안내문도 내장본이다.
  */
 export function RevertedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
   return (
     <PageNotice title="되돌렸어요" reference={reference} onClose={onClose}>
-      내장본으로 돌아갔어요. <code className="text-mono-sm">spec</code> 패널 탭과 에이전트 안내문도
+      내장본으로 돌아갔어요. <code className="text-mono-sm">spec</code> 패널과 에이전트 안내문도
       따라가요.
     </PageNotice>
   );

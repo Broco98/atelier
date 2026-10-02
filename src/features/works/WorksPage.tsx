@@ -75,7 +75,6 @@ import { ignoresSourceToggle } from "./doc-refs";
 import { specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
-import WorkMetaMenu from "./WorkMetaMenu";
 import WorkRenameDialog from "./WorkRenameDialog";
 import {
   useArchiveWork,
@@ -566,21 +565,21 @@ function WorksPage({
       onSlot={hoverSlot}
       onDropSlot={dropShellOnSlot}
       dragging={drag.source !== null}
-      // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할. 탭은 왼쪽부터
+      // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⋯ · 분할(ui-refresh 결정 14). 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다. 패널 토글은 이 줄 밖, 레일 맨 위에 선다(ui-refresh 결정 9).
       //
       // 상태 배지가 여기 있는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면
-      // 상태를 바꾸는 데 클릭이 두 번 든다. ⓘ·⋯는 브레드크럼에 있던 것이 제목과 함께
+      // 상태를 바꾸는 데 클릭이 두 번 든다. ⋯는 브레드크럼에 있던 것이 제목과 함께
       // 이리로 왔다: 제목이 사라져 「작업 그 자체를 말하는 덩어리」가 설 자리가 없어졌다.
+      // 그 곁의 ⓘ(복사 줄 셋)는 info 맨 위로 들어갔다 — 레일의 info와 위아래로 붙어 서던 것이다(ui-refresh 결정 14).
       actions={
         selected && (
           <>
             <StatusMenu work={selected} />
-            {/* ⓘ와 ⋯가 **줄의 간격을 그대로 받는다**(결정 24). 한때 둘을 gap 0인 상자에
+            {/* 조작은 **줄의 간격을 그대로 받는다**(결정 24). 한때 ⋯를 옆 버튼과 gap 0인 상자에
                 묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
                 것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
                 리듬이 갈리는 값이 크다. */}
-            <WorkMetaMenu work={selected} />
             <WorkMenu work={selected} archive={archive} remove={remove} />
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
@@ -696,7 +695,7 @@ function WorksPage({
 
   // 문서 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 캡슐 `slug › spec › … › 파일`과, 그 문서에 거는 조작 둘이 끝에 선다.
   //
-  // - **원문 전환**(결정 7의 B)이 패널 탭 줄에서 이리로 왔다 — 바꾸는 것이 이 카드의 몸이라 그 머리가 제자리다. 한때 분할이면서
+  // - **원문 전환**(ui-refresh 결정 7의 B)이 한때 작업 패널 머리의 탭 줄에서 이리로 왔다 — 바꾸는 것이 이 카드의 몸이라 그 머리가 제자리다. 한때 분할이면서
   //   패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다: 토글이 늘 문서 카드 머리 하나에 서므로 같은 일을 하는 버튼이
   //   한 화면에 둘 설 일이 없다.
   // - **경로 복사**는 트리의 경로 복사와 같은 값을 낸다(`specRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더 생긴 것이다.
@@ -1259,9 +1258,9 @@ function WorkMenu({
               ref={anchor}
               disabled={busy}
               aria-busy={busy}
-              // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
-              // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
-              // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+              // **icon-button 규격이다** — 바로 오른쪽 분할 토글(`Toggle`의 icon 크기)과 같은 상자다.
+              // 이웃한 두 아이콘 버튼의 상자가 다르면 hover 배경이 한 버튼에서 다음으로 옮겨갈 때
+              // 커졌다 작아진다.
               // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
               // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
               // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.

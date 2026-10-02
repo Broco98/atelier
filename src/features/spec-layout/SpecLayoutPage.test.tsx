@@ -153,14 +153,15 @@ describe("부탁 메시지", () => {
 });
 
 describe("되돌린 메시지", () => {
-  // 되돌린 것이 어디까지 따라가는지를 적는다 — 지운 폴더, 그리고 spec 패널 탭과 에이전트의 안내문(티켓 10).
-  it("지운 폴더와, 내장본으로 돌아가 spec 패널 탭과 에이전트 안내문도 따라간다는 말을 적는다", () => {
+  // 되돌린 것이 어디까지 따라가는지를 적는다 — 지운 폴더, 그리고 `spec` 패널과 에이전트의 안내문(티켓 10). 「패널 탭」은
+  // 레일 칸이 되며 사전이 거부한 말이다(ui-refresh 결정 10 · `CONTEXT.md` 「레일」) — 머리글(판 06 문구 표 S8)과 같은 말로 부른다.
+  it("지운 폴더와, 내장본으로 돌아가 spec 패널과 에이전트 안내문도 따라간다는 말을 적는다", () => {
     const html = renderToStaticMarkup(
       <RevertedNotice reference="~/.atelier/layouts/atelier/" onClose={() => {}} />,
     );
     expect(html).toContain('role="status"');
     expect(textOf(html)).toContain("되돌렸어요 ~/.atelier/layouts/atelier/");
-    expect(textOf(html)).toContain("내장본으로 돌아갔어요. spec 패널 탭과 에이전트 안내문도 따라가요.");
+    expect(textOf(html)).toContain("내장본으로 돌아갔어요. spec 패널과 에이전트 안내문도 따라가요.");
     expect(html).toContain('aria-label="닫기"');
   });
 });

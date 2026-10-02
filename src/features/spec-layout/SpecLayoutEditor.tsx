@@ -789,7 +789,7 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null): boolean {
   return a.place === b.place && samePath(a.path, b.path);
 }
 
-/** 행의 왼쪽 여백 — 들여쓰기는 `spec` 패널 탭의 트리와 같은 걸음(14px)이다. 깊이는 최상위가 1이다. */
+/** 행의 왼쪽 여백 — 들여쓰기는 `spec` 패널의 트리와 같은 걸음(14px)이다. 깊이는 최상위가 1이다. */
 function rowIndent(depth: number): number {
   return 8 + (depth - 1) * 14;
 }
@@ -1178,7 +1178,7 @@ const ICON_CHOICES: (SpecIconName | null)[] = [null, ...(Object.keys(SPEC_ICONS)
  * 그린다 — 없으면 흐린 「없음」, 모르는 이름이면 경고다. 열린 칸은 앱의 열린 트리거처럼 `toggle-on`이다(develop
  * S42, 옆 ⋯ `RevertMenu`와 같다) — 지금 아이콘은 칸의 글자색을 받아 열리면 함께 진해진다.
  *
- * **카드는 Popover다**(develop 판 3 — 작업 ⓘ 메타와 같다). 열리면 고른 칸에 포커스가 가고(`initialFocus`), Esc로
+ * **카드는 Popover다**(develop 판 3). 열리면 고른 칸에 포커스가 가고(`initialFocus`), Esc로
  * 닫으면 포커스가 칸으로 돌아온다 — 둘 다 부품이 한다. 고르면 닫고, 포커스는 역시 부품이 칸으로 돌려준다. 모달이
  * 아니라(부품 기본, S46) 바깥을 누르면 카드가 닫히고 그 누른 것도 눌린다.
  *

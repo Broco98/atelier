@@ -5,7 +5,7 @@ import type { RailItem } from "@/components/shell/Rail";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
-import WorkInfo, { type ProjectBase } from "./WorkInfo";
+import WorkInfo, { sharedBase, type ProjectBase } from "./WorkInfo";
 import type { SpecTreeItem, WorkView } from "./types";
 
 /** 레일에서 고르는 작업 패널의 칸 — 이 패널이 그리는 몸 하나씩이다. */
@@ -91,9 +91,9 @@ function WorkPanel({
         worktree.project,
         // **`??`가 아니라 `||`다.** 빈 문자열도 "말할 base가 없다"로 접는다 — 코어가 빈
         // base_branch를 막지 않아서(atelier_edit_project에 검증이 없다) ""가 여기 닿을 수
-        // 있고, `??`는 그것을 통과시킨다. 그러면 info 몸은 `base !== null`이 참이라 뒤에
-        // 아무것도 없는 → 글리프만 그리고, ⓘ 팝오버는 truthy로 봐서 꼬리를 안 그린다.
-        // 한 값이 두 화면에서 달리 읽히는 자리라, 값을 정하는 **이 한 곳**에서 접는다.
+        // 있고, `??`는 그것을 통과시킨다. 그러면 프로젝트 구획은 `base !== null`이 참이라 뒤에
+        // 아무것도 없는 → 글리프만 그리고, 맨 위 브랜치 줄은 truthy로 봐서 꼬리를 안 그린다.
+        // 한 값이 두 자리에서 달리 읽히는 곳이라, 값을 정하는 **이 한 곳**에서 접는다.
         { base: project?.baseBranch || null, unregistered: projects !== undefined && !project },
       ];
     }),
@@ -133,6 +133,8 @@ function WorkPanel({
         <WorkInfo
           work={work}
           bases={bases}
+          // 맨 위 브랜치 줄의 꼬리 — 프로젝트들이 한 base를 공유할 때만 선다(ui-refresh 결정 14로 ⓘ에서 옮겨 왔다).
+          branchBase={sharedBase(projects, work.projects)}
           onCopy={onCopy}
           onOpenProject={onOpenProject}
         />

@@ -1,5 +1,6 @@
-import { ArrowRight, ChevronRight, Copy } from "lucide-react";
+import { ArrowRight, ChevronRight, Copy, Folder, GitBranch, PanelTop } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
+import type { ProjectView } from "@/features/projects/types";
 import { specDirRef, worktreeDirRef, workDirRef } from "./refs";
 import type { WorkView } from "./types";
 
@@ -21,6 +22,8 @@ interface WorkInfoProps {
   // 아래가 도는 `work.worktrees`의 모든 항목에 대해 키가 있다고 본다. 그것을 만드는 쪽과
   // 여기가 같은 배열을 쓰므로 빠질 수 없다.
   bases: Record<string, ProjectBase>;
+  // 맨 위 브랜치 줄의 꼬리에 적을 base. 한 줄로 말할 수 없으면 null이다(아래 sharedBase — 그것도 WorkPanel이 부른다).
+  branchBase: string | null;
   // 완성된 참조 문자열을 클립보드로 (+토스트). 참조 조립은 refs.ts가 한다.
   onCopy: (text: string) => void;
   onOpenProject: (slug: string) => void;
@@ -39,11 +42,30 @@ export function relativeToWorkDir(path: string, workDir: string): string {
   return path.startsWith(workDir) ? path.slice(workDir.length) : path;
 }
 
-// 정보 탭 본문 — 헤더와 패널로 갈려 있던 이 작업의 사실을 한 자리에서 말한다.
+/**
+ * 프로젝트들이 **한 base를 공유할 때만** 그 이름을 돌려준다.
+ *
+ * 맨 위 브랜치 줄의 꼬리는 한 칸뿐인데 base는 프로젝트마다 다를 수 있다. 아무 값이나 하나
+ * 골라 적으면 그 줄이 거짓을 말한다 — 프로젝트별 base를 제대로 보여주는 자리는 아래 「프로젝트」
+ * 구획이고, 꼬리는 "한 줄로 말할 수 있을 때만 말한다".
+ *
+ * 목록이 아직 안 왔을 때와 등록이 사라진 프로젝트가 섞였을 때도 null이다. 셋을 같은
+ * 값으로 묶어도 되는 것은 결과가 같기 때문이다 — 꼬리를 그리지 않는다.
+ */
+export function sharedBase(projects: ProjectView[] | undefined, slugs: string[]): string | null {
+  if (!projects || slugs.length === 0) return null;
+  const bases = slugs.map((slug) => projects.find((p) => p.slug === slug)?.baseBranch);
+  const [first] = bases;
+  if (first === undefined) return null;
+  return bases.every((b) => b === first) ? first : null;
+}
+
+// info 몸 — 헤더와 패널로 갈려 있던 이 작업의 사실을 한 자리에서 말한다. 작업 정보는 레일의 info 한 곳에
+// 모인다(ui-refresh 결정 14) — 바탕 줄의 ⓘ 팝오버에 살던 복사 줄 셋이 맨 위 묶음으로 올라왔다.
 //
 // **순수 표현 컴포넌트다.** 데이터를 스스로 조회하지 않고 전부 prop으로 받는다.
-// 상태 배지는 헤더에만 둔다 — 여기에 읽기 전용으로 한 번 더 쓰지 않는다.
-function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
+// 상태 배지는 바탕 줄에만 둔다 — 여기에 읽기 전용으로 한 번 더 쓰지 않는다.
+function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoProps) {
   const workDir = workDirRef(work.slug);
   const specDir = specDirRef(work.slug);
   // 뒷문장은 브랜치가 미정일 때만 참이다. 코어는 프로젝트 없이도 브랜치를 확정해 저장하므로
@@ -55,8 +77,14 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
       : "아직 프로젝트가 없어요.";
 
   return (
-    // 세로 스크롤은 여기까지 — 탭 바는 패널 카드에 고정되어 항상 보인다 (spec 탭과 같은 경계)
+    // 세로 스크롤은 여기까지 — 머리는 패널 카드에 고정되어 항상 보인다 (spec 몸과 같은 경계)
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
+      {/* **맨 위는 「한 클릭에 복사하고 싶은 것」이다**(ui-refresh 결정 14) — 에이전트에게 작업을 넘길 때 가장 자주 집는
+          값 셋이다. 테두리 없는 옅은 면 묶음이다(ui-refresh 결정 16). 아래 구획(작업 · 프로젝트)에도 작업 폴더 · 워크트리 복사가 있어
+          값이 겹친다 — 그쪽은 전체 메타를 읽는 자리이고, 이쪽은 한 번에 집는 자리다(프로토타입 Works-info도 둘 다 그린다). */}
+      <div className="mb-1 flex flex-col rounded-card bg-group p-1">
+        <WorkMetaRows work={work} base={branchBase} onCopy={onCopy} />
+      </div>
       <Section title="작업">
         {/* 제목과 달리 절대 바뀌지 않는 이름이다. 작업 폴더 경로에 들어 있긴 하지만
             따로 읽을 수 있어야 하고, **읽는 것만으로는 절반이다** — 제목이 바뀌어도 같은
@@ -142,7 +170,99 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
   );
 }
 
-// 구획 하나. 탭 바가 이미 `info`라 구획 이름은 그보다 한 단 작고 옅다.
+/**
+ * 맨 위 묶음의 줄들 — 브랜치(공유 base 꼬리) · 작업 폴더 · 워크트리마다 한 줄. 행을 누르면(Enter 포함) 그 값이
+ * 클립보드로 가고 토스트가 선다(`onCopy` — 패널의 다른 복사와 같은 길).
+ */
+function WorkMetaRows({
+  work,
+  base,
+  onCopy,
+}: {
+  work: WorkView;
+  // 브랜치 줄의 꼬리에 적을 base. 한 줄로 말할 수 없으면 null이다 (위 sharedBase).
+  base: string | null;
+  onCopy: (text: string) => void;
+}) {
+  return (
+    <>
+      {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다.
+          빈 줄로 남기면 누를 수는 있는데 아무것도 복사되지 않는 줄이 된다. */}
+      {work.branch !== null && (
+        <MetaRow
+          glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          value={work.branch}
+          tail={base ? <span className="shrink-0 text-meta text-tertiary">{base}</span> : undefined}
+          onCopy={onCopy}
+        />
+      )}
+      <MetaRow
+        glyph={<Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+        value={workDirRef(work.slug)}
+        onCopy={onCopy}
+      />
+      {/* **작업 폴더 기준으로 접는다.** 두 경로는 `~/.atelier/works/<slug>/`를 통째로
+          공유해서, 좁은 패널에서 꼬리를 자르면 두 줄의 보이는 글자가 완전히 같아진다 —
+          그 줄을 구분해 주는 유일한 부분만 잘려 나간다. 기준 행이 바로 위에 있으니
+          여기를 그것에 상대로 적을 수 있다 (아래 PathRow와 같은 계약). */}
+      {work.worktrees.map((worktree) => (
+        <MetaRow
+          key={worktree.project}
+          glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          value={worktreeDirRef(worktree.path)}
+          relativeTo={workDirRef(work.slug)}
+          onCopy={onCopy}
+        />
+      ))}
+    </>
+  );
+}
+
+// 묶음의 줄 하나 — 행 전체가 복사 버튼이다. 끝의 복사 글리프는 늘 보인다(프로토타입 Works-info) — 아래 구획의 행처럼
+// hover에만 뜨면 키로 온 사람에게 「누르면 복사된다」가 안 보인다(스토리 66).
+//
+// **전체 값을 받아 꼬리를 여기서 만든다** (PathRow와 같은 계약). 접힌 값을
+// 받고 전체 값을 따로 받는 모양이었는데, 그러면 둘이 갈릴 수 있는 자리가 호출부마다
+// 생긴다 — 한 줄을 빠뜨려도 타입은 통과하고, 화면은 멀쩡한데 클립보드로 나가는 것만
+// 조용히 잘린다. 여기서 접으면 **나가는 값은 언제나 받은 값 그대로**라 갈릴 수가 없다.
+// 나가는 값은 L3 `works-floating`의 복사 줄 검사가 클립보드 손잡이로 잰다 — 브랜치 줄(Enter)과 접힌 워크트리 줄(클릭)이다.
+function MetaRow({
+  glyph,
+  value,
+  relativeTo,
+  tail,
+  onCopy,
+}: {
+  glyph: React.ReactNode;
+  // 클립보드로 나가는 값. 화면에는 relativeTo만큼 접혀 보인다.
+  value: string;
+  // 접어서 보일 기준. **기준 행 자신은 받지 않는다** — 자기에 대해 접으면 빈 문자열이 된다.
+  relativeTo?: string;
+  // 없으면 복사 글리프가 온다. base처럼 늘 보여야 하는 꼬리가 있는 줄만 넘긴다.
+  tail?: React.ReactNode;
+  onCopy: (text: string) => void;
+}) {
+  const shown = relativeTo ? relativeToWorkDir(value, relativeTo) : value;
+  // 도움말 「복사」는 툴팁이다. 행의 이름은 값이라, 「누르면 복사한다」는 이름보다 더 말하는 것 — 설명으로도
+  // 남긴다(S28 — 툴팁은 스크린리더에 아무것도 주지 않는다).
+  //
+  // 모양은 DS의 묶음 행(`.at-group-row.sm`)이다 — 32px · 좌우 12 · 사이 10 · 10px 모서리, 옅은 면 위라 hover는 한 단 짙은 state-2다.
+  return (
+    <Hint
+      text="복사"
+      announce="description"
+      type="button"
+      onClick={() => onCopy(value)}
+      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-ui transition-colors hover:bg-state-2"
+    >
+      {glyph}
+      <span className="min-w-0 flex-1 truncate font-mono text-mono-sm">{shown}</span>
+      {tail ?? <Copy className="size-3 shrink-0 text-tertiary" strokeWidth={1.8} />}
+    </Hint>
+  );
+}
+
+// 구획 하나. 머리 제목이 이미 `info`라 구획 이름은 그보다 한 단 작고 옅다.
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col pb-2">

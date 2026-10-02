@@ -97,7 +97,7 @@ function fieldsOf(html: string): string[] {
 }
 
 describe("항목 트리", () => {
-  // 트리에는 실제 항목만 선다 — `spec` 패널 탭처럼 최상위 항목부터다(결정 26). 맨 위 항목(spec 폴더
+  // 트리에는 실제 항목만 선다 — `spec` 패널처럼 최상위 항목부터다(결정 26). 맨 위 항목(spec 폴더
   // 자신)은 행이 아니라 트리 열의 머리 `spec/`이다.
   it("맨 위 항목의 행이 없고, 최상위 항목부터 깊이대로 선다", () => {
     const rows = treeRows(render([0]));
