@@ -305,7 +305,7 @@ test("작업 패널·사이드바를 접고 펴도 안쪽 열이 되흐르지 �
 });
 
 test("분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 창 안이다", async ({ page }) => {
-  // 분할은 본문이 열 카드 둘로 갈리는 다른 갈래다(`WorksPage`의 `body`) — 바닥이 그 배치에도 걸려야 한다.
+  // 분할은 본문이 열 카드 둘로 갈리는 다른 갈래다(`Frame`의 `split`) — 바닥이 그 배치에도 걸려야 한다.
   // 분할을 켜면 패널이 접히므로(결정 106) 다시 펴서 가장 붐비는 배치를 만든다.
   await openWith(page, `/works/${pinnedWork.slug}?tab=terminal`, 900, { sidebar: 280, panel: 330 });
   const tabs = page.locator('[data-tab="shell"]');

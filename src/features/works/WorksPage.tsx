@@ -16,10 +16,9 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
-import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
-import useSplitRatio from "@/components/shell/useSplitRatio";
-import { Card, CardHead, Frame } from "@/components/shell/Frame";
-import { PANEL_MOTION, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import useResizableWidth from "@/components/shell/useResizableWidth";
+import { Card, CardHead, Frame, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
+import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -264,13 +263,6 @@ function WorksPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  // 두 열의 경계. **비율로 든다** — px가 아니다(useSplitRatio 머리말). 두 열이 같은 본문을
-  // 나눠 갖는 것이라 기본값이 「반」이고, 창이 넓어지면 둘 다 넓어져야 한다.
-  //
-  // 분모가 이 상자의 폭이라 상자를 가리켜야 한다.
-  const splitHost = useRef<HTMLDivElement>(null);
-  const splitSize = useSplitRatio("work-split-ratio", splitHost);
 
   // 끌고 있는 것. **드래그 중에만 값이 있다** — 그동안만 이 화면이 다시 그려진다.
   const drag = useStore(dragStore, (state) => state);
@@ -766,20 +758,39 @@ function WorksPage({
   // 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다.
   const terminalBody = terminalWork && <TerminalPane key={terminalWork.slug} work={terminalWork} />;
 
+  // 분할의 열 둘 — 열 하나가 카드 하나다(ui-refresh 결정 15). 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 이 화면은 카드의
+  // 안(열 머리와 몸)만 건넨다 — 카드 상자 · 두 열 사이 틈 · 그 가운데 폭 손잡이 · 틈 끌기 영역 · 비율과 그 저장은 공용 틀의 분할이
+  // 든다(ui-refresh 결정 27 — `Frame`의 `split`).
+  //
   // **조합은 늘 `spec ▏터미널`이고 좌우만 바뀐다**(결정 87). 그래서 정할 것이 하나다.
   //
   // 순서를 여기 한 줄에서 정한다 — 열을 그리는 조각이 둘이면 「마크업에서 먼저 나오는 것이
   // 왼쪽」이라는, 검사가 기대는 규칙이 두 자리로 갈린다.
-  const specColumn: SplitColumnView = { tab: "spec", label: "문서", head: specHead, body: specBody };
-  const terminalColumn: SplitColumnView = {
-    tab: "terminal",
-    label: "터미널",
-    terminal: true,
-    head: terminalHead,
-    body: terminalBody,
+  const specColumn: SplitColumn = {
+    label: "문서",
+    children: (
+      <ColumnInside tab="spec" head={specHead} onFocus={focusColumn}>
+        {specBody}
+      </ColumnInside>
+    ),
   };
-  const [leftColumn, rightColumn] =
-    split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn];
+  const terminalColumn: SplitColumn = {
+    label: "터미널",
+    tone: "terminal",
+    children: (
+      <ColumnInside tab="terminal" head={terminalHead} onFocus={focusColumn}>
+        {terminalBody}
+      </ColumnInside>
+    ),
+  };
+  // 분할 — 두 본문이 다 설 때만이다. 비율의 저장 키는 판 05 spec이 적어 둔 `work-split-ratio`다(`useSplitRatio` 머리말).
+  const splitView: SplitSlot | undefined =
+    split !== null && specBody && terminalBody
+      ? {
+          ratioKey: "work-split-ratio",
+          columns: split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn],
+        }
+      : undefined;
 
   // `drag.source`를 그대로 쓰면 아래 클로저 안에서 타입이 안 좁혀진다 — 한 번 받아 둔다.
   //
@@ -787,29 +798,10 @@ function WorksPage({
   // 여기서 거르지 않으면 행을 끄는 순간 분할 겹판이 서고, 본문에 놓으면 화면이 갈린다.
   const dragSource = tabDragOf(drag);
 
-  // 본문 — 넷 중 하나이고 모두 공용 틀의 카드다(ui-refresh 결정 4 · 15). **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이
-  // 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 —
-  // 1판은 호출부가 둘이라 인스턴스도 둘이었다.
-  const body = split !== null && specBody && terminalBody ? (
-    // 분할 — `<main>` 안에 열 카드 둘이 틈(`--gap`)을 두고 선다(ui-refresh 결정 15). 이 상자는 카드가 아니라 회색 바탕이 드러나는 자리라
-    // 창을 끄는 자리다(`Frame` 머리말 — 틈이 드러나는 상자는 모두 단다). 분모가 이 상자의 폭(틈을 뺀 값)이라 비율 훅이 가리킨다.
-    <main ref={splitHost} data-tauri-drag-region className="flex min-h-0 min-w-0 flex-1">
-      {/* **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와 같은 관용구). 비율은 **틈을 뺀 폭**에
-          걸어 반반이면 두 카드가 같은 폭이다. 왼쪽 열의 상자가 「카드 + 틈」이고 폭 손잡이는 그 틈의 가운데에 선다. */}
-      <SplitColumn
-        column={leftColumn}
-        width={`calc((100% - var(--gap)) * ${splitSize.ratio} + var(--gap))`}
-        // 더블클릭으로 반반에 돌아갈 때만 애니메이션한다(useSplitRatio의 `snapping`).
-        // 값은 패널이 접히는 것과 같다(`PANEL_MOTION`) — 같은 화면에서 두 폭이 다른 속도로 움직이면
-        // 한 동작으로 안 읽힌다.
-        snapping={splitSize.snapping}
-        onFocus={focusColumn}
-      >
-        <ResizeHandle control={splitSize} seat="gap" />
-      </SplitColumn>
-      <SplitColumn column={rightColumn} onFocus={focusColumn} />
-    </main>
-  ) : terminalWork ? (
+  // 본문 — 넷 중 하나이고 모두 공용 틀의 카드다(ui-refresh 결정 4 · 15). 분할이면 틀이 `split`으로 받아 그리므로 여기는 비어
+  // 있다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을
+  // 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
+  const body = splitView ? undefined : terminalWork ? (
     // 터미널 — 머리 없는 터미널 카드다(ui-refresh 결정 5 · Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
     <Card as="main" label="터미널" tone="terminal" className="flex-1">
       {terminalBody}
@@ -906,6 +898,7 @@ function WorksPage({
             }
           : undefined
       }
+      split={splitView}
       // 카드 줄 위를 덮는 것 셋(판 04 「덮는 것의 기준 상자」). 카드 줄이 바탕 줄 **아래**에서 시작하므로 머리행을 빼는 계산이
       // 없다 — 「끄는 것이 출발한 줄은 덮지 않는다」(결정 12)가 상자로 선다.
       overlay={
@@ -954,76 +947,35 @@ function WorksPage({
   );
 }
 
-/** 분할의 열 하나 — 카드 하나(ui-refresh 결정 15). 문서 열은 흰 카드, 터미널 열은 터미널 카드다. */
-interface SplitColumnView {
-  tab: ViewTab;
-  /** 카드의 이름(`aria-label`). */
-  label: string;
-  /** 터미널 카드인가 — 바탕이 터미널 테마를 따른다. */
-  terminal?: boolean;
-  head: React.ReactNode;
-  body: React.ReactNode;
-}
-
 /**
- * 열 하나를 그린다. 두 열의 상자가 같아야 하는데 좌우가 바뀌므로, 같은 마크업을 두 번
- * 적으면 한쪽만 손보는 날이 온다.
+ * 분할의 열 하나의 안 — 열 머리와 몸이다. 카드 상자와 그 둘레(틈 · 손잡이 · 끌기 영역)는 공용 틀의 분할이 그린다(`Frame`의 `split`).
+ *
+ * 포커스를 받는 것은 **머리가 아니라 속**이다. 머리에 얹으면 그 열의 `×`를 누르는 것이 「이 열을 봤다」로 먼저 읽혀, 한 틱에 이동이
+ * 둘 겹친다. `pointerdown`까지 보는 것은 **문서 열이 포커스를 못 받기 때문이다** — 글을 읽는 영역이라 클릭해도 focus 이벤트가 안
+ * 난다(결정 97의 「포커스가 들어갈 때」를 여기까지 넓혔다).
  */
-function SplitColumn({
-  column,
-  width,
-  snapping = false,
+function ColumnInside({
+  tab,
+  head,
   onFocus,
   children,
 }: {
-  column: SplitColumnView;
-  /**
-   * 주면 **몫을 드는 쪽**(왼쪽)이다 — 상자가 「카드 + 오른쪽 틈」이고 그 틈에 손잡이가 선다. 없으면 남는 자리를 먹는다.
-   *
-   * CSS 길이 문자열인 것은 이 값이 비율이기 때문이다 — px로 두면 창이 넓어질 때
-   * 오른쪽 열만 자란다(useSplitRatio 머리말).
-   */
-  width?: string;
-  /** 폭이 훌쩍 뛰는 중인가 — 그때만 트랜지션을 켠다(useSplitRatio의 `snapping`). */
-  snapping?: boolean;
+  tab: ViewTab;
+  head: React.ReactNode;
   onFocus: (tab: ViewTab) => void;
-  /** 폭 핸들. 왼쪽 열에만 온다 — 이 상자의 오른쪽 틈 가운데에 얹힌다. */
-  children?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-  const leads = width !== undefined;
   return (
-    <div
-      // 몫을 드는 쪽의 상자에는 회색 틈이 드러난다 — 창을 끄는 자리다(`Frame` 머리말).
-      data-tauri-drag-region={leads ? "" : undefined}
-      style={leads ? { width } : undefined}
-      className={cn(
-        "relative flex min-w-0",
-        leads ? "shrink-0 pr-(--gap)" : "flex-1",
-        snapping && PANEL_MOTION,
-        snapping && "transition-[width]",
-      )}
-    >
-      <Card
-        label={column.label}
-        tone={column.terminal ? "terminal" : undefined}
-        head={column.head}
-        className="flex-1"
+    <>
+      {head}
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        onFocusCapture={() => onFocus(tab)}
+        onPointerDownCapture={() => onFocus(tab)}
       >
-        {/* 포커스를 받는 것은 **머리가 아니라 속**이다. 머리에 얹으면 그 열의 `×`를
-            누르는 것이 「이 열을 봤다」로 먼저 읽혀, 한 틱에 이동이 둘 겹친다.
-            `pointerdown`까지 보는 것은 **문서 열이 포커스를 못 받기 때문이다** — 글을 읽는
-            영역이라 클릭해도 focus 이벤트가 안 난다(결정 97의 「포커스가 들어갈 때」를
-            여기까지 넓혔다). */}
-        <div
-          className="flex min-h-0 flex-1 flex-col"
-          onFocusCapture={() => onFocus(column.tab)}
-          onPointerDownCapture={() => onFocus(column.tab)}
-        >
-          {column.body}
-        </div>
-      </Card>
-      {children}
-    </div>
+        {children}
+      </div>
+    </>
   );
 }
 

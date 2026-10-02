@@ -417,6 +417,40 @@ test("Works: 바탕 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 판 04 티켓 03 — **분할의 두 열도 각자 카드이고, 사이 틈이 창을 끄는 자리다**(ui-refresh 결정 15 · 27). 두 열은 공용 틀의 분할
+// (`Frame`의 `split`)이 목록 · 패널 칸과 같은 규칙으로 그린다: 틈은 `--gap`이고 왼쪽 열 상자의 안쪽 여백이라 그 상자가 끌기 영역이며,
+// 폭 손잡이는 그 틈의 가운데다. 손잡이를 끄는 것 · 비율 저장 · PTY 격자는 `works-split.spec.ts`가 잰다 — 여기는 그 틈을 누르면 무엇이
+// 눌리는가다. 한때 이 틈만 어느 L3도 재지 않았다(분할을 화면이 손으로 그리던 때).
+test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창을 끄는 자리다 — 손잡이는 그 틈의 가운데다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+  const cards = page.locator("main").locator('[data-slot="card"]');
+  await expect(cards).toHaveCount(2);
+  // 머리는 바탕 줄 하나이고, `aside`는 사이드바와 (분할로 들어와 접힌) 작업 패널 둘 그대로다 — 열 카드는 `aside`가 아니다.
+  await expect(page.locator("header")).toHaveCount(1);
+  await expect(page.locator("aside")).toHaveCount(2);
+
+  const gap = await token(page, "--gap");
+  const titlebar = await token(page, "--titlebar-height");
+  const [left, right] = [await boxOf(cards.first()), await boxOf(cards.last())];
+  expect(left.y, "왼쪽 열 카드 위").toBe(titlebar);
+  expect(right.y, "오른쪽 열 카드 위").toBe(titlebar);
+  expect(right.x - left.right, "두 열 사이 틈").toBe(gap);
+
+  // 손잡이는 그 틈의 가운데다. 손잡이(5px)가 틈(8px)의 가운데라 드러난 띠는 양쪽 1.5px씩이고, 손잡이 쪽 경계는 서브픽셀이라 짚는
+  // 자리가 반올림에 걸린다 — 목록 칸(카드 오른쪽 + 0.5) · 패널 칸(카드 왼쪽 − 1)의 검사와 같은 자리를 짚는다.
+  const handle = await boxOf(page.locator("main").locator(HANDLE));
+  expect(handle.x + handle.width / 2, "손잡이 가운데").toBe(left.right + gap / 2);
+  const middleY = left.y + left.height / 2;
+  expect(await draggable(page, left.right + 0.5, middleY), "왼쪽 열 카드 오른쪽 틈").toBe(true);
+  expect(await draggable(page, right.x - 1, middleY), "오른쪽 열 카드 왼쪽 틈").toBe(true);
+  // 대조: 카드 안과 손잡이는 끄는 자리가 아니다 — 손잡이를 누르면 창이 아니라 두 열의 경계를 끈다.
+  expect(await draggable(page, left.x + left.width / 2, middleY), "왼쪽 열 카드 안").toBe(false);
+  expect(await draggable(page, right.x + right.width / 2, middleY), "오른쪽 열 카드 안").toBe(false);
+  expect(await draggable(page, left.right + gap / 2, middleY), "손잡이").toBe(false);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 판 04 티켓 04 — **레일**(ui-refresh 결정 9 · 10). 작업 화면 바탕의 오른쪽 끝에 레일 열이 선다 — 맨 위 패널 토글은 바탕 줄 44px
 // 띠의 가운데, 그 아래 칸 묶음(`spec` · `info`)은 카드 줄 꼭대기에서 시작한다. 레일 열은 본문 열의 형제라 `aside`도 `nav`도
 // 바탕 줄 `<header>`의 자손도 아니고(`aside` · `header` 수와 그것을 집는 검사가 그대로다), 패널을 닫아도 그 자리에 남는다. 레일 열의

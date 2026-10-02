@@ -387,9 +387,9 @@ export function OutsideBanner({
  * 트리 카드(`tree`). 바탕 줄은 비어 있는 끌기 줄이다(ui-refresh 결정 5). 위치는 세 칸이다: `Settings › spec 레이아웃 › Atelier`.
  * 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
  *
- * **트리 카드는 공용 틀의 패널 칸(`Frame`의 `panel`)이 아니다**(판 06 티켓 07). 패널 칸은 두 번째 `<aside>`를 그리고 접힘 ·
- * 폭 손잡이를 요구하는데, 편집기 트리는 레일 · 패널 토글 · 폭 조절이 없는 늘 열린 카드다 — 분할의 두 열처럼 본문 카드와 나란히
- * 카드 줄에 선다. 그래서 `aside`가 아니다(`aside`는 사이드바 하나다 — `tab-row-floor` · `works-sidebar`가 그 순서를 센다).
+ * **트리 카드는 공용 틀의 패널 칸(`Frame`의 `panel`)이 아니라 옆 칸(`beside`)이다**(판 06 티켓 07). 패널 칸은 두 번째 `<aside>`를
+ * 그리고 접힘 · 폭 손잡이를 요구하는데, 편집기 트리는 레일 · 패널 토글 · 폭 조절이 없는 늘 열린 카드다. 칸의 틈 · 끌기 영역 · 좁은
+ * 창에서 자리를 내주는 것은 그 칸이 든다(ui-refresh 결정 27) — 이 화면은 카드의 안과 폭만 건넨다.
  */
 function EditorFrame({
   sidebarOpen,
@@ -401,18 +401,23 @@ function EditorFrame({
   sidebarOpen: boolean;
   onBack: () => void;
   actions?: ReactNode;
-  /** 오른쪽 트리 카드(`TreeCard`) — 편집할 때만 선다. 읽는 중 · 읽지 못함 화면은 본문 카드 하나다. */
+  /** 오른쪽 트리 카드의 안(`TreeCard`) — 편집할 때만 선다. 읽는 중 · 읽지 못함 화면은 본문 카드 하나다. */
   tree?: ReactNode;
   children: ReactNode;
 }) {
   const name = LAYOUT_NAME;
   return (
-    <Frame sidebarOpen={sidebarOpen}>
+    <Frame
+      sidebarOpen={sidebarOpen}
+      // 트리 카드의 폭은 작업 패널의 기본 폭(`WORK_PANEL_WIDTH`)이다 — 작업 화면의 spec 패널과 같은 쪽 · 같은 폭(판 06 티켓 07).
+      // 폭 조절 · 접기는 없다.
+      beside={tree === undefined ? undefined : { label: "항목 트리", width: WORK_PANEL_WIDTH, children: tree }}
+    >
       <Card
         as="main"
         label={`${name} 레이아웃 편집기`}
         // 최소 폭은 머리의 조작(뒤로 32 · 「LLM이 받는 텍스트」 · 「저장」 · 틈 · 좌우 여백 ≈ 270)이 다 서는 폭이다 — 위치 캡슐은
-        // 줄어 말줄임이 받는다. 트리 카드가 이 폭을 남기고 자리를 내준다(아래 칸).
+        // 줄어 말줄임이 받는다. 트리 카드가 이 폭을 남기고 자리를 내준다(공용 틀의 옆 칸).
         className="min-w-75 flex-1"
         head={
           <CardHead
@@ -431,22 +436,6 @@ function EditorFrame({
         <h2 className="sr-only">{name} 레이아웃</h2>
         {children}
       </Card>
-      {tree !== undefined && (
-        // 트리 카드의 칸 — 왼쪽 틈(`--gap`) + 카드. 카드 줄에 flex `gap`을 쓰지 않고 틈을 칸의 안쪽 여백으로 두는 것은 공용 틀의
-        // 규칙이다(`Frame` 머리말). 회색 틈이 드러나는 상자라 창을 끄는 자리다.
-        //
-        // 카드의 폭은 작업 패널의 기본 폭(`WORK_PANEL_WIDTH`)이다 — 작업 화면의 spec 패널과 같은 쪽 · 같은 폭(판 06 티켓 07). 폭
-        // 조절 · 접기는 없다. 다만 **창이 좁아 폼 카드가 제 최소 폭보다 좁아질 때만 그만큼 자리를 내준다**(`flex-basis` + 줄어듦) —
-        // 앱의 최소 창(900)에서 사이드바를 연 채면 330을 고집하는 순간 폼 카드 머리의 「저장」이 카드 모서리에 잘린다. 작업 패널
-        // 칸이 문서 카드에 최소 폭을 남기는 것과 같은 손버릇이다(`Frame`의 `PanelBox`).
-        <div
-          data-tauri-drag-region
-          style={{ flexBasis: `calc(${WORK_PANEL_WIDTH}px + var(--gap))` }}
-          className="flex min-w-0 pl-(--gap)"
-        >
-          {tree}
-        </div>
-      )}
     </Frame>
   );
 }
@@ -532,9 +521,9 @@ export function EntryForm({
 }
 
 /**
- * 항목 트리의 카드 — 본문 카드 오른쪽에 선다(판 06 티켓 07 · 「같은 날 더 정한 것」 편집기 트리 오른쪽). 폭은 칸이 정한다
- * (`EditorFrame` — 작업 패널의 기본 폭). 머리는 트리를 고치는 도구 한 줄(`TreeTools`)이고, 몸은 머리 `spec/`과 트리다. 카드가
- * 흰 면이라 트리에 따로 바탕을 칠하지 않는다.
+ * 항목 트리 카드의 안 — 카드는 본문 카드 오른쪽에 선다(판 06 티켓 07 · 「같은 날 더 정한 것」 편집기 트리 오른쪽). 카드 상자 · 이름 ·
+ * 폭은 공용 틀의 옆 칸이 그린다(`EditorFrame` — 작업 패널의 기본 폭). 머리는 트리를 고치는 도구 한 줄(`TreeTools`)이고, 몸은 머리
+ * `spec/`과 트리다. 카드가 흰 면이라 트리에 따로 바탕을 칠하지 않는다.
  *
  * 값을 들지 않는다 — 폼과 같다. 끄는 동안 어디를 겨눴는지만 트리가 든다. 트리를 고치는 것(`onEdit`, 티켓 13)은 고른 자리도 함께
  * 바꾼다(`TreeEdit`). **지금 초안을 받는 함수**로 돌려준다: 끌기의 손잡이는 누른 순간의 렌더에서 만들어져, 그 클로저의 초안은
@@ -555,20 +544,15 @@ export function TreeCard({
 }) {
   const { at } = selectionOf(draft, selected);
   return (
-    <Card
-      label="항목 트리"
-      className="flex-1"
-      head={
-        <CardHead>
-          <TreeTools
-            edits={editsAt(draft, at)}
-            onAdd={(kind) => onEdit((current) => addEntry(current, at, kind))}
-            onMove={(move) => onEdit((current) => moveEntry(current, at, move))}
-            onRemove={() => onEdit((current) => removeEntry(current, at))}
-          />
-        </CardHead>
-      }
-    >
+    <>
+      <CardHead>
+        <TreeTools
+          edits={editsAt(draft, at)}
+          onAdd={(kind) => onEdit((current) => addEntry(current, at, kind))}
+          onMove={(move) => onEdit((current) => moveEntry(current, at, move))}
+          onRemove={() => onEdit((current) => removeEntry(current, at))}
+        />
+      </CardHead>
       {/* 좌우 여백은 카드 머리와 같다(DS `.at-card-body.tight`) — 머리의 알약과 트리의 행이 한 세로선에 선다. 머리와 첫 행
           사이는 트리 줄 사이와 같은 2px 틈이다(DS `.at-tree`). */}
       <div className="shrink-0 px-[calc(var(--card-pad)-14px)] pb-(--row-gap)">
@@ -592,7 +576,7 @@ export function TreeCard({
         </Hint>
       </div>
       <EntryTree draft={draft} at={at} errors={errors} onSelect={onSelect} onEdit={onEdit} />
-    </Card>
+    </>
   );
 }
 

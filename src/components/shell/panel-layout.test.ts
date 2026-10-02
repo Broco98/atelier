@@ -17,8 +17,9 @@ describe("접히는 패널의 박자", () => {
   });
 
   // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — 목록 칸과 함께 `Frame.tsx`에 산다.
-  // 공용 틀의 여백(바탕 줄 · 카드 줄)과 분할 열도 패널과 함께 움직여 같은 박자를 읽는다.
-  it("사이드바와 공용 틀의 칸(목록 · 작업 패널)이 이 규격을 쓴다 — 제 리터럴로 박자를 다시 적지 않는다", () => {
+  // 공용 틀의 여백(바탕 줄 · 카드 줄)과 분할 열(한때 `WorksPage.tsx`가 그렸다 — 이제 공용 틀의 `split`)도 패널과 함께 움직여
+  // 같은 박자를 읽는다.
+  it("사이드바와 공용 틀의 칸(목록 · 작업 패널 · 분할)이 이 규격을 쓴다 — 제 리터럴로 박자를 다시 적지 않는다", () => {
     for (const path of ["src/components/shell/Sidebar.tsx", "src/components/shell/Frame.tsx"]) {
       const source = readFileSync(path, "utf8");
       expect(source, path).toContain("foldingInnerClass(open");
@@ -27,8 +28,5 @@ describe("접히는 패널의 박자", () => {
       // 긴 클래스 문자열 **안**에 묻힌 사본도 잡는다 — 따옴표로 감싼 그 문자열만 보던 때 두 사본이 지나갔다.
       expect(source, path).not.toMatch(/duration-\[220ms\]/);
     }
-    const split = readFileSync("src/features/works/WorksPage.tsx", "utf8");
-    expect(split).toContain("PANEL_MOTION");
-    expect(split).not.toMatch(/duration-\[220ms\]/);
   });
 });

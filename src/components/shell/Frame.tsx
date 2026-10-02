@@ -1,31 +1,63 @@
-import { useId, type CSSProperties, type ReactNode } from "react";
+import { useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { Crumbs } from "@/components/ui/crumbs";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
 import { foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN } from "./panel-layout";
 import Rail, { type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
+import useSplitRatio from "./useSplitRatio";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-chrome`) 위에 44px 바탕 줄이 서고, 그 아래 목록 · 본문 · 패널이
-// 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 화면은 내용만 건넨다 — 틈 · 끌기 영역 · 신호등 inset을 이 파일 한 곳이 지킨다. 일곱 화면이
-// 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는 어디가 죽었는지가 안 보인다.
+// 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 화면은 카드 내용만 건넨다 — 틈 · 끌기 영역 · 손잡이 · 신호등 inset을 이 파일 한 곳이
+// 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는 어디가 죽었는지가 안 보인다. 분할의 두 열과
+// 편집기의 트리 카드도 이 틀의 칸이다(`split` · `beside`) — 한때 두 화면이 그 칸의 틈 · 끌기 영역 · 손잡이를 제 손으로 다시 적었다.
 //
 //   뿌리(bg-chrome) ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 바탕 줄 `<header>`(TitleBar)
-//                  │                                 └ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈) ─ list · 본문 카드 · panel · overlay
+//                  │                                 └ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈)
+//                  │                                     ─ list · 본문(카드 하나, 또는 분할의 열 카드 둘) · beside · panel · overlay
 //                  └ 레일 열(rail이 있을 때만, 오른쪽 틈) ─ 패널 토글(바탕 줄 띠의 가운데) · 칸 묶음(카드 줄 꼭대기부터)
 //
 // **틈도 창을 끄는 자리다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 회색 틈이 드러나는 상자(뿌리 ·
-// 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자) 모두에 단다. 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. 카드
-// 안(카드 머리의 빈 자리도)은 끌기 영역이 아니다. 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
+// 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆 칸) 모두에 단다. 하나라도 빠지면 그 틈은
+// 창을 못 끄는 죽은 자리가 된다. 카드 안(카드 머리의 빈 자리도)은 끌기 영역이 아니다. 틈의 실제 자리와 그 자리를 누르면 무엇이
+// 눌리는지는 `e2e/frame.spec.ts`가 잰다.
 //
-// **카드 줄에 flex `gap`을 쓰지 않는다.** 틈은 칸 상자의 안쪽 여백이다 — 접힌 칸 옆에 틈이 남지 않게(판 04 「지키는 것」).
+// **카드 줄에 flex `gap`을 쓰지 않는다.** 틈은 칸 상자의 안쪽 여백이다 — 접힌 칸 옆에 틈이 남지 않게(판 04 「지키는 것」). 분할의
+// 두 열 사이 틈도 왼쪽 열 상자의 안쪽 여백이고, 손잡이는 어느 칸에서나 그 틈의 가운데에 선다.
 
-/** 왼쪽 목록 카드 · 오른쪽 패널 카드 한 칸. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다). */
-export interface SideSlot {
-  open: boolean;
-  size: ResizableWidth;
+/** 칸 하나가 그리는 카드의 내용 — 이름(`aria-label`)과 카드 안(머리와 몸). 카드 상자(모서리 · 바탕)와 그 둘레의 틈은 칸이 그린다. */
+interface CardContent {
   label: string;
   children: ReactNode;
+}
+
+/** 왼쪽 목록 카드 · 오른쪽 패널 카드 한 칸. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다). */
+export interface SideSlot extends CardContent {
+  open: boolean;
+  size: ResizableWidth;
+}
+
+/** 분할의 열 하나(CONTEXT.md 「열」) — 카드 하나다(ui-refresh 결정 15). `terminal`이면 카드 바탕이 터미널 테마를 따른다(`Card`의 `tone`). */
+export interface SplitColumn extends CardContent {
+  tone?: "terminal";
+}
+
+/**
+ * 분할(CONTEXT.md) — 본문 자리에 열 카드 둘이 선다. 마크업에서 먼저 나오는 것이 왼쪽 열이다. 두 열 사이 틈 · 그 가운데 손잡이 · 틈
+ * 끌기 영역 · 비율과 그 저장 · 더블클릭으로 반반에 돌아가는 박자는 이 틀이 든다. 화면은 두 열의 카드 내용과 저장 키만 건넨다.
+ */
+export interface SplitSlot {
+  /** 왼쪽 열의 몫(비율)을 저장하는 키 — 화면의 것이다. */
+  ratioKey: string;
+  columns: readonly [SplitColumn, SplitColumn];
+}
+
+/**
+ * 본문 카드 오른쪽에 **늘 열려** 선 고정 폭 카드 한 칸(옆 칸) — 접힘 · 폭 손잡이 · 레일이 없다. 레이아웃 편집기의 트리 카드가 이것이다
+ * (판 06 티켓 07). `width`는 **카드의 폭**이다(틈은 더하지 않는다).
+ */
+export interface BesideSlot extends CardContent {
+  width: number;
 }
 
 interface FrameProps<Id extends string> {
@@ -46,15 +78,31 @@ interface FrameProps<Id extends string> {
    */
   rail?: RailProps<Id>;
   /**
+   * 분할 — 본문 자리에 `<main>`이 서고 그 안에 열 카드 둘이 선다(`SplitSlot`). 주면 `children`은 그리지 않는다 — 본문은 하나다.
+   */
+  split?: SplitSlot;
+  /** 본문 카드 오른쪽의 옆 칸 — 늘 열린 고정 폭 카드(`BesideSlot`). 편집기 트리 카드 하나가 쓴다. */
+  beside?: BesideSlot;
+  /**
    * 카드 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 카드 줄이 바탕 줄 **아래**에서 시작하므로 머리행을 빼는 계산 없이
    * 「끄는 것이 출발한 줄은 덮지 않는다」가 상자로 선다.
    */
   overlay?: ReactNode;
-  /** 본문 카드(`<Card as="main">`) 또는 나란히 선 카드 둘. */
-  children: ReactNode;
+  /** 본문 카드(`<Card as="main">`). 분할이면(`split`) 비워 둔다. */
+  children?: ReactNode;
 }
 
-function Frame<Id extends string>({ sidebarOpen, titlebar, list, panel, rail, overlay, children }: FrameProps<Id>) {
+function Frame<Id extends string>({
+  sidebarOpen,
+  titlebar,
+  list,
+  panel,
+  rail,
+  split,
+  beside,
+  overlay,
+  children,
+}: FrameProps<Id>) {
   // 레일의 토글 · 칸이 가리키는 패널 칸(`aria-controls`). 둘을 이 틀이 함께 그리므로 이음도 여기서 짓는다 — 화면은 모른다.
   const panelId = useId();
   return (
@@ -76,7 +124,8 @@ function Frame<Id extends string>({ sidebarOpen, titlebar, list, panel, rail, ov
           )}
         >
           {list && <ListBox slot={list} />}
-          {children}
+          {split ? <SplitBox slot={split} /> : children}
+          {beside && <BesideBox slot={beside} />}
           {panel && <PanelBox id={panelId} slot={panel} />}
           {overlay}
         </div>
@@ -181,6 +230,88 @@ function PanelBox({ id, slot }: { id: string; slot: SideSlot }) {
       </div>
       {open && <ResizeHandle control={size} seat="gap" />}
     </aside>
+  );
+}
+
+/**
+ * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--gap`)에서 읽는다 — 숫자를
+ * 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
+ */
+function sharedWidth(host: HTMLElement | null): number {
+  if (!host) return 0;
+  const gap = parseFloat(getComputedStyle(host).getPropertyValue("--gap")) || 0;
+  return Math.max(0, host.getBoundingClientRect().width - gap);
+}
+
+/**
+ * 분할(ui-refresh 결정 15 — 열 하나 = 카드 하나). 본문 자리의 `<main>` 안에 열 카드 둘이 틈(`--gap`)을 두고 선다. `<main>`은 카드가
+ * 아니라 회색 바탕이 드러나는 자리라 창을 끄는 자리다(머리말).
+ *
+ * **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널 · 사이드바와 같은 관용구). 왼쪽 열의 상자가 「카드 + 오른쪽
+ * 틈」이라 그 상자에 회색 틈이 드러나 끌기 영역을 달고, 폭 손잡이는 그 틈의 가운데에 선다. 오른쪽 열의 상자는 카드 그대로라 틈이 없다.
+ *
+ * 몫은 **비율**이다(`useSplitRatio` 머리말 — 두 열이 같은 본문을 나눠 갖는다). 비율은 **틈을 뺀 폭**에 걸어 반반이면 두 카드가 같은
+ * 폭이고, 끄는 손이 재는 분모도 같은 폭이다(`sharedWidth`) — 둘이 갈리면 손잡이가 포인터에서 미끄러진다. 그래서 그리는 식과 재는
+ * 식이 이 한 곳에 산다. 폭이 비율이라 늘 트랜지션을 걸 수 없고(창을 끄는 내내 두 열이 손을 늦게 따라온다), 더블클릭으로 반반에
+ * 돌아가는 순간(`snapping`)만 접히는 칸과 같은 박자(`PANEL_MOTION`)로 움직인다 — 한 화면에서 두 폭이 다른 속도로 움직이면 한 동작으로
+ * 안 읽힌다.
+ *
+ * 비율 상태는 분할이 서 있는 동안 이 상자가 든다. 끈 비율은 손을 떼는 순간 저장되므로, 분할을 껐다 다시 켜도 같은 몫으로 선다.
+ */
+function SplitBox({ slot }: { slot: SplitSlot }) {
+  const host = useRef<HTMLElement>(null);
+  const size = useSplitRatio(slot.ratioKey, () => sharedWidth(host.current));
+  const [left, right] = slot.columns;
+  return (
+    <main ref={host} data-tauri-drag-region className="flex min-h-0 min-w-0 flex-1">
+      <div
+        data-tauri-drag-region
+        style={{ width: `calc((100% - var(--gap)) * ${size.ratio} + var(--gap))` }}
+        className={cn(
+          "relative flex min-w-0 shrink-0 pr-(--gap)",
+          size.snapping && PANEL_MOTION,
+          size.snapping && "transition-[width]",
+        )}
+      >
+        <ColumnCard column={left} />
+        <ResizeHandle control={size} seat="gap" />
+      </div>
+      <div className="relative flex min-w-0 flex-1">
+        <ColumnCard column={right} />
+      </div>
+    </main>
+  );
+}
+
+/** 분할의 열 카드 하나 — 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 두 열의 카드가 같아야 하는데 좌우가 바뀌므로 한 벌로 그린다. */
+function ColumnCard({ column }: { column: SplitColumn }) {
+  return (
+    <Card label={column.label} tone={column.tone} className="flex-1">
+      {column.children}
+    </Card>
+  );
+}
+
+/**
+ * 본문 카드 오른쪽의 옆 칸(ui-refresh 결정 15 · 27, 판 06 티켓 07 — 편집기 트리). **늘 열려 있고** 접힘 · 폭 손잡이 · 레일이 없어
+ * 분할의 두 열처럼 본문 카드와 나란히 카드 줄에 선다. 그래서 `aside`가 아니다(`aside`는 사이드바와 작업 패널 둘뿐이다 — `tab-row-floor` ·
+ * `works-sidebar`가 그 순서를 센다). 상자가 「왼쪽 틈 + 카드」이고 틈은 안쪽 왼쪽 여백이다. 회색 틈이 드러나는 상자라 끌기 영역이다.
+ *
+ * 폭을 `flex-basis`로 주고 줄어들게 둔다(`min-w-0`) — 창이 좁아 본문 카드가 제 최소 폭보다 좁아질 때만 그만큼 자리를 내준다. 앱의 최소
+ * 창(900)에서 사이드바를 연 채면 고정 폭을 고집하는 순간 본문 카드 머리의 조작이 카드 모서리에 잘린다. 작업 패널 칸이 문서 카드에
+ * 최소 폭을 남기는 것과 같은 손버릇이다(`PanelBox`). 본문 카드의 최소 폭은 그 카드의 몫이다(화면이 건넨다).
+ */
+function BesideBox({ slot }: { slot: BesideSlot }) {
+  return (
+    <div
+      data-tauri-drag-region
+      style={{ flexBasis: `calc(${slot.width}px + var(--gap))` }}
+      className="flex min-w-0 pl-(--gap)"
+    >
+      <Card label={slot.label} className="flex-1">
+        {slot.children}
+      </Card>
+    </div>
   );
 }
 

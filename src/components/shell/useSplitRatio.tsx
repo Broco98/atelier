@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
 import { setResizing } from "./useResizableWidth";
 
 /**
@@ -50,16 +49,6 @@ export function nextRatio({
   return Math.min(1 - min, Math.max(min, raw));
 }
 
-/**
- * 두 열이 나눠 갖는 폭 — 상자 폭에서 사이 틈 하나를 뺀다(아래 훅 머리말). 틈은 토큰(`--gap`)에서 읽는다. 상자를 못 읽었으면 0이고,
- * 그러면 `nextRatio`가 움직이지 않는다.
- */
-function sharedWidth(host: HTMLElement | null): number {
-  if (!host) return 0;
-  const gap = parseFloat(getComputedStyle(host).getPropertyValue("--gap")) || 0;
-  return Math.max(0, host.getBoundingClientRect().width - gap);
-}
-
 /** 더블클릭으로 되돌아가는 데 걸리는 시간. 패널이 접히는 것과 **같은 값**이다. */
 const SNAP_MS = 220;
 
@@ -86,11 +75,11 @@ export interface SplitRatio {
 }
 
 /**
- * `host`는 두 열을 담은 상자다. **비율의 분모는 그 폭에서 두 열 사이 틈(`--gap`)을 뺀 값이다**(ui-refresh 결정 15 — 두 열이
- * 각자 카드다). 틈까지 나눠 가지면 반반일 때 왼쪽 카드가 틈의 반만큼 좁고, 끄는 손이 그만큼 경계를 늦게 끈다. 그리는 쪽
- * (`WorksPage`의 분할)도 같은 폭에 비율을 건다 — 둘이 갈리면 손잡이가 포인터에서 미끄러진다.
+ * `sharedWidth`는 **두 열이 나눠 갖는 폭**을 그 순간 재는 함수다 — 비율의 분모다. 무엇을 빼고 재는지(두 열 사이 틈)는 두 열을
+ * 그리는 쪽이 안다(`Frame`의 분할 — 그리는 식도 같은 폭에 비율을 건다). 이 훅은 틈을 모른다. 못 재면 0을 돌려주고, 그러면 움직이지
+ * 않는다(`nextRatio`).
  */
-function useSplitRatio(key: string, host: RefObject<HTMLElement | null>): SplitRatio {
+function useSplitRatio(key: string, sharedWidth: () => number): SplitRatio {
   const [ratio, setRatio] = useState(() => {
     const saved = Number(localStorage.getItem(key));
     // 범위 밖이거나 숫자가 아니면 **반**이다. `Number("")`가 0이라 하한 비교가 그것도 막는다.
@@ -131,7 +120,7 @@ function useSplitRatio(key: string, host: RefObject<HTMLElement | null>): SplitR
             startRatio: start.current.ratio,
             startX: start.current.x,
             clientX: e.clientX,
-            hostWidth: sharedWidth(host.current),
+            hostWidth: sharedWidth(),
             min: SPLIT_MIN,
           }),
         );
