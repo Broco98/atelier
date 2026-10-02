@@ -203,7 +203,7 @@ export function ResizeHandle({
       )}
     >
       {/* 심 라인 — blur 층은 WebKit에서 잔상(스미어)을 남겨 그라데이션 단일 층만 쓴다.
-          패널 경계선에 딱 붙인다 — 왼쪽 패널이면 자기 border-r 위, 오른쪽 패널이면 왼쪽 끝. 틈 자리면 틈의 가운데다. */}
+          패널 가장자리에 딱 붙인다 — 왼쪽 패널(사이드바)이면 자기 오른쪽 끝, 오른쪽 패널이면 왼쪽 끝. 틈 자리면 틈의 가운데다. */}
       <div
         className={cn(
           "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-primary/55 to-transparent transition-opacity duration-150",

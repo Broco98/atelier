@@ -178,17 +178,16 @@ describe("줄 하나", () => {
   });
 });
 
-// **목업이 정본인 자리**(decisions.md 머리말 — 「눈으로 고른 것은 목업/행-신호-세-안.html이
-// 정본이다」). 결정 5는 띠의 위치·구성·치수만 다시 적었으므로 색과 상자는 여전히 목업이
-// 정한다. 그 목업에서 띠는 **한 덩어리 상자**(`background: var(--state-1)`)이고 줄은
-// 종류로 무게가 갈린다(`.it`은 foreground, `.it.d`만 muted) — 바로 아래 목록 행이 통째로
-// muted라, 이 둘이 없으면 띠가 목록과 **같은 무게**로 읽혀 「열여덟 행을 훑지 않고 거기만
-// 본다」(스토리 36)가 점 색 하나에만 매달린다.
+// **띠는 한 덩어리 상자다**(목업/행-신호-세-안.html의 `.strip`). 색과 모서리는 이제 디자인 시스템이
+// 정한다 — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `card`). 줄은
+// 종류로 무게가 갈린다(목업의 `.it` / `.it.d`만 muted). 상자가 없으면 띠가 아래 목록과 같은 평면에
+// 서고, 무게가 안 갈리면 「기다림 › 안 본 완료」가 점 색 하나에만 매달린다 — 「열여덟 행을 훑지 않고
+// 거기만 본다」(스토리 36)가 그 둘에 기댄다.
 describe("띠는 목록 위에 뜬 상자다", () => {
   it("상자가 바닥색과 반지름을 든다", () => {
     const 상자 = 여는태그(band(줄들(1)), "data-band");
-    expect(상자).toContain("bg-state-1");
-    expect(상자).toContain("rounded-lg");
+    expect(상자).toContain("bg-card");
+    expect(상자).toContain("rounded-card");
   });
 
   // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다. 점 색으로만
@@ -200,12 +199,13 @@ describe("띠는 목록 위에 뜬 상자다", () => {
     expect(줄태그("done")).toContain("text-muted-foreground");
   });
 
-  // **hover가 바닥에 안 묻는다.** 상자가 이미 state-1이라 줄의 hover도 state-1이면 눌러도
-  // 되는 줄이라는 것을 화면이 안 말한다 — 목업이 안 만난 충돌이라 여기서 한 단 올렸다.
-  it("hover는 상자 바닥보다 한 단 위다", () => {
+  // **hover가 바닥에 안 묻는다.** 줄의 hover는 상태 겹(`state-1`)이고 상자 바닥은 흰 카드다 —
+  // 바닥이 같은 겹이면 눌러도 되는 줄이라는 것을 화면이 안 말한다(바닥이 `state-1`이던 동안은 그래서
+  // 줄이 한 단 위 `state-2`를 썼다). 상자가 상태 겹을 바닥으로 들지 않는 것까지 함께 센다.
+  it("hover는 흰 바닥 위의 상태 겹이다", () => {
     const markup = band(줄들(4));
-    expect(markup).not.toContain("hover:bg-state-1");
-    expect(markup).toContain("hover:bg-state-2");
+    expect(여는태그(markup, "data-band")).not.toMatch(/\bbg-state-\d/);
+    expect(markup).toContain("hover:bg-state-1");
   });
 });
 

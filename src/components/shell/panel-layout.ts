@@ -43,8 +43,8 @@ export const PANEL_MOTION = "duration-[220ms] ease-panel";
  * 곧장 걷힌다. 걷힌 값이 `none`이 아니라 `100vw`인 것은 `none`과 백분율은 보간할 수 없는 쌍이라 지연 자체가
  * 안 걸려서다.
  *
- * `cap`은 부르는 쪽이 **리터럴로** 적는다(Tailwind가 소스에서 클래스를 읽는다) — 사이드바는 오른쪽
- * 경계선 밑 1px까지 들어 `max-w-[calc(100%+1px)]`, 작업 패널은 `max-w-full`이다.
+ * `cap`은 부르는 쪽이 **리터럴로** 적는다(Tailwind가 소스에서 클래스를 읽는다) — 지금은 사이드바 · 목록 칸 ·
+ * 작업 패널 모두 `max-w-full`이다(사이드바는 오른쪽 경계선이 있던 동안 그 밑 1px까지 더 들었다).
  */
 export function foldingInnerClass(open: boolean, cap: string): string {
   return open

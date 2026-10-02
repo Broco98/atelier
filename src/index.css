@@ -342,8 +342,11 @@
     --radius: 0.625rem;
     /* 사이드바는 창 바탕(`--chrome`)과 같은 색이다(ui-refresh 결정 11). 그 위의 행 글자는
        `--sidebar-foreground`, 고른 행은 `--sidebar-accent`다. 레이아웃 편집기의 트리와 미리보기
-       창의 회색 칸도 `bg-sidebar`를 읽는다. */
-    --sidebar: #f4f4f5;
+       창의 회색 칸도 `bg-sidebar`를 읽는다.
+       **값을 따로 적지 않고 바탕을 가리킨다** — 사이드바가 선 없이 바탕에 붙으므로(ui-refresh 결정 4)
+       두 이름이 갈리면 그 자리에 경계가 다시 선다. 그래도 사이드바(`aside`)는 투명이 아니라 이 면을
+       칠한다: e2e가 `aside`의 계산된 바탕색으로 행 메타와 점의 대비를 잰다(`works-sidebar.spec.ts`). */
+    --sidebar: var(--chrome);
     --sidebar-foreground: #212326;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
@@ -409,8 +412,13 @@
     --signal-done-ink: #15803d;
     /* 상태 농도 4단 — 선택·hover·켜짐을 말하는 무채색 스케일의 단일 출처.
        퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
-         행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
+         행 hover(1)   < 행 선택(`--sidebar-accent`) = 선택된 행 hover   — 흰 카드 안 목록
          버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
+       **행 선택은 이 스케일 밖의 불투명한 `--sidebar-accent`다**(ui-refresh 결정 11 · 30 — `selected-row`).
+       선택된 행은 hover해도 그 색 그대로다(DS `.is-on:hover`). 흰 카드 안 목록에서는 hover(≈#f8f8f9) <
+       선택(#eeeff0)으로 갈린다. **바탕(`--chrome`) 위의 사이드바에서는 hover와 선택이 한 단으로
+       붙는다 — Codex 값이다**(ui-refresh 결정 30). 행 줄의 부등식이 깨지는 자리는 거기 하나이고, 사이드바
+       hover만 더 옅게 두는 안은 프로토타입과 달라 기각했다.
        shadcn의 --accent·--muted는 이 스케일의 2단·1단을 **가리키는 이름**이다(결정 2 — 부품이
        읽는 회색을 앱 값에 맞췄다). 칩 배경·상태 배지의 bg-accent가 그래서 2단이다. 그래도 **앱이
        적는 상태 배경은 --state-N으로 적는다** — accent라는 이름은 행 hover(1)인지 버튼 hover(2)인지를
@@ -512,7 +520,9 @@
 
 /* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
-   hover는 한 단계 진해진다 — 선택된 행을 가리키는 중임을 알린다.
+   배경은 `--sidebar-accent`(#eeeff0)이고 **hover해도 같은 색이다**(ui-refresh 결정 11 · 30 — DS
+   `.at-row.is-on:hover`). 바탕 위의 사이드바에서는 옆 행의 hover와 거의 같은 색이 된다 — 그 까닭은
+   `:root`의 상태 농도 부등식 주석에 있다. 흰 카드 안 목록에서는 이전 값(state-2 ≈ #f0f0f1)과 거의 같다.
    선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
    충돌하지 않도록 분기 안에만 둔다).
 
@@ -528,10 +538,10 @@
    호출부가 덮어야 하고, 그 승자를 정렬 순서가 정하게 된다. 기준은 "형제끼리 같은 답을
    하느냐"가 아니라 "덮을 호출부가 있느냐"다. */
 @utility selected-row {
-  background: var(--state-2);
+  background: var(--sidebar-accent);
   color: var(--foreground);
   &:hover {
-    background: var(--state-3);
+    background: var(--sidebar-accent);
     }
 }
 

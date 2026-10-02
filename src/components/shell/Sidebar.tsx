@@ -263,12 +263,12 @@ function SidebarFrame({
 
           **선 뒤에는 바깥 폭을 넘지 않는다** — 작업 패널 안쪽 열과 같은 장치다(`panel-layout`의 `foldingInnerClass`).
           사이드바가 탭 줄에 자리를 내줘 좁게 서면 고정 폭 그대로는 행 오른쪽의 셸 수·신호가
-          잘린다. 상한이 `100%`가 아니라 `100% + 1px`인 것은 안쪽 열이 원래 오른쪽 경계선(1px)
-          밑까지 폭을 들고 있었기 때문이다 — 좁게 서지 않은 평소 배치는 한 픽셀도 안 바뀐다. */}
+          잘린다. 상한은 작업 패널과 같은 `100%`다 — 바깥 상자에 오른쪽 경계선이 없어(ui-refresh 결정 4)
+          안쪽 열이 든 폭이 곧 바깥 폭이다. */}
       <div
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col pb-2.5",
-          foldingInnerClass(open, "max-w-[calc(100%+1px)]"),
+          foldingInnerClass(open, "max-w-full"),
         )}
       >
         {/* traffic light strip — same height as the main header (the header no
@@ -291,20 +291,16 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 카드 줄에 서서(ui-refresh 결정 4) 줄과 폭을 다투지 않으므로, 이제 그 차례는 앱 창의 최소 폭(900) 아래에서만
     // 온다(e2e `tab-row.ts`의 `BELOW_APP_MIN`). 다른 화면의 본문은 자리를 요구하지 않아 그 화면들에서는 늘 고른 폭이다.
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
-    "relative overflow-hidden border-r bg-sidebar",
+    //
+    // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.
+    // 바탕(`bg-sidebar`)은 그래도 칠한다: 색은 바탕과 같지만(`--sidebar: var(--chrome)`) 투명이면 대비를 재는
+    // e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(index.css의 `--sidebar` 주석).
+    "relative overflow-hidden bg-sidebar",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
     !dragging && PANEL_MOTION,
-    !dragging && (open ? "transition-[width,min-width,border-color]" : "transition-[width,border-color]"),
-    // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,
-    // box-sizing이 border-box라 사용 폭이 0이 아니라 1px에서 바닥을 친다. 그 1px이 오른쪽
-    // 전부를 밀어 신호등을 피하는 여백 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
-    // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다.
-    //
-    // border-width는 위 트랜지션 목록에 **넣지 않는다.** WebKit이 0보다 큰 테두리를 디바이스
-    // 픽셀 하나로 올림해서, 보간해 봐야 폭 바닥은 그대로인 채 레티나에서 구분선 두께만
-    // 1↔2 디바이스픽셀로 튄다 (열림 끝에 툭 굵어진다). 폭은 그냥 끊어 바꾸는 편이 낫다.
-    open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0 border-transparent border-r-0",
+    !dragging && (open ? "transition-[width,min-width]" : "transition-[width]"),
+    open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0",
   );
 }
 
@@ -559,7 +555,8 @@ function SidebarItem({
     <div
       className={cn(
         "flex h-8 shrink-0 items-center rounded-lg pr-1 transition-colors",
-        active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
+        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
+        active ? "selected-row" : "text-sidebar-foreground hover:bg-state-1",
       )}
     >
       <button

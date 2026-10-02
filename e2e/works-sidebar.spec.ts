@@ -1712,11 +1712,11 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 30 — 호버 카드는 **행 옆에 뜬다**. 사이드바 경계선 밖으로 밀어내던 판을 걷은 자리다:
-// 경계에서 재면 카드가 그 선에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼 읽혔다(실물).
+// 결정 30 — 호버 카드는 **행 옆에 뜬다**. 사이드바 오른쪽 끝 밖으로 밀어내던 판을 걷은 자리다:
+// 끝에서 재면 카드가 그 선(그때는 경계선이 있었다)에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼 읽혔다(실물).
 //
 // 이 층에서만 보인다 — 카드는 body 직계에 뜨는 fixed 상자라 자리가 진짜 레이아웃에서만 난다.
-test("호버 카드는 행 바로 옆에 서서 사이드바 경계선 위로 올라선다", async ({ page }) => {
+test("호버 카드는 행 바로 옆에 서서 사이드바 오른쪽 끝 위로 올라선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/projects");
 
@@ -1735,8 +1735,8 @@ test("호버 카드는 행 바로 옆에 서서 사이드바 경계선 위로 �
   const cardBox = (await card.boundingBox())!;
   const aside = (await page.locator("aside").boundingBox())!;
 
-  // **행에서 4px이다.** 경계선에서 재던 값은 눈에 19px 더 벌어져 보였다 — 거터 8px과
-  // 늘 예약된 스크롤바 11px이 행과 경계선 사이에 있기 때문이다.
+  // **행에서 4px이다.** 사이드바 끝에서 재던 값은 눈에 19px 더 벌어져 보였다 — 거터 8px과
+  // 늘 예약된 스크롤바 11px이 행과 사이드바 끝 사이에 있었기 때문이다.
   expect(Math.round(cardBox.x - (rowBox.x + rowBox.width))).toBe(4);
   // 그래서 카드는 사이드바의 오른쪽 끝을 **덮고** 선다. 이 줄이 「떠 있다」를 말한다 —
   // 경계 밖으로 미는 판이 돌아오면 여기가 빨개진다.
