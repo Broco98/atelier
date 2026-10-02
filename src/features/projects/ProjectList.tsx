@@ -15,10 +15,6 @@ interface ProjectListProps {
   onAdd: () => void;
 }
 
-// 행 안의 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`) 모양이다: 22px 알약 · 좌우 8 · 12px · 옅은 면.
-// 꼬리표 부품은 따로 없어 같은 토큰으로 적는다. 글꼴은 자리가 정한다 — 원격 줄의 브랜치는 그 줄의 고정폭을 따른다.
-const TAG = "inline-flex h-[22px] shrink-0 items-center rounded-pill px-2";
-
 // 목록 카드의 안 — 머리(검색칸 · `+`)와 몸(행). 카드 · 접힘 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`,
 // ui-refresh 결정 15 · 27). 폭과 열림의 저장도 화면(`ProjectsPage`)이 그 칸에 건넨다.
 function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListProps) {
@@ -115,7 +111,8 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                       {project.name}
                     </span>
                     {project.missing && (
-                      <span className={cn(TAG, "ml-auto bg-destructive/8 text-caption text-destructive")}>누락</span>
+                      // 꼬리표(`tag` — DS `Tag`)의 빨간 갈래(`.at-tag.danger`)다.
+                      <span className="tag ml-auto bg-destructive/8 text-caption text-destructive">누락</span>
                     )}
                   </span>
                   <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
@@ -126,7 +123,8 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                     <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
                       <GitFork className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
                       <span className="truncate">{project.git.remoteSlug}</span>
-                      <span className={cn(TAG, "bg-state-2")}>{project.baseBranch}</span>
+                      {/* 꼬리표(`tag` — DS `Tag`). 글자는 이 줄의 고정폭을 물려받는다. */}
+                      <span className="tag">{project.baseBranch}</span>
                     </span>
                   )}
                 </button>

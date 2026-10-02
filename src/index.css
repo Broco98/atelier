@@ -921,6 +921,18 @@ body.dragging-row * {
   @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-meta;
 }
 
+/* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(state-2) · `muted-foreground` 글자 · 줄바꿈 없음.
+   줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」, Archive 문서 카드
+   머리의 프로젝트가 이 한 정의를 부른다. 셋은 같은 문자열을 손으로 옮겨 적었고, Archive는 다른 모양(`rounded-lg` · `bg-accent`)이었다.
+
+   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」 · 프로젝트는 `text-caption`(DS 12px)이고, 원격 줄의 브랜치는
+   그 줄의 고정폭(`text-mono-sm`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
+   덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
+   Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
+@utility tag {
+  @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-state-2 px-2 whitespace-nowrap text-muted-foreground;
+}
+
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
    opacity가 여기 있는 것이 페이드다 — 스크립트는 0과 1만 오가고 사라지는 시간은 이 줄이 든다.
    나타남이 사라짐보다 빠른 것은 일부러다: 구르기 시작하면 바로 서고, 멎으면 천천히 빠진다. */

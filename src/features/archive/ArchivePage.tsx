@@ -183,11 +183,9 @@ function ArchivePage({
                     {formatCreated(selected.archivedAt)}에 치움
                   </span>
                 )}
+                {/* 프로젝트 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`, 프로토타입 Archive). 모양은 `tag` 한 곳이 든다. */}
                 {selected?.projects.map((project) => (
-                  <span
-                    key={project}
-                    className="rounded-lg bg-accent px-2 py-[3px] text-caption text-muted-foreground"
-                  >
+                  <span key={project} className="tag text-caption">
                     {project}
                   </span>
                 ))}

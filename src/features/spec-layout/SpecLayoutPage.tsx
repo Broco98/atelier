@@ -178,14 +178,8 @@ function LayoutRow({
   return (
     <SettingsRow
       name={name}
-      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`) 모양이다: 22px 알약 · 좌우 8 · 12px · 옅은 면(state-2).
-      tail={
-        state.edited ? (
-          <span className="inline-flex h-[22px] shrink-0 items-center rounded-pill bg-state-2 px-2 text-caption text-muted-foreground">
-            고침
-          </span>
-        ) : undefined
-      }
+      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-caption`)다.
+      tail={state.edited ? <span className="tag text-caption">고침</span> : undefined}
       description={
         fellBack ? (
           <div className="flex items-start gap-2">
