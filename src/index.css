@@ -54,10 +54,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* app shell layout — single source for the titlebar strip and sidebar width */
+/* 앱 셸의 길이 — 타이틀바 띠의 높이, 행의 리듬, 디자인 시스템의 여백.
+
+   **폭(사이드바 · 목록 패널 · 작업 패널)은 여기 적지 않는다.** 기본 · 최소 · 최대의 정본은
+   `useResizableWidth`를 부르는 자리들이고(사이드바는 `Sidebar.tsx`의
+   `useResizableWidth("sidebar-width", 280, 240, 400)`), 상자마다 제 폭을 인라인 변수로 싣는다.
+   여기 한 벌 더 적으면 두 곳이 갈린다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여
+   아무 데서도 읽히지 않았다. 디자인 시스템의 `--panel-width`(작업 패널 330)는 목록 패널이
+   인라인으로 쓰는 같은 이름(360)과 부딪혀서도 적지 않는다 — 작업 패널은 `--work-panel-width`다. */
 :root {
     --titlebar-height: 44px;
-    --sidebar-width: 248px;
     /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 패널 둘이 전부 이
        값을 읽는다. 한때 여덟 자리에 `gap-[3px]`로 흩어져 있었고, 그러면 한 곳만 손봐도
        같은 컬럼 안에서 리듬이 갈린다. `gap-(--row-gap)`으로 받는다. */
@@ -65,6 +71,23 @@
 
     /* 행 머리의 글리프 뒤 여백 — 아이콘·화살표가 앉는 상자와 그 옆 글자 사이. */
     --glyph-gap: 9px;
+
+    /* **디자인 시스템의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 DS(`base.css`의
+       `:where(:root)`) 그대로다.
+         --gap           창 가장자리 · 카드 사이의 틈
+         --rail          레일 폭
+         --card-pad      카드 안 좌우
+         --card-head     카드 머리 높이
+         --measure-read  읽는 글(문서 · 설정)의 폭 상한
+         --measure-wide  넓은 화면의 폭 상한
+         --term-inset    터미널 카드의 안쪽 여백 — 둥근 모서리에 글자가 닿지 않게 */
+    --gap: 8px;
+    --rail: 32px;
+    --card-pad: 24px;
+    --card-head: 48px;
+    --measure-read: 760px;
+    --measure-wide: 1120px;
+    --term-inset: 12px;
 }
 
 /* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 셸 헤더와 두 목록 패널 헤더가
@@ -169,13 +192,27 @@
     --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
+    /* 디자인 시스템이 더한 색(ui-refresh 결정 11) — 값과 그 자리는 `:root`의 주석이 든다.
+       **`--text-section`은 `--color-section`(→ `text-section`)으로 잇는다** — 바로 위
+       `--text-tertiary` → `--color-tertiary`와 같은 모양이다. `--text-*`를 이 블록에 그대로
+       들이면 Tailwind가 글자 크기로 읽는다. `--bg-group`도 앞말을 떼어 `bg-group`이다. */
+    --color-chrome: var(--chrome);
+    --color-chrome-alt: var(--chrome-alt);
+    --color-chrome-hover: var(--chrome-hover);
+    --color-primary-strong: var(--primary-strong);
+    --color-primary-ink: var(--primary-ink);
+    --color-link: var(--link);
+    --color-border-pill: var(--border-pill);
+    --color-section: var(--text-section);
+    --color-group: var(--bg-group);
+    --color-callout-important: var(--callout-important);
     /* **상태 축의 색**(#203, 결정 3). 행의 점·스피너 · 알림 띠(#204) · 셸 탭 채움
        (#205)이 같은 이름을 읽는다 — 자리마다 색을 다시 고르면 「세 자리가 한 사실을 말한다」
        (스토리 79)가 색에서 먼저 깨진다. `-soft`는 같은 색의 알파 판이고 후광과 탭 채움이
        쓴다.
 
        **`-ink`는 글자용이다.** 결정 3의 표가 못박은 것은 **점의** 색인데(그 표의 이름이
-       `amber-600`이다) 라이트에서 그 색의 대비는 2.98이라, 그것을 **말**에 그대로 쓰면 두
+       `amber-600`이다) 라이트 사이드바에서 그 색의 대비는 2.90이라, 그것을 **말**에 그대로 쓰면 두
        줄 행을 연 판이 고치려던 3.0짜리 글자를 다시 만든다(그 판의 스토리 24 · 「둘째 줄의
        기본색은 `muted-foreground`(대비 ≥ 4.5)」). 점은 3px 후광이 면적을 벌지만 글자에는
        그런 것이 없다 — 그래서 **글자만** 한 단 어둡게 갈랐고, 결정 3의 점 색은 그대로 둔다.
@@ -203,28 +240,39 @@
 }
 
 :root {
+    /* 값은 디자인 시스템(`base.css`의 `:where(:root)`)의 것이다(ui-refresh 결정 11 — Codex 팔레트).
+       이름도 DS와 같다. 갈리는 것은 둘이다.
+       - **바탕 셋(`--background` · `--card` · `--popover`)은 `oklch(1 0 0)`으로 적는다.** DS의
+         `#ffffff`와 같은 색이고, 터미널 라이트 테마의 바탕이 이 글자에 기대 있다
+         (`theme-tokens.test.ts`). 창 바탕의 회색은 `--background`가 아니라 아래 `--chrome`이다.
+       - **회색 둘(`--muted` · `--accent`)과 `--input` · `--ring`은 다른 이름을 가리킨다.** DS가 값으로
+         풀어 적은 것과 같은 값이다(아래 각 주석). */
     --background: oklch(1 0 0);
-    --foreground: #1a1a1e;
+    --foreground: #191c1f;
     --card: oklch(1 0 0);
     /* **글자색은 앱 글자색이다**(결정 2). shadcn 원본의 `oklch(0.145 0 0)`(≈#0a0a0a)은 앱
-       본문(#1a1a1e)보다 한 단 검어, 판 3부터 들어오는 메뉴·Popover·Select·창·토스트
-       (`text-popover-foreground`)와 Alert(`text-card-foreground`)의 글자만 옛 화면 옆에서
+       본문(`--foreground`)보다 한 단 검어, 메뉴·Popover·Select·창·토스트
+       (`text-popover-foreground`)와 Alert(`text-card-foreground`)의 글자만 옆 화면에서
        튄다. 바탕(흰색)은 이미 앱의 떠 있는 카드와 같은 값이다. */
     --card-foreground: var(--foreground);
     --popover: oklch(1 0 0);
     --popover-foreground: var(--foreground);
-    --primary: #5e6ad2;
+    /* 강조. 이 위에 흰 글자를 얹으면 3.68:1이라 글자 바닥(4.5)에 못 미친다 — 흰 글자를 얹는 면은
+       아래 `--primary-strong`이다. 터미널 라이트 테마의 커서가 이 값을 옮겨 적는다
+       (`terminal-theme.ts`). */
+    --primary: #4d81ef;
     --primary-foreground: #ffffff;
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
+    --secondary: #f4f4f5;
+    --secondary-foreground: #191c1f;
     /* shadcn 부품이 읽는 회색 둘은 아래 상태 스케일을 가리킨다(결정 2) — 부품이 hover·선택에
-       칠하는 회색이 옛 화면의 네 단과 같아야 둘이 한 화면에서 안 갈린다. */
+       칠하는 회색이 앱의 네 단과 같아야 둘이 한 화면에서 안 갈린다. DS가 값으로 적은
+       `rgba(20, 20, 28, 0.03 / 0.06)`이 그 두 단이다. */
     --muted: var(--state-1);
-    --muted-foreground: #55555e;
+    --muted-foreground: #565759;
     --accent: var(--state-2);
-    --accent-foreground: #1a1a1e;
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: #e5e5e8;
+    --accent-foreground: #191c1f;
+    --destructive: #e7000b;
+    --border: #ececec;
     --input: var(--border);
     --ring: var(--primary);
     --chart-1: oklch(0.87 0 0);
@@ -233,32 +281,67 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    /* 본문(흰색)과 갈리되 눌러앉지는 않는 밝기. #f2f2f4에서 한 단계 올렸다 —
-       경계는 border-r이 이미 긋고 있어서 농도까지 함께 질 필요가 없다. */
-    --sidebar: #f7f7f9;
-    --sidebar-foreground: var(--foreground);
+    /* 사이드바는 창 바탕(`--chrome`)과 같은 색이다(ui-refresh 결정 11). 그 위의 행 글자는
+       `--sidebar-foreground`, 고른 행은 `--sidebar-accent`다. 레이아웃 편집기의 트리와 미리보기
+       창의 회색 칸도 `bg-sidebar`를 읽는다. */
+    --sidebar: #f4f4f5;
+    --sidebar-foreground: #212326;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--accent);
+    --sidebar-accent: #eeeff0;
     --sidebar-accent-foreground: var(--accent-foreground);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--primary);
     --bg-panel: #f7f7f8;
     --bg-inset: #f6f6f7;
     --border-strong: #d2d2d7;
-    --text-tertiary: #8e8e97;
+    /* 흐린 글자 — 닫기 `×` · 메타. 바탕(`--chrome`) 위 2.95:1이다. 소제목(`--text-section`)과
+       함께 Codex에서 잰 값이라 대비 바닥 아래인 것을 알고 둔다(handoff 「대비 미달을 알고 둔 값」).
+       **글자색 둘은 `:root`에만 둔다** — `@theme`에 들이면 Tailwind가 `--text-*`를 글자 크기로
+       읽는다. 클래스는 `--color-tertiary` · `--color-section`으로 잇는다. */
+    --text-tertiary: #8e8f90;
+
+    /* **디자인 시스템이 더한 색**(ui-refresh 결정 11 · 16 · 18).
+         --chrome             창 바탕 — 카드가 그 위에 뜬다
+         --chrome-alt         한 단 짙은 바탕(결정 18의 탭 줄 시안 톤)
+         --chrome-hover       바탕 위 버튼(`+` 등)을 올리거나 누를 때의 면
+         --primary-strong     흰 글자를 얹는 파랑 면 — 흰 글자 4.69:1
+         --primary-ink        옅은 파랑 면 위의 파랑 글자 — active 배지 · `soft` 버튼
+         --link               링크 글자
+         --border-pill        알약 · 흰 원 버튼의 안쪽 1px 테두리
+         --text-section       소제목 — 바탕 위 2.5:1(위 `--text-tertiary`와 같은 까닭으로 둔다)
+         --bg-group           카드 안 묶음의 옅은 면(결정 16)
+         --callout-important  「중요」 콜아웃의 제목
+         --scrim              모달 뒤를 어둡게 하는 막
+       **파랑 글자는 자리마다 갈린다** — 링크는 `link`, 옅은 파랑 면 위는 `primary-ink`, 아이콘 ·
+       체크 · 스피너는 `primary` 그대로다. */
+    --chrome: #f4f4f5;
+    --chrome-alt: #e8e8e8;
+    --chrome-hover: #dcdddd;
+    --primary-strong: #3f6fd8;
+    --primary-ink: #3565c9;
+    --link: #4e74c5;
+    --border-pill: #eeeeee;
+    --text-section: #9b9c9d;
+    --bg-group: #f6f6f7;
+    --callout-important: #7c3aed;
+    --scrim: rgba(0, 0, 0, 0.25);
+
     /* **상태 축의 색 넷**(#203). 목업 `행-신호-세-안.html`이 정본이고 결정 3의 표가 이름을
        못박았다 — 앰버는 `amber-600`, 초록은 `green-700`. `-soft`는 같은 색 알파 0.14이고,
-       점의 3px 후광과 셸 탭 채움(#205)이 그것을 쓴다.
+       점의 3px 후광과 셸 탭 채움(#205)이 그것을 쓴다. 상태색은 Codex 팔레트로 바꾸지 않았다
+       (ui-refresh 결정 11).
 
-       **앰버는 이 배경에서 대비 2.98이다**(L3 실측). 그림 요소의 바닥 3.0에 0.02 모자라는
-       것을 알고 고른 색이라(사람이 목업에서 눈으로 골랐다) 여기 적어 둔다 — 점은 3px 후광이
-       면적을 벌어 그 자리를 메운다. 초록은 4.69로 글자 바닥까지 넘는다.
+       **앰버는 사이드바 바탕(`#f4f4f5`)에서 대비 2.90이다.** 그림 요소의 바닥 3.0에 못 미치는
+       것을 알고 둔 색이다 — 처음 고를 때(바탕 `#f7f7f9`, 2.98) 사람이 목업에서 눈으로 골랐고,
+       바탕을 Codex 값으로 옮길 때 바탕과 상태색을 함께 정했다(ui-refresh 결정 11). 점은 3px
+       후광이 면적을 벌어 그 자리를 메운다. 점을 한 단 어둡게(`amber-700`) 하는 안은 기각했다
+       (ui-refresh 결정 29) — L3의 바닥이 2.85다(`works-sidebar.spec.ts`). 초록은 4.56으로 글자
+       바닥까지 넘는다.
 
-       **그래서 글자는 `amber-700`이다**(`-ink`, 4.69). 자리를 옮기는 것이 대비를 고치는
-       것은 아니라는 것이 두 줄 행을 연 판의 시작이라(사람의 말: 「이 한 줄이 가독성이 안
-       좋다」), 상태를 **글자로** 말하는 자리는 4.5를 넘겨야 한다. 점을 같이 어둡게 할 것인지는
-       사람에게 열어 둔 물음이다 — 그 판의 `spec/물음-둘째-줄의-색.md`. */
+       **그래서 글자는 `amber-700`이다**(`-ink`, 같은 바탕에서 4.57). 자리를 옮기는 것이 대비를
+       고치는 것은 아니라는 것이 두 줄 행을 연 판의 시작이라(사람의 말: 「이 한 줄이 가독성이 안
+       좋다」), 상태를 **글자로** 말하는 자리는 4.5를 넘겨야 한다. */
     --signal-wait: #d97706;
     --signal-wait-soft: rgba(217, 119, 6, 0.14);
     --signal-wait-ink: #b45309;

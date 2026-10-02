@@ -16,7 +16,7 @@ export const STATUS_META: Record<
     label: "active",
     desc: "진행 중",
     dotClass: "bg-primary",
-    badgeClass: "text-primary bg-primary/10",
+    badgeClass: "text-primary-ink bg-primary/10",
   },
   review: {
     label: "review",

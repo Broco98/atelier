@@ -681,7 +681,7 @@ export const PrettyView = memo(function PrettyView({
               if (target.kind === "doc") linkRef.current.onNavigate(target.path);
               else if (target.kind === "external") void openUrl(target.url);
             }}
-            className="text-primary hover:underline"
+            className="text-link hover:underline"
           >
             {children}
           </a>

@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 뿌리의 투명 테두리·bg-clip-padding을 걷었다(채운 버튼이 제 높이 그대로 칠해진다 — 테두리는 outline만 든다), 모서리·글자를 뿌리에서 크기로 옮겼다, 포커스 링 border-ring·ring-3→ring-2 ring-ring/50(destructive도 같은 링), 누를 때 1px 내려앉기(active translate)를 걷었다, disabled 50%→40%, primary hover bg-primary/80→bg-primary/85, outline·ghost의 hover bg-muted→quiet-hover · 펼침 aria-expanded:bg-muted→toggle-on, ghost의 평소 글자 muted-foreground. 크기는 앱의 글자 버튼 셋이다: default(주 버튼 — 32px · 10px 모서리 · 좌우 16px · 14px), sm(쪽 동작 — 28px · 9px · 11px · 13.5px), 새 크기 dialog(창 바닥 — 28px · 8px · 12px · 12.5px). xs 글자 text-xs→11.5px. 변형 destructive-ghost(바탕 없이 빨간 글자, hover에 destructive/10)와 soft(primary/10 바탕에 primary 글자, hover에 /15)를 더했다.
+// 앱 규격으로 고친 자리: 뿌리의 투명 테두리·bg-clip-padding을 걷었다(채운 버튼이 제 높이 그대로 칠해진다 — 테두리는 outline만 든다), 모서리·글자를 뿌리에서 크기로 옮겼다, 포커스 링 border-ring·ring-3→ring-2 ring-ring/50(destructive도 같은 링), 누를 때 1px 내려앉기(active translate)를 걷었다, disabled 50%→40%, 채운 면 bg-primary→bg-primary-strong(흰 글자를 얹는 파랑 면 — #4d81ef 위 흰 글자는 3.68:1이라 한 단 짙은 면에서 4.69:1, ui-refresh 결정 11 · handoff)이고 hover bg-primary/80→같은 면에 검정 8%, outline·ghost의 hover bg-muted→quiet-hover · 펼침 aria-expanded:bg-muted→toggle-on, ghost의 평소 글자 muted-foreground. 크기는 앱의 글자 버튼 셋이다: default(주 버튼 — 32px · 10px 모서리 · 좌우 16px · 14px), sm(쪽 동작 — 28px · 9px · 11px · 13.5px), 새 크기 dialog(창 바닥 — 28px · 8px · 12px · 12.5px). xs 글자 text-xs→11.5px. 변형 destructive-ghost(바탕 없이 빨간 글자, hover에 destructive/10)와 soft(primary/10 바탕에 primary-ink 글자, hover에 /15)를 더했다. link의 글자 text-primary→text-link.
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
@@ -10,7 +10,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/85",
+        default:
+          "bg-primary-strong text-primary-foreground hover:bg-[color-mix(in_srgb,var(--primary-strong),black_8%)]",
         outline:
           "border border-border bg-background quiet-hover aria-expanded:toggle-on dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
@@ -23,8 +24,8 @@ const buttonVariants = cva(
         // 머리행의 「제거」처럼 평소에는 바탕 없이 빨간 글자만 서는 되돌릴 수 없는 일.
         "destructive-ghost": "text-destructive hover:bg-destructive/10",
         // 목록 빈칸의 「프로젝트 등록」 — 좁은 패널 안에서 주 버튼보다 한 단 가볍게 이끄는 자리.
-        soft: "bg-primary/10 text-primary hover:bg-primary/15",
-        link: "text-primary underline-offset-4 hover:underline",
+        soft: "bg-primary/10 text-primary-ink hover:bg-primary/15",
+        link: "text-link underline-offset-4 hover:underline",
       },
       size: {
         // 주 버튼 — 설정의 「저장」, 프로젝트 빈 화면의 「프로젝트 등록」.

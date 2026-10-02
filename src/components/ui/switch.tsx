@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 없다 — 앱에 선례가 없는 부품이라 shadcn 기본을 앱 토큰으로 그린다(결정 12). 글자가 없는 부품이라 글자 크기도 고칠 것이 없다. 꺼진 바탕 bg-input은 --border(불투명 #e5e5e8), 켜진 바탕은 bg-primary, 손잡이는 bg-background다.
+// 앱 규격으로 고친 자리: 없다 — 앱에 선례가 없는 부품이라 shadcn 기본을 앱 토큰으로 그린다(결정 12). 글자가 없는 부품이라 글자 크기도 고칠 것이 없다. 꺼진 바탕 bg-input은 --border(불투명 #ececec), 켜진 바탕은 bg-primary, 손잡이는 bg-background다.
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
 import { cn } from "cn"
 
