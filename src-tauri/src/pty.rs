@@ -3112,9 +3112,9 @@ mod tests {
         instances::read(&instances::dir(&atelier_core::data_root()), crate::processes::shell_key::generation())
     }
 
-    /// 풀 배선 장면이 닫는 셸의 주인 — 정리 기록에 그대로 적힌다(티켓 11).
+    /// 풀 배선 장면이 닫는 셸의 주인(work의 slug) — 정리 기록에 그대로 적힌다(티켓 11).
     #[cfg(target_os = "macos")]
-    const SCENE_OWNER: &str = "atelier:pty-scene";
+    const SCENE_OWNER: &str = "pty-scene";
 
     /// 풀 배선 장면 `Record`의 자식이 불리는 이름(argv[0]) — 정리 기록의 명령줄 머리에 그대로 적힌다. 짧게 둬 argv 전체가
     /// 늘 200자 안에 든다. 예외 목록은 이 장면에서 안 쓰니 이름이 무엇과 겹쳐도 판정은 안 흔들린다.

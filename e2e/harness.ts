@@ -490,8 +490,7 @@ export async function spawnedCwds(page: Page): Promise<string[]> {
  * 앞머리로 세면 뒷날 `pty_write_*` 같은 이웃 커맨드가 함께 세어진다.
  */
 export async function callCount(page: Page, command: string): Promise<number> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  return calls.filter((call) => call === command || call.startsWith(`${command} `)).length;
+  return (await ipcCalls(page, command)).length;
 }
 
 /**

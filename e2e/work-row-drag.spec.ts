@@ -2,12 +2,12 @@ import { expect, test, type Page } from "./evidence";
 import { WORKS, WORKS_MOVED } from "./fixtures";
 import {
   awaitSpawned,
+  callCount,
   dragRowOnto,
   fireEvent,
   hoverRowPoint,
   installFixtureBackend,
   ipcCallArgs,
-  ipcCalls,
   markAttention,
   markRunning,
   pickUpRow,
@@ -425,7 +425,7 @@ test("끄는 도중 `works:changed`가 와도 목록이 같으면 끌기가 살�
   await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
   await expect(line(page)).toBeVisible();
 
-  const listed = async () => (await ipcCalls(page, "list_works")).length;
+  const listed = () => callCount(page, "list_works");
   const before = await listed();
   await fireEvent(page, "works:changed", null);
   await expect.poll(listed).toBeGreaterThan(before);
