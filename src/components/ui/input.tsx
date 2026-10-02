@@ -18,11 +18,13 @@ const inputVariants = cva(
         // 고치는 동안에도 틀렸다는 것이 보인다(스토리 107). 스크린리더는 같은 속성을 「잘못된 값」으로 읽는다.
         field:
           "h-8 rounded-lg border border-border-strong bg-background px-[9px] text-ui placeholder:text-tertiary focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20 aria-invalid:border-red-500 aria-invalid:ring-destructive/20",
-        // 인라인 편집기 — 누른 글자 자리가 그대로 칸이 된다. 편집하는 동안에만 서므로 테두리가 늘 primary다.
+        // 인라인 편집기 — 누른 글자 자리가 그대로 칸이 된다. 편집하는 동안에만 서므로 테두리가 늘 primary다. 쓰는 자리는
+        // 프로젝트 상세 하나이고, 글자는 누르기 전 그 자리의 단계와 같다 — 제목은 `text-title`(자간도 단계의 것), 기준 브랜치는
+        // 셀렉트 칩과 같은 28px · 고정폭 `text-mono`다.
         "inline-title":
-          "-mx-2 -my-1 rounded-lg border border-primary bg-background px-2 py-1 text-title tracking-[-0.015em]",
+          "-mx-2 -my-1 rounded-lg border border-primary bg-background px-2 py-1 text-title",
         "inline-chip":
-          "h-[26px] rounded-lg border border-primary bg-background px-[7px] font-mono text-mono-sm",
+          "h-7 rounded-lg border border-primary bg-background px-[7px] font-mono text-mono",
         // 늘 서 있는 제목 칸 — 고른 항목의 제목이 곧 칸이다(spec 레이아웃 편집기의 이름 틀). 제목처럼 보이다가 가리키면
         // 테두리가 서서 눌러 고치는 제목인 것을 말한다. 틀린 값이면 빨간 테두리가 hover · 포커스보다 이긴다(field와 같다).
         "entry-title":

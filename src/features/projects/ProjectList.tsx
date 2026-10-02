@@ -15,6 +15,10 @@ interface ProjectListProps {
   onAdd: () => void;
 }
 
+// 행 안의 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`) 모양이다: 22px 알약 · 좌우 8 · 12px · 옅은 면.
+// 꼬리표 부품은 따로 없어 같은 토큰으로 적는다. 글꼴은 자리가 정한다 — 원격 줄의 브랜치는 그 줄의 고정폭을 따른다.
+const TAG = "inline-flex h-[22px] shrink-0 items-center rounded-pill px-2";
+
 // 목록 카드의 안 — 머리(검색칸 · `+`)와 몸(행). 카드 · 접힘 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`,
 // ui-refresh 결정 15 · 27). 폭과 열림의 저장도 화면(`ProjectsPage`)이 그 칸에 건넨다.
 function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListProps) {
@@ -95,13 +99,13 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                   type="button"
                   onClick={() => onSelect(project.slug)}
                   className={cn(
-                    // 테두리 없는 평평한 행 — 패널이 흰색이 된 뒤 흰 카드는 테두리만 남아 어긋난다.
-                    // 규격(반지름·패딩·줄 간격)은 작업 목록과 같은 값이다 — 다른 것은 줄 수뿐
-                    "flex w-full shrink-0 flex-col gap-[5px] rounded-lg px-3 py-1 text-left transition-colors",
+                    // 테두리 없는 평평한 목록 행(DS `.at-list-row`) — 이름 줄 + 경로 줄 + 원격 줄이 2px 사이로 선다.
+                    // 안쪽 8 · 12 · 모서리 10(ui-refresh 결정 6 — 목록 행). 고른 행과 hover는 카드 안 목록의 두 단이다.
+                    "flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors",
                     active ? "selected-row" : "hover:bg-state-1",
                   )}
                 >
-                  <span className="flex w-full items-center justify-between gap-2">
+                  <span className="flex w-full items-center gap-2">
                     <span
                       className={cn(
                         "min-w-0 truncate text-row font-medium",
@@ -111,22 +115,18 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                       {project.name}
                     </span>
                     {project.missing && (
-                      <span className="shrink-0 rounded-lg bg-red-500/10 px-2 py-0.5 text-caption font-medium text-red-600">
-                        누락
-                      </span>
+                      <span className={cn(TAG, "ml-auto bg-destructive/8 text-caption text-destructive")}>누락</span>
                     )}
                   </span>
-                  <span className="flex items-center gap-2 font-mono text-mono-sm text-tertiary">
-                    <Folder className="size-3.5 shrink-0" strokeWidth={1.7} />
+                  <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
+                    <Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
                     <span className="truncate">{project.path}</span>
                   </span>
                   {project.git?.remoteSlug && (
-                    <span className="flex items-center gap-2 font-mono text-mono-sm text-tertiary">
-                      <GitFork className="size-3.5 shrink-0" strokeWidth={1.7} />
+                    <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
+                      <GitFork className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
                       <span className="truncate">{project.git.remoteSlug}</span>
-                      <span className="shrink-0 rounded-inner bg-accent px-[7px] py-px text-mono-sm">
-                        {project.baseBranch}
-                      </span>
+                      <span className={cn(TAG, "bg-state-2")}>{project.baseBranch}</span>
                     </span>
                   )}
                 </button>
