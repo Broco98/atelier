@@ -340,14 +340,14 @@ export function OutsideBanner({
       <button
         type="button"
         onClick={onReload}
-        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] border border-amber-600/30 bg-background px-3 text-ui font-medium text-foreground transition-colors quiet-hover"
+        className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-amber-600/30 bg-background px-3 text-ui font-medium text-foreground transition-colors quiet-hover"
       >
         새로 불러오기
       </button>
       <button
         type="button"
         onClick={onKeep}
-        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] px-3 text-ui font-medium text-amber-700 transition-colors hover:bg-amber-600/10 dark:text-amber-400"
+        className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-ui font-medium text-amber-700 transition-colors hover:bg-amber-600/10 dark:text-amber-400"
       >
         내 초안 유지
       </button>
@@ -458,7 +458,7 @@ export function EditorColumns({
             onClick={() => onSelect([])}
             aria-pressed={at.length === 0}
             className={cn(
-              "flex h-7 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-ui transition-colors",
+              "flex h-7 w-full items-center gap-1.5 rounded-lg px-2 text-left text-ui transition-colors",
               at.length === 0 ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
             )}
           >
@@ -537,7 +537,7 @@ function TreeTools({
           type="button"
           onClick={() => onAdd(kind)}
           aria-label={ADD_LABEL[kind]}
-          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-ui font-medium text-foreground shadow-xs transition-colors quiet-hover"
+          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-border bg-background pr-[9px] pl-[7px] text-ui font-medium text-foreground shadow-xs transition-colors quiet-hover"
         >
           <Plus aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={2.2} />
           {kind === "file" ? "파일" : "폴더"}
@@ -546,7 +546,7 @@ function TreeTools({
       <div
         role="group"
         aria-label="고른 항목 옮기기"
-        className="ml-auto flex shrink-0 items-center gap-px rounded-[9px] bg-state-1 p-0.5"
+        className="ml-auto flex shrink-0 items-center gap-px rounded-lg bg-state-1 p-0.5"
       >
         {/* 이름이 없는 아이콘 버튼이라 툴팁 글자가 이름이고, 단축키는 Kbd로 붙어 설명으로도 남는다(S28). 잠기면
             툴팁이 없다(S23) — 버튼이 네이티브 `disabled`다. */}
@@ -562,9 +562,9 @@ function TreeTools({
                 type="button"
                 onClick={() => onMove(move)}
                 disabled={!edits[move]}
-                // `icon-button` 모양이 아니라 눌린 바닥 위의 툴바 칸이다 — 모서리 7px은 바닥(9px)에서 안쪽 2px을 뺀
-                // 동심원 값이다(눌린 바닥 위의 칸인 `SegmentGroup` `sm`도 7px이다).
-                className="flex h-6 w-[26px] items-center justify-center rounded-[7px] text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
+                // `icon-button` 모양이 아니라 눌린 바닥 위의 툴바 칸이다 — 바닥(`rounded-lg`) 안에 드는 칸이라 모서리가
+                // 한 단 안쪽인 `rounded-inner`다(ui-refresh 결정 6 — 눌린 바닥 위의 칸인 `SegmentGroup` `sm`도 같다).
+                className="flex h-6 w-[26px] items-center justify-center rounded-inner text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
               />
             }
           >
@@ -887,7 +887,7 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[8px] pr-2 text-left text-ui outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-lg pr-2 text-left text-ui outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
         drop === "inside"
           ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary"
           : selected
@@ -1198,7 +1198,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
             // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-background`가 `toggle-on`과 겹치면 코어
             // 유틸리티가 뒤에 서서 열린 바탕을 덮고, `quiet-hover`는 꺼진 가지에만 선다(`index.css`의 그 유틸리티).
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-border transition-colors",
+              "flex size-9 shrink-0 items-center justify-center rounded-lg border border-border transition-colors",
               open ? "toggle-on" : "bg-background text-muted-foreground quiet-hover",
             )}
           />
@@ -1247,7 +1247,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex h-[34px] items-center justify-center rounded-[8px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
                   checked ? "toggle-on" : "text-muted-foreground quiet-hover",
                 )}
               >

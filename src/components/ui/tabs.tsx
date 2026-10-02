@@ -53,9 +53,10 @@ const tabsTriggerTone = (active: boolean) =>
   active ? "toggle-on" : "text-tertiary quiet-hover"
 
 /**
- * 규격은 디자인 정본의 `.cp-tab`(26px · 9px 모서리 · 13px · 500)이다. 작업 패널의 탭은 헤더의 뷰 탭(`.vtab` 28 · 9 ·
- * 13 · 500)과 같은 층에 나란히 서서 **한 가족으로 읽혀야** 한다 — 정본이 모서리·글자·굵기를 맞추고 높이만 2px 낮춘
- * 이유다. 토글 버튼의 규격(`toggle.tsx`)과는 다른 가족이다.
+ * 규격은 디자인 정본의 `.cp-tab`(26px · 9px 모서리 · 13px · 500)이고, 모서리는 탭의 단계 `rounded-lg`로
+ * 옮겼다(ui-refresh 결정 6). 작업 패널의 탭은 헤더의 뷰 탭(`.vtab` 28 · 9 · 13 · 500)과 같은 층에 나란히 서서
+ * **한 가족으로 읽혀야** 한다 — 정본이 모서리·글자·굵기를 맞추고 높이만 2px 낮춘 이유다. 토글 버튼의
+ * 규격(`toggle.tsx`)과는 다른 가족이다.
  */
 function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return (
@@ -63,7 +64,7 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
       data-slot="tabs-trigger"
       className={(state) =>
         cn(
-          "relative inline-flex h-[26px] items-center justify-center gap-1.5 rounded-[9px] px-[10px] text-ui font-medium whitespace-nowrap transition-colors outline-none group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+          "relative inline-flex h-[26px] items-center justify-center gap-1.5 rounded-lg px-[10px] text-ui font-medium whitespace-nowrap transition-colors outline-none group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
           tabsTriggerTone(state.active),
           resolveClassName(className, state)
         )

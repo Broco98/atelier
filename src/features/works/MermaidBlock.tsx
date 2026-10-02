@@ -10,7 +10,7 @@ import FullscreenModal from "./FullscreenModal";
 //
 // 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
 const toolbarButtonQuiet =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-caption text-tertiary transition-colors quiet-hover";
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-inner px-1 text-caption text-tertiary transition-colors quiet-hover";
 
 // 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
 // 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
@@ -159,7 +159,7 @@ function MermaidBlock({ code }: { code: string }) {
   }, [fullBody, size]);
 
   return (
-    <div className="overflow-hidden rounded-[12px] border bg-panel">
+    <div className="overflow-hidden rounded-card border bg-panel">
       <div className="flex items-center justify-between border-b px-2.5 py-1.5">
         <span className="font-mono text-mono-sm text-tertiary">mermaid</span>
         <span className="flex items-center gap-1">

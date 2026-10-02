@@ -93,13 +93,13 @@ function WorksSection({
         <button
           type="button"
           onClick={() => onOpenWork(null)}
-          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-caption font-medium text-tertiary transition-colors quiet-hover"
+          className="ml-auto flex items-center gap-1 rounded-inner px-1.5 py-0.5 text-caption font-medium text-tertiary transition-colors quiet-hover"
         >
           Works에서 모두 보기
           <ChevronRight className="size-3" strokeWidth={2} />
         </button>
       </div>
-      <div className="flex flex-col overflow-hidden rounded-[12px] border">
+      <div className="flex flex-col overflow-hidden rounded-card border">
         {related.length === 0 ? (
           <div className="px-3.5 py-4 text-ui text-tertiary">
             이 프로젝트로 시작된 작업이 아직 없어요.
@@ -179,7 +179,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
           setDraft(project.name);
           setEditing(true);
         }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-title tracking-[-0.015em] transition-colors hover:bg-state-2"
+        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-title tracking-[-0.015em] transition-colors hover:bg-state-2"
       >
         {project.name}
       </Hint>
@@ -311,7 +311,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
           setDraft(project.baseBranch);
           setEditing(true);
         }}
-        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-mono-sm text-muted-foreground transition-colors quiet-hover"
+        className="-ml-[7px] flex h-[26px] items-center rounded-lg px-[7px] font-mono text-mono-sm text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
       </Hint>
@@ -378,14 +378,14 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-[48px] resize-y rounded-[12px] border border-primary bg-background px-3.5 py-2.5 text-row leading-[1.65] outline-none"
+          className="min-h-[48px] resize-y rounded-card border border-primary bg-background px-3.5 py-2.5 text-row leading-[1.65] outline-none"
         />
       ) : (
         <button
           type="button"
           onClick={startEditing}
           className={cn(
-            "min-h-[48px] rounded-[12px] border px-3.5 py-2.5 text-left text-row leading-[1.65] transition-colors hover:border-border-strong hover:bg-panel",
+            "min-h-[48px] rounded-card border px-3.5 py-2.5 text-left text-row leading-[1.65] transition-colors hover:border-border-strong hover:bg-panel",
             !project.description && "italic text-tertiary",
           )}
         >

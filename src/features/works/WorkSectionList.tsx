@@ -232,7 +232,7 @@ function EmptySlot({ section, lit }: { section: keyof SectionsOpen; lit: boolean
       data-lit={lit ? "" : undefined}
       aria-hidden
       className={cn(
-        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-[10px] border border-dashed text-ui transition-colors",
+        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-lg border border-dashed text-ui transition-colors",
         margin,
         lit ? "border-primary bg-primary/10 text-foreground" : "border-border text-tertiary",
       )}
@@ -324,7 +324,7 @@ function SectionHeader({
         // 훑고 지나갈 때마다 칠해졌다 지워져 사이드바가 들썩였다. 누를 수 있다는 말은 글자가
         // 진해지는 것과 화살표가 뜨는 것(아래 둘)이 계속 한다. 행과 nav는 배경을 **남긴다** —
         // 그쪽은 누르면 가는 목적지라 긴 목록에서 지금 무엇을 가리키는지가 보여야 한다.
-        "group flex h-7 w-full shrink-0 items-center gap-1 rounded-[8px] px-[9px] text-left",
+        "group flex h-7 w-full shrink-0 items-center gap-1 rounded-lg px-[9px] text-left",
         className,
       )}
     >
@@ -491,7 +491,7 @@ function WorkRow({
         // 모르므로 핀이 **제목 글자 위에 얹힌다**(실물에서 그 겹침을 보고 되돌렸다).
         // 사람이 고른 것이 그 갈림이다: 「호버하면, 자동으로 아이콘 위치만큼 text의 최대
         // 크기가 조정되지? 이런걸 원하는거임. (안겹치게)」
-        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-[10px] pr-1 transition-colors",
+        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-lg pr-1 transition-colors",
         // **채움은 없다.** 평평한 행이고, 회색이 서는 것은 고른 행 하나뿐이다 — 카드 채움(목업의
         // F·G)은 열여덟 행에 전부 무게를 줘 목록이 게시판이 된다.
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",

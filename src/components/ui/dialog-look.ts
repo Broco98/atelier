@@ -9,8 +9,8 @@
 //   글자로 그 요소를 찾는다.
 // - 쓰는 자리의 `className`과 `cn`으로 겨루는 것이 지금과 같게 남는다.
 //
-// 창 카드의 모양 자체(13px 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕)는 떠 있는 카드 모두의 것이라
-// index.css의 `floating-card`가 든다.
+// 창 카드의 모양 자체(카드 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕)는 떠 있는 카드 모두의 것이라
+// index.css의 `floating-card`가 든다. 전체화면 뷰어 · 읽는 창(`dialog.tsx`)의 모서리도 그것이다.
 export const dialogLook = {
   // 앱의 모든 모달이 쓰는 막(`modal-scrim`) — 뒤를 흐리지 않고 어둡게만 한다.
   overlay:

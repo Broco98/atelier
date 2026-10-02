@@ -128,7 +128,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                 className={cn(
                   // 테두리 없는 평평한 행 — 패널이 흰색이 된 뒤 흰 카드는 테두리만 남아 어긋난다.
                   // 규격(반지름·패딩·줄 간격)은 작업 목록과 같은 값이다 — 다른 것은 줄 수뿐
-                  "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1 text-left transition-colors",
+                  "flex w-full shrink-0 flex-col gap-[5px] rounded-lg px-3 py-1 text-left transition-colors",
                   active ? "selected-row" : "hover:bg-state-1",
                 )}
               >
@@ -142,7 +142,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                     {project.name}
                   </span>
                   {project.missing && (
-                    <span className="shrink-0 rounded-[7px] bg-red-500/10 px-2 py-0.5 text-caption font-medium text-red-600">
+                    <span className="shrink-0 rounded-lg bg-red-500/10 px-2 py-0.5 text-caption font-medium text-red-600">
                       누락
                     </span>
                   )}
@@ -155,7 +155,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                   <span className="flex items-center gap-2 font-mono text-mono-sm text-tertiary">
                     <GitFork className="size-3.5 shrink-0" strokeWidth={1.7} />
                     <span className="truncate">{project.git.remoteSlug}</span>
-                    <span className="shrink-0 rounded-[6px] bg-accent px-[7px] py-px text-mono-sm">
+                    <span className="shrink-0 rounded-inner bg-accent px-[7px] py-px text-mono-sm">
                       {project.baseBranch}
                     </span>
                   </span>

@@ -162,7 +162,7 @@ function SpecViewer({
                     에이전트가 읽는 자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
                     `SpecViewer.test.tsx`의 소스 검사가 리터럴이 들어오는 것을 막는다. */}
                 <EmptyContent>
-                  <code className="select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-mono-sm text-muted-foreground">
+                  <code className="select-all rounded-lg border bg-inset px-2.5 py-1.5 font-mono text-mono-sm text-muted-foreground">
                     {specDirRef(work.slug)}
                   </code>
                 </EmptyContent>
@@ -192,7 +192,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
-        <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 font-mono text-mono-sm text-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-inset px-2 py-1 font-mono text-mono-sm text-tertiary">
           <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
           {name}
         </span>
@@ -202,7 +202,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
         <img
           src={convertFileSrc(path)}
           alt={name}
-          className="max-h-full max-w-full rounded-[10px] border object-contain"
+          className="max-h-full max-w-full rounded-lg border object-contain"
         />
       )}
     </div>
@@ -705,7 +705,7 @@ export const PrettyView = memo(function PrettyView({
             // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
-              className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-inset px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
             >
               <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
               {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
@@ -716,7 +716,7 @@ export const PrettyView = memo(function PrettyView({
           <img
             src={source.kind === "url" ? source.url : convertFileSrc(source.path)}
             alt={alt}
-            className="my-1 h-auto max-w-full rounded-[10px] border"
+            className="my-1 h-auto max-w-full rounded-lg border"
           />
         );
       },
@@ -747,7 +747,7 @@ export const PrettyView = memo(function PrettyView({
             <MermaidBlock code={hastText(code)} />
           ) : (
             <pre
-              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-mono leading-[1.7] scroll-quiet"
+              className="overflow-x-auto rounded-card border bg-inset px-4 py-3.5 font-mono text-mono leading-[1.7] scroll-quiet"
               {...props}
             >
               {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
@@ -776,7 +776,7 @@ export const PrettyView = memo(function PrettyView({
         className?.includes("language-") ? (
           <code className={className}>{children}</code>
         ) : (
-          <code className="rounded-[6px] border bg-inset px-[5px] py-px font-mono text-[0.88em] wrap-anywhere">
+          <code className="rounded-inline border bg-inset px-[5px] py-px font-mono text-[0.88em] wrap-anywhere">
             {children}
           </code>
         ),

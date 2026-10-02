@@ -558,7 +558,7 @@ function SidebarItem({
   return (
     <div
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-[10px] pr-1 transition-colors",
+        "flex h-8 shrink-0 items-center rounded-lg pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >

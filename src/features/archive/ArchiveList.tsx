@@ -134,7 +134,7 @@ function ArchiveList({
               announce={sidebarOpen ? "description" : "name"}
               type="button"
               onClick={() => setSortAsc((v) => !v)}
-              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-caption font-medium text-muted-foreground transition-colors quiet-hover"
+              className="flex h-6 items-center gap-[5px] rounded-inner px-[9px] text-caption font-medium text-muted-foreground transition-colors quiet-hover"
             >
               <ArrowDown
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
@@ -157,7 +157,7 @@ function ArchiveList({
                   <DropdownMenuTrigger
                     aria-label="프로젝트 거르기"
                     className={cn(
-                      "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-caption font-medium transition-colors",
+                      "flex h-6 max-w-[120px] items-center gap-[5px] rounded-inner px-[9px] text-caption font-medium transition-colors",
                       projectFilter
                         ? "toggle-on"
                         : "text-muted-foreground quiet-hover",
@@ -299,7 +299,7 @@ function ArchiveRow({
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
-      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left text-muted-foreground transition-colors hover:bg-state-1">
+      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-[9px] text-left text-muted-foreground transition-colors hover:bg-state-1">
         {/* 펼쳤는지는 폴더 아이콘 하나가 말한다 — 늘 보이므로 hover해 보지 않아도 어느 것이
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}

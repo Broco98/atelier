@@ -91,7 +91,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
                   type="button"
                   onClick={() => onOpenProject(worktree.project)}
                   aria-label={`${worktree.project} 프로젝트 상세로 이동`}
-                  className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-ui font-medium transition-colors hover:bg-state-1"
+                  className="group flex h-7 items-center gap-1.5 rounded-lg px-2 text-left text-ui font-medium transition-colors hover:bg-state-1"
                 >
                   <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
                   <ChevronRight
@@ -186,7 +186,7 @@ function Row({
       announce="description"
       type="button"
       onClick={() => copy.onCopy(copy.text)}
-      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-ui transition-colors hover:bg-state-1"
+      className="group flex h-7 items-center gap-1.5 rounded-lg px-2 text-left text-ui transition-colors hover:bg-state-1"
     >
       {body}
       <Copy

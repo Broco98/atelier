@@ -208,7 +208,7 @@ describe("WorkPanel 두 탭", () => {
     // 그것은 **토글의 규격이지 탭의 규격이 아니다.**
     const tab = render(true).match(/<button[^>]*class="([^"]*)"[^>]*>spec</)?.[1] ?? "";
     expect(tab).not.toBe("");
-    expect(tab).toContain("rounded-[9px]");
+    expect(tab).toContain("rounded-lg");
     expect(tab).toContain("text-ui");
     expect(tab).toContain("font-medium");
   });

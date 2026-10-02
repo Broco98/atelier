@@ -115,7 +115,7 @@ function MetaRow({
       announce="description"
       type="button"
       onClick={() => onCopy(value)}
-      className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-ui transition-colors hover:bg-state-1"
+      className="group flex h-[30px] items-center gap-[9px] rounded-lg px-2 text-left text-ui transition-colors hover:bg-state-1"
     >
       {glyph}
       <span className="min-w-0 flex-1 truncate font-mono text-mono-sm">{shown}</span>

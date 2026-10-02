@@ -54,14 +54,14 @@ const dialogPopupVariants = cva(
           "top-[12vh] flex max-h-[60vh] w-[560px] max-w-[calc(100%-4rem)] flex-col overflow-hidden",
         // 전체화면 뷰어(다이어그램·표). 창 가장자리에서 사방 36px씩 물러선 큰 창이고, 넓은 창에서는 1280px에서
         // 멈춰 가운데에 선다. 머리 한 줄 아래를 본문이 채워 스스로 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는
-        // 것은 본문이 든다. 모서리는 옛 뷰어의 14px이다.
+        // 것은 본문이 든다. 모서리는 떠 있는 카드(`floating-card`)의 `rounded-card` 그대로다(ui-refresh 결정 6).
         fullscreen:
-          "inset-y-9 flex w-[calc(100%-4.5rem)] max-w-[1280px] flex-col overflow-hidden rounded-[14px]",
+          "inset-y-9 flex w-[calc(100%-4.5rem)] max-w-[1280px] flex-col overflow-hidden",
         // 읽는 창(spec 레이아웃 편집기의 「LLM이 받는 텍스트」). 가운데에 선 760×640px의 창이고, 앱 창이 그보다 작으면
         // 전체화면 뷰어처럼 사방 36px씩 물러선 데까지 준다. 머리 한 줄 아래를 본문이 채워 스스로 구르므로 안쪽 여백
-        // 없이 세로로 쌓고, 모서리는 전체화면 뷰어와 같은 14px이다.
+        // 없이 세로로 쌓고, 모서리는 전체화면 뷰어처럼 떠 있는 카드 그대로다.
         preview:
-          "top-1/2 flex h-[640px] max-h-[calc(100%-4.5rem)] w-[760px] max-w-[calc(100%-4.5rem)] -translate-y-1/2 flex-col overflow-hidden rounded-[14px]",
+          "top-1/2 flex h-[640px] max-h-[calc(100%-4.5rem)] w-[760px] max-w-[calc(100%-4.5rem)] -translate-y-1/2 flex-col overflow-hidden",
       },
     },
     defaultVariants: {

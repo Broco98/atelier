@@ -166,7 +166,7 @@ function ArchivePage({
               <span className="ml-1.5 flex shrink-0 items-center gap-2">
                 <span
                   className={cn(
-                    "flex h-[22px] items-center rounded-[7px] px-2 text-caption font-medium",
+                    "flex h-[22px] items-center rounded-lg px-2 text-caption font-medium",
                     meta.badgeClass,
                   )}
                 >
@@ -181,7 +181,7 @@ function ArchivePage({
                   {selected.projects.map((project) => (
                     <span
                       key={project}
-                      className="rounded-[7px] bg-accent px-2 py-[3px] text-caption text-muted-foreground"
+                      className="rounded-lg bg-accent px-2 py-[3px] text-caption text-muted-foreground"
                     >
                       {project}
                     </span>

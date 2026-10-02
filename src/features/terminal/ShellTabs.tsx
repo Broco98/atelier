@@ -381,7 +381,7 @@ function ShellTabs({
             // **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를
             // 가르는 안은 실물에서 접었다 — 그 칸만 규격이 갈리면 줄에서 튄다. 「다른 종류」는
             // 옆의 세로선 하나가 말한다.
-            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] pl-2 pr-2.5 text-ui transition-colors",
+            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui transition-colors",
             spec.on ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
           )}
         >
@@ -675,7 +675,7 @@ const ShellTab = memo(function ShellTab({
       // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
       data-shell-key={shell.shellKey ?? undefined}
       className={cn(
-        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-ui transition-colors",
+        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
         // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
         // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.

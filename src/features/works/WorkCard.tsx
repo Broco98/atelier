@@ -33,7 +33,7 @@ export function WorkCard({
       <span className="flex items-center gap-2">
         <span
           className={cn(
-            "shrink-0 rounded-[6px] px-1.5 py-px text-caption font-medium",
+            "shrink-0 rounded-inner px-1.5 py-px text-caption font-medium",
             meta.badgeClass,
           )}
         >

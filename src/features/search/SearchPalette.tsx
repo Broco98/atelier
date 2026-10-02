@@ -223,7 +223,7 @@ export function SearchList({
                 className={cn(
                   // 간격이 **9px**인 것은 사이드바 규격이다(결정 17·18) — 슬롯 17px과
                   // 합쳐 거터가 26px이 되고, 그 값이 사이드바 nav 줄의 글자 시작점과 같다.
-                  "flex shrink-0 items-baseline gap-[9px] rounded-[8px] px-2.5 py-1.5 outline-none",
+                  "flex shrink-0 items-baseline gap-[9px] rounded-lg px-2.5 py-1.5 outline-none",
                   at === selected ? "bg-state-2" : "hover:bg-state-1",
                 )}
               >

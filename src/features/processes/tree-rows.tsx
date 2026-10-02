@@ -63,7 +63,7 @@ export function TreeRow({
       role="treeitem"
       aria-level={level}
       aria-label={label}
-      className={cn("flex h-8 min-w-0 items-center gap-2 rounded-[8px] pr-1", className)}
+      className={cn("flex h-8 min-w-0 items-center gap-2 rounded-lg pr-1", className)}
       style={{ paddingLeft: `${(level - 1) * 18}px` }}
       {...rest}
     >

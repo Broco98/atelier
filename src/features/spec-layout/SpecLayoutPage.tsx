@@ -140,7 +140,7 @@ export function SpecLayoutSection({
         <strong className="font-medium">부탁</strong>을 누르면 참조가 복사돼요 —
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
       </p>
-      <ul className="flex flex-col rounded-[12px] border border-border">
+      <ul className="flex flex-col rounded-card border border-border">
         <LayoutRow state={state} onAsk={onAsk} onEdit={onEdit} onReread={onReread} onRevert={onRevert} />
       </ul>
     </section>
@@ -178,7 +178,7 @@ function LayoutRow({
           {/* 상태 배지의 바탕은 칩 바탕(`bg-accent` = state-2, 6%)이다 — draft 상태 배지와 같다. `bg-muted`는 이제
               행 hover 농도(state-1, 3%)라 흰 바탕 위에서 거의 안 보인다. */}
           {state.edited && (
-            <span className="inline-flex h-[18px] items-center rounded-[6px] bg-accent px-1.5 text-caption font-medium text-muted-foreground">
+            <span className="inline-flex h-[18px] items-center rounded-inner bg-accent px-1.5 text-caption font-medium text-muted-foreground">
               고침
             </span>
           )}
@@ -361,7 +361,7 @@ function PageNotice({
   return (
     <div
       role="status"
-      className="absolute bottom-7 left-8 z-20 flex w-[min(620px,calc(100%-4rem))] items-start gap-2.5 rounded-[12px] bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
+      className="absolute bottom-7 left-8 z-20 flex w-[min(620px,calc(100%-4rem))] items-start gap-2.5 rounded-card bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" strokeWidth={2.2} />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">

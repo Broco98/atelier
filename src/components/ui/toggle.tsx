@@ -14,14 +14,14 @@ const toggleVariants = cva(
       size: {
         default:
           "h-8 min-w-8 rounded-lg px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        sm: "h-7 min-w-7 rounded-[min(var(--radius-md),12px)] px-2.5 text-ui has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        sm: "h-7 min-w-7 rounded-lg px-2.5 text-ui has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 min-w-9 rounded-lg px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         // 앱의 24px 아이콘 버튼 규격을 그대로 부른다 — 값을 옮겨 적지 않는다(규격은 index.css 한 곳).
         icon: "icon-button",
         // 다이어그램 머리 줄의 툴바 버튼 — 배율 글자(「100%」)가 들어가는 이웃들과 한 줄에 서서 정사각이 아니다.
-        toolbar: "h-[22px] min-w-[22px] rounded-[7px] px-1 text-caption font-normal",
+        toolbar: "h-[22px] min-w-[22px] rounded-inner px-1 text-caption font-normal",
         // 설정 칩(테마·글꼴 프리셋) — 작업 패널 탭(tabs.tsx)과 같은 값이다. 옛 칩의 규격이 그 탭 버튼의 것이었다.
-        chip: "h-[26px] min-w-[26px] rounded-[9px] px-[10px] text-ui",
+        chip: "h-[26px] min-w-[26px] rounded-lg px-[10px] text-ui",
       },
     },
     defaultVariants: {

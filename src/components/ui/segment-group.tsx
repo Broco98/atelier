@@ -19,7 +19,7 @@ import { keepOnePressed } from "@/components/ui/toggle-group"
 // variant·size를 조용히 버린다. 여기서는 칸이 그런 prop을 아예 안 받는다.
 
 /** 눌린 바닥 — 한 단계 눌려 있어야 그 위의 칩이 **떠오른 것**으로 읽힌다. */
-const segmentGroupVariants = cva("relative rounded-[10px] bg-state-1", {
+const segmentGroupVariants = cva("relative rounded-lg bg-state-1", {
   variants: {
     size: {
       icon: "flex shrink-0 items-center gap-0.5 p-0.5",
@@ -40,9 +40,9 @@ const segmentChipVariants = cva(
   {
     variants: {
       size: {
-        icon: "top-0.5 left-0.5 size-6 rounded-lg",
+        icon: "top-0.5 left-0.5 size-6 rounded-inner",
         // 두 칸이 같은 폭이라 칩도 비율로 적는다 — 칸 사이 틈이 없어 둘째 칸까지는 제 폭 하나다.
-        sm: "inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[7px]",
+        sm: "inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-inner",
       },
       second: { true: "", false: "" },
       // 칩은 버튼이 아니라 disabled를 못 받는다 — 흐림을 따로 주지 않으면 두 칸이 흐린 위에서 칩
@@ -66,7 +66,7 @@ const segmentItemVariants = cva(
     variants: {
       size: {
         icon: "icon-button",
-        sm: "h-[26px] rounded-[7px] px-2.5 text-ui font-medium",
+        sm: "h-[26px] rounded-inner px-2.5 text-ui font-medium",
       },
     },
   }

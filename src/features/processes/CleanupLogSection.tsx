@@ -64,7 +64,7 @@ function EventRow({
     <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className="flex flex-col">
       <CollapsibleTrigger
         aria-label={eventLabel(event)}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-[8px] pr-1 text-left transition-colors quiet-hover"
+        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-1 text-left transition-colors quiet-hover"
       >
         <ChevronRight
           aria-hidden

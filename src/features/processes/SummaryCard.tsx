@@ -21,7 +21,7 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
   const countOrDash = (count: number | null) => (count === null ? NOT_READ : String(count));
 
   return (
-    <section aria-label="요약" className="mt-4 rounded-[12px] border bg-panel px-4 py-3">
+    <section aria-label="요약" className="mt-4 rounded-card border bg-panel px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <p data-figure="total" className="flex shrink-0 items-baseline gap-1.5">
           <span className="text-ui text-muted-foreground">합계</span>

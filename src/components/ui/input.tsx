@@ -17,16 +17,16 @@ const inputVariants = cva(
         // 설정의 글자칸이다. 포커스는 테두리 색 하나로 말하고, 틀린 값이면 빨간 테두리가 포커스보다 이긴다 —
         // 고치는 동안에도 틀렸다는 것이 보인다(스토리 107). 스크린리더는 같은 속성을 「잘못된 값」으로 읽는다.
         field:
-          "h-[30px] rounded-[9px] border border-border-strong bg-background px-[9px] text-ui placeholder:text-tertiary focus-visible:border-primary aria-invalid:border-red-500",
+          "h-[30px] rounded-lg border border-border-strong bg-background px-[9px] text-ui placeholder:text-tertiary focus-visible:border-primary aria-invalid:border-red-500",
         // 인라인 편집기 — 누른 글자 자리가 그대로 칸이 된다. 편집하는 동안에만 서므로 테두리가 늘 primary다.
         "inline-title":
-          "-mx-2 -my-1 rounded-[10px] border border-primary bg-background px-2 py-1 text-title tracking-[-0.015em]",
+          "-mx-2 -my-1 rounded-lg border border-primary bg-background px-2 py-1 text-title tracking-[-0.015em]",
         "inline-chip":
-          "h-[26px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-mono-sm",
+          "h-[26px] rounded-lg border border-primary bg-background px-[7px] font-mono text-mono-sm",
         // 늘 서 있는 제목 칸 — 고른 항목의 제목이 곧 칸이다(spec 레이아웃 편집기의 이름 틀). 제목처럼 보이다가 가리키면
         // 테두리가 서서 눌러 고치는 제목인 것을 말한다. 틀린 값이면 빨간 테두리가 hover · 포커스보다 이긴다(field와 같다).
         "entry-title":
-          "h-9 rounded-[9px] border border-transparent px-2 text-h2 font-semibold hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
+          "h-9 rounded-lg border border-transparent px-2 text-h2 font-semibold hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
       },
     },
     defaultVariants: {

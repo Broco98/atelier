@@ -31,19 +31,19 @@ const buttonVariants = cva(
         // 주 버튼 — 설정의 「저장」, 프로젝트 빈 화면의 「프로젝트 등록」.
         default:
           "h-8 gap-1.5 rounded-lg px-4 text-ui has-data-[icon=inline-end]:pr-3.5 has-data-[icon=inline-start]:pl-3.5",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-caption in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        xs: "h-6 gap-1 rounded-inner px-2 text-caption in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         // 쪽 동작 — 「다시 읽기」, 훅의 「설치」·「제거」, 프로젝트 머리행의 「폴더 열기」·「제거」, 목록 빈칸의 「프로젝트 등록」.
-        sm: "h-7 gap-1 rounded-[9px] px-[11px] text-ui in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-[9px] has-data-[icon=inline-start]:pl-[9px] [&_svg:not([class*='size-'])]:size-3.5",
+        sm: "h-7 gap-1 rounded-lg px-[11px] text-ui in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-[9px] has-data-[icon=inline-start]:pl-[9px] [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 rounded-lg px-2.5 text-ui has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         // 창 바닥 — 확인 창과 이름 바꾸기 창의 버튼. 창의 글(13px)보다 한 단 작다.
         dialog:
-          "h-7 gap-1 rounded-[8px] px-3 text-ui [&_svg:not([class*='size-'])]:size-3.5",
-        icon: "size-8 rounded-lg",
+          "h-7 gap-1 rounded-lg px-3 text-ui [&_svg:not([class*='size-'])]:size-3.5",
+        icon: "size-8 rounded-full",
         "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+          "size-6 rounded-full in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
         "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9 rounded-lg",
+          "size-7 rounded-full in-data-[slot=button-group]:rounded-lg",
+        "icon-lg": "size-9 rounded-full",
       },
     },
     defaultVariants: {

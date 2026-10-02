@@ -705,7 +705,7 @@ export function TerminalSection({
             // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
             fontSize: `${fontSize ?? FONT_SIZE}px`,
           }}
-          className="overflow-x-auto whitespace-pre rounded-[10px] px-3.5 py-3 leading-[1.6] scroll-quiet"
+          className="overflow-x-auto whitespace-pre rounded-lg px-3.5 py-3 leading-[1.6] scroll-quiet"
         >
           {PREVIEW_LINE}
         </div>
@@ -923,7 +923,7 @@ export function HooksSection({
               <p className="text-ui leading-[1.7] text-red-600">{status.writeError}</p>
             )}
             {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). */}
-            <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-mono-sm leading-[1.6] scroll-quiet">
+            <pre className="max-h-[168px] overflow-auto rounded-lg bg-muted px-3 py-2.5 text-mono-sm leading-[1.6] scroll-quiet">
               {status.preview}
             </pre>
           </div>

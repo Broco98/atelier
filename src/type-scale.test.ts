@@ -16,8 +16,17 @@ import { cn } from "@/lib/utils";
 // 기본 단계를 비웠으므로, 이름 단계는 **아무 CSS도 안 나온다** — 빌드도 타입 검사도 통과하고 그
 // 글자만 조용히 부모 크기를 물려받는다. 깨진 것이 화면에서 「조금 커 보인다」로만 남는 종류다.
 //
+// **반경도 같은 방식으로 DS 단계로만 적는다**(ui-refresh 결정 6 · 25). 알약(`rounded-pill`) · 원형
+// (`rounded-full`) · 10(`rounded-lg`) · 16(`rounded-card`)의 세 단계와, 10px 컨트롤 안에 드는 것의
+// `rounded-inner`(8) · 문서 안 인라인 코드의 `rounded-inline`(6)이다. 모서리 열 가지(2 · 5 · 6 · 7 · 8 ·
+// 9 · 10 · 12 · 13 · 14px)가 손으로 적은 `rounded-[Npx]`로 그렇게 생겼다.
+//
+// **`rounded-[…]`는 px 숫자만이 아니라 식(`min()` · `calc()`)까지 막는다.** registry가 들여온
+// `rounded-[min(var(--radius-md),10px)]` · `rounded-[calc(var(--radius)-3px)]`도 결국 한 자리의 모서리를
+// 손으로 고른 것이다 — 숫자만 막으면 같은 일이 식의 모양으로 검사를 비켜 가고, 단계가 다시 흩어진다.
+//
 // 세는 곳은 `src`의 소스(테스트 빼고)와 `index.css`다. **주석은 세지 않는다** — shadcn 부품 머리말
-// 「앱 규격으로 고친 자리」가 registry의 옛 값(`text-sm` 같은)을 적고, 그 기록은 남아야 한다.
+// 「앱 규격으로 고친 자리」가 registry의 옛 값(`text-sm` · `rounded-xl` 같은)을 적고, 그 기록은 남아야 한다.
 // 주석 밖은 전부 본다 — 문자열 · 템플릿 · CSS 선언(`@apply`)이다.
 //
 // 예외는 `EXCEPTIONS`에 자리와 까닭을 한 줄씩 적는다. 지금은 없다.
@@ -176,15 +185,41 @@ describe("글자 단계", () => {
   });
 });
 
-// **클래스를 합치는 `cn`이 단계 이름을 크기로 안다.** 합치기는 같은 갈래의 앞 클래스를 지운다. 단계 이름은
+// `@theme`에 선 반경 단계의 이름 — `--radius-card: 16px;`의 `card`. registry가 깐 `sm` · `md` · `xl` …도
+// 함께 나온다(앱 코드는 안 쓰지만 `@theme`에 남아 있다).
+const radii = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =>
+  [...block[1].matchAll(/--radius-([a-z0-9]+):/g)].map((m) => m[1]),
+);
+
+describe("반경 단계", () => {
+  it("DS의 반경 이름이 `@theme`에 있다", () => {
+    expect(radii).toEqual(expect.arrayContaining(["card", "pill", "inner", "inline"]));
+  });
+
+  it("반경을 임의 값으로 적지 않는다", () => {
+    // 실패하면 그 자리를 단계로 옮긴다 — 2px(툴팁 화살표) → xs, 5 · 6px → inner(문서 안 인라인 코드만 inline),
+    // 7 · 8 · 9 · 10px과 `min()` · `calc()` → lg(10px 컨트롤 **안에** 드는 칩 · kbd · 24px 이하 툴바 칸은 inner),
+    // 12 · 13 · 14px → card다. 아이콘 버튼은 full이다.
+    expect(offenders(/(?<![\w-])rounded(?:-[trblxyse]{1,2})?-\[[^\]]*\]/g)).toEqual([]);
+  });
+});
+
+// **클래스를 합치는 `cn`이 단계 이름을 안다.** 합치기는 같은 갈래의 앞 클래스를 지운다. 단계 이름은
 // Tailwind 기본 이름이 아니라서 따로 알려 주지 않으면 **글자색으로 읽혀**, `text-ui text-tertiary`에서
 // 크기가 조용히 사라진다. 그 이름표는 `lib/utils.ts`에 있고, 부품은 모두 거기서 `cn`을 받는다.
-describe("cn이 글자 단계를 안다", () => {
+// 반경 이름도 같다 — 모르면 `rounded-lg rounded-card`를 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
+describe("cn이 DS 단계를 안다", () => {
   it("단계와 글자색을 함께 남긴다", () => {
     const dropped = steps.filter((step) => cn(`text-${step} text-tertiary`) !== `text-${step} text-tertiary`);
     expect(dropped).toEqual([]);
     // 크기끼리는 뒤의 것이 이긴다 — 부르는 자리의 className이 부품의 단계를 덮는 길이다.
     expect(cn("text-ui", "text-caption")).toBe("text-caption");
+  });
+
+  it("반경 단계도 모서리로 안다", () => {
+    // 부품의 모서리(`rounded-lg`)를 부르는 자리의 className이 덮는다 — 뒤의 것 하나만 남아야 한다.
+    const kept = radii.filter((name) => cn("rounded-lg", `rounded-${name}`) !== `rounded-${name}`);
+    expect(kept).toEqual([]);
   });
 
   it("부품은 이름표를 아는 cn 하나를 쓴다", () => {

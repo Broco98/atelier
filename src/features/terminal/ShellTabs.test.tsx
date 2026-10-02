@@ -425,8 +425,8 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
     // 줄에서 튄다. 되살아나면 여기가 빨개진다.
     const markup = render(opened(2).state, { spec: { on: false, onSelect: () => {} } });
     expect(spec(markup)).not.toContain("bg-inset");
-    expect(spec(markup)).toContain("rounded-[8px]");
-    expect(firstShell(markup)).toContain("rounded-[8px]");
+    expect(spec(markup)).toContain("rounded-lg");
+    expect(firstShell(markup)).toContain("rounded-lg");
   });
 
   it("세로선이 `spec`와 스크롤 상자 **사이**에 선다", () => {

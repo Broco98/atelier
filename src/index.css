@@ -230,6 +230,21 @@
     --color-state-3: var(--state-3);
     --color-state-4: var(--state-4);
     --ease-panel: var(--panel-ease);
+    /* **반경 — 디자인 시스템의 세 단계와 그 안쪽 둘**(ui-refresh 결정 6 · 25). 이름은 DS(`base.css`) 그대로다.
+         rounded-pill    9999  머리 컨트롤 — 카드 머리 버튼 · 브레드크럼 · 원문 전환 · 상태 배지 · 검색칸
+         rounded-full    원형  아이콘 버튼(`icon-button` · 버튼의 `icon*` 크기)
+         rounded-lg      10    탭 · 목록 행 · 메뉴 행 · 폼 컨트롤 · 툴팁(`--radius` 그대로다)
+         rounded-card    16    카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
+         rounded-inner    8    10px 컨트롤 **안에** 드는 것 — 세그먼트 칩 · kbd · 24px 이하 툴바 칸
+         rounded-inline   6    문서 안 인라인 코드만
+       툴팁 화살표는 Tailwind 기본 `rounded-xs`(2px)다. 아래 `sm` · `md` · `xl` …은 registry가 깐 값이고
+       앱 코드는 쓰지 않는다 — 단계 밖 이름이다. `rounded-[…]`(px · `min()` · `calc()`)는 `type-scale.test.ts`가
+       막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가 이 이름들을 모서리로 아는지도 같은 검사가 잰다.
+       `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로 옮기기 전의 기록이다. */
+    --radius-card: 16px;
+    --radius-pill: 9999px;
+    --radius-inner: 8px;
+    --radius-inline: 6px;
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -531,7 +546,9 @@
 /* 아이콘 버튼 규격 — 거터 복사·spec 트리 복사·목록 패널 토글·작업 패널 토글·
    프로젝트 등록 +가 모두 이 한 정의를 쓴다. 여기는 모양만 정한다.
    hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면
-   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다. */
+   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다.
+   **원형이다**(ui-refresh 결정 6 — 아이콘 버튼). 크기 24px은 셸 컨트롤의 `--titlebar-control-size`와
+   묶여 있어 그대로다(`[data-titlebar]`의 주석). */
 @utility icon-button {
   display: flex;
   flex-shrink: 0;
@@ -539,7 +556,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 8px;
+  @apply rounded-full;
 }
 
 /* "켜지지 않는 것의 hover" — 배경 한 단계와 글자색이 함께 진해진다.
@@ -827,16 +844,17 @@ body.dragging-row * {
   background-color: rgb(0 0 0 / 25%);
 }
 
-/* **떠 있는 카드** — 13px 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕(결정 2의 앱 규격 표).
+/* **떠 있는 카드** — 카드 모서리(`rounded-card`, ui-refresh 결정 6) · 강한 테두리 · 큰 그림자 · 흰 바탕
+   (결정 2의 앱 규격 표).
    메뉴 · Popover · Select · 창 · 확인 창의 부품 파일과 `PopoverPortal`(호버 카드 · 틀 이동 힌트)이
    이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다 — 옛 `PopoverPortal` 카드의 값이다.
 
-   **모양만 정한다.** 폭 · 안쪽 · 자리 · 넘침은 표면마다 지금 값이 달라 부품 파일이 든다. 전체화면
-   뷰어의 모서리(14px)처럼 이것을 덮는 코어 유틸리티는 이 뒤에 선다(커스텀 @utility가 앞에 선다 —
+   **모양만 정한다.** 폭 · 안쪽 · 자리 · 넘침은 표면마다 지금 값이 달라 부품 파일이 든다. 부르는 자리가
+   이것을 코어 유틸리티로 덮으면 그쪽이 이 뒤에 서서 이긴다(커스텀 @utility가 앞에 선다 —
    toggle.tsx 머리말). 값을 따로 적지 않고 그 클래스들을 그대로 부르는 것은, 그림자가 ring과 한
    `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
 @utility floating-card {
-  @apply rounded-[13px] border border-border-strong bg-background shadow-lg;
+  @apply rounded-card border border-border-strong bg-background shadow-lg;
 }
 
 /* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(결정 2의 앱 규격 표 「메뉴 팝업」 ·
@@ -845,8 +863,8 @@ body.dragging-row * {
    `menu-list`는 목록 상자다 — 세로로 쌓고 항목 사이 1px, 안쪽 5px. 드롭다운은 카드 자신이 목록이고
    (메뉴 역할), Select는 카드 안의 `listbox`가 목록이다(머리 · 바닥 칸이 목록 밖에 선다).
 
-   `menu-row`는 한 줄이다 — 32px · 모서리 9px · 좌우 9px · 글리프 사이 8px. 목록이 세로 flex라 줄이
-   눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 부품 파일이 든다(메뉴 · Select
+   `menu-row`는 한 줄이다 — 32px · 모서리 `rounded-lg`(메뉴 행, ui-refresh 결정 6) · 좌우 9px · 글리프
+   사이 8px. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 부품 파일이 든다(메뉴 · Select
    모두 `text-ui`). 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
    클래스 그대로 부품 파일에 있다. 줄 끝의 체크는 `components/ui/menu-check.tsx`가 든다. */
 @utility menu-list {
@@ -854,7 +872,7 @@ body.dragging-row * {
 }
 
 @utility menu-row {
-  @apply h-8 shrink-0 gap-2 rounded-[9px] px-[9px];
+  @apply h-8 shrink-0 gap-2 rounded-lg px-[9px];
 }
 
 /* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-meta`(11px) · 글리프 사이 6px · 오른쪽 여백 5px.

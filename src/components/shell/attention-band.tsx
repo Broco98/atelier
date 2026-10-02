@@ -109,7 +109,7 @@ export function AttentionBand({
         // 바닥 `state-1`). 목록 위에 **뜬 것**으로 읽혀야 「열여덟 행을 훑지 않고 거기만
         // 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래 work 행들과 같은 평면에 서서
         // 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
-        "mt-1.5 mb-2 rounded-[10px] bg-state-1 py-1.5",
+        "mt-1.5 mb-2 rounded-lg bg-state-1 py-1.5",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
         // 아무것도 없었다 — 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 낮은
@@ -185,7 +185,7 @@ function MoreToggle({
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="flex h-6 w-full shrink-0 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-inner text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
     >
       {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
       <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
@@ -226,7 +226,7 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[8px] pl-[9px] pr-[10px] text-left text-ui",
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-ui",
         // **hover는 상자 바닥보다 한 단 위다** — 띠가 이미 `state-1` 위에 서 있어
         // 같은 값을 얹으면 아무 일도 안 일어난 것처럼 보인다(목업이 안 만난 충돌이다:
         // 저쪽 `.strip .it`에는 hover가 없다).
