@@ -1127,7 +1127,7 @@ function StatusMenu({ work }: { work: WorkView }) {
               // 글자 치기가 맞춰 볼 이름은 라벨이다 — 옆의 설명까지 섞이지 않게 적어 둔다.
               <DropdownMenuRadioItem key={status} value={status} label={option.label}>
                 <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
-                <span className="min-w-0 flex-1 truncate font-medium">{option.label}</span>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
                 <span className="shrink-0 text-caption text-tertiary">{option.desc}</span>
               </DropdownMenuRadioItem>
             );
@@ -1278,20 +1278,23 @@ function WorkMenu({
         </Hint>
         <DropdownMenuContent>
           {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
-              거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다. */}
+              거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다.
+
+              줄의 글자 · 글리프는 부품의 것이다(DS `.at-menu-row` — 13px 400, 글리프 15px tertiary, ui-refresh 결정 17).
+              여기서 굵기나 크기를 덧칠하지 않는다. */}
           <DropdownMenuItem onClick={() => setRenaming(true)}>
-            <Pencil className="size-3.5 text-tertiary" strokeWidth={1.9} />
-            <span className="min-w-0 flex-1 truncate font-medium">이름 바꾸기</span>
+            <Pencil strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleArchive}>
-            <Archive className="size-3.5 text-tertiary" strokeWidth={1.9} />
-            <span className="min-w-0 flex-1 truncate font-medium">아카이빙</span>
+            <Archive strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate">아카이빙</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={handleRemove}>
-            <Trash2 className="size-3.5" strokeWidth={1.9} />
-            <span className="min-w-0 flex-1 truncate font-medium">삭제</span>
+            <Trash2 strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate">삭제</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

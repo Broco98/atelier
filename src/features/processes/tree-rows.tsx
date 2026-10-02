@@ -369,7 +369,7 @@ export function RowMenu({ name }: { name: string }) {
       {/* 줄의 오른쪽 끝에 선 버튼이라 오른쪽 맞춤이다 — 왼쪽 맞춤이면 메뉴가 창 밖으로 뻗는다. */}
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => void keepAsException(name)}>
-          <span className="min-w-0 flex-1 truncate font-medium">예외로 두기</span>
+          <span className="min-w-0 flex-1 truncate">예외로 두기</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

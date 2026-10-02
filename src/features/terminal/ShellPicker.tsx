@@ -93,7 +93,7 @@ function ShellPicker({
           label="모든 프로젝트"
           onClick={() => onPick({ kind: "default" })}
         >
-          <span className="min-w-0 truncate font-medium">모든 프로젝트</span>
+          <span className="min-w-0 truncate">모든 프로젝트</span>
           {/* **보이는 글자로만 둔다** — 항목의 접근성 이름에 경로가 섞이면 이름에 폴더 이름이
               붙고, 어휘가 거부한 낱말이 이름으로 읽힌다(CONTEXT.md). 글자는 부르는 쪽이 자리에서
               읽어 준다 — 여기에 그 이름을 적지 않는다(`placeHint`). */}
@@ -105,7 +105,7 @@ function ShellPicker({
         </DropdownMenuItem>
         {projects.map((project) => (
           <DropdownMenuItem key={project} onClick={() => onPick({ kind: "project", project })}>
-            <span className="min-w-0 flex-1 truncate font-medium">{project}</span>
+            <span className="min-w-0 flex-1 truncate">{project}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
