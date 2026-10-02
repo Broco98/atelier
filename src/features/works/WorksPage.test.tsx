@@ -97,8 +97,8 @@ function railItems(markup: string): { name: string; pressed: string }[] {
   }));
 }
 
-/** 패널 토글의 여는 태그 — 이름이 상태를 타므로 두 이름 중 하나로 집는다. 없으면 빈 글자다. */
-const toggleTag = (markup: string) =>
+/** 패널 토글의 여는 태그들 — 이름이 상태를 타므로 두 이름 중 하나로 집는다. 맞는 것을 다 돌려주고, 없으면 빈 배열이다. */
+const panelToggleTags = (markup: string) =>
   markup.match(/<button[^>]*aria-label="작업 패널 (?:접기|펼치기)"[^>]*>/g) ?? [];
 
 describe("WorksPage 패널 토글과 레일", () => {
@@ -114,7 +114,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // ui-refresh 결정 9로 **뒤집혔다** — 한때 「열려 있으면 여는 아이콘이 없다 · 늘 보이는 토글이 없다」였다(여는 길은 바탕 줄,
     // 닫는 길은 패널 머리의 `×`). 이제 그 둘이 레일의 토글 하나로 합쳐져 늘 서 있고, 누르면 무슨 일이 날지를 이름이 말한다.
     // 첫 화면은 패널이 열린 상태다(WorksPage의 workPanelOpen 초기값).
-    const tags = toggleTag(render());
+    const tags = panelToggleTags(render());
     expect(tags).toHaveLength(1);
     expect(tags[0]).toContain('aria-label="작업 패널 접기"');
     expect(tags[0]).toContain('aria-expanded="true"');
@@ -122,7 +122,7 @@ describe("WorksPage 패널 토글과 레일", () => {
 
   it("패널이 접혀 있어도 토글은 그 하나이고, 이름이 「작업 패널 펼치기」 · `aria-expanded=\"false\"`다", () => {
     // 분할로 들어오면 패널이 접혀 있다(결정 88) — 정적 렌더로 접힌 패널을 만드는 길이 그것이다.
-    const tags = toggleTag(render(specDocs(["overview.md"]), "spec", "lr"));
+    const tags = panelToggleTags(render(specDocs(["overview.md"]), "spec", "lr"));
     expect(tags).toHaveLength(1);
     expect(tags[0]).toContain('aria-label="작업 패널 펼치기"');
     expect(tags[0]).toContain('aria-expanded="false"');
@@ -168,7 +168,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // `aria-controls`가 가리키는 것은 작업 패널 칸(두 번째 `aside`)이다.
     const panelId = markup.match(/<aside[^>]*\bid="([^"]+)"/)?.[1] ?? "";
     expect(panelId, "패널 칸에 id가 없다").not.toBe("");
-    expect(toggleTag(markup)[0]).toContain(`aria-controls="${panelId}"`);
+    expect(panelToggleTags(markup)[0]).toContain(`aria-controls="${panelId}"`);
     const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|info)"/.test(tag));
     expect(items).toHaveLength(2);
     for (const tag of items) expect(tag).toContain(`aria-controls="${panelId}"`);
@@ -178,7 +178,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // 결정 11. 두 본문 모두 패널을 이고 있다 — 터미널 탭에서 여는 길이 사라지면 **눌러도 아무 일이 없는 자리**가 아니라
     // 열 길 자체가 없어진다.
     const markup = render({}, "terminal");
-    expect(toggleTag(markup)).toHaveLength(1);
+    expect(panelToggleTags(markup)).toHaveLength(1);
     expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "info"]);
   });
 
