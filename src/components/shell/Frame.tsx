@@ -195,15 +195,7 @@ function PanelBox({ id, slot }: { id: string; slot: SideSlot }) {
  *
  * 줄 안의 버튼들은 이 속성이 없으므로 그대로 눌린다 — 칸 사이 빈 자리와 끄는 여백은 탭 줄이 제 자식에 단다.
  */
-function TitleBar({
-  sidebarOpen,
-  className,
-  children,
-}: {
-  sidebarOpen: boolean;
-  className?: string;
-  children?: ReactNode;
-}) {
+function TitleBar({ sidebarOpen, children }: { sidebarOpen: boolean; children?: ReactNode }) {
   return (
     <header
       data-tauri-drag-region
@@ -212,7 +204,6 @@ function TitleBar({
         "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-(--gap) transition-[padding]",
         PANEL_MOTION,
         sidebarOpen ? "pl-(--tab-lead)" : "pl-(--titlebar-inset-tabs)",
-        className,
       )}
     >
       {children}
@@ -220,7 +211,7 @@ function TitleBar({
   );
 }
 
-type CardTag = "section" | "main" | "div";
+type CardTag = "section" | "main";
 
 interface CardProps {
   /** 카드의 요소. 본문 카드는 `main`이고(문서의 `main`은 하나다), 그 밖은 `section`이다. */
@@ -235,7 +226,6 @@ interface CardProps {
    */
   tone?: "terminal";
   className?: string;
-  style?: CSSProperties;
   children: ReactNode;
 }
 
@@ -243,35 +233,35 @@ interface CardProps {
  * 바탕 위에 뜬 둥근 카드 하나(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 모서리는 카드가 자른다(`overflow-hidden`) — 안의
  * 스크롤 상자 · 셸 화면이 모서리 밖으로 그려지지 않는다. `relative`는 카드 안에 덮이는 것(설정의 메시지 등)의 기준이다.
  */
-function Card({ tone, ...props }: CardProps) {
-  return tone === "terminal" ? <TerminalCard {...props} /> : <CardBox {...props} paint="bg-card" />;
+function Card(props: CardProps) {
+  return props.tone === "terminal" ? <TerminalCard {...props} /> : <CardBox {...props} />;
 }
 
 /** 터미널 카드 — 설정의 테마를 구독하는 것은 이 갈래뿐이다(다른 카드가 설정이 바뀔 때마다 다시 그려질 까닭이 없다). */
-function TerminalCard({ style, ...props }: Omit<CardProps, "tone">) {
+function TerminalCard(props: CardProps) {
   const background = useShellBackground();
-  return <CardBox {...props} tone="terminal" style={{ ...style, backgroundColor: background }} />;
+  return <CardBox {...props} background={background} />;
 }
 
+/** 카드의 상자. 바탕은 터미널 카드면 그 갈래가 읽어 건넨 테마의 바탕이고, 그 밖은 흰 카드(`bg-card`)다. */
 function CardBox({
   as: Tag = "section",
   label,
   head,
   tone,
-  paint,
   className,
-  style,
+  background,
   children,
-}: CardProps & { paint?: string }) {
+}: CardProps & { background?: string }) {
   return (
     <Tag
       aria-label={label}
       data-slot="card"
       data-tone={tone}
-      style={style}
+      style={background === undefined ? undefined : { backgroundColor: background }}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card",
-        paint,
+        tone !== "terminal" && "bg-card",
         className,
       )}
     >
@@ -321,4 +311,4 @@ function CardHead({
   );
 }
 
-export { Card, CardHead, Frame, TitleBar };
+export { Card, CardHead, Frame };
