@@ -25,7 +25,7 @@ const CELLS = ["doc", "source"] as const;
 //
 // **두 칸 토글 부품(`SegmentGroup` — Base UI ToggleGroup 위)이다**(결정 1, 판 4). 한 컨트롤이라 Tab
 // 자리가 하나이고(첫 칸 — S30), 그 안에서는 ←/→로 옮긴다. 부품은 선 칸을 누르면 값을 비우는데(`[]`),
-// 여기서는 그것을 **뒤집기**로 읽는다(S16 — 모드 전환은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
+// 여기서는 그것을 **뒤집기**로 읽는다(S16 — 편집기의 종류 · 템플릿은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
 // 칸마다 네이티브 `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일
 // (`segment-group.tsx`)이 든다.
 export function SourceToggle({

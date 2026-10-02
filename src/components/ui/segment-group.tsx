@@ -1,4 +1,4 @@
-// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 모드 전환·문서/원문, 결정 1): 눌린 바닥(state-1·10px 모서리) 위를 흰 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 foreground, 안 선 칸은 tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기 default(모드 전환: 테두리·안쪽 3px·두 칸 격자, 칸 30px·7px 모서리·12.5px)와 icon(문서/원문: 안쪽·칸 사이 2px, 칸 24px icon-button), sm(spec 레이아웃 편집기의 종류 파일|폴더 · 템플릿 없음|있음: 테두리 없이 안쪽 2px·글자 폭의 두 칸 격자, 칸 26px·7px 모서리·좌우 10px·12.5px). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다.
+// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿, 결정 1): 눌린 바닥(state-1·10px 모서리) 위를 흰 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 foreground, 안 선 칸은 tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기는 둘이고 쓰는 자리가 고른다(기본값이 없다): icon(문서/원문: 안쪽·칸 사이 2px, 칸 24px icon-button), sm(spec 레이아웃 편집기의 종류 파일|폴더 · 템플릿 없음|있음: 테두리 없이 안쪽 2px·글자 폭의 두 칸 격자, 칸 26px·7px 모서리·좌우 10px·12.5px). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다.
 "use client"
 
 import * as React from "react"
@@ -22,16 +22,12 @@ import { keepOnePressed } from "@/components/ui/toggle-group"
 const segmentGroupVariants = cva("relative rounded-[10px] bg-state-1", {
   variants: {
     size: {
-      // 두 칸이 폭을 반씩 나눈다(사이드바 폭 240~400px을 따라 칸이 는다). 칸 수 2는 결정 5가
-      // 「모드는 둘뿐」이라 못박은 값이다 — 셋이 되는 날 칩 폭 50%도 함께 낡는다.
-      default: "grid grid-cols-2 border p-[3px]",
       icon: "flex shrink-0 items-center gap-0.5 p-0.5",
       // 글자 두 칸이 한 줄의 다른 칸들 곁에 선다(편집기의 제목 줄 · 템플릿 줄). 폭은 긴 글자의 칸에 맞춰 두 칸이
       // 같고(격자), 줄에 눌려 줄지 않는다. 바닥이 이미 눌린 회색이라 테두리는 없다.
       sm: "grid shrink-0 grid-cols-2 p-0.5",
     },
   },
-  defaultVariants: { size: "default" },
 })
 
 /**
@@ -44,9 +40,6 @@ const segmentChipVariants = cva(
   {
     variants: {
       size: {
-        // 칸 폭이 사이드바 폭을 따라 늘어나므로 px가 아니라 비율로 적는다 — 고정 px면 사이드바를
-        // 끌어 넓히는 순간 칩이 칸에서 어긋난다.
-        default: "inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-[7px]",
         icon: "top-0.5 left-0.5 size-6 rounded-lg",
         // 두 칸이 같은 폭이라 칩도 비율로 적는다 — 칸 사이 틈이 없어 둘째 칸까지는 제 폭 하나다.
         sm: "inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-[7px]",
@@ -57,14 +50,12 @@ const segmentChipVariants = cva(
       disabled: { true: "opacity-40", false: "" },
     },
     compoundVariants: [
-      // 둘째 칸으로 — 제 폭의 100%다(칸 사이 틈이 없다).
-      { size: "default", second: true, class: "translate-x-full" },
       // 둘째 칸으로 — 칸 24px(icon-button) + 칸 사이 2px(gap-0.5). 둘 다 고정값이다.
       { size: "icon", second: true, class: "translate-x-[26px]" },
       // 둘째 칸으로 — 제 폭의 100%다(칸 사이 틈이 없다).
       { size: "sm", second: true, class: "translate-x-full" },
     ],
-    defaultVariants: { size: "default", second: false, disabled: false },
+    defaultVariants: { second: false, disabled: false },
   }
 )
 
@@ -74,12 +65,10 @@ const segmentItemVariants = cva(
   {
     variants: {
       size: {
-        default: "h-[30px] rounded-[7px] text-[12.5px] font-medium",
         icon: "icon-button",
         sm: "h-[26px] rounded-[7px] px-2.5 text-[12.5px] font-medium",
       },
     },
-    defaultVariants: { size: "default" },
   }
 )
 
@@ -91,16 +80,16 @@ const segmentItemVariants = cva(
 const segmentItemTone = (pressed: boolean) =>
   pressed ? "text-foreground" : "text-tertiary tint-hover"
 
-/** 크기 셋 — `null`(cva의 「변형 없음」)은 받지 않는다. 바닥 · 칩 · 칸이 한 크기를 함께 읽는다. */
+/** 크기 둘 — `null`(cva의 「변형 없음」)은 받지 않는다. 바닥 · 칩 · 칸이 한 크기를 함께 읽는다. */
 type SegmentSize = NonNullable<VariantProps<typeof segmentGroupVariants>["size"]>
 
-/** 그룹이 칸에 내려 주는 것은 크기 하나다. */
-const SegmentGroupContext = React.createContext<SegmentSize>("default")
+/** 그룹이 칸에 내려 주는 것은 크기 하나다. 칸은 그룹 안에만 서므로 기본값은 타입을 채울 뿐이다. */
+const SegmentGroupContext = React.createContext<SegmentSize>("sm")
 
 function SegmentGroup<Value extends string>({
   cells,
   value,
-  size = "default",
+  size,
   deselectable = true,
   onValueChange,
   disabled,
@@ -111,7 +100,8 @@ function SegmentGroup<Value extends string>({
   ToggleGroupPrimitive.Props<Value>,
   "value" | "defaultValue" | "multiple" | "orientation"
 > & {
-  size?: SegmentSize
+  /** 크기. 기본값이 없다 — 두 크기는 칸의 내용(글리프 · 글자)이 달라 쓰는 자리가 고른다. */
+  size: SegmentSize
   /**
    * 칸의 값을 칸이 놓인 순서대로. 칩은 이것과 `value`로 서는 자리를 안다 — 칸 순서를 부품이 모르면
    * 쓰는 자리가 칩의 자리를 그룹의 값에서 손으로 다시 적어야 한다.
