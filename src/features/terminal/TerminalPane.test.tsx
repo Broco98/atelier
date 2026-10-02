@@ -27,15 +27,16 @@ describe("터미널 본문의 자리", () => {
     return opened.id;
   };
 
-  // 결정 94. 셸 화면에서 여백은 **빈 배경**이라 창이 좁을수록 손해가 크고, 그만큼 `cols`가
-  // 줄어든다. spec 본문의 거터는 읽는 글이라 그대로 두지만 여기는 아니다.
-  it("셸이 들어앉는 자리에 여백이 없다", () => {
+  // ui-refresh 판 04 기본값 — 셸이 둥근 카드에 앉으면서 집의 안쪽 여백이 `--term-inset` 하나다(한때 0이었다 — 결정 94).
+  // 여백이 그 토큰 **하나뿐**이어야 한다: 셸 화면에서 여백은 빈 배경이라 늘어난 만큼 `cols`가 줄고, spec 본문의 거터
+  // 같은 다른 값이 섞이면 카드 모서리와 글자 사이가 화면마다 갈린다. 그 띠가 셸 색인지는 e2e/terminal-fill.spec.ts가 잰다.
+  it("셸이 들어앉는 자리의 여백이 `--term-inset` 하나다", () => {
     // 셸의 집은 `data-shell-host`로 집는다 — **자리로 집지 않는다.** 한때 「마크업의
-    // 마지막 빈 div」였는데, 그 판정은 이 컴포넌트에 무엇 하나만 더 그려져도 결정 94와
+    // 마지막 빈 div」였는데, 그 판정은 이 컴포넌트에 무엇 하나만 더 그려져도 여백과
     // 무관하게 깨져서 「여백이 늘었다」로 잘못 보고한다.
     const host = /<div data-shell-host="" class="([^"]*)"/.exec(html());
     expect(host, "셸이 들어앉는 빈 자리를 찾지 못했다").not.toBeNull();
-    expect(padding(classesOf(host))).toEqual([]);
+    expect(padding(classesOf(host))).toEqual(["p-(--term-inset)"]);
   });
 
   /**
@@ -84,7 +85,7 @@ describe("터미널 본문의 자리", () => {
       'aria-label="셸 열기"',
     );
     expect(markup).toContain("아직 셸이 없어요");
-    // **셸의 집을 밀어내지 않는다** — 덮개라 집의 여백이 그대로 0이고(위 검사), 셸이 뜨는
+    // **셸의 집을 밀어내지 않는다** — 덮개라 집의 여백이 그대로이고(위 검사), 셸이 뜨는
     // 순간 집이 이미 자리를 잡고 있어 xterm이 다시 흐르지 않는다.
     expect(markup).toContain("absolute inset-0");
   });

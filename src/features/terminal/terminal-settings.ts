@@ -1,6 +1,8 @@
-import { Store } from "@tanstack/react-store";
+import { Store, useStore } from "@tanstack/react-store";
 import { settingsApi } from "@/features/settings/api";
 import type { TerminalSettings } from "@/features/settings/types";
+import { terminalLook } from "./terminal-defaults";
+import { terminalThemeFor } from "./terminal-theme";
 
 /**
  * `~/.atelier/settings.json`의 `terminal` 구획이 셸에 도착하는 자리. **`null`은 「아직 못 읽었거나
@@ -47,4 +49,15 @@ export async function loadTerminalSettings(): Promise<void> {
   } catch (error) {
     console.warn("atelier: 설정을 못 읽었다 — 터미널은 기본값으로 간다", error);
   }
+}
+
+/**
+ * 지금 설정으로 셸이 칠하는 바탕색. **색을 여기서 고르지 않는다** — xterm 테마의 정본(`terminal-theme.ts`)에서 읽는다.
+ *
+ * 셸의 집(`TerminalPane`)과 터미널 카드(`Card`의 `tone="terminal"` — ui-refresh 판 04 기본값)가 이것 하나를 읽는다. 둘이
+ * 따로 고르면 셸이 실제로 그리는 값과 어긋나 그 사이에 띠가 선다. 구독인 것은 밝게 · 어둡게를 바꾸면 이 칠도 따라와야 해서다
+ * (결정 52가 이미 떠 있는 셸을 따라오게 하는 것과 같은 몫).
+ */
+export function useShellBackground(): string | undefined {
+  return useStore(terminalSettingsStore, (settings) => terminalThemeFor(terminalLook(settings).theme).background);
 }

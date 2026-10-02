@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import PageHeader from "@/components/shell/PageHeader";
+import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { SignalLane } from "@/components/shell/shell-signal";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
@@ -88,23 +88,30 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const now = dataUpdatedAt;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col">
-        <PageHeader
-          root="Processes"
-          inset={!sidebarOpen}
-          actions={
-            // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
-            // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
-            // 모양은 쪽 동작의 버튼(`Button` ghost · sm — 설정의 「다시 읽기」와 같은 가족)이다.
-            <Button variant="ghost" size="sm" onClick={() => void closeQuietShells()}>
-              조용한 셸 모두 닫기
-            </Button>
-          }
-        />
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 바탕 줄은 비어 있는 끌기 줄이고(ui-refresh 결정 5 — 탭이 없는 화면), 위치와 쪽
+    // 동작은 카드 머리에 선다. 카드 안의 모양(요약 타일 · 구획)은 판 06이다.
+    <Frame sidebarOpen={sidebarOpen}>
+      <Card
+        as="main"
+        label="Processes"
+        className="flex-1"
+        head={
+          <CardHead
+            crumbs={["Processes"]}
+            end={
+              // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
+              // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
+              // 모양은 카드 머리의 알약(`Button` outline · pill — ui-refresh 결정 5 · 6)이다.
+              <Button variant="outline" size="pill" onClick={() => void closeQuietShells()}>
+                조용한 셸 모두 닫기
+              </Button>
+            }
+          />
+        }
+      >
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
-          {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — `PageHeader`는 제목 역할이 없는 글자라(설정 화면과 같은
-              사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
+          {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자라(설정
+              화면과 같은 사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
           <h2 className="sr-only">Processes</h2>
           {/* 요약 카드(티켓 30) — 합계 · 추이 · CPU · 수들 · 앱 본체. 셸 수(풀의 셸)도 여기 선다. */}
           <SummaryCard snapshot={snapshot} />
@@ -193,8 +200,8 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
           {/* 정리 기록(티켓 32) — 맨 끝이다. 스냅샷이 올 때마다 한 번 묻는다. */}
           {snapshot && <CleanupLogSection snapshotAt={dataUpdatedAt} />}
         </div>
-      </main>
-    </div>
+      </Card>
+    </Frame>
   );
 }
 

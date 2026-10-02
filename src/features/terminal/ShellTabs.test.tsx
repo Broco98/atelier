@@ -34,8 +34,9 @@ import type { Attention } from "./shell-attention";
 // 앞 판의 셸 목록 검사가 실물로 한 번 잃고 적어 둔 사고다.
 //
 // **이 줄은 지워졌던 그 컴포넌트가 아니다.** 옛것은 「탭 줄이 타이틀바를 겸하는가」를
-// prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 겸한다** — 그래서 창 드래그
-// 영역·신호등 회피·트랜지션 곡선이 조건이 아니라 이 줄의 성질이다(아래 「타이틀바 몫」).
+// prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 바탕 줄에 선다** — 창 드래그
+// 영역·신호등 회피·트랜지션 곡선은 그 줄(`Frame`의 `TitleBar`)의 성질이라 화면의 seam이 재고,
+// 여기서는 줄 안의 끄는 자리만 본다(아래 「줄 안의 끄는 자리」).
 
 // **소유자는 `ownerOf`가 짓는다**(결정 10) — 이 줄이 받는 값과 셸에 앉는 값이 같은 함수에서
 // 나와야 「이 화면의 셸만 그린다」가 실제로 그 화면을 재는 것이 된다.
@@ -73,7 +74,6 @@ function render(
     projects = [] as string[],
     spec = SPEC as SpecTab | null,
     showing = true,
-    inset = false,
     actions = undefined as React.ReactNode,
   } = {},
 ): string {
@@ -85,7 +85,6 @@ function render(
       defaultCwd={null}
       spec={spec}
       showing={showing}
-      inset={inset}
       actions={actions}
       onSelect={() => {}}
       onClose={() => {}}
@@ -120,7 +119,6 @@ const shellCellsOf = (markup: string) =>
     .filter((cell) => cell.kind === "shell")
     .map((cell) => cell.markup);
 const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열기"[^>]*>/)![0];
-const headerTagOf = (markup: string) => markup.match(/<header[^>]*>/)![0];
 
 describe("줄에 서는 것과 그 순서", () => {
   it("맨 앞이 `spec`이고 그 뒤로 셸, 마지막이 `+`다", () => {
@@ -403,11 +401,18 @@ describe("칸이 `memo` 경계다", () => {
 
   // 틈 알림(UI개선 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
   // 알림을 따로 화살표로 만들면 묶음이 두 자리가 되고 다음 콜백이 어느 쪽에 붙을지가 갈린다.
+  // 바탕 줄 `<header>`가 이 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 그 상자에 손으로 단다 — 다는 것도
+  // 떼는 것도 같은 묶음의 함수여야 뗄 때 남는 듣기가 없다.
   it("틈 알림이 같은 묶음에서 나온다", () => {
     const src = source();
-    expect(countOf(src, "onPointerMove={tabHandlers.onSlotMove}")).toBe(1);
-    expect(countOf(src, "onPointerLeave={tabHandlers.onSlotLeave}")).toBe(1);
-    expect(countOf(src, "onPointerUp={tabHandlers.onSlotDrop}")).toBe(1);
+    for (const [event, handler] of [
+      ["pointermove", "onSlotMove"],
+      ["pointerleave", "onSlotLeave"],
+      ["pointerup", "onSlotDrop"],
+    ] as const) {
+      expect(countOf(src, `row.addEventListener("${event}", tabHandlers.${handler});`), event).toBe(1);
+      expect(countOf(src, `row.removeEventListener("${event}", tabHandlers.${handler});`), event).toBe(1);
+    }
   });
 });
 
@@ -724,12 +729,9 @@ describe("칸을 본문 위로 끄는 자리", () => {
   });
 });
 
-describe("타이틀바 몫", () => {
-  it("창을 끌 수 있다", () => {
-    // 이 줄이 창 맨 위다 — 없으면 **창을 못 끈다**. 안쪽 버튼들은 이 속성이 없어 그대로 눌린다.
-    expect(headerTagOf(render(opened(2).state))).toContain("data-tauri-drag-region");
-  });
-
+// 바탕 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `TitleBar`가 들고, 그
+// 줄을 실제로 세우는 화면의 seam(`TerminalPage.test.tsx`)이 잰다. 이 줄이 지는 것은 **제 자식 중** 끄는 자리다.
+describe("줄 안의 끄는 자리", () => {
   it("빈 자리도 끄는 자리다", () => {
     // 탭과 조작 사이의 남는 자리가 이 줄에서 가장 넓다. 거기가 안 끌리면 「창이 가끔만
     // 끌린다」가 되는데, 화면으로는 어느 자리가 죽었는지가 안 보인다.
@@ -737,19 +739,10 @@ describe("타이틀바 몫", () => {
     expect(gap).toContain("data-tauri-drag-region");
   });
 
-  it("사이드바가 접히면 왼쪽 여백이 신호등을 피한다", () => {
-    expect(headerTagOf(render(NO_SHELLS, { inset: true }))).toContain("pl-(--titlebar-inset-tabs)");
-    expect(headerTagOf(render(NO_SHELLS, { inset: false }))).toContain("pl-(--tab-lead)");
-  });
-
-  it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
-    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 브레드크럼의 화면상 위치가
-    // 앞 패널들의 폭과 이 패딩의 합이라서다(index.css의 `--panel-ease` 주석).
-    const tag = headerTagOf(render(NO_SHELLS));
-    expect(tag).toContain("ease-panel");
-    expect(tag).toContain("transition-[padding]");
-    // 층 높이도 물려받는다 — 이 줄이 그 44px 자리다.
-    expect(tag).toContain("h-(--titlebar-height)");
+  it("뿌리에 `<header>`가 없다 — 칸들이 바탕 줄의 자식으로 선다", () => {
+    // 이 줄이 제 `<header>`를 그리면 바탕 줄 안에 머리가 둘이 되고, 조작 묶음이 바탕 줄의 마지막 자식이 아니게 된다
+    // (e2e `tab-row.ts`가 그 자리로 조작을 잰다).
+    expect(render(opened(2).state)).not.toContain("<header");
   });
 });
 

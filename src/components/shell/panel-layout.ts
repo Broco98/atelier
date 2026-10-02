@@ -20,8 +20,8 @@
  * **열의 min-content에 줄만 들어가야 한다.** 열에는 xterm 캔버스와 문서 본문(넓은 표·코드 블록)도 사는데
  * 그것들의 min-content까지 세면 소스 보기를 켤 때마다 바닥이 부풀어 패널이 창 밖으로 밀린다. 그래서 줄
  * 아닌 자식은 `contain: inline-size`로 제 내용의 폭을 바깥에 안 알린다 — 그려지는 폭은 그대로다(열이 늘여
- * 준다). 줄을 `header`로 가르는 것은 `ShellTabs`의 뿌리가 `<header>`여서다(`WorksPage.test`가 머리행을
- * 그 태그로 찾아 이 클래스를 든 열을 잰다).
+ * 준다). 줄을 `header`로 가르는 것은 바탕 줄(`Frame`의 `TitleBar`)이 `<header>`여서다(`WorksPage.test`가 머리행을
+ * 그 태그로 찾아 이 클래스를 든 열을 잰다). 공용 틀에서는 그 열이 `Frame`의 본문 열이다.
  */
 export const TAB_ROW_COLUMN = "min-w-min [&>:not(header)]:contain-inline-size";
 

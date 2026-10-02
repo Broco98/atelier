@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
-import PageHeader from "@/components/shell/PageHeader";
+import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -199,7 +199,7 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
 };
 
 /**
- * 설정 항목 하나의 화면(UI개선 결정 22). 머리는 `Settings / 터미널`이고 본문은 그 항목 하나다.
+ * 설정 항목 하나의 화면(UI개선 결정 22). 머리는 `Settings › 터미널`이고 본문은 그 항목 하나다.
  *
  * **초안은 항목 페이지 안에 산다**(결정 26) — 항목을 옮기면 주소가 바뀌어 페이지가 내려가고,
  * 저장 안 한 편집이 함께 버려진다. 경고하지 않는다: 설정 화면을 떠날 때 이미 그랬고, 같은 규칙이
@@ -207,16 +207,22 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
  */
 function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      {/* `relative`는 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
-          본문이 아니라 이 칸의 바닥에 선다. */}
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <PageHeader root="Settings" leaf={settingsItem(item).label} inset={!sidebarOpen} />
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 바탕 줄은 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치는 카드 머리의
+    // `Crumbs[Settings, 항목]`이다. 설정 묶음 행의 모양은 판 06이다.
+    <Frame sidebarOpen={sidebarOpen}>
+      {/* 카드가 `relative`라 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
+          본문이 아니라 이 카드의 바닥에 선다. */}
+      <Card
+        as="main"
+        label="Settings"
+        className="flex-1"
+        head={<CardHead crumbs={["Settings", settingsItem(item).label]} />}
+      >
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
           <div className="flex max-w-[620px] flex-col gap-6">
             {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다.** 한 화면에 구획이 셋이던 때는
                 구획마다 보이는 머리가 있었는데, 항목이 페이지가 되면서 머리 바로 밑에 같은 낱말이
-                한 번 더 섰다. 다만 `PageHeader`는 제목 역할이 없는 글자라, 이것마저 지우면 페이지에
+                한 번 더 섰다. 다만 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자라, 이것마저 지우면 페이지에
                 제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. */}
             <h2 className="sr-only">{settingsItem(item).label}</h2>
             {/* **항목이 곧 key다.** 두 항목의 본문이 같은 게이트로 시작해, key가 없으면 React가
@@ -225,8 +231,8 @@ function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: Setti
             <Fragment key={item}>{ITEM_BODIES[item]()}</Fragment>
           </div>
         </div>
-      </main>
-    </div>
+      </Card>
+    </Frame>
   );
 }
 

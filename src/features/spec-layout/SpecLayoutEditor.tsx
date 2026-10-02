@@ -27,7 +27,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
-import PageHeader from "@/components/shell/PageHeader";
+import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { Input } from "@/components/ui/input";
@@ -244,16 +244,17 @@ function EditorScreen({
       onBack={onBack}
       actions={
         <>
-          {/* 머리의 쪽 동작이다 — 프로젝트 머리행의 [폴더 열기]와 같은 `Button` ghost · sm이고, 아이콘은 글자 앞에
-              선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
+          {/* 카드 머리의 알약이다(`Button` outline · pill — ui-refresh 결정 5 · 6, 프로토타입 `Settings-editor`). 아이콘은 글자
+              앞에 선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
               `aria-expanded`)를 달지 않는다 — 앱의 창 여는 버튼(전체화면 뷰어 · 이름 바꾸기)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
-          <Button ref={opener} variant="ghost" size="sm" onClick={() => setPreviewOpen(true)}>
+          <Button ref={opener} variant="outline" size="pill" onClick={() => setPreviewOpen(true)}>
             <Eye data-icon="inline-start" aria-hidden strokeWidth={1.9} />
             LLM이 받는 텍스트
           </Button>
-          {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이다. */}
-          <Button onClick={() => void save()} disabled={!enabled}>
+          {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이고, 카드 머리라 알약 크기에 선다. 글자는 주 버튼의
+              굵기(500)다 — 알약 크기의 400은 흰 알약의 것이다(DS `.at-pill.primary`). */}
+          <Button size="pill" className="font-medium" onClick={() => void save()} disabled={!enabled}>
             {write.isPending ? "저장 중…" : "저장"}
           </Button>
         </>
@@ -356,8 +357,10 @@ export function OutsideBanner({
 }
 
 /**
- * 편집기의 틀 — 머리(뒤로 · 위치 · 동작)와 본문. 위치는 세 칸이다: `Settings / spec 레이아웃 / Atelier`.
- * 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
+ * 편집기의 틀 — 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27)와 그 카드 머리(뒤로 · 위치 · 동작). 바탕 줄은 비어 있는
+ * 끌기 줄이다(ui-refresh 결정 5). 위치는 세 칸이다: `Settings › spec 레이아웃 › Atelier`. 가운데 칸은 설정 nav 항목 표에서 읽는다 —
+ * 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다. 카드 안의 두 열(`EditorColumns`)은 그대로다 — 트리를
+ * 오른쪽 카드로 내는 것은 판 06이다.
  */
 function EditorFrame({
   sidebarOpen,
@@ -372,30 +375,29 @@ function EditorFrame({
 }) {
   const name = LAYOUT_NAME;
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <PageHeader
-          lead={
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label="설정으로 돌아가기"
-              className="icon-button-quiet size-7 text-muted-foreground"
-            >
-              <ArrowLeft aria-hidden className="size-4" strokeWidth={2} />
-            </button>
-          }
-          root="Settings"
-          trail={[settingsItem("spec-layout").label]}
-          leaf={name}
-          inset={!sidebarOpen}
-          actions={actions}
-        />
-        {/* 제목 역할은 이 줄이 진다 — 머리(`PageHeader`)는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
+    <Frame sidebarOpen={sidebarOpen}>
+      <Card
+        as="main"
+        label={`${name} 레이아웃 편집기`}
+        className="flex-1"
+        head={
+          <CardHead
+            lead={
+              // 카드 머리의 원형 아이콘 버튼이다(`size="icon-round"` — ui-refresh 결정 6).
+              <Button variant="outline" size="icon-round" onClick={onBack} aria-label="설정으로 돌아가기">
+                <ArrowLeft aria-hidden strokeWidth={2} />
+              </Button>
+            }
+            crumbs={["Settings", settingsItem("spec-layout").label, name]}
+            end={actions}
+          />
+        }
+      >
+        {/* 제목 역할은 이 줄이 진다 — 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
         <h2 className="sr-only">{name} 레이아웃</h2>
         {children}
-      </main>
-    </div>
+      </Card>
+    </Frame>
   );
 }
 

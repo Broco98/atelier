@@ -19,7 +19,9 @@ import {
 // 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절).
 
 const aside = (page: Page) => page.locator("aside");
-const 머리 = (page: Page) => page.locator("main header").first();
+// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
+// 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
+const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
 const 행 = (page: Page) => page.locator("main li").filter({ has: page.getByText("Atelier", { exact: true }) });
 const 부탁 = (page: Page) =>
   page.getByRole("button", { name: "Atelier 레이아웃을 에이전트에게 부탁", exact: true });
@@ -40,7 +42,7 @@ test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가
   const 항목 = aside(page).getByRole("button", { name: "spec 레이아웃", exact: true });
   await 항목.click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*spec 레이아웃$/);
   await expect(항목.locator("xpath=..")).toHaveClass(/selected-row/);
   await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(0);
 

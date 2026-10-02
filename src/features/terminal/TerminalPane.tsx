@@ -13,9 +13,7 @@ import {
   workShellOrigin,
 } from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
-import { terminalLook } from "./terminal-defaults";
-import { terminalSettingsStore } from "./terminal-settings";
-import { terminalThemeFor } from "./terminal-theme";
+import { useShellBackground } from "./terminal-settings";
 import { attachShell, detachShell, ensureShell, showShell, terminalStore } from "./terminal-store";
 import type { WorkView } from "@/features/works/types";
 
@@ -83,24 +81,20 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   const active = activeShellOf(state, owner);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
 
-  // 셸의 배경색. **색을 여기서 고르지 않는다** — xterm 테마의 정본은 `terminal-theme.ts`이고
-  // (그 파일 머리말), 셸이 실제로 그리는 값과 어긋나면 아래 잉여 띠가 도로 보인다.
-  // 설정을 구독하는 것은 밝게·어둡게를 바꾸면 이 칠도 따라와야 해서다(결정 52가 이미 떠 있는
-  // 셸을 따라오게 하는 것과 같은 몫).
-  const shellBackground = useStore(
-    terminalSettingsStore,
-    (settings) => terminalThemeFor(terminalLook(settings).theme).background,
-  );
+  // 셸의 배경색. **색을 여기서 고르지 않는다** — 셸이 실제로 그리는 값과 어긋나면 아래 잉여 띠와 안쪽 여백 띠가 도로
+  // 보인다. 터미널 카드(`Card`의 `tone="terminal"`)가 같은 훅으로 같은 값을 칠한다.
+  const shellBackground = useShellBackground();
 
   return (
-    // 상자는 여백을 갖지 않는다 — 아래 셸의 집이 결정 94를 그대로 지켜야 한다.
+    // 상자는 여백을 갖지 않는다 — 여백은 아래 셸의 집 하나가 든다(그래야 그 띠가 셸 색으로 칠해진다).
     // `relative`는 셸이 0개일 때 덮는 안내와 죽은 셸의 안내를 이 영역 안에 세우기 위한
     // 것이다. **위에 형제가 없다**(결정 1) — 종료 줄이 흐름에서 빠지면서 프래그먼트도
     // 함께 걷혔고, 이 상자가 머리행 바로 아래에서 시작한다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {/* 셸이 들어앉는 자리. **여백이 0인 것이 결정 94다** — 셸 화면에서 여백은 빈 배경이라
-          창이 좁을수록 손해가 크고, 그만큼 `cols`가 줄어든다. spec 본문의 거터(`px-12`)는
-          읽는 글이라 그대로 둔다.
+      {/* 셸이 들어앉는 자리. **안쪽 여백이 `--term-inset`(12)이다**(ui-refresh 판 04 기본값 — 터미널 카드의 안쪽 여백).
+          셸이 둥근 카드에 앉으면서 글자가 모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
+          빈 배경이라 `cols`가 준다). 여백은 **집의 것**이다 — 셸(xterm 래퍼)은 집의 내용 상자를 100%로 받아 `fit()`이
+          여백을 뺀 자리로 격자를 재고, 여백 띠는 아래 칠을 함께 받아 셸 색이다. 카드에 여백을 주면 그 띠가 카드 색이 된다.
 
           표식은 검사가 이 상자를 **정체성으로** 집기 위한 것이다 — 한때 「마크업의 마지막
           빈 div」라는 자리로 집었는데, 이 컴포넌트에 무엇 하나만 더 그려지면 그 판정이
@@ -112,11 +106,12 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           띠가 된다. 창 높이가 바뀌면 잉여도 0~19px에서 함께 바뀌므로 「16px」을 값으로 어디에도
           적어 두지 않는다. 셀 높이를 억지로 늘려 잉여를 없애는 안은 글꼴을 흔들어서 안 쓴다.
           **셸이 있을 때만 칠한다** — 0개인 화면까지 칠하면 결정 102의 안내가 커다란 어두운
-          판 위에 서고, 그 화면에는 덮을 잉여도 없다. */}
+          판 위에 서고, 그 화면에는 덮을 잉여도 없다. 터미널 카드는 늘 셸 색이므로 그 화면은 아래 덮개가 카드 색(`bg-card`)으로
+          덮는다. */}
       <div
         ref={hostRef}
         data-shell-host=""
-        className="min-h-0 min-w-0 flex-1"
+        className="min-h-0 min-w-0 flex-1 p-(--term-inset)"
         style={activeId === null ? undefined : { backgroundColor: shellBackground }}
       />
       {/* 죽은 셸의 한 문장(결정 22·45). **흐름에 끼지 않고 셸 위에 겹쳐 뜬다**(결정 1).
@@ -161,9 +156,12 @@ function TerminalPane({ work }: { work: WorkView | null }) {
 
           **덮개인 것은 그대로다**(`absolute inset-0`) — 흐름에 끼면 셸의 집 상자가 이 판의
           유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유).
-          빈 화면 부품(Empty)은 그 덮개 **안에** 선다 — 덮개를 부품으로 갈아 끼우지 않는다. */}
+          빈 화면 부품(Empty)은 그 덮개 **안에** 선다 — 덮개를 부품으로 갈아 끼우지 않는다.
+
+          **덮개가 카드 색으로 칠한다**(`bg-card`). 터미널 카드는 설정의 테마로 칠해져(판 04 기본값) 어둡게면 어두운 판인데,
+          그 위에 이 안내가 서면 글자가 묻힌다 — 위 집이 셸이 있을 때만 칠하는 것과 같은 까닭이다. */}
       {shells.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center p-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-card p-10">
           <Empty>
             <EmptyHeader>
               {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를

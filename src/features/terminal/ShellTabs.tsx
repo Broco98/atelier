@@ -129,8 +129,6 @@ interface ShellTabsProps {
    * 그중 셋은 이 모듈이 알 수 없는 `features/works`의 것이다.
    */
   actions?: React.ReactNode;
-  /** 사이드바가 접혀 이 줄이 창 왼쪽 끝에 붙을 때 — 신호등을 피한다. */
-  inset?: boolean;
 }
 
 // 화면 머리행의 **가로 탭 줄**(결정 7·8·10). `[spec][셸…][+]`가 왼쪽부터 차고 오른쪽 끝에
@@ -141,11 +139,11 @@ interface ShellTabsProps {
 // 순서를 눈에 보이게 하는 것뿐이다. 화면에 보이는 순서와 ⌘1~9가 고르는 것이 어긋나면
 // 이 줄이 한 일이 없다.
 //
-// **이 줄은 늘 타이틀바를 겸한다.** 한때 같은 이름의 컴포넌트가 있었고 그것은 겸하는지를
-// `titlebar` prop으로 갈랐는데(그 화면이 `/terminal` 하나였다), 이제 두 화면 다 머리행이
-// 이 줄이다 — 그래서 44px 층 높이·창 드래그 영역·신호등 회피 여백이 조건이 아니라 성질이다.
-// 여백의 곡선이 `ease-panel`인 것은 사이드바 폭 트랜지션과 같아야 하기 때문이다(PageHeader와
-// 같은 근거 — index.css의 `--panel-ease`).
+// **이 줄은 바탕 줄에 선다 — 그 줄 자체가 아니다**(ui-refresh 결정 5 · 27). 44px 층 높이 · 창 드래그 영역 · 신호등 회피
+// 여백은 바탕 줄(`Frame`의 `TitleBar`, `<header>`)의 성질이고, 이 컴포넌트는 그 줄의 **자식들**(칸 · 세로선 · `+` · 끄는
+// 여백 · 조작)을 내놓는다 — 뿌리가 프래그먼트라 칸들이 `<header>`의 자식으로 바로 서고, 조작 묶음(`data-tab-actions`)이 여전히
+// 그 줄의 **마지막 자식**이다(e2e `tab-row.ts` · `WorksPage.test`가 그 자리로 집는다). 줄 안의 끄는 자리(세로선 · 빈 여백)는
+// 그대로 이 줄이 제 자식에 단다.
 //
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
@@ -168,7 +166,6 @@ function ShellTabs({
   onDropSlot,
   dragging,
   actions,
-  inset = false,
 }: ShellTabsProps) {
   // 상한도 그리는 것도 **이 화면**의 것이다(결정 23). 두 값이 같은 상태에서 같은 범위로
   // 나오는 것이 결정 30의 전부다.
@@ -291,7 +288,7 @@ function ShellTabs({
         }
         latest.current.onDragTab(id, from);
       },
-      onSlotMove: (event: React.PointerEvent) => {
+      onSlotMove: (event: { clientX: number; clientY: number }) => {
         const strip = stripRef.current;
         if (!pressed.current || !strip) return;
         pointerX.current = event.clientX;
@@ -328,26 +325,30 @@ function ShellTabs({
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeId, showing]);
 
+  // 끄는 동안 이 줄이 틈 소비자다(UI개선 스펙 S10). **바탕 줄 전체**에서 듣는 것은 높이 때문이다 — 스크롤 상자는 칸
+  // 높이(28px)라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이
+  // 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
+  //
+  // **그 줄은 이 컴포넌트의 것이 아니다** — 바탕 줄 `<header>`는 `TitleBar`가 그리고 이 줄은 그 자식들만 내놓는다(위
+  // 머리말). 그래서 React 속성으로 못 달고 그 상자에 손으로 단다. 칸 상자(`stripRef`)는 늘 서 있어 그 줄을 늘 찾는다.
+  // 줄 위에서 떼면 이 듣기가 창의 듣기(`drop` · 제스처의 `end`)보다 먼저 받는다 — 요소가 창보다 먼저 버블을 받는다.
+  useEffect(() => {
+    const row = stripRef.current?.closest("header");
+    if (!row) return;
+    row.addEventListener("pointermove", tabHandlers.onSlotMove);
+    row.addEventListener("pointerleave", tabHandlers.onSlotLeave);
+    row.addEventListener("pointerup", tabHandlers.onSlotDrop);
+    return () => {
+      row.removeEventListener("pointermove", tabHandlers.onSlotMove);
+      row.removeEventListener("pointerleave", tabHandlers.onSlotLeave);
+      row.removeEventListener("pointerup", tabHandlers.onSlotDrop);
+    };
+  }, [tabHandlers]);
+
   return (
-    <header
-      // 이 줄이 창 맨 위다 — 없으면 **창을 못 끈다**. 안쪽 버튼들은 이 속성이 없으므로
-      // 그대로 눌린다(PageHeader가 브레드크럼에 쓰는 방식과 같다).
-      data-tauri-drag-region
-      // 끄는 동안 이 줄이 틈 소비자다(UI개선 스펙 S10). **줄 전체**에서 듣는 것은 높이 때문이다 —
-      // 스크롤 상자는 칸 높이(28px)라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는
-      // 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
-      onPointerMove={tabHandlers.onSlotMove}
-      onPointerLeave={tabHandlers.onSlotLeave}
-      onPointerUp={tabHandlers.onSlotDrop}
-      className={cn(
-        // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다(PageHeader와 같다).
-        "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-4 transition-[padding] duration-[220ms] ease-panel",
-        // **왼쪽 여백은 두 경우가 같은 값을 쓴다**(결정 24 · index.css의 `--tab-lead`).
-        // 접혔으면 셸 컨트롤에서, 펼쳤으면 사이드바 경계선에서 재는 것뿐이고 거리는 하나다 —
-        // 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직인다.
-        inset ? "pl-(--titlebar-inset-tabs)" : "pl-(--tab-lead)",
-      )}
-    >
+    // 뿌리가 없다 — 칸들이 바탕 줄 `<header>`(`TitleBar`)의 자식으로 바로 선다(머리말). 줄의 높이 · 칸 사이 간격(gap) ·
+    // 여백 · 창 끌기는 그 줄의 것이다.
+    <>
       {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
           고정된다. ⌘W가 여기서 아무 일도 안 하는 것(결정 13)이 같은 말이다.
 
@@ -527,7 +528,7 @@ function ShellTabs({
           {actions}
         </div>
       )}
-    </header>
+    </>
   );
 }
 

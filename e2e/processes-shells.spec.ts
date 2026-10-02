@@ -40,6 +40,8 @@ const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, ex
 const 셸트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
 const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
 const 버튼 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
+/** 본문 카드의 머리 — 위치(`Processes`)와 쪽 동작([조용한 셸 모두 닫기])이 선다(ui-refresh 결정 5 · `CardHead`). */
+const 카드머리 = (page: Page) => page.locator('main [data-slot="card-head"]');
 
 /** 한 묶음의 줄들 — 깊이와 접근성 이름. 화면에 선 차례 그대로다. */
 async function 줄들(scope: Locator): Promise<Array<{ level: string | null; name: string | null }>> {
@@ -332,7 +334,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(셸줄(offscreen, 99)).toBeVisible();
 
   // ── [조용한 셸 모두 닫기] ── 살아 있는 셸 1 · 3 중 조용한 3만 닫는다.
-  await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
+  await 버튼(카드머리(page), "조용한 셸 모두 닫기").click();
   const quiet = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(quiet).toBeVisible();
   await 버튼(quiet, "모두 닫기").click();
@@ -498,7 +500,7 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   await openShell(page);
   await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
-  const quietAll = 버튼(page.locator("header"), "조용한 셸 모두 닫기");
+  const quietAll = 버튼(카드머리(page), "조용한 셸 모두 닫기");
 
   // ── 취소 ──
   await quietAll.click();
@@ -539,7 +541,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
 
-  await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
+  await 버튼(카드머리(page), "조용한 셸 모두 닫기").click();
   const toast = toastOf(page, "닫을 조용한 셸이 없어요");
   await expect(toast).toBeVisible();
   // 앵커: 물었다 — 안 물어서 없다고 한 것이 아니다.
