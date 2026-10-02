@@ -27,8 +27,10 @@ const inputVariants = cva(
           "h-7 rounded-lg border border-primary bg-background px-[7px] font-mono text-mono",
         // 늘 서 있는 제목 칸 — 고른 항목의 제목이 곧 칸이다(spec 레이아웃 편집기의 이름 틀). 제목처럼 보이다가 가리키면
         // 테두리가 서서 눌러 고치는 제목인 것을 말한다. 틀린 값이면 빨간 테두리가 hover · 포커스보다 이긴다(field와 같다).
+        // 글자는 큰 제목(`text-title` — 굵기 · 자간도 단계의 것)이고, 높이는 앞의 아이콘 상자(44)와 같다 — 편집기 폼이 설정 틀의
+        // 큰 제목 자리에 서서다(판 06 티켓 07).
         "entry-title":
-          "h-9 rounded-lg border border-transparent px-2 text-h2 font-semibold hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
+          "h-11 rounded-lg border border-transparent px-2 text-title hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
       },
     },
     defaultVariants: {

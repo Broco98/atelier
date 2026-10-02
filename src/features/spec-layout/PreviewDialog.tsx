@@ -59,7 +59,9 @@ function PreviewDialog({
             <X aria-hidden className="size-4" strokeWidth={2} />
           </Hint>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar pt-3.5 pb-5 scroll-quiet">
+        {/* 글 상자는 카드 안 묶음과 같은 옅은 면이다(ui-refresh 결정 16의 `bg-group`, 판 06 티켓 07) — 사이드바 색(창 바탕의
+            회색)이 아니다. */}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-group pt-3.5 pb-5 scroll-quiet">
           <PreviewText answer={answer} selected={selected} />
         </div>
       </DialogContent>

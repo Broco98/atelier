@@ -1,13 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { EditorColumns, OutsideBanner, UnreadableLayout } from "./SpecLayoutEditor";
+import { EntryForm, OutsideBanner, TreeCard, UnreadableLayout } from "./SpecLayoutEditor";
 import type { EntryPath, LayoutDraft } from "./draft";
 import type { LayoutError, UnreadableSpecLayout } from "./types";
 
-// 「spec 레이아웃」 편집기의 두 열(spec 레이아웃 티켓 11 · 결정 26). 왼쪽은 항목 트리, 오른쪽은 고른 항목이다.
-// 편집기는 초안을 **그리기만** 한다 — 필드를 바꾸는 규칙은 `draft.ts`의 순수 함수가, 이름 틀이 맞는지는
-// 저장의 검증(엔진)이 든다. 그래서 여기서는 초안과 고른 자리와 오류를 손으로 넣고 마크업만 잰다. 클릭은
-// L3가 잰다(jsdom이 없다).
+// 「spec 레이아웃」 편집기의 두 카드(spec 레이아웃 티켓 11 · 결정 26, 판 06 티켓 07). 왼쪽 본문 카드는 고른 항목의 폼,
+// 오른쪽 카드는 항목 트리다. 편집기는 초안을 **그리기만** 한다 — 필드를 바꾸는 규칙은 `draft.ts`의 순수 함수가, 이름 틀이
+// 맞는지는 저장의 검증(엔진)이 든다. 그래서 여기서는 초안과 고른 자리와 오류를 손으로 넣고 마크업만 잰다. 클릭과 두 카드의
+// 자리는 L3가 잰다(jsdom이 없다).
 
 /** 파일 항목·폴더 항목·깊은 자리·손으로 적은 모르는 아이콘이 섞인 초안. */
 function opened(): LayoutDraft {
@@ -34,17 +34,22 @@ function opened(): LayoutDraft {
   };
 }
 
+/**
+ * 두 카드의 마크업 — 트리 카드를 먼저, 폼을 뒤에 잇는다(화면에서는 폼이 왼쪽이다). 폼의 열은 `detailOf`가 그 이름에서 끝까지
+ * 잘라 보므로, 트리가 뒤에 오면 트리의 행 글자가 폼의 글자에 섞인다.
+ */
 function render(selected: EntryPath, errors: LayoutError[] = [], draft = opened()): string {
   return renderToStaticMarkup(
-    <EditorColumns
-      draft={draft}
-      folder="~/.atelier/layouts/atelier"
-      selected={selected}
-      errors={errors}
-      onSelect={() => {}}
-      onChange={() => {}}
-      onEdit={() => {}}
-    />,
+    <>
+      <TreeCard draft={draft} selected={selected} errors={errors} onSelect={() => {}} onEdit={() => {}} />
+      <EntryForm
+        draft={draft}
+        folder="~/.atelier/layouts/atelier"
+        selected={selected}
+        errors={errors}
+        onChange={() => {}}
+      />
+    </>,
   );
 }
 
@@ -63,10 +68,10 @@ function treeRows(html: string) {
   }));
 }
 
-/** 고른 항목의 열(오른쪽) — 트리의 이름과 섞이지 않게 잘라 본다. */
+/** 고른 항목의 폼(왼쪽 본문 카드) — 트리의 이름과 섞이지 않게 잘라 본다. */
 function detailOf(html: string): string {
   const start = html.indexOf('aria-label="고른 항목"');
-  if (start < 0) throw new Error(`고른 항목의 열이 없다: ${html}`);
+  if (start < 0) throw new Error(`고른 항목의 폼이 없다: ${html}`);
   return html.slice(start);
 }
 
@@ -98,7 +103,7 @@ function fieldsOf(html: string): string[] {
 
 describe("항목 트리", () => {
   // 트리에는 실제 항목만 선다 — `spec` 패널처럼 최상위 항목부터다(결정 26). 맨 위 항목(spec 폴더
-  // 자신)은 행이 아니라 트리 열의 머리 `spec/`이다.
+  // 자신)은 행이 아니라 트리 카드의 머리 `spec/`이다.
   it("맨 위 항목의 행이 없고, 최상위 항목부터 깊이대로 선다", () => {
     const rows = treeRows(render([0]));
     expect(rows.map(({ name, level }) => [name, level])).toEqual([
@@ -123,13 +128,14 @@ describe("항목 트리", () => {
   });
 });
 
-// 트리 위 한 줄(티켓 13 · 구현 스펙 5절 「배치」) — 파일 추가, 폴더 추가, 옮기기 넷, 지우기(휴지통). 무엇이 잠기는지는
-// 순수 함수의 판정(`editsAt`)이 정하고, 여기서는 그 답이 버튼에 닿는지를 본다. 누르는 것은 L3가 잰다.
-describe("트리 위 한 줄", () => {
+// 트리 카드의 머리 한 줄(티켓 13 · 판 06 티켓 07 · 구현 스펙 5절 「배치」) — 파일 추가, 폴더 추가, 옮기기 넷, 지우기(휴지통).
+// 무엇이 잠기는지는 순수 함수의 판정(`editsAt`)이 정하고, 여기서는 그 답이 버튼에 닿는지를 본다. 누르는 것과 그 줄이 카드
+// 머리에 선 것은 L3가 잰다.
+describe("트리 카드의 머리 한 줄", () => {
   /** 그 줄의 버튼마다 { 접근성 이름, 잠겼나, class }, 줄에 선 순서대로. */
   function toolsOf(html: string) {
     const bar = /<div\b[^>]*role="toolbar"[^>]*aria-label="항목 편집"[^>]*>([\s\S]*?)<\/div><div\b/.exec(html);
-    if (bar === null) throw new Error(`트리 위 한 줄이 없다: ${html}`);
+    if (bar === null) throw new Error(`트리 카드의 머리 한 줄이 없다: ${html}`);
     return [...bar[1].matchAll(/<button\b([^>]*)>/g)].map((m) => ({
       name: /aria-label="([^"]*)"/.exec(m[1])?.[1],
       disabled: /\bdisabled=""/.test(m[1]),
@@ -138,7 +144,7 @@ describe("트리 위 한 줄", () => {
   }
   const locks = (html: string) => toolsOf(html).map(({ name, disabled }) => [name, disabled]);
 
-  it("트리 열의 머리 `spec/` 위에 더하기 둘, 옮기기 넷, 지우기가 한 줄로 선다", () => {
+  it("트리 카드의 머리에, 머리 `spec/`보다 앞에 더하기 둘, 옮기기 넷, 지우기가 한 줄로 선다", () => {
     const html = render([1]);
     expect(toolsOf(html).map((tool) => tool.name)).toEqual([
       "파일 항목 추가",
@@ -188,14 +194,16 @@ describe("트리 위 한 줄", () => {
     ]);
   });
 
-  // 휴지통은 붉고, 가리키면 더 짙은 붉은색이다. 잠기면 흐린 붉은색이다(구현 스펙 5절 · 프로토타입 뒤 사용자 선택).
-  it("휴지통은 붉고 가리키면 더 짙은 붉은색이며, 잠기면 흐린 붉은색이다", () => {
+  // 휴지통은 붉고, 가리키면 붉은 면이 한 겹 서서 더 짙게 읽힌다. 잠기면 흐린 붉은색이다(구현 스펙 5절 · 프로토타입 뒤 사용자
+  // 선택). 붉은색은 판 03의 `destructive` 토큰이다 — Tailwind 팔레트를 직접 부르지 않는다(판 06 티켓 07).
+  it("휴지통은 destructive 글자이고 가리키면 붉은 면이 서며, 잠기면 흐린 붉은색이다", () => {
     const trash = (html: string) => toolsOf(html).find((tool) => tool.name === "고른 항목 지우기")!.className;
     const live = trash(render([1]));
-    expect(live).toMatch(/(^| )text-red-600( |$)/);
-    expect(live).toMatch(/(^| )hover:text-red-700( |$)/);
+    expect(live).toMatch(/(^| )text-destructive( |$)/);
+    expect(live).toMatch(/(^| )hover:bg-destructive\/10( |$)/);
+    expect(live).not.toMatch(/red-\d/);
     const locked = trash(render([]));
-    expect(locked).toMatch(/(^| )text-red-600\/35( |$)/);
+    expect(locked).toMatch(/(^| )text-destructive\/35( |$)/);
     expect(locked).not.toContain("hover:");
   });
 });

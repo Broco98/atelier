@@ -19,6 +19,7 @@ import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import useSplitRatio from "@/components/shell/useSplitRatio";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
+import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -242,11 +243,9 @@ function WorksPage({
   // 같은 나눔). 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 서고 왼쪽으로 끌면 넓어진다. 저장 키는 이 패널 전용이다: 목록
   // 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
   //
-  // 기본 폭 330 — 296은 좁았다. 여기 들어오는 것이 **경로와 파일 이름**이라 꼬리가 잘리면 판·티켓 문서가 서로 구분되지 않는다.
-  // **이 값은 계산이 아니라 사용자가 끌어서 고른 폭이다** (2026-08-17, 실측 326.38px을 반올림). 한 번 420으로 올렸다가 사람이
-  // 그 자리에서 다시 줄인 값이라, 여기서 폭을 조정할 때는 계산으로 덮지 말고 같은 방식으로 다시 물어볼 것. 최대 560은 목록
-  // 패널 둘과 같은 값이다.
-  const panelSize = useResizableWidth("work-panel-width", 330, 260, 560, "right");
+  // 기본 폭은 `WORK_PANEL_WIDTH`(330)다 — 그 수가 왜 그 값인지는 그쪽 머리말에 있다(spec 레이아웃 편집기의 트리 카드가 같은 수를
+  // 읽는다). 최대 560은 목록 패널 둘과 같은 값이다.
+  const panelSize = useResizableWidth("work-panel-width", WORK_PANEL_WIDTH, 260, 560, "right");
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.

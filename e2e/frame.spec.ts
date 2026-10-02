@@ -65,14 +65,16 @@ for (const screen of SCREENS) {
     const titlebar = await token(page, "--titlebar-height");
     const viewport = page.viewportSize()!;
     const card = await cardOf(page);
+    // 카드 줄의 오른쪽 끝 카드 — 편집기는 본문 카드 오른쪽에 트리 카드가 서고(판 06 티켓 07), 다른 세 화면은 본문 카드다.
+    const last = await boxOf(page.locator('[data-slot="card"]').last());
     // 앵커: 카드는 바탕 줄 바로 아래에서 시작하고 오른쪽 · 아래에 틈을 남긴다. 틈이 없으면 아래 두 점이 창 밖이나
     // 카드 위에 떨어져 무엇을 재는지가 흐려진다.
     expect(card.y, "카드가 바탕 줄 바로 아래에서 시작한다").toBe(titlebar);
-    expect(viewport.width - card.right, "카드 오른쪽 틈").toBe(gap);
+    expect(viewport.width - last.right, "카드 오른쪽 틈").toBe(gap);
     expect(viewport.height - card.bottom, "카드 아래 틈").toBe(gap);
 
     const middleY = card.y + card.height / 2;
-    expect(await draggable(page, card.right + gap / 2, middleY), "카드 오른쪽 틈").toBe(true);
+    expect(await draggable(page, last.right + gap / 2, middleY), "카드 오른쪽 틈").toBe(true);
     expect(await draggable(page, card.x + card.width / 2, card.bottom + gap / 2), "카드 아래 틈").toBe(true);
     // 대조: 카드 안은 끄는 자리가 아니다 — 바탕 전체가 끌기 영역이 된 것과 가른다.
     expect(await draggable(page, card.x + card.width / 2, middleY), "카드 안").toBe(false);
@@ -84,6 +86,77 @@ for (const screen of SCREENS) {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
+
+// 판 06 티켓 07 — **레이아웃 편집기의 트리는 본문 카드 오른쪽의 카드다.** 작업 화면의 spec 패널과 같은 쪽 · 같은 폭(작업 패널의
+// 기본 폭 330)이고, 둘 사이는 `--gap`이다. 트리 카드는 레일 · 접힘 · 손잡이가 없는 늘 열린 `section`이다 — `aside`는 사이드바
+// 하나뿐이다(판 06 「지키는 것」). 트리 위 도구 줄(「항목 편집」)은 그 카드의 머리에 선다.
+test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 330 카드이고 머리에 도구가 서며, 둘 사이 틈이 창을 끄는 자리다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(SPEC_LAYOUT_EDITOR);
+  const tree = page.getByRole("region", { name: "항목 트리", exact: true });
+  const main = page.locator("main");
+  await expect(tree.getByRole("treeitem", { name: "overview.md", exact: true })).toBeVisible();
+
+  // 트리 카드는 본문 카드(`main`) 밖의 `section` 카드다.
+  expect(await tree.evaluate((el) => [el.tagName, el.getAttribute("data-slot")])).toEqual(["SECTION", "card"]);
+  await expect(main.getByRole("region", { name: "항목 트리", exact: true })).toHaveCount(0);
+  await expect(page.locator("aside")).toHaveCount(1);
+  await expect(page.locator("header")).toHaveCount(1);
+  // 도구 줄은 트리 카드의 머리다 — 머리 `spec/`과 트리는 그 아래 몸이다.
+  await expect(
+    tree.locator('[data-slot="card-head"]').getByRole("toolbar", { name: "항목 편집", exact: true }),
+  ).toBeVisible();
+  // 폼(「고른 항목」)은 본문 카드 안이다.
+  await expect(main.getByRole("region", { name: "고른 항목", exact: true })).toBeVisible();
+
+  const gap = await token(page, "--gap");
+  const titlebar = await token(page, "--titlebar-height");
+  const viewport = page.viewportSize()!;
+  const [form, card] = [await boxOf(main), await boxOf(tree)];
+  expect(card.width, "트리 카드 폭").toBe(330);
+  expect(card.y, "트리 카드 위").toBe(titlebar);
+  expect(card.bottom, "트리 카드 아래").toBe(form.bottom);
+  expect(card.x - form.right, "본문 카드와 트리 카드 사이 틈").toBe(gap);
+  expect(viewport.width - card.right, "트리 카드 오른쪽 틈").toBe(gap);
+
+  // 둘 사이 틈은 창을 끄는 자리이고, 트리 카드 안은 아니다.
+  const middleY = card.y + card.height / 2;
+  expect(await draggable(page, form.right + gap / 2, middleY), "두 카드 사이 틈").toBe(true);
+  expect(await draggable(page, card.x + card.width / 2, middleY), "트리 카드 안").toBe(false);
+
+  // ⌘B로 사이드바를 접어도 트리 카드는 330 그대로이고, 넓어지는 것은 본문 카드다.
+  await page.keyboard.press("Meta+b");
+  await expect.poll(async () => (await boxOf(main)).x).toBe(gap);
+  expect((await boxOf(tree)).width, "사이드바를 접은 뒤의 트리 카드 폭").toBe(330);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 앱의 최소 창(900 — `tauri.conf.json`)에서 사이드바를 연 채로도 두 카드 머리의 조작이 카드 안에 다 선다. 트리 카드가 330을
+// 고집하면 폼 카드가 머리의 조작(뒤로 · 「LLM이 받는 텍스트」 · 「저장」)보다 좁아진다 — 카드가 모서리 밖을 자르므로
+// (`overflow-hidden`) 넘친 「저장」이 반쯤 잘린다. 그래서 그 폭에서만 트리 카드가 폼 카드에 자리를 내준다(작업 패널 칸과 같은 손버릇).
+test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 두 카드 머리의 조작이 카드 안에 다 선다", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 600 });
+  await installFixtureBackend(page);
+  await page.goto(SPEC_LAYOUT_EDITOR);
+  const tree = page.getByRole("region", { name: "항목 트리", exact: true });
+  const main = page.locator("main");
+  await expect(tree.getByRole("treeitem", { name: "overview.md", exact: true })).toBeVisible();
+  // 앵커: 사이드바가 열려 있다 — 접혀 있으면 폼 카드가 넉넉해 아래 셈이 아무것도 재지 않는다.
+  expect((await boxOf(main)).x, "본문 카드가 사이드바 옆에 선다").toBe(await sidebarRight(page));
+
+  const inside = async (control: Locator, card: Locator) => {
+    const [box, edge] = [await boxOf(control), await boxOf(card)];
+    return box.x >= edge.x && box.right <= edge.right;
+  };
+  expect(await inside(page.getByRole("button", { name: "설정으로 돌아가기", exact: true }), main), "뒤로").toBe(true);
+  expect(await inside(page.getByRole("button", { name: "LLM이 받는 텍스트", exact: true }), main), "미리보기").toBe(true);
+  expect(await inside(page.getByRole("button", { name: "저장", exact: true }), main), "저장").toBe(true);
+  expect(await inside(page.getByRole("button", { name: "파일 항목 추가", exact: true }), tree), "파일").toBe(true);
+  expect(await inside(page.getByRole("button", { name: "고른 항목 지우기", exact: true }), tree), "지우기").toBe(true);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
 test("Terminal: 사이드바를 접어도 탭 줄의 첫 칸이 셸 컨트롤 뒤 `--tab-lead`에 선다", async ({ page }) => {
   await installFixtureBackend(page);
