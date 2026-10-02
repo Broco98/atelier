@@ -353,7 +353,7 @@ function useFrameFocused(frameRef: RefObject<HTMLIFrameElement | null>) {
   return focused;
 }
 
-// 두 줄이 각각 한 번씩만 접히는 폭. 확인 창의 `w-[330px]`과 같은 가족이다.
+// 두 줄이 각각 한 번씩만 접히는 폭. 확인 창(`dialogLook.center`, 360px)보다 한 단 좁은 떠 있는 카드다.
 const FRAME_HINT_WIDTH = 300;
 
 /**

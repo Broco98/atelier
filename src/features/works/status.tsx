@@ -1,6 +1,14 @@
 import { cn } from "@/lib/utils";
 import type { WorkStatus } from "./types";
 
+/**
+ * **상태 배지의 모양 한 벌**(디자인 시스템의 `.at-badge`, ui-refresh 결정 6 — 머리 컨트롤이라 알약이다). 상단의 상태 메뉴
+ * 트리거(`WorksPage`의 `StatusMenu`) · 아카이브 상세 머리 · 사이드바 호버 카드(`WorkCard`)가 이것을 부르고, 색은 상태마다
+ * `badgeClass`가 든다. 꺾쇠(▾)를 품은 배지는 오른쪽 안쪽이 한 단 좁다(DS `.at-badge` 10 / 8 — 꺾쇠가 없으면 `.plain` 10 / 10).
+ */
+export const STATUS_BADGE =
+  "inline-flex h-6 shrink-0 items-center gap-[3px] rounded-pill px-2.5 text-caption font-medium whitespace-nowrap has-[>svg]:pr-2";
+
 export const STATUS_META: Record<
   WorkStatus,
   { label: string; desc: string; dotClass: string; badgeClass: string }
@@ -10,7 +18,7 @@ export const STATUS_META: Record<
     label: "draft",
     desc: "아직 시작 전",
     dotClass: "bg-tertiary",
-    badgeClass: "text-muted-foreground bg-accent",
+    badgeClass: "text-muted-foreground bg-state-2",
   },
   active: {
     label: "active",
@@ -21,14 +29,14 @@ export const STATUS_META: Record<
   review: {
     label: "review",
     desc: "리뷰 대기",
-    dotClass: "bg-amber-600",
-    badgeClass: "text-amber-700 bg-amber-600/10",
+    dotClass: "bg-wait",
+    badgeClass: "text-wait-ink bg-wait/10",
   },
   done: {
     label: "done",
     desc: "완료",
-    dotClass: "bg-green-700",
-    badgeClass: "text-green-700 bg-green-700/10",
+    dotClass: "bg-done",
+    badgeClass: "text-done-ink bg-done/8",
   },
 };
 
@@ -60,14 +68,14 @@ export function StatusIcon({ status, className }: { status: WorkStatus; classNam
   }
   if (status === "review") {
     return (
-      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-amber-600", className)}>
+      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-wait", className)}>
         <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.6" />
         <path d="M7 4.3V7l1.9 1.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   return (
-    <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-green-700", className)}>
+    <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-done", className)}>
       <circle cx="7" cy="7" r="6" fill="currentColor" />
       <path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--background)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>

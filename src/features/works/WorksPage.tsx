@@ -81,7 +81,7 @@ import {
   useSetWorkStatus,
   useWorks,
 } from "./hooks";
-import { STATUS_META } from "./status";
+import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
 import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
@@ -1067,8 +1067,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 // 「열렸다/닫혔다」를 말하고(`aria-haspopup` · `aria-expanded`), 지금 상태는 `menuitemradio`의
 // `aria-checked`로 읽힌다. 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
 //
-// 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 여기
-// 클래스가 든다. 제목 줄의 창 끌기 영역에서 빠지는 것은 지금과 같다 — 끌기 표식은 줄에만 있고 버튼에는 없다.
+// 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 상태 모듈의
+// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 제목 줄의 창 끌기 영역에서 빠지는 것은 지금과 같다 — 끌기 표식은 줄에만 있고 버튼에는 없다.
 function StatusMenu({ work }: { work: WorkView }) {
   const setStatus = useSetWorkStatus();
   const meta = STATUS_META[work.status];
@@ -1082,15 +1082,12 @@ function StatusMenu({ work }: { work: WorkView }) {
         announce="description"
         render={
           <DropdownMenuTrigger
-            className={cn(
-              "flex h-[22px] items-center gap-1 rounded-lg px-2 text-caption font-medium transition-[filter] hover:brightness-95",
-              meta.badgeClass,
-            )}
+            className={cn(STATUS_BADGE, "transition-[filter] hover:brightness-95", meta.badgeClass)}
           />
         }
       >
         {meta.label}
-        <ChevronDown className="size-2.5" strokeWidth={2.2} />
+        <ChevronDown className="size-[11px] opacity-80" strokeWidth={2.2} />
       </Hint>
       <DropdownMenuContent>
         <DropdownMenuRadioGroup

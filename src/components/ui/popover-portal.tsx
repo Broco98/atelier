@@ -16,9 +16,8 @@ import { cn } from "@/lib/utils";
 // 둘 다 **여닫음과 포커스를 부품에 맡길 것이 없다** — Popover·HoverCard·Tooltip이 들고 오는 것
 // (트리거, 바깥 누르기와 Esc 닫기, 첫 포커스, 열림 애니메이션)이 이 둘에게는 없어야 할 것이다.
 // 그래서 여기는 **자리 잡기 하나만** 한다. 여닫는 떠 있는 것(메뉴·Popover·Select·창)은
-// `components/ui`의 부품이 든다. 카드의 모양(카드 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕)은
-// 이 카드와 그 부품들이 함께 부르는 index.css의 `floating-card` 한 곳에 있다(각 부품 파일 머리의
-// 「옛 PopoverPortal 카드」가 이 값이다).
+// `components/ui`의 부품이 든다. 카드의 모양(카드 모서리 · 흰 바탕 · 테두리 없이 `shadow-float`)은
+// 이 카드와 그 부품들이 함께 부르는 index.css의 `floating-card` 한 곳에 있다.
 //
 // 문서 최상위(body 직계)에 그리는 이유는 잘림이다. absolute로 조상 안에 두면 그 조상 어딘가의
 // overflow-hidden에 잘린다 — 사이드바는 폭 드래그 때문에 overflow-hidden을 갖는다. fixed라

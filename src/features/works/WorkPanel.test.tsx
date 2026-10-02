@@ -401,13 +401,16 @@ describe("WorkPanel 소스 토글", () => {
     return markup.match(new RegExp(`<button[^>]*${DOC_LABEL}[^>]*>`))?.[0] ?? "";
   }
 
-  /** 두 칸 사이를 미끄러지는 흰 칩의 여는 태그 — segment-on이 그 표식이다. */
+  /** 두 칸 사이를 미끄러지는 칩의 여는 태그 — segment-on이 그 표식이다(알약에서는 회색 원이다). */
   function chip(markup: string): string {
     return markup.match(/<span[^>]*segment-on[^>]*>/)?.[0] ?? "";
   }
 
-  /** 칩이 오른쪽(`</>`) 칸에 서 있는가. 왼쪽은 옮김이 없는 자리다. */
-  const SLID = "translate-x-[26px]";
+  /**
+   * 칩이 오른쪽(`</>`) 칸에 서 있는가. 왼쪽은 옮김이 없는 자리다. 알약 칸 26px + 칸 사이 2px이다
+   * (ui-refresh 결정 7의 B — `segment-group.tsx`의 `pill`).
+   */
+  const SLID = "translate-x-[28px]";
 
   it("탭 바 오른쪽 끝, ×보다 왼쪽에 선다", () => {
     const markup = render(true);
@@ -443,7 +446,7 @@ describe("WorkPanel 소스 토글", () => {
     const button = toggle(render(true));
     expect(button).toContain('aria-pressed="false"');
     expect(button).not.toMatch(/\sdisabled=""/);
-    // 안 선 칸은 **배경을 안 켠다**(결정 31) — 바닥이 이미 회색이라 hover 칩을 얹으면
+    // 안 선 칸은 **배경을 안 켠다**(결정 31) — 선 칸을 말하는 칩이 회색 원이라 hover 바탕을 얹으면
     // 서 있는 칸과 구분이 안 된다.
     expect(button).toContain("tint-hover");
     expect(button).not.toContain("quiet-hover");

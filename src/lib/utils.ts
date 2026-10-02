@@ -7,11 +7,15 @@ import { createCn } from "cn/config";
 //
 // **반경 이름(`rounded-card` …)도 같다**(ui-refresh 결정 6 · 25). 모르면 합치기가 부품의 `rounded-lg`와
 // 부르는 자리의 `rounded-card`를 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
+//
+// **떠 있는 것의 그림자(`shadow-float`)도 같다**(ui-refresh 결정 6). 모르면 합치기가 그것을 그림자 **색**으로 읽어
+// `shadow-float shadow-none`에서 둘 다 남긴다.
 export const cn = createCn({
   extend: {
     theme: {
       text: ["meta", "caption", "ui", "row", "body", "h2", "title", "mono", "mono-sm", "mono-micro"],
       radius: ["card", "pill", "inner", "inline"],
+      shadow: ["float"],
     },
   },
 });

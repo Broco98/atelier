@@ -173,8 +173,8 @@ function ArchiveList({
                   </>
                 )}
               </Hint>
-              {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
-              <DropdownMenuContent align="end" width="wide">
+              {/* 거르개와 오른쪽 끝끼리 맞춘다(옛 카드의 `align="right"`). 폭은 메뉴 기본(208px)이다. */}
+              <DropdownMenuContent align="end">
                 <DropdownMenuRadioGroup
                   // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.
                   value={projectFilter}

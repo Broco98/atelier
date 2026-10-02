@@ -252,6 +252,9 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* **떠 있는 것의 그림자**(ui-refresh 결정 6 · 디자인 시스템의 `--shadow-float`) — 큰 그림자 한 겹과 1px 고리 한 겹이다.
+       고리가 그림자 안에 있어 떠 있는 카드는 테두리를 따로 들지 않는다(`floating-card` · 토스트). */
+    --shadow-float: 0 12px 32px rgba(20, 20, 28, 0.12), 0 0 0 1px rgba(20, 20, 28, 0.06);
 }
 
 /* **글자 단계 — 디자인 시스템의 열 단계뿐이다**(ui-refresh 결정 25). 이름은 DS(`base.css`의 `t-*`)
@@ -624,19 +627,21 @@
     }
 }
 
-/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(state-1) 위로 한 겹 뜬다.
+/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(state-1) 위로 한 겹 뜬다(디자인 시스템의 `.at-seg`).
    toggle-on(state-3)을 안 쓰는 것이 핵심이다: 바닥이 이미 회색이라 그 위에 더 진한 회색을
    얹으면 「떠올랐다」가 아니라 「눌렸다」로 읽혀, 두 칸 중 어느 쪽이 서 있는지가 뒤집힌다.
    여기서 켜짐은 농도가 아니라 **떠오름**이다 — 흰 칩 + 실선 한 겹 + 옅은 그림자.
    hover에 더 진해지지 않는다: 칩은 누르는 것이 아니라 서 있는 칸을 말하는 것이다 — 누르는 것은
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
-   (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다. */
+   (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다.
+   **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `sidebar-accent` 원이고 그림자가
+   없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`WorkPanel.test.tsx`). */
 @utility segment-on {
-  background: var(--background);
+  background-color: var(--background);
   box-shadow:
-    0 0 0 0.5px rgba(20, 20, 28, 0.08),
-    0 1px 2px rgba(20, 20, 28, 0.1);
+    0 0 0 0.5px rgba(20, 20, 28, 0.14),
+    0 1px 1px rgba(20, 20, 28, 0.06);
 }
 
 /* 패널 폭 드래그 중 — 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다.
@@ -836,43 +841,54 @@ body.dragging-row * {
 
    `LifecycleOverlay`(WorksPage)는 이것을 안 쓴다. 그쪽은 모달이 아니라 **되돌릴 수 없는
    조작이 도는 동안의 가림막**이고, 뒤를 **못 읽게** 하는 것이 목적이라 blur가 그 목적에
-   맞는다 — 여기와 뜻이 반대다. */
+   맞는다 — 여기와 뜻이 반대다.
+
+   색은 `:root`의 `--scrim`이 든다(디자인 시스템의 값 — 같은 25% 검정이다). */
 @utility modal-scrim {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background-color: rgb(0 0 0 / 25%);
+  background-color: var(--scrim);
 }
 
-/* **떠 있는 카드** — 카드 모서리(`rounded-card`, ui-refresh 결정 6) · 강한 테두리 · 큰 그림자 · 흰 바탕
-   (결정 2의 앱 규격 표).
+/* **떠 있는 카드** — 카드 모서리(`rounded-card`) · 흰 바탕 · **테두리 없이** `shadow-float`(디자인 시스템의 `.at-float`,
+   ui-refresh 결정 6 · 「규칙에서 이어 적용하는 것」). 1px 고리가 그림자 안에 있어 테두리를 따로 들지 않는다 —
+   테두리가 있으면 그 고리와 겹쳐 가장자리가 두 겹이 된다.
    메뉴 · Popover · Select · 창 · 확인 창의 부품 파일과 `PopoverPortal`(호버 카드 · 틀 이동 힌트)이
-   이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다 — 옛 `PopoverPortal` 카드의 값이다.
+   이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다. 토스트도 같은 모양이다(`toast.tsx`).
 
    **모양만 정한다.** 폭 · 안쪽 · 자리 · 넘침은 표면마다 지금 값이 달라 부품 파일이 든다. 부르는 자리가
    이것을 코어 유틸리티로 덮으면 그쪽이 이 뒤에 서서 이긴다(커스텀 @utility가 앞에 선다 —
    toggle.tsx 머리말). 값을 따로 적지 않고 그 클래스들을 그대로 부르는 것은, 그림자가 ring과 한
    `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
 @utility floating-card {
-  @apply rounded-card border border-border-strong bg-background shadow-lg;
+  @apply rounded-card bg-popover shadow-float;
 }
 
-/* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(결정 2의 앱 규격 표 「메뉴 팝업」 ·
-   「메뉴 항목」). 두 부품 파일이 같은 값을 옮겨 적던 자리다.
+/* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(디자인 시스템의 `.at-menu` · `.at-menu-row`).
+   두 부품 파일이 같은 값을 옮겨 적던 자리다.
 
    `menu-list`는 목록 상자다 — 세로로 쌓고 항목 사이 1px, 안쪽 5px. 드롭다운은 카드 자신이 목록이고
    (메뉴 역할), Select는 카드 안의 `listbox`가 목록이다(머리 · 바닥 칸이 목록 밖에 선다).
 
-   `menu-row`는 한 줄이다 — 32px · 모서리 `rounded-lg`(메뉴 행, ui-refresh 결정 6) · 좌우 9px · 글리프
-   사이 8px. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 부품 파일이 든다(메뉴 · Select
-   모두 `text-ui`). 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
+   `menu-row`는 한 줄이다 — 32px · 모서리 `rounded-lg`(메뉴 행, ui-refresh 결정 6) · 좌우 10px · 글리프
+   사이 9px · `text-ui`. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. 줄 안의 글리프는 크기를 안 준
+   것이 15px이고 색을 안 준 것이 `text-tertiary`다 — 부르는 자리가 클래스로 준 크기 · 색(체크의 `text-primary`, 지우기
+   줄의 빨강)이 이긴다(`:where`라 이 규칙의 특이도는 줄 클래스 하나뿐이고, 코어 유틸리티가 이 뒤에 선다). 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
    클래스 그대로 부품 파일에 있다. 줄 끝의 체크는 `components/ui/menu-check.tsx`가 든다. */
 @utility menu-list {
   @apply flex flex-col gap-px p-[5px];
 }
 
 @utility menu-row {
-  @apply h-8 shrink-0 gap-2 rounded-lg px-[9px];
+  @apply h-8 shrink-0 gap-[9px] rounded-lg px-2.5 text-ui;
+  & :where(svg:not([class*="size-"])) {
+    width: 15px;
+    height: 15px;
+  }
+  & :where(svg:not([class*="text-"])) {
+    color: var(--text-tertiary);
+  }
 }
 
 /* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-meta`(11px) · 글리프 사이 6px · 오른쪽 여백 5px.

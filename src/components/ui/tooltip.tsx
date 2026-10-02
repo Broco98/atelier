@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: Provider 지연 기본값 0→600ms(S3, 앱 루트에 하나), 글자 text-xs→11.5px(P5), 열림·닫힘 길이 duration-100 추가(결정 7의 100ms — registry 툴팁만 길이가 없어 tw-animate 기본 150ms였다). 열림 애니메이션 클래스는 registry 그대로다. Root가 Esc를 멈추지 않고 아래 층에 보낸다(allowPropagation — 툴팁은 사람이 연 층이 아니다. 첫 쓰는 자리는 전체화면 창의 닫기 버튼이다). 앱이 더한 조각 `Hint` 하나: 트리거와 툴팁과 그 글자가 스크린리더로 가는 길(S28)을 한 곳에서 잇는다.
+// 앱 규격으로 고친 자리: Provider 지연 기본값 0→600ms(S3, 앱 루트에 하나), 글자 text-xs→11.5px(P5), 열림·닫힘 길이 duration-100 추가(결정 7의 100ms — registry 툴팁만 길이가 없어 tw-animate 기본 150ms였다). 열림 애니메이션 클래스는 registry 그대로다. Root가 Esc를 멈추지 않고 아래 층에 보낸다(allowPropagation — 툴팁은 사람이 연 층이 아니다. 첫 쓰는 자리는 전체화면 창의 닫기 버튼이다). 앱이 더한 조각 `Hint` 하나: 트리거와 툴팁과 그 글자가 스크린리더로 가는 길(S28)을 한 곳에서 잇는다. 상자는 디자인 시스템의 툴팁이다(`.at-tooltip`, ui-refresh 결정 18): 한 줄 30px(넘치면 줄을 바꿔 자란다) · 10px 모서리 · 좌우 12px · foreground 바탕에 흰 글자 · 12px 500 · 글자와 키 사이 8px, 키(Kbd)는 칩 없이 흰 글자 60%다. 화살표는 2px 모서리(rounded-xs)다.
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "@/lib/utils"
 import { Kbd } from "./kbd"
@@ -61,7 +61,7 @@ function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(
-            "z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-caption text-background duration-100 has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-inner data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "z-50 inline-flex min-h-[30px] w-fit max-w-xs origin-(--transform-origin) items-center gap-2 rounded-lg bg-foreground px-3 py-[7px] text-caption font-medium text-background duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-inner data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className
           )}
           {...props}

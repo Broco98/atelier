@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { SignalNote, type CallingNote } from "@/components/shell/shell-signal";
-import { formatCreated, STATUS_META } from "./status";
+import { formatCreated, STATUS_BADGE, STATUS_META } from "./status";
 import type { WorkView } from "./types";
 
 // 사이드바 행에 마우스를 올리면 뜨는 정보 카드. **제 파일로 선 조각이다** — 이 카드는 hover로만
@@ -31,14 +31,7 @@ export function WorkCard({
     <div className="flex flex-col gap-2.5">
       <span className="text-ui font-medium leading-snug">{work.title}</span>
       <span className="flex items-center gap-2">
-        <span
-          className={cn(
-            "shrink-0 rounded-inner px-1.5 py-px text-caption font-medium",
-            meta.badgeClass,
-          )}
-        >
-          {meta.label}
-        </span>
+        <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>
         <span className="text-caption text-tertiary">{formatCreated(work.createdAt)}</span>
       </span>
       {/* **상태 배지 줄 아래, 필드 표 위**다(결정 14). 배지는 work의 상태이고 이 칸은 그 work에서

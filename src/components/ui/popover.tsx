@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드, 넘친 hover 바탕이 모서리 밖으로 안 나가게 overflow-hidden도 그대로), 안쪽 p-2.5·gap-2.5→p-1.5·gap-0.5(ⓘ 메타의 지금 값 — 복사 행이 촘촘히 붙는다), 글자 text-sm→13.5px, 카드에 data-popover 표식. 폭 w-72(288px)는 ⓘ의 지금 값과 같아 registry 그대로다. 열림 애니메이션 클래스는 registry 그대로다. Header·Title·Description은 registry 그대로다(쓰는 자리가 없다).
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-popover, DS `.at-float`, 넘친 hover 바탕이 모서리 밖으로 안 나가게 overflow-hidden도 그대로), 안쪽 p-2.5·gap-2.5→p-1.5·gap-0.5(ⓘ 메타의 지금 값 — 복사 행이 촘촘히 붙는다), 글자 text-sm→13.5px, 카드에 data-popover 표식. 폭 w-72(288px)는 ⓘ의 지금 값과 같아 registry 그대로다. 열림 애니메이션 클래스는 registry 그대로다. Header·Title·Description은 registry 그대로다(쓰는 자리가 없다).
 import * as React from "react"
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "@/lib/utils"

@@ -10,7 +10,7 @@ import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/Spec
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import type { DocBody } from "@/features/works/doc-refs";
 import { archiveRef } from "@/features/works/refs";
-import { formatCreated, STATUS_META } from "@/features/works/status";
+import { formatCreated, STATUS_BADGE, STATUS_META } from "@/features/works/status";
 import { ARCHIVE_COPY } from "./archive-copy";
 import ArchiveList from "./ArchiveList";
 import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
@@ -164,14 +164,7 @@ function ArchivePage({
             selected &&
             meta && (
               <span className="ml-1.5 flex shrink-0 items-center gap-2">
-                <span
-                  className={cn(
-                    "flex h-[22px] items-center rounded-lg px-2 text-caption font-medium",
-                    meta.badgeClass,
-                  )}
-                >
-                  {meta.label}
-                </span>
+                <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>
                 {selected.archivedAt && (
                   <span className="text-caption text-tertiary">
                     {formatCreated(selected.archivedAt)}에 치움
