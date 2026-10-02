@@ -134,7 +134,7 @@ function ArchiveList({
               announce={sidebarOpen ? "description" : "name"}
               type="button"
               onClick={() => setSortAsc((v) => !v)}
-              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
+              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-caption font-medium text-muted-foreground transition-colors quiet-hover"
             >
               <ArrowDown
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
@@ -157,7 +157,7 @@ function ArchiveList({
                   <DropdownMenuTrigger
                     aria-label="프로젝트 거르기"
                     className={cn(
-                      "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                      "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-caption font-medium transition-colors",
                       projectFilter
                         ? "toggle-on"
                         : "text-muted-foreground quiet-hover",
@@ -223,7 +223,7 @@ function ArchiveList({
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
             {/* 좁힌 것이 검색어인지 필터인지를 말한다 — 문장은 `archive-copy.ts`가 든다. */}
-            <span className="text-[13px] text-tertiary">{narrowedNotice(q !== "")}</span>
+            <span className="text-ui text-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
           <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
@@ -308,9 +308,9 @@ function ArchiveRow({
         ) : (
           <Folder className="size-[15px] shrink-0 text-tertiary" strokeWidth={1.7} />
         )}
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{entry.title}</span>
+        <span className="min-w-0 flex-1 truncate text-row font-medium">{entry.title}</span>
         {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다 */}
-        <span className="shrink-0 text-[11.5px] text-tertiary">
+        <span className="shrink-0 text-caption text-tertiary">
           {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
         </span>
       </CollapsibleTrigger>
@@ -328,7 +328,7 @@ function ArchiveRow({
               onCopy={(path) => onCopyDoc(entry.slug, path)}
             />
           ) : (
-            <span className="px-[9px] py-1.5 text-[12.5px] text-tertiary">남은 문서가 없어요</span>
+            <span className="px-[9px] py-1.5 text-ui text-tertiary">남은 문서가 없어요</span>
           )}
         </div>
       </CollapsibleContent>

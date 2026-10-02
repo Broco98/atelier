@@ -35,7 +35,7 @@ function PageHeader({ lead, root, trail = [], leaf, meta, actions, inset = false
         inset ? "pl-(--titlebar-inset)" : "pl-4",
       )}
     >
-      <div className="flex min-w-0 items-center gap-1.5 text-[14px] text-tertiary">
+      <div className="flex min-w-0 items-center gap-1.5 text-ui text-tertiary">
         {lead}
         <span data-tauri-drag-region className="shrink-0">{root}</span>
         {trail.map((crumb) => (

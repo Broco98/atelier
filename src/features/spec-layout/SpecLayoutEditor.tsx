@@ -121,7 +121,7 @@ function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
       {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 편집 화면의 「읽지 못함」이다. */}
       {read.error !== null && (
         <div className="flex max-w-[620px] flex-col items-start gap-3 px-8 pt-2">
-          <p className="text-[13.5px] leading-[1.7] text-red-600">{String(read.error)}</p>
+          <p className="text-ui leading-[1.7] text-red-600">{String(read.error)}</p>
           {/* 쪽 동작 버튼이다 — 설정 파일 읽기 게이트의 [다시 읽기]와 같다(`Button`의 ghost · sm). */}
           <Button variant="ghost" size="sm" onClick={() => void read.refetch()}>
             다시 읽기
@@ -332,7 +332,7 @@ export function OutsideBanner({
       className="flex shrink-0 items-center gap-3 border-t border-amber-600/20 bg-amber-600/10 py-2 pr-4 pl-5"
     >
       <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" strokeWidth={2} />
-      <span className="min-w-0 flex-1 text-[13px] font-medium text-amber-700 dark:text-amber-400">
+      <span className="min-w-0 flex-1 text-ui font-medium text-amber-700 dark:text-amber-400">
         {OUTSIDE_MESSAGE[verdict]}
       </span>
       {/* 두 버튼은 앰버 띠의 것이라 `Button`의 변형이 없다(develop도 앰버 띠를 손으로 짓는다). 흰 버튼의 hover는
@@ -340,14 +340,14 @@ export function OutsideBanner({
       <button
         type="button"
         onClick={onReload}
-        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] border border-amber-600/30 bg-background px-3 text-[13px] font-medium text-foreground transition-colors quiet-hover"
+        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] border border-amber-600/30 bg-background px-3 text-ui font-medium text-foreground transition-colors quiet-hover"
       >
         새로 불러오기
       </button>
       <button
         type="button"
         onClick={onKeep}
-        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] px-3 text-[13px] font-medium text-amber-700 transition-colors hover:bg-amber-600/10 dark:text-amber-400"
+        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] px-3 text-ui font-medium text-amber-700 transition-colors hover:bg-amber-600/10 dark:text-amber-400"
       >
         내 초안 유지
       </button>
@@ -458,12 +458,12 @@ export function EditorColumns({
             onClick={() => onSelect([])}
             aria-pressed={at.length === 0}
             className={cn(
-              "flex h-7 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors",
+              "flex h-7 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-ui transition-colors",
               at.length === 0 ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
             )}
           >
             <Folder aria-hidden className="size-3 shrink-0 text-tertiary" strokeWidth={1.9} />
-            <span className="font-mono text-[12px]">spec/</span>
+            <span className="font-mono text-mono-sm">spec/</span>
           </Hint>
         </div>
         <EntryTree
@@ -537,7 +537,7 @@ function TreeTools({
           type="button"
           onClick={() => onAdd(kind)}
           aria-label={ADD_LABEL[kind]}
-          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-[12.5px] font-medium text-foreground shadow-xs transition-colors quiet-hover"
+          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-ui font-medium text-foreground shadow-xs transition-colors quiet-hover"
         >
           <Plus aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={2.2} />
           {kind === "file" ? "파일" : "폴더"}
@@ -887,7 +887,7 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[8px] pr-2 text-left text-[12.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[8px] pr-2 text-left text-ui outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
         drop === "inside"
           ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary"
           : selected
@@ -940,7 +940,7 @@ function ErrorLines({ errors, inset = false, id }: { errors: LayoutError[]; inse
         <p
           key={index}
           id={id === undefined ? undefined : `${id}-${index}`}
-          className={cn("text-[12.5px] leading-[1.6] text-red-600", inset && "pl-[46px]")}
+          className={cn("text-ui leading-[1.6] text-red-600", inset && "pl-[46px]")}
         >
           {error.message}
         </p>
@@ -970,7 +970,7 @@ function GuideField({
   const id = useId();
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-[12.5px] text-tertiary">
+      <label htmlFor={id} className="text-ui text-tertiary">
         spec 폴더 안내
       </label>
       <ErrorLines errors={errors} />
@@ -1046,16 +1046,16 @@ function EntryFields({
         </div>
         <ErrorLines errors={errors} inset id={errorsId} />
         {unknownIcon(entry) && (
-          <p className="flex items-center gap-1.5 pl-[46px] text-[12.5px] leading-[1.6] text-amber-700 dark:text-amber-400">
+          <p className="flex items-center gap-1.5 pl-[46px] text-ui leading-[1.6] text-amber-700 dark:text-amber-400">
             <TriangleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />
             <span>
-              모르는 아이콘 <code className="text-[12px]">{entry.icon}</code> — 앱이 그리지 않아요
+              모르는 아이콘 <code className="text-mono-sm">{entry.icon}</code> — 앱이 그리지 않아요
             </span>
           </p>
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={descriptionId} className="text-[12.5px] text-tertiary">
+        <label htmlFor={descriptionId} className="text-ui text-tertiary">
           설명
         </label>
         <textarea
@@ -1107,7 +1107,7 @@ function TemplateField({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex min-w-0 items-center gap-2">
-        <span aria-hidden className="text-[12.5px] text-tertiary">
+        <span aria-hidden className="text-ui text-tertiary">
           템플릿
         </span>
         {/* 종류와 같은 두 칸 토글이다 — 선 칸을 다시 누르면 아무 일도 없다: 「있음」을 다시 눌러 경로를 새로 짓지
@@ -1128,14 +1128,14 @@ function TemplateField({
         {on && (
           <span
             title={`${folder}/${template}`}
-            className="ml-auto min-w-0 truncate font-mono text-[11px] text-tertiary"
+            className="ml-auto min-w-0 truncate font-mono text-mono-sm text-tertiary"
           >
             {folder}/{template}
           </span>
         )}
       </div>
       {on && body === null && (
-        <p className="flex items-center gap-1.5 text-[12.5px] leading-[1.6] text-amber-700 dark:text-amber-400">
+        <p className="flex items-center gap-1.5 text-ui leading-[1.6] text-amber-700 dark:text-amber-400">
           <TriangleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />
           <span>레이아웃 폴더에 이 템플릿 파일이 없어요</span>
         </p>
@@ -1147,7 +1147,7 @@ function TemplateField({
           value={body ?? ""}
           onChange={(event) => onBody(event.target.value)}
           spellCheck={false}
-          className={cn(textareaLook, "font-mono text-[12.5px]")}
+          className={cn(textareaLook, "font-mono text-mono")}
         />
       )}
     </div>
@@ -1281,7 +1281,7 @@ export function UnreadableLayout({
           className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
           strokeWidth={2}
         />
-        <div className="flex min-w-0 flex-col gap-0.5 text-[13px] leading-[1.6]">
+        <div className="flex min-w-0 flex-col gap-0.5 text-ui leading-[1.6]">
           <span className="text-amber-700 dark:text-amber-400">
             {layoutDirRef(read.folder)} 레이아웃을 읽지 못해 편집할 수 없어요
           </span>

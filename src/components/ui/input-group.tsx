@@ -1,7 +1,7 @@
 // 앱 규격으로 고친 자리: 뿌리 h-8·rounded-lg·투명 바탕→36px·rounded-full·bg-background(옛 검색칸 — 프로젝트·아카이브 목록 위의 알약), 포커스 ring-3 ring-ring/50을 걷고 테두리 색(border-ring = primary) 하나로 말한다, 앞 덧붙이(inline-start) pl-2·muted 글자→pl-[11px]·tertiary(돋보기가 바깥 선에서 12px에 선다), 앞 덧붙이 뒤 칸의 pl-1.5→9px(글자가 바깥 선에서 37px에 선다 — 옛 pl-9 + 테두리), 칸 자리 글자 muted→tertiary와 오른쪽 안쪽 14px(pr-3.5 — 알약 끝의 둥근 자리). InputGroupTextarea와 textarea import, 뿌리의 has-[>textarea]:h-auto를 걷었다 — textarea.tsx를 들이지 않는다(P8). 틀린 값(aria-invalid)의 테두리·링과 덧붙이 버튼·글자는 registry 그대로다(쓰는 자리가 없다).
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,7 +21,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const inputGroupAddonVariants = cva(
-  "flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium text-tertiary select-none group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4",
+  "flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-ui font-medium text-tertiary select-none group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4",
   {
     variants: {
       align: {
@@ -64,7 +64,7 @@ function InputGroupAddon({
 }
 
 const inputGroupButtonVariants = cva(
-  "flex items-center gap-2 text-sm shadow-none",
+  "flex items-center gap-2 text-ui shadow-none",
   {
     variants: {
       size: {
@@ -106,7 +106,7 @@ function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
       className={cn(
-        "flex items-center gap-2 text-sm text-muted-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
+        "flex items-center gap-2 text-ui text-muted-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

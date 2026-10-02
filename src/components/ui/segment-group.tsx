@@ -5,7 +5,7 @@ import * as React from "react"
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle"
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { resolveClassName } from "@/components/ui/resolve-class-name"
 import { keepOnePressed } from "@/components/ui/toggle-group"
@@ -66,7 +66,7 @@ const segmentItemVariants = cva(
     variants: {
       size: {
         icon: "icon-button",
-        sm: "h-[26px] rounded-[7px] px-2.5 text-[12.5px] font-medium",
+        sm: "h-[26px] rounded-[7px] px-2.5 text-ui font-medium",
       },
     },
   }

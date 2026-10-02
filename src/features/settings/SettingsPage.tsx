@@ -270,8 +270,8 @@ function SettingsFileGate({
   if (readError !== null) {
     return (
       <div className="flex flex-col items-start gap-3 pt-2">
-        <p className="text-[13.5px] leading-[1.7] text-red-600">{readError}</p>
-        <p className="text-[13px] leading-[1.7] text-tertiary">
+        <p className="text-ui leading-[1.7] text-red-600">{readError}</p>
+        <p className="text-ui leading-[1.7] text-tertiary">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
         <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
@@ -574,7 +574,7 @@ function SaveButton({
       <Button onClick={onSave} disabled={!enabled}>
         {saving ? "저장 중…" : "저장"}
       </Button>
-      {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
+      {error !== null && <span className="text-ui text-red-600">{error}</span>}
     </div>
   );
 }
@@ -747,8 +747,8 @@ export function ProcessExceptionsSection({
 }) {
   return (
     <section className="flex flex-col gap-2 pt-2">
-      <span className="text-[13px] text-tertiary">셸을 닫아도 남길 프로세스</span>
-      <p className="text-[13px] leading-[1.7] text-tertiary">
+      <span className="text-ui text-tertiary">셸을 닫아도 남길 프로세스</span>
+      <p className="text-ui leading-[1.7] text-tertiary">
         셸을 닫거나 앱을 끄면 그 셸에서 띄운 프로세스도 함께 끝나요. 여기 적은 이름의 프로세스와 그
         밑에서 뜬 것은 그대로 둬요. 한 줄에 하나씩 적고, 끝에 <code>*</code>를 붙이면 그 이름으로
         시작하는 것을 모두 둬요.
@@ -768,7 +768,7 @@ export function ProcessExceptionsSection({
           기본값으로
         </Button>
         {defaultsFailed && (
-          <span className="text-[13px] text-red-600">기본 목록을 읽지 못했어요.</span>
+          <span className="text-ui text-red-600">기본 목록을 읽지 못했어요.</span>
         )}
       </div>
     </section>
@@ -823,7 +823,7 @@ export function NotificationSection({
           {granted === false && (
             // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
             // 아니라 OS가 안 준 것이라, 사람이 갈 곳을 적는 것이 이 줄이 하는 일 전부다.
-            <p className="text-[13px] leading-[1.7] text-tertiary">
+            <p className="text-ui leading-[1.7] text-tertiary">
               macOS가 알림 권한을 안 줬어요. 시스템 설정 › 알림에서 아틀리에를 켜 주세요.
             </p>
           )}
@@ -894,7 +894,7 @@ export function HooksSection({
       {/* **다른 구획의 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
           설정이라 초안이라는 것이 없다. 되돌릴 벌을 뜬다는 것도 여기서 말한다: 누르기
           전에 알아야 마음이 놓인다. */}
-      <p className="text-[13px] leading-[1.7] text-tertiary">
+      <p className="text-ui leading-[1.7] text-tertiary">
         누른 순간 아래 파일에 적용돼요(저장 버튼과 별개예요). 고치기 전에 같은 자리에{" "}
         <code>.bak</code> 한 벌을 떠 두고, 다른 도구의 훅은 그대로 둬요.{" "}
         {/* **아래 글자가 「더해지는 것」임을 말한다.** claude 쪽 미리보기는 설정이 비어
@@ -909,21 +909,21 @@ export function HooksSection({
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-baseline gap-2">
               {/* 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다. */}
-              <span className="text-[13px] font-medium">{hookStateLabel(status)}</span>
-              <span className="text-[13px] text-tertiary">{status.path}</span>
+              <span className="text-ui font-medium">{hookStateLabel(status)}</span>
+              <span className="text-ui text-tertiary">{status.path}</span>
             </div>
             {status.error !== null && (
-              <p className="text-[13px] leading-[1.7] text-red-600">{status.error}</p>
+              <p className="text-ui leading-[1.7] text-red-600">{status.error}</p>
             )}
             {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
                 낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
                 경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
                 두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
             {status.writeError !== null && status.writeError !== status.error && (
-              <p className="text-[13px] leading-[1.7] text-red-600">{status.writeError}</p>
+              <p className="text-ui leading-[1.7] text-red-600">{status.writeError}</p>
             )}
             {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). */}
-            <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-[12px] leading-[1.6] scroll-quiet">
+            <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-mono-sm leading-[1.6] scroll-quiet">
               {status.preview}
             </pre>
           </div>
@@ -940,7 +940,7 @@ export function HooksSection({
           <Button variant="ghost" size="sm" onClick={onUninstall} disabled={busy}>
             제거
           </Button>
-          {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
+          {error !== null && <span className="text-ui text-red-600">{error}</span>}
         </div>
       </Row>
     </section>
@@ -966,7 +966,7 @@ function LabeledSwitch({
 }) {
   return (
     // 26px 줄 가운데에 세운다 — 왼쪽 행 라벨(`Row`의 pt-[7px])이 그 높이의 줄에 맞춰져 있다(테마·글꼴 칩 줄).
-    <label className="flex h-[26px] w-fit items-center gap-2 text-[13px] select-none">
+    <label className="flex h-[26px] w-fit items-center gap-2 text-ui select-none">
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
       {label}
     </label>
@@ -976,7 +976,7 @@ function LabeledSwitch({
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4">
-      <span className="w-[64px] shrink-0 pt-[7px] text-[13px] text-tertiary">{label}</span>
+      <span className="w-[64px] shrink-0 pt-[7px] text-ui text-tertiary">{label}</span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

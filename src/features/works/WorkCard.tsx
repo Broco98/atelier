@@ -29,23 +29,23 @@ export function WorkCard({
   const meta = STATUS_META[work.status];
   return (
     <div className="flex flex-col gap-2.5">
-      <span className="text-[13.5px] font-medium leading-snug">{work.title}</span>
+      <span className="text-ui font-medium leading-snug">{work.title}</span>
       <span className="flex items-center gap-2">
         <span
           className={cn(
-            "shrink-0 rounded-[6px] px-1.5 py-px text-[11px] font-medium",
+            "shrink-0 rounded-[6px] px-1.5 py-px text-caption font-medium",
             meta.badgeClass,
           )}
         >
           {meta.label}
         </span>
-        <span className="text-[11.5px] text-tertiary">{formatCreated(work.createdAt)}</span>
+        <span className="text-caption text-tertiary">{formatCreated(work.createdAt)}</span>
       </span>
       {/* **상태 배지 줄 아래, 필드 표 위**다(결정 14). 배지는 work의 상태이고 이 칸은 그 work에서
           지금 나를 부르는 셸의 말이라, 둘이 붙어 서야 「무엇이 · 왜」가 한 번에 읽힌다. 필드 표는
           선 아래의 안 변하는 사실이다. */}
       {note && <SignalNote {...note} />}
-      <div className="flex flex-col gap-1 border-t pt-2.5 text-[12px]">
+      <div className="flex flex-col gap-1 border-t pt-2.5 text-caption">
         {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다. */}
         <CardField label="브랜치" muted={work.branch === null} mono={work.branch !== null}>
           {work.branch ?? "프로젝트가 붙으면 정해져요"}

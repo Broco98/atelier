@@ -110,7 +110,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
         </Empty>
       ) : filtered.length === 0 ? (
         <div className="flex flex-1 items-center justify-center pb-10">
-          <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>
+          <span className="text-ui text-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
         <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pb-2 scroll-quiet">
@@ -135,27 +135,27 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                 <span className="flex w-full items-center justify-between gap-2">
                   <span
                     className={cn(
-                      "min-w-0 truncate text-[13.5px] font-medium",
+                      "min-w-0 truncate text-row font-medium",
                       project.missing && "text-muted-foreground line-through",
                     )}
                   >
                     {project.name}
                   </span>
                   {project.missing && (
-                    <span className="shrink-0 rounded-[7px] bg-red-500/10 px-2 py-0.5 text-[12px] font-medium text-red-600">
+                    <span className="shrink-0 rounded-[7px] bg-red-500/10 px-2 py-0.5 text-caption font-medium text-red-600">
                       누락
                     </span>
                   )}
                 </span>
-                <span className="flex items-center gap-2 font-mono text-[11.5px] text-tertiary">
+                <span className="flex items-center gap-2 font-mono text-mono-sm text-tertiary">
                   <Folder className="size-3.5 shrink-0" strokeWidth={1.7} />
                   <span className="truncate">{project.path}</span>
                 </span>
                 {project.git?.remoteSlug && (
-                  <span className="flex items-center gap-2 font-mono text-[11.5px] text-tertiary">
+                  <span className="flex items-center gap-2 font-mono text-mono-sm text-tertiary">
                     <GitFork className="size-3.5 shrink-0" strokeWidth={1.7} />
                     <span className="truncate">{project.git.remoteSlug}</span>
-                    <span className="shrink-0 rounded-[6px] bg-accent px-[7px] py-px text-[11px]">
+                    <span className="shrink-0 rounded-[6px] bg-accent px-[7px] py-px text-mono-sm">
                       {project.baseBranch}
                     </span>
                   </span>

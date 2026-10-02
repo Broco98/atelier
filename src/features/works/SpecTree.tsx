@@ -8,7 +8,7 @@ import type { SpecTreeItem } from "./types";
 
 // 접기 행 하나의 규격. 폴더 행이 쓴다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
+  "flex h-7 items-center gap-1 rounded-[8px] text-left text-ui text-tertiary transition-colors hover:bg-state-1";
 
 // 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
 // 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
@@ -141,7 +141,7 @@ function TreeRows({
           <div key={item.path} className="flex flex-col">
             <div
               className={cn(
-                "group flex h-7 items-center rounded-[8px] pr-1 text-[12.5px] transition-colors",
+                "group flex h-7 items-center rounded-[8px] pr-1 text-ui transition-colors",
                 item.path === current
                   ? "selected-row font-medium"
                   : "text-muted-foreground hover:bg-state-1",
@@ -207,7 +207,7 @@ function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-[5px] border bg-inset px-1 py-px font-mono text-[9px] font-medium leading-[1.4] text-tertiary">
+    <span className="shrink-0 rounded-[5px] border bg-inset px-1 py-px font-mono text-mono-micro font-medium leading-[1.4] text-tertiary">
       {ext}
     </span>
   );

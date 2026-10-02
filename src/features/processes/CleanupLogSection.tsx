@@ -70,23 +70,23 @@ function EventRow({
           aria-hidden
           className={cn("size-3.5 shrink-0 text-tertiary transition-transform", open && "rotate-90")}
         />
-        <span className="shrink-0 text-[13px] font-medium">{reasonLabel(event.reason)}</span>
-        <span className="shrink-0 text-[12px] text-tertiary">{processCount(event.targets.length)}</span>
+        <span className="shrink-0 text-ui font-medium">{reasonLabel(event.reason)}</span>
+        <span className="shrink-0 text-caption text-tertiary">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
-        <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
+        <span className="shrink-0 text-ui tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <ul aria-label={`${reasonLabel(event.reason)}의 대상`} className="flex flex-col gap-1 pb-2 pl-[22px]">
           {event.targets.map((target, at) => (
             // 대상 한 줄 — 이름 · 결과, 그 밑에 명령줄. 명령줄은 Rust가 적을 때 앞 200자로 잘랐다(토큰 같은 비밀 — S12). 줄을 넘기며
             // 다 보인다: 무엇을 끝냈는지 읽는 자리라 말줄임으로 자르지 않는다.
-            <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-[12.5px]">
+            <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-ui">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="min-w-0 truncate">{target.name}</span>
                 <span className="shrink-0 text-tertiary">{outcomeLabel(target.outcome)}</span>
               </span>
               {target.command && (
-                <span data-cell="command" className="break-all font-mono text-[11.5px] text-muted-foreground">
+                <span data-cell="command" className="break-all font-mono text-mono-sm text-muted-foreground">
                   {target.command}
                 </span>
               )}

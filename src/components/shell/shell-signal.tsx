@@ -292,7 +292,7 @@ export function SignalMeta({
  */
 export function SignalNote({ kind, message }: CallingNote) {
   return (
-    <div data-last-message="" className="flex flex-col gap-1 text-[12px] leading-snug">
+    <div data-last-message="" className="flex flex-col gap-1 text-caption leading-snug">
       <span className={cn("font-medium", TONE[kind].text)}>{SIGNAL_LABEL[kind]}</span>
       <p className="line-clamp-2 wrap-break-word">{message}</p>
     </div>

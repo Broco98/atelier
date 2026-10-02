@@ -1697,7 +1697,7 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   await expect(navRow).not.toContainText("커밋할까요?");
 
   // **숫자로 집는다.** 재려는 것이 상자가 아니라 그 안의 옅은 숫자이고, 두 자리가 같은
-  // 규격(11.5px · tabular)을 쓰는 것이 지키려는 그 계약이다.
+  // 규격(`text-meta` · tabular)을 쓰는 것이 지키려는 그 계약이다.
   const 오른끝 = async (target: Locator) => {
     const box = (await target.boundingBox())!;
     return Math.round(box.x + box.width);

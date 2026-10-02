@@ -2,31 +2,31 @@
 import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 const inputVariants = cva(
-  "w-full min-w-0 bg-transparent transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+  "w-full min-w-0 bg-transparent transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-ui file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {
         default:
-          "h-8 rounded-lg border border-input px-2.5 py-1 text-[13.5px] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-input/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+          "h-8 rounded-lg border border-input px-2.5 py-1 text-ui focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:bg-input/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
         // 제목이 없는 떠 있는 카드에서는 이 칸이 첫 줄이다 — 아래 목록과 선 하나로 갈린다. 포커스는
         // 카드가 떠 있는 동안 늘 여기 있으므로 링으로 따로 말하지 않는다.
-        flush: "shrink-0 border-b border-border px-3.5 py-2.5 text-[13px]",
+        flush: "shrink-0 border-b border-border px-3.5 py-2.5 text-ui",
         // 설정의 글자칸이다. 포커스는 테두리 색 하나로 말하고, 틀린 값이면 빨간 테두리가 포커스보다 이긴다 —
         // 고치는 동안에도 틀렸다는 것이 보인다(스토리 107). 스크린리더는 같은 속성을 「잘못된 값」으로 읽는다.
         field:
-          "h-[30px] rounded-[9px] border border-border-strong bg-background px-[9px] text-[13px] placeholder:text-tertiary focus-visible:border-primary aria-invalid:border-red-500",
+          "h-[30px] rounded-[9px] border border-border-strong bg-background px-[9px] text-ui placeholder:text-tertiary focus-visible:border-primary aria-invalid:border-red-500",
         // 인라인 편집기 — 누른 글자 자리가 그대로 칸이 된다. 편집하는 동안에만 서므로 테두리가 늘 primary다.
         "inline-title":
-          "-mx-2 -my-1 rounded-[10px] border border-primary bg-background px-2 py-1 text-[25px] font-semibold tracking-[-0.015em]",
+          "-mx-2 -my-1 rounded-[10px] border border-primary bg-background px-2 py-1 text-title tracking-[-0.015em]",
         "inline-chip":
-          "h-[26px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-[12.5px]",
+          "h-[26px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-mono-sm",
         // 늘 서 있는 제목 칸 — 고른 항목의 제목이 곧 칸이다(spec 레이아웃 편집기의 이름 틀). 제목처럼 보이다가 가리키면
         // 테두리가 서서 눌러 고치는 제목인 것을 말한다. 틀린 값이면 빨간 테두리가 hover · 포커스보다 이긴다(field와 같다).
         "entry-title":
-          "h-9 rounded-[9px] border border-transparent px-2 text-[18px] font-semibold hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
+          "h-9 rounded-[9px] border border-transparent px-2 text-h2 font-semibold hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
       },
     },
     defaultVariants: {

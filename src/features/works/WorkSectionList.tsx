@@ -202,7 +202,7 @@ export function WorkSectionList({
           //
           // **목록이 넘칠 때만 보이는 병이라 오래 안 보였다.** 이 자리는 work이 0개일 때만 서고
           // 그때는 대개 목록이 안 넘친다 — 목록이 오기 전 한 프레임에 이 문구가 서는 창이 그 드문 때다.
-          <span className="mr-1 px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
+          <span className="mr-1 px-[9px] pb-1 text-ui leading-normal text-tertiary">
             {emptyMainNotice(sections)}
           </span>
         ) : (
@@ -232,7 +232,7 @@ function EmptySlot({ section, lit }: { section: keyof SectionsOpen; lit: boolean
       data-lit={lit ? "" : undefined}
       aria-hidden
       className={cn(
-        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-[10px] border border-dashed text-[12.5px] transition-colors",
+        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-[10px] border border-dashed text-ui transition-colors",
         margin,
         lit ? "border-primary bg-primary/10 text-foreground" : "border-border text-tertiary",
       )}
@@ -328,7 +328,7 @@ function SectionHeader({
         className,
       )}
     >
-      <span className="shrink-0 text-[13.5px] font-medium text-tertiary transition-colors group-hover:text-muted-foreground">
+      <span className="shrink-0 text-caption font-medium text-tertiary transition-colors group-hover:text-muted-foreground">
         {label}
       </span>
       {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
@@ -341,7 +341,7 @@ function SectionHeader({
         )}
         strokeWidth={2.2}
       />
-      <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary">{count}</span>
+      <span className="ml-auto shrink-0 text-meta tabular-nums text-tertiary">{count}</span>
     </button>
   );
 }
@@ -572,7 +572,7 @@ function WorkRow({
         <span
           data-title=""
           className={cn(
-            "min-w-0 flex-1 text-[13.5px] font-medium",
+            "min-w-0 flex-1 text-row font-medium",
             work.status === "done" && "text-tertiary",
           )}
         >

@@ -10,7 +10,7 @@ import FullscreenModal from "./FullscreenModal";
 //
 // 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
 const toolbarButtonQuiet =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors quiet-hover";
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-caption text-tertiary transition-colors quiet-hover";
 
 // 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
 // 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
@@ -161,7 +161,7 @@ function MermaidBlock({ code }: { code: string }) {
   return (
     <div className="overflow-hidden rounded-[12px] border bg-panel">
       <div className="flex items-center justify-between border-b px-2.5 py-1.5">
-        <span className="font-mono text-[11px] text-tertiary">mermaid</span>
+        <span className="font-mono text-mono-sm text-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
@@ -201,17 +201,17 @@ function MermaidBlock({ code }: { code: string }) {
       </div>
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
-          <span className="text-[12.5px] text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground scroll-quiet">{code}</pre>
+          <span className="text-ui text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
+          <pre className="overflow-x-auto font-mono text-mono leading-[1.7] text-muted-foreground scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground scroll-quiet">{code}</pre>
+        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-mono leading-[1.75] text-muted-foreground scroll-quiet">{code}</pre>
       ) : (
         <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (
             <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
-            <span className="text-[12.5px] text-tertiary">렌더링 중…</span>
+            <span className="text-ui text-tertiary">렌더링 중…</span>
           )}
         </div>
       )}

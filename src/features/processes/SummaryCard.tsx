@@ -24,20 +24,20 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
     <section aria-label="요약" className="mt-4 rounded-[12px] border bg-panel px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <p data-figure="total" className="flex shrink-0 items-baseline gap-1.5">
-          <span className="text-[12.5px] text-muted-foreground">합계</span>
-          <span className="text-[18px] font-semibold tabular-nums">{formatMemory(summary?.total ?? null)}</span>
+          <span className="text-ui text-muted-foreground">합계</span>
+          <span className="text-h2 font-semibold tabular-nums">{formatMemory(summary?.total ?? null)}</span>
         </p>
         <Sparkline points={trend ?? []} />
-        <span className="shrink-0 text-[12px] text-tertiary">지난 1시간</span>
+        <span className="shrink-0 text-caption text-tertiary">지난 1시간</span>
         <span className="flex-1" />
         <p data-figure="cpu" className="flex shrink-0 items-baseline gap-1.5">
-          <span className="text-[12.5px] text-muted-foreground">CPU</span>
-          <span className="text-[14px] font-medium tabular-nums">{formatCpu(summary?.cpu ?? null)}</span>
+          <span className="text-ui text-muted-foreground">CPU</span>
+          <span className="text-row font-medium tabular-nums">{formatCpu(summary?.cpu ?? null)}</span>
         </p>
       </div>
       {/* 수들은 한 줄에 간격으로 잇는다 — 항목마다 「이름 수」 한 조각이라 스크린리더도 목록으로 그대로 읽는다(가운뎃점을 글자로
           넣으면 그것까지 읽는다). 셸 수의 말은 「셸 N개」다(CONTEXT 「셸」). 고아는 확정 고아와 출처 불명으로 갈라 적는다(CONTEXT 「고아」). */}
-      <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
+      <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-ui text-muted-foreground">
         <li data-figure="shells">{counts.shells === null ? `셸 ${NOT_READ}` : shellCount(counts.shells)}</li>
         <li data-figure="working">도는 중 {counts.working}</li>
         <li data-figure="ownerless-shells">주인 잃은 셸 {counts.ownerlessShells}</li>

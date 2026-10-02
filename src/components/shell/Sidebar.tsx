@@ -565,7 +565,7 @@ function SidebarItem({
       <button
         type="button"
         onClick={onClick}
-        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left text-[13.5px] font-medium"
+        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left text-row font-medium"
       >
         <Icon className="size-[17px] shrink-0" strokeWidth={1.7} />
         <span className="min-w-0 truncate">{label}</span>

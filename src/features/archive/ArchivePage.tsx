@@ -166,14 +166,14 @@ function ArchivePage({
               <span className="ml-1.5 flex shrink-0 items-center gap-2">
                 <span
                   className={cn(
-                    "flex h-[22px] items-center rounded-[7px] px-2 text-[12px] font-medium",
+                    "flex h-[22px] items-center rounded-[7px] px-2 text-caption font-medium",
                     meta.badgeClass,
                   )}
                 >
                   {meta.label}
                 </span>
                 {selected.archivedAt && (
-                  <span className="text-[12px] text-tertiary">
+                  <span className="text-caption text-tertiary">
                     {formatCreated(selected.archivedAt)}에 치움
                   </span>
                 )}
@@ -181,7 +181,7 @@ function ArchivePage({
                   {selected.projects.map((project) => (
                     <span
                       key={project}
-                      className="rounded-[7px] bg-accent px-2 py-[3px] text-[12px] text-muted-foreground"
+                      className="rounded-[7px] bg-accent px-2 py-[3px] text-caption text-muted-foreground"
                     >
                       {project}
                     </span>
@@ -248,7 +248,7 @@ function ArchivePage({
           ) : (
             <div className="flex min-h-full min-w-0 flex-col">
               {docsPending ? null : current === null ? (
-                <div className="flex flex-1 items-center justify-center p-10 text-[14px] text-tertiary">
+                <div className="flex flex-1 items-center justify-center p-10 text-row text-tertiary">
                   남은 문서가 없어요
                 </div>
               ) : (

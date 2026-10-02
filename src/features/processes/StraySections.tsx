@@ -96,7 +96,7 @@ const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 
 /** 프로세스 결정 10 그림의 「보기 전용」 — 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {
-  return <span className="shrink-0 px-2 text-[12px] text-tertiary">보기 전용</span>;
+  return <span className="shrink-0 px-2 text-caption text-tertiary">보기 전용</span>;
 }
 
 /**
@@ -106,7 +106,7 @@ function ViewOnly() {
 function StrayRow({ node, level, menu = false }: { node: ProcessNode; level: number; menu?: boolean }) {
   const { row } = node;
   return (
-    <TreeRow level={level} label={processRowLabel(row)} className="text-[12.5px] text-muted-foreground">
+    <TreeRow level={level} label={processRowLabel(row)} className="text-ui text-muted-foreground">
       <span title={row.command ?? undefined} className="min-w-0 flex-1 truncate">
         {processLabel(row)}
       </span>
@@ -124,7 +124,7 @@ function InstanceRows({ group }: { group: InstanceGroup }) {
   return (
     <>
       <TreeRow level={1} label={instanceRowLabel(group)}>
-        <span className="min-w-0 truncate text-[13px] font-medium">{group.label}</span>
+        <span className="min-w-0 truncate text-ui font-medium">{group.label}</span>
         <span className="flex-1" />
         <Figures metrics={group.totals} ports={false} />
         <Actions />

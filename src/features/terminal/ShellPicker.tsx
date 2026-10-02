@@ -98,7 +98,7 @@ function ShellPicker({
               붙고, 어휘가 거부한 낱말이 이름으로 읽힌다(CONTEXT.md). 글자는 부르는 쪽이 자리에서
               읽어 준다 — 여기에 그 이름을 적지 않는다(`placeHint`). */}
           {defaultHint && (
-            <span aria-hidden className="ml-auto shrink-0 text-[11.5px] text-tertiary">
+            <span aria-hidden className="ml-auto shrink-0 text-meta text-tertiary">
               {defaultHint}
             </span>
           )}

@@ -128,12 +128,12 @@ export function AttentionBand({
           아래 구획 헤더들과 같은 계약이다 — 한 컬럼에 세로로 붙어 서는 것들이 다른 무게로
           읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
       <div className="flex h-7 shrink-0 items-center gap-1 px-[9px]">
-        <span className="shrink-0 text-[13.5px] font-medium text-tertiary">{BAND_LABEL}</span>
+        <span className="shrink-0 text-caption font-medium text-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
         <span
           data-band-count=""
-          className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary"
+          className="ml-auto shrink-0 text-meta tabular-nums text-tertiary"
         >
           {items.length}
         </span>
@@ -226,7 +226,7 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[8px] pl-[9px] pr-[10px] text-left text-[13.5px]",
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[8px] pl-[9px] pr-[10px] text-left text-ui",
         // **hover는 상자 바닥보다 한 단 위다** — 띠가 이미 `state-1` 위에 서 있어
         // 같은 값을 얹으면 아무 일도 안 일어난 것처럼 보인다(목업이 안 만난 충돌이다:
         // 저쪽 `.strip .it`에는 hover가 없다).
@@ -258,7 +258,7 @@ function BandLine({
         </span>
       )}
       {/* 부차 정보라 한 단 내려간다 — 행 오른쪽 메타의 경과와 같은 규격이다(구현 결정 4). */}
-      <span data-elapsed="" className="shrink-0 text-[11.5px] tabular-nums text-tertiary">
+      <span data-elapsed="" className="shrink-0 text-meta tabular-nums text-tertiary">
         {formatElapsed(now - item.since)}
       </span>
     </button>

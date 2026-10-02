@@ -46,7 +46,7 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
           <PropertyRow icon={<Folder className="size-3.5" strokeWidth={1.8} />} label="경로">
             <span
               className={cn(
-                "truncate font-mono text-[12.5px] text-muted-foreground",
+                "truncate font-mono text-mono-sm text-muted-foreground",
                 project.missing && "text-red-600 line-through",
               )}
             >
@@ -55,7 +55,7 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
           </PropertyRow>
           {project.git?.remoteSlug && (
             <PropertyRow icon={<GitMerge className="size-3.5" strokeWidth={1.8} />} label="원격">
-              <span className="truncate font-mono text-[12.5px] text-muted-foreground">
+              <span className="truncate font-mono text-mono-sm text-muted-foreground">
                 {project.git.remoteSlug}
               </span>
             </PropertyRow>
@@ -88,12 +88,12 @@ function WorksSection({
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2">
         <Zap className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.7} />
-        <h2 className="text-[14px] font-semibold text-muted-foreground">Works</h2>
-        <span className="text-[12.5px] text-tertiary">이 프로젝트에서 시작된 작업</span>
+        <h2 className="text-row font-semibold text-muted-foreground">Works</h2>
+        <span className="text-ui text-tertiary">이 프로젝트에서 시작된 작업</span>
         <button
           type="button"
           onClick={() => onOpenWork(null)}
-          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors quiet-hover"
+          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-caption font-medium text-tertiary transition-colors quiet-hover"
         >
           Works에서 모두 보기
           <ChevronRight className="size-3" strokeWidth={2} />
@@ -101,7 +101,7 @@ function WorksSection({
       </div>
       <div className="flex flex-col overflow-hidden rounded-[12px] border">
         {related.length === 0 ? (
-          <div className="px-3.5 py-4 text-[13px] text-tertiary">
+          <div className="px-3.5 py-4 text-ui text-tertiary">
             이 프로젝트로 시작된 작업이 아직 없어요.
           </div>
         ) : (
@@ -120,16 +120,16 @@ function WorksSection({
                   <StatusIcon status={work.status} />
                   <span
                     className={cn(
-                      "min-w-0 truncate text-[13.5px] font-medium",
+                      "min-w-0 truncate text-row font-medium",
                       work.status === "done" && "text-muted-foreground",
                     )}
                   >
                     {work.title}
                   </span>
                 </span>
-                <span className="flex shrink-0 items-center gap-2.5 text-[12px] text-tertiary">
+                <span className="flex shrink-0 items-center gap-2.5 text-caption text-tertiary">
                   {worktree?.exists && (
-                    <span className="flex items-center gap-1.5 font-mono text-[11px]">
+                    <span className="flex items-center gap-1.5 font-mono text-mono-sm">
                       <GitFork className="size-3" strokeWidth={2} />
                       {work.branch}
                     </span>
@@ -179,7 +179,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
           setDraft(project.name);
           setEditing(true);
         }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-[25px] font-semibold tracking-[-0.015em] transition-colors hover:bg-state-2"
+        className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-title tracking-[-0.015em] transition-colors hover:bg-state-2"
       >
         {project.name}
       </Hint>
@@ -211,7 +211,7 @@ function PropertyRow({
 }) {
   return (
     <div className="flex min-h-[30px] items-center gap-3.5">
-      <dt className="flex w-[110px] shrink-0 items-center gap-[9px] text-[12.5px] text-tertiary">
+      <dt className="flex w-[110px] shrink-0 items-center gap-[9px] text-ui text-tertiary">
         {icon}
         {label}
       </dt>
@@ -262,12 +262,12 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
         <SelectContent
           header={
             <div className="flex h-8 items-center justify-between border-b px-3">
-              <span className="text-[12.5px] font-semibold text-muted-foreground">브랜치</span>
-              <span className="text-[12px] text-tertiary">{options.length}개</span>
+              <span className="text-ui font-semibold text-muted-foreground">브랜치</span>
+              <span className="text-caption text-tertiary">{options.length}개</span>
             </div>
           }
           footer={
-            <div className="border-t px-3 py-2 text-[12px] leading-normal text-tertiary">
+            <div className="border-t px-3 py-2 text-caption leading-normal text-tertiary">
               baseBranch 설정만 바꿔요 — checkout은 하지 않아요
             </div>
           }
@@ -311,7 +311,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
           setDraft(project.baseBranch);
           setEditing(true);
         }}
-        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
+        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-mono-sm text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
       </Hint>
@@ -363,8 +363,8 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-baseline gap-2">
-        <h2 className="text-[14px] font-semibold text-muted-foreground">설명</h2>
-        <span className="text-[12.5px] text-tertiary">클릭해서 편집</span>
+        <h2 className="text-row font-semibold text-muted-foreground">설명</h2>
+        <span className="text-ui text-tertiary">클릭해서 편집</span>
       </div>
       {editing ? (
         <textarea
@@ -378,14 +378,14 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-[48px] resize-y rounded-[12px] border border-primary bg-background px-3.5 py-2.5 text-[14.5px] leading-[1.65] outline-none"
+          className="min-h-[48px] resize-y rounded-[12px] border border-primary bg-background px-3.5 py-2.5 text-row leading-[1.65] outline-none"
         />
       ) : (
         <button
           type="button"
           onClick={startEditing}
           className={cn(
-            "min-h-[48px] rounded-[12px] border px-3.5 py-2.5 text-left text-[14.5px] leading-[1.65] transition-colors hover:border-border-strong hover:bg-panel",
+            "min-h-[48px] rounded-[12px] border px-3.5 py-2.5 text-left text-row leading-[1.65] transition-colors hover:border-border-strong hover:bg-panel",
             !project.description && "italic text-tertiary",
           )}
         >

@@ -135,7 +135,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
       {notice !== null && (
         <div
           data-shell-notice=""
-          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-background text-[12px] text-muted-foreground"
+          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-background text-caption text-muted-foreground"
         >
           {notice}
         </div>

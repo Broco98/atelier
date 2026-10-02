@@ -162,7 +162,7 @@ function SpecViewer({
                     에이전트가 읽는 자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
                     `SpecViewer.test.tsx`의 소스 검사가 리터럴이 들어오는 것을 막는다. */}
                 <EmptyContent>
-                  <code className="select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                  <code className="select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-mono-sm text-muted-foreground">
                     {specDirRef(work.slug)}
                   </code>
                 </EmptyContent>
@@ -192,7 +192,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
-        <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 font-mono text-[12px] text-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 font-mono text-mono-sm text-tertiary">
           <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
           {name}
         </span>
@@ -384,7 +384,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
     >
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
       <div data-frame-hint role="status" className="flex flex-col gap-1">
-        <span className="text-[13px] font-semibold tracking-[-0.01em]">단축키 둘이 지금 안 먹어요</span>
+        <span className="text-ui font-semibold tracking-[-0.01em]">단축키 둘이 지금 안 먹어요</span>
         {/* **둘만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩·⌘K는 네이티브 메뉴가 대신 받아 되살아난다
             (`components/shell/menu-hotkey.ts`). 남은 둘이 왜 그 길에 못 실리는지는
             `src-tauri/src/lib.rs`의 `HOTKEYS` 독이 든다 — 둘의 사정이 서로 다르다.
@@ -394,7 +394,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
             정확히 이 자리다 — 프레임 안에서도 열린다. */}
         {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 그대로다 — 둘 사이의 「·」까지
             붙여 둔다. 사이를 띄우면 「어느 둘인지」를 세는 L3(`spec-html.spec.ts`)의 글자가 갈린다. */}
-        <span className="text-[12.5px] leading-[1.6] text-tertiary">
+        <span className="text-ui leading-[1.6] text-tertiary">
           <Kbd>⌃Tab</Kbd>·<Kbd>⌘W</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
@@ -415,14 +415,14 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
           -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
           소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
           예쁜 보기 본문과 같은 x에서 시작한다 (규격의 폭·최대폭·우측 여백은 그대로다) */}
-      <div className="-ml-12 overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
+      <div className="-ml-12 overflow-x-auto font-mono text-mono leading-[1.75] [tab-size:4] scroll-quiet">
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
             <div key={i} className="flex">
               {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
                   폭 48px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터 버튼의
-                  오른쪽 끝과 같은 자리에 온다. 남는 32px이 네 자리 줄번호(30px)의 자리다 */}
+                  오른쪽 끝과 같은 자리에 온다. 남는 32px이 네 자리 줄번호(31.2px)의 자리다 */}
               <span className="sticky left-0 z-10 w-12 shrink-0 select-none bg-background pr-4 text-right text-tertiary">
                 {i + 1}
               </span>
@@ -442,8 +442,8 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
 //   잡힌다. 짧은 문서에서 열이 쪼그라들어 두 보기의 좌우 위치가 어긋나는 걸 막는다.
 // 48px 대칭인 이유: 좌측은 여백이면서 동시에 거터의 자리다. 거터에서 줄범위 숫자가
 //   사라진 뒤로 그 자리를 정하는 건 소스 보기의 줄번호 열이다 —
-//   네 자리 "1024"는 12.5px mono(0.6em/자)에서 30px, 코드와 16px 떨어져야 하므로
-//   46px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
+//   네 자리 "1024"는 `text-mono`(13px · 0.6em/자)에서 31.2px, 코드와 16px 떨어져야 하므로
+//   47.2px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
 // 화면을 비웠는데 본문이 안 넓어지던 것을 없앤다 — 접을 수 있는 것을 **둘 다** 접었을
 // 때만 넓어진다(결정 5·13). 원래 짝은 사이드바 + 목록 패널이었는데 nav 개편이 목록
 // 컬럼을 지워, 그 자리를 작업 패널 접기가 물려받았다.
@@ -590,10 +590,10 @@ export const PrettyView = memo(function PrettyView({
       };
 
     const components: Components = {
-      h1: block("h1", "text-[26px] font-bold tracking-[-0.018em]", ""),
-      h2: block("h2", "text-[18px] font-semibold tracking-[-0.01em]", "mt-6"),
-      h3: block("h3", "text-[15.5px] font-semibold", "mt-4"),
-      h4: block("h4", "text-[14px] font-semibold", "mt-3"),
+      h1: block("h1", "text-title tracking-[-0.018em]", ""),
+      h2: block("h2", "text-h2 font-semibold tracking-[-0.01em]", "mt-6"),
+      h3: block("h3", "text-body font-semibold", "mt-4"),
+      h4: block("h4", "text-row font-semibold", "mt-3"),
       p: block("p", "leading-[1.7] text-muted-foreground", "mt-1.5"),
       ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
       ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
@@ -649,7 +649,7 @@ export const PrettyView = memo(function PrettyView({
       },
       // relative: 열 폭 손잡이가 이 칸의 오른쪽 끝(열 경계)에 서기 위한 기준 상자다
       th: ({ children }) => (
-        <th className="relative border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
+        <th className="relative border-b border-border-strong px-3 py-2 text-left text-caption font-medium text-tertiary">
           {children}
           <ColumnResizeHandle />
         </th>
@@ -705,7 +705,7 @@ export const PrettyView = memo(function PrettyView({
             // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
-              className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-[12px] text-tertiary"
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
             >
               <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
               {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
@@ -747,7 +747,7 @@ export const PrettyView = memo(function PrettyView({
             <MermaidBlock code={hastText(code)} />
           ) : (
             <pre
-              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7] scroll-quiet"
+              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-mono leading-[1.7] scroll-quiet"
               {...props}
             >
               {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
@@ -788,7 +788,7 @@ export const PrettyView = memo(function PrettyView({
     // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
     // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 656px에서 맞춘 것과 같은 계약을
     // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다
-    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-[15px]")}>
+    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-body")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>

@@ -117,8 +117,8 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                   {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
                       한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. */}
                   <TreeRow level={1} label={groupRowLabel(group)}>
-                    <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
-                    <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
+                    <span className="min-w-0 truncate text-ui font-medium">{group.name}</span>
+                    <span className="shrink-0 text-caption text-tertiary">{shellCount(group.shells.length)}</span>
                     <span className="flex-1" />
                     <Figures metrics={groupTotals(group)} ports={false} />
                     <Actions />
@@ -151,8 +151,8 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                 {ownerless.map((group) => (
                   <Fragment key={group.owner}>
                     <TreeRow level={1} label={groupRowLabel(group)}>
-                      <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
-                      <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
+                      <span className="min-w-0 truncate text-ui font-medium">{group.name}</span>
+                      <span className="shrink-0 text-caption text-tertiary">{shellCount(group.shells.length)}</span>
                       <span className="flex-1" />
                       <Figures metrics={groupTotals(group)} ports={false} />
                       <Actions />
@@ -301,8 +301,8 @@ function ShellRows({
   return (
     <>
       <TreeRow level={level} label={label} data-shell-key={node.pool.shellKey} className="hover:bg-state-1">
-        <span className="min-w-0 truncate text-[13px]">{name}</span>
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+        <span className="min-w-0 truncate text-ui">{name}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-ui text-muted-foreground">
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (
@@ -322,7 +322,7 @@ function ShellRows({
       {node.helpers.length > 0 && (
         // **셸 도우미는 옅은 줄 하나로 따로 선다**(P1) — 사람이 띄운 것과 한 무게로 섞이면 「이 셸에서 띄운 프로세스」로 읽힌다.
         // 닫으면 함께 끝나지만 확인 창의 수에도 조용함 판정에도 안 든다(CONTEXT 「셸 도우미」).
-        <TreeRow level={level + 1} label={helperLabel(node.helpers)} data-helper="" className="text-[12.5px] text-tertiary">
+        <TreeRow level={level + 1} label={helperLabel(node.helpers)} data-helper="" className="text-ui text-tertiary">
           <span className="shrink-0">{HELPER_LABEL}</span>
           <span className="min-w-0 truncate">{node.helpers.map(processLabel).join(" · ")}</span>
         </TreeRow>
@@ -339,7 +339,7 @@ function ShellRows({
           key={identityKey(row.id)}
           level={level + depth}
           label={processRowLabel(row)}
-          className="text-[12.5px] text-muted-foreground"
+          className="text-ui text-muted-foreground"
         >
           <span title={row.command ?? undefined} className="min-w-0 flex-1 truncate">
             {processLabel(row)}

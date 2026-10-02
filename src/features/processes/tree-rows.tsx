@@ -31,10 +31,10 @@ export function Section({
   return (
     <section aria-labelledby={id} className="mt-8 flex flex-col gap-0.5">
       <div className="flex h-8 min-w-0 items-center gap-2 pr-1">
-        <h3 id={id} className="text-[12.5px] font-semibold">
+        <h3 id={id} className="text-ui font-semibold">
           {title}
         </h3>
-        <span className="text-[12px] text-tertiary">{note}</span>
+        <span className="text-caption text-tertiary">{note}</span>
         <span className="flex-1" />
         <Actions>{action}</Actions>
       </div>
@@ -81,10 +81,10 @@ export function Figures({ metrics, ports = true }: { metrics: ProcessMetrics; po
   const listed = formatPorts(metrics.ports);
   return (
     <>
-      <span data-cell="memory" className="w-16 shrink-0 text-right text-[12.5px] tabular-nums text-muted-foreground">
+      <span data-cell="memory" className="w-16 shrink-0 text-right text-ui tabular-nums text-muted-foreground">
         {formatMemory(metrics.memory)}
       </span>
-      <span data-cell="cpu" className="w-11 shrink-0 text-right text-[12.5px] tabular-nums text-muted-foreground">
+      <span data-cell="cpu" className="w-11 shrink-0 text-right text-ui tabular-nums text-muted-foreground">
         {formatCpu(metrics.cpu)}
       </span>
       {ports ? (
@@ -93,7 +93,7 @@ export function Figures({ metrics, ports = true }: { metrics: ProcessMetrics; po
           // 잘린 포트 목록의 전체는 `title`이 보인다 — 툴팁(`Hint`)이 아닌 것은 `sidebar-active-band` S29의 「버튼이 아닌 자리」와
           // 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다(spec 레이아웃 편집기의 잘린 경로와 같다).
           title={listed || undefined}
-          className="w-28 shrink-0 truncate pl-2 text-[12.5px] tabular-nums text-muted-foreground"
+          className="w-28 shrink-0 truncate pl-2 text-ui tabular-nums text-muted-foreground"
         >
           {listed}
         </span>
@@ -112,12 +112,12 @@ export function Actions({ children }: { children?: React.ReactNode }) {
 /**
  * 줄 끝의 글자 버튼 — [이동] · [닫기] · [끝내기] · [정리]가 같은 모양이다. **앱 버튼 부품의 조용한 글자 버튼이다**(`Button` ghost —
  * `sidebar-active-band` 결정 1 · 2): 화면 머리의 [조용한 셸 모두 닫기](ghost · sm)와 버튼 가족 · hover · 포커스 링이 같다. 크기는 xs(24px
- * — 32px 행 안)이고 글자만 행의 글자(12.5px)로 올린다. 쪽 동작 크기(sm — 28px · 13.5px)는 동작 칸(`Actions`, 92px)에 [이동] · [닫기]
+ * — 32px 행 안)이고 글자만 행의 글자(`text-ui`)로 올린다. 쪽 동작 크기(sm — 28px · `text-ui`)는 동작 칸(`Actions`, 92px)에 [이동] · [닫기]
  * 둘이 안 들어간다.
  */
 export function RowButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <Button variant="ghost" size="xs" onClick={onClick} className="text-[12.5px]">
+    <Button variant="ghost" size="xs" onClick={onClick} className="text-ui">
       {children}
     </Button>
   );

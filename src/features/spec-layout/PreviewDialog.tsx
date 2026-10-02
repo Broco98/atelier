@@ -48,7 +48,7 @@ function PreviewDialog({
       >
         <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border pr-3 pl-5">
           <DialogTitle>LLM이 받는 텍스트</DialogTitle>
-          <span className="text-[12.5px] text-tertiary">저장 전 초안</span>
+          <span className="text-ui text-tertiary">저장 전 초안</span>
           {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 단축키는 설명으로 남긴다(S28 — `shortcut`). */}
           <Hint
             text="닫기"
@@ -78,11 +78,11 @@ function PreviewDialog({
 export function PreviewText({ answer, selected }: { answer: LayoutPreview | null; selected: EntryPath }) {
   if (answer === null) return null;
   if (answer.errors.length > 0 || answer.text === null) {
-    return <p className="px-5 text-[13px] leading-[1.6] text-tertiary">오류를 고치면 보여요</p>;
+    return <p className="px-5 text-ui leading-[1.6] text-tertiary">오류를 고치면 보여요</p>;
   }
   const held = answer.lines.find(({ path }) => samePath(path, selected));
   return (
-    <div className="font-mono text-[12px] leading-[1.65] text-foreground">
+    <div className="font-mono text-mono-sm leading-[1.65] text-foreground">
       {answer.text.split("\n").map((line, index) => {
         const picked = held !== undefined && index >= held.start && index < held.start + held.count;
         return (

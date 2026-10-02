@@ -209,7 +209,7 @@ describe("WorkPanel 두 탭", () => {
     const tab = render(true).match(/<button[^>]*class="([^"]*)"[^>]*>spec</)?.[1] ?? "";
     expect(tab).not.toBe("");
     expect(tab).toContain("rounded-[9px]");
-    expect(tab).toContain("text-[13px]");
+    expect(tab).toContain("text-ui");
     expect(tab).toContain("font-medium");
   });
 
@@ -290,10 +290,10 @@ describe("WorkPanel 두 탭", () => {
     expect(empty).toContain("trees/atelier/");
     // 등록은 돼 있다 — "알 수 없다"는 다른 사실이라 여기서 나오면 안 된다
     expect(empty).not.toContain("알 수 없다");
-    expect(empty).not.toContain("font-mono text-[12px] text-tertiary");
+    expect(empty).not.toContain("font-mono text-mono-sm text-tertiary");
     // 같은 자리에 진짜 base가 오면 그 줄이 선다 — 위 부재가 "원래 없는 줄"이 아님을 못 박는다
     expect(render(true, oneProject, [project("atelier", "develop")])).toContain(
-      "font-mono text-[12px] text-tertiary",
+      "font-mono text-mono-sm text-tertiary",
     );
   });
 

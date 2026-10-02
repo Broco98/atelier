@@ -76,7 +76,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
 
       <Section title="프로젝트">
         {work.projects.length === 0 ? (
-          <p className="px-2 py-1 text-[12px] leading-normal text-tertiary">{noProjects}</p>
+          <p className="px-2 py-1 text-caption leading-normal text-tertiary">{noProjects}</p>
         ) : (
           // **워크트리 목록만 돈다.** 코어의 뷰 변환이 워크트리를 프로젝트에서 1:1로 만들어
           // 개수도 순서도 같고 각 항목이 이름·경로·존재·변경을 모두 들고 있다. 두 배열을
@@ -91,7 +91,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
                   type="button"
                   onClick={() => onOpenProject(worktree.project)}
                   aria-label={`${worktree.project} 프로젝트 상세로 이동`}
-                  className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] font-medium transition-colors hover:bg-state-1"
+                  className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-ui font-medium transition-colors hover:bg-state-1"
                 >
                   <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
                   <ChevronRight
@@ -108,7 +108,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
                     <Note>알 수 없다 — 프로젝트가 등록돼 있지 않다</Note>
                   ) : (
                     base !== null && (
-                      <span className="flex h-6 items-center gap-1 px-2 font-mono text-[12px] text-tertiary">
+                      <span className="flex h-6 items-center gap-1 px-2 font-mono text-mono-sm text-tertiary">
                         <ArrowRight className="size-2.5 shrink-0" strokeWidth={2} />
                         <span className="min-w-0 truncate">{base}</span>
                       </span>
@@ -146,7 +146,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col pb-2">
-      <span className="px-2 pb-0.5 pt-1.5 text-[12px] font-semibold text-tertiary">{title}</span>
+      <span className="px-2 pb-0.5 pt-1.5 text-caption font-semibold text-tertiary">{title}</span>
       {children}
     </div>
   );
@@ -178,7 +178,7 @@ function Row({
     </>
   );
   if (!copy) {
-    return <div className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">{body}</div>;
+    return <div className="flex h-7 items-center gap-1.5 px-2 text-ui">{body}</div>;
   }
   return (
     <Hint
@@ -186,7 +186,7 @@ function Row({
       announce="description"
       type="button"
       onClick={() => copy.onCopy(copy.text)}
-      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors hover:bg-state-1"
+      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-ui transition-colors hover:bg-state-1"
     >
       {body}
       <Copy
@@ -222,7 +222,7 @@ function PathRow({
 
 // 값이 아니라 사실 하나를 적는 줄 — 배지를 달지 않는다.
 function Note({ children }: { children: React.ReactNode }) {
-  return <span className="px-2 py-0.5 text-[12px] text-tertiary">{children}</span>;
+  return <span className="px-2 py-0.5 text-caption text-tertiary">{children}</span>;
 }
 
 export default WorkInfo;

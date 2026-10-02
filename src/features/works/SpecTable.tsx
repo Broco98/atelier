@@ -33,7 +33,7 @@ export function ColumnResizeHandle() {
 
 // 열이 이보다 좁아지면 안에 든 것을 알아볼 수 없다. 이 파일의 다른 값들과 달리 48은
 // 잰 값이 아니라 고른 값이다 — 셀 좌우 패딩(px-3 둘 = 24px)을 빼면 글자 자리가 24px
-// 남고, 13.5px 본문에서 두어 글자다. 더 줄이려면 가장 짧은 열 머리가 줄바꿈 없이
+// 남고, `text-row`(14px) 본문에서 두어 글자다. 더 줄이려면 가장 짧은 열 머리가 줄바꿈 없이
 // 들어가는 폭부터 재야 한다.
 const MIN_COLUMN_WIDTH = 48;
 
@@ -94,7 +94,7 @@ function ResizableTable({ className, children, ...props }: React.ComponentProps<
       <table
         {...props}
         className={cn(
-          "border-collapse text-[13.5px]",
+          "border-collapse text-row",
           // 폭을 고정하기 전: 표 폭은 소스 보기의 긴 줄과 같은 규격이다 — w-max로 내용만큼
           // 넓어져 셀이 줄바꿈되지 않고, min-w-full로 좁은 표는 본문 폭을 채운다. w-full이면
           // 표가 컨테이너에 갇혀 넘칠 수가 없고, 넘치지 않으니 가로 스크롤도 생기지 않는다.

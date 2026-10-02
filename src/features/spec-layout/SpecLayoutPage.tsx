@@ -95,7 +95,7 @@ function SpecLayoutPage() {
       {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 그 행에 선다. */}
       {query.error !== null && (
         <div className="flex flex-col items-start gap-3 pt-2">
-          <p className="text-[13.5px] leading-[1.7] text-red-600">{String(query.error)}</p>
+          <p className="text-ui leading-[1.7] text-red-600">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {state === undefined && (
             <Button variant="ghost" size="sm" onClick={reread}>
@@ -135,7 +135,7 @@ export function SpecLayoutSection({
 }) {
   return (
     <section className="flex flex-col gap-5 pt-2">
-      <p className="text-[13px] leading-[1.7] text-tertiary">
+      <p className="text-ui leading-[1.7] text-tertiary">
         <code>spec</code> 패널 탭과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
         <strong className="font-medium">부탁</strong>을 누르면 참조가 복사돼요 —
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
@@ -174,11 +174,11 @@ function LayoutRow({
     <li className="flex items-start gap-3 py-3 pr-2.5 pl-3.5">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-h-[22px] items-center gap-2">
-          <span className="text-[13.5px] font-medium">{name}</span>
+          <span className="text-ui font-medium">{name}</span>
           {/* 상태 배지의 바탕은 칩 바탕(`bg-accent` = state-2, 6%)이다 — draft 상태 배지와 같다. `bg-muted`는 이제
               행 hover 농도(state-1, 3%)라 흰 바탕 위에서 거의 안 보인다. */}
           {state.edited && (
-            <span className="inline-flex h-[18px] items-center rounded-[6px] bg-accent px-1.5 text-[11px] font-medium text-muted-foreground">
+            <span className="inline-flex h-[18px] items-center rounded-[6px] bg-accent px-1.5 text-caption font-medium text-muted-foreground">
               고침
             </span>
           )}
@@ -190,7 +190,7 @@ function LayoutRow({
               className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
               strokeWidth={2}
             />
-            <div className="flex min-w-0 flex-col gap-0.5 text-[12.5px] leading-[1.6]">
+            <div className="flex min-w-0 flex-col gap-0.5 text-ui leading-[1.6]">
               <span className="text-amber-700 dark:text-amber-400">
                 읽지 못해 내장본으로 보여 주고 있어요
               </span>
@@ -201,7 +201,7 @@ function LayoutRow({
             </div>
           </div>
         ) : (
-          <span className="break-words text-[12.5px] leading-[1.6] text-tertiary">
+          <span className="break-words text-ui leading-[1.6] text-tertiary">
             {state.edited
               ? `${reference} 폴더가 내장본을 가리고 있어요 · 템플릿 ${state.templateCount ?? 0}개`
               : "내장본 그대로예요"}
@@ -300,7 +300,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
-            <span id={noteId} className="text-[12px] leading-[1.5] text-tertiary">
+            <span id={noteId} className="text-caption leading-[1.5] text-tertiary">
               폴더를 지우고 내장본으로 돌아가요
             </span>
           </span>
@@ -329,7 +329,7 @@ export function CopiedNotice({ reference, onClose }: { reference: string; onClos
 export function RevertedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
   return (
     <PageNotice title="되돌렸어요" reference={reference} onClose={onClose}>
-      내장본으로 돌아갔어요. <code className="text-[11.5px]">spec</code> 패널 탭과 에이전트 안내문도
+      내장본으로 돌아갔어요. <code className="text-mono-sm">spec</code> 패널 탭과 에이전트 안내문도
       따라가요.
     </PageNotice>
   );
@@ -365,10 +365,10 @@ function PageNotice({
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" strokeWidth={2.2} />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <span className="text-[13.5px] font-medium break-words">
-          {title} <code className="text-[12px] opacity-80">{reference}</code>
+        <span className="text-ui font-medium break-words">
+          {title} <code className="text-mono-sm opacity-80">{reference}</code>
         </span>
-        <span className="text-[12.5px] leading-[1.6] opacity-75">{children}</span>
+        <span className="text-ui leading-[1.6] opacity-75">{children}</span>
       </div>
       {/* 무엇을 닫는지는 자리(이 메시지 `status` 안)가 말한다. 어두운 바탕 위라 hover는 바탕 대신 농도로 선다 —
           모양은 아이콘 버튼 규격(`icon-button`)이다. */}

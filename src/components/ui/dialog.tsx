@@ -2,7 +2,7 @@
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { dialogLook } from "@/components/ui/dialog-look"
@@ -39,9 +39,9 @@ function DialogOverlay({
   )
 }
 
-// 창 상자는 확인 창과 같은 것(`dialogLook.popup`)에 글자 13.5px을 더한다.
+// 창 상자는 확인 창과 같은 것(`dialogLook.popup`)에 글자 `text-ui`를 더한다.
 const dialogPopupVariants = cva(
-  [dialogLook.popup, "text-[13.5px]"],
+  [dialogLook.popup, "text-ui"],
   {
     variants: {
       variant: {

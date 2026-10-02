@@ -239,6 +239,58 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* **글자 단계 — 디자인 시스템의 열 단계뿐이다**(ui-refresh 결정 25). 이름은 DS(`base.css`의 `t-*`)
+   그대로이고, 단계마다 크기와 줄 높이를 함께 든다. 굵기 · 자간이 단계에 붙은 것은 h2 · title ·
+   mono-micro 셋이다(부르는 자리의 `font-*` · `tracking-*`이 덮는다).
+     meta        11 / 16   행 오른쪽 메타, 소제목 개수
+     caption     12 / 16   사이드바 소제목, 표 머리, 배지, 툴팁, 날짜
+     ui          13 / 20   알약 · 탭 · 메뉴 · 폼 · 트리 행 · 브레드크럼
+     row         14 / 20   사이드바 작업 행 · 목록 행 · 팔레트 행
+     body        15 / 26   spec 문서 본문
+     h2          19 / 28   문서 h2
+     title       25 / 32   문서 h1, 프로젝트 제목
+     mono        13 / 20   코드 블록 · 인라인 코드 · 속성 값
+     mono-sm     12 / 16   경로 · 브랜치 · 포트 · 복사 줄
+     mono-micro  10 / 14   트리의 확장자 배지만
+   DS의 굵은 조합은 토큰이 아니다 — `t-ui-strong`은 `text-ui font-semibold`, `t-row-nav`는
+   `text-row font-medium`이다. 고정폭 셋은 크기만 들고 글꼴은 `font-mono`가 든다.
+
+   **`--text-*: initial`이 Tailwind 기본 단계(`text-xs` · `text-sm` …)를 비운다.** 그 이름들은 이제
+   아무 CSS도 안 나와 조용히 부모 크기를 물려받으므로, 이름 단계와 `text-[Npx]`는 `type-scale.test.ts`가
+   막는다. 클래스 합치기(`lib/utils.ts`의 `cn`)도 이 이름들을 크기로 알아야 한다 — 같은 검사가 잰다.
+   `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 글자 px는 단계로 옮기기 전의 기록이다 —
+   지금 크기는 클래스의 단계가 든다.
+
+   **글자색 `--text-tertiary` · `--text-section`은 여기 들이지 않는다**(`:root`의 주석) — 이 블록에
+   들면 글자 크기로 읽힌다. */
+@theme static {
+    --text-*: initial;
+    --text-meta: 11px;
+    --text-meta--line-height: 16px;
+    --text-caption: 12px;
+    --text-caption--line-height: 16px;
+    --text-ui: 13px;
+    --text-ui--line-height: 20px;
+    --text-row: 14px;
+    --text-row--line-height: 20px;
+    --text-body: 15px;
+    --text-body--line-height: 26px;
+    --text-h2: 19px;
+    --text-h2--line-height: 28px;
+    --text-h2--font-weight: 600;
+    --text-title: 25px;
+    --text-title--line-height: 32px;
+    --text-title--font-weight: 650;
+    --text-title--letter-spacing: -0.01em;
+    --text-mono: 13px;
+    --text-mono--line-height: 20px;
+    --text-mono-sm: 12px;
+    --text-mono-sm--line-height: 16px;
+    --text-mono-micro: 10px;
+    --text-mono-micro--line-height: 14px;
+    --text-mono-micro--font-weight: 500;
+}
+
 :root {
     /* 값은 디자인 시스템(`base.css`의 `:where(:root)`)의 것이다(ui-refresh 결정 11 — Codex 팔레트).
        이름도 DS와 같다. 갈리는 것은 둘이다.
@@ -618,8 +670,9 @@ body.dragging-row * {
    (`sidebar-active-band` 결정 14) 그 줄은 걷혔다. */
 [data-title],
 [data-fade] {
-    /* 페이드 폭 — **한글 1.03글자**다. 한 글자가 11.6675px이다(Pretendard Variable
-       13.5px/500 · L3 WebKit 실측 2026-08-30). 그래서 24px은 「≈1.8글자」가 아니라
+    /* 페이드 폭 — **한글 한 글자 남짓**이다. 제목이 13.5px/500이던 때 한 글자가 11.6675px였다
+       (Pretendard Variable · L3 WebKit 실측 2026-08-30 — 아래 글자 수도 그때 잰 것이다). 제목이
+       `text-row`(14px)가 된 지금은 비례로 12.1px이다. 그래서 24px은 「≈1.8글자」가 아니라
        **2.06글자**였다 — 마스크는 상시라 그 두 글자가 늘 흐린 채였다. 12px로
        줄이자 같은 실측에서 **또렷한 글자(끝까지 α=1)가 18자→19자**, 몸통까지 온전한
        글자가 19자→20자로 늘었다(제목 상자 194px, 제목 339.6px). 0으로 두지 않는 것은
@@ -793,8 +846,8 @@ body.dragging-row * {
    (메뉴 역할), Select는 카드 안의 `listbox`가 목록이다(머리 · 바닥 칸이 목록 밖에 선다).
 
    `menu-row`는 한 줄이다 — 32px · 모서리 9px · 좌우 9px · 글리프 사이 8px. 목록이 세로 flex라 줄이
-   눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 표면마다 지금 값이 달라(메뉴
-   12.5px · Select 13px) 부품 파일이 든다. 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
+   눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 부품 파일이 든다(메뉴 · Select
+   모두 `text-ui`). 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
    클래스 그대로 부품 파일에 있다. 줄 끝의 체크는 `components/ui/menu-check.tsx`가 든다. */
 @utility menu-list {
   @apply flex flex-col gap-px p-[5px];
@@ -804,7 +857,7 @@ body.dragging-row * {
   @apply h-8 shrink-0 gap-2 rounded-[9px] px-[9px];
 }
 
-/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 11.5px · 글리프 사이 6px · 오른쪽 여백 5px.
+/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-meta`(11px) · 글리프 사이 6px · 오른쪽 여백 5px.
    조용한 갈래(`ShellMeta` — 종류·수)와 신호 갈래(`SignalMeta` — 마크·경과)가 이 한 정의를 부른다.
    두 파일이 같은 문자열을 옮겨 적던 자리다. nav `Processes`의 메모리 합계(`ProcessesNavMeta`)도 nav `Terminal`과 같은
    오른쪽 끝에 서야 해서 이것을 부른다.
@@ -816,7 +869,7 @@ body.dragging-row * {
    **색은 안 정한다.** 조용한 갈래는 바깥에 `text-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
    갈래의 마크는 행 글자색을 물려받는다 — 갈래마다 달라 부르는 자리가 든다. */
 @utility row-meta {
-  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-[11.5px];
+  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-meta;
 }
 
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.

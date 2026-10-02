@@ -1,7 +1,7 @@
 // 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background)에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5 — 가림막·창 상자·가운데 자리·머리·제목·설명·바닥은 창(dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다(설명의 whitespace-pre-line만 여기 것이다), Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { dialogLook } from "@/components/ui/dialog-look"

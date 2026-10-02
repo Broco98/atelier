@@ -53,7 +53,7 @@ export function WorkMetaRows({
         <MetaRow
           glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
           value={work.branch}
-          tail={base ? <span className="shrink-0 text-[11px] text-tertiary">{base}</span> : undefined}
+          tail={base ? <span className="shrink-0 text-meta text-tertiary">{base}</span> : undefined}
           onCopy={onCopy}
         />
       )}
@@ -115,10 +115,10 @@ function MetaRow({
       announce="description"
       type="button"
       onClick={() => onCopy(value)}
-      className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-[13px] transition-colors hover:bg-state-1"
+      className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-ui transition-colors hover:bg-state-1"
     >
       {glyph}
-      <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{shown}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-mono-sm">{shown}</span>
       {tail ?? (
         <Copy
           className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"

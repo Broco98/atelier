@@ -826,7 +826,7 @@ function WorksPage({
               atelier_add_project / atelier_start_work를 부른다.
               아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
           <EmptyContent>
-            <code className="select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+            <code className="select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-mono-sm text-muted-foreground">
               {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
             </code>
           </EmptyContent>
@@ -1016,7 +1016,7 @@ function ColumnHead({
   return (
     <div
       data-column={kind}
-      className="flex h-8 shrink-0 items-center gap-1 pl-3 pr-1.5 text-[12.5px] text-tertiary"
+      className="flex h-8 shrink-0 items-center gap-1 pl-3 pr-1.5 text-ui text-tertiary"
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {source}
@@ -1053,8 +1053,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
             이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 「불러오는 중」이 한 번 더 읽힌다.
             움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
         <Spinner aria-hidden className="size-6 text-primary" />
-        <span className="mt-1 text-[15px] font-semibold tracking-[-0.01em]">{verb} 중…</span>
-        <span className="text-[13px] text-tertiary">{detail}</span>
+        <span className="mt-1 text-body font-semibold tracking-[-0.01em]">{verb} 중…</span>
+        <span className="text-ui text-tertiary">{detail}</span>
       </div>
     </div>
   );
@@ -1083,7 +1083,7 @@ function StatusMenu({ work }: { work: WorkView }) {
         render={
           <DropdownMenuTrigger
             className={cn(
-              "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium transition-[filter] hover:brightness-95",
+              "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-caption font-medium transition-[filter] hover:brightness-95",
               meta.badgeClass,
             )}
           />
@@ -1107,7 +1107,7 @@ function StatusMenu({ work }: { work: WorkView }) {
               <DropdownMenuRadioItem key={status} value={status} label={option.label}>
                 <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
                 <span className="min-w-0 flex-1 truncate font-medium">{option.label}</span>
-                <span className="shrink-0 text-[11px] text-tertiary">{option.desc}</span>
+                <span className="shrink-0 text-meta text-tertiary">{option.desc}</span>
               </DropdownMenuRadioItem>
             );
           })}

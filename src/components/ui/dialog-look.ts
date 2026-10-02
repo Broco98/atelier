@@ -22,7 +22,7 @@ export const dialogLook = {
   center: "top-1/2 grid w-[330px] max-w-[calc(100%-4rem)] -translate-y-1/2 gap-4 p-4",
   header: "grid gap-1.5",
   footer: "flex justify-end gap-1.5",
-  title: "text-[14px] font-semibold tracking-[-0.01em]",
+  title: "text-row font-semibold tracking-[-0.01em]",
   description:
-    "text-[13px] leading-[1.6] text-tertiary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+    "text-ui leading-[1.6] text-tertiary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
 } as const
