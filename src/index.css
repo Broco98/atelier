@@ -177,8 +177,6 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --color-panel: var(--bg-panel);
-    --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
     /* 디자인 시스템이 더한 색(ui-refresh 결정 11) — 값과 그 자리는 `:root`의 주석이 든다.
@@ -354,8 +352,6 @@
     --sidebar-accent-foreground: var(--accent-foreground);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--primary);
-    --bg-panel: #f7f7f8;
-    --bg-inset: #f6f6f7;
     --border-strong: #d2d2d7;
     /* 흐린 글자 — 닫기 `×` · 메타. 바탕(`--chrome`) 위 2.95:1이다. 소제목(`--text-section`)과
        함께 Codex에서 잰 값이라 대비 바닥 아래인 것을 알고 둔다(handoff 「대비 미달을 알고 둔 값」).
@@ -365,14 +361,14 @@
 
     /* **디자인 시스템이 더한 색**(ui-refresh 결정 11 · 16 · 18).
          --chrome             창 바탕 — 카드가 그 위에 뜬다
-         --chrome-alt         한 단 짙은 바탕(결정 18의 탭 줄 시안 톤)
+         --chrome-alt         한 단 짙은 바탕(ui-refresh 결정 18의 탭 줄 시안 톤)
          --chrome-hover       바탕 위 버튼(`+` 등)을 올리거나 누를 때의 면
          --primary-strong     흰 글자를 얹는 파랑 면 — 흰 글자 4.69:1
          --primary-ink        옅은 파랑 면 위의 파랑 글자 — active 배지 · `soft` 버튼
          --link               링크 글자
          --border-pill        알약 · 흰 원 버튼의 안쪽 1px 테두리
          --text-section       소제목 — 바탕 위 2.5:1(위 `--text-tertiary`와 같은 까닭으로 둔다)
-         --bg-group           카드 안 묶음의 옅은 면(결정 16)
+         --bg-group           카드 안 묶음의 옅은 면(ui-refresh 결정 16)
          --callout-important  「중요」 콜아웃의 제목
          --scrim              모달 뒤를 어둡게 하는 막
        **파랑 글자는 자리마다 갈린다** — 링크는 `link`, 옅은 파랑 면 위는 `primary-ink`, 아이콘 ·
@@ -423,18 +419,22 @@
        읽는 회색을 앱 값에 맞췄다). 칩 배경·상태 배지의 bg-accent가 그래서 2단이다. 그래도 **앱이
        적는 상태 배경은 --state-N으로 적는다** — accent라는 이름은 행 hover(1)인지 버튼 hover(2)인지를
        말하지 않는다.
+       **스케일 밖의 선택 · hover 면은 아래가 전부다** — 모두 일부러 고른 불투명한 면이다(반투명 겹이
+       아니라 N%로 옮기면 아래 것이 비친다).
+         `--sidebar-accent`  행 선택(`selected-row`, 위) · 흰 캡슐 안의 켜진 칸 — 원문 전환 알약의 칩
+                             (`segment-group` `pill`, ui-refresh 결정 7의 B)과 레일의 켜진 칸(`Rail`, ui-refresh
+                             결정 10)이 사이드바의 고른 행과 같은 면이다
+         `--card`(흰 면)     바탕(`--chrome`) 위에서 고른 것 — 바탕 줄의 켜진 탭(`tab-on`, ui-refresh 결정 18)과
+                             열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS `.at-rail-toggle`)이다
+         `--chrome-hover`    바탕 위 버튼을 올리거나 누를 때 — 탭 줄의 `+` · 패널 토글(ui-refresh 결정 18 · DS
+                             `.at-icon-btn.on-chrome`)
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
 
        hover:bg-accent로 상태 hover를 칠하던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을
        고정한다). **예외는 registry에서 온 메뉴 줄의 켜짐 하나다** — 드롭다운·Select 항목의
        focus:bg-accent는 부품 파일에 registry 그대로 있고, 토큰이 2단을 가리키게 해서 앱 값으로
        살렸다(판 1 토큰 표 — 토큰을 먼저 맞추고, 그것으로 앱 값이 나오는 부품 클래스는 그대로 둔다).
-       메뉴 줄의 켜짐이 그래서 버튼 hover와 같은 2단이다. 그 검사는 hover만 세므로 이 자리를 안 잡는다.
-       다만 스케일 밖 상태 배경이 아직 하나 남아 있다 — 설명 편집 버튼의 hover:bg-panel
-       (ProjectDetail). 반투명 오버레이가 아니라 불투명 표면색이라 6%로 그냥 바꿀 수 없다
-       (바꾸면 아래 것이 비친다). 옮길지는 따로 판단할 일이고, 그때까지 "전부 옮겼다"고
-       적지 않는다. (둘이었다 — 나머지 하나인 WorksPage 프로젝트 칩의 hover:bg-inset은
-       칩이 정보 탭으로 옮겨가며 사라졌다) */
+       메뉴 줄의 켜짐이 그래서 버튼 hover와 같은 2단이다. 그 검사는 hover만 세므로 이 자리를 안 잡는다. */
     --state-1: rgba(20, 20, 28, 0.03);
     --state-2: rgba(20, 20, 28, 0.06);
     --state-3: rgba(20, 20, 28, 0.09);

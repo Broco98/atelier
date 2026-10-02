@@ -177,7 +177,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-inset px-2 py-1 font-mono text-mono-sm text-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-group px-2 py-1 font-mono text-mono-sm text-tertiary">
           <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
           {name}
         </span>
@@ -707,7 +707,7 @@ export const PrettyView = memo(function PrettyView({
             // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-inset px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-group px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
             >
               <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
               {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
