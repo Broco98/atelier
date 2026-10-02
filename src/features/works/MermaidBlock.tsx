@@ -159,8 +159,9 @@ function MermaidBlock({ code }: { code: string }) {
   }, [fullBody, size]);
 
   return (
-    <div className="overflow-hidden rounded-card border bg-panel">
-      <div className="flex items-center justify-between border-b px-2.5 py-1.5">
+    // 카드 안 묶음(ui-refresh 결정 16) — 옅은 면 · `rounded-card` · 테두리 없음. 머리 줄과 그림 사이에도 선이 없다.
+    <div className="overflow-hidden rounded-card bg-group">
+      <div className="flex items-center justify-between px-2.5 py-1.5">
         <span className="font-mono text-mono-sm text-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
@@ -202,10 +203,11 @@ function MermaidBlock({ code }: { code: string }) {
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
           <span className="text-ui text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-mono leading-[1.7] text-muted-foreground scroll-quiet">{code}</pre>
+          <pre className="overflow-x-auto font-mono text-mono text-muted-foreground scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-mono leading-[1.75] text-muted-foreground scroll-quiet">{code}</pre>
+        // 면은 블록이 이미 든다 — 원본 코드는 같은 면 위에 바로 선다(코드 블록과 같은 안쪽 12 · 16, `text-mono` 13/20).
+        <pre className="overflow-x-auto px-4 py-3 font-mono text-mono text-muted-foreground scroll-quiet">{code}</pre>
       ) : (
         <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (

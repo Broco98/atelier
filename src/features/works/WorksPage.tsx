@@ -840,7 +840,7 @@ function WorksPage({
               atelier_add_project / atelier_start_work를 부른다.
               아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
           <EmptyContent>
-            <code className="select-all rounded-lg border bg-inset px-3 py-2 font-mono text-mono-sm text-muted-foreground">
+            <code className="select-all rounded-lg bg-group px-3 py-2 font-mono text-mono-sm text-muted-foreground">
               {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
             </code>
           </EmptyContent>

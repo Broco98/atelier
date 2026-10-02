@@ -5,6 +5,11 @@ import FullscreenModal from "./FullscreenModal";
 
 // 예쁜 보기의 표 블록. 가로 스크롤 위에 전체화면 확대와 열 폭 조절을 얹는다.
 // 확대는 다이어그램 블록과 같은 틀(FullscreenModal)을 쓴다 — 같은 손버릇으로 열리고 닫힌다.
+//
+// 표는 카드 안 묶음이다(ui-refresh 결정 16, DS `.at-doc-table`) — 옅은 면 · `rounded-card` · 안쪽 6 · 테두리 없음이고,
+// 줄 사이 선 없이 줄의 hover(`state-2`)로 갈린다. 칸의 모양(머리 글자 · hover · 둥근 줄 끝)은 칸을 그리는
+// 마크다운 렌더러(`SpecViewer`의 `th` · `td`)가 들고, 면은 여기가 든다. 전체화면 창 안의 표도 같은 면에 선다.
+const TABLE_SURFACE = "rounded-card bg-group p-1.5";
 
 // 끄는 동작은 표가 받고, 손잡이는 열 머리(th)가 그린다 — 손잡이가 설 자리는 열 경계뿐이고
 // 그 자리를 아는 건 th다. 손잡이는 자기가 몇 번째 열인지 모른다. 끌기 시작할 때 DOM에서 읽는다.
@@ -94,7 +99,8 @@ function ResizableTable({ className, children, ...props }: React.ComponentProps<
       <table
         {...props}
         className={cn(
-          "border-collapse text-row",
+          // `border-separate`: 줄 끝 칸의 둥근 모서리가 서려면 칸 경계가 합쳐지지 않아야 한다(`collapse`면 무시된다).
+          "border-separate border-spacing-0 text-row",
           // 폭을 고정하기 전: 표 폭은 소스 보기의 긴 줄과 같은 규격이다 — w-max로 내용만큼
           // 넓어져 셀이 줄바꿈되지 않고, min-w-full로 좁은 표는 본문 폭을 채운다. w-full이면
           // 표가 컨테이너에 갇혀 넘칠 수가 없고, 넘치지 않으니 가로 스크롤도 생기지 않는다.
@@ -120,7 +126,8 @@ function ResizableTable({ className, children, ...props }: React.ComponentProps<
 
 function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
   return (
-    <div className="group/table relative">
+    // 면은 스크롤 상자 **바깥**이다 — 넓은 표를 옆으로 밀어도 면의 둥근 끝이 제자리에 남고, 표만 그 안에서 구른다.
+    <div className={cn("group/table relative", TABLE_SURFACE)}>
       {/* 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다 */}
       <div className="overflow-x-auto scroll-quiet">
         <ResizableTable {...props}>{children}</ResizableTable>
@@ -152,9 +159,12 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
             가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다.
             폭 상태는 본문 표와 따로 간다 — 본문 폭(좁은 열)에 맞춰 고정한 값을 1280px
             모달에 그대로 들고 오면 표가 왼쪽에 쪼그라든 채 열린다. 창 안은 떠 있는 동안에만
-            서므로 열 때마다 내용 폭에서 새로 시작하고, 닫으면 본문은 그대로다 */}
+            서므로 열 때마다 내용 폭에서 새로 시작하고, 닫으면 본문은 그대로다.
+            면은 표를 감싸는 상자일 뿐 스크롤 상자가 아니다 — 표만큼 넓어지고(`w-max`) 좁은 표는 창 폭을 채운다. */}
         <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
-          <ResizableTable {...props}>{children}</ResizableTable>
+          <div className={cn("w-max min-w-full", TABLE_SURFACE)}>
+            <ResizableTable {...props}>{children}</ResizableTable>
+          </div>
         </div>
       </FullscreenModal>
     </div>
