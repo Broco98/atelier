@@ -22,7 +22,7 @@ import { metricsOf as 지표, NO_METRICS, poolShell, processRow as 행, snapshot
 import type { PoolShell, ProcessRow } from "./types";
 
 // 프로세스 티켓 27 — **`Processes`의 셸 묶음이 서는 차례**(프로세스 결정 9 · 10 · 프로세스 스펙 S53). 화면은 앱 전체를 work → 셸 →
-// 자손으로 세운다(세계 단은 ui-refresh 결정 3으로 걷혔다). 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 ·
+// 자손으로 세운다 — work 행(최상위 터미널이면 `Terminal`)이 맨 윗단이다. 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 ·
 // 접근성 이름이다 — 스냅샷(Rust가 가른 셸별 자손)과 스토어(work)를 **셸 키로** 잇는 자리가 여기 하나다. 화면이 진짜 스토어 · 진짜 스냅샷으로 서는지는 L3가
 // 잰다(`processes-tree.spec.ts`).
 
@@ -75,8 +75,8 @@ const 기본 = (over: Partial<TreeInput>): TreeInput => ({
 });
 
 describe("묶음 순서 — work → 셸 → 자손", () => {
-  // 세계 단이 없다(ui-refresh 결정 3) — work 행(최상위 터미널이면 `Terminal`)이 맨 윗단이다.
-  it("work 행이 맨 윗단이다 — 그 위에 세계 줄이 없다", () => {
+  // work 행(최상위 터미널이면 `Terminal`)이 맨 윗단(1단)이고, 그 셸이 바로 아랫단이다.
+  it("work 행이 맨 윗단이다", () => {
     const input = 기본({ shells: [칸(1, "G-1", { owner: ownerOf() })], snapshot: 스냅샷([풀(1, "G-1")]) });
     expect(편모양(input)).toEqual(["1 Terminal", "2 G-1"]);
   });
@@ -419,7 +419,7 @@ describe("주인 잃은 셸 묶음", () => {
     expect(ownerlessGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
   });
 
-  // work 줄은 셸 묶음의 work 줄과 같은 말이다 — 세계를 말하지 않는다(ui-refresh 결정 3).
+  // work 줄은 셸 묶음의 work 줄과 같은 말이다.
   it("work 줄은 이름 · 셸 수 · 메모리다", () => {
     const [group] = ownerlessGroups(
       기본({

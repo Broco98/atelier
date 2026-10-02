@@ -103,7 +103,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(ownerless).toBeVisible();
-  // work마다 선다 — 목록에 없는 work이라 이름은 slug다. 셸 트리의 work 줄과 같은 말이다(세계를 말하지 않는다).
+  // work마다 선다 — 목록에 없는 work이라 이름은 slug다. 셸 트리의 work 줄과 같은 말이다(이름과 셸 수).
   expect(await 줄들(ownerless)).toEqual([
     { level: "1", name: `${plainWork.slug}, 셸 2개` },
     { level: "2", name: "zsh, 띄운 프로세스 1개" },

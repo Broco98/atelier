@@ -38,8 +38,8 @@ pub struct AtelierServer {
 }
 
 impl AtelierServer {
-    /// 루트는 기동 때 한 번 정한다 — 도구 쪽에서 루트를 다시 고르지 않는다. 기동은 실패하지 않는다: 앱이
-    /// 예전에 셸마다 심던 모드 값이 셸에 남아 있어도 읽지 않는다(ui-refresh 결정 22).
+    /// 루트는 기동 때 한 번 정한다 — 도구 쪽에서 루트를 다시 고르지 않는다. 기동은 실패하지 않는다: 셸 환경에서
+    /// 읽는 것은 데이터 루트(`ATELIER_HOME`, 테스트용)뿐이라, 셸에 다른 값이 남아 있어도 같은 서버가 뜬다(ui-refresh 결정 22).
     pub fn new() -> Self {
         Self {
             projects_root: atelier_core::projects_dir(),

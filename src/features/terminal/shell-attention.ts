@@ -688,8 +688,7 @@ export function callingNote(shells: ReadonlyArray<Shell>): CallingNote | null {
  * 그 셸이 부르는 것은 nav `Terminal`과 띠가 받는다(#204).
  *
  * **키는 slug다** — `shellCountsOf`와 같은 사정이다. 목록은 터미널을 모르므로
- * (SidebarWorkList의 import 계약) 소유자로 키를 주면 `work.slug`로 꺼내다 늘 빈손이 되고,
- * 그때 행은 「신호가 없다」로 조용히 그려진다.
+ * (SidebarWorkList의 import 계약) `work.slug`로 꺼낸다.
  */
 export function signalsOf(state: ShellsState): Record<string, ShellSignal> {
   return perWork(state, topSignal);

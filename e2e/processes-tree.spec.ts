@@ -76,7 +76,7 @@ test("work 행이 맨 윗단이고 그 아래 셸 행 · 자손 행 · 셸 도�
   await expect(page).toHaveURL("/processes");
   await expect(셸행(page, 1)).toBeVisible();
   expect(await 줄들(page)).toEqual([
-    // work 행이 맨 윗단이다 — 세계 줄이 없다(ui-refresh 결정 3). 이름(목록의 제목)과 셸 수. 프로세스 결정 10 그림의
+    // work 행이 맨 윗단이다 — 이름(목록의 제목)과 셸 수. 프로세스 결정 10 그림의
     // 「process-manager · 셸 2」가 이 줄이다.
     { level: "1", name: `${plainWork.title}, 셸 2개` },
     // 명령 없이 사람이 띄운 것만 남은 셸 — 도우미는 안 센다.
