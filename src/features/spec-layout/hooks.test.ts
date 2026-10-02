@@ -23,7 +23,7 @@ import type { SpecLayoutRead, SpecLayoutState } from "./types";
 // 무엇을 지우는지가 이 계약의 전부다. **훅이 짓는 키를 그대로 쓴다** — 손으로 같은 모양을 다시 지으면
 // 진짜 키가 바뀌어도 이 파일이 초록이다(works 쪽 `specKey`와 같은 이유).
 
-const docsKey = (mode: Mode) => archivedDocsQuery(mode, "치운-가").queryKey;
+const docsKey = archivedDocsQuery("치운-가").queryKey;
 
 const RECORD_ONLY: ArchivedDocs = {
   docs: ["record.md"],
@@ -43,10 +43,10 @@ function seeded() {
   client.setQueryData(specLayoutStatesQuery().queryKey, [] as SpecLayoutState[]);
   for (const mode of ALL_MODES) {
     client.setQueryData(specLayoutReadQuery(mode).queryKey, BROKEN_READ(mode));
-    client.setQueryData(worksQuery(mode).queryKey, [] as WorkView[]);
-    client.setQueryData(archiveQuery(mode).queryKey, [] as ArchiveEntry[]);
-    client.setQueryData(docsKey(mode), RECORD_ONLY);
   }
+  client.setQueryData(worksQuery().queryKey, [] as WorkView[]);
+  client.setQueryData(archiveQuery().queryKey, [] as ArchiveEntry[]);
+  client.setQueryData(docsKey, RECORD_ONLY);
   return client;
 }
 
@@ -70,22 +70,17 @@ describe("레이아웃이 바뀌었다고 알리는 문", () => {
     }
   });
 
-  // spec 트리는 work 응답에 실려 온다(구현 스펙 3절) — 목록을 다시 읽어야 트리가 바뀐다. 두 세계를 다
-  // 지우는 것은 모드마다 레이아웃이 따로라도 이벤트는 하나라서다: 어느 쪽 폴더가 바뀌었는지 모른다.
-  it("두 세계의 work 목록을 지운다", () => {
+  // spec 트리는 work 응답에 실려 온다(구현 스펙 3절) — 목록을 다시 읽어야 트리가 바뀐다.
+  it("work 목록을 지운다", () => {
     const client = seeded();
     void invalidateSpecLayout(client);
-    for (const mode of ALL_MODES) {
-      expect(invalidated(client, worksQuery(mode).queryKey), `${mode} work 목록`).toBe(true);
-    }
+    expect(invalidated(client, worksQuery().queryKey)).toBe(true);
   });
 
-  it("두 세계의 아카이브 문서 목록을 지운다", () => {
+  it("아카이브 문서 목록을 지운다", () => {
     const client = seeded();
     void invalidateSpecLayout(client);
-    for (const mode of ALL_MODES) {
-      expect(invalidated(client, docsKey(mode)), `${mode} 아카이브 문서 목록`).toBe(true);
-    }
+    expect(invalidated(client, docsKey)).toBe(true);
   });
 
   // 되돌리기(티켓 10)와 편집기의 저장(티켓 11)도 이 문을 탄다 — mutation의 `onSuccess`가 이것을 돌려주면

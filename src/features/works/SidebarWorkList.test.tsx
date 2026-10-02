@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { Mode } from "@/mode";
 import { SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
 import { WorkSectionList } from "./WorkSectionList";
 import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
@@ -43,13 +42,10 @@ const works = (...raws: string[]) =>
 const ALL: SectionsOpen = { pinned: true, works: true };
 
 // 기본값은 **아무 work도 안 고른 상태**다 — 아래 구획 검사들이 그 위에서 돈다.
-// 세계도 기본값이 있다(Atelier): 구획이 서는 조건과 핀의 생김새는 세계를 안 타므로 그 검사들이
-// 세계를 말하지 않아도 뜻이 온전하다. 세계가 갈리는 것만 아래 마지막 describe가 둘 다 잰다.
 function render(
   list: WorkView[],
   open: SectionsOpen = ALL,
   {
-    mode = "atelier",
     selectedSlug = null,
     shellCounts = {},
     // 화면값은 **문자열 Record**로 내려온다(#203) — 값을 고르는 자리는 Sidebar이고 이
@@ -63,7 +59,6 @@ function render(
     lineY = null,
     litEmptySlot = null,
   }: {
-    mode?: Mode;
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     signals?: Record<string, ShellSignal>;
@@ -76,7 +71,6 @@ function render(
   return renderToStaticMarkup(
     <WorkSectionList
       sections={splitWorkSections(list, open)}
-      mode={mode}
       open={open}
       selectedSlug={selectedSlug}
       shells={{
@@ -222,8 +216,8 @@ describe("초안은 `작업` 구획 안에 선다", () => {
     // 빈 구획이 낼 수 있는 두 말을 **판정 함수에서** 받아 댄다 — 글자 조각으로 대면 문구가
     // 바뀌는 날 이 두 줄이 아무것도 안 재는 채 초록으로 남는다.
     const notices = [
-      emptyMainNotice(splitWorkSections([], ALL), "atelier"),
-      emptyMainNotice(splitWorkSections(works("pin:가"), ALL), "atelier"),
+      emptyMainNotice(splitWorkSections([], ALL)),
+      emptyMainNotice(splitWorkSections(works("pin:가"), ALL)),
     ];
     expect(new Set(notices).size).toBe(2);
     for (const notice of notices) expect(markup).not.toContain(notice);
@@ -272,20 +266,18 @@ describe("빈 `작업` 구획이 하는 말", () => {
   });
 });
 
-// 목록의 이름. 문구 자체는 순수 함수라 `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서
-// 보는 것은 호출부다** — 화면이 그 함수들에 지금 모드를 실제로 넘기는가.
+// 목록의 이름. 문구 자체는 어휘 표라 `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서
+// 보는 것은 호출부다** — 화면이 그 표를 실제로 부르는가.
 describe("상주 목록의 이름", () => {
   it("머리가 `작업`이고 형제 머리는 `고정`이다", () => {
-    const labels = headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode: "atelier" })).map(
-      (one) => one.label,
-    );
+    const labels = headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label);
     expect(labels).toEqual(["고정", "작업"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
   // 계약은 `work-sections.test.ts`가 진다.
   it("작업이 없으면 Claude Code에서 시작된다고 한다", () => {
-    expect(render([], ALL, { mode: "atelier" })).toContain("작업은 Claude Code에서 시작돼요.");
+    expect(render([])).toContain("작업은 Claude Code에서 시작돼요.");
   });
 });
 
@@ -785,22 +777,6 @@ describe("사이드바 목록은 터미널을 모른다", () => {
     // 일부러 그대로 둔다: 「여기서는 그 모듈을 부를 수 없다」를 가장 싸게 지키는 방법이다.
     expect(countOf("@/features/terminal")).toBe(0);
     expect(countOf("./terminal-store")).toBe(0);
-  });
-
-  it("읽는 곳도 가는 곳도 한 세계로 눕지 않는다", () => {
-    // **이 파일에 세계의 이름이 리터럴로 박히면 안 된다**(#183). 목록이 읽는 루트
-    // (`useWorks`·`useSetWorkPinned`)와 행이 가는 주소(`routesOf`·`recallSearch`)가 전부
-    // 같은 `mode` 하나에서 나와야 한다 — 데이터만 모드로 갈면 Maison에서 목록은 Room인데
-    // 행을 누르면 Atelier로 튀고, 반대면 목록만 낡는다. 둘 다 훅과 라우터를 타서 이 저장소의
-    // 정적 마크업 seam에는 안 걸리고, 화면에서도 저쪽 세계에 건너가 봐야만 드러난다.
-    expect(countOf('"atelier"')).toBe(0);
-    expect(countOf('"maison"')).toBe(0);
-    // **주소도 센다.** 위 두 줄은 모드의 낱말만 보므로 `routes.item`을 `/works/$slug`로
-    // 되돌리는 변형이 그대로 빠져나간다 — 그 리터럴에는 세계의 이름이 안 들어 있고, L0는
-    // 그 필드의 타입이 두 주소의 유니온이라 통과하며, 이 파일의 마크업 seam은 행의 `onOpen`이
-    // 목업이라 목적지를 아예 안 본다(실측으로 확인했다: L0·L2 940건이 전부 초록이었다).
-    expect(countOf('"/works/')).toBe(0);
-    expect(countOf('"/maison/rooms/')).toBe(0);
   });
 
   it("window에서 키를 듣지 않는다", () => {

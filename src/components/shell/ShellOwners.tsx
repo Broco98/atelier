@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { worksQuery } from "@/features/works/hooks";
 import { settleOwners } from "@/features/terminal/terminal-store";
-import type { Mode } from "@/mode";
 
 /**
  * **주인 확인을 거는 자리**(프로세스 결정 4 · 프로세스 스펙 S13 · 티켓 12). 그리는 것은 없다.
@@ -17,19 +16,19 @@ import type { Mode } from "@/mode";
  *
  * **앱 셸 안에 두지 않고 제 파일에 선다** — `ShellReclaim`과 같은 까닭이다(앱 셸의 구독 수를 못박아 두었다).
  */
-function ShellOwners({ mode }: { mode: Mode }) {
+function ShellOwners() {
   const queryClient = useQueryClient();
-  useQuery(worksQuery(mode));
+  useQuery(worksQuery());
 
   // **성공으로 앉은 목록만** 본다. 목록인지는 키의 해시로 가른다 — 키가 `worksQuery`에서만 나오므로 여기서 키 모양을
   // 다시 적지 않는다. 결과는 캐시에서 **목록의 타입으로** 다시 읽는다.
   useEffect(() => {
-    const list = worksQuery(mode).queryKey;
+    const list = worksQuery().queryKey;
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.action.type !== "success") return;
       if (hashKey(list) === event.query.queryHash) void settleOwners(queryClient.getQueryState(list));
     });
-  }, [queryClient, mode]);
+  }, [queryClient]);
 
   return null;
 }

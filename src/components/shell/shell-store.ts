@@ -1,7 +1,7 @@
 import { Store } from "@tanstack/react-store";
 import { readStored, writeStored } from "@/lib/stored";
 import { workSlugOf } from "@/lib/path-prefix";
-import { modeFrom, placeModeOf, routesOf } from "@/mode";
+import { modeFrom, placeModeOf } from "@/mode";
 import { recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
 import type { Mode } from "@/mode";
@@ -21,9 +21,8 @@ const LAST_MODE_KEY = "last-mode";
 export interface ShellState {
   sidebarOpen: boolean;
   projectSlug: string | null;
-  /** 모드별로 든다 — 모드는 `"atelier"` 하나라 칸도 하나다(ui-refresh 결정 3). */
-  workSlug: Record<Mode, string | null>;
-  archiveSlug: Record<Mode, string | null>;
+  workSlug: string | null;
+  archiveSlug: string | null;
   /**
    * **마지막으로 서 있던 주소.** 설정의 「앱으로 돌아가기」가 어디로 데려갈지가 여기서 나온다
    * (없으면 첫 화면).
@@ -40,8 +39,8 @@ export interface ShellState {
 export const shellStore = new Store<ShellState>({
   sidebarOpen: readStored(SIDEBAR_OPEN_KEY) !== "0",
   projectSlug: null,
-  workSlug: { atelier: null },
-  archiveSlug: { atelier: null },
+  workSlug: null,
+  archiveSlug: null,
   lastPlace: { atelier: null },
 });
 
@@ -108,11 +107,11 @@ export function rememberVisit(pathname: string): void {
  * 돌아간 work이 보던 탭으로 서는 것도 이 씨앗이다.
  */
 export function modeEntryTarget(mode: Mode): { to: string; search?: WorkSearch } {
-  const to = shellStore.state.lastPlace[mode] ?? routesOf(mode).list;
+  const to = shellStore.state.lastPlace[mode] ?? "/works";
   // 목록·터미널·아카이브 주소에는 씨앗이 없다 — `workSlugOf`가 `null`을 주는 것이 그 사실이고,
   // 그 화면들은 `search`를 안 쓴다. 첫 화면(무선택 주소)도 여기로 떨어져 정규화가 씨앗을 얹는다.
   const slug = workSlugOf(to);
-  return slug === null ? { to } : { to, search: recallSearch(mode, slug) };
+  return slug === null ? { to } : { to, search: recallSearch(slug) };
 }
 
 // 화면에 실제로 띄운 항목을 기억한다. 목록이 갱신될 때마다 불리므로 값이 같으면 그대로 둔다.
@@ -122,21 +121,13 @@ export function selectProject(slug: string | null) {
   );
 }
 
-// 모드가 인자인 것은 **화면이 자기 세계를 알기 때문이다** — 주소에서 모드를 다시 읽으면
-// 이동 중인 프레임에서 떠나는 주소의 모드로 적힐 수 있다.
-export function selectWork(mode: Mode, slug: string | null) {
-  shellStore.setState((state) =>
-    state.workSlug[mode] === slug
-      ? state
-      : { ...state, workSlug: { ...state.workSlug, [mode]: slug } },
-  );
+export function selectWork(slug: string | null) {
+  shellStore.setState((state) => (state.workSlug === slug ? state : { ...state, workSlug: slug }));
 }
 
-export function selectArchive(mode: Mode, slug: string | null) {
+export function selectArchive(slug: string | null) {
   shellStore.setState((state) =>
-    state.archiveSlug[mode] === slug
-      ? state
-      : { ...state, archiveSlug: { ...state.archiveSlug, [mode]: slug } },
+    state.archiveSlug === slug ? state : { ...state, archiveSlug: slug },
   );
 }
 

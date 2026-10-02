@@ -107,7 +107,7 @@ function Sidebar({
   // 것이 오늘 처음 뜨는 띠에 되살아난다 — 그때 부르는 셸은 어제의 그것들이 아니다.
   const [bandOpen, setBandOpen] = useState(false);
   // work 제목은 목록 API가 준다 — 터미널은 슬러그까지만 안다(`bandRows` 머리말).
-  const { data: works = [] } = useWorks(mode);
+  const { data: works = [] } = useWorks();
   // **규칙 하나를 둘이 나눠 쓴다**(`titleResolver` 머리말). `useMemo`인 것은 이 함수가 곧
   // 알림 배선의 의존이기 때문이다 — 회차마다 새로 지으면 목록이 안 바뀌어도 배선이 다시 걸린다.
   const resolveTitle = useMemo(() => titleResolver(works), [works]);
@@ -215,9 +215,6 @@ function Sidebar({
 
       <SidebarWorkList
         open={open}
-        // nav와 **같은 값**을 받는다 — 모드를 판정하는 자리가 셸 하나여야 목록과 nav가
-        // 함께 움직인다(`SidebarWorkList`의 `mode` 주석).
-        mode={mode}
         // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
         // 나를 뿐 터미널을 한 번도 참조하지 않는다.
         shells={{ shellCounts, signals, notes, renderRowMeta }}

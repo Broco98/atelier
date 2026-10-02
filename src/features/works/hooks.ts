@@ -13,21 +13,16 @@ import { archiveQuery, invalidateArchive } from "@/features/archive/hooks";
 import { showProblem } from "@/components/ui/confirm-store";
 import { worksApi } from "./api";
 import { movedWorks, type RowGap } from "./row-drop";
-import { ALL_MODES, type Mode } from "@/mode";
 import type { WorkStatus, WorkView } from "./types";
 
-// ["works"]로 시작하는 모든 쿼리(두 세계의 목록·spec 파일)가 works:changed 한 번에 무효화된다.
-// **모드는 이 접두사 바로 뒤에 실린다** — 그래야 여기서 한 번 지우는 것이 두 세계를 다 덮는다.
+// ["works"]로 시작하는 모든 쿼리(목록·spec 파일)가 works:changed 한 번에 무효화된다. 목록의 키가 이 접두사 그대로다.
 const WORKS_KEY = ["works"] as const;
 
 /**
  * work 목록이 바뀌었다고 알리는 **유일한 문.** 이벤트를 듣는 쪽(앱 루트 한 곳 — `AppShell`)도 mutation도 여기를 탄다.
  *
- * **두 세계를 함께 지운다.** 백엔드는 `works:changed`를 모드별로 나누지 않으므로(#181 —
- * 나누는 비용보다 저쪽 목록을 한 번 더 읽는 비용이 싸다) 무효화도 접두사여야 한다. 키를
- * `[...WORKS_KEY, mode]`로 좁히면 지금 보는 세계만 갱신되고 **저쪽 세계는 옛 목록을 든 채**
- * 남는다 — 세그먼트로 건너간 순간에야 드러나고, 그때는 「가끔 목록이 낡았다」로만 보인다.
- * 이 성질은 `hooks.test.ts`가 두 세계를 함께 캐시에 심어 붙든다.
+ * **접두사로 지운다** — 목록과 그 아래 걸린 spec 본문이 함께 낡는다. 백엔드의 `works:changed`는 무엇이 바뀌었는지
+ * 가르지 않는다. 이 성질은 `hooks.test.ts`가 둘을 함께 캐시에 심어 붙든다.
  *
  * **돌려주는 promise가 계약의 절반이다.** react-query는 `onSuccess`의 반환을 `await`하므로
  * (query-core `mutation.js`) 이것을 흘려보내야 `isPending`이 목록 재조회가 끝날 때까지 선다.
@@ -38,7 +33,7 @@ const WORKS_KEY = ["works"] as const;
  * **조회 중에 온 무효화는 표시만 하고, 도는 조회가 모두 끝나면 한 번 더 읽는다**(프로세스 결정 18 ① · 프로세스 스펙 S20 ·
  * 티켓 14). 에이전트가 spec을 쓰는 동안 이벤트는 조회보다 자주 온다. 올 때마다 도는 조회를 끊고 새로 부르면 코어는 버려진
  * 조회까지 다 돈다 — IPC는 취소되지 않고, 한 번이 워크트리마다 `git status`다. 그래서 무효화는 도는 조회를 버리지 않고
- * (`cancelRefetch: false`), 목록 조회(두 세계의 work 목록과 아카이브 목록) 중 하나라도 돌면 표시만 한다. spec 본문과
+ * (`cancelRefetch: false`), 목록 조회(work 목록과 아카이브 목록) 중 하나라도 돌면 표시만 한다. spec 본문과
  *   아카이브 문서는 함께 다시 읽되 문을 잡지 않는다 — 실패해 다시 시도하는 문서가 목록을 7초씩 밀었다(`reading`).
  * - 표시한 쪽은 **뒤따르는 한 번**의 promise를 받는다. 같은 회차에 온 표시는 그 하나를 나눠 갖는다 — 몇 번 왔든 다시
  *   읽기 한 번이면 다 덮는다.
@@ -90,7 +85,7 @@ export function invalidateWorks(queryClient: QueryClient): Promise<void> {
 const trailing = new WeakMap<QueryClient, Promise<void>>();
 
 /**
- * **목록 조회가 도는가** — 두 세계의 work 목록과 아카이브 목록. 누가 띄웠든 센다(화면의 첫 조회 · 라우트의
+ * **목록 조회가 도는가** — work 목록과 아카이브 목록. 누가 띄웠든 센다(화면의 첫 조회 · 라우트의
  * `ensureQueryData`).
  *
  * **spec 본문과 아카이브 문서(문서 목록 · 본문)는 안 센다**(티켓 14 리뷰). 이 문으로 함께 다시 읽을 뿐 문을 잡지 않는다. 웹뷰의 react-query는
@@ -101,15 +96,15 @@ const trailing = new WeakMap<QueryClient, Promise<void>>();
  * 목록이 훨씬 오래 도므로, 흔한 길(에이전트가 이어 쓰는 동안)의 문서 읽기는 목록이 잡은 문 안에 든다.
  */
 function reading(queryClient: QueryClient): boolean {
-  return fetchingInAnyWorld(queryClient, worksQuery) || fetchingInAnyWorld(queryClient, archiveQuery);
+  return fetching(queryClient, worksQuery().queryKey) || fetching(queryClient, archiveQuery().queryKey);
 }
 
 /**
- * 세계마다 하나인 쿼리(`worksQuery` · `archiveQuery`)가 **어느 세계에서든** 도는가. 키를 정확히(`exact`) 본다 — 접두사로 보면
- * 그 목록 키 아래 사는 문서 읽기까지 세어진다(`reading`이 안 세는 것).
+ * 그 목록 쿼리가 도는가. 키를 정확히(`exact`) 본다 — 접두사로 보면 그 목록 키 아래 사는 문서 읽기까지 세어진다(`reading`이
+ * 안 세는 것).
  */
-function fetchingInAnyWorld(queryClient: QueryClient, query: (mode: Mode) => { queryKey: QueryKey }): boolean {
-  return ALL_MODES.some((mode) => queryClient.isFetching({ queryKey: query(mode).queryKey, exact: true }) > 0);
+function fetching(queryClient: QueryClient, queryKey: QueryKey): boolean {
+  return queryClient.isFetching({ queryKey, exact: true }) > 0;
 }
 
 /**
@@ -148,14 +143,10 @@ function movesOf(queryClient: QueryClient) {
 //
 // **창으로 돌아올 때 다시 읽지 않는다**(프로세스 결정 18 ① · 티켓 14). 변화는 감시자가 이미 알린다 — 워크트리마다
 // `git status`를 도는 조회를 창을 오갈 때마다 돌 까닭이 없다. 이 목록만 끈다: 다른 쿼리는 기본값 그대로다.
-//
-// **모드가 인자다.** 캐시가 세계별로 갈려야 `/maison/rooms` 정규화가 Atelier 목록을 읽지
-// 않는다 — 한 키에 둘을 담으면 세계를 건널 때마다 앞 세계의 목록이 한 프레임 서고, 그
-// 프레임에서 정규화가 돌면 없는 항목으로 간다.
-export const worksQuery = (mode: Mode) =>
+export const worksQuery = () =>
   queryOptions({
-    queryKey: [...WORKS_KEY, mode],
-    queryFn: () => worksApi.list(mode),
+    queryKey: WORKS_KEY,
+    queryFn: worksApi.list,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -163,23 +154,19 @@ export const worksQuery = (mode: Mode) =>
 // **여기서 듣지 않는다**(프로세스 결정 18 ① · 티켓 14). 이 훅을 부르는 자리는 다섯이다(사이드바 · 사이드바 work 목록 ·
 // works 라우트 · 작업 화면 · 프로젝트 상세). 저마다 `works:changed`를 들으면 이벤트 한 번에 목록 조회가 그 수만큼 돈다 —
 // 작업 화면에서 네 번, 워크트리 21개면 `git status` 84번이었다. 듣는 자리는 앱 루트 하나다(`AppShell`).
-export function useWorks(mode: Mode) {
-  return useQuery(worksQuery(mode));
+export function useWorks() {
+  return useQuery(worksQuery());
 }
 
 /**
- * spec 문서 한 장. **키를 짓는 자리를 훅 밖에 둔다** — 훅 안에 두면 이 저장소에는 그 키를
- * 값으로 재는 길이 없어(L2에 DOM이 없다) 키에서 `mode`가 빠져도 아무 검사가 안 빨개진다.
- * 그 사고는 두 세계에 같은 이름이 설 수 있어서(결정 10) 「Room의 spec 자리에 같은 이름
- * work의 문서가 뜬다」로 나온다 — `SpecViewer`의 `mode` prop 주석이 든 바로 그 사고다.
- *
- * 모드가 접두사 바로 뒤인 것은 목록과 같은 이유다 — 이 키도 `WORKS_KEY` 무효화에 걸린다.
+ * spec 문서 한 장. **키를 짓는 자리를 훅 밖에 둔다** — 훅 안에 두면 이 저장소에는 그 키를 값으로 재는 길이 없다(L2에
+ * DOM이 없다). 키가 `WORKS_KEY` 아래라 work 목록 무효화에 함께 걸린다(`hooks.test.ts`).
  */
-export const specFileQuery = (mode: Mode, slug: string, path: string | null) => {
-  const queryKey = [...WORKS_KEY, mode, "spec", slug, path];
+export const specFileQuery = (slug: string, path: string | null) => {
+  const queryKey = [...WORKS_KEY, "spec", slug, path];
   return queryOptions({
     queryKey,
-    queryFn: () => worksApi.readSpec(mode, slug, path!),
+    queryFn: () => worksApi.readSpec(slug, path!),
     enabled: path !== null,
     // 라이브 리로드(같은 파일 재요청)에서만 이전 내용을 유지해 깜빡임을 막는다.
     // 다른 파일로 전환할 때도 유지하면 새 파일 이름 아래 이전 파일 내용이 보인다.
@@ -188,35 +175,34 @@ export const specFileQuery = (mode: Mode, slug: string, path: string | null) => 
   });
 };
 
-export function useSpecFile(mode: Mode, slug: string, path: string | null) {
-  return useQuery(specFileQuery(mode, slug, path));
+export function useSpecFile(slug: string, path: string | null) {
+  return useQuery(specFileQuery(slug, path));
 }
 
-export function useSetWorkTitle(mode: Mode) {
+export function useSetWorkTitle() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ slug, title }: { slug: string; title: string }) =>
-      worksApi.setTitle(mode, slug, title),
+    mutationFn: ({ slug, title }: { slug: string; title: string }) => worksApi.setTitle(slug, title),
     onSuccess: () => invalidateWorks(queryClient),
   });
 }
 
-export function useSetWorkStatus(mode: Mode) {
+export function useSetWorkStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ slug, status }: { slug: string; status: WorkStatus }) =>
-      worksApi.setStatus(mode, slug, status),
+      worksApi.setStatus(slug, status),
     onSuccess: () => invalidateWorks(queryClient),
   });
 }
 
 // 고정을 켜고 끈다. 목록 순서까지 바뀌는데(결정 100) 순서는 코어가 정하므로, 여기서는
 // 상태 변경과 똑같이 목록을 무효화하기만 한다.
-export function useSetWorkPinned(mode: Mode) {
+export function useSetWorkPinned() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ slug, pinned }: { slug: string; pinned: boolean }) =>
-      worksApi.setPinned(mode, slug, pinned),
+      worksApi.setPinned(slug, pinned),
     onSuccess: () => invalidateWorks(queryClient),
   });
 }
@@ -230,7 +216,7 @@ export interface MoveWorkArgs extends RowGap {
  * 작업 행을 끌어 놓았다(스펙 §5). **훅 밖에 두는 것은 경쟁을 렌더 없이 재기 위해서다** —
  * `hooks.test.ts`가 실물 `QueryClient`에 이 옵션을 그대로 물려 답의 순서를 뒤집는다.
  *
- * 1. 그 세계 목록 질의를 **취소**한다 — 이미 날아오던 재조회가 낙관적 목록을 덮지 않게.
+ * 1. 목록 질의를 **취소**한다 — 이미 날아오던 재조회가 낙관적 목록을 덮지 않게.
  * 2. 틈의 결과를 **낙관적으로** 쓴다. 놓는 순간 행이 그 자리에 서야 끌기가 끝난 것으로 읽힌다.
  * 3. 응답(새 목록 전체)으로 **갈아 끼운다.** 순서 파일은 감시자가 안 쏘므로 다시 읽기를 기다리면
  *    화면이 안 바뀐다.
@@ -247,11 +233,11 @@ export interface MoveWorkArgs extends RowGap {
  * 없다 — 한 번 더 읽으면 IPC만 늘고, 그 사이 다른 쓰기가 끼면 응답보다 낡은 것이 설 자리가 하나 더
  * 생긴다. 미룬 무효화(겹침 · 실패 · 그 사이 온 이벤트)가 있을 때만 돈다.
  */
-export function moveWorkOptions(queryClient: QueryClient, mode: Mode) {
-  // 목록 **하나만** 겨눈다(`exact`). 접두사로 취소하면 같은 세계의 spec 본문 질의까지 끊긴다.
-  const { queryKey } = worksQuery(mode);
+export function moveWorkOptions(queryClient: QueryClient) {
+  // 목록 **하나만** 겨눈다(`exact`). 접두사로 취소하면 그 아래 spec 본문 질의까지 끊긴다.
+  const { queryKey } = worksQuery();
   return mutationOptions({
-    mutationFn: ({ slug, pinned, before }: MoveWorkArgs) => worksApi.move(mode, slug, pinned, before),
+    mutationFn: ({ slug, pinned, before }: MoveWorkArgs) => worksApi.move(slug, pinned, before),
     onMutate: async (args) => {
       // 세기는 **기다리기 전에** 한다 — 취소를 기다리는 사이 온 이벤트도 미뤄야 한다.
       const state = movesOf(queryClient);
@@ -286,33 +272,31 @@ export function moveWorkOptions(queryClient: QueryClient, mode: Mode) {
   });
 }
 
-export function useMoveWork(mode: Mode) {
+export function useMoveWork() {
   const queryClient = useQueryClient();
-  return useMutation(moveWorkOptions(queryClient, mode));
+  return useMutation(moveWorkOptions(queryClient));
 }
 
 // 아카이브와 삭제 모두 작업 목록에서 사라지게 만든다. 다만 아카이브는 **반대편에 하나를
 // 더한다** — 파일 감시가 뒤늦게 알려주기를 기다리지 않고 여기서 함께 무효화한다.
 // 그러지 않으면 방금 치운 작업이 Archive 화면에 바로 나타나지 않는다. 반대편(아카이브 목록)은
 // 무효화 문이 함께 지운다(티켓 14) — 따로 부르면 그 문의 합치기를 건너뛴다.
-export function useArchiveWork(mode: Mode) {
+export function useArchiveWork() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) => worksApi.archive(mode, slug),
+    mutationFn: (slug: string) => worksApi.archive(slug),
     // **여기만 기다리지 않는다.** 문 둘을 함께 열던 자리라 예전부터 블록 몸통이었고, 그래서
-    // 아카이빙의 `isPending`은 원래부터 커맨드가 돌아오면 풀렸다. 기다리게 바꾸는 것이 더
-    // 나을 수 있지만 그것은 이 티켓이 건드린 자리가 아니다 — 여기서 바꾸면 모드를 나누는
-    // 변경에 Atelier 동작 변화가 조용히 섞인다.
+    // 아카이빙의 `isPending`은 원래부터 커맨드가 돌아오면 풀렸다.
     onSuccess: () => {
       void invalidateWorks(queryClient);
     },
   });
 }
 
-export function useRemoveWork(mode: Mode) {
+export function useRemoveWork() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) => worksApi.remove(mode, slug),
+    mutationFn: (slug: string) => worksApi.remove(slug),
     onSuccess: () => invalidateWorks(queryClient),
   });
 }

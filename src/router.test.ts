@@ -78,22 +78,22 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   const queryClient = new QueryClient();
   // 캐시를 미리 채우면 beforeLoad의 ensureQueryData가 Tauri invoke 없이 그대로 돌려준다.
   // 목록이 정규화의 입력이므로, 이 seam에서 목록은 주입하는 값이다.
-  queryClient.setQueryData(worksQuery("atelier").queryKey, options.works ?? works("work-a", "work-b"));
+  queryClient.setQueryData(worksQuery().queryKey, options.works ?? works("work-a", "work-b"));
   queryClient.setQueryData(
-    projectsQuery("atelier").queryKey,
+    projectsQuery().queryKey,
     options.projects ?? projects("proj-a", "proj-b"),
   );
   queryClient.setQueryData(
-    archiveQuery("atelier").queryKey,
+    archiveQuery().queryKey,
     options.archives ?? archives("치운-a", "치운-b"),
   );
   // "이번 세션에서 마지막으로 보던 항목"도 정규화의 입력이다. 스토어는 모듈 싱글턴이라
   // 테스트마다 여기서 덮어써 이전 테스트가 남긴 값이 새지 않게 한다.
   shellStore.setState((state) => ({
     ...state,
-    workSlug: { atelier: options.lastWork ?? null },
+    workSlug: options.lastWork ?? null,
     projectSlug: options.lastProject ?? null,
-    archiveSlug: { atelier: options.lastArchive ?? null },
+    archiveSlug: options.lastArchive ?? null,
     lastPlace: { atelier: null },
   }));
 
@@ -325,7 +325,7 @@ describe("앱으로 돌아가기", () => {
   it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
     const { router, history } = setup(["/works/work-b"]);
     await router.load();
-    rememberView("atelier", "work-b", { tab: "terminal", split: null, file: null });
+    rememberView("work-b", { tab: "terminal", split: null, file: null });
 
     await router.navigate({ to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });

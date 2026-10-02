@@ -99,7 +99,6 @@ function 행(state: ShellsState): string {
   return renderToStaticMarkup(
     <WorkSectionList
       sections={splitWorkSections([WORK], { pinned: true, works: true })}
-      mode="atelier"
       open={{ pinned: true, works: true }}
       selectedSlug={null}
       shells={{

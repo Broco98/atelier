@@ -1,6 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { Mode } from "@/mode";
 import { WorkCard } from "./WorkCard";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
@@ -20,11 +19,11 @@ const work: WorkView = workFixture({
 });
 
 // 셸의 말 칸(결정 14)은 이 파일이 재는 것과 무관하다 — 칸이 서는지는 L3가 잰다.
-const card = (mode: Mode) => renderToStaticMarkup(<WorkCard mode={mode} work={work} note={null} />);
+const card = () => renderToStaticMarkup(<WorkCard work={work} note={null} />);
 
 describe("hover 카드", () => {
-  it("Atelier에는 브랜치·프로젝트·spec 셋이 선다", () => {
-    const markup = card("atelier");
+  it("브랜치·프로젝트·spec 셋이 선다", () => {
+    const markup = card();
     expect(markup).toContain("브랜치");
     expect(markup).toContain("feat/some-work");
     expect(markup).toContain("프로젝트");

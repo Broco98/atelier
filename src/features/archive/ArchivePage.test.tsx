@@ -8,7 +8,6 @@ import { ToastProvider } from "@/components/ui/toast";
 import { archivedDocsQuery, archiveQuery } from "./hooks";
 import type { ArchivedDocs, ArchiveEntry } from "./types";
 import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
-import type { Mode } from "@/mode";
 
 // 아카이브 화면을 통째로 그려 잰다. 목록 패널의 필터와 머리말의 프로젝트 칩은 서로 다른 파일에
 // 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 둘이 한 번에 걸린다.
@@ -27,7 +26,6 @@ const withProject: ArchiveEntry = {
 
 // 토스트 자리(Viewport)는 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트 Provider를 여기서도 싼다(S14).
 function render(
-  mode: Mode,
   entries: ArchiveEntry[],
   selectedSlug: string | null = null,
   // 고른 아카이브의 문서 답 — 심으면 그 행이 도착한 트리를 그린다(고른 아카이브는 펼친 채 선다)
@@ -37,13 +35,12 @@ function render(
   const client = new QueryClient();
   // `[]`도 심는다 — 안 심으면 pending이라 빈 화면이 아예 안 그려진다(도착 전에는 아무 말도
   // 하지 않는 것이 이 화면의 계약이다).
-  client.setQueryData(archiveQuery(mode).queryKey, entries);
-  if (docs) client.setQueryData(archivedDocsQuery(mode, selectedSlug).queryKey, docs);
+  client.setQueryData(archiveQuery().queryKey, entries);
+  if (docs) client.setQueryData(archivedDocsQuery(selectedSlug).queryKey, docs);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <ArchivePage
-          mode={mode}
           sidebarOpen
           selectedSlug={selectedSlug}
           currentFile={currentFile}
@@ -62,15 +59,15 @@ beforeEach(() => {
 
 describe("프로젝트 자리", () => {
   it("프로젝트가 붙은 아카이브를 그리면 필터도 칩도 선다", () => {
-    const markup = render("atelier", [withProject], "shipped");
+    const markup = render([withProject], "shipped");
     expect(markup).toContain("모든 프로젝트");
     expect(markup).toContain("atelier");
   });
 });
 
 describe("아무것도 안 치웠을 때", () => {
-  it("Atelier 문구는 그대로다", () => {
-    const markup = render("atelier", []);
+  it("문구는 그대로다", () => {
+    const markup = render([]);
     expect(markup).toContain("아직 치운 작업이 없어요");
     expect(markup).toContain("끝난 작업의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.");
     expect(markup).toContain(
@@ -91,7 +88,7 @@ describe("좁혀서 0개일 때 하는 말", () => {
 
     // 잴 대상이 아직 거기 있다는 것부터 — 없으면 아래 「리터럴이 없다」는 공허하게 참이다
     expect(src).toContain("아카이브 검색");
-    expect(src).toMatch(/narrowedNotice\(\s*mode\s*,/);
+    expect(src).toMatch(/narrowedNotice\(/);
 
     // 이 문장은 **프로젝트 필터가 만든 좁힘**이다 — 낱말의 정본은 `archive-copy.ts` 하나다.
     expect(src).not.toContain("해당 프로젝트의 아카이브가 없어요");
@@ -143,7 +140,7 @@ describe("아카이브 트리는 받은 spec 트리를 spec/ 아래에 그린다
 
   const shipped = { ...withProject, slug: "shipped" };
   const tree = (currentFile: string | null = null) =>
-    render("atelier", [shipped], "shipped", DOCS, currentFile);
+    render([shipped], "shipped", DOCS, currentFile);
   /** 행 이름이 마크업에 선 자리. 없으면 -1이다. 행의 글자는 태그 사이에 홀로 선다(`>이름<`). */
   const at = (markup: string, name: string) => markup.indexOf(`>${name}<`);
   /** 이름으로 트리의 접히는 행 하나(여는 button부터 닫는 button까지). */

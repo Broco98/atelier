@@ -11,7 +11,6 @@ import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
-import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
@@ -56,30 +55,23 @@ const countOf = (text: string, literal: string) => text.split(literal).length - 
 // 화면이 토스트 자리(Viewport)를 그리는데 그것은 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트
 // Provider를 렌더 도우미도 싼다(S14). 정적 렌더라 구독은 안 걸리고 자리만 선다.
 //
-// **모드는 기본값을 단 뒤쪽 인자다.** 화면이 아직 `mode`를 받는다 — 목록 · 문서 쿼리의 키가 그것을 싣는다(판 02의 03이
-// 걷는다). 셸 조회는 모드를 안 탄다 — 셸 주인이 slug다(ui-refresh 결정 23). 기본값이 Atelier라 모드를 안 넘기는 기존
-// 호출은 그대로다.
-//
 // `bodies`는 문서 본문이다(경로 → 글). 캐시에 심어 두면 본문이 그대로 그려진다 — **어느 문서가
-// 열렸는지를 본문으로** 재는 자리가 쓴다. 모드 **뒤에** 두는 것도 같은 까닭이다 — 기본값이 있어
-// 기존 호출이 바뀌지 않는다(앞에 두면 모드를 넘기는 호출마다 빈 `{}`를 적어야 한다).
+// 열렸는지를 본문으로** 재는 자리가 쓴다. 맨 **뒤에** 두는 것은 기본값이 있어 기존 호출이 바뀌지 않게 하려는 것이다.
 function render(
   overrides: Partial<WorkView> = {},
   tab: ViewTab = "spec",
   split: SplitSide | null = null,
-  mode: Mode = "atelier",
   bodies: Record<string, string> = {},
 ): string {
   const client = new QueryClient();
-  client.setQueryData(worksQuery(mode).queryKey, [{ ...work, ...overrides }]);
+  client.setQueryData(worksQuery().queryKey, [{ ...work, ...overrides }]);
   for (const [path, body] of Object.entries(bodies)) {
-    client.setQueryData(specFileQuery(mode, work.slug, path).queryKey, body);
+    client.setQueryData(specFileQuery(work.slug, path).queryKey, body);
   }
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <WorksPage
-          mode={mode}
           sidebarOpen
           selectedSlug={work.slug}
           currentFile={null}
@@ -287,11 +279,10 @@ describe("WorksPage 머리행 배치", () => {
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
 
-  it("Atelier 화면의 이름표는 한 글자도 안 바뀐다", () => {
+  it("화면의 이름표는 한 글자도 안 바뀐다", () => {
     const markup = render();
     expect(markup).toContain('aria-label="작업 메뉴"');
     expect(markup).toContain('aria-label="작업 메타"');
-    expect(markup).not.toContain("Room");
   });
 
   it("조작이 전부 오른쪽 끝 한 묶음에 있다", () => {
@@ -610,7 +601,7 @@ describe("WorksPage 기본 문서", () => {
     markup.match(/<div class="[^"]*\bselected-row\b[^"]*">[\s\S]*?<\/button>/)?.[0] ?? "";
 
   it("fixture 트리의 기본 문서로 연다", () => {
-    const markup = render(specDocs(files, "overview.md"), "spec", null, "atelier", bodies);
+    const markup = render(specDocs(files, "overview.md"), "spec", null, bodies);
     expect(selectedRow(markup)).toContain(">overview.md<");
     expect(markup).toContain(bodies["overview.md"]);
     expect(markup).not.toContain(bodies["plan.md"]);
@@ -619,7 +610,7 @@ describe("WorksPage 기본 문서", () => {
   it("기본 문서가 overview.md가 아닌 트리를 넣으면 그 문서가 열린다", () => {
     // `overview.md`가 목록에 **있는데도** 트리가 고른 것이 열려야 한다 — 없으면 이름으로 고르던
     // 옛 규칙도 둘째 파일로 떨어져 같은 답을 낸다.
-    const markup = render(specDocs(files, "plan.md"), "spec", null, "atelier", bodies);
+    const markup = render(specDocs(files, "plan.md"), "spec", null, bodies);
     expect(selectedRow(markup)).toContain(">plan.md<");
     expect(selectedRow(markup)).not.toContain(">overview.md<");
     expect(markup).toContain(bodies["plan.md"]);
@@ -848,12 +839,11 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     // 화면이 그 키를 짓지 않는다는 것이 이 케이스가 재는 전부다.
     seedOrigin(topTerminal(), 2);
     const client = new QueryClient();
-    client.setQueryData(worksQuery("atelier").queryKey, []);
+    client.setQueryData(worksQuery().queryKey, []);
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ToastProvider>
           <WorksPage
-            mode="atelier"
             sidebarOpen
             selectedSlug={null}
             currentFile={null}
@@ -933,20 +923,6 @@ describe("WorksPage 셸 조회가 이 work의 것이다", () => {
   // work의 셸들이다.
   it("아카이브 확인이 말하는 수가 이 work의 것이다", () => {
     expect(countOf(worksPage, "runningShellsOf(state, ownerOf(work.slug))")).toBe(1);
-  });
-
-  // 세계 이름이 리터럴로 서는 자리가 **하나도 없다.** 한때 하나 있었다 — 빈 화면이 프로젝트
-  // 등록을 권하는 조건(`mode === "atelier" && !projectsPending …`)이었고, 그 물음이 화면
-  // 여섯과 훅 하나에 같은 모양으로 흩어져 있다가 `@/mode`의 `hasProjects`로 이름을 얻으면서
-  // 여기서도 사라졌다. 리터럴이 하나라도 다시 서면 그것은 조회가 누웠거나 표를 안 읽은
-  // 것이므로 여기서 먼저 빨개진다.
-  //
-  // **fail-closed로 짠다**: 리터럴 0개만 재면 이 화면이 모드를 통째로 잊어도 초록이다.
-  // 세계를 함수에 넘기는 모양이 살아 있는지를 함께 든다.
-  it("세계 이름 리터럴이 하나도 없다", () => {
-    expect(countOf(worksPage, '"atelier"')).toBe(0);
-    expect(countOf(worksPage, '"maison"')).toBe(0);
-    expect(worksPage).toContain("hasProjects(mode) && !projectsPending");
   });
 });
 
@@ -1233,15 +1209,14 @@ it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 �
 // 고른 항목이 하나도 없을 때의 본문. 목록을 비우고 `selectedSlug`를 `null`로 두면 그 화면이
 // 선다 — 프로젝트 목록은 캐시에 심어야 「아직 안 왔다」(`isPending`)와 「하나도 없다」가
 // 갈린다.
-function renderEmpty(mode: Mode, projects: ProjectView[] = []): string {
+function renderEmpty(projects: ProjectView[] = []): string {
   const client = new QueryClient();
-  client.setQueryData(worksQuery(mode).queryKey, []);
-  client.setQueryData(projectsQuery("atelier").queryKey, projects);
+  client.setQueryData(worksQuery().queryKey, []);
+  client.setQueryData(projectsQuery().queryKey, projects);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <WorksPage
-          mode={mode}
           sidebarOpen
           selectedSlug={null}
           currentFile={null}
@@ -1269,34 +1244,32 @@ const PROJECT: ProjectView = {
   missing: false,
 };
 
-// **빈 화면이 세계를 탄다**(US 22). 낱말의 계약은 `work-sections.test.ts`가 글자까지 재고,
-// 여기서 보는 것은 **화면이 그 표를 실제로 부르는가**다 — 사이드바만 갈리고 본문이 안 갈린
-// 채로 두 층이 따로 초록이던 자리가 정확히 여기다.
+// 빈 화면의 말(US 22). 낱말의 계약은 `work-sections.test.ts`가 글자까지 재고,
+// 여기서 보는 것은 **화면이 그 표를 실제로 부르는가**다.
 describe("아무것도 안 골랐을 때의 본문", () => {
   beforeEach(() => {
     // 분할 비율이 여기서 읽힌다 — 이 화면은 고른 것이 없어도 그 훅을 먼저 부른다.
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
 
-  it("Atelier 머리는 그대로 `Works`다", () => {
-    const html = renderEmpty("atelier");
+  it("머리는 그대로 `Works`다", () => {
+    const html = renderEmpty();
     expect(html).toContain(">Works<");
   });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("Atelier 문구 셋이 그대로 선다", () => {
-    const html = renderEmpty("atelier", [PROJECT]);
+  it("문구 셋이 그대로 선다", () => {
+    const html = renderEmpty([PROJECT]);
     expect(html).toContain("아직 작업이 없어요");
     expect(html).toContain("작업은 Claude Code에서 시작돼요.");
     expect(html).toContain("새 작업");
   });
 
-  // 반대쪽 증거. 이 갈래가 Atelier에서는 그대로 살아 있어야 한다 — 위 검사가 「어디서도 안
-  // 뜬다」로 통과하면 첫 실행의 안내가 통째로 사라진 것을 못 본다.
-  it("Atelier에서는 프로젝트가 0개면 등록으로 이끈다", () => {
-    const html = renderEmpty("atelier", []);
+  // 반대쪽 증거 — 프로젝트가 0개면 첫 실행의 안내가 선다.
+  it("프로젝트가 0개면 등록으로 이끈다", () => {
+    const html = renderEmpty([]);
     expect(html).toContain("먼저 프로젝트를 등록해요");
     expect(html).toContain("폴더 등록해줘");
   });
@@ -1322,19 +1295,19 @@ describe("프로젝트를 고르는 `+`", () => {
     ],
   };
 
-  it("Atelier에서 워크트리가 둘이면 어디에 열지 물어본다", () => {
-    expect(asks(render(twoTrees, "spec", null, "atelier"))).toBe(true);
+  it("워크트리가 둘이면 어디에 열지 물어본다", () => {
+    expect(asks(render(twoTrees, "spec", null))).toBe(true);
   });
 });
 
 // 확인 대화의 문장은 `askDanger` 프로미스 뒤에 있어 이 저장소의 정적 마크업 seam에 아예
 // 안 걸린다 — 낱말의 계약은 `work-menu-copy.test.ts`가 글자까지 재고, 여기서 보는 것은
 // **화면이 그 표를 부르는가**뿐이다(`work-sections`·`archive-copy`와 같은 나눔).
-describe("⋯ 메뉴의 확인 대화가 세계를 탄다", () => {
+describe("⋯ 메뉴의 확인 대화", () => {
   it("문장을 손으로 안 적고 표에서 꺼낸다", () => {
     const worksPage = source("WorksPage.tsx");
-    expect(worksPage).toContain("archiveConfirmBody(mode)");
-    expect(worksPage).toContain("removeConfirmBody(mode)");
+    expect(worksPage).toContain("ARCHIVE_CONFIRM_BODY");
+    expect(worksPage).toContain("REMOVE_CONFIRM_BODY");
     // **리터럴이 남아 있으면 안 된다.** 표를 부르면서 옛 문장을 그대로 둔 판은 위 두 줄로는
     // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
     expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");

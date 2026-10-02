@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { WorkMetaRows, sharedBase } from "./WorkMetaMenu";
-import type { Mode } from "@/mode";
 import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 import { workFixture } from "./work-fixture";
@@ -16,15 +15,9 @@ const work: WorkView = workFixture({
   ],
 });
 
-// **세계는 맨 뒤 인자다** — 기본값이 Atelier라 아래 기존 검사들이 그대로 「Atelier 팝오버는
-// 안 바뀐다」의 증거가 된다.
-function render(
-  overrides: Partial<WorkView> = {},
-  base: string | null = "develop",
-  mode: Mode = "atelier",
-): string {
+function render(overrides: Partial<WorkView> = {}, base: string | null = "develop"): string {
   return renderToStaticMarkup(
-    <WorkMetaRows mode={mode} work={{ ...work, ...overrides }} base={base} onCopy={() => {}} />,
+    <WorkMetaRows work={{ ...work, ...overrides }} base={base} onCopy={() => {}} />,
   );
 }
 

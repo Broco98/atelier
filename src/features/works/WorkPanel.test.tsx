@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorkPanel from "./WorkPanel";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
-import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 
@@ -36,14 +35,12 @@ function render(
   override: Partial<WorkView> = {},
   projects?: ProjectView[],
   source: { on: boolean; locked: boolean } = { on: false, locked: false },
-  mode: Mode = "atelier",
 ): string {
   const client = new QueryClient();
-  if (projects !== undefined) client.setQueryData(projectsQuery("atelier").queryKey, projects);
+  if (projects !== undefined) client.setQueryData(projectsQuery().queryKey, projects);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <WorkPanel
-        mode={mode}
         work={{ ...work, ...override }}
         currentFile={null}
         onSelectFile={() => {}}

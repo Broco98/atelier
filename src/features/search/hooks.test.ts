@@ -16,7 +16,7 @@ const { pending, asked, askedMode } = vi.hoisted(() => ({
   pending: new Map<string, (results: unknown) => void>(),
   /** 그 질의와 **함께 나간 목적지**. key만 적는다. */
   asked: new Map<string, string[]>(),
-  /** 그 질의가 **어느 모드를 싣고 나갔는가**. 목적지와 따로 적는 것은 둘이 따로 눕기 때문이다. */
+  /** 그 질의에 실려 나간 `mode` 인자. */
   askedMode: new Map<string, string>(),
 }));
 
@@ -55,7 +55,7 @@ function pathOf(data: unknown): string | undefined {
 
 /** 화면 하나를 세운다. 구독이 곧 첫 물음이다. */
 function watch(query: string) {
-  const observer = new QueryObserver(new QueryClient(), searchQuery("atelier", query));
+  const observer = new QueryObserver(new QueryClient(), searchQuery(query));
   const seen: (string | undefined)[] = [];
   observer.subscribe((result) => seen.push(pathOf(result.data)));
   return { observer, seen, shown: () => pathOf(observer.getCurrentResult().data) };
@@ -67,7 +67,7 @@ describe("빨리 칠 때", () => {
     await new Promise((done) => setTimeout(done, 0));
 
     // 앞 질의의 답이 오기 전에 한 글자를 더 친다.
-    observer.setOptions(searchQuery("atelier", "가나"));
+    observer.setOptions(searchQuery("가나"));
     await new Promise((done) => setTimeout(done, 0));
 
     // 순서가 뒤집혀 도착한다 — 지금 질의의 답이 먼저, 지나간 질의의 답이 나중에.
@@ -86,7 +86,7 @@ describe("빨리 칠 때", () => {
     await answer("가", "먼저.md");
     expect(shown()).toBe("먼저.md");
 
-    observer.setOptions(searchQuery("atelier", "가나"));
+    observer.setOptions(searchQuery("가나"));
     await new Promise((done) => setTimeout(done, 0));
     expect(shown(), "다음 답을 기다리는 동안 목록이 비었다").toBe("먼저.md");
 
@@ -105,7 +105,7 @@ describe("못 물었을 때", () => {
   // 지워도 실패가 한 번에 `error`로 앉아 **관찰자로 재는 검사는 늘 초록이다.** 그래서 값으로
   // 못박는다. 이 옵션이 실물에서 무엇을 막는지는 위 문단이 든다.
   it("재시도를 끈 채로 나간다", () => {
-    expect(searchQuery("atelier", "가").retry).toBe(false);
+    expect(searchQuery("가").retry).toBe(false);
   });
 });
 
@@ -115,15 +115,14 @@ describe("무엇을 물어 나가는가", () => {
   // 기울어도 함께 기운다. 순서까지 적는 것은 코어가 건넨 순서로 줄을 세우기 때문이다
   // (`search.rs`의 `destination_hits`).
   it("nav 넷과 설정을 목적지로 묻는다", () => {
-    void searchQuery("atelier", "아뜰").queryFn();
+    void searchQuery("아뜰").queryFn();
     expect(asked.get("아뜰")).toEqual(["projects", "terminal", "processes", "archive", "settings"]);
   });
 
   // **모드도 함께 나간다** — 백엔드가 아직 `mode`를 받는다(ui-refresh 결정 22 — 인자는 판 02의 06에서 걷는다).
-  // `api.test.ts`는 래퍼를 직접 불러 자기가 준 인자가 그대로 나가는지만 보므로 **훅이 무엇을 넘겼는지는
-  // 안 본다** — 그 사이가 이 줄이다.
+  // API 층이 상수로 싣는다(`api.ts`). 이 줄은 훅을 거친 물음에도 그 값이 실리는지를 본다.
   it("모드를 싣고 묻는다", () => {
-    void searchQuery("atelier", "아뜰").queryFn();
+    void searchQuery("아뜰").queryFn();
     expect(askedMode.get("아뜰")).toBe("atelier");
   });
 });

@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { Mode } from "@/mode";
 import { SearchList } from "./SearchPalette";
 import type { SearchHit } from "./types";
 
@@ -44,24 +43,20 @@ const project = (slug: string, name: string): SearchHit => ({ kind: "project", s
 
 const destination = (key: string): SearchHit => ({ kind: "destination", key });
 
-// 모드는 Atelier 하나다(ui-refresh 결정 3).
 const render = (
   hits: SearchHit[],
   {
     selected = 0,
     query = "",
     state = "ready",
-    mode = "atelier",
   }: {
     selected?: number;
     query?: string;
     state?: SearchState;
-    mode?: Mode;
   } = {},
 ) =>
   renderToStaticMarkup(
     <SearchList
-      mode={mode}
       query={query}
       hits={hits}
       state={state}
@@ -334,20 +329,6 @@ describe("팔레트에는 프리뷰가 없다", () => {
         .replace(ROW, "[줄]")
         .replace(/ aria-activedescendant="[^"]*"/, "");
     expect(outside(0)).toBe(outside(1));
-  });
-});
-
-// **세계는 받아서 안다** — 스스로 주소를 보고 되짚지 않는다(`SearchPalette.tsx`의 머리말).
-describe("팔레트는 세계를 되짚지 않는다", () => {
-  // 그 되돌림(주소를 스스로 구독해 `modeOf`로 푸는 것)을 **무는 층이 하나도 없었다**: L0는
-  // 통과하고, 이 파일의 나머지는 `SearchList`만 세운다(그쪽은 모드를 인자로 받는다).
-  //
-  // 셸 쪽 같은 성질은 `AppShell.test.ts`가 같은 수법으로 잠가 뒀다(`not.toContain("modeOf(")`).
-  // 여기도 **주석에 적어도 빨개진다** — 세는 것이 import가 아니라 리터럴이고, 그 성질은 위
-  // 두 검사와 같은 이유로 그대로 둔다.
-  it("주소를 스스로 구독하지 않는다", () => {
-    expect(countOf("useRouterState")).toBe(0);
-    expect(countOf("modeOf(")).toBe(0);
   });
 });
 

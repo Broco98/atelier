@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appToasts } from "./app-toast";
-import { onViewProcesses, processesAddress, viewAction, viewProcesses } from "./processes-view";
+import { onViewProcesses, viewAction, viewProcesses } from "./processes-view";
 
 // **`Processes`로 가는 문 하나**(프로세스 스펙 S15 · 티켓 32). 토스트의 [보기] 셋(시작 정리 · 주인 잃은 셸 · 셸 스스로 끝남)과 띠의 주인 잃은
 // 셸 줄이 이 문을 지난다. 토스트는 스토어 · 순수 모듈이 짓고 라우터는 앱 셸이 쥐어서, 앱 셸이 가는 길을 걸고(`onViewProcesses`) 나머지는
@@ -32,13 +32,6 @@ describe("Processes로 가는 문", () => {
 
   it("건 길이 없으면 아무 일도 없다 — 던지지 않는다", () => {
     expect(() => viewProcesses()).not.toThrow();
-  });
-
-  // 화면은 앱 전체를 보인다(프로세스 결정 9). 어느 화면에서 불러도 같은 주소다 — 설정(`/settings`)도 그렇다.
-  it("어느 화면에서든 `Processes` 주소로 간다", () => {
-    expect(processesAddress("/works/plain-work")).toBe("/processes");
-    expect(processesAddress("/terminal")).toBe("/processes");
-    expect(processesAddress("/settings/terminal")).toBe("/processes");
   });
 });
 

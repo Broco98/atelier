@@ -22,7 +22,7 @@ import ShellReclaim from "./ShellReclaim";
 import ShellOwners from "./ShellOwners";
 import { showAppToast } from "./app-toast";
 import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
-import { onViewProcesses, processesAddress } from "./processes-view";
+import { onViewProcesses } from "./processes-view";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
@@ -157,17 +157,13 @@ function AppShell() {
   }, []);
 
   // **`Processes`로 가는 문의 길을 건다**(프로세스 스펙 S15 · S14 · 티켓 32). 토스트의 [보기]와 띠의 주인 잃은 셸 줄은 React
-  // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다. 주소는
-  // **부를 때** 읽는다(`router.state`) — 구독하면 셸의 주소 구독이 하나 는다. 무엇을 여는지는 `processesAddress`가 혼자 안다.
+  // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다.
+  // 「목적지를 짓고 → 닿음을 걸고 → 이동한다」의 순서는 `navigateThen`이 든다.
   //
   // **가서 할 일(토스트 내리기)은 닿은 순간이다**(`navigateThen`의 `processes` 칸 — develop 머지). 이 셸은 설정에도 서고, spec
-  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다. 「목적지를 짓고 → 닿음을 걸고 →
-  // 이동한다」의 순서는 그 함수가 든다(`useGoToShell`과 같은 함수).
+  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다(`useGoToShell`과 같은 함수).
   useEffect(
-    () =>
-      onViewProcesses((arrived) =>
-        navigateThen(router, { to: processesAddress(router.state.location.pathname) }, arrived, "processes"),
-      ),
+    () => onViewProcesses((arrived) => navigateThen(router, { to: "/processes" }, arrived, "processes")),
     [router],
   );
 
@@ -314,11 +310,8 @@ function AppShell() {
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야
           하는 물음이 위다. 둘 다 `body` 끝의 포털로 서고 뜰 때 붙으므로, 나중에 뜬 확인 창이 늘
-          위다. 포커스도 확인 창으로 가서, Esc 한 번은 확인 창만 닫는다.
-
-          **세계는 셸이 정한 것을 그대로 내린다** — 팔레트가 주소를 다시 되짚으면 `/settings`가
-          늘 Atelier로 눕는다(위 `mode`의 주석이 든 그 성질). 여기 값은 이미 그것을 넘겼다. */}
-      <SearchPalette mode={mode} open={searchOpen} onClose={() => setSearchOpen(false)} />
+          위다. 포커스도 확인 창으로 가서, Esc 한 번은 확인 창만 닫는다. */}
+      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       {/* 이 work의 토스트(프로세스 스펙 P2). 셸에 서서 어느 화면에서든 보인다 — 자리와 Provider의
           범위는 그 파일이 든다. */}
       <AppToasts />
@@ -326,8 +319,8 @@ function AppShell() {
           셸 한 자리에 선다 — 라우터 구독은 제 파일에 있다(위 구독 셋을 늘리지 않는다). */}
       <ShellReclaim />
       {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
-          찾는다. 목록 쿼리의 키가 아직 모드를 실으므로(판 02의 03이 걷는다) 모드를 받는다. 쿼리 구독은 제 파일에 있다. */}
-      <ShellOwners mode={mode} />
+          찾는다. 쿼리 구독은 제 파일에 있다. */}
+      <ShellOwners />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />

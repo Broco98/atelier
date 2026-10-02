@@ -2,50 +2,42 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { archiveRef, layoutDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
-import { ALL_MODES, refPrefixesOf } from "@/mode";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
-// 그래서 아래 기대값은 `refPrefixesOf`를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
+// 그래서 아래 기대값은 뿌리 표를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
 // 표에서 뽑아 조립하면 이 파일은 구현을 베껴 적은 꼴이 되어, 앞머리가 통째로 뒤바뀌어도
-// 초록으로 남는다(`mode.test.ts`가 표 자체의 값을 따로 재는 것과 층이 다르다).
-//
-// **맨 아래 소스 검사만 예외다** — 거기서는 표를 부르는 것이 기대값을 짓기 위해서가 아니라
-// 「그 값이 `refs.ts`에 글자로 없다」를 재기 위해서다.
+// 초록으로 남는다.
 
-describe("참조 생성기 — Atelier", () => {
+/** 앱이 내는 참조의 뿌리 둘. 아래 기대값과 맨 아래 소스 검사가 함께 읽는다. */
+const WORK_ROOT = "~/.atelier/works/";
+const ARCHIVE_ROOT = "~/.atelier/archive/";
+
+describe("참조 생성기", () => {
   it("작업·spec 폴더는 `~/.atelier/works/` 아래다", () => {
-    expect(workDirRef("atelier", "spec-search")).toBe("~/.atelier/works/spec-search/");
-    expect(specDirRef("atelier", "spec-search")).toBe("~/.atelier/works/spec-search/spec/");
+    expect(workDirRef("spec-search")).toBe(`${WORK_ROOT}spec-search/`);
+    expect(specDirRef("spec-search")).toBe(`${WORK_ROOT}spec-search/spec/`);
   });
 
   it("spec 참조는 줄범위를 꼬리로 단다", () => {
-    expect(specRef("atelier", "spec-search", "overview.md")).toBe(
-      "~/.atelier/works/spec-search/spec/overview.md",
+    expect(specRef("spec-search", "overview.md")).toBe(`${WORK_ROOT}spec-search/spec/overview.md`);
+    expect(specRef("spec-search", "overview.md", 19, 27)).toBe(
+      `${WORK_ROOT}spec-search/spec/overview.md:L19-27`,
     );
-    expect(specRef("atelier", "spec-search", "overview.md", 19, 27)).toBe(
-      "~/.atelier/works/spec-search/spec/overview.md:L19-27",
-    );
-    expect(specRef("atelier", "spec-search", "overview.md", 19)).toBe(
-      "~/.atelier/works/spec-search/spec/overview.md:L19",
+    expect(specRef("spec-search", "overview.md", 19)).toBe(
+      `${WORK_ROOT}spec-search/spec/overview.md:L19`,
     );
   });
 
   it("아카이브 참조는 `~/.atelier/archive/` 아래다", () => {
-    expect(archiveRef("atelier", "shipped-work", "record.md")).toBe(
-      "~/.atelier/archive/shipped-work/record.md",
-    );
-    expect(archiveRef("atelier", "shipped-work", "spec/overview.md", 19, 27)).toBe(
-      "~/.atelier/archive/shipped-work/spec/overview.md:L19-27",
+    expect(archiveRef("shipped-work", "record.md")).toBe(`${ARCHIVE_ROOT}shipped-work/record.md`);
+    expect(archiveRef("shipped-work", "spec/overview.md", 19, 27)).toBe(
+      `${ARCHIVE_ROOT}shipped-work/spec/overview.md:L19-27`,
     );
   });
-});
 
-describe("참조 생성기 — 공통", () => {
   it("참조가 `~/.atelier/`로 시작한다", () => {
-    for (const mode of ALL_MODES) {
-      expect(workDirRef(mode, "s")).toMatch(/^~\/\.atelier\//);
-      expect(archiveRef(mode, "s", "record.md")).toMatch(/^~\/\.atelier\//);
-    }
+    expect(workDirRef("s")).toMatch(/^~\/\.atelier\//);
+    expect(archiveRef("s", "record.md")).toMatch(/^~\/\.atelier\//);
   });
 
   // 워크트리는 코어가 완성해 내려준 경로다 — 앞머리를 여기서 다시 지으면
@@ -77,23 +69,21 @@ describe("레이아웃 참조", () => {
   });
 });
 
-// **뿌리가 표에서 온다는 것 자체를 잰다.** #186 전까지 MCP 지침의 뿌리 검사
-// (`instructions.rs`)는 참조를 **실제로 내보내는 이 파일**을 읽었는데, 뿌리가 `mode.ts`로
-// 모이면서 그쪽이 표만 읽게 됐다 — 이 파일이 그 표를 읽는다는 사실은 이제 파일 머리
-// 주석만 말한다. `refPrefixesOf`의 프로덕션 소비자가 여기 하나뿐이라, 그 연결이 끊기면
-// 표는 죽은 값이 되고 앱이 내보내는 참조와 지침이 갈린 채 L0~L3가 전부 초록이다:
-// 누군가 뿌리를 여기 인라인으로 되돌린 뒤 Atelier 뿌리를 옮기면 위 기대 문자열만 고치면
-// 되고, `mode.test.ts`는 표 값만 보고, Rust 검사는 옛 값을 표에서 찾아 통과한다.
+// **뿌리가 표에서 온다는 것 자체를 잰다.** MCP 지침의 뿌리 검사(`instructions.rs`)는 뿌리를 든 표(`mode.ts`)를
+// 읽는다 — 이 파일이 그 표를 읽는다는 사실은 파일 머리 주석만 말한다. `refPrefixesOf`의 프로덕션 소비자가 여기
+// 하나뿐이라, 그 연결이 끊기면 표는 죽은 값이 되고 앱이 내보내는 참조와 지침이 갈린 채 L0~L3가 전부 초록이다:
+// 누군가 뿌리를 여기 인라인으로 되돌린 뒤 뿌리를 옮기면 위 기대 문자열만 고치면 되고, Rust 검사는 옛 값을
+// 표에서 찾아 통과한다.
 //
 // **fail-closed다**: 파일이 옮겨지면 readFileSync가 던진다. 「못 찾았으니 깨끗하다」로
 // 떨어지는 길이 없어야 검사다(SpecViewer.test.tsx의 같은 관용구).
 describe("뿌리는 이 파일에 없다", () => {
   const src = readFileSync(fileURLToPath(new URL("./refs.ts", import.meta.url)), "utf8");
 
-  it("네 생성기의 앞머리가 모드 표에서 온다", () => {
+  it("네 생성기의 앞머리가 뿌리 표에서 온다", () => {
     // 뿌리는 둘이고 둘 다 표에서 꺼낸다 — 한쪽만 표를 보면 아카이브 참조만 조용히 낡는다.
-    expect(src).toMatch(/refPrefixesOf\(mode\)\.work/);
-    expect(src).toMatch(/refPrefixesOf\(mode\)\.archive/);
+    expect(src).toMatch(/refPrefixesOf\("atelier"\)\.work/);
+    expect(src).toMatch(/refPrefixesOf\("atelier"\)\.archive/);
   });
 
   // 레이아웃 뿌리는 표에도 없다 — 코어가 준 경로를 받는다(위 「레이아웃 참조」). 여기 글자로 서면
@@ -103,10 +93,7 @@ describe("뿌리는 이 파일에 없다", () => {
   });
 
   it("표가 드는 뿌리가 글자로 하나도 없다", () => {
-    for (const mode of ALL_MODES) {
-      const refs = refPrefixesOf(mode);
-      expect(src, `${mode} work 뿌리`).not.toContain(refs.work);
-      expect(src, `${mode} archive 뿌리`).not.toContain(refs.archive);
-    }
+    expect(src, "work 뿌리").not.toContain(WORK_ROOT);
+    expect(src, "archive 뿌리").not.toContain(ARCHIVE_ROOT);
   });
 });

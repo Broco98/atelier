@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SpecViewer, { HtmlDoc, PrettyView, SourceView, htmlSrcdoc } from "./SpecViewer";
 import { useSpecFile } from "./hooks";
-import { ALL_MODES, refPrefixesOf, type Mode } from "@/mode";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 
@@ -239,7 +238,6 @@ describe("SpecViewer 본문 갈래", () => {
   function viewer(file: string, showSource = false): string {
     return renderToStaticMarkup(
       <SpecViewer
-        mode="atelier"
         work={work}
         panelOpen={false}
         sidebarOpen={false}
@@ -258,12 +256,12 @@ describe("SpecViewer 본문 갈래", () => {
 
   it("그림은 읽지 않는다", () => {
     viewer("샷.png");
-    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", null);
+    expect(useSpecFile).toHaveBeenCalledWith("some-work", null);
   });
 
   it.each(["overview.md", "notes.txt", "목업/조각.html"])("%s는 읽는다", (file) => {
     viewer(file);
-    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", file);
+    expect(useSpecFile).toHaveBeenCalledWith("some-work", file);
   });
 
   it("그림은 토글을 켜도 그림이다", () => {
@@ -381,10 +379,9 @@ describe("spec이 없을 때 안내하는 폴더", () => {
     specFiles: [],
   });
 
-  const notice = (mode: Mode, slug = "some-work") =>
+  const notice = (slug = "some-work") =>
     renderToStaticMarkup(
       <SpecViewer
-        mode={mode}
         work={{ ...empty, slug }}
         panelOpen={false}
         sidebarOpen={false}
@@ -397,10 +394,10 @@ describe("spec이 없을 때 안내하는 폴더", () => {
 
   // 이 줄은 사람이 **그대로 붙여 넣는** 경로다.
   it("works 폴더를 안내한다", () => {
-    expect(notice("atelier")).toContain("~/.atelier/works/some-work/spec/");
+    expect(notice()).toContain("~/.atelier/works/some-work/spec/");
   });
 
-  // 마크업만으로는 **왜 맞았는지**를 못 가른다 — 리터럴 두 벌을 모드로 갈라 적어도 위 둘은
+  // 마크업만으로는 **왜 맞았는지**를 못 가른다 — 리터럴을 손으로 적어도 위 검사는
   // 초록이다. 그렇게 적힌 순간 이 줄과 참조 생성기가 따로 늙기 시작하고, 그 어긋남은
   // 클립보드에 나가는 참조와 화면이 시키는 자리가 다른 모양으로만 드러난다.
   //
@@ -412,14 +409,10 @@ describe("spec이 없을 때 안내하는 폴더", () => {
 
     // 잴 대상이 아직 거기 있다는 것부터 — 없으면 아래 「리터럴이 없다」는 공허하게 참이다
     expect(src).toContain("아직 spec이 없어요");
-    expect(src).toMatch(/specDirRef\(\s*mode\s*,/);
+    expect(src).toMatch(/specDirRef\(/);
 
-    // 표가 드는 루트 전부가 이 파일에 글자로 없어야 한다. 세계가 하나 더 서는 날 이 검사가
-    // 함께 넓어진다 — 리터럴 두 개를 손으로 적어 두면 셋째 세계는 조용히 빠진다.
-    for (const mode of ALL_MODES) {
-      const refs = refPrefixesOf(mode);
-      expect(src, `${mode} work 루트`).not.toContain(refs.work);
-      expect(src, `${mode} archive 루트`).not.toContain(refs.archive);
-    }
+    // 참조의 뿌리 둘이 이 파일에 글자로 없어야 한다.
+    expect(src, "work 뿌리").not.toContain("~/.atelier/works/");
+    expect(src, "archive 뿌리").not.toContain("~/.atelier/archive/");
   });
 });

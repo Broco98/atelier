@@ -44,21 +44,11 @@ describe("앱 셸의 라우터 구독", () => {
 // 셸이 드는 모드의 **배선**. 값을 어디서 읽어 어디로 내리는지는 렌더가 필요해 여기서도 소스로 잰다(위
 // 머리말과 같은 근거) — `Sidebar`는 `terminal-store` 사슬 때문에 이 저장소의 마크업 seam에서 아예 안 선다.
 describe("셸이 모드를 내려 준다", () => {
-  it("셸이 그 모드를 사이드바와 팔레트에 함께 내려 준다", () => {
-    // 이 값 하나에서 nav 배열·상주 목록의 루트가 함께 나온다.
-    //
-    // **있는지가 아니라 개수를 센다.** 소비자가 둘인데 존재만 보면 한쪽을 눕혀도 다른 쪽이
-    // 그대로 있어 초록이다 — ⇧⇧ 팔레트가 정확히 그 자리였다(#185): `<SearchPalette
-    // mode="atelier"/>`로 눕혀도 L0는 통과하고(리터럴이 `Mode`다) 무는 L2가 없다(팔레트를
-    // 렌더하는 검사가 없다). 소비자가 느는 날 이 줄이 빨개지는 것이 맞다 — 새로 내려 주는
-    // 자리도 모드를 받아야 하고, 그것을 여기서 한 번 보고 지나가는 것이 이 검사의 값이다.
-    //
-    // 셋째 소비자는 주인 확인(`ShellOwners`, 티켓 12)이다 — 앱 루트가 **지금 모드의** 목록을 관찰한다.
-    expect(countOf(source, "mode={mode}")).toBe(3);
-    // 어느 쪽이 눕었는지가 실패에 남게 팔레트 몫은 이름으로도 못 박는다 — `Sidebar`는 여러
-    // 줄에 걸쳐 서 있어 이 수법이 안 통한다.
-    expect(source).toContain("<SearchPalette mode={mode}");
-    expect(source).toContain("<ShellOwners mode={mode} />");
+  it("셸이 그 모드를 사이드바에만 내려 준다", () => {
+    // 이 값에서 nav 배열이 나온다. 작업 목록 · 팔레트 · 주인 확인은 모드를 받지 않는다.
+    expect(countOf(source, "mode={mode}")).toBe(1);
+    expect(source).toContain("<SearchPalette open=");
+    expect(source).toContain("<ShellOwners />");
   });
 
   it("그 모드를 `/settings`가 눕히지 않는 쪽에서 읽는다", () => {

@@ -1,7 +1,5 @@
-import { routesOf } from "@/mode";
 import { appToasts } from "./app-toast";
 import type { ToastAction } from "./app-toast";
-import { shellMode } from "./shell-store";
 
 /**
  * **`Processes`로 가는 문 하나**(프로세스 스펙 S15 · S14 · 티켓 32). 토스트의 [보기] 셋 — 시작 정리(티켓 10) · 주인 잃은
@@ -35,14 +33,6 @@ export function onViewProcesses(go: ViewRoute): () => void {
  */
 export function viewProcesses(arrived: () => void = () => {}): void {
   view?.(arrived);
-}
-
-/**
- * 가는 주소 — **지금 세계의** `Processes`다. 화면은 앱 전체를 보이므로(프로세스 결정 9) 보러 가려고 세계를 건너지 않는다.
- * 세계는 셸이 드는 것과 같이 읽는다(`shellMode`): 설정(`/settings`)은 세계 밖이라 마지막 세계의 주소다.
- */
-export function processesAddress(pathname: string): ReturnType<typeof routesOf>["processes"] {
-  return routesOf(shellMode(pathname)).processes;
 }
 
 /** [보기]의 글자. */

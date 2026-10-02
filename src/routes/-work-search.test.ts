@@ -113,12 +113,9 @@ describe("주소를 고치는 짝", () => {
   });
 });
 
-// 주소에서 항목을 읽는 자리는 이 파일에 없다. `/works/`를 박아 두던 `workSlugOf`가 여기
-// 살았는데, #183이 마지막 호출부(사이드바 목록의 강조)를 `@/mode`의 `slugOf`로 옮기면서
-// 호출부가 0이 됐다 — 항목 아래로 화면이 갈라지는 날 첫 칸만 slug여야 하는데, 그쪽은
-// `/works/a/b`를 통째로 `"a/b"`라고 답했다. 답이 갈리는 파서 둘을 남겨 두면 다음 사람이 어느
-// 쪽을 집는지가 우연이 되므로 함께 걷었다.
-// 그물은 `mode.test.ts`의 「주소에서 slug를 읽는다」가 더 촘촘하게 든다.
+// 주소에서 항목을 읽는 자리는 이 파일에 없다 — `@/lib/path-prefix`의 `workSlugOf` 하나다. 답이 갈리는 파서
+// 둘을 남겨 두면 다음 사람이 어느 쪽을 집는지가 우연이 되므로 하나만 둔다(항목 아래로 화면이 갈라지는 날 첫
+// 칸만 slug여야 한다). 그물은 `path-prefix.test.ts`의 「주소에서 slug를 읽는다」가 든다.
 
 // 결정 77. work을 옮길 때 떠나던 주소는 버리고 **그 work의 기억**을 되살린다. 라우터
 // seam에서는 이것도 안 보인다 — 그쪽은 주소에 적힌 것만 보고, 「새 주소를 무엇으로
@@ -128,20 +125,20 @@ describe("주소를 고치는 짝", () => {
 // 비우는 함수를 내보내면 생산 코드에 아무도 안 부르는 이름이 하나 생긴다.
 describe("work마다 마지막으로 보던 화면", () => {
   it("적어 두지 않은 work은 기본 문서 단일 뷰다", () => {
-    expect(recallView("atelier", "처음-보는-work")).toEqual({ tab: "spec", split: null, file: null });
+    expect(recallView("처음-보는-work")).toEqual({ tab: "spec", split: null, file: null });
   });
 
   it("적어 둔 것을 그대로 돌려준다", () => {
-    rememberView("atelier", "가", { tab: "terminal", split: "rl", file: "01-판/spec.md" });
-    expect(recallView("atelier", "가")).toEqual({ tab: "terminal", split: "rl", file: "01-판/spec.md" });
+    rememberView("가", { tab: "terminal", split: "rl", file: "01-판/spec.md" });
+    expect(recallView("가")).toEqual({ tab: "terminal", split: "rl", file: "01-판/spec.md" });
     // 되돌아오는 것도 기억이다 — 켠 것만 적어 두면 끈 것을 못 적는다.
-    rememberView("atelier", "가", { tab: "spec", split: null, file: null });
-    expect(recallView("atelier", "가")).toEqual({ tab: "spec", split: null, file: null });
+    rememberView("가", { tab: "spec", split: null, file: null });
+    expect(recallView("가")).toEqual({ tab: "spec", split: null, file: null });
   });
 
   it("work마다 따로 센다", () => {
-    rememberView("atelier", "나", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
-    expect(recallView("atelier", "다")).toEqual({ tab: "spec", split: null, file: null });
+    rememberView("나", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
+    expect(recallView("다")).toEqual({ tab: "spec", split: null, file: null });
   });
 
   // **work을 여는 문이 전부 이 값을 쓴다** — `recallSearch`가 그 합성의 이름이다. 빈 객체
@@ -149,14 +146,14 @@ describe("work마다 마지막으로 보던 화면", () => {
   // `file`이 딸려갈 자리가 없다. 아래 넷이 이 함수의 **값**을 재는 것이 문마다 원문을
   // 대조하는 것을 대신한다 — 문은 늘지만 값은 하나다.
   it("빈 주소 위에 얹어 새 주소를 짓는다", () => {
-    rememberView("atelier", "라", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
-    expect(recallSearch("atelier", "라")).toEqual({
+    rememberView("라", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
+    expect(recallSearch("라")).toEqual({
       tab: "terminal",
       split: "lr",
       file: "01-판/spec.md",
     });
-    rememberView("atelier", "마", { tab: "spec", split: null, file: null });
-    expect(recallSearch("atelier", "마")).toEqual({
+    rememberView("마", { tab: "spec", split: null, file: null });
+    expect(recallSearch("마")).toEqual({
       tab: undefined,
       split: undefined,
       file: undefined,
@@ -166,9 +163,9 @@ describe("work마다 마지막으로 보던 화면", () => {
   // **분할로 두고 떠난 work은 분할로 돌아온다**(판 05 수용 기준의 마지막 줄). `tab`만
   // 씨앗에 실으면 이 한 줄이 조용히 빠진다.
   it("분할로 두고 떠난 work은 분할로 돌아온다", () => {
-    rememberView("atelier", "바", { tab: "terminal", split: "rl", file: null });
-    rememberView("atelier", "사", { tab: "spec", split: null, file: null });
-    expect(recallSearch("atelier", "바")).toEqual({
+    rememberView("바", { tab: "terminal", split: "rl", file: null });
+    rememberView("사", { tab: "spec", split: null, file: null });
+    expect(recallSearch("바")).toEqual({
       tab: "terminal",
       split: "rl",
       file: undefined,
@@ -179,8 +176,8 @@ describe("work마다 마지막으로 보던 화면", () => {
   // `split`만 실으면 돌아온 work이 기본 문서로 열려, 축 셋 중 하나가 조용히 빠진다 —
   // 화면으로는 「가끔 다른 문서가 떠 있다」로만 보인다.
   it("문서를 보다 떠난 work은 그 문서로 돌아온다", () => {
-    rememberView("atelier", "아", { tab: "spec", split: null, file: "02-판/spec.md" });
-    expect(recallSearch("atelier", "아")).toEqual({
+    rememberView("아", { tab: "spec", split: null, file: "02-판/spec.md" });
+    expect(recallSearch("아")).toEqual({
       tab: undefined,
       split: undefined,
       file: "02-판/spec.md",
@@ -206,21 +203,8 @@ describe("두 view의 배선", () => {
     const view = read("./-works-view.tsx");
     expect(view.split("rememberView(").length - 1).toBe(1);
     expect(view).toContain(
-      "if (slug !== null && exists) rememberView(mode, slug, { tab, split, file });",
+      "if (slug !== null && exists) rememberView(slug, { tab, split, file });",
     );
-  });
-
-  // **배선 층에는 박힌 세계가 한 자리도 없어야 한다.** 두 view가 모드를 넘기는 자리는 넷씩이다
-  // (목록 훅 · 씨앗 합성 `recallSearch` · 세션 기억 `selectWork`/`selectArchive` · 정규화가
-  // 읽는 칸). 그중 하나를 `"atelier"`로 되돌려도 **타입은 맞고**(둘 다 `Mode` 리터럴이다) 이
-  // 두 파일을 렌더하는 테스트가 저장소에 없어 L2가 전부 초록이다 — 그래서 이 층에만 그물이
-  // 비어 있었다.
-  //
-  // 세는 것이 인자의 뜻이 아니라 **리터럴의 유무**라 파서가 샐 자리가 없다 — 어느 인자가
-  // 어디로 가는지 읽지 않고 「이 파일에 박힌 세계가 하나도 없다」만 본다. 모드는 언제나 위에서
-  // 내려온다는 것이 이 층의 규칙이므로, 새 자리가 늘어도 이 검사는 그대로 산다.
-  it.each(["./-works-view.tsx", "./-archive-view.tsx"])("%s에는 박힌 세계가 없다", (file) => {
-    expect(read(file).match(/["']atelier["']/g) ?? []).toEqual([]);
   });
 
   // **「열었다」를 적는 자리도 하나다**(결정 14) — 그리고 위와 **다른 effect**여야 한다.
@@ -234,6 +218,6 @@ describe("두 view의 배선", () => {
   it("work을 열었다고 적는 자리가 하나이고, 의존성이 work까지다", () => {
     const view = read("./-works-view.tsx");
     expect(view.split("touchRecent(").length - 1).toBe(1);
-    expect(view.split("}, [mode, slug, exists]);").length - 1).toBe(1);
+    expect(view.split("}, [slug, exists]);").length - 1).toBe(1);
   });
 });

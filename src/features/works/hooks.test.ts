@@ -14,8 +14,6 @@ import {
   worksQuery,
   type MoveWorkArgs,
 } from "./hooks";
-import { ALL_MODES } from "@/mode";
-import type { Mode } from "@/mode";
 import { queryClient } from "@/query-client";
 import type { WorkView } from "./types";
 
@@ -25,15 +23,13 @@ import type { WorkView } from "./types";
 // 그 문이 무엇을 지우는지가 이 계약의 전부다. 문이 하나뿐인 것은 맨 아래 스캔이 지킨다.
 
 // 목록 아래에 사는 깊은 키. **훅이 짓는 것을 그대로 쓴다** — 손으로 같은 모양을 다시 지으면
-// 이 파일은 자기가 적은 것을 자기가 확인하는 꼴이 되고, 진짜 키에서 `mode`가 빠져도 초록이다.
-const specKey = (mode: Mode) => specFileQuery(mode, "가", "overview.md").queryKey;
+// 이 파일은 자기가 적은 것을 자기가 확인하는 꼴이 되고, 진짜 키가 접두사를 벗어나도 초록이다.
+const specKey = specFileQuery("가", "overview.md").queryKey;
 
 function seeded() {
   const client = new QueryClient();
-  for (const mode of ALL_MODES) {
-    client.setQueryData(worksQuery(mode).queryKey, [] as WorkView[]);
-    client.setQueryData(specKey(mode), "본문");
-  }
+  client.setQueryData(worksQuery().queryKey, [] as WorkView[]);
+  client.setQueryData(specKey, "본문");
   return client;
 }
 
@@ -41,12 +37,7 @@ describe("works:changed 무효화", () => {
   it("목록을 지운다", () => {
     const client = seeded();
     invalidateWorks(client);
-    for (const mode of ALL_MODES) {
-      expect(
-        client.getQueryState(worksQuery(mode).queryKey)?.isInvalidated,
-        `${mode} 목록이 안 지워졌다`,
-      ).toBe(true);
-    }
+    expect(client.getQueryState(worksQuery().queryKey)?.isInvalidated, "목록이 안 지워졌다").toBe(true);
   });
 
   // **돌려주는 promise도 계약이다.** react-query가 `onSuccess`의 반환을 `await`하므로, 이
@@ -60,14 +51,12 @@ describe("works:changed 무효화", () => {
   it("목록 아래 걸린 것들도 함께 지운다", () => {
     const client = seeded();
     invalidateWorks(client);
-    for (const mode of ALL_MODES) {
-      expect(client.getQueryState(specKey(mode))?.isInvalidated, `${mode} spec 본문`).toBe(true);
-    }
+    expect(client.getQueryState(specKey)?.isInvalidated, "spec 본문").toBe(true);
   });
 });
 
 // mutation은 렌더 없이 돌릴 수 없다 — 대신 **문이 하나뿐임**을 센다. 위 검사가 그 문의
-// 행동을 재므로, 무효화가 전부 이 문을 타는 한 mutation도 두 세계를 지운다. 두 번째 문이
+// 행동을 재므로, 무효화가 전부 이 문을 타는 한 mutation도 목록과 그 아래를 함께 지운다. 두 번째 문이
 // 생기는 순간(어느 mutation이 자기 키로 좁혀 지우는 순간) 이 수가 늘어 빨개진다.
 //
 // 세는 것이 파싱이 아니라 리터럴의 **개수**라 파서가 샐 자리가 없다.
@@ -127,7 +116,7 @@ describe("works:changed를 듣는 자리", () => {
 const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{
     command: string;
-    /** 그 호출의 인자 — 목록 조회가 어느 세계를 물었는지를 본다. */
+    /** 그 호출의 인자. */
     args: unknown;
     /** 이 호출이 나갔을 때 옮기기가 아직 답을 못 받았는가 — 쓰기 전 파일을 읽은 재조회다. */
     beforeMoveAnswered: boolean;
@@ -173,18 +162,18 @@ function answer(command: string, value: unknown, pick?: (call: Call) => boolean)
 async function listed() {
   calls.length = 0;
   const client = new QueryClient();
-  const observer = new QueryObserver(client, worksQuery("atelier"));
+  const observer = new QueryObserver(client, worksQuery());
   const seen: string[] = [];
   observer.subscribe((result) => seen.push(slugsOf(result.data)));
   await settle();
   expect(answer("list_works", OLD)).toBe(1);
   await settle();
-  return { client, seen, shown: () => slugsOf(client.getQueryData(worksQuery("atelier").queryKey)) };
+  return { client, seen, shown: () => slugsOf(client.getQueryData(worksQuery().queryKey)) };
 }
 
 /** 기본은 `c`를 맨 앞으로(→ `NEW`). 겹친 옮기기 검사는 둘째 것을 따로 준다. */
 function move(client: QueryClient, args: MoveWorkArgs = { slug: "c", pinned: false, before: "a" }) {
-  const observer = new MutationObserver(client, moveWorkOptions(client, "atelier"));
+  const observer = new MutationObserver(client, moveWorkOptions(client));
   // 실패는 옵션의 `onError`가 다룬다 — 여기서 삼키는 것은 러너의 미처리 거절뿐이다.
   void observer.mutate(args).catch(() => {});
 }
@@ -426,7 +415,7 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
   it("화면이 처음 부른 조회가 도는 중이어도 거기 합류하지 않고 끝난 뒤 한 번 더 읽는다", async () => {
     calls.length = 0;
     const client = new QueryClient();
-    new QueryObserver(client, worksQuery("atelier")).subscribe(() => {});
+    new QueryObserver(client, worksQuery()).subscribe(() => {});
     await settle();
     expect(waiting("list_works")).toHaveLength(1);
 
@@ -441,7 +430,7 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
     answer("list_works", NEW);
     await settle();
     expect(done).toBe(true);
-    expect(slugsOf(client.getQueryData(worksQuery("atelier").queryKey))).toBe("cab");
+    expect(slugsOf(client.getQueryData(worksQuery().queryKey))).toBe("cab");
   });
 
   // 옮기기는 도는 목록 조회를 끊고(`moveWorkOptions`의 1) 그동안 온 무효화를 끝난 뒤로 미룬다(S9). 표시해 둔 한 번이
@@ -475,7 +464,7 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
   it("아카이브 목록도 이 문으로 다시 읽고, 조회 중에 온 무효화는 끝난 뒤 한 번으로 합친다", async () => {
     calls.length = 0;
     const client = new QueryClient();
-    new QueryObserver(client, archiveQuery("atelier")).subscribe(() => {});
+    new QueryObserver(client, archiveQuery()).subscribe(() => {});
     await settle();
     expect(answer("list_archive", [])).toBe(1);
     await settle();
@@ -501,8 +490,8 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
   // (spec/의 `ref.pdf` — 코어의 `read_to_string`이 UTF-8이 아니라 매번 실패한다)를 띄워 두면 그것이 문을 잡아, 이벤트마다
   // 목록 다시 읽기가 7초씩 밀리고 표시한 쪽(상태 · 제목 · 고정 · 삭제의 진행 표시)은 14초를 섰다.
   const docs = [
-    { name: "spec 본문이", doc: specFileQuery("atelier", "가", "ref.pdf"), command: "read_spec_file" },
-    { name: "아카이브 문서가", doc: archivedFileQuery("atelier", "치운-가", "ref.pdf"), command: "read_archived_file" },
+    { name: "spec 본문이", doc: specFileQuery("가", "ref.pdf"), command: "read_spec_file" },
+    { name: "아카이브 문서가", doc: archivedFileQuery("치운-가", "ref.pdf"), command: "read_archived_file" },
   ];
   for (const { name, doc, command } of docs) {
     it(`실패해 다시 시도하는 ${name} 목록 다시 읽기를 붙잡지 않는다`, async () => {
@@ -511,7 +500,7 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
       const client = new QueryClient({ defaultOptions: { queries: { retry: 3 } } });
       // 쉬는 중인 다시 시도를 거둔다 — 남기면 1초 뒤 다음 검사의 기록에 그 부름이 선다. 빨간 판에서도 거두도록 끝에 건다.
       onTestFinished(() => client.cancelQueries());
-      new QueryObserver(client, worksQuery("atelier")).subscribe(() => {});
+      new QueryObserver(client, worksQuery()).subscribe(() => {});
       new QueryObserver(client, doc).subscribe(() => {});
       await settle();
       expect(answer("list_works", OLD)).toBe(1);
@@ -541,7 +530,7 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
       expect(waiting("list_works"), "뒤따르는 한 번이 문서의 다시 시도를 기다렸다").toHaveLength(1);
       answer("list_works", NEW);
       await settle();
-      expect(slugsOf(client.getQueryData(worksQuery("atelier").queryKey))).toBe("cab");
+      expect(slugsOf(client.getQueryData(worksQuery().queryKey))).toBe("cab");
       // 문서는 도는 시도를 버리지 않는다(`cancelRefetch: false`) — 쉬는 중이라 새로 나간 부름이 없다. 끊으면(`true`) 값이 있는
       // 조회라 도는 시도를 버리고 곧바로 새로 부른다.
       expect(waiting(command), "도는 문서 읽기를 버리고 새로 불렀다").toHaveLength(0);
@@ -557,19 +546,17 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
 // `staleTime` 30초 안이면 다시 부르지 않는다. 그래서 창 포커스를 쏘는 L3는 이 옵션과 상관없이 초록이다(스펙 리뷰 코드 8).
 // 값으로 잰다.
 describe("창 포커스 재조회", () => {
-  it("work 목록 쿼리는 두 세계 모두 끈다", () => {
-    for (const mode of ALL_MODES) expect(worksQuery(mode).refetchOnWindowFocus, mode).toBe(false);
+  it("work 목록 쿼리는 끈다", () => {
+    expect(worksQuery().refetchOnWindowFocus).toBe(false);
   });
 
   // 「기본값 그대로」는 쿼리 옵션만 봐서는 못 잰다 — 앱 캐시(`query-client.ts`)의 기본 옵션에서 끄면 모든 쿼리가 꺼지는데
   // 쿼리 옵션은 여전히 비어 있다. 그래서 **앱 캐시가 합친 값**(`defaultQueryOptions` — 캐시의 기본 옵션 · 키별 기본값 · 쿼리
   // 옵션 순)으로 잰다. 비어 있으면 react-query는 다시 읽는다(`false`만 끈다).
   it("다른 쿼리는 기본값 그대로다 — 앱 캐시의 기본 옵션까지 합친 값으로", () => {
-    expect(queryClient.defaultQueryOptions(specFileQuery("atelier", "가", "overview.md")).refetchOnWindowFocus).not.toBe(false);
-    expect(queryClient.defaultQueryOptions(archiveQuery("atelier")).refetchOnWindowFocus).not.toBe(false);
+    expect(queryClient.defaultQueryOptions(specFileQuery("가", "overview.md")).refetchOnWindowFocus).not.toBe(false);
+    expect(queryClient.defaultQueryOptions(archiveQuery()).refetchOnWindowFocus).not.toBe(false);
     // 앵커: 합친 값이 쿼리 옵션을 싣는다 — 안 싣으면 위 둘이 저절로 참이다.
-    for (const mode of ALL_MODES) {
-      expect(queryClient.defaultQueryOptions(worksQuery(mode)).refetchOnWindowFocus, mode).toBe(false);
-    }
+    expect(queryClient.defaultQueryOptions(worksQuery()).refetchOnWindowFocus).toBe(false);
   });
 });

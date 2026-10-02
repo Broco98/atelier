@@ -207,7 +207,7 @@ const NOTHING_SHOWN: ReadonlyArray<string> = [];
  * 때만** 묻는다 — 목록 조회는 워크트리마다 `git status`라, 최상위 터미널의 셸만 있으면(이름이 nav의 `Terminal`이다) 읽을 까닭이 없다.
  */
 function useWorkList(enabled: boolean): ReadonlyArray<ListedItem> {
-  const { data } = useQuery({ ...worksQuery("atelier"), enabled });
+  const { data } = useQuery({ ...worksQuery(), enabled });
   return data ?? NO_LIST;
 }
 

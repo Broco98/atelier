@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import WorkInfo, { relativeToWorkDir, type ProjectBase } from "./WorkInfo";
-import type { Mode } from "@/mode";
 import { workDirRef, worktreeDirRef } from "./refs";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
@@ -29,16 +28,12 @@ const registered: Record<string, ProjectBase> = {
   atelier: { base: "develop", unregistered: false },
 };
 
-// **세계는 맨 뒤 인자다** — 기본값이 Atelier라 아래 기존 검사들은 그대로다. 그 뜻은
-// 이것들이 전부 「Atelier 정보 탭은 한 글자도 안 바뀐다」의 증거이기도 하다는 것이다.
 function render(
   overrides: Partial<WorkView> = {},
   bases: Record<string, ProjectBase> = registered,
-  mode: Mode = "atelier",
 ): string {
   return renderToStaticMarkup(
     <WorkInfo
-      mode={mode}
       work={{ ...work, ...overrides }}
       bases={bases}
       onCopy={() => {}}
@@ -206,15 +201,14 @@ describe("프로젝트가 없는 작업의 정보 탭", () => {
   const bare: Partial<WorkView> = { projects: [], worktrees: [], branch: "feat/some-bare" };
 
   it("브랜치 줄과 빈 프로젝트 구획이 선다", () => {
-    const markup = render(bare, {}, "atelier");
+    const markup = render(bare, {});
     expect(rowValue(markup, "브랜치")).toBe("feat/some-bare");
     expect(markup).toContain("아직 프로젝트가 없어요.");
   });
 
   it("폴더 줄은 작업 폴더다", () => {
-    const markup = render(bare, {}, "atelier");
+    const markup = render(bare, {});
     expect(rowValue(markup, "작업 폴더")).toBe("~/.atelier/works/some-work/");
-    expect(markup).not.toContain("Room");
   });
 });
 
@@ -223,8 +217,8 @@ describe("relativeToWorkDir", () => {
     // 표기만 줄이는 것이고 클립보드로 나가는 것은 전체 경로다. 둘이 갈리면 화면을 믿고
     // 붙여 넣은 경로가 다른 곳을 가리킨다.
     const full = worktreeDirRef(work.worktrees[0].path);
-    expect(full.endsWith(relativeToWorkDir(full, workDirRef("atelier", work.slug)))).toBe(true);
-    expect(relativeToWorkDir(full, workDirRef("atelier", work.slug))).toBe("trees/atelier/");
+    expect(full.endsWith(relativeToWorkDir(full, workDirRef(work.slug)))).toBe(true);
+    expect(relativeToWorkDir(full, workDirRef(work.slug))).toBe("trees/atelier/");
   });
 
   it("접두어가 맞지 않으면 전체를 그대로 보인다", () => {

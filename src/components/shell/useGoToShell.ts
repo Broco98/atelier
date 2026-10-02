@@ -4,7 +4,6 @@ import { slugOfOwner } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { isOwnerlessShell, selectShellWithFocus } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
-import { modeOf, routesOf } from "@/mode";
 import { navigateThen } from "@/lib/arrival";
 import { workSlugOf } from "@/lib/path-prefix";
 import { viewProcesses } from "./processes-view";
@@ -61,20 +60,18 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
       }
       const go = (target: NavigateOptions) => navigateThen(router, target, () => selectShellWithFocus(id), "shell");
       const pathname = router.state.location.pathname;
-      const mode = modeOf(pathname);
-      const routes = routesOf(mode);
       const slug = slugOfOwner(owner);
       if (slug === null) {
-        go({ to: routes.terminal });
+        go({ to: "/terminal" });
         return;
       }
       const here = workSlugOf(pathname) === slug;
       go({
-        to: routes.item,
+        to: "/works/$slug",
         params: { slug },
         search: here
           ? (prev: object) => tabSearch(prev, "terminal")
-          : tabSearch(recallSearch(mode, slug), "terminal"),
+          : tabSearch(recallSearch(slug), "terminal"),
         replace: here,
       });
     },

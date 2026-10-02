@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pickSlug } from "@/components/shell/shell-store";
-import { ALL_MODES } from "@/mode";
-import {
-  emptyMainNotice,
-  emptyScreenCopy,
-  listLabelOf,
-  pageNameOf,
-  splitWorkSections,
-} from "./work-sections";
+import { emptyMainNotice, splitWorkSections, WORKS_COPY } from "./work-sections";
 import type { WorkView } from "./types";
 
 // 목록 순서·구역 분리 seam. 순수 함수 하나가 대상이라 렌더도 DOM도 없이 기본 환경(node)에서 돈다.
@@ -100,7 +93,7 @@ describe("구획 접힘", () => {
 // 초안이 하나라도 있으면 구획은 빈 것이 아니다.
 describe("빈 작업 구획이 하는 말", () => {
   const notice = (...args: Array<string>) =>
-    emptyMainNotice(splitWorkSections(works(...args), ALL), "atelier");
+    emptyMainNotice(splitWorkSections(works(...args), ALL));
 
   it("고정 때문에 비었으면 그렇게 말한다 — 위에 작업이 버젓이 서 있다", () => {
     expect(notice("pin:고정")).toBe("전부 고정돼 있어요.");
@@ -116,32 +109,26 @@ describe("빈 작업 구획이 하는 말", () => {
   // 글자로** 댄다. 초안 갈래(「진행 중인 … 없어요」)가 되살아나 고정된 초안에 셋째 문장을 주면
   // 여기서 갈린다. 초안이 고정 밖에 있는 모양은 `작업`이 안 비므로 이 판정에 안 닿는다(위 둘째 describe).
   it("나올 수 있는 말은 「고정만 있다」·「아무것도 없다」 둘뿐이다", () => {
-    const expected = {
-      atelier: ["작업은 Claude Code에서 시작돼요.", "전부 고정돼 있어요."],
-    };
     const shapes = [[], ["pin:고정"], ["pin:draft:고정초안"]];
-    for (const mode of ALL_MODES) {
-      const said = shapes.map((shape) => {
-        const sections = splitWorkSections(works(...shape), ALL);
-        expect(sections.main, `${mode} ${shape.join(",")}`).toEqual([]);
-        return emptyMainNotice(sections, mode);
-      });
-      expect([...new Set(said)], mode).toEqual(expected[mode]);
-    }
+    const said = shapes.map((shape) => {
+      const sections = splitWorkSections(works(...shape), ALL);
+      expect(sections.main, shape.join(",")).toEqual([]);
+      return emptyMainNotice(sections);
+    });
+    expect([...new Set(said)]).toEqual(["작업은 Claude Code에서 시작돼요.", "전부 고정돼 있어요."]);
   });
 });
 
 // 목록이 **자기를 부르는 말**(#183, US 17). 판정 규칙은 하나이고 낱말은 어휘 표에서 온다.
 describe("상주 목록이 자기 어휘로 말한다", () => {
-  const notice = (mode: (typeof ALL_MODES)[number], ...args: Array<string>) =>
-    emptyMainNotice(splitWorkSections(works(...args), ALL), mode);
+  const notice = (...args: Array<string>) => emptyMainNotice(splitWorkSections(works(...args), ALL));
 
   it("머리는 `작업`이다", () => {
-    expect(listLabelOf("atelier")).toBe("작업");
+    expect(WORKS_COPY.label).toBe("작업");
   });
 
-  it("Atelier 문구 둘은 한 글자도 안 바뀐다", () => {
-    expect([notice("atelier"), notice("atelier", "pin:고정")]).toEqual([
+  it("문구 둘은 한 글자도 안 바뀐다", () => {
+    expect([notice(), notice("pin:고정")]).toEqual([
       "작업은 Claude Code에서 시작돼요.",
       "전부 고정돼 있어요.",
     ]);
@@ -150,8 +137,8 @@ describe("상주 목록이 자기 어휘로 말한다", () => {
 
 // 사이드바가 아니라 **본문 한가운데**가 하는 말(US 22). 목록의 빈 구획과 한 표에서 나온다.
 describe("고른 것이 없는 본문이 자기 어휘로 말한다", () => {
-  it("Atelier 세 조각은 한 글자도 안 바뀐다", () => {
-    expect(emptyScreenCopy("atelier")).toEqual({
+  it("세 조각은 한 글자도 안 바뀐다", () => {
+    expect(WORKS_COPY.screen).toEqual({
       title: "아직 작업이 없어요",
       body: "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
       code: 'atelier로 "새 작업" 시작해줘',
@@ -162,13 +149,13 @@ describe("고른 것이 없는 본문이 자기 어휘로 말한다", () => {
 // **머리에 이는 화면 이름**은 고른 항목이 없을 때만 선다.
 describe("화면이 머리에 이는 자기 이름", () => {
   it("화면 이름은 `Works`다", () => {
-    expect(pageNameOf("atelier")).toBe("Works");
+    expect(WORKS_COPY.page).toBe("Works");
   });
 
   // **`label`과 갈린 값이라는 것을 함께 잰다.** 한 칸으로 접으면 Atelier 머리가 한국어
   // `작업`으로 눕어 `Archive`·`Projects`와 다른 층이 되고, 그때 이 검사만 빨개진다.
   it("사이드바 구획 라벨과 같은 값이 아니다", () => {
-    expect(pageNameOf("atelier")).not.toBe(listLabelOf("atelier"));
+    expect(WORKS_COPY.page).not.toBe(WORKS_COPY.label);
   });
 });
 

@@ -8,8 +8,7 @@ import {
   type ShellSignal,
 } from "@/components/shell/shell-signal";
 import type { DragPoint } from "@/lib/pointer-drag";
-import type { Mode } from "@/mode";
-import { emptyMainNotice, listLabelOf } from "./work-sections";
+import { emptyMainNotice, WORKS_COPY } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
 import { StatusIcon } from "./status";
 import type { WorkView } from "./types";
@@ -85,7 +84,6 @@ export interface WorkRowShells {
 // 정하는 자리는 하나다.
 export function WorkSectionList({
   sections,
-  mode,
   open,
   selectedSlug,
   shells,
@@ -100,8 +98,6 @@ export function WorkSectionList({
   onArmDrag,
 }: {
   sections: WorkSections;
-  /** 목록이 자기를 뭐라고 부르는가가 여기서 갈린다 — 머리 라벨과 빈 몸통의 문구 둘 다. */
-  mode: Mode;
   open: SectionsOpen;
   selectedSlug: string | null;
   /** 행이 셸에서 받는 값 넷(`WorkRowShells`). 행마다 제 slug의 것을 꺼내 `WorkRow`에 건넨다. */
@@ -183,11 +179,10 @@ export function WorkSectionList({
       )}
 
       {/* 상주 목록의 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다.
-          **라벨이 세계를 탄다**(US 17): Atelier `작업` · Maison `Rooms`. 형제인 `고정`은
-          상태의 이름이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이다. */}
+          라벨은 어휘 표가 든다(US 17). 형제인 `고정`은 상태의 이름이다. */}
       <SectionHeader
         section="works"
-        label={listLabelOf(mode)}
+        label={WORKS_COPY.label}
         className="mt-3"
         open={open.works}
         count={main.length}
@@ -206,10 +201,9 @@ export function WorkSectionList({
           // 성한 것은 그쪽 거터가 `-mx-3 px-3`이라 12px여서다.
           //
           // **목록이 넘칠 때만 보이는 병이라 오래 안 보였다.** 이 자리는 work이 0개일 때만 서고
-          // 그때는 대개 목록이 안 넘치는데, 사이드바 최상단에 모드 세그먼트가 서면서 넘치는
-          // 창이 넓어졌다 — 목록이 오기 전 한 프레임에 이 문구가 서는 그 창이다.
+          // 그때는 대개 목록이 안 넘친다 — 목록이 오기 전 한 프레임에 이 문구가 서는 창이 그 드문 때다.
           <span className="mr-1 px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
-            {emptyMainNotice(sections, mode)}
+            {emptyMainNotice(sections)}
           </span>
         ) : (
           main.map(row)

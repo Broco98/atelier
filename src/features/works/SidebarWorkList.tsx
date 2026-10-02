@@ -5,7 +5,6 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { recallSearch } from "@/routes/-work-search";
 import { workSlugOf } from "@/lib/path-prefix";
-import { routesOf, type Mode } from "@/mode";
 import { useMoveWork, useSetWorkPinned, useWorks } from "./hooks";
 import { WorkCard } from "./WorkCard";
 import { WorkSectionList, type WorkRowShells } from "./WorkSectionList";
@@ -32,24 +31,15 @@ const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
 
 // 사이드바에 상주하는 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 그 항목의 화면으로
-// 간다 — **어느 세계의 목록인가는 `mode`가 정한다**(Atelier `작업` · Maison `Rooms`).
+// 간다.
 //
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 function SidebarWorkList({
   open,
-  mode,
   shells,
 }: {
   open: boolean;
-  /**
-   * 어느 세계의 목록인가. **읽는 곳과 가는 곳이 이 값 하나에서 함께 나온다**(#183) —
-   * 데이터만 모드로 갈면 Maison에서 목록은 Room인데 행을 누르면 Atelier로 튄다.
-   *
-   * 주소에서 다시 읽지 않고 셸이 내려준다: 세계를 판정하는 자리는 셸 하나이고(`shellMode`),
-   * 그 합성이 두 자리에 있으면 둘이 갈리는 날 목록과 세그먼트가 다른 세계를 가리킨다.
-   */
-  mode: Mode;
   /**
    * 행이 셸에서 받는 값 넷 — 개수 · 화면값 · 부르는 셸의 말 · 오른쪽 메타 슬롯(`WorkRowShells`).
    * **이 파일은 터미널 스토어를 모른다** — 넷 다 위(Sidebar)에서 읽어 내려오고, 여기서는 행까지
@@ -57,12 +47,9 @@ function SidebarWorkList({
    */
   shells: WorkRowShells;
 }) {
-  const { data: works = [] } = useWorks(mode);
+  const { data: works = [] } = useWorks();
   const navigate = useNavigate();
-  const setPinned = useSetWorkPinned(mode);
-  // 주소 리터럴이 박히는 자리는 모드 표 하나다(`-works-view.tsx`의 같은 줄) — 여기서
-  // `/works/$slug`를 다시 적으면 Maison에서 Room을 누를 때마다 Atelier로 튄다.
-  const routes = routesOf(mode);
+  const setPinned = useSetWorkPinned();
   const [pinnedOpen, setPinnedOpen] = useState(
     () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
   );
@@ -156,9 +143,9 @@ function SidebarWorkList({
   const goTo = (slug: string) => {
     closeCard();
     void navigate({
-      to: routes.item,
+      to: "/works/$slug",
       params: { slug },
-      search: recallSearch(mode, slug),
+      search: recallSearch(slug),
     });
   };
 
@@ -173,7 +160,7 @@ function SidebarWorkList({
   // **드래그 상태는 여기서 구독해 아래로 내린다** — 구획 목록은 훅을 안 부르는 그림이다(그쪽 파일
   // 머리 · 소스 검사). 몸짓 자체(문턱 · 창 리스너 · 클릭 삼킴 · Esc)는 공용 모듈의 것이고, 이
   // 목록이 쥐는 것은 **틈**뿐이다: 행 사이에는 「내 위다」를 말할 요소가 없어 좌표로 정해야 한다.
-  const moveWork = useMoveWork(mode);
+  const moveWork = useMoveWork();
   const listBox = useRef<HTMLDivElement>(null);
   const dragging = useStore(dragStore, (state) => state.source !== null);
   const draggedSlug = useStore(dragStore, (state) =>
@@ -381,7 +368,6 @@ function SidebarWorkList({
         >
           <WorkSectionList
             sections={sections}
-            mode={mode}
             open={sectionsOpen}
             selectedSlug={selectedSlug}
             shells={shells}
@@ -414,7 +400,7 @@ function SidebarWorkList({
         >
           {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
               말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}
-          <WorkCard mode={mode} work={hovered} note={shells.notes[hovered.slug] ?? null} />
+          <WorkCard work={hovered} note={shells.notes[hovered.slug] ?? null} />
         </PopoverPortal>
       )}
     </>

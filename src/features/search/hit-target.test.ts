@@ -27,7 +27,7 @@ const workHit = (over: Partial<Extract<SearchHit, { kind: "work" }>> = {}): Sear
 
 describe("문서 줄이 가는 곳", () => {
   it("활성 문서는 그 work의 spec 화면에서 열린다", () => {
-    expect(hitTarget("atelier", doc())).toEqual({
+    expect(hitTarget(doc())).toEqual({
       to: "/works/$slug",
       params: { slug: "가" },
       search: { file: "overview.md", tab: undefined, split: undefined },
@@ -38,8 +38,8 @@ describe("문서 줄이 가는 곳", () => {
   // 분할이 안 무너지고, 터미널을 보고 있었어도 문서를 골랐으면 spec으로 돌아온다.
   // 기억에 다른 문서가 적혀 있어도 **고른 문서**가 이긴다 — 문서 줄은 문서를 골랐다.
   it("분할은 그 work의 기억에서 살아남고 탭은 spec으로 돌아온다", () => {
-    rememberView("atelier", "갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md" });
-    expect(hitTarget("atelier", doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
+    rememberView("갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md" });
+    expect(hitTarget(doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "갈라둔것" },
       search: { file: "01-판/spec.md", tab: undefined, split: "rl" },
@@ -49,13 +49,13 @@ describe("문서 줄이 가는 곳", () => {
   // 아카이브 문서는 **아카이브 화면**으로 간다. 경로는 work 루트 기준이고(`record.md`가
   // spec 밖에 있다) `file` 검증기는 두 화면이 이미 공유한다.
   it("아카이브 문서는 아카이브 화면에서 열린다", () => {
-    expect(hitTarget("atelier", doc({ slug: "옛일", path: "record.md", archived: true }))).toEqual({
+    expect(hitTarget(doc({ slug: "옛일", path: "record.md", archived: true }))).toEqual({
       to: "/archive/$slug",
       params: { slug: "옛일" },
       search: { file: "record.md" },
     });
     expect(
-      hitTarget("atelier", doc({ slug: "옛일", path: "spec/overview.md", archived: true })),
+      hitTarget(doc({ slug: "옛일", path: "spec/overview.md", archived: true })),
     ).toEqual({
       to: "/archive/$slug",
       params: { slug: "옛일" },
@@ -80,12 +80,12 @@ describe("본문 줄이 가는 곳", () => {
   });
 
   it("활성 본문 줄은 그 문서 줄과 같은 곳으로 간다", () => {
-    expect(hitTarget("atelier", text())).toEqual(hitTarget("atelier", doc()));
+    expect(hitTarget(text())).toEqual(hitTarget(doc()));
   });
 
   it("아카이브 본문 줄은 그 문서 줄과 같은 곳으로 간다", () => {
-    expect(hitTarget("atelier", text({ slug: "옛일", path: "record.md", archived: true }))).toEqual(
-      hitTarget("atelier", doc({ slug: "옛일", path: "record.md", archived: true })),
+    expect(hitTarget(text({ slug: "옛일", path: "record.md", archived: true }))).toEqual(
+      hitTarget(doc({ slug: "옛일", path: "record.md", archived: true })),
     );
   });
 });
@@ -97,8 +97,8 @@ describe("work 줄이 가는 곳", () => {
   // (`SidebarWorkList`의 `goTo`): work을 고르는 길이 둘인데 도착지가 갈리면 어긋나도
   // 화면에 티가 안 난다.
   it("그 work을 마지막으로 보던 화면으로 간다 — 문서·탭·분할 셋 다", () => {
-    rememberView("atelier", "터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md" });
-    expect(hitTarget("atelier", workHit({ slug: "터미널보던것" }))).toEqual({
+    rememberView("터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md" });
+    expect(hitTarget(workHit({ slug: "터미널보던것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "터미널보던것" },
       search: { tab: "terminal", split: "lr", file: "03-판/spec.md" },
@@ -108,7 +108,7 @@ describe("work 줄이 가는 곳", () => {
   // 기억이 없으면 기본값이다 — 방금 만들어 아직 안 열어 본 work이 그 자리다(결정 14가
   // 세우려는 것이 바로 그런 work이다).
   it("아직 안 본 work은 기본 화면으로 간다", () => {
-    expect(hitTarget("atelier", workHit({ slug: "방금만든것" }))).toEqual({
+    expect(hitTarget(workHit({ slug: "방금만든것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "방금만든것" },
       search: { tab: undefined, split: undefined, file: undefined },
@@ -117,7 +117,7 @@ describe("work 줄이 가는 곳", () => {
 
   // 아카이브 work은 **가는 화면이 다르다.** 문서를 안 골랐으므로 `file`도 없다.
   it("아카이브 work은 아카이브 화면으로 간다", () => {
-    expect(hitTarget("atelier", workHit({ slug: "옛일", archived: true }))).toEqual({
+    expect(hitTarget(workHit({ slug: "옛일", archived: true }))).toEqual({
       to: "/archive/$slug",
       params: { slug: "옛일" },
       search: {},
@@ -127,28 +127,28 @@ describe("work 줄이 가는 곳", () => {
 
 describe("프로젝트 줄과 목적지 줄이 가는 곳", () => {
   it("프로젝트 줄은 그 프로젝트 화면으로 간다", () => {
-    expect(hitTarget("atelier", { kind: "project", slug: "billing", name: "빌링" })).toEqual({
+    expect(hitTarget({ kind: "project", slug: "billing", name: "빌링" })).toEqual({
       to: "/projects/$slug",
       params: { slug: "billing" },
     });
   });
 
-  // 결정 21. 라우트는 **프런트 것이다** — 코어는 `key`만 돌려주고, 그 key를 그 세계의
+  // 결정 21. 라우트는 **프런트 것이다** — 코어는 `key`만 돌려주고, 그 key를
   // 주소로 푸는 자리가 `destinations.ts` 하나다. 사이드바가 가는 곳과 같은 값이 나온다.
   it("목적지 줄은 사이드바가 가는 곳으로 간다", () => {
-    expect(hitTarget("atelier", { kind: "destination", key: "projects" })).toEqual({
+    expect(hitTarget({ kind: "destination", key: "projects" })).toEqual({
       to: "/projects",
     });
-    expect(hitTarget("atelier", { kind: "destination", key: "terminal" })).toEqual({
+    expect(hitTarget({ kind: "destination", key: "terminal" })).toEqual({
       to: "/terminal",
     });
-    expect(hitTarget("atelier", { kind: "destination", key: "archive" })).toEqual({
+    expect(hitTarget({ kind: "destination", key: "archive" })).toEqual({
       to: "/archive",
     });
     // **설정은 `navItems`에 없다**(결정 51 — 사이드바 바닥에 고정된 자리를 줬다). 그래도 갈
     // 수 있는 화면이라 여기서 풀려야 한다: 그 배열만 훑으면 팔레트 목록에는 뜨는데 Enter가
     // 아무 일도 안 하는 줄이 되고, **그 실패는 목록만 보면 안 보인다.**
-    expect(hitTarget("atelier", { kind: "destination", key: "settings" })).toEqual({
+    expect(hitTarget({ kind: "destination", key: "settings" })).toEqual({
       to: "/settings",
     });
   });
@@ -156,6 +156,6 @@ describe("프로젝트 줄과 목적지 줄이 가는 곳", () => {
   // 코어는 여기서 건넨 key만 돌려주므로(결정 21) 모르는 key는 계약이 깨진 것이다.
   // **갈 곳을 지어내지 않는다** — 지어내면 엉뚱한 화면으로 데려가고 그것이 조용하다.
   it("모르는 목적지는 갈 곳이 없다고 말한다", () => {
-    expect(hitTarget("atelier", { kind: "destination", key: "없는목적지" })).toBeNull();
+    expect(hitTarget({ kind: "destination", key: "없는목적지" })).toBeNull();
   });
 });

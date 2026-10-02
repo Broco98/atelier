@@ -2,7 +2,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import { worksQuery } from "@/features/works/hooks";
 import { archiveQuery } from "@/features/archive/hooks";
 import { pickSlug, shellStore } from "@/components/shell/shell-store";
-import type { Mode } from "@/mode";
 
 // 무선택 목록 주소(`/works`·`/archive`)가 **어느 항목으로 고쳐 써지는가.** 두 목록이 같은 규칙을
 // 쓰므로 몸통이 하나여야 한다 — 라우트 파일마다 적으면 한쪽만 고친 날 한 목록에서만 다른 줄이
@@ -16,18 +15,14 @@ import type { Mode } from "@/mode";
 /**
  * 목록을 못 가져오면(백엔드 오류) 정규화를 포기하고 빈 상태 화면으로 간다 — 셸조차 뜨지
  * 않는 것보다 낫고, 라우터 도입 전의 실패 모습과 같다.
- *
- * **목록도 모드별로 캐시가 갈린다**(`worksQuery(mode)`) — 저쪽 세계의 목록으로 이쪽 주소를
- * 정규화하면 없는 항목으로 가고, 그 slug가 우연히 양쪽에 다 있으면 **다른 세계의 이름을 가진
- * 항목**이 열린 채 화면이 멀쩡해 보인다.
  */
-export async function pickWorkSlug(mode: Mode, queryClient: QueryClient) {
-  const works = await queryClient.ensureQueryData(worksQuery(mode)).catch(() => []);
-  return pickSlug(shellStore.state.workSlug[mode], works);
+export async function pickWorkSlug(queryClient: QueryClient) {
+  const works = await queryClient.ensureQueryData(worksQuery()).catch(() => []);
+  return pickSlug(shellStore.state.workSlug, works);
 }
 
 /** 아카이브도 같은 규칙이다 — 기억한 것 → 목록 첫 항목. */
-export async function pickArchiveSlug(mode: Mode, queryClient: QueryClient) {
-  const entries = await queryClient.ensureQueryData(archiveQuery(mode)).catch(() => []);
-  return pickSlug(shellStore.state.archiveSlug[mode], entries);
+export async function pickArchiveSlug(queryClient: QueryClient) {
+  const entries = await queryClient.ensureQueryData(archiveQuery()).catch(() => []);
+  return pickSlug(shellStore.state.archiveSlug, entries);
 }
