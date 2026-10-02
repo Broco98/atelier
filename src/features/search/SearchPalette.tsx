@@ -25,7 +25,7 @@ import type { SearchHit } from "./types";
  * (`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **바깥은 Dialog다**(결정 10) — 창(`dialog`)으로 읽히고, 포커스를 가두고, 닫히면 열기 전 자리로
- * 포커스를 돌려주는 것은 Base UI가 한다. 모양(자리 12vh · 폭 560px · 떠 있는 카드)은 부품 파일의
+ * 포커스를 돌려주는 것은 Base UI가 한다. 모양(자리 12vh · 폭 600px · 떠 있는 카드)은 부품 파일의
  * `palette` 변형이 든다(`components/ui/dialog.tsx`). **목록은 우리 listbox 그대로다** — 순서와
  * 묶음은 코어가 정하고, 입력칸이 켜진 줄을 `aria-activedescendant`로 가리킨다.
  *
