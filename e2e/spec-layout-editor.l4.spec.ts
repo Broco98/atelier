@@ -34,7 +34,7 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   // 폴더가 없으니 내장본이다 — `overview.md`가 맨 앞 항목이라 기본 문서다.
   await page.goto("/works/첫째");
   await expect(page.getByText("첫째 작업의 개요다.")).toBeVisible();
-  const [before] = (await askBackend(page, "list_works", { mode: "atelier" })) as WorkView[];
+  const [before] = (await askBackend(page, "list_works", {})) as WorkView[];
   expect(before.specTree.defaultDoc).toBe("overview.md");
 
   // 앱 안에서 설정으로 간다 — 새로 읽으면 캐시가 사라져 무효화를 잴 수 없다.
@@ -66,7 +66,7 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
   // 감시자 없이도 work 목록이 다시 불렸다 — 저장한 쪽의 무효화다
   await expect.poll(() => callCount(page, "list_works")).toBeGreaterThan(listed);
 
-  const [after] = (await askBackend(page, "list_works", { mode: "atelier" })) as WorkView[];
+  const [after] = (await askBackend(page, "list_works", {})) as WorkView[];
   expect(after.specTree.defaultDoc).toBe("plan.md");
   expect(after.specTree.items[0]).toMatchObject({ name: "plan.md", kind: "file", icon: "compass" });
 

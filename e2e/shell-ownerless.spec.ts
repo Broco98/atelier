@@ -87,7 +87,7 @@ test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 
   await installFixtureBackend(page, { pty_close_checks: { 1: QUIET_SHELL, 2: BUSY_SHELL } });
   await twoShells(page, `/works/${plainWork.slug}`);
 
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
 
   // 조용한 셸 하나만 닫는다 — 까닭은 「MCP 아카이브」이고 주인은 그 work이다(정리 기록 · 판 04의 `●`가 이것을 읽는다).
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "mcpArchive", owner: plainWork.slug }]);
@@ -109,7 +109,7 @@ test("닫기 전 물음이 거절되면 어느 셸도 닫지 않고 모두 주�
   await installFixtureBackend(page, { pty_close_checks: ipcFailure("PTY 풀을 읽지 못했습니다") });
   await twoShells(page, `/works/${plainWork.slug}`);
 
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
 
   await expect(toastOf(page, ownerlessText(2))).toBeVisible();
   // 앵커: 물었다 — 안 물어서 안 닫은 것이 아니다.
@@ -125,7 +125,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
     pty_close_checks: { 1: { command: true, descendants: 2 }, 2: { command: false, descendants: 1 } },
   });
   await twoShells(page, `/works/${plainWork.slug}`);
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const toast = toastOf(page, ownerlessText(2));
   await expect(toast).toBeVisible();
   const asked = await callCount(page, "pty_close_checks");
@@ -177,7 +177,7 @@ test("MCP 아카이브 뒤 그 work의 셸은 주인 잃은 셸로 서고, 최�
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   // 양성 — 그 work의 셸 하나가 주인 잃은 셸이다.
   await expect(toastOf(page, ownerlessText(1))).toBeVisible();
   // 음성 — 판정에 실린 셸은 그 work의 셸뿐이다. 최상위 셸이 실렸으면 이 목록에 2가 있다.
@@ -212,7 +212,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
   await expect.poll(() => heldCalls(page, "archive_work")).toBe(1);
 
   // 코어가 옮긴 뒤의 목록이 먼저 앉는다 — 감시자의 이벤트는 호출이 돌아오기 앞뒤 어디에나 올 수 있다.
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   await expect(workRow(page, plainWork.slug)).toHaveCount(0);
   await settle(page);
 
@@ -223,7 +223,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
   expect(await toastsNow(page)).toBe(0);
 
   // 창이 닫힌 뒤의 MCP 아카이브는 알린다 — 감지가 살아 있는데 위에서 안 섰다는 것이 이 줄로 선다.
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug, pinnedWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug, pinnedWork.slug);
   await expect(toastOf(page, ownerlessText(1))).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -247,7 +247,7 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const ownerless = toastOf(page, ownerlessText(1));
   await expect(ownerless).toBeVisible();
   await releaseCommand(page, "startup_report");
@@ -285,7 +285,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   // 최상위 터미널의 첫 셸(pty 2)이 떴으면 떠나온 work 화면은 내려갔다.
   await arrived(page, 2);
 
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   // `×`는 알림 자리가 펼쳐졌을 때(마우스가 올라가거나 포커스가 들었을 때)만 보조 기술에 드러난다 — Base UI의

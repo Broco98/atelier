@@ -232,9 +232,9 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 터미널 화면을 떠나면 터미널이 통째로 내려간다. 두고 온 셸은 **제 모드로** 떠야 한다 — spawn이 싣는 모드가
-// 셸의 홈과 `ATELIER_MODE`를 정한다(결정 10 · #187).
-test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 제 모드로 뜬다", async ({ page }) => {
+// 터미널 화면을 떠나면 터미널이 통째로 내려간다. 두고 온 셸은 **제자리에서** 떠야 한다 — 최상위 터미널의 셸이라
+// cwd 없이 나가고, 백엔드가 데이터 루트에서 띄운다(결정 10).
+test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 제자리에서 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
@@ -249,11 +249,11 @@ test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 �
 
   await releaseFonts();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_spawn", "mode")).map(({ args }) => args.mode), {
-      message: "두고 온 셸이 안 떴거나 다른 모드로 떴다",
+    .poll(async () => (await ipcCallArgs(page, "pty_spawn", "cwd")).map(({ args }) => args.cwd), {
+      message: "두고 온 셸이 안 떴거나 다른 자리로 떴다",
       timeout: 20_000,
     })
-    .toEqual(["atelier"]);
+    .toEqual([null]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

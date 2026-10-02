@@ -13,7 +13,7 @@ const SLUG = "치운-일";
 // 치운 work과 레이아웃 폴더를 손으로 심는 이유와 모양은 `l4.ts`의 `seedArchivedWork`·`seedLayout`
 // 머리말에 있다.
 
-test("다리의 아카이브 문서 답이 모드의 레이아웃으로 spec/ 아래를 가르고, 화면이 그것을 그린다", async ({
+test("다리의 아카이브 문서 답이 레이아웃으로 spec/ 아래를 가르고, 화면이 그것을 그린다", async ({
   page,
   sandbox,
 }) => {
@@ -35,10 +35,7 @@ test("다리의 아카이브 문서 답이 모드의 레이아웃으로 spec/ �
   await page.goto(`/archive/${SLUG}`);
   await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
 
-  const answer = (await askBackend(page, "list_archived_docs", {
-    mode: "atelier",
-    slug: SLUG,
-  })) as ArchivedDocs;
+  const answer = (await askBackend(page, "list_archived_docs", { slug: SLUG })) as ArchivedDocs;
   // 문서 목록은 커널이 준 그대로 곁에 선다 — work 폴더 기준이고 기록이 맨 앞이다.
   expect(answer.docs).toEqual(["record.md", "spec/overview.md", "spec/plan.md", "spec/tickets/할일.md"]);
   // 트리는 `spec/` 아래만, spec 기준 경로로 — 심은 레이아웃의 자리를 받은 `plan.md`가 먼저 선다.

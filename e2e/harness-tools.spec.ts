@@ -231,7 +231,6 @@ test("(2) 페이지가 뜬 뒤에 붙잡으면 그때부터 붙잡는다 — 갈
     page,
     "list_works",
     WORKS.filter((work) => work.slug !== plainWork.slug),
-    "atelier",
   );
   const before = await callCount(page, "list_works");
   await holdCommand(page, "list_works");
@@ -322,27 +321,20 @@ test("(3) 같은 커맨드를 인자 둘로 부르면 인자마다 다른 답이
   expect(await unknownIpcCalls(page)).toEqual(["pty_close_check"]);
 });
 
-test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를 쏘면 사이드바에서 그 work이 사라진다", async ({
+test("(4) list_works의 답에서 work 하나를 빼고 works:changed를 쏘면 사이드바에서 그 work이 사라진다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await expect(workRow(page, plainWork.slug)).toBeVisible();
 
-  // 안전장치 — 덮어쓰기와 같다. 모르는 이름 · 모르는 모드 · 모드를 빠뜨림 · 모드로 안 갈리는 커맨드에 모드.
+  // 안전장치 — 덮어쓰기와 같다. 모르는 이름은 던진다.
   await expect(replaceAnswer(page, "no_such_command", null)).rejects.toThrow("no_such_command");
-  // 와이어에서 온 모드가 아무 문자열일 수 있다는 것을 흉내 낸다 — 캐스트가 이 줄의 요점이다.
-  await expect(replaceAnswer(page, "list_works", [], "masion" as "atelier")).rejects.toThrow("masion");
-  await expect(replaceAnswer(page, "list_works", [])).rejects.toThrow("list_works");
-  await expect(replaceAnswer(page, "pty_close_check", QUIET_SHELL, "atelier")).rejects.toThrow(
-    "pty_close_check",
-  );
 
   await replaceAnswer(
     page,
     "list_works",
     WORKS.filter((work) => work.slug !== plainWork.slug),
-    "atelier",
   );
   await fireEvent(page, "works:changed", null);
   await expect(workRow(page, plainWork.slug)).toHaveCount(0);

@@ -12,18 +12,16 @@ import type { SearchResults } from "./types";
 // 것을 잰다 — `useQuery`가 하는 일이 그 관찰자를 다는 것이다.
 //
 // 답을 **손으로 붙잡는다.** 순서를 뒤집을 수 없으면 이 검사는 늘 초록이고 아무것도 안 잰다.
-const { pending, asked, askedMode } = vi.hoisted(() => ({
+const { pending, asked } = vi.hoisted(() => ({
   pending: new Map<string, (results: unknown) => void>(),
   /** 그 질의와 **함께 나간 목적지**. key만 적는다. */
   asked: new Map<string, string[]>(),
-  /** 그 질의에 실려 나간 `mode` 인자. */
-  askedMode: new Map<string, string>(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (
     _command: string,
-    args: { mode: string; query: string; destinations: { key: string }[] },
+    args: { query: string; destinations: { key: string }[] },
   ) =>
     new Promise((resolve) => {
       pending.set(args.query, resolve);
@@ -31,7 +29,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         args.query,
         args.destinations.map((place) => place.key),
       );
-      askedMode.set(args.query, args.mode);
     }),
 }));
 
@@ -109,7 +106,7 @@ describe("못 물었을 때", () => {
   });
 });
 
-// **나가는 물음에 목적지와 모드가 실린다** — 목적지는 키에 안 실리므로(결정 21) 답이 앉는 자리로는 안 보인다.
+// **나가는 물음에 목적지가 실린다** — 목적지는 키에 안 실리므로(결정 21) 답이 앉는 자리로는 안 보인다.
 describe("무엇을 물어 나가는가", () => {
   // 목록을 **리터럴로 적는다.** 표에서 뽑아 조립하면 구현을 베껴 적은 것이 되어, 표가 통째로
   // 기울어도 함께 기운다. 순서까지 적는 것은 코어가 건넨 순서로 줄을 세우기 때문이다
@@ -117,12 +114,5 @@ describe("무엇을 물어 나가는가", () => {
   it("nav 넷과 설정을 목적지로 묻는다", () => {
     void searchQuery("아뜰").queryFn();
     expect(asked.get("아뜰")).toEqual(["projects", "terminal", "processes", "archive", "settings"]);
-  });
-
-  // **모드도 함께 나간다** — 백엔드가 아직 `mode`를 받는다(ui-refresh 결정 22 — 인자는 판 02의 06에서 걷는다).
-  // API 층이 상수로 싣는다(`api.ts`). 이 줄은 훅을 거친 물음에도 그 값이 실리는지를 본다.
-  it("모드를 싣고 묻는다", () => {
-    void searchQuery("아뜰").queryFn();
-    expect(askedMode.get("아뜰")).toBe("atelier");
   });
 });

@@ -13,14 +13,11 @@ import type {
 // `cwd`에 `null`을 주면 백엔드가 데이터 루트를 쓴다. 여기서 `"~/.atelier"`를 박으면
 // `ATELIER_HOME` 오버라이드가 죽는다 — 그 자리가 어디인지는 atelier-core만 안다.
 //
-// **`spawn`의 `mode`는 상수 `"atelier"`다**(ui-refresh 결정 22). 백엔드가 아직 그 인자를 필수로 받으므로
-// 이 층이 싣는다 — 화면은 모드를 모른다. 나머지는 이미 뜬 셸을 id로 가리켜 모드를 싣지 않는다.
-//
 // **인자 객체가 평평해야 한다.** `tauri-commands.test.ts`의 인자 대조가 중첩 `{}`를 만나면
 // 그 호출을 통째로 못 보고 넘어간다(`features/works/api.ts`가 같은 이유를 적어 뒀다).
 export const terminalApi = {
   spawn: (cwd: string | null, cols: number, rows: number, onFrame: Channel<PtyFrame>) =>
-    invoke<PtySpawned>("pty_spawn", { mode: "atelier", cwd, cols, rows, onFrame }),
+    invoke<PtySpawned>("pty_spawn", { cwd, cols, rows, onFrame }),
   write: (id: number, data: string) => invoke<void>("pty_write", { id, data }),
   resize: (id: number, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),

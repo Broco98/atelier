@@ -77,7 +77,7 @@ test("데이터 루트에 레이아웃 폴더를 심고 다시 읽으면 spec �
   await installRealBackend(page, sandbox);
 
   const treeOf = async (cmd: string, args: Record<string, unknown>) => {
-    const answer = (await askBackend(page, cmd, { mode: "atelier", ...args })) as WorkView | WorkView[];
+    const answer = (await askBackend(page, cmd, args)) as WorkView | WorkView[];
     const [work] = Array.isArray(answer) ? answer : [answer];
     return {
       defaultDoc: work.specTree.defaultDoc,

@@ -103,7 +103,7 @@ test("상태 배지는 메뉴를 연다고 말하고, 지금 상태가 선택됨
   await expect(badge).toHaveAttribute("aria-expanded", "false");
   await expect
     .poll(async () => (await ipcCallArgs(page, "set_work_status", "status")).map(({ args }) => args))
-    .toEqual([{ mode: "atelier", slug: pinnedWork.slug, status: "review" }]);
+    .toEqual([{ slug: pinnedWork.slug, status: "review" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -222,7 +222,7 @@ test("Enter면 앞뒤 공백을 뗀 이름으로 제목 IPC가 나가고, 창이
   await expect(작업메뉴(page)).toBeFocused();
   await expect
     .poll(async () => (await ipcCallArgs(page, "set_work_title", "title")).map(({ args }) => args))
-    .toEqual([{ mode: "atelier", slug: plainWork.slug, title: "새 이름" }]);
+    .toEqual([{ slug: plainWork.slug, title: "새 이름" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

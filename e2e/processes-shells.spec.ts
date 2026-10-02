@@ -89,7 +89,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
   // 주인이 있는 셸 하나(`Terminal`, pty 3) — 셸 트리의 앵커다.
@@ -171,7 +171,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
   await typeIntoShell(page);
   await openShell(page);
   await openShell(page);
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const 토스트 = (n: number) => toastOf(page, ownerlessText(n));
   await expect(토스트(3)).toBeVisible();
 
@@ -301,7 +301,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
   // `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
   await navButton(page, "Terminal").click();

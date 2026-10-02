@@ -76,7 +76,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button", { name: /^(모두 닫기|보기)$/ })).toHaveText(["모두 닫기", "보기"]);
@@ -142,7 +142,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
   await typeIntoShell(page);
   await 편집기에초안(page);
   // 셸의 claude가 MCP로 그 work을 아카이브한다 — 명령이 도는 셸이 남아 주인 잃은 셸 토스트가 설정 화면에 선다.
-  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await archiveByMcp(page, WORKS, plainWork.slug);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
 

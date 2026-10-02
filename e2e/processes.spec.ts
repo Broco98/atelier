@@ -13,7 +13,7 @@ import { poolShell, snapshotFixture } from "@/features/processes/process-fixture
 import type { ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 26 — **`Processes`가 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
-// 80 · 95). nav 배열과 라우트 표의 자리는 L2가 값으로 잰다(`mode.test.ts` · `router.test.ts`). 여기서 보는 것은 그 표가 **진짜 사이드바와
+// 80 · 95). nav 배열과 라우트 표의 자리는 L2가 값으로 잰다(`destinations.test.ts` · `router.test.ts`). 여기서 보는 것은 그 표가 **진짜 사이드바와
 // 진짜 라우터**를 지나 화면이 서는가, 스냅샷이 화면까지 오는가, 그리고 떠나면 묻기가 멈추는가다 — 마지막은 진짜 타이머와
 // 진짜 언마운트가 있어야 드러난다.
 //
