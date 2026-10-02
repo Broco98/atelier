@@ -293,13 +293,13 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 작업 패널 주석과 같다.
     "relative overflow-hidden border-r bg-sidebar",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-    // 곡선은 --ease-panel — 접히는 패널 넷이 같은 값을 읽는다 (index.css)
+    // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
     !dragging && PANEL_MOTION,
     !dragging && (open ? "transition-[width,min-width,border-color]" : "transition-[width,border-color]"),
     // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,
     // box-sizing이 border-box라 사용 폭이 0이 아니라 1px에서 바닥을 친다. 그 1px이 오른쪽
-    // 전부를 밀어 --titlebar-inset-panel 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
-    // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다. 목록 패널 둘도 같은 이유로 같은 처리를 한다.
+    // 전부를 밀어 신호등을 피하는 여백 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
+    // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다.
     //
     // border-width는 위 트랜지션 목록에 **넣지 않는다.** WebKit이 0보다 큰 테두리를 디바이스
     // 픽셀 하나로 올림해서, 보간해 봐야 폭 바닥은 그대로인 채 레티나에서 구분선 두께만

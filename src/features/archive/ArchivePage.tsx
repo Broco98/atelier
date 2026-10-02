@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Toaster, showToast } from "@/components/ui/toast";
+import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
-import PageHeader from "@/components/shell/PageHeader";
+import useResizableWidth from "@/components/shell/useResizableWidth";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import type { DocBody } from "@/features/works/doc-refs";
@@ -31,7 +32,7 @@ interface ArchivePageProps {
 // 값을 받는다.
 const NO_DOCS: string[] = [];
 
-// 목록 패널 + 본문. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
+// 목록 카드 + 문서 카드. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
 function ArchivePage({
@@ -73,6 +74,8 @@ function ArchivePage({
 
   // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Projects와 같은 하나를 쓴다.
   const [panelOpen, togglePanel] = useListPanel("archive-panel-open");
+  // 목록 카드의 폭 — 프로젝트 목록(`panel-width`)과 키를 나눠 갖지 않는다(`ArchiveList` 머리말).
+  const listSize = useResizableWidth("archive-panel-width", 360, 280, 560);
 
   // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
   const copyText = useCallback((text: string) => {
@@ -90,8 +93,8 @@ function ArchivePage({
     [slug, current, copyText],
   );
 
-  // 이 화면의 접이식은 사이드바와 목록 패널 둘이다. 화면을 비웠는지를 말하는 값이
-  // 헤더 인셋과 본문 폭 두 곳에서 쓰이므로 여기 한 번만 적는다 (Works 쪽도 같은 규칙).
+  // 이 화면의 접이식은 사이드바와 목록 패널 둘이다. 둘 다 닫혀 화면을 비웠으면 본문이 넓은 글 폭을 쓴다(SpecViewer의
+  // `bodyColumn` — Works 쪽도 같은 규칙).
   const wide = !sidebarOpen && !panelOpen;
 
   const meta = selected && STATUS_META[selected.status];
@@ -141,74 +144,78 @@ function ArchivePage({
   };
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <ArchiveList
-        entries={entries}
-        selectedSlug={selected?.slug ?? null}
-        loading={entriesPending}
-        currentDoc={current}
-        // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
-        // 둘은 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
-        onSelectDoc={onSelectDoc}
-        onCopyDoc={(docSlug, path) => copyText(archiveRef(docSlug, path))}
-        sidebarOpen={sidebarOpen}
-        open={panelOpen}
-      />
-
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <PageHeader
-          root="Archive"
-          leaf={selected?.title}
-          inset={wide}
-          meta={
-            selected &&
-            meta && (
-              <span className="ml-1.5 flex shrink-0 items-center gap-2">
-                <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>
-                {selected.archivedAt && (
+    // 공용 틀 위의 목록 카드와 문서 카드(ui-refresh 결정 15 · 27). 바탕 줄은 비어 있는 끌기 줄이다(ui-refresh 결정 5 — 탭이 없는 화면).
+    <Frame
+      sidebarOpen={sidebarOpen}
+      list={{
+        open: panelOpen,
+        size: listSize,
+        label: "아카이브 목록",
+        children: (
+          <ArchiveList
+            entries={entries}
+            selectedSlug={selected?.slug ?? null}
+            loading={entriesPending}
+            currentDoc={current}
+            // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
+            // 둘은 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
+            onSelectDoc={onSelectDoc}
+            onCopyDoc={(docSlug, path) => copyText(archiveRef(docSlug, path))}
+          />
+        ),
+      }}
+      // 토스트의 자리 — 카드 줄의 아래 가운데다(판 04 「덮는 것의 기준 상자」). 작업 화면과 같은 부품이고 같은 상자에 선다.
+      overlay={<Toaster />}
+    >
+      <Card
+        as="main"
+        label="아카이브 문서"
+        className="flex-1"
+        head={
+          <CardHead
+            crumbs={selected ? ["Archive", selected.title] : ["Archive"]}
+            // 상태 배지 · 날짜 · 프로젝트 꼬리표의 모양은 판 03 · 06의 것이다 — 여기서는 자리만 카드 머리로 옮긴다.
+            meta={selected && meta && <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>}
+            end={
+              <>
+                {selected?.archivedAt && (
                   <span className="text-caption text-tertiary">
                     {formatCreated(selected.archivedAt)}에 치움
                   </span>
                 )}
-                <span className="flex gap-1.5">
-                  {selected.projects.map((project) => (
-                    <span
-                      key={project}
-                      className="rounded-lg bg-accent px-2 py-[3px] text-caption text-muted-foreground"
-                    >
-                      {project}
-                    </span>
-                  ))}
-                </span>
-              </span>
-            )
-          }
-          actions={
-            <>
-              {/* 글자 하나로 「소스」라고만 적던 자리다 — 여기도 같은 컨트롤을 쓴다(결정 33).
-                  한 화면에서만 다른 어휘를 쓰면 같은 일이 두 모양으로 읽힌다. */}
-              {selected && (
-                <SourceToggle
-                  on={showSource}
-                  // 잠김도 표에서 나온다 — 본문이 토글을 안 따르는 파일에서 두 칸이 살아
-                  // 있으면 선 칸과 본문이 서로 다른 말을 한다(결정 11).
-                  //
-                  // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은
-                  // 항이다(`WorksPage.tsx`의 `sourceLocked`). 남은 문서가 하나도 없으면
-                  // 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지
-                  // 「누를 것이 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의
-                  // 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표 머리말). 본문은
-                  // 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히
-                  // 눌리고 칩만 미끄러진다(결정 21).
-                  locked={current === null || ignoresSourceToggle(current)}
-                  onChange={setShowSource}
-                />
-              )}
-              <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
-            </>
-          }
-        />
-
+                {selected?.projects.map((project) => (
+                  <span
+                    key={project}
+                    className="rounded-lg bg-accent px-2 py-[3px] text-caption text-muted-foreground"
+                  >
+                    {project}
+                  </span>
+                ))}
+                {/* 글자 하나로 「소스」라고만 적던 자리다 — 여기도 같은 컨트롤을 쓴다(결정 33).
+                    한 화면에서만 다른 어휘를 쓰면 같은 일이 두 모양으로 읽힌다. */}
+                {selected && (
+                  <SourceToggle
+                    on={showSource}
+                    // 잠김도 표에서 나온다 — 본문이 토글을 안 따르는 파일에서 두 칸이 살아
+                    // 있으면 선 칸과 본문이 서로 다른 말을 한다(결정 11).
+                    //
+                    // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은
+                    // 항이다(`WorksPage.tsx`의 `sourceLocked`). 남은 문서가 하나도 없으면
+                    // 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지
+                    // 「누를 것이 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의
+                    // 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표 머리말). 본문은
+                    // 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히
+                    // 눌리고 칩만 미끄러진다(결정 21).
+                    locked={current === null || ignoresSourceToggle(current)}
+                    onChange={setShowSource}
+                  />
+                )}
+                <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
+              </>
+            }
+          />
+        }
+      >
         <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
           {/* 아직 모르는 동안에는 아무 말도 하지 않는다 — 목록이 도착하기 전에 "없어요"를
               띄우면, 이 분기가 막으려던 바로 그 모순(왼쪽엔 목록, 본문엔 없다)이 로딩
@@ -250,13 +257,8 @@ function ArchivePage({
             </div>
           )}
         </div>
-
-        {/* 토스트의 자리 — 목록 패널을 뺀 본문의 아래 가운데다. 작업 화면과 같은 부품이지만 자리는
-            화면마다 지금 그대로 둔다(S14): 한 자리로 모으려면 라우트 자리를 새 상자로 감싸야 하고,
-            그러면 이 토스트가 목록 패널 폭의 반만큼 옮겨 간다. */}
-        <Toaster />
-      </main>
-    </div>
+      </Card>
+    </Frame>
   );
 }
 

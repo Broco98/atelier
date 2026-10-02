@@ -150,20 +150,35 @@ function useResizableWidth(
 // 부모는 relative여야 한다. **px로 드는 쪽(`useResizableWidth`)에서는 그 부모가 곧 폭을 드는 패널 상자여야 한다** — 끌기를
 // 시작할 때 그 부모의 그려진 폭을 출발 폭으로 잰다(좁게 선 패널에서 안 튀게). 한 겹 감싸면 감싼 상자의 폭을 잰다.
 // 호버 시 세로 중앙이 가장 밝고 위아래로 갈수록 옅어지는 은은한 글로우 라인.
+//
+// **`seat="gap"`이면 카드 옆 틈의 가운데에 선다**(판 04 「손잡이는 틈 안에 선다」 — 공용 틀의 목록 칸). 그 부모는 「카드 + 틈」
+// 상자라 그려진 폭이 틈만큼 넓게 읽히지만, 출발 폭은 저장값과의 작은 쪽이라(`onPointerDown`) 좁게 서지 않는 칸에서는 저장값
+// 그대로다. 글로우 선도 틈의 가운데다 — 카드 모서리에 붙이면 선이 둥근 모서리를 따라 잘린 것처럼 보인다.
 export function ResizeHandle({
   control,
+  seat = "edge",
 }: {
   // **폭을 어떻게 드는지는 안 본다.** px로 드는 것(`useResizableWidth`)과 비율로 드는 것
   // (`useSplitRatio`)이 같은 핸들을 쓴다 — 잡는 자리와 글로우가 갈리면 같은 제스처가
   // 화면마다 다르게 보인다.
   control: Pick<ResizableWidth, "dragging" | "side" | "handleProps">;
+  /** 얹히는 자리 — 패널의 바깥 경계선 위(`edge`), 또는 카드 옆 틈(`--gap`)의 가운데(`gap`). */
+  seat?: "edge" | "gap";
 }) {
   // 드래그 도중 핸들이 사라지면(Cmd+B·Cmd+Enter로 패널 접기) pointerup도 pointercancel도 오지 않는다.
   // 억제가 영구히 남는 유일한 경로라 언마운트에서 무조건 푼다
   useEffect(() => () => setResizing(false), []);
 
   const visible = control.dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100";
-  const edge = control.side === "right" ? "left-0" : "right-0";
+  const edge =
+    seat === "gap"
+      ? control.side === "right"
+        ? "left-[calc((var(--gap)-5px)/2)]"
+        : "right-[calc((var(--gap)-5px)/2)]"
+      : control.side === "right"
+        ? "left-0"
+        : "right-0";
+  const line = seat === "gap" ? "inset-x-0 mx-auto" : edge;
   return (
     <div
       {...control.handleProps}
@@ -176,11 +191,11 @@ export function ResizeHandle({
       )}
     >
       {/* 심 라인 — blur 층은 WebKit에서 잔상(스미어)을 남겨 그라데이션 단일 층만 쓴다.
-          패널 경계선에 딱 붙인다 — 왼쪽 패널이면 자기 border-r 위, 오른쪽 패널이면 왼쪽 끝 */}
+          패널 경계선에 딱 붙인다 — 왼쪽 패널이면 자기 border-r 위, 오른쪽 패널이면 왼쪽 끝. 틈 자리면 틈의 가운데다. */}
       <div
         className={cn(
           "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-primary/55 to-transparent transition-opacity duration-150",
-          edge,
+          line,
           visible,
         )}
       />

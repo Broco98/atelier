@@ -3,8 +3,8 @@ import type { LucideIcon } from "lucide-react";
 import { Crumbs } from "@/components/ui/crumbs";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
-import { TAB_ROW_COLUMN } from "./panel-layout";
-import type { ResizableWidth } from "./useResizableWidth";
+import { foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN } from "./panel-layout";
+import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-chrome`) 위에 44px 바탕 줄이 서고, 그 아래 목록 · 본문 · 패널이
 // 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 화면은 내용만 건넨다 — 틈 · 끌기 영역 · 신호등 inset을 이 파일 한 곳이 지킨다. 일곱 화면이
@@ -49,7 +49,10 @@ interface FrameProps {
   sidebarOpen: boolean;
   /** 바탕 줄에 서는 것(탭 줄). 없으면 창을 끄기만 하는 빈 줄이다(ui-refresh 결정 5 — 탭이 없는 화면). */
   titlebar?: ReactNode;
-  /** 왼쪽 목록 카드 — `section`이다(`aside`는 사이드바와 작업 패널 둘뿐이다). */
+  /**
+   * 왼쪽 목록 카드 — `section`이다(`aside`는 사이드바와 작업 패널 둘뿐이다). 접힘 · 폭 손잡이 · 카드 오른쪽 틈은 이 틀이 들고,
+   * 화면은 카드 안(머리와 몸)만 건넨다.
+   */
   list?: SideSlot;
   /** 오른쪽 작업 패널 카드 — 바깥 상자가 두 번째 `<aside>`다. */
   panel?: SideSlot;
@@ -82,9 +85,9 @@ function Frame({ sidebarOpen, titlebar, list, panel, rail, overlay, children }: 
             sidebarOpen ? "pl-0" : "pl-(--gap)",
           )}
         >
-          {list && <SideBox kind="list" slot={list} />}
+          {list && <ListBox slot={list} />}
           {children}
-          {panel && <SideBox kind="panel" slot={panel} />}
+          {panel && <PanelBox slot={panel} />}
           {overlay}
         </div>
       </div>
@@ -98,21 +101,57 @@ function Frame({ sidebarOpen, titlebar, list, panel, rail, overlay, children }: 
 }
 
 /**
- * 목록 · 패널 칸의 자리 — 바깥 상자(끌기 영역, 카드 쪽 틈을 안쪽 여백으로 든다)와 카드 하나. 접힘 트랜지션(`PANEL_MOTION` ·
- * `foldingInnerClass`) · 틈 가운데의 손잡이 · 폭 저장은 이 자리를 처음 쓰는 화면이 채운다(판 04 티켓 02 · 03).
+ * 왼쪽 목록 칸(ui-refresh 결정 15 — 칸 하나 = 카드 하나). **접히는 바깥 상자의 폭이 「카드 + 오른쪽 틈」이다** — 닫히면 둘이 함께
+ * 0으로 접혀, 닫힌 칸 옆에 틈이 겹쳐 남지 않고 본문 카드가 사이드바 쪽 끝까지 넓어진다. 틈은 안쪽 열의 오른쪽 여백이다(카드 줄에
+ * flex `gap`을 쓰지 않는 까닭).
+ *
+ * 접힘은 사이드바 · 작업 패널과 같은 장치다 — 바깥 상자의 폭 트랜지션(`PANEL_MOTION`)과, 접히는 동안 고정 폭으로 버티는 안쪽 열
+ * (`foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를 곧장 따라온다.
+ *
+ * 폭은 **카드의 폭**이고(`--panel-width`, 저장 키는 화면의 것), 틈은 그 위에 더해 그린다. 손잡이는 카드 모서리가 아니라 그 틈의
+ * 가운데에 얹힌다. 바깥 상자 · 안쪽 열 모두 끌기 영역이다 — 틈이 드러나는 상자는 모두 단다(머리말).
  */
-function SideBox({ kind, slot }: { kind: "list" | "panel"; slot: SideSlot }) {
-  const Box = kind === "panel" ? "aside" : "div";
+function ListBox({ slot }: { slot: SideSlot }) {
+  const { open, size, label, children } = slot;
   return (
-    <Box
+    <div
       data-tauri-drag-region
-      hidden={!slot.open}
-      className={cn("flex shrink-0", kind === "list" ? "pr-(--gap)" : "pl-(--gap)")}
+      // 화면 둘(Projects · Archive)이 같은 이름을 각자 세운다 — 한 번에 한 화면만 서고, 이 상자 안에서만 읽힌다.
+      style={{ "--panel-width": `${size.width}px` } as CSSProperties}
+      className={cn(
+        "relative flex shrink-0 overflow-hidden",
+        !size.dragging && PANEL_MOTION,
+        !size.dragging && "transition-[width]",
+        open ? "w-[calc(var(--panel-width)+var(--gap))]" : "w-0",
+      )}
     >
+      <div
+        data-tauri-drag-region
+        className={cn(
+          "flex h-full w-[calc(var(--panel-width)+var(--gap))] shrink-0 pr-(--gap)",
+          foldingInnerClass(open, "max-w-full"),
+        )}
+      >
+        <Card label={label} className="flex-1">
+          {children}
+        </Card>
+      </div>
+      {open && <ResizeHandle control={size} seat="gap" />}
+    </div>
+  );
+}
+
+/**
+ * 오른쪽 패널 칸의 자리 — 바깥 상자(두 번째 `<aside>`, 끌기 영역, 카드 쪽 틈을 안쪽 여백으로 든다)와 카드 하나. 접힘 트랜지션 ·
+ * 틈 가운데의 손잡이 · 폭 저장은 이 자리를 처음 쓰는 작업 화면이 채운다(판 04 티켓 03).
+ */
+function PanelBox({ slot }: { slot: SideSlot }) {
+  return (
+    <aside data-tauri-drag-region hidden={!slot.open} className="flex shrink-0 pl-(--gap)">
       <Card label={slot.label} style={{ width: slot.size.width }}>
         {slot.children}
       </Card>
-    </Box>
+    </aside>
   );
 }
 
@@ -216,19 +255,23 @@ function CardBox({
  * 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 브레드크럼 캡슐과 알약 버튼이 서는 48px 줄이다. `div`이고 끌기 영역이 아니다
  * (카드 안이다). 좌우 여백은 캡슐 · 알약의 안쪽 여백(14)을 뺀 값이라 캡슐의 글자가 카드 안 여백(`--card-pad`)에 선다.
  *
- * `lead`는 캡슐 앞(하위 화면의 뒤로), `meta`는 캡슐 바로 뒤(상태 배지 등), `end`는 오른쪽 끝에 고정되는 조작이다.
+ * `lead`는 캡슐 앞(하위 화면의 뒤로), `meta`는 캡슐 바로 뒤(상태 배지 등), `end`는 오른쪽 끝에 고정되는 조작이다. 목록 카드의
+ * 머리는 위치를 말하지 않는다 — 캡슐 자리에 검색칸(`children`)이 선다.
  */
 function CardHead({
   lead,
   crumbs,
   meta,
   end,
+  children,
 }: {
   lead?: ReactNode;
   /** 뿌리부터 지금 선 곳까지(`Crumbs`). 마지막이 지금 선 곳이다. */
-  crumbs: readonly string[];
+  crumbs?: readonly string[];
   meta?: ReactNode;
   end?: ReactNode;
+  /** 캡슐 자리에 서는 다른 것 — 목록 카드 머리의 검색칸. */
+  children?: ReactNode;
 }) {
   return (
     <div
@@ -236,7 +279,8 @@ function CardHead({
       className="flex h-(--card-head) shrink-0 items-center gap-1.5 px-[calc(var(--card-pad)-14px)]"
     >
       {lead}
-      <Crumbs items={crumbs} />
+      {crumbs && <Crumbs items={crumbs} />}
+      {children}
       {meta}
       {end && <div className="ml-auto flex shrink-0 items-center gap-1.5">{end}</div>}
     </div>

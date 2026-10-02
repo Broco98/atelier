@@ -519,7 +519,7 @@ function ShellTabs({
 
       {/* 조작 사이 간격이 **왼쪽 셸 컨트롤과 같은 값이다**(결정 24 — `--titlebar-control-gap`).
           한 줄에 선 아이콘 버튼이 자리마다 다른 간격을 쓰면 그중 하나만 따로 떨어진 것처럼
-          읽힌다 — 목록 패널 헤더가 같은 이유로 이미 같은 값을 쓴다. */}
+          읽힌다. */}
       {actions && (
         <div
           data-tab-actions

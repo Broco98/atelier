@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Maximize2, Minimize2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 
 /**
  * 목록 패널(프로젝트·아카이브)의 **접힘** — 화면마다 따로 기억하는 값과 그것을 뒤집는 ⌘Enter를 한 곳에서
- * 든다. 돌려주는 것은 `[열렸나, 뒤집기]`이고, 뒤집기는 머리행의 토글(`ListPanelToggle`)이 누른다.
+ * 든다. 돌려주는 것은 `[열렸나, 뒤집기]`이고, 뒤집기는 상세 카드 머리의 토글(`ListPanelToggle`)이 누른다.
  *
  * **기억은 화면마다 따로다**(`storageKey`) — 한쪽을 접었다고 다른 화면의 목록까지 접히지 않는다. 처음
  * 보는 화면은 펼쳐져 있다(`"0"`만 접힘이다).
@@ -47,7 +48,11 @@ interface ListPanelToggleProps {
 }
 
 /**
- * 목록 패널을 접고 펴는 머리행 버튼 — 프로젝트·아카이브 화면이 같은 이 하나를 쓴다. 값은 `useListPanel`이 든다.
+ * 목록 패널을 접고 펴는 버튼 — 프로젝트·아카이브 화면이 같은 이 하나를 상세 카드 머리의 끝에 둔다. 값은 `useListPanel`이 든다.
+ * 모양은 카드 머리의 원형 아이콘 버튼이다(`size="icon-round"`, ui-refresh 결정 5 · 6).
+ *
+ * **그림은 누르면 될 일이다**(ui-refresh 결정 15) — 열렸으면 상세를 넓히는 쪽이 아니라 목록을 접는 쪽이라 안으로 모이는
+ * `Minimize2`, 닫혔으면 다시 펴는 `Maximize2`다. 도움말과 같은 쪽을 말해야 그림과 글이 엇갈리지 않는다.
  *
  * 도움말은 툴팁이고 상태를 탄다 — 누르면 무슨 일이 날지를 말한다. 열림은 `aria-expanded`가 이미 말하므로
  * 설명(`aria-description`)은 안 단다(S28).
@@ -56,16 +61,23 @@ function ListPanelToggle({ open, onToggle }: ListPanelToggleProps) {
   return (
     <Hint
       text={open ? "목록 패널 접기" : "목록 패널 펼치기"}
-      type="button"
-      onClick={onToggle}
       aria-label="목록 패널 토글"
       aria-expanded={open}
-      className="icon-button-quiet text-tertiary"
+      render={
+        <Button
+          variant="outline"
+          size="icon-round"
+          onClick={onToggle}
+          // 머리 컨트롤의 펼침 겹(`aria-expanded` → state-2)은 메뉴 트리거의 것이다(`button`의 compoundVariants). 이 버튼의
+          // 펼침은 「목록이 열려 있다」라 평소 흰 원 그대로 서고, hover만 다른 원과 같은 한 겹이다.
+          className="aria-expanded:bg-none aria-expanded:hover:bg-[image:linear-gradient(var(--state-1),var(--state-1))]"
+        />
+      }
     >
       {open ? (
-        <Maximize2 className="size-4" strokeWidth={1.7} />
-      ) : (
         <Minimize2 className="size-4" strokeWidth={1.7} />
+      ) : (
+        <Maximize2 className="size-4" strokeWidth={1.7} />
       )}
     </Hint>
   );
