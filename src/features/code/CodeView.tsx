@@ -1,6 +1,7 @@
 import { FileWarning, FileX, FolderX, Link2Off, type LucideIcon } from "lucide-react";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
+import { codeRefOf } from "@/routes/-work-search";
 import { HighlightedCode } from "./HighlightedCode";
 import { useCodeFile } from "./hooks";
 import type { WorktreeFile } from "./types";
@@ -31,7 +32,9 @@ function CodeView({ slug, target, wide }: { slug: string; target: CodeTarget; wi
 function FileBody({ file, target, wide }: { file: WorktreeFile; target: CodeTarget; wide: boolean }) {
   switch (file.kind) {
     case "text":
-      return <HighlightedCode path={target.path} content={file.content} wide={wide} />;
+      // 파일마다 새 보기다 — 같은 보기에 다른 파일을 넣으면 라이브러리가 그 파일의 강조가 올 때까지 앞 파일을 그리고, 스크롤
+      // 자리도 앞 파일의 것이 남는다. 같은 파일의 새 내용은 키가 같아 같은 보기에 들어간다(G6).
+      return <HighlightedCode key={codeRefOf(target)} path={target.path} content={file.content} wide={wide} />;
     case "missing":
       // 열린 탭의 파일이 지워져도 탭은 남는다 — 닫는 것은 사람이다(결정 「묻지 않고 둔 기본값」).
       return <Notice icon={FileX} title="지워진 파일" detail="워크트리에 이 파일이 없어요." />;

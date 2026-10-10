@@ -79,7 +79,9 @@ function highlightPool(): WorkerPoolManager {
  * **이 틀이 카드의 스크롤 상자다** — 카드의 직계 flex 자식이어야 남는 높이를 받는다(`CodeView`의 다른 갈래와 같은 자리).
  * 열 규격은 문서 본문과 같은 것을 쓴다(`bodyColumn`) — 04의 원문 보기(`SourceView`)가 선 자리 그대로다.
  *
- * 같은 파일의 내용이 바뀌면 같은 인스턴스에 새 내용을 넣는다 — 다시 세우지 않아 스크롤 자리가 남는다(G6).
+ * 같은 파일의 내용이 바뀌면 같은 인스턴스에 새 내용을 넣는다 — 다시 세우지 않아 스크롤 자리가 남는다(G6). **다른 파일은 새
+ * 인스턴스다**(부르는 쪽이 파일마다 키를 준다 — `CodeView`): 라이브러리는 강조된 파일을 든 보기에 다른 파일이 오면 그 파일의
+ * 강조가 올 때까지 앞 파일을 그리므로, 같은 인스턴스에 넣으면 새 경로 아래 앞 파일이 선다.
  */
 export function HighlightedCode({ path, content, wide }: { path: string; content: string; wide: boolean }) {
   const [workers] = useState(highlightPool);

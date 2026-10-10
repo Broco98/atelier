@@ -130,6 +130,36 @@ test("수천 줄 파일을 연 직후 셸 탭을 누르면 곧바로 셸로 바�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+test("읽은 적 있는 다른 파일 탭으로 곧장 옮기면 본문이 처음부터 그 파일이다 — 앞 파일이 새 경로 아래 남지 않는다", async ({ page }) => {
+  // 라이브러리는 강조된 파일을 든 보기에 다른 파일이 오면 그 파일의 강조가 올 때까지 앞 파일을 그린다(같은 파일의 새 내용이
+  // 평문으로 깜박이지 않게 — G6). 수천 줄 파일의 강조는 워커에서 수백 ms를 넘기므로, 보기를 파일마다 새로 세우지 않으면 그동안
+  // 카드 이름은 새 파일인데 몸은 앞 파일이다.
+  await installFixtureBackend(page, 큰표본과함께({ "src/big.ts": 줄들(5_000) }));
+  await page.goto(codeUrl("billing/src/main.ts"));
+  const main = codeCard(page, "billing/src/main.ts");
+  const big = codeCard(page, "billing/src/big.ts");
+  await expect.poll(async () => tokenOf(await readCodeView(main), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
+
+  // 큰 파일을 한 번 읽어 둔다 — 다시 갈 때는 읽기를 기다리지 않고 곧바로 내용이 온다(쿼리 캐시).
+  await 주소로간다(page, codeUrl("billing/src/big.ts"));
+  await expect
+    .poll(async () => (await readCodeView(big)).lines[0]?.text.trim(), { timeout: 30_000 })
+    .toBe('const v0 = "값"; // 줄 1');
+
+  // 짧은 파일로 돌아와 강조가 끝나기를 기다린다 — 강조된 파일을 든 보기에서 떠나는 것이 그 경우다.
+  await 주소로간다(page, codeUrl("billing/src/main.ts"));
+  await expect.poll(async () => tokenOf(await readCodeView(main), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
+
+  await 주소로간다(page, codeUrl("billing/src/big.ts"));
+  // 「끝내 맞는가」가 아니라 「처음 그려진 것이 맞는가」를 잰다 — 카드 이름이 바뀐 뒤 줄이 하나라도 선 첫 읽기를 붙든다.
+  let 처음: string | undefined;
+  await expect
+    .poll(async () => (처음 ??= (await readCodeView(big)).lines[0]?.text.trim()), { intervals: [16], timeout: 30_000 })
+    .toBeDefined();
+  expect(처음).toBe('const v0 = "값"; // 줄 1');
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("워커가 뜨지 못하면 메인 스레드에서 강조하고 강조 상한이 2천 줄로 내려간다 — 결정 35의 물러서기", async ({ page }) => {
   // 워커 스크립트를 막는다 — 라이브러리가 풀을 멈추고 메인 스레드로 물러선다(초기화 실패).
   await page.route(/\/worker\/worker\.js\?worker_file/, (route) => route.abort());
