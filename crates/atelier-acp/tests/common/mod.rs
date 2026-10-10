@@ -293,13 +293,148 @@ impl Sandbox {
 
     /// 그 대화의 기록 파일 줄들.
     pub fn record(&self, slug: &str, conversation: &str) -> Vec<Value> {
-        let path = self.work_dir(slug).join("agents").join(format!("{conversation}.jsonl"));
+        let path = self.record_path(slug, conversation);
         fs::read_to_string(&path)
             .unwrap_or_else(|_| panic!("없다: {}", path.display()))
             .lines()
             .map(|line| serde_json::from_str(line).expect("기록 줄은 JSON"))
             .collect()
     }
+
+    pub fn record_path(&self, slug: &str, conversation: &str) -> PathBuf {
+        self.work_dir(slug).join("agents").join(format!("{conversation}.jsonl"))
+    }
+
+    /// 기록이 `done`을 채울 때까지 기다린다. 턴은 에이전트의 스레드에서 흐르므로 시험은 기록을 지켜본다.
+    /// 마감을 넘기면 그때까지의 기록을 싣고 터진다.
+    pub fn wait_record(&self, slug: &str, conversation: &str, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            let record = self.record(slug, conversation);
+            if done(&record) {
+                return record;
+            }
+            if Instant::now() > deadline {
+                panic!("기록이 기다린 꼴이 되지 않았다:\n{}", lines_text(&record));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// 그 kind의 줄이 `n`개 적힐 때까지 기다린다.
+    pub fn wait_kind(&self, slug: &str, conversation: &str, kind: &str, n: usize) -> Vec<Value> {
+        self.wait_record(slug, conversation, |record| record.iter().filter(|line| line["kind"] == kind).count() >= n)
+    }
+
+    /// 가짜 ACP 에이전트가 그 세션에서 받은 `session/prompt`의 인자들 — 받은 순서대로.
+    pub fn acp_prompts(&self, session_id: &str) -> Vec<Value> {
+        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.prompts")))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("prompt 영수증 줄은 JSON"))
+            .collect()
+    }
+
+    /// 그 대화의 에이전트 쪽 세션 id(`agents.json`).
+    pub fn agent_session_id(&self, slug: &str, conversation: &str) -> String {
+        self.agents_row(slug, conversation)["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned()
+    }
+}
+
+// ── S26 — L1이 남긴 기록을 L3 자료로 ─────────────────────────────────────────────
+
+/// 검사 자료 폴더. 만드는 쪽(L1)이 갖고, 대화창의 L3 목업 백엔드가 그대로 쏜다.
+pub fn records_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/records")
+}
+
+/// 다시 지은 기록을 고정값으로 바꾼다 — 매번 달라지는 것은 시각 · 걸린 시간 · 임시 데이터 루트 · 에이전트 쪽
+/// 세션 id다. 시각은 `기준 + seq초`로 다시 찍는다. 그래서 L3에서 「N초 동안 작업함」이 0이 아닌 값으로 선다.
+pub fn fix_record(record: &[Value], data_root: &Path, session_id: &str) -> Vec<Value> {
+    fn at(seq: u64) -> String {
+        format!("2026-10-10T10:{:02}:{:02}.000+09:00", seq / 60, seq % 60)
+    }
+    fn replace(value: &mut Value, from: &str, to: &str) {
+        match value {
+            Value::String(text) => *text = text.replace(from, to),
+            Value::Array(items) => items.iter_mut().for_each(|item| replace(item, from, to)),
+            Value::Object(fields) => fields.values_mut().for_each(|field| replace(field, from, to)),
+            _ => {}
+        }
+    }
+    let root = data_root.display().to_string();
+    let mut last_sent = 0;
+    record
+        .iter()
+        .map(|line| {
+            let mut line = line.clone();
+            let seq = line["seq"].as_u64().expect("seq");
+            line["at"] = Value::from(at(seq));
+            match line["kind"].as_str() {
+                Some("sent") => last_sent = seq,
+                Some("turn-end") => line["payload"]["durationMs"] = Value::from((seq - last_sent) * 1000),
+                _ => {}
+            }
+            replace(&mut line, &root, "~/.atelier");
+            replace(&mut line, session_id, "fake-session");
+            line
+        })
+        .collect()
+}
+
+/// 다시 지은 기록이 검사 자료 `tests/records/<name>.jsonl`과 같은지 잰다. 줄마다 JSON으로 견준다 — 키 순서에
+/// 기대지 않는다. `ATELIER_BLESS_RECORDS=1`이면 견주지 않고 자료를 다시 쓴다(가짜의 턴 모양을 바꾼 날).
+///
+/// 어긋나면 실제 기록을 증거 폴더(`test-results/l1-records/`)에 떠 두고 첫 어긋난 줄을 싣고 터진다.
+pub fn assert_record(name: &str, actual: &[Value]) {
+    let path = records_dir().join(format!("{name}.jsonl"));
+    let text: String = actual.iter().map(|line| format!("{line}\n")).collect();
+    if std::env::var_os("ATELIER_BLESS_RECORDS").is_some() {
+        fs::create_dir_all(records_dir()).unwrap();
+        fs::write(&path, &text).unwrap();
+        return;
+    }
+    let expected: Vec<Value> = fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("검사 자료가 없다: {} — ATELIER_BLESS_RECORDS=1로 지어 둔다", path.display()))
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("검사 자료 줄은 JSON"))
+        .collect();
+    if expected == actual {
+        return;
+    }
+    let evidence: Value =
+        serde_json::from_str(include_str!("../../../../scripts/evidence-dir.json")).expect("증거 폴더 설정");
+    let dumped = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(evidence["evidenceDir"].as_str().expect("evidenceDir"))
+        .join("l1-records")
+        .join(format!("{name}.jsonl"));
+    let _ = fs::create_dir_all(dumped.parent().unwrap());
+    let _ = fs::write(&dumped, &text);
+    let at = (0..expected.len().max(actual.len()))
+        .find(|i| expected.get(*i) != actual.get(*i))
+        .expect("어긋난 줄이 있다");
+    panic!(
+        "다시 지은 기록이 검사 자료 {}와 다르다 — {}번째 줄\n  자료: {}\n  실제: {}\n실제 기록: {}\n가짜의 턴 모양을 일부러 바꿨으면 ATELIER_BLESS_RECORDS=1로 다시 짓는다",
+        path.display(),
+        at + 1,
+        expected.get(at).map_or("(없음)".to_owned(), Value::to_string),
+        actual.get(at).map_or("(없음)".to_owned(), Value::to_string),
+        dumped.display(),
+    );
+}
+
+/// 턴 · 죽음 같은 비동기 일을 기다리는 마감.
+pub const PATIENCE: Duration = Duration::from_secs(10);
+
+/// 기록 줄들을 한 줄씩 — 실패 메시지용.
+pub fn lines_text(record: &[Value]) -> String {
+    record.iter().map(|line| line.to_string()).collect::<Vec<_>>().join("\n")
+}
+
+/// 기록에서 그 kind의 줄들.
+pub fn of_kind<'a>(record: &'a [Value], kind: &str) -> Vec<&'a Value> {
+    record.iter().filter(|line| line["kind"] == kind).collect()
 }
 
 /// 호스트가 내보낸 이벤트들.

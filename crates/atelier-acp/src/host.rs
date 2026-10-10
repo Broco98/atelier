@@ -1,7 +1,7 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
-//! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03)가 선다. 보내기(04) ·
-//! 앱 잇기(05) · 로그인(12)이 이 위에 선다.
+//! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04)가
+//! 선다. 앱 잇기(05) · 로그인(12)이 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -14,12 +14,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
-use crate::records::{self, ConversationRow, RecordLine, Recorder, SessionState};
-use crate::runtime::{self, AgentProcess, Launch, SessionPlace};
+use crate::records::{self, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
+use crate::runtime::{self, AgentProcess, Launch, RuntimeEvent, SessionPlace, Sink};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
 const CODEX_ACP_MAJOR: u64 = 2;
@@ -115,7 +115,80 @@ pub struct ConversationHost {
 struct Live {
     work: String,
     agent: AgentProcess,
+    conv: Arc<Conv>,
+}
+
+/// 대화 하나의 기록과 턴의 상태. 런타임의 sink가 함께 쥔다 — 받은 것은 sink가 곧바로 적는다.
+///
+/// 잠금 순서는 늘 `state` → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고 나서 턴을 비운다 — 그래야 다음 말의
+/// `sent` 줄이 턴 끝 줄보다 앞에 서지 않는다.
+struct Conv {
     recorder: Recorder,
+    state: Mutex<ConvState>,
+}
+
+struct ConvState {
+    /// 에이전트가 살아 있나. 죽으면 다시 띄우기(티켓 10) 전까지 말을 받지 않는다.
+    alive: bool,
+    /// 도는 턴이 시작한 때. 쉬면 `None`이다.
+    turn: Option<Instant>,
+    /// 다음 말에 머리말을 붙이나 — 에이전트 쪽 세션의 첫 말이다(S11).
+    needs_preamble: bool,
+}
+
+impl Conv {
+    fn new(recorder: Recorder) -> Arc<Self> {
+        Arc::new(Self { recorder, state: Mutex::new(ConvState { alive: true, turn: None, needs_preamble: true }) })
+    }
+
+    fn lock_state(&self) -> MutexGuard<'_, ConvState> {
+        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 런타임이 넘긴 것을 기록에 적는 sink.
+    fn sink(self: &Arc<Self>) -> Sink {
+        let conv = Arc::clone(self);
+        Arc::new(move |event| conv.receive(event))
+    }
+
+    fn receive(&self, event: RuntimeEvent) {
+        let written = match event {
+            RuntimeEvent::Update(raw) => self.recorder.update(raw),
+            RuntimeEvent::Stderr(line) => self.recorder.stderr(line),
+            RuntimeEvent::AuthStatus(params) => self.recorder.session(SessionState::AuthStatus { params }),
+            RuntimeEvent::Died(death) => {
+                // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡고, 턴은 쉬는 것으로 돌린다.
+                let mut state = self.lock_state();
+                state.alive = false;
+                state.turn = None;
+                self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
+            }
+            RuntimeEvent::TurnEnd(end) => {
+                let mut state = self.lock_state();
+                let started = state.turn.take();
+                let (response, error) = match end.result {
+                    Ok(response) => (Some(response), None),
+                    Err(error) => (None, Some(error)),
+                };
+                self.recorder.turn_end(TurnEndLine {
+                    stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
+                    duration_ms: elapsed_ms(started),
+                    cancelled_by_us: end.cancelled_by_us,
+                    out_of_turn: false,
+                    response,
+                    error,
+                })
+            }
+        };
+        if let Err(error) = written {
+            // 기록이 막혀도 대화는 이어 간다 — sink는 오류를 돌려줄 곳이 없다.
+            eprintln!("{error}");
+        }
+    }
+}
+
+fn elapsed_ms(started: Option<Instant>) -> u64 {
+    started.map_or(0, |at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
 }
 
 /// 대화 목록의 한 줄 — 화면이 대화 탭을 짓는 것.
@@ -145,6 +218,12 @@ pub enum HostError {
     /// 대화는 섰지만 에이전트가 세션을 열지 못했다. 까닭은 그 대화의 기록에도 `session` 죽음 줄로 남는다.
     Open { conversation: String, reason: String },
     ConversationNotFound(String),
+    /// 에이전트가 떠 있지 않은 대화 — 다시 켠 뒤이거나 에이전트가 죽었다. 다시 띄우기는 티켓 10이다.
+    NotRunning(String),
+    /// 턴이 도는 동안의 보내기. 대기 줄은 티켓 07이 세운다.
+    TurnRunning(String),
+    /// 에이전트에 말을 보내지 못했다(연결이 끊겼다).
+    Send(String),
     /// `agents/`를 읽거나 쓰지 못했다.
     Record(String),
 }
@@ -161,6 +240,9 @@ impl fmt::Display for HostError {
             HostError::AgentNotReady(agent) => write!(f, "{} 대화는 아직 열 수 없습니다", agent.display_name()),
             HostError::Open { reason, .. } => write!(f, "{reason}"),
             HostError::ConversationNotFound(conversation) => write!(f, "대화를 찾을 수 없습니다: {conversation}"),
+            HostError::NotRunning(conversation) => write!(f, "에이전트가 떠 있지 않은 대화입니다: {conversation}"),
+            HostError::TurnRunning(_) => write!(f, "턴이 도는 중이라 보낼 수 없습니다. 턴이 끝난 뒤에 보내세요"),
+            HostError::Send(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
         }
     }
@@ -214,12 +296,30 @@ impl ConversationHost {
             .filter(|row| row.closed_at.is_none())
             .map(|row| {
                 let last_seq = match live.get(&row.id) {
-                    Some(conversation) => conversation.recorder.last_seq(),
+                    Some(conversation) => conversation.conv.recorder.last_seq(),
                     None => records::last_seq(&records::record_path(&places.agents, &row.id)),
                 };
                 summary(row, last_seq)
             })
             .collect())
+    }
+
+    /// 기록 읽기 — 그 대화의 기록에서 `after` 다음 seq의 줄들을 준다. 화면은 이것으로 그리고, 그 뒤는 기록 줄
+    /// 이벤트로 잇는다(앱을 다시 켠 뒤 · 다른 work에서 돌아온 뒤). 끝에 줄바꿈이 없는 꼬리(반쪽 줄)는 버린다.
+    ///
+    /// 읽기만 한다 — 에이전트를 띄우지 않고, 아무것도 만들지 않는다.
+    pub fn read_record(&self, work: &str, conversation: &str, after: u64) -> Result<Vec<RecordLine>, HostError> {
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
+        if !is_conversation_id(conversation) {
+            return Err(HostError::ConversationNotFound(conversation.to_owned()));
+        }
+        let places = atelier_core::work_places(&works, &meta);
+        let path = records::record_path(&places.agents, conversation);
+        records::read_lines(&path, after).map_err(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => HostError::ConversationNotFound(conversation.to_owned()),
+            _ => HostError::Record(format!("기록을 읽지 못했습니다: {} — {error}", path.display())),
+        })
     }
 
     /// 새 대화 — 엔진 기본값으로 만들고 곧바로 띄워 세션을 연다(S8). 그래서 칩 · 메뉴 · 로그인 실패가 첫 말
@@ -267,44 +367,89 @@ impl ConversationHost {
             records::write_row(&places.agents, &row).map_err(HostError::Record)?;
             row
         };
-        let recorder =
-            Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?;
+        let conv = Conv::new(
+            Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+        );
+        let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
 
         let launch = codex_launch(&programs, &env, &place);
-        let (agent_process, opened) = match runtime::open(launch, place, self.open_limit) {
-            Ok(opened) => opened,
-            Err(error) => {
-                let reason = error.to_string();
-                recorder.session(SessionState::Died { reason: reason.clone() }).map_err(HostError::Record)?;
-                return Err(HostError::Open { conversation: row.id, reason });
-            }
-        };
+        let (agent_process, opened) =
+            match runtime::open(launch, place, self.open_limit, conv.sink(), record_opened(&conv)) {
+                Ok(opened) => opened,
+                Err(error) => {
+                    let reason = error.to_string();
+                    recorder
+                        .session(SessionState::Died { reason: reason.clone(), stderr_tail: Vec::new() })
+                        .map_err(HostError::Record)?;
+                    return Err(HostError::Open { conversation: row.id, reason });
+                }
+            };
 
-        let agent_version = opened.initialize["agentInfo"]["version"].as_str().map(str::to_owned);
-        if major(agent_version.as_deref()) != Some(CODEX_ACP_MAJOR) {
-            recorder
-                .session(SessionState::VersionWarning { agent_version: agent_version.clone(), supported_major: CODEX_ACP_MAJOR })
-                .map_err(HostError::Record)?;
-        }
         row.agent_session_id = Some(opened.session_id.clone());
         {
             let _file = self.lock_agents_file();
             records::write_row(&places.agents, &row).map_err(HostError::Record)?;
         }
-        recorder
-            .session(SessionState::Opened {
-                how: "new",
-                agent_version,
-                modes: opened.session.get("modes").cloned().unwrap_or(Value::Null),
-                models: opened.session.get("models").cloned().unwrap_or(Value::Null),
-                config_options: opened.session.get("configOptions").cloned().unwrap_or(Value::Null),
-            })
-            .map_err(HostError::Record)?;
 
         let conversation = summary(&row, recorder.last_seq());
-        self.lock_live().insert(row.id, Live { work: work.to_owned(), agent: agent_process, recorder });
+        self.lock_live().insert(row.id, Live { work: work.to_owned(), agent: agent_process, conv });
         Ok(conversation)
+    }
+
+    /// 보내기 — 턴이 쉬면 말을 보낸다. 기다리지 않는다: 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로
+    /// 온다. 에이전트가 말을 받지 않으면(오류로 답하면) 그 까닭이 `turn-end` 줄에 실리고 대화는 산다.
+    ///
+    /// - 에이전트 쪽 세션의 첫 말이면 머리말(work slug · 제목 · specDir)을 따로 된 텍스트 블록으로 앞에 붙인다
+    ///   (S11, three-axes 결정 23). 화면에는 `sent`의 글만 보이고, 기록에는 보낸 블록이 다 남는다.
+    /// - 턴이 도는 동안의 보내기는 읽히는 오류다 — 대기 줄은 티켓 07이 세운다.
+    /// - 에이전트가 떠 있지 않은 대화(다시 켠 뒤 · 죽은 뒤)는 아직 보낼 수 없다 — 다시 띄우기는 티켓 10이다.
+    pub fn send(&self, work: &str, conversation: &str, text: &str) -> Result<(), HostError> {
+        if !is_conversation_id(conversation) {
+            return Err(HostError::ConversationNotFound(conversation.to_owned()));
+        }
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
+        let places = atelier_core::work_places(&works, &meta);
+
+        let live = self.lock_live();
+        let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
+            return Err(HostError::NotRunning(conversation.to_owned()));
+        };
+        let mut state = found.conv.lock_state();
+        if !state.alive {
+            return Err(HostError::NotRunning(conversation.to_owned()));
+        }
+        if state.turn.is_some() {
+            return Err(HostError::TurnRunning(conversation.to_owned()));
+        }
+        let mut prompt = Vec::new();
+        if state.needs_preamble {
+            prompt.push(preamble(&meta, &places));
+        }
+        prompt.push(json!({"type": "text", "text": text}));
+        // `sent`를 먼저 적는다 — 보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다.
+        found.conv.recorder.sent(text, &prompt, false).map_err(HostError::Record)?;
+        state.turn = Some(Instant::now());
+        state.needs_preamble = false;
+        if let Err(reason) = found.agent.prompt(prompt) {
+            // 보내지 못했다. 턴을 연 채로 두지 않는다 — 화면이 「일하는 중」에 갇히지 않게 끝 줄도 적는다.
+            let started = state.turn.take();
+            found
+                .conv
+                .recorder
+                .turn_end(TurnEndLine {
+                    stop_reason: None,
+                    duration_ms: elapsed_ms(started),
+                    cancelled_by_us: false,
+                    out_of_turn: false,
+                    response: None,
+                    error: Some(json!({"message": reason})),
+                })
+                .map_err(HostError::Record)?;
+            return Err(HostError::Send(reason));
+        }
+        Ok(())
     }
 
     /// 대화 닫기 — 그 에이전트의 프로세스를 남김없이 끄고(stdin 닫기 → 1초 → 그룹째 SIGKILL), 기록에 `session`
@@ -325,7 +470,7 @@ impl ConversationHost {
             // work 폴더가 사라졌다(아카이브 · 삭제). 끈 것으로 끝낸다 — 열어 둔 기록 파일은 옮겨진 자리를 따라가지만,
             // 사라진 자리의 `agents.json`은 다시 만들지 않는다(S10).
             return match live {
-                Some(live) => live.recorder.session(SessionState::Closed).map_err(HostError::Record),
+                Some(live) => live.conv.recorder.session(SessionState::Closed).map_err(HostError::Record),
                 None => Err(HostError::WorkNotFound(work.to_owned())),
             };
         };
@@ -339,11 +484,13 @@ impl ConversationHost {
         if row.closed_at.is_some() && live.is_none() {
             return Ok(());
         }
-        let recorder = match live {
-            Some(live) => live.recorder,
-            None => Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+        let conv = match live {
+            Some(live) => live.conv,
+            None => Conv::new(
+                Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+            ),
         };
-        recorder.session(SessionState::Closed).map_err(HostError::Record)?;
+        conv.recorder.session(SessionState::Closed).map_err(HostError::Record)?;
         row.closed_at = Some(records::now());
         records::write_row(&places.agents, &row).map_err(HostError::Record)
     }
@@ -413,6 +560,32 @@ fn workplace(places: &atelier_core::WorkPlaces, projects: usize) -> SessionPlace
     SessionPlace { cwd, additional_directories: vec![places.spec.clone()] }
 }
 
+/// 세션이 열린 순간 적는 줄 — 판 경고(S6)와 열림. 런타임의 순서 장벽 안에서 돌아, 답 뒤에 온 update보다 앞에 선다.
+fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
+    let conv = Arc::clone(conv);
+    Box::new(move |opened| {
+        let agent_version = opened.initialize["agentInfo"]["version"].as_str().map(str::to_owned);
+        let written = (|| {
+            if major(agent_version.as_deref()) != Some(CODEX_ACP_MAJOR) {
+                conv.recorder.session(SessionState::VersionWarning {
+                    agent_version: agent_version.clone(),
+                    supported_major: CODEX_ACP_MAJOR,
+                })?;
+            }
+            conv.recorder.session(SessionState::Opened {
+                how: "new",
+                agent_version: agent_version.clone(),
+                modes: opened.session.get("modes").cloned().unwrap_or(Value::Null),
+                models: opened.session.get("models").cloned().unwrap_or(Value::Null),
+                config_options: opened.session.get("configOptions").cloned().unwrap_or(Value::Null),
+            })
+        })();
+        if let Err(error) = written {
+            eprintln!("{error}");
+        }
+    })
+}
+
 /// Codex를 띄우는 것 — 찾은 `codex-acp`를 `npx` 없이 바로 띄운다(three-axes 결정 26). env는 로그인 env에
 /// `CODEX_PATH=<찾은 codex>`를 더한 것이다. `INITIAL_AGENT_MODE`는 넣지 않는다 — 시작 모드는 엔진 기본값이다.
 /// 사용자의 `CODEX_HOME`은 로그인 env에 있으면 그대로 간다(로그인 · config의 MCP · 모델이 이어진다).
@@ -423,6 +596,18 @@ fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &Se
     let mut vars: BTreeMap<OsString, OsString> = env.vars().clone();
     vars.insert("CODEX_PATH".into(), found("codex").into_os_string());
     Launch { program: found("codex-acp"), args: Vec::new(), env: vars, cwd: place.cwd.clone() }
+}
+
+/// 머리말(S11) — 에이전트가 첫 말에서 어느 work인지 안다(스토리 107). 따로 된 텍스트 블록이라 화면은 이것을
+/// 그리지 않고 `sent`의 글만 그린다(스토리 108). 봉투처럼 한국어 마크다운 한 장이다(워크플로 S18).
+fn preamble(meta: &atelier_core::Work, places: &atelier_core::WorkPlaces) -> Value {
+    let text = format!(
+        "Atelier work 안에서 열린 대화다.\n\n- work slug: `{}`\n- 제목: {}\n- spec 폴더(specDir): `{}`\n",
+        meta.slug,
+        meta.title,
+        places.spec.display()
+    );
+    json!({"type": "text", "text": text})
 }
 
 /// 열린 대화 가운데 쓰지 않은 가장 작은 이름 — `Codex`, `Codex 2`, `Codex 3` …

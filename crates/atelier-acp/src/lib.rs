@@ -5,6 +5,7 @@
 
 mod discovery;
 mod host;
+mod life;
 mod login_env;
 mod process;
 mod records;

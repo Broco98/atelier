@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use crate::discovery::Agent;
 use crate::host::{Emit, HostEvent};
@@ -99,15 +99,38 @@ pub(crate) fn record_path(agents_dir: &Path, conversation: &str) -> PathBuf {
 /// 기록 파일의 마지막 seq. 없으면 0이다. 끝에 줄바꿈이 없는 꼬리(반쪽 줄)는 세지 않는다.
 pub(crate) fn last_seq(path: &Path) -> u64 {
     let Ok(text) = std::fs::read_to_string(path) else { return 0 };
-    let complete = match text.rfind('\n') {
-        Some(end) => &text[..end],
-        None => return 0,
-    };
-    complete
-        .lines()
+    complete_lines(&text)
         .rev()
         .find_map(|line| serde_json::from_str::<Value>(line).ok()?["seq"].as_u64())
         .unwrap_or(0)
+}
+
+/// 기록 파일에서 `after` 다음 seq의 줄들. 파일이 없으면 `NotFound`다.
+///
+/// - 끝에 줄바꿈이 없는 꼬리는 버린다 — 쓰는 중인 줄이거나 쓰다 끊긴 줄이다. 한 줄은 쓰기 한 번에 붙으므로
+///   반쪽 줄은 끝에만 생긴다.
+/// - 읽을 수 없는 줄(이 판이 모르는 kind 등)은 건너뛴다 — 한 줄 때문에 대화 전체가 그려지지 않으면 안 된다.
+pub(crate) fn read_lines(path: &Path, after: u64) -> std::io::Result<Vec<RecordLine>> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(complete_lines(&text)
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| match serde_json::from_str::<RecordLine>(line) {
+            Ok(record) => Some(record),
+            Err(error) => {
+                eprintln!("기록 줄을 읽지 못해 건너뜁니다: {} — {error}", path.display());
+                None
+            }
+        })
+        .filter(|record| record.seq > after)
+        .collect())
+}
+
+/// 줄바꿈으로 끝난 줄들 — 끝의 반쪽 줄은 뺀다.
+fn complete_lines(text: &str) -> std::str::Lines<'_> {
+    match text.rfind('\n') {
+        Some(end) => text[..end].lines(),
+        None => "".lines(),
+    }
 }
 
 /// 기록 줄 하나 — 파일에 적은 것과 이벤트로 나가는 것이 같은 값이다.
@@ -119,12 +142,20 @@ pub struct RecordLine {
     pub payload: Value,
 }
 
-/// 기록 줄의 종류. 말 보내기(04) · 권한(08) · 고친 곳(06) · 설정(09)이 차례로 더한다.
+/// 기록 줄의 종류. 권한(08) · 고친 곳(06) · 설정(09)이 차례로 더한다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
+    /// 보낸 말 — 화면에 보일 글 · 실제로 보낸 내용 블록(머리말 포함) · 지금 보내기였는지.
+    Sent,
+    /// `session/update` 원문(턴 밖 것 포함).
+    Update,
+    /// 턴 끝 — stopReason · 걸린 시간 · 우리가 멈췄는지 · 턴 밖 턴인지.
+    TurnEnd,
     /// 대화의 수명 — 띄우는 중 · 열림 · 판 경고 · 죽음 · 닫힘.
     Session,
+    /// 에이전트의 stderr 한 줄 — 화면에 그리지 않는다.
+    Stderr,
 }
 
 /// `session` 줄의 payload. `state`로 가른다.
@@ -135,12 +166,38 @@ pub(crate) enum SessionState {
     Spawning,
     /// 열림 — 어떻게 열렸나(`new`) · 에이전트 판 · 엔진이 준 모드 · 모델 · configOptions 원문.
     Opened { how: &'static str, agent_version: Option<String>, modes: Value, models: Value, config_options: Value },
+    /// 계정 상태 — 에이전트가 알린 로그인 상태 원문(`_auth/status_update`의 params). 계정 칸은 런타임이 가렸다.
+    AuthStatus { params: Value },
     /// 판 경고 — 잰 적 없는 메이저 판이다. 대화는 그대로 연다(S6).
     VersionWarning { agent_version: Option<String>, supported_major: u64 },
-    /// 죽음 — 에이전트가 없어졌다. 다음 말에서 다시 띄운다(10).
-    Died { reason: String },
+    /// 죽음 — 에이전트가 없어졌다. 까닭과 stderr 꼬리(있으면). 다음 말에서 다시 띄운다(10).
+    Died {
+        reason: String,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        stderr_tail: Vec<String>,
+    },
     /// 닫힘 — 사람이 닫았다. 기록 파일은 남는다.
     Closed,
+}
+
+/// `turn-end` 줄의 payload.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnEndLine {
+    /// 에이전트가 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 말을 받지 않았으면 null이다.
+    pub stop_reason: Option<String>,
+    /// 말을 보낸 때부터 턴이 끝날 때까지.
+    pub duration_ms: u64,
+    /// 우리가 `session/cancel`을 보냈나.
+    pub cancelled_by_us: bool,
+    /// 우리가 보내지 않은 턴(에이전트가 스스로 이어 간 턴)의 끝인가.
+    pub out_of_turn: bool,
+    /// `session/prompt`의 답 원문 — 사용량 같은 수치는 보이지 않고 기록만 한다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<Value>,
+    /// 에이전트가 말을 받지 않은 오류 원문(`{code, message, data?}`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<Value>,
 }
 
 /// 대화 하나의 기록 파일. 대화가 열려 있는 동안 파일을 연 채로 둔다 — work 폴더가 아카이브로 옮겨져도
@@ -182,6 +239,24 @@ impl Recorder {
 
     pub(crate) fn session(&self, state: SessionState) -> Result<(), RecordError> {
         self.write(RecordKind::Session, serde_json::to_value(state).expect("session 줄은 JSON이다"))
+    }
+
+    /// 보낸 말. `prompt`는 에이전트에게 실제로 간 내용 블록 그대로다.
+    pub(crate) fn sent(&self, text: &str, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
+        self.write(RecordKind::Sent, json!({"text": text, "prompt": prompt, "sendNow": send_now}))
+    }
+
+    /// `session/update` 원문.
+    pub(crate) fn update(&self, raw: Value) -> Result<(), RecordError> {
+        self.write(RecordKind::Update, raw)
+    }
+
+    pub(crate) fn stderr(&self, line: String) -> Result<(), RecordError> {
+        self.write(RecordKind::Stderr, json!({"line": line}))
+    }
+
+    pub(crate) fn turn_end(&self, end: TurnEndLine) -> Result<(), RecordError> {
+        self.write(RecordKind::TurnEnd, serde_json::to_value(end).expect("turn-end 줄은 JSON이다"))
     }
 
     /// 한 줄을 적고, 같은 줄을 기록 줄 이벤트로 내보낸다. 잠금을 쥔 채 내보낸다 — 이벤트의 순서가 seq의
