@@ -817,4 +817,43 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
     await expect.poll(() => litName(page)).toBe("둘");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
+  // **끄는 칸이 사라지면 끌기를 거둔다** — 파일 탭에도 같다(위 「끄는 셸이 끝나면」). 판정은 「그 칸이 아직 묶음에 있나」라,
+  // 남의 칸이 빠지는 것(셸 하나가 끝났다)으로는 파일 탭 끌기가 안 끊기고, 끄던 파일 탭이 ⌘W로 닫히면 끊긴다.
+  test("파일 탭을 끄는 도중 셸이 끝나도 끌기가 살고, 끄던 파일 탭이 닫히면 거둬진다", async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(파일탭주소(MAIN));
+    await expect(bundleTabs(page)).toHaveCount(1);
+    await openShell(page);
+    await openShell(page);
+    await nameTwoShells(page);
+    await expect.poll(() => namesOf(page)).toEqual(["main.ts", "하나", "둘"]);
+
+    // 파일 탭을 든 채 둘째 셸이 끝난다 — 줄이 바뀌어도 끌기가 살고, 새 줄의 끝 틈에 놓인다.
+    await pressAndCross(page, 0);
+    await exitShell(page, 2);
+    await expect.poll(() => namesOf(page)).toEqual(["main.ts", "하나"]);
+    await settle(page);
+    await expect(page.locator("body")).toHaveClass(/dragging-row/);
+    await moveToGap(page, 2);
+    await page.mouse.up();
+    await expect.poll(() => namesOf(page)).toEqual(["하나", "main.ts"]);
+
+    // 파일 탭을 켜고 든 채 ⌘W — 확인 없이 닫히고(스토리 50) 끌기가 거둬진다. 그 뒤 줄 위에서 떼도 아무 일도 없다.
+    await nameButton(page, 1).click();
+    await expect(page.getByRole("main", { name: MAIN, exact: true })).toBeVisible();
+    await pressAndCross(page, 1);
+    await page.keyboard.press("Meta+w");
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await expect.poll(() => namesOf(page)).toEqual(["하나"]);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+    const at = await gapPoint(page, 0);
+    await page.mouse.move(at.x, at.y, { steps: 4 });
+    await settle(page);
+    await expect(gapLine(page)).toHaveCount(0);
+    await page.mouse.up();
+    await settle(page);
+    await expect.poll(() => namesOf(page)).toEqual(["하나"]);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
 });
