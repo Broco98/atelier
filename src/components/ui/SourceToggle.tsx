@@ -52,10 +52,10 @@ export function SourceToggle({
       className={className}
     >
       <Segment value="doc" label="문서로 보기" locked={locked}>
-        <Eye className="size-3.5" strokeWidth={1.9} />
+        <Eye className="size-3.5" />
       </Segment>
       <Segment value="source" label="원문 보기" locked={locked}>
-        <CodeXml className="size-3.5" strokeWidth={2} />
+        <CodeXml className="size-3.5" />
       </Segment>
     </SegmentGroup>
   );

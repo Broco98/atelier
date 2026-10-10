@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
@@ -47,9 +48,9 @@ function CopyCodeButton({ code }: { code: string }) {
   return (
     <Hint text="원본 mermaid 코드 복사" announce="name" type="button" onClick={onCopy} className={toolbarButtonQuiet}>
       {copied ? (
-        <Check className="size-3 text-green-700" strokeWidth={2.4} />
+        <Check className="size-3 text-green-700" strokeWidth={SMALL_GLYPH_STROKE} />
       ) : (
-        <Copy className="size-3" strokeWidth={2} />
+        <Copy className="size-3" />
       )}
     </Hint>
   );

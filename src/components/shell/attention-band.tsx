@@ -186,8 +186,7 @@ function MoreToggle({
       aria-expanded={expanded}
       className="flex h-6 w-full shrink-0 items-center justify-center rounded-inner text-tertiary transition-colors hover:bg-state-1 hover:text-muted-foreground"
     >
-      {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
-      <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
+      <Chevron className="size-3.5 shrink-0" />
     </Hint>
   );
 }

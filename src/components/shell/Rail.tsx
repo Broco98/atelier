@@ -70,7 +70,7 @@ function Rail<Id extends string>({
             open && "bg-card text-foreground",
           )}
         >
-          <PanelRight className="size-4" strokeWidth={1.7} />
+          <PanelRight className="size-4" />
         </Hint>
       </div>
       {/* 칸 묶음 — 흰 알약 캡슐(안쪽 2px · 칸 사이 2px) 안의 28px 원 칸이라 캡슐 폭이 레일 폭(32)이다(DS `.at-rail-group`).
@@ -97,7 +97,7 @@ function Rail<Id extends string>({
                 on ? "bg-sidebar-accent text-foreground" : "text-tertiary quiet-hover",
               )}
             >
-              <Icon className="size-4" strokeWidth={1.7} />
+              <Icon className="size-4" />
             </Hint>
           );
         })}

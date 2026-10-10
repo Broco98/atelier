@@ -1,4 +1,5 @@
 import { ArrowRight, ChevronRight, Copy, Folder, GitBranch, PanelTop } from "lucide-react";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ProjectView } from "@/features/projects/types";
@@ -133,7 +134,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
                     <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
                     <ChevronRight
                       className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-                      strokeWidth={2}
+                      strokeWidth={SMALL_GLYPH_STROKE}
                     />
                   </Hint>
                   {/* base는 **프로젝트마다 다를 수 있다.** 한 줄로 합치면(feat/… → develop, main)
@@ -146,7 +147,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
                   ) : (
                     base !== null && (
                       <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-mono-sm">
-                        <ArrowRight className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
+                        <ArrowRight className="size-3 shrink-0 text-tertiary" />
                         <span className="min-w-0 truncate">{base}</span>
                       </span>
                     )
@@ -201,14 +202,14 @@ function WorkMetaRows({
           빈 줄로 남기면 누를 수는 있는데 아무것도 복사되지 않는 줄이 된다. */}
       {work.branch !== null && (
         <MetaRow
-          glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" />}
           value={work.branch}
           tail={base ? <span className="shrink-0 text-meta text-tertiary">{base}</span> : undefined}
           onCopy={onCopy}
         />
       )}
       <MetaRow
-        glyph={<Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+        glyph={<Folder className="size-[13px] shrink-0 text-tertiary" />}
         value={workDirRef(work.slug)}
         onCopy={onCopy}
       />
@@ -219,7 +220,7 @@ function WorkMetaRows({
       {work.worktrees.map((worktree) => (
         <MetaRow
           key={worktree.project}
-          glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" />}
           value={worktreeDirRef(worktree.path)}
           relativeTo={workDirRef(work.slug)}
           onCopy={onCopy}
@@ -268,7 +269,7 @@ function MetaRow({
     >
       {glyph}
       <span className="min-w-0 flex-1 truncate font-mono text-mono-sm">{shown}</span>
-      {tail ?? <Copy className="size-3 shrink-0 text-tertiary" strokeWidth={1.8} />}
+      {tail ?? <Copy className="size-3 shrink-0 text-tertiary" />}
     </Hint>
   );
 }
@@ -332,7 +333,6 @@ function Row({
       {body}
       <Copy
         className="ml-1.5 size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-        strokeWidth={1.8}
       />
     </Hint>
   );

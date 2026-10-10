@@ -244,7 +244,7 @@ export function SearchList({
 
                     글리프는 줄(`items-center`)의 세로 가운데에 서고, 색은 DS 팔레트의 글리프 색이다. */}
                 <span data-gutter="" className="size-[17px] shrink-0 text-muted-foreground">
-                  {Glyph !== null && <Glyph className="size-[17px]" strokeWidth={1.7} />}
+                  {Glyph !== null && <Glyph className="size-[17px]" />}
                 </span>
                 {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
                     스니펫 혼자 무는데, 실측(2026-08-30, 줄 폭 526px)에서 제목이 39자인

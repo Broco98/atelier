@@ -55,7 +55,7 @@ export function ShellMeta({
           갈지 정해지지 않는다), `title`도 안 단다: work 행에 머물면 호버 카드가 떠서 OS 툴팁이 그
           위로 겹친다(핀 버튼과 같은 이유). */}
       <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-        <SquareTerminal className="size-3 shrink-0" strokeWidth={1.8} />
+        <SquareTerminal className="size-3 shrink-0" />
         <span className="tabular-nums">{shellCount}</span>
       </span>
     </span>

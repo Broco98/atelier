@@ -95,7 +95,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                       disabled={selected.missing}
                       onClick={() => projectsApi.openFolder(selected.slug)}
                     >
-                      <FolderOpen aria-hidden strokeWidth={1.8} />
+                      <FolderOpen aria-hidden />
                       폴더 열기
                     </Button>
                     <Button variant="outline" size="pill" className="text-destructive" onClick={handleRemove}>
@@ -117,7 +117,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
               <Empty>
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <Folder strokeWidth={1.6} />
+                    <Folder />
                   </EmptyMedia>
                   <EmptyTitle>등록된 프로젝트가 없어요</EmptyTitle>
                   <EmptyDescription>

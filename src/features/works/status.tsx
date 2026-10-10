@@ -1,3 +1,4 @@
+import { STATUS_ICON_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import type { WorkStatus } from "./types";
 
@@ -50,7 +51,7 @@ export function StatusIcon({ status, className }: { status: WorkStatus; classNam
           cy="7"
           r="5.5"
           stroke="currentColor"
-          strokeWidth="1.6"
+          strokeWidth={STATUS_ICON_STROKE}
           strokeDasharray="2.4 2.2"
           strokeLinecap="round"
         />
@@ -60,8 +61,8 @@ export function StatusIcon({ status, className }: { status: WorkStatus; classNam
   if (status === "active") {
     return (
       <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-primary", className)}>
-        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.6" opacity=".35" />
-        <path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} opacity=".35" />
+        <path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" />
         <circle cx="7" cy="7" r="2.2" fill="currentColor" />
       </svg>
     );
@@ -69,15 +70,15 @@ export function StatusIcon({ status, className }: { status: WorkStatus; classNam
   if (status === "review") {
     return (
       <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-wait", className)}>
-        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M7 4.3V7l1.9 1.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} />
+        <path d="M7 4.3V7l1.9 1.3" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-done", className)}>
       <circle cx="7" cy="7" r="6" fill="currentColor" />
-      <path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--background)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--background)" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
   );
 }

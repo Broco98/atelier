@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { SIGNAL_LABEL, signalTint, subagentLabel } from "@/components/shell/shell-signal";
 import { everyFrame } from "@/lib/frame-loop";
@@ -389,7 +390,7 @@ function ShellTabs({
             spec.on ? "tab-on font-medium" : "hover:bg-state-1",
           )}
         >
-          <File className={cn("size-3.5 shrink-0", !spec.on && "text-tertiary")} strokeWidth={1.8} />
+          <File className={cn("size-3.5 shrink-0", !spec.on && "text-tertiary")} />
           <span className="min-w-0 truncate">spec</span>
         </button>
       )}
@@ -575,7 +576,7 @@ function PlusButton({
       )}
       {...props}
     >
-      <Plus className="size-3.5" strokeWidth={1.8} />
+      <Plus className="size-3.5" />
     </Hint>
   );
 }
@@ -764,10 +765,7 @@ const ShellTab = memo(function ShellTab({
               <mark.Glyph className="size-3.5" />
             </span>
           ) : (
-            <SquareTerminal
-              className="hidden size-3.5 shrink-0 @max-[88px]:block"
-              strokeWidth={1.8}
-            />
+            <SquareTerminal className="hidden size-3.5 shrink-0 @max-[88px]:block" />
           ))}
         {/* 좁아지면 **먼저 말줄임으로 줄고**(`truncate`), 이름 몇 글자도 못 세우는 폭에서
             자리를 비운다(결정 11). `hidden`이 아니라 `sr-only`인 것은 이름 버튼의
@@ -802,7 +800,7 @@ const ShellTab = memo(function ShellTab({
           active ? "@max-[68px]:hidden" : "@max-[88px]:hidden",
         )}
       >
-        <X className="size-3" strokeWidth={1.8} />
+        <X className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
     </div>
   );

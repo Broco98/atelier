@@ -262,7 +262,7 @@ function EditorScreen({
               `aria-expanded`)를 달지 않는다 — 앱의 창 여는 버튼(전체화면 뷰어 · 이름 바꾸기)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
           <Button ref={opener} variant="outline" size="pill" onClick={() => setPreviewOpen(true)}>
-            <Eye data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+            <Eye data-icon="inline-start" aria-hidden />
             LLM이 받는 텍스트
           </Button>
           {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이고, 카드 머리라 알약 크기에 선다. 파란 알약은 글자가
@@ -357,7 +357,7 @@ export function OutsideBanner({
         role="alert"
         className="mx-auto flex max-w-(--measure-read) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-amber-600/10 py-1.5 pr-1.5 pl-4"
       >
-        <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" strokeWidth={2} />
+        <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
         <span className="min-w-40 flex-1 text-ui font-medium text-amber-700 dark:text-amber-400">
           {OUTSIDE_MESSAGE[verdict]}
         </span>
@@ -424,7 +424,7 @@ function EditorFrame({
             lead={
               // 카드 머리의 원형 아이콘 버튼이다(`size="icon-round"` — ui-refresh 결정 6).
               <Button variant="outline" size="icon-round" onClick={onBack} aria-label="설정으로 돌아가기">
-                <ArrowLeft aria-hidden strokeWidth={2} />
+                <ArrowLeft aria-hidden />
               </Button>
             }
             crumbs={["Settings", settingsItem("spec-layout").label, name]}
@@ -571,7 +571,7 @@ export function TreeCard({
             at.length === 0 ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
           )}
         >
-          <Folder aria-hidden className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
+          <Folder aria-hidden className="size-3.5 shrink-0 text-tertiary" />
           <span>spec/</span>
         </Hint>
       </div>
@@ -612,7 +612,7 @@ function TreeTools({
           aria-label={ADD_LABEL[kind]}
           render={<Button variant="outline" size="pill-sm" onClick={() => onAdd(kind)} />}
         >
-          <Plus aria-hidden strokeWidth={2} />
+          <Plus aria-hidden />
           {kind === "file" ? "파일" : "폴더"}
         </Hint>
       ))}
@@ -636,7 +636,7 @@ function TreeTools({
                 />
               }
             >
-              <Icon aria-hidden className="size-3.5" strokeWidth={2} />
+              <Icon aria-hidden className="size-3.5" />
             </Hint>
           ))}
         </div>
@@ -661,7 +661,7 @@ function TreeTools({
             />
           }
         >
-          <Trash2 aria-hidden className="size-3.5" strokeWidth={1.9} />
+          <Trash2 aria-hidden className="size-3.5" />
         </Hint>
       </div>
     </div>
@@ -976,22 +976,14 @@ function TreeRow({
         dragged && "opacity-40",
       )}
     >
-      <Glyph
-        aria-hidden
-        className={cn("size-3.5 shrink-0 text-tertiary", !Known && "opacity-70")}
-        strokeWidth={1.9}
-      />
+      <Glyph aria-hidden className={cn("size-3.5 shrink-0 text-tertiary", !Known && "opacity-70")} />
       <span className="min-w-0 flex-1 truncate">
         {entry.pattern ?? ""}
         {folder ? "/" : ""}
       </span>
       {warnings.length > 0 && (
         <>
-          <TriangleAlert
-            aria-hidden
-            className="size-3 shrink-0 text-amber-700 dark:text-amber-400"
-            strokeWidth={2}
-          />
+          <TriangleAlert aria-hidden className="size-3 shrink-0 text-amber-700 dark:text-amber-400" />
           <span className="sr-only">{warnings.join(", ")}</span>
         </>
       )}
@@ -1128,7 +1120,7 @@ function EntryFields({
               UNDER_TITLE,
             )}
           >
-            <TriangleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />
+            <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
             <span>
               모르는 아이콘 <code className="text-mono-sm">{entry.icon}</code> — 앱이 그리지 않아요
             </span>
@@ -1242,7 +1234,7 @@ function TemplateField({
             </span>
             {body === null && (
               <p className="flex items-center gap-1.5 text-ui leading-[1.6] text-amber-700 dark:text-amber-400">
-                <TriangleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />
+                <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
                 <span>레이아웃 폴더에 이 템플릿 파일이 없어요</span>
               </p>
             )}
@@ -1314,15 +1306,11 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
         }
       >
         {Current ? (
-          <Current aria-hidden className="size-[17px]" strokeWidth={1.9} />
+          <Current aria-hidden className="size-[17px]" />
         ) : icon !== null ? (
-          <TriangleAlert
-            aria-hidden
-            className="size-[17px] text-amber-700 dark:text-amber-400"
-            strokeWidth={1.9}
-          />
+          <TriangleAlert aria-hidden className="size-[17px] text-amber-700 dark:text-amber-400" />
         ) : (
-          <Ban aria-hidden className="size-[17px] text-tertiary opacity-60" strokeWidth={1.9} />
+          <Ban aria-hidden className="size-[17px] text-tertiary opacity-60" />
         )}
       </Hint>
       <PopoverContent
@@ -1360,7 +1348,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                   checked ? "toggle-on" : "text-muted-foreground quiet-hover",
                 )}
               >
-                <Glyph aria-hidden className="size-4" strokeWidth={1.9} />
+                <Glyph aria-hidden className="size-4" />
               </Hint>
             );
           })}
@@ -1388,7 +1376,6 @@ export function UnreadableLayout({
         <TriangleAlert
           aria-hidden
           className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
-          strokeWidth={2}
         />
         <div className="flex min-w-0 flex-col gap-0.5 text-ui leading-[1.6]">
           <span className="text-amber-700 dark:text-amber-400">

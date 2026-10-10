@@ -138,7 +138,7 @@ function SpecViewer({
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <FileText strokeWidth={1.6} />
+                  <FileText />
                 </EmptyMedia>
                 <EmptyTitle>아직 spec이 없어요</EmptyTitle>
                 <EmptyDescription>AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.</EmptyDescription>
@@ -178,7 +178,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
         <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-group px-2 py-1 font-mono text-mono-sm text-tertiary">
-          <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+          <ImageOff className="size-3.5 shrink-0" aria-hidden />
           {name}
         </span>
       ) : (
@@ -507,7 +507,7 @@ function BlockWrapper({
         onClick={() => onCopy(start, end)}
         className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
       >
-        <Copy className="size-3" strokeWidth={1.8} aria-hidden />
+        <Copy className="size-3" aria-hidden />
       </Hint>
       {children}
     </div>
@@ -709,7 +709,7 @@ export const PrettyView = memo(function PrettyView({
               title={alt || undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-group px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
             >
-              <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+              <ImageOff className="size-3.5 shrink-0" aria-hidden />
               {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
             </span>
           );
@@ -836,7 +836,7 @@ function Callout({
     <div className="rounded-card bg-group px-4 py-3">
       {/* 제목 줄 — 글리프 15 · 사이 6 · 600 · 아래 2(DS `.at-callout-title`) */}
       <div className={cn("mb-0.5 flex items-center gap-1.5 font-semibold", tone)}>
-        <Glyph className="size-[15px] shrink-0" strokeWidth={2} aria-hidden />
+        <Glyph className="size-[15px] shrink-0" aria-hidden />
         {title ?? label}
       </div>
       {children}

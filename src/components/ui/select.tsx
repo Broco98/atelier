@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 트리거 테두리 있는 입력칸(border-input·h-8/h-7·rounded-lg·text-sm·size 변형)→조용한 칩 하나(28px·10px 모서리·좌우 7px·13px·muted 글자·quiet-hover, 옛 기준 브랜치 버튼 — 높이 · 모서리 · 글자는 DS `.at-chip`), 트리거 화살표 size-4→size-2.5·굵기 2.2, 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-popover, DS `.at-float`), 폭 w-(--anchor-width)·min-w-36→248px(기준 브랜치의 지금 값), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 트리거 맞춤 alignItemWithTrigger 기본 true→false·align center→start(목록은 트리거 아래 왼쪽 끝에 붙는다, S32), 카드 안 목록 앞뒤에 머리·바닥 칸(header·footer — listbox 밖에 선다), 목록 안쪽 5px·항목 사이 1px(menu-list — index.css 한 곳, 드롭다운 카드와 같은 것), 항목 rounded-md·py-1·pl-1.5·pr-8·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·10px 모서리·좌우 10px·gap 9px·text-ui·shrink-0, 드롭다운 항목과 같은 것, DS `.at-menu-row`), 항목의 자손 글자색 덮기(focus:**:text-accent-foreground)를 걷는다(켜진 줄은 바탕만 바뀐다), 항목 글자 칸 shrink-0·whitespace-nowrap→min-w-0·truncate(긴 가지 이름이 줄임표로 접힌다), 체크 지시자 absolute right-2→MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4, 드롭다운 라디오 줄과 같은 것), 스크롤 화살표 bg-popover→bg-background. 열림 애니메이션 클래스는 registry 그대로다. 라벨·구분선·그룹은 registry 그대로다(쓰는 자리가 없다).
+// 앱 규격으로 고친 자리: 트리거 테두리 있는 입력칸(border-input·h-8/h-7·rounded-lg·text-sm·size 변형)→조용한 칩 하나(28px·10px 모서리·좌우 7px·13px·muted 글자·quiet-hover, 옛 기준 브랜치 버튼 — 높이 · 모서리 · 글자는 DS `.at-chip`), 트리거 화살표 size-4→size-2.5·굵기 2.4(icon-stroke.ts의 SMALL_GLYPH_STROKE — DS가 12px 글리프에 따로 주는 값), 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-popover, DS `.at-float`), 폭 w-(--anchor-width)·min-w-36→248px(기준 브랜치의 지금 값), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 트리거 맞춤 alignItemWithTrigger 기본 true→false·align center→start(목록은 트리거 아래 왼쪽 끝에 붙는다, S32), 카드 안 목록 앞뒤에 머리·바닥 칸(header·footer — listbox 밖에 선다), 목록 안쪽 5px·항목 사이 1px(menu-list — index.css 한 곳, 드롭다운 카드와 같은 것), 항목 rounded-md·py-1·pl-1.5·pr-8·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·10px 모서리·좌우 10px·gap 9px·text-ui·shrink-0, 드롭다운 항목과 같은 것, DS `.at-menu-row`), 항목의 자손 글자색 덮기(focus:**:text-accent-foreground)를 걷는다(켜진 줄은 바탕만 바뀐다), 항목 글자 칸 shrink-0·whitespace-nowrap→min-w-0·truncate(긴 가지 이름이 줄임표로 접힌다), 체크 지시자 absolute right-2→MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4, 드롭다운 라디오 줄과 같은 것), 스크롤 화살표 bg-popover→bg-background. 열림 애니메이션 클래스는 registry 그대로다. 라벨·구분선·그룹은 registry 그대로다(쓰는 자리가 없다).
 "use client"
 
 import * as React from "react"
@@ -6,6 +6,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke"
 import { MenuCheck } from "@/components/ui/menu-check"
 
 const Select = SelectPrimitive.Root
@@ -47,7 +48,7 @@ function SelectTrigger({
       {children}
       <SelectPrimitive.Icon
         render={
-          <ChevronDownIcon className="pointer-events-none size-2.5" strokeWidth={2.2} />
+          <ChevronDownIcon className="pointer-events-none size-2.5" strokeWidth={SMALL_GLYPH_STROKE} />
         }
       />
     </SelectPrimitive.Trigger>

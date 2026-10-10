@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
@@ -118,7 +119,7 @@ function TreeRows({
                     "-mr-[3px] size-3 shrink-0 text-tertiary transition-[rotate] duration-150",
                     expanded && "rotate-90",
                   )}
-                  strokeWidth={2.2}
+                  strokeWidth={SMALL_GLYPH_STROKE}
                 />
                 <FolderGlyph icon={item.icon} />
                 {/* 폴더 이름을 그대로 보여준다 — 경로 복사가 붙어 있는 트리라 화면의 이름이
@@ -189,7 +190,7 @@ function TreeRows({
                   onClick={() => onCopy(item.path)}
                   className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
                 >
-                  <Copy className="size-3" strokeWidth={1.8} />
+                  <Copy className="size-3" />
                 </Hint>
               )}
             </div>
@@ -207,7 +208,7 @@ const GLYPH = "size-3.5 shrink-0 text-tertiary";
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
 function FolderGlyph({ icon }: { icon: string | null }) {
   const Glyph = specIconOf(icon);
-  return Glyph && <Glyph className={GLYPH} strokeWidth={1.9} />;
+  return Glyph && <Glyph className={GLYPH} />;
 }
 
 // 파일 행의 글리프. 항목이 아이콘을 줬으면 **확장자 라벨 대신** 그 아이콘이다. 라벨은 글자라 이름
@@ -219,7 +220,7 @@ function FolderGlyph({ icon }: { icon: string | null }) {
 // 코드와 같은 옅은 면 · `rounded-inline`이고 테두리가 없다(ui-refresh 결정 16 · 25).
 function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const Glyph = specIconOf(icon);
-  if (Glyph) return <Glyph className={GLYPH} strokeWidth={1.9} />;
+  if (Glyph) return <Glyph className={GLYPH} />;
   const dot = name.lastIndexOf(".");
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;

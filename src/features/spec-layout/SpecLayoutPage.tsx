@@ -186,7 +186,6 @@ function LayoutRow({
             <TriangleAlert
               aria-hidden
               className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
-              strokeWidth={2}
             />
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="text-amber-700 dark:text-amber-400">
@@ -222,12 +221,12 @@ function LayoutRow({
               />
             }
           >
-            <Bot data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+            <Bot data-icon="inline-start" aria-hidden />
             부탁
           </Hint>
           {!fellBack && (
             <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
-              <Pencil data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+              <Pencil data-icon="inline-start" aria-hidden />
               편집
             </Button>
           )}
@@ -282,7 +281,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
           />
         }
       >
-        <MoreHorizontal aria-hidden className="size-4" strokeWidth={2} />
+        <MoreHorizontal aria-hidden className="size-4" />
       </Hint>
       {/* 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다. */}
       <DropdownMenuContent align="end" width="layout" aria-label={label}>
@@ -294,7 +293,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
           aria-describedby={noteId}
           onClick={onRevert}
         >
-          <RotateCcw aria-hidden className="mt-[3px] size-3.5" strokeWidth={1.9} />
+          <RotateCcw aria-hidden className="mt-[3px] size-3.5" />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
@@ -363,7 +362,7 @@ function PageNotice({
       role="status"
       className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-card bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
     >
-      <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" strokeWidth={2.2} />
+      <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <span className="text-ui font-medium break-words">
           {title} <code className="text-mono-sm opacity-80">{reference}</code>
@@ -378,7 +377,7 @@ function PageNotice({
         aria-label="닫기"
         className="icon-button opacity-75 transition-opacity hover:opacity-100"
       >
-        <X aria-hidden className="size-3.5" strokeWidth={2} />
+        <X aria-hidden className="size-3.5" />
       </button>
     </div>
   );

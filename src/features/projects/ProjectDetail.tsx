@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Hint } from "@/components/ui/tooltip";
@@ -32,7 +33,7 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         {/* 경로를 못 찾은 프로젝트의 빨간 띠 — 경고 부품(Alert)의 모양이다. 글자는 그대로다. */}
         {project.missing && (
           <Alert variant="destructive" className="mt-[18px]">
-            <CircleAlert strokeWidth={1.8} />
+            <CircleAlert />
             <AlertTitle>경로를 찾을 수 없어요.</AlertTitle>
             <AlertDescription>
               폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나
@@ -46,17 +47,17 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         </h1>
         {/* 속성(DS `.at-props`) — 이름 열 112 · 줄 28 · 줄 사이 4. 값은 고정폭 `text-mono`다. */}
         <dl className="flex flex-col gap-1">
-          <PropertyRow icon={<Folder className="size-3.5 text-tertiary" strokeWidth={1.8} />} label="경로">
+          <PropertyRow icon={<Folder className="size-3.5 text-tertiary" />} label="경로">
             <span className={cn("truncate", project.missing && "text-destructive line-through")}>
               {project.path}
             </span>
           </PropertyRow>
           {project.git?.remoteSlug && (
-            <PropertyRow icon={<GitMerge className="size-3.5 text-tertiary" strokeWidth={1.8} />} label="원격">
+            <PropertyRow icon={<GitMerge className="size-3.5 text-tertiary" />} label="원격">
               <span className="truncate">{project.git.remoteSlug}</span>
             </PropertyRow>
           )}
-          <PropertyRow icon={<GitFork className="size-3.5 text-tertiary" strokeWidth={1.8} />} label="baseBranch">
+          <PropertyRow icon={<GitFork className="size-3.5 text-tertiary" />} label="baseBranch">
             {/* 칩(셀렉트 칩 · 인라인 편집기)의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
                 칩의 모양은 부품 그대로이고, 이것은 그 칩을 이 열에 앉히는 자리 맞춤이다. */}
             <div className="-ml-[7px] flex min-w-0">
@@ -113,7 +114,7 @@ function WorksSection({
             className="ml-auto flex items-center gap-1 rounded-inner px-1.5 py-0.5 text-caption font-medium text-tertiary transition-colors quiet-hover"
           >
             Works에서 모두 보기
-            <ChevronRight className="size-3" strokeWidth={2} />
+            <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
           </button>
         }
       />
@@ -147,12 +148,12 @@ function WorksSection({
                 <span className="ml-auto flex shrink-0 items-center gap-3">
                   {worktree?.exists && (
                     <span className="flex items-center gap-[5px] font-mono text-mono-sm text-muted-foreground">
-                      <GitFork className="size-3" strokeWidth={2} />
+                      <GitFork className="size-3" />
                       {work.branch}
                     </span>
                   )}
                   <span className="text-caption text-tertiary tabular-nums">{formatCreated(work.createdAt)}</span>
-                  <ChevronRight className="size-3.5" strokeWidth={2} />
+                  <ChevronRight className="size-3.5" />
                 </span>
               </button>
             );

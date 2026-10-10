@@ -167,7 +167,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
               {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를
                   한 번에 잡게 한다. 칸 모양은 다른 빈 화면과 같은 부품의 것이다. */}
               <EmptyMedia variant="icon">
-                <SquareTerminal strokeWidth={1.6} />
+                <SquareTerminal />
               </EmptyMedia>
               <EmptyTitle>아직 셸이 없어요</EmptyTitle>
               <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>

@@ -64,7 +64,7 @@ function FullscreenModal({
         onClick={() => setOpen(true)}
         render={trigger}
       >
-        <Maximize2 className="size-3" strokeWidth={2} />
+        <Maximize2 className="size-3" />
       </Hint>
       {/* 부품의 닫기(×)를 세우지 않는다 — 머리 줄의 오른쪽 끝에 제 닫기가 있다. */}
       <DialogContent
@@ -86,7 +86,7 @@ function FullscreenModal({
               announce="name"
               render={<DialogClose className="icon-button-quiet ml-1 text-tertiary" />}
             >
-              <X className="size-3.5" strokeWidth={2} />
+              <X className="size-3.5" />
             </Hint>
           </span>
         </div>

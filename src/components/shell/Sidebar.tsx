@@ -559,7 +559,7 @@ function SidebarItem({
         onClick={onClick}
         className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left text-row font-medium"
       >
-        <Icon className="size-[17px] shrink-0" strokeWidth={1.7} />
+        <Icon className="size-[17px] shrink-0" />
         <span className="min-w-0 truncate">{label}</span>
       </button>
       {/* 배지가 아니라 옅은 숫자다 — 구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로

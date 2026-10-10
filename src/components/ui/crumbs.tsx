@@ -4,6 +4,7 @@
 // 하나이고 준 때만 선다.
 import { Fragment, type ReactNode } from "react"
 import { ChevronRight } from "lucide-react"
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke"
 import { cn } from "@/lib/utils"
 
 /**
@@ -44,7 +45,7 @@ function Crumbs({
       )}
       {items.map((item, index) => (
         <Fragment key={index}>
-          {index > 0 && <ChevronRight aria-hidden className="mx-[3px] size-3 shrink-0 text-tertiary" />}
+          {index > 0 && <ChevronRight aria-hidden className="mx-[3px] size-3 shrink-0 text-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />}
           {index === last ? (
             <span className="min-w-0 truncate font-medium text-foreground">{item}</span>
           ) : (

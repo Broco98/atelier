@@ -5,6 +5,7 @@ import { CardHead } from "@/components/shell/Frame";
 import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Hint } from "@/components/ui/tooltip";
 import {
@@ -123,7 +124,7 @@ function ArchiveList({
         {entries.length > 0 && (
           <InputGroup className="flex-1">
             <InputGroupAddon>
-              <Search strokeWidth={1.8} />
+              <Search />
             </InputGroupAddon>
             {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
             <InputGroupInput
@@ -148,10 +149,7 @@ function ArchiveList({
             onClick={() => setSortAsc((v) => !v)}
             className={SMALL_PILL}
           >
-            <ArrowDown
-              className={cn("size-3.5 transition-transform", sortAsc && "rotate-180")}
-              strokeWidth={2}
-            />
+            <ArrowDown className={cn("size-3.5 transition-transform", sortAsc && "rotate-180")} />
             치운 날
           </Hint>
           {/* **라디오 메뉴다**(판 3, 스토리 46~49 · 51 · 52). 여닫이 · 줄 옮기기 · Esc 닫기와 거르개로
@@ -171,9 +169,9 @@ function ArchiveList({
                 />
               }
             >
-              <Filter className="size-3.5 shrink-0" strokeWidth={2} />
+              <Filter className="size-3.5 shrink-0" />
               <span className="truncate">{filterName}</span>
-              <ChevronDown className="-mr-1 size-3 shrink-0 text-tertiary" strokeWidth={2.2} />
+              <ChevronDown className="-mr-1 size-3 shrink-0 text-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
             </Hint>
             {/* 거르개와 오른쪽 끝끼리 맞춘다(옛 카드의 `align="right"`). 폭은 메뉴 기본(208px)이다. */}
             <DropdownMenuContent align="end">
@@ -199,7 +197,7 @@ function ArchiveList({
           <Empty variant="list" className="my-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Archive strokeWidth={1.6} />
+                <Archive />
               </EmptyMedia>
               <EmptyTitle>{ARCHIVE_COPY.emptyList.title}</EmptyTitle>
               <EmptyDescription>{ARCHIVE_COPY.emptyList.body}</EmptyDescription>
@@ -290,9 +288,9 @@ function ArchiveRow({
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}
         {expanded ? (
-          <FolderOpen className="size-[15px] shrink-0 text-tertiary" strokeWidth={1.7} />
+          <FolderOpen className="size-[15px] shrink-0 text-tertiary" />
         ) : (
-          <Folder className="size-[15px] shrink-0 text-tertiary" strokeWidth={1.7} />
+          <Folder className="size-[15px] shrink-0 text-tertiary" />
         )}
         <span className="min-w-0 flex-1 truncate text-row">{entry.title}</span>
         {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다. 숫자가 고정폭이라 날짜의 오른쪽 끝이 줄마다

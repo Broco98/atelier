@@ -73,9 +73,9 @@ function ListPanelToggle({ open, onToggle }: ListPanelToggleProps) {
       }
     >
       {open ? (
-        <Minimize2 className="size-4" strokeWidth={1.7} />
+        <Minimize2 className="size-4" />
       ) : (
-        <Maximize2 className="size-4" strokeWidth={1.7} />
+        <Maximize2 className="size-4" />
       )}
     </Hint>
   );

@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
@@ -600,7 +601,7 @@ function WorksPage({
                 />
               }
             >
-              <Columns2 className="size-4" strokeWidth={2} />
+              <Columns2 className="size-4" />
             </Hint>
           </>
         )
@@ -706,7 +707,7 @@ function WorksPage({
             <Button variant="outline" size="icon-round" onClick={() => copyText(specRef(selected.slug, currentSpec))} />
           }
         >
-          <Copy className="size-4" strokeWidth={1.8} />
+          <Copy className="size-4" />
         </Hint>
       )}
     </>
@@ -726,7 +727,7 @@ function WorksPage({
             announce="name"
             render={<Button variant="outline" size="icon-round" onClick={() => changeSplit(null, otherTab("spec"))} />}
           >
-            <X className="size-4" strokeWidth={1.8} />
+            <X className="size-4" />
           </Hint>
         </>
       }
@@ -817,7 +818,7 @@ function WorksPage({
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              {needsProject ? <Folder strokeWidth={1.6} /> : <Zap strokeWidth={1.6} />}
+              {needsProject ? <Folder /> : <Zap />}
             </EmptyMedia>
             {/* 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
             <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
@@ -1003,7 +1004,7 @@ function TerminalHead({ name, onClose }: { name: React.ReactNode; onClose: () =>
         onClick={onClose}
         className="icon-button shrink-0 opacity-70 transition-[background-color,opacity] hover:bg-current/10 hover:opacity-100"
       >
-        <X className="size-3.5" strokeWidth={2} />
+        <X className="size-3.5" />
       </Hint>
     </div>
   );
@@ -1064,7 +1065,7 @@ function StatusMenu({ work }: { work: WorkView }) {
         }
       >
         {meta.label}
-        <ChevronDown className="size-[11px] opacity-80" strokeWidth={2.2} />
+        <ChevronDown className="size-[11px] opacity-80" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
       <DropdownMenuContent>
         <DropdownMenuRadioGroup
@@ -1227,7 +1228,7 @@ function WorkMenu({
           {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
               깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
               disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-          <MoreHorizontal className="size-4" strokeWidth={2.2} />
+          <MoreHorizontal className="size-4" />
         </Hint>
         <DropdownMenuContent>
           {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
@@ -1236,17 +1237,17 @@ function WorkMenu({
               줄의 글자 · 글리프는 부품의 것이다(DS `.at-menu-row` — 13px 400, 글리프 15px tertiary, ui-refresh 결정 17).
               여기서 굵기나 크기를 덧칠하지 않는다. */}
           <DropdownMenuItem onClick={() => setRenaming(true)}>
-            <Pencil strokeWidth={1.9} />
+            <Pencil />
             <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleArchive}>
-            <Archive strokeWidth={1.9} />
+            <Archive />
             <span className="min-w-0 flex-1 truncate">아카이빙</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={handleRemove}>
-            <Trash2 strokeWidth={1.9} />
+            <Trash2 />
             <span className="min-w-0 flex-1 truncate">삭제</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

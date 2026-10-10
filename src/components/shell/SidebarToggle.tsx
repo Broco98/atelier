@@ -19,7 +19,7 @@ function SidebarToggle({ open, onToggle }: SidebarToggleProps) {
       // 사이드바가 닫혔을 때 이걸 못 찾으면 되돌릴 방법이 없다
       className="icon-button-quiet text-muted-foreground"
     >
-      <PanelLeft className="size-4" strokeWidth={1.7} />
+      <PanelLeft className="size-4" />
     </button>
   );
 }

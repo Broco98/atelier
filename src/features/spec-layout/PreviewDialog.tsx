@@ -56,7 +56,7 @@ function PreviewDialog({
             announce="name"
             render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-muted-foreground" />}
           >
-            <X aria-hidden className="size-4" strokeWidth={2} />
+            <X aria-hidden className="size-4" />
           </Hint>
         </div>
         {/* 글 상자는 카드 안 묶음과 같은 옅은 면이다(ui-refresh 결정 16의 `bg-group`, 판 06 티켓 07) — 사이드바 색(창 바탕의

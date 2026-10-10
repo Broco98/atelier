@@ -96,14 +96,12 @@ const TOAST_ICONS: Record<ToastKind, ReactNode> = {
     <CheckIcon
       data-slot="toast-icon"
       className="size-3.5 shrink-0 text-green-700"
-      strokeWidth={2.4}
     />
   ),
   rejected: (
     <BanIcon
       data-slot="toast-icon"
       className="size-3.5 shrink-0 text-tertiary"
-      strokeWidth={2.2}
     />
   ),
 }

@@ -224,7 +224,7 @@ function ArchivePage({
               <Empty>
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <Archive strokeWidth={1.6} />
+                    <Archive />
                   </EmptyMedia>
                   {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
                       왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에

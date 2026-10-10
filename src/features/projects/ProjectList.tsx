@@ -41,14 +41,14 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
             announce="name"
             render={<Button variant="outline" size="icon-round" onClick={onAdd} />}
           >
-            <Plus className="size-4" strokeWidth={1.8} />
+            <Plus className="size-4" />
           </Hint>
         }
       >
         {projects.length > 0 && (
           <InputGroup className="flex-1">
             <InputGroupAddon>
-              <Search strokeWidth={1.8} />
+              <Search />
             </InputGroupAddon>
             {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
             <InputGroupInput
@@ -66,7 +66,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
           <Empty variant="list" className="my-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Folder strokeWidth={1.6} />
+                <Folder />
               </EmptyMedia>
               <EmptyTitle>프로젝트가 없어요</EmptyTitle>
               <EmptyDescription>로컬 저장소 폴더를 등록해 시작하세요.</EmptyDescription>
@@ -116,12 +116,12 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                     )}
                   </span>
                   <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
-                    <Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
+                    <Folder className="size-[13px] shrink-0 text-tertiary" />
                     <span className="truncate">{project.path}</span>
                   </span>
                   {project.git?.remoteSlug && (
                     <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
-                      <GitFork className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
+                      <GitFork className="size-[13px] shrink-0 text-tertiary" />
                       <span className="truncate">{project.git.remoteSlug}</span>
                       {/* 꼬리표(`tag` — DS `Tag`). 글자는 이 줄의 고정폭을 물려받는다. */}
                       <span className="tag">{project.baseBranch}</span>

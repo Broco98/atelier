@@ -340,7 +340,6 @@ function SectionHeader({
           "size-3.5 shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
           open ? "opacity-0 group-hover:opacity-100" : "-rotate-90 opacity-100",
         )}
-        strokeWidth={2.2}
       />
       {/* 수는 라벨과 같은 색이다(DS `.at-section b`) — 한 머리 안에서 둘이 다른 무게로 읽히지 않는다. */}
       <span className="ml-auto shrink-0 text-meta tabular-nums text-section">{count}</span>
@@ -637,7 +636,6 @@ function WorkRow({
       >
         <Pin
           className="size-3"
-          strokeWidth={1.8}
           fill={work.pinned ? "currentColor" : "none"}
         />
       </button>

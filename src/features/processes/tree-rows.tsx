@@ -3,6 +3,7 @@ import { ChevronRight, Ellipsis, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { keepAsException } from "./actions";
@@ -54,7 +55,7 @@ export function FoldChevron({ open }: { open: boolean }) {
       aria-hidden
       data-fold-chevron=""
       className={cn("size-3 shrink-0 transition-[rotate] duration-160 ease-panel", open && "rotate-90")}
-      strokeWidth={2.2}
+      strokeWidth={SMALL_GLYPH_STROKE}
     />
   );
 }
