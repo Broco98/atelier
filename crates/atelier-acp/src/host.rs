@@ -426,6 +426,8 @@ fn shut_down_together(live: &mut [Live]) {
     }
     for conversation in live.iter_mut() {
         conversation.agent.finish_shutdown(deadline);
+        // 끈 대화는 연결을 쥐지 않는다 — 대화가 든 턴 손잡이의 복제도 놓는다.
+        conversation.conv.lock_state().turns = None;
     }
 }
 
@@ -798,7 +800,7 @@ impl ConversationHost {
         }
         let mut live = self.take_live(work, conversation);
         if let Some(live) = live.as_mut() {
-            live.agent.shut_down();
+            shut_down_together(std::slice::from_mut(live));
         }
 
         let works = atelier_core::works_in(&self.data_root);
