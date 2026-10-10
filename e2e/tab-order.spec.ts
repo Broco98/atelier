@@ -1,7 +1,17 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { callCount, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
+import {
+  callCount,
+  exitShell,
+  installFixtureBackend,
+  openShell,
+  unknownIpcCalls,
+  writeShell,
+  셸입력,
+  파일탭주소,
+  주소로간다,
+} from "./harness";
 import { BELOW_APP_MIN, fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, widenSidebar } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
@@ -12,8 +22,11 @@ import { BELOW_APP_MIN, fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, wi
 //
 // 칸을 **이름으로** 가른다. 픽스처 셸은 모두 같은 이름이라, 칸마다 OSC 타이틀을 한 번 쏴
 // 「어느 셸이 어디 섰나」를 화면 글자로 읽는다(`writeShell` — 진짜 xterm 파서를 지난다).
+//
+// 줄의 칸은 **묶음의 칸**이다 — 셸 칸과 파일 탭이 한 차례로 선다(git-integration 결정 31). 칸 · 이름 · 틈을 재는 손잡이가
+// 그래서 종류를 안 가린다. 셸만 선 화면에서는 셸 칸을 재는 것과 같다.
 
-const [, plainWork] = WORKS;
+const [fileWork, plainWork] = WORKS;
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -21,19 +34,24 @@ const ESC = "\x1b";
 const BEL = "\x07";
 
 const shellTabs = (page: Page) => page.locator('[data-tab="shell"]');
+/** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일 탭이든 센다. */
+const bundleTabs = (page: Page) => page.locator("[data-tab-strip] > [data-tab]");
 /** 칸의 이름 버튼 — 끄는 자리이자 켜짐을 말하는 자리다. */
-const nameButton = (page: Page, at: number) => shellTabs(page).nth(at).locator("button[aria-pressed]");
+const nameButton = (page: Page, at: number) => bundleTabs(page).nth(at).locator("button[aria-pressed]");
 const gapLine = (page: Page) => page.locator("[data-tab-gap]");
 
-/** 줄에 선 순서대로 칸 이름. 넓은 창에서만 글자가 보이므로 접근성 이름(글자 · 라벨)으로 읽는다. */
+/**
+ * 줄에 선 순서대로 칸 이름. 넓은 창에서만 글자가 보이므로 접근성 이름(글자 · 라벨)으로 읽는다. 파일 탭은 파일 이름이다
+ * (경로는 툴팁 — 설명으로 남는다).
+ */
 const namesOf = (page: Page) =>
-  shellTabs(page)
+  bundleTabs(page)
     .locator("button[aria-pressed]")
     .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? button.textContent ?? ""));
 
 /** 켜진 칸의 이름. 없으면 `null`. */
 const litName = (page: Page) =>
-  shellTabs(page)
+  bundleTabs(page)
     .locator('button[aria-pressed="true"]')
     .evaluateAll((buttons) => buttons.map((button) => button.textContent ?? "")[0] ?? null);
 
@@ -78,7 +96,7 @@ async function pressAndCross(page: Page, from: number) {
  * 오른쪽 4분의 1. 틈은 「중심이 포인터 왼쪽인 칸의 수」라 두 자리가 그 번호다.
  */
 async function gapPoint(page: Page, gap: number) {
-  const count = await shellTabs(page).count();
+  const count = await bundleTabs(page).count();
   const box = gap < count ? await boxOf(page, gap) : await boxOf(page, count - 1);
   const x = gap < count ? box.x + box.width / 4 : box.x + (box.width * 3) / 4;
   return { x, y: box.y + box.height / 2 };
@@ -683,6 +701,120 @@ test.describe("끌기가 사는 경우", () => {
 
     // 문서를 오른쪽에 떨구면 문서가 오른쪽 열이다(`dropSplit`).
     await expect(page).toHaveURL(/split=rl/);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+});
+
+// ── git-integration 판 01 티켓 06(#479): 셸과 파일 탭을 섞어 끈다 ──
+//
+// 「크롬도 모든 탭은 공평하잖아」(결정 31) — 셸 칸과 파일 탭은 한 묶음이라 **종류를 안 가리고** 끌린다(스토리 42 · 43). 틈 · 선 ·
+// 놓기는 위의 셸 끌기와 같은 길이고, 여기서 보는 것은 종류가 섞여도 그 길이 그대로라는 것이다 — 파일 탭이 두 셸 사이로, 셸이
+// 두 파일 탭 사이로 놓이고, 놓은 차례를 ⌘숫자가 따르며, 그 차례가 메모리에 살아 work을 옮겼다 와도 남는다(결정 33).
+//
+// 파일 탭은 주소로 연다(`주소로간다`) — 그 파일이 묶음에 없으면 끝에 선다(S12).
+test.describe("셸과 파일 탭이 섞인 묶음", () => {
+  /** `billing` 워크트리의 파일 — 탭 이름은 파일 이름이다. 픽스처에 없는 경로(`gone.ts`)도 탭은 선다(「지워진 파일」). */
+  const MAIN = "billing/src/main.ts";
+  const README = "billing/README.md";
+  const GONE = "billing/gone.ts";
+
+  /** 셸 칸 둘(pty 1 · 2)에 이름을 붙인다 — 이름이 서야 차례를 글자로 읽는다. */
+  async function nameTwoShells(page: Page) {
+    await writeShell(page, `${ESC}]0;하나${BEL}`, 1);
+    await writeShell(page, `${ESC}]0;둘${BEL}`, 2);
+  }
+
+  test("파일 탭을 두 셸 사이로, 셸을 두 파일 탭 사이로 옮기면 차례가 바뀌고 work을 옮겼다 와도 남는다", async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // 파일 탭으로 들어온다 — 터미널 본문이 안 서서 셸이 저절로 안 뜬다. 셸은 `+`로 연다: 사람이 연 셸이라 work을 떠나도
+    // 안 닫힌다(프로세스 결정 7 — 저절로 뜬 셸은 입력 없이 떠나면 닫힌다).
+    await page.goto(파일탭주소(MAIN));
+    await expect(bundleTabs(page)).toHaveCount(1);
+    await openShell(page);
+    await openShell(page);
+    await nameTwoShells(page);
+    for (const ref of [README, GONE]) {
+      await 주소로간다(page, 파일탭주소(ref));
+      await expect(page.locator(`[data-tab="code"][data-code="${ref}"]`)).toHaveCount(1);
+    }
+    await expect.poll(() => namesOf(page)).toEqual(["main.ts", "하나", "둘", "README.md", "gone.ts"]);
+    expect(await litName(page)).toBe("gone.ts");
+
+    // 파일 탭(첫 칸)을 두 셸 사이 틈(2)으로.
+    await pressAndCross(page, 0);
+    await moveToGap(page, 2);
+    await page.mouse.up();
+    await expect.poll(() => namesOf(page)).toEqual(["하나", "main.ts", "둘", "README.md", "gone.ts"]);
+    await expect(gapLine(page)).toHaveCount(0);
+
+    // 셸(첫 칸)을 두 파일 탭 사이 틈(4)으로.
+    await pressAndCross(page, 0);
+    await moveToGap(page, 4);
+    await page.mouse.up();
+    await expect.poll(() => namesOf(page)).toEqual(["main.ts", "둘", "README.md", "하나", "gone.ts"]);
+
+    // 끌어 놓은 칸은 안 켜진다 — 본문도 주소도 보던 파일 그대로다.
+    expect(await litName(page)).toBe("gone.ts");
+    await expect(page).toHaveURL(/tab=code&code=billing%2Fgone\.ts/);
+
+    // 사이드바로 옆 work에 갔다 온다 — 앱 안의 이동이라 묶음(메모리)이 산다.
+    const rows = page.locator("[data-worklist]");
+    await rows.getByRole("button", { name: plainWork.title, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+    await expect(bundleTabs(page)).toHaveCount(0);
+    await rows.getByRole("button", { name: fileWork.title, exact: true }).click();
+    await expect(page).toHaveURL(/tab=code&code=billing%2Fgone\.ts/);
+    await expect.poll(() => namesOf(page)).toEqual(["main.ts", "둘", "README.md", "하나", "gone.ts"]);
+    expect(await litName(page)).toBe("gone.ts");
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // 번호는 **보이는 차례**다(스토리 48) — 셸이든 파일 탭이든 묶음의 n번째가 ⌘(n+1)이다. 끌어서 차례를 바꾸면 번호도 그 차례를
+  // 따른다. 셸에 포커스가 있어도 같다 — 본문을 옮기는 키는 셸이 타이핑하지 않고 창으로 흘린다(`shellHotkey`의 `app`).
+  test("셸 · 파일 · 셸에서 ⌘3이 파일 탭을, ⌘4가 둘째 셸을 고르고, 끌어 차례를 바꾸면 번호가 따라간다", async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/works/${fileWork.slug}?tab=terminal`);
+    await expect(shellTabs(page)).toHaveCount(1);
+    await 주소로간다(page, 파일탭주소(MAIN));
+    await expect(bundleTabs(page)).toHaveCount(2);
+    await openShell(page);
+    await nameTwoShells(page);
+    await expect.poll(() => namesOf(page)).toEqual(["하나", "main.ts", "둘"]);
+
+    await page.keyboard.press("Meta+3");
+    await expect.poll(() => litName(page)).toBe("main.ts");
+    await expect(page.getByRole("main", { name: MAIN, exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/tab=code&code=billing%2Fsrc%2Fmain\.ts/);
+
+    await page.keyboard.press("Meta+4");
+    await expect.poll(() => litName(page)).toBe("둘");
+    await expect(page).toHaveURL(/tab=terminal/);
+    await expect(page).not.toHaveURL(/code=/);
+
+    // 셸에 포커스가 든 채로도 같은 칸이다.
+    await page.locator(".xterm-screen").click();
+    await expect(셸입력(page)).toBeFocused();
+    await page.keyboard.press("Meta+3");
+    await expect.poll(() => litName(page)).toBe("main.ts");
+    await page.keyboard.press("Meta+2");
+    await expect.poll(() => litName(page)).toBe("하나");
+
+    // 둘째 셸(셋째 칸)을 맨 앞 틈(0)으로 — 차례가 둘 · 하나 · main.ts가 된다.
+    await pressAndCross(page, 2);
+    await moveToGap(page, 0);
+    await page.mouse.up();
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "하나", "main.ts"]);
+
+    // ⌘3이 이제 「하나」, ⌘4가 파일 탭, ⌘2가 「둘」이다. 옛 차례면 각각 파일 탭 · 「둘」 · 「하나」다.
+    await page.keyboard.press("Meta+3");
+    await expect.poll(() => litName(page)).toBe("하나");
+    await page.keyboard.press("Meta+4");
+    await expect.poll(() => litName(page)).toBe("main.ts");
+    await expect(page.getByRole("main", { name: MAIN, exact: true })).toBeVisible();
+    await page.keyboard.press("Meta+2");
+    await expect.poll(() => litName(page)).toBe("둘");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });

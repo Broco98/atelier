@@ -42,6 +42,7 @@ import {
   countQuitShells,
   countSpawned,
   firstInputOfId,
+  hasBundleTab,
   isLiveShellOf,
   liveOwnerlessOf,
   markExited,
@@ -381,8 +382,9 @@ function focusShell(id: number): void {
 }
 
 /**
- * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 셸을 그 틈으로 옮긴다
- * (UI개선 결정 11 · UI개선 스펙 S10). **두 화면(work 화면 · `/terminal`)이 같은 이것을
+ * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 칸을 그 틈으로 옮긴다
+ * (UI개선 결정 11 · UI개선 스펙 S10). 끈 칸은 **묶음의 칸**이다 — 셸 칸이든 파일 탭이든 같은 틈에 놓인다(git-integration
+ * 결정 31). 이름은 셸만 끌리던 때의 것이다. **두 화면(work 화면 · `/terminal`)이 같은 이것을
  * 준다** — 탭 줄은 스토어를 모르고, 「놓은 곳이 이긴다」의 탭 줄 몫을 화면마다 적으면 한쪽만
  * 늙는다.
  *
@@ -396,12 +398,20 @@ export function dropShellOnSlot(): void {
   terminalStore.setState((state) => moveShell(state, move.shellId, move.slot));
 }
 
-/** 이 id의 셸이 아직 목록에 있나. 끌기의 원천이 살아 있는지를 묻는 자리가 이것 하나다. */
+/** 이 id의 셸이 아직 목록에 있나. */
 function hasShell(id: number): boolean {
   return terminalStore.state.shells.some((shell) => shell.id === id);
 }
 
-// **끄는 셸이 목록에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
+/**
+ * 이 id의 칸이 아직 묶음에 있나 — 셸 칸이든 파일 탭이든. 끌기의 원천이 살아 있는지를 묻는 자리가 이것 하나다. 셸 칸은 셸
+ * 목록과 묶음에서 함께 빠지므로(`removeShell`) 셸에게는 위 `hasShell`과 같은 답이다.
+ */
+function hasTab(id: number): boolean {
+  return hasBundleTab(terminalStore.state, id);
+}
+
+// **끄는 칸이 묶음에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
 // (정상 종료 · `×`·⌘W · 아카이빙의 회수) 모두 이 스토어의 상태를 바꾸므로, 길마다 부르는 대신 **상태를
 // 보고** 거둔다 — 한 길만 빠뜨리면 받침이 선 채 없는 셸로 분할이 켜진다. 두 화면(work · `/terminal`)이
 // 같은 이것을 딛는다. 비교는 id로만 한다: 소유자 키는 화면마다 다르지만 id는 하나다.
@@ -409,7 +419,8 @@ function hasShell(id: number): boolean {
 // **판정하는 자리는 이 구독 하나다.** 받는 자리(`dropShellOnSlot` · 본문 받침의 `dropHere`)는 다시 보지
 // 않는다 — 구독이 상태 변경과 같은 틱에 끌기를 걷어 받침도 틈도 사라지므로 거기까지 닿을 길이 없고,
 // 닿지 않는 검사는 어떤 시험도 붙들지 못한다.
-terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
+// 파일 탭도 같다 — 끄는 사이 `×` · ⌘W로 닫히면 놓을 칸이 없다(git-integration 판 01).
+terminalStore.subscribe(() => cancelGoneShellDrag(hasTab));
 
 /**
  * 지금 본문이 보여 주고 있는 셸. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —

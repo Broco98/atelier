@@ -1028,15 +1028,15 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // 배선은 렌더로 못 본다(핸들러는 직렬화되지 않는다). **정규식으로 블록을 잘라내지
   // 않는다** — 이 파일이 그 fail-open을 이미 겪었다. 리터럴 하나로 통째로 못박으면
   // 어느 갈래가 뒤집혀도 반드시 빨개진다.
-  it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 셸 칸을 가른다", () => {
+  //
+  // 묶음의 칸(셸 칸 · 파일 탭 — git-integration 결정 31)은 그 칸의 종류를 싣는다 — 종류는 레지스트리가 id로 안다.
+  it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 묶음의 칸을 그 종류로 가른다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
       `onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
-        armDrag(
-          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
-          from,
-        );
+        const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
+        if (kind) armDrag({ kind, owner, shellId }, from);
       }}`,
     )).toBe(1);
   });
