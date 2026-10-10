@@ -104,7 +104,7 @@ function AppDialog() {
         initialFocus={() => focusTarget(ask)}
         // 바깥을 눌러도 닫힌다 — 되돌릴 수 없는 일이어도 **취소로** 닫으므로 안전하다(S12).
         onBackdropClick={() => answer(false)}
-        // 셋째 버튼이 서면 넓어진다 — 세 버튼 글자가 330px 한 줄에 안 든다(프로토타입 400px). 둘인 물음의
+        // 셋째 버튼이 서면 넓어진다(프로토타입 400px) — 가운데 창의 폭(360px)은 버튼 둘의 폭이다. 둘인 물음의
         // 폭은 그대로다.
         className={ask?.extra ? "w-[400px]" : undefined}
       >

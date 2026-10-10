@@ -1,12 +1,11 @@
-import { isAtOrUnder } from "@/lib/path-prefix";
-import { modeOf, routesOf, slugOf } from "@/mode";
+import { isAtOrUnder, workSlugOf } from "@/lib/path-prefix";
 import { ownerOf, shellsOf } from "./shell-registry";
 import type { ShellOwner, ShellsState } from "./shell-registry";
 
 /**
  * 떠남(프로세스 스펙 S17)과 그때 회수할 셸(프로세스 결정 7). 순수 함수 둘이다.
  *
- * **떠남 = 그 셸의 owner 화면(work · Room · Terminal)에서 다른 owner의 화면이나 owner 없는 화면으로
+ * **떠남 = 그 셸의 owner 화면(work · Terminal)에서 다른 owner의 화면이나 owner 없는 화면으로
  * 옮기는 것이다.** 재는 자리는 앱 루트 한 곳 — 라우터의 현재 owner가 바뀌는 순간이다(`ShellReclaim`).
  * 터미널 패인이 내려가는 것에 걸지 않는다: 같은 work 안에서 spec 탭으로 바꿀 때도 패인이 내려가는데,
  * 그것은 떠남이 아니다. 탭은 주소의 search에 있어 owner가 그대로다.
@@ -18,15 +17,16 @@ import type { ShellOwner, ShellsState } from "./shell-registry";
  * 이 주소가 선 화면의 셸 owner. **셸을 띄우는 화면이 아니면 `null`이다** — 목록(`/works`), 아카이브,
  * 프로젝트, 설정이 그렇다.
  *
- * 셸을 띄우는 화면은 셋이다: 그 세계의 work(Room) 하나와 최상위 터미널. 주소를 읽는 규칙은 사이드바
- * 강조와 같은 것을 딛는다(`modeOf` · `slugOf`) — 여기서 따로 적으면 인코딩된 slug(한글)를 한쪽만 푸는
- * 날 떠남이 화면과 다른 owner를 본다. owner 키는 `ownerOf` 하나가 짓는다.
+ * 셸을 띄우는 화면은 둘이다: work 하나와 최상위 터미널. 주소를 읽는 규칙은 사이드바 강조와 같은 것을
+ * 딛는다(`workSlugOf`) — 여기서 따로 적으면 인코딩된 slug(한글)를 한쪽만 푸는 날 떠남이 화면과 다른
+ * owner를 본다. owner 키는 `ownerOf` 하나가 짓는다.
+ *
+ * **최상위 터미널의 owner는 빈 글자 `""`다** — 거짓 값이지만 「셸 화면이 아니다」(`null`)와 다르다.
  */
 export function screenOwner(pathname: string): ShellOwner | null {
-  const mode = modeOf(pathname);
-  if (isAtOrUnder(pathname, routesOf(mode).terminal)) return ownerOf(mode);
-  const slug = slugOf(pathname);
-  return slug === null ? null : ownerOf(mode, slug);
+  if (isAtOrUnder(pathname, "/terminal")) return ownerOf();
+  const slug = workSlugOf(pathname);
+  return slug === null ? null : ownerOf(slug);
 }
 
 /**

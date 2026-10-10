@@ -42,8 +42,8 @@ interface ShellTabsProps {
    */
   state: ShellsState;
   /**
-   * 이 줄이 그리는 화면 — **어느 세계의 무엇인가**(결정 10). **소유자의 slug가 비어 있으면
-   * 그 세계의 최상위 터미널**이고(`"atelier:"`·`"maison:"`), `null`이라는 갈래는 없다.
+   * 이 줄이 그리는 화면 — work의 slug이고, **빈 글자 `""`면 최상위 터미널**이다. `null`이라는
+   * 갈래는 없다.
    *
    * **이 파일에서 `null`은 다른 뜻이다.** 아래 `spec`의 `null`은 「문서 칸이 없다」,
    * `onDragTab`의 `shellId === null`은 「그 문서 칸」이다 — 최상위 터미널과는 상관이 없다.
@@ -125,12 +125,10 @@ interface ShellTabsProps {
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
    *
-   * 무엇이 오는지는 화면이 정한다 — work 화면은 상태 배지·ⓘ·⋯·분할·패널 열기이고,
-   * 그중 셋은 이 모듈이 알 수 없는 `features/works`의 것이다.
+   * 무엇이 오는지는 화면이 정한다 — work 화면은 상태 배지·⋯·분할이고(패널 토글은 레일 맨 위),
+   * 이 모듈이 알 수 없는 `features/works`의 것이다.
    */
   actions?: React.ReactNode;
-  /** 사이드바가 접혀 이 줄이 창 왼쪽 끝에 붙을 때 — 신호등을 피한다. */
-  inset?: boolean;
 }
 
 // 화면 머리행의 **가로 탭 줄**(결정 7·8·10). `[spec][셸…][+]`가 왼쪽부터 차고 오른쪽 끝에
@@ -141,11 +139,11 @@ interface ShellTabsProps {
 // 순서를 눈에 보이게 하는 것뿐이다. 화면에 보이는 순서와 ⌘1~9가 고르는 것이 어긋나면
 // 이 줄이 한 일이 없다.
 //
-// **이 줄은 늘 타이틀바를 겸한다.** 한때 같은 이름의 컴포넌트가 있었고 그것은 겸하는지를
-// `titlebar` prop으로 갈랐는데(그 화면이 `/terminal` 하나였다), 이제 두 화면 다 머리행이
-// 이 줄이다 — 그래서 44px 층 높이·창 드래그 영역·신호등 회피 여백이 조건이 아니라 성질이다.
-// 여백의 곡선이 `ease-panel`인 것은 사이드바 폭 트랜지션과 같아야 하기 때문이다(PageHeader와
-// 같은 근거 — index.css의 `--panel-ease`).
+// **이 줄은 바탕 줄에 선다 — 그 줄 자체가 아니다**(ui-refresh 결정 5 · 27). 44px 층 높이 · 창 드래그 영역 · 신호등 회피
+// 여백은 바탕 줄(`Frame`의 `TitleBar`, `<header>`)의 성질이고, 이 컴포넌트는 그 줄의 **자식들**(칸 · 세로선 · `+` · 끄는
+// 여백 · 조작)을 내놓는다 — 뿌리가 프래그먼트라 칸들이 `<header>`의 자식으로 바로 서고, 조작 묶음(`data-tab-actions`)이 여전히
+// 그 줄의 **마지막 자식**이다(e2e `tab-row.ts` · `WorksPage.test`가 그 자리로 집는다). 줄 안의 끄는 자리(세로선 · 빈 여백)는
+// 그대로 이 줄이 제 자식에 단다.
 //
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
@@ -168,7 +166,6 @@ function ShellTabs({
   onDropSlot,
   dragging,
   actions,
-  inset = false,
 }: ShellTabsProps) {
   // 상한도 그리는 것도 **이 화면**의 것이다(결정 23). 두 값이 같은 상태에서 같은 범위로
   // 나오는 것이 결정 30의 전부다.
@@ -291,7 +288,7 @@ function ShellTabs({
         }
         latest.current.onDragTab(id, from);
       },
-      onSlotMove: (event: React.PointerEvent) => {
+      onSlotMove: (event: { clientX: number; clientY: number }) => {
         const strip = stripRef.current;
         if (!pressed.current || !strip) return;
         pointerX.current = event.clientX;
@@ -328,30 +325,34 @@ function ShellTabs({
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeId, showing]);
 
+  // 끄는 동안 이 줄이 틈 소비자다(UI개선 스펙 S10). **바탕 줄 전체**에서 듣는 것은 높이 때문이다 — 스크롤 상자는 칸
+  // 높이(28px)라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이
+  // 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
+  //
+  // **그 줄은 이 컴포넌트의 것이 아니다** — 바탕 줄 `<header>`는 `TitleBar`가 그리고 이 줄은 그 자식들만 내놓는다(위
+  // 머리말). 그래서 React 속성으로 못 달고 그 상자에 손으로 단다. 칸 상자(`stripRef`)는 늘 서 있어 그 줄을 늘 찾는다.
+  // 줄 위에서 떼면 이 듣기가 창의 듣기(`drop` · 제스처의 `end`)보다 먼저 받는다 — 요소가 창보다 먼저 버블을 받는다.
+  useEffect(() => {
+    const row = stripRef.current?.closest("header");
+    if (!row) return;
+    row.addEventListener("pointermove", tabHandlers.onSlotMove);
+    row.addEventListener("pointerleave", tabHandlers.onSlotLeave);
+    row.addEventListener("pointerup", tabHandlers.onSlotDrop);
+    return () => {
+      row.removeEventListener("pointermove", tabHandlers.onSlotMove);
+      row.removeEventListener("pointerleave", tabHandlers.onSlotLeave);
+      row.removeEventListener("pointerup", tabHandlers.onSlotDrop);
+    };
+  }, [tabHandlers]);
+
   return (
-    <header
-      // 이 줄이 창 맨 위다 — 없으면 **창을 못 끈다**. 안쪽 버튼들은 이 속성이 없으므로
-      // 그대로 눌린다(PageHeader가 브레드크럼에 쓰는 방식과 같다).
-      data-tauri-drag-region
-      // 끄는 동안 이 줄이 틈 소비자다(UI개선 스펙 S10). **줄 전체**에서 듣는 것은 높이 때문이다 —
-      // 스크롤 상자는 칸 높이(28px)라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는
-      // 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
-      onPointerMove={tabHandlers.onSlotMove}
-      onPointerLeave={tabHandlers.onSlotLeave}
-      onPointerUp={tabHandlers.onSlotDrop}
-      className={cn(
-        // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다(PageHeader와 같다).
-        "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-4 transition-[padding] duration-[220ms] ease-panel",
-        // **왼쪽 여백은 두 경우가 같은 값을 쓴다**(결정 24 · index.css의 `--tab-lead`).
-        // 접혔으면 셸 컨트롤에서, 펼쳤으면 사이드바 경계선에서 재는 것뿐이고 거리는 하나다 —
-        // 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직인다.
-        inset ? "pl-(--titlebar-inset-tabs)" : "pl-(--tab-lead)",
-      )}
-    >
+    // 뿌리가 없다 — 칸들이 바탕 줄 `<header>`(`TitleBar`)의 자식으로 바로 선다(머리말). 줄의 높이 · 칸 사이 간격(gap) ·
+    // 여백 · 창 끌기는 그 줄의 것이다.
+    <>
       {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
           고정된다. ⌘W가 여기서 아무 일도 안 하는 것(결정 13)이 같은 말이다.
 
-          닫는 버튼이 없어 칸이 버튼 하나로 끝나므로 켜짐 표시(`toggle-on`)와 그것을 말하는
+          닫는 버튼이 없어 칸이 버튼 하나로 끝나므로 켜짐 표시(`tab-on`)와 그것을 말하는
           속성(`aria-pressed`)이 **같은 요소**에 붙는다. 아래 셸 칸은 형제 버튼 둘이라
           그럴 수 없다 — 그쪽 주석이 이유를 든다.
 
@@ -381,11 +382,14 @@ function ShellTabs({
             // **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를
             // 가르는 안은 실물에서 접었다 — 그 칸만 규격이 갈리면 줄에서 튄다. 「다른 종류」는
             // 옆의 세로선 하나가 말한다.
-            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] pl-2 pr-2.5 text-[12.5px] transition-colors",
-            spec.on ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
+            //
+            // **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고
+            // 켜진 칸은 흰 면(`tab-on`)이다. 꺼진 칸의 글리프만 흐리다(`.at-tab .ic`).
+            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-foreground transition-colors",
+            spec.on ? "tab-on font-medium" : "hover:bg-state-1",
           )}
         >
-          <File className="size-3.5 shrink-0" strokeWidth={1.8} />
+          <File className={cn("size-3.5 shrink-0", !spec.on && "text-tertiary")} strokeWidth={1.8} />
           <span className="min-w-0 truncate">spec</span>
         </button>
       )}
@@ -419,15 +423,15 @@ function ShellTabs({
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
           여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 그 옆에 자리가 고정된 것들
           (`spec` · 세로선 · `+` · 끄는 여백 · 조작 · 줄 사이 gap · 좌우 패딩)이 이어 선다.
-          **줄의 폭은 창 폭이 아니다** — 창에서 사이드바와 작업 패널을 뺀 나머지라, 창이 더
+          **줄의 폭은 창 폭이 아니다** — 창에서 사이드바를 뺀 나머지라(작업 패널은 줄 아래 카드 줄에 선다 — ui-refresh 결정 4), 창이 더
           작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도 안 들어간다.
 
           **그래도 칸 하나는 늘 온전히 보인다 — 이 상자의 바닥이 칸 하나(44px)다.** 한때
           `min-w-0`이라 바닥이 없었고, 900px 창에 작업 패널이 열린 기본 배치에서 줄이 290px을
           받자 넘치는 몫을 이 상자가 전부 받아 **0px이 됐다** — 칸이 화면에 없어 누를 수도 끌
           수도 없었다(v0.13.0부터). 바닥이 서도 줄이 넘치지 않는 것은 이 줄을 이는 열이 그
-          바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_COLUMN`) — 자리를 내주는 것은 작업 패널과
-          사이드바다.
+          바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_COLUMN`) — 자리를 내주는 것은 사이드바다
+          (한때 줄 옆에 섰던 작업 패널도 내줬다).
 
           **바닥은 폭(`w-[44px]`)으로도 적는다** — 칸의 `min-w-[44px]`과 같은 수다. 그 열이 버틸 폭은 이 줄의 min-content인데, 그
           계산은 flex가 줄인 폭이 아니라 각 항목이 **적어 둔 폭**을 센다 — 늘 넓게 서는 기준은
@@ -518,7 +522,7 @@ function ShellTabs({
 
       {/* 조작 사이 간격이 **왼쪽 셸 컨트롤과 같은 값이다**(결정 24 — `--titlebar-control-gap`).
           한 줄에 선 아이콘 버튼이 자리마다 다른 간격을 쓰면 그중 하나만 따로 떨어진 것처럼
-          읽힌다 — 목록 패널 헤더가 같은 이유로 이미 같은 값을 쓴다. */}
+          읽힌다. */}
       {actions && (
         <div
           data-tab-actions
@@ -527,7 +531,7 @@ function ShellTabs({
           {actions}
         </div>
       )}
-    </header>
+    </>
   );
 }
 
@@ -560,8 +564,13 @@ function PlusButton({
         // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
         // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
         // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
+        //
+        // 올리거나 누를 때의 면은 바탕의 한 단(`chrome-hover`)이다(ui-refresh 결정 18 · DS `.at-icon-btn.on-chrome`) —
+        // 카드 위 버튼의 `quiet-hover`(state-2)는 회색 바탕에서 거의 안 보인다. 레일 토글과 같은 어휘다(`Rail.tsx`).
         "-ml-0.5 shrink-0 text-tertiary",
-        full ? "icon-button opacity-40" : "icon-button-quiet",
+        full
+          ? "icon-button opacity-40"
+          : "icon-button transition-colors hover:bg-chrome-hover hover:text-foreground active:bg-chrome-hover",
         className,
       )}
       {...props}
@@ -603,11 +612,10 @@ const ShellTab = memo(function ShellTab({
   // 사라지는 실물 사고를 냈고 사용처가 0이 되어 지워졌다(결정 104).
   const name = shellRowName(shell);
   const end = shellEndLabels(shell);
-  // 결정 4 — **탭 줄은 칸마다**다. 사이드바가 줄 전체로 말하는 것(`runningAgentsOf`)과
-  // 갈리는 자리이고, 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
+  // 결정 4 — **탭 줄은 칸마다**다. 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
   // 갈린다. 판정도 표도 새로 짓지 않는다: 「끝난 칸은 아무것도 안 돈다」는 `runningOn`
   // 하나가 알고(`shell.running`을 직접 읽으면 죽은 칸에 로고가 굳는다), 이름→그림은
-  // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
+  // `agentMarkOf` 하나가 안다 — Processes의 셸 행과 갈리면 같은 상태가 두 말을 한다.
   const running = runningOn(shell);
   const mark = agentMarkOf(running);
   // **물들임의 값도 칸마다다**(결정 6). 판정은 `signalOf` 하나이고 — 행도 띠도 알림도 그
@@ -640,8 +648,9 @@ const ShellTab = memo(function ShellTab({
     // 바깥이 가진 padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무
     // 일이 없는 죽은 자리가 된다(커밋 c0978b1이 spec 트리에서 없앤 것).
     //
-    // hover는 **꺼진 가지 안에만** 둔다. toggle-on이 자기 hover를 품으므로 함께 얹으면
-    // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+    // hover는 **꺼진 가지 안에만** 둔다. 켜진 칸의 흰 면(`tab-on`)은 hover에 안 바뀌는데(DS `.at-tab.is-on:hover`),
+    // 꺼진 칸의 hover를 함께 얹으면 배경 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고) —
+    // 지면 켜진 칸이 가리킬 때마다 회색으로 꺼진다.
     // 꺼진 칸이 `quiet-hover`(2)가 아니라 1인 것은 2가 **행이 선택된** 농도라서다 —
     // 꺼진 칸을 2로 밝히면 「선택됨」으로 읽힌다.
     //
@@ -663,7 +672,7 @@ const ShellTab = memo(function ShellTab({
     // 걷었으므로 이제 그 산술로는 안 나온다. 수를 다시 뽑지 않고 둔 것은 이 폭들이
     // 실물에서 확인된 값이라서다. 다음에 폭을 만질 일이 생기면 그때 다시 잰다. **여기가 바닥이고 그 아래는 스크롤이다**(결정 20) — 한때
     // 이 자리에 「여덟 칸이 최소 폭이어도 900px 창에 여유가 남는다」고 적혀 있었는데,
-    // 그것은 창 폭을 잰 것이었다. 이 줄이 받는 폭은 창에서 사이드바와 작업 패널을
+    // 그것은 창 폭을 잰 것이었다. 이 줄이 받는 폭은 창에서 사이드바를
     // 뺀 나머지다(위 스크롤 상자 주석의 산술).
     //
     // `@container`가 **칸마다 자기 폭을 재게** 한다. 줄(header)을 재면 안 되는 것은 한
@@ -675,7 +684,9 @@ const ShellTab = memo(function ShellTab({
       // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
       data-shell-key={shell.shellKey ?? undefined}
       className={cn(
-        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
+        // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18의 「탭 글자 `#191c1f`」) — 켜짐을 글자색으로
+        // 가르지 않는다. 그것은 켜진 칸의 흰 면이 한다.
+        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-foreground transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
         // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
         // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.
@@ -688,19 +699,15 @@ const ShellTab = memo(function ShellTab({
         // 물들어 에이전트 마크까지 상태색을 받는다 — 잉크가 붙는 자리는 이름 글자 하나이고
         // 그 근거는 `signalTint` 머리말이 든다. 그래서 물든 칸도 회색 잉크를 그대로 쓴다.
         //
-        // **물들면 회색 배경이 물러난다**(결정 6). 켜진 칸의 `toggle-on`까지 그렇다 —
+        // **물들면 켜짐의 면이 물러난다**(결정 6). 켜진 칸의 흰 면(`tab-on`)까지 그렇다 —
         // 「부르는 탭」이 「고른 탭」보다 위 사실이라, 둘을 겹쳐 두면 유틸리티 정렬 순서가
         // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49).
-        tint === null
-          ? active
-            ? "toggle-on"
-            : "text-muted-foreground hover:bg-state-1"
-          : cn("text-muted-foreground", tint.cell),
+        tint === null ? (active ? "tab-on" : "hover:bg-state-1") : tint.cell,
       )}
     >
       {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
           분할 중에는 켜진 칸이 둘인데(결정 12) tablist에서 selected가 둘이면 잘못된
-          ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+`toggle-on`으로 말하고
+          ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고
           있어(분할 토글·소스 토글) 새 어휘를 들이면 화면 안에서 말이 두 벌이 된다.
 
           이름 버튼이 자기 오른쪽 여백까지 품는다. h-full은 칸 높이 전체가 눌리게 한다 —
@@ -773,7 +780,7 @@ const ShellTab = memo(function ShellTab({
             그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
             안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로
             쓴 것과 정면으로 어긋난다.
-            직접 선언한 색이라 켜진 칸의 toggle-on 글자색에 안 덮인다. */}
+            직접 선언한 색이라 칸의 본문 글자색에 안 덮인다. */}
         {end && <span className="shrink-0 text-tertiary">{end.mark}</span>}
       </Hint>
       {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span

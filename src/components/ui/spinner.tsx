@@ -1,6 +1,6 @@
 // 앱 규격으로 고친 자리: registry의 svg 하나를 다시 짰다(결정 5) — 겉 상자 span이 data-slot·role·aria-label을 들고(이름 Loading→불러오는 중, 문장은 한국어), 안에 호(Loader2Icon)와 원(CircleIcon)을 둬 동작 줄이기면 motion-reduce 변형이 호를 숨기고 원을 세운다.
 import type { ComponentProps } from "react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 import { CircleIcon, Loader2Icon } from "lucide-react"
 
 // 크기는 부르는 자리가 `className`(size-*)으로 정한다. 두 글리프는 겉 상자를 꽉 채운다.

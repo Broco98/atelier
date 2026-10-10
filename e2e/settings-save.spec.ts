@@ -192,16 +192,18 @@ test("글꼴 칸에 프리셋 밖의 이름을 적으면 어느 칩도 안 켜�
 
 // 스토리 107·108 — 글꼴 크기 칸은 숫자 스피너가 없는 글자칸이다(`textbox`로 집힌다 — `type="number"`면
 // `spinbutton`이다). 틀린 값이면 빨간 테두리와 함께 스크린리더에 「잘못된 값」(`aria-invalid`)으로 읽히고,
-// 옆 안내 「px · 8–32」는 그 칸의 설명으로 읽힌다(Field 설명). 「틀렸다」는 맞는 값이 「틀리지 않았다」로 선
-// 뒤에 잰다 — 속성을 아예 안 다는 칸도 `true`는 아니므로, 앵커 없이는 무엇도 안 잰다.
-test("글꼴 크기 칸에 틀린 값을 넣으면 aria-invalid=true이고, 안내 「px · 8–32」가 그 칸의 설명이다", async ({
+// 「크기」 행의 설명 줄(판 06 문구 표 S3 — 범위와 비울 때의 기본 크기)이 그 칸의 설명으로 읽힌다. 「틀렸다」는 맞는 값이
+// 「틀리지 않았다」로 선 뒤에 잰다 — 속성을 아예 안 다는 칸도 `true`는 아니므로, 앵커 없이는 무엇도 안 잰다.
+test("글꼴 크기 칸에 틀린 값을 넣으면 aria-invalid=true이고, 행의 설명 줄이 그 칸의 설명이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
 
   const 크기 = 구획(page, "터미널 설정").getByRole("textbox", { name: "터미널 글꼴 크기", exact: true });
-  await expect(크기, "안내가 칸의 설명으로 안 읽힌다").toHaveAccessibleDescription("px · 8–32");
+  await expect(크기, "행의 설명 줄이 칸의 설명으로 안 읽힌다").toHaveAccessibleDescription(
+    "8–32px. 비워 두면 기본 크기(15px)예요.",
+  );
 
   await 크기.fill("16");
   await expect(크기).not.toHaveAttribute("aria-invalid", "true");

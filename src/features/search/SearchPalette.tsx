@@ -14,8 +14,6 @@ import { createFirstFrameGuard } from "@/components/ui/first-frame-guard";
 import { Input } from "@/components/ui/input";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { cn } from "@/lib/utils";
-import type { Mode } from "@/mode";
-import { itemNameOf } from "@/features/works/work-sections";
 import { destinationIcon, destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
@@ -27,7 +25,7 @@ import type { SearchHit } from "./types";
  * (`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **바깥은 Dialog다**(결정 10) — 창(`dialog`)으로 읽히고, 포커스를 가두고, 닫히면 열기 전 자리로
- * 포커스를 돌려주는 것은 Base UI가 한다. 모양(자리 12vh · 폭 560px · 떠 있는 카드)은 부품 파일의
+ * 포커스를 돌려주는 것은 Base UI가 한다. 모양(자리 12vh · 폭 600px · 떠 있는 카드)은 부품 파일의
  * `palette` 변형이 든다(`components/ui/dialog.tsx`). **목록은 우리 listbox 그대로다** — 순서와
  * 묶음은 코어가 정하고, 입력칸이 켜진 줄을 `aria-activedescendant`로 가리킨다.
  *
@@ -57,33 +55,22 @@ import type { SearchHit } from "./types";
  * 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
  * 머리이기도 한** 자리가 생기지 않는다.
  */
-function groupNameOf(mode: Mode, kind: SearchHit["kind"]): string {
-  // **항목 갈래만 세계를 탄다.** 나머지 넷은 두 세계가 같은 말로 부르는 것들이고
-  // (`프로젝트`는 Atelier에서만 결과로 올라온다 — 결정 17), 항목 하나만 Atelier에서 `작업`
-  // Maison에서 `Room`이다. 그 낱말의 정본은 목록의 어휘 표다(`work-sections.ts`) —
-  // 여기 리터럴로 다시 적으면 사이드바는 Room 어휘인데 팔레트 구획 머리만 「작업」인,
-  // **한 화면에 두 세계의 말이 서는** 판이 난다.
-  const table: Record<SearchHit["kind"], string> = {
-    destination: "가는 곳",
-    work: itemNameOf(mode),
-    project: "프로젝트",
-    doc: "문서",
-    text: "본문",
-  };
-  return table[kind];
-}
+const GROUP_NAMES: Record<SearchHit["kind"], string> = {
+  destination: "가는 곳",
+  work: "작업",
+  project: "프로젝트",
+  doc: "문서",
+  text: "본문",
+};
 
 /**
  * 줄에 서는 말. **갈래마다 다르다** — 코어가 태그를 달아 보내는 이유가 이것이다.
  * 목적지의 라벨은 프런트 것이라(결정 21) 코어가 준 `key`로 여기서 되찾는다.
- *
- * **되찾는 표가 세계마다 다르다** — 그래서 이 함수만 모드를 받는다. 나머지 넷은 코어가 준
- * 말을 그대로 세우므로 세계를 알 필요가 없다.
  */
-function rowText(mode: Mode, hit: SearchHit): { name: string; detail?: string; snippet?: string } {
+function rowText(hit: SearchHit): { name: string; detail?: string; snippet?: string } {
   switch (hit.kind) {
     case "destination":
-      return { name: destinationLabel(mode, hit.key) };
+      return { name: destinationLabel(hit.key) };
     case "work":
       return { name: hit.title };
     case "project":
@@ -127,7 +114,6 @@ function rowKey(hit: SearchHit): string {
  * 그린다. 창(바깥)과 키 처리는 아래 `PalettePopup`이 든다.
  */
 export function SearchList({
-  mode,
   query,
   hits,
   state,
@@ -136,12 +122,6 @@ export function SearchList({
   onGo,
   inputRef,
 }: {
-  /**
-   * 어느 세계의 목록인가. **그리는 데 이것이 필요한 자리는 목적지 라벨 하나다**(`rowText`) —
-   * 코어가 목적지는 `key`만 돌려주고(결정 21) 그 key를 말로 푸는 표가 세계마다 다르다.
-   * 여기서 안 받고 주소로 되짚으면 `/settings`가 늘 Atelier로 눕는다(`mode.ts`의 `modeOf`).
-   */
-  mode: Mode;
   query: string;
   hits: SearchHit[];
   /**
@@ -188,6 +168,10 @@ export function SearchList({
         ref={inputRef}
         // 팔레트에 제목이 없다(결정 17) — 이 칸이 첫 줄이라 아래 목록과 선 하나로 갈린다.
         variant="flush"
+        // DS 팔레트의 입력 줄(`.at-palette-input`)이다 — 높이 52 · 글자 14 · 좌우 18이라 글자가 아래 글리프 칸과
+        // 한 세로선에 선다(6 + 12). 부품의 `flush`는 판 03이 팔레트 몫으로 남긴 채라 그 값을 여기서 준다
+        // (ui-refresh 결정 25 · 판 06 티켓 08 — 부품 파일은 이 판에서 고치지 않는다).
+        className="h-13 px-4.5 text-row"
         type="text"
         value={query}
         onChange={(event) => onQuery(event.target.value)}
@@ -213,21 +197,23 @@ export function SearchList({
         className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
       >
         {hits.map((hit, at) => {
-          const { name, detail, snippet } = rowText(mode, hit);
+          const { name, detail, snippet } = rowText(hit);
           // **목적지 줄만 글리프를 든다**(결정 17). 나머지 갈래는 `null`이라 빈 슬롯이 서고,
           // 그래서 글자 시작점이 층을 가로질러 하나다.
-          const Glyph = hit.kind === "destination" ? destinationIcon(mode, hit.key) : null;
+          const Glyph = hit.kind === "destination" ? destinationIcon(hit.key) : null;
           return (
             <Fragment key={rowKey(hit)}>
               {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
                   낸다. 머리는 `role="option"`이 아니라 방향키가 여기 서지 않는다: 서면
                   Enter가 갈 곳이 없는 자리가 생긴다. */}
               {(at === 0 || hits[at - 1].kind !== hit.kind) && (
+                // 무리 머리는 DS `.at-palette-cap`이다 — 12px 구획 머리 색, 안쪽 10 12 4. 좌우가 줄과 같아 글자가
+                // 글리프 칸과 한 세로선이다(ui-refresh 결정 25).
                 <p
                   data-head=""
-                  className="shrink-0 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground first:pt-0.5"
+                  className="shrink-0 px-3 pt-2.5 pb-1 text-caption text-section"
                 >
-                  {groupNameOf(mode, hit.kind)}
+                  {GROUP_NAMES[hit.kind]}
                 </p>
               )}
               <div
@@ -241,9 +227,9 @@ export function SearchList({
                 aria-selected={at === selected}
                 onClick={() => onGo(hit)}
                 className={cn(
-                  // 간격이 **9px**인 것은 사이드바 규격이다(결정 17·18) — 슬롯 17px과
-                  // 합쳐 거터가 26px이 되고, 그 값이 사이드바 nav 줄의 글자 시작점과 같다.
-                  "flex shrink-0 items-baseline gap-[9px] rounded-[8px] px-2.5 py-1.5 outline-none",
+                  // DS 팔레트 행(`.at-palette-row`)이다 — 36px · 모서리 10 · 안쪽 0 12 · 틈 10(ui-refresh 결정 6 · 25).
+                  // 슬롯 17px과 틈이 합쳐 거터가 27px이고, 켜진 줄은 `state-2`다.
+                  "flex h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 outline-none",
                   at === selected ? "bg-state-2" : "hover:bg-state-1",
                 )}
               >
@@ -256,9 +242,8 @@ export function SearchList({
                     **내용폭**의 1/3이라 padding이 그 바닥까지 175.3px → 166.7px로 깎는다.
                     자식은 내용폭을 안 바꾼다.
 
-                    **`self-center`가 필요하다** — 줄이 `items-baseline`이라 없으면 글리프가
-                    글자 베이스라인에 앉아 사이드바(`items-center`)와 세로 위치가 갈린다. */}
-                <span data-gutter="" className="size-[17px] shrink-0 self-center">
+                    글리프는 줄(`items-center`)의 세로 가운데에 서고, 색은 DS 팔레트의 글리프 색이다. */}
+                <span data-gutter="" className="size-[17px] shrink-0 text-muted-foreground">
                   {Glyph !== null && <Glyph className="size-[17px]" strokeWidth={1.7} />}
                 </span>
                 {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
@@ -267,11 +252,11 @@ export function SearchList({
                     길면 0이 되고 줄이 가로로 넘친다.
 
                     **그 숫자는 스니펫에 바닥이 생기기 전의 것이다.** 지금 스니펫은
-                    `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 26px이
+                    `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 27px이
                     나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
-                <span className="truncate text-[13px] tracking-[-0.01em]">{name}</span>
+                <span className="truncate text-row">{name}</span>
                 {detail !== undefined && (
-                  <span className="truncate text-[12px] text-tertiary">{detail}</span>
+                  <span className="truncate text-ui text-tertiary">{detail}</span>
                 )}
                 {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6). 코어는
                     맞은 문단을 통째로 펴서 보내고, 「한 줄에 얼마나 보일까」는 화면 폭이
@@ -279,13 +264,13 @@ export function SearchList({
                     (같은 실측에서 175px·한글 13자). 남는 폭이 그보다 넓으면 그만큼 다
                     갖고(`grow`), 모자라면 이름과 경로가 대신 줄어든다. */}
                 {snippet !== undefined && (
-                  <span className="shrink-0 grow basis-1/3 truncate text-[12px] text-tertiary">
+                  <span className="shrink-0 grow basis-1/3 truncate text-ui text-tertiary">
                     {snippet}
                   </span>
                 )}
                 {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
                 {isArchived(hit) && (
-                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                  <span className="ml-auto shrink-0 text-caption text-tertiary">
                     아카이브
                   </span>
                 )}
@@ -296,7 +281,7 @@ export function SearchList({
         {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
             여기 서지 않는다(`role="option"`이 없다). */}
         {state === "ready" && hits.length === 0 && (
-          <p data-note="" className="px-2.5 py-1.5 text-[13px] text-muted-foreground">
+          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
             맞는 것이 없습니다
           </p>
         )}
@@ -305,7 +290,7 @@ export function SearchList({
             (`showProblem`의 「…하지 못했습니다」). **이유는 안 적는다** — 여기로 오는 것은
             IO 오류뿐이라 사용자 손에 고칠 것이 없고, 다시 치는 것이 곧 다시 묻는 것이다. */}
         {state === "failed" && (
-          <p data-note="" className="px-2.5 py-1.5 text-[13px] text-muted-foreground">
+          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
             검색하지 못했습니다
           </p>
         )}
@@ -340,13 +325,13 @@ export function armSearchPalette(): void {
  * 창에 있어야 해서다**(S25): 입력칸에만 달면 카드의 누를 것 없는 자리(그룹 머리 · 안내 · 여백)를
  * 누른 순간 포커스가 창으로 가고 그 뒤로 방향키가 죽는다. 입력칸의 키도 버블로 창에 온다.
  */
-function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
+function PalettePopup({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   // **셋을 여기서 가른다.** `data`만 꺼내면 「못 물었다」가 「아직 모른다」로 접힌다 —
   // `keepPreviousData`는 앞 성공이 있을 때만 값을 주므로, 열자마자 나간 첫 질의가 실패하면
   // `data`는 영영 `undefined`다.
-  const { data, isError } = useSearchHits(mode, query);
+  const { data, isError } = useSearchHits(query);
   const state = isError ? "failed" : data === undefined ? "pending" : "ready";
   const hits = data?.hits ?? [];
   const [selected, setSelected] = useState(0);
@@ -371,7 +356,7 @@ function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
   // 조각은 열 때마다 새로 붙으므로 도로 내릴 자리가 없다.
   const went = useRef(false);
   const go = (hit: SearchHit) => {
-    const target = hitTarget(mode, hit);
+    const target = hitTarget(hit);
     if (target === null) return;
     went.current = true;
     onClose();
@@ -410,7 +395,6 @@ function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
       onKeyDown={onKeyDown}
     >
       <SearchList
-        mode={mode}
         query={query}
         hits={hits}
         state={state}
@@ -432,20 +416,13 @@ function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
  * 떠 있는가를 받아 창을 여닫는 자리. 떠 있는가는 앱 셸이 든다 — 여는 길이 셋(⌘K · 검색 버튼 ·
  * 메뉴)이라 그 state가 한 자리에 살아야 한쪽으로 연 팔레트를 다른 쪽이 안다.
  *
- * **어느 세계인지를 받아서 안다**(결정 1). 스스로 주소를 보고 `modeOf`로 되짚지 않는 이유는
- * `/settings`가 세계 밖이기 때문이다 — 접두사가 없어 그 주소는 늘 Atelier로 눕고, 그러면
- * Maison에서 설정을 열어 둔 채 누른 ⌘K만 저쪽 세계를 뒤진다. 셸이 이미 그 합성을 들고 있어
- * (`AppShell.tsx`의 `shellMode`) 여기서 다시 구독할 이유도 없다.
- *
  * **닫히면 포커스는 열기 전 자리로 돌아간다** — 셸에서 열었으면 셸이다. 창이 돌려준다(Base UI).
  * 안 돌려주면 Esc 뒤에 친 글자가 아무 데도 안 들어간다.
  */
 function SearchPalette({
-  mode,
   open,
   onClose,
 }: {
-  mode: Mode;
   open: boolean;
   onClose: () => void;
 }) {
@@ -483,7 +460,7 @@ function SearchPalette({
           닫는 데 잃는 것이 없다. 위에 뜬 확인 창의 버튼은 이 막이 아니라 닫지 않는다. */}
       <DialogPortal>
         <DialogOverlay />
-        <PalettePopup mode={mode} onClose={onClose} />
+        <PalettePopup onClose={onClose} />
       </DialogPortal>
     </Dialog>
   );

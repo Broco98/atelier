@@ -5,19 +5,11 @@ import { routeTree } from "./routeTree.gen";
 import { worksQuery } from "./features/works/hooks";
 import { projectsQuery } from "./features/projects/hooks";
 import { archiveQuery } from "./features/archive/hooks";
-import {
-  lastMode,
-  modeEntryTarget,
-  modeSwitchTarget,
-  rememberVisit,
-  shellMode,
-  shellStore,
-} from "./components/shell/shell-store";
+import { appReturnTarget, shellStore } from "./components/shell/shell-store";
 import { navigateGuardingSettings } from "./features/settings/navigate-guarding-settings";
 import { trackCanGoForward } from "./can-go-forward";
-import { recallSearch, rememberView, tabSearch } from "./routes/-work-search";
+import { rememberView, tabSearch } from "./routes/-work-search";
 import type { ViewTab } from "./routes/-work-search";
-import type { Mode } from "./mode";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
 import type { ArchiveEntry } from "./features/archive/types";
@@ -51,29 +43,18 @@ const archives = (...slugs: Array<string>) =>
 
 interface SetupOptions {
   works?: Array<WorkView>;
-  /**
-   * Maison 쪽 목록. 안 주면 Atelier의 것을 그대로 쓴다 — 두 세계에 같은 이름이 설 수 있어
-   * (결정 10) 대부분의 케이스에는 그게 오히려 현실적이고, **갈라 주면 어느 캐시를 읽었는지**를
-   * 잴 수 있다(「Maison은 Maison 목록으로 정규화한다」).
-   */
-  rooms?: Array<WorkView>;
   projects?: Array<ProjectView>;
   archives?: Array<ArchiveEntry>;
-  /** 같은 이유로 갈라 둘 수 있는 Maison 아카이브 목록. */
-  maisonArchives?: Array<ArchiveEntry>;
   lastWork?: string | null;
-  /** Maison 쪽 칸. 같은 목록을 두 세계가 다른 기억으로 읽는 것이 이 티켓의 요점이다. */
-  lastRoom?: string | null;
   lastProject?: string | null;
   lastArchive?: string | null;
 }
 
 /**
- * 이 파일은 DOM 없는 Node에서 돌아 localStorage가 **아예 없다.** 마지막 모드가 거기 살므로
- * 케이스마다 새로 심는다 — 전역이라 안 심으면 앞 케이스가 적어 둔 세계로 뒷 케이스가 뜬다.
+ * 이 파일은 DOM 없는 Node에서 돌아 localStorage가 **아예 없다.** 케이스마다 새로 심는다 — 전역이라
+ * 안 심으면 앞 케이스가 적어 둔 값이 뒷 케이스에 샌다.
  *
- * 돌려주는 것은 저장소의 속이다: 키 이름을 테스트가 베껴 적으면 그 이름이 바뀌는 날
- * 「모르는 값이 남아 있다」 케이스가 **빈 저장소**를 재고 초록이 된다.
+ * 돌려주는 것은 저장소의 속이다 — 앞 판이 남긴 키를 심고, 라우팅이 무엇을 적었는지 들여다본다.
  */
 function installStorage(broken?: Partial<Storage>) {
   const values = new Map<string, string>();
@@ -96,27 +77,23 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   const queryClient = new QueryClient();
   // 캐시를 미리 채우면 beforeLoad의 ensureQueryData가 Tauri invoke 없이 그대로 돌려준다.
   // 목록이 정규화의 입력이므로, 이 seam에서 목록은 주입하는 값이다.
-  //
-  // **캐시가 모드별로 갈렸다**(`worksQuery(mode)`) — 두 칸을 다 심는다. 한쪽만 심으면 저쪽
-  // 세계의 beforeLoad가 IPC를 타려다 node에서 빈 배열로 떨어져 「정규화가 안 된다」로만 보인다.
-  const worksSeed = options.works ?? works("work-a", "work-b");
-  const archiveSeed = options.archives ?? archives("치운-a", "치운-b");
-  queryClient.setQueryData(worksQuery("atelier").queryKey, worksSeed);
-  queryClient.setQueryData(worksQuery("maison").queryKey, options.rooms ?? worksSeed);
+  queryClient.setQueryData(worksQuery().queryKey, options.works ?? works("work-a", "work-b"));
   queryClient.setQueryData(
-    projectsQuery("atelier").queryKey,
+    projectsQuery().queryKey,
     options.projects ?? projects("proj-a", "proj-b"),
   );
-  queryClient.setQueryData(archiveQuery("atelier").queryKey, archiveSeed);
-  queryClient.setQueryData(archiveQuery("maison").queryKey, options.maisonArchives ?? archiveSeed);
+  queryClient.setQueryData(
+    archiveQuery().queryKey,
+    options.archives ?? archives("치운-a", "치운-b"),
+  );
   // "이번 세션에서 마지막으로 보던 항목"도 정규화의 입력이다. 스토어는 모듈 싱글턴이라
   // 테스트마다 여기서 덮어써 이전 테스트가 남긴 값이 새지 않게 한다.
   shellStore.setState((state) => ({
     ...state,
-    workSlug: { atelier: options.lastWork ?? null, maison: options.lastRoom ?? null },
+    workSlug: options.lastWork ?? null,
     projectSlug: options.lastProject ?? null,
-    archiveSlug: { atelier: options.lastArchive ?? null, maison: null },
-    lastPlace: { atelier: null, maison: null },
+    archiveSlug: options.lastArchive ?? null,
+    lastPlace: null,
   }));
 
   const history = createMemoryHistory({ initialEntries });
@@ -171,43 +148,27 @@ describe("진입 정규화", () => {
   });
 });
 
-// 앱을 다시 켜면 **떠났던 세계로 돌아온다**(결정 9). 위 describe의 케이스들이 Atelier로
-// 가는 것은 저장소가 비어 있기 때문이다 — 그 기본값과 여기의 기억이 같은 함수에서 나온다.
-describe("진입은 마지막 세계로 간다", () => {
-  it("마지막이 Maison이었으면 Rooms의 첫 화면까지 정규화된다", async () => {
-    // 앞 세션이 남긴 것. 적는 문이 하나뿐이라 테스트도 그 문으로 심는다 —
-    // 저장소 키를 여기서 베껴 적으면 이름이 바뀌는 날 이 케이스가 빈 저장소를 잰다.
-    rememberVisit("/maison/rooms/work-b");
-
-    const { router } = setup(["/"]);
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/work-a");
-  });
-
-  it("저장소에 모르는 값이 남아 있으면 Atelier로 떨어진다", async () => {
+// 진입은 저장소를 읽지 않는다 — 앞 판이 남긴 `last-mode`(지운 모드의 이름이어도)는 남아도 해가 없다
+// (ui-refresh 결정 23). 앱은 그 키를 읽지도 다시 적지도 않는다: 키 이름을 여기 글자로 적는 것은 그것이
+// **앱이 더는 모르는** 옛 키이기 때문이다.
+describe("진입은 저장소에 무엇이 남아 있든 작업 목록이다", () => {
+  it("앞 판이 남긴 `last-mode`가 지운 모드(`maison`)여도 `/works`로 가고, 그 키를 다시 적지 않는다", async () => {
     const stored = installStorage();
-    rememberVisit("/maison/rooms/work-b");
-    // 적힌 칸을 이름이 아니라 **있는 그대로** 찾아 더럽힌다
-    for (const key of stored.keys()) stored.set(key, "wonderland");
-
-    const { router } = setup(["/"]);
-    await router.load();
-    expect(router.state.location.pathname).toBe("/works/work-a");
-  });
-
-  it("그 정규화도 히스토리를 늘리지 않는다 — 세계를 건너도 뒤로갈 곳이 없다", async () => {
-    rememberVisit("/maison/rooms/work-b");
+    stored.set("last-mode", "maison");
 
     const { router, history } = setup(["/"]);
     await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/work-a");
+    expect(router.state.location.pathname).toBe("/works/work-a");
     expect(history.length).toBe(1);
-    expect(history.canGoBack()).toBe(false);
+
+    // 다른 화면을 지나도 그대로다 — 마지막 자리는 세션 기억이라 저장소에 아무것도 안 는다.
+    await router.navigate({ to: "/terminal" });
+    expect([...stored]).toEqual([["last-mode", "maison"]]);
   });
 
   // 사생활 모드의 웹뷰는 localStorage가 **있는데 만지면 던진다.** 그때 죽는 것은 저장이
-  // 아니라 앱이다 — 진입의 첫 줄이 이 읽기라 화면이 통째로 안 뜬다.
-  it("저장소가 던져도 앱이 뜬다 — Atelier로 간다", async () => {
+  // 아니라 앱이다 — 진입 길에 저장소를 만지는 자리가 다시 생기면 화면이 통째로 안 뜬다.
+  it("저장소가 던져도 앱이 뜬다 — 작업 목록으로 간다", async () => {
     installStorage({
       getItem: () => {
         throw new Error("SecurityError");
@@ -309,308 +270,60 @@ describe("기본 선택은 초안이어도 목록 첫 줄이다", () => {
   });
 });
 
-// 두 세계가 **같은 규칙**을 쓴다 — 규칙을 라우트 파일마다 적었다면 여기서 갈렸을 자리다.
-describe("Maison 무선택 주소의 정규화", () => {
-  it("이번 세션에서 마지막으로 보던 Room으로 간다", async () => {
-    const { router } = setup(["/maison/rooms"], { lastRoom: "work-b" });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/work-b");
-  });
-
-  it("처음 여는 것이면 첫 줄의 Room으로 간다 — 초안이어도", async () => {
-    const { router } = setup(["/maison/rooms"], {
-      works: works("draft:초안", "진행중"),
-      lastRoom: null,
-    });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/초안");
-  });
-
-  it("Room이 하나도 없으면 정규화하지 않고 머문다", async () => {
-    const { router } = setup(["/maison/rooms"], { works: [] });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms");
-  });
-
-  it("Maison 아카이브도 같은 규칙이다", async () => {
-    const { router } = setup(["/maison/archive"]);
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/archive/치운-a");
-  });
-
-  // **세션 기억을 모드별로 가른 이유가 이 한 줄이다.** 한 칸으로 들면 Atelier에서 보던
-  // slug가 Maison 정규화의 입력이 되어, 같은 이름의 Room이 있으면 **다른 세계의 이름으로**
-  // 열리고 없으면 첫 Room으로 떨어진다 — 화면은 멀쩡해 보인다.
-  // 양쪽을 함께 잰다: 한쪽만 보면 두 칸을 맞바꾼 구현도 초록이다.
-  // **목록도 세계별로 갈린다.** 캐시 키에서 모드를 빠뜨리면(또는 한 모드로 굳히면) 여기서
-  // Atelier의 첫 항목이 나온다 — 그 이름의 Room이 없으면 화면이 빈 채로 서고, 우연히 있으면
-  // **저쪽 세계의 이름을 가진 Room**이 열린다.
-  it("Maison은 Maison 목록으로 정규화한다", async () => {
-    const { router } = setup(["/maison/rooms"], {
-      works: works("작업만"),
-      rooms: works("방만"),
-    });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/방만");
-  });
-
-  it("Maison 아카이브도 자기 목록으로 정규화한다", async () => {
-    const { router } = setup(["/maison/archive"], {
-      archives: archives("치운-작업"),
-      maisonArchives: archives("치운-방"),
-    });
-    await router.load();
-    expect(router.state.location.pathname).toBe("/maison/archive/치운-방");
-  });
-
-  it("Atelier의 마지막 slug가 Maison 정규화에 새지 않는다 — 반대도 마찬가지다", async () => {
-    const maison = setup(["/maison/rooms"], { lastWork: "work-b", lastRoom: null });
-    await maison.router.load();
-    expect(maison.router.state.location.pathname).toBe("/maison/rooms/work-a");
-
-    const atelier = setup(["/works"], { lastWork: null, lastRoom: "work-b" });
-    await atelier.router.load();
-    expect(atelier.router.state.location.pathname).toBe("/works/work-a");
-  });
-});
-
-// **두 세계에 같은 이름이 설 수 있다**(결정 10). 그때 work의 문서·탭·분할 기억이 Room을 여는
-// 주소에 실리면, Room에 없는 문서 경로가 주소에 박힌 채 엉뚱한 분할로 열린다 — 화면으로는
-// 「가끔 다른 문서가 떠 있다」로만 보인다.
-//
-// **여는 씨앗은 view가 쓰는 그 함수를 그대로 부른다**(위 `pick`과 같은 규칙) — 합성 모양을
-// 여기 베껴 적으면 실제 이동이 퇴화해도 이 검사는 초록이다. 그 함수를 view가 실제로 부르는지,
-// 그리고 모드를 굳히지 않았는지는 `-work-search.test.ts`의 배선 검사가 든다(그 층에 박힌
-// 세계가 하나도 없다).
-describe("같은 이름의 work과 Room", () => {
-  const openWork = (slug: string) =>
-    ({ to: "/works/$slug", params: { slug }, search: recallSearch("atelier", slug) }) as const;
-  const openRoom = (slug: string) =>
-    ({ to: "/maison/rooms/$slug", params: { slug }, search: recallSearch("maison", slug) }) as const;
-
-  it("문서·탭·분할 기억을 서로 덮어쓰지 않는다", async () => {
-    // Atelier work `겹친이름`을 터미널·분할·문서로 두고 떠난 상태.
-    rememberView("atelier", "겹친이름", { tab: "terminal", split: "rl", file: "작업/spec.md" });
-
-    const { router } = setup(["/maison/rooms"], {
-      works: works("겹친이름"),
-      rooms: works("겹친이름"),
-    });
-    await router.load();
-
-    // 같은 이름의 Room을 연다 — 저쪽 세계의 기억이 씨앗에 실리면 여기서 드러난다.
-    await router.navigate(openRoom("겹친이름"));
-    expect(router.state.location.pathname).toBe("/maison/rooms/겹친이름");
-    expect(router.state.location.search).toEqual({});
-
-    // 반대 방향도 함께 잰다 — Room을 여는 것이 work의 기억을 지우지도 않는다.
-    await router.navigate(openWork("겹친이름"));
-    expect(router.state.location.search).toEqual({
-      tab: "terminal",
-      split: "rl",
-      file: "작업/spec.md",
-    });
-  });
-});
-
-// 세그먼트가 저쪽 세계로 건너갈 때 어디로 데려갈지가 이 칸에서 나온다(그것을 읽어 실제로
-// 건너는 것은 아래 describe다). 적는 자리가 라우트 트리의 뿌리 하나라, 화면이 늘어도 함께
-// 늘지 않는다.
-describe("모드별 마지막 주소", () => {
-  it("도착한 주소가 그 세계의 칸에만 적힌다", async () => {
+// 설정의 「앱으로 돌아가기」가 어디로 데려갈지가 이 칸에서 나온다(아래 describe). 적는 자리가 라우트
+// 트리의 뿌리 하나라, 화면이 늘어도 함께 늘지 않는다.
+describe("마지막 주소", () => {
+  it("도착한 주소가 마지막 자리로 적힌다", async () => {
     const { router } = setup(["/works/work-a"]);
     await router.load();
-    expect(shellStore.state.lastPlace).toEqual({ atelier: "/works/work-a", maison: null });
+    expect(shellStore.state.lastPlace).toBe("/works/work-a");
 
-    await router.navigate({ to: "/maison/rooms/$slug", params: { slug: "work-b" } });
-    expect(shellStore.state.lastPlace).toEqual({
-      atelier: "/works/work-a",
-      maison: "/maison/rooms/work-b",
-    });
+    await router.navigate({ to: "/archive/$slug", params: { slug: "치운-b" } });
+    expect(shellStore.state.lastPlace).toBe("/archive/치운-b");
   });
 
-  // 설정에는 모드 접두사가 없어 `modeOf`가 Atelier로 눕힌다. 그 기본값을 적으면 **Maison에서
-  // 설정을 한 번 열었다는 이유로** 다음 실행이 Atelier로 뜨고, 세그먼트도 저쪽을 켠다.
-  it("설정은 어느 칸에도 안 적힌다 — 마지막 세계도 그대로다", async () => {
-    const { router } = setup(["/maison/rooms/work-a"]);
+  // 설정은 마지막 자리가 아니다. 그 주소를 적으면 「앱으로 돌아가기」가 설정으로 돌아간다.
+  it("설정은 마지막 자리로 안 적힌다", async () => {
+    const { router } = setup(["/works/work-a"]);
     await router.load();
 
     await router.navigate({ to: "/settings" });
-    expect(shellStore.state.lastPlace).toEqual({
-      atelier: null,
-      maison: "/maison/rooms/work-a",
-    });
-    expect(lastMode()).toBe("maison");
+    expect(shellStore.state.lastPlace).toBe("/works/work-a");
 
-    // 설정의 하위 주소도 세계 밖이다 — 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11). 주소에 모드
-    // 이름(`atelier`)이 들었어도 그것은 레이아웃의 id지 떠나온 세계가 아니다.
-    await router.navigate({ to: "/settings/spec-layout/$id", params: { id: "atelier" } });
-    expect(router.state.location.pathname).toBe("/settings/spec-layout/atelier");
-    expect(shellStore.state.lastPlace).toEqual({
-      atelier: null,
-      maison: "/maison/rooms/work-a",
-    });
-    expect(lastMode()).toBe("maison");
-  });
-
-  // 적히지 않는다는 것과 **셸이 무엇을 드는가**는 다른 물음이다. 그 화면에서도 nav는 무언가를
-  // 그려야 하고(세그먼트도 곧 그렇다 — #183), `modeOf`로 물으면 `/settings`가 언제나 Atelier라
-  // Maison에서 설정을 거쳐 nav의 `Archive`를 누른 순간 Atelier의 `/archive`로 간다.
-  // 마지막 모드는 여전히 Maison인데 화면만 조용히 세계를 건너는 것이다.
-  it("설정 화면의 셸은 떠나온 세계를 이어 든다", async () => {
-    const { router } = setup(["/maison/rooms/work-a"]);
-    await router.load();
-    expect(shellMode(router.state.location.pathname)).toBe("maison");
-
-    await router.navigate({ to: "/settings" });
-    expect(shellMode(router.state.location.pathname)).toBe("maison");
-  });
-
-  // 반대쪽도 함께 못 박는다 — 늘 `lastMode()`를 쓰는 변형은 위 검사만으로는 초록이다.
-  // 세계를 싣는 주소에서는 저장소를 **아예 안 봐야** 한다.
-  //
-  // **라우터를 안 태운다.** 도착하면 `rememberVisit`이 그 세계를 곧바로 적어 버려서, 저장소와
-  // 주소가 어긋난 순간이 관찰 전에 사라진다 — 그 어긋남이 바로 이 검사의 전부다.
-  it("세계를 싣는 주소는 저장소가 아니라 주소가 정한다", () => {
-    rememberVisit("/maison/rooms/work-b"); // 저장소는 Maison
-    expect(shellMode("/works/work-a")).toBe("atelier");
-    expect(shellMode("/maison/rooms/work-a")).toBe("maison");
+    // 설정의 하위 주소도 적지 않는다 — 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11).
+    await router.navigate({ to: "/settings/spec-layout/edit" });
+    expect(router.state.location.pathname).toBe("/settings/spec-layout/edit");
+    expect(shellStore.state.lastPlace).toBe("/works/work-a");
   });
 });
 
-// `Processes`(티켓 26 · 프로세스 결정 8 · 9). 두 세계에 **같은 화면**이 서고 주소는 그 세계의 것이다 — 각 세계의 nav가 자기
-// 접두사로 가서 nav를 눌러 세계를 떠나지 않는다. 목록 화면이 아니라 정규화가 없다: 들어온 주소 그대로 선다. 캐시를 새로 심지
+// `Processes`(티켓 26 · 프로세스 결정 8 · 9). 목록 화면이 아니라 정규화가 없다: 들어온 주소 그대로 선다. 캐시를 새로 심지
 // 않는 것도 그래서다(이 화면은 목록을 안 읽는다).
 describe("Processes의 주소", () => {
-  it.each([
-    ["/processes", "atelier"],
-    ["/maison/processes", "maison"],
-  ] as const)("%s는 그대로 서고 %s의 자리로 적힌다", async (path, mode) => {
+  it("`/processes`는 그대로 서고 마지막 자리로 적힌다", async () => {
+    const path = "/processes";
     const { router, history } = setup([path]);
     await router.load();
     expect(router.state.location.pathname).toBe(path);
     // 라우트가 **그 주소의 것**이다 — 없는 주소면 루트의 404 갈래로 떨어져도 pathname은 그대로라, 위 한 줄로는 안 갈린다.
     expect(router.state.matches.map((match) => match.routeId)).toContain(path);
     expect(history.length).toBe(1);
-    expect(shellMode(path)).toBe(mode);
-    expect(shellStore.state.lastPlace[mode]).toBe(path);
-  });
-
-  // 저쪽 세계에 다녀오면 떠나온 Processes로 돌아온다 — 세계를 싣는 주소라 마지막 자리로 적힌다(`rememberVisit`). 세계 밖
-  // 주소로 적히면(`/settings`처럼) 돌아올 때 목록 화면으로 간다.
-  it("저쪽 세계에 다녀오면 떠나온 Processes로 돌아온다", async () => {
-    const { router } = setup(["/maison/processes"]);
-    await router.load();
-
-    const there = modeSwitchTarget("maison", "atelier");
-    if (there) await router.navigate(there);
-    expect(router.state.location.pathname).toBe("/works/work-a");
-
-    const back = modeSwitchTarget("atelier", "maison");
-    if (back) await router.navigate(back);
-    expect(router.state.location.pathname).toBe("/maison/processes");
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/maison/processes");
+    expect(shellStore.state.lastPlace).toBe(path);
   });
 });
 
-// 세그먼트를 눌러 세계를 건너는 일. **히스토리가 절반이다** — 어디에 도착하는가만큼이나 몇
-// 칸이 쌓이는가가 규칙이고, 그쪽이 틀리면 화면은 멀쩡한데 뒤로가기만 이상해진다(뒤로가기를
-// 여러 번 눌러야 이쪽으로 돌아오거나, 눌러도 화면이 그대로인 죽은 칸이 생긴다).
-describe("세그먼트가 세계를 건넌다", () => {
-  // 세그먼트를 누른 것과 같은 일. **규칙을 여기 안 적는다** — 목적지도 「같은 세계면 안 간다」도
-  // `modeSwitchTarget` 하나가 답하고, 셸(`AppShell`의 `onPickMode`)이 하는 것도 이 두 줄이다.
-  // 규칙을 이 파일에 베껴 적으면 그 함수가 무엇으로 바뀌어도 아래 케이스들이 초록으로 남는다.
-  const pick = async (router: ReturnType<typeof setup>["router"], from: Mode, to: Mode) => {
-    const go = modeSwitchTarget(from, to);
-    if (go) await router.navigate(go);
-  };
-
-  it("한 칸 건너가고, 뒤로가기가 이쪽으로 돌아온다", async () => {
-    const { router, history } = setup(["/works/work-a"]);
-    await router.load();
-    expect(history.length).toBe(1);
-
-    await pick(router, "atelier", "maison");
-    // 저쪽에 마지막 주소가 없으니 첫 화면이다. 그 주소는 무선택이라 정규화를 한 번 더 타지만
-    // 그 리다이렉트가 replace라(위 「정규화는 히스토리를 늘리지 않는다」) 칸은 하나만 는다.
-    expect(router.state.location.pathname).toBe("/maison/rooms/work-a");
-    expect(history.length).toBe(2);
-
-    await goBack(router, history);
-    expect(router.state.location.pathname).toBe("/works/work-a");
-
-    await goForward(router, history);
-    expect(router.state.location.pathname).toBe("/maison/rooms/work-a");
-  });
-
-  it("같은 세계를 다시 골라도 아무 데도 안 간다", async () => {
-    const { router, history } = setup(["/works/work-a"]);
-    await router.load();
-
-    await pick(router, "atelier", "atelier");
-    expect(router.state.location.pathname).toBe("/works/work-a");
-    expect(history.length).toBe(1);
-    expect(history.canGoBack()).toBe(false);
-  });
-
-  // 마지막 주소가 없을 때 첫 화면으로 가는 것은 위 첫 케이스가 잰다. 여기서 재는 것은 그
-  // 반대쪽이다 — **첫 화면이 아닌 곳**으로 가야 기억을 읽었다는 뜻이 된다.
-  it("건너간 곳은 그 세계의 마지막 주소다", async () => {
-    const { router } = setup(["/works/work-a"], { rooms: works("room-a", "room-b") });
-    await router.load();
-
-    // 저쪽 세계에서 첫 화면이 아닌 곳에 서 본다. **도착이 곧 기억이다**(`rememberVisit`) —
-    // `lastPlace`를 손으로 심으면 다음 `router.load()`가 뿌리의 `beforeLoad`에서 다시 덮어써,
-    // 무엇을 재고 있는지가 실행 순서에 달린다.
-    await router.navigate({ to: "/maison/rooms/$slug", params: { slug: "room-b" } });
-    await pick(router, "maison", "atelier");
-    expect(router.state.location.pathname).toBe("/works/work-a");
-
-    await pick(router, "atelier", "maison");
-    // 첫 화면이었다면 `/maison/rooms/room-a`다 — 목록 첫 Room이 그것이고, 이 세션의 Room
-    // 기억(`workSlug.maison`)은 화면이 적는 것이라 라우터만 태운 여기서는 비어 있다.
-    expect(router.state.location.pathname).toBe("/maison/rooms/room-b");
-  });
-
-  // 설정에는 세그먼트가 없다(UI개선 결정 21) — 한때 여기 있던 「설정에서 떠나온 세계를 다시
-  // 골라도 안 움직인다」는 그 화면이 사라지며 아래 「앱으로 돌아가기」 describe로 옮겨 갔다.
-
-  // **왕복이 기억을 지우면 안 된다.** `lastPlace`가 드는 것은 pathname뿐이라, 세그먼트가 씨앗
-  // 없이 이동하면 빈 `search`로 도착하고 그 순간 도착 주소를 적어 두는 effect가 기본값으로
-  // 기억을 덮어쓴다 — 손해가 그 한 번의 왕복에서 안 끝난다: 그 뒤에 사이드바 행이나 팔레트로
-  // 열어도 `recallSearch`가 방금 덮어써진 기본값을 돌려주므로 결정 77·97이 그 work에 대해
-  // 영영 풀린다. **pathname만 재는 위 케이스들은 그 변형에 전부 초록이다.**
-  it("저쪽에 다녀와도 그 work의 마지막 화면이 안 지워진다", async () => {
-    const { router } = setup(["/works/work-a"]);
-    await router.load();
-
-    // 터미널을 보던 중이다 — 이 기억을 심는 것도 **도착이다**(`-works-view`의 effect가 라우터
-    // 밖이라 여기서는 손으로 적는다. 씨앗이 실제로 실려 오는지는 도착 주소로 잰다).
-    rememberView("atelier", "work-a", { tab: "terminal", split: null, file: "spec/notes.md" });
-
-    await pick(router, "atelier", "maison");
-    await pick(router, "maison", "atelier");
-
-    expect(router.state.location.pathname).toBe("/works/work-a");
-    // 씨앗이 주소에 실려 왔다 — 실리지 않았다면 여기가 `{}`이고, 그 빈 주소가 곧 기억을 덮어쓴다.
-    expect(router.state.location.search).toEqual({ tab: "terminal", file: "spec/notes.md" });
-  });
-});
-
-// 설정 nav의 「앱으로 돌아가기」(UI개선 결정 27). **세그먼트와 목적지 몸통이 같다** — 그 모드의
-// 마지막 자리, 없으면 목록 주소, work 주소면 기억한 보기·탭을 되붙인다. 갈리는 것은 하나다:
-// 세그먼트는 같은 모드면 안 가고, 돌아가기는 **떠나온 모드 그대로** 간다. 세그먼트 함수를 그대로
-// 부르면 같은 모드라 늘 `null`이 나와 버튼이 죽는다.
+// 설정 nav의 「앱으로 돌아가기」(UI개선 결정 27). 마지막 자리, 없으면 목록 주소, work 주소면 기억한
+// 보기·탭을 되붙인다.
 //
-// 규칙을 여기 안 적는다 — 셸이 하는 것도 `navigate(modeEntryTarget(mode))` 한 줄이다.
+// 규칙을 여기 안 적는다 — 셸이 하는 것도 `navigate(appReturnTarget())` 한 줄이다.
 describe("앱으로 돌아가기", () => {
   const leave = async (router: ReturnType<typeof setup>["router"]) =>
-    router.navigate(modeEntryTarget(shellMode(router.state.location.pathname)));
+    router.navigate(appReturnTarget());
 
   it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
     const { router, history } = setup(["/works/work-b"]);
     await router.load();
-    rememberView("atelier", "work-b", { tab: "terminal", split: null, file: null });
+    rememberView("work-b", { tab: "terminal", split: null, file: null });
 
     await router.navigate({ to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });
@@ -634,36 +347,14 @@ describe("앱으로 돌아가기", () => {
     expect(router.state.location.pathname).toBe("/projects/proj-b");
   });
 
-  it("Maison에서 들어왔으면 Maison으로 간다", async () => {
-    const { router } = setup(["/maison/terminal"]);
-    await router.load();
-
-    await router.navigate({ to: "/settings" });
-    await leave(router);
-    expect(router.state.location.pathname).toBe("/maison/terminal");
-  });
-
   // 앱을 켜자마자 ⌘, — 기억할 주소가 없다. 목록 주소는 무선택이라 정규화가 한 번 더 탄다.
-  it("기억이 없으면 그 모드의 목록 주소다", async () => {
+  it("기억이 없으면 작업 목록 주소다", async () => {
     // `setup`이 기억을 비운다 — 앞 케이스가 적어 둔 자리가 새면 이 케이스가 그것을 잰다.
     const { router } = setup(["/settings"]);
     await router.load();
     expect(router.state.location.pathname).toBe("/settings/terminal");
 
-    expect(modeEntryTarget("atelier")).toEqual({ to: "/works" });
-    expect(modeEntryTarget("maison")).toEqual({ to: "/maison/rooms" });
-  });
-
-  // **세그먼트 함수와 갈리는 단 한 자리다.** 떠나온 모드는 늘 「지금 모드」라, 이 함수가 같은
-  // 모드에 `null`을 주면 돌아가기가 어느 화면에서 들어왔든 아무 데도 안 간다.
-  it("같은 모드여도 값이 나온다", async () => {
-    const { router } = setup(["/works/work-a"]);
-    await router.load();
-    await router.navigate({ to: "/settings" });
-
-    expect(shellMode(router.state.location.pathname)).toBe("atelier");
-    expect(modeEntryTarget("atelier")).toEqual({ to: "/works/work-a", search: expect.anything() });
-    expect(modeSwitchTarget("atelier", "atelier")).toBeNull();
+    expect(appReturnTarget()).toEqual({ to: "/works" });
   });
 });
 
@@ -947,23 +638,27 @@ describe("설정 화면의 주소", () => {
 
   // 「spec 레이아웃」의 편집기는 그 항목 아래의 하위 주소다(spec 레이아웃 티켓 11) — 설정 한 열의 본문이
   // 아니라 제 라우트에 선다. 항목 라우트에 Outlet이 없으면 주소는 맞는데 편집기가 안 선다: 매치로 본다.
-  it.each(["atelier", "maison"] as const)("`/settings/spec-layout/%s`는 편집기 화면에 선다", async (id) => {
-    const { router } = setup([`/settings/spec-layout/${id}`]);
+  // 레이아웃은 하나라 주소에 id가 없다(ui-refresh 결정 23).
+  it("`/settings/spec-layout/edit`는 편집기 화면에 선다", async () => {
+    const { router } = setup(["/settings/spec-layout/edit"]);
     await router.load();
-    expect(router.state.location.pathname).toBe(`/settings/spec-layout/${id}`);
+    expect(router.state.location.pathname).toBe("/settings/spec-layout/edit");
     const routes = router.state.matches.map((match) => match.routeId);
-    expect(routes).toContain("/settings/spec-layout/$id");
+    expect(routes).toContain("/settings/spec-layout/edit");
     expect(routes).not.toContain("/settings/spec-layout/");
   });
 
-  // 레이아웃은 모드마다 하나라 id는 모드 이름 둘뿐이다(spec 레이아웃 결정 25). 모르는 id로 온 주소는
-  // 부를 레이아웃이 없다 — 「spec 레이아웃」 페이지로 치환한다. 칸은 늘지 않는다.
-  it("모르는 id의 편집기 주소는 「spec 레이아웃」 페이지로 치환된다", async () => {
-    const { router, history } = setup(["/settings/spec-layout/gallery"]);
-    await router.load();
-    expect(router.state.location.pathname).toBe("/settings/spec-layout");
-    expect(history.length).toBe(1);
-  });
+  // 모르는 하위 주소는 부를 화면이 없다 — 「spec 레이아웃」 페이지로 치환한다. 칸은 늘지 않는다. id를 실었던 옛
+  // 편집기 주소(`atelier`)도 그렇다.
+  it.each(["atelier", "maison", "gallery", "edit/more"])(
+    "모르는 하위 주소(%s)는 「spec 레이아웃」 페이지로 치환된다",
+    async (rest) => {
+      const { router, history } = setup([`/settings/spec-layout/${rest}`]);
+      await router.load();
+      expect(router.state.location.pathname).toBe("/settings/spec-layout");
+      expect(history.length).toBe(1);
+    },
+  );
 
   // 터미널을 쓰다 ⌘,로 열고 되돌아오는 흐름이다 — 한 칸이어야 뒤로가기 한 번에 돌아온다.
   it("설정을 열면 한 칸이 남고 뒤로가기로 보던 작업에 돌아온다", async () => {

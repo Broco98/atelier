@@ -3,9 +3,9 @@ import { dialogStore } from "@/components/ui/confirm-store";
 import { askRevert } from "./revert";
 import type { SpecLayoutState } from "./types";
 
-// 「기본값으로 되돌리기」의 확인 창(spec 레이아웃 티켓 10). 되돌리기는 모드의 레이아웃 폴더를 **폴더째**
+// 「기본값으로 되돌리기」의 확인 창(spec 레이아웃 티켓 10). 되돌리기는 레이아웃 폴더를 **폴더째**
 // 지운다 — 템플릿도, 레이아웃이 모르는 파일도 함께 사라진다. 그래서 창은 지울 폴더와 사라지는 것의 수를
-// 적는다. 수는 엔진의 상태가 준 그대로다(`spec_layout_states`) — 여기서 폴더를 세지 않는다.
+// 적는다. 수는 엔진의 상태가 준 그대로다(`spec_layout_state`) — 여기서 폴더를 세지 않는다.
 //
 // 창은 앱의 창 하나(`AppDialog`)가 그리는데, 그 창은 Base UI AlertDialog라 포털로 서고 포털은 정적 렌더에서
 // 아무것도 그리지 않는다. 그래서 물음을 올린 뒤 **스토어에 선 물음**을 읽는다 — 창의 글이 프로미스 뒤에 있어
@@ -17,7 +17,6 @@ afterEach(() => {
 });
 
 const state = (overrides: Partial<SpecLayoutState>): SpecLayoutState => ({
-  id: "atelier",
   folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [],
@@ -63,16 +62,14 @@ describe("되돌리기 확인 창", () => {
   // 읽지 못한 폴더에서는 무엇이 템플릿인지 모른다(`templateCount`가 없다) — 폴더 안의 파일을 센 것만 적는다.
   it("읽지 못한 행의 창은 템플릿의 수 없이 파일의 수만 적는다", () => {
     const broken = state({
-      id: "maison",
-      folder: "~/.atelier/layouts/maison",
       errors: [{ path: null, message: "layout.json is missing" }],
       fallback: "layout.json is missing",
       templateCount: null,
       otherFileCount: 3,
     });
-    expect(askedFor(broken).title).toBe("Maison 레이아웃을 기본값으로 되돌릴까요?");
+    expect(askedFor(broken).title).toBe("Atelier 레이아웃을 기본값으로 되돌릴까요?");
     const body = bodyOf(broken);
-    expect(body).toContain("~/.atelier/layouts/maison/ 폴더를 지워요.");
+    expect(body).toContain("~/.atelier/layouts/atelier/ 폴더를 지워요.");
     expect(body).toContain("파일 3개가 함께 사라져요.");
     expect(body).not.toContain("템플릿");
     expect(body).not.toContain("그 밖의");

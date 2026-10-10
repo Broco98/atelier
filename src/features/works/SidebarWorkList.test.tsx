@@ -5,7 +5,6 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { Mode } from "@/mode";
 import { SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
 import { WorkSectionList } from "./WorkSectionList";
 import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
@@ -43,13 +42,10 @@ const works = (...raws: string[]) =>
 const ALL: SectionsOpen = { pinned: true, works: true };
 
 // 기본값은 **아무 work도 안 고른 상태**다 — 아래 구획 검사들이 그 위에서 돈다.
-// 세계도 기본값이 있다(Atelier): 구획이 서는 조건과 핀의 생김새는 세계를 안 타므로 그 검사들이
-// 세계를 말하지 않아도 뜻이 온전하다. 세계가 갈리는 것만 아래 마지막 describe가 둘 다 잰다.
 function render(
   list: WorkView[],
   open: SectionsOpen = ALL,
   {
-    mode = "atelier",
     selectedSlug = null,
     shellCounts = {},
     // 화면값은 **문자열 Record**로 내려온다(#203) — 값을 고르는 자리는 Sidebar이고 이
@@ -63,7 +59,6 @@ function render(
     lineY = null,
     litEmptySlot = null,
   }: {
-    mode?: Mode;
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     signals?: Record<string, ShellSignal>;
@@ -76,7 +71,6 @@ function render(
   return renderToStaticMarkup(
     <WorkSectionList
       sections={splitWorkSections(list, open)}
-      mode={mode}
       open={open}
       selectedSlug={selectedSlug}
       shells={{
@@ -148,7 +142,7 @@ const rowsBySection = (markup: string) =>
 //
 // **이 하나만 자리로 이름 붙는다.** 아래 `data-shells`가 적는 규칙은 「표식은 그 자리에
 // 있는 것의 이름이다」인데(`data-branch`·`data-section`), 이 칸은 **싣는 것이 갈린다** —
-// 조용하면 종류·수, 셸이 부르거나 돌면 그 셸의 마크·경과. 있는 것으로 이름을 붙이면 그
+// 조용하면 셸 수, 셸이 부르면 그 셸의 경과, 돌면 비움(ui-refresh 결정 13). 있는 것으로 이름을 붙이면 그
 // 이름이 갈래 대부분에게 거짓이 되므로, 여기서만 **자리**가 이름이다.
 //
 // 이 칸 안에는 `<div>`가 없어(슬롯이 그리는 것은 span과 글리프뿐) 첫 `</div>`까지가 그 칸
@@ -159,7 +153,7 @@ const rowMetasOf = (markup: string) =>
     html: m[0],
   }));
 
-// 그 칸이 종류·수일 때의 **셸 메타 상자**만 잘라낸다(결정 14). 오른쪽 메타 칸과 같은 상자이고
+// 그 칸이 셸 수일 때의 **셸 메타 상자**만 잘라낸다(결정 14). 오른쪽 메타 칸과 같은 상자이고
 // 표식은 조용한 행에만 붙는다(`WorkSectionList.tsx`의 메타 주석). 표식이 자리 설명이 아니라
 // **그 자리에 있는 것**의 이름인 것은 이 저장소의 다른 표식들과 같은 규칙이다
 // (`data-branch`·`data-section`). 이 상자 안에는 `<div>`가 없어(글리프와 span뿐) 첫
@@ -222,8 +216,8 @@ describe("초안은 `작업` 구획 안에 선다", () => {
     // 빈 구획이 낼 수 있는 두 말을 **판정 함수에서** 받아 댄다 — 글자 조각으로 대면 문구가
     // 바뀌는 날 이 두 줄이 아무것도 안 재는 채 초록으로 남는다.
     const notices = [
-      emptyMainNotice(splitWorkSections([], ALL), "atelier"),
-      emptyMainNotice(splitWorkSections(works("pin:가"), ALL), "atelier"),
+      emptyMainNotice(splitWorkSections([], ALL)),
+      emptyMainNotice(splitWorkSections(works("pin:가"), ALL)),
     ];
     expect(new Set(notices).size).toBe(2);
     for (const notice of notices) expect(markup).not.toContain(notice);
@@ -272,41 +266,18 @@ describe("빈 `작업` 구획이 하는 말", () => {
   });
 });
 
-// 같은 목록이 세계마다 다른 이름으로 선다(#183, US 17). 문구 자체는 순수 함수라
-// `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서 보는 것은 호출부다** — 화면이
-// 그 함수들에 지금 세계를 실제로 넘기는가.
-//
-// **두 세계를 함께 잰다.** 한쪽만 재면 「모드를 안 보고 Atelier로 눕히는」 변형이 그 검사에서
-// 초록이다 — 화면으로는 Maison에 갔는데 목록 머리만 `작업`인 모양으로만 보인다.
-describe("상주 목록이 세계를 따라 이름을 바꾼다", () => {
-  it("머리가 Atelier `작업` · Maison `Rooms`다", () => {
-    const labels = (mode: Mode) =>
-      headersOf(render(works("가"), ALL, { mode })).map((one) => one.label);
-    expect(labels("atelier")).toEqual(["작업"]);
-    expect(labels("maison")).toEqual(["Rooms"]);
-  });
-
-  // 형제 머리는 **상태의 이름**이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이고,
-  // 여기가 함께 갈리면 L3가 접근성 이름(`고정 1`)으로 집는 자리가 세계마다 달라진다.
-  it("`고정`은 두 세계에서 같다", () => {
-    const siblings = (mode: Mode) =>
-      headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode }))
-        .map((one) => one.label)
-        .filter((label) => label !== "작업" && label !== "Rooms");
-    expect(siblings("atelier")).toEqual(["고정"]);
-    expect(siblings("maison")).toEqual(["고정"]);
+// 목록의 이름. 문구 자체는 어휘 표라 `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서
+// 보는 것은 호출부다** — 화면이 그 표를 실제로 부르는가.
+describe("상주 목록의 이름", () => {
+  it("머리가 `작업`이고 형제 머리는 `고정`이다", () => {
+    const labels = headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label);
+    expect(labels).toEqual(["고정", "작업"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
-  // 계약은 `work-sections.test.ts`가 지고, 여기서는 **어느 세계의 말이 나왔는가**만 본다.
-  it("Room이 없으면 Terminal에서 만들라고 하고, Atelier 문구는 그대로다", () => {
-    const maison = render([], ALL, { mode: "maison" });
-    expect(maison).toContain("새 Room 만들어줘");
-    expect(maison).not.toContain("Claude Code에서 시작돼요");
-
-    const atelier = render([], ALL, { mode: "atelier" });
-    expect(atelier).toContain("작업은 Claude Code에서 시작돼요.");
-    expect(atelier).not.toContain("새 Room 만들어줘");
+  // 계약은 `work-sections.test.ts`가 진다.
+  it("작업이 없으면 Claude Code에서 시작된다고 한다", () => {
+    expect(render([])).toContain("작업은 Claude Code에서 시작돼요.");
   });
 });
 
@@ -411,7 +382,7 @@ describe("구획 접기", () => {
 // 다시 둘째 줄 → `sidebar-active-band` 결정 14가 **다시 한 줄**. 둘째 줄이 얻은 것(셸의 말 ·
 // 모든 행이 같은 높이)보다 행 두 개 높이로 목록이 반만 보이는 값이 컸다. 판 05의 모양이
 // 돌아오되 조건 하나가 다르다: 그때는 여기가 늘 종류·수였고, 지금은 **신호가 있으면 그 셸의
-// 마크·경과**가 같은 칸에 선다(S4). 높이와 자리는 e2e가 실측으로 재고, 여기서 보는 것은
+// 경과**가 같은 칸에 선다(S4 · ui-refresh 결정 13). 높이와 자리는 e2e가 실측으로 재고, 여기서 보는 것은
 // **마크업이 무엇을 말하는가**다.
 describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 겹친다", () => {
   it("**둘째 줄이 없다** — 그 표식이 어느 행에도 안 선다", () => {
@@ -425,7 +396,7 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     expect(markup).not.toContain("data-subrow");
   });
 
-  it("셸이 하나라도 있는 행에만 **종류·수**가 선다", () => {
+  it("셸이 하나라도 있는 행에만 **셸 수**가 선다", () => {
     // 셸이 0개인 행에는 숫자가 안 선다 — 「없음」은 숫자로 말하지 않는다.
     const markup = render(works("가", "나", "draft:다"), ALL, { shellCounts: { 가: 2, 다: 1 } });
     expect(shellBoxesOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
@@ -465,10 +436,10 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
   });
 
   it("셸 수도 무리도 **이 파일이 적지 않는다** — 든 것은 슬롯 하나뿐이다", () => {
-    // 결정 3·13. 「그 밖의 셸」의 수는 셸 수와 도는 것을 둘 다 아는 자리에서만 나오므로
-    // 두 값이 `ShellMeta` 하나로 합쳐졌다. 여기가 셸 수를 다시 적으면 그 수가 무리들의
-    // 합과 겹쳐 **같은 셸을 두 번 세던 그 화면**으로 되돌아간다. 「합 = 셸 수」 불변조건은
-    // `ShellMeta` 하나가 들고, 그것을 재는 검사도 그 파일에 산다(shell-meta.test.tsx).
+    // 결정 3·13. 셸 수를 그리는 자리는 `ShellMeta` 하나다(`⌨ N` — ui-refresh 결정 13). 여기가
+    // 셸 수를 다시 적으면 그 수가 슬롯의 수와 겹쳐 **같은 셸을 두 번 세던 그 화면**으로
+    // 되돌아간다. 「합 = 셸 수」 불변조건은 `ShellMeta` 하나가 들고, 그것을 재는 검사도 그
+    // 파일에 산다(shell-meta.test.tsx).
     const [가] = shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 3 } }));
     expect(가.html).not.toContain(">3<");
     expect(spansOf(가.html)).toEqual([]);
@@ -798,30 +769,13 @@ describe("사이드바 목록은 터미널을 모른다", () => {
 
   it("terminal feature를 import하지 않는다", () => {
     // 이 계약이 깨지면 `@xterm/*`와 그 CSS가 여기로 따라 들어와 **위 검사 전부가**
-    // 서지 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다. 셸 수와 도는 것의
-    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderRowMeta`) 이유가 그것이고,
-    // `components/ui/agent-mark`가 `features/terminal`이 아니라 거기 사는 이유도 같다.
+    // 서지 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다. 셸 수와 신호의
+    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderRowMeta`) 이유가 그것이다.
     //
     // **주석에 적어도 빨개진다.** 세는 것이 import가 아니라 리터럴이라 그렇고, 그 성질은
     // 일부러 그대로 둔다: 「여기서는 그 모듈을 부를 수 없다」를 가장 싸게 지키는 방법이다.
     expect(countOf("@/features/terminal")).toBe(0);
     expect(countOf("./terminal-store")).toBe(0);
-  });
-
-  it("읽는 곳도 가는 곳도 한 세계로 눕지 않는다", () => {
-    // **이 파일에 세계의 이름이 리터럴로 박히면 안 된다**(#183). 목록이 읽는 루트
-    // (`useWorks`·`useSetWorkPinned`)와 행이 가는 주소(`routesOf`·`recallSearch`)가 전부
-    // 같은 `mode` 하나에서 나와야 한다 — 데이터만 모드로 갈면 Maison에서 목록은 Room인데
-    // 행을 누르면 Atelier로 튀고, 반대면 목록만 낡는다. 둘 다 훅과 라우터를 타서 이 저장소의
-    // 정적 마크업 seam에는 안 걸리고, 화면에서도 저쪽 세계에 건너가 봐야만 드러난다.
-    expect(countOf('"atelier"')).toBe(0);
-    expect(countOf('"maison"')).toBe(0);
-    // **주소도 센다.** 위 두 줄은 모드의 낱말만 보므로 `routes.item`을 `/works/$slug`로
-    // 되돌리는 변형이 그대로 빠져나간다 — 그 리터럴에는 세계의 이름이 안 들어 있고, L0는
-    // 그 필드의 타입이 두 주소의 유니온이라 통과하며, 이 파일의 마크업 seam은 행의 `onOpen`이
-    // 목업이라 목적지를 아예 안 본다(실측으로 확인했다: L0·L2 940건이 전부 초록이었다).
-    expect(countOf('"/works/')).toBe(0);
-    expect(countOf('"/maison/rooms/')).toBe(0);
   });
 
   it("window에서 키를 듣지 않는다", () => {

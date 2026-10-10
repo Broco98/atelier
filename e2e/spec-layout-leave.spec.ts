@@ -30,7 +30,7 @@ const 뒤로 = (page: Page) => page.getByRole("button", { name: "설정으로 �
 
 const EDITED = "정한 것, 그 이유, 버린 안";
 
-/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 모드 행에서 [편집]을 누른다. */
+/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 레이아웃 행에서 [편집]을 누른다. */
 async function openEditor(page: Page) {
   await page.goto("/settings/spec-layout");
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
@@ -50,7 +50,7 @@ async function draftOne(page: Page) {
 
 /** 나간 `write_spec_layout`들의 레이아웃, 나간 순서대로. */
 async function writtenLayouts(page: Page): Promise<SpecLayoutJson[]> {
-  return (await ipcCallArgs(page, "write_spec_layout", "id")).map(({ args }) => (args as { layout: SpecLayoutJson }).layout);
+  return (await ipcCallArgs(page, "write_spec_layout", "layout")).map(({ args }) => (args as { layout: SpecLayoutJson }).layout);
 }
 
 test("초안이 있는 채로 뒤로를 누르면 확인 창이 뜨고, [계속 편집]이면 초안과 함께 편집기에 머문다", async ({ page }) => {
@@ -116,7 +116,7 @@ test("[버리고 나가기]면 저장하지 않고 떠나고, 다시 열면 읽�
   await 뒤로(page).click();
   await 떠날때확인버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(page.locator("main li")).toHaveCount(2);
+  await expect(page.locator("main li")).toHaveCount(1);
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
   // 초안은 버려졌다 — 다시 연 편집기는 읽은 것으로 선다

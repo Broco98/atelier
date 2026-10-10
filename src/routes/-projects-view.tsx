@@ -10,8 +10,7 @@ import { recallSearch } from "./-work-search";
 function ProjectsView({ slug }: { slug: string | null }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  // 라우트가 `/projects`·`/projects/$slug` 둘뿐이라 이 화면의 세계는 Atelier로 고정이다.
-  const { data: projects = [], isPending, isFetching } = useProjects("atelier");
+  const { data: projects = [], isPending, isFetching } = useProjects();
 
   const exists = slug !== null && projects.some((project) => project.slug === slug);
 
@@ -52,8 +51,7 @@ function ProjectsView({ slug }: { slug: string | null }) {
           ? navigate({
               to: "/works/$slug",
               params: { slug: work },
-              // 프로젝트가 Atelier에만 있으므로(결정 17) 여는 work도 그 세계의 것이다.
-              search: recallSearch("atelier", work),
+              search: recallSearch(work),
             })
           : navigate({ to: "/works" }))
       }

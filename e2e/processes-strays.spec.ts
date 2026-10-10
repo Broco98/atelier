@@ -6,8 +6,10 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   navButton,
+  replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
+  스냅샷두박자,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import { envReadRow, metricsOf, poolShell, snapshotFixture } from "@/features/processes/process-fixture";
@@ -30,6 +32,28 @@ const MiB = 1024 * 1024;
 const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
 const 줄 = (scope: Locator, name: string) => scope.getByRole("treeitem", { name, exact: true });
 const 메모리칸 = (row: Locator) => row.locator('[data-cell="memory"]');
+/** 구획의 머리 — 제목을 이름으로 든 여닫이 버튼이다(ui-refresh 결정 28). 수와 동작은 버튼 밖이다. */
+const 머리 = (page: Page, name: string) => 묶음(page, name).getByRole("button", { name, exact: true });
+
+/** 접어 여는 구획(출처 불명 · 다른 인스턴스 · 예외 — ui-refresh 결정 28)을 머리를 눌러 편다. */
+async function 펼친다(page: Page, ...names: string[]): Promise<void> {
+  for (const name of names) {
+    await 머리(page, name).click();
+    await expect(머리(page, name)).toHaveAttribute("aria-expanded", "true");
+  }
+}
+
+/** 그 구획의 버튼 중 접는 것(머리 · 줄의 셰브론) 밖의 것의 이름 — 동작 버튼이다. */
+const 동작버튼 = (page: Page, title: string) =>
+  묶음(page, title)
+    .getByRole("button")
+    .evaluateAll(
+      (buttons, title) =>
+        buttons
+          .map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "")
+          .filter((name) => name !== title && !/ (접기|펼치기)$/.test(name)),
+      title,
+    );
 
 /** env를 읽은 행(`envReadRow`). 줄 이름에 메모리가 붙게 메모리만 늘 준다. */
 const 행 = (pid: number, ppid: number, startedUs: number, name: string, memory: number): ProcessRow =>
@@ -110,6 +134,9 @@ test("확정 고아와 출처 불명이 갈린 묶음으로 서고, 다른 인�
   await expect(메뉴).toBeVisible();
   expect(await 메뉴.evaluate((element) => element.closest("[title]")?.getAttribute("title") ?? null)).toBeNull();
 
+  // 출처 불명 · 다른 인스턴스 · 예외는 접혀 연다(ui-refresh 결정 28) — 머리를 눌러 편 뒤 센다.
+  await 펼친다(page, "출처 불명", "다른 인스턴스", "예외");
+
   // 출처 불명 — 따로 선 묶음이다. 확정 고아의 행이 섞이지 않는다.
   const 불명 = 묶음(page, "출처 불명");
   await expect(불명.getByRole("treeitem")).toHaveCount(2);
@@ -134,15 +161,97 @@ test("확정 고아와 출처 불명이 갈린 묶음으로 서고, 다른 인�
   await expect(줄(예외, 이름(tmux))).toHaveAttribute("aria-level", "1");
   await expect(줄(예외, 이름(tmux밑zsh))).toHaveAttribute("aria-level", "2");
 
-  // 다른 인스턴스와 예외 행에는 끝내는 동작이 없다 — 버튼(끝내기 · 정리 · 행 메뉴)이 하나도 안 선다. 앵커: 고아 묶음에는 섰다(위).
-  await expect(남.getByRole("button")).toHaveCount(0);
-  await expect(예외.getByRole("button")).toHaveCount(0);
+  // 다른 인스턴스와 예외 행에는 끝내는 동작이 없다 — 동작 버튼(끝내기 · 정리 · 행 메뉴)이 하나도 안 선다. 있는 버튼은 접는 것(구획
+  // 머리 · 부모 줄의 셰브론)뿐이다. 앵커: 고아 묶음에는 동작 버튼이 섰다(위).
+  expect(await 동작버튼(page, "다른 인스턴스")).toEqual([]);
+  expect(await 동작버튼(page, "예외")).toEqual([]);
+  expect(await 동작버튼(page, "확정 고아")).toEqual(["정리", "프로세스 메뉴", "프로세스 메뉴", "프로세스 메뉴"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/** 그 구획에 그려진 줄의 수 — DOM에 선 줄이다. 접힌 구획 · 접힌 줄의 밑은 그려지지 않는다. */
+const 그린줄 = (page: Page, name: string) => 묶음(page, name).locator('[role="treeitem"]');
+
+// **구획과 부모 줄이 접힌다**(ui-refresh 결정 28). 처음 상태는 표다 — 정리할 것이 있는 확정 고아는 펼쳐 열고, 보기 전용 · 참고용인 출처
+// 불명 · 다른 인스턴스 · 예외는 접어 연다. 접힌 구획도 머리(제목 · 수 · 동작)는 선다. 부모 줄(고아 · 예외의 부모, 다른 인스턴스의 머리)도
+// 접힌다. 기억은 화면의 상태다: 박자가 와도 남고, 비었다가 다시 선 구획은 처음 상태로 서고, 화면을 떠났다 오면 표로 돌아간다.
+test("구획이 ui-refresh 결정 28의 표대로 열리고 머리를 눌러 여닫으며, 부모 줄도 접히고, 박자에도 남고, 비었다 다시 선 구획 · 다시 연 화면은 표로 돌아간다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await page.goto("/processes");
+
+  // ── 처음 ── 확정 고아만 펼쳤다. 접힌 구획은 줄을 안 그린다.
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "true");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  for (const name of ["출처 불명", "다른 인스턴스", "예외"]) {
+    await expect(머리(page, name)).toHaveAttribute("aria-expanded", "false");
+    await expect(그린줄(page, name)).toHaveCount(0);
+  }
+  // 접혀 있어도 수와 동작은 머리에 선다 — 영역은 제목만으로 찾힌다(위). [정리]는 접힌 채 누른다(아래 「출처 불명의 [정리]」 검사).
+  await expect(묶음(page, "출처 불명")).toContainText("프로세스 2개");
+  await expect(묶음(page, "출처 불명").getByRole("button", { name: "정리", exact: true })).toBeVisible();
+  await expect(묶음(page, "예외")).toContainText("보기 전용");
+
+  // ── 머리를 눌러 여닫는다 ──
+  await 머리(page, "확정 고아").click();
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(0);
+  await 펼친다(page, "출처 불명", "다른 인스턴스", "예외");
+  await expect(그린줄(page, "출처 불명")).toHaveCount(2);
+
+  // ── 부모 줄 ── 다른 인스턴스의 머리와 예외의 부모를 접는다. 그 밑만 빠진다.
+  const 남 = 묶음(page, "다른 인스턴스");
+  const dev머리 = 남.getByRole("treeitem", { name: /^dev 빌드 · v0\.15\.0/ });
+  await dev머리.getByRole("button", { name: "dev 빌드 · v0.15.0 접기", exact: true }).click();
+  await expect(dev머리).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "다른 인스턴스")).toHaveCount(3);
+  await expect(줄(남, 이름(설치본zsh))).toBeVisible();
+  const tmux줄 = 줄(묶음(page, "예외"), 이름(tmux));
+  await tmux줄.getByRole("button", { name: "tmux 접기", exact: true }).click();
+  await expect(tmux줄).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "예외")).toHaveCount(1);
+
+  // ── 박자가 와도 그대로다 ──
+  await 스냅샷두박자(page);
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "false");
+  await expect(머리(page, "출처 불명")).toHaveAttribute("aria-expanded", "true");
+  await expect(dev머리).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "다른 인스턴스")).toHaveCount(3);
+  await expect(그린줄(page, "예외")).toHaveCount(1);
+
+  // ── 비었다 다시 선 구획은 처음 상태다 ── 고아가 다 끝났다가(두 구획이 안 선다) 다시 생긴다. 접어 둔 확정 고아는 펼쳐, 펴 둔 출처 불명은
+  // 접혀 다시 선다. 그동안 선 채였던 구획의 접힘은 그대로다.
+  const 고아없음 = 스냅샷();
+  고아없음.verdict.orphans = { confirmed: {}, unknown: {} };
+  await replaceAnswer(page, "processes_snapshot", 고아없음);
+  await expect(묶음(page, "확정 고아")).toHaveCount(0);
+  await expect(묶음(page, "출처 불명")).toHaveCount(0);
+  await replaceAnswer(page, "processes_snapshot", 스냅샷());
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "true");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await expect(머리(page, "출처 불명")).toHaveAttribute("aria-expanded", "false");
+  await expect(머리(page, "예외")).toHaveAttribute("aria-expanded", "true");
+  await expect(tmux줄).toHaveAttribute("aria-expanded", "false");
+
+  // ── 화면을 떠났다 오면 표다 ── 줄의 접힘도 잊는다.
+  await navButton(page, "Projects").click();
+  await expect(묶음(page, "예외")).toHaveCount(0);
+  await navButton(page, "Processes").click();
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "true");
+  for (const name of ["출처 불명", "다른 인스턴스", "예외"]) {
+    await expect(머리(page, name)).toHaveAttribute("aria-expanded", "false");
+  }
+  await 펼친다(page, "예외");
+  await expect(tmux줄).toHaveAttribute("aria-expanded", "true");
+  await expect(그린줄(page, "예외")).toHaveCount(2);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 test("고아 · 다른 인스턴스 · 예외 행에도 28의 표기 함수로 메모리 칸이 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
   await page.goto("/processes");
+  await 펼친다(page, "출처 불명", "다른 인스턴스", "예외");
 
   for (const [group, rows] of [
     ["확정 고아", [고아node, 고아esbuild, 고아python]],

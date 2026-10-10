@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SpecViewer, { HtmlDoc, PrettyView, SourceView, htmlSrcdoc } from "./SpecViewer";
 import { useSpecFile } from "./hooks";
-import { ALL_MODES, refPrefixesOf, type Mode } from "@/mode";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 
@@ -78,10 +77,10 @@ describe("PrettyView 참조 복사 버튼", () => {
   it("언어 없는 코드블록은 블록으로, 인라인 코드만 껍데기를 쓴다", () => {
     const 블록 = render("```\n첫 줄\n둘째 줄\n```");
     expect(블록).toContain("<pre");
-    expect(블록).not.toContain("rounded-[6px]");
+    expect(블록).not.toContain("rounded-inline");
 
     const 인라인 = render("문단 안 `코드` 하나");
-    expect(인라인).toContain("rounded-[6px]");
+    expect(인라인).toContain("rounded-inline");
     expect(인라인).not.toContain("<pre");
   });
 
@@ -108,25 +107,32 @@ describe("PrettyView 참조 복사 버튼", () => {
 });
 
 // 본문 열 규격은 값을 정하는 지점이 하나다. 넓어지는 쪽만 보면 좁은 쪽이 조용히 따라
-// 넓어져도 통과하므로 둘을 함께 본다. px-12(48px)는 어느 쪽에서도 바뀌지 않는다 —
-// 좌측 48px은 여백이 아니라 거터의 자리이고, 소스 보기의 줄번호 열이 그 자리를 채운다.
+// 넓어져도 통과하므로 둘을 함께 본다. 글 폭은 토큰이다(ui-refresh 결정 12) — 좁을 때
+// `--measure-read`, 넓을 때 `--measure-wide`이고 한쪽은 다른 쪽 토큰을 안 쓴다.
+// px-12(48px)는 어느 쪽에서도 바뀌지 않는다 — 좌측 48px은 여백이 아니라 거터의 자리이고,
+// 소스 보기의 줄번호 열이 그 자리를 채운다. 그 거터는 글 폭 **밖**이다.
+const READ = "var(--measure-read)";
+const WIDE = "var(--measure-wide)";
+
 describe("PrettyView 본문 열", () => {
-  it("평소에는 900px이다", () => {
+  it("평소에는 읽는 글 폭(measure-read)이다", () => {
     const html = render("문단");
-    expect(html).toContain("max-w-[900px]");
+    expect(html).toContain(READ);
+    expect(html).not.toContain(WIDE);
     expect(html).toContain("px-12");
   });
 
-  it("둘 다 접었을 때만 1200px로 넓어진다", () => {
+  it("둘 다 접었을 때만 넓은 글 폭(measure-wide)으로 넓어진다", () => {
     const html = render("문단", [], true);
-    expect(html).toContain("max-w-[1200px]");
+    expect(html).toContain(WIDE);
+    expect(html).not.toContain(READ);
     expect(html).toContain("px-12");
   });
 
   // 두 보기가 **함께** 넓어져야 한다 — 한쪽만 따라가면 소스 토글에서 본문이 좌우로 튄다
   it("소스 보기도 같은 폭을 쓴다", () => {
-    expect(renderToStaticMarkup(<SourceView content="줄" />)).toContain("max-w-[900px]");
-    expect(renderToStaticMarkup(<SourceView content="줄" wide />)).toContain("max-w-[1200px]");
+    expect(renderToStaticMarkup(<SourceView content="줄" />)).toContain(READ);
+    expect(renderToStaticMarkup(<SourceView content="줄" wide />)).toContain(WIDE);
   });
 });
 
@@ -239,7 +245,6 @@ describe("SpecViewer 본문 갈래", () => {
   function viewer(file: string, showSource = false): string {
     return renderToStaticMarkup(
       <SpecViewer
-        mode="atelier"
         work={work}
         panelOpen={false}
         sidebarOpen={false}
@@ -258,12 +263,12 @@ describe("SpecViewer 본문 갈래", () => {
 
   it("그림은 읽지 않는다", () => {
     viewer("샷.png");
-    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", null);
+    expect(useSpecFile).toHaveBeenCalledWith("some-work", null);
   });
 
   it.each(["overview.md", "notes.txt", "목업/조각.html"])("%s는 읽는다", (file) => {
     viewer(file);
-    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", file);
+    expect(useSpecFile).toHaveBeenCalledWith("some-work", file);
   });
 
   it("그림은 토글을 켜도 그림이다", () => {
@@ -381,10 +386,9 @@ describe("spec이 없을 때 안내하는 폴더", () => {
     specFiles: [],
   });
 
-  const notice = (mode: Mode, slug = "some-work") =>
+  const notice = (slug = "some-work") =>
     renderToStaticMarkup(
       <SpecViewer
-        mode={mode}
         work={{ ...empty, slug }}
         panelOpen={false}
         sidebarOpen={false}
@@ -395,19 +399,12 @@ describe("spec이 없을 때 안내하는 폴더", () => {
       />,
     );
 
-  // 이 줄은 사람이 **그대로 붙여 넣는** 경로다. 세계를 안 타면 Maison에서 있지도 않은
-  // 폴더를 안내하고(결정 17: Room은 자기 홈 아래 산다), 사용자는 거기에 문서를 놓는다.
-  it("Atelier는 works 폴더를 안내한다", () => {
-    expect(notice("atelier")).toContain("~/.atelier/works/some-work/spec/");
+  // 이 줄은 사람이 **그대로 붙여 넣는** 경로다.
+  it("works 폴더를 안내한다", () => {
+    expect(notice()).toContain("~/.atelier/works/some-work/spec/");
   });
 
-  it("Maison은 rooms 폴더를 안내한다", () => {
-    const markup = notice("maison", "금융");
-    expect(markup).toContain("~/.atelier/maison/rooms/금융/spec/");
-    expect(markup).not.toContain("~/.atelier/works/");
-  });
-
-  // 마크업만으로는 **왜 맞았는지**를 못 가른다 — 리터럴 두 벌을 모드로 갈라 적어도 위 둘은
+  // 마크업만으로는 **왜 맞았는지**를 못 가른다 — 리터럴을 손으로 적어도 위 검사는
   // 초록이다. 그렇게 적힌 순간 이 줄과 참조 생성기가 따로 늙기 시작하고, 그 어긋남은
   // 클립보드에 나가는 참조와 화면이 시키는 자리가 다른 모양으로만 드러난다.
   //
@@ -419,14 +416,10 @@ describe("spec이 없을 때 안내하는 폴더", () => {
 
     // 잴 대상이 아직 거기 있다는 것부터 — 없으면 아래 「리터럴이 없다」는 공허하게 참이다
     expect(src).toContain("아직 spec이 없어요");
-    expect(src).toMatch(/specDirRef\(\s*mode\s*,/);
+    expect(src).toMatch(/specDirRef\(/);
 
-    // 표가 드는 루트 전부가 이 파일에 글자로 없어야 한다. 세계가 하나 더 서는 날 이 검사가
-    // 함께 넓어진다 — 리터럴 두 개를 손으로 적어 두면 셋째 세계는 조용히 빠진다.
-    for (const mode of ALL_MODES) {
-      const refs = refPrefixesOf(mode);
-      expect(src, `${mode} work 루트`).not.toContain(refs.work);
-      expect(src, `${mode} archive 루트`).not.toContain(refs.archive);
-    }
+    // 참조의 뿌리 둘이 이 파일에 글자로 없어야 한다.
+    expect(src, "work 뿌리").not.toContain("~/.atelier/works/");
+    expect(src, "archive 뿌리").not.toContain("~/.atelier/archive/");
   });
 });

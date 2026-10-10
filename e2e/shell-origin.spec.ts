@@ -18,7 +18,7 @@ import {
 // 그 사슬이 이어졌는지는 진짜 xterm에 포커스를 두고 키를 눌러야만 드러난다.
 //
 // 재는 것은 `pty_spawn`에 실린 **cwd**다 — 픽스처의 답은 자리와 무관해서(그것이 실물 그대로다)
-// 답으로는 어디서 떴는지가 안 갈린다. `terminal-worlds.spec.ts`가 `mode`를 같은 방식으로 캐낸다.
+// 답으로는 어디서 떴는지가 안 갈린다.
 
 const [singleWork, , multiWork] = WORKS;
 

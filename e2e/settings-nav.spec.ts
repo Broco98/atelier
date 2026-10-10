@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { PROJECTS, ROOMS, SEARCH_DESTINATION_QUERY, WORKS } from "./fixtures";
+import { PROJECTS, SEARCH_DESTINATION_QUERY, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   fireEvent,
@@ -20,7 +20,6 @@ import {
 // 서므로(`Sidebar.test.tsx` 머리말) 그리는 것을 보는 층은 여기뿐이다.
 
 const [pinned, plain] = WORKS;
-const [, room] = ROOMS;
 const [project] = PROJECTS;
 
 const aside = (page: Page) => page.locator("aside");
@@ -33,7 +32,9 @@ const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "터미널" |
  */
 const 켜짐 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =>
   설정항목(page, name).locator("xpath=..");
-const 머리 = (page: Page) => page.locator("main header").first();
+// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
+// 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
+const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);
 
 /** 사이드바 바닥의 `Settings`로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것. */
@@ -54,11 +55,10 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   await expect(page).not.toHaveURL(/tab=terminal/);
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop" });
-  const 모드전환 = page.getByRole("group", { name: "모드 선택" });
   const nav = aside(page).getByRole("button", { name: "Terminal", exact: true });
   const 작업행 = aside(page).getByRole("button", { name: pinned.title, exact: true });
   const 바닥설정 = aside(page).getByRole("button", { name: "Settings", exact: true });
-  for (const one of [모드전환, nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(1);
+  for (const one of [nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(1);
 
   await 설정에들어간다(page);
 
@@ -66,11 +66,11 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   for (const name of ["터미널", "알림", "에이전트 훅"] as const) {
     await expect(설정항목(page, name)).toBeVisible();
   }
-  for (const one of [모드전환, nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(0);
+  for (const one of [nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(0);
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*터미널$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -80,7 +80,7 @@ test("`/settings`로 곧장 오면 `/settings/terminal`로 치환된다", async 
   await installFixtureBackend(page);
   await page.goto("/settings");
   await expect(page).toHaveURL("/settings/terminal");
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*터미널$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -93,7 +93,7 @@ test("항목을 누르면 주소와 본문이 그 항목으로 바뀌고, 뒤로
 
   await 설정항목(page, "알림").click();
   await expect(page).toHaveURL("/settings/notifications");
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*알림$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*알림$/);
   // 본문은 **그 항목 하나**다 — 앞 항목의 구획이 함께 서 있으면 한 화면 그대로다.
   await expect(page.getByRole("group", { name: "알림 설정", exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toHaveCount(0);
@@ -160,6 +160,22 @@ test("설정 밖에서 ⌘,는 설정을 연다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 앱을 켜면 늘 작업 화면이다(판 02 「묻지 않고 기본값으로 둔 것」). 앞 판이 남긴 `last-mode`는 읽지도 다시 적지도 않는다
+// (ui-refresh 결정 23) — 키 이름을 글자로 적는 것은 그것이 앱이 더는 모르는 옛 키이기 때문이다. 정규화가 어느 work을 고르는지는
+// 라우터 seam이 잰다.
+test("앱을 켜면 작업 화면이고, 앞 판이 남긴 `last-mode`를 다시 적지 않는다", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("last-mode", "maison"));
+  await installFixtureBackend(page);
+  await page.goto("/");
+  await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/works\/[^/]+$/);
+
+  // 다른 화면을 지나도 그대로다 — 마지막 자리는 세션 기억이다.
+  await aside(page).getByRole("button", { name: "Terminal", exact: true }).click();
+  await expect(page).toHaveURL("/terminal");
+  expect(await page.evaluate(() => localStorage.getItem("last-mode"))).toBe("maison");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 결정 27 — 항목을 몇 번 옮겼든 **한 번에**, 들어오기 직전에 보던 곳으로.
 test.describe("앱으로 돌아가기", () => {
   test("work 탭을 보다 들어가 항목을 두 번 옮겨도 그 work·탭으로 돌아간다", async ({ page }) => {
@@ -177,7 +193,7 @@ test.describe("앱으로 돌아가기", () => {
     await expect(page).toHaveURL(`/works/${plain.slug}?tab=terminal`);
     // 주소만 보면 화면이 안 서도 초록이다 — 탭 줄과 사이드바가 앱의 것으로 되돌아왔다.
     await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
-    await expect(page.getByRole("group", { name: "모드 선택" })).toBeVisible();
+    await expect(aside(page).getByRole("button", { name: "Terminal", exact: true })).toBeVisible();
 
     // **push다** — 뒤로가기는 설정의 마지막 항목으로 간다(뒤로가기로 나갔다면 앞 항목에 선다).
     await page.goBack();
@@ -233,27 +249,9 @@ test.describe("앱으로 돌아가기", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Maison에서 들어갔으면 Maison으로 돌아간다", async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/maison/rooms/${room.slug}`);
-    await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
-
-    await 설정에들어간다(page);
-    // 설정에는 세그먼트가 없다 — 떠나온 모드는 돌아가기가 지닌다(CONTEXT.md 「모드」).
-    await expect(page.getByRole("group", { name: "모드 선택" })).toHaveCount(0);
-    await 설정항목(page, "알림").click();
-    await 설정항목(page, "앱으로 돌아가기").click();
-
-    await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
-    await expect(
-      page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: "Maison", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
   // 앱을 켜자마자 설정 — 기억할 자리가 없다. 목록 주소로 가고, 거기서 정규화가 고르는 항목은
   // 이 검사가 재지 않는다(그 규칙의 몫은 라우터 seam이다).
-  test("기억이 없으면 그 모드의 목록 주소로 간다", async ({ page }) => {
+  test("기억이 없으면 작업 목록 주소로 간다", async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto("/settings");
     await expect(page).toHaveURL("/settings/terminal");

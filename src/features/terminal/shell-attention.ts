@@ -2,15 +2,14 @@ import { agentMarkOf } from "@/components/ui/agent-mark";
 import { foldHookState, subagentOf } from "./agents";
 import type { AgentSignal, DialogKind } from "./agents/types";
 import type { AnswerKey } from "./shell-input";
-import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
+import { markSeen, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
-import type { Mode } from "@/mode";
 import type { CallingKind, CallingNote, ShellSignal } from "@/components/shell/shell-signal";
 import type { ShellHookState } from "./types";
 
 // 셸 **상태 축**을 아는 순수 모듈. 「에이전트가 말한 사실 · 사람이 본 행동 · 그 값이 어디서
 // 왔는가」 셋을 합쳐 화면이 읽는 값 하나를 낸다. 값으로 들이는 것은 어댑터와 레지스트리의
-// **가리개 둘**(`runningOn`), 그리고 「아는 에이전트」의 표(`agentMarkOf` — 에이전트 사라짐이 딛는다)뿐이라 DOM 없는
+// **순수 함수 몇**(`markSeen`·`shellRowName`·`slugOfOwner`), 그리고 「아는 에이전트」의 표(`agentMarkOf` — 에이전트 사라짐이 딛는다)뿐이라 DOM 없는
 // 기본 환경에서 그대로 돈다(shell-registry.ts가 선례다). 저쪽을 부르는 것이 여기서 갚아지는 순환처럼 보이지만
 // 아니다 — 레지스트리가 이 파일에서 가져가는 것은 타입 하나뿐이라 실행 시점에는 한 방향이다.
 //
@@ -71,10 +70,10 @@ export interface Attention {
    * **이 사실을 말한 에이전트**의 이름(`claude`·`codex`). 훅이 준 것 그대로이고, OSC·벨은
    * 누가 말했는지를 모르므로 `null`이다.
    *
-   * **행 오른쪽 메타의 마크가 이 값에 매달려 있다.** 마크의 재료를 「지금 그 PTY에서 도는 것」에서만
-   * 뽑으면 **에이전트가 나간 뒤의 초록 행에는 마크가 영영 안 선다** — 확인할 것은 남는 값이라(`end`가 안 본
-   * 확인할 것을 남긴다 — 프로세스 결정 13) 세션이 끝나 1초 폴링이 `running`을 눕힌 뒤에도 서고, 벨은 정의상
-   * 「아는 마크가 없을 때」만 초록이 된다. 그래서 「누가 말했나」를 상태가 함께 들고 다닌다.
+   * **지금 이 값을 그리는 화면은 없다.** 행 오른쪽 메타와 띠 줄의 에이전트 마크가 이 값에 매달려
+   * 있었는데(에이전트가 나간 뒤의 초록 행에도 마크를 세우려고), 사이드바에서 마크가 빠졌다(ui-refresh
+   * 결정 13). 판정의 계약(`applySignal`이 받는 인자)이라 그 판에서는 걷지 않았다 — 셸 상태 계산은
+   * 손대지 않는다는 것이 그 판의 선이다.
    */
   agent: string | null;
   /**
@@ -205,8 +204,8 @@ export function applySignal(
   source: AttentionSource,
   /**
    * 누가 말했나. **넘겨야 하는 자리**라 OSC·벨을 붙이는 쪽(#208)이 「모른다」를 손으로
-   * 적게 된다 — 기본값을 `null`로 두면 훅 길에서 이 값을 빠뜨려도 조용히 통과하고,
-   * 그 결과는 초록 행에서 마크가 사라지는 것뿐이라 화면에서 티가 안 난다.
+   * 적게 된다 — 기본값을 `null`로 두면 훅 길에서 이 값을 빠뜨려도 조용히 통과한다
+   * (`Attention.agent` — 지금 그리는 화면은 없다).
    */
   agent: string | null,
   /** 사건이 실어 온 턴의 형편 — 수 · 낸 서브에이전트 · 멈춤. 훅 밖의 길은 `NO_HOOK_TURN`을 적는다(그 머리말). */
@@ -595,19 +594,18 @@ export function topSignal(shells: ReadonlyArray<Shell>): ShellSignal | null {
 
 /**
  * 그 화면이 **한 행에 그리는 것 전부**(#203). 레인의 점·스피너는 `kind`가 정하고 오른쪽 메타는
- * 시각(경과)과 그 셸에서 도는 것(마크)이 정한다. 셸의 마지막 말도 함께 들지만 행은 그것을
+ * 시각(경과)이 정한다. 셸의 마지막 말도 함께 들지만 행은 그것을
  * 안 그린다 — 행이 한 줄로 돌아오면서(`sidebar-active-band` 결정 14) 말은 호버 카드의 말
  * 칸과 행 설명으로 갔고, 그 둘은 `callingNotesOf`로 읽는다(같은 셸을 고르는 것은 둘 다 이
  * 함수의 몫이다 — 스토리 39).
  *
- * **넷이 한 셸에서 나온다.** 값만 고르는 함수와 말만 고르는 함수를 따로 두면 행이 「A 셸의
+ * **셋이 한 셸에서 나온다.** 값만 고르는 함수와 말만 고르는 함수를 따로 두면 행이 「A 셸의
  * 색으로 B 셸의 말」을 적을 수 있는데, 그 어긋남은 화면에서 아무 표시도 안 난다 — 스토리
  * 79가 막으려는 것이 그것이라 이기는 셸을 고르는 자리를 여기 하나로 둔다. `topSignal`도
  * 이 함수를 딛는다.
  *
- * **마크의 재료가 원문인 것**은 표를 아는 자리가 `agentMarkOf` 하나이기 때문이다
- * (판 04 결정 15) — 여기서 접으면 그 표가 두 벌이 된다. 죽은 칸을 가리는 것은 `runningOn`이
- * 하므로 끝난 셸의 마지막 로고가 행에 남지 않는다.
+ * **마크의 재료는 없다.** 한때 「그 셸에서 도는 것」을 함께 실어 행 오른쪽 메타가 에이전트 마크를
+ * 골랐는데, 사이드바에서 마크가 빠지면서(ui-refresh 결정 13) 그 칸을 읽는 자리가 없어져 걷었다.
  */
 export interface SignalView {
   kind: ShellSignal;
@@ -615,16 +613,6 @@ export interface SignalView {
   message: string | null;
   /** 그 사실이 도착한 시각. 행 오른쪽 메타의 경과가 이 값을 읽는다. */
   since: number;
-  /**
-   * **마크의 재료** — 지금 그 셸에서 도는 것의 원문이고, 그것이 없으면 **이 상태를 말한
-   * 에이전트**다(`Attention.agent`).
-   *
-   * 둘째 갈래가 필요한 이유는 초록이다: 세션 종료도 벨도 그 순간 도는 에이전트가 없어
-   * (`Attention.agent` 머리말) 앞쪽만 보면 초록 행의 오른쪽 메타가 늘 경과뿐이 된다.
-   * 앞쪽이 이기는 것은 「지금 무엇을 물고 있나」가 더 새로운 사실이기 때문이다 — 훅이
-   * claude라고 말한 뒤 사람이 codex를 띄웠으면 행은 codex를 보여야 한다.
-   */
-  running: string | null;
 }
 
 export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
@@ -650,7 +638,6 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
     kind: top.kind,
     message: attention.message,
     since: attention.since,
-    running: runningOn(top.shell) ?? attention.agent,
   };
 }
 
@@ -679,8 +666,8 @@ export function callingNote(shells: ReadonlyArray<Shell>): CallingNote | null {
  *
  * **값이 문자열이라 얕은 비교가 그대로 먹는다** — 그것이 이 Record가 존재하는 이유 전부다.
  * 객체를 담으면 회차마다 새것이라 비교가 늘 어긋나고, 어느 셸에서 명령이 시작될 때마다
- * 목록 열여덟 행이 통째로 다시 그려진다(`runningAgentsOf` 머리말이 든 함정). 오른쪽
- * 메타가 쓰는 나머지(시각·마크)는 그래서 행마다 따로 구독한다.
+ * 목록 열여덟 행이 통째로 다시 그려진다. 오른쪽 메타가 쓰는 나머지(시각)는 그래서 행마다
+ * 따로 구독한다.
  *
  * **값이 없는 work은 키 자체가 없다.** `null`을 적어 두면 조용한 work 열여덟이 전부 키를
  * 갖고, 그 Record는 셸이 하나도 없어도 목록만큼 커진다.
@@ -688,13 +675,11 @@ export function callingNote(shells: ReadonlyArray<Shell>): CallingNote | null {
  * **최상위 셸은 안 든다** — 어느 work의 것도 아니라 행이 없다(`shellCountsOf`와 같은 가름).
  * 그 셸이 부르는 것은 nav `Terminal`과 띠가 받는다(#204).
  *
- * **그 세계의 것만, 키는 slug다** — `shellCountsOf`와 같은 사정이다. 목록은 터미널을 모르므로
- * (SidebarWorkList의 import 계약) 소유자로 키를 주면 `work.slug`로 꺼내다 늘 빈손이 되고,
- * 그때 행은 「신호가 없다」로 조용히 그려진다. 두 루트에 같은 slug가 설 수 있어 거르는 것도
- * 여기서 함께 한다 — 안 거르면 저쪽 세계의 셸이 이 행을 물들인다.
+ * **키는 slug다** — `shellCountsOf`와 같은 사정이다. 목록은 터미널을 모르므로
+ * (SidebarWorkList의 import 계약) `work.slug`로 꺼낸다.
  */
-export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellSignal> {
-  return perWork(state, mode, topSignal);
+export function signalsOf(state: ShellsState): Record<string, ShellSignal> {
+  return perWork(state, topSignal);
 }
 
 /**
@@ -702,29 +687,27 @@ export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellS
  * 카드와 행 버튼에 나눠 준다 — 설명은 버튼의 속성이고 카드는 값을 받으므로 슬롯으로는 두 자리에
  * 안 닿는다(목록 파일의 `signals` 주석과 같은 사정).
  *
- * **가르는 규칙은 `signalsOf`와 같다** — 그 세계의 것만, 키는 slug, 값이 없는 work은 키가 없다,
+ * **가르는 규칙은 `signalsOf`와 같다** — 키는 slug, 값이 없는 work은 키가 없다,
  * 최상위 셸은 안 든다. 두 Record가 같은 자리(`perWork`)에서 나오므로 레인과 말이 서로 다른
  * work 묶음을 볼 일이 없다.
  *
  * **값이 객체라 얕은 비교가 안 먹는다.** 읽는 쪽(`Sidebar`)이 한 겹 더 벗긴 비교를 쓴다.
  * 부르는 셸이 없으면 빈 Record이고, 대개의 목록에서 이 값은 비어 있다.
  */
-export function callingNotesOf(state: ShellsState, mode: Mode): Record<string, CallingNote> {
-  return perWork(state, mode, callingNote);
+export function callingNotesOf(state: ShellsState): Record<string, CallingNote> {
+  return perWork(state, callingNote);
 }
 
 /**
- * 그 세계의 work마다 셸을 모아 `pick`으로 값 하나를 고른다. `null`이면 키를 안 둔다.
- * `signalsOf`와 `callingNotesOf`의 가름(세계 · 최상위 · slug 키, 그 머리말)이 이 한 자리에 있다.
+ * work마다 셸을 모아 `pick`으로 값 하나를 고른다. `null`이면 키를 안 둔다.
+ * `signalsOf`와 `callingNotesOf`의 가름(최상위 · slug 키, 그 머리말)이 이 한 자리에 있다.
  */
 function perWork<T>(
   state: ShellsState,
-  mode: Mode,
   pick: (shells: ReadonlyArray<Shell>) => T | null,
 ): Record<string, T> {
   const groups = new Map<string, Shell[]>();
   for (const shell of state.shells) {
-    if (modeOfOwner(shell.owner) !== mode) continue;
     const slug = slugOfOwner(shell.owner);
     if (slug === null) continue;
     const group = groups.get(slug);
@@ -749,7 +732,7 @@ export interface CallingShell {
   /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다(`CallingKind`). */
   kind: CallingKind;
   /**
-   * 그 셸이 말한 사실 **통째로**. 정렬의 둘째 키(`since`)도 마크의 재료(`agent`)도 여기
+   * 그 셸이 말한 사실 **통째로**. 정렬의 둘째 키(`since`)와 화면이 읽는 나머지가 여기
    * 있어서, 읽는 쪽이 문(`attentionOn`)을 다시 딛을 일이 없다 — 그것이 이 필드가 `since`
    * 하나가 아닌 이유다.
    */
@@ -829,8 +812,9 @@ export function shellCalls(shells: ReadonlyArray<Shell>): ReadonlyArray<ShellCal
 
 /**
  * 알림 띠의 **줄 하나**(#204). `callingShells`가 정한 차례 그대로이고, 줄이 지는
- * 것은 넷이다 — 어느 화면으로 가는가(`owner`) · 어느 칸을 켜는가(`id`) · 마크의 재료 ·
- * 그리고 셸 이름을 붙이는가.
+ * 것은 셋이다 — 어느 화면으로 가는가(`owner`) · 어느 칸을 켜는가(`id`) · 그리고 셸 이름을
+ * 붙이는가. 한때 마크의 재료(그 셸에서 도는 것)도 졌는데, 띠 줄에서 마크가 빠지면서(ui-refresh
+ * 결정 13) 걷었다.
  *
  * **work 제목은 여기 없다.** 그 값은 목록 API가 주는 것이라 터미널이 모르고, 알려면 이
  * 모듈이 works를 물어야 한다 — 띠를 그리는 자리(`Sidebar.tsx`)가 이미 둘 다 쥐고 있으므로
@@ -841,21 +825,18 @@ export interface BandRow {
   /** 레지스트리의 칸 번호. 누르면 이 칸이 켜진다(`selectShell`). */
   id: number;
   /**
-   * 어느 화면인가 — **소유자 키 그대로**다(`<모드>:<slug>`). slug가 비었으면 최상위 셸이고
-   * 누르면 그 세계의 터미널로 간다(결정 13).
+   * 어느 화면인가 — **소유자 키 그대로**다(work의 slug, 최상위 셸이면 빈 글자). 최상위 셸이면
+   * 누르면 터미널로 간다(결정 13).
    *
-   * 줄이 이미 한 세계로 걸러져 나오므로 slug만 실어도 이 화면은 정해진다. 그런데도 키를
-   * 통째로 싣는 것은 **알림이 같은 키를 싣기 때문이다**(`NotifyShell.owner`) — 제목을 붙이는
-   * 함수는 하나이고(`Sidebar`의 `titleResolver`) 띠와 알림이 그것을 나눠 쓴다. 모양이 갈리면
-   * 그 함수가 한쪽에서 늘 빈손이 되는데, 화면에는 「제목 자리에 슬러그가 떴다」로만 보인다.
+   * **알림이 같은 키를 싣는다**(`NotifyShell.owner`) — 제목을 붙이는 함수는 하나이고(`Sidebar`의
+   * `titleResolver`) 띠와 알림이 그것을 나눠 쓴다. 모양이 갈리면 그 함수가 한쪽에서 늘 빈손이
+   * 되는데, 화면에는 「제목 자리에 슬러그가 떴다」로만 보인다.
    */
   owner: ShellOwner;
   /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다(`CallingKind`). */
   kind: CallingKind;
   /** 경과가 읽는 시각. 정렬의 둘째 키이기도 하다. */
   since: number;
-  /** 마크의 재료. 규칙은 행과 같다(`SignalView.running`) — 도는 것이 먼저, 없으면 말한 쪽. */
-  running: string | null;
   /**
    * 탭에 적히는 그 이름. **한 화면에서 부르는 셸이 둘 이상일 때만** 찬다(결정 5) —
    * 하나뿐이면 제목만으로 어느 셸인지 정해지므로 붙일 이유가 없다.
@@ -874,13 +855,8 @@ export interface BandRow {
  * 무리를 가르는 키가 `owner`인 것은 **켜지는 자리가 화면마다 따로이기 때문이다**
  * (`activeByOwner`) — 최상위 셸 둘이 부르면 그 둘도 서로 갈려야 한다.
  */
-export function bandRows(state: ShellsState, mode: Mode): ReadonlyArray<BandRow> {
-  const calling = callingShells(
-    // **이 세계의 셸만 선다**(결정 10). 저쪽 세계가 부르는 것을 여기 세우면 누를 자리가 없다 —
-    // 줄의 제목은 이 세계의 목록에서 오고(`titleResolver`) 가는 곳도 이 세계의 주소다. 저쪽에
-    // 도는 것을 알리는 자리는 세그먼트의 점이고, 그것은 판 02다.
-    state.shells.filter((shell) => modeOfOwner(shell.owner) === mode),
-  );
+export function bandRows(state: ShellsState): ReadonlyArray<BandRow> {
+  const calling = callingShells(state.shells);
 
   // 화면마다 **부르는** 셸이 몇인가. 조용한 형제는 안 센다 — 이름이 붙는 근거는 「띠에서
   // 두 줄이 같은 제목으로 선다」이지 「그 work에 셸이 여럿이다」가 아니다.
@@ -889,13 +865,12 @@ export function bandRows(state: ShellsState, mode: Mode): ReadonlyArray<BandRow>
 
   // **여기서는 아무것도 다시 판정하지 않는다.** 부르는가 · 어떤 부름인가 · 언제부터인가는
   // `callingShells`가 이미 정했고, 이 자리가 더하는 것은 그 줄을 **화면에 세우는 데만**
-  // 필요한 것 셋뿐이다 — 어느 칸을 켜는가 · 마크의 재료 · 이름을 붙이는가.
+  // 필요한 것 둘뿐이다 — 어느 칸을 켜는가 · 이름을 붙이는가.
   return calling.map(({ shell, kind, attention }) => ({
     id: shell.id,
     owner: shell.owner,
     kind,
     since: attention.since,
-    running: runningOn(shell) ?? attention.agent,
     shellName: (perOwner.get(shell.owner) ?? 0) > 1 ? shellRowName(shell) : null,
   }));
 }

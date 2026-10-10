@@ -54,10 +54,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* app shell layout — single source for the titlebar strip and sidebar width */
+/* 앱 셸의 길이 — 타이틀바 띠의 높이, 행의 리듬, 디자인 시스템의 여백.
+
+   **폭(사이드바 · 목록 패널 · 작업 패널)은 여기 적지 않는다.** 기본 · 최소 · 최대의 정본은
+   `useResizableWidth`를 부르는 자리들이고(사이드바는 `Sidebar.tsx`의
+   `useResizableWidth("sidebar-width", 280, 240, 400)`), 상자마다 제 폭을 인라인 변수로 싣는다.
+   여기 한 벌 더 적으면 두 곳이 갈린다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여
+   아무 데서도 읽히지 않았다. 디자인 시스템의 `--panel-width`(작업 패널 330)는 목록 패널이
+   인라인으로 쓰는 같은 이름(360)과 부딪혀서도 적지 않는다 — 작업 패널은 `--work-panel-width`다. */
 :root {
     --titlebar-height: 44px;
-    --sidebar-width: 248px;
     /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 패널 둘이 전부 이
        값을 읽는다. 한때 여덟 자리에 `gap-[3px]`로 흩어져 있었고, 그러면 한 곳만 손봐도
        같은 컬럼 안에서 리듬이 갈린다. `gap-(--row-gap)`으로 받는다. */
@@ -65,12 +71,29 @@
 
     /* 행 머리의 글리프 뒤 여백 — 아이콘·화살표가 앉는 상자와 그 옆 글자 사이. */
     --glyph-gap: 9px;
+
+    /* **디자인 시스템의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 DS(`base.css`의
+       `:where(:root)`) 그대로다.
+         --gap           창 가장자리 · 카드 사이의 틈
+         --rail          레일 폭
+         --card-pad      카드 안 좌우
+         --card-head     카드 머리 높이
+         --measure-read  읽는 글(문서 · 설정)의 폭 상한
+         --measure-wide  넓은 화면의 폭 상한
+         --term-inset    터미널 카드의 안쪽 여백 — 둥근 모서리에 글자가 닿지 않게 */
+    --gap: 8px;
+    --rail: 32px;
+    --card-pad: 24px;
+    --card-head: 48px;
+    --measure-read: 760px;
+    --measure-wide: 1120px;
+    --term-inset: 12px;
 }
 
-/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 셸 헤더와 두 목록 패널 헤더가
-   --titlebar-inset / --titlebar-inset-panel을 읽어 신호등·셸 컨트롤을 피한다.
+/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 바탕 줄(`Frame`의 `TitleBar`) 하나가 --tab-lead /
+   --titlebar-inset-tabs를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리는 바탕 줄 아래에 서서 피할 것이 없다.
    컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고,
-   그 뒤 12px를 띄운 곳부터 페이지 콘텐츠가 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
+   그 뒤 --tab-lead를 띄운 곳부터 탭 줄이 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
@@ -80,22 +103,18 @@
     /* icon-button 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
        여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
     --titlebar-control-size: 24px;
-    /* 셸 컨트롤 사이 간격이자, 그 오른쪽에 이어지는 목록 패널 첫 컨트롤까지의 간격.
+    /* 셸 컨트롤 사이 간격이자, 그 오른쪽에 이어지는 탭 줄 첫 칸까지의 간격(--tab-lead).
        24px 상자에 16px 글리프라 좌우 4px씩이 이미 비어 있어, 여기 값이 작으면 글리프끼리
        붙어 보인다 */
     --titlebar-control-gap: 6px;
     /* 사이드바 토글 · 뒤로 · 앞으로 · 검색 네 칸. ShellControls가 이 폭을 그대로 쓰므로
        칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다.
        **칸 사이는 한 값뿐이다** — 검색을 「지나온 길」과 무리로 가르려고 이 식에 넓은 틈을
-       하나 더 두지 않는다. 그러면 이 폭 뒤에 --titlebar-control-gap으로 이어 붙는 탭 줄·
-       패널 첫 칸(결정 24)보다 행 안쪽이 더 벌어져, 마지막 칸이 오른쪽 줄에 붙어 보인다
+       하나 더 두지 않는다. 그러면 이 폭 뒤에 --titlebar-control-gap으로 이어 붙는 탭 줄
+       첫 칸(결정 24)보다 행 안쪽이 더 벌어져, 마지막 칸이 오른쪽 줄에 붙어 보인다
        (ShellControls의 검색 버튼 주석) */
     --titlebar-controls-width: calc(
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
-    );
-    /* 셸 헤더는 글자가 놓이는 자리라 컨트롤 간격보다 넉넉히 띄운다 */
-    --titlebar-inset: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) + 12px
     );
     /* **탭 줄이 왼쪽의 것과 벌어지는 거리 — 한 값이다**(결정 24).
        사이드바가 열렸으면 그 경계선에서, 접혔으면 셸 컨트롤에서 재는데 **두 경우가 같은 값을
@@ -104,19 +123,12 @@
 
        값이 --titlebar-control-gap인 것은 이 줄의 첫 칸이 **글자가 아니기 때문이다** — 결정 10이
        제목을 빼면서 그 자리에 알약(`spec`)이나 버튼(`+`)이 섰고, 그것들은 제 상자에 여백을 이미
-       갖고 있다. 브레드크럼용 --titlebar-inset(12px)을 그대로 쓰면 그만큼 더 벌어져 첫 칸만
-       혼자 떨어져 보인다. 목록 패널 헤더가 같은 이유로 이미 같은 값을 쓴다. */
+       갖고 있다. 글자 머리(옛 브레드크럼)가 쓰던 12px 띄움을 그대로 쓰면 그만큼 더 벌어져 첫 칸만
+       혼자 떨어져 보인다. */
     --tab-lead: var(--titlebar-control-gap);
     /* 사이드바가 접혔을 때 — 위 거리를 셸 컨트롤 끝에서 잰 값이다. */
     --titlebar-inset-tabs: calc(
         var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--tab-lead)
-    );
-    /* 목록 패널 헤더의 첫 칸은 셸 컨트롤과 같은 간격으로 이어 붙인다 — 넷이 한 줄에 나란히
-       서 있어서 여기만 간격이 다르면 그 하나만 따로 떨어진 것처럼 읽힌다.
-       패널 자체의 좌우 거터(px-3 = 12px) 안쪽이라 그만큼 뺀다 */
-    --titlebar-inset-panel: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) +
-            var(--titlebar-control-gap) - 12px
     );
 }
 
@@ -165,17 +177,29 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --color-panel: var(--bg-panel);
-    --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
+    /* 디자인 시스템이 더한 색(ui-refresh 결정 11) — 값과 그 자리는 `:root`의 주석이 든다.
+       **`--text-section`은 `--color-section`(→ `text-section`)으로 잇는다** — 바로 위
+       `--text-tertiary` → `--color-tertiary`와 같은 모양이다. `--text-*`를 이 블록에 그대로
+       들이면 Tailwind가 글자 크기로 읽는다. `--bg-group`도 앞말을 떼어 `bg-group`이다. */
+    --color-chrome: var(--chrome);
+    --color-chrome-alt: var(--chrome-alt);
+    --color-chrome-hover: var(--chrome-hover);
+    --color-primary-strong: var(--primary-strong);
+    --color-primary-ink: var(--primary-ink);
+    --color-link: var(--link);
+    --color-border-pill: var(--border-pill);
+    --color-section: var(--text-section);
+    --color-group: var(--bg-group);
+    --color-callout-important: var(--callout-important);
     /* **상태 축의 색**(#203, 결정 3). 행의 점·스피너 · 알림 띠(#204) · 셸 탭 채움
        (#205)이 같은 이름을 읽는다 — 자리마다 색을 다시 고르면 「세 자리가 한 사실을 말한다」
        (스토리 79)가 색에서 먼저 깨진다. `-soft`는 같은 색의 알파 판이고 후광과 탭 채움이
        쓴다.
 
        **`-ink`는 글자용이다.** 결정 3의 표가 못박은 것은 **점의** 색인데(그 표의 이름이
-       `amber-600`이다) 라이트에서 그 색의 대비는 2.98이라, 그것을 **말**에 그대로 쓰면 두
+       `amber-600`이다) 라이트 사이드바에서 그 색의 대비는 2.90이라, 그것을 **말**에 그대로 쓰면 두
        줄 행을 연 판이 고치려던 3.0짜리 글자를 다시 만든다(그 판의 스토리 24 · 「둘째 줄의
        기본색은 `muted-foreground`(대비 ≥ 4.5)」). 점은 3px 후광이 면적을 벌지만 글자에는
        그런 것이 없다 — 그래서 **글자만** 한 단 어둡게 갈랐고, 결정 3의 점 색은 그대로 둔다.
@@ -193,6 +217,22 @@
     --color-state-3: var(--state-3);
     --color-state-4: var(--state-4);
     --ease-panel: var(--panel-ease);
+    /* **반경 — 디자인 시스템의 세 단계와 그 안쪽 둘**(ui-refresh 결정 6 · 25). 이름은 DS(`base.css`) 그대로다.
+         rounded-pill    9999  머리 컨트롤 — 카드 머리 버튼 · 브레드크럼 · 원문 전환 · 상태 배지 · 검색칸
+         rounded-full    원형  아이콘 버튼(`icon-button` · 버튼의 `icon*` 크기)
+         rounded-lg      10    탭 · 목록 행 · 메뉴 행 · 폼 컨트롤 · 툴팁(`--radius` 그대로다)
+         rounded-card    16    카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
+         rounded-inner    8    10px 컨트롤 **안에** 드는 것 — 세그먼트 칩 · kbd · 24px 이하 툴바 칸
+         rounded-inline   6    문서 안 인라인 코드 · 트리의 확장자 꼬리표
+       툴팁 화살표는 Tailwind 기본 `rounded-xs`(2px)다. 아래 `sm` · `md` · `xl` …은 registry가 깐 값이고
+       앱 코드는 쓰지 않는다 — 단계 밖 이름이다. `rounded-[…]`(px · `min()` · `calc()`)는 `type-scale.test.ts`가
+       막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가 이 이름들을 모서리로 아는지도 같은 검사가 잰다.
+       `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로 옮기기 전의 기록이다 —
+       머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
+    --radius-card: 16px;
+    --radius-pill: 9999px;
+    --radius-inner: 8px;
+    --radius-inline: 6px;
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -200,31 +240,97 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* **떠 있는 것의 그림자**(ui-refresh 결정 6 · 디자인 시스템의 `--shadow-float`) — 큰 그림자 한 겹과 1px 고리 한 겹이다.
+       고리가 그림자 안에 있어 떠 있는 카드는 테두리를 따로 들지 않는다(`floating-card` · 토스트). */
+    --shadow-float: 0 12px 32px rgba(20, 20, 28, 0.12), 0 0 0 1px rgba(20, 20, 28, 0.06);
+}
+
+/* **글자 단계 — 디자인 시스템의 열 단계뿐이다**(ui-refresh 결정 25). 이름은 DS(`base.css`의 `t-*`)
+   그대로이고, 단계마다 크기와 줄 높이를 함께 든다. 굵기 · 자간이 단계에 붙은 것은 h2 · title ·
+   mono-micro 셋이다(부르는 자리의 `font-*` · `tracking-*`이 덮는다).
+     meta        11 / 16   행 오른쪽 메타, 소제목 개수
+     caption     12 / 16   사이드바 소제목, 표 머리, 배지, 툴팁, 날짜
+     ui          13 / 20   알약 · 탭 · 메뉴 · 폼 · 트리 행 · 브레드크럼
+     row         14 / 20   사이드바 작업 행 · 목록 행 · 팔레트 행
+     body        15 / 26   spec 문서 본문
+     h2          19 / 28   문서 h2
+     title       25 / 32   문서 h1, 프로젝트 제목
+     mono        13 / 20   코드 블록 · 인라인 코드 · 속성 값
+     mono-sm     12 / 16   경로 · 브랜치 · 포트 · 복사 줄
+     mono-micro  10 / 14   트리의 확장자 배지만
+   DS의 굵은 조합은 토큰이 아니다 — `t-ui-strong`은 `text-ui font-semibold`, `t-row-nav`는
+   `text-row font-medium`이다. 고정폭 셋은 크기만 들고 글꼴은 `font-mono`가 든다.
+
+   **`--text-*: initial`이 Tailwind 기본 단계(`text-xs` · `text-sm` …)를 비운다.** 그 이름들은 이제
+   아무 CSS도 안 나와 조용히 부모 크기를 물려받으므로, 이름 단계와 `text-[Npx]`는 `type-scale.test.ts`가
+   막는다. 클래스 합치기(`lib/utils.ts`의 `cn`)도 이 이름들을 크기로 알아야 한다 — 같은 검사가 잰다.
+   `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 글자 px는 단계로 옮기기 전의 기록이다 —
+   지금 크기는 클래스의 단계가 들고, 머리말에서도 단계 이름(`text-ui` …)으로 적힌 것이 지금 값이다.
+
+   **글자색 `--text-tertiary` · `--text-section`은 여기 들이지 않는다**(`:root`의 주석) — 이 블록에
+   들면 글자 크기로 읽힌다. */
+@theme static {
+    --text-*: initial;
+    --text-meta: 11px;
+    --text-meta--line-height: 16px;
+    --text-caption: 12px;
+    --text-caption--line-height: 16px;
+    --text-ui: 13px;
+    --text-ui--line-height: 20px;
+    --text-row: 14px;
+    --text-row--line-height: 20px;
+    --text-body: 15px;
+    --text-body--line-height: 26px;
+    --text-h2: 19px;
+    --text-h2--line-height: 28px;
+    --text-h2--font-weight: 600;
+    --text-title: 25px;
+    --text-title--line-height: 32px;
+    --text-title--font-weight: 650;
+    --text-title--letter-spacing: -0.01em;
+    --text-mono: 13px;
+    --text-mono--line-height: 20px;
+    --text-mono-sm: 12px;
+    --text-mono-sm--line-height: 16px;
+    --text-mono-micro: 10px;
+    --text-mono-micro--line-height: 14px;
+    --text-mono-micro--font-weight: 500;
 }
 
 :root {
+    /* 값은 디자인 시스템(`base.css`의 `:where(:root)`)의 것이다(ui-refresh 결정 11 — Codex 팔레트).
+       이름도 DS와 같다. 갈리는 것은 둘이다.
+       - **바탕 셋(`--background` · `--card` · `--popover`)은 `oklch(1 0 0)`으로 적는다.** DS의
+         `#ffffff`와 같은 색이고, 터미널 라이트 테마의 바탕이 이 글자에 기대 있다
+         (`theme-tokens.test.ts`). 창 바탕의 회색은 `--background`가 아니라 아래 `--chrome`이다.
+       - **회색 둘(`--muted` · `--accent`)과 `--input` · `--ring`은 다른 이름을 가리킨다.** DS가 값으로
+         풀어 적은 것과 같은 값이다(아래 각 주석). */
     --background: oklch(1 0 0);
-    --foreground: #1a1a1e;
+    --foreground: #191c1f;
     --card: oklch(1 0 0);
     /* **글자색은 앱 글자색이다**(결정 2). shadcn 원본의 `oklch(0.145 0 0)`(≈#0a0a0a)은 앱
-       본문(#1a1a1e)보다 한 단 검어, 판 3부터 들어오는 메뉴·Popover·Select·창·토스트
-       (`text-popover-foreground`)와 Alert(`text-card-foreground`)의 글자만 옛 화면 옆에서
+       본문(`--foreground`)보다 한 단 검어, 메뉴·Popover·Select·창·토스트
+       (`text-popover-foreground`)와 Alert(`text-card-foreground`)의 글자만 옆 화면에서
        튄다. 바탕(흰색)은 이미 앱의 떠 있는 카드와 같은 값이다. */
     --card-foreground: var(--foreground);
     --popover: oklch(1 0 0);
     --popover-foreground: var(--foreground);
-    --primary: #5e6ad2;
+    /* 강조. 이 위에 흰 글자를 얹으면 3.68:1이라 글자 바닥(4.5)에 못 미친다 — 흰 글자를 얹는 면은
+       아래 `--primary-strong`이다. 터미널 라이트 테마의 커서가 이 값을 옮겨 적는다
+       (`terminal-theme.ts`). */
+    --primary: #4d81ef;
     --primary-foreground: #ffffff;
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
+    --secondary: #f4f4f5;
+    --secondary-foreground: #191c1f;
     /* shadcn 부품이 읽는 회색 둘은 아래 상태 스케일을 가리킨다(결정 2) — 부품이 hover·선택에
-       칠하는 회색이 옛 화면의 네 단과 같아야 둘이 한 화면에서 안 갈린다. */
+       칠하는 회색이 앱의 네 단과 같아야 둘이 한 화면에서 안 갈린다. DS가 값으로 적은
+       `rgba(20, 20, 28, 0.03 / 0.06)`이 그 두 단이다. */
     --muted: var(--state-1);
-    --muted-foreground: #55555e;
+    --muted-foreground: #565759;
     --accent: var(--state-2);
-    --accent-foreground: #1a1a1e;
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: #e5e5e8;
+    --accent-foreground: #191c1f;
+    --destructive: #e7000b;
+    --border: #ececec;
     --input: var(--border);
     --ring: var(--primary);
     --chart-1: oklch(0.87 0 0);
@@ -233,32 +339,68 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    /* 본문(흰색)과 갈리되 눌러앉지는 않는 밝기. #f2f2f4에서 한 단계 올렸다 —
-       경계는 border-r이 이미 긋고 있어서 농도까지 함께 질 필요가 없다. */
-    --sidebar: #f7f7f9;
-    --sidebar-foreground: var(--foreground);
+    /* 사이드바는 창 바탕(`--chrome`)과 같은 색이다(ui-refresh 결정 11). 그 위의 행 글자는
+       `--sidebar-foreground`, 고른 행은 `--sidebar-accent`다. 레이아웃 편집기의 트리와 미리보기
+       창의 회색 칸도 `bg-sidebar`를 읽는다.
+       **값을 따로 적지 않고 바탕을 가리킨다** — 사이드바가 선 없이 바탕에 붙으므로(ui-refresh 결정 4)
+       두 이름이 갈리면 그 자리에 경계가 다시 선다. 그래도 사이드바(`aside`)는 투명이 아니라 이 면을
+       칠한다: e2e가 `aside`의 계산된 바탕색으로 행 메타와 점의 대비를 잰다(`works-sidebar.spec.ts`). */
+    --sidebar: var(--chrome);
+    --sidebar-foreground: #212326;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--accent);
+    --sidebar-accent: #eeeff0;
     --sidebar-accent-foreground: var(--accent-foreground);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--primary);
-    --bg-panel: #f7f7f8;
-    --bg-inset: #f6f6f7;
     --border-strong: #d2d2d7;
-    --text-tertiary: #8e8e97;
+    /* 흐린 글자 — 닫기 `×` · 메타. 바탕(`--chrome`) 위 2.95:1이다. 소제목(`--text-section`)과
+       함께 Codex에서 잰 값이라 대비 바닥 아래인 것을 알고 둔다(handoff 「대비 미달을 알고 둔 값」).
+       **글자색 둘은 `:root`에만 둔다** — `@theme`에 들이면 Tailwind가 `--text-*`를 글자 크기로
+       읽는다. 클래스는 `--color-tertiary` · `--color-section`으로 잇는다. */
+    --text-tertiary: #8e8f90;
+
+    /* **디자인 시스템이 더한 색**(ui-refresh 결정 11 · 16 · 18).
+         --chrome             창 바탕 — 카드가 그 위에 뜬다
+         --chrome-alt         한 단 짙은 바탕(ui-refresh 결정 18의 탭 줄 시안 톤)
+         --chrome-hover       바탕 위 버튼(`+` 등)을 올리거나 누를 때의 면
+         --primary-strong     흰 글자를 얹는 파랑 면 — 흰 글자 4.69:1
+         --primary-ink        옅은 파랑 면 위의 파랑 글자 — active 배지 · `soft` 버튼
+         --link               링크 글자
+         --border-pill        알약 · 흰 원 버튼의 안쪽 1px 테두리
+         --text-section       소제목 — 바탕 위 2.5:1(위 `--text-tertiary`와 같은 까닭으로 둔다)
+         --bg-group           카드 안 묶음의 옅은 면(ui-refresh 결정 16)
+         --callout-important  「중요」 콜아웃의 제목
+         --scrim              모달 뒤를 어둡게 하는 막
+       **파랑 글자는 자리마다 갈린다** — 링크는 `link`, 옅은 파랑 면 위는 `primary-ink`, 아이콘 ·
+       체크 · 스피너는 `primary` 그대로다. */
+    --chrome: #f4f4f5;
+    --chrome-alt: #e8e8e8;
+    --chrome-hover: #dcdddd;
+    --primary-strong: #3f6fd8;
+    --primary-ink: #3565c9;
+    --link: #4e74c5;
+    --border-pill: #eeeeee;
+    --text-section: #9b9c9d;
+    --bg-group: #f6f6f7;
+    --callout-important: #7c3aed;
+    --scrim: rgba(0, 0, 0, 0.25);
+
     /* **상태 축의 색 넷**(#203). 목업 `행-신호-세-안.html`이 정본이고 결정 3의 표가 이름을
        못박았다 — 앰버는 `amber-600`, 초록은 `green-700`. `-soft`는 같은 색 알파 0.14이고,
-       점의 3px 후광과 셸 탭 채움(#205)이 그것을 쓴다.
+       점의 3px 후광과 셸 탭 채움(#205)이 그것을 쓴다. 상태색은 Codex 팔레트로 바꾸지 않았다
+       (ui-refresh 결정 11).
 
-       **앰버는 이 배경에서 대비 2.98이다**(L3 실측). 그림 요소의 바닥 3.0에 0.02 모자라는
-       것을 알고 고른 색이라(사람이 목업에서 눈으로 골랐다) 여기 적어 둔다 — 점은 3px 후광이
-       면적을 벌어 그 자리를 메운다. 초록은 4.69로 글자 바닥까지 넘는다.
+       **앰버는 사이드바 바탕(`#f4f4f5`)에서 대비 2.90이다.** 그림 요소의 바닥 3.0에 못 미치는
+       것을 알고 둔 색이다 — 처음 고를 때(바탕 `#f7f7f9`, 2.98) 사람이 목업에서 눈으로 골랐고,
+       바탕을 Codex 값으로 옮길 때 바탕과 상태색을 함께 정했다(ui-refresh 결정 11). 점은 3px
+       후광이 면적을 벌어 그 자리를 메운다. 점을 한 단 어둡게(`amber-700`) 하는 안은 기각했다
+       (ui-refresh 결정 29) — L3의 바닥이 2.85다(`works-sidebar.spec.ts`). 초록은 4.56으로 글자
+       바닥까지 넘는다.
 
-       **그래서 글자는 `amber-700`이다**(`-ink`, 4.69). 자리를 옮기는 것이 대비를 고치는
-       것은 아니라는 것이 두 줄 행을 연 판의 시작이라(사람의 말: 「이 한 줄이 가독성이 안
-       좋다」), 상태를 **글자로** 말하는 자리는 4.5를 넘겨야 한다. 점을 같이 어둡게 할 것인지는
-       사람에게 열어 둔 물음이다 — 그 판의 `spec/물음-둘째-줄의-색.md`. */
+       **그래서 글자는 `amber-700`이다**(`-ink`, 같은 바탕에서 4.57). 자리를 옮기는 것이 대비를
+       고치는 것은 아니라는 것이 두 줄 행을 연 판의 시작이라(사람의 말: 「이 한 줄이 가독성이 안
+       좋다」), 상태를 **글자로** 말하는 자리는 4.5를 넘겨야 한다. */
     --signal-wait: #d97706;
     --signal-wait-soft: rgba(217, 119, 6, 0.14);
     --signal-wait-ink: #b45309;
@@ -267,24 +409,33 @@
     --signal-done-ink: #15803d;
     /* 상태 농도 4단 — 선택·hover·켜짐을 말하는 무채색 스케일의 단일 출처.
        퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
-         행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
+         행 hover(1)   < 행 선택(`--sidebar-accent`) = 선택된 행 hover   — 흰 카드 안 목록
          버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
+       **행 선택은 이 스케일 밖의 불투명한 `--sidebar-accent`다**(ui-refresh 결정 11 · 30 — `selected-row`).
+       선택된 행은 hover해도 그 색 그대로다(DS `.is-on:hover`). 흰 카드 안 목록에서는 hover(≈#f8f8f9) <
+       선택(#eeeff0)으로 갈린다. **바탕(`--chrome`) 위의 사이드바에서는 hover와 선택이 한 단으로
+       붙는다 — Codex 값이다**(ui-refresh 결정 30). 행 줄의 부등식이 깨지는 자리는 거기 하나이고, 사이드바
+       hover만 더 옅게 두는 안은 프로토타입과 달라 기각했다.
        shadcn의 --accent·--muted는 이 스케일의 2단·1단을 **가리키는 이름**이다(결정 2 — 부품이
        읽는 회색을 앱 값에 맞췄다). 칩 배경·상태 배지의 bg-accent가 그래서 2단이다. 그래도 **앱이
        적는 상태 배경은 --state-N으로 적는다** — accent라는 이름은 행 hover(1)인지 버튼 hover(2)인지를
        말하지 않는다.
+       **스케일 밖의 선택 · hover 면은 아래가 전부다** — 모두 일부러 고른 불투명한 면이다(반투명 겹이
+       아니라 N%로 옮기면 아래 것이 비친다).
+         `--sidebar-accent`  행 선택(`selected-row`, 위) · 흰 캡슐 안의 켜진 칸 — 원문 전환 알약의 칩
+                             (`segment-group` `pill`, ui-refresh 결정 7의 B)과 레일의 켜진 칸(`Rail`, ui-refresh
+                             결정 10)이 사이드바의 고른 행과 같은 면이다
+         `--card`(흰 면)     바탕(`--chrome`) 위에서 고른 것 — 바탕 줄의 켜진 탭(`tab-on`, ui-refresh 결정 18)과
+                             열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS `.at-rail-toggle`)이다
+         `--chrome-hover`    바탕 위 버튼을 올리거나 누를 때 — 탭 줄의 `+` · 패널 토글(ui-refresh 결정 18 · DS
+                             `.at-icon-btn.on-chrome`)
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
 
        hover:bg-accent로 상태 hover를 칠하던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을
        고정한다). **예외는 registry에서 온 메뉴 줄의 켜짐 하나다** — 드롭다운·Select 항목의
        focus:bg-accent는 부품 파일에 registry 그대로 있고, 토큰이 2단을 가리키게 해서 앱 값으로
        살렸다(판 1 토큰 표 — 토큰을 먼저 맞추고, 그것으로 앱 값이 나오는 부품 클래스는 그대로 둔다).
-       메뉴 줄의 켜짐이 그래서 버튼 hover와 같은 2단이다. 그 검사는 hover만 세므로 이 자리를 안 잡는다.
-       다만 스케일 밖 상태 배경이 아직 하나 남아 있다 — 설명 편집 버튼의 hover:bg-panel
-       (ProjectDetail). 반투명 오버레이가 아니라 불투명 표면색이라 6%로 그냥 바꿀 수 없다
-       (바꾸면 아래 것이 비친다). 옮길지는 따로 판단할 일이고, 그때까지 "전부 옮겼다"고
-       적지 않는다. (둘이었다 — 나머지 하나인 WorksPage 프로젝트 칩의 hover:bg-inset은
-       칩이 정보 탭으로 옮겨가며 사라졌다) */
+       메뉴 줄의 켜짐이 그래서 버튼 hover와 같은 2단이다. 그 검사는 hover만 세므로 이 자리를 안 잡는다. */
     --state-1: rgba(20, 20, 28, 0.03);
     --state-2: rgba(20, 20, 28, 0.06);
     --state-3: rgba(20, 20, 28, 0.09);
@@ -370,7 +521,9 @@
 
 /* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
-   hover는 한 단계 진해진다 — 선택된 행을 가리키는 중임을 알린다.
+   배경은 `--sidebar-accent`(#eeeff0)이고 **hover해도 같은 색이다**(ui-refresh 결정 11 · 30 — DS
+   `.at-row.is-on:hover`). 바탕 위의 사이드바에서는 옆 행의 hover와 거의 같은 색이 된다 — 그 까닭은
+   `:root`의 상태 농도 부등식 주석에 있다. 흰 카드 안 목록에서는 이전 값(state-2 ≈ #f0f0f1)과 거의 같다.
    선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
    충돌하지 않도록 분기 안에만 둔다).
 
@@ -386,17 +539,19 @@
    호출부가 덮어야 하고, 그 승자를 정렬 순서가 정하게 된다. 기준은 "형제끼리 같은 답을
    하느냐"가 아니라 "덮을 호출부가 있느냐"다. */
 @utility selected-row {
-  background: var(--state-2);
+  background: var(--sidebar-accent);
   color: var(--foreground);
   &:hover {
-    background: var(--state-3);
+    background: var(--sidebar-accent);
     }
 }
 
 /* 아이콘 버튼 규격 — 거터 복사·spec 트리 복사·목록 패널 토글·작업 패널 토글·
    프로젝트 등록 +가 모두 이 한 정의를 쓴다. 여기는 모양만 정한다.
    hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면
-   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다. */
+   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다.
+   **원형이다**(ui-refresh 결정 6 — 아이콘 버튼). 크기 24px은 셸 컨트롤의 `--titlebar-control-size`와
+   묶여 있어 그대로다(`[data-titlebar]`의 주석). */
 @utility icon-button {
   display: flex;
   flex-shrink: 0;
@@ -404,7 +559,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 8px;
+  @apply rounded-full;
 }
 
 /* "켜지지 않는 것의 hover" — 배경 한 단계와 글자색이 함께 진해진다.
@@ -472,19 +627,30 @@
     }
 }
 
-/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(state-1) 위로 한 겹 뜬다.
+/* 바탕 줄의 **켜진 탭** — 회색 바탕 위의 흰 면이다(ui-refresh 결정 18 · DS `.at-tab.is-on`).
+   toggle-on을 안 쓰는 것은 바닥이 이미 회색(`--chrome`)이라서다: 그 위에 더 진한 회색을 얹으면 「고른 칸」이 아니라
+   「눌린 칸」으로 읽힌다. 켜진 탭은 바탕에서 떠오른 카드이고, 그래서 그 아래 본문 카드와 같은 흰 면이다.
+   hover에 바뀌지 않는다(DS `.at-tab.is-on:hover`) — 고른 칸은 다시 눌러 끄는 것이 아니다. */
+@utility tab-on {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(state-1) 위로 한 겹 뜬다(디자인 시스템의 `.at-seg`).
    toggle-on(state-3)을 안 쓰는 것이 핵심이다: 바닥이 이미 회색이라 그 위에 더 진한 회색을
    얹으면 「떠올랐다」가 아니라 「눌렸다」로 읽혀, 두 칸 중 어느 쪽이 서 있는지가 뒤집힌다.
    여기서 켜짐은 농도가 아니라 **떠오름**이다 — 흰 칩 + 실선 한 겹 + 옅은 그림자.
    hover에 더 진해지지 않는다: 칩은 누르는 것이 아니라 서 있는 칸을 말하는 것이다 — 누르는 것은
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
-   (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다. */
+   (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다.
+   **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `sidebar-accent` 원이고 그림자가
+   없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`SourceToggle.test.tsx`). */
 @utility segment-on {
-  background: var(--background);
+  background-color: var(--background);
   box-shadow:
-    0 0 0 0.5px rgba(20, 20, 28, 0.08),
-    0 1px 2px rgba(20, 20, 28, 0.1);
+    0 0 0 0.5px rgba(20, 20, 28, 0.14),
+    0 1px 1px rgba(20, 20, 28, 0.06);
 }
 
 /* 패널 폭 드래그 중 — 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다.
@@ -535,8 +701,9 @@ body.dragging-row * {
    (`sidebar-active-band` 결정 14) 그 줄은 걷혔다. */
 [data-title],
 [data-fade] {
-    /* 페이드 폭 — **한글 1.03글자**다. 한 글자가 11.6675px이다(Pretendard Variable
-       13.5px/500 · L3 WebKit 실측 2026-08-30). 그래서 24px은 「≈1.8글자」가 아니라
+    /* 페이드 폭 — **한글 한 글자 남짓**이다. 제목이 13.5px/500이던 때 한 글자가 11.6675px였다
+       (Pretendard Variable · L3 WebKit 실측 2026-08-30 — 아래 글자 수도 그때 잰 것이다). 제목이
+       `text-row`(14px)가 된 지금은 비례로 12.1px이다. 그래서 24px은 「≈1.8글자」가 아니라
        **2.06글자**였다 — 마스크는 상시라 그 두 글자가 늘 흐린 채였다. 12px로
        줄이자 같은 실측에서 **또렷한 글자(끝까지 α=1)가 18자→19자**, 몸통까지 온전한
        글자가 19자→20자로 늘었다(제목 상자 194px, 제목 339.6px). 0으로 두지 않는 것은
@@ -615,6 +782,12 @@ body.dragging-row * {
     [data-slot="collapsible-content"] {
         transition: none;
     }
+
+    /* Processes의 접는 셰브론(ui-refresh 결정 28 — `tree-rows.tsx`의 `FoldChevron`)은 돌지 않고 바로 바뀐다 —
+       그 패널이 움직임 없이 접히는 것과 같은 한 동작이다. */
+    [data-fold-chevron] {
+        transition: none;
+    }
 }
 
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
@@ -683,46 +856,58 @@ body.dragging-row * {
 
    `LifecycleOverlay`(WorksPage)는 이것을 안 쓴다. 그쪽은 모달이 아니라 **되돌릴 수 없는
    조작이 도는 동안의 가림막**이고, 뒤를 **못 읽게** 하는 것이 목적이라 blur가 그 목적에
-   맞는다 — 여기와 뜻이 반대다. */
+   맞는다 — 여기와 뜻이 반대다.
+
+   색은 `:root`의 `--scrim`이 든다(디자인 시스템의 값 — 같은 25% 검정이다). */
 @utility modal-scrim {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background-color: rgb(0 0 0 / 25%);
+  background-color: var(--scrim);
 }
 
-/* **떠 있는 카드** — 13px 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕(결정 2의 앱 규격 표).
+/* **떠 있는 카드** — 카드 모서리(`rounded-card`) · 흰 바탕 · **테두리 없이** `shadow-float`(디자인 시스템의 `.at-float`,
+   ui-refresh 결정 6 · 「규칙에서 이어 적용하는 것」). 1px 고리가 그림자 안에 있어 테두리를 따로 들지 않는다 —
+   테두리가 있으면 그 고리와 겹쳐 가장자리가 두 겹이 된다.
    메뉴 · Popover · Select · 창 · 확인 창의 부품 파일과 `PopoverPortal`(호버 카드 · 틀 이동 힌트)이
-   이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다 — 옛 `PopoverPortal` 카드의 값이다.
+   이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다. 토스트도 같은 모양이다(`toast.tsx`).
 
-   **모양만 정한다.** 폭 · 안쪽 · 자리 · 넘침은 표면마다 지금 값이 달라 부품 파일이 든다. 전체화면
-   뷰어의 모서리(14px)처럼 이것을 덮는 코어 유틸리티는 이 뒤에 선다(커스텀 @utility가 앞에 선다 —
+   **모양만 정한다.** 폭 · 안쪽 · 자리 · 넘침은 표면마다 지금 값이 달라 부품 파일이 든다. 부르는 자리가
+   이것을 코어 유틸리티로 덮으면 그쪽이 이 뒤에 서서 이긴다(커스텀 @utility가 앞에 선다 —
    toggle.tsx 머리말). 값을 따로 적지 않고 그 클래스들을 그대로 부르는 것은, 그림자가 ring과 한
    `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
 @utility floating-card {
-  @apply rounded-[13px] border border-border-strong bg-background shadow-lg;
+  @apply rounded-card bg-popover shadow-float;
 }
 
-/* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(결정 2의 앱 규격 표 「메뉴 팝업」 ·
-   「메뉴 항목」). 두 부품 파일이 같은 값을 옮겨 적던 자리다.
+/* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(디자인 시스템의 `.at-menu` · `.at-menu-row`).
+   두 부품 파일이 같은 값을 옮겨 적던 자리다.
 
    `menu-list`는 목록 상자다 — 세로로 쌓고 항목 사이 1px, 안쪽 5px. 드롭다운은 카드 자신이 목록이고
    (메뉴 역할), Select는 카드 안의 `listbox`가 목록이다(머리 · 바닥 칸이 목록 밖에 선다).
 
-   `menu-row`는 한 줄이다 — 32px · 모서리 9px · 좌우 9px · 글리프 사이 8px. 목록이 세로 flex라 줄이
-   눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 표면마다 지금 값이 달라(메뉴
-   12.5px · Select 13px) 부품 파일이 든다. 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
+   `menu-row`는 한 줄이다 — 32px · 모서리 `rounded-lg`(메뉴 행, ui-refresh 결정 6) · 좌우 10px · 글리프
+   사이 9px · `text-ui`. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. 줄 안의 글리프는 크기를 안 준
+   것이 15px이고 색을 안 준 것이 `text-tertiary`다 — 부르는 자리가 클래스로 준 크기 · 색(체크의 `text-primary`, 지우기
+   줄의 빨강)이 이긴다(`:where`라 이 규칙의 특이도는 줄 클래스 하나뿐이고, 코어 유틸리티가 이 뒤에 선다). 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
    클래스 그대로 부품 파일에 있다. 줄 끝의 체크는 `components/ui/menu-check.tsx`가 든다. */
 @utility menu-list {
   @apply flex flex-col gap-px p-[5px];
 }
 
 @utility menu-row {
-  @apply h-8 shrink-0 gap-2 rounded-[9px] px-[9px];
+  @apply h-8 shrink-0 gap-[9px] rounded-lg px-2.5 text-ui;
+  & :where(svg:not([class*="size-"])) {
+    width: 15px;
+    height: 15px;
+  }
+  & :where(svg:not([class*="text-"])) {
+    color: var(--text-tertiary);
+  }
 }
 
-/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 11.5px · 글리프 사이 6px · 오른쪽 여백 5px.
-   조용한 갈래(`ShellMeta` — 종류·수)와 신호 갈래(`SignalMeta` — 마크·경과)가 이 한 정의를 부른다.
+/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-meta`(11px) · 글리프 사이 6px · 오른쪽 여백 5px.
+   조용한 갈래(`ShellMeta` — 셸 수)와 신호 갈래(`SignalMeta` — 경과)가 이 한 정의를 부른다.
    두 파일이 같은 문자열을 옮겨 적던 자리다. nav `Processes`의 메모리 합계(`ProcessesNavMeta`)도 nav `Terminal`과 같은
    오른쪽 끝에 서야 해서 이것을 부른다.
 
@@ -731,9 +916,21 @@ body.dragging-row * {
    헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
 
    **색은 안 정한다.** 조용한 갈래는 바깥에 `text-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
-   갈래의 마크는 행 글자색을 물려받는다 — 갈래마다 달라 부르는 자리가 든다. */
+   갈래의 경과는 상태색의 잉크를 든다(`SignalElapsed`) — 갈래마다 달라 부르는 자리가 든다. */
 @utility row-meta {
-  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-[11.5px];
+  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-meta;
+}
+
+/* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(state-2) · `muted-foreground` 글자 · 줄바꿈 없음.
+   줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」, Archive 문서 카드
+   머리의 프로젝트가 이 한 정의를 부른다. 셋은 같은 문자열을 손으로 옮겨 적었고, Archive는 다른 모양(`rounded-lg` · `bg-accent`)이었다.
+
+   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」 · 프로젝트는 `text-caption`(DS 12px)이고, 원격 줄의 브랜치는
+   그 줄의 고정폭(`text-mono-sm`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
+   덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
+   Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
+@utility tag {
+  @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-state-2 px-2 whitespace-nowrap text-muted-foreground;
 }
 
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.

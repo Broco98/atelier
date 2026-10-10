@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 
 const src = fileURLToPath(new URL(".", import.meta.url));
 
-/** spec 트리를 그리는 기능 폴더 — work 화면의 `spec` 패널 탭과 아카이브의 문서 트리. */
+/** spec 트리를 그리는 기능 폴더 — work 화면의 `spec` 패널과 아카이브의 문서 트리. */
 const TREE_FEATURES = ["features/works", "features/archive"];
 
 /** 기능 폴더들의 테스트가 아닌 TS 소스, 경로 → 글자. */

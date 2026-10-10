@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { History } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
 import { eventKeys, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
-import { useCleanupLog } from "./hooks";
+import type { SectionFold } from "./folds";
 import { processCount } from "./process-tree";
-import { Section } from "./tree-rows";
+import { BLOCK, FoldChevron, Section } from "./tree-rows";
 import type { CleanupEvent } from "./types";
 
 /**
@@ -13,13 +12,12 @@ import type { CleanupEvent } from "./types";
  * 줄(까닭 · 대상 수 · 때)이고 새것부터다(Rust가 그 차례로 준다 — 최근 100건). 줄을 누르면 펼쳐져 대상마다 이름 · 결과 · 명령줄이
  * 선다. 보기만 한다 — 기록을 지우는 길은 없다.
  *
- * 기록은 스냅샷이 올 때마다 한 번 묻는다(`useCleanupLog`) — 도착한 때는 화면이 넘긴다(스냅샷 박자를 또 걸지 않게). 기록이 없으면 이
- * 묶음은 안 선다(다른 묶음과 같다).
+ * 기록은 화면이 스냅샷이 올 때마다 한 번 물어 넘긴다(`useCleanupLog`) — 어느 구획이 섰는지가 접힘의 기억에 들어서다. 기록이 없으면 이
+ * 묶음은 안 선다(다른 묶음과 같다). 구획은 접어 연다 — 참고용이다(ui-refresh 결정 28). 머리의 수는 접혀 있어도 선다.
  */
-function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
-  const { data: events = [] } = useCleanupLog(snapshotAt);
+function CleanupLogSection({ events, fold }: { events: ReadonlyArray<CleanupEvent>; fold: SectionFold }) {
   // 펼친 사건 — 사건의 열쇠로 든다(`eventKeys` — 목록 안 자리가 아니다). 박자마다 새 목록이 와도, 새 사건이 맨 위에 서도 펼친 것이
-  // 그대로다.
+  // 그대로다. 구획을 접었다 펴도 그대로다 — 구획의 몸이 내려가도 이 상태는 구획 밖(이 묶음)에 산다.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   if (events.length === 0) return null;
   const keys = eventKeys(events);
@@ -34,8 +32,8 @@ function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
     });
 
   return (
-    <Section title="정리 기록" note={`기록 ${events.length}건`}>
-      <ol aria-label="정리 기록" className="flex flex-col gap-0.5">
+    <Section icon={History} title="정리 기록" note={`기록 ${events.length}건`} fold={fold}>
+      <ol aria-label="정리 기록" className={BLOCK}>
         {events.map((event, at) => {
           const key = keys[at];
           return <EventRow key={key} event={event} open={open.has(key)} onOpenChange={(next) => openFor(key, next)} />;
@@ -62,31 +60,33 @@ function EventRow({
 }) {
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className="flex flex-col">
+      {/* 사건 줄 — 묶음 안의 32px 줄(DS `.at-pr-log`): 셰브론 칸(18) · 까닭 · 대상 수 · 오른쪽 끝의 때. hover는 옅은 면 위의 한 단
+          (`state-2`)이다. */}
       <CollapsibleTrigger
         aria-label={eventLabel(event)}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-[8px] pr-1 text-left transition-colors quiet-hover"
+        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover"
       >
-        <ChevronRight
-          aria-hidden
-          className={cn("size-3.5 shrink-0 text-tertiary transition-transform", open && "rotate-90")}
-        />
-        <span className="shrink-0 text-[13px] font-medium">{reasonLabel(event.reason)}</span>
-        <span className="shrink-0 text-[12px] text-tertiary">{processCount(event.targets.length)}</span>
+        <span className="grid w-4.5 shrink-0 place-items-center text-tertiary">
+          <FoldChevron open={open} />
+        </span>
+        <span className="shrink-0 text-ui font-medium">{reasonLabel(event.reason)}</span>
+        <span className="shrink-0 text-caption text-muted-foreground">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
-        <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
+        <span className="shrink-0 text-caption tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ul aria-label={`${reasonLabel(event.reason)}의 대상`} className="flex flex-col gap-1 pb-2 pl-[22px]">
+        {/* 대상은 까닭 글자와 같은 x에서 선다 — 줄 안쪽 6 + 셰브론 칸 18 + 틈 8. */}
+        <ul aria-label={`${reasonLabel(event.reason)}의 대상`} className="flex flex-col gap-1 pr-2 pb-2 pl-8">
           {event.targets.map((target, at) => (
             // 대상 한 줄 — 이름 · 결과, 그 밑에 명령줄. 명령줄은 Rust가 적을 때 앞 200자로 잘랐다(토큰 같은 비밀 — S12). 줄을 넘기며
             // 다 보인다: 무엇을 끝냈는지 읽는 자리라 말줄임으로 자르지 않는다.
-            <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-[12.5px]">
+            <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-ui">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="min-w-0 truncate">{target.name}</span>
                 <span className="shrink-0 text-tertiary">{outcomeLabel(target.outcome)}</span>
               </span>
               {target.command && (
-                <span data-cell="command" className="break-all font-mono text-[11.5px] text-muted-foreground">
+                <span data-cell="command" className="break-all font-mono text-mono-sm text-muted-foreground">
                   {target.command}
                 </span>
               )}

@@ -42,7 +42,7 @@ export function useProcessSnapshot() {
 export const SUMMARY_EVERY_MS = 10_000;
 
 /**
- * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 두 세계의 모든 화면에
+ * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 모든 화면에
  * 서므로 늘 돈다** — 화면 스냅샷(`snapshotQuery`)과 반대다. 부르는 자리는 nav 메타 하나다(`ProcessesNavMeta`): 보는 쪽이 둘이면
  * 박자도 둘이다(react-query는 보는 쪽마다 `refetchInterval`을 건다). 요약 카드(티켓 30)는 새 박자를 걸지 않고 이 캐시를 읽는다
  * (`useSummaryCache`).
@@ -116,8 +116,8 @@ export function cleanupLogQuery(snapshotAt: number) {
 
 /**
  * `Processes` 화면의 정리 기록. 스냅샷이 도착한 때는 **화면이 넘긴다** — 여기서 스냅샷 훅을 또 부르면 스냅샷 박자가 하나 더 걸린다
- * (react-query는 보는 쪽마다 `refetchInterval`을 건다).
+ * (react-query는 보는 쪽마다 `refetchInterval`을 건다). 첫 스냅샷 전(`null`)에는 묻지 않는다 — 기록은 스냅샷을 따라 묻는다.
  */
-export function useCleanupLog(snapshotAt: number) {
-  return useQuery(cleanupLogQuery(snapshotAt));
+export function useCleanupLog(snapshotAt: number | null) {
+  return useQuery({ ...cleanupLogQuery(snapshotAt ?? 0), enabled: snapshotAt !== null });
 }

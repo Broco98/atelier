@@ -34,16 +34,16 @@ import type { Attention } from "./shell-attention";
 // 앞 판의 셸 목록 검사가 실물로 한 번 잃고 적어 둔 사고다.
 //
 // **이 줄은 지워졌던 그 컴포넌트가 아니다.** 옛것은 「탭 줄이 타이틀바를 겸하는가」를
-// prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 겸한다** — 그래서 창 드래그
-// 영역·신호등 회피·트랜지션 곡선이 조건이 아니라 이 줄의 성질이다(아래 「타이틀바 몫」).
+// prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 바탕 줄에 선다** — 창 드래그
+// 영역·신호등 회피·트랜지션 곡선은 그 줄(`Frame`의 `TitleBar`)의 성질이라 화면의 seam이 재고,
+// 여기서는 줄 안의 끄는 자리만 본다(아래 「줄 안의 끄는 자리」).
 
 // **소유자는 `ownerOf`가 짓는다**(결정 10) — 이 줄이 받는 값과 셸에 앉는 값이 같은 함수에서
 // 나와야 「이 화면의 셸만 그린다」가 실제로 그 화면을 재는 것이 된다.
-const ownerFor = (slug: string) => ownerOf("atelier", slug);
+const ownerFor = (slug: string) => ownerOf(slug);
 const WORK = ownerFor("가");
 
 const origin = (project: string | null, cwd: string | null): ShellOrigin => ({
-  mode: "atelier",
   owner: WORK,
   project,
   cwd,
@@ -74,7 +74,6 @@ function render(
     projects = [] as string[],
     spec = SPEC as SpecTab | null,
     showing = true,
-    inset = false,
     actions = undefined as React.ReactNode,
   } = {},
 ): string {
@@ -86,7 +85,6 @@ function render(
       defaultCwd={null}
       spec={spec}
       showing={showing}
-      inset={inset}
       actions={actions}
       onSelect={() => {}}
       onClose={() => {}}
@@ -121,7 +119,6 @@ const shellCellsOf = (markup: string) =>
     .filter((cell) => cell.kind === "shell")
     .map((cell) => cell.markup);
 const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열기"[^>]*>/)![0];
-const headerTagOf = (markup: string) => markup.match(/<header[^>]*>/)![0];
 
 describe("줄에 서는 것과 그 순서", () => {
   it("맨 앞이 `spec`이고 그 뒤로 셸, 마지막이 `+`다", () => {
@@ -156,7 +153,7 @@ describe("줄에 서는 것과 그 순서", () => {
     const 가 = opened(2);
     const 나 = opened(
       3,
-      { mode: "atelier", owner: ownerFor("나"), project: null, cwd: "~/x" },
+      { owner: ownerFor("나"), project: null, cwd: "~/x" },
       가.state,
     );
     expect(shellCellsOf(render(나.state, { owner: ownerFor("가") }))).toHaveLength(2);
@@ -339,9 +336,9 @@ describe("한 칸이 흔들려도 다른 칸은 그대로다", () => {
   });
 
   it("한 칸에서 명령이 시작돼도 다른 칸은 안 갈린다", () => {
-    // 여기서 걸리는 것이 **줄 단위 판정**이다 — 로고를 `runningAgentsOf`처럼 줄 전체에서
-    // 뽑으면 한 칸이 claude를 켜는 순간 세 칸이 전부 갈린다. 결정 4가 사이드바(종류만)와
-    // 탭 줄(칸마다)을 가른 지점이 정확히 여기다.
+    // 여기서 걸리는 것이 **줄 단위 판정**이다 — 로고를 그 화면의 셸 전체에서 한 번에
+    // 뽑으면 한 칸이 claude를 켜는 순간 세 칸이 전부 갈린다. 결정 4가 탭 줄을 칸마다로
+    // 둔 지점이 정확히 여기다.
     const { state, ids } = opened(3);
     const before = shellCellsOf(render(state));
     const after = shellCellsOf(render(setRunning(state, ids[0], "claude")));
@@ -404,11 +401,18 @@ describe("칸이 `memo` 경계다", () => {
 
   // 틈 알림(UI개선 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
   // 알림을 따로 화살표로 만들면 묶음이 두 자리가 되고 다음 콜백이 어느 쪽에 붙을지가 갈린다.
+  // 바탕 줄 `<header>`가 이 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 그 상자에 손으로 단다 — 다는 것도
+  // 떼는 것도 같은 묶음의 함수여야 뗄 때 남는 듣기가 없다.
   it("틈 알림이 같은 묶음에서 나온다", () => {
     const src = source();
-    expect(countOf(src, "onPointerMove={tabHandlers.onSlotMove}")).toBe(1);
-    expect(countOf(src, "onPointerLeave={tabHandlers.onSlotLeave}")).toBe(1);
-    expect(countOf(src, "onPointerUp={tabHandlers.onSlotDrop}")).toBe(1);
+    for (const [event, handler] of [
+      ["pointermove", "onSlotMove"],
+      ["pointerleave", "onSlotLeave"],
+      ["pointerup", "onSlotDrop"],
+    ] as const) {
+      expect(countOf(src, `row.addEventListener("${event}", tabHandlers.${handler});`), event).toBe(1);
+      expect(countOf(src, `row.removeEventListener("${event}", tabHandlers.${handler});`), event).toBe(1);
+    }
   });
 });
 
@@ -426,8 +430,8 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
     // 줄에서 튄다. 되살아나면 여기가 빨개진다.
     const markup = render(opened(2).state, { spec: { on: false, onSelect: () => {} } });
     expect(spec(markup)).not.toContain("bg-inset");
-    expect(spec(markup)).toContain("rounded-[8px]");
-    expect(firstShell(markup)).toContain("rounded-[8px]");
+    expect(spec(markup)).toContain("rounded-lg");
+    expect(firstShell(markup)).toContain("rounded-lg");
   });
 
   it("세로선이 `spec`와 스크롤 상자 **사이**에 선다", () => {
@@ -454,9 +458,9 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
 });
 
 describe("켜짐을 말하는 법", () => {
-  it("`aria-pressed`와 `toggle-on`으로 말한다 — `role=\"tab\"`을 쓰지 않는다", () => {
+  it("`aria-pressed`와 켜짐 면(`tab-on`)으로 말한다 — `role=\"tab\"`을 쓰지 않는다", () => {
     // 분할이면 **켜진 탭이 둘**이다(결정 12) — tablist에서 `aria-selected`가 둘이면 잘못된
-    // ARIA다. 이 저장소는 켜짐을 이미 `aria-pressed`+`toggle-on`으로 말하고 있어서(분할
+    // ARIA다. 이 저장소는 켜짐을 이미 `aria-pressed`+켜짐 면으로 말하고 있어서(분할
     // 토글·소스 토글), 새 어휘를 들이지 않는 쪽이 화면 전체와 한 말을 쓴다.
     const markup = render(opened(2).state);
     expect(markup).not.toMatch(/role="tab/);
@@ -468,7 +472,9 @@ describe("켜짐을 말하는 법", () => {
     const markup = render(opened(3).state);
     const cells = cellsOf(markup);
     expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"'))).toHaveLength(1);
-    expect(cells.filter((cell) => cell.markup.includes("toggle-on"))).toHaveLength(1);
+    // 켜짐 면은 바탕 줄의 흰 탭이다(ui-refresh 결정 18) — 회색 `toggle-on`이 아니다.
+    expect(cells.filter((cell) => cell.markup.includes("tab-on"))).toHaveLength(1);
+    expect(cells.filter((cell) => cell.markup.includes("toggle-on"))).toHaveLength(0);
   });
 
   it("본문이 문서면 켜진 칸이 `spec` 하나다", () => {
@@ -487,10 +493,10 @@ describe("켜짐을 말하는 법", () => {
   });
 
   it("한 요소에 hover 규칙이 두 벌 얹히지 않는다", () => {
-    // toggle-on은 자기 hover를 품는다. 꺼진 칸의 hover가 같은 요소에 함께 오면 어느 쪽이
-    // 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+    // 켜진 칸의 흰 면(`tab-on`)은 hover에 안 바뀐다. 꺼진 칸의 hover가 같은 요소에 함께 오면 어느 쪽이
+    // 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고) — 지면 켜진 칸이 가리킬 때마다 회색이 된다.
     const classes = [...render(opened(3).state).matchAll(/class="([^"]*)"/g)].map((m) => m[1]);
-    expect(classes.filter((one) => /toggle-on/.test(one) && /hover:/.test(one))).toEqual([]);
+    expect(classes.filter((one) => /tab-on/.test(one) && /hover:/.test(one))).toEqual([]);
   });
 });
 
@@ -725,12 +731,9 @@ describe("칸을 본문 위로 끄는 자리", () => {
   });
 });
 
-describe("타이틀바 몫", () => {
-  it("창을 끌 수 있다", () => {
-    // 이 줄이 창 맨 위다 — 없으면 **창을 못 끈다**. 안쪽 버튼들은 이 속성이 없어 그대로 눌린다.
-    expect(headerTagOf(render(opened(2).state))).toContain("data-tauri-drag-region");
-  });
-
+// 바탕 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `TitleBar`가 들고, 그
+// 줄을 실제로 세우는 화면의 seam(`TerminalPage.test.tsx`)이 잰다. 이 줄이 지는 것은 **제 자식 중** 끄는 자리다.
+describe("줄 안의 끄는 자리", () => {
   it("빈 자리도 끄는 자리다", () => {
     // 탭과 조작 사이의 남는 자리가 이 줄에서 가장 넓다. 거기가 안 끌리면 「창이 가끔만
     // 끌린다」가 되는데, 화면으로는 어느 자리가 죽었는지가 안 보인다.
@@ -738,19 +741,10 @@ describe("타이틀바 몫", () => {
     expect(gap).toContain("data-tauri-drag-region");
   });
 
-  it("사이드바가 접히면 왼쪽 여백이 신호등을 피한다", () => {
-    expect(headerTagOf(render(NO_SHELLS, { inset: true }))).toContain("pl-(--titlebar-inset-tabs)");
-    expect(headerTagOf(render(NO_SHELLS, { inset: false }))).toContain("pl-(--tab-lead)");
-  });
-
-  it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
-    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 브레드크럼의 화면상 위치가
-    // 앞 패널들의 폭과 이 패딩의 합이라서다(index.css의 `--panel-ease` 주석).
-    const tag = headerTagOf(render(NO_SHELLS));
-    expect(tag).toContain("ease-panel");
-    expect(tag).toContain("transition-[padding]");
-    // 층 높이도 물려받는다 — 이 줄이 그 44px 자리다.
-    expect(tag).toContain("h-(--titlebar-height)");
+  it("뿌리에 `<header>`가 없다 — 칸들이 바탕 줄의 자식으로 선다", () => {
+    // 이 줄이 제 `<header>`를 그리면 바탕 줄 안에 머리가 둘이 되고, 조작 묶음이 바탕 줄의 마지막 자식이 아니게 된다
+    // (e2e `tab-row.ts`가 그 자리로 조작을 잰다).
+    expect(render(opened(2).state)).not.toContain("<header");
   });
 });
 
@@ -786,7 +780,6 @@ describe("`+`", () => {
     // **결정 23이 결정 30을 뒤집었다.** 한때 남의 work의 셸 여덟이 이 줄의 `+`를 잠갔는데,
     // 그 화면에는 칸이 하나도 없어 왜 잠겼는지가 안 보였다.
     const 남 = opened(MAX_SHELLS, {
-      mode: "atelier",
       owner: ownerFor("남"),
       project: null,
       cwd: "~/x",
@@ -795,7 +788,7 @@ describe("`+`", () => {
 
     const 나 = opened(
       MAX_SHELLS,
-      { mode: "atelier", owner: ownerFor("나"), project: null, cwd: "~/x" },
+      { owner: ownerFor("나"), project: null, cwd: "~/x" },
       남,
     ).state;
     const plus = plusOf(render(나, { owner: ownerFor("나") }));
@@ -890,13 +883,13 @@ describe("칸이 물든다", () => {
     expect(이름span(물든칸통째("done"))).toContain("text-done-ink");
   });
 
-  it("켜진 칸이 기다리면 앰버가 회색을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
-    // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 `toggle-on`이 물러난다 — 안 물러나면
+  it("켜진 칸이 기다리면 앰버가 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
+    // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 켜짐 면(`tab-on`)이 물러난다 — 안 물러나면
     // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
-    // 회색 채움이 하던 말을 테두리가 받는다.
+    // 흰 면이 하던 말을 테두리가 받는다.
     const 켜진기다림 = 물든칸("waiting", { active: true });
     expect(켜진기다림).toContain("bg-wait-soft");
-    expect(켜진기다림).not.toContain("toggle-on");
+    expect(켜진기다림).not.toContain("tab-on");
     // **`ring`이지 `border`가 아니다**(스토리 54) — 그림자는 폭을 안 먹는다. 아래 「폭·위치」
     // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
     expect(켜진기다림).toContain("ring-1");
@@ -944,9 +937,8 @@ describe("칸이 물든다", () => {
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
     // 받는다」가 그 자리를 따로 지킨다).
     const 색어휘 = new Set([
-      "text-muted-foreground",
       "hover:bg-state-1",
-      "toggle-on",
+      "tab-on",
       "font-medium",
       "bg-wait-soft",
       "bg-done-soft",
@@ -1004,7 +996,7 @@ describe("칸이 물든다", () => {
     // 내내 색을 띤 채라 「부른다」가 뜻을 잃는다.
     for (const kind of ["working", null] as const) {
       const 칸 = 물든칸(kind);
-      expect(칸, String(kind)).toContain("text-muted-foreground");
+      expect(칸, String(kind)).toContain("hover:bg-state-1");
       expect(칸, String(kind)).not.toContain("bg-wait-soft");
       expect(칸, String(kind)).not.toContain("bg-done-soft");
     }
@@ -1012,8 +1004,7 @@ describe("칸이 물든다", () => {
 
   it("마크는 상태색을 안 받는다 — 물든 칸에서도 단색이다", () => {
     // **판 04 결정 15**(마크는 단색) · 스토리 32. 마크는 늘 「누구」이고 색은 늘 「어떤
-    // 상태」다 — 정체엔 색을 안 쓰고 상태엔 쓴다. 사이드바 행은 그 규칙을 **자리로**
-    // 지킨다(색은 레인의 점이 들고, 마크는 오른쪽 메타에 행 글자색으로 선다 — `SignalMeta`).
+    // 상태」다 — 정체엔 색을 안 쓰고 상태엔 쓴다(사이드바에는 마크가 없다 — ui-refresh 결정 13).
     //
     // 탭에서는 그럴 수가 없다 — 마크가 칸 상자 **안**에 서므로, 잉크를 상자에 붙이면 이름이
     // 숨는 폭(`@max-[88px]`)에서만 서는 그 글리프가 `currentColor`로 물든다. 하필 스토리 53이

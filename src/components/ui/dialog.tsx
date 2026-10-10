@@ -1,8 +1,8 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background), 글자 text-sm→13.5px, 가림막·창 상자·머리·제목·설명·바닥은 확인 창(alert-dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 330px·max-w-[calc(100%-4rem)](dialogLook.center — 이름 바꾸기 창이 첫 쓰는 자리다). 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다. 변형 preview(spec 레이아웃 편집기의 「LLM이 받는 텍스트」 — 가운데 760×640px, 창이 작으면 사방 36px 안쪽까지 줄고, 모서리 14px, 안쪽 없이 세로로 쌓는다)를 더했다.
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-popover, DS `.at-float`), 글자 text-sm→13.5px, 가림막·창 상자·머리·제목·설명·바닥은 확인 창(alert-dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 600px(DS `.at-palette`), 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 360px·max-w-[calc(100%-4rem)](dialogLook.center — 이름 바꾸기 창이 첫 쓰는 자리다, DS `.at-dialog`). 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다. 변형 preview(spec 레이아웃 편집기의 「LLM이 받는 텍스트」 — 가운데 760×640px, 창이 작으면 사방 36px 안쪽까지 줄고, 모서리 14px, 안쪽 없이 세로로 쌓는다)를 더했다.
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { dialogLook } from "@/components/ui/dialog-look"
@@ -39,9 +39,9 @@ function DialogOverlay({
   )
 }
 
-// 창 상자는 확인 창과 같은 것(`dialogLook.popup`)에 글자 13.5px을 더한다.
+// 창 상자는 확인 창과 같은 것(`dialogLook.popup`)에 글자 `text-ui`를 더한다.
 const dialogPopupVariants = cva(
-  [dialogLook.popup, "text-[13.5px]"],
+  [dialogLook.popup, "text-ui"],
   {
     variants: {
       variant: {
@@ -49,19 +49,19 @@ const dialogPopupVariants = cva(
         // 함께 `dialogLook.center`에서 읽는다.
         default: dialogLook.center,
         // 검색 팔레트. 위쪽 12vh에 선다(확인 창은 가운데다). 첫 줄이 입력칸이고 나머지를 목록이
-        // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다.
+        // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다. 폭은 DS 팔레트(`.at-palette`)의 600이다.
         palette:
-          "top-[12vh] flex max-h-[60vh] w-[560px] max-w-[calc(100%-4rem)] flex-col overflow-hidden",
+          "top-[12vh] flex max-h-[60vh] w-[600px] max-w-[calc(100%-4rem)] flex-col overflow-hidden",
         // 전체화면 뷰어(다이어그램·표). 창 가장자리에서 사방 36px씩 물러선 큰 창이고, 넓은 창에서는 1280px에서
         // 멈춰 가운데에 선다. 머리 한 줄 아래를 본문이 채워 스스로 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는
-        // 것은 본문이 든다. 모서리는 옛 뷰어의 14px이다.
+        // 것은 본문이 든다. 모서리는 떠 있는 카드(`floating-card`)의 `rounded-card` 그대로다(ui-refresh 결정 6).
         fullscreen:
-          "inset-y-9 flex w-[calc(100%-4.5rem)] max-w-[1280px] flex-col overflow-hidden rounded-[14px]",
+          "inset-y-9 flex w-[calc(100%-4.5rem)] max-w-[1280px] flex-col overflow-hidden",
         // 읽는 창(spec 레이아웃 편집기의 「LLM이 받는 텍스트」). 가운데에 선 760×640px의 창이고, 앱 창이 그보다 작으면
         // 전체화면 뷰어처럼 사방 36px씩 물러선 데까지 준다. 머리 한 줄 아래를 본문이 채워 스스로 구르므로 안쪽 여백
-        // 없이 세로로 쌓고, 모서리는 전체화면 뷰어와 같은 14px이다.
+        // 없이 세로로 쌓고, 모서리는 전체화면 뷰어처럼 떠 있는 카드 그대로다.
         preview:
-          "top-1/2 flex h-[640px] max-h-[calc(100%-4.5rem)] w-[760px] max-w-[calc(100%-4.5rem)] -translate-y-1/2 flex-col overflow-hidden rounded-[14px]",
+          "top-1/2 flex h-[640px] max-h-[calc(100%-4.5rem)] w-[760px] max-w-[calc(100%-4.5rem)] -translate-y-1/2 flex-col overflow-hidden",
       },
     },
     defaultVariants: {

@@ -21,6 +21,7 @@ const 사건 = (over: Partial<CleanupEvent> = {}): CleanupEvent => ({
   at: new Date(2026, 8, 27, 14, 3).getTime(),
   reason: "shellClose",
   shellKey: "1790-4",
+  // 옛 판이 적은 줄의 꼴이다(`<세계>:<slug>`). 옮기지도 지우지도 않는다 — 아무도 해석하지 않는다(ui-refresh 결정 23).
   owner: "atelier:plain-work",
   targets: [대상(200, "node", "ended", "node vite --port 5173"), 대상(210, "esbuild", "forced")],
   ...over,
@@ -79,6 +80,12 @@ describe("사건 한 줄 — 까닭, 대상 수, 때", () => {
     expect(eventLabel(사건({ reason: "startupCleanup", targets: [대상(1, "node", "ended")] }))).toBe(
       "시작 정리, 프로세스 1개, 9월 27일 14:03",
     );
+  });
+
+  // 새 줄의 주인은 slug, 최상위 터미널은 `""`다(ui-refresh 결정 23). 옛 줄(기본 사건)과 같은 말로 선다.
+  it("주인이 slug여도 최상위 터미널의 빈 키여도 옛 줄과 같은 말로 선다", () => {
+    expect(eventLabel(사건({ owner: "plain-work" }))).toBe("셸 닫기, 프로세스 2개, 9월 27일 14:03");
+    expect(eventLabel(사건({ owner: "" }))).toBe("셸 닫기, 프로세스 2개, 9월 27일 14:03");
   });
 
   // 번호는 파일 안에서 오르기만 한다(티켓 29). 번호가 없던 판의 줄은 모두 0이라 때와 함께 짓는다.

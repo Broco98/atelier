@@ -6,7 +6,7 @@ import type { DragKind, SplitHalf } from "@/lib/pointer-drag";
  * 클릭 삼킴 · 끄는 중 표시)과 드래그 상태는 기능 폴더 밖 `@/lib/pointer-drag`가 쥐고 — 두
  * 화면과 사이드바가 같은 몸짓을 딛는다(UI개선 스펙 S4) — 여기 남은 것은 분할 판정
  * (어느 절반 위인가, 떨구면 좌우가 어떻게 서는가)과 그에 딸린 작은 번역(끈 종류 → 본문 탭 ·
- * 반대 탭 · 열 머리 문서 이름)이다.
+ * 반대 탭)이다. 열 머리의 문서 이름은 문서 카드 머리의 캡슐(`slug › spec › … › 파일`)이 든다.
  *
  * **사이드바 작업 행도 같은 몸짓으로 끌리지만 여기로 안 온다**(UI개선 티켓 05). 그 끌기가 놓일
  * 자리는 목록의 틈이라 판정이 `row-drop.ts`에 있고, 본문 겹판은 그 원천(`kind: "work"`)을 거른다.
@@ -43,16 +43,4 @@ export function tabOfDrag(kind: DragKind): ViewTab {
  */
 export function otherTab(tab: ViewTab): ViewTab {
   return tab === "spec" ? "terminal" : "spec";
-}
-
-/**
- * 열 머리의 문서 이름 — `판 폴더 / 파일명`(결정 104).
- *
- * **basename만 쓰면 안 된다.** 이 저장소의 spec은 판마다 파일 이름이 `spec.md`라
- * 열 머리가 늘 같은 글자가 되고, 결정 88이 패널을 접어 두므로 어느 판인지 말할 다른
- * 자리도 없다. 폴더가 없는 문서(`overview.md`)는 이름 하나로 족하다.
- */
-export function specHeadLabel(path: string | null): string {
-  if (!path) return "";
-  return path.split("/").filter(Boolean).slice(-2).join(" / ");
 }

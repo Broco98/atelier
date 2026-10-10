@@ -9,6 +9,21 @@ import { openShell } from "./harness";
 /** 셸 상한(결정 30). `shell-registry`의 `MAX_SHELLS`와 같은 수다 — 이 줄이 가장 붐비는 폭이다. */
 export const MAX_SHELLS = 8;
 
+/**
+ * **칸 하나 폭 상자**(`ShellTabs`의 상자 바닥 44px)를 세우는 창 폭 — 앱 창의 최소 폭(900, `tauri.conf.json`) **아래**다.
+ *
+ * 한때 900px 창에 작업 패널이 열린 기본 배치가 그 상자였다 — 패널이 탭 줄 옆에 서서 줄의 폭을 나눠 가졌다. 패널이 탭 줄
+ * 아래 카드 줄로 내려온 뒤로(ui-refresh 결정 4 · 27) 줄이 받는 폭은 창에서 사이드바만 뺀 나머지이고, 탭 줄의 바닥(약 345)과
+ * 넓힌 사이드바(400)를 더해도 900에 못 미친다. 바닥까지 눌린 상자를 지키는 장치(열의 `min-w-min` · 상자의 `min-w-[44px]` ·
+ * 끄는 동안 가장자리 구르기)는 그대로라, 그 상자를 재는 검사는 사이드바를 넓혀 두고(`widenSidebar`) 이 폭에서 잰다.
+ */
+export const BELOW_APP_MIN = 660;
+
+/** 사이드바를 넓혀 둔다(저장값 400 — 끄는 최대 폭). 페이지를 열기 **전에** 부른다 — 저장값은 사이드바가 설 때 한 번 읽힌다. */
+export async function widenSidebar(page: Page): Promise<void> {
+  await page.addInitScript(() => localStorage.setItem("sidebar-width", "400"));
+}
+
 export interface Row {
   width: number;
   spec: number;

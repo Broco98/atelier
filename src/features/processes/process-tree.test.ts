@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { exceptionName, processLabel, processRowLabel, processTree, strayTree, subtreeAt } from "./process-tree";
+import {
+  exceptionName,
+  identityKey,
+  processLabel,
+  processRowLabel,
+  processTree,
+  shownNodes,
+  strayTree,
+  subtreeAt,
+} from "./process-tree";
 import type { ProcessNode } from "./process-tree";
 import { metricsOf as 지표, pidNamedRow as 행 } from "./process-fixture";
 
@@ -68,6 +77,68 @@ describe("[끝내기]가 넘길 신원", () => {
   it("신원은 표본의 (pid, 시작 시각) 그대로다", () => {
     const tree = processTree([행(10, 1, 123_456)]);
     expect(subtreeAt(tree, 0)).toEqual([{ pid: 10, startedUs: 123_456 }]);
+  });
+});
+
+describe("접힘을 지나 보이는 줄", () => {
+  // ui-refresh 결정 28 — 자식이 있는 줄은 접힌다. 접은 줄 자신은 서고 그 밑(뒤로 더 깊은 줄이 이어지는 데까지)은 안 선다. 줄은 편 차례의
+  // 자리와 함께 나온다 — [끝내기]는 그 자리로 트리 전부를 넘긴다(접힘과 상관없다).
+  //
+  // 트리: 10 → 11 → 12, 10 → 13, 그리고 맨 위의 20.
+  const tree = processTree([행(10, 1, 100), 행(11, 10, 110), 행(12, 11, 120), 행(13, 10, 130), 행(20, 1, 200)]);
+  const 접힘 = (...pids: number[]) => new Set(pids.map((pid) => identityKey(tree.find(({ row }) => row.id.pid === pid)!.row.id)));
+  /** 보이는 줄마다 (pid, 편 차례의 자리, 밑에 줄이 있는가). */
+  const 보임 = (closed: ReadonlySet<string>) => shownNodes(tree, closed).map(({ row, at, parent }) => [row.id.pid, at, parent]);
+
+  it.each([
+    [
+      "접힌 키가 없으면 모든 줄이 서고, 밑에 줄이 있는 줄만 부모다",
+      new Set<string>(),
+      [
+        [10, 0, true],
+        [11, 1, true],
+        [12, 2, false],
+        [13, 3, false],
+        [20, 4, false],
+      ],
+    ],
+    [
+      "가운데 줄을 접으면 그 밑만 빠지고, 같은 깊이의 형제부터 다시 선다",
+      접힘(11),
+      [
+        [10, 0, true],
+        [11, 1, true],
+        [13, 3, false],
+        [20, 4, false],
+      ],
+    ],
+    [
+      "맨 위 줄을 접으면 그 트리가 통째로 빠지고 다음 맨 위 줄이 선다 — 안쪽 접힘은 상관없다",
+      new Set([...접힘(10), ...접힘(11)]),
+      [
+        [10, 0, true],
+        [20, 4, false],
+      ],
+    ],
+    [
+      "사라진 줄의 키나 밑에 줄이 없는 줄의 키는 아무것도 가리지 않는다",
+      new Set(["999@999", ...접힘(12, 20)]),
+      [
+        [10, 0, true],
+        [11, 1, true],
+        [12, 2, false],
+        [13, 3, false],
+        [20, 4, false],
+      ],
+    ],
+  ] as const)("%s", (_, closed, expected) => {
+    expect(보임(closed)).toEqual(expected);
+  });
+
+  // [끝내기]의 대상 — 접은 줄의 자리로 넘기면 그 밑의 숨은 줄까지 다 든다.
+  it("접은 줄의 자리로 넘기는 신원은 그 트리 전부다", () => {
+    const [top] = shownNodes(tree, 접힘(10));
+    expect(subtreeAt(tree, top.at).map((id) => id.pid)).toEqual([10, 11, 12, 13]);
   });
 });
 

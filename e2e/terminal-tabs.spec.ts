@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { FIXTURE_SHELL_NAME, ROOMS, WORKS } from "./fixtures";
-import { fillToCap, MAX_SHELLS, rowOf, settle } from "./tab-row";
+import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
+import { BELOW_APP_MIN, fillToCap, MAX_SHELLS, rowOf, settle, widenSidebar } from "./tab-row";
 import type { Row } from "./tab-row";
 import {
   callCount,
@@ -109,13 +109,12 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   const actionsWidth: Record<number, number> = {};
   const rows: Record<number, Row> = {};
 
-  // 1280은 실물 기본 창, 900은 **창이 작아질 수 있는 끝**(tauri.conf의 `minWidth`),
-  // 1120은 그 사이 — 칸이 최소 폭에 닿아 스크롤은 섰지만 상자에 한 칸은 온전히 들어가는 폭이다.
+  // 1280은 실물 기본 창, 900은 **창이 작아질 수 있는 끝**(tauri.conf의 `minWidth`), 1120은 그 사이다.
   //
-  // **줄이 받는 폭은 창 폭이 아니다.** 창에서 사이드바와 작업 패널을 뺀 나머지라 900px 창에서는
-  // 여덟 칸이 어떤 최소 폭으로도 안 들어간다 — 결정 20이 「그 아래는 스크롤」로 답한 자리다.
-  // 그 폭에서는 패널이 제 최소 폭 쪽으로 자리를 내주고 줄은 칸 하나가 보이는 데서 멈춘다
-  // (`panel-layout`의 `TAB_ROW_COLUMN`).
+  // **줄이 받는 폭은 창 폭이 아니다.** 창에서 사이드바를 뺀 나머지다 — 작업 패널은 탭 줄 아래 카드 줄에 서서
+  // 줄과 폭을 다투지 않는다(ui-refresh 결정 4 · 27). 1280 · 1120에서는 여덟 칸이 이름을 숨긴 폭으로 다 들어가고,
+  // 900px 창에서는 어떤 최소 폭으로도 안 들어간다 — 결정 20이 「그 아래는 스크롤」로 답한 자리다. 줄이 더 좁아지면
+  // 사이드바가 자리를 내주고 줄은 칸 하나가 보이는 데서 멈춘다(`panel-layout`의 `TAB_ROW_COLUMN` · `tab-row-floor`).
   for (const width of [1280, 1120, 900]) {
     await page.setViewportSize({ width, height: 800 });
     // **xterm이 새 폭에 다시 맞을 때까지 기다린다.** 줄과 무관한 값이다 — FitAddon이
@@ -142,7 +141,7 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     expect(row.tabs, at).toHaveLength(MAX_SHELLS);
 
     // **로고는 끝까지 남는다** — 이 판이 사려는 것이 「무엇이 도나」다. 세 폭 모두 칸이
-    // 최소 폭(44px)이라 이름이 숨었고, 그때 서는 것이 이 글리프다(결정 27) — 넓은 폭에서는
+    // 이름을 숨기는 폭(88px 이하)이라 이름이 숨었고, 그때 서는 것이 이 글리프다(결정 27) — 넓은 폭에서는
     // 이름이 그 몫을 하므로 안 선다.
     expect(row.mark, at).not.toBeNull();
     // 글리프 하나의 규격이다(`size-3.5`). 한때 여기 스피너가 나란히 서서 30px이었다.
@@ -166,23 +165,26 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   expect(actionsWidth[900]).toBe(actionsWidth[1280]);
   expect(actionsWidth[1120]).toBe(actionsWidth[1280]);
 
-  // 좁힐수록 상자가 좁아지는데 칸은 이미 바닥이라, 스크롤로 넘어가는 몫이 커진다.
-  // **줄이 넘친 것이 아니다** — 위에서 세 폭 모두 `spill`이 0이었다.
+  // 좁힐수록 상자가 좁아지고, 칸이 바닥에 닿은 폭(900)부터는 스크롤로 넘어가는 몫이 생긴다 — 그 몫은 좁힐수록
+  // 줄지 않는다. **줄이 넘친 것이 아니다** — 위에서 세 폭 모두 `spill`이 0이었다.
   expect(rows[900].strip.clientWidth).toBeLessThan(rows[1120].strip.clientWidth);
   expect(rows[1120].strip.clientWidth).toBeLessThan(rows[1280].strip.clientWidth);
-  for (const width of [1280, 1120, 900]) {
-    expect(rows[width].strip.scrollWidth, `${width}px`).toBeGreaterThan(rows[width].strip.clientWidth);
-  }
+  const scrolled = (width: number) => rows[width].strip.scrollWidth - rows[width].strip.clientWidth;
+  expect(scrolled(900), "900px").toBeGreaterThan(0);
+  expect(scrolled(900)).toBeGreaterThanOrEqual(scrolled(1120));
+  expect(scrolled(1120)).toBeGreaterThanOrEqual(scrolled(1280));
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-for (const width of [1120, 900]) {
+for (const width of [900, BELOW_APP_MIN]) {
   test(`스크롤이 선 줄에서도 ⌘로 고른 칸이 보이는 자리로 온다 — ${width}px`, async ({ page }) => {
     // 결정 20이 만든 빚이다 — 안 보이는 칸이 생기면 ⌘1~9가 그 칸을 고를 수 있고, 그러면
     // 「눌렀는데 아무 일도 없다」로 읽힌다. 키는 폭을 모르므로 줄이 끌어와야 한다.
     //
-    // **900px은 작업 패널이 열린 기본 배치다** — 상자가 가장 좁은(칸 하나) 자리다.
+    // **900px은 앱 창의 최소 폭이다** — 여러 칸이 스크롤로 넘어간다. `BELOW_APP_MIN`은 넓힌 사이드바와 함께 상자가 가장
+    // 좁은(칸 하나) 자리다(`tab-row.ts` 머리말 — 한때 900px 창에 작업 패널이 열린 기본 배치가 그 자리였다).
+    if (width === BELOW_APP_MIN) await widenSidebar(page);
     await installFixtureBackend(page);
     await page.setViewportSize({ width, height: 800 });
     await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -224,13 +226,14 @@ for (const width of [1120, 900]) {
 // 그래서 여기서는 **사람이 보는 것**을 잰다 — 상자에 칸 하나가 온전히 보이고, 그 칸을 눌러 켤
 // 수 있고, `+`가 줄 안에 있다.
 //
-// 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 세
-// 화면 모두를 본다. 배치는 셋이다 — 패널을 연 채(가장 좁은 줄), 접은 채(조작 줄에 펼치기
-// 버튼이 하나 더 선다), 그리고 ⌘B로 사이드바를 접은 채(줄의 왼쪽 여백이 신호등 자리만큼
-// 넓어지는 `inset` 갈래다). `/terminal`에는 작업 패널이 없어 패널 갈래가 하나다.
+// 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 두
+// 화면 모두를 본다. 가장 좁은 줄은 work 화면의 것이다 — 바탕 오른쪽 끝에 레일 열(틈 · 레일)이 서서 그만큼 줄이 받는 폭이
+// 준다(ui-refresh 결정 10). 배치는 셋이다 — 패널을 연 채, 접은 채, 그리고 ⌘B로 사이드바를 접은 채(줄의 왼쪽 여백이 신호등
+// 자리만큼 넓어지는 `inset` 갈래다). 패널은 줄 아래 카드 줄에 서고(ui-refresh 결정 4) 여닫는 토글은 레일에 서서(ui-refresh 결정 9),
+// 접어도 줄이 받는 폭도 조작 줄의 버튼도 그대로다 — 한때 접으면 조작 줄에 펼치기 버튼이 하나 더 서던 갈래가 없어졌다.
+// 그래도 그 배치를 남겨 「여닫아도 줄이 안 바뀐다」를 양쪽에서 잰다. `/terminal`에는 작업 패널도 레일도 없어 패널 갈래가 하나다.
 const SCREENS = [
   { name: "work 화면", url: `/works/${plainWork.slug}?tab=terminal`, panel: true },
-  { name: "Maison Room 화면", url: `/maison/rooms/${ROOMS[1].slug}?tab=terminal`, panel: true },
   { name: "`/terminal`", url: "/terminal", panel: false },
 ] as const;
 
@@ -332,8 +335,7 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
 // 하나뿐이었고, `shellOfPty`가 먼저 찾은 칸을 주므로 값이 전부 맨 앞 칸에 앉았다.
 //
 // **재는 자리가 탭 줄인 것은 「어느 셸인가」가 화면에 드러나는 자리가 여기뿐이라서다.**
-// 사이드바 메타는 줄 전체로 말하고(`runningAgentsOf` — 「claude 하나가 돈다」까지만 안다),
-// pty id는 화면 어디에도 안 적힌다.
+// 사이드바에는 에이전트 마크가 없고(ui-refresh 결정 13), pty id는 화면 어디에도 안 적힌다.
 //
 // **셸 둘이면 족하고 창 폭은 아무래도 좋다.** 도는 명령의 글리프는 폭과 무관하게 **DOM에 늘
 // 있고**(`ShellTabs`의 `@max-[88px]:flex` — 좁은 폭에서 바뀌는 것은 `display`뿐이다), 여기서
@@ -369,8 +371,8 @@ test("도는 명령은 그 셸의 칸에만 앉는다", async ({ page }) => {
 
 // **손잡이가 「앉았다」를 잘못 말하면 위 검사가 무엇을 재는지 아무도 모른다.** `markRunning`은
 // 값이 앉을 때까지 다시 쏘는데, 앉았는지를 마크의 수로 판정한다 — 그 판정이 화면 전체에서
-// 「하나라도 있는가」였을 때는 같은 에이전트의 마크가 이미 서 있으면(사이드바 행·nav도 같은
-// 마크를 세운다) 값이 대상 pty에 **안 앉아도** 곧바로 성공을 냈다. 이 판의 뒤쪽 티켓들이
+// 「하나라도 있는가」였을 때는 같은 에이전트의 마크가 이미 서 있으면(다른 칸이 같은 마크를
+// 세운다) 값이 대상 pty에 **안 앉아도** 곧바로 성공을 냈다. 이 판의 뒤쪽 티켓들이
 // 같은 에이전트를 셸 둘에 앉히므로(#203~#205) 그 fail-open이 정확히 그 그림에서 난다.
 test("도는 명령 손잡이는 이미 선 마크에 안 속는다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -516,8 +518,8 @@ test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 �
     /확인할 것$/,
   );
 
-  // **기다림은 켜도 안 꺼진다** — 본 것과 답한 것은 다르다(결정 7). 켜진 칸이라 회색
-  // (`toggle-on`)이 서야 할 자리인데 앰버가 이긴다(결정 6).
+  // **기다림은 켜도 안 꺼진다** — 본 것과 답한 것은 다르다(결정 7). 켜진 칸이라 흰 면
+  // (`tab-on`)이 서야 할 자리인데 앰버가 이긴다(결정 6).
   await markAttention(
     page,
     { agent: "claude", event: "Elicitation", payload: { message: "커밋할까요?" } },

@@ -12,7 +12,6 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  markRunning,
   ptyGrids,
   refuseFirstSpawn,
   releaseCommand,
@@ -201,7 +200,7 @@ test("떼어진 채 뜬 셸이 처음 보일 때 PTY 격자가 화면 격자로 
 //
 // 첫 화면에 들어오자마자 다른 work·`/terminal`로 옮기면 **켜져 있던 칸까지** 떼어진다 — 화면이
 // 통째로 내려가서다. 두고 온 셸도 뒤에서 떠야 한다. 사람에게 그것이 보이는 자리는 사이드바다:
-// 그 work 행이 그 셸에서 도는 것을 말한다(결정 2).
+// 그 work 행이 그 셸을 셸 수로 센다(결정 2 · ui-refresh 결정 13).
 //
 // **두고 오는 셸은 사람이 연 칸(`+`)이다.** 화면이 저절로 띄운 셸은 입력 없이 떠나면 닫힌다(프로세스
 // 결정 7) — 글꼴이 오기 전에는 xterm이 안 열려 칠 수도 없으니, 그 셸은 떠나는 순간 뜨지도 않고 사라진다.
@@ -224,44 +223,40 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   const [workCwd, topCwd] = await spawnedCwds(page);
   expect(workCwd, "첫 spawn이 work 셸이 아니다").not.toEqual(topCwd);
 
-  // pty 1 = 두고 온 work 셸. 그 work 행에 로고가 서야 한다 — 최상위 셸에 앉으면 nav 행에 선다.
-  await markRunning(page, "claude", 1);
-  await expect(page.locator(`[data-shells="${plainWork.slug}"]`).getByRole("img", { name: "claude" })).toHaveCount(1);
-  await expect(page.locator("nav").getByRole("img", { name: "claude" })).toHaveCount(0);
+  // 두고 온 work 셸은 그 work 행이 센다 — 셸 수 `1`. 최상위 셸은 nav `Terminal`이 따로 센다(`1`).
+  await expect(page.locator(`[data-shells="${plainWork.slug}"]`)).toHaveText("1");
+  await expect(
+    page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).locator("xpath=.."),
+  ).toContainText("1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 세계를 갈면 그 세계의 화면으로 가서 터미널이 통째로 내려간다. 두고 온 셸은 **제 세계로** 떠야
-// 한다 — spawn이 싣는 모드가 셸의 홈과 `ATELIER_MODE`를 정한다(결정 10 · #187).
-for (const [from, to, url] of [
-  ["atelier", "Maison", "/terminal"],
-  ["maison", "Atelier", "/maison/terminal"],
-] as const) {
-  test(`글꼴이 오기 전에 ${to}로 갈아도 두고 온 ${from} 셸이 제 세계로 뜬다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    const releaseFonts = await holdTerminalFonts(page);
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    await expect(tabs(page)).toHaveCount(1);
-    // 두고 오는 셸은 사람이 연 칸이다 — 저절로 뜬 첫 칸은 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7).
-    await page.locator('[data-tab="new"]').click();
-    await expect(tabs(page)).toHaveCount(2);
+// 터미널 화면을 떠나면 터미널이 통째로 내려간다. 두고 온 셸은 **제자리에서** 떠야 한다 — 최상위 터미널의 셸이라
+// cwd 없이 나가고, 백엔드가 데이터 루트에서 띄운다(결정 10).
+test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 제자리에서 뜬다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const releaseFonts = await holdTerminalFonts(page);
+  await page.goto("/terminal", { waitUntil: "domcontentloaded" });
+  await expect(tabs(page)).toHaveCount(1);
+  // 두고 오는 셸은 사람이 연 칸이다 — 저절로 뜬 첫 칸은 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7).
+  await page.locator('[data-tab="new"]').click();
+  await expect(tabs(page)).toHaveCount(2);
 
-    await page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: to, exact: true }).click();
-    await expect(page).not.toHaveURL(url);
-    await expect(tabs(page)).toHaveCount(0);
+  await page.locator("nav").getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page).not.toHaveURL("/terminal");
+  await expect(tabs(page)).toHaveCount(0);
 
-    await releaseFonts();
-    await expect
-      .poll(async () => (await ipcCallArgs(page, "pty_spawn", "mode")).map(({ args }) => args.mode), {
-        message: "두고 온 셸이 안 떴거나 다른 세계로 떴다",
-        timeout: 20_000,
-      })
-      .toEqual([from]);
+  await releaseFonts();
+  await expect
+    .poll(async () => (await ipcCallArgs(page, "pty_spawn", "cwd")).map(({ args }) => args.cwd), {
+      message: "두고 온 셸이 안 떴거나 다른 자리로 떴다",
+      timeout: 20_000,
+    })
+    .toEqual([null]);
 
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
 // ─── 뜨기 전에 닫는다 ───
 //

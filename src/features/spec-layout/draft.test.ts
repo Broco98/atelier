@@ -114,7 +114,7 @@ describe("필드를 바꾸는 함수", () => {
     expect(next.layout.root.note).toBe("손으로 적은 메모");
   });
 
-  // 맨 위 항목의 설명이 안내문 맨 위의 방침 문단이다 — 편집기에서는 트리 열의 머리 `spec/`이 연다.
+  // 맨 위 항목의 설명이 안내문 맨 위의 방침 문단이다 — 편집기에서는 트리 카드의 머리 `spec/`이 연다.
   it("맨 위 항목의 설명(방침 문단)은 빈 경로로 고친다", () => {
     const next = setDescription(opened(), [], "새 방침.");
     expect(next.layout.root.description).toBe("새 방침.");

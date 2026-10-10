@@ -1,6 +1,6 @@
 import * as React from "react"
 import { CheckIcon } from "lucide-react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 // **메뉴 줄 끝의 체크 — Select 항목과 드롭다운 라디오 항목이 함께 그린다.** 두 부품 파일이 같은 값을
 // 옮겨 적던 자리다(`select.tsx`의 `SelectItem`, `dropdown-menu.tsx`의 `DropdownMenuRadioItem`).

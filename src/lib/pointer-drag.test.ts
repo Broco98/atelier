@@ -69,7 +69,7 @@ describe("공용 끌기 모듈은 기능 폴더를 모른다", () => {
 // 두 소비자가 각자 제 값을 보고 순서도 바꾸고 분할도 켠다. 그 불변식을 **값을 적는 유일한
 // 자리**(이 모듈의 `hover`)에 건다 — 적는 함수 셋이 모두 거기를 지난다.
 describe("한 눌림의 두 소비자", () => {
-  const shell: DragSource = { kind: "shell", owner: "atelier:", shellId: 1 };
+  const shell: DragSource = { kind: "shell", owner: "", shellId: 1 };
 
   beforeEach(() => {
     dragStore.setState(() => ({ source: null, half: null, slot: null }));
@@ -142,8 +142,8 @@ describe("탭 끌기 판정", () => {
   const state = (source: DragState["source"]): DragState => ({ source, half: null, slot: null });
 
   it.each([
-    { name: "문서 칸", source: { kind: "spec", owner: "atelier:", shellId: null } as DragSource },
-    { name: "셸 칸", source: { kind: "shell", owner: "maison:", shellId: 2 } as DragSource },
+    { name: "문서 칸", source: { kind: "spec", owner: "", shellId: null } as DragSource },
+    { name: "셸 칸", source: { kind: "shell", owner: "", shellId: 2 } as DragSource },
   ])("$name은 탭이다", ({ source }) => {
     expect(tabDragOf(state(source))).toBe(source);
   });
@@ -159,13 +159,13 @@ describe("탭 끌기 판정", () => {
 
 // 놓을 때 탭 줄이 읽는 몫 — 터미널 스토어가 드래그 상태의 모양을 몰라도 되게 여기서 꺼낸다.
 describe("탭 줄에 놓인 셸", () => {
-  const shell: DragSource = { kind: "shell", owner: "atelier:", shellId: 7 };
+  const shell: DragSource = { kind: "shell", owner: "", shellId: 7 };
 
   it.each([
     { name: "셸을 틈 위에서 놓으면 그 둘이다", state: { source: shell, half: null, slot: 3 }, want: { shellId: 7, slot: 3 } },
     { name: "틈이 없으면 없다", state: { source: shell, half: "left", slot: null }, want: null },
     { name: "끄는 중이 아니면 없다", state: { source: null, half: null, slot: null }, want: null },
-    { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "atelier:", shellId: null }, half: null, slot: 0 }, want: null },
+    { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "", shellId: null }, half: null, slot: 0 }, want: null },
   ] as const)("$name", ({ state, want }) => {
     expect(shellMoveOf(state)).toEqual(want);
   });
@@ -208,7 +208,7 @@ function gestureWindow() {
 describe("끄는 셸이 사라지면", () => {
   const { classes, pointer } = gestureWindow();
 
-  const shell: DragSource = { kind: "shell", owner: "maison:", shellId: 3 };
+  const shell: DragSource = { kind: "shell", owner: "", shellId: 3 };
   const gone = () => false;
 
   function arm(source: DragSource | RowDragSource) {
@@ -261,7 +261,7 @@ describe("끄는 셸이 사라지면", () => {
 
   // 셸이 없는 원천(문서 칸 · 작업 행)은 셸 목록과 무관하다 — 「없다」고 답해도 거두지 않는다.
   it.each([
-    { name: "문서 칸", source: { kind: "spec", owner: "atelier:", shellId: null } as DragSource },
+    { name: "문서 칸", source: { kind: "spec", owner: "", shellId: null } as DragSource },
     { name: "작업 행", source: { kind: "work", slug: "a" } as RowDragSource },
   ])("$name 끌기는 거두지 않는다", ({ source }) => {
     const calls = arm(source);
@@ -433,7 +433,7 @@ describe("끌기 계측", () => {
 
     // 본문에서 놓으면 누른 자리와 뗀 자리가 달라 브라우저가 클릭을 안 낸다 — 삼킨 것이 없어 문턱 한 줄뿐이다.
     it("삼킬 클릭이 없으면 문턱 한 줄이다", () => {
-      armDrag({ kind: "shell", owner: "atelier:", shellId: 1 }, { clientX: 0, clientY: 0 });
+      armDrag({ kind: "shell", owner: "", shellId: 1 }, { clientX: 0, clientY: 0 });
       pointer("pointermove", 0, 8, "touch");
       pointer("pointerup", 0, 80, "touch");
 

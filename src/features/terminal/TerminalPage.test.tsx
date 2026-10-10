@@ -20,13 +20,9 @@ describe("최상위 터미널의 머리행", () => {
   // 스토어는 모듈 싱글턴이라 이 파일 안에서 새어 나간다. 비우고 나간다.
   afterEach(() => terminalStore.setState(() => NO_SHELLS));
 
-  // **어느 세계의 최상위인가**가 이 화면의 소유자를 정한다(결정 10). 여기서는 Atelier로
-  // 고정해 두고, 「그 값이 실제로 `mode`에서 나오는가」는 아래 소스 스캔이 리터럴로 든다 —
-  // 정적 렌더로는 두 세계가 서로 다른 목록을 그리는 것을 못 본다(스토어가 모듈 싱글턴이라
-  // 두 번 그려도 같은 상태를 본다).
-  const TOP = topTerminal("atelier").owner;
-  const html = (sidebarOpen: boolean) =>
-    renderToStaticMarkup(<TerminalPage mode="atelier" sidebarOpen={sidebarOpen} />);
+  // 이 화면의 소유자는 **최상위 터미널의 키**(빈 글자 `""`)다 — 여는 자리(`topTerminal()`)와 같은 키를 싣는다.
+  const TOP = topTerminal().owner;
+  const html = (sidebarOpen: boolean) => renderToStaticMarkup(<TerminalPage sidebarOpen={sidebarOpen} />);
   const headerTag = (markup: string) => /<header[^>]*>/.exec(markup)?.[0] ?? null;
 
   /**
@@ -50,7 +46,7 @@ describe("최상위 터미널의 머리행", () => {
     let state = from;
     const ids: number[] = [];
     for (let n = 0; n < count; n += 1) {
-      const next = openShell(state, { mode: "atelier", owner, project: null, cwd: null });
+      const next = openShell(state, { owner, project: null, cwd: null });
       if (!next) throw new Error(`셸 ${count}개를 띄우려 했는데 ${n}개에서 거부됐다`);
       state = next.state;
       ids.push(next.id);
@@ -64,16 +60,16 @@ describe("최상위 터미널의 머리행", () => {
     terminalStore.setState(() => seed(2, TOP).state);
     const markup = html(true);
     expect(kindsOf(markup)).toEqual(["shell", "shell", "new"]);
-    // 머리행이 **하나뿐이다** — 브레드크럼(`PageHeader`)이 남아 있으면 층이 둘이 되고,
+    // 머리행이 **하나뿐이다** — 브레드크럼 머리가 남아 있으면 층이 둘이 되고,
     // 창을 끄는 자리와 신호등 회피 여백도 둘로 갈린다.
     expect(markup.split("<header").length - 1).toBe(1);
   });
 
   it("이 화면의 셸만 선다 — work의 셸은 안 온다", () => {
     // `owner`를 잘못 넘기면 남의 work 셸이 이 줄에 서고, `+`가 여는 자리와 칸이 가리키는
-    // 자리가 갈린다. 이 화면의 소유자는 **그 세계의 뒤가 빈 키**다(결정 10).
+    // 자리가 갈린다. 이 화면의 소유자는 **최상위 터미널의 빈 키**다.
     const mine = seed(1, TOP);
-    terminalStore.setState(() => seed(2, ownerOf("atelier", "가"), mine.state).state);
+    terminalStore.setState(() => seed(2, ownerOf("가"), mine.state).state);
     expect(shellCellsOf(html(true))).toHaveLength(1);
   });
 
@@ -111,8 +107,8 @@ describe("최상위 터미널의 머리행", () => {
   });
 
   it("창을 끌 수 있다", () => {
-    // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — `PageHeader`가 지고 있던 몫을
-    // 그대로 물려받는다(ShellTabs 머리말).
+    // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — 옛 브레드크럼 머리가 지고 있던 몫을
+    // 바탕 줄(`Frame`의 `TitleBar`)이 그대로 물려받는다.
     terminalStore.setState(() => seed(1, TOP).state);
     expect(headerTag(html(true))).toContain("data-tauri-drag-region");
   });
@@ -121,6 +117,17 @@ describe("최상위 터미널의 머리행", () => {
     // 왼쪽에 남은 것이 사이드바뿐이라, 접히면 이 줄이 창 왼쪽 끝에 붙어 신호등에 깔린다.
     expect(headerTag(html(false))).toContain("pl-(--titlebar-inset-tabs)");
     expect(headerTag(html(true))).toContain("pl-(--tab-lead)");
+  });
+
+  it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
+    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 첫 칸의 화면상 위치가 사이드바
+    // 폭과 이 여백의 합이라서다(index.css의 `--panel-ease` 주석). 한때 ShellTabs.test가 들었는데,
+    // 바탕 줄이 그 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 줄을 실제로 세우는 이 화면이 든다.
+    const tag = headerTag(html(true)) ?? "";
+    expect(tag).toContain("ease-panel");
+    expect(tag).toContain("transition-[padding]");
+    // 층 높이도 그 줄의 것이다 — 이 줄이 그 44px 자리다.
+    expect(tag).toContain("h-(--titlebar-height)");
   });
 });
 
@@ -134,9 +141,8 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   it("⌘1이 첫 셸이다 — 화면마다 갈리는 것은 `firstKey` 하나다", () => {
     // 결정 8·78. work 화면은 ⌘1이 spec이라 `firstKey`가 2이고 여기는 1이다. 그 어긋남을
     // `shellForNav`가 인자 하나로 받으므로 **판정을 두 벌로 만들지 않는다.**
-    // **조회하는 소유자가 `mode`에서 나와야 한다**(결정 10) — 한쪽 세계로 박으면
-    // `/maison/terminal`이 Atelier 최상위의 셸을 세고 고른다.
-    expect(source).toContain("const owner = ownerOf(mode);");
+    // **조회하는 소유자가 최상위 키다** — 여는 자리(`topTerminal()`)와 같은 `ownerOf()`를 딛는다.
+    expect(source).toContain("const owner = ownerOf();");
     expect(source).toContain("const shells = shellsOf(state, owner);");
     expect(source).toContain("shellForNav(shells, activeIdOf(state, owner), nav, 1)");
     // work 화면의 spec 갈래가 여기 살면 ⌘1이 아무 데도 안 간다 — 이 화면에는 그 칸이 없다.
@@ -166,9 +172,9 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   //
   // 여기서는 **구독하는가**만 본다 — 지역 이름을 못박지 않는다. 포커스를 둔 셸에서 누른 ⌘T가
   // 새 셸로 이어지는 사슬은 `e2e/shell-origin.spec.ts`가 진짜 xterm으로 잰다.
-  it("셸 안 ⌘T의 요청을 듣고, 이 세계의 최상위에 연다", () => {
+  it("셸 안 ⌘T의 요청을 듣고, 최상위 자리에 연다", () => {
     expect(source).toContain("onNewShellRequested(");
-    expect(source).toContain("openNewShell(topTerminal(mode))");
+    expect(source).toContain("openNewShell(topTerminal())");
   });
 
   it("window에서 듣는 자리가 셋이다", () => {

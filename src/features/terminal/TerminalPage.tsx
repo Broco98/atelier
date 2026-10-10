@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useStore } from "@tanstack/react-store";
+import { Card, Frame } from "@/components/shell/Frame";
 import ShellTabs from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
@@ -23,7 +24,6 @@ import {
   terminalStore,
 } from "./terminal-store";
 import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
-import type { Mode } from "@/mode";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
 // 데이터 루트다(결정 12·25). 본문은 Work의 터미널과 **같은 컴포넌트**다.
@@ -34,30 +34,32 @@ import type { Mode } from "@/mode";
 // **이 44px 한 층의 내력을 적어 둔다 — 안 적으면 다음 사람이 되돌린다.** 처음에 이 자리를
 // 겸하던 것이 가로 탭 줄이었다(브레드크럼에 적을 것이 `Terminal` 한 낱말뿐이라 층을 아끼려던
 // 것 — 결정 44). 셸을 고르는 자리가 사이드바 가지로 가면서 그 줄이 없어지자 창을 끌 영역도
-// 신호등을 피할 여백도 남지 않아, 자리를 `PageHeader`에 돌려줬다(결정 72). 이번 판이 셸을
+// 신호등을 피할 여백도 남지 않아, 자리를 화면의 브레드크럼 머리에 돌려줬다(결정 72). 이번 판이 셸을
 // 고르는 자리를 화면 안으로 되돌리므로(adr-03) 그 층을 다시 탭 줄이 가져간다 — 브레드크럼은
-// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 그 줄의 성질이다
-// (ShellTabs 머리말).
+// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 바탕 줄(`Frame`의 `TitleBar`)의
+// 성질이고, 탭 줄은 그 줄에 칸들을 세운다(ShellTabs 머리말).
+//
+// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 바탕 줄에 탭 줄이 서고, 그 아래 터미널 카드 하나가 뜬다 —
+// 카드에는 머리가 없다(ui-refresh 결정 5: 머리가 필요 없는 카드는 곧바로 내용이 선다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
+// `--term-inset`은 셸의 집이 든다(판 04 기본값 — `TerminalPane`의 그 주석).
 //
 // **셸이 0개일 때 여는 자리는 이 줄의 `+` 하나다**(결정 19). 한때 본문 가운데에도 목록이
 // 덮여 있었는데(결정 102), 그 자리의 근거가 「탭 줄이 걷힌 뒤로 여는 길이 여기뿐이다」
 // 하나여서 이 판이 그 줄을 되살리며 사라졌다. 본문에 남은 것은 조작이 아니라 **비었다는
 // 표시와 여는 법**이고, 상한에 닿았을 때의 문장도 거기서 읽힌다 — `TerminalPane`의 주석이
 // 사정을 든다.
-function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean }) {
+function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   /**
-   * 이 화면의 소유자 — **그 세계의 최상위**다(결정 10). 화면이 둘이라(`/terminal`과
-   * `/maison/terminal`) 이 값이 안 갈리면 두 세계가 같은 셸 목록·같은 상한·같은 켜진 칸을
-   * 나눠 쓰고, 모드를 갈아도 저쪽 셸이 계속 도는 것을 화면이 표현할 수 없다.
+   * 이 화면의 소유자 — **최상위 터미널**이다(빈 글자 `""` — ui-refresh 결정 23).
    *
-   * **여는 자리는 `topTerminal(mode)`이고 조회하는 자리는 이 값인데, 둘은 갈릴 수 없다** —
-   * 그 함수가 같은 인자로 `ownerOf`를 부른다(레지스트리의 검사가 그 짝을 붙든다). 갈리면
+   * **여는 자리는 `topTerminal()`이고 조회하는 자리는 이 값인데, 둘은 갈릴 수 없다** —
+   * 그 함수가 같은 `ownerOf()`를 부른다(레지스트리의 검사가 그 짝을 붙든다). 갈리면
    * 셸은 목록에 앉은 채 어느 화면에도 안 뜬다.
    *
-   * 문자열이라 **값으로** 안정적이다 — 아래 이펙트 셋의 의존성이 `mode` 하나인 것이 그
+   * 문자열이라 **값으로** 안정적이다 — 아래 이펙트 셋의 의존성이 `owner` 하나인 것이 그
    * 성질에 기댄다(객체로 들면 렌더마다 새 참조라 핸들러가 매번 다시 붙는다).
    */
-  const owner = ownerOf(mode);
+  const owner = ownerOf();
 
   /**
    * 탭 줄이 그리는 것 — **스토어를 구독하는 자리가 화면이다.** 줄 자체는 상태와 콜백만
@@ -97,7 +99,7 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
   // 요청만 보낸다. 이 구독이 빠지면 셸에 포커스가 있는 동안(이 화면에서는 거의 늘) ⌘T가
   // 죽는다. work 화면과 같은 모양이다.
   useEffect(() => {
-    const open = () => openNewShell(topTerminal(mode));
+    const open = () => openNewShell(topTerminal());
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
@@ -109,7 +111,7 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
       window.removeEventListener("keydown", onKeyDown);
       stop();
     };
-  }, [mode]);
+  }, [owner]);
 
   /**
    * ⌘1~9와 ⌃Tab이 **이 화면의 셸**을 고른다(결정 78·79·109).
@@ -163,29 +165,28 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
   }, [owner]);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="relative flex min-w-0 flex-1 flex-col">
+    <Frame
+      sidebarOpen={sidebarOpen}
+      titlebar={
         <ShellTabs
           state={shellState}
-          // 이 화면의 셸은 Work에 안 매인다 — 소유자의 slug가 비어 있는 쪽이다(결정 10).
+          // 이 화면의 셸은 Work에 안 매인다 — 소유자가 빈 글자다.
           owner={owner}
           // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
           // work뿐이고(결정 24) 이 화면은 work가 아니다.
           projects={[]}
           // 메뉴가 안 서므로 보일 곳이 없지만 값은 사실대로 준다 — 데이터 루트라 cwd가 없다.
-          defaultCwd={topTerminal(mode).cwd}
+          defaultCwd={topTerminal().cwd}
           // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
           // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
           spec={null}
           // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
           showing
-          // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 이 줄이 창 왼쪽 끝에 붙는다
-          inset={!sidebarOpen}
           // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
           onSelect={selectShellWithFocus}
           // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
           onClose={requestCloseShell}
-          onOpen={() => openNewShell(topTerminal(mode))}
+          onOpen={() => openNewShell(topTerminal())}
           // **이 화면도 탭을 끈다**(UI개선 결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
           // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
           // 가지므로 여기서 거른다. 탭 줄 밖에서 놓으면 아무 일도 없다.
@@ -197,9 +198,12 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           onDropSlot={dropShellOnSlot}
           dragging={dragging}
         />
-        <TerminalPane mode={mode} work={null} />
-      </main>
-    </div>
+      }
+    >
+      <Card as="main" label="터미널" tone="terminal" className="flex-1">
+        <TerminalPane work={null} />
+      </Card>
+    </Frame>
   );
 }
 

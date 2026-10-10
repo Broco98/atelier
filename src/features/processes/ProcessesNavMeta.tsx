@@ -10,8 +10,7 @@ import { NEEDS_LOOK_LABEL, lookablesOf, needsLook, ownerlessShellKeys } from "./
  * **nav `Processes`의 메타**(프로세스 결정 11 · 티켓 29) — 평소에는 아틀리에의 메모리 합계이고, 손볼 것이 **본 뒤 새로** 생기면 그
  * 앞에 `●`가 선다. 이유는 이번 문제의 출발점이 「느려지고 나서야 알았다」라서다 — 합계가 늘 보이면 서서히 차오르는 것이 눈에 띈다.
  *
- * **앱 전체를 센다** — 사이드바의 다른 숫자와 달리 「이 세계의 것만 센다」의 예외다(프로세스 결정 9). 이름(`Processes` = 앱 전체)이 그
- * 이유를 말한다. 두 세계의 nav가 같은 값을 보인다.
+ * **앱 전체를 센다**(프로세스 결정 9) — 이름(`Processes` = 앱 전체)이 그 이유를 말한다.
  *
  * **요약 폴러가 여기 하나다**(`useProcessSummary`, 10초). 이 조각은 사이드바에 늘 서 있다(접혀도 렌더된다) — 화면이 닫혀 있어도
  * 합계와 점이 늙지 않는다. 설정 nav로 갈아 서는 동안만 쉰다(그때는 nav가 없다).
@@ -22,7 +21,7 @@ import { NEEDS_LOOK_LABEL, lookablesOf, needsLook, ownerlessShellKeys } from "./
  */
 export default function ProcessesNavMeta() {
   const { data: summary } = useProcessSummary();
-  // 두 세계의 주인 잃은 셸 — 셸 키로 센다. 얕은 비교라 주인 잃음과 상관없는 셸의 변화(타이틀 · 도는 것)에는 다시 안 그린다.
+  // 주인 잃은 셸 — 셸 키로 센다. 얕은 비교라 주인 잃음과 상관없는 셸의 변화(타이틀 · 도는 것)에는 다시 안 그린다.
   const ownerlessKeys = useStore(terminalStore, (state) => ownerlessShellKeys(state.shells), shallow);
   const seen = useStore(lookStore, (state) => state.seen);
   const now = useMemo(() => lookablesOf(ownerlessKeys, summary), [ownerlessKeys, summary]);

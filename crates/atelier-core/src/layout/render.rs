@@ -14,7 +14,7 @@ pub struct TemplateVerdict {
     pub folder: String,
 }
 
-/// 모드의 폴더를 못 써서 내장본으로 물러선 까닭.
+/// 레이아웃 폴더를 못 써서 내장본으로 물러선 까닭.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fallback {
     /// 읽지 못한 레이아웃 폴더. 홈은 `~`로 줄여 둔다.
@@ -460,7 +460,7 @@ mod tests {
     /// render와 글자까지 같다.
     #[test]
     fn a_fallback_puts_one_line_in_front_of_the_guidance() {
-        let builtin = crate::layout::builtin::builtin_layout(crate::Mode::Atelier);
+        let builtin = crate::layout::builtin::builtin_layout();
         let fallback = Fallback {
             folder: "~/.atelier/layouts/atelier".to_string(),
             reason: "layout.json is missing".to_string(),

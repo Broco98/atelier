@@ -40,8 +40,8 @@ import type { TerminalTheme } from "@/features/settings/types";
 export const terminalThemeLight: ITheme = {
   // 아래 넷은 앱과 어긋나면 안 된다 — 짝을 여기 적어 둔다 (index.css)
   background: "#ffffff", // --background: oklch(1 0 0)
-  foreground: "#1a1a1e", // --foreground
-  cursor: "#5e6ad2", // --primary
+  foreground: "#191c1f", // --foreground
+  cursor: "#4d81ef", // --primary
   selectionBackground: "rgba(20, 20, 28, 0.09)", // --state-3
 
   black: "#000000",
@@ -68,7 +68,7 @@ export const terminalThemeDark: ITheme = {
   // 선택 하나만 앱의 방식을 따른다.
   background: "#1e1e1e", // VS Code Dark+ `editor.background` — 16색이 이 바탕에서 조정됐다
   foreground: "#cccccc", // VS Code Dark+ 워크벤치 `foreground`
-  cursor: "#5e6ad2", // --primary 그대로(결정 54). 이 바탕 위 대비 3.5:1이라 얇은 막대도 보인다
+  cursor: "#4d81ef", // --primary 그대로(결정 54). 이 바탕 위 대비 4.5:1이라 얇은 막대도 보인다
   // 라이트가 VS Code의 선택색이 아니라 앱 `--state-3`(검정 9%)을 쓰므로 그 **모양**을
   // 따라간다 — 색이 아니라 반투명 한 겹. 같은 9%를 흰색으로 뒤집으면 어두운 바탕에서
   // 오히려 조금 더 벌어진다(바탕 대비 1.30, 라이트는 1.20).

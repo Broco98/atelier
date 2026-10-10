@@ -1,4 +1,4 @@
-// **localStorage를 만지는 문** — 앱을 껐다 켜도 남길 작은 편의(사이드바 접힘 · 마지막 세계는 `shell-store.ts`, nav `Processes`의 본
+// **localStorage를 만지는 문** — 앱을 껐다 켜도 남길 작은 편의(사이드바 접힘은 `shell-store.ts`, nav `Processes`의 본
 // 것은 `features/processes/looked.ts`)가 이 둘로 읽고 적는다.
 //
 // **부를 때마다 확인하고 던지는 것을 삼킨다** — 있는지 한 번만 보고 모듈 상수로 굳히면 나중에 심어진 저장소를 영영 못 보고(라우터

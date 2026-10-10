@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropSplit, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
+import { dropSplit, otherTab, tabOfDrag } from "./split-view";
 
 // 분할 뷰의 순수 판정. 화면 seam(정적 마크업)에서는 **이것들이 안 보인다** — 포인터도
 // 이펙트도 돌지 않아, 떨군 자리가 어느 쪽을 spec으로 만드는지가 마크업에 드러나지 않는다.
@@ -51,25 +51,5 @@ describe("반대쪽 열", () => {
 
   it("두 번 뒤집으면 제자리다", () => {
     expect(otherTab(otherTab("spec"))).toBe("spec");
-  });
-});
-
-describe("열 머리의 문서 이름", () => {
-  // basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다(결정 104).
-  it("판 폴더와 파일명을 함께 쓴다", () => {
-    expect(specHeadLabel("05-분할-뷰/spec.md")).toBe("05-분할-뷰 / spec.md");
-  });
-
-  it("폴더가 없으면 이름 하나다", () => {
-    expect(specHeadLabel("overview.md")).toBe("overview.md");
-  });
-
-  // 더 깊어도 **두 조각**이다 — 열 머리는 한 줄이라 전체 경로가 들어갈 자리가 없다.
-  it("깊어도 두 조각이다", () => {
-    expect(specHeadLabel("a/b/c/d.md")).toBe("c / d.md");
-  });
-
-  it("문서가 없으면 빈 글자다", () => {
-    expect(specHeadLabel(null)).toBe("");
   });
 });
