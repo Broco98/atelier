@@ -298,9 +298,14 @@ name = "atelier-acp"
 version = "0.18.0"
 dependencies = [
  "agent-client-protocol",
+ "atelier-core",
+ "chrono",
  "futures",
  "libc",
+ "serde",
+ "serde_json",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]

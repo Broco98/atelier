@@ -7,7 +7,10 @@ mod discovery;
 mod host;
 mod login_env;
 mod process;
+mod records;
+mod runtime;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
-pub use host::{ConversationHost, HostBuilder, HostEvent, TranslatorCommand};
+pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
 pub use login_env::{LoginShellError, ShellSource};
+pub use records::{RecordKind, RecordLine};

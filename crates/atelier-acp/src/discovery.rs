@@ -5,14 +5,25 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-/// 대화마다 고르는 에이전트.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use serde::{Deserialize, Serialize};
+
+/// 대화마다 고르는 에이전트. 기록과 화면에는 `claude` · `codex`로 적힌다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Agent {
     Claude,
     Codex,
 }
 
 impl Agent {
+    /// 대화 이름의 머리 — 이름은 에이전트 이름으로 저절로 붙는다(Claude · Codex · Claude 2, three-axes 결정 15).
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Agent::Claude => "Claude",
+            Agent::Codex => "Codex",
+        }
+    }
+
     /// 그 에이전트를 띄우는 데 드는 실행 파일. 찾은 결과도 이 순서로 싣는다.
     ///
     /// Codex는 `codex-acp`를 `npx`를 거치지 않고 바로 띄우고, 그것이 `CODEX_PATH`로 받은 사용자의

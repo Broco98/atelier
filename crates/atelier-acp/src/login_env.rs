@@ -237,7 +237,7 @@ fn parse_env(body: &[u8]) -> Vec<(OsString, OsString)> {
 }
 
 /// 에이전트에게 주는 env — 로그인 env에서 지울 것을 지우고 `GIT_OPTIONAL_LOCKS=0`을 더한 것(워크플로 S20).
-/// 자식에게는 덧붙이지 않고 이것으로 **통째로 바꿔** 준다(03이 띄운다).
+/// 자식에게는 덧붙이지 않고 이것으로 **통째로 바꿔** 준다(`runtime::open`).
 ///
 /// - `ATELIER_SHELL` — 사용자 훅이 개발자 셸에 신호를 쏘지 않게.
 /// - `ATELIER_MODE` — 사용자 `atelier` MCP가 기본 루트를 읽게.
@@ -254,6 +254,11 @@ impl AgentEnv {
             login.into_iter().filter(|(name, _)| !leaks_into_agent(name)).collect();
         vars.insert("GIT_OPTIONAL_LOCKS".into(), "0".into());
         Self { vars }
+    }
+
+    /// 자식에게 통째로 줄 변수들.
+    pub(crate) fn vars(&self) -> &BTreeMap<OsString, OsString> {
+        &self.vars
     }
 
     /// 이 env의 PATH — 에이전트를 찾는 자리다.
