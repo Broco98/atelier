@@ -30,7 +30,9 @@ test("레일: `chat` 칸이 spec · chat · info 순서로 서고 aria-pressed�
     chat_list: answerByArg("work", { [pinnedWork.slug]: [codex] }, { otherwise: [] }),
   });
   await page.goto(`/works/${pinnedWork.slug}`);
-  await expect(트리폴더(page)).toBeVisible();
+  // **기본 5초가 아니다.** 이 파일의 첫 테스트는 워커의 첫 페이지라 dev 서버가 작업 화면을 처음 변환하는 것을 기다린다 —
+  // 바쁜 러너에서 `load` 뒤 트리가 서기까지 5초를 넘긴 적이 있다(실측). 재는 것은 그 뒤의 레일이다.
+  await expect(트리폴더(page)).toBeVisible({ timeout: 20_000 });
   expect(await 레일(page).getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
     "chat",
