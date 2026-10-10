@@ -45,6 +45,16 @@ pub(crate) struct SessionPlace {
     pub additional_directories: Vec<PathBuf>,
 }
 
+/// 세션을 열 때의 조건 — 에이전트에게 더 싣는 것과, 받기 전에 확인하는 것.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OpenTerms {
+    /// `session/new`에 실을 `_meta`. Claude 변환기는 여기서 claude의 자리와 모드 · 모델을 받는다(three-axes 티켓 13).
+    pub meta: Option<Value>,
+    /// 에이전트가 `initialize`의 `agentInfo.version`에 실어야 하는 판. 다르면 `session/new`를 보내지 않고 열기를 실패시킨다
+    /// — 앱의 하위 모드로 도는 변환기가 앱과 다른 판이면(설치본을 갈아 끼우는 틈에 띄웠다) 쓰지 않는다(워크플로 S4).
+    pub required_version: Option<String>,
+}
+
 /// 런타임이 호출자에게 넘기는 것. 받은 것을 **원문 그대로, 온 순서대로** 넘긴다 — 스키마 타입으로 다시
 /// 짓지 않으므로 모르는 kind도 산다(three-axes 결정 12, 스토리 123).
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +151,7 @@ pub(crate) type OnOpened = Box<dyn FnOnce(&Opened) + Send>;
 pub(crate) fn open(
     launch: Launch,
     place: SessionPlace,
+    terms: OpenTerms,
     limit: Duration,
     sink: Sink,
     on_opened: OnOpened,
@@ -197,7 +208,7 @@ pub(crate) fn open(
         let ran = futures::executor::block_on(builder.connect_with(
             transport,
             async move |cx: ConnectionTo<AgentRole>| {
-                let opened = open_session(&cx, &place, on_opened).await;
+                let opened = open_session(&cx, &place, &terms, on_opened).await;
                 let opened_ok = opened.is_ok();
                 let _ = outcome_tx.send(opened.map(|opened| (opened, cx.clone())));
                 if opened_ok {
@@ -253,8 +264,22 @@ pub(crate) fn open(
 ///
 /// `session/new`의 답은 순서 장벽(`on_receiving_result`)으로 받는다 — 진짜 codex-acp는 답 바로 뒤에 명령 목록을
 /// 보내는데(실측 turns 5 · 6줄), 다른 자리에서 답을 기다리면 그 update가 「열림」보다 앞에 적힌다.
-async fn open_session(cx: &ConnectionTo<AgentRole>, place: &SessionPlace, on_opened: OnOpened) -> Result<Opened, String> {
+async fn open_session(
+    cx: &ConnectionTo<AgentRole>,
+    place: &SessionPlace,
+    terms: &OpenTerms,
+    on_opened: OnOpened,
+) -> Result<Opened, String> {
     let initialize = request(cx, "initialize", initialize_params()).await?;
+    if let Some(required) = &terms.required_version {
+        let version = initialize["agentInfo"]["version"].as_str();
+        if version != Some(required.as_str()) {
+            return Err(format!(
+                "판 어긋남 — 에이전트 {} · 앱 {required}. 앱을 다시 켜면 맞는 판이 뜹니다",
+                version.unwrap_or("(판 없음)")
+            ));
+        }
+    }
 
     // three-axes 결정 23 — MCP는 사용자 설정 그대로다. 앱이 세션에 따로 넣는 것은 없다.
     let mut params = serde_json::Map::new();
@@ -263,6 +288,9 @@ async fn open_session(cx: &ConnectionTo<AgentRole>, place: &SessionPlace, on_ope
         params.insert("additionalDirectories".into(), json!(place.additional_directories));
     }
     params.insert("mcpServers".into(), json!([]));
+    if let Some(meta) = &terms.meta {
+        params.insert("_meta".into(), meta.clone());
+    }
     let message = UntypedMessage::new("session/new", Value::Object(params)).map_err(|error| error.to_string())?;
     let (opened_tx, opened_rx) = oneshot::channel::<Result<Opened, String>>();
     cx.send_request(message)
@@ -289,7 +317,7 @@ async fn open_session(cx: &ConnectionTo<AgentRole>, place: &SessionPlace, on_ope
 /// 옮겨져도 계정이 새지 않게 한다(스토리 115). Codex는 `_auth/status_update`의 `authStatus.account`에 싣는다.
 /// 그 칸 아래의 글자 값은 다 가리고, 나머지 칸(`kind` · `label`)은 그대로 둔다.
 ///
-/// Claude 쪽 자리(`initialize`의 `account` · `init.plugins[].path`)는 변환기(티켓 13)가 더한다.
+/// Claude 쪽 자리(`initialize`의 `account` · `init.plugins[].path`)는 claude의 원문을 처음 읽는 변환기가 가린다(티켓 13).
 fn mask_account(mut params: Value) -> Value {
     fn mask(value: &mut Value) {
         match value {

@@ -1,7 +1,7 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
-//! 사라진 work의 대화 끄기(11)가 선다. 앱 잇기(05) · 로그인(12)이 이 위에 선다.
+//! 사라진 work의 대화 끄기(11), Claude 대화 열기 · 에이전트 바꾸기(13)가 선다. 앱 잇기(05) · 로그인(12)이 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -19,14 +19,19 @@ use serde_json::{json, Value};
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::records::{self, CloseCause, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
-use crate::runtime::{self, AgentProcess, Launch, RuntimeEvent, SessionPlace, Sink};
+use crate::runtime::{self, AgentProcess, Launch, OpenTerms, RuntimeEvent, SessionPlace, Sink};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
 const CODEX_ACP_MAJOR: u64 = 2;
 
-/// 세션 열기(띄우기 → initialize → `session/new`)의 기본 한도. ACP가 아닌 명령이 말없이 살아 있어도 새 대화가
+/// Codex 세션 열기(띄우기 → initialize → `session/new`)의 기본 한도. ACP가 아닌 명령이 말없이 살아 있어도 새 대화가
 /// 끝없이 막히지 않게 한다. 진짜 codex-acp는 1초 안팎에 연다(실측 A1).
-const DEFAULT_OPEN_LIMIT: Duration = Duration::from_secs(30);
+const CODEX_OPEN_LIMIT: Duration = Duration::from_secs(30);
+
+/// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
+/// 세션을 여므로, 세션 열기가 그만큼 기다린다. 진짜 claude 2.1.296은 SessionStart 훅을 돈 뒤 0.9~3.5초에 답했다(판 02 실측
+/// G5). 넘으면 열기 실패다.
+const CLAUDE_OPEN_LIMIT: Duration = Duration::from_secs(10);
 
 /// 호스트가 내보내는 것. 대기 줄 바뀜(07) · 엔진 상태(12)가 이어 선다.
 #[derive(Debug, Clone, PartialEq)]
@@ -61,7 +66,7 @@ pub struct HostBuilder {
     shell: ShellSource,
     emit: Arc<Emit>,
     login_shell_limit: Duration,
-    open_limit: Duration,
+    open_limit: Option<Duration>,
 }
 
 impl HostBuilder {
@@ -71,9 +76,9 @@ impl HostBuilder {
         self
     }
 
-    /// 세션 열기의 한도. 기본은 30초다 — 검사에서는 줄여도 된다.
+    /// 세션 열기의 한도. 기본은 Codex 30초 · Claude 10초(G5)다 — 검사에서는 줄여도 된다. 주면 두 엔진 모두 이 값이다.
     pub fn open_limit(mut self, limit: Duration) -> Self {
-        self.open_limit = limit;
+        self.open_limit = Some(limit);
         self
     }
 
@@ -94,12 +99,11 @@ impl HostBuilder {
 
 pub struct ConversationHost {
     data_root: PathBuf,
-    #[expect(dead_code, reason = "Claude 대화를 13이 이것으로 띄운다")]
     translator: TranslatorCommand,
     shell: ShellSource,
     emit: Arc<Emit>,
     login_shell_limit: Duration,
-    open_limit: Duration,
+    open_limit: Option<Duration>,
     /// S7 — 로그인 env는 호스트가 도는 동안 한 번 읽어 메모리에 쥔다. 「다시 확인」만 다시 읽는다.
     /// 기록하지 않는다 — 비밀이 `agents/`에 남지 않게(워크플로 S37).
     ///
@@ -142,13 +146,16 @@ struct ConvState {
     needs_preamble: bool,
 }
 
+impl ConvState {
+    /// 에이전트 쪽 세션이 막 열린 대화 — 살아 있고, 턴이 쉬고, 첫 말에 머리말을 붙인다.
+    fn fresh() -> Self {
+        Self { alive: true, turn: None, needs_preamble: true }
+    }
+}
+
 impl Conv {
     fn new(recorder: Recorder, vanish: Option<VanishWatch>) -> Arc<Self> {
-        Arc::new(Self {
-            recorder,
-            state: Mutex::new(ConvState { alive: true, turn: None, needs_preamble: true }),
-            vanish,
-        })
+        Arc::new(Self { recorder, state: Mutex::new(ConvState::fresh()), vanish })
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -275,6 +282,14 @@ fn elapsed_ms(started: Option<Instant>) -> u64 {
     started.map_or(0, |at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
 }
 
+/// 새 대화가 처음 쥐는 모델 · 모드. 비우면 엔진 기본값이다(three-axes 결정 16) — Claude는 `--model` · `--permission-mode`를
+/// 주지 않아 사용자 설정을 물려받는다. 설정 「대화」(티켓 25)가 채운다.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConversationDefaults {
+    pub model: Option<String>,
+    pub mode: Option<String>,
+}
+
 /// 대화 목록의 한 줄 — 화면이 대화 탭을 짓는 것.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -297,11 +312,11 @@ pub enum HostError {
     LoginShell(LoginShellError),
     /// 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾지 못했다.
     EngineMissing { agent: Agent, missing: Vec<MissingProgram> },
-    /// 이 판에서 아직 열 수 없는 에이전트(Claude — 변환기가 서면 연다).
-    AgentNotReady(Agent),
     /// 대화는 섰지만 에이전트가 세션을 열지 못했다. 까닭은 그 대화의 기록에도 `session` 죽음 줄로 남는다.
     Open { conversation: String, reason: String },
     ConversationNotFound(String),
+    /// 첫 말 뒤의 에이전트 바꾸기 — Claude와 Codex는 서로의 대화를 읽지 못해 맥락이 끊긴다(three-axes 결정 15).
+    AgentLocked(String),
     /// 에이전트가 떠 있지 않은 대화 — 다시 켠 뒤이거나 에이전트가 죽었다. 다시 띄우기는 티켓 10이다.
     NotRunning(String),
     /// 턴이 도는 동안의 보내기. 대기 줄은 티켓 07이 세운다.
@@ -321,9 +336,9 @@ impl fmt::Display for HostError {
                 let names: Vec<&str> = missing.iter().map(|program| program.name).collect();
                 write!(f, "{}를 띄우는 데 드는 것을 찾지 못했습니다: {}", agent.display_name(), names.join(", "))
             }
-            HostError::AgentNotReady(agent) => write!(f, "{} 대화는 아직 열 수 없습니다", agent.display_name()),
             HostError::Open { reason, .. } => write!(f, "{reason}"),
             HostError::ConversationNotFound(conversation) => write!(f, "대화를 찾을 수 없습니다: {conversation}"),
+            HostError::AgentLocked(_) => write!(f, "첫 말 뒤에는 에이전트를 바꿀 수 없어요. 다른 에이전트는 +로 열어요"),
             HostError::NotRunning(conversation) => write!(f, "에이전트가 떠 있지 않은 대화입니다: {conversation}"),
             HostError::TurnRunning(_) => write!(f, "턴이 도는 중이라 보낼 수 없습니다. 턴이 끝난 뒤에 보내세요"),
             HostError::Send(reason) => write!(f, "{reason}"),
@@ -353,7 +368,7 @@ impl ConversationHost {
             shell,
             emit: Arc::new(emit),
             login_shell_limit: login_env::DEFAULT_LIMIT,
-            open_limit: DEFAULT_OPEN_LIMIT,
+            open_limit: None,
         }
     }
 
@@ -406,28 +421,31 @@ impl ConversationHost {
         })
     }
 
-    /// 새 대화 — 엔진 기본값으로 만들고 곧바로 띄워 세션을 연다(S8). 그래서 칩 · 메뉴 · 로그인 실패가 첫 말
+    /// 새 대화 — 엔진 기본값으로 만들고 곧바로 띄워 세션을 연다(S8). [`Self::new_conversation_with`]에 빈 기본값을 준 것이다.
+    pub fn new_conversation(&self, work: &str, agent: Agent) -> Result<Conversation, HostError> {
+        self.new_conversation_with(work, agent, ConversationDefaults::default())
+    }
+
+    /// 새 대화 — `defaults`의 모델 · 모드로 만들고 곧바로 띄워 세션을 연다(S8). 그래서 칩 · 메뉴 · 로그인 실패가 첫 말
     /// 전에 선다. 이름은 에이전트 이름으로 저절로 붙는다(Codex · Codex 2).
     ///
-    /// 막히는 호출이다 — 세션이 열릴 때까지(한도 30초) 기다린다.
+    /// 막히는 호출이다 — 세션이 열릴 때까지(한도 Codex 30초 · Claude 10초) 기다린다.
     ///
     /// - work 폴더에 `work.json`이 없으면 아무것도 만들지 않고 실패한다(`agents/`도 만들지 않는다).
     /// - 에이전트를 못 찾으면 대화를 만들지 않고 실패한다 — 안내 카드가 빠진 것과 설치 명령을 보인다.
     /// - 대화를 만든 뒤 세션을 열지 못하면, 프로세스를 남김없이 끄고 기록에 까닭(`session` 죽음 줄)을 적고
     ///   실패한다. 대화는 목록에 남는다 — 다음 말에서 다시 띄운다(10).
-    pub fn new_conversation(&self, work: &str, agent: Agent) -> Result<Conversation, HostError> {
+    pub fn new_conversation_with(
+        &self,
+        work: &str,
+        agent: Agent,
+        defaults: ConversationDefaults,
+    ) -> Result<Conversation, HostError> {
         let works = atelier_core::works_in(&self.data_root);
         let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
         let places = atelier_core::work_places(&works, &meta);
-        if agent == Agent::Claude {
-            // three-axes 결정 12 — Codex를 먼저 잇는다. Claude는 변환기(티켓 13)가 서면 연다.
-            return Err(HostError::AgentNotReady(agent));
-        }
         let env = self.login_env(false)?;
-        let programs = match discovery::look_up(agent, env.path()) {
-            EngineCheck::Found { programs } => programs,
-            EngineCheck::Missing { missing } => return Err(HostError::EngineMissing { agent, missing }),
-        };
+        let programs = find_programs(agent, &env)?;
         let place = workplace(&places, meta.projects.len());
 
         records::ensure_agents_dir(&places.agents).map_err(HostError::Record)?;
@@ -441,8 +459,8 @@ impl ConversationHost {
                 cwd: place.cwd.clone(),
                 additional_directories: place.additional_directories.clone(),
                 agent_session_id: None,
-                model: None,
-                mode: None,
+                model: defaults.model,
+                mode: defaults.mode,
                 plan: None,
                 created_at: records::now(),
                 closed_at: None,
@@ -453,38 +471,142 @@ impl ConversationHost {
         };
         let conv = Conv::new(
             Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-            Some(VanishWatch {
-                works: works.clone(),
-                work: work.to_owned(),
-                conversation: row.id.clone(),
-                live: Arc::downgrade(&self.live),
-            }),
+            Some(self.vanish_watch(&works, work, &row.id)),
         );
+        self.open_agent(work, &places, &mut row, conv, &env, &programs)
+    }
+
+    /// 에이전트 바꾸기 — 첫 말 전에만 된다(three-axes 결정 15 · 스토리 23 · 24). 지금 프로세스를 남김없이 끄고(stdin 닫기 →
+    /// 1초 → 그룹째 SIGKILL) 같은 대화를 새 엔진으로 띄워 세션을 연다. 막히는 호출이다 — 끄기와 세션 열기를 기다린다.
+    ///
+    /// - 첫 말 뒤에는 거절한다 — Claude와 Codex는 서로의 대화를 읽지 못해 맥락이 끊긴다. 다른 에이전트는 `+`로 연다.
+    ///   거절은 돌던 에이전트를 건드리지 않는다.
+    /// - 이름은 새 에이전트 이름으로 다시 붙고(Codex → Claude), 모델 · 모드 · 계획은 비운다 — 엔진마다 목록이 다르다.
+    /// - 기록에 사람이 바꾼 에이전트(`config` 줄)를 적고, 이어 새 엔진의 띄우는 중 · 열림이 선다.
+    /// - 새 엔진을 못 찾으면 아무것도 바꾸지 않고 실패한다. 새 엔진이 세션을 열지 못하면 대화는 새 엔진으로 남는다 —
+    ///   다음 말에서 다시 띄운다(10).
+    pub fn switch_agent(&self, work: &str, conversation: &str, agent: Agent) -> Result<Conversation, HostError> {
+        if !is_conversation_id(conversation) {
+            return Err(HostError::ConversationNotFound(conversation.to_owned()));
+        }
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
+        let places = atelier_core::work_places(&works, &meta);
+        let mut row = records::read_rows(&places.agents)
+            .map_err(HostError::Record)?
+            .into_iter()
+            .find(|row| row.id == conversation && row.closed_at.is_none())
+            .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))?;
+
+        // 떠 있는 표에서 먼저 꺼낸다 — 꺼낸 뒤로는 보내기가 이 대화에 닿지 않아, 첫 말을 확인하는 사이에 말이 끼지 못한다.
+        // 바꾸지 않고 돌아갈 때는 그대로 되돌려 둔다.
+        let live = self.take_live(work, conversation);
+        let put_back = |live: Option<Live>| {
+            if let Some(live) = live {
+                self.lock_live().insert(conversation.to_owned(), live);
+            }
+        };
+        let record = records::record_path(&places.agents, conversation);
+        if records::has_sent(&record) {
+            put_back(live);
+            return Err(HostError::AgentLocked(conversation.to_owned()));
+        }
+        if row.agent == agent {
+            let last_seq = live.as_ref().map_or_else(|| records::last_seq(&record), |live| live.conv.recorder.last_seq());
+            put_back(live);
+            return Ok(summary(&row, last_seq));
+        }
+        let found = self.login_env(false).map_err(HostError::from).and_then(|env| Ok((find_programs(agent, &env)?, env)));
+        let (programs, env) = match found {
+            Ok(found) => found,
+            Err(error) => {
+                put_back(live);
+                return Err(error);
+            }
+        };
+        let conv = match live {
+            Some(mut live) => {
+                live.agent.shut_down();
+                live.conv
+            }
+            None => Conv::new(
+                Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+                Some(self.vanish_watch(&works, work, conversation)),
+            ),
+        };
+        conv.recorder.config(json!({"agent": agent})).map_err(HostError::Record)?;
+        {
+            let _file = self.lock_agents_file();
+            let others: Vec<ConversationRow> = records::read_rows(&places.agents)
+                .map_err(HostError::Record)?
+                .into_iter()
+                .filter(|other| other.id != conversation)
+                .collect();
+            row.agent = agent;
+            row.name = next_name(agent, &others);
+            row.model = None;
+            row.mode = None;
+            row.plan = None;
+            row.agent_session_id = None;
+            records::write_row(&places.agents, &row).map_err(HostError::Record)?;
+        }
+        // 새 엔진의 새 세션이다 — 옛 프로세스가 죽어 있었어도 다시 산 것으로 보고, 첫 말에 머리말을 붙인다(S11).
+        *conv.lock_state() = ConvState::fresh();
+        self.open_agent(work, &places, &mut row, conv, &env, &programs)
+    }
+
+    /// 대화의 에이전트를 띄워 세션을 열고, 떠 있는 표에 넣는다. 열리면 에이전트 쪽 세션 id를 `agents.json`에 적는다.
+    /// 열지 못하면 기록에 죽음 줄을 적고 실패한다 — 대화는 목록에 남는다.
+    fn open_agent(
+        &self,
+        work: &str,
+        places: &atelier_core::WorkPlaces,
+        row: &mut ConversationRow,
+        conv: Arc<Conv>,
+        env: &AgentEnv,
+        programs: &[discovery::FoundProgram],
+    ) -> Result<Conversation, HostError> {
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
-
-        let launch = codex_launch(&programs, &env, &place);
-        let (agent_process, opened) =
-            match runtime::open(launch, place, self.open_limit, conv.sink(), record_opened(&conv)) {
-                Ok(opened) => opened,
-                Err(error) => {
-                    let reason = error.to_string();
-                    recorder
-                        .session(SessionState::Died { reason: reason.clone(), stderr_tail: Vec::new() })
-                        .map_err(HostError::Record)?;
-                    return Err(HostError::Open { conversation: row.id, reason });
-                }
-            };
+        let place = SessionPlace { cwd: row.cwd.clone(), additional_directories: row.additional_directories.clone() };
+        let (launch, terms) = match row.agent {
+            Agent::Codex => (codex_launch(programs, env, &place), OpenTerms::default()),
+            Agent::Claude => claude_launch(&self.translator, programs, env, &place, row),
+        };
+        let limit = self.open_limit.unwrap_or(match row.agent {
+            Agent::Codex => CODEX_OPEN_LIMIT,
+            Agent::Claude => CLAUDE_OPEN_LIMIT,
+        });
+        let opened = runtime::open(launch, place, terms, limit, conv.sink(), record_opened(&conv, row.agent));
+        let (agent_process, opened) = match opened {
+            Ok(opened) => opened,
+            Err(error) => {
+                let reason = error.to_string();
+                recorder
+                    .session(SessionState::Died { reason: reason.clone(), stderr_tail: Vec::new() })
+                    .map_err(HostError::Record)?;
+                return Err(HostError::Open { conversation: row.id.clone(), reason });
+            }
+        };
 
         row.agent_session_id = Some(opened.session_id.clone());
         {
             let _file = self.lock_agents_file();
-            records::write_row(&places.agents, &row).map_err(HostError::Record)?;
+            records::write_row(&places.agents, row).map_err(HostError::Record)?;
         }
 
-        let conversation = summary(&row, recorder.last_seq());
-        self.lock_live().insert(row.id, Live { work: work.to_owned(), agent: agent_process, conv });
+        let conversation = summary(row, recorder.last_seq());
+        self.lock_live().insert(row.id.clone(), Live { work: work.to_owned(), agent: agent_process, conv });
         Ok(conversation)
+    }
+
+    fn vanish_watch(&self, works: &Path, work: &str, conversation: &str) -> VanishWatch {
+        VanishWatch {
+            works: works.to_path_buf(),
+            work: work.to_owned(),
+            conversation: conversation.to_owned(),
+            live: Arc::downgrade(&self.live),
+        }
     }
 
     /// 보내기 — 턴이 쉬면 말을 보낸다. 기다리지 않는다: 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로
@@ -670,12 +792,14 @@ fn workplace(places: &atelier_core::WorkPlaces, projects: usize) -> SessionPlace
 }
 
 /// 세션이 열린 순간 적는 줄 — 판 경고(S6)와 열림. 런타임의 순서 장벽 안에서 돌아, 답 뒤에 온 update보다 앞에 선다.
-fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
+///
+/// 판 경고는 Codex만이다 — Claude 변환기는 앱과 같은 판이어야 열리고(다르면 열기 실패), 열림의 판이 곧 앱의 판이다.
+fn record_opened(conv: &Arc<Conv>, agent: Agent) -> runtime::OnOpened {
     let conv = Arc::clone(conv);
     Box::new(move |opened| {
         let agent_version = opened.initialize["agentInfo"]["version"].as_str().map(str::to_owned);
         let written = (|| {
-            if major(agent_version.as_deref()) != Some(CODEX_ACP_MAJOR) {
+            if agent == Agent::Codex && major(agent_version.as_deref()) != Some(CODEX_ACP_MAJOR) {
                 conv.recorder.session(SessionState::VersionWarning {
                     agent_version: agent_version.clone(),
                     supported_major: CODEX_ACP_MAJOR,
@@ -687,6 +811,7 @@ fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
                 modes: opened.session.get("modes").cloned().unwrap_or(Value::Null),
                 models: opened.session.get("models").cloned().unwrap_or(Value::Null),
                 config_options: opened.session.get("configOptions").cloned().unwrap_or(Value::Null),
+                meta: opened.session.get("_meta").cloned().unwrap_or(Value::Null),
             })
         })();
         if let Err(error) = written {
@@ -705,6 +830,48 @@ fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &Se
     let mut vars: BTreeMap<OsString, OsString> = env.vars().clone();
     vars.insert("CODEX_PATH".into(), found("codex").into_os_string());
     Launch { program: found("codex-acp"), args: Vec::new(), env: vars, cwd: place.cwd.clone() }
+}
+
+/// Claude를 띄우는 것 — 변환기(앱에서는 이 실행 파일의 하위 모드 `acp-claude`)를 로그인 env 그대로 띄운다. 변환기가
+/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 대화의 모드 · 모델)은 `session/new`의
+/// `_meta.atelier`에 싣는다. 「엔진 기본값」인 모드 · 모델은 싣지 않는다 — 변환기가 플래그를 주지 않는다(three-axes 결정 16).
+///
+/// 변환기는 앱과 같은 판이어야 연다 — 다르면 「판 어긋남」으로 열기 실패다(워크플로 S4).
+fn claude_launch(
+    translator: &TranslatorCommand,
+    programs: &[discovery::FoundProgram],
+    env: &AgentEnv,
+    place: &SessionPlace,
+    row: &ConversationRow,
+) -> (Launch, OpenTerms) {
+    let claude = programs.iter().find(|program| program.name == "claude").expect("찾은 것에 claude가 있다");
+    let mut atelier = serde_json::Map::new();
+    atelier.insert("claudePath".into(), json!(claude.path));
+    if let Some(mode) = &row.mode {
+        atelier.insert("permissionMode".into(), json!(mode));
+    }
+    if let Some(model) = &row.model {
+        atelier.insert("model".into(), json!(model));
+    }
+    let launch = Launch {
+        program: translator.program.clone(),
+        args: translator.args.clone(),
+        env: env.vars().clone(),
+        cwd: place.cwd.clone(),
+    };
+    let terms = OpenTerms {
+        meta: Some(json!({"atelier": atelier})),
+        required_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+    };
+    (launch, terms)
+}
+
+/// 그 에이전트를 띄우는 데 드는 실행 파일들 — 로그인 셸의 PATH에서 찾는다. 못 찾으면 빠진 것과 설치 명령을 싣고 실패한다.
+fn find_programs(agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundProgram>, HostError> {
+    match discovery::look_up(agent, env.path()) {
+        EngineCheck::Found { programs } => Ok(programs),
+        EngineCheck::Missing { missing } => Err(HostError::EngineMissing { agent, missing }),
+    }
 }
 
 /// 머리말(S11) — 에이전트가 첫 말에서 어느 work인지 안다(스토리 107). 따로 된 텍스트 블록이라 화면은 이것을

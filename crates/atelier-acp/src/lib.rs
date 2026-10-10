@@ -10,8 +10,10 @@ mod login_env;
 mod process;
 mod records;
 mod runtime;
+mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
-pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
+pub use host::{Conversation, ConversationDefaults, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
 pub use login_env::{LoginShellError, ShellSource};
 pub use records::{RecordKind, RecordLine};
+pub use translator::run_claude_translator;

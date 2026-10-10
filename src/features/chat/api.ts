@@ -25,6 +25,12 @@ export const chatApi = {
     invoke<RecordLine[]>("chat_read_record", { work, conversation, after }),
   /** 새 대화 — 만들고 곧바로 띄워 세션을 연다. 세션이 열릴 때까지 기다린다. */
   create: (work: string, agent: Agent) => invoke<Conversation>("chat_new", { work, agent }),
+  /**
+   * 에이전트 바꾸기 — 첫 말 전에만 된다. 지금 에이전트를 끄고 같은 대화를 새 엔진으로 띄워 세션이 열릴 때까지 기다린다.
+   * 첫 말 뒤에는 거절되고, 그 글이 잠긴 에이전트 칩의 까닭이다(「첫 말 뒤에는 에이전트를 바꿀 수 없어요…」).
+   */
+  switchAgent: (work: string, conversation: string, agent: Agent) =>
+    invoke<Conversation>("chat_switch_agent", { work, conversation, agent }),
   /** 말을 보낸다. 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로 온다. */
   send: (work: string, conversation: string, text: string) =>
     invoke<void>("chat_send", { work, conversation, text }),

@@ -501,11 +501,12 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령 여섯(three-axes 티켓 05) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기. 본체는 대화
+// 대화 명령(three-axes 티켓 05 · 13) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 에이전트 바꾸기 · 보내기 · 대화 닫기. 본체는 대화
 // 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
 // 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
-// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓)은 blocking 풀에서 기다린다.
+// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 · 에이전트 바꾸기 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓)은 blocking
+//   풀에서 기다린다.
 //   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`).
 // - 호스트의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
 // - 다리로 탈 수 없다(`in_app_only`) — 호스트는 오래 사는 에이전트를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
@@ -559,6 +560,22 @@ pub async fn chat_new(
     tauri::async_runtime::spawn_blocking(move || chats.new_conversation(&work, agent))
         .await
         .map_err(|e| format!("대화를 열지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 에이전트 바꾸기 — 첫 말 전에만 된다. 지금 에이전트를 끄고 같은 대화를 새 엔진으로 띄워 세션이 열릴 때까지 기다린다(13).
+/// 첫 말 뒤에는 거절한다 — 그 글이 잠긴 에이전트 칩의 까닭이다.
+#[tauri::command]
+pub async fn chat_switch_agent(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    agent: atelier_acp::Agent,
+) -> CmdResult<atelier_acp::Conversation> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.switch_agent(&work, &conversation, agent))
+        .await
+        .map_err(|e| format!("에이전트를 바꾸지 못했습니다: {e}"))?
         .map_err(host_err)
 }
 
@@ -617,8 +634,9 @@ mod tests {
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
     /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
     ///   돈다(`pty::end_by_hand`).
-    /// - 대화 셋(three-axes 티켓 05): 엔진 확인은 처음에 로그인 셸을 기다리고(≤10초), 새 대화는 에이전트를 띄워 세션이 열리기를
-    ///   기다리고, 대화 닫기는 stdin을 닫고 1초를 기다린 뒤 그룹째 SIGKILL한다.
+    /// - 대화 넷(three-axes 티켓 05 · 13): 엔진 확인은 처음에 로그인 셸을 기다리고(≤10초), 새 대화는 에이전트를 띄워 세션이
+    ///   열리기를 기다리고, 에이전트 바꾸기는 옛 에이전트를 끄고 새 엔진의 세션이 열리기를 기다리고, 대화 닫기는 stdin을 닫고
+    ///   1초를 기다린 뒤 그룹째 SIGKILL한다.
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -629,6 +647,7 @@ mod tests {
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
             ("chat_check_engine", "chats.check_engine(", "check_engine("),
             ("chat_new", "chats.new_conversation(", "new_conversation("),
+            ("chat_switch_agent", "chats.switch_agent(", "switch_agent("),
             ("chat_close", "chats.close_conversation(", "close_conversation("),
         ] {
             let body = command_body(command);

@@ -19,8 +19,11 @@ export interface Conversation {
   lastSeq: number;
 }
 
-/** 기록 줄의 종류. 권한(08) · 고친 곳(06) · 설정(09)이 차례로 더한다. */
-export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr";
+/**
+ * 기록 줄의 종류. 권한(08) · 고친 곳(06)이 차례로 더한다. `config`는 사람이 바꾼 것이다 — 에이전트(13)부터, 모델 · 모드 ·
+ * 계획은 09가 더한다.
+ */
+export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "config";
 
 /**
  * 기록 줄 하나 — `agents/<id>.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. payload의 갈래는 종류마다 다르고 ACP 원문을

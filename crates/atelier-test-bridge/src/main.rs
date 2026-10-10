@@ -198,6 +198,7 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("chat_list", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_read_record", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_new", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_switch_agent", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_send", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_close", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
 ];
