@@ -8,6 +8,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
+import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -769,6 +770,25 @@ export const answerByArg = (
 ): ArgAnswers => new ArgAnswers(arg, answers, options && { value: options.otherwise });
 
 /**
+ * 워크트리 파일 읽기의 **경로별** 답(git-integration 판 01 — 파일 탭의 본문). 표에 없는 경로는 「없음」이다 — 지운 파일 ·
+ * 주소가 없는 경로를 가리킨 탭이 그 갈래다(스토리 61 · 82).
+ *
+ * **경로 하나로 가른다** — 인자별 답은 인자 하나만 보므로(`ArgAnswers`) 갈래마다 다른 경로를 둔다. 「워크트리 없음」은
+ * 그 work에 없는 프로젝트를 가리키는 주소가 받는 답이라 그 주소만 쓰는 경로(`ghost.ts`)에 매어 둔다.
+ */
+export const WORKTREE_FILES: Record<string, WorktreeFile> = {
+  // 키워드 · 주석 · 문자열이 섞인 짧은 TS — 줄 번호 붙은 원문을 줄 단위로 잰다.
+  "src/main.ts": {
+    kind: "text",
+    content: 'const answer = 42;\n// 끝까지 읽는다\nexport default "answer";\n',
+    lines: 3,
+  },
+  "README.md": { kind: "text", content: "# 빌링\n", lines: 1 },
+  "ghost.ts": { kind: "worktreeMissing" },
+  "secret.txt": { kind: "outsideLink", target: "~/secrets/token.txt" },
+};
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -950,6 +970,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // files 칸이 보일 때 프로젝트마다 한 번, 그리고 새로고침 버튼에 나간다(git-integration 판 01). **기본 답이 없다** — 표에 없는
   // 프로젝트로 읽기가 나가면 그 자리에서 물린다. 태우는 시나리오는 `files-panel.spec.ts`다.
   list_worktree_tree: answerByArg("project", WORKTREE_TREES),
+  // 파일 탭이 본문에 설 때 나간다(git-integration 판 01). 표에 없는 경로는 「없음」이다(`WORKTREE_FILES` 머리말).
+  read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
   //
   // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` 머리말이

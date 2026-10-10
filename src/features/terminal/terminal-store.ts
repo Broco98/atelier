@@ -50,12 +50,14 @@ import {
   markOwnerless,
   moveShell,
   NO_SHELLS,
+  openCodeTab,
   openShell,
   ownerlessCloseNotice,
   ownerlessOf,
   NO_QUIET_NOTICE,
   quietCloseNotice,
   quietShellsOf,
+  removeCodeTab,
   removeShell,
   runningOfId,
   setAttention,
@@ -66,9 +68,11 @@ import {
   shellOpenNotice,
   shellsOf,
   slugOfOwner,
+  withShellActive,
 } from "./shell-registry";
 import type {
   CloseChecks,
+  CodeTarget,
   ClosePath,
   OpenedShell,
   QuitCounts,
@@ -301,6 +305,24 @@ export function ensureShell(origin: ShellOrigin): void {
 /** 칸을 고른다. */
 export function selectShell(id: number): void {
   terminalStore.setState((state) => activateShell(state, id));
+}
+
+/**
+ * 그 화면에 **파일 탭**을 세우고 켠다 — 이미 있으면 그 칸을 켠다(`openCodeTab`). 부르는 자리는 주소다: 주소가 파일 탭을 가리키면
+ * work 화면이 이것으로 묶음을 맞춘다(git-integration S12 — 주소가 정본이다). 파일 탭은 xterm이 없어 세울 인스턴스가 없다.
+ */
+export function showCodeTab(owner: ShellOwner, target: CodeTarget): void {
+  terminalStore.setState((state) => openCodeTab(state, owner, target));
+}
+
+/** 파일 탭을 **확인 없이** 닫는다(스토리 37 · 50). 셸 칸이면 아무 일도 없다 — 셸은 `requestCloseShell`로 닫는다. */
+export function closeCodeTab(id: number): void {
+  terminalStore.setState((state) => removeCodeTab(state, id));
+}
+
+/** 그 화면의 지금 탭이 셸이 되게 한다(`withShellActive`) — 주소가 「본문은 셸이다」라고 말할 때 work 화면이 부른다. */
+export function showShellTab(owner: ShellOwner): void {
+  terminalStore.setState((state) => withShellActive(state, owner));
 }
 
 /**

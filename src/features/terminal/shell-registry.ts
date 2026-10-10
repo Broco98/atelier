@@ -139,14 +139,24 @@ export interface Shell {
 /**
  * **묶음**의 칸 하나(CONTEXT 「묶음」 · git-integration 판 01 S10) — 탭의 종류와 그 칸이 가리키는 것만 든다.
  *
- * 이 장에서는 셸 하나뿐이다. 셸 칸의 데이터(상태 · 이름 · 키 …)는 지금처럼 `ShellsState.shells`에 살고, 칸은 그 셸을
- * id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을 갈아 끼우는 리듀서(`patch`)가 두 자리를 고쳐야 한다. 종류가 늘면
- * 그 탭의 데이터는 칸이 직접 든다(파일 탭은 프로젝트와 경로뿐이다).
+ * 종류는 둘이다 — 셸과 **파일 탭**(`code`, CONTEXT 「파일 탭」). 셸 칸의 데이터(상태 · 이름 · 키 …)는 지금처럼
+ * `ShellsState.shells`에 살고, 칸은 그 셸을 id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을 갈아 끼우는 리듀서(`patch`)가
+ * 두 자리를 고쳐야 한다. 파일 탭은 데이터가 정체(`CodeTarget`)뿐이라 칸이 직접 든다. 02판이 `diff`를 더한다.
  *
  * **id는 종류를 가리지 않고 한 줄에서 발급한다**(`nextId`). 켜진 칸(`activeByOwner`) · 끌기 · 탭 줄의 콜백이 모두 수 하나로
- * 칸을 부르므로, 번호가 종류마다 따로 돌면 셸 3과 다른 종류의 3이 같은 칸으로 읽힌다.
+ * 칸을 부르므로, 번호가 종류마다 따로 돌면 셸 3과 파일 탭 3이 같은 칸으로 읽힌다.
  */
-export type BundleTab = { kind: "shell"; id: number };
+export type BundleTab = { kind: "shell"; id: number } | ({ kind: "code"; id: number } & CodeTarget);
+
+/**
+ * 파일 탭이 가리키는 것 — 그 work의 **프로젝트**와 그 워크트리 기준 **경로**(조각은 `/`). 이 둘이 파일 탭의 정체다 —
+ * 같은 정체의 칸은 한 묶음에 하나만 선다(git-integration 결정 30 · `openCodeTab`). 워크트리의 자리는 여기 없다: 그것은
+ * 코어가 work slug와 프로젝트로 찾는다.
+ */
+export interface CodeTarget {
+  project: string;
+  path: string;
+}
 
 export interface ShellsState {
   /**
@@ -506,6 +516,73 @@ function bundleOwnerOf(state: ShellsState, id: number): ShellOwner | null {
 }
 
 /**
+ * 그 화면 묶음에 **파일 탭**을 연다(git-integration 판 01 — 스토리 23~25). 같은 정체(`CodeTarget`)의 칸이 이미 있으면 새로
+ * 서지 않고 그 칸을 켠다. 없으면 묶음 **끝에** 붙이고 켠다 — 이미 선 칸의 자리와 번호가 안 흔들린다(결정 31).
+ *
+ * **최상위 터미널(`""`)은 받지 않는다** — 파일 탭은 work 화면에만 선다(결정 「묻지 않고 둔 기본값」). 그때는 받은 상태 그대로다.
+ * 셸 상한(`atCap`)은 안 본다: 상한은 프로세스의 수라 셸만 센다(스토리 46).
+ */
+export function openCodeTab(state: ShellsState, owner: ShellOwner, target: CodeTarget): ShellsState {
+  if (slugOfOwner(owner) === null) return state;
+  const tabs = bundleOf(state, owner);
+  const same = tabs.find(
+    (tab) => tab.kind === "code" && tab.project === target.project && tab.path === target.path,
+  );
+  if (same) return activateShell(state, same.id);
+  const id = state.nextId;
+  const tab: BundleTab = { kind: "code", id, project: target.project, path: target.path };
+  return {
+    ...state,
+    bundles: { ...state.bundles, [owner]: [...tabs, tab] },
+    activeByOwner: { ...state.activeByOwner, [owner]: id },
+    nextId: id + 1,
+  };
+}
+
+/**
+ * 파일 탭 하나를 **확인 없이** 묶음에서 뺀다(스토리 37 · 50 — 프로세스가 없어 물을 것이 없다). 다음 켜질 칸은 셸을 닫을
+ * 때와 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * **셸 칸은 여기로 빼지 않는다** — 받은 상태 그대로다. 셸을 닫는 길은 확인 창을 거치는 하나다(`requestCloseShell`).
+ */
+export function removeCodeTab(state: ShellsState, id: number): ShellsState {
+  const owner = bundleOwnerOf(state, id);
+  if (owner === null) return state;
+  if (bundleTabOf(state, owner, id)?.kind !== "code") return state;
+  return withoutTab(state, owner, id);
+}
+
+/**
+ * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로 답한다
+ * (지금 탭이 파일 탭이면 그쪽은 `null`이다).
+ */
+export function activeTabOf(state: ShellsState, owner: ShellOwner): BundleTab | null {
+  const id = activeIdOf(state, owner);
+  return id === null ? null : bundleTabOf(state, owner, id);
+}
+
+/**
+ * 그 화면 묶음에서 그 id의 칸. 없으면 `null`이다 — 그리는 것과 누르는 것 사이에 칸이 빠질 수 있다(`activateShell`). 칸을 id
+ * 하나로 받은 화면이 그 칸의 종류(셸 · 파일 탭)로 할 일을 가를 때 쓴다.
+ */
+export function bundleTabOf(state: ShellsState, owner: ShellOwner, id: number): BundleTab | null {
+  return bundleOf(state, owner).find((tab) => tab.id === id) ?? null;
+}
+
+/**
+ * 지금 탭이 셸이 되게 한다 — 이미 셸이거나 묶음에 셸이 없으면 받은 상태 그대로다. 지금 탭이 파일 탭이면 **묶음의 첫 셸**을
+ * 켠다.
+ *
+ * 주소가 「본문은 셸이다」(`tab=terminal`)라고 말하는데 묶음의 지금 탭이 파일 탭인 자리가 있다 — 파일 탭을 연 뒤 뒤로가기로
+ * 셸 화면 주소에 돌아왔을 때다. 주소에는 어느 셸인지가 없어(결정 33) 고를 것이 묶음의 차례뿐이다.
+ */
+export function withShellActive(state: ShellsState, owner: ShellOwner): ShellsState {
+  if (activeTabOf(state, owner)?.kind !== "code") return state;
+  const shell = bundleOf(state, owner).find((tab) => tab.kind === "shell");
+  return shell ? activateShell(state, shell.id) : state;
+}
+
+/**
  * 그 화면의 묶음을 새 차례로 갈아 끼운다. **묶음의 차례를 바꾸는 자리가 이것 하나다** — 셸 배열(`shells`)에 앉은 그 화면의
  * 셸들도 같은 차례로 다시 앉힌다(`ShellsState.shells`의 약속). 남의 화면 셸은 한 칸도 안 움직인다: 그 화면 셸들이 앉아 있던
  * **전역 자리 묶음**에 새 차례로 앉힐 뿐이다.
@@ -576,7 +653,7 @@ export function activeIdOf(state: ShellsState, owner: ShellOwner): number | null
 }
 
 /**
- * 어느 화면의 **묶음에 칸이** 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. 묶음에는 지금 셸만 서므로 셸 수와 같다.
+ * 어느 화면의 **묶음에 칸이** 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. 셸과 파일 탭을 함께 센다.
  * 세는 것이 셸이 아니라 칸인 것은 git-integration 결정 30이 「묶음이 비면 spec」이라서다.
  */
 export interface ShellTally {
@@ -855,7 +932,7 @@ export function runningOfId(state: ShellsState, id: number): string | null {
  * 칸을 고른다. **없는 id는 무시한다** — 그리는 것과 누르는 것 사이에 그 칸이 빠질 수 있고,
  * 없는 칸을 활성으로 만들면 켜진 칸도 본문도 없는 화면이 이유 없이 남는다.
  *
- * 고르는 것은 **묶음의 칸**이다 — 그 칸이 선 묶음의 화면에서 켜진다(`bundleOwnerOf`). 지금 묶음에는 셸만 서므로 셸 id다.
+ * 고르는 것은 **묶음의 칸**이다 — 그 칸이 선 묶음의 화면에서 켜진다(`bundleOwnerOf`). 셸 id든 파일 탭 id든 받는다.
  */
 export function activateShell(state: ShellsState, id: number): ShellsState {
   const key = bundleOwnerOf(state, id);
@@ -878,7 +955,7 @@ export function isInPlaceGap(from: number, gap: number): boolean {
 /**
  * 칸을 **그 화면 묶음의 틈**으로 옮긴다(UI개선 결정 11 · UI개선 스펙 §6). `gap`은
  * 0..n이다 — 0이 그 화면 첫 칸 앞, n이 마지막 칸 뒤이고, 끄는 칸도 세어진 채의 번호다.
- * 세는 것은 셸이 아니라 **묶음의 칸**이다(git-integration 판 01 S10) — 지금은 셸뿐이라 답이 같다.
+ * 세는 것은 셸이 아니라 **묶음의 칸**이다(git-integration 판 01 S10) — 셸과 파일 탭이 한 차례에 선다.
  *
  * **틈이 전역 배열의 자리가 아닌 것**은 셸 배열에 여러 화면의 셸이 섞여 살아서다. 전역
  * 자리로 받으면 부르는 쪽(탭 줄)이 남의 셸 수를 알아야 하고, 옮기는 김에 남의 셸이 밀린다.
@@ -1100,8 +1177,8 @@ export function sameScreen(
  * 밀어 마지막 셸을 영영 못 고르게 된다.
  *
  * **세는 것은 받은 목록이다**(결정 109) — 부르는 쪽이 그 화면의 **묶음**(`bundleOf`)을 담아 준다(git-integration 결정 31 ·
- * S10 — 셸이든 아니든 보이는 차례가 번호다). 지금 묶음에는 셸만 서므로 고르는 것은 셸 id다. 칸에서 보는 것은
- * id 하나라 칸이든 셸이든 받는다.
+ * S10 — 셸이든 아니든 보이는 차례가 번호다). 고른 것은 칸의 id라 파일 탭일 수 있다 — 무엇을 할지는 부르는 쪽이 그 칸의
+ * 종류로 가른다. 칸에서 보는 것은 id 하나라 칸이든 셸이든 받는다.
  */
 export function shellForNav(
   tabs: ReadonlyArray<{ id: number }>,

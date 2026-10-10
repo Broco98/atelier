@@ -102,6 +102,11 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(), &text(a, "slug")?, &text(a, "path")?))
     }),
+    // 워크트리 파일 읽기도 다른 읽기 명령과 같이 코어를 진짜로 탄다(git-integration 판 01).
+    ("read_worktree_file", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path))
+    }),
     ("search", |a| {
         ok(atelier_core::search(
             // **반드시 코어의 데이터 루트다.** 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 봐서,
