@@ -11,7 +11,7 @@ import {
   tabSearch,
   viewSearch,
 } from "./-work-search";
-import type { SplitSide, ViewTab } from "./-work-search";
+import type { ColumnTab, SplitSide, ViewTab } from "./-work-search";
 import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/lib/pointer-drag";
 import { slugOfOwner } from "@/features/terminal/shell-registry";
@@ -76,7 +76,7 @@ function WorksView({
   // 열의 `×`는 분할을 끄면서 **남는 쪽**을 정하고(결정 89), 토글은 지금 `tab`을 그대로 넘긴다.
   // 두 축을 한 navigate로 옮기는 것은 두 번 옮기면 한 틱에 겹쳐 앞의 것이 버려지기 때문이다.
   const selectSplit = useCallback(
-    (next: SplitSide | null, nextTab: ViewTab) => {
+    (next: SplitSide | null, nextTab: ColumnTab) => {
       if (slug === null) return;
       void navigate({
         to: "/works/$slug",

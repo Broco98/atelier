@@ -9,7 +9,26 @@ import type { FileSearch } from "./-file-search";
 // 아카이브에는 터미널이 없다. 그래서 공용 검증기(`-file-search.ts`)는 그대로 두고 여기서만
 // 얹는다. 파일명의 "-" 접두사는 라우트 생성기가 이 파일을 라우트로 취급하지 않게 한다.
 
-export type ViewTab = "spec" | "terminal";
+/**
+ * **주소에 적히는 화면 탭** — `spec`을 뺀 나머지다(`spec`은 주소에 쓰지 않는다 — 결정 14). 화면 탭 값이 느는 자리가
+ * 이 목록 한 줄이다(three-axes 결정 9 — `chat` 탭이 여기 더해진다). 검증기 · `viewTab` · `tabSearch`가 전부 이 목록을
+ * 읽으므로, 값 하나를 더하면 주소에 적히는 것과 모르는 값을 `spec`으로 눕히는 것이 함께 따라온다.
+ */
+const ADDRESS_TABS = ["terminal"] as const;
+export type AddressTab = (typeof ADDRESS_TABS)[number];
+
+/** 주소에 적힐 수 있는 화면 탭이면 그 값, 아니면 `null`(`spec`도 `null`이다 — 주소에 안 쓴다). 대소문자 · 공백을 안 봐준다. */
+const addressTabOf = (value: unknown): AddressTab | null =>
+  ADDRESS_TABS.find((tab) => tab === value) ?? null;
+
+export type ViewTab = "spec" | AddressTab;
+
+/**
+ * 분할의 **열**에 서는 화면 탭(결정 87). 열 조합은 늘 `spec ▏터미널`이라 이 둘뿐이다 — 화면 탭이 늘어도(위 목록) 여기는
+ * 안 는다(three-axes S21 — 넘겨받은 탭은 분할에 들지 않는다). 분할을 다루는 자리가 `ViewTab`이 아니라 이것을 받아야
+ * 새 화면 탭이 분할로 새는 것을 컴파일이 막는다.
+ */
+export type ColumnTab = "spec" | "terminal";
 
 /**
  * 분할일 때 **spec이 어느 쪽에 서는가**(결정 97). 열 조합은 늘 `spec ▏터미널`이라
@@ -22,7 +41,7 @@ export interface WorkSearch extends FileSearch {
    * **`spec`은 주소에 쓰지 않는다.** 값이 없으면 spec이라는 규칙이 이미 있으므로
    * `tab=spec`은 같은 것을 두 번 적는 것이다(결정 14).
    */
-  tab?: "terminal";
+  tab?: AddressTab;
   /**
    * **분할도 주소에 적는다**(결정 97). 결정 70이 「주소가 정본」을 이미 정했으므로 분할만
    * 예외로 두면 규칙이 둘이 된다. 값이 없으면 단일 뷰다 — `tab`과 같은 규칙이라
@@ -33,9 +52,10 @@ export interface WorkSearch extends FileSearch {
 
 export const validateWorkSearch = (search: Record<string, unknown>): WorkSearch => {
   const split = splitOf(search as { split?: string });
+  const tab = addressTabOf(search.tab);
   return {
     ...validateFileSearch(search),
-    ...(search.tab === "terminal" ? { tab: "terminal" as const } : {}),
+    ...(tab ? { tab } : {}),
     ...(split ? { split } : {}),
   };
 };
@@ -53,12 +73,11 @@ export const splitOf = (search: { split?: string }): SplitSide | null =>
  *
  * **검증기만으로는 부족하다.** 이 라우터는 검증기의 결과를 부모의 raw search **위에 얹는다** —
  * 루트에는 검증기가 없어서 주소에 적힌 것이 전부 통과하고, `?tab=zzz`가 그대로 컴포넌트까지
- * 온다(실측으로 확인했다. `?file=`도 예전부터 같은 성질이다). 타입은 `"terminal" | undefined`
+ * 온다(실측으로 확인했다. `?file=`도 예전부터 같은 성질이다). 타입은 `AddressTab | undefined`
  * 라고 말하지만 런타임 값은 아무 문자열일 수 있으므로, **모르는 값을 spec으로 눕히는 자리를
  * 하나 둔다.** 그 자리가 갈리면 화면마다 다른 값을 모르는 값으로 친다.
  */
-export const viewTab = (search: { tab?: string }): ViewTab =>
-  search.tab === "terminal" ? "terminal" : "spec";
+export const viewTab = (search: { tab?: string }): ViewTab => addressTabOf(search.tab) ?? "spec";
 
 /**
  * 탭을 바꿀 때 주소의 `search`를 어떻게 고치는가. **함수형 갱신의 몸통이 여기 하나다.**
@@ -67,8 +86,8 @@ export const viewTab = (search: { tab?: string }): ViewTab =>
  * 형태가 보던 문서(`file`)를 조용히 떨어뜨린다(결정 15). 그 사고를 막는 모양을 부르는 쪽마다
  * 다시 적으면, 검사하는 쪽도 그것을 **베껴 적게 되어** 실제 이동이 퇴화해도 초록이 된다.
  */
-export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?: "terminal" } {
-  return { ...prev, tab: next === "terminal" ? ("terminal" as const) : undefined };
+export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?: AddressTab } {
+  return { ...prev, tab: next === "spec" ? undefined : next };
 }
 
 /**
@@ -85,7 +104,7 @@ export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?:
 export function fileSearch<T extends object>(
   prev: T,
   path: string,
-): T & { file: string; tab?: "terminal" } {
+): T & { file: string; tab?: AddressTab } {
   return { ...tabSearch(prev, "spec"), file: path };
 }
 
@@ -163,7 +182,7 @@ export function recallView(slug: string): WorkMemory {
 export function viewSearch<T extends object>(
   prev: T,
   view: WorkMemory,
-): T & { tab?: "terminal"; split?: SplitSide; file?: string } {
+): T & { tab?: AddressTab; split?: SplitSide; file?: string } {
   return { ...splitSearch(tabSearch(prev, view.tab), view.split), file: view.file ?? undefined };
 }
 

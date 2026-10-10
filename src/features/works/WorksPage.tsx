@@ -67,7 +67,7 @@ import {
   spawnedCountOf,
   terminalStore,
 } from "@/features/terminal/terminal-store";
-import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import type { ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { dropSplit, otherTab } from "./split-view";
@@ -104,7 +104,7 @@ interface WorksPageProps {
   // **바꾸는 콜백이 `tab`을 함께 받는다**: 열의 `×`는 분할을 끄면서 남는 쪽을 정하고
   // (결정 89), 헤더 토글은 지금 `tab`을 그대로 넘긴다. 둘을 따로 옮기면 한 틱에 겹친다.
   split: SplitSide | null;
-  onSelectSplit: (split: SplitSide | null, tab: ViewTab) => void;
+  onSelectSplit: (split: SplitSide | null, tab: ColumnTab) => void;
   // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립해야 해서**(결정 101)
   // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다.
   onDropInto: (source: DragSource, split: SplitSide) => void;
@@ -612,7 +612,7 @@ function WorksPage({
   // 쪽이 그 값이다. 이미 그 값이면 옮기지 않는다: 열 머리의 `×`처럼 한 틱에 두 이동이
   // 겹치는 자리에서 앞의 것이 조용히 이기기 때문이다.
   const focusColumn = useCallback(
-    (next: ViewTab) => {
+    (next: ColumnTab) => {
       if (next !== tab) onSelectTab(next);
     },
     [tab, onSelectTab],
@@ -636,7 +636,7 @@ function WorksPage({
 
   // 분할을 바꾸는 **유일한 자리**다 — 켜기·끄기·좌우 맞바꾸기가 전부 여기를 지난다.
   const changeSplit = useCallback(
-    (next: SplitSide | null, nextTab: ViewTab) => {
+    (next: SplitSide | null, nextTab: ColumnTab) => {
       collapseOnSplit(next);
       onSelectSplit(next, nextTab);
     },
@@ -960,9 +960,9 @@ function ColumnInside({
   onFocus,
   children,
 }: {
-  tab: ViewTab;
+  tab: ColumnTab;
   head: React.ReactNode;
-  onFocus: (tab: ViewTab) => void;
+  onFocus: (tab: ColumnTab) => void;
   children: React.ReactNode;
 }) {
   return (
