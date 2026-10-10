@@ -471,9 +471,10 @@ test("Works: 레일 열이 바탕 오른쪽 끝에 서고 — 토글은 바탕 �
   }
   await expect(page.locator("aside")).toHaveCount(2);
   await expect(page.locator("header")).toHaveCount(1);
-  // 칸은 목록 순서대로 `spec` · `info`다.
+  // 칸은 목록 순서대로 `spec` · `chat` · `info`다(three-axes 구현 스펙 S20).
   expect(await group.getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
+    "chat",
     "info",
   ]);
 
