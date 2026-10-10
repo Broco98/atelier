@@ -1884,6 +1884,11 @@ test("한 work에서 두 셸이 부르면 오른쪽 메타의 경과·카드의 
   // **첫 셸이 다시 돌기 시작하면 둘째 셸이 이긴다** — 셋이 함께 그 셸로 옮겨 간다. 둘째 칸이
   // 이미 앉아 있으므로 착석 기다림 없이 쏜다(`markAttention`은 「칸이 하나」를 기다린다).
   await fireAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 1);
+  // **포인터를 행에 다시 얹는다.** 첫 셸이 띠에서 빠지면 띠가 한 줄 줄고, 그 아래 목록이 그만큼 올라간다 — 제자리의
+  // 포인터는 이제 **아래 행** 위라, 호버 지연(350ms)이 지나면 카드가 그 행의 것으로 바뀐다. 아래 단언이 그 지연보다
+  // 빨리 끝나면 초록이고 늦으면(부하) 빨강이던 경주다. 줄어든 띠를 먼저 기다려 목록이 멎은 뒤에 짚는다.
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("1");
+  await workRow(page, plainWork.slug).hover();
   await expect(메타).toHaveText("1m");
   await expect(메타.locator('[role="img"]')).toHaveCount(0);
   await expect(행).toHaveAccessibleDescription(둘째말);
