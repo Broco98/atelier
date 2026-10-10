@@ -452,7 +452,7 @@ test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창
 });
 
 // 판 04 티켓 04 — **레일**(ui-refresh 결정 9 · 10). 작업 화면 바탕의 오른쪽 끝에 레일 열이 선다 — 맨 위 패널 토글은 바탕 줄 44px
-// 띠의 가운데, 그 아래 칸 묶음(`spec` · `info`)은 카드 줄 꼭대기에서 시작한다. 레일 열은 본문 열의 형제라 `aside`도 `nav`도
+// 띠의 가운데, 그 아래 칸 묶음(`spec` · `files` · `info`)은 카드 줄 꼭대기에서 시작한다. 레일 열은 본문 열의 형제라 `aside`도 `nav`도
 // 바탕 줄 `<header>`의 자손도 아니고(`aside` · `header` 수와 그것을 집는 검사가 그대로다), 패널을 닫아도 그 자리에 남는다. 레일 열의
 // 빈 자리(토글 둘레 · 칸 묶음 아래 · 오른쪽 틈)는 회색 바탕이 드러나는 자리라 창을 끄는 자리다.
 test("Works: 레일 열이 바탕 오른쪽 끝에 서고 — 토글은 바탕 줄 띠 가운데, 칸 묶음은 카드 줄 꼭대기 — 패널을 닫아도 남고, 빈 자리가 창을 끄는 자리다", async ({
@@ -471,9 +471,10 @@ test("Works: 레일 열이 바탕 오른쪽 끝에 서고 — 토글은 바탕 �
   }
   await expect(page.locator("aside")).toHaveCount(2);
   await expect(page.locator("header")).toHaveCount(1);
-  // 칸은 목록 순서대로 `spec` · `info`다.
+  // 칸은 목록 순서대로 `spec` · `files` · `info`다(git-integration 결정 29 — files가 spec 뒤에 끼어든다).
   expect(await group.getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
+    "files",
     "info",
   ]);
 
