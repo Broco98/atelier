@@ -129,3 +129,26 @@ test("수천 줄 파일을 연 직후 셸 탭을 누르면 곧바로 셸로 바�
   expect(waited).toBeLessThan(1_000);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+test("워커가 뜨지 못하면 메인 스레드에서 강조하고 강조 상한이 2천 줄로 내려간다 — 결정 35의 물러서기", async ({ page }) => {
+  // 워커 스크립트를 막는다 — 라이브러리가 풀을 멈추고 메인 스레드로 물러선다(초기화 실패).
+  await page.route(/\/worker\/worker\.js\?worker_file/, (route) => route.abort());
+  await installFixtureBackend(page, 큰표본과함께({ "src/short.ts": 줄들(10), "src/over.ts": 줄들(2_001) }));
+
+  // 메인 스레드에서도 강조는 선다 — 같은 엔진(WASM) · 같은 색이다.
+  await page.goto(codeUrl("billing/src/short.ts"));
+  const short = codeCard(page, "billing/src/short.ts");
+  await expect.poll(async () => tokenOf(await readCodeView(short), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
+  expect(page.workers()).toHaveLength(0);
+
+  // 2천 1줄은 워커가 있으면 강조되지만(상한 2만), 메인 스레드에서는 평문이다 — 큰 파일이 메인 스레드를 붙들지 않게.
+  await 주소로간다(page, codeUrl("billing/src/over.ts"));
+  const over = codeCard(page, "billing/src/over.ts");
+  await expect
+    .poll(async () => (await readCodeView(over)).lines[0]?.text.trim(), { timeout: 30_000 })
+    .toBe('const v0 = "값"; // 줄 1');
+  await page.waitForTimeout(4_000);
+  const colors = new Set((await readCodeView(over)).lines.flatMap((line) => line.tokens.map((token) => token.color)));
+  expect([...colors]).toHaveLength(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

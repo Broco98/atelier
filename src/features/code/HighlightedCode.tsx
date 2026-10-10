@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { File as FileView, Virtualizer, WorkerPoolContext, type FileOptions } from "@pierre/diffs/react";
 import { getOrCreateWorkerPoolSingleton, type WorkerPoolManager } from "@pierre/diffs/worker";
 // Vite가 워커를 따로 묶어 그 주소를 준다 — 모듈 워커라 `vite.config.ts`의 `worker.format`이 `es`다.
@@ -10,13 +10,25 @@ import { CODE_THEME, registerCodeTheme } from "./code-theme";
 /**
  * **강조 상한** — 이보다 줄이 많은 파일은 평문이다(결정 35 — 2만 줄). 라이브러리가 줄 수로 견준다(`tokenizeMaxLength`). 한 줄이
  * 1000자를 넘으면 그 줄만 강조하지 않는 것은 라이브러리 기본값 그대로다(`tokenizeMaxLineLength`).
- *
- * G1(빌드된 앱에서 워커 · WASM이 뜨는가)이 실패하면 결정 35의 물러서기는 이 값을 2천으로 낮추고 워커 풀을 걷는 것이다.
  */
 export const HIGHLIGHT_MAX_LINES = 20_000;
 
+/**
+ * **워커가 뜨지 못했을 때의 강조 상한**(결정 35의 물러서기 — 「메인 스레드 + 약 2천 줄」). 워커가 뜨지 못하면 라이브러리가 풀을
+ * 멈추고 메인 스레드에서 강조하는데, 그 강조는 그리는 스레드를 붙든다 — 2만 줄 상한 그대로면 큰 파일을 여는 순간 화면이 선다.
+ * 그래서 그때는 상한을 이 값으로 내린다. G1(빌드된 앱에서 워커 · WASM이 뜨는가)이 실패하는 기계도 이 길을 탄다.
+ */
+export const HIGHLIGHT_MAX_LINES_MAIN_THREAD = 2_000;
+
 /** 워커 수(결정 35). 라이브러리 기본 8은 탭 하나를 보는 화면에 넘친다. */
 const POOL_SIZE = 2;
+
+/**
+ * 워커가 답하기를 기다리는 한도. 라이브러리 기본 10초를 넘기면 풀을 멈추고 메인 스레드로 물러서는데, 붐비는 기계에서는 워커
+ * 기동과 WASM 컴파일이 그 안에 못 끝나 멀쩡한 풀을 버린다(L3에서 실제로 그랬다). 기다리는 동안 파일은 평문으로 서 있어 화면은
+ * 멈추지 않으므로 넉넉히 둔다 — 스크립트를 못 받는 워커는 이 한도와 상관없이 곧바로 실패한다.
+ */
+const WORKER_INIT_TIMEOUT_MS = 60_000;
 
 /**
  * 엔진은 WASM이다(결정 35). 라이브러리 기본(shiki JS 엔진)은 WKWebView에서 첫 강조가 시간 제한을 넘겨 **토큰이 틀린다**
@@ -53,6 +65,7 @@ function highlightPool(): WorkerPoolManager {
     poolOptions: {
       workerFactory: () => new Worker(highlightWorkerUrl, { type: "module" }),
       poolSize: POOL_SIZE,
+      workerInitializationTimeout: WORKER_INIT_TIMEOUT_MS,
     },
     highlighterOptions: { theme: CODE_THEME, preferredHighlighter: ENGINE },
   });
@@ -70,6 +83,11 @@ function highlightPool(): WorkerPoolManager {
  */
 export function HighlightedCode({ path, content, wide }: { path: string; content: string; wide: boolean }) {
   const [workers] = useState(highlightPool);
+  const workersFailed = useWorkersFailed(workers);
+  const options = useMemo(
+    () => (workersFailed ? { ...OPTIONS, tokenizeMaxLength: HIGHLIGHT_MAX_LINES_MAIN_THREAD } : OPTIONS),
+    [workersFailed],
+  );
   const file = useMemo(() => ({ name: path, contents: content }), [path, content]);
   return (
     <WorkerPoolContext.Provider value={workers}>
@@ -80,9 +98,17 @@ export function HighlightedCode({ path, content, wide }: { path: string; content
         {/* 범위 토큰(`--code-syntax-*`)이 이 상자에서 서고, 강조 결과가 서는 shadow DOM 안으로 상속된다(`index.css`).
             -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 줄 번호의 자리다(`SourceView`와 같다). */}
         <div data-code-view="" className="-ml-12">
-          <FileView file={file} options={OPTIONS} />
+          <FileView file={file} options={options} />
         </div>
       </Virtualizer>
     </WorkerPoolContext.Provider>
+  );
+}
+
+/** 풀이 워커를 잃고 메인 스레드로 물러섰는가 — 풀의 상태가 바뀔 때마다 다시 읽는다. */
+function useWorkersFailed(workers: WorkerPoolManager): boolean {
+  return useSyncExternalStore(
+    (onChange) => workers.subscribeToStatChanges(onChange),
+    () => workers.getStats().workersFailed,
   );
 }
