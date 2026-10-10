@@ -17,7 +17,8 @@ use std::fmt;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use agent_client_protocol::{Agent as AgentRole, Client, ConnectionTo, Lines, UntypedMessage};
@@ -68,14 +69,28 @@ pub(crate) struct TurnEnd {
     /// `session/prompt`의 답 원문(`stopReason` · `usage` …), 또는 에이전트가 말을 받지 않은 오류
     /// (`{code, message, data?}`).
     pub result: Result<Value, Value>,
-    /// 우리가 `session/cancel`을 보냈나. Codex는 거부 선택지도 `cancelled`로 끝내므로 이 표지로 가른다
-    /// (워크플로 함정 14). 멈추기(three-axes 티켓 07)가 서기 전에는 늘 false다.
+    /// 그 턴에 우리가 `session/cancel`을 보냈나. Codex는 거부 선택지도 `cancelled`로 끝내므로 이 표지로 가른다
+    /// (워크플로 함정 14).
     pub cancelled_by_us: bool,
 }
 
 /// 런타임의 일을 받는 곳. 수신 루프 · stderr 스레드 · 죽음을 지켜보는 스레드에서 불리므로 **이 안에서 런타임이나 호스트를 다시 부르지
 /// 않는다** — 받은 것을 적고 넘기는 데까지가 이 자리의 일이다.
 pub(crate) type Sink = Arc<dyn Fn(RuntimeEvent) + Send + Sync>;
+
+/// 턴을 열고 멈추는 손잡이 — 열린 연결과 에이전트 쪽 세션 id. 복제해 쥔다: 호스트는 명령 스레드에서도, 턴 끝을 받은
+/// 수신 루프 안에서도(대기 줄의 다음 말) 이것으로 보낸다. 둘 다 기다리지 않는 부름이라 수신 루프를 막지 않는다.
+#[derive(Clone)]
+pub(crate) struct Turns {
+    connection: ConnectionTo<AgentRole>,
+    session_id: String,
+    /// 턴 끝을 넘길 곳. **약하게 쥔다** — 호스트의 대화가 이 손잡이를 쥐고 sink가 그 대화를 쥐므로, 강하게 쥐면 순환이
+    /// 생긴다. 강한 쪽은 에이전트 프로세스(`AgentProcess`)와 그 스레드들이 산 동안 쥔다.
+    sink: Weak<dyn Fn(RuntimeEvent) + Send + Sync>,
+    /// 지금 턴의 「우리가 cancel을 보냈나」. 턴마다 새 표지를 세우고, 그 턴의 답이 자기 표지를 읽는다 — 앞 턴의 멈추기가
+    /// 다음 턴에 묻어 가지 않는다.
+    cancel_sent: Arc<Mutex<Arc<AtomicBool>>>,
+}
 
 /// 열린 세션 — 에이전트가 준 원문 그대로다.
 pub(crate) struct Opened {
@@ -124,10 +139,9 @@ pub(crate) struct AgentProcess {
     life: Arc<Life>,
     /// 연결 클로저를 풀어 주는 신호.
     release: Option<oneshot::Sender<()>>,
-    /// 열린 연결. 말 보내기가 이것으로 `session/prompt`를 보낸다.
-    connection: Option<ConnectionTo<AgentRole>>,
-    /// 에이전트 쪽 세션 id. 열기 전에는 비었다.
-    session_id: String,
+    /// 열린 세션의 턴 손잡이. 열기 전과 끈 뒤에는 `None`이다.
+    turns: Option<Turns>,
+    /// [`Turns`]가 약하게 쥐는 sink를 이 프로세스가 사는 동안 붙든다.
     sink: Sink,
 }
 
@@ -220,15 +234,18 @@ pub(crate) fn open(
         stdin,
         life,
         release: Some(release),
-        connection: None,
-        session_id: String::new(),
+        turns: None,
         sink,
     };
     let failed = |reason: String| OpenError::Protocol { program: program.clone(), reason };
     match outcome_rx.recv_timeout(limit) {
         Ok(Ok((opened, cx))) => {
-            agent.connection = Some(cx);
-            agent.session_id = opened.session_id.clone();
+            agent.turns = Some(Turns {
+                connection: cx,
+                session_id: opened.session_id.clone(),
+                sink: Arc::downgrade(&agent.sink),
+                cancel_sent: Arc::new(Mutex::new(Arc::new(AtomicBool::new(false)))),
+            });
             // 이제부터의 끝은 죽음이다. 그 전의 끝은 열기 실패로 알렸다.
             agent.life.arm();
             Ok((agent, opened))
@@ -397,33 +414,9 @@ fn read_lines(stdout: ChildStdout, lines: async_mpsc::UnboundedSender<std::io::R
 }
 
 impl AgentProcess {
-    /// 턴 하나를 연다 — `session/prompt` 하나가 턴 하나다. 기다리지 않는다: 턴의 update와 끝은 `sink`로 온다.
-    ///
-    /// 답은 **수신 루프 안의 순서 장벽**으로 받는다(`on_receiving_result`). 다른 스레드에서 답을 기다리면 그
-    /// 스레드가 깨는 사이 루프가 다음 메시지를 먼저 넘겨, 턴 뒤에 온 update가 턴 끝보다 앞에 선다.
-    ///
-    /// 에이전트가 답 없이 사라지면 턴 끝은 오지 않는다 — 프로세스 죽음이 그 자리를 맡는다.
-    pub(crate) fn prompt(&self, blocks: Vec<Value>) -> Result<(), String> {
-        let Some(cx) = &self.connection else { return Err("에이전트와의 연결이 없습니다".to_string()) };
-        let message = UntypedMessage::new("session/prompt", json!({"sessionId": self.session_id, "prompt": blocks}))
-            .map_err(|error| error.to_string())?;
-        let sink = Arc::clone(&self.sink);
-        cx.send_request(message)
-            .on_receiving_result(async move |result| {
-                if let Err(error) = &result {
-                    if agent_client_protocol::is_incoming_transport_closed(error) {
-                        // 크레이트가 수신 EOF에 걸린 요청을 이 오류로 닫는다. 에이전트가 답 없이 사라진 것이라 턴
-                        // 끝이 아니다 — 프로세스 죽음이 그 자리를 맡는다.
-                        return Ok(());
-                    }
-                }
-                let result = result.map_err(|error| {
-                    serde_json::to_value(&error).unwrap_or_else(|_| json!({"message": error.to_string()}))
-                });
-                sink(RuntimeEvent::TurnEnd(TurnEnd { result, cancelled_by_us: false }));
-                Ok(())
-            })
-            .map_err(|error| format!("에이전트에 말을 보내지 못했습니다: {error}"))
+    /// 열린 세션의 턴 손잡이. 끈 뒤에는 `None`이다.
+    pub(crate) fn turns(&self) -> Option<Turns> {
+        self.turns.clone()
     }
 
     /// 끄기의 앞 절반 — stdin을 닫고 연결을 놓는다. 기다리지 않는다. 이 뒤의 끝은 죽음으로 알리지 않는다.
@@ -453,7 +446,7 @@ impl AgentProcess {
             let _ = child.kill();
         }
         let _ = child.wait();
-        self.connection = None;
+        self.turns = None;
     }
 
     /// stdin 닫기 → 1초 → 그룹째 SIGKILL.
@@ -461,6 +454,53 @@ impl AgentProcess {
         let deadline = Instant::now() + SHUTDOWN_GRACE;
         self.begin_shutdown();
         self.finish_shutdown(deadline);
+    }
+}
+
+impl Turns {
+    /// 턴 하나를 연다 — `session/prompt` 하나가 턴 하나다. 기다리지 않는다: 턴의 update와 끝은 sink로 온다.
+    ///
+    /// 답은 **수신 루프 안의 순서 장벽**으로 받는다(`on_receiving_result`). 다른 스레드에서 답을 기다리면 그
+    /// 스레드가 깨는 사이 루프가 다음 메시지를 먼저 넘겨, 턴 뒤에 온 update가 턴 끝보다 앞에 선다. 등록은 곧바로
+    /// 돌아오므로 수신 루프 안(앞 턴의 끝)에서 불러도 된다.
+    ///
+    /// 에이전트가 답 없이 사라지면 턴 끝은 오지 않는다 — 프로세스 죽음이 그 자리를 맡는다.
+    pub(crate) fn prompt(&self, blocks: Vec<Value>) -> Result<(), String> {
+        let message = UntypedMessage::new("session/prompt", json!({"sessionId": self.session_id, "prompt": blocks}))
+            .map_err(|error| error.to_string())?;
+        let cancel_sent = Arc::new(AtomicBool::new(false));
+        *self.cancel_sent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Arc::clone(&cancel_sent);
+        let sink = self.sink.clone();
+        self.connection
+            .send_request(message)
+            .on_receiving_result(async move |result| {
+                if let Err(error) = &result {
+                    if agent_client_protocol::is_incoming_transport_closed(error) {
+                        // 크레이트가 수신 EOF에 걸린 요청을 이 오류로 닫는다. 에이전트가 답 없이 사라진 것이라 턴
+                        // 끝이 아니다 — 프로세스 죽음이 그 자리를 맡는다.
+                        return Ok(());
+                    }
+                }
+                // 끈 뒤에 온 답이다 — 받을 쪽이 없다.
+                let Some(sink) = sink.upgrade() else { return Ok(()) };
+                let result = result.map_err(|error| {
+                    serde_json::to_value(&error).unwrap_or_else(|_| json!({"message": error.to_string()}))
+                });
+                sink(RuntimeEvent::TurnEnd(TurnEnd { result, cancelled_by_us: cancel_sent.load(Ordering::SeqCst) }));
+                Ok(())
+            })
+            .map_err(|error| format!("에이전트에 말을 보내지 못했습니다: {error}"))
+    }
+
+    /// 도는 턴을 멈춘다 — `session/cancel`을 보낸다. 기다리지 않는다: 턴의 끝(`cancelled`)은 sink로 오고, 그 턴 끝에
+    /// 「우리가 멈췄나」가 실린다. 에이전트는 cancel 뒤에도 update를 보낼 수 있다(Codex의 돌던 명령, three-axes 결정 28)
+    /// — 턴 끝 뒤에 온 것도 원문 그대로 sink로 간다.
+    pub(crate) fn cancel(&self) -> Result<(), String> {
+        // 보내기 전에 세운다 — 답이 먼저 와도 표지를 읽는다.
+        self.cancel_sent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).store(true, Ordering::SeqCst);
+        let message = UntypedMessage::new("session/cancel", json!({"sessionId": self.session_id}))
+            .map_err(|error| error.to_string())?;
+        self.connection.send_notification(message).map_err(|error| format!("에이전트에 멈추기를 보내지 못했습니다: {error}"))
     }
 }
 

@@ -12,6 +12,6 @@ mod records;
 mod runtime;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
-pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
+pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, TranslatorCommand};
 pub use login_env::{LoginShellError, ShellSource};
 pub use records::{RecordKind, RecordLine};

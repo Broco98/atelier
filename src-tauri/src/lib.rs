@@ -401,6 +401,10 @@ pub fn run() {
             commands::chat_new,
             commands::chat_send,
             commands::chat_close,
+            commands::chat_stop,
+            commands::chat_edit_queued,
+            commands::chat_delete_queued,
+            commands::chat_send_now,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

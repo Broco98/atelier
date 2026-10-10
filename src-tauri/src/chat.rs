@@ -16,8 +16,7 @@ use tauri::{AppHandle, Emitter};
 /// 이벤트 이름 셋은 프런트(`src/features/chat/api.ts`)와 **문자열로만** 이어진다 — `api.test.ts`가 이 선언을 읽어 견준다.
 /// Channel이 아니라 이벤트인 것은 대화가 새로고침을 넘어야 해서다: Channel은 페이지와 함께 죽는다.
 pub const RECORD_EVENT: &str = "chat:record";
-/// 대기 줄 바뀜 — work · 대화 · 대기 목록.
-#[expect(dead_code, reason = "대기 줄(three-axes 티켓 07)이 쏜다")]
+/// 대기 줄 바뀜 — work · 대화 · 대기 줄 전체. 대기 줄은 호스트 메모리에만 있고 기록에 없다(S13).
 pub const QUEUE_EVENT: &str = "chat:queue";
 /// 엔진 상태 — 에이전트 · 찾음 여부 · 로그인 여부 · 로그인 진행.
 #[expect(dead_code, reason = "로그인(three-axes 티켓 12)이 쏜다")]
@@ -49,13 +48,16 @@ pub fn announce(app: AppHandle, events: Receiver<HostEvent>) {
     });
 }
 
-/// 호스트의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ChatRecordEvent`와 같은 말이다.
+/// 호스트의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ChatRecordEvent` · `ChatQueueEvent`와 같은 말이다.
 fn wire(event: &HostEvent) -> (&'static str, Value) {
     match event {
         HostEvent::Record { work, conversation, line } => (
             RECORD_EVENT,
             json!({"work": work, "conversation": conversation, "seq": line.seq, "line": line}),
         ),
+        HostEvent::Queue { work, conversation, queue } => {
+            (QUEUE_EVENT, json!({"work": work, "conversation": conversation, "queue": queue}))
+        }
     }
 }
 
@@ -89,6 +91,30 @@ mod tests {
                     "kind": "turn-end",
                     "payload": {"stopReason": "end_turn"},
                 },
+            }),
+        );
+    }
+
+    /// **대기 줄 바뀜은 work · 대화 · 대기 줄 전체를 싣는다**(three-axes 구현 스펙 「대화 호스트 › 나오는 것」 · 티켓 07). 대기
+    /// 줄은 기록에 없어서(S13) 화면은 이것과 대화 목록으로만 「대기 중」을 그린다 — 바뀐 하나가 아니라 줄 전체라 차례가
+    /// 그대로 온다. 대기 말의 칸 이름은 프런트의 `QueuedMessage`와 같은 말이다.
+    #[test]
+    fn a_queue_event_carries_the_work_the_conversation_and_the_whole_queue() {
+        let queue = vec![
+            atelier_acp::QueuedMessage { id: "q2".into(), text: "지금 보낼 말".into(), send_now: true },
+            atelier_acp::QueuedMessage { id: "q1".into(), text: "기다리는 말".into(), send_now: false },
+        ];
+        let (name, payload) = wire(&HostEvent::Queue { work: "cart".into(), conversation: "c1".into(), queue });
+        assert_eq!(name, "chat:queue");
+        assert_eq!(
+            payload,
+            json!({
+                "work": "cart",
+                "conversation": "c1",
+                "queue": [
+                    {"id": "q2", "text": "지금 보낼 말", "sendNow": true},
+                    {"id": "q1", "text": "기다리는 말", "sendNow": false},
+                ],
             }),
         );
     }

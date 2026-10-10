@@ -200,6 +200,11 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("chat_new", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_send", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_close", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    // 멈추기 · 대기 줄(three-axes 티켓 07) — 대기 줄은 호스트 메모리에만 있다(S13).
+    ("chat_stop", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_edit_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_delete_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_send_now", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가

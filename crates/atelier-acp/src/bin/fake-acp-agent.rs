@@ -13,6 +13,7 @@
 //! - `FAKE_ACP_STDERR` — 프롬프트를 받을 때마다 stderr에 쓸 줄들(`|`로 가른다).
 //! - `FAKE_ACP_UPDATES_AFTER_OPEN` — `session/new`의 답 바로 뒤에 몰아 보낼 `available_commands_update`의 수.
 //! - `FAKE_ACP_DIES` — `dies-mid-turn`이 어느 쪽부터 사라지나(`exit-first` · `eof-first`).
+//! - `FAKE_ACP_LONG_TURNS` — `long-turn`에서 cancel을 기다리는 턴의 수(없으면 모든 턴). 그 뒤의 턴은 `normal`이다.
 //! - `FAKE_ACP_ACCOUNT_EMAIL` — 있으면 `session/new`의 답 앞에 그 이메일이 든 `_auth/status_update`를 보낸다
 //!   (진짜 codex-acp가 로그인된 계정을 알리는 모양 — 실측 turns 4줄).
 //!
@@ -21,7 +22,8 @@
 //!
 //! 영수증은 `session/new`를 받을 때 `<세션 id>.json` 한 장으로 남는다 — pid · 자기 Unix 세션 id(`getsid(0)`) ·
 //! 받은 env · `initialize`와 `session/new`의 인자 · 낳은 후손의 pid. 그 뒤에 일어난 일(stdin EOF)은
-//! `<세션 id>.events`에 한 줄씩, 받은 `session/prompt`의 인자는 `<세션 id>.prompts`에 한 줄씩 더한다.
+//! `<세션 id>.events`에 한 줄씩, 받은 `session/prompt`의 인자는 `<세션 id>.prompts`에 한 줄씩 더한다. 세션을 연 뒤
+//! 받은 메시지의 메서드는 요청이든 알림이든 `<세션 id>.inbox`에 받은 차례대로 더한다 — 멈추기와 다음 말의 차례를 잰다.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -41,6 +43,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("normal", normal),
     ("refuses-prompt", refuses_prompt),
     ("long-turn", long_turn),
+    ("late-update-after-cancel", late_update_after_cancel),
     ("dies-mid-turn", dies_mid_turn),
     ("ignores-shutdown", ignores_shutdown),
     ("spawns-a-child", spawns_a_child),
@@ -107,9 +110,14 @@ fn dies_mid_turn(fake: &mut Fake) {
 }
 
 /// 오래 도는 턴 — **`session/cancel`이 올 때까지 답하지 않는다.** 잠들어 기다리지 않고 cancel을 읽어서 끝낸다
-/// (8월 가짜 그대로). 멈추기는 티켓 07이 세우고, 그 전에는 턴이 도는 동안의 일을 재는 데 쓴다.
+/// (8월 가짜 그대로). 멈추기와 턴이 도는 동안의 일(대기 줄 · 지금 보내기)을 잰다. `FAKE_ACP_LONG_TURNS`가 있으면 그
+/// 수의 턴만 그렇게 돌고, 그 뒤의 턴은 `normal`이다.
 fn long_turn(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| {
+        let long_turns = std::env::var("FAKE_ACP_LONG_TURNS").ok().and_then(|n| n.parse().ok()).unwrap_or(usize::MAX);
+        if fake.prompts > long_turns {
+            return codex_one_turn(fake, id, session_id);
+        }
         fake.wire.notify(
             "session/update",
             json!({"sessionId": session_id,
@@ -118,7 +126,7 @@ fn long_turn(fake: &mut Fake) {
         );
         loop {
             // cancel도 없이 상대가 사라지면 답할 곳이 없다.
-            let Some(message) = fake.wire.read() else { return };
+            let Some(message) = fake.read() else { return };
             if message["method"] == "session/cancel" {
                 break;
             }
@@ -127,6 +135,51 @@ fn long_turn(fake: &mut Fake) {
             }
         }
         fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+    };
+    fake.converse();
+}
+
+/// 멈춘 뒤에도 도구 update를 **늦게** 보내는 에이전트(three-axes 결정 28). codex의 `session/cancel`은 턴만 멈추고,
+/// 돌던 셸 명령은 끝까지 돌아 그 `tool_call_update`(출력 → 완료)가 턴이 끝난 뒤에 온다. cancel 때 열린 도구 줄을 닫는
+/// update는 따로 없다(실측 `codex-acp-2.2.2-cancel-late-updates.jsonl` — 18초 뒤).
+///
+/// 첫 턴은 답 조각과 명령 도구 줄(진행)을 보내고 `long-turn`처럼 cancel을 기다린다. cancel이 오면 `cancelled`로 답하고,
+/// 잠깐 뒤 그 도구의 출력과 완료를 보낸다. 그 뒤의 턴은 `normal`이다. **이 순서가 곧 검사 자료(S26)다** — 바꾸면
+/// `tests/records/late-after-cancel.jsonl`을 다시 지어야 한다.
+fn late_update_after_cancel(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        if fake.prompts > 1 {
+            return codex_one_turn(fake, id, session_id);
+        }
+        let command = "python3 -c \"import time; time.sleep(20); print('slept-fake')\"";
+        for update in [
+            json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_late",
+                   "content": {"type": "text", "text": "I'll run the exact command and wait for it to complete."}}),
+            json!({"sessionUpdate": "tool_call", "toolCallId": "exec-fake-late", "name": "exec_command",
+                   "kind": "execute", "title": command, "status": "in_progress",
+                   "content": [{"type": "terminal", "terminalId": "exec-fake-late"}],
+                   "rawInput": {"command": command}}),
+        ] {
+            fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+        }
+        loop {
+            let Some(message) = fake.read() else { return };
+            if message["method"] == "session/cancel" {
+                break;
+            }
+        }
+        fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        // 명령은 멈추지 않고 끝까지 돈다 — 그 출력과 끝이 턴 밖에서 온다.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        for update in [
+            json!({"sessionUpdate": "tool_call_update", "toolCallId": "exec-fake-late",
+                   "_meta": {"terminal_output_delta": {"data": "slept-fake\n", "terminal_id": "exec-fake-late"}}}),
+            json!({"sessionUpdate": "tool_call_update", "toolCallId": "exec-fake-late", "name": "exec_command",
+                   "status": "completed",
+                   "_meta": {"terminal_exit": {"exit_code": 0, "signal": null, "terminal_id": "exec-fake-late"}}}),
+        ] {
+            fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+        }
     };
     fake.converse();
 }
@@ -233,6 +286,8 @@ struct Fake {
     descendants: Vec<u32>,
     session_id: Option<String>,
     on_prompt: OnPrompt,
+    /// 지금까지 받은 `session/prompt`의 수 — 지금 상대하는 것까지 센다.
+    prompts: usize,
 }
 
 impl Fake {
@@ -245,12 +300,13 @@ impl Fake {
             descendants: Vec::new(),
             session_id: None,
             on_prompt: codex_one_turn,
+            prompts: 0,
         }
     }
 
     /// stdin이 닫힐 때까지 요청에 답한다. 닫히면 그것을 영수증에 적고 돌아온다.
     fn converse(&mut self) {
-        while let Some(message) = self.wire.read() {
+        while let Some(message) = self.read() {
             // id가 없으면 알림이다. 알림에는 답하지 않는다.
             let Some(id) = message.get("id").cloned() else { continue };
             match message["method"].as_str().unwrap_or_default() {
@@ -295,6 +351,7 @@ impl Fake {
                     }
                 }
                 "session/prompt" => {
+                    self.prompts += 1;
                     self.append_receipt("prompts", &message["params"].to_string());
                     if let Ok(lines) = std::env::var("FAKE_ACP_STDERR") {
                         for line in lines.split('|') {
@@ -312,6 +369,15 @@ impl Fake {
             }
         }
         self.note("stdin-eof");
+    }
+
+    /// 다음 메시지. 세션이 열린 뒤에 받은 것이면 그 메서드를 `inbox` 영수증에 더한다.
+    fn read(&mut self) -> Option<Value> {
+        let message = self.wire.read()?;
+        if let Some(method) = message["method"].as_str() {
+            self.append_receipt("inbox", method);
+        }
+        Some(message)
     }
 
     /// `session/new`를 받은 때의 영수증 한 장.
