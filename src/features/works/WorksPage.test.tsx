@@ -79,6 +79,8 @@ function render(
           onOpenProject={() => {}}
           tab={tab}
           onSelectTab={() => {}}
+          code={null}
+          onOpenCode={() => {}}
           split={split}
           onSelectSplit={() => {}}
           onDropInto={() => {}}
@@ -987,6 +989,8 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
             onOpenProject={() => {}}
             tab="spec"
             onSelectTab={() => {}}
+            code={null}
+            onOpenCode={() => {}}
             split={null}
             onSelectSplit={() => {}}
             onDropInto={() => {}}
@@ -1126,7 +1130,8 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     expect(worksPage).toContain("void requestCloseShell(id);");
     // 탭의 `×`도 **같은 함수**로 온다. 두 길이 갈리면 한쪽만 확인 창을 거치는데, 화면으로는
     // 「가끔 안 묻는다」로만 보인다 — 결정 92가 `closeShell`을 밖으로 안 내보낸 그 이유다.
-    expect(worksPage).toContain("onClose={requestCloseShell}");
+    // 셸이 아닌 칸(파일 탭)만 확인 없이 닫는다(git-integration 스토리 37) — 셸 칸은 여전히 이 함수다.
+    expect(worksPage).toContain("else void requestCloseShell(id);");
   });
 });
 
@@ -1347,11 +1352,11 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
 // (shell-registry.test.ts), 그것을 실제로 딛는지는 렌더로 안 보인다 — 이펙트라서다.
 //
 // 두 가지를 함께 못박는다: **분할이면 분할째로 걷는다**(빈 터미널 열이 반을 차지한 채
-// 남으면 두 열을 세운 이유와 정면으로 어긋난다) · **본문에 터미널이 서 있을 때만**이다
-// (문서를 읽는 중에 사이드바로 셸을 닫은 것은 화면에서 아무것도 안 바뀌어야 한다).
+// 남으면 두 열을 세운 이유와 정면으로 어긋난다) · **본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만**이다
+// (문서를 읽는 중에 사이드바로 셸을 닫은 것은 화면에서 아무것도 안 바뀌어야 한다 — git-integration 결정 30).
 it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 가만있는다", () => {
   expect(source("WorksPage.tsx")).toContain(
-    'if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");',
+    'if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");',
   );
 });
 
@@ -1373,6 +1378,8 @@ function renderEmpty(projects: ProjectView[] = []): string {
           onOpenProject={() => {}}
           tab="spec"
           onSelectTab={() => {}}
+          code={null}
+          onOpenCode={() => {}}
           split={null}
           onSelectSplit={() => {}}
           onDropInto={() => {}}
