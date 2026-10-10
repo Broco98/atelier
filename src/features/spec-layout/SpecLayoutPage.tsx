@@ -97,7 +97,7 @@ function SpecLayoutPage() {
           자리다(설정 틀 — 설정 파일 읽기 게이트의 실패와 같다). */}
       {query.error !== null && (
         <div className="mt-7 flex flex-col items-start gap-3">
-          <p className="text-ui break-words text-danger">{String(query.error)}</p>
+          <p className="text-chat-meta break-words text-danger">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {state === undefined && (
             <Button variant="ghost" size="sm" onClick={reread}>
@@ -178,8 +178,8 @@ function LayoutRow({
   return (
     <SettingsRow
       name={name}
-      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-caption`)다.
-      tail={state.edited ? <span className="tag text-caption">고침</span> : undefined}
+      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-xs`)다.
+      tail={state.edited ? <span className="tag text-xs">고침</span> : undefined}
       description={
         fellBack ? (
           <div className="flex items-start gap-2">
@@ -299,7 +299,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
-            <span id={noteId} className="text-caption text-fg-tertiary">
+            <span id={noteId} className="text-xs text-fg-tertiary">
               폴더를 지우고 내장본으로 돌아가요
             </span>
           </span>
@@ -328,7 +328,7 @@ export function CopiedNotice({ reference, onClose }: { reference: string; onClos
 export function RevertedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
   return (
     <PageNotice title="되돌렸어요" reference={reference} onClose={onClose}>
-      내장본으로 돌아갔어요. <code className="text-mono-sm">spec</code> 패널과 에이전트 안내문도
+      내장본으로 돌아갔어요. <code className="font-mono text-xs">spec</code> 패널과 에이전트 안내문도
       따라가요.
     </PageNotice>
   );
@@ -369,10 +369,10 @@ function PageNotice({
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <span className="text-ui font-medium break-words">
-          {title} <code className="text-mono-sm opacity-80">{reference}</code>
+        <span className="text-chat-meta font-medium break-words">
+          {title} <code className="font-mono text-xs opacity-80">{reference}</code>
         </span>
-        <span className="text-ui leading-[1.6] opacity-75">{children}</span>
+        <span className="text-chat-meta opacity-75">{children}</span>
       </div>
       {/* 무엇을 닫는지는 자리(이 메시지 `status` 안)가 말한다. 어두운 바탕 위라 hover는 바탕 대신 농도로 선다 —
           모양은 아이콘 버튼 규격(`icon-button`)이다. */}

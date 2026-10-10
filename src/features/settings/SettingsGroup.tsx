@@ -18,7 +18,7 @@ export function SettingsBody({ children }: { children: ReactNode }) {
 
 /** 큰 제목 바로 아래의 머리글 한 문단. */
 export function SettingsLead({ children }: { children: ReactNode }) {
-  return <p className="mt-2.5 text-ui text-fg-secondary">{children}</p>;
+  return <p className="mt-2.5 text-chat-meta text-fg-secondary">{children}</p>;
 }
 
 /**
@@ -29,7 +29,7 @@ export function SettingsLead({ children }: { children: ReactNode }) {
 export function SettingsSection({ head, children }: { head?: string; children: ReactNode }) {
   return (
     <div className="mt-7">
-      {head !== undefined && <div className="mb-2.5 text-row font-semibold">{head}</div>}
+      {head !== undefined && <div className="mb-2.5 text-sm font-semibold">{head}</div>}
       {children}
     </div>
   );
@@ -58,7 +58,7 @@ export function SettingsGroup({ as: Tag = "div", children }: { as?: "div" | "ul"
 /**
  * 묶음의 행 하나(`.at-set-row`) — 격자 두 열(`minmax(0,1fr) auto`), 열 틈 24 · 줄 틈 12 · 최소 높이 64 · 안쪽 14 20.
  *
- * - 왼쪽: 이름(`text-row` 500)과 그 꼬리 자리 하나(「고침」 꼬리표 등), 그 아래 설명(`text-ui` `fg-secondary`).
+ * - 왼쪽: 이름(`text-sm` 500)과 그 꼬리 자리 하나(「고침」 꼬리표 등), 그 아래 설명(`text-chat-meta` `fg-secondary`).
  * - 오른쪽: 컨트롤 — 끝 맞춤, 틈 8.
  * - 아래 줄: 넓은 컨트롤이 두 열을 다 쓴다. 그 안의 미리보기 · 코드 상자는 옅은 면 위의 흰 면(`bg-surface`)이다.
  *
@@ -92,16 +92,16 @@ export function SettingsRow({
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">
           {nameFor === undefined ? (
-            <span className="text-row font-medium">{name}</span>
+            <span className="text-sm font-medium">{name}</span>
           ) : (
-            <label htmlFor={nameFor} className="text-row font-medium select-none">
+            <label htmlFor={nameFor} className="text-sm font-medium select-none">
               {name}
             </label>
           )}
           {tail}
         </div>
         {description !== undefined && (
-          <div id={descriptionId} className="text-ui break-words text-fg-secondary">
+          <div id={descriptionId} className="text-chat-meta break-words text-fg-secondary">
             {description}
           </div>
         )}

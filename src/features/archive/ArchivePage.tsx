@@ -179,13 +179,13 @@ function ArchivePage({
             end={
               <>
                 {selected?.archivedAt && (
-                  <span className="text-caption text-fg-tertiary">
+                  <span className="text-xs text-fg-tertiary">
                     {formatCreated(selected.archivedAt)}에 치움
                   </span>
                 )}
                 {/* 프로젝트 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`, 프로토타입 Archive). 모양은 `tag` 한 곳이 든다. */}
                 {selected?.projects.map((project) => (
-                  <span key={project} className="tag text-caption">
+                  <span key={project} className="tag text-xs">
                     {project}
                   </span>
                 ))}
@@ -246,7 +246,7 @@ function ArchivePage({
           ) : (
             <div className="flex min-h-full min-w-0 flex-col">
               {docsPending ? null : current === null ? (
-                <div className="flex flex-1 items-center justify-center p-10 text-row text-fg-tertiary">
+                <div className="flex flex-1 items-center justify-center p-10 text-sm text-fg-tertiary">
                   남은 문서가 없어요
                 </div>
               ) : (

@@ -832,7 +832,7 @@ function WorksPage({
               atelier_add_project / atelier_start_work를 부른다.
               아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
           <EmptyContent>
-            <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-mono-sm text-fg-secondary">
+            <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-xs text-fg-secondary">
               {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
             </code>
           </EmptyContent>
@@ -994,7 +994,7 @@ function TerminalHead({ name, onClose }: { name: React.ReactNode; onClose: () =>
     <div
       data-column="terminal"
       style={{ color }}
-      className="flex h-9 shrink-0 items-center gap-2 pl-(--term-inset) pr-2 text-caption"
+      className="flex h-9 shrink-0 items-center gap-2 pl-(--term-inset) pr-2 text-xs"
     >
       <span className="min-w-0 flex-1 truncate opacity-70">{name}</span>
       <Hint
@@ -1031,8 +1031,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
             이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 「불러오는 중」이 한 번 더 읽힌다.
             움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
         <Spinner aria-hidden className="size-6 text-(--accent)" />
-        <span className="mt-1 text-body font-semibold">{verb} 중…</span>
-        <span className="text-ui text-fg-tertiary">{detail}</span>
+        <span className="mt-1 text-heading-xs">{verb} 중…</span>
+        <span className="text-chat-meta text-fg-tertiary">{detail}</span>
       </div>
     </div>
   );
@@ -1082,7 +1082,7 @@ function StatusMenu({ work }: { work: WorkView }) {
               <DropdownMenuRadioItem key={status} value={status} label={option.label}>
                 <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                <span className="shrink-0 text-caption text-fg-tertiary">{option.desc}</span>
+                <span className="shrink-0 text-xs text-fg-tertiary">{option.desc}</span>
               </DropdownMenuRadioItem>
             );
           })}

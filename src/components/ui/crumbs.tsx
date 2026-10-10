@@ -1,5 +1,5 @@
 // 앱이 세운 부품(registry에 없다 — 디자인 시스템의 `.at-crumbs`, ui-refresh 결정 5 · 6): 카드 머리에서 지금 선 곳을 말하는
-// 브레드크럼 캡슐이다. 흰 알약(h-8 · rounded-pill · 안쪽 1px border) 하나에 조각들이 `text-ui` · fg-secondary로 서고,
+// 브레드크럼 캡슐이다. 흰 알약(h-8 · rounded-pill · 안쪽 1px border) 하나에 조각들이 `text-chat-meta` · fg-secondary로 서고,
 // 조각 사이에 꺾쇠(12px · fg-tertiary), 마지막 조각이 지금 선 곳이라 font-medium · fg에 넘치면 말줄임이다. 앞 아이콘 칸은
 // 하나이고 준 때만 선다.
 import { Fragment, type ReactNode } from "react"
@@ -31,7 +31,7 @@ function Crumbs({
       aria-label="위치"
       data-slot="crumbs"
       className={cn(
-        "flex h-8 max-w-full min-w-0 shrink items-center gap-0.5 overflow-hidden rounded-pill bg-surface px-3.5 text-ui whitespace-nowrap text-fg-secondary inset-ring inset-ring-border",
+        "flex h-8 max-w-full min-w-0 shrink items-center gap-0.5 overflow-hidden rounded-pill bg-surface px-3.5 text-chat-meta whitespace-nowrap text-fg-secondary inset-ring inset-ring-border",
         className
       )}
     >

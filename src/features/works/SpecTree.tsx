@@ -7,13 +7,13 @@ import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
 
-// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-ui` · 글리프와 이름 사이 7px · hover
+// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 7px · hover
 // `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
 // `selected-row`에 굵기 500이다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-ui text-fg-secondary transition-colors hover:bg-fill-soft";
+  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta text-fg-secondary transition-colors hover:bg-fill-soft";
 
 // 줄 사이는 사이드바 · 아카이브 목록과 같은 2px 틈이다(DS `.at-tree`). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-(--row-gap)";
@@ -159,7 +159,7 @@ function TreeRows({
           <div key={item.path} className="flex flex-col">
             <div
               className={cn(
-                "group flex h-7 items-center rounded-lg pr-1 text-ui transition-colors",
+                "group flex h-7 items-center rounded-lg pr-1 text-chat-meta transition-colors",
                 item.path === current ? "selected-row font-medium" : "hover:bg-fill-soft",
               )}
             >
@@ -216,7 +216,7 @@ function FolderGlyph({ icon }: { icon: string | null }) {
 // 된다 — 이름으로 행을 찾는 L3·L4가 그것을 딛는다(spec 레이아웃 구현 스펙 4절).
 //
 // 아이콘이 없거나 표에 없는 이름이면 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
-// 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-mono-micro` — 10 / 14 · 500)에 문서 안 인라인
+// 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-2xs` 10 / 14 · `font-mono` · 500)에 문서 안 인라인
 // 코드와 같은 옅은 면 · `rounded-inline`이고 테두리가 없다(ui-refresh 결정 16 · 25).
 function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const Glyph = specIconOf(icon);
@@ -225,7 +225,7 @@ function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-inline bg-surface-under px-1 font-mono text-mono-micro text-fg-tertiary">
+    <span className="shrink-0 rounded-inline bg-surface-under px-1 font-mono text-2xs font-medium text-fg-tertiary">
       {ext}
     </span>
   );

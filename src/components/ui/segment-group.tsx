@@ -71,7 +71,7 @@ const segmentItemVariants = cva(
     variants: {
       size: {
         pill: "flex size-[26px] items-center justify-center rounded-full",
-        sm: "h-[26px] rounded-inner px-2.5 text-ui font-medium",
+        sm: "h-[26px] rounded-inner px-2.5 text-chat-meta font-medium",
       },
     },
   }

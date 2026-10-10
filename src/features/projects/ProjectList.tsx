@@ -79,7 +79,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
           </Empty>
         ) : filtered.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
-            <span className="text-ui text-fg-tertiary">검색 결과가 없어요</span>
+            <span className="text-chat-meta text-fg-tertiary">검색 결과가 없어요</span>
           </div>
         ) : (
           <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pb-2 scroll-quiet">
@@ -104,7 +104,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                   <span className="flex w-full items-center gap-2">
                     <span
                       className={cn(
-                        "min-w-0 truncate text-row font-medium",
+                        "min-w-0 truncate text-sm font-medium",
                         project.missing && "text-fg-secondary line-through",
                       )}
                     >
@@ -112,15 +112,15 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                     </span>
                     {project.missing && (
                       // 꼬리표(`tag` — DS `Tag`)의 빨간 갈래(`.at-tag.danger`)다.
-                      <span className="tag ml-auto bg-danger/8 text-caption text-danger">누락</span>
+                      <span className="tag ml-auto bg-danger/8 text-xs text-danger">누락</span>
                     )}
                   </span>
-                  <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-fg-secondary">
+                  <span className="flex min-w-0 items-center gap-[7px] font-mono text-xs text-fg-secondary">
                     <Folder className="size-[13px] shrink-0 text-fg-tertiary" />
                     <span className="truncate">{project.path}</span>
                   </span>
                   {project.git?.remoteSlug && (
-                    <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-fg-secondary">
+                    <span className="flex min-w-0 items-center gap-[7px] font-mono text-xs text-fg-secondary">
                       <GitFork className="size-[13px] shrink-0 text-fg-tertiary" />
                       <span className="truncate">{project.git.remoteSlug}</span>
                       {/* 꼬리표(`tag` — DS `Tag`). 글자는 이 줄의 고정폭을 물려받는다. */}

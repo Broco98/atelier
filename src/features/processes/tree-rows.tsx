@@ -33,7 +33,7 @@ export const BLOCK = "flex flex-col rounded-card bg-surface-under p-1";
  */
 export function ColumnHead() {
   return (
-    <div aria-hidden className={cn(COLUMNS, "mt-5 h-8 items-center px-1 text-caption text-fg-secondary")}>
+    <div aria-hidden className={cn(COLUMNS, "mt-5 h-8 items-center px-1 text-xs text-fg-secondary")}>
       <span className="pl-12.5">이름</span>
       <span className="pr-2 text-right">메모리</span>
       <span className="pr-2 text-right">CPU</span>
@@ -105,7 +105,7 @@ export function Section({
     >
       <div className="relative flex h-8 min-w-0 items-center gap-1.5 rounded-lg pr-1 pl-1.5 hover:bg-fill-soft">
         <h3 className="flex min-w-0 shrink-0">
-          <CollapsibleTrigger className="flex min-w-0 items-center gap-1.5 text-left text-ui font-semibold after:absolute after:inset-0 after:rounded-lg">
+          <CollapsibleTrigger className="flex min-w-0 items-center gap-1.5 text-left text-chat-meta font-semibold after:absolute after:inset-0 after:rounded-lg">
             <span className="grid w-4.5 shrink-0 place-items-center text-fg-tertiary">
               <FoldChevron open={fold.open} />
             </span>
@@ -115,7 +115,7 @@ export function Section({
             </span>
           </CollapsibleTrigger>
         </h3>
-        <span className="ml-0.5 min-w-0 truncate text-caption text-fg-secondary">{note}</span>
+        <span className="ml-0.5 min-w-0 truncate text-xs text-fg-secondary">{note}</span>
         {/* 머리 줄을 덮은 트리거의 누르는 자리 위에 선다(`relative` — 같은 쌓임에서 뒤에 그려진다). */}
         <span className="relative ml-auto flex shrink-0 items-center gap-0.5">{action}</span>
       </div>
@@ -134,10 +134,10 @@ export function Section({
 export type RowKind = "work" | "shell" | "process" | "helper";
 
 const KIND: Record<RowKind, string> = {
-  work: "h-11 text-row font-medium",
-  shell: "h-8 text-ui",
-  process: "h-7.5 text-ui text-fg-secondary",
-  helper: "h-7 text-caption text-fg-tertiary",
+  work: "h-11 text-sm font-medium",
+  shell: "h-8 text-chat-meta",
+  process: "h-7.5 text-chat-meta text-fg-secondary",
+  helper: "h-7 text-xs text-fg-tertiary",
 };
 
 /**
@@ -293,7 +293,7 @@ function Figures({
           {metrics.ports.map((port, at) => (
             <Fragment key={port}>
               {at > 0 && <span className="sr-only">{PORT_SEPARATOR}</span>}
-              <span className="inline-flex h-5 shrink-0 items-center rounded-inner bg-surface px-1.5 font-mono text-mono-sm font-normal text-fg inset-ring inset-ring-border">
+              <span className="inline-flex h-5 shrink-0 items-center rounded-inner bg-surface px-1.5 font-mono text-xs font-normal text-fg inset-ring inset-ring-border">
                 {formatPort(port)}
               </span>
             </Fragment>
@@ -329,7 +329,7 @@ export function memoryShare(part: number | null, whole: number | null | undefine
 
 /**
  * 줄 끝의 글자 버튼 — [이동] · [닫기] · [끝내기] · [정리] · [모두 닫기]가 같은 모양이다. **앱 버튼 부품의 조용한 글자 버튼이다**
- * (`Button` ghost · xs — 24px · `rounded-inner` · `text-caption`, `sidebar-active-band` 결정 1 · 2). hover는 한 단 짙은 상태 겹(`fill-active`)이다 —
+ * (`Button` ghost · xs — 24px · `rounded-inner` · `text-xs`, `sidebar-active-band` 결정 1 · 2). hover는 한 단 짙은 상태 겹(`fill-active`)이다 —
  * 줄의 hover(`fill-hover`) 위에서 버튼이 갈려 보여야 한다.
  */
 export function RowButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {

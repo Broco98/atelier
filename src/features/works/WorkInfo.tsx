@@ -107,7 +107,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
 
       <Section title="프로젝트">
         {work.projects.length === 0 ? (
-          <p className="px-1.5 py-1 text-caption leading-normal text-fg-tertiary">{noProjects}</p>
+          <p className="px-1.5 py-1 text-xs text-fg-tertiary">{noProjects}</p>
         ) : (
           // **워크트리 목록만 돈다.** 코어의 뷰 변환이 워크트리를 프로젝트에서 1:1로 만들어
           // 개수도 순서도 같고 각 항목이 이름·경로·존재·변경을 모두 들고 있다. 두 배열을
@@ -119,7 +119,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
               // 프로젝트 하나가 줄 덩어리 하나다 — 프로젝트 이름이 첫 줄의 이름 칸에 서서, 아래 줄들이 어느 프로젝트 것인지가
               // 위치로 이어진다. 덩어리 사이는 줄 사이(4)보다 한 단 넓다.
               <div key={worktree.project} className="flex flex-col gap-1 not-first:mt-2">
-                <div className="flex min-h-7 items-center text-ui">
+                <div className="flex min-h-7 items-center text-chat-meta">
                   {/* 이름 칸이 버튼이다 — 값 칸(base · 알 수 없다)은 버튼 밖이라 접근성 이름에 묻히지 않고 읽힌다. */}
                   <Hint
                     text="프로젝트 상세로 이동"
@@ -141,12 +141,12 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
                       어느 base가 어느 프로젝트 것인지 그 줄에서 사라진다.
                       못 찾는 두 경우는 다른 말을 한다 — 그러라고 값이 둘로 갈려 온다. */}
                   {unregistered ? (
-                    <span className="min-w-0 flex-1 py-1.5 text-caption text-fg-tertiary">
+                    <span className="min-w-0 flex-1 py-1.5 text-xs text-fg-tertiary">
                       알 수 없다 — 프로젝트가 등록돼 있지 않다
                     </span>
                   ) : (
                     base !== null && (
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-mono-sm">
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-xs">
                         <ArrowRight className="size-3 shrink-0 text-fg-tertiary" />
                         <span className="min-w-0 truncate">{base}</span>
                       </span>
@@ -204,7 +204,7 @@ function WorkMetaRows({
         <MetaRow
           glyph={<GitBranch className="size-[13px] shrink-0 text-fg-tertiary" />}
           value={work.branch}
-          tail={base ? <span className="shrink-0 text-meta text-fg-tertiary">{base}</span> : undefined}
+          tail={base ? <span className="shrink-0 text-xs text-fg-tertiary">{base}</span> : undefined}
           onCopy={onCopy}
         />
       )}
@@ -265,10 +265,10 @@ function MetaRow({
       announce="description"
       type="button"
       onClick={() => onCopy(value)}
-      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-ui transition-colors hover:bg-fill-hover"
+      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-chat-meta transition-colors hover:bg-fill-hover"
     >
       {glyph}
-      <span className="min-w-0 flex-1 truncate font-mono text-mono-sm">{shown}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">{shown}</span>
       {tail ?? <Copy className="size-3 shrink-0 text-fg-tertiary" />}
     </Hint>
   );
@@ -285,7 +285,7 @@ const PROJECT_LABEL = "w-[82px] shrink-0";
 function Section({ title, first = false, children }: { title: string; first?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex flex-col">
-      <span className={cn("mb-2.5 px-1.5 text-ui font-semibold", first ? "mt-6" : "mt-7")}>{title}</span>
+      <span className={cn("mb-2.5 px-1.5 text-chat-meta font-semibold", first ? "mt-6" : "mt-7")}>{title}</span>
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );
@@ -316,11 +316,11 @@ function Row({
   const body = (
     <>
       <span className={cn(LABEL, "truncate pr-2 text-fg-secondary")}>{label}</span>
-      <span className={cn("min-w-0 flex-1 truncate", prose ? "text-caption" : "font-mono text-mono-sm")}>{value}</span>
+      <span className={cn("min-w-0 flex-1 truncate", prose ? "text-xs" : "font-mono text-xs")}>{value}</span>
     </>
   );
   if (!copy) {
-    return <div className="flex h-7 items-center px-1.5 text-ui">{body}</div>;
+    return <div className="flex h-7 items-center px-1.5 text-chat-meta">{body}</div>;
   }
   return (
     <Hint
@@ -328,7 +328,7 @@ function Row({
       announce="description"
       type="button"
       onClick={() => copy.onCopy(copy.text)}
-      className="group flex h-7 items-center rounded-lg px-1.5 text-left text-ui transition-colors hover:bg-fill-soft"
+      className="group flex h-7 items-center rounded-lg px-1.5 text-left text-chat-meta transition-colors hover:bg-fill-soft"
     >
       {body}
       <Copy
@@ -366,7 +366,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-7 items-center px-1.5">
       <span aria-hidden className={LABEL} />
-      <span className="min-w-0 flex-1 text-caption text-fg-tertiary">{children}</span>
+      <span className="min-w-0 flex-1 text-xs text-fg-tertiary">{children}</span>
     </div>
   );
 }

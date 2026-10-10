@@ -206,7 +206,7 @@ function ArchiveList({
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
             {/* 좁힌 것이 검색어인지 필터인지를 말한다 — 문장은 `archive-copy.ts`가 든다. */}
-            <span className="text-ui text-fg-tertiary">{narrowedNotice(q !== "")}</span>
+            <span className="text-chat-meta text-fg-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
           <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
@@ -252,7 +252,7 @@ function ArchiveList({
 // 부품이 `inert`로 막는다: 접히는 동안 아직 보이는 문서 줄에 포커스와 포인터가 닿으면 안 된다.
 //
 // 행의 규격은 DS `.at-archive-row`다(ui-refresh 결정 6 · 25) — 32px · 안쪽 0 10px · 모서리 10 · hover `fill-soft`, 폴더 글리프 15px
-// `fg-tertiary`, 제목 `text-row`(14 · 400) 본문 색, 오른쪽 날짜 `text-caption` `fg-tertiary` 고정폭 숫자.
+// `fg-tertiary`, 제목 `text-sm`(14 · 400) 본문 색, 오른쪽 날짜 `text-xs` `fg-tertiary` 고정폭 숫자.
 function ArchiveRow({
   entry,
   expanded,
@@ -292,10 +292,10 @@ function ArchiveRow({
         ) : (
           <Folder className="size-[15px] shrink-0 text-fg-tertiary" />
         )}
-        <span className="min-w-0 flex-1 truncate text-row">{entry.title}</span>
+        <span className="min-w-0 flex-1 truncate text-sm">{entry.title}</span>
         {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다. 숫자가 고정폭이라 날짜의 오른쪽 끝이 줄마다
             같은 x에 선다. */}
-        <span className="shrink-0 pl-2 text-caption text-fg-tertiary tabular-nums">
+        <span className="shrink-0 pl-2 text-xs text-fg-tertiary tabular-nums">
           {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
         </span>
       </CollapsibleTrigger>
@@ -315,7 +315,7 @@ function ArchiveRow({
               onCopy={(path) => onCopyDoc(entry.slug, path)}
             />
           ) : (
-            <span className="py-1.5 pr-2.5 text-ui text-fg-tertiary" style={treeIndent(TREE_DEPTH)}>
+            <span className="py-1.5 pr-2.5 text-chat-meta text-fg-tertiary" style={treeIndent(TREE_DEPTH)}>
               남은 문서가 없어요
             </span>
           )}

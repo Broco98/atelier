@@ -7,15 +7,16 @@ import { describe, expect, it } from "vitest";
 import { cn } from "@/lib/utils";
 import { blankComments, blankCssComments } from "./blank-comments";
 
-// **글자 크기는 디자인 시스템의 열 단계로만 적는다**(ui-refresh 결정 25). 단계는 `index.css`의
-// `@theme`에 DS 이름 그대로 있고(`text-meta` … `text-mono-micro`), 크기와 줄 높이를 함께 든다.
-// 단계를 토큰만 두고 검사 없이 두면 흩어진다 — 지금 고친 일곱 단계(11 · 11.5 · 12 · 12.5 · 13 ·
-// 13.5 · 14px)가 그렇게 생겼다. 손으로 적은 `text-[12.5px]` 하나는 화면에서 13과 거의 안 갈려,
-// 눈으로는 지켜지지 않는다. 그래서 여기서 막는다.
+// **글자는 DS 단계로만 적는다**(codex-ds 결정 27 · 티켓 03). 단계는 `index.css`의 `@theme`에 DS 「Atelier」 2판
+// `type.groups`의 이름 그대로 있고(`text-heading-lg` · `text-sm` · `text-chat-meta` · `text-code` …), 크기와 함께 줄 높이 ·
+// 굵기 · 자간을 든다 — 12px은 18 줄에 +0.025em, 제목은 모두 600이다. 단계를 토큰만 두고 검사 없이 두면 흩어진다 — ui-refresh
+// 때 고친 일곱 크기(11 · 11.5 · 12 · 12.5 · 13 · 13.5 · 14px)가 그렇게 생겼다. 손으로 적은 `text-[12.5px]` 하나는 화면에서
+// 13과 거의 안 갈려, 눈으로는 지켜지지 않는다. 그래서 여기서 막는다.
 //
-// **Tailwind의 이름 단계(`text-xs` · `text-sm` …)도 막는다.** 같은 `@theme`이 `--text-*: initial`로
-// 기본 단계를 비웠으므로, 이름 단계는 **아무 CSS도 안 나온다** — 빌드도 타입 검사도 통과하고 그
-// 글자만 조용히 부모 크기를 물려받는다. 깨진 것이 화면에서 「조금 커 보인다」로만 남는 종류다.
+// **DS 단계가 아닌 Tailwind 이름 단계(`text-base` · `text-xl` …)도 막는다.** 같은 `@theme`이 `--text-*: initial`로 기본
+// 단계를 비웠으므로, DS가 다시 세운 이름(`text-xs` · `text-sm` · `text-md` · `text-lg` …) 밖의 이름 단계는 **아무 CSS도 안
+// 나온다** — 빌드도 타입 검사도 통과하고 그 글자만 조용히 부모 크기를 물려받는다. 깨진 것이 화면에서 「조금 커 보인다」로만
+// 남는 종류다. 걷은 옛 열 단계(`text-ui` · `text-caption` …)도 같은 까닭으로 막는다.
 //
 // **반경도 같은 방식으로 DS 단계로만 적는다**(ui-refresh 결정 6 · 25). 알약(`rounded-pill`) · 원형
 // (`rounded-full`) · 10(`rounded-lg`) · 16(`rounded-card`)의 세 단계와, 10px 컨트롤 안에 드는 것의
@@ -63,7 +64,7 @@ function offenders(pattern: RegExp): string[] {
   );
 }
 
-// `@theme`에 선 글자 단계의 이름 — `--text-ui: 13px;`의 `ui`. 줄 높이 같은 딸린 값(`--text-ui--…`)과
+// `@theme`에 선 글자 단계의 이름 — `--text-chat-meta: 13px;`의 `chat-meta`. 줄 높이 같은 딸린 값(`--text-chat-meta--…`)과
 // 초기화 줄(`--text-*`)은 뺀다.
 const css = blankCssComments(readFileSync(join(root, "src/index.css"), "utf8"));
 const steps = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =>
@@ -74,17 +75,30 @@ describe("글자 단계", () => {
   // **먼저 읽었음을 센다.** 주석 지우기가 새서 원문을 통째로 지우면 아래 「0건」이 저절로 초록이 된다 —
   // 단계 클래스가 주석 밖에서 실제로 보이는지까지 본다.
   it("검사가 실제로 소스를 읽는다", () => {
+    // DS 「Atelier」 2판 `type.groups`의 차례 그대로다 — 제목 · 글 · 대화 · 라벨 · 코드 · Atelier.
     expect(steps).toEqual([
-      "meta",
-      "caption",
-      "ui",
-      "row",
-      "body",
-      "h2",
-      "title",
-      "mono",
-      "mono-sm",
-      "mono-micro",
+      "heading-5xl",
+      "heading-4xl",
+      "heading-3xl",
+      "heading-2xl",
+      "heading-xl",
+      "heading-lg",
+      "heading-md",
+      "heading-sm",
+      "heading-xs",
+      "lg",
+      "md",
+      "sm",
+      "xs",
+      "2xs",
+      "3xs",
+      "chat-body",
+      "chat-meta",
+      "form-body",
+      "caps-lg",
+      "caps-md",
+      "code",
+      "nav-row",
     ]);
     const uses = new RegExp(`(?<![\\w-])text-(?:${steps.join("|")})(?![\\w-])`, "g");
     expect(sources.length).toBeGreaterThan(100);
@@ -92,15 +106,24 @@ describe("글자 단계", () => {
   });
 
   it("글자 크기를 임의 값으로 적지 않는다", () => {
-    // 실패하면 그 자리를 단계로 옮긴다 — 크기로는 11 · 11.5 → meta, 12 → caption, 12.5 · 13 · 13.5 → ui,
-    // 14 · 14.5 → row, 15 · 15.5 · 16.5 → body, 18 · 19 → h2, 25 · 26 → title이고, 고정폭 자리는
-    // mono-sm(12) · mono(13)이다. 역할이 크기와 다르면 DS의 「쓰는 자리」를 따른다.
+    // 실패하면 그 자리를 단계로 옮긴다 — 짝은 크기가 아니라 자리다(DS README 「글자」 표의 「쓰는 곳」). 탭 · 트리 ·
+    // 메뉴 · 소제목은 chat-meta(13), 행 · 버튼 · 입력은 sm(14), 메타 · 배지 · 툴팁 · 시간은 xs(12), 문서 본문은 chat-body,
+    // 코드는 code(13 · `font-mono`가 글꼴을 든다)다. 표에 없는 자리는 그 DS 부품의 값을 따른다.
     expect(offenders(/text-\[\d+(?:\.\d+)?px\]/g)).toEqual([]);
   });
 
-  it("Tailwind 이름 단계를 쓰지 않는다", () => {
-    // `--text-*: initial` 뒤라 이 클래스들은 CSS가 안 나온다. xs → caption · sm → ui · base → body다.
-    expect(offenders(/(?<![\w-])text-(?:xs|sm|base|lg|[2-9]?xl)(?![\w-])/g)).toEqual([]);
+  it("DS가 세우지 않은 Tailwind 이름 단계를 쓰지 않는다", () => {
+    // `--text-*: initial` 뒤라 이 클래스들은 CSS가 안 나온다. `xs` · `sm` · `md` · `lg` · `2xs` · `3xs`는 DS 단계라 막지 않는다.
+    // base(16) → md, xl 이상 → heading-*다.
+    expect(offenders(/(?<![\w-])text-(?:base|[2-9]?xl)(?![\w-])/g)).toEqual([]);
+  });
+
+  it("걷은 옛 열 단계를 쓰지 않는다", () => {
+    // `@theme`에서 빠진 이름이라 CSS가 안 나온다 — 짝은 위 「임의 값」의 줄이다(title → heading-lg · h2 → heading-sm ·
+    // 문서 body → chat-body · row → sm · caption · meta → xs · mono → code · mono-sm · mono-micro → xs · 2xs + `font-mono`).
+    expect(
+      offenders(/(?<![\w-])text-(?:meta|caption|ui|row|body|h2|title|mono|mono-sm|mono-micro)(?![\w-])/g),
+    ).toEqual([]);
   });
 });
 
@@ -123,8 +146,8 @@ describe("반경 단계", () => {
   });
 });
 
-// **클래스를 합치는 `cn`이 단계 이름을 안다.** 합치기는 같은 갈래의 앞 클래스를 지운다. 단계 이름은
-// Tailwind 기본 이름이 아니라서 따로 알려 주지 않으면 **글자색으로 읽혀**, `text-ui text-fg-tertiary`에서
+// **클래스를 합치는 `cn`이 단계 이름을 안다.** 합치기는 같은 갈래의 앞 클래스를 지운다. `heading-lg` · `chat-meta` 같은
+// 단계 이름은 Tailwind 기본 이름이 아니라서 따로 알려 주지 않으면 **글자색으로 읽혀**, `text-chat-meta text-fg-tertiary`에서
 // 크기가 조용히 사라진다. 그 이름표는 `lib/utils.ts`에 있고, 부품은 모두 거기서 `cn`을 받는다.
 // 반경 이름도 같다 — 모르면 `rounded-lg rounded-card`를 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
 describe("cn이 DS 단계를 안다", () => {
@@ -133,7 +156,7 @@ describe("cn이 DS 단계를 안다", () => {
     const dropped = steps.filter((step) => cn(`text-${step} text-fg-tertiary`) !== `text-${step} text-fg-tertiary`);
     expect(dropped).toEqual([]);
     // 크기끼리는 뒤의 것이 이긴다 — 부르는 자리의 className이 부품의 단계를 덮는 길이다.
-    expect(cn("text-ui", "text-caption")).toBe("text-caption");
+    expect(cn("text-chat-meta", "text-xs")).toBe("text-xs");
   });
 
   it("반경 단계도 모서리로 안다", () => {

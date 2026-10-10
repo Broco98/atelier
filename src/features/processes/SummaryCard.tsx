@@ -78,11 +78,11 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
 const TILE = "flex min-w-0 flex-col gap-0.5 rounded-card bg-surface-under px-4.5 pt-3.5 pb-4";
 
 /** 타일의 아래 줄 — 수 조각을 6px 틈으로 잇는다. */
-const TILE_NOTE = "flex min-w-0 flex-wrap items-center gap-1.5 text-caption text-fg-secondary";
+const TILE_NOTE = "flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-fg-secondary";
 
 function TileName({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-caption text-fg-secondary">
+    <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
       <Icon aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
       {children}
     </span>
@@ -101,9 +101,9 @@ function Dot() {
 function Figure({ text, ...rest }: { text: string; "data-figure"?: string }) {
   const [, value = text, unit = ""] = /^(.*\d)(\D*)$/.exec(text) ?? [];
   return (
-    <p className="mt-1.5 text-title whitespace-nowrap tabular-nums" {...rest}>
+    <p className="mt-1.5 text-heading-lg whitespace-nowrap tabular-nums" {...rest}>
       {value}
-      {unit && <span className="ml-0.5 text-row font-medium tracking-normal text-fg-secondary">{unit}</span>}
+      {unit && <span className="ml-0.5 text-sm font-medium text-fg-secondary">{unit}</span>}
     </p>
   );
 }
@@ -172,7 +172,7 @@ function Trend({ points }: { points: ReadonlyArray<TrendPoint> }) {
           />
         )}
       </div>
-      <div className="flex justify-between text-meta text-fg-tertiary">
+      <div className="flex justify-between text-xs text-fg-tertiary">
         <span>지난 1시간</span>
         <span>지금</span>
       </div>

@@ -232,7 +232,7 @@ function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: Setti
             {/* **제목 역할은 이 큰 제목이 진다.** 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자라, 이것이 없으면
                 페이지에 제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. 한때 감춘 줄(`sr-only`)이었고
                 설정 틀이 서며 보이는 큰 제목이 됐다 — 요소와 레벨은 그대로다(판 06 티켓 06). */}
-            <h2 className="text-title">{settingsItem(item).label}</h2>
+            <h2 className="text-heading-lg">{settingsItem(item).label}</h2>
             {/* **항목이 곧 key다.** 두 항목의 본문이 같은 게이트로 시작해, key가 없으면 React가
                 항목을 옮길 때 게이트를 이어 써 옛 사본을 들고 파일을 다시 안 읽을 수 있다 —
                 항목마다 새로 서야 초안도 사본도 따라오지 않는다(위 결정 26). */}
@@ -285,8 +285,8 @@ function SettingsFileGate({
     // 큰 제목 아래 구획 자리에 선다(설정 틀) — 묶음 대신 까닭과 「다시 읽기」다.
     return (
       <div className="mt-7 flex flex-col items-start gap-3">
-        <p className="text-ui break-words text-danger">{readError}</p>
-        <p className="text-ui text-fg-secondary">
+        <p className="text-chat-meta break-words text-danger">{readError}</p>
+        <p className="text-chat-meta text-fg-secondary">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
         <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
@@ -585,7 +585,7 @@ function SaveButton({
 }) {
   return (
     <SettingsFoot>
-      {error !== null && <span className="text-ui text-danger">{error}</span>}
+      {error !== null && <span className="text-chat-meta text-danger">{error}</span>}
       {/* 주 버튼(Button의 기본) — 프로젝트 빈 화면의 「프로젝트 등록」과 한 규격이다. */}
       <Button onClick={onSave} disabled={!enabled}>
         {saving ? "저장 중…" : "저장"}
@@ -693,7 +693,7 @@ export function TerminalSection({
                 placeholder="기본"
                 onChange={(e) => onChangeSize(e.target.value)}
               />
-              <span className="text-ui text-fg-secondary">px</span>
+              <span className="text-chat-meta text-fg-secondary">px</span>
             </Field>
           }
         />
@@ -806,10 +806,10 @@ export function ProcessExceptionsSection({
                 onChange={(e) => onChange(e.target.value)}
                 rows={3}
                 spellCheck={false}
-                className={cn(textareaLook, "min-h-20 font-mono text-mono disabled:opacity-40")}
+                className={cn(textareaLook, "min-h-20 font-mono text-code disabled:opacity-40")}
               />
               {defaultsFailed && (
-                <span className="text-ui text-danger">기본 목록을 읽지 못했어요.</span>
+                <span className="text-chat-meta text-danger">기본 목록을 읽지 못했어요.</span>
               )}
             </div>
           }
@@ -881,7 +881,7 @@ export function NotificationSection({
             granted === false ? (
               // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
               // 아니라 OS가 안 준 것이라, 사람이 갈 곳을 적는 것이 이 줄이 하는 일 전부다.
-              <p className="text-ui text-fg-secondary">
+              <p className="text-chat-meta text-fg-secondary">
                 macOS가 알림 권한을 안 줬어요. 시스템 설정 › 알림에서 아틀리에를 켜 주세요.
               </p>
             ) : undefined
@@ -975,21 +975,21 @@ export function HooksSection({
             <SettingsRow
               key={status.agent}
               name={status.agent}
-              description={<span className="font-mono text-mono-sm">{status.path}</span>}
+              description={<span className="font-mono text-xs">{status.path}</span>}
               // 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다.
-              control={<span className="text-ui font-medium whitespace-nowrap">{hookStateLabel(status)}</span>}
+              control={<span className="text-chat-meta font-medium whitespace-nowrap">{hookStateLabel(status)}</span>}
               below={
                 <div className="flex flex-col gap-2">
-                  {status.error !== null && <p className="text-ui break-words text-danger">{status.error}</p>}
+                  {status.error !== null && <p className="text-chat-meta break-words text-danger">{status.error}</p>}
                   {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
                       낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
                       경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
                       두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
                   {status.writeError !== null && status.writeError !== status.error && (
-                    <p className="text-ui break-words text-danger">{status.writeError}</p>
+                    <p className="text-chat-meta break-words text-danger">{status.writeError}</p>
                   )}
                   {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 옅은 면 위의 흰 면이다. */}
-                  <pre className="max-h-[168px] overflow-auto rounded-card bg-surface px-4 py-3 text-mono scroll-quiet">
+                  <pre className="max-h-[168px] overflow-auto rounded-card bg-surface px-4 py-3 font-mono text-code scroll-quiet">
                     {status.preview}
                   </pre>
                 </div>
@@ -1000,7 +1000,7 @@ export function HooksSection({
       </SettingsSection>
 
       <SettingsFoot>
-        {error !== null && <span className="text-ui text-danger">{error}</span>}
+        {error !== null && <span className="text-chat-meta text-danger">{error}</span>}
         {/* 폼 버튼이다(10px 모서리 — handoff 「머리 버튼과 폼 버튼」). 저장 버튼(주 버튼)은 터미널 설정 · 알림 설정에만 있고,
             이 둘은 그 자리를 안 지나는 별개의 쓰기다. 오른쪽 끝이 하는 일(설치)이다 — 프로토타입의 차례. */}
         <Button variant="ghost" onClick={onUninstall} disabled={busy}>

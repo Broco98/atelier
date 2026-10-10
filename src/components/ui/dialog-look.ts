@@ -12,8 +12,10 @@
 // 창 카드의 모양 자체(카드 모서리 · 흰 바탕 · 테두리 없이 `shadow-float`)는 떠 있는 카드 모두의 것이라
 // index.css의 `floating-card`가 든다. 팔레트 · 전체화면 뷰어 · 읽는 창(`dialog.tsx`)도 그 모양만 입는다.
 //
-// 가운데의 작은 창은 디자인 시스템의 창(`.at-dialog`)이다 — 폭 360 · 안쪽 20 · 제목 14/600 · 설명 13 fg-secondary ·
-// 바닥 버튼 사이 8(ui-refresh 결정 6 · 「규칙에서 이어 적용하는 것」).
+// 가운데의 작은 창은 디자인 시스템의 창(`.at-dialog`)이다 — 폭 360 · 안쪽 20 · 바닥 버튼 사이 8(ui-refresh 결정 6 ·
+// 「규칙에서 이어 적용하는 것」). 제목은 `heading-xs`(16/24 · 600), 설명은 `text-sm` fg-secondary다 — DS README
+// 「글자」 표의 확인 창 자리다(codex-ds 티켓 03). 제목 조각은 두 부품의 모든 제목이 쓴다 — 가운데 창만이 아니라
+// 「LLM이 받는 텍스트」 미리보기의 머리 줄 제목도 16/24다(codex-ds 스펙 「확인 창 · 다이얼로그 … 제목은 heading-xs」).
 export const dialogLook = {
   // 앱의 모든 모달이 쓰는 막(`modal-scrim`) — 뒤를 흐리지 않고 어둡게만 한다.
   overlay:
@@ -25,7 +27,7 @@ export const dialogLook = {
   center: "top-1/2 grid w-[360px] max-w-[calc(100%-4rem)] -translate-y-1/2 gap-4 p-5",
   header: "grid gap-1.5",
   footer: "flex justify-end gap-2",
-  title: "text-row font-semibold tracking-[-0.01em]",
+  title: "text-heading-xs",
   description:
-    "text-ui leading-[1.6] text-fg-secondary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-fg",
+    "text-sm text-fg-secondary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-fg",
 } as const

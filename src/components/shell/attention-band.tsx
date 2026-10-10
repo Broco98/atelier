@@ -122,18 +122,19 @@ export function AttentionBand({
         "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
       )}
     >
-      {/* **누를 것이 없는 머리다** — 구획 헤더(`SectionHeader`)와 규격은 같되 접히지 않는다.
-          띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는 것이 둘이면
-          같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 수가 오른쪽 끝에 서는 것은 바로
-          아래 구획 헤더들과 같은 계약이다 — 한 컬럼에 세로로 붙어 서는 것들이 다른 무게로
-          읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
+      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 옆 안쪽 9 · 틈 4)는 구획 헤더(`SectionHeader`)와
+          같되 접히지 않는다. 띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
+          것이 둘이면 같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 라벨 글자는 둘이 다르다 —
+          띠 머리는 DS `.at-band-head`의 12(`text-xs`), 구획 라벨은 DS 「소제목 13」(`chat-meta`)이다.
+          수(`text-xs`)가 오른쪽 끝에 서는 것은 바로 아래 구획 헤더들과 같은 계약이다 — 한 컬럼에
+          세로로 붙어 서는 수들이 다른 무게로 읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
       <div className="flex h-7 shrink-0 items-center gap-1 px-[9px]">
-        <span className="shrink-0 text-caption text-fg-tertiary">{BAND_LABEL}</span>
+        <span className="shrink-0 text-xs text-fg-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
         <span
           data-band-count=""
-          className="ml-auto shrink-0 text-meta tabular-nums text-fg-tertiary"
+          className="ml-auto shrink-0 text-xs tabular-nums text-fg-tertiary"
         >
           {items.length}
         </span>
@@ -224,7 +225,7 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-ui",
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-sm",
         // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
         // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
         // 묻혀 한 단 위(`fill-hover`)를 썼다.

@@ -171,7 +171,7 @@ export function SearchList({
         // DS 팔레트의 입력 줄(`.at-palette-input`)이다 — 높이 52 · 글자 14 · 좌우 18이라 글자가 아래 글리프 칸과
         // 한 세로선에 선다(6 + 12). 부품의 `flush`는 판 03이 팔레트 몫으로 남긴 채라 그 값을 여기서 준다
         // (ui-refresh 결정 25 · 판 06 티켓 08 — 부품 파일은 이 판에서 고치지 않는다).
-        className="h-13 px-4.5 text-row"
+        className="h-13 px-4.5 text-sm"
         type="text"
         value={query}
         onChange={(event) => onQuery(event.target.value)}
@@ -211,7 +211,7 @@ export function SearchList({
                 // 글리프 칸과 한 세로선이다(ui-refresh 결정 25).
                 <p
                   data-head=""
-                  className="shrink-0 px-3 pt-2.5 pb-1 text-caption text-fg-tertiary"
+                  className="shrink-0 px-3 pt-2.5 pb-1 text-xs text-fg-tertiary"
                 >
                   {GROUP_NAMES[hit.kind]}
                 </p>
@@ -254,9 +254,9 @@ export function SearchList({
                     **그 숫자는 스니펫에 바닥이 생기기 전의 것이다.** 지금 스니펫은
                     `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 27px이
                     나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
-                <span className="truncate text-row">{name}</span>
+                <span className="truncate text-sm">{name}</span>
                 {detail !== undefined && (
-                  <span className="truncate text-ui text-fg-tertiary">{detail}</span>
+                  <span className="truncate text-chat-meta text-fg-tertiary">{detail}</span>
                 )}
                 {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6). 코어는
                     맞은 문단을 통째로 펴서 보내고, 「한 줄에 얼마나 보일까」는 화면 폭이
@@ -264,13 +264,13 @@ export function SearchList({
                     (같은 실측에서 175px·한글 13자). 남는 폭이 그보다 넓으면 그만큼 다
                     갖고(`grow`), 모자라면 이름과 경로가 대신 줄어든다. */}
                 {snippet !== undefined && (
-                  <span className="shrink-0 grow basis-1/3 truncate text-ui text-fg-tertiary">
+                  <span className="shrink-0 grow basis-1/3 truncate text-chat-meta text-fg-tertiary">
                     {snippet}
                   </span>
                 )}
                 {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
                 {isArchived(hit) && (
-                  <span className="ml-auto shrink-0 text-caption text-fg-tertiary">
+                  <span className="ml-auto shrink-0 text-xs text-fg-tertiary">
                     아카이브
                   </span>
                 )}
@@ -281,7 +281,7 @@ export function SearchList({
         {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
             여기 서지 않는다(`role="option"`이 없다). */}
         {state === "ready" && hits.length === 0 && (
-          <p data-note="" className="px-3 py-1.5 text-ui text-fg-secondary">
+          <p data-note="" className="px-3 py-1.5 text-chat-meta text-fg-secondary">
             맞는 것이 없습니다
           </p>
         )}
@@ -290,7 +290,7 @@ export function SearchList({
             (`showProblem`의 「…하지 못했습니다」). **이유는 안 적는다** — 여기로 오는 것은
             IO 오류뿐이라 사용자 손에 고칠 것이 없고, 다시 치는 것이 곧 다시 묻는 것이다. */}
         {state === "failed" && (
-          <p data-note="" className="px-3 py-1.5 text-ui text-fg-secondary">
+          <p data-note="" className="px-3 py-1.5 text-chat-meta text-fg-secondary">
             검색하지 못했습니다
           </p>
         )}

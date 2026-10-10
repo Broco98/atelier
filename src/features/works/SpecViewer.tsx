@@ -148,7 +148,7 @@ function SpecViewer({
                   에이전트가 읽는 자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
                   `SpecViewer.test.tsx`의 소스 검사가 리터럴이 들어오는 것을 막는다. */}
               <EmptyContent>
-                <code className="select-all rounded-lg bg-surface-code px-2.5 py-1.5 font-mono text-mono-sm text-fg-secondary">
+                <code className="select-all rounded-lg bg-surface-code px-2.5 py-1.5 font-mono text-xs text-fg-secondary">
                   {specDirRef(work.slug)}
                 </code>
               </EmptyContent>
@@ -177,7 +177,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-surface-under px-2 py-1 font-mono text-mono-sm text-fg-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-surface-under px-2 py-1 font-mono text-xs text-fg-tertiary">
           <ImageOff className="size-3.5 shrink-0" aria-hidden />
           {name}
         </span>
@@ -369,7 +369,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
     >
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
       <div data-frame-hint role="status" className="flex flex-col gap-1">
-        <span className="text-ui font-semibold tracking-[-0.01em]">단축키 둘이 지금 안 먹어요</span>
+        <span className="text-chat-meta font-semibold">단축키 둘이 지금 안 먹어요</span>
         {/* **둘만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩·⌘K는 네이티브 메뉴가 대신 받아 되살아난다
             (`components/shell/menu-hotkey.ts`). 남은 둘이 왜 그 길에 못 실리는지는
             `src-tauri/src/lib.rs`의 `HOTKEYS` 독이 든다 — 둘의 사정이 서로 다르다.
@@ -379,7 +379,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
             정확히 이 자리다 — 프레임 안에서도 열린다. */}
         {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 그대로다 — 둘 사이의 「·」까지
             붙여 둔다. 사이를 띄우면 「어느 둘인지」를 세는 L3(`spec-html.spec.ts`)의 글자가 갈린다. */}
-        <span className="text-ui leading-[1.6] text-fg-tertiary">
+        <span className="text-chat-meta text-fg-tertiary">
           <Kbd>⌃Tab</Kbd>·<Kbd>⌘W</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
@@ -400,7 +400,7 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
           -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
           소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
           예쁜 보기 본문과 같은 x에서 시작한다 (규격의 폭·최대폭·우측 여백은 그대로다) */}
-      <div className="-ml-12 overflow-x-auto font-mono text-mono [tab-size:4] scroll-quiet">
+      <div className="-ml-12 overflow-x-auto font-mono text-code [tab-size:4] scroll-quiet">
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
@@ -427,7 +427,7 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
 //   잡힌다. 짧은 문서에서 열이 쪼그라들어 두 보기의 좌우 위치가 어긋나는 걸 막는다.
 // 48px 대칭인 이유: 좌측은 여백이면서 동시에 거터의 자리다. 거터에서 줄범위 숫자가
 //   사라진 뒤로 그 자리를 정하는 건 소스 보기의 줄번호 열이다 —
-//   네 자리 "1024"는 `text-mono`(13px · 0.6em/자)에서 31.2px, 코드와 16px 떨어져야 하므로
+//   네 자리 "1024"는 `text-code`(13px · 0.6em/자)에서 31.2px, 코드와 16px 떨어져야 하므로
 //   47.2px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
 // **글 폭은 토큰이다**(ui-refresh 결정 12) — 글자가 서는 폭이 좁을 때 `--measure-read`(760), 넓을 때
 //   `--measure-wide`(1120)이고, 거터(좌우 48px)는 그 **밖**이다. 그래서 열의 최대 폭은 글 폭 + 96px이다.
@@ -445,11 +445,11 @@ export const bodyColumn = (wide: boolean) =>
 // 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
 // 둘은 반드시 함께 움직인다. 들여쓰기를 바꾸면 체크박스를 되돌리는 폭도 같이 바꿔야
 // 체크박스 항목의 본문 첫 글자가 불릿 항목의 본문과 같은 x에 선다.
-// 우측 여백 5px의 근거: 거터 22 - 체크박스 13 - 체크박스 뒤에 오는 공백 한 칸 3.98 = 5.02.
-// 3.98px은 본문 글꼴(macOS 시스템 글꼴 SF Pro 15px)에서 실측한 값이다(L3 WebKit 2026-10-11) — 글꼴이나 본문 크기가
+// 우측 여백 5.21px의 근거: 거터 22 - 체크박스 13 - 체크박스 뒤에 오는 공백 한 칸 3.79 = 5.21.
+// 3.79px은 본문 글꼴(macOS 시스템 글꼴 SF Pro, `chat-body` 14px)에서 실측한 값이다(L3 WebKit 2026-10-11) — 글꼴이나 본문 크기가
 // 바뀌면 다시 재야 한다. 시스템 글꼴이라 다른 OS에서는 공백 폭이 달라 첫 글자가 1px 안쪽으로 어긋날 수 있다.
 const listIndent = "pl-[22px]";
-const checkboxGutter = "-ml-[22px] mr-[5px]";
+const checkboxGutter = "-ml-[22px] mr-[5.21px]";
 
 interface PrettyViewProps {
   // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데 쓰고,
@@ -583,13 +583,14 @@ export const PrettyView = memo(function PrettyView({
       };
 
     const components: Components = {
-      // 글자는 DS 단계 이름 그대로다(ui-refresh 결정 25) — 단계가 줄 높이 · 굵기 · 자간까지 든다(제목 25/32 · 650 ·
-      // -0.01em, 소제목 19/28 · 600). 문단 · 목록은 크기 · 줄 높이(15/26)와 글자색(`fg`)을 본문(`article`)에서
-      // 물려받는다 — 여기서 색을 적으면 인용 안 문단이 인용의 흐린 글자를 덮는다.
-      h1: block("h1", "text-title", ""),
-      h2: block("h2", "text-h2", "mt-6"),
-      h3: block("h3", "text-body font-semibold", "mt-4"),
-      h4: block("h4", "text-row font-semibold", "mt-3"),
+      // 글자는 DS `Prose`의 단계다(codex-ds 티켓 03) — 단계가 줄 높이 · 굵기까지 든다(h1 `heading-lg` 24/28 · h2 `heading-sm`
+      // 18/26 · h3 `heading-xs` 16/24, 모두 600). DS에 없는 h4는 본문 크기의 굵은 글이다. 문단 · 목록은 크기 · 줄 높이
+      // (`chat-body` 14/22.75)와 글자색(`fg`)을 본문(`article`)에서 물려받는다 — 여기서 색을 적으면 인용 안 문단이 인용의
+      // 흐린 글자를 덮는다.
+      h1: block("h1", "text-heading-lg", ""),
+      h2: block("h2", "text-heading-sm", "mt-6"),
+      h3: block("h3", "text-heading-xs", "mt-4"),
+      h4: block("h4", "text-sm font-semibold", "mt-3"),
       p: block("p", "", "mt-1.5"),
       ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent}`, "mt-1.5"),
       ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent}`, "mt-1.5"),
@@ -650,9 +651,11 @@ export const PrettyView = memo(function PrettyView({
       // 머리 줄은 hover하지 않는다 — 고를 줄이 아니라 열의 이름이다.
       tr: ({ children }) => <tr className="group/row">{children}</tr>,
       // relative: 열 폭 손잡이가 이 칸의 오른쪽 끝(열 경계)에 서기 위한 기준 상자다.
-      // `font-normal`: 칸 머리의 굵기는 UA 기본(bold)이다 — DS 머리는 굵지 않은 `caption`이다.
+      // `font-normal`: 칸 머리의 굵기는 UA 기본(bold)이다 — 머리는 굵지 않은 `text-xs`다. 이 표는 DS `Prose`의 선 그은
+      // 표(13/20 · 머리 600 `fg`)가 아니라 옅은 면 위의 행이라, 글자도 행의 단계를 따른다 — 칸은 목록 행 `text-sm`
+      // (`SpecTable`), 머리는 행 메타 `text-xs`(DS README 「글자」 표). 13/20인 sans 단계는 DS에 없다.
       th: ({ children }) => (
-        <th className="relative px-3 py-1.5 text-left text-caption font-normal text-fg-secondary">
+        <th className="relative px-3 py-1.5 text-left text-xs font-normal text-fg-secondary">
           {children}
           <ColumnResizeHandle />
         </th>
@@ -708,7 +711,7 @@ export const PrettyView = memo(function PrettyView({
             // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-surface-under px-2 py-1 align-middle font-mono text-mono-sm text-fg-tertiary"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-surface-under px-2 py-1 align-middle font-mono text-xs text-fg-tertiary"
             >
               <ImageOff className="size-3.5 shrink-0" aria-hidden />
               {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
@@ -749,15 +752,15 @@ export const PrettyView = memo(function PrettyView({
           lang === "mermaid" ? (
             <MermaidBlock code={hastText(code)} />
           ) : (
-            // 코드 블록 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · 안쪽 12 · 16, 글자는 `text-mono`(13/20) 단계 그대로다.
+            // 코드 블록 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · 안쪽 12 · 16, 글자는 `text-code`(13/20) 단계 그대로다.
             <pre
-              className="overflow-x-auto rounded-card bg-surface-code px-4 py-3 font-mono text-mono scroll-quiet"
+              className="overflow-x-auto rounded-card bg-surface-code px-4 py-3 font-mono text-code scroll-quiet"
               {...props}
             >
               {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
                   아래 `code` 컴포넌트는 「`language-`가 없으면 인라인 코드」로 가르는데,
                   **언어를 안 적은 코드블록도 className이 없다.** 그대로 흘리면 여러 줄짜리
-                  블록이 인라인 껍데기(둥근 모서리·면·0.88em — 그때는 테두리까지)를 뒤집어쓰고, 인라인
+                  블록이 인라인 껍데기(둥근 모서리·면·안쪽 여백 — 그때는 테두리까지)를 뒤집어쓰고, 인라인
                   요소의 껍데기가 줄마다 끊겨 **줄 사이에 선이 그어진 것처럼** 보인다
                   (실물에서 그렇게 났다 — 사람이 「이상하게 겹친거잖아?」라고 지적한 그 화면).
                   ```mermaid처럼 언어를 적은 블록은 멀쩡해서 오래 안 걸렸다.
@@ -780,9 +783,9 @@ export const PrettyView = memo(function PrettyView({
         className?.includes("language-") ? (
           <code className={className}>{children}</code>
         ) : (
-          // 인라인 코드 — 코드 면(`surface-code`) · 테두리 없음 · 안쪽 1 · 6(DS `.at-doc code`). 크기는 px 단계가 아니라 `0.88em`이다 —
-          // 제목 안에서는 제목을 따라 커져야 한다(본문 15에서 13.2, DS의 13과 같은 자리다).
-          <code className="rounded-inline bg-surface-code px-1.5 py-px font-mono text-[0.88em] wrap-anywhere">
+          // 인라인 코드 — 코드 면(`surface-code`) · 테두리 없음 · 안쪽 1 · 6(DS `.at-doc code`). 글자는 DS `Prose` 인라인 코드의
+          // 13 — `text-code`(13/20) 단계다. 단계라 제목 안에서도 13이다(제목을 따라 커지지 않는다).
+          <code className="rounded-inline bg-surface-code px-1.5 py-px font-mono text-code wrap-anywhere">
             {children}
           </code>
         ),
@@ -794,8 +797,9 @@ export const PrettyView = memo(function PrettyView({
     // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
     // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 같은 열(`bodyColumn`)에서 맞춘 것과 같은 계약을
     // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다.
-    // 글자는 본문 단계(`text-body` 15/26)와 `fg`다(DS `.at-doc`) — 문단 · 목록 · 표 · 콜아웃이 물려받는다.
-    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-body text-fg")}>
+    // 글자는 문서 본문 단계(`text-chat-body` 14/22.75)와 `fg`다(DS `Prose`) — 문단 · 목록 · 콜아웃이 물려받는다(표는
+    // 글자색만 물려받고 크기는 `SpecTable`의 `text-sm`이다).
+    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-chat-body text-fg")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>

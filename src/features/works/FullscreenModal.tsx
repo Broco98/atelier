@@ -76,7 +76,7 @@ function FullscreenModal({
         finalFocus={opener}
       >
         <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
-          <span className="font-mono text-mono-sm text-fg-tertiary">{label}</span>
+          <span className="font-mono text-xs text-fg-tertiary">{label}</span>
           <span className="flex items-center gap-1">
             {controls}
             {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 이름보다 더 말하던 단축키는 설명으로 남긴다(S28 — `shortcut`). */}

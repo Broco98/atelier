@@ -352,56 +352,111 @@
     --shadow-float: 0 12px 32px rgba(20, 20, 28, 0.12), 0 0 0 1px rgba(20, 20, 28, 0.06);
 }
 
-/* **글자 단계 — 디자인 시스템의 열 단계뿐이다**(ui-refresh 결정 25). 이름은 DS(`base.css`의 `t-*`)
-   그대로이고, 단계마다 크기와 줄 높이를 함께 든다. 굵기 · 자간이 단계에 붙은 것은 h2 · title ·
-   mono-micro 셋이다(부르는 자리의 `font-*` · `tracking-*`이 덮는다).
-     meta        11 / 16   행 오른쪽 메타, 소제목 개수
-     caption     12 / 16   사이드바 소제목, 표 머리, 배지, 툴팁, 날짜
-     ui          13 / 20   알약 · 탭 · 메뉴 · 폼 · 트리 행 · 브레드크럼
-     row         14 / 20   사이드바 작업 행 · 목록 행 · 팔레트 행
-     body        15 / 26   spec 문서 본문
-     h2          19 / 28   문서 h2
-     title       25 / 32   문서 h1, 프로젝트 제목
-     mono        13 / 20   코드 블록 · 인라인 코드 · 속성 값
-     mono-sm     12 / 16   경로 · 브랜치 · 포트 · 복사 줄
-     mono-micro  10 / 14   트리의 확장자 배지만
-   DS의 굵은 조합은 토큰이 아니다 — `t-ui-strong`은 `text-ui font-semibold`, `t-row-nav`는
-   `text-row font-medium`이다. 고정폭 셋은 크기만 들고 글꼴은 `font-mono`가 든다.
+/* **글자 단계 — DS 단계뿐이다**(codex-ds 결정 27 · 티켓 03). 이름과 값은 DS 「Atelier」 2판 `type.groups` 그대로이고, 단계마다
+   크기 · 줄 높이를 들고 굵기 · 자간은 DS가 적은 것을 든다 — 12px 이하는 +0.025em, 32px 이상은 −0.025em, 제목은 모두 600이다.
+   Tailwind 이름은 `--text-<이름>` → `text-<이름>`이라 DS `text-sm`은 `text-sm`, `heading-lg`는 `text-heading-lg`, `code`는
+   `text-code`다. Atelier가 쓰는 자리는 DS README 「글자」 표의 「쓰는 곳」이다.
+     heading-lg  24 / 28 · 600       문서 h1 · 설정 제목 · 요약 타일 숫자 · 빈 화면 물음
+     heading-sm  18 / 26 · 600       문서 h2
+     heading-xs  16 / 24 · 600       문서 h3 · 확인 창 제목
+     chat-body   14 / 22.75          spec 문서 본문 · 대화 본문 · 말풍선
+     sm          14 / 20             work 행 · 목록 행 · 버튼 · 입력 · 설정 이름
+     nav-row     14 / 20 · 500       main nav 행(Atelier)
+     chat-meta   13 / 18             탭 · 트리 · 메뉴 · 경로 캡슐 · 머리 카드 이름 · 소제목
+     xs          12 / 18 · +0.025em  행 메타 · 배지 · 툴팁 · 시간 · 단축키
+     2xs         10 / 14 · +0.025em  트리의 확장자 꼬리표
+     code        13 / 20             코드 블록 · 명령 출력 · 경로 값
+   나머지(heading-5xl … heading-md · lg · md · 3xs · form-body · caps-*)도 DS 그대로 선언한다. 표에 없는 자리는 그 DS 부품의
+   값을 따른다. 단계는 글꼴을 안 든다 — `code`와 고정폭의 작은 글(경로 · 브랜치 · 포트 — `text-xs` · `text-2xs`)은 부르는 자리의
+   `font-mono`가 글꼴을 든다.
 
-   **`--text-*: initial`이 Tailwind 기본 단계(`text-xs` · `text-sm` …)를 비운다.** 그 이름들은 이제
-   아무 CSS도 안 나와 조용히 부모 크기를 물려받으므로, 이름 단계와 `text-[Npx]`는 `type-scale.test.ts`가
-   막는다. 클래스 합치기(`lib/utils.ts`의 `cn`)도 이 이름들을 크기로 알아야 한다 — 같은 검사가 잰다.
-   `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 글자 px는 단계로 옮기기 전의 기록이다 —
-   지금 크기는 클래스의 단계가 들고, 머리말에서도 단계 이름(`text-ui` …)으로 적힌 것이 지금 값이다.
+   **굵기 400은 적지 않는다.** DS는 글 · 대화 · 코드 단계에 400을 적지만, 단계가 굵기를 정하면 `font-medium` 버튼 안의 `text-xs`
+   글자가 400으로 돌아간다(Tailwind의 `--tw-font-weight`는 물려받지 않는 속성이다). 400은 본문의 기본값이라 적지 않아도 같은
+   값이 서고, 굵게 부르는 자리는 `font-*`가 든다 — 단계의 600 · 500도 그쪽이 덮는다.
+
+   **`--text-*: initial`이 Tailwind 기본 단계를 비운다.** DS가 다시 세운 이름(`text-xs` · `text-sm` · `text-md` · `text-lg` …)
+   밖의 이름(`text-base` · `text-xl` …)은 아무 CSS도 안 나와 조용히 부모 크기를 물려받으므로, 그것과 `text-[Npx]` · 걷은 옛
+   단계 이름은 `type-scale.test.ts`가 막는다. 클래스 합치기(`lib/utils.ts`의 `cn`)도 이 이름들을 크기로 알아야 한다 — 같은 검사가
+   잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 글자 px · 줄 높이는 단계로 옮기기 전의 기록이다 —
+   지금 크기 · 줄 높이는 클래스의 단계가 든다.
 
    **글자색 `--text-tertiary` · `--text-section`은 여기 들이지 않는다**(별칭 묶음의 주석) — 이 블록에
    들면 글자 크기로 읽힌다. */
 @theme static {
     --text-*: initial;
-    --text-meta: 11px;
-    --text-meta--line-height: 16px;
-    --text-caption: 12px;
-    --text-caption--line-height: 16px;
-    --text-ui: 13px;
-    --text-ui--line-height: 20px;
-    --text-row: 14px;
-    --text-row--line-height: 20px;
-    --text-body: 15px;
-    --text-body--line-height: 26px;
-    --text-h2: 19px;
-    --text-h2--line-height: 28px;
-    --text-h2--font-weight: 600;
-    --text-title: 25px;
-    --text-title--line-height: 32px;
-    --text-title--font-weight: 650;
-    --text-title--letter-spacing: -0.01em;
-    --text-mono: 13px;
-    --text-mono--line-height: 20px;
-    --text-mono-sm: 12px;
-    --text-mono-sm--line-height: 16px;
-    --text-mono-micro: 10px;
-    --text-mono-micro--line-height: 14px;
-    --text-mono-micro--font-weight: 500;
+    /* 제목 */
+    --text-heading-5xl: 72px;
+    --text-heading-5xl--line-height: 72px;
+    --text-heading-5xl--font-weight: 600;
+    --text-heading-5xl--letter-spacing: -0.025em;
+    --text-heading-4xl: 60px;
+    --text-heading-4xl--line-height: 60px;
+    --text-heading-4xl--font-weight: 600;
+    --text-heading-4xl--letter-spacing: -0.025em;
+    --text-heading-3xl: 48px;
+    --text-heading-3xl--line-height: 48px;
+    --text-heading-3xl--font-weight: 600;
+    --text-heading-3xl--letter-spacing: -0.025em;
+    --text-heading-2xl: 36px;
+    --text-heading-2xl--line-height: 42px;
+    --text-heading-2xl--font-weight: 600;
+    --text-heading-2xl--letter-spacing: -0.025em;
+    --text-heading-xl: 32px;
+    --text-heading-xl--line-height: 38px;
+    --text-heading-xl--font-weight: 600;
+    --text-heading-xl--letter-spacing: -0.025em;
+    --text-heading-lg: 24px;
+    --text-heading-lg--line-height: 28px;
+    --text-heading-lg--font-weight: 600;
+    --text-heading-md: 20px;
+    --text-heading-md--line-height: 26px;
+    --text-heading-md--font-weight: 600;
+    --text-heading-sm: 18px;
+    --text-heading-sm--line-height: 26px;
+    --text-heading-sm--font-weight: 600;
+    --text-heading-xs: 16px;
+    --text-heading-xs--line-height: 24px;
+    --text-heading-xs--font-weight: 600;
+    /* 글 */
+    --text-lg: 18px;
+    --text-lg--line-height: 29px;
+    --text-md: 16px;
+    --text-md--line-height: 24px;
+    --text-sm: 14px;
+    --text-sm--line-height: 20px;
+    --text-xs: 12px;
+    --text-xs--line-height: 18px;
+    --text-xs--letter-spacing: 0.025em;
+    --text-2xs: 10px;
+    --text-2xs--line-height: 14px;
+    --text-2xs--letter-spacing: 0.025em;
+    --text-3xs: 8px;
+    --text-3xs--line-height: 12px;
+    --text-3xs--letter-spacing: 0.025em;
+    /* 대화 */
+    --text-chat-body: 14px;
+    --text-chat-body--line-height: 22.75px;
+    --text-chat-meta: 13px;
+    --text-chat-meta--line-height: 18px;
+    --text-form-body: 14px;
+    --text-form-body--line-height: 20px;
+    --text-form-body--letter-spacing: -0.15px;
+    /* 라벨 */
+    --text-caps-lg: 13px;
+    --text-caps-lg--line-height: 19px;
+    --text-caps-lg--font-weight: 600;
+    --text-caps-lg--letter-spacing: 0.6px;
+    --text-caps-md: 11px;
+    --text-caps-md--line-height: 15px;
+    --text-caps-md--font-weight: 600;
+    --text-caps-md--letter-spacing: 0.65px;
+    /* 코드 */
+    --text-code: 13px;
+    --text-code--line-height: 20px;
+    /* Atelier */
+    --text-nav-row: 14px;
+    --text-nav-row--line-height: 20px;
+    --text-nav-row--font-weight: 500;
 }
 
 /* **Codex 움직임 · 크기**(codex-ds 결정 27). 값은 DS 「Atelier」 2판 그대로이고 다크가 없다. `static`이라 쓰는 유틸리티가
@@ -1117,7 +1172,7 @@ body.dragging-row * {
    (`sidebar-active-band` 결정 14) 그 줄은 걷혔다. */
 [data-title],
 [data-fade] {
-    /* 페이드 폭 — **한글 한 글자 남짓**이다. 제목(`text-row` 14px)의 한글 한 글자가 macOS의 시스템
+    /* 페이드 폭 — **한글 한 글자 남짓**이다. 제목(`text-sm` 14px)의 한글 한 글자가 macOS의 시스템
        글꼴(Apple SD Gothic Neo)에서 12.1px다(L3 WebKit 실측 2026-10-11). 이 수는 macOS의 것이다 — 글꼴이
        OS마다 달라 Playwright 리눅스 이미지(WenQuanYi Zen Hei)에서는 14px다. 한때 24px이었는데 그것은 두
        글자라 마스크가 상시인 동안 그 두 글자가 늘 흐렸다 — 12px로 줄이자 **또렷한 글자(끝까지 α=1)가 한
@@ -1301,7 +1356,7 @@ body.dragging-row * {
    (메뉴 역할), Select는 카드 안의 `listbox`가 목록이다(머리 · 바닥 칸이 목록 밖에 선다).
 
    `menu-row`는 한 줄이다 — 32px · 모서리 `rounded-lg`(메뉴 행, ui-refresh 결정 6) · 좌우 10px · 글리프
-   사이 9px · `text-ui`. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. 줄 안의 글리프는 크기를 안 준
+   사이 9px · `text-chat-meta`. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. 줄 안의 글리프는 크기를 안 준
    것이 15px이고 색을 안 준 것이 `fg-tertiary`다 — 부르는 자리가 그림에 바로 건 크기 · 색(체크의 `size-3`, 지우기
    줄의 빨강 `*:[svg]:text-danger`)이 이긴다(`:where`라 이 규칙의 특이도는 줄 클래스 하나뿐이고, 코어 유틸리티가 이 뒤에 선다).
    그림을 감싼 상자에 준 색은 이기지 못한다 — 이 규칙이 그림에 바로 걸려 상속을 막는다. 줄 끝의 체크가 그래서
@@ -1312,7 +1367,7 @@ body.dragging-row * {
 }
 
 @utility menu-row {
-  @apply h-8 shrink-0 gap-[9px] rounded-lg px-2.5 text-ui;
+  @apply h-8 shrink-0 gap-[9px] rounded-lg px-2.5 text-chat-meta;
   & :where(svg:not([class*="size-"])) {
     width: 15px;
     height: 15px;
@@ -1322,7 +1377,7 @@ body.dragging-row * {
   }
 }
 
-/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-meta`(11px) · 글리프 사이 6px · 오른쪽 여백 5px.
+/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 5px.
    조용한 갈래(`ShellMeta` — 셸 수)와 신호 갈래(`SignalMeta` — 경과)가 이 한 정의를 부른다.
    두 파일이 같은 문자열을 옮겨 적던 자리다. nav `Processes`의 메모리 합계(`ProcessesNavMeta`)도 nav `Terminal`과 같은
    오른쪽 끝에 서야 해서 이것을 부른다.
@@ -1334,15 +1389,15 @@ body.dragging-row * {
    **색은 안 정한다.** 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
    갈래의 경과는 상태색의 잉크를 든다(`SignalElapsed`) — 갈래마다 달라 부르는 자리가 든다. */
 @utility row-meta {
-  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-meta;
+  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-xs;
 }
 
 /* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(`fill-hover`) · `fg-secondary` 글자 · 줄바꿈 없음.
    줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」, Archive 문서 카드
    머리의 프로젝트가 이 한 정의를 부른다. 셋은 같은 문자열을 손으로 옮겨 적었고, Archive는 다른 모양(`rounded-lg` · `bg-accent`)이었다.
 
-   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」 · 프로젝트는 `text-caption`(DS 12px)이고, 원격 줄의 브랜치는
-   그 줄의 고정폭(`text-mono-sm`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
+   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」 · 프로젝트는 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는
+   그 줄의 고정폭(`text-xs` · `font-mono`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
    덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
    Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
 @utility tag {

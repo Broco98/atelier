@@ -386,7 +386,7 @@ function ShellTabs({
             //
             // **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고
             // 켜진 칸은 흰 면(`tab-on`)이다. 꺼진 칸의 글리프만 흐리다(`.at-tab .ic`).
-            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-fg transition-colors",
+            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-chat-meta text-fg transition-colors",
             spec.on ? "tab-on font-medium" : "hover:bg-fill-soft",
           )}
         >
@@ -685,7 +685,7 @@ const ShellTab = memo(function ShellTab({
       className={cn(
         // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18 — 탭 글자는 본문 색 `fg`) — 켜짐을 글자색으로
         // 가르지 않는다. 그것은 켜진 칸의 흰 면이 한다.
-        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-fg transition-colors",
+        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-chat-meta text-fg transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
         // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
         // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.

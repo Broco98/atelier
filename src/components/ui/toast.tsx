@@ -71,7 +71,7 @@ function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
       data-slot="toast"
       swipeDirection={[]}
       className={cn(
-        "flex origin-bottom items-center gap-2 floating-card px-3.5 py-3 text-ui outline-none focus-visible:ring-[3px] focus-visible:ring-(--accent)/50",
+        "flex origin-bottom items-center gap-2 floating-card px-3.5 py-3 text-chat-meta outline-none focus-visible:ring-[3px] focus-visible:ring-(--accent)/50",
         "transition-[opacity,scale] duration-100 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0",
         className
       )}

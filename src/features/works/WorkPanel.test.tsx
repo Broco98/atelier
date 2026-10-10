@@ -124,7 +124,7 @@ describe("WorkPanel 머리와 두 몸", () => {
     // 규격(500)이 아니다.
     const title = headOf(render(true)).match(/<span class="([^"]*)"[^>]*>spec</)?.[1] ?? "";
     expect(title, "제목을 찾지 못했다").not.toBe("");
-    expect(title).toContain("text-ui");
+    expect(title).toContain("text-chat-meta");
     expect(title).toContain("font-semibold");
   });
 

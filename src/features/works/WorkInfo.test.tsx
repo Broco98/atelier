@@ -229,9 +229,9 @@ describe("WorkInfo 구획의 모양", () => {
     const titles = [...render().matchAll(/<span class="([^"]*)">(작업|프로젝트|문서)<\/span><div/g)];
     expect(titles.map((m) => m[2])).toEqual(["작업", "프로젝트", "문서"]);
     for (const [, cls] of titles) {
-      expect(cls).toMatch(/\btext-ui\b/);
+      expect(cls).toMatch(/\btext-chat-meta\b/);
       expect(cls).toMatch(/\bfont-semibold\b/);
-      expect(cls).not.toMatch(/\btext-(fg-tertiary|fg-secondary|caption)\b/);
+      expect(cls).not.toMatch(/\btext-(fg-tertiary|fg-secondary|xs)\b/);
     }
   });
 

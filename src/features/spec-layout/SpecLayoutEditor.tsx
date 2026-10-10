@@ -126,7 +126,7 @@ function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
       {read.error !== null && (
         <FormBody>
           <div className="flex flex-col items-start gap-3">
-            <p className="text-ui leading-[1.7] text-danger">{String(read.error)}</p>
+            <p className="text-chat-meta text-danger">{String(read.error)}</p>
             {/* 쪽 동작 버튼이다 — 설정 파일 읽기 게이트의 [다시 읽기]와 같다(`Button`의 ghost · sm). */}
             <Button variant="ghost" size="sm" onClick={() => void read.refetch()}>
               다시 읽기
@@ -359,7 +359,7 @@ export function OutsideBanner({
         className="mx-auto flex max-w-(--measure-read) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-warning/10 py-1.5 pr-1.5 pl-4"
       >
         <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
-        <span className="min-w-40 flex-1 text-ui font-medium text-warning">
+        <span className="min-w-40 flex-1 text-chat-meta font-medium text-warning">
           {OUTSIDE_MESSAGE[verdict]}
         </span>
         {/* 두 버튼은 경고색 띠의 것이라 `Button`의 변형이 없다(develop도 그 띠를 손으로 짓는다). 흰 버튼의 hover는
@@ -367,14 +367,14 @@ export function OutsideBanner({
         <button
           type="button"
           onClick={onReload}
-          className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-ui font-medium text-fg transition-colors quiet-hover"
+          className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-sm font-medium text-fg transition-colors quiet-hover"
         >
           새로 불러오기
         </button>
         <button
           type="button"
           onClick={onKeep}
-          className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-ui font-medium text-warning transition-colors hover:bg-warning/10"
+          className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/10"
         >
           내 초안 유지
         </button>
@@ -575,7 +575,7 @@ export function TreeCard({
           onClick={() => onSelect([])}
           aria-pressed={at.length === 0}
           className={cn(
-            "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-ui transition-colors",
+            "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-chat-meta transition-colors",
             at.length === 0 ? "selected-row font-medium" : "text-fg-secondary hover:bg-fill-soft",
           )}
         >
@@ -922,7 +922,7 @@ function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boo
  * 이름이면 종류의 흐린 글리프다. 모르는 아이콘·템플릿 누락과 검증 오류는 행 끝에 표시가 붙는다 — 어디를
  * 골라야 하는지 트리에서 보인다.
  *
- * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-ui` · 14px `fg-tertiary` 글리프와 이름 사이 7px · hover
+ * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-chat-meta` · 14px `fg-tertiary` 글리프와 이름 사이 7px · hover
  * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 항목 행은 파일 · 폴더 모두 본문 글자색이다 — 한 단 흐린 것은 머리 `spec/`
  * 하나다(프로토타입 `Settings-editor`).
  */
@@ -974,7 +974,7 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-ui outline-none transition-colors focus-visible:ring-2 focus-visible:ring-(--accent)/50",
+        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-visible:ring-2 focus-visible:ring-(--accent)/50",
         drop === "inside"
           ? "bg-accent-soft text-fg ring-1 ring-inset ring-(--accent)"
           : selected
@@ -1024,7 +1024,7 @@ function ErrorLines({ errors, inset = false, id }: { errors: LayoutError[]; inse
         <p
           key={index}
           id={id === undefined ? undefined : `${id}-${index}`}
-          className={cn("text-ui leading-[1.6] text-danger", inset && UNDER_TITLE)}
+          className={cn("text-chat-meta text-danger", inset && UNDER_TITLE)}
         >
           {error.message}
         </p>
@@ -1103,7 +1103,7 @@ function EntryFields({
             icon={entry.icon ?? null}
             onPick={(icon) => onChange((draft, path) => setIcon(draft, path, icon))}
           />
-          {/* 큰 제목처럼 보이다가 가리키면 칸의 테두리가 선다 — 눌러서 고치는 제목이다(`Input`의 `entry-title` — `text-title`).
+          {/* 큰 제목처럼 보이다가 가리키면 칸의 테두리가 선다 — 눌러서 고치는 제목이다(`Input`의 `entry-title` — `text-heading-lg`).
               이 자리의 검증 오류가 있으면 **칸이 말한다**(develop 스토리 107) — 빨간 테두리와 스크린리더의 「잘못된 값」이 한
               속성(`aria-invalid`)에서 나오고, 그 붉은 줄들이 칸의 설명이다. */}
           <Input
@@ -1126,13 +1126,13 @@ function EntryFields({
         {unknownIcon(entry) && (
           <p
             className={cn(
-              "flex items-center gap-1.5 text-ui leading-[1.6] font-medium text-warning",
+              "flex items-center gap-1.5 text-chat-meta font-medium text-warning",
               UNDER_TITLE,
             )}
           >
             <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
             <span>
-              모르는 아이콘 <code className="text-mono-sm">{entry.icon}</code> — 앱이 그리지 않아요
+              모르는 아이콘 <code className="font-mono text-xs">{entry.icon}</code> — 앱이 그리지 않아요
             </span>
           </p>
         )}
@@ -1238,12 +1238,12 @@ function TemplateField({
                 없는 그림)와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다. */}
             <span
               title={`${folder}/${template}`}
-              className="max-w-full min-w-0 self-end truncate font-mono text-mono-sm text-fg-tertiary"
+              className="max-w-full min-w-0 self-end truncate font-mono text-xs text-fg-tertiary"
             >
               {folder}/{template}
             </span>
             {body === null && (
-              <p className="flex items-center gap-1.5 text-ui leading-[1.6] font-medium text-warning">
+              <p className="flex items-center gap-1.5 text-chat-meta font-medium text-warning">
                 <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
                 <span>레이아웃 폴더에 이 템플릿 파일이 없어요</span>
               </p>
@@ -1254,7 +1254,7 @@ function TemplateField({
               value={body ?? ""}
               onChange={(event) => onBody(event.target.value)}
               spellCheck={false}
-              className={cn(textareaLook, "font-mono text-mono")}
+              className={cn(textareaLook, "font-mono text-code")}
             />
           </div>
         ) : undefined
@@ -1387,7 +1387,7 @@ export function UnreadableLayout({
           aria-hidden
           className="mt-[3px] size-3.5 shrink-0 text-warning"
         />
-        <div className="flex min-w-0 flex-col gap-0.5 text-ui leading-[1.6]">
+        <div className="flex min-w-0 flex-col gap-0.5 text-chat-meta">
           <span className="font-medium text-warning">
             {layoutDirRef(read.folder)} 레이아웃을 읽지 못해 편집할 수 없어요
           </span>

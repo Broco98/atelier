@@ -382,7 +382,7 @@ function GroupRow({ group, total, fold }: { group: GroupNode; total: number | nu
         <span aria-hidden className="size-3.5 shrink-0" />
       )}
       <span className="min-w-0 truncate">{group.name}</span>
-      <span className="ml-0.5 shrink-0 text-caption font-normal text-fg-secondary">
+      <span className="ml-0.5 shrink-0 text-xs font-normal text-fg-secondary">
         {shellCount(group.shells.length)}
       </span>
     </TreeRow>
@@ -473,7 +473,7 @@ function ShellRows({
       >
         <SquareTerminal aria-hidden className="size-3.75 shrink-0 text-fg-tertiary" />
         <span className="min-w-0 truncate">{name}</span>
-        <span className="ml-1 flex min-w-0 items-center gap-1.5 text-caption text-fg-secondary">
+        <span className="ml-1 flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (

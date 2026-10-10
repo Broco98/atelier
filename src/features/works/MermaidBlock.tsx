@@ -11,7 +11,7 @@ import FullscreenModal from "./FullscreenModal";
 //
 // 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
 const toolbarButtonQuiet =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-inner px-1 text-caption text-fg-tertiary transition-colors quiet-hover";
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-inner px-1 text-xs text-fg-tertiary transition-colors quiet-hover";
 
 // 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
 // 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
@@ -163,7 +163,7 @@ function MermaidBlock({ code }: { code: string }) {
     // 코드 블록이다 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · `rounded-card` · 테두리 없음. 머리 줄과 그림 사이에도 선이 없다.
     <div className="overflow-hidden rounded-card bg-surface-code">
       <div className="flex items-center justify-between px-2.5 py-1.5">
-        <span className="font-mono text-mono-sm text-fg-tertiary">mermaid</span>
+        <span className="font-mono text-xs text-fg-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
@@ -203,18 +203,18 @@ function MermaidBlock({ code }: { code: string }) {
       </div>
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
-          <span className="text-ui text-danger">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-mono text-fg-secondary scroll-quiet">{code}</pre>
+          <span className="text-chat-meta text-danger">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
+          <pre className="overflow-x-auto font-mono text-code text-fg-secondary scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        // 면은 블록이 이미 든다 — 원본 코드는 같은 면 위에 바로 선다(코드 블록과 같은 안쪽 12 · 16, `text-mono` 13/20).
-        <pre className="overflow-x-auto px-4 py-3 font-mono text-mono text-fg-secondary scroll-quiet">{code}</pre>
+        // 면은 블록이 이미 든다 — 원본 코드는 같은 면 위에 바로 선다(코드 블록과 같은 안쪽 12 · 16, `text-code` 13/20).
+        <pre className="overflow-x-auto px-4 py-3 font-mono text-code text-fg-secondary scroll-quiet">{code}</pre>
       ) : (
         <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (
             <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
-            <span className="text-ui text-fg-tertiary">렌더링 중…</span>
+            <span className="text-chat-meta text-fg-tertiary">렌더링 중…</span>
           )}
         </div>
       )}

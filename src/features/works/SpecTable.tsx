@@ -38,7 +38,7 @@ export function ColumnResizeHandle() {
 
 // 열이 이보다 좁아지면 안에 든 것을 알아볼 수 없다. 이 파일의 다른 값들과 달리 48은
 // 잰 값이 아니라 고른 값이다 — 셀 좌우 패딩(px-3 둘 = 24px)을 빼면 글자 자리가 24px
-// 남고, `text-row`(14px) 본문에서 두어 글자다. 더 줄이려면 가장 짧은 열 머리가 줄바꿈 없이
+// 남고, `text-sm`(14px) 본문에서 두어 글자다. 더 줄이려면 가장 짧은 열 머리가 줄바꿈 없이
 // 들어가는 폭부터 재야 한다.
 const MIN_COLUMN_WIDTH = 48;
 
@@ -100,7 +100,8 @@ function ResizableTable({ className, children, ...props }: React.ComponentProps<
         {...props}
         className={cn(
           // `border-separate`: 줄 끝 칸의 둥근 모서리가 서려면 칸 경계가 합쳐지지 않아야 한다(`collapse`면 무시된다).
-          "border-separate border-spacing-0 text-row",
+          // 글자는 목록 행 단계 `text-sm`(14/20)이다 — DS `Prose` 표의 13/20이 아닌 까닭은 `SpecViewer`의 `th` 주석에 있다.
+          "border-separate border-spacing-0 text-sm",
           // 폭을 고정하기 전: 표 폭은 소스 보기의 긴 줄과 같은 규격이다 — w-max로 내용만큼
           // 넓어져 셀이 줄바꿈되지 않고, min-w-full로 좁은 표는 본문 폭을 채운다. w-full이면
           // 표가 컨테이너에 갇혀 넘칠 수가 없고, 넘치지 않으니 가로 스크롤도 생기지 않는다.

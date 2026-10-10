@@ -202,7 +202,7 @@ export function WorkSectionList({
           //
           // **목록이 넘칠 때만 보이는 병이라 오래 안 보였다.** 이 자리는 work이 0개일 때만 서고
           // 그때는 대개 목록이 안 넘친다 — 목록이 오기 전 한 프레임에 이 문구가 서는 창이 그 드문 때다.
-          <span className="mr-1 px-[9px] pb-1 text-ui leading-normal text-fg-tertiary">
+          <span className="mr-1 px-[9px] pb-1 text-chat-meta text-fg-tertiary">
             {emptyMainNotice(sections)}
           </span>
         ) : (
@@ -232,7 +232,7 @@ function EmptySlot({ section, lit }: { section: keyof SectionsOpen; lit: boolean
       data-lit={lit ? "" : undefined}
       aria-hidden
       className={cn(
-        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-lg border border-dashed text-ui transition-colors",
+        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-lg border border-dashed text-chat-meta transition-colors",
         margin,
         lit ? "border-(--accent) bg-accent-soft text-fg" : "border-border text-fg-tertiary",
       )}
@@ -282,9 +282,10 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
 
 // 섹션 헤더 — **헤더 전체가 접기 토글이다.** 라벨을 누르면 그 섹션이 접힌다.
 //
-// 라벨은 항목(`row` 14)보다 한 단 작은 `caption`(12/400)이고 색은 `fg-tertiary`다 — Codex 사이드바의
-// 소제목 값이다(ui-refresh 결정 11 · DS `.at-section`). 바탕 위 3.2:1로 옅은 것은 알고 둔 값이다(handoff
-// 「대비 미달을 알고 둔 값」) — 머리는 목적지가 아니라 목록의 이름표라서다.
+// 라벨은 항목(`text-sm` 14)보다 한 단 작은 `text-chat-meta`(13/18)이고 색은 `fg-tertiary`다 — Codex 사이드바의
+// 소제목 값이다(DS README 「글자」 표의 소제목 · `SidebarRow`의 「소제목 13 fg-tertiary」). 개수는 행 메타와 같은
+// `text-xs`다. 바탕 위 3.2:1로 옅은 것은 알고 둔 값이다(handoff 「대비 미달을 알고 둔 값」) — 머리는 목적지가 아니라
+// 목록의 이름표라서다.
 //
 // 접기 아이콘은 평소 숨어 있다가 헤더에 마우스를 올리면 나타난다 — 좁은 사이드바에서
 // 섹션마다 상시 노출된 아이콘은 정작 봐야 할 목록보다 먼저 눈에 들어온다. 다만 **접혀 있으면
@@ -329,7 +330,7 @@ function SectionHeader({
         className,
       )}
     >
-      <span className="shrink-0 text-caption text-fg-tertiary transition-colors group-hover:text-fg-secondary">
+      <span className="shrink-0 text-chat-meta text-fg-tertiary transition-colors group-hover:text-fg-secondary">
         {label}
       </span>
       {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
@@ -342,7 +343,7 @@ function SectionHeader({
         )}
       />
       {/* 수는 라벨과 같은 색이다(DS `.at-section b`) — 한 머리 안에서 둘이 다른 무게로 읽히지 않는다. */}
-      <span className="ml-auto shrink-0 text-meta tabular-nums text-fg-tertiary">{count}</span>
+      <span className="ml-auto shrink-0 text-xs tabular-nums text-fg-tertiary">{count}</span>
     </button>
   );
 }
@@ -575,7 +576,7 @@ function WorkRow({
           data-title=""
           className={cn(
             // 굵기는 400이다 — nav 항목만 500이다(DS `.at-row` · `.at-row.nav`). 목적지 넷과 작업 목록이 무게로 갈린다.
-            "min-w-0 flex-1 text-row",
+            "min-w-0 flex-1 text-sm",
             work.status === "done" && "text-fg-tertiary",
           )}
         >
