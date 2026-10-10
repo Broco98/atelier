@@ -41,23 +41,21 @@ const OPTIONS: FileOptions<undefined, undefined> = {
   enableGutterUtility: false,
 };
 
-let pool: WorkerPoolManager | undefined;
-
 /**
- * 워커 풀 — 앱에 **하나**이고, 코드 보기가 처음 설 때 띄워 앱이 끝날 때까지 둔다. 라이브러리의 React 공급자
- * (`WorkerPoolContextProvider`)는 마지막 공급자가 내려가면 풀을 끄는데, 파일 탭은 셸 탭과 오가며 수시로 내려간다 — 그때마다
- * 워커 둘을 다시 띄우고 WASM을 다시 올리지 않게 풀을 이 모듈이 쥔다.
+ * 워커 풀 — 앱에 **하나**이고(라이브러리의 싱글턴), 코드 보기가 처음 설 때 띄워 앱이 끝날 때까지 둔다. 라이브러리의 React
+ * 공급자(`WorkerPoolContextProvider`)는 마지막 공급자가 내려가면 풀을 끄는데, 파일 탭은 셸 탭과 오가며 수시로 내려간다 — 그때마다
+ * 워커 둘을 다시 띄우고 WASM을 다시 올리지 않게 공급자를 쓰지 않고 풀을 곧장 건넨다(`WorkerPoolContext`). 아무도 끄지 않는다.
  */
 function highlightPool(): WorkerPoolManager {
+  // 테마가 먼저 올라야 풀이 그 이름을 풀어 워커에 건넨다.
   registerCodeTheme();
-  pool ??= getOrCreateWorkerPoolSingleton({
+  return getOrCreateWorkerPoolSingleton({
     poolOptions: {
       workerFactory: () => new Worker(highlightWorkerUrl, { type: "module" }),
       poolSize: POOL_SIZE,
     },
     highlighterOptions: { theme: CODE_THEME, preferredHighlighter: ENGINE },
   });
-  return pool;
 }
 
 /**
