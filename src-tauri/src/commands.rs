@@ -564,7 +564,8 @@ pub async fn chat_new(
         .map_err(host_err)
 }
 
-/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다.
+/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다. 턴이 도는 동안의 말은 대기 줄에 들고(대기 줄 바뀜), 턴이
+/// 끝나면 차례로 간다.
 #[tauri::command]
 pub async fn chat_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
