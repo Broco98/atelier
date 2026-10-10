@@ -190,6 +190,16 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 시작 보고(프로세스 스펙 S11)는 **이 실행이 뜰 때 한 일**이다 — 앱 프로세스가 붙잡아 둔 값이라, 호출마다
     // 새로 뜨는 다리에는 붙잡을 실행이 없다. 거절되면 프런트는 토스트 없이 넘어간다(부팅 때의 설정 읽기와 같다).
     ("startup_report", |_| in_app_only("시작 보고는 앱 프로세스가 붙잡아 둔 값입니다")),
+    // 대화 명령(three-axes 티켓 05)은 **앱 프로세스가 쥔 대화 호스트**를 부른다 — 호스트는 오래 사는 에이전트 프로세스와
+    // 그 연결을 쥔다. 호출마다 새로 뜨고 끝나는 다리는 에이전트를 쥘 수 없고, 띄운다 해도 다리가 끝나는 순간 함께 끊긴다.
+    // 기록 읽기 · 목록처럼 파일만 읽는 것도 같이 둔다 — 떠 있는 대화의 마지막 seq는 호스트 메모리에 있다. 대화 기능은 L4로
+    // 재지 않는다(구현 스펙). 거절되면 대화창은 무너지지 않고 그 거절을 견딘다.
+    ("chat_check_engine", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_list", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_read_record", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_new", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_send", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_close", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가
@@ -368,7 +378,8 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 28] = [
+    const APP_SOURCES: [(&str, &str); 29] = [
+        ("chat.rs", include_str!("../../../src-tauri/src/chat.rs")),
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -521,6 +532,27 @@ mod tests {
         let confirm = body.find("crate::quit::confirm();").expect("`quit_app`이 「확인됨」을 안 세운다");
         let exit = body.find("app.exit(0);").expect("`quit_app`이 앱을 안 끈다");
         assert!(confirm < exit, "`quit_app`이 끈 뒤에 「확인됨」을 세운다 — 끄는 사이의 `terminate:`가 다시 막는다");
+    }
+
+    /// **대화 명령(`chat_`)은 전부 앱 안에서만 돈다**(three-axes 구현 스펙 「앱 잇기」). 대화 호스트는 오래 사는 에이전트
+    /// 프로세스를 쥐는데, 다리는 부를 때마다 뜨고 끝나는 CLI라 쥘 수 없다 — 성공으로 때우는 스텁을 두면 L4가 대화 화면을
+    /// 관통한 것처럼 보인다. 등록부에서 이름을 읽어 표의 처리기를 **실제로 불러** 거절의 말을 본다(인자 없이 — 인자를
+    /// 요구하는 진짜 처리기라면 다른 말로 거절한다). 대화 명령을 하나도 못 읽으면 읽기가 샌 것이다.
+    #[test]
+    fn 대화_명령은_모두_다리로_탈_수_없다() {
+        let chat: Vec<String> = registered().into_iter().filter(|name| name.starts_with("chat_")).collect();
+        assert!(!chat.is_empty(), "등록부에서 대화 명령을 하나도 못 읽었다 — 앱이 대화 호스트를 안 잇거나 읽기가 샜다");
+        for name in chat {
+            let (_, handler) = HANDLERS
+                .iter()
+                .find(|(handled, _)| *handled == name)
+                .unwrap_or_else(|| panic!("다리의 표에 {name}이 없다"));
+            let answer = handler(&serde_json::Map::new());
+            assert!(
+                matches!(&answer, Err(reason) if reason.starts_with("이 커맨드는 다리로 탈 수 없습니다")),
+                "{name}이 앱 밖에서 답한다 — {answer:?}"
+            );
+        }
     }
 
     /// 커맨드가 하나 늘었는데 다리가 그대로면, 그 커맨드를 쓰는 화면은 L4에서 조용히

@@ -231,16 +231,7 @@ fn 턴_도중에_work_폴더가_옮겨지면_턴_끝에_모든_파일을_지움�
     sandbox.open_gate("may-end");
 
     let path = archived.join("agents").join(format!("{}.jsonl", conversation.id));
-    let deadline = std::time::Instant::now() + common::PATIENCE;
-    let record = loop {
-        let record: Vec<Value> =
-            fs::read_to_string(&path).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
-        if !of_kind(&record, "turn-end").is_empty() || std::time::Instant::now() > deadline {
-            break record;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
-    assert_eq!(of_kind(&record, "turn-end").len(), 1, "{}", common::lines_text(&record));
+    let record = common::wait_record_at(&path, |record| !of_kind(record, "turn-end").is_empty());
     assert_eq!(of_kind(&record, "changes").len(), 0, "옛 자리에는 아무것도 없지만 지운 것이 아니다");
     assert!(!work.exists(), "옛 자리에 폴더를 다시 만들지 않았다");
 

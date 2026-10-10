@@ -26,18 +26,11 @@ const MAX_EDITS: usize = 1000;
 /// 찍는 자리 — work 폴더와 그 spec 폴더. 목록은 스펙 트리와 같은 것(`atelier_core::spec_files`)을 걷는다.
 #[derive(Debug, Clone)]
 pub(crate) struct SpecPlace {
-    /// works 루트와 work slug — work가 아직 그 자리에 있는지 본다.
+    /// works 루트와 work slug — 턴 끝에 work가 아직 그 자리에 있는지 본다(호스트의 `work_vanished`).
     pub works_root: PathBuf,
     pub work: String,
     pub work_dir: PathBuf,
     pub spec_dir: PathBuf,
-}
-
-impl SpecPlace {
-    /// work가 아직 그 자리에 있나 — 「work가 있다」의 판정은 코어의 것(`work.json`을 읽는다)을 쓴다.
-    pub(crate) fn work_exists(&self) -> bool {
-        atelier_core::read_work(&self.works_root, &self.work).is_ok()
-    }
 }
 
 /// spec 폴더를 한 번 찍은 것 — 상대 경로(`/`로 이음)마다 그때의 파일.
