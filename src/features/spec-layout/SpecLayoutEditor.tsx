@@ -31,6 +31,7 @@ import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
+import { Crumbs } from "@/components/ui/crumbs";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
@@ -416,9 +417,11 @@ function EditorFrame({
       <Card
         as="main"
         label={`${name} 레이아웃 편집기`}
-        // 최소 폭은 머리의 조작(뒤로 32 · 「LLM이 받는 텍스트」 · 「저장」 · 틈 · 좌우 여백 ≈ 270)이 다 서는 폭이다 — 위치 캡슐은
-        // 줄어 말줄임이 받는다. 트리 카드가 이 폭을 남기고 자리를 내준다(공용 틀의 옆 칸).
-        className="min-w-75 flex-1"
+        // **최소 폭은 머리의 조작(뒤로 · 「LLM이 받는 텍스트」 · 「저장」)이 다 서는 폭이고, 수가 아니라 그 조작들의 폭에서 나온다**
+        // (`min-w-min`). 글자가 시스템 글꼴이라 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수는 한쪽 OS에서 「저장」을 자른다.
+        // 그래서 카드의 min-content에 머리만 든다 — 몸은 제 내용 폭을 바깥에 안 알리고(`contain-inline-size`), 위치 캡슐도 그 칸이
+        // 알리지 않아(아래) 줄어 말줄임이 받는다. 트리 카드가 이 폭을 남기고 자리를 내준다(공용 틀의 옆 칸).
+        className="min-w-min flex-1 [&>:not([data-slot=card-head])]:contain-inline-size"
         head={
           <CardHead
             lead={
@@ -427,9 +430,14 @@ function EditorFrame({
                 <ArrowLeft aria-hidden />
               </Button>
             }
-            crumbs={["Settings", settingsItem("spec-layout").label, name]}
             end={actions}
-          />
+          >
+            {/* 위치 캡슐의 칸 — 남는 폭을 다 받고 제 글자 폭은 바깥에 안 알린다(`contain-inline-size`). 칸의 바닥 28은 캡슐의
+                좌우 안쪽 여백(`px-3.5` 둘)이다 — 그보다 좁으면 빈 캡슐이 옆 조작 위로 삐져나온다. */}
+            <div className="flex min-w-7 flex-1 contain-inline-size">
+              <Crumbs items={["Settings", settingsItem("spec-layout").label, name]} />
+            </div>
+          </CardHead>
         }
       >
         {/* 제목 역할은 이 줄이 진다 — 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자다(설정 페이지와 같다). */}

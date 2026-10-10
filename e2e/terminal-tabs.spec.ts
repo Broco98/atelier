@@ -1,9 +1,10 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
-import { BELOW_APP_MIN, fillToCap, MAX_SHELLS, rowOf, settle, widenSidebar } from "./tab-row";
+import { fillToCap, MAX_SHELLS, rowOf, settle, squeezedWidth, widenSidebar } from "./tab-row";
 import type { Row } from "./tab-row";
 import {
+  awaitSpawned,
   callCount,
   fireWindowEvent,
   holdTerminalFonts,
@@ -15,6 +16,7 @@ import {
   stubWindowFocus,
   토큰색,
   unknownIpcCalls,
+  writeShell,
 } from "./harness";
 
 // 판 03 — `/terminal`의 머리행도 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
@@ -178,18 +180,21 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-for (const width of [900, BELOW_APP_MIN]) {
-  test(`스크롤이 선 줄에서도 ⌘로 고른 칸이 보이는 자리로 온다 — ${width}px`, async ({ page }) => {
+for (const at of ["900px", "칸 하나 폭 상자"] as const) {
+  test(`스크롤이 선 줄에서도 ⌘로 고른 칸이 보이는 자리로 온다 — ${at}`, async ({ page }) => {
     // 결정 20이 만든 빚이다 — 안 보이는 칸이 생기면 ⌘1~9가 그 칸을 고를 수 있고, 그러면
     // 「눌렀는데 아무 일도 없다」로 읽힌다. 키는 폭을 모르므로 줄이 끌어와야 한다.
     //
-    // **900px은 앱 창의 최소 폭이다** — 여러 칸이 스크롤로 넘어간다. `BELOW_APP_MIN`은 넓힌 사이드바와 함께 상자가 가장
-    // 좁은(칸 하나) 자리다(`tab-row.ts` 머리말 — 한때 900px 창에 작업 패널이 열린 기본 배치가 그 자리였다).
-    if (width === BELOW_APP_MIN) await widenSidebar(page);
+    // **900px은 앱 창의 최소 폭이다** — 여러 칸이 스크롤로 넘어간다. 칸 하나 폭 상자는 넓힌 사이드바가 탭 줄의 바닥에 눌려
+    // 선 창에서 상자가 가장 좁은 자리다(`squeezedWidth`, `tab-row.ts` 머리말 — 한때 900px 창에 작업 패널이 열린 기본 배치가
+    // 그 자리였다). 그 창 폭은 줄이 다 선 뒤에 그 줄의 바닥을 재서 낸다.
+    const narrowest = at !== "900px";
+    if (narrowest) await widenSidebar(page);
     await installFixtureBackend(page);
-    await page.setViewportSize({ width, height: 800 });
+    await page.setViewportSize({ width: 900, height: 800 });
     await page.goto(`/works/${plainWork.slug}?tab=terminal`);
     await fillToCap(page);
+    if (narrowest) await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
     await settleStrip(page);
 
     const strip = page.locator("[data-tab-strip]");
@@ -295,6 +300,9 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   // 결정 11의 **순서**다 — 이름이 말줄임으로 줄다가, 몇 글자도 못 세우는 폭에서 자리를
   // 비운다. 창 폭이 아니라 **칸 수**로 폭을 미는 것은 그 사이에 사이드바·패널 폭이
   // 끼지 않아서다 — 재는 것은 같은 한 가지(칸 하나의 폭)다.
+  //
+  // **이름은 폭이 아니라 칸과의 관계로 잰다** — 글자가 시스템 글꼴이라 같은 이름도 OS마다 폭이 다르다(codex-ds 결정 3).
+  // 칸 안에 서고, 넘치면 말줄임이 받는다. 넘치는 쪽을 함께 보려고 둘째 칸에 칸보다 긴 이름(셸 타이틀)을 준다.
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -302,6 +310,8 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   const tabs = page.locator('[data-tab="shell"]');
   const plus = page.locator('[data-tab="new"]');
   const name = tabs.first().getByText(SHELL_NAME, { exact: true });
+  const LONG = "칸 하나로는 다 못 담는 아주 긴 셸 이름 — 끝이 말줄임으로 접힌다";
+  const long = tabs.nth(1).getByText(LONG, { exact: true });
 
   await expect(tabs).toHaveCount(1);
   // **`+`를 연달아 누른다** — 사람이 그렇게 연다. 첫 칸이 떼어진 채 글꼴이 와도 그 셸은 뜨고
@@ -309,8 +319,28 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   await plus.click();
   await plus.click();
   await expect(tabs).toHaveCount(3);
-  // 셋일 때는 이름이 보인다.
-  expect((await name.boundingBox())!.width).toBeGreaterThan(10);
+  await awaitSpawned(page, 3);
+  await writeShell(page, `\x1b]0;${LONG}\x07`, 2);
+  await expect(long).toHaveCount(1);
+
+  /** 이름 글자가 제 칸 안에 서는가 · 글자가 잘렸나(넘침) · 잘리면 말줄임이 받는가. */
+  const 이름 = (target: typeof name) =>
+    target.evaluate((el) => {
+      const own = el.getBoundingClientRect();
+      const cell = el.closest('[data-tab="shell"]')!.getBoundingClientRect();
+      return {
+        보인다: own.width > 1,
+        칸안: own.left >= cell.left - 0.5 && own.right <= cell.right + 0.5,
+        잘림: el.scrollWidth > el.clientWidth,
+        말줄임: getComputedStyle(el).textOverflow === "ellipsis",
+      };
+    });
+  // 셋일 때는 이름이 보인다 — 짧은 이름은 다 서고, 긴 이름은 칸을 넘지 않고 말줄임으로 접힌다.
+  expect(await 이름(name)).toEqual({ 보인다: true, 칸안: true, 잘림: false, 말줄임: true });
+  expect(await 이름(long)).toEqual({ 보인다: true, 칸안: true, 잘림: true, 말줄임: true });
+  // 둘째 칸의 이름을 되돌린다 — 아래 `fillToCap`이 칸이 섰는지를 픽스처 셸 이름(`… 닫기`)으로 센다(`awaitSpawned`).
+  await writeShell(page, `\x1b]0;${SHELL_NAME}\x07`, 2);
+  await expect(long).toHaveCount(0);
   // **그리고 그때는 스크롤이 없다** — 스크롤은 칸이 바닥에 닿은 뒤의 마지막 수단이지
   // 늘 서 있는 것이 아니라는 것이 이 한 줄이다(결정 20).
   const room = await rowOf(page);

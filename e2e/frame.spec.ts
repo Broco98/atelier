@@ -137,6 +137,10 @@ test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 330 카드이
 // 앱의 최소 창(900 — `tauri.conf.json`)에서 사이드바를 연 채로도 두 카드 머리의 조작이 카드 안에 다 선다. 트리 카드가 330을
 // 고집하면 폼 카드가 머리의 조작(뒤로 · 「LLM이 받는 텍스트」 · 「저장」)보다 좁아진다 — 카드가 모서리 밖을 자르므로
 // (`overflow-hidden`) 넘친 「저장」이 반쯤 잘린다. 그래서 그 폭에서만 트리 카드가 폼 카드에 자리를 내준다(작업 패널 칸과 같은 손버릇).
+//
+// **두 머리의 폭은 수로 정해져 있지 않다** — 글자가 시스템 글꼴이라 OS마다 다르다(macOS SF Pro · 리눅스 PR 게이트의 제 글꼴). 그래서
+// 폼 카드의 바닥이 제 머리의 폭이고, 두 머리가 창에 안 들면 사이드바가 자리를 내준다(`Frame`의 `BesideBox`). 이 검사는 어느 글꼴에서나
+// 같은 관계를 잰다: 조작이 카드 안이고, 트리 카드도 창 안이다 — 창 밖으로 밀린 카드의 조작은 「카드 안」이어도 안 보인다.
 test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 두 카드 머리의 조작이 카드 안에 다 선다", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
   await installFixtureBackend(page);
@@ -156,6 +160,8 @@ test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 두
   expect(await inside(page.getByRole("button", { name: "저장", exact: true }), main), "저장").toBe(true);
   expect(await inside(page.getByRole("button", { name: "파일 항목 추가", exact: true }), tree), "파일").toBe(true);
   expect(await inside(page.getByRole("button", { name: "고른 항목 지우기", exact: true }), tree), "지우기").toBe(true);
+  const edge = page.viewportSize()!.width - (await token(page, "--gap"));
+  expect((await boxOf(tree)).right, "트리 카드가 창 안").toBeLessThanOrEqual(edge);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

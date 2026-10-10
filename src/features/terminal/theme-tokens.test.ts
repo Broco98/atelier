@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { cssBlocks, resolved } from "@/css-tokens";
 import type { CssScope } from "@/css-tokens";
+import { fontList, SYSTEM_MONO } from "@/system-font";
 import { FONT_FAMILY } from "./terminal-defaults";
 import { terminalThemeDark, terminalThemeFor, terminalThemeLight } from "./terminal-theme";
 
@@ -34,29 +35,20 @@ const themeToken = (name: string) => {
   return value;
 };
 
-// 따옴표와 공백만 다른 것은 같은 목록이다: CSS는 `'Geist Mono Variable', ui-monospace, …`,
-// xterm 옵션은 따옴표 없는 한 문자열이다.
-const fontList = (raw: string) =>
-  raw
-    .replace(/['"]/g, "")
-    .split(",")
-    .map((one) => one.trim())
-    .join(", ");
-
 describe("터미널이 앱 팔레트에서 옮겨 적은 값", () => {
-  // **이 짝은 이 판에서 일부러 끊겼다.** 여기 있던 검사는 「터미널 글꼴 목록이 `--font-mono`와
+  // **이 짝은 일부러 끊겨 있다.** 여기 있던 검사는 「터미널 글꼴 목록이 `--font-mono`와
   // 같다」였는데, 결정 55가 터미널만 `JetBrainsMonoNL Nerd Font`로 옮기고 앱 전체 mono는
-  // `Geist Mono`로 남겼다 — 아이콘이 필요한 곳은 터미널 하나고, 문서 코드 블록·경로·spec
-  // 원문에는 필요 없다(`index.css` 머리말의 「`--font-mono`는 건드리지 않는다」).
+  // 남겼다 — 아이콘이 필요한 곳은 터미널 하나고, 문서 코드 블록·경로·spec 원문에는 필요 없다
+  // (`index.css` 머리말의 「`--font-mono`는 터미널 글꼴을 따르지 않는다」). 앱 전체 mono는 이제
+  // 시스템 mono 줄이다(codex-ds 결정 3 — 글꼴도 캔버스 값). 그 줄은 `src/system-font.ts`가 DS에서 옮겨 들고, L3
+  // `system-font`가 같은 줄로 실제 요소를 잰다.
   //
   // 그래서 지키는 것을 「같다」에서 **「갈라진 채로 있다」**로 뒤집는다. 터미널 글꼴을 다시
   // 만지는 사람이 「짝이 어긋났네」 하고 `--font-mono`까지 끌고 가면 앱의 모노 글자가 전부
   // 아이콘 글꼴로 바뀌는데, 그 변화는 화면 어디에도 「바꿨다」고 적히지 않는다.
-  it("앱 전체 --font-mono는 터미널 글꼴을 따라가지 않는다", () => {
+  it("앱 전체 --font-mono는 시스템 mono 줄이고 터미널 글꼴을 따라가지 않는다", () => {
     const appMono = fontList(themeToken("font-mono"));
-    expect(appMono.startsWith("Geist Mono Variable"), `--font-mono가 바뀌었다: ${appMono}`).toBe(
-      true,
-    );
+    expect(appMono, `--font-mono가 시스템 mono 줄이 아니다: ${appMono}`).toBe(fontList(SYSTEM_MONO));
     expect(appMono, "터미널 글꼴이 앱 전체 mono를 함께 끌고 갔다").not.toBe(fontList(FONT_FAMILY));
   });
 

@@ -287,7 +287,8 @@ function asideClass(open: boolean, dragging: boolean): string {
     // **탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다) 끄는 최소 폭(`--sidebar-min`)
     // 까지만 준다. 탭 줄이 모자랄 때 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`) — 작업 패널은 줄 아래
     // 카드 줄에 서서(ui-refresh 결정 4) 줄과 폭을 다투지 않으므로, 이제 그 차례는 앱 창의 최소 폭(900) 아래에서만
-    // 온다(e2e `tab-row.ts`의 `BELOW_APP_MIN`). 다른 화면의 본문은 자리를 요구하지 않아 그 화면들에서는 늘 고른 폭이다.
+    // 온다(e2e `tab-row.ts`의 `squeezedWidth`). 탭 줄 말고 자리를 요구하는 것은 편집기의 두 카드 머리 하나다(`Frame`의
+    // `BesideBox` — 넓혀 둔 사이드바와 좁은 창이면 온다). 다른 화면의 본문은 자리를 요구하지 않아 그 화면들에서는 늘 고른 폭이다.
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
     // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.

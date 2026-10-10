@@ -107,16 +107,19 @@ function Frame<Id extends string>({
   const panelId = useId();
   return (
     // **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)이 사이드바에게 자리를
-    // 요구하는 길이다. 카드 줄은 제 내용 폭을 안 알리므로(아래) 넓은 문서 · xterm이 그 바닥을 부풀리지 않는다.
+    // 요구하는 길이다. 카드 줄은 제 내용 폭을 안 알리므로(아래) 넓은 문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선
+    // 줄만 두 카드의 머리를 알린다(`BesideBox`).
     <div data-tauri-drag-region className="flex min-h-0 min-w-min flex-1 bg-chrome">
       <div data-tauri-drag-region className={cn("flex flex-1 flex-col pb-(--gap)", TAB_ROW_COLUMN)}>
         <TitleBar sidebarOpen={sidebarOpen}>{titlebar}</TitleBar>
         {/* 카드 줄. 사이드바가 열렸으면 왼쪽 틈이 0이다 — 사이드바 쪽 여백이 그 틈으로 보인다(프로토타입 `.at-main` ·
             `.at-sidebar`). 사이드바가 접히면 카드가 창 왼쪽 틈까지 넓어진다. 여백은 바탕 줄의 여백과 같은 곡선으로
             따라온다 — 사이드바 폭 트랜지션(`PANEL_MOTION`)과 박자가 다르면 카드 모서리가 자리를 지나쳤다 되돌아온다(index.css의
-            `--ease-panel`). `relative`는 `overlay`의 기준이다. */}
+            `--ease-panel`). `relative`는 `overlay`의 기준이다. 옆 칸이 서면 이 줄은 본문 열의 격리(`TAB_ROW_COLUMN`)를 벗는다 —
+            두 카드의 머리가 바닥에 들어 모자라면 사이드바가 자리를 내준다(`BesideBox`). */}
         <div
           data-tauri-drag-region
+          style={beside ? { contain: "none" } : undefined}
           className={cn(
             "relative flex min-h-0 flex-1 pr-(--gap) transition-[padding]",
             PANEL_MOTION,
@@ -299,7 +302,11 @@ function ColumnCard({ column }: { column: SplitColumn }) {
  *
  * 폭을 `flex-basis`로 주고 줄어들게 둔다(`min-w-0`) — 창이 좁아 본문 카드가 제 최소 폭보다 좁아질 때만 그만큼 자리를 내준다. 앱의 최소
  * 창(900)에서 사이드바를 연 채면 고정 폭을 고집하는 순간 본문 카드 머리의 조작이 카드 모서리에 잘린다. 작업 패널 칸이 문서 카드에
- * 최소 폭을 남기는 것과 같은 손버릇이다(`PanelBox`). 본문 카드의 최소 폭은 그 카드의 몫이다(화면이 건넨다).
+ * 최소 폭을 남기는 것과 같은 손버릇이다(`PanelBox`). 본문 카드의 최소 폭은 그 카드의 몫이다(화면이 건넨다 — 편집기는 머리의 폭).
+ *
+ * **두 카드의 머리가 탭 줄처럼 바닥이다.** 옆 칸이 선 카드 줄은 본문 열의 격리를 벗고(위 카드 줄), 이 카드의 몸은 제 내용 폭을 안
+ * 알린다(`contain-inline-size`) — 그래서 줄의 min-content가 본문 카드의 바닥과 이 카드 머리의 폭이고, 둘이 창에 안 들면 사이드바가
+ * 자리를 내준다. 머리의 글자는 시스템 글꼴이라 OS마다 폭이 달라(codex-ds 결정 3) 그 합을 수로 적어 둘 수 없다.
  */
 function BesideBox({ slot }: { slot: BesideSlot }) {
   return (
@@ -308,7 +315,7 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
       style={{ flexBasis: `calc(${slot.width}px + var(--gap))` }}
       className="flex min-w-0 pl-(--gap)"
     >
-      <Card label={slot.label} className="flex-1">
+      <Card label={slot.label} className="flex-1 [&>:not([data-slot=card-head])]:contain-inline-size">
         {slot.children}
       </Card>
     </div>

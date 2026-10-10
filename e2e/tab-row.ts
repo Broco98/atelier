@@ -9,15 +9,43 @@ import { openShell } from "./harness";
 /** 셸 상한(결정 30). `shell-registry`의 `MAX_SHELLS`와 같은 수다 — 이 줄이 가장 붐비는 폭이다. */
 export const MAX_SHELLS = 8;
 
+/** 탭 줄이 바닥에 닿아 넓혀 둔 사이드바(400)가 눌려 서는 폭 — 최소 폭(240)과 400 사이 어디든 「본문 열이 바닥에 선다」는 같다. */
+export const SQUEEZED_SIDEBAR = 300;
+
 /**
- * **칸 하나 폭 상자**(`ShellTabs`의 상자 바닥 44px)를 세우는 창 폭 — 앱 창의 최소 폭(900, `tauri.conf.json`) **아래**다.
+ * **칸 하나 폭 상자**(`ShellTabs`의 상자 바닥 44px)를 세우는 창 폭 — 탭 줄이 바닥에 닿아 넓혀 둔 사이드바(`widenSidebar`)가
+ * `SQUEEZED_SIDEBAR`로 눌려 서는 폭이다. 앱 창의 최소 폭(900, `tauri.conf.json`) **아래**다.
  *
  * 한때 900px 창에 작업 패널이 열린 기본 배치가 그 상자였다 — 패널이 탭 줄 옆에 서서 줄의 폭을 나눠 가졌다. 패널이 탭 줄
- * 아래 카드 줄로 내려온 뒤로(ui-refresh 결정 4 · 27) 줄이 받는 폭은 창에서 사이드바만 뺀 나머지이고, 탭 줄의 바닥(약 345)과
- * 넓힌 사이드바(400)를 더해도 900에 못 미친다. 바닥까지 눌린 상자를 지키는 장치(열의 `min-w-min` · 상자의 `min-w-[44px]` ·
- * 끄는 동안 가장자리 구르기)는 그대로라, 그 상자를 재는 검사는 사이드바를 넓혀 두고(`widenSidebar`) 이 폭에서 잰다.
+ * 아래 카드 줄로 내려온 뒤로(ui-refresh 결정 4 · 27) 줄이 받는 폭은 창에서 사이드바만 뺀 나머지이고, 탭 줄의 바닥(work 화면
+ * 기준 macOS 약 315 · Playwright 리눅스 이미지 약 309 — L3 WebKit 실측 2026-10-11)과 넓힌 사이드바(400)를 더해도 900에 못
+ * 미친다. 바닥까지 눌린 상자를 지키는 장치(열의 `min-w-min` · 상자의 `min-w-[44px]` · 끄는 동안 가장자리 구르기)는
+ * 그대로라, 그 상자를 재는 검사는 사이드바를 넓혀 두고 이 폭에서 잰다.
+ *
+ * **수가 아니라 상자로 잰다.** 줄의 바닥(본문 열의 min-content)에는 글자가 든다 — `spec` 탭과 조작 묶음의 글자가 시스템 글꼴이라
+ * OS마다 폭이 다르다(codex-ds 결정 3). 한때 여기는 660이라는 수였는데(그때의 번들 글꼴로 잰 바닥 약 345), 바닥이 그 수와 갈리면
+ * 사이드바가 안 눌리거나 최소 폭까지 눌려 이 폭을 딛는 검사가 다른 것을 잰다. 그래서 지금 화면의 바닥을 재서 창 폭을 낸다 — 본문
+ * 열을 한 번 제 min-content 폭으로 세워 읽고 되돌린다. 그 폭이 열의 `min-w-min`이 사이드바에게 요구하는 바로 그 값이다.
+ *
+ * 화면을 연 **뒤에**, 창이 넉넉한 채로 부른다 — 바닥은 그 화면의 줄이 정하고, 사이드바 · 본문 열 말고 줄에 선 것(레일 열)의 폭은
+ * 넘침 없는 배치에서 읽는다.
  */
-export const BELOW_APP_MIN = 660;
+export async function squeezedWidth(page: Page): Promise<number> {
+  const { floor, rest } = await page.evaluate(() => {
+    // 본문 열 — 바탕 줄(문서의 첫 `header`)을 이는 열이다(`panel-layout`의 `TAB_ROW_COLUMN`).
+    const column = document.querySelector("header")!.parentElement!;
+    const now = column.getBoundingClientRect().width;
+    const sidebar = document.querySelector("aside")!.getBoundingClientRect().width;
+    const style = column.getAttribute("style");
+    column.style.flex = "none";
+    column.style.width = "min-content";
+    const floor = column.getBoundingClientRect().width;
+    if (style === null) column.removeAttribute("style");
+    else column.setAttribute("style", style);
+    return { floor, rest: window.innerWidth - sidebar - now };
+  });
+  return Math.ceil(floor + SQUEEZED_SIDEBAR + rest);
+}
 
 /** 사이드바를 넓혀 둔다(저장값 400 — 끄는 최대 폭). 페이지를 열기 **전에** 부른다 — 저장값은 사이드바가 설 때 한 번 읽힌다. */
 export async function widenSidebar(page: Page): Promise<void> {
