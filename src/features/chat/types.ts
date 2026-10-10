@@ -30,8 +30,11 @@ export interface QueuedMessage {
   sendNow: boolean;
 }
 
-/** 기록 줄의 종류. 권한(08) · 고친 곳(06) · 설정(09)이 차례로 더한다. */
-export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr";
+/**
+ * 기록 줄의 종류. 권한(08) · 설정(09)이 차례로 더한다. `changes`는 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들이고,
+ * `turn-end` 바로 앞에 서며 바뀐 것이 없는 턴에는 없다(three-axes 결정 22).
+ */
+export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "changes";
 
 /**
  * 기록 줄 하나 — `agents/<id>.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. payload의 갈래는 종류마다 다르고 ACP 원문을

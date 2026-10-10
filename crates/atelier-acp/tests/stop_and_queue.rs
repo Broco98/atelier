@@ -323,3 +323,49 @@ fn 멈춘_뒤_늦은_줄의_기록이_검사_자료와_같다() {
     let session_id = sandbox.agent_session_id("cart", &conversation.id);
     common::assert_record("late-after-cancel", &common::fix_record(&record, &sandbox.data_root(), &session_id));
 }
+
+/// 대기 줄에서 간 말의 턴도 턴 앞뒤의 spec 폴더를 견준다(three-axes 결정 22, 티켓 06과 만나는 자리). 그 턴의 앞은 앞
+/// 턴의 끝에 견준 「지금」이다 — 앞 턴이 고친 것은 앞 턴에만, 대기 줄의 턴이 고친 것은 그 턴에만 선다.
+#[test]
+fn 대기_줄에서_간_말의_턴도_고친_곳을_적고_앞_턴이_고친_것은_앞_턴에만_선다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("writes-spec", &[]));
+    let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
+    let steps = |steps: &[serde_json::Value]| steps.iter().map(|step| format!("{step}\n")).collect::<String>();
+    host.send(
+        "cart",
+        &conversation.id,
+        &steps(&[
+            json!({"op": "write", "path": "first.md", "text": "앞 턴이 쓴 글\n"}),
+            json!({"op": "hold", "gate": "first-may-end"}),
+        ]),
+    )
+    .expect("앞 턴");
+    // 앞 턴이 first.md를 쓰고(도구 줄 진행 → 완료) 붙잡혔다.
+    sandbox.wait_kind("cart", &conversation.id, "update", 2);
+    host.send("cart", &conversation.id, &steps(&[json!({"op": "write", "path": "queued.md", "text": "대기 줄의 턴이 쓴 글\n"})]))
+        .expect("대기 줄에 든다");
+
+    sandbox.open_gate("first-may-end");
+
+    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
+    let changes: Vec<_> = of_kind(&record, "changes").into_iter().map(|line| line["payload"].clone()).collect();
+    assert_eq!(
+        changes,
+        [
+            json!({"files": [{"path": "first.md", "change": "created", "lines": [{"start": 1, "end": 1}]}]}),
+            json!({"files": [{"path": "queued.md", "change": "created", "lines": [{"start": 1, "end": 1}]}]}),
+        ],
+        "턴마다 그 턴이 고친 것만 선다:\n{}",
+        common::lines_text(&record)
+    );
+    let kinds: Vec<&str> = record.iter().map(|line| line["kind"].as_str().unwrap()).filter(|kind| *kind != "update").collect();
+    assert_eq!(
+        kinds[kinds.len() - 6..],
+        ["sent", "changes", "turn-end", "sent", "changes", "turn-end"],
+        "대기 줄의 말은 앞 턴의 고친 곳과 턴 끝 뒤에 간다"
+    );
+
+    host.shut_down();
+}

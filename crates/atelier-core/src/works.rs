@@ -457,7 +457,7 @@ const HEAD_LABEL: &str = "- 워크트리 HEAD:";
 const COMMITS_HEADING: &str = "### 커밋";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
-pub(crate) fn spec_files(work_dir: &Path) -> Vec<String> {
+pub fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();

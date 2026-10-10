@@ -258,6 +258,11 @@ impl Sandbox {
         self.receipts().join("acp")
     }
 
+    /// `writes-spec`의 `hold {gate}` 단계가 기다리는 문을 연다 — 붙잡힌 턴이 이어 끝난다.
+    pub fn open_gate(&self, gate: &str) {
+        fs::write(self.acp_receipts().join(gate), "").unwrap();
+    }
+
     /// 가짜 ACP 에이전트가 그 세션을 열 때 남긴 영수증.
     pub fn acp_receipt(&self, session_id: &str) -> Value {
         let path = self.acp_receipts().join(format!("{session_id}.json"));
@@ -436,6 +441,53 @@ pub fn assert_record(name: &str, actual: &[Value]) {
         actual.get(at).map_or("(없음)".to_owned(), Value::to_string),
         dumped.display(),
     );
+}
+
+/// 그 시나리오가 끝난 뒤의 spec 폴더가 검사 자료 `tests/records/<name>.spec/`과 같은지 잰다 — 파일 목록과 내용이
+/// 같아야 한다. 고친 곳의 줄 범위는 새 글 기준이라, 대화창의 L3가 이 사본을 문서 본문으로 그려야 칠한 자리가 맞는다.
+/// `ATELIER_BLESS_RECORDS=1`이면 견주지 않고 사본을 다시 뜬다.
+pub fn assert_record_spec(name: &str, spec: &Path) {
+    let copy = records_dir().join(format!("{name}.spec"));
+    let actual = files_under(spec);
+    if std::env::var_os("ATELIER_BLESS_RECORDS").is_some() {
+        let _ = fs::remove_dir_all(&copy);
+        for (rel, bytes) in &actual {
+            let path = copy.join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, bytes).unwrap();
+        }
+        return;
+    }
+    let expected = files_under(&copy);
+    let names = |files: &BTreeMap<String, Vec<u8>>| files.keys().cloned().collect::<Vec<_>>();
+    assert_eq!(names(&actual), names(&expected), "spec 사본 {}의 파일 목록 — 가짜의 단계를 일부러 바꿨으면 ATELIER_BLESS_RECORDS=1로 다시 뜬다", copy.display());
+    for (rel, bytes) in &actual {
+        assert_eq!(
+            String::from_utf8_lossy(bytes),
+            String::from_utf8_lossy(&expected[rel]),
+            "spec 사본 {}의 {rel} — 가짜의 단계를 일부러 바꿨으면 ATELIER_BLESS_RECORDS=1로 다시 뜬다",
+            copy.display()
+        );
+    }
+}
+
+/// 폴더 아래 파일들 — `/`로 이은 상대 경로마다 내용.
+fn files_under(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    fn walk(dir: &Path, prefix: &str, out: &mut BTreeMap<String, Vec<u8>>) {
+        let Ok(entries) = fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let rel = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
+            if entry.path().is_dir() {
+                walk(&entry.path(), &rel, out);
+            } else {
+                out.insert(rel, fs::read(entry.path()).unwrap());
+            }
+        }
+    }
+    let mut files = BTreeMap::new();
+    walk(dir, "", &mut files);
+    files
 }
 
 /// 그 자리의 기록 파일 줄들 — work 폴더가 옮겨진 뒤처럼 `works/<slug>` 밖의 기록을 읽는다.
