@@ -430,7 +430,7 @@ test("도는 명령 손잡이는 이미 선 마크에 안 속는다", async ({ p
 //
 // **이 층이 아니면 아무것도 안 보인다.** 마크업 seam(`ShellTabs.test.tsx`)이 드는 것은 클래스
 // 문자열이고, 여기서 재는 것은 셋이다 — 그 클래스가 실제로 **토큰 값으로** 칠해지는가 ·
-// 스토어를 한 바퀴 돈 값이 그 칸에 앉는가 · 그리고 **칸을 켜면 초록이 꺼지는가**. 마지막
+// 스토어를 한 바퀴 돈 값이 그 칸에 앉는가 · 그리고 **칸을 켜면 안 본 완료가 꺼지는가**. 마지막
 // 것은 정적 마크업에 아예 없다: 「봤다」는 창 포커스와 켜진 칸이 만나는 순간이라 이벤트가
 // 도는 층에서만 난다.
 
@@ -445,7 +445,7 @@ const 안물듦 = "rgba(0, 0, 0, 0)";
 const 칸배경 = (page: Page, at: number) =>
   page.locator('[data-tab="shell"]').nth(at).evaluate((el) => getComputedStyle(el).backgroundColor);
 
-test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ page }) => {
+test("부르는 칸만 물들고, 색이 부름의 무리 토큰(wait-soft · new-soft) 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
@@ -454,7 +454,7 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
   await openShell(page);
   await expect(tabs).toHaveCount(2);
   // 부르는 것은 **둘째 칸**이고 보고 있는 것은 첫째다 — 켜진 칸을 부르게 하면 「봤다」가
-  // 곧바로 초록을 지워, 이 검사가 무엇을 재는지 모르게 된다.
+  // 곧바로 안 본 완료를 지워, 이 검사가 무엇을 재는지 모르게 된다.
   await tabs.nth(0).locator("button[aria-pressed]").click();
 
   // **먼저 아무 칸도 안 물든 것을 센다.** 이것이 없으면 아래가 「원래 그렇던 것」으로도 초록이다.
@@ -472,18 +472,20 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
     { agent: "claude", event: "Elicitation", payload: { message: "커밋할까요?" } },
     2,
   );
-  const 앰버 = await 토큰색(page, "--signal-wait-soft");
+  const 기다림 = await 토큰색(page, "--wait-soft");
   await expect
-    .poll(() => 칸배경(page, 1), { message: "둘째 칸이 앰버로 안 물들었다" })
-    .toBe(앰버);
+    .poll(() => 칸배경(page, 1), { message: "둘째 칸이 기다림으로 안 물들었다" })
+    .toBe(기다림);
   // 옆 칸은 그대로다 — 값이 줄 단위로 앉는 회귀가 여기서 터진다.
-  expect(await 칸배경(page, 0)).not.toBe(앰버);
+  expect(await 칸배경(page, 0)).not.toBe(기다림);
 
-  // 턴이 끝나면 초록이다 — 프로세스 결정 13이 이렇게 고쳤다(옛 표는 세션 끝이 초록이고 턴 끝이 앰버였다).
+  // 턴이 끝나면 안 본 완료다 — 프로세스 결정 13이 이렇게 고쳤다(옛 표는 세션 끝이 안 본 완료이고 턴 끝이 기다림이었다).
   await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 2);
-  const 초록 = await 토큰색(page, "--signal-done-soft");
-  expect(앰버, "앰버와 초록이 같은 색이다").not.toBe(초록);
-  await expect.poll(() => 칸배경(page, 1), { message: "둘째 칸이 초록으로 안 물들었다" }).toBe(초록);
+  const 안본완료 = await 토큰색(page, "--new-soft");
+  expect(기다림, "기다림과 안 본 완료가 같은 색이다").not.toBe(안본완료);
+  await expect
+    .poll(() => 칸배경(page, 1), { message: "둘째 칸이 안 본 완료로 안 물들었다" })
+    .toBe(안본완료);
 
   // **도는 중은 안 물든다**(스토리 52). 탭 칸에는 스피너를 안 세우므로 여기서 물들이면 claude가
   // 도는 내내 줄이 색을 띤 채라 「부른다」가 뜻을 잃는다.
@@ -495,9 +497,9 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **켜면 초록이 꺼지고 앰버는 남는다**(결정 6·7 · 스토리 49·50). 판정은 `isShellSeen` 하나이고
+// **켜면 안 본 완료가 꺼지고 기다림은 남는다**(결정 6·7 · 스토리 49·50). 판정은 `isShellSeen` 하나이고
 // 알림 억제(#206)가 같은 함수를 쓴다 — 여기서 꺼지는 것이 곧 그쪽에서 안 울리는 것이다.
-test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 남는다", async ({ page }) => {
+test("안 본 완료 칸을 켜면 물들임이 꺼지고, 기다리는 칸을 켜도 기다림은 남는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
@@ -506,12 +508,12 @@ test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 �
   await openShell(page);
   await tabs.nth(0).locator("button[aria-pressed]").click();
 
-  const 초록 = await 토큰색(page, "--signal-done-soft");
-  const 앰버 = await 토큰색(page, "--signal-wait-soft");
+  const 안본완료 = await 토큰색(page, "--new-soft");
+  const 기다림 = await 토큰색(page, "--wait-soft");
   const 켜기 = (at: number) => tabs.nth(at).locator("button[aria-pressed]").click();
 
   await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 2);
-  await expect.poll(() => 칸배경(page, 1)).toBe(초록);
+  await expect.poll(() => 칸배경(page, 1)).toBe(안본완료);
   // 이름에도 붙어 있다 — 꺼지는 것이 색만이 아니라는 것을 아래에서 같은 자리로 잰다.
   await expect(tabs.nth(1).locator("button[aria-pressed]")).toHaveAttribute(
     "aria-label",
@@ -520,23 +522,25 @@ test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 �
 
   await 켜기(1);
   // **켜는 순간 봤다다.** 색도 이름도 함께 걷힌다.
-  await expect.poll(() => 칸배경(page, 1), { message: "켠 칸의 초록이 안 꺼졌다" }).not.toBe(초록);
+  await expect
+    .poll(() => 칸배경(page, 1), { message: "켠 칸의 안 본 완료가 안 꺼졌다" })
+    .not.toBe(안본완료);
   await expect(tabs.nth(1).locator("button[aria-pressed]")).not.toHaveAttribute(
     "aria-label",
     /확인할 것$/,
   );
 
   // **기다림은 켜도 안 꺼진다** — 본 것과 답한 것은 다르다(결정 7). 켜진 칸이라 흰 면
-  // (`tab-on`)이 서야 할 자리인데 앰버가 이긴다(결정 6).
+  // (`tab-on`)이 서야 할 자리인데 기다림의 채움이 이긴다(결정 6).
   await markAttention(
     page,
     { agent: "claude", event: "Elicitation", payload: { message: "커밋할까요?" } },
     2,
   );
-  await expect.poll(() => 칸배경(page, 1), { message: "켠 칸의 앰버가 꺼졌다" }).toBe(앰버);
+  await expect.poll(() => 칸배경(page, 1), { message: "켠 칸의 기다림이 꺼졌다" }).toBe(기다림);
   // 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다 — 그림자라 폭을 안 먹는다(스토리 54).
   const 그림자 = await tabs.nth(1).evaluate((el) => getComputedStyle(el).boxShadow);
-  expect(그림자, `켜진 앰버 칸에 안쪽 테두리가 없다 — ${그림자}`).toContain("inset");
+  expect(그림자, `켜진 기다림 칸에 안쪽 테두리가 없다 — ${그림자}`).toContain("inset");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -552,7 +556,7 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
   await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
 
   const tabs = page.locator('[data-tab="shell"]');
-  const 초록 = await 토큰색(page, "--signal-done-soft");
+  const 안본완료 = await 토큰색(page, "--new-soft");
   const 끝난다 = () =>
     markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
 
@@ -560,17 +564,17 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
   await page.locator('[data-tab="spec"]').click();
   await expect(page).not.toHaveURL(/tab=terminal/);
   await 끝난다();
-  // **안 꺼진다.** 켜진 칸이라는 이유로 지워지면 여기가 초록이 아니다.
+  // **안 꺼진다.** 켜진 칸이라는 이유로 지워지면 여기가 안 본 완료의 채움이 아니다.
   await expect
-    .poll(() => 칸배경(page, 0), { message: "문서를 읽는 중인데 초록이 안 섰다" })
-    .toBe(초록);
+    .poll(() => 칸배경(page, 0), { message: "문서를 읽는 중인데 안 본 완료가 안 섰다" })
+    .toBe(안본완료);
 
   // 분할을 켠다 — 열 하나가 터미널이라 그 셸은 보고 있는 것이다(결정 7).
   await page.getByRole("button", { name: "분할", exact: true }).click();
   await expect(page).toHaveURL(/split=/);
   await expect
-    .poll(() => 칸배경(page, 0), { message: "분할로 보고 있는데 초록이 안 꺼졌다" })
-    .not.toBe(초록);
+    .poll(() => 칸배경(page, 0), { message: "분할로 보고 있는데 안 본 완료가 안 꺼졌다" })
+    .not.toBe(안본완료);
 
   // 그리고 분할 중에 온 완료도 곧바로 봤다다 — 스토리 58이 알림 쪽에서 같은 말을 한다.
   await 끝난다();
@@ -584,37 +588,37 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
 
 // **포커스가 판정에 실제로 든다**(결정 7 · 스토리 10). 「봤다」는 켜진 칸과 창 포커스가
 // **만나는** 순간인데, 한쪽(창 포커스)에는 지금까지 아무 그물도 없었다 — `windowFocused()`를
-// `return true`로 바꿔도 L1~L4가 전부 초록이었다. 그 fail-open은 「초록이 안 뜬다」로만
+// `return true`로 바꿔도 L1~L4가 전부 초록이었다. 그 fail-open은 「안 본 완료가 안 뜬다」로만
 // 나타나므로 화면에서 안 보인다.
 //
 // 헤드리스 WebKit은 배경 페이지에서도 `document.hasFocus()`가 참이라 진짜로 포커스를 뺏을
 // 길이 없다(`stubWindowFocus` 머리말의 실측). 그래서 브라우저가 답하는 그 한 줄을 손으로
 // 잡고 **앱이 그것을 딛는지**를 잰다.
-test("창이 뒤에 있으면 초록이 안 꺼지고, 창이 앞으로 오면 그 순간 꺼진다", async ({ page }) => {
+test("창이 뒤에 있으면 안 본 완료가 안 꺼지고, 창이 앞으로 오면 그 순간 꺼진다", async ({ page }) => {
   await stubWindowFocus(page);
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
 
-  const 초록 = await 토큰색(page, "--signal-done-soft");
+  const 안본완료 = await 토큰색(page, "--new-soft");
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
 
   // 그 셸을 **보고 있는데도** 안 꺼진다 — 창이 뒤에 있으면 사람이 본 것이 아니다.
   await expect
-    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
-    .toBe(초록);
+    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 안 본 완료가 안 섰다" })
+    .toBe(안본완료);
 
   // 값만 바꾸고 이벤트를 안 쏘면 화면은 그대로다 — 다시 재는 것은 리스너의 일이다.
   await setWindowFocused(page, true);
-  expect(await 칸배경(page, 0), "이벤트 없이 초록이 꺼졌다").toBe(초록);
+  expect(await 칸배경(page, 0), "이벤트 없이 안 본 완료가 꺼졌다").toBe(안본완료);
 
   // **알림을 눌러 돌아온 순간이 이것이다**(스토리 10) — 「알림이 왔는데 아무것도 없다」가
   // 아니라 「와서 봤다」로 읽히려면 그 순간 꺼져야 한다.
   await fireWindowEvent(page, "focus");
   await expect
-    .poll(() => 칸배경(page, 0), { message: "창이 앞으로 왔는데 초록이 안 꺼졌다" })
-    .not.toBe(초록);
+    .poll(() => 칸배경(page, 0), { message: "창이 앞으로 왔는데 안 본 완료가 안 꺼졌다" })
+    .not.toBe(안본완료);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -623,26 +627,26 @@ test("창이 뒤에 있으면 초록이 안 꺼지고, 창이 앞으로 오면 �
 // 다른 앱을 보다가 분할된 화면의 spec 프레임을 **바로 눌러** 돌아오면, 포커스가 자식 문서로
 // 들어가므로 부모 `window`에는 `focus` 없이 `blur`만 온다. 그때 창은 앞에 있다
 // (`document.hasFocus()`가 참이고, SpecViewer의 `useFrameFocused`가 그 실측을 들고 있다).
-// 이 줄이 없으면 눈앞의 셸이 다음 이벤트가 올 때까지 초록인 채로 남는다.
+// 이 줄이 없으면 눈앞의 셸이 다음 이벤트가 올 때까지 안 본 완료인 채로 남는다.
 test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임을 바로 누른 길", async ({ page }) => {
   await stubWindowFocus(page);
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
 
-  const 초록 = await 토큰색(page, "--signal-done-soft");
+  const 안본완료 = await 토큰색(page, "--new-soft");
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
   await expect
-    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
-    .toBe(초록);
+    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 안 본 완료가 안 섰다" })
+    .toBe(안본완료);
 
   // 앱이 앞으로 오면서 포커스가 프레임으로 들어간다 — 부모가 받는 것은 `blur` 하나다.
   await setWindowFocused(page, true);
   await fireWindowEvent(page, "blur");
   await expect
-    .poll(() => 칸배경(page, 0), { message: "창이 앞에 있는데 blur에 초록이 안 꺼졌다" })
-    .not.toBe(초록);
+    .poll(() => 칸배경(page, 0), { message: "창이 앞에 있는데 blur에 안 본 완료가 안 꺼졌다" })
+    .not.toBe(안본완료);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

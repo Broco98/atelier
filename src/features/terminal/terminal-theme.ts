@@ -37,7 +37,8 @@ import type { TerminalTheme } from "@/features/settings/types";
 // 두 벌 모두 `accent`다. 전경 · 선택은 16색과 같은 출처(VS Code Dark+)와 반투명 한 겹으로 둔다(아래).
 
 export const terminalThemeLight: ITheme = {
-  // 아래 넷은 앱과 어긋나면 안 된다 — 짝을 여기 적어 둔다 (index.css)
+  // 아래 넷은 앱과 어긋나면 안 된다 — 짝을 여기 적어 둔다 (index.css, DS 터미널 낱말 `term-*`). 짝은 `theme-tokens.test.ts`가 본다.
+  // 흐린 글자(SGR 2)는 칸이 없다 — xterm이 전경을 반만 칠해 그리므로 `--term-dim`(= `--fg-tertiary`, 본문 50%)과 저절로 같다.
   background: "#ffffff", // --term-bg(= --surface, 카드 면)
   foreground: "#1a1c1f", // --term-fg(= --fg, 본문)
   cursor: "#339cff", // --accent

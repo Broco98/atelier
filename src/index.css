@@ -247,13 +247,12 @@
              `via-(--accent)/55`. 유틸리티가 파랑이 되면(07) `-accent`로 옮긴다.
          면: soft 버튼의 hover `hover:bg-(--accent)/20`(`button.tsx`) · 고른 라벨의 면 `has-data-checked:bg-(--accent)/5`
              (`field.tsx`). 변형 뒤의 `bg-accent`는 07의 `state-scale`도 막으므로(티켓 07) 이 둘은 변수에 남는다.
-         화면(`features/*`): 끌기 선 · 강조 글리프 · 스피너 · 추이 선 · 메모리 막대 · active 점 · 분할 반쪽 덮개
+         화면(`features/*`): 끌기 선 · 강조 글리프 · 스피너 · 추이 선 · 메모리 막대 · 분할 반쪽 덮개
              (`bg-(--accent)/12`) · 포커스 링 · 입력칸 테두리다. 면(`bg-`)은 모두 변형 없이 쓰여 07에서 함께 `-accent`로 옮긴다.
        **`--text-tertiary` · `--text-section`은 앞말을 떼어 잇는다**(`--color-tertiary` → `text-tertiary`) — `--text-*`를 이
        블록에 그대로 들이면 Tailwind가 글자 크기로 읽는다. `--bg-group`도 앞말을 떼어 `bg-group`이다.
-       **상태 축의 옛 이름(`wait` · `done` · `-ink` · `-soft`)** — 모두 Codex 뜻의 색(`warning` · `success`)을 가리켜 점과
-       글자(`-ink`)가 같은 색이다(별칭 묶음의 주석). 알림 표(`shell-signal.tsx`의 `TONE` — 행의 점 · 알림 띠 · 셸 탭 채움 ·
-       탭 이름 · 경과 글자)는 Codex 이름을 바로 읽는다. */
+       **상태 축의 옛 이름(`wait` · `done` · `-ink` · `-soft`)** — 같은 뜻의 Atelier 낱말을 가리킨다(별칭 묶음의 주석). 알림 표
+       (`shell-signal.tsx`의 `TONE` — 행의 점 · 알림 띠 · 셸 탭 채움 · 탭 이름 · 경과 글자)는 Atelier 낱말을 바로 읽는다. */
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -941,21 +940,19 @@
     --bg-group: var(--surface-under);
     --callout-important: var(--chat-accent-purple);
 
-    /* **상태 축의 옛 이름**(#203) — 기다림은 `warning`, 안 본 완료는 `success`다 — **점과 글자(`-ink`)가 같은 색이다.**
-       행의 점 · 알림 띠(#204) · 셸 탭 채움(#205)은 한 표(`shell-signal.tsx`의 `TONE`)에서 Codex 이름을 바로 읽는다 — 자리마다
-       색을 다시 고르면 「세 자리가 한 사실을 말한다」(스토리 79)가 색에서 먼저 깨진다.
-       라이트 바탕(`surface-shell`) 위 기다림 3.5:1 · 완료 6.4:1이라, 기다림의 글자(탭 이름 · 경과)는 글자 바닥(4.5)에 못 미친다 —
-       DS README 「대비」가 Codex의 같은 쓰임을 따라 알고 둔 값이다. 점은 3px 무리가 면적을 번다.
-       `-soft`는 점의 3px 무리와 셸 탭 채움의 면이다 — 기다림은 Codex 낱말 `wait-soft`(18%)이고, 완료는 Codex에 초록 무리가
-       없어 `success`의 14%다. **완료의 식은 `TONE`이 쓰는 유틸리티 `bg-success/14`와 같다** — Tailwind의 알파는 oklab에서
-       섞는다. L3(`terminal-tabs.spec.ts`)가 이 이름으로 셸 탭의 채움을 견주는데, 섞는 공간이 다르면 같은 색이 다른 글자
-       (`color(srgb …)` · `oklab(…)`)로 읽혀 견줌이 갈린다. */
-    --signal-wait: var(--warning);
+    /* **상태 축의 옛 이름**(#203) — 부름 둘의 Atelier 낱말을 가리킨다. 점 · 무리는 DS README 「앱 토큰 이름과의 짝」대로 기다림
+       `dot-wait` · `wait-soft`, 안 본 완료 `dot-new` · `new-soft`다 — 안 본 완료 점이 초록에서 파랑(Codex 「새 답변」 점)으로
+       바뀌었다(codex-ds 티켓 06). 글자(`-ink`)는 기다림 `warning`, 안 본 완료 `accent-solid`다. 짝 표는 `--signal-done-ink`를 옛
+       초록 `success`에 묶지만, 점이 파랑이 된 뒤의 글자는 DS `AttentionBand`의 띠 줄 경과(`.end.new`)를 따른다 — 점의 파랑
+       (`accent`)은 흰 면 위 2.9:1이라 글자에 쓰지 않는다(DS README 「대비」).
+       행의 점 · 알림 띠(#204) · 셸 탭 채움(#205)은 한 표(`shell-signal.tsx`의 `TONE`)에서 Atelier 낱말을 바로 읽는다 — 자리마다
+       색을 다시 고르면 「세 자리가 한 사실을 말한다」(스토리 79)가 색에서 먼저 깨진다. 이 옛 이름을 읽는 호출부는 없다. */
+    --signal-wait: var(--dot-wait);
     --signal-wait-soft: var(--wait-soft);
     --signal-wait-ink: var(--warning);
-    --signal-done: var(--success);
-    --signal-done-soft: color-mix(in oklab, var(--success) 14%, transparent);
-    --signal-done-ink: var(--success);
+    --signal-done: var(--dot-new);
+    --signal-done-soft: var(--new-soft);
+    --signal-done-ink: var(--accent-solid);
 
     /* **상태 농도** — 선택 · hover · 켜짐을 말하는 무채색 면은 Codex 면 알파 셋이다(codex-ds 결정 27): `fill-soft`(5%) ·
        `fill-hover`(8%) · `fill-active`(12%). **앱이 적는 상태 배경은 이 이름으로 적는다.** 아래 `--state-1..4`는 그 셋을

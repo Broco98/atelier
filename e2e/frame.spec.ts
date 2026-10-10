@@ -9,6 +9,7 @@ import {
   SPEC_LAYOUT_EDITOR,
   startSplitDrag,
   unknownIpcCalls,
+  레인,
   시계를세운다,
   토큰색,
   툴팁,
@@ -306,6 +307,35 @@ test("메뉴의 켜진 줄은 옅은 면(fill-hover)이고 파랑(accent)이 아
   expect(옅은면, "fill-hover와 accent가 같은 색이다").not.toBe(파랑);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// codex-ds 티켓 06 — **상태 넷이 Atelier 낱말 색을 입는다**(codex-ds 스펙 2절 「Atelier 낱말」 · DS `st-*`). 상태 표
+// (`status.tsx`의 `STATUS_META` · `StatusIcon`)가 칠하는 세 자리 — 머리의 상태 배지 글자, 그 배지가 여는 상태 메뉴의 점,
+// 사이드바 행 레인의 상태 아이콘 — 를 칠해진 색으로 읽어 그 상태의 토큰(`st-draft` · `st-active` · `st-review` ·
+// `st-done`)과 맞댄다.
+//
+// **상태마다 하나씩 잰다.** 상태 하나만 재면 표의 네 줄이 한 색으로 무너져도(한 줄을 베껴 넷에 붙이면) 초록이다.
+// 픽스처 목록은 상태를 기억하지 않으므로(`set_work_status`의 답 — `fixtures.ts`) 목록을 덮어 그 상태의 work로 연다.
+for (const status of ["draft", "active", "review", "done"] as const) {
+  test(`상태 ${status}: 배지 글자 · 상태 메뉴의 점 · 행 레인의 상태 아이콘이 st-${status}다`, async ({ page }) => {
+    const work = { ...WORKS[1], status };
+    await installFixtureBackend(page, {
+      list_works: WORKS.map((one) => (one.slug === work.slug ? work : one)),
+    });
+    await page.goto(`/works/${work.slug}`);
+    const 색 = await 토큰색(page, `--st-${status}`);
+
+    const badge = page.getByRole("button", { name: status, exact: true });
+    await expect(badge).toHaveCSS("color", 색);
+    // 셸이 부르지 않는 행이라 레인에는 상태 아이콘이 선다(부르면 그 자리를 부름의 점이 갖는다 — `works-sidebar.spec.ts`).
+    await expect(레인(page, work.slug).locator("svg")).toHaveCSS("color", 색);
+
+    await badge.click();
+    // 줄의 첫 자식이 점이다(`WorksPage.tsx`의 `StatusMenu`) — 줄 끝의 체크는 부품이 뒤에 붙인다.
+    const 줄 = page.getByRole("menu").getByRole("menuitemradio", { name: new RegExp(`^${status}\\b`) });
+    await expect(줄.locator(":scope > span").first()).toHaveCSS("background-color", 색);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
 
 // 판 04 티켓 02 — **목록이 있는 두 화면**(ui-refresh 결정 15 — 칸 하나 = 카드 하나). 목록과 상세가 따로 카드이고 사이 틈은
 // `--gap`이다. 틈은 목록 칸의 바깥 상자(카드 + 오른쪽 틈)가 들어, 목록을 닫으면 폭과 함께 0으로 접힌다 — 닫힌 칸 옆에 틈이

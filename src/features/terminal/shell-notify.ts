@@ -261,7 +261,7 @@ export function notifyShells(
     kind,
     call,
     since: attention.since,
-    // 결정 7의 판정 **그 함수**를 딛는다(스토리 80) — 탭 물들임과 두 벌이 되면 초록은
+    // 결정 7의 판정 **그 함수**를 딛는다(스토리 80) — 탭 물들임과 두 벌이 되면 안 본 완료는
     // 꺼졌는데 알림은 울리는(또는 그 반대인) 어긋남이 난다.
     visible: isShellSeen(shell.id, view),
     title: titleOf(shell.owner),

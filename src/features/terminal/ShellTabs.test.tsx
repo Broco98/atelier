@@ -872,18 +872,18 @@ describe("칸이 물든다", () => {
     return `${tag}${cell.slice(cell.indexOf('role="img"')).split(">")[0]}`;
   };
 
-  it("안 켜진 칸이 부르면 물든다 — 기다림은 앰버, 안 본 완료는 초록", () => {
+  it("안 켜진 칸이 부르면 물든다 — 기다림은 wait-soft, 안 본 완료는 new-soft", () => {
     // 색 이름을 여기서 새로 짓지 않는다 — 행·띠·탭이 알림 표(`shell-signal.tsx`의 `TONE`) 하나에서 같은 이름을
     // 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
     expect(물든칸("waiting")).toContain("bg-wait-soft");
-    expect(물든칸("done")).toContain("bg-success/14");
+    expect(물든칸("done")).toContain("bg-new-soft");
 
     // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」).
     expect(이름span(물든칸통째("waiting"))).toContain("text-warning");
-    expect(이름span(물든칸통째("done"))).toContain("text-success");
+    expect(이름span(물든칸통째("done"))).toContain("text-accent-solid");
   });
 
-  it("켜진 칸이 기다리면 앰버가 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
+  it("켜진 칸이 기다리면 기다림의 채움이 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
     // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 켜짐 면(`tab-on`)이 물러난다 — 안 물러나면
     // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
     // 흰 면이 하던 말을 테두리가 받는다.
@@ -894,7 +894,7 @@ describe("칸이 물든다", () => {
     // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
     expect(켜진기다림).toContain("ring-1");
     expect(켜진기다림).toContain("ring-inset");
-    expect(켜진기다림).toContain("ring-warning");
+    expect(켜진기다림).toContain("ring-dot-wait");
     expect(켜진기다림).not.toContain("border");
 
     // 안 켜진 칸에는 테두리가 없다 — 있으면 여덟 칸이 다 고른 칸으로 보인다.
@@ -933,7 +933,7 @@ describe("칸이 물든다", () => {
     //
     // `ring-*`이 이 목록에 드는 것은 **그림자라 흐름을 안 건드리기 때문이다** — `border-*`는
     // 여기 없으므로 테두리로 갈아타는 날 이 검사가 잡는다.
-    // **잉크 이름(`text-warning` · `text-success`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
+    // **잉크 이름(`text-warning` · `text-accent-solid`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
     // 받는다」가 그 자리를 따로 지킨다).
     const 색어휘 = new Set([
@@ -941,11 +941,11 @@ describe("칸이 물든다", () => {
       "tab-on",
       "font-medium",
       "bg-wait-soft",
-      "bg-success/14",
+      "bg-new-soft",
       "ring-1",
       "ring-inset",
-      "ring-warning",
-      "ring-success",
+      "ring-dot-wait",
+      "ring-dot-new",
     ]);
 
     const 차집합 = (a: string, b: string) => {
@@ -967,7 +967,7 @@ describe("칸이 물든다", () => {
     // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다.
     for (const kind of ["waiting", "done"] as const) {
       const 갈린것 = 차집합(이름span(물든칸통째(kind)), 이름span(물든칸통째(null)));
-      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-warning" : "text-success"]);
+      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-warning" : "text-accent-solid"]);
     }
   });
 
@@ -998,7 +998,7 @@ describe("칸이 물든다", () => {
       const 칸 = 물든칸(kind);
       expect(칸, String(kind)).toContain("hover:bg-fill-soft");
       expect(칸, String(kind)).not.toContain("bg-wait-soft");
-      expect(칸, String(kind)).not.toContain("bg-success/14");
+      expect(칸, String(kind)).not.toContain("bg-new-soft");
     }
   });
 
@@ -1008,14 +1008,14 @@ describe("칸이 물든다", () => {
     //
     // 탭에서는 그럴 수가 없다 — 마크가 칸 상자 **안**에 서므로, 잉크를 상자에 붙이면 이름이
     // 숨는 폭(`@max-[88px]`)에서만 서는 그 글리프가 `currentColor`로 물든다. 하필 스토리 53이
-    // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 앰버가 되는 것이다.
+    // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 상태색(기다림이면 `warning`)이 되는 것이다.
     // 그래서 **잉크는 이름 글자에만** 붙는다.
-    // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료 `text-success`. 「상자 · 마크에 없다」는 두 잉크를
+    // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료 `text-accent-solid`. 「상자 · 마크에 없다」는 두 잉크를
     // 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에 붙어도 초록이다.
-    const 잉크 = /(?<![\w-])text-(?:warning|success)(?![\w-])/;
+    const 잉크 = /(?<![\w-])text-(?:warning|accent-solid)(?![\w-])/;
     for (const [kind, ink] of [
       ["waiting", "text-warning"],
-      ["done", "text-success"],
+      ["done", "text-accent-solid"],
     ] as const) {
       const cell = 물든칸통째(kind);
       // 칸 안에 잉크가 **딱 한 번** 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —

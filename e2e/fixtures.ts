@@ -849,7 +849,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   pty_first_input: null,
   // **타자를 치는 시나리오가 이 판에 생겼다**(#208 리뷰). 사람이 키를 친 직후의 첫 프레임만
   // xterm이 **동기로** 파싱하는데(`WriteBuffer.write`의 `_didUserInput` 갈래), 그 갈래에서
-  // 출력 알림과 OSC의 순서가 뒤집히면 방금 선 앰버가 그 자리에서 꺼진다 — 그 순서를 재려면
+  // 출력 알림과 OSC의 순서가 뒤집히면 방금 선 기다림이 그 자리에서 꺼진다 — 그 순서를 재려면
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,

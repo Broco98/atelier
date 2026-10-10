@@ -172,10 +172,11 @@ describe("줄 하나", () => {
     expect(이름들(markup)).toEqual(["그냥 일 — 나를 기다림"]);
   });
 
-  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS `.at-row-meta.wait`).
+  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS 띠 줄의 `.end` — 기다림
+  // `warning`, 안 본 완료 `accent-solid`).
   it.each([
     ["waiting", "text-warning"],
-    ["done", "text-success"],
+    ["done", "text-accent-solid"],
   ] as const)("%s 줄의 경과는 상태색의 잉크다", (kind, ink) => {
     expect(여는태그(band([줄({ kind })]), "data-elapsed")).toContain(ink);
   });

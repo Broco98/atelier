@@ -249,7 +249,8 @@ function BandLine({
             밖에 세우면 이 조각이 폭을 먹어 제목이 그만큼 먼저 잘린다. */}
         {item.shellName !== null && <span className="text-fg-tertiary"> {item.shellName}</span>}
       </span>
-      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — 상태색의 잉크, DS `.at-row-meta.wait`). */}
+      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — 상태색의 잉크, DS 띠 줄의 `.end` — 기다림 `warning` ·
+          안 본 완료 `accent-solid`). */}
       <SignalElapsed kind={item.kind} ms={now - item.since} />
     </button>
   );

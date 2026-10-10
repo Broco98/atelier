@@ -16,6 +16,7 @@ import {
   레인,
   색대비,
   오른쪽메타,
+  토큰색,
   툴팁,
   행버튼,
 } from "./harness";
@@ -441,7 +442,7 @@ test("모든 행이 한 줄 32px이고, 둘째 줄이 없다", async ({ page }) 
 // | 셸 없음 | 칸이 없다 — 프로젝트는 호버 카드가 싣는다 |
 //
 // **셸 하나를 차례로 갈아 끼우며 잰다.** 벨이 먼저인 것은 권위 규칙 때문이다: 훅이 한 번
-// 말한 셸은 그 뒤 벨을 안 듣는다(`applySignal`). 벨이 세운 초록 위로 훅은 들어온다.
+// 말한 셸은 그 뒤 벨을 안 듣는다(`applySignal`). 벨이 세운 안 본 완료 위로 훅은 들어온다.
 //
 // **숫자의 오른쪽 끝이 구획 머리의 개수와 같은 x다.** 한 컬럼에 세로로 붙어 서는 숫자들이 다른
 // 자리에서 끝나면 다른 무게로 읽힌다 — nav `Terminal`이 지키는 그 계약(`SidebarItem` 주석)에
@@ -475,7 +476,7 @@ test("오른쪽 메타의 다섯 갈래가 각각 선다", async ({ page }) => {
   expect(await 오른끝(셸수.getByText("1", { exact: true }))).toBe(await 오른끝(머리개수));
 
   // **벨의 부름 — 경과만.** 보고 있는 셸에 온 완료는 그 순간 「봤다」라 문서로
-  // 비켜선다. 아무것도 안 도는 칸의 벨은 초록을 세운다.
+  // 비켜선다. 아무것도 안 도는 칸의 벨은 안 본 완료를 세운다.
   await 셸에서눈을뗀다(page);
   await writeShell(page, BEL);
   await expect(lane.locator('[data-signal="done"]')).toHaveCount(1);
@@ -595,10 +596,10 @@ test("오른쪽 메타의 셸 수 무리는 사이드바 배경에서 대비 4.5
 /**
  * 본문을 문서로 옮겨 **그 셸을 안 보는 상태로** 만든다. 셸은 그대로 살아 있고 칸도 켜진 채다.
  *
- * **초록을 세우려면 이 줄이 필요하다**(#205 · 결정 7). 그 셸을 보고 있는 동안 온 완료는 그
+ * **안 본 완료를 세우려면 이 줄이 필요하다**(#205 · 결정 7). 그 셸을 보고 있는 동안 온 완료는 그
  * 순간 「봤다」가 되어 화면에 안 선다 — 사람이 이미 보고 있으니 그것이 맞다. 그래서 「안 본
  * 완료」를 재는 검사는 **안 보는 자리에서** 재야 하고, 그 자리가 이 앱에서는 문서다.
- * 앰버는 이 줄과 무관하다(「봤다」로 안 꺼진다).
+ * 기다림은 이 줄과 무관하다(「봤다」로 안 꺼진다).
  */
 const 셸에서눈을뗀다 = async (page: Page) => {
   await page.locator('[data-tab="spec"]').click();
@@ -632,7 +633,7 @@ test("부르는 행은 레인·오른쪽 메타·이름으로 함께 말한다",
   await markRunning(page, "claude");
   await 기다리게한다(page, "테스트 셋 통과\n커밋할까요?", 125_000);
 
-  // **레인이 앰버 점으로 갈린다.** work 상태 아이콘은 그 자리에서 물러난다 — 둘이 함께
+  // **레인이 기다림 점으로 갈린다.** work 상태 아이콘은 그 자리에서 물러난다 — 둘이 함께
   // 서면 14px 한 칸이 두 말을 한다.
   await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
   await expect(lane.locator("svg")).toHaveCount(0);
@@ -692,22 +693,29 @@ test("부르는 행은 레인·오른쪽 메타·이름으로 함께 말한다",
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **앰버·초록이 라이트·다크 사이드바 배경에서 다 또렷하다**(결정 3·31).
+// codex-ds 티켓 06 — **부름의 점이 Atelier 낱말 색이다**(결정 3·31 · codex-ds 스펙 2절): 기다림은 `dot-wait`, 안 본 완료는
+// `dot-new`다(`warning` · `accent`의 별칭 — 안 본 완료 점은 Codex 「새 답변」 점이다). 점 둘레의 3px 무리는 `wait-soft` ·
+// `new-soft`다. 같은 셸의 점이 서는 두 자리 — 사이드바 행의 레인과 알림 띠의 줄 — 를 칠해진 색으로 읽어 토큰과 맞댄다.
 //
-// **재는 것이 둘이다: 대비와 「팔레트가 갈렸는가」.** 대비는 색이 바닥을 넘는지만 말하고 어느 팔레트의 색인지는
-// 말하지 않는다 — 결정 3의 표가 색을 **넷**(두 신호 × 두 팔레트)으로 못박았으므로 두 팔레트의 색이
-// 서로 다른 것 자체가 계약이고, 그 한 줄이 이 검사의 fail-closed 지점이다.
+// **재는 것이 셋이다: 토큰과 같은가, 두 부름이 갈렸는가, 사이드바 배경에서 또렷한가.**
+//   - 「갈렸나」 — 토큰과의 맞댐만으로는 두 토큰이 한 색으로 무너지는 날(별칭 하나를 베끼면) 초록이다. 결정 3의 표가 두
+//     부름을 다른 색으로 못박았으므로 그 둘이 서로 다른 것 자체가 계약이다.
+//   - 대비 바닥 — 점은 글자가 아니라 그림 요소이고(WCAG 1.4.11의 바닥 3.0) 3px 무리가 면적을 번다. 색은 DS가 Codex 값을
+//     그대로 둔 `warning` · `accent`다(DS README 「대비」 — 「Codex 원본에서 낮은 쌍은 그대로 두었다」, `accent`는 흰 면 위 2.9:1).
+//     바닥은 부름마다 · 팔레트마다 그 값 바로 아래의 울타리다(`대비바닥`): 바탕이 한 단 더 짙어지거나 점이 옅어지면 여기가 터진다.
+//     - **라이트 — 기다림 3.4 · 안 본 완료 2.6** — 사이드바(`surface-shell` #f6f6f6) 위 기다림 3.51 · 안 본 완료 2.65다. 안 본
+//       완료 점은 그림 요소의 바닥(3.0)에도 못 미친다 — Codex 「새 답변」 점의 값 그대로이고, 무리(`new-soft`)가 그 둘레를 3px
+//       넓힌다. 그 낮춤은 파랑 점의 사정이라 기다림 점에는 걸지 않는다 — 한 바닥(2.6)으로 묶으면 라이트 `warning`이 3.0:1까지
+//       옅어져도 여기가 초록이다.
+//     - **다크 — 둘 다 4.2** — 다크 사이드바(#343434) 위 기다림 4.26 · 안 본 완료 4.35다. 다크 `warning`(#fb6a22)이 이 바탕에서 4.5에
+//       못 미쳐 바닥을 4.5에서 내렸다 — README가 적은 다크 6.1:1은 다크 `surface`(#181818) 위 값이고 이 쌍은 적지 않았다.
+//       그 바닥이 라이트 팔레트가 다크로 새는 갈래를 잡는다(그때 기다림이 3.28로 떨어진다).
 //
-// **점은 지금 Codex 뜻의 색이다** — 기다림 `warning`, 안 본 완료 `success`(`index.css`의 상태 축 옛 이름 주석).
-// 바닥은 그 값 바로 아래의 울타리다: 바탕이 한 단 더 짙어지거나 점이 옅어지면 여기가 터진다. 두 바닥이 4.5 아래인 까닭은
-// 하나다 — 점은 글자가 아니라 그림 요소라 바닥이 3.0이고(WCAG 1.4.11), 3px 무리가 면적을 번다. 색은 DS가 Codex 값을
-// 그대로 둔 `warning`이다(DS README 「대비」의 「Codex 원본에서 낮은 쌍은 그대로 두었다」).
-//   - **라이트 3.4** — 사이드바(`surface-shell` #f6f6f6) 위 기다림 3.51 · 완료 6.36이다. 라이트 `warning`이 낮은 것은
-//     README도 적었다(흰 면 위 3.8:1).
-//   - **다크 4.2** — 다크 사이드바(#343434) 위 기다림 4.26 · 완료 4.72다. 다크 `warning`(#fb6a22)이 이 바탕에서 4.5에
-//     못 미쳐 바닥을 4.5에서 내렸다 — README가 적은 다크 6.1:1은 다크 `surface`(#181818) 위 값이고 이 쌍은 적지 않았다.
-//     그 바닥이 라이트 팔레트가 다크로 새는 갈래를 잡는다(그때 기다림 3.28 · 완료 1.81로 떨어진다).
-test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다", async ({ page }) => {
+// **안 본 완료 점은 두 팔레트에서 같은 값이다**(DS — `accent` · `new-soft`가 다크에서도 같다). 그래서 「다크 색이 라이트 색과
+// 다르다」는 기다림 점만 잰다 — 다크 `warning`은 한 단 밝은 색이라, 라이트 팔레트가 새면 거기서 터진다.
+test("기다림 점은 dot-wait, 안 본 완료 점은 dot-new다 — 행 레인과 알림 띠에서, 라이트·다크 사이드바 배경에서 또렷하다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -716,19 +724,29 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
   const aside = page
     .locator("aside")
     .filter({ has: page.getByRole("button", { name: MAIN_HEADER, exact: true }) });
-  const lane = 레인(page, plainWork.slug);
   const 배경색 = () => aside.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const 점색 = async (kind: string) => {
-    const dot = lane.locator(`[data-signal="${kind}"]`);
-    await expect(dot).toHaveCount(1);
-    return dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  /** 그 부름의 점이 두 자리(행의 레인 · 알림 띠의 줄)에 칠해진 색과 무리(3px 링). */
+  const 점둘 = async (kind: "waiting" | "done") => {
+    const out: Record<string, { 점: string; 무리: string }> = {};
+    for (const [자리, 상자] of [
+      ["행", 레인(page, plainWork.slug)],
+      ["띠", 띠(page)],
+    ] as const) {
+      const dot = 상자.locator(`[data-signal="${kind}"]`);
+      await expect(dot, `${자리}에 ${kind} 점이 없다`).toHaveCount(1);
+      out[자리] = await dot.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { 점: style.backgroundColor, 무리: style.boxShadow };
+      });
+    }
+    return out;
   };
 
-  // 앰버와 초록을 차례로 세워 둘의 점 색을 받는다. 초록을 만드는 것은 **턴의 끝**이다(프로세스 결정 13 — 옛
-  // 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
-  const 점색둘 = async () => {
+  // 기다림과 안 본 완료를 차례로 세워 두 자리의 점을 받는다. 안 본 완료를 만드는 것은 **턴의 끝**이다(프로세스 결정 13 —
+  // 옛 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
+  const 부름둘 = async () => {
     await 기다리게한다(page, "커밋할까요?");
-    const 앰버 = await 점색("waiting");
+    const 기다림 = await 점둘("waiting");
     await markAttention(page, {
       agent: "claude",
       event: "Stop",
@@ -736,52 +754,62 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
       payload: { last_assistant_message: "다 했어요" },
       stopped: true,
     });
-    return { 앰버, 초록: await 점색("done") };
+    return { 기다림, 안본완료: await 점둘("done") };
   };
 
-  // **앰버와 초록이 서로 다른가**를 팔레트마다 센다. 대비만 재면 이 축의 핵심 불변조건이
-  // 어느 층에도 안 남는다 — 완료 점의 색(`TONE`의 `bg-success`)을 기다림 색으로 갈아 끼워도 라이트 대비는
-  // 3.51 ≥ 3.4로 통과하고 다크도 바닥을 넘어 아래 「라이트 색이 그대로다」도 통과하며,
-  // 마크업 seam은 클래스 이름(`bg-warning`/`bg-success`)만 보므로 역시 안 잡는다. 그러면
-  // 「기다림과 안 본 완료가 화면에서 갈린다」(결정 3)가 전 층에서 안 재어진 채 남는다.
-  // 결정 3의 표가 색을 넷으로 못박았으므로 **그 넷이 서로 다른 것 자체가 계약**이고, 그
-  // 논리는 팔레트 사이(아래 「라이트 색이 그대로다」)와 팔레트 안쪽에 똑같이 선다.
-  const 갈렸나 = (색둘: { 앰버: string; 초록: string }, 이름: string) =>
-    expect(색둘.앰버, `${이름} · 앰버와 초록이 같은 색이다`).not.toBe(색둘.초록);
+  /** 지금 팔레트의 토큰과 맞댄다 — `.dark`가 켜져 있으면 `토큰색`도 다크 값으로 풀린다. */
+  const 맞댄다 = async (부름: Awaited<ReturnType<typeof 부름둘>>, 팔레트이름: string) => {
+    const 토큰 = {
+      기다림: { 점: await 토큰색(page, "--dot-wait"), 무리: await 토큰색(page, "--wait-soft") },
+      안본완료: { 점: await 토큰색(page, "--dot-new"), 무리: await 토큰색(page, "--new-soft") },
+    };
+    expect(토큰.기다림.점, `${팔레트이름} · 기다림과 안 본 완료가 같은 색이다`).not.toBe(토큰.안본완료.점);
+    for (const 종류 of ["기다림", "안본완료"] as const) {
+      for (const [자리, 칠] of Object.entries(부름[종류])) {
+        expect(칠.점, `${팔레트이름} · ${자리} · ${종류} 점`).toBe(토큰[종류].점);
+        expect(칠.무리, `${팔레트이름} · ${자리} · ${종류} 무리`).toContain(`${토큰[종류].무리} 0px 0px 0px 3px`);
+      }
+    }
+  };
+
+  /** 부름마다 · 팔레트마다의 대비 바닥 — 그 값 바로 아래다(위 머리말). */
+  const 대비바닥 = {
+    라이트: { 기다림: 3.4, 안본완료: 2.6 },
+    다크: { 기다림: 4.2, 안본완료: 4.2 },
+  } as const;
 
   const 라이트배경 = await 배경색();
-  const 라이트 = await 점색둘();
-  갈렸나(라이트, "라이트");
-  for (const [자리, 색] of Object.entries(라이트)) {
-    expect(await 색대비(page, 색, 라이트배경), `라이트 · ${자리}`).toBeGreaterThanOrEqual(3.4);
+  const 라이트 = await 부름둘();
+  await 맞댄다(라이트, "라이트");
+  for (const 종류 of ["기다림", "안본완료"] as const) {
+    expect(await 색대비(page, 라이트[종류].행.점, 라이트배경), `라이트 · ${종류}`).toBeGreaterThanOrEqual(대비바닥.라이트[종류]);
   }
 
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
-  // **팔레트가 정말 바뀌었는지를 먼저 센다** — 안 먹으면 아래가 라이트 값을 다시 재고
-  // 조용히 초록이 된다(옆 대비 검사와 같은 근거).
+  await 팔레트(page, true);
+  // **팔레트가 정말 바뀌었는지를 먼저 센다** — 안 먹으면 아래가 라이트 값을 다시 재고 조용히 초록이 된다(옆 대비 검사와
+  // 같은 근거).
   const 다크배경 = await 배경색();
   expect(다크배경).not.toBe(라이트배경);
-  const 다크 = await 점색둘();
-  갈렸나(다크, "다크");
-  for (const [자리, 색] of Object.entries(다크)) {
-    expect(await 색대비(page, 색, 다크배경), `다크 · ${자리}`).toBeGreaterThanOrEqual(4.2);
-    // **다크는 한 단 밝은 색이다**(DS 다크 `warning` · `success`). 라이트 색이 그대로 새면 여기가 터진다.
-    expect(색, `다크 · ${자리} — 라이트 색이 그대로다`).not.toBe(라이트[자리 as "앰버" | "초록"]);
+  const 다크 = await 부름둘();
+  await 맞댄다(다크, "다크");
+  for (const 종류 of ["기다림", "안본완료"] as const) {
+    expect(await 색대비(page, 다크[종류].행.점, 다크배경), `다크 · ${종류}`).toBeGreaterThanOrEqual(대비바닥.다크[종류]);
   }
+  expect(다크.기다림.행.점, "다크 · 기다림 — 라이트 색이 그대로다").not.toBe(라이트.기다림.행.점);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **초록 행은 오른쪽 메타에 경과만 낸다**(티켓 #203 · `sidebar-active-band` S4 · ui-refresh 결정 13).
+// **안 본 완료 행은 오른쪽 메타에 경과만 낸다**(티켓 #203 · `sidebar-active-band` S4 · ui-refresh 결정 13).
 //
-// **`markRunning`을 한 번도 안 부른다.** 초록은 **남는** 값이다 — 턴이 끝나 선 확인할 것은 세션이
-// 끝나도 안 본 채 남는다(프로세스 결정 13). 그래서 **그 PTY에 도는 에이전트가 없는** 자리에 초록이
+// **`markRunning`을 한 번도 안 부른다.** 안 본 완료는 **남는** 값이다 — 턴이 끝나 선 확인할 것은 세션이
+// 끝나도 안 본 채 남는다(프로세스 결정 13). 그래서 **그 PTY에 도는 에이전트가 없는** 자리에 안 본 완료가
 // 서 있게 되고, 그때도 행이 경과를 세우는지를 잰다. 한때 이 검사는 상태가 든 「말한 에이전트」로
 // 그 행에 `codex` 마크가 서는지를 쟀다 — 사이드바에서 마크가 빠지면서(ui-refresh 결정 13) 그 칸은
 // 경과만 남았다.
 //
 // 말은 행이 아니라 **행 버튼의 설명**이 든다(결정 14) — 같은 셸의 것인지를 여기서 함께 본다.
-test("초록 행은 경과만 낸다 — 도는 것이 없어도", async ({ page }) => {
+test("안 본 완료 행은 경과만 낸다 — 도는 것이 없어도", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -1035,7 +1063,7 @@ test("띠 이름은 「알림」이고, 안 본 완료 줄은 「확인할 것�
   // 안 본 완료가 띠에 선다.
   await 셸에서눈을뗀다(page);
 
-  // 턴이 끝난 것이 초록이다(프로세스 결정 13 — 옛 전이 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
+  // 턴이 끝난 것이 안 본 완료다(프로세스 결정 13 — 옛 전이 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
   await markAttention(page, {
     agent: "claude",
     event: "Stop",
@@ -1809,7 +1837,7 @@ test("말 없이 부른 셸(벨)의 카드에는 말 칸이 없고, 행 버튼�
 
   // **말을 한 번도 안 한 셸이다.** 한 번 말한 셸이 벨로 부르면 옛 말이 서는 것이 규칙이라
   // (「직전 유지」), 거기서 재면 이 검사가 무엇을 재는지 갈리지 않는다. 아무것도 안 도는
-  // 칸의 벨은 삼켜지지 않고 초록을 세운다(`shell-osc.spec.ts`).
+  // 칸의 벨은 삼켜지지 않고 안 본 완료를 세운다(`shell-osc.spec.ts`).
   await writeShell(page, BEL);
 
   const 행 = 행버튼(page, `${plainWork.title} — 확인할 것`);

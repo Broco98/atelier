@@ -436,7 +436,7 @@ export function showShell(id: number | null): void {
 }
 
 // **창이 앞으로 오는 것만으로도 「봤다」가 된다**(결정 7 · 스토리 10) — 알림을 눌러 돌아오면
-// 그때 보고 있던 셸의 초록이 그 순간 꺼져야 「와서 봤다」로 읽힌다. 모듈 최상위에 거는 것은
+// 그때 보고 있던 셸의 안 본 완료가 그 순간 꺼져야 「와서 봤다」로 읽힌다. 모듈 최상위에 거는 것은
 // 위 구독들과 같은 이유이고, 웹뷰 밖(노드 seam)에서는 `window`가 없어 이 줄을 건너뛴다.
 if (typeof window !== "undefined") {
   window.addEventListener("focus", syncSeen);
@@ -445,7 +445,7 @@ if (typeof window !== "undefined") {
   // 바뀐 상태가 그대로 돌아온다. 값이 나는 것은 **blur는 오는데 `hasFocus()`는 참인** 경우
   // 뿐이고(`windowFocused` 머리말의 그 사례 — `lib/window-focus.ts`), 그 길이 실재한다: 다른 앱을 보다가 분할된
   // 화면의 spec 프레임을 **바로 눌러** 돌아오면 포커스가 자식 문서로 들어가므로 부모
-  // `window`에는 `focus` 없이 `blur`만 온다. 그때 이 줄이 없으면 눈앞의 셸이 초록인 채로
+  // `window`에는 `focus` 없이 `blur`만 온다. 그때 이 줄이 없으면 눈앞의 셸이 안 본 완료인 채로
   // 남는다 — 다음 이벤트가 올 때까지.
   window.addEventListener("blur", syncSeen);
 }
@@ -777,7 +777,7 @@ void onShellAttention((changed) => {
       next = setAttention(next, id, nextAttention(attentionOfId(next, id), hook));
     }
     // **막 도착한 사실도 「봤다」를 거친다.** `applySignal`이 `seen`을 늘 푸는데(그 머리말),
-    // 그 셸을 지금 보고 있는 중이라면 사람은 이미 본 것이다 — 안 거치면 켜진 칸이 초록으로
+    // 그 셸을 지금 보고 있는 중이라면 사람은 이미 본 것이다 — 안 거치면 켜진 칸이 안 본 완료로
     // 번쩍였다가 다음 포커스 변화에나 꺼지고, 같은 판정을 쓰는 알림(#206)이 「보고 있는데
     // 울리는」 그림이 된다(스토리 58).
     return markShellsSeen(next, currentView());
@@ -793,7 +793,7 @@ void onShellAttention((changed) => {
  *
  * **훅 길과 같은 문으로 들어간다.** `applySignal` 하나만 딛으므로 권위 규칙(훅이 말한 상태는
  * 무시)이 이 길에도 저절로 걸린다 — 여기서 칸을 직접 짜면 그 규칙을 두 번
- * 적게 되고, 한쪽만 늙는 날 훅 셸의 앰버가 Codex TUI의 OSC 한 장에 꺼진다. 옛 규칙은 「훅이 한 번이라도 말한 셸에서는
+ * 적게 되고, 한쪽만 늙는 날 훅 셸의 기다림이 Codex TUI의 OSC 한 장에 꺼진다. 옛 규칙은 「훅이 한 번이라도 말한 셸에서는
  * 무시」였고, 프로세스 결정 12가 이렇게 고쳤다: 에이전트가 foreground에서 사라지면 권위가 풀려 이 길이 다시 말한다
  * (`nextOnRunning` — 위 `onPtyRunning`).
  *
@@ -805,7 +805,7 @@ void onShellAttention((changed) => {
  * 두 번의 변환(셸 ID → pty 번호 → 레지스트리 번호)이 필요 없다.
  *
  * 「봤다」를 마지막에 한 번 거치는 것은 훅 길과 같은 이유다 — 지금 보고 있는 셸에 도착한
- * 완료는 사람이 이미 본 것이라, 안 거치면 켜진 칸이 초록으로 번쩍였다 꺼지고 알림이 운다.
+ * 완료는 사람이 이미 본 것이라, 안 거치면 켜진 칸이 안 본 완료로 번쩍였다 꺼지고 알림이 운다.
  */
 function applyBonusSignal(id: number, signal: AgentSignal | null, source: AttentionSource): void {
   if (signal === null) return;
@@ -839,7 +839,7 @@ function noteOutput(id: number): void {
 //
 // **자리가 여기인 이유는 「보고 있는가」다.** 알림 억제는 결정 7의 판정을 그대로 쓰는데
 // (스토리 80) 그 값(`currentView`)은 이 모듈의 것이다. 사이드바에 두면 「봤다」를 아는 자리가
-// 둘이 되고, 그러면 탭의 초록과 알림이 다른 순간에 같은 판정을 쓰게 된다.
+// 둘이 되고, 그러면 탭의 물들임과 알림이 다른 순간에 같은 판정을 쓰게 된다.
 //
 // **이펙트가 아니라 모듈 구독인 것**도 위 두 구독과 같은 이유다: 배경 칸(결정 21)이 부르는
 // 것도 알려야 하고, `main.tsx`가 StrictMode라 이펙트에 두면 개발 중에 판정기가 두 벌이 된다.
@@ -934,7 +934,7 @@ function setBadge(count: number): void {
  * 이 자리의 실물 확인은 **번들된 `.app`으로 해야 한다**: `tauri dev`로 누르면 앞으로 오는
  * 것은 터미널 앱이고, 그것을 「안 된다」로 읽으면 기준이 거짓 음성으로 닫힌다.
  *
- * 창이 앞으로 온 뒤는 스토리 10이 받는다 — 포커스를 얻는 순간 켜져 있던 셸의 초록이
+ * 창이 앞으로 온 뒤는 스토리 10이 받는다 — 포커스를 얻는 순간 켜져 있던 셸의 안 본 완료가
  * 꺼진다(`syncSeen`의 `focus` 리스너).
  */
 function show(payload: NotifyPayload): void {
@@ -1336,7 +1336,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 3절에 있다(선례: 티켓 04의 `spec/훅-실물-확인.md`).
 
   // **벨의 「모르는 명령」 판정은 울린 그 순간의 값으로 한다**(구현 결정 1). 1초 폴링이라
-  // 경계에서 어긋날 수 있고, 어긋나면 초록이 하나 더 뜨는 쪽으로 틀린다 — 스펙이 택한 방향이다.
+  // 경계에서 어긋날 수 있고, 어긋나면 안 본 완료가 하나 더 뜨는 쪽으로 틀린다 — 스펙이 택한 방향이다.
   // 죽은 칸을 가리는 것은 `runningOfId`가 딛는 `runningOn` 하나다.
   term.onBell(() => {
     applyBonusSignal(id, bellSignal(runningOfId(terminalStore.state, id)), "bell");
@@ -1733,7 +1733,7 @@ async function spawn(instance: ShellInstance) {
         //
         // **쓰기 전에 알린다.** 이 프레임에 실려 온 OSC는 **이 프레임보다 새 사실**이라
         // 나중에 앉아야 한다: 순서가 바뀌면 승인 요청과 그 뒤 몇 글자가 한 프레임에 실려 온
-        // 자리에서 방금 선 앰버가 그 자리에서 꺼진다. 훅 없는 codex에서 사람이 `y`로 승인한
+        // 자리에서 방금 선 기다림이 그 자리에서 꺼진다. 훅 없는 codex에서 사람이 `y`로 승인한
         // 직후가 정확히 그 모양이라(다음 승인 요청이 첫 프레임에 실려 온다) 이 판이 존재하는
         // 이유가 통째로 사라진다.
         //

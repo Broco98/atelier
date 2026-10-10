@@ -53,8 +53,9 @@ describe("터미널이 앱 팔레트에서 옮겨 적은 값", () => {
   });
 
   // 티켓이 「앱과 어긋나면 안 되는 넷」으로 못박은 짝들이다(결정 33) — 바탕 = 카드 면, 글자 = 본문, 커서 = 강조,
-  // 고름 = 면 알파. 앱 쪽 이름은 DS의 터미널 낱말(`term-bg` · `term-fg`)과 Codex 토큰이다. 넷 다 xterm이 직접 읽는
-  // 표기(`#rrggbb` · `rgba()`)라 글자 그대로 견준다. 다크 바탕은 L3가 칠해진 색으로 잰다(`e2e/frame.spec.ts`).
+  // 고름 = 면 알파. 앱 쪽 이름은 DS의 터미널 낱말(`term-bg` · `term-fg` · `term-dim`)과 Codex 토큰(`accent` · `fill-active`)이다
+  // (codex-ds 티켓 06). 넷 다 xterm이 직접 읽는 표기(`#rrggbb` · `rgba()`)라 글자 그대로 견준다. 흐린 글자는 xterm이 글자색에서
+  // 만든다(맨 아래). 다크 바탕은 L3가 칠해진 색으로 잰다(`e2e/frame.spec.ts`).
   it("background가 --term-bg(카드 면)와 같다", () => {
     expect(terminalThemeLight.background).toBe(cssToken("term-bg"));
   });
@@ -69,6 +70,17 @@ describe("터미널이 앱 팔레트에서 옮겨 적은 값", () => {
 
   it("selectionBackground이 --fill-active와 같다", () => {
     expect(terminalThemeLight.selectionBackground).toBe(cssToken("fill-active"));
+  });
+
+  // **흐린 글자(SGR 2)는 테마에 칸이 없다** — xterm이 글자색을 반만 칠해 그린다(DOM 그리기의 `.xterm-dim`, WebGL 그리기의
+  // `DIM_OPACITY` — 둘 다 0.5). DS의 흐린 글자 `term-dim`(= `fg-tertiary`)이 바로 본문의 50%라, 글자색이 `term-fg`면 흐린
+  // 글자는 저절로 `term-dim`이다. 그 셈을 여기서 견준다 — `fg-tertiary`의 알파가 바뀌거나 글자색이 본문에서 떨어지는 날 둘이 갈린다.
+  it("흐린 글자(글자색의 반)가 --term-dim과 같다", () => {
+    const XTERM_DIM_OPACITY = 0.5;
+    const found = terminalThemeLight.foreground?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
+    if (!found) throw new Error(`#rrggbb가 아니다: ${terminalThemeLight.foreground}`);
+    const [r, g, b] = found.slice(1).map((channel) => parseInt(channel, 16));
+    expect(`rgba(${r}, ${g}, ${b}, ${XTERM_DIM_OPACITY})`).toBe(cssToken("term-dim"));
   });
 });
 
