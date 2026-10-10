@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Agent, ChatRecordEvent, Conversation, EngineCheck, RecordLine } from "./types";
+import type { Agent, ChatEngineEvent, ChatRecordEvent, Conversation, EngineCheck, RecordLine } from "./types";
 
 // 대화 호스트를 부르는 명령(three-axes 티켓 05). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
 // 에이전트가 계속 돈다 — 그래서 대화는 기록에서 다시 그린다: 먼저 기록 줄 이벤트를 구독하고(`onChatRecord`), 그다음
@@ -13,8 +13,9 @@ import type { Agent, ChatRecordEvent, Conversation, EngineCheck, RecordLine } fr
 // 않아야 한다.
 export const chatApi = {
   /**
-   * 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾는다. `reread`는 안내 카드의 「다시 확인」이다 —
-   * 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 환경을 새로 읽는다. 처음 한 번은 로그인 셸을 기다린다(최대 10초).
+   * 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾고, 찾았으면 로그인돼 있는지 엔진에게 묻는다. `reread`는
+   * 안내 카드의 「다시 확인」이다 — 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 환경을 새로 읽는다. 처음 한 번은
+   * 로그인 셸을 기다린다(최대 10초). 답은 엔진 상태 이벤트로도 오고, 로그인돼 있으면 로그인을 기다리던 대화가 다시 뜬다.
    */
   checkEngine: (agent: Agent, reread: boolean) =>
     invoke<EngineCheck>("chat_check_engine", { agent, reread }),
@@ -31,6 +32,14 @@ export const chatApi = {
   /** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. */
   close: (work: string, conversation: string) =>
     invoke<void>("chat_close", { work, conversation }),
+  /**
+   * 로그인 시작(three-axes 티켓 12) — 그 엔진의 로그인 명령을 띄운다. 명령이 브라우저를 연다. 진행(링크 · 끝남)은 엔진 상태
+   * 이벤트로 오고(`onChatEngine`), 끝나면 호스트가 확인을 저절로 다시 돌아 「됨」이면 그 엔진의 로그인 필요 대화를 다시
+   * 띄운다. 이미 돌면 새로 띄우지 않는다.
+   */
+  startLogin: (agent: Agent) => invoke<void>("chat_start_login", { agent }),
+  /** 로그인 취소 — 도는 로그인 명령을 거둔다. 「끝남(취소)」은 엔진 상태 이벤트로 온다. */
+  cancelLogin: (agent: Agent) => invoke<void>("chat_cancel_login", { agent }),
 };
 
 /**
@@ -38,7 +47,8 @@ export const chatApi = {
  * 통과하고 화면만 조용하다. 그래서 `api.test.ts`가 그 선언을 읽어 견준다.
  *
  * - 기록 줄: 기록 파일에 적은 것과 같은 줄. 화면은 대화를 이것 하나로 그린다.
- * - 대기 줄 바뀜(07) · 엔진 상태(12): 이름만 먼저 선다. 싣는 것과 듣는 함수는 그 장이 더한다.
+ * - 엔진 상태(12): 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 안내 카드가 이것으로 그린다.
+ * - 대기 줄 바뀜(07): 이름만 먼저 선다. 싣는 것과 듣는 함수는 그 장이 더한다.
  */
 export const CHAT_RECORD_EVENT = "chat:record";
 export const CHAT_QUEUE_EVENT = "chat:queue";
@@ -50,4 +60,12 @@ export const CHAT_ENGINE_EVENT = "chat:engine";
  */
 export function onChatRecord(listener: (event: ChatRecordEvent) => void): Promise<UnlistenFn> {
   return listen<ChatRecordEvent>(CHAT_RECORD_EVENT, (event) => listener(event.payload));
+}
+
+/**
+ * 엔진 상태가 바뀔 때마다 온다 — 엔진을 확인할 때, 에이전트가 로그인을 요구할 때, 로그인 명령이 돌고(링크) 끝날 때.
+ * 어느 대화 · 어느 work의 것이 아니라 엔진의 것이라, 같은 엔진의 카드가 다 따라 바뀐다.
+ */
+export function onChatEngine(listener: (event: ChatEngineEvent) => void): Promise<UnlistenFn> {
+  return listen<ChatEngineEvent>(CHAT_ENGINE_EVENT, (event) => listener(event.payload));
 }
