@@ -19,9 +19,14 @@ const [specWork] = WORKS;
 /** `claude`의 「full」 마우스 모드 — 누름 · 놓음(1000) · 끌기(1002) · 모든 움직임(1003) · SGR 인코딩(1006). */
 const FULL_MOUSE = "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h";
 
+/** 지금까지 셸로 나간 쓰기 하나하나의 `data`, 나간 순서대로. */
+async function writesToShell(page: Page): Promise<string[]> {
+  return (await ipcCallArgs(page, "pty_write", "id")).map(({ args }) => String(args.data));
+}
+
 /** 지금까지 셸로 간 바이트를 나간 순서대로 이어 붙인 것. */
 async function sentToShell(page: Page): Promise<string> {
-  return (await ipcCallArgs(page, "pty_write", "id")).map(({ args }) => String(args.data)).join("");
+  return (await writesToShell(page)).join("");
 }
 
 /** 누른 버튼 없는 움직임 보고(`35` — 1003이 켜야 나간다)의 수. */
@@ -40,7 +45,9 @@ async function wiggleUntilMotion(page: Page): Promise<void> {
     swing = -swing;
     await page.mouse.move(box.x + box.width / 2 + swing * 24, box.y + box.height / 2);
     expect(motions(await sentToShell(page)), "셸 화면 위의 움직임이 보고로 안 나갔다").toBeGreaterThan(before);
-  }).toPass();
+    // 한계를 적어 둔다 — `toPass`는 expect의 한계를 안 따르고 기본이 「끝없이」라, 모드가 안 켜지면 러너의 제한 시간에서야
+    // 위 말 없이 빨개진다.
+  }).toPass({ timeout: 10_000 });
 }
 
 test("셸을 누른 채 ⌘1로 떼어져도 그 뒤의 끌기 · 놓음이 셸에 NaN 보고를 보내지 않는다", async ({ page }) => {
@@ -80,6 +87,9 @@ test("셸을 누른 채 ⌘1로 떼어져도 그 뒤의 끌기 · 놓음이 셸�
   await expect(page.locator(".xterm")).toHaveCount(1);
   await wiggleUntilMotion(page);
 
-  expect(await sentToShell(page), "떼어진 셸로 좌표 NaN인 마우스 보고가 갔다").not.toContain("NaN");
+  const writes = await writesToShell(page);
+  expect(writes.join(""), "떼어진 셸로 좌표 NaN인 마우스 보고가 갔다").not.toContain("NaN");
+  // 다 잘려 남은 것이 없는 덩어리는 쓰지 않는다 — 빈 `pty_write`가 하나도 없다(위 `NaN` 단언은 이것을 못 본다).
+  expect(writes.filter((data) => data === ""), "다 잘린 덩어리가 빈 쓰기로 셸에 갔다").toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
