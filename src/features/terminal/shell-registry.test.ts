@@ -65,8 +65,6 @@ import {
   shellRowName,
   shellsOf,
   cycleShell,
-  modeOfOwner,
-  ownerIn,
   ownerOf,
   sameScreen,
   shellForNav,
@@ -82,9 +80,6 @@ import { attentionOn } from "./shell-attention";
 import type { Attention } from "./shell-attention";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import { workFixture } from "@/features/works/work-fixture";
-// 모드 목록을 **표에서** 받는다 — 여기 손으로 둘을 적으면 세계가 셋이 되는 날 이 파일만
-// 조용히 둘을 재고, 그때 빠지는 것이 정확히 이 판이 지키려는 불변식이다.
-import { ALL_MODES } from "@/mode";
 
 // 소스를 **문자열로만** 본다. 자르거나 파싱하는 정규식은 파서가 새는 순간 조용히 통과하고,
 // 이 저장소는 그것을 fail-open이라 부른다 — 실제로 그 사고가 있었다(아래 「본문도 DOM 전역을
@@ -104,22 +99,19 @@ const countOf = (source: string, literal: string) => source.split(literal).lengt
 // "화면 전환"이라는 조작이 없어 정의상 못 본다. 스펙이 그 항목을 seam에서 빼 실물 왕복
 // 관찰로 옮겼다(spec.md의 Seam 1 아래 인용문).
 
-// 아래 목록 조작 검사들은 **세계를 안 가른다** — 목록·상한·켜진 칸의 규칙은 소유자가
-// 무엇이든 같아서다. 세계가 갈리는 불변식은 위 「셸의 소유자 키」와 아래 `shellCountsOf`의
-// 검사가 따로 붙든다. 그래서 여기서는 한 세계를 골라 두고, **키는 늘 `ownerOf`가 짓는다** —
-// `"atelier:가"`를 손으로 이으면 형식을 적는 자리가 둘이 되고, 그 형식이 바뀌는 날 이
+// 아래 목록 조작 검사들은 목록·상한·켜진 칸의 규칙이 소유자가 무엇이든 같다는 것을 본다. **키는 늘
+// `ownerOf`가 짓는다** — 키를 손으로 지으면 형식을 적는 자리가 둘이 되고, 그 형식이 바뀌는 날 이
 // 파일만 옛 키를 재면서 조용히 초록으로 남는다.
-const TOP = topTerminal("atelier");
-const ownerFor = (slug: string) => ownerOf("atelier", slug);
+const TOP = topTerminal();
+const ownerFor = (slug: string) => ownerOf(slug);
 const originFor = (slug: string, cwd: string | null = null): ShellOrigin => ({
-  mode: "atelier",
   cwd,
   owner: ownerFor(slug),
   project: null,
 });
 
 // 셸을 n개 띄운 상태와 그 id들. 목록 조작을 보려면 늘 여럿이 필요하다.
-// **씨앗을 안 주면 그 세계의 최상위 터미널이다** — 판 02가 관찰하던 것이 전부 그 화면이었다.
+// **씨앗을 안 주면 최상위 터미널이다** — 판 02가 관찰하던 것이 전부 그 화면이었다.
 function opened(
   count: number,
   seed: ShellOrigin = TOP,
@@ -372,12 +364,6 @@ describe("마지막 셸이 사라진 순간", () => {
   it("최상위 터미널도 같은 규칙이다", () => {
     expect(shellsEmptied(at(TOP.owner, 1), at(TOP.owner, 0))).toBe(true);
     expect(shellsEmptied(at(TOP.owner, 1), at(ownerFor("가"), 0))).toBe(false);
-  });
-
-  // 세계가 갈린 뒤에도 이 판정은 **소유자가 같은지만** 본다 — 두 세계의 최상위는 서로 다른
-  // 소유자라, Atelier에서 Maison으로 건너간 것은 「이 화면의 마지막 칸이 닫혔다」가 아니다.
-  it("세계가 바뀐 것도 세지 않는다", () => {
-    expect(shellsEmptied(at(TOP.owner, 1), at(topTerminal("maison").owner, 0))).toBe(false);
   });
 });
 
@@ -776,78 +762,46 @@ describe("켜진 칸은 화면마다 따로다", () => {
   });
 });
 
-// 결정 10. **owner는 세계를 실은 키다.** 여기서 지키는 것은 「어느 두 셸도 다른 세계에서
-// 같은 키를 갖지 않는다」 하나이고, 깨지면 두 루트에 같은 slug가 있을 때 셸 목록·상한·켜진
-// 칸이 통째로 섞인다 — 결정 10이 그 불변식을 테스트가 붙들라고 명시했다.
+// 결정 26 · ui-refresh 결정 23. **owner는 그 셸이 사는 화면의 키다** — work의 slug, 최상위 터미널은 빈 글자 `""`다.
+// 여기서 지키는 것은 「어느 두 화면도 같은 키를 갖지 않는다」와 「최상위의 빈 글자가 『주인 없음』이 아니다」 둘이다.
 describe("셸의 소유자 키", () => {
-  // **두 세계를 함께 돈다.** 한 모드만 재면 `ownerOf`가 모드를 통째로 버려도(늘 `atelier:`를
-  // 짓게 해도) 전부 초록이다 — 그 변형이 정확히 이 판이 막으려는 사고다.
-  //
   // `"가:나"`가 목록에 있는 것은 **코어가 slug에서 `:`를 안 막기 때문이다**
   // (`crates/atelier-core/src/slug.rs`의 `is_safe_slug`가 보는 것은 빈 값·앞머리 `.`·`/`·`\`
-  // 넷뿐이고, `:`를 `-`로 바꾸는 `slugify`는 제목에서 파생할 때만 지난다). 가르는 자리가
-  // 마지막 `:`로 밀리는 순간 이 slug의 왕복이 `나`로 돌아와 여기가 빨개진다.
+  // 넷뿐이다). 키가 slug를 가르거나 잇는 날 이 slug의 왕복이 깨져 여기가 빨개진다.
   const SLUGS = [null, "가", "spec-search", "가:나"];
 
-  it("형식이 `<mode>:<slug>`다 — 최상위는 뒤가 빈다", () => {
-    expect(ownerOf("atelier", "spec-search")).toBe("atelier:spec-search");
-    expect(ownerOf("maison", "finance")).toBe("maison:finance");
-    expect(ownerOf("maison")).toBe("maison:");
+  it("work의 키는 slug이고, 최상위는 빈 글자다", () => {
+    expect(ownerOf("spec-search")).toBe("spec-search");
+    expect(ownerOf()).toBe("");
+    expect(ownerOf(null)).toBe("");
   });
 
-  it("(모드, slug)가 다르면 키도 다르다 — 두 최상위도 서로 다르다", () => {
-    const keys = ALL_MODES.flatMap((mode) => SLUGS.map((slug) => ownerOf(mode, slug)));
+  it("slug가 다르면 키도 다르다 — 최상위와도 다르다", () => {
+    const keys = SLUGS.map((slug) => ownerOf(slug));
     expect(new Set(keys).size, keys.join(" · ")).toBe(keys.length);
-    // 같은 slug가 두 루트에 서는 것이 결정 10이 든 실제 충돌이다.
-    expect(ownerOf("atelier", "finance")).not.toBe(ownerOf("maison", "finance"));
   });
 
   it("지은 키를 도로 읽으면 제자리로 온다", () => {
-    for (const mode of ALL_MODES) {
-      for (const slug of SLUGS) {
-        const owner = ownerOf(mode, slug);
-        expect(modeOfOwner(owner), owner).toBe(mode);
-        expect(slugOfOwner(owner), owner).toBe(slug);
-      }
+    for (const slug of SLUGS) {
+      expect(slugOfOwner(ownerOf(slug)), String(slug)).toBe(slug);
     }
   });
 
-  // 공용 끌기 모듈은 이 타입을 못 불러 소유자를 `string`으로 싣는다(UI개선 티켓 03). 받는
-  // 쪽이 `as`로 좁히면 형식 보증이 주석 하나로 내려앉는다 — 손으로 이은 문자열(`work.slug`)이
-  // 그대로 앉아 slug가 조용히 틀린다. 좁히기는 **값을 보고** 여기서 한다.
-  it("`ownerIn`은 그 세계가 지은 키만 소유자로 받는다", () => {
-    for (const mode of ALL_MODES) {
-      expect(ownerIn(mode, ownerOf(mode))).toBe(ownerOf(mode));
-      for (const slug of SLUGS) {
-        expect(ownerIn(mode, ownerOf(mode, slug)), String(slug)).toBe(ownerOf(mode, slug));
-      }
-    }
-    // slug만 실은 것 · 남의 세계 키 · 구분자 없는 모드 이름은 소유자가 아니다.
-    expect(ownerIn("atelier", "finance")).toBeNull();
-    expect(ownerIn("atelier", ownerOf("maison", "finance"))).toBeNull();
-    expect(ownerIn("atelier", "atelier")).toBeNull();
+  // 최상위 키와 work 키가 안 겹치는 근거가 「slug는 비어 있을 수 없다」 한 줄이라, 빈 글자는
+  // 최상위 말고 다른 뜻을 가질 수 없다 — 코어가 빈 slug를 거절해서다(`is_safe_slug`). **빈 글자는 거짓
+  // 값이지만 키다** — 「주인 없음」은 `null`로만 말한다(닫기 IPC의 `owner` · `ShellTally.owner`).
+  it("빈 글자는 최상위다 — slug가 있는 키와 안 겹치고 「주인 없음」(`null`)도 아니다", () => {
+    expect(slugOfOwner(ownerOf())).toBeNull();
+    expect(ownerOf()).not.toBe(ownerOf("가"));
+    expect(ownerOf()).not.toBeNull();
   });
 
-  // 최상위 키와 work 키가 안 겹치는 근거가 「slug는 비어 있을 수 없다」 한 줄이라, 빈 뒤꼬리는
-  // 최상위 말고 다른 뜻을 가질 수 없다 — 코어가 빈 slug를 거절해서다(`is_safe_slug`).
-  it("뒤가 비면 그 세계의 최상위다 — slug가 있는 키와 안 겹친다", () => {
-    for (const mode of ALL_MODES) {
-      expect(slugOfOwner(ownerOf(mode))).toBeNull();
-      expect(ownerOf(mode)).not.toBe(ownerOf(mode, "가"));
-    }
-  });
-
-  // 결정 10·25. 최상위가 세계마다 하나씩이라 **상수일 수 없다** — 한 값으로 두면 두 화면이
-  // 같은 셸 목록과 같은 상한을 나눠 쓴다.
-  it("`topTerminal`은 그 세계의 최상위 자리다", () => {
-    for (const mode of ALL_MODES) {
-      const origin = topTerminal(mode);
-      expect(origin.owner).toBe(ownerOf(mode));
-      // 어디서 뜨는지는 백엔드만 안다(결정 25). Work가 아니라 프로젝트도 없다.
-      expect(origin.cwd).toBeNull();
-      expect(origin.project).toBeNull();
-    }
-    expect(topTerminal("atelier").owner).not.toBe(topTerminal("maison").owner);
+  it("`topTerminal`은 최상위 자리다", () => {
+    const origin = topTerminal();
+    expect(origin.owner).toBe(ownerOf());
+    // 어디서 뜨는지는 백엔드만 안다(결정 25). Work가 아니라 프로젝트도 없다.
+    expect(origin.cwd).toBeNull();
+    expect(origin.project).toBeNull();
   });
 });
 
@@ -855,28 +809,28 @@ describe("셸의 소유자 키", () => {
 // 프런트가 홈을 붙이면 `ATELIER_HOME`을 바꾼 사람에게 조용히 어긋난다.
 describe("cwd는 Work의 모양이 정한다", () => {
   it("프로젝트가 하나면 그 워크트리다", () => {
-    const origin = workShellOrigin("atelier", w(["atelier"]), null);
+    const origin = workShellOrigin(w(["atelier"]), null);
     expect(origin?.cwd).toBe("~/.atelier/works/w/trees/atelier");
-    expect(origin?.owner).toBe(ownerOf("atelier", "w"));
+    expect(origin?.owner).toBe(ownerOf("w"));
     // 프로젝트가 하나면 이름에 프로젝트를 적을 이유가 없다 — 고를 것이 없다.
     expect(origin?.project).toBeNull();
   });
 
   it("프로젝트가 없으면 Work 폴더다 — spec 폴더의 부모", () => {
-    const origin = workShellOrigin("atelier", w([]), null);
+    const origin = workShellOrigin(w([]), null);
     expect(origin?.cwd).toBe("~/.atelier/works/w");
   });
 
   it("spec 폴더 표기에 슬래시가 붙어 있어도 같은 자리다", () => {
     const work = { ...w([]), specDir: "~/.atelier/works/w/spec/" };
-    expect(workShellOrigin("atelier", work, null)?.cwd).toBe("~/.atelier/works/w");
+    expect(workShellOrigin(work, null)?.cwd).toBe("~/.atelier/works/w");
   });
 
   it("어느 갈래든 `~` 축약 표기다", () => {
     for (const origin of [
-      workShellOrigin("atelier", w([]), null),
-      workShellOrigin("atelier", w(["atelier"]), null),
-      workShellOrigin("atelier", w(["atelier", "cli"]), "cli"),
+      workShellOrigin(w([]), null),
+      workShellOrigin(w(["atelier"]), null),
+      workShellOrigin(w(["atelier", "cli"]), "cli"),
     ]) {
       expect(origin?.cwd).toMatch(/^~\//);
     }
@@ -885,17 +839,17 @@ describe("cwd는 Work의 모양이 정한다", () => {
   // 결정 24. 여럿일 때 아무 데나 고르면 **틀린 워크트리에서 claude가 돈다.** 물어보는 것이
   // 이 판의 규칙이라, 지정이 없으면 셸 자체가 생기지 않아야 한다.
   it("프로젝트가 여럿인데 안 고르면 셸이 생기지 않는다", () => {
-    expect(workShellOrigin("atelier", w(["atelier", "cli"]), null)).toBeNull();
+    expect(workShellOrigin(w(["atelier", "cli"]), null)).toBeNull();
   });
 
   it("여럿 중 고른 것의 워크트리로 간다", () => {
-    const origin = workShellOrigin("atelier", w(["atelier", "cli"]), "cli");
+    const origin = workShellOrigin(w(["atelier", "cli"]), "cli");
     expect(origin?.cwd).toBe("~/.atelier/works/w/trees/cli");
     expect(origin?.project).toBe("cli");
   });
 
   it("그 Work에 없는 프로젝트를 고르면 셸이 생기지 않는다", () => {
-    expect(workShellOrigin("atelier", w(["atelier", "cli"]), "없는것")).toBeNull();
+    expect(workShellOrigin(w(["atelier", "cli"]), "없는것")).toBeNull();
   });
 
   // 폴더가 없으면 spawn이 실패하고 결정 23의 「그 칸에 이유를 적는다」를 그대로 탄다.
@@ -903,26 +857,17 @@ describe("cwd는 Work의 모양이 정한다", () => {
   it("워크트리 폴더가 없어도 여기서는 막지 않는다", () => {
     const work = w(["atelier"]);
     const 없는것 = { ...work, worktrees: [{ ...work.worktrees[0], exists: false }] };
-    expect(workShellOrigin("atelier", 없는것, null)?.cwd).toBe("~/.atelier/works/w/trees/atelier");
+    expect(workShellOrigin(없는것, null)?.cwd).toBe("~/.atelier/works/w/trees/atelier");
   });
 
-  // 결정 10. **`work`에서 세계를 유도할 수 없다** — `WorkView`에 어느 루트에서 읽어 온
-  // 것인지가 안 실려 있고, 두 루트에 같은 slug가 설 수 있다. 갈래 셋이 전부 받은 세계를
-  // 실어야 한다: 한 갈래만 빠뜨리면 그 모양의 work에서만 셸이 남의 세계 것이 된다.
-  it("갈래 셋이 전부 받은 세계를 origin에 싣는다", () => {
-    for (const mode of ALL_MODES) {
-      const 갈래 = [
-        workShellOrigin(mode, w([]), null),
-        workShellOrigin(mode, w(["atelier"]), null),
-        workShellOrigin(mode, w(["atelier", "cli"]), "cli"),
-      ];
-      for (const origin of 갈래) {
-        expect(origin?.mode, `${mode}`).toBe(mode);
-        // **`mode`와 `owner`가 갈리면 안 된다** — spawn은 앞을 백엔드에 싣고 화면은 뒤로
-        // 조회한다. 어긋나면 셸은 저쪽 세계에서 뜨는데 이쪽 줄에 그려진다.
-        expect(origin?.owner, `${mode}`).toBe(ownerOf(mode, "w"));
-      }
-    }
+  // 갈래 셋이 전부 그 work의 키를 싣는다 — 한 갈래만 빠뜨리면 그 모양의 work에서만 셸이 다른 화면의 줄에 그려진다.
+  it("갈래 셋이 전부 그 work의 주인을 origin에 싣는다", () => {
+    const 갈래 = [
+      workShellOrigin(w([]), null),
+      workShellOrigin(w(["atelier"]), null),
+      workShellOrigin(w(["atelier", "cli"]), "cli"),
+    ];
+    for (const origin of 갈래) expect(origin?.owner).toBe(ownerOf("w"));
   });
 });
 
@@ -933,10 +878,9 @@ describe("cwd는 Work의 모양이 정한다", () => {
 // 자리를 타는 날 멀티 프로젝트 work에 저장소가 아닌 폴더의 셸이 저절로 쌓인다.
 describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모든 프로젝트」", () => {
   it("프로젝트가 여럿이면 첫 워크트리 경로의 부모에서 연다 — 프로젝트 앞말이 없다", () => {
-    expect(workDefaultOrigin("atelier", w(["atelier", "cli"]))).toEqual({
-      mode: "atelier",
+    expect(workDefaultOrigin(w(["atelier", "cli"]))).toEqual({
       cwd: "~/.atelier/works/w/trees",
-      owner: ownerOf("atelier", "w"),
+      owner: ownerOf("w"),
       project: null,
     });
   });
@@ -952,52 +896,40 @@ describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모
         { ...work.worktrees[1], path: "~/딴데/w/나무/cli" },
       ],
     };
-    expect(workDefaultOrigin("atelier", moved).cwd).toBe("~/딴데/w/나무");
+    expect(workDefaultOrigin(moved).cwd).toBe("~/딴데/w/나무");
   });
 
-  // 0·1개 work과 Room은 **지금과 같다**(UI개선 스펙 §11). 두 세계를 함께 돈다 — Maison은 워크트리가
-  // 실려 와도 Room 폴더다(`shellTrees`).
-  it("0·1개 work과 Maison은 지금 자리와 같다", () => {
-    for (const mode of ALL_MODES) {
-      for (const work of [w([]), w(["atelier"])]) {
-        expect(workDefaultOrigin(mode, work), `${mode} ${work.worktrees.length}개`).toEqual(
-          workShellOrigin(mode, work, null),
-        );
-      }
+  // 0·1개 work은 **지금과 같다**(UI개선 스펙 §11).
+  it("0·1개 work은 지금 자리와 같다", () => {
+    for (const work of [w([]), w(["atelier"])]) {
+      expect(workDefaultOrigin(work), `${work.worktrees.length}개`).toEqual(workShellOrigin(work, null));
     }
-    expect(workDefaultOrigin("maison", w(["atelier", "cli"]))).toEqual(
-      workShellOrigin("maison", w(["atelier", "cli"]), null),
-    );
   });
 
   // UI개선 결정 18·19. `+` 메뉴의 「모든 프로젝트」와 묻지 않는 `+`는 ⌘T와 **같은 자리**다 — 그 규칙이
-  // 서는 곳이 `placeOrigin` 하나라 여기서 값으로 잰다. 세계·모양을 전부 돈다: 한 갈래만 기본
+  // 서는 곳이 `placeOrigin` 하나라 여기서 값으로 잰다. 모양을 전부 돈다: 한 갈래만 기본
   // 자리를 안 타면 그 모양의 work에서만 `+`와 ⌘T가 다른 자리에 연다.
   it("「모든 프로젝트」는 ⌘T와 같은 자리, 프로젝트 줄은 그 워크트리다", () => {
-    for (const mode of ALL_MODES) {
-      for (const work of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
-        expect(placeOrigin(mode, work, { kind: "default" }), `${mode} ${work.worktrees.length}개`).toEqual(
-          workDefaultOrigin(mode, work),
-        );
-      }
+    for (const work of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
+      expect(placeOrigin(work, { kind: "default" }), `${work.worktrees.length}개`).toEqual(workDefaultOrigin(work));
     }
-    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "cli" })).toEqual(
-      workShellOrigin("atelier", w(["atelier", "cli"]), "cli"),
+    expect(placeOrigin(w(["atelier", "cli"]), { kind: "project", project: "cli" })).toEqual(
+      workShellOrigin(w(["atelier", "cli"]), "cli"),
     );
-    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "cli" })?.cwd).toBe(
+    expect(placeOrigin(w(["atelier", "cli"]), { kind: "project", project: "cli" })?.cwd).toBe(
       "~/.atelier/works/w/trees/cli",
     );
     // 열린 사이 work이 바뀌어 고른 이름이 없으면 자리가 안 정해진다(결정 24).
-    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "없음" })).toBeNull();
+    expect(placeOrigin(w(["atelier", "cli"]), { kind: "project", project: "없음" })).toBeNull();
   });
 
   // `+` 메뉴의 「모든 프로젝트」 옆 옅은 글자(UI개선 결정 20). 이름을 적지 않고 **그 자리의 마지막
   // 마디**를 읽는다 — 제품 코드가 그렇다는 것은 아래 소스 스캔이 문다(테스트 파일은 안 본다).
   it("옅은 경로는 기본 자리 경로의 마지막 마디 + `/`다", () => {
-    expect(placeHint(workDefaultOrigin("atelier", w(["atelier", "cli"])).cwd)).toBe("trees/");
+    expect(placeHint(workDefaultOrigin(w(["atelier", "cli"])).cwd)).toBe("trees/");
     expect(placeHint("~/딴데/w/나무/")).toBe("나무/");
     // 최상위 터미널은 데이터 루트라 cwd가 없다 — 보일 경로가 없다.
-    expect(placeHint(topTerminal("atelier").cwd)).toBeNull();
+    expect(placeHint(topTerminal().cwd)).toBeNull();
   });
 
   // **프런트는 「모든 프로젝트」 폴더의 이름을 모른다**(UI개선 스펙 §7) — 위 함수가 부모를 읽는 것이
@@ -1025,47 +957,22 @@ describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모
 });
 
 // US 26. `+`가 「어디에 열까」를 묻기 전에 「고를 것이 있나」를 이 함수가 답한다 —
-// `workShellOrigin`과 **같은 값(`shellTrees`)** 을 봐야 메뉴는 열리는데 고른 값으로 셸이
+// `workShellOrigin`과 **같은 값(`work.worktrees`)** 을 봐야 메뉴는 열리는데 고른 값으로 셸이
 // 안 생기는 일이 없다. 그래서 이 describe는 두 함수를 **나란히** 잰다: 한쪽만 재면 둘이
 // 갈린 판이 여기서 초록으로 지나간다.
 describe("고를 수 있는 프로젝트와 열리는 자리", () => {
-  it("Atelier에서는 워크트리의 프로젝트들이다", () => {
-    expect(workShellProjects("atelier", w(["atelier", "cli"]))).toEqual(["atelier", "cli"]);
+  it("워크트리의 프로젝트들이다", () => {
+    expect(workShellProjects(w(["atelier", "cli"]))).toEqual(["atelier", "cli"]);
     // 하나면 `+`가 안 묻는다(ShellTabs의 `asks`) — 그 판단의 입력이 여기다
-    expect(workShellProjects("atelier", w(["atelier"]))).toEqual(["atelier"]);
-    expect(workShellProjects("atelier", w([]))).toEqual([]);
+    expect(workShellProjects(w(["atelier"]))).toEqual(["atelier"]);
+    expect(workShellProjects(w([]))).toEqual([]);
   });
 
-  // **값이 비어 있으니 어차피 빈 배열이다는 근거로 삼지 않는다.** 저 세계에 워크트리가
-  // 없는 것은 코어가 프로젝트 붙이기를 거절해서인데, 목록을 **읽는** 자리에는 그 검증이
-  // 없다 — 손으로 고친 work.json 하나면 Room이 프로젝트를 실어 온다. 그래서 실려 온 값을
-  // 넣고 잰다.
-  it("Maison에서는 값이 실려 와도 고를 것이 없다", () => {
-    expect(workShellProjects("maison", w(["atelier", "cli"]))).toEqual([]);
-  });
-
-  // **위 검사와 짝이다.** 「고를 것이 없다」만 재고 「그래서 어디에 여는가」를 안 재면 이 판이
-  // 만든 것은 방어가 아니라 **눌러도 아무 일이 없는 `+`**다: 메뉴는 안 열리고(`asks`가 거짓),
-  // 묻지 않는 `+`는 `onOpen({ kind: "default" })`로 기본 자리(`workDefaultOrigin` — `placeOrigin`
-  // 이 탄다)에 연다. 그 함수와 메뉴의 판단이 한 함수(`shellTrees`)를 보는 것이 「워크트리를 그대로
-  // 읽어 엉뚱한 곳에 연다」를 막고, 그 사실을 여기서 값으로 잰다. 진입 셸이 타는
-  // `workShellOrigin(…, null)`도 같은 자리여야 한다(UI개선 스펙 §11) — 함께 잰다.
-  it("Maison에서는 워크트리가 실려 와도 Room 폴더에서 연다", () => {
-    for (const room of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
-      for (const origin of [workDefaultOrigin("maison", room), workShellOrigin("maison", room, null)]) {
-        // `null`이 아니다 — `+`가 열 자리를 언제나 답한다
-        expect(origin?.cwd, `${room.worktrees.length}개`).toBe("~/.atelier/works/w");
-        expect(origin?.project, `${room.worktrees.length}개`).toBeNull();
-      }
-    }
-  });
-
-  // 같은 값이 Atelier에서는 갈래를 그대로 탄다 — 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다.
-  it("Atelier에서는 같은 값이 워크트리로 간다", () => {
-    expect(workShellOrigin("atelier", w(["atelier"]), null)?.cwd).toBe(
+  it("워크트리 하나면 그 워크트리로 가고, 둘이면 고를 자리가 없다", () => {
+    expect(workShellOrigin(w(["atelier"]), null)?.cwd).toBe(
       "~/.atelier/works/w/trees/atelier",
     );
-    expect(workShellOrigin("atelier", w(["atelier", "cli"]), null)).toBeNull();
+    expect(workShellOrigin(w(["atelier", "cli"]), null)).toBeNull();
   });
 });
 
@@ -1075,7 +982,7 @@ describe("고를 수 있는 프로젝트와 열리는 자리", () => {
 // 함수를 지웠다).
 describe("셸 행의 두 줄", () => {
   const 칸 = (project: string | null, cwd: string | null) => {
-    const { state, ids } = opened(1, { mode: "atelier", cwd, owner: ownerFor("w"), project });
+    const { state, ids } = opened(1, { cwd, owner: ownerFor("w"), project });
     return { state, id: ids[0] };
   };
 
@@ -1842,11 +1749,9 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // 무엇을 묻지 않고 닫는지는 `closesWithoutAsking` 하나가 정한다(조용한 셸 + 끝난 칸 · 못 뜬 칸): 그 판정을 안 딛고 닫거나
     // 살아 있는 칸만 보는 `isQuietShell`로 바꾸면 여기가 빨개진다.
     expect(store).toContain('if (closesWithoutAsking(shell, checks)) closeShell(id, "mcpArchive");');
-    // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`ownerlessCloseNotice`) — 그 뒤라 여기서는 안 묻는다. 토스트는
-    // 그 세계 하나를, `Processes`의 묶음은 두 세계를 넘긴다(티켓 32) — 같은 함수다.
-    expect(store).toContain(
-      'for (const shell of modes.flatMap((mode) => ownerlessOf(terminalStore.state, mode))) closeShell(shell.id, "ownerless");',
-    );
+    // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`ownerlessCloseNotice`) — 그 뒤라 여기서는 안 묻는다. 토스트와
+    // `Processes`의 묶음이 같은 함수를 부른다(티켓 32).
+    expect(store).toContain('for (const shell of ownerlessOf(terminalStore.state)) closeShell(shell.id, "ownerless");');
     // [조용한 셸 모두 닫기](티켓 32 · S44). 셸마다 묻지 않고 **한 번** 물었다(`quietCloseNotice`). 무엇이 조용한지는 `quietShellsOf`
     // 하나가 정한다 — 그 판정을 안 딛고 스토어의 셸을 손으로 고르면 여기가 빨개진다.
     expect(store).toContain(
@@ -1873,30 +1778,21 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(store).toContain('killPty(ptyId, "offscreen", null);');
   });
 
-  // 결정 10. **셸이 뜨는 순간 세계가 백엔드로 나간다** — `pty_spawn`의 `mode`가 cwd의
-  // 홈(`resolve_cwd`)과 셸 env의 `ATELIER_MODE`(`shell_builder`)를 함께 정한다. 래퍼가
-  // 그 인자를 받는 것은 `api.test.ts`가 값으로 재지만, **스토어가 그것을 실제로 넘기는지**는
-  // 어느 seam에도 안 보인다(이 모듈은 `@xterm/*`를 끌고 온다). 빠뜨리면 백엔드가 거절하지만
-  // (#187) 그 신호는 셸을 띄우려는 순간에야 오고, 저쪽 세계의 값을 실은 갈래는 아예 안
-  // 잡힌다 — Maison 셸이 Atelier 홈에서 조용히 뜬다.
-  it("spawn이 origin의 세계를 그대로 넘긴다 — owner를 파싱하지 않는다", () => {
-    expect(store).toContain("      instance.origin.mode,\n      instance.origin.cwd,");
-    // `modeOfOwner`로 뽑으면 `as`로 좁힌 값이 백엔드에 나간다(`ShellOrigin.mode` 머리말).
-    expect(
-      countOf(store, "modeOfOwner("),
-      "소유자 문자열을 파싱해 모드를 뽑고 있다 — origin이 `Mode`로 직접 든다",
-    ).toBe(0);
+  // 결정 25. **셸이 뜨는 자리는 origin의 cwd다** — 펴는 것은 백엔드다. 래퍼가 인자를 싣는 것은 `api.test.ts`가 값으로
+  // 재지만, **스토어가 그것을 실제로 넘기는지**는 어느 seam에도 안 보인다(이 모듈은 `@xterm/*`를 끌고 온다). 모드는
+  // 스토어가 모른다 — API 층의 상수다(ui-refresh 결정 22).
+  it("spawn이 origin의 cwd를 그대로 넘긴다", () => {
+    expect(store).toContain("const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);");
   });
 
-  // 결정 10. **여는 origin과 조회하는 소유자가 같은 인자에서 나와야 한다.** 갈리면
-  // `ensureShell`의 「비었나」가 영영 참이라, 이 본문에 들어올 때마다 새 셸이 하나씩 뜬다 —
-  // 화면에는 「셸이 자꾸 늘어난다」로만 보이고 어느 검사도 안 빨개진다(정적 렌더는 이펙트를
-  // 안 돌린다). 한쪽에 세계를 박아 넣는 변형도 같은 자리에서 잡힌다.
-  it("터미널 본문의 소유자와 origin이 같은 `mode`·`work`에서 나온다", () => {
+  // **여는 origin과 조회하는 소유자가 같은 인자에서 나와야 한다.** 갈리면 `ensureShell`의 「비었나」가 영영 참이라,
+  // 이 본문에 들어올 때마다 새 셸이 하나씩 뜬다 — 화면에는 「셸이 자꾸 늘어난다」로만 보이고 어느 검사도 안
+  // 빨개진다(정적 렌더는 이펙트를 안 돌린다).
+  it("터미널 본문의 소유자와 origin이 같은 `work`에서 나온다", () => {
     const pane = read("./TerminalPane.tsx");
-    expect(pane).toContain("const owner = ownerOf(mode, work?.slug);");
-    expect(pane).toContain("const origin = originOf(mode, work);");
-    expect(pane).toContain("return work ? workShellOrigin(mode, work, null) : topTerminal(mode);");
+    expect(pane).toContain("const owner = ownerOf(work?.slug);");
+    expect(pane).toContain("const origin = originOf(work);");
+    expect(pane).toContain("return work ? workShellOrigin(work, null) : topTerminal();");
   });
 
   // ⇧Enter(결정 91). `shellRewrite` 자체는 위에서 전수됐지만 **그것을 쓰는지**가 무테였다 —
@@ -1933,9 +1829,8 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   it("`/terminal`이 같은 판정을 같은 방향으로 딛고, 그 핸들러가 window에 걸린다", () => {
     const page = read("./TerminalPage.tsx");
     expect(page).toContain("if (!opensShellFromWindow(e)) return;");
-    // **여는 자리도 세계를 딛는다**(결정 10). 상수로 되돌리면 두 최상위 화면이 같은 셸
-    // 목록을 나눠 쓰고, 모드를 갈아도 저쪽 셸이 그대로 이 줄에 선다.
-    expect(page).toContain("openNewShell(topTerminal(mode));");
+    // **여는 자리는 최상위 자리 함수다** — 조회하는 소유자(`ownerOf()`)와 같은 키를 싣는다.
+    expect(page).toContain("openNewShell(topTerminal());");
     // **가드만 보면 핸들러가 window에 안 걸려도 초록이다.** 등록 한 줄을 지워도 가드는
     // `onKeyDown` 안에 그대로 남고, 정리 함수가 그것을 계속 참조하므로 tsc도 안 막는다.
     // 그러면 `/terminal`에서 마지막 칸을 닫은 뒤 ⌘T가 다시 안 먹는다 — 결정 93의 원래
@@ -1957,10 +1852,8 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   it("`/terminal`의 ⌘1~9는 **이 화면의 셸**을 센다", () => {
     const page = read("./TerminalPage.tsx");
     expect(page).toContain("const nav = shellNavFromWindow(e);");
-    // 조회하는 소유자가 이 화면의 것이 아니면 남의 화면 셸을 센다(결정 109가 막는 것).
-    // **그 값이 세계에서 나와야 한다**(결정 10) — `ownerOf("atelier")`처럼 한쪽으로 박으면
-    // Maison 최상위가 Atelier의 셸 목록을 그린다.
-    expect(page).toContain("const owner = ownerOf(mode);");
+    // 조회하는 소유자가 이 화면의 것이 아니면 남의 화면 셸을 센다(결정 109가 막는 것) — 최상위 키다.
+    expect(page).toContain("const owner = ownerOf();");
     expect(page).toContain("const shells = shellsOf(state, owner);");
     // 자리를 밀지 않는다 — `2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
     expect(page).toContain("shellForNav(shells, activeIdOf(state, owner), nav, 1)");
@@ -2084,30 +1977,14 @@ describe("work마다 셸이 몇 개인가", () => {
     // **키가 slug인 것이 계약이다**(그 함수 머리말). 사이드바 목록은 터미널을 모르므로
     // 소유자 키로 주면 목록이 `work.slug`로 꺼내다 늘 빈손이 되고, 그때 그 행은 숫자가
     // 0으로 보이는 것이 아니라 **메타 상자가 아예 안 선다**(`shellCount > 0`).
-    expect(shellCountsOf(나.state, "atelier")).toEqual({ 가: 2, 나: 1 });
+    expect(shellCountsOf(나.state)).toEqual({ 가: 2, 나: 1 });
   });
 
-  // 세는 판정이 **slug가 비었는가**로 갈려야 한다. 소유자가 늘 문자열이 된 뒤로
-  // 「owner가 `null`인가」는 아무도 안 빼고 조용히 통과하고, 그러면 `"atelier:"`가 키로
-  // 앉는다 — 그 키는 아무도 안 읽어서 화면에는 아무 일도 안 일어난 채 「무리 수의 합 =
-  // shellCount」만 어긋난다.
+  // 세는 판정이 **slug가 비었는가**로 갈려야 한다. 소유자가 늘 문자열이라 「owner가 `null`인가」는
+  // 아무도 안 빼고 조용히 통과하고, 그러면 빈 글자 `""`가 키로 앉는다 — 그 키는 아무도 안 읽어서
+  // 화면에는 아무 일도 안 일어난 채 「무리 수의 합 = shellCount」만 어긋난다.
   it("최상위 터미널의 셸은 어느 work에도 안 걸린다", () => {
-    expect(shellCountsOf(opened(2).state, "atelier")).toEqual({});
-  });
-
-  // 결정 10. 두 루트에 **같은 slug**가 설 수 있다(코어의 유일성은 한 루트 쌍 안에서만
-  // 본다) — 세계를 안 거르면 Maison의 `가`에서 연 셸이 Atelier 사이드바의 `가` 행에
-  // 얹힌다. 키가 slug라 섞이면 알아볼 방법도 없다.
-  it("저쪽 세계의 셸은 안 센다 — 같은 slug여도", () => {
-    const 이쪽 = opened(2, 가).state;
-    const 저쪽 = openShell(이쪽, {
-      mode: "maison",
-      cwd: null,
-      owner: ownerOf("maison", "가"),
-      project: null,
-    })!.state;
-    expect(shellCountsOf(저쪽, "atelier")).toEqual({ 가: 2 });
-    expect(shellCountsOf(저쪽, "maison")).toEqual({ 가: 1 });
+    expect(shellCountsOf(opened(2).state)).toEqual({});
   });
 
   // **끝난 칸도 센다 — 그것이 결정 3이 원하는 것이다.** 메타가 서는 조건은 **안 변하는 값**
@@ -2116,7 +1993,7 @@ describe("work마다 셸이 몇 개인가", () => {
   it("끝난 칸도 센다 — 메타가 명령마다 생겼다 사라지면 안 된다", () => {
     const { state, ids } = opened(1, 가);
     const 죽은뒤 = markFailed(state, ids[0], "폴더가 없습니다");
-    expect(shellCountsOf(죽은뒤, "atelier")).toEqual({ 가: 1 });
+    expect(shellCountsOf(죽은뒤)).toEqual({ 가: 1 });
   });
 });
 
@@ -2499,7 +2376,6 @@ describe("조용한 셸", () => {
 describe("주인 잃은 셸", () => {
   const 가 = originFor("ga");
   const 나 = originFor("na");
-  const 방: ShellOrigin = { mode: "maison", cwd: null, owner: ownerOf("maison", "ga"), project: null };
 
   it("막 뜬 셸은 주인이 있다", () => {
     expect(opened(1).state.shells[0].ownerless).toBe(false);
@@ -2519,20 +2395,19 @@ describe("주인 잃은 셸", () => {
     expect(markOwnerless(state, [99])).toBe(state);
   });
 
-  // [모두 닫기]가 닫는 것은 **그 세계의** 주인 잃은 셸 전부다 — 끝난 칸도 함께 거둔다. 토스트의 N은 **살아 있는 것**만 센다
+  // [모두 닫기]가 닫는 것은 주인 잃은 셸 전부다 — 끝난 칸도 함께 거둔다. 토스트의 N은 **살아 있는 것**만 센다
   // (「아직 도는 것이 있어요」).
-  it("그 세계의 주인 잃은 셸 — 전부와 살아 있는 것", () => {
+  it("주인 잃은 셸 — 전부와 살아 있는 것", () => {
     let state = opened(1, 가).state;
-    for (const origin of [가, 나, 방]) {
+    for (const origin of [가, 나]) {
       const next = openShell(state, origin);
       if (!next) throw new Error("상한에 닿았다");
       state = next.state;
     }
-    // 1 · 2는 가, 3은 나, 4는 Room 가. 1은 주인이 있고, 2는 끝났다.
-    const marked = markExited(markOwnerless(state, [2, 3, 4]), 2, EXIT_42);
-    expect(ownerlessOf(marked, "atelier").map((shell) => shell.id)).toEqual([2, 3]);
-    expect(liveOwnerlessOf(marked, "atelier").map((shell) => shell.id)).toEqual([3]);
-    expect(ownerlessOf(marked, "maison").map((shell) => shell.id)).toEqual([4]);
+    // 1 · 2는 가, 3은 나. 1은 주인이 있고, 2는 끝났다.
+    const marked = markExited(markOwnerless(state, [2, 3]), 2, EXIT_42);
+    expect(ownerlessOf(marked).map((shell) => shell.id)).toEqual([2, 3]);
+    expect(liveOwnerlessOf(marked).map((shell) => shell.id)).toEqual([3]);
   });
 });
 
@@ -2549,18 +2424,16 @@ describe("[모두 닫기]의 확인 창", () => {
   });
 });
 
-// 티켓 32 · 프로세스 스펙 S44. `Processes` 머리의 [조용한 셸 모두 닫기]가 닫는 것 — **두 세계의 살아 있는 셸** 중 배치 물음
+// 티켓 32 · 프로세스 스펙 S44. `Processes` 머리의 [조용한 셸 모두 닫기]가 닫는 것 — **스토어의 살아 있는 셸** 중 배치 물음
 // 한 번이 「명령도 사람이 띄운 자손도 없다」고 답한 셸이다. 조용함의 뜻은 MCP 아카이브(티켓 12)와 같다: **모르면 조용하지 않다**
 // (fail-closed). 사람이 누른 닫기지만 셸 여럿을 수로 한 번 묻고 닫는 자리라, 답을 못 얻은 셸을 닫으면 창의 N과 닫히는 것이 갈리고
 // 도는 것을 모르고 닫는다.
 describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
   const check = (command: boolean, descendants: number) => ({ command, descendants });
-  const 방: ShellOrigin = { mode: "maison", cwd: null, owner: ownerOf("maison", "ga"), project: null };
-
-  // 셸 다섯 — Atelier 최상위 1 · 2 · 3, work 「ga」의 4, Maison Room 「ga」의 5.
+  // 셸 다섯 — 최상위 1 · 2 · 3, work 「ga」의 4, work 「na」의 5.
   const five = () => {
     let state = opened(3).state;
-    for (const origin of [originFor("ga"), 방]) {
+    for (const origin of [originFor("ga"), originFor("na")]) {
       const next = openShell(state, origin);
       if (!next) throw new Error("상한에 닿았다");
       state = next.state;
@@ -2568,7 +2441,7 @@ describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
     return { state, ids: state.shells.map((shell) => shell.id) };
   };
 
-  it("두 세계에서 명령도 자손도 없다고 답한 셸만 고른다 — 명령 · 자손이 있거나 답이 없는 셸은 안 고른다", () => {
+  it("명령도 자손도 없다고 답한 셸만 고른다 — 명령 · 자손이 있거나 답이 없는 셸은 안 고른다", () => {
     const { state, ids } = five();
     const [a, b, c, d, e] = ids;
     const checks = new Map([
@@ -2700,7 +2573,7 @@ describe("종료 확인의 본문", () => {
   });
 });
 
-// 아카이브 · 삭제 확인 창의 셸 줄(in-app-terminal 결정 26 · 프로세스 스펙 S18). 두 세계가 같은 말이다.
+// 아카이브 · 삭제 확인 창의 셸 줄(in-app-terminal 결정 26 · 프로세스 스펙 S18).
 describe("아카이브 확인의 셸 줄", () => {
   it("셸 수를 적고, 띄운 프로세스가 있으면 그 뒤에 붙인다", () => {
     expect(closingShellsNotice(2, 0)).toBe("셸 2개가 닫혀요.");

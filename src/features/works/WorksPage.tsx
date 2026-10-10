@@ -67,8 +67,6 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
-import { hasProjects } from "@/mode";
-import type { Mode } from "@/mode";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { dropSplit, otherTab, specHeadLabel } from "./split-view";
@@ -84,18 +82,12 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
-import { emptyScreenCopy, itemNameOf, pageNameOf } from "./work-sections";
-import { archiveConfirmBody, removeConfirmBody } from "./work-menu-copy";
+import { WORKS_COPY } from "./work-sections";
+import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
-  /**
-   * 어느 세계의 화면인가. **데이터가 여기서 갈린다** — 목록도 spec 본문도 생애주기 조작도
-   * 이 값으로 루트가 정해진다. 주소에서 다시 읽지 않는 이유는 `-works-view.tsx`의 같은
-   * prop 주석에 있다.
-   */
-  mode: Mode;
   sidebarOpen: boolean;
   selectedSlug: string | null;
   // 보고 있는 문서와 그것을 옮기는 길. 둘 다 주소가 정본이라 여기서 소유하지 않는다.
@@ -188,7 +180,6 @@ export function shellClosedByTab(
 }
 
 function WorksPage({
-  mode,
   sidebarOpen,
   selectedSlug,
   currentFile,
@@ -200,29 +191,22 @@ function WorksPage({
   onSelectSplit,
   onDropInto,
 }: WorksPageProps) {
-  const { data: works = [] } = useWorks(mode);
+  const { data: works = [] } = useWorks();
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
   // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
   //
   // isPending을 함께 보는 이유: 이 화면이 앱의 첫 화면이 되면서 프로젝트 목록을 처음 읽는
   // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
   // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
-  const { data: projects = [], isPending: projectsPending } = useProjects(mode);
-  // **프로젝트 갈래는 Atelier의 것이다**(결정 17: Maison에 프로젝트는 없다). 모드가 조건 맨
-  // 앞에 서는 것이 요점이다 — 위 쿼리가 Maison에서 아예 안 켜지므로(`useProjects`) 저 세계에서
-  // `projects`는 **늘** 빈 배열이고, 모드를 안 보면 이 갈래가 언제나 참으로 눕는다. 그때 화면은
-  // Maison 한가운데에서 「먼저 프로젝트를 등록해요」라고 말한다.
-  const needsProject =
-    hasProjects(mode) && !projectsPending && works.length === 0 && projects.length === 0;
-  // 아무것도 안 골랐을 때 본문이 하는 말. **세계마다 다르다**(US 22) — 사이드바의 빈 구획과
-  // 한 표에서 나온다(`work-sections.ts`). 여기서 리터럴로 적으면 목록은 Room 어휘인데 본문은
-  // 「작업은 Claude Code에서 시작돼요」인 화면이 나고, 그것은 Room이 0개일 때만 보인다.
-  const emptyScreen = emptyScreenCopy(mode);
+  const { data: projects = [], isPending: projectsPending } = useProjects();
+  const needsProject = !projectsPending && works.length === 0 && projects.length === 0;
+  // 아무것도 안 골랐을 때 본문이 하는 말(US 22) — 사이드바의 빈 구획과 한 표에서 나온다(`work-sections.ts`).
+  const emptyScreen = WORKS_COPY.screen;
 
   // 생애주기 조작은 ⋯ 메뉴가 부르지만 **상태는 여기서 소유한다** — 진행 표시가 메뉴 하나가
   // 아니라 본문 전체를 덮기 때문이다. 메뉴 안에 두면 그 표시를 메뉴 크기 안에서만 할 수 있다.
-  const archive = useArchiveWork(mode);
-  const remove = useRemoveWork(mode);
+  const archive = useArchiveWork();
+  const remove = useRemoveWork();
   const running = archive.isPending
     ? { verb: "아카이빙", detail: "워크트리를 정리하고 있어요" }
     : remove.isPending
@@ -341,11 +325,9 @@ function WorksPage({
    * **`tabOwner`가 위에 있어야 한다.** 비교 함수가 그것을 닫아 잡는데 그 함수는 `useStore`
    * 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다.
    */
-  // **세계가 실린 키다**(결정 10). 두 루트에 같은 slug가 설 수 있어 slug만으로는 Atelier의
-  // `finance`와 Maison의 `finance`가 셸 목록·상한·켜진 칸을 통째로 나눠 쓴다.
-  // `null`은 그대로 **「고른 작업이 없다」**이지 최상위 터미널이 아니다 — 아래
+  // `null`은 그대로 **「고른 작업이 없다」**이지 최상위 터미널(빈 글자 `""`)이 아니다 — 아래
   // `shellClosedByTab`의 머리말이 그 갈래를 든다.
-  const tabOwner = panelWork ? ownerOf(mode, panelWork.slug) : null;
+  const tabOwner = panelWork ? ownerOf(panelWork.slug) : null;
   const shellState = useStore(
     terminalStore,
     (whole) => whole,
@@ -376,7 +358,7 @@ function WorksPage({
   useEffect(() => {
     const open = () => {
       if (!panelWork) return;
-      openNewShell(workDefaultOrigin(mode, panelWork));
+      openNewShell(workDefaultOrigin(panelWork));
       onSelectTab("terminal");
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -391,7 +373,7 @@ function WorksPage({
       window.removeEventListener("keydown", onKeyDown);
       stop();
     };
-  }, [mode, panelWork, tabOwner, onSelectTab]);
+  }, [panelWork, tabOwner, onSelectTab]);
 
   /**
    * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
@@ -416,7 +398,7 @@ function WorksPage({
       // 위 `tabOwner`와 **같은 값**인데 거기서 못 받는다 — 그쪽은 `ShellOwner | null`이라
       // 여기서 다시 좁혀야 하고, 좁히는 가드가 「고른 작업이 없다」와 겹쳐 뜻이 흐려진다.
       // 짓는 함수가 하나(`ownerOf`)라 두 값이 갈릴 수는 없다.
-      const owner = ownerOf(mode, panelWork.slug);
+      const owner = ownerOf(panelWork.slug);
       const shells = shellsOf(state, owner);
       // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
       // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
@@ -432,7 +414,7 @@ function WorksPage({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mode, panelWork, onSelectTab]);
+  }, [panelWork, onSelectTab]);
 
   /**
    * ⌘W — **켜진 탭을 닫는다**(결정 13).
@@ -501,18 +483,14 @@ function WorksPage({
   const header = panelWork ? (
     <ShellTabs
       state={shellState}
-      owner={ownerOf(mode, panelWork.slug)}
+      owner={ownerOf(panelWork.slug)}
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
       // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
-      //
-      // **모드를 여기서 리터럴로 풀지 않는다**(US 26). 저 세계에는 고를 것이 없다는 판단이
-      // `workShellOrigin`과 같은 기준을 봐야 해서 그 옆에 산다 — 이 화면의 세계 판정이
-      // 전부 `mode`를 함수에 넘기는 모양인 것도 같은 이유다(아래 셸 조회들).
-      projects={workShellProjects(mode, panelWork)}
+      projects={workShellProjects(panelWork)}
       // 메뉴 맨 윗줄 「모든 프로젝트」 옆의 옅은 경로(UI개선 결정 20). ⌘T와 「모든 프로젝트」가 여는
       // 자리와 **같은 함수**(`workDefaultOrigin` — `placeOrigin`이 그것을 탄다)에서 읽는다.
-      defaultCwd={workDefaultOrigin(mode, panelWork).cwd}
+      defaultCwd={workDefaultOrigin(panelWork).cwd}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
@@ -534,7 +512,7 @@ function WorksPage({
         // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
         // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
         // 그때는 열지도, 본문을 옮기지도 않는다(결정 24).
-        const origin = placeOrigin(mode, panelWork, place);
+        const origin = placeOrigin(panelWork, place);
         if (!origin) return;
         openNewShell(origin);
         onSelectTab("terminal");
@@ -550,7 +528,7 @@ function WorksPage({
       // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
       // 때문이다.
       onDragTab={(shellId, from) => {
-        const owner = ownerOf(mode, panelWork.slug);
+        const owner = ownerOf(panelWork.slug);
         armDrag(
           shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
           from,
@@ -571,13 +549,13 @@ function WorksPage({
       actions={
         selected && (
           <>
-            <StatusMenu mode={mode} work={selected} />
+            <StatusMenu work={selected} />
             {/* ⓘ와 ⋯가 **줄의 간격을 그대로 받는다**(결정 24). 한때 둘을 gap 0인 상자에
                 묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
                 것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
                 리듬이 갈리는 값이 크다. */}
-            <WorkMetaMenu mode={mode} work={selected} />
-            <WorkMenu mode={mode} work={selected} archive={archive} remove={remove} />
+            <WorkMetaMenu work={selected} />
+            <WorkMenu work={selected} archive={archive} remove={remove} />
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
                 지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
@@ -619,7 +597,7 @@ function WorksPage({
                 따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다. */}
             {!workPanelOpen && (
               <Hint
-                text={`${itemNameOf(mode)} 패널 펼치기`}
+                text="작업 패널 펼치기"
                 announce="name"
                 type="button"
                 onClick={() => setWorkPanelOpen(true)}
@@ -636,12 +614,10 @@ function WorksPage({
   ) : (
     // 고른 작업이 없으면 **칸이 설 자리가 없다** — 문서도 셸도 없는 화면이라 탭 줄 대신
     // 화면 이름만 이고 선다. 세울 소유자 자체가 없다: 그 값은 work의 slug에서 나오는데
-    // (`ownerOf(mode, …)`) 고른 작업이 없으면 그 자리가 비고, 뒤가 빈 키는 **그 세계의
-    // 최상위 터미널**이라 `/terminal`의 셸이 이 줄에 서게 된다. `+`도 열 자리가 없어
+    // (`ownerOf(…)`) 고른 작업이 없으면 그 자리가 비고, 빈 키는 **최상위 터미널**이라
+    // `/terminal`의 셸이 이 줄에 서게 된다. `+`도 열 자리가 없어
     // 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
-    // 머리에 이는 이름도 **그 세계의 것**이다 — 이 갈래는 Room이 0개인 Maison에서 늘 서는데,
-    // 바로 아래 본문은 이미 「아직 Room이 없어요」라고 말한다(`emptyScreenCopy`).
-    <PageHeader root={pageNameOf(mode)} inset={!sidebarOpen} />
+    <PageHeader root={WORKS_COPY.page} inset={!sidebarOpen} />
   );
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
@@ -696,7 +672,7 @@ function WorksPage({
    * 개수는 셸을 열고 닫을 때만 바뀐다.
    */
   const shellCount = useStore(terminalStore, (state) =>
-    panelWork ? shellsOf(state, ownerOf(mode, panelWork.slug)).length : 0,
+    panelWork ? shellsOf(state, ownerOf(panelWork.slug)).length : 0,
   );
   const tally = useRef<ShellTally>({ owner: tabOwner, count: shellCount });
   useEffect(() => {
@@ -750,7 +726,7 @@ function WorksPage({
       kind="terminal"
       // 탭 줄의 셸 칸과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
       // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
-      label={<ShellHeadName owner={ownerOf(mode, terminalWork.slug)} />}
+      label={<ShellHeadName owner={ownerOf(terminalWork.slug)} />}
       closeLabel="terminal 열 닫기"
       onClose={() => changeSplit(null, otherTab("terminal"))}
     />
@@ -760,7 +736,6 @@ function WorksPage({
   const specBody = selected && (
     <SpecViewer
       key={selected.slug}
-      mode={mode}
       work={selected}
       header={split === null ? header : undefined}
       panelOpen={workPanelOpen}
@@ -775,7 +750,7 @@ function WorksPage({
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(in-app-terminal 결정 20·21. 프로세스 결정 7이
           입력 없는 자동 셸만 예외로 두었다). */}
-      <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
+      <TerminalPane key={terminalWork.slug} work={terminalWork} />
     </div>
   );
 
@@ -825,7 +800,7 @@ function WorksPage({
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
           자리만 새로 잡힌다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
           그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다. */}
-      <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
+      <TerminalPane key={terminalWork.slug} work={terminalWork} />
     </main>
   ) : specBody ? (
     specBody
@@ -839,8 +814,7 @@ function WorksPage({
             <EmptyMedia variant="icon">
               {needsProject ? <Folder strokeWidth={1.6} /> : <Zap strokeWidth={1.6} />}
             </EmptyMedia>
-            {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
-                여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
+            {/* 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
             <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
             <EmptyDescription>
               {needsProject
@@ -897,7 +871,6 @@ function WorksPage({
           두 navigate가 한 틱에 겹친다. */}
       {panelWork && (
         <WorkPanel
-          mode={mode}
           work={panelWork}
           currentFile={currentSpec}
           onSelectFile={selectFromTree}
@@ -1096,8 +1069,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 //
 // 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 여기
 // 클래스가 든다. 제목 줄의 창 끌기 영역에서 빠지는 것은 지금과 같다 — 끌기 표식은 줄에만 있고 버튼에는 없다.
-function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
-  const setStatus = useSetWorkStatus(mode);
+function StatusMenu({ work }: { work: WorkView }) {
+  const setStatus = useSetWorkStatus();
   const meta = STATUS_META[work.status];
 
   return (
@@ -1157,12 +1130,10 @@ function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
 // `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
 // 제목 줄의 창 끌기 영역에서 빠지는 것은 지금과 같다 — 끌기 표식은 줄에만 있고 버튼에는 없다.
 function WorkMenu({
-  mode,
   work,
   archive,
   remove,
 }: {
-  mode: Mode;
   work: WorkView;
   // 상태를 위에서 받는다 — 진행 표시가 본문 전체를 덮으므로 소유자가 WorksPage다
   archive: ReturnType<typeof useArchiveWork>;
@@ -1186,7 +1157,7 @@ function WorkMenu({
   // 함께 세면 "셸 2개가 닫혀요"라고 해놓고 실제로는 하나만 끝난다. **거두는 것은 그래도
   // 전부다**(아래): Work가 사라지는데 그 Work를 가리키는 칸만 남으면 닫을 길이 없다.
   const liveShells = useStore(terminalStore, (state) =>
-    runningShellsOf(state, ownerOf(mode, work.slug)),
+    runningShellsOf(state, ownerOf(work.slug)),
   );
 
   // 다른 작업으로 옮겨가면 닫는다 — 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는
@@ -1223,7 +1194,7 @@ function WorkMenu({
     //
     // 그 셸들에서 띄운 프로세스(dev 서버 등)도 함께 끝난다(프로세스 결정 3) — 그 수를 **창을 띄우기 전에** 물어
     // 셸 줄 뒤에 붙인다(프로세스 스펙 S18). 못 얻으면 붙이지 않고 창은 그대로 뜬다.
-    const spawned = liveShells > 0 ? await spawnedCountOf(ownerOf(mode, work.slug)) : null;
+    const spawned = liveShells > 0 ? await spawnedCountOf(ownerOf(work.slug)) : null;
     const shellLine = closingShellsNotice(liveShells, spawned);
     const notice = shellLine ? `${detail}\n${shellLine}` : detail;
     // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
@@ -1233,7 +1204,7 @@ function WorkMenu({
     // 「주인 잃은 셸」로 세운다(MCP로 아카이브된 work을 알아채는 길이 그것뿐이다). 이 길은 성공한 뒤 제 손으로
     // 닫으므로 그동안 이 owner를 감지에서 뺀다 — 삭제는 재조회가 앉은 뒤에야 돌아오고 아카이브는 안 기다려서,
     // 재조회가 회수 앞뒤 어디에나 올 수 있다. 닫는 자리는 회수 뒤와, 실패하면 그 자리다.
-    const release = holdOwner(ownerOf(mode, work.slug));
+    const release = holdOwner(ownerOf(work.slug));
     try {
       await call();
     } catch (e) {
@@ -1245,19 +1216,17 @@ function WorkMenu({
     // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
     // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
     // (in-app-terminal 결정 26이 「알려진 대가」로 남긴 MCP 길은 프로세스 결정 4가 이렇게 고쳤다 — 위 제외 창의 감지가 그 길이다.)
-    closeShellsOf(ownerOf(mode, work.slug));
+    closeShellsOf(ownerOf(work.slug));
     release();
   };
 
-  // **문구는 세계마다 다르다**(#186) — 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는
-  // 꺼내 쓰기만 한다. 그림 안에 리터럴로 두면 이 창을 두 세계로 나란히 재는 길이 없다:
-  // `askDanger`는 OS가 아니라 앱의 창이지만 여기서는 프로미스 뒤에 있어, 이 저장소의
-  // 정적 마크업 seam에 문장이 아예 안 걸린다.
+  // 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는 꺼내 쓰기만 한다. `askDanger`는 OS가 아니라
+  // 앱의 창이지만 여기서는 프로미스 뒤에 있어, 이 저장소의 정적 마크업 seam에 문장이 아예 안 걸린다.
   const handleArchive = () =>
-    run("아카이빙", archiveConfirmBody(mode), () => archive.mutateAsync(work.slug));
+    run("아카이빙", ARCHIVE_CONFIRM_BODY, () => archive.mutateAsync(work.slug));
 
   const handleRemove = () =>
-    run("삭제", removeConfirmBody(mode), () => remove.mutateAsync(work.slug));
+    run("삭제", REMOVE_CONFIRM_BODY, () => remove.mutateAsync(work.slug));
 
   return (
     <>
@@ -1265,7 +1234,7 @@ function WorkMenu({
         {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
             중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 그 말은 가림막이 한다. */}
         <Hint
-          text={`${itemNameOf(mode)} 메뉴`}
+          text="작업 메뉴"
           announce="name"
           disabled={busy}
           render={
@@ -1312,7 +1281,6 @@ function WorkMenu({
         </DropdownMenuContent>
       </DropdownMenu>
       <WorkRenameDialog
-        mode={mode}
         work={work}
         open={renaming}
         onClose={() => setRenaming(false)}

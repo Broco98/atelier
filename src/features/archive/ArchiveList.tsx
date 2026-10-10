@@ -15,11 +15,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import SpecTree from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
-import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy";
+import { ARCHIVE_COPY, narrowedNotice } from "./archive-copy";
 import { archiveTreeItems } from "./archive-tree";
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
-import type { Mode } from "@/mode";
 
 /** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 이름이나 설명으로 간다(아래 버튼 주석). */
 const SORT_HELP = "아카이브한 날짜 기준 정렬";
@@ -31,8 +30,6 @@ const SORT_HELP = "아카이브한 날짜 기준 정렬";
 const filterNameOf = (project: string | null) => project ?? "모든 프로젝트";
 
 interface ArchiveListProps {
-  // 행을 펼칠 때 문서 목록을 어느 루트에서 읽는가 — 화면이 이미 아는 값을 그대로 받는다.
-  mode: Mode;
   entries: ArchiveEntry[];
   selectedSlug: string | null;
   // 목록이 아직 안 왔다 — 빈 배열을 "하나도 없다"로 읽으면 안 되는 동안
@@ -52,7 +49,6 @@ interface ArchiveListProps {
 //
 // 폭은 `ProjectList`와 키를 나눠 갖지 않는다 — 이쪽은 문서 트리까지 담아 쓸모 있는 폭이 다르다.
 function ArchiveList({
-  mode,
   entries,
   selectedSlug,
   loading,
@@ -73,9 +69,6 @@ function ArchiveList({
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const filterName = filterNameOf(projectFilter);
 
-  // 이 세계에 프로젝트라는 것이 있는가(결정 17). 필터 버튼과, 좁혀서 0개일 때 하는 말이
-  // 이 한 값에서 함께 나온다 — 표가 그 둘을 한 칸으로 든다(archive-copy.ts).
-  const canFilter = hasProjectFilter(mode);
   const projectOptions = [...new Set(entries.flatMap((e) => e.projects))].sort();
   const q = query.trim().toLowerCase();
   const filtered = entries.filter(
@@ -150,59 +143,53 @@ function ArchiveList({
               {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
               {sidebarOpen && "치운 날"}
             </Hint>
-            {/* **프로젝트 필터는 Atelier에만 선다**(결정 17). 값으로 가르지 않는 이유는
-                정보 탭 쪽과 같다 — 손으로 고친 work.json이 Room에도 프로젝트를 실어 올 수
-                있어서, 「옵션이 비면 안 그린다」로 두면 그날 저 세계에 없는 개념이 화면에
-                선다. 좁혀도 0개일 때 하는 말과 **같은 값**에서 나온다(archive-copy.ts). */}
-            {canFilter && (
-              // **라디오 메뉴다**(판 3, 스토리 46~49 · 51 · 52). 여닫이 · 줄 옮기기 · Esc 닫기와 거르개로
-              // 포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
-              // `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
-              <DropdownMenu>
-                {/* **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이 없으면 읽을
-                    말이 없다. 지금 값은 툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다
-                    (S28 — 툴팁은 스크린리더에 아무것도 주지 않는다). */}
-                <Hint
-                  text={filterName}
-                  announce="description"
-                  render={
-                    <DropdownMenuTrigger
-                      aria-label="프로젝트 거르기"
-                      className={cn(
-                        "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
-                        projectFilter
-                          ? "toggle-on"
-                          : "text-muted-foreground quiet-hover",
-                      )}
-                    />
-                  }
+            {/* **라디오 메뉴다**(판 3, 스토리 46~49 · 51 · 52). 여닫이 · 줄 옮기기 · Esc 닫기와 거르개로
+                포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
+                `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33). */}
+            <DropdownMenu>
+              {/* **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이 없으면 읽을
+                  말이 없다. 지금 값은 툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다
+                  (S28 — 툴팁은 스크린리더에 아무것도 주지 않는다). */}
+              <Hint
+                text={filterName}
+                announce="description"
+                render={
+                  <DropdownMenuTrigger
+                    aria-label="프로젝트 거르기"
+                    className={cn(
+                      "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                      projectFilter
+                        ? "toggle-on"
+                        : "text-muted-foreground quiet-hover",
+                    )}
+                  />
+                }
+              >
+                <Filter className="size-3 shrink-0" strokeWidth={2} />
+                {sidebarOpen && (
+                  <>
+                    <span className="truncate">{filterName}</span>
+                    <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
+                  </>
+                )}
+              </Hint>
+              {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
+              <DropdownMenuContent align="end" width="wide">
+                <DropdownMenuRadioGroup
+                  // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.
+                  value={projectFilter}
+                  onValueChange={(option: string | null) => setProjectFilter(option)}
                 >
-                  <Filter className="size-3 shrink-0" strokeWidth={2} />
-                  {sidebarOpen && (
-                    <>
-                      <span className="truncate">{filterName}</span>
-                      <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
-                    </>
-                  )}
-                </Hint>
-                {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
-                <DropdownMenuContent align="end" width="wide">
-                  <DropdownMenuRadioGroup
-                    // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.
-                    value={projectFilter}
-                    onValueChange={(option: string | null) => setProjectFilter(option)}
-                  >
-                    {[null, ...projectOptions].map((option) => (
-                      <DropdownMenuRadioItem key={option ?? "*"} value={option}>
-                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                          {filterNameOf(option)}
-                        </span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                  {[null, ...projectOptions].map((option) => (
+                    <DropdownMenuRadioItem key={option ?? "*"} value={option}>
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                        {filterNameOf(option)}
+                      </span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </span>
         </div>
 
@@ -229,17 +216,14 @@ function ArchiveList({
               <EmptyMedia variant="icon">
                 <Archive strokeWidth={1.6} />
               </EmptyMedia>
-              {/* 낱말은 세계를 탄다(#183) — 「작업」도 「Room」도 표가 정한다 */}
-              <EmptyTitle>{emptyListCopy(mode).title}</EmptyTitle>
-              <EmptyDescription>{emptyListCopy(mode).body}</EmptyDescription>
+              <EmptyTitle>{ARCHIVE_COPY.emptyList.title}</EmptyTitle>
+              <EmptyDescription>{ARCHIVE_COPY.emptyList.body}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
-            {/* 좁힌 것이 검색어인지 필터인지를 말한다. **필터가 없는 세계에서는 검색어
-                없이 이 갈래에 닿을 수 없으므로**, 「해당 프로젝트의…」를 여기 리터럴로
-                두면 Maison에서 영영 안 뜨는 문장이 화면 코드에 남는다(archive-copy.ts). */}
-            <span className="text-[13px] text-tertiary">{narrowedNotice(mode, q !== "")}</span>
+            {/* 좁힌 것이 검색어인지 필터인지를 말한다 — 문장은 `archive-copy.ts`가 든다. */}
+            <span className="text-[13px] text-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
           <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
@@ -250,7 +234,6 @@ function ArchiveList({
             {sorted.map((entry) => (
               <ArchiveRow
                 key={entry.slug}
-                mode={mode}
                 entry={entry}
                 expanded={expanded.has(entry.slug)}
                 onExpandedChange={(open) =>
@@ -287,7 +270,6 @@ function ArchiveList({
 // 그래야 펼치는 쪽도 움직이고, 한 번 편 트리의 폴더 접힘이 항목을 접었다 펴도 남는다. 닫힌 패널은
 // 부품이 `inert`로 막는다: 접히는 동안 아직 보이는 문서 줄에 포커스와 포인터가 닿으면 안 된다.
 function ArchiveRow({
-  mode,
   entry,
   expanded,
   onExpandedChange,
@@ -295,7 +277,6 @@ function ArchiveRow({
   onSelectDoc,
   onCopyDoc,
 }: {
-  mode: Mode;
   entry: ArchiveEntry;
   expanded: boolean;
   onExpandedChange: (open: boolean) => void;
@@ -313,7 +294,7 @@ function ArchiveRow({
   }, [expanded]);
   // 문서 목록과 spec 트리가 **한 답으로** 온다 — 그래서 "도착 전에는 null"을 지키는 쿼리가 여전히
   // 하나다. 둘이 따로 오면 목록만 먼저 와서 펼치는 도중 트리가 늦게 서며 높이가 튄다.
-  const { data: archived, isPending } = useArchivedDocs(mode, everOpened ? entry.slug : null);
+  const { data: archived, isPending } = useArchivedDocs(everOpened ? entry.slug : null);
   const items = useMemo(() => (archived ? archiveTreeItems(archived) : []), [archived]);
 
   return (

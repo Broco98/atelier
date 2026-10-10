@@ -1,42 +1,33 @@
 import { SIGNAL_LABEL, formatElapsed, showsElapsed, subagentLabel } from "@/components/shell/shell-signal";
 import type { ShellSignal } from "@/components/shell/shell-signal";
 import { attentionOn, runningSubagents, signalOf } from "@/features/terminal/shell-attention";
-import { modeOfOwner, runningOn, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
+import { TERMINAL_LABEL } from "@/components/shell/nav-items";
+import { runningOn, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { Shell, ShellOwner } from "@/features/terminal/shell-registry";
-import { ALL_MODES, modeNameOf, navItemsOf, type Mode } from "@/mode";
 import { sumMetrics } from "./metrics";
 import { byStart, identityKey, processLabel, processTree, withMemory, type ProcessNode } from "./process-tree";
 import type { PoolShell, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
 
-// **`Processes`의 셸 묶음**(프로세스 결정 9 · 10 · 프로세스 스펙 S53 · 티켓 27). 화면은 앱 전체를 세계 → work → 셸 → 자손으로 세운다.
-// 이 모듈은 그 층과 차례를 짓고, 셸 행의 상태 칸과 셸 · work · 세계 줄의 접근성 이름을 짓는다. 프로세스 한 줄(셸의 자손)을 트리로 펴고
+// **`Processes`의 셸 묶음**(프로세스 결정 9 · 10 · 프로세스 스펙 S53 · 티켓 27). 화면은 앱 전체를 work → 셸 → 자손으로 세운다.
+// 이 모듈은 그 층과 차례를 짓고, 셸 행의 상태 칸과 셸 · work 줄의 접근성 이름을 짓는다. 프로세스 한 줄(셸의 자손)을 트리로 펴고
 // 이름 짓는 규칙은 고아 · 예외 묶음과 같은 것이라 `process-tree.ts`에 있다. 순수 함수다 — 지금 시각도 인자로 받는다.
 //
-// **두 출처를 셸 키로 잇는 자리가 여기 하나다.** 세계와 work(owner)는 스토어의 것이고 — Rust는 owner를 모른다 — 셸별 자손은
+// **두 출처를 셸 키로 잇는 자리가 여기 하나다.** work(owner)는 스토어의 것이고 — Rust는 owner를 모른다 — 셸별 자손은
 // 스냅샷의 판정 결과다(`verdict.descendants`, 키가 셸 키). 스토어의 셸이 든 셸 키(`Shell.shellKey`, 티켓 23)가 그 둘을 잇는다.
 // 스토어의 `id`나 pty id로 잇지 않는다: 앞은 프런트가 따로 발급한 번호이고, 뒤는 다른 실행에서 같은 번호가 된다.
 
-/** 세계의 목록 중 이 묶음이 읽는 것 — 사이드바가 그리는 차례(고정 먼저)와 제목. 목록 쿼리의 `WorkView`가 그대로 들어온다. */
+/** work 목록 중 이 묶음이 읽는 것 — 사이드바가 그리는 차례(고정 먼저)와 제목. 목록 쿼리의 `WorkView`가 그대로 들어온다. */
 export interface ListedItem {
   slug: string;
   title: string;
 }
 
 export interface TreeInput {
-  /** 지금 세계 — 맨 위에 선다(프로세스 결정 9). 주소가 정본이다. */
-  current: Mode;
   /** 스토어의 셸 — 칸 순서 그대로(`terminalStore.state.shells`). 탭 줄의 차례가 이것이다. */
   shells: ReadonlyArray<Shell>;
-  /** 세계마다 사이드바가 그리는 목록. 아직 없으면(못 읽었거나 안 물었다) 빈다 — 그 세계의 work은 slug로 선다. */
-  lists: Partial<Record<Mode, ReadonlyArray<ListedItem>>>;
+  /** 사이드바가 그리는 work 목록. 아직 없으면(못 읽었거나 안 물었다) 빈다 — 그때 work은 slug로 선다. */
+  list: ReadonlyArray<ListedItem>;
   snapshot: ProcessSnapshot;
-}
-
-export interface WorldNode {
-  mode: Mode;
-  /** 지금 세계인가. 세계 줄이 그렇다고 말한다. */
-  current: boolean;
-  groups: ReadonlyArray<GroupNode>;
 }
 
 /** work 행(최상위 터미널이면 `Terminal`). 이름 · 셸 수 · 트리 합(메모리 · CPU — `groupTotals`)이고 동작은 없다(S53). */
@@ -65,8 +56,8 @@ export interface ShellNode extends ShellProcesses {
 }
 
 /**
- * 셸 묶음을 짓는다. **셸이 선 세계만 선다** — 지금 세계가 먼저, 그다음이 저쪽 세계다. 세계 안에서는 사이드바 순서(목록이 준
- * 차례 그대로 — 고정이 먼저인 것은 코어가 정한다, ux-papercuts 결정 100)이고, 목록에 없는 work이 그 뒤, 최상위 터미널(`Terminal`)이 맨 끝이다.
+ * 셸 묶음을 짓는다 — **work 행이 맨 윗단이다.** 사이드바 순서(목록이 준 차례 그대로 — 고정이
+ * 먼저인 것은 코어가 정한다, ux-papercuts 결정 100)이고, 목록에 없는 work이 그 뒤, 최상위 터미널(`Terminal`)이 맨 끝이다.
  * work 안의 셸은 탭의 차례다.
  *
  * **양쪽에 다 있는 셸만 선다.** 스토어가 모르는 풀의 셸은 「화면 밖 셸」이라 따로 묶인다(32). 풀에 없는 스토어의 칸은 프로세스가
@@ -76,34 +67,18 @@ export interface ShellNode extends ShellProcesses {
  * (스토어의 표시 — 티켓 12)은 여기 안 서고 제 묶음에 선다(`ownerlessGroups` · 티켓 32): 한 셸이 두 묶음에 서면 [닫기] 자리가 둘이고
  * 수가 두 번 읽힌다.
  */
-export function shellTree({ current, shells, lists, snapshot }: TreeInput): WorldNode[] {
-  const worlds: WorldNode[] = [];
-  for (const mode of worldOrder(current)) {
-    const byOwner = nodesByOwner(
-      shells.filter((shell) => !shell.ownerless && modeOfOwner(shell.owner) === mode),
-      snapshot,
-    );
-    if (byOwner.size === 0) continue;
-
-    const listed = lists[mode] ?? [];
-    const rank = (owner: ShellOwner): number => {
-      const slug = slugOfOwner(owner);
-      if (slug === null) return Number.MAX_SAFE_INTEGER;
-      const at = listed.findIndex((item) => item.slug === slug);
-      return at < 0 ? listed.length : at;
-    };
-    const groups = [...byOwner]
-      .map(([owner, nodes]) => ({ owner, name: groupName(mode, owner, listed), shells: nodes }))
-      // 안정 정렬이라 목록에 없는 work끼리는 셸이 먼저 뜬 차례로 선다.
-      .sort((a, b) => rank(a.owner) - rank(b.owner));
-    worlds.push({ mode, current: mode === current, groups });
-  }
-  return worlds;
-}
-
-/** 세계의 차례 — 지금 세계가 먼저다(프로세스 결정 9). */
-function worldOrder(current: Mode): Mode[] {
-  return [current, ...ALL_MODES.filter((one) => one !== current)];
+export function shellTree({ shells, list, snapshot }: TreeInput): GroupNode[] {
+  const byOwner = nodesByOwner(shells.filter((shell) => !shell.ownerless), snapshot);
+  const rank = (owner: ShellOwner): number => {
+    const slug = slugOfOwner(owner);
+    if (slug === null) return Number.MAX_SAFE_INTEGER;
+    const at = list.findIndex((item) => item.slug === slug);
+    return at < 0 ? list.length : at;
+  };
+  return [...byOwner]
+    .map(([owner, nodes]) => ({ owner, name: groupName(owner, list), shells: nodes }))
+    // 안정 정렬이라 목록에 없는 work끼리는 셸이 먼저 뜬 차례로 선다.
+    .sort((a, b) => rank(a.owner) - rank(b.owner));
 }
 
 /**
@@ -127,20 +102,17 @@ function nodesByOwner(shells: ReadonlyArray<Shell>, snapshot: ProcessSnapshot): 
 }
 
 /**
- * **주인 잃은 셸 묶음**(프로세스 결정 4 · 티켓 32) — 12가 스토어에 「주인 잃음」으로 표시한 셸을 work마다 모은다. 두 세계가 함께 서고
- * (화면이 앱 전체다 — 프로세스 결정 9) 지금 세계의 것이 먼저, 세계 안은 스토어의 차례다. 이름은 slug다 — 그 work은 목록에 없다.
+ * **주인 잃은 셸 묶음**(프로세스 결정 4 · 티켓 32) — 12가 스토어에 「주인 잃음」으로 표시한 셸을 work마다 모은다. 차례는 스토어의
+ * 차례다. 이름은 slug다 — 그 work은 목록에 없다.
  *
  * 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다. [모두 닫기]는 그 칸도 함께 거둔다(`closeOwnerless`).
  */
-export function ownerlessGroups({ current, shells, snapshot }: Pick<TreeInput, "current" | "shells" | "snapshot">): GroupNode[] {
-  return worldOrder(current).flatMap((mode) =>
-    [
-      ...nodesByOwner(
-        shells.filter((shell) => shell.ownerless && modeOfOwner(shell.owner) === mode),
-        snapshot,
-      ),
-    ].map(([owner, nodes]) => ({ owner, name: groupName(mode, owner, []), shells: nodes })),
-  );
+export function ownerlessGroups({ shells, snapshot }: Pick<TreeInput, "shells" | "snapshot">): GroupNode[] {
+  return [...nodesByOwner(shells.filter((shell) => shell.ownerless), snapshot)].map(([owner, nodes]) => ({
+    owner,
+    name: groupName(owner, []),
+    shells: nodes,
+  }));
 }
 
 // ── 화면 밖 셸(티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 화면 스토어가 모르는 셸.
@@ -158,7 +130,7 @@ export interface PoolBeat {
 }
 
 export interface OffscreenInput {
-  /** 스토어의 셸 — 두 세계 전부. 이 셸들의 셸 키가 「화면이 아는 셸」이다. */
+  /** 스토어의 셸 전부. 이 셸들의 셸 키가 「화면이 아는 셸」이다. */
   shells: ReadonlyArray<Shell>;
   snapshot: ProcessSnapshot;
   /** 바로 앞 박자. 아직 없으면(화면을 막 열었다) 화면 밖 셸도 없다. */
@@ -229,18 +201,14 @@ export function offscreenRowLabel(node: OffscreenNode, now: number): string {
   return withMemory([OFFSCREEN_NAME, stateText(offscreenStateOf(node), now)], shellTotals(node).memory);
 }
 
-function groupName(mode: Mode, owner: ShellOwner, listed: ReadonlyArray<ListedItem>): string {
-  const slug = slugOfOwner(owner);
-  if (slug === null) return terminalLabel(mode);
-  return listed.find((item) => item.slug === slug)?.title ?? slug;
-}
-
 /**
- * 최상위 터미널의 이름 — **그 세계 nav의 `Terminal` 라벨이다.** 그 셸이 사는 곳이 그 nav가 가는 화면이라 같은 글자여야 한다.
- * 두 세계 nav 모두에 그 항목이 있다(`mode.test.ts`) — 없어도 행이 비지 않게 같은 글자로 떨어진다.
+ * work 행의 이름 — 목록의 제목, 목록에 없으면 slug다. 최상위 터미널은 **nav의 `Terminal` 라벨이다**(`TERMINAL_LABEL`) — 그 셸이 사는
+ * 곳이 그 nav가 가는 화면이라 같은 글자여야 한다.
  */
-function terminalLabel(mode: Mode): string {
-  return navItemsOf(mode).find((item) => item.key === "terminal")?.label ?? "Terminal";
+function groupName(owner: ShellOwner, listed: ReadonlyArray<ListedItem>): string {
+  const slug = slugOfOwner(owner);
+  if (slug === null) return TERMINAL_LABEL;
+  return listed.find((item) => item.slug === slug)?.title ?? slug;
 }
 
 /**
@@ -333,33 +301,18 @@ export function shellRowLabel(node: ShellNode, now: number): string {
   return withMemory([shellRowName(node.shell), stateText(shellStateOf(node), now)], shellTotals(node).memory);
 }
 
-/** work 행 — 이름, 셸 수, 메모리(트리 합). 세는 말은 「셸 N개」다(CONTEXT 「셸」). */
+/**
+ * work 행 — 이름, 셸 수, 메모리(트리 합). 세는 말은 「셸 N개」다(CONTEXT 「셸」). 셸 묶음과 주인 잃은 셸 묶음의 work 줄이 같은
+ * 말이다(티켓 32).
+ */
 export function groupRowLabel(group: GroupNode): string {
   return withMemory([group.name, shellCount(group.shells.length)], groupTotals(group).memory);
-}
-
-/**
- * 주인 잃은 셸 묶음의 work 줄 — 이름, **세계**, 셸 수, 메모리(티켓 32). 두 세계의 것이 한 묶음에 서고 두 세계에 같은 slug가 설 수
- * 있어(life-mode 결정 10) 세계를 말한다. 세계 트리의 work 줄은 세계 줄 밑에 서서 말하지 않는다(`groupRowLabel`).
- */
-export function ownerlessGroupRowLabel(group: GroupNode): string {
-  return withMemory(
-    [group.name, modeNameOf(modeOfOwner(group.owner)), shellCount(group.shells.length)],
-    groupTotals(group).memory,
-  );
 }
 
 /** 셸을 세는 말 — 「셸 N개」(CONTEXT 「셸」). 프로세스를 세는 자리는 `processCount`(`process-tree.ts`)다. */
 export function shellCount(count: number): string {
   return `셸 ${count}개`;
 }
-
-/** 세계 줄 — 세계의 이름이고, 지금 세계면 그렇다고 말한다. 화면이 앱 전체라 어느 쪽이 지금 세계인지가 이 줄에서 읽힌다. */
-export function worldRowLabel(world: WorldNode): string {
-  return world.current ? `${modeNameOf(world.mode)}, ${CURRENT_WORLD}` : modeNameOf(world.mode);
-}
-
-export const CURRENT_WORLD = "지금 세계";
 
 /** 셸 도우미 줄 — 「셸 도우미」와 그 이름들(프로세스 줄과 같은 부른 이름). 사람이 띄운 것과 섞이지 않게 한 줄로 따로 선다(P1). */
 export function helperLabel(helpers: ReadonlyArray<ProcessRow>): string {

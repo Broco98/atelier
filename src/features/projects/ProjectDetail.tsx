@@ -81,8 +81,7 @@ function WorksSection({
   projectSlug: string;
   onOpenWork: (slug: string | null) => void;
 }) {
-  // 프로젝트는 **Atelier에만 있다**(결정 17) — Maison에는 이 화면으로 오는 길이 없다.
-  const { data: works = [] } = useWorks("atelier");
+  const { data: works = [] } = useWorks();
   const related = works.filter((w) => w.projects.includes(projectSlug));
 
   return (

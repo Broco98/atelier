@@ -18,9 +18,7 @@ interface ProjectsPageProps {
 }
 
 function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
-  // 이 화면은 `/projects` 주소에만 산다 — Maison 접두사가 붙을 수 없어 모드가 상수다
-  // (결정 17: Maison에 프로젝트는 없다).
-  const { data: projects = [] } = useProjects("atelier");
+  const { data: projects = [] } = useProjects();
   // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Archive와 같은 하나를 쓴다.
   const [panelOpen, togglePanel] = useListPanel("projects-panel-open");
   const createProject = useCreateProject();

@@ -6,7 +6,7 @@ import { appToasts, toastActionsOf } from "./app-toast";
 
 /**
  * 이 work의 토스트가 서는 자리(프로세스 스펙 P2 (나)). 앱 셸에 하나 서서 **어느 화면에서든** 보인다 —
- * work · Room 화면, Terminal, 설정, 아카이브.
+ * work 화면, Terminal, 설정, 아카이브.
  *
  * **Provider는 Viewport만 감싼다 — 앱 셸의 children을 감싸지 않는다.** Base UI의 토스트는 가장 가까운
  * Provider를 React 문맥으로 찾는다(`useToastManager`가 `useContext`다). 앱 루트에는 작업 · 아카이브 화면의 토스트

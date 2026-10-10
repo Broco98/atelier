@@ -8,7 +8,6 @@ import {
   fireEvent,
   installFixtureBackend,
   markAttention,
-  modeButton,
   navButton,
   openShell,
   sentNotifications,
@@ -189,34 +188,6 @@ test("다른 work의 셸이 나중에 불렀으면 메뉴의 ⌘J가 그 화면�
   await expectShellFocused(page, "옮겨 간 뒤 포커스가 그 셸로 안 왔다");
   // 옮겨 간 화면의 셸은 새로 뜬 것이 아니라 그 셸이다.
   expect(await callCount(page, "pty_spawn")).toBe(2);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// **저쪽 세계의 셸이어도 간다** — 띠는 이 세계의 셸만 세우지만(`bandRows`) 알림은 두 세계를 함께 판정하고, ⌘J가 기억하는 것도
-// 그 판정이 가른 들어섬이다. 가는 화면은 셸 주인의 세계로 짓는다 — 지금 선 세계로 지으면 이쪽 터미널에 머문다.
-test("저쪽 세계의 셸이 나중에 불렀으면 ⌘J가 그 세계의 화면으로 간다", async ({ page }) => {
-  await stubNotifications(page);
-  await installFixtureBackend(page);
-  await page.goto("/maison/terminal");
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-
-  // 세그먼트로 건너간다 — 주소를 직접 치면 페이지가 새로 떠 스토어가 빈다(`terminal-worlds.spec.ts`).
-  await modeButton(page, "Atelier").click();
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/terminal");
-  await awaitSpawned(page, 1);
-  await expectShellFocused(page, "이쪽 터미널의 셸에 포커스가 없다");
-
-  // 저쪽 셸(pty 1)이 부른다 — 이 세계의 띠에는 안 서고, 안 보이니 운다(앵커).
-  await fireAttention(page, 기다림(1000), 1);
-  await expect.poll(async () => (await sentNotifications(page)).length, { message: "저쪽 셸의 부름이 안 닿았다" }).toBe(1);
-  await expect(띠(page)).toHaveCount(0);
-
-  await page.keyboard.press("Meta+j");
-
-  await expect(page).toHaveURL("/maison/terminal");
-  await expectShellFocused(page, "건너간 뒤 포커스가 그 셸로 안 왔다");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

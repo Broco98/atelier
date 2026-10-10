@@ -13,22 +13,21 @@ import {
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { layoutDirRef } from "@/features/works/refs";
-import { modeNameOf } from "@/mode";
-import { invalidateSpecLayout, specLayoutStatesQuery, useRevertSpecLayout } from "./hooks";
+import { invalidateSpecLayout, specLayoutStateQuery, useRevertSpecLayout } from "./hooks";
 import { askRevert } from "./revert";
-import type { SpecLayoutState } from "./types";
+import { LAYOUT_NAME, type SpecLayoutState } from "./types";
 
-// 설정의 「spec 레이아웃」 페이지(spec 레이아웃 결정 20·23·25, 티켓 08). 모드마다 레이아웃이 하나라
-// Atelier와 Maison이 한 행씩 선다. **이 화면의 주된 쓰임은 확인이다** — 레이아웃은 대부분 에이전트가
+// 설정의 「spec 레이아웃」 페이지(spec 레이아웃 결정 20·23·25, 티켓 08). 레이아웃은 하나라 행도 하나다
+// (ui-refresh 결정 3 · 23). **이 화면의 주된 쓰임은 확인이다** — 레이아웃은 대부분 에이전트가
 // 고치고, 사람은 여기서 참조를 복사해 앱 터미널의 에이전트에게 붙인다. 되돌리기는 사람만 한다(결정 21) —
-// 고친 행의 ⋯에서 확인을 거쳐 그 모드의 레이아웃 폴더를 지운다(티켓 10). 손질은 행의 [편집]이 여는
-// 편집기에서 한다(티켓 11) — 이 페이지 아래의 하위 주소다.
+// 고친 행의 ⋯에서 확인을 거쳐 레이아웃 폴더를 지운다(티켓 10). 손질은 행의 [편집]이 여는
+// 편집기에서 한다(티켓 11) — 이 페이지 아래의 고정 하위 주소(`/settings/spec-layout/edit`)다.
 //
 // **설정 파일 읽기 게이트 밖에 선다**(에이전트 훅 페이지와 같다) — 레이아웃은 `settings.json`에 살지
 // 않고, 설정 초안의 저장 버튼도 지나지 않는다.
 //
 // 행은 페이지를 열 때, 레이아웃 폴더가 바뀔 때(셸의 `useFollowLayoutChanges`), [다시 읽기]를 누를 때,
-// 되돌린 뒤에 새로 읽는다(`specLayoutStatesQuery`에 `staleTime`이 없다). [다시 읽기]는 감시가 놓친 경우를 메우는
+// 되돌린 뒤에 새로 읽는다(`specLayoutStateQuery`에 `staleTime`이 없다). [다시 읽기]는 감시가 놓친 경우를 메우는
 // 버튼이라 감시와 같은 문(`invalidateSpecLayout`)을 연다 — spec 트리를 싣고 오는 work 목록과 아카이브 문서도 함께
 // 다시 읽힌다. 행의 상태는 엔진이 판정해 준 그대로 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
 
@@ -39,7 +38,8 @@ const NOTICE_MS = 6000;
 type Notice = { kind: "copied" | "reverted"; reference: string };
 
 function SpecLayoutPage() {
-  const states = useQuery(specLayoutStatesQuery());
+  const query = useQuery(specLayoutStateQuery());
+  const state = query.data;
   const queryClient = useQueryClient();
   const revertLayout = useRevertSpecLayout();
   const navigate = useNavigate();
@@ -54,8 +54,8 @@ function SpecLayoutPage() {
   };
   // **참조는 상태가 준 폴더 경로로 짓는다**(결정 23) — 폴더가 아직 없어도 같은 모양이다: 붙여 받은
   // 에이전트의 도구가 내장본을 돌려준다. 읽지 못하는 행에도 있다: 에이전트가 원문과 오류를 읽고 고친다.
-  const ask = (state: SpecLayoutState) => {
-    const reference = layoutDirRef(state.folder);
+  const ask = (layout: SpecLayoutState) => {
+    const reference = layoutDirRef(layout.folder);
     navigator.clipboard.writeText(reference);
     show({ kind: "copied", reference });
   };
@@ -67,38 +67,37 @@ function SpecLayoutPage() {
   // 목록과 아카이브 문서도 새 레이아웃으로 다시 읽힌다.
   const reread = () => void invalidateSpecLayout(queryClient);
   // 편집기는 이 설정 nav 항목 아래의 하위 주소다(티켓 11) — 설정 한 열 밖의 별도 화면이다.
-  const edit = (state: SpecLayoutState) =>
-    void navigate({ to: "/settings/spec-layout/$id", params: { id: state.id } });
+  const edit = () => void navigate({ to: "/settings/spec-layout/edit" });
   // **확인을 거친 뒤에만 지운다** — 폴더째 지우므로 템플릿과 레이아웃이 모르는 파일도 사라진다. 되돌리기는
   // 늘 된다(깨진 폴더도). 메시지는 다시 읽기가 끝난 뒤에 선다: 행이 이미 「내장본 그대로」다.
-  const revert = async (state: SpecLayoutState) => {
-    if (revertLayout.isPending || !(await askRevert(state))) return;
+  const revert = async (layout: SpecLayoutState) => {
+    if (revertLayout.isPending || !(await askRevert(layout))) return;
     try {
-      await revertLayout.mutateAsync(state.id);
+      await revertLayout.mutateAsync();
     } catch (e) {
       await showProblem(`되돌리지 못했습니다: ${e}`);
       return;
     }
-    show({ kind: "reverted", reference: layoutDirRef(state.folder) });
+    show({ kind: "reverted", reference: layoutDirRef(layout.folder) });
   };
 
   return (
     <>
-      {states.data !== undefined && (
+      {state !== undefined && (
         <SpecLayoutSection
-          states={states.data}
-          onAsk={ask}
+          state={state}
+          onAsk={() => ask(state)}
           onEdit={edit}
           onReread={reread}
-          onRevert={(state) => void revert(state)}
+          onRevert={() => void revert(state)}
         />
       )}
-      {/* 읽기 자체가 실패한 길(IPC). 한 모드의 폴더가 깨진 것은 여기가 아니라 그 행에 선다. */}
-      {states.error !== null && (
+      {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 그 행에 선다. */}
+      {query.error !== null && (
         <div className="flex flex-col items-start gap-3 pt-2">
-          <p className="text-[13.5px] leading-[1.7] text-red-600">{String(states.error)}</p>
+          <p className="text-[13.5px] leading-[1.7] text-red-600">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
-          {states.data === undefined && (
+          {state === undefined && (
             <Button variant="ghost" size="sm" onClick={reread}>
               다시 읽기
             </Button>
@@ -114,77 +113,65 @@ function SpecLayoutPage() {
 }
 
 /**
- * 모드 두 행 — 테두리 있는 목록 하나(프로토타입의 모양 그대로). 값을 들지 않는다: 페이지가 들고
- * 이쪽은 그리기만 한다(마크업 테스트가 클릭을 못 건다 — `HooksSection`과 같은 이유). ⋯ 메뉴가 열렸는지만
- * 그 행이 든다 — 화면 밖 누구도 그것을 묻지 않는다.
+ * 레이아웃 행 — 테두리 있는 목록 하나에 행 하나(프로토타입 `Settings-layout`의 모양 그대로). 값을 들지 않는다:
+ * 페이지가 들고 이쪽은 그리기만 한다(마크업 테스트가 클릭을 못 건다 — `HooksSection`과 같은 이유). ⋯ 메뉴가
+ * 열렸는지만 그 행이 든다 — 화면 밖 누구도 그것을 묻지 않는다.
  */
 export function SpecLayoutSection({
-  states,
-  onAsk,
-  onEdit,
-  onReread,
-  onRevert,
-}: {
-  states: SpecLayoutState[];
-  onAsk: (state: SpecLayoutState) => void;
-  /** 그 모드의 편집기를 연다(티켓 11). 읽을 수 있는 행에만 [편집]이 선다. */
-  onEdit: (state: SpecLayoutState) => void;
-  /** 모드 둘의 상태를 다시 읽는다. 감시(티켓 09)가 놓친 경우를 위한 길이다. */
-  onReread: () => void;
-  /** ⋯ 메뉴의 「기본값으로 되돌리기」를 골랐다. 확인은 부르는 쪽이 묻는다. */
-  onRevert: (state: SpecLayoutState) => void;
-}) {
-  return (
-    <section className="flex flex-col gap-5 pt-2">
-      <p className="text-[13px] leading-[1.7] text-tertiary">
-        모드마다 레이아웃이 하나예요. <code>spec</code> 패널 탭과 에이전트가 받는 안내문이 같은
-        레이아웃에서 나와요. <strong className="font-medium">부탁</strong>을 누르면 참조가 복사돼요 —
-        앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
-      </p>
-      <ul className="flex flex-col rounded-[12px] border border-border">
-        {states.map((state, index) => (
-          <ModeRow
-            key={state.id}
-            state={state}
-            first={index === 0}
-            onAsk={() => onAsk(state)}
-            onEdit={() => onEdit(state)}
-            onReread={onReread}
-            onRevert={() => onRevert(state)}
-          />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/**
- * 모드 한 행. 상태는 셋 중 하나다 — 내장본 그대로, 고침(가린 폴더 경로와 템플릿 개수), 읽지 못해
- * 내장본으로 물러섬(앰버 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
- * 고친 행이다(구현 스펙 5절) — 그래서 ⋯(기본값으로 되돌리기)는 둘 다에 선다. 읽지 못하는 행에는 [편집] 대신
- * [다시 읽기]가 선다: 편집기가 열 레이아웃이 없다.
- */
-function ModeRow({
   state,
-  first,
   onAsk,
   onEdit,
   onReread,
   onRevert,
 }: {
   state: SpecLayoutState;
-  first: boolean;
+  onAsk: () => void;
+  /** 편집기를 연다(티켓 11). 읽을 수 있는 행에만 [편집]이 선다. */
+  onEdit: () => void;
+  /** 레이아웃 상태를 다시 읽는다. 감시(티켓 09)가 놓친 경우를 위한 길이다. */
+  onReread: () => void;
+  /** ⋯ 메뉴의 「기본값으로 되돌리기」를 골랐다. 확인은 부르는 쪽이 묻는다. */
+  onRevert: () => void;
+}) {
+  return (
+    <section className="flex flex-col gap-5 pt-2">
+      <p className="text-[13px] leading-[1.7] text-tertiary">
+        <code>spec</code> 패널 탭과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
+        <strong className="font-medium">부탁</strong>을 누르면 참조가 복사돼요 —
+        앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
+      </p>
+      <ul className="flex flex-col rounded-[12px] border border-border">
+        <LayoutRow state={state} onAsk={onAsk} onEdit={onEdit} onReread={onReread} onRevert={onRevert} />
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * 레이아웃 한 행. 상태는 셋 중 하나다 — 내장본 그대로, 고침(가린 폴더 경로와 템플릿 개수), 읽지 못해
+ * 내장본으로 물러섬(앰버 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
+ * 고친 행이다(구현 스펙 5절) — 그래서 ⋯(기본값으로 되돌리기)는 둘 다에 선다. 읽지 못하는 행에는 [편집] 대신
+ * [다시 읽기]가 선다: 편집기가 열 레이아웃이 없다.
+ */
+function LayoutRow({
+  state,
+  onAsk,
+  onEdit,
+  onReread,
+  onRevert,
+}: {
+  state: SpecLayoutState;
   onAsk: () => void;
   onEdit: () => void;
   onReread: () => void;
   onRevert: () => void;
 }) {
-  // 행의 머리. 모드 이름이 곧 레이아웃의 이름이다(결정 25) — 세그먼트와 같은 표에서 읽는다.
-  const name = modeNameOf(state.id);
+  // 행의 머리. 편집기의 위치 · 되돌리기 창과 같은 이름이다.
+  const name = LAYOUT_NAME;
   const reference = layoutDirRef(state.folder);
   const fellBack = state.fallback !== null;
   return (
-    <li className={cn("flex items-start gap-3 py-3 pr-2.5 pl-3.5", !first && "border-t border-border")}>
+    <li className="flex items-start gap-3 py-3 pr-2.5 pl-3.5">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-h-[22px] items-center gap-2">
           <span className="text-[13.5px] font-medium">{name}</span>

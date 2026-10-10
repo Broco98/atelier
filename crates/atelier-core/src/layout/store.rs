@@ -1,4 +1,4 @@
-//! 레이아웃 저장소 — 모드의 레이아웃을 읽고, 저장하고, 기본값으로 되돌린다.
+//! 레이아웃 저장소 — 레이아웃을 읽고, 저장하고, 기본값으로 되돌린다.
 //!
 //! 에이전트의 MCP 도구와 앱의 편집기가 같은 입구를 부른다(결정 20). 규칙이 여기 한 벌이라 두
 //! 표면은 어댑터로만 남는다. 되돌리기는 앱의 설정 페이지만 부른다 — 에이전트는 고치기만 한다(결정 21).
@@ -13,16 +13,15 @@ use super::parse::{
 };
 use super::render::{render_layout, render_with_lines, EntryLines, Rendered};
 use super::resolve::{
-    folder_error, folder_present, hidden_template, layout_folder, layout_id, read_layout_file,
-    template_verdict, template_verdict_with, Unreadable,
+    folder_error, folder_present, hidden_template, layout_folder, read_layout_file, template_verdict,
+    template_verdict_with, Unreadable,
 };
 use crate::atomic::write_atomically;
-use crate::{Mode, Result};
+use crate::Result;
 
-/// 레이아웃 하나를 읽은 것.
+/// 레이아웃을 읽은 것.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutRead {
-    pub id: Mode,
     /// 레이아웃 폴더 — 홈은 `~`로 줄여 둔다. 폴더가 없어도 그 자리를 준다: 처음 저장하면 거기 선다.
     pub folder: String,
     /// 고침 여부 — 내장본을 가린 폴더가 있는가. 깨진 폴더도 가린 것이다.
@@ -76,14 +75,13 @@ pub struct LayoutPreview {
 /// `atelier_get_spec_layout`도 이 직렬화를 그대로 싣는다(결정 20). 두 표면이 JSON을 따로 짜면 키 하나를
 /// 고치는 날 앱과 에이전트가 조용히 갈린다.
 ///
-/// 읽을 수 있으면 `{ id, folder, edited, layout, templates, warnings }`이고, `layout`은 디스크 형식
+/// 읽을 수 있으면 `{ folder, edited, layout, templates, warnings }`이고, `layout`은 디스크 형식
 /// 그대로다(`serialize_layout_value` — 모르는 키까지). 편집기와 에이전트는 그것을 고쳐 그대로 저장에
-/// 돌려준다. 깨졌으면 `{ id, folder, edited, errors, raw }`다.
+/// 돌려준다. 깨졌으면 `{ folder, edited, errors, raw }`다.
 impl serde::Serialize for LayoutRead {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("id", &self.id)?;
         map.serialize_entry("folder", &self.folder)?;
         map.serialize_entry("edited", &self.edited)?;
         match &self.content {
@@ -117,27 +115,24 @@ impl serde::Serialize for SaveOutcome {
     }
 }
 
-/// 모드의 레이아웃을 읽는다. **아무것도 쓰지 않는다** — resolve와 같은 규칙이다(결정 7).
+/// 레이아웃을 읽는다. **아무것도 쓰지 않는다** — resolve와 같은 규칙이다(결정 7).
 ///
 /// 폴더가 없으면 코드 내장본이다. 폴더가 있으면 그 `layout.json`이고, 가리키는 템플릿 가운데
 /// 디스크에 있는 것의 본문을 함께 준다 — 있는데 읽을 수 없는 것은 본문 없이 경고다. 깨졌으면 오류
-/// 전부와 원문을 준다 — 에이전트와 편집기가 그것을 고쳐 다시 저장한다(결정 20).
-///
-/// id는 모드 이름 둘만 받는다. `"../.."`이 데이터 루트 밖을 읽으면 안 된다.
-pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
-    let id = layout_id(id)?;
-    let folder = layout_folder(data_root, id);
+/// 전부와 원문을 준다 — 에이전트와 편집기가 그것을 고쳐 다시 저장한다(결정 20). 읽기가 실패하는 길이
+/// 없다 — 못 읽는 것은 깨진 내용으로 선다.
+pub fn read_layout(data_root: &Path) -> LayoutRead {
+    let folder = layout_folder(data_root);
     let shown = crate::collapse_home(&folder);
     let content = match folder_present(&folder) {
         Ok(false) => {
-            let layout = builtin_layout(id);
+            let layout = builtin_layout();
             let rendered = render_layout(&layout, None, None);
-            return Ok(LayoutRead {
-                id,
+            return LayoutRead {
                 folder: shown,
                 edited: false,
                 content: LayoutContent::Readable { layout, templates: BTreeMap::new(), rendered },
-            });
+            };
         }
         Err(e) => LayoutContent::Broken { errors: vec![folder_error(&e)], raw: None },
         Ok(true) => match read_layout_file(&folder) {
@@ -164,10 +159,10 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
             }
         },
     };
-    Ok(LayoutRead { id, folder: shown, edited: true, content })
+    LayoutRead { folder: shown, edited: true, content }
 }
 
-/// 모드의 레이아웃을 저장한다. 처음 저장하면 그 모드의 내장본을 가리는 폴더가 생긴다(결정 7).
+/// 레이아웃을 저장한다. 처음 저장하면 내장본을 가리는 폴더가 생긴다(결정 7).
 ///
 /// `layout`은 디스크 형식의 JSON 값이다 — 글이 아니라 값으로 받아야 모르는 키가 산다.
 /// `templates`는 템플릿 본문이다(레이아웃 폴더 기준 경로 → 본문). **넘기지 않은 템플릿은 디스크의
@@ -185,16 +180,12 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
 ///   그 파일은 레이아웃이 모르는 파일로 남는다 — 잃은 것이 아니라 남은 것이다.
 /// - 레이아웃이 모르는 파일은 건드리지 않는다. 빠진 템플릿이라도 링크인 하위 폴더 너머에 있으면
 ///   남긴다 — 그곳은 레이아웃 폴더 밖이다.
-///
-/// id는 모드 이름 둘만 받는다 — 어긋나면 디스크를 보기 전에 `Err`다.
 pub fn save_layout(
     data_root: &Path,
-    id: &str,
     layout: serde_json::Value,
     templates: &BTreeMap<String, String>,
 ) -> Result<SaveOutcome> {
-    let id = layout_id(id)?;
-    let folder = layout_folder(data_root, id);
+    let folder = layout_folder(data_root);
     let layout = match validate(layout, &folder, templates) {
         Ok(layout) => layout,
         Err(errors) => return Ok(SaveOutcome::Refused(errors)),
@@ -212,7 +203,7 @@ pub fn save_layout(
     };
     if let Err(e) = write_templates_then_layout(&folder, &layout, templates) {
         // **처음 저장이 쓰다가 실패하면 만든 폴더를 지운다** — 남으면 `layout.json` 없는 폴더가 내장본을
-        // 가려 그 모드가 깨진다. 그 폴더는 이 저장이 만든 것이라 안의 것도 이 저장이 쓴 것이다: 사람의
+        // 가려 레이아웃이 깨진다. 그 폴더는 이 저장이 만든 것이라 안의 것도 이 저장이 쓴 것이다: 사람의
         // 파일을 지우지 않는다. 있던 폴더에 저장하다 실패하면 아무것도 지우지 않는다 — `layout.json`은
         // 전과 같다. 다만 저장은 파일마다 원자적일 뿐 통째로 원자적이지 않다: 먼저 쓴 템플릿 가운데 앞
         // 레이아웃도 가리키는 경로는 이미 새 본문이라 앞 레이아웃이 그 본문을 준다(편집기는 늘 전부
@@ -280,45 +271,35 @@ fn write_templates_then_layout(
 /// - **디스크에 아무것도 쓰지 않는다.**
 ///
 /// 규칙이 Tauri 명령 안에 살면 L4 다리가 같은 규칙을 한 벌 더 가져야 한다. 그래서 여기 엔진에 둔다.
-/// id는 모드 이름 둘만 받는다 — 어긋나면 디스크를 보기 전에 `Err`다.
+/// 실패하는 길이 없다 — 검증의 거절도 답의 `errors`다.
 pub fn preview_layout(
     data_root: &Path,
-    id: &str,
     layout: serde_json::Value,
     templates: &BTreeMap<String, String>,
-) -> Result<LayoutPreview> {
-    let id = layout_id(id)?;
-    let folder = layout_folder(data_root, id);
+) -> LayoutPreview {
+    let folder = layout_folder(data_root);
     let layout = match validate(layout, &folder, templates) {
         Ok(layout) => layout,
-        Err(errors) => {
-            return Ok(LayoutPreview { text: None, lines: Vec::new(), errors, warnings: Vec::new() })
-        }
+        Err(errors) => return LayoutPreview { text: None, lines: Vec::new(), errors, warnings: Vec::new() },
     };
     let verdict = template_verdict_with(&layout, crate::collapse_home(&folder), |template| {
         backed(template, &folder, templates)
     });
     let (rendered, lines) = render_with_lines(&layout, Some(&verdict), None);
-    Ok(LayoutPreview {
-        text: Some(rendered.text),
-        lines,
-        errors: Vec::new(),
-        warnings: rendered.warnings,
-    })
+    LayoutPreview { text: Some(rendered.text), lines, errors: Vec::new(), warnings: rendered.warnings }
 }
 
-/// 모드의 레이아웃을 **기본값으로 되돌린다** — 그 모드의 레이아웃 폴더를 지운다(결정 7). 그 뒤로는
-/// 코드 내장본이 그 id를 받는다. 템플릿도 레이아웃이 모르는 파일도 폴더째 사라진다 — 그래서 설정의
+/// 레이아웃을 **기본값으로 되돌린다** — 레이아웃 폴더를 지운다(결정 7). 그 뒤로는 코드 내장본이
+/// 쓰인다. 템플릿도 레이아웃이 모르는 파일도 폴더째 사라진다 — 그래서 설정의
 /// 확인 창이 그 수를 미리 적는다(`LayoutState`).
 ///
 /// **늘 된다.** 깨진 폴더도 지운다 — 앱이 **스스로** 깨진 파일을 고치거나 지우지 않을 뿐이고, 이것은
 /// 사람이 확인 창에서 고른 일이다. 에이전트에게는 이 길이 없다(결정 21). 폴더가 없으면 할 일이 없다.
 ///
 /// 그 자리에 무엇이 있든 **그것 자신만** 지운다 — 폴더면 폴더째, 파일이나 링크면 그 하나다. 링크를
-/// 따라가 가리키는 곳을 지우지 않는다. id는 모드 이름 둘만 받는다: `"../.."`이 데이터 루트를 지우면 안 된다.
-pub fn revert_layout(data_root: &Path, id: &str) -> Result<()> {
-    let id = layout_id(id)?;
-    let folder = layout_folder(data_root, id);
+/// 따라가 가리키는 곳을 지우지 않는다. 지우는 자리는 고정 경로 하나다 — 밖에서 받은 경로로 지우지 않는다.
+pub fn revert_layout(data_root: &Path) -> Result<()> {
+    let folder = layout_folder(data_root);
     let removed = match std::fs::symlink_metadata(&folder) {
         Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&folder),
         Ok(_) => std::fs::remove_file(&folder),
@@ -393,8 +374,8 @@ impl Held {
     }
 }
 
-/// 지울 경로가 **링크인 하위 폴더를 지나는가** — 지나면 그 너머는 이 레이아웃 폴더 밖이다. 다른 모드가
-/// 가리키는 템플릿일 수 있어(두 모드가 템플릿 폴더를 링크로 나눠 쓴다) 빠졌다고 지우지 않는다.
+/// 지울 경로가 **링크인 하위 폴더를 지나는가** — 지나면 그 너머는 이 레이아웃 폴더 밖이다. 사람이 다른 곳의
+/// 폴더를 링크로 이어 두고 함께 쓰는 파일일 수 있어 빠졌다고 지우지 않는다.
 ///
 /// 레이아웃 폴더 아래의 조각만 본다 — 레이아웃 폴더 자신이 링크인 것(dotfiles에 둔 레이아웃)은 괜찮다.
 /// 끝 조각은 보지 않는다: 링크면 지우는 것은 링크 자신이다. 조각을 확인하지 못하면 지나는 것으로 친다 —
@@ -513,31 +494,25 @@ fn walk(entry: &LayoutEntry, path: &mut Vec<usize>, visit: &mut impl FnMut(&Layo
 mod tests {
     use super::*;
 
-    /// 폴더가 없으면 **그 모드의 코드 내장본**이다 — 고친 적이 없고, 템플릿도 없다(내장본에는 템플릿이
-    /// 없다). 폴더 자리는 그래도 준다: 처음 저장하면 거기 선다.
+    /// 폴더가 없으면 **코드 내장본**이다 — 고친 적이 없고, 템플릿도 없다(내장본에는 템플릿이 없다).
+    /// 폴더 자리는 그래도 준다: 처음 저장하면 거기 선다.
     #[test]
-    fn without_a_folder_the_read_is_the_builtin_of_that_mode() {
+    fn without_a_folder_the_read_is_the_builtin() {
         let root = tempfile::tempdir().unwrap();
-        for mode in [Mode::Atelier, Mode::Maison] {
-            let read = read_layout(root.path(), mode.as_str()).unwrap();
-            assert_eq!(read.id, mode);
-            assert!(!read.edited, "{mode}: 고친 적이 없다");
-            assert_eq!(
-                read.folder,
-                crate::collapse_home(&root.path().join("layouts").join(mode.as_str()))
-            );
-            let LayoutContent::Readable { layout, templates, rendered } = read.content else {
-                panic!("{mode}: 내장본은 늘 읽힌다");
-            };
-            assert_eq!(layout, builtin_layout(mode));
-            assert!(templates.is_empty(), "{mode}: {templates:?}");
-            assert_eq!(rendered, render_layout(&builtin_layout(mode), None, None));
-        }
+        let read = read_layout(root.path());
+        assert!(!read.edited, "고친 적이 없다");
+        assert_eq!(read.folder, crate::collapse_home(&root.path().join("layouts/atelier")));
+        let LayoutContent::Readable { layout, templates, rendered } = read.content else {
+            panic!("내장본은 늘 읽힌다");
+        };
+        assert_eq!(layout, builtin_layout());
+        assert!(templates.is_empty(), "{templates:?}");
+        assert_eq!(rendered, render_layout(&builtin_layout(), None, None));
     }
 
-    /// `<데이터 루트>/layouts/<id>/`에 파일 하나를 심는다. 폴더가 없으면 만든다.
-    fn plant(root: &Path, id: &str, file: &str, content: &str) {
-        let path = root.join("layouts").join(id).join(file);
+    /// `<데이터 루트>/layouts/atelier/`에 파일 하나를 심는다. 폴더가 없으면 만든다.
+    fn plant(root: &Path, file: &str, content: &str) {
+        let path = root.join("layouts/atelier").join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, content).unwrap();
     }
@@ -554,12 +529,12 @@ mod tests {
     #[test]
     fn a_folder_reads_as_its_layout_with_template_bodies_and_missing_ones_as_warnings() {
         let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
-        plant(root.path(), "atelier", "sub/plan.md", "# Plan\n");
-        plant(root.path(), "atelier", "stray.md", "모르는 파일\n");
+        plant(root.path(), "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "decisions.md", "# Decisions\n");
+        plant(root.path(), "sub/plan.md", "# Plan\n");
+        plant(root.path(), "stray.md", "모르는 파일\n");
 
-        let read = read_layout(root.path(), "atelier").unwrap();
+        let read = read_layout(root.path());
         assert!(read.edited);
         let folder = crate::collapse_home(&root.path().join("layouts/atelier"));
         assert_eq!(read.folder, folder);
@@ -595,17 +570,16 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         plant(
             root.path(),
-            "atelier",
             "layout.json",
             r#"{ "root": { "children": [
                 { "pattern": "a.md", "kind": "file", "template": "a.md" },
                 { "pattern": "b.md", "kind": "file", "template": "b.md" } ] } }"#,
         );
-        plant(root.path(), "atelier", "a.md", "# A\n");
+        plant(root.path(), "a.md", "# A\n");
         let unreadable = root.path().join("layouts/atelier/b.md");
         std::fs::write(&unreadable, [0xff, 0xfe, 0x00]).unwrap();
 
-        let read = read_layout(root.path(), "atelier").unwrap();
+        let read = read_layout(root.path());
         let LayoutContent::Readable { layout, templates, rendered } = read.content else {
             panic!("읽혀야 한다: {:?}", read.content);
         };
@@ -620,7 +594,7 @@ mod tests {
         assert!(rendered.text.contains(&format!("Template: {folder}/b.md")), "{}", rendered.text);
 
         let saved =
-            save_layout(root.path(), "atelier", crate::serialize_layout_value(&layout), &templates)
+            save_layout(root.path(), crate::serialize_layout_value(&layout), &templates)
                 .unwrap();
         assert!(matches!(saved, SaveOutcome::Saved(_)), "{saved:?}");
         assert_eq!(std::fs::read(&unreadable).unwrap(), [0xff, 0xfe, 0x00]);
@@ -634,9 +608,9 @@ mod tests {
         let raw = r#"{ "root": { "children": [
             { "pattern": "a.md", "kind": "fil" },
             { "pattern": "{x}", "kind": "folder" } ] } }"#;
-        plant(root.path(), "maison", "layout.json", raw);
+        plant(root.path(), "layout.json", raw);
 
-        let read = read_layout(root.path(), "maison").unwrap();
+        let read = read_layout(root.path());
         assert!(read.edited);
         let LayoutContent::Broken { errors, raw: got } = read.content else {
             panic!("깨진 레이아웃이 읽혔다: {:?}", read.content);
@@ -650,9 +624,9 @@ mod tests {
     #[test]
     fn a_folder_without_its_layout_file_reads_as_broken_with_no_raw_text() {
         let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
+        plant(root.path(), "decisions.md", "# Decisions\n");
 
-        let read = read_layout(root.path(), "atelier").unwrap();
+        let read = read_layout(root.path());
         assert!(read.edited);
         assert_eq!(
             read.content,
@@ -664,8 +638,8 @@ mod tests {
     }
 
     /// 레이아웃 폴더 아래 모든 파일 — 폴더 기준 경로와 내용. 폴더가 없으면 빈 목록이다.
-    fn files_in(root: &Path, id: &str) -> Vec<(String, String)> {
-        let base = root.join("layouts").join(id);
+    fn files_in(root: &Path) -> Vec<(String, String)> {
+        let base = root.join("layouts/atelier");
         let mut found = Vec::new();
         let mut stack = vec![base.clone()];
         while let Some(dir) = stack.pop() {
@@ -695,14 +669,13 @@ mod tests {
               "template": "decisions.md" } ] } })
     }
 
-    /// **처음 저장하면 가리기가 된다**(결정 7) — 그 모드의 폴더가 생기고, 그 뒤 resolve는 폴더의
+    /// **처음 저장하면 가리기가 된다**(결정 7) — 레이아웃 폴더가 생기고, 그 뒤 resolve는 폴더의
     /// 것을 준다. 저장은 그 레이아웃으로 만든 안내문을 돌려준다: 에이전트가 사용자에게 보여 준다.
     #[test]
     fn the_first_save_hides_the_builtin_and_resolve_then_gives_the_folders_layout() {
         let root = tempfile::tempdir().unwrap();
         let outcome = save_layout(
             root.path(),
-            "atelier",
             with_decisions("Keep it small."),
             &bodies(&[("decisions.md", "# Decisions\n")]),
         )
@@ -716,45 +689,41 @@ mod tests {
             "{}",
             rendered.text
         );
-        let names: Vec<_> = files_in(root.path(), "atelier").into_iter().map(|(name, _)| name).collect();
+        let names: Vec<_> = files_in(root.path()).into_iter().map(|(name, _)| name).collect();
         assert_eq!(names, ["decisions.md", "layout.json"]);
 
-        let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+        let resolved = crate::resolve_layout(root.path());
         assert_eq!(resolved.source, crate::LayoutSource::Folder(folder));
         assert_eq!(resolved.layout.root.description, "Keep it small.");
         assert_eq!(rendered, render_layout(&resolved.layout, resolved.templates.as_ref(), None));
-        // 가린 것은 그 모드의 것뿐이다
-        let maison = crate::resolve_layout(root.path(), Mode::Maison, None).unwrap();
-        assert_eq!(maison.layout, builtin_layout(Mode::Maison));
     }
 
     /// **검증이 실패하면 아무것도 쓰지 않는다** — 폴더의 파일 목록과 내용이 전후로 같다. 넘긴
     /// 템플릿 본문도 쓰이지 않는다: 템플릿을 먼저 쓰므로, 검증을 쓰기 앞에 두지 않으면 여기서 샌다.
-    /// 오류에는 제 항목의 위치가 붙는다. 폴더가 없던 모드에는 폴더도 생기지 않는다.
+    /// 오류에는 제 항목의 위치가 붙는다. 폴더가 없던 데이터 루트에는 폴더도 생기지 않는다.
     #[test]
     fn a_refused_save_writes_nothing() {
-        let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
-        let before = files_in(root.path(), "atelier");
-
         let invalid = serde_json::json!({ "root": { "children": [
             { "pattern": "decisions.md", "kind": "file", "template": "decisions.md" },
             { "pattern": "b.md", "kind": "fil" } ] } });
-        for id in ["atelier", "maison"] {
-            let outcome = save_layout(
-                root.path(),
-                id,
-                invalid.clone(),
-                &bodies(&[("decisions.md", "# 새 본문\n")]),
-            )
-            .unwrap();
-            let SaveOutcome::Refused(errors) = outcome else { panic!("{id}: 저장됐다") };
+        let refuse = |root: &Path| {
+            let outcome =
+                save_layout(root, invalid.clone(), &bodies(&[("decisions.md", "# 새 본문\n")])).unwrap();
+            let SaveOutcome::Refused(errors) = outcome else { panic!("저장됐다") };
             let paths: Vec<_> = errors.iter().map(|e| e.path.clone()).collect();
-            assert_eq!(paths, [Some(vec![1])], "{id}: {errors:?}");
-        }
-        assert_eq!(files_in(root.path(), "atelier"), before);
-        assert!(!root.path().join("layouts/maison").exists(), "거절된 저장이 가림 폴더를 만들었다");
+            assert_eq!(paths, [Some(vec![1])], "{errors:?}");
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        plant(root.path(), "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "decisions.md", "# Decisions\n");
+        let before = files_in(root.path());
+        refuse(root.path());
+        assert_eq!(files_in(root.path()), before);
+
+        let bare = tempfile::tempdir().unwrap();
+        refuse(bare.path());
+        assert!(!bare.path().join("layouts/atelier").exists(), "거절된 저장이 가림 폴더를 만들었다");
     }
 
     /// 레이아웃이 가리키는 템플릿이 **인자에도 디스크에도 없으면** 그 항목의 위치가 붙은 검증 오류다
@@ -762,14 +731,13 @@ mod tests {
     #[test]
     fn a_template_neither_given_nor_on_disk_is_refused_at_its_entry() {
         let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
-        let before = files_in(root.path(), "atelier");
+        plant(root.path(), "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "decisions.md", "# Decisions\n");
+        let before = files_in(root.path());
 
         // `decisions.md`는 디스크에, `sub/plan.md`는 인자에 있다. `gone.md`는 어디에도 없다.
         let outcome = save_layout(
             root.path(),
-            "atelier",
             serde_json::from_str(THREE_TEMPLATES).unwrap(),
             &bodies(&[("sub/plan.md", "# Plan\n")]),
         )
@@ -778,7 +746,7 @@ mod tests {
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].path, Some(vec![2]), "{errors:?}");
         assert!(errors[0].message.contains("gone.md"), "{errors:?}");
-        assert_eq!(files_in(root.path(), "atelier"), before);
+        assert_eq!(files_in(root.path()), before);
     }
 
     /// **점으로 시작하는 조각이 든 템플릿 경로는 그 항목 자리에서 거절된다** — resolve는 그런 템플릿을
@@ -790,8 +758,8 @@ mod tests {
             let root = tempfile::tempdir().unwrap();
             let given = bodies(&[(template, "# plan\n")]);
 
-            let preview = preview_layout(root.path(), "atelier", pointing_to(template), &given).unwrap();
-            let outcome = save_layout(root.path(), "atelier", pointing_to(template), &given).unwrap();
+            let preview = preview_layout(root.path(), pointing_to(template), &given);
+            let outcome = save_layout(root.path(), pointing_to(template), &given).unwrap();
 
             let SaveOutcome::Refused(errors) = outcome else { panic!("{template}: 저장됐다: {outcome:?}") };
             assert_eq!(errors.len(), 1, "{template}: {errors:?}");
@@ -832,7 +800,7 @@ mod tests {
         let pointing_out = serde_json::json!({ "root": { "children": [
             { "pattern": "a.md", "kind": "file", "template": "../../a.md" } ] } });
         let outcome =
-            save_layout(&root, "atelier", pointing_out, &bodies(&[("../../a.md", "x")])).unwrap();
+            save_layout(&root, pointing_out, &bodies(&[("../../a.md", "x")])).unwrap();
         let SaveOutcome::Refused(errors) = outcome else { panic!("저장됐다") };
         assert!(errors.iter().any(|e| e.path == Some(vec![0])), "그 항목에 오류가 없다: {errors:?}");
 
@@ -841,7 +809,6 @@ mod tests {
         for escaping in ["../../escape.md", absolute.as_str(), "sub/../../../escape.md"] {
             let outcome = save_layout(
                 &root,
-                "atelier",
                 with_decisions("x"),
                 &bodies(&[("decisions.md", "# D\n"), (escaping, "x")]),
             )
@@ -856,7 +823,7 @@ mod tests {
     }
 
     /// **레이아웃 파일 이름의 폴더 아래 템플릿은 거절되고 아무것도 쓰지 않는다.** 쓰면 `layout.json`이라는
-    /// 폴더가 서서 레이아웃 파일을 쓸 수 없게 되고, 그 모드는 사람이 되돌리기 전까지 깨진 채 남는다 —
+    /// 폴더가 서서 레이아웃 파일을 쓸 수 없게 되고, 레이아웃은 사람이 되돌리기 전까지 깨진 채 남는다 —
     /// 에이전트에게는 되돌리는 길이 없다(결정 21). 대소문자만 다른 이름도 macOS에서는 같은 폴더다.
     #[test]
     fn a_template_under_the_layout_file_name_is_refused_and_nothing_is_written() {
@@ -865,12 +832,12 @@ mod tests {
             let layout = serde_json::json!({ "root": { "children": [
                 { "pattern": "a.md", "kind": "file", "template": template } ] } });
             let outcome =
-                save_layout(root.path(), "maison", layout, &bodies(&[(template, "# x\n")])).unwrap();
+                save_layout(root.path(), layout, &bodies(&[(template, "# x\n")])).unwrap();
             let SaveOutcome::Refused(errors) = outcome else { panic!("{template}: 저장됐다: {outcome:?}") };
             assert_eq!(errors.len(), 1, "{template}: {errors:?}");
             assert_eq!(errors[0].path, Some(vec![0]), "{template}: {errors:?}");
             assert!(errors[0].message.contains("layout.json"), "{template}: {errors:?}");
-            assert!(!root.path().join("layouts/maison").exists(), "{template}: 거절된 저장이 폴더를 만들었다");
+            assert!(!root.path().join("layouts/atelier").exists(), "{template}: 거절된 저장이 폴더를 만들었다");
         }
     }
 
@@ -879,10 +846,9 @@ mod tests {
     #[test]
     fn a_body_no_entry_points_to_is_refused_and_the_file_there_stays() {
         let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "notes.md", "사람의 메모\n");
+        plant(root.path(), "notes.md", "사람의 메모\n");
         let outcome = save_layout(
             root.path(),
-            "atelier",
             with_decisions("x"),
             &bodies(&[("decisions.md", "# D\n"), ("notes.md", "덮어쓴 것\n")]),
         )
@@ -891,7 +857,7 @@ mod tests {
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].path, None, "{errors:?}");
         assert!(errors[0].message.contains("notes.md"), "{errors:?}");
-        assert_eq!(files_in(root.path(), "atelier"), [("notes.md".to_string(), "사람의 메모\n".to_string())]);
+        assert_eq!(files_in(root.path()), [("notes.md".to_string(), "사람의 메모\n".to_string())]);
     }
 
     /// **템플릿을 `layout.json`보다 먼저 쓴다.** 템플릿 하나를 쓸 수 없게 하면(그 경로에 같은 이름의
@@ -901,12 +867,11 @@ mod tests {
     fn a_template_that_cannot_be_written_leaves_the_layout_file_as_it_was() {
         let root = tempfile::tempdir().unwrap();
         let old = r#"{ "root": { "description": "old" } }"#;
-        plant(root.path(), "atelier", "layout.json", old);
-        plant(root.path(), "atelier", "decisions.md/blocker.txt", "폴더다\n");
+        plant(root.path(), "layout.json", old);
+        plant(root.path(), "decisions.md/blocker.txt", "폴더다\n");
 
         let saved = save_layout(
             root.path(),
-            "atelier",
             with_decisions("new"),
             &bodies(&[("decisions.md", "# Decisions\n")]),
         );
@@ -918,7 +883,7 @@ mod tests {
     }
 
     /// **처음 저장이 쓰다가 실패하면 폴더를 남기지 않는다** — 남으면 `layout.json` 없는 폴더가 내장본을
-    /// 가려 그 모드가 깨진다(에이전트는 물러선 안내문을 받고, 설정의 행은 깨진 행이다). 쓰기가 실패하는
+    /// 가려 레이아웃이 깨진다(에이전트는 물러선 안내문을 받고, 설정의 행은 깨진 행이다). 쓰기가 실패하는
     /// 모양 둘: `x`와 `x/y.md`는 어느 파일 시스템에서도 둘 다 쓸 수 없고(파일 `x`가 폴더 `x/`를 막는다),
     /// NUL이 든 이름은 쓸 수 없다.
     #[test]
@@ -929,12 +894,12 @@ mod tests {
                 { "pattern": "one.md", "kind": "file", "template": a },
                 { "pattern": "two.md", "kind": "file", "template": b } ] } });
 
-            let saved = save_layout(root.path(), "atelier", layout, &bodies(&[(a, "1"), (b, "2")]));
+            let saved = save_layout(root.path(), layout, &bodies(&[(a, "1"), (b, "2")]));
 
             assert!(saved.is_err(), "{a:?}: 쓸 수 없는 템플릿인데 저장됐다: {saved:?}");
             assert!(!root.path().join("layouts/atelier").exists(), "{a:?}: 폴더가 남았다");
-            assert!(!read_layout(root.path(), "atelier").unwrap().edited, "{a:?}");
-            let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+            assert!(!read_layout(root.path()).edited, "{a:?}");
+            let resolved = crate::resolve_layout(root.path());
             assert_eq!(resolved.source, crate::LayoutSource::Builtin, "{a:?}");
             assert_eq!(resolved.fallback, None, "{a:?}: 물러섰다");
         }
@@ -948,21 +913,20 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         plant(
             root.path(),
-            "atelier",
             "layout.json",
             r#"{ "root": { "children": [
                 { "pattern": "decisions.md", "kind": "file", "template": "decisions.md" },
                 { "pattern": "plan.md", "kind": "file", "template": "sub/plan.md" } ] } }"#,
         );
-        plant(root.path(), "atelier", "decisions.md", "# 사람이 고친 본문\n");
-        plant(root.path(), "atelier", "sub/plan.md", "# Plan\n");
-        plant(root.path(), "atelier", "notes.md", "사람의 메모\n");
+        plant(root.path(), "decisions.md", "# 사람이 고친 본문\n");
+        plant(root.path(), "sub/plan.md", "# Plan\n");
+        plant(root.path(), "notes.md", "사람의 메모\n");
 
         let outcome =
-            save_layout(root.path(), "atelier", with_decisions("x"), &BTreeMap::new()).unwrap();
+            save_layout(root.path(), with_decisions("x"), &BTreeMap::new()).unwrap();
         assert!(matches!(outcome, SaveOutcome::Saved(_)), "{outcome:?}");
 
-        let files = files_in(root.path(), "atelier");
+        let files = files_in(root.path());
         let names: Vec<_> = files.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, ["decisions.md", "layout.json", "notes.md"]);
         assert_eq!(files[0].1, "# 사람이 고친 본문\n");
@@ -979,19 +943,18 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         plant(
             root.path(),
-            "atelier",
             "layout.json",
             r#"{ "root": { "children": [
                 { "pattern": "decisions.md", "kind": "file", "template": "decisions.md" },
                 { "pattern": "notes.md", "kind": "file", "template": "notes" },
                 { "pattern": "other.md", "kind": "file", "template": "other.md" } ] } }"#,
         );
-        plant(root.path(), "atelier", "decisions.md", "# D\n");
-        plant(root.path(), "atelier", "notes/keep.txt", "폴더다\n");
-        plant(root.path(), "atelier", "other.md", "# O\n");
+        plant(root.path(), "decisions.md", "# D\n");
+        plant(root.path(), "notes/keep.txt", "폴더다\n");
+        plant(root.path(), "other.md", "# O\n");
 
         let outcome =
-            save_layout(root.path(), "atelier", with_decisions("x"), &BTreeMap::new()).unwrap();
+            save_layout(root.path(), with_decisions("x"), &BTreeMap::new()).unwrap();
 
         let SaveOutcome::Saved(rendered) = outcome else { panic!("거절됐다: {outcome:?}") };
         let folder = crate::collapse_home(&root.path().join("layouts/atelier"));
@@ -1001,7 +964,7 @@ mod tests {
             "어느 템플릿인지 말하지 않는다: {:?}",
             rendered.warnings
         );
-        let LayoutContent::Readable { layout, .. } = read_layout(root.path(), "atelier").unwrap().content
+        let LayoutContent::Readable { layout, .. } = read_layout(root.path()).content
         else {
             panic!("저장한 레이아웃이 안 읽힌다")
         };
@@ -1025,7 +988,6 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let first = save_layout(
             root.path(),
-            "atelier",
             pointing_to("sub/x.md"),
             &bodies(&[("sub/x.md", "# 사람이 쓴 본문\n")]),
         )
@@ -1033,7 +995,7 @@ mod tests {
         assert!(matches!(first, SaveOutcome::Saved(_)), "{first:?}");
 
         let second =
-            save_layout(root.path(), "atelier", pointing_to("sub//x.md"), &BTreeMap::new()).unwrap();
+            save_layout(root.path(), pointing_to("sub//x.md"), &BTreeMap::new()).unwrap();
         let SaveOutcome::Saved(rendered) = second else { panic!("거절됐다: {second:?}") };
         assert!(rendered.warnings.is_empty(), "{rendered:?}");
         assert_eq!(
@@ -1052,7 +1014,6 @@ mod tests {
             let folder = root.path().join("layouts/atelier");
             let first = save_layout(
                 root.path(),
-                "atelier",
                 pointing_to("ADR.md"),
                 &bodies(&[("ADR.md", "# 사람이 쓴 본문\n")]),
             )
@@ -1063,7 +1024,7 @@ mod tests {
             }
 
             let templates = new_body.map(|body| bodies(&[("adr.md", body)])).unwrap_or_default();
-            let second = save_layout(root.path(), "atelier", pointing_to("adr.md"), &templates).unwrap();
+            let second = save_layout(root.path(), pointing_to("adr.md"), &templates).unwrap();
             let SaveOutcome::Saved(rendered) = second else {
                 panic!("{new_body:?}: 거절됐다: {second:?}")
             };
@@ -1076,37 +1037,30 @@ mod tests {
     }
 
     /// 빠진 템플릿이 **링크로 이어 둔 하위 폴더** 너머에 있으면 지우지 않는다 — 링크가 가리키는 곳은 이
-    /// 레이아웃 폴더 밖이고, 다른 모드가 가리키는 템플릿일 수 있다. 두 모드가 템플릿 폴더를 나눠 쓰는
-    /// 모양(`maison/shared -> ../atelier/shared`)이다. 틀리더라도 남기는 쪽으로 틀린다(`Held`와 같다).
+    /// 레이아웃 폴더 밖이고, 사람이 다른 곳과 함께 쓰는 파일일 수 있다. 템플릿 폴더를 dotfiles에 두고 이어 둔
+    /// 모양(`shared -> ~/dotfiles/shared`)이다. 틀리더라도 남기는 쪽으로 틀린다(`Held`와 같다).
     #[cfg(unix)]
     #[test]
     fn a_dropped_template_behind_a_linked_sub_folder_is_left() {
-        let root = tempfile::tempdir().unwrap();
-        let body = bodies(&[("shared/adr.md", "# 사람이 쓴 본문\n")]);
-        let atelier = save_layout(root.path(), "atelier", pointing_to("shared/adr.md"), &body).unwrap();
-        assert!(matches!(atelier, SaveOutcome::Saved(_)), "{atelier:?}");
-        let link = root.path().join("layouts/maison/shared");
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("home");
+        let elsewhere = outer.path().join("dotfiles/shared");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("adr.md"), "# 사람이 쓴 본문\n").unwrap();
+        let link = root.join("layouts/atelier/shared");
         std::fs::create_dir_all(link.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink("../atelier/shared", &link).unwrap();
-        let shared =
-            save_layout(root.path(), "maison", pointing_to("shared/adr.md"), &BTreeMap::new()).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &link).unwrap();
+        let shared = save_layout(&root, pointing_to("shared/adr.md"), &BTreeMap::new()).unwrap();
         assert!(matches!(shared, SaveOutcome::Saved(_)), "링크 너머의 본문을 못 봤다: {shared:?}");
 
-        let dropped = save_layout(root.path(), "maison", without_templates(), &BTreeMap::new()).unwrap();
+        let dropped = save_layout(&root, without_templates(), &BTreeMap::new()).unwrap();
         assert!(matches!(dropped, SaveOutcome::Saved(_)), "{dropped:?}");
 
         assert_eq!(
-            std::fs::read_to_string(root.path().join("layouts/atelier/shared/adr.md")).unwrap(),
+            std::fs::read_to_string(elsewhere.join("adr.md")).unwrap(),
             "# 사람이 쓴 본문\n",
-            "다른 모드의 템플릿을 지웠다"
+            "링크 너머의 파일을 지웠다"
         );
-        let LayoutContent::Readable { templates, rendered, .. } =
-            read_layout(root.path(), "atelier").unwrap().content
-        else {
-            panic!("atelier가 안 읽힌다")
-        };
-        assert_eq!(templates, body);
-        assert!(rendered.warnings.is_empty(), "{rendered:?}");
         assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "링크가 사라졌다");
     }
 
@@ -1123,14 +1077,13 @@ mod tests {
         std::os::unix::fs::symlink(&elsewhere, root.join("layouts/atelier")).unwrap();
         let first = save_layout(
             &root,
-            "atelier",
             pointing_to("sub/adr.md"),
             &bodies(&[("sub/adr.md", "# ADR\n")]),
         )
         .unwrap();
         assert!(matches!(first, SaveOutcome::Saved(_)), "{first:?}");
 
-        let dropped = save_layout(&root, "atelier", without_templates(), &BTreeMap::new()).unwrap();
+        let dropped = save_layout(&root, without_templates(), &BTreeMap::new()).unwrap();
         assert!(matches!(dropped, SaveOutcome::Saved(_)), "{dropped:?}");
         assert!(!elsewhere.join("sub/adr.md").exists(), "빠진 템플릿이 남았다");
         assert!(elsewhere.join("layout.json").is_file());
@@ -1150,21 +1103,20 @@ mod tests {
         for broken in broken_files.into_iter().map(Some).chain([None]) {
             let root = tempfile::tempdir().unwrap();
             if let Some(broken) = broken {
-                plant(root.path(), "atelier", "layout.json", broken);
+                plant(root.path(), "layout.json", broken);
             }
-            plant(root.path(), "atelier", "a.md", "# A\n");
-            plant(root.path(), "atelier", "sub/b.md", "# B\n");
+            plant(root.path(), "a.md", "# A\n");
+            plant(root.path(), "sub/b.md", "# B\n");
 
             let outcome = save_layout(
                 root.path(),
-                "atelier",
                 serde_json::json!({ "root": { "description": "repaired" } }),
                 &BTreeMap::new(),
             )
             .unwrap();
             assert!(matches!(outcome, SaveOutcome::Saved(_)), "{broken:?}: {outcome:?}");
             let names: Vec<_> =
-                files_in(root.path(), "atelier").into_iter().map(|(name, _)| name).collect();
+                files_in(root.path()).into_iter().map(|(name, _)| name).collect();
             assert_eq!(names, ["a.md", "layout.json", "sub/b.md"], "{broken:?}");
         }
     }
@@ -1176,20 +1128,14 @@ mod tests {
         let layout = serde_json::json!({ "root": { "children": [
             { "pattern": "{n}-{name}", "kind": "folder", "children": [
                 { "pattern": "plan.md", "kind": "file", "template": "iteration/plan.md" } ] } ] } });
-        let outcome = save_layout(
-            root.path(),
-            "maison",
-            layout,
-            &bodies(&[("iteration/plan.md", "# 계획\n\n## 목표\n")]),
-        )
-        .unwrap();
+        let outcome =
+            save_layout(root.path(), layout, &bodies(&[("iteration/plan.md", "# 계획\n\n## 목표\n")])).unwrap();
         assert!(matches!(outcome, SaveOutcome::Saved(ref r) if r.warnings.is_empty()), "{outcome:?}");
         assert_eq!(
-            std::fs::read_to_string(root.path().join("layouts/maison/iteration/plan.md")).unwrap(),
+            std::fs::read_to_string(root.path().join("layouts/atelier/iteration/plan.md")).unwrap(),
             "# 계획\n\n## 목표\n"
         );
-        let LayoutContent::Readable { templates, .. } = read_layout(root.path(), "maison").unwrap().content
-        else {
+        let LayoutContent::Readable { templates, .. } = read_layout(root.path()).content else {
             panic!("저장한 레이아웃이 안 읽힌다")
         };
         assert_eq!(templates, bodies(&[("iteration/plan.md", "# 계획\n\n## 목표\n")]));
@@ -1203,7 +1149,7 @@ mod tests {
         let layout = serde_json::json!({ "extends": "atelier", "root": {
             "note": "hand-written",
             "children": [ { "pattern": "a.md", "kind": "file", "color": "red" } ] } });
-        let outcome = save_layout(root.path(), "atelier", layout, &BTreeMap::new()).unwrap();
+        let outcome = save_layout(root.path(), layout, &BTreeMap::new()).unwrap();
         assert!(matches!(outcome, SaveOutcome::Saved(_)), "{outcome:?}");
         let written =
             std::fs::read_to_string(root.path().join("layouts/atelier/layout.json")).unwrap();
@@ -1212,67 +1158,47 @@ mod tests {
         }
     }
 
-    /// **읽기와 저장의 입구가 모드 이름 둘만 받는다**(결정 25). IPC나 에이전트가 건넨 `"../.."`이
-    /// 데이터 루트 밖을 읽거나 쓰면 안 된다 — 거절되고, 데이터 루트 밖에 아무것도 생기지 않는다.
-    #[test]
-    fn read_and_save_take_only_the_two_mode_names() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("home");
-        std::fs::create_dir(&root).unwrap();
-        let before = everything_under(outer.path());
-        for id in ["../..", "..", "", "Atelier", "works", "atelier/", "maison/../atelier"] {
-            assert!(read_layout(&root, id).is_err(), "읽기가 {id:?}를 받았다");
-            let saved = save_layout(
-                &root,
-                id,
-                with_decisions("x"),
-                &bodies(&[("decisions.md", "# D\n")]),
-            );
-            assert!(saved.is_err(), "저장이 {id:?}를 받았다: {saved:?}");
-        }
-        assert_eq!(everything_under(outer.path()), before);
-    }
-
     /// 같은 인자로 두 번 저장하면 같은 결과다 — 도구가 idempotent라고 알리는 근거다.
     #[test]
     fn saving_twice_with_the_same_arguments_leaves_the_same_folder() {
         let root = tempfile::tempdir().unwrap();
         let args = || (with_decisions("x"), bodies(&[("decisions.md", "# D\n")]));
         let (layout, templates) = args();
-        let first = save_layout(root.path(), "atelier", layout, &templates).unwrap();
-        let after_first = files_in(root.path(), "atelier");
+        let first = save_layout(root.path(), layout, &templates).unwrap();
+        let after_first = files_in(root.path());
         let (layout, templates) = args();
-        let second = save_layout(root.path(), "atelier", layout, &templates).unwrap();
+        let second = save_layout(root.path(), layout, &templates).unwrap();
         assert_eq!(first, second);
-        assert_eq!(files_in(root.path(), "atelier"), after_first);
+        assert_eq!(files_in(root.path()), after_first);
     }
 
-    /// **되돌리면 모드의 폴더가 지워지고 resolve가 내장본으로 돌아간다**(결정 7). 템플릿도 레이아웃이
-    /// 모르는 파일도 폴더째 사라진다 — 확인 창이 그 수를 미리 적는 까닭이다. 다른 모드의 폴더는 그대로다.
+    /// **되돌리면 레이아웃 폴더가 지워지고 resolve가 내장본으로 돌아간다**(결정 7). 템플릿도 레이아웃이
+    /// 모르는 파일도 폴더째 사라진다 — 확인 창이 그 수를 미리 적는 까닭이다. 데이터 루트의 다른 것(work,
+    /// `layouts/`의 다른 파일)은 그대로다.
     #[test]
-    fn reverting_removes_the_modes_folder_and_resolve_gives_the_builtin_again() {
+    fn reverting_removes_the_layout_folder_and_resolve_gives_the_builtin_again() {
         let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
-        plant(root.path(), "atelier", "sub/plan.md", "# Plan\n");
-        plant(root.path(), "atelier", "메모.md", "사람의 메모\n");
-        plant(root.path(), "maison", "layout.json", r#"{ "root": { "description": "Room" } }"#);
-        let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+        plant(root.path(), "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "decisions.md", "# Decisions\n");
+        plant(root.path(), "sub/plan.md", "# Plan\n");
+        plant(root.path(), "메모.md", "사람의 메모\n");
+        std::fs::write(root.path().join("layouts/README.md"), "곁의 파일\n").unwrap();
+        std::fs::create_dir_all(root.path().join("works/some-work/spec")).unwrap();
+        std::fs::write(root.path().join("works/some-work/spec/overview.md"), "# 개요\n").unwrap();
+        let resolved = crate::resolve_layout(root.path());
         assert!(matches!(resolved.source, crate::LayoutSource::Folder(_)), "심은 폴더가 안 가렸다");
 
-        revert_layout(root.path(), "atelier").unwrap();
+        revert_layout(root.path()).unwrap();
 
         assert!(!root.path().join("layouts/atelier").exists(), "폴더가 남았다");
-        let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+        let resolved = crate::resolve_layout(root.path());
         assert_eq!(resolved.source, crate::LayoutSource::Builtin);
-        assert_eq!(resolved.layout, builtin_layout(Mode::Atelier));
+        assert_eq!(resolved.layout, builtin_layout());
         assert_eq!(resolved.fallback, None, "물러선 것이 아니라 가린 폴더가 없을 뿐이다");
-        assert!(!read_layout(root.path(), "atelier").unwrap().edited);
-        // 가린 것을 걷은 것은 그 모드의 폴더뿐이다
-        assert_eq!(
-            files_in(root.path(), "maison"),
-            [("layout.json".to_string(), r#"{ "root": { "description": "Room" } }"#.to_string())]
-        );
+        assert!(!read_layout(root.path()).edited);
+        // 걷은 것은 레이아웃 폴더뿐이다
+        assert_eq!(std::fs::read_to_string(root.path().join("layouts/README.md")).unwrap(), "곁의 파일\n");
+        assert!(root.path().join("works/some-work/spec/overview.md").is_file());
     }
 
     /// **깨진 폴더도 되돌려진다** — 되돌리기는 늘 된다. 앱이 스스로 깨진 파일을 지우지 않을 뿐, 사람이
@@ -1283,10 +1209,10 @@ mod tests {
         let layouts = |root: &Path| root.join("layouts");
         let shapes: [(&str, fn(&Path)); 4] = [
             ("검증이 거절하는 layout.json", |root| {
-                plant(root, "atelier", "layout.json", r#"{ "root": { "children": [ { "pattern": "a.md", "kind": "fil" } ] } }"#);
-                plant(root, "atelier", "a.md", "# A\n");
+                plant(root, "layout.json", r#"{ "root": { "children": [ { "pattern": "a.md", "kind": "fil" } ] } }"#);
+                plant(root, "a.md", "# A\n");
             }),
-            ("layout.json이 없는 폴더", |root| plant(root, "atelier", "decisions.md", "# D\n")),
+            ("layout.json이 없는 폴더", |root| plant(root, "decisions.md", "# D\n")),
             ("폴더 자리에 선 파일", |root| {
                 std::fs::create_dir_all(root.join("layouts")).unwrap();
                 std::fs::write(root.join("layouts/atelier"), "폴더가 아니다\n").unwrap();
@@ -1302,43 +1228,19 @@ mod tests {
         for (shape, seed) in shapes {
             let root = tempfile::tempdir().unwrap();
             seed(root.path());
-            let before = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+            let before = crate::resolve_layout(root.path());
             assert!(before.fallback.is_some(), "{shape}: 깨진 폴더가 아니다");
 
-            revert_layout(root.path(), "atelier").unwrap_or_else(|e| panic!("{shape}: {e}"));
+            revert_layout(root.path()).unwrap_or_else(|e| panic!("{shape}: {e}"));
 
             assert!(
                 std::fs::symlink_metadata(layouts(root.path()).join("atelier")).is_err(),
                 "{shape}: 그 자리에 무엇이 남았다"
             );
-            let after = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+            let after = crate::resolve_layout(root.path());
             assert_eq!(after.source, crate::LayoutSource::Builtin, "{shape}");
             assert_eq!(after.fallback, None, "{shape}: 여전히 물러선다");
         }
-    }
-
-    /// **되돌리기의 입구도 모드 이름 둘만 받는다**(결정 25). IPC로 온 `"../.."`이 지우는 일이라 읽기·
-    /// 저장보다 더 무겁다 — 거절되고, 데이터 루트의 다른 것(work, 두 모드의 레이아웃)도 데이터 루트
-    /// 밖의 것도 하나도 사라지지 않는다.
-    #[test]
-    fn reverting_takes_only_the_two_mode_names_and_removes_nothing_else() {
-        let outer = tempfile::tempdir().unwrap();
-        let root = outer.path().join("home");
-        plant(&root, "atelier", "layout.json", THREE_TEMPLATES);
-        plant(&root, "maison", "layout.json", r#"{ "root": {} }"#);
-        std::fs::create_dir_all(root.join("works/some-work/spec")).unwrap();
-        std::fs::write(root.join("works/some-work/spec/overview.md"), "# 개요\n").unwrap();
-        std::fs::write(outer.path().join("밖.md"), "데이터 루트 밖\n").unwrap();
-        let before = everything_under(outer.path());
-
-        for id in ["../..", "..", ".", "", "Atelier", "works", "atelier/", "maison/../atelier", "../layouts"] {
-            let reverted = revert_layout(&root, id);
-            let Err(crate::Error::Validation(message)) = &reverted else {
-                panic!("되돌리기가 {id:?}를 받았다: {reverted:?}")
-            };
-            assert!(message.contains("atelier | maison"), "{id:?}: {message}");
-        }
-        assert_eq!(everything_under(outer.path()), before);
     }
 
     /// 레이아웃 폴더가 **다른 곳의 폴더를 가리키는 링크**면 링크만 지운다 — 사람이 레이아웃을 다른 곳에
@@ -1354,10 +1256,10 @@ mod tests {
         std::fs::write(elsewhere.join("decisions.md"), "# D\n").unwrap();
         std::fs::create_dir_all(root.join("layouts")).unwrap();
         std::os::unix::fs::symlink(&elsewhere, root.join("layouts/atelier")).unwrap();
-        let linked = crate::resolve_layout(&root, Mode::Atelier, None).unwrap();
+        let linked = crate::resolve_layout(&root);
         assert_eq!(linked.layout.root.description, "linked", "링크가 가리지 않았다");
 
-        revert_layout(&root, "atelier").unwrap();
+        revert_layout(&root).unwrap();
 
         assert!(std::fs::symlink_metadata(root.join("layouts/atelier")).is_err(), "링크가 남았다");
         let mut kept: Vec<_> = std::fs::read_dir(&elsewhere)
@@ -1366,7 +1268,7 @@ mod tests {
             .collect();
         kept.sort();
         assert_eq!(kept, ["decisions.md", "layout.json"], "링크가 가리키던 폴더를 지웠다");
-        let after = crate::resolve_layout(&root, Mode::Atelier, None).unwrap();
+        let after = crate::resolve_layout(&root);
         assert_eq!(after.source, crate::LayoutSource::Builtin);
     }
 
@@ -1378,21 +1280,19 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         plant(
             root.path(),
-            "atelier",
             "layout.json",
             r#"{ "owner": "사람", "root": { "description": "방침", "children": [
                 { "pattern": "decisions.md", "kind": "file", "since": "0.14", "template": "decisions.md" },
                 { "pattern": "gone.md", "kind": "file", "template": "gone.md" } ] } }"#,
         );
-        plant(root.path(), "atelier", "decisions.md", "# 결정\n");
+        plant(root.path(), "decisions.md", "# 결정\n");
         let folder = crate::collapse_home(&root.path().join("layouts").join("atelier"));
 
-        let answer = serde_json::to_value(read_layout(root.path(), "atelier").unwrap()).unwrap();
+        let answer = serde_json::to_value(read_layout(root.path())).unwrap();
 
         assert_eq!(
             answer,
             serde_json::json!({
-                "id": "atelier",
                 "folder": folder,
                 "edited": true,
                 "layout": { "owner": "사람", "root": { "description": "방침", "children": [
@@ -1409,15 +1309,14 @@ mod tests {
     fn the_app_reads_a_broken_layout_as_its_errors_and_raw_text() {
         let root = tempfile::tempdir().unwrap();
         let raw = r#"{ "root": { "children": [ { "pattern": "a.md" } ] } }"#;
-        plant(root.path(), "maison", "layout.json", raw);
-        let folder = crate::collapse_home(&root.path().join("layouts").join("maison"));
+        plant(root.path(), "layout.json", raw);
+        let folder = crate::collapse_home(&root.path().join("layouts").join("atelier"));
 
-        let answer = serde_json::to_value(read_layout(root.path(), "maison").unwrap()).unwrap();
+        let answer = serde_json::to_value(read_layout(root.path())).unwrap();
 
         assert_eq!(
             answer,
             serde_json::json!({
-                "id": "maison",
                 "folder": folder,
                 "edited": true,
                 "errors": [{ "path": [0], "message": "`kind` is missing (\"file\" or \"folder\")" }],
@@ -1433,7 +1332,6 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let refused = save_layout(
             root.path(),
-            "atelier",
             serde_json::json!({ "root": { "children": [ { "pattern": "a.md" } ] } }),
             &BTreeMap::new(),
         )
@@ -1446,19 +1344,17 @@ mod tests {
         );
 
         let saved =
-            save_layout(root.path(), "atelier", with_decisions("방침"), &bodies(&[("decisions.md", "# D\n")]))
+            save_layout(root.path(), with_decisions("방침"), &bodies(&[("decisions.md", "# D\n")]))
                 .unwrap();
         assert_eq!(serde_json::to_value(saved).unwrap(), serde_json::json!({ "errors": [] }));
     }
 
     /// 폴더가 없어도 된다 — 이미 기본값이다. 두 번 눌러도, 그사이 손으로 지웠어도 같은 끝이다.
     #[test]
-    fn reverting_a_mode_without_a_folder_changes_nothing() {
+    fn reverting_without_a_folder_changes_nothing() {
         let root = tempfile::tempdir().unwrap();
-        for id in ["atelier", "maison"] {
-            revert_layout(root.path(), id).unwrap();
-            revert_layout(root.path(), id).unwrap();
-        }
+        revert_layout(root.path()).unwrap();
+        revert_layout(root.path()).unwrap();
         assert_eq!(everything_under(root.path()), Vec::<std::path::PathBuf>::new());
     }
 
@@ -1472,9 +1368,9 @@ mod tests {
 
     /// 그 초안을 저장한 뒤 **에이전트가 받는 글** — `atelier_get_work`가 싣는 것과 같은 길(resolve → render)이다.
     fn guidance_after_saving(root: &Path, layout: serde_json::Value, templates: &BTreeMap<String, String>) -> String {
-        let outcome = save_layout(root, "atelier", layout, templates).unwrap();
+        let outcome = save_layout(root, layout, templates).unwrap();
         assert!(matches!(outcome, SaveOutcome::Saved(_)), "저장이 거절됐다: {outcome:?}");
-        let resolved = crate::resolve_layout(root, Mode::Atelier, None).unwrap();
+        let resolved = crate::resolve_layout(root);
         render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref()).text
     }
 
@@ -1498,10 +1394,10 @@ mod tests {
         for (case, planted, layout, templates) in cases {
             let root = tempfile::tempdir().unwrap();
             for (file, content) in planted {
-                plant(root.path(), "atelier", file, content);
+                plant(root.path(), file, content);
             }
 
-            let preview = preview_layout(root.path(), "atelier", layout.clone(), &templates).unwrap();
+            let preview = preview_layout(root.path(), layout.clone(), &templates);
             assert_eq!(preview.errors, [], "{case}");
             let saved = guidance_after_saving(root.path(), layout, &templates);
             assert_eq!(preview.text.as_deref(), Some(saved.as_str()), "{case}");
@@ -1510,27 +1406,31 @@ mod tests {
     }
 
     /// **미리보기는 디스크에 아무것도 쓰지 않는다** — 부르기 전후로 데이터 루트의 파일 목록과 레이아웃 폴더의
-    /// 내용이 같다. 폴더가 없는 모드에 폴더가 생기지 않고(생기면 그것이 내장본을 가린다), 초안이 쥔 새 본문도,
-    /// 바꾼 본문도 쓰이지 않는다. 거절되는 초안과 모드 이름이 아닌 id도 마찬가지다.
+    /// 내용이 같다. 폴더가 없는 데이터 루트에 폴더가 생기지 않고(생기면 그것이 내장본을 가린다), 초안이 쥔 새
+    /// 본문도, 바꾼 본문도 쓰이지 않는다. 거절되는 초안도 마찬가지다.
     #[test]
     fn a_preview_writes_nothing() {
-        let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
-        let before = (everything_under(root.path()), files_in(root.path(), "atelier"));
-
         let drafts = [
             (with_decisions("새 방침"), bodies(&[("decisions.md", "# 바꾼 본문\n")])),
             (serde_json::from_str(THREE_TEMPLATES).unwrap(), bodies(&[("sub/plan.md", "# Plan\n")])),
             (without_templates(), bodies(&[("stray.md", "x")])),
         ];
-        for id in ["atelier", "maison", "../.."] {
+        let preview_all = |root: &Path| {
             for (layout, templates) in &drafts {
-                let _ = preview_layout(root.path(), id, layout.clone(), templates);
+                let _ = preview_layout(root, layout.clone(), templates);
             }
-        }
-        assert_eq!((everything_under(root.path()), files_in(root.path(), "atelier")), before);
-        assert!(!root.path().join("layouts/maison").exists(), "미리보기가 가림 폴더를 만들었다");
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        plant(root.path(), "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "decisions.md", "# Decisions\n");
+        let before = (everything_under(root.path()), files_in(root.path()));
+        preview_all(root.path());
+        assert_eq!((everything_under(root.path()), files_in(root.path())), before);
+
+        let bare = tempfile::tempdir().unwrap();
+        preview_all(bare.path());
+        assert!(!bare.path().join("layouts").exists(), "미리보기가 가림 폴더를 만들었다");
     }
 
     /// 초안에 본문이 있는 템플릿은 **디스크에 없어도** `Template:` 줄로 실린다 — 저장하면 그 파일이 선다.
@@ -1542,11 +1442,9 @@ mod tests {
 
         let preview = preview_layout(
             root.path(),
-            "atelier",
             with_decisions("방침"),
             &bodies(&[("decisions.md", "# 결정\n")]),
-        )
-        .unwrap();
+        );
 
         let text = preview.text.expect("오류가 없으면 글이 있다");
         assert!(text.contains(&format!("Template: {folder}/decisions.md")), "{text}");
@@ -1558,14 +1456,13 @@ mod tests {
     #[test]
     fn a_draft_pointing_to_a_missing_template_is_an_error_at_that_entry_and_has_no_text() {
         let root = tempfile::tempdir().unwrap();
-        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
-        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
+        plant(root.path(), "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "decisions.md", "# Decisions\n");
         let draft: serde_json::Value = serde_json::from_str(THREE_TEMPLATES).unwrap();
 
         // `decisions.md`는 디스크에, `sub/plan.md`는 초안에 있다. `gone.md`는 어디에도 없다.
         let missing =
-            preview_layout(root.path(), "atelier", draft.clone(), &bodies(&[("sub/plan.md", "# Plan\n")]))
-                .unwrap();
+            preview_layout(root.path(), draft.clone(), &bodies(&[("sub/plan.md", "# Plan\n")]));
         assert_eq!(missing.text, None);
         assert_eq!(missing.warnings, Vec::<String>::new());
         let places: Vec<_> = missing.errors.iter().map(|e| e.path.clone()).collect();
@@ -1574,11 +1471,9 @@ mod tests {
 
         let written = preview_layout(
             root.path(),
-            "atelier",
             draft,
             &bodies(&[("sub/plan.md", "# Plan\n"), ("gone.md", "# 다시 쓴 뼈대\n")]),
-        )
-        .unwrap();
+        );
         assert_eq!(written.errors, []);
         assert!(written.text.is_some());
     }
@@ -1594,7 +1489,7 @@ mod tests {
             { "pattern": "b", "kind": "folder", "children": [
                 { "pattern": "c.md", "kind": "file", "description": "셋" } ] } ] } });
 
-        let preview = preview_layout(root.path(), "atelier", draft, &bodies(&[("a.md", "# A\n")])).unwrap();
+        let preview = preview_layout(root.path(), draft, &bodies(&[("a.md", "# A\n")]));
 
         let text = preview.text.expect("오류가 없으면 글이 있다");
         let lines: Vec<&str> = text.split('\n').collect();
@@ -1613,11 +1508,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let refused = preview_layout(
             root.path(),
-            "atelier",
             serde_json::json!({ "root": { "children": [ { "pattern": "a.md" } ] } }),
             &BTreeMap::new(),
-        )
-        .unwrap();
+        );
         assert_eq!(
             serde_json::to_value(refused).unwrap(),
             serde_json::json!({
@@ -1629,7 +1522,7 @@ mod tests {
         );
 
         let draft = serde_json::json!({ "root": { "children": [ { "pattern": "a.md", "kind": "file" } ] } });
-        let shown = preview_layout(root.path(), "atelier", draft, &BTreeMap::new()).unwrap();
+        let shown = preview_layout(root.path(), draft, &BTreeMap::new());
         assert_eq!(
             serde_json::to_value(shown).unwrap(),
             serde_json::json!({
@@ -1639,18 +1532,5 @@ mod tests {
                 "warnings": [],
             })
         );
-    }
-
-    /// id는 모드 이름 둘만 받는다 — IPC로 온 `"../.."`이 데이터 루트 밖의 템플릿을 보면 안 된다.
-    #[test]
-    fn the_preview_takes_only_the_two_mode_names() {
-        let root = tempfile::tempdir().unwrap();
-        for id in ["../..", "..", "", "Atelier", "works", "atelier/"] {
-            let refused = preview_layout(root.path(), id, without_templates(), &BTreeMap::new());
-            assert!(refused.is_err(), "{id:?}가 통과했다: {refused:?}");
-        }
-        for id in ["atelier", "maison"] {
-            assert!(preview_layout(root.path(), id, without_templates(), &BTreeMap::new()).is_ok(), "{id}");
-        }
     }
 }

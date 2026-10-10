@@ -19,7 +19,6 @@ use serde::Serialize;
 use super::model::{EntryKind, LayoutEntry};
 use super::pattern::{is_fixed, match_name};
 use super::resolve::Resolved;
-use crate::Mode;
 
 /// spec 트리 — 앱이 순서도 바꾸지 않고 그대로 그리는 것. 앱 쪽 JSON으로 나가고 L3 fixture가 손으로
 /// 적으므로 **필드 이름(camelCase)이 약속이다.** TS의 타입 이름도 같다.
@@ -29,9 +28,7 @@ use crate::Mode;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecTree {
-    /// 이 트리를 가른 레이아웃의 id(`"atelier"` | `"maison"`)
-    pub layout_id: Mode,
-    /// 모드의 폴더를 못 써서 내장본으로 물러섰다면 그 까닭
+    /// 레이아웃 폴더를 못 써서 내장본으로 물러섰다면 그 까닭
     pub fallback: Option<String>,
     /// 처음 열 문서. spec 기준 경로다. 파일이 하나도 없으면 없다.
     pub default_doc: Option<String>,
@@ -88,7 +85,7 @@ pub fn classify<S: AsRef<str>>(resolved: &Resolved, files: &[S]) -> SpecTree {
     let default_doc =
         first.map(|candidate: Candidate| candidate.path).or_else(|| paths.iter().min().cloned());
     let fallback = resolved.fallback.as_ref().map(|fallback| fallback.reason.clone());
-    SpecTree { layout_id: resolved.id, fallback, default_doc, items }
+    SpecTree { fallback, default_doc, items }
 }
 
 /// 경로를 조각으로 다시 잇는다 — 빈 조각(`a//b`, 앞뒤의 `/`)은 버린다. 조각이 없으면 없음이다.
@@ -239,7 +236,6 @@ mod tests {
     /// 손으로 지은 레이아웃을 풀린 모양으로 싼다 — classify는 풀린 레이아웃을 받는다.
     fn resolved(children: Vec<LayoutEntry>) -> Resolved {
         Resolved {
-            id: Mode::Atelier,
             layout: SpecLayout {
                 root: LayoutEntry { children, ..LayoutEntry::default() },
                 ..SpecLayout::default()
@@ -575,9 +571,8 @@ mod tests {
     #[test]
     fn the_tree_goes_out_as_json_with_the_agreed_field_names() {
         let resolved = Resolved {
-            id: Mode::Maison,
             fallback: Some(Fallback {
-                folder: "~/.atelier/layouts/maison".to_string(),
+                folder: "~/.atelier/layouts/atelier".to_string(),
                 reason: "layout.json is missing".to_string(),
             }),
             ..resolved(vec![folder("{n}-{name}", "layers", vec![])])
@@ -589,7 +584,6 @@ mod tests {
         assert_eq!(
             json,
             serde_json::json!({
-                "layoutId": "maison",
                 "fallback": "layout.json is missing",
                 "defaultDoc": "01-a/x.md",
                 "items": [{
@@ -611,26 +605,20 @@ mod tests {
         );
     }
 
-    /// 트리는 **쓴** 레이아웃의 id와, 물러섰다면 그 까닭을 싣는다. work 지정이 있으면 그 id이고,
-    /// 그 폴더가 깨져 물러섰으면 도착한 내장본의 모드다. 물러서지 않았으면 까닭이 없다.
+    /// 트리는 물러섰다면 그 까닭을 싣는다. 물러서지 않았으면 까닭이 없다.
     #[test]
-    fn the_tree_names_the_layout_it_used_and_why_it_fell_back() {
+    fn the_tree_says_why_it_fell_back() {
         let root = tempfile::tempdir().unwrap();
-        let spec_tree = |mode, work: Option<&str>| {
-            let resolved = crate::layout::resolve::resolve_layout(root.path(), mode, work).unwrap();
+        let spec_tree = || {
+            let resolved = crate::layout::resolve::resolve_layout(root.path());
             classify(&resolved, &["overview.md"])
         };
-        let plain = spec_tree(Mode::Maison, None);
-        assert_eq!((plain.layout_id, plain.fallback), (Mode::Maison, None));
-        let chosen = spec_tree(Mode::Atelier, Some("maison"));
-        assert_eq!((chosen.layout_id, chosen.fallback), (Mode::Maison, None));
+        assert_eq!(spec_tree().fallback, None);
 
-        let broken = root.path().join("layouts/maison");
+        let broken = root.path().join("layouts/atelier");
         std::fs::create_dir_all(&broken).unwrap();
         std::fs::write(broken.join("layout.json"), "{ not json").unwrap();
-        let fell_back = spec_tree(Mode::Atelier, Some("maison"));
-        assert_eq!(fell_back.layout_id, Mode::Atelier);
-        let reason = fell_back.fallback.expect("물러선 까닭이 없다");
+        let reason = spec_tree().fallback.expect("물러선 까닭이 없다");
         assert!(reason.contains("JSON"), "{reason}");
     }
 
@@ -669,55 +657,51 @@ mod tests {
     /// - 8 — 최상위는 한 층이다: `overview.md` → 판(최신이 앞) → `research/` → `explanation/` →
     ///   나머지. 판이 `overview.md` 아래에 선다.
     #[test]
-    fn the_builtins_classify_the_kernel_files_as_the_app_draws_them() {
-        for mode in [Mode::Atelier, Mode::Maison] {
-            let resolved = Resolved { id: mode, layout: builtin_layout(mode), ..resolved(vec![]) };
-            let tree = classify(&resolved, &KERNEL_FILES);
-            assert_eq!(tree.layout_id, mode);
-            assert_eq!(tree.fallback, None);
-            assert_eq!(tree.default_doc.as_deref(), Some("overview.md"), "{mode}");
-            assert_eq!(
-                outline(&tree),
-                [
-                    "overview.md (compass)",
-                    "02-둘째-판/ (layers) [g1 2 latest]",
-                    "  plan.md",
-                    "01-a/ (layers) [g1 1]",
-                    "  plan.md",
-                    "01-b/ (layers) [g1 1]",
-                    "  plan.md",
-                    "01-첫-판/ (layers) [g1 1]",
-                    "  tickets/ (list-checks)",
-                    "    t1.md",
-                    "  plan.md",
-                    "research/ (search)",
-                    "  api.md",
-                    "  x/",
-                    "    01-y/",
-                    "      a.md",
-                    "    overview.md",
-                    "explanation/ (book-open)",
-                    "  why.md",
-                    "01-/",
-                    "  a.md",
-                    "notes-old.md",
-                    "notes/",
-                    "  a.md",
-                    "tickets/",
-                    "  a.md",
-                    "잡동사니/",
-                    "  메모.md",
-                ],
-                "{mode}"
-            );
-        }
+    fn the_builtin_classifies_the_kernel_files_as_the_app_draws_them() {
+        let resolved = Resolved { layout: builtin_layout(), ..resolved(vec![]) };
+        let tree = classify(&resolved, &KERNEL_FILES);
+        assert_eq!(tree.fallback, None);
+        assert_eq!(tree.default_doc.as_deref(), Some("overview.md"));
+        assert_eq!(
+            outline(&tree),
+            [
+                "overview.md (compass)",
+                "02-둘째-판/ (layers) [g1 2 latest]",
+                "  plan.md",
+                "01-a/ (layers) [g1 1]",
+                "  plan.md",
+                "01-b/ (layers) [g1 1]",
+                "  plan.md",
+                "01-첫-판/ (layers) [g1 1]",
+                "  tickets/ (list-checks)",
+                "    t1.md",
+                "  plan.md",
+                "research/ (search)",
+                "  api.md",
+                "  x/",
+                "    01-y/",
+                "      a.md",
+                "    overview.md",
+                "explanation/ (book-open)",
+                "  why.md",
+                "01-/",
+                "  a.md",
+                "notes-old.md",
+                "notes/",
+                "  a.md",
+                "tickets/",
+                "  a.md",
+                "잡동사니/",
+                "  메모.md",
+            ],
+        );
     }
 
     /// classify는 입력의 순서에 기대지 않는다 — 커널은 정렬해서 주지만, 아카이브의 문서 목록처럼
     /// 다른 길로 온 목록도 같은 트리가 되어야 한다.
     #[test]
     fn shuffling_the_input_changes_nothing() {
-        let resolved = Resolved { layout: builtin_layout(Mode::Atelier), ..resolved(vec![]) };
+        let resolved = Resolved { layout: builtin_layout(), ..resolved(vec![]) };
         let expected = classify(&resolved, &KERNEL_FILES);
         let mut reversed = KERNEL_FILES;
         reversed.reverse();

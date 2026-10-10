@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { invalidateWorks } from "@/features/works/hooks";
-import type { Mode } from "@/mode";
 import { specLayoutApi } from "./api";
 import type { LayoutDraft } from "./draft";
 import { latestPreview, PREVIEW_DELAY_MS, type DraftPreview } from "./preview";
@@ -18,8 +17,7 @@ const SPEC_LAYOUT_KEY = ["spec-layout"] as const;
  * 탄다.
  *
  * **레이아웃에서 나온 것을 모두 지운다** — 레이아웃 상태·읽기 쿼리, 그리고 spec 트리를 싣고 오는 work
- * 목록과 아카이브 문서 목록이다. 쓰는 레이아웃이 바뀌면 spec 트리도 바뀌기 때문이다. 두 세계를 다
- * 지우는 것은 이벤트가 하나라서다: 어느 모드의 폴더가 바뀌었는지 모른다.
+ * 목록과 아카이브 문서 목록이다. 쓰는 레이아웃이 바뀌면 spec 트리도 바뀌기 때문이다.
  *
  * work 목록과 아카이브는 **제 문을 지난다**(`invalidateWorks`). 키를 여기서 직접 지우면 옮기기가 떠 있을 때
  * 미루는 규칙(`invalidateWorks`의 머리말)을 건너뛰어, 옛 순서가 옮기기 응답을 덮을 수 있다. 아카이브(문서 목록 포함)는
@@ -61,33 +59,28 @@ export function useFollowLayoutChanges() {
 }
 
 /**
- * 모드 둘의 레이아웃 상태. **신선도를 시간에 맡기지 않는다**(`staleTime` 없음) — 설정의 「spec
+ * 레이아웃 상태. **신선도를 시간에 맡기지 않는다**(`staleTime` 없음) — 설정의 「spec
  * 레이아웃」 페이지를 열 때마다 새로 읽고, 레이아웃 폴더가 바뀌거나(`useFollowLayoutChanges`) [다시 읽기]가
  * 위 문을 열면 다시 읽는다. 에이전트가 레이아웃을 고쳤는데 옛 상태가 서 있으면 사람은 부탁이 안 먹었다고
  * 읽는다.
  */
-export const specLayoutStatesQuery = () =>
+export const specLayoutStateQuery = () =>
   queryOptions({
-    queryKey: [...SPEC_LAYOUT_KEY, "states"],
-    queryFn: specLayoutApi.states,
+    queryKey: [...SPEC_LAYOUT_KEY, "state"],
+    queryFn: specLayoutApi.state,
   });
 
 /**
- * 편집기가 여는 모드의 레이아웃(티켓 11). 상태와 같은 머리 키 아래에 산다 — 레이아웃 폴더가 바뀌거나
+ * 편집기가 여는 레이아웃(티켓 11). 상태와 같은 머리 키 아래에 산다 — 레이아웃 폴더가 바뀌거나
  * (감시) 앱이 되돌리거나 저장하면 위 문 하나가 함께 지운다. 편집기는 처음 읽은 것으로 초안을 짓고,
  * 그 뒤에 다시 읽힌 답은 초안을 덮지 않고 기준본과 견준다(티켓 15, `judgeOutside`) — 초안이 없을 때만 조용히
  * 따라간다.
  */
-export const specLayoutReadQuery = (id: Mode) =>
+export const specLayoutReadQuery = () =>
   queryOptions({
-    queryKey: [...SPEC_LAYOUT_KEY, "read", id],
-    queryFn: () => specLayoutApi.read(id),
+    queryKey: [...SPEC_LAYOUT_KEY, "read"],
+    queryFn: specLayoutApi.read,
   });
-
-/** 편집기가 저장에 싣는 것 — 모드와, 초안의 레이아웃과 템플릿 본문 전부. */
-export interface LayoutWrite extends LayoutDraft {
-  id: Mode;
-}
 
 /**
  * 편집기의 저장(티켓 11). 템플릿은 늘 전부 넘긴다. 답의 `errors`가 비어 있으면 썼다 — 그때만 **위 문을
@@ -98,10 +91,10 @@ export interface LayoutWrite extends LayoutDraft {
  * 저장이 부른 다시 읽기가 도착할 때 기준본이 이미 저장본이어야, 그 답이 밖 변경이 아니라 무시(판정 1번)로 걸린다.
  * 그래서 빠뜨릴 수 없는 인자다: 없이 저장하면 제 저장을 밖 변경으로 읽는다.
  */
-export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
+export function useWriteSpecLayout(onWritten: (written: LayoutDraft) => void) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, layout, templates }: LayoutWrite) => specLayoutApi.write(id, layout, templates),
+    mutationFn: ({ layout, templates }: LayoutDraft) => specLayoutApi.write(layout, templates),
     onSuccess: (answer, written) => {
       if (answer.errors.length > 0) return undefined;
       onWritten(written);
@@ -111,7 +104,7 @@ export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
 }
 
 /**
- * 모드의 레이아웃을 기본값으로 되돌린다(티켓 10) — 그 모드의 레이아웃 폴더를 지운다. 확인은 부르는 쪽이
+ * 레이아웃을 기본값으로 되돌린다(티켓 10) — 레이아웃 폴더를 지운다. 확인은 부르는 쪽이
  * 먼저 묻는다(`askRevert`).
  *
  * 되돌린 뒤 **위 문 하나를 연다**(`invalidateSpecLayout`) — 행이 「내장본 그대로」로 돌아오고, spec
@@ -123,7 +116,7 @@ export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
 export function useRevertSpecLayout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: Mode) => specLayoutApi.revert(id),
+    mutationFn: () => specLayoutApi.revert(),
     onSuccess: () => invalidateSpecLayout(queryClient),
   });
 }
@@ -152,7 +145,7 @@ export function useRevertSpecLayout() {
  *
  * 초안이 없으면(`null` — 밖에서 깨져 편집기가 「읽지 못함」 화면이다, 티켓 15) 묻지 않는다.
  */
-export function useDraftPreview(id: Mode, draft: LayoutDraft | null, disk: SpecLayoutRead) {
+export function useDraftPreview(draft: LayoutDraft | null, disk: SpecLayoutRead) {
   const [preview, setPreview] = useState<DraftPreview | null>(null);
   const seq = useRef(0);
 
@@ -166,12 +159,12 @@ export function useDraftPreview(id: Mode, draft: LayoutDraft | null, disk: SpecL
     if (draft === null) return;
     const timer = window.setTimeout(() => {
       const arrive = reserve(draft);
-      specLayoutApi.render(id, draft.layout, draft.templates).then(arrive, (e: unknown) =>
+      specLayoutApi.render(draft.layout, draft.templates).then(arrive, (e: unknown) =>
         arrive({ text: null, lines: [], errors: [{ path: null, message: String(e) }], warnings: [] }),
       );
     }, PREVIEW_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [id, draft, disk, reserve]);
+  }, [draft, disk, reserve]);
 
   return { preview, reserve };
 }

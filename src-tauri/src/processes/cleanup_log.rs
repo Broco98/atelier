@@ -101,9 +101,10 @@ pub struct Event {
     /// 그 사건의 셸 — 셸 하나를 닫은 사건에만 있다(셸 닫기 · 아카이브 · 새로고침은 셸마다 한 줄). 앱 종료와 시작 정리는 여러
     /// 셸의 것을 한 번에 끝내 비운다.
     pub shell_key: Option<String>,
-    /// 그 셸의 주인(`atelier:<slug>` 꼴, 프런트의 `ShellOwner`). **닫기 IPC로 온 사건에만 있다** — Rust 풀은 셸의 주인을
-    /// 모른다(티켓 11 「스펙과 다른 점」). 채우려면 셸을 띄울 때 넘겨야 하는데, 이 기록을 읽는 화면(`Processes`의 정리 기록 묶음,
-    /// 티켓 32)은 사건마다 까닭 · 수 · 대상만 보이고 주인은 안 보인다 — 아무도 안 읽는 칸을 채우려고 띄우기 길을 넓히지 않는다.
+    /// 그 셸의 주인(프런트의 `ShellOwner` — work의 slug, 최상위 터미널은 빈 글자 `""`). 해석하지 않고 받은 글자 그대로
+    /// 적는다(ui-refresh 결정 23). **닫기 IPC로 온 사건에만 있다** — Rust 풀은 셸의 주인을 모른다(티켓 11 「스펙과 다른 점」).
+    /// 채우려면 셸을 띄울 때 넘겨야 하는데, 이 기록을 읽는 화면(`Processes`의 정리 기록 묶음, 티켓 32)은 사건마다 까닭 · 수 ·
+    /// 대상만 보이고 주인은 안 보인다 — 아무도 안 읽는 칸을 채우려고 띄우기 길을 넓히지 않는다.
     pub owner: Option<String>,
     /// 끝내기에 넘긴 것 전부 — 셸 도우미도 든다. 셸 자신은 끝내기의 대상이 아니라(그룹 신호) 없다.
     pub targets: Vec<Target>,
@@ -283,7 +284,7 @@ mod tests {
         let other = aimed(13, "esbuild", false);
         let at = 1_790_000_000_000;
         let case = |what: &str, aimed: &[Aimed], outcomes: &[(Identity, Outcome)]| {
-            (what.to_string(), event(at, Reason::ShellClose, Some("G-1"), Some("atelier:x"), aimed, outcomes))
+            (what.to_string(), event(at, Reason::ShellClose, Some("G-1"), Some("x"), aimed, outcomes))
         };
         let got = [
             case("셸만 끝났다 — 대상이 없다", &[], &[]),
@@ -303,7 +304,7 @@ mod tests {
             at,
             Reason::ShellClose,
             Some("G-1"),
-            Some("atelier:x"),
+            Some("x"),
             &[helper.clone(), server.clone(), other.clone()],
             &[(id(11), Outcome::Ended), (id(12), Outcome::Forced), (id(13), Outcome::Gone)],
         )
@@ -318,7 +319,7 @@ mod tests {
             "대상 목록이 어긋났다 — 함께 끝낸 도우미나 함께 넘어간 이미 없음이 빠졌다"
         );
         assert_eq!((written.at, written.reason), (at, Reason::ShellClose));
-        assert_eq!((written.shell_key.as_deref(), written.owner.as_deref()), (Some("G-1"), Some("atelier:x")));
+        assert_eq!((written.shell_key.as_deref(), written.owner.as_deref()), (Some("G-1"), Some("x")));
 
         let survived = event(at, Reason::AppExit, None, None, &[server], &[(id(12), Outcome::Survived)]);
         assert!(
@@ -403,6 +404,39 @@ mod tests {
         let short = aimed(13, "vite", false);
         let written = event(1, Reason::ShellClose, None, None, &[short], &[(id(13), Outcome::Ended)]).expect("적는다");
         assert_eq!(written.targets[0].command.as_deref(), Some("vite --serve"), "짧은 명령줄을 건드렸다");
+    }
+
+    /// **최상위 터미널의 주인 `""`는 기록 파일에도 `""`다 — `null`이 아니다**(ui-refresh 결정 23). 빈 글자는 거짓 값이라, 어느
+    /// 자리에서 「주인이 있나」를 빈 글자로 가르면 최상위 터미널의 닫기가 「주인 모름」(화면 밖 셸의 `null`)과 같은 줄이 된다.
+    /// 짓기(`event`) · 쓰기(`add`) · 읽기(`read`)를 한 바퀴 돈다. 앵커: 주인이 없는 사건은 `null`로 남는다 — 둘이 한쪽으로
+    /// 무너지면 빨갛다.
+    #[test]
+    fn the_top_terminals_empty_owner_stays_empty_not_null() {
+        let dir = std::env::temp_dir().join(format!("atelier-cleanup-log-{}-top-owner", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("cleanup-log.json");
+        let server = aimed(12, "node", false);
+        let closed = |owner: Option<&str>| {
+            event(1, Reason::ShellClose, Some("G-1"), owner, std::slice::from_ref(&server), &[(id(12), Outcome::Ended)])
+                .expect("끝낸 것이 있는데 안 적었다")
+        };
+        add(&path, closed(Some("")));
+        add(&path, closed(None));
+
+        let wire: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).expect("기록 파일을 썼다")).unwrap();
+        let read_back = read(&path);
+        let _ = std::fs::remove_dir_all(&dir);
+        // 기록은 새것부터다 — 주인 모름이 앞, 최상위 터미널이 뒤.
+        assert_eq!(
+            (&wire[0]["owner"], &wire[1]["owner"]),
+            (&serde_json::Value::Null, &serde_json::json!("")),
+            "파일에 적힌 주인이 어긋났다 — 최상위 터미널의 `\"\"`가 `null`이 됐거나 주인 모름이 글자가 됐다: {wire}"
+        );
+        assert_eq!(
+            read_back.iter().map(|event| event.owner.as_deref()).collect::<Vec<_>>(),
+            [None, Some("")],
+            "다시 읽은 기록에서 최상위 터미널의 주인이 빠졌다"
+        );
     }
 
     /// **와이어 모양.** 판 04의 화면(TS)이 이 파일을 그대로 읽는다 — 칸 이름과 값의 글자를 못박는다.

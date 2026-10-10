@@ -42,8 +42,8 @@ interface ShellTabsProps {
    */
   state: ShellsState;
   /**
-   * 이 줄이 그리는 화면 — **어느 세계의 무엇인가**(결정 10). **소유자의 slug가 비어 있으면
-   * 그 세계의 최상위 터미널**이고(`"atelier:"`·`"maison:"`), `null`이라는 갈래는 없다.
+   * 이 줄이 그리는 화면 — work의 slug이고, **빈 글자 `""`면 최상위 터미널**이다. `null`이라는
+   * 갈래는 없다.
    *
    * **이 파일에서 `null`은 다른 뜻이다.** 아래 `spec`의 `null`은 「문서 칸이 없다」,
    * `onDragTab`의 `shellId === null`은 「그 문서 칸」이다 — 최상위 터미널과는 상관이 없다.

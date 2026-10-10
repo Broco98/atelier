@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { ROOMS, WORKS } from "./fixtures";
+import { WORKS } from "./fixtures";
 import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
 import { rowOf, settle } from "./tab-row";
 
@@ -79,8 +79,6 @@ function expectFits(layout: Layout, at: string) {
 for (const width of [900, 1280]) {
   for (const screen of [
     { name: "work", url: `/works/${plainWork.slug}?tab=terminal` },
-    // 상태 배지가 `draft`인 Room — 조작 묶음의 폭이 Atelier의 `active`와 다르다.
-    { name: "Maison draft Room", url: `/maison/rooms/${ROOMS[0].slug}?tab=terminal` },
   ]) {
     test(`${screen.name} ${width}px — 넓혀 둔 사이드바·패널이 줄에 자리를 내주고, 저장한 폭은 그대로다`, async ({
       page,

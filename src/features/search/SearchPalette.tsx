@@ -14,8 +14,6 @@ import { createFirstFrameGuard } from "@/components/ui/first-frame-guard";
 import { Input } from "@/components/ui/input";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { cn } from "@/lib/utils";
-import type { Mode } from "@/mode";
-import { itemNameOf } from "@/features/works/work-sections";
 import { destinationIcon, destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
@@ -57,33 +55,22 @@ import type { SearchHit } from "./types";
  * 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
  * 머리이기도 한** 자리가 생기지 않는다.
  */
-function groupNameOf(mode: Mode, kind: SearchHit["kind"]): string {
-  // **항목 갈래만 세계를 탄다.** 나머지 넷은 두 세계가 같은 말로 부르는 것들이고
-  // (`프로젝트`는 Atelier에서만 결과로 올라온다 — 결정 17), 항목 하나만 Atelier에서 `작업`
-  // Maison에서 `Room`이다. 그 낱말의 정본은 목록의 어휘 표다(`work-sections.ts`) —
-  // 여기 리터럴로 다시 적으면 사이드바는 Room 어휘인데 팔레트 구획 머리만 「작업」인,
-  // **한 화면에 두 세계의 말이 서는** 판이 난다.
-  const table: Record<SearchHit["kind"], string> = {
-    destination: "가는 곳",
-    work: itemNameOf(mode),
-    project: "프로젝트",
-    doc: "문서",
-    text: "본문",
-  };
-  return table[kind];
-}
+const GROUP_NAMES: Record<SearchHit["kind"], string> = {
+  destination: "가는 곳",
+  work: "작업",
+  project: "프로젝트",
+  doc: "문서",
+  text: "본문",
+};
 
 /**
  * 줄에 서는 말. **갈래마다 다르다** — 코어가 태그를 달아 보내는 이유가 이것이다.
  * 목적지의 라벨은 프런트 것이라(결정 21) 코어가 준 `key`로 여기서 되찾는다.
- *
- * **되찾는 표가 세계마다 다르다** — 그래서 이 함수만 모드를 받는다. 나머지 넷은 코어가 준
- * 말을 그대로 세우므로 세계를 알 필요가 없다.
  */
-function rowText(mode: Mode, hit: SearchHit): { name: string; detail?: string; snippet?: string } {
+function rowText(hit: SearchHit): { name: string; detail?: string; snippet?: string } {
   switch (hit.kind) {
     case "destination":
-      return { name: destinationLabel(mode, hit.key) };
+      return { name: destinationLabel(hit.key) };
     case "work":
       return { name: hit.title };
     case "project":
@@ -127,7 +114,6 @@ function rowKey(hit: SearchHit): string {
  * 그린다. 창(바깥)과 키 처리는 아래 `PalettePopup`이 든다.
  */
 export function SearchList({
-  mode,
   query,
   hits,
   state,
@@ -136,12 +122,6 @@ export function SearchList({
   onGo,
   inputRef,
 }: {
-  /**
-   * 어느 세계의 목록인가. **그리는 데 이것이 필요한 자리는 목적지 라벨 하나다**(`rowText`) —
-   * 코어가 목적지는 `key`만 돌려주고(결정 21) 그 key를 말로 푸는 표가 세계마다 다르다.
-   * 여기서 안 받고 주소로 되짚으면 `/settings`가 늘 Atelier로 눕는다(`mode.ts`의 `modeOf`).
-   */
-  mode: Mode;
   query: string;
   hits: SearchHit[];
   /**
@@ -213,10 +193,10 @@ export function SearchList({
         className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
       >
         {hits.map((hit, at) => {
-          const { name, detail, snippet } = rowText(mode, hit);
+          const { name, detail, snippet } = rowText(hit);
           // **목적지 줄만 글리프를 든다**(결정 17). 나머지 갈래는 `null`이라 빈 슬롯이 서고,
           // 그래서 글자 시작점이 층을 가로질러 하나다.
-          const Glyph = hit.kind === "destination" ? destinationIcon(mode, hit.key) : null;
+          const Glyph = hit.kind === "destination" ? destinationIcon(hit.key) : null;
           return (
             <Fragment key={rowKey(hit)}>
               {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
@@ -227,7 +207,7 @@ export function SearchList({
                   data-head=""
                   className="shrink-0 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground first:pt-0.5"
                 >
-                  {groupNameOf(mode, hit.kind)}
+                  {GROUP_NAMES[hit.kind]}
                 </p>
               )}
               <div
@@ -340,13 +320,13 @@ export function armSearchPalette(): void {
  * 창에 있어야 해서다**(S25): 입력칸에만 달면 카드의 누를 것 없는 자리(그룹 머리 · 안내 · 여백)를
  * 누른 순간 포커스가 창으로 가고 그 뒤로 방향키가 죽는다. 입력칸의 키도 버블로 창에 온다.
  */
-function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
+function PalettePopup({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   // **셋을 여기서 가른다.** `data`만 꺼내면 「못 물었다」가 「아직 모른다」로 접힌다 —
   // `keepPreviousData`는 앞 성공이 있을 때만 값을 주므로, 열자마자 나간 첫 질의가 실패하면
   // `data`는 영영 `undefined`다.
-  const { data, isError } = useSearchHits(mode, query);
+  const { data, isError } = useSearchHits(query);
   const state = isError ? "failed" : data === undefined ? "pending" : "ready";
   const hits = data?.hits ?? [];
   const [selected, setSelected] = useState(0);
@@ -371,7 +351,7 @@ function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
   // 조각은 열 때마다 새로 붙으므로 도로 내릴 자리가 없다.
   const went = useRef(false);
   const go = (hit: SearchHit) => {
-    const target = hitTarget(mode, hit);
+    const target = hitTarget(hit);
     if (target === null) return;
     went.current = true;
     onClose();
@@ -410,7 +390,6 @@ function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
       onKeyDown={onKeyDown}
     >
       <SearchList
-        mode={mode}
         query={query}
         hits={hits}
         state={state}
@@ -432,20 +411,13 @@ function PalettePopup({ mode, onClose }: { mode: Mode; onClose: () => void }) {
  * 떠 있는가를 받아 창을 여닫는 자리. 떠 있는가는 앱 셸이 든다 — 여는 길이 셋(⌘K · 검색 버튼 ·
  * 메뉴)이라 그 state가 한 자리에 살아야 한쪽으로 연 팔레트를 다른 쪽이 안다.
  *
- * **어느 세계인지를 받아서 안다**(결정 1). 스스로 주소를 보고 `modeOf`로 되짚지 않는 이유는
- * `/settings`가 세계 밖이기 때문이다 — 접두사가 없어 그 주소는 늘 Atelier로 눕고, 그러면
- * Maison에서 설정을 열어 둔 채 누른 ⌘K만 저쪽 세계를 뒤진다. 셸이 이미 그 합성을 들고 있어
- * (`AppShell.tsx`의 `shellMode`) 여기서 다시 구독할 이유도 없다.
- *
  * **닫히면 포커스는 열기 전 자리로 돌아간다** — 셸에서 열었으면 셸이다. 창이 돌려준다(Base UI).
  * 안 돌려주면 Esc 뒤에 친 글자가 아무 데도 안 들어간다.
  */
 function SearchPalette({
-  mode,
   open,
   onClose,
 }: {
-  mode: Mode;
   open: boolean;
   onClose: () => void;
 }) {
@@ -483,7 +455,7 @@ function SearchPalette({
           닫는 데 잃는 것이 없다. 위에 뜬 확인 창의 버튼은 이 막이 아니라 닫지 않는다. */}
       <DialogPortal>
         <DialogOverlay />
-        <PalettePopup mode={mode} onClose={onClose} />
+        <PalettePopup onClose={onClose} />
       </DialogPortal>
     </Dialog>
   );

@@ -13,11 +13,9 @@ describe("터미널 본문의 자리", () => {
   // 스토어는 모듈 싱글턴이라 이 파일 안에서 새어 나간다. 비우고 나간다.
   afterEach(() => terminalStore.setState(() => NO_SHELLS));
 
-  // `work={null}` + Atelier = **Atelier의 최상위 터미널**이다(결정 10). 세계가 갈리는 것을
-  // 이 seam에서는 못 본다(스토어가 모듈 싱글턴이라 두 번 그려도 같은 상태다) — 그 짝은
-  // `shell-registry.test.ts`의 `topTerminal` 검사가 값으로 든다.
-  const TOP = topTerminal("atelier");
-  const html = () => renderToStaticMarkup(<TerminalPane mode="atelier" work={null} />);
+  // `work={null}` = **최상위 터미널**이다 — 그 주인 키는 `shell-registry.test.ts`의 `topTerminal` 검사가 값으로 든다.
+  const TOP = topTerminal();
+  const html = () => renderToStaticMarkup(<TerminalPane work={null} />);
   const classesOf = (found: RegExpExecArray | null) => (found?.[1] ?? "").split(/\s+/);
   const padding = (classes: string[]) => classes.filter((one) => /^p[xytblr]?-/.test(one));
 
@@ -105,8 +103,7 @@ describe("터미널 본문의 자리", () => {
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
       const opened = openShell(state, {
-        mode: "atelier",
-        owner: "atelier:남",
+        owner: "남",
         project: null,
         cwd: null,
       });

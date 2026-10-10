@@ -29,8 +29,8 @@ test("×로 닫으면 닫기에 까닭 「셸 닫기」와 그 셸의 주인이 
 
   await 칸들(page).locator('button[aria-label$="닫기"]').first().click();
 
-  // 최상위 터미널의 주인은 뒤가 빈 `atelier:`다(life-mode 결정 10).
-  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner: "atelier:" }]);
+  // 최상위 터미널의 주인은 빈 글자 `""`다(ui-refresh 결정 23) — 「주인 없음」(`null`)이 아니다.
+  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner: "" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -38,6 +38,6 @@ test("UI 아카이브로 닫으면 까닭이 「아카이브」이고 주인이 
   await installFixtureBackend(page);
   await archive(page, `/works/${plainWork.slug}`, "작업 메뉴");
 
-  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "archive", owner: `atelier:${plainWork.slug}` }]);
+  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "archive", owner: plainWork.slug }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

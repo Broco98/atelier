@@ -27,7 +27,7 @@ const 저장 = (page: Page) => page.getByRole("button", { name: "저장", exact:
 const 배너 = (page: Page) => page.getByRole("alert");
 const 배너버튼 = (page: Page, name: "새로 불러오기" | "내 초안 유지") => 배너(page).getByRole("button", { name, exact: true });
 
-const EDITOR = "/settings/spec-layout/atelier";
+const EDITOR = "/settings/spec-layout/edit";
 const [OVERVIEW, DECISIONS] = SPEC_LAYOUT_READ.layout.root.children!;
 const [, OUTSIDE_DECISIONS] = CHANGED_SPEC_LAYOUT_READ.layout.root.children!;
 /**
@@ -47,7 +47,7 @@ const BRIEF_FIRST: ReadableSpecLayout = {
 /** 사람이 편집기에서 고친 `overview.md`의 설명 — 밖의 변경(`decisions.md`)과 다른 칸이다. */
 const MINE = "work의 요약, 사람이 고쳤다";
 
-/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 모드 행에서 [편집]을 누른다. */
+/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 레이아웃 행에서 [편집]을 누른다. */
 async function openEditor(page: Page) {
   await page.goto("/settings/spec-layout");
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
@@ -67,7 +67,7 @@ type WriteArgs = { layout: SpecLayoutJson; templates: TemplateBodies };
 
 /** 나간 `write_spec_layout`들의 인자, 나간 순서대로. */
 async function writes(page: Page): Promise<WriteArgs[]> {
-  return (await ipcCallArgs(page, "write_spec_layout", "id")).map(({ args }) => args as WriteArgs);
+  return (await ipcCallArgs(page, "write_spec_layout", "layout")).map(({ args }) => args as WriteArgs);
 }
 
 test("초안이 있을 때 밖에서 바뀌면 바뀜 배너가 서고, [새로 불러오기]는 초안을 버리고 새로 읽은 것을 세운다", async ({

@@ -42,7 +42,7 @@ export function useProcessSnapshot() {
 export const SUMMARY_EVERY_MS = 10_000;
 
 /**
- * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 두 세계의 모든 화면에
+ * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 모든 화면에
  * 서므로 늘 돈다** — 화면 스냅샷(`snapshotQuery`)과 반대다. 부르는 자리는 nav 메타 하나다(`ProcessesNavMeta`): 보는 쪽이 둘이면
  * 박자도 둘이다(react-query는 보는 쪽마다 `refetchInterval`을 건다). 요약 카드(티켓 30)는 새 박자를 걸지 않고 이 캐시를 읽는다
  * (`useSummaryCache`).

@@ -77,7 +77,7 @@ describe("이동이 닿으면 할 일", () => {
     const arrive = vi.fn();
 
     whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive, "shell");
-    await router.navigate({ to: "/maison/terminal" });
+    await router.navigate({ to: "/terminal" });
     await router.navigate({ to: "/processes" });
     expect(arrive).not.toHaveBeenCalled();
   });
@@ -89,7 +89,7 @@ describe("이동이 닿으면 할 일", () => {
 
     whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive, "shell");
     await router.navigate({ to: "/processes" });
-    await router.navigate({ to: "/maison/terminal" });
+    await router.navigate({ to: "/terminal" });
     await router.navigate({ to: "/processes" });
     expect(arrive).toHaveBeenCalledTimes(1);
   });

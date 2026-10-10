@@ -1,11 +1,11 @@
 import { useCallback } from "react";
 import { useRouter, type NavigateOptions } from "@tanstack/react-router";
-import { modeOfOwner, slugOfOwner } from "@/features/terminal/shell-registry";
+import { slugOfOwner } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { isOwnerlessShell, selectShellWithFocus } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
-import { modeOf, routesOf, slugOf } from "@/mode";
 import { navigateThen } from "@/lib/arrival";
+import { workSlugOf } from "@/lib/path-prefix";
 import { viewProcesses } from "./processes-view";
 
 /**
@@ -26,11 +26,9 @@ import { viewProcesses } from "./processes-view";
  * 있으니 여기가 늘거나 줄면 그 목록도 함께 고친다. 같은 work 안에서는 `replace`다(in-app-terminal 결정 13) — 탭을 한 번 옮겼는데 되돌리는 데
  * 뒤로가기를 두 번 눌러야 하는 일이 없다. 화면이 통째로 바뀌는 쪽은 히스토리를 남긴다.
  *
- * **세계는 셸의 것이다 — 지금 선 화면의 것이 아니다.** 띠는 이 세계의 셸만 세우지만(`bandRows`), ⌘J가 기억한 셸은 저쪽
- * 세계의 것일 수 있다(알림도 두 세계를 함께 판정한다). 그래서 목적지와 씨앗은 셸 주인의 세계로 짓고, 「같은 work인가」도
- * 세계까지 견준다 — slug만 보면 두 세계의 같은 이름 work이 같은 자리로 읽혀 저쪽 화면의 검색 값을 이쪽에 싣는다. 지금 주소는
- * **부를 때** 읽는다(`router.state`) — 구독하면 주소가 바뀔 때마다 부르는 화면이 다시 그려진다(`navigateGuardingSettings`와
- * 같은 수법).
+ * **목적지는 셸 주인이 정한다** — slug가 있으면 그 work의 터미널 탭, 없으면(최상위 터미널의 주인 `""`) `Terminal`이다.
+ * 「같은 work인가」는 지금 주소의 slug와 견준다. 지금 주소는 **부를 때** 읽는다(`router.state`) — 구독하면 주소가 바뀔 때마다
+ * 부르는 화면이 다시 그려진다(`navigateGuardingSettings`와 같은 수법).
  *
  * **키보드 포커스도 데려간다**(티켓 16 · 프로세스 스펙 S21). 지금 보고 있는 셸이면 그 자리에서, 다른 탭 · 다른 work의 셸이면
  * 화면이 옮겨져 그 셸이 붙는 순간 온다. 켜기와 요청의 짝(요청이 먼저 — 관례)은 스토어의 `selectShellWithFocus` 한 자리가 든다 —
@@ -48,7 +46,7 @@ import { viewProcesses } from "./processes-view";
  *
  * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12 · 32). 그 work은 목록에 없어 가면 없는 work으로 간다 —
  * 대신 `Processes`로 간다: 그 화면의 주인 잃은 셸 묶음이 그 셸을 들고 [모두 닫기]를 든다. 가는 길은 토스트의 [보기]와 같은
- * 문이다(`viewProcesses`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다. 판 01~03에서는 그 세계의 주인 잃은 셸 토스트를 다시
+ * 문이다(`viewProcesses`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다. 판 01~03에서는 주인 잃은 셸 토스트를 다시
  * 세우고 화면은 그대로였다.
  */
 export default function useGoToShell(): (shell: { id: number; owner: ShellOwner }) => void {
@@ -61,21 +59,19 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
         return;
       }
       const go = (target: NavigateOptions) => navigateThen(router, target, () => selectShellWithFocus(id), "shell");
-      const mode = modeOfOwner(owner);
-      const routes = routesOf(mode);
+      const pathname = router.state.location.pathname;
       const slug = slugOfOwner(owner);
       if (slug === null) {
-        go({ to: routes.terminal });
+        go({ to: "/terminal" });
         return;
       }
-      const pathname = router.state.location.pathname;
-      const here = modeOf(pathname) === mode && slugOf(pathname) === slug;
+      const here = workSlugOf(pathname) === slug;
       go({
-        to: routes.item,
+        to: "/works/$slug",
         params: { slug },
         search: here
           ? (prev: object) => tabSearch(prev, "terminal")
-          : tabSearch(recallSearch(mode, slug), "terminal"),
+          : tabSearch(recallSearch(slug), "terminal"),
         replace: here,
       });
     },

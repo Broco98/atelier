@@ -627,33 +627,6 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     expect(await litName(page)).toBe("하나");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
-
-  // **Maison의 최상위 터미널**에서도 — 소유자 키가 세계마다 달라, 거두는 판정이 키에 매이면 한 세계만 거둔다.
-  test("`/maison/terminal` — 끄는 셸이 끝나면 끄는 모습이 걷힌다", async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/maison/terminal");
-    await nameShells(page, ["하나", "둘", "셋"]);
-    const written = await callCount(page, "pty_write");
-
-    await pressAndCross(page, 0);
-    await exitShell(page, 1);
-    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
-    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
-
-    // 새 줄의 끝 틈에서 뗀다 — 선도 안 서고, 떼도 순서 · 켜진 칸 · 셸이 그대로다.
-    const at = await gapPoint(page, 2);
-    await page.mouse.move(at.x, at.y, { steps: 4 });
-    await settle(page);
-    await expect(gapLine(page)).toHaveCount(0);
-    await page.mouse.up();
-    await settle(page);
-
-    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
-    expect(await litName(page)).toBe("셋");
-    expect(await callCount(page, "pty_write")).toBe(written);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
 });
 
 // **거두는 것은 끄는 셸이 목록에서 사라졌을 때뿐이다.** 판정을 「종료 프레임이 왔다」로 잡거나 셸 끌기

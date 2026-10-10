@@ -2,10 +2,8 @@ import { useRef, useState, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { Mode } from "@/mode";
 import { useSetWorkTitle } from "./hooks";
 import type { WorkView } from "./types";
-import { itemNameOf } from "./work-sections";
 
 /**
  * 이름 바꾸기 창(결정 8). 머리행 ⋯ 메뉴의 「이름 바꾸기」가 연다. slug는 바뀌지 않는다(ProjectDetail의
@@ -22,13 +20,11 @@ import { itemNameOf } from "./work-sections";
  * (열기 전 자리)에 맡기지 않는다.
  */
 function WorkRenameDialog({
-  mode,
   work,
   open,
   onClose,
   returnFocus,
 }: {
-  mode: Mode;
   work: WorkView;
   open: boolean;
   /** 어느 길로 닫히든(저장 · 취소 · Esc · 바깥 누르기) 여기로 온다. 저장은 창이 이미 했다. */
@@ -47,7 +43,7 @@ function WorkRenameDialog({
     >
       {/* 닫기(×) 버튼을 세우지 않는다 — 아래 「취소」와 같은 일을 하는 자리가 둘이 된다(확인 창도 그렇다). */}
       <DialogContent showCloseButton={false} initialFocus={inputRef} finalFocus={returnFocus}>
-        <RenameBody mode={mode} work={work} inputRef={inputRef} onClose={onClose} />
+        <RenameBody work={work} inputRef={inputRef} onClose={onClose} />
       </DialogContent>
     </Dialog>
   );
@@ -58,17 +54,15 @@ function WorkRenameDialog({
  * 시작하고, 지난번에 쓰다 만 이름이 남지 않는다.
  */
 function RenameBody({
-  mode,
   work,
   inputRef,
   onClose,
 }: {
-  mode: Mode;
   work: WorkView;
   inputRef: RefObject<HTMLInputElement | null>;
   onClose: () => void;
 }) {
-  const setTitle = useSetWorkTitle(mode);
+  const setTitle = useSetWorkTitle();
   const [draft, setDraft] = useState(work.title);
   const title = draft.trim();
   // 저장할 것이 있는가 — **비었거나 그대로면 없다**(지금 규칙). 「저장」이 누를 수 없게 서는 것(P12)과 Enter가
@@ -87,11 +81,11 @@ function RenameBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{itemNameOf(mode)} 이름 바꾸기</DialogTitle>
+        <DialogTitle>작업 이름 바꾸기</DialogTitle>
       </DialogHeader>
       <Input
         ref={inputRef}
-        aria-label={`${itemNameOf(mode)} 이름`}
+        aria-label="작업 이름"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         // **지금 이름을 전부 고른 채 선다** — 새 이름을 바로 치면 옛 이름이 갈린다. 창의 첫 포커스

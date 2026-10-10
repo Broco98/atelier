@@ -1143,11 +1143,11 @@ describe("에이전트 사라짐 — 프로세스 결정 12", () => {
 });
 
 /**
- * 소유자 키 하나. **모드를 여기서만 적는다** — 이 파일이 재는 것은 상태 축이라 세계는
+ * 소유자 키 하나. **키를 짓는 자리를 여기 하나로 둔다** — 이 파일이 재는 것은 상태 축이라 소유자는
  * 배경이고, 리터럴로 흩어 두면 소유자 모양이 바뀌는 날 스무 자리가 함께 빨개진다.
- * 인자가 없으면 그 세계의 최상위다.
+ * 인자가 없으면 최상위 터미널이다(빈 키 `""`).
  */
-const 소유 = (slug = "") => ownerOf("atelier", slug);
+const 소유 = (slug = "") => ownerOf(slug);
 
 // 셸 한 칸을 세운다. 여기서 재는 것은 상태 축뿐이라 이름·소유자 같은 칸은 아무 값이나 든다.
 const 칸 = (attention: Attention | null, status: Shell["status"] = { kind: "running" }): Shell => ({
@@ -1312,14 +1312,14 @@ describe("소유자별 화면값", () => {
       activeByOwner: {},
       nextId: 5,
     };
-    expect(signalsOf(state, "atelier")).toEqual({ 가: "waiting", 다: "done" });
+    expect(signalsOf(state)).toEqual({ 가: "waiting", 다: "done" });
   });
 
   // 최상위 셸은 어느 work의 것도 아니라 행이 없다 — 빈 문자열 키가 슬러그인 척하면
   // 그 키를 읽는 행이 영영 안 나온다(`shellCountsOf`와 같은 가름).
   it("최상위 셸은 안 든다", () => {
     const state = { shells: [셸(소유(), 상태({ kind: "waiting" }), 1)], activeByOwner: {}, nextId: 2 };
-    expect(signalsOf(state, "atelier")).toEqual({});
+    expect(signalsOf(state)).toEqual({});
   });
 });
 
@@ -1380,8 +1380,7 @@ describe("띠의 줄", () => {
   });
 
   it("부르는 셸이 없으면 줄이 하나도 없다 — 띠 자체가 없다", () => {
-    expect(bandRows(
-      화면(칸이({ id: 1, owner: 소유("가"), attention: 상태({ kind: "working" }) })), "atelier")).toEqual([]);
+    expect(bandRows(화면(칸이({ id: 1, owner: 소유("가"), attention: 상태({ kind: "working" }) })))).toEqual([]);
   });
 
   // **차례는 화면을 가리지 않는다.** 최상위 셸도 같은 줄 세우기에 든다(결정 13의 다섯째) —
@@ -1394,7 +1393,6 @@ describe("띠의 줄", () => {
         칸이({ id: 3, owner: 소유("나"), attention: 상태({ kind: "waiting", since: 20 }) }),
         칸이({ id: 4, owner: 소유("가"), attention: 상태({ kind: "done", since: 10 }) }),
       ),
-    "atelier",
     );
     expect(rows.map((row) => row.id)).toEqual([3, 2, 4, 1]);
     expect(rows.map((row) => row.owner)).toEqual([소유("나"), 소유(), 소유("가"), 소유("가")]);
@@ -1410,7 +1408,6 @@ describe("띠의 줄", () => {
         칸이({ id: 1, owner: 소유("가"), title: "vite", attention: 상태({ kind: "waiting", since: 10 }) }),
         칸이({ id: 2, owner: 소유("가"), title: "claude", attention: 상태({ kind: "waiting", since: 20 }) }),
       ),
-    "atelier",
     );
     expect(rows.map((row) => row.shellName)).toEqual(["vite", "claude"]);
   });
@@ -1422,7 +1419,6 @@ describe("띠의 줄", () => {
         칸이({ id: 2, owner: 소유("가"), title: "claude", attention: null }),
         칸이({ id: 3, owner: 소유("가"), title: "cargo", attention: 상태({ kind: "done", seen: true }) }),
       ),
-    "atelier",
     );
     expect(rows.map((row) => row.shellName)).toEqual([null]);
   });
@@ -1434,7 +1430,6 @@ describe("띠의 줄", () => {
         칸이({ id: 1, owner: 소유(), title: "claude", attention: 상태({ kind: "waiting", since: 10 }) }),
         칸이({ id: 2, owner: 소유("가"), title: "codex", attention: 상태({ kind: "waiting", since: 20 }) }),
       ),
-    "atelier",
     );
     expect(rows.map((row) => row.shellName)).toEqual([null, null]);
   });
@@ -1448,7 +1443,6 @@ describe("띠의 줄", () => {
         칸이({ id: 2, owner: 소유("나"), running: null, attention: 상태({ kind: "waiting", since: 20, agent: "claude" }) }),
         칸이({ id: 3, owner: 소유("다"), running: null, attention: 상태({ kind: "waiting", since: 30, agent: null }) }),
       ),
-    "atelier",
     );
     expect(rows.map((row) => row.running)).toEqual(["codex", "claude", null]);
   });

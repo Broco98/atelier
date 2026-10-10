@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { FIXTURE_SHELL_NAME, ROOMS, WORKS } from "./fixtures";
+import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import { fillToCap, MAX_SHELLS, rowOf, settle } from "./tab-row";
 import type { Row } from "./tab-row";
 import {
@@ -224,13 +224,12 @@ for (const width of [1120, 900]) {
 // 그래서 여기서는 **사람이 보는 것**을 잰다 — 상자에 칸 하나가 온전히 보이고, 그 칸을 눌러 켤
 // 수 있고, `+`가 줄 안에 있다.
 //
-// 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 세
+// 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 두
 // 화면 모두를 본다. 배치는 셋이다 — 패널을 연 채(가장 좁은 줄), 접은 채(조작 줄에 펼치기
 // 버튼이 하나 더 선다), 그리고 ⌘B로 사이드바를 접은 채(줄의 왼쪽 여백이 신호등 자리만큼
 // 넓어지는 `inset` 갈래다). `/terminal`에는 작업 패널이 없어 패널 갈래가 하나다.
 const SCREENS = [
   { name: "work 화면", url: `/works/${plainWork.slug}?tab=terminal`, panel: true },
-  { name: "Maison Room 화면", url: `/maison/rooms/${ROOMS[1].slug}?tab=terminal`, panel: true },
   { name: "`/terminal`", url: "/terminal", panel: false },
 ] as const;
 

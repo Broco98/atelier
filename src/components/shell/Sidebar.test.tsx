@@ -34,9 +34,8 @@ const countOf = (text: string, literal: string) => text.split(literal).length - 
 // work 둘에 셸 하나씩. 흔드는 것은 늘 `나`의 셸이고, 보는 것은 `가`의 행이다.
 // **소유자는 `ownerOf`가 짓는다**(결정 10) — 사이드바가 조회하는 것과 같은 함수여야 여기서
 // 재는 값이 그 화면이 읽는 값이다.
-const ownerFor = (slug: string) => ownerOf("atelier", slug);
+const ownerFor = (slug: string) => ownerOf(slug);
 const seat = (slug: string) => ({
-  mode: "atelier" as const,
   cwd: null,
   owner: ownerFor(slug),
   project: null,
@@ -67,7 +66,7 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
       const owner = ownerFor(slug);
       expect(shallow(runningAgentsOf(뒤, owner), runningAgentsOf(state, owner))).toBe(true);
     }
-    expect(shallow(shellCountsOf(뒤, "atelier"), shellCountsOf(state, "atelier"))).toBe(true);
+    expect(shallow(shellCountsOf(뒤), shellCountsOf(state))).toBe(true);
   });
 
   it("명령이 시작되면 그 work의 행만 달라진다", () => {
@@ -86,7 +85,7 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
   it("타이틀은 화면값도 안 흔든다", () => {
     const { state, 나 } = twoWorks();
     const 뒤 = setTitle(state, 나, "~/atelier — nvim");
-    expect(shallow(signalsOf(뒤, "atelier"), signalsOf(state, "atelier"))).toBe(true);
+    expect(shallow(signalsOf(뒤), signalsOf(state))).toBe(true);
   });
 
   it("셸이 말하면 그 work의 화면값만 달라진다", () => {
@@ -103,10 +102,10 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
       dialog: null,
     });
     // **먼저 실제로 달라졌는가** — 이것이 없으면 아래 「같다」가 「아무 일도 안 났다」로도 초록이다.
-    expect(signalsOf(뒤, "atelier")).toEqual({ 나: "waiting" });
-    expect(shallow(signalsOf(뒤, "atelier"), signalsOf(state, "atelier"))).toBe(false);
+    expect(signalsOf(뒤)).toEqual({ 나: "waiting" });
+    expect(shallow(signalsOf(뒤), signalsOf(state))).toBe(false);
     // 남의 work은 키가 없는 채 그대로다.
-    expect(signalsOf(뒤, "atelier")["가"]).toBeUndefined();
+    expect(signalsOf(뒤)["가"]).toBeUndefined();
   });
 
   it("명령이 끝나도 **메타가 서는 조건**은 안 바뀐다", () => {
@@ -116,8 +115,8 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
     const { state, 나 } = twoWorks();
     const 도는중 = setRunning(state, 나, "claude");
     const 끝난뒤 = setRunning(도는중, 나, null);
-    expect(shallow(shellCountsOf(도는중, "atelier"), shellCountsOf(state, "atelier"))).toBe(true);
-    expect(shallow(shellCountsOf(끝난뒤, "atelier"), shellCountsOf(state, "atelier"))).toBe(true);
+    expect(shallow(shellCountsOf(도는중), shellCountsOf(state))).toBe(true);
+    expect(shallow(shellCountsOf(끝난뒤), shellCountsOf(state))).toBe(true);
   });
 });
 
@@ -129,7 +128,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 채로 모든 행이 초마다 다시 그려진다 — 값과 배선을 함께 봐야 하는 이유가 이것이다.
     //
     // 인자가 슬러그가 아니라 `owner`인 것은 nav `Terminal`이 같은 컴포넌트를 쓰기 때문이다
-    // (결정 4·13) — 뒤가 빈 키가 그 세계의 최상위다(결정 10).
+    // (결정 4·13) — 빈 키 `""`가 최상위 터미널이다(ui-refresh 결정 23).
     expect(sidebar).toContain(
       "useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow)",
     );
@@ -155,7 +154,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(sidebar).toContain("shells={{ shellCounts, signals, notes, renderRowMeta }}");
     // **부르는 자리를 센다 — 이름이 아니다.** 이름만 세면 import 줄과 주석의 산문까지
     // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다(위 검사와 같은 근거).
-    expect(countOf(sidebar, "(state) => signalsOf(state, mode)")).toBe(1);
+    expect(countOf(sidebar, "(state) => signalsOf(state)")).toBe(1);
   });
 
   it("오른쪽 메타의 **시각·마크**는 행마다 자기 것만 구독한다", () => {
@@ -178,7 +177,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 띠가 통째로 다시 그려진다 — 위 두 검사가 목록에서 막는 그 함정이 띠에서 되살아난다.
     // 비교가 갈리는 자리라 리터럴로 못박는다: `shallow`로 되돌려도 화면은 멀쩡하고
     // (값은 맞다) 값싼 그림이 초마다 도는 것만 남아 어느 층에서도 안 보인다.
-    expect(sidebar).toContain("(state) => bandRows(state, mode)");
+    expect(sidebar).toContain("(state) => bandRows(state)");
     // 자르는 자리가 그리는 쪽 하나여야 헤더의 `N`이 셀 것이 남는다(결정 8) — 값을 내는
     // 쪽에서 미리 자르면 「접힌 것까지 센다」가 어디서도 성립할 수 없다.
     expect(sidebar).not.toContain("BAND_LIMIT");
@@ -191,12 +190,10 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8). 그 값이
     // 함께 가야 하는 것은 「그 밖의 셸」의 수가 셸 수와 도는 것을 **둘 다 아는 자리**에서만
     // 나오기 때문이고(결정 3), 그 자리가 `ShellMeta` 하나다.
-    // **한 줄에 안 들어가 두 조각으로 잡는다.** 조각마다 지키는 것이 다르다: 앞은 소유자에
-    // 세계가 실렸는가(결정 10 — `work.slug`로 되돌리면 두 루트의 같은 slug가 한 행을 나눠
-    // 써서 저쪽 세계의 claude 로고가 여기 뜬다), 뒤는 개수의 키가 slug인가(그 Record를 받는
-    // 목록이 터미널을 모른다 — `shellCountsOf` 머리말). 두 어휘가 한 자리에 함께 서는 것이
-    // 그 사정 때문이다.
-    expect(sidebar).toContain("owner={ownerOf(mode, work.slug)}");
+    // **두 조각으로 잡는다.** 조각마다 지키는 것이 다르다: 앞은 소유자를 `ownerOf`가 짓는가(조회하는 쪽과 같은
+    // 함수여야 한다 — ui-refresh 결정 23), 뒤는 개수의 키가 slug인가(그 Record를 받는 목록이 터미널을 모른다 —
+    // `shellCountsOf` 머리말). 두 어휘가 한 자리에 함께 서는 것이 그 사정 때문이다.
+    expect(sidebar).toContain("owner={ownerOf(work.slug)}");
     expect(sidebar).toContain("shellCount={shellCounts[work.slug] ?? 0}");
     // **조각이 같은 컴포넌트에 붙어 있는지는 자리 수로 든다** — 이 파일에 `RowMetaFor`가
     // 서는 곳은 둘뿐이다(nav `Terminal` 하나, work 행 하나). 늘어나면 위 두 조각이 어느
@@ -249,9 +246,8 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     // 1인지를 보므로, 이름이 바뀌어 스캔이 헛돌면 그것도 여기서 터진다(fail-closed).
     expect(countOf(sidebar, "new Map(works.map(")).toBe(1);
     expect(countOf(sidebar, "titles.get(")).toBe(1);
-    // 주석에 이름이 나오는 것까지 세지 않으려고 코드 모양 그대로 집는다. 소유자가
-    // `<모드>:<slug>`가 된 뒤로 삼항이 아니라 이른 반환이다 — 최상위 판정이 `slugOfOwner`를
-    // 한 번 지나야 해서 한 식으로 안 접힌다.
+    // 주석에 이름이 나오는 것까지 세지 않으려고 코드 모양 그대로 집는다. 삼항이 아니라 이른
+    // 반환이다 — 최상위 판정이 `slugOfOwner`를 한 번 지나야 해서 한 식으로 안 접힌다.
     expect(countOf(sidebar, "return TERMINAL_LABEL;")).toBe(1);
   });
 
@@ -262,9 +258,7 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     // **개수 prop이 메타 슬롯이 됐다**(결정 4·13). 그 계약은 그대로 이어진다: 여전히
     // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
     // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
-    // **최상위도 세계마다다**(결정 10) — 화면이 `/terminal`과 `/maison/terminal` 둘이라
-    // 한 값으로 두면 두 세계의 셸 수가 한 숫자로 합쳐진다.
-    expect(sidebar).toContain("<RowMetaFor owner={ownerOf(mode)} shellCount={topShells} />");
+    expect(sidebar).toContain("<RowMetaFor owner={ownerOf()} shellCount={topShells} />");
   });
 });
 
@@ -286,19 +280,14 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
   });
 });
 
-// 세그먼트가 **어디에 서고 무엇을 바꾸는가**. 그림 자체는 `ModeSwitch.test.tsx`가 정적
-// 마크업으로 보고(그래서 세그먼트가 순수 컴포넌트로 갈려 있다), 여기서 보는 것은 이 파일이
-// 그것을 **어느 자리에 꽂았는가**다 — 자리는 렌더가 아니라 소스에서만 보인다.
-describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () => {
+// 사이드바 최상단의 짜임 — 자리는 렌더가 아니라 소스에서만 보인다.
+describe("사이드바 최상단은 신호등 띠이고 그 아래가 nav다", () => {
   const sidebar = read("Sidebar.tsx");
 
-  it("신호등 띠 **아래**, nav **위**다", () => {
-    // US 6이 정한 자리 그대로다. 순서가 뒤집히면 「어느 세계인가」가 nav 아래로 내려가
-    // 목적지 하나처럼 읽힌다.
-    //
+  it("신호등 띠 **아래**에 갈래의 몸통이 서고, 앱 갈래의 첫 것이 nav다", () => {
     // 설정 nav가 생긴 뒤로 띠는 두 갈래가 함께 지나는 겉 상자(`SidebarFrame`)에 살고, 갈래의
     // 몸통은 그 띠 **뒤의 자리**(`{children}`)에 선다. 그래서 파일 전체의 첫 띠로 재지 않고 둘로
-    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 모드 전환 < nav. 띠가 파일에 **하나뿐**인
+    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 nav가 맨 앞. 띠가 파일에 **하나뿐**인
     // 것도 센다 — 갈래가 제 띠를 따로 그리면 앞의 비교가 그 띠를 안 본다.
     expect(countOf(sidebar, "data-tauri-drag-region")).toBe(1);
     const frameAt = sidebar.indexOf("function SidebarFrame(");
@@ -308,27 +297,17 @@ describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () =
     // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
     const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
     const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
-    const segment = app.indexOf("<ModeSwitch");
     const nav = app.indexOf("<nav");
-    // **넷이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
+    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 줄이
     // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect([strip, slot, segment, nav].every((at) => at > -1)).toBe(true);
+    expect([strip, slot, nav].every((at) => at > -1)).toBe(true);
     expect(slot).toBeGreaterThan(strip);
-    expect(nav).toBeGreaterThan(segment);
+    // 겉 상자를 연 줄 바로 뒤의 첫 요소가 nav다(그 사이에는 주석만 선다).
+    expect(app.slice(0, nav)).not.toMatch(/\n\s*<(?!SidebarFrame|nav)[A-Za-z]/);
   });
 
-  it("nav가 **그 세계의 배열**을 돈다", () => {
-    // Atelier 배열을 두 세계에 그리면 Maison에 `Projects`가 서는데(결정 17이 없다고 한
-    // 것이다), 활성 판정은 이미 모드 배열을 보고 있어서 그 항목은 영영 안 켜진다.
-    expect(sidebar).toContain("navItemsOf(mode).map(");
-  });
-
-  it("어느 자리도 한 세계로 눕지 않는다", () => {
-    // **이 파일에 세계의 이름이 리터럴로 박히면 안 된다.** 목록·nav·세그먼트가 받는 값이
-    // 전부 하나(`mode`)에서 나와야 세 자리가 함께 움직이는데, 그 어긋남은 화면에서
-    // 「Maison인데 목록만 Atelier」처럼 **한 자리만** 틀린 모양으로 나타나 눈에 안 띈다.
-    expect(sidebar).not.toContain('"atelier"');
-    expect(sidebar).not.toContain('"maison"');
+  it("nav가 **`navItems` 배열**을 돈다", () => {
+    expect(sidebar).toContain("navItems.map(");
   });
 });
 
@@ -355,11 +334,10 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
     expect(rest).not.toMatch(/\buse[A-Z]\w*\(/);
   });
 
-  it("그 갈래에는 돌아가기와 항목만 서고, 모드 전환·nav·띠·목록·바닥 Settings는 없다", () => {
+  it("그 갈래에는 돌아가기와 항목만 서고, nav·띠·목록·바닥 Settings는 없다", () => {
     expect(branch).toContain("<SettingsNav");
     for (const gone of [
-      "<ModeSwitch",
-      "navItemsOf(",
+      "navItems.map(",
       "<AttentionBand",
       "<SidebarWorkList",
       'label="Settings"',
