@@ -114,7 +114,7 @@ function Frame<Id extends string>({
         {/* 카드 줄. 사이드바가 열렸으면 왼쪽 틈이 0이다 — 사이드바 쪽 여백이 그 틈으로 보인다(프로토타입 `.at-main` ·
             `.at-sidebar`). 사이드바가 접히면 카드가 창 왼쪽 틈까지 넓어진다. 여백은 바탕 줄의 여백과 같은 곡선으로
             따라온다 — 사이드바 폭 트랜지션(`PANEL_MOTION`)과 박자가 다르면 카드 모서리가 자리를 지나쳤다 되돌아온다(index.css의
-            `--panel-ease`). `relative`는 `overlay`의 기준이다. */}
+            `--ease-panel`). `relative`는 `overlay`의 기준이다. */}
         <div
           data-tauri-drag-region
           className={cn(

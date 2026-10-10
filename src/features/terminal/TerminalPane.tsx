@@ -123,8 +123,8 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           죽은 셸 화면의 첫 행이 가려지는 것이고, 그 행은 스크롤로 되찾을 수 있다.
 
           바탕을 앱 배경으로 두는 것은 지금 모습을 그대로 두려는 것이다: 이 줄은 예전에도
-          앱 배경 위의 `text-muted-foreground`였다. 바탕 없이 셸 위에 얹으면 `#565759`가
-          다크 셸 바탕 `#1e1e1e` 위 2.3:1로 묻힌다.
+          앱 배경 위의 `text-muted-foreground`였다. 바탕 없이 셸 위에 얹으면 그 글자(어두운 글자의
+          70% — `fg-secondary`)가 다크 셸 바탕 `#181818` 위 1.03:1로 묻힌다.
 
           `pointer-events-none` — 겹친 만큼 xterm이 포인터를 잃으면 안 된다. */}
       {notice !== null && (

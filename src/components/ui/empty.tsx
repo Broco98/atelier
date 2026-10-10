@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 선례가 없는 부품이라 shadcn 기본을 앱 토큰으로 그리고 글자 크기만 앱 규격이다(결정 2) — 제목 text-sm→16.5px, 설명 text-sm/relaxed→14px·leading-relaxed, 내용 칸 text-sm→13.5px(큰 빈 화면 다섯의 지금 값). 뿌리에 변형 list를 더했다(점선 목록 빈칸 둘 — 테두리 border로 border-dashed가 보이고, flex-1을 flex-none으로 걷어 목록 패널을 채우지 않는다, 제목 13.5px·설명 12.5px). 제목·설명은 뿌리의 data-variant를 group/empty로 읽는다. 아이콘 칸(EmptyMedia icon)의 바탕 bg-muted(3%)는 registry 그대로다.
+// 앱 규격으로 고친 자리: 선례가 없는 부품이라 shadcn 기본을 앱 토큰으로 그리고 글자 크기만 앱 규격이다(결정 2) — 제목 text-sm→16.5px, 설명 text-sm/relaxed→14px·leading-relaxed, 내용 칸 text-sm→13.5px(큰 빈 화면 다섯의 지금 값). 뿌리에 변형 list를 더했다(점선 목록 빈칸 둘 — 테두리 border로 border-dashed가 보이고, flex-1을 flex-none으로 걷어 목록 패널을 채우지 않는다, 제목 13.5px·설명 12.5px). 제목·설명은 뿌리의 data-variant를 group/empty로 읽는다. 아이콘 칸(EmptyMedia icon)의 바탕 bg-muted(5%)는 registry 그대로다.
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 

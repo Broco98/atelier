@@ -291,7 +291,7 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
     // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.
-    // 바탕(`bg-sidebar`)은 그래도 칠한다: 색은 바탕과 같지만(`--sidebar: var(--chrome)`) 투명이면 대비를 재는
+    // 바탕(`bg-sidebar`)은 그래도 칠한다: 색은 바탕과 같지만(`--sidebar: var(--surface-shell)`) 투명이면 대비를 재는
     // e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(index.css의 `--sidebar` 주석).
     "relative overflow-hidden bg-sidebar",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.

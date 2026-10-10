@@ -121,7 +121,7 @@ describe("최상위 터미널의 머리행", () => {
 
   it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
     // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 첫 칸의 화면상 위치가 사이드바
-    // 폭과 이 여백의 합이라서다(index.css의 `--panel-ease` 주석). 한때 ShellTabs.test가 들었는데,
+    // 폭과 이 여백의 합이라서다(index.css의 `--ease-panel` 주석). 한때 ShellTabs.test가 들었는데,
     // 바탕 줄이 그 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 줄을 실제로 세우는 이 화면이 든다.
     const tag = headerTag(html(true)) ?? "";
     expect(tag).toContain("ease-panel");

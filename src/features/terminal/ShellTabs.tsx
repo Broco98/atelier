@@ -685,7 +685,7 @@ const ShellTab = memo(function ShellTab({
       // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
       data-shell-key={shell.shellKey ?? undefined}
       className={cn(
-        // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18의 「탭 글자 `#191c1f`」) — 켜짐을 글자색으로
+        // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18 — 탭 글자는 본문 색 `fg`) — 켜짐을 글자색으로
         // 가르지 않는다. 그것은 켜진 칸의 흰 면이 한다.
         "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-foreground transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른

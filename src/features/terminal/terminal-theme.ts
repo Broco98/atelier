@@ -8,21 +8,22 @@ import type { TerminalTheme } from "@/features/settings/types";
 // 단일 출처"라는 성질을 잃는다. 선례가 같다 — mermaid도 자기 테마를 CSS가 아니라
 // `MermaidBlock.tsx`의 `theme: "neutral"`로 정한다.
 //
-// `getComputedStyle`로 토큰을 읽어 채우는 안은 기각했다. `--background`가 `oklch(1 0 0)`인데
-// xterm의 `css.toColor`는 `#rrggbb`·`rgb()`·`rgba()`만 직접 파싱하고 나머지는 캔버스 litmus
-// 경로로 떨어진다 — 그 경로는 Node에서 던지고 알파가 255가 아니어도 던진다.
+// `getComputedStyle`로 토큰을 읽어 채우는 안은 기각했다. xterm의 `css.toColor`는 `#rrggbb`·`rgb()`·`rgba()`만
+// 직접 파싱하고 나머지는 캔버스 litmus 경로로 떨어진다 — 그 경로는 Node에서 던지고 알파가 255가 아니어도 던진다.
+// 토큰이 그 표기라는 보장이 없다(`color-mix(…)`로 만든 토큰도 있다).
 //
 // **두 벌이다 — 밝게 / 어둡게, 기본은 어둡게**(결정 54). ANSI 16색은 우리가 고르지 않는다:
 // 라이트는 VS Code Light+, 다크는 VS Code Dark+의 터미널 팔레트를 그대로 옮겨 적었다
-// (vscode `terminalColorRegistry.ts`의 `ansiColorMap`). 각 바탕에서 읽히도록 이미 조정된
-// 한 벌씩이라 우리가 열여섯 개를 새로 고르는 것보다 낫다. **우리가 정하는 것은 배경·전경·
-// 커서·선택 넷뿐이다.**
+// (vscode `terminalColorRegistry.ts`의 `ansiColorMap`). 흰 바탕 · `#1e1e1e` 바탕에서 읽히도록
+// 조정된 한 벌씩이라 우리가 열여섯 개를 새로 고르는 것보다 낫다 — 다크 바탕은 지금 Codex의 `#181818`로
+// 한 단 더 어둡지만(검정의 대비가 1.26 → 1.18) 그 차이는 아래 대비 바닥이 메운다. **우리가 정하는 것은
+// 배경·전경·커서·선택 넷뿐이다.**
 //
 // **팔레트와 함께 와야 하는 것 하나 — 대비 바닥.** VS Code는 이 팔레트를
 // `minimumContrastRatio` 기본값 **4.5**와 함께 출하해서(`terminalConfiguration.ts`) 바탕에
 // 묻히는 색을 런타임에 끌어올린다. 우리가 옮긴 것은 색 열여섯뿐이고 xterm의 기본값은
 // `1`(= 아무것도 하지 않는다, `xterm.d.ts`의 `minimumContrastRatio`)이라, 그 바닥이 없으면
-// **다크에서 ANSI 검정(SGR 30·40, `#000000`)이 `#1e1e1e` 바탕 위 1.26:1로 묻힌다.** 기본이
+// **다크에서 ANSI 검정(SGR 30·40, `#000000`)이 `#181818` 바탕 위 1.18:1로 묻힌다.** 기본이
 // 라이트였을 땐 같은 검정이 흰 바탕 위 21:1이라 없던 문제고, 기본을 어둡게로 옮긴 이 판이
 // 새로 만든 경로다. 앱 안에서 `claude`·`codex`를 돌리는 것이 이 터미널의 존재 이유라 ANSI
 // 색은 실제로 많이 쓰인다.
@@ -31,18 +32,16 @@ import type { TerminalTheme } from "@/features/settings/types";
 // **택하지 않았다** — 결정 54의 「열여섯 색을 우리가 고르지 않는다」와 어긋난다: 팔레트는
 // 그대로 두고 그리는 순간의 바닥만 준다.
 //
-// **다크에는 짝이 될 앱 토큰이 없다 — 앱이 라이트 한 벌뿐이기 때문이다.** `index.css`에
-// `.dark` 블록이 있지만 아무도 켜지 않고, 그 블록은 shadcn 기본값이라 켜면 `--primary`가
-// 거의 흰색이 되어 앱의 색이 사라진다. 앱 전체 다크는 팔레트를 새로 고르는 판 하나짜리
-// 일이고 결정 54가 기각했다. 그래서 다크의 넷 중 앱과 이어진 것은 **커서 하나**뿐이다 —
-// 그 하나를 `--primary`로 못박아 앱과의 연결을 남긴다.
+// **다크의 넷 중 앱과 이어진 것은 바탕과 커서다.** 앱은 라이트 한 벌로 나가지만(codex-ds 결정 17 — `.dark`는 아무도
+// 켜지 않는다) `index.css`의 `.dark`는 DS 다크 값이라, 다크 바탕은 DS 다크 `term-bg`(= 다크 `surface`)이고 커서는
+// 두 벌 모두 `accent`다. 전경 · 선택은 16색과 같은 출처(VS Code Dark+)와 반투명 한 겹으로 둔다(아래).
 
 export const terminalThemeLight: ITheme = {
   // 아래 넷은 앱과 어긋나면 안 된다 — 짝을 여기 적어 둔다 (index.css)
-  background: "#ffffff", // --background: oklch(1 0 0)
-  foreground: "#191c1f", // --foreground
-  cursor: "#4d81ef", // --primary
-  selectionBackground: "rgba(20, 20, 28, 0.09)", // --state-3
+  background: "#ffffff", // --term-bg(= --surface, 카드 면)
+  foreground: "#1a1c1f", // --term-fg(= --fg, 본문)
+  cursor: "#339cff", // --accent
+  selectionBackground: "rgba(26, 28, 31, 0.12)", // --fill-active
 
   black: "#000000",
   red: "#cd3131",
@@ -63,18 +62,17 @@ export const terminalThemeLight: ITheme = {
 };
 
 export const terminalThemeDark: ITheme = {
-  // 넷 중 **커서만 앱과 이어져 있다** — 배경·전경·선택에는 짝이 될 토큰이 없다(머리말).
-  // 그래서 배경·전경은 16색과 같은 출처(VS Code Dark+)에서 가져와 한 벌을 흩뜨리지 않고,
-  // 선택 하나만 앱의 방식을 따른다.
-  background: "#1e1e1e", // VS Code Dark+ `editor.background` — 16색이 이 바탕에서 조정됐다
+  // 넷 중 **바탕과 커서가 앱과 이어져 있다**(머리말). 전경은 16색과 같은 출처(VS Code Dark+)에서 가져와
+  // 한 벌을 흩뜨리지 않고, 선택은 앱의 방식을 따른다.
+  background: "#181818", // DS 다크 --term-bg(= 다크 --surface, 카드 면)
   foreground: "#cccccc", // VS Code Dark+ 워크벤치 `foreground`
-  cursor: "#4d81ef", // --primary 그대로(결정 54). 이 바탕 위 대비 4.5:1이라 얇은 막대도 보인다
-  // 라이트가 VS Code의 선택색이 아니라 앱 `--state-3`(검정 9%)을 쓰므로 그 **모양**을
-  // 따라간다 — 색이 아니라 반투명 한 겹. 같은 9%를 흰색으로 뒤집으면 어두운 바탕에서
-  // 오히려 조금 더 벌어진다(바탕 대비 1.30, 라이트는 1.20).
+  cursor: "#339cff", // --accent 그대로(결정 54). 이 바탕 위 대비 6.2:1이라 얇은 막대도 보인다
+  // 라이트가 VS Code의 선택색이 아니라 앱 `--fill-active`(검정 12%)를 쓰므로 그 **모양**을
+  // 따라간다 — 색이 아니라 반투명 한 겹. 흰색 9%면 바탕에서 벌어지는 정도가 라이트와 같다
+  // (바탕 대비 1.29, 라이트는 1.27).
   selectionBackground: "rgba(255, 255, 255, 0.09)",
 
-  black: "#000000", // 맨 색으로는 이 바탕 위 1.26:1이다 — 그리는 순간 대비 바닥이 끌어올린다(머리말)
+  black: "#000000", // 맨 색으로는 이 바탕 위 1.18:1이다 — 그리는 순간 대비 바닥이 끌어올린다(머리말)
 
   red: "#cd3131",
   green: "#0dbc79",

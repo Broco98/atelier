@@ -9,6 +9,7 @@ import {
   SPEC_LAYOUT_EDITOR,
   startSplitDrag,
   unknownIpcCalls,
+  토큰색,
   툴팁,
 } from "./harness";
 
@@ -208,13 +209,95 @@ for (const theme of ["light", "dark"] as const) {
         band: painted(box.left + band / 2, box.top + box.height / 2),
       };
     }, inset);
-    // 앵커: 두 테마가 정말 다른 색으로 칠해졌는가 — 같으면 아래 비교는 테마를 안 보고도 초록이다.
-    expect(colors.shell).toBe(theme === "light" ? "rgb(255, 255, 255)" : "rgb(30, 30, 30)");
+    // 셸의 바탕은 DS 터미널 낱말 `term-bg`다 — 밝게는 라이트 값(카드 면), 어둡게는 DS 다크 값이다. 앱은 `.dark`를
+    // 켜지 않으므로 다크 값은 `.dark` 상자 안에서 읽는다(`토큰색`).
+    // 앵커: 두 테마가 정말 다른 색이다 — 같으면 아래 비교는 테마를 안 보고도 초록이다.
+    const [밝게, 어둡게] = [await 토큰색(page, "--term-bg"), await 토큰색(page, "--term-bg", { 다크: true })];
+    expect(밝게, "term-bg의 라이트와 다크가 같다").not.toBe(어둡게);
+    expect(colors.shell).toBe(theme === "light" ? 밝게 : 어둡게);
     expect(colors.card, "카드 바탕").toBe(colors.shell);
     expect(colors.band, "카드 안쪽 여백 띠").toBe(colors.shell);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
+
+// codex-ds 티켓 01 — **앱이 Codex 색을 입는다**(codex-ds 결정 27). 창 바탕 · 카드 · 본문 글자를 칠해진 색(computed
+// style)으로 읽어 토큰(CSS 변수)과 맞댄다 — 바탕은 `surface-shell`, 카드는 `surface`, 본문 글자는 `fg`다. 다크는 앱이 켜지
+// 않지만(codex-ds 결정 17) `.dark`를 켜면 같은 자리가 DS 다크 값이어야 한다 — 그 팔레트의 정본이 `index.css`의 `.dark`다.
+//
+// 바탕은 **카드 오른쪽 틈에 실제로 칠해진 색**으로 읽는다 — 틈의 상자들은 투명하고 공용 틀의 뿌리가 바탕을 칠한다.
+test("창 바탕은 surface-shell, 카드는 surface, 본문 글자는 fg다 — .dark를 켜면 같은 자리가 DS 다크 값이다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/processes");
+  await expect(page.locator("main")).toHaveCount(1);
+
+  const gap = await token(page, "--gap");
+  const 칠한색 = () =>
+    page.evaluate((band) => {
+      const painted = (x: number, y: number): string | null => {
+        for (let node = document.elementFromPoint(x, y); node; node = node.parentElement) {
+          const bg = getComputedStyle(node).backgroundColor;
+          if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") return bg;
+        }
+        return null;
+      };
+      const card = document.querySelector("main")!;
+      const box = card.getBoundingClientRect();
+      return {
+        바탕: painted(box.right + band / 2, box.top + box.height / 2),
+        카드: getComputedStyle(card).backgroundColor,
+        글자: getComputedStyle(card).color,
+      };
+    }, gap);
+  const 토큰셋 = async () => ({
+    바탕: await 토큰색(page, "--surface-shell"),
+    카드: await 토큰색(page, "--surface"),
+    글자: await 토큰색(page, "--fg"),
+  });
+
+  const 라이트 = await 칠한색();
+  expect(라이트).toEqual(await 토큰셋());
+
+  // 다크 팔레트를 켜고 색의 전환이 끝날 때까지 기다린다 — 전환 도중의 중간값을 재지 않게(`works-sidebar.spec.ts`의
+  // `팔레트`와 같은 까닭).
+  await page.evaluate(async () => {
+    document.documentElement.classList.add("dark");
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
+        .map((one) => one.finished),
+    );
+  });
+  const 다크 = await 칠한색();
+  // **팔레트가 정말 바뀌었는지를 먼저 센다** — `.dark`가 안 먹으면 아래가 라이트 값을 다시 재고, 토큰도 라이트로 풀려
+  // 조용히 초록이 된다.
+  for (const 자리 of ["바탕", "카드", "글자"] as const) {
+    expect(다크[자리], `다크 · ${자리} — 라이트 색이 그대로다`).not.toBe(라이트[자리]);
+  }
+  expect(다크).toEqual(await 토큰셋());
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **CSS 변수 `--accent`는 Codex 파랑이지만 유틸리티 `accent`는 옅은 면(`fill-hover`)이다**(`index.css`의 `--color-accent`).
+// 그 유틸리티를 면으로 쓰는 대표 자리가 메뉴의 켜진 줄(`focus:bg-accent`)이다 — 상태 메뉴를 키보드로 열어 첫 줄을 켠다.
+test("메뉴의 켜진 줄은 옅은 면(fill-hover)이고 파랑(accent)이 아니다", async ({ page }) => {
+  const [work] = WORKS;
+  await installFixtureBackend(page);
+  await page.goto(`/works/${work.slug}`);
+  const badge = page.getByRole("button", { name: work.status, exact: true });
+  await badge.focus();
+  await page.keyboard.press("ArrowDown");
+  const first = page.getByRole("menu").getByRole("menuitemradio").first();
+  await expect(first).toBeFocused();
+
+  const [옅은면, 파랑] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--accent")];
+  await expect.poll(() => first.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(옅은면);
+  expect(옅은면, "fill-hover와 accent가 같은 색이다").not.toBe(파랑);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
 // 판 04 티켓 02 — **목록이 있는 두 화면**(ui-refresh 결정 15 — 칸 하나 = 카드 하나). 목록과 상세가 따로 카드이고 사이 틈은
 // `--gap`이다. 틈은 목록 칸의 바깥 상자(카드 + 오른쪽 틈)가 들어, 목록을 닫으면 폭과 함께 0으로 접힌다 — 닫힌 칸 옆에 틈이

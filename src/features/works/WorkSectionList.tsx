@@ -283,7 +283,7 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
 // 섹션 헤더 — **헤더 전체가 접기 토글이다.** 라벨을 누르면 그 섹션이 접힌다.
 //
 // 라벨은 항목(`row` 14)보다 한 단 작은 `caption`(12/400)이고 색은 `section`이다 — Codex 사이드바의
-// 소제목 값이다(ui-refresh 결정 11 · DS `.at-section`). 바탕 위 2.5:1로 옅은 것은 알고 둔 값이다(handoff
+// 소제목 값이다(ui-refresh 결정 11 · DS `.at-section`). 바탕 위 3.2:1로 옅은 것은 알고 둔 값이다(handoff
 // 「대비 미달을 알고 둔 값」) — 머리는 목적지가 아니라 목록의 이름표라서다.
 //
 // 접기 아이콘은 평소 숨어 있다가 헤더에 마우스를 올리면 나타난다 — 좁은 사이드바에서

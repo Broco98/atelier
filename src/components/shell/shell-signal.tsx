@@ -82,13 +82,10 @@ export function subagentLabel(count: number): string | null {
  * 만들므로 이어 붙인 이름은 규칙이 아예 안 생기고, 화면에서는 「색이 투명하다」로만 나타난다 —
  * 실제로 그렇게 났고 L3의 대비 검사가 그것을 잡았다(2026-09-10).
  *
- * **점과 글자가 다른 토큰을 읽는다**(`-ink`). 결정 3의 표가 못박은 것은 점의 색인데
- * (`amber-600`) 라이트 사이드바에서 그 색의 대비는 2.90이라, 같은 색을 **글자**에 쓰면
- * 두 줄 행을 연 판이 고치려던 3.0짜리 글자를 다시 만든다(그 판의 스토리 24). 점은 3px 후광이
- * 면적을 벌지만 글자에는 그런 것이 없어서, 라이트의 글자만 한 단 어둡게 갈랐다 — 지금 그
- * 잉크를 읽는 글자는 탭 이름, 호버 카드 말 칸의 라벨, 행 오른쪽 메타와 띠 줄의 경과다
- * (`SignalElapsed` — DS `.at-row-meta.wait`). 점까지 어둡게 하는 안은
- * ui-refresh 결정 29가 기각했다(`index.css`의 상태색 주석).
+ * **점과 글자가 다른 이름을 읽는다**(`-ink`) — 지금 그 잉크를 읽는 글자는 탭 이름, 호버 카드 말 칸의 라벨,
+ * 행 오른쪽 메타와 띠 줄의 경과다(`SignalElapsed` — DS `.at-row-meta.wait`). 두 이름은 지금 같은 색을 가리킨다 —
+ * 기다림 `warning`, 안 본 완료 `success`(Codex 뜻의 색, `index.css`의 상태 축 옛 이름 주석). 라이트 사이드바 위
+ * 기다림의 글자는 3.5:1로 글자 바닥(4.5)에 못 미친다 — DS README 「대비」가 Codex의 같은 쓰임을 따라 알고 둔 값이다.
  */
 const TONE: Readonly<
   Record<CallingKind, { dot: string; text: string; fill: string; edge: string }>
@@ -220,7 +217,7 @@ export function formatElapsed(ms: number): string {
  *
  * **상태색의 잉크로 칠한다**(DS `.at-row-meta.wait` · `.done` — 굵기 500). 사이드바에서 마크가
  * 빠지면서(ui-refresh 결정 13) 부르는 행의 오른쪽 칸에 남은 것이 이것 하나라, 부차 정보의
- * `tertiary`(바탕 위 2.95:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 바탕 위 4.5를 넘는다(`TONE` 머리말).
+ * `tertiary`(바탕 위 3.2:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 상태색 그대로다(`TONE` 머리말).
  *
  * **표식(`data-elapsed`)은 검사가 이 조각을 집는 이름이다** — `tabular-nums`는 띠 머리의 수도 든다.
  */

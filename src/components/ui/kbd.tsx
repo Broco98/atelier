@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 글자 text-xs→11.5px(툴팁 글자와 같은 값, P5 — 선례가 없는 부품은 글자 크기만 앱 규격이다). 툴팁 안에서는 칩이 아니라 흰 글자 60%다(바탕·높이·좌우 안쪽·최소 폭 없이 — 디자인 시스템의 `.at-tooltip kbd`, ui-refresh 결정 18). 흰 바탕 위의 바탕 bg-muted(--muted = state-1, 3%라 거의 안 보인다)→bg-accent(--accent = state-2, 6% — 칩 바탕의 자리다).
+// 앱 규격으로 고친 자리: 글자 text-xs→11.5px(툴팁 글자와 같은 값, P5 — 선례가 없는 부품은 글자 크기만 앱 규격이다). 툴팁 안에서는 칩이 아니라 흰 글자 60%다(바탕·높이·좌우 안쪽·최소 폭 없이 — 디자인 시스템의 `.at-tooltip kbd`, ui-refresh 결정 18). 흰 바탕 위의 바탕 bg-muted(--muted = state-1, 5%)→bg-accent(유틸리티 accent = state-2와 같은 `fill-hover` 8% — 칩 바탕의 자리다. CSS 변수 `--accent`(파랑)가 아니다).
 import { cn } from "@/lib/utils"
 
 function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {

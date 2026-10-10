@@ -13,6 +13,7 @@ import {
   openShell,
   setWindowFocused,
   stubWindowFocus,
+  토큰색,
   unknownIpcCalls,
 } from "./harness";
 
@@ -405,7 +406,7 @@ test("도는 명령 손잡이는 이미 선 마크에 안 속는다", async ({ p
 
 /**
  * 안 물든 칸의 배경. 브라우저가 `transparent`를 이 글자로 돌려준다 — 토큰이 아니라 **없음**
- * 이라 `토큰색`으로 못 뽑고, 그래서 여기 한 번 적는다. 브라우저가 다른 글자를 돌려주는 날은
+ * 이라 `토큰색`(하네스)으로 못 뽑고, 그래서 여기 한 번 적는다. 브라우저가 다른 글자를 돌려주는 날은
  * 이 줄이 그 자리에서 터진다(조용히 통과하지 않는다).
  */
 const 안물듦 = "rgba(0, 0, 0, 0)";
@@ -413,29 +414,6 @@ const 안물듦 = "rgba(0, 0, 0, 0)";
 /** 그 칸의 실제 배경색. 채움이 칸 상자에 붙으므로(스토리 53) 재는 것도 그 상자다. */
 const 칸배경 = (page: Page, at: number) =>
   page.locator('[data-tab="shell"]').nth(at).evaluate((el) => getComputedStyle(el).backgroundColor);
-
-/**
- * 토큰 하나를 브라우저가 쓰는 색 문자열로 바꾼다. **값을 검사에 손으로 적지 않기 위해서다** —
- * `rgba(217, 119, 6, 0.14)`를 여기 박아 두면 팔레트를 손보는 날 이 줄이 정본과 갈리고,
- * 무엇보다 「탭이 #203의 토큰을 그대로 읽는가」(수용 기준)를 못 재게 된다.
- */
-const 토큰색 = async (page: Page, name: string) => {
-  const 색 = await page.evaluate((one: string) => {
-    const probe = document.createElement("div");
-    probe.style.backgroundColor = `var(${one})`;
-    document.body.appendChild(probe);
-    const 값 = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return 값;
-  }, name);
-  // **fail-closed.** 없는 `var()`는 computed 시점에 그 선언을 통째로 무효로 만들고 프로퍼티가
-  // 초기값으로 떨어지는데, 그 값이 바로 위 `안물듦`이다(WebKit 실측). 그대로 돌려주면 팔레트가
-  // 지워지는 날 이 파일의 견줌이 **양쪽 다 투명**이라 전부 초록이 된다 — `--signal-wait-soft`가
-  // 죽으면 `--color-wait-soft`(index.css)도 같이 죽어 `bg-wait-soft` 규칙 자체가 안 생기므로
-  // 칸도 투명해지기 때문이다. 여기서 끊으면 그날 검사가 색이 아니라 **원인**을 말한다.
-  if (색 === 안물듦 || 색 === "") throw new Error(`토큰 ${name}이 안 풀렸다 — ${색 || "빈 값"}`);
-  return 색;
-};
 
 test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -453,7 +431,7 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
   //
   // 값을 한 번 재서 들고 있지 않고 **폴링으로 견준다** — 칸에 `transition-colors`가 걸려 있어
   // 켜짐이 옮겨 가는 150ms 동안 `getComputedStyle`이 중간 색을 돌려준다(실측: 켜짐이 빠지는
-  // 도중에 `rgba(20, 20, 28, 0.09)`). 그 순간값을 기준으로 잡으면 마지막 「도는 중은 안
+  // 도중에 켜짐 면의 반투명 회색). 그 순간값을 기준으로 잡으면 마지막 「도는 중은 안
   // 물든다」가 존재하지 않는 색과 견주게 된다.
   await expect
     .poll(() => 칸배경(page, 1), { message: "안 부르는 칸이 물들어 있다" })

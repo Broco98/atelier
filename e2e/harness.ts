@@ -894,9 +894,10 @@ export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]"
  * 바탕은 `backs`에서 처음 만나는 **불투명한** 색이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에
  * 달려 잴 수 없다). 글자색(`ink`)은 제 알파에 `opacity`를 곱해 그 바탕 위에 섞은 색으로 잰다 — 눈에 닿는 색이다.
  *
- * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는 대비를 못 잰다.
- * 그리고 브라우저는 `oklch`를 그대로 돌려준다(WebKit 실측: `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한
- * 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다 짧고 새지 않는다.
+ * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 hex · 알파(`rgba`) · `color-mix(…)`로 갈려 있어 「무슨 색을 골랐나」로는
+ * 대비를 못 잰다. 그리고 브라우저는 `oklch` · `color(…)` 같은 표기를 그대로 돌려준다(WebKit 실측:
+ * `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다
+ * 짧고 새지 않는다.
  */
 const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[]; opacity: number }): number => {
   const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
@@ -934,6 +935,41 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
  */
 export const 색대비 = (page: Page, 앞: string, 뒤: string): Promise<number> =>
   page.evaluate(contrastInPage, { ink: 앞, backs: [뒤], opacity: 1 });
+
+/**
+ * 토큰 하나를 브라우저가 쓰는 색 문자열로 바꾼다 — 빈 상자에 `background-color: var(--name)`을 칠해 읽는다.
+ * **값을 검사에 손으로 적지 않기 위해서다** — 색을 박아 두면 팔레트를 손보는 날 그 줄이 정본과 갈리고, 무엇보다
+ * 「화면이 그 토큰을 그대로 읽는가」를 못 재게 된다. `getPropertyValue("--surface")`는 적힌 글자(`#ffffff`)를 돌려줘
+ * `getComputedStyle(el).backgroundColor`(`rgb(…)`)와 바로 못 맞대므로 칠해서 읽는다.
+ *
+ * `다크`면 상자를 `.dark` 상자 안에 둔다 — 앱이 `.dark`를 켜지 않은 채로 DS 다크 값을 읽는 길이다(터미널의 어둡게
+ * 테마는 앱 팔레트와 따로 켜진다). 별칭이 `.dark`에서도 다시 풀리는 것은 `index.css`의 별칭 묶음(`:root, .dark`)이 든다.
+ *
+ * **여기 사는 이유는 토큰을 색으로 바꾸는 길을 한 벌로 두려는 것이다** — 아래 「안 풀렸다」의 판정이 spec마다 갈리면
+ * 한쪽만 fail-open이 된다.
+ */
+export const 토큰색 = async (page: Page, name: string, { 다크 = false }: { 다크?: boolean } = {}) => {
+  const 색 = await page.evaluate(
+    ([one, dark]) => {
+      const probe = document.createElement("div");
+      probe.style.backgroundColor = `var(${one})`;
+      const holder = dark ? document.createElement("div") : null;
+      holder?.classList.add("dark");
+      holder?.appendChild(probe);
+      document.body.appendChild(holder ?? probe);
+      const 값 = getComputedStyle(probe).backgroundColor;
+      (holder ?? probe).remove();
+      return 값;
+    },
+    [name, 다크] as const,
+  );
+  // **fail-closed.** 없는 `var()`는 computed 시점에 그 선언을 통째로 무효로 만들고 프로퍼티가 초기값(투명,
+  // `rgba(0, 0, 0, 0)` — WebKit 실측)으로 떨어진다. 그대로 돌려주면 팔레트가 지워지는 날 견줌이 **양쪽 다 투명**이라
+  // 전부 초록이 된다 — 토큰이 죽으면 그 토큰을 읽는 유틸리티 규칙도 함께 죽어 칠해질 자리도 투명해지기 때문이다.
+  // 여기서 끊으면 그날 검사가 색이 아니라 **원인**을 말한다.
+  if (색 === "rgba(0, 0, 0, 0)" || 색 === "") throw new Error(`토큰 ${name}이 안 풀렸다 — ${색 || "빈 값"}`);
+  return 색;
+};
 
 /**
  * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는

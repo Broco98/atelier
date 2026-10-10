@@ -10,6 +10,7 @@ import {
   unknownIpcCalls,
   셸입력,
   시계를세운다,
+  토큰색,
 } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
@@ -621,8 +622,10 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
   const scrim = page.locator("div.modal-scrim");
   await expect(scrim).toHaveCount(1);
   await expect(scrim).toHaveCSS("backdrop-filter", "none");
-  // **어둡게만 한다** — 배경색을 덮으면 라이트 테마에서 뒤가 오히려 밝아진다.
-  await expect(scrim).toHaveCSS("background-color", "rgba(0, 0, 0, 0.25)");
+  // **어둡게만 한다** — 배경색을 덮으면 라이트 테마에서 뒤가 오히려 밝아진다. 색은 Codex `scrim`(라이트 검정 10%)이다.
+  const 막색 = await 토큰색(page, "--scrim");
+  expect(막색, "막이 검정 알파가 아니다 — 뒤가 어두워지지 않는다").toMatch(/^rgba\(0, 0, 0, 0?\.\d+\)$/);
+  await expect(scrim).toHaveCSS("background-color", 막색);
 
   // 닫으면 표식이 걷혀 막대가 되돌아온다 — 남으면 앱이 도는 내내 막대가 없다.
   await page.keyboard.press("Escape");
