@@ -212,7 +212,7 @@ test("⌘⇧K·⌘⌥K로는 안 열린다", async ({ page }) => {
 
 /**
  * 줄 하나의 **거터 기하**. 슬롯의 x, 그 다음 형제(=이름)의 x, 그리고 글리프와 줄의 세로
- * 중심을 함께 잰다 — 세로는 `self-center`가 없으면 글자 베이스라인으로 내려앉는 값이고,
+ * 중심을 함께 잰다 — 세로는 줄의 가운데 맞춤(`items-center`)이 빠지면 글자 쪽으로 어긋나는 값이고,
  * 그 어긋남은 CSS가 있어야만 난다.
  */
 async function gutterOf(row: Locator) {
@@ -236,9 +236,10 @@ async function gutterOf(row: Locator) {
 
 // 결정 17·18. **글자 시작점이 층을 가로질러 하나다.**
 //
-// 이 층에서만 답이 난다 — 정적 마크업 seam에는 CSS가 없어 x도 26px도 안 나오고, 크기 클래스
+// 이 층에서만 답이 난다 — 정적 마크업 seam에는 CSS가 없어 x도 27px도 안 나오고, 크기 클래스
 // 문자열을 단언하는 것은 그 파일이 스스로 금지한 「모양으로 가르기」다. 여기서 재는 것 셋:
-// 층이 달라도 이름의 x가 같다 · 구획 머리가 글리프와 같은 컬럼이다 · 그 둘이 26px 갈린다.
+// 층이 달라도 이름의 x가 같다 · 구획 머리가 글리프와 같은 컬럼이다 · 그 둘이 27px 갈린다
+// (DS 팔레트 행 — 글리프 17 + 틈 10, ui-refresh 결정 25 · 판 06 티켓 08).
 test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
@@ -259,9 +260,9 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   });
   expect(docRow.glyphMidY, "문서 줄에 글리프가 섰다").toBeNull();
 
-  // **구획 머리는 글리프와 같은 컬럼이고, 줄 글자와는 26px 갈린다.**
+  // **구획 머리는 글리프와 같은 컬럼이고, 줄 글자와는 27px 갈린다.**
   expect(Math.round(headX)).toBe(Math.round(docRow.slotX));
-  expect(Math.round(docRow.nameX - headX)).toBe(26);
+  expect(Math.round(docRow.nameX - headX)).toBe(27);
 
   // 같은 팔레트에서 층이 셋인 답으로 갈아 끼운다 — 가는 곳·작업·본문이 함께 선다.
   // **작업 줄이 여기 있어야 하는 이유가 티켓의 문장이다**: 「이름의 x가 목적지 줄과 작업
@@ -286,7 +287,7 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   expect(workRow.glyphMidY, "작업 줄에 글리프가 섰다").toBeNull();
   expect(textRow.glyphMidY, "본문 줄에 글리프가 섰다").toBeNull();
 
-  // **글리프가 실제로 섰고, 세로로 줄 한가운데다.** `self-center`가 빠지면 글자 베이스라인에
+  // **글리프가 실제로 섰고, 세로로 줄 한가운데다.** 가운데 맞춤이 빠지면 글자 베이스라인이나 줄 위쪽에
   // 앉아 사이드바와 세로 위치가 갈리는데, 그 어긋남은 이 층에서만 보인다.
   expect(destRow.glyphMidY, "목적지 줄에 글리프가 없다").not.toBeNull();
   expect(Math.abs(destRow.glyphMidY! - destRow.rowMidY)).toBeLessThan(1.5);
@@ -295,9 +296,9 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   // 문 이유가 이것이고, 지금까지 어느 층도 그것을 안 쟀다.
   //
   // `basis-1/3`은 **컨테이너 내용폭**의 1/3이라, padding으로 밀었다면 바닥이 그만큼 깎인다
-  // (26px ÷ 3 ≈ 8.7px). 그래서 「스니펫이 내용폭의 1/3이다」로는 못 잡는다 — 그 등식은 두
+  // (27px ÷ 3 = 9px). 그래서 「스니펫이 내용폭의 1/3이다」로는 못 잡는다 — 그 등식은 두
   // 설계에서 다 참이다. 재는 것은 **줄 상자에서 기본 padding만 뺀 값**의 1/3이고, 그래서
-  // 그 padding이 여전히 10px 두 쪽인 것을 바로 아래에서 따로 못박는다.
+  // 그 padding이 여전히 12px 두 쪽(DS 팔레트 행의 안쪽 0 12)인 것을 바로 아래에서 따로 못박는다.
   const floor = await rows(page).nth(2).evaluate((el) => {
     const style = getComputedStyle(el);
     const snippet = el.querySelectorAll("span");
@@ -307,7 +308,7 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
       snippetWidth: snippet[snippet.length - 1].getBoundingClientRect().width,
     };
   });
-  expect(floor.padX, "줄의 좌우 padding이 px-2.5가 아니다").toBe(20);
+  expect(floor.padX, "줄의 좌우 padding이 px-3이 아니다").toBe(24);
   expect(floor.snippetWidth).toBeCloseTo((floor.rowWidth - floor.padX) / 3, 1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);

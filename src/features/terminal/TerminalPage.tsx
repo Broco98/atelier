@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useStore } from "@tanstack/react-store";
+import { Card, Frame } from "@/components/shell/Frame";
 import ShellTabs from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
@@ -33,10 +34,14 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // **이 44px 한 층의 내력을 적어 둔다 — 안 적으면 다음 사람이 되돌린다.** 처음에 이 자리를
 // 겸하던 것이 가로 탭 줄이었다(브레드크럼에 적을 것이 `Terminal` 한 낱말뿐이라 층을 아끼려던
 // 것 — 결정 44). 셸을 고르는 자리가 사이드바 가지로 가면서 그 줄이 없어지자 창을 끌 영역도
-// 신호등을 피할 여백도 남지 않아, 자리를 `PageHeader`에 돌려줬다(결정 72). 이번 판이 셸을
+// 신호등을 피할 여백도 남지 않아, 자리를 화면의 브레드크럼 머리에 돌려줬다(결정 72). 이번 판이 셸을
 // 고르는 자리를 화면 안으로 되돌리므로(adr-03) 그 층을 다시 탭 줄이 가져간다 — 브레드크럼은
-// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 그 줄의 성질이다
-// (ShellTabs 머리말).
+// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 바탕 줄(`Frame`의 `TitleBar`)의
+// 성질이고, 탭 줄은 그 줄에 칸들을 세운다(ShellTabs 머리말).
+//
+// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 바탕 줄에 탭 줄이 서고, 그 아래 터미널 카드 하나가 뜬다 —
+// 카드에는 머리가 없다(ui-refresh 결정 5: 머리가 필요 없는 카드는 곧바로 내용이 선다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
+// `--term-inset`은 셸의 집이 든다(판 04 기본값 — `TerminalPane`의 그 주석).
 //
 // **셸이 0개일 때 여는 자리는 이 줄의 `+` 하나다**(결정 19). 한때 본문 가운데에도 목록이
 // 덮여 있었는데(결정 102), 그 자리의 근거가 「탭 줄이 걷힌 뒤로 여는 길이 여기뿐이다」
@@ -160,8 +165,9 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   }, [owner]);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="relative flex min-w-0 flex-1 flex-col">
+    <Frame
+      sidebarOpen={sidebarOpen}
+      titlebar={
         <ShellTabs
           state={shellState}
           // 이 화면의 셸은 Work에 안 매인다 — 소유자가 빈 글자다.
@@ -176,8 +182,6 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
           spec={null}
           // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
           showing
-          // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 이 줄이 창 왼쪽 끝에 붙는다
-          inset={!sidebarOpen}
           // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
           onSelect={selectShellWithFocus}
           // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
@@ -194,9 +198,12 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
           onDropSlot={dropShellOnSlot}
           dragging={dragging}
         />
+      }
+    >
+      <Card as="main" label="터미널" tone="terminal" className="flex-1">
         <TerminalPane work={null} />
-      </main>
-    </div>
+      </Card>
+    </Frame>
   );
 }
 

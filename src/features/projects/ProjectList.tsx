@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { CardHead } from "@/components/shell/Frame";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -13,11 +13,11 @@ interface ProjectListProps {
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
   onAdd: () => void;
-  sidebarOpen: boolean;
-  open: boolean;
 }
 
-function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, open }: ProjectListProps) {
+// 목록 카드의 안 — 머리(검색칸 · `+`)와 몸(행). 카드 · 접힘 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`,
+// ui-refresh 결정 15 · 27). 폭과 열림의 저장도 화면(`ProjectsPage`)이 그 칸에 건넨다.
+function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListProps) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -26,149 +26,114 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       )
     : projects;
 
-  // 이제 이 목록만 쓰는 폭이다 — 사이드바는 자기 키(sidebar-width)를 따로 갖는다
-  const size = useResizableWidth("panel-width", 360, 280, 560);
-
   // 숫자 단축키는 여기에 없다 — 사이드바 작업 목록에도 없다. 한때 사이드바 N번째 작업을
   // 여는 키였는데, ⌘1~9가 한 화면 안에서 본문을 옮기는 키로 바뀌면서 걷혔다
   // (`shell-registry.ts`의 ⌘1~9 머리말). 목록 순서가 바뀌어도 따라 바꿀 키가 없다.
 
   return (
-    // Sidebar와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지
-    <div
-      style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
-      className={cn(
-        // 흰 바닥 — 무채색 선택 표시가 배경에 묻히지 않으려면 패널이 흰색이어야 한다
-        "relative shrink-0 overflow-hidden border-r bg-background",
-        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
-        !size.dragging &&
-          "transition-[width,border-color] duration-[220ms] ease-panel",
-        // border-r-0까지 붙이는 이유는 Sidebar.tsx의 같은 자리에 적었다 — 접힘 상태의 1px이
-        // 오른쪽 전부를 밀어 셸 헤더 인셋이 어긋난다
-        open ? "w-(--panel-width)" : "w-0 border-transparent border-r-0",
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-full w-(--panel-width) flex-col px-3 pb-3 transition-opacity",
-          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
-        )}
+    <>
+      {/* 목록 카드 머리 — 검색칸이 캡슐 자리에 늘어서고 `+`가 끝이다(Projects 프로토타입). 신호등을 피할 일은 바탕 줄의 몫이라
+          여기에는 사이드바 열림에 따라 갈리는 여백이 없다. */}
+      <CardHead
+        end={
+          <Hint
+            text="프로젝트 등록"
+            announce="name"
+            render={<Button variant="outline" size="icon-round" onClick={onAdd} />}
+          >
+            <Plus className="size-4" strokeWidth={1.8} />
+          </Hint>
+        }
       >
-      {/* 타이틀바 스트립을 겸하는 패널 헤더 — 사이드바 닫힘 시 신호등·토글을 피해 좌측 패딩을 넓힌다 */}
-      <div
-        data-tauri-drag-region
-        className={cn(
-          // ease-panel은 위 폭 트랜지션과 같아야 한다 — 이 버튼의 화면상 위치가 두 값의 합이라
-          // 곡선이 다르면 최종 자리를 지나쳤다 되돌아온다 (index.css의 --panel-ease 주석)
-          "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms] ease-panel",
-          sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
+        {projects.length > 0 && (
+          <InputGroup className="flex-1">
+            <InputGroupAddon>
+              <Search strokeWidth={1.8} />
+            </InputGroupAddon>
+            {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
+            <InputGroupInput
+              aria-label="프로젝트 검색"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="프로젝트 검색"
+            />
+          </InputGroup>
         )}
-      >
-        <Hint
-          text="프로젝트 등록"
-          announce="name"
-          type="button"
-          onClick={onAdd}
-          className="icon-button-quiet text-tertiary"
-        >
-          {/* 글리프도 16px — 사이드바를 닫으면 셸 컨트롤(토글·뒤로·앞으로) 바로 옆에 같은 간격으로
-              이어 서므로, 이 하나만 14px이면 넷이 한 메뉴로 읽히지 않는다 */}
-          <Plus className="size-4" strokeWidth={1.8} />
-        </Hint>
-      </div>
+      </CardHead>
 
-      {/* mb-[10px] = 헤더 행(44px)에서 24px 아이콘 버튼을 뺀 상하 여백 — 위아래 갭을 맞춘다 */}
-      {projects.length > 0 && (
-        <InputGroup className="mb-[10px] shrink-0">
-          <InputGroupAddon>
-            <Search strokeWidth={1.8} />
-          </InputGroupAddon>
-          {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
-          <InputGroupInput
-            aria-label="프로젝트 검색"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="프로젝트 검색"
-          />
-        </InputGroup>
-      )}
-
-      {projects.length === 0 ? (
-        <Empty variant="list" className="my-1">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Folder strokeWidth={1.6} />
-            </EmptyMedia>
-            <EmptyTitle>프로젝트가 없어요</EmptyTitle>
-            <EmptyDescription>로컬 저장소 폴더를 등록해 시작하세요.</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button variant="soft" size="sm" onClick={onAdd}>
-              프로젝트 등록
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center pb-10">
-          <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>
-        </div>
-      ) : (
-        <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pb-2 scroll-quiet">
-          {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
-              패널 가장자리로 간다. 상자가 바깥 거터 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
-              그만큼 더 안쪽에 서서 행 위로 들어온다. 사이드바 work 목록이 그 병을 실측으로
-              드러냈고(그쪽 주석), 이 목록은 행이 짧아 눈에 덜 띄었을 뿐 같은 자리였다. */}
-          {filtered.map((project) => {
-            const active = project.slug === selectedSlug;
-            return (
-              <button
-                key={project.slug}
-                type="button"
-                onClick={() => onSelect(project.slug)}
-                className={cn(
-                  // 테두리 없는 평평한 행 — 패널이 흰색이 된 뒤 흰 카드는 테두리만 남아 어긋난다.
-                  // 규격(반지름·패딩·줄 간격)은 작업 목록과 같은 값이다 — 다른 것은 줄 수뿐
-                  "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1 text-left transition-colors",
-                  active ? "selected-row" : "hover:bg-state-1",
-                )}
-              >
-                <span className="flex w-full items-center justify-between gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 truncate text-[13.5px] font-medium",
-                      project.missing && "text-muted-foreground line-through",
+      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+        {projects.length === 0 ? (
+          <Empty variant="list" className="my-1">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Folder strokeWidth={1.6} />
+              </EmptyMedia>
+              <EmptyTitle>프로젝트가 없어요</EmptyTitle>
+              <EmptyDescription>로컬 저장소 폴더를 등록해 시작하세요.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="soft" size="sm" onClick={onAdd}>
+                프로젝트 등록
+              </Button>
+            </EmptyContent>
+          </Empty>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center pb-10">
+            <span className="text-ui text-tertiary">검색 결과가 없어요</span>
+          </div>
+        ) : (
+          <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pb-2 scroll-quiet">
+            {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
+                패널 가장자리로 간다. 상자가 바깥 거터 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
+                그만큼 더 안쪽에 서서 행 위로 들어온다. 사이드바 work 목록이 그 병을 실측으로
+                드러냈고(그쪽 주석), 이 목록은 행이 짧아 눈에 덜 띄었을 뿐 같은 자리였다. */}
+            {filtered.map((project) => {
+              const active = project.slug === selectedSlug;
+              return (
+                <button
+                  key={project.slug}
+                  type="button"
+                  onClick={() => onSelect(project.slug)}
+                  className={cn(
+                    // 테두리 없는 평평한 목록 행(DS `.at-list-row`) — 이름 줄 + 경로 줄 + 원격 줄이 2px 사이로 선다.
+                    // 안쪽 8 · 12 · 모서리 10(ui-refresh 결정 6 — 목록 행). 고른 행과 hover는 카드 안 목록의 두 단이다.
+                    "flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors",
+                    active ? "selected-row" : "hover:bg-state-1",
+                  )}
+                >
+                  <span className="flex w-full items-center gap-2">
+                    <span
+                      className={cn(
+                        "min-w-0 truncate text-row font-medium",
+                        project.missing && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {project.name}
+                    </span>
+                    {project.missing && (
+                      // 꼬리표(`tag` — DS `Tag`)의 빨간 갈래(`.at-tag.danger`)다.
+                      <span className="tag ml-auto bg-destructive/8 text-caption text-destructive">누락</span>
                     )}
-                  >
-                    {project.name}
                   </span>
-                  {project.missing && (
-                    <span className="shrink-0 rounded-[7px] bg-red-500/10 px-2 py-0.5 text-[12px] font-medium text-red-600">
-                      누락
+                  <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
+                    <Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
+                    <span className="truncate">{project.path}</span>
+                  </span>
+                  {project.git?.remoteSlug && (
+                    <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
+                      <GitFork className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
+                      <span className="truncate">{project.git.remoteSlug}</span>
+                      {/* 꼬리표(`tag` — DS `Tag`). 글자는 이 줄의 고정폭을 물려받는다. */}
+                      <span className="tag">{project.baseBranch}</span>
                     </span>
                   )}
-                </span>
-                <span className="flex items-center gap-2 font-mono text-[11.5px] text-tertiary">
-                  <Folder className="size-3.5 shrink-0" strokeWidth={1.7} />
-                  <span className="truncate">{project.path}</span>
-                </span>
-                {project.git?.remoteSlug && (
-                  <span className="flex items-center gap-2 font-mono text-[11.5px] text-tertiary">
-                    <GitFork className="size-3.5 shrink-0" strokeWidth={1.7} />
-                    <span className="truncate">{project.git.remoteSlug}</span>
-                    <span className="shrink-0 rounded-[6px] bg-accent px-[7px] py-px text-[11px]">
-                      {project.baseBranch}
-                    </span>
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
-
-      {open && <ResizeHandle control={size} />}
-    </div>
+    </>
   );
 }
 

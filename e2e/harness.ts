@@ -745,7 +745,7 @@ export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator(
 
 /**
  * 그 work 행의 **오른쪽 메타** — 2열에 핀과 겹쳐 서는 칸(`sidebar-active-band` S4). 싣는 것이
- * 행의 화면값에 따라 갈린다: 부르면 마크와 경과, 돌면 마크, 조용하면 종류·수. **셸이 없는 행에는
+ * 행의 화면값에 따라 갈린다: 부르면 경과, 돌면 비움, 조용하면 셸 수(ui-refresh 결정 13). **셸이 없는 행에는
  * 이 칸이 없다** — 그래서 「비어 있다」는 행(`workRow`)이 선 것을 앵커로 두고 이것이 0인가로 잰다.
  */
 export const 오른쪽메타 = (page: Page, slug: string) =>
@@ -966,7 +966,7 @@ export const navButtons = (page: Page) => page.locator("aside nav").getByRole("b
 export const navButton = (page: Page, label: string) =>
   page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
-/** `Processes` 화면의 제목 — 머리의 글자는 제목 역할이 없어(`PageHeader`) 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** `Processes` 화면의 제목 — 카드 머리의 캡슐(`Crumbs`)은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
@@ -1097,9 +1097,10 @@ export async function markRunning(page: Page, running: string, ptyId = 1): Promi
     );
 
   const mark = page.locator(`[role="img"][aria-label*="${running}"]`);
-  // **부르기 전 수보다 늘었는가**를 본다 — 「하나라도 있는가」가 아니다. 이 마크는 탭 칸만이
-  // 아니라 사이드바 work 행과 nav `Terminal` 행에도 서므로, 같은 에이전트가 화면 어딘가에 이미
-  // 있으면 값이 대상 pty에 **안 앉아도** 첫 바퀴에 성공으로 돌아간다. 그러면 위 「모르는 id를
+  // **부르기 전 수보다 늘었는가**를 본다 — 「하나라도 있는가」가 아니다. 이 마크는 지금 화면의
+  // 셸 탭 칸마다(그리고 Processes의 셸 행에) 서므로, 같은 에이전트가 다른 칸에 이미 있으면 값이
+  // 대상 pty에 **안 앉아도** 첫 바퀴에 성공으로 돌아간다. 사이드바에는 마크가 없다(ui-refresh
+  // 결정 13) — 그래서 **대상 셸의 칸이 지금 화면의 탭 줄에 있어야** 이 기다림이 선다. 그러면 위 「모르는 id를
   // 주면 던진다」가 거짓말이 되고, 같은 에이전트를 셸 둘에 앉히는 그림(티켓 #203~#205)에서
   // 정확히 그 fail-open이 난다 — 이 저장소의 검사는 fail-closed여야 한다.
   const before = await mark.count();
@@ -1417,7 +1418,7 @@ export async function sentNotifications(
 
 /**
  * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
- * (ⓘ 메타의 행 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
+ * (info 맨 위의 복사 줄 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
  * 받아 적는다. 앱의 입구 하나를 갈아 끼우는 커맨드 붙잡기(`holdCommand`)와 알림 손잡이(`stubNotifications`)와 같은
  * 모양이다 — 새 층이 아니다.
  *
@@ -1474,6 +1475,17 @@ export async function 시계를세운다(page: Page): Promise<void> {
       if (attempt >= 3 || !String(error).includes("Cannot fast-forward to the past")) throw error;
     }
   }
+}
+
+/**
+ * `Processes`의 스냅샷 박자(2초) 둘을 **흐르는 시계로** 넘긴다 — 둘째 물음이 나갔으면 첫 답은 이미 그려졌다. 「박자가 와도 그대로다」를
+ * 잴 때 쓴다(ui-refresh 결정 28의 접힘). 시계를 세운 검사는 `runFor`로 한 박자씩 넘긴다(`processes-shells.spec.ts`의 `다음박자`).
+ */
+export async function 스냅샷두박자(page: Page): Promise<void> {
+  const before = await callCount(page, "processes_snapshot");
+  await expect
+    .poll(() => callCount(page, "processes_snapshot"), { timeout: 10_000, message: "스냅샷 박자가 두 번 안 왔다" })
+    .toBeGreaterThanOrEqual(before + 2);
 }
 
 /**

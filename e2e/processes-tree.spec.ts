@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./evidence";
+import { expect, test, type Locator, type Page } from "./evidence";
 import { answerByArg, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
@@ -14,6 +14,7 @@ import {
   글자대비,
   셸셋을띄운다,
   셸입력,
+  스냅샷두박자,
   칸들,
 } from "./harness";
 import { poolShell, processRow as 행, snapshotFixture } from "@/features/processes/process-fixture";
@@ -125,6 +126,51 @@ test("자손 행의 이름에 스냅샷의 명령줄이 툴팁으로 서고, 줄
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+/** 그 요소가 눈에 보이는 정도 — 자신과 조상의 불투명도를 곱한다(숨김은 줄 끝 동작 칸이 든다). */
+const 불투명도 = (element: Locator) =>
+  element.evaluate((node) => {
+    let opacity = 1;
+    for (let at: Element | null = node; at !== null; at = at.parentElement) opacity *= Number(getComputedStyle(at).opacity);
+    return opacity;
+  });
+
+// **프로세스 줄의 [끝내기] · ⋯은 손이 닿을 때만 선다**(ui-refresh 「같은 날 더 정한 것」 — Processes 다시 그림): 줄에 포인터가
+// 있거나 키보드 포커스가 줄 안에 들면 보인다. 자리는 늘 차지한다(불투명도만 바뀐다 — 숫자 칸이 흔들리지 않는다). 셸 줄의 [이동] ·
+// [닫기]는 늘 보인다 — 셸을 닫는 길이 숨지 않는다.
+test("프로세스 줄의 [끝내기] · ⋯은 줄에 포인터나 포커스가 있을 때만 보이고, 셸 줄의 [이동] · [닫기]는 늘 보인다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷([1]) });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await navButton(page, "Processes").click();
+
+  const node = 트리(page).getByRole("treeitem", { name: "node", exact: true });
+  const 동작 = [
+    node.getByRole("button", { name: "끝내기", exact: true }),
+    node.getByRole("button", { name: "프로세스 메뉴", exact: true }),
+  ];
+  const 셸동작 = ["이동", "닫기"].map((name) => 셸행(page, 1).getByRole("button", { name, exact: true }));
+  const 요약 = page.getByRole("region", { name: "요약", exact: true });
+
+  // 포인터가 트리 밖이다 — 프로세스 줄의 동작은 숨고, 셸 줄의 동작은 선다.
+  await 요약.hover();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(0);
+  for (const button of 셸동작) expect(await 불투명도(button)).toBe(1);
+
+  // 줄에 포인터를 올리면 선다. 떠나면 다시 숨는다.
+  await node.hover();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(1);
+  await 요약.hover();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(0);
+
+  // 키보드 포커스가 줄 안에 들면 포인터 없이도 선다.
+  await 동작[0].focus();
+  for (const button of 동작) await expect.poll(() => 불투명도(button)).toBe(1);
+  for (const button of 셸동작) expect(await 불투명도(button)).toBe(1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 셸 상태는 레지스트리가 내놓는 함수로 읽는다(셸 탭 · 사이드바 · 띠와 같은 말 — terminal-activity-signal 스토리 79). 셸 상태가 없고 조용하면 「조용함」과
 // 경과, 둘 다 아니면 도는 명령의 마크와 이름이다.
 test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 「조용함」이, 명령이 도는 셸은 그 명령이 선다", async ({ page }) => {
@@ -162,7 +208,7 @@ test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 
   await expect(셸행(page, 3)).toHaveAttribute("aria-label", "zsh, 조용함 2h");
   await expect(셸행(page, 3)).toContainText("조용함");
   await expect(셸행(page, 4)).toHaveAttribute("aria-label", "zsh, claude");
-  // 마크는 에이전트의 것이다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalMeta`와 같은 규칙).
+  // 마크는 에이전트의 것이다 — 이름은 접근성으로만 한 번 더 읽힌다(셸 탭 칸의 마크와 같은 규칙).
   await expect(셸행(page, 4).getByRole("img", { name: "claude", exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -253,5 +299,93 @@ test("셸 묶음이 트리 역할이고, 셸 행의 접근성 이름이 이름�
   expect(줄.map((row) => row.level)).toEqual(["1", "2", "3", "3", "4"]);
   // 이름 없는 줄이 없다 — 트리에 선 모든 줄이 한 문장으로 읽힌다.
   expect(줄.every((row) => (row.name ?? "").length > 0)).toBe(true);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/** 트리의 줄들과 펼침 — 이름과 `aria-expanded`(자식이 없는 줄은 없다). **DOM에 선 줄을 센다** — 접은 줄의 밑은 그려지지 않는다. */
+async function 펼침들(page: Page): Promise<Array<[string | null, string | null]>> {
+  return 트리(page)
+    .locator('[role="treeitem"]')
+    .evaluateAll((rows) => rows.map((row) => [row.getAttribute("aria-label"), row.getAttribute("aria-expanded")]));
+}
+
+/** 그 줄의 셰브론 — 이름이 「<줄 이름> 접기」 · 「<줄 이름> 펼치기」다. */
+const 셰브론 = (row: Locator, name: string, open: boolean) =>
+  row.getByRole("button", { name: `${name} ${open ? "접기" : "펼치기"}`, exact: true });
+
+// **트리가 접힌다**(ui-refresh 결정 28 · 「같은 날 더 정한 것」 — 사용자 요청으로 더한 동작). 자식이 있는 줄(작업 · 셸 도우미나 자손이
+// 있는 셸 · 자손이 있는 프로세스)만 셰브론을 달고, 그 줄이 `aria-expanded`를 단다. 접으면 밑의 줄을 안 그린다 — 줄은 평평한 채다(S58).
+// 기억은 화면의 상태다: 박자(2초)가 새 스냅샷을 가져와도 남고, 화면을 떠났다 오면 다 펼친 처음으로 돌아간다. [끝내기] · [닫기]의 대상은
+// 접힘과 상관없이 그 줄의 트리 전부다.
+test("작업 · 셸 · 자식 있는 프로세스 줄이 셰브론으로 접히고 펴지며, 박자가 와도 그대로이고, 다른 화면에 갔다 오면 다 펼친 처음으로 돌아간다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, {
+    processes_snapshot: 스냅샷([1, 2, 3]),
+    pty_close_check: answerByArg("id", { 1: { command: false, descendants: 2 } }),
+  });
+  await 셸셋을띄운다(page);
+  await navButton(page, "Processes").click();
+  await expect(셸행(page, 1)).toBeVisible();
+
+  const 작업 = `${plainWork.title}, 셸 2개`;
+  const 처음: Array<[string, string | null]> = [
+    [작업, "true"],
+    ["zsh, 띄운 프로세스 2개", "true"],
+    ["셸 도우미, gitstatusd-darwin-arm64", null],
+    ["node", "true"],
+    ["esbuild", null],
+    ["zsh, 조용함 2h", null],
+    ["Terminal, 셸 1개", "true"],
+    ["zsh, 조용함 2h", null],
+  ];
+  // 처음은 다 펼쳤다. 자식이 없는 줄에는 셰브론이 없다 — 앵커: 자식이 있는 줄에는 있다.
+  expect(await 펼침들(page)).toEqual(처음);
+  await expect(셰브론(셸행(page, 2), "zsh", true)).toHaveCount(0);
+  await expect(셰브론(셸행(page, 1), "zsh", true)).toBeVisible();
+
+  // ── 프로세스 줄 ── 접으면 그 밑(esbuild)만 빠지고 셰브론의 이름이 「펼치기」가 된다.
+  const node = 트리(page).getByRole("treeitem", { name: "node", exact: true });
+  await 셰브론(node, "node", true).click();
+  await expect(node).toHaveAttribute("aria-expanded", "false");
+  await expect(셰브론(node, "node", false)).toBeVisible();
+  expect(await 펼침들(page)).toEqual([처음[0], 처음[1], 처음[2], ["node", "false"], 처음[5], 처음[6], 처음[7]]);
+  // 접은 줄의 [끝내기]는 그 트리 전부를 넘긴다 — 숨은 esbuild까지다(확인 창의 수가 펼쳤을 때와 같다).
+  await node.getByRole("button", { name: "끝내기", exact: true }).click();
+  const 끝내기창 = page.getByRole("alertdialog", { name: "'node' 끝내기" });
+  await expect(끝내기창).toContainText("이 프로세스와 그 밑에서 뜬 프로세스 1개를 끝내요.");
+  await 끝내기창.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(끝내기창).toHaveCount(0);
+
+  // ── 셸 줄 ── 접으면 셸 도우미와 자손이 다 빠진다. [닫기]는 그대로 서고, 확인 창의 수가 그 셸의 트리 전부다.
+  await 셰브론(셸행(page, 1), "zsh", true).click();
+  await expect(셸행(page, 1)).toHaveAttribute("aria-expanded", "false");
+  expect(await 펼침들(page)).toEqual([처음[0], ["zsh, 띄운 프로세스 2개", "false"], 처음[5], 처음[6], 처음[7]]);
+  await 셸행(page, 1).getByRole("button", { name: "닫기", exact: true }).click();
+  const 닫기창 = page.getByRole("alertdialog", { name: "셸 닫기" });
+  await expect(닫기창).toContainText("이 셸에서 띄운 프로세스 2개가 아직 돌아요. 닫을까요?");
+  await 닫기창.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(닫기창).toHaveCount(0);
+
+  // ── 작업 줄 ── 접으면 그 work의 셸이 다 빠진다.
+  const 터미널 = 트리(page).getByRole("treeitem", { name: "Terminal, 셸 1개", exact: true });
+  await 셰브론(터미널, "Terminal", true).click();
+  const 접은뒤: Array<[string, string | null]> = [처음[0], ["zsh, 띄운 프로세스 2개", "false"], 처음[5], ["Terminal, 셸 1개", "false"]];
+  expect(await 펼침들(page)).toEqual(접은뒤);
+
+  // 박자가 새 스냅샷을 가져와도 그대로다.
+  await 스냅샷두박자(page);
+  expect(await 펼침들(page)).toEqual(접은뒤);
+
+  // 셸을 다시 펴면 그 안에서 접어 둔 프로세스는 접힌 채다.
+  await 셰브론(셸행(page, 1), "zsh", false).click();
+  expect(await 펼침들(page)).toEqual([처음[0], 처음[1], 처음[2], ["node", "false"], 처음[5], ["Terminal, 셸 1개", "false"]]);
+
+  // 다른 화면에 갔다 오면 다 펼친 처음이다 — 기억은 화면에 있는 동안만이다.
+  await navButton(page, "Projects").click();
+  await expect(트리(page)).toHaveCount(0);
+  await navButton(page, "Processes").click();
+  await expect(셸행(page, 1)).toBeVisible();
+  expect(await 펼침들(page)).toEqual(처음);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

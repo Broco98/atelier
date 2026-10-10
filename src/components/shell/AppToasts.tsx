@@ -55,10 +55,10 @@ function ToastList() {
     const actions = toastActionsOf(toast.data);
     return (
       <Toast key={toast.id} toast={toast} className="data-[limited]:hidden">
-        <ToastTitle className="min-w-0 flex-1 leading-[1.5]" />
+        <ToastTitle className="min-w-0 flex-1" />
         {/* 버튼은 동작 토스트에만 선다 — 데이터에 버튼이 없으면 × 도 안 그린다(`toastOptionsOf`). */}
         {actions.map((action) => (
-          <Button key={action.label} variant="secondary" size="xs" onClick={action.run} className="text-[12px]">
+          <Button key={action.label} variant="secondary" size="xs" onClick={action.run}>
             {action.label}
           </Button>
         ))}

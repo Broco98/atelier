@@ -8,7 +8,6 @@ import {
   NO_SHELLS,
   openShell,
   ownerOf,
-  runningAgentsOf,
   setAttention,
   setRunning,
   setTitle,
@@ -49,8 +48,8 @@ function twoWorks(): { state: ShellsState; 나: number } {
 /**
  * **셸 하나가 흔들리는 동안 남의 work 행이 다시 안 그려진다**(판 04의 핵심 위험).
  *
- * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
- * 갈아 끼운다. 목록이 통째로 구독하면 **모든 work 행이** 그때마다 다시 그려진다.
+ * 셸은 자주 흔들린다 — 프롬프트마다 OSC 타이틀을 쏘고, 도는 명령은 1초 폴링으로 갈아
+ * 끼운다. 목록이 통째로 구독하면 **모든 work 행이** 그때마다 다시 그려진다.
  *
  * 재는 것은 「리렌더 횟수」가 아니라 **셀렉터가 주는 값**이다. `useStore`는 얕은 비교로
  * 같으면 다시 그리지 않으므로, 「안 바뀐 work에 대해 같은 값을 준다」가 곧 「그 행은 안
@@ -59,25 +58,10 @@ function twoWorks(): { state: ShellsState; 나: number } {
  * 아래 「배선」이 리터럴로 막는다.
  */
 describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
-  it("타이틀은 아무 행도 흔들지 않는다", () => {
+  it("타이틀은 셸 수를 흔들지 않는다", () => {
     const { state, 나 } = twoWorks();
     const 뒤 = setTitle(state, 나, "~/atelier — nvim");
-    for (const slug of ["가", "나"]) {
-      const owner = ownerFor(slug);
-      expect(shallow(runningAgentsOf(뒤, owner), runningAgentsOf(state, owner))).toBe(true);
-    }
     expect(shallow(shellCountsOf(뒤), shellCountsOf(state))).toBe(true);
-  });
-
-  it("명령이 시작되면 그 work의 행만 달라진다", () => {
-    const { state, 나 } = twoWorks();
-    const 뒤 = setRunning(state, 나, "claude");
-    expect(shallow(runningAgentsOf(뒤, ownerFor("가")), runningAgentsOf(state, ownerFor("가")))).toBe(
-      true,
-    );
-    expect(shallow(runningAgentsOf(뒤, ownerFor("나")), runningAgentsOf(state, ownerFor("나")))).toBe(
-      false,
-    );
   });
 
   // **화면값도 같은 규칙 위에 선다**(#203). 이 Record가 문자열만 담는 것이 그 이유 전부라,
@@ -123,30 +107,6 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
 describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
   const sidebar = read("Sidebar.tsx");
 
-  it("종류는 **자리마다 자기 것만** 구독한다", () => {
-    // 얕은 비교가 빠지면 셀렉터가 회차마다 새 배열을 돌려주므로 위 검사들이 전부 초록인
-    // 채로 모든 행이 초마다 다시 그려진다 — 값과 배선을 함께 봐야 하는 이유가 이것이다.
-    //
-    // 인자가 슬러그가 아니라 `owner`인 것은 nav `Terminal`이 같은 컴포넌트를 쓰기 때문이다
-    // (결정 4·13) — 빈 키 `""`가 최상위 터미널이다(ui-refresh 결정 23).
-    expect(sidebar).toContain(
-      "useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow)",
-    );
-  });
-
-  it("종류를 Record로 한 번에 읽지 않고, 부르는 자리도 하나다", () => {
-    // `shellCountsOf`처럼 Record로 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘
-    // 어긋나고, work 하나에서 명령이 시작될 때마다 **목록 전체**가 다시 그려진다
-    // (`runningAgentsOf` 머리말이 그 근거를 든다). 부르는 자리가 하나뿐임을 세어 못박는다.
-    // 이름이 아니라 **부르는 자리**를 센다 — 이름만 세면 import 줄과 주석의 산문까지
-    // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다.
-    //
-    // **nav `Terminal`이 같은 어휘를 쓰게 되면서 이 검사가 하나를 더 막는다**(결정 4·13):
-    // 「nav를 위해 구독을 하나 더 판다」. 구독 컴포넌트 하나를 work 행과 nav가 함께 쓰므로
-    // 부르는 자리는 여전히 하나여야 한다.
-    expect(countOf(sidebar, "runningAgentsOf(")).toBe(1);
-  });
-
   it("화면값은 **한 번에** 읽어 목록으로 내린다", () => {
     // 이쪽은 위와 반대다(#203) — 값이 문자열이라 Record 하나로 읽는 것이 맞다. 행마다
     // 구독하면 열여덟 개가 같은 셀렉터를 각자 돌면서 얻는 것이 없다. 값을 고르는 자리가
@@ -157,11 +117,12 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(countOf(sidebar, "(state) => signalsOf(state)")).toBe(1);
   });
 
-  it("오른쪽 메타의 **시각·마크**는 행마다 자기 것만 구독한다", () => {
-    // 이 둘은 문자열 하나로 안 접히므로 위 Record에 못 태운다 — 객체를 담으면 회차마다
-    // 새것이라 얕은 비교가 늘 어긋나고 목록 전체가 다시 그려진다(`runningAgentsOf` 머리말).
-    // 그래서 종류·수와 **같은 구독 컴포넌트 안**에서 자기 것만 고른다: 자리가 하나여야
-    // 레인과 오른쪽 메타가 같은 셸을 고른다(스토리 79).
+  it("오른쪽 메타의 **시각**은 행마다 자기 것만 구독한다", () => {
+    // 시각은 화면값과 한 묶음(`SignalView`)이라 문자열 하나로 안 접히므로 위 Record에 못 태운다 —
+    // 객체를 담으면 회차마다 새것이라 얕은 비교가 늘 어긋나고 목록 전체가 다시 그려진다.
+    // 그래서 셸 수를 받는 **같은 구독 컴포넌트 안**에서 자기 것만 고른다: 자리가 하나여야
+    // 레인과 오른쪽 메타가 같은 셸을 고른다(스토리 79). 「도는 것」은 구독하지 않는다 — 그것을
+    // 읽던 마크가 사이드바에서 빠졌다(ui-refresh 결정 13).
     expect(sidebar).toContain("useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow)");
     expect(countOf(sidebar, "topSignalView(")).toBe(1);
     // **최상위 셸은 그 셀렉터가 아무것도 안 준다.** 스펙의 Out of Scope가 nav `Terminal`을
@@ -187,9 +148,8 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
     // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.
     //
-    // **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8). 그 값이
-    // 함께 가야 하는 것은 「그 밖의 셸」의 수가 셸 수와 도는 것을 **둘 다 아는 자리**에서만
-    // 나오기 때문이고(결정 3), 그 자리가 `ShellMeta` 하나다.
+    // **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8). 조용한 행의
+    // 메타가 곧 그 수이고(`⌨ 셸 수` — ui-refresh 결정 13), 그것을 그리는 자리가 `ShellMeta` 하나다.
     // **두 조각으로 잡는다.** 조각마다 지키는 것이 다르다: 앞은 소유자를 `ownerOf`가 짓는가(조회하는 쪽과 같은
     // 함수여야 한다 — ui-refresh 결정 23), 뒤는 개수의 키가 slug인가(그 Record를 받는 목록이 터미널을 모른다 —
     // `shellCountsOf` 머리말). 두 어휘가 한 자리에 함께 서는 것이 그 사정 때문이다.
@@ -255,9 +215,8 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     // 걷은 것은 펼침이지 이 숫자가 아니다 — 여기서 빠지면 최상위 셸이 몇 개 도는지가
     // 사이드바 어디에도 안 남는다(work 행은 오른쪽 메타가 그 몫을 한다 — 결정 2·3).
     //
-    // **개수 prop이 메타 슬롯이 됐다**(결정 4·13). 그 계약은 그대로 이어진다: 여전히
-    // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
-    // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
+    // **개수 prop이 메타 슬롯이다**(결정 4·13). 최상위 셸 수가 work 행과 같은 `⌨ 셸 수`로
+    // 이 행에 서고, 그 셸에서 claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13).
     expect(sidebar).toContain("<RowMetaFor owner={ownerOf()} shellCount={topShells} />");
   });
 });

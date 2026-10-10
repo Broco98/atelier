@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Spinner } from "@/components/ui/spinner";
 
 // 상태 축이 **눈에 보이는 모양**(#203). 값을 정하는 자리는 `features/terminal/shell-attention`
@@ -84,11 +83,12 @@ export function subagentLabel(count: number): string | null {
  * 실제로 그렇게 났고 L3의 대비 검사가 그것을 잡았다(2026-09-10).
  *
  * **점과 글자가 다른 토큰을 읽는다**(`-ink`). 결정 3의 표가 못박은 것은 점의 색인데
- * (`amber-600`) 라이트 사이드바에서 그 색의 대비는 2.98이라, 같은 색을 **글자**에 쓰면
+ * (`amber-600`) 라이트 사이드바에서 그 색의 대비는 2.90이라, 같은 색을 **글자**에 쓰면
  * 두 줄 행을 연 판이 고치려던 3.0짜리 글자를 다시 만든다(그 판의 스토리 24). 점은 3px 후광이
  * 면적을 벌지만 글자에는 그런 것이 없어서, 라이트의 글자만 한 단 어둡게 갈랐다 — 지금 그
- * 잉크를 읽는 글자는 탭 이름과 호버 카드 말 칸의 라벨이다. 사람에게 열어 둔 물음은
- * `spec/물음-둘째-줄의-색.md`다.
+ * 잉크를 읽는 글자는 탭 이름, 호버 카드 말 칸의 라벨, 행 오른쪽 메타와 띠 줄의 경과다
+ * (`SignalElapsed` — DS `.at-row-meta.wait`). 점까지 어둡게 하는 안은
+ * ui-refresh 결정 29가 기각했다(`index.css`의 상태색 주석).
  */
 const TONE: Readonly<
   Record<CallingKind, { dot: string; text: string; fill: string; edge: string }>
@@ -125,14 +125,13 @@ export interface SignalTint {
  * 없다. 같은 표(`TONE`)를 딛으면 그 어긋남이 **생길 자리가 없다**.
  *
  * **채움과 잉크가 갈려 나가는 것은 마크 때문이다**(판 04 결정 15 · 스토리 32). 마크는 늘
- * 「누구」이고 색은 늘 「어떤 상태」다 — 정체엔 색을 안 쓴다. 사이드바 행은 그 규칙을
- * **자리로** 지킨다(색은 레인의 점이 들고, 마크는 오른쪽 메타에 행 글자색으로 선다 — `SignalMeta`).
- * 탭에서는 마크가 칸 상자 **안**에 서므로 그 길이 없다: 잉크를 상자에 얹으면 이름이 숨는
+ * 「누구」이고 색은 늘 「어떤 상태」다 — 정체엔 색을 안 쓴다(사이드바에는 마크가 없다 — ui-refresh
+ * 결정 13). 탭에서는 마크가 칸 상자 **안**에 서므로 잉크를 이름에만 줘야 한다: 잉크를 상자에 얹으면 이름이 숨는
  * 폭에서만 서는 글리프가 `currentColor`로 물들어, 하필 스토리 53이 「거기서도 신호가 살아야
  * 한다」고 적은 그 폭에서 claude 로고가 앰버가 된다. 그래서 **잉크를 이름 글자에만** 준다.
  *
- * **켜진 칸에서 앰버가 회색을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
- * `toggle-on` 대신 이 채움이 서고, 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다.
+ * **켜진 칸에서 앰버가 흰 면(`tab-on`)을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
+ * `tab-on` 대신 이 채움이 서고, 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다.
  * 테두리를 `ring`(그림자)으로 그리는 것은 **폭을 안 먹기 때문이다**(스토리 54) — `border`로
  * 그리면 안쪽 폭이 2px 줄어 상태가 바뀔 때마다 이름과 닫기가 옆으로 뛴다.
  *
@@ -155,14 +154,14 @@ export function signalTint(kind: ShellSignal, active: boolean): SignalTint | nul
 /**
  * 이 화면값이 행의 오른쪽 메타에 **경과를 다는가**(결정 13 · `sidebar-active-band` S4). 도는
  * 중은 안 단다 — 레인의 스피너가 「지금 돈다」를 이미 말하고, 경과를 붙이면 「3분째 기다린다」로
- * 읽히는데 그 셸은 일하는 중이다.
+ * 읽히는데 그 셸은 일하는 중이다. 단다면 그 값은 부르는 갈래(`CallingKind`)다 — 경과가 그 잉크를 읽는다.
  *
  * **함수 하나인 이유는 짝이 둘이기 때문이다.** 그리는 쪽(`SignalMeta`)과 시계를 켜는 쪽
  * (`Sidebar.tsx`의 `useNow`)이 같은 사실의 두 표현인데, 각자 조건을 적어 두면 규칙이 바뀌는
  * 날 한쪽만 고쳐도 화면이 멀쩡하다 — 값만 조용히 늙거나, 아무도 안 읽는 시계가 열여덟 행에서
  * 돈다. 둘 다 이 함수를 딛으면 그 어긋남이 안 생긴다.
  */
-export function showsElapsed(kind: ShellSignal): boolean {
+export function showsElapsed(kind: ShellSignal): kind is CallingKind {
   return kind !== "working";
 }
 
@@ -215,61 +214,58 @@ export function formatElapsed(ms: number): string {
 }
 
 /**
- * 행의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4). `[마크] [경과]`.
- * 행이 한 줄(32px)이 되면서 두 줄 행의 둘째 줄(마크 · 말 · 경과)이 하던 일 가운데 「누가」와
- * 「얼마나」만 이 칸이 든다 — 띠 줄과 같은 어휘다. 「무슨 말을 하나」는 올려 볼 때만 필요해서
- * 호버 카드의 말 칸과 행 버튼의 설명으로 갔다(`SignalNote`). 둘째 줄을 그리던 조각은
- * `sidebar-active-band` 판 5에서 걷혔다.
+ * **경과** 한 조각 — 행 오른쪽 메타(`SignalMeta`)와 띠 줄(`attention-band.tsx`)이 같은 이 조각을
+ * 부른다. 두 자리가 같은 어휘라(띠 줄은 행의 축소판이다) 규격과 색이 갈리면 같은 셸의 같은 경과가
+ * 두 무게로 읽힌다.
+ *
+ * **상태색의 잉크로 칠한다**(DS `.at-row-meta.wait` · `.done` — 굵기 500). 사이드바에서 마크가
+ * 빠지면서(ui-refresh 결정 13) 부르는 행의 오른쪽 칸에 남은 것이 이것 하나라, 부차 정보의
+ * `tertiary`(바탕 위 2.95:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 바탕 위 4.5를 넘는다(`TONE` 머리말).
+ *
+ * **표식(`data-elapsed`)은 검사가 이 조각을 집는 이름이다** — `tabular-nums`는 띠 머리의 수도 든다.
+ */
+export function SignalElapsed({ kind, ms }: { kind: CallingKind; ms: number }) {
+  return (
+    <span data-elapsed="" className={cn("shrink-0 text-meta font-medium tabular-nums", TONE[kind].text)}>
+      {formatElapsed(ms)}
+    </span>
+  );
+}
+
+/**
+ * 행의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4 · ui-refresh 결정 13).
+ * 행이 한 줄(32px)이 되면서 두 줄 행의 둘째 줄(마크 · 말 · 경과)이 하던 일 가운데 「얼마나」만
+ * 이 칸이 든다 — 띠 줄과 같은 어휘다. 「누가」(에이전트 마크)는 사이드바에서 빠졌고(ui-refresh
+ * 결정 13 — 무엇이 도는지는 호버 카드와 셸 탭이 말한다), 「무슨 말을 하나」는 올려 볼 때만
+ * 필요해서 호버 카드의 말 칸과 행 버튼의 설명으로 갔다(`SignalNote`).
  *
  * | 화면값 | 서는 것 |
  * |---|---|
- * | 부름(기다림·안 본 완료) | 마크 + 경과. 마크가 없는 셸(그냥 zsh, 벨)이면 경과만 |
- * | 도는 중 | 마크. 경과는 없다(`showsElapsed`) |
- *
- * **마크가 상태색을 안 받는다**(판 04 결정 15). `currentColor`로 칠하는 글리프라 행의 글자색을
- * 그대로 받는다 — 색은 레인이 말한다. 경과는 부차 정보라 한 단 내려간 `tertiary`다.
+ * | 부름(기다림·안 본 완료) | 경과만(`SignalElapsed`) |
+ * | 도는 중 | 아무것도 — 경과가 없다(`showsElapsed`) |
  *
  * **규격(글자 크기·간격·오른쪽 여백)이 조용한 갈래(`ShellMeta`)와 같은 정의다**(index.css의
  * `row-meta`). 두 갈래가 같은 칸에 번갈아 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
  * 숫자의 오른쪽 끝이 튄다 — 그 끝이 구획 머리의 개수와 같은 x에 서는 것(`SidebarItem` 주석의
  * 계약)도 둘 다 지켜야 한다. 그래서 문자열을 옮겨 적지 않고 한 정의를 부른다.
  *
- * **아무것도 안 설 때는 `null`이다.** 도는 셸의 마크를 모르는 드문 갈래(훅 없는 셸이 OSC로
- * 앰버를 세웠다가 출력으로 풀린 칸에서 아는 명령이 안 도는 경우)다 — 빈 상자를 세우면 칸이
- * 오른쪽 여백만큼의 폭을 쥔다. work 행의 칸 상자도 그때 함께 빠진다(`WorkSectionList.tsx`의
- * `empty:hidden`) — 제목과 떼던 9px 틈까지 안 남는다.
+ * **도는 중에는 `null`이다.** 빈 상자를 세우면 칸이 오른쪽 여백만큼의 폭을 쥔다. work 행의 칸
+ * 상자도 그때 함께 빠진다(`WorkSectionList.tsx`의 `empty:hidden`) — 제목과 떼던 9px 틈까지 안 남는다.
  */
 export function SignalMeta({
   kind,
-  running,
   since,
   now,
 }: {
   kind: ShellSignal;
-  /** 그 셸에서 도는 것의 원문 — 마크를 고르는 것은 여기다(표는 `agentMarkOf` 하나). */
-  running: string | null;
   since: number;
   /** 지금. 밖에서 받는다 — 이 조각은 시계를 안 든다(`formatElapsed`). */
   now: number;
 }) {
-  const mark = agentMarkOf(running);
-  const elapsed = showsElapsed(kind);
-  if (mark === null && !elapsed) return null;
+  if (!showsElapsed(kind)) return null;
   return (
     <span className="row-meta">
-      {mark && (
-        // 이름은 눈이 아니라 접근성으로만 읽는다 — `ShellMeta`의 무리와 같은 규칙이다.
-        // 수가 안 붙는 것은 이 자리가 **셸 하나**의 신호이기 때문이다(무리가 아니다).
-        <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
-          <mark.Glyph className="size-3" />
-        </span>
-      )}
-      {elapsed && (
-        // 표식은 띠의 경과와 같은 것을 쓴다(`attention-band.tsx`) — 같은 어휘라 집는 이름도 하나다.
-        <span data-elapsed="" className="shrink-0 tabular-nums text-tertiary">
-          {formatElapsed(now - since)}
-        </span>
-      )}
+      <SignalElapsed kind={kind} ms={now - since} />
     </span>
   );
 }
@@ -292,7 +288,7 @@ export function SignalMeta({
  */
 export function SignalNote({ kind, message }: CallingNote) {
   return (
-    <div data-last-message="" className="flex flex-col gap-1 text-[12px] leading-snug">
+    <div data-last-message="" className="flex flex-col gap-1 text-caption leading-snug">
       <span className={cn("font-medium", TONE[kind].text)}>{SIGNAL_LABEL[kind]}</span>
       <p className="line-clamp-2 wrap-break-word">{message}</p>
     </div>

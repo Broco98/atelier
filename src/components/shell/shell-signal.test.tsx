@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
+import { SIGNAL_LABEL, SignalLane, SignalMeta, formatElapsed } from "./shell-signal";
 import type { ShellSignal } from "./shell-signal";
 
 // 정적 마크업 seam — 상태 축이 **처음 눈에 보이는 자리**의 그림을 여기서 본다(#203).
@@ -95,6 +95,29 @@ describe("경과", () => {
   // 음수를 그대로 흘리면 행에 `-3s`가 앉는다.
   it("앞선 시각은 0으로 눕는다", () => {
     expect(formatElapsed(-5_000)).toBe("0s");
+  });
+});
+
+// **행 오른쪽 메타의 신호 갈래**(ui-refresh 결정 13). 부르는 행은 경과만, 도는 행은 비움이다 —
+// 마크가 빠졌으므로 「누가」는 이 자리가 말하지 않는다(호버 카드와 셸 탭이 말한다).
+describe("오른쪽 메타 — 부름은 경과만, 도는 중은 비움", () => {
+  const signalMeta = (kind: ShellSignal, ms = 0) =>
+    renderToStaticMarkup(<SignalMeta kind={kind} since={0} now={ms} />);
+
+  it.each([
+    ["waiting", "text-wait-ink"],
+    ["done", "text-done-ink"],
+  ] as const)("%s는 경과 하나만 서고, 상태색의 잉크로 칠한다", (kind, ink) => {
+    const markup = signalMeta(kind, 125_000);
+    expect(markup.replace(/<[^>]*>/g, "")).toBe("2m");
+    expect(markup).toContain(ink);
+    expect(markup).not.toContain('role="img"');
+  });
+
+  it("도는 중은 아무것도 안 그린다 — 칸이 빈다", () => {
+    // 경과가 없고(`showsElapsed`) 마크도 없으니 빈 상자를 세우지 않는다. 빈 상자가 서면 칸이
+    // 오른쪽 여백만큼의 폭을 쥔다 — work 행의 칸은 그때 통째로 빠진다(`WorkSectionList.tsx`의 `empty:hidden`).
+    expect(signalMeta("working", 125_000)).toBe("");
   });
 });
 

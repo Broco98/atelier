@@ -87,6 +87,8 @@ describe("말의 사전", () => {
         "정리 기록",
         "열",
         "분할",
+        "레일",
+        "패널 토글",
         "터미널",
         "고르는 것의 라벨은 소문자 영어",
       ]),
@@ -111,6 +113,24 @@ describe("말의 사전", () => {
     for (const word of refused) {
       expect(ariaLabels.filter((label) => label.includes(word))).toEqual([]);
     }
+  });
+
+  // ui-refresh 결정 9 · 10. 작업 패널을 고르는 `spec` · `info`가 패널 머리의 탭에서 바탕 오른쪽 끝의 레일로 나갔다. 사전이
+  // 그 자리를 모르면 다음 사람이 옛 말 「패널 탭」으로 부르는데, 레일 칸은 켜진 것이 0개일 수 있어(켜진 칸을 다시 누르면
+  // 닫힌다) 탭이 아니다. 거부어에 들어야 접근성 이름 검사(위)가 레일 묶음 · 칸 · 토글의 이름에서 그 낱말을 문다.
+  it("「레일」 · 「패널 토글」이 등재돼 있고, 「레일」이 「패널 탭」을 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["레일", "패널 토글"]));
+    expect(bodyOf("레일")).toContain("_피할 말_: 패널 탭");
+    expect(refused).toContain("패널 탭");
+    // 레일이 패널을 닫아도 남는다는 것, 토글이 ⌘Enter와 같다는 것이 본문에 있어야 다음 사람이 둘을 패널 머리에 되돌리지 않는다.
+    expect(bodyOf("레일")).toContain("패널이 닫혀도 남고");
+    expect(bodyOf("패널 토글")).toContain("⌘Enter");
+  });
+
+  it("문서 어디에도 「패널 탭」이 _피할 말_ 줄 밖에 남지 않는다", () => {
+    // 레일 칸이 된 자리를 옛 말로 부르는 문장(탭 · 레이아웃 · 항목 · 표기)이 남으면 사전이 거부한 말을 사전이 쓴다.
+    const lines = doc.split("\n").filter((line) => line.includes("패널 탭"));
+    expect(lines).toEqual(["_피할 말_: 패널 탭"]);
   });
 
   it("「모든 프로젝트」가 등재돼 있고, 폴더 이름과 「루트」를 거부한다", () => {
@@ -261,7 +281,7 @@ describe("말의 사전", () => {
   });
 
   it("「항목」이 설정 nav의 줄을 「설정 nav 항목」으로 가르고, 맨 위를 「루트」라 부르지 않는다", () => {
-    // develop 사전은 설정 nav의 줄도 「항목」이라 불렀다 — 「패널 탭」처럼 수식으로 가른다.
+    // develop 사전은 설정 nav의 줄도 「항목」이라 불렀다 — 「레일 칸」처럼 수식으로 가른다.
     expect(bodyOf("항목")).toContain("설정 nav 항목");
     expect(bodyOf("항목")).toContain("맨 위 항목");
     expect(refused).toContain("루트");
@@ -303,7 +323,7 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
   });
 
   it("대문자 층이 사라진 구획 머리 `Iterations`·`Documents`를 들지 않는다", () => {
-    // spec 패널 탭에 구획이 없어졌다(spec 레이아웃 결정 24) — 레이아웃 순서의 트리 하나다. 사라진
+    // `spec` 패널에 구획이 없어졌다(spec 레이아웃 결정 24) — 레이아웃 순서의 트리 하나다. 사라진
     // 머리를 예로 들면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다. 위 검사의 main nav가
     // 이 슬라이스를 실제로 읽는다는 양성 그물이다(비어 있으면 둘 다 저절로 초록이다).
     expect(uppercase).not.toContain("Iterations");
@@ -316,7 +336,7 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
 
   it("소문자 `terminal`을 고르는 것으로 들지 않는다", () => {
     // 그 라벨은 사이드바 가지의 머리행이었고 그 행이 사라졌다. 남은 소문자 가족은
-    // 탭 줄의 `spec`과 패널 탭의 `spec`·`info`다 — 예시가 늙으면 「대소문자가 층을
+    // 탭 줄의 `spec`과 레일 칸의 `spec`·`info`다 — 예시가 늙으면 「대소문자가 층을
     // 가른다」는 규칙 자체가 화면에서 확인되지 않는다.
     expect(notation).not.toContain("`terminal`");
   });

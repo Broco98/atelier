@@ -2,7 +2,7 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { callCount, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
-import { fillToCap, MAX_SHELLS, rowOf, settle as settleLayout } from "./tab-row";
+import { BELOW_APP_MIN, fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, widenSidebar } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
 // 소비자가 나눠 본다** — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」 — 그리고 놓은 곳이
@@ -200,24 +200,28 @@ test.describe("work 화면", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창에서는 칸 상자가 칸 하나 폭까지
+  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 가장 좁은 폭에서는 칸 상자가 칸 하나 폭까지
   // 줄어 있어 폭을 먹는 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
   // 바꾸면 누른 순간 잰 기하가 낡아 재는 것이 달라진다.
+  //
+  // **사이드바를 넓혀 둔다**(400). 작업 패널이 탭 줄 아래로 내려온 뒤로(ui-refresh 결정 4) 줄을 좁히는 것은 사이드바와
+  // 창뿐이다. 세 폭은 셋의 넘침을 고른 것이다 — 1060은 넘침이 한 칸보다 작고, 900(앱 창의 최소 폭)은 여러 칸이 넘치고,
+  // `BELOW_APP_MIN`은 상자가 칸 하나 폭이다(`tab-row.ts` 머리말 — 앱 창은 거기까지 안 좁아지지만 그 상자의 장치는 그대로다).
   //
   // 셸이 여덟이라 줄이 가로로 스크롤된다(결정 20) — 그래도 틈이 맞는지를 **놓아서** 본다.
   // 스크롤은 **누른 뒤에** 한 칸만큼 더 민다: 누른 순간과 움직이는 순간의 `scrollLeft`가 달라야
   // 내용 좌표(`tab-gap.ts`)가 실제로 쓰인다 — 같으면 뷰포트 좌표로 재고 셈해도 초록이다.
   test("끄는 동안 줄이 안 넘치고, 스크롤된 줄에서도 틈이 맞는다", async ({ page }) => {
     const names = Array.from({ length: MAX_SHELLS }, (_, at) => `셸${at + 1}`);
+    await widenSidebar(page);
     await openWork(page, names);
     await fillToCap(page);
 
     let order = [...names];
-    for (const width of [1280, 1120, 900]) {
+    for (const width of [1060, 900, BELOW_APP_MIN]) {
       const at = `${width}px`;
       await page.setViewportSize({ width, height: 800 });
-      // **작업 패널은 열린 채다** — 창을 처음 연 기본 배치가 가장 좁은 줄이다. 900px에서도 끌
-      // 칸과 틈이 화면에 있어야 한다(`terminal-tabs`의 「셸 칸이 보이고 눌린다」가 같은 배치를 든다).
+      // 가장 좁은 폭에서도 끌 칸과 틈이 화면에 있어야 한다(`terminal-tabs`의 「셸 칸이 보이고 눌린다」가 같은 바닥을 든다).
       //
       // **배치가 멈출 때까지 기다린다**(`settleLayout`). 창 폭이 바뀐 뒤 줄 폭이 자리를 잡기 전에 누르면
       // 누른 순간 잰 기하가 다음 프레임에 낡는다 — 실물에서는 없는 경쟁이다.
@@ -227,10 +231,10 @@ test.describe("work 화면", () => {
 
       // 끄는 칸(끝에서 둘째)이 보이게, 끝에서 **반 칸 모자라게** 줄을 민다 — 켜진 칸이 옮겨 가
       // 있어 줄이 스스로 거기 와 있지 않다. 이 폭들에서는 줄이 이미 넘쳐 스크롤이 0이 아니어야
-      // 이 검사가 「스크롤된 줄에서도」를 잰다. 반 칸인 것은 넘침이 한 칸보다 작은 폭(1280)이
+      // 이 검사가 「스크롤된 줄에서도」를 잰다. 반 칸인 것은 넘침이 한 칸보다 작은 폭(1060)이
       // 있어서고, 4분의 1 칸을 넘으면 아래 포인터가 뷰포트 좌표로는 다른 틈으로 읽힌다.
       //
-      // **다만 끄는 칸이 상자 안에 온전히 들어오는 데까지만 민다.** 900px에서는 상자가 칸
+      // **다만 끄는 칸이 상자 안에 온전히 들어오는 데까지만 민다.** 가장 좁은 폭에서는 상자가 칸
       // 하나 폭이라(`ShellTabs`의 상자 바닥) 반 칸만 덜 밀면 끄는 칸의 가운데가 상자 왼쪽 밖에
       // 있다 — 거기를 누르면 칸이 아니라 옆의 세로선을 누른다. 그 폭에서는 끄는 칸의 오른쪽
       // 끝을 상자의 오른쪽 끝에 맞추고, 누른 뒤 끝까지 미는 거리가 한 칸이 된다(4분의 1보다 크다).
@@ -289,14 +293,14 @@ test.describe("work 화면", () => {
   });
 });
 
-// **900px 창에 작업 패널이 열린 기본 배치**에서는 셸 칸 상자가 칸 하나 폭이다(`ShellTabs`의 상자 바닥).
-// 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라, 줄이 따라 구르지 않으면 두 칸짜리 줄조차 못
-// 바꾼다 — 한때 L3는 누른 채 `scrollLeft`를 스크립트로 밀어 이것을 가렸다. 여기서는 **포인터만** 쓴다.
-test("900px 창에 작업 패널을 연 채로 두 칸을 끌어 바꾼다 — 줄 가장자리에 붙이면 줄이 따라 구른다", async ({
-  page,
-}) => {
+// **칸 하나 폭 상자**(`ShellTabs`의 상자 바닥)에서는 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라, 줄이
+// 따라 구르지 않으면 두 칸짜리 줄조차 못 바꾼다 — 한때 L3는 누른 채 `scrollLeft`를 스크립트로 밀어 이것을 가렸다.
+// 여기서는 **포인터만** 쓴다. 그 상자는 한때 900px 창에 작업 패널이 열린 기본 배치였고, 패널이 탭 줄 아래로 내려온
+// 뒤로는 넓힌 사이드바와 앱 창의 최소 폭 아래에서 선다(`BELOW_APP_MIN`, `tab-row.ts` 머리말).
+test("칸 하나 폭 상자에서 두 칸을 끌어 바꾼다 — 줄 가장자리에 붙이면 줄이 따라 구른다", async ({ page }) => {
+  await widenSidebar(page);
   await openWork(page, ["하나", "둘"]);
-  await page.setViewportSize({ width: 900, height: 800 });
+  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
   await settleLayout(page, () => rowOf(page));
 
   const strip = page.locator("[data-tab-strip]");
@@ -348,9 +352,10 @@ test("900px 창에 작업 패널을 연 채로 두 칸을 끌어 바꾼다 — �
 // 같은 배치에서 **본문 절반으로 가려고 곧장 아래로 끄는 손**은 줄을 안 굴린다. 칸 하나 폭 상자는 한가운데
 // 한 픽셀 말고는 전부 가장자리 띠라, 문턱을 넘은 뒤 머리행을 벗어나기 전 몇 프레임 동안 줄이 구르면 누른
 // 칸이 옆으로 밀리고, 이미 켜진 칸을 놓으면 되돌리는 스크롤도 안 선다.
-test("900px 창에 작업 패널을 연 채로 칸을 곧장 아래로 끌면 줄이 안 구른다", async ({ page }) => {
+test("칸 하나 폭 상자에서 칸을 곧장 아래로 끌면 줄이 안 구른다", async ({ page }) => {
+  await widenSidebar(page);
   await openWork(page, ["하나", "둘", "셋"]);
-  await page.setViewportSize({ width: 900, height: 800 });
+  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
   await settleLayout(page, () => rowOf(page));
 
   const strip = page.locator("[data-tab-strip]");

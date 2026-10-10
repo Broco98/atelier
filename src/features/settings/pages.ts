@@ -18,7 +18,7 @@ export const SETTINGS_ENTRY = "/settings";
  * **`spec 레이아웃`은 맨 뒤다**(spec 레이아웃 티켓 08). `/settings`는 첫 항목으로 넘기므로
  * (`settings.index.tsx`), 앞에 서면 설정을 여는 문 셋이 모두 이 페이지에 선다.
  *
- * 사이드바의 설정 nav와 본문 머리(`Settings / 터미널`)가 **이 표 하나**를 읽는다 — 둘이 각자
+ * 사이드바의 설정 nav와 본문 머리(`Settings › 터미널`)가 **이 표 하나**를 읽는다 — 둘이 각자
  * 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
  */
 export const SETTINGS_ITEMS = [

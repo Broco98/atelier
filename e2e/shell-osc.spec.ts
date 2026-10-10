@@ -138,8 +138,8 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
   // **아무것도 안 그리는 오른쪽 메타는 칸도 틈도 안 먹는다**(S34 — 「칸의 폭은 선 것들의 폭이다」).
-  // 풀려서 도는 중이 됐는데 아는 명령이 안 돌면 마크가 없고, 도는 중에는 경과도 안 붙어 메타가
-  // 빈다(`SignalMeta`가 `null`) — 그 갈래에 닿는 층이 여기다. 빈 칸이 9px 틈을 쥐면 제목만 까닭
+  // 풀려서 도는 중이 되면 메타가 빈다 — 도는 중에는 경과가 안 붙고 마크도 없다(`SignalMeta`가 `null`,
+  // ui-refresh 결정 13). 그 갈래에 닿는 층이 여기다. 빈 칸이 9px 틈을 쥐면 제목만 까닭
   // 없이 짧아지므로, 이 행의 이름 버튼이 **셸 없는 행의 것과 같은 폭**인가로 잰다(같은 목록의 두 행이다).
   const 이름폭 = async (name: string) => (await 행버튼(page, name).boundingBox())!.width;
   const 셸없는행 = await 이름폭(pinnedWork.title);

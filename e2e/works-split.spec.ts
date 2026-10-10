@@ -164,7 +164,8 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
 
-  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 헤더에 여는 버튼이 서 있는 것이 그 모습이다.
+  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 레일의 패널 토글이 「펼치기」인 것이 그 모습이다. 누르면 이름이
+  // 「접기」로 바뀌어(ui-refresh 결정 9) 이 이름의 버튼이 없어진다.
   const opener = page.getByRole("button", { name: "작업 패널 펼치기" });
   await expect(opener).toBeVisible();
   await opener.click();
@@ -218,7 +219,7 @@ test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) =
 // 수용 기준 「분할 상태에서 터미널 열이 실제로 리사이즈된다 (PTY `cols`/`rows`가 따라간다)」.
 // 배선은 열 폭 → ResizeObserver → `fit()` → `term.onResize` → `pty_resize`인데, **이 사슬을
 // 태우는 층이 여기뿐이다** — 마크업 seam에는 관찰자도 이벤트도 없다.
-test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
+test("틈의 손잡이를 끌면 터미널 격자가 따라가고 비율이 저장된다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
   // 셸이 떴다 — 격자를 내려보낼 상대가 있다는 뜻이다. **칸이 선 것만으로는 모자란다**: spawn은
@@ -228,11 +229,14 @@ test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
   await expect.poll(() => callCount(page, "pty_spawn")).toBeGreaterThan(0);
   const before = await callCount(page, "pty_resize");
 
-  // 폭 핸들은 왼쪽 열의 **오른쪽 가장자리**에 얹힌 5px 띠다. 열 머리가 그 열의 폭을 그대로
-  // 쓰므로 오른쪽 끝을 머리행에서 읽는다 — 좌표를 손으로 적지 않는다.
+  // 두 열은 각자 카드이고(ui-refresh 결정 15) 사이에 틈(`--gap`)이 있다. 폭 핸들은 그 **틈의 가운데**에 얹힌 5px 띠다.
+  // 열 머리가 그 카드의 폭을 그대로 쓰므로 두 머리의 마주 보는 끝에서 틈을 읽는다 — 좌표를 손으로 적지 않는다.
   const head = await page.locator('[data-column="spec"]').boundingBox();
-  if (!head) throw new Error("문서 열 머리의 상자를 못 읽었다");
-  const edge = head.x + head.width - 2;
+  const other = await page.locator('[data-column="terminal"]').boundingBox();
+  if (!head || !other) throw new Error("열 머리의 상자를 못 읽었다");
+  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap")));
+  expect(other.x - (head.x + head.width), "두 열 카드 사이 틈").toBe(gap);
+  const edge = (head.x + head.width + other.x) / 2;
   const y = head.y + head.height + 120;
 
   await page.mouse.move(edge, y);
@@ -247,6 +251,8 @@ test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
     .toBeLessThan(head.width - 100);
 
   await expect.poll(() => callCount(page, "pty_resize")).toBeGreaterThan(before);
+  // 끈 비율이 저장된다 — 왼쪽 열을 좁혔으니 반보다 작다.
+  expect(Number(await page.evaluate(() => localStorage.getItem("work-split-ratio")))).toBeLessThan(0.5);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -40,6 +40,8 @@ const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, ex
 const 셸트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
 const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
 const 버튼 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
+/** 본문 카드의 머리 — 위치(`Processes`)와 쪽 동작([조용한 셸 모두 닫기])이 선다(ui-refresh 결정 5 · `CardHead`). */
+const 카드머리 = (page: Page) => page.locator('main [data-slot="card-head"]');
 
 /** 한 묶음의 줄들 — 깊이와 접근성 이름. 화면에 선 차례 그대로다. */
 async function 줄들(scope: Locator): Promise<Array<{ level: string | null; name: string | null }>> {
@@ -332,7 +334,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(셸줄(offscreen, 99)).toBeVisible();
 
   // ── [조용한 셸 모두 닫기] ── 살아 있는 셸 1 · 3 중 조용한 3만 닫는다.
-  await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
+  await 버튼(카드머리(page), "조용한 셸 모두 닫기").click();
   const quiet = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(quiet).toBeVisible();
   await 버튼(quiet, "모두 닫기").click();
@@ -418,6 +420,12 @@ test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, �
   const log = 묶음(page, "정리 기록");
   await expect(log).toBeVisible();
   await expect(log.getByText("기록 3건", { exact: true })).toBeVisible();
+  // 구획은 접혀 연다 — 참고용이다(ui-refresh 결정 28). 머리와 수는 서고 사건 줄은 안 그려진다. 머리를 눌러 편다.
+  const 머리 = 버튼(log, "정리 기록");
+  await expect(머리).toHaveAttribute("aria-expanded", "false");
+  await expect(log.getByRole("list", { name: "정리 기록", exact: true })).toHaveCount(0);
+  await 머리.click();
+  await expect(머리).toHaveAttribute("aria-expanded", "true");
 
   const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
   // 차례가 기록의 차례다 — 새것부터. 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다. 사건마다 목록의 한 항목이다.
@@ -462,6 +470,8 @@ test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 
   await installFixtureBackend(page, { processes_cleanup_log: 기록 });
   await page.goto("/processes");
   const log = 묶음(page, "정리 기록");
+  // 구획은 접혀 연다(ui-refresh 결정 28) — 먼저 편다.
+  await 버튼(log, "정리 기록").click();
   const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
   await expect(사건들).toHaveCount(3);
   const 시작정리 = 버튼(log, eventLabel(기록[1]));
@@ -498,7 +508,7 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   await openShell(page);
   await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
-  const quietAll = 버튼(page.locator("header"), "조용한 셸 모두 닫기");
+  const quietAll = 버튼(카드머리(page), "조용한 셸 모두 닫기");
 
   // ── 취소 ──
   await quietAll.click();
@@ -539,7 +549,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
 
-  await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
+  await 버튼(카드머리(page), "조용한 셸 모두 닫기").click();
   const toast = toastOf(page, "닫을 조용한 셸이 없어요");
   await expect(toast).toBeVisible();
   // 앵커: 물었다 — 안 물어서 없다고 한 것이 아니다.

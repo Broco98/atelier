@@ -7,7 +7,6 @@ import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
 import {
   ownerOf,
-  runningAgentsOf,
   shellCountsOf,
   shellsOf,
   slugOfOwner,
@@ -79,7 +78,7 @@ function Sidebar({
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
   // 소유자는 최상위 터미널의 것이다(빈 글자 `""`).
   const topShells = useStore(terminalStore, (state) => shellsOf(state, ownerOf()).length);
-  // **화면값은 한 번에 읽어 내린다**(#203). 종류·수와 반대 방향인 것은 값의 모양 때문이다:
+  // **화면값은 한 번에 읽어 내린다**(#203). 행마다 고르는 시각(`RowMetaFor`)과 반대 방향인 것은 값의 모양 때문이다:
   // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
   // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
   const signals = useStore(terminalStore, (state) => signalsOf(state), shallow);
@@ -136,7 +135,7 @@ function Sidebar({
   // 행의 오른쪽 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미 쓰는 그
   // 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지 않는다. **셸 수는
   // 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8) — 행마다 구독하는 것은
-  // 「도는 것」과 신호 하나씩이다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
+  // 신호 하나다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
   const renderRowMeta = (work: WorkView) => (
     <RowMetaFor owner={ownerOf(work.slug)} shellCount={shellCounts[work.slug] ?? 0} />
   );
@@ -159,10 +158,9 @@ function Sidebar({
             // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
             // 그 화면에 들어가야만 보인다.
             //
-            // **개수가 아니라 메타 슬롯이다**(결정 4·13). 같은 어휘를 쓰므로 최상위
-            // 셸에서 claude가 돌면 여기에도 로고가 뜬다 — 무리가 하나뿐일 때 숫자가
-            // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
-            // 선다」도 슬롯 안으로 내려갔다.
+            // **개수가 아니라 메타 슬롯이다**(결정 4·13). work 행과 같은 어휘(`⌨ 셸 수`)로
+            // 서고, 최상위 셸에서 claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13).
+            // 「없으면 아무것도 안 선다」도 슬롯 안으로 내려갔다.
             //
             // **`Processes`의 메타는 앱 전체다**(프로세스 결정 9 · 11) — 메모리 합계와 손볼
             // 것의 `●`. 요약 폴러(10초)가 그 안에 산다.
@@ -263,12 +261,12 @@ function SidebarFrame({
 
           **선 뒤에는 바깥 폭을 넘지 않는다** — 작업 패널 안쪽 열과 같은 장치다(`panel-layout`의 `foldingInnerClass`).
           사이드바가 탭 줄에 자리를 내줘 좁게 서면 고정 폭 그대로는 행 오른쪽의 셸 수·신호가
-          잘린다. 상한이 `100%`가 아니라 `100% + 1px`인 것은 안쪽 열이 원래 오른쪽 경계선(1px)
-          밑까지 폭을 들고 있었기 때문이다 — 좁게 서지 않은 평소 배치는 한 픽셀도 안 바뀐다. */}
+          잘린다. 상한은 작업 패널과 같은 `100%`다 — 바깥 상자에 오른쪽 경계선이 없어(ui-refresh 결정 4)
+          안쪽 열이 든 폭이 곧 바깥 폭이다. */}
       <div
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col pb-2.5",
-          foldingInnerClass(open, "max-w-[calc(100%+1px)]"),
+          foldingInnerClass(open),
         )}
       >
         {/* traffic light strip — same height as the main header (the header no
@@ -287,24 +285,20 @@ function SidebarFrame({
 function asideClass(open: boolean, dragging: boolean): string {
   return cn(
     // **탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다) 끄는 최소 폭(`--sidebar-min`)
-    // 까지만 준다. 작업 패널이 먼저 제 최소 폭까지 주고도 탭 줄이 모자랄 때(넓혀 둔 사이드바 ·
-    // 900px 창) 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`). 다른 화면의 본문은 자리를
-    // 요구하지 않아 그 화면들에서는 늘 고른 폭이다. 최소 폭을 **펼 때만** 트랜지션하는 이유는
-    // 작업 패널 주석과 같다.
-    "relative overflow-hidden border-r bg-sidebar",
-    // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-    // 곡선은 --ease-panel — 접히는 패널 넷이 같은 값을 읽는다 (index.css)
-    !dragging && PANEL_MOTION,
-    !dragging && (open ? "transition-[width,min-width,border-color]" : "transition-[width,border-color]"),
-    // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,
-    // box-sizing이 border-box라 사용 폭이 0이 아니라 1px에서 바닥을 친다. 그 1px이 오른쪽
-    // 전부를 밀어 --titlebar-inset-panel 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
-    // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다. 목록 패널 둘도 같은 이유로 같은 처리를 한다.
+    // 까지만 준다. 탭 줄이 모자랄 때 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`) — 작업 패널은 줄 아래
+    // 카드 줄에 서서(ui-refresh 결정 4) 줄과 폭을 다투지 않으므로, 이제 그 차례는 앱 창의 최소 폭(900) 아래에서만
+    // 온다(e2e `tab-row.ts`의 `BELOW_APP_MIN`). 다른 화면의 본문은 자리를 요구하지 않아 그 화면들에서는 늘 고른 폭이다.
+    // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
-    // border-width는 위 트랜지션 목록에 **넣지 않는다.** WebKit이 0보다 큰 테두리를 디바이스
-    // 픽셀 하나로 올림해서, 보간해 봐야 폭 바닥은 그대로인 채 레티나에서 구분선 두께만
-    // 1↔2 디바이스픽셀로 튄다 (열림 끝에 툭 굵어진다). 폭은 그냥 끊어 바꾸는 편이 낫다.
-    open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0 border-transparent border-r-0",
+    // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.
+    // 바탕(`bg-sidebar`)은 그래도 칠한다: 색은 바탕과 같지만(`--sidebar: var(--chrome)`) 투명이면 대비를 재는
+    // e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(index.css의 `--sidebar` 주석).
+    "relative overflow-hidden bg-sidebar",
+    // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
+    // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
+    !dragging && PANEL_MOTION,
+    !dragging && (open ? "transition-[width,min-width]" : "transition-[width]"),
+    open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0",
   );
 }
 
@@ -352,8 +346,8 @@ function SettingsNav({
  *
  * 이 한 겹이 필요한 이유는 값의 모양이다: `bandRows`는 **객체 배열**을 새로 지어 돌려주므로
  * 기본 얕은 비교는 늘 어긋나고, 그러면 셸이 프롬프트마다 쏘는 OSC 타이틀 하나에, 1초 폴링의
- * 「도는 것」 한 칸에, 띠가 통째로 다시 그려진다 — `runningAgentsOf` 머리말이 목록에서 든
- * 바로 그 함정이고, 여기서는 목록이 아니라 띠가 그 자리에 선다.
+ * 「도는 것」 한 칸에, 띠가 통째로 다시 그려진다 — 회차마다 새 객체를 주는 셀렉터의 그 함정이고
+ * (`signalsOf` 머리말), 여기서는 목록이 아니라 띠가 그 자리에 선다.
  *
  * 안쪽을 `shallow`로 견주는 것은 줄이 **원시값만** 담기 때문이다(`BandRow`). 한 겹 더 깊은
  * 비교가 필요해지는 날은 줄에 객체가 들어오는 날이고, 그때는 이 비교가 아니라 그 값을 다시 봐야 한다.
@@ -434,18 +428,16 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
  * 아는 자리가 여기라서 그림(`ShellMeta`·`SignalMeta`)과 갈렸다 — 그쪽은 터미널을 모르는 순수
  * 컴포넌트라 정적 마크업 seam에 산다.
  *
- * **갈래가 둘이다**: 그 행의 셸이 부르거나 돌면 **그 셸의 신호**(마크 + 경과, 도는 중은 마크 —
- * `SignalMeta`)이고, 조용하면 종류·수(`ShellMeta`)다. 가름이 **한 컴포넌트 안**인 것이 요점이다 —
- * 조건을 둘로 나누면 레인은 부르는데 메타는 종류·수인 화면이 한 프레임 난다. 이름이
- * `ShellMetaFor`가 아닌 것은 그 때문이다: 이 자리가 고르는 것은 셸 메타가 아니라 **오른쪽 메타
- * 전체**다. (두 줄 행에서는 이 자리가 둘째 줄 전체를 골라 `SubrowFor`였다 — S5.)
+ * **갈래가 둘이다**: 그 행의 셸이 부르거나 돌면 **그 셸의 신호**(부르면 경과, 돌면 비움 —
+ * `SignalMeta`)이고, 조용하면 셸 수(`ShellMeta`)다. 에이전트 마크는 어느 갈래에도 없다(ui-refresh
+ * 결정 13). 가름이 **한 컴포넌트 안**인 것이 요점이다 — 조건을 둘로 나누면 레인은 부르는데
+ * 메타는 셸 수인 화면이 한 프레임 난다. 이름이 `ShellMetaFor`가 아닌 것은 그 때문이다: 이 자리가
+ * 고르는 것은 셸 메타가 아니라 **오른쪽 메타 전체**다. (두 줄 행에서는 이 자리가 둘째 줄 전체를
+ * 골라 `SubrowFor`였다 — S5.)
  *
- * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
- * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
- * `Record<slug, string[]>`로 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고,
- * work 하나에서 명령이 시작될 때마다 **목록 전체가** 다시 그려진다(`runningAgentsOf`
- * 머리말이 그 근거를 든다). 행마다 자기 것을 고르면 안 바뀐 행은 같은 배열을 받아 그
- * 자리에 머문다.
+ * **신호는 행마다 자기 것을 고른다.** 화면값과 시각이 한 묶음이라 문자열 하나로 안 접히고, 위에서
+ * Record로 한 번에 읽어 내리면 안쪽 객체가 회차마다 새것이라 얕은 비교가 늘 어긋나 셸 하나가
+ * 말할 때마다 **목록 전체가** 다시 그려진다. 행마다 고르면 안 바뀐 행은 같은 값을 받아 그 자리에 머문다.
  *
  * **개수는 반대로 위에서 한 번에 읽어 prop으로 내려온다**(`shellCounts`) — 그 값은 셸이
  * 열리고 닫힐 때만 바뀌어 얕은 비교가 실제로 걸린다(결정 8). 둘이 갈리는 자리가 여기다.
@@ -455,13 +447,12 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
  * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
 function RowMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
-  const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
-  // **신호의 셋**(종류·시각·마크의 재료, #203). 위 Record에 못 태우는 것은 문자열 하나로
-  // 안 접히기 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 종류·수와 **같은
-  // 자리에서** 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로
-  // 나뉘면 레인은 부르는데 메타는 종류·수인 화면이 한 프레임 난다.
+  // **신호의 셋**(종류·말·시각, #203). 위 Record에 못 태우는 것은 문자열 하나로 안 접히기
+  // 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 셸 수를 받는 **같은 자리에서**
+  // 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로 나뉘면 레인은
+  // 부르는데 메타는 셸 수인 화면이 한 프레임 난다.
   //
-  // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 넷**이라서다(`SignalView`). 값이 없을
+  // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 셋**이라서다(`SignalView`). 값이 없을
   // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`). 그중 말(`message`)은 이
   // 자리가 안 그리지만(말은 카드와 설명이 `callingNotesOf`로 읽는다) 셀렉터를 가르지 않는다 —
   // 고르는 함수가 레인·카드와 같은 `topSignalView` 하나인 것이 스토리 39의 전부라서다.
@@ -473,16 +464,16 @@ function RowMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: numb
   const now = useNow(signal !== null && showsElapsed(signal.kind));
 
   if (signal !== null) {
-    return <SignalMeta kind={signal.kind} running={signal.running} since={signal.since} now={now} />;
+    return <SignalMeta kind={signal.kind} since={signal.since} now={now} />;
   }
-  return <ShellMeta shellCount={shellCount} running={running} />;
+  return <ShellMeta shellCount={shellCount} />;
 }
 
 /**
  * 그 자리가 그릴 화면값. **최상위 셸(nav `Terminal`)은 여기서 아무것도 안 그린다.**
  *
  * 스펙의 Out of Scope가 「셸 메타 규격의 nav `Terminal` 변경」을 이 판에서 빼 뒀다 — 그 행은
- * 종류·수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 알림 띠다(#204, 결정 13의
+ * 셸 수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 알림 띠다(#204, 결정 13의
  * 다섯째). work 행과 **같은 구독 컴포넌트**를 쓰기 때문에 이 가름이 빠지기 쉬운데, 빠지면
  * nav 행이 work 행의 어휘를 반쯤 흉내 낸다 — 실제로 한 번 그렇게 났고 L3가 잡았다.
  */
@@ -550,7 +541,7 @@ function SidebarItem({
   onClick: () => void;
   /**
    * 이 항목이 안고 있는 셸의 **메타**(결정 13). 개수가 아니라 슬롯인 것은 그 값이 터미널
-   * 스토어를 구독해야 나오기 때문이고, 「없으면 아무것도 안 선다」는 규칙도 그 안으로
+   * 스토어를 구독해야 나오기 때문이고(셸 수 · Processes의 메모리), 「없으면 아무것도 안 선다」는 규칙도 그 안으로
    * 내려갔다 — `ShellMeta`가 셸 0개일 때 아무것도 돌려주지 않는다.
    */
   meta?: ReactNode;
@@ -558,14 +549,15 @@ function SidebarItem({
   return (
     <div
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-[10px] pr-1 transition-colors",
-        active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
+        "flex h-8 shrink-0 items-center rounded-lg pr-1 transition-colors",
+        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
+        active ? "selected-row" : "text-sidebar-foreground hover:bg-state-1",
       )}
     >
       <button
         type="button"
         onClick={onClick}
-        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left text-[13.5px] font-medium"
+        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left text-row font-medium"
       >
         <Icon className="size-[17px] shrink-0" strokeWidth={1.7} />
         <span className="min-w-0 truncate">{label}</span>
@@ -575,8 +567,8 @@ function SidebarItem({
           그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
           **그 계약이 사는 자리는 둘이다** — 여기와 work 행의 오른쪽 메타(판 05 결정 13의 「두
           자리」). 두 줄 행에서는 work 행이 메타를 둘째 줄로 내려 여기 하나였다가, 행이 한 줄로
-          돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `ShellMeta`
-          하나가 들고(오른쪽 여백까지), work 행의 신호 갈래(`SignalMeta`)가 같은 규격을 따른다.
+          돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `row-meta`
+          하나가 들고(오른쪽 여백까지), 셸 수(`ShellMeta`)와 work 행의 신호 갈래(`SignalMeta` — 경과)가 그것을 부른다.
           「같은 x에 오른쪽 끝이 선다」는 두 자리 다 L3가 실측으로 잰다(works-sidebar.spec.ts). */}
       {meta}
     </div>

@@ -46,7 +46,6 @@ import {
   quietShellsOf,
   quitNotice,
   removeShell,
-  runningAgentsOf,
   runningOn,
   runningShellsOf,
   searchHotkey,
@@ -1922,52 +1921,9 @@ describe("끝난 칸은 아무것도 안 돌린다", () => {
   });
 });
 
-describe("work가 도는 것의 **종류**를 말한다", () => {
-  const 가 = originFor("가");
-
-  // 결정 4. claude가 둘 돌아도 사이드바의 로고는 하나다 — 목록은 「뭐가 도나」를 말하지
-  // 「몇 개 도나」를 말하지 않는다(개수는 `⌨3`이 이미 말한다).
-  it("같은 것이 둘 돌면 **두 번** 들어 있다 — 세는 일은 그리는 쪽이다", () => {
-    // 결정 28. 여기서 접으면 `Map`이나 `Record`가 되고, 그러면 회차마다 새 객체라 사이드바
-    // 행의 얕은 비교가 늘 어긋나 목록 전체가 초마다 다시 그려진다(`shellCountsOf`의 함정).
-    const { state, ids } = opened(2, 가);
-    let 지금 = setRunning(state, ids[0], "claude");
-    지금 = setRunning(지금, ids[1], "claude");
-    expect(runningAgentsOf(지금, ownerFor("가"))).toEqual(["claude", "claude"]);
-  });
-
-  it("다른 것이 돌면 둘 다 말하고, 순서는 칸 순서다", () => {
-    const { state, ids } = opened(2, 가);
-    let 지금 = setRunning(state, ids[0], "codex");
-    지금 = setRunning(지금, ids[1], "claude");
-    expect(runningAgentsOf(지금, ownerFor("가"))).toEqual(["codex", "claude"]);
-  });
-
-  it("아무것도 안 도는 work는 빈 목록이다", () => {
-    expect(runningAgentsOf(opened(2, 가).state, ownerFor("가"))).toEqual([]);
-  });
-
-  it("남의 work에서 도는 것은 안 센다", () => {
-    const { state, ids } = opened(1, 가);
-    const 나 = openShell(state, originFor("나"))!;
-    let 지금 = setRunning(나.state, ids[0], "claude");
-    지금 = setRunning(지금, 나.id, "cargo");
-    expect(runningAgentsOf(지금, ownerFor("가"))).toEqual(["claude"]);
-    expect(runningAgentsOf(지금, ownerFor("나"))).toEqual(["cargo"]);
-  });
-
-  // `runningOn`을 딛는다 — 여기서 상태를 한 번 더 가르면 같은 판정이 두 벌이 된다.
-  it("죽은 칸이 돌던 것은 안 센다", () => {
-    const { state, ids } = opened(1, 가);
-    const 돌던칸 = setRunning(state, ids[0], "claude");
-    const 죽은뒤 = markFailed(돌던칸, ids[0], "폴더가 없습니다");
-    expect(runningAgentsOf(죽은뒤, ownerFor("가"))).toEqual([]);
-  });
-});
-
-// 결정 2·3. **work 행 오른쪽 메타가 서는 조건**이자 그 자리의 **무리마다의 수를 다
-// 더한 값**이다(`⌨수`는 여기서 마크가 붙은 셸 수를 뺀 나머지다 — `ShellMeta`). 세는 자리를
-// 새로 만들지 않고 이미 있는 이것으로 되는지 여기서 못박는다.
+// 결정 2·3. **work 행 오른쪽 메타가 서는 조건**이자 조용한 행이 적는 **수**다(`⌨ 셸 수` —
+// `ShellMeta`, ui-refresh 결정 13). 세는 자리를 새로 만들지 않고 이미 있는 이것으로 되는지
+// 여기서 못박는다.
 describe("work마다 셸이 몇 개인가", () => {
   const 가 = originFor("가");
 

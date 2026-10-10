@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { SettingsGroup, SettingsLead, SettingsRow, SettingsSection } from "@/features/settings/SettingsGroup";
 import { layoutDirRef } from "@/features/works/refs";
 import { invalidateSpecLayout, specLayoutStateQuery, useRevertSpecLayout } from "./hooks";
 import { askRevert } from "./revert";
@@ -92,10 +93,11 @@ function SpecLayoutPage() {
           onRevert={() => void revert(state)}
         />
       )}
-      {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 그 행에 선다. */}
+      {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 그 행에 선다. 자리는 큰 제목 아래 구획
+          자리다(설정 틀 — 설정 파일 읽기 게이트의 실패와 같다). */}
       {query.error !== null && (
-        <div className="flex flex-col items-start gap-3 pt-2">
-          <p className="text-[13.5px] leading-[1.7] text-red-600">{String(query.error)}</p>
+        <div className="mt-7 flex flex-col items-start gap-3">
+          <p className="text-ui break-words text-red-600">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {state === undefined && (
             <Button variant="ghost" size="sm" onClick={reread}>
@@ -113,7 +115,8 @@ function SpecLayoutPage() {
 }
 
 /**
- * 레이아웃 행 — 테두리 있는 목록 하나에 행 하나(프로토타입 `Settings-layout`의 모양 그대로). 값을 들지 않는다:
+ * 머리글과 레이아웃 행 — 설정 묶음(목록) 하나에 행 하나다(프로토타입 `Settings-layout`, ui-refresh 결정 16의 옅은 면). 구획
+ * 제목은 두지 않는다(판 06 문구 표 S9 — 줄이 하나뿐이라 큰 제목 「spec 레이아웃」을 되풀이한다). 값을 들지 않는다:
  * 페이지가 들고 이쪽은 그리기만 한다(마크업 테스트가 클릭을 못 건다 — `HooksSection`과 같은 이유). ⋯ 메뉴가
  * 열렸는지만 그 행이 든다 — 화면 밖 누구도 그것을 묻지 않는다.
  */
@@ -134,16 +137,18 @@ export function SpecLayoutSection({
   onRevert: () => void;
 }) {
   return (
-    <section className="flex flex-col gap-5 pt-2">
-      <p className="text-[13px] leading-[1.7] text-tertiary">
-        <code>spec</code> 패널 탭과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
-        <strong className="font-medium">부탁</strong>을 누르면 참조가 복사돼요 —
+    <>
+      <SettingsLead>
+        <code>spec</code> 패널과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
+        <strong className="font-medium text-foreground">부탁</strong>을 누르면 참조가 복사돼요 —
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
-      </p>
-      <ul className="flex flex-col rounded-[12px] border border-border">
-        <LayoutRow state={state} onAsk={onAsk} onEdit={onEdit} onReread={onReread} onRevert={onRevert} />
-      </ul>
-    </section>
+      </SettingsLead>
+      <SettingsSection>
+        <SettingsGroup as="ul">
+          <LayoutRow state={state} onAsk={onAsk} onEdit={onEdit} onReread={onReread} onRevert={onRevert} />
+        </SettingsGroup>
+      </SettingsSection>
+    </>
   );
 }
 
@@ -171,82 +176,76 @@ function LayoutRow({
   const reference = layoutDirRef(state.folder);
   const fellBack = state.fallback !== null;
   return (
-    <li className="flex items-start gap-3 py-3 pr-2.5 pl-3.5">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-h-[22px] items-center gap-2">
-          <span className="text-[13.5px] font-medium">{name}</span>
-          {/* 상태 배지의 바탕은 칩 바탕(`bg-accent` = state-2, 6%)이다 — draft 상태 배지와 같다. `bg-muted`는 이제
-              행 hover 농도(state-1, 3%)라 흰 바탕 위에서 거의 안 보인다. */}
-          {state.edited && (
-            <span className="inline-flex h-[18px] items-center rounded-[6px] bg-accent px-1.5 text-[11px] font-medium text-muted-foreground">
-              고침
-            </span>
-          )}
-        </div>
-        {fellBack ? (
+    <SettingsRow
+      name={name}
+      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-caption`)다.
+      tail={state.edited ? <span className="tag text-caption">고침</span> : undefined}
+      description={
+        fellBack ? (
           <div className="flex items-start gap-2">
             <TriangleAlert
               aria-hidden
               className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
               strokeWidth={2}
             />
-            <div className="flex min-w-0 flex-col gap-0.5 text-[12.5px] leading-[1.6]">
+            <div className="flex min-w-0 flex-col gap-0.5">
               <span className="text-amber-700 dark:text-amber-400">
                 읽지 못해 내장본으로 보여 주고 있어요
               </span>
               {/* 까닭은 엔진의 글 그대로다 — 에이전트가 물러선 안내문에서 받는 것과 같다. */}
-              <span className="break-words text-tertiary">
+              <span className="break-words">
                 {reference} · {state.fallback}
               </span>
             </div>
           </div>
+        ) : state.edited ? (
+          `${reference} 폴더가 내장본을 가리고 있어요 · 템플릿 ${state.templateCount ?? 0}개`
         ) : (
-          <span className="break-words text-[12.5px] leading-[1.6] text-tertiary">
-            {state.edited
-              ? `${reference} 폴더가 내장본을 가리고 있어요 · 템플릿 ${state.templateCount ?? 0}개`
-              : "내장본 그대로예요"}
-          </span>
-        )}
-      </div>
-      {/* 행의 버튼은 쪽 동작이다 — 저장 같은 주 버튼이 아니라 이 화면의 「다시 읽기」와 같은 조용한 글자 버튼(`Button`의
-          ghost · sm)이고, 아이콘은 글자 앞에 선다(`data-icon="inline-start"` — 왼쪽 여백이 한 단 준다). */}
-      <div className="flex shrink-0 items-center gap-0.5">
-        {/* 도움말은 복사할 참조다 — 이름(「… 부탁」)보다 더 말하는 것이라 설명으로도 남는다(S28). */}
-        <Hint
-          text={`${reference} 참조를 복사해요`}
-          announce="description"
-          render={
+          "내장본 그대로예요"
+        )
+      }
+      // 행의 버튼은 쪽 동작이다 — 저장 같은 주 버튼이 아니라 이 화면의 「다시 읽기」와 같은 조용한 글자 버튼(`Button`의
+      // ghost · sm, 폼 안 버튼이라 10px 모서리 — handoff)이고, 아이콘은 글자 앞에 선다(`data-icon="inline-start"` — 왼쪽
+      // 여백이 한 단 준다).
+      control={
+        <>
+          {/* 도움말은 복사할 참조다 — 이름(「… 부탁」)보다 더 말하는 것이라 설명으로도 남는다(S28). */}
+          <Hint
+            text={`${reference} 참조를 복사해요`}
+            announce="description"
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onAsk}
+                aria-label={`${name} 레이아웃을 에이전트에게 부탁`}
+              />
+            }
+          >
+            <Bot data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+            부탁
+          </Hint>
+          {!fellBack && (
+            <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
+              <Pencil data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+              편집
+            </Button>
+          )}
+          {fellBack && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={onAsk}
-              aria-label={`${name} 레이아웃을 에이전트에게 부탁`}
-            />
-          }
-        >
-          <Bot data-icon="inline-start" aria-hidden strokeWidth={1.9} />
-          부탁
-        </Hint>
-        {!fellBack && (
-          <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
-            <Pencil data-icon="inline-start" aria-hidden strokeWidth={1.9} />
-            편집
-          </Button>
-        )}
-        {fellBack && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onReread}
-            aria-label={`${name} 레이아웃 다시 읽기`}
-          >
-            다시 읽기
-          </Button>
-        )}
-        {/* 되돌릴 것은 가린 폴더다 — 내장본 행에는 되돌릴 것이 없다. 깨진 폴더도 가린 폴더라 선다. */}
-        {state.edited && <RevertMenu name={name} onRevert={onRevert} />}
-      </div>
-    </li>
+              onClick={onReread}
+              aria-label={`${name} 레이아웃 다시 읽기`}
+            >
+              다시 읽기
+            </Button>
+          )}
+          {/* 되돌릴 것은 가린 폴더다 — 내장본 행에는 되돌릴 것이 없다. 깨진 폴더도 가린 폴더라 선다. */}
+          {state.edited && <RevertMenu name={name} onRevert={onRevert} />}
+        </>
+      }
+    />
   );
 }
 
@@ -300,7 +299,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
-            <span id={noteId} className="text-[12px] leading-[1.5] text-tertiary">
+            <span id={noteId} className="text-caption text-tertiary">
               폴더를 지우고 내장본으로 돌아가요
             </span>
           </span>
@@ -324,12 +323,12 @@ export function CopiedNotice({ reference, onClose }: { reference: string; onClos
 
 /**
  * 되돌린 뒤의 짧은 메시지(티켓 10 · 프로토타입). 지운 폴더와, 되돌린 것이 어디까지 따라가는가를 적는다 —
- * `spec` 패널 탭의 트리도, 에이전트가 다음 호출부터 받는 안내문도 내장본이다.
+ * `spec` 패널의 트리도, 에이전트가 다음 호출부터 받는 안내문도 내장본이다.
  */
 export function RevertedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
   return (
     <PageNotice title="되돌렸어요" reference={reference} onClose={onClose}>
-      내장본으로 돌아갔어요. <code className="text-[11.5px]">spec</code> 패널 탭과 에이전트 안내문도
+      내장본으로 돌아갔어요. <code className="text-mono-sm">spec</code> 패널과 에이전트 안내문도
       따라가요.
     </PageNotice>
   );
@@ -337,7 +336,8 @@ export function RevertedNotice({ reference, onClose }: { reference: string; onCl
 
 /**
  * 화면 아래에 서는 어두운 메시지 하나의 모양 — 머리 한 줄(무엇을 했는가와 그 참조), 설명 한 줄, 닫기.
- * 설정 본문(`SettingsPage`의 `main`) 기준으로 설정 한 열의 왼쪽 끝에 맞춰 선다.
+ * 설정 본문 카드(`SettingsPage`의 `main`)의 바닥에 서고, 폭은 설정 틀의 글 폭(`--measure-read`)이라 묶음과 같은 열에 가운데
+ * 선다 — 카드가 그보다 좁으면 카드 안 여백(`--card-pad`)까지다.
  *
  * **앱의 토스트(`showToast`)가 아니다.** 토스트는 한 장 · 한 줄 · 1600ms · 닫기 없음이고 부르는 길이
  * `showToast(title, kind)` 하나뿐이다(S26 · S27 · S47). 이 메시지는 붙여 넣을 참조와 다음에 할 일을 두 줄로
@@ -361,14 +361,14 @@ function PageNotice({
   return (
     <div
       role="status"
-      className="absolute bottom-7 left-8 z-20 flex w-[min(620px,calc(100%-4rem))] items-start gap-2.5 rounded-[12px] bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
+      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-card bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" strokeWidth={2.2} />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <span className="text-[13.5px] font-medium break-words">
-          {title} <code className="text-[12px] opacity-80">{reference}</code>
+        <span className="text-ui font-medium break-words">
+          {title} <code className="text-mono-sm opacity-80">{reference}</code>
         </span>
-        <span className="text-[12.5px] leading-[1.6] opacity-75">{children}</span>
+        <span className="text-ui leading-[1.6] opacity-75">{children}</span>
       </div>
       {/* 무엇을 닫는지는 자리(이 메시지 `status` 안)가 말한다. 어두운 바탕 위라 hover는 바탕 대신 농도로 선다 —
           모양은 아이콘 버튼 규격(`icon-button`)이다. */}

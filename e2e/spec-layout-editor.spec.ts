@@ -20,7 +20,7 @@ import {
 } from "./harness";
 
 // 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 「spec 레이아웃」 설정 페이지의 레이아웃 행에서
-// [편집]을 누르면 그 설정 nav 항목 아래의 하위 주소에 편집기가 선다. 두 열의 모양(맨 위 항목의 행이 없다,
+// [편집]을 누르면 그 설정 nav 항목 아래의 하위 주소에 편집기가 선다. 두 카드의 모양(맨 위 항목의 행이 없다,
 // 파일·폴더 항목, 모르는 아이콘, 오류 줄)은 마크업 seam이 잰다(`SpecLayoutEditor.test.tsx`), 필드를 바꾸는
 // 규칙은 순수 함수의 seam이 잰다(`draft.test.ts`).
 //
@@ -30,7 +30,9 @@ import {
 // 빠졌을 때 빨개진다(구현 스펙 3절).
 
 const aside = (page: Page) => page.locator("aside");
-const 머리 = (page: Page) => page.locator("main header").first();
+// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
+// 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
+const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
 const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exact: true });
 const 편집 = (page: Page) => page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true });
 const 저장 = (page: Page) => page.getByRole("button", { name: "저장", exact: true });
@@ -62,8 +64,8 @@ test("레이아웃 행의 [편집]을 누르면 편집기 주소가 열리고 �
   // 레이아웃은 하나라 무엇을 읽을지 묻는 인자가 없다(ui-refresh 결정 23)
   expect(await ipcCalls(page, "read_spec_layout")).toEqual(["read_spec_layout"]);
 
-  // 위치는 세 칸이다 — `Settings / spec 레이아웃 / Atelier`. 머리의 동작은 「LLM이 받는 텍스트」와 저장이다(티켓 14).
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃\s*\/\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
+  // 위치는 세 칸이다 — `Settings › spec 레이아웃 › Atelier`. 머리의 동작은 「LLM이 받는 텍스트」와 저장이다(티켓 14).
+  await expect(머리(page)).toHaveText(/^Settings\s*spec 레이아웃\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
   // 트리는 최상위 항목부터다 — 맨 위 항목의 행이 없다(결정 26)
   await expect(page.getByRole("treeitem")).toHaveText([
     "overview.md",
@@ -86,7 +88,7 @@ test("편집기 주소를 바로 열어도 편집기가 서고, id를 실은 옛
   await installFixtureBackend(page);
   await page.goto(SPEC_LAYOUT_EDITOR);
   await expect(행(page, "overview.md")).toBeVisible();
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃\s*\/\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*spec 레이아웃\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
   await expect(aside(page).getByRole("button", { name: "spec 레이아웃", exact: true }).locator("xpath=..")).toHaveClass(
     /selected-row/,
   );
@@ -197,7 +199,7 @@ test("아이콘 칸의 팝오버에서 아이콘을 고르면 트리 행이 따�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 트리 열의 머리 `spec/`은 항목이 아니다 — 누르면 맨 위 항목의 설명(방침 문단) 칸 하나만 선다(결정 26).
+// 트리 카드의 머리 `spec/`은 항목이 아니다 — 누르면 맨 위 항목의 설명(방침 문단) 칸 하나만 선다(결정 26).
 test("머리 `spec/`을 눌러 안내를 고치고 저장하면 저장된 레이아웃의 맨 위 항목 설명이 바뀌어 있다", async ({
   page,
 }) => {
@@ -267,7 +269,7 @@ test("편집기 주소에서 설정 nav의 「spec 레이아웃」이 켜져 있
 
   await page.getByRole("button", { name: "설정으로 돌아가기", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*spec 레이아웃$/);
   await expect(page.locator("main li")).toHaveCount(1);
   await expect(nav항목.locator("xpath=..")).toHaveClass(/selected-row/);
 
@@ -410,7 +412,7 @@ test("누락 템플릿이 든 레이아웃을 열어 그 항목의 본문을 적
 });
 
 // 트리를 고치는 것(티켓 13). 무엇이 어디로 가는지(앞·뒤·안, 자기 아래 거절, 잠금 판정)는 순수 함수의 seam이,
-// 트리 위 한 줄의 모양과 잠금은 마크업 seam이 잰다. **이 층이 드는 것은 진짜 포인터와 키에서만 서는 것이다** —
+// 트리 카드 머리 한 줄의 모양과 잠금은 마크업 seam이 잰다. **이 층이 드는 것은 진짜 포인터와 키에서만 서는 것이다** —
 // 끌어 놓은 모양과 단축키로 옮긴 모양이 저장 명령에 실리는가, Esc와 칸 안의 ⌥←가 트리를 건드리지 않는가.
 // (끄는 동안 탭 겹판이 서지 않는지도 여기서 보지만, 이 주소에서는 구조상 늘 초록이다 — `탭겹판`의 주석.)
 const { root: READ_ROOT } = SPEC_LAYOUT_READ.layout;

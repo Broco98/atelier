@@ -65,7 +65,7 @@ function buttonsOf(html: string): string[] {
 
 // 레이아웃은 하나라 행도 하나다(ui-refresh 결정 3 · 23). 행의 세 모양(내장본 · 고침 · 읽지 못함)을 그 한 행으로 잰다.
 describe("레이아웃 행", () => {
-  it("Atelier 한 행이 테두리 있는 목록 하나에 선다", () => {
+  it("Atelier 한 행이 설정 묶음(목록) 하나에 선다", () => {
     const html = render(builtin);
     expect(html.match(/<ul\b/g)).toHaveLength(1);
     expect(html.match(/<li\b/g)).toHaveLength(1);
@@ -153,14 +153,15 @@ describe("부탁 메시지", () => {
 });
 
 describe("되돌린 메시지", () => {
-  // 되돌린 것이 어디까지 따라가는지를 적는다 — 지운 폴더, 그리고 spec 패널 탭과 에이전트의 안내문(티켓 10).
-  it("지운 폴더와, 내장본으로 돌아가 spec 패널 탭과 에이전트 안내문도 따라간다는 말을 적는다", () => {
+  // 되돌린 것이 어디까지 따라가는지를 적는다 — 지운 폴더, 그리고 `spec` 패널과 에이전트의 안내문(티켓 10). 「패널 탭」은
+  // 레일 칸이 되며 사전이 거부한 말이다(ui-refresh 결정 10 · `CONTEXT.md` 「레일」) — 머리글(판 06 문구 표 S8)과 같은 말로 부른다.
+  it("지운 폴더와, 내장본으로 돌아가 spec 패널과 에이전트 안내문도 따라간다는 말을 적는다", () => {
     const html = renderToStaticMarkup(
       <RevertedNotice reference="~/.atelier/layouts/atelier/" onClose={() => {}} />,
     );
     expect(html).toContain('role="status"');
     expect(textOf(html)).toContain("되돌렸어요 ~/.atelier/layouts/atelier/");
-    expect(textOf(html)).toContain("내장본으로 돌아갔어요. spec 패널 탭과 에이전트 안내문도 따라가요.");
+    expect(textOf(html)).toContain("내장본으로 돌아갔어요. spec 패널과 에이전트 안내문도 따라가요.");
     expect(html).toContain('aria-label="닫기"');
   });
 });

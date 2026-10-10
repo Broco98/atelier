@@ -5,7 +5,7 @@ import * as React from "react"
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle"
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group"
 import { type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 import { resolveClassName } from "@/components/ui/resolve-class-name"
 import { toggleVariants } from "@/components/ui/toggle"
@@ -73,7 +73,7 @@ function ToggleGroup<Value extends string>({
       onValueChange={keepOnePressed(onValueChange, deselectable)}
       className={(state) =>
         cn(
-          "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=chip]:flex-wrap data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
+          "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=chip]:flex-wrap data-vertical:flex-col data-vertical:items-stretch",
           resolveClassName(className, state)
         )
       }

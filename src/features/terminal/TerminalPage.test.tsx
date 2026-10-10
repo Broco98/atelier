@@ -60,7 +60,7 @@ describe("최상위 터미널의 머리행", () => {
     terminalStore.setState(() => seed(2, TOP).state);
     const markup = html(true);
     expect(kindsOf(markup)).toEqual(["shell", "shell", "new"]);
-    // 머리행이 **하나뿐이다** — 브레드크럼(`PageHeader`)이 남아 있으면 층이 둘이 되고,
+    // 머리행이 **하나뿐이다** — 브레드크럼 머리가 남아 있으면 층이 둘이 되고,
     // 창을 끄는 자리와 신호등 회피 여백도 둘로 갈린다.
     expect(markup.split("<header").length - 1).toBe(1);
   });
@@ -107,8 +107,8 @@ describe("최상위 터미널의 머리행", () => {
   });
 
   it("창을 끌 수 있다", () => {
-    // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — `PageHeader`가 지고 있던 몫을
-    // 그대로 물려받는다(ShellTabs 머리말).
+    // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — 옛 브레드크럼 머리가 지고 있던 몫을
+    // 바탕 줄(`Frame`의 `TitleBar`)이 그대로 물려받는다.
     terminalStore.setState(() => seed(1, TOP).state);
     expect(headerTag(html(true))).toContain("data-tauri-drag-region");
   });
@@ -117,6 +117,17 @@ describe("최상위 터미널의 머리행", () => {
     // 왼쪽에 남은 것이 사이드바뿐이라, 접히면 이 줄이 창 왼쪽 끝에 붙어 신호등에 깔린다.
     expect(headerTag(html(false))).toContain("pl-(--titlebar-inset-tabs)");
     expect(headerTag(html(true))).toContain("pl-(--tab-lead)");
+  });
+
+  it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
+    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 첫 칸의 화면상 위치가 사이드바
+    // 폭과 이 여백의 합이라서다(index.css의 `--panel-ease` 주석). 한때 ShellTabs.test가 들었는데,
+    // 바탕 줄이 그 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 줄을 실제로 세우는 이 화면이 든다.
+    const tag = headerTag(html(true)) ?? "";
+    expect(tag).toContain("ease-panel");
+    expect(tag).toContain("transition-[padding]");
+    // 층 높이도 그 줄의 것이다 — 이 줄이 그 44px 자리다.
+    expect(tag).toContain("h-(--titlebar-height)");
   });
 });
 

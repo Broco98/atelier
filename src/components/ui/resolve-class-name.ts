@@ -3,7 +3,7 @@
 // 켜짐·눌림에 따라 갈리는 색이 그렇다) 쓰는 자리의 `className`도 같은 state로 풀어 그 뒤에 합쳐야 한다. registry는
 // 문자열로만 합쳐, 함수를 넘기면 `cn`이 그것을 조용히 버린다.
 //
-// `lib/utils.ts`가 아니라 여기 사는 것은 그 파일이 `cn` 재수출 한 줄이기 때문이다(결정 6). 쓰는 자리는
+// `lib/utils.ts`가 아니라 여기 사는 것은 그 파일이 `cn` 하나만 내보내는 자리이기 때문이다(결정 6). 쓰는 자리는
 // components/ui의 부품 파일뿐이다.
 export function resolveClassName<State>(
   className: string | ((state: State) => string | undefined) | undefined,

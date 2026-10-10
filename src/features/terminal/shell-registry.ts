@@ -479,8 +479,7 @@ function isAlive(shell: Shell): boolean {
 /** 이 화면에서 켜진 칸. */
 /**
  * work별 셸 개수 — 사이드바 work 행 **오른쪽 메타가 서는 조건**이다
- * (결정 2·3). 조용할 때 그 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를
- * 다 더하면 이 값이다.
+ * (결정 2·3). 조용할 때 그 자리는 이 값을 `⌨ N` 한 무리로 적는다(`ShellMeta` — ui-refresh 결정 13).
  *
  * **키는 slug다.** 사이드바 목록은 터미널을 한 번도 참조하지 않아(SidebarWorkList의 import 계약)
  * `ownerOf`를 못 부르고 `work.slug`로 꺼낸다 — 그래서 키를 `slugOfOwner`로 지어 내보낸다.
@@ -779,38 +778,6 @@ export function runningOn(shell: Shell): string | null {
 export function runningOfId(state: ShellsState, id: number): string | null {
   const shell = state.shells.find((one) => one.id === id);
   return shell === undefined ? null : runningOn(shell);
-}
-
-/**
- * 그 화면에서 **도는 것들**(결정 4·28). 칸 순서 그대로이고 **중복을 지우지 않는다** —
- * claude가 둘 돌면 두 번 들어 있다.
- *
- * **개수를 여기서 접지 않는 이유**는 얕은 비교다. `Map`이나 `Record`로 접어 주면 회차마다
- * 새 객체라 사이드바 행의 `shallow`가 늘 어긋나고, work 하나에서 명령이 시작될 때마다
- * 목록 전체가 다시 그려진다(`shellCountsOf` 머리말이 든 그 함정). 문자열 배열은 얕은
- * 비교가 그대로 먹으므로 **세는 일은 그리는 쪽**(`ShellMeta`)이 한다.
- *
- * 한때 종류만 담았다(중복 없음) — 「뭐가 도나」만 말하고 개수는 `shellCountsOf`가 셸 수로
- * 말한다는 것이었는데, 그러면 한 줄 안에서 셸에는 수가 붙고 에이전트에는 안 붙는다.
- *
- * 순서가 칸 순서인 것은 로고 자리가 초마다 재배열되면 그 자체가 깜빡임이라서다.
- *
- * **`shellCountsOf`처럼 Record로 한 번에 주지 않는다.** 그쪽은 셸이 열리고 닫힐 때만 바뀌어
- * 사이드바가 얕은 비교로 통째로 구독해도 되지만, 이 값은 초마다 바뀐다 — Record로 주면
- * 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고, work 하나에서 명령이 시작될
- * 때마다 목록 전체가 다시 그려진다. 행마다 자기 것을 고르게 두면 그 행만 바뀐다.
- */
-export function runningAgentsOf(
-  state: ShellsState,
-  owner: ShellOwner,
-): ReadonlyArray<string> {
-  const out: string[] = [];
-  for (const shell of shellsOf(state, owner)) {
-    // 「죽은 칸은 안 센다」를 여기서 다시 가르지 않는다 — 그 판정은 `runningOn` 하나다.
-    const running = runningOn(shell);
-    if (running !== null) out.push(running);
-  }
-  return out;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
-import PageHeader from "@/components/shell/PageHeader";
+import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription } from "@/components/ui/field";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { textareaLook } from "@/components/ui/textarea-look";
@@ -19,6 +19,14 @@ import { notificationChoice, patchNotifications } from "./notifications";
 import { settingsItem, type SettingsItemKey } from "./pages";
 import { exceptionsFromText, exceptionsText } from "./process-exceptions";
 import { saveSettingsSection, type SettingsSectionKey } from "./save-section";
+import {
+  SettingsBody,
+  SettingsFoot,
+  SettingsGroup,
+  SettingsLead,
+  SettingsRow,
+  SettingsSection,
+} from "./SettingsGroup";
 import type {
   HookStatus,
   NotificationSettings,
@@ -199,7 +207,7 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
 };
 
 /**
- * 설정 항목 하나의 화면(UI개선 결정 22). 머리는 `Settings / 터미널`이고 본문은 그 항목 하나다.
+ * 설정 항목 하나의 화면(UI개선 결정 22). 머리는 `Settings › 터미널`이고 본문은 그 항목 하나다.
  *
  * **초안은 항목 페이지 안에 산다**(결정 26) — 항목을 옮기면 주소가 바뀌어 페이지가 내려가고,
  * 저장 안 한 편집이 함께 버려진다. 경고하지 않는다: 설정 화면을 떠날 때 이미 그랬고, 같은 규칙이
@@ -207,26 +215,32 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
  */
 function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      {/* `relative`는 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
-          본문이 아니라 이 칸의 바닥에 선다. */}
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <PageHeader root="Settings" leaf={settingsItem(item).label} inset={!sidebarOpen} />
-        <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
-          <div className="flex max-w-[620px] flex-col gap-6">
-            {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다.** 한 화면에 구획이 셋이던 때는
-                구획마다 보이는 머리가 있었는데, 항목이 페이지가 되면서 머리 바로 밑에 같은 낱말이
-                한 번 더 섰다. 다만 `PageHeader`는 제목 역할이 없는 글자라, 이것마저 지우면 페이지에
-                제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. */}
-            <h2 className="sr-only">{settingsItem(item).label}</h2>
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 바탕 줄은 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치는 카드 머리의
+    // `Crumbs[Settings, 항목]`이다. 몸은 설정 틀(`SettingsGroup.tsx`)이다 — 큰 제목 → 구획 → 묶음.
+    <Frame sidebarOpen={sidebarOpen}>
+      {/* 카드가 `relative`라 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
+          본문이 아니라 이 카드의 바닥에 선다. */}
+      <Card
+        as="main"
+        label="Settings"
+        className="flex-1"
+        head={<CardHead crumbs={["Settings", settingsItem(item).label]} />}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
+          {/* 읽는 중 · 읽지 못한 갈래도 이 틀 안에 선다 — 큰 제목은 늘 있고, 그 아래만 갈래마다 다르다. */}
+          <SettingsBody>
+            {/* **제목 역할은 이 큰 제목이 진다.** 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자라, 이것이 없으면
+                페이지에 제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. 한때 감춘 줄(`sr-only`)이었고
+                설정 틀이 서며 보이는 큰 제목이 됐다 — 요소와 레벨은 그대로다(판 06 티켓 06). */}
+            <h2 className="text-title">{settingsItem(item).label}</h2>
             {/* **항목이 곧 key다.** 두 항목의 본문이 같은 게이트로 시작해, key가 없으면 React가
                 항목을 옮길 때 게이트를 이어 써 옛 사본을 들고 파일을 다시 안 읽을 수 있다 —
                 항목마다 새로 서야 초안도 사본도 따라오지 않는다(위 결정 26). */}
             <Fragment key={item}>{ITEM_BODIES[item]()}</Fragment>
-          </div>
+          </SettingsBody>
         </div>
-      </main>
-    </div>
+      </Card>
+    </Frame>
   );
 }
 
@@ -268,10 +282,11 @@ function SettingsFileGate({
   }, [attempt]);
 
   if (readError !== null) {
+    // 큰 제목 아래 구획 자리에 선다(설정 틀) — 묶음 대신 까닭과 「다시 읽기」다.
     return (
-      <div className="flex flex-col items-start gap-3 pt-2">
-        <p className="text-[13.5px] leading-[1.7] text-red-600">{readError}</p>
-        <p className="text-[13px] leading-[1.7] text-tertiary">
+      <div className="mt-7 flex flex-col items-start gap-3">
+        <p className="text-ui break-words text-red-600">{readError}</p>
+        <p className="text-ui text-muted-foreground">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
         <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
@@ -399,7 +414,7 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
   };
 
   return (
-    <div role="group" aria-label="터미널 설정" className="flex flex-col gap-6">
+    <div role="group" aria-label="터미널 설정">
       <TerminalSection
         settings={view}
         sizeText={sizeText}
@@ -497,7 +512,7 @@ function NotificationSettingsPage({ initial }: { initial: Settings }) {
     );
 
   return (
-    <div role="group" aria-label="알림 설정" className="flex flex-col gap-6">
+    <div role="group" aria-label="알림 설정">
       <NotificationSection settings={view} granted={granted} onChange={change} />
       <SaveButton {...section.button(enabled)} />
     </div>
@@ -556,7 +571,7 @@ function AgentHooksPage() {
   );
 }
 
-/** 구획 하나의 저장 버튼과 그 저장이 실패한 까닭. */
+/** 구획 하나의 저장 버튼과 그 저장이 실패한 까닭 — 설정 틀의 바닥 줄이다(오른쪽 끝, 실패 글은 그 왼쪽). */
 function SaveButton({
   enabled,
   saving,
@@ -569,18 +584,19 @@ function SaveButton({
   onSave: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <SettingsFoot>
+      {error !== null && <span className="text-ui text-red-600">{error}</span>}
       {/* 주 버튼(Button의 기본) — 프로젝트 빈 화면의 「프로젝트 등록」과 한 규격이다. */}
       <Button onClick={onSave} disabled={!enabled}>
         {saving ? "저장 중…" : "저장"}
       </Button>
-      {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
-    </div>
+    </SettingsFoot>
   );
 }
 
 /**
- * `터미널` 구획 — 글꼴 · 크기 · 테마 · 미리보기 네 줄이다(결정 52·54).
+ * `터미널` 설정의 「모양」 구획 — 글꼴 · 크기 · 테마 · 미리보기 네 행이다(결정 52·54). 구획 제목과 행의 설명은 판 06 문구
+ * 표의 S1–S4다.
  *
  * **스크롤백도 ANSI 16색 편집도 없다.** 결정 52가 둘 다 명시적으로 뺐다 — 스크롤백은 모양이
  * 아니라 메모리 값이고(셸 8개 × 10,000줄), 색 편집기는 별건이다.
@@ -604,113 +620,130 @@ export function TerminalSection({
   const sizeHintId = useId();
 
   return (
-    <section className="flex flex-col gap-5 pt-2">
-      {/* 글꼴 — 프리셋은 지름길일 뿐이고 **값은 아래 칸 하나가 든다.** 둘을 따로 들면
-          「프리셋을 골랐는데 칸에는 옛 이름이 남은」 상태가 생기고, 그때 무엇이 저장되는지
-          화면에서 읽을 수 없다. 비우면 「고르지 않음」이다(크기 칸과 같은 규칙). */}
-      <Row label="글꼴">
-        <div className="flex flex-col gap-2">
-          <ToggleGroup
-            size="chip"
-            aria-label="글꼴 프리셋"
-            value={fontChipsOf(fontFamily)}
-            // 켜진 칩을 다시 눌러 끄는 것은 뜻이 없다 — 부품이 그 누름을 없던 일로 한다(S16). 「고르지 않음」은
-            // 「기본」 칩이 말한다.
-            deselectable={false}
-            onValueChange={([pick]) =>
-              onChange({ fontFamily: pick === DEFAULT_FONT_CHIP ? null : pick })
-            }
-          >
-            <ToggleGroupItem value={DEFAULT_FONT_CHIP}>기본</ToggleGroupItem>
-            {FONT_PRESETS.map((preset) => (
-              <ToggleGroupItem key={preset} value={preset}>
-                {preset}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <Field orientation="horizontal">
-            <Input
-              variant="field"
-              className="w-[280px]"
-              aria-label="터미널 글꼴"
-              value={fontFamily ?? ""}
-              placeholder="기본"
-              onChange={(e) =>
-                onChange({ fontFamily: e.target.value.trim() === "" ? null : e.target.value })
+    <SettingsSection head="모양">
+      <SettingsGroup>
+        {/* 글꼴 — 프리셋은 지름길일 뿐이고 **값은 오른쪽 칸 하나가 든다.** 둘을 따로 들면
+            「프리셋을 골랐는데 칸에는 옛 이름이 남은」 상태가 생기고, 그때 무엇이 저장되는지
+            화면에서 읽을 수 없다. 비우면 「고르지 않음」이다(크기 칸과 같은 규칙). 설명이 말하는 기본 글꼴은
+            베껴 적지 않고 그 이름을 정하는 자리(`MONO_FACE` — `FONT_FAMILY`의 첫 항목)에서 읽는다. */}
+        <SettingsRow
+          name="글꼴"
+          description={`비워 두면 기본 글꼴(${MONO_FACE})이에요. 칩을 누르거나 이름을 적어요.`}
+          control={
+            <Field orientation="horizontal" className="w-auto">
+              <Input
+                variant="field"
+                className="w-[240px]"
+                aria-label="터미널 글꼴"
+                value={fontFamily ?? ""}
+                placeholder="기본"
+                onChange={(e) =>
+                  onChange({ fontFamily: e.target.value.trim() === "" ? null : e.target.value })
+                }
+              />
+            </Field>
+          }
+          below={
+            <ToggleGroup
+              size="chip"
+              aria-label="글꼴 프리셋"
+              value={fontChipsOf(fontFamily)}
+              // 켜진 칩을 다시 눌러 끄는 것은 뜻이 없다 — 부품이 그 누름을 없던 일로 한다(S16). 「고르지 않음」은
+              // 「기본」 칩이 말한다.
+              deselectable={false}
+              onValueChange={([pick]) =>
+                onChange({ fontFamily: pick === DEFAULT_FONT_CHIP ? null : pick })
               }
-            />
-          </Field>
-        </div>
-      </Row>
+            >
+              <ToggleGroupItem value={DEFAULT_FONT_CHIP}>기본</ToggleGroupItem>
+              {FONT_PRESETS.map((preset) => (
+                <ToggleGroupItem key={preset} value={preset}>
+                  {preset}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          }
+        />
 
-      {/* 크기 — `type="number"`가 아니다. 스피너가 이 앱에 없는 어휘이고, 무엇이 잘못
-          적혔는지는 `parseFontSize` 하나가 정해야 한다(브라우저마다 다른 강제 보정에
-          맡기지 않는다).
+        {/* 크기 — `type="number"`가 아니다. 스피너가 이 앱에 없는 어휘이고, 무엇이 잘못
+            적혔는지는 `parseFontSize` 하나가 정해야 한다(브라우저마다 다른 강제 보정에
+            맡기지 않는다).
 
-          파일이 준 범위 밖 값에도 테두리는 빨갛다 — 「이 화면이 만들 수 있는 범위 밖」은
-          출처와 무관한 사실이다. 그것이 저장까지 잠그느냐는 다른 질문이고 `canSave`가
-          따로 답한다.
+            파일이 준 범위 밖 값에도 테두리는 빨갛다 — 「이 화면이 만들 수 있는 범위 밖」은
+            출처와 무관한 사실이다. 그것이 저장까지 잠그느냐는 다른 질문이고 `canSave`가
+            따로 답한다.
 
-          틀린 값은 **칸이 말한다** — 빨간 테두리와 스크린리더의 「잘못된 값」이 한 속성(`aria-invalid`)에서
-          나온다(스토리 107). 행 전체를 빨갛게 하는 Field의 `data-invalid`는 쓰지 않는다(지금 모양). 안내는
-          칸의 설명이다 — registry Field가 저절로 잇지 않아 여기서 id로 잇는다. */}
-      <Row label="크기">
-        <Field orientation="horizontal">
-          <Input
-            variant="field"
-            className="w-[72px]"
-            aria-label="터미널 글꼴 크기"
-            aria-describedby={sizeHintId}
-            aria-invalid={parseFontSize(sizeText) === "invalid"}
-            inputMode="numeric"
-            value={sizeText}
-            placeholder="기본"
-            onChange={(e) => onChangeSize(e.target.value)}
-          />
-          <FieldDescription id={sizeHintId}>
-            px · {FONT_SIZE_MIN}–{FONT_SIZE_MAX}
-          </FieldDescription>
-        </Field>
-      </Row>
+            틀린 값은 **칸이 말한다** — 빨간 테두리와 스크린리더의 「잘못된 값」이 한 속성(`aria-invalid`)에서
+            나온다(스토리 107). 행 전체를 빨갛게 하는 Field의 `data-invalid`는 쓰지 않는다. 안내는 행의 설명 줄이다 —
+            칸이 `aria-describedby`로 그 줄을 가리킨다. 범위와 기본 크기는 베껴 적지 않고 값을 정하는 자리에서 읽는다. */}
+        <SettingsRow
+          name="크기"
+          description={`${FONT_SIZE_MIN}–${FONT_SIZE_MAX}px. 비워 두면 기본 크기(${FONT_SIZE}px)예요.`}
+          descriptionId={sizeHintId}
+          control={
+            <Field orientation="horizontal" className="w-auto">
+              <Input
+                variant="field"
+                className="w-[88px]"
+                aria-label="터미널 글꼴 크기"
+                aria-describedby={sizeHintId}
+                aria-invalid={parseFontSize(sizeText) === "invalid"}
+                inputMode="numeric"
+                value={sizeText}
+                placeholder="기본"
+                onChange={(e) => onChangeSize(e.target.value)}
+              />
+              <span className="text-ui text-muted-foreground">px</span>
+            </Field>
+          }
+        />
 
-      {/* 테마 — 두 벌뿐이다(결정 54). 기본은 어둡게이고 그 기본은 백엔드가 정해 온다
-          (`settings.rs`의 `TerminalTheme::default`), 그래서 이 칸에는 「고르지 않음」이 없다 —
-          켜진 칩을 다시 눌러 값을 비우지 못한다(S16 — 부품의 `deselectable={false}`). 둘 중 하나가 늘 켜져 있다. */}
-      <Row label="테마">
-        <ToggleGroup
-          size="chip"
-          aria-label="테마"
-          value={[theme]}
-          deselectable={false}
-          onValueChange={([pick]) => onChange({ theme: pick })}
-        >
-          {(["light", "dark"] as const).map((option) => (
-            <ToggleGroupItem key={option} value={option}>
-              {THEME_LABELS[option]}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </Row>
+        {/* 테마 — 두 벌뿐이다(결정 54). 기본은 어둡게이고 그 기본은 백엔드가 정해 온다
+            (`settings.rs`의 `TerminalTheme::default`), 그래서 이 칸에는 「고르지 않음」이 없다 —
+            켜진 칩을 다시 눌러 값을 비우지 못한다(S16 — 부품의 `deselectable={false}`). 둘 중 하나가 늘 켜져 있다. */}
+        <SettingsRow
+          name="테마"
+          description={`터미널 바탕과 글자 색이에요. 기본은 ${THEME_LABELS.dark}예요.`}
+          control={
+            <ToggleGroup
+              size="chip"
+              aria-label="테마"
+              value={[theme]}
+              deselectable={false}
+              onValueChange={([pick]) => onChange({ theme: pick })}
+            >
+              {(["light", "dark"] as const).map((option) => (
+                <ToggleGroupItem key={option} value={option}>
+                  {THEME_LABELS[option]}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          }
+        />
 
-      {/* 미리보기 — **필수다**(결정 52). 글꼴 이름을 잘못 적으면 오류 없이 폴백으로 그려지는
-          조용한 실패를, 저장하기 전에 눈에 보이게 만드는 값싼 길이다. 색도 고른 테마의 것을
-          그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. */}
-      <Row label="미리보기">
-        <div
-          style={{
-            background: palette.background,
-            color: palette.foreground,
-            fontFamily: previewFontFamily(fontFamily),
-            // 글꼴과 같은 규칙이다 — 고르지 않았으면 셸이 쓸 기본 크기를 그대로 그린다.
-            // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
-            fontSize: `${fontSize ?? FONT_SIZE}px`,
-          }}
-          className="overflow-x-auto whitespace-pre rounded-[10px] px-3.5 py-3 leading-[1.6] scroll-quiet"
-        >
-          {PREVIEW_LINE}
-        </div>
-      </Row>
-    </section>
+        {/* 미리보기 — **필수다**(결정 52). 글꼴 이름을 잘못 적으면 오류 없이 폴백으로 그려지는
+            조용한 실패를, 저장하기 전에 눈에 보이게 만드는 값싼 길이다. 색도 고른 테마의 것을
+            그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. */}
+        <SettingsRow
+          name="미리보기"
+          below={
+            <div
+              style={{
+                background: palette.background,
+                color: palette.foreground,
+                fontFamily: previewFontFamily(fontFamily),
+                // 글꼴과 같은 규칙이다 — 고르지 않았으면 셸이 쓸 기본 크기를 그대로 그린다.
+                // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
+                fontSize: `${fontSize ?? FONT_SIZE}px`,
+              }}
+              className="flex min-h-[52px] items-center overflow-x-auto rounded-card px-[18px] leading-[1.6] whitespace-pre scroll-quiet"
+            >
+              {PREVIEW_LINE}
+            </div>
+          }
+        />
+      </SettingsGroup>
+    </SettingsSection>
   );
 }
 
@@ -721,8 +754,8 @@ export function TerminalSection({
  * **이름이 둘이다**(`CONTEXT.md`의 「예외」). 목록을 고치는 이 자리는 「셸을 닫아도 남길 프로세스」라 부른다 —
  * 무엇이 되는지를 말하는 이름이다. 걸린 것을 모아 보이는 자리는 「예외」다.
  *
- * 줄(`Row`)에 안 앉히는 것은 라벨이 길어서다 — 왼쪽 64px 칸에 넣으면 네 줄로 꺾인다. 저장은 터미널 설정의 저장
- * 버튼 하나가 함께 진다(초안이 `terminal` 구획 하나다).
+ * 터미널 설정의 「프로세스」 구획(판 06 문구 표 S5)에 행 하나로 선다 — 이름은 그 칸의 이름이고, 글상자는 행의 아래 줄을
+ * 가득 쓴다. 저장은 터미널 설정의 저장 버튼 하나가 함께 진다(초안이 `terminal` 구획 하나다).
  *
  * 값을 들지 않는다 — 조각(`TerminalSettingsPage`)이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
  */
@@ -746,32 +779,43 @@ export function ProcessExceptionsSection({
   onReset: () => void;
 }) {
   return (
-    <section className="flex flex-col gap-2 pt-2">
-      <span className="text-[13px] text-tertiary">셸을 닫아도 남길 프로세스</span>
-      <p className="text-[13px] leading-[1.7] text-tertiary">
-        셸을 닫거나 앱을 끄면 그 셸에서 띄운 프로세스도 함께 끝나요. 여기 적은 이름의 프로세스와 그
-        밑에서 뜬 것은 그대로 둬요. 한 줄에 하나씩 적고, 끝에 <code>*</code>를 붙이면 그 이름으로
-        시작하는 것을 모두 둬요.
-      </p>
-      <textarea
-        aria-label="셸을 닫아도 남길 프로세스"
-        value={text ?? ""}
-        disabled={text === null}
-        onChange={(e) => onChange(e.target.value)}
-        rows={7}
-        spellCheck={false}
-        className={cn(textareaLook, "w-[280px] disabled:opacity-40")}
-      />
-      <div className="flex items-center gap-3">
-        {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · sm) — 주 버튼은 저장 하나다. */}
-        <Button variant="ghost" size="sm" onClick={onReset} disabled={isDefault}>
-          기본값으로
-        </Button>
-        {defaultsFailed && (
-          <span className="text-[13px] text-red-600">기본 목록을 읽지 못했어요.</span>
-        )}
-      </div>
-    </section>
+    <SettingsSection head="프로세스">
+      <SettingsGroup>
+        <SettingsRow
+          name="셸을 닫아도 남길 프로세스"
+          description={
+            <>
+              셸을 닫거나 앱을 끄면 그 셸에서 띄운 프로세스도 함께 끝나요. 여기 적은 이름의 프로세스와 그
+              밑에서 뜬 것은 그대로 둬요. 한 줄에 하나씩 적고, 끝에 <code>*</code>를 붙이면 그 이름으로
+              시작하는 것을 모두 둬요.
+            </>
+          }
+          control={
+            // 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · sm) — 주 버튼은 저장 하나다.
+            <Button variant="ghost" size="sm" onClick={onReset} disabled={isDefault}>
+              기본값으로
+            </Button>
+          }
+          below={
+            <div className="flex flex-col gap-2">
+              {/* 폭 가득 · 고정폭 · 높이 80부터(세 줄) — 늘리는 것은 칸의 손잡이다(`textareaLook`의 `resize-y`). */}
+              <textarea
+                aria-label="셸을 닫아도 남길 프로세스"
+                value={text ?? ""}
+                disabled={text === null}
+                onChange={(e) => onChange(e.target.value)}
+                rows={3}
+                spellCheck={false}
+                className={cn(textareaLook, "min-h-20 font-mono text-mono disabled:opacity-40")}
+              />
+              {defaultsFailed && (
+                <span className="text-ui text-red-600">기본 목록을 읽지 못했어요.</span>
+              )}
+            </div>
+          }
+        />
+      </SettingsGroup>
+    </SettingsSection>
   );
 }
 
@@ -797,6 +841,11 @@ export function ProcessExceptionsSection({
  * 그래도 이 줄을 두는 것은 판정이 **진짜 API를 딛고 있어서다**: 그 길이 생기는 날 화면이
  * 저절로 따라온다. 여기서 「거부됐을 것 같다」를 우리가 지어내지는 않는다(결정 3의 그 규칙).
  *
+ * **켬/끔은 스위치 하나씩이고, 이름은 행의 이름 글자다**(결정 12). 참·거짓 하나를 칩 둘로 나누면 어느 쪽이 켜졌는지를
+ * 색으로 읽어야 하는데, 스위치는 모양으로 말한다. 이름 칸이 그 스위치의 `<label>`이라(`SettingsRow`의 `nameFor`) Base UI가
+ * 숨은 체크박스에 이어진 label을 찾아 `aria-labelledby`로 잇는다 — 보이는 글자와 읽히는 이름이 한 벌이고, 글자를 눌러도
+ * 켜고 끈다(한 번만 — label이 숨은 체크박스로 보내는 누름 하나다). 설명 줄은 판 06 문구 표 S6 · S7이다.
+ *
  * 값을 들지 않는다 — 조각(`…Page`)이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
  */
 export function NotificationSection({
@@ -810,35 +859,49 @@ export function NotificationSection({
   onChange: (patch: Partial<NotificationSettings>) => void;
 }) {
   const choice = notificationChoice(settings);
+  const enabledId = useId();
+  const soundId = useId();
 
   return (
-    <section className="flex flex-col gap-5 pt-2">
-      <Row label="알림">
-        <div className="flex flex-col gap-2">
-          <LabeledSwitch
-            label="셸이 나를 부르면 알림"
-            checked={choice.enabled}
-            onCheckedChange={(enabled) => onChange({ enabled })}
-          />
-          {granted === false && (
-            // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
-            // 아니라 OS가 안 준 것이라, 사람이 갈 곳을 적는 것이 이 줄이 하는 일 전부다.
-            <p className="text-[13px] leading-[1.7] text-tertiary">
-              macOS가 알림 권한을 안 줬어요. 시스템 설정 › 알림에서 아틀리에를 켜 주세요.
-            </p>
-          )}
-        </div>
-      </Row>
-
-      {/* 소리만 따로 끌 수 있다(스토리 64) — 소리는 시스템 기본 알림음이다. */}
-      <Row label="소리">
-        <LabeledSwitch
-          label="알림에 소리"
-          checked={choice.sound}
-          onCheckedChange={(sound) => onChange({ sound })}
+    // 구획 제목 없이 묶음 하나다 — 행이 둘뿐이고 큰 제목 「알림」이 이미 그 이름이다.
+    <SettingsSection>
+      <SettingsGroup>
+        <SettingsRow
+          name="셸이 나를 부르면 알림"
+          nameFor={enabledId}
+          description="셸이 입력을 기다리거나 일을 마치면 macOS 알림을 띄워요. 그 셸을 보고 있으면 울리지 않아요."
+          control={
+            <Switch
+              id={enabledId}
+              checked={choice.enabled}
+              onCheckedChange={(enabled) => onChange({ enabled })}
+            />
+          }
+          below={
+            granted === false ? (
+              // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
+              // 아니라 OS가 안 준 것이라, 사람이 갈 곳을 적는 것이 이 줄이 하는 일 전부다.
+              <p className="text-ui text-muted-foreground">
+                macOS가 알림 권한을 안 줬어요. 시스템 설정 › 알림에서 아틀리에를 켜 주세요.
+              </p>
+            ) : undefined
+          }
         />
-      </Row>
-    </section>
+        {/* 소리만 따로 끌 수 있다(스토리 64) — 소리는 시스템 기본 알림음이다. */}
+        <SettingsRow
+          name="알림에 소리"
+          nameFor={soundId}
+          description="시스템 기본 알림음이에요."
+          control={
+            <Switch
+              id={soundId}
+              checked={choice.sound}
+              onCheckedChange={(sound) => onChange({ sound })}
+            />
+          }
+        />
+      </SettingsGroup>
+    </SettingsSection>
   );
 }
 
@@ -890,95 +953,64 @@ export function HooksSection({
   onUninstall: () => void;
 }) {
   return (
-    <section className="flex flex-col gap-5 pt-2">
+    <>
       {/* **다른 구획의 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
           설정이라 초안이라는 것이 없다. 되돌릴 벌을 뜬다는 것도 여기서 말한다: 누르기
-          전에 알아야 마음이 놓인다. */}
-      <p className="text-[13px] leading-[1.7] text-tertiary">
+          전에 알아야 마음이 놓인다. 큰 제목 바로 아래의 머리글이다(설정 틀). */}
+      <SettingsLead>
         누른 순간 아래 파일에 적용돼요(저장 버튼과 별개예요). 고치기 전에 같은 자리에{" "}
         <code>.bak</code> 한 벌을 떠 두고, 다른 도구의 훅은 그대로 둬요.{" "}
         {/* **아래 글자가 「더해지는 것」임을 말한다.** claude 쪽 미리보기는 설정이 비어
             있을 때의 결과 파일이라, 이 줄이 없으면 예순 줄짜리 설정을 가진 사람에게는
             「내 파일이 이걸로 바뀐다」로 읽힌다 — 이 구획이 없애려던 그 불안이다. */}
-        아래는 <strong className="font-medium">더해지는 부분</strong>이에요 — 이미 있는
+        아래는 <strong className="font-medium text-foreground">더해지는 부분</strong>이에요 — 이미 있는
         내용은 그대로 두고 여기에만 얹어요.
-      </p>
+      </SettingsLead>
 
-      {statuses.map((status) => (
-        <Row key={status.agent} label={status.agent}>
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-baseline gap-2">
-              {/* 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다. */}
-              <span className="text-[13px] font-medium">{hookStateLabel(status)}</span>
-              <span className="text-[13px] text-tertiary">{status.path}</span>
-            </div>
-            {status.error !== null && (
-              <p className="text-[13px] leading-[1.7] text-red-600">{status.error}</p>
-            )}
-            {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
-                낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
-                경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
-                두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
-            {status.writeError !== null && status.writeError !== status.error && (
-              <p className="text-[13px] leading-[1.7] text-red-600">{status.writeError}</p>
-            )}
-            {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). */}
-            <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-[12px] leading-[1.6] scroll-quiet">
-              {status.preview}
-            </pre>
-          </div>
-        </Row>
-      ))}
+      {/* 에이전트 하나가 행 하나다 — 이름은 에이전트, 설명은 고칠 파일의 경로, 오른쪽은 지금 상태의 낱말, 아래 줄은 까닭과
+          미리보기다. */}
+      <SettingsSection>
+        <SettingsGroup>
+          {statuses.map((status) => (
+            <SettingsRow
+              key={status.agent}
+              name={status.agent}
+              description={<span className="font-mono text-mono-sm">{status.path}</span>}
+              // 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다.
+              control={<span className="text-ui font-medium whitespace-nowrap">{hookStateLabel(status)}</span>}
+              below={
+                <div className="flex flex-col gap-2">
+                  {status.error !== null && <p className="text-ui break-words text-red-600">{status.error}</p>}
+                  {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
+                      낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
+                      경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
+                      두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
+                  {status.writeError !== null && status.writeError !== status.error && (
+                    <p className="text-ui break-words text-red-600">{status.writeError}</p>
+                  )}
+                  {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 옅은 면 위의 흰 면이다. */}
+                  <pre className="max-h-[168px] overflow-auto rounded-card bg-card px-4 py-3 text-mono scroll-quiet">
+                    {status.preview}
+                  </pre>
+                </div>
+              }
+            />
+          ))}
+        </SettingsGroup>
+      </SettingsSection>
 
-      <Row label="">
-        <div className="flex items-center gap-3">
-          {/* 규격은 이 화면의 「다시 읽기」와 같은 쪽 동작 버튼이다 — 저장 버튼(주 버튼)은 터미널
-              설정·알림 설정에만 있고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
-          <Button variant="ghost" size="sm" onClick={onInstall} disabled={busy}>
-            설치
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onUninstall} disabled={busy}>
-            제거
-          </Button>
-          {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
-        </div>
-      </Row>
-    </section>
-  );
-}
-
-/**
- * 켬/끔 하나 — 스위치와 그 이름(결정 12). 참·거짓 하나를 칩 둘로 나누면 어느 쪽이 켜졌는지를 색으로
- * 읽어야 하는데, 스위치는 모양으로 말한다. 스크린리더는 이름과 켬/끔(`role="switch"`·`aria-checked`,
- * Base UI가 단다)을 말한다.
- *
- * **이름은 옆 글자다.** 스위치를 `<label>`로 감싸면 Base UI가 숨은 체크박스의 부모 label을 찾아
- * `aria-labelledby`로 잇는다 — 보이는 글자와 읽히는 이름이 한 벌이고, 글자를 눌러도 켜고 끈다.
- */
-function LabeledSwitch({
-  label,
-  checked,
-  onCheckedChange,
-}: {
-  label: string;
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-}) {
-  return (
-    // 26px 줄 가운데에 세운다 — 왼쪽 행 라벨(`Row`의 pt-[7px])이 그 높이의 줄에 맞춰져 있다(테마·글꼴 칩 줄).
-    <label className="flex h-[26px] w-fit items-center gap-2 text-[13px] select-none">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
-      {label}
-    </label>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-4">
-      <span className="w-[64px] shrink-0 pt-[7px] text-[13px] text-tertiary">{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
+      <SettingsFoot>
+        {error !== null && <span className="text-ui text-red-600">{error}</span>}
+        {/* 폼 버튼이다(10px 모서리 — handoff 「머리 버튼과 폼 버튼」). 저장 버튼(주 버튼)은 터미널 설정 · 알림 설정에만 있고,
+            이 둘은 그 자리를 안 지나는 별개의 쓰기다. 오른쪽 끝이 하는 일(설치)이다 — 프로토타입의 차례. */}
+        <Button variant="ghost" onClick={onUninstall} disabled={busy}>
+          제거
+        </Button>
+        <Button variant="outline" onClick={onInstall} disabled={busy}>
+          설치
+        </Button>
+      </SettingsFoot>
+    </>
   );
 }
 

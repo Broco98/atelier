@@ -110,7 +110,7 @@ function 행(state: ShellsState): string {
           // 행마다 따로다.
           const view = topSignalView(shellsOf(state, ownerOf(work.slug)));
           return view === null ? null : (
-            <SignalMeta kind={view.kind} running={view.running} since={view.since} now={view.since} />
+            <SignalMeta kind={view.kind} since={view.since} now={view.since} />
           );
         },
       }}
@@ -141,7 +141,7 @@ function 띠(state: ShellsState): string {
 
 /**
  * **켜짐을 인자로 받는다.** 탭 물들임의 주 경로는 「다른 셸을 보는 동안 부르는 칸」 —
- * 즉 **안 켜진** 칸이고, 켜진 칸은 회색이 물러나고 테두리가 서는 유일한 자리라(결정 6)
+ * 즉 **안 켜진** 칸이고, 켜진 칸은 흰 면(`tab-on`)이 물러나고 테두리가 서는 유일한 자리라(결정 6)
  * 색을 다시 고르기 가장 쉬운 자리다. 한쪽만 그리면 나머지 한쪽이 이 그물 밖에 남는다.
  *
  * `showing`이 거짓이면 그 화면의 셸 칸이 하나도 안 켜진다(`ShellTabs`의 그 prop) —

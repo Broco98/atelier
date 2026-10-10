@@ -235,7 +235,7 @@ mod tests {
     }
 
     /// **감시자가 보는 자리가 resolve가 읽는 레이아웃 폴더를 품는다.** 둘이 갈리면 에이전트가 저장해도
-    /// 종이 안 울려, 설정과 spec 패널 탭이 다시 띄울 때까지 옛것을 든다.
+    /// 종이 안 울려, 설정과 `spec` 패널이 다시 띄울 때까지 옛것을 든다.
     #[test]
     fn the_layout_folder_sits_in_the_folder_the_app_watches() {
         let folder = layout_folder(&crate::data_root());

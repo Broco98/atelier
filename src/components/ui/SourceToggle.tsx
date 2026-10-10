@@ -18,8 +18,8 @@ const CELLS = ["doc", "source"] as const;
 // 것은 「반대로 간다」 하나뿐이고, 아무 일도 안 일어나는 자리는 그저 안 듣는 버튼으로 읽힌다.
 // 두 칸은 **모드를 읽는 자리**이지 각자 목적지를 가진 두 버튼이 아니다.
 //
-// 잠김도 그대로 흐림 + 포인터 차단이다(`ignoresSourceToggle`이 참인 파일 · spec 0개 ·
-// 터미널 탭 — 어느 파일이 토글을 무시하는지는 `doc-refs`의 표가 든다).
+// 잠김도 그대로 흐림 + 포인터 차단이다(`ignoresSourceToggle`이 참인 파일 · spec 0개 —
+// 어느 파일이 토글을 무시하는지는 `doc-refs`의 표가 든다).
 // **두 칸을 함께 잠근다**: 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
 // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
 //
@@ -27,14 +27,15 @@ const CELLS = ["doc", "source"] as const;
 // 자리가 하나이고(첫 칸 — S30), 그 안에서는 ←/→로 옮긴다. 부품은 선 칸을 누르면 값을 비우는데(`[]`),
 // 여기서는 그것을 **뒤집기**로 읽는다(S16 — 편집기의 종류 · 템플릿은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
 // 칸마다 네이티브 `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일
-// (`segment-group.tsx`)이 든다.
+// (`segment-group.tsx`)이 든다 — 카드 머리의 컨트롤이라 알약(`pill`)이다: 흰 캡슐 안에 원형 칸 둘이 서고, 선 칸은
+// `sidebar-accent` 원이다(ui-refresh 결정 7의 B).
 export function SourceToggle({
   on,
   locked = false,
   onChange,
   className,
 }: {
-  /** 지금 원문 보기인가. 사람이 정한 값이지 본문이 소스인가가 아니다(WorkPanel 주석). */
+  /** 지금 원문 보기인가. 사람이 정한 값이지 본문이 소스인가가 아니다(`WorksPage`의 `showSource` 주석). */
   on: boolean;
   locked?: boolean;
   onChange: (source: boolean) => void;
@@ -42,7 +43,7 @@ export function SourceToggle({
 }) {
   return (
     <SegmentGroup
-      size="icon"
+      size="pill"
       cells={CELLS}
       value={[on ? "source" : "doc"]}
       // 선 칸을 눌러 비운 값(`[]`)도 뒤집기다 — 두 칸이 한 토글의 두 얼굴이다(위 주석).

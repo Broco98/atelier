@@ -116,8 +116,8 @@ export function cleanupLogQuery(snapshotAt: number) {
 
 /**
  * `Processes` 화면의 정리 기록. 스냅샷이 도착한 때는 **화면이 넘긴다** — 여기서 스냅샷 훅을 또 부르면 스냅샷 박자가 하나 더 걸린다
- * (react-query는 보는 쪽마다 `refetchInterval`을 건다).
+ * (react-query는 보는 쪽마다 `refetchInterval`을 건다). 첫 스냅샷 전(`null`)에는 묻지 않는다 — 기록은 스냅샷을 따라 묻는다.
  */
-export function useCleanupLog(snapshotAt: number) {
-  return useQuery(cleanupLogQuery(snapshotAt));
+export function useCleanupLog(snapshotAt: number | null) {
+  return useQuery({ ...cleanupLogQuery(snapshotAt ?? 0), enabled: snapshotAt !== null });
 }

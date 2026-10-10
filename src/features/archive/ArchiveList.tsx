@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { CardHead } from "@/components/shell/Frame";
+import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -13,15 +14,35 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import SpecTree from "@/features/works/SpecTree";
+import SpecTree, { treeIndent } from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
 import { ARCHIVE_COPY, narrowedNotice } from "./archive-copy";
 import { archiveTreeItems } from "./archive-tree";
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
 
-/** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 이름이나 설명으로 간다(아래 버튼 주석). */
+/**
+ * 펼친 문서 트리가 서는 깊이 — 아카이브 행 아래 한 단이다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다). 행과 같은 x에
+ * 서면 문서 줄이 아카이브 행과 한 층으로 읽힌다. 「남은 문서가 없어요」도 같은 자리에 선다.
+ */
+const TREE_DEPTH = 1;
+
+/** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 설명으로 간다(아래 버튼 주석). */
 const SORT_HELP = "아카이브한 날짜 기준 정렬";
+
+/**
+ * 정렬 · 거르기 알약 — 작은 흰 알약이다(`size="pill-sm"`, DS `.at-pill.sm`). 줄에 눌리면 거르기의 글자가 말줄임으로
+ * 줄어든다(`min-w-0 shrink` — 버튼은 평소 안 줄어든다).
+ */
+const SMALL_PILL = cn(buttonVariants({ variant: "outline", size: "pill-sm" }), "min-w-0 shrink");
+
+/**
+ * 거른 동안의 켜짐(state-3) — 흰 알약 위에 한 겹 얹는다(머리 컨트롤의 hover · 펼침이 같은 방식으로 겹을 얹는다). hover · 펼침의
+ * 옅은 겹이 켜짐을 덮지 않게 세 자리를 같은 값으로 묶는다 — 펼침은 부품이 메뉴 트리거에만 주는 겹이라 같은 조건으로 적는다.
+ * 켜짐은 알약의 모양이 아니라 이 거르개의 상태라 부품에 두지 않는다.
+ */
+const FILTER_ON =
+  "bg-[image:linear-gradient(var(--state-3),var(--state-3))] hover:bg-[image:linear-gradient(var(--state-3),var(--state-3))] aria-[haspopup=menu]:aria-expanded:bg-[image:linear-gradient(var(--state-3),var(--state-3))]";
 
 /**
  * 거르개 값의 보이는 이름. 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 거르개의 글자 · 툴팁 · 설명과 메뉴의 줄이
@@ -38,16 +59,15 @@ interface ArchiveListProps {
   // 문서를 고르는 것이 아카이브를 고르는 것이다 — 어느 아카이브의 문서인지 함께 넘긴다
   onSelectDoc: (slug: string, path: string) => void;
   onCopyDoc: (slug: string, path: string) => void;
-  sidebarOpen: boolean;
-  open: boolean;
 }
 
-// 아카이브 목록 패널. `ProjectList`와 같은 접힘·리사이즈·검색 패턴이되, 문서 트리를 **이 안에**
-// 품는다 — 우측에 따로 문서 패널을 세우면 컬럼이 넷(사이드바+목록+본문+문서)이 되어
+// 아카이브 목록 카드의 안 — 머리(검색칸), 첫 줄(정렬 · 거르기), 몸(아카이브 행). `ProjectList`와 같은 목록 카드이되 문서
+// 트리를 **이 안에** 품는다 — 우측에 따로 문서 패널을 세우면 컬럼이 넷(사이드바+목록+본문+문서)이 되어
 // 1280 창에서 본문이 370px로 쪼그라든다. `works-nav-depth`가 되찾은 폭(536→864)을
 // 아카이브에서 다시 잃을 이유가 없다.
 //
-// 폭은 `ProjectList`와 키를 나눠 갖지 않는다 — 이쪽은 문서 트리까지 담아 쓸모 있는 폭이 다르다.
+// 카드 · 접힘 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`, ui-refresh 결정 15 · 27). 폭은 `ProjectList`와 키를
+// 나눠 갖지 않는다(`ArchivePage`의 `archive-panel-width`) — 이쪽은 문서 트리까지 담아 쓸모 있는 폭이 다르다.
 function ArchiveList({
   entries,
   selectedSlug,
@@ -55,11 +75,7 @@ function ArchiveList({
   currentDoc,
   onSelectDoc,
   onCopyDoc,
-  sidebarOpen,
-  open,
 }: ArchiveListProps) {
-  const size = useResizableWidth("archive-panel-width", 360, 280, 560);
-
   // 정렬·필터·검색은 **영속하지 않는다.** 화면이 백엔드 순서 위에 자기 순서를 얹으면
   // 진입 정규화(pickSlug의 "목록 첫 항목")가 고르는 것과 눈에 보이는 첫 항목이 갈린다 —
   // 실제로 그랬고(#58), `works-nav-depth`가 정렬·필터를 지운 이유가 그것이다.
@@ -101,101 +117,11 @@ function ArchiveList({
   }, [selectedSlug]);
 
   return (
-    // Sidebar·ProjectList와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지
-    <div
-      style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
-      className={cn(
-        "relative shrink-0 overflow-hidden border-r bg-background",
-        !size.dragging && "transition-[width,border-color] duration-[220ms] ease-panel",
-        open ? "w-(--panel-width)" : "w-0 border-transparent border-r-0",
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-full w-(--panel-width) flex-col px-3 pb-3 transition-opacity",
-          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
-        )}
-      >
-        {/* 타이틀바 스트립을 겸하는 컨트롤 행 — 사이드바가 닫히면 신호등·셸 컨트롤을 피해
-            좌측 패딩을 넓힌다 (ProjectList와 같은 규칙) */}
-        <div
-          data-tauri-drag-region
-          className={cn(
-            "flex h-(--titlebar-height) shrink-0 items-center transition-[padding] duration-[220ms] ease-panel",
-            sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
-          )}
-        >
-          <span className="flex shrink-0 items-center gap-1.5">
-            {/* 도움말 「아카이브한 날짜 기준 정렬」은 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 그
-                말은 둘로 남는다: 글자 「치운 날」이 선 동안에는 이름보다 더 말하는 설명이고, 사이드바가 닫혀 글리프만
-                남으면 이름이 없던 아이콘 버튼이라 툴팁과 같은 이름이다. */}
-            <Hint
-              text={SORT_HELP}
-              announce={sidebarOpen ? "description" : "name"}
-              type="button"
-              onClick={() => setSortAsc((v) => !v)}
-              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
-            >
-              <ArrowDown
-                className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
-                strokeWidth={2}
-              />
-              {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
-              {sidebarOpen && "치운 날"}
-            </Hint>
-            {/* **라디오 메뉴다**(판 3, 스토리 46~49 · 51 · 52). 여닫이 · 줄 옮기기 · Esc 닫기와 거르개로
-                포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
-                `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33). */}
-            <DropdownMenu>
-              {/* **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이 없으면 읽을
-                  말이 없다. 지금 값은 툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다
-                  (S28 — 툴팁은 스크린리더에 아무것도 주지 않는다). */}
-              <Hint
-                text={filterName}
-                announce="description"
-                render={
-                  <DropdownMenuTrigger
-                    aria-label="프로젝트 거르기"
-                    className={cn(
-                      "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
-                      projectFilter
-                        ? "toggle-on"
-                        : "text-muted-foreground quiet-hover",
-                    )}
-                  />
-                }
-              >
-                <Filter className="size-3 shrink-0" strokeWidth={2} />
-                {sidebarOpen && (
-                  <>
-                    <span className="truncate">{filterName}</span>
-                    <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
-                  </>
-                )}
-              </Hint>
-              {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
-              <DropdownMenuContent align="end" width="wide">
-                <DropdownMenuRadioGroup
-                  // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.
-                  value={projectFilter}
-                  onValueChange={(option: string | null) => setProjectFilter(option)}
-                >
-                  {[null, ...projectOptions].map((option) => (
-                    <DropdownMenuRadioItem key={option ?? "*"} value={option}>
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {filterNameOf(option)}
-                      </span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </span>
-        </div>
-
-        {/* mb-[10px] = 헤더 행(44px)에서 24px 컨트롤을 뺀 상하 여백 (ProjectList와 같은 값) */}
+    <>
+      {/* 목록 카드 머리 — 검색칸 하나가 캡슐 자리에 늘어선다(Archive 프로토타입). */}
+      <CardHead>
         {entries.length > 0 && (
-          <InputGroup className="mb-[10px] shrink-0">
+          <InputGroup className="flex-1">
             <InputGroupAddon>
               <Search strokeWidth={1.8} />
             </InputGroupAddon>
@@ -208,6 +134,65 @@ function ArchiveList({
             />
           </InputGroup>
         )}
+      </CardHead>
+
+      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+        {/* 첫 줄 — 정렬 · 거르기 알약. 신호등을 피할 일은 바탕 줄의 몫이라 사이드바가 접혀도 글자가 그대로 선다. */}
+        <div className="flex shrink-0 items-center gap-1.5 pb-2 pl-0.5">
+          {/* 도움말 「아카이브한 날짜 기준 정렬」은 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 그 말은
+              설명으로 남는다 — 이름은 글자 「치운 날」이 들고, 도움말은 그보다 더 말하는 것이다. */}
+          <Hint
+            text={SORT_HELP}
+            announce="description"
+            type="button"
+            onClick={() => setSortAsc((v) => !v)}
+            className={SMALL_PILL}
+          >
+            <ArrowDown
+              className={cn("size-3.5 transition-transform", sortAsc && "rotate-180")}
+              strokeWidth={2}
+            />
+            치운 날
+          </Hint>
+          {/* **라디오 메뉴다**(판 3, 스토리 46~49 · 51 · 52). 여닫이 · 줄 옮기기 · Esc 닫기와 거르개로
+              포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
+              `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33). */}
+          <DropdownMenu>
+            {/* **이름을 단다**(S37) — 버튼의 글자는 지금 값이라 그것만으로는 무엇을 고르는 버튼인지 말하지 않는다. 지금 값은
+                툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다(S28 — 툴팁은 스크린리더에
+                아무것도 주지 않는다). */}
+            <Hint
+              text={filterName}
+              announce="description"
+              render={
+                <DropdownMenuTrigger
+                  aria-label="프로젝트 거르기"
+                  className={cn(SMALL_PILL, projectFilter && FILTER_ON)}
+                />
+              }
+            >
+              <Filter className="size-3.5 shrink-0" strokeWidth={2} />
+              <span className="truncate">{filterName}</span>
+              <ChevronDown className="-mr-1 size-3 shrink-0 text-tertiary" strokeWidth={2.2} />
+            </Hint>
+            {/* 거르개와 오른쪽 끝끼리 맞춘다(옛 카드의 `align="right"`). 폭은 메뉴 기본(208px)이다. */}
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.
+                value={projectFilter}
+                onValueChange={(option: string | null) => setProjectFilter(option)}
+              >
+                {[null, ...projectOptions].map((option) => (
+                  <DropdownMenuRadioItem key={option ?? "*"} value={option}>
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {filterNameOf(option)}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         {/* 도착 전에는 비어 있다고 말하지 않는다 — 본문 빈 상태와 같은 이유다 */}
         {loading ? null : entries.length === 0 ? (
@@ -223,7 +208,7 @@ function ArchiveList({
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
             {/* 좁힌 것이 검색어인지 필터인지를 말한다 — 문장은 `archive-copy.ts`가 든다. */}
-            <span className="text-[13px] text-tertiary">{narrowedNotice(q !== "")}</span>
+            <span className="text-ui text-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
           <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
@@ -255,9 +240,7 @@ function ArchiveList({
           </div>
         )}
       </div>
-
-      {open && <ResizeHandle control={size} />}
-    </div>
+    </>
   );
 }
 
@@ -269,6 +252,9 @@ function ArchiveList({
 // 문서 트리는 패널이다. 패널은 180ms로 접히는 변형(`fold`)이고 닫혀도 마운트된 채다(`keepMounted`) —
 // 그래야 펼치는 쪽도 움직이고, 한 번 편 트리의 폴더 접힘이 항목을 접었다 펴도 남는다. 닫힌 패널은
 // 부품이 `inert`로 막는다: 접히는 동안 아직 보이는 문서 줄에 포커스와 포인터가 닿으면 안 된다.
+//
+// 행의 규격은 DS `.at-archive-row`다(ui-refresh 결정 6 · 25) — 32px · 안쪽 0 10px · 모서리 10 · hover state-1, 폴더 글리프 15px
+// tertiary, 제목 `text-row`(14 · 400) 본문 색, 오른쪽 날짜 `text-caption` tertiary 고정폭 숫자.
 function ArchiveRow({
   entry,
   expanded,
@@ -299,7 +285,7 @@ function ArchiveRow({
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
-      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left text-muted-foreground transition-colors hover:bg-state-1">
+      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-2.5 text-left transition-colors hover:bg-state-1">
         {/* 펼쳤는지는 폴더 아이콘 하나가 말한다 — 늘 보이므로 hover해 보지 않아도 어느 것이
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}
@@ -308,27 +294,32 @@ function ArchiveRow({
         ) : (
           <Folder className="size-[15px] shrink-0 text-tertiary" strokeWidth={1.7} />
         )}
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">{entry.title}</span>
-        {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다 */}
-        <span className="shrink-0 text-[11.5px] text-tertiary">
+        <span className="min-w-0 flex-1 truncate text-row">{entry.title}</span>
+        {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다. 숫자가 고정폭이라 날짜의 오른쪽 끝이 줄마다
+            같은 x에 선다. */}
+        <span className="shrink-0 pl-2 text-caption text-tertiary tabular-nums">
           {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
         </span>
       </CollapsibleTrigger>
 
       <CollapsibleContent variant="fold" keepMounted>
-        <div className="flex flex-col pt-[3px]">
+        {/* 행과 첫 문서 줄 사이도 줄 사이와 같은 2px 틈이다(DS `.at-tree`). 접힌 동안은 안쪽 칸이 이 틈까지 가린다. */}
+        <div className="flex flex-col pt-(--row-gap)">
           {/* 도착 전에는 아무 말도 하지 않는다 — 빈 배열과 "아직 안 읽었다"를 같이 다루면
               펼치는 순간 "없어요"가 한 프레임 스쳤다가 트리로 바뀐다 */}
           {isPending ? null : items.length > 0 ? (
             // 경로는 모두 work 폴더 기준이다(`archiveTreeItems`) — 선택 표시·복사·읽기가 그대로 쓴다
             <SpecTree
               items={items}
+              depth={TREE_DEPTH}
               current={currentDoc}
               onSelect={(path) => onSelectDoc(entry.slug, path)}
               onCopy={(path) => onCopyDoc(entry.slug, path)}
             />
           ) : (
-            <span className="px-[9px] py-1.5 text-[12.5px] text-tertiary">남은 문서가 없어요</span>
+            <span className="py-1.5 pr-2.5 text-ui text-tertiary" style={treeIndent(TREE_DEPTH)}>
+              남은 문서가 없어요
+            </span>
           )}
         </div>
       </CollapsibleContent>

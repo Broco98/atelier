@@ -32,7 +32,9 @@ const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "터미널" |
  */
 const 켜짐 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =>
   설정항목(page, name).locator("xpath=..");
-const 머리 = (page: Page) => page.locator("main header").first();
+// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
+// 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
+const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);
 
 /** 사이드바 바닥의 `Settings`로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것. */
@@ -68,7 +70,7 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*터미널$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -78,7 +80,7 @@ test("`/settings`로 곧장 오면 `/settings/terminal`로 치환된다", async 
   await installFixtureBackend(page);
   await page.goto("/settings");
   await expect(page).toHaveURL("/settings/terminal");
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*터미널$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -91,7 +93,7 @@ test("항목을 누르면 주소와 본문이 그 항목으로 바뀌고, 뒤로
 
   await 설정항목(page, "알림").click();
   await expect(page).toHaveURL("/settings/notifications");
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*알림$/);
+  await expect(머리(page)).toHaveText(/^Settings\s*알림$/);
   // 본문은 **그 항목 하나**다 — 앞 항목의 구획이 함께 서 있으면 한 화면 그대로다.
   await expect(page.getByRole("group", { name: "알림 설정", exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toHaveCount(0);

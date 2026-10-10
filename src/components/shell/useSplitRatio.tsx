@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
 import { setResizing } from "./useResizableWidth";
 
 /**
@@ -75,8 +74,12 @@ export interface SplitRatio {
   };
 }
 
-/** `host`는 두 열을 담은 상자다 — 비율의 분모가 그 폭이다. */
-function useSplitRatio(key: string, host: RefObject<HTMLElement | null>): SplitRatio {
+/**
+ * `sharedWidth`는 **두 열이 나눠 갖는 폭**을 그 순간 재는 함수다 — 비율의 분모다. 무엇을 빼고 재는지(두 열 사이 틈)는 두 열을
+ * 그리는 쪽이 안다(`Frame`의 분할 — 그리는 식도 같은 폭에 비율을 건다). 이 훅은 틈을 모른다. 못 재면 0을 돌려주고, 그러면 움직이지
+ * 않는다(`nextRatio`).
+ */
+function useSplitRatio(key: string, sharedWidth: () => number): SplitRatio {
   const [ratio, setRatio] = useState(() => {
     const saved = Number(localStorage.getItem(key));
     // 범위 밖이거나 숫자가 아니면 **반**이다. `Number("")`가 0이라 하한 비교가 그것도 막는다.
@@ -112,13 +115,12 @@ function useSplitRatio(key: string, host: RefObject<HTMLElement | null>): SplitR
       },
       onPointerMove: (e) => {
         if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-        const box = host.current?.getBoundingClientRect();
         setRatio(
           nextRatio({
             startRatio: start.current.ratio,
             startX: start.current.x,
             clientX: e.clientX,
-            hostWidth: box?.width ?? 0,
+            hostWidth: sharedWidth(),
             min: SPLIT_MIN,
           }),
         );
