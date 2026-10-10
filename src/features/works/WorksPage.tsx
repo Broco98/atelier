@@ -42,6 +42,7 @@ import {
   activeIdOf,
   activeTabOf,
   bundleOf,
+  bundleTabOf,
   closesShellFromWindow,
   closingShellsNotice,
   opensShellFromWindow,
@@ -468,7 +469,7 @@ function WorksPage({
       const next = shellForNav(tabs, activeIdOf(state, owner), nav, 2);
       if (next === null) return;
       // 고른 칸이 파일 탭이면 그 파일로 간다 — 켜는 일은 주소를 받은 자리가 한다(아래 주소 따라가기).
-      const picked = tabs.find((one) => one.id === next);
+      const picked = bundleTabOf(state, owner, next);
       if (picked?.kind === "code") {
         onOpenCode(picked.project, picked.path, false);
         return;
@@ -544,7 +545,8 @@ function WorksPage({
    * 문서를 보는 중(`spec`)이면 따라가지 않는다 — 탭 줄에서 뒤에 있는 칸을 닫은 것은 본문을 안 바꾼다. 묶음이 빈 것은 따로다
    * (아래 「묶음이 비면 spec」). **work을 옮긴 순간은 세지 않는다** — 그때의 지금 탭은 다른 work의 것이다.
    *
-   * 지금 탭은 한 글자로 접어 구독한다 — 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 다시 그려지지 않게.
+   * 지금 탭은 한 글자로 접어 구독한다 — 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 다시 그려지지 않게. **의존성이 그 값과
+   * 소유자뿐인 것은 의도다** — 주소(`tab` · `code`)가 바뀌어서 돌면 방금 사람이 옮긴 주소를 옛 지금 탭으로 되돌린다.
    */
   const shownKey = useStore(terminalStore, (state) =>
     tabOwner === null ? null : shownTabKey(activeTabOf(state, tabOwner)),
@@ -618,7 +620,7 @@ function WorksPage({
       // 파일 탭이면 그 파일로 간다(「파일 탭 열기」, replace — 탭을 고르는 손짓은 기록을 안 쌓는다). 켜는 것은 주소를 받은
       // 자리다(주소 → 묶음).
       onSelect={(id) => {
-        const picked = bundleOf(terminalStore.state, ownerOf(panelWork.slug)).find((one) => one.id === id);
+        const picked = bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id);
         if (picked?.kind === "code") {
           onOpenCode(picked.project, picked.path, false);
           return;
@@ -629,8 +631,7 @@ function WorksPage({
       // 셸은 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다. 파일 탭은 **확인 없이** 닫는다(git-integration
       // 스토리 37) — 프로세스가 없다. 그 판정은 레지스트리가 칸의 종류로 한다(`removeCodeTab`은 셸 칸을 안 뺀다).
       onClose={(id) => {
-        const picked = bundleOf(terminalStore.state, ownerOf(panelWork.slug)).find((one) => one.id === id);
-        if (picked?.kind === "code") closeCodeTab(id);
+        if (bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id)?.kind === "code") closeCodeTab(id);
         else void requestCloseShell(id);
       }}
       onOpen={(place) => {
@@ -778,7 +779,7 @@ function WorksPage({
     const now = { owner: tabOwner, count: tabCount };
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
-    // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
+    // 본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
     // 화면에서 아무것도 안 바뀌어야 한다.
     if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");
   }, [tabCount, tabOwner, tab, split, changeSplit]);

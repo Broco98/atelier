@@ -548,7 +548,7 @@ export function openCodeTab(state: ShellsState, owner: ShellOwner, target: CodeT
 export function removeCodeTab(state: ShellsState, id: number): ShellsState {
   const owner = bundleOwnerOf(state, id);
   if (owner === null) return state;
-  if (bundleOf(state, owner).find((tab) => tab.id === id)?.kind !== "code") return state;
+  if (bundleTabOf(state, owner, id)?.kind !== "code") return state;
   return withoutTab(state, owner, id);
 }
 
@@ -558,6 +558,14 @@ export function removeCodeTab(state: ShellsState, id: number): ShellsState {
  */
 export function activeTabOf(state: ShellsState, owner: ShellOwner): BundleTab | null {
   const id = activeIdOf(state, owner);
+  return id === null ? null : bundleTabOf(state, owner, id);
+}
+
+/**
+ * 그 화면 묶음에서 그 id의 칸. 없으면 `null`이다 — 그리는 것과 누르는 것 사이에 칸이 빠질 수 있다(`activateShell`). 칸을 id
+ * 하나로 받은 화면이 그 칸의 종류(셸 · 파일 탭)로 할 일을 가를 때 쓴다.
+ */
+export function bundleTabOf(state: ShellsState, owner: ShellOwner, id: number): BundleTab | null {
   return bundleOf(state, owner).find((tab) => tab.id === id) ?? null;
 }
 
