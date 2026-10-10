@@ -274,6 +274,11 @@ impl Sandbox {
             .collect()
     }
 
+    /// `pauses-mid-turn`의 턴을 놓는다 — 가짜가 기다리던 `<세션 id>.go`를 만든다.
+    pub fn release_turn(&self, session_id: &str) {
+        fs::write(self.acp_receipts().join(format!("{session_id}.go")), "").unwrap();
+    }
+
     /// 그 work의 `agents.json`.
     pub fn agents_json(&self, slug: &str) -> Value {
         let path = self.work_dir(slug).join("agents/agents.json");
@@ -422,6 +427,30 @@ pub fn assert_record(name: &str, actual: &[Value]) {
         actual.get(at).map_or("(없음)".to_owned(), Value::to_string),
         dumped.display(),
     );
+}
+
+/// 그 자리의 기록 파일 줄들 — work 폴더가 옮겨진 뒤처럼 `works/<slug>` 밖의 기록을 읽는다.
+pub fn record_at(path: &Path) -> Vec<Value> {
+    fs::read_to_string(path)
+        .unwrap_or_else(|_| panic!("없다: {}", path.display()))
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("기록 줄은 JSON"))
+        .collect()
+}
+
+/// 그 자리의 기록이 `done`을 채울 때까지 기다린다. 마감을 넘기면 그때까지의 기록을 싣고 터진다.
+pub fn wait_record_at(path: &Path, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        let record = record_at(path);
+        if done(&record) {
+            return record;
+        }
+        if Instant::now() > deadline {
+            panic!("기록이 기다린 꼴이 되지 않았다({}):\n{}", path.display(), lines_text(&record));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 /// 턴 · 죽음 같은 비동기 일을 기다리는 마감.

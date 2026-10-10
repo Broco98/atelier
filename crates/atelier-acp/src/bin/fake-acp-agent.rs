@@ -16,6 +16,9 @@
 //! - `FAKE_ACP_ACCOUNT_EMAIL` — 있으면 `session/new`의 답 앞에 그 이메일이 든 `_auth/status_update`를 보낸다
 //!   (진짜 codex-acp가 로그인된 계정을 알리는 모양 — 실측 turns 4줄).
 //!
+//! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
+//!   할 일(work 폴더 옮기기 · 지우기)을 한 뒤 놓는다.
+//!
 //! 영수증은 `session/new`를 받을 때 `<세션 id>.json` 한 장으로 남는다 — pid · 자기 Unix 세션 id(`getsid(0)`) ·
 //! 받은 env · `initialize`와 `session/new`의 인자 · 낳은 후손의 pid. 그 뒤에 일어난 일(stdin EOF)은
 //! `<세션 id>.events`에 한 줄씩, 받은 `session/prompt`의 인자는 `<세션 id>.prompts`에 한 줄씩 더한다.
@@ -41,6 +44,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("dies-mid-turn", dies_mid_turn),
     ("ignores-shutdown", ignores_shutdown),
     ("spawns-a-child", spawns_a_child),
+    ("pauses-mid-turn", pauses_mid_turn),
 ];
 
 fn main() {
@@ -186,6 +190,38 @@ fn spawns_a_child(fake: &mut Fake) {
     let grandchild: u32 = line.trim().parse().expect("손주의 pid는 수다");
     fake.descendants = vec![child.id(), grandchild];
     fake.converse();
+}
+
+/// 턴 한가운데에서 **검사가 놓을 때까지 멈추는** 에이전트 — 사라진 work(three-axes 티켓 11)를 잰다.
+///
+/// 프롬프트를 받으면 update 하나를 보내고, 영수증 폴더에 `<세션 id>.go`가 생길 때까지 기다렸다가 update 하나를
+/// 더 보내고 턴을 끝낸다. 그 사이 검사가 work 폴더를 옮기거나 지운다 — 아카이브를 시킨 에이전트가 바로 그 턴 안에
+/// 있는 꼴이다. `spawns-a-child`처럼 자식과 손주를 낳는다 — 턴 끝에 꺼질 때 후손까지 꺼지는지 잰다.
+fn pauses_mid_turn(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        fake.wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "agent_message_chunk",
+                              "content": {"type": "text", "text": "멈추기 전의 답"}}}),
+        );
+        fake.note("paused");
+        if let Some(go) = fake.receipts.as_ref().map(|dir| dir.join(format!("{session_id}.go"))) {
+            // 검사가 놓지 않고 사라져도 끝없이 남지 않게 한도를 둔다.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            while !go.exists() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        fake.wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "agent_message_chunk",
+                              "content": {"type": "text", "text": "놓인 뒤의 답"}}}),
+        );
+        fake.wire.reply(id, json!({"stopReason": "end_turn"}));
+    };
+    spawns_a_child(fake);
 }
 
 /// 가짜 하나의 상태 — 선과, 영수증에 실을 것들.

@@ -176,8 +176,20 @@ pub(crate) enum SessionState {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         stderr_tail: Vec<String>,
     },
-    /// 닫힘 — 사람이 닫았다. 기록 파일은 남는다.
-    Closed,
+    /// 닫힘 — 대화가 꺼지고 다시 띄우지 않는다. 기록 파일은 남는다. 사람이 닫았으면 `cause`가 없고, 그 밖의
+    /// 까닭이면 그것을 싣는다.
+    Closed {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cause: Option<CloseCause>,
+    },
+}
+
+/// 사람이 닫지 않았는데 대화가 닫힌 까닭.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CloseCause {
+    /// work가 사라졌다(아카이브 · 삭제) — 그 턴이 끝난 뒤, 쉬고 있었으면 사라짐을 안 때 껐다(S10).
+    WorkVanished,
 }
 
 /// `turn-end` 줄의 payload.

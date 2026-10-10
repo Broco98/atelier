@@ -1,7 +1,7 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
-//! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04)가
-//! 선다. 앱 잇기(05) · 로그인(12)이 이 위에 선다.
+//! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
+//! 사라진 work의 대화 끄기(11)가 선다. 앱 잇기(05) · 로그인(12)이 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -9,8 +9,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::fmt;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
-use crate::records::{self, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
+use crate::records::{self, CloseCause, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
 use crate::runtime::{self, AgentProcess, Launch, RuntimeEvent, SessionPlace, Sink};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
@@ -86,7 +86,7 @@ impl HostBuilder {
             login_shell_limit: self.login_shell_limit,
             open_limit: self.open_limit,
             login_env: Mutex::new(None),
-            live: Mutex::new(HashMap::new()),
+            live: Arc::new(Mutex::new(HashMap::new())),
             agents_file: Mutex::new(()),
         }
     }
@@ -105,11 +105,15 @@ pub struct ConversationHost {
     ///
     /// 읽는 동안 잠금을 쥔다. 두 엔진 확인이 함께 와도 셸은 한 번만 뜨고, 뒤의 것이 앞의 결과를 쓴다.
     login_env: Mutex<Option<AgentEnv>>,
-    /// 에이전트가 떠 있는 대화들 — 대화 id로 찾는다.
-    live: Mutex<HashMap<String, Live>>,
+    /// 에이전트가 떠 있는 대화들 — 대화 id로 찾는다. 대화마다 이 표를 약하게 쥔다 — 사라진 work의 대화가 턴
+    /// 끝에 스스로 표에서 빠져 꺼진다(S10).
+    live: Arc<LiveTable>,
     /// `agents.json`을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 연 두 대화가 서로의 줄을 지우지 않게.
     agents_file: Mutex<()>,
 }
+
+/// 에이전트가 떠 있는 대화들의 표.
+type LiveTable = Mutex<HashMap<String, Live>>;
 
 /// 에이전트가 떠 있는 대화 하나.
 struct Live {
@@ -125,6 +129,8 @@ struct Live {
 struct Conv {
     recorder: Recorder,
     state: Mutex<ConvState>,
+    /// 턴 끝에 work가 사라졌는지 본다(S10). 떠 있지 않은 대화(닫힘 줄만 적으려고 연 기록)에는 없다.
+    vanish: Option<VanishWatch>,
 }
 
 struct ConvState {
@@ -137,8 +143,12 @@ struct ConvState {
 }
 
 impl Conv {
-    fn new(recorder: Recorder) -> Arc<Self> {
-        Arc::new(Self { recorder, state: Mutex::new(ConvState { alive: true, turn: None, needs_preamble: true }) })
+    fn new(recorder: Recorder, vanish: Option<VanishWatch>) -> Arc<Self> {
+        Arc::new(Self {
+            recorder,
+            state: Mutex::new(ConvState { alive: true, turn: None, needs_preamble: true }),
+            vanish,
+        })
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -164,26 +174,100 @@ impl Conv {
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
-                let mut state = self.lock_state();
-                let started = state.turn.take();
-                let (response, error) = match end.result {
-                    Ok(response) => (Some(response), None),
-                    Err(error) => (None, Some(error)),
+                let written = {
+                    let mut state = self.lock_state();
+                    let started = state.turn.take();
+                    let (response, error) = match end.result {
+                        Ok(response) => (Some(response), None),
+                        Err(error) => (None, Some(error)),
+                    };
+                    self.recorder.turn_end(TurnEndLine {
+                        stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
+                        duration_ms: elapsed_ms(started),
+                        cancelled_by_us: end.cancelled_by_us,
+                        out_of_turn: false,
+                        response,
+                        error,
+                    })
                 };
-                self.recorder.turn_end(TurnEndLine {
-                    stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
-                    duration_ms: elapsed_ms(started),
-                    cancelled_by_us: end.cancelled_by_us,
-                    out_of_turn: false,
-                    response,
-                    error,
-                })
+                // S10 — 아카이브를 시킨 에이전트가 바로 이 턴 안에 있을 수 있다(MCP `atelier_archive_work`를 부른
+                // 그 턴). 그래서 턴 도중에는 끄지 않고, 턴 끝 줄을 적은 뒤에 work가 남아 있는지 본다.
+                if let Some(watch) = &self.vanish {
+                    watch.retire_if_vanished();
+                }
+                written
             }
         };
         if let Err(error) = written {
             // 기록이 막혀도 대화는 이어 간다 — sink는 오류를 돌려줄 곳이 없다.
             eprintln!("{error}");
         }
+    }
+}
+
+/// 턴 끝에 그 대화의 work가 사라졌는지 보는 것(S10). 턴 끝은 런타임의 sink 안이라 호스트를 부를 수 없으므로, 떠
+/// 있는 대화의 표를 약하게 쥐고 끄기는 따로 띄운 스레드가 한다.
+struct VanishWatch {
+    works: PathBuf,
+    work: String,
+    conversation: String,
+    live: Weak<LiveTable>,
+}
+
+impl VanishWatch {
+    fn retire_if_vanished(&self) {
+        if !work_vanished(&self.works, &self.work) {
+            return;
+        }
+        let live = self.live.clone();
+        let conversation = self.conversation.clone();
+        // 이 자리에서 끄지 않는다 — 끄기는 연결을 놓고 1초를 기다리는데, 이 자리가 바로 그 연결의 수신 루프다.
+        std::thread::spawn(move || {
+            if let Some(live) = live.upgrade() {
+                retire_vanished(&live, |id, _| id == conversation);
+            }
+        });
+    }
+}
+
+/// work가 사라졌나 — `work.json`이 없다(아카이브 · 삭제). 깨진 `work.json`은 사라진 것이 아니다 — 사람이 손보는
+/// 중일 수 있는데, 그때 대화를 끄면 하던 일을 잃는다.
+fn work_vanished(works: &Path, work: &str) -> bool {
+    matches!(atelier_core::read_work(works, work), Err(atelier_core::Error::WorkNotFound(_)))
+}
+
+/// 사라진 work의 대화들을 끈다(S10) — 떠 있는 표에서 `pick`이 고른 것을 꺼내 남김없이 끄고(stdin 닫기 → 1초 →
+/// 그룹째 SIGKILL), 기록에 닫힘 줄을 적는다.
+///
+/// - 열어 둔 기록 파일은 work 폴더의 rename을 따라가므로, 닫힘 줄도 work와 함께 아카이브로 간다.
+/// - `agents.json`은 쓰지 않는다 — 옛 자리에 쓰면 `work.json` 없는 유령 work 폴더가 선다. 그래서 닫은 때도 적지
+///   않는다(대화를 닫은 것은 사람이 아니다).
+/// - 고른 것이 표에 없으면 아무 일도 하지 않는다 — 턴 끝과 감시 소식이 같은 대화를 함께 골랐으면 먼저 꺼낸 쪽이 끈다.
+fn retire_vanished(live: &LiveTable, pick: impl Fn(&str, &Live) -> bool) {
+    let mut retiring: Vec<Live> = {
+        let mut table = live.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let ids: Vec<String> =
+            table.iter().filter(|(id, conversation)| pick(id, conversation)).map(|(id, _)| id.clone()).collect();
+        ids.iter().filter_map(|id| table.remove(id)).collect()
+    };
+    shut_down_together(&mut retiring);
+    for conversation in &retiring {
+        let closed = SessionState::Closed { cause: Some(CloseCause::WorkVanished) };
+        if let Err(error) = conversation.conv.recorder.session(closed) {
+            eprintln!("{error}");
+        }
+    }
+}
+
+/// 대화 여럿의 프로세스 그룹을 끈다 — 모두의 stdin을 **한꺼번에** 닫고 1초를 **한 번만** 기다린 뒤 그룹들을
+/// SIGKILL한다. 대화마다 1초씩 줄을 세우면 N초가 된다.
+fn shut_down_together(live: &mut [Live]) {
+    let deadline = Instant::now() + runtime::SHUTDOWN_GRACE;
+    for conversation in live.iter_mut() {
+        conversation.agent.begin_shutdown();
+    }
+    for conversation in live.iter_mut() {
+        conversation.agent.finish_shutdown(deadline);
     }
 }
 
@@ -369,6 +453,12 @@ impl ConversationHost {
         };
         let conv = Conv::new(
             Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+            Some(VanishWatch {
+                works: works.clone(),
+                work: work.to_owned(),
+                conversation: row.id.clone(),
+                live: Arc::downgrade(&self.live),
+            }),
         );
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
@@ -470,7 +560,7 @@ impl ConversationHost {
             // work 폴더가 사라졌다(아카이브 · 삭제). 끈 것으로 끝낸다 — 열어 둔 기록 파일은 옮겨진 자리를 따라가지만,
             // 사라진 자리의 `agents.json`은 다시 만들지 않는다(S10).
             return match live {
-                Some(live) => live.conv.recorder.session(SessionState::Closed).map_err(HostError::Record),
+                Some(live) => live.conv.recorder.session(SessionState::Closed { cause: None }).map_err(HostError::Record),
                 None => Err(HostError::WorkNotFound(work.to_owned())),
             };
         };
@@ -488,11 +578,36 @@ impl ConversationHost {
             Some(live) => live.conv,
             None => Conv::new(
                 Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+                None,
             ),
         };
-        conv.recorder.session(SessionState::Closed).map_err(HostError::Record)?;
+        conv.recorder.session(SessionState::Closed { cause: None }).map_err(HostError::Record)?;
         row.closed_at = Some(records::now());
         records::write_row(&places.agents, &row).map_err(HostError::Record)
+    }
+
+    /// 사라진 work의 대화를 끈다(S10) — 앱은 work 목록이 바뀌었다는 감시 소식(`works:changed`)마다 부른다. work가
+    /// 사라지는 길은 아카이브든 삭제든, 앱에서든 앱 밖의 MCP 프로세스에서든 같다 — 감시는 `works/`를 보므로 다 안다.
+    ///
+    /// - 쉬는 대화는 지금 끈다.
+    /// - 턴이 도는 대화는 두고 그 턴이 끝나는 대로 끈다 — 아카이브를 시킨 에이전트가 바로 그 턴 안에 있을 수 있다.
+    ///   턴 끝에는 대화가 스스로 `work.json`을 보므로, 이 소식이 턴 도중에 와도 턴 끝에 꺼진다.
+    /// - 기록은 열어 둔 파일에 닫힘 줄을 적고 끝낸다. `agents.json`은 쓰지 않는다 — 옛 자리를 다시 만들지 않는다.
+    ///
+    /// 막히는 호출이다 — 끌 대화가 있으면 끄기가 최대 1초 남짓 걸린다.
+    pub fn check_vanished_works(&self) {
+        let works = atelier_core::works_in(&self.data_root);
+        // 떠 있는 대화의 work마다 한 번씩, 표를 잠그지 않은 채 본다 — 감시 소식은 spec을 고칠 때마다 온다.
+        let mut held: Vec<String> = self.lock_live().values().map(|live| live.work.clone()).collect();
+        held.sort();
+        held.dedup();
+        let vanished: Vec<String> = held.into_iter().filter(|work| work_vanished(&works, work)).collect();
+        if vanished.is_empty() {
+            return;
+        }
+        retire_vanished(&self.live, |_, live| {
+            vanished.contains(&live.work) && live.conv.lock_state().turn.is_none()
+        });
     }
 
     /// 호스트 끄기 — 모든 대화의 프로세스 그룹을 끈다(앱 종료). 대화를 닫지는 않는다: `agents.json`과 기록은
@@ -502,13 +617,7 @@ impl ConversationHost {
     /// 줄을 세우면 N초가 된다.
     pub fn shut_down(&self) {
         let mut live: Vec<Live> = self.lock_live().drain().map(|(_, live)| live).collect();
-        let deadline = Instant::now() + runtime::SHUTDOWN_GRACE;
-        for conversation in &mut live {
-            conversation.agent.begin_shutdown();
-        }
-        for conversation in &mut live {
-            conversation.agent.finish_shutdown(deadline);
-        }
+        shut_down_together(&mut live);
     }
 
     /// 쥔 로그인 env. 없거나 다시 읽으라면 셸을 띄워 읽는다. 다시 읽기가 실패하면 쥔 것도 버린다 —
