@@ -28,7 +28,7 @@ const CELLS = ["doc", "source"] as const;
 // 여기서는 그것을 **뒤집기**로 읽는다(S16 — 편집기의 종류 · 템플릿은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
 // 칸마다 네이티브 `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일
 // (`segment-group.tsx`)이 든다 — 카드 머리의 컨트롤이라 알약(`pill`)이다: 흰 캡슐 안에 원형 칸 둘이 서고, 선 칸은
-// `sidebar-accent` 원이다(ui-refresh 결정 7의 B).
+// `fill-selected` 원이다(ui-refresh 결정 7의 B).
 export function SourceToggle({
   on,
   locked = false,

@@ -235,13 +235,22 @@
 
     /* **옛 이름의 유틸리티** — 호출부가 아직 읽는 shadcn 이름과 앱 전용 이름이다. 값은 별칭 묶음(`:root, .dark`)이
        Codex 토큰으로 넘긴다.
-       **`--color-accent`(유틸리티 `bg-accent` · `focus:bg-accent` …)는 옅은 면 `fill-hover`다 — CSS 변수 `--accent`(Codex
-       파랑)가 아니다.** 이름이 겹친다(DS README 「앱 토큰 이름과의 짝」 — shadcn `accent`는 Codex `fill-hover`다). 이 유틸리티를
-       면으로 쓰는 자리(메뉴 · Select의 켜진 줄, `kbd`)가 파랑으로 칠해지지 않게 옛 뜻을 지킨다.
+       **`--color-accent`(유틸리티 `bg-accent` …)는 옅은 면 `fill-hover`다 — CSS 변수 `--accent`(Codex 파랑)가 아니다.**
+       이름이 겹친다(DS README 「앱 토큰 이름과의 짝」 — shadcn `accent`는 Codex `fill-hover`다). 옛 이름을 읽는 호출부가 남은
+       동안 shadcn이 그 이름에 건 뜻을 지킨다. 공용 부품은 그 면을 Codex 이름으로 읽고(메뉴 · Select의 켜진 줄은
+       `focus:bg-fill-hover`, `kbd`는 `bg-fill-hover`), `state-scale.test.ts`가 이 유틸리티를 면으로 쓰는 것을 변형이
+       있든 없든 막는다.
+       **Codex 파랑은 그동안 변수를 바로 읽는다** — 자리는 모두 `-(--accent)`로 찾는다(`components/ui` · `components/shell`).
+         선: 포커스 링 `ring-(--accent)/50` · 입력칸 바깥 링 `ring-(--accent)/20` · 검색칸의 1px 링 `ring-(--accent)` ·
+             테두리 `border-(--accent)` · 고른 라벨의 테두리 `border-(--accent)/30`(`field.tsx`) · 폭 손잡이의 선
+             `via-(--accent)/55`. 유틸리티가 파랑이 되면(07) `-accent`로 옮긴다.
+         면: soft 버튼의 hover `hover:bg-(--accent)/20`(`button.tsx`) · 고른 라벨의 면 `has-data-checked:bg-(--accent)/5`
+             (`field.tsx`). 변형 뒤의 `bg-accent`는 07의 `state-scale`도 막으므로(티켓 07) 이 둘은 변수에 남는다.
        **`--text-tertiary` · `--text-section`은 앞말을 떼어 잇는다**(`--color-tertiary` → `text-tertiary`) — `--text-*`를 이
        블록에 그대로 들이면 Tailwind가 글자 크기로 읽는다. `--bg-group`도 앞말을 떼어 `bg-group`이다.
-       **상태 축의 옛 이름(`wait` · `done` · `-ink` · `-soft`)** — 행의 점 · 알림 띠 · 셸 탭 채움 · 탭 이름 · 경과 글자가 읽는다.
-       지금은 모두 Codex 뜻의 색(`warning` · `success`)을 가리켜 점과 글자(`-ink`)가 같은 색이다(별칭 묶음의 주석). */
+       **상태 축의 옛 이름(`wait` · `done` · `-ink` · `-soft`)** — 모두 Codex 뜻의 색(`warning` · `success`)을 가리켜 점과
+       글자(`-ink`)가 같은 색이다(별칭 묶음의 주석). 알림 표(`shell-signal.tsx`의 `TONE` — 행의 점 · 알림 띠 · 셸 탭 채움 ·
+       탭 이름 · 경과 글자)는 Codex 이름을 바로 읽는다. */
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -802,8 +811,8 @@
     --term-ok: var(--success);
     --term-hi: var(--link);
 
-    /* **shadcn 이름** — registry 부품(`components/ui`)과 아래 `@layer base`가 읽는다. 짝은 DS README 「앱 토큰 이름과의
-       짝」이다.
+    /* **shadcn 이름** — 아래 `@layer base`(shadcn 바탕 CSS)와 옛 이름을 아직 쓰는 호출부가 읽는다. 공용 부품(`components/ui`)은
+       registry의 이 이름들을 Codex 이름으로 옮겨 적었다. 짝은 DS README 「앱 토큰 이름과의 짝」이다.
        - **`--accent`는 여기 없다** — 그 이름은 Codex 파랑 그 자체다(위 `:root`). shadcn이 그 이름에 걸던 옅은 면은 유틸리티
          `bg-accent`가 든다(`@theme inline`의 `--color-accent`).
        - `--popover`는 짝 표의 `surface`가 아니라 떠 있는 면(`surface-elevated`)이다 — DS 면 표가 메뉴 · 호버 카드 · 토스트를
@@ -825,11 +834,10 @@
     --destructive: var(--danger);
     --input: var(--border-heavy);
     --ring: var(--accent);
-    /* 사이드바는 창 바탕에 붙는다(DS 원칙 6) — `surface-sidebar`(#fcfcfc)가 아니라 `surface-shell`이다. 그 위의 행 글자는
-       `--sidebar-foreground`, 고른 행은 `--sidebar-accent`(`selected-row`)다. 레이아웃 편집기의 트리와 미리보기 창의 회색
-       칸도 `bg-sidebar`를 읽는다.
-       **사이드바(`aside`)는 투명이 아니라 이 면을 칠한다** — e2e가 `aside`의 계산된 바탕색으로 행 메타와 점의 대비를
-       잰다(`works-sidebar.spec.ts`). */
+    /* 사이드바는 창 바탕에 붙는다(DS 원칙 6) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)가 아니라 `surface-shell`이다.
+       고른 행의 `--sidebar-accent`는 불투명한 `fill-selected`다. 사이드바 자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) ·
+       `selected-row`는 이 이름들이 아니라 Codex 이름을 읽는다. work 행(`WorkSectionList.tsx`)의 안 고른 글자는 아직
+       `--sidebar-foreground`를 읽는다(화면 쪽 호출부를 옮기는 걸음, 티켓 05). */
     --sidebar: var(--surface-shell);
     --sidebar-foreground: var(--fg);
     --sidebar-primary: var(--accent);
@@ -866,47 +874,46 @@
     --bg-group: var(--surface-under);
     --callout-important: var(--chat-accent-purple);
 
-    /* **상태 축의 옛 이름**(#203) — 행의 점 · 알림 띠(#204) · 셸 탭 채움(#205)이 같은 이름을 읽는다. 자리마다 색을 다시
-       고르면 「세 자리가 한 사실을 말한다」(스토리 79)가 색에서 먼저 깨진다.
-       기다림은 `warning`, 안 본 완료는 `success`다 — **점과 글자(`-ink`)가 같은 색이다.** 라이트 바탕(`surface-shell`) 위
-       기다림 3.5:1 · 완료 6.4:1이라, 기다림의 글자(탭 이름 · 경과)는 글자 바닥(4.5)에 못 미친다 — DS README 「대비」가 Codex의
-       같은 쓰임을 따라 알고 둔 값이다. 점은 3px 무리가 면적을 번다.
-       `-soft`는 점의 3px 무리와 셸 탭 채움이 쓴다 — 기다림은 Codex 낱말 `wait-soft`(18%)이고, 완료는 Codex에 초록 무리가
-       없어 `success`에서 14%로 만든다. */
+    /* **상태 축의 옛 이름**(#203) — 기다림은 `warning`, 안 본 완료는 `success`다 — **점과 글자(`-ink`)가 같은 색이다.**
+       행의 점 · 알림 띠(#204) · 셸 탭 채움(#205)은 한 표(`shell-signal.tsx`의 `TONE`)에서 Codex 이름을 바로 읽는다 — 자리마다
+       색을 다시 고르면 「세 자리가 한 사실을 말한다」(스토리 79)가 색에서 먼저 깨진다.
+       라이트 바탕(`surface-shell`) 위 기다림 3.5:1 · 완료 6.4:1이라, 기다림의 글자(탭 이름 · 경과)는 글자 바닥(4.5)에 못 미친다 —
+       DS README 「대비」가 Codex의 같은 쓰임을 따라 알고 둔 값이다. 점은 3px 무리가 면적을 번다.
+       `-soft`는 점의 3px 무리와 셸 탭 채움의 면이다 — 기다림은 Codex 낱말 `wait-soft`(18%)이고, 완료는 Codex에 초록 무리가
+       없어 `success`의 14%다. **완료의 식은 `TONE`이 쓰는 유틸리티 `bg-success/14`와 같다** — Tailwind의 알파는 oklab에서
+       섞는다. L3(`terminal-tabs.spec.ts`)가 이 이름으로 셸 탭의 채움을 견주는데, 섞는 공간이 다르면 같은 색이 다른 글자
+       (`color(srgb …)` · `oklab(…)`)로 읽혀 견줌이 갈린다. */
     --signal-wait: var(--warning);
     --signal-wait-soft: var(--wait-soft);
     --signal-wait-ink: var(--warning);
     --signal-done: var(--success);
-    --signal-done-soft: color-mix(in srgb, var(--success) 14%, transparent);
+    --signal-done-soft: color-mix(in oklab, var(--success) 14%, transparent);
     --signal-done-ink: var(--success);
 
-    /* **상태 농도 넷** — 선택 · hover · 켜짐을 말하는 무채색 스케일의 옛 이름이다. Codex 면 알파 셋을 가리킨다:
-       1 = `fill-soft`(5%) · 2 = `fill-hover`(8%) · 3 = 4 = `fill-active`(12%). Codex에 12% 위 단이 없어 켜진 버튼의
-       hover(4)가 켜짐(3)과 같은 면이다.
+    /* **상태 농도** — 선택 · hover · 켜짐을 말하는 무채색 면은 Codex 면 알파 셋이다(codex-ds 결정 27): `fill-soft`(5%) ·
+       `fill-hover`(8%) · `fill-active`(12%). **앱이 적는 상태 배경은 이 이름으로 적는다.** 아래 `--state-1..4`는 그 셋을
+       가리키는 옛 이름이고(1 = `fill-soft` · 2 = `fill-hover` · 3 = 4 = `fill-active`) 옛 이름을 아직 쓰는 호출부가 읽는다.
+       Codex에 12% 위 단이 없어 켜진 버튼의 hover가 켜짐과 같은 면이다.
        이 부등식은 깨지면 안 된다:
-         행 hover(1)   < 행 선택(`--sidebar-accent`) = 선택된 행 hover   — 흰 카드 안 목록
-         버튼 hover(2) < 버튼 켜짐(3) = 켜진 버튼 hover(4)
-       **행 선택은 이 스케일 밖의 불투명한 `--sidebar-accent`(`fill-selected` #eff0f0)다**(`selected-row`). 선택된 행은
+         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록
+         버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
+       **행 선택은 면 알파 밖의 불투명한 `fill-selected`(#eff0f0)다**(`selected-row`). 선택된 행은
        hover해도 그 색 그대로다(DS `.at-row.is-on:hover`). 흰 카드 안 목록에서는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택(#eff0f0)으로
        갈린다. **바탕(`surface-shell`) 위의 사이드바에서는 행 줄의 부등식이 뒤집힌다** — hover(회색 위 5% ≈ #ebebeb)가 선택보다
        짙다. 행 줄의 부등식이 깨지는 자리는 거기 하나다.
-       shadcn의 `--muted`와 유틸리티 `bg-accent`는 이 스케일의 1단 · 2단과 같은 면이다. 그래도 **앱이 적는 상태 배경은
-       --state-N으로 적는다** — accent라는 이름은 행 hover(1)인지 버튼 hover(2)인지를 말하지 않는다.
-       **스케일 밖의 선택 · hover 면은 아래가 전부다** — 모두 일부러 고른 면이다.
-         `--sidebar-accent`  행 선택(`selected-row`, 위) · 흰 캡슐 안의 켜진 칸 — 원문 전환 알약의 칩
+       **유틸리티 `accent`로 상태 배경을 칠하지 않는다** — shadcn은 그 이름에 옅은 면을 걸었지만(`@theme inline`의
+       `--color-accent`) Codex에서는 같은 이름이 파랑이고, 그 이름은 행 hover인지 버튼 hover인지도 말하지 않는다. 메뉴 ·
+       Select의 켜진 줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` ·
+       `data-*:` …) 뒤의 `bg-accent`를 0건으로 고정한다.
+       **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
+         `fill-selected`     행 선택(`selected-row`, 위) · 흰 캡슐 안의 켜진 칸 — 원문 전환 알약의 칩
                              (`segment-group` `pill`, ui-refresh 결정 7의 B)과 레일의 켜진 칸(`Rail`, ui-refresh
                              결정 10)이 사이드바의 고른 행과 같은 면이다
-         `--card`(흰 면)     바탕(`--chrome`) 위에서 고른 것 — 바탕 줄의 켜진 탭(`tab-on`, ui-refresh 결정 18)과
+         `surface`(흰 면)    바탕(`surface-shell`) 위에서 고른 것 — 바탕 줄의 켜진 탭(`tab-on`, ui-refresh 결정 18)과
                              열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS `.at-rail-toggle`)이다
-         `--chrome-hover`    바탕 위 버튼을 올리거나 누를 때 — 탭 줄의 `+` · 패널 토글(ui-refresh 결정 18 · DS
-                             `.at-icon-btn.on-chrome`)
-       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
-
-       hover:bg-accent로 상태 hover를 칠하던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을
-       고정한다). **예외는 registry에서 온 메뉴 줄의 켜짐 하나다** — 드롭다운·Select 항목의
-       focus:bg-accent는 부품 파일에 registry 그대로 있고, 유틸리티 `accent`가 2단과 같은 면을 가리키게 해서 앱 값으로
-       살렸다(판 1 토큰 표 — 토큰을 먼저 맞추고, 그것으로 앱 값이 나오는 부품 클래스는 그대로 둔다).
-       메뉴 줄의 켜짐이 그래서 버튼 hover와 같은 2단이다. 그 검사는 hover만 세므로 이 자리를 안 잡는다. */
+       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 바탕 위 버튼(탭 줄의 `+` · 패널
+       토글)의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)이고, 옛 이름 `--chrome-hover`도
+       그 면을 가리킨다. */
     --state-1: var(--fill-soft);
     --state-2: var(--fill-hover);
     --state-3: var(--fill-active);
@@ -927,28 +934,28 @@
 
 /* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
-   배경은 `--sidebar-accent`(불투명한 `fill-selected` #eff0f0)이고 **hover해도 같은 색이다**(ui-refresh 결정 11 · 30 — DS
+   배경은 불투명한 `fill-selected`(#eff0f0)이고 **hover해도 같은 색이다**(ui-refresh 결정 11 · 30 — DS
    `.at-row.is-on:hover`). 바탕 위의 사이드바에서는 옆 행의 hover보다 옅다 — 그 까닭은 별칭 묶음의 상태 농도
    부등식 주석에 있다. 흰 카드 안 목록에서는 hover보다 짙다.
-   선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
+   선택되지 않은 행의 hover는 호출부가 hover:bg-fill-soft로 붙인다 (두 hover가 같은 자리에서
    충돌하지 않도록 분기 안에만 둔다).
 
    글자색도 여기서 정한다 — toggle-on이 이미 그렇게 하고 있어서, 형제 유틸리티 둘이 같은
    질문에 다르게 답하고 있었다. 호출부가 손으로 text-foreground를 붙이던 세 자리
    (사이드바 메뉴·사이드바 작업 목록·spec 트리)가 짧아진다.
-   자식이 자기 색을 가진 자리는 덮이지 않는다 — done 작업 제목의 text-tertiary처럼
+   자식이 자기 색을 가진 자리는 덮이지 않는다 — done 작업 제목의 흐린 글자처럼
    직접 선언한 색은 부모에서 내려오는 상속을 항상 이긴다.
 
    평소 색을 여기서 정하는 것은 아래 icon-button-quiet과 정반대인데, 갈리는 지점이 있다 —
-   선택된 행의 평소 색은 어디서나 foreground 하나라 덮을 호출부가 없다. icon-button-quiet은
-   호출부마다 평소 색이 갈려서(본문 tertiary·셸 크롬 muted-foreground) 유틸리티가 정하면
+   선택된 행의 평소 색은 어디서나 fg 하나라 덮을 호출부가 없다. icon-button-quiet은
+   호출부마다 평소 색이 갈려서(본문 fg-tertiary·셸 크롬 fg-secondary) 유틸리티가 정하면
    호출부가 덮어야 하고, 그 승자를 정렬 순서가 정하게 된다. 기준은 "형제끼리 같은 답을
    하느냐"가 아니라 "덮을 호출부가 있느냐"다. */
 @utility selected-row {
-  background: var(--sidebar-accent);
-  color: var(--foreground);
+  background: var(--fill-selected);
+  color: var(--fg);
   &:hover {
-    background: var(--sidebar-accent);
+    background: var(--fill-selected);
     }
 }
 
@@ -973,7 +980,7 @@
    22px 툴바 버튼·토글의 꺼진 가지에도 똑같이 걸리는데, 규격까지 묶어 두면 그 자리들이
    쓸 수 없어 같은 문자열을 손으로 다시 적게 된다.
 
-   평소 색은 여기서 정하지 않는다. 본문은 text-tertiary, 셸 크롬은 text-muted-foreground로
+   평소 색은 여기서 정하지 않는다. 본문은 text-fg-tertiary, 셸 크롬은 text-fg-secondary로
    갈리는데, 여기서 색을 정하면 호출부가 덮어야 하고 그 승자를 유틸리티 정렬 순서가
    정하게 된다. hover 색은 &:hover라 특이도가 한 단계 높아 호출부의 평소 색과 겨루지 않는다.
 
@@ -981,8 +988,8 @@
    hover 규칙이 두 벌이 되어 정렬 순서가 승자를 정한다. */
 @utility quiet-hover {
   &:hover {
-    background: var(--state-2);
-    color: var(--foreground);
+    background: var(--fill-hover);
+    color: var(--fg);
   }
 }
 
@@ -1008,7 +1015,7 @@
    평소 색을 정하지 않는 이유도 같다: 호출부마다 갈리고, &:hover가 특이도로 이긴다. */
 @utility tint-hover {
   &:hover {
-    color: var(--foreground);
+    color: var(--fg);
   }
 }
 
@@ -1024,36 +1031,36 @@
 
 /* 토글이 켜진 상태 — 배경이 한 단계 진해지고 아이콘·글자 색도 함께 진해진다.
    8%와 12%의 차이만으로는 hover와 구분되지 않아 색 변화가 필수다.
-   켜진 채 hover한 면(state-4)은 켜짐(state-3)과 같다 — Codex 면 알파에 12% 위 단이 없다(별칭 묶음의 상태 농도 주석). */
+   면은 `fill-active`이고, 켜진 채 hover한 면도 같은 `fill-active`다 — Codex 면 알파에 12% 위 단이 없다(별칭 묶음의 상태 농도 주석). */
 @utility toggle-on {
-  background: var(--state-3);
-  color: var(--foreground);
+  background: var(--fill-active);
+  color: var(--fg);
   &:hover {
-    background: var(--state-4);
+    background: var(--fill-active);
     }
 }
 
 /* 바탕 줄의 **켜진 탭** — 회색 바탕 위의 흰 면이다(ui-refresh 결정 18 · DS `.at-tab.is-on`).
-   toggle-on을 안 쓰는 것은 바닥이 이미 회색(`--chrome`)이라서다: 그 위에 더 진한 회색을 얹으면 「고른 칸」이 아니라
+   toggle-on을 안 쓰는 것은 바닥이 이미 회색(`surface-shell`)이라서다: 그 위에 더 진한 회색을 얹으면 「고른 칸」이 아니라
    「눌린 칸」으로 읽힌다. 켜진 탭은 바탕에서 떠오른 카드이고, 그래서 그 아래 본문 카드와 같은 흰 면이다.
    hover에 바뀌지 않는다(DS `.at-tab.is-on:hover`) — 고른 칸은 다시 눌러 끄는 것이 아니다. */
 @utility tab-on {
-  background: var(--card);
-  color: var(--foreground);
+  background: var(--surface);
+  color: var(--fg);
 }
 
-/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(state-1) 위로 한 겹 뜬다(디자인 시스템의 `.at-seg`).
-   toggle-on(state-3)을 안 쓰는 것이 핵심이다: 바닥이 이미 회색이라 그 위에 더 진한 회색을
+/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(`fill-soft`) 위로 한 겹 뜬다(디자인 시스템의 `.at-seg`).
+   toggle-on(`fill-active`)을 안 쓰는 것이 핵심이다: 바닥이 이미 회색이라 그 위에 더 진한 회색을
    얹으면 「떠올랐다」가 아니라 「눌렸다」로 읽혀, 두 칸 중 어느 쪽이 서 있는지가 뒤집힌다.
    여기서 켜짐은 농도가 아니라 **떠오름**이다 — 흰 칩 + 실선 한 겹 + 옅은 그림자.
    hover에 더 진해지지 않는다: 칩은 누르는 것이 아니라 서 있는 칸을 말하는 것이다 — 누르는 것은
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
    (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다.
-   **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `sidebar-accent` 원이고 그림자가
+   **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `fill-selected` 원이고 그림자가
    없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`SourceToggle.test.tsx`). */
 @utility segment-on {
-  background-color: var(--background);
+  background-color: var(--surface);
   box-shadow:
     0 0 0 0.5px rgba(20, 20, 28, 0.14),
     0 1px 1px rgba(20, 20, 28, 0.06);
@@ -1281,7 +1288,7 @@ body.dragging-row * {
    toggle.tsx 머리말). 값을 따로 적지 않고 그 클래스들을 그대로 부르는 것은, 그림자가 ring과 한
    `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
 @utility floating-card {
-  @apply rounded-card bg-popover shadow-float;
+  @apply rounded-card bg-surface-elevated shadow-float;
 }
 
 /* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(디자인 시스템의 `.at-menu` · `.at-menu-row`).
@@ -1292,9 +1299,11 @@ body.dragging-row * {
 
    `menu-row`는 한 줄이다 — 32px · 모서리 `rounded-lg`(메뉴 행, ui-refresh 결정 6) · 좌우 10px · 글리프
    사이 9px · `text-ui`. 목록이 세로 flex라 줄이 눌리지 않게 `shrink-0`을 함께 든다. 줄 안의 글리프는 크기를 안 준
-   것이 15px이고 색을 안 준 것이 `text-tertiary`다 — 부르는 자리가 클래스로 준 크기 · 색(체크의 `text-primary`, 지우기
-   줄의 빨강)이 이긴다(`:where`라 이 규칙의 특이도는 줄 클래스 하나뿐이고, 코어 유틸리티가 이 뒤에 선다). 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
-   클래스 그대로 부품 파일에 있다. 줄 끝의 체크는 `components/ui/menu-check.tsx`가 든다. */
+   것이 15px이고 색을 안 준 것이 `fg-tertiary`다 — 부르는 자리가 그림에 바로 건 크기 · 색(체크의 `size-3`, 지우기
+   줄의 빨강 `*:[svg]:text-danger`)이 이긴다(`:where`라 이 규칙의 특이도는 줄 클래스 하나뿐이고, 코어 유틸리티가 이 뒤에 선다).
+   그림을 감싼 상자에 준 색은 이기지 못한다 — 이 규칙이 그림에 바로 걸려 상속을 막는다. 줄 끝의 체크가 그래서
+   `fg-tertiary`다. 줄의 나머지(flex · 켜짐 `focus:bg-fill-hover` · 끔)는 부품 파일에 있다. 줄 끝의 체크는
+   `components/ui/menu-check.tsx`가 든다. */
 @utility menu-list {
   @apply flex flex-col gap-px p-[5px];
 }
@@ -1306,7 +1315,7 @@ body.dragging-row * {
     height: 15px;
   }
   & :where(svg:not([class*="text-"])) {
-    color: var(--text-tertiary);
+    color: var(--fg-tertiary);
   }
 }
 
@@ -1319,13 +1328,13 @@ body.dragging-row * {
    숫자의 오른쪽 끝이 튄다. 오른쪽 여백 5px은 행의 `pr-1`(4px)과 합쳐 9px이 되어, 그 끝이 구획
    헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
 
-   **색은 안 정한다.** 조용한 갈래는 바깥에 `text-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
+   **색은 안 정한다.** 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
    갈래의 경과는 상태색의 잉크를 든다(`SignalElapsed`) — 갈래마다 달라 부르는 자리가 든다. */
 @utility row-meta {
   @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-meta;
 }
 
-/* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(state-2) · `muted-foreground` 글자 · 줄바꿈 없음.
+/* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(`fill-hover`) · `fg-secondary` 글자 · 줄바꿈 없음.
    줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」, Archive 문서 카드
    머리의 프로젝트가 이 한 정의를 부른다. 셋은 같은 문자열을 손으로 옮겨 적었고, Archive는 다른 모양(`rounded-lg` · `bg-accent`)이었다.
 
@@ -1334,7 +1343,7 @@ body.dragging-row * {
    덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
    Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
 @utility tag {
-  @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-state-2 px-2 whitespace-nowrap text-muted-foreground;
+  @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-fill-hover px-2 whitespace-nowrap text-fg-secondary;
 }
 
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
@@ -1346,7 +1355,7 @@ body.dragging-row * {
     left: 0;
     z-index: 45;
     border-radius: 999px;
-    background-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+    background-color: color-mix(in srgb, var(--fg) 30%, transparent);
     /* 겨눌 수 없는 것이라 포인터를 안 받는다 — 밑에 있는 것을 가리면 안 된다 */
     pointer-events: none;
     opacity: 0;

@@ -69,17 +69,26 @@ function 셸하나(kind: "waiting" | "done"): ShellsState {
 
 /**
  * 마크업이 쓴 **상태색의 가족**. `class` 속성 안의 낱말만 본다 — 마크업 전체에서 글자를 찾으면
- * work 제목이나 셸 이름에 든 `wait`·`done`이 색으로 세어진다.
+ * work 제목이나 셸 이름에 든 낱말이 색으로 세어진다.
  *
- * 이름을 미리 열거하지 않는 것이 요점이다: `bg-wait-soft`든 `ring-done-soft`든 앞으로 생길
- * 무엇이든 토큰 이름에 그 낱말이 있으면 여기 잡힌다. 열거해 두면 새 유틸리티가 조용히 샌다.
+ * 가족은 색의 **낱말**로 가른다 — 기다림은 Codex `warning`과 그 무리 `wait-soft`, 안 본 완료는 `success`다
+ * (`shell-signal.tsx`의 `TONE`). 이름을 미리 열거하지 않는 것이 요점이다: `bg-wait-soft`든 `ring-success/14`든 앞으로
+ * 생길 무엇이든 토큰 이름에 그 낱말이 있으면 여기 잡힌다. 열거해 두면 새 유틸리티가 조용히 샌다.
+ * 옛 이름의 낱말(`wait` · `done` — `bg-wait` · `text-done-ink` · `ring-done-soft` …)도 함께 센다. 그 유틸리티는 옛 이름을
+ * 걷는 날까지 살아 있어, 한 자리에 옛 이름이 붙는 회귀가 Codex 낱말만 보는 그물을 빠져나간다.
  */
+const 가족낱말: Readonly<Record<"wait" | "done", readonly string[]>> = {
+  wait: ["warning", "wait"],
+  done: ["success", "done"],
+};
+
 function 색가족(markup: string): Set<string> {
   const out = new Set<string>();
   for (const [, value] of markup.matchAll(/class="([^"]*)"/g)) {
     for (const token of value.split(/\s+/)) {
-      if (token.includes("wait")) out.add("wait");
-      if (token.includes("done")) out.add("done");
+      for (const [family, words] of Object.entries(가족낱말)) {
+        if (words.some((word) => token.includes(word))) out.add(family);
+      }
     }
   }
   return out;

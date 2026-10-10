@@ -873,14 +873,14 @@ describe("칸이 물든다", () => {
   };
 
   it("안 켜진 칸이 부르면 물든다 — 기다림은 앰버, 안 본 완료는 초록", () => {
-    // 색 이름을 여기서 새로 짓지 않는다 — 토큰 넷은 #203이 들였고(`index.css`) 행·띠가 이미
-    // 같은 이름을 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
+    // 색 이름을 여기서 새로 짓지 않는다 — 행·띠·탭이 알림 표(`shell-signal.tsx`의 `TONE`) 하나에서 같은 이름을
+    // 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
     expect(물든칸("waiting")).toContain("bg-wait-soft");
-    expect(물든칸("done")).toContain("bg-done-soft");
+    expect(물든칸("done")).toContain("bg-success/14");
 
     // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」).
-    expect(이름span(물든칸통째("waiting"))).toContain("text-wait-ink");
-    expect(이름span(물든칸통째("done"))).toContain("text-done-ink");
+    expect(이름span(물든칸통째("waiting"))).toContain("text-warning");
+    expect(이름span(물든칸통째("done"))).toContain("text-success");
   });
 
   it("켜진 칸이 기다리면 앰버가 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
@@ -894,7 +894,7 @@ describe("칸이 물든다", () => {
     // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
     expect(켜진기다림).toContain("ring-1");
     expect(켜진기다림).toContain("ring-inset");
-    expect(켜진기다림).toContain("ring-wait");
+    expect(켜진기다림).toContain("ring-warning");
     expect(켜진기다림).not.toContain("border");
 
     // 안 켜진 칸에는 테두리가 없다 — 있으면 여덟 칸이 다 고른 칸으로 보인다.
@@ -933,7 +933,7 @@ describe("칸이 물든다", () => {
     //
     // `ring-*`이 이 목록에 드는 것은 **그림자라 흐름을 안 건드리기 때문이다** — `border-*`는
     // 여기 없으므로 테두리로 갈아타는 날 이 검사가 잡는다.
-    // **잉크 이름(`text-*-ink`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
+    // **잉크 이름(`text-warning` · `text-success`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
     // 받는다」가 그 자리를 따로 지킨다).
     const 색어휘 = new Set([
@@ -941,11 +941,11 @@ describe("칸이 물든다", () => {
       "tab-on",
       "font-medium",
       "bg-wait-soft",
-      "bg-done-soft",
+      "bg-success/14",
       "ring-1",
       "ring-inset",
-      "ring-wait",
-      "ring-done",
+      "ring-warning",
+      "ring-success",
     ]);
 
     const 차집합 = (a: string, b: string) => {
@@ -967,7 +967,7 @@ describe("칸이 물든다", () => {
     // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다.
     for (const kind of ["waiting", "done"] as const) {
       const 갈린것 = 차집합(이름span(물든칸통째(kind)), 이름span(물든칸통째(null)));
-      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-wait-ink" : "text-done-ink"]);
+      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-warning" : "text-success"]);
     }
   });
 
@@ -998,7 +998,7 @@ describe("칸이 물든다", () => {
       const 칸 = 물든칸(kind);
       expect(칸, String(kind)).toContain("hover:bg-state-1");
       expect(칸, String(kind)).not.toContain("bg-wait-soft");
-      expect(칸, String(kind)).not.toContain("bg-done-soft");
+      expect(칸, String(kind)).not.toContain("bg-success/14");
     }
   });
 
@@ -1010,20 +1010,23 @@ describe("칸이 물든다", () => {
     // 숨는 폭(`@max-[88px]`)에서만 서는 그 글리프가 `currentColor`로 물든다. 하필 스토리 53이
     // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 앰버가 되는 것이다.
     // 그래서 **잉크는 이름 글자에만** 붙는다.
+    // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료 `text-success`. 「상자 · 마크에 없다」는 두 잉크를
+    // 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에 붙어도 초록이다.
+    const 잉크 = /(?<![\w-])text-(?:warning|success)(?![\w-])/;
     for (const [kind, ink] of [
-      ["waiting", "text-wait-ink"],
-      ["done", "text-done-ink"],
+      ["waiting", "text-warning"],
+      ["done", "text-success"],
     ] as const) {
       const cell = 물든칸통째(kind);
       // 칸 안에 잉크가 **딱 한 번** 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —
       // 수로 재면 「어딘가 하나 더 붙었다」까지 함께 잡힌다.
       expect(cell.split(ink).length - 1, kind).toBe(1);
       expect(이름span(cell), kind).toContain(ink);
-      expect(마크span(cell), kind).not.toContain("-ink");
+      expect(마크span(cell), kind).not.toMatch(잉크);
       // **상자에 없다**가 핵심이다 — 있으면 안쪽 전부가 `currentColor`로 상속받는다. 켜진
       // 칸도 같다: 물들임이 이기는 자리라 잉크가 거기서 되살아나기 가장 쉽다.
-      expect(물든칸(kind), kind).not.toContain("-ink");
-      expect(물든칸(kind, { active: true }), kind).not.toContain("-ink");
+      expect(물든칸(kind), kind).not.toMatch(잉크);
+      expect(물든칸(kind, { active: true }), kind).not.toMatch(잉크);
     }
   });
 

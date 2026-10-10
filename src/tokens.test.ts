@@ -83,8 +83,9 @@ describe("Codex 토큰", () => {
     }
   });
 
-  // **CSS 변수 `--accent`는 Codex 파랑이지만 유틸리티 `accent`는 아직 옅은 면이다.** shadcn이 그 이름에 건 뜻(`fill-hover`)으로
-  // 메뉴 · Select의 켜진 줄(`focus:bg-accent`)과 `kbd`가 칠해진다 — 유틸리티가 변수를 따라가면 그 자리가 파랑으로 칠해진다.
+  // **CSS 변수 `--accent`는 Codex 파랑이지만 유틸리티 `accent`는 아직 옅은 면이다.** shadcn이 그 이름에 건 뜻(`fill-hover`)을
+  // 옛 이름을 읽는 호출부가 남은 동안 지킨다 — 유틸리티가 변수를 따라가면 그 이름으로 칠한 옅은 면이 파랑이 된다. 공용 부품은
+  // 그 면을 Codex 이름(`fill-hover`)으로 옮겨 적었고, 유틸리티로 상태 배경을 칠하는 것은 `state-scale.test.ts`가 막는다.
   it("유틸리티 bg-accent는 옅은 면(fill-hover)이고, CSS 변수 --accent는 Codex 파랑이다", async () => {
     const rule = ruleOf(await utilities(["bg-accent"]), "bg-accent");
     expect(rule).toContain("var(--fill-hover)");
@@ -127,7 +128,7 @@ describe("Codex 토큰", () => {
   // **옛 이름은 값을 들지 않는다** — Codex 토큰을 가리키는 별칭이다(DS README 「앱 토큰 이름과의 짝」). 값이 남으면 팔레트의
   // 정본이 둘이 되어, Codex 값을 고치는 날 그 이름을 읽는 자리만 옛 색으로 남는다. `.dark`에 따로 적은 값도 같은 일이다.
   const OLD_NAMES = [
-    // shadcn — registry 부품과 `@layer base`가 읽는다
+    // shadcn — `@layer base`(shadcn 바탕 CSS)와 옛 이름을 아직 쓰는 화면 쪽 호출부가 읽는다
     "background",
     "foreground",
     "card",

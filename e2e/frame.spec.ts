@@ -287,8 +287,9 @@ test("창 바탕은 surface-shell, 카드는 surface, 본문 글자는 fg다 —
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **CSS 변수 `--accent`는 Codex 파랑이지만 유틸리티 `accent`는 옅은 면(`fill-hover`)이다**(`index.css`의 `--color-accent`).
-// 그 유틸리티를 면으로 쓰는 대표 자리가 메뉴의 켜진 줄(`focus:bg-accent`)이다 — 상태 메뉴를 키보드로 열어 첫 줄을 켠다.
+// **CSS 변수 `--accent`는 Codex 파랑이지만 메뉴의 켜진 줄은 옅은 면(`fill-hover`)이다**(`index.css`의 `--color-accent`).
+// registry는 그 줄을 shadcn `accent`(옅은 면)로 칠했고 부품은 그 면을 Codex 이름(`focus:bg-fill-hover`)으로 옮겨 적었다 —
+// 이름이 겹치는 `accent`가 파랑으로 새지 않았는지를 화면에서 잰다. 상태 메뉴를 키보드로 열어 첫 줄을 켠다.
 test("메뉴의 켜진 줄은 옅은 면(fill-hover)이고 파랑(accent)이 아니다", async ({ page }) => {
   const [work] = WORKS;
   await installFixtureBackend(page);

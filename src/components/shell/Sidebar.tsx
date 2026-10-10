@@ -292,9 +292,9 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
     // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.
-    // 바탕(`bg-sidebar`)은 그래도 칠한다: 색은 바탕과 같지만(`--sidebar: var(--surface-shell)`) 투명이면 대비를 재는
-    // e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(index.css의 `--sidebar` 주석).
-    "relative overflow-hidden bg-sidebar",
+    // 바탕(`bg-surface-shell`)은 그래도 칠한다: 창 바탕과 같은 색이지만 투명이면 대비를 재는 e2e가 `aside`의 바탕을
+    // `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts` — 행 메타와 점의 대비를 그 바탕 위에서 잰다).
+    "relative overflow-hidden bg-surface-shell",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
     !dragging && PANEL_MOTION,
@@ -552,7 +552,7 @@ function SidebarItem({
       className={cn(
         "flex h-8 shrink-0 items-center rounded-lg pr-1 transition-colors",
         // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
-        active ? "selected-row" : "text-sidebar-foreground hover:bg-state-1",
+        active ? "selected-row" : "text-fg hover:bg-fill-soft",
       )}
     >
       <button

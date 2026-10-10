@@ -76,31 +76,36 @@ export function subagentLabel(count: number): string | null {
 }
 
 /**
- * 상태색의 유틸리티. 토큰 넷은 `index.css`가 들고 라이트·다크가 거기서 갈린다.
+ * 상태색의 유틸리티. 읽는 토큰 셋(`warning` · `wait-soft` · `success`)은 `index.css`가 들고 라이트·다크가 거기서
+ * 갈린다. 안 본 완료의 무리 · 채움은 따로 된 토큰이 없어 `success`에 Tailwind 알파(`/14`)를 얹는다(아래).
  *
  * **이름을 조각내 짓지 않는다**(`bg-${tone}`). Tailwind는 소스에 **글자 그대로 있는** 클래스만
  * 만들므로 이어 붙인 이름은 규칙이 아예 안 생기고, 화면에서는 「색이 투명하다」로만 나타난다 —
  * 실제로 그렇게 났고 L3의 대비 검사가 그것을 잡았다(2026-09-10).
  *
- * **점과 글자가 다른 이름을 읽는다**(`-ink`) — 지금 그 잉크를 읽는 글자는 탭 이름, 호버 카드 말 칸의 라벨,
- * 행 오른쪽 메타와 띠 줄의 경과다(`SignalElapsed` — DS `.at-row-meta.wait`). 두 이름은 지금 같은 색을 가리킨다 —
- * 기다림 `warning`, 안 본 완료 `success`(Codex 뜻의 색, `index.css`의 상태 축 옛 이름 주석). 라이트 사이드바 위
- * 기다림의 글자는 3.5:1로 글자 바닥(4.5)에 못 미친다 — DS README 「대비」가 Codex의 같은 쓰임을 따라 알고 둔 값이다.
+ * **색은 Codex 뜻의 색이다** — 기다림 `warning`, 안 본 완료 `success`(codex-ds 결정 27). **점과 글자(잉크)가 같은 색이다** —
+ * 그 잉크를 읽는 글자는 탭 이름, 호버 카드 말 칸의 라벨, 행 오른쪽 메타와 띠 줄의 경과다(`SignalElapsed` — DS
+ * `.at-row-meta.wait`). 라이트 사이드바 위 기다림의 글자는 3.5:1로 글자 바닥(4.5)에 못 미친다 — DS README 「대비」가
+ * Codex의 같은 쓰임을 따라 알고 둔 값이다.
+ *
+ * **무리 · 채움**(점의 3px 무리와 셸 탭의 칸 채움)은 기다림이 Codex 낱말 `wait-soft`(`warning` 18%)이고, 안 본 완료는
+ * Codex에 초록 무리가 없어 `success`의 14%다(`bg-success/14` — Tailwind가 oklab에서 섞는다. `index.css`의
+ * `--signal-done-soft`가 같은 식이라 L3가 그 이름으로 칸 채움을 견준다).
  */
 const TONE: Readonly<
   Record<CallingKind, { dot: string; text: string; fill: string; edge: string }>
 > = {
   waiting: {
-    dot: "bg-wait ring-wait-soft",
-    text: "text-wait-ink",
+    dot: "bg-warning ring-wait-soft",
+    text: "text-warning",
     fill: "bg-wait-soft",
-    edge: "ring-wait",
+    edge: "ring-warning",
   },
   done: {
-    dot: "bg-done ring-done-soft",
-    text: "text-done-ink",
-    fill: "bg-done-soft",
-    edge: "ring-done",
+    dot: "bg-success ring-success/14",
+    text: "text-success",
+    fill: "bg-success/14",
+    edge: "ring-success",
   },
 };
 
@@ -217,7 +222,7 @@ export function formatElapsed(ms: number): string {
  *
  * **상태색의 잉크로 칠한다**(DS `.at-row-meta.wait` · `.done` — 굵기 500). 사이드바에서 마크가
  * 빠지면서(ui-refresh 결정 13) 부르는 행의 오른쪽 칸에 남은 것이 이것 하나라, 부차 정보의
- * `tertiary`(바탕 위 3.2:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 상태색 그대로다(`TONE` 머리말).
+ * `fg-tertiary`(바탕 위 3.2:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 상태색 그대로다(`TONE` 머리말).
  *
  * **표식(`data-elapsed`)은 검사가 이 조각을 집는 이름이다** — `tabular-nums`는 띠 머리의 수도 든다.
  */

@@ -124,12 +124,13 @@ describe("반경 단계", () => {
 });
 
 // **클래스를 합치는 `cn`이 단계 이름을 안다.** 합치기는 같은 갈래의 앞 클래스를 지운다. 단계 이름은
-// Tailwind 기본 이름이 아니라서 따로 알려 주지 않으면 **글자색으로 읽혀**, `text-ui text-tertiary`에서
+// Tailwind 기본 이름이 아니라서 따로 알려 주지 않으면 **글자색으로 읽혀**, `text-ui text-fg-tertiary`에서
 // 크기가 조용히 사라진다. 그 이름표는 `lib/utils.ts`에 있고, 부품은 모두 거기서 `cn`을 받는다.
 // 반경 이름도 같다 — 모르면 `rounded-lg rounded-card`를 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
 describe("cn이 DS 단계를 안다", () => {
   it("단계와 글자색을 함께 남긴다", () => {
-    const dropped = steps.filter((step) => cn(`text-${step} text-tertiary`) !== `text-${step} text-tertiary`);
+    // 글자색은 호출부가 쓰는 Codex 이름이다(codex-ds 결정 27) — 알리지 않아도 색으로 읽힌다(`lib/utils.ts`의 주석).
+    const dropped = steps.filter((step) => cn(`text-${step} text-fg-tertiary`) !== `text-${step} text-fg-tertiary`);
     expect(dropped).toEqual([]);
     // 크기끼리는 뒤의 것이 이긴다 — 부르는 자리의 className이 부품의 단계를 덮는 길이다.
     expect(cn("text-ui", "text-caption")).toBe("text-caption");

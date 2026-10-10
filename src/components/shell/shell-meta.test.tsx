@@ -55,12 +55,12 @@ describe("무리 하나 = 글리프 + 셸 수", () => {
   });
 
   it("무리는 바깥보다 한 단 진하다 — 대비 바닥이 그 이유다", () => {
-    // 바깥 색(tertiary)은 사이드바 배경에서 대비 4.5 아래다(`fg-tertiary` 대 `surface-shell` ≈ 3.2). 이 무리가
+    // 바깥 색(fg-tertiary)은 사이드바 배경에서 대비 4.5 아래다(`fg-tertiary` 대 `surface-shell` ≈ 3.2). 이 무리가
     // 이 목록의 **기본값**(셸은 열려 있는데 부르지도 돌지도 않는다)이라, 바깥 색을 물려받으면
     // work 행 메타가 통째로 3.2로 선다 — 그 대비를 L3가 계산해 잰다(`works-sidebar.spec.ts`).
     const html = meta(2);
     expect(countsOf(html)).toHaveLength(1);
-    expect([...html.matchAll(/text-muted-foreground/g)]).toHaveLength(1);
+    expect([...html.matchAll(/text-fg-secondary/g)]).toHaveLength(1);
   });
 
   it("누를 수 없고 툴팁도 없다", () => {

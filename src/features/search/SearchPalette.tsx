@@ -211,7 +211,7 @@ export function SearchList({
                 // 글리프 칸과 한 세로선이다(ui-refresh 결정 25).
                 <p
                   data-head=""
-                  className="shrink-0 px-3 pt-2.5 pb-1 text-caption text-section"
+                  className="shrink-0 px-3 pt-2.5 pb-1 text-caption text-fg-tertiary"
                 >
                   {GROUP_NAMES[hit.kind]}
                 </p>
@@ -228,9 +228,9 @@ export function SearchList({
                 onClick={() => onGo(hit)}
                 className={cn(
                   // DS 팔레트 행(`.at-palette-row`)이다 — 36px · 모서리 10 · 안쪽 0 12 · 틈 10(ui-refresh 결정 6 · 25).
-                  // 슬롯 17px과 틈이 합쳐 거터가 27px이고, 켜진 줄은 `state-2`다.
+                  // 슬롯 17px과 틈이 합쳐 거터가 27px이고, 켜진 줄은 `fill-hover`다.
                   "flex h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 outline-none",
-                  at === selected ? "bg-state-2" : "hover:bg-state-1",
+                  at === selected ? "bg-fill-hover" : "hover:bg-fill-soft",
                 )}
               >
                 {/* **거터는 모든 줄이 예약한다**(결정 18). 목적지가 아닌 줄은 빈 슬롯을
@@ -243,7 +243,7 @@ export function SearchList({
                     자식은 내용폭을 안 바꾼다.
 
                     글리프는 줄(`items-center`)의 세로 가운데에 서고, 색은 DS 팔레트의 글리프 색이다. */}
-                <span data-gutter="" className="size-[17px] shrink-0 text-muted-foreground">
+                <span data-gutter="" className="size-[17px] shrink-0 text-fg-secondary">
                   {Glyph !== null && <Glyph className="size-[17px]" />}
                 </span>
                 {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
@@ -256,7 +256,7 @@ export function SearchList({
                     나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
                 <span className="truncate text-row">{name}</span>
                 {detail !== undefined && (
-                  <span className="truncate text-ui text-tertiary">{detail}</span>
+                  <span className="truncate text-ui text-fg-tertiary">{detail}</span>
                 )}
                 {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6). 코어는
                     맞은 문단을 통째로 펴서 보내고, 「한 줄에 얼마나 보일까」는 화면 폭이
@@ -264,13 +264,13 @@ export function SearchList({
                     (같은 실측에서 175px·한글 13자). 남는 폭이 그보다 넓으면 그만큼 다
                     갖고(`grow`), 모자라면 이름과 경로가 대신 줄어든다. */}
                 {snippet !== undefined && (
-                  <span className="shrink-0 grow basis-1/3 truncate text-ui text-tertiary">
+                  <span className="shrink-0 grow basis-1/3 truncate text-ui text-fg-tertiary">
                     {snippet}
                   </span>
                 )}
                 {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
                 {isArchived(hit) && (
-                  <span className="ml-auto shrink-0 text-caption text-tertiary">
+                  <span className="ml-auto shrink-0 text-caption text-fg-tertiary">
                     아카이브
                   </span>
                 )}
@@ -281,7 +281,7 @@ export function SearchList({
         {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
             여기 서지 않는다(`role="option"`이 없다). */}
         {state === "ready" && hits.length === 0 && (
-          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
+          <p data-note="" className="px-3 py-1.5 text-ui text-fg-secondary">
             맞는 것이 없습니다
           </p>
         )}
@@ -290,7 +290,7 @@ export function SearchList({
             (`showProblem`의 「…하지 못했습니다」). **이유는 안 적는다** — 여기로 오는 것은
             IO 오류뿐이라 사용자 손에 고칠 것이 없고, 다시 치는 것이 곧 다시 묻는 것이다. */}
         {state === "failed" && (
-          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
+          <p data-note="" className="px-3 py-1.5 text-ui text-fg-secondary">
             검색하지 못했습니다
           </p>
         )}
@@ -433,7 +433,7 @@ function SearchPalette({
   //
   // 막대를 위로 올려 해결하지 않는다: 뒤 화면은 **팔레트가 떠 있는 동안 구를 수 없고**
   // (가림막이 포인터를 다 받는다) 구를 수 없는 것의 막대는 거짓이다. 팔레트 제 목록의
-  // 막대도 함께 걷힌다 — 어차피 카드(`bg-background`, z-50)가 그 자리를 덮어 보인 적이 없다.
+  // 막대도 함께 걷힌다 — 어차피 카드(`floating-card`, z-50)가 그 자리를 덮어 보인 적이 없다.
   //
   // 자리가 `body`인 것은 막대가 `body` 직계 fixed라서다(`lib/scroll-quiet.ts`) — 이 컴포넌트의
   // 서브트리 안에서는 그 노드에 닿는 선택자를 쓸 수 없다.

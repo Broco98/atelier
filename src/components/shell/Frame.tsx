@@ -7,12 +7,12 @@ import Rail, { type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import useSplitRatio from "./useSplitRatio";
 
-// 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-chrome`) 위에 44px 바탕 줄이 서고, 그 아래 목록 · 본문 · 패널이
+// 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-surface-shell`) 위에 44px 바탕 줄이 서고, 그 아래 목록 · 본문 · 패널이
 // 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 화면은 카드 내용만 건넨다 — 틈 · 끌기 영역 · 손잡이 · 신호등 inset을 이 파일 한 곳이
 // 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는 어디가 죽었는지가 안 보인다. 분할의 두 열과
 // 편집기의 트리 카드도 이 틀의 칸이다(`split` · `beside`) — 한때 두 화면이 그 칸의 틈 · 끌기 영역 · 손잡이를 제 손으로 다시 적었다.
 //
-//   뿌리(bg-chrome) ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 바탕 줄 `<header>`(TitleBar)
+//   뿌리(bg-surface-shell) ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 바탕 줄 `<header>`(TitleBar)
 //                  │                                 └ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈)
 //                  │                                     ─ list · 본문(카드 하나, 또는 분할의 열 카드 둘) · beside · panel · overlay
 //                  └ 레일 열(rail이 있을 때만, 오른쪽 틈) ─ 패널 토글(바탕 줄 띠의 가운데) · 칸 묶음(카드 줄 꼭대기부터)
@@ -109,7 +109,7 @@ function Frame<Id extends string>({
     // **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)이 사이드바에게 자리를
     // 요구하는 길이다. 카드 줄은 제 내용 폭을 안 알리므로(아래) 넓은 문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선
     // 줄만 두 카드의 머리를 알린다(`BesideBox`).
-    <div data-tauri-drag-region className="flex min-h-0 min-w-min flex-1 bg-chrome">
+    <div data-tauri-drag-region className="flex min-h-0 min-w-min flex-1 bg-surface-shell">
       <div data-tauri-drag-region className={cn("flex flex-1 flex-col pb-(--gap)", TAB_ROW_COLUMN)}>
         <TitleBar sidebarOpen={sidebarOpen}>{titlebar}</TitleBar>
         {/* 카드 줄. 사이드바가 열렸으면 왼쪽 틈이 0이다 — 사이드바 쪽 여백이 그 틈으로 보인다(프로토타입 `.at-main` ·
@@ -381,7 +381,7 @@ function TerminalCard(props: CardProps) {
   return <CardBox {...props} background={background} />;
 }
 
-/** 카드의 상자. 바탕은 터미널 카드면 그 갈래가 읽어 건넨 테마의 바탕이고, 그 밖은 흰 카드(`bg-card`)다. */
+/** 카드의 상자. 바탕은 터미널 카드면 그 갈래가 읽어 건넨 테마의 바탕이고, 그 밖은 흰 카드(`bg-surface`)다. */
 function CardBox({
   as: Tag = "section",
   label,
@@ -399,7 +399,7 @@ function CardBox({
       style={background === undefined ? undefined : { backgroundColor: background }}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card",
-        tone !== "terminal" && "bg-card",
+        tone !== "terminal" && "bg-surface",
         className,
       )}
     >

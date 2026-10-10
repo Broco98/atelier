@@ -1,6 +1,6 @@
 // 앱이 세운 부품(registry에 없다 — 디자인 시스템의 `.at-crumbs`, ui-refresh 결정 5 · 6): 카드 머리에서 지금 선 곳을 말하는
-// 브레드크럼 캡슐이다. 흰 알약(h-8 · rounded-pill · 안쪽 1px border-pill) 하나에 조각들이 `text-ui` · muted-foreground로 서고,
-// 조각 사이에 꺾쇠(12px · tertiary), 마지막 조각이 지금 선 곳이라 font-medium · foreground에 넘치면 말줄임이다. 앞 아이콘 칸은
+// 브레드크럼 캡슐이다. 흰 알약(h-8 · rounded-pill · 안쪽 1px border) 하나에 조각들이 `text-ui` · fg-secondary로 서고,
+// 조각 사이에 꺾쇠(12px · fg-tertiary), 마지막 조각이 지금 선 곳이라 font-medium · fg에 넘치면 말줄임이다. 앞 아이콘 칸은
 // 하나이고 준 때만 선다.
 import { Fragment, type ReactNode } from "react"
 import { ChevronRight } from "lucide-react"
@@ -31,7 +31,7 @@ function Crumbs({
       aria-label="위치"
       data-slot="crumbs"
       className={cn(
-        "flex h-8 max-w-full min-w-0 shrink items-center gap-0.5 overflow-hidden rounded-pill bg-card px-3.5 text-ui whitespace-nowrap text-muted-foreground inset-ring inset-ring-border-pill",
+        "flex h-8 max-w-full min-w-0 shrink items-center gap-0.5 overflow-hidden rounded-pill bg-surface px-3.5 text-ui whitespace-nowrap text-fg-secondary inset-ring inset-ring-border",
         className
       )}
     >
@@ -45,9 +45,9 @@ function Crumbs({
       )}
       {items.map((item, index) => (
         <Fragment key={index}>
-          {index > 0 && <ChevronRight aria-hidden className="mx-[3px] size-3 shrink-0 text-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />}
+          {index > 0 && <ChevronRight aria-hidden className="mx-[3px] size-3 shrink-0 text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />}
           {index === last ? (
-            <span className="min-w-0 truncate font-medium text-foreground">{item}</span>
+            <span className="min-w-0 truncate font-medium text-fg">{item}</span>
           ) : (
             <span className="shrink-0">{item}</span>
           )}

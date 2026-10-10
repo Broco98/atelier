@@ -42,7 +42,7 @@ export const BAND_LABEL = "알림";
 export const BAND_LIMIT = 3;
 
 /**
- * 줄 **글자**의 무게(결정 3의 우선순위). 기다림은 사이드바 행 글자색(`sidebar-foreground`, DS
+ * 줄 **글자**의 무게(결정 3의 우선순위). 기다림은 사이드바 행 글자색(`fg`, DS
  * `.at-band .at-row`)이고, 안 본 완료만 한 단 내려간다 — 둘을 같은 색으로 두면 「기다림 › 안 본
  * 완료」가 점 색에만 남아 색을 못 가르는 사람에게 그 순서가 사라진다. 띠가 목록과 갈리는 것은
  * 글자가 아니라 흰 상자가 한다(`AttentionBand`의 상자 주석).
@@ -54,8 +54,8 @@ export const BAND_LIMIT = 3;
  * (말로 선다, 색은 없다 — `FAILED_LABEL`)이라 부르는 갈래는 여전히 둘이다.
  */
 const WEIGHT: Readonly<Record<CallingKind, string>> = {
-  waiting: "text-sidebar-foreground",
-  done: "text-muted-foreground",
+  waiting: "text-fg",
+  done: "text-fg-secondary",
 };
 
 /**
@@ -106,10 +106,10 @@ export function AttentionBand({
       className={cn(
         "flex shrink-0 flex-col gap-(--row-gap)",
         // **한 덩어리 상자다** — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band` — 카드 반경 16 ·
-        // 바닥 `card`). 안쪽 위아래 6 · 아래 여백 8은 목업 `.strip` 그대로다. 목록 위에 **뜬 것**으로
+        // 바닥 `surface`). 안쪽 위아래 6 · 아래 여백 8은 목업 `.strip` 그대로다. 목록 위에 **뜬 것**으로
         // 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래
         // work 행들과 같은 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
-        "mt-1.5 mb-2 rounded-card bg-card py-1.5",
+        "mt-1.5 mb-2 rounded-card bg-surface py-1.5",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
         // 아무것도 없었다 — 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 낮은
@@ -128,12 +128,12 @@ export function AttentionBand({
           아래 구획 헤더들과 같은 계약이다 — 한 컬럼에 세로로 붙어 서는 것들이 다른 무게로
           읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
       <div className="flex h-7 shrink-0 items-center gap-1 px-[9px]">
-        <span className="shrink-0 text-caption text-section">{BAND_LABEL}</span>
+        <span className="shrink-0 text-caption text-fg-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
         <span
           data-band-count=""
-          className="ml-auto shrink-0 text-meta tabular-nums text-section"
+          className="ml-auto shrink-0 text-meta tabular-nums text-fg-tertiary"
         >
           {items.length}
         </span>
@@ -163,7 +163,7 @@ export function AttentionBand({
  * 이름으로 따로 단다. 이름과 툴팁 글자가 한 값(`label`)에서 나오는 것이 요점이다 — 둘을
  * 각자 적으면 눈과 귀가 다른 말을 듣는다(`nameOf`와 같은 이유).
  *
- * 폭은 띠 전체, 높이 24px, 아이콘 14px이다. hover는 줄과 같은 `state-1` 한 겹이다(`BandLine` 참조).
+ * 폭은 띠 전체, 높이 24px, 아이콘 14px이다. hover는 줄과 같은 `fill-soft` 한 겹이다(`BandLine` 참조).
  */
 function MoreToggle({
   expanded,
@@ -184,7 +184,7 @@ function MoreToggle({
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="flex h-6 w-full shrink-0 items-center justify-center rounded-inner text-tertiary transition-colors hover:bg-state-1 hover:text-muted-foreground"
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-inner text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary"
     >
       <Chevron className="size-3.5 shrink-0" />
     </Hint>
@@ -225,10 +225,10 @@ function BandLine({
       onClick={() => onOpen(item)}
       className={cn(
         "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-ui",
-        // **hover는 흰 상자 위의 `state-1` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
-        // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 `state-1`이던 동안은 같은 값이
-        // 묻혀 한 단 위(`state-2`)를 썼다.
-        "transition-colors hover:bg-state-1",
+        // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
+        // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
+        // 묻혀 한 단 위(`fill-hover`)를 썼다.
+        "transition-colors hover:bg-fill-soft",
         // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(목업 `.strip .it` / `.it.d`).
         // 표는 위 `WEIGHT` 하나다.
         WEIGHT[item.kind],
@@ -246,7 +246,7 @@ function BandLine({
         {item.title}
         {/* **셸 이름은 제목 뒤에 옅게**(결정 5). 같은 상자 안이라 페이드도 함께 받는다 —
             밖에 세우면 이 조각이 폭을 먹어 제목이 그만큼 먼저 잘린다. */}
-        {item.shellName !== null && <span className="text-tertiary"> {item.shellName}</span>}
+        {item.shellName !== null && <span className="text-fg-tertiary"> {item.shellName}</span>}
       </span>
       {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — 상태색의 잉크, DS `.at-row-meta.wait`). */}
       <SignalElapsed kind={item.kind} ms={now - item.since} />

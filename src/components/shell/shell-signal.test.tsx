@@ -32,17 +32,17 @@ describe("레인 — 화면값 셋이 갈린다", () => {
   });
 
   it.each([
-    ["waiting", "wait"],
-    ["done", "done"],
-  ] as const)("%s는 8px 점 + 3px 후광이다", (kind, tone) => {
+    ["waiting", "bg-warning", "ring-wait-soft"],
+    ["done", "bg-success", "ring-success/14"],
+  ] as const)("%s는 8px 점 + 3px 후광이다", (kind, dot, halo) => {
     const markup = lane(kind);
     // 점 8px(`size-2`)에 3px 후광 — 후광은 `ring`이라 **자리를 안 먹는다**. 그림자로
     // 그리는 것이 목업의 `box-shadow: 0 0 0 3px`와 같은 모양이고, 레인 폭 14px 안에서
-    // 점이 커지지 않는 유일한 길이다.
+    // 점이 커지지 않는 유일한 길이다. 점은 상태색(Codex `warning` · `success`), 후광은 그 색의 무리다.
     expect(markup).toContain("size-2");
     expect(markup).toContain("rounded-full");
-    expect(markup).toContain(`bg-${tone}`);
-    expect(markup).toContain(`ring-${tone}-soft`);
+    expect(markup).toContain(dot);
+    expect(markup).toContain(halo);
     expect(markup).toContain("ring-[3px]");
   });
 
@@ -105,8 +105,8 @@ describe("오른쪽 메타 — 부름은 경과만, 도는 중은 비움", () =>
     renderToStaticMarkup(<SignalMeta kind={kind} since={0} now={ms} />);
 
   it.each([
-    ["waiting", "text-wait-ink"],
-    ["done", "text-done-ink"],
+    ["waiting", "text-warning"],
+    ["done", "text-success"],
   ] as const)("%s는 경과 하나만 서고, 상태색의 잉크로 칠한다", (kind, ink) => {
     const markup = signalMeta(kind, 125_000);
     expect(markup.replace(/<[^>]*>/g, "")).toBe("2m");

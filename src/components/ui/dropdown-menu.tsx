@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-popover, DS `.at-float`), 폭 w-(--anchor-width)·min-w-32→208px(DS `.at-menu`), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 5px·항목 사이 1px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·10px 모서리·좌우 10px·gap 9px·text-ui·글리프 15px tertiary·shrink-0, Select 항목과 같은 것, DS `.at-menu-row`), 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오 항목은 보통 항목과 같은 줄 규격이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 체크 항목과 라벨은 아직 registry 그대로다. 하위 메뉴(Sub·SubTrigger·SubContent)는 걷었다 — 쓰는 자리가 없고, SubContent는 앱 카드 위에 registry 카드 모양(rounded-lg·bg-popover·ring-1·p-1)을 className으로 다시 덮었다. 폭 변형 layout(260px — 설정 「spec 레이아웃」 행의 ⋯)과 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px)를 더했다.
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-surface-elevated, DS `.at-float`), 폭 w-(--anchor-width)·min-w-32→208px(DS `.at-menu`), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 5px·항목 사이 1px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·10px 모서리·좌우 10px·gap 9px·text-ui·글리프 15px fg-tertiary·shrink-0, Select 항목과 같은 것, DS `.at-menu-row`), 항목의 켜짐 — registry의 옅은 면(유틸리티 `accent` · 글자 `accent-foreground`)→focus:bg-fill-hover·focus:text-fg(같은 면을 Codex 이름으로 — 유틸리티 `accent`는 Codex 파랑과 이름이 겹친다, `state-scale.test.ts`), 지우기 줄의 빨강 destructive→danger(켜지면 danger 10% 면), 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-fg-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오 항목은 보통 항목과 같은 줄 규격이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·줄의 글리프색 fg-tertiary·굵기 2.4, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 체크 항목과 라벨은 아직 registry 그대로이고 글자색만 Codex 이름이다(보조 글자 fg-secondary · 켜진 줄 fg). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. 하위 메뉴(Sub·SubTrigger·SubContent)는 걷었다 — 쓰는 자리가 없고, SubContent는 앱 카드 위에 registry 카드 모양(rounded-lg·bg-popover·ring-1·p-1)을 className으로 다시 덮었다. 폭 변형 layout(260px — 설정 「spec 레이아웃」 행의 ⋯)과 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px)를 더했다.
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "@/lib/utils"
@@ -67,7 +67,7 @@ function DropdownMenuContent({
           data-slot="dropdown-menu-content"
           // 떠 있는 **카드**의 표식이다 — 검사가 이것으로 카드를 하나로 센다(툴팁에는 안 단다).
           data-popover=""
-          className={cn("z-50 menu-list max-h-(--available-height) origin-(--transform-origin) overflow-x-hidden overflow-y-auto scroll-quiet floating-card text-popover-foreground duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", CONTENT_WIDTH[width], className )}
+          className={cn("z-50 menu-list max-h-(--available-height) origin-(--transform-origin) overflow-x-hidden overflow-y-auto scroll-quiet floating-card text-fg duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", CONTENT_WIDTH[width], className )}
           {...props}
         />
       </MenuPrimitive.Positioner>
@@ -91,7 +91,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-1.5 py-1 text-caption font-medium text-muted-foreground data-inset:pl-7",
+        "px-1.5 py-1 text-caption font-medium text-fg-secondary data-inset:pl-7",
         className
       )}
       {...props}
@@ -116,7 +116,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-default outline-hidden select-none focus:bg-fill-hover focus:text-fg data-inset:pl-7 data-[variant=destructive]:text-danger data-[variant=destructive]:focus:bg-danger/10 data-[variant=destructive]:focus:text-danger data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 data-[variant=destructive]:*:[svg]:text-danger",
         ITEM_SIZE[size],
         className
       )}
@@ -139,7 +139,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-lg py-1 pr-8 pl-1.5 text-ui outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 rounded-lg py-1 pr-8 pl-1.5 text-ui outline-hidden select-none focus:bg-fill-hover focus:text-fg focus:**:text-fg data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
@@ -185,7 +185,7 @@ function DropdownMenuRadioItem({
       // 메뉴(상태 · 아카이브 거르개)는 한 번 고르면 끝이라 보통 항목처럼 닫는다.
       closeOnClick={closeOnClick}
       className={cn(
-        "relative flex menu-row cursor-default items-center outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "relative flex menu-row cursor-default items-center outline-hidden select-none focus:bg-fill-hover focus:text-fg data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className
       )}
       {...props}
@@ -221,7 +221,7 @@ function DropdownMenuShortcut({
     <span
       data-slot="dropdown-menu-shortcut"
       className={cn(
-        "ml-auto text-caption tracking-widest text-muted-foreground group-focus/dropdown-menu-item:text-accent-foreground",
+        "ml-auto text-caption tracking-widest text-fg-secondary group-focus/dropdown-menu-item:text-fg",
         className
       )}
       {...props}

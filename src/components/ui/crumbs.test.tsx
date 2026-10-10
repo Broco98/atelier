@@ -15,6 +15,9 @@ function pieces(markup: string): { tag: string; text: string }[] {
   }));
 }
 
+/** 본문 글자색(`text-fg`) — `text-fg-secondary` · `text-fg-tertiary`는 다른 이름이라 세지 않는다. */
+const 본문색 = /(?<![\w-])text-fg(?![\w-])/;
+
 describe("Crumbs", () => {
   it("위치를 이름 붙은 nav 하나로 말한다", () => {
     const markup = draw(["ui-refresh", "spec", "overview.md"]);
@@ -34,10 +37,10 @@ describe("Crumbs", () => {
     const [first, second, last] = pieces(draw(["Settings", "spec 레이아웃", "Atelier"]));
     for (const piece of [first, second]) {
       expect(piece.tag).not.toContain("font-medium");
-      expect(piece.tag).not.toContain("text-foreground");
+      expect(piece.tag).not.toMatch(본문색);
     }
     expect(last.tag).toContain("font-medium");
-    expect(last.tag).toContain("text-foreground");
+    expect(last.tag).toMatch(본문색);
     // 긴 이름은 마지막 조각에서 말줄임으로 접힌다 — 앞 조각은 줄지 않는다.
     expect(last.tag).toContain("truncate");
   });

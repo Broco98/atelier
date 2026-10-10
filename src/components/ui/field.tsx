@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 설명(FieldDescription) 글자 text-sm·muted→13px·tertiary(설정 행의 안내 「px · 8–32」의 지금 값). 나머지(뿌리 — data-invalid면 안의 글자가 다 빨갛다 —, 라벨·제목·오류·묶음·구분선)는 registry 그대로다. registry의 Field는 Base UI Field가 아니라 맨 div라 설명이 칸에 저절로 이어지지 않는다 — 쓰는 자리가 설명에 id를 주고 칸의 aria-describedby로 잇는다.
+// 앱 규격으로 고친 자리: 설명(FieldDescription) 글자 text-sm·muted→13px·fg-tertiary(설정 행의 안내 「px · 8–32」의 지금 값). 나머지(뿌리 — data-invalid면 안의 글자가 다 빨갛다 —, 라벨·제목·오류·묶음·구분선)는 registry 그대로이고 색만 Codex 이름이다(codex-ds 결정 27 — 빨강 destructive→danger, 보조 글자 muted-foreground→fg-secondary, 구분선 글자 뒤 면 background→surface, 고른 라벨의 파랑 · 포커스 링 primary · ring→Codex 파랑 `(--accent)` — 유틸리티 `accent`는 아직 옅은 면이다, hover 면 muted→fill-soft). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. registry의 Field는 Base UI Field가 아니라 맨 div라 설명이 칸에 저절로 이어지지 않는다 — 쓰는 자리가 설명에 id를 주고 칸의 aria-describedby로 잇는다.
 "use client"
 
 import { useMemo } from "react"
@@ -53,7 +53,7 @@ function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const fieldVariants = cva(
-  "group/field flex w-full gap-2 data-[invalid=true]:text-destructive",
+  "group/field flex w-full gap-2 data-[invalid=true]:text-danger",
   {
     variants: {
       orientation: {
@@ -107,7 +107,7 @@ function FieldLabel({
     <Label
       data-slot="field-label"
       className={cn(
-        "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-muted/50 has-[>[data-slot=field]]:has-[:focus-visible]:border-ring has-[>[data-slot=field]]:has-[:focus-visible]:ring-3 has-[>[data-slot=field]]:has-[:focus-visible]:ring-ring/50 *:data-[slot=field]:p-2.5 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
+        "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-(--accent)/30 has-data-checked:bg-(--accent)/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-fill-soft/50 has-[>[data-slot=field]]:has-[:focus-visible]:border-(--accent) has-[>[data-slot=field]]:has-[:focus-visible]:ring-3 has-[>[data-slot=field]]:has-[:focus-visible]:ring-(--accent)/50 *:data-[slot=field]:p-2.5",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
         className
       )}
@@ -134,7 +134,7 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
     <p
       data-slot="field-description"
       className={cn(
-        "text-left text-ui leading-normal font-normal text-tertiary group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
+        "text-left text-ui leading-normal font-normal text-fg-tertiary group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
         "last:mt-0 nth-last-2:-mt-1",
         "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-link",
         className
@@ -164,7 +164,7 @@ function FieldSeparator({
       <Separator className="absolute inset-0 top-1/2" />
       {children && (
         <span
-          className="relative mx-auto block w-fit bg-background px-2 text-muted-foreground"
+          className="relative mx-auto block w-fit bg-surface px-2 text-fg-secondary"
           data-slot="field-separator-content"
         >
           {children}
@@ -217,7 +217,7 @@ function FieldError({
     <div
       role="alert"
       data-slot="field-error"
-      className={cn("text-ui font-normal text-destructive", className)}
+      className={cn("text-ui font-normal text-danger", className)}
       {...props}
     >
       {content}

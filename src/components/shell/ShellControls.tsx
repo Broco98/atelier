@@ -20,7 +20,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="icon-button-quiet text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="icon-button-quiet text-fg-secondary disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -109,7 +109,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
         type="button"
         onClick={onOpenSearch}
         aria-keyshortcuts="Meta+K"
-        className="icon-button-quiet text-muted-foreground"
+        className="icon-button-quiet text-fg-secondary"
       >
         <Search className="size-4" />
       </Hint>
