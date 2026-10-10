@@ -50,8 +50,10 @@ const CODEX_ACP: Program = Program { name: "codex-acp", install: "npm i -g @agen
 const CODEX: Program = Program { name: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh" };
 const NODE: Program = Program { name: "node", install: "brew install node" };
 
-/// 엔진 확인의 답.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 엔진 확인의 답. 앱 명령을 건너 화면으로 가므로 `state`로 가르는 꼴로 나간다 — 프런트의 `EngineCheck` 타입과
+/// 같은 말이다(three-axes 티켓 05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "kebab-case")]
 pub enum EngineCheck {
     /// 찾음 — 드는 실행 파일마다 PATH 앞쪽의 것.
     Found { programs: Vec<FoundProgram> },
@@ -59,13 +61,13 @@ pub enum EngineCheck {
     Missing { missing: Vec<MissingProgram> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FoundProgram {
     pub name: &'static str,
     pub path: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MissingProgram {
     pub name: &'static str,
     pub install: &'static str,

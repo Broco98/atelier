@@ -501,6 +501,92 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
+// 대화 명령 여섯(three-axes 티켓 05) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기. 본체는 대화
+// 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
+// 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
+//
+// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓)은 blocking 풀에서 기다린다.
+//   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`).
+// - 호스트의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
+// - 다리로 탈 수 없다(`in_app_only`) — 호스트는 오래 사는 에이전트를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
+
+fn host_err(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
+
+/// 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾는다. `reread`는 안내 카드의 「다시 확인」이다.
+#[tauri::command]
+pub async fn chat_check_engine(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    agent: atelier_acp::Agent,
+    reread: bool,
+) -> CmdResult<atelier_acp::EngineCheck> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.check_engine(agent, reread))
+        .await
+        .map_err(|e| format!("엔진을 확인하지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 그 work의 열린 대화들. 읽기만 한다 — 에이전트를 띄우지 않고 `agents/`도 만들지 않는다.
+#[tauri::command]
+pub async fn chat_list(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+) -> CmdResult<Vec<atelier_acp::Conversation>> {
+    chats.list_conversations(&work).map_err(host_err)
+}
+
+/// 그 대화의 기록에서 `after` 다음 seq의 줄들 — 화면은 이것으로 그리고, 그 뒤는 기록 줄 이벤트로 잇는다.
+#[tauri::command]
+pub async fn chat_read_record(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    after: u64,
+) -> CmdResult<Vec<atelier_acp::RecordLine>> {
+    chats.read_record(&work, &conversation, after).map_err(host_err)
+}
+
+/// 새 대화 — 만들고 곧바로 띄워 세션을 연다(S8). 세션이 열릴 때까지 기다린다.
+#[tauri::command]
+pub async fn chat_new(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    agent: atelier_acp::Agent,
+) -> CmdResult<atelier_acp::Conversation> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.new_conversation(&work, agent))
+        .await
+        .map_err(|e| format!("대화를 열지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다.
+#[tauri::command]
+pub async fn chat_send(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    text: String,
+) -> CmdResult<()> {
+    chats.send(&work, &conversation, &text).map_err(host_err)
+}
+
+/// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).
+#[tauri::command]
+pub async fn chat_close(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+) -> CmdResult<()> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.close_conversation(&work, &conversation))
+        .await
+        .map_err(|e| format!("대화를 닫지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
 #[cfg(test)]
 mod tests {
     /// 명령 하나의 몸통 — 서명 뒤에서 열 0의 `}`까지. 잘라 낸 자리가 테스트 모듈을 삼키면 소스 스캔이 제 문자열을
@@ -531,6 +617,8 @@ mod tests {
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
     /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
     ///   돈다(`pty::end_by_hand`).
+    /// - 대화 셋(three-axes 티켓 05): 엔진 확인은 처음에 로그인 셸을 기다리고(≤10초), 새 대화는 에이전트를 띄워 세션이 열리기를
+    ///   기다리고, 대화 닫기는 stdin을 닫고 1초를 기다린 뒤 그룹째 SIGKILL한다.
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -539,6 +627,9 @@ mod tests {
             ("processes_snapshot", "processes.screen()", ".screen("),
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
+            ("chat_check_engine", "chats.check_engine(", "check_engine("),
+            ("chat_new", "chats.new_conversation(", "new_conversation("),
+            ("chat_close", "chats.close_conversation(", "close_conversation("),
         ] {
             let body = command_body(command);
             let blocking = body
