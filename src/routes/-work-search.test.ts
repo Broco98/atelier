@@ -125,20 +125,20 @@ describe("주소를 고치는 짝", () => {
 // 비우는 함수를 내보내면 생산 코드에 아무도 안 부르는 이름이 하나 생긴다.
 describe("work마다 마지막으로 보던 화면", () => {
   it("적어 두지 않은 work은 기본 문서 단일 뷰다", () => {
-    expect(recallView("처음-보는-work")).toEqual({ tab: "spec", split: null, file: null });
+    expect(recallView("처음-보는-work")).toEqual({ tab: "spec", split: null, file: null, code: null });
   });
 
   it("적어 둔 것을 그대로 돌려준다", () => {
-    rememberView("가", { tab: "terminal", split: "rl", file: "01-판/spec.md" });
-    expect(recallView("가")).toEqual({ tab: "terminal", split: "rl", file: "01-판/spec.md" });
+    rememberView("가", { tab: "terminal", split: "rl", file: "01-판/spec.md", code: null });
+    expect(recallView("가")).toEqual({ tab: "terminal", split: "rl", file: "01-판/spec.md", code: null });
     // 되돌아오는 것도 기억이다 — 켠 것만 적어 두면 끈 것을 못 적는다.
-    rememberView("가", { tab: "spec", split: null, file: null });
-    expect(recallView("가")).toEqual({ tab: "spec", split: null, file: null });
+    rememberView("가", { tab: "spec", split: null, file: null, code: null });
+    expect(recallView("가")).toEqual({ tab: "spec", split: null, file: null, code: null });
   });
 
   it("work마다 따로 센다", () => {
-    rememberView("나", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
-    expect(recallView("다")).toEqual({ tab: "spec", split: null, file: null });
+    rememberView("나", { tab: "terminal", split: "lr", file: "01-판/spec.md", code: null });
+    expect(recallView("다")).toEqual({ tab: "spec", split: null, file: null, code: null });
   });
 
   // **work을 여는 문이 전부 이 값을 쓴다** — `recallSearch`가 그 합성의 이름이다. 빈 객체
@@ -146,13 +146,13 @@ describe("work마다 마지막으로 보던 화면", () => {
   // `file`이 딸려갈 자리가 없다. 아래 넷이 이 함수의 **값**을 재는 것이 문마다 원문을
   // 대조하는 것을 대신한다 — 문은 늘지만 값은 하나다.
   it("빈 주소 위에 얹어 새 주소를 짓는다", () => {
-    rememberView("라", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
+    rememberView("라", { tab: "terminal", split: "lr", file: "01-판/spec.md", code: null });
     expect(recallSearch("라")).toEqual({
       tab: "terminal",
       split: "lr",
       file: "01-판/spec.md",
     });
-    rememberView("마", { tab: "spec", split: null, file: null });
+    rememberView("마", { tab: "spec", split: null, file: null, code: null });
     expect(recallSearch("마")).toEqual({
       tab: undefined,
       split: undefined,
@@ -163,8 +163,8 @@ describe("work마다 마지막으로 보던 화면", () => {
   // **분할로 두고 떠난 work은 분할로 돌아온다**(판 05 수용 기준의 마지막 줄). `tab`만
   // 씨앗에 실으면 이 한 줄이 조용히 빠진다.
   it("분할로 두고 떠난 work은 분할로 돌아온다", () => {
-    rememberView("바", { tab: "terminal", split: "rl", file: null });
-    rememberView("사", { tab: "spec", split: null, file: null });
+    rememberView("바", { tab: "terminal", split: "rl", file: null, code: null });
+    rememberView("사", { tab: "spec", split: null, file: null, code: null });
     expect(recallSearch("바")).toEqual({
       tab: "terminal",
       split: "rl",
@@ -176,7 +176,7 @@ describe("work마다 마지막으로 보던 화면", () => {
   // `split`만 실으면 돌아온 work이 기본 문서로 열려, 축 셋 중 하나가 조용히 빠진다 —
   // 화면으로는 「가끔 다른 문서가 떠 있다」로만 보인다.
   it("문서를 보다 떠난 work은 그 문서로 돌아온다", () => {
-    rememberView("아", { tab: "spec", split: null, file: "02-판/spec.md" });
+    rememberView("아", { tab: "spec", split: null, file: "02-판/spec.md", code: null });
     expect(recallSearch("아")).toEqual({
       tab: undefined,
       split: undefined,
@@ -203,7 +203,7 @@ describe("두 view의 배선", () => {
     const view = read("./-works-view.tsx");
     expect(view.split("rememberView(").length - 1).toBe(1);
     expect(view).toContain(
-      "if (slug !== null && exists) rememberView(slug, { tab, split, file });",
+      "if (slug !== null && exists) rememberView(slug, { tab, split, file, code });",
     );
   });
 

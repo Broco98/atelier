@@ -158,6 +158,21 @@ pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String>
     atelier_core::read_work_file(&archive_dir(), &slug, &path).map_err(err)
 }
 
+/// 워크트리 파일 하나(git-integration 판 01 — 파일 탭의 본문). 없음 · 워크트리 없음 · 바깥 링크 · 읽지 못함은 답의 갈래다(코어 머리말).
+/// 디스크를 읽고 실제 경로를 푸므로 work 목록처럼 blocking 풀에서 돈다.
+#[tauri::command]
+pub async fn read_worktree_file(
+    slug: String,
+    project: String,
+    path: String,
+) -> CmdResult<atelier_core::WorktreeFile> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("워크트리 파일을 읽지 못했습니다: {e}"))?
+}
+
 /// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 맞추는 규칙도 순위도 층 규칙도
 /// 프런트와 갈리면 어긋나도 화면에 티가 안 난다. 여기는 루트 셋과 질의, 그리고 프런트가
 /// 들고 온 목적지 목록을 건네는 위임뿐이다.
@@ -531,6 +546,8 @@ mod tests {
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
     /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
     ///   돈다(`pty::end_by_hand`).
+    /// - `read_worktree_file`(git-integration 판 01): 디스크에서 파일 하나를 읽고 실제 경로를 두 번 푼다 — 파일 탭이 보일 때만 오지만
+    ///   큰 파일이면 그 읽기가 ms 단위다.
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -539,6 +556,7 @@ mod tests {
             ("processes_snapshot", "processes.screen()", ".screen("),
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
+            ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
         ] {
             let body = command_body(command);
             let blocking = body

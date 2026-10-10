@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { File, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
+import { File, FileCode, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Hint } from "@/components/ui/tooltip";
 import { SIGNAL_LABEL, signalTint, subagentLabel } from "@/components/shell/shell-signal";
@@ -19,7 +19,7 @@ import {
   shellRowName,
   shellsOf,
 } from "./shell-registry";
-import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
+import type { BundleTab, Shell, ShellOwner, ShellsState } from "./shell-registry";
 import { gapLineLeft, sidewaysIntent, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
@@ -90,7 +90,7 @@ interface ShellTabsProps {
    */
   fixed?: readonly FixedTab[];
   /**
-   * **본문이 이 화면의 셸을 보여주는가.** 켜진 칸 표시를 그때만 준다.
+   * **본문이 이 화면의 묶음을 보여주는가** — 셸이든 파일 탭이든 묶음의 지금 탭이 본문에 서 있는가. 켜진 칸 표시를 그때만 준다.
    *
    * `activeIdOf`는 그 화면의 **기억**이지 지금 본문이 아니다 — 문서를 읽는 중에도 값이
    * 남아 있어서, 그것만 보고 칸을 켜면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
@@ -159,7 +159,8 @@ interface ShellTabsProps {
 // 화면 머리행의 **가로 탭 줄**(결정 7·8·10). `[spec][고정 칸…][묶음…][+]`가 왼쪽부터 차고 오른쪽 끝에
 // 조작이 고정된다. 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아온 것이다(adr-03).
 // 고정 칸은 화면이 넘기는 `FixedTab`이다(three-axes 결정 9) — 숫자 키를 안 받아 아래 순서의 셈에 안 든다.
-// **묶음**(CONTEXT)은 스크롤 상자 안의 칸들이고 그 차례는 레지스트리가 든다(`bundleOf`) — 지금은 셸 칸뿐이다.
+// **묶음**(CONTEXT)은 스크롤 상자 안의 칸들이고 그 차례는 레지스트리가 든다(`bundleOf`) — 셸 칸과 **파일 탭** 칸이 구분선 없이
+// 한 차례로 선다(git-integration 결정 31). 파일 탭의 표시(이름 · 툴팁)는 칸이 든 정체에서 나온다 — 이 줄이 따로 받지 않는다.
 //
 // **새 순서를 발명하지 않는다.** ⌘1~9가 이미 이 순서를 세고 있어서(work 화면은 ⌘1이 spec,
 // ⌘2~9가 묶음 — `shell-registry.ts`의 `shellForNav`) 이 줄이 하는 일은 키보드가 이미 아는
@@ -491,6 +492,17 @@ function ShellTabs({
         )}
       >
         {tabs.map((tab) => {
+          if (tab.kind === "code") {
+            return (
+              <CodeTab
+                key={tab.id}
+                tab={tab}
+                active={showing && tab.id === activeId}
+                onSelect={tabHandlers.onSelect}
+                onClose={tabHandlers.onClose}
+              />
+            );
+          }
           // 셸 칸이 가리키는 셸은 늘 셸 목록에 있다(레지스트리가 둘을 한자리에서 더하고 뺀다) — 없으면 그 칸을 안 그린다.
           const shell = shellsById.get(tab.id);
           return (
@@ -864,6 +876,61 @@ const ShellTab = memo(function ShellTab({
           // 길은 ⌘W다(결정 13) — 새로 만드는 길이 아니라 이미 있는 길이다.
           active ? "@max-[68px]:hidden" : "@max-[88px]:hidden",
         )}
+      >
+        <X className="size-3" strokeWidth={1.8} />
+      </Hint>
+    </div>
+  );
+});
+
+interface CodeTabProps {
+  tab: Extract<BundleTab, { kind: "code" }>;
+  /** 본문이 지금 이 파일 탭을 보여주는가. 켜진 칸 표시가 그때만 선다. */
+  active: boolean;
+  onSelect: (id: number) => void;
+  onClose: (id: number) => void;
+}
+
+/**
+ * **파일 탭** 칸 하나(git-integration 결정 38 — 셸 칸의 틀을 쓴다). 폭(최대 180 · 바닥 44) · 켜짐 면 · 좁아지면 이름이 글리프로
+ * 물러나는 규칙 · 켜진 칸에만 남는 `×`가 셸 칸(`ShellTab`)과 같다 — 셸과 파일이 한 줄에서 같은 폭으로 줄어든다(스토리 29).
+ *
+ * 다른 것: 글리프 `FileCode`는 **넓은 폭에서도 선다** — 셸 칸은 이름(타이틀)이 이미 무엇이 도는지를 말해 글리프를 걷었는데
+ * (결정 27), 파일 이름은 그 칸이 파일이라는 것을 말하지 않는다. 툴팁은 `<프로젝트>/<경로>`다(스토리 28). 닫기는 확인이 없다 —
+ * 부르는 쪽이 그 길을 준다(스토리 37). 이 장에서는 끌지 않는다(06).
+ *
+ * 정체는 표식(`data-code`)으로 싣는다 — 칸 표식(`data-tab`)은 종류다(셸의 `data-shell-key`와 같은 나눔).
+ */
+const CodeTab = memo(function CodeTab({ tab, active, onSelect, onClose }: CodeTabProps) {
+  const name = tab.path.slice(tab.path.lastIndexOf("/") + 1);
+  const ref = `${tab.project}/${tab.path}`;
+  return (
+    <div
+      data-tab="code"
+      data-code={ref}
+      className={cn(
+        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-foreground transition-colors",
+        active ? "tab-on font-medium" : "hover:bg-state-1",
+      )}
+    >
+      {/* 켜짐은 `aria-pressed`로 말한다 — 셸 칸과 같은 어휘다(스토리 87). */}
+      <Hint
+        text={ref}
+        announce="description"
+        type="button"
+        aria-pressed={active}
+        onClick={() => onSelect(tab.id)}
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
+      >
+        <FileCode className={cn("size-3.5 shrink-0", !active && "text-tertiary")} strokeWidth={1.8} />
+        <span className="min-w-0 truncate @max-[88px]:sr-only">{name}</span>
+      </Hint>
+      <Hint
+        text="파일 탭 닫기"
+        type="button"
+        aria-label={`${name} 닫기`}
+        onClick={() => onClose(tab.id)}
+        className={cn("icon-button-tint shrink-0 text-tertiary", active ? "@max-[68px]:hidden" : "@max-[88px]:hidden")}
       >
         <X className="size-3" strokeWidth={1.8} />
       </Hint>

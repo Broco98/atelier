@@ -4,7 +4,6 @@ import { SquareTerminal } from "lucide-react";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import {
-  activeIdOf,
   activeShellOf,
   ownerOf,
   shellEndLabels,
@@ -43,7 +42,9 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   // 「비었나」가 영영 참이라 이 화면에 들어올 때마다 새 셸이 하나씩 뜬다 — 둘 다 `work`만
   // 딛게 두는 것이 그 짝을 지키는 방법 전부다(`originOf`).
   const owner = ownerOf(work?.slug);
-  const activeId = activeIdOf(state, owner);
+  // 이 자리에 들일 것은 **켜진 셸**이다 — 묶음의 지금 탭이 파일 탭이면(git-integration 판 01) 들일 셸이 없다. 주소가 터미널을
+  // 말하는 동안 그런 순간은 한 틱뿐이다(화면이 곧 셸을 켠다 — `showShellTab`).
+  const activeId = activeShellOf(state, owner)?.id ?? null;
 
   // **화면에 들어올 때만** 「없으면 하나 띄운다」다. 마지막 칸을 `×`로 닫은 자리에서는
   // 뜨지 않는다 — 닫자마자 새 셸이 뜨면 `×`가 무의미해진다.

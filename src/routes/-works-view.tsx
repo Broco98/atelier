@@ -4,6 +4,8 @@ import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
 import { worksApi } from "@/features/works/api";
 import {
+  codeRefOf,
+  codeSearch,
   fileSearch,
   recallSearch,
   rememberView,
@@ -25,11 +27,14 @@ function WorksView({
   file = null,
   tab = "spec",
   split = null,
+  code = null,
 }: {
   slug: string | null;
   file?: string | null;
   tab?: ViewTab;
   split?: SplitSide | null;
+  /** 주소가 말하는 파일 탭(`<프로젝트>/<경로>`) — `tab`이 `code`일 때만 찬다(git-integration S12). */
+  code?: string | null;
 }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
@@ -72,6 +77,27 @@ function WorksView({
     [navigate, slug],
   );
 
+  /**
+   * **파일 탭 열기**(git-integration 판 01 — 「파일 탭 열기」 함수 하나). 프로젝트와 워크트리 기준 경로를 받아 그 파일 탭으로 간다 —
+   * 묶음에 없으면 끝에 열리고, 있으면 그 탭이 지금 탭이 된다(그 일은 주소를 받은 화면이 한다 — 주소가 정본이다, S12).
+   *
+   * `push`가 둘을 가른다: 트리에서 여는 것은 **replace**(파일 스무 개를 넘겨 봐도 뒤로가기 한 번 — 스토리 59), 링크를 따라간
+   * 것은 **push**다(돌아올 자리가 있어야 한다 — 문서 링크와 같다). 탭 줄 · 단축키도 replace다(결정 13 — 탭을 고르는 손짓은
+   * 기록을 안 쌓는다). 분할 중이면 분할이 풀린다(`codeSearch`).
+   */
+  const openCodeTab = useCallback(
+    (project: string, path: string, push: boolean) => {
+      if (slug === null) return;
+      void navigate({
+        to: "/works/$slug",
+        params: { slug },
+        search: (prev: object) => codeSearch(prev, codeRefOf({ project, path })),
+        replace: !push,
+      });
+    },
+    [navigate, slug],
+  );
+
   // 분할 전환 — 켜기·끄기·좌우 맞바꾸기가 전부 여기다(결정 97). **`tab`을 함께 받는다**:
   // 열의 `×`는 분할을 끄면서 **남는 쪽**을 정하고(결정 89), 토글은 지금 `tab`을 그대로 넘긴다.
   // 두 축을 한 navigate로 옮기는 것은 두 번 옮기면 한 틱에 겹쳐 앞의 것이 버려지기 때문이다.
@@ -108,7 +134,7 @@ function WorksView({
         search:
           target === slug
             ? (prev: object) => splitSearch(tabSearch(prev, nextTab), next)
-            : viewSearch({}, { tab: nextTab, split: next, file: null }),
+            : viewSearch({}, { tab: nextTab, split: next, file: null, code: null }),
         replace: true,
       });
     },
@@ -135,13 +161,13 @@ function WorksView({
   // 때문이다 — 화면을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab, 분할 토글,
   // 드래그로 여럿인데, 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다.
   useEffect(() => {
-    if (slug !== null && exists) rememberView(slug, { tab, split, file });
-  }, [slug, exists, tab, split, file]);
+    if (slug !== null && exists) rememberView(slug, { tab, split, file, code });
+  }, [slug, exists, tab, split, file, code]);
 
   // **그 work을 열었다고 코어에 적는다**(결정 12·14). 팔레트의 작업 층이 이 순서로 선다.
   //
   // **바로 위 effect에 얹지 않는다 — 의존성이 다르다.** 저쪽은 `[slug, exists, tab, split,
-  // file]`이라 문서·탭·분할을 바꿀 때마다 다시 도는데, 여기 세는 단위는 **work**이다
+  // file, code]`라 문서·탭·분할을 바꿀 때마다 다시 도는데, 여기 세는 단위는 **work**이다
   // (결정 12: 문서를 안 열고 터미널만 돌려도 「열었다」다). 얹으면 문서를 옮길 때마다 IPC와
   // 파일 쓰기가 나가고, 그 어긋남은 화면에 아무 티도 안 난다.
   //
@@ -193,6 +219,8 @@ function WorksView({
       onSelectFile={selectFile}
       tab={tab}
       onSelectTab={selectTab}
+      code={code}
+      onOpenCode={openCodeTab}
       split={split}
       onSelectSplit={selectSplit}
       onDropInto={dropInto}
