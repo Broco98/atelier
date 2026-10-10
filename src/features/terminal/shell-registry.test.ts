@@ -1853,9 +1853,10 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(page).toContain("const nav = shellNavFromWindow(e);");
     // 조회하는 소유자가 이 화면의 것이 아니면 남의 화면 셸을 센다(결정 109가 막는 것) — 최상위 키다.
     expect(page).toContain("const owner = ownerOf();");
-    expect(page).toContain("const shells = shellsOf(state, owner);");
+    // 세는 것은 그 화면의 **묶음**이다(git-integration 판 01 S10) — `/terminal`의 묶음에는 셸만 선다.
+    expect(page).toContain("const tabs = bundleOf(state, owner);");
     // 자리를 밀지 않는다 — `2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
-    expect(page).toContain("shellForNav(shells, activeIdOf(state, owner), nav, 1)");
+    expect(page).toContain("shellForNav(tabs, activeIdOf(state, owner), nav, 1)");
   });
 });
 
