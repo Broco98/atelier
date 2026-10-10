@@ -16,6 +16,8 @@
 //! - `FAKE_ACP_ACCOUNT_EMAIL` — 있으면 `session/new`의 답 앞에 그 이메일이 든 `_auth/status_update`를 보낸다
 //!   (진짜 codex-acp가 로그인된 계정을 알리는 모양 — 실측 turns 4줄).
 //!
+//! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
+//!
 //! 영수증은 `session/new`를 받을 때 `<세션 id>.json` 한 장으로 남는다 — pid · 자기 Unix 세션 id(`getsid(0)`) ·
 //! 받은 env · `initialize`와 `session/new`의 인자 · 낳은 후손의 pid. 그 뒤에 일어난 일(stdin EOF)은
 //! `<세션 id>.events`에 한 줄씩, 받은 `session/prompt`의 인자는 `<세션 id>.prompts`에 한 줄씩 더한다.
@@ -41,6 +43,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("dies-mid-turn", dies_mid_turn),
     ("ignores-shutdown", ignores_shutdown),
     ("spawns-a-child", spawns_a_child),
+    ("writes-spec", writes_spec),
 ];
 
 fn main() {
@@ -158,6 +161,66 @@ fn codex_one_turn(fake: &mut Fake, id: &Value, session_id: &str) {
     );
 }
 
+/// 턴 도중 spec 폴더에 파일을 쓰고 · 고치고 · 지우는 에이전트(three-axes 티켓 06 — 고친 곳은 턴 앞뒤의 비교로
+/// 찾는다, three-axes 결정 22). spec 폴더는 `session/new`가 준 자리다 — 함께 여는 폴더가 있으면 그것, 없으면
+/// cwd(three-axes 결정 17).
+///
+/// 사람의 글(프롬프트의 마지막 텍스트 블록)에 `{"op": …}` 꼴의 JSON 줄이 있으면 그 단계들을 차례로 밟고, 없으면
+/// [`SPEC_PLAN`]을 밟는다. 글을 고치는 세 단계(`write` · `replace` · `delete`)는 진짜 codex-acp처럼 고치기 전에
+/// edit 도구 줄을, 고친 뒤에 완료를 보낸다. `"silent": true`면 도구 update 없이 고친다 — 셸 명령으로 고친 것과
+/// 같은 모양이다. 나머지 단계는 늘 조용하다.
+///
+/// - `write {path, text}` — 그 글로 쓴다(없으면 폴더째 만든다). `replace {path, from, to}` — 처음 만난 하나를 바꾼다.
+///   `delete {path}` — 지운다.
+/// - `flip {path, at}` — 그 바이트를 뒤집는다(크기는 그대로). `rewrite {path}` — 같은 바이트를 다시 쓴다(내용은 그대로).
+/// - `hold {gate}` — 영수증 폴더에 `gate` 파일이 생길 때까지 턴을 붙잡는다. 함께 도는 다른 대화가 그 사이에 고친다.
+fn writes_spec(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| {
+        let text = human_text(&fake.prompt);
+        let mut steps: Vec<Value> = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|step| step.get("op").is_some())
+            .collect();
+        if steps.is_empty() {
+            steps = serde_json::from_str(SPEC_PLAN).expect("SPEC_PLAN은 JSON이다");
+        }
+        for step in &steps {
+            fake.spec_step(session_id, step);
+        }
+        fake.wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_spec",
+                              "content": {"type": "text", "text": "spec을 고쳤다."}}}),
+        );
+        fake.wire.reply(id, json!({"stopReason": "end_turn"}));
+    };
+    fake.converse();
+}
+
+/// `writes-spec`이 사람의 글에 단계가 없을 때 밟는 「고친 곳」 — 새 문서 · 고침 · 지움, 그리고 도구 update 없이
+/// 고친 텍스트 파일. 검사가 먼저 깐 spec(`plan.md` · `old.md` · `notes.txt`)을 고친다.
+///
+/// **이 단계들이 곧 검사 자료(S26)다** — 바꾸면 `tests/records/changes.jsonl`과 `changes.spec/`을 다시 지어야 한다.
+const SPEC_PLAN: &str = r##"[
+    {"op": "write", "path": "drafts/idea.md", "text": "# 아이디어\n\n새로 쓴 문서다.\n"},
+    {"op": "replace", "path": "plan.md", "from": "첫 문단이다.\n", "to": "요약 한 줄.\n첫 문단을 고쳤다.\n"},
+    {"op": "replace", "path": "plan.md", "from": "- 둘\n", "to": "- 둘을 고쳤다.\n"},
+    {"op": "delete", "path": "old.md"},
+    {"op": "replace", "path": "notes.txt", "from": "초안\n", "to": "다듬은 글\n", "silent": true}
+]"##;
+
+/// 프롬프트의 마지막 텍스트 블록 — 사람의 글이다(머리말은 그 앞의 따로 된 블록이다).
+fn human_text(prompt: &Value) -> String {
+    prompt["prompt"]
+        .as_array()
+        .and_then(|blocks| blocks.iter().rev().find(|block| block["type"] == "text"))
+        .and_then(|block| block["text"].as_str())
+        .unwrap_or_default()
+        .to_owned()
+}
+
 /// **끄기를 무시하는** 에이전트. 얌전한 끄기 신호는 stdin 닫기인데, 그것을 받고도 끝나지 않는다 — 남는 길은
 /// 프로세스 그룹째 SIGKILL뿐이다.
 fn ignores_shutdown(fake: &mut Fake) {
@@ -197,6 +260,12 @@ struct Fake {
     descendants: Vec<u32>,
     session_id: Option<String>,
     on_prompt: OnPrompt,
+    /// 지금 상대하는 `session/prompt`의 인자.
+    prompt: Value,
+    /// 세션의 spec 폴더 — `session/new`의 함께 여는 폴더 첫째, 없으면 cwd.
+    spec_dir: Option<PathBuf>,
+    /// 지금까지 보낸 edit 도구 줄의 수 — 도구 id를 매번 같게 짓는다(S26).
+    edits: usize,
 }
 
 impl Fake {
@@ -209,6 +278,9 @@ impl Fake {
             descendants: Vec::new(),
             session_id: None,
             on_prompt: codex_one_turn,
+            prompt: Value::Null,
+            spec_dir: None,
+            edits: 0,
         }
     }
 
@@ -238,6 +310,11 @@ impl Fake {
                     let session_id = format!("fake-{}", std::process::id());
                     self.leave_receipt(&session_id, &message["params"]);
                     self.session_id = Some(session_id.clone());
+                    let params = &message["params"];
+                    self.spec_dir = params["additionalDirectories"][0]
+                        .as_str()
+                        .or_else(|| params["cwd"].as_str())
+                        .map(PathBuf::from);
                     if let Ok(email) = std::env::var("FAKE_ACP_ACCOUNT_EMAIL") {
                         self.wire.notify(
                             "_auth/status_update",
@@ -266,6 +343,7 @@ impl Fake {
                         }
                     }
                     let session_id = message["params"]["sessionId"].as_str().unwrap_or_default().to_owned();
+                    self.prompt = message["params"].clone();
                     let on_prompt = self.on_prompt;
                     on_prompt(self, &id, &session_id);
                 }
@@ -298,6 +376,87 @@ impl Fake {
         let tmp = dir.join(format!(".{session_id}.json.tmp"));
         let _ = std::fs::write(&tmp, Value::Object(receipt).to_string());
         let _ = std::fs::rename(&tmp, dir.join(format!("{session_id}.json")));
+    }
+
+    /// `writes-spec`의 단계 하나.
+    fn spec_step(&mut self, session_id: &str, step: &Value) {
+        let spec = self.spec_dir.clone().expect("세션이 열린 뒤에만 턴이 돈다");
+        let path = spec.join(step["path"].as_str().unwrap_or_default());
+        let silent = step["silent"].as_bool().unwrap_or(false);
+        let text = |key: &str| step[key].as_str().unwrap_or_default().to_owned();
+        match step["op"].as_str().unwrap_or_default() {
+            "write" => {
+                let old = std::fs::read_to_string(&path).ok();
+                self.edit(session_id, &path, old, Some(text("text")), silent);
+            }
+            "replace" => {
+                let old = std::fs::read_to_string(&path).expect("고칠 파일이 있다");
+                let new = old.replacen(&text("from"), &text("to"), 1);
+                self.edit(session_id, &path, Some(old), Some(new), silent);
+            }
+            "delete" => {
+                let old = std::fs::read_to_string(&path).ok();
+                self.edit(session_id, &path, old, None, silent);
+            }
+            "flip" => {
+                let mut bytes = std::fs::read(&path).expect("뒤집을 파일이 있다");
+                let at = step["at"].as_u64().unwrap_or(0) as usize;
+                bytes[at] ^= 0xff;
+                std::fs::write(&path, bytes).expect("파일을 쓴다");
+            }
+            "rewrite" => {
+                let bytes = std::fs::read(&path).expect("다시 쓸 파일이 있다");
+                std::fs::write(&path, bytes).expect("파일을 쓴다");
+            }
+            "hold" => {
+                let gate = self.receipts.as_ref().expect("문은 영수증 폴더에 선다").join(text("gate"));
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                while !gate.exists() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
+            unknown => eprintln!("모르는 단계: {unknown}"),
+        }
+    }
+
+    /// 글 파일 하나를 고친다 — `new`가 없으면 지운다. 조용하지 않으면 진짜 codex-acp처럼 고치기 전에 edit 도구 줄
+    /// (diff 내용)을, 고친 뒤에 완료를 보낸다. 새 파일의 모양은 codex-acp 2.2.2 실측(`_meta.kind: "add"`) 그대로이고,
+    /// 고침 · 지움은 그것을 본떴다.
+    fn edit(&mut self, session_id: &str, path: &std::path::Path, old: Option<String>, new: Option<String>, silent: bool) {
+        let call = (!silent).then(|| {
+            self.edits += 1;
+            let call_id = format!("edit-fake-{}", self.edits);
+            let (kind, meta) = match (&old, &new) {
+                (None, Some(_)) => ("edit", "add"),
+                (Some(_), Some(_)) => ("edit", "update"),
+                (_, None) => ("delete", "delete"),
+            };
+            self.wire.notify(
+                "session/update",
+                json!({"sessionId": session_id,
+                       "update": {"sessionUpdate": "tool_call", "toolCallId": call_id, "kind": kind,
+                                  "title": "Editing files", "status": "in_progress",
+                                  "content": [{"type": "diff", "oldText": old, "newText": new.clone().unwrap_or_default(),
+                                               "path": path, "_meta": {"kind": meta}}]}}),
+            );
+            call_id
+        });
+        match new {
+            Some(text) => {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).expect("폴더를 만든다");
+                }
+                std::fs::write(path, text).expect("파일을 쓴다");
+            }
+            None => std::fs::remove_file(path).expect("파일을 지운다"),
+        }
+        if let Some(call_id) = call {
+            self.wire.notify(
+                "session/update",
+                json!({"sessionId": session_id,
+                       "update": {"sessionUpdate": "tool_call_update", "toolCallId": call_id, "status": "completed"}}),
+            );
+        }
     }
 
     /// 세션이 열린 뒤에 일어난 일 한 줄.

@@ -10,6 +10,7 @@ mod login_env;
 mod process;
 mod records;
 mod runtime;
+mod spec_changes;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
