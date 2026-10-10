@@ -28,9 +28,9 @@ test("그림 파일은 워크트리 절대 경로의 asset URL로 그림이 선�
     "src",
     `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/shots/home.png")}`,
   );
-  // 글로 읽은 깨진 원문이 함께 서지 않는다 — 몸은 그림 하나다.
+  // 몸은 그림 하나다 — 글로 읽은 깨진 원문(줄 번호 붙은 보기)이 함께 서지 않는다.
   await expect(card.locator("img")).toHaveCount(1);
-  await expect(card).not.toContainText("PNG");
+  await expect(card).toHaveText("billingshotshome.png");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
