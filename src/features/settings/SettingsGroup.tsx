@@ -44,13 +44,13 @@ export function SettingsFoot({ children }: { children: ReactNode }) {
 const InList = createContext(false);
 
 /**
- * 묶음 — 행 사이 2px 틈 · `rounded-card`. 목록 의미가 있는 자리(spec 레이아웃의 레이아웃 줄)는 `as="ul"`이고, 그 안의
+ * 묶음 — 행 사이 2px 틈 · `rounded-2xl`. 목록 의미가 있는 자리(spec 레이아웃의 레이아웃 줄)는 `as="ul"`이고, 그 안의
  * `SettingsRow`가 저절로 `li`가 된다.
  */
 export function SettingsGroup({ as: Tag = "div", children }: { as?: "div" | "ul"; children: ReactNode }) {
   return (
     <InList.Provider value={Tag === "ul"}>
-      <Tag className="flex flex-col gap-0.5 overflow-hidden rounded-card">{children}</Tag>
+      <Tag className="flex flex-col gap-0.5 overflow-hidden rounded-2xl">{children}</Tag>
     </InList.Provider>
   );
 }

@@ -1,8 +1,10 @@
 import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import { useCanGoBack, useRouter } from "@tanstack/react-router";
+import { PANEL_MOTION } from "./panel-layout";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
 import { Hint } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface HistoryButtonProps {
   label: string;
@@ -57,7 +59,12 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
   return (
     <div
       data-tauri-drag-region
-      className="absolute left-(--titlebar-controls-left) top-[calc((var(--titlebar-height)-var(--titlebar-control-size))/2)] z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left] duration-[220ms] ease-panel"
+      // 전체화면에 들고 날 때 왼쪽 끝(`--titlebar-controls-left`)이 옮겨 간다 — 같은 값에서 나오는 바탕 줄의 왼쪽 여백(`Frame`의
+      // `TitleBar`)과 같은 박자(`PANEL_MOTION`)로 움직여야 둘 사이가 도는 동안 벌어지지 않는다.
+      className={cn(
+        "absolute left-(--titlebar-controls-left) top-[calc((var(--titlebar-height)-var(--titlebar-control-size))/2)] z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left]",
+        PANEL_MOTION,
+      )}
     >
       <SidebarToggle open={sidebarOpen} onToggle={onToggleSidebar} />
       {/* 마우스 사이드 버튼이 부르는 window.history.back()과 같은 길로 보낸다 */}

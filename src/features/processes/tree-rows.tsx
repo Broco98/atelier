@@ -24,7 +24,7 @@ const COLUMNS = "grid grid-cols-[minmax(0,1fr)_136px_72px_152px_124px]";
  * 옅은 면 묶음(ui-refresh 결정 16, DS `.at-pr-block`) — 테두리 없이 면과 큰 반경으로 묶고 줄 사이 선이 없다. 작업은 하나마다 한
  * 묶음이고, 다른 구획은 구획의 줄이 한 묶음이다.
  */
-export const BLOCK = "flex flex-col rounded-card bg-surface-under p-1";
+export const BLOCK = "flex flex-col rounded-2xl bg-surface-under p-1";
 
 /**
  * 열 머리(판 06 문구 표 R5) — 줄과 같은 격자 위의 이름 · 메모리 · CPU · 포트다. 숫자 열은 오른쪽 맞춤이다. 접근성 트리에서 감춘다 —
@@ -234,7 +234,7 @@ function FoldButton({ fold }: { fold: RowFold }) {
       type="button"
       aria-label={`${fold.name} ${fold.open ? "접기" : "펼치기"}`}
       onClick={fold.onToggle}
-      className="grid size-4.5 shrink-0 place-items-center rounded-inner text-fg-tertiary transition-colors hover:bg-fill-active hover:text-fg"
+      className="grid size-4.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-active hover:text-fg"
     >
       <FoldChevron open={fold.open} />
     </button>
@@ -293,7 +293,7 @@ function Figures({
           {metrics.ports.map((port, at) => (
             <Fragment key={port}>
               {at > 0 && <span className="sr-only">{PORT_SEPARATOR}</span>}
-              <span className="inline-flex h-5 shrink-0 items-center rounded-inner bg-surface px-1.5 font-mono text-xs font-normal text-fg inset-ring inset-ring-border">
+              <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-surface px-1.5 font-mono text-xs font-normal text-fg inset-ring inset-ring-border">
                 {formatPort(port)}
               </span>
             </Fragment>
@@ -312,8 +312,8 @@ function Figures({
  */
 function MemoryBar({ share }: { share: number }) {
   return (
-    <span aria-hidden className="h-1 w-12 shrink-0 overflow-hidden rounded-pill bg-fill-active">
-      <span className="block h-full rounded-pill bg-(--accent)" style={{ width: `${share}%` }} />
+    <span aria-hidden className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-fill-active">
+      <span className="block h-full rounded-full bg-(--accent)" style={{ width: `${share}%` }} />
     </span>
   );
 }
@@ -329,7 +329,7 @@ export function memoryShare(part: number | null, whole: number | null | undefine
 
 /**
  * 줄 끝의 글자 버튼 — [이동] · [닫기] · [끝내기] · [정리] · [모두 닫기]가 같은 모양이다. **앱 버튼 부품의 조용한 글자 버튼이다**
- * (`Button` ghost · xs — 24px · `rounded-inner` · `text-xs`, `sidebar-active-band` 결정 1 · 2). hover는 한 단 짙은 상태 겹(`fill-active`)이다 —
+ * (`Button` ghost · xs — 24px · `rounded-md` · `text-xs`, `sidebar-active-band` 결정 1 · 2). hover는 한 단 짙은 상태 겹(`fill-active`)이다 —
  * 줄의 hover(`fill-hover`) 위에서 버튼이 갈려 보여야 한다.
  */
 export function RowButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {

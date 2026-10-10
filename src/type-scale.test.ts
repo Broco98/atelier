@@ -18,10 +18,10 @@ import { blankComments, blankCssComments } from "./blank-comments";
 // 나온다** — 빌드도 타입 검사도 통과하고 그 글자만 조용히 부모 크기를 물려받는다. 깨진 것이 화면에서 「조금 커 보인다」로만
 // 남는 종류다. 걷은 옛 열 단계(`text-ui` · `text-caption` …)도 같은 까닭으로 막는다.
 //
-// **반경도 같은 방식으로 DS 단계로만 적는다**(ui-refresh 결정 6 · 25). 알약(`rounded-pill`) · 원형
-// (`rounded-full`) · 10(`rounded-lg`) · 16(`rounded-card`)의 세 단계와, 10px 컨트롤 안에 드는 것의
-// `rounded-inner`(8) · 문서 안 인라인 코드와 트리 확장자 꼬리표의 `rounded-inline`(6)이다. 모서리 열 가지(2 · 5 · 6 · 7 · 8 ·
-// 9 · 10 · 12 · 13 · 14px)가 손으로 적은 `rounded-[Npx]`로 그렇게 생겼다.
+// **반경도 같은 방식으로 Codex 단계로만 적는다**(codex-ds 결정 27). 단계는 `index.css`의 `@theme`에 DS 이름 그대로 있다
+// (`rounded-2xs` 2 … `rounded-2xl` 16 … `rounded-full`). 모서리 열 가지(2 · 5 · 6 · 7 · 8 · 9 · 10 · 12 · 13 · 14px)가 손으로 적은
+// `rounded-[Npx]`로 그렇게 생겼다. **단계 밖 이름도 막는다** — 같은 `@theme`이 `--radius-*: initial`로 Tailwind 기본 반경을 비웠으므로,
+// 목록에 없는 이름(걷은 옛 앱 단계 넷 같은)은 글자 단계처럼 아무 CSS도 안 나와 모서리가 조용히 각진다.
 //
 // **`rounded-[…]`는 px 숫자만이 아니라 식(`min()` · `calc()`)까지 막는다.** registry가 들여온
 // `rounded-[min(var(--radius-md),10px)]` · `rounded-[calc(var(--radius)-3px)]`도 결국 한 자리의 모서리를
@@ -127,29 +127,67 @@ describe("글자 단계", () => {
   });
 });
 
-// `@theme`에 선 반경 단계의 이름 — `--radius-card: 16px;`의 `card`. registry가 깐 `sm` · `md` · `xl` …도
-// 함께 나온다(앱 코드는 안 쓰지만 `@theme`에 남아 있다).
+// `@theme`에 선 반경 단계의 이름 — `--radius-2xl: 16px;`의 `2xl`. 초기화 줄(`--radius-*`)은 뺀다.
 const radii = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =>
   [...block[1].matchAll(/--radius-([a-z0-9]+):/g)].map((m) => m[1]),
 );
 
 describe("반경 단계", () => {
-  it("DS의 반경 이름이 `@theme`에 있다", () => {
-    expect(radii).toEqual(expect.arrayContaining(["card", "pill", "inner", "inline"]));
+  it("Codex의 반경 이름이 `@theme`에 있다", () => {
+    expect(radii).toEqual(["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "bubble", "4xl", "composer", "full"]);
+  });
+
+  it("단계 밖 이름을 쓰지 않는다", () => {
+    // 모서리 쪽 앞말(`rounded-t-` · `rounded-tl-` …)도 같은 단계를 읽는다. `rounded-none`은 단계가 아니라 0이다.
+    const uses = /(?<![\w-])rounded(?:-(?:[trblxyse]|tl|tr|br|bl|ss|se|es|ee))?-([a-z0-9]+)(?![\w-])/g;
+    const found = offenders(uses);
+    // 앵커: 실제로 반경 클래스를 읽는다 — 주석 지우기가 새서 원문을 통째로 지우면 아래 「0건」이 저절로 초록이 된다.
+    expect(found.length).toBeGreaterThan(100);
+    const outside = found.filter((place) => {
+      const name = /-([a-z0-9]+)$/.exec(place)![1];
+      return name !== "none" && !radii.includes(name);
+    });
+    expect(outside).toEqual([]);
   });
 
   it("반경을 임의 값으로 적지 않는다", () => {
-    // 실패하면 그 자리를 단계로 옮긴다 — 2px(툴팁 화살표) → xs, 5 · 6px → inner(문서 안 인라인 코드 · 트리 확장자 꼬리표는 inline),
-    // 7 · 8 · 9 · 10px과 `min()` · `calc()` → lg(10px 컨트롤 **안에** 드는 칩 · kbd · 24px 이하 툴바 칸은 inner),
-    // 12 · 13 · 14px → card다. 아이콘 버튼은 full이다.
+    // 실패하면 그 자리를 단계로 옮긴다 — 크기로는 2px → 2xs, 4 · 5px → xs, 6 · 7px → sm, 8 · 9px → md, 10 · 11px과 `min()` ·
+    // `calc()` → lg, 12 · 13 · 14px → xl, 16px → 2xl, 20 · 22 · 24px → 3xl · bubble · 4xl이고 알약 · 원은 full이다. 역할이 크기와
+    // 다르면 DS 「간격 · 반경 · 크기」의 쓰임(입력 · 툴팁 md · 버튼 · 메뉴 줄 lg · 카드 · 메뉴 2xl …)을 따른다.
     expect(offenders(/(?<![\w-])rounded(?:-[trblxyse]{1,2})?-\[[^\]]*\]/g)).toEqual([]);
+  });
+});
+
+// `@theme`에 선 그림자 유틸리티의 이름 — `--shadow-prominent: var(--shadow-prominent);`의 `prominent`.
+const shadows = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =>
+  [...block[1].matchAll(/--shadow-([a-z0-9]+):/g)].map((m) => m[1]),
+);
+
+// **그림자도 Codex 이름으로만 적는다**(codex-ds 결정 27 · 스펙 §2). 반경과 달리 Tailwind 그림자 이름공간은 비우지 않았다 —
+// 그래서 `shadow-lg` · `shadow-md` …는 CSS가 **나온다**. Tailwind 기본 그림자가 Codex 그림자 사이에 조용히 서고, 화면에서는
+// 「조금 다른 그림자」로만 남아 눈으로는 안 지켜진다(스펙 레이아웃 화면의 메시지가 한 번 그렇게 남았다).
+describe("그림자 단계", () => {
+  it("Codex의 그림자 이름이 `@theme`에 있다", () => {
+    expect(shadows).toEqual(["hairline", "100", "200", "300", "400", "card", "composer", "prominent", "2xl"]);
+  });
+
+  it("단계 밖 이름을 쓰지 않는다", () => {
+    // `inset-shadow-*` · `drop-shadow-*`는 앞말이 붙어 세지 않는다. `shadow-none`은 단계가 아니라 그림자를 걷는 것이다.
+    const found = offenders(/(?<![\w-])shadow-([a-z0-9]+)(?![\w-])/g);
+    // 앵커: 실제로 그림자 클래스를 읽는다(위 반경과 같은 까닭) — 떠 있는 카드(`index.css`의 `floating-card`)의 그림자가 보여야 한다.
+    expect(found).toContainEqual(expect.stringMatching(/^src\/index\.css:\d+: shadow-prominent$/));
+    const outside = found.filter((place) => {
+      const name = /-([a-z0-9]+)$/.exec(place)![1];
+      return name !== "none" && !shadows.includes(name);
+    });
+    expect(outside).toEqual([]);
   });
 });
 
 // **클래스를 합치는 `cn`이 단계 이름을 안다.** 합치기는 같은 갈래의 앞 클래스를 지운다. `heading-lg` · `chat-meta` 같은
 // 단계 이름은 Tailwind 기본 이름이 아니라서 따로 알려 주지 않으면 **글자색으로 읽혀**, `text-chat-meta text-fg-tertiary`에서
 // 크기가 조용히 사라진다. 그 이름표는 `lib/utils.ts`에 있고, 부품은 모두 거기서 `cn`을 받는다.
-// 반경 이름도 같다 — 모르면 `rounded-lg rounded-card`를 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
+// 반경 이름도 같다 — 모르면 `rounded-lg rounded-bubble`을 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
 describe("cn이 DS 단계를 안다", () => {
   it("단계와 글자색을 함께 남긴다", () => {
     // 글자색은 호출부가 쓰는 Codex 이름이다(codex-ds 결정 27) — 알리지 않아도 색으로 읽힌다(`lib/utils.ts`의 주석).
@@ -163,6 +201,25 @@ describe("cn이 DS 단계를 안다", () => {
     // 부품의 모서리(`rounded-lg`)를 부르는 자리의 className이 덮는다 — 뒤의 것 하나만 남아야 한다.
     const kept = radii.filter((name) => cn("rounded-lg", `rounded-${name}`) !== `rounded-${name}`);
     expect(kept).toEqual([]);
+  });
+
+  it("Codex 그림자도 그림자로 안다", () => {
+    // 이름은 `@theme`의 그림자 유틸리티(위 「그림자 단계」)다. 부르는 자리의 `shadow-none`이 부품의 그림자를 덮어야 한다 — 모르면
+    // 합치기가 그 이름을 그림자 색으로 읽어 둘 다 남긴다.
+    expect(shadows.filter((name) => cn(`shadow-${name}`, "shadow-none") !== "shadow-none")).toEqual([]);
+  });
+
+  it("Codex 시간 · 곡선도 시간 · 곡선으로 안다", () => {
+    // 이름은 `@theme`의 시간 유틸리티(`--transition-duration-panel: var(--duration-panel)` …)와 곡선(`--ease-panel` …)이다. 부르는
+    // 자리의 `duration-0` · `ease-linear`가 부품의 Codex 시간 · 곡선(`PANEL_MOTION` 같은)을 덮어야 한다 — 모르면 합치기가 둘 다
+    // 남겨, 어느 쪽이 서는지를 CSS의 순서가 정한다.
+    const [durations, eases] = [/--transition-duration-([a-z0-9-]+):/g, /--ease-([a-z0-9-]+):/g].map((name) =>
+      [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) => [...block[1].matchAll(name)].map((m) => m[1])),
+    );
+    expect(durations).toEqual(["basic", "relaxed", "chip", "dropdown", "word", "pulse", "tip", "peek-close", "panel"]);
+    expect(eases).toEqual(["default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"]);
+    expect(durations.filter((name) => cn(`duration-${name}`, "duration-0") !== "duration-0")).toEqual([]);
+    expect(eases.filter((name) => cn(`ease-${name}`, "ease-linear") !== "ease-linear")).toEqual([]);
   });
 
   it("부품은 이름표를 아는 cn 하나를 쓴다", () => {

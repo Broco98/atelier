@@ -927,7 +927,7 @@ function WorksPage({
                   onPointerMove={() => hoverHalf(half)}
                   onPointerUp={() => dropHere(dragSource, half)}
                   className={cn(
-                    "flex-1 transition-colors duration-150",
+                    "flex-1 transition-colors duration-basic",
                     drag.half === half && "bg-(--accent)/12 ring-1 ring-inset ring-(--accent)/40",
                   )}
                 />

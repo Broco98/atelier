@@ -597,7 +597,7 @@ export const PrettyView = memo(function PrettyView({
       // 인용은 두 얼굴이다 — 첫 줄에 `[!TYPE]` 마커가 있으면 콜아웃, 없으면 흐린 글자의 옅은 면이다.
       // 마커가 있을 때**만** 갈리는 것이 이 자리의 계약이다: 기존 스펙들이
       // `> **커버:** …` 같은 평범한 인용을 많이 쓰고 있어, 그것들이 색을 갖는 순간 회귀다.
-      // 둘 다 카드 안 묶음(ui-refresh 결정 16 — `surface-under` · `rounded-card` · 테두리 없음)이고, 갈리는 것은 제목뿐이다.
+      // 둘 다 카드 안 묶음(ui-refresh 결정 16 — `surface-under` · `rounded-2xl` · 테두리 없음)이고, 갈리는 것은 제목뿐이다.
       blockquote: ({ node, children, className: hastClass, ...props }: any) => {
         const first = firstLineOf(node) ?? "";
         const callout = calloutKind(first);
@@ -610,7 +610,7 @@ export const PrettyView = memo(function PrettyView({
           </Callout>
         ) : (
           <blockquote
-            className={cn("rounded-card bg-surface-under px-4 py-3 text-fg-secondary", hastClass)}
+            className={cn("rounded-2xl bg-surface-under px-4 py-3 text-fg-secondary", hastClass)}
             {...props}
           >
             {children}
@@ -754,7 +754,7 @@ export const PrettyView = memo(function PrettyView({
           ) : (
             // 코드 블록 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · 안쪽 12 · 16, 글자는 `text-code`(13/20) 단계 그대로다.
             <pre
-              className="overflow-x-auto rounded-card bg-surface-code px-4 py-3 font-mono text-code scroll-quiet"
+              className="overflow-x-auto rounded-2xl bg-surface-code px-4 py-3 font-mono text-code scroll-quiet"
               {...props}
             >
               {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
@@ -785,7 +785,7 @@ export const PrettyView = memo(function PrettyView({
         ) : (
           // 인라인 코드 — 코드 면(`surface-code`) · 테두리 없음 · 안쪽 1 · 6(DS `.at-doc code`). 글자는 DS `Prose` 인라인 코드의
           // 13 — `text-code`(13/20) 단계다. 단계라 제목 안에서도 13이다(제목을 따라 커지지 않는다).
-          <code className="rounded-inline bg-surface-code px-1.5 py-px font-mono text-code wrap-anywhere">
+          <code className="rounded-sm bg-surface-code px-1.5 py-px font-mono text-code wrap-anywhere">
             {children}
           </code>
         ),
@@ -838,7 +838,7 @@ function Callout({
 }) {
   const { label, Glyph, tone } = CALLOUT_STYLE[kind];
   return (
-    <div className="rounded-card bg-surface-under px-4 py-3">
+    <div className="rounded-2xl bg-surface-under px-4 py-3">
       {/* 제목 줄 — 글리프 15 · 사이 6 · 600 · 아래 2(DS `.at-callout-title`) */}
       <div className={cn("mb-0.5 flex items-center gap-1.5 font-semibold", tone)}>
         <Glyph className="size-[15px] shrink-0" aria-hidden />

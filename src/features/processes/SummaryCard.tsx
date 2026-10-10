@@ -75,7 +75,7 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
 }
 
 /** 타일 하나 — 옅은 면(DS `.at-pr-tile`). 넓은 타일(메모리 합계)은 이것을 가로로 눕혀 오른쪽에 추이를 둔다. */
-const TILE = "flex min-w-0 flex-col gap-0.5 rounded-card bg-surface-under px-4.5 pt-3.5 pb-4";
+const TILE = "flex min-w-0 flex-col gap-0.5 rounded-2xl bg-surface-under px-4.5 pt-3.5 pb-4";
 
 /** 타일의 아래 줄 — 수 조각을 6px 틈으로 잇는다. */
 const TILE_NOTE = "flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-fg-secondary";

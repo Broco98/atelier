@@ -190,7 +190,7 @@ describe("띠는 목록 위에 뜬 상자다", () => {
   it("상자가 바닥색과 반지름을 든다", () => {
     const 상자 = 여는태그(band(줄들(1)), "data-band");
     expect(상자).toContain("bg-surface");
-    expect(상자).toContain("rounded-card");
+    expect(상자).toContain("rounded-2xl");
   });
 
   // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다. 점 색으로만

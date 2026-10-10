@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const emptyVariants = cva(
-  "group/empty flex w-full min-w-0 flex-col items-center justify-center gap-4 rounded-card border-dashed p-6 text-center text-balance",
+  "group/empty flex w-full min-w-0 flex-col items-center justify-center gap-4 rounded-2xl border-dashed p-6 text-center text-balance",
   {
     variants: {
       variant: {

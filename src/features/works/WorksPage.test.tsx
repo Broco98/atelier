@@ -665,7 +665,7 @@ describe("WorksPage 작업 패널 칸", () => {
     const box = panelBox(render());
     const card = box.match(/<section[^>]*aria-label="작업 패널"[^>]*>/)?.[0] ?? "";
     expect(card, "패널 카드를 찾지 못했다").not.toBe("");
-    expect(card).toContain("rounded-card");
+    expect(card).toContain("rounded-2xl");
     expect(box).not.toContain("border-l");
   });
 });

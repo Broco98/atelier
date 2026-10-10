@@ -207,7 +207,7 @@ export function ResizeHandle({
           패널 가장자리에 딱 붙인다 — 왼쪽 패널(사이드바)이면 자기 오른쪽 끝, 오른쪽 패널이면 왼쪽 끝. 틈 자리면 틈의 가운데다. */}
       <div
         className={cn(
-          "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-(--accent)/55 to-transparent transition-opacity duration-150",
+          "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-(--accent)/55 to-transparent transition-opacity duration-basic",
           line,
           visible,
         )}

@@ -6,10 +6,10 @@ import FullscreenModal from "./FullscreenModal";
 // 예쁜 보기의 표 블록. 가로 스크롤 위에 전체화면 확대와 열 폭 조절을 얹는다.
 // 확대는 다이어그램 블록과 같은 틀(FullscreenModal)을 쓴다 — 같은 손버릇으로 열리고 닫힌다.
 //
-// 표는 카드 안 묶음이다(ui-refresh 결정 16, DS `.at-doc-table`) — 옅은 면 · `rounded-card` · 안쪽 6 · 테두리 없음이고,
+// 표는 카드 안 묶음이다(ui-refresh 결정 16, DS `.at-doc-table`) — 옅은 면 · `rounded-2xl` · 안쪽 6 · 테두리 없음이고,
 // 줄 사이 선 없이 줄의 hover(`fill-hover`)로 갈린다. 칸의 모양(머리 글자 · hover · 둥근 줄 끝)은 칸을 그리는
 // 마크다운 렌더러(`SpecViewer`의 `th` · `td`)가 들고, 면은 여기가 든다. 전체화면 창 안의 표도 같은 면에 선다.
-const TABLE_SURFACE = "rounded-card bg-surface-under p-1.5";
+const TABLE_SURFACE = "rounded-2xl bg-surface-under p-1.5";
 
 // 끄는 동작은 표가 받고, 손잡이는 열 머리(th)가 그린다 — 손잡이가 설 자리는 열 경계뿐이고
 // 그 자리를 아는 건 th다. 손잡이는 자기가 몇 번째 열인지 모른다. 끌기 시작할 때 DOM에서 읽는다.

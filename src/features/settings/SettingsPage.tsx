@@ -736,7 +736,7 @@ export function TerminalSection({
                 // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
                 fontSize: `${fontSize ?? FONT_SIZE}px`,
               }}
-              className="flex min-h-[52px] items-center overflow-x-auto rounded-card px-[18px] leading-[1.6] whitespace-pre scroll-quiet"
+              className="flex min-h-[52px] items-center overflow-x-auto rounded-2xl px-[18px] leading-[1.6] whitespace-pre scroll-quiet"
             >
               {PREVIEW_LINE}
             </div>
@@ -989,7 +989,7 @@ export function HooksSection({
                     <p className="text-chat-meta break-words text-danger">{status.writeError}</p>
                   )}
                   {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 옅은 면 위의 흰 면이다. */}
-                  <pre className="max-h-[168px] overflow-auto rounded-card bg-surface px-4 py-3 font-mono text-code scroll-quiet">
+                  <pre className="max-h-[168px] overflow-auto rounded-2xl bg-surface px-4 py-3 font-mono text-code scroll-quiet">
                     {status.preview}
                   </pre>
                 </div>

@@ -324,32 +324,6 @@
     --transition-duration-tip: var(--duration-tip);
     --transition-duration-peek-close: var(--duration-peek-close);
     --transition-duration-panel: var(--duration-panel);
-    /* **반경 — 디자인 시스템의 세 단계와 그 안쪽 둘**(ui-refresh 결정 6 · 25). 이름은 DS(`base.css`) 그대로다.
-         rounded-pill    9999  머리 컨트롤 — 카드 머리 버튼 · 브레드크럼 · 원문 전환 · 상태 배지 · 검색칸
-         rounded-full    원형  아이콘 버튼(`icon-button` · 버튼의 `icon*` 크기)
-         rounded-lg      10    탭 · 목록 행 · 메뉴 행 · 폼 컨트롤 · 툴팁(`--radius` 그대로다)
-         rounded-card    16    카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
-         rounded-inner    8    10px 컨트롤 **안에** 드는 것 — 세그먼트 칩 · kbd · 24px 이하 툴바 칸
-         rounded-inline   6    문서 안 인라인 코드 · 트리의 확장자 꼬리표
-       툴팁 화살표는 Tailwind 기본 `rounded-xs`(2px)다. 아래 `sm` · `md` · `xl` …은 registry가 깐 값이고
-       앱 코드는 쓰지 않는다 — 단계 밖 이름이다. `rounded-[…]`(px · `min()` · `calc()`)는 `type-scale.test.ts`가
-       막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가 이 이름들을 모서리로 아는지도 같은 검사가 잰다.
-       `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로 옮기기 전의 기록이다 —
-       머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
-    --radius-card: 16px;
-    --radius-pill: 9999px;
-    --radius-inner: 8px;
-    --radius-inline: 6px;
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
-    /* **떠 있는 것의 그림자**(ui-refresh 결정 6 · 디자인 시스템의 `--shadow-float`) — 큰 그림자 한 겹과 1px 고리 한 겹이다.
-       고리가 그림자 안에 있어 떠 있는 카드는 테두리를 따로 들지 않는다(`floating-card` · 토스트). */
-    --shadow-float: 0 12px 32px rgba(20, 20, 28, 0.12), 0 0 0 1px rgba(20, 20, 28, 0.06);
 }
 
 /* **글자 단계 — DS 단계뿐이다**(codex-ds 결정 27 · 티켓 03). 이름과 값은 DS 「Atelier」 2판 `type.groups` 그대로이고, 단계마다
@@ -459,6 +433,39 @@
     --text-nav-row--font-weight: 500;
 }
 
+/* **Codex 반경**(codex-ds 결정 27). 이름과 값은 DS 「Atelier」 2판 그대로이고 다크가 없다. DS 이름이 곧 Tailwind 반경
+   이름공간이라 `rounded-2xl` · `rounded-full`처럼 읽는다. **`--radius-*: initial`로 Tailwind 기본 반경을 먼저 비운다** — 겹치는
+   이름(`xs` … `4xl`)은 Codex 값으로 덮이고(`xs`는 Tailwind의 2px가 아니라 Codex의 4px다), Tailwind에만 있는 이름은 남지 않아
+   반경 이름공간이 아래 목록과 같다.
+   `static`이라 쓰는 유틸리티가 없어도 `:root`에 변수가 선다 — 검사가 이름으로 읽는다(`e2e/frame.spec.ts`).
+     2xs        2     툴팁 화살표
+     sm         6     문서 안 인라인 코드 · 트리의 확장자 꼬리표
+     md         8     10px 컨트롤 **안에** 드는 것 — 세그먼트 칩 · kbd · 24px 이하 툴바 칸
+     lg        10     탭 · 목록 행 · 메뉴 행 · 폼 컨트롤 · 툴팁
+     2xl       16     카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
+     full    9999     알약(머리 컨트롤 · 상태 배지 · 검색칸 · 꼬리표)과 원형(아이콘 버튼)
+   나머지(`xs` 4 · `xl` 12 · `3xl` 20 · `bubble` 22 · `4xl` 24 · `composer` 28)는 아직 쓰는 자리가 없다. 위 자리들은 앱의 옛 단계
+   넷(카드 16 · 알약 · 안쪽 8 · 인라인 6)을 **같은 값의 Codex 이름으로** 옮긴 그대로다 — DS 「간격 · 반경 · 크기」의 쓰임(입력 ·
+   툴팁 8 · 버튼 10 · 머리 카드 12 · 확인 창 24 …)에 맞추는 것은 그 부품 · 화면을 고치는 자리의 일이다.
+   `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
+   이 이름들을 모서리로 아는지도 같은 검사가 잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로
+   옮기기 전의 기록이다 — 머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
+@theme static {
+    --radius-*: initial;
+    --radius-2xs: 2px;
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-3xl: 20px;
+    --radius-bubble: 22px;
+    --radius-4xl: 24px;
+    --radius-composer: 28px;
+    --radius-full: 9999px;
+}
+
 /* **Codex 움직임 · 크기**(codex-ds 결정 27). 값은 DS 「Atelier」 2판 그대로이고 다크가 없다. `static`이라 쓰는 유틸리티가
    없어도 `:root`에 변수가 선다 — 스크립트(`getComputedStyle`)와 임의 값(`w-(--size-menu)`)이 이름으로 읽는다.
    - **시간 `--duration-*`** — Tailwind 이름공간이 아니라 위 `@theme inline`의 `--transition-duration-*`가 `duration-*`
@@ -486,6 +493,10 @@
     --ease-exit-snappy: cubic-bezier(0.65, 0, 0.4, 1);
     --ease-move: cubic-bezier(0.65, 0, 0.35, 1);
     --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    /* **Tailwind의 기본 전환**(`transition-colors` · `transition-opacity`처럼 길이 · 곡선을 안 준 것)도 Codex 기본 전환이다 — DS
+       「움직임」의 `duration-basic` + `ease-default`. 값은 Tailwind 기본(150ms · 같은 곡선)과 같고, 이름이 Codex 토큰을 가리킨다. */
+    --default-transition-duration: var(--duration-basic);
+    --default-transition-timing-function: var(--ease-default);
     /* 패널이 열리고 닫힐 때 쓰는 곡선(Atelier — 지금 앱의 곡선을 이었다). 출발이 빠르고 끝에서 감속한다 —
        ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다.
        접히는 패널 셋(사이드바·목록 패널 둘·작업 패널)의 폭 트랜지션이 같은 곡선을 써야
@@ -904,8 +915,6 @@
     --sidebar-accent-foreground: var(--fg);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
-    /* 반경의 바탕 — 색이 아니다. `@theme inline`의 `--radius-sm`…`--radius-4xl`이 이것의 배수다. */
-    --radius: 0.625rem;
 
     /* **앱 전용 옛 이름**(ui-refresh 결정 11 · 16 · 18) — 호출부가 아직 이 이름으로 읽는다.
          --chrome             창 바탕 — 카드가 그 위에 뜬다
@@ -1335,8 +1344,8 @@ body.dragging-row * {
   background-color: var(--scrim);
 }
 
-/* **떠 있는 카드** — 카드 모서리(`rounded-card`) · 흰 바탕 · **테두리 없이** `shadow-float`(디자인 시스템의 `.at-float`,
-   ui-refresh 결정 6 · 「규칙에서 이어 적용하는 것」). 1px 고리가 그림자 안에 있어 테두리를 따로 들지 않는다 —
+/* **떠 있는 카드** — 카드 모서리(`rounded-2xl`) · 떠 있는 면(`surface-elevated`) · **테두리 없이** `shadow-prominent`(DS 「깊이」 —
+   떠 있는 것은 이 그림자다, codex-ds 결정 27). 0.5px 고리가 그림자 안에 있어 테두리를 따로 들지 않는다 —
    테두리가 있으면 그 고리와 겹쳐 가장자리가 두 겹이 된다.
    메뉴 · Popover · Select · 창 · 확인 창의 부품 파일과 `PopoverPortal`(호버 카드 · 틀 이동 힌트)이
    이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다. 토스트도 같은 모양이다(`toast.tsx`).
@@ -1346,7 +1355,7 @@ body.dragging-row * {
    toggle.tsx 머리말). 값을 따로 적지 않고 그 클래스들을 그대로 부르는 것은, 그림자가 ring과 한
    `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
 @utility floating-card {
-  @apply rounded-card bg-surface-elevated shadow-float;
+  @apply rounded-2xl bg-surface-elevated shadow-prominent;
 }
 
 /* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(디자인 시스템의 `.at-menu` · `.at-menu-row`).
@@ -1401,7 +1410,7 @@ body.dragging-row * {
    덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
    Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
 @utility tag {
-  @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-fill-hover px-2 whitespace-nowrap text-fg-secondary;
+  @apply inline-flex h-[22px] shrink-0 items-center rounded-full bg-fill-hover px-2 whitespace-nowrap text-fg-secondary;
 }
 
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
@@ -1412,7 +1421,7 @@ body.dragging-row * {
     top: 0;
     left: 0;
     z-index: 45;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background-color: color-mix(in srgb, var(--fg) 30%, transparent);
     /* 겨눌 수 없는 것이라 포인터를 안 받는다 — 밑에 있는 것을 가리면 안 된다 */
     pointer-events: none;

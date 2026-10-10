@@ -109,7 +109,7 @@ export function AttentionBand({
         // 바닥 `surface`). 안쪽 위아래 6 · 아래 여백 8은 목업 `.strip` 그대로다. 목록 위에 **뜬 것**으로
         // 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래
         // work 행들과 같은 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
-        "mt-1.5 mb-2 rounded-card bg-surface py-1.5",
+        "mt-1.5 mb-2 rounded-2xl bg-surface py-1.5",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
         // 아무것도 없었다 — 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 낮은
@@ -185,7 +185,7 @@ function MoreToggle({
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="flex h-6 w-full shrink-0 items-center justify-center rounded-inner text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary"
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary"
     >
       <Chevron className="size-3.5 shrink-0" />
     </Hint>

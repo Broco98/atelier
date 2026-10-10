@@ -116,7 +116,7 @@ function TreeRows({
                 {/* 셰브론은 12px `fg-tertiary`이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
                 <ChevronRight
                   className={cn(
-                    "-mr-[3px] size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-150",
+                    "-mr-[3px] size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-basic",
                     expanded && "rotate-90",
                   )}
                   strokeWidth={SMALL_GLYPH_STROKE}
@@ -217,7 +217,7 @@ function FolderGlyph({ icon }: { icon: string | null }) {
 //
 // 아이콘이 없거나 표에 없는 이름이면 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
 // 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-2xs` 10 / 14 · `font-mono` · 500)에 문서 안 인라인
-// 코드와 같은 옅은 면 · `rounded-inline`이고 테두리가 없다(ui-refresh 결정 16 · 25).
+// 코드와 같은 옅은 면 · `rounded-sm`이고 테두리가 없다(ui-refresh 결정 16 · 25).
 function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const Glyph = specIconOf(icon);
   if (Glyph) return <Glyph className={GLYPH} />;
@@ -225,7 +225,7 @@ function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-inline bg-surface-under px-1 font-mono text-2xs font-medium text-fg-tertiary">
+    <span className="shrink-0 rounded-sm bg-surface-under px-1 font-mono text-2xs font-medium text-fg-tertiary">
       {ext}
     </span>
   );

@@ -381,7 +381,15 @@ function TerminalCard(props: CardProps) {
   return <CardBox {...props} background={background} />;
 }
 
-/** 카드의 상자. 바탕은 터미널 카드면 그 갈래가 읽어 건넨 테마의 바탕이고, 그 밖은 흰 카드(`bg-surface`)다. */
+/**
+ * 카드의 상자. 바탕은 터미널 카드면 그 갈래가 읽어 건넨 테마의 바탕이고, 그 밖은 흰 카드(`bg-surface`)다. 모서리는 `radius-2xl`(16)이고
+ * 외곽은 실선이 아니라 0.5px 링(`--shadow-hairline`)이다 — 바탕 위 카드의 깊이는 그것뿐이다(DS 「깊이」, codex-ds 결정 27).
+ *
+ * **링은 카드 안쪽 가장자리에 덮어 그린다**(`::after`의 `inset` 그림자 — 값은 같은 토큰이다). 카드 바깥에 그리는 그림자는 조상의
+ * 넘침 숨김에 잘린다: 목록 칸 · 작업 패널의 접히는 바깥 상자가 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어
+ * 선다 — 바깥 링이면 틈 쪽 한 변에만 남는다. 덮개는 카드 내용 위에 서서 내용이 가장자리까지 칠해도 링이 안 가려지고, 누름은
+ * 지나보낸다(`pointer-events-none`). 네 변이 칠해지는지는 `e2e/frame.spec.ts`가 픽셀로 잰다.
+ */
 function CardBox({
   as: Tag = "section",
   label,
@@ -398,7 +406,8 @@ function CardBox({
       data-tone={tone}
       style={background === undefined ? undefined : { backgroundColor: background }}
       className={cn(
-        "relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card",
+        "relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl",
+        "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:shadow-[inset_var(--shadow-hairline)]",
         tone !== "terminal" && "bg-surface",
         className,
       )}

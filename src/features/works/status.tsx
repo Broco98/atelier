@@ -8,7 +8,7 @@ import type { WorkStatus } from "./types";
  * `badgeClass`가 든다. 꺾쇠(▾)를 품은 배지는 오른쪽 안쪽이 한 단 좁다(DS `.at-badge` 10 / 8 — 꺾쇠가 없으면 `.plain` 10 / 10).
  */
 export const STATUS_BADGE =
-  "inline-flex h-6 shrink-0 items-center gap-[3px] rounded-pill px-2.5 text-xs font-medium whitespace-nowrap has-[>svg]:pr-2";
+  "inline-flex h-6 shrink-0 items-center gap-[3px] rounded-full px-2.5 text-xs font-medium whitespace-nowrap has-[>svg]:pr-2";
 
 export const STATUS_META: Record<
   WorkStatus,

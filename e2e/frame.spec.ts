@@ -9,6 +9,7 @@ import {
   SPEC_LAYOUT_EDITOR,
   startSplitDrag,
   unknownIpcCalls,
+  시계를세운다,
   토큰색,
   툴팁,
 } from "./harness";
@@ -538,6 +539,201 @@ test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창
   expect(await draggable(page, left.x + left.width / 2, middleY), "왼쪽 열 카드 안").toBe(false);
   expect(await draggable(page, right.x + right.width / 2, middleY), "오른쪽 열 카드 안").toBe(false);
   expect(await draggable(page, left.right + gap / 2, middleY), "손잡이").toBe(false);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 08 — **모서리 · 그림자 · 패널 박자가 Codex 토큰에서 나온다**(codex-ds 결정 27 · 스펙 §2 「반경 · 그림자 · 움직임」).
+// 칠해진 값(computed style)을 토큰을 칠한 값(`토큰값`)과 맞대고, 스펙이 못박은 수(카드 16 · 패널 220ms)는 따로 센다 — 토큰 값이
+// 바뀌는 날 견줌이 함께 흘러가 초록으로 남지 않게.
+
+/**
+ * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(하네스의 `토큰색`과 같은 길이고, 색이 아닌
+ * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
+ * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `CardBox`).
+ * **fail-closed** — 안 풀린 `var()`는 그 선언을 무효로 만들어 속성이 초기값으로 떨어진다. 그 값이면 던진다: 토큰이 지워진 날 칠해진
+ * 자리도 같은 초기값이라, 견줌이 양쪽 다 초기값으로 초록이 된다.
+ */
+const 토큰값 = (page: Page, property: string, name: string, 앞말 = "") =>
+  page.evaluate(
+    ([prop, one, lead]) => {
+      const probe = document.createElement("div");
+      document.body.appendChild(probe);
+      const initial = getComputedStyle(probe).getPropertyValue(prop);
+      probe.style.setProperty(prop, `${lead} var(${one})`.trim());
+      const value = getComputedStyle(probe).getPropertyValue(prop);
+      probe.remove();
+      if (value === initial) throw new Error(`토큰 ${one}이 ${prop}에 안 풀렸다 — ${value}`);
+      return value;
+    },
+    [property, name, 앞말] as const,
+  );
+
+/** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
+const 칠한값 = (target: Locator, ...properties: string[]) =>
+  target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
+
+/** 카드의 링 — 카드가 제 안쪽 가장자리에 덮는 `::after`의 `box-shadow`다(`Frame`의 `CardBox`). */
+const 카드링 = (card: Locator) => card.evaluate((el) => getComputedStyle(el, "::after").boxShadow);
+
+/**
+ * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를
+ * 투명한 0 그림자로 먼저 깔고 제 그림자를 맨 뒤에 둔다. 걷고 남은 것이 토큰의 그림자다.
+ */
+const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
+
+/** `0.22s` · `220ms` → 밀리초. */
+const 밀리초 = (time: string) => (time.endsWith("ms") ? parseFloat(time) : parseFloat(time) * 1000);
+
+test("Works: 카드는 반경 16에 0.5px 링(--shadow-hairline)을 두르고, 메뉴는 떠 있는 그림자(shadow-prominent)다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const panel = 작업패널(page);
+  await expect(panel).toBeVisible();
+
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-2xl");
+  const 링 = await 토큰값(page, "box-shadow", "--shadow-hairline");
+  expect(반경, "카드 반경 — radius-2xl").toBe("16px");
+  // 카드의 링은 같은 토큰을 카드 안쪽에 칠한다 — 그 링이 네 변에 다 칠해지는지는 아래 「링이 네 변에」가 픽셀로 잰다.
+  const 안쪽링 = await 토큰값(page, "box-shadow", "--shadow-hairline", "inset");
+  for (const [자리, card] of [
+    ["문서 카드", page.locator("main")],
+    ["작업 패널 카드", panel],
+  ] as const) {
+    const [위왼, 아래오른] = await 칠한값(card, "border-top-left-radius", "border-bottom-right-radius");
+    expect([위왼, 아래오른], `${자리} 반경`).toEqual([반경, 반경]);
+    expect(그림자(await 카드링(card)), `${자리} 링`).toBe(안쪽링);
+  }
+
+  // 떠 있는 카드 — 상태 메뉴를 키보드로 연다(위 「메뉴의 켜진 줄」과 같은 길). 모서리는 바탕 위 카드와 같은 단계다.
+  await page.getByRole("button", { name: pinnedWork.status, exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
+  const 뜬그림자 = await 토큰값(page, "box-shadow", "--shadow-prominent");
+  expect(뜬그림자, "떠 있는 그림자가 바탕 위 링과 같다").not.toBe(링);
+  const [메뉴반경, 메뉴그림자] = await 칠한값(menu, "border-top-left-radius", "box-shadow");
+  expect([메뉴반경, 그림자(메뉴그림자)], "메뉴 반경 · 그림자").toEqual([반경, 뜬그림자]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/**
+ * 카드의 네 변에 링이 **칠해졌나** — 변마다 경계를 가로지르는 6px 띠를 찍어, 그 안에 카드 바깥 바탕보다 뚜렷이 어두운 픽셀이
+ * 있는지 본다. 링이 없으면 띠에는 바탕(`surface-shell` 246)과 카드 면(흰 255)뿐이고 둘 다 그 바탕보다 어둡지 않다. 링(라이트
+ * `#0000001a`)은 카드 안쪽에 칠하든 바깥 바탕 위에 칠하든 그 바탕보다 어둡다 — 흰 면 위 229(실측) · 바탕 위 221. 문턱 8은 그
+ * 차이(17)의 절반쯤이다. 카드 변이 온 px에 서서(위 배치 검사) 0.5px 링이 기기 픽셀 하나를 온전히 칠한다.
+ *
+ * **computed style로는 못 잰다.** 링이 조상의 `overflow`에 잘려도 `box-shadow` 값은 그대로라, 값을 맞대는 검사는 잘린 링에도 초록이다.
+ * 띠는 왼쪽 · 오른쪽 변의 가운데가 아니라 위 1/3에 선다 — 작업 패널 왼쪽 틈 가운데의 폭 손잡이를 비킨다.
+ */
+async function 링이칠해진변(page: Page, card: Locator) {
+  const box = await boxOf(card);
+  const [midX, thirdY] = [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 3)];
+  // `바깥`이 띠의 어느 끝이 카드 밖인지다 — 그 끝 픽셀이 견줄 바탕이다.
+  const 띠 = {
+    위: { clip: { x: midX, y: box.y - 3, width: 1, height: 6 }, 바깥: "앞" },
+    아래: { clip: { x: midX, y: box.bottom - 3, width: 1, height: 6 }, 바깥: "뒤" },
+    왼쪽: { clip: { x: box.x - 3, y: thirdY, width: 6, height: 1 }, 바깥: "앞" },
+    오른쪽: { clip: { x: box.right - 3, y: thirdY, width: 6, height: 1 }, 바깥: "뒤" },
+  } as const;
+  const 칠해진변: Record<string, boolean> = {};
+  for (const [변, { clip, 바깥 }] of Object.entries(띠)) {
+    const png = (await page.screenshot({ clip, animations: "disabled" })).toString("base64");
+    칠해진변[변] = await page.evaluate(
+      async ([data, fromEnd]) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${data}`;
+        await image.decode();
+        const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
+        pen.canvas.width = image.width;
+        pen.canvas.height = image.height;
+        pen.drawImage(image, 0, 0);
+        const { data: rgba } = pen.getImageData(0, 0, image.width, image.height);
+        // 띠의 긴 축을 따라 한 줄로 편다 — 짧은 축(기기 픽셀 둘)은 평균한다.
+        const along = image.width > image.height;
+        const length = along ? image.width : image.height;
+        const across = along ? image.height : image.width;
+        const line = Array.from({ length }, (_, i) => {
+          let sum = 0;
+          for (let j = 0; j < across; j += 1) {
+            const at = 4 * (along ? j * image.width + i : i * image.width + j);
+            sum += (rgba[at] + rgba[at + 1] + rgba[at + 2]) / 3;
+          }
+          return sum / across;
+        });
+        const 바탕 = fromEnd ? line[length - 1] : line[0];
+        return 바탕 - Math.min(...line) >= 8;
+      },
+      [png, 바깥 === "뒤"] as const,
+    );
+  }
+  return 칠해진변;
+}
+
+// 바탕 위 카드의 링은 **칠해져야** 한다(codex-ds 결정 27 — 바탕 위 카드의 테두리는 0.5px 링뿐이다). 접히는 칸(목록 칸 · 작업 패널)의
+// 바깥 상자는 접히는 동안 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어 선다 — 링을 카드 바깥에 그리면 그 세
+// 변에서 잘려 틈 쪽 한 변에만 남는다.
+test("바탕 위 카드의 0.5px 링이 네 변에 다 칠해진다 — 접히는 칸의 상자가 잘라 내지 않는다", async ({ page }) => {
+  const 네변 = { 위: true, 아래: true, 왼쪽: true, 오른쪽: true };
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await expect(작업패널(page)).toBeVisible();
+  // 앵커: 잘라 내는 상자가 없는 문서 카드 — 재는 길이 링을 보는지를 먼저 센다.
+  expect(await 링이칠해진변(page, page.locator("main")), "문서 카드").toEqual(네변);
+  expect(await 링이칠해진변(page, 작업패널(page)), "작업 패널 카드").toEqual(네변);
+
+  await page.goto(`/projects/${PROJECTS[0].slug}`);
+  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
+  await expect(list).toBeVisible();
+  expect(await 링이칠해진변(page, list), "목록 카드").toEqual(네변);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("Works: 접히는 칸(사이드바 · 작업 패널)과 셸 컨트롤 줄이 220ms · ease-panel로 움직인다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await expect(작업패널(page)).toBeVisible();
+
+  const 길이 = await 토큰값(page, "transition-duration", "--duration-panel");
+  const 곡선 = await 토큰값(page, "transition-timing-function", "--ease-panel");
+  expect(밀리초(길이), "패널 여닫기 — duration-panel").toBe(220);
+  const 움직이는칸 = {
+    사이드바: page.locator("aside").first(),
+    "작업 패널": page.locator("aside").nth(1),
+    // 셸 컨트롤 줄 — 첫 칸이 사이드바 토글이다. 전체화면에 들고 날 때 바탕 줄의 왼쪽 여백과 함께 옮겨 간다(`ShellControls`).
+    "셸 컨트롤": page.getByRole("button", { name: "사이드바 토글", exact: true }).locator(".."),
+  };
+  for (const [자리, box] of Object.entries(움직이는칸)) {
+    expect(await 칠한값(box, "transition-duration", "transition-timing-function"), 자리).toEqual([길이, 곡선]);
+  }
+  // 펴진 칸의 안쪽 열은 바깥 폭이 다 온 뒤에 상한을 받는다 — 그 지연이 같은 토큰이다(`panel-layout`의 `foldingInnerClass`).
+  const [지연] = await 칠한값(page.locator("aside").nth(1).locator(":scope > div").first(), "transition-delay");
+  expect(지연.split(",").map((one) => one.trim()), "작업 패널 안쪽 열의 지연").toEqual(["0s", 길이]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 분할의 되돌림 — 손잡이를 두 번 눌러 반반으로 돌아가는 순간만 두 열이 패널과 같은 박자로 움직이고(`Frame`의 분할), 그 순간을 끝내는
+// 타이머도 같은 토큰을 읽는다(`useSplitRatio`). 토큰을 늘려 두고 시계로 잰다 — 타이머가 220을 따로 들면 늘린 길이보다 먼저 끝난다.
+test("Works: 분할을 두 번 눌러 되돌리는 동안 두 열이 duration-panel · ease-panel로 움직이고, 그 길이가 지나면 멈춘다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+  const handle = page.locator("main").locator(HANDLE);
+  // 몫을 드는 왼쪽 열 상자 — 손잡이가 그 자식이다(`Frame`의 분할).
+  const column = handle.locator("..");
+  await expect(handle).toBeVisible();
+  await page.evaluate(() => document.documentElement.style.setProperty("--duration-panel", "400ms"));
+  const 곡선 = await 토큰값(page, "transition-timing-function", "--ease-panel");
+  expect(await 칠한값(column, "transition-duration"), "되돌리기 전에는 트랜지션이 없다").toEqual(["0s"]);
+
+  await 시계를세운다(page);
+  await handle.dblclick();
+  await expect.poll(() => 칠한값(column, "transition-duration", "transition-timing-function")).toEqual(["0.4s", 곡선]);
+  await page.clock.runFor(300);
+  expect(await 칠한값(column, "transition-duration"), "늘린 길이 안에서는 아직 움직인다").toEqual(["0.4s"]);
+  await page.clock.runFor(200);
+  await expect.poll(() => 칠한값(column, "transition-duration")).toEqual(["0s"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

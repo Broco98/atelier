@@ -349,7 +349,8 @@ export function RevertedNotice({ reference, onClose }: { reference: string; onCl
  *
  * 면은 뒤집힌 면(`fg` 위 `fg-inverse` — DS 툴팁 · `.at-split`과 같은 짝)이고, **체크도 글자색이다.** Codex의 뜻의 색은
  * 그 테마의 면 위에서 읽히게 고른 값이라 뒤집힌 면 위에 얹을 `success`가 없다 — 라이트 `success`(#00692a)는 이 면(#1a1c1f)
- * 위 2.5:1로 그림 요소의 바닥(3:1)에 못 미친다. DS의 뒤집힌 면들도 뜻의 색을 얹지 않는다.
+ * 위 2.5:1로 그림 요소의 바닥(3:1)에 못 미친다. DS의 뒤집힌 면들도 뜻의 색을 얹지 않는다. 카드 위에 떠 있는 것이라 그림자는
+ * 메뉴 · 토스트와 같은 `shadow-prominent`다(스펙 §2 「그림자」).
  */
 function PageNotice({
   title,
@@ -365,7 +366,7 @@ function PageNotice({
   return (
     <div
       role="status"
-      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-card bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-lg"
+      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-2xl bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-prominent"
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">

@@ -84,7 +84,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
       {/* **맨 위는 「한 클릭에 복사하고 싶은 것」이다**(ui-refresh 결정 14) — 에이전트에게 작업을 넘길 때 가장 자주 집는
           값 셋이다. 테두리 없는 옅은 면 묶음이다(ui-refresh 결정 16). 아래 구획(작업 · 프로젝트)에도 작업 폴더 · 워크트리 복사가 있어
           값이 겹친다 — 그쪽은 전체 메타를 읽는 자리이고, 이쪽은 한 번에 집는 자리다(프로토타입 Works-info도 둘 다 그린다). */}
-      <div className="flex flex-col rounded-card bg-surface-under p-1">
+      <div className="flex flex-col rounded-2xl bg-surface-under p-1">
         <WorkMetaRows work={work} base={branchBase} onCopy={onCopy} />
       </div>
       {/* 아래 구획은 셋 다 「이름 | 값」 두 칸 표다(프로토타입 Works-info — DS `.at-subhead` · `.at-props.narrow`). */}

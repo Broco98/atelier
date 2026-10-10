@@ -79,7 +79,7 @@ function Rail<Id extends string>({
       <div
         role="group"
         aria-label="레일"
-        className="flex flex-col gap-0.5 rounded-pill bg-surface p-0.5 inset-ring inset-ring-border"
+        className="flex flex-col gap-0.5 rounded-full bg-surface p-0.5 inset-ring inset-ring-border"
       >
         {items.map(({ id, label, icon: Icon }) => {
           const on = open && id === active;

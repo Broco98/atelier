@@ -89,7 +89,7 @@ function Subhead({ title, note, end }: { title: string; note: string; end?: Reac
 }
 
 /** 카드 안 묶음(ui-refresh 결정 16) — 옅은 면 · 큰 반경 · 테두리 없음. 행 사이에도 선이 없다. */
-const GROUP = "rounded-card bg-surface-under";
+const GROUP = "rounded-2xl bg-surface-under";
 
 // 이 프로젝트에서 시작된 작업 목록 (목업 S2의 Works 란)
 function WorksSection({
@@ -111,7 +111,7 @@ function WorksSection({
           <button
             type="button"
             onClick={() => onOpenWork(null)}
-            className="ml-auto flex items-center gap-1 rounded-inner px-1.5 py-0.5 text-xs font-medium text-fg-tertiary transition-colors quiet-hover"
+            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-tertiary transition-colors quiet-hover"
           >
             Works에서 모두 보기
             <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
@@ -396,7 +396,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-12 resize-y rounded-card border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus:border-(--accent) focus:ring-3 focus:ring-(--accent)/20"
+          className="min-h-12 resize-y rounded-2xl border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus:border-(--accent) focus:ring-3 focus:ring-(--accent)/20"
         />
       ) : (
         // 설명 상자 — 옅은 면 묶음(ui-refresh 결정 16, DS `.at-group.pad`)에 안쪽 14 · 16이다. 누르면 그 자리가 칸이 된다.
