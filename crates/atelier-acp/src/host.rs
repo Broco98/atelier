@@ -1,7 +1,8 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
-//! 사라진 work의 대화 끄기(11), Claude 대화 열기 · 에이전트 바꾸기(13)가 선다. 앱 잇기(05) · 로그인(12)이 이 위에 선다.
+//! 턴 앞뒤의 spec 비교(06), 사라진 work의 대화 끄기(11), Claude 대화 열기 · 에이전트 바꾸기(13)가 선다. 앱 잇기(05) ·
+//! 로그인(12)이 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -20,6 +21,7 @@ use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::records::{self, CloseCause, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
 use crate::runtime::{self, AgentProcess, Launch, OpenTerms, RuntimeEvent, SessionPlace, Sink};
+use crate::spec_changes::{Snapshot, SpecPlace};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
 const CODEX_ACP_MAJOR: u64 = 2;
@@ -132,6 +134,8 @@ struct Live {
 /// `sent` 줄이 턴 끝 줄보다 앞에 서지 않는다.
 struct Conv {
     recorder: Recorder,
+    /// 턴 앞뒤로 찍는 spec 폴더(three-axes 결정 22).
+    spec: SpecPlace,
     state: Mutex<ConvState>,
     /// 턴 끝에 work가 사라졌는지 본다(S10). 떠 있지 않은 대화(닫힘 줄만 적으려고 연 기록)에는 없다.
     vanish: Option<VanishWatch>,
@@ -144,18 +148,20 @@ struct ConvState {
     turn: Option<Instant>,
     /// 다음 말에 머리말을 붙이나 — 에이전트 쪽 세션의 첫 말이다(S11).
     needs_preamble: bool,
+    /// 도는 턴 앞(보내기 직전)에 찍은 spec 폴더. 턴 끝에 지금과 견준다.
+    before: Option<Snapshot>,
 }
 
 impl ConvState {
     /// 에이전트 쪽 세션이 막 열린 대화 — 살아 있고, 턴이 쉬고, 첫 말에 머리말을 붙인다.
     fn fresh() -> Self {
-        Self { alive: true, turn: None, needs_preamble: true }
+        Self { alive: true, turn: None, needs_preamble: true, before: None }
     }
 }
 
 impl Conv {
-    fn new(recorder: Recorder, vanish: Option<VanishWatch>) -> Arc<Self> {
-        Arc::new(Self { recorder, state: Mutex::new(ConvState::fresh()), vanish })
+    fn new(recorder: Recorder, spec: SpecPlace, vanish: Option<VanishWatch>) -> Arc<Self> {
+        Arc::new(Self { recorder, spec, state: Mutex::new(ConvState::fresh()), vanish })
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -178,6 +184,7 @@ impl Conv {
                 let mut state = self.lock_state();
                 state.alive = false;
                 state.turn = None;
+                state.before = None;
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
@@ -188,14 +195,17 @@ impl Conv {
                         Ok(response) => (Some(response), None),
                         Err(error) => (None, Some(error)),
                     };
-                    self.recorder.turn_end(TurnEndLine {
-                        stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
-                        duration_ms: elapsed_ms(started),
-                        cancelled_by_us: end.cancelled_by_us,
-                        out_of_turn: false,
-                        response,
-                        error,
-                    })
+                    self.end_turn(
+                        &mut state,
+                        TurnEndLine {
+                            stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
+                            duration_ms: elapsed_ms(started),
+                            cancelled_by_us: end.cancelled_by_us,
+                            out_of_turn: false,
+                            response,
+                            error,
+                        },
+                    )
                 };
                 // S10 — 아카이브를 시킨 에이전트가 바로 이 턴 안에 있을 수 있다(MCP `atelier_archive_work`를 부른
                 // 그 턴). 그래서 턴 도중에는 끄지 않고, 턴 끝 줄을 적은 뒤에 work가 남아 있는지 본다.
@@ -209,6 +219,24 @@ impl Conv {
             // 기록이 막혀도 대화는 이어 간다 — sink는 오류를 돌려줄 곳이 없다.
             eprintln!("{error}");
         }
+    }
+
+    /// 턴 끝 — 턴 앞에 찍은 spec 폴더를 지금과 견주어 바뀐 것이 있으면 `changes` 줄을 적고, 이어 턴 끝 줄을 적는다
+    /// (three-axes 결정 22). 그래서 화면이 턴 끝 줄을 받을 때 그 턴의 고친 곳은 이미 와 있다. `state`를 쥔 채 부른다.
+    ///
+    /// - 바뀐 것이 없으면 `changes` 줄이 없다 — 화면의 알약이 0개로 서지 않는다.
+    /// - work 폴더가 그 사이 사라졌으면(아카이브 · 삭제) 견주지 않는다. 옛 자리에는 아무것도 없어 모든 파일이
+    ///   「지움」으로 적히기 때문이다. 그 대화는 턴 끝 줄 뒤에 꺼진다(S10).
+    fn end_turn(&self, state: &mut ConvState, end: TurnEndLine) -> Result<(), records::RecordError> {
+        if let Some(before) = state.before.take() {
+            if !work_vanished(&self.spec.works_root, &self.spec.work) {
+                let files = before.compare(&Snapshot::take(&self.spec));
+                if !files.is_empty() {
+                    self.recorder.changes(&files)?;
+                }
+            }
+        }
+        self.recorder.turn_end(end)
     }
 }
 
@@ -471,6 +499,7 @@ impl ConversationHost {
         };
         let conv = Conv::new(
             Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+            spec_place(&works, &meta, &places),
             Some(self.vanish_watch(&works, work, &row.id)),
         );
         self.open_agent(work, &places, &mut row, conv, &env, &programs)
@@ -531,6 +560,7 @@ impl ConversationHost {
             }
             None => Conv::new(
                 Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+                spec_place(&works, &meta, &places),
                 Some(self.vanish_watch(&works, work, conversation)),
             ),
         };
@@ -614,6 +644,8 @@ impl ConversationHost {
     ///
     /// - 에이전트 쪽 세션의 첫 말이면 머리말(work slug · 제목 · specDir)을 따로 된 텍스트 블록으로 앞에 붙인다
     ///   (S11, three-axes 결정 23). 화면에는 `sent`의 글만 보이고, 기록에는 보낸 블록이 다 남는다.
+    /// - 보내기 직전에 spec 폴더를 찍는다. 턴이 끝나면 지금과 견주어 고친 곳(`changes` 줄)을 적는다(three-axes
+    ///   결정 22).
     /// - 턴이 도는 동안의 보내기는 읽히는 오류다 — 대기 줄은 티켓 07이 세운다.
     /// - 에이전트가 떠 있지 않은 대화(다시 켠 뒤 · 죽은 뒤)는 아직 보낼 수 없다 — 다시 띄우기는 티켓 10이다.
     pub fn send(&self, work: &str, conversation: &str, text: &str) -> Result<(), HostError> {
@@ -623,6 +655,9 @@ impl ConversationHost {
         let works = atelier_core::works_in(&self.data_root);
         let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
         let places = atelier_core::work_places(&works, &meta);
+        // 대화들의 잠금을 쥐기 전에 찍는다 — 폴더를 걷는 동안 다른 대화의 명령을 막지 않게. 그 틈에 다른 대화가
+        // 고친 것은 이 턴의 비교에 든다(함께 돈 대화의 고침은 원래 든다).
+        let before = Snapshot::take(&spec_place(&works, &meta, &places));
 
         let live = self.lock_live();
         let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
@@ -643,21 +678,24 @@ impl ConversationHost {
         // `sent`를 먼저 적는다 — 보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다.
         found.conv.recorder.sent(text, &prompt, false).map_err(HostError::Record)?;
         state.turn = Some(Instant::now());
+        state.before = Some(before);
         state.needs_preamble = false;
         if let Err(reason) = found.agent.prompt(prompt) {
             // 보내지 못했다. 턴을 연 채로 두지 않는다 — 화면이 「일하는 중」에 갇히지 않게 끝 줄도 적는다.
             let started = state.turn.take();
             found
                 .conv
-                .recorder
-                .turn_end(TurnEndLine {
-                    stop_reason: None,
-                    duration_ms: elapsed_ms(started),
-                    cancelled_by_us: false,
-                    out_of_turn: false,
-                    response: None,
-                    error: Some(json!({"message": reason})),
-                })
+                .end_turn(
+                    &mut state,
+                    TurnEndLine {
+                        stop_reason: None,
+                        duration_ms: elapsed_ms(started),
+                        cancelled_by_us: false,
+                        out_of_turn: false,
+                        response: None,
+                        error: Some(json!({"message": reason})),
+                    },
+                )
                 .map_err(HostError::Record)?;
             return Err(HostError::Send(reason));
         }
@@ -700,6 +738,7 @@ impl ConversationHost {
             Some(live) => live.conv,
             None => Conv::new(
                 Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+                spec_place(&works, &meta, &places),
                 None,
             ),
         };
@@ -789,6 +828,16 @@ fn workplace(places: &atelier_core::WorkPlaces, projects: usize) -> SessionPlace
         _ => places.trees.clone(),
     };
     SessionPlace { cwd, additional_directories: vec![places.spec.clone()] }
+}
+
+/// 턴 앞뒤로 찍는 spec 폴더 — 프로젝트가 있어도 워크트리는 찍지 않는다(three-axes 결정 22).
+fn spec_place(works: &Path, meta: &atelier_core::Work, places: &atelier_core::WorkPlaces) -> SpecPlace {
+    SpecPlace {
+        works_root: works.to_path_buf(),
+        work: meta.slug.clone(),
+        work_dir: places.dir.clone(),
+        spec_dir: places.spec.clone(),
+    }
 }
 
 /// 세션이 열린 순간 적는 줄 — 판 경고(S6)와 열림. 런타임의 순서 장벽 안에서 돌아, 답 뒤에 온 update보다 앞에 선다.

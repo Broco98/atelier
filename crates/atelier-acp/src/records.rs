@@ -15,6 +15,7 @@ use serde_json::{json, Map, Value};
 
 use crate::discovery::Agent;
 use crate::host::{Emit, HostEvent};
+use crate::spec_changes::FileChange;
 
 const AGENTS_FILE: &str = "agents.json";
 
@@ -147,7 +148,7 @@ pub struct RecordLine {
     pub payload: Value,
 }
 
-/// 기록 줄의 종류. 권한(08) · 고친 곳(06)이 차례로 더한다.
+/// 기록 줄의 종류. 권한(08)이 더하고, 설정(09)이 `config`를 넓힌다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
@@ -161,6 +162,9 @@ pub enum RecordKind {
     Session,
     /// 에이전트의 stderr 한 줄 — 화면에 그리지 않는다.
     Stderr,
+    /// 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들(three-axes 결정 22). 턴 끝 줄 바로 앞에 서고, 바뀐 것이
+    /// 없는 턴에는 없다.
+    Changes,
     /// 사람이 바꾼 것 — 에이전트(13). 모델 · 모드 · 계획은 09가 더한다.
     Config,
 }
@@ -281,6 +285,11 @@ impl Recorder {
 
     pub(crate) fn stderr(&self, line: String) -> Result<(), RecordError> {
         self.write(RecordKind::Stderr, json!({"line": line}))
+    }
+
+    /// 고친 곳 — 파일마다 바뀜 종류와, md 파일이면 새 글 기준의 바뀐 줄 범위.
+    pub(crate) fn changes(&self, files: &[FileChange]) -> Result<(), RecordError> {
+        self.write(RecordKind::Changes, json!({"files": files}))
     }
 
     /// 사람이 바꾼 것 — `{"agent": "claude"}`처럼 바꾼 칸과 새 값.

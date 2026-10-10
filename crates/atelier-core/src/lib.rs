@@ -75,3 +75,6 @@ pub use works::{
 // 대화 호스트(`atelier-acp`)가 데이터 루트를 받아 work의 제목 · 프로젝트와 자리를 읽는다. `get_work`는 워크트리마다
 // `git status`를 돌고 `~` 축약 문자열을 주므로 그 자리에 맞지 않는다.
 pub use works::{read_work, work_places, WorkPlaces};
+// 대화 호스트가 턴 앞뒤로 spec 폴더를 찍을 때 스펙 트리 · 검색과 같은 목록을 걷는다 — 트리에 안 보이는 파일
+// (점 파일)의 고친 곳이 생기지 않게(three-axes 결정 22).
+pub use works::spec_files;

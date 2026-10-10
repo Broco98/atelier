@@ -10,6 +10,7 @@ mod login_env;
 mod process;
 mod records;
 mod runtime;
+mod spec_changes;
 mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
