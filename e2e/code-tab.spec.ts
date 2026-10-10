@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { readCodeView } from "./code-view";
+import { readCodeView, 주소로간다 } from "./code-view";
 import { WORKS } from "./fixtures";
 import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownIpcCalls, writeShell } from "./harness";
 
@@ -31,19 +31,6 @@ const 닫기 = (page: Page, ref: string) => 파일탭(page, ref).locator('button
 const 셸칸 = (page: Page) => page.locator('[data-tab="shell"]');
 const 문서카드 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
 
-/**
- * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트 · 대화창이 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
- * 메모리에만 사는 묶음(결정 33)을 지운다. 라우터의 기록(`@tanstack/history`)이 `pushState`를 감싸 듣고 있어 이 한 번으로
- * 화면이 따라오고, 뒤로가기도 이 자리를 센다.
- */
-async function 주소로간다(page: Page, url: string): Promise<void> {
-  await page.evaluate((next) => {
-    const state = (window.history.state ?? {}) as Record<string, unknown>;
-    const index = (typeof state.__TSR_index === "number" ? state.__TSR_index : 0) + 1;
-    window.history.pushState({ ...state, __TSR_index: index, key: `t${index}`, __TSR_key: `t${index}` }, "", next);
-  }, url);
-}
-
 test("주소가 가리키는 파일이 묶음 끝에 파일 탭으로 서고, 본문에 줄 번호 붙은 원문과 경로 줄이 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
   // 셸 한 칸이 선 묶음에서 시작한다 — 「끝에 붙는다」를 재려면 앞에 칸이 있어야 한다.
@@ -62,12 +49,13 @@ test("주소가 가리키는 파일이 묶음 끝에 파일 탭으로 서고, �
   await expect(card).toBeVisible();
   // 경로 줄 — `<프로젝트> › 폴더 › 파일`(S17).
   await expect(card.getByRole("navigation", { name: "위치" })).toHaveText("billingsrcmain.ts");
-  // 줄 번호 붙은 원문 — 줄마다 번호가 선다. 본문은 강조된 코드라(08) shadow DOM 안을 읽는다(`readCodeView`).
+  // 줄 번호 붙은 원문 — 줄마다 번호가 선다. 본문은 강조된 코드라(08) shadow DOM 안을 읽는다(`readCodeView`). 처음 서는
+  // 코드 보기는 그 청크를 받고 라이브러리를 올린 뒤라 붐비는 기계에서 기본 5초를 넘길 수 있다.
   await expect
     .poll(async () => {
       const { numbers, lines } = await readCodeView(card);
       return { numbers, lines: lines.map((line) => line.text.trim()) };
-    })
+    }, { timeout: 30_000 })
     .toEqual({
       numbers: ["1", "2", "3", "4"],
       lines: ["const answer = 42;", "// 끝까지 읽는다", 'export default "answer";', ""],

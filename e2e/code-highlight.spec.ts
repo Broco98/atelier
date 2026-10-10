@@ -1,13 +1,18 @@
 import { expect, test } from "./evidence";
-import { codeCard, readCodeView, tokenOf } from "./code-view";
-import { WORKS } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls } from "./harness";
+import { codeCard, readCodeView, tokenOf, 주소로간다 } from "./code-view";
+import { answerByArg, WORKS, WORKTREE_FILES } from "./fixtures";
+import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness";
+import type { WorktreeFile } from "@/features/code/types";
 
 // git-integration 판 01 티켓 08(#481) — **강조된 코드가 보인다.**
 //
 // 파일 탭의 본문이 `@pierre/diffs`의 파일 보기다(결정 35). 엔진은 WASM(`shiki-wasm`), 강조는 워커 둘이 하고, 색은 Codex
 // `syntax-*` 라이트 값의 코드 보기 범위 토큰이다(S16). 이 층은 **WebKit**이다 — 기본 JS 엔진이 토큰을 틀리는 엔진이
 // 바로 이것이라(사실 12), 여기서 초록이면 실물(WKWebView)의 강조를 예측한다.
+
+// 강조 앞에는 코드 보기 청크 받기 · 워커 둘 띄우기 · WASM 엔진 올리기가 끼어, 붐비는 기계에서 기본 30초를 넘길 수 있다. 기다림은
+// 다 「될 때까지」(`expect.poll`)라 빠른 기계에서 느려지지 않는다. 「멈추지 않음」의 시간 단언은 이 값과 무관하다.
+test.describe.configure({ timeout: 90_000 });
 
 const [work] = WORKS;
 const codeUrl = (ref: string) => `/works/${work.slug}?tab=code&code=${encodeURIComponent(ref)}`;
@@ -17,13 +22,25 @@ const KEYWORD = "rgb(171, 79, 122)"; // #ab4f7a
 const STRING = "rgb(58, 132, 63)"; // #3a843f
 const COMMENT = "rgb(79, 79, 79)"; // #4f4f4f
 
+/** 같은 꼴의 줄 `n`개 — 강조되면 줄마다 키워드 · 문자열 · 주석이 갈린다. 끝 줄바꿈은 붙이지 않는다(줄 수 = `n`). */
+const 줄들 = (n: number): WorktreeFile => ({
+  kind: "text",
+  content: Array.from({ length: n }, (_, i) => `const v${i} = "값"; // 줄 ${i + 1}`).join("\n"),
+  lines: n,
+});
+
+/** 큰 표본은 이 시나리오에만 싣는다 — 고정 표(`WORKTREE_FILES`)에 두면 모든 L3 페이지의 시작 스크립트가 그만큼 붓는다. */
+const 큰표본과함께 = (files: Record<string, WorktreeFile>) => ({
+  read_worktree_file: answerByArg("path", { ...WORKTREE_FILES, ...files }, { otherwise: { kind: "missing" } }),
+});
+
 test("TS 파일이 줄 번호와 함께 강조돼 뜬다 — 키워드 · 문자열 · 주석이 Codex 색으로 갈린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(codeUrl("billing/src/main.ts"));
   const card = codeCard(page, "billing/src/main.ts");
 
   // 강조가 끝나기를 기다린다 — 처음엔 평문으로 서고 워커가 답하면 토큰이 갈린다.
-  await expect.poll(async () => tokenOf(await readCodeView(card), "const")?.color, { timeout: 10_000 }).toBe(KEYWORD);
+  await expect.poll(async () => tokenOf(await readCodeView(card), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
 
   const reading = await readCodeView(card);
   // 줄 번호 — 줄마다 하나씩, 1부터. 끝의 줄바꿈 뒤도 한 줄로 센다(편집기와 같고, 04의 원문 보기도 그랬다).
@@ -60,6 +77,55 @@ test("WebKit 오토큰 검사 — 한 줄의 키워드 · 문자열 · 주석이
     const colors = ["const", '"안녕"', "// 인사"].map((text) => tokenOf(reading, text)?.color);
     return colors.includes(undefined) ? 0 : new Set(colors).size;
   };
-  await expect.poll(갈린색, { timeout: 10_000 }).toBe(3);
+  await expect.poll(갈린색, { timeout: 30_000 }).toBe(3);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("2만 줄이 넘는 파일은 글자는 보이고 토큰 색이 없다 — 강조 상한(결정 35)", async ({ page }) => {
+  await installFixtureBackend(page, 큰표본과함께({ "src/short.ts": 줄들(10), "src/huge.ts": 줄들(20_001) }));
+
+  // 대조 — 같은 꼴의 짧은 파일은 강조된다. 이 줄이 강조될 수 있는 글이고, 워커가 떠서 일하고 있다는 것을 먼저 본다.
+  await page.goto(codeUrl("billing/src/short.ts"));
+  const short = codeCard(page, "billing/src/short.ts");
+  await expect.poll(async () => tokenOf(await readCodeView(short), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
+
+  await 주소로간다(page, codeUrl("billing/src/huge.ts"));
+  const huge = codeCard(page, "billing/src/huge.ts");
+  await expect
+    .poll(async () => (await readCodeView(huge)).lines[0]?.text.trim(), { timeout: 30_000 })
+    .toBe('const v0 = "값"; // 줄 1');
+
+  // 강조가 올 시간을 준 뒤에도 평문이다 — 상한을 없애면(라이브러리 기본 10만 줄) 이 표본은 이 안에 칠해진다(한 번 확인했다).
+  await page.waitForTimeout(4_000);
+  const reading = await readCodeView(huge);
+  // 그려진 줄은 줄마다 한 덩이이고, 모두 같은 글자색이다 — 키워드 · 문자열 · 주석 어느 색도 없다.
+  expect(reading.lines.length).toBeGreaterThan(10);
+  const colors = new Set(reading.lines.flatMap((line) => line.tokens.map((token) => token.color)));
+  expect([...colors]).toHaveLength(1);
+  expect(colors.has(KEYWORD) || colors.has(STRING) || colors.has(COMMENT)).toBe(false);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("수천 줄 파일을 연 직후 셸 탭을 누르면 곧바로 셸로 바뀐다 — 강조가 화면을 멈추지 않는다", async ({ page }) => {
+  await installFixtureBackend(page, 큰표본과함께({ "src/big.ts": 줄들(5_000) }));
+  await page.goto(`/works/${work.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  await 주소로간다(page, codeUrl("billing/src/big.ts"));
+  const big = codeCard(page, "billing/src/big.ts");
+  // 첫 글자가 선 직후 — 강조는 아직 워커에서 돌고 있다.
+  await expect
+    .poll(async () => (await readCodeView(big)).lines[0]?.text.trim(), { timeout: 30_000 })
+    .toBe('const v0 = "값"; // 줄 1');
+
+  const shell = page.locator('[data-tab="shell"] button[aria-pressed]');
+  const started = Date.now();
+  await shell.click();
+  await expect(page.locator(".xterm")).toBeVisible();
+  const waited = Date.now() - started;
+  await expect(big).toHaveCount(0);
+  // 눌러서 셸이 서기까지 — 메인 스레드가 강조에 붙들려 있으면 이 사이에 강조 시간이 통째로 낀다. 지금은 붐비는 기계에서도
+  // 0.3초 안팎이다. 워커 없이 · 가상화 없이 메인 스레드에서 강조하게 바꾸면(한 번 확인했다) 첫 글자조차 30초 안에 서지 않는다.
+  expect(waited).toBeLessThan(1_000);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

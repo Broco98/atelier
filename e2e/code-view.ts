@@ -1,8 +1,8 @@
 import type { Locator, Page } from "./evidence";
 
 // 코드 보기를 재는 손잡이 — 파일 탭의 본문(git-integration 판 01). `code-tab.spec.ts`(04 — 탭이 열리고 닫힌다)와
-// `code-highlight.spec.ts`(08 — 강조된 코드)가 **같은 읽기**로 본문을 잰다. 스펙 파일끼리는 import할 수 없어
-// (`tab-row.ts` 머리말) 여기 둔다.
+// `code-highlight.spec.ts`(08 — 강조된 코드)가 **같은 읽기 · 같은 주소 이동**으로 본문을 잰다. 스펙 파일끼리는 import할 수
+// 없어(`tab-row.ts` 머리말) 여기 둔다.
 //
 // **강조 결과는 shadow DOM 안이다.** `@pierre/diffs`는 사용자 요소(`<diffs-container>`)의 shadowRoot에 줄과 줄 번호를
 // 그리므로 `locator.textContent()` · 바깥 CSS 선택자로는 줄 하나 · 토큰 하나를 가를 수 없다. 그래서 카드 아래의 shadow를
@@ -65,3 +65,16 @@ export const tokenOf = (reading: CodeViewReading, text: string): CodeToken | und
 
 /** 코드 카드 — 접근 이름이 그 파일의 경로다(스토리 89). */
 export const codeCard = (page: Page, ref: string) => page.getByRole("main", { name: ref, exact: true });
+
+/**
+ * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트 · 대화창이 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
+ * 메모리에만 사는 묶음(결정 33)을 지운다. 라우터의 기록(`@tanstack/history`)이 `pushState`를 감싸 듣고 있어 이 한 번으로
+ * 화면이 따라오고, 뒤로가기도 이 자리를 센다.
+ */
+export async function 주소로간다(page: Page, url: string): Promise<void> {
+  await page.evaluate((next) => {
+    const state = (window.history.state ?? {}) as Record<string, unknown>;
+    const index = (typeof state.__TSR_index === "number" ? state.__TSR_index : 0) + 1;
+    window.history.pushState({ ...state, __TSR_index: index, key: `t${index}`, __TSR_key: `t${index}` }, "", next);
+  }, url);
+}
