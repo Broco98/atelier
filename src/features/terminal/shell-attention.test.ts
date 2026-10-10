@@ -1283,6 +1283,7 @@ describe("소유자별 화면값", () => {
         셸(소유("나"), null, 3),
         셸(소유("다"), 상태({ kind: "done" }), 4),
       ],
+      bundles: {},
       activeByOwner: {},
       nextId: 5,
     };
@@ -1292,7 +1293,7 @@ describe("소유자별 화면값", () => {
   // 최상위 셸은 어느 work의 것도 아니라 행이 없다 — 빈 문자열 키가 슬러그인 척하면
   // 그 키를 읽는 행이 영영 안 나온다(`shellCountsOf`와 같은 가름).
   it("최상위 셸은 안 든다", () => {
-    const state = { shells: [셸(소유(), 상태({ kind: "waiting" }), 1)], activeByOwner: {}, nextId: 2 };
+    const state = { shells: [셸(소유(), 상태({ kind: "waiting" }), 1)], bundles: {}, activeByOwner: {}, nextId: 2 };
     expect(signalsOf(state)).toEqual({});
   });
 });
@@ -1349,6 +1350,7 @@ describe("띠의 줄", () => {
   const 칸이 = (over: Partial<Shell>): Shell => ({ ...칸(null), ...over });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
     shells,
+    bundles: {},
     activeByOwner: {},
     nextId: shells.length + 1,
   });
@@ -1445,6 +1447,7 @@ describe("「봤다」", () => {
 describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
   const 목록 = (...list: ReadonlyArray<Attention | null>): ShellsState => ({
     shells: 칸들(...list),
+    bundles: {},
     activeByOwner: {},
     nextId: list.length + 1,
   });

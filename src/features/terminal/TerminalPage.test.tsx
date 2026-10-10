@@ -143,8 +143,9 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
     // `shellForNav`가 인자 하나로 받으므로 **판정을 두 벌로 만들지 않는다.**
     // **조회하는 소유자가 최상위 키다** — 여는 자리(`topTerminal()`)와 같은 `ownerOf()`를 딛는다.
     expect(source).toContain("const owner = ownerOf();");
-    expect(source).toContain("const shells = shellsOf(state, owner);");
-    expect(source).toContain("shellForNav(shells, activeIdOf(state, owner), nav, 1)");
+    // 세는 것은 이 화면의 **묶음**이다(git-integration 판 01 S10) — 이 화면의 묶음에는 셸만 선다.
+    expect(source).toContain("const tabs = bundleOf(state, owner);");
+    expect(source).toContain("shellForNav(tabs, activeIdOf(state, owner), nav, 1)");
     // work 화면의 spec 갈래가 여기 살면 ⌘1이 아무 데도 안 간다 — 이 화면에는 그 칸이 없다.
     expect(source).not.toMatch(/nav\.kind === "index" && nav\.n === 1/);
   });

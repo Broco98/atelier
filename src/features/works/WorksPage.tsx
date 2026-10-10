@@ -40,6 +40,7 @@ import TerminalPane from "@/features/terminal/TerminalPane";
 import { useShellForeground } from "@/features/terminal/terminal-settings";
 import {
   activeIdOf,
+  bundleOf,
   closesShellFromWindow,
   closingShellsNotice,
   opensShellFromWindow,
@@ -50,7 +51,6 @@ import {
   shellNavFromWindow,
   shellsEmptied,
   placeOrigin,
-  shellsOf,
   workDefaultOrigin,
   workShellProjects,
 } from "@/features/terminal/shell-registry";
@@ -394,7 +394,8 @@ function WorksPage({
   }, [panelWork, tabOwner, onSelectTab]);
 
   /**
-   * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
+   * ⌘1은 spec, ⌘2~9는 **그 화면의 묶음**, ⌃Tab은 그 묶음의 순회(결정 78·79·109 · git-integration 결정 31).
+   * 묶음은 지금 셸뿐이라 고르는 것이 셸이다.
    *
    * 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다 — 한 화면 안에서 본문을 옮기는 한 벌이
    * 됐고, ⌘T가 그 벌에 이미 들어 있다(결정 98). 세는 것은 **이 화면의 셸**이지 사이드바에
@@ -417,14 +418,14 @@ function WorksPage({
       // 여기서 다시 좁혀야 하고, 좁히는 가드가 「고른 작업이 없다」와 겹쳐 뜻이 흐려진다.
       // 짓는 함수가 하나(`ownerOf`)라 두 값이 갈릴 수는 없다.
       const owner = ownerOf(panelWork.slug);
-      const shells = shellsOf(state, owner);
-      // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
-      // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
+      const tabs = bundleOf(state, owner);
+      // **⌘1만 이 화면의 것이다** — 문서는 묶음의 칸이 아니라 여기서 가른다. 나머지는 한 칸
+      // 밀린 묶음 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
       if (nav.kind === "index" && nav.n === 1) {
         onSelectTab("spec");
         return;
       }
-      const next = shellForNav(shells, activeIdOf(state, owner), nav, 2);
+      const next = shellForNav(tabs, activeIdOf(state, owner), nav, 2);
       if (next !== null) {
         selectShell(next);
         onSelectTab("terminal");
@@ -644,7 +645,8 @@ function WorksPage({
   );
 
   /**
-   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.**
+   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.** 세는 것은 셸이 아니라 **묶음의 칸**이다(git-integration 결정 30 —
+   * 묶음이 비면 spec으로 간다). 묶음에는 지금 셸만 서므로 마지막 셸이 곧 마지막 칸이다.
    *
    * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
    * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
@@ -657,20 +659,20 @@ function WorksPage({
    *
    * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
    * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
-   * 개수는 셸을 열고 닫을 때만 바뀐다.
+   * 개수는 칸을 열고 닫을 때만 바뀐다.
    */
-  const shellCount = useStore(terminalStore, (state) =>
-    panelWork ? shellsOf(state, ownerOf(panelWork.slug)).length : 0,
+  const tabCount = useStore(terminalStore, (state) =>
+    panelWork ? bundleOf(state, ownerOf(panelWork.slug)).length : 0,
   );
-  const tally = useRef<ShellTally>({ owner: tabOwner, count: shellCount });
+  const tally = useRef<ShellTally>({ owner: tabOwner, count: tabCount });
   useEffect(() => {
-    const now = { owner: tabOwner, count: shellCount };
+    const now = { owner: tabOwner, count: tabCount };
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
     // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
     // 화면에서 아무것도 안 바뀌어야 한다.
     if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");
-  }, [shellCount, tabOwner, tab, split, changeSplit]);
+  }, [tabCount, tabOwner, tab, split, changeSplit]);
 
   // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.

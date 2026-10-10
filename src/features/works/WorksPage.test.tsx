@@ -860,11 +860,12 @@ describe("WorksPage ⌘Enter", () => {
     // 세는 것이 이 work의 셸이 아니면, 사이드바에 펼쳐 둔 **남의 셸까지** 세게 된다.
     // 조회하는 소유자도 여는 자리와 같은 함수(`ownerOf`)에서 나온다 — 짓는 함수가 하나라 갈릴 수 없다.
     expect(worksPage).toContain("const owner = ownerOf(panelWork.slug);");
-    expect(worksPage).toContain("const shells = shellsOf(state, owner);");
+    // 세는 것은 이 work의 **묶음**이다(git-integration 결정 31 · S10) — 지금 묶음에는 셸만 선다.
+    expect(worksPage).toContain("const tabs = bundleOf(state, owner);");
     // ⌘1만 spec이고 나머지는 한 칸 밀린다. 안 밀면 ⌘1이 spec이면서 첫 셸이 되고,
     // 마지막 셸은 영영 못 고른다.
     expect(worksPage).toContain('if (nav.kind === "index" && nav.n === 1) {\n        onSelectTab("spec");');
-    expect(worksPage).toContain("shellForNav(shells, activeIdOf(state, owner), nav, 2)");
+    expect(worksPage).toContain("shellForNav(tabs, activeIdOf(state, owner), nav, 2)");
   });
 
   it("듣는 자리가 탭을 안 본다 — 가드 한 줄이 되살아나면 걸린다", () => {
@@ -1054,8 +1055,9 @@ describe("WorksPage 셸 조회가 이 work의 것이다", () => {
   const worksPage = source("WorksPage.tsx");
 
   // 분할을 걷는 판단이 세는 개수다. 남의 셸을 세면 이 work의 마지막 셸을 닫아도 분할이 안 걷히고, 남의 셸을 닫으면 걷힌다.
+  // 세는 것은 이 work 묶음의 칸이다(git-integration 결정 30 — 묶음이 비면 spec). 지금 묶음에는 셸만 선다.
   it("분할을 걷는 셸 수가 이 work의 것이다", () => {
-    expect(countOf(worksPage, "shellsOf(state, ownerOf(panelWork.slug)).length")).toBe(1);
+    expect(countOf(worksPage, "bundleOf(state, ownerOf(panelWork.slug)).length")).toBe(1);
   });
 
   // 「셸 N개가 닫혀요」의 N(결정 26). 남의 셸을 세면 엉뚱한 수를 말하고 — 0이라 아예 안 묻고 — 정작 닫히는 것은 이
