@@ -345,6 +345,8 @@ mod tests {
         for (name, manifest) in [
             ("atelier-app", include_str!("../../../src-tauri/Cargo.toml")),
             ("atelier-cli", include_str!("../../atelier-cli/Cargo.toml")),
+            // 대화 호스트가 사는 크레이트 — 앱 실행 파일 안으로 들어간다(three-axes 결정 12).
+            ("atelier-acp", include_str!("../../atelier-acp/Cargo.toml")),
         ] {
             assert!(
                 !manifest.contains("atelier-test-bridge"),
