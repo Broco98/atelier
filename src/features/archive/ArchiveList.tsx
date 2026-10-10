@@ -38,12 +38,12 @@ const SORT_HELP = "아카이브한 날짜 기준 정렬";
 const SMALL_PILL = cn(buttonVariants({ variant: "outline", size: "pill-sm" }), "min-w-0 shrink");
 
 /**
- * 거른 동안의 켜짐(state-3) — 흰 알약 위에 한 겹 얹는다(머리 컨트롤의 hover · 펼침이 같은 방식으로 겹을 얹는다). hover · 펼침의
+ * 거른 동안의 켜짐(`fill-active`) — 흰 알약 위에 한 겹 얹는다(머리 컨트롤의 hover · 펼침이 같은 방식으로 겹을 얹는다). hover · 펼침의
  * 옅은 겹이 켜짐을 덮지 않게 세 자리를 같은 값으로 묶는다 — 펼침은 부품이 메뉴 트리거에만 주는 겹이라 같은 조건으로 적는다.
  * 켜짐은 알약의 모양이 아니라 이 거르개의 상태라 부품에 두지 않는다.
  */
 const FILTER_ON =
-  "bg-[image:linear-gradient(var(--state-3),var(--state-3))] hover:bg-[image:linear-gradient(var(--state-3),var(--state-3))] aria-[haspopup=menu]:aria-expanded:bg-[image:linear-gradient(var(--state-3),var(--state-3))]";
+  "bg-[image:linear-gradient(var(--fill-active),var(--fill-active))] hover:bg-[image:linear-gradient(var(--fill-active),var(--fill-active))] aria-[haspopup=menu]:aria-expanded:bg-[image:linear-gradient(var(--fill-active),var(--fill-active))]";
 
 /**
  * 거르개 값의 보이는 이름. 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 거르개의 글자 · 툴팁 · 설명과 메뉴의 줄이
@@ -171,7 +171,7 @@ function ArchiveList({
             >
               <Filter className="size-3.5 shrink-0" />
               <span className="truncate">{filterName}</span>
-              <ChevronDown className="-mr-1 size-3 shrink-0 text-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
+              <ChevronDown className="-mr-1 size-3 shrink-0 text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
             </Hint>
             {/* 거르개와 오른쪽 끝끼리 맞춘다(옛 카드의 `align="right"`). 폭은 메뉴 기본(208px)이다. */}
             <DropdownMenuContent align="end">
@@ -182,7 +182,7 @@ function ArchiveList({
               >
                 {[null, ...projectOptions].map((option) => (
                   <DropdownMenuRadioItem key={option ?? "*"} value={option}>
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    <span className="min-w-0 flex-1 truncate text-fg-secondary">
                       {filterNameOf(option)}
                     </span>
                   </DropdownMenuRadioItem>
@@ -206,7 +206,7 @@ function ArchiveList({
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
             {/* 좁힌 것이 검색어인지 필터인지를 말한다 — 문장은 `archive-copy.ts`가 든다. */}
-            <span className="text-ui text-tertiary">{narrowedNotice(q !== "")}</span>
+            <span className="text-ui text-fg-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
           <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
@@ -251,8 +251,8 @@ function ArchiveList({
 // 그래야 펼치는 쪽도 움직이고, 한 번 편 트리의 폴더 접힘이 항목을 접었다 펴도 남는다. 닫힌 패널은
 // 부품이 `inert`로 막는다: 접히는 동안 아직 보이는 문서 줄에 포커스와 포인터가 닿으면 안 된다.
 //
-// 행의 규격은 DS `.at-archive-row`다(ui-refresh 결정 6 · 25) — 32px · 안쪽 0 10px · 모서리 10 · hover state-1, 폴더 글리프 15px
-// tertiary, 제목 `text-row`(14 · 400) 본문 색, 오른쪽 날짜 `text-caption` tertiary 고정폭 숫자.
+// 행의 규격은 DS `.at-archive-row`다(ui-refresh 결정 6 · 25) — 32px · 안쪽 0 10px · 모서리 10 · hover `fill-soft`, 폴더 글리프 15px
+// `fg-tertiary`, 제목 `text-row`(14 · 400) 본문 색, 오른쪽 날짜 `text-caption` `fg-tertiary` 고정폭 숫자.
 function ArchiveRow({
   entry,
   expanded,
@@ -283,19 +283,19 @@ function ArchiveRow({
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
-      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-2.5 text-left transition-colors hover:bg-state-1">
+      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-2.5 text-left transition-colors hover:bg-fill-soft">
         {/* 펼쳤는지는 폴더 아이콘 하나가 말한다 — 늘 보이므로 hover해 보지 않아도 어느 것이
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}
         {expanded ? (
-          <FolderOpen className="size-[15px] shrink-0 text-tertiary" />
+          <FolderOpen className="size-[15px] shrink-0 text-fg-tertiary" />
         ) : (
-          <Folder className="size-[15px] shrink-0 text-tertiary" />
+          <Folder className="size-[15px] shrink-0 text-fg-tertiary" />
         )}
         <span className="min-w-0 flex-1 truncate text-row">{entry.title}</span>
         {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다. 숫자가 고정폭이라 날짜의 오른쪽 끝이 줄마다
             같은 x에 선다. */}
-        <span className="shrink-0 pl-2 text-caption text-tertiary tabular-nums">
+        <span className="shrink-0 pl-2 text-caption text-fg-tertiary tabular-nums">
           {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
         </span>
       </CollapsibleTrigger>
@@ -315,7 +315,7 @@ function ArchiveRow({
               onCopy={(path) => onCopyDoc(entry.slug, path)}
             />
           ) : (
-            <span className="py-1.5 pr-2.5 text-ui text-tertiary" style={treeIndent(TREE_DEPTH)}>
+            <span className="py-1.5 pr-2.5 text-ui text-fg-tertiary" style={treeIndent(TREE_DEPTH)}>
               남은 문서가 없어요
             </span>
           )}

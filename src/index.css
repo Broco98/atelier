@@ -240,12 +240,15 @@
        동안 shadcn이 그 이름에 건 뜻을 지킨다. 공용 부품은 그 면을 Codex 이름으로 읽고(메뉴 · Select의 켜진 줄은
        `focus:bg-fill-hover`, `kbd`는 `bg-fill-hover`), `state-scale.test.ts`가 이 유틸리티를 면으로 쓰는 것을 변형이
        있든 없든 막는다.
-       **Codex 파랑은 그동안 변수를 바로 읽는다** — 자리는 모두 `-(--accent)`로 찾는다(`components/ui` · `components/shell`).
+       **Codex 파랑은 그동안 변수를 바로 읽는다** — 자리는 모두 `-(--accent)`로 찾는다(`components/ui` · `components/shell` ·
+       `features/*`).
          선: 포커스 링 `ring-(--accent)/50` · 입력칸 바깥 링 `ring-(--accent)/20` · 검색칸의 1px 링 `ring-(--accent)` ·
              테두리 `border-(--accent)` · 고른 라벨의 테두리 `border-(--accent)/30`(`field.tsx`) · 폭 손잡이의 선
              `via-(--accent)/55`. 유틸리티가 파랑이 되면(07) `-accent`로 옮긴다.
          면: soft 버튼의 hover `hover:bg-(--accent)/20`(`button.tsx`) · 고른 라벨의 면 `has-data-checked:bg-(--accent)/5`
              (`field.tsx`). 변형 뒤의 `bg-accent`는 07의 `state-scale`도 막으므로(티켓 07) 이 둘은 변수에 남는다.
+         화면(`features/*`): 끌기 선 · 강조 글리프 · 스피너 · 추이 선 · 메모리 막대 · active 점 · 분할 반쪽 덮개
+             (`bg-(--accent)/12`) · 포커스 링 · 입력칸 테두리다. 면(`bg-`)은 모두 변형 없이 쓰여 07에서 함께 `-accent`로 옮긴다.
        **`--text-tertiary` · `--text-section`은 앞말을 떼어 잇는다**(`--color-tertiary` → `text-tertiary`) — `--text-*`를 이
        블록에 그대로 들이면 Tailwind가 글자 크기로 읽는다. `--bg-group`도 앞말을 떼어 `bg-group`이다.
        **상태 축의 옛 이름(`wait` · `done` · `-ink` · `-soft`)** — 모두 Codex 뜻의 색(`warning` · `success`)을 가리켜 점과
@@ -836,8 +839,8 @@
     --ring: var(--accent);
     /* 사이드바는 창 바탕에 붙는다(DS 원칙 6) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)가 아니라 `surface-shell`이다.
        고른 행의 `--sidebar-accent`는 불투명한 `fill-selected`다. 사이드바 자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) ·
-       `selected-row`는 이 이름들이 아니라 Codex 이름을 읽는다. work 행(`WorkSectionList.tsx`)의 안 고른 글자는 아직
-       `--sidebar-foreground`를 읽는다(화면 쪽 호출부를 옮기는 걸음, 티켓 05). */
+       work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라 Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를
+       읽는 자리는 없다. */
     --sidebar: var(--surface-shell);
     --sidebar-foreground: var(--fg);
     --sidebar-primary: var(--accent);

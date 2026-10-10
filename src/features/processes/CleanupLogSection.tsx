@@ -61,18 +61,18 @@ function EventRow({
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className="flex flex-col">
       {/* 사건 줄 — 묶음 안의 32px 줄(DS `.at-pr-log`): 셰브론 칸(18) · 까닭 · 대상 수 · 오른쪽 끝의 때. hover는 옅은 면 위의 한 단
-          (`state-2`)이다. */}
+          (`fill-hover`)이다. */}
       <CollapsibleTrigger
         aria-label={eventLabel(event)}
         className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover"
       >
-        <span className="grid w-4.5 shrink-0 place-items-center text-tertiary">
+        <span className="grid w-4.5 shrink-0 place-items-center text-fg-tertiary">
           <FoldChevron open={open} />
         </span>
         <span className="shrink-0 text-ui font-medium">{reasonLabel(event.reason)}</span>
-        <span className="shrink-0 text-caption text-muted-foreground">{processCount(event.targets.length)}</span>
+        <span className="shrink-0 text-caption text-fg-secondary">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
-        <span className="shrink-0 text-caption tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
+        <span className="shrink-0 text-caption tabular-nums text-fg-secondary">{loggedAt(event.at)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         {/* 대상은 까닭 글자와 같은 x에서 선다 — 줄 안쪽 6 + 셰브론 칸 18 + 틈 8. */}
@@ -83,10 +83,10 @@ function EventRow({
             <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-ui">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="min-w-0 truncate">{target.name}</span>
-                <span className="shrink-0 text-tertiary">{outcomeLabel(target.outcome)}</span>
+                <span className="shrink-0 text-fg-tertiary">{outcomeLabel(target.outcome)}</span>
               </span>
               {target.command && (
-                <span data-cell="command" className="break-all font-mono text-mono-sm text-muted-foreground">
+                <span data-cell="command" className="break-all font-mono text-mono-sm text-fg-secondary">
                   {target.command}
                 </span>
               )}

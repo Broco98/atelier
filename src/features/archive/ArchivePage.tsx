@@ -179,7 +179,7 @@ function ArchivePage({
             end={
               <>
                 {selected?.archivedAt && (
-                  <span className="text-caption text-tertiary">
+                  <span className="text-caption text-fg-tertiary">
                     {formatCreated(selected.archivedAt)}에 치움
                   </span>
                 )}
@@ -246,7 +246,7 @@ function ArchivePage({
           ) : (
             <div className="flex min-h-full min-w-0 flex-col">
               {docsPending ? null : current === null ? (
-                <div className="flex flex-1 items-center justify-center p-10 text-row text-tertiary">
+                <div className="flex flex-1 items-center justify-center p-10 text-row text-fg-tertiary">
                   남은 문서가 없어요
                 </div>
               ) : (

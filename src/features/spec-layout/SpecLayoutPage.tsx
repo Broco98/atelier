@@ -97,7 +97,7 @@ function SpecLayoutPage() {
           자리다(설정 틀 — 설정 파일 읽기 게이트의 실패와 같다). */}
       {query.error !== null && (
         <div className="mt-7 flex flex-col items-start gap-3">
-          <p className="text-ui break-words text-red-600">{String(query.error)}</p>
+          <p className="text-ui break-words text-danger">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {state === undefined && (
             <Button variant="ghost" size="sm" onClick={reread}>
@@ -140,7 +140,7 @@ export function SpecLayoutSection({
     <>
       <SettingsLead>
         <code>spec</code> 패널과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
-        <strong className="font-medium text-foreground">부탁</strong>을 누르면 참조가 복사돼요 —
+        <strong className="font-medium text-fg">부탁</strong>을 누르면 참조가 복사돼요 —
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
       </SettingsLead>
       <SettingsSection>
@@ -154,7 +154,7 @@ export function SpecLayoutSection({
 
 /**
  * 레이아웃 한 행. 상태는 셋 중 하나다 — 내장본 그대로, 고침(가린 폴더 경로와 템플릿 개수), 읽지 못해
- * 내장본으로 물러섬(앰버 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
+ * 내장본으로 물러섬(경고색 `warning`의 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
  * 고친 행이다(구현 스펙 5절) — 그래서 ⋯(기본값으로 되돌리기)는 둘 다에 선다. 읽지 못하는 행에는 [편집] 대신
  * [다시 읽기]가 선다: 편집기가 열 레이아웃이 없다.
  */
@@ -185,10 +185,11 @@ function LayoutRow({
           <div className="flex items-start gap-2">
             <TriangleAlert
               aria-hidden
-              className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
+              className="mt-[3px] size-3.5 shrink-0 text-warning"
             />
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-amber-700 dark:text-amber-400">
+              {/* 경고색 글자는 medium이다 — `warning`은 흰 면 위 3.8:1이라 13px 이상 medium 글자에만 쓴다(DS README 「대비」). */}
+              <span className="font-medium text-warning">
                 읽지 못해 내장본으로 보여 주고 있어요
               </span>
               {/* 까닭은 엔진의 글 그대로다 — 에이전트가 물러선 안내문에서 받는 것과 같다. */}
@@ -276,7 +277,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
             // 한 줄 높이다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
             className={cn(
               "icon-button size-7 transition-colors",
-              open ? "toggle-on" : "text-muted-foreground quiet-hover",
+              open ? "toggle-on" : "text-fg-secondary quiet-hover",
             )}
           />
         }
@@ -298,7 +299,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
-            <span id={noteId} className="text-caption text-tertiary">
+            <span id={noteId} className="text-caption text-fg-tertiary">
               폴더를 지우고 내장본으로 돌아가요
             </span>
           </span>
@@ -345,6 +346,10 @@ export function RevertedNotice({ reference, onClose }: { reference: string; onCl
  *
  * 스펙이 「복사 알림」이라 부른 것을 코드는 「메시지」라 부른다 — 앱의 「알림」은 셸이 나를 부르는 사건의 말이다
  * (`CONTEXT.md` 「알림 띠」: 토스트를 「알림」이라 부르지 않는다).
+ *
+ * 면은 뒤집힌 면(`fg` 위 `fg-inverse` — DS 툴팁 · `.at-split`과 같은 짝)이고, **체크도 글자색이다.** Codex의 뜻의 색은
+ * 그 테마의 면 위에서 읽히게 고른 값이라 뒤집힌 면 위에 얹을 `success`가 없다 — 라이트 `success`(#00692a)는 이 면(#1a1c1f)
+ * 위 2.5:1로 그림 요소의 바닥(3:1)에 못 미친다. DS의 뒤집힌 면들도 뜻의 색을 얹지 않는다.
  */
 function PageNotice({
   title,
@@ -360,9 +365,9 @@ function PageNotice({
   return (
     <div
       role="status"
-      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-card bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
+      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-card bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-lg"
     >
-      <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" />
+      <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <span className="text-ui font-medium break-words">
           {title} <code className="text-mono-sm opacity-80">{reference}</code>

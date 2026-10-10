@@ -32,7 +32,7 @@ export function WorkCard({
       <span className="text-ui font-medium leading-snug">{work.title}</span>
       <span className="flex items-center gap-2">
         <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>
-        <span className="text-caption text-tertiary">{formatCreated(work.createdAt)}</span>
+        <span className="text-caption text-fg-tertiary">{formatCreated(work.createdAt)}</span>
       </span>
       {/* **상태 배지 줄 아래, 필드 표 위**다(결정 14). 배지는 work의 상태이고 이 칸은 그 work에서
           지금 나를 부르는 셸의 말이라, 둘이 붙어 서야 「무엇이 · 왜」가 한 번에 읽힌다. 필드 표는
@@ -65,11 +65,11 @@ function CardField({
 }) {
   return (
     <span className="flex min-w-0 items-baseline gap-2">
-      <span className="w-[46px] shrink-0 text-tertiary">{label}</span>
+      <span className="w-[46px] shrink-0 text-fg-tertiary">{label}</span>
       <span
         className={cn(
           "min-w-0 flex-1 truncate",
-          muted ? "text-tertiary" : "text-muted-foreground",
+          muted ? "text-fg-tertiary" : "text-fg-secondary",
           mono && "font-mono",
         )}
       >

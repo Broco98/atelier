@@ -98,7 +98,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                       <FolderOpen aria-hidden />
                       폴더 열기
                     </Button>
-                    <Button variant="outline" size="pill" className="text-destructive" onClick={handleRemove}>
+                    <Button variant="outline" size="pill" className="text-danger" onClick={handleRemove}>
                       제거
                     </Button>
                   </>

@@ -18,26 +18,26 @@ export const STATUS_META: Record<
   draft: {
     label: "draft",
     desc: "아직 시작 전",
-    dotClass: "bg-tertiary",
-    badgeClass: "text-muted-foreground bg-state-2",
+    dotClass: "bg-fg-tertiary",
+    badgeClass: "text-fg-secondary bg-fill-hover",
   },
   active: {
     label: "active",
     desc: "진행 중",
-    dotClass: "bg-primary",
-    badgeClass: "text-primary-ink bg-primary/10",
+    dotClass: "bg-(--accent)",
+    badgeClass: "text-link bg-accent-soft",
   },
   review: {
     label: "review",
     desc: "리뷰 대기",
-    dotClass: "bg-wait",
-    badgeClass: "text-wait-ink bg-wait/10",
+    dotClass: "bg-warning",
+    badgeClass: "text-warning bg-warning/10",
   },
   done: {
     label: "done",
     desc: "완료",
-    dotClass: "bg-done",
-    badgeClass: "text-done-ink bg-done/8",
+    dotClass: "bg-success",
+    badgeClass: "text-success bg-success/8",
   },
 };
 
@@ -45,7 +45,7 @@ export const STATUS_META: Record<
 export function StatusIcon({ status, className }: { status: WorkStatus; className?: string }) {
   if (status === "draft") {
     return (
-      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-tertiary", className)}>
+      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-fg-tertiary", className)}>
         <circle
           cx="7"
           cy="7"
@@ -60,7 +60,7 @@ export function StatusIcon({ status, className }: { status: WorkStatus; classNam
   }
   if (status === "active") {
     return (
-      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-primary", className)}>
+      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-(--accent)", className)}>
         <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} opacity=".35" />
         <path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" />
         <circle cx="7" cy="7" r="2.2" fill="currentColor" />
@@ -69,16 +69,16 @@ export function StatusIcon({ status, className }: { status: WorkStatus; classNam
   }
   if (status === "review") {
     return (
-      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-wait", className)}>
+      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-warning", className)}>
         <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} />
         <path d="M7 4.3V7l1.9 1.3" stroke="currentColor" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   return (
-    <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-done", className)}>
+    <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-success", className)}>
       <circle cx="7" cy="7" r="6" fill="currentColor" />
-      <path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--background)" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--surface)" strokeWidth={STATUS_ICON_STROKE} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
   );
 }

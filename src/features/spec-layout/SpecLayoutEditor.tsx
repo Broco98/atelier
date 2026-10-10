@@ -126,7 +126,7 @@ function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
       {read.error !== null && (
         <FormBody>
           <div className="flex flex-col items-start gap-3">
-            <p className="text-ui leading-[1.7] text-red-600">{String(read.error)}</p>
+            <p className="text-ui leading-[1.7] text-danger">{String(read.error)}</p>
             {/* 쪽 동작 버튼이다 — 설정 파일 읽기 게이트의 [다시 읽기]와 같다(`Button`의 ghost · sm). */}
             <Button variant="ghost" size="sm" onClick={() => void read.refetch()}>
               다시 읽기
@@ -339,7 +339,7 @@ const OUTSIDE_MESSAGE: Record<BannerVerdict, string> = {
  * [내 초안 유지]는 배너를 닫고 기준본만 새것으로 바꾼다.
  *
  * 자리는 카드 머리 바로 아래이고 폼과 같은 글 폭(`--measure-read`) 가운데다 — 설정 페이지의 메시지(`PageNotice`)와 같은 나눔이다.
- * 폼과 함께 구르지 않는다(스크롤 상자 밖). 모양은 앰버 띠다 — 묶음의 옅은 면(ui-refresh 결정 16)이 아니다: 폼의 묶음과 같은 면이면
+ * 폼과 함께 구르지 않는다(스크롤 상자 밖). 모양은 경고색(`warning`) 띠다 — 묶음의 옅은 면(ui-refresh 결정 16)이 아니다: 폼의 묶음과 같은 면이면
  * 알림이 폼의 한 행으로 읽힌다(판 06 티켓 07).
  */
 export function OutsideBanner({
@@ -356,25 +356,25 @@ export function OutsideBanner({
       {/* 폼 카드가 좁으면(최소 창) 두 버튼이 다음 줄로 내려간다 — 글이 한 글자씩 꺾여 세로로 서지 않게 글에 최소 폭을 둔다. */}
       <div
         role="alert"
-        className="mx-auto flex max-w-(--measure-read) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-amber-600/10 py-1.5 pr-1.5 pl-4"
+        className="mx-auto flex max-w-(--measure-read) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-warning/10 py-1.5 pr-1.5 pl-4"
       >
-        <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
-        <span className="min-w-40 flex-1 text-ui font-medium text-amber-700 dark:text-amber-400">
+        <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
+        <span className="min-w-40 flex-1 text-ui font-medium text-warning">
           {OUTSIDE_MESSAGE[verdict]}
         </span>
-        {/* 두 버튼은 앰버 띠의 것이라 `Button`의 변형이 없다(develop도 앰버 띠를 손으로 짓는다). 흰 버튼의 hover는
-            앱의 버튼 농도(state-2 — `quiet-hover`)다. */}
+        {/* 두 버튼은 경고색 띠의 것이라 `Button`의 변형이 없다(develop도 그 띠를 손으로 짓는다). 흰 버튼의 hover는
+            앱의 버튼 농도(`fill-hover` — `quiet-hover`)다. */}
         <button
           type="button"
           onClick={onReload}
-          className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-amber-600/30 bg-background px-3 text-ui font-medium text-foreground transition-colors quiet-hover"
+          className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-ui font-medium text-fg transition-colors quiet-hover"
         >
           새로 불러오기
         </button>
         <button
           type="button"
           onClick={onKeep}
-          className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-ui font-medium text-amber-700 transition-colors hover:bg-amber-600/10 dark:text-amber-400"
+          className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-ui font-medium text-warning transition-colors hover:bg-warning/10"
         >
           내 초안 유지
         </button>
@@ -576,10 +576,10 @@ export function TreeCard({
           aria-pressed={at.length === 0}
           className={cn(
             "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-ui transition-colors",
-            at.length === 0 ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
+            at.length === 0 ? "selected-row font-medium" : "text-fg-secondary hover:bg-fill-soft",
           )}
         >
-          <Folder aria-hidden className="size-3.5 shrink-0 text-tertiary" />
+          <Folder aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
           <span>spec/</span>
         </Hint>
       </div>
@@ -640,7 +640,7 @@ function TreeTools({
                   type="button"
                   onClick={() => onMove(move)}
                   disabled={!edits[move]}
-                  className="icon-button size-7 text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
+                  className="icon-button size-7 text-fg-secondary transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
                 />
               }
             >
@@ -648,7 +648,7 @@ function TreeTools({
             </Hint>
           ))}
         </div>
-        {/* 휴지통은 붉고(판 03의 `destructive`), 가리키면 붉은 면이 한 겹 서서 더 짙게 읽힌다(프로토타입 뒤 사용자 선택 — 짙은
+        {/* 휴지통은 붉고(Codex `danger`), 가리키면 붉은 면이 한 겹 서서 더 짙게 읽힌다(프로토타입 뒤 사용자 선택 — 짙은
             붉은 글자의 토큰이 없어 면으로 말한다). 머리 `spec/`을 골랐으면 지울 것이 없어 흐린 붉은색으로 잠긴다 — 잠긴 동안에는
             가리켜도 바뀌지 않고 툴팁도 없다(S23). 도움말 「지우기」는 눈에만 뜬다 — 이름(「고른 항목 지우기」)이 이미 더
             말한다(S28). */}
@@ -664,7 +664,7 @@ function TreeTools({
               // 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41) — 옆 옮기기 넷과 같다.
               className={cn(
                 "icon-button size-7 transition-colors",
-                edits.remove ? "text-destructive hover:bg-destructive/10" : "text-destructive/35",
+                edits.remove ? "text-danger hover:bg-danger/10" : "text-danger/35",
               )}
             />
           }
@@ -886,8 +886,8 @@ function DropLine({ side, left }: { side: "top" | "bottom"; left: number }) {
         side === "top" ? "-top-[3px]" : "-bottom-[3px]",
       )}
     >
-      <span className="size-1.5 shrink-0 rounded-full border-2 border-primary bg-background" />
-      <span className="h-0.5 flex-1 rounded-full bg-primary" />
+      <span className="size-1.5 shrink-0 rounded-full border-2 border-(--accent) bg-surface" />
+      <span className="h-0.5 flex-1 rounded-full bg-(--accent)" />
     </span>
   );
 }
@@ -922,8 +922,8 @@ function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boo
  * 이름이면 종류의 흐린 글리프다. 모르는 아이콘·템플릿 누락과 검증 오류는 행 끝에 표시가 붙는다 — 어디를
  * 골라야 하는지 트리에서 보인다.
  *
- * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-ui` · 14px tertiary 글리프와 이름 사이 7px · hover
- * state-1, 고른 행은 `selected-row`에 굵기 500이다. 항목 행은 파일 · 폴더 모두 본문 글자색이다 — 한 단 흐린 것은 머리 `spec/`
+ * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-ui` · 14px `fg-tertiary` 글리프와 이름 사이 7px · hover
+ * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 항목 행은 파일 · 폴더 모두 본문 글자색이다 — 한 단 흐린 것은 머리 `spec/`
  * 하나다(프로토타입 `Settings-editor`).
  */
 function TreeRow({
@@ -974,30 +974,30 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-ui outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-ui outline-none transition-colors focus-visible:ring-2 focus-visible:ring-(--accent)/50",
         drop === "inside"
-          ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary"
+          ? "bg-accent-soft text-fg ring-1 ring-inset ring-(--accent)"
           : selected
             ? "selected-row font-medium"
-            : "text-foreground hover:bg-state-1",
-        hasError && "text-red-600",
+            : "text-fg hover:bg-fill-soft",
+        hasError && "text-danger",
         dragged && "opacity-40",
       )}
     >
-      <Glyph aria-hidden className={cn("size-3.5 shrink-0 text-tertiary", !Known && "opacity-70")} />
+      <Glyph aria-hidden className={cn("size-3.5 shrink-0 text-fg-tertiary", !Known && "opacity-70")} />
       <span className="min-w-0 flex-1 truncate">
         {entry.pattern ?? ""}
         {folder ? "/" : ""}
       </span>
       {warnings.length > 0 && (
         <>
-          <TriangleAlert aria-hidden className="size-3 shrink-0 text-amber-700 dark:text-amber-400" />
+          <TriangleAlert aria-hidden className="size-3 shrink-0 text-warning" />
           <span className="sr-only">{warnings.join(", ")}</span>
         </>
       )}
       {hasError && (
         <>
-          <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-red-600" />
+          <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-danger" />
           <span className="sr-only">검증 오류</span>
         </>
       )}
@@ -1024,7 +1024,7 @@ function ErrorLines({ errors, inset = false, id }: { errors: LayoutError[]; inse
         <p
           key={index}
           id={id === undefined ? undefined : `${id}-${index}`}
-          className={cn("text-ui leading-[1.6] text-red-600", inset && UNDER_TITLE)}
+          className={cn("text-ui leading-[1.6] text-danger", inset && UNDER_TITLE)}
         >
           {error.message}
         </p>
@@ -1121,10 +1121,12 @@ function EntryFields({
           />
         </div>
         <ErrorLines errors={errors} inset id={errorsId} />
+        {/* 경고색 글자는 이 편집기 어디서나 medium이다 — `warning`은 흰 면 위 3.8:1이라 13px 이상 medium 글자에만 쓴다
+            (DS README 「대비」). */}
         {unknownIcon(entry) && (
           <p
             className={cn(
-              "flex items-center gap-1.5 text-ui leading-[1.6] text-amber-700 dark:text-amber-400",
+              "flex items-center gap-1.5 text-ui leading-[1.6] font-medium text-warning",
               UNDER_TITLE,
             )}
           >
@@ -1236,12 +1238,12 @@ function TemplateField({
                 없는 그림)와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다. */}
             <span
               title={`${folder}/${template}`}
-              className="max-w-full min-w-0 self-end truncate font-mono text-mono-sm text-tertiary"
+              className="max-w-full min-w-0 self-end truncate font-mono text-mono-sm text-fg-tertiary"
             >
               {folder}/{template}
             </span>
             {body === null && (
-              <p className="flex items-center gap-1.5 text-ui leading-[1.6] text-amber-700 dark:text-amber-400">
+              <p className="flex items-center gap-1.5 text-ui leading-[1.6] font-medium text-warning">
                 <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
                 <span>레이아웃 폴더에 이 템플릿 파일이 없어요</span>
               </p>
@@ -1304,11 +1306,11 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
             aria-label="아이콘 바꾸기"
             // 큰 제목 앞의 아이콘 상자다(판 06 티켓 07, 프로토타입 `Settings-editor`) — 44px · 옅은 면 · 테두리 없음. 모서리는
             // DS에 12가 없어 컨트롤의 10(`rounded-lg`)이다.
-            // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-group`이 `toggle-on`과 겹치면 코어
+            // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-surface-under`가 `toggle-on`과 겹치면 코어
             // 유틸리티가 뒤에 서서 열린 바탕을 덮고, `quiet-hover`는 꺼진 가지에만 선다(`index.css`의 그 유틸리티).
             className={cn(
               "flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors",
-              open ? "toggle-on" : "bg-group text-muted-foreground quiet-hover",
+              open ? "toggle-on" : "bg-surface-under text-fg-secondary quiet-hover",
             )}
           />
         }
@@ -1316,9 +1318,9 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
         {Current ? (
           <Current aria-hidden className="size-[17px]" />
         ) : icon !== null ? (
-          <TriangleAlert aria-hidden className="size-[17px] text-amber-700 dark:text-amber-400" />
+          <TriangleAlert aria-hidden className="size-[17px] text-warning" />
         ) : (
-          <Ban aria-hidden className="size-[17px] text-tertiary opacity-60" />
+          <Ban aria-hidden className="size-[17px] text-fg-tertiary opacity-60" />
         )}
       </Hint>
       <PopoverContent
@@ -1352,8 +1354,8 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-                  checked ? "toggle-on" : "text-muted-foreground quiet-hover",
+                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-(--accent)/50",
+                  checked ? "toggle-on" : "text-fg-secondary quiet-hover",
                 )}
               >
                 <Glyph aria-hidden className="size-4" />
@@ -1383,15 +1385,15 @@ export function UnreadableLayout({
       <div className="flex items-start gap-2">
         <TriangleAlert
           aria-hidden
-          className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
+          className="mt-[3px] size-3.5 shrink-0 text-warning"
         />
         <div className="flex min-w-0 flex-col gap-0.5 text-ui leading-[1.6]">
-          <span className="text-amber-700 dark:text-amber-400">
+          <span className="font-medium text-warning">
             {layoutDirRef(read.folder)} 레이아웃을 읽지 못해 편집할 수 없어요
           </span>
           {/* 까닭은 엔진의 글 그대로다 — 자리는 엔진이 적는 모양(`root.children[1]`)으로 앞에 붙인다. */}
           {read.errors.map((error, index) => (
-            <span key={index} className="break-words text-tertiary">
+            <span key={index} className="break-words text-fg-tertiary">
               {error.path === null ? error.message : `${placeOf(error.path)}: ${error.message}`}
             </span>
           ))}

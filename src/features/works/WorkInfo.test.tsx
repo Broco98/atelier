@@ -231,7 +231,7 @@ describe("WorkInfo 구획의 모양", () => {
     for (const [, cls] of titles) {
       expect(cls).toMatch(/\btext-ui\b/);
       expect(cls).toMatch(/\bfont-semibold\b/);
-      expect(cls).not.toMatch(/\btext-(tertiary|muted-foreground|caption)\b/);
+      expect(cls).not.toMatch(/\btext-(fg-tertiary|fg-secondary|caption)\b/);
     }
   });
 

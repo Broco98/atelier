@@ -646,7 +646,7 @@ test.describe("끌기가 사는 경우", () => {
     await exitShell(page, 1, 1);
     // 종료가 실제로 닿았음을 먼저 본다 — 아래 단언들은 종료 전에도 참이라, 이것 없이는 종료 프레임이
     // 안 와도 초록이다. 끝난 칸은 줄에 남아 코드 꼬리표(`shellEndLabels`의 `mark`)를 단다.
-    await expect(nameButton(page, 0).locator("span.text-tertiary")).toHaveText("1");
+    await expect(nameButton(page, 0).locator("span.text-fg-tertiary")).toHaveText("1");
     await settle(page);
     await expect.poll(() => namesOf(page)).toHaveLength(2);
     await expect(page.locator("body")).toHaveClass(/dragging-row/);

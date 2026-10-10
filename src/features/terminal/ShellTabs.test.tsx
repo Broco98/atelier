@@ -937,7 +937,7 @@ describe("칸이 물든다", () => {
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
     // 받는다」가 그 자리를 따로 지킨다).
     const 색어휘 = new Set([
-      "hover:bg-state-1",
+      "hover:bg-fill-soft",
       "tab-on",
       "font-medium",
       "bg-wait-soft",
@@ -996,7 +996,7 @@ describe("칸이 물든다", () => {
     // 내내 색을 띤 채라 「부른다」가 뜻을 잃는다.
     for (const kind of ["working", null] as const) {
       const 칸 = 물든칸(kind);
-      expect(칸, String(kind)).toContain("hover:bg-state-1");
+      expect(칸, String(kind)).toContain("hover:bg-fill-soft");
       expect(칸, String(kind)).not.toContain("bg-wait-soft");
       expect(칸, String(kind)).not.toContain("bg-success/14");
     }
@@ -1058,12 +1058,12 @@ describe("칸이 물든다", () => {
     // 안 하는 것이다 — 채움과 안 겹치는 어휘(테두리)는 이 줄에서 이미 「고른 칸이다」를
     // 뜻하므로 hover에 쓰면 여덟 칸이 다 고른 칸으로 읽힌다.
     //
-    // **위 「폭·자리」 검사는 이 사실을 감춘다** — `hover:bg-state-1`이 그 허용 목록에 들어
+    // **위 「폭·자리」 검사는 이 사실을 감춘다** — `hover:bg-fill-soft`가 그 허용 목록에 들어
     // 있어 차집합에서 조용히 지나간다. 그래서 여기서 이름으로 말한다.
     for (const kind of ["waiting", "done"] as const) {
       expect(물든칸(kind), kind).not.toContain("hover:");
       expect(물든칸(kind, { active: true }), kind).not.toContain("hover:");
     }
-    expect(물든칸(null)).toContain("hover:bg-state-1");
+    expect(물든칸(null)).toContain("hover:bg-fill-soft");
   });
 });

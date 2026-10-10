@@ -148,7 +148,7 @@ function SpecViewer({
                   에이전트가 읽는 자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
                   `SpecViewer.test.tsx`의 소스 검사가 리터럴이 들어오는 것을 막는다. */}
               <EmptyContent>
-                <code className="select-all rounded-lg bg-group px-2.5 py-1.5 font-mono text-mono-sm text-muted-foreground">
+                <code className="select-all rounded-lg bg-surface-code px-2.5 py-1.5 font-mono text-mono-sm text-fg-secondary">
                   {specDirRef(work.slug)}
                 </code>
               </EmptyContent>
@@ -177,7 +177,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-group px-2 py-1 font-mono text-mono-sm text-tertiary">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-surface-under px-2 py-1 font-mono text-mono-sm text-fg-tertiary">
           <ImageOff className="size-3.5 shrink-0" aria-hidden />
           {name}
         </span>
@@ -379,7 +379,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
             정확히 이 자리다 — 프레임 안에서도 열린다. */}
         {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 그대로다 — 둘 사이의 「·」까지
             붙여 둔다. 사이를 띄우면 「어느 둘인지」를 세는 L3(`spec-html.spec.ts`)의 글자가 갈린다. */}
-        <span className="text-ui leading-[1.6] text-tertiary">
+        <span className="text-ui leading-[1.6] text-fg-tertiary">
           <Kbd>⌃Tab</Kbd>·<Kbd>⌘W</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
@@ -408,10 +408,10 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
               {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
                   폭 48px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터 버튼의
                   오른쪽 끝과 같은 자리에 온다. 남는 32px이 네 자리 줄번호(31.2px)의 자리다 */}
-              <span className="sticky left-0 z-10 w-12 shrink-0 select-none bg-background pr-4 text-right text-tertiary">
+              <span className="sticky left-0 z-10 w-12 shrink-0 select-none bg-surface pr-4 text-right text-fg-tertiary">
                 {i + 1}
               </span>
-              <span className="whitespace-pre text-muted-foreground">{line}</span>
+              <span className="whitespace-pre text-fg-secondary">{line}</span>
             </div>
           ))}
         </div>
@@ -506,7 +506,7 @@ function BlockWrapper({
         announce="name"
         type="button"
         onClick={() => onCopy(start, end)}
-        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <Copy className="size-3" aria-hidden />
       </Hint>
@@ -584,7 +584,7 @@ export const PrettyView = memo(function PrettyView({
 
     const components: Components = {
       // 글자는 DS 단계 이름 그대로다(ui-refresh 결정 25) — 단계가 줄 높이 · 굵기 · 자간까지 든다(제목 25/32 · 650 ·
-      // -0.01em, 소제목 19/28 · 600). 문단 · 목록은 크기 · 줄 높이(15/26)와 글자색(foreground)을 본문(`article`)에서
+      // -0.01em, 소제목 19/28 · 600). 문단 · 목록은 크기 · 줄 높이(15/26)와 글자색(`fg`)을 본문(`article`)에서
       // 물려받는다 — 여기서 색을 적으면 인용 안 문단이 인용의 흐린 글자를 덮는다.
       h1: block("h1", "text-title", ""),
       h2: block("h2", "text-h2", "mt-6"),
@@ -596,7 +596,7 @@ export const PrettyView = memo(function PrettyView({
       // 인용은 두 얼굴이다 — 첫 줄에 `[!TYPE]` 마커가 있으면 콜아웃, 없으면 흐린 글자의 옅은 면이다.
       // 마커가 있을 때**만** 갈리는 것이 이 자리의 계약이다: 기존 스펙들이
       // `> **커버:** …` 같은 평범한 인용을 많이 쓰고 있어, 그것들이 색을 갖는 순간 회귀다.
-      // 둘 다 카드 안 묶음(ui-refresh 결정 16 — `bg-group` · `rounded-card` · 테두리 없음)이고, 갈리는 것은 제목뿐이다.
+      // 둘 다 카드 안 묶음(ui-refresh 결정 16 — `surface-under` · `rounded-card` · 테두리 없음)이고, 갈리는 것은 제목뿐이다.
       blockquote: ({ node, children, className: hastClass, ...props }: any) => {
         const first = firstLineOf(node) ?? "";
         const callout = calloutKind(first);
@@ -609,7 +609,7 @@ export const PrettyView = memo(function PrettyView({
           </Callout>
         ) : (
           <blockquote
-            className={cn("rounded-card bg-group px-4 py-3 text-muted-foreground", hastClass)}
+            className={cn("rounded-card bg-surface-under px-4 py-3 text-fg-secondary", hastClass)}
             {...props}
           >
             {children}
@@ -644,7 +644,7 @@ export const PrettyView = memo(function PrettyView({
           </BlockWrapper>
         );
       },
-      // 표의 칸 — 옅은 면(`SpecTable`) 위의 행이다(ui-refresh 결정 16). 줄 사이 선이 없고, 줄은 hover에 `state-2`로
+      // 표의 칸 — 옅은 면(`SpecTable`) 위의 행이다(ui-refresh 결정 16). 줄 사이 선이 없고, 줄은 hover에 `fill-hover`로
       // 갈린다(DS `.at-doc-table`). 칠하는 것은 칸이다 — 표 줄(`tr`)에는 모서리가 안 서서, 첫 · 끝 칸이 줄의 둥근
       // 끝(`rounded-lg`, 10)을 든다. 그래서 표가 `border-separate`다(`collapse`면 칸의 모서리가 무시된다).
       // 머리 줄은 hover하지 않는다 — 고를 줄이 아니라 열의 이름이다.
@@ -652,13 +652,13 @@ export const PrettyView = memo(function PrettyView({
       // relative: 열 폭 손잡이가 이 칸의 오른쪽 끝(열 경계)에 서기 위한 기준 상자다.
       // `font-normal`: 칸 머리의 굵기는 UA 기본(bold)이다 — DS 머리는 굵지 않은 `caption`이다.
       th: ({ children }) => (
-        <th className="relative px-3 py-1.5 text-left text-caption font-normal text-muted-foreground">
+        <th className="relative px-3 py-1.5 text-left text-caption font-normal text-fg-secondary">
           {children}
           <ColumnResizeHandle />
         </th>
       ),
       td: ({ children }) => (
-        <td className="px-3 py-[9px] first:rounded-l-lg last:rounded-r-lg group-hover/row:bg-state-2">{children}</td>
+        <td className="px-3 py-[9px] first:rounded-l-lg last:rounded-r-lg group-hover/row:bg-fill-hover">{children}</td>
       ),
       // 링크는 두 가지만 산다 — 문서 간 이동과 외부 URL (결정 3).
       // target="_blank"는 **Tauri 웹뷰에서 아무 일도 하지 않는다.** 그래서 여기가 직접 연다.
@@ -670,7 +670,7 @@ export const PrettyView = memo(function PrettyView({
             // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={`문서를 찾을 수 없어요 — ${target.path}`}
-              className="text-tertiary underline decoration-dotted underline-offset-2"
+              className="text-fg-tertiary underline decoration-dotted underline-offset-2"
             >
               {children}
             </span>
@@ -708,7 +708,7 @@ export const PrettyView = memo(function PrettyView({
             // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-group px-2 py-1 align-middle font-mono text-mono-sm text-tertiary"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed bg-surface-under px-2 py-1 align-middle font-mono text-mono-sm text-fg-tertiary"
             >
               <ImageOff className="size-3.5 shrink-0" aria-hidden />
               {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
@@ -738,7 +738,7 @@ export const PrettyView = memo(function PrettyView({
       // 마크다운이 만드는 input은 GFM 체크박스뿐이라(원시 HTML은 켜져 있지 않다) 분기하지 않는다.
       // disabled는 remark-gfm이 붙여 보낸 것을 그대로 둔다 — 눌러도 문서가 바뀌지 않는다.
       input: ({ node, ...props }) => (
-        <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-primary")} />
+        <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-(--accent)")} />
       ),
       pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
@@ -749,9 +749,9 @@ export const PrettyView = memo(function PrettyView({
           lang === "mermaid" ? (
             <MermaidBlock code={hastText(code)} />
           ) : (
-            // 카드 안 묶음(ui-refresh 결정 16) — 옅은 면 · 안쪽 12 · 16, 글자는 `text-mono`(13/20) 단계 그대로다.
+            // 코드 블록 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · 안쪽 12 · 16, 글자는 `text-mono`(13/20) 단계 그대로다.
             <pre
-              className="overflow-x-auto rounded-card bg-group px-4 py-3 font-mono text-mono scroll-quiet"
+              className="overflow-x-auto rounded-card bg-surface-code px-4 py-3 font-mono text-mono scroll-quiet"
               {...props}
             >
               {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
@@ -780,9 +780,9 @@ export const PrettyView = memo(function PrettyView({
         className?.includes("language-") ? (
           <code className={className}>{children}</code>
         ) : (
-          // 인라인 코드 — 옅은 면 · 테두리 없음 · 안쪽 1 · 6(DS `.at-doc code`). 크기는 px 단계가 아니라 `0.88em`이다 —
+          // 인라인 코드 — 코드 면(`surface-code`) · 테두리 없음 · 안쪽 1 · 6(DS `.at-doc code`). 크기는 px 단계가 아니라 `0.88em`이다 —
           // 제목 안에서는 제목을 따라 커져야 한다(본문 15에서 13.2, DS의 13과 같은 자리다).
-          <code className="rounded-inline bg-group px-1.5 py-px font-mono text-[0.88em] wrap-anywhere">
+          <code className="rounded-inline bg-surface-code px-1.5 py-px font-mono text-[0.88em] wrap-anywhere">
             {children}
           </code>
         ),
@@ -794,8 +794,8 @@ export const PrettyView = memo(function PrettyView({
     // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
     // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 같은 열(`bodyColumn`)에서 맞춘 것과 같은 계약을
     // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다.
-    // 글자는 본문 단계(`text-body` 15/26)와 `foreground`다(DS `.at-doc`) — 문단 · 목록 · 표 · 콜아웃이 물려받는다.
-    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-body text-foreground")}>
+    // 글자는 본문 단계(`text-body` 15/26)와 `fg`다(DS `.at-doc`) — 문단 · 목록 · 표 · 콜아웃이 물려받는다.
+    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-body text-fg")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
@@ -811,15 +811,15 @@ export const PrettyView = memo(function PrettyView({
 // 라벨은 마커와 같은 영문이다: 같은 파일을 GitHub·Obsidian에서 열어도 같게 보이는 것이
 // 이 다섯 종을 고른 이유였다 (결정 9).
 //
-// **색은 토큰 이름이다**(ui-refresh 판 03). Note는 옅은 면 위의 파랑 글자(`primary-ink`), Important는 제 색
-// (`callout-important`), Tip · Warning은 상태색의 글자 잉크(`done-ink` · `wait-ink`), Caution은 `destructive`다.
+// **색은 토큰 이름이다**(ui-refresh 판 03). Note는 옅은 면 위의 파랑 글자(`link`), Important는 제 색
+// (`chat-accent-purple`), Tip · Warning은 뜻의 색(`success` · `warning`), Caution은 `danger`다.
 // `dark:` 짝은 두지 않는다 — 토큰이 `.dark`에서 제 값을 든다.
 const CALLOUT_STYLE: Record<CalloutKind, { label: string; Glyph: typeof Info; tone: string }> = {
-  NOTE: { label: "Note", Glyph: Info, tone: "text-primary-ink" },
-  TIP: { label: "Tip", Glyph: Lightbulb, tone: "text-done-ink" },
-  IMPORTANT: { label: "Important", Glyph: MessageSquareWarning, tone: "text-callout-important" },
-  WARNING: { label: "Warning", Glyph: TriangleAlert, tone: "text-wait-ink" },
-  CAUTION: { label: "Caution", Glyph: OctagonAlert, tone: "text-destructive" },
+  NOTE: { label: "Note", Glyph: Info, tone: "text-link" },
+  TIP: { label: "Tip", Glyph: Lightbulb, tone: "text-success" },
+  IMPORTANT: { label: "Important", Glyph: MessageSquareWarning, tone: "text-chat-accent-purple" },
+  WARNING: { label: "Warning", Glyph: TriangleAlert, tone: "text-warning" },
+  CAUTION: { label: "Caution", Glyph: OctagonAlert, tone: "text-danger" },
 };
 
 function Callout({
@@ -834,7 +834,7 @@ function Callout({
 }) {
   const { label, Glyph, tone } = CALLOUT_STYLE[kind];
   return (
-    <div className="rounded-card bg-group px-4 py-3">
+    <div className="rounded-card bg-surface-under px-4 py-3">
       {/* 제목 줄 — 글리프 15 · 사이 6 · 600 · 아래 2(DS `.at-callout-title`) */}
       <div className={cn("mb-0.5 flex items-center gap-1.5 font-semibold", tone)}>
         <Glyph className="size-[15px] shrink-0" aria-hidden />

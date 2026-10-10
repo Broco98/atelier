@@ -128,7 +128,7 @@ describe("Codex 토큰", () => {
   // **옛 이름은 값을 들지 않는다** — Codex 토큰을 가리키는 별칭이다(DS README 「앱 토큰 이름과의 짝」). 값이 남으면 팔레트의
   // 정본이 둘이 되어, Codex 값을 고치는 날 그 이름을 읽는 자리만 옛 색으로 남는다. `.dark`에 따로 적은 값도 같은 일이다.
   const OLD_NAMES = [
-    // shadcn — `@layer base`(shadcn 바탕 CSS)와 옛 이름을 아직 쓰는 화면 쪽 호출부가 읽는다
+    // shadcn — `@layer base`(shadcn 바탕 CSS)가 읽는다. 앱 호출부(부품 · 틀 · 화면)는 Codex 이름을 쓴다
     "background",
     "foreground",
     "card",

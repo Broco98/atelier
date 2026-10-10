@@ -8,12 +8,12 @@ import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
 
 // 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-ui` · 글리프와 이름 사이 7px · hover
-// state-1. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `muted-foreground`다(Archive · Main 프로토타입). 고른 행은
+// `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
 // `selected-row`에 굵기 500이다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-ui text-muted-foreground transition-colors hover:bg-state-1";
+  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-ui text-fg-secondary transition-colors hover:bg-fill-soft";
 
 // 줄 사이는 사이드바 · 아카이브 목록과 같은 2px 틈이다(DS `.at-tree`). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-(--row-gap)";
@@ -113,10 +113,10 @@ function TreeRows({
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
-                {/* 셰브론은 12px tertiary이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
+                {/* 셰브론은 12px `fg-tertiary`이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
                 <ChevronRight
                   className={cn(
-                    "-mr-[3px] size-3 shrink-0 text-tertiary transition-[rotate] duration-150",
+                    "-mr-[3px] size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-150",
                     expanded && "rotate-90",
                   )}
                   strokeWidth={SMALL_GLYPH_STROKE}
@@ -147,7 +147,7 @@ function TreeRows({
         // 무시되므로 스크린리더에는 존재조차 읽히지 않았다. 형제로 푸는 것이 유일한 길이다.
         //
         // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
-        // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
+        // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-fill-soft를 붙인다.
         // 글자색은 고르든 안 고르든 본문 색이다 — 고른 행은 면과 굵기가 말한다(DS `.at-tree-row.is-on`).
         // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
         // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
@@ -160,7 +160,7 @@ function TreeRows({
             <div
               className={cn(
                 "group flex h-7 items-center rounded-lg pr-1 text-ui transition-colors",
-                item.path === current ? "selected-row font-medium" : "hover:bg-state-1",
+                item.path === current ? "selected-row font-medium" : "hover:bg-fill-soft",
               )}
             >
               {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
@@ -188,7 +188,7 @@ function TreeRows({
                   type="button"
                   aria-label={`${item.name} 경로 복사`}
                   onClick={() => onCopy(item.path)}
-                  className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+                  className="icon-button-tint text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover:opacity-100"
                 >
                   <Copy className="size-3" />
                 </Hint>
@@ -201,8 +201,8 @@ function TreeRows({
   );
 }
 
-// 폴더 · 파일 행의 글리프는 14px tertiary다(DS `.at-tree-row .ic`).
-const GLYPH = "size-3.5 shrink-0 text-tertiary";
+// 폴더 · 파일 행의 글리프는 14px `fg-tertiary`다(DS `.at-tree-row .ic`).
+const GLYPH = "size-3.5 shrink-0 text-fg-tertiary";
 
 // 폴더 행의 글리프 — 항목이 준 아이콘이다. 없거나 표에 없는 이름이면 아무것도 안 그린다:
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
@@ -225,7 +225,7 @@ function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-inline bg-group px-1 font-mono text-mono-micro text-tertiary">
+    <span className="shrink-0 rounded-inline bg-surface-under px-1 font-mono text-mono-micro text-fg-tertiary">
       {ext}
     </span>
   );

@@ -386,11 +386,11 @@ function ShellTabs({
             //
             // **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고
             // 켜진 칸은 흰 면(`tab-on`)이다. 꺼진 칸의 글리프만 흐리다(`.at-tab .ic`).
-            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-foreground transition-colors",
-            spec.on ? "tab-on font-medium" : "hover:bg-state-1",
+            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-fg transition-colors",
+            spec.on ? "tab-on font-medium" : "hover:bg-fill-soft",
           )}
         >
-          <File className={cn("size-3.5 shrink-0", !spec.on && "text-tertiary")} />
+          <File className={cn("size-3.5 shrink-0", !spec.on && "text-fg-tertiary")} />
           <span className="min-w-0 truncate">spec</span>
         </button>
       )}
@@ -411,7 +411,7 @@ function ShellTabs({
           data-tab-rule
           // 좌우 2px이다 — 줄의 gap 4px과 합쳐 8px씩 벌어진다. 더 벌리면 **900px 창에서 줄이
           // 넘친다**(결정 20의 산술이 이 선까지 센다: mx-1이면 1px 모자랐다, 실측).
-          className="mx-0.5 h-[18px] w-px shrink-0 bg-border-strong"
+          className="mx-0.5 h-[18px] w-px shrink-0 bg-border-heavy"
         />
       )}
 
@@ -479,7 +479,7 @@ function ShellTabs({
           <span
             aria-hidden
             data-tab-gap={slot}
-            className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-primary"
+            className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-(--accent)"
             style={{ left: gapLineLeft(geometry, slot) }}
           />
         )}
@@ -566,12 +566,10 @@ function PlusButton({
         // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
         // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
         //
-        // 올리거나 누를 때의 면은 바탕의 한 단(`chrome-hover`)이다(ui-refresh 결정 18 · DS `.at-icon-btn.on-chrome`) —
-        // 카드 위 버튼의 `quiet-hover`(state-2)는 회색 바탕에서 거의 안 보인다. 레일 토글과 같은 어휘다(`Rail.tsx`).
-        "-ml-0.5 shrink-0 text-tertiary",
-        full
-          ? "icon-button opacity-40"
-          : "icon-button transition-colors hover:bg-chrome-hover hover:text-foreground active:bg-chrome-hover",
+        // 켜짐이 없는 아이콘 버튼이라 hover는 아이콘 버튼의 hover(`quiet-hover` — `fill-hover` 한 겹 · 글자 `fg`)이고, 누를
+        // 때도 같은 면이다(ui-refresh 결정 18). 손으로 같은 조합을 다시 적지 않는다(`state-scale` 검사).
+        "-ml-0.5 shrink-0 text-fg-tertiary",
+        full ? "icon-button opacity-40" : "icon-button-quiet active:bg-fill-hover",
         className,
       )}
       {...props}
@@ -687,7 +685,7 @@ const ShellTab = memo(function ShellTab({
       className={cn(
         // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18 — 탭 글자는 본문 색 `fg`) — 켜짐을 글자색으로
         // 가르지 않는다. 그것은 켜진 칸의 흰 면이 한다.
-        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-foreground transition-colors",
+        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-ui text-fg transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
         // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
         // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.
@@ -703,7 +701,7 @@ const ShellTab = memo(function ShellTab({
         // **물들면 켜짐의 면이 물러난다**(결정 6). 켜진 칸의 흰 면(`tab-on`)까지 그렇다 —
         // 「부르는 탭」이 「고른 탭」보다 위 사실이라, 둘을 겹쳐 두면 유틸리티 정렬 순서가
         // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49).
-        tint === null ? (active ? "tab-on" : "hover:bg-state-1") : tint.cell,
+        tint === null ? (active ? "tab-on" : "hover:bg-fill-soft") : tint.cell,
       )}
     >
       {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
@@ -779,7 +777,7 @@ const ShellTab = memo(function ShellTab({
             안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로
             쓴 것과 정면으로 어긋난다.
             직접 선언한 색이라 칸의 본문 글자색에 안 덮인다. */}
-        {end && <span className="shrink-0 text-tertiary">{end.mark}</span>}
+        {end && <span className="shrink-0 text-fg-tertiary">{end.mark}</span>}
       </Hint>
       {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span
           role="button"으로 흉내내면 Tab으로 도달할 수 없다(SpecTree.test.tsx가 같은
@@ -791,7 +789,7 @@ const ShellTab = memo(function ShellTab({
         aria-label={`${name} 닫기`}
         onClick={() => onClose(shell.id)}
         className={cn(
-          "icon-button-tint shrink-0 text-tertiary",
+          "icon-button-tint shrink-0 text-fg-tertiary",
           // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
           // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
           // 켜진 칸도 68px 아래에서는 함께 접는다: 거기부터는 글리프와 닫기가 한 칸에

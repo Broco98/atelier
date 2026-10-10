@@ -48,20 +48,20 @@ function PreviewDialog({
       >
         <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border pr-3 pl-5">
           <DialogTitle>LLM이 받는 텍스트</DialogTitle>
-          <span className="text-ui text-tertiary">저장 전 초안</span>
+          <span className="text-ui text-fg-tertiary">저장 전 초안</span>
           {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 단축키는 설명으로 남긴다(S28 — `shortcut`). */}
           <Hint
             text="닫기"
             shortcut="Esc"
             announce="name"
-            render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-muted-foreground" />}
+            render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-fg-secondary" />}
           >
             <X aria-hidden className="size-4" />
           </Hint>
         </div>
-        {/* 글 상자는 카드 안 묶음과 같은 옅은 면이다(ui-refresh 결정 16의 `bg-group`, 판 06 티켓 07) — 사이드바 색(창 바탕의
+        {/* 글 상자는 카드 안 묶음과 같은 옅은 면이다(ui-refresh 결정 16의 `surface-under`, 판 06 티켓 07) — 사이드바 색(창 바탕의
             회색)이 아니다. */}
-        <div className="min-h-0 flex-1 overflow-y-auto bg-group pt-3.5 pb-5 scroll-quiet">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-surface-under pt-3.5 pb-5 scroll-quiet">
           <PreviewText answer={answer} selected={selected} />
         </div>
       </DialogContent>
@@ -80,11 +80,11 @@ function PreviewDialog({
 export function PreviewText({ answer, selected }: { answer: LayoutPreview | null; selected: EntryPath }) {
   if (answer === null) return null;
   if (answer.errors.length > 0 || answer.text === null) {
-    return <p className="px-5 text-ui leading-[1.6] text-tertiary">오류를 고치면 보여요</p>;
+    return <p className="px-5 text-ui leading-[1.6] text-fg-tertiary">오류를 고치면 보여요</p>;
   }
   const held = answer.lines.find(({ path }) => samePath(path, selected));
   return (
-    <div className="font-mono text-mono-sm leading-[1.65] text-foreground">
+    <div className="font-mono text-mono-sm leading-[1.65] text-fg">
       {answer.text.split("\n").map((line, index) => {
         const picked = held !== undefined && index >= held.start && index < held.start + held.count;
         return (
@@ -92,7 +92,7 @@ export function PreviewText({ answer, selected }: { answer: LayoutPreview | null
             key={index}
             data-line=""
             data-selected={picked ? "" : undefined}
-            className={cn("min-h-5 whitespace-pre-wrap break-words px-5", picked && "bg-primary/10")}
+            className={cn("min-h-5 whitespace-pre-wrap break-words px-5", picked && "bg-accent-soft")}
           >
             {line}
           </div>

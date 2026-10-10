@@ -156,7 +156,7 @@ export function WorkSectionList({
         <div
           data-drop-line=""
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 z-10 h-0.5 -translate-y-1/2 rounded-full bg-primary"
+          className="pointer-events-none absolute inset-x-3 z-10 h-0.5 -translate-y-1/2 rounded-full bg-(--accent)"
           style={{ top: lineY }}
         />
       )}
@@ -202,7 +202,7 @@ export function WorkSectionList({
           //
           // **목록이 넘칠 때만 보이는 병이라 오래 안 보였다.** 이 자리는 work이 0개일 때만 서고
           // 그때는 대개 목록이 안 넘친다 — 목록이 오기 전 한 프레임에 이 문구가 서는 창이 그 드문 때다.
-          <span className="mr-1 px-[9px] pb-1 text-ui leading-normal text-tertiary">
+          <span className="mr-1 px-[9px] pb-1 text-ui leading-normal text-fg-tertiary">
             {emptyMainNotice(sections)}
           </span>
         ) : (
@@ -234,7 +234,7 @@ function EmptySlot({ section, lit }: { section: keyof SectionsOpen; lit: boolean
       className={cn(
         "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-lg border border-dashed text-ui transition-colors",
         margin,
-        lit ? "border-primary bg-primary/10 text-foreground" : "border-border text-tertiary",
+        lit ? "border-(--accent) bg-accent-soft text-fg" : "border-border text-fg-tertiary",
       )}
     >
       {copy}
@@ -282,7 +282,7 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
 
 // 섹션 헤더 — **헤더 전체가 접기 토글이다.** 라벨을 누르면 그 섹션이 접힌다.
 //
-// 라벨은 항목(`row` 14)보다 한 단 작은 `caption`(12/400)이고 색은 `section`이다 — Codex 사이드바의
+// 라벨은 항목(`row` 14)보다 한 단 작은 `caption`(12/400)이고 색은 `fg-tertiary`다 — Codex 사이드바의
 // 소제목 값이다(ui-refresh 결정 11 · DS `.at-section`). 바탕 위 3.2:1로 옅은 것은 알고 둔 값이다(handoff
 // 「대비 미달을 알고 둔 값」) — 머리는 목적지가 아니라 목록의 이름표라서다.
 //
@@ -329,7 +329,7 @@ function SectionHeader({
         className,
       )}
     >
-      <span className="shrink-0 text-caption text-section transition-colors group-hover:text-muted-foreground">
+      <span className="shrink-0 text-caption text-fg-tertiary transition-colors group-hover:text-fg-secondary">
         {label}
       </span>
       {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
@@ -337,12 +337,12 @@ function SectionHeader({
           독립 rotate 속성을 쓰고, transform만 걸면 화살표만 뚝 끊긴다. */}
       <ChevronDown
         className={cn(
-          "size-3.5 shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
+          "size-3.5 shrink-0 text-fg-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
           open ? "opacity-0 group-hover:opacity-100" : "-rotate-90 opacity-100",
         )}
       />
       {/* 수는 라벨과 같은 색이다(DS `.at-section b`) — 한 머리 안에서 둘이 다른 무게로 읽히지 않는다. */}
-      <span className="ml-auto shrink-0 text-meta tabular-nums text-section">{count}</span>
+      <span className="ml-auto shrink-0 text-meta tabular-nums text-fg-tertiary">{count}</span>
     </button>
   );
 }
@@ -496,7 +496,7 @@ function WorkRow({
         // **채움은 없다.** 평평한 행이고, 회색이 서는 것은 고른 행 하나뿐이다 — 카드 채움(목업의
         // F·G)은 열여덟 행에 전부 무게를 줘 목록이 게시판이 된다.
         // 안 고른 행도 행 글자색이다(ui-refresh 결정 11) — nav 항목(`SidebarItem`)과 같은 값이다.
-        active ? "selected-row" : "text-sidebar-foreground hover:bg-state-1",
+        active ? "selected-row" : "text-fg hover:bg-fill-soft",
         // **끌리는 행은 흐려진다**(UI개선 스펙 §4) — 자리는 그대로 두고. 행을 빼면 아래 행들이 올라와
         // 재어 둔 기하가 그 순간 틀어지고, 「어디서 뽑았는지」도 사라진다.
         dragging && "opacity-40",
@@ -576,7 +576,7 @@ function WorkRow({
           className={cn(
             // 굵기는 400이다 — nav 항목만 500이다(DS `.at-row` · `.at-row.nav`). 목적지 넷과 작업 목록이 무게로 갈린다.
             "min-w-0 flex-1 text-row",
-            work.status === "done" && "text-tertiary",
+            work.status === "done" && "text-fg-tertiary",
           )}
         >
           <span>{work.title}</span>
@@ -632,7 +632,7 @@ function WorkRow({
           event.stopPropagation();
           onTogglePin(work);
         }}
-        className="peer icon-button-tint col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-tertiary opacity-0 outline-none focus-visible:max-w-6 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:max-w-6 group-hover:opacity-100"
+        className="peer icon-button-tint col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-visible:max-w-6 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover:max-w-6 group-hover:opacity-100"
       >
         <Pin
           className="size-3"

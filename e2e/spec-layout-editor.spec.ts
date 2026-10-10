@@ -17,6 +17,7 @@ import {
   pickUpEntry,
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
+  토큰색,
 } from "./harness";
 
 // 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 「spec 레이아웃」 설정 페이지의 레이아웃 행에서
@@ -240,6 +241,8 @@ test("저장의 답이 오류 데이터면 그 위치의 항목 아래에 오류
 
   const 오류 = page.getByText(message, { exact: true });
   await expect(오류).toBeVisible();
+  // 붉은 줄의 색은 Codex 뜻의 색 `danger`다 — Tailwind 팔레트의 빨강이 아니다(codex-ds 스펙 2절).
+  await expect(오류).toHaveCSS("color", await 토큰색(page, "--danger"));
   // 오류는 칸이 말한다 — 이름 틀이 잘못된 값이고, 그 붉은 줄이 칸의 설명이다(develop 스토리 107)
   await expect(이름틀(page)).toHaveAttribute("aria-invalid", "true");
   await expect(이름틀(page)).toHaveAccessibleDescription(message);
@@ -397,6 +400,8 @@ test("누락 템플릿이 든 레이아웃을 열어 그 항목의 본문을 적
   await expect(템플릿본문(page)).toHaveValue("");
   await expect(page.getByText("~/.atelier/layouts/atelier/decisions.md", { exact: true })).toBeVisible();
   await expect(누락).toBeVisible();
+  // 경고의 색은 Codex 뜻의 색 `warning`이다 — Tailwind 팔레트의 앰버가 아니다(codex-ds 스펙 2절).
+  await expect(누락).toHaveCSS("color", await 토큰색(page, "--warning"));
 
   await 템플릿본문(page).fill("# 결정\n\n## 다시 쓴 뼈대\n");
   await expect(누락).toHaveCount(0);

@@ -47,17 +47,17 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         </h1>
         {/* 속성(DS `.at-props`) — 이름 열 112 · 줄 28 · 줄 사이 4. 값은 고정폭 `text-mono`다. */}
         <dl className="flex flex-col gap-1">
-          <PropertyRow icon={<Folder className="size-3.5 text-tertiary" />} label="경로">
-            <span className={cn("truncate", project.missing && "text-destructive line-through")}>
+          <PropertyRow icon={<Folder className="size-3.5 text-fg-tertiary" />} label="경로">
+            <span className={cn("truncate", project.missing && "text-danger line-through")}>
               {project.path}
             </span>
           </PropertyRow>
           {project.git?.remoteSlug && (
-            <PropertyRow icon={<GitMerge className="size-3.5 text-tertiary" />} label="원격">
+            <PropertyRow icon={<GitMerge className="size-3.5 text-fg-tertiary" />} label="원격">
               <span className="truncate">{project.git.remoteSlug}</span>
             </PropertyRow>
           )}
-          <PropertyRow icon={<GitFork className="size-3.5 text-tertiary" />} label="baseBranch">
+          <PropertyRow icon={<GitFork className="size-3.5 text-fg-tertiary" />} label="baseBranch">
             {/* 칩(셀렉트 칩 · 인라인 편집기)의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
                 칩의 모양은 부품 그대로이고, 이것은 그 칩을 이 열에 앉히는 자리 맞춤이다. */}
             <div className="-ml-[7px] flex min-w-0">
@@ -75,21 +75,21 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
 }
 
 /**
- * 카드 안 소제목(DS `.at-subhead`) — 이름(`text-ui` · 600) 뒤에 곁글(`text-caption` · muted-foreground)이 한 줄에 선다.
+ * 카드 안 소제목(DS `.at-subhead`) — 이름(`text-ui` · 600) 뒤에 곁글(`text-caption` · `fg-secondary`)이 한 줄에 선다.
  * 위 28 · 아래 10이 구획 사이의 리듬이다. `end`는 오른쪽 끝의 조작이다.
  */
 function Subhead({ title, note, end }: { title: string; note: string; end?: React.ReactNode }) {
   return (
     <div className="mb-2.5 mt-7 flex items-baseline gap-2">
       <h2 className="text-ui font-semibold">{title}</h2>
-      <span className="text-caption text-muted-foreground">{note}</span>
+      <span className="text-caption text-fg-secondary">{note}</span>
       {end}
     </div>
   );
 }
 
 /** 카드 안 묶음(ui-refresh 결정 16) — 옅은 면 · 큰 반경 · 테두리 없음. 행 사이에도 선이 없다. */
-const GROUP = "rounded-card bg-group";
+const GROUP = "rounded-card bg-surface-under";
 
 // 이 프로젝트에서 시작된 작업 목록 (목업 S2의 Works 란)
 function WorksSection({
@@ -111,7 +111,7 @@ function WorksSection({
           <button
             type="button"
             onClick={() => onOpenWork(null)}
-            className="ml-auto flex items-center gap-1 rounded-inner px-1.5 py-0.5 text-caption font-medium text-tertiary transition-colors quiet-hover"
+            className="ml-auto flex items-center gap-1 rounded-inner px-1.5 py-0.5 text-caption font-medium text-fg-tertiary transition-colors quiet-hover"
           >
             Works에서 모두 보기
             <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
@@ -121,7 +121,7 @@ function WorksSection({
       {/* 묶음 안쪽 6 · 행 40 · 모서리 10(DS `.at-group` · `.at-group-row`). 빈 묶음도 같은 면 안에서 행 하나 높이의 글이다. */}
       <div className={cn(GROUP, "flex flex-col p-1.5")}>
         {related.length === 0 ? (
-          <div className="flex min-h-10 items-center px-3 text-ui text-tertiary">
+          <div className="flex min-h-10 items-center px-3 text-ui text-fg-tertiary">
             이 프로젝트로 시작된 작업이 아직 없어요.
           </div>
         ) : (
@@ -132,27 +132,27 @@ function WorksSection({
                 key={work.slug}
                 type="button"
                 onClick={() => onOpenWork(work.slug)}
-                // 옅은 면 위의 행이라 hover는 `state-2`다(ui-refresh 결정 16, DS `.at-group-row:hover`) — 흰 카드 위 목록
-                // 행의 `state-1`보다 한 단 위이고, info 맨 위 묶음 행과 같은 값이다.
-                className="flex min-h-10 min-w-0 items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-state-2"
+                // 옅은 면 위의 행이라 hover는 `fill-hover`다(ui-refresh 결정 16, DS `.at-group-row:hover`) — 흰 카드 위 목록
+                // 행의 `fill-soft`보다 한 단 위이고, info 맨 위 묶음 행과 같은 값이다.
+                className="flex min-h-10 min-w-0 items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-hover"
               >
                 <StatusIcon status={work.status} />
                 <span
                   className={cn(
                     "min-w-0 truncate text-row",
-                    work.status === "done" && "text-muted-foreground",
+                    work.status === "done" && "text-fg-secondary",
                   )}
                 >
                   {work.title}
                 </span>
                 <span className="ml-auto flex shrink-0 items-center gap-3">
                   {worktree?.exists && (
-                    <span className="flex items-center gap-[5px] font-mono text-mono-sm text-muted-foreground">
+                    <span className="flex items-center gap-[5px] font-mono text-mono-sm text-fg-secondary">
                       <GitFork className="size-3" />
                       {work.branch}
                     </span>
                   )}
-                  <span className="text-caption text-tertiary tabular-nums">{formatCreated(work.createdAt)}</span>
+                  <span className="text-caption text-fg-tertiary tabular-nums">{formatCreated(work.createdAt)}</span>
                   <ChevronRight className="size-3.5" />
                 </span>
               </button>
@@ -197,7 +197,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
           setDraft(project.name);
           setEditing(true);
         }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-title transition-colors hover:bg-state-2"
+        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-title transition-colors hover:bg-fill-hover"
       >
         {project.name}
       </Hint>
@@ -229,12 +229,12 @@ function PropertyRow({
 }) {
   return (
     <div className="flex min-h-7 items-center">
-      <dt className="flex w-28 shrink-0 items-center gap-2 text-ui text-muted-foreground">
+      <dt className="flex w-28 shrink-0 items-center gap-2 text-ui text-fg-secondary">
         {icon}
         {label}
       </dt>
-      {/* 값의 색은 muted-foreground다 — 기준 브랜치 줄의 셀렉트 칩(부품의 글자색)과 한 열에서 갈리지 않게. */}
-      <dd className="flex min-w-0 flex-1 items-center font-mono text-mono text-muted-foreground">{children}</dd>
+      {/* 값의 색은 `fg-secondary`다 — 기준 브랜치 줄의 셀렉트 칩(부품의 글자색)과 한 열에서 갈리지 않게. */}
+      <dd className="flex min-w-0 flex-1 items-center font-mono text-mono text-fg-secondary">{children}</dd>
     </div>
   );
 }
@@ -279,19 +279,19 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
       <SelectContent
         header={
           <div className="flex h-8 items-center justify-between border-b px-3">
-            <span className="text-ui font-semibold text-muted-foreground">브랜치</span>
-            <span className="text-caption text-tertiary">{options.length}개</span>
+            <span className="text-ui font-semibold text-fg-secondary">브랜치</span>
+            <span className="text-caption text-fg-tertiary">{options.length}개</span>
           </div>
         }
         footer={
-          <div className="border-t px-3 py-2 text-caption text-tertiary">
+          <div className="border-t px-3 py-2 text-caption text-fg-tertiary">
             baseBranch 설정만 바꿔요 — checkout은 하지 않아요
           </div>
         }
       >
         {options.map((branch) => (
           <SelectItem key={branch} value={branch}>
-            <span className="font-mono text-muted-foreground">{branch}</span>
+            <span className="font-mono text-fg-secondary">{branch}</span>
           </SelectItem>
         ))}
       </SelectContent>
@@ -329,7 +329,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         }}
         // 목록이 서는 프로젝트의 셀렉트 칩(`SelectTrigger`)과 같은 모양이다 — 28px · 모서리 10 · 좌우 7 · 조용한 hover. 값은
         // 옆 줄들과 같은 고정폭 `text-mono`다.
-        className="flex h-7 items-center rounded-lg px-[7px] font-mono text-mono text-muted-foreground transition-colors quiet-hover"
+        className="flex h-7 items-center rounded-lg px-[7px] font-mono text-mono text-fg-secondary transition-colors quiet-hover"
       >
         {project.baseBranch}
       </Hint>
@@ -384,7 +384,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
       <Subhead title="설명" note="클릭해서 편집" />
       {editing ? (
         // 고치는 동안의 칸 — 설명 상자와 같은 자리 · 같은 반경(16) · 같은 글자다. 테두리 1px만큼 안쪽을 덜어 글자가
-        // 상자일 때의 자리에 그대로 선다. 포커스는 판 03 입력칸의 것(테두리 primary + 3px 옅은 링)이다.
+        // 상자일 때의 자리에 그대로 선다. 포커스는 판 03 입력칸의 것(테두리 `accent` + 3px 옅은 링)이다.
         <textarea
           autoFocus
           value={draft}
@@ -396,7 +396,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-12 resize-y rounded-card border border-border-strong bg-background px-[15px] py-[13px] text-row outline-none placeholder:text-tertiary focus:border-primary focus:ring-3 focus:ring-primary/20"
+          className="min-h-12 resize-y rounded-card border border-border-heavy bg-surface px-[15px] py-[13px] text-row outline-none placeholder:text-fg-tertiary focus:border-(--accent) focus:ring-3 focus:ring-(--accent)/20"
         />
       ) : (
         // 설명 상자 — 옅은 면 묶음(ui-refresh 결정 16, DS `.at-group.pad`)에 안쪽 14 · 16이다. 누르면 그 자리가 칸이 된다.
@@ -405,8 +405,8 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           onClick={startEditing}
           className={cn(
             GROUP,
-            "px-4 py-3.5 text-left text-row transition-colors hover:bg-state-2",
-            !project.description && "italic text-tertiary",
+            "px-4 py-3.5 text-left text-row transition-colors hover:bg-fill-hover",
+            !project.description && "italic text-fg-tertiary",
           )}
         >
           {project.description || "아직 설명이 없어요. 이 프로젝트가 무엇인지 적어 주세요."}

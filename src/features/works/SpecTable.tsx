@@ -7,9 +7,9 @@ import FullscreenModal from "./FullscreenModal";
 // 확대는 다이어그램 블록과 같은 틀(FullscreenModal)을 쓴다 — 같은 손버릇으로 열리고 닫힌다.
 //
 // 표는 카드 안 묶음이다(ui-refresh 결정 16, DS `.at-doc-table`) — 옅은 면 · `rounded-card` · 안쪽 6 · 테두리 없음이고,
-// 줄 사이 선 없이 줄의 hover(`state-2`)로 갈린다. 칸의 모양(머리 글자 · hover · 둥근 줄 끝)은 칸을 그리는
+// 줄 사이 선 없이 줄의 hover(`fill-hover`)로 갈린다. 칸의 모양(머리 글자 · hover · 둥근 줄 끝)은 칸을 그리는
 // 마크다운 렌더러(`SpecViewer`의 `th` · `td`)가 들고, 면은 여기가 든다. 전체화면 창 안의 표도 같은 면에 선다.
-const TABLE_SURFACE = "rounded-card bg-group p-1.5";
+const TABLE_SURFACE = "rounded-card bg-surface-under p-1.5";
 
 // 끄는 동작은 표가 받고, 손잡이는 열 머리(th)가 그린다 — 손잡이가 설 자리는 열 경계뿐이고
 // 그 자리를 아는 건 th다. 손잡이는 자기가 몇 번째 열인지 모른다. 끌기 시작할 때 DOM에서 읽는다.
@@ -138,7 +138,7 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
           두면 표의 오른쪽 위 모서리를 계속 덮고 있어서, 커서가 이미 그 자리에 멎어 있을 때 오는
           클릭을 아무것도 보이지 않는 버튼이 가로챈다. invisible은 그것까지 막아 주지만 키보드
           포커스도 함께 막아 Tab으로 도달할 수 없다 — 둘 다 필요하므로 나눠서 쓴다.
-          배경만 규격 밖이다: 표 셀 위에 겹치므로 불투명해야 하고, hover의 --state-2(8%)는
+          배경만 규격 밖이다: 표 셀 위에 겹치므로 불투명해야 하고, hover의 --fill-hover(8%)는
           반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다.
           opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다.
           도움말은 다이어그램의 여는 버튼과 같은 글자의 툴팁이다(틀이 단다). 이름(「표를 …」)이 이미 그 말을 해서
@@ -151,7 +151,7 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
         trigger={
           <button
             aria-label="표를 전체화면으로 보기"
-            className="icon-button pointer-events-none absolute right-1.5 top-1.5 z-20 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+            className="icon-button pointer-events-none absolute right-1.5 top-1.5 z-20 border bg-surface text-fg-tertiary opacity-0 outline-none transition-[color] hover:text-fg focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
           />
         }
       >

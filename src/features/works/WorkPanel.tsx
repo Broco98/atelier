@@ -184,7 +184,7 @@ function SpecTab({
     // 세로 스크롤은 여기까지 — 머리는 패널 카드에 고정되어 항상 보인다
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
       {items.length === 0 ? (
-        <span className="px-2 py-1.5 text-ui text-tertiary">아직 spec 파일이 없어요</span>
+        <span className="px-2 py-1.5 text-ui text-fg-tertiary">아직 spec 파일이 없어요</span>
       ) : (
         <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
       )}

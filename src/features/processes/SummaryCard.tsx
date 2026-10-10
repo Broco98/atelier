@@ -12,7 +12,7 @@ import type { ProcessSnapshot, TrendPoint } from "./types";
  * 출처 불명, 앱 본체.
  *
  * **타일 넷이다**(ui-refresh 결정 16 · 「같은 날 더 정한 것」 Processes 다시 그림, DS `.at-pr-tiles`): 메모리 합계(넓다 — 오른쪽 칸이 추이)
- * · CPU · 셸 · 고아. 타일마다 이름 줄 → 큰 수 → 아래 줄이고, 옅은 면(`bg-group`)이다. 수를 무엇으로 세는지는 그대로다.
+ * · CPU · 셸 · 고아. 타일마다 이름 줄 → 큰 수 → 아래 줄이고, 옅은 면(`surface-under`)이다. 수를 무엇으로 세는지는 그대로다.
  *
  * **새 박자를 걸지 않는다.** 화면이 이미 받는 스냅샷(부모가 넘긴다), nav 메타가 10초마다 가져오는 요약의 캐시, 스토어에서 읽는다 —
  * 어느 수를 어디서 읽는지는 `cardCounts`의 머리말. 추이만 따로 묻는데, 요약이 올 때마다 한 번이다(`useProcessTrend`).
@@ -37,7 +37,7 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
               누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로 세우면 포커스와 역할이 새로 생긴다(`sidebar-active-band` S29와 같은 까닭). */}
           <p data-figure="app" title={summary ? appBodyNote(summary.webviewExcluded) : undefined} className={TILE_NOTE}>
             앱 본체 <span className="tabular-nums">{formatMemory(summary?.app ?? null)}</span>
-            {summary?.webviewExcluded && <span className="ml-1.5 text-tertiary">({WEBVIEW_EXCLUDED})</span>}
+            {summary?.webviewExcluded && <span className="ml-1.5 text-fg-tertiary">({WEBVIEW_EXCLUDED})</span>}
           </p>
         </div>
         <Trend points={trend ?? []} />
@@ -58,13 +58,13 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
           <span data-figure="ownerless-shells">주인 잃은 셸 {counts.ownerlessShells}</span>
         </p>
       </div>
-      {/* 고아는 확정 고아와 출처 불명의 합이고, 아래 줄이 둘을 갈라 적는다(CONTEXT 「고아」, 판 06 문구 표 R4). 하나라도 있으면 앰버
-          점이 선다 — 손볼 것이 있다는 표시다. */}
+      {/* 고아는 확정 고아와 출처 불명의 합이고, 아래 줄이 둘을 갈라 적는다(CONTEXT 「고아」, 판 06 문구 표 R4). 하나라도 있으면 기다림
+          점(`dot-wait`)이 선다 — 손볼 것이 있다는 표시라 nav 메타의 점과 같은 색이다. */}
       <div className={TILE}>
         <TileName icon={CircleAlert}>고아</TileName>
         <Figure text={strays === null ? NOT_READ : `${strays}개`} />
         <p className={TILE_NOTE}>
-          {strays !== null && strays > 0 && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-wait" />}
+          {strays !== null && strays > 0 && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-dot-wait" />}
           <span data-figure="confirmed">확정 고아 {countOrDash(counts.confirmed)}</span>
           <Dot />
           <span data-figure="unknown">출처 불명 {countOrDash(counts.unknown)}</span>
@@ -75,15 +75,15 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
 }
 
 /** 타일 하나 — 옅은 면(DS `.at-pr-tile`). 넓은 타일(메모리 합계)은 이것을 가로로 눕혀 오른쪽에 추이를 둔다. */
-const TILE = "flex min-w-0 flex-col gap-0.5 rounded-card bg-group px-4.5 pt-3.5 pb-4";
+const TILE = "flex min-w-0 flex-col gap-0.5 rounded-card bg-surface-under px-4.5 pt-3.5 pb-4";
 
 /** 타일의 아래 줄 — 수 조각을 6px 틈으로 잇는다. */
-const TILE_NOTE = "flex min-w-0 flex-wrap items-center gap-1.5 text-caption text-muted-foreground";
+const TILE_NOTE = "flex min-w-0 flex-wrap items-center gap-1.5 text-caption text-fg-secondary";
 
 function TileName({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground">
-      <Icon aria-hidden className="size-3.5 shrink-0 text-tertiary" />
+    <span className="flex min-w-0 items-center gap-1.5 text-caption text-fg-secondary">
+      <Icon aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
       {children}
     </span>
   );
@@ -103,7 +103,7 @@ function Figure({ text, ...rest }: { text: string; "data-figure"?: string }) {
   return (
     <p className="mt-1.5 text-title whitespace-nowrap tabular-nums" {...rest}>
       {value}
-      {unit && <span className="ml-0.5 text-row font-medium tracking-normal text-muted-foreground">{unit}</span>}
+      {unit && <span className="ml-0.5 text-row font-medium tracking-normal text-fg-secondary">{unit}</span>}
     </p>
   );
 }
@@ -116,7 +116,7 @@ const BOX: SparkBox = { width: 400, height: 48, inset: 1.5 };
 
 /**
  * 지난 1시간 합계(`sparkline` — 가로는 시각, 세로는 0부터) — 넓은 타일의 오른쪽 칸을 채운다(DS `.at-pr-tile.wide .chart`). 선은
- * `primary`이고 그 밑을 옅게 채운다. 바닥(0)은 1시간 폭 전체에 긋는다 — 앱을 켠 지 얼마 안 되어 선이 오른쪽에만 있을 때, 그 선이
+ * Codex `accent`이고 그 밑을 옅게 채운다. 바닥(0)은 1시간 폭 전체에 긋는다 — 앱을 켠 지 얼마 안 되어 선이 오른쪽에만 있을 때, 그 선이
  * 1시간 중 얼마인지를 읽게 한다. 축 양끝이 「지난 1시간」 · 「지금」이다(판 06 문구 표 R2).
  *
  * 끝점은 그림 밖의 점이다 — 그림은 가로로 늘어나서 그 안의 원은 타원이 된다. 점이 하나면 선이 안 서서 끝점만 선다. 추이가 없으면
@@ -151,7 +151,7 @@ function Trend({ points }: { points: ReadonlyArray<TrendPoint> }) {
             vectorEffect="non-scaling-stroke"
             className="stroke-border"
           />
-          {line.length > 1 && <polygon points={area.map(at).join(" ")} className="fill-primary/8" />}
+          {line.length > 1 && <polygon points={area.map(at).join(" ")} className="fill-(--accent)/8" />}
           {line.length > 0 && (
             <polyline
               points={line.map(at).join(" ")}
@@ -160,19 +160,19 @@ function Trend({ points }: { points: ReadonlyArray<TrendPoint> }) {
               strokeLinejoin="round"
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
-              className="stroke-primary"
+              className="stroke-(--accent)"
             />
           )}
         </svg>
         {last && (
           <span
             aria-hidden
-            className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+            className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-(--accent)"
             style={{ left: `${(last[0] / BOX.width) * 100}%`, top: last[1] }}
           />
         )}
       </div>
-      <div className="flex justify-between text-meta text-tertiary">
+      <div className="flex justify-between text-meta text-fg-tertiary">
         <span>지난 1시간</span>
         <span>지금</span>
       </div>
