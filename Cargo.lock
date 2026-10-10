@@ -312,6 +312,7 @@ dependencies = [
 name = "atelier-app"
 version = "0.18.0"
 dependencies = [
+ "atelier-acp",
  "atelier-core",
  "libc",
  "notify-debouncer-mini",

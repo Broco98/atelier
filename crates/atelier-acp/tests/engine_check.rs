@@ -173,3 +173,26 @@ fn 설치기가_rc에_더한_path는_다시_확인에서만_보인다() {
         EngineCheck::Found { programs: vec![FoundProgram { name: "claude", path: installed.join("claude") }] },
     );
 }
+
+/// 엔진 확인의 답은 앱 명령을 건너 화면으로 간다(three-axes 티켓 05). 화면은 `state`로 찾음 · 못 찾음을 가르고,
+/// 안내 카드는 빠진 것마다 이름과 설치 명령을 보인다 — 이 꼴이 프런트의 `EngineCheck` 타입과 같은 말이다.
+#[test]
+fn 엔진_확인의_답은_화면이_읽는_꼴로_나간다() {
+    let found = EngineCheck::Found {
+        programs: vec![FoundProgram { name: "claude", path: "/Users/me/.local/bin/claude".into() }],
+    };
+    assert_eq!(
+        serde_json::to_value(&found).unwrap(),
+        serde_json::json!({"state": "found", "programs": [{"name": "claude", "path": "/Users/me/.local/bin/claude"}]}),
+    );
+    let missing = EngineCheck::Missing {
+        missing: vec![MissingProgram { name: "codex-acp", install: "npm i -g @agentclientprotocol/codex-acp" }],
+    };
+    assert_eq!(
+        serde_json::to_value(&missing).unwrap(),
+        serde_json::json!({
+            "state": "missing",
+            "missing": [{"name": "codex-acp", "install": "npm i -g @agentclientprotocol/codex-acp"}],
+        }),
+    );
+}

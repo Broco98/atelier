@@ -42,7 +42,8 @@ fn watches() -> Vec<Watch> {
         relevant: project_change_is_relevant,
     }];
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
-    // 빌드 등으로 이벤트가 폭주하므로 무시한다.
+    // 빌드 등으로 이벤트가 폭주하므로 무시한다. 대화 기록인 <slug>/agents/ 하위도
+    // 흐르는 답이 줄마다 쓰므로 무시한다(`in_conversation_records`).
     // spec 라이브 리로드는 반응성이 중요해 더 짧게 디바운스한다 (스펙: 300ms)
     all.push(Watch {
         dir: atelier_core::works_dir(),
@@ -81,7 +82,21 @@ fn works_change_is_relevant(path: &Path) -> bool {
     let in_trees = path
         .components()
         .any(|c| matches!(c, std::path::Component::Normal(n) if n == "trees"));
-    !in_trees && !is_dotfile(path)
+    !in_trees && !in_conversation_records(path) && !is_dotfile(path)
+}
+
+/// work 폴더 바로 아래의 대화 기록(`<slug>/agents/`, three-axes 결정 18)인가. 흐르는 답이 줄마다 이 폴더를 쓰는데,
+/// 화면은 대화를 기록 줄 이벤트로 그리므로 종을 칠 까닭이 없다(three-axes 구현 스펙 S17).
+///
+/// **works 루트에서 둘째 마디만 본다** — `trees`처럼 어느 마디든 거르면 spec 안의 `agents/` 폴더 문서까지 죽는다.
+/// 루트는 계획이 쥘 수 없어(`fn` 포인터) 여기서 부른다. 루트 밖의 경로로 오면(FSEvents가 심링크를 푼 경로를 줄 수
+/// 있다) 거르지 않는다 — 기록 한 줄에 종이 한 번 더 우는 쪽이 문서의 바뀜을 놓치는 쪽보다 낫다.
+fn in_conversation_records(path: &Path) -> bool {
+    let Ok(rest) = path.strip_prefix(atelier_core::works_dir()) else {
+        return false;
+    };
+    let mut parts = rest.components().skip(1);
+    matches!(parts.next(), Some(std::path::Component::Normal(n)) if n == "agents")
 }
 
 /// 레이아웃 폴더 아래는 점 파일만 거른다 — 저장의 원자적 쓰기가 남기는 tmp 단계다. 나머지는 모두
@@ -257,6 +272,25 @@ mod tests {
         for backup in [".order.json.bak", ".order.json.1.bak"] {
             assert!(!relevant(&works.join(backup)), "순서 파일의 벌 {backup}이 새어 들어온다");
         }
+    }
+
+    /// **대화 기록(`<slug>/agents/`)은 소식이 아니다**(three-axes 구현 스펙 S17). 흐르는 답이 줄마다 기록을 쓰는데, 종이
+    /// 울릴 때마다 화면이 work 목록(work마다 `git status`)과 열린 문서를 다시 읽는다. 화면은 대화를 기록 줄 이벤트로 그린다.
+    ///
+    /// **work 폴더 바로 아래의 `agents/`만 거른다** — `trees/`처럼 「어느 마디든」으로 거르면 사람이 spec 안에 둔
+    /// `agents/` 폴더의 문서까지 라이브 리로드가 죽는다. work 폴더 자체가 사라지는 일(아카이브 · 삭제)은 그대로 소식이다.
+    #[test]
+    fn a_conversation_record_is_not_news_but_the_spec_still_is() {
+        let works = atelier_core::works_dir();
+        let relevant = watch_on(&works).relevant;
+        for record in ["cart/agents/3f2a.jsonl", "cart/agents/agents.json", "cart/agents"] {
+            assert!(!relevant(&works.join(record)), "대화 기록 {record}이 새어 들어온다 — 흐르는 답 한 줄마다 화면이 다시 읽는다");
+        }
+        for document in ["cart/spec/overview.md", "cart/spec/agents/roles.md", "cart/spec/agents", "agents/spec/a.md"] {
+            assert!(relevant(&works.join(document)), "spec 문서 {document}의 바뀜이 안 들린다");
+        }
+        assert!(relevant(&works.join("cart")), "work 폴더가 사라진 것이 안 들린다");
+        assert!(relevant(&works.join("agents")), "이름이 agents인 work 폴더를 기록으로 읽는다");
     }
 
     /// 프로젝트 쪽 규칙은 그대로다 — `.md` 하나가 프로젝트 하나이므로 그 밖은 소식이 아니다.
