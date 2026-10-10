@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { File, Plus, SquareTerminal, X } from "lucide-react";
+import { File, Plus, SquareTerminal, X, type LucideIcon } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Hint } from "@/components/ui/tooltip";
 import { SIGNAL_LABEL, signalTint, subagentLabel } from "@/components/shell/shell-signal";
@@ -29,6 +29,25 @@ import type { TabStripGeometry } from "./tab-gap";
  * 함께 참이고, 그때 켜진 칸이 둘이다(결정 12).
  */
 export interface SpecTab {
+  on: boolean;
+  onSelect: () => void;
+}
+
+/**
+ * `spec` **바로 뒤에** 서는 고정 칸 하나(three-axes 결정 9 · S21) — 화면이 목록으로 넘긴다. `chat` 탭이 이 자리에 선다.
+ *
+ * **셸이 아니라서 셸 칸의 성질을 하나도 안 갖는다.** 숫자 키를 받지 않고(⌘1은 `spec`, ⌘2~9는 셸 — 셸 번호는 셸끼리만
+ * 센다), 분할에 들지 않고(끄는 자리가 없다 — 분할은 늘 `spec ▏터미널`), 순서를 바꾸지 않고, `×`가 없다. 모양과 켜짐을
+ * 말하는 법은 `spec` 칸 그대로다.
+ *
+ * `id`는 칸의 `data-tab` 값이다 — `spec` · `shell` · `new`는 이 줄이 이미 쓰므로 고르지 않는다. 글리프는 값으로 받는다:
+ * 이 줄은 `features/works`를 모른다(머리말).
+ */
+export interface FixedTab {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  /** 본문이 이 칸의 것인가 — `spec`의 `on`과 같은 뜻이다. */
   on: boolean;
   onSelect: () => void;
 }
@@ -64,6 +83,11 @@ interface ShellTabsProps {
    * `showing`이 함께 참이고, 그때 켜진 칸이 둘이다(결정 12).
    */
   spec: SpecTab | null;
+  /**
+   * `spec` 바로 뒤에 서는 고정 칸들(`FixedTab`) — 넘긴 순서대로 선다. **선택이다**: `/terminal`처럼 넘길 것이 없는
+   * 화면은 안 준다. 빠뜨려도 조용히 망가지는 것이 없어서다 — 끄는 콜백을 필수로 둔 까닭(아래 `onDragTab`)과 반대다.
+   */
+  fixed?: readonly FixedTab[];
   /**
    * **본문이 이 화면의 셸을 보여주는가.** 켜진 칸 표시를 그때만 준다.
    *
@@ -131,8 +155,9 @@ interface ShellTabsProps {
   actions?: React.ReactNode;
 }
 
-// 화면 머리행의 **가로 탭 줄**(결정 7·8·10). `[spec][셸…][+]`가 왼쪽부터 차고 오른쪽 끝에
+// 화면 머리행의 **가로 탭 줄**(결정 7·8·10). `[spec][고정 칸…][셸…][+]`가 왼쪽부터 차고 오른쪽 끝에
 // 조작이 고정된다. 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아온 것이다(adr-03).
+// 고정 칸은 화면이 넘기는 `FixedTab`이다(three-axes 결정 9) — 숫자 키를 안 받아 아래 순서의 셈에 안 든다.
 //
 // **새 순서를 발명하지 않는다.** ⌘1~9가 이미 이 순서를 세고 있어서(work 화면은 ⌘1이 spec,
 // ⌘2~9가 셸 — `shell-registry.ts`의 `shellForNav`) 이 줄이 하는 일은 키보드가 이미 아는
@@ -156,6 +181,7 @@ function ShellTabs({
   projects,
   defaultCwd,
   spec,
+  fixed = [],
   showing,
   onSelect,
   onClose,
@@ -372,38 +398,40 @@ function ShellTabs({
           // **순서엔 안 낀다** — 늘 맨 앞이다(UI개선 스펙 §6). 이 칸을 누르면 줄 기하를 안 재므로
           // 끄는 동안 틈이 서지 않고, 셸 칸의 틈은 이 칸 뒤부터 센다(`tab-gap.ts`).
           onPointerDown={(event) => onDragTab(null, event)}
-          className={cn(
-            // **이 칸은 안 줄어든다**(결정 20). 고정 탭이라 이름이 `spec` 넉 자로 고정이고,
-            // 줄일 것이 애초에 없다 — 그런데 `shrink`가 살아 있으면 넘칠 때 flex가 **폭에
-            // 비례해서** 깎아, 좁은 칸(66px)과 셸 칸(180px)이 나란히 6할씩 잃는다. 그러면
-            // 이 칸이 글리프도 못 담는 27px가 되면서 정작 셸 칸은 73px로 멀쩡하다.
-            // 줄어드는 것을 셸 칸 여덟으로 몰아 두는 것이 「균등」이 성립하는 조건이다.
-            //
-            // **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를
-            // 가르는 안은 실물에서 접었다 — 그 칸만 규격이 갈리면 줄에서 튄다. 「다른 종류」는
-            // 옆의 세로선 하나가 말한다.
-            //
-            // **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고
-            // 켜진 칸은 흰 면(`tab-on`)이다. 꺼진 칸의 글리프만 흐리다(`.at-tab .ic`).
-            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-foreground transition-colors",
-            spec.on ? "tab-on font-medium" : "hover:bg-state-1",
-          )}
+          className={fixedTabClass(spec.on)}
         >
-          <File className={cn("size-3.5 shrink-0", !spec.on && "text-tertiary")} strokeWidth={1.8} />
+          <File className={fixedGlyphClass(spec.on)} strokeWidth={1.8} />
           <span className="min-w-0 truncate">spec</span>
         </button>
       )}
 
+      {/* `spec` 뒤의 고정 칸들(three-axes 결정 9). **셸 상자 밖, 세로선 앞이다** — 상자 안에 들면 켜진 칸 `scrollIntoView`
+          · 틈 번호 · 줄어드는 몫이 이 칸까지 세어 셸 칸의 셈이 밀린다. 모양과 켜짐은 `spec` 칸 그대로이고(결정 25 — 같은
+          알약, 안 줄어든다) **`onPointerDown`이 없다**: 분할에 들지 않고 순서에도 안 낀다(`FixedTab`). */}
+      {fixed.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          data-tab={tab.id}
+          aria-pressed={tab.on}
+          onClick={tab.onSelect}
+          className={fixedTabClass(tab.on)}
+        >
+          <tab.icon className={fixedGlyphClass(tab.on)} strokeWidth={1.8} />
+          <span className="min-w-0 truncate">{tab.label}</span>
+        </button>
+      ))}
+
       {/* `spec`와 셸 칸 **사이**의 세로선(결정 25). 말하는 것은 「묶음이 다르다」 하나다 —
-          왼쪽은 고정된 한 칸이고 오른쪽은 스크롤하는 상자다. 종류가 다르다는 말은 위 칸의
+          왼쪽은 고정된 칸(`spec`과 그 뒤 칸들)이고 오른쪽은 스크롤하는 상자다. 종류가 다르다는 말은 위 칸의
           바탕이 따로 한다.
 
-          **`spec`가 있을 때만 선다.** `/terminal`에는 그 칸이 없어(결정 8) 가를 것이 없는데,
+          **고정 칸(`spec` · 그 뒤 칸들)이 있을 때만 선다.** `/terminal`에는 그 칸이 없어(결정 8) 가를 것이 없는데,
           조건 없이 두면 그 화면에서 줄 맨 앞에 이유 없는 선 하나가 남는다.
 
           창을 끄는 자리를 뺏지 않는다 — 이 줄은 타이틀바를 겸하므로(머리말) 속성이 없는
           자식은 그만큼 죽은 자리가 된다. 아래 `min-w-4 flex-1` 여백과 같은 이유다. */}
-      {spec && (
+      {(spec || fixed.length > 0) && (
         <span
           aria-hidden
           data-tauri-drag-region
@@ -533,6 +561,31 @@ function ShellTabs({
       )}
     </>
   );
+}
+
+/**
+ * 고정 칸(`spec` · 그 뒤 칸들 — `FixedTab`)의 알약. **두 자리가 한 규격이다** — 한쪽만 손보면 같은 줄의 고정 칸이 둘로 갈린다.
+ *
+ * **이 칸은 안 줄어든다**(결정 20). 고정 탭이라 이름이 `spec` 넉 자로 고정이고, 줄일 것이 애초에 없다 — 그런데 `shrink`가
+ * 살아 있으면 넘칠 때 flex가 **폭에 비례해서** 깎아, 좁은 칸(66px)과 셸 칸(180px)이 나란히 6할씩 잃는다. 그러면 이 칸이
+ * 글리프도 못 담는 27px가 되면서 정작 셸 칸은 73px로 멀쩡하다. 줄어드는 것을 셸 칸 여덟으로 몰아 두는 것이 「균등」이
+ * 성립하는 조건이다.
+ *
+ * **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를 가르는 안은 실물에서 접었다 — 그 칸만 규격이
+ * 갈리면 줄에서 튄다. 「다른 종류」는 옆의 세로선 하나가 말한다.
+ *
+ * **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고 켜진 칸은 흰 면(`tab-on`)이다.
+ * 꺼진 칸의 글리프만 흐리다(`.at-tab .ic` — `fixedGlyphClass`).
+ */
+function fixedTabClass(on: boolean): string {
+  return cn(
+    "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-ui text-foreground transition-colors",
+    on ? "tab-on font-medium" : "hover:bg-state-1",
+  );
+}
+
+function fixedGlyphClass(on: boolean): string {
+  return cn("size-3.5 shrink-0", !on && "text-tertiary");
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import type { ColumnTab, SplitSide } from "@/routes/-work-search";
 import type { DragKind, SplitHalf } from "@/lib/pointer-drag";
 
 /**
@@ -30,10 +30,11 @@ export function dropSplit(kind: DragKind, half: SplitHalf): SplitSide {
 }
 
 /**
- * 끈 것이 서는 **본문**. `DragKind`와 `ViewTab`이 「셸 ↔ 터미널」 한 칸에서 어긋나 있어,
+ * 끈 것이 서는 **본문**. `DragKind`와 `ColumnTab`이 「셸 ↔ 터미널」 한 칸에서 어긋나 있어,
  * 이 대응을 부르는 쪽마다 적으면 같은 `? :`가 여러 곳에 산다(리뷰가 셋을 셌다).
+ * 끌리는 것은 분할의 열에 서는 둘뿐이라 돌려주는 것도 열 탭이다(`ColumnTab` — 넘겨받은 고정 칸은 안 끌린다).
  */
-export function tabOfDrag(kind: DragKind): ViewTab {
+export function tabOfDrag(kind: DragKind): ColumnTab {
   return kind === "shell" ? "terminal" : "spec";
 }
 
@@ -41,6 +42,6 @@ export function tabOfDrag(kind: DragKind): ViewTab {
  * 반대쪽 열. 열 조합이 늘 `spec ▏터미널`이라(결정 87) 한쪽을 닫으면 **남는 것이 정해진다** —
  * 열 머리의 `×`가 그 값을 `tab`으로 남긴다(결정 89).
  */
-export function otherTab(tab: ViewTab): ViewTab {
+export function otherTab(tab: ColumnTab): ColumnTab {
   return tab === "spec" ? "terminal" : "spec";
 }
