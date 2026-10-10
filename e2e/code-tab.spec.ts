@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./evidence";
+import { readCodeView } from "./code-view";
 import { WORKS } from "./fixtures";
 import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownIpcCalls, writeShell } from "./harness";
 
@@ -7,7 +8,7 @@ import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownI
 // 파일 탭은 셸 탭과 한 묶음이다(결정 31). 주소 `?tab=code&code=<프로젝트>/<경로>`가 「묶음의 지금 탭이 그 파일이다」를 말하고
 // (S12), 묶음에 없으면 끝에 연다(스토리 60). 닫기는 확인이 없다(스토리 37 · 50) — 셸의 ⌘W는 지금처럼 묻는다(스토리 51).
 //
-// 본문은 지금 있는 원문 보기(줄 번호, 강조 없음)다 — 강조는 08이 갈아 끼운다.
+// 본문은 강조된 코드다 — 08이 원문 보기를 갈아 끼웠다. 강조 자체는 `code-highlight.spec.ts`가 잰다.
 
 // 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다.
 const [work, plainWork] = WORKS;
@@ -61,8 +62,16 @@ test("주소가 가리키는 파일이 묶음 끝에 파일 탭으로 서고, �
   await expect(card).toBeVisible();
   // 경로 줄 — `<프로젝트> › 폴더 › 파일`(S17).
   await expect(card.getByRole("navigation", { name: "위치" })).toHaveText("billingsrcmain.ts");
-  // 줄 번호 붙은 원문 — 줄마다 번호가 앞에 선다.
-  await expect(card).toContainText(/1\s*const answer = 42;\s*2\s*\/\/ 끝까지 읽는다\s*3\s*export default "answer";/);
+  // 줄 번호 붙은 원문 — 줄마다 번호가 선다. 본문은 강조된 코드라(08) shadow DOM 안을 읽는다(`readCodeView`).
+  await expect
+    .poll(async () => {
+      const { numbers, lines } = await readCodeView(card);
+      return { numbers, lines: lines.map((line) => line.text.trim()) };
+    })
+    .toEqual({
+      numbers: ["1", "2", "3", "4"],
+      lines: ["const answer = 42;", "// 끝까지 읽는다", 'export default "answer";', ""],
+    });
   // 셸 화면은 내려갔다 — 본문은 하나다.
   await expect(page.locator(".xterm")).toHaveCount(0);
 

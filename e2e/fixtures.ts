@@ -736,6 +736,8 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
     content: 'const answer = 42;\n// 끝까지 읽는다\nexport default "answer";\n',
     lines: 3,
   },
+  // **한 줄에** 키워드 · 문자열 · 주석 — WebKit 오토큰 검사(티켓 08)가 강조가 끝난 뒤 셋이 따로 칠해졌는지 잰다.
+  "src/greeting.ts": { kind: "text", content: 'const greeting = "안녕"; // 인사\n', lines: 1 },
   "README.md": { kind: "text", content: "# 빌링\n", lines: 1 },
   "ghost.ts": { kind: "worktreeMissing" },
   "secret.txt": { kind: "outsideLink", target: "~/secrets/token.txt" },
