@@ -169,6 +169,8 @@ test("`tab=code`만 있고 파일이 없으면 spec이다", async ({ page }) => 
 test("work을 옮겼다 돌아와도 파일 탭과 그 차례가 남는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(codeUrl("billing/src/main.ts"));
+  // 첫 주소의 탭이 선 뒤에 다음 주소로 간다 — 앱이 뜨기 전에 주소가 바뀌면 첫 주소를 못 보고 지나간다.
+  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
   await 주소로간다(page, codeUrl("billing/README.md"));
   await expect.poll(() => 파일탭차례(page)).toEqual(["billing/src/main.ts", "billing/README.md"]);
 
