@@ -6,7 +6,7 @@ import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
-import { useChatRecordFeed } from "@/features/chat/hooks";
+import { useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
@@ -96,6 +96,8 @@ function AppShell() {
   // 돌고, 화면은 그 줄을 이 구독 하나로 받아 모듈 스토어에 쌓는다 — 대화창이 저마다 들으면 보이지 않는 work의 줄이 버려져
   // 돌아왔을 때 그사이 흐른 답이 빈다(스토리 14 · 15). 턴 끝 알림도 여기서 한 번 낸다(스토리 121, 알림 자리는 `ChatAnnouncer`).
   useChatRecordFeed();
+  // 대기 줄 바뀜도 같은 까닭으로 여기 하나다(three-axes 티켓 20) — 다른 work에 가 있는 동안 대기 말이 가도 돌아오면 맞는 대기 줄이다.
+  useChatQueueFeed();
 
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open`(위)과 같은 뿌리에서 듣는 것은 그쪽도
