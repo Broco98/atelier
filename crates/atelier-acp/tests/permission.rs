@@ -6,7 +6,10 @@
 
 mod common;
 
-use atelier_acp::Agent;
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
+
+use atelier_acp::{Agent, HostError, HostEvent};
 use common::{of_kind, payloads_of, sent_texts, Sandbox};
 use serde_json::{json, Value};
 
@@ -293,6 +296,97 @@ fn 턴_밖에서_걸린_권한도_대기_줄을_붙잡고_답하는_자리에서
     assert_eq!(sent_texts(&record), ["첫 말", "둘째 말"], "걸림이 풀린 자리에서 대기 말이 간다");
     assert_eq!(sandbox.acp_prompts(&session_id).len(), 2);
     assert_eq!(events.queue_texts("cart", &conversation.id).last(), Some(&Vec::<String>::new()));
+
+    host.shut_down();
+}
+
+/// **닫기와 엇갈린 권한 답은 닫기 앞에 서거나 물러난다 — 닫기 전에 그 대화를 찾아 두었어도.** 닫기는 떠 있는 표에서 대화를
+/// 꺼낸 뒤 에이전트를 끄는데(1초 한도), 꺼낸 뒤로는 명령이 그 대화에 닿지 않는 것에 기댄다 — 닫히는 대화에 권한 답 · 보낸 말이
+/// 끼지 않게. 바꾸기(첫 말이 없음을 확인한 뒤 옛 엔진을 끈다)도 같은 것에 기댄다. 그래서 답은 둘 가운데 하나다: 닫기보다 먼저
+/// 대화를 쥐어 에이전트가 그 답을 받거나, 닫힌 요청으로 거절되고 기록에 아무것도 남기지 않는다. 끄기 시작한 에이전트에 보내다
+/// 끊기는 일(기록에는 답했다고 적히고 에이전트는 못 받는다)은 없다.
+///
+/// 틈을 붙잡아 잰다: 대기 말 고치기가 대화의 잠금을 쥔 채 대기 줄 바뀜을 내는 자리에서 이벤트를 붙들어 두면, 그 뒤에 온 권한 답은
+/// 대화를 찾은 채 그 잠금을 기다린다. 그 사이 닫기가 대화를 꺼낸 뒤 이벤트를 놓는다. 가짜는 stdin이 닫혀도 남아 끄기가 1초 한도를
+/// 다 쓴다 — 닫기가 대화를 쥐기 전에 끄기부터 시작하면 권한 답은 끄는 사이에 닿는다.
+#[test]
+fn 닫기와_엇갈린_권한_답은_찾아_둔_대화라도_닫기_앞에_서거나_물러나고_끄는_에이전트에_닿다_끊기지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let shell = sandbox.codex_login_shell(
+        "asks-permission",
+        &[("FAKE_ACP_PERMISSION_OUT_OF_TURN", "1"), ("FAKE_ACP_LINGERS", "1")],
+    );
+    let events = common::Events::default();
+    let (held, holding) = mpsc::channel::<()>();
+    let (release, released) = mpsc::channel::<()>();
+    let released = Mutex::new(released);
+    let sink = events.clone();
+    let host = Arc::new(
+        sandbox
+            .host_builder(shell, move |event| {
+                let edited = matches!(&event, HostEvent::Queue { queue, .. }
+                    if queue.iter().map(|queued| queued.text.as_str()).eq(["둘째 말 고침"]));
+                sink.push(event);
+                if edited {
+                    held.send(()).unwrap();
+                    released.lock().unwrap().recv_timeout(common::PATIENCE).expect("붙든 이벤트를 놓지 않았다");
+                }
+            })
+            .build(),
+    );
+    let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
+    let id = conversation.id.clone();
+    let session_id = sandbox.agent_session_id("cart", &id);
+    host.send("cart", &id, "첫 말").expect("첫 말");
+    sandbox.wait_record("cart", &id, asked_and_flowing);
+    host.send("cart", &id, "둘째 말").expect("걸린 권한이 있으면 대기 줄에 든다");
+    let queued = events.queues("cart", &id).last().expect("대기 줄 바뀜")[0].id.clone();
+
+    // 대기 말 고치기가 대화의 잠금을 쥔 채 붙들린다.
+    let editing = std::thread::spawn({
+        let (host, id) = (Arc::clone(&host), id.clone());
+        move || host.edit_queued("cart", &id, &queued, "둘째 말 고침")
+    });
+    holding.recv_timeout(common::PATIENCE).expect("대기 말 고치기가 대기 줄 바뀜을 내지 않았다");
+    // 권한 답이 대화를 찾고 그 잠금을 기다린다.
+    let answering = std::thread::spawn({
+        let (host, id) = (Arc::clone(&host), id.clone());
+        move || host.answer_permission("cart", &id, "0", "allow_once")
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    // 닫기가 대화를 꺼낸다.
+    let closing = std::thread::spawn({
+        let (host, id) = (Arc::clone(&host), id.clone());
+        move || host.close_conversation("cart", &id)
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    release.send(()).unwrap();
+
+    editing.join().unwrap().expect("대기 말 고치기");
+    let answered = answering.join().unwrap();
+    closing.join().unwrap().expect("닫기");
+    let record = sandbox.record("cart", &id);
+    match &answered {
+        // 닫기 앞에 섰다 — 에이전트가 그 답을 받았다.
+        Ok(()) => assert_eq!(
+            sandbox.acp_responses(&session_id),
+            [json!({"jsonrpc": "2.0", "id": 0, "result": {"outcome": {"outcome": "selected", "optionId": "allow_once"}}})],
+            "답했다고 했는데 에이전트가 못 받았다:\n{}",
+            common::lines_text(&record)
+        ),
+        // 물러났다 — 닫히는 대화에 답 줄도 대기 말도 끼지 않았다.
+        Err(HostError::PermissionClosed { .. }) => {
+            assert!(
+                !payloads_of(&record, "permission").iter().any(|payload| payload["state"] == "answered"),
+                "닫히는 대화에 권한 답 줄이 끼었다:\n{}",
+                common::lines_text(&record)
+            );
+            assert_eq!(sent_texts(&record), ["첫 말"], "닫히는 대화에 대기 말이 보내졌다:\n{}", common::lines_text(&record));
+        }
+        Err(error) => panic!("끄기 시작한 에이전트에 권한 답이 닿았다 — {error}:\n{}", common::lines_text(&record)),
+    }
+    assert_eq!(record.last().unwrap()["kind"], "session", "닫힘 줄이 끝이다:\n{}", common::lines_text(&record));
 
     host.shut_down();
 }

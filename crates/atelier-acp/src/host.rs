@@ -213,6 +213,11 @@ struct ConvState {
     /// 마지막 턴 끝에 견준 「지금」 — 그 뒤로 대기 줄의 말이 가지 않았으면 쥐어 둔다. 에이전트가 스스로 이어 간 턴(S4)은
     /// 이것을 그 턴의 앞으로 삼는다 — 쉬는 동안 백그라운드 작업이나 그 턴이 고친 것이 그 턴의 고친 곳으로 선다.
     after_last: Option<Snapshot>,
+    /// 떠 있는 표에서 꺼냈나 — 바꾸기 · 닫기 · 되살리기 · 사라진 work 끄기 · 호스트 끄기가 이 대화를 쥐었다. 명령은 표에서 대화를
+    /// 찾은 뒤 표의 잠금을 놓고 이 잠금을 쥐는데(S2), 그 사이에 꺼내졌으면 표에 없는 대화로 본다([`Conv::lock_found`]). 꺼낸 쪽은
+    /// 꺼낸 뒤로 명령이 이 대화에 닿지 않는 것에 기댄다 — 바꾸기가 첫 말을 확인한 뒤 옛 엔진을 끄는 사이에 말이 끼지 않고, 닫히는
+    /// 대화에 말 · 권한 답이 끼지 않는다. 표에 되돌려 넣을 때 걷힌다.
+    taken: bool,
 }
 
 /// 에이전트가 스스로 이어 간 턴 하나(S4).
@@ -255,7 +260,7 @@ impl ConvState {
     }
 
     /// 턴을 쉬는 것으로 되돌린다 — 에이전트가 죽었거나(`alive = false`) 다시 열렸다(`alive = true`). 턴에 딸린 칸(도는 턴 ·
-    /// 그 앞 · 스스로 이어 간 턴 · 마지막 턴 끝의 「지금」)은 모두 걷고, 대화에 딸린 칸(대기 줄 · 머리말 · 턴 손잡이)만 남긴다
+    /// 그 앞 · 스스로 이어 간 턴 · 마지막 턴 끝의 「지금」)은 모두 걷고, 대화에 딸린 칸(대기 줄 · 머리말 · 턴 손잡이 · 꺼냄)만 남긴다
     /// — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13). 칸을 더하면 기본값으로 걷힌다: 남길 칸만 여기 적는다.
     fn rest(&mut self, alive: bool) {
         *self = Self {
@@ -263,6 +268,7 @@ impl ConvState {
             needs_preamble: self.needs_preamble,
             turns: self.turns.take(),
             queue: std::mem::take(&mut self.queue),
+            taken: self.taken,
             ..Self::default()
         };
     }
@@ -281,6 +287,14 @@ impl Conv {
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
         self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 표에서 찾은 대화의 잠금 — 명령은 [`ConversationHost::find_live`]로 찾은 대화를 이것으로 쥔다. 찾은 뒤 이 잠금을 쥐기 전에
+    /// 다른 명령이 표에서 꺼냈으면 `None`이다: 그 대화는 표에 없는 것과 같다(`ConvState::taken`). 턴 끝 · 죽음처럼 런타임이
+    /// 넘긴 것은 명령이 아니라 이것을 거치지 않는다.
+    fn lock_found(&self) -> Option<MutexGuard<'_, ConvState>> {
+        let state = self.lock_state();
+        (!state.taken).then_some(state)
     }
 
     /// 런타임이 넘긴 것을 기록에 적는 sink.
@@ -637,12 +651,22 @@ fn retire_vanished(live: &LiveTable, pick: impl Fn(&str, &Live) -> bool) {
             table.iter().filter(|(id, conversation)| pick(id, conversation)).map(|(id, _)| id.clone()).collect();
         ids.iter().filter_map(|id| table.remove(id)).collect()
     };
+    mark_taken(&retiring);
     shut_down_together(&mut retiring);
     for conversation in &retiring {
         let closed = SessionState::Closed { cause: Some(CloseCause::WorkVanished) };
         if let Err(error) = conversation.conv.recorder.session(closed) {
             eprintln!("{error}");
         }
+    }
+}
+
+/// 떠 있는 표에서 꺼낸 대화들에 꺼냈다고 적는다(`ConvState::taken`) — 표의 잠금을 놓은 뒤에 부른다. 대화의 잠금이 턴 끝의 spec
+/// 폴더 견주기에 쥐여 있어도 다른 대화의 명령이 표에서 막히지 않게(S2). 꺼낸 뒤에 표에서 찾는 명령은 대화를 못 찾고, 그 전에
+/// 찾아 둔 명령은 이 표시를 보고 물러난다 — 이미 그 잠금을 쥔 명령이면 그것이 끝난 뒤에 적힌다.
+fn mark_taken(taken: &[Live]) {
+    for live in taken {
+        live.conv.lock_state().taken = true;
     }
 }
 
@@ -889,7 +913,9 @@ impl ConversationHost {
         self.revive(key, Revive::EvenIfRunning)?;
         // 표의 잠금은 놓고 보낸다 — 맨 앞의 턴 앞을 찍느라 spec 폴더를 걷는 동안 다른 대화의 명령을 막지 않게(S2).
         if let Some(conv) = self.find_live(key) {
-            conv.send_queued(&mut conv.lock_state(), None);
+            if let Some(mut state) = conv.lock_found() {
+                conv.send_queued(&mut state, None);
+            }
         }
         Ok(())
     }
@@ -940,7 +966,7 @@ impl ConversationHost {
 
     /// 그 대화의 에이전트가 떠 있고 살아 있나 — 아니면 보내기가 먼저 되살린다.
     fn is_running(&self, key: ConversationKey) -> bool {
-        self.find_live(key).is_some_and(|conv| conv.lock_state().is_up())
+        self.find_live(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up()))
     }
 
     /// 찾고, 찾았으면 로그인을 묻는다.
@@ -1069,12 +1095,12 @@ impl ConversationHost {
         let work_at = self.open_work(work)?;
         let mut row = work_at.open_row(conversation)?;
 
-        // 떠 있는 표에서 먼저 꺼낸다 — 꺼낸 뒤로는 보내기가 이 대화에 닿지 않아, 첫 말을 확인하는 사이에 말이 끼지 못한다.
-        // 바꾸지 않고 돌아갈 때는 그대로 되돌려 둔다.
+        // 떠 있는 표에서 먼저 꺼낸다 — 꺼낸 뒤로는 보내기가 이 대화에 닿지 않아(먼저 찾아 둔 보내기도 대화의 잠금에서 물러난다),
+        // 첫 말을 확인하는 사이에 말이 끼지 못한다. 바꾸지 않고 돌아갈 때는 그대로 되돌려 둔다.
         let live = self.take_live(key);
         let put_back = |live: Option<Live>| {
             if let Some(live) = live {
-                self.lock_live().insert(conversation.to_owned(), live);
+                self.put_live(conversation.to_owned(), live);
             }
         };
         let record = records::record_path(&work_at.places.agents, conversation);
@@ -1131,7 +1157,11 @@ impl ConversationHost {
         }
         // 새 엔진의 새 세션이다 — 옛 프로세스가 죽어 있었어도 다시 산 것으로 보고, 첫 말에 머리말을 붙인다(S11). 대기 줄은
         // 비어 있다 — 말은 턴이 도는 동안에만 대기 줄에 들고, 턴은 첫 말이 연다(첫 말 뒤에는 위에서 거절했다).
-        *conv.lock_state() = ConvState::fresh();
+        // 표에 다시 들 때까지는 꺼낸 대화다 — 옛 엔진에 쥐여 기다리던 명령이 새 엔진에 닿지 않게.
+        {
+            let mut state = conv.lock_state();
+            *state = ConvState { taken: state.taken, ..ConvState::fresh() };
+        }
         self.open_agent(work, &work_at.places, &mut row, conv, &env, &programs)
     }
 
@@ -1207,7 +1237,7 @@ impl ConversationHost {
         }
 
         let conversation = summary(row, recorder.last_seq(), Vec::new(), true);
-        self.lock_live().insert(row.id.clone(), Live { work: work.to_owned(), agent: agent_process, conv });
+        self.put_live(row.id.clone(), Live { work: work.to_owned(), agent: agent_process, conv });
         Ok(conversation)
     }
 
@@ -1273,13 +1303,15 @@ impl ConversationHost {
             self.revive(key, Revive::IfNotRunning)?;
         }
 
-        let Some(conv) = self.find_live(key) else {
+        // 찾은 뒤 대화의 잠금을 쥐기 전에 다른 명령(바꾸기 · 닫기)이 꺼냈으면 떠 있지 않은 것과 같다 — 바꾸기는 첫 말이 없음을
+        // 확인한 뒤 옛 엔진을 끄는데, 그 사이에 이 말이 옛 엔진에 가면 첫 말 전에만 바꾼다(three-axes 결정 15)가 깨진다.
+        let found = self.find_live(key);
+        let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(conversation) {
                 Some(agent) => HostError::LoginRequired { agent, conversation: conversation.to_owned() },
                 None => HostError::NotRunning(conversation.to_owned()),
             });
         };
-        let mut state = conv.lock_state();
         if let Some(agent) = self.logins.waiting_for(conversation) {
             // 턴 도중에 로그인이 풀렸다. 대화의 잠금 안에서 본다 — 턴 끝이 같은 잠금 안에서 쥐게 한다.
             return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
@@ -1313,7 +1345,7 @@ impl ConversationHost {
     pub fn stop(&self, work: &str, conversation: &str) -> Result<(), HostError> {
         let key = ConversationKey::new(work, conversation)?;
         let Some(conv) = self.find_live(key) else { return Ok(()) };
-        let mut state = conv.lock_state();
+        let Some(mut state) = conv.lock_found() else { return Ok(()) };
         conv.stop_turn(&mut state)
     }
 
@@ -1329,7 +1361,7 @@ impl ConversationHost {
         // 표의 잠금은 놓고 답한다 — 걸림이 풀려 대기 줄의 맨 앞을 보내면 그 턴 앞을 찍느라 spec 폴더를 걷는데, 그동안 다른
         // 대화의 명령을 막지 않게(S2).
         let conv = self.find_live(key).ok_or_else(closed)?;
-        let mut state = conv.lock_state();
+        let mut state = conv.lock_found().ok_or_else(closed)?;
         let turns = state.turns.clone().ok_or_else(closed)?;
         turns.answer(request, option).map_err(|error| match error {
             AnswerError::Closed => closed(),
@@ -1373,8 +1405,9 @@ impl ConversationHost {
     pub fn send_now(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
         let key = ConversationKey::new(work, conversation)?;
         let dead_with_it = self.find_live(key).is_some_and(|conv| {
-            let state = conv.lock_state();
-            !state.is_up() && state.queue.iter().any(|item| item.message.id == queued)
+            conv.lock_found().is_some_and(|state| {
+                !state.is_up() && state.queue.iter().any(|item| item.message.id == queued)
+            })
         });
         if dead_with_it && self.logins.waiting_for(conversation).is_none() {
             self.revive(key, Revive::IfNotRunning)?;
@@ -1414,7 +1447,7 @@ impl ConversationHost {
     ) -> Result<(), HostError> {
         let not_found = || HostError::QueuedNotFound(queued.to_owned());
         let conv = self.find_live(key).ok_or_else(not_found)?;
-        let mut state = conv.lock_state();
+        let mut state = conv.lock_found().ok_or_else(not_found)?;
         let at = state.queue.iter().position(|item| item.message.id == queued).ok_or_else(not_found)?;
         change(&conv, &mut state, at)
     }
@@ -1457,7 +1490,7 @@ impl ConversationHost {
         // 에이전트가 떠 있으면 엔진에 먼저 넣는다 — 대화들의 잠금은 놓고 기다린다(턴 끝이 그 잠금을 쥔다).
         let running: Option<(Arc<Conv>, runtime::Turns)> = self.find_live(key).and_then(|conv| {
             let turns = {
-                let state = conv.lock_state();
+                let state = conv.lock_found()?;
                 state.turns.clone().filter(|_| state.alive)
             }?;
             Some((conv, turns))
@@ -1584,6 +1617,7 @@ impl ConversationHost {
         // 로그인 명령도 끈다 — SIGTERM을 먼저 보내 두고, 대화들을 끄는 1초 뒤에 남은 것을 SIGKILL한다.
         self.logins.begin_close();
         let mut live: Vec<Live> = self.lock_live().drain().map(|(_, live)| live).collect();
+        mark_taken(&live);
         shut_down_together(&mut live);
         self.logins.finish_close();
     }
@@ -1624,18 +1658,30 @@ impl ConversationHost {
     }
 
     /// 그 대화가 떠 있으면 그 대화 — 표의 잠금은 곧바로 놓는다(S2). 부른 쪽은 그 대화의 잠금만 쥐고 일하므로, 한 대화가 spec
-    /// 폴더를 찍는 동안에도 다른 대화의 명령이 표에서 막히지 않는다.
+    /// 폴더를 찍는 동안에도 다른 대화의 명령이 표에서 막히지 않는다. 그 잠금은 [`Conv::lock_found`]로 쥔다 — 찾은 뒤 다른 명령이
+    /// 꺼냈으면 거기서 물러난다.
     fn find_live(&self, key: ConversationKey) -> Option<Arc<Conv>> {
         self.lock_live().get(key.id).filter(|live| live.work == key.work).map(|live| Arc::clone(&live.conv))
     }
 
-    /// 그 대화가 떠 있으면 표에서 꺼낸다.
+    /// 그 대화가 떠 있으면 표에서 꺼낸다 — 꺼낸 대화라고 적고 돌려준다([`mark_taken`]). 꺼낸 뒤로는 어느 명령도 이 대화에 닿지
+    /// 않는다: 표에서 못 찾고, 먼저 찾아 둔 명령도 대화의 잠금에서 물러난다. 되돌려 넣는 것은 [`Self::put_live`]다.
     fn take_live(&self, key: ConversationKey) -> Option<Live> {
-        let mut live = self.lock_live();
-        match live.get(key.id) {
-            Some(found) if found.work == key.work => live.remove(key.id),
-            _ => None,
-        }
+        let taken = {
+            let mut live = self.lock_live();
+            match live.get(key.id) {
+                Some(found) if found.work == key.work => live.remove(key.id),
+                _ => None,
+            }
+        };
+        mark_taken(taken.as_slice());
+        taken
+    }
+
+    /// 대화를 떠 있는 표에 넣는다 — 새로 띄웠거나, 꺼냈다가 되돌린다. 꺼냄 표시를 걷은 뒤에 넣는다.
+    fn put_live(&self, id: String, live: Live) {
+        live.conv.lock_state().taken = false;
+        self.lock_live().insert(id, live);
     }
 
     fn lock_live(&self) -> MutexGuard<'_, HashMap<String, Live>> {

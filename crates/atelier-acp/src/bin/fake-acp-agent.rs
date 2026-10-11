@@ -31,6 +31,8 @@
 //!   권한이 걸린 채 죽는 갈래(three-axes 티켓 10).
 //! - `FAKE_ACP_REVIVE_HOLDS` — 있으면 아는 세션의 되살리기(`session/resume` · `session/load`)를 답하기 전에 `<세션 id>.go`가 설
 //!   때까지 붙잡는다 — 되살리는 동안 온 명령(칩의 바꾸기)을 잰다.
+//! - `FAKE_ACP_LINGERS` — 있으면 시나리오가 끝나도(stdin이 닫혀도) 끝나지 않는다 — `ignores-shutdown`처럼 끄기가 1초 한도를 다
+//!   쓴다. 호스트가 대화를 끄는 그 1초 사이에 닿은 명령을 잰다.
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -93,6 +95,11 @@ fn main() {
         std::process::exit(2);
     };
     scenario(&mut Fake::new());
+    if std::env::var_os("FAKE_ACP_LINGERS").is_some() {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+    }
 }
 
 /// 무엇을 물어도 정상으로 답하고, stdin이 닫히면 끝나는 에이전트. 어긋난 시나리오들의 기준선이다.

@@ -164,7 +164,7 @@ impl Sandbox {
     pub fn host_builder_with_events(&self, shell: ShellSource) -> (atelier_acp::HostBuilder, Events) {
         let events = Events::default();
         let sink = events.clone();
-        (self.host_builder(shell, move |event| sink.0.lock().unwrap().push(event)), events)
+        (self.host_builder(shell, move |event| sink.push(event)), events)
     }
 
     pub fn host_builder(
@@ -991,6 +991,11 @@ pub const NO_BROWSER: Option<&str> = Some("/usr/bin/true");
 pub struct Events(Arc<Mutex<Vec<HostEvent>>>);
 
 impl Events {
+    /// 호스트가 낸 이벤트 하나를 모은다 — 제 emit을 짓는 시험(이벤트를 붙드는 시험)이 부른다.
+    pub fn push(&self, event: HostEvent) {
+        self.0.lock().unwrap().push(event);
+    }
+
     pub fn all(&self) -> Vec<HostEvent> {
         self.0.lock().unwrap().clone()
     }
