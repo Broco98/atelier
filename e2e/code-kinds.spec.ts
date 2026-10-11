@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./evidence";
+import { readCodeView, type CodeViewReading } from "./code-view";
 import { WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls } from "./harness";
 
@@ -14,6 +15,8 @@ const [work] = WORKS;
 const codeUrl = (ref: string) => `/works/${work.slug}?tab=code&code=${encodeURIComponent(ref)}`;
 /** 코드 카드 — 접근 이름이 그 파일의 경로다(스토리 89). */
 const 코드카드 = (page: Page, ref: string) => page.getByRole("main", { name: ref, exact: true });
+/** 그려진 줄 번호와 줄 글자 — 줄의 앞뒤 공백은 뗀다. */
+const 줄들 = ({ numbers, lines }: CodeViewReading) => ({ numbers, lines: lines.map((line) => line.text.trim()) });
 
 test("그림 파일은 워크트리 절대 경로의 asset URL로 그림이 선다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -71,16 +74,25 @@ test("바이너리 · UTF-8 아님 · 너무 큼은 탭 안에 각 안내와 크
 test("`.md`와 svg는 렌더된 문서나 그림이 아니라 원문 코드로 선다", async ({ page }) => {
   await installFixtureBackend(page);
 
-  // `.md` — 렌더된 문서는 spec 칸의 몫이다(스토리 73). `#`이 글자로 서고 줄 번호가 붙는다.
+  // `.md` — 렌더된 문서는 spec 칸의 몫이다(스토리 73). `#`이 글자로 서고 줄 번호가 붙는다. 원문은 강조된 코드라(08) 줄 번호
+  // 칸과 글이 따로 서고 shadow DOM 안이다 — 줄 단위로 읽는다(`readCodeView`). 처음 서는 코드 보기는 그 청크를 받은 뒤라 붐비는
+  // 기계에서 기본 5초를 넘길 수 있다.
   await page.goto(codeUrl("billing/README.md"));
   const md = 코드카드(page, "billing/README.md");
-  await expect(md).toContainText(/1\s*# 빌링/);
+  await expect
+    .poll(async () => 줄들(await readCodeView(md)), { timeout: 30_000 })
+    .toEqual({ numbers: ["1", "2"], lines: ["# 빌링", ""] });
   await expect(md.getByRole("heading")).toHaveCount(0);
 
   // svg — 그림 확장자이기도 하지만 원문을 읽는다(스토리 72). 그림으로 걸리지 않는다.
   await page.goto(codeUrl("billing/icon.svg"));
   const svg = 코드카드(page, "billing/icon.svg");
-  await expect(svg).toContainText(/1\s*<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg">\s*2\s*<circle r="4"\/>\s*3\s*<\/svg>/);
+  await expect
+    .poll(async () => 줄들(await readCodeView(svg)), { timeout: 30_000 })
+    .toEqual({
+      numbers: ["1", "2", "3", "4"],
+      lines: ['<svg xmlns="http://www.w3.org/2000/svg">', '<circle r="4"/>', "</svg>", ""],
+    });
   await expect(svg.locator("img")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
