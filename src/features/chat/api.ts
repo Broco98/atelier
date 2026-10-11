@@ -37,6 +37,12 @@ export const chatApi = {
   /** 새 대화 — 만들고 곧바로 띄워 세션을 연다. 세션이 열릴 때까지 기다린다. */
   create: (work: string, agent: Agent) => invoke<Conversation>("chat_new", { work, agent }),
   /**
+   * 에이전트 바꾸기 — 첫 말 전에만 된다. 지금 에이전트를 끄고 같은 대화를 새 엔진으로 띄워 세션이 열릴 때까지 기다린다.
+   * 첫 말 뒤에는 거절되고, 그 글이 잠긴 에이전트 칩의 까닭이다(「첫 말 뒤에는 에이전트를 바꿀 수 없어요…」).
+   */
+  switchAgent: (work: string, conversation: string, agent: Agent) =>
+    invoke<Conversation>("chat_switch_agent", { work, conversation, agent }),
+  /**
    * 말을 보낸다. 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로 온다. 턴이 도는 동안의 말은
    * 대기 줄 끝에 들고(대기 줄 바뀜 이벤트), 턴이 끝나면 맨 앞부터 차례로 간다. `quote`는 스펙 창에서 고른 자리다(three-axes 티켓
    * 27) — 객체라 이름으로 넘긴다(위 「평평하게」). 없으면 그 칸이 아예 실리지 않는다.

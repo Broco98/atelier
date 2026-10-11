@@ -41,7 +41,7 @@ impl Sandbox {
     pub fn new() -> Self {
         let dir = tempfile::tempdir().expect("임시 폴더");
         let root = dir.path().to_path_buf();
-        for sub in ["home", "receipts", "receipts/acp", "receipts/login"] {
+        for sub in ["home", "receipts", "receipts/acp", "receipts/claude", "receipts/login"] {
             fs::create_dir_all(root.join(sub)).unwrap();
         }
         Self { _dir: dir, root }
@@ -175,13 +175,21 @@ impl Sandbox {
         (self.host_builder(shell, move |event| sink.0.lock().unwrap().push(event)), events)
     }
 
-    fn host_builder(
+    pub fn host_builder(
         &self,
         shell: ShellSource,
         emit: impl Fn(HostEvent) + Send + Sync + 'static,
     ) -> atelier_acp::HostBuilder {
-        // 변환기 시험 bin은 13이 세운다. 이 장의 명령은 Claude 대화를 띄우지 않는다.
-        let translator = TranslatorCommand::new("/usr/bin/false", ["acp-claude"]);
+        self.host_builder_with_translator(shell, translator(), emit)
+    }
+
+    /// 변환기 명령을 고른 호스트 — 판이 다른 변환기처럼 시험 bin이 아닌 것을 변환기로 줄 때.
+    pub fn host_builder_with_translator(
+        &self,
+        shell: ShellSource,
+        translator: TranslatorCommand,
+        emit: impl Fn(HostEvent) + Send + Sync + 'static,
+    ) -> atelier_acp::HostBuilder {
         ConversationHost::builder(self.data_root(), translator, shell, emit)
     }
 
@@ -243,6 +251,96 @@ impl Sandbox {
         let mut env = vec![("FAKE_ACP_SCENARIO", scenario), ("FAKE_ACP_RECEIPTS", receipts)];
         env.extend_from_slice(extra);
         ShellSource::Path(self.login_shell_with_env(LoginShell::Normal, &[bin, Path::new("/usr/bin"), Path::new("/bin")], &env))
+    }
+
+    // ── Claude 대화 ─────────────────────────────────────────────────────────────
+
+    /// Claude를 띄우는 데 드는 `claude`를 둔 PATH 폴더 — 가짜 claude bin을 가리키는 링크다.
+    pub fn claude_bin(&self) -> PathBuf {
+        let bin = self.bin("claude-bin");
+        let link = bin.join("claude");
+        if fs::symlink_metadata(&link).is_err() {
+            std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-claude"), &link).unwrap();
+        }
+        bin
+    }
+
+    /// 가짜 claude의 시나리오를 로그인 env에 실은 로그인 셸. 변환기는 받은 env를 그대로 claude에게 주므로, 가짜 claude에게
+    /// 닿아야 하는 값도 로그인 env로 간다.
+    pub fn claude_login_shell(&self, scenario: &str, extra: &[(&str, &str)]) -> ShellSource {
+        let bin = self.claude_bin();
+        let receipts = self.claude_receipts();
+        let receipts = receipts.to_str().unwrap();
+        let mut env = vec![("FAKE_CLAUDE_SCENARIO", scenario), ("FAKE_CLAUDE_RECEIPTS", receipts)];
+        env.extend_from_slice(extra);
+        ShellSource::Path(self.login_shell_with_env(
+            LoginShell::Normal,
+            &[&bin, Path::new("/usr/bin"), Path::new("/bin")],
+            &env,
+        ))
+    }
+
+    /// Codex(가짜 ACP 에이전트)와 Claude(가짜 claude)를 둘 다 띄울 수 있는 로그인 셸 — 에이전트 바꾸기.
+    pub fn both_login_shell(&self, acp_scenario: &str, claude_scenario: &str) -> ShellSource {
+        let codex = self.codex_bin();
+        let claude = self.claude_bin();
+        let (acp, claude_receipts) = (self.acp_receipts(), self.claude_receipts());
+        let env = [
+            ("FAKE_ACP_SCENARIO", acp_scenario),
+            ("FAKE_ACP_RECEIPTS", acp.to_str().unwrap()),
+            ("FAKE_CLAUDE_SCENARIO", claude_scenario),
+            ("FAKE_CLAUDE_RECEIPTS", claude_receipts.to_str().unwrap()),
+        ];
+        ShellSource::Path(self.login_shell_with_env(
+            LoginShell::Normal,
+            &[&codex, &claude, Path::new("/usr/bin"), Path::new("/bin")],
+            &env,
+        ))
+    }
+
+    /// 가짜 claude의 영수증 폴더.
+    pub fn claude_receipts(&self) -> PathBuf {
+        self.receipts().join("claude")
+    }
+
+    /// 가짜 claude가 그 세션 id(`--session-id`)로 떠서 남긴 영수증.
+    pub fn claude_receipt(&self, session_id: &str) -> Value {
+        let path = self.claude_receipts().join(format!("{session_id}.json"));
+        serde_json::from_str(&fs::read_to_string(&path).unwrap_or_else(|_| panic!("영수증이 없다: {}", path.display())))
+            .unwrap()
+    }
+
+    /// 가짜 claude가 남긴 영수증 전부 — 세션 id를 모를 때(열기가 실패한 대화).
+    pub fn all_claude_receipts(&self) -> Vec<Value> {
+        let mut receipts: Vec<Value> = fs::read_dir(self.claude_receipts())
+            .unwrap()
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                let name = path.file_name()?.to_str()?;
+                (name.ends_with(".json") && !name.starts_with('.'))
+                    .then(|| serde_json::from_str(&fs::read_to_string(&path).ok()?).ok())?
+            })
+            .collect();
+        receipts.sort_by_key(|receipt| receipt["pid"].as_u64());
+        receipts
+    }
+
+    /// 가짜 claude가 떠 있는 동안 겪은 일들(stdin EOF · 받은 시그널).
+    pub fn claude_events(&self, session_id: &str) -> Vec<String> {
+        fs::read_to_string(self.claude_receipts().join(format!("{session_id}.events")))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// 가짜 claude가 stdin으로 받은 줄들.
+    pub fn claude_stdin(&self, session_id: &str) -> Vec<Value> {
+        fs::read_to_string(self.claude_receipts().join(format!("{session_id}.stdin")))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("가짜 claude가 받은 줄은 JSON"))
+            .collect()
     }
 
     /// 영수증 폴더의 `name` 파일에 한 줄씩 적힌 pid들 — 가짜 `codex-acp` 스크립트가 적는다.
@@ -382,6 +480,11 @@ impl Sandbox {
     pub fn agent_session_id(&self, slug: &str, conversation: &str) -> String {
         self.agents_row(slug, conversation)["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned()
     }
+}
+
+/// 변환기 시험 bin — 앱 진입점의 `acp-claude` 갈래와 같은 진입 함수를 부른다.
+pub fn translator() -> TranslatorCommand {
+    TranslatorCommand::new(env!("CARGO_BIN_EXE_claude-translator"), Vec::<String>::new())
 }
 
 // ── 로그인(three-axes 티켓 12) ──────────────────────────────────────────────────

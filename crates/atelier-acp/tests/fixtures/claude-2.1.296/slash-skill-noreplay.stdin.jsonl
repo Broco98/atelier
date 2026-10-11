@@ -1,0 +1,5 @@
+{"type": "user", "message": {"role": "user", "content": "/probe-skill"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "probe-skill 스킬을 Skill 도구로 불러서 그 지시대로 답하라."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "/no-such-cmd"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "/probe-cmd 덧붙인 인자"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "/grilling 점심은 김밥으로 정했다. 질문은 하나만."}, "parent_tool_use_id": null, "session_id": ""}

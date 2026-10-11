@@ -399,6 +399,7 @@ pub fn run() {
             commands::chat_list,
             commands::chat_read_record,
             commands::chat_new,
+            commands::chat_switch_agent,
             commands::chat_send,
             commands::chat_close,
             commands::chat_stop,
@@ -614,6 +615,33 @@ mod tests {
         assert!(
             held < ended && ended < shells && shells < joined,
             "호스트 찾기({held}) → 호스트 끄기({ended}) → 셸 정리({shells}) → 기다림({joined}) 차례가 아니다"
+        );
+    }
+
+    /// **진입점은 Tauri를 짓기 전에 첫 인자로 갈라, 정확히 `acp-claude`면 Claude 변환기가 된다**(three-axes 티켓 13, 워크플로
+    /// S4 · G17). 대화 호스트가 Claude 대화마다 이 실행 파일 자신을 `acp-claude`로 띄운다(`chat::host`). Tauri를 지은 뒤에 가르면
+    /// 대화마다 Dock 아이콘이 서고 기동이 무거워진다. 갈래가 부르는 함수는 L1이 호스트에 넘기는 변환기 시험 bin과 **같은 함수**다
+    /// — 그래야 L1이 잰 변환기가 앱이 띄우는 변환기다. `main`은 헤드리스로 못 돌리니 자리로 잰다. 변환기 자체(플래그 · stdin
+    /// `initialize` · 가리기 · stdin EOF)는 크레이트 `atelier-acp`의 L1이 잰다.
+    #[test]
+    fn the_entry_point_becomes_the_claude_translator_before_tauri_on_acp_claude() {
+        let main = without_comment_lines(include_str!("main.rs"));
+        let branch = main
+            .find("if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(\"acp-claude\")) {")
+            .expect("진입점이 첫 인자가 정확히 `acp-claude`인지로 가르지 않는다");
+        let translator = main
+            .find("std::process::exit(atelier_acp::run_claude_translator());")
+            .expect("`acp-claude` 갈래가 변환기의 진입 함수를 부르고 그 종료 코드로 끝나지 않는다");
+        let tauri = main.find("atelier_lib::run()").expect("Tauri로 가는 길이 있다");
+        assert!(branch < translator && translator < tauri, "갈래({branch}) → 변환기({translator}) → Tauri({tauri}) 차례가 아니다");
+        assert!(
+            !main[..branch].contains("print"),
+            "갈래 앞에서 stdout에 쓴다 — `acp-claude`의 stdout은 곧 ACP 선이다"
+        );
+        let test_bin = without_comment_lines(include_str!("../../crates/atelier-acp/src/bin/claude-translator.rs"));
+        assert!(
+            test_bin.contains("std::process::exit(atelier_acp::run_claude_translator())"),
+            "변환기 시험 bin이 진입점과 다른 함수를 부른다 — L1이 잰 변환기가 앱이 띄우는 변환기가 아니다"
         );
     }
 
