@@ -64,6 +64,45 @@ test("TS 파일이 줄 번호와 함께 강조돼 뜬다 — 키워드 · 문자
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+test("강조가 늦어도 글자는 먼저 선다 — 워커 풀이 서기 전에도 본문이 평문이고, 강조가 와도 글자가 제자리다(스토리 67)", async ({
+  page,
+}) => {
+  // 워커 스크립트를 붙들어 둔다 — 붐비는 기계에서 워커 기동 · WASM 컴파일이 늦는 것, 또는 워커가 오류 없이 답하지 않는 것과
+  // 같다. 라이브러리는 풀이 서기 전에는 평문조차 그리지 못한다(평문도 풀이 쥔 하이라이터로 그린다) — 그래서 이 동안 본문은
+  // 라이브러리가 아니라 앱의 평문 보기다.
+  let 풀어주기 = () => {};
+  const 붙듦 = new Promise<void>((resolve) => (풀어주기 = resolve));
+  await page.route(/\/worker\/worker\.js\?worker_file/, async (route) => {
+    await 붙듦;
+    await route.continue();
+  });
+  await installFixtureBackend(page);
+  await page.goto(codeUrl("billing/src/main.ts"));
+  const card = codeCard(page, "billing/src/main.ts");
+
+  // 워커가 아직 뜨지 않았는데 글자와 줄 번호가 서 있다.
+  await expect
+    .poll(async () => (await readCodeView(card)).lines.map((line) => line.text.trim()), { timeout: 30_000 })
+    .toEqual(["const answer = 42;", "// 끝까지 읽는다", 'export default "answer";', ""]);
+  const 평문 = await readCodeView(card);
+  expect(평문.numbers).toEqual(["1", "2", "3", "4"]);
+  // 평문이다 — 줄마다 한 덩이이고 모두 같은 글자색이다.
+  expect(tokenOf(평문, "const")).toBeUndefined();
+  expect(new Set(평문.lines.flatMap((line) => line.tokens.map((token) => token.color))).size).toBe(1);
+
+  // 워커를 풀어 주면 같은 카드에서 강조가 온다.
+  풀어주기();
+  await expect.poll(async () => tokenOf(await readCodeView(card), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
+  const 강조 = await readCodeView(card);
+  expect(강조.numbers).toEqual(["1", "2", "3", "4"]);
+  expect(page.workers()).toHaveLength(2);
+  // 평문 보기는 라이브러리의 줄 자리와 같은 자리에 글자를 세운다 — 강조가 와도 글자가 뛰지 않는다.
+  expect(평문.firstGlyph).toBeDefined();
+  expect(Math.abs(강조.firstGlyph!.x - 평문.firstGlyph!.x)).toBeLessThan(1);
+  expect(Math.abs(강조.firstGlyph!.y - 평문.firstGlyph!.y)).toBeLessThan(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("WebKit 오토큰 검사 — 한 줄의 키워드 · 문자열 · 주석이 강조가 끝난 뒤 서로 다른 토큰 · 다른 색이다", async ({ page }) => {
   // 사실 12: 라이브러리 기본 엔진(shiki JS)은 WebKit에서 첫 강조가 시간 제한을 넘겨 **토큰이 틀린다** — 이 검사가 그때 빨개진다.
   // 그래서 엔진은 WASM이다(`HighlightedCode`의 `ENGINE`). 색 값이 아니라 「셋이 갈렸는가」를 잰다.
@@ -110,6 +149,12 @@ test("수천 줄 파일을 연 직후 셸 탭을 누르면 곧바로 셸로 바�
   await installFixtureBackend(page, 큰표본과함께({ "src/big.ts": 줄들(5_000) }));
   await page.goto(`/works/${work.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+
+  // 풀을 먼저 세운다 — 풀이 서기 전에는 본문이 앱의 평문 보기라(스토리 67) 강조가 끼지 않는다. 재려는 것은 라이브러리의 보기가
+  // 큰 파일을 그리고 워커가 강조하는 동안이다.
+  await 주소로간다(page, codeUrl("billing/src/main.ts"));
+  const main = codeCard(page, "billing/src/main.ts");
+  await expect.poll(async () => tokenOf(await readCodeView(main), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
 
   await 주소로간다(page, codeUrl("billing/src/big.ts"));
   const big = codeCard(page, "billing/src/big.ts");

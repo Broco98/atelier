@@ -24,9 +24,11 @@ export const HIGHLIGHT_MAX_LINES_MAIN_THREAD = 2_000;
 const POOL_SIZE = 2;
 
 /**
- * 워커가 답하기를 기다리는 한도. 라이브러리 기본 10초를 넘기면 풀을 멈추고 메인 스레드로 물러서는데, 붐비는 기계에서는 워커
- * 기동과 WASM 컴파일이 그 안에 못 끝나 멀쩡한 풀을 버린다(L3에서 실제로 그랬다). 기다리는 동안 파일은 평문으로 서 있어 화면은
- * 멈추지 않으므로 넉넉히 둔다 — 스크립트를 못 받는 워커는 이 한도와 상관없이 곧바로 실패한다.
+ * 워커가 답하기를 기다리는 한도. 라이브러리 기본 10초를 넘기면 풀을 멈추고 메인 스레드로 물러서는데(강조 상한도 2천 줄로 내려가
+ * 앱이 끝날 때까지 간다), 붐비는 기계에서는 워커 기동과 WASM 컴파일이 그 안에 못 끝나 멀쩡한 풀을 버린다(L3에서 실제로 그랬다).
+ * 기다리는 동안 본문은 앱의 평문 보기라(`PlainCode` — 라이브러리는 풀이 서기 전에는 평문도 그리지 못한다) 읽기는 바로 시작되고
+ * 늦어지는 것은 색뿐이므로 넉넉히 둔다. 스크립트를 못 받는 워커는 이 한도와 상관없이 곧바로 실패하고, 오류 없이 답하지 않는
+ * 워커만 이 한도를 다 쓴다 — 그동안에도 글자는 평문으로 서 있고, 한도가 지나면 메인 스레드가 칠한다.
  */
 const WORKER_INIT_TIMEOUT_MS = 60_000;
 
@@ -76,6 +78,9 @@ function highlightPool(): WorkerPoolManager {
  * (결정 35): 보이는 줄 언저리만 그리고, 강조는 워커가 하는 동안 평문이 먼저 선다 — 큰 파일을 열어도 화면이 멈추지 않는다
  * (스토리 68). 언어는 파일 이름으로 라이브러리가 고른다.
  *
+ * **풀이 서기 전에는 앱이 평문을 세운다**(스토리 67 — `PlainCode`). 라이브러리는 평문도 풀이 쥔 하이라이터로 그리는데, 그
+ * 하이라이터는 워커 둘의 기동과 WASM이 다 끝나야 생긴다 — 그전에는 줄 하나 그리지 못한다. 앱을 켜고 처음 여는 파일 탭이 그때다.
+ *
  * **이 틀이 카드의 스크롤 상자다** — 카드의 직계 flex 자식이어야 남는 높이를 받는다(`CodeView`의 다른 갈래와 같은 자리).
  * 열 규격은 문서 본문과 같은 것을 쓴다(`bodyColumn`) — 04의 원문 보기(`SourceView`)가 선 자리 그대로다.
  *
@@ -85,10 +90,11 @@ function highlightPool(): WorkerPoolManager {
  */
 export function HighlightedCode({ path, content, wide }: { path: string; content: string; wide: boolean }) {
   const [workers] = useState(highlightPool);
-  const workersFailed = useWorkersFailed(workers);
+  const phase = usePoolPhase(workers);
+  const onMainThread = phase === "mainThread";
   const options = useMemo(
-    () => (workersFailed ? { ...OPTIONS, tokenizeMaxLength: HIGHLIGHT_MAX_LINES_MAIN_THREAD } : OPTIONS),
-    [workersFailed],
+    () => (onMainThread ? { ...OPTIONS, tokenizeMaxLength: HIGHLIGHT_MAX_LINES_MAIN_THREAD } : OPTIONS),
+    [onMainThread],
   );
   const file = useMemo(() => ({ name: path, contents: content }), [path, content]);
   return (
@@ -100,17 +106,59 @@ export function HighlightedCode({ path, content, wide }: { path: string; content
         {/* 범위 토큰(`--code-syntax-*`)이 이 상자에서 서고, 강조 결과가 서는 shadow DOM 안으로 상속된다(`index.css`).
             -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 줄 번호의 자리다(`SourceView`와 같다). */}
         <div data-code-view="" className="-ml-12">
-          <FileView file={file} options={options} />
+          {phase === "starting" ? <PlainCode content={content} /> : <FileView file={file} options={options} />}
         </div>
       </Virtualizer>
     </WorkerPoolContext.Provider>
   );
 }
 
-/** 풀이 워커를 잃고 메인 스레드로 물러섰는가 — 풀의 상태가 바뀔 때마다 다시 읽는다. */
-function useWorkersFailed(workers: WorkerPoolManager): boolean {
+/**
+ * 풀이 어디쯤인가 — `starting`은 아직 서는 중이라 라이브러리가 아무것도 그리지 못하고, `ready`는 워커가 섰고, `mainThread`는
+ * 워커를 잃고 메인 스레드로 물러섰다. 풀의 상태가 바뀔 때마다 다시 읽는다.
+ */
+function usePoolPhase(workers: WorkerPoolManager): "starting" | "ready" | "mainThread" {
   return useSyncExternalStore(
     (onChange) => workers.subscribeToStatChanges(onChange),
-    () => workers.getStats().workersFailed,
+    () => {
+      const { workersFailed, managerState } = workers.getStats();
+      if (workersFailed) return "mainThread";
+      return managerState === "initialized" ? "ready" : "starting";
+    },
+  );
+}
+
+/** 줄을 가르는 것 — 라이브러리와 같이 `\r\n` · `\r` · `\n`을 모두 줄바꿈으로 센다(줄 번호가 라이브러리의 보기와 같게). */
+const LINE_BREAK = /\r\n|\r|\n/;
+
+/**
+ * **평문 보기** — 워커 풀이 서기 전의 본문(스토리 67). 글자와 줄 번호만 세우고, 풀이 서면 라이브러리의 보기가 그 자리를 잇는다.
+ *
+ * 라이브러리가 줄을 세우는 **바로 그 자리**에 글자를 둔다 — 보기가 바뀌어도 글자가 뛰지 않는다(L3가 첫 글자의 자리로 잰다).
+ * 위 여백 8px(라이브러리의 `--diffs-gap-block` 기본값), 줄 번호 칸은 왼쪽 2ch + 숫자 자릿수 + 오른쪽 1ch + 칸 경계 2px, 줄의 좌우
+ * 여백 1ch다. 글꼴 · 크기 · 줄 높이 · 탭 폭 · 색은 라이브러리에 건네는 것과 같은 전역 토큰이다(`index.css`의 `[data-code-view]`).
+ *
+ * 줄마다 요소를 짓지 않고 `pre` 둘(줄 번호 한 덩이 · 글 한 덩이)에 담는다 — 가상화 없이 수만 줄을 세워도 요소는 둘이라 큰
+ * 파일을 열어도 그리는 스레드를 붙들지 않는다.
+ */
+function PlainCode({ content }: { content: string }) {
+  const { text, numbers } = useMemo(() => {
+    const lines = content.split(LINE_BREAK);
+    return { text: lines.join("\n"), numbers: lines.map((_, i) => i + 1).join("\n") };
+  }, [content]);
+  return (
+    <div className="flex py-2 font-mono text-mono [tab-size:4]">
+      {/* 줄 번호는 읽을 글이 아니다 — 고를 수도 없다(라이브러리의 줄 번호 칸과 같다). */}
+      <pre
+        data-plain-numbers=""
+        aria-hidden
+        className="shrink-0 select-none border-r-2 border-background pr-[1ch] pl-[2ch] text-right text-tertiary"
+      >
+        {numbers}
+      </pre>
+      <pre data-plain-lines="" className="min-w-0 flex-1 overflow-x-auto px-[1ch] text-foreground scroll-quiet">
+        {text}
+      </pre>
+    </div>
   );
 }
