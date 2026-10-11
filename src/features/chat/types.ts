@@ -46,7 +46,29 @@ export interface ChatRecordEvent {
   line: RecordLine;
 }
 
-/** 엔진 확인의 답. 못 찾았으면 빠진 것마다 이름과 설치 명령이 실린다(안내 카드). 로그인 여부는 12가 더한다. */
+/**
+ * 엔진 확인의 답. 못 찾았으면 빠진 것마다 이름과 설치 명령이 실리고, 찾았으면 로그인돼 있는지가 실린다(안내 카드,
+ * three-axes 티켓 12).
+ */
 export type EngineCheck =
-  | { state: "found"; programs: { name: string; path: string }[] }
+  | { state: "found"; programs: { name: string; path: string }[]; loggedIn: boolean }
   | { state: "missing"; missing: { name: string; install: string }[] };
+
+/**
+ * 로그인 명령의 진행(`atelier_acp::LoginProgress`). 도는 중이면 명령이 찍은 첫 `https://` URL(「링크 복사」의 값 — 찍기 전에는
+ * `null`), 끝났으면 사람이 취소했는지와 exit code(시그널로 끝났으면 `null`)다.
+ */
+export type LoginProgress =
+  | { state: "running"; url: string | null }
+  | { state: "ended"; cancelled: boolean; exitCode: number | null };
+
+/**
+ * 엔진 상태 이벤트가 싣는 것(`atelier_acp::EngineState`). `loggedIn`이 `null`이면 모른다 — 못 찾았거나 로그인 명령이 도는
+ * 중이다. 「끝남」과 함께 온 `loggedIn`이 끝난 뒤 저절로 다시 돈 확인의 답이다.
+ */
+export interface ChatEngineEvent {
+  agent: Agent;
+  found: boolean;
+  loggedIn: boolean | null;
+  login: LoginProgress | null;
+}

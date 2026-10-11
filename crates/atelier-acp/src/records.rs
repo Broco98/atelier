@@ -158,7 +158,7 @@ pub enum RecordKind {
     Update,
     /// 턴 끝 — stopReason · 걸린 시간 · 우리가 멈췄는지 · 턴 밖 턴인지.
     TurnEnd,
-    /// 대화의 수명 — 띄우는 중 · 열림 · 판 경고 · 죽음 · 닫힘.
+    /// 대화의 수명 — 띄우는 중 · 열림 · 계정 상태 · 로그인 필요 · 판 경고 · 죽음 · 닫힘.
     Session,
     /// 에이전트의 stderr 한 줄 — 화면에 그리지 않는다.
     Stderr,
@@ -188,6 +188,10 @@ pub(crate) enum SessionState {
     },
     /// 계정 상태 — 에이전트가 알린 로그인 상태 원문(`_auth/status_update`의 params). 계정 칸은 런타임이 가렸다.
     AuthStatus { params: Value },
+    /// 로그인 필요 — 에이전트가 `-32000 Authentication required`로 답했다(Codex `session/new`, 엔진을 가리지 않고 턴
+    /// 도중). 화면은 대화창 자리에 안내 카드를 세우고, 로그인이 「됨」으로 바뀌면 호스트가 그 대화를 다시 띄운다
+    /// (three-axes 티켓 12).
+    LoginRequired,
     /// 판 경고 — 잰 적 없는 메이저 판이다. 대화는 그대로 연다(S6).
     VersionWarning { agent_version: Option<String>, supported_major: u64 },
     /// 죽음 — 에이전트가 없어졌다. 까닭과 stderr 꼬리(있으면). 다음 말에서 다시 띄운다(10).

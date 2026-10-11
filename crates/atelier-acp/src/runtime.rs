@@ -106,6 +106,9 @@ pub(crate) enum OpenError {
     Protocol { program: PathBuf, reason: String },
     /// 한도 안에 세션을 열지 않음.
     TimedOut { program: PathBuf, limit: Duration },
+    /// 에이전트가 세션 열기를 「로그인 필요」(`-32000 Authentication required`)로 거절했다 — Codex의 미로그인이다
+    /// (실측 A3). initialize는 됐다. 프로세스는 끈 뒤다(three-axes 티켓 12).
+    AuthRequired { program: PathBuf },
 }
 
 impl fmt::Display for OpenError {
@@ -119,6 +122,9 @@ impl fmt::Display for OpenError {
             }
             OpenError::TimedOut { program, limit } => {
                 write!(f, "에이전트가 {}초 안에 세션을 열지 않았습니다: {}", limit.as_secs_f32(), program.display())
+            }
+            OpenError::AuthRequired { program } => {
+                write!(f, "에이전트가 로그인을 요구합니다: {}", program.display())
             }
         }
     }
@@ -187,7 +193,7 @@ pub(crate) fn open(
     read_lines(stdout, incoming_lines, Arc::clone(&life));
     let transport = Lines::new(outgoing.sink_map_err(std::io::Error::other), incoming);
 
-    let (outcome_tx, outcome_rx) = mpsc::channel::<Result<(Opened, ConnectionTo<AgentRole>), String>>();
+    let (outcome_tx, outcome_rx) = mpsc::channel::<Result<(Opened, ConnectionTo<AgentRole>), Refusal>>();
     let (release, released) = oneshot::channel::<()>();
     let notified = Arc::clone(&sink);
     std::thread::spawn(move || {
@@ -221,7 +227,7 @@ pub(crate) fn open(
         ));
         // 클로저가 돌지 못하고 연결이 끝났으면 이 통로로만 소식이 나간다.
         if let Err(error) = ran {
-            let _ = failure.send(Err(error.to_string()));
+            let _ = failure.send(Err(Refusal::Other(error.to_string())));
         }
     });
 
@@ -244,7 +250,11 @@ pub(crate) fn open(
             agent.life.arm();
             Ok((agent, opened))
         }
-        Ok(Err(reason)) => {
+        Ok(Err(Refusal::AuthRequired)) => {
+            agent.shut_down();
+            Err(OpenError::AuthRequired { program })
+        }
+        Ok(Err(Refusal::Other(reason))) => {
             agent.shut_down();
             Err(failed(reason))
         }
@@ -259,25 +269,39 @@ pub(crate) fn open(
     }
 }
 
+/// 세션을 열지 못한 까닭 — 에이전트가 로그인을 요구했나, 그 밖의 것인가.
+enum Refusal {
+    AuthRequired,
+    Other(String),
+}
+
+impl From<String> for Refusal {
+    fn from(reason: String) -> Self {
+        Refusal::Other(reason)
+    }
+}
+
 /// initialize → `session/new`. 둘 다 날 JSON으로 보낸다 — 2.0 크레이트의 타입으로는 `clientCapabilities.plan`을
 /// 실을 수 없고(기능 뒤에 숨어 있다), 답은 원문 그대로 넘긴다.
 ///
 /// `session/new`의 답은 순서 장벽(`on_receiving_result`)으로 받는다 — 진짜 codex-acp는 답 바로 뒤에 명령 목록을
 /// 보내는데(실측 turns 5 · 6줄), 다른 자리에서 답을 기다리면 그 update가 「열림」보다 앞에 적힌다.
+///
+/// `session/new`가 `-32000`이면 로그인 필요다(실측 A3) — 다른 거절과 갈라 넘긴다.
 async fn open_session(
     cx: &ConnectionTo<AgentRole>,
     place: &SessionPlace,
     terms: &OpenTerms,
     on_opened: OnOpened,
-) -> Result<Opened, String> {
+) -> Result<Opened, Refusal> {
     let initialize = request(cx, "initialize", initialize_params()).await?;
     if let Some(required) = &terms.required_version {
         let version = initialize["agentInfo"]["version"].as_str();
         if version != Some(required.as_str()) {
-            return Err(format!(
+            return Err(Refusal::Other(format!(
                 "판 어긋남 — 에이전트 {} · 앱 {required}. 앱을 다시 켜면 맞는 판이 뜹니다",
                 version.unwrap_or("(판 없음)")
-            ));
+            )));
         }
     }
 
@@ -292,7 +316,7 @@ async fn open_session(
         params.insert("_meta".into(), meta.clone());
     }
     let message = UntypedMessage::new("session/new", Value::Object(params)).map_err(|error| error.to_string())?;
-    let (opened_tx, opened_rx) = oneshot::channel::<Result<Opened, String>>();
+    let (opened_tx, opened_rx) = oneshot::channel::<Result<Opened, Refusal>>();
     cx.send_request(message)
         .on_receiving_result(async move |result| {
             let outcome = match result {
@@ -302,15 +326,16 @@ async fn open_session(
                         on_opened(&opened);
                         Ok(opened)
                     }
-                    None => Err(format!("session/new의 답에 sessionId가 없습니다: {session}")),
+                    None => Err(Refusal::Other(format!("session/new의 답에 sessionId가 없습니다: {session}"))),
                 },
-                Err(error) => Err(describe("session/new", &error)),
+                Err(error) if i32::from(error.code) == -32000 => Err(Refusal::AuthRequired),
+                Err(error) => Err(Refusal::Other(describe("session/new", &error))),
             };
             let _ = opened_tx.send(outcome);
             Ok(())
         })
         .map_err(|error| error.to_string())?;
-    opened_rx.await.map_err(|_| "session/new에 답하지 않고 끝났습니다".to_string())?
+    opened_rx.await.map_err(|_| Refusal::Other("session/new에 답하지 않고 끝났습니다".to_string()))?
 }
 
 /// 원문의 **유일한 예외** — 계정 이메일 · 플랜을 `<email>`로 가린다(워크플로 S34). 기록이 fixture나 이슈로

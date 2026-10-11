@@ -6,6 +6,7 @@
 mod discovery;
 mod host;
 mod life;
+mod login;
 mod login_env;
 mod process;
 mod records;
@@ -15,6 +16,7 @@ mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{Conversation, ConversationDefaults, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
+pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};
 pub use records::{RecordKind, RecordLine};
 pub use translator::run_claude_translator;

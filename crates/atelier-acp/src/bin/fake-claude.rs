@@ -1,8 +1,12 @@
-//! 검사가 진짜 `claude` 대신 상대하는 가짜 claude — 판 02가 잰 **2.1.296**의 stream-json 원문을 되감는다
-//! (three-axes 티켓 13). 셸 스크립트로는 제어 메시지에 답하기 버거워 Rust bin으로 짰다(워크플로 티켓 07).
+//! 검사가 진짜 `claude` 대신 상대하는 가짜 claude. 검사는 이것을 임시 PATH에 `claude`라는 이름의 링크로 둔다.
 //!
-//! 검사는 이것을 임시 PATH에 `claude`라는 이름의 링크로 둔다. 변환기가 `claude -p …`로 띄우고, env는 변환기가 받은
-//! 것(호스트가 준 로그인 env) 그대로라 시나리오와 영수증 자리는 가짜 로그인 셸이 찍는 env로 받는다.
+//! - `auth status` · `auth login` — 로그인 확인과 로그인 명령의 흉내(three-axes 티켓 12). 몸은 `src/fakes/login.rs`이고
+//!   가짜 `codex`와 함께 쓴다 — 로그인 상태 파일 · 문 · 영수증의 약속은 그 파일 머리에 있다.
+//! - `-p …` — 판 02가 잰 **2.1.296**의 stream-json 원문을 되감는다(three-axes 티켓 13). 셸 스크립트로는 제어 메시지에
+//!   답하기 버거워 Rust bin으로 짰다(워크플로 티켓 07). 아래는 이 갈래의 약속이다.
+//!
+//! 변환기가 `claude -p …`로 띄우고, env는 변환기가 받은 것(호스트가 준 로그인 env) 그대로라 시나리오와 영수증 자리는 가짜
+//! 로그인 셸이 찍는 env로 받는다.
 //!
 //! - `FAKE_CLAUDE_SCENARIO` — 시나리오 이름(없으면 `normal`).
 //! - `FAKE_CLAUDE_RECEIPTS` — 영수증 폴더. 세션 cwd에 떨어뜨리지 않는다 — cwd는 spec 폴더이거나 워크트리다.
@@ -26,6 +30,10 @@ use std::sync::atomic::{AtomicI32, Ordering};
 
 use serde_json::{json, Value};
 
+#[path = "../fakes/login.rs"]
+#[allow(dead_code)] // 두 가짜가 함께 쓰는 모듈이라 저쪽 엔진의 몫은 여기서 안 쓴다.
+mod login;
+
 /// 판 02 실측 2.1.296 — stdin `control_request initialize`의 응답 원문(가린 사본).
 const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.296/initialize.json");
 /// 판 02 실측 2.1.296 — 슬래시 명령 · 스킬 다섯 턴(`--replay-user-messages` 없음, 가린 사본).
@@ -42,12 +50,15 @@ const SCENARIOS: &[&str] = &["normal", "silent-initialize", "mcp-child"];
 static EVENTS_FD: AtomicI32 = AtomicI32::new(-1);
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("auth") {
+        std::process::exit(login::claude_auth(&args[1..]));
+    }
     let scenario = std::env::var("FAKE_CLAUDE_SCENARIO").unwrap_or_else(|_| "normal".to_string());
     if !SCENARIOS.contains(&scenario.as_str()) {
         eprintln!("모르는 시나리오: {scenario} (있는 것: {})", SCENARIOS.join(", "));
         std::process::exit(2);
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let session_id = flag_value(&args, "--session-id").unwrap_or_else(|| format!("claude-{}", std::process::id()));
     let receipts = std::env::var_os("FAKE_CLAUDE_RECEIPTS").map(PathBuf::from);
     let fake = Fake { receipts, session_id };
