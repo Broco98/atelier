@@ -172,8 +172,13 @@ function SpecViewer({
  *
  * 아카이브 화면도 이것을 쓴다 — 같은 표(`docBody`)로 갈리는데 그림 자리만 화면마다 다른
  * 것을 그리면 그 표가 「유일한 자리」가 아니게 된다. 아래 두 보기와 같은 근거다.
+ *
+ * `version`은 그 파일이 바뀌면 달라지는 값이다 — asset URL 뒤에 쿼리로 붙인다. 자리가 같으면
+ * URL도 같아 `<img>`가 다시 받지 않고, 웹뷰의 메모리 캐시도 같은 URL에 묵은 그림을 낸다.
+ * asset 프로토콜은 경로만 읽고 쿼리는 보지 않는다(tauri `protocol/asset.rs`). 파일 탭의 그림이
+ * 넘긴다(git-integration 티켓 10) — spec 그림은 넘기지 않는다.
  */
-export function ImageDoc({ path, name }: { path: string | null; name: string }) {
+export function ImageDoc({ path, name, version }: { path: string | null; name: string; version?: string }) {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
@@ -185,7 +190,7 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
         // `max-h-full`이 있어야 세로로 긴 그림이 본문을 넘어 스크롤을 만들지 않는다 —
         // 이 영역은 이미 스크롤 상자 안이라 두 겹이 되면 어느 쪽이 도는지가 갈린다.
         <img
-          src={convertFileSrc(path)}
+          src={version === undefined ? convertFileSrc(path) : `${convertFileSrc(path)}?v=${encodeURIComponent(version)}`}
           alt={name}
           className="max-h-full max-w-full rounded-lg border object-contain"
         />

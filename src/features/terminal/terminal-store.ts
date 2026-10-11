@@ -42,6 +42,7 @@ import {
   countQuitShells,
   countSpawned,
   firstInputOfId,
+  hasBundleTab,
   isLiveShellOf,
   liveOwnerlessOf,
   markExited,
@@ -50,12 +51,14 @@ import {
   markOwnerless,
   moveShell,
   NO_SHELLS,
+  openCodeTab,
   openShell,
   ownerlessCloseNotice,
   ownerlessOf,
   NO_QUIET_NOTICE,
   quietCloseNotice,
   quietShellsOf,
+  removeCodeTab,
   removeShell,
   runningOfId,
   setAttention,
@@ -66,9 +69,12 @@ import {
   shellOpenNotice,
   shellsOf,
   slugOfOwner,
+  withoutCodeTabsOf,
+  withShellActive,
 } from "./shell-registry";
 import type {
   CloseChecks,
+  CodeTarget,
   ClosePath,
   OpenedShell,
   QuitCounts,
@@ -83,7 +89,7 @@ import type { AnswerKey, InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
 import { nextRecall, recallTarget } from "./shell-recall";
 import type { RecallTarget } from "./shell-recall";
-import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedOwners } from "./shell-owners";
+import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedCodeTabOwners, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
 import { attachWebgl, closeWebgl, failWebgl, loseWebgl, NO_WEBGL_SEATS } from "./shell-webgl";
 import type { WebglSeats } from "./shell-webgl";
@@ -304,6 +310,24 @@ export function selectShell(id: number): void {
 }
 
 /**
+ * 그 화면에 **파일 탭**을 세우고 켠다 — 이미 있으면 그 칸을 켠다(`openCodeTab`). 부르는 자리는 주소다: 주소가 파일 탭을 가리키면
+ * work 화면이 이것으로 묶음을 맞춘다(git-integration S12 — 주소가 정본이다). 파일 탭은 xterm이 없어 세울 인스턴스가 없다.
+ */
+export function showCodeTab(owner: ShellOwner, target: CodeTarget): void {
+  terminalStore.setState((state) => openCodeTab(state, owner, target));
+}
+
+/** 파일 탭을 **확인 없이** 닫는다(스토리 37 · 50). 셸 칸이면 아무 일도 없다 — 셸은 `requestCloseShell`로 닫는다. */
+export function closeCodeTab(id: number): void {
+  terminalStore.setState((state) => removeCodeTab(state, id));
+}
+
+/** 그 화면의 지금 탭이 셸이 되게 한다(`withShellActive`) — 주소가 「본문은 셸이다」라고 말할 때 work 화면이 부른다. */
+export function showShellTab(owner: ShellOwner): void {
+  terminalStore.setState((state) => withShellActive(state, owner));
+}
+
+/**
  * **셸로 가는 길** — 그 셸을 켜고 키보드 포커스를 요청한다(티켓 16 · 프로세스 결정 18 ②). 셸 탭(work 화면 · 최상위 터미널)과
  * 셸로 가는 길(`useGoToShell` — 띠의 줄 · ⌘J · `Processes`의 [이동])이 이것을 부른다(코드 리뷰 표준 45 — 짝이 세 벌이었다).
  * 켜는 것만으로는 포커스가 안 온다: 켜진 셸을 다시 고르면 레지스트리가 같은 상태를 돌려줘 붙기가 안 돈다(`focusShell`).
@@ -359,8 +383,9 @@ function focusShell(id: number): void {
 }
 
 /**
- * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 셸을 그 틈으로 옮긴다
- * (UI개선 결정 11 · UI개선 스펙 S10). **두 화면(work 화면 · `/terminal`)이 같은 이것을
+ * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 칸을 그 틈으로 옮긴다
+ * (UI개선 결정 11 · UI개선 스펙 S10). 끈 칸은 **묶음의 칸**이다 — 셸 칸이든 파일 탭이든 같은 틈에 놓인다(git-integration
+ * 결정 31). 이름은 셸만 끌리던 때의 것이다. **두 화면(work 화면 · `/terminal`)이 같은 이것을
  * 준다** — 탭 줄은 스토어를 모르고, 「놓은 곳이 이긴다」의 탭 줄 몫을 화면마다 적으면 한쪽만
  * 늙는다.
  *
@@ -374,12 +399,20 @@ export function dropShellOnSlot(): void {
   terminalStore.setState((state) => moveShell(state, move.shellId, move.slot));
 }
 
-/** 이 id의 셸이 아직 목록에 있나. 끌기의 원천이 살아 있는지를 묻는 자리가 이것 하나다. */
+/** 이 id의 셸이 아직 목록에 있나. */
 function hasShell(id: number): boolean {
   return terminalStore.state.shells.some((shell) => shell.id === id);
 }
 
-// **끄는 셸이 목록에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
+/**
+ * 이 id의 칸이 아직 묶음에 있나 — 셸 칸이든 파일 탭이든. 끌기의 원천이 살아 있는지를 묻는 자리가 이것 하나다. 셸 칸은 셸
+ * 목록과 묶음에서 함께 빠지므로(`removeShell`) 셸에게는 위 `hasShell`과 같은 답이다.
+ */
+function hasTab(id: number): boolean {
+  return hasBundleTab(terminalStore.state, id);
+}
+
+// **끄는 칸이 묶음에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
 // (정상 종료 · `×`·⌘W · 아카이빙의 회수) 모두 이 스토어의 상태를 바꾸므로, 길마다 부르는 대신 **상태를
 // 보고** 거둔다 — 한 길만 빠뜨리면 받침이 선 채 없는 셸로 분할이 켜진다. 두 화면(work · `/terminal`)이
 // 같은 이것을 딛는다. 비교는 id로만 한다: 소유자 키는 화면마다 다르지만 id는 하나다.
@@ -387,7 +420,8 @@ function hasShell(id: number): boolean {
 // **판정하는 자리는 이 구독 하나다.** 받는 자리(`dropShellOnSlot` · 본문 받침의 `dropHere`)는 다시 보지
 // 않는다 — 구독이 상태 변경과 같은 틱에 끌기를 걷어 받침도 틈도 사라지므로 거기까지 닿을 길이 없고,
 // 닿지 않는 검사는 어떤 시험도 붙들지 못한다.
-terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
+// 파일 탭도 같다 — 끄는 사이 `×` · ⌘W로 닫히면 놓을 칸이 없다(git-integration 판 01).
+terminalStore.subscribe(() => cancelGoneShellDrag(hasTab));
 
 /**
  * 지금 본문이 보여 주고 있는 셸. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —
@@ -398,7 +432,7 @@ terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
  * 보여준다」이고, 두 화면(work · `/terminal`)이 같은 조각을 쓴다.
  *
  * **하나다.** 한때 배열이었고 그 근거가 「분할이면 켜진 탭이 둘」이었는데, 이 앱의 분할은
- * 조합이 늘 `spec ▏터미널`이라(결정 87 · `WorksPage`) **셸 열이 둘이 되는 화면이 없다**.
+ * 조합이 늘 `spec ▏ 묶음의 지금 탭`이라(결정 87 · `WorksPage`) **셸 열이 둘이 되는 화면이 없다**.
  * 그리고 배열이어도 그 날에 대비가 안 됐다 — 채우는 쪽이 목록을 통째로 대체하므로 둘째
  * pane의 `[B]`가 첫째의 `[A]`를 지우고, 정리(`showShell(null)`)는 살아 있는 쪽까지 비운다.
  * 그러니 배열은 「분할 때문」이 아니라 그저 없는 화면을 흉내 낸 모양이었다. 판정 쪽
@@ -960,12 +994,17 @@ onNotifySettingsChanged(notifyTick);
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
  * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
  *
+ * 그 화면 묶음의 **파일 탭도 함께 뺀다**(git-integration 판 01 — `withoutCodeTabsOf`). 셸이 다 빠져도 파일 탭이 남으면 묶음과 켜진
+ * 칸이 그 탭을 든 채 남아, 지운 work의 slug로 새 work이 서면 옛 탭이 새 work의 탭 줄에 선다. 파일 탭은 프로세스가 없어 순서와
+ * 상관없이 확인 없이 빠진다.
+ *
  * in-app-terminal 결정 26은 MCP로 아카이브 · 삭제된 work의 셸을 「알려진 대가」로 남겨 두었다 — 그 길은 이 함수를 안 지난다. 프로세스
  * 결정 4가 이렇게 고쳤다: 앱 루트가 목록 재조회로 알아채(`settleOwners`) 조용한 셸은 닫고, 나머지는 「주인 잃은 셸」로
  * 남겨 알린다. 그 감지가 이 길의 셸을 세지 않게 부르는 쪽이 제외 창을 연다(`holdOwner`).
  */
 export function closeShellsOf(owner: ShellOwner): void {
   for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id, "archive");
+  terminalStore.setState((state) => withoutCodeTabsOf(state, owner));
 }
 
 /**
@@ -1008,10 +1047,15 @@ export function holdOwner(owner: ShellOwner): () => void {
  *    않는다(프로세스 결정 4의 기각).
  * 4. 남긴 것이 있으면 토스트를 세운다(`showOwnerless`).
  *
+ * 그 앞에 **사라진 work의 파일 탭을 뺀다**(git-integration 판 01 — `vanishedCodeTabOwners`). 파일 탭은 프로세스가 없어 물을 것이
+ * 없다. 셸 없이 파일 탭만 선 묶음도 여기서 걷힌다.
+ *
  * **물음을 기다린 뒤 다시 본다.** 그사이 사람이 UI로 아카이브를 시작했거나(제외 창) 셸이 닫혔을 수 있다 — 기다리기 전에
  * 고른 목록을 그대로 믿으면 사람이 확인한 셸이 주인 잃은 셸로 선다.
  */
 export async function settleOwners(result: ListResult | undefined): Promise<void> {
+  const strayTabs = vanishedCodeTabOwners(terminalStore.state, result, heldOwners);
+  if (strayTabs.length > 0) terminalStore.setState((state) => strayTabs.reduce(withoutCodeTabsOf, state));
   const gone = vanishedOwners(terminalStore.state, result, heldOwners);
   const ids = terminalStore.state.shells
     .filter((shell) => gone.includes(shell.owner) && !judging.has(shell.id))

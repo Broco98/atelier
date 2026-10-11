@@ -110,17 +110,20 @@ import { terminalApi } from "./api";
 import { applyNotifySettings } from "./notify-settings";
 import { ptyIdOf } from "./shell-key";
 import { OWNERLESS_TOAST_ID, ownerlessNotice } from "./shell-owners";
-import { NO_SHELLS, ownerOf, topTerminal } from "./shell-registry";
+import { activeIdOf, bundleOf, NO_SHELLS, ownerOf, topTerminal } from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
 import {
   attachShell,
   closeQuietShells,
+  closeShellsOf,
+  holdOwner,
   openNewShell,
   recalledShell,
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
   settleOwners,
+  showCodeTab,
   showShell,
   terminalStore,
 } from "./terminal-store";
@@ -417,5 +420,44 @@ describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
 
     await 주인잃은셸("gone-too", 1);
     expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice(2) }));
+  });
+});
+
+describe("사라진 work의 파일 탭 — 스토어를 거쳐", () => {
+  // git-integration 판 01. 아카이브 · 삭제의 회수가 셸만 닫으면 그 work 묶음에 파일 탭이 남고, 켜진 칸도 이웃 규칙으로 그 탭을
+  // 가리킨다. 지운 work의 slug로 같은 세션에 새 work을 열면 옛 탭이 새 work의 탭 줄에 서고 ⌘2가 그것을 고른다. 파일 탭은
+  // 프로세스가 없어 물을 것이 없다 — 회수와 MCP 길(목록이 앉을 때) 모두 곧바로 뺀다.
+  const gone = ownerOf("gone");
+  const file = { project: "fe", path: "src/a.ts" };
+
+  it("UI 아카이브 · 삭제의 회수(`closeShellsOf`)가 셸과 함께 파일 탭을 빼서 묶음이 키째 걷힌다", async () => {
+    await openShellSpawned({ owner: gone, project: null, cwd: "~/gone" });
+    showCodeTab(gone, file);
+    expect(bundleOf(terminalStore.state, gone)).toHaveLength(2);
+
+    closeShellsOf(gone);
+    expect(terminalStore.state.bundles).not.toHaveProperty(gone);
+    expect(activeIdOf(terminalStore.state, gone)).toBeNull();
+  });
+
+  it("MCP로 사라진 work의 파일 탭은 목록이 앉을 때 묻지 않고 빠진다 — 셸 없이 파일 탭만 선 묶음도", async () => {
+    showCodeTab(gone, file);
+    showCodeTab(ownerOf("kept"), file);
+
+    await settleOwners({ status: "success", data: [{ slug: "kept" }] });
+    expect(terminalStore.state.bundles).not.toHaveProperty(gone);
+    expect(activeIdOf(terminalStore.state, gone)).toBeNull();
+    expect(bundleOf(terminalStore.state, ownerOf("kept"))).toHaveLength(1);
+  });
+
+  it("UI 길의 제외 창 동안 앉은 목록은 그 owner의 파일 탭을 건드리지 않는다 — 회수가 뺀다", async () => {
+    showCodeTab(gone, file);
+    const release = holdOwner(gone);
+    try {
+      await settleOwners({ status: "success", data: [] });
+      expect(bundleOf(terminalStore.state, gone)).toHaveLength(1);
+    } finally {
+      release();
+    }
   });
 });
