@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Card, Frame } from "@/components/shell/Frame";
+import { TAB_ROW_CARD } from "@/components/shell/panel-layout";
+import { cn } from "@/lib/utils";
 import ShellTabs from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
@@ -28,19 +30,19 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
 // 데이터 루트다(결정 12·25). 본문은 Work의 터미널과 **같은 컴포넌트**다.
 //
-// **머리행이 탭 줄이다**(결정 8 · adr-03) — 그것도 work 화면과 같은 컴포넌트이고, 갈리는
+// **탭 줄이 터미널 카드의 머리다**(결정 8 · adr-03 · codex-ds 스펙 §4) — 그것도 work 화면과 같은 컴포넌트이고, 갈리는
 // 것은 맨 앞 한 칸뿐이다: 이 화면에는 문서가 없어 `spec` 칸이 없고 ⌘1부터가 셸이다.
 //
-// **이 44px 한 층의 내력을 적어 둔다 — 안 적으면 다음 사람이 되돌린다.** 처음에 이 자리를
+// **창 맨 위 한 층의 내력을 적어 둔다 — 안 적으면 다음 사람이 되돌린다.** 처음에 이 자리를
 // 겸하던 것이 가로 탭 줄이었다(브레드크럼에 적을 것이 `Terminal` 한 낱말뿐이라 층을 아끼려던
 // 것 — 결정 44). 셸을 고르는 자리가 사이드바 가지로 가면서 그 줄이 없어지자 창을 끌 영역도
 // 신호등을 피할 여백도 남지 않아, 자리를 화면의 브레드크럼 머리에 돌려줬다(결정 72). 이번 판이 셸을
 // 고르는 자리를 화면 안으로 되돌리므로(adr-03) 그 층을 다시 탭 줄이 가져간다 — 브레드크럼은
 // 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 바탕 줄(`Frame`의 `TitleBar`)의
-// 성질이고, 탭 줄은 그 줄에 칸들을 세운다(ShellTabs 머리말).
+// 성질이다. 탭 줄은 한동안 그 줄에 칸들을 세우다가, 그 탭이 보여 줄 카드의 머리로 내려왔다(codex-ds 스펙 §4 · ShellTabs 머리말).
 //
-// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 바탕 줄에 탭 줄이 서고, 그 아래 터미널 카드 하나가 뜬다 —
-// 카드에는 머리가 없다(ui-refresh 결정 5: 머리가 필요 없는 카드는 곧바로 내용이 선다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
+// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 바탕 줄 아래 터미널 카드 하나가 뜨고 그 카드의 머리가 탭 줄이다 —
+// 위치 캡슐 줄은 없다(ui-refresh 결정 5: 카드는 제게 필요한 머리만 인다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
 // `--term-inset`은 셸의 집이 든다(판 04 기본값 — `TerminalPane`의 그 주석).
 //
 // **셸이 0개일 때 여는 자리는 이 줄의 `+` 하나다**(결정 19). 한때 본문 가운데에도 목록이
@@ -165,42 +167,47 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   }, [owner]);
 
   return (
-    <Frame
-      sidebarOpen={sidebarOpen}
-      titlebar={
-        <ShellTabs
-          state={shellState}
-          // 이 화면의 셸은 Work에 안 매인다 — 소유자가 빈 글자다.
-          owner={owner}
-          // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
-          // work뿐이고(결정 24) 이 화면은 work가 아니다.
-          projects={[]}
-          // 메뉴가 안 서므로 보일 곳이 없지만 값은 사실대로 준다 — 데이터 루트라 cwd가 없다.
-          defaultCwd={topTerminal().cwd}
-          // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
-          // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
-          spec={null}
-          // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
-          showing
-          // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
-          onSelect={selectShellWithFocus}
-          // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
-          onClose={requestCloseShell}
-          onOpen={() => openNewShell(topTerminal())}
-          // **이 화면도 탭을 끈다**(UI개선 결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
-          // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
-          // 가지므로 여기서 거른다. 탭 줄 밖에서 놓으면 아무 일도 없다.
-          onDragTab={(shellId, from) => {
-            if (shellId !== null) armDrag({ kind: "shell", owner, shellId }, from);
-          }}
-          slot={slot}
-          onSlot={hoverSlot}
-          onDropSlot={dropShellOnSlot}
-          dragging={dragging}
-        />
-      }
-    >
-      <Card as="main" label="터미널" tone="terminal" className="flex-1">
+    // 탭 줄이 터미널 카드의 머리다(codex-ds 스펙 §4 「탭 줄」 — work 화면과 같은 규칙). 카드가 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
+    // 바탕 줄은 비어 있는 끌기 줄이다.
+    <Frame sidebarOpen={sidebarOpen}>
+      <Card
+        as="main"
+        label="터미널"
+        tone="terminal"
+        className={cn("flex-1", TAB_ROW_CARD)}
+        head={
+          <ShellTabs
+            state={shellState}
+            // 이 화면의 셸은 Work에 안 매인다 — 소유자가 빈 글자다.
+            owner={owner}
+            // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
+            // work뿐이고(결정 24) 이 화면은 work가 아니다.
+            projects={[]}
+            // 메뉴가 안 서므로 보일 곳이 없지만 값은 사실대로 준다 — 데이터 루트라 cwd가 없다.
+            defaultCwd={topTerminal().cwd}
+            // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
+            // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
+            spec={null}
+            // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
+            showing
+            // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
+            onSelect={selectShellWithFocus}
+            // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
+            onClose={requestCloseShell}
+            onOpen={() => openNewShell(topTerminal())}
+            // **이 화면도 탭을 끈다**(UI개선 결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
+            // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
+            // 가지므로 여기서 거른다. 탭 줄 밖에서 놓으면 아무 일도 없다.
+            onDragTab={(shellId, from) => {
+              if (shellId !== null) armDrag({ kind: "shell", owner, shellId }, from);
+            }}
+            slot={slot}
+            onSlot={hoverSlot}
+            onDropSlot={dropShellOnSlot}
+            dragging={dragging}
+          />
+        }
+      >
         <TerminalPane work={null} />
       </Card>
     </Frame>

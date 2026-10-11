@@ -367,8 +367,8 @@ describe("마지막 셸이 사라진 순간", () => {
 });
 
 // 「켜진 셸이 무엇인가」를 정하는 자리. 이 함수가 없던 동안 같은 2단 체인이 화면 넷에
-// 베껴져 있었고, 그 값이 **어느 셸을 그릴지**(TerminalPane)와 **열 머리의 이름**
-// (ShellHeadName)으로 곧장 간다 — 첫 칸을 주는 것으로 퇴화하면 화면이 조용히 갈린다.
+// 베껴져 있었고, 그 값이 **어느 셸을 그릴지**(TerminalPane)로 곧장 간다 — 첫 칸을 주는
+// 것으로 퇴화하면 켜진 탭과 본문의 셸이 조용히 갈린다.
 describe("켜진 셸을 집는다", () => {
   it("첫 칸이 아니라 켜진 칸을 준다", () => {
     const { state, ids } = opened(3);
@@ -382,7 +382,7 @@ describe("켜진 셸을 집는다", () => {
     expect(activeShellOf(켠것, TOP.owner)?.id).toBe(activeIdOf(켠것, TOP.owner));
   });
 
-  // 소유자마다 따로다. 남의 화면의 켜진 칸을 여기서 주면 열 머리가 옆 work의 셸 이름을 쓴다.
+  // 소유자마다 따로다. 남의 화면의 켜진 칸을 여기서 주면 본문이 옆 work의 셸을 그린다.
   it("남의 화면 것을 주지 않는다", () => {
     const { state } = opened(2);
     expect(activeShellOf(state, ownerFor("가"))).toBeNull();

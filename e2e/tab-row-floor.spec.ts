@@ -5,10 +5,10 @@ import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
 import { rowOf, settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
 
 // 탭 줄의 **바닥** — 어느 창 폭·어느 패널 폭에서도 셸 칸 하나는 온전히 보인다(`panel-layout`의
-// `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
-// 화면에 없었다. 그 바닥은 **사이드바가 자리를 내줘서** 선다. 작업 패널은 이제 탭 줄 **아래** 카드 줄에
-// 서서(ui-refresh 결정 4 · 27) 줄과 폭을 다투지 않고, 대신 문서 카드에 자리를 내준다(문서 카드는 패널의
-// 최소 폭만큼은 남는다 — `Frame`의 패널 칸). 그래서 이 파일이 보는 것은 줄보다 그 둘이다: 각자의 최소 폭
+// `TAB_ROW_CARD` · `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
+// 화면에 없었다. 탭 줄은 본문 카드의 머리라(codex-ds 스펙 §4) 작업 패널과 같은 카드 줄에 서고, 그 바닥은 **작업 패널이 제
+// 최소 폭까지, 그다음 사이드바가 자리를 내줘서** 선다. 패널은 문서 카드에 자리를 내주되 문서 카드에 제 최소 폭만큼은
+// 남긴다(`Frame`의 패널 칸). 그래서 이 파일이 보는 것은 줄보다 그 둘이다: 각자의 최소 폭
 // 아래로는 안 줄고, 창 밖으로 밀리지 않고, 사람이 끌어 고른 폭(저장값)은 창이 좁아진다고 안 지워지고,
 // 좁게 선 채로 끌어도 손잡이가 안 튄다.
 //
@@ -101,8 +101,8 @@ function expectFits(layout: Layout, at: string) {
 }
 
 // 넓힌 사이드바(최대 400)와 넓힌 작업 패널(최대 560)은 기본 폭보다 훨씬 큰 창에서도 본문을 민다 — 한때
-// 1280px 창에서 둘을 빼면 줄에 320px이 남았다. 이제 패널은 줄 아래라 줄을 밀지 않지만, 900px에서는 문서 카드에
-// 자리를 내주며 좁게 선다. 기본 폭만 재는 검사로는 안 보인다.
+// 1280px 창에서 둘을 빼면 줄에 320px이 남았다. 지금은 줄이 본문 카드의 머리라 패널과 같은 카드 줄에 서고, 900px에서는
+// 패널이 본문 카드에 자리를 내주며 좁게 선다. 기본 폭만 재는 검사로는 안 보인다.
 for (const width of [900, 1280]) {
   for (const screen of [
     { name: "work", url: `/works/${plainWork.slug}?tab=terminal` },
@@ -322,7 +322,9 @@ test("분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 �
   expectFits(layout, "분할 900px");
   const row = await rowOf(page);
   expect(row.spill).toBeLessThanOrEqual(0);
-  expect(row.actions.over).toBeLessThanOrEqual(0);
+  // 터미널 열의 줄 끝에는 그 열을 닫는 `×`가 선다(codex-ds 스펙 S14) — 줄 밖으로 안 밀린다.
+  expect(row.actions).not.toBeNull();
+  expect(row.actions!.over).toBeLessThanOrEqual(0);
   const columnsRight = await page.evaluate(() =>
     Math.max(...[...document.querySelectorAll("[data-column]")].map((column) => column.getBoundingClientRect().right)),
   );
@@ -331,7 +333,7 @@ test("분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 �
 
 test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는다 — 패널이 제자리다", async ({ page }) => {
   // 본문 열에는 끊을 자리 없는 코드 줄·넓은 표도 산다. 그 폭이 열의 바닥에 섞이면 소스 보기를
-  // 켤 때마다 패널이 창 밖으로 밀리고 폭이 저 혼자 바뀐 것처럼 보인다(`TAB_ROW_COLUMN` 머리말).
+  // 켤 때마다 패널이 창 밖으로 밀리고 폭이 저 혼자 바뀐 것처럼 보인다(`TAB_ROW_CARD` 머리말).
   await openWith(page, `/works/${pinnedWork.slug}?file=${encodeURIComponent("overview.md")}`, 900, {
     sidebar: 280,
     panel: 330,

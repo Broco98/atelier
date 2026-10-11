@@ -16,7 +16,7 @@ import { SourceToggle } from "@/components/ui/SourceToggle";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Card, CardHead, Frame, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
-import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,10 +33,8 @@ import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
-import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
-import { useShellForeground } from "@/features/terminal/terminal-settings";
 import {
   activeIdOf,
   closesShellFromWindow,
@@ -488,124 +486,6 @@ function WorksPage({
   // 그래서 `!currentSpec`이 따로 얹힌다.
   const sourceLocked = !currentSpec || ignoresSourceToggle(currentSpec);
 
-  // 바탕 줄의 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
-  // (`Works / 제목`)은 그때 사라졌다: **work 제목은 사이드바 행이 말한다.** 감수한 것은 ⌘B로 사이드바를 접으면 화면 어디에도
-  // 제목이 없다는 것이고, 이름을 고치는 길은 ⋯ 메뉴로 갔다(아래 `WorkMenu`).
-  //
-  // **그 줄이 공용 틀의 바탕 줄에 선다**(ui-refresh 결정 5 · 27) — 44px 층 · 창 끌기 · 신호등 회피 여백 · 오른쪽 틈은 그 줄의
-  // 것이고 탭 줄은 그 자식들을 내놓는다. 고른 작업이 없으면 **칸이 설 자리가 없다** — 세울 소유자가 없다: 그 값은 work의
-  // slug에서 나오는데(`ownerOf(…)`) 고른 작업이 없으면 그 자리가 비고, 빈 키는 **최상위 터미널**이라 `/terminal`의 셸이 이
-  // 줄에 서게 된다. `+`도 열 자리가 없어 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것). 그때 바탕 줄은 비어
-  // 있는 끌기 줄이고, 화면 이름은 빈 화면 카드의 머리가 말한다(아래 `body`).
-  const tabRow = panelWork ? (
-    <ShellTabs
-      state={shellState}
-      owner={ownerOf(panelWork.slug)}
-      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
-      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
-      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
-      projects={workShellProjects(panelWork)}
-      // 메뉴 맨 윗줄 「모든 프로젝트」 옆의 옅은 경로(UI개선 결정 20). ⌘T와 「모든 프로젝트」가 여는
-      // 자리와 **같은 함수**(`workDefaultOrigin` — `placeOrigin`이 그것을 탄다)에서 읽는다.
-      defaultCwd={workDefaultOrigin(panelWork).cwd}
-      // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
-      // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
-      spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
-      showing={terminalStands}
-      // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
-      // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
-      // 보고 있는 work의 것이기 때문이다.
-      //
-      // **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
-      onSelect={(id) => {
-        selectShellWithFocus(id);
-        onSelectTab("terminal");
-      }}
-      // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
-      onClose={requestCloseShell}
-      onOpen={(place) => {
-        // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
-        // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
-        // 그때는 열지도, 본문을 옮기지도 않는다(결정 24).
-        const origin = placeOrigin(panelWork, place);
-        if (!origin) return;
-        openNewShell(origin);
-        onSelectTab("terminal");
-      }}
-      // 칸을 끌면 **한 눌림을 두 소비자가 나눠 본다**(UI개선 스펙 S10) — 본문 절반에
-      // 놓으면 그 절반에 서고(결정 12, 아래 받침), 이 줄의 틈에 놓으면 순서가 바뀐다(UI개선 결정 11).
-      // 놓은 곳이 이긴다.
-      //
-      // **끄는 자리를 여기서 만든다.** 탭 줄은 스토어도 제스처 모듈도 모르는 그림이라(그쪽
-      // prop 주석) 드래그 상태를 구독하는 이 화면이 건다. `/terminal`도 같은 모양으로 건다.
-      //
-      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다. 원천이 slug가
-      // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
-      // 때문이다.
-      onDragTab={(shellId, from) => {
-        const owner = ownerOf(panelWork.slug);
-        armDrag(
-          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
-          from,
-        );
-      }}
-      // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
-      // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
-      slot={drag.slot}
-      onSlot={hoverSlot}
-      onDropSlot={dropShellOnSlot}
-      dragging={drag.source !== null}
-      // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⋯ · 분할(ui-refresh 결정 14). 탭은 왼쪽부터
-      // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다. 패널 토글은 이 줄 밖, 레일 맨 위에 선다(ui-refresh 결정 9).
-      //
-      // 상태 배지가 여기 있는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면
-      // 상태를 바꾸는 데 클릭이 두 번 든다. ⋯는 브레드크럼에 있던 것이 제목과 함께
-      // 이리로 왔다: 제목이 사라져 「작업 그 자체를 말하는 덩어리」가 설 자리가 없어졌다.
-      // 그 곁의 ⓘ(복사 줄 셋)는 info 맨 위로 들어갔다 — 레일의 info와 위아래로 붙어 서던 것이다(ui-refresh 결정 14).
-      actions={
-        selected && (
-          <>
-            <StatusMenu work={selected} />
-            {/* 조작은 **줄의 간격을 그대로 받는다**(결정 24). 한때 ⋯를 옆 버튼과 gap 0인 상자에
-                묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
-                것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
-                리듬이 갈리는 값이 크다. */}
-            <WorkMenu work={selected} archive={archive} remove={remove} />
-            {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
-                그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
-                지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
-                두었다 — 사이드바에서 셸 가지가 걷혔으므로 자리는 여전히 하나다(adr-03).
-                (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
-                주석까지 읽는다.) */}
-            {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
-                터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
-                여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
-            {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
-                아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
-                이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
-                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` · 켜짐 toggle-on)은 부품의 icon-xs 크기다.
-
-                툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
-                날지를 틀리게 말한다(목록 패널 토글의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
-                안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28). */}
-            <Hint
-              text={split !== null ? "분할 끄기" : "분할 켜기"}
-              render={
-                <Toggle
-                  size="icon-xs"
-                  aria-label="분할"
-                  pressed={split !== null}
-                  onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
-                />
-              }
-            >
-              <Columns2 className="size-4" />
-            </Hint>
-          </>
-        )
-      }
-    />
-  ) : undefined;
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
   // 쪽이 그 값이다. 이미 그 값이면 옮기지 않는다: 열 머리의 `×`처럼 한 틱에 두 이동이
@@ -711,8 +591,8 @@ function WorksPage({
     </>
   );
 
-  // 분할의 열 머리 둘 — **분할일 때만 선다**(결정 89). 문서 열은 문서 카드 머리에 그 열을 닫는 `×`가 더해진 것이고, 터미널 열은
-  // 터미널 카드 위 36px 터미널 색 머리다(셸 이름 · `×`). 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧 `tab`이다.
+  // 분할의 문서 열 머리 — **분할일 때만 선다**(결정 89). 문서 카드 머리에 그 열을 닫는 `×`가 더해진 것이다. 터미널 열의 머리는
+  // 탭 줄이고 그 열의 `×`는 줄 끝에 선다(아래 `tabRow`). 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧 `tab`이다.
   const specHead = (
     <CardHead
       data-column="spec"
@@ -731,15 +611,6 @@ function WorksPage({
       }
     />
   );
-  const terminalHead = terminalWork && (
-    <TerminalHead
-      // 탭 줄의 셸 칸과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
-      // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
-      name={<ShellHeadName owner={ownerOf(terminalWork.slug)} />}
-      onClose={() => changeSplit(null, otherTab("terminal"))}
-    />
-  );
-
   // 문서 본문 — 문서 카드의 몸이다(카드와 머리는 아래 `body`가 세운다).
   const specBody = selected && (
     <SpecViewer
@@ -756,6 +627,151 @@ function WorksPage({
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal
   // 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다.
   const terminalBody = terminalWork && <TerminalPane key={terminalWork.slug} work={terminalWork} />;
+
+  // 분할이 실제로 서는가 — 두 본문이 다 설 때만이다(아래 `splitView`). 탭 줄이 어느 카드의 머리인지가 이것으로 갈린다.
+  const splitting = split !== null && Boolean(specBody) && Boolean(terminalBody);
+
+  // 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
+  // (`Works / 제목`)은 그때 사라졌다: **work 제목은 사이드바 행이 말한다.** 감수한 것은 ⌘B로 사이드바를 접으면 화면 어디에도
+  // 제목이 없다는 것이고, 이름을 고치는 길은 ⋯ 메뉴로 갔다(아래 `WorkMenu`).
+  //
+  // **그 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」) — 탭이 그 탭이 보여 줄 카드에 붙는다. 단일 뷰면 본문 카드(문서 ·
+  // 터미널 어느 쪽이든 같은 자리)의 머리이고, 분할이면 터미널 열의 머리다 — 그때 그 열을 닫는 `×`가 줄 끝에 서고(codex-ds 스펙
+  // S14), 열 머리를 집는 표식(`data-column`)을 단다. 고른 작업이 없으면 **칸이 설 자리가 없다** — 세울 소유자가 없다: 그 값은
+  // work의 slug에서 나오는데(`ownerOf(…)`) 고른 작업이 없으면 그 자리가 비고, 빈 키는 **최상위 터미널**이라 `/terminal`의 셸이
+  // 이 줄에 서게 된다. `+`도 열 자리가 없어 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것). 그때 본문 카드의
+  // 머리는 화면 이름이다(아래 `body`).
+  const tabRow = panelWork ? (
+    <ShellTabs
+      data-column={splitting ? "terminal" : undefined}
+      state={shellState}
+      owner={ownerOf(panelWork.slug)}
+      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
+      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
+      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
+      projects={workShellProjects(panelWork)}
+      // 메뉴 맨 윗줄 「모든 프로젝트」 옆의 옅은 경로(UI개선 결정 20). ⌘T와 「모든 프로젝트」가 여는
+      // 자리와 **같은 함수**(`workDefaultOrigin` — `placeOrigin`이 그것을 탄다)에서 읽는다.
+      defaultCwd={workDefaultOrigin(panelWork).cwd}
+      // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
+      // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
+      spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
+      showing={terminalStands}
+      // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
+      // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
+      // 보고 있는 work의 것이기 때문이다.
+      //
+      // **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
+      onSelect={(id) => {
+        selectShellWithFocus(id);
+        onSelectTab("terminal");
+      }}
+      // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
+      onClose={requestCloseShell}
+      onOpen={(place) => {
+        // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
+        // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
+        // 그때는 열지도, 본문을 옮기지도 않는다(결정 24).
+        const origin = placeOrigin(panelWork, place);
+        if (!origin) return;
+        openNewShell(origin);
+        onSelectTab("terminal");
+      }}
+      // 칸을 끌면 **한 눌림을 두 소비자가 나눠 본다**(UI개선 스펙 S10) — 본문 절반에
+      // 놓으면 그 절반에 서고(결정 12, 아래 받침), 이 줄의 틈에 놓으면 순서가 바뀐다(UI개선 결정 11).
+      // 놓은 곳이 이긴다.
+      //
+      // **끄는 자리를 여기서 만든다.** 탭 줄은 스토어도 제스처 모듈도 모르는 그림이라(그쪽
+      // prop 주석) 드래그 상태를 구독하는 이 화면이 건다. `/terminal`도 같은 모양으로 건다.
+      //
+      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다. 원천이 slug가
+      // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
+      // 때문이다.
+      onDragTab={(shellId, from) => {
+        const owner = ownerOf(panelWork.slug);
+        armDrag(
+          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
+          from,
+        );
+      }}
+      // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
+      // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
+      slot={drag.slot}
+      onSlot={hoverSlot}
+      onDropSlot={dropShellOnSlot}
+      dragging={drag.source !== null}
+      // 오른쪽 끝 고정(결정 10) — 분할이면 터미널 열을 닫는 `×`다. 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧
+      // `tab`이다. 단일 뷰의 줄 끝에는 아무것도 안 선다 — 상태 배지 · ⋯ · 분할은 바탕 줄에 선다(아래 `titleActions`).
+      actions={
+        splitting ? (
+          <Hint
+            text="terminal 열 닫기"
+            announce="name"
+            type="button"
+            onClick={() => changeSplit(null, otherTab("terminal"))}
+            className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring"
+          >
+            <X className="size-3.5" />
+          </Hint>
+        ) : undefined
+      }
+    />
+  ) : undefined;
+
+  // 바탕 줄의 조작 — 상태 배지 · ⋯ · 분할(ui-refresh 결정 14). 바탕 줄 오른쪽 끝에 붙는다(`ml-auto`). 한때 탭 줄 끝에 섰고, 탭
+  // 줄이 본문 카드 머리로 내려간 뒤 이것들만 바탕 줄에 남았다. 패널 토글은 이 줄 밖, 레일 맨 위에 선다(ui-refresh 결정 9).
+  //
+  // 상태 배지가 여기 있는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면
+  // 상태를 바꾸는 데 클릭이 두 번 든다. ⋯는 브레드크럼에 있던 것이 제목과 함께
+  // 이리로 왔다: 제목이 사라져 「작업 그 자체를 말하는 덩어리」가 설 자리가 없어졌다.
+  // 그 곁의 ⓘ(복사 줄 셋)는 info 맨 위로 들어갔다 — 레일의 info와 위아래로 붙어 서던 것이다(ui-refresh 결정 14).
+  //
+  // 조작 사이 간격이 **왼쪽 셸 컨트롤과 같은 값이다**(결정 24 — `--titlebar-control-gap`). 한 줄에 선 아이콘 버튼이 자리마다
+  // 다른 간격을 쓰면 그중 하나만 따로 떨어진 것처럼 읽힌다.
+  //
+  // 묶음 상자도 창을 끄는 자리다 — 조작 사이 틈은 바탕 줄이 아니라 이 상자라, 속성이 없으면 그 틈이 창을 못 끄는 죽은 자리가
+  // 된다(Tauri는 누른 요소 자신만 본다 — `Frame` 머리말). 표식(`data-work-actions`)은 좁은 창에서도 이 묶음이 창 안에 제 폭으로
+  // 서는지를 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+  const titleActions = selected && (
+    <div data-work-actions data-tauri-drag-region className="ml-auto flex shrink-0 items-center gap-(--titlebar-control-gap)">
+      <StatusMenu work={selected} />
+      {/* 조작은 **줄의 간격을 그대로 받는다**(결정 24). 한때 ⋯를 옆 버튼과 gap 0인 상자에
+          묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
+          것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
+          리듬이 갈리는 값이 크다. */}
+      <WorkMenu work={selected} archive={archive} remove={remove} />
+      {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
+          그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
+          지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
+          두었다 — 사이드바에서 셸 가지가 걷혔으므로 자리는 여전히 하나다(adr-03).
+          (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
+          주석까지 읽는다.) */}
+      {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
+          터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
+          여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
+      {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
+          아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
+          이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
+          같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` · 켜짐 toggle-on)은 부품의 icon-xs 크기다.
+
+          툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
+          날지를 틀리게 말한다(목록 패널 토글의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
+          안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28). */}
+      <Hint
+        text={split !== null ? "분할 끄기" : "분할 켜기"}
+        render={
+          <Toggle
+            size="icon-xs"
+            aria-label="분할"
+            pressed={split !== null}
+            onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
+          />
+        }
+      >
+        <Columns2 className="size-4" />
+      </Hint>
+    </div>
+  );
 
   // 분할의 열 둘 — 열 하나가 카드 하나다(ui-refresh 결정 15). 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 이 화면은 카드의
   // 안(열 머리와 몸)만 건넨다 — 카드 상자 · 두 열 사이 틈 · 그 가운데 폭 손잡이 · 틈 끌기 영역 · 비율과 그 저장은 공용 틀의 분할이
@@ -777,14 +793,14 @@ function WorksPage({
     label: "터미널",
     tone: "terminal",
     children: (
-      <ColumnInside tab="terminal" head={terminalHead} onFocus={focusColumn}>
+      <ColumnInside tab="terminal" head={tabRow} onFocus={focusColumn}>
         {terminalBody}
       </ColumnInside>
     ),
   };
-  // 분할 — 두 본문이 다 설 때만이다. 비율의 저장 키는 판 05 spec이 적어 둔 `work-split-ratio`다(`useSplitRatio` 머리말).
+  // 분할 — 두 본문이 다 설 때만이다(위 `splitting`). 비율의 저장 키는 판 05 spec이 적어 둔 `work-split-ratio`다(`useSplitRatio` 머리말).
   const splitView: SplitSlot | undefined =
-    split !== null && specBody && terminalBody
+    splitting
       ? {
           ratioKey: "work-split-ratio",
           columns: split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn],
@@ -800,17 +816,22 @@ function WorksPage({
   // 본문 — 넷 중 하나이고 모두 공용 틀의 카드다(ui-refresh 결정 4 · 15). 분할이면 틀이 `split`으로 받아 그리므로 여기는 비어
   // 있다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을
   // 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
+  //
+  // **문서 카드와 터미널 카드가 같은 자리 · 같은 머리다** — 둘 다 탭 줄을 머리(`head`)로 이고 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
+  // 오가도 카드와 탭 줄이 새로 서지 않는다(`Frame`의 `Card`) — 방금 누른 `spec` 칸의 포커스와 줄의 스크롤이 그대로다. 그래서 문서
+  // 카드의 위치 캡슐 줄은 머리가 아니라 몸의 첫 줄로 건넨다: 머리 자리에 묶음이 서면 탭 줄이 그 자리에서 다른 것이 된다.
   const body = splitView ? undefined : terminalWork ? (
-    // 터미널 — 머리 없는 터미널 카드다(ui-refresh 결정 5 · Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
-    <Card as="main" label="터미널" tone="terminal" className="flex-1">
+    // 터미널 — 탭 줄 아래가 곧 셸이다(Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
+    <Card as="main" label="터미널" tone="terminal" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
       {terminalBody}
     </Card>
   ) : selected ? (
-    <Card as="main" label="문서" className="flex-1" head={<CardHead crumbs={docCrumbs} end={docControls} />}>
+    <Card as="main" label="문서" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      <CardHead crumbs={docCrumbs} end={docControls} />
       {specBody}
     </Card>
   ) : (
-    // 고른 작업이 없으면 패널도 없다 — 카드 머리가 화면 이름을 말하고 바탕 줄은 비어 있다.
+    // 고른 작업이 없으면 패널도 탭 줄도 없다 — 카드 머리가 화면 이름을 말하고 바탕 줄은 비어 있다.
     <Card as="main" label={WORKS_COPY.page} className="flex-1" head={<CardHead crumbs={[WORKS_COPY.page]} />}>
       {/* DS 빈 화면 물음(codex-ds 스펙 §6 · 스토리 64) — 물음 · 설명 · 할 일이 카드 한가운데에 서고 글리프 칸은 없다(`Empty`의
           `question`). 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
@@ -836,13 +857,15 @@ function WorksPage({
   );
 
   return (
-    // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27). 바탕 줄에 탭 줄이 서고, 그 아래 본문 카드와 작업 패널 카드가 뜬다.
+    // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27). 바탕 줄에 상태 · ⋯ · 분할이 서고, 그 아래 본문 카드(머리가 탭 줄)와 작업
+    // 패널 카드가 뜬다.
     //
-    // 탭 줄의 바닥(`TAB_ROW_COLUMN`)은 틀의 본문 열이 든다 — 카드 줄은 제 폭을 바깥에 안 알리므로 넓은 문서 · xterm이 그 바닥을
-    // 부풀리지 않고, 작업 패널은 카드 줄 안에서 문서 카드에 자리를 내준다(`Frame`의 패널 칸).
+    // 탭 줄의 바닥은 그 줄을 이는 카드가 들고(`TAB_ROW_CARD`), 모자라면 틀의 본문 열이 사이드바에게 자리를 요구한다
+    // (`TAB_ROW_COLUMN`) — 카드가 제 몸을 격리하므로 넓은 문서 · xterm이 그 바닥을 부풀리지 않고, 작업 패널은 카드 줄 안에서 제
+    // 최소 폭까지 문서 카드에 자리를 내준다(`Frame`의 패널 칸).
     <Frame
       sidebarOpen={sidebarOpen}
-      titlebar={tabRow}
+      titlebar={titleActions}
       // 레일(ui-refresh 결정 9 · 10) — 패널 토글과 `spec` · `info` 칸. 패널과 같은 조건으로 선다: 고른 작업이 없으면 열 패널이
       // 없어 레일도 없다(그때 본문 열의 오른쪽 틈 하나가 창 끝이다). **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을
       // 뺐던 까닭(결정 11 — 그때 패널이 거기 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
@@ -894,8 +917,8 @@ function WorksPage({
           : undefined
       }
       split={splitView}
-      // 카드 줄 위를 덮는 것 셋(판 04 「덮는 것의 기준 상자」). 카드 줄이 바탕 줄 **아래**에서 시작하므로 머리행을 빼는 계산이
-      // 없다 — 「끄는 것이 출발한 줄은 덮지 않는다」(결정 12)가 상자로 선다.
+      // 카드 줄 위를 덮는 것 셋(판 04 「덮는 것의 기준 상자」). 바탕 줄은 카드 줄 밖이라 어느 것도 안 덮는다. 놓기 겹판은 카드
+      // 줄 맨 위 탭 줄의 띠까지 비운다 — 「끄는 것이 출발한 줄은 덮지 않는다」(결정 12).
       overlay={
         <>
           {/* 놓일 자리 — **끄는 동안에만 선다**(결정 86). 절반 둘이 카드 줄을 나눠 덮고,
@@ -904,13 +927,15 @@ function WorksPage({
 
               **패널까지 덮는다.** 패널을 도려내려면 그 폭을 여기서 알아야 하는데, 그 값은 패널이
               드래그로 바꾸는 것이라 두 곳에 적히면 한쪽만 늙는다 — 넉넉히 받는 쪽이 겨누기도 쉽다.
-              바탕 줄은 반대다: **끄는 것이 출발한 자리**라서다(결정 12). 덮으면 겹판이 제 출발점 위에 서서
+              탭 줄은 반대다: **끄는 것이 출발한 자리**라서다(결정 12). 덮으면 겹판이 제 출발점 위에 서서
               「제자리에 돌려놓으면 아무 일도 안 난다」가 사라진다 — 칸을 12px 흔들고 손을 떼기만 해도
-              화면이 갈린다. 취소하는 몸짓이 그 한 줄뿐이라 그것을 남긴다. */}
+              화면이 갈린다. 취소하는 몸짓이 그 한 줄뿐이라 그것을 남긴다. 탭 줄은 카드 줄 맨 위의 머리라(본문 카드 ·
+              분할의 터미널 열 모두 카드 줄 꼭대기에서 선다) 겹판이 그 높이(`size-toolbar` — 줄이 읽는 토큰)만큼 아래에서
+              시작한다. 그 띠에 선 다른 카드의 머리(문서 열 머리 · 패널 머리)도 함께 안 덮인다. */}
           {dragSource && (
             // 겹판 **전체**를 벗어날 때만 끈다 — `pointerleave`는 버블하지 않아 반쪽 사이를
             // 오갈 때는 안 온다.
-            <div className="absolute inset-0 z-40 flex" onPointerLeave={clearHalf}>
+            <div className="absolute inset-x-0 top-(--size-toolbar) bottom-0 z-40 flex" onPointerLeave={clearHalf}>
               {(["left", "right"] as const).map((half) => (
                 <div
                   key={half}
@@ -974,43 +999,14 @@ function ColumnInside({
   );
 }
 
-/**
- * 분할의 터미널 열 머리 — 터미널 카드 위 36px 줄이다(디자인 시스템 `.at-term-head`). 셸 이름과 그 열을 닫는 `×`가 선다.
- *
- * **글자색이 터미널 테마의 글자색이다** — 바탕이 터미널 카드의 것(테마의 바탕)이라 앱 토큰(흰 바탕의 값)으로 칠하면 어두운
- * 테마에서 묻힌다. 셸 화면의 글자보다 한 단 옅게 서고, `×`의 hover도 그 글자색의 옅은 겹이다(바탕이 무엇이든 보인다).
- * 아래에 선을 긋지 않는다 — 머리와 셸 화면이 한 카드다. 표식(`data-column`)은 검사가 이 머리를 정체성으로 집는 고리다 —
- * 순서도 이것으로 읽힌다: 마크업에서 먼저 나오는 것이 왼쪽 열이다.
- */
-function TerminalHead({ name, onClose }: { name: React.ReactNode; onClose: () => void }) {
-  const color = useShellForeground();
-  return (
-    <div
-      data-column="terminal"
-      style={{ color }}
-      className="flex h-9 shrink-0 items-center gap-2 pl-(--term-inset) pr-2 text-xs"
-    >
-      <span className="min-w-0 flex-1 truncate opacity-70">{name}</span>
-      <Hint
-        text="terminal 열 닫기"
-        announce="name"
-        type="button"
-        onClick={onClose}
-        className="icon-button icon-button-xs shrink-0 opacity-70 transition-[background-color,opacity] hover:bg-current/10 hover:opacity-100 focus-ring"
-      >
-        <X className="size-3.5" />
-      </Hint>
-    </div>
-  );
-}
-
 // 되돌릴 수 없는 조작이 도는 동안 카드 줄을 덮는다.
 //
 // 워크트리 제거는 폴더 크기에 비례해 수 초가 걸린다(실측 8.9GB). 그동안 화면이 아무 말도
 // 하지 않으면 **버튼이 안 눌린 것처럼 보이고**, 사이드바에는 그 작업이 아직 그대로 있어
 // 더 그렇다. 덮는 것 자체도 목적이다 — 진행 중에 같은 작업을 다시 겨누지 못하게 한다.
 //
-// 공용 틀의 `overlay` 칸이라 카드 줄(본문 + 패널)을 덮고 바탕 줄은 덮지 않는다(판 04 「덮는 것의 기준 상자」). 바탕 줄의 ⋯는
+// 공용 틀의 `overlay` 칸이라 카드 줄(본문 카드와 그 머리의 탭 줄 + 패널)을 덮고 바탕 줄은 덮지 않는다(판 04 「덮는 것의 기준
+// 상자」) — 치워지는 작업에 셸을 새로 열 길도 함께 막힌다. 바탕 줄의 ⋯는
 // 진행 중 `disabled`라(아래 `WorkMenu`) 다시 눌러 같은 조작을 겨눌 수 없다. 사이드바도 덮지 않는다 — 이 조작은 본문이 보여주는
 // 작업 하나에만 걸린다.
 function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
@@ -1032,7 +1028,7 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
   );
 }
 
-// 머리행의 상태 배지 + 바꾸는 라디오 메뉴(판 3, 스토리 46~48 · 51 · 52).
+// 바탕 줄의 상태 배지 + 바꾸는 라디오 메뉴(판 3, 스토리 46~48 · 51 · 52).
 //
 // **메뉴 부품(`DropdownMenu`)이 다 한다** — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 · Home/End · 글자 치기),
 // Esc 닫기와 배지로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9). 배지가 「메뉴를 연다」와

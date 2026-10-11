@@ -6,7 +6,7 @@ import { useSetWorkTitle } from "./hooks";
 import type { WorkView } from "./types";
 
 /**
- * 이름 바꾸기 창(결정 8). 머리행 ⋯ 메뉴의 「이름 바꾸기」가 연다. slug는 바뀌지 않는다(ProjectDetail의
+ * 이름 바꾸기 창(결정 8). 바탕 줄 ⋯ 메뉴의 「이름 바꾸기」가 연다. slug는 바뀌지 않는다(ProjectDetail의
  * TitleEditor와 같은 계약).
  *
  * **한때 ⋯ 메뉴 안의 입력이었다.** 메뉴가 메뉴 부품(`DropdownMenu`)이 되면서 항목이 입력칸을 품을 수 없게

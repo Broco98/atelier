@@ -2,6 +2,7 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { callCount, installFixtureBackend, middle, moveOntoHalf, startSplitDrag, unknownIpcCalls } from "./harness";
+import { settle } from "./tab-row";
 
 // 판 05 — 분할. **이 층에서만 보이는 것 셋이다**: 포인터 제스처(정적 마크업 seam에는
 // 이벤트가 없다), 끄는 동안 그려지는 겹판, 그리고 열 폭이 실제로 PTY 격자까지 내려가는 것.
@@ -52,7 +53,7 @@ test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
 
 // ─── 결정 12(판 03): 분할을 **탭**에서 만든다 ───
 //
-// 사이드바 행이 하던 몸짓의 출발점이 머리행의 탭 줄로 옮겨 왔다(adr-03이 그 행을 걷었다).
+// 사이드바 행이 하던 몸짓의 출발점이 탭 줄(본문 카드 머리)로 옮겨 왔다(adr-03이 그 행을 걷었다).
 // **놓일 자리도 분할 계산도 그대로다** — 바뀐 것은 끌 수 있는 것뿐이다. 한때 같은 것을
 // 사이드바 잎·행에서 재던 검사 둘이 이 아래 둘과 겹쳐, 판 04가 그 행을 걷으면서 지웠다.
 //
@@ -171,8 +172,9 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   await opener.click();
   await expect(opener).toHaveCount(0);
 
-  // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다.
-  await startSplitDrag(page, await specTab(page));
+  // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다. 문서 칸은 터미널 열 머리의 탭 줄에 서서(codex-ds 스펙 §4) 패널이 펴지는
+  // 동안(220ms) 열과 함께 옮겨 간다 — 배치가 멈춘 뒤의 자리를 잡는다(`settle`).
+  await startSplitDrag(page, await settle(page, () => specTab(page)));
   await moveOntoHalf(page, "right");
   await page.mouse.up();
   await expect(page).toHaveURL(/split=rl/);
@@ -205,7 +207,7 @@ test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) =
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const from = await startSplitDrag(page, await specTab(page));
-  // 본문까지 갔다가 다시 칸 위로. 머리행은 겹판이 안 덮으므로 칸이 그대로 포인터를 받는다.
+  // 본문까지 갔다가 다시 칸 위로. 겹판은 탭 줄 아래부터 덮으므로(`top-(--size-toolbar)`) 칸이 그대로 포인터를 받는다.
   await moveOntoHalf(page, "right");
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();

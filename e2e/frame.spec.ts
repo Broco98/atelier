@@ -171,23 +171,32 @@ test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 두
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Terminal: 사이드바를 접어도 탭 줄의 첫 칸이 셸 컨트롤 뒤 `--tab-lead`에 선다", async ({ page }) => {
+// codex-ds 티켓 12 — **탭 줄은 카드 머리라 신호등을 피할 일이 없다**(codex-ds 스펙 §4 「탭 줄」). 한때 줄이 바탕 줄에 서서 ⌘B로
+// 사이드바를 접으면 첫 칸이 셸 컨트롤 뒤(`--tab-lead`)로 옮겨 갔다. 지금은 바탕 줄 아래 카드 안이라, 접으면 카드가 창 왼쪽
+// 틈까지 넓어지고 첫 칸은 카드 안 같은 자리(안쪽 8 — DS `.at-toolbar`)에 남는다. 셸 컨트롤은 바탕 줄에 남아 줄과 겹치지 않는다.
+test("Terminal: 사이드바를 ⌘B로 접어도 탭 줄의 첫 칸이 카드 안 같은 자리이고 셸 컨트롤과 겹치지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   const firstTab = page.locator('[data-tab="shell"]').first();
   await firstTab.waitFor();
+  const card = page.locator("main");
+
+  /** 첫 칸을 카드 왼쪽 위에서 잰 자리. */
+  const offset = async () => {
+    const [tab, edge] = [await boxOf(firstTab), await boxOf(card)];
+    return { x: tab.x - edge.x, y: tab.y - edge.y };
+  };
+  const before = await offset();
+  // 앵커: 첫 칸이 카드 왼쪽 안쪽 8에 선다 — 이 화면에는 `spec` 칸이 없어 셸 칸이 줄 맨 앞이다.
+  expect(before.x).toBe(8);
 
   await page.keyboard.press("Meta+b");
-  const lead = await token(page, "--tab-lead");
-  // 셸 컨트롤의 마지막 칸이 검색이다. 그 오른쪽 끝에서 첫 칸까지가 `--tab-lead` — 사이드바가 열렸을 때 사이드바 끝에서
-  // 재는 거리와 같은 값이다(index.css의 `[data-titlebar]`). 셸 컨트롤은 220ms 동안 옆으로 흐르므로 멈출 때까지 잰다.
-  await expect
-    .poll(async () => {
-      const search = await page.getByRole("button", { name: "검색", exact: true }).boundingBox();
-      const tab = await firstTab.boundingBox();
-      return search && tab ? Math.round((tab.x - (search.x + search.width)) * 100) / 100 : null;
-    })
-    .toBe(lead);
+  const gap = await token(page, "--gap");
+  await expect.poll(async () => (await boxOf(card)).x).toBe(gap);
+  await expect.poll(offset).toEqual(before);
+  // 셸 컨트롤의 마지막 칸(검색)은 바탕 줄에 서고, 탭 줄은 그 아래 카드 안이다.
+  const search = await boxOf(page.getByRole("button", { name: "검색", exact: true }));
+  expect(search.bottom).toBeLessThanOrEqual((await boxOf(firstTab)).y);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -572,6 +581,27 @@ test("Works: 바탕 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 작업 화면 바탕 줄의 조작(상태 · ⋯ · 분할 — 티켓 13이 머리 카드로 옮긴다) 사이 틈도 회색이 드러나는 자리다. 그 틈은 바탕 줄이
+// 아니라 조작을 묶는 상자라, 상자가 속성을 안 들면 틈이 창을 못 끄는 죽은 자리가 된다. 조작은 그대로 눌린다.
+test("Works: 바탕 줄 조작 사이 틈이 창을 끄는 자리이고, 조작은 아니다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const titlebar = page.locator("header");
+  const menu = titlebar.getByRole("button", { name: "작업 메뉴", exact: true });
+  const split = titlebar.getByRole("button", { name: "분할", exact: true });
+  await expect(split).toBeVisible();
+
+  const [left, right] = [await boxOf(menu), await boxOf(split)];
+  // 앵커: 두 조작 사이에 틈이 있다(`--titlebar-control-gap`). 붙어 있으면 아래 점이 버튼 위에 떨어져 무엇을 재는지가 흐려진다.
+  expect(right.x - left.right, "⋯와 분할 사이 틈").toBe(await token(page, "--titlebar-control-gap"));
+  const middleY = left.y + left.height / 2;
+  expect(await draggable(page, (left.right + right.x) / 2, middleY), "⋯와 분할 사이 틈").toBe(true);
+  // 대조: 조작 자신은 끄는 자리가 아니다.
+  expect(await draggable(page, left.x + left.width / 2, middleY), "⋯").toBe(false);
+  expect(await draggable(page, right.x + right.width / 2, middleY), "분할").toBe(false);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 판 04 티켓 03 — **분할의 두 열도 각자 카드이고, 사이 틈이 창을 끄는 자리다**(ui-refresh 결정 15 · 27). 두 열은 공용 틀의 분할
 // (`Frame`의 `split`)이 목록 · 패널 칸과 같은 규칙으로 그린다: 틈은 `--gap`이고 왼쪽 열 상자의 안쪽 여백이라 그 상자가 끌기 영역이며,
 // 폭 손잡이는 그 틈의 가운데다. 손잡이를 끄는 것 · 비율 저장 · PTY 격자는 `works-split.spec.ts`가 잰다 — 여기는 그 틈을 누르면 무엇이
@@ -610,7 +640,7 @@ test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창
 // 칠해진 값(computed style — 하네스의 `칠한값`)을 토큰을 칠한 값(하네스의 `토큰값`)과 맞대고, 스펙이 못박은 수(카드 16 · 패널 220ms)는 따로 센다 — 토큰 값이
 // 바뀌는 날 견줌이 함께 흘러가 초록으로 남지 않게.
 
-/** 카드의 링 — 카드가 제 안쪽 가장자리에 덮는 `::after`의 `box-shadow`다(`Frame`의 `CardBox`). */
+/** 카드의 링 — 카드가 제 안쪽 가장자리에 덮는 `::after`의 `box-shadow`다(`Frame`의 `Card`). */
 const 카드링 = (card: Locator) => card.evaluate((el) => getComputedStyle(el, "::after").boxShadow);
 
 /** `0.22s` · `220ms` → 밀리초. */
@@ -951,9 +981,10 @@ test("Works: 문서 카드 머리에 slug › spec › … › 파일 캡슐과 
 });
 
 // 덮는 것의 기준 상자(판 04 「지키는 것」) — 놓기 겹판과 토스트는 `Frame`의 `overlay` 칸이라 **카드 줄**에 선다. 카드 줄이 바탕 줄
-// 아래에서 시작하므로 겹판이 패널까지 덮어도 끄는 것이 출발한 줄은 안 덮고(결정 12), 토스트는 카드 줄의 아래 가운데다. 카드 줄은
-// 창 아래 틈(`--gap`) 위에서 끝나므로 겹판도 거기서 끝난다 — 한때(이 티켓 전) 겹판은 창 바닥까지 갔다.
-test("Works: 셸 칸을 끄는 동안 겹판이 카드 줄을 덮고 바탕 줄은 안 덮고, 토스트는 카드 줄 아래 가운데에 선다", async ({ page }) => {
+// 아래에서 시작하고, 끄는 것이 출발한 탭 줄은 카드 줄 맨 위 본문 카드의 머리라(codex-ds 스펙 §4) 겹판은 그 줄의 높이(`size-toolbar`)
+// 만큼 아래에서 시작한다 — 패널까지 덮어도 출발한 줄은 안 덮는다(결정 12). 토스트는 카드 줄의 아래 가운데다. 카드 줄은 창 아래
+// 틈(`--gap`) 위에서 끝나므로 겹판도 거기서 끝난다 — 한때(판 04 티켓 전) 겹판은 창 바닥까지 갔다.
+test("Works: 셸 칸을 끄는 동안 겹판이 탭 줄 아래 카드 줄을 덮고 탭 줄은 안 덮고, 토스트는 카드 줄 아래 가운데에 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   const shellTab = page.locator('[data-tab="shell"] button[aria-pressed]');
@@ -965,9 +996,12 @@ test("Works: 셸 칸을 끄는 동안 겹판이 카드 줄을 덮고 바탕 줄�
   const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
   // 카드 줄의 오른쪽 끝 — 그 뒤는 레일 열(틈 · 레일)이다. 레일은 카드 줄 밖이라 겹판도 토스트의 가운데도 그것을 안 센다.
   const rowRight = viewport.width - (await token(page, "--rail")) - (await token(page, "--gap"));
+  const toolbar = await token(page, "--size-toolbar");
   const from = await startSplitDrag(page, await boxOf(shellTab));
   const cover = await boxOf(page.locator("[data-drop-half]").first().locator(".."));
-  expect(cover.y, "겹판 위 — 바탕 줄 아래").toBe(titlebar);
+  // 앵커: 출발한 칸이 그 띠 안이다 — 카드 줄 맨 위 탭 줄에 선다.
+  expect(from.y, "출발한 칸 — 탭 줄 안").toBeLessThan(titlebar + toolbar);
+  expect(cover.y, "겹판 위 — 탭 줄 아래").toBe(titlebar + toolbar);
   expect(cover.x, "겹판 왼쪽").toBe(edge);
   expect(cover.right, "겹판 오른쪽 — 패널까지 덮는다").toBe(rowRight);
   expect(cover.bottom, "겹판 아래 — 카드 줄의 바닥").toBe(viewport.height - (await token(page, "--gap")));

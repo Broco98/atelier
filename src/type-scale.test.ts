@@ -40,7 +40,7 @@ const EXCEPTIONS: Exception[] = [
   {
     file: "src/components/shell/Frame.tsx",
     className: "shadow-[inset_var(--shadow-hairline)]",
-    why: "바탕 위 카드의 0.5px 링(`CardBox`) — Codex `shadow-hairline`을 값 그대로 읽어 안쪽(`inset`)에 칠한다. 바깥에 칠하면 접히는 목록 칸 · 작업 패널의 넘침 숨김에 잘리고, Codex 그림자 단계에는 안쪽 판이 없다",
+    why: "바탕 위 카드의 0.5px 링(`Frame`의 `Card`) — Codex `shadow-hairline`을 값 그대로 읽어 안쪽(`inset`)에 칠한다. 바깥에 칠하면 접히는 목록 칸 · 작업 패널의 넘침 숨김에 잘리고, Codex 그림자 단계에는 안쪽 판이 없다",
   },
 ];
 

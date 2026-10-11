@@ -2,7 +2,7 @@ import { useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { Crumbs } from "@/components/ui/crumbs";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
-import { foldingInnerClass, PANEL_MOTION, TAB_ROW_COLUMN } from "./panel-layout";
+import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN } from "./panel-layout";
 import Rail, { type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import useSplitRatio from "./useSplitRatio";
@@ -11,6 +11,7 @@ import useSplitRatio from "./useSplitRatio";
 // 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 화면은 카드 내용만 건넨다 — 틈 · 끌기 영역 · 손잡이 · 신호등 inset을 이 파일 한 곳이
 // 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는 어디가 죽었는지가 안 보인다. 분할의 두 열과
 // 편집기의 트리 카드도 이 틀의 칸이다(`split` · `beside`) — 한때 두 화면이 그 칸의 틈 · 끌기 영역 · 손잡이를 제 손으로 다시 적었다.
+// 탭 줄(`ShellTabs`)은 이 틀의 줄이 아니라 본문 카드의 머리다(codex-ds 스펙 §4 「탭 줄」) — 화면이 카드의 `head`로 건넨다.
 //
 //   뿌리(bg-surface-shell) ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 바탕 줄 `<header>`(TitleBar)
 //                  │                                 └ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈)
@@ -63,7 +64,7 @@ export interface BesideSlot extends CardContent {
 interface FrameProps<Id extends string> {
   /** 사이드바가 열렸나 — 바탕 줄의 왼쪽 여백과 카드 줄의 왼쪽 틈이 이것으로 갈린다. */
   sidebarOpen: boolean;
-  /** 바탕 줄에 서는 것(탭 줄). 없으면 창을 끄기만 하는 빈 줄이다(ui-refresh 결정 5 — 탭이 없는 화면). */
+  /** 바탕 줄에 서는 것 — 작업 화면의 상태 · ⋯ · 분할이다. 없으면 창을 끄기만 하는 빈 줄이다(ui-refresh 결정 5). */
   titlebar?: ReactNode;
   /**
    * 왼쪽 목록 카드 — `section`이다(`aside`는 사이드바와 작업 패널 둘뿐이다). 접힘 · 폭 손잡이 · 카드 오른쪽 틈은 이 틀이 들고,
@@ -84,8 +85,8 @@ interface FrameProps<Id extends string> {
   /** 본문 카드 오른쪽의 옆 칸 — 늘 열린 고정 폭 카드(`BesideSlot`). 편집기 트리 카드 하나가 쓴다. */
   beside?: BesideSlot;
   /**
-   * 카드 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 카드 줄이 바탕 줄 **아래**에서 시작하므로 머리행을 빼는 계산 없이
-   * 「끄는 것이 출발한 줄은 덮지 않는다」가 상자로 선다.
+   * 카드 줄 위를 덮는 것(놓기 겹판 · 토스트 · 생애 겹판). 카드 줄이 바탕 줄 **아래**에서 시작한다 — 탭 줄은 카드 줄 안(본문
+   * 카드의 머리)이라, 「끄는 것이 출발한 줄은 덮지 않는다」는 덮는 쪽이 줄 높이(`--size-toolbar`)만큼 내려 선다(`WorksPage`의 놓기 겹판).
    */
   overlay?: ReactNode;
   /** 본문 카드(`<Card as="main">`). 분할이면(`split`) 비워 둔다. */
@@ -107,16 +108,16 @@ function Frame<Id extends string>({
   const panelId = useId();
   return (
     // **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)이 사이드바에게 자리를
-    // 요구하는 길이다. 카드 줄은 제 내용 폭을 안 알리므로(아래) 넓은 문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선
-    // 줄만 두 카드의 머리를 알린다(`BesideBox`).
+    // 요구하는 길이다. 카드 줄은 탭 줄을 품었을 때만 제 min-content를 알리고, 그때도 탭 줄을 이는 카드가 제 몸을 격리해
+    // (`TAB_ROW_CARD`) 넓은 문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선 줄은 두 카드의 머리를 알린다(`BesideBox`).
     <div data-tauri-drag-region className="flex min-h-0 min-w-min flex-1 bg-surface-shell">
       <div data-tauri-drag-region className={cn("flex flex-1 flex-col pb-(--gap)", TAB_ROW_COLUMN)}>
         <TitleBar sidebarOpen={sidebarOpen}>{titlebar}</TitleBar>
         {/* 카드 줄. 사이드바가 열렸으면 왼쪽 틈이 0이다 — 사이드바 쪽 여백이 그 틈으로 보인다(프로토타입 `.at-main` ·
             `.at-sidebar`). 사이드바가 접히면 카드가 창 왼쪽 틈까지 넓어진다. 여백은 바탕 줄의 여백과 같은 곡선으로
             따라온다 — 사이드바 폭 트랜지션(`PANEL_MOTION`)과 박자가 다르면 카드 모서리가 자리를 지나쳤다 되돌아온다(index.css의
-            `--ease-panel`). `relative`는 `overlay`의 기준이다. 옆 칸이 서면 이 줄은 본문 열의 격리(`TAB_ROW_COLUMN`)를 벗는다 —
-            두 카드의 머리가 바닥에 들어 모자라면 사이드바가 자리를 내준다(`BesideBox`). */}
+            `--ease-panel`). `relative`는 `overlay`의 기준이다. 탭 줄을 품었거나 옆 칸이 서면 이 줄은 본문 열의 격리
+            (`TAB_ROW_COLUMN`)를 벗는다 — 탭 줄을 이는 카드의 바닥 · 두 카드의 머리가 모자라면 사이드바가 자리를 내준다. */}
         <div
           data-tauri-drag-region
           style={beside ? { contain: "none" } : undefined}
@@ -190,13 +191,13 @@ function ListBox({ slot }: { slot: SideSlot }) {
  * 들면 어느 쪽이 이겼는지가 상속 자리에 달려서다). 틈은 그 위에 더해 그린다.
  *
  * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--work-panel-min`, 폭 훅이 받은 값)까지 문서 카드에 자리를
- * 내주고, 문서 카드에는 **그 최소 폭만큼은 남긴다**(`max-width`) — 패널이 탭 줄 아래 카드 줄로 내려와 탭 줄과 폭을 다투지 않게
- * 되면서, 한때 탭 줄의 바닥이 문서 열에 남겨 주던 자리를 이 상한이 대신 남긴다. 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은
- * 그대로라 창을 넓히면 돌아온다.
+ * 내주고, 문서 카드에는 **그 최소 폭만큼은 남긴다**(`max-width`). 문서 카드는 머리에 탭 줄을 이고 그 줄의 바닥 아래로는 안
+ * 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 카드 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를
+ * 내준다. 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
  *
- * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 줄의
- * min-content에 들어가게 하던 장치다. 카드 줄은 이제 제 폭을 바깥에 안 알리지만(`TAB_ROW_COLUMN`) 칸의 성질로 그대로 둔다 —
- * 넓은 트리 이름이 칸의 폭을 정하지 않는다. 최소 폭은 **펼 때만** 트랜지션한다 — 펴는 순간 곧장 서면 0에서 최소 폭으로 튄 뒤
+ * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 카드 줄의
+ * min-content에 들어가게 하는 장치다 — 탭 줄을 품은 카드 줄은 제 min-content를 본문 열의 바닥으로 알리는데(`TAB_ROW_COLUMN`),
+ * 넓은 트리 이름이 그 바닥도 칸의 폭도 정하지 않는다. 최소 폭은 **펼 때만** 트랜지션한다 — 펴는 순간 곧장 서면 0에서 최소 폭으로 튄 뒤
  * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바 · 목록 칸과 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
  * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
  *
@@ -260,18 +261,23 @@ function sharedWidth(host: HTMLElement | null): number {
  * 안 읽힌다.
  *
  * 비율 상태는 분할이 서 있는 동안 이 상자가 든다. 끈 비율은 손을 떼는 순간 저장되므로, 분할을 껐다 다시 켜도 같은 몫으로 선다.
+ *
+ * **탭 줄을 머리에 인 열(터미널 열)은 그 줄의 바닥 아래로 안 준다**(`TAB_ROW_CARD` — 칸 하나는 늘 보인다). 두 열 상자가 제
+ * min-content(`min-w-min`)까지만 줄고 — 열 카드가 탭 줄 아닌 자식을 격리해 그 값이 탭 줄의 바닥이고, 줄이 없는 문서 열은 0이다 —
+ * 왼쪽 상자도 줄어든다(`shrink-0`이 없다). 그래서 좁은 창에서 터미널 열이 바닥에 닿으면 반대쪽 문서 열이 비율보다 좁게 선다. 비율은
+ * 그대로라 창을 넓히면 돌아온다. `<main>`도 두 바닥의 합 아래로 안 줄어 모자라면 패널 · 사이드바가 자리를 내준다.
  */
 function SplitBox({ slot }: { slot: SplitSlot }) {
   const host = useRef<HTMLElement>(null);
   const size = useSplitRatio(slot.ratioKey, () => sharedWidth(host.current));
   const [left, right] = slot.columns;
   return (
-    <main ref={host} data-tauri-drag-region className="flex min-h-0 min-w-0 flex-1">
+    <main ref={host} data-tauri-drag-region className="flex min-h-0 min-w-min flex-1">
       <div
         data-tauri-drag-region
         style={{ width: `calc((100% - var(--gap)) * ${size.ratio} + var(--gap))` }}
         className={cn(
-          "relative flex min-w-0 shrink-0 pr-(--gap)",
+          "relative flex min-w-min pr-(--gap)",
           size.snapping && PANEL_MOTION,
           size.snapping && "transition-[width]",
         )}
@@ -279,17 +285,20 @@ function SplitBox({ slot }: { slot: SplitSlot }) {
         <ColumnCard column={left} />
         <ResizeHandle control={size} seat="gap" />
       </div>
-      <div className="relative flex min-w-0 flex-1">
+      <div className="relative flex min-w-min flex-1">
         <ColumnCard column={right} />
       </div>
     </main>
   );
 }
 
-/** 분할의 열 카드 하나 — 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 두 열의 카드가 같아야 하는데 좌우가 바뀌므로 한 벌로 그린다. */
+/**
+ * 분할의 열 카드 하나 — 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 두 열의 카드가 같아야 하는데 좌우가 바뀌므로 한 벌로 그린다. 바닥도
+ * 같은 클래스다 — 탭 줄을 머리에 인 열만 그 줄의 폭을 바닥으로 알리고, 줄이 없는 열은 자식이 모두 격리되어 바닥이 없다(`TAB_ROW_CARD`).
+ */
 function ColumnCard({ column }: { column: SplitColumn }) {
   return (
-    <Card label={column.label} tone={column.tone} className="flex-1">
+    <Card label={column.label} tone={column.tone} className={cn("flex-1", TAB_ROW_CARD)}>
       {column.children}
     </Card>
   );
@@ -323,15 +332,17 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
 }
 
 /**
- * 바탕 줄 — 창 맨 위 44px의 `<header>` 하나(ui-refresh 결정 5). 문서의 **첫 `header`가 이 줄이다**(e2e `tab-row.ts`가 그것을
- * 탭 줄로 집는다). 탭 줄(`ShellTabs`)의 칸들이 이 줄의 자식으로 바로 서고, 탭이 없는 화면에서는 비어 있는 끌기 줄이다.
+ * 바탕 줄 — 창 맨 위 44px의 `<header>` 하나(ui-refresh 결정 5). 문서의 `header`는 이 줄 하나다 — 탭 줄은 이 줄이 아니라 본문
+ * 카드의 머리이고 `div`다(`ShellTabs`). 작업 화면에서는 상태 · ⋯ · 분할이 오른쪽 끝에 서고, 그 밖의 화면에서는 비어 있는
+ * 끌기 줄이다.
  *
  * **신호등 inset은 이 줄 하나만 계산한다.** 왼쪽 여백은 사이드바가 열렸으면 `--tab-lead`(사이드바 경계에서 재는 거리),
- * 접혔으면 `--titlebar-inset-tabs`(셸 컨트롤 뒤 같은 거리)다 — 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직인다
- * (index.css의 `[data-titlebar]`). 여백은 사이드바 폭과 같은 박자(`PANEL_MOTION`)로 따라온다. 오른쪽 여백은 카드 줄의 오른쪽
- * 틈과 같은 값이라 오른쪽 끝 조작이 카드 모서리와 한 줄에 선다.
+ * 접혔으면 `--titlebar-inset-tabs`(셸 컨트롤 뒤 같은 거리)다(index.css의 `[data-titlebar]`) — 이 줄의 내용이 신호등 · 셸 컨트롤
+ * 밑으로 들어가지 않는 경계다. 지금 왼쪽에 서는 것은 없다(작업 화면의 조작은 오른쪽 끝에 붙는다). 여백은 사이드바 폭과 같은
+ * 박자(`PANEL_MOTION`)로 따라온다. 오른쪽 여백은 카드 줄의 오른쪽 틈과 같은 값이라 오른쪽 끝 조작이 카드 모서리와 한 줄에 선다.
  *
- * 줄 안의 버튼들은 이 속성이 없으므로 그대로 눌린다 — 칸 사이 빈 자리와 끄는 여백은 탭 줄이 제 자식에 단다.
+ * 줄 안의 버튼들은 이 속성이 없으므로 그대로 눌린다. 버튼을 묶는 상자를 건네면 그 상자도 이 속성을 든다 — 버튼 사이 틈은 그
+ * 상자라, 속성이 없으면 그 틈이 창을 못 끄는 죽은 자리가 된다(작업 화면의 `data-work-actions`, e2e `frame.spec.ts`).
  */
 function TitleBar({ sidebarOpen, children }: { sidebarOpen: boolean; children?: ReactNode }) {
   return (
@@ -356,7 +367,7 @@ interface CardProps {
   as?: CardTag;
   /** 카드의 이름(`aria-label`). */
   label: string;
-  /** 카드 머리(`CardHead`). 터미널 카드처럼 머리가 없는 카드는 곧바로 내용이 선다(ui-refresh 결정 5). */
+  /** 카드 머리 — 위치 캡슐 줄(`CardHead`)이나 탭 줄(`ShellTabs`)이다. 머리가 없는 카드는 곧바로 내용이 선다(ui-refresh 결정 5). */
   head?: ReactNode;
   /**
    * `terminal`이면 카드 바탕이 **터미널 테마의 바탕**이다(판 04 기본값 — 설정이 밝게면 흰 카드). 셸의 집이 칠하는 값과 같은
@@ -370,19 +381,11 @@ interface CardProps {
 /**
  * 바탕 위에 뜬 둥근 카드 하나(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 모서리는 카드가 자른다(`overflow-hidden`) — 안의
  * 스크롤 상자 · 셸 화면이 모서리 밖으로 그려지지 않는다. `relative`는 카드 안에 덮이는 것(설정의 메시지 등)의 기준이다.
- */
-function Card(props: CardProps) {
-  return props.tone === "terminal" ? <TerminalCard {...props} /> : <CardBox {...props} />;
-}
-
-/** 터미널 카드 — 설정의 테마를 구독하는 것은 이 갈래뿐이다(다른 카드가 설정이 바뀔 때마다 다시 그려질 까닭이 없다). */
-function TerminalCard(props: CardProps) {
-  const background = useShellBackground();
-  return <CardBox {...props} background={background} />;
-}
-
-/**
- * 카드의 상자. 바탕은 터미널 카드면 그 갈래가 읽어 건넨 테마의 바탕이고, 그 밖은 흰 카드(`bg-surface`)다. 모서리는 `radius-2xl`(16)이고
+ *
+ * 바탕은 터미널 카드면 설정의 테마에서 읽은 바탕이고, 그 밖은 흰 카드(`bg-surface`)다. **흰 카드와 터미널 카드가 한 컴포넌트다** —
+ * 작업 화면의 본문 카드는 문서와 터미널을 오가는데, 둘이 다른 컴포넌트면 오갈 때마다 카드가 새로 서고 머리의 탭 줄도 함께 새로
+ * 서서 방금 누른 `spec` 칸의 포커스와 줄의 스크롤을 잃는다. 테마는 터미널 카드만 구독한다 — 흰 카드는 훅이 늘 `undefined`를
+ * 돌려줘 설정이 바뀌어도 다시 그려지지 않는다(`useShellBackground`). 모서리는 `radius-2xl`(16)이고
  * 외곽은 실선이 아니라 0.5px 링(`--shadow-hairline`)이다 — 바탕 위 카드의 깊이는 그것뿐이다(DS 「깊이」, codex-ds 결정 27).
  *
  * **링은 카드 안쪽 가장자리에 덮어 그린다**(`::after`의 `inset` 그림자 — 값은 같은 토큰이다). 카드 바깥에 그리는 그림자는 조상의
@@ -390,15 +393,8 @@ function TerminalCard(props: CardProps) {
  * 선다 — 바깥 링이면 틈 쪽 한 변에만 남는다. 덮개는 카드 내용 위에 서서 내용이 가장자리까지 칠해도 링이 안 가려지고, 누름은
  * 지나보낸다(`pointer-events-none`). 네 변이 칠해지는지는 `e2e/frame.spec.ts`가 픽셀로 잰다.
  */
-function CardBox({
-  as: Tag = "section",
-  label,
-  head,
-  tone,
-  className,
-  background,
-  children,
-}: CardProps & { background?: string }) {
+function Card({ as: Tag = "section", label, head, tone, className, children }: CardProps) {
+  const background = useShellBackground(tone === "terminal");
   return (
     <Tag
       aria-label={label}
@@ -419,7 +415,8 @@ function CardBox({
 }
 
 /**
- * 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 브레드크럼 캡슐과 머리의 버튼이 서는 48px 줄이다. `div`이고 끌기 영역이 아니다
+ * 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 브레드크럼 캡슐과 머리의 버튼이 서는 46px 줄이다(`--card-head` — 탭 줄과 같은
+ * `size-toolbar`라 문서 카드에서 탭 줄 아래 이 줄이 서도 두 머리가 한 높이다). `div`이고 끌기 영역이 아니다
  * (카드 안이다). 좌우 여백은 캡슐의 안쪽 여백(14)을 뺀 값이라 캡슐의 글자가 카드 안 여백(`--card-pad`)에 선다.
  *
  * `lead`는 캡슐 앞(하위 화면의 뒤로), `meta`는 캡슐 바로 뒤(상태 배지 등), `end`는 오른쪽 끝에 고정되는 조작이다. 목록 카드의

@@ -76,7 +76,7 @@ export function gapLineLeft(geometry: TabStripGeometry, gap: number): number {
  * - 띠 안에서 가장자리에 깊이 붙을수록 빠르다. 띠는 **상자 절반까지만** 온다 — 칸 하나 폭 상자에서 띠 둘이
  *   겹치면 누르기만 해도 구른다. 그래서 한가운데는 늘 가만히 있다.
  * - **상자 밖(`spec`·`+`·조작 위)에서도 그쪽으로 끝까지 빠르게 구른다.** 행 목록과 다른 자리다: 44px 상자는
- *   포인터가 조금만 넘어가도 벗어나고, 이 줄 밖은 곧 같은 머리행이라(부르는 쪽이 머리행 위의 이동만 넘긴다)
+ *   포인터가 조금만 넘어가도 벗어나고, 이 줄 밖은 곧 같은 탭 줄이라(부르는 쪽이 탭 줄 위의 이동만 넘긴다)
  *   구른다고 흔들릴 남의 영역이 없다. 그 자리가 틈이 아닌 것은 그대로다(`tabGap`).
  */
 export function stripEdgeStep(view: TabStripGeometry["view"], clientX: number): number {
@@ -98,7 +98,7 @@ const SIDEWAYS_DEAD_ZONE = 8;
  * 참이 된 뒤에만 돈다(`ShellTabs`가 끌기 끝까지 붙잡아 둔다 — 끝에 붙여 가만히 있어도 굴러야 해서다).
  *
  * 왜 필요한가: 칸 하나 폭 상자는 한가운데 한 픽셀 말고는 전부 띠다(`stripEdgeStep`). 끌기 문턱은 방향을
- * 안 보므로, 본문 절반으로 가려고 곧장 아래로 끄는 손도 머리행을 벗어나기 전 몇 프레임 동안 줄을 굴려
+ * 안 보므로, 본문 절반으로 가려고 곧장 아래로 끄는 손도 탭 줄을 벗어나기 전 몇 프레임 동안 줄을 굴려
  * 누른 칸을 옆으로 민다. 그래서 가로가 데드존을 넘고 **세로보다 클 때만** 옆으로 끄는 손으로 친다.
  */
 export function sidewaysIntent(from: { x: number; y: number }, now: { x: number; y: number }): boolean {

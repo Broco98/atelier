@@ -90,7 +90,7 @@ export function subagentLabel(count: number): string | null {
  * | 채움(`fill`) | 셸 탭의 칸 | `wait-soft` | `new-soft` |
  * | 테(`edge`) | 켜진 셸 탭의 1px 안쪽 테두리 | `dot-wait` | `dot-new` |
  * | 잉크(`text`) | 호버 카드 말 칸의 라벨 · 행 오른쪽 메타와 띠 줄의 경과(`SignalElapsed`) | `warning` | `accent-solid` |
- * | 탭 이름(`tab`) | 셸 탭의 이름 글자 | `warning` | 없음(칸의 본문 글자색) |
+ * | 탭 이름(`tab`) | 셸 탭의 이름 글자 | `warning` | 없음(칸의 글자색 — DS `.at-tab`) |
  *
  * **잉크만 점과 다른 이름이다.** 점의 파랑(`accent` #339cff)은 흰 면 위 2.9:1이라 글자에 쓰지 않는다(DS README 「대비」) —
  * 안 본 완료의 글자는 한 단 짙은 `accent-solid`다. 기다림은 점과 잉크가 같은 `warning`이다(`dot-wait`가 그 별칭).
@@ -109,9 +109,9 @@ export function subagentLabel(count: number): string | null {
  * | 띠 줄 경과 | `surface` | 3.8 / 6.1 | 3.6 / 4.9 |
  * | 호버 카드 라벨 | `surface-elevated` | 3.8 / 5.1 | 3.6 / 4.1 |
  * | 행 오른쪽 메타의 경과 | `surface-shell` | 3.5 / 4.3 | 3.4 / 3.4 |
- * | 셸 탭 이름 | `surface-shell` 위 물든 칸(채움) | 2.8 / 3.4 | — (본문 `fg`) |
+ * | 셸 탭 이름 | `surface`(본문 카드 머리) 위 물든 칸(채움) | 3.0 / 4.7 | — (꺼진 칸의 `fg-secondary` 5.7 / 7.0) |
  *
- * 가장 낮은 것은 기다리는 탭의 이름이다(DS `.at-tab.wait`가 고른 색). 경과가 대비 검사에 걸리면 경과만 `fg-secondary`로 낮추는
+ * 가장 낮은 것은 라이트의 기다리는 탭 이름이다(DS `.at-tab.wait`가 고른 색). 경과가 대비 검사에 걸리면 경과만 `fg-secondary`로 낮추는
  * 것은 codex-ds 스펙 S17이고 띠 · 행을 다시 짓는 티켓 19가 잰다.
  */
 const TONE: Readonly<
@@ -140,7 +140,7 @@ const TONE: Readonly<
 export interface SignalTint {
   /** **칸 상자**에 붙는 것 — 채움과, 켜졌으면 1px 안쪽 테두리. 색은 배경뿐이다. */
   cell: string;
-  /** **이름 글자에만** 붙는 잉크. 상자에 두면 안쪽이 통째로 물든다(아래 머리말). 없으면(`null`) 이름은 칸의 본문 글자색이다. */
+  /** **이름 글자에만** 붙는 잉크. 상자에 두면 안쪽이 통째로 물든다(아래 머리말). 없으면(`null`) 이름은 칸의 글자색이다. */
   ink: string | null;
 }
 
@@ -157,7 +157,7 @@ export interface SignalTint {
  * 한다」고 적은 그 폭에서 claude 로고가 상태색이 된다. 그래서 **잉크를 이름 글자에만** 준다(잉크가 있는 것은 기다리는
  * 칸이다 — 안 본 완료의 이름은 무채색이라 `ink`가 `null`이다).
  *
- * **켜진 칸에서 부름의 채움이 흰 면(`tab-on`)을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
+ * **켜진 칸에서 부름의 채움이 옅은 면(`tab-on`)을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
  * `tab-on` 대신 이 채움이 서고, 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다.
  * 테두리를 `ring`(그림자)으로 그리는 것은 **폭을 안 먹기 때문이다**(스토리 54) — `border`로
  * 그리면 안쪽 폭이 2px 줄어 상태가 바뀔 때마다 이름과 닫기가 옆으로 뛴다.

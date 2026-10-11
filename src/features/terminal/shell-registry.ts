@@ -541,7 +541,7 @@ export function shellsEmptied(before: ShellTally, now: ShellTally): boolean {
  * 그 화면에서 **켜진 셸** 자체. 없으면 `null`이다.
  *
  * `activeIdOf` → `shellsOf(...).find(...)` 2단 체인이 화면 셋에 그대로 베껴져 있었다
- * (터미널 본문·최상위 머리행·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
+ * (터미널 본문·최상위 탭 줄·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
  * 한 곳만 고쳐도 화면마다 다른 셸을 켜진 것으로 부른다.
  */
 export function activeShellOf(state: ShellsState, owner: ShellOwner): Shell | null {

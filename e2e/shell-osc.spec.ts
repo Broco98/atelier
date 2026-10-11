@@ -176,7 +176,7 @@ test("벨은 아는 에이전트가 도는 칸에서만 삼켜진다", async ({ 
   await expect(띠(page).locator("button[aria-label]")).toHaveCount(1);
 
   // 어느 칸인지까지 못박는다 — 수만 보면 첫 칸이 부르고 둘째 칸이 조용해도 초록이다.
-  // **탭 줄은 spec을 보는 중에도 그 자리에 있다**(머리행이라 본문과 함께 갈리지 않는다).
+  // **탭 줄은 spec을 보는 중에도 그 자리에 있다**(본문 카드의 머리라 문서를 볼 때도 같은 줄이 선다).
   const tabs = page.locator('[data-tab="shell"] button[aria-pressed]');
   await expect(tabs.nth(0)).not.toHaveAttribute("aria-label", /확인할 것/);
   await expect(tabs.nth(1)).toHaveAttribute("aria-label", /확인할 것/);

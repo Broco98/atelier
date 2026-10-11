@@ -322,7 +322,7 @@ describe("WorkPanel 소스 토글", () => {
   });
 });
 
-// 이 패널은 바탕 줄 아래에 뜬 카드다(ui-refresh 결정 4) — 머리는 다른 카드와 같은 카드 머리(48px)다.
+// 이 패널은 바탕 줄 아래에 뜬 카드다(ui-refresh 결정 4) — 머리는 다른 카드와 같은 카드 머리(46px — `--card-head`)다.
 describe("WorkPanel 머리행", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });

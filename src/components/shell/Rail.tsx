@@ -28,7 +28,7 @@ export interface RailProps<Id extends string = string> {
  * 여기다(기각된 안: 카드 머리의 `spec | info` — 닫히면 버튼도 사라진다).
  *
  * **`aside`도 `nav`도 아니다**(판 04 「지키는 것」). `aside`는 사이드바와 작업 패널 둘뿐이라 e2e가 그 순서를 재고(`tab-row-floor`),
- * `nav`는 사이드바 버튼을 집는 고리다(`harness.ts`). 바탕 줄 `<header>` 밖이라 `data-tab-actions`는 여전히 그 줄의 마지막 자식이다.
+ * `nav`는 사이드바 버튼을 집는 고리다(`harness.ts`). 바탕 줄 `<header>` 밖이라 그 줄의 조작 묶음(상태 · ⋯ · 분할)이 여전히 그 줄의 마지막 자식이다.
  *
  * **칸은 탭이 아니다** — `aria-pressed` 버튼이다. 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0개일 수 있다(탭 줄이 켜진 칸이 둘일 수
  * 있어 `role="tab"`을 안 쓰는 것과 같은 가족이다 — `ShellTabs`). 그래서 칸 사이 ←/→ 이동이 없고 Tab으로 옮겨 간다. 켜짐은 「패널이
