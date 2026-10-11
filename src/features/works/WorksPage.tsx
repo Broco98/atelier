@@ -92,7 +92,7 @@ import {
 import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
 import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
-import type { BundleTab, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
+import type { BundleTab, CodeTarget, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
@@ -602,6 +602,31 @@ function WorksPage({
   // 그래서 `!currentSpec`이 따로 얹힌다.
   const sourceLocked = !currentSpec || ignoresSourceToggle(currentSpec);
 
+  /**
+   * files 트리에서 파일 행을 눌렀다 — 「파일 탭 열기」다(스토리 23 — replace: 트리 훑기는 뒤로가기 기록을 안 쌓는다, 스토리 59).
+   * 이미 열린 파일이면 그 탭으로 간다(스토리 24 — 묶음이 정체로 가른다).
+   *
+   * **다시 누르면 닫힌다**(git-integration 결정 30 — 사용자가 더한 UX). 누른 파일이 **지금 보이는 탭**(본문에 선 파일 탭)의
+   * 파일이면 그 탭을 닫는다. 닫는 길은 `×` · ⌘W와 같다 — 확인 없이 빼고, 이웃이 켜지고 주소가 따라오는 것은 묶음 → 주소가
+   * 한다. 열려 있어도 뒤에 있는 탭이면 그 탭으로 갈 뿐이다(스토리 34).
+   *
+   * **둘째 클릭은 닫기로 치지 않는다**(S15 — `clicks`는 연속 클릭의 몇 번째인가, 키보드로 누르면 0). 더블클릭의 첫 클릭이 연
+   * 탭을 둘째 클릭이 닫는 깜빡임이 없다 — 닫힌 파일을 두 번 누르면 열린 채 남는다. 탭 줄의 칸 자체를 다시 누르는 것은 여기를
+   * 지나지 않아 닫지 않는다(스토리 36).
+   */
+  const pressCode = useCallback(
+    (target: CodeTarget, clicks: number) => {
+      const shown = codeTarget !== null && code === codeRefOf(target);
+      const id = shown && clicks < 2 ? codeTabClosedByTab(tab, tabOwner, terminalStore.state) : null;
+      if (id !== null) {
+        closeCodeTab(id);
+        return;
+      }
+      onOpenCode(target.project, target.path, false);
+    },
+    [codeTarget, code, tab, tabOwner, onOpenCode],
+  );
+
   // 바탕 줄의 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
   // (`Works / 제목`)은 그때 사라졌다: **work 제목은 사이드바 행이 말한다.** 감수한 것은 ⌘B로 사이드바를 접으면 화면 어디에도
   // 제목이 없다는 것이고, 이름을 고치는 길은 ⋯ 메뉴로 갔다(아래 `WorkMenu`).
@@ -1099,6 +1124,8 @@ function WorksPage({
                   view={panelView}
                   currentFile={currentSpec}
                   onSelectFile={selectFromTree}
+                  currentCode={codeTarget}
+                  onPressCode={pressCode}
                   onCopy={copyText}
                   onOpenProject={onOpenProject}
                   open={workPanelOpen}
