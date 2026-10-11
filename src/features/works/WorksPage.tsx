@@ -1065,7 +1065,7 @@ function StatusMenu({ work }: { work: WorkView }) {
         }
       >
         {meta.label}
-        <ChevronDown className="size-[11px] opacity-80" strokeWidth={SMALL_GLYPH_STROKE} />
+        <ChevronDown className="size-[11px] text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
       <DropdownMenuContent>
         <DropdownMenuRadioGroup

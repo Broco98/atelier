@@ -323,14 +323,17 @@ test("메뉴의 켜진 줄은 옅은 면(fill-hover)이고 파랑(accent)이 아
 });
 
 // codex-ds 티켓 06 — **상태 넷이 Atelier 낱말 색을 입는다**(codex-ds 스펙 2절 「Atelier 낱말」 · DS `st-*`). 상태 표
-// (`status.tsx`의 `STATUS_META` · `StatusIcon`)가 칠하는 세 자리 — 머리의 상태 배지 글자, 그 배지가 여는 상태 메뉴의 점,
+// (`status.tsx`의 `STATUS_META` · `StatusIcon`)가 칠하는 세 자리 — 머리의 상태 배지 앞 점, 그 배지가 여는 상태 메뉴의 점,
 // 사이드바 행 레인의 상태 아이콘 — 를 칠해진 색으로 읽어 그 상태의 토큰(`st-draft` · `st-active` · `st-review` ·
-// `st-done`)과 맞댄다.
+// `st-done`)과 맞댄다. 배지 자신은 DS `StatusBadge`다 — 색은 점 하나에만 쓰고, 글자 · 면 · 모서리는 상태와 상관없이
+// `fg-secondary` · `fill-soft` · `radius-sm`이다(상태색 글자는 글자 바닥 아래이고, 알약은 머리 컨트롤의 모양이 아니다 — `status.tsx` 머리말).
 //
 // **상태마다 하나씩 잰다.** 상태 하나만 재면 표의 네 줄이 한 색으로 무너져도(한 줄을 베껴 넷에 붙이면) 초록이다.
 // 픽스처 목록은 상태를 기억하지 않으므로(`set_work_status`의 답 — `fixtures.ts`) 목록을 덮어 그 상태의 work로 연다.
 for (const status of ["draft", "active", "review", "done"] as const) {
-  test(`상태 ${status}: 배지 글자 · 상태 메뉴의 점 · 행 레인의 상태 아이콘이 st-${status}다`, async ({ page }) => {
+  test(`상태 ${status}: 배지 점 · 상태 메뉴의 점 · 행 레인의 상태 아이콘이 st-${status}이고, 배지는 회색 면 · fg-secondary 글자다`, async ({
+    page,
+  }) => {
     const work = { ...WORKS[1], status };
     await installFixtureBackend(page, {
       list_works: WORKS.map((one) => (one.slug === work.slug ? work : one)),
@@ -339,7 +342,24 @@ for (const status of ["draft", "active", "review", "done"] as const) {
     const 색 = await 토큰색(page, `--st-${status}`);
 
     const badge = page.getByRole("button", { name: status, exact: true });
-    await expect(badge).toHaveCSS("color", 색);
+    await expect(badge).toBeVisible();
+    // 배지 — 24 높이 · `radius-sm`(6) · 좌우 8, 면 `fill-soft` · 글자 `fg-secondary`(DS `.at-badge`). 수는 따로도 센다.
+    expect(await 칠한값(badge, "height", "border-top-left-radius", "padding-left", "padding-right")).toEqual([
+      "24px",
+      await 토큰값(page, "border-top-left-radius", "--radius-sm"),
+      "8px",
+      "8px",
+    ]);
+    expect(await 토큰값(page, "border-top-left-radius", "--radius-sm"), "radius-sm").toBe("6px");
+    await expect(badge).toHaveCSS("background-color", await 토큰색(page, "--fill-soft"));
+    await expect(badge).toHaveCSS("color", await 토큰색(page, "--fg-secondary"));
+    // 앞의 점 — 6px 원이 그 상태의 색이다(배지의 `::before`).
+    expect(
+      await badge.evaluate((el) => {
+        const dot = getComputedStyle(el, "::before");
+        return [dot.width, dot.height, dot.backgroundColor];
+      }),
+    ).toEqual(["6px", "6px", 색]);
     // 셸이 부르지 않는 행이라 레인에는 상태 아이콘이 선다(부르면 그 자리를 부름의 점이 갖는다 — `works-sidebar.spec.ts`).
     await expect(레인(page, work.slug).locator("svg")).toHaveCSS("color", 색);
 
