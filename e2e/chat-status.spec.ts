@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { WORKS } from "./fixtures";
+import { ipcCallArgs, unknownIpcCalls } from "./harness";
 import { conversationRow, linesAfter, linesThrough, record, sessionLine, streamLines } from "./chat-records";
+import { openWorkChat, 대화탭, 대화탭줄, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 import type { Conversation, RecordLine } from "@/features/chat/types";
 
 // three-axes 티켓 23 — **대화 상태 점이 서고, 다시 켜면 기록으로 그려지고, 닫기 · 종료가 하던 일을 묻는다.**
@@ -13,25 +14,12 @@ import type { Conversation, RecordLine } from "@/features/chat/types";
 
 const [, plainWork] = WORKS;
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 대화탭줄 = (page: Page) => 작업패널(page).getByRole("group", { name: "대화 탭", exact: true });
-/** 대화 탭 — 이름 버튼. 상태가 있으면 그 이름이 「이름 — 상태」다(스토리 118). */
-const 대화탭 = (page: Page, name: string) => 대화탭줄(page).getByRole("button", { name, exact: true });
 /** 대화 탭의 상태 점 — 색만이 신호여선 안 되므로 그림은 숨고(`aria-hidden`) 이름이 말한다. 점의 갈래는 표식이 든다. */
 const 상태점 = (page: Page, conversation: string) => 대화탭줄(page).locator(`[data-conversation="${conversation}"] [data-status]`);
 
 /** 그 work의 대화창을 연다 — 대화 목록은 `rows`, 기록 읽기는 대화 id마다 `reads`다. 맨 앞 대화가 켜진다. */
-async function openChat(page: Page, rows: Conversation[], reads: Record<string, readonly RecordLine[]>): Promise<void> {
-  await installFixtureBackend(page, {
-    chat_list: answerByArg("work", { [plainWork.slug]: rows }, { otherwise: [] }),
-    chat_read_record: answerByArg("conversation", Object.fromEntries(Object.entries(reads).map(([id, lines]) => [id, [...lines]]))),
-  });
-  await page.goto(`/works/${plainWork.slug}`);
-  await 레일칸(page, "chat").click();
-  await expect(대화탭줄(page)).toBeVisible({ timeout: 20_000 });
-}
+const openChat = (page: Page, rows: Conversation[], reads: Record<string, readonly RecordLine[]>): Promise<void> =>
+  openWorkChat(page, rows, reads, { ready: 대화탭줄 });
 
 // L1이 남긴 「Codex 권한」(S26) — 열림 셋 뒤에 보낸 말 · 답 · 도구 호출 · 권한 물음(seq 8) · 답을 기다리는 동안의 생각 · 답(seq 11) ·
 // 도구 끝 · 답 · 턴 끝(seq 14).
@@ -143,7 +131,6 @@ const resume = record("resume");
 const YESTERDAY_END = seqOf(resume, (line) => line.kind === "turn-end");
 const RESPAWN = YESTERDAY_END + 1;
 const FRESH = seqOf(resume, (line) => line.kind === "session" && (line.payload as { how?: string }).how === "fresh");
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 const 흐름 = (page: Page) => 작업패널(page);
 const 머리줄 = (page: Page, name: string) => 흐름(page).getByRole("button", { name, exact: true });
 const 새로시작함 = "새로 시작함 — 앞의 맥락을 잇지 못해 새 세션으로 열었어요";

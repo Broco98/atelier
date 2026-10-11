@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { WORKS } from "./fixtures";
+import { ipcCallArgs, unknownIpcCalls } from "./harness";
 import {
   claudeStoppedTurn,
   conversationRow,
@@ -17,6 +17,7 @@ import {
   stoppedCommandTurn,
   streamLines,
 } from "./chat-records";
+import { openWorkChat, 대화탭줄, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 20 — **턴 도중의 말이 대기 줄에 쌓이고, 멈추기 · 지금 보내기가 화면에서 된다**(스토리 45 · 49 · 50 · 52 · 53 · 55).
 //
@@ -27,10 +28,6 @@ import {
 
 const plainWork = WORKS[1];
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 const 단추 = (page: Page, name: string) => 작업패널(page).getByRole("button", { name, exact: true });
 const 머리줄 = (page: Page, name: string) => 단추(page, name);
 
@@ -43,20 +40,12 @@ const COMMAND = `python3 -c "import time; time.sleep(20); print('slept-fake')"`;
 /** 그 work에 선 Codex 대화 — 기록 읽기는 `read`까지를 답한다. */
 const codex = conversationRow({ id: "c-late-codex", agent: "codex", name: "Codex", lastSeq: END_SEQ - 1 });
 
-async function openChat(page: Page, read = linesThrough(late, END_SEQ - 1), row = codex): Promise<void> {
-  await installFixtureBackend(page, {
-    chat_list: answerByArg("work", { [plainWork.slug]: [row] }, { otherwise: [] }),
-    chat_read_record: answerByArg("conversation", { [row.id]: read }),
-  });
-  await page.goto(`/works/${plainWork.slug}`);
-  await 레일칸(page, "chat").click();
+function openChat(page: Page, read = linesThrough(late, END_SEQ - 1), row = codex): Promise<void> {
   // 대화 탭을 기다린다 — 답하지 않은 권한 물음까지 읽은 대화는 입력칸 대신 승인 카드가 서 있다(티켓 21). 도는 대화의 탭 이름에는 상태가
   // 붙는다(「Codex — 일하는 중」, 티켓 23).
-  await expect(
-    작업패널(page)
-      .getByRole("group", { name: "대화 탭", exact: true })
-      .getByRole("button", { name: new RegExp(`^${row.name}( — |$)`) }),
-  ).toBeVisible({ timeout: 20_000 });
+  return openWorkChat(page, [row], { [row.id]: read }, {
+    ready: (page) => 대화탭줄(page).getByRole("button", { name: new RegExp(`^${row.name}( — |$)`) }),
+  });
 }
 
 test("멈추기: 턴이 도는 동안 보내기 자리에 멈추기가 서고, 누르면 멈추기 명령이 가고, `cancelled` 턴 끝에 「3초 후에 중단했습니다」 머리줄이 선다", async ({

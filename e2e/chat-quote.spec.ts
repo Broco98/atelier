@@ -1,10 +1,10 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
 import type { Quote } from "@/features/chat/types";
-import type { SpecTreeItem, WorkView } from "@/features/works/types";
-import { answerByArg, WORKS } from "./fixtures";
+import { answerByArg } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
-import { conversationRow, linesAfter, linesThrough, record, specCopy, streamLines } from "./chat-records";
+import { cartWork, conversationRow, linesAfter, linesThrough, record, specCopy, streamLines } from "./chat-records";
+import { 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 27 — **문서에서 고른 자리를 인용 칩으로 붙여 말한다**(스토리 78~83).
 //
@@ -19,46 +19,17 @@ const spec = specCopy("changes");
 const quoted = record("codex-quote");
 const SENT_SEQ = quoted.find((line) => line.kind === "sent")!.seq;
 
-/** spec 폴더 기준 경로들로 트리를 짓는다 — 폴더가 먼저, 그다음 파일이 이름순이다. */
-function treeOf(paths: readonly string[], prefix = ""): SpecTreeItem[] {
-  const here = paths.filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length));
-  const folders = [...new Set(here.filter((rest) => rest.includes("/")).map((rest) => rest.split("/")[0]))].sort();
-  const files = here.filter((rest) => !rest.includes("/")).sort();
-  const item = (name: string, kind: "file" | "folder", children: SpecTreeItem[]): SpecTreeItem => ({
-    name,
-    path: `${prefix}${name}`,
-    kind,
-    icon: null,
-    group: null,
-    children,
-  });
-  return [
-    ...folders.map((name) => item(name, "folder", treeOf(paths, `${prefix}${name}/`))),
-    ...files.map((name) => item(name, "file", [])),
-  ];
-}
 
-/** 기록의 머리말이 말하는 work — slug `cart`. */
-const cart: WorkView = {
-  ...WORKS[1],
-  slug: "cart",
-  title: "cart 제목",
-  specDir: "~/.atelier/works/cart/spec",
-  specFiles: spec.files,
-  specTree: { fallback: null, defaultDoc: "plan.md", items: treeOf(spec.files) },
-};
+/** 기록의 머리말이 말하는 work — slug `cart`. 기본 문서는 `plan.md`다. */
+const cart = cartWork(spec, "plan.md");
 
 /** 그 work에 이미 선 Codex 대화 — 기록 읽기는 보낸 말 앞(열림 줄)까지를 답한다. */
 const codex = conversationRow({ id: "c-cart-codex", agent: "codex", name: "Codex", lastSeq: SENT_SEQ - 1 });
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 /** 작업 패널 칸(두 번째 `aside`)의 그려진 폭 — 닫히면 0이다(`tab-keys.spec.ts`와 같은 잼). */
 const 패널폭 = (page: Page) => page.locator("aside").nth(1).evaluate((el) => Math.round(el.getBoundingClientRect().width));
 const 문서 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 const 인용단추 = (page: Page) => page.getByRole("button", { name: "❝ 이 자리를 두고 말하기", exact: true });
 /** 입력창의 인용 칩 — 칩마다 `data-quote`가 달린다(보낸 말 위의 인용은 `data-sent-quote`). */
 const 인용칩 = (page: Page) => 작업패널(page).locator("[data-quote]");

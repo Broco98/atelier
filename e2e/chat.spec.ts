@@ -3,6 +3,7 @@ import { expect, test, type Page } from "./evidence";
 import { answerByArg, WORKS } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, workRow } from "./harness";
 import { conversationRow, handTurn, linesAfter, linesThrough, record, streamLines } from "./chat-records";
+import { countAnnouncements, 대화탭, 대화탭줄, 레일, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 17 — **레일 `chat` 칸에 대화창이 서고, 말을 보내면 답이 흘러 머리줄로 접힌다.**
 //
@@ -12,12 +13,7 @@ import { conversationRow, handTurn, linesAfter, linesThrough, record, streamLine
 
 const [pinnedWork, plainWork] = WORKS;
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-/** 레일 칸 — 탭 줄의 칸과 이름이 갈리도록 레일 묶음 안에서 집는다. */
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 /** spec 몸이 섰다는 표식 — 트리의 폴더 행. */
 const 트리폴더 = (page: Page) => 작업패널(page).getByRole("button", { name: "증거", exact: true });
 
@@ -61,10 +57,6 @@ test("레일: `chat` 칸이 spec · chat · info 순서로 서고 aria-pressed�
   expect(await ipcCallArgs(page, "chat_close", "work")).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
-
-const 대화탭줄 = (page: Page) => 작업패널(page).getByRole("group", { name: "대화 탭", exact: true });
-/** 대화 탭 — 이름 버튼이 켜짐(`aria-pressed`)을 말한다. */
-const 대화탭 = (page: Page, name: string) => 대화탭줄(page).getByRole("button", { name, exact: true });
 
 test("대화 탭: 대화 없는 work에서 대화창을 처음 열면 기본 에이전트 대화 하나가 열리고, + 는 묻지 않고 둘째 대화를, × 는 그 대화의 닫기를 부른다", async ({
   page,
@@ -223,22 +215,6 @@ test("work 사이: 다른 work에 가 있는 동안 흐른 줄이, 돌아오면 
   await expect(흐름(page).getByText("it printed", { exact: false })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
-
-/** 알림 자리에 새로 선 알림을 센다 — 쏘기 전에 붙인다. 알림은 새 줄로 갈아 끼워 서므로 더해진 요소 수가 알림 수다. */
-async function countAnnouncements(page: Page): Promise<() => Promise<string[]>> {
-  await page.evaluate(() => {
-    const region = document.querySelector('[role="status"][aria-label="대화 알림"]');
-    if (!region) throw new Error("대화 알림 자리가 없다");
-    const seen: string[] = [];
-    (window as unknown as { __CHAT_ANNOUNCED__: string[] }).__CHAT_ANNOUNCED__ = seen;
-    new MutationObserver((records) => {
-      for (const one of records) {
-        for (const node of one.addedNodes) if (node.textContent) seen.push(node.textContent);
-      }
-    }).observe(region, { childList: true, subtree: true, characterData: true });
-  });
-  return () => page.evaluate(() => [...(window as unknown as { __CHAT_ANNOUNCED__: string[] }).__CHAT_ANNOUNCED__]);
-}
 
 test("접근성: 흐르는 답은 조각마다 알리지 않고, 턴 끝 알림이 한 번만 온다", async ({ page }) => {
   await openCodexChat(page, linesThrough(codexOneTurn, SENT_SEQ));

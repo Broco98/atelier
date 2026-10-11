@@ -2,6 +2,7 @@ import { expect, test, type Page } from "./evidence";
 import { answerByArg, WORKS } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 import { conversationRow } from "./chat-records";
+import { 대화탭줄 } from "./chat-screen";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { EngineLists } from "@/features/chat/types";
 import type { Settings } from "@/features/settings/types";
@@ -149,8 +150,6 @@ test("파일에 있던 값이 고르기에 서고, 저장해도 설정 파일의
 });
 
 const [, plainWork] = WORKS;
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 대화탭줄 = (page: Page) => 작업패널(page).getByRole("group", { name: "대화 탭", exact: true });
 
 test("설정의 기본 에이전트가 Codex면 첫 대화와 + 가 Codex로 연다", async ({ page }) => {
   await installFixtureBackend(page, {

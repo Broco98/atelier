@@ -1,10 +1,11 @@
 import { expect, test, type Page } from "./evidence";
 
 import type { RecordLine } from "@/features/chat/types";
-import type { SpecTreeItem, WorkView } from "@/features/works/types";
-import { answerByArg, WORKS } from "./fixtures";
+import type { WorkView } from "@/features/works/types";
+import { answerByArg } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls } from "./harness";
-import { conversationRow, linesAfter, linesThrough, record, specCopy, streamLines } from "./chat-records";
+import { cartWork, conversationRow, linesAfter, linesThrough, record, specCopy, streamLines, treeOf } from "./chat-records";
+import { 대화탭, 레일칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 26 — **고친 곳이 스펙 창 · 트리 · 레일 · 알약에 선다.**
 //
@@ -18,41 +19,13 @@ const spec = specCopy("changes");
 const CHANGES_SEQ = changes.find((line) => line.kind === "changes")!.seq;
 const SENT_SEQ = changes.find((line) => line.kind === "sent")!.seq;
 
-/** spec 폴더 기준 경로들로 트리를 짓는다 — 폴더가 먼저, 그다음 파일이 이름순이다(엔진이 가른 모양을 손으로 옮긴 것). */
-function treeOf(paths: readonly string[], prefix = ""): SpecTreeItem[] {
-  const here = paths.filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length));
-  const folders = [...new Set(here.filter((rest) => rest.includes("/")).map((rest) => rest.split("/")[0]))].sort();
-  const files = here.filter((rest) => !rest.includes("/")).sort();
-  const item = (name: string, kind: "file" | "folder", children: SpecTreeItem[]): SpecTreeItem => ({
-    name,
-    path: `${prefix}${name}`,
-    kind,
-    icon: null,
-    group: null,
-    children,
-  });
-  return [
-    ...folders.map((name) => item(name, "folder", treeOf(paths, `${prefix}${name}/`))),
-    ...files.map((name) => item(name, "file", [])),
-  ];
-}
 
 /** 기록의 머리말이 말하는 work — slug `cart`. 기본 문서는 고치지 않은 `keep.md`다. */
-const cart: WorkView = {
-  ...WORKS[1],
-  slug: "cart",
-  title: "cart 제목",
-  specDir: "~/.atelier/works/cart/spec",
-  specFiles: spec.files,
-  specTree: { fallback: null, defaultDoc: "keep.md", items: treeOf(spec.files) },
-};
+const cart = cartWork(spec, "keep.md");
 
 /** 그 work에 이미 선 Codex 대화 — 기록 읽기는 보낸 말 앞(열림 줄)까지를 답한다. */
 const codex = conversationRow({ id: "c-cart-codex", agent: "codex", name: "Codex", lastSeq: SENT_SEQ - 1 });
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 const 문서 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
 /** 스펙 창의 고친 곳 — 표시가 선 블록. 블록마다 원문의 시작 줄(`data-src-start`)을 든다. */
 const 고친곳 = (page: Page) => 문서(page).locator("[data-changed]");
@@ -113,9 +86,6 @@ function turnWithSameChanges(
     },
   ];
 }
-
-const 대화탭 = (page: Page, name: string) =>
-  작업패널(page).getByRole("group", { name: "대화 탭", exact: true }).getByRole("button", { name, exact: true });
 
 test("지우기: 사람이 다음 말을 보내면 표시가 지워진다 — 같은 대화에서도, 같은 work의 다른 대화에서 보내도", async ({ page }) => {
   await installFixtureBackend(page, {

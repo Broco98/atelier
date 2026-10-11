@@ -4,6 +4,7 @@ import type { EngineCheck } from "@/features/chat/types";
 import { answerByArg, WORKS } from "./fixtures";
 import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, steadyCount, unknownIpcCalls } from "./harness";
 import { conversationRow, handToolTurn, streamLines } from "./chat-records";
+import { 레일칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 24 — **`chat` 탭이 대화창을 가운데에 넓게 띄운다**(S21 · S22 · 스토리 17~22).
 //
@@ -15,9 +16,6 @@ const [specWork] = WORKS;
 
 /** 탭 줄의 칸 — 레일의 `chat` 칸과 이름이 같아서 칸 id(`data-tab`)로 집는다. */
 const 탭 = (page: Page, id: "spec" | "chat") => page.locator(`header [data-tab="${id}"]`);
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 /** 가운데 카드 — 본문은 `main` 하나다. 대화창이면 「대화」, 문서면 「문서」다. */
 const 가운데대화 = (page: Page) => page.getByRole("main", { name: "대화", exact: true });
 const 문서 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });

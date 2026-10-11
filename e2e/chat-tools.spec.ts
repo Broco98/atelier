@@ -1,10 +1,11 @@
 import { expect, test, type Page } from "./evidence";
 
 import type { Conversation, RecordLine } from "@/features/chat/types";
-import type { SpecTreeItem, WorkView } from "@/features/works/types";
+import type { WorkView } from "@/features/works/types";
 import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls } from "./harness";
-import { conversationRow, handToolTurn, linesAfter, linesThrough, record, specCopy, streamLines } from "./chat-records";
+import { unknownIpcCalls } from "./harness";
+import { cartWork, conversationRow, handToolTurn, linesAfter, linesThrough, record, specCopy, streamLines } from "./chat-records";
+import { openWorkChat, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 18 — **도구 줄이 진행형에서 완료형으로 바뀌고, 출력 · diff · MCP를 보인다**(스토리 39 · 40 · 41 · 42 · 77).
 //
@@ -15,31 +16,23 @@ import { conversationRow, handToolTurn, linesAfter, linesThrough, record, specCo
 
 const plainWork = WORKS[1];
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 /** 도구 줄 — 진행형 · 완료형 문구를 이름으로 단 묶음이다. */
 const 도구줄 = (page: Page, phrase: string) => 작업패널(page).getByRole("group", { name: phrase, exact: true });
 const 머리줄 = (page: Page, name: string) => 작업패널(page).getByRole("button", { name, exact: true });
 
 /** 그 work의 대화창을 연다 — 대화 목록은 `row` 하나, 기록 읽기는 `read`다. `spec`이 있으면 그 사본을 스펙 창의 파일로 쓴다. */
-async function openChat(
+function openChat(
   page: Page,
   row: Conversation,
   read: readonly RecordLine[],
   work: WorkView = plainWork,
   spec?: { bodies: Record<string, string>; file: string },
 ): Promise<void> {
-  await installFixtureBackend(page, {
-    list_works: [work],
-    chat_list: answerByArg("work", { [work.slug]: [row] }, { otherwise: [] }),
-    chat_read_record: answerByArg("conversation", { [row.id]: [...read] }),
-    ...(spec ? { read_spec_file: answerByArg("path", spec.bodies) } : {}),
+  return openWorkChat(page, [row], { [row.id]: read }, {
+    work,
+    answers: { list_works: [work], ...(spec ? { read_spec_file: answerByArg("path", spec.bodies) } : {}) },
+    file: spec?.file,
   });
-  await page.goto(spec ? `/works/${work.slug}?file=${encodeURIComponent(spec.file)}` : `/works/${work.slug}`);
-  await 레일칸(page, "chat").click();
-  await expect(입력칸(page)).toBeVisible({ timeout: 20_000 });
 }
 
 /** 기록에서 `after` 뒤부터 `through`까지의 줄. */
@@ -390,33 +383,9 @@ const changes = record("changes");
 const changesSpec = specCopy("changes");
 const CHANGES_SENT = changes.find((line) => line.kind === "sent")!.seq;
 
-function treeOf(paths: readonly string[], prefix = ""): SpecTreeItem[] {
-  const here = paths.filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length));
-  const folders = [...new Set(here.filter((rest) => rest.includes("/")).map((rest) => rest.split("/")[0]))].sort();
-  const files = here.filter((rest) => !rest.includes("/")).sort();
-  const item = (name: string, kind: "file" | "folder", children: SpecTreeItem[]): SpecTreeItem => ({
-    name,
-    path: `${prefix}${name}`,
-    kind,
-    icon: null,
-    group: null,
-    children,
-  });
-  return [
-    ...folders.map((name) => item(name, "folder", treeOf(paths, `${prefix}${name}/`))),
-    ...files.map((name) => item(name, "file", [])),
-  ];
-}
 
 /** 기록의 머리말이 말하는 work — slug `cart`. */
-const cart: WorkView = {
-  ...WORKS[1],
-  slug: "cart",
-  title: "cart 제목",
-  specDir: "~/.atelier/works/cart/spec",
-  specFiles: changesSpec.files,
-  specTree: { fallback: null, defaultDoc: "keep.md", items: treeOf(changesSpec.files) },
-};
+const cart = cartWork(changesSpec, "keep.md");
 const cartCodex = conversationRow({ id: "c-tools-cart", agent: "codex", name: "Codex", lastSeq: CHANGES_SENT - 1 });
 const 문서 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
 

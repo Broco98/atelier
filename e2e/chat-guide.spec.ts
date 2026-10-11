@@ -13,6 +13,7 @@ import {
   unknownIpcCalls,
 } from "./harness";
 import { conversationRow, handTurn, record, streamLines } from "./chat-records";
+import { 대화탭, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 22 — **안내 카드가 못 찾음 · 로그인 안 됨 · 로그인 중을 보이고, 끝나면 대화로 돌아간다**(three-axes 결정 24 · 30).
 //
@@ -22,12 +23,6 @@ import { conversationRow, handTurn, record, streamLines } from "./chat-records";
 
 const [, plainWork] = WORKS;
 
-const 레일칸 = (page: Page, name: "spec" | "chat") =>
-  page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
-const 대화탭 = (page: Page, name: string) =>
-  작업패널(page).getByRole("group", { name: "대화 탭", exact: true }).getByRole("button", { name, exact: true });
 /** 안내 카드 — 제목이 이름이다. 대화창 자리(기록 · 입력창 대신)에 선다. */
 const 카드 = (page: Page, title: string) => 작업패널(page).getByRole("region", { name: title, exact: true });
 const 단추 = (page: Page, title: string, name: string) => 카드(page, title).getByRole("button", { name, exact: true });

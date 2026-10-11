@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "./evidence";
 
 import type { Conversation, RecordLine } from "@/features/chat/types";
-import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { WORKS } from "./fixtures";
+import { ipcCallArgs, unknownIpcCalls } from "./harness";
 import { conversationRow, handToolTurn, linesAfter, linesThrough, record, streamLines } from "./chat-records";
+import { countAnnouncements, openWorkChat, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 21 — **승인 카드와 계획 카드가 입력창 자리에 선다**(스토리 57 · 58 · 59 · 61 · 62 · 65 · 66 · 67 · 120).
 //
@@ -15,10 +16,6 @@ import { conversationRow, handToolTurn, linesAfter, linesThrough, record, stream
 
 const plainWork = WORKS[1];
 
-const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 /** 대화 탭 — 그 이름의 대화. 도는 · 기다리는 대화의 탭 이름에는 상태가 붙는다(「Codex — 나를 기다림」, three-axes 티켓 23). */
 const 대화탭 = (page: Page, name: string) =>
   작업패널(page)
@@ -35,15 +32,8 @@ const askedOf = (lines: readonly RecordLine[]) => {
 };
 
 /** 그 work의 대화창을 연다 — 대화 목록은 `row` 하나, 기록 읽기는 `read`다. 입력칸 대신 카드가 서 있을 수 있어 대화 탭을 기다린다. */
-async function openChat(page: Page, row: Conversation, read: readonly RecordLine[]): Promise<void> {
-  await installFixtureBackend(page, {
-    chat_list: answerByArg("work", { [plainWork.slug]: [row] }, { otherwise: [] }),
-    chat_read_record: answerByArg("conversation", { [row.id]: [...read] }),
-  });
-  await page.goto(`/works/${plainWork.slug}`);
-  await 레일칸(page, "chat").click();
-  await expect(대화탭(page, row.name)).toBeVisible({ timeout: 20_000 });
-}
+const openChat = (page: Page, row: Conversation, read: readonly RecordLine[]): Promise<void> =>
+  openWorkChat(page, [row], { [row.id]: read }, { ready: (page) => 대화탭(page, row.name) });
 
 const permission = record("permission");
 const asked = askedOf(permission);
@@ -255,22 +245,6 @@ test("계획 체크리스트: 엔진이 ACP `plan`을 보내지 않으면 체크
   await expect(체크리스트(page)).toHaveCount(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
-
-/** 알림 자리에 새로 선 알림을 센다 — 쏘기 전에 붙인다. 알림은 새 줄로 갈아 끼워 서므로 더해진 요소 수가 알림 수다. */
-async function countAnnouncements(page: Page): Promise<() => Promise<string[]>> {
-  await page.evaluate(() => {
-    const region = document.querySelector('[role="status"][aria-label="대화 알림"]');
-    if (!region) throw new Error("대화 알림 자리가 없다");
-    const seen: string[] = [];
-    (window as unknown as { __CHAT_ANNOUNCED__: string[] }).__CHAT_ANNOUNCED__ = seen;
-    new MutationObserver((records) => {
-      for (const one of records) {
-        for (const node of one.addedNodes) if (node.textContent) seen.push(node.textContent);
-      }
-    }).observe(region, { childList: true, subtree: true, characterData: true });
-  });
-  return () => page.evaluate(() => [...(window as unknown as { __CHAT_ANNOUNCED__: string[] }).__CHAT_ANNOUNCED__]);
-}
 
 test("접근성(스토리 120): 승인 카드가 서면 알림 영역에 알림이 한 번 선다 — 카드가 묻는 말과 무엇을 하려는지를 말한다", async ({ page }) => {
   await openChat(page, permissionCodex, linesThrough(permission, asked.seq - 1));

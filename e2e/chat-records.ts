@@ -2,8 +2,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { CHAT_QUEUE_EVENT, CHAT_RECORD_EVENT } from "@/features/chat/events";
 import type { ChatQueueEvent, ChatRecordEvent, Conversation, QueuedMessage, RecordLine } from "@/features/chat/types";
+import type { SpecTreeItem, WorkView } from "@/features/works/types";
 import { REPO_ROOT } from "./dev-server";
 import type { Page } from "./evidence";
+import { WORKS } from "./fixtures";
 import { fireEvent } from "./harness";
 
 // 대화창 L3의 자료(three-axes 구현 스펙 S26). **L1이 남긴 기록 파일을 그대로 쏜다** — 대화 호스트 검사(L1)가 시나리오를
@@ -36,6 +38,37 @@ export function specCopy(name: string): { files: string[]; bodies: Record<string
     .map((entry) => relative(root, join(entry.parentPath, entry.name)).split(sep).join("/"))
     .sort();
   return { files, bodies: Object.fromEntries(files.map((path) => [path, readFileSync(join(root, path), "utf8")])) };
+}
+
+/** spec 폴더 기준 경로들로 트리를 짓는다 — 폴더가 먼저, 그다음 파일이 이름순이다(엔진이 가른 모양을 손으로 옮긴 것). */
+export function treeOf(paths: readonly string[], prefix = ""): SpecTreeItem[] {
+  const here = paths.filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length));
+  const folders = [...new Set(here.filter((rest) => rest.includes("/")).map((rest) => rest.split("/")[0]))].sort();
+  const files = here.filter((rest) => !rest.includes("/")).sort();
+  const item = (name: string, kind: "file" | "folder", children: SpecTreeItem[]): SpecTreeItem => ({
+    name,
+    path: `${prefix}${name}`,
+    kind,
+    icon: null,
+    group: null,
+    children,
+  });
+  return [
+    ...folders.map((name) => item(name, "folder", treeOf(paths, `${prefix}${name}/`))),
+    ...files.map((name) => item(name, "file", [])),
+  ];
+}
+
+/** 「고친 곳」 기록의 머리말이 말하는 work — slug `cart`. spec 폴더는 그 기록이 남긴 사본(`specCopy`)이고 기본 문서는 `defaultDoc`이다. */
+export function cartWork(spec: { files: string[] }, defaultDoc: string): WorkView {
+  return {
+    ...WORKS[1],
+    slug: "cart",
+    title: "cart 제목",
+    specDir: "~/.atelier/works/cart/spec",
+    specFiles: spec.files,
+    specTree: { fallback: null, defaultDoc, items: treeOf(spec.files) },
+  };
 }
 
 /**

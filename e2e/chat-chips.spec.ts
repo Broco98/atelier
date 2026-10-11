@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, 툴팁 } from "./harness";
+import { WORKS } from "./fixtures";
+import { ipcCallArgs, replaceAnswer, unknownIpcCalls, 툴팁 } from "./harness";
 import { conversationRow, linesThrough, record, sentLine, streamLines } from "./chat-records";
+import { openWorkChat, 대화탭, 입력칸, 작업패널 } from "./chat-screen";
 import type { Conversation, RecordLine } from "@/features/chat/types";
 
 // three-axes 티켓 19 — **칩과 「/」 메뉴로 에이전트 · 모델 · 모드 · 계획을 고른다**(스토리 23 · 24 · 25 · 27 · 28 · 29 · 30 · 31 · 33 ·
@@ -14,13 +15,7 @@ import type { Conversation, RecordLine } from "@/features/chat/types";
 
 const plainWork = WORKS[1];
 
-const 레일칸 = (page: Page, name: "spec" | "chat" | "info") =>
-  page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name, exact: true });
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 const 단추 = (page: Page, name: string) => 작업패널(page).getByRole("button", { name, exact: true });
-const 대화탭 = (page: Page, name: string) =>
-  작업패널(page).getByRole("group", { name: "대화 탭", exact: true }).getByRole("button", { name, exact: true });
 /** 칩이 연 메뉴 — 포털로 `body`에 선다. */
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 메뉴줄 = (page: Page) => 메뉴(page).getByRole("menuitemradio");
@@ -44,15 +39,8 @@ const claudeFresh = conversationRow({ id: "c-claude-fresh", agent: "claude", nam
 const codexPlan = record("codex-plan");
 
 /** 그 work의 대화창을 연다 — 대화 목록은 `row` 하나, 기록 읽기는 `read`다. */
-async function openChat(page: Page, row: Conversation, read: readonly RecordLine[]): Promise<void> {
-  await installFixtureBackend(page, {
-    chat_list: answerByArg("work", { [plainWork.slug]: [row] }, { otherwise: [] }),
-    chat_read_record: answerByArg("conversation", { [row.id]: read }),
-  });
-  await page.goto(`/works/${plainWork.slug}`);
-  await 레일칸(page, "chat").click();
-  await expect(입력칸(page)).toBeVisible({ timeout: 20_000 });
-}
+const openChat = (page: Page, row: Conversation, read: readonly RecordLine[]): Promise<void> =>
+  openWorkChat(page, [row], { [row.id]: read });
 
 /** 기록 줄들의 seq를 `from`부터 다시 매긴다 — 다른 기록의 줄을 이 대화의 끝에 잇는다. */
 const renumber = (lines: readonly RecordLine[], from: number): RecordLine[] =>

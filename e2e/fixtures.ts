@@ -723,6 +723,22 @@ export const answerByArg = (
 ): ArgAnswers => new ArgAnswers(arg, answers, options && { value: options.otherwise });
 
 /**
+ * 고정 답의 대화 하나 — 설정의 기본 에이전트(처음은 Claude Code)로 연 새 대화. 새 대화 · 칩의 바꾸기(에이전트 · 모델 · 모드 · 계획)의
+ * 기본 답이 이것을 함께 가리킨다 — `Conversation`에 칸이 늘면 여기 하나만 고친다.
+ */
+const FIXTURE_CLAUDE = {
+  id: "c-fixture-claude",
+  agent: "claude",
+  name: "Claude",
+  model: null,
+  mode: null,
+  plan: null,
+  lastSeq: 0,
+  queue: [],
+  live: true,
+} satisfies Conversation;
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -920,17 +936,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   chat_read_record: [] satisfies RecordLine[],
   // 새 대화 — 설정의 기본 에이전트(처음은 Claude Code)로 연 대화 하나. 이름은 호스트가 짓는다(`Claude` · `Claude 2`). 둘째
   // 대화를 재는 검사가 `replaceAnswer`로 갈아 끼운다(이름의 수는 오르는 값 표로 못 짓는다 — 첫 이름이 `Claude 1`이 된다).
-  chat_new: {
-    id: "c-fixture-claude",
-    agent: "claude",
-    name: "Claude",
-    model: null,
-    mode: null,
-    plan: null,
-    lastSeq: 0,
-    queue: [],
-    live: true,
-  } satisfies Conversation,
+  chat_new: FIXTURE_CLAUDE,
   // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   chat_send: null,
   chat_close: null,
@@ -960,50 +966,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   chat_send_now: null,
   // 칩(three-axes 티켓 19) — 에이전트 바꾸기와 모델 · 모드 · 계획 바꾸기. 답은 바뀐 대화이고 화면이 그것으로 목록 캐시를 고친다.
   // 기본 답은 새 대화의 그것과 같은 「Claude」다 — 바꾼 값을 재는 `chat-chips.spec.ts`가 그 시나리오의 대화로 갈아 끼운다.
-  chat_switch_agent: {
-    id: "c-fixture-claude",
-    agent: "claude",
-    name: "Claude",
-    model: null,
-    mode: null,
-    plan: null,
-    lastSeq: 0,
-    queue: [],
-    live: true,
-  } satisfies Conversation,
-  chat_set_model: {
-    id: "c-fixture-claude",
-    agent: "claude",
-    name: "Claude",
-    model: null,
-    mode: null,
-    plan: null,
-    lastSeq: 0,
-    queue: [],
-    live: true,
-  } satisfies Conversation,
-  chat_set_mode: {
-    id: "c-fixture-claude",
-    agent: "claude",
-    name: "Claude",
-    model: null,
-    mode: null,
-    plan: null,
-    lastSeq: 0,
-    queue: [],
-    live: true,
-  } satisfies Conversation,
-  chat_set_plan: {
-    id: "c-fixture-claude",
-    agent: "claude",
-    name: "Claude",
-    model: null,
-    mode: null,
-    plan: null,
-    lastSeq: 0,
-    queue: [],
-    live: true,
-  } satisfies Conversation,
+  chat_switch_agent: FIXTURE_CLAUDE,
+  chat_set_model: FIXTURE_CLAUDE,
+  chat_set_mode: FIXTURE_CLAUDE,
+  chat_set_plan: FIXTURE_CLAUDE,
   // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
   // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
   chat_answer_permission: null,
