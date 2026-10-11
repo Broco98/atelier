@@ -26,7 +26,9 @@ import type { Quote, RecordLine } from "./types";
 // **상태와 상태 줄**(three-axes 티켓 23 · S23)도 기록에서 나온다. `session` 줄이 띄우는 중이면 이어 붙이는 중(`connecting`)이고 열림 ·
 // 죽음 · 닫힘 · 로그인 필요가 오면 걷힌다. 되살리기가 새 세션으로 끝난 열림(`how: fresh`) · 프로세스 죽음 · 판 경고는 흐름 안의 한
 // 줄(`notices`)이다. 앱을 다시 켜면 그 기록을 적던 프로세스가 없다 — 앱을 끄면 턴 끝도 죽음 줄도 없이 끝나므로, 대화 목록이 「떠
-// 있지 않다」고 말한 대화(`goneThrough`)는 그 seq까지 열린 채 남은 턴과 물음을 끝난 것으로 접는다.
+// 있지 않다」고 말한 대화(`goneThrough`)는 그 seq까지 열린 채 남은 턴과 물음을 끝난 것으로 접는다. 되살린 뒤에는 목록이 「떠 있다」고
+// 말하므로 그 칸에 기대지 않는다 — 대화 하나에 프로세스는 하나라, 새 프로세스의 띄우는 중(`spawning`) 줄이 서면 그 앞 프로세스가
+// 열어 둔 턴 · 물음 · 끝나지 않은 도구 줄을 같은 모양으로 접는다.
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라(워크플로 S34) 스키마에 없는 `sessionUpdate`도 오고, 그것이 화면을
 // 멈추면 안 된다.
@@ -184,7 +186,8 @@ const TURN_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "too
 
 /**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 대화 목록이 「에이전트가 이 앱에 떠 있지 않다」고 말할 때의 마지막 seq다(티켓 23) —
- * 그 seq까지의 줄을 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
+ * 그 seq까지의 줄을 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다 —
+ * 되살린 뒤에도 `null`이라, 그 앞 프로세스의 줄은 새 프로세스의 띄우는 중 줄이 접는다(머리말 「상태」).
  */
 export function foldConversation(lines: readonly RecordLine[], goneThrough: number | null = null): ChatModel {
   const turns: Turn[] = [];
@@ -235,8 +238,10 @@ export function foldConversation(lines: readonly RecordLine[], goneThrough: numb
   let lastAt = "";
 
   for (const line of lines) {
+    // 그 앞 프로세스가 사라진 때로 셈하는 시각 — 그 프로세스가 적은 마지막 줄의 시각이다.
+    const previousAt = lastAt || line.at;
     if (!gone && line.seq > (goneThrough ?? 0)) {
-      vanish(lastAt || line.at, GONE_WITH_APP);
+      vanish(previousAt, GONE_WITH_APP);
       gone = true;
     }
     lastAt = line.at;
@@ -377,7 +382,9 @@ export function foldConversation(lines: readonly RecordLine[], goneThrough: numb
       case "session": {
         switch (payload.state) {
           case "spawning":
-            // 띄우는 중 — 새 대화와 되살리기가 이 줄로 시작한다(티켓 10). 열림 · 죽음 · 닫힘 · 로그인 필요가 걷는다.
+            // 띄우는 중 — 새 대화와 되살리기가 이 줄로 시작한다(티켓 10). 열림 · 죽음 · 닫힘 · 로그인 필요가 걷는다. 새 프로세스가
+            // 서면 그 앞 프로세스는 이미 없다 — 죽음 · 닫힘 줄 없이 사라졌어도(앱을 다시 켬) 여기서 접는다(머리말 「상태」).
+            vanish(previousAt, GONE_WITH_APP);
             connecting = true;
             break;
           case "opened":

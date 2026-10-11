@@ -24,7 +24,8 @@ export const STATUS_LABEL: Readonly<Record<ConversationStatus, string>> = {
 
 /**
  * 대화 목록이 「에이전트가 이 앱에 떠 있지 않다」고 말했으면 그때의 마지막 seq(`fold.ts`의 `goneThrough`). 앱을 다시 켠 뒤의
- * 기록은 그 seq까지 열린 채 남은 턴과 물음을 끝난 것으로 접는다 — 그러지 않으면 끊긴 턴이 「일하는 중」으로 영영 남는다.
+ * 기록은 그 seq까지 열린 채 남은 턴과 물음을 끝난 것으로 접는다 — 그러지 않으면 끊긴 턴이 「일하는 중」으로 영영 남는다. 되살린
+ * 뒤에는 이 값이 `null`이 되므로, 그때는 기록 안의 새 프로세스의 띄우는 중 줄이 그 앞 프로세스의 줄을 접는다(`fold.ts` 머리말).
  */
 export const goneThrough = (conversation: Conversation): number | null => (conversation.live ? null : conversation.lastSeq);
 

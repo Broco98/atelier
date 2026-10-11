@@ -125,6 +125,44 @@ test("멈춘 뒤의 도구 줄(에이전트가 끝남): 돌던 명령은 에이�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+/** 되살리기가 적는 새 프로세스의 띄우는 중 · 열림 줄 — `from`부터 seq가 오른다(티켓 10). */
+const respawned = (from: number) => [
+  sessionLine(from, { state: "spawning" }),
+  sessionLine(from + 1, { state: "opened", how: "resumed", agentVersion: "2.0.0", modes: null, models: null, configOptions: [] }),
+];
+
+test("멈춘 뒤의 도구 줄(다시 켠 뒤 되살림): 다시 켜기 전 프로세스의 돌던 명령은 되살린 뒤 대화 목록이 「떠 있다」고 말해도 「멈춘 뒤에 끊김」이다 — 새 프로세스의 띄우는 중 줄이 끊는다", async ({
+  page,
+}) => {
+  // 앱을 다시 켜고 그 대화를 되살렸다 — 기록에는 다시 켜기 전의 멈춘 턴 뒤로 새 프로세스의 띄우는 중 · 열림이 서고, 대화 목록은 이제
+  // 「떠 있다」(`live: true`)고 말한다. 끊김은 목록의 칸이 아니라 기록 안의 표지로 정한다.
+  const read = [...linesThrough(late, END_SEQ), ...respawned(END_SEQ + 1)];
+  await openChat(page, read, { ...codex, lastSeq: END_SEQ + 2, live: true });
+  const row = 도구줄(page, COMMAND);
+  await expect(row).toContainText("멈춘 뒤에 끊김");
+  await expect(row).not.toContainText("멈춘 뒤에도 도는 중");
+  await expect(row).not.toContainText("명령은 끝까지 돌아요");
+  await expect(row.locator('[data-slot="spinner"]')).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("도는 턴의 도구 줄(다시 켠 뒤 말을 보내 되살림): 다시 켜기 전에 돌던 턴과 도구 줄은 되살린 뒤에도 끊긴 채다 — 「… 실행 중」으로 돌아가지 않는다", async ({
+  page,
+}) => {
+  // 도구를 돌리던 중에 앱이 꺼졌고(턴 끝 줄이 없다), 다시 켠 뒤 말을 보내 되살렸다 — 띄우는 중 · 열림 · 보낸 말.
+  const read = [...linesThrough(late, END_SEQ - 1), ...respawned(END_SEQ), sentLine(END_SEQ + 2, "다시 켠 뒤의 말")];
+  await openChat(page, read, { ...codex, lastSeq: END_SEQ + 2, live: true });
+  await expect(작업패널(page).getByText("다시 켠 뒤의 말", { exact: true })).toBeVisible();
+  const header = 머리줄(page, "멈췄어요 — 앱이 꺼지며 끊겼어요");
+  await expect(header).toBeVisible();
+  await header.click();
+  const row = 도구줄(page, `${COMMAND} 실행하지 못함`);
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("끊김");
+  await expect(도구줄(page, `${COMMAND} 실행 중`)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("도는 턴의 도구 줄(에이전트가 끝남): 끝을 받지 못한 도구 줄은 진행형으로 남지 않고 「~하지 못함」과 상자의 「끊김」이다", async ({
   page,
 }) => {
