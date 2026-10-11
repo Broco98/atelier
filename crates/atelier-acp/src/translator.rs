@@ -598,8 +598,9 @@ fn mode_changed(status: &Value, shared: &Shared) {
 
 /// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(티켓 08).
 ///
-/// - 도구 요지(`toolCall`)는 앞서 낸 `tool_call`과 같은 id(`tool_use_id`) · 제목 · 종류에, claude가 물은 입력이다. claude가
-///   물은 원문(설명 · 까닭 · 막힌 경로 · 제안)은 `_meta.claudeCode.request`에 싣는다 — 승인 카드의 재료다(스토리 58).
+/// - 도구 요지(`toolCall`)는 앞서 낸 `tool_call`과 같은 id(`tool_use_id`) · 제목 · 종류에, claude가 물은 입력이다. 그 `_meta.claudeCode`
+///   에는 도구 이름과 까닭(`decision_reason` → `decisionReason`)을 싣는다 — 승인 카드가 읽는 자리다(스토리 58, 티켓 21). claude가
+///   물은 원문 전체(설명 · 막힌 경로 · 제안)는 요청의 `_meta.claudeCode.request`에 남긴다(평가의 재료, three-axes 결정 18).
 /// - 선택지는 변환기가 짓는다 — 한 번 허락 · 이 대화에서 허락 · 거부. 세션 제안이 없으면 「이 대화에서 허락」은 없다.
 /// - **계획 승인(S5)** — 계획 모드의 `ExitPlanMode`도 `can_use_tool`로 온다(판 02 관문 G1). codex-acp의 계획 승인과 같은
 ///   모양(`toolCall{kind:"switch_mode", rawInput:{plan}}`, 선택지 구현 · 다시 짜기)으로 옮긴다 — 화면은 엔진을 가리지 않고
@@ -616,6 +617,7 @@ fn ask_permission(line: &Value, shared: &Shared) {
             "status": "pending",
             "title": "Implement this plan?",
             "rawInput": {"plan": input["plan"]},
+            "_meta": {"claudeCode": {"toolName": tool}},
         });
         let options = vec![
             option(IMPLEMENT_PLAN, "Yes, implement this plan", "allow_once"),
@@ -635,12 +637,17 @@ fn ask_permission(line: &Value, shared: &Shared) {
         options.push(option(ALLOW_SESSION, "Yes, and don't ask again this conversation", "allow_always"));
     }
     options.push(option(REJECT, "No, and tell Claude what to do differently", "reject_once"));
+    let mut meta = json!({"toolName": tool});
+    if let Some(reason) = request["decision_reason"].as_str() {
+        meta["decisionReason"] = json!(reason);
+    }
     let tool_call = json!({
         "toolCallId": request["tool_use_id"],
         "title": stream::title(tool, input),
         "kind": stream::kind(tool),
         "status": "pending",
         "rawInput": input,
+        "_meta": {"claudeCode": meta},
     });
     request_permission(line, tool_call, options, session_suggestions, shared);
 }

@@ -145,8 +145,10 @@ fn permission_stdio_권한_요청이_permission_줄에_서고_세션_제안이_�
     assert_eq!(
         asked["request"]["toolCall"],
         json!({"toolCallId": "toolu_01N3UUSZaU6yvP6yapUN8U5P", "title": format!("Write {ALLOWED}"), "kind": "edit",
-               "status": "pending", "rawInput": {"file_path": ALLOWED, "content": "x"}}),
-        "도구 요지 — 앞서 낸 tool_call과 같은 id · 제목 · 종류이고, 입력은 claude가 물은 그대로다"
+               "status": "pending", "rawInput": {"file_path": ALLOWED, "content": "x"},
+               "_meta": {"claudeCode": {"toolName": "Write", "decisionReason": "Path is outside allowed working directories"}}}),
+        "도구 요지 — 앞서 낸 tool_call과 같은 id · 제목 · 종류이고, 입력은 claude가 물은 그대로다. 까닭(decision_reason)은 승인 카드가 \
+         읽는 자리(_meta.claudeCode.decisionReason)에 선다(티켓 21)"
     );
     assert_eq!(asked["request"]["sessionId"], json!(session_id));
     assert_eq!(asked["request"]["options"], claude_options(true), "원문의 제안 둘이 다 session이라 선택지는 셋이다");
@@ -440,7 +442,8 @@ fn 계획_승인은_계획_본문이_든_switch_mode_권한_줄이고_다시_짜
     assert_eq!(
         asked["request"]["toolCall"],
         json!({"toolCallId": plans[0]["request"]["tool_use_id"], "kind": "switch_mode", "status": "pending",
-               "title": "Implement this plan?", "rawInput": {"plan": plans[0]["request"]["input"]["plan"]}}),
+               "title": "Implement this plan?", "rawInput": {"plan": plans[0]["request"]["input"]["plan"]},
+               "_meta": {"claudeCode": {"toolName": "ExitPlanMode"}}}),
         "계획 본문(input.plan)이 rawInput.plan에 실린다 — 계획 카드의 재료다(S5)"
     );
     assert_eq!(
