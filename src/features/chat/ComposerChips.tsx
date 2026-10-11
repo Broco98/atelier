@@ -102,7 +102,7 @@ function ComposerChips({ work, conversation, lists, onProblem, end }: ComposerCh
           onClick={() => change({ field: "plan", value: plan !== true })}
           className={cn(
             CHIP,
-            plan === true ? "bg-(--chat-plan) text-(--chat-link)" : "text-foreground hover:bg-state-3",
+            plan === true ? "bg-(--chat-accent-soft) text-(--chat-link)" : "text-foreground hover:bg-state-3",
           )}
         >
           <MapIcon className="size-3.5" strokeWidth={1.8} aria-hidden />

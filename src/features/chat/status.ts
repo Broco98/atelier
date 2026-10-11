@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useStore } from "@tanstack/react-store";
+import { shallow, useStore } from "@tanstack/react-store";
 import { chatRecordStore, chatUnseenStore, conversationKey, linesOf } from "./chat-store";
 import { foldOf, type ChatModel } from "./fold";
 import { conversationsQuery } from "./hooks";
@@ -62,7 +62,8 @@ export type WorkChatSignal = "waiting" | "done";
  */
 export function useWorkChatSignal(work: string | null): WorkChatSignal | null {
   const listed = useQuery({ ...conversationsQuery(work ?? ""), enabled: false }).data;
-  const unseen = useStore(chatUnseenStore, (state) => state);
+  // 「끝남」은 이 work의 대화 열쇠만 뽑아 얕게 견준다 — 남의 work의 턴이 끝나거나 보일 때 작업 화면을 다시 그리지 않는다(화면-작업 §12).
+  const unseen = useStore(chatUnseenStore, (state) => unseenKeysOf(state, work), shallow);
   return useStore(chatRecordStore, (state) => {
     if (!work) return null;
     const conversations: { id: string; gone: number | null }[] = listed
@@ -73,12 +74,19 @@ export function useWorkChatSignal(work: string | null): WorkChatSignal | null {
     let done = false;
     for (const { id, gone } of conversations) {
       const key = conversationKey(work, id);
-      const status = statusOf(foldOf(linesOf(state, key), gone), unseen[key] === true);
+      const status = statusOf(foldOf(linesOf(state, key), gone), unseen.includes(key));
       if (status === "waiting") return "waiting";
       if (status === "done") done = true;
     }
     return done ? "done" : null;
   });
+}
+
+/** 「끝남」이 선 대화 열쇠 가운데 그 work의 것들. */
+function unseenKeysOf(state: Readonly<Record<string, true>>, work: string | null): string[] {
+  if (!work) return [];
+  const prefix = conversationKey(work, "");
+  return Object.keys(state).filter((key) => key.startsWith(prefix));
 }
 
 /**

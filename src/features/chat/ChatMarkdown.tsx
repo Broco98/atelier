@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Copy } from "lucide-react";
+import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
 
 // 대화창의 마크다운 답(three-axes 티켓 17) — `agent_message_chunk`를 이어 붙인 글을 본문과 코드 블록으로 그린다. 값은 캔버스의
@@ -11,8 +12,9 @@ import { cn } from "@/lib/utils";
 // **문서 보기(`SpecViewer`)의 표를 빌리지 않는다.** 그쪽은 15/26 문서용이고 원문 줄 위치를 모으는 플러그인이 딸려 있다. 답 안의
 // 제목은 캔버스가 16 · 18 · 24이지만 앱 글자 단계에 없어 `body`(15) 하나로 모은다(구현 노트 「화면 부품과 설정」 §3).
 //
-// 링크는 바깥 URL만 연다 — Tauri 웹뷰에서 `<a>`가 그대로 주소를 바꾸면 앱이 그 페이지로 간다. 문서 링크(스펙 창의 그 자리로)는
-// 도구 줄 · `chat` 탭이 더한다(24 · 26) — 그때까지는 누르면 아무 일도 없다.
+// 링크는 바깥 URL만 연다 — Tauri 웹뷰에서 `<a>`가 그대로 주소를 바꾸면 앱이 그 페이지로 간다. 답 본문 안의 문서 링크(spec 파일의
+// 상대 경로 · `file:`)는 열지 않는다 — 누르면 아무 일도 없다. 스펙 창으로 여는 문서 링크는 도구 줄의 파일 링크(티켓 24)와 `chat`
+// 탭(티켓 26)에만 있고, 답 본문의 링크를 스펙 창에 잇는 일은 남아 있다.
 
 const heading = "text-body font-semibold";
 
@@ -55,11 +57,7 @@ const components: Components = {
   // (`SpecViewer`의 같은 자리에 적힌 사고).
   pre: ({ node }) => {
     const code = node?.children?.[0];
-    const className = code && "properties" in code ? code.properties?.className : undefined;
-    const lang = Array.isArray(className)
-      ? className.map(String).find((one) => one.startsWith("language-"))?.slice("language-".length)
-      : undefined;
-    return <CodeBlock lang={lang} code={hastText(code).replace(/\n$/, "")} />;
+    return <CodeBlock lang={codeLang(code)} code={hastText(code).replace(/\n$/, "")} />;
   },
   code: ({ children }) => (
     <code className="rounded-(--chat-radius-inline) bg-state-2 px-[5px] py-px font-mono text-mono wrap-anywhere">
@@ -91,13 +89,6 @@ function CodeBlock({ lang, code }: { lang: string | undefined; code: string }) {
       </pre>
     </figure>
   );
-}
-
-function hastText(node: unknown): string {
-  if (!node || typeof node !== "object") return "";
-  const one = node as { type?: string; value?: string; children?: unknown[] };
-  if (one.type === "text") return one.value ?? "";
-  return (one.children ?? []).map(hastText).join("");
 }
 
 /** 답 한 덩어리. 흐르는 동안 글이 늘 때마다 다시 그리므로 같은 글이면 건너뛴다. */

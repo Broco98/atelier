@@ -31,6 +31,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
+import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
 import { changeMarksStore, marksOf, overlaps, type LineRange } from "@/features/chat/changes";
 import type { Quote } from "@/features/chat/types";
@@ -588,7 +589,7 @@ function BlockWrapper({
 
 // 고친 곳의 칠 — 블록 좌우로 12px 번진 옅은 면(r10)과 그 왼쪽 3px 막대(프로토타입 D의 `.blk.chg`). 값은 `index.css`의 고친 곳 토큰이다.
 const CHANGED_BLOCK =
-  "isolate before:absolute before:inset-y-0 before:-inset-x-3 before:-z-10 before:rounded-lg before:bg-(--chat-changed) before:shadow-[inset_3px_0_0_var(--chat-changed-bar)]";
+  "isolate before:absolute before:inset-y-0 before:-inset-x-3 before:-z-10 before:rounded-lg before:bg-(--chat-accent-soft) before:shadow-[inset_3px_0_0_var(--chat-dot-new)]";
 
 // 블록의 시작 위치를 여는 열쇠 — 최상위를 담을 때와 꺼내 볼 때가 같은 문자열을 써야 한다
 const blockKey = (line: number, column: number) => `${line}:${column}`;
@@ -817,9 +818,7 @@ export const PrettyView = memo(function PrettyView({
       ),
       pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
-        const lang: string | undefined = code?.properties?.className
-          ?.find?.((c: string) => c.startsWith("language-"))
-          ?.slice("language-".length);
+        const lang = codeLang(code);
         const inner =
           lang === "mermaid" ? (
             <MermaidBlock code={hastText(code)} />
@@ -945,14 +944,6 @@ function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNod
   // 마커 한 줄뿐인 문단은 통째로 뺀다 — 빈 문단이 남으면 머리글 아래가 벌어진다
   if (next.length === 0) return items.filter((_, i) => i !== index);
   return items.map((item, i) => (i === index ? cloneElement(paragraph, undefined, ...next) : item));
-}
-
-// hast 노드에서 텍스트만 추출 (mermaid 코드 등)
-function hastText(node: unknown): string {
-  if (!node || typeof node !== "object") return "";
-  const n = node as { type?: string; value?: string; children?: unknown[] };
-  if (n.type === "text") return n.value ?? "";
-  return (n.children ?? []).map(hastText).join("");
 }
 
 export default SpecViewer;

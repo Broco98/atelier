@@ -31,8 +31,6 @@ export interface ChoiceOption {
 export interface CommandOption {
   name: string;
   description: string;
-  /** 인자 힌트(`input.hint`). 없으면 null이다. */
-  hint: string | null;
   aliases: string[];
 }
 
@@ -203,9 +201,8 @@ function commandOptions(value: unknown): CommandOption[] {
   return value.filter(isObject).flatMap((command) => {
     const name = text(command.name);
     if (name === null || name === "") return [];
-    const input = isObject(command.input) ? command.input : null;
     const meta = isObject(command._meta) ? command._meta : null;
     const aliases = meta && Array.isArray(meta.aliases) ? meta.aliases.filter((alias) => typeof alias === "string") : [];
-    return [{ name, description: text(command.description) ?? "", hint: input ? text(input.hint) : null, aliases }];
+    return [{ name, description: text(command.description) ?? "", aliases }];
   });
 }

@@ -1017,18 +1017,15 @@ body[data-palette-open] [data-scrollbar] {
     --chat-rule-below: inset 0 -1px 0 rgba(13, 13, 13, 0.15);
     --chat-rule: rgba(13, 13, 13, 0.15);
     --chat-border-heavy: rgba(26, 28, 31, 0.12);
-    /* 승인 · 안내 카드의 엔진 줄과 까닭 글(캔버스 `--fg-tool`) */
+    /* 승인 · 안내 카드의 엔진 줄과 까닭 글, 도구 줄 글자(60%) — 캔버스 `--fg-tool` 하나다 */
     --chat-fg-tool: rgba(26, 28, 31, 0.6);
     --chat-bubble: #e8f3fe;
     --chat-send: #3a83f7;
     --chat-link: #0169cc;
     --chat-surface-code: #f2f2f3;
-    /* 인용 칩의 면(three-axes 티켓 27 — 캔버스 `.cx-cite`의 `--accent-soft`). 글자는 `--chat-link`다. */
-    --chat-quote: #e5f3ff;
-    /* 도구 줄과 명령 출력 상자(three-axes 티켓 20 — 캔버스 `.cx-tool` · `.cx-shell-out`): 도구 줄 글자(14/21 · 60%), 출력 상자의
-       면과 1px 안쪽 선, 오른쪽 아래 상태 글자 */
+    /* 도구 줄과 명령 출력 상자(three-axes 티켓 20 — 캔버스 `.cx-tool` · `.cx-shell-out`): 도구 줄의 줄 높이(14/21, 글자는 위의
+       `--chat-fg-tool`), 출력 상자의 면과 1px 안쪽 선, 오른쪽 아래 상태 글자 */
     --chat-leading-tool: 21px;
-    --chat-fg-tool: rgba(26, 28, 31, 0.6);
     --chat-fg-tool-status: #88898a;
     --chat-surface-tool: #f2f3f3;
     --chat-shadow-tool: inset 0 0 0 1px #d9dada;
@@ -1053,22 +1050,23 @@ body[data-palette-open] [data-scrollbar] {
     /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선). 계획 체크리스트도 같은 면이다(캔버스 `.cx-group`). */
     --chat-surface-under: #f9f9f9;
     --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);
-    /* 칩과 「/」 메뉴(three-axes 티켓 19 — 캔버스 `.cx-ctl.plan-on` · `.cx-menu`): 켠 「계획」 칩의 면(글자는 `--chat-link`), 입력창 위에
-       뜨는 명령 메뉴의 그림자(`--shadow-prominent`) */
-    --chat-plan: #e5f3ff;
+    /* 「/」 메뉴(three-axes 티켓 19 — 캔버스 `.cx-menu`): 입력창 위에 뜨는 명령 메뉴의 그림자(`--shadow-prominent`) */
     --chat-shadow-menu: 0 0 0 0.5px #1a1c1f1f, 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
     /* 계획 카드의 0.5px 바깥 선(three-axes 티켓 21 — 캔버스 `.cx-card`) */
     --chat-shadow-card: 0 0 0 0.5px rgba(26, 28, 31, 0.12);
 }
 
-/* 고친 곳(three-axes 티켓 26) — 대화창 범위 토큰이지만 그 표시는 대화창 **밖**에도 선다: 스펙 창의 블록 · 트리의 행 · 레일 칸. 그래서
-   대화창 뿌리와 함께 표시가 서는 요소 자신(`data-changed` · `data-change-dot`)이 같은 값을 든다 — 전역 토큰은 고치지 않는다(three-axes
-   결정 31). 면은 캔버스 `.cx-changed`의 `--accent-soft`, 막대와 점은 `.cx-dot`의 `--dot-new`(`--accent`)다. */
+/* 캔버스 강조 둘 — 같은 캔버스 토큰은 범위에서도 한 이름이다(three-axes 결정 31 — codex-ds가 전역을 바꾸면 그쪽 이름으로 한 번에
+   옮긴다).
+   - `--chat-accent-soft`(캔버스 `--accent-soft`): 인용 칩의 면(티켓 27 · `.cx-cite`), 켠 「계획」 칩의 면(티켓 19 · `.cx-ctl.plan-on`),
+     고친 곳의 면(티켓 26 · `.cx-changed`). 칩 글자는 `--chat-link`다.
+   - `--chat-dot-new`(캔버스 `--dot-new` · `--accent`): 고친 곳의 막대와 점(`.cx-dot`).
+   고친 곳의 표시는 대화창 **밖**에도 선다(스펙 창의 블록 · 트리의 행 · 레일 칸). 그래서 대화창 뿌리와 함께 표시가 서는 요소
+   자신(`data-changed` · `data-change-dot`)이 같은 값을 든다 — 전역 토큰은 고치지 않는다. */
 [data-chat],
 [data-changed],
 [data-change-dot] {
-    --chat-changed: #e5f3ff;
-    --chat-changed-bar: #339cff;
+    --chat-accent-soft: #e5f3ff;
     --chat-dot-new: #339cff;
 }
 

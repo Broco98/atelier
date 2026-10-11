@@ -23,7 +23,7 @@ function quoteTitle(quote: Quote): string {
 }
 
 const CHIP =
-  "inline-flex h-[22px] max-w-full min-w-0 items-center gap-1 rounded-full bg-(--chat-quote) text-caption font-medium text-(--chat-link)";
+  "inline-flex h-[22px] max-w-full min-w-0 items-center gap-1 rounded-full bg-(--chat-accent-soft) text-caption font-medium text-(--chat-link)";
 
 /** 입력창에 붙은 인용 — 끝의 ×로 뺀다. */
 export function DraftQuoteChip({ quote, onDrop }: { quote: Quote; onDrop: () => void }) {

@@ -159,9 +159,7 @@ export function useChatRecordFeed(): void {
       if (line.kind === "changes") applyChanges(work, changedFiles(line.payload));
       // 로그인 필요 줄은 그 엔진의 「로그인 안 됨」이다 — 같은 엔진의 대화 자리에 다 안내 카드가 선다(three-axes 티켓 22).
       if (isLoginRequired(line)) {
-        const agent = queryClient
-          .getQueryData<Conversation[]>(conversationsQuery(work).queryKey)
-          ?.find((one) => one.id === conversation)?.agent;
+        const agent = cachedConversation(queryClient, work, conversation)?.agent;
         if (agent) markLoginRequired(agent);
       }
     });
@@ -212,13 +210,14 @@ function isDeath(line: RecordLine): boolean {
   return line.kind === "session" && (line.payload as { state?: unknown } | null)?.state === "died";
 }
 
+/** 대화 목록 캐시에 있는 그 대화 — 목록을 아직 읽지 않았거나 없는 대화면 `undefined`다. 묻지 않는다(캐시만 본다). */
+function cachedConversation(queryClient: QueryClient, work: string, conversation: string): Conversation | undefined {
+  return queryClient.getQueryData<Conversation[]>(conversationsQuery(work).queryKey)?.find((one) => one.id === conversation);
+}
+
 /** 그 대화의 이름 — 대화 목록 캐시에서. 모르면 「대화」다. */
 function conversationName(queryClient: QueryClient, work: string, conversation: string): string {
-  return (
-    queryClient
-      .getQueryData<Conversation[]>(conversationsQuery(work).queryKey)
-      ?.find((one) => one.id === conversation)?.name ?? "대화"
-  );
+  return cachedConversation(queryClient, work, conversation)?.name ?? "대화";
 }
 
 /**
