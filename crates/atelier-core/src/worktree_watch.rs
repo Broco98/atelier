@@ -27,8 +27,9 @@ pub struct WorktreeChange {
 ///    `.git` 자신은 그 폴더의 변경으로 묻는다 — 폴더가 저장소가 되거나 그치면 트리에서 그 폴더의 모양이 바뀐다.
 /// 2. **빠른 길(S6).** 마지막 트리 목록이 알려 준 「걸린 맨 위 폴더」 아래는 git에 묻지 않고 버린다 — 빌드 폭주의 대부분이
 ///    여기서 끝난다(`learn_ignored_folders`). 들고 있지 않으면 빠른 길 없이 묻는다.
-/// 3. **gitignore.** 워크트리마다 남은 경로를 **한 번에** git에 묻는다(S1) — 빌드가 수천 경로를 쏟아도 워크트리당 git 한
-///    번이다. 하나라도 걸리지 않았으면 그 쌍을 낸다.
+/// 3. **gitignore.** 워크트리마다 남은 경로를 git에 묻는다(S1). 몇 안 되면 한 번에 그대로, 많으면 얕은 데서부터 깊이마다 그
+///    깊이의 폴더 이름만 묻는다(S38, `any_unignored_by_depth`) — `check-ignore`의 값은 묻는 이름 수 × 인덱스 크기라, 빌드가 수만
+///    경로를 쏟아도 묻는 것은 그것이 지나는 폴더 몇 개다. 하나라도 걸리지 않았으면 그 쌍을 낸다.
 ///
 /// **워크트리 뿌리 자신**이 오면 묻지 않고 바뀐 것으로 친다 — 폴더째 옮겨 가거나(휴지통으로 버리기도 옮김이다) 돌아온 것이고,
 /// 그때 FSEvents는 안의 경로를 주지 않는다. git이 답하지 못해도(워크트리가 사라졌다 · 저장소가 아니다 · `check-ignore`가 죽었다)
@@ -38,7 +39,7 @@ pub fn worktree_changes(works_root: &Path, paths: &[PathBuf]) -> Vec<WorktreeCha
 }
 
 /// gitignore를 git에 묻는 자리(경계) — 워크트리 하나와 그 기준 경로들을 받아 **걸린 것**을 돌려준다. 답하지 못하면 `None`이다.
-/// 판정은 이것을 워크트리마다 한 번 부른다 — 검사가 그 수를 세려고 이 자리를 갈아 끼운다.
+/// 판정은 이것을 워크트리마다 깊이 수만큼(대개 한 번) 부른다 — 검사가 묻는 것을 받아 적으려고 이 자리를 갈아 끼운다.
 type AskIgnored<'a> = dyn FnMut(&Path, &[String]) -> Option<HashSet<String>> + 'a;
 
 fn changes_asking(works_root: &Path, paths: &[PathBuf], ignored: &mut AskIgnored) -> Vec<WorktreeChange> {
@@ -141,10 +142,59 @@ fn any_unignored(dir: &Path, rels: &BTreeSet<String>, ignored: &mut AskIgnored) 
     if !dir.join(".git").exists() {
         return true;
     }
-    match ignored(dir, &asked) {
-        Some(hit) => asked.iter().any(|rel| !hit.contains(rel)),
-        None => true,
+    any_unignored_by_depth(dir, asked, ignored)
+}
+
+/// 남은 경로가 이만큼 이하면 폴더로 줄이지 않고 그대로 한 번에 묻는다. 경로 하나를 묻는 값(인덱스 6만 개에 0.4ms쯤)이 git을 한 번
+/// 더 띄우는 값(10ms쯤)보다 훨씬 작아서다(git 2.54 실측) — 몇십 개면 한 깊이 더 내려가는 것과 비슷하다. 에이전트의 고침 한 묶음은
+/// 대개 여기서 git 한 번에 끝난다.
+const ASK_AS_IS: usize = 32;
+
+/// `rels` 가운데 걸리지 않은 것이 있는가 — git에 **얕은 데서부터 깊이마다** 묻는다(S38). git이 답하지 못하면 바뀐 것으로 친다(S35).
+///
+/// `check-ignore`는 받은 경로마다 인덱스 전체를 돈다 — 값이 경로 수 × 인덱스 크기다(인덱스 6만 개에 경로 4만 개면 14초). 빠른 길이
+/// 없는 워크트리(앱을 막 켰다 · files 칸을 한 번도 열지 않은 다른 work)의 폭주를 그대로 넣으면 판정이 그만큼 붙든다. 그래서 깊이마다
+/// 그 깊이의 조각 — 더 깊은 경로가 지나는 폴더 이름과 거기서 끝나는 경로 — 만 묻는다.
+/// - 걸렸다고 답한 폴더 아래는 더 묻지 않는다. git은 걸린 폴더 안을 다시 들이지 않는다. 폴더 아래에 추적 중인 파일이 있으면 git이
+///   그 폴더를 걸렸다고 답하지 않으므로(인덱스에서 그 폴더를 찾는다) 그 파일의 변경도 놓치지 않는다.
+/// - 거기서 끝나는 경로 하나가 걸리지 않았으면 멈춘다.
+/// - 디스크에 없는 폴더(지워졌다)는 `target/` 같은 폴더 규칙에 걸리지 않아 한 깊이 더 내려간다. 그 아래 경로는 git이 부모를 폴더로
+///   보고 답한다.
+///
+/// 그래서 답은 경로를 하나하나 물은 것과 같다. 빌드 · 설치 폭주는 걸린 폴더에 닿는 깊이(대개 첫 깊이, 모노레포의 패키지면 셋째)에서
+/// 끝나고, 묻는 것은 폭주의 경로 수가 아니라 그것이 지나는 폴더 수다. 남은 경로가 몇 안 되거나 줄여도 그 수 그대로면 그대로 묻는다.
+fn any_unignored_by_depth(dir: &Path, mut left: Vec<String>, ignored: &mut AskIgnored) -> bool {
+    let mut depth = 0;
+    loop {
+        if left.is_empty() {
+            return false;
+        }
+        depth += 1;
+        let heads: BTreeSet<&str> = left.iter().map(|rel| head(rel, depth)).collect();
+        if left.len() <= ASK_AS_IS.max(heads.len()) {
+            return match ignored(dir, &left) {
+                Some(hit) => left.iter().any(|rel| !hit.contains(rel)),
+                None => true,
+            };
+        }
+        let heads: Vec<String> = heads.into_iter().map(str::to_string).collect();
+        let Some(hit) = ignored(dir, &heads) else {
+            return true;
+        };
+        // 여기서 끝나는 경로는 제 이름으로 물었다
+        if left.iter().any(|rel| head(rel, depth).len() == rel.len() && !hit.contains(rel)) {
+            return true;
+        }
+        left.retain(|rel| {
+            let folder = head(rel, depth);
+            folder.len() < rel.len() && !hit.contains(folder)
+        });
     }
+}
+
+/// `rel`의 앞 `depth` 조각 — 조각이 꼭 `depth`개면 `rel` 자신이다. 조각이 그보다 적은 경로는 부르는 쪽이 앞 깊이에서 이미 뺐다.
+fn head(rel: &str, depth: usize) -> &str {
+    rel.match_indices('/').nth(depth - 1).map_or(rel, |(at, _)| &rel[..at])
 }
 
 /// 워크트리마다 **규칙에 걸린 맨 위 폴더들**(빠른 길 — S6). 앱 프로세스 안의 값이고, 트리 목록이 쓰고(`learn_ignored_folders`)
@@ -500,14 +550,20 @@ mod tests {
         assert_eq!(worktree_changes(&works, &batch), [change("w", "fe")]);
     }
 
-    /// 판정을 git 부름 수를 세며 돌린다 — 묻는 자리(`ignored_by_git`)는 진짜 그대로다.
-    fn counted(works: &Path, batch: &[PathBuf]) -> (Vec<WorktreeChange>, usize) {
-        let mut asks = 0;
+    /// 판정을 git에 넣은 이름을 받아 적으며 돌린다 — 부름마다 한 벌. 묻는 자리(`ignored_by_git`)는 진짜 그대로다.
+    fn asked(works: &Path, batch: &[PathBuf]) -> (Vec<WorktreeChange>, Vec<Vec<String>>) {
+        let mut names = Vec::new();
         let changes = changes_asking(works, batch, &mut |dir, rels| {
-            asks += 1;
+            names.push(rels.to_vec());
             ignored_by_git(dir, rels)
         });
-        (changes, asks)
+        (changes, names)
+    }
+
+    /// 판정을 git 부름 수를 세며 돌린다.
+    fn counted(works: &Path, batch: &[PathBuf]) -> (Vec<WorktreeChange>, usize) {
+        let (changes, names) = asked(works, batch);
+        (changes, names.len())
     }
 
     /// 빌드 폭주 한 묶음 — `fe`의 `target/` 아래 수천 경로와 걸리지 않은 하나, `be`의 `node_modules/` 아래 수천 경로.
@@ -520,12 +576,75 @@ mod tests {
         rels.iter().map(|rel| works.join(rel)).collect()
     }
 
+    /// 폭주가 쏟는 폴더를 디스크에 세운다 — 빌드 · 설치는 쓰는 폴더를 만들며 쏟는다.
+    fn make_dirs(works: &Path, rels: &[&str]) {
+        for rel in rels {
+            std::fs::create_dir_all(works.join(rel)).unwrap();
+        }
+    }
+
     #[test]
-    fn thousands_of_paths_ask_git_once_per_worktree() {
+    fn without_the_fast_path_a_storm_asks_git_the_folders_it_passes_through_not_its_paths() {
+        // `check-ignore`는 받은 경로마다 인덱스 전체를 돈다 — 인덱스 6만 개짜리 저장소에 경로 4만 개를 넣으면 14초다(리뷰 실측). 빠른
+        // 길이 없는 워크트리(앱을 막 켰다 · files 칸을 한 번도 열지 않은 다른 work)는 늘 이렇다. 깊이마다 그 깊이의 폴더 이름만 묻고,
+        // 걸린 폴더 아래는 더 묻지 않는다. 몇 안 남은 경로는 그대로 묻는다
         let (_tmp, works) = setup();
-        let (changes, asks) = counted(&works, &storm(&works, true));
+        make_dirs(&works, &["w/trees/fe/target/debug/deps", "w/trees/be/node_modules"]);
+        let (changes, names) = asked(&works, &storm(&works, true));
         assert_eq!(changes, [change("w", "fe")]);
-        assert_eq!(asks, 2, "워크트리마다 한 번이어야 한다");
+        assert_eq!(names, [vec!["node_modules"], vec!["src", "target"], vec!["src/lib.rs"]]);
+
+        // 모노레포 — 설치는 패키지마다 `node_modules/`에 쏟는다. 맨 위 폴더(`packages`)는 걸리지 않았으니 한 깊이씩 내려간다
+        make_dirs(&works, &["w/trees/fe/packages/a/node_modules", "w/trees/fe/packages/b/node_modules"]);
+        let install: Vec<PathBuf> = (0..3000)
+            .map(|n| works.join(format!("w/trees/fe/packages/{}/node_modules/dep{n}/index.js", ["a", "b"][n % 2])))
+            .collect();
+        let (changes, names) = asked(&works, &install);
+        assert_eq!(changes, []);
+        assert_eq!(
+            names,
+            [
+                vec!["packages"],
+                vec!["packages/a", "packages/b"],
+                vec!["packages/a/node_modules", "packages/b/node_modules"],
+            ]
+        );
+    }
+
+    #[test]
+    fn asking_by_folders_answers_as_asking_every_path() {
+        // 폴더로 줄여 물어도 경로를 하나하나 물은 답과 같다. 걸린 폴더 아래의 추적 중인 파일(`git add -f`) · 이름이 규칙에 걸리지
+        // 않은 폴더 안의 걸린 것(`*.log`만 든 `logs/`) · 지워진 폴더가 갈림길이다. 묶음마다 걸린 경로 마흔 개를 깔아 폴더로 줄이는
+        // 길을 탄다
+        let (_tmp, works) = setup();
+        let fe = works.join("w/trees/fe");
+        std::fs::write(fe.join(".gitignore"), "target/\nnode_modules/\n*.log\nvendor/\n").unwrap();
+        make_dirs(&works, &["w/trees/fe/target/debug", "w/trees/fe/logs/2026", "w/trees/fe/vendor"]);
+        std::fs::write(fe.join("vendor/keep.txt"), "k").unwrap();
+        run_git(&fe, &["add", "-f", "vendor/keep.txt"]);
+        let many = |folder: &str, ext: &str| (0..40).map(|n| format!("{folder}/f{n}{ext}")).collect::<Vec<_>>();
+        let cases: [(Vec<String>, bool); 8] = [
+            (vec![], false),
+            (many("logs/2026", ".log"), false),
+            (vec!["logs/new.txt".into()], true),
+            // 걸린 폴더 아래여도 추적 중인 파일의 변경이다 — git은 그 폴더를 걸렸다고 답하지 않는다
+            (vec!["vendor/keep.txt".into()], true),
+            (many("vendor/other", ".txt"), false),
+            // 걸린 폴더 자신 — 서 있는 동안은 걸린 것이다
+            (vec!["target".into()], false),
+            // 지워진 폴더 — 폴더 규칙에 걸리지 않지만 그 아래는 git이 부모를 폴더로 보고 답한다
+            (many("node_modules/gone", ".js"), false),
+            (many("gone/x", ".txt"), true),
+        ];
+        for (rels, changed) in cases {
+            let rels: Vec<String> = many("target/debug", ".o").into_iter().chain(rels).collect();
+            let truth = ignored_by_git(&fe, &rels).map_or(true, |hit| rels.iter().any(|rel| !hit.contains(rel)));
+            assert_eq!(truth, changed, "git에 하나하나 물은 답이 다르다 {rels:?}");
+            let batch: Vec<PathBuf> = rels.iter().map(|rel| fe.join(rel)).collect();
+            let (changes, names) = asked(&works, &batch);
+            assert_eq!(!changes.is_empty(), changed, "폴더로 줄인 답이 다르다 {rels:?} — 물은 것 {names:?}");
+            assert!(names.iter().map(Vec::len).sum::<usize>() < rels.len(), "줄이지 않고 물었다 {names:?}");
+        }
     }
 
     #[test]

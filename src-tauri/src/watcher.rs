@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::time::Duration;
 
-use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
+use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
 use tauri::{AppHandle, Emitter};
 
 /// `~/.atelier/projects/` 감시 → 관련 변경 시 `projects:changed` emit.
@@ -121,13 +123,11 @@ fn is_dotfile(path: &Path) -> bool {
 
 /// 폴더 하나를 디바운스로 보며 **종만 친다** — 무엇이 바뀌었는지는 안 싣고, 프런트가 그
 /// 종을 듣고 다시 물어본다. 워크트리 갈래만 어느 워크트리인지(slug · 프로젝트)를 싣는다.
-///
-/// **판정이 밀리면 쌓인 묶음과 합친다**(git-integration 티켓 10). 워크트리 갈래는 git에 묻느라 디바운스보다 오래 걸릴 수 있고,
-/// 그동안 온 묶음을 하나씩 따로 판정하면 판정이 판정을 쫓는다 — 받을 때마다 쌓인 것을 다 꺼내 한 번에 본다.
+/// 회차 루프는 `ring`이다.
 ///
 /// **`shells.rs`의 `watch_into`와 짝이다.** 디바운서를 세우는 앞 절반(`create_dir_all` →
 /// 채널 → `new_debouncer` → `watch`)이 줄 단위로 같고 오류 문구까지 겹친다. 회차 루프는 이쪽만
-/// 쌓인 묶음을 합친다(위 문단).
+/// 쌓인 묶음을 합치고 판정을 따로 된 스레드에 넘긴다(`ring`).
 /// 그쪽이 따로 선 근거는 **나가는 것**이지(바뀐 셸을 페이로드로 싣는다) 이 배선이 아니므로,
 /// notify의 API가 바뀌거나 오류 처리를 고칠 때는 두 자리를 함께 고쳐야 한다.
 fn spawn_watch(app: AppHandle, watch: Watch) {
@@ -145,28 +145,71 @@ fn spawn_watch(app: AppHandle, watch: Watch) {
             eprintln!("atelier: failed to watch {}: {e}", watch.dir.display());
             return;
         }
+        ring(rx, watch, move |event, change| {
+            let _ = match change {
+                Some(change) => app.emit(event, change),
+                None => app.emit(event, ()),
+            };
+        });
+    });
+}
+
+/// 종을 치는 자리 — 이름과, 워크트리 갈래면 그 쌍. `AppHandle`은 창과 웹뷰가 있어야 서서, 검사는 이 자리를 갈아 끼운다.
+type Bell = dyn Fn(&'static str, Option<atelier_core::WorktreeChange>) + Send + Sync;
+
+/// 감시의 회차 루프 — 디바운서가 보낸 묶음을 받아 종을 친다. 디바운서가 서 있는 동안 돌아오지 않는다.
+///
+/// **워크트리 갈래의 판정은 이 고리 밖, 판정 스레드에서 돈다**(git-integration 티켓 10 · 리뷰 반영). 판정은 git에 묻느라 디바운스보다
+/// 오래 걸릴 수 있다 — 인덱스가 큰 저장소의 폭주면 몇 초다. 이 고리가 그것을 기다리면 그동안 에이전트가 고친 spec이 판정이 끝나야
+/// `works:changed`로 나가, 300ms로 잡은 spec 라이브 리로드가 판정 시간만큼 밀린다. 그래서 이 고리는 `works:changed`를 곧바로 치고
+/// 경로는 판정 스레드에 넘기기만 한다.
+///
+/// **밀리면 쌓인 묶음과 합친다.** 이 고리도 판정 스레드도 받을 때마다 쌓인 것을 다 꺼내 한 번에 본다 — 판정이 밀린 동안 온 묶음을
+/// 하나씩 따로 판정하면 판정이 판정을 쫓는다.
+fn ring(
+    rx: Receiver<DebounceEventResult>,
+    watch: Watch,
+    emit: impl Fn(&'static str, Option<atelier_core::WorktreeChange>) + Send + Sync + 'static,
+) {
+    let emit: Arc<Bell> = Arc::new(emit);
+    let judging = watch.worktrees.map(|branch| spawn_judge(branch, Arc::clone(&emit)));
+    while let Ok(first) = rx.recv() {
+        let paths: Vec<PathBuf> = std::iter::once(first)
+            .chain(rx.try_iter())
+            .filter_map(Result::ok)
+            .flatten()
+            .map(|e| e.path)
+            .collect();
+        if paths.iter().any(|path| (watch.relevant)(path)) {
+            emit(watch.event, None);
+        }
+        if let Some(judging) = &judging {
+            // 판정 스레드가 없으면(죽었다) 그 갈래만 멎는다 — `works:changed`는 계속 운다
+            let _ = judging.send(paths);
+        }
+    }
+}
+
+/// 워크트리 갈래의 판정 스레드를 세우고, 경로 묶음을 넘길 자리를 돌려준다. 받을 때마다 쌓인 묶음을 다 꺼내 한 번에 판정하고, 쌍마다
+/// 종을 친다. 넘길 자리가 닫히면(감시 고리가 끝났다) 끝난다.
+fn spawn_judge(branch: WorktreeBranch, emit: Arc<Bell>) -> Sender<Vec<PathBuf>> {
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<PathBuf>>();
+    std::thread::spawn(move || {
         while let Ok(first) = rx.recv() {
-            let paths: Vec<PathBuf> = std::iter::once(first)
-                .chain(rx.try_iter())
-                .filter_map(Result::ok)
-                .flatten()
-                .map(|e| e.path)
-                .collect();
-            if paths.iter().any(|path| (watch.relevant)(path)) {
-                let _ = app.emit(watch.event, ());
-            }
-            if let Some(branch) = &watch.worktrees {
-                for change in (branch.judge)(&paths) {
-                    let _ = app.emit(branch.event, change);
-                }
+            let paths: Vec<PathBuf> = std::iter::once(first).chain(rx.try_iter()).flatten().collect();
+            for change in (branch.judge)(&paths) {
+                emit(branch.event, Some(change));
             }
         }
     });
+    tx
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use notify_debouncer_mini::{DebouncedEvent, DebouncedEventKind};
+    use std::sync::{Condvar, LazyLock, Mutex};
 
     fn watch_on(dir: &Path) -> Watch {
         watches()
@@ -222,6 +265,64 @@ mod tests {
         for dir in [atelier_core::projects_dir(), atelier_core::layouts_dir()] {
             assert!(watch_on(&dir).worktrees.is_none(), "{}가 워크트리 갈래를 갖는다", dir.display());
         }
+    }
+
+    /// 붙드는 판정이 선 자리 — (불렸다, 놓였다). 아래 검사 하나만 쓴다.
+    static HELD: LazyLock<(Mutex<(bool, bool)>, Condvar)> = LazyLock::new(Default::default);
+
+    /// 놓일 때까지 붙드는 판정 — 놓이면 진짜 판정을 한다. 인덱스가 큰 저장소에서 git이 오래 걸리는 판정의 흉내다.
+    fn held_judge(paths: &[PathBuf]) -> Vec<atelier_core::WorktreeChange> {
+        let (lock, turn) = &*HELD;
+        let mut held = lock.lock().unwrap();
+        held.0 = true;
+        turn.notify_all();
+        drop(turn.wait_while(held, |(_, released)| !*released).unwrap());
+        worktree_changes_in_works(paths)
+    }
+
+    /// **워크트리 판정이 도는 동안에도 spec 변경은 곧바로 운다**(리뷰 반영). 판정은 git에 묻느라 오래 걸릴 수 있다 — 인덱스가 큰
+    /// 저장소의 폭주면 몇 초다. 감시 고리가 그것을 기다리면 그동안 에이전트가 고친 spec은 판정이 끝나야 `works:changed`로 나가,
+    /// 300ms로 잡은 spec 라이브 리로드가 판정 시간만큼 밀린다. 진행 중 루트의 계획 그대로에 판정만 갈아 끼운다.
+    #[test]
+    fn a_spec_change_rings_while_a_worktree_judgment_is_still_running() {
+        let works = atelier_core::works_dir();
+        let mut watch = watch_on(&works);
+        watch.worktrees = Some(WorktreeBranch { event: "worktree:changed", judge: held_judge });
+        let (batches, rx) = std::sync::mpsc::channel();
+        let (rang, rings) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            ring(rx, watch, move |event, change| {
+                let _ = rang.send((event, change));
+            })
+        });
+        let batch = |rel: &str| Ok(vec![DebouncedEvent::new(works.join(rel), DebouncedEventKind::Any)]);
+        let release = || {
+            let (lock, turn) = &*HELD;
+            lock.lock().unwrap().1 = true;
+            turn.notify_all();
+        };
+
+        batches.send(batch("no-such-work-t10/trees/web/src/main.rs")).unwrap();
+        let (lock, turn) = &*HELD;
+        let (held, waited) =
+            turn.wait_timeout_while(lock.lock().unwrap(), Duration::from_secs(10), |(called, _)| !*called).unwrap();
+        drop(held);
+        if waited.timed_out() {
+            release();
+            panic!("판정이 불리지 않았다");
+        }
+        batches.send(batch("no-such-work-t10/spec/overview.md")).unwrap();
+        let spec = rings.recv_timeout(Duration::from_secs(10));
+        release();
+        assert_eq!(spec, Ok(("works:changed", None)), "판정이 도는 동안 spec 변경이 울리지 않았다");
+        // 판정이 끝나면 그 워크트리도 운다
+        assert_eq!(
+            rings.recv_timeout(Duration::from_secs(10)),
+            Ok((
+                "worktree:changed",
+                Some(atelier_core::WorktreeChange { slug: "no-such-work-t10".into(), project: "web".into() })
+            ))
+        );
     }
 
     /// **앱이 거는 감시는 셋이다** — 프로젝트 등록부 · 진행 중 루트 · 레이아웃 폴더. 감시는 걸 때 그 폴더를
