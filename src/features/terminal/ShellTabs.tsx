@@ -5,6 +5,7 @@ import { Hint } from "@/components/ui/tooltip";
 import { SIGNAL_LABEL, signalTint, subagentLabel } from "@/components/shell/shell-signal";
 import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
+import { codeTabNames } from "./code-tab-names";
 import ShellPicker from "./ShellPicker";
 import { runningSubagents, signalOf } from "./shell-attention";
 import {
@@ -203,6 +204,11 @@ function ShellTabs({
   // 상자에 서는 것은 **묶음의 칸**이고 그 차례 그대로다. 셸 칸이 그릴 데이터는 셸 목록에서 id로 찾는다.
   const tabs = bundleOf(state, owner);
   const shellsById = new Map(shellsOf(state, owner).map((shell) => [shell.id, shell]));
+  // 파일 탭 칸의 이름 — 열린 파일 탭끼리 겹치면 상위 폴더가 붙는다(S11). 회차마다 새로 내도 칸에 내려가는 것은 글자라
+  // (`folder`) `memo` 경계가 안 어긋난다.
+  const codeNames = codeTabNames(
+    tabs.filter((tab): tab is Extract<BundleTab, { kind: "code" }> => tab.kind === "code"),
+  );
   const activeId = activeIdOf(state, owner);
 
   // 칸에 내려보내는 콜백을 **회차를 넘어 같은 것으로** 만든다(#140). `ShellTab`이 `memo`라
@@ -498,6 +504,7 @@ function ShellTabs({
               <CodeTab
                 key={tab.id}
                 tab={tab}
+                folder={codeNames.get(tab.id)?.folder ?? null}
                 active={showing && tab.id === activeId}
                 onSelect={tabHandlers.onSelect}
                 onClose={tabHandlers.onClose}
@@ -887,6 +894,8 @@ const ShellTab = memo(function ShellTab({
 
 interface CodeTabProps {
   tab: Extract<BundleTab, { kind: "code" }>;
+  /** 이름이 겹칠 때 흐리게 덧붙는 상위 폴더(`codeTabNames`). 겹치지 않으면 `null` — 이름만 선다. */
+  folder: string | null;
   /** 본문이 지금 이 파일 탭을 보여주는가. 켜진 칸 표시가 그때만 선다. */
   active: boolean;
   onSelect: (id: number) => void;
@@ -906,9 +915,13 @@ interface CodeTabProps {
  * 구르기는 줄이 칸의 종류를 안 가리고 하므로(`measureStrip`) 이 칸이 하는 일은 누른 순간을 알리는 것뿐이다.
  *
  * 정체는 표식(`data-code`)으로 싣는다 — 칸 표식(`data-tab`)은 종류다(셸의 `data-shell-key`와 같은 나눔).
+ *
+ * 열린 파일 탭끼리 이름이 겹치면 상위 폴더가 흐리게 붙는다(S11 — `index.ts · works`). 붙은 폴더도 이름의 일부라 접근 이름과
+ * `×`의 이름에 함께 든다 — `index.ts` 둘의 `×`가 같은 이름이면 화면 읽기로 어느 것을 닫는지 모른다.
  */
-const CodeTab = memo(function CodeTab({ tab, active, onSelect, onClose, onDragTab }: CodeTabProps) {
+const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose, onDragTab }: CodeTabProps) {
   const name = tab.path.slice(tab.path.lastIndexOf("/") + 1);
+  const label = folder === null ? name : `${name} · ${folder}`;
   const ref = `${tab.project}/${tab.path}`;
   return (
     <div
@@ -931,12 +944,15 @@ const CodeTab = memo(function CodeTab({ tab, active, onSelect, onClose, onDragTa
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
       >
         <FileCode className={cn("size-3.5 shrink-0", !active && "text-tertiary")} strokeWidth={1.8} />
-        <span className="min-w-0 truncate @max-[88px]:sr-only">{name}</span>
+        <span className="min-w-0 truncate @max-[88px]:sr-only">
+          {name}
+          {folder !== null && <span className="text-tertiary"> · {folder}</span>}
+        </span>
       </Hint>
       <Hint
         text="파일 탭 닫기"
         type="button"
-        aria-label={`${name} 닫기`}
+        aria-label={`${label} 닫기`}
         onClick={() => onClose(tab.id)}
         className={cn("icon-button-tint shrink-0 text-tertiary", active ? "@max-[68px]:hidden" : "@max-[88px]:hidden")}
       >

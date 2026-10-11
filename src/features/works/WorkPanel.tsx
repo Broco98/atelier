@@ -4,6 +4,7 @@ import { CardHead } from "@/components/shell/Frame";
 import type { RailItem } from "@/components/shell/Rail";
 import FilesTree, { FilesRefresh } from "@/features/files/FilesTree";
 import { useProjects } from "@/features/projects/hooks";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
 import WorkInfo, { sharedBase, type ProjectBase } from "./WorkInfo";
@@ -32,6 +33,10 @@ interface WorkPanelProps {
   view: PanelView;
   currentFile: string | null;
   onSelectFile: (path: string) => void;
+  // 본문에 선 파일 탭 — files 트리가 그 행을 강조하고 따라간다(git-integration 스토리 14 · 15). 셸이나 문서가 서 있으면 `null`이다.
+  currentCode: CodeTarget | null;
+  // files 트리의 파일 행을 눌렀다(git-integration 결정 30). 열지 닫을지는 화면이 정한다 — 지금 보이는 탭과 닫는 길을 그쪽이 든다.
+  onPressCode: (target: CodeTarget, clicks: number) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
   onCopy: (text: string) => void;
   // info 몸의 프로젝트 이름을 누르면 그 프로젝트 상세로 간다.
@@ -52,6 +57,8 @@ function WorkPanel({
   view,
   currentFile,
   onSelectFile,
+  currentCode,
+  onPressCode,
   onCopy,
   onOpenProject,
   open,
@@ -140,7 +147,7 @@ function WorkPanel({
       {/* files 트리는 「트리 세대」를 타지 않는다(git-integration S14) — 접힘은 work · 프로젝트별 기억에 있고 패널 접기에
           리셋되지 않는다. 트리는 칸이 열려 보일 때만 읽는다(S9). */}
       <PanelBody view="files" shown={view === "files"}>
-        <FilesTree work={work} visible={open && view === "files"} />
+        <FilesTree work={work} visible={open && view === "files"} current={currentCode} onPress={onPressCode} />
       </PanelBody>
       <PanelBody view="info" shown={view === "info"}>
         <WorkInfo

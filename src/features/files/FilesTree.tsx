@@ -1,9 +1,10 @@
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { FolderGit2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
 import {
   TreeRows,
   treeIndent,
@@ -31,8 +32,22 @@ const NOTE = "px-2 py-1.5 text-ui text-tertiary";
  *
  * `visible`은 「files 칸이 열려 보이는가」다(S9) — 쿼리를 그것으로 켠다. 몸은 숨어도 마운트된 채라 그 값을 몸이 스스로 알 길이
  * 없어 화면이 내려 준다.
+ *
+ * `current`는 **본문에 선 파일 탭**이다 — 트리가 그 파일 행을 강조하고, 바뀌면 그 행을 보이는 자리로 데려온다(스토리 14 · 15).
+ * 파일 행을 누르면 `onPress`가 그 파일과 클릭 횟수를 받는다 — 열지 닫을지(결정 30 — 다시 누르면 닫힘)는 화면이 정한다: 지금
+ * 보이는 탭이 무엇인지와 탭을 닫는 길을 화면이 든다.
  */
-function FilesTree({ work, visible }: { work: WorkView; visible: boolean }) {
+function FilesTree({
+  work,
+  visible,
+  current,
+  onPress,
+}: {
+  work: WorkView;
+  visible: boolean;
+  current: CodeTarget | null;
+  onPress: (target: CodeTarget, clicks: number) => void;
+}) {
   const { data: projects } = useProjects();
   // 프로젝트가 하나면 구획 머리 없이 바로 트리다(S13) — 대부분의 work가 하나다.
   const headed = work.worktrees.length > 1;
@@ -50,6 +65,8 @@ function FilesTree({ work, visible }: { work: WorkView; visible: boolean }) {
             // 구획 머리는 프로젝트 **표시 이름**이다. 목록이 아직 안 왔거나 등록이 사라졌으면 slug로 선다.
             title={headed ? (projects?.find((p) => p.slug === worktree.project)?.name ?? worktree.project) : null}
             visible={visible}
+            current={current?.project === worktree.project ? current.path : null}
+            onPress={onPress}
           />
         ))
       )}
@@ -87,11 +104,16 @@ function ProjectSection({
   worktree,
   title,
   visible,
+  current,
+  onPress,
 }: {
   slug: string;
   worktree: WorktreeView;
   title: string | null;
   visible: boolean;
+  /** 본문에 선 파일 탭의 워크트리 기준 경로 — 그 탭이 이 구획의 프로젝트 것일 때만 찬다. */
+  current: string | null;
+  onPress: (target: CodeTarget, clicks: number) => void;
 }) {
   const { project } = worktree;
   // work 목록이 이미 「워크트리 없음」이라 말하면 묻지 않는다. 목록은 낡을 수 있어 물었더니 없다는 답도 같은 안내로 선다.
@@ -99,20 +121,47 @@ function ProjectSection({
   const rows = useMemo(() => (tree.data?.kind === "listed" ? rowsOf(tree.data.entries) : []), [tree.data]);
   // 손으로 접고 편 폴더 — work · 프로젝트의 기억에서 시작해 바꿀 때마다 거기 적는다(`folds.ts`).
   const [folds, setFolds] = useState<Folds>(() => foldsOf(slug, project));
-  const setOpen = (path: string, open: boolean) => {
-    const next = { ...folds, [path]: open };
+  const setOpen = (paths: readonly string[], open: boolean) => {
+    const next = { ...folds, ...Object.fromEntries(paths.map((path) => [path, open])) };
     rememberFolds(slug, project, next);
     setFolds(next);
   };
   const headingId = useId();
 
-  // 구획의 행과 펼친 걸린 폴더 안의 행이 같은 값으로 선다 — 접힘 기억도 한 벌이다.
+  // **지금 탭이 바뀌면 그 파일을 트리에서 보인다**(스토리 15 · 결정 37) — 조상 폴더를 펼치고 행을 보이는 자리로 스크롤한다.
+  // 칸이 안 보이면(패널이 닫혔거나 다른 칸) 할 수 없다: 숨은 몸에는 잴 자리가 없고 트리도 안 읽었다(S9). 그래서 바뀐 파일을
+  // 적어 두고(`toReveal`) **보이고 트리가 선 뒤에** 한 번 한다. 손으로 접은 것은 지금 탭이 다시 바뀔 때까지 그대로 둔다.
+  const listed = tree.data?.kind === "listed";
+  const toReveal = useRef<string | null>(null);
+  const toScroll = useRef(false);
+  const rowsBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    toReveal.current = current;
+    toScroll.current = false;
+  }, [current]);
+  useEffect(() => {
+    const path = toReveal.current;
+    if (path === null || !visible || !listed) return;
+    toReveal.current = null;
+    toScroll.current = true;
+    const closed = ancestorsOf(path).filter((folder) => !folds[folder]);
+    if (closed.length > 0) setOpen(closed, true);
+  }, [current, visible, listed]);
+  // 행은 조상이 펼쳐진 **다음** 그림에 선다 — 그래서 스크롤은 그림마다 보고, 행이 서 있을 때 한 번 한다.
+  useEffect(() => {
+    if (!toScroll.current) return;
+    const row = rowsBox.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row) return;
+    toScroll.current = false;
+    scrollToRow(row);
+  });
+
+  // 구획의 행과 펼친 걸린 폴더 안의 행이 같은 값으로 선다 — 접힘 기억도, 강조하는 지금 파일도 한 벌이다.
   const rowsProps: RowsProps = {
-    current: null,
+    current,
     isOpen: (row) => folds[row.path] ?? false,
-    onOpenChange: setOpen,
-    // 파일 행을 눌러 파일 탭을 여는 것은 티켓 05다
-    onSelect: () => {},
+    onOpenChange: (path, open) => setOpen([path], open),
+    onSelect: (path, clicks) => onPress({ project, path }, clicks),
     lookOf,
     // 아직 안 읽은 폴더(걸린 폴더)는 펼칠 때 한 겹 읽는다 — 그 몸이 읽기를 건다(스토리 20). 나머지 폴더는 받은 자식 행이다.
     folderBody: (row, depth) =>
@@ -126,7 +175,7 @@ function ProjectSection({
       tree,
       rows,
       (items) => (
-        <div className="flex shrink-0 flex-col gap-(--row-gap)">
+        <div ref={rowsBox} className="flex shrink-0 flex-col gap-(--row-gap)">
           <TreeRows items={items} depth={0} {...rowsProps} />
         </div>
       ),
@@ -217,6 +266,25 @@ function FolderNote({ depth, text }: { depth: number; text: string }) {
       <span className="min-w-0 truncate">{text}</span>
     </div>
   );
+}
+
+/** 워크트리 기준 경로의 조상 폴더들 — 위에서부터(`a/b/c.ts` → `a`, `a/b`). */
+function ancestorsOf(path: string): string[] {
+  const parts = path.split("/").slice(0, -1);
+  return parts.map((_, at) => parts.slice(0, at + 1).join("/"));
+}
+
+/**
+ * 행을 트리의 보이는 자리로 — **트리 상자만 세로로 민다.** `scrollIntoView`를 쓰지 않는 것은 그것이 넘침을 감춘 조상 상자까지
+ * 모두 밀기 때문이다: 패널이 열리는 폭 트랜지션 한가운데에 부르면 바깥 칸이 가로로 밀린 채 남을 수 있다. 이미 보이면 그대로다.
+ */
+function scrollToRow(row: HTMLElement): void {
+  const box = row.closest<HTMLElement>("[data-files-tree]");
+  if (!box) return;
+  const view = box.getBoundingClientRect();
+  const at = row.getBoundingClientRect();
+  if (at.top < view.top) box.scrollTop -= view.top - at.top;
+  else if (at.bottom > view.bottom) box.scrollTop += at.bottom - view.bottom;
 }
 
 /**
