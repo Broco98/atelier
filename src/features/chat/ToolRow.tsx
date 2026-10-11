@@ -160,6 +160,7 @@ function Inside({
   if (view.shell) {
     return (
       <ShellOutput
+        name="명령 출력"
         label="Shell"
         command={view.shell.command}
         output={view.shell.output}
@@ -192,16 +193,22 @@ function Inside({
       </figure>
     );
   }
-  return view.text ? <ShellOutput label="출력" command={null} output={view.text} status={null} /> : null;
+  return view.text ? <ShellOutput name="출력" label="출력" command={null} output={view.text} status={null} /> : null;
 }
 
-/** 명령 출력 상자 — 캔버스 `.cx-shell-out`: 위 kind 글, `$` 명령, 출력, 오른쪽 아래 상태. */
+/**
+ * 명령 출력 상자 — 캔버스 `.cx-shell-out`: 위 kind 글, `$` 명령, 출력, 오른쪽 아래 상태. 명령이 아닌 글(서브에이전트가 돌려준 글 ·
+ * 실패한 도구의 오류 글)도 같은 상자에 그리므로, 상자의 이름(`name`)은 무엇의 출력인지에 맞춰 부르는 쪽이 준다 — 「명령」은 셸 안에서
+ * 도는 프로세스다.
+ */
 function ShellOutput({
+  name,
   label,
   command,
   output,
   status,
 }: {
+  name: string;
   label: ReactNode;
   command: string | null;
   output: string;
@@ -209,7 +216,7 @@ function ShellOutput({
 }) {
   return (
     <figure
-      aria-label="명령 출력"
+      aria-label={name}
       className="flex flex-col gap-2.5 rounded-(--chat-radius-block) bg-(--chat-surface-tool) py-[9px] pr-3 pl-[9px] shadow-(--chat-shadow-tool)"
     >
       <figcaption className="flex items-center gap-1.5 text-caption text-(--chat-fg-tool)">{label}</figcaption>
@@ -308,6 +315,7 @@ function RanOn({ tool, end }: { tool: ToolEntry; end: TurnEnd | null }) {
   return (
     <div role="group" aria-label={title} data-tool-stop="ran-on" className="flex min-w-0 flex-col">
       <ShellOutput
+        name={kind === "Shell" ? "명령 출력" : "도구 출력"}
         label={
           <>
             {running && <Spinner className="size-3" aria-hidden />}

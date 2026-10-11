@@ -326,6 +326,9 @@ test("서브에이전트: Agent 도구 줄도 진행형 → 완료형이고(맡�
   await expect(작업패널(page).getByText("gamma", { exact: false })).toHaveCount(0);
   await row.getByRole("button", { name: /서브에이전트에게 맡김/ }).click();
   await expect(row).toContainText("[Subagent hand-back] 셋째 줄은 「gamma」다.");
+  // 돌려준 글은 명령의 출력이 아니다 — 그 상자의 이름은 보이는 라벨처럼 「출력」이다.
+  await expect(row.getByRole("figure", { name: "출력", exact: true })).toContainText("[Subagent hand-back]");
+  await expect(명령출력(row)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
