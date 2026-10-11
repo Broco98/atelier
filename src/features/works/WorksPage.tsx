@@ -34,6 +34,7 @@ import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
+import { changeMarksStore, markOpened, marksOf } from "@/features/chat/changes";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
@@ -72,6 +73,7 @@ import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { dropSplit, otherTab } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
+import { requestReveal } from "./doc-reveal";
 import { specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
@@ -109,6 +111,9 @@ interface WorksPageProps {
   // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다.
   onDropInto: (source: DragSource, split: SplitSide) => void;
 }
+
+/** 레일 `spec` 점의 뜻(three-axes 티켓 26) — 칸의 설명으로 남는다. 트리 행의 점은 `SpecTree`의 `UNSEEN_CHANGE`가 말한다. */
+const UNSEEN_IN_SPEC = "고쳐졌는데 아직 열지 않은 파일이 있어요";
 
 /**
  * ⌘Enter가 **작업 패널 몫인가** (결정 43).
@@ -489,6 +494,27 @@ function WorksPage({
   // 그래서 `!currentSpec`이 따로 얹힌다.
   const sourceLocked = !currentSpec || ignoresSourceToggle(currentSpec);
 
+  // 고친 곳(three-axes 티켓 26) — 그 work의 표시. 트리의 점과 레일 `spec`의 점이 「아직 열지 않은 고친 파일」(`unseen`)을 읽는다.
+  // **열었다 = 본문에 문서가 서 있고 그 파일이 지금 문서다.** 고친 파일을 보던 중에 턴이 끝났어도 점이 서지 않고(프로토타입 D),
+  // 터미널 탭에서 지금 문서가 고쳐졌으면 spec으로 돌아올 때 지운다. 문단의 표시는 스펙 창이 스스로 읽는다(`SpecViewer`).
+  const marks = useStore(changeMarksStore, (state) => marksOf(state, panelWork?.slug ?? ""));
+  const openedSpec = panelWork && specStands ? currentSpec : null;
+  useEffect(() => {
+    if (panelWork && openedSpec && marks.unseen.includes(openedSpec)) markOpened(panelWork.slug, openedSpec);
+  }, [panelWork, openedSpec, marks.unseen]);
+  // 레일 `spec`의 점 — 아직 열지 않은 고친 파일이 있고 트리가 지금 안 보일 때(프로토타입 D). 트리가 보이면 그 행들의 점이 말한다.
+  const railMarks =
+    marks.unseen.length > 0 && !(workPanelOpen && panelView === "spec") ? { spec: UNSEEN_IN_SPEC } : undefined;
+  // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 첫 고친 자리로 연다(스토리 72). 문서 링크와 같은 길이라 히스토리를 만들고
+  // 탭을 spec으로 돌린다(`fileSearch`). 줄은 스펙 창이 그 파일을 그린 뒤 찾아간다(`doc-reveal`).
+  const openDoc = useCallback(
+    (path: string, line: number | null) => {
+      if (panelWork) requestReveal(panelWork.slug, path, line);
+      onSelectFile(path, true);
+    },
+    [panelWork, onSelectFile],
+  );
+
   // 바탕 줄의 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
   // (`Works / 제목`)은 그때 사라졌다: **work 제목은 사이드바 행이 말한다.** 감수한 것은 ⌘B로 사이드바를 접으면 화면 어디에도
   // 제목이 없다는 것이고, 이름을 고치는 길은 ⋯ 메뉴로 갔다(아래 `WorkMenu`).
@@ -859,6 +885,7 @@ function WorksPage({
               items: PANEL_VIEWS,
               active: panelView,
               onPick: pickPanelView,
+              marks: railMarks,
             }
           : undefined
       }
@@ -893,6 +920,8 @@ function WorksPage({
                   onCopy={copyText}
                   onOpenProject={onOpenProject}
                   open={workPanelOpen}
+                  unseen={marks.unseen}
+                  onOpenDoc={openDoc}
                 />
               ),
             }

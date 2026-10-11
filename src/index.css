@@ -1010,6 +1010,8 @@ body[data-palette-open] [data-scrollbar] {
     --chat-tracking-field: -0.15px;
     --chat-shadow-composer: 0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006;
     --chat-shadow-code: inset 0 0 0 1px rgba(26, 28, 31, 0.05);
+    /* 「N개 파일 변경됨」 알약 — 0.5px 실선과 카드 그림자(캔버스 `.cx-floatpill`) */
+    --chat-shadow-pill: 0 0 0 0.5px #0000001a, 0 4px 16px 0 #0000000d;
     /* 대화 탭 줄 아래 · 표 칸 아래의 0.5px 선, 표 머리 아래의 1px 선 */
     --chat-hairline-below: inset 0 -0.5px 0 rgba(26, 28, 31, 0.08);
     --chat-rule-below: inset 0 -1px 0 rgba(13, 13, 13, 0.15);
@@ -1019,6 +1021,17 @@ body[data-palette-open] [data-scrollbar] {
     --chat-send: #3a83f7;
     --chat-link: #0169cc;
     --chat-surface-code: #f2f2f3;
+}
+
+/* 고친 곳(three-axes 티켓 26) — 대화창 범위 토큰이지만 그 표시는 대화창 **밖**에도 선다: 스펙 창의 블록 · 트리의 행 · 레일 칸. 그래서
+   대화창 뿌리와 함께 표시가 서는 요소 자신(`data-changed` · `data-change-dot`)이 같은 값을 든다 — 전역 토큰은 고치지 않는다(three-axes
+   결정 31). 면은 캔버스 `.cx-changed`의 `--accent-soft`, 막대와 점은 `.cx-dot`의 `--dot-new`(`--accent`)다. */
+[data-chat],
+[data-changed],
+[data-change-dot] {
+    --chat-changed: #e5f3ff;
+    --chat-changed-bar: #339cff;
+    --chat-dot-new: #339cff;
 }
 
 /* 「생각 중」의 반짝임(캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 2초마다 지나간다. WebKit은 `-webkit-background-clip`과
