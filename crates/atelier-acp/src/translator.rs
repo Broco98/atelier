@@ -7,8 +7,9 @@
 //!   claude가 보낸 순서대로 내보내는 일을 직접 쥐어야 한다.
 //! - **stdin EOF면 claude의 stdin을 닫고 끝난다** — 앱이 비정상으로 끝나도(호스트가 그룹을 끄지 못해도) 고아가 남지 않는다.
 //!
-//! 이 장(티켓 13)이 세우는 것은 세션 열기까지다 — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
-//! 말은 stdin user 줄로 넣기까지만 하고(첫 `system/init`이 그 뒤에 오므로), 턴의 이벤트와 끝을 옮기는 것은 14다.
+//! 세션 열기(티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
+//! 턴(티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
+//! [`stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답).
 //! 멈추기 · 권한 · 모드와 모델 바꾸기는 15, 되살리기 · 백그라운드 · 미로그인은 16이다.
 //!
 //! **가리기.** claude의 원문을 처음 읽는 자리가 여기라, 읽자마자 두 자리를 가린다 — 이 뒤로 ACP에 실려 기록으로 가는 것에는
@@ -21,6 +22,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+
+mod stream;
+
+use stream::Stream;
 
 /// stdin EOF 뒤 claude가 스스로 끝나기를 기다리는 시간. 진짜 claude 2.1.296은 1~1.6초에 끝났다(판 02 실측 G5). 넘으면
 /// claude를 끈다 — 호스트가 없어 그룹째 끄는 손이 없을 때도 고아가 남지 않게.
@@ -60,13 +65,13 @@ pub fn run_claude_translator() -> i32 {
                 continue;
             }
         };
-        // id가 없으면 알림이다. 이 장은 받는 알림이 없다(멈추기는 15).
+        // id가 없으면 알림이다. 아직 받는 알림이 없다(멈추기 `session/cancel`은 티켓 15).
         let Some(id) = message.get("id").cloned() else { continue };
         let params = &message["params"];
         match message["method"].as_str().unwrap_or_default() {
             "initialize" => send(&reply(&id, initialize_result())),
             "session/prompt" => match session.as_mut() {
-                Some(session) => session.prompt(&id, params),
+                Some(session) => session.prompt(&id, params, &shared),
                 None => send(&error(&id, -32602, "열린 세션이 없습니다")),
             },
             "session/new" if session.is_some() => send(&error(&id, -32600, "이 변환기는 이미 세션을 열었습니다 — 세션 하나에 변환기 하나다")),
@@ -110,6 +115,8 @@ struct SharedState {
     session_id: Option<String>,
     /// 첫 `system/init`을 알렸다. claude는 턴마다 `init`을 다시 내지만 새 세션이 아니다 — 같은 원문을 거듭 싣지 않는다.
     init_announced: bool,
+    /// 답하지 않은 `session/prompt`의 요청 id — 턴이 돈다. claude의 `result`가 오면 그 턴의 끝으로 답한다.
+    prompt: Option<Value>,
     /// stdin EOF를 받아 끄는 중이다 — 이 뒤의 claude의 끝은 죽음이 아니다.
     closing: bool,
 }
@@ -131,8 +138,6 @@ struct Opening {
 struct Session {
     stdin: Option<ChildStdin>,
     child: Arc<Mutex<Child>>,
-    /// 답하지 않은 `session/prompt`가 있다 — 턴이 돈다.
-    prompting: bool,
 }
 
 impl Session {
@@ -191,7 +196,7 @@ impl Session {
         let initialize = json!({"type": "control_request", "request_id": INITIALIZE_REQUEST, "request": {"subtype": "initialize"}});
         // 쓰지 못했으면 claude가 이미 끝난 것이다 — 읽는 스레드가 EOF를 보고 `session/new`에 답한다.
         let _ = writeln!(stdin, "{initialize}").and_then(|()| stdin.flush());
-        Ok(Self { stdin: Some(stdin), child, prompting: false })
+        Ok(Self { stdin: Some(stdin), child })
     }
 
     /// `session/prompt` 하나 = stdin user 줄 하나. 첫 말도 `system/init`을 기다리지 않고 넣는다(워크플로 함정 6) — init은
@@ -199,11 +204,19 @@ impl Session {
     ///
     /// - 턴 도중의 둘째 말은 stdin에 쓰지 않고 오류로 답한다 — 쓰면 그 턴에 합쳐진다(three-axes 결정 20). 대기 줄은 호스트가
     ///   쥔다.
-    /// - 이 장은 답하지 않는다 — `result`를 턴 끝으로 옮기는 것은 티켓 14다.
-    fn prompt(&mut self, id: &Value, params: &Value) {
-        if self.prompting {
-            send(&error(id, -32603, "턴이 도는 중입니다 — 턴 도중의 말은 그 턴에 합쳐지므로 넣지 않습니다"));
-            return;
+    /// - 여기서는 답하지 않는다 — claude를 읽는 스레드가 그 턴의 `result`에서 답한다.
+    fn prompt(&mut self, id: &Value, params: &Value, shared: &Shared) {
+        // stdin은 stdin EOF로 끄는 중에만 없다 — 그 뒤로는 받을 말이 없다.
+        let Some(stdin) = self.stdin.as_mut() else { return };
+        {
+            let mut state = shared.lock();
+            if state.prompt.is_some() {
+                send(&error(id, -32603, "턴이 도는 중입니다 — 턴 도중의 말은 그 턴에 합쳐지므로 넣지 않습니다"));
+                return;
+            }
+            // 쓰기 전에 걸어 둔다 — claude는 user 줄을 받아야 답하므로 `result`가 이보다 먼저 올 수 없다. 잠금은 쓰기 전에
+            // 놓는다: claude의 stdin이 막히면 읽는 스레드가 잠금을 기다리다 claude의 stdout을 비우지 못한다.
+            state.prompt = Some(id.clone());
         }
         let content: Vec<Value> = params["prompt"]
             .as_array()
@@ -218,10 +231,9 @@ impl Session {
             "parent_tool_use_id": null,
             "session_id": "",
         });
-        let Some(stdin) = self.stdin.as_mut() else { return };
-        match writeln!(stdin, "{line}").and_then(|()| stdin.flush()) {
-            Ok(()) => self.prompting = true,
-            Err(failed) => send(&error(id, -32603, &format!("claude에 말을 넣지 못했습니다: {failed}"))),
+        if let Err(failed) = writeln!(stdin, "{line}").and_then(|()| stdin.flush()) {
+            shared.lock().prompt = None;
+            send(&error(id, -32603, &format!("claude에 말을 넣지 못했습니다: {failed}")));
         }
     }
 
@@ -250,6 +262,7 @@ impl Session {
 /// claude의 stdout을 줄 단위로 읽는 스레드.
 fn read_claude(stdout: ChildStdout, shared: Arc<Shared>, child: Arc<Mutex<Child>>) {
     std::thread::spawn(move || {
+        let mut stream = Stream::default();
         let mut reader = BufReader::new(stdout);
         let mut buf = Vec::new();
         loop {
@@ -269,8 +282,11 @@ fn read_claude(stdout: ChildStdout, shared: Arc<Shared>, child: Arc<Mutex<Child>
                 }
             } else if line["type"] == "system" && line["subtype"] == "init" {
                 announce_init(line, &shared);
+            } else if line["type"] == "result" {
+                turn_ended(&line, &stream, &shared);
+            } else {
+                forward(stream.updates(&line), &shared);
             }
-            // 그 밖의 줄(턴의 이벤트)은 티켓 14가 옮긴다.
         }
         claude_closed(&shared, &child);
     });
@@ -340,6 +356,33 @@ fn announce_init(init: Value, shared: &Shared) {
         json!({"sessionId": session_id,
                "update": {"sessionUpdate": "session_info_update", "_meta": {"claudeCode": {"init": init}}}}),
     ));
+}
+
+/// 턴의 줄을 옮긴 `session/update`들을 낸다. 세션이 열리기 전이면(띄운 직후의 훅 줄) 낼 곳이 없다.
+fn forward(updates: Vec<Value>, shared: &Shared) {
+    if updates.is_empty() {
+        return;
+    }
+    let state = shared.lock();
+    let Some(session_id) = state.session_id.as_deref() else { return };
+    for update in updates {
+        send(&notify("session/update", json!({"sessionId": session_id, "update": update})));
+    }
+}
+
+/// claude의 `result` — 턴 끝 하나다. 사용량을 알리고, 걸린 `session/prompt`에 끝 까닭으로 답한다. 둘째 턴부터 다시 오는
+/// `system/init`은 새 세션이 아니므로 턴은 같은 세션에서 이어진다.
+/// 걸린 `session/prompt`가 없는 `result`(백그라운드 작업 뒤 claude가 스스로 이어 간 턴)는 사용량만 알린다 — 그 턴을 턴 밖
+/// 끝으로 알리는 것은 티켓 16이다.
+fn turn_ended(result: &Value, stream: &Stream, shared: &Shared) {
+    let mut state = shared.lock();
+    let Some(session_id) = state.session_id.clone() else { return };
+    if let Some(usage) = stream.usage(result) {
+        send(&notify("session/update", json!({"sessionId": session_id, "update": usage})));
+    }
+    if let Some(id) = state.prompt.take() {
+        send(&reply(&id, stream::prompt_response(result)));
+    }
 }
 
 /// 가리기 — claude의 원문 한 줄에서 계정이 실리는 두 자리를 바꾼다. 나머지는 원문 그대로다.

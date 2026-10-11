@@ -1,0 +1,2 @@
+{"t": 0.001, "stdin": {"type": "user", "message": {"role": "user", "content": "Reply with exactly three words: hello from turn"}, "parent_tool_use_id": null, "session_id": ""}}
+{"t": 3.496, "stdin": {"type": "user", "message": {"role": "user", "content": "Use the Write tool to create notes.txt containing the single line 'gate'. Then use the Read tool to read it back, then run `wc -c notes.txt` with Bash. Reply with the byte count only."}, "parent_tool_use_id": null, "session_id": ""}}
