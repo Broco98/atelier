@@ -244,7 +244,7 @@ fn unique_dir_slug(works_root: &Path, archive_root: &Path, base: &str) -> String
     slug
 }
 
-fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
+pub(crate) fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
     if !crate::slug::is_safe_slug(slug) {
         return Err(Error::WorkNotFound(slug.to_string()));
     }
@@ -395,7 +395,7 @@ fn map_bounded<T: Sync, R: Send>(items: &[T], limit: usize, f: impl Fn(&T) -> R 
 /// **응답의 필드 이름은 `worktrees`지만 폴더는 `trees/`다.** git이 등록해 둔 워크트리
 /// 경로라 폴더를 옮기면 기존 work가 열리지 않는다. 그 불일치를 아는 자리를 여기 하나로
 /// 둔다 — 이름이 두 개인 것은 사실이고, 사실을 일곱 군데에 적어두면 하나가 낡는다.
-fn worktrees_dir(work_dir: &Path) -> PathBuf {
+pub(crate) fn worktrees_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("trees")
 }
 
