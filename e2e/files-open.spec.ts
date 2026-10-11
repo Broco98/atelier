@@ -172,3 +172,42 @@ test("탭을 바꾸면 트리가 그 파일을 강조하고 조상 폴더를 펼
   await expect(패널행(page, "TS client.ts")).not.toHaveAttribute("aria-current", "page");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+test("열린 파일 탭끼리 이름이 겹치면 겹침이 풀릴 때까지 상위 폴더가 흐리게 붙고, 겹침이 사라지면 다시 이름만이다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(codeUrl("billing/src/index.ts"));
+  await expect(코드카드(page, "billing/src/index.ts")).toBeVisible();
+  // 겹치기 전에는 이름만이다
+  await expect(파일탭이름(page, "billing/src/index.ts")).toHaveText("index.ts");
+
+  // 다른 폴더의 `index.ts` — 둘 다 상위 폴더가 하나 붙는다(S11 · `index.ts · works`의 모양).
+  await 주소로간다(page, codeUrl("billing/src/api/index.ts"));
+  await expect(코드카드(page, "billing/src/api/index.ts")).toBeVisible();
+  await expect(파일탭이름(page, "billing/src/index.ts")).toHaveText("index.ts · src");
+  await expect(파일탭이름(page, "billing/src/api/index.ts")).toHaveText("index.ts · api");
+  // 붙은 폴더는 흐리다 — 이름과 다른 색이다.
+  const colors = await 파일탭이름(page, "billing/src/api/index.ts").evaluate((button) => {
+    const [name, folder] = [button.querySelector("span"), button.querySelector("span span")];
+    return [name, folder].map((one) => (one ? getComputedStyle(one).color : null));
+  });
+  expect(colors[1]).not.toBeNull();
+  expect(colors[1]).not.toBe(colors[0]);
+
+  // 상위 폴더 하나로도 겹치면 하나 더 붙는다 — 겹침이 풀릴 때까지. 이미 풀린 칸은 그대로다.
+  await 주소로간다(page, codeUrl("billing/lib/api/index.ts"));
+  await expect(코드카드(page, "billing/lib/api/index.ts")).toBeVisible();
+  await expect(파일탭이름(page, "billing/lib/api/index.ts")).toHaveText("index.ts · lib/api");
+  await expect(파일탭이름(page, "billing/src/api/index.ts")).toHaveText("index.ts · src/api");
+  await expect(파일탭이름(page, "billing/src/index.ts")).toHaveText("index.ts · src");
+
+  // 닫아서 겹침이 줄면 다시 짧아지고, 사라지면 이름만이다.
+  await 파일탭(page, "billing/lib/api/index.ts").getByRole("button", { name: "index.ts · lib/api 닫기" }).click();
+  await expect(파일탭이름(page, "billing/src/api/index.ts")).toHaveText("index.ts · api");
+  await 파일탭이름(page, "billing/src/api/index.ts").click();
+  await 파일탭(page, "billing/src/api/index.ts").getByRole("button", { name: "index.ts · api 닫기" }).click();
+  await expect(파일탭들(page)).toHaveCount(1);
+  await expect(파일탭이름(page, "billing/src/index.ts")).toHaveText("index.ts");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
