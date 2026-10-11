@@ -561,6 +561,19 @@ export function removeCodeTab(state: ShellsState, id: number): ShellsState {
 }
 
 /**
+ * 그 화면 묶음의 **파일 탭을 모두** 뺀다 — 그 work이 아카이브 · 삭제되어 화면이 사라질 때다. 셸은 프로세스라 셸을 닫는 길
+ * (`removeShell`)로 빠지고, 파일 탭은 물을 것이 없어 여기서 한꺼번에 빠진다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * 묶음이 비면 키째 걷힌다 — 남기면 지운 work의 slug로 새 work이 설 때 옛 탭이 그 줄에 서고, 켜진 칸도 그것을 가리킨다.
+ * 파일 탭이 없으면 받은 상태 그대로다.
+ */
+export function withoutCodeTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
+  return bundleOf(state, owner)
+    .filter((tab) => tab.kind === "code")
+    .reduce((next, tab) => withoutTab(next, owner, tab.id), state);
+}
+
+/**
  * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로 답한다
  * (지금 탭이 파일 탭이면 그쪽은 `null`이다).
  */
