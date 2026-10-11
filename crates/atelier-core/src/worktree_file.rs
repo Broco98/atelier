@@ -13,8 +13,11 @@ use crate::Result;
 
 /// 파일 읽기의 답 — 갈래마다 화면의 몸이 하나다(구현 스펙 「파일 읽기」 표). 글이 아닌 것(그림 · 바이너리 · UTF-8 아님 ·
 /// 너무 큼)은 내용 없이 크기만 싣는다.
+///
+/// 갈래 이름도 필드 이름도 camelCase다(`rename_all_fields`) — 열거형의 `rename_all`은 갈래 이름만 바꾼다. 그것만 두었을 때
+/// 그림의 `real_path`가 뱀 꼴로 나가 화면이 `undefined`를 이어 그림 자리를 지었다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum WorktreeFile {
     /// 내용과 줄 수. 줄 수는 끝의 줄바꿈 뒤 빈 줄을 세지 않는다.
     Text { content: String, lines: usize },
@@ -215,6 +218,21 @@ mod tests {
             write(&worktree, name, b"img!");
             assert_eq!(read(&works, name), image(4, name), "{name}");
         }
+    }
+
+    /// 화면은 갈래 이름과 필드 이름을 camelCase로 읽는다(`types.ts`의 `WorktreeFile`). 두 낱말 필드가 뱀 꼴(`real_path`)로 나가면
+    /// 화면은 `undefined`를 이어 그림 자리를 짓는다 — L3 목업은 답을 화면 쪽 이름으로 적어 이것을 보지 못한다.
+    #[test]
+    fn the_answer_is_a_kind_tagged_camel_case_value() {
+        let (_tmp, works, worktree) = setup();
+        write(&worktree, "shots/home.png", b"png!");
+        let json = |rel| serde_json::to_value(read(&works, rel)).unwrap();
+        assert_eq!(json("shots/home.png"), serde_json::json!({ "kind": "image", "size": 4, "realPath": "shots/home.png" }));
+        assert_eq!(json("gone.txt"), serde_json::json!({ "kind": "missing" }));
+        assert_eq!(
+            serde_json::to_value(WorktreeFile::NotUtf8 { size: 3 }).unwrap(),
+            serde_json::json!({ "kind": "notUtf8", "size": 3 })
+        );
     }
 
     /// 워크트리 안을 가리키는 그림 링크는 **푼 자리**로 건다 — 화면의 asset 프로토콜은 마지막 조각이 상대 링크면 그 대상을
