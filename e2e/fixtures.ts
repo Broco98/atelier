@@ -1,4 +1,5 @@
 import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
+import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
@@ -184,6 +185,52 @@ export const WORKS: WorkView[] = [
     },
   },
 ];
+
+/**
+ * 워크트리 트리를 **손으로 적는** 조각들(git-integration 판 01 — files 칸). 이 층에는 git이 없다 — 트리는 코어가 세워 보낸
+ * 모양(폴더 먼저 · 이름순, 걸린 폴더는 「아직 안 읽음」)을 옮겨 적은 것이고, 화면은 받은 순서 그대로 그린다. 그 규칙 자체는
+ * L1(`worktree.rs`)이 진짜 저장소로 잰다.
+ */
+const worktreeFile = (path: string, ignored = false): WorktreeEntry => ({
+  name: path.slice(path.lastIndexOf("/") + 1),
+  path,
+  kind: "file",
+  ignored,
+  children: [],
+});
+const worktreeFolder = (path: string, children: WorktreeEntry[]): WorktreeEntry => ({
+  ...worktreeFile(path),
+  kind: "folder",
+  children,
+});
+/** gitignore에 걸린 폴더 — 자식을 읽지 않은 채 온다. */
+const ignoredFolder = (path: string): WorktreeEntry => ({ ...worktreeFile(path, true), kind: "folder", children: null });
+
+/**
+ * 프로젝트별 워크트리 트리(`list_worktree_tree`의 답). **인자 `project`로만 가른다** — `billing`은 `pinned-work`와
+ * `multi-work`가 함께 쓰는 답이다. 접힘 기억이 work마다 따로인지는 같은 트리로 재야 갈린다.
+ *
+ * `billing`에 **files 칸이 그리는 갈래가 다 있다** — 점 폴더(`.github`), 걸린 폴더(`dist`), 두 겹 폴더(`src/api`), 걸린 점
+ * 파일(`.env`), 확장자 없는 점 파일(`.gitignore`). 파일 행의 이름에는 확장자 꼬리표가 붙는다(`MD README.md` — `SpecTree`의
+ * `FileGlyph`).
+ */
+export const WORKTREE_TREES: Record<string, WorktreeTree> = {
+  billing: {
+    kind: "listed",
+    entries: [
+      worktreeFolder(".github", [worktreeFile(".github/ci.yml")]),
+      ignoredFolder("dist"),
+      worktreeFolder("src", [worktreeFolder("src/api", [worktreeFile("src/api/client.ts")]), worktreeFile("src/index.ts")]),
+      worktreeFile(".env", true),
+      worktreeFile(".gitignore"),
+      worktreeFile("README.md"),
+    ],
+  },
+  ledger: {
+    kind: "listed",
+    entries: [worktreeFolder("lib", [worktreeFile("lib/books.rs")]), worktreeFile("Cargo.toml")],
+  },
+};
 
 /**
  * 작업 행을 끌어 놓았을 때 `move_work`가 돌려주는 목록(UI개선 티켓 05). **인자와 무관한 한 벌이고,
@@ -931,6 +978,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 던지는 것을 react-query가 삼켜 콘솔에도 안 남는다.
   touch_recent_work: null,
   read_spec_file: answerByArg("path", SPEC_FILE_BODIES, { otherwise: SPEC_FALLBACK_BODY }),
+  // files 칸이 보일 때 프로젝트마다 한 번, 그리고 새로고침 버튼에 나간다(git-integration 판 01). **기본 답이 없다** — 표에 없는
+  // 프로젝트로 읽기가 나가면 그 자리에서 물린다. 태우는 시나리오는 `files-panel.spec.ts`다.
+  list_worktree_tree: answerByArg("project", WORKTREE_TREES),
   // 파일 탭이 본문에 설 때 나간다(git-integration 판 01). 표에 없는 경로는 「없음」이다(`WORKTREE_FILES` 머리말).
   read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.

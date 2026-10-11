@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FileText, Info } from "lucide-react";
+import { FileText, FolderTree, Info } from "lucide-react";
 import { CardHead } from "@/components/shell/Frame";
 import type { RailItem } from "@/components/shell/Rail";
+import FilesTree, { FilesRefresh } from "@/features/files/FilesTree";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
@@ -9,14 +10,18 @@ import WorkInfo, { sharedBase, type ProjectBase } from "./WorkInfo";
 import type { SpecTreeItem, WorkView } from "./types";
 
 /** 레일에서 고르는 작업 패널의 칸 — 이 패널이 그리는 몸 하나씩이다. */
-export type PanelView = "spec" | "info";
+export type PanelView = "spec" | "files" | "info";
 
 /**
  * 레일의 칸 목록(ui-refresh 결정 10) — 순서가 레일의 위에서 아래다. 몸을 그리는 이 파일이 칸도 함께 든다: 칸이 하나 늘면
  * 몸도 하나 는다(git-integration이 files · changes를 한 줄씩 더한다). 라벨은 소문자 영어다(결정 41 — 탭 줄의 `spec`과 한 가족).
+ *
+ * `files`는 `spec` 뒤다(git-integration 결정 29 — spec · chat은 스펙 축, files · changes · git은 코드 축이라 붙여 두고, info가
+ * 아직 있으면 그 사이에 끼어든다).
  */
 export const PANEL_VIEWS: readonly RailItem<PanelView>[] = [
   { id: "spec", label: "spec", icon: FileText },
+  { id: "files", label: "files", icon: FolderTree },
   { id: "info", label: "info", icon: Info },
 ];
 
@@ -35,7 +40,7 @@ interface WorkPanelProps {
   open: boolean;
 }
 
-// 작업 패널 — `spec` · `info` 두 몸. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가
+// 작업 패널 — `spec` · `files` · `info` 세 몸. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가
 // **사이드바 가지로 갔다**(결정 71). 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가
 // 화면마다 갈린다. PR 연동 카드는 v2.
 //
@@ -114,8 +119,11 @@ function WorkPanel({
           수라 싣지 않는다. 제목은 카드 제목 규격(13px · 600, DS `.at-card-title`)이고 글자가 카드 안 여백에 선다(머리 여백 + 14).
           라벨은 소문자 영어다(결정 41) — 레일 · 탭 줄의 `spec`과 같은 어휘다. 문장 속 한국어는 그대로다(CONTEXT.md).
 
-          문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 왼쪽 문서라 **문서 카드 머리**로 갔다(ui-refresh 판 04). */}
-      <CardHead>
+          문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 왼쪽 문서라 **문서 카드 머리**로 갔다(ui-refresh 판 04).
+
+          files 칸만 제목 끝에 새로고침 버튼 하나를 더 든다(git-integration 스토리 16) — 그 칸의 몸을 다시 읽는 것이라 몸의 머리에
+          선다. */}
+      <CardHead end={view === "files" ? <FilesRefresh slug={work.slug} /> : undefined}>
         <span className="pl-3.5 text-ui font-semibold">{view}</span>
       </CardHead>
       {/* **보이지 않는 몸도 마운트된 채로 둔다**(결정 9) — 언마운트하면 info를 보고 spec으로 돌아왔을 때 접어 둔 판·폴더가
@@ -128,6 +136,11 @@ function WorkPanel({
           onSelect={onSelectFile}
           onCopy={(path) => onCopy(specRef(work.slug, path))}
         />
+      </PanelBody>
+      {/* files 트리는 「트리 세대」를 타지 않는다(git-integration S14) — 접힘은 work · 프로젝트별 기억에 있고 패널 접기에
+          리셋되지 않는다. 트리는 칸이 열려 보일 때만 읽는다(S9). */}
+      <PanelBody view="files" shown={view === "files"}>
+        <FilesTree work={work} visible={open && view === "files"} />
       </PanelBody>
       <PanelBody view="info" shown={view === "info"}>
         <WorkInfo

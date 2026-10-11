@@ -139,16 +139,19 @@ describe("WorksPage 패널 토글과 레일", () => {
     }
   });
 
-  it("레일 칸이 `spec` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
-    // 칸은 목록으로 받는다(ui-refresh 결정 10) — 지금은 둘이고, 뒤에 files · changes가 한 줄씩 더해진다. 켜짐은 「패널이 열렸고
-    // 그 칸이 골라졌다」이다 — 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서 탭(`aria-selected`)이 아니다.
+  it("레일 칸이 `spec` · `files` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
+    // 칸은 목록으로 받는다(ui-refresh 결정 10) — git-integration이 `files`를 `spec` 뒤에 더했고(그쪽 결정 29), 뒤에 changes가
+    // 한 줄 더 는다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서
+    // 탭(`aria-selected`)이 아니다.
     expect(railItems(render())).toEqual([
       { name: "spec", pressed: "true" },
+      { name: "files", pressed: "false" },
       { name: "info", pressed: "false" },
     ]);
     // 패널이 접혀 있으면 고른 칸은 기억한 채 어느 칸도 켜져 있지 않다.
     expect(railItems(render(specDocs(["overview.md"]), "spec", "lr"))).toEqual([
       { name: "spec", pressed: "false" },
+      { name: "files", pressed: "false" },
       { name: "info", pressed: "false" },
     ]);
   });
@@ -171,8 +174,8 @@ describe("WorksPage 패널 토글과 레일", () => {
     const panelId = markup.match(/<aside[^>]*\bid="([^"]+)"/)?.[1] ?? "";
     expect(panelId, "패널 칸에 id가 없다").not.toBe("");
     expect(panelToggleTags(markup)[0]).toContain(`aria-controls="${panelId}"`);
-    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|info)"/.test(tag));
-    expect(items).toHaveLength(2);
+    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|files|info)"/.test(tag));
+    expect(items).toHaveLength(3);
     for (const tag of items) expect(tag).toContain(`aria-controls="${panelId}"`);
   });
 
@@ -181,7 +184,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // 열 길 자체가 없어진다.
     const markup = render({}, "terminal");
     expect(panelToggleTags(markup)).toHaveLength(1);
-    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "info"]);
+    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "files", "info"]);
   });
 
   it("헤더에 프로젝트 칩이 없고, 상태 배지와 ⋯는 그대로 있다", () => {

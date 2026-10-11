@@ -258,7 +258,7 @@ function WorksPage({
   // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
   // `claude` TUI가 깨진다」가 그대로 재현된다.
   const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
-  // 레일에서 고른 칸(`spec` · `info`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는
+  // 레일에서 고른 칸(`spec` · `files` · `info`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는
   // 자리가 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지 않는다.
   //
   // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
@@ -998,7 +998,7 @@ function WorksPage({
     <Frame
       sidebarOpen={sidebarOpen}
       titlebar={tabRow}
-      // 레일(ui-refresh 결정 9 · 10) — 패널 토글과 `spec` · `info` 칸. 패널과 같은 조건으로 선다: 고른 작업이 없으면 열 패널이
+      // 레일(ui-refresh 결정 9 · 10) — 패널 토글과 `spec` · `files` · `info` 칸. 패널과 같은 조건으로 선다: 고른 작업이 없으면 열 패널이
       // 없어 레일도 없다(그때 본문 열의 오른쪽 틈 하나가 창 끝이다). **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을
       // 뺐던 까닭(결정 11 — 그때 패널이 거기 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
       rail={
