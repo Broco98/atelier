@@ -494,7 +494,8 @@
     --ease-panel: cubic-bezier(0.2, 0, 0, 1);
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
-       `--size-menu-ctx`)과 아이콘 버튼(`icon-button`의 `--size-control`)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
+       `--size-menu-ctx`)과 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`)뿐이고, 나머지는 선언만 있다
+       (스펙 S2 — 통째로 선언한다).
        그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세우고, 폭 셋(사이드바 · 목록 칸 · 작업 패널)의 기본값은 S4가 옮긴다. 그때까지
        화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
     --size-rail: 52px;

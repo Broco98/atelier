@@ -2,12 +2,16 @@ import { expect, test, type Locator, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, MAIN_HEADER, PINNED_HEADER, WORKS } from "./fixtures";
 import {
   awaitSpawned,
+  callsSinceRelease,
   fireAttention,
+  heldCalls,
+  holdCommand,
   installFixtureBackend,
   markAttention,
   markRunning,
   openShell,
   readIpcRecord,
+  releaseCommand,
   typeIntoShell,
   unknownIpcCalls,
   workRow,
@@ -16,6 +20,8 @@ import {
   레인,
   색대비,
   오른쪽메타,
+  칠한값,
+  토큰값,
   토큰색,
   툴팁,
   팔레트,
@@ -1744,6 +1750,114 @@ test("호버 카드는 행 바로 옆에 서서 사이드바 오른쪽 끝 위�
   // 그래서 카드는 사이드바의 오른쪽 끝을 **덮고** 선다. 이 줄이 「떠 있다」를 말한다 —
   // 경계 밖으로 미는 판이 돌아오면 여기가 빨개진다.
   expect(cardBox.x).toBeLessThan(aside.x + aside.width);
+  // 폭은 DS `size-peek`이다(DS `HoverCard`) — 토큰을 CSS 변수에서 읽어 맞댄다.
+  expect(`${Math.round(cardBox.width)}px`).toBe(await 토큰값(page, "width", "--size-peek"));
+  // 필드 표 위의 가름선은 0.5px `border-heavy` 면이고 테두리가 없다(DS `.at-peek .fields`). 표 위에 겹쳐 그린 조각이라 그 칠을 읽는다.
+  const 가름선 = await card.locator("[data-card-fields]").evaluate((fields) => {
+    const line = getComputedStyle(fields, "::before");
+    return [line.height, getComputedStyle(fields).borderTopWidth, line.backgroundColor];
+  });
+  expect(가름선).toEqual(["0.5px", "0px", await 토큰색(page, "--border-heavy")]);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **호버 카드의 프로젝트 줄**(codex-ds 결정 25 · 스펙 S15). info 칸이 싣던 「프로젝트마다 base와 변경 있음」이 이 카드로
+// 왔다. base는 work 목록에 없어 카드가 열릴 때 프로젝트 목록(`list_projects` — info 칸이 쓰던 그 질의)을 읽는다.
+//
+// **프로젝트 목록을 안 읽는 화면에서 연다**(`/processes`). work 화면 · 프로젝트 화면은 그 목록을 먼저 읽어 두어, 거기서 열면
+// 「읽는 동안」이 서지 않는다. 그 틈은 `list_projects`를 붙잡아 결정적으로 세운다.
+test("호버 카드는 프로젝트마다 이름 · base를 싣고, 변경 있음은 변경이 있는 프로젝트에만 선다", async ({ page }) => {
+  const multiWork = WORKS.find((one) => one.slug === "multi-work")!;
+  // **둘 가운데 하나만 변경이 있다** — 둘 다 같으면 「줄마다 제 값」과 「한 값을 줄마다 되풀이」가 갈리지 않는다.
+  const 변경있는목록 = WORKS.map((one) =>
+    one.slug === multiWork.slug
+      ? {
+          ...one,
+          worktrees: one.worktrees.map((tree) => (tree.project === "billing" ? { ...tree, dirty: true } : tree)),
+        }
+      : one,
+  );
+  await installFixtureBackend(page, { list_works: 변경있는목록 });
+  await holdCommand(page, "list_projects");
+  await page.goto("/processes");
+
+  const row = workRow(page, multiWork.slug);
+  const card = page.locator("[data-popover]");
+  const 줄 = card.locator("[data-project-line]");
+  await expect(row).toBeVisible();
+  // 이 화면은 프로젝트 목록을 읽지 않는다 — 아래 「카드가 열려 읽었다」가 카드의 몫이라는 앵커다.
+  expect(await heldCalls(page, "list_projects")).toBe(0);
+  await expect(card).toHaveCount(0);
+
+  // **읽는 동안에도 카드가 뜨고 목록에서 아는 것이 선다** — 프로젝트는 이름을 이은 한 줄이다.
+  await row.hover();
+  await expect(card).toBeVisible();
+  await expect.poll(() => heldCalls(page, "list_projects")).toBe(1);
+  await expect(card).toContainText(multiWork.title);
+  await expect(card).toContainText("feat/multi-work");
+  await expect(card).toContainText("billing, ledger");
+  await expect(card).toContainText("spec2개");
+  await expect(줄).toHaveCount(0);
+
+  // **읽으면 프로젝트 줄이 선다** — 줄마다 이름과 그 프로젝트의 base다(billing `main` · ledger `develop`).
+  await releaseCommand(page, "list_projects");
+  await expect(줄).toHaveCount(2);
+  const [billing, ledger] = [줄.nth(0), 줄.nth(1)];
+  await expect(billing).toContainText("billing");
+  await expect(billing).toContainText("← main");
+  await expect(ledger).toContainText("ledger");
+  await expect(ledger).toContainText("← develop");
+  // 변경 있음은 변경이 있는 줄에만 선다. 없는 줄은 「변경 없음」이라 적지 않고 비운다.
+  await expect(billing.getByText("변경 있음", { exact: true })).toBeVisible();
+  await expect(ledger).not.toContainText("변경");
+  await expect(card).not.toContainText("billing, ledger");
+  // 「변경 있음」 앞의 점은 `dot-created`다(DS `HoverCard`).
+  const 점 = billing.locator("[data-change-dot]");
+  expect((await 칠한값(점, "background-color"))[0]).toBe(await 토큰색(page, "--dot-created"));
+
+  // **다시 열면 캐시를 쓴다** — 줄이 곧바로 서고 목록을 다시 묻지 않는다.
+  await page.mouse.move(800, 400);
+  await expect(card).toHaveCount(0);
+  await row.hover();
+  await expect(줄).toHaveCount(2);
+  expect(await callsSinceRelease(page, "list_projects")).toBe(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **카드가 선 뒤에 길어져도 창 안에 다시 물린다**(`PopoverPortal` 머리말 「목록 아래쪽 행에 붙어도 아래가 잘리지 않는다」).
+// 프로젝트 목록을 아직 안 읽은 화면에서 카드는 「billing, ledger」 한 줄로 먼저 서고, 읽으면 줄 둘로 길어진다. 창 아래 끝에
+// 물려 선 카드를 그때 다시 물지 않으면 늘어난 만큼 창 밖으로 빠져 아래 줄(spec 수)이 잘린다.
+test("아래쪽 행의 호버 카드는 프로젝트 줄이 서서 길어져도 창 아래 끝 안에 남는다", async ({ page }) => {
+  // **창을 낮춰 multi-work 행이 창 아래쪽에 오게 한다** — 카드가 처음부터 아래 끝에 물려 서야 이 검사가 무엇을 잰다.
+  const 창높이 = 400;
+  await page.setViewportSize({ width: 1280, height: 창높이 });
+  await installFixtureBackend(page);
+  await holdCommand(page, "list_projects");
+  await page.goto("/processes");
+
+  const card = page.locator("[data-popover]");
+  const 줄 = card.locator("[data-project-line]");
+  const 상자 = async () => (await card.boundingBox())!;
+  // 창 가장자리에서 8px 안쪽이 카드가 물리는 끝이다(`PopoverPortal`의 `VIEWPORT_MARGIN`).
+  const 물린아래끝 = 창높이 - 8;
+
+  await workRow(page, "multi-work").hover();
+  await expect(card).toBeVisible();
+  // **먼저 전제를 센다** — 읽기 전 카드가 이미 아래 끝에 물려 섰다. 물리지 않은 자리면 아래는 다시 물지 않아도 초록이다.
+  await expect(줄).toHaveCount(0);
+  const 처음 = await 상자();
+  expect(Math.round(처음.y + 처음.height)).toBe(물린아래끝);
+
+  await releaseCommand(page, "list_projects");
+  await expect(줄).toHaveCount(2);
+  // 카드가 정말 길어졌다 — 이것이 없으면 아래가 높이가 그대로라서 초록일 수 있다.
+  expect((await 상자()).height).toBeGreaterThan(처음.height);
+  // **길어진 카드도 같은 끝에 물린다** — 위로 올라서고, 마지막 줄(spec 수)까지 창 안에 있다.
+  await expect.poll(async () => Math.round((await 상자()).y + (await 상자()).height)).toBe(물린아래끝);
+  await expect(card.getByText("2개", { exact: true })).toBeInViewport({ ratio: 1 });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -25,7 +25,10 @@ import { cn } from "@/lib/utils";
 //
 // 위치는 앵커의 화면 좌표에서 계산한다. 창 가장자리를 넘으면 8px 안쪽으로 물려
 // 화면 밖으로 나가지 않게 한다 — 잘림을 옮겨 심지 않기 위한 것이다. 세로도 같이 물리므로
-// 목록 아래쪽 행에 붙어도 아래가 잘리지 않는다.
+// 목록 아래쪽 행에 붙어도 아래가 잘리지 않는다. 카드가 선 **뒤에** 내용이 늘어 길어져도 다시 문다(아래 크기 지켜보기).
+//
+// 폭은 숫자(`width`)로 받거나 부르는 자리의 클래스가 준다 — 호버 카드는 토큰(`w-(--size-peek)`)을 읽는다. 물리기는
+// 어느 쪽이든 **그려진 상자의 폭**을 잰다(높이와 같다).
 
 const VIEWPORT_MARGIN = 8;
 
@@ -44,7 +47,8 @@ export function PopoverPortal({
   // side가 bottom일 때 앵커의 어느 변에 맞출지 — left면 왼쪽 끝끼리, right면 오른쪽 끝끼리
   align?: "left" | "right";
   gap?: number;
-  width: number;
+  // 없으면 `className`이 폭을 준다(위 머리말).
+  width?: number;
   className?: string;
   children: ReactNode;
 }) {
@@ -56,30 +60,39 @@ export function PopoverPortal({
       const anchor = anchorRef.current;
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
-      // 세로로 물리려면 실제 높이가 필요하다 — 내용에 따라 달라져 상수로 둘 수 없다.
-      // 레이아웃 이펙트라 이 시점에 카드는 이미 그려져 있다(아직 invisible일 뿐이다).
+      // 세로로 물리려면 실제 높이가 필요하다 — 내용에 따라 달라져 상수로 둘 수 없다. 폭도 그려진 상자에서 잰다 — 클래스가
+      // 준 폭(토큰)은 여기서 숫자로 모른다. 레이아웃 이펙트라 이 시점에 카드는 이미 그려져 있다(아직 invisible일 뿐이다).
       const height = cardRef.current?.offsetHeight ?? 0;
+      const drawnWidth = cardRef.current?.offsetWidth ?? 0;
       // **앵커에서만 잰다** — 앵커를 품은 패널의 경계에서 재던 판은 걷었다(결정 30).
       // 패널 밖으로 밀어내면 카드가 그 경계선에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼
       // 보인다. 여기 카드는 문서 최상위에 뜨는 **떠 있는 것**이라, 앵커 옆에 붙어
       // 패널 여백을 덮고 올라서는 편이 그 사실을 말한다.
       const rawLeft =
-        side === "right" ? rect.right + gap : align === "right" ? rect.right - width : rect.left;
+        side === "right" ? rect.right + gap : align === "right" ? rect.right - drawnWidth : rect.left;
       const rawTop = side === "right" ? rect.top : rect.bottom + gap;
       const fit = (value: number, size: number, limit: number) =>
         Math.min(Math.max(VIEWPORT_MARGIN, value), Math.max(VIEWPORT_MARGIN, limit - size - VIEWPORT_MARGIN));
       setPos({
         top: fit(rawTop, height, window.innerHeight),
-        left: fit(rawLeft, width, window.innerWidth),
+        left: fit(rawLeft, drawnWidth, window.innerWidth),
       });
     };
     place();
     // 스크롤은 버블링하지 않으므로 캡처로 받아 어느 조상이 움직여도 따라간다
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    // **카드의 크기가 바뀌면 다시 문다.** 높이를 마운트 때 한 번만 재면, 창 아래 끝에 물려 선 카드가 그 뒤 길어진 만큼
+    // 창 밖으로 빠진다. 호버 카드는 선 뒤에 길어진다 — 프로젝트 목록을 열릴 때 읽어 한 줄이 프로젝트 줄들로 바뀌고, 셸의
+    // 말 칸이 서거나 걷힌다. 그 변화는 자식만 다시 그려 일어나 이 이펙트가 다시 돌 계기가 없으므로 상자를 지켜본다.
+    // 지켜보기는 카드가 떠 있는 동안만 산다.
+    const card = cardRef.current;
+    const resized = new ResizeObserver(place);
+    if (card) resized.observe(card);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      resized.disconnect();
     };
   }, [anchorRef, side, align, gap, width]);
 
