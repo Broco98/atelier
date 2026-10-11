@@ -1,4 +1,4 @@
-import type { ColumnTab, SplitSide } from "@/routes/-work-search";
+import type { ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
 import type { DragKind, SplitHalf } from "@/lib/pointer-drag";
 
 /**
@@ -20,9 +20,10 @@ import type { DragKind, SplitHalf } from "@/lib/pointer-drag";
 /**
  * 떨군 것이 어느 절반이면 spec이 어느 쪽인가.
  *
- * **규칙이 하나다**: 떨군 것이 그 절반에 선다. 열 조합이 늘 `spec ▏터미널`이라(결정 87)
+ * **규칙이 하나다**: 떨군 것이 그 절반에 선다. 열 조합이 늘 `spec ▏ 묶음의 지금 탭`이라(결정 87)
  * 나머지 하나는 반대쪽으로 밀린다 — 그래서 「이미 있는 종류를 떨구면 좌우가 맞바뀐다」가
- * 따로 적을 규칙이 아니라 이 한 줄에서 저절로 나온다.
+ * 따로 적을 규칙이 아니라 이 한 줄에서 저절로 나온다. 묶음의 칸(셸 칸 · 파일 탭)은 모두 묶음 열에 서므로 같은 갈래다
+ * (git-integration 스토리 57 — 파일 탭을 끌어도 셸 탭과 좌우가 같다).
  */
 export function dropSplit(kind: DragKind, half: SplitHalf): SplitSide {
   const specLeft = kind === "spec" ? half === "left" : half === "right";
@@ -42,9 +43,17 @@ export function tabOfDrag(kind: DragKind): ColumnTab {
 }
 
 /**
- * 반대쪽 열. 열 조합이 늘 `spec ▏터미널`이라(결정 87) 한쪽을 닫으면 **남는 것이 정해진다** —
+ * 반대쪽 열. 열 조합이 늘 `spec ▏ 묶음의 지금 탭`이라(결정 87) 한쪽을 닫으면 **남는 것이 정해진다** —
  * 열 머리의 `×`가 그 값을 `tab`으로 남긴다(결정 89).
  */
 export function otherTab(tab: ColumnTab): ColumnTab {
   return tab === "spec" ? "terminal" : "spec";
+}
+
+/**
+ * 화면 탭이 가리키는 **열** — 분할에서 `tab`은 포커스가 든 열이다(결정 97). 문서가 아니면 묶음 열이다: 셸이든 파일 탭이든
+ * 묶음의 지금 탭이 그 열에 선다(git-integration 결정 32). 분할을 켜거나 끌 때 「남는 쪽」 · 「포커스가 이미 그 열인가」를 이것으로 잰다.
+ */
+export function columnOf(tab: ViewTab): ColumnTab {
+  return tab === "spec" ? "spec" : "terminal";
 }

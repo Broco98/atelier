@@ -229,25 +229,3 @@ test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 wor
   await expect(파일탭들(page)).toHaveCount(3);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
-
-test("분할 중에 파일 탭을 고르면 분할이 풀리고 본문에 선다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${work.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  await 주소로간다(page, codeUrl("billing/src/main.ts"));
-  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
-
-  // 셸로 돌아와 분할을 켠다 — spec ▏ 터미널.
-  await 셸칸(page).locator("button[aria-pressed]").click();
-  await page.getByRole("button", { name: "분할", exact: true }).click();
-  await expect(page).toHaveURL(/split=lr/);
-  await expect(page.locator("[data-column]")).toHaveCount(2);
-
-  await 파일탭이름(page, "billing/src/main.ts").click();
-
-  await expect(page.locator("[data-column]")).toHaveCount(0);
-  await expect(page).not.toHaveURL(/split=/);
-  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
-  await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "true");
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});

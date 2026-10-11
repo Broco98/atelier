@@ -13,14 +13,15 @@ function WorkRoute() {
   const search = Route.useSearch();
   // 모르는 값을 눕히는 자리는 `viewTab`·`splitOf`·`codeOf` 셋뿐이다 — 검증기가 주소를 청소하지 않는다.
   const tab = viewTab(search);
+  const split = splitOf(search);
   return (
     <WorksView
       slug={slug}
       file={search.file ?? null}
       tab={tab}
-      // 파일 탭은 분할에 안 든다 — 본문에 선다(git-integration 티켓 04). 손으로 적은 주소가 둘을 함께 말해도 파일 탭이 이긴다.
-      split={tab === "code" ? null : splitOf(search)}
-      code={tab === "code" ? codeOf(search) : null}
+      split={split}
+      // 파일 탭은 본문(`tab=code`)이나 분할의 **묶음 열**에 선다(git-integration S12 · 티켓 07). 그 밖의 `code`는 뜻이 없다.
+      code={tab === "code" || split !== null ? codeOf(search) : null}
     />
   );
 }

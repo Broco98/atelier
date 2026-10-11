@@ -29,8 +29,8 @@ export type SplitHalf = "left" | "right";
  * 탭 줄에서 끌 수 있는 것 — 문서 칸과 **묶음의 칸** 둘(셸 칸 · 파일 탭 — git-integration 결정 31). 묶음의 칸은 종류를 안 가리고
  * 그 묶음의 어느 틈에나 놓인다.
  *
- * 본문 위로 끌어 분할을 세우는 것은 문서 칸과 셸 칸이다(결정 90) — 받는 쪽이 `tabDragOf`로 거른다. 파일 탭은 아직 줄 안에서만
- * 옮겨진다(본문 절반에 놓는 분할은 git-integration 스토리 56).
+ * 본문 위로 끌어 분할을 세우는 것도 셋 다다(결정 90 · git-integration 스토리 56) — 문서 칸은 문서 열에, 묶음의 칸은 묶음 열에
+ * 선다(`split-view.ts`).
  */
 export type DragKind = "spec" | "shell" | "code";
 
@@ -112,12 +112,11 @@ export const dragStore = new Store<DragState>(IDLE);
  * **탭 종류로 좁힌다.** 「작업 행이 아니면 탭」으로 거르면 원천 종류가 늘어나는 날 새 종류가 조용히 탭으로
  * 읽힌다 — 편집기 항목(`EntryDragSource`)을 끄는 순간 분할 겹판이 섰을 것이다.
  *
- * **파일 탭(`code`)은 아직 여기 안 든다** — 본문 절반이 받는 것이 문서 칸과 셸 칸뿐이라서다(`DragKind`). 파일 탭은 탭 줄의
- * 틈으로만 옮겨지고(`shellMoveOf`), 본문 위로 끌어도 겹판이 안 선다.
+ * 파일 탭(`code`)도 든다 — 본문 절반에 놓으면 spec과 그 파일로 분할된다(git-integration 스토리 56). 한때 셸 칸만 받았다.
  */
 export function tabDragOf(state: DragState): DragSource | null {
   const source = state.source;
-  return source !== null && (source.kind === "spec" || source.kind === "shell") ? source : null;
+  return source !== null && (source.kind === "spec" || source.kind === "shell" || source.kind === "code") ? source : null;
 }
 
 /**

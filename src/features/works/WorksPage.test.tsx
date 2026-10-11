@@ -83,6 +83,7 @@ function render(
           onOpenCode={() => {}}
           split={split}
           onSelectSplit={() => {}}
+          onFollowBundle={() => {}}
           onDropInto={() => {}}
         />
       </ToastProvider>
@@ -996,6 +997,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
             onOpenCode={() => {}}
             split={null}
             onSelectSplit={() => {}}
+            onFollowBundle={() => {}}
             onDropInto={() => {}}
           />
         </ToastProvider>
@@ -1385,6 +1387,7 @@ function renderEmpty(projects: ProjectView[] = []): string {
           onOpenCode={() => {}}
           split={null}
           onSelectSplit={() => {}}
+          onFollowBundle={() => {}}
           onDropInto={() => {}}
         />
       </ToastProvider>
