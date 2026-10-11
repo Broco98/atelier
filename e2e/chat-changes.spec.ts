@@ -5,7 +5,7 @@ import type { WorkView } from "@/features/works/types";
 import { answerByArg } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls } from "./harness";
 import { cartWork, conversationRow, linesAfter, linesThrough, record, specCopy, streamLines, treeOf } from "./chat-records";
-import { 대화탭, 레일칸, 작업패널 } from "./chat-screen";
+import { 대화탭, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 26 — **고친 곳이 스펙 창 · 트리 · 레일 · 알약에 선다.**
 //
@@ -41,7 +41,7 @@ async function openCart(page: Page, file: string): Promise<void> {
   await page.goto(`/works/${cart.slug}?file=${encodeURIComponent(file)}`);
   await expect(문서(page).getByRole("heading", { level: 1 })).toBeVisible({ timeout: 20_000 });
   await 레일칸(page, "chat").click();
-  await expect(작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true })).toBeVisible();
+  await expect(입력칸(page)).toBeVisible();
 }
 
 test("스펙 창: 턴이 도는 동안은 새 내용을 다시 읽기만 하고, `changes` 줄이 오면 고친 범위에 걸린 블록에만 표시가 선다", async ({
@@ -98,13 +98,12 @@ test("지우기: 사람이 다음 말을 보내면 표시가 지워진다 — �
   await expect(문서(page).getByRole("heading", { level: 1 })).toBeVisible({ timeout: 20_000 });
   await 레일칸(page, "chat").click();
   await expect(대화탭(page, "Codex")).toHaveAttribute("aria-pressed", "true");
-  const 입력칸 = 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 
   // 같은 대화에서 다음 말을 보낸다 — 보내는 순간 지운다.
   await streamLines(page, cart.slug, codex.id, linesAfter(changes, SENT_SEQ - 1));
   await expect(고친곳(page)).toHaveCount(2);
-  await 입력칸.fill("목록도 다듬어 줘");
-  await 입력칸.press("Enter");
+  await 입력칸(page).fill("목록도 다듬어 줘");
+  await 입력칸(page).press("Enter");
   await expect(고친곳(page)).toHaveCount(0);
 
   // 그 턴이 또 고쳤다 — 표시가 다시 선다. 이번에는 같은 work의 **다른 대화**(Claude)에서 보낸다. 표시는 work의 것이다(S19).
@@ -112,8 +111,8 @@ test("지우기: 사람이 다음 말을 보내면 표시가 지워진다 — �
   await expect(고친곳(page)).toHaveCount(2);
   await 대화탭(page, "Claude").click();
   await expect(대화탭(page, "Claude")).toHaveAttribute("aria-pressed", "true");
-  await 입력칸.fill("요약해 줘");
-  await 입력칸.press("Enter");
+  await 입력칸(page).fill("요약해 줘");
+  await 입력칸(page).press("Enter");
   await expect(고친곳(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

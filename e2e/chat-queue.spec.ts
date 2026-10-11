@@ -17,7 +17,7 @@ import {
   stoppedCommandTurn,
   streamLines,
 } from "./chat-records";
-import { openWorkChat, 대화탭줄, 입력칸, 작업패널 } from "./chat-screen";
+import { openWorkChat, 대화탭, 대화탭줄, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 20 — **턴 도중의 말이 대기 줄에 쌓이고, 멈추기 · 지금 보내기가 화면에서 된다**(스토리 45 · 49 · 50 · 52 · 53 · 55).
 //
@@ -249,14 +249,13 @@ test("스스로 이어 간 턴의 시작: 시작 표지가 오면 첫 조각 전
   await openChat(page, [], claude);
   await streamLines(page, plainWork.slug, claude.id, handTurn(1, "dev 서버를 띄워 줘", "띄웠어요", 2000));
   await expect(머리줄(page, "2초 동안 작업함")).toBeVisible();
-  const 대화탭줄 = 작업패널(page).getByRole("group", { name: "대화 탭", exact: true });
-  await expect(대화탭줄.getByRole("button", { name: "Claude", exact: true })).toBeVisible();
+  await expect(대화탭(page, "Claude")).toBeVisible();
 
   // 백그라운드 작업이 끝나 에이전트가 스스로 턴을 열었다 — 조각은 아직 없다(three-axes 티켓 16 · S4).
   await streamLines(page, plainWork.slug, claude.id, [selfTurnStarted(4)]);
-  await expect(대화탭줄.getByRole("button", { name: "Claude — 일하는 중", exact: true })).toBeVisible();
+  await expect(대화탭(page, "Claude — 일하는 중")).toBeVisible();
   await expect(단추(page, "멈추기")).toBeVisible();
-  await 대화탭줄.getByRole("button", { name: "Claude 닫기", exact: true }).click();
+  await 대화탭줄(page).getByRole("button", { name: "Claude 닫기", exact: true }).click();
   const 닫기창 = page.getByRole("alertdialog", { name: "대화 닫기", exact: true });
   await expect(닫기창).toHaveAccessibleDescription("에이전트가 일하는 중이에요 — 닫으면 그 턴이 끊겨요. 닫을까요?");
   await 닫기창.getByRole("button", { name: "취소", exact: true }).click();
@@ -267,7 +266,7 @@ test("스스로 이어 간 턴의 시작: 시작 표지가 오면 첫 조각 전
   await streamLines(page, plainWork.slug, claude.id, [update, end]);
   await expect(머리줄(page, "3초 동안 작업함")).toBeVisible();
   await expect(작업패널(page).getByText("스스로 이어 감", { exact: true })).toHaveCount(1);
-  await expect(대화탭줄.getByRole("button", { name: "Claude", exact: true })).toBeVisible();
+  await expect(대화탭(page, "Claude")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
