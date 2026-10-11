@@ -1024,6 +1024,15 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     expect(tabsOn(headerOf(render({}, "spec", null)))).toEqual(["spec"]);
   });
 
+  // git-integration 판 01 — 켜진 칸은 **본문에 선 것**이다. 주소가 셸을 말하는데(`tab=terminal` · `code` 없는 분할) 묶음에
+  // 셸이 없으면 지금 탭이 파일 탭으로 남는다(`withShellActive`가 켤 셸이 없고, 프로젝트가 둘 이상인 work은 자동 셸도 안
+  // 띄운다). 그때 본문은 「아직 셸이 없어요」인데 그 파일 탭을 켜면 보이는 것과 켜진 칸이 어긋난다.
+  it("주소가 셸을 말하는데 묶음에 셸이 없어 지금 탭이 파일 탭으로 남으면 묶음의 칸은 켜지지 않는다", () => {
+    terminalStore.setState(() => openCodeTab(NO_SHELLS, ownerOf(work.slug), { project: "billing", path: "src/a.ts" }));
+    expect(tabsOn(headerOf(render({}, "terminal", null)))).toEqual([]);
+    expect(tabsOn(headerOf(render({}, "terminal", "lr")))).toEqual(["spec"]);
+  });
+
   // 결정 12 — 칸을 본문 위로 끄는 자리를 **이 화면이 만든다.** 탭 줄이 스스로 만들면
   // `terminal → works` 방향이 값 차원에서 생겨 반대 방향과 맞물린다(ShellTabs의 그 prop
   // 주석이 같은 함정을 든다).
@@ -1122,6 +1131,14 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
 
   it("그 화면의 셸이 0개면 닫을 것이 없다", () => {
     seed(workSeat("남"));
+    expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
+  });
+
+  // git-integration 판 01 — 묶음에는 파일 탭도 선다. 주소가 셸을 말하는데(`tab=terminal`) 묶음에 셸이 없으면 지금 탭이 파일
+  // 탭으로 남는다(`withShellActive`가 켤 셸이 없다 — 자동 셸이 안 뜨는 프로젝트 둘 이상의 work). 그 칸을 셸을 닫는 길에
+  // 넘기면 확인 창을 거치는 길이 셸 아닌 칸을 받는다 — 본문에 셸이 없으니 닫을 것이 없다.
+  it("터미널 탭인데 지금 탭이 파일 탭이면(묶음에 셸이 없다) 셸을 닫는 길에 그 칸을 넘기지 않는다", () => {
+    terminalStore.setState(() => openCodeTab(NO_SHELLS, ownerFor(work.slug), { project: "billing", path: "src/a.ts" }));
     expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
   });
 

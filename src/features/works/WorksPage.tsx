@@ -40,6 +40,7 @@ import TerminalPane from "@/features/terminal/TerminalPane";
 import { useShellForeground } from "@/features/terminal/terminal-settings";
 import {
   activeIdOf,
+  activeShellOf,
   activeTabOf,
   bundleOf,
   bundleTabOf,
@@ -173,9 +174,11 @@ export function togglesWorkPanel(event: {
  * - **`spec`이 켜져 있다.** 고정 탭이라 `×`가 없는 것과 같은 말이다. 분할이면 열 둘이
  *   함께 서지만 `tab`은 그때 **포커스가 든 열**을 가리키므로(결정 97의 `focusColumn`)
  *   여기서 한 번 더 가를 것이 없다.
- * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다.
+ * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다. 묶음의 지금 탭이 파일 탭으로 남은 것도 같다
+ *   (git-integration 판 01 — 주소가 셸을 말하는데 묶음에 켤 셸이 없다: 본문은 「아직 셸이 없어요」다). 그 칸을 셸을 닫는 길에
+ *   넘기지 않는다 — 겨누는 것은 **켜진 셸**이다(`activeShellOf`).
  *
- * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **「고른 작업이 없다」를 여기서 한 번
+ * `activeShellOf`를 그냥 부르지 않고 이 함수를 두는 것은 **「고른 작업이 없다」를 여기서 한 번
  * 가르기** 위해서다. 앞 판에는 `owner`가 `null`이면 그 값이 최상위 터미널을 가리켜 고른
  * 작업이 없는 work 화면의 ⌘W가 **`/terminal`의 셸을 닫았다.** 지금은 소유자가 늘 문자열이라
  * (`ShellOwner`) 그 사고를 L0가 먼저 막지만, 이 가드가 사라질 이유는 아니다 — 여전히 이
@@ -193,7 +196,7 @@ export function shellClosedByTab(
   state: ShellsState,
 ): number | null {
   if (tab !== "terminal" || owner === null) return null;
-  return activeIdOf(state, owner);
+  return activeShellOf(state, owner)?.id ?? null;
 }
 
 /**
@@ -651,8 +654,10 @@ function WorksPage({
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
-      // 본문이 묶음을 보여줄 때 — 셸이든 파일 탭이든 — 켜진 칸이 선다.
-      showing={terminalStands || codeTarget !== null}
+      // 본문이 묶음을 보여줄 때 — 셸이든 파일 탭이든 — 켜진 칸이 선다. 주소가 셸을 말해도 **켜진 셸이 없으면** 본문은 「아직
+      // 셸이 없어요」다(git-integration 판 01): 묶음에 켤 셸이 없어 지금 탭이 파일 탭으로 남았고(`withShellActive`), 자동 셸도
+      // 안 뜨는 work(프로젝트 둘 이상)이다. 그 파일 탭을 켜면 본문과 켜진 칸이 다른 것을 말한다.
+      showing={codeTarget !== null || (terminalStands && activeShellOf(shellState, ownerOf(panelWork.slug)) !== null)}
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
       // 보고 있는 work의 것이기 때문이다.

@@ -22,8 +22,9 @@ import {
 //
 // 본문은 지금 있는 원문 보기(줄 번호, 강조 없음)다 — 강조는 08이 갈아 끼운다.
 
-// 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다.
-const [work, plainWork] = WORKS;
+// 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다. 프로젝트가 둘인 work은
+// 셸이 저절로 안 뜨는 화면이다.
+const [work, plainWork, multiWork] = WORKS;
 
 /** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일이든 센다. */
 const 묶음 = (page: Page) => page.locator("[data-tab-strip] > [data-tab]");
@@ -231,6 +232,30 @@ test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 wor
   await expect(ghost).toContainText("워크트리 없음");
   await expect(ghost.getByRole("button", { name: "경로 복사" })).toHaveCount(0);
   await expect(파일탭들(page)).toHaveCount(3);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 구현 스펙 「화면 — 주소」 — 주소가 셸을 말하는데(`tab=terminal`) 지금 탭이 파일 탭이면 묶음의 첫 셸이 지금 탭이 된다(04). 셸이
+// 없고 자동 셸도 안 뜨는 work(프로젝트 둘)이면 켤 셸이 없어 지금 탭이 파일 탭으로 남는다. 그때 본문은 「아직 셸이 없어요」이고
+// 켜진 칸은 본문에 선 것이라 그 파일 탭이 켜지지 않는다. ⌘W도 닫을 것이 없다 — 셸 닫기 길에 파일 탭을 넘기지 않는다.
+test("셸 없는 묶음에 주소가 셸을 말하면 파일 탭이 켜진 칸으로 서지 않고, ⌘W가 아무것도 닫지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(codeUrl("billing/src/main.ts", multiWork.slug));
+  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
+  await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "true");
+
+  await 주소로간다(page, `/works/${multiWork.slug}?tab=terminal`);
+  await expect(page.getByText("아직 셸이 없어요", { exact: true })).toBeVisible();
+  await expect(코드카드(page, "billing/src/main.ts")).toHaveCount(0);
+  await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "false");
+
+  await page.keyboard.press("Meta+w");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  // 칸을 누르면 그 파일로 간다 — 키는 차례대로 처리되므로 앞의 ⌘W가 끝난 뒤의 묶음이다.
+  await 파일탭이름(page, "billing/src/main.ts").click();
+  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
+  await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "true");
+  expect(await callCount(page, "pty_spawn")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
