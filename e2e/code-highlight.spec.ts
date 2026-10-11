@@ -162,14 +162,34 @@ test("수천 줄 파일을 연 직후 셸 탭을 누르면 곧바로 셸로 바�
     .poll(async () => (await readCodeView(big)).lines[0]?.text.trim(), { timeout: 30_000 })
     .toBe('const v0 = "값"; // 줄 1');
 
-  const shell = page.locator('[data-tab="shell"] button[aria-pressed]');
-  const started = Date.now();
-  await shell.click();
+  // 눌러서 셸이 서기까지를 **페이지 안에서** 잰다 — 눌림(`click`의 `timeStamp`)부터 셸 화면이 상자를 가진 첫 프레임까지. 바깥
+  // 벽시계로 재면 click의 actionability 왕복과 `toBeVisible`의 재시도 간격(0 · 20 · 50 · 100 · 100 · 500ms…)이 끼어, 셸이 0.3초에
+  // 서도 다음 확인이 0.8초 언저리에야 와 문턱을 넘나들었다. 프레임으로 재므로 누른 뒤 메인 스레드가 강조에 붙들리면 그 시간이
+  // 통째로 든다.
+  await page.evaluate(() => {
+    (window as unknown as { 셸전환: Promise<number> }).셸전환 = new Promise<number>((resolve) => {
+      document.addEventListener(
+        "click",
+        (event) => {
+          const pressed = event.timeStamp;
+          const frame = () => {
+            const xterm = document.querySelector(".xterm");
+            if (xterm && xterm.getBoundingClientRect().height > 0) resolve(performance.now() - pressed);
+            else requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        },
+        { capture: true, once: true },
+      );
+    });
+  });
+  await page.locator('[data-tab="shell"] button[aria-pressed]').click();
+  const waited = await page.evaluate(() => (window as unknown as { 셸전환: Promise<number> }).셸전환);
   await expect(page.locator(".xterm")).toBeVisible();
-  const waited = Date.now() - started;
   await expect(big).toHaveCount(0);
-  // 눌러서 셸이 서기까지 — 메인 스레드가 강조에 붙들려 있으면 이 사이에 강조 시간이 통째로 낀다. 지금은 붐비는 기계에서도
-  // 0.3초 안팎이다. 워커 없이 · 가상화 없이 메인 스레드에서 강조하게 바꾸면(한 번 확인했다) 첫 글자조차 30초 안에 서지 않는다.
+  // 지금은 붐비는 기계(부하 15)에서도 0.03초 언저리다. 워커 없이 · 가상화 없이 메인 스레드에서 강조하게 바꾸면(한 번 확인했다)
+  // 첫 글자조차 30초 안에 서지 않는다. 0보다 크다는 것은 두 시각이 같은 시계라는 확인이다 — 아니면 문턱 아래가 거저 나온다.
+  expect(waited).toBeGreaterThan(0);
   expect(waited).toBeLessThan(1_000);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
