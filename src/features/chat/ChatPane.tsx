@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import ApprovalCard from "./ApprovalCard";
 import { ChatDocsContext } from "./chat-docs";
 import {
   chatUiStore,
@@ -266,6 +267,7 @@ function ConversationBody({
   const lists = useMemo(() => chipLists(lines), [lines]);
   // 알약이 세는 것 — 이 대화의 마지막 턴의 고친 곳(티켓 26). 새 턴이 시작하면 그 턴에는 아직 없어 알약이 걷힌다.
   const changes = model.turns[model.turns.length - 1]?.changes ?? null;
+  const asking = model.pending[0] ?? null;
   // 대기 중인 말(티켓 20) — 턴이 도는 동안 보낸 말. 알약 아래, 입력창 바로 위에 선다(보드 04).
   const queue = useQueue(work, conversation);
   const scroller = useRef<HTMLDivElement>(null);
@@ -302,6 +304,19 @@ function ConversationBody({
           lists={lists}
           quote={quote}
           running={model.running}
+          card={
+            // 답하지 않은 권한 요청 — 맨 앞의 것이 입력창 자리에 선다(티켓 21). 답 · 거둬짐 줄이 오면 접기가 빼서 걷힌다.
+            asking && (
+              <ApprovalCard
+                key={asking.requestId}
+                work={work}
+                conversation={conversation.id}
+                agent={conversation.agent}
+                request={asking}
+                running={model.running}
+              />
+            )
+          }
           above={
             <>
               {changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}

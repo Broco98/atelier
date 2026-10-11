@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { chatUiStore, toggleTurn, turnKey } from "./chat-store";
 import ChatMarkdown from "./ChatMarkdown";
+import { Checklist, PlanCard } from "./PlanCard";
 import { SentQuoteChip } from "./QuoteChip";
 import ToolRow from "./ToolRow";
 import { finalFrom, headline, runningHeadline, type ChatModel, type Entry, type Turn } from "./fold";
@@ -15,6 +16,9 @@ import type { Quote } from "./types";
 // 우리가 멈춘 턴(three-axes 티켓 20)에서 멈출 때 열려 있던 도구 줄은 접힌 턴에서도 머리줄 아래에 남는다 — 멈췄는데 무엇이 아직
 // 도는지 보이고, 늦게 온 출력이 그 줄에 붙는다(결정 28 · 스토리 55). 에이전트가 스스로 이어 간 턴은 머리줄 옆에 「스스로 이어
 // 감」 표지가 서고 사용자 메시지가 없다(S4 · 스토리 45).
+//
+// 계획(three-axes 티켓 21)은 흐름 안의 카드로 선다 — 엔진의 마크다운 계획은 계획 카드, ACP `plan`은 체크리스트다(`PlanCard`). 둘 다
+// 대화에 하나라 다음 것이 오면 같은 카드가 바뀌고, 접힌 턴에도 남는다.
 //
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 이 흐름에는 `aria-live`도 `role="log"`도 없다 — 턴 끝에 대화창 밖
 // 알림 자리(`ChatAnnouncer`)가 한 번 읽는다(스토리 121).
@@ -45,10 +49,16 @@ function TurnView({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggl
   // 글이 빈 생각은 그리지 않는다 — Claude 2.1.296은 생각의 글을 빈 문자열로 준다(실측 T14). 지금 생각하는 중이면 「생각 중」으로만
   // 선다. 빈 줄이 도구 줄 사이에 서면 흐름의 틈이 겹치고 잇따른 도구 줄의 묶음이 갈린다(three-axes 티켓 18).
   const said = (entry: Entry) => entry.kind !== "thought" || entry.text.trim() !== "" || (!turn.end && entry === last);
+  // 계획 카드와 체크리스트도 접힌 턴에 남는다 — 계획은 문서처럼 다시 읽는 것이고(스토리 65), 「다시 짜기」로 끝난 턴에서는
+  // 무엇을 고칠지 말하려면 그 계획을 보아야 한다(three-axes 티켓 21).
   const shown =
     turn.end && !open
       ? turn.entries.filter(
-          (entry, at) => (at >= from && entry.kind === "message") || (entry.kind === "tool" && entry.stop === "ran-on"),
+          (entry, at) =>
+            (at >= from && entry.kind === "message") ||
+            (entry.kind === "tool" && entry.stop === "ran-on") ||
+            entry.kind === "plan" ||
+            entry.kind === "checklist",
         )
       : turn.entries.filter(said);
   return (
@@ -156,6 +166,10 @@ function EntryView({ entry, end, thinking }: { entry: Entry; end: Turn["end"]; t
     case "tool":
       // 도구 줄 — 진행형 → 완료형 문구 · 명령 출력 · diff · MCP(티켓 18), 멈춘 턴의 줄(티켓 20).
       return <ToolRow tool={entry} end={end} />;
+    case "plan":
+      return <PlanCard text={entry.text} />;
+    case "checklist":
+      return <Checklist items={entry.items} />;
   }
 }
 
