@@ -51,19 +51,20 @@
 //! 한 줄씩 더한다. 세션 id는 받은 `--session-id` · `--resume`(없으면 `claude-<pid>`)이다. `-p`로 뜰 때마다 `launches`에
 //! `{pid, args}` 한 줄을 더한다 — 되살리기가 실패해 곧바로 끝난 claude도 남는다.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc;
-use std::time::Duration;
 
 use serde_json::{json, Value};
 
 #[path = "../fakes/login.rs"]
 #[allow(dead_code)] // 두 가짜가 함께 쓰는 모듈이라 저쪽 엔진의 몫은 여기서 안 쓴다.
 mod login;
+#[path = "../fakes/receipts.rs"]
+#[allow(dead_code)] // 가짜들이 함께 쓰는 영수증 배관이라 이 가짜가 쓰지 않는 몫이 있다.
+mod receipts;
 
 /// 판 02 실측 2.1.296 — stdin `control_request initialize`의 응답 원문(가린 사본).
 const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.296/initialize.json");
@@ -121,9 +122,6 @@ const INTERRUPT: &str = include_str!("../../tests/fixtures/claude-2.1.282/interr
 /// - `mcp-child` — `normal`에 더해 띄우자마자 오래 사는 자식 하나(stdio MCP 서버 자리)를 낳는다. stdin EOF면 그 자식을
 ///   끄고 끝난다 — 진짜 claude가 MCP 서버를 거두고 끝나는 꼴이다.
 const SCENARIOS: &[&str] = &["normal", "silent-initialize", "mcp-child"];
-
-/// 시그널 처리기가 쓸 `events` 영수증의 fd. 처리기 안에서는 async-signal-safe한 `write`와 `_exit`만 부른다.
-static EVENTS_FD: AtomicI32 = AtomicI32::new(-1);
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -529,9 +527,7 @@ impl Fake {
     /// `-p`로 뜬 것을 `launches`에 한 줄 더한다 — `{pid, args}`.
     fn log_launch(&self, args: &[String]) {
         let Some(dir) = &self.receipts else { return };
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("launches")) {
-            let _ = writeln!(file, "{}", json!({"pid": std::process::id(), "args": args}));
-        }
+        receipts::append_line(&dir.join("launches"), &json!({"pid": std::process::id(), "args": args}).to_string());
     }
 
     /// `--resume`한 세션을 아는가 — 그 세션으로 뜬 적이 있다(영수증이 있다). `FAKE_CLAUDE_FORGETS`면 모른다(세션 저장소가 빈 꼴).
@@ -562,9 +558,7 @@ impl Fake {
                     continue;
                 }
                 if let Some(path) = &stdin_receipt {
-                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-                        let _ = writeln!(file, "{line}");
-                    }
+                    receipts::append_line(path, &line);
                 }
                 let parsed = serde_json::from_str::<Value>(&line).ok();
                 let broken = parsed.is_none();
@@ -576,12 +570,11 @@ impl Fake {
         rx
     }
 
-    /// 영수증 폴더의 `<세션 id>.go`가 생길 때까지 기다리고, 지운다.
+    /// 영수증 폴더의 `<세션 id>.go`가 생길 때까지 기다리고, 지운다. 다른 가짜들처럼 한도가 있다 — 검사가 놓지 않고 사라져도
+    /// 끝없이 남지 않게, 한도를 넘기면 놓인 것처럼 이어 간다.
     fn wait_gate(&self) {
         let Some(gate) = self.path("go") else { return };
-        while !gate.exists() {
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        receipts::wait_for(&gate, receipts::GATE_LIMIT);
         let _ = std::fs::remove_file(gate);
     }
 
@@ -605,62 +598,36 @@ impl Fake {
 
     /// 띄운 때의 영수증 한 장.
     fn leave_receipt(&self, args: &[String], child: Option<u32>) {
-        let (Some(dir), Some(path)) = (&self.receipts, self.path("json")) else { return };
-        let env: BTreeMap<String, String> = std::env::vars_os()
-            .map(|(name, value)| (name.to_string_lossy().into_owned(), value.to_string_lossy().into_owned()))
-            .collect();
+        let Some(path) = self.path("json") else { return };
         // SAFETY: 인자 없이 자기 번호들을 돌려줄 뿐이다.
-        let (ppid, pgid, sid) = unsafe { (libc::getppid(), libc::getpgid(0), libc::getsid(0)) };
+        let (ppid, pgid) = unsafe { (libc::getppid(), libc::getpgid(0)) };
         let receipt = json!({
             "pid": std::process::id(),
             "ppid": ppid,
             "pgid": pgid,
-            "sid": sid,
+            "sid": receipts::unix_session(),
             "args": args,
             "cwd": std::env::current_dir().ok(),
-            "env": env,
+            "env": receipts::env_map(),
             "descendants": child.into_iter().collect::<Vec<_>>(),
         });
-        // 반쯤 쓴 영수증을 검사가 읽지 않게 tmp에 쓰고 옮긴다.
-        let tmp = dir.join(format!(".{}.json.tmp", self.session_id));
-        let _ = std::fs::write(&tmp, receipt.to_string());
-        let _ = std::fs::rename(&tmp, path);
+        receipts::write_atomically(&path, &receipt);
     }
 
     fn append(&self, what: &str, line: &str) {
         let Some(path) = self.path(what) else { return };
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-            let _ = writeln!(file, "{line}");
-        }
+        receipts::append_line(&path, line);
     }
 
     /// SIGINT · SIGTERM · SIGHUP을 받으면 `events`에 적고 끝난다 — 진짜 claude도 SIGINT에 끝난다(워크플로 함정 5).
-    /// SIGKILL은 받을 수 없으니 적히지 않는다.
+    /// SIGKILL은 받을 수 없으니 적히지 않는다. 영수증 폴더가 없으면 처리기를 걸지 않는다.
     fn watch_signals(&self) {
+        const LINES: &[(libc::c_int, &[u8])] = &[
+            (libc::SIGINT, b"signal SIGINT\n"),
+            (libc::SIGTERM, b"signal SIGTERM\n"),
+            (libc::SIGHUP, b"signal SIGHUP\n"),
+        ];
         let Some(path) = self.path("events") else { return };
-        let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(path) else { return };
-        EVENTS_FD.store(std::os::unix::io::IntoRawFd::into_raw_fd(file), Ordering::SeqCst);
-        // SAFETY: 처리기는 async-signal-safe한 write와 _exit만 부른다.
-        unsafe {
-            for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
-                libc::signal(signal, on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t);
-            }
-        }
-    }
-}
-
-extern "C" fn on_signal(signal: libc::c_int) {
-    let line: &[u8] = match signal {
-        libc::SIGINT => b"signal SIGINT\n",
-        libc::SIGTERM => b"signal SIGTERM\n",
-        _ => b"signal SIGHUP\n",
-    };
-    let fd = EVENTS_FD.load(Ordering::SeqCst);
-    // SAFETY: write와 _exit는 async-signal-safe다. fd는 처리기를 걸기 전에 열어 두었다.
-    unsafe {
-        if fd >= 0 {
-            libc::write(fd, line.as_ptr().cast(), line.len());
-        }
-        libc::_exit(128 + signal);
+        receipts::record_signals(Some(&path), LINES);
     }
 }

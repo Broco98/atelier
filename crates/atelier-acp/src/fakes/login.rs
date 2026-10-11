@@ -1,5 +1,6 @@
 //! 가짜 `claude` · 가짜 `codex`가 함께 쓰는 로그인 흉내(three-axes 티켓 12). **크레이트의 모듈 나무에 들지 않는다** —
-//! 두 가짜 bin(`src/bin/fake-claude.rs` · `src/bin/fake-codex.rs`)이 `#[path]`로 가져다 쓴다.
+//! 두 가짜 bin(`src/bin/fake-claude.rs` · `src/bin/fake-codex.rs`)이 `#[path]`로 가져다 쓴다. 영수증 배관(문 기다리기 · 한 줄
+//! 더하기 · 시그널 적기)은 그 bin들이 함께 들인 `receipts.rs`의 것이다.
 //!
 //! 진짜 엔진처럼 로그인 상태를 파일 하나로 쥔다 — 있으면 로그인됨이다(진짜는 Claude의 키체인 · `~/.codex/auth.json`).
 //! 가짜 ACP 에이전트의 `needs-auth`도 같은 파일을 본다. 그래서 「로그인 명령이 끝나면 다시 띄운 에이전트가 세션을 연다」가
@@ -20,11 +21,10 @@
 //! - `FAKE_LOGIN_EMAIL` — 로그인된 Claude의 `auth status`가 싣는 계정 이메일(없으면 `fake@example.com`).
 
 use std::io::Write;
-use std::os::fd::IntoRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicI32, Ordering};
-use std::time::{Duration, Instant};
+
+use crate::receipts::{self, GATE_LIMIT};
 
 /// 흉내 낼 엔진 하나.
 pub struct Engine {
@@ -68,9 +68,6 @@ pub const CODEX: Engine = Engine {
     prompt: "",
     opens: "https://auth.openai.com/oauth/authorize?response_type=code&client_id=fake-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=fake-state",
 };
-
-/// 문이 끝내 안 설 때 로그인 명령이 스스로 끝나는 한도 — 검사가 놓지 않고 사라져도 끝없이 남지 않게.
-const GATE_LIMIT: Duration = Duration::from_secs(60);
 
 /// `claude auth <…>`. 돌려준 수가 exit code다.
 pub fn claude_auth(args: &[String]) -> i32 {
@@ -136,52 +133,14 @@ fn receipts() -> Option<PathBuf> {
 /// 그 엔진의 `<엔진>-<what>` 영수증에 한 줄을 더한다.
 fn note(engine: &Engine, what: &str, line: &str) {
     let Some(dir) = receipts() else { return };
-    if let Ok(mut file) =
-        std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{}-{what}", engine.name)))
-    {
-        let _ = writeln!(file, "{line}");
-    }
+    receipts::append_line(&dir.join(format!("{}-{what}", engine.name)), line);
 }
 
-/// 시그널 처리기가 쓸 `signals` 영수증의 fd. 처리기 안에서는 async-signal-safe한 `write`와 `_exit`만 부른다.
-static SIGNALS_FD: AtomicI32 = AtomicI32::new(-1);
-
-extern "C" fn on_term(_: libc::c_int) {
-    record_signal(b"TERM\n");
-    // SAFETY: async-signal-safe한 `_exit` 하나다.
-    unsafe { libc::_exit(143) }
-}
-
-extern "C" fn on_int(_: libc::c_int) {
-    record_signal(b"INT\n");
-    // SAFETY: async-signal-safe한 `_exit` 하나다.
-    unsafe { libc::_exit(130) }
-}
-
-fn record_signal(line: &[u8]) {
-    let fd = SIGNALS_FD.load(Ordering::Relaxed);
-    if fd >= 0 {
-        // SAFETY: 열어 둔 fd에 정적 바이트를 쓸 뿐이다 — async-signal-safe다.
-        unsafe {
-            libc::write(fd, line.as_ptr().cast(), line.len());
-        }
-    }
-}
-
-/// 받은 시그널을 영수증에 남기도록 처리기를 건다.
+/// 받은 시그널(`TERM` · `INT`)을 `<엔진>-login.signals`에 남기고 끝나도록(143 · 130) 처리기를 건다.
 fn watch_signals(engine: &Engine) {
-    if let Some(dir) = receipts() {
-        if let Ok(file) =
-            std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{}-login.signals", engine.name)))
-        {
-            SIGNALS_FD.store(file.into_raw_fd(), Ordering::Relaxed);
-        }
-    }
-    // SAFETY: 위의 두 처리기는 async-signal-safe한 일만 한다.
-    unsafe {
-        libc::signal(libc::SIGTERM, on_term as extern "C" fn(libc::c_int) as libc::sighandler_t);
-        libc::signal(libc::SIGINT, on_int as extern "C" fn(libc::c_int) as libc::sighandler_t);
-    }
+    const LINES: &[(libc::c_int, &[u8])] = &[(libc::SIGTERM, b"TERM\n"), (libc::SIGINT, b"INT\n")];
+    let path = receipts().map(|dir| dir.join(format!("{}-login.signals", engine.name)));
+    receipts::record_signals(path.as_deref(), LINES);
 }
 
 /// 로그인 명령 — URL을 찍고, 브라우저를 여는 쪽을 부르고, 문이 설 때까지 기다린다.
@@ -197,8 +156,8 @@ fn log_in(engine: &Engine) -> i32 {
         .spawn()
         .ok()
         .map(|child| child.id());
-    // SAFETY: 인자 없는 조회 둘이다.
-    let (sid, tty) = unsafe { (libc::getsid(0), libc::isatty(0) == 1) };
+    // SAFETY: 인자 없는 조회다.
+    let (sid, tty) = (receipts::unix_session(), unsafe { libc::isatty(0) == 1 });
     note(
         engine,
         "login.runs",
@@ -228,20 +187,15 @@ fn log_in(engine: &Engine) -> i32 {
     let Some(dir) = receipts() else { return wait_out() };
     let go = dir.join(format!("{}-login.go", engine.name));
     let fail = dir.join(format!("{}-login.fail", engine.name));
-    let deadline = Instant::now() + GATE_LIMIT;
-    while Instant::now() < deadline {
-        if go.exists() {
+    match receipts::wait_for_any(&[&go, &fail], GATE_LIMIT) {
+        Some(gate) if gate == go => {
             if let Some(path) = auth_file(engine) {
                 write_auth(&path);
             }
-            return 0;
+            0
         }
-        if fail.exists() {
-            return 1;
-        }
-        std::thread::sleep(Duration::from_millis(10));
+        _ => 1,
     }
-    1
 }
 
 /// 영수증 폴더가 없으면 문을 볼 곳이 없다 — 한도까지 기다리다 실패로 끝난다.

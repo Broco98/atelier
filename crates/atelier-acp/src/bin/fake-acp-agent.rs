@@ -47,12 +47,15 @@
 //! 되살리기마다 `revivals`에 `{pid, method, params, ok}` 한 줄. 되살린 세션은 옛 세션 id를 그대로 쓰므로 그 뒤의 영수증
 //! (`prompts` · `inbox` · `config` …)은 옛 세션의 파일에 이어 적힌다.
 
-use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
+
+#[path = "../fakes/receipts.rs"]
+#[allow(dead_code)] // 가짜들이 함께 쓰는 영수증 배관이라 이 가짜가 쓰지 않는 몫이 있다.
+mod receipts;
 
 /// 시나리오 하나가 대화 전체를 스스로 몬다.
 type Scenario = fn(&mut Fake);
@@ -120,11 +123,9 @@ fn dies_mid_turn(fake: &mut Fake) {
         if marker.as_ref().is_some_and(|marker| marker.exists()) {
             return codex_one_turn(fake, id, session_id);
         }
-        fake.wire.notify(
-            "session/update",
-            json!({"sessionId": session_id,
-                   "update": {"sessionUpdate": "agent_message_chunk",
-                              "content": {"type": "text", "text": "시작한다…"}}}),
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "시작한다…"}}),
         );
         if std::env::var_os("FAKE_ACP_DIES_ASKING").is_some() {
             fake.request(
@@ -132,10 +133,7 @@ fn dies_mid_turn(fake: &mut Fake) {
                 json!({"sessionId": session_id,
                        "toolCall": {"toolCallId": "exec-fake-dies", "kind": "execute", "status": "pending",
                                     "title": PERMISSION_COMMAND, "rawInput": {"command": PERMISSION_COMMAND}},
-                       "options": [
-                           {"optionId": "allow_once", "name": "Yes, proceed", "kind": "allow_once"},
-                           {"optionId": "cancel", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
-                       ]}),
+                       "options": [allow_once_option(), reject_option()]}),
             );
             fake.hold_until_released(session_id);
         }
@@ -175,23 +173,14 @@ fn long_turn(fake: &mut Fake) {
         if fake.prompts > long_turns {
             return codex_one_turn(fake, id, session_id);
         }
-        fake.wire.notify(
-            "session/update",
-            json!({"sessionId": session_id,
-                   "update": {"sessionUpdate": "agent_message_chunk",
-                              "content": {"type": "text", "text": "한참 걸리는 일을 시작한다…"}}}),
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_message_chunk",
+                   "content": {"type": "text", "text": "한참 걸리는 일을 시작한다…"}}),
         );
-        loop {
-            // cancel도 없이 상대가 사라지면 답할 곳이 없다.
-            let Some(message) = fake.read() else { return };
-            if message["method"] == "session/cancel" {
-                break;
-            }
-            if message["method"] == "session/prompt" {
-                fake.append_receipt("prompts", &message["params"].to_string());
-            }
+        if fake.await_cancel() {
+            fake.wire.reply(id, json!({"stopReason": "cancelled"}));
         }
-        fake.wire.reply(id, json!({"stopReason": "cancelled"}));
     };
     fake.converse();
 }
@@ -217,13 +206,10 @@ fn late_update_after_cancel(fake: &mut Fake) {
                    "content": [{"type": "terminal", "terminalId": "exec-fake-late"}],
                    "rawInput": {"command": command}}),
         ] {
-            fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+            fake.update(session_id, update);
         }
-        loop {
-            let Some(message) = fake.read() else { return };
-            if message["method"] == "session/cancel" {
-                break;
-            }
+        if !fake.await_cancel() {
+            return;
         }
         fake.wire.reply(id, json!({"stopReason": "cancelled"}));
         // 명령은 멈추지 않고 끝까지 돈다 — 그 출력과 끝이 턴 밖에서 온다.
@@ -235,7 +221,7 @@ fn late_update_after_cancel(fake: &mut Fake) {
                    "status": "completed",
                    "_meta": {"terminal_exit": {"exit_code": 0, "signal": null, "terminal_id": "exec-fake-late"}}}),
         ] {
-            fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+            fake.update(session_id, update);
         }
     };
     fake.converse();
@@ -263,7 +249,7 @@ fn codex_one_turn(fake: &mut Fake, id: &Value, session_id: &str) {
                "content": {"type": "text", "text": "Ran `echo atelier`; it printed `atelier`."}}),
         json!({"sessionUpdate": "usage_update", "used": 1200, "size": 258400}),
     ] {
-        fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+        fake.update(session_id, update);
     }
     fake.wire.reply(
         id,
@@ -299,11 +285,10 @@ fn writes_spec(fake: &mut Fake) {
         for step in &steps {
             fake.spec_step(session_id, step);
         }
-        fake.wire.notify(
-            "session/update",
-            json!({"sessionId": session_id,
-                   "update": {"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_spec",
-                              "content": {"type": "text", "text": "spec을 고쳤다."}}}),
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_spec",
+                   "content": {"type": "text", "text": "spec을 고쳤다."}}),
         );
         fake.wire.reply(id, json!({"stopReason": "end_turn"}));
     };
@@ -369,19 +354,17 @@ fn spawns_a_child(fake: &mut Fake) {
 /// 있는 꼴이다. `spawns-a-child`처럼 자식과 손주를 낳는다 — 턴 끝에 꺼질 때 후손까지 꺼지는지 잰다.
 fn pauses_mid_turn(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| {
-        fake.wire.notify(
-            "session/update",
-            json!({"sessionId": session_id,
-                   "update": {"sessionUpdate": "agent_message_chunk",
-                              "content": {"type": "text", "text": "멈추기 전의 답"}}}),
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_message_chunk",
+                   "content": {"type": "text", "text": "멈추기 전의 답"}}),
         );
         fake.note("paused");
         fake.hold_until_released(session_id);
-        fake.wire.notify(
-            "session/update",
-            json!({"sessionId": session_id,
-                   "update": {"sessionUpdate": "agent_message_chunk",
-                              "content": {"type": "text", "text": "놓인 뒤의 답"}}}),
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "agent_message_chunk",
+                   "content": {"type": "text", "text": "놓인 뒤의 답"}}),
         );
         fake.wire.reply(id, json!({"stopReason": "end_turn"}));
     };
@@ -431,12 +414,27 @@ fn deny_cancels(fake: &mut Fake) {
 /// 권한을 물을 명령 — 워크트리 밖에 쓴다(실측 G2와 같은 꼴, 경로만 고정값).
 const PERMISSION_COMMAND: &str = "printf 'g2' > /tmp/fake-outside/g2.txt";
 
+/// codex-acp 2.2.2의 명령 승인 선택지 가운데 「한 번 허락」(실측 G2).
+fn allow_once_option() -> Value {
+    json!({"optionId": "allow_once", "name": "Yes, proceed", "kind": "allow_once"})
+}
+
+/// codex-acp 2.2.2의 명령 승인 선택지 가운데 「거부」(실측 G2) — optionId가 `cancel`이다.
+fn reject_option() -> Value {
+    json!({"optionId": "cancel", "name": "No, and tell Codex what to do differently", "kind": "reject_once"})
+}
+
+/// 가짜가 보낸 권한 요청이 어떻게 끝났나([`Fake::await_answer`]).
+enum Answer {
+    /// 멈췄다 — `session/cancel`이 왔거나, 고르지 않은 답이 왔다.
+    Cancelled,
+    /// 고른 선택지의 optionId.
+    Selected(String),
+}
+
 /// `asks-permission` · `deny-cancels`의 턴 하나. `deny_cancels`면 거부가 턴을 `cancelled`로 끝낸다.
 fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: bool) {
     let call = if deny_cancels { "exec-fake-deny" } else { "exec-fake-perm" };
-    let send = |fake: &mut Fake, update: Value| {
-        fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
-    };
     // 턴의 답은 한 번만 간다 — 턴 밖에서 묻는 갈래는 처음에 답했다.
     let mut answered_turn = false;
     let mut end_turn = |fake: &mut Fake, stop_reason: &str| {
@@ -447,18 +445,18 @@ fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: b
     if std::env::var_os("FAKE_ACP_PERMISSION_OUT_OF_TURN").is_some() {
         end_turn(fake, "end_turn");
     }
-    send(
-        fake,
+    fake.update(
+        session_id,
         json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_1",
                "content": {"type": "text", "text": "I'll request escalated permission for that exact command.\n"}}),
     );
-    send(
-        fake,
+    fake.update(
+        session_id,
         json!({"sessionUpdate": "session_info_update",
                "_meta": {"codex": {"threadStatus": {"type": "active", "activeFlags": ["waitingOnApproval"]}}}}),
     );
-    send(
-        fake,
+    fake.update(
+        session_id,
         json!({"sessionUpdate": "tool_call", "toolCallId": call, "kind": "execute", "title": PERMISSION_COMMAND,
                "status": "in_progress", "content": [{"type": "terminal", "terminalId": call}],
                "rawInput": {"command": PERMISSION_COMMAND, "cwd": "/tmp/fake-worktree"}}),
@@ -471,19 +469,19 @@ fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: b
                     "kind": "execute", "status": "pending"}),
     };
     let options = json!([
-        {"optionId": "allow_once", "name": "Yes, proceed", "kind": "allow_once"},
+        allow_once_option(),
         {"optionId": "accept_execpolicy_amendment",
          "name": format!("Yes, and don't ask again for commands that start with `{PERMISSION_COMMAND}`"),
          "kind": "allow_always"},
-        {"optionId": "cancel", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
+        reject_option()
     ]);
     let request = fake.request(
         "session/request_permission",
         json!({"sessionId": session_id, "toolCall": tool_call, "options": options}),
     );
     for text in ["승인을 기다리는 동안에도", " update는 흐른다."] {
-        send(
-            fake,
+        fake.update(
+            session_id,
             json!({"sessionUpdate": "agent_thought_chunk", "messageId": "rs_fake_perm",
                    "content": {"type": "text", "text": text}}),
         );
@@ -492,56 +490,43 @@ fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: b
         // 답을 기다리지 않고 턴을 끝낸다 — 걸린 요청은 남은 채다. 뒤에 온 답은 `responses` 영수증에 남는다.
         return end_turn(fake, "end_turn");
     }
-    loop {
-        // 상대가 사라지면 답할 곳이 없다.
-        let Some(message) = fake.read() else { return };
-        if message["method"] == "session/cancel" {
-            // 진짜 codex-acp는 걸린 요청의 답을 기다리지 않고 턴을 끝낸다(실측 G2). 뒤에 온 답은 영수증에 남는다.
-            return end_turn(fake, "cancelled");
-        }
-        if message.get("method").is_some() || message["id"] != request {
-            continue;
-        }
-        let outcome = &message["result"]["outcome"];
-        let chosen = outcome["optionId"].as_str().unwrap_or_default();
-        let kind = options
-            .as_array()
-            .and_then(|options| options.iter().find(|option| option["optionId"] == chosen))
-            .and_then(|option| option["kind"].as_str())
-            .unwrap_or_default();
-        if outcome["outcome"] != "selected" {
-            return end_turn(fake, "cancelled");
-        }
-        if kind.starts_with("allow") {
-            send(
-                fake,
-                json!({"sessionUpdate": "tool_call_update", "toolCallId": call, "name": "exec_command",
-                       "status": "completed",
-                       "_meta": {"terminal_exit": {"exit_code": 0, "signal": null, "terminal_id": call}}}),
-            );
-            send(
-                fake,
-                json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_2",
-                       "content": {"type": "text", "text": "Done."}}),
-            );
-            return end_turn(fake, "end_turn");
-        }
-        // 거부 — 그 도구가 실패로 닫힌다.
-        send(
-            fake,
-            json!({"sessionUpdate": "tool_call_update", "toolCallId": call, "status": "failed",
-                   "_meta": {"terminal_exit": {"exit_code": null, "signal": null, "terminal_id": call}}}),
+    // 상대가 사라지면 답할 곳이 없다. 멈추거나 고르지 않으면 걸린 요청의 답을 기다리지 않고 턴을 끝낸다(실측 G2).
+    let Some(answer) = fake.await_answer(&request) else { return };
+    let Answer::Selected(chosen) = answer else { return end_turn(fake, "cancelled") };
+    let kind = options
+        .as_array()
+        .and_then(|options| options.iter().find(|option| option["optionId"] == chosen.as_str()))
+        .and_then(|option| option["kind"].as_str())
+        .unwrap_or_default();
+    if kind.starts_with("allow") {
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "tool_call_update", "toolCallId": call, "name": "exec_command",
+                   "status": "completed",
+                   "_meta": {"terminal_exit": {"exit_code": 0, "signal": null, "terminal_id": call}}}),
         );
-        if deny_cancels {
-            return end_turn(fake, "cancelled");
-        }
-        send(
-            fake,
+        fake.update(
+            session_id,
             json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_2",
-                   "content": {"type": "text", "text": "REFUSED"}}),
+                   "content": {"type": "text", "text": "Done."}}),
         );
         return end_turn(fake, "end_turn");
     }
+    // 거부 — 그 도구가 실패로 닫힌다.
+    fake.update(
+        session_id,
+        json!({"sessionUpdate": "tool_call_update", "toolCallId": call, "status": "failed",
+               "_meta": {"terminal_exit": {"exit_code": null, "signal": null, "terminal_id": call}}}),
+    );
+    if deny_cancels {
+        return end_turn(fake, "cancelled");
+    }
+    fake.update(
+        session_id,
+        json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_2",
+               "content": {"type": "text", "text": "REFUSED"}}),
+    );
+    end_turn(fake, "end_turn");
 }
 
 /// codex-acp 2.2.2 모양의 목록을 내는 에이전트(three-axes 티켓 09) — `session/new`의 답에 모드 넷과 configOptions 다섯
@@ -588,17 +573,17 @@ const PLAN_STEPS: [&str; 4] = [
 fn plan_turn(fake: &mut Fake, id: &Value, session_id: &str) {
     let plan_id = "fake-plan-1-plan";
     let review = format!("plan-review:{plan_id}");
-    let send = |fake: &mut Fake, update: Value| {
-        fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
-    };
-    send(
-        fake,
+    fake.update(
+        session_id,
         json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_plan",
                "content": {"type": "text",
                            "text": "I'll check the repo's current state and conventions, then give you a two-step plan without changing files."}}),
     );
     for content in PLAN_STEPS {
-        send(fake, json!({"sessionUpdate": "plan_update", "plan": {"type": "markdown", "planId": plan_id, "content": content}}));
+        fake.update(
+            session_id,
+            json!({"sessionUpdate": "plan_update", "plan": {"type": "markdown", "planId": plan_id, "content": content}}),
+        );
     }
     let request = fake.request(
         "session/request_permission",
@@ -610,26 +595,15 @@ fn plan_turn(fake: &mut Fake, id: &Value, session_id: &str) {
                    {"optionId": "revise_plan", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
                ]}),
     );
-    loop {
-        // 상대가 사라지면 답할 곳이 없다.
-        let Some(message) = fake.read() else { return };
-        if message["method"] == "session/cancel" {
-            return fake.wire.reply(id, json!({"stopReason": "cancelled"}));
-        }
-        if message.get("method").is_some() || message["id"] != request {
-            continue;
-        }
-        let outcome = &message["result"]["outcome"];
-        if outcome["outcome"] != "selected" {
-            return fake.wire.reply(id, json!({"stopReason": "cancelled"}));
-        }
-        let mut closed = json!({"sessionUpdate": "tool_call_update", "toolCallId": review, "status": "completed"});
-        if outcome["optionId"] == "revise_plan" {
-            closed["rawOutput"] = json!("User kept the session in plan mode.");
-        }
-        send(fake, closed);
-        return fake.wire.reply(id, json!({"stopReason": "end_turn"}));
+    // 상대가 사라지면 답할 곳이 없다.
+    let Some(answer) = fake.await_answer(&request) else { return };
+    let Answer::Selected(chosen) = answer else { return fake.wire.reply(id, json!({"stopReason": "cancelled"})) };
+    let mut closed = json!({"sessionUpdate": "tool_call_update", "toolCallId": review, "status": "completed"});
+    if chosen == "revise_plan" {
+        closed["rawOutput"] = json!("User kept the session in plan mode.");
     }
+    fake.update(session_id, closed);
+    fake.wire.reply(id, json!({"stopReason": "end_turn"}));
 }
 
 /// 되살리기를 광고하는 에이전트(three-axes 티켓 10) — 진짜 codex-acp 2.2.2처럼 `sessionCapabilities.resume`과 `loadSession`을
@@ -713,6 +687,47 @@ impl Fake {
         }
     }
 
+    /// 그 세션의 `session/update` 하나를 보낸다.
+    fn update(&mut self, session_id: &str, update: Value) {
+        self.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+    }
+
+    /// `session/cancel`이 올 때까지 읽는다 — 잠들어 기다리지 않고 cancel을 읽어서 끝낸다. 그 사이 온 `session/prompt`의
+    /// 인자는 `prompts` 영수증에 남긴다. cancel도 없이 상대가 사라지면 false다 — 답할 곳이 없다.
+    fn await_cancel(&mut self) -> bool {
+        loop {
+            let Some(message) = self.read() else { return false };
+            if message["method"] == "session/cancel" {
+                return true;
+            }
+            if message["method"] == "session/prompt" {
+                self.append_receipt("prompts", &message["params"].to_string());
+            }
+        }
+    }
+
+    /// 보낸 권한 요청 `request`가 어떻게 끝났나를 기다린다. 그 사이 온 다른 메시지는 건너뛴다. 상대가 사라지면 `None`이다 —
+    /// 답할 곳이 없다.
+    ///
+    /// 멈추면(`session/cancel`) 진짜 codex-acp처럼 **걸린 요청의 답을 기다리지 않는다**(실측 G2) — 뒤에 온 답은 `responses`
+    /// 영수증에 남는다. 고르지 않은 답(`outcome: cancelled`)도 멈춘 것과 같다.
+    fn await_answer(&mut self, request: &Value) -> Option<Answer> {
+        loop {
+            let message = self.read()?;
+            if message["method"] == "session/cancel" {
+                return Some(Answer::Cancelled);
+            }
+            if message.get("method").is_some() || message["id"] != *request {
+                continue;
+            }
+            let outcome = &message["result"]["outcome"];
+            if outcome["outcome"] != "selected" {
+                return Some(Answer::Cancelled);
+            }
+            return Some(Answer::Selected(outcome["optionId"].as_str().unwrap_or_default().to_owned()));
+        }
+    }
+
     /// 에이전트 쪽에서 요청 하나를 보내고 그 id를 돌려준다. 답은 `read`가 받아 `responses` 영수증에 남긴다.
     fn request(&mut self, method: &str, params: Value) -> Value {
         let id = json!(self.requests);
@@ -726,29 +741,24 @@ impl Fake {
         if !self.commands {
             return;
         }
-        self.wire.notify(
-            "session/update",
-            json!({"sessionId": session_id,
-                   "update": {"sessionUpdate": "available_commands_update", "availableCommands": [
-                       {"name": "plan", "description": "Turn plan mode on.", "input": null},
-                       {"name": "mcp", "description": "Show the status of the MCP servers, or reconnect them.",
-                        "input": {"hint": "[reconnect]"}},
-                       {"name": "review", "description": "Review uncommitted changes, or review with custom instructions.",
-                        "input": {"hint": "optional review instructions"}},
-                       {"name": "compact", "description": "Summarize conversation to avoid hitting the context limit.", "input": null},
-                       {"name": "$probe-skill", "description": "Probe skill the fake agent lists.", "input": null}
-                   ]}}),
+        self.update(
+            session_id,
+            json!({"sessionUpdate": "available_commands_update", "availableCommands": [
+                {"name": "plan", "description": "Turn plan mode on.", "input": null},
+                {"name": "mcp", "description": "Show the status of the MCP servers, or reconnect them.",
+                 "input": {"hint": "[reconnect]"}},
+                {"name": "review", "description": "Review uncommitted changes, or review with custom instructions.",
+                 "input": {"hint": "optional review instructions"}},
+                {"name": "compact", "description": "Summarize conversation to avoid hitting the context limit.", "input": null},
+                {"name": "$probe-skill", "description": "Probe skill the fake agent lists.", "input": null}
+            ]}),
         );
     }
 
     /// 검사가 그 세션의 턴을 놓을 때까지(`<세션 id>.go`가 설 때까지) 붙잡는다. 영수증 폴더가 없으면 붙잡지 않는다.
     fn hold_until_released(&self, session_id: &str) {
         if let Some(go) = self.receipts.as_ref().map(|dir| dir.join(format!("{session_id}.go"))) {
-            // 검사가 놓지 않고 사라져도 끝없이 남지 않게 한도를 둔다.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-            while !go.exists() && std::time::Instant::now() < deadline {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
+            receipts::wait_for(&go, receipts::GATE_LIMIT);
         }
     }
 
@@ -820,10 +830,9 @@ impl Fake {
                     let after: usize =
                         std::env::var("FAKE_ACP_UPDATES_AFTER_OPEN").ok().and_then(|n| n.parse().ok()).unwrap_or(0);
                     for _ in 0..after {
-                        self.wire.notify(
-                            "session/update",
-                            json!({"sessionId": session_id,
-                                   "update": {"sessionUpdate": "available_commands_update", "availableCommands": []}}),
+                        self.update(
+                            &session_id,
+                            json!({"sessionUpdate": "available_commands_update", "availableCommands": []}),
                         );
                     }
                 }
@@ -883,9 +892,6 @@ impl Fake {
             params["additionalDirectories"][0].as_str().or_else(|| params["cwd"].as_str()).map(PathBuf::from);
         let mut opened = if self.codex_lists { codex_session_opened(&session_id) } else { session_opened(&session_id) };
         opened.as_object_mut().expect("답은 객체다").remove("sessionId");
-        let send = |fake: &mut Fake, update: Value| {
-            fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
-        };
         if method == "session/load" {
             // 과거를 되감는다 — 화면은 앱의 기록으로 그리므로 호스트가 버려야 한다.
             for update in [
@@ -893,10 +899,10 @@ impl Fake {
                 json!({"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "되감은 사람의 말"}}),
                 json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "되감은 답"}}),
             ] {
-                send(self, update);
+                self.update(&session_id, update);
             }
             self.wire.reply(id, opened);
-            send(self, json!({"sessionUpdate": "session_info_update", "title": "되살린 세션"}));
+            self.update(&session_id, json!({"sessionUpdate": "session_info_update", "title": "되살린 세션"}));
         } else {
             self.wire.reply(id, opened);
             self.send_commands(&session_id);
@@ -917,23 +923,16 @@ impl Fake {
     /// `session/new`를 받은 때의 영수증 한 장.
     fn leave_receipt(&self, session_id: &str, session_new: &Value) {
         let Some(dir) = &self.receipts else { return };
-        let env: BTreeMap<String, String> = std::env::vars_os()
-            .map(|(name, value)| (name.to_string_lossy().into_owned(), value.to_string_lossy().into_owned()))
-            .collect();
-        // SAFETY: getsid(0)은 인자 없이 자기 세션 id를 돌려줄 뿐이다.
-        let sid = unsafe { libc::getsid(0) };
-        let mut receipt = Map::new();
-        receipt.insert("pid".into(), json!(std::process::id()));
-        receipt.insert("sid".into(), json!(sid));
-        receipt.insert("sessionId".into(), json!(session_id));
-        receipt.insert("env".into(), json!(env));
-        receipt.insert("initialize".into(), self.initialize.clone());
-        receipt.insert("sessionNew".into(), session_new.clone());
-        receipt.insert("descendants".into(), json!(self.descendants));
-        // 반쯤 쓴 영수증을 검사가 읽지 않게 tmp에 쓰고 옮긴다.
-        let tmp = dir.join(format!(".{session_id}.json.tmp"));
-        let _ = std::fs::write(&tmp, Value::Object(receipt).to_string());
-        let _ = std::fs::rename(&tmp, dir.join(format!("{session_id}.json")));
+        let receipt = json!({
+            "pid": std::process::id(),
+            "sid": receipts::unix_session(),
+            "sessionId": session_id,
+            "env": receipts::env_map(),
+            "initialize": self.initialize,
+            "sessionNew": session_new,
+            "descendants": self.descendants,
+        });
+        receipts::write_atomically(&dir.join(format!("{session_id}.json")), &receipt);
     }
 
     /// `writes-spec`의 단계 하나.
@@ -968,10 +967,7 @@ impl Fake {
             }
             "hold" => {
                 let gate = self.receipts.as_ref().expect("문은 영수증 폴더에 선다").join(text("gate"));
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-                while !gate.exists() && std::time::Instant::now() < deadline {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
+                receipts::wait_for(&gate, receipts::GATE_LIMIT);
             }
             unknown => eprintln!("모르는 단계: {unknown}"),
         }
@@ -989,13 +985,12 @@ impl Fake {
                 (Some(_), Some(_)) => ("edit", "update"),
                 (_, None) => ("delete", "delete"),
             };
-            self.wire.notify(
-                "session/update",
-                json!({"sessionId": session_id,
-                       "update": {"sessionUpdate": "tool_call", "toolCallId": call_id, "kind": kind,
-                                  "title": "Editing files", "status": "in_progress",
-                                  "content": [{"type": "diff", "oldText": old, "newText": new.clone().unwrap_or_default(),
-                                               "path": path, "_meta": {"kind": meta}}]}}),
+            self.update(
+                session_id,
+                json!({"sessionUpdate": "tool_call", "toolCallId": call_id, "kind": kind,
+                       "title": "Editing files", "status": "in_progress",
+                       "content": [{"type": "diff", "oldText": old, "newText": new.clone().unwrap_or_default(),
+                                    "path": path, "_meta": {"kind": meta}}]}),
             );
             call_id
         });
@@ -1009,10 +1004,9 @@ impl Fake {
             None => std::fs::remove_file(path).expect("파일을 지운다"),
         }
         if let Some(call_id) = call {
-            self.wire.notify(
-                "session/update",
-                json!({"sessionId": session_id,
-                       "update": {"sessionUpdate": "tool_call_update", "toolCallId": call_id, "status": "completed"}}),
+            self.update(
+                session_id,
+                json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "status": "completed"}),
             );
         }
     }
@@ -1026,19 +1020,13 @@ impl Fake {
     /// 모르는 세션의 일이다.
     fn append_shared(&self, what: &str, line: &str) {
         let Some(dir) = &self.receipts else { return };
-        let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join(what)) else { return };
-        let _ = writeln!(file, "{line}");
+        receipts::append_line(&dir.join(what), line);
     }
 
     /// 그 세션의 `<세션 id>.<what>` 영수증에 한 줄을 더한다.
     fn append_receipt(&self, what: &str, line: &str) {
         let (Some(dir), Some(session_id)) = (&self.receipts, &self.session_id) else { return };
-        let Ok(mut file) =
-            std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{session_id}.{what}")))
-        else {
-            return;
-        };
-        let _ = writeln!(file, "{line}");
+        receipts::append_line(&dir.join(format!("{session_id}.{what}")), line);
     }
 }
 

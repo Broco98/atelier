@@ -8,6 +8,9 @@
 #[path = "../fakes/login.rs"]
 #[allow(dead_code)] // 두 가짜가 함께 쓰는 모듈이라 저쪽 엔진의 몫은 여기서 안 쓴다.
 mod login;
+#[path = "../fakes/receipts.rs"]
+#[allow(dead_code)] // 가짜들이 함께 쓰는 영수증 배관이라 로그인 흉내가 쓰지 않는 몫이 있다.
+mod receipts;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
