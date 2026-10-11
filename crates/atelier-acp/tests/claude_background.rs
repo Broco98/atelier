@@ -8,7 +8,7 @@
 
 mod common;
 
-use atelier_acp::{Agent, ConversationHost};
+use atelier_acp::{Agent, ConversationHost, QuitCounts};
 use common::{of_kind, Sandbox};
 use serde_json::{json, Value};
 
@@ -122,6 +122,11 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     assert_eq!(queue, ["그동안 보낸 말"], "스스로 이어 간 턴이 도는 동안은 대기 줄을 보내지 않는다(S13)");
     std::thread::sleep(std::time::Duration::from_millis(200));
     assert_eq!(user_lines(&sandbox, &session), 2, "claude에는 아직 가지 않았다 — 도는 턴에 합쳐지지 않게(결정 20)");
+    assert_eq!(
+        host.quit_counts(),
+        QuitCounts { running: 1, queued: 1, approvals: 0 },
+        "앱을 끄면 스스로 이어 간 턴도 잃는다 — 종료 확인이 「턴이 도는 대화」로 센다(티켓 23)"
+    );
 
     sandbox.release_claude_background(&session);
     let record = sandbox.wait_kind("cart", &conversation, "sent", 3);

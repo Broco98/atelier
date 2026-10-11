@@ -1626,13 +1626,13 @@ impl ConversationHost {
     /// 권한 요청을 센다. 셈의 원천이 화면이 아니라 여기인 것은, 대기 줄이 이 메모리에만 있고 지금 화면이 열지 않은 work의
     /// 대화도 함께 꺼지기 때문이다. 떠 있지 않은 대화(다시 켠 뒤 · 닫은 대화)는 셀 것이 없다. 기다리지 않는다.
     ///
-    /// 에이전트가 스스로 이어 간 턴(three-axes 티켓 16)은 아직 대화의 상태에 서지 않아 「턴이 도는 대화」에 들지 않는다.
+    /// 에이전트가 스스로 이어 간 턴(three-axes 티켓 16 · S4)도 「턴이 도는 대화」다 — 끄면 그 턴도 잃는다.
     pub fn quit_counts(&self) -> QuitCounts {
         let live = self.lock_live();
         let mut counts = QuitCounts::default();
         for conversation in live.values() {
             let state = conversation.conv.lock_state();
-            counts.running += usize::from(state.turn.is_some());
+            counts.running += usize::from(state.turn.is_some() || state.self_turn.is_some());
             counts.queued += state.queue.len();
             counts.approvals += state.turns.as_ref().map_or(0, Turns::pending_permissions);
         }
