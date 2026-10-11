@@ -31,7 +31,7 @@ export interface QueuedMessage {
 }
 
 /**
- * 기록 줄의 종류. 설정(09)이 더한다.
+ * 기록 줄의 종류. 설정(09)이 `config`를 넓힌다.
  *
  * - `changes`는 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들이고, `turn-end` 바로 앞에 서며 바뀐 것이 없는 턴에는 없다
  *   (three-axes 결정 22).
@@ -39,8 +39,9 @@ export interface QueuedMessage {
  *   `asked`{requestId, request(요청 원문 — 선택지는 `request.options` 그대로), toolCall(빈 칸을 앞선 도구 줄로 채운 도구 요지)}
  *   뒤에 같은 `requestId`로 `answered`{optionId}나 `withdrawn`{reason: `stopped`(우리가 멈춤) | `agent`(에이전트가 답을 기다리지
  *   않고 턴을 끝냄)}이 선다. 뒤따르는 줄이 없는 물음이 답할 권한이다(승인 카드 — 21).
+ * - `config`는 사람이 바꾼 것이다 — 에이전트(13)부터, 모델 · 모드 · 계획은 09가 더한다.
  */
-export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "changes" | "permission";
+export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "changes" | "permission" | "config";
 
 /**
  * 기록 줄 하나 — `agents/<id>.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. payload의 갈래는 종류마다 다르고 ACP 원문을
