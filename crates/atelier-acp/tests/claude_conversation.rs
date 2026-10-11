@@ -8,10 +8,11 @@
 mod common;
 
 use std::os::unix::fs::PermissionsExt;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use atelier_acp::{Agent, ConversationDefaults, HostError, TranslatorCommand};
-use common::{assert_all_gone, has_pair, Sandbox};
+use atelier_acp::{Agent, ConversationDefaults, HostError, HostEvent, RecordKind, TranslatorCommand};
+use common::{assert_all_gone, has_pair, of_kind, sent_texts, Sandbox};
 
 #[test]
 fn claude_새_대화는_늘_주는_플래그와_새_세션_id로_claude를_띄우고_주지_않는_플래그는_없다() {
@@ -368,6 +369,73 @@ fn 첫_말_전에는_codex를_claude로_바꿔_옛_프로세스를_끄고_새_�
     assert_eq!(refused.to_string(), "첫 말 뒤에는 에이전트를 바꿀 수 없어요. 다른 에이전트는 +로 열어요");
     assert!(common::is_running(claude["pid"].as_u64().unwrap() as u32), "거절은 프로세스를 건드리지 않는다");
     assert_eq!(sandbox.agents_row("cart", &conversation.id)["agent"], "claude");
+
+    host.shut_down();
+}
+
+/// **바꾸는 동안 온 보내기는 엔진을 하나 더 띄우지 않는다.** 바꾸기는 떠 있는 표에서 대화를 꺼낸 뒤 옛 엔진을 끄고 새 엔진을
+/// 띄운다. 그 사이 표에는 대화가 없어 보내기는 「떠 있지 않다」고 보고 되살리기로 간다 — 바꾸기가 그 대화의 되살리기 문을 쥐지
+/// 않으면, 되살리기가 아직 옛 엔진인 `agents.json` 줄로 엔진을 하나 더 띄우고 같은 기록 파일에 따로 적는다. 그래서 보내기는
+/// 바꾸기가 끝나기를 기다렸다가 새 엔진에 말을 보낸다.
+///
+/// 틈을 붙잡아 잰다: 바꾸기가 사람이 바꾼 에이전트(`config` 줄)를 적는 자리에서 그 기록 줄 이벤트를 붙들어 두면, 대화는 표에서
+/// 꺼내진 채이고 옛 엔진은 꺼졌다. 그때 보내기를 띄우고 잠시 둔 뒤 놓는다.
+#[test]
+fn 에이전트를_바꾸는_동안_온_보내기는_엔진을_하나_더_띄우지_않고_바꾼_뒤의_새_엔진에_말을_보낸다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let (held, holding) = mpsc::channel::<()>();
+    let (release, released) = mpsc::channel::<()>();
+    let released = Mutex::new(released);
+    let host = Arc::new(
+        sandbox
+            .host_builder(sandbox.both_login_shell("normal", "normal"), move |event| {
+                if matches!(&event, HostEvent::Record { line, .. } if line.kind == RecordKind::Config) {
+                    held.send(()).unwrap();
+                    released.lock().unwrap().recv_timeout(common::PATIENCE).expect("붙든 이벤트를 놓지 않았다");
+                }
+            })
+            .build(),
+    );
+    let conversation = host.new_conversation("cart", Agent::Codex).expect("Codex 새 대화");
+    let id = conversation.id.clone();
+    assert_eq!(sandbox.acp_launches().len(), 1);
+
+    // 바꾸기가 대화를 표에서 꺼내고 옛 엔진을 끈 뒤, `config` 줄을 적는 자리에서 붙들린다.
+    let switching = std::thread::spawn({
+        let (host, id) = (Arc::clone(&host), id.clone());
+        move || host.switch_agent("cart", &id, Agent::Claude)
+    });
+    holding.recv_timeout(common::PATIENCE).expect("바꾸기가 config 줄을 적지 않았다");
+    // 보내기가 온다 — 표에 대화가 없어 되살리기로 간다.
+    let sending = std::thread::spawn({
+        let (host, id) = (Arc::clone(&host), id.clone());
+        move || host.send("cart", &id, "안녕")
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    release.send(()).unwrap();
+
+    let switched = switching.join().unwrap().expect("바꾸기");
+    sending.join().unwrap().expect("보내기는 바꾼 뒤의 새 엔진에 간다");
+    assert_eq!(switched.agent, Agent::Claude);
+    let record = sandbox.record("cart", &id);
+    assert_eq!(sandbox.acp_launches().len(), 1, "바꾸는 동안 옛 엔진이 하나 더 떴다:\n{}", common::lines_text(&record));
+    let spawning: Vec<u64> = of_kind(&record, "session")
+        .into_iter()
+        .filter(|line| line["payload"]["state"] == "spawning")
+        .map(|line| line["seq"].as_u64().unwrap())
+        .collect();
+    assert_eq!(spawning.len(), 2, "새 대화와 바꾸기가 하나씩 띄운다:\n{}", common::lines_text(&record));
+    let seqs: Vec<u64> = record.iter().map(|line| line["seq"].as_u64().unwrap()).collect();
+    assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>(), "기록은 한 셈이다:\n{}", common::lines_text(&record));
+    let opened = of_kind(&record, "session").into_iter().filter(|line| line["payload"]["state"] == "opened").last().unwrap();
+    let sent = of_kind(&record, "sent")[0];
+    assert_eq!(sent_texts(&record), ["안녕"]);
+    assert!(opened["seq"].as_u64() < sent["seq"].as_u64(), "말은 새 엔진이 열린 뒤에 간다:\n{}", common::lines_text(&record));
+    let session_id = sandbox.agent_session_id("cart", &id);
+    common::wait_for("말이 새 엔진(claude)의 stdin에 닿는다", || {
+        sandbox.claude_stdin(&session_id).iter().any(|line| line["type"] == "user")
+    });
 
     host.shut_down();
 }

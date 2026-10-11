@@ -152,8 +152,10 @@ pub struct ConversationHost {
     /// 에이전트가 떠 있는 대화들 — 대화 id로 찾는다. 대화마다 이 표를 약하게 쥔다 — 사라진 work의 대화가 턴
     /// 끝에 스스로 표에서 빠져 꺼진다(S10).
     live: Arc<LiveTable>,
-    /// 대화마다 띄우기(되살리기 · 닫기)를 하나씩 세우는 잠금 — 함께 온 보내기 둘이 에이전트를 둘 띄우지 않고, 되살리는 사이에
-    /// 닫힌 대화가 다시 떠 있는 표에 서지 않게(three-axes 티켓 10). 대화 id로 찾는다.
+    /// 대화마다 띄우기(되살리기 · 에이전트 바꾸기 · 닫기)를 하나씩 세우는 잠금 — 함께 온 보내기 둘이 에이전트를 둘 띄우지 않고,
+    /// 바꾸는 사이에 온 보내기가 엔진을 하나 더 띄우지 않고, 되살리는 사이에 닫힌 대화가 다시 떠 있는 표에 서지 않게(three-axes
+    /// 티켓 10 · 13). 설정 바꾸기도 되살리기의 끝을 이것으로 기다린다. 잠금 차례의 맨 바깥이다 — 이 문 → 설정 → 떠 있는 표 →
+    /// 대화(`state`) → 기록. 대화 id로 찾는다.
     revivals: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// `agents.json`을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 연 두 대화가 서로의 줄을 지우지 않게.
     agents_file: Mutex<()>,
@@ -1092,6 +1094,12 @@ impl ConversationHost {
     ///   다음 말에서 다시 띄운다(10).
     pub fn switch_agent(&self, work: &str, conversation: &str, agent: Agent) -> Result<Conversation, HostError> {
         let key = ConversationKey::new(work, conversation)?;
+        // 그 대화의 띄우기를 쥐고 바꾼다 — 바꾸는 동안 대화는 떠 있는 표에 없어, 그사이 온 보내기는 되살리기로 간다. 이 문을
+        // 쥐지 않으면 되살리기가 아직 옛 엔진인 `agents.json` 줄로 엔진을 하나 더 띄운다. 쥐면 그 보내기는 바꾸기가 끝난 뒤 새
+        // 엔진이 떠 있음을 보고 그 엔진에 보낸다. 되살리는 중이면 그 끝을 기다린다. 잠금 차례의 맨 바깥이다(되살리기 · 설정 바꾸기 ·
+        // 닫기와 같다).
+        let gate = self.revival_gate(conversation);
+        let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let work_at = self.open_work(work)?;
         let mut row = work_at.open_row(conversation)?;
 
