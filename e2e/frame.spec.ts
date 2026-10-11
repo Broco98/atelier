@@ -786,6 +786,84 @@ test("Works: 분할을 두 번 눌러 되돌리는 동안 두 열이 duration-pa
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// codex-ds 티켓 11 — **메뉴가 Codex `Menu` 모양이다**(codex-ds 결정 10 · 스펙 §3 「메뉴」 · DS `.at-menu` · `.at-mi`). 작업 ⋯ 메뉴 하나를
+// 열어 칠해진 값을 토큰과 맞댄다 — 카드의 폭 · 반경 · 그림자, 줄의 높이 · 반경, 줄 글리프의 크기 · 색, 지우기 줄의 글자색, 뜨는 박자.
+// 스펙이 못박은 수(폭 260 · 줄 30 · 글리프 15)는 따로 센다. 앱의 메뉴는 모두 같은 부품(`dropdown-menu.tsx`)이 그려 한 메뉴로 잰다.
+test("Works: 작업 ⋯ 메뉴는 폭 260 · 반경 16 · shadow-prominent 카드에 30 줄이고, 줄 글리프는 15 fg-secondary · 삭제는 danger 글자다 — duration-dropdown · ease-enter-snappy로 0.98에서 뜬다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  const menu = page.getByRole("menu");
+  const 줄 = menu.getByRole("menuitem");
+  await expect(줄).toHaveText(["이름 바꾸기", "아카이빙", "삭제"]);
+
+  const 폭 = await 토큰값(page, "width", "--size-menu");
+  expect(폭, "메뉴 폭 — size-menu").toBe("260px");
+  const 카드 = [폭, await 토큰값(page, "border-top-left-radius", "--radius-2xl"), await 토큰값(page, "box-shadow", "--shadow-prominent")];
+  const [카드폭, 카드반경, 카드그림자] = await 칠한값(menu, "width", "border-top-left-radius", "box-shadow");
+  expect([카드폭, 카드반경, 그림자(카드그림자)], "카드 폭 · 반경 · 그림자").toEqual(카드);
+
+  const 줄반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  expect(줄반경, "메뉴 줄 반경 — radius-lg").toBe("10px");
+  for (const one of await 줄.all()) {
+    expect(await 칠한값(one, "height", "border-top-left-radius"), `「${await one.textContent()}」 줄`).toEqual(["30px", 줄반경]);
+  }
+  // 글리프는 크기 · 색을 안 준 lucide 그림이다(`WorksPage.tsx`의 작업 ⋯) — 줄이 주는 값이 그대로 선다.
+  const 회색 = await 토큰색(page, "--fg-secondary");
+  const 글리프 = menu.getByRole("menuitem", { name: "이름 바꾸기" }).locator("svg");
+  expect(await 칠한값(글리프, "width", "height", "color"), "줄 글리프").toEqual(["15px", "15px", 회색]);
+  const 빨강 = await 토큰색(page, "--danger");
+  expect(빨강, "danger와 fg-secondary가 같은 색이다").not.toBe(회색);
+  const 삭제 = menu.getByRole("menuitem", { name: "삭제" });
+  expect([...(await 칠한값(삭제, "color")), ...(await 칠한값(삭제.locator("svg"), "color"))], "삭제 줄의 글자 · 글리프").toEqual([빨강, 빨강]);
+
+  // 뜨는 박자 — 열림 애니메이션은 `data-open`에서 붙어 열려 있는 동안 남는다(`works-floating.spec.ts`의 「애니메이션」). 지연 30ms는 DS 값이다.
+  const 길이 = await 토큰값(page, "animation-duration", "--duration-dropdown");
+  expect(밀리초(길이), "메뉴 열림 — duration-dropdown").toBe(320);
+  const 곡선 = await 토큰값(page, "animation-timing-function", "--ease-enter-snappy");
+  expect(await 칠한값(menu, "animation-duration", "animation-timing-function", "animation-delay"), "열림 박자").toEqual([
+    길이,
+    곡선,
+    "0.03s",
+  ]);
+
+  // 첫 장면 — 0.98 크기의 투명한 카드에서 시작한다. 끝난 애니메이션은 읽을 것이 없어, 토큰을 늘려 두고 다시 열어 도는 애니메이션을
+  // 처음에 세운다(지연 동안도 첫 장면이다 — `fill-mode-backwards`). 늘린 길이가 그대로 칠해지는 것이 박자가 토큰을 읽는다는 증거다.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await page.evaluate(() => document.documentElement.style.setProperty("--duration-dropdown", "60s"));
+  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  const 첫장면 = await menu.evaluate((el) => {
+    const [animation] = el.getAnimations();
+    animation.pause();
+    animation.currentTime = 0;
+    const style = getComputedStyle(el);
+    const { a, d } = new DOMMatrix(style.transform);
+    return { 길이: style.animationDuration, 크기: [a, d].map((one) => Math.round(one * 1000) / 1000), 불투명도: style.opacity };
+  });
+  expect(첫장면, "열림의 첫 장면").toEqual({ 길이: "60s", 크기: [0.98, 0.98], 불투명도: "0" });
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 고른 값의 체크(`MenuCheck`)는 줄의 다른 글리프(15 · `fg-secondary`)와 다르다 — DS `.at-mi .chk`(`ic-check s14`)대로 14 · `fg`다.
+// 상태 메뉴의 지금 상태 줄이 그 체크를 그리는 자리다(라디오 줄 — Select 목록의 고른 줄도 같은 그림이다).
+test("Works: 상태 메뉴에서 지금 상태 줄 끝의 체크는 14 · fg다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await page.getByRole("button", { name: pinnedWork.status, exact: true }).click();
+  const 지금 = page.getByRole("menu").getByRole("menuitemradio", { checked: true });
+  await expect(지금).toHaveCount(1);
+  const 체크 = 지금.locator("svg.lucide-check");
+  await expect(체크).toHaveCount(1);
+
+  const 검정 = await 토큰색(page, "--fg");
+  expect(검정, "fg와 fg-secondary가 같은 색이다").not.toBe(await 토큰색(page, "--fg-secondary"));
+  expect(await 칠한값(체크, "width", "height", "color"), "체크").toEqual(["14px", "14px", 검정]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 판 04 티켓 04 — **레일**(ui-refresh 결정 9 · 10). 작업 화면 바탕의 오른쪽 끝에 레일 열이 선다 — 맨 위 패널 토글은 바탕 줄 44px
 // 띠의 가운데, 그 아래 칸 묶음(`spec` · `info`)은 카드 줄 꼭대기에서 시작한다. 레일 열은 본문 열의 형제라 `aside`도 `nav`도
 // 바탕 줄 `<header>`의 자손도 아니고(`aside` · `header` 수와 그것을 집는 검사가 그대로다), 패널을 닫아도 그 자리에 남는다. 레일 열의

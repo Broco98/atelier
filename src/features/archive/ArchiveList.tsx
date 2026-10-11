@@ -173,7 +173,7 @@ function ArchiveList({
               <span className="truncate">{filterName}</span>
               <ChevronDown className="-mr-1 size-3 shrink-0 text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
             </Hint>
-            {/* 거르개와 오른쪽 끝끼리 맞춘다(옛 카드의 `align="right"`). 폭은 메뉴 기본(208px)이다. */}
+            {/* 거르개와 오른쪽 끝끼리 맞춘다(옛 카드의 `align="right"`). 폭은 메뉴 폭(`size-menu`)이다. */}
             <DropdownMenuContent align="end">
               <DropdownMenuRadioGroup
                 // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.

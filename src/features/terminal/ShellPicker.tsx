@@ -53,8 +53,8 @@ function ShellPicker({
   // 한 번이 ⌘T와 같다(#222). Base UI는 키로 열 때만 첫 줄을 켜고, 마우스로 열면 카드 자신이 포커스를
   // 받는다(그것을 바꾸는 prop이 없다). 메뉴에서는 포커스가 곧 켜짐이라 첫 줄에 포커스를 준다.
   //
-  // **열린 다음 프레임이다.** 열림 애니메이션이 끝난 뒤(`onOpenChangeComplete`)에 주면 그 100ms 사이의
-  // `+` → Enter가 켜진 줄 없이 헛돈다. 부품이 카드에 주는 첫 포커스와는 겨루지 않는다 — 그쪽은 포커스가
+  // **열린 다음 프레임이다.** 열림 애니메이션이 끝난 뒤(`onOpenChangeComplete`)에 주면 그 사이(30ms 지연 +
+  // `duration-dropdown` — `dropdown-menu.tsx`의 `MenuCard`)의 `+` → Enter가 켜진 줄 없이 헛돈다. 부품이 카드에 주는 첫 포커스와는 겨루지 않는다 — 그쪽은 포커스가
   // 이미 카드 안으로 옮겨 갔으면 물러선다(FloatingFocusManager의 `shouldFocus`).
   useEffect(() => {
     if (!open) return;

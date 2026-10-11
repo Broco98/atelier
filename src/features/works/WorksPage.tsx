@@ -1234,7 +1234,7 @@ function WorkMenu({
           {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
               거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다.
 
-              줄의 글자 · 글리프는 부품의 것이다(DS `.at-menu-row` — 13px 400, 글리프 15px `fg-tertiary`, ui-refresh 결정 17).
+              줄의 글자 · 글리프는 부품의 것이다(DS `.at-mi` — 13px 400, 글리프 15px `fg-secondary`, codex-ds 결정 10).
               여기서 굵기나 크기를 덧칠하지 않는다. */}
           <DropdownMenuItem onClick={() => setRenaming(true)}>
             <Pencil />

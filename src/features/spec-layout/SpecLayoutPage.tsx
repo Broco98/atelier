@@ -285,7 +285,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
         <MoreHorizontal aria-hidden className="size-4" />
       </Hint>
       {/* 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다. */}
-      <DropdownMenuContent align="end" width="layout" aria-label={label}>
+      <DropdownMenuContent align="end" aria-label={label}>
         <DropdownMenuItem
           variant="destructive"
           size="note"
