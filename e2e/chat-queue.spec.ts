@@ -11,6 +11,7 @@ import {
   record,
   selfContinuedTurn,
   sentLine,
+  sessionLine,
   streamLines,
 } from "./chat-records";
 
@@ -105,6 +106,48 @@ test("멈춘 뒤의 도구 줄(Codex): 멈출 때 열려 있던 명령이 접힌
   await expect(row).not.toContainText("멈춘 뒤에도 도는 중");
   await expect(출력).toBeVisible();
   await expect(작업패널(page).getByRole("button", { name: /후에 중단했습니다|동안 작업함/ })).toHaveCount(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("멈춘 뒤의 도구 줄(에이전트가 끝남): 돌던 명령은 에이전트가 끝나면 스피너와 「명령은 끝까지 돌아요」가 걷히고 「멈춘 뒤에 끊김」이다 — 앱을 다시 켠 뒤에도 같다", async ({
+  page,
+}) => {
+  await openChat(page, linesThrough(late, END_SEQ));
+  const row = 도구줄(page, COMMAND);
+  await expect(row).toContainText("멈춘 뒤에도 도는 중");
+  await expect(row.locator('[data-slot="spinner"]')).toHaveCount(1);
+
+  // 에이전트 프로세스가 죽었다 — 그 그룹의 명령도 함께 끝나 늦은 update는 더 오지 않는다(three-axes 결정 19).
+  await streamLines(page, plainWork.slug, codex.id, [
+    sessionLine(END_SEQ + 1, { state: "died", reason: "에이전트 프로세스가 끝났습니다 (종료 코드 9)" }),
+  ]);
+  await expect(row).toContainText("멈춘 뒤에 끊김");
+  await expect(row).not.toContainText("멈춘 뒤에도 도는 중");
+  await expect(row).not.toContainText("명령은 끝까지 돌아요");
+  await expect(row.locator('[data-slot="spinner"]')).toHaveCount(0);
+
+  // 앱을 다시 켠 꼴 — 대화 목록이 「에이전트가 떠 있지 않다」고 말하면 그 기록을 적던 프로세스는 이미 없다(티켓 23).
+  await openChat(page, linesThrough(late, END_SEQ), { ...codex, lastSeq: END_SEQ, live: false });
+  await expect(도구줄(page, COMMAND)).toContainText("멈춘 뒤에 끊김");
+  await expect(도구줄(page, COMMAND).locator('[data-slot="spinner"]')).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("도는 턴의 도구 줄(에이전트가 끝남): 끝을 받지 못한 도구 줄은 진행형으로 남지 않고 「~하지 못함」과 상자의 「끊김」이다", async ({
+  page,
+}) => {
+  await openChat(page);
+  await expect(도구줄(page, `${COMMAND} 실행 중`)).toBeVisible();
+  await streamLines(page, plainWork.slug, codex.id, [
+    sessionLine(END_SEQ, { state: "died", reason: "에이전트 프로세스가 끝났습니다 (종료 코드 9)" }),
+  ]);
+  const header = 머리줄(page, "멈췄어요 — 에이전트가 끝났어요");
+  await expect(header).toBeVisible();
+  await header.click();
+  const row = 도구줄(page, `${COMMAND} 실행하지 못함`);
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("끊김");
+  await expect(도구줄(page, `${COMMAND} 실행 중`)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

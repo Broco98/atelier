@@ -94,6 +94,11 @@ export interface ToolEntry {
    */
   output: string;
   stop: ToolStop | null;
+  /**
+   * 그 줄을 적던 에이전트가 끝을 알리기 전에 사라졌나(죽음 · 닫힘 · 앱을 다시 켬) — 프로세스 그룹과 함께 도구도 끝나 더 올 update가
+   * 없다(three-axes 결정 19). 그런 줄은 도는 것으로 보이지 않는다: 진행형 문구 · 스피너 · 「명령은 끝까지 돌아요」가 걷힌다.
+   */
+  cut: boolean;
 }
 
 export interface Turn {
@@ -208,10 +213,14 @@ export function foldConversation(lines: readonly RecordLine[], goneThrough: numb
   const notices: Notice[] = [];
   const notice = (seq: number, kind: Notice["kind"], words: string) =>
     notices.push({ key: `n${seq}`, kind, text: words, after: turns.length });
-  // 그 프로세스가 사라졌다 — 열린 턴은 끝났고(답 없이), 걸린 권한 요청에는 답할 곳이 없고, 띄우던 것도 끝났다.
+  // 그 프로세스가 사라졌다 — 열린 턴은 끝났고(답 없이), 걸린 권한 요청에는 답할 곳이 없고, 띄우던 것도 끝났고, 끝을 받지 못한
+  // 도구 줄(멈춘 뒤에도 돌던 줄 포함)은 끊겼다.
   const vanish = (at: string, error: string) => {
     pending.clear();
     connecting = false;
+    for (const turn of turns) {
+      for (const entry of turn.entries) if (entry.kind === "tool" && !toolDone(entry)) entry.cut = true;
+    }
     if (!open) return;
     open.end = {
       stopReason: null,
@@ -247,7 +256,7 @@ export function foldConversation(lines: readonly RecordLine[], goneThrough: numb
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
           else if (id && open) {
-            tool = { kind: "tool", key: `u${line.seq}`, toolCallId: id, call: update, output: "", stop: null };
+            tool = { kind: "tool", key: `u${line.seq}`, toolCallId: id, call: update, output: "", stop: null, cut: false };
             open.entries.push(tool);
           }
           if (!tool) break;
@@ -282,7 +291,15 @@ export function foldConversation(lines: readonly RecordLine[], goneThrough: numb
         }
         if (kind === "tool_call") {
           const id = text(update.toolCallId) ?? `seq-${line.seq}`;
-          turn.entries.push({ kind: "tool", key: `c${line.seq}`, toolCallId: id, call: update, output: outputOf(update), stop: null });
+          turn.entries.push({
+            kind: "tool",
+            key: `c${line.seq}`,
+            toolCallId: id,
+            call: update,
+            output: outputOf(update),
+            stop: null,
+            cut: false,
+          });
           break;
         }
         const content = isObject(update.content) ? update.content : {};

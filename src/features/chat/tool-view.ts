@@ -21,8 +21,11 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 const nonEmpty = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value : null);
 
-/** 도구 줄의 때 — 도는 중 · 끝남 · 실패. */
-export type ToolState = "running" | "done" | "failed";
+/**
+ * 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김. 끊김은 끝을 받기 전에 그 줄을 적던 에이전트가 사라진 것이다(`ToolEntry.cut`) — 문구는
+ * 실패와 같은 「~하지 못함」이고, 명령 출력 상자의 상태 글이 「끊김」이다.
+ */
+export type ToolState = "running" | "done" | "failed" | "cut";
 
 /** 도구 줄 앞의 아이콘 갈래(캔버스 Tools 보드의 아이콘 지도). */
 export type ToolIcon = "execute" | "read" | "edit" | "search" | "fetch" | "mcp" | "skill" | "subagent" | "other";
@@ -73,7 +76,8 @@ export interface ToolView {
 
 export function describeTool(tool: ToolEntry): ToolView {
   const call = tool.call;
-  const state: ToolState = call.status === "completed" ? "done" : call.status === "failed" ? "failed" : "running";
+  const state: ToolState =
+    call.status === "completed" ? "done" : call.status === "failed" ? "failed" : tool.cut ? "cut" : "running";
   const meta = isObject(call._meta) ? call._meta : {};
   const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
   const toolName = nonEmpty(claudeCode.toolName);
@@ -153,7 +157,7 @@ export function describeTool(tool: ToolEntry): ToolView {
  * 문구의 동사 셋 — 진행형 · 완료형 · 실패. `{}`가 대상의 자리다. 완료형에서 동사가 앞에 서는 것(「편집함 overview.md」)은 캔버스
  * Tools 보드를 따른다.
  */
-type Verbs = Record<ToolState, string>;
+type Verbs = Record<Exclude<ToolState, "cut">, string>;
 const EXECUTE_VERBS: Verbs = { running: "{} 실행 중", done: "{} 실행 완료", failed: "{} 실행하지 못함" };
 const READ_VERBS: Verbs = { running: "{} 읽는 중", done: "{} 읽음", failed: "{} 읽지 못함" };
 const EDIT_VERBS: Verbs = { running: "{} 수정 중", done: "편집함 {}", failed: "{} 수정하지 못함" };
@@ -181,7 +185,7 @@ function sentence(
   subjectTail = "",
   tail = "",
 ): ToolPhrase {
-  const [head, rest] = verbs[state].split("{}");
+  const [head, rest] = verbs[state === "cut" ? "failed" : state].split("{}");
   if (!subject) return { before: (head + rest).trim() + tail, subject: null, after: "", file: null };
   return { before: head, subject, after: subjectTail + rest + tail, file };
 }
@@ -243,14 +247,16 @@ export function commandOf(command: unknown): string | null {
 }
 
 /**
- * 명령 출력 상자의 값 — `$` 명령 · 출력 · 오른쪽 아래 상태. 상태는 끝난 뒤에만 선다: 종료 코드가 0이 아니면 「코드 종료 N」,
- * 끝났으면 「성공」, 실패했는데 코드를 모르면 「실패」다. 종료 코드는 codex의 `_meta.terminal_exit` · `rawOutput.exit_code`에서 온다.
+ * 명령 출력 상자의 값 — `$` 명령 · 출력 · 오른쪽 아래 상태. 상태는 끝난 뒤에만 선다: 끝을 받기 전에 에이전트가 사라졌으면 「끊김」,
+ * 종료 코드가 0이 아니면 「코드 종료 N」, 끝났으면 「성공」, 실패했는데 코드를 모르면 「실패」다. 종료 코드는 codex의
+ * `_meta.terminal_exit` · `rawOutput.exit_code`에서 온다.
  */
 function shellOf(call: Json, meta: Json, state: ToolState, command: string | null, output: string): NonNullable<ToolView["shell"]> {
   const exit = isObject(meta.terminal_exit) ? meta.terminal_exit.exit_code : isObject(call.rawOutput) ? call.rawOutput.exit_code : null;
   const code = typeof exit === "number" ? exit : null;
   let status: string | null = null;
-  if (state !== "running") {
+  if (state === "cut") status = "끊김";
+  else if (state !== "running") {
     if (code !== null && code !== 0) status = `코드 종료 ${code}`;
     else status = state === "failed" ? "실패" : "성공";
   }

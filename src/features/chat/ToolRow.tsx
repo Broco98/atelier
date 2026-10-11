@@ -33,6 +33,7 @@ import { baseName, describeTool, lineOf, specPathOf, type DiffPiece, type ToolIc
 // - **멈춘 턴의 줄**(티켓 20)은 대화 접기가 가른 둘이다(`fold.ts`의 `ToolStop`):
 //   - **멈춘 뒤에도 도는 중**(`ran-on`, 결정 28) — 「명령 출력」 셋째 상자: 스피너와 「Shell · 멈춘 뒤에도 도는 중」, `$` 명령, 늦게 온
 //     출력, 오른쪽 아래 「턴은 N초 후에 멈췄어요 — 명령은 끝까지 돌아요」. 명령이 끝나면 「멈춘 뒤에 끝남」이고 출력은 그대로다.
+//     끝을 받기 전에 에이전트가 사라졌으면(`cut`) 「멈춘 뒤에 끊김」이다 — 명령도 프로세스 그룹과 함께 끝났다.
 //   - **멈춤**(`stopped`) — `.cx-stop`의 ■(16 상자 안 9 네모)와 도구 제목이다. 멈춤과 함께 닫혀 더 올 것이 없다.
 //
 // 줄은 그 문구(멈춘 줄은 도구 제목)를 이름으로 단 묶음(`role="group"`)이다 — 상태 글과 안의 것은 그 안의 보이는 글이다.
@@ -324,7 +325,8 @@ function DiffView({ piece, name, open }: { piece: DiffPiece; name: string; open:
 
 function RanOn({ tool, end }: { tool: ToolEntry; end: TurnEnd | null }) {
   const title = titleOf(tool);
-  const running = !toolDone(tool);
+  const done = toolDone(tool);
+  const running = !done && !tool.cut;
   const kind = tool.call.kind === "execute" ? "Shell" : "도구";
   return (
     <div role="group" aria-label={title} data-tool-stop="ran-on" className="flex min-w-0 flex-col">
@@ -332,7 +334,7 @@ function RanOn({ tool, end }: { tool: ToolEntry; end: TurnEnd | null }) {
         label={
           <>
             {running && <Spinner className="size-3" aria-hidden />}
-            {kind} · {running ? "멈춘 뒤에도 도는 중" : "멈춘 뒤에 끝남"}
+            {kind} · {running ? "멈춘 뒤에도 도는 중" : done ? "멈춘 뒤에 끝남" : "멈춘 뒤에 끊김"}
           </>
         }
         command={title}
