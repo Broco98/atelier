@@ -516,6 +516,28 @@ fn host_err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+/// 대화 호스트로 가는 한 길 — `chat_` 명령은 모두 이것으로 호스트를 부른다.
+///
+/// - 부름은 늘 blocking 풀에서 기다린다. 어느 호스트 부름이 막히는지(로그인 셸 · 세션 열기 · 끄기 · 대화 잠금 · spec 폴더
+///   걷기 · 되살리기)는 호스트 안의 일이라 명령마다 고르지 않는다 — 호스트가 막힘을 바꿔도 여기는 그대로다.
+/// - 오류는 화면에 그대로 보일 글 한 갈래다. 호스트의 오류는 그 Display 그대로이고, 답만 있는 부름은 `Ok::<_, Infallible>`로
+///   싸서 든다. 부름이 쓰러져(패닉) 답이 없으면 `failed`(무엇을 못 했나)가 앞에 선다.
+async fn to_host<T, E>(
+    chats: &Arc<atelier_acp::ConversationHost>,
+    failed: &'static str,
+    call: impl FnOnce(Arc<atelier_acp::ConversationHost>) -> Result<T, E> + Send + 'static,
+) -> CmdResult<T>
+where
+    T: Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
+    let host = Arc::clone(chats);
+    tauri::async_runtime::spawn_blocking(move || call(host))
+        .await
+        .map_err(|e| format!("{failed}: {e}"))?
+        .map_err(host_err)
+}
+
 /// 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾는다. `reread`는 안내 카드의 「다시 확인」이다.
 #[tauri::command]
 pub async fn chat_check_engine(
@@ -772,6 +794,82 @@ pub async fn chat_cancel_login(
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, RwLock};
+    use std::time::{Duration, Instant};
+
+    use super::to_host;
+
+    /// 대화 호스트 하나 — 데이터 루트만 제 것이고, 셸 · 변환기는 띄울 일이 없다(이 시험들은 호스트 몸통을 타지 않는다).
+    fn host(name: &str) -> Arc<atelier_acp::ConversationHost> {
+        let root = std::env::temp_dir().join(format!("atelier-commands-{}-{name}", std::process::id()));
+        let translator = atelier_acp::TranslatorCommand::new("", Vec::<String>::new());
+        let shell = atelier_acp::ShellSource::Path("/bin/false".into());
+        Arc::new(atelier_acp::ConversationHost::builder(root, translator, shell, |_| {}).build())
+    }
+
+    /// **대화 호스트로 가는 길은 기다리는 동안 async 워커를 쥐지 않는다**(프로세스 스펙 「가로지르는 규칙 › IPC」). 어느 호스트
+    /// 부름이 막히는지(로그인 셸 · 세션 열기 · 대화 잠금 · spec 폴더 걷기)는 호스트가 안다 — 명령이 고르지 않으므로 길이 모든
+    /// 부름을 워커 밖에서 기다린다. 워커보다 많은 부름이 함께 기다려도 모두 돌고, 그동안 나란히 오는 async 일이 곧바로 돈다.
+    #[test]
+    fn host_calls_wait_without_holding_the_async_workers() {
+        let host = host("off-workers");
+        let callers = std::thread::available_parallelism().map_or(8, |n| n.get()) * 2 + 1;
+        let gate = Arc::new(RwLock::new(()));
+        let started = Arc::new(AtomicUsize::new(0));
+        let closed = gate.write().expect("문을 쥔다");
+        let calls: Vec<_> = (0..callers)
+            .map(|_| {
+                let (host, gate, started) = (Arc::clone(&host), Arc::clone(&gate), Arc::clone(&started));
+                tauri::async_runtime::spawn(async move {
+                    to_host(&host, "기다리지 못했습니다", move |_host| {
+                        started.fetch_add(1, Ordering::SeqCst);
+                        drop(gate.read());
+                        Ok::<_, Infallible>(())
+                    })
+                    .await
+                })
+            })
+            .collect();
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while started.load(Ordering::SeqCst) < callers && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let waiting = started.load(Ordering::SeqCst);
+        let (pong_tx, pong_rx) = std::sync::mpsc::channel();
+        tauri::async_runtime::spawn(async move {
+            let _ = pong_tx.send(());
+        });
+        let pong = pong_rx.recv_timeout(Duration::from_secs(5));
+        drop(closed);
+
+        assert_eq!(waiting, callers, "호스트에서 기다리는 부름이 async 워커를 쥐었다 — {callers}개 가운데 {waiting}개만 돌았다");
+        assert!(pong.is_ok(), "호스트에서 기다리는 동안 다른 async 일이 돌지 못했다");
+        for call in calls {
+            assert_eq!(tauri::async_runtime::block_on(call).expect("명령 task가 끝난다"), Ok(()));
+        }
+    }
+
+    /// **길의 답은 호스트의 답 그대로이고, 오류는 화면에 보일 글 한 갈래다.** 호스트의 오류는 그 Display 그대로 간다 — 호스트가
+    /// 화면 글로 짓는다(`HostError`). 부름이 쓰러져(패닉) 답이 없으면 명령이 넘긴 「무엇을 못 했나」 한 마디가 앞에 선다.
+    #[test]
+    fn the_host_answer_comes_back_as_is_and_a_fallen_call_says_what_failed() {
+        let host = host("answers");
+        let ask = |failed, call: fn(Arc<atelier_acp::ConversationHost>) -> Result<u32, &'static str>| {
+            tauri::async_runtime::block_on(to_host(&host, failed, call))
+        };
+
+        assert_eq!(ask("세지 못했습니다", |_| Ok(3)), Ok(3));
+        assert_eq!(
+            ask("말을 보내지 못했습니다", |_| Err("그 대화는 이 work에 없습니다")),
+            Err("그 대화는 이 work에 없습니다".to_owned()),
+        );
+        let fallen = ask("엔진을 확인하지 못했습니다", |_| panic!("호스트 부름이 쓰러졌다")).expect_err("쓰러진 부름은 오류다");
+        assert!(fallen.starts_with("엔진을 확인하지 못했습니다: "), "무엇을 못 했는지가 앞에 서지 않는다: {fallen}");
+    }
+
     /// 명령 하나의 몸통 — 서명 뒤에서 열 0의 `}`까지. 잘라 낸 자리가 테스트 모듈을 삼키면 소스 스캔이 제 문자열을
     /// 읽고 통과하므로 그것을 먼저 막는다.
     fn command_body(name: &str) -> &'static str {
