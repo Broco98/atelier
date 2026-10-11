@@ -3,8 +3,9 @@ import { useStore } from "@tanstack/react-store";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { chatUiStore, toggleTurn, turnKey } from "./chat-store";
 import ChatMarkdown from "./ChatMarkdown";
+import { SentQuoteChip } from "./QuoteChip";
 import { finalFrom, foldConversation, headline, runningHeadline, type Entry, type Turn } from "./fold";
-import type { RecordLine } from "./types";
+import type { Quote, RecordLine } from "./types";
 
 // 대화 한 개의 흐름(three-axes 티켓 17) — 기록 줄을 접은 모델(`fold.ts`)을 그린다. 사람의 말은 오른쪽 말풍선, 에이전트의 답은
 // 마크다운 본문이고, 생각하는 동안은 「생각 중」이 반짝인다. 턴이 끝나면 생각 · 도구 줄 · 앞선 답이 「N초 동안 작업함」 머리줄
@@ -39,7 +40,7 @@ function TurnView({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggl
   const last = turn.entries[turn.entries.length - 1];
   return (
     <>
-      {turn.sent !== null && <UserMessage text={turn.sent} />}
+      {turn.sent !== null && <UserMessage text={turn.sent} quote={turn.quote} />}
       {turn.end ? (
         <button
           type="button"
@@ -86,10 +87,14 @@ function Thinking() {
   return <p className="chat-shimmer font-medium">생각 중</p>;
 }
 
-/** 사람이 보낸 말 — 기록의 `sent`에서 화면 글만 그린다. 머리말 · 인용 블록은 기록에만 있다. */
-function UserMessage({ text }: { text: string }) {
+/**
+ * 사람이 보낸 말 — 기록의 `sent`에서 화면 글만 그린다. 머리말 · 인용 블록(에이전트에게 간 참조 꼴)은 기록에만 있다. 인용을 붙여
+ * 보냈으면 말풍선 바로 위에 그 인용 칩이 선다(three-axes 티켓 27 · 스토리 81).
+ */
+function UserMessage({ text, quote }: { text: string; quote: Quote | null }) {
   return (
-    <div className="flex flex-col items-end">
+    <div className="flex flex-col items-end gap-1.5">
+      {quote && <SentQuoteChip quote={quote} />}
       <p className="max-w-[min(85%,560px)] whitespace-pre-wrap rounded-(--chat-radius-bubble) bg-(--chat-bubble) px-4 py-2.5 wrap-anywhere">
         {text}
       </p>

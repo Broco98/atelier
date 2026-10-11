@@ -1,5 +1,5 @@
 import { changedFiles, type ChangedFile } from "./changes";
-import type { RecordLine } from "./types";
+import type { Quote, RecordLine } from "./types";
 
 // 대화 접기(three-axes 티켓 17) — 기록 줄을 받아 화면 모델(턴 · 메시지 · 생각 · 머리줄 · 도는가)로 접는 **순수 함수**다.
 // 대화창은 대화를 이것 하나로 그린다: 처음 그릴 때 읽은 기록도, 흐르는 기록 줄 이벤트도 같은 줄이라(구현 스펙 「기록」) 이
@@ -36,6 +36,8 @@ export interface Turn {
   key: string;
   /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말 · 인용 블록은 기록에만 있다. 턴 밖 update로 시작한 턴은 null이다. */
   sent: string | null;
+  /** 그 말에 붙은 인용(기록의 `sent`) — 보낸 말 위에 선다(three-axes 티켓 27). 인용 없이 보냈으면 null이다. */
+  quote: Quote | null;
   startedAt: string;
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
@@ -61,8 +63,8 @@ const text = (value: unknown): string | null => (typeof value === "string" ? val
 export function foldConversation(lines: readonly RecordLine[]): ChatModel {
   const turns: Turn[] = [];
   let open: Turn | null = null;
-  const start = (key: string, sent: string | null, at: string): Turn => {
-    const turn: Turn = { key, sent, startedAt: at, entries: [], end: null, changes: null };
+  const start = (key: string, sent: string | null, at: string, quote: Quote | null = null): Turn => {
+    const turn: Turn = { key, sent, quote, startedAt: at, entries: [], end: null, changes: null };
     turns.push(turn);
     return turn;
   };
@@ -71,7 +73,7 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
       case "sent":
-        open = start(`t${line.seq}`, text(payload.text) ?? "", line.at);
+        open = start(`t${line.seq}`, text(payload.text) ?? "", line.at, quoteOf(payload.quote));
         break;
       case "update": {
         const update = isObject(payload.update) ? payload.update : null;
@@ -134,6 +136,14 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
     }
   }
   return { turns, running: open !== null };
+}
+
+/** `sent`의 인용 — 모양이 어긋나면(기록은 원문이라 무엇이든 올 수 있다) 없는 것으로 읽는다. */
+function quoteOf(value: unknown): Quote | null {
+  if (!isObject(value)) return null;
+  const { file, start, end, text: quoted } = value;
+  if (typeof file !== "string" || typeof start !== "number" || typeof end !== "number" || typeof quoted !== "string") return null;
+  return { file, start, end, text: quoted };
 }
 
 function findTool(turns: readonly Turn[], id: string): Extract<Entry, { kind: "tool" }> | null {
