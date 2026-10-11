@@ -12,11 +12,15 @@
 //! - `FAKE_CLAUDE_RECEIPTS` — 영수증 폴더. 세션 cwd에 떨어뜨리지 않는다 — cwd는 spec 폴더이거나 워크트리다.
 //! - `FAKE_CLAUDE_ACCOUNT_EMAIL` — 있으면 `initialize` 응답의 `account.email`에 이 이메일을 싣는다. 실측 원문은 이미
 //!   가려져 있어(`<redacted>`), 가리기를 재려면 진짜 같은 이메일이 실려 와야 한다.
+//! - `FAKE_CLAUDE_FIXTURE` — 턴을 되감을 원문(`<CLI 판>/<이름>`, 없으면 `2.1.296/slash-skill-noreplay`). 고를 수 있는 것은
+//!   [`FIXTURES`]다.
 //!
-//! 되감는 원문은 `tests/fixtures/claude-2.1.296/`의 것이다 — 진짜 claude가 그 순서로 냈다.
+//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다.
 //! - 띄우자마자: 첫 `system/init` 앞의 줄들(SessionStart 훅의 `hook_started` · `hook_response`).
-//! - stdin `control_request{subtype:"initialize"}` → `initialize.json`의 응답(요청 id만 바꿔 끼운다).
-//! - stdin user 줄 하나 → 원문의 다음 턴 하나(`system/init` … `result`).
+//! - stdin `control_request{subtype:"initialize"}` → `initialize.json`(2.1.296)의 응답(요청 id만 바꿔 끼운다). 원문에 든
+//!   `control_response`(잰 쪽이 보낸 제어 요청의 답)는 되감지 않는다 — 제어 요청에는 가짜가 스스로 답한다.
+//! - stdin user 줄 하나 → 원문의 다음 턴 하나(`system/init` … `result`). 줄의 `session_id`는 받은 `--session-id`로 바꿔
+//!   낸다 — 진짜 claude는 띄울 때 받은 세션 id를 싣는다.
 //!
 //! 영수증은 띄울 때 `<세션 id>.json` 한 장으로 남는다 — pid · 부모 pid · 프로세스 그룹 · Unix 세션 · 받은 인자 · cwd · env ·
 //! 낳은 후손. 받은 stdin 줄은 `<세션 id>.stdin`에, 그 뒤에 일어난 일(stdin EOF · 받은 시그널)은 `<세션 id>.events`에
@@ -36,8 +40,17 @@ mod login;
 
 /// 판 02 실측 2.1.296 — stdin `control_request initialize`의 응답 원문(가린 사본).
 const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.296/initialize.json");
-/// 판 02 실측 2.1.296 — 슬래시 명령 · 스킬 다섯 턴(`--replay-user-messages` 없음, 가린 사본).
-const SLASH_SKILL_NOREPLAY: &str = include_str!("../../tests/fixtures/claude-2.1.296/slash-skill-noreplay.jsonl");
+/// 턴을 되감을 원문들(가린 사본) — `FAKE_CLAUDE_FIXTURE`의 이름 → 원문. 이름에 CLI 판을 적는다.
+/// - `2.1.296/slash-skill-noreplay` — 슬래시 명령 · 스킬 다섯 턴. 모델이 `Skill`을 부르면 `isSynthetic` user 글이 낀다(판 02 실측 A4).
+/// - `2.1.296/slash-skill-replay` — 같은 꼴을 `--replay-user-messages`로 잰 넷. 내장 `/context` · `/cost`의 `<synthetic>` 답이 든다.
+/// - `2.1.296/edit-subagent` — `Read` · `Edit`의 한 턴과 서브에이전트(`Agent`)의 한 턴(티켓 14가 잰 것).
+/// - `2.1.282/twoturn-tools` — 답만 하는 한 턴과 `Write` · `Read` · `Bash`의 한 턴(워크플로 실측 G3).
+const FIXTURES: &[(&str, &str)] = &[
+    ("2.1.296/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.296/slash-skill-noreplay.jsonl")),
+    ("2.1.296/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.296/slash-skill-replay.jsonl")),
+    ("2.1.296/edit-subagent", include_str!("../../tests/fixtures/claude-2.1.296/edit-subagent.jsonl")),
+    ("2.1.282/twoturn-tools", include_str!("../../tests/fixtures/claude-2.1.282/twoturn-tools.jsonl")),
+];
 
 /// 시나리오.
 /// - `normal` — 원문대로 답한다. stdin EOF면 끝난다(진짜 claude처럼).
@@ -59,6 +72,12 @@ fn main() {
         eprintln!("모르는 시나리오: {scenario} (있는 것: {})", SCENARIOS.join(", "));
         std::process::exit(2);
     }
+    let fixture = std::env::var("FAKE_CLAUDE_FIXTURE").unwrap_or_else(|_| "2.1.296/slash-skill-noreplay".to_string());
+    let Some(&(_, recorded)) = FIXTURES.iter().find(|(name, _)| *name == fixture) else {
+        let names: Vec<&str> = FIXTURES.iter().map(|(name, _)| *name).collect();
+        eprintln!("모르는 원문: {fixture} (있는 것: {})", names.join(", "));
+        std::process::exit(2);
+    };
     let session_id = flag_value(&args, "--session-id").unwrap_or_else(|| format!("claude-{}", std::process::id()));
     let receipts = std::env::var_os("FAKE_CLAUDE_RECEIPTS").map(PathBuf::from);
     let fake = Fake { receipts, session_id };
@@ -67,9 +86,9 @@ fn main() {
     let mut child = (scenario == "mcp-child").then(spawn_mcp_child);
     fake.leave_receipt(&args, child.as_ref().map(Child::id));
 
-    let (startup, turns) = fixture_turns(SLASH_SKILL_NOREPLAY);
+    let (startup, turns) = fixture_turns(recorded);
     for line in &startup {
-        emit(line);
+        fake.emit(line);
     }
     let mut turns = turns.into_iter();
     let stdin = std::io::stdin();
@@ -96,7 +115,7 @@ fn main() {
             })),
             (Some("user"), _) => {
                 for line in turns.next().unwrap_or_default() {
-                    emit(&line);
+                    fake.emit(&line);
                 }
             }
             _ => {}
@@ -115,13 +134,17 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
 }
 
 /// 원문을 띄우자마자 낼 줄들과 턴들로 가른다 — 턴은 `system/init`에서 시작해 `result`에서 끝난다. 첫 `init` 앞의 줄은
-/// 띄우자마자 내고, `result`와 다음 `init` 사이의 줄은 앞 턴에 붙인다.
+/// 띄우자마자 내고, `result`와 다음 `init` 사이의 줄은 앞 턴에 붙인다. 원문의 `control_response`는 뺀다 — 잰 쪽이 보낸
+/// 제어 요청의 답이라, 가짜는 받은 제어 요청에 스스로 답한다.
 fn fixture_turns(text: &str) -> (Vec<Value>, Vec<Vec<Value>>) {
     let mut startup = Vec::new();
     let mut turns: Vec<Vec<Value>> = Vec::new();
     let mut open = false;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let value: Value = serde_json::from_str(line).expect("가짜 claude의 원문은 JSON 줄이다");
+        if value["type"] == "control_response" {
+            continue;
+        }
         let is_init = value["type"] == "system" && value["subtype"] == "init";
         if is_init && !open {
             turns.push(Vec::new());
@@ -175,6 +198,15 @@ struct Fake {
 }
 
 impl Fake {
+    /// 원문 한 줄을 낸다 — 줄의 `session_id`를 이 세션의 것으로 바꿔서.
+    fn emit(&self, line: &Value) {
+        let mut line = line.clone();
+        if line.get("session_id").is_some_and(Value::is_string) {
+            line["session_id"] = json!(self.session_id);
+        }
+        emit(&line);
+    }
+
     fn path(&self, what: &str) -> Option<PathBuf> {
         self.receipts.as_ref().map(|dir| dir.join(format!("{}.{what}", self.session_id)))
     }
