@@ -1,0 +1,8 @@
+{"type": "control_request", "request_id": "req_1e1f835b", "request": {"subtype": "initialize"}}
+{"type": "user", "message": {"role": "user", "content": "단어 PINEAPPLE을 기억해. 'ok'라고만 답해."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "control_request", "request_id": "req_bd4a26b4", "request": {"subtype": "set_model", "model": "sonnet"}}
+{"type": "user", "message": {"role": "user", "content": "내가 기억하라던 단어는? 단어만 답해."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "control_request", "request_id": "req_4093f0cd", "request": {"subtype": "set_model", "model": "claude-haiku-4-5-20251001"}}
+{"type": "control_request", "request_id": "req_405a2416", "request": {"subtype": "set_model", "model": "no-such-model"}}
+{"type": "control_request", "request_id": "req_37229b51", "request": {"subtype": "set_model"}}
+{"type": "user", "message": {"role": "user", "content": "/cost"}, "parent_tool_use_id": null, "session_id": ""}

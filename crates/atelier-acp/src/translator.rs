@@ -10,12 +10,16 @@
 //! 세션 열기(티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
 //! 턴(티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
 //! [`stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답).
-//! 멈추기 · 권한 · 모드와 모델 바꾸기는 15, 되살리기 · 백그라운드 · 미로그인은 16이다.
+//! 제어(티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
+//! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
+//! 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
+//! 되살리기 · 백그라운드 · 미로그인은 16이다.
 //!
 //! **가리기.** claude의 원문을 처음 읽는 자리가 여기라, 읽자마자 두 자리를 가린다 — 이 뒤로 ACP에 실려 기록으로 가는 것에는
 //! 계정이 남지 않는다(워크플로 S34 · 스토리 115). `initialize` 답의 `account`(이메일 · 조직 · 플랜, 워크플로 함정 19)는
 //! `<email>`로, `system/init`의 `plugins[].path`(조직 · 계정 id가 실린다, 실측 함정 39)는 `<path>`로 바꾼다.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -37,6 +41,25 @@ const MODES: [&str; 5] = ["default", "acceptEdits", "auto", "dontAsk", "plan"];
 
 /// 띄운 직후 보내는 stdin `initialize`의 요청 id.
 const INITIALIZE_REQUEST: &str = "atelier-initialize";
+
+/// 선택지 id — 한 번 허락 · 이 대화에서 허락 · 거부, 계획은 구현 · 다시 짜기(codex-acp의 계획 승인과 같은 id).
+const ALLOW_ONCE: &str = "allow_once";
+const ALLOW_SESSION: &str = "allow_session";
+const REJECT: &str = "reject";
+const IMPLEMENT_PLAN: &str = "implement_plan";
+const REVISE_PLAN: &str = "revise_plan";
+
+/// 「거부」에 싣는 글 — claude는 이것을 그 도구의 실패 결과로 받는다. 그 도구 호출 하나만 실패하고 턴은 이어진다(스토리 60) —
+/// interrupt 때 claude가 스스로 싣는 「STOP … wait for the user」와 달리 다른 길을 찾게 둔다.
+const REJECTED: &str = "The user denied this tool call. Do not retry it as is; continue without it or take a different approach.";
+
+/// 「다시 짜기」에 싣는 글(S5) — 계획 모드에 남아 사람의 다음 말을 기다리게 한다. 진짜 claude 2.1.296은 이 글을 받고 파일을
+/// 고치지 않은 채 턴을 끝냈고 계획 모드에 남았다(판 02 관문 G1).
+const REVISE: &str = "The user chose to revise this plan instead of implementing it. Stay in plan mode, do not change any files, \
+and wait for the user's next message describing what to change.";
+
+/// 거둬진 요청이 아직 claude를 붙잡고 있을 때 싣는 글 — 우리가 멈추지 않았는데 호스트가 요청을 거뒀다(에이전트가 턴을 끝냄).
+const WITHDRAWN: &str = "The permission request was withdrawn.";
 
 /// 변환기의 몸통 — 앱 진입점의 `acp-claude` 갈래와 변환기 시험 bin이 이것 하나를 부른다. stdin이 닫히면 끝나고 종료 코드를
 /// 돌려준다. **stdout이 곧 ACP 선이다** — 이 함수 밖에서 stdout에 아무것도 쓰지 않는다.
@@ -65,13 +88,31 @@ pub fn run_claude_translator() -> i32 {
                 continue;
             }
         };
-        // id가 없으면 알림이다. 아직 받는 알림이 없다(멈추기 `session/cancel`은 티켓 15).
-        let Some(id) = message.get("id").cloned() else { continue };
         let params = &message["params"];
-        match message["method"].as_str().unwrap_or_default() {
+        // id가 없으면 알림이다 — 받는 알림은 멈추기 하나다.
+        let Some(id) = message.get("id").cloned() else {
+            if message["method"] == "session/cancel" {
+                if let Some(session) = session.as_mut() {
+                    session.cancel(&shared);
+                }
+            }
+            continue;
+        };
+        let Some(method) = message["method"].as_str() else {
+            // 메서드 없이 id만 있으면 변환기가 보낸 요청(권한)의 답이다.
+            if let Some(session) = session.as_mut() {
+                session.answer(&id, &message, &shared);
+            }
+            continue;
+        };
+        match method {
             "initialize" => send(&reply(&id, initialize_result())),
             "session/prompt" => match session.as_mut() {
                 Some(session) => session.prompt(&id, params, &shared),
+                None => send(&error(&id, -32602, "열린 세션이 없습니다")),
+            },
+            "session/set_mode" | "session/set_config_option" => match session.as_mut() {
+                Some(session) => session.change(&id, method, params, &shared),
                 None => send(&error(&id, -32602, "열린 세션이 없습니다")),
             },
             "session/new" if session.is_some() => send(&error(&id, -32600, "이 변환기는 이미 세션을 열었습니다 — 세션 하나에 변환기 하나다")),
@@ -117,6 +158,20 @@ struct SharedState {
     init_announced: bool,
     /// 답하지 않은 `session/prompt`의 요청 id — 턴이 돈다. claude의 `result`가 오면 그 턴의 끝으로 답한다.
     prompt: Option<Value>,
+    /// 도는 턴에 interrupt를 보냈다 — 그 턴의 `result/error_during_execution`은 우리가 멈춘 끝(`cancelled`)이다.
+    interrupted: bool,
+    /// 변환기가 claude에 보낸 제어 요청의 다음 번호(`request_id`의 꼬리).
+    next_control: u64,
+    /// 변환기가 호스트에 보낸 요청(`session/request_permission`)의 다음 id — 0부터 센다(codex-acp와 같다).
+    next_request: u64,
+    /// 답을 기다리는 권한 요청 — 호스트 쪽 요청 id → claude가 물은 것.
+    asked: HashMap<u64, Asked>,
+    /// claude의 답을 기다리는 바꾸기 — 제어 요청 id → 답할 ACP 요청.
+    changes: HashMap<String, Change>,
+    /// claude의 지금 모드로 아는 것 — `initialize`의 `current_permission_mode`, 바꾸기의 답, `system/status`로 고친다.
+    mode: Option<String>,
+    /// 모델 설정(`configOptions`의 id `model`) — 모델을 바꾸면 그 `currentValue`를 고쳐 답에 싣는다.
+    model_option: Value,
     /// stdin EOF를 받아 끄는 중이다 — 이 뒤의 claude의 끝은 죽음이 아니다.
     closing: bool,
 }
@@ -125,6 +180,32 @@ impl Shared {
     fn lock(&self) -> MutexGuard<'_, SharedState> {
         self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+impl SharedState {
+    /// 변환기가 claude에 보내는 제어 요청의 새 `request_id`.
+    fn control_id(&mut self) -> String {
+        self.next_control += 1;
+        format!("atelier-{}", self.next_control)
+    }
+}
+
+/// claude가 물은 권한 하나(`control_request{subtype:"can_use_tool"}`) — 호스트의 답을 claude의 답으로 옮길 재료.
+struct Asked {
+    /// claude 쪽 요청 id.
+    request_id: Value,
+    /// claude가 물은 입력 — 허락하면 그대로 돌려준다(`updatedInput`).
+    input: Value,
+    /// 제안 가운데 `destination:"session"`인 것 — 「이 대화에서 허락」이 돌려주는 전부다(워크플로 함정 3).
+    session_suggestions: Vec<Value>,
+}
+
+/// claude의 답(`control_response`)을 기다리는 바꾸기 하나 — 답할 ACP 요청 id.
+enum Change {
+    /// `session/set_mode` → `set_permission_mode`.
+    Mode(Value),
+    /// `session/set_config_option{model}` → `set_model` — 바꾼 값.
+    Model(Value, String),
 }
 
 /// 세션을 여는 중인 `session/new` — claude의 `initialize` 답으로 짓는다.
@@ -237,6 +318,104 @@ impl Session {
         }
     }
 
+    /// `session/cancel` — 도는 턴을 stdin `control_request interrupt`로 멈춘다. SIGINT는 쓰지 않는다 — claude가 끝난다(워크플로
+    /// 함정 5). claude는 약 10ms 안에 열린 도구를 실패로 닫고 `result/error_during_execution`으로 턴을 끝내며, 프로세스는
+    /// 살아 다음 말이 맥락을 잇는다(워크플로 관문 G2). 그 `result`가 이 턴의 `cancelled`다. 도는 턴이 없거나 이미 보냈으면
+    /// 아무것도 하지 않는다.
+    fn cancel(&mut self, shared: &Shared) {
+        let request_id = {
+            let mut state = shared.lock();
+            if state.prompt.is_none() || state.interrupted {
+                return;
+            }
+            state.interrupted = true;
+            state.control_id()
+        };
+        self.write(&json!({"type": "control_request", "request_id": request_id, "request": {"subtype": "interrupt"}}));
+    }
+
+    /// 호스트가 권한 요청에 답했다 — claude의 `can_use_tool`에 답한다(stdin `control_response`).
+    ///
+    /// - 한 번 허락 · 구현 → allow와 claude가 물은 입력 그대로.
+    /// - 이 대화에서 허락 → 거기에 `destination:"session"`인 제안만 `updatedPermissions`로(워크플로 함정 3) — 설정 파일에 쓰는
+    ///   제안(`localSettings` · `userSettings`)은 돌려주지 않는다(스토리 63).
+    /// - 거부 → deny와 [`REJECTED`], 다시 짜기 → deny와 [`REVISE`].
+    /// - 거둬짐(`cancelled`) — 우리가 interrupt를 보낸 턴이면 claude가 스스로 그 요청을 거둔다(`control_cancel_request`, 워크플로
+    ///   관문 G2 (c)) — 답하지 않는다. 아니면 claude가 붙잡혀 있지 않게 deny로 답한다.
+    /// - claude가 이미 거둔 요청(`control_cancel_request`)의 답은 버린다.
+    fn answer(&mut self, id: &Value, message: &Value, shared: &Shared) {
+        let (asked, interrupted) = {
+            let mut state = shared.lock();
+            let asked = id.as_u64().and_then(|id| state.asked.remove(&id));
+            (asked, state.interrupted)
+        };
+        let Some(asked) = asked else { return };
+        let outcome = &message["result"]["outcome"];
+        let allow = || json!({"behavior": "allow", "updatedInput": asked.input});
+        let deny = |text: &str| json!({"behavior": "deny", "message": text});
+        let decision = match (outcome["outcome"].as_str(), outcome["optionId"].as_str()) {
+            (Some("selected"), Some(ALLOW_ONCE | IMPLEMENT_PLAN)) => allow(),
+            (Some("selected"), Some(ALLOW_SESSION)) => {
+                let mut decision = allow();
+                decision["updatedPermissions"] = Value::Array(asked.session_suggestions.clone());
+                decision
+            }
+            (Some("selected"), Some(REVISE_PLAN)) => deny(REVISE),
+            (Some("selected"), _) => deny(REJECTED),
+            _ if interrupted => return,
+            _ => deny(WITHDRAWN),
+        };
+        self.write(&json!({
+            "type": "control_response",
+            "response": {"subtype": "success", "request_id": asked.request_id, "response": decision},
+        }));
+    }
+
+    /// 모드 · 모델 바꾸기 — `session/set_mode{modeId}` → stdin `set_permission_mode{mode}`, `session/set_config_option{configId:
+    /// "model", value}` → stdin `set_model{model}`(three-axes 결정 16 · 27). 답은 claude의 `control_response`를 받아 읽는 스레드가
+    /// 한다 — 거절이면 claude가 준 까닭으로(`bypass_not_launched` · `catalog_unknown` 등, 실측 A5 · A7).
+    ///
+    /// - 모델 `default`(엔진 기본값)는 값 없는 `set_model`이다 — claude가 사용자의 기본 모델로 돌린다(실측 2.1.296).
+    /// - Claude에 없는 설정(Codex의 「계획」 `collaboration_mode` 등)은 오류다 — Claude의 계획은 모드 `plan`이다(three-axes
+    ///   결정 29).
+    fn change(&mut self, id: &Value, method: &str, params: &Value, shared: &Shared) {
+        let value = |key: &str| params[key].as_str().map(str::to_owned);
+        let (change, request) = match (method, params["configId"].as_str()) {
+            ("session/set_mode", _) => {
+                let Some(mode) = value("modeId") else { return send(&error(id, -32602, "modeId가 없습니다")) };
+                (Change::Mode(id.clone()), json!({"subtype": "set_permission_mode", "mode": mode}))
+            }
+            (_, Some("model")) => {
+                let Some(model) = value("value") else { return send(&error(id, -32602, "value가 없습니다")) };
+                let mut request = json!({"subtype": "set_model"});
+                if model != "default" {
+                    request["model"] = json!(model);
+                }
+                (Change::Model(id.clone(), model), request)
+            }
+            (_, config) => {
+                return send(&error(id, -32602, &format!("Claude에는 그 설정이 없습니다: {}", config.unwrap_or("(없음)"))));
+            }
+        };
+        let request_id = {
+            let mut state = shared.lock();
+            let request_id = state.control_id();
+            state.changes.insert(request_id.clone(), change);
+            request_id
+        };
+        if !self.write(&json!({"type": "control_request", "request_id": request_id, "request": request})) {
+            shared.lock().changes.remove(&request_id);
+            send(&error(id, -32603, "claude에 바꾸기를 넣지 못했습니다"));
+        }
+    }
+
+    /// claude의 stdin에 줄 하나를 쓴다. 잠금을 쥐고 부르지 않는다 — claude의 stdin이 막히면 읽는 스레드가 잠금을 기다리다
+    /// claude의 stdout을 비우지 못한다. 쓰지 못했으면 claude가 끝난 것이다 — 읽는 스레드가 EOF로 안다.
+    fn write(&mut self, line: &Value) -> bool {
+        let Some(stdin) = self.stdin.as_mut() else { return false };
+        writeln!(stdin, "{line}").and_then(|()| stdin.flush()).is_ok()
+    }
+
     /// stdin EOF — claude의 stdin을 닫고 스스로 끝나기를 기다린다. 넘으면 claude를 끈다.
     fn finish(mut self, shared: &Shared) -> i32 {
         shared.lock().closing = true;
@@ -280,6 +459,16 @@ fn read_claude(stdout: ChildStdout, shared: Arc<Shared>, child: Arc<Mutex<Child>
                 if let Some(opening) = opening {
                     opened(opening, &line["response"], &shared);
                 }
+            } else if line["type"] == "control_response" {
+                changed(&line["response"], &shared);
+            } else if line["type"] == "system" && line["subtype"] == "status" {
+                mode_changed(&line, &shared);
+            } else if line["type"] == "control_request" && line["request"]["subtype"] == "can_use_tool" {
+                ask_permission(&line, &shared);
+            } else if line["type"] == "control_cancel_request" {
+                // claude가 묻던 것을 거뒀다(interrupt 때, 워크플로 관문 G2 (c)) — 호스트의 늦은 답을 claude에 옮기지 않는다.
+                // 호스트의 「거둬짐」은 멈추기(우리가 끊음)나 턴 끝(에이전트)이 적는다.
+                shared.lock().asked.retain(|_, asked| asked.request_id != line["request_id"]);
             } else if line["type"] == "system" && line["subtype"] == "init" {
                 announce_init(line, &shared);
             } else if line["type"] == "result" {
@@ -312,6 +501,15 @@ fn opened(opening: Opening, response: &Value, shared: &Shared) {
             json!({"value": value, "name": name, "description": model["description"]})
         })
         .collect();
+    let model_option = json!({
+        "id": "model",
+        "name": "Model",
+        "description": "Claude가 이 대화에 쓰는 모델",
+        "category": "model",
+        "type": "select",
+        "currentValue": opening.model.as_deref().unwrap_or("default"),
+        "options": model_options,
+    });
     let result = json!({
         "sessionId": opening.session_id,
         "modes": {
@@ -320,15 +518,7 @@ fn opened(opening: Opening, response: &Value, shared: &Shared) {
         },
         // S1 — 모델 목록은 codex-acp와 같은 모양(`configOptions`의 id `model`)으로 낸다. 화면이 엔진을 가리지 않고 모델 칩을
         // 짓는다. 「엔진 기본값」이면 claude의 `default`(사용자의 모델 설정)다.
-        "configOptions": [{
-            "id": "model",
-            "name": "Model",
-            "description": "Claude가 이 대화에 쓰는 모델",
-            "category": "model",
-            "type": "select",
-            "currentValue": opening.model.as_deref().unwrap_or("default"),
-            "options": model_options,
-        }],
+        "configOptions": [model_option.clone()],
         // claude의 `initialize` 답 원문(계정 칸은 가렸다) — claude의 판 · 지금 모드 · 에이전트 목록이 든다. 호스트가 열림 줄에
         // 싣는다(평가의 재료, three-axes 결정 18).
         "_meta": {"claudeCode": {"initialize": init}},
@@ -343,6 +533,8 @@ fn opened(opening: Opening, response: &Value, shared: &Shared) {
     ));
     state.open = true;
     state.session_id = Some(opening.session_id);
+    state.mode = Some(current_mode.to_owned());
+    state.model_option = model_option;
 }
 
 /// claude의 첫 `system/init` — 세션 정보(`session_info_update`)의 `_meta`에 원문을 싣는다. 쓰는 모델 · 도구 · MCP 서버의 상태 ·
@@ -356,6 +548,119 @@ fn announce_init(init: Value, shared: &Shared) {
         json!({"sessionId": session_id,
                "update": {"sessionUpdate": "session_info_update", "_meta": {"claudeCode": {"init": init}}}}),
     ));
+}
+
+/// claude가 바꾸기에 답했다(`control_response`) — 기다리던 ACP 요청에 답한다. 거절이면 claude가 준 까닭과 오류 코드로.
+/// 모드는 claude가 답한 값(`manual` → `default`)을 지금 모드로 적는다 — 뒤따르는 `system/status`가 그 메아리라 옮기지 않는다.
+fn changed(response: &Value, shared: &Shared) {
+    let mut state = shared.lock();
+    let Some(change) = response["request_id"].as_str().and_then(|id| state.changes.remove(id)) else { return };
+    let (id, model) = match change {
+        Change::Mode(id) => (id, None),
+        Change::Model(id, model) => (id, Some(model)),
+    };
+    if response["subtype"] != "success" {
+        let reason = response["error"].as_str().unwrap_or("claude가 바꾸기를 거절했습니다");
+        send(&json!({"jsonrpc": "2.0", "id": id,
+                     "error": {"code": -32602, "message": reason, "data": {"errorCode": response["error_code"]}}}));
+        return;
+    }
+    match model {
+        None => {
+            if let Some(mode) = response["response"]["mode"].as_str() {
+                state.mode = Some(mode.to_owned());
+            }
+            send(&reply(&id, json!({})));
+        }
+        Some(model) => {
+            state.model_option["currentValue"] = json!(model);
+            send(&reply(&id, json!({"configOptions": [state.model_option]})));
+        }
+    }
+}
+
+/// `system/status{permissionMode}` — claude의 모드가 바뀌었다. 우리가 아는 모드와 다르면 claude가 스스로 바꾼 것이다(계획을
+/// 승인하면 `default`로 간다, 판 02 관문 G1) — `current_mode_update`로 알린다. 우리가 바꾼 모드의 메아리는 옮기지 않는다 —
+/// 사람이 바꾼 값은 호스트가 `config` 줄로 이미 적었다.
+fn mode_changed(status: &Value, shared: &Shared) {
+    let Some(mode) = status["permissionMode"].as_str() else { return };
+    let mut state = shared.lock();
+    if state.mode.as_deref() == Some(mode) {
+        return;
+    }
+    state.mode = Some(mode.to_owned());
+    let Some(session_id) = state.session_id.as_deref() else { return };
+    send(&notify(
+        "session/update",
+        json!({"sessionId": session_id, "update": {"sessionUpdate": "current_mode_update", "currentModeId": mode}}),
+    ));
+}
+
+/// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(티켓 08).
+///
+/// - 도구 요지(`toolCall`)는 앞서 낸 `tool_call`과 같은 id(`tool_use_id`) · 제목 · 종류에, claude가 물은 입력이다. claude가
+///   물은 원문(설명 · 까닭 · 막힌 경로 · 제안)은 `_meta.claudeCode.request`에 싣는다 — 승인 카드의 재료다(스토리 58).
+/// - 선택지는 변환기가 짓는다 — 한 번 허락 · 이 대화에서 허락 · 거부. 세션 제안이 없으면 「이 대화에서 허락」은 없다.
+/// - **계획 승인(S5)** — 계획 모드의 `ExitPlanMode`도 `can_use_tool`로 온다(판 02 관문 G1). codex-acp의 계획 승인과 같은
+///   모양(`toolCall{kind:"switch_mode", rawInput:{plan}}`, 선택지 구현 · 다시 짜기)으로 옮긴다 — 화면은 엔진을 가리지 않고
+///   「이 계획대로 할까요?」 카드를 세우고, 계획 본문(`input.plan`)이 계획 카드가 된다.
+fn ask_permission(line: &Value, shared: &Shared) {
+    let request = &line["request"];
+    let tool = request["tool_name"].as_str().unwrap_or_default();
+    let input = &request["input"];
+    let option = |id: &str, name: &str, kind: &str| json!({"optionId": id, "name": name, "kind": kind});
+    if tool == "ExitPlanMode" {
+        let tool_call = json!({
+            "toolCallId": request["tool_use_id"],
+            "kind": "switch_mode",
+            "status": "pending",
+            "title": "Implement this plan?",
+            "rawInput": {"plan": input["plan"]},
+        });
+        let options = vec![
+            option(IMPLEMENT_PLAN, "Yes, implement this plan", "allow_once"),
+            option(REVISE_PLAN, "No, and tell Claude what to do differently", "reject_once"),
+        ];
+        return request_permission(line, tool_call, options, Vec::new(), shared);
+    }
+    let session_suggestions: Vec<Value> = request["permission_suggestions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|suggestion| suggestion["destination"] == "session")
+        .cloned()
+        .collect();
+    let mut options = vec![option(ALLOW_ONCE, "Yes", "allow_once")];
+    if !session_suggestions.is_empty() {
+        options.push(option(ALLOW_SESSION, "Yes, and don't ask again this conversation", "allow_always"));
+    }
+    options.push(option(REJECT, "No, and tell Claude what to do differently", "reject_once"));
+    let tool_call = json!({
+        "toolCallId": request["tool_use_id"],
+        "title": stream::title(tool, input),
+        "kind": stream::kind(tool),
+        "status": "pending",
+        "rawInput": input,
+    });
+    request_permission(line, tool_call, options, session_suggestions, shared);
+}
+
+/// 호스트에 `session/request_permission`을 보내고, 답을 claude에 옮길 재료를 챙겨 둔다.
+fn request_permission(line: &Value, tool_call: Value, options: Vec<Value>, session_suggestions: Vec<Value>, shared: &Shared) {
+    let request = &line["request"];
+    let mut state = shared.lock();
+    let Some(session_id) = state.session_id.clone() else { return };
+    let id = state.next_request;
+    state.next_request += 1;
+    let input = request["input"].clone();
+    state.asked.insert(id, Asked { request_id: line["request_id"].clone(), input, session_suggestions });
+    send(&json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "session/request_permission",
+        "params": {"sessionId": session_id, "toolCall": tool_call, "options": options,
+                   "_meta": {"claudeCode": {"request": request}}},
+    }));
 }
 
 /// 턴의 줄을 옮긴 `session/update`들을 낸다. 세션이 열리기 전이면(띄운 직후의 훅 줄) 낼 곳이 없다.
@@ -380,8 +685,9 @@ fn turn_ended(result: &Value, stream: &Stream, shared: &Shared) {
     if let Some(usage) = stream.usage(result) {
         send(&notify("session/update", json!({"sessionId": session_id, "update": usage})));
     }
+    let interrupted = std::mem::take(&mut state.interrupted);
     if let Some(id) = state.prompt.take() {
-        send(&reply(&id, stream::prompt_response(result)));
+        send(&reply(&id, stream::prompt_response(result, interrupted)));
     }
 }
 
