@@ -1111,8 +1111,8 @@ impl ConversationHost {
                 self.put_live(conversation.to_owned(), live);
             }
         };
-        let record = records::record_path(&work_at.places.agents, conversation);
-        if records::has_sent(&record) {
+        let record = records::facts(&work_at.places.agents, conversation);
+        if record.sent() {
             put_back(live);
             return Err(HostError::AgentLocked(conversation.to_owned()));
         }
@@ -1122,7 +1122,7 @@ impl ConversationHost {
                     let state = live.conv.lock_state();
                     (live.conv.recorder.last_seq(), queue_of(&state), state.is_up())
                 }
-                None => (records::last_seq(&record), Vec::new(), false),
+                None => (record.last_seq(), Vec::new(), false),
             };
             put_back(live);
             return Ok(summary(&row, last_seq, queue, up));
@@ -1223,7 +1223,7 @@ impl ConversationHost {
         }
         // 에이전트 쪽 세션의 첫 말이면 머리말을 붙인다(S11) — 새로 선 세션이거나, 되살린 세션이 아직 말을 받은 적이 없다.
         let needs_preamble =
-            opened.how.starts_session() || !records::sent_since_session_start(&records::record_path(&places.agents, &row.id));
+            opened.how.starts_session() || !records::facts(&places.agents, &row.id).sent_since_session_start();
         {
             // 대기 줄은 그대로 둔다 — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13).
             let mut state = conv.lock_state();
@@ -1888,7 +1888,7 @@ fn summarize(live: &HashMap<String, Live>, agents_dir: &Path, row: &Conversation
             let state = conversation.conv.lock_state();
             (conversation.conv.recorder.last_seq(), queue_of(&state), state.is_up())
         }
-        None => (records::last_seq(&records::record_path(agents_dir, &row.id)), Vec::new(), false),
+        None => (records::facts(agents_dir, &row.id).last_seq(), Vec::new(), false),
     };
     summary(row, last_seq, queue, up)
 }
