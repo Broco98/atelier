@@ -62,6 +62,9 @@ fn changes_asking(works_root: &Path, paths: &[PathBuf], ignored: &mut AskIgnored
         .collect()
 }
 
+/// 워크트리 뿌리 자신의 워크트리 기준 경로 — 빈 경로다.
+const ROOT: &str = "";
+
 /// works 루트 기준 경로가 워크트리 안이면 그 쌍과 워크트리 기준 경로(조각은 `/`). 워크트리 폴더 이름은 work 목록이 쓰는
 /// 자리(`works::worktrees_dir`)에서 읽는다 — 여기 다시 적지 않는다.
 fn in_worktree(rel: &Path) -> Option<(WorktreeChange, String)> {
@@ -93,20 +96,27 @@ fn in_worktree(rel: &Path) -> Option<(WorktreeChange, String)> {
 
 /// 그 워크트리의 경로들 가운데 걸리지 않은 것이 있는가.
 fn any_unignored(dir: &Path, rels: &BTreeSet<String>, ignored: &mut AskIgnored) -> bool {
-    // 다른 저장소 안인지는 빠른 길 **뒤에** 본다 — 빠른 길은 글자만 견주고 이것은 디스크를 본다. 빌드 폭주는 대개 빠른 길에서
-    // 끝난다.
-    let mut repos = HashMap::new();
-    let mut in_other = |rel: &str| in_other_repository(dir, rel, &mut repos);
     // `.gitignore`가 바뀌었으면 마지막 트리 목록이 알려 준 걸린 폴더가 더 맞지 않을 수 있다 — 다음 트리 목록까지 빠른 길을 버린다.
-    // 그 파일 자신은 걸리지 않은 변경이라 이 쌍은 나가고, 화면이 보고 있으면 곧바로 트리를 다시 읽어 새로 알려 준다. 다른 저장소
-    // 안의 `.gitignore`는 이 워크트리의 규칙이 아니다.
-    let rules_changed = rels.iter().any(|rel| rel.rsplit('/').next() == Some(".gitignore") && !in_other(rel));
+    // **한 `.gitignore`가 가르는 것은 제 폴더 아래뿐이라** 빠른 길의 폴더를 품은 것만 그렇다. 그런 `.gitignore`는 걸린 폴더의
+    // 위라 그 자신이 걸리지 않은 변경이고, 이 쌍이 나가 화면이 보고 있으면 곧바로 트리를 다시 읽어 새로 알려 준다. 걸린 폴더 안의
+    // 것(pnpm이 쓰는 `node_modules/…/.gitignore`, venv의 `.venv/.gitignore`)은 git이 읽지도 않고 그 자신도 걸린 것이라 쌍이 나가지
+    // 않는다 — 버리면 다시 배울 트리 목록이 오지 않아, 이어지는 폭주가 모두 git으로 간다. 다른 저장소 안의 것도 이 워크트리의
+    // 규칙이 아니다(트리 목록은 다른 저장소 안을 읽지 않아 그 아래에 빠른 길의 폴더가 없다).
+    let known = known_ignored_folders(dir);
+    let rules_changed = rels
+        .iter()
+        .filter_map(|rel| ruled_folder(rel))
+        .any(|ruled| known.iter().any(|folder| ruled == ROOT || is_under(folder, ruled)));
     let folders = if rules_changed {
         forget_ignored_folders(dir);
         Vec::new()
     } else {
-        known_ignored_folders(dir)
+        known
     };
+    // 다른 저장소 안인지는 빠른 길 **뒤에** 본다 — 빠른 길은 글자만 견주고 이것은 디스크를 본다. 빌드 폭주는 대개 빠른 길에서
+    // 끝난다.
+    let mut repos = HashMap::new();
+    let mut in_other = |rel: &str| in_other_repository(dir, rel, &mut repos);
     let asked: Vec<String> = rels
         .iter()
         .filter(|rel| !folders.iter().any(|folder| is_under(rel, folder)))
@@ -180,6 +190,11 @@ fn in_other_repository(dir: &Path, rel: &str, repos: &mut HashMap<String, bool>)
         repos.insert(folder.to_string(), repo);
         repo
     })
+}
+
+/// `rel`이 `.gitignore`면 그 규칙이 가르는 폴더 — 제 폴더다(뿌리의 것이면 `ROOT`).
+fn ruled_folder(rel: &str) -> Option<&str> {
+    if rel == ".gitignore" { Some(ROOT) } else { rel.strip_suffix("/.gitignore") }
 }
 
 /// `rel`이 `folder` **아래**인가. 폴더 자신은 아니다 — 지워진 폴더는 폴더 규칙(`target/`)에 안 걸려 git이 걸리지 않았다고
@@ -492,5 +507,47 @@ mod tests {
         std::fs::write(fe.join(".gitignore"), "node_modules/\n").unwrap();
         assert_eq!(worktree_changes(&works, &paths(&works, &["w/trees/fe/.gitignore"])), [change("w", "fe")]);
         assert_eq!(worktree_changes(&works, &paths(&works, &["w/trees/fe/target/debug/a.o"])), [change("w", "fe")]);
+    }
+
+    #[test]
+    fn a_gitignore_that_rules_no_fast_path_folder_keeps_the_fast_path() {
+        // 한 `.gitignore`가 가르는 것은 제 폴더 아래뿐이다. 걸린 폴더 안의 것(pnpm이 쓰는 `node_modules/…/.gitignore`, venv의
+        // `.venv/.gitignore`)은 git이 읽지도 않고, 그 자신도 걸린 것이라 쌍이 나가지 않는다 — 빠른 길을 버리면 다시 배울 트리
+        // 목록이 오지 않아 이어지는 설치 · 빌드 폭주가 모두 git으로 간다
+        let (_tmp, works) = setup();
+        let fe = works.join("w/trees/fe");
+        let pnpm = "node_modules/.pnpm/lru_map@0.4.1/node_modules/lru_map";
+        std::fs::create_dir_all(fe.join(pnpm)).unwrap();
+        std::fs::create_dir_all(fe.join("target/debug")).unwrap();
+        crate::list_worktree_tree(&works, "w", "fe").unwrap();
+        let install = [format!("w/trees/fe/{pnpm}/.gitignore"), format!("w/trees/fe/{pnpm}/index.js")];
+        let install: Vec<&str> = install.iter().map(String::as_str).collect();
+        assert_eq!(counted(&works, &paths(&works, &install)), (vec![], 0));
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/target/debug/a.o"])), (vec![], 0));
+
+        // 빠른 길의 폴더를 품지 않은 폴더의 `.gitignore`도 그렇다 — 그 자신은 걸리지 않은 변경이라 쌍은 나간다
+        std::fs::create_dir_all(fe.join("docs")).unwrap();
+        std::fs::write(fe.join("docs/.gitignore"), "*.pdf\n").unwrap();
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/docs/.gitignore"])), (vec![change("w", "fe")], 1));
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/target/debug/a.o"])), (vec![], 0));
+    }
+
+    #[test]
+    fn a_gitignore_over_a_nested_fast_path_folder_drops_the_fast_path() {
+        // `target/`은 어느 깊이에서도 걸린다 — 트리 목록이 `sub/target`을 빠른 길로 알려 준다. `sub/.gitignore`가 그것을 풀면 그 안이
+        // 소식이다(아래 `.gitignore`의 규칙이 위의 것을 이긴다)
+        let (_tmp, works) = setup();
+        let fe = works.join("w/trees/fe");
+        std::fs::create_dir_all(fe.join("sub/target/debug")).unwrap();
+        std::fs::write(fe.join("sub/a.rs"), "x").unwrap();
+        crate::list_worktree_tree(&works, "w", "fe").unwrap();
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/sub/target/debug/a.o"])), (vec![], 0));
+
+        std::fs::write(fe.join("sub/.gitignore"), "!target/\n").unwrap();
+        assert_eq!(worktree_changes(&works, &paths(&works, &["w/trees/fe/sub/.gitignore"])), [change("w", "fe")]);
+        assert_eq!(
+            worktree_changes(&works, &paths(&works, &["w/trees/fe/sub/target/debug/a.o"])),
+            [change("w", "fe")]
+        );
     }
 }
