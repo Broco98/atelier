@@ -55,12 +55,12 @@
 /* 앱 셸의 길이 — 머리 줄의 높이, 행의 리듬, ui-refresh 때의 여백.
 
    **폭(사이드바 · 목록 패널 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
-   거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 280, 240, 400)`, 목록 패널은 Projects ·
+   거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 290, 240, 400)`, 목록 패널은 Projects ·
    Archive의 360, 작업 패널은 `panel-layout.ts`의 `WORK_PANEL_WIDTH` 330), 상자마다 제 폭을 인라인 변수로 싣는다. 이 블록에는
    폭이 없다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여 아무 데서도 읽히지 않았다.
-   아래 `@theme static`에 선언된 DS 폭(`--size-sidebar` 290 · `--size-list` 264 · `--size-panel` 340)은 **선언만 있고 읽는 곳이
-   없다** — 기본값을 그 DS 값으로 옮기는 것은 codex-ds 스펙 S4(티켓 18 · 19 · 20)다. 그때까지 두 벌의 값이 다르고, 화면에 서는
-   것은 인라인 값이다. */
+   아래 `@theme static`에 선언된 DS 폭(`--size-sidebar` 290 · `--size-list` 264 · `--size-panel` 340)은 **선언만 있고 앱이 읽지
+   않는다** — 기본값을 그 DS 값으로 옮기는 것이 codex-ds 스펙 S4다. 사이드바는 옮겨 같은 수(290)이고(e2e `works-sidebar`가 이
+   토큰과 맞댄다), 목록 패널 · 작업 패널은 아직 두 벌의 값이 달라 화면에 서는 것은 인라인 값이다. */
 :root {
     /* **머리 줄** — 창 맨 위 48 줄(codex-ds 스펙 §4 · DS `AppShell`). 틈 8 · 머리 카드 32(`--size-head`) · 틈 8이라 그 가운데
        24가 창 컨트롤 · 패널 토글 · 신호등의 가운데 줄이다(`ShellControls` · `tauri.conf.json`의 `trafficLightPosition`).
@@ -291,7 +291,7 @@
     /* **DS가 두 그림자를 겹치는 자리** — 한 토큰으로 합친다. Tailwind는 `shadow-*` 둘을 한 요소에 겹치지 못하고(`--tw-shadow`가
        하나다) 클래스 합치기(`cn`)도 앞의 것을 지운다. 이름은 Atelier가 붙였고 값은 DS의 두 토큰 그대로다 — 다크도 두 토큰이 든다.
          modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`)과 검색 팔레트(DS `.at-palette`)
-         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`) */
+         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`)와 사이드바의 알림 띠(DS `.at-band`) */
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
     /* **Codex 시간의 유틸리티**(`duration-basic` · `duration-panel` …). 값은 아래 `@theme static`의 `--duration-*`이다 —
@@ -498,10 +498,11 @@
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
        높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄의
-       높이(`--size-pathbar` — `PathBar`)와 문서 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn`)뿐이고, 나머지는 선언만
-       있다(스펙 S2 — 통째로 선언한다).
-       그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세우고, 폭 셋(사이드바 · 목록 칸 · 작업 패널)의 기본값은 S4가 옮긴다. 그때까지
-       화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
+       높이(`--size-pathbar` — `PathBar`), 문서 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn`), 사이드바 행의 높이
+       (`--size-row-nav` — `SidebarItem` · work 행)와 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)뿐이고, 나머지는
+       선언만 있다(스펙 S2 — 통째로 선언한다).
+       그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세운다. 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가
+       같은 수로 옮긴다 — 화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -551,20 +552,21 @@
        `fill-hover`(8%) · `fill-active`(12%). **앱이 적는 상태 배경은 이 이름으로 적는다.** Codex에 12% 위 단이 없어 켜진
        버튼의 hover가 켜짐과 같은 면이다.
        이 부등식은 깨지면 안 된다:
-         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록
+         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록 · 트리
+         행 hover(`fill-soft`)    < 행 선택(`fill-hover`) = 선택된 행 hover      — 바탕에 붙은 사이드바
          탭 hover(`fill-soft`)    < 켜진 탭(`fill-hover`, `tab-on`) = 켜진 탭 hover — 카드 머리의 탭 줄
          버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
-       **행 선택은 면 알파 밖의 불투명한 `fill-selected`(#eff0f0)다**(`selected-row`). 선택된 행은
-       hover해도 그 색 그대로다(DS `.at-row.is-on:hover`). 흰 카드 안 목록에서는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택(#eff0f0)으로
-       갈린다. **바탕(`surface-shell`) 위의 사이드바에서는 행 줄의 부등식이 뒤집힌다** — hover(회색 위 5% ≈ #ebebeb)가 선택보다
-       짙다. 행 줄의 부등식이 깨지는 자리는 거기 하나다.
+       **행 선택의 면은 행이 놓인 면이 고른다**(`selected-row`). 흰 카드 안 목록 · 트리에서는 면 알파 밖의 불투명한
+       `fill-selected`(#eff0f0, DS `.at-tree-row.is-on`)라 hover(흰 면 위 5% ≈ #f4f4f4) < 선택(#eff0f0)으로 갈리고, 바탕(`surface-shell`)에
+       붙은 사이드바에서는 `fill-hover`다(DS `.at-row.is-on` · codex-ds 스펙 §5) — 회색 위에서는 불투명한 `fill-selected`가 hover(회색
+       위 5% ≈ #ebebeb)보다 옅어 부등식이 뒤집힌다. 선택된 행은 어디서나 hover해도 그 면 그대로다.
        **유틸리티 `accent`로 상태 배경을 칠하지 않는다** — shadcn은 그 이름에 옅은 면을 걸었지만 Codex에서는 같은 이름이
        파랑이고(`@theme inline`의 Codex 색 머리말), 그 이름은 행 hover인지 버튼 hover인지도 말하지 않는다. 메뉴 · Select의 켜진
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
        뒤의 `bg-accent`를 0건으로 고정한다.
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
-         `fill-selected`     행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, ui-refresh 결정 10)이 사이드바의
-                             고른 행과 같은 면이다
+         `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, ui-refresh 결정 10)이 패널
+                             트리의 고른 행과 같은 면이다(codex-ds 결정 29)
          `surface`(흰 면)    바탕(`surface-shell`) 위에서 고른 것 — 열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS
                              `.at-rail-toggle`)이다
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널
@@ -924,14 +926,14 @@
     --input: var(--border-heavy);
     --ring: var(--accent);
     /* 사이드바는 창 바탕에 붙는다(DS 원칙 6) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)가 아니라 `surface-shell`이다.
-       고른 행의 `--sidebar-accent`는 불투명한 `fill-selected`다. 사이드바 자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) ·
-       work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라 Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를
-       읽는 자리는 없다. */
+       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-hover`다(아래 `selected-row`). 사이드바
+       자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) · work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라
+       Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를 읽는 자리는 없다. */
     --sidebar: var(--surface-shell);
     --sidebar-foreground: var(--fg);
     --sidebar-primary: var(--accent);
     --sidebar-primary-foreground: var(--fg-inverse);
-    --sidebar-accent: var(--fill-selected);
+    --sidebar-accent: var(--fill-hover);
     --sidebar-accent-foreground: var(--fg);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
@@ -953,9 +955,12 @@
 
 /* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
-   배경은 불투명한 `fill-selected`(#eff0f0)이고 **hover해도 같은 색이다**(ui-refresh 결정 11 · 30 — DS
-   `.at-row.is-on:hover`). 바탕 위의 사이드바에서는 옆 행의 hover보다 옅다 — 그 까닭은 `:root`의 상태 농도
-   부등식 주석에 있다. 흰 카드 안 목록에서는 hover보다 짙다.
+   배경은 **행이 놓인 면이 고르고, 어디서나 hover해도 같은 색이다**(ui-refresh 결정 11 · 30):
+     흰 카드 안 목록 · 트리   불투명한 `fill-selected`(#eff0f0, DS `.at-tree-row.is-on`)
+     사이드바(`data-sidebar`)  `fill-hover`(DS `.at-row.is-on` · codex-ds 스펙 §5) — 바탕에 붙어 있어 불투명한 면이 옆 행의
+                               hover(`fill-soft`)보다 옅게 읽힌다. 그 부등식은 `:root`의 상태 농도 주석에 있다.
+   갈래를 호출부 클래스로 덮지 않고 여기서 가르는 것은 배경 유틸리티 두 벌의 승자를 정렬 순서가 정하기 때문이다 — 사이드바 행
+   셋(nav · 설정 nav · work 행)이 이 클래스 이름을 그대로 단다(e2e `settings-nav` · `works-sidebar`가 그 이름으로 집는다).
    선택되지 않은 행의 hover는 호출부가 hover:bg-fill-soft로 붙인다 (두 hover가 같은 자리에서
    충돌하지 않도록 분기 안에만 둔다).
 
@@ -975,6 +980,10 @@
   color: var(--fg);
   &:hover {
     background: var(--fill-selected);
+    }
+  [data-sidebar] &,
+  [data-sidebar] &:hover {
+    background: var(--fill-hover);
     }
 }
 
@@ -1416,8 +1425,9 @@ body.dragging-row * {
    숫자의 오른쪽 끝이 튄다. 오른쪽 여백 5px은 행의 `pr-1`(4px)과 합쳐 9px이 되어, 그 끝이 구획
    헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
 
-   **색은 안 정한다.** 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
-   갈래의 경과는 상태색의 잉크를 든다(`SignalElapsed`) — 갈래마다 달라 부르는 자리가 든다. */
+   **색은 안 정한다** — 칸에 서는 조각이 저마다 든다. 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 두고 무리가 한 단
+   올린 `fg-secondary`를 들며(`shell-meta.tsx`), 신호 갈래의 경과도 그 조각이 제 `fg-secondary`를 든다(`SignalElapsed` —
+   codex-ds 스펙 S17). */
 @utility row-meta {
   @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-xs;
 }

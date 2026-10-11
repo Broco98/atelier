@@ -51,8 +51,8 @@ function Rail<Id extends string>({
   return (
     <div data-tauri-drag-region className="box-content flex w-(--rail) shrink-0 flex-col items-center pr-(--gap)">
       {/* 칸 묶음 — 흰 알약 캡슐(안쪽 2px · 칸 사이 2px) 안의 28px 원 칸이라 캡슐 폭이 레일 폭(32)이다(DS `.at-rail-group`).
-          이름은 패널(`작업 패널`)과 다르다 — 같으면 「작업 패널」로 집는 자리가 둘이 된다. 켜진 칸은 사이드바의 고른 행과 같은
-          `fill-selected`이고, 꺼진 칸의 hover(`quiet-hover`)는 꺼진 가지에만 둔다 — 켜진 칸에 겹치면 hover가 켜짐을 덮는다. */}
+          이름은 패널(`작업 패널`)과 다르다 — 같으면 「작업 패널」로 집는 자리가 둘이 된다. 켜진 칸은 패널 트리의 고른 행과 같은
+          `fill-selected`이고(codex-ds 결정 29), 꺼진 칸의 hover(`quiet-hover`)는 꺼진 가지에만 둔다 — 켜진 칸에 겹치면 hover가 켜짐을 덮는다. */}
       <div
         role="group"
         aria-label="레일"

@@ -10,6 +10,9 @@ import {
   typeIntoShell,
   unknownIpcCalls,
   띠,
+  칠한값,
+  토큰값,
+  토큰색,
 } from "./harness";
 
 // 설정에 들어가면 사이드바가 **설정 nav**로 바뀐다(#226 · UI개선 결정 21·22·27 · S17~S19).
@@ -71,6 +74,33 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
   await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 19 — **설정 nav 행은 main nav와 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 32 · `radius-lg` · `nav-row`(14/20
+// 500), 켜진 항목은 바탕에 붙은 사이드바의 고른 면 `fill-hover`, 지나는 항목은 `fill-soft`다. 같은 사이드바 자리에 갈아 서는 nav라
+// 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서 읽어 맞댄다.
+test("설정 nav 행은 32 · radius-lg · 500이고, 켜진 항목은 fill-hover · 지나는 항목은 fill-soft다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/terminal");
+
+  const [고른면, 지나는면] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fill-soft")];
+  const 행높이 = await 토큰값(page, "height", "--size-row-nav");
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  const 면 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "background-color"))[0];
+
+  await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
+  await expect.poll(() => 면("터미널")).toBe(고른면);
+  for (const name of ["터미널", "알림"] as const) {
+    expect(await 칠한값(켜짐(page, name), "height", "border-top-left-radius"), `${name} 행`).toEqual([행높이, 반경]);
+    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "500"]);
+  }
+
+  await 설정항목(page, "알림").hover();
+  await expect.poll(() => 면("알림")).toBe(지나는면);
+  // 켜진 항목은 옆을 지나도 그 면이다.
+  expect(await 면("터미널")).toBe(고른면);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

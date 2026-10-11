@@ -1040,8 +1040,8 @@ describe("칸이 물든다", () => {
     // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 상태색(기다림이면 `warning`)이 되는 것이다.
     // 그래서 **잉크는 이름 글자에만** 붙는다.
     // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료는 이름에 잉크가 없다(DS `.at-tab` — 무채색). 「상자 · 마크에
-    // 없다」는 두 부름의 잉크(`warning` · 띠 경과의 `accent-solid`)를 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에
-    // 붙어도 초록이다.
+    // 없다」는 두 부름의 잉크(`warning` · 안 본 완료의 `accent-solid` — `TONE`의 잉크 칸)를 함께 센다: 한 갈래의 잉크만 보면 다른
+    // 갈래의 잉크가 상자에 붙어도 초록이다.
     const 잉크 = /(?<![\w-])text-(?:warning|accent-solid)(?![\w-])/;
     for (const [kind, ink] of [
       ["waiting", "text-warning"],

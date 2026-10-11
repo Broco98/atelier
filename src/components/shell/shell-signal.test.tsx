@@ -104,13 +104,13 @@ describe("오른쪽 메타 — 부름은 경과만, 도는 중은 비움", () =>
   const signalMeta = (kind: ShellSignal, ms = 0) =>
     renderToStaticMarkup(<SignalMeta kind={kind} since={0} now={ms} />);
 
-  it.each([
-    ["waiting", "text-warning"],
-    ["done", "text-accent-solid"],
-  ] as const)("%s는 경과 하나만 서고, 상태색의 잉크로 칠한다", (kind, ink) => {
+  // 경과는 두 갈래가 같은 `fg-secondary`다(codex-ds 스펙 S17) — DS가 둔 상태색 잉크(`warning` · `accent-solid`)는 12px 글자의
+  // 대비 바닥 4.5에 못 미친다(대비는 L3 `works-sidebar`가 잰다). 부름의 색은 레인의 점이 든다.
+  it.each(["waiting", "done"] as const)("%s는 경과 하나만 서고, fg-secondary로 칠한다", (kind) => {
     const markup = signalMeta(kind, 125_000);
     expect(markup.replace(/<[^>]*>/g, "")).toBe("2m");
-    expect(markup).toContain(ink);
+    expect(markup).toContain("text-fg-secondary");
+    expect(markup).not.toMatch(/text-(?:warning|accent-solid)/);
     expect(markup).not.toContain('role="img"');
   });
 

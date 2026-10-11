@@ -89,30 +89,33 @@ export function subagentLabel(count: number): string | null {
  * | 점(`dot`) | 행 레인 · 띠 줄의 8px 점과 그 3px 무리 | `dot-wait` + `wait-soft` | `dot-new` + `new-soft` |
  * | 채움(`fill`) | 셸 탭의 칸 | `wait-soft` | `new-soft` |
  * | 테(`edge`) | 켜진 셸 탭의 1px 안쪽 테두리 | `dot-wait` | `dot-new` |
- * | 잉크(`text`) | 호버 카드 말 칸의 라벨 · 행 오른쪽 메타와 띠 줄의 경과(`SignalElapsed`) | `warning` | `accent-solid` |
+ * | 잉크(`text`) | 호버 카드 말 칸의 라벨 | `warning` | `accent-solid` |
  * | 탭 이름(`tab`) | 셸 탭의 이름 글자 | `warning` | 없음(칸의 글자색 — DS `.at-tab`) |
  *
  * **잉크만 점과 다른 이름이다.** 점의 파랑(`accent` #339cff)은 흰 면 위 2.9:1이라 글자에 쓰지 않는다(DS README 「대비」) —
  * 안 본 완료의 글자는 한 단 짙은 `accent-solid`다. 기다림은 점과 잉크가 같은 `warning`이다(`dot-wait`가 그 별칭).
  *
- * **잉크 한 칸이 세 자리를 칠하고, 탭 이름은 제 칸(`tab`)을 읽는다.** DS가 안 본 완료의 파란 글자를 정한 자리는 띠 줄의 경과
- * (`.end.new`) 하나다. 탭 이름은 DS `.at-tab`대로 무채색이고 색 글자는 기다림(`.at-tab.wait` — `warning`)뿐이다 — 물든 칸 위의
+ * **경과(`3m`)는 이 표를 읽지 않는다**(`SignalElapsed` — `fg-secondary`, codex-ds 스펙 S17). DS는 행 메타 · 띠 줄의 경과에 상태색
+ * 잉크를 두었지만(`.end.wait` · `.end.new`) 12px 글자의 대비 바닥 4.5에 못 미쳐(아래 표에 남긴 값 — 흰 면 위 3.8 · 3.6, 회색 바탕 위
+ * 3.5 · 3.4) 사이드바 e2e가 4.5로 재는 자리가 되었고, DS README 「대비」대로 경과만 낮췄다. 그 자리에서 부름의 색은 레인의 점이 든다.
+ *
+ * **탭 이름은 제 칸(`tab`)을 읽는다.** DS `.at-tab`대로 무채색이고 색 글자는 기다림(`.at-tab.wait` — `warning`)뿐이다 — 물든 칸 위의
  * 파란 이름은 2.7:1(다크 2.5:1)로 글자 바닥 아래였다. 탭에서 안 본 완료를 말하는 색은 칸의 채움(`new-soft`)이고 그것이 점과 같은
  * 가족이라, 이름이 무채색이어도 같은 셸이 자리마다 다른 부름을 말하지 않는다(스토리 79 — `signal-agreement.test.tsx`가 자리마다
- * 색 가족을 센다). 행 메타의 안 본 완료 경과(`.at-row .end`)도 DS에서는 무채색인데 아직 이 잉크(`accent-solid`)다 — 탭 이름을
- * 먼저 가른 것은 그 대비가 가장 낮았기 때문이다.
+ * 색 가족을 센다).
  *
- * 칠해지는 면 위의 대비(라이트 / 다크) — 두 잉크 모두 글자 바닥(4.5) 아래인 자리가 남는다.
+ * 상태색 잉크가 칠해지는 면 위의 대비(라이트 / 다크) — 글자 바닥(4.5) 아래인 자리가 남는다. 경과 두 줄은 DS가 둔 잉크의 값이고,
+ * 지금 그 자리는 `fg-secondary`다(흰 면 위 6.3 · 회색 바탕 위 6.1).
  *
  * | 자리 | 면 | 기다림 `warning` | 안 본 완료 `accent-solid` |
  * |---|---|---|---|
- * | 띠 줄 경과 | `surface` | 3.8 / 6.1 | 3.6 / 4.9 |
  * | 호버 카드 라벨 | `surface-elevated` | 3.8 / 5.1 | 3.6 / 4.1 |
- * | 행 오른쪽 메타의 경과 | `surface-shell` | 3.5 / 4.3 | 3.4 / 3.4 |
  * | 셸 탭 이름 | `surface`(본문 카드 머리) 위 물든 칸(채움) | 3.0 / 4.7 | — (꺼진 칸의 `fg-secondary` 5.7 / 7.0) |
+ * | (DS) 띠 줄 경과 | `surface` | 3.8 / 6.1 | 3.6 / 4.9 |
+ * | (DS) 행 오른쪽 메타의 경과 | `surface-shell` | 3.5 / 4.3 | 3.4 / 3.4 |
  *
- * 가장 낮은 것은 라이트의 기다리는 탭 이름이다(DS `.at-tab.wait`가 고른 색). 경과가 대비 검사에 걸리면 경과만 `fg-secondary`로 낮추는
- * 것은 codex-ds 스펙 S17이고 띠 · 행을 다시 짓는 티켓 19가 잰다.
+ * 가장 낮은 것은 라이트의 기다리는 탭 이름이다(DS `.at-tab.wait`가 고른 색). 호버 카드 라벨(「나를 기다림」)은 스펙 S17이 `warning`을
+ * 잇게 한 자리라 그대로 둔다.
  */
 const TONE: Readonly<
   Record<CallingKind, { dot: string; text: string; tab: string | null; fill: string; edge: string }>
@@ -181,7 +184,7 @@ export function signalTint(kind: ShellSignal, active: boolean): SignalTint | nul
 /**
  * 이 화면값이 행의 오른쪽 메타에 **경과를 다는가**(결정 13 · `sidebar-active-band` S4). 도는
  * 중은 안 단다 — 레인의 스피너가 「지금 돈다」를 이미 말하고, 경과를 붙이면 「3분째 기다린다」로
- * 읽히는데 그 셸은 일하는 중이다. 단다면 그 값은 부르는 갈래(`CallingKind`)다 — 경과가 그 잉크를 읽는다.
+ * 읽히는데 그 셸은 일하는 중이다. 단다면 그 값은 부르는 갈래(`CallingKind`)다 — 경과는 두 갈래가 같은 글자다(`SignalElapsed`).
  *
  * **함수 하나인 이유는 짝이 둘이기 때문이다.** 그리는 쪽(`SignalMeta`)과 시계를 켜는 쪽
  * (`Sidebar.tsx`의 `useNow`)이 같은 사실의 두 표현인데, 각자 조건을 적어 두면 규칙이 바뀌는
@@ -245,15 +248,18 @@ export function formatElapsed(ms: number): string {
  * 부른다. 두 자리가 같은 어휘라(띠 줄은 행의 축소판이다) 규격과 색이 갈리면 같은 셸의 같은 경과가
  * 두 무게로 읽힌다.
  *
- * **상태색의 잉크로 칠한다**(DS 행 메타의 `.end.wait` · 띠 줄의 `.end.new` — 굵기 500). 사이드바에서 마크가
- * 빠지면서(ui-refresh 결정 13) 부르는 행의 오른쪽 칸에 남은 것이 이것 하나라, 부차 정보의
- * `fg-tertiary`(바탕 위 3.2:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 상태색 그대로다(`TONE` 머리말).
+ * **글자는 `fg-secondary` 500이다**(codex-ds 스펙 S17). DS는 이 자리에 상태색 잉크(행 메타 `.end.wait`의 `warning` · 띠 줄
+ * `.end.new`의 `accent-solid`)를 두었지만, 12px 500 글자의 대비 바닥 4.5에 못 미친다(흰 면 위 3.8 · 3.6, 회색 바탕 위 3.5 · 3.4).
+ * DS README 「대비」가 「대비 검사 대상이면 경과만 `fg-secondary`(6.3:1)로 낮춘다」고 정해 둔 자리이고, 사이드바 e2e(`works-sidebar`)가
+ * 띠 줄 · 행 메타의 경과를 4.5로 잰다. 부름의 색은 레인의 점(`SignalLane`)이 들고, 「몇 분 기다렸나」는 읽어야 하는 글이다.
+ * 부차 정보의 `fg-tertiary`(바탕 위 3.2:1)로 두지 않는 것도 같은 까닭이다 — 사이드바에서 마크가 빠지면서(ui-refresh 결정 13)
+ * 부르는 행의 오른쪽 칸에 남은 것이 이것 하나다. 그래서 이 조각은 부름의 갈래를 받지 않는다 — 두 갈래가 같은 글자다.
  *
  * **표식(`data-elapsed`)은 검사가 이 조각을 집는 이름이다** — `tabular-nums`는 띠 머리의 수도 든다.
  */
-export function SignalElapsed({ kind, ms }: { kind: CallingKind; ms: number }) {
+export function SignalElapsed({ ms }: { ms: number }) {
   return (
-    <span data-elapsed="" className={cn("shrink-0 text-xs font-medium tabular-nums", TONE[kind].text)}>
+    <span data-elapsed="" className="shrink-0 text-xs font-medium tabular-nums text-fg-secondary">
       {formatElapsed(ms)}
     </span>
   );
@@ -292,7 +298,7 @@ export function SignalMeta({
   if (!showsElapsed(kind)) return null;
   return (
     <span className="row-meta">
-      <SignalElapsed kind={kind} ms={now - since} />
+      <SignalElapsed ms={now - since} />
     </span>
   );
 }

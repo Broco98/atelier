@@ -370,7 +370,7 @@ function SectionHeader({
 // 행 전체가 button이던 것이 **바깥 상자 + 형제 버튼 둘**이 됐다. 중첩 button은 HTML에서
 // 허용되지 않고, span role="button"으로 흉내 내면 Tab으로 도달할 수 없다 — SpecTree의
 // 파일 행이 이미 같은 문제를 그 구조로 풀었다.
-// 배경(선택·hover)도 **클릭도** 바깥 상자가 갖는다. 이름 버튼이 행 높이를 다 덮지만(`h-8`),
+// 배경(선택·hover)도 **클릭도** 바깥 상자가 갖는다. 이름 버튼이 행 높이를 다 덮지만(`size-row-nav`),
 // 2열의 오른쪽 메타는 그 버튼 **밖의 형제**다 — 클릭이 이름 버튼에만 있으면 셸 수와 경과가 선
 // 자리가 「배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리」가 된다(스토리 34). 그래서 클릭은
 // 바깥이 받고, 메타는 늘 포인터를 안 받아 그 자리의 클릭이 행으로 올라간다(메타 주석).
@@ -504,7 +504,8 @@ function WorkRow({
         "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-lg pr-1 transition-colors",
         // **채움은 없다.** 평평한 행이고, 회색이 서는 것은 고른 행 하나뿐이다 — 카드 채움(목업의
         // F·G)은 열여덟 행에 전부 무게를 줘 목록이 게시판이 된다.
-        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11) — nav 항목(`SidebarItem`)과 같은 값이다.
+        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11) — nav 항목(`SidebarItem`)과 같은 값이다. 고른 행의 면도 nav와 같은
+        // `fill-hover`다(사이드바 안의 `selected-row` — index.css).
         active ? "selected-row" : "text-fg hover:bg-fill-soft",
         // **끌리는 행은 흐려진다**(UI개선 스펙 §4) — 자리는 그대로 두고. 행을 빼면 아래 행들이 올라와
         // 재어 둔 기하가 그 순간 틀어지고, 「어디서 뽑았는지」도 사라진다.
@@ -530,8 +531,8 @@ function WorkRow({
         // 한때 고른 work의 행만은 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그
         // 갈래가 통째로 사라졌다 — 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙이다.
         //
-        // **행의 높이를 이 버튼이 든다**(`h-8`) — 바깥이 grid라 `h-full`은 자기가 잰 높이를 되받는
-        // 순환이 된다. nav 항목과 같은 32px이고, 셸이 몇 개든 무엇이 돌든 모든 work 행이 이
+        // **행의 높이를 이 버튼이 든다**(`size-row-nav`) — 바깥이 grid라 `h-full`은 자기가 잰 높이를 되받는
+        // 순환이 된다. nav 항목과 같은 32px이고(DS `SidebarRow`), 셸이 몇 개든 무엇이 돌든 모든 work 행이 이
         // 높이다 — 겹쳐 선 메타·핀은 둘 다 이보다 낮다. 제목 폭을 푸는 자리도 이 상자이고
         // (`data-title`이 그 안에서 `flex-1`이다) 포커스 링이 그려지는 자리도 여기다.
         //
@@ -539,7 +540,7 @@ function WorkRow({
         // 메타가 없는 행에서 제목 상자가 핀 앞 6px에서 멎어 그만큼 좁아진다. 띄우는 값은 이제
         // **메타 칸이 든다**(`pl-(--glyph-gap)`) — 메타가 있을 때만 난다(S34의 원칙). 제목 상자가
         // 핀 바로 앞에서 끝나는 것을 L3가 잰다.
-        className="col-start-1 row-start-1 flex h-8 min-w-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] text-left focus-ring"
+        className="col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] text-left focus-ring"
         // **셸의 마지막 말은 설명으로 붙는다**(결정 14 · 스토리 38). 호버 카드는 키보드로 닿지
         // 않으므로, 포커스한 사람이 「왜 부르나」를 듣는 자리가 여기다 — 이름(`제목 — 상태`)
         // 다음에 읽힌다. 이름을 늘리지 않는 것은 그 이름이 행·띠·탭이 함께 쓰는 짧은 말이라서다.

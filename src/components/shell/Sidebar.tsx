@@ -67,7 +67,9 @@ function Sidebar({
   onPickSettingsItem,
   onLeaveSettings,
 }: SidebarProps) {
-  const size = useResizableWidth("sidebar-width", 280, 240, 400);
+  // 기본 폭은 DS `size-sidebar`(290)이고 범위(240–400)는 지금 것을 잇는다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면
+  // 그대로 선다(`useResizableWidth`가 저장값을 읽는 규칙) — 기본값이 바뀌어도 고른 폭을 버리지 않는다.
+  const size = useResizableWidth("sidebar-width", 290, 240, 400);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 `WorkRowShells`(`WorkSectionList.tsx`) 머리말에 있다.
@@ -218,14 +220,21 @@ function Sidebar({
           규격을 쓰면서 자리가 갈린다. 그래서 규격은 `SidebarItem` 하나로, 거터는 GUTTER
           하나로 묶어 「같은 규격」이 주석이 아니라 구조가 되게 했다.
 
-          **윗변에 늘 1px 선이 있다**(UI개선 결정 25) — 작업 목록과 설정 사이다. 스크롤과
+          **윗변에 늘 선이 있다**(UI개선 결정 25) — 작업 목록과 설정 사이다. 스크롤과
           무관하다: 목록 **윗** 가장자리의 선은 굴렀을 때만 서지만(`SidebarWorkList`), 바닥은
-          목록이 어디에 있든 「여기부터 목록이 아니다」라서. 이 칸은 스크롤 상자가 아니라
-          테두리가 막대를 밀 일이 없다 — 목록 윗선이 테두리를 못 쓰는 이유가 여기엔 없다.
+          목록이 어디에 있든 「여기부터 목록이 아니다」라서. 선은 0.5px `border-heavy`(DS `.at-side-foot`
+          — codex-ds 티켓 19)이고 테두리가 아니라 칸 윗변에 겹쳐 칠한 면(`::before`)이다 — 0.5px 테두리는
+          엔진마다 굵기가 갈린다(탭 줄의 아랫선 · 호버 카드의 가름선과 같은 손버릇). 목록 윗선과 같은 선이다.
 
           표식은 검사가 이 칸을 정체성으로 집기 위한 것이다 — 버튼에서 부모를 몇 겹 거슬러
           오르는 길은 `SidebarItem`의 감싸개 수에 묶인다. */}
-      <div data-sidebar-foot="" className={cn("shrink-0 border-t pt-1.5", GUTTER)}>
+      <div
+        data-sidebar-foot=""
+        className={cn(
+          "relative shrink-0 pt-1.5 before:absolute before:inset-x-0 before:top-0 before:h-[0.5px] before:bg-border-heavy",
+          GUTTER,
+        )}
+      >
         {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). */}
         <SidebarItem icon={Settings} label="Settings" active={false} onClick={onOpenSettings} />
       </div>
@@ -248,7 +257,10 @@ function SidebarFrame({
   children: ReactNode;
 }) {
   return (
+    // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 바탕에 붙은 이 안에서는 `selected-row`가 `fill-hover`다(index.css의 그
+    // 유틸리티 · codex-ds 스펙 §5). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
     <aside
+      data-sidebar=""
       style={
         {
           "--sidebar-width": `${size.width}px`,
@@ -549,8 +561,10 @@ function SidebarItem({
   return (
     <div
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-lg pr-1 transition-colors",
+        // DS `SidebarRow` — 32(`size-row-nav`) · `radius-lg`. 글자는 이름 버튼의 `nav-row`(14/20 500)이고 아이콘은 17이다.
+        "flex h-(--size-row-nav) shrink-0 items-center rounded-lg pr-1 transition-colors",
         // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
+        // 고른 행은 `fill-hover`(사이드바 안의 `selected-row`), 지나는 행은 `fill-soft`다(DS `.at-row.is-on` · `.at-row:hover`).
         active ? "selected-row" : "text-fg hover:bg-fill-soft",
       )}
     >
