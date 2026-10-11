@@ -28,7 +28,8 @@ import {
 // 넷을 하나로 모았다 — `works-changed.spec.ts`), 그것을 여기 기대값으로 적으면 앱의 변경이 이 파일을 깬다.
 //
 // (5)는 뒤에 하네스로 올라온 도구다 — `works-changed.spec.ts`가 딛는 멎은 호출 수(`steadyCount`)가 멎지 않는 커맨드에서 끝없이
-// 기다리지 않고 센 수를 싣고 던지는지를 잰다.
+// 기다리지 않고 센 수를 싣고 던지는지를 잰다. (6)은 증거 문(`evidence.ts`)이 워커의 브라우저를 갈아 띄우는지를 잰다 — 모든 L3가
+// 그 위에서 돈다.
 
 const [pinnedWork, plainWork] = WORKS;
 const [project] = PROJECTS;
@@ -371,4 +372,22 @@ test("(5) 호출 수가 멎으면 그 수를 주고, 멎지 않으면 상한에�
     /list_projects의 호출 수가 1000ms 안에 멎지 않았다 — 0\.3초마다 센 수: \d+( → \d+)+/,
   );
   expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── (6) 워커의 브라우저 갈아 띄우기 ───
+//
+// WebKit 브라우저 하나는 쪽을 63개까지만 연다 — 64번째 쪽은 서지만 탐색이 나가지 않는다(`evidence.ts`의 `쪽상한` 머리말). 워커는
+// 테스트마다 쪽 하나를 여므로 그 상한이 「워커마다 64번째 테스트의 `page.goto` 시간 초과」로 났다. 증거 문(`evidence.ts`)의
+// `browser`가 쪽 `쪽상한`개마다 브라우저를 갈아 띄운다 — 여기서 그 문의 `browser`로 컨텍스트를 일흔 번 열어 64번째 뒤에도 탐색이
+// 나가는지 잰다. 갈아 띄우기가 빠지면 늦어도 64번째 쪽에서 빨갛다(이 워커가 앞서 연 쪽까지 세므로 더 일찍일 수 있다).
+
+test("(6) 워커의 브라우저에서 쪽을 일흔 번 열어도 64번째 뒤까지 탐색이 나간다", async ({ browser }) => {
+  for (let 번째 = 1; 번째 <= 70; 번째 += 1) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    // 짧은 상한이다 — 열린 쪽의 `data:` 탐색은 수십 ms라, 5초를 넘기면 탐색이 나가지 않은 것이다.
+    await page.goto(`data:text/html,<p>${번째}</p>`, { timeout: 5_000 });
+    await expect(page.locator("p")).toHaveText(String(번째));
+    await context.close();
+  }
 });
