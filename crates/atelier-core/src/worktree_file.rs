@@ -4,11 +4,12 @@
 //! 좁힌 뷰 타입만 보낸다(결정 「git 호출은 Rust」). 파일이 없거나 워크트리가 없는 것은 `Err`가 아니라 **답의 갈래**다 — 화면이
 //! 탭 안에 그 까닭을 그린다(스토리 61). `Err`는 부른 쪽이 틀렸을 때(밖을 가리키는 slug · `..` · 절대 경로)뿐이다.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Serialize;
 
-use crate::{Error, Result};
+use crate::worktree::worktree_dir;
+use crate::Result;
 
 /// 파일 읽기의 답 — 갈래마다 화면의 몸이 하나다(구현 스펙 「파일 읽기」 표). 글이 아닌 것(그림 · 바이너리 · UTF-8 아님 ·
 /// 너무 큼)은 내용 없이 크기만 싣는다.
@@ -113,17 +114,11 @@ const READ_LIMIT: u64 = 5 * 1024 * 1024;
 /// 8000바이트라, 같은 파일을 git과 다르게 부르지 않는다(결정 36 「git과 같은 판정」).
 const BINARY_SNIFF_LEN: usize = 8000;
 
-/// 워크트리 자리. 프로젝트 slug도 work slug와 같은 검사를 지난다 — 경로 조각이 되기 때문이다.
-fn worktree_dir(works_root: &Path, slug: &str, project: &str) -> Result<PathBuf> {
-    if !crate::slug::is_safe_slug(project) {
-        return Err(Error::Validation(format!("invalid project: {project}")));
-    }
-    Ok(crate::works::worktrees_dir(&crate::works::work_dir(works_root, slug)?).join(project))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
+    use std::path::PathBuf;
     use std::process::Command;
 
     fn run_git(dir: &Path, args: &[&str]) {

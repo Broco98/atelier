@@ -196,8 +196,9 @@ impl Folder {
     }
 }
 
-/// 워크트리 자리. 프로젝트 slug도 work slug와 같은 검사를 지난다 — 경로 조각이 되기 때문이다.
-fn worktree_dir(works_root: &Path, slug: &str, project: &str) -> Result<PathBuf> {
+/// 워크트리 자리 — 워크트리 읽기의 함수들(트리 목록 · 파일 읽기)이 모두 이것으로 찾는다. 프로젝트 slug도 work slug와 같은
+/// 검사를 지난다 — 경로 조각이 되기 때문이다.
+pub(crate) fn worktree_dir(works_root: &Path, slug: &str, project: &str) -> Result<PathBuf> {
     if !crate::slug::is_safe_slug(project) {
         return Err(Error::Validation(format!("invalid project: {project}")));
     }
