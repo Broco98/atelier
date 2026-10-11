@@ -1,0 +1,195 @@
+import type { RecordLine } from "./types";
+
+// 대화 접기(three-axes 티켓 17) — 기록 줄을 받아 화면 모델(턴 · 메시지 · 생각 · 머리줄 · 도는가)로 접는 **순수 함수**다.
+// 대화창은 대화를 이것 하나로 그린다: 처음 그릴 때 읽은 기록도, 흐르는 기록 줄 이벤트도 같은 줄이라(구현 스펙 「기록」) 이
+// 함수는 어디서 온 줄인지 모른다.
+//
+// **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16). Codex의 줄도 Claude 변환기가 옮긴 줄도 `session/update`의
+// `sessionUpdate` 갈래로만 읽는다 — 엔진마다 다른 것은 칩의 목록뿐이다. 뒤의 화면 장들이 여기에 갈래를 더한다: 도구 줄의
+// 문구 · 출력 · diff(18), 대기와 멈춤(20), 승인 · 계획 카드(21), 상태 · 상태 줄(23).
+//
+// 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라(워크플로 S34) 스키마에 없는 `sessionUpdate`도 오고, 그것이 화면을
+// 멈추면 안 된다.
+
+/** 턴이 끝난 모양 — `turn-end` 줄, 또는 그 줄 없이 에이전트가 사라진 것(죽음 · 닫힘). */
+export interface TurnEnd {
+  /** 에이전트가 준 끝 까닭(`end_turn` · `cancelled` · `max_tokens` …). 말을 받지 않았거나 사라졌으면 null이다. */
+  stopReason: string | null;
+  /** 말을 보낸 때부터 끝날 때까지. */
+  durationMs: number;
+  /** 우리가 멈췄나 — `cancelled`가 사람의 멈춤인지 엔진의 거부인지를 가른다(S24). */
+  cancelledByUs: boolean;
+  /** 말을 받지 않은 오류나 사라진 까닭. */
+  error: string | null;
+}
+
+/** 턴 안의 한 줄. 같은 메시지의 조각들은 한 줄로 이어 붙는다. */
+export type Entry =
+  | { kind: "message"; key: string; messageId: string | null; text: string }
+  | { kind: "thought"; key: string; messageId: string | null; text: string }
+  /** 도구 호출 — 처음 온 `tool_call`에 뒤의 `tool_call_update`를 덮어 합친 값. 문구 · 출력은 18이 그린다. */
+  | { kind: "tool"; key: string; toolCallId: string; call: Record<string, unknown> };
+
+export interface Turn {
+  /** 턴의 정체 — 접고 펴기를 기억하는 열쇠다. 보낸 말의 seq에서 나온다. */
+  key: string;
+  /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말 · 인용 블록은 기록에만 있다. 턴 밖 update로 시작한 턴은 null이다. */
+  sent: string | null;
+  startedAt: string;
+  entries: Entry[];
+  /** 끝났으면 그 모양, 도는 중이면 null. */
+  end: TurnEnd | null;
+}
+
+export interface ChatModel {
+  turns: Turn[];
+  /** 마지막 턴이 도는 중인가. */
+  running: boolean;
+}
+
+type Json = Record<string, unknown>;
+
+const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
+const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
+
+export function foldConversation(lines: readonly RecordLine[]): ChatModel {
+  const turns: Turn[] = [];
+  let open: Turn | null = null;
+  const start = (key: string, sent: string | null, at: string): Turn => {
+    const turn: Turn = { key, sent, startedAt: at, entries: [], end: null };
+    turns.push(turn);
+    return turn;
+  };
+
+  for (const line of lines) {
+    const payload = isObject(line.payload) ? line.payload : {};
+    switch (line.kind) {
+      case "sent":
+        open = start(`t${line.seq}`, text(payload.text) ?? "", line.at);
+        break;
+      case "update": {
+        const update = isObject(payload.update) ? payload.update : null;
+        const kind = update && text(update.sessionUpdate);
+        if (!update || !kind) break;
+        if (kind === "tool_call_update") {
+          // 늦게 온 update는 그 도구 줄을 찾아 붙는다(three-axes 결정 28) — 턴이 이미 끝났어도 같다.
+          const id = text(update.toolCallId);
+          const tool = id ? findTool(turns, id) : null;
+          if (tool) tool.call = { ...tool.call, ...update };
+          else if (id && open) open.entries.push({ kind: "tool", key: `u${line.seq}`, toolCallId: id, call: update });
+          break;
+        }
+        if (kind !== "agent_message_chunk" && kind !== "agent_thought_chunk" && kind !== "tool_call") break;
+        // 보낸 말 없이 온 update는 에이전트가 스스로 이어 간 턴이다(S4) — 턴 하나를 연다.
+        const turn: Turn = open ?? (open = start(`o${line.seq}`, null, line.at));
+        if (kind === "tool_call") {
+          const id = text(update.toolCallId) ?? `seq-${line.seq}`;
+          turn.entries.push({ kind: "tool", key: `c${line.seq}`, toolCallId: id, call: update });
+          break;
+        }
+        const content = isObject(update.content) ? update.content : {};
+        const chunk = content.type === "text" ? text(content.text) : null;
+        if (chunk === null) break;
+        appendChunk(turn, kind === "agent_message_chunk" ? "message" : "thought", text(update.messageId), chunk, line.seq);
+        break;
+      }
+      case "turn-end": {
+        if (!open) break;
+        const error = isObject(payload.error) ? text(payload.error.message) : null;
+        open.end = {
+          stopReason: text(payload.stopReason),
+          durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
+          cancelledByUs: payload.cancelledByUs === true,
+          error,
+        };
+        open = null;
+        break;
+      }
+      case "session": {
+        // 답 없이 사라진 턴에는 턴 끝 줄이 없다 — 죽음 · 닫힘 줄이 그 자리를 맡는다(호스트가 그 턴을 쉬는 것으로 돌린다).
+        if (!open || (payload.state !== "died" && payload.state !== "closed")) break;
+        open.end = {
+          stopReason: null,
+          durationMs: Math.max(0, Date.parse(line.at) - Date.parse(open.startedAt)) || 0,
+          cancelledByUs: false,
+          error: text(payload.reason) ?? (payload.state === "closed" ? "대화가 닫혔어요" : "에이전트가 끝났어요"),
+        };
+        open = null;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return { turns, running: open !== null };
+}
+
+function findTool(turns: readonly Turn[], id: string): Extract<Entry, { kind: "tool" }> | null {
+  for (let t = turns.length - 1; t >= 0; t -= 1) {
+    for (const entry of turns[t].entries) {
+      if (entry.kind === "tool" && entry.toolCallId === id) return entry;
+    }
+  }
+  return null;
+}
+
+/** 조각을 이어 붙인다 — 바로 앞 줄이 같은 갈래 · 같은 메시지면 그 줄에, 아니면 새 줄로. */
+function appendChunk(turn: Turn, kind: "message" | "thought", messageId: string | null, chunk: string, seq: number): void {
+  const last = turn.entries[turn.entries.length - 1];
+  if (last && last.kind === kind && last.messageId === messageId) {
+    last.text += chunk;
+    return;
+  }
+  turn.entries.push({ kind, key: `${kind === "message" ? "m" : "r"}${seq}`, messageId, text: chunk });
+}
+
+/**
+ * 턴 끝 메시지가 시작하는 자리 — **마지막 도구 호출 뒤의 답**(워크플로 S12)이다. 접힌 턴은 이 자리부터의 메시지만 펼쳐 두고,
+ * 생각과 도구 줄과 그 앞의 메시지는 머리줄 아래로 접는다.
+ */
+export function finalFrom(turn: Turn): number {
+  let lastTool = -1;
+  turn.entries.forEach((entry, index) => {
+    if (entry.kind === "tool") lastTool = index;
+  });
+  return lastTool + 1;
+}
+
+/** 접힌 턴에도 펼쳐 두는 줄들 — 턴 끝 메시지. */
+export function finalMessages(turn: Turn): Entry[] {
+  return turn.entries.slice(finalFrom(turn)).filter((entry) => entry.kind === "message");
+}
+
+/** 걸린 시간 — 「8초」 · 「3분 41초」 · 「1시간 5분」. 1초보다 짧아도 1초로 말한다(「0초 동안」은 말이 안 된다). */
+export function spoken(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}초`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return seconds % 60 === 0 ? `${minutes}분` : `${minutes}분 ${seconds % 60}초`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 === 0 ? `${hours}시간` : `${hours}시간 ${minutes % 60}분`;
+}
+
+/** 끝 까닭 중 사람에게 말로 옮길 것들 — 그 밖은 엔진이 준 글자 그대로 보인다. */
+const STOPPED: Record<string, string> = {
+  max_tokens: "답이 길이 한도에 닿아 멈췄어요",
+  max_turn_requests: "한 턴의 요청 한도에 닿아 멈췄어요",
+  refusal: "에이전트가 거절해서 멈췄어요",
+};
+
+/**
+ * 턴 머리줄(S24). `end_turn`이면 「N초 동안 작업함」, 우리가 멈춘 `cancelled`면 「N초 후에 중단했습니다」, 우리가 멈추지 않은
+ * `cancelled`(Codex 거부)면 「거부해서 멈췄어요」, 그 밖은 까닭을 보인다.
+ */
+export function headline(end: TurnEnd): string {
+  const took = spoken(end.durationMs);
+  if (end.stopReason === "end_turn") return `${took} 동안 작업함`;
+  if (end.stopReason === "cancelled") return end.cancelledByUs ? `${took} 후에 중단했습니다` : "거부해서 멈췄어요";
+  if (end.stopReason !== null) return STOPPED[end.stopReason] ?? `멈췄어요 — ${end.stopReason}`;
+  return end.error ? `멈췄어요 — ${end.error}` : "멈췄어요";
+}
+
+/** 도는 턴의 머리줄 — 보낸 때부터 지금까지. */
+export function runningHeadline(turn: Turn, now: number): string {
+  return `${spoken(now - Date.parse(turn.startedAt))} 동안 작업 중입니다`;
+}

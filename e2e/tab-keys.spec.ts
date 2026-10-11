@@ -133,7 +133,7 @@ test("탭을 누르면 본문이 그 칸의 것으로 바뀐다", async ({ page 
 // **칸은 레일 묶음(`role="group"`) 안에서 집는다** — 탭 줄의 `spec` 칸과 이름이 같다. 문서는 `specWork`의 트리다(폴더 「증거」).
 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "info") => 레일(page).getByRole("button", { name, exact: true });
+const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
 /** 패널 토글 — 이름이 상태를 탄다(열렸으면 「접기」, 닫혔으면 「펼치기」). */
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });

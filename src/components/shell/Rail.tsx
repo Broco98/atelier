@@ -3,7 +3,7 @@ import { PanelRight } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/** 레일의 칸 하나 — 소문자 영어 이름(`spec` · `info`, CONTEXT.md)이다. 칸은 목록으로 받아 뒤에 더해진다. */
+/** 레일의 칸 하나 — 소문자 영어 이름(`spec` · `chat` · `info`, CONTEXT.md)이다. 칸은 목록으로 받아 뒤에 더해진다. */
 export interface RailItem<Id extends string = string> {
   id: Id;
   label: string;
