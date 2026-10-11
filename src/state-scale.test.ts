@@ -13,7 +13,7 @@ import { blankComments } from "./blank-comments";
 // 그 이름은 두 뜻이 겹친다: shadcn이 건 옅은 면(Codex `fill-hover`)과 Codex 파랑. 유틸리티는 이제 파랑이라(codex-ds 스펙 S1),
 // registry가 들여오는 `focus:bg-accent` · `hover:bg-accent`는 옅은 면이 아니라 **파랑 면**으로 켜진다. 그래서 메뉴 · Select의
 // 켜진 줄도 registry의 그 쓰임이 아니라 `focus:bg-fill-hover`로 적는다 — 이 검사에 예외가 없다.
-// 변형 없이 칠한 `bg-accent`(끌기 선 · 메모리 막대 · 추이 끝점 같은 Codex 파랑의 면)는 그 뜻 그대로라 막지 않는다.
+// 변형 없이 칠한 `bg-accent`(끌기 선 · 끌어 놓을 반쪽 같은 Codex 파랑의 면)는 그 뜻 그대로라 막지 않는다.
 //
 // 이 불변조건은 눈으로는 지켜지지 않는다 — 새로 들인 부품의 `focus:bg-accent` 하나는 그 줄을 키보드로 켜기 전까지 화면에
 // 없다. 그래서 눈이 아니라 여기서 막는다.

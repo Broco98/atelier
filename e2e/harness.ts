@@ -1065,6 +1065,17 @@ export const 칠한값 = (target: Locator, ...properties: string[]) =>
 export const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
 
 /**
+ * 그 요소에 칠해진 `box-shadow`를 층으로 갈라 투명한 빈 층을 걷은 나머지 — 링 유틸리티(`inset-ring-*`)만 두른 자리면 그 링 하나가
+ * 남는다. `그림자`와 같은 빈 층을 걷되 층의 자리를 가리지 않고, 층마다 따로 맞대도록 목록으로 돌려준다. 층 사이의 쉼표만 가르고
+ * 색 함수(`rgb(…)`) 안의 쉼표는 둔다.
+ */
+export const 칠한링 = async (target: Locator) =>
+  (await 칠한값(target, "box-shadow"))[0]
+    .split(/,(?![^(]*\))/)
+    .map((one) => one.trim())
+    .filter((one) => !one.startsWith("rgba(0, 0, 0, 0)"));
+
+/**
  * 그 요소 글자의 **바탕과의 대비**. 글자에서 위로 올라가며 요소마다 배경색과 불투명도를 모아, 처음 만나는 불투명한 배경 위에 그
  * 사이의 반투명한 면과 글자색을 차례로 섞어 잰다(`contrastInPage`) — 옅게 하는 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은
  * 값으로 읽히고, 고른 행처럼 글자 밑에 반투명한 면이 깔린 자리는 그 면까지 얹은 바탕 위에서 잰다. 끝까지 불투명한 배경이 없으면

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { EyeOff, Folder, SquareTerminal, Unlink } from "lucide-react";
@@ -28,7 +28,7 @@ import { endAsk, straysOf } from "./process-groups";
 import { exceptionName, identityKey, processLabel, processRowLabel, shownNodes, subtreeAt } from "./process-tree";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
-import { BLOCK, ColumnHead, RowButton, RowMenu, Section, TreeRow, memoryShare } from "./tree-rows";
+import { ColumnHead, RowButton, RowMenu, Section, SectionButton, TreeRow, memoryShare } from "./tree-rows";
 import {
   HELPER_LABEL,
   groupRowLabel,
@@ -62,8 +62,8 @@ import type { CleanupEvent, PoolShell } from "./types";
  * 셸 묶음(작업 구획)은 work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work
  * 행은 그 트리의 합이다. 맨 위에 요약 타일(티켓 30)과 열 머리가 서고, 작업 구획 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 확정 고아 ·
  * 출처 불명 · 다른 인스턴스 · 예외(티켓 31 — `StraySections`), 정리 기록(티켓 32 — `CleanupLogSection`)이 차례로 선다. 자손 행에는
- * [끝내기]와 행 메뉴(「예외로 두기」)가 선다. 머리 카드에는 [조용한 셸 모두 닫기](티켓 32)가 선다. 줄의 열 · 묶음 · 구획 머리의 모양은
- * `tree-rows.tsx`가 든다(ui-refresh 판 06).
+ * [끝내기]와 행 메뉴(「예외로 두기」)가 선다. 머리 카드에는 [조용한 셸 모두 닫기](티켓 32)가 선다. 줄의 열 · 구획 머리의 모양은
+ * `tree-rows.tsx`가 든다(DS `ProcessTree`, codex-ds 티켓 22).
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
  *
@@ -143,7 +143,8 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       {/* 카드 안에 고를 것이 없어 카드 머리가 없다 — 몸이 곧바로 선다. */}
       <Card as="main" label="Processes" className="flex-1">
         {/* 카드의 몸 — 둘레는 카드 안 여백(`--card-pad`)이고, 내용은 그 안에서 넓은 폭(`--measure-wide`) 가운데에 선다
-            (ui-refresh 결정 12). 차례는 요약 타일 → 열 머리 → 구획들이고, 구획 사이는 8px이다. */}
+            (ui-refresh 결정 12 — Codex가 글 폭을 말하지 않아 잇는다). 차례는 요약 타일 → 열 머리(22 아래) → 구획들이고, 펼친 구획의
+            몸 끝에 10이 남는다(`Section`). */}
         <div className="min-h-0 flex-1 overflow-y-auto p-(--card-pad) scroll-quiet">
           <div className="mx-auto w-full max-w-(--measure-wide)">
             {/* **제목은 머리 카드가 보여 주고, 제목 역할은 이 줄이 진다** — 머리 카드의 이름은 제목 역할이 없는 글자라(설정
@@ -161,14 +162,15 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                 fold={folds.section("works")}
               >
                 {/* **트리 역할이다**(S58) — 스크린리더가 행마다 깊이를 읽는다. 줄은 평평하게 서고 깊이는 `aria-level`이 말한다(중첩
-                    `group` 대신). 줄마다 접근성 이름이 한 문장이라 안의 글자 조각을 이어 읽지 않는다. 작업 하나가 옅은 면 묶음 하나다. */}
-                <div role="tree" aria-label="셸" className="flex flex-col gap-2">
+                    `group` 대신). 줄마다 접근성 이름이 한 문장이라 안의 글자 조각을 이어 읽지 않는다. 작업 줄과 그 셸 줄들이 묶음의
+                    면 없이 한 표로 잇고, 줄마다 아래 선이 가른다(DS `ProcessTree`). */}
+                <div role="tree" aria-label="셸" className="flex flex-col">
                   {tree.map((group) => {
                     const fold = folds.row(foldKey.work(group.owner), group.name);
                     return (
-                      <div key={group.owner} className={BLOCK}>
+                      <Fragment key={group.owner}>
                         {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
-                            한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. 접으면 묶음에 이 줄만 남는다. */}
+                            한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. 접으면 그 work에는 이 줄만 남는다. */}
                         <GroupRow group={group} total={total} fold={fold} />
                         {fold.open &&
                           group.shells.map((node) => (
@@ -183,7 +185,7 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                               onGo={() => goToShell({ id: node.shell.id, owner: node.shell.owner })}
                             />
                           ))}
-                      </div>
+                      </Fragment>
                     );
                   })}
                 </div>
@@ -191,26 +193,26 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
             )}
             {ownerless.length > 0 && (
               // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 조용하지 않아 남은 셸. work마다
-              // 선다 — 작업 구획처럼 work 하나가 묶음 하나다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 한 번
+              // 선다 — 작업 구획처럼 work 줄 밑에 그 셸 줄들이다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 한 번
               // 묻는다. [이동]은 없다: 그 work은 목록에 없어 갈 화면이 없다.
               <Section
                 icon={Unlink}
                 title="주인 잃은 셸"
                 note={shellCount(ownerless.reduce((sum, group) => sum + group.shells.length, 0))}
-                action={<RowButton onClick={() => void closeOwnerless()}>모두 닫기</RowButton>}
+                action={<SectionButton onClick={() => void closeOwnerless()}>모두 닫기</SectionButton>}
                 fold={folds.section("ownerless")}
               >
-                <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col gap-2">
+                <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col">
                   {ownerless.map((group) => {
                     const fold = folds.row(foldKey.work(group.owner), group.name);
                     return (
-                      <div key={group.owner} className={BLOCK}>
+                      <Fragment key={group.owner}>
                         <GroupRow group={group} total={total} fold={fold} />
                         {fold.open &&
                           group.shells.map((node) => (
                             <StoreShellRows key={node.shell.id} node={node} level={2} now={now} folds={folds} />
                           ))}
-                      </div>
+                      </Fragment>
                     );
                   })}
                 </div>
@@ -226,7 +228,7 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                 note={shellCount(offscreen.length)}
                 fold={folds.section("offscreen")}
               >
-                <div role="tree" aria-label="화면 밖 셸" className={BLOCK}>
+                <div role="tree" aria-label="화면 밖 셸" className="flex flex-col">
                   {offscreen.map((node) => (
                     <ShellRows
                       key={poolKey(node.pool)}
@@ -360,9 +362,10 @@ function withKey<T>(set: ReadonlySet<T>, key: T, present: boolean): ReadonlySet<
 }
 
 /**
- * work 행 — 앞에 work 상태 글리프(사이드바와 같은 것, Codex `accent` — ui-refresh 판 06), 이름, 셸 수, 그 work 셸들의 트리 합. 메모리 칸
- * 앞의 막대는 그 합이 요약 합계의 얼마인지다(`memoryShare`). 최상위 터미널은 셸 글리프이고, 목록에 없는 work(목록을 아직 못 읽었다 ·
- * 주인 잃은 셸의 work)은 글리프 없이 그 자리만 비워 이름이 다른 work의 이름과 같은 x에 선다.
+ * work 행 — 앞에 work 상태 글리프(사이드바와 같은 것 — 그 상태의 색), 이름, 셸 수(12 `fg-tertiary` — DS `.muted`), 그 work 셸들의
+ * 트리 합. 메모리 칸 앞의 막대는 그 합이 요약 합계의 얼마인지다(`memoryShare`). 최상위 터미널은 셸 글리프(이름 칸의 아이콘 —
+ * `fg-tertiary`, DS `.at-pr-row .nm .ic`)이고, 목록에 없는 work(목록을 아직 못 읽었다 · 주인 잃은 셸의 work)은 글리프 없이 그 자리만
+ * 비워 이름이 다른 work의 이름과 같은 x에 선다.
  */
 function GroupRow({ group, total, fold }: { group: GroupNode; total: number | null | undefined; fold: RowFold }) {
   const metrics = groupTotals(group);
@@ -377,14 +380,14 @@ function GroupRow({ group, total, fold }: { group: GroupNode; total: number | nu
       fold={fold}
     >
       {slugOfOwner(group.owner) === null ? (
-        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-accent" />
+        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
       ) : group.status !== null ? (
-        <StatusIcon status={group.status} className="text-accent" />
+        <StatusIcon status={group.status} />
       ) : (
         <span aria-hidden className="size-3.5 shrink-0" />
       )}
       <span className="min-w-0 truncate">{group.name}</span>
-      <span className="ml-0.5 shrink-0 text-xs font-normal text-fg-secondary">
+      <span className="shrink-0 text-xs font-normal text-fg-tertiary">
         {shellCount(group.shells.length)}
       </span>
     </TreeRow>
@@ -473,9 +476,9 @@ function ShellRows({
           </>
         }
       >
-        <SquareTerminal aria-hidden className="size-3.75 shrink-0 text-fg-tertiary" />
+        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
         <span className="min-w-0 truncate">{name}</span>
-        <span className="ml-1 flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (

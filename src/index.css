@@ -418,16 +418,18 @@
    이름(`xs` … `4xl`)은 Codex 값으로 덮이고(`xs`는 Tailwind의 2px가 아니라 Codex의 4px다), Tailwind에만 있는 이름은 남지 않아
    반경 이름공간이 아래 목록과 같다.
    `static`이라 쓰는 유틸리티가 없어도 `:root`에 변수가 선다 — 검사가 이름으로 읽는다(`e2e/frame.spec.ts`).
-     xs         4     문서 안 링크의 포커스 링
-     sm         6     문서 안 인라인 코드 · 트리의 확장자 꼬리표
+     2xs        2     문서 인용의 왼쪽 막대 · Processes의 메모리 막대
+     xs         4     문서 안 링크의 포커스 링 · 문서 안 인라인 코드
+     sm         6     상태 배지 · 트리의 확장자 꼬리표 · Processes의 포트 칩
      md         8     입력칸 · 툴팁 · 작은 아이콘 버튼(24 · 26) · 작은 버튼(`Button` xs) · 세그먼트 칸 · kbd · 툴바 칸
      lg        10     버튼(32) · 아이콘 버튼(28) · 검색칸 · 탭 · 목록 행 · 메뉴 행 · Select
+     xl        12     머리 카드 · 문서의 콜아웃 · Processes의 요약 타일
      2xl       16     카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
+     3xl       20     코드 블록(문서 · mermaid)
      4xl       24     확인 창
-     full    9999     큰 버튼(`Button` lg — 36) · 상태 배지 · 칩 · 스위치 · 꼬리표 · 경로 줄
-   나머지(`2xs` 2 · `xl` 12 · `3xl` 20 · `bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 ·
-   확인 창은 DS 「간격 · 반경 · 크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는
-   자리의 일이다.
+     full    9999     큰 버튼(`Button` lg — 36) · 점 · 칩 · 스위치 · 꼬리표 · 경로 줄
+   나머지(`bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 · 확인 창은 DS 「간격 · 반경 ·
+   크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는 자리의 일이다.
    `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
    이 이름들을 모서리로 아는지도 같은 검사가 잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로
    옮기기 전의 기록이다 — 머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
@@ -1437,7 +1439,7 @@ body.dragging-row * {
    **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」은 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는
    그 줄의 고정폭(`text-xs` · `font-mono`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
    덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
-   Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
+   Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-port` — 20px · `radius-sm` · `fill-soft` · 고정폭)이라 `tree-rows.tsx`가 든다. */
 @utility tag {
   @apply inline-flex h-[22px] shrink-0 items-center rounded-full bg-fill-hover px-2 whitespace-nowrap text-fg-secondary;
 }

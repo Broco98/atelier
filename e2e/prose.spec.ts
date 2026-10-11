@@ -1,6 +1,6 @@
-import { expect, test, type Locator } from "./evidence";
+import { expect, test } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls, 칠한값, 토큰값, 토큰색 } from "./harness";
+import { installFixtureBackend, unknownIpcCalls, 칠한값, 칠한링, 토큰값, 토큰색 } from "./harness";
 
 // codex-ds — **문서 본문의 블록이 DS `Prose` 값이다**(DS 「Codex 그대로」 부품 · DS README 「간격 · 반경 · 크기」). 코드 블록(다이어그램
 // 블록도) `radius-3xl`(20) · `surface-code` · 1px `border-light` 링, 인라인 코드 `radius-xs`(4) · `fill-soft` · 안쪽 1 · 5, 콜아웃 `surface-under` ·
@@ -38,13 +38,6 @@ const 문서 = [
   "",
 ].join("\n");
 
-/** 칠해진 `box-shadow`에서 투명한 빈 층을 걷은 나머지 — 링 하나가 남는다. */
-const 링 = async (target: Locator) =>
-  (await 칠한값(target, "box-shadow"))[0]
-    .split(/,(?![^(]*\))/)
-    .map((one) => one.trim())
-    .filter((one) => !one.startsWith("rgba(0, 0, 0, 0)"));
-
 test("문서 본문의 코드 블록 · 인라인 코드 · 콜아웃 · 인용 · 가름선이 DS Prose 값이다", async ({ page }) => {
   await installFixtureBackend(page, { read_spec_file: 문서 });
   await page.goto(`/works/${pinnedWork.slug}`);
@@ -56,12 +49,12 @@ test("문서 본문의 코드 블록 · 인라인 코드 · 콜아웃 · 인용 
   expect(블록반경).toBe(await 토큰값(page, "border-top-left-radius", "--radius-3xl"));
   expect(블록반경, "코드 블록 — radius-3xl").toBe("20px");
   expect(블록면).toBe(await 토큰색(page, "--surface-code"));
-  expect(await 링(블록)).toEqual([`${await 토큰색(page, "--border-light")} 0px 0px 0px 1px inset`]);
+  expect(await 칠한링(블록)).toEqual([`${await 토큰색(page, "--border-light")} 0px 0px 0px 1px inset`]);
 
   // 다이어그램 블록도 같은 코드 블록이다 — 머리 줄(「mermaid」)을 든 상자가 r20 · 코드 면 · 같은 링이다.
   const 다이어그램 = page.getByText("mermaid", { exact: true }).locator("xpath=../..");
   expect(await 칠한값(다이어그램, "border-top-left-radius", "background-color")).toEqual([블록반경, 블록면]);
-  expect(await 링(다이어그램)).toEqual(await 링(블록));
+  expect(await 칠한링(다이어그램)).toEqual(await 칠한링(블록));
 
   // 인라인 코드 — r4 · 옅은 면 `fill-soft` · 안쪽 1 · 5.
   const 인라인 = page.locator("code", { hasText: "인라인" });
@@ -77,7 +70,7 @@ test("문서 본문의 코드 블록 · 인라인 코드 · 콜아웃 · 인용 
   expect(콜아웃반경).toBe(await 토큰값(page, "border-top-left-radius", "--radius-xl"));
   expect([콜아웃반경, 콜아웃위, 콜아웃옆], "콜아웃 — 12 · 12 · 14").toEqual(["12px", "12px", "14px"]);
   expect(콜아웃면).toBe(await 토큰색(page, "--surface-under"));
-  expect(await 링(콜아웃)).toEqual([`${await 토큰색(page, "--border")} 0px 0px 0px 0.5px inset`]);
+  expect(await 칠한링(콜아웃)).toEqual([`${await 토큰색(page, "--border")} 0px 0px 0px 0.5px inset`]);
 
   // 평범한 인용 — 면이 없고, 왼쪽 3px `rule` 막대와 글자 사이 16, 글자 `fg-secondary`.
   const 인용 = page.locator("blockquote", { hasText: "평범한 인용" });

@@ -15,9 +15,13 @@ import {
   셸셋을띄운다,
   셸입력,
   스냅샷두박자,
+  칠한값,
   칸들,
+  토큰값,
+  토큰색,
 } from "./harness";
-import { poolShell, processRow as 행, snapshotFixture } from "@/features/processes/process-fixture";
+import { formatPort } from "@/features/processes/metrics";
+import { metricsOf, poolShell, processRow as 행, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 27 — **`Processes`에서 셸과 자손 트리를 보고 이동하거나 닫는다**(프로세스 결정 9 · 10 · 프로세스 스펙 S32 · S53 ·
@@ -387,5 +391,125 @@ test("작업 · 셸 · 자식 있는 프로세스 줄이 셰브론으로 접히�
   await navButton(page, "Processes").click();
   await expect(셸행(page, 1)).toBeVisible();
   expect(await 펼침들(page)).toEqual(처음);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 22 — **트리의 줄이 DS `ProcessTree`의 줄이다**(스토리 59 · DS `.at-pr-row` · `.at-th` · `.at-sechead` · `.at-port`). 줄은
+// 갈래마다 높이와 글자가 깊이를 거든다: 작업 40 · 14/20 500, 셸 32 · 13/18, 프로세스 30 · 13/18 `fg-secondary`, 셸 도우미 28 · 12/18
+// `fg-tertiary` — 높이 넷은 DS `.at-pr-row`가 갈래마다 적은 수라 그 수로 센다. 줄은 옅은 면 묶음 없이 흰 카드 위에 서고, 안쪽 좌우 12에
+// 아래 0.5px `border` 선이 줄을 가르며, 포인터가 오르면 `fill-soft`다. 열 머리는 같은 격자 위의 32 · 12/18 `fg-tertiary` 줄이고 아래에
+// 1px `rule` 선이 선다 — 요약 타일에서 22 아래다. 구획 머리는 36 · 13/18 600에 수는 400 `fg-tertiary`다. 포트는 `fill-soft` 칩(20 ·
+// 안쪽 6 · `radius-sm` · mono 12 `fg-secondary`)이다.
+test("트리의 줄이 DS 줄이다 — 작업 40 · 셸 32 · 프로세스 30 · 도우미 28과 글자 단계, 줄 아래 0.5px 선, 열 머리 32 · 구획 머리 36, 포트 칩", async ({
+  page,
+}) => {
+  const lastOutputMs = Date.now() - 2 * 3_600_000;
+  await installFixtureBackend(page, {
+    processes_snapshot: snapshotFixture({
+      verdict: {
+        descendants: { [shellKeyOf(1)]: [gitstatusd, { ...vite, metrics: metricsOf(300 * 1024 ** 2, 12, [5173]) }, esbuild] },
+        helpers: [gitstatusd.id],
+      },
+      pool: [poolShell(1, shellKeyOf(1), lastOutputMs)],
+    }),
+  });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await navButton(page, "Processes").click();
+  await expect(셸행(page, 1)).toBeVisible();
+
+  const 작업줄 = 트리(page).locator('[role="treeitem"][aria-level="1"]');
+  const 프로세스줄 = 트리(page).locator('[role="treeitem"][aria-level="3"]:not([data-helper])');
+  const 도우미줄 = 트리(page).locator("[data-helper]");
+  const [진한글자, 흐린글자, 옅은글자] = [
+    await 토큰색(page, "--fg"),
+    await 토큰색(page, "--fg-secondary"),
+    await 토큰색(page, "--fg-tertiary"),
+  ];
+
+  // 줄 — 갈래마다 높이 · 글자 단계 · 색, 안쪽 좌우 12.
+  const 줄표: Array<[string, Locator, string[]]> = [
+    ["작업", 작업줄, ["40px", "14px", "20px", "500", 진한글자, "12px", "12px"]],
+    ["셸", 셸행(page, 1), ["32px", "13px", "18px", "400", 진한글자, "12px", "12px"]],
+    ["프로세스", 프로세스줄, ["30px", "13px", "18px", "400", 흐린글자, "12px", "12px"]],
+    ["셸 도우미", 도우미줄, ["28px", "12px", "18px", "400", 옅은글자, "12px", "12px"]],
+  ];
+  const 선 = await 토큰색(page, "--border");
+  for (const [이름, 줄, 값] of 줄표) {
+    await expect(줄, 이름).toHaveCount(1);
+    expect(
+      await 칠한값(줄, "height", "font-size", "line-height", "font-weight", "color", "padding-left", "padding-right"),
+      `${이름} 줄`,
+    ).toEqual(값);
+    // 줄 아래 0.5px `border` 선 — 테두리가 아니라 줄 안쪽 바닥에 칠한 면이다.
+    const 아랫선 = await 줄.evaluate((el) => {
+      const line = getComputedStyle(el, "::after");
+      return [line.position, line.bottom, line.height, line.backgroundColor];
+    });
+    expect(아랫선, `${이름} 줄 아랫선`).toEqual(["absolute", "0px", "0.5px", 선]);
+  }
+  expect(await 칠한값(도우미줄, "letter-spacing"), "셸 도우미 글자 자간").toEqual(["0.3px"]);
+
+  // 줄은 옅은 면 묶음 없이 카드 위에 선다 — 포인터가 오르면 `fill-soft`다.
+  expect(await 칠한값(프로세스줄, "background-color"), "줄의 바탕").toEqual(["rgba(0, 0, 0, 0)"]);
+  await 프로세스줄.hover();
+  await expect.poll(() => 칠한값(프로세스줄, "background-color"), { message: "줄에 오른 면" }).toEqual([await 토큰색(page, "--fill-soft")]);
+
+  // 열 머리 — 같은 격자 위의 32 · 12/18 `fg-tertiary` 줄, 안쪽 12, 아래 1px `rule` 선. 「이름」은 줄의 안쪽 끝에, 「메모리」의 오른끝은
+  // 작업 줄 메모리 칸의 오른끝에 선다. 요약 타일에서 22 아래다.
+  const 메모리머리 = page.getByText("메모리", { exact: true });
+  const 열머리 = 메모리머리.locator("..");
+  expect(
+    await 칠한값(열머리, "height", "font-size", "line-height", "color", "padding-left", "padding-right"),
+    "열 머리",
+  ).toEqual(["32px", "12px", "18px", 옅은글자, "12px", "12px"]);
+  const 머리선 = await 열머리.evaluate((el) => {
+    const line = getComputedStyle(el, "::after");
+    return [line.position, line.bottom, line.height, line.backgroundColor];
+  });
+  expect(머리선, "열 머리 아랫선").toEqual(["absolute", "0px", "1px", await 토큰색(page, "--rule")]);
+  const [이름칸, 메모리칸, 작업상자, 작업메모리, 요약상자, 열머리상자] = await Promise.all([
+    열머리.getByText("이름", { exact: true }).boundingBox(),
+    메모리머리.boundingBox(),
+    작업줄.boundingBox(),
+    작업줄.locator('[data-cell="memory"]').boundingBox(),
+    page.getByRole("region", { name: "요약", exact: true }).boundingBox(),
+    열머리.boundingBox(),
+  ]);
+  expect(Math.round(이름칸!.x - 작업상자!.x), "「이름」은 줄 안쪽 12에").toBe(12);
+  expect(Math.round(메모리칸!.x + 메모리칸!.width), "「메모리」의 오른끝").toBe(Math.round(작업메모리!.x + 작업메모리!.width));
+  expect(Math.round(열머리상자!.y - (요약상자!.y + 요약상자!.height)), "요약 타일과 열 머리 사이").toBe(22);
+
+  // 구획 머리 — 36 · 안쪽 12, 제목 13/18 600, 수 13 · 400 `fg-tertiary`.
+  const 구획머리 = page.getByRole("region", { name: "작업", exact: true }).locator(":scope > div").first();
+  expect(await 칠한값(구획머리, "height", "padding-left", "padding-right"), "구획 머리").toEqual(["36px", "12px", "12px"]);
+  expect(await 칠한값(구획머리.getByText("작업", { exact: true }), "font-size", "line-height", "font-weight"), "구획 제목").toEqual([
+    "13px",
+    "18px",
+    "600",
+  ]);
+  expect(await 칠한값(구획머리.getByText("셸 1개", { exact: true }), "font-size", "font-weight", "color"), "구획의 수").toEqual([
+    "13px",
+    "400",
+    옅은글자,
+  ]);
+
+  // 포트 칩 — 20 · 안쪽 6 · `radius-sm` · `fill-soft` · mono 12/18 `fg-secondary`.
+  const 칩 = 프로세스줄.getByText(formatPort(5173), { exact: true });
+  const 칩반경 = await 토큰값(page, "border-top-left-radius", "--radius-sm");
+  expect(칩반경, "radius-sm").toBe("6px");
+  const 칩모양 = ["height", "padding-left", "padding-right", "border-top-left-radius", "background-color"];
+  expect(await 칠한값(칩, ...칩모양, "font-family", "font-size", "line-height", "color"), "포트 칩").toEqual([
+    "20px",
+    "6px",
+    "6px",
+    칩반경,
+    await 토큰색(page, "--fill-soft"),
+    await 토큰값(page, "font-family", "--font-mono"),
+    "12px",
+    "18px",
+    흐린글자,
+  ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

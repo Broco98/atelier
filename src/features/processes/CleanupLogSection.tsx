@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { History } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import { eventKeys, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
 import type { SectionFold } from "./folds";
 import { processCount } from "./process-tree";
-import { BLOCK, FoldChevron, Section } from "./tree-rows";
+import { FoldChevron, ROW_RULE, Section } from "./tree-rows";
 import type { CleanupEvent } from "./types";
 
 /**
@@ -33,7 +34,7 @@ function CleanupLogSection({ events, fold }: { events: ReadonlyArray<CleanupEven
 
   return (
     <Section icon={History} title="정리 기록" note={`기록 ${events.length}건`} fold={fold}>
-      <ol aria-label="정리 기록" className={BLOCK}>
+      <ol aria-label="정리 기록" className="flex flex-col">
         {events.map((event, at) => {
           const key = keys[at];
           return <EventRow key={key} event={event} open={open.has(key)} onOpenChange={(next) => openFor(key, next)} />;
@@ -59,24 +60,25 @@ function EventRow({
   onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className="flex flex-col">
-      {/* 사건 줄 — 묶음 안의 32px 줄(DS `.at-pr-log`): 셰브론 칸(18) · 까닭 · 대상 수 · 오른쪽 끝의 때. hover는 옅은 면 위의 한 단
-          (`fill-hover`)이다. */}
+    // 사건 하나가 표의 한 줄이다 — 아래 0.5px 선(`ROW_RULE`)이 펼친 대상까지 담아 다음 사건과 가른다.
+    <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className={cn("flex flex-col", ROW_RULE)}>
+      {/* 사건 줄 — 표의 32px 줄(트리의 셸 줄과 같은 단, DS `.at-pr-row`): 안쪽 좌우 12 · 셰브론 칸(18) · 까닭 · 대상 수 · 오른쪽 끝의
+          때. 수와 때는 메타라 12 `fg-tertiary`다. hover는 행 단(`fill-soft`)이다. */}
       <CollapsibleTrigger
         aria-label={eventLabel(event)}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover focus-ring"
+        className="flex h-8 min-w-0 items-center gap-1.5 px-3 text-left transition-colors hover:bg-fill-soft focus-ring"
       >
         <span className="grid w-4.5 shrink-0 place-items-center text-fg-tertiary">
           <FoldChevron open={open} />
         </span>
         <span className="shrink-0 text-chat-meta font-medium">{reasonLabel(event.reason)}</span>
-        <span className="shrink-0 text-xs text-fg-secondary">{processCount(event.targets.length)}</span>
+        <span className="shrink-0 text-xs text-fg-tertiary">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
-        <span className="shrink-0 text-xs tabular-nums text-fg-secondary">{loggedAt(event.at)}</span>
+        <span className="shrink-0 text-xs tabular-nums text-fg-tertiary">{loggedAt(event.at)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        {/* 대상은 까닭 글자와 같은 x에서 선다 — 줄 안쪽 6 + 셰브론 칸 18 + 틈 8. */}
-        <ul aria-label={`${reasonLabel(event.reason)}의 대상`} className="flex flex-col gap-1 pr-2 pb-2 pl-8">
+        {/* 대상은 까닭 글자와 같은 x에서 선다 — 줄 안쪽 12 + 셰브론 칸 18 + 틈 6. */}
+        <ul aria-label={`${reasonLabel(event.reason)}의 대상`} className="flex flex-col gap-1 pr-3 pb-2 pl-9">
           {event.targets.map((target, at) => (
             // 대상 한 줄 — 이름 · 결과, 그 밑에 명령줄. 명령줄은 Rust가 적을 때 앞 200자로 잘랐다(토큰 같은 비밀 — S12). 줄을 넘기며
             // 다 보인다: 무엇을 끝냈는지 읽는 자리라 말줄임으로 자르지 않는다.
