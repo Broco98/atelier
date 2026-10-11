@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "./evidence";
 
+import type { EngineCheck } from "@/features/chat/types";
 import { answerByArg, WORKS } from "./fixtures";
-import { fireEvent, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, steadyCount, unknownIpcCalls } from "./harness";
 import { conversationRow, handToolTurn, streamLines } from "./chat-records";
 
 // three-axes 티켓 24 — **`chat` 탭이 대화창을 가운데에 넓게 띄운다**(S21 · S22 · 스토리 17~22).
@@ -194,5 +195,31 @@ test("분할: `chat` 탭에서 분할을 켜도 `spec ▏터미널`이고, 분�
   await expect(page).not.toHaveURL(/[?&]split=/);
   await expect(입력칸(가운데대화(page))).toBeVisible();
   await expect(page.locator("[data-column]")).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("못 찾음: `chat` 탭에서 「다시 확인」으로 빠진 엔진을 찾으면 첫 대화가 하나만 열린다 — 숨은 작업 패널의 대화창이 또 열지 않는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, {
+    chat_check_engine: answerByArg("agent", {
+      claude: { state: "missing", missing: [{ name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" }] },
+    }),
+  });
+  await page.goto(`/works/${specWork.slug}?tab=chat`);
+  const 카드 = 가운데대화(page).getByRole("region", { name: "claude를 찾지 못했어요", exact: true });
+  await expect(카드).toBeVisible({ timeout: 20_000 });
+  expect(await ipcCallArgs(page, "chat_new", "work")).toEqual([]);
+
+  await replaceAnswer(page, "chat_check_engine", {
+    state: "found",
+    programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }],
+    loggedIn: true,
+  } satisfies EngineCheck);
+  await 카드.getByRole("button", { name: "다시 확인", exact: true }).click();
+  await expect(대화탭줄(가운데대화(page)).getByRole("button", { name: "Claude", exact: true })).toBeVisible();
+  // 가운데와 작업 패널(숨은 채 마운트돼 있다)에 같은 work의 대화창이 둘 서 있어도, 엔진을 찾은 소식에 대화를 만드는 것은 한 번이다.
+  expect(await steadyCount(page, "chat_new")).toBe(1);
+  expect((await ipcCallArgs(page, "chat_new", "work")).map(({ args }) => args)).toEqual([{ work: specWork.slug, agent: "claude" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

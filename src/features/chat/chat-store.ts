@@ -127,12 +127,22 @@ export function wantConversation(work: string, agent: Agent): void {
 }
 
 export function dropWanted(work: string): void {
+  takeWanted(work);
+}
+
+/**
+ * 열려다 못 연 대화를 거두고, 거둔 것이 이 부름이면 그 에이전트를 돌려준다(이미 없으면 `null`). 엔진을 찾은 소식에 대화를 여는 쪽이
+ * 쓴다 — 같은 work의 대화창이 둘(작업 패널은 숨은 채 마운트되고 `chat` 탭이 가운데에 하나 더) 서 있어도 하나만 연다.
+ */
+export function takeWanted(work: string): Agent | null {
+  const agent = chatUiStore.state.wanted[work] ?? null;
+  if (agent === null) return null;
   chatUiStore.setState((state) => {
-    if (!(work in state.wanted)) return state;
     const wanted = { ...state.wanted };
     delete wanted[work];
     return { ...state, wanted };
   });
+  return agent;
 }
 
 export function chooseConversation(work: string, conversation: string): void {

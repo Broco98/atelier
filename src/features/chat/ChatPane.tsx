@@ -17,6 +17,7 @@ import {
   dropWanted,
   linesOf,
   seeConversation,
+  takeWanted,
   wantConversation,
 } from "./chat-store";
 import ChangesPill from "./ChangesPill";
@@ -121,13 +122,14 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
     if (visible && activeAgent) checkEngineOnce(activeAgent);
   }, [visible, activeAgent]);
 
-  // 못 찾아 열지 못한 대화 — 「다시 확인」으로 찾으면 그때 연다(스토리 102).
+  // 못 찾아 열지 못한 대화 — 「다시 확인」으로 찾으면 그때 연다(스토리 102). 같은 work의 대화창이 둘 서 있어도(`chat` 탭 · 숨은 작업
+  // 패널) 거두는 쪽 하나만 연다(`takeWanted`).
   const wanted = useStore(chatUiStore, (state) => state.wanted[work] ?? null);
   const wantedView = useStore(chatEngineStore, (state) => (wanted ? state[wanted] : undefined));
   useEffect(() => {
     if (!wanted || wantedView?.found !== true) return;
-    dropWanted(work);
-    createConversation({ work, agent: wanted });
+    const agent = takeWanted(work);
+    if (agent) createConversation({ work, agent });
   }, [wanted, wantedView?.found, work, createConversation]);
 
   // 대화 닫기(S25) — 턴이 돌거나 답하지 않은 승인이 걸려 있으면 × 앞에 확인 창을 띄운다. 셸 닫기 확인과 같은 손버릇이다(제목 · 「닫기」 ·
