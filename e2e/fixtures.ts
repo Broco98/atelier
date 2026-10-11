@@ -189,16 +189,16 @@ export const WORKS: WorkView[] = [
 /**
  * 워크트리 트리를 **손으로 적는** 조각들(git-integration 판 01 — files 칸). 이 층에는 git이 없다 — 트리는 코어가 세워 보낸
  * 모양(폴더 먼저 · 이름순, 걸린 폴더는 「아직 안 읽음」)을 옮겨 적은 것이고, 화면은 받은 순서 그대로 그린다. 그 규칙 자체는
- * L1(`worktree.rs`)이 진짜 저장소로 잰다.
+ * L1(`worktree.rs`)이 진짜 저장소로 잰다. 한 시나리오만 쓰는 트리(넘치게 긴 트리 따위)는 그 spec이 이것으로 짓는다.
  */
-const worktreeFile = (path: string, ignored = false): WorktreeEntry => ({
+export const worktreeFile = (path: string, ignored = false): WorktreeEntry => ({
   name: path.slice(path.lastIndexOf("/") + 1),
   path,
   kind: "file",
   ignored,
   children: [],
 });
-const worktreeFolder = (path: string, children: WorktreeEntry[]): WorktreeEntry => ({
+export const worktreeFolder = (path: string, children: WorktreeEntry[]): WorktreeEntry => ({
   ...worktreeFile(path),
   kind: "folder",
   children,

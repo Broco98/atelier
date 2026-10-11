@@ -1065,6 +1065,7 @@ function WorksPage({
                   view={panelView}
                   currentFile={currentSpec}
                   onSelectFile={selectFromTree}
+                  currentCode={codeTarget}
                   onPressCode={pressCode}
                   onCopy={copyText}
                   onOpenProject={onOpenProject}

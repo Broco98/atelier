@@ -41,6 +41,7 @@ function render(
         view={view}
         currentFile={null}
         onSelectFile={() => {}}
+        currentCode={null}
         onPressCode={() => {}}
         onCopy={() => {}}
         onOpenProject={() => {}}

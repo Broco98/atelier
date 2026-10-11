@@ -1203,6 +1203,19 @@ export async function typeIntoShell(page: Page): Promise<void> {
     .toBe(before + 1);
 }
 
+/**
+ * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트 · 대화창이 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
+ * 메모리에만 사는 묶음(git-integration 결정 33 — 파일 탭 목록)을 지운다. 라우터의 기록(`@tanstack/history`)이 `pushState`를
+ * 감싸 듣고 있어 이 한 번으로 화면이 따라오고, 뒤로가기도 이 자리를 센다.
+ */
+export async function 주소로간다(page: Page, url: string): Promise<void> {
+  await page.evaluate((next) => {
+    const state = (window.history.state ?? {}) as Record<string, unknown>;
+    const index = (typeof state.__TSR_index === "number" ? state.__TSR_index : 0) + 1;
+    window.history.pushState({ ...state, __TSR_index: index, key: `t${index}`, __TSR_key: `t${index}` }, "", next);
+  }, url);
+}
+
 /** 탭 줄의 셸 칸들, 왼쪽부터. */
 export const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
 

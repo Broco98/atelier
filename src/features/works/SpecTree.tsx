@@ -224,6 +224,9 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 )}
                 style={treeIndent(depth)}
                 aria-description={look.note}
+                // 고른 행은 면과 굵기로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
+                // 선 파일 탭의 파일이다.
+                aria-current={item.path === current ? "page" : undefined}
               >
                 <FileGlyph name={item.name} glyph={look.glyph} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>

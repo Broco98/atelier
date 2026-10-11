@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness";
+import type { WorktreeTree } from "@/features/files/types";
+import { answerByArg, WORKS, WORKTREE_TREES, worktreeFile, worktreeFolder } from "./fixtures";
+import { awaitSpawned, installFixtureBackend, unknownIpcCalls, 주소로간다 } from "./harness";
 
 // git-integration 판 01 티켓 05(#478) — **트리에서 파일을 열고, 다시 누르면 닫힌다.**
 //
@@ -29,6 +30,24 @@ const 셸칸이름 = (page: Page) => page.locator('[data-tab="shell"] button[ari
 /** 코드 카드 — 접근 이름이 그 파일의 경로다(스토리 89). */
 const 코드카드 = (page: Page, ref: string) => page.getByRole("main", { name: ref, exact: true });
 const 히스토리길이 = (page: Page) => page.evaluate(() => window.history.length);
+const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
+const codeUrl = (ref: string) => `/works/${work.slug}?tab=code&code=${encodeURIComponent(ref)}`;
+
+/**
+ * 패널보다 **긴** 트리 — 앞 폴더(`many`)를 펼치면 행이 마흔 줄 넘게 서서, 뒤에 선 파일은 스크롤해야 보인다. 「행이 보이는
+ * 자리로 스크롤한다」(스토리 15)를 재려면 그 행이 처음에는 보이지 않아야 한다.
+ */
+const LONG_TREE: WorktreeTree = {
+  kind: "listed",
+  entries: [
+    worktreeFolder(
+      "many",
+      Array.from({ length: 40 }, (_, at) => worktreeFile(`many/f${String(at + 1).padStart(2, "0")}.ts`)),
+    ),
+    worktreeFolder("src", [worktreeFolder("src/api", [worktreeFile("src/api/client.ts")]), worktreeFile("src/index.ts")]),
+    worktreeFile("README.md"),
+  ],
+};
 
 /** files 칸을 연다. */
 async function openFiles(page: Page): Promise<void> {
@@ -110,5 +129,46 @@ test("지금 보이는 탭의 파일을 다시 누르면 닫히고, 뒤에 있�
   await expect(파일탭이름(page, "billing/.gitignore")).toHaveAttribute("aria-pressed", "true");
   await expect(파일탭들(page)).toHaveCount(3);
   await expect(코드카드(page, "billing/.gitignore")).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("탭을 바꾸면 트리가 그 파일을 강조하고 조상 폴더를 펼쳐 행을 보이는 자리로 스크롤한다 — 칸이 닫혀 있으면 열 때 한다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, {
+    list_worktree_tree: answerByArg("project", { ...WORKTREE_TREES, billing: LONG_TREE }),
+  });
+  // 파일 탭 둘 — 앞 폴더의 첫 파일과 뒤 폴더 깊은 곳의 파일. files 칸은 아직 안 열었다(작업 패널은 spec 칸이다).
+  await page.goto(codeUrl("billing/src/api/client.ts"));
+  await expect(코드카드(page, "billing/src/api/client.ts")).toBeVisible();
+  await 주소로간다(page, codeUrl("billing/many/f01.ts"));
+  await expect(코드카드(page, "billing/many/f01.ts")).toBeVisible();
+
+  // 칸을 열면 지금 탭의 파일이 강조돼 있다 — 탭이 바뀐 것은 칸이 안 보일 때였다(기억했다가 열 때 한다).
+  await openFiles(page);
+  await expect(패널행(page, "many")).toHaveAttribute("aria-expanded", "true");
+  await expect(패널행(page, "TS f01.ts")).toHaveAttribute("aria-current", "page");
+  await expect(패널행(page, "TS f01.ts")).toBeInViewport();
+
+  // 탭을 바꾸면 강조가 따라오고(스토리 14), 접혀 있던 조상 폴더가 펼쳐지고, 마흔 줄 아래의 행이 보이는 자리로 온다(스토리 15).
+  await expect(패널행(page, "src")).toHaveAttribute("aria-expanded", "false");
+  await 파일탭이름(page, "billing/src/api/client.ts").click();
+  await expect(패널행(page, "src")).toHaveAttribute("aria-expanded", "true");
+  await expect(패널행(page, "api")).toHaveAttribute("aria-expanded", "true");
+  await expect(패널행(page, "TS client.ts")).toHaveAttribute("aria-current", "page");
+  await expect(패널행(page, "TS client.ts")).toBeInViewport();
+  await expect(패널행(page, "TS f01.ts")).not.toHaveAttribute("aria-current", "page");
+  await expect(패널행(page, "TS f01.ts")).not.toBeInViewport();
+
+  // 패널을 닫은 채 탭을 바꾸고 다시 연다 — 그 파일이 강조돼 있고, 위로 스크롤해 보이는 자리에 있다.
+  await 토글(page).click();
+  await expect(토글(page)).toHaveAttribute("aria-expanded", "false");
+  await 파일탭이름(page, "billing/many/f01.ts").click();
+  await expect(코드카드(page, "billing/many/f01.ts")).toBeVisible();
+  await 토글(page).click();
+  await expect(토글(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(패널행(page, "TS f01.ts")).toHaveAttribute("aria-current", "page");
+  await expect(패널행(page, "TS f01.ts")).toBeInViewport();
+  await expect(패널행(page, "TS client.ts")).not.toHaveAttribute("aria-current", "page");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
