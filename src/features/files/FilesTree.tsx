@@ -127,26 +127,26 @@ function ProjectSection({
   // 적어 두고(`toReveal`) **보이고 트리가 선 뒤에** 한 번 한다. 손으로 접은 것은 지금 탭이 다시 바뀔 때까지 그대로 둔다.
   const listed = tree.data?.kind === "listed";
   const toReveal = useRef<string | null>(null);
-  const toScroll = useRef<string | null>(null);
+  const toScroll = useRef(false);
   const rowsBox = useRef<HTMLDivElement>(null);
   useEffect(() => {
     toReveal.current = current;
-    toScroll.current = null;
+    toScroll.current = false;
   }, [current]);
   useEffect(() => {
     const path = toReveal.current;
     if (path === null || !visible || !listed) return;
     toReveal.current = null;
-    toScroll.current = path;
+    toScroll.current = true;
     const closed = ancestorsOf(path).filter((folder) => !folds[folder]);
     if (closed.length > 0) setOpen(closed, true);
   }, [current, visible, listed]);
   // 행은 조상이 펼쳐진 **다음** 그림에 선다 — 그래서 스크롤은 그림마다 보고, 행이 서 있을 때 한 번 한다.
   useEffect(() => {
-    if (toScroll.current === null) return;
+    if (!toScroll.current) return;
     const row = rowsBox.current?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!row) return;
-    toScroll.current = null;
+    toScroll.current = false;
     scrollToRow(row);
   });
 
@@ -197,8 +197,8 @@ function ancestorsOf(path: string): string[] {
 }
 
 /**
- * 행을 트리의 보이는 자리로 — **트리 상자만 세로로 민다.** `scrollIntoView`를 쓰지 않는 것은 그것이 위로 넘침을 감춘 상자를
- * 모두 밀기 때문이다: 패널이 열리는 폭 트랜지션 동안 바깥 칸이 가로로 밀린 채 남는다. 이미 보이면 그대로다.
+ * 행을 트리의 보이는 자리로 — **트리 상자만 세로로 민다.** `scrollIntoView`를 쓰지 않는 것은 그것이 넘침을 감춘 조상 상자까지
+ * 모두 밀기 때문이다: 패널이 열리는 폭 트랜지션 한가운데에 부르면 바깥 칸이 가로로 밀린 채 남을 수 있다. 이미 보이면 그대로다.
  */
 function scrollToRow(row: HTMLElement): void {
   const box = row.closest<HTMLElement>("[data-files-tree]");
