@@ -183,6 +183,18 @@ describe("work마다 마지막으로 보던 화면", () => {
       file: "02-판/spec.md",
     });
   });
+
+  // **분할의 `code`는 포커스가 문서 열이어도 실린다**(git-integration 티켓 07 · 스토리 60). 분할에서 `code`는 묶음 열의 것이라
+  // `tab`이 spec이어도 그 열은 그 파일이다. 「`tab`이 `code`일 때만 싣는다」로 거르면 돌아온 분할의 묶음 열이 셸로 선다.
+  it("분할에서 문서 열에 포커스를 두고 떠난 work은 묶음 열의 파일과 함께 돌아온다", () => {
+    rememberView("자", { tab: "spec", split: "lr", file: null, code: "billing/src/a.ts" });
+    expect(recallSearch("자")).toEqual({
+      tab: undefined,
+      split: "lr",
+      file: undefined,
+      code: "billing/src/a.ts",
+    });
+  });
 });
 
 // 배선. **되살리는 자리는 원문으로 세지 않는다.** 앞 판은 두 파일의 `search:` 줄을 문자열로
