@@ -1,43 +1,34 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
 import { askDialog } from "@/components/ui/confirm-store";
 import { Spinner } from "@/components/ui/spinner";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { readDefaultAgent } from "@/features/settings/chat-settings";
 import ApprovalCard from "./ApprovalCard";
 import { ChatDocsContext } from "./chat-docs";
-import {
-  chatRecordStore,
-  chatUiStore,
-  chooseConversation,
-  claimFirstConversation,
-  conversationKey,
-  dropWanted,
-  linesOf,
-  seeConversation,
-  takeWanted,
-  wantConversation,
-} from "./chat-store";
+import { chatRecordStore, chatUiStore, conversationKey, linesOf, seeConversation } from "./chat-store";
 import ChangesPill from "./ChangesPill";
 import { chipLists } from "./chips";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
-import { awaitingLogin, chatEngineStore, checkEngine, checkEngineOnce, guideKind, type GuideKind } from "./engine-store";
+import { chooseConversation, closeConversation, openConversation, useConversationList } from "./conversation-list";
+import { awaitingLogin, chatEngineStore, guideKind, type GuideKind } from "./engine-store";
 import { foldOf } from "./fold";
 import GuideCard from "./GuideCard";
-import { useCloseConversation, useConversations, useCreateConversation, useQueue, useRecordLines } from "./hooks";
+import { useQueue } from "./hooks";
 import QueuedMessages from "./QueuedMessages";
 import { closeNotice, goneThrough, STATUS_LABEL, useConversationStatus, type ConversationStatus } from "./status";
-import type { Agent, Conversation, EngineCheck, Quote } from "./types";
+import type { Agent, Conversation, Quote } from "./types";
 
 // 대화창(three-axes 티켓 17) — 대화 탭 줄 · 흐름 · 입력창. 작업 패널의 `chat` 보기가 이것을 그리고, `chat` 탭(24)도 같은 것을
 // 가운데에 띄운다. 모양은 캔버스 보드 04(대화 패널) · 14(말과 입력)이고 값은 대화창 범위 토큰(`[data-chat]`, three-axes 결정 31)이다.
 //
-// **대화는 호스트에서 돈다.** 이 화면은 대화 목록을 읽고(처음 보일 때), 대화마다 기록을 한 번 읽은 뒤 앱 층이 받는 기록 줄
-// 이벤트로 잇는다(`hooks.ts`). 그래서 다른 work에 다녀와도, 패널을 닫았다 열어도 그사이 흐른 줄이 다 보이고, 패널을 닫아도
-// 에이전트는 꺼지지 않는다(스토리 14 · 15 · 16).
+// **대화는 호스트에서 돈다.** 그 work의 대화 목록과 그 수명(목록 읽기 · 첫 대화 · 새 대화 · 닫기 · 기록 읽기 · 여는 중 · 거절 글)은
+// 이 화면이 아니라 work마다 하나인 주인이 쥔다(`conversation-list.ts`) — 이 화면은 그 상태를 읽고 동작을 부른다. 그래서 두 자리에
+// 함께 서도, key 없는 작업 패널이 work를 옮겨도 같은 것을 보인다. 기록은 한 번 읽은 뒤 앱 층이 받는 기록 줄 이벤트로 잇는다
+// (`hooks.ts`). 그래서 다른 work에 다녀와도, 패널을 닫았다 열어도 그사이 흐른 줄이 다 보이고, 패널을 닫아도 에이전트는 꺼지지
+// 않는다(스토리 14 · 15 · 16).
 
 /**
  * 흐름 · 입력창 · 안내 카드를 모으는 열(three-axes 티켓 24) — 읽기 좋은 폭(`--chat-thread-width`, 캔버스 `.cx-thread`)에 가운데로
@@ -67,93 +58,22 @@ interface ChatPaneProps {
 }
 
 function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
-  const list = useConversations(work, visible);
-  const create = useCreateConversation();
-  const close = useCloseConversation();
-  const conversations = list.data ?? [];
-  const chosen = useStore(chatUiStore, (state) => state.active[work]);
-  const active = conversations.find((one) => one.id === chosen) ?? conversations[0] ?? null;
+  const { conversations, active, wanted, reading, opening, problem } = useConversationList(work, visible);
   // 문서에서 고른 자리(three-axes 티켓 27) — 그 work의 지금 대화의 입력창에 칩으로 붙는다.
   const quote = useStore(chatUiStore, (state) => state.quotes[work] ?? null);
-  const createConversation = create.mutate;
   // 도구 줄의 파일 링크가 흐름 깊숙이 서므로 뿌리에서 한 번 내려 준다(`chat-docs.ts`).
   const docs = useMemo(() => ({ specDir, onOpenDoc }), [specDir, onOpenDoc]);
-  const [checking, setChecking] = useState(false);
-
-  // 대화를 열기 전에 그 엔진을 확인한다(three-axes 티켓 22 「언제 확인하나」) — 못 찾았으면 대화를 만들지 않고(호스트도 거절한다)
-  // 그 자리에 안내 카드를 세운다. 찾았으면 로그인이 안 됐어도 연다: Codex는 호스트가 로그인 필요 줄을 적고, 어느 엔진이든 그 대화
-  // 자리에 로그인 카드가 선다. 확인이 거절되면(로그인 셸을 못 읽음) 그대로 열어 호스트의 거절을 보인다.
-  //
-  // 에이전트를 주지 않으면 설정 「대화」의 기본 에이전트다(three-axes 결정 16 · 티켓 25) — `+`와 첫 대화. 누를 때마다 설정 파일을 다시
-  // 읽어, 바꾼 설정이 다음 `+`부터 들고 작업 패널 · `chat` 탭의 두 대화창이 같은 값을 본다. 읽는 동안도 「확인 중」이라 `+`가 잠긴다.
-  // 모델 · 모드 기본값은 호스트가 새 대화 때 같은 파일에서 읽는다.
-  const openConversation = useCallback(
-    async (chosen?: Agent) => {
-      setChecking(true);
-      let check: EngineCheck | null = null;
-      const agent = chosen ?? (await readDefaultAgent());
-      try {
-        check = await checkEngine(agent, false);
-      } catch {
-        // 호스트의 거절은 만들기에서 다시 서서 그 글이 보인다.
-      } finally {
-        setChecking(false);
-      }
-      if (check?.state === "missing") {
-        wantConversation(work, agent);
-        return;
-      }
-      dropWanted(work);
-      createConversation({ work, agent });
-    },
-    [work, createConversation],
-  );
-
-  // 대화 없는 work에서 대화창을 처음 열면 기본 에이전트로 대화 하나가 열려 있다(스토리 2). work마다 한 번이다.
-  useEffect(() => {
-    if (!visible || !list.isSuccess || list.data.length > 0) return;
-    if (!claimFirstConversation(work)) return;
-    void openConversation();
-  }, [visible, list.isSuccess, list.data, work, openConversation]);
-
-  // 대화창이 그 엔진의 대화를 처음 보일 때 엔진을 확인한다 — 앱이 도는 동안 엔진마다 한 번이고, 그 뒤는 엔진 상태 이벤트가 잇는다.
-  const activeAgent = active?.agent ?? null;
-  useEffect(() => {
-    if (visible && activeAgent) checkEngineOnce(activeAgent);
-  }, [visible, activeAgent]);
-
-  // 못 찾아 열지 못한 대화 — 「다시 확인」으로 찾으면 그때 연다(스토리 102). 같은 work의 대화창이 둘 서 있어도(`chat` 탭 · 숨은 작업
-  // 패널) 거두는 쪽 하나만 연다(`takeWanted`).
-  const wanted = useStore(chatUiStore, (state) => state.wanted[work] ?? null);
   const wantedView = useStore(chatEngineStore, (state) => (wanted ? state[wanted] : undefined));
-  useEffect(() => {
-    if (!wanted || wantedView?.found !== true) return;
-    const agent = takeWanted(work);
-    if (agent) createConversation({ work, agent });
-  }, [wanted, wantedView?.found, work, createConversation]);
 
   // 대화 닫기(S25) — 턴이 돌거나 답하지 않은 승인이 걸려 있으면 × 앞에 확인 창을 띄운다. 셸 닫기 확인과 같은 손버릇이다(제목 · 「닫기」 ·
   // 경고색 · 기본 포커스 — `shellCloseDialog`). 묻는 말은 기록을 접은 값으로 정하고(`closeNotice`), 쉬는 대화는 묻지 않고 닫는다.
-  const closeConversation = async (conversation: Conversation) => {
+  const askClose = async (conversation: Conversation) => {
     const model = foldOf(linesOf(chatRecordStore.state, conversationKey(work, conversation.id)), goneThrough(conversation));
     const notice = closeNotice(model);
     if (notice !== null && !(await askDialog({ title: "대화 닫기", body: notice, confirm: "닫기", danger: true }))) return;
-    close.mutate(
-      { work, conversation: conversation.id },
-      {
-        // 켜진 대화를 닫으면 그 옆(뒤, 없으면 앞)이 켜진다.
-        onSuccess: () => {
-          if (active?.id !== conversation.id) return;
-          const at = conversations.findIndex((one) => one.id === conversation.id);
-          const next = conversations[at + 1] ?? conversations[at - 1];
-          if (next) chooseConversation(work, next.id);
-        },
-      },
-    );
+    void closeConversation(work, conversation.id);
   };
 
-  // 호스트가 거절하면 그 글을 그대로 보인다(호스트의 오류는 화면에 보일 글이다). 못 찾음 · 로그인은 안내 카드가 말한다.
-  const problem = list.error ?? create.error ?? close.error;
   // 못 찾아 열지 못한 대화가 있으면 대화창 자리에 그 엔진의 카드가 선다 — 켜진 대화 대신이다.
   const wantedKind = wanted ? guideKind(wantedView, false) : null;
   return (
@@ -170,34 +90,37 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
               work={work}
               conversation={conversation}
               on={conversation.id === active?.id}
-              onChoose={() => {
-                dropWanted(work);
-                chooseConversation(work, conversation.id);
-              }}
-              onClose={() => void closeConversation(conversation)}
+              onChoose={() => chooseConversation(work, conversation.id)}
+              onClose={() => void askClose(conversation)}
             />
           ))}
+          {/* 새 대화를 여는 동안 잠긴다 — 버튼이 네이티브 `disabled`다. 트리거의 `disabled`는 툴팁만 끄고 버튼은 그대로 둔다(Base UI). */}
           <Hint
             text="새 대화"
             announce="name"
-            type="button"
-            disabled={checking || create.isPending}
-            onClick={() => void openConversation()}
-            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
+            disabled={opening}
+            render={
+              <button
+                type="button"
+                disabled={opening}
+                onClick={() => void openConversation(work)}
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
+              />
+            }
           >
             <Plus className="size-4" strokeWidth={1.8} aria-hidden />
           </Hint>
         </div>
         {problem && (
           <p role="alert" className="px-4 pt-3 text-caption text-destructive">
-            {String(problem)}
+            {problem}
           </p>
         )}
         {wanted && wantedKind ? (
           <GuidePlace agent={wanted} kind={wantedKind} />
         ) : conversations.length === 0 ? (
           <p className="px-4 pt-4 text-ui text-tertiary">
-            {checking || create.isPending || list.isPending
+            {opening || reading
               ? "대화를 여는 중이에요"
               : "열린 대화가 없어요 — +로 새 대화를 열어요"}
           </p>
@@ -311,7 +234,8 @@ function ConversationBody({
   onOpenDoc: (path: string, line: number | null) => void;
 }) {
   const key = conversationKey(work, conversation.id);
-  const lines = useRecordLines(work, conversation.id);
+  // 기록은 대화 목록의 주인이 한 번 읽어 두고(`conversation-list.ts`), 그 뒤는 앱 층이 받은 기록 줄 이벤트가 잇는다.
+  const lines = useStore(chatRecordStore, (state) => linesOf(state, key));
   // 흐름 · 알약 · 멈추기가 같은 접은 값을 읽는다 — 기록 줄이 올 때마다 한 번 접고, 대화 탭의 상태 점도 같은 값을 읽는다. 다시 켠 뒤면
   // 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model = foldOf(lines, goneThrough(conversation));

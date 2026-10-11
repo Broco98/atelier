@@ -1,6 +1,6 @@
 import { Store } from "@tanstack/react-store";
 import type { ChoiceField } from "./chips";
-import type { Agent, QueuedMessage, Quote, RecordLine } from "./types";
+import type { QueuedMessage, Quote, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
 //
@@ -8,8 +8,9 @@ import type { Agent, QueuedMessage, Quote, RecordLine } from "./types";
 //   한다(스토리 15). 대화창이 저마다 구독하면 보이지 않는 work의 줄이 버려진다 — 구독은 `AppShell` 하나(`useChatRecordFeed`)이고
 //   그 줄이 여기 쌓인다. 처음 그릴 때 읽은 기록도 같은 자리에 합친다. 실물도 「구독 → 기록 읽기」 순서라 두 길이 겹치므로
 //   **seq로 합친다**(같은 seq는 한 줄이다).
-// - **작업 패널에는 key가 없다.** work를 옮겨도 같은 패널 인스턴스라, 입력 중인 글 · 고른 대화 · 펼친 턴을 컴포넌트 상태에 두면
-//   work를 오갈 때 섞이거나 사라진다. 그래서 대화(또는 work) 열쇠로 여기 둔다. 저장하지 않는다 — 앱을 다시 켜면 없다.
+// - **작업 패널에는 key가 없다.** work를 옮겨도 같은 패널 인스턴스라, 입력 중인 글 · 펼친 턴 · 인용을 컴포넌트 상태에 두면
+//   work를 오갈 때 섞이거나 사라진다. 그래서 대화(또는 work) 열쇠로 여기 둔다. 저장하지 않는다 — 앱을 다시 켜면 없다. 같은
+//   까닭으로 대화 목록과 그 수명(고른 대화 · 여는 중 · 거절 글 · 못 찾아 열지 못한 대화)은 `conversation-list.ts`가 work마다 쥔다.
 
 /** 대화 하나의 열쇠 — work와 대화 id. */
 export const conversationKey = (work: string, conversation: string) => `${work}\u0000${conversation}`;
@@ -54,17 +55,6 @@ function merge(have: readonly RecordLine[], incoming: readonly RecordLine[]): re
   return changed ? [...bySeq.values()].sort((a, b) => a.seq - b.seq) : have;
 }
 
-// 대화마다 기록을 한 번만 읽는다 — 그 뒤는 기록 줄 이벤트가 잇는다. 읽기가 실패하면 다음에 그 대화가 설 때 다시 읽는다.
-const readRecords = new Set<string>();
-export function claimRecordRead(key: string): boolean {
-  if (readRecords.has(key)) return false;
-  readRecords.add(key);
-  return true;
-}
-export function releaseRecordRead(key: string): void {
-  readRecords.delete(key);
-}
-
 /**
  * 대화마다의 대기 줄(three-axes 티켓 20) — 대기 줄 바뀜 이벤트가 실어 온 그 대화의 대기 줄 전체. 대기 줄은 기록에 없고 호스트
  * 메모리에만 있어(S13) 처음 그릴 때는 대화 목록의 `queue`로 그린다. 이벤트가 한 번이라도 온 대화는 여기 값이 이긴다 — 목록은
@@ -77,27 +67,11 @@ export function setQueue(work: string, conversation: string, queue: readonly Que
   chatQueueStore.setState((state) => ({ ...state, [key]: queue }));
 }
 
-// 대화 없는 work에서 대화창을 **처음** 열 때만 기본 에이전트로 대화 하나를 연다(S8) — work마다 앱이 도는 동안 한 번이다. 대화를
-// 다 닫은 뒤 다시 와도 저절로 열지 않는다(사람이 닫은 것을 되살리지 않는다). StrictMode가 이펙트를 두 번 돌려도 하나다.
-const firstOpened = new Set<string>();
-export function claimFirstConversation(work: string): boolean {
-  if (firstOpened.has(work)) return false;
-  firstOpened.add(work);
-  return true;
-}
-
 interface UiState {
-  /** work마다 고른 대화. 없으면 첫 대화다. */
-  active: Readonly<Record<string, string>>;
   /** 대화마다 입력 중인 글(스토리 12). */
   drafts: Readonly<Record<string, string>>;
   /** 펼친 턴 — 대화 열쇠 + 턴 열쇠. 턴이 끝나면 접혀 있고, 머리줄을 누르면 여기 든다. */
   expanded: Readonly<Record<string, true>>;
-  /**
-   * work마다 열려다 못 연 대화의 에이전트 — 엔진을 못 찾아 대화를 만들지 않았다(three-axes 티켓 22). 그동안 대화창 자리에 그
-   * 엔진의 안내 카드가 서고, 「다시 확인」으로 찾으면 그때 대화를 연다(스토리 102). 대화 탭을 고르면 거둔다.
-   */
-  wanted: Readonly<Record<string, Agent>>;
   /**
    * work마다 입력창에 붙은 인용(three-axes 티켓 27) — 그 work의 **지금 대화**의 입력창에 칩으로 선다. 인용은 하나라 새로 고르면
    * 바뀐다. 대화가 아니라 work의 열쇠인 것은, 스펙 창에서 고르는 때에는 대화창이 아직 대화를 읽지 않았을 수 있어서다(처음 여는
@@ -112,7 +86,7 @@ interface UiState {
   chosen: Readonly<Record<string, Partial<Record<ChoiceField, number>>>>;
 }
 
-export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {}, quotes: {}, chosen: {} });
+export const chatUiStore = new Store<UiState>({ drafts: {}, expanded: {}, quotes: {}, chosen: {} });
 
 /** 사람이 칩으로 그 칸을 바꿨다 — 바꾸기 답이 실어 온 기록의 마지막 seq 뒤의 일이다. */
 export function markChosen(key: string, field: ChoiceField, afterSeq: number): void {
@@ -120,33 +94,6 @@ export function markChosen(key: string, field: ChoiceField, afterSeq: number): v
     ...state,
     chosen: { ...state.chosen, [key]: { ...state.chosen[key], [field]: afterSeq } },
   }));
-}
-
-export function wantConversation(work: string, agent: Agent): void {
-  chatUiStore.setState((state) => ({ ...state, wanted: { ...state.wanted, [work]: agent } }));
-}
-
-export function dropWanted(work: string): void {
-  takeWanted(work);
-}
-
-/**
- * 열려다 못 연 대화를 거두고, 거둔 것이 이 부름이면 그 에이전트를 돌려준다(이미 없으면 `null`). 엔진을 찾은 소식에 대화를 여는 쪽이
- * 쓴다 — 같은 work의 대화창이 둘(작업 패널은 숨은 채 마운트되고 `chat` 탭이 가운데에 하나 더) 서 있어도 하나만 연다.
- */
-export function takeWanted(work: string): Agent | null {
-  const agent = chatUiStore.state.wanted[work] ?? null;
-  if (agent === null) return null;
-  chatUiStore.setState((state) => {
-    const wanted = { ...state.wanted };
-    delete wanted[work];
-    return { ...state, wanted };
-  });
-  return agent;
-}
-
-export function chooseConversation(work: string, conversation: string): void {
-  chatUiStore.setState((state) => ({ ...state, active: { ...state.active, [work]: conversation } }));
 }
 
 export function setDraft(key: string, text: string): void {

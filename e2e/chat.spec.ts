@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 
 import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, workRow } from "./harness";
+import { installFixtureBackend, ipcCallArgs, ipcFailure, replaceAnswer, unknownIpcCalls, workRow } from "./harness";
 import { conversationRow, handTurn, linesAfter, linesThrough, record, streamLines } from "./chat-records";
 import { countAnnouncements, 대화탭, 대화탭줄, 레일, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
@@ -213,6 +213,34 @@ test("work 사이: 다른 work에 가 있는 동안 흐른 줄이, 돌아오면 
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
   await expect(머리줄(page, "8초 동안 작업함")).toBeVisible();
   await expect(흐름(page).getByText("it printed", { exact: false })).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("work 사이: 한 work에서 대화를 만들지 못한 글이 다른 work의 대화창에 따라오지 않는다 — 그 글은 그 work에 남는다", async ({
+  page,
+}) => {
+  const REFUSED = "대화를 열지 못했어요: 에이전트를 띄우지 못함";
+  const other = conversationRow({ id: "c-pinned-codex", agent: "codex", name: "Codex" });
+  await installFixtureBackend(page, {
+    chat_list: answerByArg("work", { [pinnedWork.slug]: [other] }, { otherwise: [] }),
+    chat_new: ipcFailure(REFUSED),
+  });
+  // 대화 없는 work — 대화창을 처음 열면 첫 대화를 만들고, 호스트가 거절한 글을 그대로 보인다.
+  await page.goto(`/works/${plainWork.slug}`);
+  await 레일칸(page, "chat").click();
+  await expect(작업패널(page).getByRole("alert")).toHaveText(REFUSED);
+
+  // 다른 work로 간다 — 작업 패널은 그대로 `chat`이고 그 work의 대화가 선다. 앞 work의 거절 글은 이 work의 것이 아니다.
+  await workRow(page, pinnedWork.slug).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await expect(대화탭(page, "Codex")).toHaveAttribute("aria-pressed", "true");
+  await expect(작업패널(page).getByRole("alert")).toHaveCount(0);
+
+  // 돌아오면 그 work의 거절 글이 그대로 있다 — 다시 열지 않았다.
+  await workRow(page, plainWork.slug).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(작업패널(page).getByRole("alert")).toHaveText(REFUSED);
+  expect(await ipcCallArgs(page, "chat_new", "work")).toHaveLength(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
