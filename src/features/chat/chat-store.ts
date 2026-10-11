@@ -1,4 +1,5 @@
 import { Store } from "@tanstack/react-store";
+import type { ChoiceField } from "./chips";
 import type { Agent, QueuedMessage, Quote, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
@@ -103,9 +104,23 @@ interface UiState {
    * work면 첫 대화가 그 뒤에 선다).
    */
   quotes: Readonly<Record<string, Quote>>;
+  /**
+   * 대화마다 이 앱이 도는 동안 사람이 칩으로 바꾼 칸과 그 바꾸기 답의 마지막 seq(three-axes 티켓 19). 바꾼 값은 대화 목록에
+   * 남지만 언제 골랐는지는 적혀 있지 않다 — 띄우지 않은 대화에서 바꾸면 기록에 줄도 서지 않는다. 그래서 칩은 이 seq로 「이 값이
+   * 기록의 어느 줄보다 늦은가」를 안다(`chips.ts`의 `currentChoice`).
+   */
+  chosen: Readonly<Record<string, Partial<Record<ChoiceField, number>>>>;
 }
 
-export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {}, quotes: {} });
+export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {}, quotes: {}, chosen: {} });
+
+/** 사람이 칩으로 그 칸을 바꿨다 — 바꾸기 답이 실어 온 기록의 마지막 seq 뒤의 일이다. */
+export function markChosen(key: string, field: ChoiceField, afterSeq: number): void {
+  chatUiStore.setState((state) => ({
+    ...state,
+    chosen: { ...state.chosen, [key]: { ...state.chosen[key], [field]: afterSeq } },
+  }));
+}
 
 export function wantConversation(work: string, agent: Agent): void {
   chatUiStore.setState((state) => ({ ...state, wanted: { ...state.wanted, [work]: agent } }));

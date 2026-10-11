@@ -957,6 +957,48 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   chat_edit_queued: null,
   chat_delete_queued: null,
   chat_send_now: null,
+  // 칩(three-axes 티켓 19) — 에이전트 바꾸기와 모델 · 모드 · 계획 바꾸기. 답은 바뀐 대화이고 화면이 그것으로 목록 캐시를 고친다.
+  // 기본 답은 새 대화의 그것과 같은 「Claude」다 — 바꾼 값을 재는 `chat-chips.spec.ts`가 그 시나리오의 대화로 갈아 끼운다.
+  chat_switch_agent: {
+    id: "c-fixture-claude",
+    agent: "claude",
+    name: "Claude",
+    model: null,
+    mode: null,
+    plan: null,
+    lastSeq: 0,
+    queue: [],
+  } satisfies Conversation,
+  chat_set_model: {
+    id: "c-fixture-claude",
+    agent: "claude",
+    name: "Claude",
+    model: null,
+    mode: null,
+    plan: null,
+    lastSeq: 0,
+    queue: [],
+  } satisfies Conversation,
+  chat_set_mode: {
+    id: "c-fixture-claude",
+    agent: "claude",
+    name: "Claude",
+    model: null,
+    mode: null,
+    plan: null,
+    lastSeq: 0,
+    queue: [],
+  } satisfies Conversation,
+  chat_set_plan: {
+    id: "c-fixture-claude",
+    agent: "claude",
+    name: "Claude",
+    model: null,
+    mode: null,
+    plan: null,
+    lastSeq: 0,
+    queue: [],
+  } satisfies Conversation,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열
