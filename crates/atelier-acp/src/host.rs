@@ -729,6 +729,9 @@ impl ConversationHost {
                 return Err(error);
             }
         };
+        // 옛 엔진의 로그인을 기다리던 대화였어도(12) 더는 그 엔진을 쓰지 않는다 — 그 로그인이 「됨」이 돼도 다시 띄우지 않고,
+        // 보내기가 옛 엔진의 로그인 필요로 거절되지 않는다. 새 엔진이 로그인을 요구하면 열기가 새 엔진으로 다시 쥔다.
+        self.logins.forget(conversation);
         let conv = match live {
             Some(mut live) => {
                 live.agent.shut_down();

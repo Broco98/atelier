@@ -429,3 +429,23 @@ fn 첫_말_전에는_codex를_claude로_바꿔_옛_프로세스를_끄고_새_�
 
     host.shut_down();
 }
+
+#[test]
+fn 로그인이_필요한_codex_대화를_첫_말_전에_claude로_바꾸면_로그인을_기다리지_않고_말이_간다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let host = sandbox.host(sandbox.both_login_shell("needs-auth", "normal"));
+    let conversation = host.new_conversation("cart", Agent::Codex).expect("로그인이 필요해도 대화는 선다");
+    assert!(matches!(host.send("cart", &conversation.id, "안녕"), Err(HostError::LoginRequired { agent: Agent::Codex, .. })));
+
+    host.switch_agent("cart", &conversation.id, Agent::Claude).expect("첫 말 전에는 바꾼다");
+
+    host.send("cart", &conversation.id, "안녕").expect("Claude로 바꾼 대화는 Codex 로그인을 기다리지 않는다");
+    let session_id = sandbox.agent_session_id("cart", &conversation.id);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !sandbox.claude_stdin(&session_id).iter().any(|line| line["type"] == "user") {
+        assert!(Instant::now() < deadline, "말이 claude의 stdin에 닿는다");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    host.shut_down();
+}
