@@ -454,6 +454,14 @@ const 안물듦 = "rgba(0, 0, 0, 0)";
 const 칸배경 = (page: Page, at: number) =>
   page.locator('[data-tab="shell"]').nth(at).evaluate((el) => getComputedStyle(el).backgroundColor);
 
+/** 그 칸의 이름 글자에 칠해진 색. 잉크는 칸 상자가 아니라 이름 글자에 붙는다(`signalTint`). */
+const 이름색 = (page: Page, at: number) =>
+  page
+    .locator('[data-tab="shell"]')
+    .nth(at)
+    .getByText(FIXTURE_SHELL_NAME, { exact: true })
+    .evaluate((el) => getComputedStyle(el).color);
+
 test("부르는 칸만 물들고, 색이 부름의 무리 토큰(wait-soft · new-soft) 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -487,6 +495,10 @@ test("부르는 칸만 물들고, 색이 부름의 무리 토큰(wait-soft · ne
     .toBe(기다림);
   // 옆 칸은 그대로다 — 값이 줄 단위로 앉는 회귀가 여기서 터진다.
   expect(await 칸배경(page, 0)).not.toBe(기다림);
+  // 기다리는 칸의 이름은 `warning`이다(DS `.at-tab.wait`). 안 부르는 옆 칸의 이름은 본문 `fg`다 — 아래 안 본 완료가 견줄 색이다.
+  const 본문 = await 토큰색(page, "--fg");
+  expect(await 이름색(page, 0), "안 부르는 칸의 이름").toBe(본문);
+  await expect.poll(() => 이름색(page, 1), { message: "기다리는 칸의 이름이 warning이 아니다" }).toBe(await 토큰색(page, "--warning"));
 
   // 턴이 끝나면 안 본 완료다 — 프로세스 결정 13이 이렇게 고쳤다(옛 표는 세션 끝이 안 본 완료이고 턴 끝이 기다림이었다).
   await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 2);
@@ -495,6 +507,9 @@ test("부르는 칸만 물들고, 색이 부름의 무리 토큰(wait-soft · ne
   await expect
     .poll(() => 칸배경(page, 1), { message: "둘째 칸이 안 본 완료로 안 물들었다" })
     .toBe(안본완료);
+  // **안 본 완료의 이름은 무채색이다**(DS `.at-tab` — 색 글자는 기다림뿐). 파란 잉크(`accent-solid`)는 물든 칸 위 2.7:1(다크
+  // 2.5:1)이라 글자로 못 읽혔다 — 안 본 완료는 칸의 채움이 말한다.
+  await expect.poll(() => 이름색(page, 1), { message: "안 본 완료 칸의 이름이 본문 색이 아니다" }).toBe(본문);
 
   // **도는 중은 안 물든다**(스토리 52). 탭 칸에는 스피너를 안 세우므로 여기서 물들이면 claude가
   // 도는 내내 줄이 색을 띤 채라 「부른다」가 뜻을 잃는다.

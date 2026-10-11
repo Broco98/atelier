@@ -89,52 +89,59 @@ export function subagentLabel(count: number): string | null {
  * | 점(`dot`) | 행 레인 · 띠 줄의 8px 점과 그 3px 무리 | `dot-wait` + `wait-soft` | `dot-new` + `new-soft` |
  * | 채움(`fill`) | 셸 탭의 칸 | `wait-soft` | `new-soft` |
  * | 테(`edge`) | 켜진 셸 탭의 1px 안쪽 테두리 | `dot-wait` | `dot-new` |
- * | 잉크(`text`) | 탭 이름 · 호버 카드 말 칸의 라벨 · 행 오른쪽 메타와 띠 줄의 경과(`SignalElapsed`) | `warning` | `accent-solid` |
+ * | 잉크(`text`) | 호버 카드 말 칸의 라벨 · 행 오른쪽 메타와 띠 줄의 경과(`SignalElapsed`) | `warning` | `accent-solid` |
+ * | 탭 이름(`tab`) | 셸 탭의 이름 글자 | `warning` | 없음(칸의 본문 글자색) |
  *
  * **잉크만 점과 다른 이름이다.** 점의 파랑(`accent` #339cff)은 흰 면 위 2.9:1이라 글자에 쓰지 않는다(DS README 「대비」) —
  * 안 본 완료의 글자는 한 단 짙은 `accent-solid`다. 기다림은 점과 잉크가 같은 `warning`이다(`dot-wait`가 그 별칭).
  *
- * **잉크 한 칸이 네 자리를 칠한다.** DS가 안 본 완료의 파란 글자를 정한 자리는 띠 줄의 경과(`.end.new`) 하나이고, 탭 이름
- * (`.at-tab`)과 행 메타(`.at-row .end`)에서는 무채색이다. 그래도 자리마다 잉크를 따로 고르지 않고 띠의 값을 넷에 쓴다 — 같은
- * 셸의 부름이 자리마다 다른 색이면 스토리 79가 색에서 깨진다. 그 값을 받아들인 대가로, 칠해지는 면 위에서 두 잉크 모두 글자
- * 바닥(4.5) 아래다(라이트 / 다크).
+ * **잉크 한 칸이 세 자리를 칠하고, 탭 이름은 제 칸(`tab`)을 읽는다.** DS가 안 본 완료의 파란 글자를 정한 자리는 띠 줄의 경과
+ * (`.end.new`) 하나다. 탭 이름은 DS `.at-tab`대로 무채색이고 색 글자는 기다림(`.at-tab.wait` — `warning`)뿐이다 — 물든 칸 위의
+ * 파란 이름은 2.7:1(다크 2.5:1)로 글자 바닥 아래였다. 탭에서 안 본 완료를 말하는 색은 칸의 채움(`new-soft`)이고 그것이 점과 같은
+ * 가족이라, 이름이 무채색이어도 같은 셸이 자리마다 다른 부름을 말하지 않는다(스토리 79 — `signal-agreement.test.tsx`가 자리마다
+ * 색 가족을 센다). 행 메타의 안 본 완료 경과(`.at-row .end`)도 DS에서는 무채색인데 아직 이 잉크(`accent-solid`)다 — 탭 이름을
+ * 먼저 가른 것은 그 대비가 가장 낮았기 때문이다.
+ *
+ * 칠해지는 면 위의 대비(라이트 / 다크) — 두 잉크 모두 글자 바닥(4.5) 아래인 자리가 남는다.
  *
  * | 자리 | 면 | 기다림 `warning` | 안 본 완료 `accent-solid` |
  * |---|---|---|---|
  * | 띠 줄 경과 | `surface` | 3.8 / 6.1 | 3.6 / 4.9 |
  * | 호버 카드 라벨 | `surface-elevated` | 3.8 / 5.1 | 3.6 / 4.1 |
  * | 행 오른쪽 메타의 경과 | `surface-shell` | 3.5 / 4.3 | 3.4 / 3.4 |
- * | 셸 탭 이름 | `surface-shell` 위 물든 칸(채움) | 2.8 / 3.4 | 2.7 / 2.5 |
+ * | 셸 탭 이름 | `surface-shell` 위 물든 칸(채움) | 2.8 / 3.4 | — (본문 `fg`) |
  *
- * 가장 낮은 것은 물든 탭의 이름이다 — 옛 초록 잉크(`success`, 그 14% 무리 위 5.1 / 3.9)보다 내려갔다. 경과가 대비 검사에 걸리면
- * 경과만 `fg-secondary`로 낮추는 것은 codex-ds 스펙 S17이고 띠 · 행을 다시 짓는 티켓 19가 잰다.
+ * 가장 낮은 것은 기다리는 탭의 이름이다(DS `.at-tab.wait`가 고른 색). 경과가 대비 검사에 걸리면 경과만 `fg-secondary`로 낮추는
+ * 것은 codex-ds 스펙 S17이고 띠 · 행을 다시 짓는 티켓 19가 잰다.
  */
 const TONE: Readonly<
-  Record<CallingKind, { dot: string; text: string; fill: string; edge: string }>
+  Record<CallingKind, { dot: string; text: string; tab: string | null; fill: string; edge: string }>
 > = {
   waiting: {
     dot: "bg-dot-wait ring-wait-soft",
     text: "text-warning",
+    tab: "text-warning",
     fill: "bg-wait-soft",
     edge: "ring-dot-wait",
   },
   done: {
     dot: "bg-dot-new ring-new-soft",
     text: "text-accent-solid",
+    tab: null,
     fill: "bg-new-soft",
     edge: "ring-dot-new",
   },
 };
 
 /**
- * 셸 탭의 **물들임**(#205, 결정 6 — 안 J3). 칸 배경을 통째로 칠하고 이름 글자를 같은 가족의
- * 잉크로 바꾼다. 도는 중과 아무 말 없는 칸은 `null`이다 — 탭에는 스피너를 안 세운다(스토리 52).
+ * 셸 탭의 **물들임**(#205, 결정 6 — 안 J3). 칸 배경을 통째로 칠하고, 기다리는 칸은 이름 글자도 그 잉크로 바꾼다(안 본 완료의
+ * 이름은 무채색 — 위 `TONE`의 `tab`). 도는 중과 아무 말 없는 칸은 `null`이다 — 탭에는 스피너를 안 세운다(스토리 52).
  */
 export interface SignalTint {
   /** **칸 상자**에 붙는 것 — 채움과, 켜졌으면 1px 안쪽 테두리. 색은 배경뿐이다. */
   cell: string;
-  /** **이름 글자에만** 붙는 잉크. 상자에 두면 안쪽이 통째로 물든다(아래 머리말). */
-  ink: string;
+  /** **이름 글자에만** 붙는 잉크. 상자에 두면 안쪽이 통째로 물든다(아래 머리말). 없으면(`null`) 이름은 칸의 본문 글자색이다. */
+  ink: string | null;
 }
 
 /**
@@ -147,7 +154,8 @@ export interface SignalTint {
  * 「누구」이고 색은 늘 「어떤 상태」다 — 정체엔 색을 안 쓴다(사이드바에는 마크가 없다 — ui-refresh
  * 결정 13). 탭에서는 마크가 칸 상자 **안**에 서므로 잉크를 이름에만 줘야 한다: 잉크를 상자에 얹으면 이름이 숨는
  * 폭에서만 서는 글리프가 `currentColor`로 물들어, 하필 스토리 53이 「거기서도 신호가 살아야
- * 한다」고 적은 그 폭에서 claude 로고가 상태색이 된다. 그래서 **잉크를 이름 글자에만** 준다.
+ * 한다」고 적은 그 폭에서 claude 로고가 상태색이 된다. 그래서 **잉크를 이름 글자에만** 준다(잉크가 있는 것은 기다리는
+ * 칸이다 — 안 본 완료의 이름은 무채색이라 `ink`가 `null`이다).
  *
  * **켜진 칸에서 부름의 채움이 흰 면(`tab-on`)을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
  * `tab-on` 대신 이 채움이 서고, 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다.
@@ -166,7 +174,7 @@ export function signalTint(kind: ShellSignal, active: boolean): SignalTint | nul
     // 이어 붙인 이름을 만들지 않는다 — 여기 서는 글자는 전부 `TONE`에 **그대로 있는** 것이라
     // Tailwind가 규칙을 만든다(위 `TONE` 머리말의 그 사고).
     cell: cn(tone.fill, active && "ring-1 ring-inset", active && tone.edge),
-    ink: tone.text,
+    ink: tone.tab,
   };
 }
 

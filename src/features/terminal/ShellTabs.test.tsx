@@ -891,9 +891,10 @@ describe("칸이 물든다", () => {
     expect(물든칸("waiting")).toContain("bg-wait-soft");
     expect(물든칸("done")).toContain("bg-new-soft");
 
-    // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」).
+    // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」). 잉크는 기다리는 칸에만 있다 — 안 본
+    // 완료의 이름은 DS `.at-tab`대로 무채색이라, 안 물든 칸의 이름과 같은 class다(물든 칸 위 파란 이름은 2.7:1이었다).
     expect(이름span(물든칸통째("waiting"))).toContain("text-warning");
-    expect(이름span(물든칸통째("done"))).toContain("text-accent-solid");
+    expect(이름span(물든칸통째("done"))).toBe(이름span(물든칸통째(null)));
   });
 
   it("켜진 칸이 기다리면 기다림의 채움이 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
@@ -977,10 +978,10 @@ describe("칸이 물든다", () => {
 
     // **이름 글자도 같은 규율을 진다.** 잉크가 상자에서 이름으로 내려왔으므로(아래 「마크는
     // 상태색을 안 받는다」) 여기도 색만 갈려야 한다 — 잉크를 얹으면서 `font-*`나 여백을
-    // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다.
+    // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다. 안 본 완료의 이름은 아무것도 안 갈린다(잉크가 없다).
     for (const kind of ["waiting", "done"] as const) {
       const 갈린것 = 차집합(이름span(물든칸통째(kind)), 이름span(물든칸통째(null)));
-      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-warning" : "text-accent-solid"]);
+      expect(갈린것, kind).toEqual(kind === "waiting" ? ["text-warning"] : []);
     }
   });
 
@@ -1023,18 +1024,23 @@ describe("칸이 물든다", () => {
     // 숨는 폭(`@max-[88px]`)에서만 서는 그 글리프가 `currentColor`로 물든다. 하필 스토리 53이
     // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 상태색(기다림이면 `warning`)이 되는 것이다.
     // 그래서 **잉크는 이름 글자에만** 붙는다.
-    // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료 `text-accent-solid`. 「상자 · 마크에 없다」는 두 잉크를
-    // 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에 붙어도 초록이다.
+    // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료는 이름에 잉크가 없다(DS `.at-tab` — 무채색). 「상자 · 마크에
+    // 없다」는 두 부름의 잉크(`warning` · 띠 경과의 `accent-solid`)를 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에
+    // 붙어도 초록이다.
     const 잉크 = /(?<![\w-])text-(?:warning|accent-solid)(?![\w-])/;
     for (const [kind, ink] of [
       ["waiting", "text-warning"],
-      ["done", "text-accent-solid"],
+      ["done", null],
     ] as const) {
       const cell = 물든칸통째(kind);
-      // 칸 안에 잉크가 **딱 한 번** 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —
+      // 칸 안에 잉크가 **딱 한 번**(안 본 완료는 한 번도 안) 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —
       // 수로 재면 「어딘가 하나 더 붙었다」까지 함께 잡힌다.
-      expect(cell.split(ink).length - 1, kind).toBe(1);
-      expect(이름span(cell), kind).toContain(ink);
+      if (ink === null) {
+        expect(cell, kind).not.toMatch(잉크);
+      } else {
+        expect(cell.split(ink).length - 1, kind).toBe(1);
+        expect(이름span(cell), kind).toContain(ink);
+      }
       expect(마크span(cell), kind).not.toMatch(잉크);
       // **상자에 없다**가 핵심이다 — 있으면 안쪽 전부가 `currentColor`로 상속받는다. 켜진
       // 칸도 같다: 물들임이 이기는 자리라 잉크가 거기서 되살아나기 가장 쉽다.
