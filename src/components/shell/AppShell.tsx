@@ -6,7 +6,7 @@ import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
-import { useChatEngineFeed, useChatRecordFeed } from "@/features/chat/hooks";
+import { useChatEngineFeed, useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
@@ -98,6 +98,8 @@ function AppShell() {
   useChatRecordFeed();
   // 엔진 상태(찾음 · 로그인 · 로그인 진행)도 여기 하나로 듣는다 — 대화창의 안내 카드가 그것으로 선다(three-axes 티켓 22).
   useChatEngineFeed();
+  // 대기 줄 바뀜도 같은 까닭으로 여기 하나다(three-axes 티켓 20) — 다른 work에 가 있는 동안 대기 말이 가도 돌아오면 맞는 대기 줄이다.
+  useChatQueueFeed();
 
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open`(위)과 같은 뿌리에서 듣는 것은 그쪽도

@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { Agent, Quote, RecordLine } from "./types";
+import type { Agent, QueuedMessage, Quote, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
 //
@@ -62,6 +62,18 @@ export function claimRecordRead(key: string): boolean {
 }
 export function releaseRecordRead(key: string): void {
   readRecords.delete(key);
+}
+
+/**
+ * 대화마다의 대기 줄(three-axes 티켓 20) — 대기 줄 바뀜 이벤트가 실어 온 그 대화의 대기 줄 전체. 대기 줄은 기록에 없고 호스트
+ * 메모리에만 있어(S13) 처음 그릴 때는 대화 목록의 `queue`로 그린다. 이벤트가 한 번이라도 온 대화는 여기 값이 이긴다 — 목록은
+ * 한 번만 읽어(`staleTime: Infinity`) 그 뒤의 바뀜을 모른다. 이벤트는 기록 줄처럼 앱 층이 받는다(`useChatQueueFeed`).
+ */
+export const chatQueueStore = new Store<Readonly<Record<string, readonly QueuedMessage[]>>>({});
+
+export function setQueue(work: string, conversation: string, queue: readonly QueuedMessage[]): void {
+  const key = conversationKey(work, conversation);
+  chatQueueStore.setState((state) => ({ ...state, [key]: queue }));
 }
 
 // 대화 없는 work에서 대화창을 **처음** 열 때만 기본 에이전트로 대화 하나를 연다(S8) — work마다 앱이 도는 동안 한 번이다. 대화를
