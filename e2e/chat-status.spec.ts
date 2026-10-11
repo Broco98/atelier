@@ -178,6 +178,35 @@ test("다시 켬: 대화 탭과 어제의 기록이 기록 읽기로 그대로 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// L1이 남긴 「resume으로 이어 붙임」(S26, `revive.rs`) — 같은 어제의 한 턴 뒤, 다시 켠 앱이 말을 보내자 에이전트가 resume을 광고해 같은
+// 세션을 이었다: 띄우는 중 · 열림 `how: resumed` · 보낸 말 … 턴 끝. 되살리기의 가장 흔한 길이다.
+const resumed = record("resumed");
+const RESUMED_YESTERDAY_END = seqOf(resumed, (line) => line.kind === "turn-end");
+const RESUMED = seqOf(resumed, (line) => line.kind === "session" && (line.payload as { how?: string }).how === "resumed");
+
+test("다시 켬: resume으로 같은 세션을 이으면 이어 붙이는 중을 지나 「새로 시작함」 없이 오늘의 말이 어제의 턴 뒤에 선다", async ({ page }) => {
+  await openChat(page, [{ ...restarted, lastSeq: RESUMED_YESTERDAY_END }], {
+    [restarted.id]: linesThrough(resumed, RESUMED_YESTERDAY_END),
+  });
+  await expect(흐름(page).getByText("어제의 말", { exact: true })).toBeVisible();
+
+  await 입력칸(page).fill("오늘의 말");
+  await 입력칸(page).press("Enter");
+  await streamLines(page, plainWork.slug, restarted.id, linesThrough(linesAfter(resumed, RESUMED_YESTERDAY_END), RESUMED - 1));
+  await expect(대화탭(page, "Codex — 이어 붙이는 중")).toBeVisible();
+  // 맥락을 이었다(`resumed`) — 열려도 대화 안에 「새로 시작함」 줄은 서지 않는다.
+  await streamLines(page, plainWork.slug, restarted.id, linesThrough(linesAfter(resumed, RESUMED - 1), RESUMED));
+  await expect(대화탭(page, "Codex")).toBeVisible();
+  await streamLines(page, plainWork.slug, restarted.id, linesAfter(resumed, RESUMED));
+  await expect(머리줄(page, "8초 동안 작업함")).toHaveCount(2);
+  await expect(흐름(page).getByText(새로시작함)).toHaveCount(0);
+  const order = await 흐름(page)
+    .getByText(/^(어제의 말|오늘의 말)$/)
+    .evaluateAll((all) => all.map((el) => el.textContent));
+  expect(order).toEqual(["어제의 말", "오늘의 말"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("다시 켬: 앱을 끌 때 돌던 턴은 다시 켜면 끝난 턴이다 — 일하는 중으로 남지 않는다. 같은 기록이라도 새로고침(에이전트가 떠 있다)이면 일하는 중이다", async ({
   page,
 }) => {
@@ -205,7 +234,7 @@ test("상태 줄: 에이전트 프로세스가 죽으면 그 까닭이, 잰 적 
 
   await streamLines(page, plainWork.slug, restarted.id, renumber(versionWarning, RESPAWN + 1));
   await expect(흐름(page).getByText("확인하지 않은 에이전트 판이에요(3.0.0 — 확인한 판은 2.x). 그대로 이어 가요")).toBeVisible();
-  // 새 세션으로 열렸다는 열림(`fresh`)이 아니니 「새로 시작함」은 없다.
+  // 판 경고 기록의 열림은 처음 연 세션(`new`)이라 「새로 시작함」은 없다 — 되살려 이은 열림(`resumed`)은 위 「다시 켬」 시험이 잰다.
   await expect(흐름(page).getByText(새로시작함)).toHaveCount(0);
   await expect(대화탭(page, "Codex")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);

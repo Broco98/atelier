@@ -30,15 +30,16 @@ const stateOf = (line: RecordLine) => (line.payload as { state?: string }).state
 // L1이 남긴 「Codex 죽음」(S26, `revive.rs`) — 그 죽음 줄(까닭 · stderr 꼬리) 하나를 이 대화의 끝에 잇는다.
 const died = record("codex-died").find((line) => line.kind === "session" && stateOf(line) === "died")!;
 
-// L1이 남긴 「되살리기」(S26, 티켓 10) — 어제의 한 턴 뒤, 앱을 다시 켜고 말을 보내자 새 프로세스가 띄우는 중 · 계정 · 열림을 적고
-// 그 말(「오늘의 말」)을 보냈다.
-const resume = record("resume");
-const YESTERDAY_END = resume.find((line) => line.kind === "turn-end")!.seq;
-const TODAY_SENT = resume.filter((line) => line.kind === "sent")[1].seq;
-/** 되살리기가 적는 새 프로세스의 줄들 — 띄우는 중부터 열림까지. */
-const respawned = linesThrough(linesAfter(resume, YESTERDAY_END), TODAY_SENT - 1);
+// L1이 남긴 「resume으로 이어 붙임」(S26, 티켓 10 · `revive.rs`) — 어제의 한 턴 뒤, 앱을 다시 켜고 말을 보내자 새 프로세스가 띄우는 중을
+// 적고 같은 세션을 resume으로 이어(열림 `how: resumed`) 그 말(「오늘의 말」)을 보냈다. 같은 세션을 이어도 다시 켜기 전 프로세스의 도구는
+// 이어지지 않는다 — 그 프로세스는 이미 없다.
+const resumed = record("resumed");
+const YESTERDAY_END = resumed.find((line) => line.kind === "turn-end")!.seq;
+const TODAY_SENT = resumed.filter((line) => line.kind === "sent")[1].seq;
+/** 되살리기가 적는 새 프로세스의 줄들 — 띄우는 중부터 열림(`resumed`)까지. */
+const respawned = linesThrough(linesAfter(resumed, YESTERDAY_END), TODAY_SENT - 1);
 /** 되살린 프로세스의 줄들과 그 뒤에 간 말. */
-const revived = linesThrough(linesAfter(resume, YESTERDAY_END), TODAY_SENT);
+const revived = linesThrough(linesAfter(resumed, YESTERDAY_END), TODAY_SENT);
 
 /** 그 work에 선 Codex 대화 — 기록 읽기는 `read`까지를 답한다. */
 const codex = conversationRow({ id: "c-late-codex", agent: "codex", name: "Codex", lastSeq: END_SEQ - 1 });
@@ -129,8 +130,8 @@ test("멈춘 뒤의 도구 줄(에이전트가 끝남): 돌던 명령은 에이�
 test("멈춘 뒤의 도구 줄(다시 켠 뒤 되살림): 다시 켜기 전 프로세스의 돌던 명령은 되살린 뒤 대화 목록이 「떠 있다」고 말해도 「멈춘 뒤에 끊김」이다 — 새 프로세스의 띄우는 중 줄이 끊는다", async ({
   page,
 }) => {
-  // 앱을 다시 켜고 그 대화를 되살렸다 — 기록에는 다시 켜기 전의 멈춘 턴 뒤로 새 프로세스의 띄우는 중 · 계정 · 열림이 서고, 대화 목록은 이제
-  // 「떠 있다」(`live: true`)고 말한다. 끊김은 목록의 칸이 아니라 기록 안의 표지로 정한다.
+  // 앱을 다시 켜고 그 대화를 되살렸다 — 기록에는 다시 켜기 전의 멈춘 턴 뒤로 새 프로세스의 띄우는 중 · 열림(같은 세션을 이은 `resumed`)이
+  // 서고, 대화 목록은 이제 「떠 있다」(`live: true`)고 말한다. 끊김은 목록의 칸이나 세션 id가 아니라 기록 안의 표지로 정한다.
   const read = [...linesThrough(late, END_SEQ), ...renumber(respawned, END_SEQ + 1)];
   await openChat(page, read, { ...codex, lastSeq: read[read.length - 1].seq, live: true });
   const row = 도구줄(page, COMMAND);
@@ -144,7 +145,7 @@ test("멈춘 뒤의 도구 줄(다시 켠 뒤 되살림): 다시 켜기 전 프�
 test("도는 턴의 도구 줄(다시 켠 뒤 말을 보내 되살림): 다시 켜기 전에 돌던 턴과 도구 줄은 되살린 뒤에도 끊긴 채다 — 「… 실행 중」으로 돌아가지 않는다", async ({
   page,
 }) => {
-  // 도구를 돌리던 중에 앱이 꺼졌고(턴 끝 줄이 없다), 다시 켠 뒤 말을 보내 되살렸다 — 띄우는 중 · 계정 · 열림 · 보낸 말.
+  // 도구를 돌리던 중에 앱이 꺼졌고(턴 끝 줄이 없다), 다시 켠 뒤 말을 보내 같은 세션을 이었다 — 띄우는 중 · 열림(`resumed`) · 보낸 말.
   const read = [...linesThrough(late, END_SEQ - 1), ...renumber(revived, END_SEQ)];
   await openChat(page, read, { ...codex, lastSeq: read[read.length - 1].seq, live: true });
   await expect(작업패널(page).getByText("오늘의 말", { exact: true })).toBeVisible();

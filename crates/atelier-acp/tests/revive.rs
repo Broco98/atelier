@@ -99,6 +99,9 @@ fn resume을_광고하면_resume으로_열리고_열림_줄이_resumed이고_같
     );
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 23 · 20)가 resume으로 이어 붙인 열림(`how: resumed`)을 이것으로 잰다: 「새로 시작함」이 서지 않고,
+    // 다시 켜기 전 프로세스의 돌던 도구는 같은 세션을 이어도 끊긴 채다.
+    common::assert_record("resumed", &common::fix_record(&record, &sandbox.data_root(), &session));
 }
 
 #[test]
