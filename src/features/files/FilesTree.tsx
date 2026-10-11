@@ -1,14 +1,20 @@
-import { useId, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useId, useMemo, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { FolderGit2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
-import { TreeRows, type RowLook, type TreeRowItem } from "@/features/works/SpecTree";
+import {
+  TreeRows,
+  treeIndent,
+  type RowLook,
+  type TreeRowItem,
+  type TreeRowsProps,
+} from "@/features/works/SpecTree";
 import type { WorktreeView, WorkView } from "@/features/works/types";
 import { foldsOf, rememberFolds, type Folds } from "./folds";
-import { refreshWorktrees, worktreeTreeQuery } from "./hooks";
-import type { WorktreeEntry } from "./types";
+import { refreshWorktrees, worktreeFolderQuery, worktreeTreeQuery } from "./hooks";
+import type { WorktreeEntry, WorktreeTree } from "./types";
 
 // 걸린 행이 덧붙여 말하는 것 — 흐린 글자의 뜻을 화면 읽기로도 듣는다(스토리 88).
 const IGNORED_NOTE = "gitignore에 걸림";
@@ -57,7 +63,7 @@ interface FileRow extends TreeRowItem<FileRow> {
 }
 
 // 폴더만 펼쳐지는 행이다. 심링크는 따라가지 않고, 하위 모듈은 다른 저장소라 펼치지 않는 행이다(S3) — 둘 다 파일 행으로 선다.
-// 아직 안 읽은 폴더(`children: null`)는 빈 폴더로 옮기고, 펼침은 `isOpen`이 막는다.
+// 아직 안 읽은 폴더(`children: null`)는 빈 폴더로 옮긴다 — 펼치면 그 몸(`UnreadFolder`)이 한 겹 읽어 행을 세운다.
 const rowsOf = (entries: readonly WorktreeEntry[]): FileRow[] =>
   entries.map((entry) => ({
     name: entry.name,
@@ -100,35 +106,36 @@ function ProjectSection({
   };
   const headingId = useId();
 
-  let body;
-  if (!worktree.exists || tree.data?.kind === "worktreeMissing") {
-    body = <span className={NOTE}>워크트리 없음</span>;
-  } else if (tree.data?.kind === "unreadable") {
-    body = <span className={NOTE}>읽지 못했어요 — {tree.data.reason}</span>;
-  } else if (tree.data?.kind === "listed") {
-    body =
-      rows.length === 0 ? (
-        <span className={NOTE}>파일이 없어요</span>
-      ) : (
+  // 구획의 행과 펼친 걸린 폴더 안의 행이 같은 값으로 선다 — 접힘 기억도 한 벌이다.
+  const rowsProps: RowsProps = {
+    current: null,
+    isOpen: (row) => folds[row.path] ?? false,
+    onOpenChange: setOpen,
+    // 파일 행을 눌러 파일 탭을 여는 것은 티켓 05다
+    onSelect: () => {},
+    lookOf,
+    // 아직 안 읽은 폴더(걸린 폴더)는 펼칠 때 한 겹 읽는다 — 그 몸이 읽기를 건다(스토리 20). 나머지 폴더는 받은 자식 행이다.
+    folderBody: (row, depth) =>
+      row.entry.children === null ? (
+        <UnreadFolder slug={slug} project={project} path={row.path} depth={depth} visible={visible} rowsProps={rowsProps} />
+      ) : undefined,
+  };
+
+  const body = worktree.exists ? (
+    answerBody(
+      tree,
+      rows,
+      (items) => (
         <div className="flex shrink-0 flex-col gap-(--row-gap)">
-          <TreeRows
-            items={rows}
-            depth={0}
-            current={null}
-            // 걸린 폴더는 아직 안 읽어 펼치지 않는다(펼칠 때 한 겹 읽기는 티켓 02).
-            isOpen={(row) => row.entry.children !== null && (folds[row.path] ?? false)}
-            onOpenChange={setOpen}
-            // 파일 행을 눌러 파일 탭을 여는 것은 티켓 05다
-            onSelect={() => {}}
-            lookOf={lookOf}
-          />
+          <TreeRows items={items} depth={0} {...rowsProps} />
         </div>
-      );
-  } else if (tree.isError) {
-    body = <span className={NOTE}>읽지 못했어요 — {String(tree.error)}</span>;
-  } else {
-    body = <span className={NOTE}>읽는 중…</span>;
-  }
+      ),
+      sectionNote,
+      "파일이 없어요",
+    )
+  ) : (
+    sectionNote("워크트리 없음")
+  );
 
   if (title === null) return body;
   return (
@@ -137,6 +144,77 @@ function ProjectSection({
         {title}
       </h3>
       {body}
+    </div>
+  );
+}
+
+/** 행 묶음의 입력 가운데 자리(항목 · 깊이)를 뺀 것 — 구획과 그 안의 펼친 걸린 폴더가 함께 쓴다. */
+type RowsProps = Omit<TreeRowsProps<FileRow>, "items" | "depth">;
+
+/**
+ * 펼친 걸린 폴더의 몸(git-integration 티켓 02) — 그 폴더의 바로 아래를 한 겹 읽어 자식 행의 자리에 세운다. 묻는 동안은 「읽는
+ * 중」 행이 서고(스토리 21), 읽지 못하면 그 자리에 까닭 행이 선다. 안의 폴더도 다시 「아직 안 읽음」이라 펼치면 또 이 몸이다.
+ *
+ * 펼쳐 둔 동안만 마운트된다 — 그래서 펼칠 때 읽고, 새로고침 버튼은 펼쳐 둔 것만 다시 읽는다(`worktreeFolderQuery`).
+ */
+function UnreadFolder({
+  slug,
+  project,
+  path,
+  depth,
+  visible,
+  rowsProps,
+}: {
+  slug: string;
+  project: string;
+  path: string;
+  depth: number;
+  visible: boolean;
+  rowsProps: RowsProps;
+}) {
+  const folder = useQuery(worktreeFolderQuery(slug, project, path, visible));
+  const rows = useMemo(() => (folder.data?.kind === "listed" ? rowsOf(folder.data.entries) : []), [folder.data]);
+  return answerBody(
+    folder,
+    rows,
+    (items) => <TreeRows items={items} depth={depth} {...rowsProps} />,
+    (text) => <FolderNote depth={depth} text={text} />,
+    "비어 있어요",
+  );
+}
+
+/**
+ * 트리 목록 · 한 겹 읽기의 답을 몸으로 옮긴다 — 둘은 같은 갈래(코어 `WorktreeTree`)라 구획과 펼친 걸린 폴더가 같은 규칙으로
+ * 그린다. 행을 세우는 법(`rowsBody`)과 안내 한 줄의 모양(`note`), 비었을 때의 말만 자리마다 다르다.
+ *
+ * 답이 오기 전에 실패하면(명령 거절) 그 글이 까닭이다. 다시 읽는 동안에는 받아 둔 답이 그대로 선다 — 「읽는 중」은 처음뿐이다.
+ */
+function answerBody(
+  answer: UseQueryResult<WorktreeTree>,
+  rows: FileRow[],
+  rowsBody: (items: FileRow[]) => ReactNode,
+  note: (text: string) => ReactNode,
+  empty: string,
+): ReactNode {
+  const { data } = answer;
+  if (data?.kind === "worktreeMissing") return note("워크트리 없음");
+  if (data?.kind === "unreadable") return note(`읽지 못했어요 — ${data.reason}`);
+  if (data?.kind === "listed") return rows.length === 0 ? note(empty) : rowsBody(rows);
+  if (answer.isError) return note(`읽지 못했어요 — ${String(answer.error)}`);
+  return note("읽는 중…");
+}
+
+/** 구획의 안내 한 줄 — 트리 대신 선다. */
+const sectionNote = (text: string) => <span className={NOTE}>{text}</span>;
+
+/**
+ * 펼친 걸린 폴더 아래의 안내 한 줄(「읽는 중」 · 까닭 · 비어 있음) — 자식 행의 자리(높이 · 들여쓰기)에 선다. 까닭은 길 수 있어
+ * 잘리고, 툴팁으로 전부 읽힌다.
+ */
+function FolderNote({ depth, text }: { depth: number; text: string }) {
+  return (
+    <div className="flex h-7 items-center pr-2 text-ui text-tertiary" style={treeIndent(depth)} title={text}>
+      <span className="min-w-0 truncate">{text}</span>
     </div>
   );
 }

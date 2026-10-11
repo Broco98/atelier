@@ -233,6 +233,16 @@ export const WORKTREE_TREES: Record<string, WorktreeTree> = {
 };
 
 /**
+ * 걸린 폴더의 **한 겹**(`list_worktree_folder`의 답, git-integration 티켓 02). **인자 `path`로만 가른다** — 걸린 폴더는
+ * `billing`의 `dist` 하나라 경로가 곧 그 폴더다. 안의 것은 모두 걸린 것이고, 자식 폴더(`dist/assets`)는 다시 「아직 안
+ * 읽음」이라 펼치면 다음 겹을 묻는다. 한 겹만 읽는 규칙 자체는 L1(`worktree.rs`)이 진짜 디스크로 잰다.
+ */
+export const WORKTREE_FOLDERS: Record<string, WorktreeTree> = {
+  dist: { kind: "listed", entries: [ignoredFolder("dist/assets"), worktreeFile("dist/app.js", true)] },
+  "dist/assets": { kind: "listed", entries: [worktreeFile("dist/assets/logo.svg", true)] },
+};
+
+/**
  * 작업 행을 끌어 놓았을 때 `move_work`가 돌려주는 목록(UI개선 티켓 05). **인자와 무관한 한 벌이고,
  * 원래 목록을 뒤집어 짓는다** — fixture 백엔드에는 상태가 없어 「옮긴 결과」를 지을 수 없으니,
  * 원래와 **확실히 다른** 순서를 주어 「응답으로 캐시를 갈아 끼웠다」를 화면에서 잰다.
@@ -981,6 +991,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // files 칸이 보일 때 프로젝트마다 한 번, 그리고 새로고침 버튼에 나간다(git-integration 판 01). **기본 답이 없다** — 표에 없는
   // 프로젝트로 읽기가 나가면 그 자리에서 물린다. 태우는 시나리오는 `files-panel.spec.ts`다.
   list_worktree_tree: answerByArg("project", WORKTREE_TREES),
+  // files 칸에서 걸린 폴더를 펼칠 때, 그리고 펼쳐 둔 채 새로고침 버튼에 나간다(git-integration 티켓 02). **기본 답이 없다** —
+  // 표에 없는 폴더로 읽기가 나가면 그 자리에서 물린다. 태우는 시나리오는 `files-panel.spec.ts`다.
+  list_worktree_folder: answerByArg("path", WORKTREE_FOLDERS),
   // 파일 탭이 본문에 설 때 나간다(git-integration 판 01). 표에 없는 경로는 「없음」이다(`WORKTREE_FILES` 머리말).
   read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
