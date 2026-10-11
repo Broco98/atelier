@@ -1,7 +1,10 @@
 //! L1 — 대화 호스트 ↔ Claude 변환기(시험 bin) ↔ 가짜 claude: 백그라운드 작업이 턴을 붙잡지 않고, claude가 작업 알림으로
 //! 스스로 이어 간 턴은 턴 밖 update와 턴 밖 끝으로 적힌다(three-axes 티켓 16 · S4 · 스토리 45 · 46).
 //!
-//! 시험은 호스트에 명령을 넣고, `agents/` 기록 · 대기 줄 · 가짜 claude의 영수증(받은 stdin 줄)만 본다.
+//! 시험은 호스트에 명령을 넣고, `agents/` 기록 · 대기 줄 · 가짜 claude의 영수증(받은 stdin 줄)만 본다. 호스트와 변환기가 잇는
+//! 끝맺음이다 — 변환기가 내는 턴 밖 턴의 표지(`_meta.atelier.outOfTurn`)를 호스트가 턴 끝 줄 · 대기 줄 · 고친 곳으로 받는다.
+//! 변환기 안의 갈래(턴 밖 시작과 끝 · 미뤄 둔 말 · 그 턴을 멈추기)는 변환기 상태 기계의 시험(`src/translator/machine/tests.rs`)이
+//! 같은 녹화를 프로세스 없이 먹여 잰다.
 //!
 //! 가짜 claude는 워크플로 실측 2.1.282 `steer-background-subagent`(관문 G8)와 판 02 관문 G4 `g4-background`(2.1.296)를
 //! 되감는다 — 원문에서 `result.origin.kind`가 `task-notification`인 턴은 user 줄 없이, 앞 턴이 끝나자마자 낸다.
@@ -182,54 +185,4 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
     );
 
     host.shut_down();
-}
-
-#[test]
-fn 변환기는_스스로_이어_간_턴_동안_온_session_prompt를_그_턴의_result_뒤에_claude에_넣는다() {
-    // 호스트가 스스로 이어 간 턴의 시작을 알기 전에 말을 보낸 꼴 — 변환기를 ACP로 직접 몬다.
-    let sandbox = Sandbox::new();
-    let (mut translator, mut wire) = common::spawn_translator(
-        &sandbox,
-        &[("FAKE_CLAUDE_FIXTURE", "2.1.282/steer-background-subagent"), ("FAKE_CLAUDE_HOLD_BACKGROUND", "result")],
-    );
-    let answer_to = |id: u64| move |line: &Value| line["id"] == id && line.get("method").is_none();
-    let prompt = |id: u64, text: &str| {
-        json!({"jsonrpc": "2.0", "id": id, "method": "session/prompt",
-               "params": {"sessionId": "", "prompt": [{"type": "text", "text": text}]}})
-    };
-
-    let (initialized, session) = wire.open_session(&sandbox);
-    assert_eq!(
-        initialized["result"]["agentCapabilities"],
-        json!({"loadSession": true, "sessionCapabilities": {"resume": {}}}),
-        "되살리기는 load와 resume을 둘 다 광고한다(워크플로 S19)"
-    );
-    wire.send(prompt(3, "첫 말"));
-    wire.until(answer_to(3));
-    wire.send(prompt(4, "백그라운드로 걸어"));
-    assert_eq!(wire.until(answer_to(4))["result"]["stopReason"], "end_turn", "백그라운드를 건 턴은 result에서 끝난다");
-    wire.until(|line| line["params"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "started");
-
-    wire.send(prompt(5, "그동안 보낸 말"));
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert_eq!(user_lines(&sandbox, &session), 2, "스스로 이어 간 턴이 도는 동안에는 claude에 넣지 않는다 — 그 턴에 합쳐진다(steer)");
-
-    sandbox.release_claude_background(&session);
-    let ended = wire.until(|line| line["params"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "ended");
-    assert_eq!(ended["params"]["update"]["_meta"]["atelier"]["outOfTurn"]["response"]["stopReason"], "end_turn");
-    common::wait_for("미뤄 둔 말이 claude에 가지 않았다", || user_lines(&sandbox, &session) >= 3);
-    let stdin = sandbox.claude_stdin(&session);
-    let last_user = stdin.iter().rfind(|line| line["type"] == "user").unwrap();
-    assert_eq!(last_user["message"]["content"], json!([{"type": "text", "text": "그동안 보낸 말"}]));
-    assert!(
-        !wire.seen.iter().any(|line| line["id"] == 5),
-        "미뤄 둔 말에는 그 턴 밖 끝에서 답하지 않는다 — 그 말의 턴은 이제 시작한다"
-    );
-
-    // 원문의 다음 턴은 interrupt를 기다린다 — 멈추면 그 말의 턴이 cancelled로 끝난다.
-    wire.send(json!({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session}}));
-    assert_eq!(wire.until(answer_to(5))["result"]["stopReason"], "cancelled");
-
-    drop(wire);
-    common::assert_translator_exits(&mut translator);
 }

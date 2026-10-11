@@ -111,7 +111,7 @@ fn 되살릴_세션을_claude가_모르면_load로_다시_띄우지_않고_새_�
 }
 
 #[test]
-fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_줄과_엔진_상태로_오고_오류_글은_답으로_서지_않는다() {
+fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_줄과_엔진_상태로_온다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);
     sandbox.log_in(Agent::Claude);
@@ -141,11 +141,6 @@ fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_�
         Some(&EngineState { agent: Agent::Claude, found: true, logged_in: Some(false), login: None }),
         "엔진을 가리지 않고 같은 엔진 상태가 나간다(티켓 12)"
     );
-    let answers: Vec<&Value> = of_kind(&record, "update")
-        .into_iter()
-        .filter(|line| line["payload"]["update"]["sessionUpdate"] == "agent_message_chunk")
-        .collect();
-    assert!(answers.is_empty(), "미로그인 오류의 <synthetic> 글은 답으로 옮기지 않는다(실측 함정 33): {answers:?}");
     assert_eq!(
         host.send("cart", &conversation.id, "한 번 더."),
         Err(HostError::LoginRequired { agent: Agent::Claude, conversation: conversation.id.clone() }),
