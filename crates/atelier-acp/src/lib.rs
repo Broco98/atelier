@@ -3,6 +3,7 @@
 //!
 //! 앱 명령은 [`ConversationHost`] 하나만 부른다. 그 아래의 런타임 · 변환기 · 찾기는 호스트가 감춘다.
 
+mod chat_settings;
 mod discovery;
 mod engines;
 mod host;

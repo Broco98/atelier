@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::chat_settings;
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::engines::{self, EngineLists};
 use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
@@ -812,9 +813,13 @@ impl ConversationHost {
         })
     }
 
-    /// 새 대화 — 엔진 기본값으로 만들고 곧바로 띄워 세션을 연다(S8). [`Self::new_conversation_with`]에 빈 기본값을 준 것이다.
+    /// 새 대화 — 설정 「대화」의 그 엔진 기본값(모델 · 모드)으로 만들고 곧바로 띄워 세션을 연다(S8 · three-axes 결정 16 · 티켓
+    /// 25). [`Self::new_conversation_with`]에 데이터 루트의 `settings.json`에서 읽은 기본값을 준 것이다.
+    ///
+    /// - 설정은 부를 때마다 다시 읽는다 — 바꾼 설정은 다음 새 대화부터 들고, 이미 열린 대화는 그대로다(스토리 113).
+    /// - 비어 있는 칸은 엔진 기본값이다. 설정 파일이 없거나 깨졌어도 엔진 기본값으로 연다. 호스트는 설정 파일을 쓰지 않는다.
     pub fn new_conversation(&self, work: &str, agent: Agent) -> Result<Conversation, HostError> {
-        self.new_conversation_with(work, agent, ConversationDefaults::default())
+        self.new_conversation_with(work, agent, chat_settings::conversation_defaults(&self.data_root, agent))
     }
 
     /// 새 대화 — `defaults`의 모델 · 모드로 만들고 곧바로 띄워 세션을 연다(S8). 그래서 칩 · 메뉴 · 로그인 실패가 첫 말
@@ -1023,7 +1028,13 @@ impl ConversationHost {
             }
         };
 
-        conv.lock_state().turns = agent_process.turns();
+        let turns = agent_process.turns();
+        if row.agent == Agent::Codex {
+            if let Some(turns) = &turns {
+                reapply_settings(turns, row);
+            }
+        }
+        conv.lock_state().turns = turns;
         // S16 — 세션이 열릴 때마다 그 엔진의 목록을 덮어 쓴다. 못 써도 대화는 연다: 설정 쪽의 목록이 낡을 뿐이다.
         {
             let _file = self.lock_engines_file();
@@ -1504,7 +1515,8 @@ fn record_opened(conv: &Arc<Conv>, agent: Agent) -> runtime::OnOpened {
 }
 
 /// Codex를 띄우는 것 — 찾은 `codex-acp`를 `npx` 없이 바로 띄운다(three-axes 결정 26). env는 로그인 env에
-/// `CODEX_PATH=<찾은 codex>`를 더한 것이다. `INITIAL_AGENT_MODE`는 넣지 않는다 — 시작 모드는 엔진 기본값이다.
+/// `CODEX_PATH=<찾은 codex>`를 더한 것이다. `INITIAL_AGENT_MODE`는 넣지 않는다 — 대화의 시작 모드 · 모델은 세션이 열린 뒤
+/// `set_*`로 넣고(`reapply_settings`, three-axes 티켓 25), 비어 있으면 엔진 기본값이다.
 /// 사용자의 `CODEX_HOME`은 로그인 env에 있으면 그대로 간다(로그인 · config의 MCP · 모델이 이어진다).
 fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &SessionPlace) -> Launch {
     let found = |name: &str| -> PathBuf {
@@ -1602,7 +1614,37 @@ enum Setting {
     Plan(bool),
 }
 
+/// 띄운 Codex에 그 대화의 모델 · 모드 · 계획을 넣는다 — Codex는 `session/new`에 이것을 싣지 못해 새 세션을 config 기본값으로
+/// 연다. 설정 「대화」의 기본값으로 만든 새 대화(three-axes 티켓 25)가 이 길로 그 값을 받는다. 사람이 바꾼 것이 아니므로 `config`
+/// 줄은 적지 않는다. 비어 있는 칸(엔진 기본값)은 넣지 않는다 — Codex는 `set_*`를 받지 않는다(결정 16).
+///
+/// 엔진이 거절해도(사라진 모델 · 답 없음) 대화는 연다 — 그 값은 `agents.json`에 남고 엔진은 기본값으로 돈다. 까닭은 앱의
+/// stderr에만 남는다. 수신 루프 밖에서, 대화의 잠금 없이 부른다 — 답을 기다린다. 떠 있는 표에 넣기 전이라 첫 말보다 먼저 닿는다.
+fn reapply_settings(turns: &Turns, row: &ConversationRow) {
+    for setting in Setting::of_row(row) {
+        let (method, fields) = setting.request();
+        if let Err(error) = turns.change(method, fields, SETTING_LIMIT) {
+            eprintln!("띄운 대화에 설정을 넣지 못했습니다: {} — {error}", row.id);
+        }
+    }
+}
+
 impl Setting {
+    /// 그 대화 줄에 든 설정들 — 모델 · 모드 · 계획 차례. 비어 있는 칸(엔진 기본값)은 넣지 않는다.
+    fn of_row(row: &ConversationRow) -> Vec<Setting> {
+        let mut settings = Vec::new();
+        if let Some(model) = &row.model {
+            settings.push(Setting::Model(model.clone()));
+        }
+        if let Some(mode) = &row.mode {
+            settings.push(Setting::Mode(mode.clone()));
+        }
+        if let Some(plan) = row.plan {
+            settings.push(Setting::Plan(plan));
+        }
+        settings
+    }
+
     /// 엔진에 넣는 요청 — 메서드와 `sessionId` 밖의 인자(실측 A2 · plan-mode의 꼴).
     fn request(&self) -> (&'static str, Value) {
         match self {

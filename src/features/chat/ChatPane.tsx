@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { readDefaultAgent } from "@/features/settings/chat-settings";
 import ApprovalCard from "./ApprovalCard";
 import { ChatDocsContext } from "./chat-docs";
 import {
@@ -29,12 +30,6 @@ import type { Agent, Conversation, EngineCheck, Quote } from "./types";
 // **대화는 호스트에서 돈다.** 이 화면은 대화 목록을 읽고(처음 보일 때), 대화마다 기록을 한 번 읽은 뒤 앱 층이 받는 기록 줄
 // 이벤트로 잇는다(`hooks.ts`). 그래서 다른 work에 다녀와도, 패널을 닫았다 열어도 그사이 흐른 줄이 다 보이고, 패널을 닫아도
 // 에이전트는 꺼지지 않는다(스토리 14 · 15 · 16).
-
-/**
- * `+`와 첫 대화가 여는 에이전트 — 설정 「대화」의 기본 에이전트이고 처음은 Claude Code다(구현 스펙 「설정 「대화」 쪽」). 그
- * 설정을 읽는 것은 티켓 25다 — 그때까지는 이 처음 값 하나다.
- */
-export const DEFAULT_AGENT: Agent = "claude";
 
 /**
  * 흐름 · 입력창 · 안내 카드를 모으는 열(three-axes 티켓 24) — 읽기 좋은 폭(`--chat-thread-width`, 캔버스 `.cx-thread`)에 가운데로
@@ -80,10 +75,15 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
   // 대화를 열기 전에 그 엔진을 확인한다(three-axes 티켓 22 「언제 확인하나」) — 못 찾았으면 대화를 만들지 않고(호스트도 거절한다)
   // 그 자리에 안내 카드를 세운다. 찾았으면 로그인이 안 됐어도 연다: Codex는 호스트가 로그인 필요 줄을 적고, 어느 엔진이든 그 대화
   // 자리에 로그인 카드가 선다. 확인이 거절되면(로그인 셸을 못 읽음) 그대로 열어 호스트의 거절을 보인다.
+  //
+  // 에이전트를 주지 않으면 설정 「대화」의 기본 에이전트다(three-axes 결정 16 · 티켓 25) — `+`와 첫 대화. 누를 때마다 설정 파일을 다시
+  // 읽어, 바꾼 설정이 다음 `+`부터 들고 작업 패널 · `chat` 탭의 두 대화창이 같은 값을 본다. 읽는 동안도 「확인 중」이라 `+`가 잠긴다.
+  // 모델 · 모드 기본값은 호스트가 새 대화 때 같은 파일에서 읽는다.
   const openConversation = useCallback(
-    async (agent: Agent) => {
+    async (chosen?: Agent) => {
       setChecking(true);
       let check: EngineCheck | null = null;
+      const agent = chosen ?? (await readDefaultAgent());
       try {
         check = await checkEngine(agent, false);
       } catch {
@@ -105,7 +105,7 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
   useEffect(() => {
     if (!visible || !list.isSuccess || list.data.length > 0) return;
     if (!claimFirstConversation(work)) return;
-    void openConversation(DEFAULT_AGENT);
+    void openConversation();
   }, [visible, list.isSuccess, list.data, work, openConversation]);
 
   // 대화창이 그 엔진의 대화를 처음 보일 때 엔진을 확인한다 — 앱이 도는 동안 엔진마다 한 번이고, 그 뒤는 엔진 상태 이벤트가 잇는다.
@@ -167,7 +167,7 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
             announce="name"
             type="button"
             disabled={checking || create.isPending}
-            onClick={() => void openConversation(DEFAULT_AGENT)}
+            onClick={() => void openConversation()}
             className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
           >
             <Plus className="size-4" strokeWidth={1.8} aria-hidden />

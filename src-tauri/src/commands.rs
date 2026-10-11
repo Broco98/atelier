@@ -552,7 +552,8 @@ pub async fn chat_read_record(
     chats.read_record(&work, &conversation, after).map_err(host_err)
 }
 
-/// 새 대화 — 만들고 곧바로 띄워 세션을 연다(S8). 세션이 열릴 때까지 기다린다.
+/// 새 대화 — 설정 「대화」의 그 엔진 기본값(모델 · 모드)으로 만들고 곧바로 띄워 세션을 연다(S8 · three-axes 티켓 25). 에이전트는
+/// 화면이 고른다(`+`는 설정의 기본 에이전트). 세션이 열릴 때까지 기다린다.
 #[tauri::command]
 pub async fn chat_new(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,

@@ -81,8 +81,9 @@ fn modes_and_models_열림_줄에_모드_넷과_config_options가_원문대로_�
     host.shut_down();
 }
 
-/// 사람이 손으로 쓴 설정 파일 — 대화 쪽 기본값이 든 꼴. 호스트는 이것을 쓰지 않는다(스토리 31 · 32).
-const SETTINGS: &str = "{\n  \"terminal\": {\"fontSize\": 13},\n  \"chat\": {\"defaultAgent\": \"codex\", \"codex\": {\"model\": \"gpt-6-astra\", \"mode\": \"read-only\"}}\n}\n";
+/// 사람이 손으로 쓴 설정 파일 — 대화 쪽 기본값이 든 꼴. 호스트는 이것을 쓰지 않는다(스토리 31 · 32). 기본값은 Claude 몫만
+/// 든다 — Codex 몫이 있으면 새 대화가 그 값으로 열려(티켓 25) 아래 바꾸기 영수증 앞에 그 `set_*`가 선다.
+const SETTINGS: &str = "{\n  \"terminal\": {\"fontSize\": 13},\n  \"chat\": {\"defaultAgent\": \"codex\", \"claude\": {\"model\": \"sonnet\", \"mode\": \"plan\"}}\n}\n";
 
 #[test]
 fn 모델_모드_계획을_바꾸면_가짜가_set_config_option과_set_mode를_받고_agents_json과_config_줄에_남고_설정_파일은_그대로다() {

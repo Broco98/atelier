@@ -7,7 +7,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { Conversation, EngineCheck, RecordLine } from "@/features/chat/types";
+import type { Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -960,6 +960,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
   // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
   chat_answer_permission: null,
+  // 엔진 목록(three-axes 티켓 09 · 25, S16) — 설정 › 대화가 열릴 때 엔진마다 한 번 부른다. **기본은 두 엔진 다 빈 목록이다** — 세션을
+  // 한 번도 연 적 없는 첫 실행이고, 그때 모델 · 모드 고르기는 「엔진 기본값」 하나뿐이다. 목록을 재는 검사(`settings-chat.spec.ts`)가
+  // 엔진마다 덮어쓴다.
+  chat_engine_lists: { models: [], modes: [] } satisfies EngineLists,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

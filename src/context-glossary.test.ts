@@ -388,4 +388,9 @@ describe("사전이 설정의 사실과 맞는다", () => {
   it("표기 절의 설정 nav 라벨 나열에 `spec 레이아웃`이 있다", () => {
     expect(notation).toMatch(/설정 nav[^\n]*`에이전트 훅`·`spec 레이아웃`/);
   });
+
+  // 다섯째 줄(three-axes 티켓 25) — 설정 「대화」. 나열의 끝이다(화면의 차례와 같다).
+  it("표기 절의 설정 nav 라벨 나열 끝에 `대화`가 있다", () => {
+    expect(notation).toMatch(/설정 nav[^\n]*`spec 레이아웃`·`대화`\)/);
+  });
 });
