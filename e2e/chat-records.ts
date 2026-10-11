@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { CHAT_RECORD_EVENT } from "@/features/chat/events";
 import type { ChatRecordEvent, Conversation, RecordLine } from "@/features/chat/types";
 import { REPO_ROOT } from "./dev-server";
@@ -22,6 +22,20 @@ export function record(name: string): RecordLine[] {
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as RecordLine);
+}
+
+/**
+ * 그 기록이 남긴 spec 폴더의 사본 — `<이름>.spec/` 아래 파일들(three-axes 티켓 06 · 26). L1의 「고친 곳」 시나리오는 턴이 끝난 뒤의
+ * spec 폴더를 함께 남긴다: `changes` 줄의 바뀐 줄 범위가 **새 글 기준**이라, 화면이 읽는 본문이 L1의 그 글과 같아야 표시가 맞는
+ * 자리에 선다. 이 층은 그 파일들을 `read_spec_file`의 답과 work의 `specFiles`로 쓴다. 경로는 spec 폴더 기준이고 `/`로 잇는다.
+ */
+export function specCopy(name: string): { files: string[]; bodies: Record<string, string> } {
+  const root = join(RECORDS, `${name}.spec`);
+  const files = readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(root, join(entry.parentPath, entry.name)).split(sep).join("/"))
+    .sort();
+  return { files, bodies: Object.fromEntries(files.map((path) => [path, readFileSync(join(root, path), "utf8")])) };
 }
 
 /** 대화 목록의 한 줄(호스트의 `Conversation`). 고르지 않은 값은 엔진 기본값(`null`)이고, 대기 줄은 비어 있다. */

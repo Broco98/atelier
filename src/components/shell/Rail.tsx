@@ -20,6 +20,11 @@ export interface RailProps<Id extends string = string> {
   items: readonly RailItem<Id>[];
   active: Id;
   onPick: (id: Id) => void;
+  /**
+   * 칸에 선 점 — 그 점이 뜻하는 말이다(칸의 설명 `aria-description`으로 남는다). 없는 칸에는 점이 없다. 지금은 `spec`의 고친 곳
+   * 점(three-axes 티켓 26)이다. 점을 세울지는 부르는 쪽이 정한다 — 무엇이 보이는지(패널 · 고른 칸)를 아는 것이 그쪽이라서다.
+   */
+  marks?: Partial<Record<Id, string>>;
 }
 
 /**
@@ -46,6 +51,7 @@ function Rail<Id extends string>({
   items,
   active,
   onPick,
+  marks,
   controls,
 }: RailProps<Id> & {
   /** 레일이 여닫고 고르는 패널의 id(`aria-controls`) — `Frame`이 패널 칸과 함께 짓는다. */
@@ -83,6 +89,7 @@ function Rail<Id extends string>({
       >
         {items.map(({ id, label, icon: Icon }) => {
           const on = open && id === active;
+          const mark = marks?.[id];
           return (
             <Hint
               key={id}
@@ -92,12 +99,23 @@ function Rail<Id extends string>({
               onClick={() => onPick(id)}
               aria-pressed={on}
               aria-controls={controls}
+              aria-description={mark}
               className={cn(
-                "flex size-7 items-center justify-center rounded-full transition-colors",
+                "relative flex size-7 items-center justify-center rounded-full transition-colors",
                 on ? "bg-sidebar-accent text-foreground" : "text-tertiary quiet-hover",
               )}
             >
               <Icon className="size-4" strokeWidth={1.7} />
+              {/* 점은 칸 원의 오른쪽 위 7px — 캡슐 바탕색 2px 테두리로 아이콘과 갈린다(프로토타입 D의 `.rdot`, 값은 캔버스 `.cx-dot`).
+                  `<div>`가 아니라 `<span>`이다 — 레일 묶음을 첫 `</div>`까지로 자르는 검사가 있다(`WorksPage.test.tsx`). 뜻은 설명이
+                  말하므로 점은 그림일 뿐이다. */}
+              {mark && (
+                <span
+                  data-change-dot
+                  aria-hidden
+                  className="absolute right-0.5 top-0.5 size-[7px] rounded-full bg-(--chat-dot-new) shadow-[0_0_0_2px_var(--card)]"
+                />
+              )}
             </Hint>
           );
         })}

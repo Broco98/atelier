@@ -37,6 +37,10 @@ interface WorkPanelProps {
   onOpenProject: (slug: string) => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라(공용 틀의 패널 칸) 패널은 언제나 마운트된 채다.
   open: boolean;
+  // 아직 열지 않은 고친 파일(three-axes 티켓 26) — 트리의 그 행에 점이 선다. 표시의 주인은 화면이다(열었는지를 아는 것이 그쪽이다).
+  unseen: readonly string[];
+  // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 그 줄에서 연다(three-axes 티켓 26). 줄을 모르면 `null`이다.
+  onOpenDoc: (path: string, line: number | null) => void;
 }
 
 // 작업 패널 — `spec` · `chat` · `info` 세 몸. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가
@@ -54,6 +58,8 @@ function WorkPanel({
   onCopy,
   onOpenProject,
   open,
+  unseen,
+  onOpenDoc,
 }: WorkPanelProps) {
   const { data: projects } = useProjects();
   // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
@@ -129,6 +135,7 @@ function WorkPanel({
           key={treeGeneration}
           items={work.specTree.items}
           current={currentFile}
+          unseen={unseen}
           onSelect={onSelectFile}
           onCopy={(path) => onCopy(specRef(work.slug, path))}
         />
@@ -137,7 +144,7 @@ function WorkPanel({
           **`treeGeneration` key를 걸지 않는다** — 패널을 접는 것은 대화를 끝내는 일이 아니다(에이전트도 꺼지지 않는다, 스토리 16).
           호스트는 처음 보일 때 부른다(`visible`). */}
       <PanelBody view="chat" shown={view === "chat"}>
-        <ChatPane work={work.slug} visible={open && view === "chat"} />
+        <ChatPane work={work.slug} visible={open && view === "chat"} onOpenDoc={onOpenDoc} />
       </PanelBody>
       <PanelBody view="info" shown={view === "info"}>
         <WorkInfo
@@ -181,11 +188,13 @@ function PanelBody({ view, shown, children }: { view: PanelView; shown: boolean;
 function SpecTab({
   items,
   current,
+  unseen,
   onSelect,
   onCopy,
 }: {
   items: SpecTreeItem[];
   current: string | null;
+  unseen: readonly string[];
   onSelect: (path: string) => void;
   // spec 폴더 기준 상대 경로를 받는다 — 참조 문자열 조립은 호출부가 한다.
   onCopy: (path: string) => void;
@@ -196,7 +205,7 @@ function SpecTab({
       {items.length === 0 ? (
         <span className="px-2 py-1.5 text-ui text-tertiary">아직 spec 파일이 없어요</span>
       ) : (
-        <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
+        <SpecTree items={items} current={current} unseen={unseen} onSelect={onSelect} onCopy={onCopy} />
       )}
     </div>
   );
