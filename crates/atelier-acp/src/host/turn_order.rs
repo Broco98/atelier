@@ -90,7 +90,7 @@ pub(super) struct Draft {
 
 /// 대기 줄이 왜 가지 않나 — 먼저 걸린 것 하나다. 이 차례로 보고, 앞에서 걸리면 뒤는 읽지 않는다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Hold {
+enum Hold {
     /// 에이전트가 죽었다.
     Dead,
     /// 우리 턴이 돈다(턴 밖 턴과 겹쳤어도).
@@ -213,7 +213,7 @@ pub(super) struct Seat<'a, H: TurnHands> {
 impl<H: TurnHands> Seat<'_, H> {
     /// 대기 줄이 왜 가지 않나 — 걸림이 없으면 `None`이다. 죽음 → 우리 턴 → 스스로 이어 간 턴 → 손잡이 없음 → 걸린 권한 →
     /// 로그인 기다림 차례로 보고, 앞에서 걸리면 뒤는 읽지 않는다.
-    pub(super) fn hold(&self) -> Option<Hold> {
+    fn hold(&self) -> Option<Hold> {
         match self.order.phase {
             Phase::Dead => return Some(Hold::Dead),
             Phase::Ours(_) | Phase::Both(..) => return Some(Hold::OurTurn),
