@@ -38,7 +38,9 @@ export interface QueuedMessage {
  * - `permission`은 권한 — payload의 `state`로 가르고 같은 요청의 줄들은 `requestId`로 잇는다(three-axes 티켓 08).
  *   `asked`{requestId, request(요청 원문 — 선택지는 `request.options` 그대로), toolCall(빈 칸을 앞선 도구 줄로 채운 도구 요지)}
  *   뒤에 같은 `requestId`로 `answered`{optionId}나 `withdrawn`{reason: `stopped`(우리가 멈춤) | `agent`(에이전트가 답을 기다리지
- *   않고 턴을 끝냄)}이 선다. 뒤따르는 줄이 없는 물음이 답할 권한이다(승인 카드 — 21).
+ *   않고 턴을 끝냄) | `died`(에이전트가 죽음 — 죽음 줄 앞에 선다, 티켓 10)}이 선다. 뒤따르는 줄이 없는 물음이 답할 권한이다(승인 카드 — 21).
+ * - `session`의 열림(`opened`) 줄은 `how`로 어느 길로 열렸는지 말한다(티켓 10) — `new`(새 대화) · `resumed` · `loaded`(되살려 맥락을
+ *   이음) · `fresh`(되살리려 했지만 새 세션으로 열림 — 「새로 시작함」 상태 줄, 23).
  * - `config`는 사람이 바꾼 것 — 바꾼 칸과 새 값. 에이전트(`{agent}`, 13)와 모델 · 모드 · 계획(`{model}` · `{mode}` · `{plan}`,
  *   three-axes 티켓 09). 모델 · 모드 · 계획은 떠 있는 에이전트에 넣은 바꾸기만 선다 — 띄우지 않은 대화에서 바꾼 값은 대화 목록에만 있다.
  */

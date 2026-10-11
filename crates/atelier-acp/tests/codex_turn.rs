@@ -269,7 +269,7 @@ fn codex_한_턴의_기록이_검사_자료와_같다() {
 /// `dies-mid-turn`이 죽기 전에 stderr에 쓰는 줄들.
 const LAST_WORDS: [&str; 2] = ["thread 'main' panicked at codex-rs/core/src/turn.rs:42", "note: run with RUST_BACKTRACE=1"];
 
-/// 턴 도중에 에이전트가 죽으면 죽음 줄이 한 번 적히고, 남은 프로세스가 없고, 대화는 쉬는 채로 남는다.
+/// 턴 도중에 에이전트가 죽으면 죽음 줄이 한 번 적히고, 남은 프로세스가 없고, 다음 말에서 다시 뜬다(three-axes 티켓 10).
 fn dies_mid_turn(order: &str, reason: &str) {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);
@@ -298,13 +298,12 @@ fn dies_mid_turn(order: &str, reason: &str) {
     let record = sandbox.record("cart", &conversation.id);
     assert_eq!(record.iter().filter(|line| line["payload"]["state"] == "died").count(), 1, "죽음은 한 번만 적힌다");
     assert_eq!(emitted(&events, "cart", &conversation.id), record, "죽음 줄도 같은 seq의 이벤트로 나간다");
-    assert_eq!(
-        host.send("cart", &conversation.id, "다음 말"),
-        Err(HostError::NotRunning(conversation.id.clone())),
-        "다시 띄우기는 티켓 10이다 — 그 전에는 읽히는 오류다"
-    );
+    // 다음 말은 다시 띄워 되살린다(three-axes 티켓 10) — 가짜는 한 번만 죽는다.
+    host.send("cart", &conversation.id, "다음 말").expect("다음 말에서 다시 뜬다");
+    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
+    assert_eq!(of_kind(&record, "sent").len(), 2, "같은 기록에 이어 적힌다");
 
-    host.close_conversation("cart", &conversation.id).expect("죽은 대화도 닫힌다");
+    host.close_conversation("cart", &conversation.id).expect("다시 뜬 대화도 닫힌다");
     let record = sandbox.record("cart", &conversation.id);
     assert_eq!(record.last().unwrap()["payload"], json!({"state": "closed"}));
 }

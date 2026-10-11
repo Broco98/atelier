@@ -133,6 +133,19 @@ pub(crate) fn has_sent(path: &Path) -> bool {
     read_lines(path, 0).is_ok_and(|lines| lines.iter().any(|line| line.kind == RecordKind::Sent))
 }
 
+/// 지금 에이전트 쪽 세션이 말을 받은 적이 있나 — 세션이 새로 선 마지막 열림 줄(`new` · `fresh`) 뒤에 `sent`가 있나. 되살린
+/// 열림(`resumed` · `loaded`)은 같은 세션을 이은 것이라 건너뛴다. 되살린 세션이 아직 첫 말을 받지 않았으면 그 첫 말에 머리말이
+/// 붙는다(S11, three-axes 티켓 10).
+pub(crate) fn sent_since_session_start(path: &Path) -> bool {
+    let Ok(lines) = read_lines(path, 0) else { return false };
+    let start = lines.iter().rposition(|line| {
+        line.kind == RecordKind::Session
+            && line.payload["state"] == "opened"
+            && matches!(line.payload["how"].as_str(), Some("new" | "fresh"))
+    });
+    lines[start.map_or(0, |at| at + 1)..].iter().any(|line| line.kind == RecordKind::Sent)
+}
+
 /// 줄바꿈으로 끝난 줄들 — 끝의 반쪽 줄은 뺀다.
 fn complete_lines(text: &str) -> std::str::Lines<'_> {
     match text.rfind('\n') {
@@ -185,7 +198,7 @@ pub(crate) enum PermissionLine {
     /// 답 — 사람이 고른 선택지.
     Answered { request_id: String, option_id: String },
     /// 거둬짐 — 우리가 턴을 끊었거나(`stopped`, 그 요청에 `cancelled`로 답했다), 에이전트가 답을 기다리지 않고 턴을
-    /// 끝냈다(`agent`).
+    /// 끝냈거나(`agent`), 에이전트 프로세스가 죽었다(`died` — 죽음 줄 앞에 선다, three-axes 티켓 10).
     Withdrawn { request_id: String, reason: Withdrawal },
 }
 
@@ -193,10 +206,12 @@ pub(crate) enum PermissionLine {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub(crate) enum SessionState {
-    /// 띄우는 중 — 프로세스를 띄우기 직전.
+    /// 띄우는 중 — 프로세스를 띄우기 직전. 다시 켠 뒤 · 죽은 뒤의 되살리기도 이 줄로 시작한다(three-axes 티켓 10).
     Spawning,
-    /// 열림 — 어떻게 열렸나(`new`) · 에이전트 판 · 엔진이 준 모드 · 모델 · configOptions 원문. `session/new`의 답에
-    /// `_meta`가 있으면 그것도 싣는다 — Claude 변환기는 claude의 `initialize` 답(계정 칸을 가린 것)을 여기 싣는다.
+    /// 열림 — 어떻게 열렸나 · 에이전트 판 · 엔진이 준 모드 · 모델 · configOptions 원문. 길(`how`)은 넷이다(three-axes 티켓 10):
+    /// `new`(새 대화의 첫 열기) · `resumed`(`session/resume`으로 이음) · `loaded`(`session/load`로 이음) · `fresh`(되살리려 했지만
+    /// 잇지 못해 새 세션 — 화면의 「새로 시작함」 상태 줄). 세션을 연 답에 `_meta`가 있으면 그것도 싣는다 — Claude 변환기는
+    /// claude의 `initialize` 답(계정 칸을 가린 것)을 여기 싣는다.
     Opened {
         how: &'static str,
         agent_version: Option<String>,
@@ -214,7 +229,7 @@ pub(crate) enum SessionState {
     LoginRequired,
     /// 판 경고 — 잰 적 없는 메이저 판이다. 대화는 그대로 연다(S6).
     VersionWarning { agent_version: Option<String>, supported_major: u64 },
-    /// 죽음 — 에이전트가 없어졌다. 까닭과 stderr 꼬리(있으면). 다음 말에서 다시 띄운다(10).
+    /// 죽음 — 에이전트가 없어졌다. 까닭과 stderr 꼬리(있으면). 다음 말에서 띄워 되살린다(three-axes 티켓 10).
     Died {
         reason: String,
         #[serde(skip_serializing_if = "Vec::is_empty")]

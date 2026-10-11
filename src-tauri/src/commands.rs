@@ -507,7 +507,7 @@ pub async fn startup_report(
 // 하나를 `State`로 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
 // - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 · 에이전트 바꾸기 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓, 모델 · 모드 ·
-//   계획 — 엔진의 답)은 blocking 풀에서 기다린다.
+//   계획 — 엔진의 답, 보내기 · 지금 보내기 — 떠 있지 않은 대화를 되살리는 세션 열기(티켓 10))는 blocking 풀에서 기다린다.
 //   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`). 멈추기 · 지금 보내기도 `session/cancel`을
 //   보내고 곧바로 돌아온다 — 멈춘 턴의 끝과 그 뒤에 간 말은 기록 줄로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다. 권한 답도
 //   답을 보내고 곧바로 돌아온다 — 이어 가는 턴은 기록 줄로 온다.
@@ -584,6 +584,7 @@ pub async fn chat_switch_agent(
 
 /// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다. 턴이 도는 동안의 말은 대기 줄에 들고(대기 줄 바뀜), 턴이
 /// 끝나면 차례로 간다. `quote`는 스펙 창에서 고른 자리다(three-axes 티켓 27) — 호스트가 사람의 글 앞에 인용 블록으로 둔다.
+/// 앱을 다시 켠 뒤이거나 에이전트가 죽은 대화면 먼저 띄워 되살린다(three-axes 티켓 10) — 그 세션 열기를 blocking 풀에서 기다린다.
 #[tauri::command]
 pub async fn chat_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -592,7 +593,11 @@ pub async fn chat_send(
     text: String,
     quote: Option<atelier_acp::Quote>,
 ) -> CmdResult<()> {
-    chats.send_message(&work, &conversation, &text, quote.as_ref()).map_err(host_err)
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.send_message(&work, &conversation, &text, quote.as_ref()))
+        .await
+        .map_err(|e| format!("말을 보내지 못했습니다: {e}"))?
+        .map_err(host_err)
 }
 
 /// 도는 턴을 멈춘다(`session/cancel`). 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다.
@@ -629,7 +634,7 @@ pub async fn chat_delete_queued(
 }
 
 /// 지금 보내기 — 대기 줄의 그 말(`queued` — 대기 id)을 맨 앞에 세우고 도는 턴을 멈춘다. 턴이 `cancelled`로 끝나면 그 말이 먼저
-/// 간다. 기다리지 않는다.
+/// 간다. 멈춤은 기다리지 않는다. 에이전트가 죽은 대화면 보내기처럼 먼저 되살린다(three-axes 티켓 10) — blocking 풀에서 기다린다.
 #[tauri::command]
 pub async fn chat_send_now(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -637,7 +642,11 @@ pub async fn chat_send_now(
     conversation: String,
     queued: String,
 ) -> CmdResult<()> {
-    chats.send_now(&work, &conversation, &queued).map_err(host_err)
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.send_now(&work, &conversation, &queued))
+        .await
+        .map_err(|e| format!("지금 보내지 못했습니다: {e}"))?
+        .map_err(host_err)
 }
 
 /// 권한 답 — 걸린 권한 요청(`request` — 기록의 `permission` 줄의 `requestId`)에 고른 선택지(`option` — 그 요청의 optionId)로
@@ -789,6 +798,8 @@ mod tests {
     /// - 로그인 둘(three-axes 티켓 12): 로그인 시작은 처음이면 로그인 셸을 기다리고, 로그인 취소는 SIGTERM 뒤 끝나기를 1초까지
     ///   기다린다.
     /// - 바꾸기 셋(three-axes 티켓 09): 모델 · 모드 · 계획은 떠 있는 에이전트의 답을 기다린다(보통 몇 ms, 한도 10초).
+    /// - 보내기 둘(three-axes 티켓 10): 보내기 · 지금 보내기는 턴을 기다리지 않지만, 앱을 다시 켠 뒤이거나 에이전트가 죽은 대화면
+    ///   먼저 띄워 되살리며 세션이 열리기를 기다린다(Codex 30초 · Claude 10초 한도).
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -803,6 +814,8 @@ mod tests {
             ("chat_set_model", "chats.set_model(", "set_model("),
             ("chat_set_mode", "chats.set_mode(", "set_mode("),
             ("chat_set_plan", "chats.set_plan(", "set_plan("),
+            ("chat_send", "chats.send_message(", "send_message("),
+            ("chat_send_now", "chats.send_now(", "send_now("),
             ("chat_close", "chats.close_conversation(", "close_conversation("),
             ("chat_start_login", "chats.start_login(", "start_login("),
             ("chat_cancel_login", "chats.cancel_login(", "cancel_login("),
