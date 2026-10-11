@@ -21,7 +21,9 @@ export interface ConversationList {
   active: Conversation | null;
   /**
    * 열려다 못 연 대화의 에이전트 — 엔진을 못 찾아 대화를 만들지 않았다(three-axes 티켓 22). 그동안 대화창 자리에 그 엔진의 안내
-   * 카드가 서고, 그 엔진을 찾으면(「다시 확인」의 답이든 엔진 상태 이벤트든) 여기서 그때 대화를 연다(스토리 102). 대화 탭을 고르면 거둔다.
+   * 카드가 서고, 그 엔진을 찾으면(「다시 확인」의 답이든 엔진 상태 이벤트든) 여기서 그때 대화를 한 번 연다(스토리 102). 그 work의
+   * 대화창이 서 있을 때만 연다 — 다른 work에 있는 동안 찾았으면 화면 밖에서 에이전트를 띄우지 않고, 그 work로 돌아와 대화창이 설
+   * 때 연다. 새 대화를 여는 중이면 그 일이 정한다. 대화 탭을 고르면 거둔다.
    */
   wanted: Agent | null;
   /** 목록을 아직 읽지 못했다 — 처음 보이기 전이거나 읽는 중이다. 읽기가 거절됐으면 거짓이고 그 글이 `problem`에 선다. */
@@ -80,6 +82,7 @@ const activeOf = (list: readonly Conversation[], chosen: string | undefined): Co
  */
 export function useConversationList(work: string, visible: boolean): ConversationList {
   const state = useStore(conversationListStore, (all) => all[work] ?? IDLE);
+  useEffect(() => stand(work), [work]);
   useEffect(() => {
     if (visible) show(work);
   }, [work, visible]);
@@ -196,18 +199,37 @@ async function create(work: string, agent: Agent): Promise<void> {
   if (!known) void readRecord(work, conversation.id);
 }
 
-// 못 찾은 엔진을 찾았다 — 「다시 확인」의 답이든 엔진 상태 이벤트든 엔진 스토어에 앉는다. 그 엔진을 원한 work마다 그때 대화를
-// 하나 연다. 엔진 스토어를 듣는 자리가 여기 하나라, 같은 work의 대화창이 몇 개 서 있어도 한 번이다.
-chatEngineStore.subscribe(() => openFoundWanted());
+// 대화창이 선 work마다 선 대화창의 수 — 숨은 채 마운트된 작업 패널과 `chat` 탭은 둘 다 고른 work의 것이라, 여기 든 work가 화면에
+// 선 work다. 원하던 대화는 여기 든 work에서만 연다.
+const standing = new Map<string, number>();
 
-function openFoundWanted(): void {
-  const engines = chatEngineStore.state;
-  for (const [work, state] of Object.entries(conversationListStore.state)) {
-    const agent = state.wanted;
-    if (!agent || engines[agent]?.found !== true) continue;
-    update(work, (current) => ({ ...current, wanted: undefined }));
-    void opening(work, () => create(work, agent));
-  }
+/** 그 work의 대화창이 섰다 — 그새 원하던 엔진을 찾았으면 연다. 내려가는 손을 돌려준다(이펙트의 정리). */
+function stand(work: string): () => void {
+  standing.set(work, (standing.get(work) ?? 0) + 1);
+  openFoundWanted(work);
+  return () => {
+    const left = (standing.get(work) ?? 1) - 1;
+    if (left > 0) standing.set(work, left);
+    else standing.delete(work);
+  };
+}
+
+// 못 찾은 엔진을 찾았다 — 「다시 확인」의 답이든 엔진 상태 이벤트든 엔진 스토어에 앉는다. 대화창이 선 work가 그 엔진을 원했으면
+// 그때 대화를 하나 연다. 엔진 스토어를 듣는 자리가 여기 하나라, 같은 work의 대화창이 몇 개 서 있어도 한 번이다.
+chatEngineStore.subscribe(() => {
+  for (const work of standing.keys()) openFoundWanted(work);
+});
+
+/**
+ * 원하던 엔진을 찾았으면 그 대화를 연다. 새 대화를 여는 중이면 열지 않는다 — 그 일의 엔진 확인이 답을 앉히는 순간(스토어는 듣는
+ * 쪽을 곧바로 부른다) 여기가 불리는데, 같은 엔진이면 그 일이 만들고 다른 엔진이면 사람이 방금 고른 쪽이 원함을 갈아 쓴다.
+ */
+function openFoundWanted(work: string): void {
+  const state = stateOf(work);
+  const agent = state.wanted;
+  if (!agent || state.opening > 0 || chatEngineStore.state[agent]?.found !== true) return;
+  update(work, (current) => ({ ...current, wanted: undefined }));
+  void opening(work, () => create(work, agent));
 }
 
 /** 대화 닫기(S25) — 에이전트를 끈다. 기록은 남는다. 닫힌 대화를 목록에서 빼고, 켜진 대화였으면 그 옆(뒤, 없으면 앞)이 켜진다. */

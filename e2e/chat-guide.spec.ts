@@ -11,6 +11,7 @@ import {
   recordClipboard,
   replaceAnswer,
   unknownIpcCalls,
+  workRow,
 } from "./harness";
 import { conversationRow, linesAfter, linesThrough, record, streamLines } from "./chat-records";
 import { 대화탭, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
@@ -163,6 +164,73 @@ test("+: 띄우기 전에 엔진을 확인하고, 못 찾으면 대화를 만들
   await 대화탭(page, "Codex").click();
   await expect(카드(page, title)).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+const CLAUDE_MISSING: EngineCheck = {
+  state: "missing",
+  missing: [{ name: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" }],
+};
+const CLAUDE_FOUND: EngineCheck = { state: "found", programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }], loggedIn: true };
+
+/** Codex 대화 하나가 선 work(`plainWork`)의 대화창을 열고, `+`로 Claude를 원하게 한다 — 못 찾아 그 카드가 선다. */
+async function wantMissingClaude(page: Page, answers: Record<string, unknown> = {}): Promise<string> {
+  await installFixtureBackend(page, {
+    chat_list: answerByArg("work", { [plainWork.slug]: [codex] }, { otherwise: [] }),
+    chat_read_record: answerByArg("conversation", { [codex.id]: codexOneTurn }),
+    ...answers,
+  });
+  await page.goto(`/works/${plainWork.slug}`);
+  await 레일칸(page, "chat").click();
+  await expect(입력칸(page)).toBeVisible();
+  await replaceAnswer(page, "chat_check_engine", answerByArg("agent", { claude: CLAUDE_MISSING }));
+  await 작업패널(page).getByRole("button", { name: "새 대화", exact: true }).click();
+  const title = "claude를 찾지 못했어요";
+  await expect(카드(page, title)).toBeVisible();
+  return title;
+}
+
+test("+: 못 찾아 카드가 선 엔진을 그 사이 설치하고 `+`를 다시 누르면 그 엔진의 대화가 한 번만 열린다", async ({ page }) => {
+  const title = await wantMissingClaude(page);
+
+  // 엔진 확인의 답이 「찾음」으로 앉는 그 순간 원하던 대화도 열 수 있게 되지만, `+`가 여는 일과 겹쳐 둘을 만들지 않는다.
+  await replaceAnswer(page, "chat_check_engine", answerByArg("agent", { claude: CLAUDE_FOUND }));
+  await 작업패널(page).getByRole("button", { name: "새 대화", exact: true }).click();
+  await expect(대화탭(page, "Claude")).toHaveAttribute("aria-pressed", "true");
+  await expect(카드(page, title)).toHaveCount(0);
+  expect((await ipcCallArgs(page, "chat_new", "work")).map(({ args }) => args)).toEqual([
+    { work: plainWork.slug, agent: "claude" },
+  ]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("못 찾음: 다른 work에 있는 동안 그 엔진을 찾아도 원하던 work의 대화는 화면 밖에서 열리지 않고, 그 work로 돌아와 대화창이 설 때 열린다", async ({
+  page,
+}) => {
+  const [pinnedWork] = WORKS;
+  const other = conversationRow({ id: "c-pinned-codex", agent: "codex", name: "Codex" });
+  const title = await wantMissingClaude(page, {
+    chat_list: answerByArg("work", { [plainWork.slug]: [codex], [pinnedWork.slug]: [other] }, { otherwise: [] }),
+  });
+
+  // 다른 work로 간다 — 그 work의 대화창이 선다.
+  await workRow(page, pinnedWork.slug).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await expect(대화탭(page, "Codex")).toHaveAttribute("aria-pressed", "true");
+
+  // 그 사이 Claude를 찾았다(터미널에서 설치하고 다른 곳의 「다시 확인」, 또는 엔진 상태 이벤트). 화면에 없는 work에 에이전트를 띄우지 않는다.
+  await fireEvent(page, CHAT_ENGINE_EVENT, engine({ agent: "claude", found: true, loggedIn: true, login: null }));
+  await expect(입력칸(page)).toBeVisible();
+  expect(await ipcCallArgs(page, "chat_new", "work"), "화면 밖 work에서는 대화를 만들지 않는다").toEqual([]);
+
+  // 돌아오면 그때 연다 — 카드 대신 새 대화가 켜진다.
+  await workRow(page, plainWork.slug).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(대화탭(page, "Claude")).toHaveAttribute("aria-pressed", "true");
+  await expect(카드(page, title)).toHaveCount(0);
+  expect((await ipcCallArgs(page, "chat_new", "work")).map(({ args }) => args)).toEqual([
+    { work: plainWork.slug, agent: "claude" },
+  ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
