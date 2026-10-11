@@ -42,8 +42,8 @@ export interface SpecTab {
  * 칸끼리만 센다), 분할에 들지 않고(끄는 자리가 없다 — 분할은 늘 `spec ▏ 묶음의 지금 탭`), 순서를 바꾸지 않고, `×`가 없다. 모양과 켜짐을
  * 말하는 법은 `spec` 칸 그대로다.
  *
- * `id`는 칸의 `data-tab` 값이다 — `spec` · `shell` · `new`는 이 줄이 이미 쓰므로 고르지 않는다. 글리프는 값으로 받는다:
- * 이 줄은 `features/works`를 모른다(머리말).
+ * `id`는 칸의 `data-tab` 값이다 — `spec` · `shell` · `code`(파일 탭) · `new`는 이 줄이 이미 쓰므로 고르지 않는다. 묶음에 칸
+ * 종류가 늘면 그 표식도 여기 더한다. 글리프는 값으로 받는다: 이 줄은 `features/works`를 모른다(머리말).
  */
 export interface FixedTab {
   id: string;
