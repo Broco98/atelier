@@ -244,6 +244,26 @@ test("work 사이: 한 work에서 대화를 만들지 못한 글이 다른 work�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+test("목록 읽기 거절: 호스트가 거절하면 다시 묻지 않고 곧바로 그 글이 서며, 대화창이 다시 보일 때 다시 읽는다", async ({ page }) => {
+  const REFUSED = "대화 목록을 읽지 못했어요: agents.json을 읽지 못함";
+  await installFixtureBackend(page, { chat_list: ipcFailure(REFUSED) });
+  await page.goto(`/works/${plainWork.slug}`);
+  await 레일칸(page, "chat").click();
+  // 로컬 IPC의 거절이라 저절로 다시 묻지 않는다 — 기다리며 「읽는 중」으로 말없이 잠기지 않고 그 글이 바로 선다.
+  await expect(작업패널(page).getByRole("alert")).toHaveText(REFUSED);
+  expect(await ipcCallArgs(page, "chat_list", "work")).toHaveLength(1);
+  expect(await ipcCallArgs(page, "chat_new", "work"), "목록을 모르면 첫 대화를 열지 않는다").toEqual([]);
+
+  // 다시 보이면 다시 읽는다 — 이번에는 읽혀 그 work의 대화가 서고 글이 걷힌다.
+  await replaceAnswer(page, "chat_list", answerByArg("work", { [plainWork.slug]: [codex] }, { otherwise: [] }));
+  await 레일칸(page, "spec").click();
+  await 레일칸(page, "chat").click();
+  await expect(대화탭(page, "Codex")).toHaveAttribute("aria-pressed", "true");
+  await expect(작업패널(page).getByRole("alert")).toHaveCount(0);
+  expect(await ipcCallArgs(page, "chat_list", "work")).toHaveLength(2);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("접근성: 흐르는 답은 조각마다 알리지 않고, 턴 끝 알림이 한 번만 온다", async ({ page }) => {
   await openCodexChat(page, linesThrough(codexOneTurn, SENT_SEQ));
   const announced = await countAnnouncements(page);
