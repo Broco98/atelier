@@ -3,7 +3,7 @@ import { Copy, Link as LinkIcon, LogIn, RefreshCw, Terminal } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
 import { chatApi } from "./api";
-import { AGENT_LABEL } from "./Composer";
+import { AGENT_LABEL } from "./ComposerChips";
 import { checkEngine, type EngineView, type GuideKind } from "./engine-store";
 import type { Agent } from "./types";
 

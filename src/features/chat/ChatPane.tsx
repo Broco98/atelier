@@ -19,6 +19,7 @@ import {
   wantConversation,
 } from "./chat-store";
 import ChangesPill from "./ChangesPill";
+import { chipLists } from "./chips";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
 import { awaitingLogin, chatEngineStore, checkEngine, checkEngineOnce, guideKind, type GuideKind } from "./engine-store";
@@ -312,6 +313,8 @@ function ConversationBody({
   // 흐름 · 알약 · 멈추기가 같은 접은 값을 읽는다 — 기록 줄이 올 때마다 한 번 접고, 대화 탭의 상태 점도 같은 값을 읽는다. 다시 켠 뒤면
   // 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model = foldOf(lines, goneThrough(conversation));
+  // 칩과 「/」 메뉴의 원천(S15, three-axes 티켓 19) — 같은 기록 줄에서 목록과 엔진의 값을 접는다.
+  const lists = useMemo(() => chipLists(lines), [lines]);
   // 보이는 동안 그 대화를 「봤다」 — 「끝남」이 걷히고, 보는 동안 끝난 턴에는 서지 않는다(S23 · 스토리 8).
   const seen = visible && shown;
   useEffect(() => (seen ? seeConversation(key) : undefined), [seen, key]);
@@ -349,9 +352,9 @@ function ConversationBody({
       <div className={COLUMN}>
         <Composer
           work={work}
-          conversation={conversation.id}
+          conversation={conversation}
           draftKey={key}
-          agent={conversation.agent}
+          lists={lists}
           quote={quote}
           running={model.running}
           card={

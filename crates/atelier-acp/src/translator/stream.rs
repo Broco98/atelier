@@ -142,15 +142,18 @@ impl Stream {
 }
 
 /// `result` → `session/prompt`의 답. 끝 까닭을 ACP 이름으로 옮기고, `result` 원문(비용 · 사용량 · 서브에이전트 통계 · 끝난
-/// 까닭)을 `_meta`에 싣는다 — 호스트가 턴 끝 줄에 남기는 평가의 재료다(three-axes 결정 18).
-pub(super) fn prompt_response(result: &Value) -> Value {
-    json!({"stopReason": stop_reason(result), "_meta": {"claudeCode": {"result": result}}})
+/// 까닭)을 `_meta`에 싣는다 — 호스트가 턴 끝 줄에 남기는 평가의 재료다(three-axes 결정 18). `interrupted`는 그 턴에
+/// 변환기가 interrupt를 보냈나다.
+pub(super) fn prompt_response(result: &Value, interrupted: bool) -> Value {
+    json!({"stopReason": stop_reason(result, interrupted), "_meta": {"claudeCode": {"result": result}}})
 }
 
 /// claude의 끝 → ACP `stopReason`. 모르는 값과 우리가 끊지 않은 `error_during_execution`은 `end_turn`이다(워크플로 §8).
-/// 우리가 끊은 턴의 `cancelled`는 멈추기(티켓 15)가 가른다.
-fn stop_reason(result: &Value) -> &'static str {
+/// 우리가 interrupt를 보낸 턴의 `error_during_execution`(`terminal_reason: aborted_tools | aborted_streaming`)만
+/// `cancelled`다 — interrupt가 닿기 전에 턴이 끝났으면 그 끝 그대로다(워크플로 관문 G2).
+fn stop_reason(result: &Value, interrupted: bool) -> &'static str {
     match (result["subtype"].as_str(), result["stop_reason"].as_str()) {
+        (Some("error_during_execution"), _) if interrupted => "cancelled",
         (Some("error_max_turns"), _) => "max_turn_requests",
         (Some("success"), Some("max_tokens")) => "max_tokens",
         (Some("success"), Some("refusal")) => "refusal",
@@ -173,7 +176,7 @@ fn is_edit(name: &str) -> bool {
 }
 
 /// ACP 도구 갈래 — 화면이 진행형 · 완료형 문구와 안의 것(출력 · diff)을 고른다.
-fn kind(name: &str) -> &'static str {
+pub(super) fn kind(name: &str) -> &'static str {
     match name {
         "Bash" => "execute",
         "Read" => "read",
@@ -188,7 +191,7 @@ fn kind(name: &str) -> &'static str {
 
 /// 도구 줄의 제목 — claude는 주지 않는다. 명령은 명령 글 그대로(codex-acp와 같은 꼴), 파일 도구는 무엇을 · 어느 파일에,
 /// 서브에이전트는 맡긴 일의 설명이다. 모르는 도구(MCP 도구 포함)와 입력이 모자란 것은 도구 이름 그대로다.
-fn title(name: &str, input: &Value) -> String {
+pub(super) fn title(name: &str, input: &Value) -> String {
     let field = |key: &str| input[key].as_str().filter(|value| !value.is_empty());
     let titled = match name {
         "Bash" => field("command").map(str::to_owned),

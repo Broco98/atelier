@@ -1053,6 +1053,10 @@ body[data-palette-open] [data-scrollbar] {
     /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선). 계획 체크리스트도 같은 면이다(캔버스 `.cx-group`). */
     --chat-surface-under: #f9f9f9;
     --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);
+    /* 칩과 「/」 메뉴(three-axes 티켓 19 — 캔버스 `.cx-ctl.plan-on` · `.cx-menu`): 켠 「계획」 칩의 면(글자는 `--chat-link`), 입력창 위에
+       뜨는 명령 메뉴의 그림자(`--shadow-prominent`) */
+    --chat-plan: #e5f3ff;
+    --chat-shadow-menu: 0 0 0 0.5px #1a1c1f1f, 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
     /* 계획 카드의 0.5px 바깥 선(three-axes 티켓 21 — 캔버스 `.cx-card`) */
     --chat-shadow-card: 0 0 0 0.5px rgba(26, 28, 31, 0.12);
 }
