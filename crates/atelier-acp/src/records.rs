@@ -16,6 +16,7 @@ use serde_json::{json, Map, Value};
 use crate::discovery::Agent;
 use crate::host::{Emit, HostEvent};
 use crate::quote::Quote;
+use crate::runtime::Withdrawal;
 use crate::spec_changes::FileChange;
 
 const AGENTS_FILE: &str = "agents.json";
@@ -144,7 +145,7 @@ pub struct RecordLine {
     pub payload: Value,
 }
 
-/// 기록 줄의 종류. 권한(08) · 설정(09)이 차례로 더한다.
+/// 기록 줄의 종류. 설정(09)이 더한다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
@@ -161,6 +162,22 @@ pub enum RecordKind {
     /// 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들(three-axes 결정 22). 턴 끝 줄 바로 앞에 서고, 바뀐 것이
     /// 없는 턴에는 없다.
     Changes,
+    /// 권한 — 요청 원문(물음), 그 뒤에 같은 요청 id로 답(고른 optionId)이나 거둬짐(까닭)이 한 줄 더 선다(three-axes 티켓 08).
+    Permission,
+}
+
+/// `permission` 줄의 payload. `state`로 가르고, 같은 요청의 줄들은 `requestId`로 잇는다 — 기록은 덧붙이기만 하므로 답은
+/// 물음 줄을 고치지 않고 뒤에 선다. 답하지 않은 물음(뒤에 답도 거둬짐도 없는 물음)이 화면의 승인 카드다(21).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub(crate) enum PermissionLine {
+    /// 물음 — 요청 params 원문(선택지는 에이전트가 준 그대로)과 도구 요지(빈 칸을 앞선 `tool_call`로 채운 `toolCall`).
+    Asked { request_id: String, request: Value, tool_call: Value },
+    /// 답 — 사람이 고른 선택지.
+    Answered { request_id: String, option_id: String },
+    /// 거둬짐 — 우리가 턴을 끊었거나(`stopped`, 그 요청에 `cancelled`로 답했다), 에이전트가 답을 기다리지 않고 턴을
+    /// 끝냈다(`agent`).
+    Withdrawn { request_id: String, reason: Withdrawal },
 }
 
 /// `session` 줄의 payload. `state`로 가른다.
@@ -307,6 +324,10 @@ impl Recorder {
     /// 고친 곳 — 파일마다 바뀜 종류와, md 파일이면 새 글 기준의 바뀐 줄 범위.
     pub(crate) fn changes(&self, files: &[FileChange]) -> Result<(), RecordError> {
         self.write(RecordKind::Changes, json!({"files": files}))
+    }
+
+    pub(crate) fn permission(&self, line: PermissionLine) -> Result<(), RecordError> {
+        self.write(RecordKind::Permission, serde_json::to_value(line).expect("permission 줄은 JSON이다"))
     }
 
     pub(crate) fn turn_end(&self, end: TurnEndLine) -> Result<(), RecordError> {

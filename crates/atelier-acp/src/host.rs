@@ -1,8 +1,8 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
-//! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 사라진 work의 대화 끄기(11), 로그인 확인 · 로그인
-//! 명령 · 로그인 필요 대화의 다시 띄우기(12)가 선다. 앱 잇기(05)가 이 위에 선다.
+//! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 권한 답(08), 사라진 work의 대화 끄기(11), 로그인 확인 ·
+//! 로그인 명령 · 로그인 필요 대화의 다시 띄우기(12)가 선다. 앱 잇기(05)가 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -21,8 +21,8 @@ use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::quote::{Attached, Quote};
-use crate::records::{self, CloseCause, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
-use crate::runtime::{self, AgentProcess, Launch, OpenError, RuntimeEvent, SessionPlace, Sink, Turns};
+use crate::records::{self, CloseCause, ConversationRow, PermissionLine, RecordLine, Recorder, SessionState, TurnEndLine};
+use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenError, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
@@ -219,6 +219,19 @@ impl Conv {
             RuntimeEvent::Update(raw) => self.recorder.update(raw),
             RuntimeEvent::Stderr(line) => self.recorder.stderr(line),
             RuntimeEvent::AuthStatus(params) => self.recorder.session(SessionState::AuthStatus { params }),
+            // 권한 줄은 대화의 잠금을 쥐지 않고 적는다 — 답 · 멈추기는 대화의 잠금을 쥔 채 런타임을 부르고, 런타임은 그 안에서
+            // 이것을 넘긴다.
+            RuntimeEvent::PermissionAsked(asked) => self.recorder.permission(PermissionLine::Asked {
+                request_id: asked.request_id,
+                request: asked.request,
+                tool_call: asked.tool_call,
+            }),
+            RuntimeEvent::PermissionAnswered { request_id, option_id } => {
+                self.recorder.permission(PermissionLine::Answered { request_id, option_id })
+            }
+            RuntimeEvent::PermissionWithdrawn { request_id, reason } => {
+                self.recorder.permission(PermissionLine::Withdrawn { request_id, reason })
+            }
             RuntimeEvent::Died(death) => {
                 // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡고, 턴은 쉬는 것으로 돌린다.
                 let mut state = self.lock_state();
@@ -306,12 +319,13 @@ impl Conv {
         Ok(now)
     }
 
-    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉬고, 로그인을 기다리지 않는다(티켓 12 — 턴 도중에 로그인이
-    /// 풀렸다). 걸린 권한(08) · 스스로 이어 간 턴(16)이 이 자리에 조건을 더한다 — 그동안 받은 말은 대기 줄에서 기다린다.
+    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉬고, 로그인을 기다리지 않고(티켓 12 — 턴 도중에 로그인이
+    /// 풀렸다), 답을 기다리는 권한 요청이 없다(티켓 08). 스스로 이어 간 턴(16)이 이 자리에 조건을 더한다 — 그동안 받은 말은
+    /// 대기 줄에서 기다린다(S13).
     fn can_send(&self, state: &ConvState) -> bool {
         state.alive
             && state.turn.is_none()
-            && state.turns.is_some()
+            && state.turns.as_ref().is_some_and(|turns| !turns.permission_pending())
             && !self.login.as_ref().is_some_and(LoginWatch::waiting)
     }
 
@@ -527,6 +541,10 @@ pub enum HostError {
     /// 그 대화의 대기 줄에 그 대기 id의 말이 없다 — 이미 갔거나 지웠다. 대기 줄은 메모리에만 있어 다시 켠 뒤에는 늘
     /// 비어 있다.
     QueuedNotFound(String),
+    /// 걸려 있지 않은 권한 요청 — 이미 답했거나 거둬졌다(멈춤 · 에이전트가 턴을 끝냄 · 에이전트가 떠 있지 않음).
+    PermissionClosed { conversation: String, request: String },
+    /// 그 권한 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
+    PermissionOption { request: String, option: String },
     /// 로그인을 기다리는 대화 — 에이전트가 `-32000`으로 답했다. 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다
     /// (three-axes 티켓 12).
     LoginRequired { agent: Agent, conversation: String },
@@ -554,6 +572,10 @@ impl fmt::Display for HostError {
             HostError::ConversationNotFound(conversation) => write!(f, "대화를 찾을 수 없습니다: {conversation}"),
             HostError::NotRunning(conversation) => write!(f, "에이전트가 떠 있지 않은 대화입니다: {conversation}"),
             HostError::QueuedNotFound(_) => write!(f, "대기 중인 말을 찾을 수 없습니다. 이미 보냈거나 지운 말입니다"),
+            HostError::PermissionClosed { .. } => {
+                write!(f, "이미 닫힌 권한 요청입니다. 답했거나 거둬진 요청에는 답할 수 없습니다")
+            }
+            HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
             HostError::LoginRequired { agent, .. } => {
                 write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
             }
@@ -977,6 +999,30 @@ impl ConversationHost {
             (Some(turns), true) => turns.cancel().map_err(HostError::Send),
             _ => Ok(()),
         }
+    }
+
+    /// 권한 답 — 걸린 권한 요청(`request` — 요청 id)에 고른 선택지(`option` — optionId)로 답한다. 기다리지 않는다: 고른
+    /// optionId는 그 요청의 답으로 `permission` 줄에 적히고, 답을 받은 에이전트가 이어 가는 턴은 기록 줄로 온다(스토리 57 · 59).
+    ///
+    /// - 준 선택지에 없는 optionId는 읽히는 오류이고, 요청은 그대로 걸려 있다 — 맞는 답을 다시 줄 수 있다.
+    /// - 이미 닫힌 요청(답했다 · 멈춰서 거둬졌다 · 에이전트가 턴을 끝내 거둬졌다 · 에이전트가 떠 있지 않다)도 읽히는 오류다.
+    /// - 걸림이 풀리는 자리다 — 턴이 쉬는데 대기 줄이 남아 있으면 맨 앞을 보낸다(S13). 턴 도중의 답이면 턴 끝이 보낸다.
+    pub fn answer_permission(&self, work: &str, conversation: &str, request: &str, option: &str) -> Result<(), HostError> {
+        if !is_conversation_id(conversation) {
+            return Err(HostError::ConversationNotFound(conversation.to_owned()));
+        }
+        let closed = || HostError::PermissionClosed { conversation: conversation.to_owned(), request: request.to_owned() };
+        let live = self.lock_live();
+        let found = live.get(conversation).filter(|live| live.work == work).ok_or_else(closed)?;
+        let mut state = found.conv.lock_state();
+        let turns = state.turns.clone().ok_or_else(closed)?;
+        turns.answer(request, option).map_err(|error| match error {
+            AnswerError::Closed => closed(),
+            AnswerError::UnknownOption => HostError::PermissionOption { request: request.to_owned(), option: option.to_owned() },
+            AnswerError::Send(reason) => HostError::Send(reason),
+        })?;
+        found.conv.send_queued(&mut state, None);
+        Ok(())
     }
 
     /// 대기 고치기 — 대기 줄에서 그 대기 id의 말의 글을 바꾸고 대기 줄 바뀜을 낸다. 대기 id와 차례는 그대로다
