@@ -331,6 +331,12 @@ fn dies_mid_turn_권한이_걸린_채_죽으면_거둬짐과_죽음_줄이_적�
     assert_eq!(listed_queue(&host, &id), Vec::<String>::new());
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 20 · 23)가 죽음 줄(까닭 · stderr 꼬리)과 그 뒤 끊긴 도구 줄을 이것으로 잰다. 가짜는 걸린 채 놓일 때까지
+    // 기다렸다 죽으므로 stderr 줄이 update 사이에 끼지 않는다 — 줄 차례가 매번 같다.
+    common::assert_record(
+        "codex-died",
+        &common::fix_record_sessions(&record, &sandbox.data_root(), &[&first_session, &second_session]),
+    );
 }
 
 /// S26 — 「되살리기」(앱을 다시 켠 뒤 말을 보냈는데 resume도 load도 못 해 새 세션으로 열림)의 결과 기록이 검사 자료로 서고,

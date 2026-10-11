@@ -272,6 +272,9 @@ fn 판_메이저가_다른_에이전트는_판_경고_줄을_남기고_대화는
     assert_eq!(record[2]["payload"]["agentVersion"], json!("3.0.0"));
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 23)가 판 경고 상태 줄을 이것으로 잰다.
+    let session_id = sandbox.agent_session_id("cart", &conversation.id);
+    common::assert_record("codex-version-warning", &common::fix_record(&record, &sandbox.data_root(), &session_id));
 }
 
 #[test]

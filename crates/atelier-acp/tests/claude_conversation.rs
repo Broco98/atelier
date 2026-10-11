@@ -220,7 +220,8 @@ fn 첫_말_전에는_codex를_claude로_바꿔_옛_프로세스를_끄고_새_�
     sandbox.work("cart", &[]);
     let host = sandbox.host(sandbox.both_login_shell("spawns-a-child", "normal"));
     let conversation = host.new_conversation("cart", Agent::Codex).expect("Codex 새 대화");
-    let codex = sandbox.acp_receipt(&sandbox.agent_session_id("cart", &conversation.id));
+    let codex_session = sandbox.agent_session_id("cart", &conversation.id);
+    let codex = sandbox.acp_receipt(&codex_session);
     let mut old: Vec<u32> = vec![codex["pid"].as_u64().unwrap() as u32];
     old.extend(codex["descendants"].as_array().unwrap().iter().map(|pid| pid.as_u64().unwrap() as u32));
 
@@ -237,8 +238,15 @@ fn 첫_말_전에는_codex를_claude로_바꿔_옛_프로세스를_끄고_새_�
     let listed = host.list_conversations("cart").expect("대화 목록");
     assert_eq!(listed.iter().map(|c| (c.id.as_str(), c.agent)).collect::<Vec<_>>(), [(conversation.id.as_str(), Agent::Claude)]);
 
+    // 새 엔진의 명령 목록은 열림 줄 뒤에 따로 온다 — 그것까지 적힌 뒤에 보내야 기록의 줄 차례가 매번 같다(S26).
     let record = sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().filter(|line| line["payload"]["state"] == "opened").count() == 2
+        let reopened = record.iter().filter(|line| line["payload"]["state"] == "opened").nth(1);
+        reopened.is_some_and(|reopened| {
+            record.iter().any(|line| {
+                line["seq"].as_u64() > reopened["seq"].as_u64()
+                    && line["payload"]["update"]["sessionUpdate"] == "available_commands_update"
+            })
+        })
     });
     let config = record.iter().find(|line| line["kind"] == "config").expect("사람이 바꾼 에이전트가 기록에 남는다");
     assert_eq!(config["payload"], serde_json::json!({"agent": "claude"}));
@@ -254,7 +262,13 @@ fn 첫_말_전에는_codex를_claude로_바꿔_옛_프로세스를_끄고_새_�
     assert!(common::is_running(claude["pid"].as_u64().unwrap() as u32), "거절은 프로세스를 건드리지 않는다");
     assert_eq!(sandbox.agents_row("cart", &conversation.id)["agent"], "claude");
 
+    // S26 — 대화창의 L3(티켓 19)가 에이전트 칩의 바꾸기와 첫 말 뒤의 잠김을 이것으로 잰다. 첫 말의 턴이 끝난 뒤를 남긴다.
+    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
     host.shut_down();
+    common::assert_record(
+        "switch-agent",
+        &common::fix_record_sessions(&record, &sandbox.data_root(), &[&codex_session, &session_id]),
+    );
 }
 
 /// **바꾸는 동안 온 보내기는 엔진을 하나 더 띄우지 않는다.** 바꾸기는 떠 있는 표에서 대화를 꺼낸 뒤 옛 엔진을 끄고 새 엔진을

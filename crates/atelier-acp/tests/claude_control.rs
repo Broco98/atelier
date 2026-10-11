@@ -58,6 +58,8 @@ fn 멈추면_가짜_claude가_interrupt_제어_요청을_받고_sigint는_없고
     assert_eq!(stdin_shape(&sandbox.claude_stdin(&session_id)), ["initialize", "user", "interrupt", "user"]);
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 20)가 Claude 꼴의 멈춘 턴(돌던 도구가 `failed`로 닫힌 뒤 `cancelled`)을 이것으로 잰다.
+    common::assert_record("claude-stopped", &common::fix_record(&record, &sandbox.data_root(), &session_id));
 }
 
 #[test]

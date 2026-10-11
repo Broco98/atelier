@@ -99,6 +99,8 @@ fn needs_auth면_대화는_서고_로그인_필요_줄과_엔진_상태가_오�
     assert_eq!(sandbox.opened(), Vec::<String>::new(), "로그인 필요만으로 브라우저를 열지 않는다");
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 22)가 이 기록으로 「로그인 안 됨」 안내 카드를 잰다. 에이전트 쪽 세션은 없다.
+    common::assert_record("login-required", &common::fix_record_sessions(&record, &sandbox.data_root(), &[]));
 }
 
 const CODEX_URL: &str = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=fake-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=fake-state";

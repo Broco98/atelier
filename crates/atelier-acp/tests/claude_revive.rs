@@ -121,6 +121,10 @@ fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_�
     // 진짜 claude 2.1.296은 로그인이 안 돼도 세션 열기(initialize)는 된다 — 첫 턴에서야 드러난다(실측 A8).
     let conversation = host.new_conversation("cart", Agent::Claude).expect("세션은 열린다");
     let session = sandbox.agent_session_id("cart", &conversation.id);
+    // 명령 목록은 `session/new`의 답 뒤에 따로 온다 — 그것까지 적힌 뒤에 보내야 기록의 줄 차례가 매번 같다(S26).
+    sandbox.wait_record("cart", &conversation.id, |record| {
+        record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
+    });
 
     host.send("cart", &conversation.id, "ok 라고만 답해.").expect("보내기");
     let record = sandbox.wait_record("cart", &conversation.id, |record| {
@@ -155,4 +159,6 @@ fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_�
     assert_eq!(opened_hows(&sandbox.record("cart", &conversation.id)), ["new", "resumed"]);
 
     host.shut_down();
+    // S26 — 로그인 필요 줄까지의 기록. 대화창의 L3(티켓 22)가 턴 도중에 선 안내 카드를 이것으로 잰다.
+    common::assert_record("claude-login-required", &common::fix_record(&record, &sandbox.data_root(), &session));
 }

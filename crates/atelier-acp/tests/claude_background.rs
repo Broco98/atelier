@@ -81,6 +81,9 @@ fn steer_background_subagent_백그라운드를_건_턴은_result에서_끝나�
     assert_eq!(sent_texts(&record).len(), 2);
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 20)가 스스로 이어 간 턴(시작 표지 · 턴 밖 update · 턴 밖 끝)을 이것으로 잰다.
+    let session_id = sandbox.agent_session_id("cart", &conversation);
+    common::assert_record("claude-self-turn", &common::fix_record(&record, &sandbox.data_root(), &session_id));
 }
 
 #[test]

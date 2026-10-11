@@ -135,6 +135,8 @@ fn 권한이_걸린_채_멈추면_가짜가_cancelled_답을_받고_거둬짐_�
     assert_eq!(sandbox.acp_responses(&session_id).len(), 1, "뒤늦은 답은 에이전트에 가지 않는다");
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 20 · 21)가 카드의 멈추기 · 멈춘 줄의 「멈춤」을 이것으로 잰다.
+    common::assert_record("permission-stopped", &common::fix_record(&record, &sandbox.data_root(), &session_id));
 }
 
 #[test]
@@ -206,6 +208,8 @@ fn 에이전트가_답을_기다리지_않고_턴을_끝내면_거둬짐_에이�
     });
 
     host.shut_down();
+    // S26 — 대화창의 L3(티켓 21)가 에이전트가 거둔 요청의 카드가 걷히는지를 이것으로 잰다.
+    common::assert_record("permission-withdrawn", &common::fix_record(&record, &sandbox.data_root(), &session_id));
 }
 
 #[test]

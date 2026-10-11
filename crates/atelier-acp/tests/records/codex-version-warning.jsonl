@@ -1,0 +1,3 @@
+{"seq":1,"at":"2026-10-10T10:00:01.000+09:00","kind":"session","payload":{"state":"spawning"}}
+{"seq":2,"at":"2026-10-10T10:00:02.000+09:00","kind":"session","payload":{"state":"version-warning","agentVersion":"3.0.0","supportedMajor":2}}
+{"seq":3,"at":"2026-10-10T10:00:03.000+09:00","kind":"session","payload":{"state":"opened","how":"new","agentVersion":"3.0.0","modes":{"availableModes":[{"id":"agent","name":"Auto review"}],"currentModeId":"agent"},"models":{"availableModels":[{"modelId":"fake-model","name":"Fake model"}],"currentModelId":"fake-model"},"configOptions":[{"id":"model","name":"Model","type":"select","currentValue":"fake-model","options":[{"value":"fake-model","name":"Fake model"}]}]}}
