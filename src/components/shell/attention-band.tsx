@@ -110,6 +110,11 @@ export function AttentionBand({
         // 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래
         // work 행들과 같은 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
         "mt-1.5 mb-2 rounded-2xl bg-surface py-1.5",
+        // **양옆 4는 줄의 포커스 링이 설 자리다**(codex-ds 결정 11 — 링은 테두리 바깥 4px까지 칠해진다). 이 상자는 아래에서
+        // 세로로 구르느라 넘침을 자르는데(`overflow-y-auto`면 가로도 잘린다), 줄이 상자 양끝에 붙어 서면 키보드로 고른 줄의 링이
+        // 위아래 선만 남는다. 상자의 폭과 자리는 그대로 두고 안쪽에 링 폭만큼 자리를 둔다 — 그만큼 줄 · 머리의 안쪽 여백을
+        // 줄여, 점 · 제목 · 경과 · 수가 서는 x는 여백을 두기 전과 같다(work 행과 같은 x — 아래 `BandLine`의 레인 주석).
+        "px-1",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
         // 아무것도 없었다 — 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 낮은
@@ -122,13 +127,13 @@ export function AttentionBand({
         "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
       )}
     >
-      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 옆 안쪽 9 · 틈 4)는 구획 헤더(`SectionHeader`)와
-          같되 접히지 않는다. 띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
+      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 띠 끝에서 글자까지 9 — 띠의 링 자리 4 + 안쪽 5 · 틈 4)는
+          구획 헤더(`SectionHeader`)와 같되 접히지 않는다. 띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
           것이 둘이면 같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 라벨 글자는 둘이 다르다 —
           띠 머리는 DS `.at-band-head`의 12(`text-xs`), 구획 라벨은 DS 「소제목 13」(`chat-meta`)이다.
           수(`text-xs`)가 오른쪽 끝에 서는 것은 바로 아래 구획 헤더들과 같은 계약이다 — 한 컬럼에
           세로로 붙어 서는 수들이 다른 무게로 읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
-      <div className="flex h-7 shrink-0 items-center gap-1 px-[9px]">
+      <div className="flex h-7 shrink-0 items-center gap-1 px-[5px]">
         <span className="shrink-0 text-xs text-fg-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
@@ -225,7 +230,8 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-sm focus-ring",
+        // 안쪽 왼 5 · 오른 6은 띠 상자의 링 자리(4)를 뺀 값이다 — 점 · 경과가 띠 끝에서 9 · 10에 서던 x를 지킨다.
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[5px] pr-1.5 text-left text-sm focus-ring",
         // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
         // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
         // 묻혀 한 단 위(`fill-hover`)를 썼다.

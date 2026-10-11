@@ -2,9 +2,12 @@ import { expect, test, type Locator, type Page } from "./evidence";
 import { ARCHIVE, PROJECTS, WORKS } from "./fixtures";
 import {
   awaitSpawned,
+  fireAttention,
   installFixtureBackend,
+  openShell,
   processesTitle,
   unknownIpcCalls,
+  띠,
   그림자,
   색대비,
   이름표,
@@ -195,6 +198,29 @@ test("링을 다는 것은 어느 화면에서도 넘침을 자르는 상자에 
     });
     expect(잘림, 주소).toEqual([]);
   }
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **알림 띠도 링이 안 잘린다** — 띠는 부르는 셸이 있어야 서는 상자라 위 화면 목록이 그리지 못한다. 띠 상자는 세로로 구르느라
+// 넘침을 잘라(가로도 함께 잘린다) 상자 양끝에 붙어 선 줄의 링이 양옆에서 사라졌었다. 한 work의 셸 넷이 기다리면 줄 셋과 ⌄가
+// 선다(띠의 상한 3) — 줄과 ⌄가 같은 상자 안이라 함께 잰다.
+test("알림 띠의 줄과 ⌄도 링이 잘리지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  for (let 칸 = 2; 칸 <= 4; 칸 += 1) await openShell(page);
+  // 넷이 다 앉은 뒤에 쏜다(`openShell`이 칸마다 기다렸다 — `markAttention`의 착석 기다림은 칸 수가 그 번호와 같기를 본다).
+  for (let pty = 1; pty <= 4; pty += 1) {
+    await fireAttention(page, { agent: "claude", event: "Elicitation", payload: { message: "답을 기다린다" } }, pty);
+  }
+  const 링 = 띠(page).locator(".focus-ring");
+  // 앵커: 줄 셋과 ⌄ 하나 — 띠가 안 서거나 접힌 채가 아니면 이 넷이다.
+  await expect(링).toHaveCount(4);
+  const { 잘림 } = await settle(page, async () => ({
+    수: await 링.count(),
+    잘림: await 링.evaluateAll(잘린링, { 폭: 링폭, 굴러나간것은뺀다: true }),
+  }));
+  expect(잘림).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
