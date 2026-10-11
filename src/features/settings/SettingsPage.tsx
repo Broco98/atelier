@@ -11,11 +11,12 @@ import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import SpecLayoutPage from "@/features/spec-layout/SpecLayoutPage";
 import { chatApi } from "@/features/chat/api";
-import type { EngineLists } from "@/features/chat/types";
+import { AGENTS } from "@/features/chat/agents";
+import type { Agent, EngineLists } from "@/features/chat/types";
 import { hooksApi, settingsApi } from "./api";
 import { chooseDefaultAgent, chooseEngineDefault, type EngineField } from "./chat-settings";
 import { ChatSection } from "./ChatSection";
@@ -32,7 +33,6 @@ import {
   SettingsSection,
 } from "./SettingsGroup";
 import type {
-  ChatAgent,
   HookStatus,
   NotificationSettings,
   Settings,
@@ -530,7 +530,7 @@ function NotificationSettingsPage({ initial }: { initial: Settings }) {
  * 묻는다. 파일만 읽는 로컬 IPC라 예외 목록의 기본값 조회와 같은 규칙으로 둔다(다시 시도 없음 · 네트워크 상관없음). **열 때마다
  * 새로 묻는다**(`gcTime: 0`) — 그사이 연 대화가 목록을 고쳐 썼을 수 있다.
  */
-const engineListsQuery = (agent: ChatAgent) =>
+const engineListsQuery = (agent: Agent) =>
   queryOptions({
     queryKey: ["settings", "engineLists", agent],
     queryFn: () => chatApi.engineLists(agent),
@@ -540,9 +540,10 @@ const engineListsQuery = (agent: ChatAgent) =>
     networkMode: "always",
   });
 
-/** 그 엔진의 목록. 아직 안 왔거나 못 받았으면 `null`이다 — 고르기는 엔진 기본값 하나만 보인다. */
-function useEngineLists(agent: ChatAgent): EngineLists | null {
-  return useQuery(engineListsQuery(agent)).data ?? null;
+/** 엔진마다의 목록. 아직 안 왔거나 못 받은 엔진은 `null`이다 — 고르기는 엔진 기본값 하나만 보인다. */
+function useEngineLists(): Record<Agent, EngineLists | null> {
+  const results = useQueries({ queries: AGENTS.map(engineListsQuery) });
+  return Object.fromEntries(AGENTS.map((agent, at) => [agent, results[at]?.data ?? null])) as Record<Agent, EngineLists | null>;
 }
 
 /**
@@ -554,7 +555,7 @@ function useEngineLists(agent: ChatAgent): EngineLists | null {
  */
 function ChatSettingsPage({ initial }: { initial: Settings }) {
   const section = useSectionSave("chat", initial.chat, () => {});
-  const lists = { claude: useEngineLists("claude"), codex: useEngineLists("codex") };
+  const lists = useEngineLists();
   const enabled = section.dirty && !section.saving;
 
   return (
@@ -563,7 +564,7 @@ function ChatSettingsPage({ initial }: { initial: Settings }) {
         chat={section.draft}
         lists={lists}
         onChooseAgent={(agent) => section.edit((current) => chooseDefaultAgent(current, agent))}
-        onChooseEngine={(agent: ChatAgent, field: EngineField, value: string | null) =>
+        onChooseEngine={(agent: Agent, field: EngineField, value: string | null) =>
           section.edit((current) => chooseEngineDefault(current, agent, field, value))
         }
       />

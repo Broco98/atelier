@@ -1,9 +1,10 @@
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { chatApi } from "./api";
+import { chatApi, stopTurn } from "./api";
 import { approvalChoices, describeApproval, type ApprovalChoice } from "./approval";
-import { AGENT_LABEL } from "./ComposerChips";
+import { AGENT_LABEL } from "./agents";
+import ChatCard, { CARD_PRIMARY } from "./ChatCard";
 import type { PendingPermission } from "./fold";
 import { TOOL_ICONS } from "./tool-icons";
 import type { Agent } from "./types";
@@ -41,7 +42,6 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
   const [problem, setProblem] = useState<string | null>(null);
   const view = describeApproval(request);
   const choices = approvalChoices(request);
-  const Icon = TOOL_ICONS[view.icon];
   const name = AGENT_LABEL[agent];
 
   const answer = (choice: ApprovalChoice) => {
@@ -53,10 +53,7 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
       setProblem(String(error));
     });
   };
-  const stop = () => {
-    setProblem(null);
-    chatApi.stop(work, conversation).catch((error: unknown) => setProblem(String(error)));
-  };
+  const stop = () => stopTurn(work, conversation, setProblem);
 
   const chips = choices.filter((choice) => choice.place === "chip");
   const actions = [
@@ -64,32 +61,19 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
     ...choices.filter((choice) => choice.place === "primary"),
   ];
   return (
-    <div
-      role="group"
-      aria-labelledby={titleId}
-      className="flex shrink-0 flex-col rounded-(--chat-radius-composer) bg-card shadow-(--chat-shadow-composer)"
+    <ChatCard
+      as="group"
+      titleId={titleId}
+      icon={TOOL_ICONS[view.icon]}
+      // 계획 승인은 「Codex · 계획 모드」, 그 밖은 「터미널 · Codex」 — 보드의 두 카드 그대로다.
+      head={request.planReview ? `${name} · ${view.tool}` : `${view.tool} · ${name}`}
+      title={view.title}
+      subject={view.subject}
+      reason={view.reason && `사유 · ${view.reason}`}
+      problem={problem}
+      roomy={request.planReview}
+      className="shrink-0"
     >
-      <div className={cn("flex flex-col gap-2 px-4 pt-4", request.planReview ? "pb-3.5" : "pb-3")}>
-        <span className="flex items-center gap-1.5 text-caption text-(--chat-fg-tool)">
-          <Icon className="size-3.5" strokeWidth={1.8} aria-hidden />
-          {/* 계획 승인은 「Codex · 계획 모드」, 그 밖은 「터미널 · Codex」 — 보드의 두 카드 그대로다. */}
-          {request.planReview ? `${name} · ${view.tool}` : `${view.tool} · ${name}`}
-        </span>
-        <p id={titleId} className="break-keep text-row font-medium text-foreground">
-          {view.title}
-        </p>
-        {view.subject && (
-          <pre className="whitespace-pre-wrap break-all rounded-inner bg-state-2 p-2 font-mono text-mono-sm font-medium leading-[18px] text-muted-foreground">
-            {view.subject}
-          </pre>
-        )}
-        {view.reason && <p className="text-caption leading-[17px] text-(--chat-fg-tool)">사유 · {view.reason}</p>}
-        {problem && (
-          <p role="alert" className="text-caption text-destructive">
-            {problem}
-          </p>
-        )}
-      </div>
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pb-3.5">
           {chips.map((choice) => (
@@ -138,7 +122,7 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
                 size={request.planReview ? "default" : "pill"}
                 disabled={chosen !== null}
                 onClick={() => answer(choice)}
-                className={cn(WRAPPING, "bg-foreground font-medium text-background hover:bg-foreground/90")}
+                className={cn(WRAPPING, CARD_PRIMARY, "font-medium")}
               >
                 {choice.label}
               </Button>
@@ -146,7 +130,7 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
           )}
         </div>
       </div>
-    </div>
+    </ChatCard>
   );
 }
 

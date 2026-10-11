@@ -2,11 +2,12 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Reac
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { chatApi } from "./api";
+import { chatApi, stopTurn } from "./api";
 import { clearChangeMarks } from "./changes";
 import { chatUiStore, dropQuote, restoreQuote, setDraft } from "./chat-store";
 import type { ChipLists, CommandOption } from "./chips";
-import ComposerChips, { AGENT_LABEL } from "./ComposerChips";
+import { AGENT_LABEL } from "./agents";
+import ComposerChips from "./ComposerChips";
 import { DraftQuoteChip } from "./QuoteChip";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import type { Conversation, Quote } from "./types";
@@ -107,11 +108,7 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
     });
   };
 
-  // 멈추기 — 기다리지 않는다. 멈춘 턴의 끝은 `cancelled` 턴 끝 줄로 오고, 그 머리줄이 「N초 후에 중단했습니다」다(S24).
-  const stop = () => {
-    setProblem(null);
-    chatApi.stop(work, conversation.id).catch((error: unknown) => setProblem(String(error)));
-  };
+  const stop = () => stopTurn(work, conversation.id, setProblem);
 
   return (
     <div className="flex shrink-0 flex-col gap-2.5 px-4 pb-4 pt-2">

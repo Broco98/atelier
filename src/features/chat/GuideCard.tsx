@@ -2,14 +2,16 @@ import { useId, useState } from "react";
 import { Copy, Link as LinkIcon, LogIn, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import { chatApi } from "./api";
-import { AGENT_LABEL } from "./ComposerChips";
+import { AGENT_LABEL } from "./agents";
+import ChatCard, { CARD_PRIMARY } from "./ChatCard";
 import { checkEngine, type EngineView, type GuideKind } from "./engine-store";
 import type { Agent } from "./types";
 
 // 안내 카드(three-axes 티켓 22, three-axes 결정 24 · 30) — 로그인이 안 됐거나 에이전트를 못 찾으면 대화창 자리(기록과 입력창 대신)에 서서
-// 까닭과 할 일을 보인다. 모양은 캔버스 보드 「로그인 · 설치 안내 카드」(`Chat.dc.html`)다: 승인 카드와 같은 틀(r28 · 입력창
-// 그림자) · 위에 엔진 · 제목 · 명령 · 까닭, 아래 단추 줄은 왼쪽 정렬이고 「다시 확인」만 오른쪽 끝이다.
+// 까닭과 할 일을 보인다. 모양은 캔버스 보드 「로그인 · 설치 안내 카드」(`Chat.dc.html`)다: 승인 카드와 같은 틀(`ChatCard` — r28 ·
+// 입력창 그림자) · 위에 엔진 · 제목 · 명령 · 까닭, 아래 단추 줄은 왼쪽 정렬이고 「다시 확인」만 오른쪽 끝이다.
 //
 // 이 카드는 명령을 부르기만 한다. 로그인이 끝나 엔진이 「됨」이 되면 카드가 걷히고, 그 대화를 다시 띄우는 것은 호스트다(12).
 
@@ -56,34 +58,16 @@ function GuideCard({ agent, kind, view }: GuideCardProps) {
   const copyable = kind === "missing" ? install : LOGIN_COMMAND[agent];
 
   return (
-    <section
-      aria-labelledby={titleId}
-      className="flex flex-col rounded-(--chat-radius-composer) bg-card shadow-(--chat-shadow-composer)"
+    <ChatCard
+      as="section"
+      titleId={titleId}
+      icon={kind === "missing" ? Terminal : LogIn}
+      head={name}
+      title={title}
+      subject={install}
+      reason={reason(kind, url, login)}
+      problem={problem}
     >
-      <div className="flex flex-col gap-2 px-4 pb-3 pt-4">
-        <span className="flex items-center gap-1.5 text-caption text-(--chat-fg-tool)">
-          {kind === "missing" ? (
-            <Terminal className="size-3.5" strokeWidth={1.8} aria-hidden />
-          ) : (
-            <LogIn className="size-3.5" strokeWidth={1.8} aria-hidden />
-          )}
-          {name}
-        </span>
-        <p id={titleId} className="break-keep text-row font-medium text-foreground">
-          {title}
-        </p>
-        {install && (
-          <pre className="whitespace-pre-wrap break-all rounded-inner bg-state-2 p-2 font-mono text-mono-sm font-medium leading-[18px] text-muted-foreground">
-            {install}
-          </pre>
-        )}
-        <p className="break-keep text-caption leading-[17px] text-(--chat-fg-tool)">{reason(kind, url, login)}</p>
-        {problem && (
-          <p role="alert" className="text-caption text-destructive">
-            {problem}
-          </p>
-        )}
-      </div>
       <div className="flex flex-wrap items-center gap-2 pb-3 pl-4 pr-3">
         {kind === "logged-out" && (
           <Button
@@ -92,7 +76,7 @@ function GuideCard({ agent, kind, view }: GuideCardProps) {
               setStarting(true);
               void run(() => chatApi.startLogin(agent)).finally(() => setStarting(false));
             }}
-            className="bg-foreground px-3 text-background hover:bg-foreground/90"
+            className={cn(CARD_PRIMARY, "px-3")}
           >
             <LogIn strokeWidth={1.8} aria-hidden />
             로그인
@@ -128,7 +112,7 @@ function GuideCard({ agent, kind, view }: GuideCardProps) {
           </Button>
         )}
       </div>
-    </section>
+    </ChatCard>
   );
 }
 

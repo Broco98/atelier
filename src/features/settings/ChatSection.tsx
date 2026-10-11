@@ -1,10 +1,10 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { AGENT_LABEL } from "@/features/chat/ComposerChips";
-import type { EngineLists } from "@/features/chat/types";
-import { CHAT_AGENTS, defaultAgentOf, engineChoice, type EngineField } from "./chat-settings";
+import { AGENT_LABEL, AGENTS } from "@/features/chat/agents";
+import type { Agent, EngineLists } from "@/features/chat/types";
+import { defaultAgentOf, engineChoice, type EngineField } from "./chat-settings";
 import { SettingsGroup, SettingsRow, SettingsSection } from "./SettingsGroup";
-import type { ChatAgent, ChatSettings } from "./types";
+import type { ChatSettings } from "./types";
 
 // 설정 「대화」의 묶음(three-axes 결정 16 · 티켓 25) — 행 셋: 기본 에이전트 · 기본 모델 · 시작 모드. 모델 · 모드 행에는 엔진마다
 // 고르기가 하나씩 선다. 모양(값 표 · 설명 문구)은 캔버스에 없어 지금 설정 화면의 부품(행 · 칩 · 고르기)을 쓴다.
@@ -44,15 +44,15 @@ export function ChatSection({
 }: {
   chat: ChatSettings | undefined;
   /** 엔진마다의 목록. 아직 못 받았거나 읽지 못했으면 `null`이다 — 그 엔진은 엔진 기본값만 고른다. */
-  lists: Record<ChatAgent, EngineLists | null>;
-  onChooseAgent: (agent: ChatAgent) => void;
-  onChooseEngine: (agent: ChatAgent, field: EngineField, value: string | null) => void;
+  lists: Record<Agent, EngineLists | null>;
+  onChooseAgent: (agent: Agent) => void;
+  onChooseEngine: (agent: Agent, field: EngineField, value: string | null) => void;
 }) {
   const agent = defaultAgentOf(chat);
   // 엔진마다 한 줄 — 엔진 이름 열과 고르기 열이 두 행에서 같은 자리에 선다.
   const engineSelects = (field: EngineField) => (
     <div className="grid grid-cols-[auto_auto] items-center justify-items-start gap-x-2 gap-y-1">
-      {CHAT_AGENTS.map((engine) => (
+      {AGENTS.map((engine) => (
         <EngineSelect
           key={engine}
           engine={engine}
@@ -80,7 +80,7 @@ export function ChatSection({
               deselectable={false}
               onValueChange={([pick]) => onChooseAgent(pick)}
             >
-              {CHAT_AGENTS.map((option) => (
+              {AGENTS.map((option) => (
                 <ToggleGroupItem key={option} value={option}>
                   {AGENT_LABEL[option]}
                 </ToggleGroupItem>
@@ -114,7 +114,7 @@ function EngineSelect({
   value,
   onChange,
 }: {
-  engine: ChatAgent;
+  engine: Agent;
   field: EngineField;
   choices: Choice[];
   value: string | null;

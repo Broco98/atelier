@@ -13,6 +13,7 @@ import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { chatUiStore, conversationKey } from "./chat-store";
 import { currentChoice, type ChipLists, type ChoiceOption } from "./chips";
+import { AGENT_LABEL, AGENTS } from "./agents";
 import { useChangeChoice, useSwitchAgent, type ChoiceChange } from "./hooks";
 import type { Agent, Conversation } from "./types";
 
@@ -25,11 +26,6 @@ import type { Agent, Conversation } from "./types";
 //
 // 메뉴는 포털로 `body`에 선다 — 대화창 범위 토큰(`[data-chat]`)이 닿지 않으므로 메뉴 안은 앱 부품 모양 그대로다(`floating-card` ·
 // `menu-row`).
-
-/** 에이전트의 화면 이름 — 칩과 자리 표시 글이 쓴다. */
-export const AGENT_LABEL: Record<Agent, string> = { claude: "Claude Code", codex: "Codex" };
-
-const AGENTS: readonly Agent[] = ["claude", "codex"];
 
 /** 첫 말 뒤 잠긴 에이전트 칩의 까닭 — 툴팁과 설명이 같은 글이다(구현 스펙 「입력창」). */
 const AGENT_LOCKED = "첫 말 뒤에는 바꿀 수 없어요. 다른 에이전트는 +로 열어요";

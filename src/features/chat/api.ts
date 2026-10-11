@@ -138,3 +138,12 @@ export function onChatQueue(listener: (event: ChatQueueEvent) => void): Promise<
 export function onChatEngine(listener: (event: ChatEngineEvent) => void): Promise<UnlistenFn> {
   return listen<ChatEngineEvent>(CHAT_ENGINE_EVENT, (event) => listener(event.payload));
 }
+
+/**
+ * 멈추기 — 기다리지 않는다. 멈춘 턴의 끝은 `cancelled` 턴 끝 줄로 오고, 그 머리줄이 「N초 후에 중단했습니다」다(S24). 거절되면 그
+ * 글을 `onProblem`에 준다(호스트의 거절은 화면에 보일 글이다). 입력창과 승인 카드의 멈추기가 함께 쓴다.
+ */
+export function stopTurn(work: string, conversation: string, onProblem: (problem: string | null) => void): void {
+  onProblem(null);
+  chatApi.stop(work, conversation).catch((error: unknown) => onProblem(String(error)));
+}

@@ -40,9 +40,6 @@ export interface NotificationSettings {
   sound?: boolean;
 }
 
-/** 대화마다 고르는 에이전트 — 대화창의 그 글자 그대로다(`features/chat/types.ts`). */
-export type ChatAgent = Agent;
-
 /**
  * 한 엔진의 새 대화 기본값(three-axes 결정 16). 값은 엔진이 낸 목록의 id 그대로다 — 모델은 `configOptions.model`의 `value`,
  * 모드는 `modes`의 `id`. **키가 없는 것이 「엔진 기본값」이다** — 그때 Claude는 `--model` · `--permission-mode`를 받지 않고
@@ -62,7 +59,7 @@ export interface ChatEngineDefaults {
  */
 export interface ChatSettings {
   /** 고르지 않았으면 처음 값 Claude Code다(`chat-settings.ts`의 `DEFAULT_AGENT`). */
-  defaultAgent?: ChatAgent;
+  defaultAgent?: Agent;
   claude?: ChatEngineDefaults;
   codex?: ChatEngineDefaults;
 }
