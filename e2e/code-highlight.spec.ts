@@ -21,12 +21,11 @@ const KEYWORD = "rgb(171, 79, 122)"; // #ab4f7a
 const STRING = "rgb(58, 132, 63)"; // #3a843f
 const COMMENT = "rgb(79, 79, 79)"; // #4f4f4f
 
-/** 같은 꼴의 줄 `n`개 — 강조되면 줄마다 키워드 · 문자열 · 주석이 갈린다. 끝 줄바꿈은 붙이지 않는다(줄 수 = `n`). */
-const 줄들 = (n: number): WorktreeFile => ({
-  kind: "text",
-  content: Array.from({ length: n }, (_, i) => `const v${i} = "값"; // 줄 ${i + 1}`).join("\n"),
-  lines: n,
-});
+/** 같은 꼴의 줄 `n`개의 글 — 강조되면 줄마다 키워드 · 문자열 · 주석이 갈린다. 끝 줄바꿈은 붙이지 않는다(줄 수 = `n`). */
+const 줄들의글 = (n: number) => Array.from({ length: n }, (_, i) => `const v${i} = "값"; // 줄 ${i + 1}`).join("\n");
+
+/** 같은 꼴의 줄 `n`개인 파일. */
+const 줄들 = (n: number): WorktreeFile => ({ kind: "text", content: 줄들의글(n), lines: n });
 
 /** 큰 표본은 이 시나리오에만 싣는다 — 고정 표(`WORKTREE_FILES`)에 두면 모든 L3 페이지의 시작 스크립트가 그만큼 붓는다. */
 const 큰표본과함께 = (files: Record<string, WorktreeFile>) => ({
@@ -119,28 +118,59 @@ test("WebKit 오토큰 검사 — 한 줄의 키워드 · 문자열 · 주석이
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("2만 줄이 넘는 파일은 글자는 보이고 토큰 색이 없다 — 강조 상한(결정 35)", async ({ page }) => {
-  await installFixtureBackend(page, 큰표본과함께({ "src/short.ts": 줄들(10), "src/huge.ts": 줄들(20_001) }));
+test("딱 2만 줄은 강조되고, 넘는 파일은 글자는 보이고 토큰 색이 없다 — 강조 상한(결정 35)", async ({ page }) => {
+  // 2만 줄 표본을 칠하고, 넘는 표본 둘은 그 시간의 두 배씩 지켜본다 — 붐비는 기계에서 90초를 넘길 수 있다.
+  test.setTimeout(180_000);
+  await installFixtureBackend(
+    page,
+    큰표본과함께({
+      "src/short.ts": 줄들(10),
+      "src/edge.ts": 줄들(20_000),
+      "src/over.ts": 줄들(20_001),
+      // 코어는 끝 줄바꿈 뒤를 한 줄로 세지 않는다(`lines()`) — 라이브러리는 센다.
+      "src/edge-newline.ts": { kind: "text", content: `${줄들의글(20_000)}\n`, lines: 20_000 },
+    }),
+  );
+  const 첫줄 = (card: ReturnType<typeof codeCard>) =>
+    expect
+      .poll(async () => (await readCodeView(card)).lines[0]?.text.trim(), { timeout: 30_000 })
+      .toBe('const v0 = "값"; // 줄 1');
 
-  // 대조 — 같은 꼴의 짧은 파일은 강조된다. 이 줄이 강조될 수 있는 글이고, 워커가 떠서 일하고 있다는 것을 먼저 본다.
+  // 풀을 먼저 세운다 — 같은 꼴의 짧은 파일이 강조된다. 이 줄이 강조될 수 있는 글이고, 워커가 떠서 일하고 있다.
   await page.goto(codeUrl("billing/src/short.ts"));
   const short = codeCard(page, "billing/src/short.ts");
   await expect.poll(async () => tokenOf(await readCodeView(short), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
 
-  await 주소로간다(page, codeUrl("billing/src/huge.ts"));
-  const huge = codeCard(page, "billing/src/huge.ts");
+  // 딱 2만 줄은 강조된다 — 워커가 서 있으면 상한은 2만 그대로다(S31). 상한이 메인 스레드의 2천으로 내려앉으면 여기서 빨개진다.
+  // 첫 글자가 선 뒤 색이 오기까지를 잰다 — 아래에서 「색이 올 시간이 지났다」의 잣대다.
+  await 주소로간다(page, codeUrl("billing/src/edge.ts"));
+  const edge = codeCard(page, "billing/src/edge.ts");
+  await 첫줄(edge);
+  const started = Date.now();
   await expect
-    .poll(async () => (await readCodeView(huge)).lines[0]?.text.trim(), { timeout: 30_000 })
-    .toBe('const v0 = "값"; // 줄 1');
+    .poll(async () => tokenOf(await readCodeView(edge), "const")?.color, { intervals: [100], timeout: 90_000 })
+    .toBe(KEYWORD);
+  const 칠한시간 = Date.now() - started;
 
-  // 강조가 올 시간을 준 뒤에도 평문이다 — 상한을 없애면(라이브러리 기본 10만 줄) 이 표본은 이 안에 칠해진다(한 번 확인했다).
-  await page.waitForTimeout(4_000);
-  const reading = await readCodeView(huge);
-  // 그려진 줄은 줄마다 한 덩이이고, 모두 같은 글자색이다 — 키워드 · 문자열 · 주석 어느 색도 없다.
-  expect(reading.lines.length).toBeGreaterThan(10);
-  const colors = new Set(reading.lines.flatMap((line) => line.tokens.map((token) => token.color)));
-  expect([...colors]).toHaveLength(1);
-  expect(colors.has(KEYWORD) || colors.has(STRING) || colors.has(COMMENT)).toBe(false);
+  // 넘으면 평문이다. 같은 꼴 · 한 줄 더인 표본이라, 상한을 없애면(라이브러리 기본 10만 줄) 방금 잰 시간 언저리에 칠해진다 —
+  // 그 두 배(적어도 1.5초)를 기다려도 색이 없어야 한다. 끝 줄바꿈 뒤 빈 줄도 한 줄이라(구현 스펙 「코드 보기」) 끝 줄바꿈이 있는
+  // 딱 2만 줄 파일도 넘는 쪽이다.
+  const 지켜볼시간 = Math.max(2 * 칠한시간, 1_500);
+  for (const [path, what] of [
+    ["src/over.ts", "2만 1줄"],
+    ["src/edge-newline.ts", "끝 줄바꿈이 있는 딱 2만 줄"],
+  ] as const) {
+    await 주소로간다(page, codeUrl(`billing/${path}`));
+    const card = codeCard(page, `billing/${path}`);
+    await 첫줄(card);
+    await page.waitForTimeout(지켜볼시간);
+    const reading = await readCodeView(card);
+    // 그려진 줄은 줄마다 한 덩이이고, 모두 같은 글자색이다 — 키워드 · 문자열 · 주석 어느 색도 없다.
+    expect(reading.lines.length, what).toBeGreaterThan(10);
+    const colors = new Set(reading.lines.flatMap((line) => line.tokens.map((token) => token.color)));
+    expect([...colors], what).toHaveLength(1);
+    expect(colors.has(KEYWORD) || colors.has(STRING) || colors.has(COMMENT), what).toBe(false);
+  }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -235,7 +265,8 @@ test("워커가 뜨지 못하면 메인 스레드에서 강조하고 강조 상�
   await expect.poll(async () => tokenOf(await readCodeView(short), "const")?.color, { timeout: 30_000 }).toBe(KEYWORD);
   expect(page.workers()).toHaveLength(0);
 
-  // 2천 1줄은 워커가 있으면 강조되지만(상한 2만), 메인 스레드에서는 평문이다 — 큰 파일이 메인 스레드를 붙들지 않게.
+  // 2천 1줄은 워커가 있으면 강조되지만(상한 2만 — 위 상한 검사가 딱 2만 줄로 잰다), 메인 스레드에서는 평문이다 — 큰 파일이
+  // 메인 스레드를 붙들지 않게.
   await 주소로간다(page, codeUrl("billing/src/over.ts"));
   const over = codeCard(page, "billing/src/over.ts");
   await expect
