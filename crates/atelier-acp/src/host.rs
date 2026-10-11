@@ -678,6 +678,22 @@ pub struct Conversation {
     pub last_seq: u64,
     /// 대기 줄(S13) — 메모리에만 있으므로 앱을 다시 켠 뒤와 에이전트가 떠 있지 않은 대화에서는 비어 있다.
     pub queue: Vec<QueuedMessage>,
+    /// 에이전트가 지금 이 앱에 떠 있고 살아 있나(three-axes 티켓 23). 앱을 다시 켠 뒤에는 말을 보내기 전까지 거짓이다 — 화면은
+    /// 이것으로 기록 끝(`last_seq`)에 열린 채 남은 턴과 물음을 끝난 프로세스의 것으로 읽는다. 앱을 끄면 턴 끝도 죽음 줄도 없이
+    /// 끝나므로 기록만으로는 「화면 새로고침(여전히 돈다)」과 「앱을 다시 켬(끝났다)」을 가를 수 없다.
+    pub live: bool,
+}
+
+/// 앱 종료 확인 창이 세는 것(three-axes 티켓 23 · S13) — 앱 전체(지금 열지 않은 work 포함)에서, 끄면 잃는 것들.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuitCounts {
+    /// 턴이 도는 대화 수.
+    pub running: usize,
+    /// 대기 중인 말 수 — 대기 줄은 메모리에만 있어 앱을 끄면 사라진다.
+    pub queued: usize,
+    /// 답하지 않은 권한 요청 수.
+    pub approvals: usize,
 }
 
 /// 호스트 명령이 실패한 까닭 — 화면에 그대로 보일 글이다.
@@ -1091,12 +1107,15 @@ impl ConversationHost {
             return Err(HostError::AgentLocked(conversation.to_owned()));
         }
         if row.agent == agent {
-            let (last_seq, queue) = match &live {
-                Some(live) => (live.conv.recorder.last_seq(), queue_of(&live.conv.lock_state())),
-                None => (records::last_seq(&record), Vec::new()),
+            let (last_seq, queue, up) = match &live {
+                Some(live) => {
+                    let state = live.conv.lock_state();
+                    (live.conv.recorder.last_seq(), queue_of(&state), is_up(&state))
+                }
+                None => (records::last_seq(&record), Vec::new(), false),
             };
             put_back(live);
-            return Ok(summary(&row, last_seq, queue));
+            return Ok(summary(&row, last_seq, queue, up));
         }
         let found = self.login_env(false).map_err(HostError::from).and_then(|env| Ok((find_programs(agent, &env)?, env)));
         let (programs, env) = match found {
@@ -1179,7 +1198,7 @@ impl ConversationHost {
             Err(OpenError::AuthRequired { .. }) => {
                 recorder.session(SessionState::LoginRequired).map_err(HostError::Record)?;
                 self.logins.login_required(row.agent, work, &row.id);
-                return Ok(summary(row, recorder.last_seq(), Vec::new()));
+                return Ok(summary(row, recorder.last_seq(), Vec::new(), false));
             }
             Err(error) => {
                 let reason = error.to_string();
@@ -1223,7 +1242,7 @@ impl ConversationHost {
             records::write_row(&places.agents, row).map_err(HostError::Record)?;
         }
 
-        let conversation = summary(row, recorder.last_seq(), Vec::new());
+        let conversation = summary(row, recorder.last_seq(), Vec::new(), true);
         self.lock_live().insert(row.id.clone(), Live { work: work.to_owned(), agent: agent_process, conv });
         Ok(conversation)
     }
@@ -1603,6 +1622,23 @@ impl ConversationHost {
         });
     }
 
+    /// 앱 종료 확인 창의 셈(three-axes 티켓 23 · S13) — 떠 있는 대화 모두에서 턴이 도는 대화 · 대기 중인 말 · 답하지 않은
+    /// 권한 요청을 센다. 셈의 원천이 화면이 아니라 여기인 것은, 대기 줄이 이 메모리에만 있고 지금 화면이 열지 않은 work의
+    /// 대화도 함께 꺼지기 때문이다. 떠 있지 않은 대화(다시 켠 뒤 · 닫은 대화)는 셀 것이 없다. 기다리지 않는다.
+    ///
+    /// 에이전트가 스스로 이어 간 턴(three-axes 티켓 16)은 아직 대화의 상태에 서지 않아 「턴이 도는 대화」에 들지 않는다.
+    pub fn quit_counts(&self) -> QuitCounts {
+        let live = self.lock_live();
+        let mut counts = QuitCounts::default();
+        for conversation in live.values() {
+            let state = conversation.conv.lock_state();
+            counts.running += usize::from(state.turn.is_some());
+            counts.queued += state.queue.len();
+            counts.approvals += state.turns.as_ref().map_or(0, Turns::pending_permissions);
+        }
+        counts
+    }
+
     /// 호스트 끄기 — 모든 대화의 프로세스 그룹을 끈다(앱 종료). 대화를 닫지는 않는다: `agents.json`과 기록은
     /// 그대로이고, 앱을 다시 켜면 말을 보낼 때 되살린다(three-axes 결정 19).
     ///
@@ -1793,11 +1829,19 @@ fn major(version: Option<&str>) -> Option<u64> {
 
 /// 대화 목록의 한 줄 — 떠 있는 대화면 기록의 마지막 seq와 대기 줄을 메모리에서, 아니면 기록 파일에서 읽는다.
 fn summarize(live: &HashMap<String, Live>, agents_dir: &Path, row: &ConversationRow) -> Conversation {
-    let (last_seq, queue) = match live.get(&row.id) {
-        Some(conversation) => (conversation.conv.recorder.last_seq(), queue_of(&conversation.conv.lock_state())),
-        None => (records::last_seq(&records::record_path(agents_dir, &row.id)), Vec::new()),
+    let (last_seq, queue, up) = match live.get(&row.id) {
+        Some(conversation) => {
+            let state = conversation.conv.lock_state();
+            (conversation.conv.recorder.last_seq(), queue_of(&state), is_up(&state))
+        }
+        None => (records::last_seq(&records::record_path(agents_dir, &row.id)), Vec::new(), false),
     };
-    summary(row, last_seq, queue)
+    summary(row, last_seq, queue, up)
+}
+
+/// 에이전트가 떠 있고 살아 있나 — 대화 목록의 `live`(three-axes 티켓 23). 죽었거나 끈 대화는 아니다.
+fn is_up(state: &ConvState) -> bool {
+    state.alive && state.turns.is_some()
 }
 
 /// 되살리기를 언제 하나(three-axes 티켓 10).
@@ -1877,7 +1921,7 @@ impl Setting {
     }
 }
 
-fn summary(row: &ConversationRow, last_seq: u64, queue: Vec<QueuedMessage>) -> Conversation {
+fn summary(row: &ConversationRow, last_seq: u64, queue: Vec<QueuedMessage>, live: bool) -> Conversation {
     Conversation {
         id: row.id.clone(),
         agent: row.agent,
@@ -1887,5 +1931,6 @@ fn summary(row: &ConversationRow, last_seq: u64, queue: Vec<QueuedMessage>) -> C
         plan: row.plan,
         last_seq,
         queue,
+        live,
     }
 }

@@ -1,26 +1,33 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
+import { askDialog } from "@/components/ui/confirm-store";
+import { Spinner } from "@/components/ui/spinner";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import ApprovalCard from "./ApprovalCard";
 import { ChatDocsContext } from "./chat-docs";
 import {
+  chatRecordStore,
   chatUiStore,
   chooseConversation,
   claimFirstConversation,
   conversationKey,
   dropWanted,
+  linesOf,
+  seeConversation,
   wantConversation,
 } from "./chat-store";
 import ChangesPill from "./ChangesPill";
+import { chipLists } from "./chips";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
 import { awaitingLogin, chatEngineStore, checkEngine, checkEngineOnce, guideKind, type GuideKind } from "./engine-store";
-import { foldConversation } from "./fold";
+import { foldOf } from "./fold";
 import GuideCard from "./GuideCard";
 import { useCloseConversation, useConversations, useCreateConversation, useQueue, useRecordLines } from "./hooks";
 import QueuedMessages from "./QueuedMessages";
+import { closeNotice, goneThrough, STATUS_LABEL, useConversationStatus, type ConversationStatus } from "./status";
 import type { Agent, Conversation, EngineCheck, Quote } from "./types";
 
 // 대화창(three-axes 티켓 17) — 대화 탭 줄 · 흐름 · 입력창. 작업 패널의 `chat` 보기가 이것을 그리고, `chat` 탭(24)도 같은 것을
@@ -123,7 +130,12 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
     createConversation({ work, agent: wanted });
   }, [wanted, wantedView?.found, work, createConversation]);
 
-  const closeConversation = (conversation: Conversation) => {
+  // 대화 닫기(S25) — 턴이 돌거나 답하지 않은 승인이 걸려 있으면 × 앞에 확인 창을 띄운다. 셸 닫기 확인과 같은 손버릇이다(제목 · 「닫기」 ·
+  // 경고색 · 기본 포커스 — `shellCloseDialog`). 묻는 말은 기록을 접은 값으로 정하고(`closeNotice`), 쉬는 대화는 묻지 않고 닫는다.
+  const closeConversation = async (conversation: Conversation) => {
+    const model = foldOf(linesOf(chatRecordStore.state, conversationKey(work, conversation.id)), goneThrough(conversation));
+    const notice = closeNotice(model);
+    if (notice !== null && !(await askDialog({ title: "대화 닫기", body: notice, confirm: "닫기", danger: true }))) return;
     close.mutate(
       { work, conversation: conversation.id },
       {
@@ -153,13 +165,14 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
           {conversations.map((conversation) => (
             <ConversationTab
               key={conversation.id}
+              work={work}
               conversation={conversation}
               on={conversation.id === active?.id}
               onChoose={() => {
                 dropWanted(work);
                 chooseConversation(work, conversation.id);
               }}
-              onClose={() => closeConversation(conversation)}
+              onClose={() => void closeConversation(conversation)}
             />
           ))}
           <Hint
@@ -193,6 +206,7 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
             work={work}
             conversation={conversation}
             shown={conversation.id === active?.id && !(wanted && wantedKind)}
+            visible={visible}
             quote={conversation.id === active?.id ? quote : null}
             onOpenDoc={onOpenDoc}
           />
@@ -203,21 +217,28 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
 }
 
 /**
- * 대화 탭 하나 — 이름과 ×. 이름은 에이전트 이름으로 호스트가 짓는다(Claude · Codex · Claude 2). 켜짐은 `aria-pressed`다 — 탭 줄의
- * 셸 칸과 같은 가족이다(`ShellTabs`). 배경은 바깥 상자가 갖고 가로 여백은 두 버튼이 나눠 가진다 — 바깥의 여백은 눌러도 아무
- * 일이 없는 자리가 된다. 상태 점과 닫기 확인은 티켓 23이 더한다.
+ * 대화 탭 하나 — 상태 점 · 이름 · ×. 이름은 에이전트 이름으로 호스트가 짓는다(Claude · Codex · Claude 2). 켜짐은 `aria-pressed`다 —
+ * 탭 줄의 셸 칸과 같은 가족이다(`ShellTabs`). 배경은 바깥 상자가 갖고 가로 여백은 두 버튼이 나눠 가진다 — 바깥의 여백은 눌러도
+ * 아무 일이 없는 자리가 된다.
+ *
+ * **상태가 이름에 붙는다**(three-axes 티켓 23 · 스토리 118). 점은 그림이라 숨고(`aria-hidden`), 「Codex — 나를 기다림」처럼 이름이
+ * 상태를 말한다 — 셸 탭이 같은 자리에서 같은 꼴을 고른다(`ShellTabs`의 `spokenName`). 기다림은 이름 글자도 그 잉크로 물든다(캔버스
+ * `.cx-tab.wait`).
  */
 function ConversationTab({
+  work,
   conversation,
   on,
   onChoose,
   onClose,
 }: {
+  work: string;
   conversation: Conversation;
   on: boolean;
   onChoose: () => void;
   onClose: () => void;
 }) {
+  const status = useConversationStatus(work, conversation);
   return (
     <div
       data-conversation={conversation.id}
@@ -226,8 +247,15 @@ function ConversationTab({
         on ? "bg-state-3 text-foreground" : "text-muted-foreground quiet-hover",
       )}
     >
-      <button type="button" aria-pressed={on} onClick={onChoose} className="flex h-full min-w-0 items-center pl-2">
-        <span className="truncate">{conversation.name}</span>
+      <button
+        type="button"
+        aria-pressed={on}
+        aria-label={status ? `${conversation.name} — ${STATUS_LABEL[status]}` : undefined}
+        onClick={onChoose}
+        className="flex h-full min-w-0 items-center gap-1.5 pl-2"
+      >
+        {status && <StatusDot status={status} />}
+        <span className={cn("truncate", status === "waiting" && "text-wait-ink")}>{conversation.name}</span>
       </button>
       <button
         type="button"
@@ -242,6 +270,25 @@ function ConversationTab({
 }
 
 /**
+ * 대화 탭의 상태 점(S23 · 캔버스 `.cx-tab` · `.cx-dot` · `.cx-spin`) — 일하는 중은 앱의 스피너(12px), 나를 기다림 · 끝남은 앱 상태색의
+ * 7px 점(사이드바 · 알림 띠의 「나를 기다림」 · 「확인할 것」과 같은 색 — `SignalLane`), 이어 붙이는 중은 옅은 점이다. 그림일 뿐이라
+ * 숨는다 — 상태는 탭 이름이 말한다. 갈래는 표식(`data-status`)이 든다.
+ */
+function StatusDot({ status }: { status: ConversationStatus }) {
+  if (status === "working") return <Spinner aria-hidden data-status={status} className="size-3 text-tertiary" />;
+  return (
+    <span
+      aria-hidden
+      data-status={status}
+      className={cn(
+        "size-[7px] shrink-0 rounded-full",
+        status === "waiting" ? "bg-wait" : status === "done" ? "bg-done" : "bg-tertiary",
+      )}
+    />
+  );
+}
+
+/**
  * 대화 하나의 몸 — 흐름과 입력창. 고르지 않은 대화의 몸도 마운트된 채 숨어 있다: 기록을 읽어 두고, 대화를 오가도 입력 중인
  * 글과 펼친 턴이 남는다. 흐름은 바닥에 붙어 있다가(새 줄이 오면 따라 내려간다) 사람이 위로 굴리면 그 자리에 선다.
  */
@@ -249,19 +296,28 @@ function ConversationBody({
   work,
   conversation,
   shown,
+  visible,
   quote,
   onOpenDoc,
 }: {
   work: string;
   conversation: Conversation;
   shown: boolean;
+  /** 대화창이 지금 보이는가 — 켜진 대화이고 대화창이 보이면 그 대화를 「봤다」(three-axes 티켓 23). */
+  visible: boolean;
   quote: Quote | null;
   onOpenDoc: (path: string, line: number | null) => void;
 }) {
   const key = conversationKey(work, conversation.id);
   const lines = useRecordLines(work, conversation.id);
-  // 흐름 · 알약 · 멈추기가 같은 접은 값을 읽는다 — 기록 줄이 올 때마다 한 번 접는다.
-  const model = useMemo(() => foldConversation(lines), [lines]);
+  // 흐름 · 알약 · 멈추기가 같은 접은 값을 읽는다 — 기록 줄이 올 때마다 한 번 접고, 대화 탭의 상태 점도 같은 값을 읽는다. 다시 켠 뒤면
+  // 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
+  const model = foldOf(lines, goneThrough(conversation));
+  // 칩과 「/」 메뉴의 원천(S15, three-axes 티켓 19) — 같은 기록 줄에서 목록과 엔진의 값을 접는다.
+  const lists = useMemo(() => chipLists(lines), [lines]);
+  // 보이는 동안 그 대화를 「봤다」 — 「끝남」이 걷히고, 보는 동안 끝난 턴에는 서지 않는다(S23 · 스토리 8).
+  const seen = visible && shown;
+  useEffect(() => (seen ? seeConversation(key) : undefined), [seen, key]);
   // 알약이 세는 것 — 이 대화의 마지막 턴의 고친 곳(티켓 26). 새 턴이 시작하면 그 턴에는 아직 없어 알약이 걷힌다.
   const changes = model.turns[model.turns.length - 1]?.changes ?? null;
   const asking = model.pending[0] ?? null;
@@ -296,9 +352,9 @@ function ConversationBody({
       <div className={COLUMN}>
         <Composer
           work={work}
-          conversation={conversation.id}
+          conversation={conversation}
           draftKey={key}
-          agent={conversation.agent}
+          lists={lists}
           quote={quote}
           running={model.running}
           card={

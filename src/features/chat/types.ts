@@ -19,6 +19,24 @@ export interface Conversation {
   lastSeq: number;
   /** 대기 줄 — 호스트 메모리에만 있어 앱을 다시 켠 뒤와 에이전트가 떠 있지 않은 대화에서는 비어 있다. */
   queue: QueuedMessage[];
+  /**
+   * 에이전트가 지금 이 앱에 떠 있고 살아 있나(three-axes 티켓 23). 앱을 다시 켠 뒤에는 말을 보내기 전까지 거짓이다 — 앱을 끄면
+   * 턴 끝도 죽음 줄도 없이 끝나므로, 거짓이면 기록이 `lastSeq`까지 그린 열린 턴 · 물음은 끝난 프로세스의 것이다(`fold.ts`).
+   */
+  live: boolean;
+}
+
+/**
+ * 앱 종료 확인 창의 대화 셈(three-axes 티켓 23 · S13, `atelier_acp::QuitCounts`) — 앱 전체(지금 열지 않은 work 포함)에서, 끄면
+ * 잃는 것들이다.
+ */
+export interface ChatQuitCounts {
+  /** 턴이 도는 대화 수. */
+  running: number;
+  /** 대기 중인 말 수 — 대기 줄은 호스트 메모리에만 있어 앱을 끄면 사라진다. */
+  queued: number;
+  /** 답하지 않은 권한 요청 수. */
+  approvals: number;
 }
 
 /** 대기 줄의 말 하나 — 턴이 도는 동안 보낸 말이다(`atelier_acp::QueuedMessage`). 입력창 위 「대기 중」에 선다. */

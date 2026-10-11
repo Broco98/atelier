@@ -9,14 +9,17 @@ import {
   chooseConversation,
   claimRecordRead,
   conversationKey,
+  forgetFinished,
   linesOf,
+  markChosen,
+  markFinished,
   mergeLines,
   releaseRecordRead,
   setQueue,
 } from "./chat-store";
 import { describeApproval } from "./approval";
 import { applyChanges, changedFiles } from "./changes";
-import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
+import { applyEngineEvent, checkEngine, isLoginRequired, markLoginRequired } from "./engine-store";
 import { finalMessages, foldConversation, headline } from "./fold";
 import type { Agent, Conversation, QueuedMessage, RecordLine } from "./types";
 
@@ -65,6 +68,53 @@ export function useCloseConversation() {
       queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
         old.filter((one) => one.id !== conversation),
       );
+      // 닫은 대화는 볼 것이 없다 — 레일 `chat`의 점이 닫은 대화의 「끝남」으로 서지 않게(three-axes 티켓 23).
+      forgetFinished(conversationKey(work, conversation));
+    },
+  });
+}
+
+/** 목록 캐시의 그 대화를 호스트가 돌려준 대화로 갈아 끼운다 — 칩의 바꾸기 답이 바뀐 대화다(three-axes 티켓 19). */
+function replaceConversation(queryClient: QueryClient, work: string, conversation: Conversation): void {
+  queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
+    old.map((one) => (one.id === conversation.id ? conversation : one)),
+  );
+}
+
+/**
+ * 에이전트 바꾸기(three-axes 티켓 19 · 스토리 23) — 첫 말 전에만 된다. 바꾸기 전에 새 엔진을 확인해 둔다(티켓 22): 찾았어도 로그인이
+ * 안 됐으면 바뀐 대화 자리에 곧바로 로그인 카드가 선다. 못 찾았으면 호스트가 바꾸지 않고 그 까닭을 돌려준다. 답(새 엔진으로 연
+ * 대화 — 이름도 다시 붙는다)으로 목록 캐시를 고친다.
+ */
+export function useSwitchAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ work, conversation, agent }: { work: string; conversation: string; agent: Agent }) => {
+      await checkEngine(agent, false).catch(() => null);
+      return chatApi.switchAgent(work, conversation, agent);
+    },
+    onSuccess: (conversation, { work }) => replaceConversation(queryClient, work, conversation),
+  });
+}
+
+/** 칩의 바꾸기 하나 — 칸과 값. 계획은 켬 · 끔이다. */
+export type ChoiceChange = { field: "model" | "mode"; value: string } | { field: "plan"; value: boolean };
+
+/**
+ * 모델 · 모드 · 계획 바꾸기(three-axes 티켓 19 · 스토리 26 · 30 · 31 · 32) — 값은 그 대화의 것이고 설정의 기본값은 그대로다. 답(바뀐
+ * 대화)으로 목록 캐시를 고치고, 그 답의 마지막 seq를 「사람이 고른 때」로 적어 둔다(`markChosen`).
+ */
+export function useChangeChoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ work, conversation, change }: { work: string; conversation: string; change: ChoiceChange }) => {
+      if (change.field === "plan") return chatApi.setPlan(work, conversation, change.value);
+      if (change.field === "model") return chatApi.setModel(work, conversation, change.value);
+      return chatApi.setMode(work, conversation, change.value);
+    },
+    onSuccess: (conversation, { work, change }) => {
+      replaceConversation(queryClient, work, conversation);
+      markChosen(conversationKey(work, conversation.id), change.field, conversation.lastSeq);
     },
   });
 }
@@ -89,7 +139,8 @@ export function useRecordLines(work: string, conversation: string): readonly Rec
 /**
  * **기록 줄 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 어느 work의 어느 대화든 받아 스토어에 쌓는다 — 다른 work에
  * 가 있어도 쌓여야 돌아왔을 때 그사이 흐른 줄이 보인다(스토리 14 · 15). 턴 끝 줄이면 한 번 알리고(스토리 121), 고친 곳 줄이면
- * 그 work에 표시를 세우고(티켓 26), 로그인 필요 줄이면 그 엔진을 「안 됨」으로 돌린다(티켓 22) — 셋 다 처음 보는 seq일 때만이다.
+ * 그 work에 표시를 세우고(티켓 26), 로그인 필요 줄이면 그 엔진을 「안 됨」으로 돌린다(티켓 22). 턴 끝 · 죽음 줄이면 그 대화에
+ * 「끝남」을 세운다(티켓 23) — 모두 처음 보는 seq일 때만이다.
  */
 export function useChatRecordFeed(): void {
   const queryClient = useQueryClient();
@@ -100,6 +151,8 @@ export function useChatRecordFeed(): void {
       mergeLines(work, conversation, [line]);
       if (known) return;
       if (line.kind === "turn-end") announceTurnEnd(queryClient, work, conversation);
+      // 턴이 끝났다(죽음으로 끊긴 것도) — 그 대화를 지금 보고 있지 않으면 「끝남」이 선다(S23 · three-axes 티켓 23).
+      if (line.kind === "turn-end" || isDeath(line)) markFinished(key);
       // 권한 물음 — 승인 카드가 선다. 에이전트가 나를 기다리는 것을 알림으로 듣는다(스토리 120 · three-axes 티켓 21).
       if (line.kind === "permission") announceApproval(queryClient, work, conversation, line);
       // 고친 곳(티켓 26) — 표시는 이벤트로 온 `changes`로만 선다. 처음 그릴 때 읽은 기록의 것은 지난 턴이라 세우지 않는다(S19).
@@ -152,6 +205,11 @@ export function useChatQueueFeed(): void {
       void unlisten.then((fn) => fn());
     };
   }, []);
+}
+
+/** 에이전트 프로세스가 죽었다는 `session` 줄인가. */
+function isDeath(line: RecordLine): boolean {
+  return line.kind === "session" && (line.payload as { state?: unknown } | null)?.state === "died";
 }
 
 /** 그 대화의 이름 — 대화 목록 캐시에서. 모르면 「대화」다. */

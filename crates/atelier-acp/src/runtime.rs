@@ -882,6 +882,11 @@ impl Turns {
         !self.permissions.lock().is_empty()
     }
 
+    /// 답을 기다리는 권한 요청 수 — 앱 종료 확인 창이 센다(three-axes 티켓 23).
+    pub(crate) fn pending_permissions(&self) -> usize {
+        self.permissions.lock().len()
+    }
+
     /// 세션의 모드 · 설정을 바꾼다 — `session/set_mode` · `session/set_config_option`(three-axes 결정 16 · 27). `fields`는
     /// `sessionId` 밖의 인자(`{modeId}` · `{configId, value}`)다. 바뀐 값은 다음 턴부터 든다.
     ///

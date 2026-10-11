@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { chatApi } from "./api";
 import { approvalChoices, describeApproval, type ApprovalChoice, type ApprovalIcon } from "./approval";
-import { AGENT_LABEL } from "./Composer";
+import { AGENT_LABEL } from "./ComposerChips";
 import type { PendingPermission } from "./fold";
 import type { Agent } from "./types";
 

@@ -283,7 +283,8 @@ test("함께 돈 대화: `changes`가 두 대화에 모두 적혔으면 두 대�
   await streamLines(page, cart.slug, claude.id, claudeTurn.slice(1));
 
   await expect(알약(page)).toHaveText("4개 파일 변경됨");
-  await 대화탭(page, "Claude").click();
+  // Codex를 보는 동안 Claude의 턴이 끝났다 — 그 탭은 「끝남」이고(three-axes 티켓 23), 보면 걷힌다.
+  await 대화탭(page, "Claude — 끝남").click();
   await expect(대화탭(page, "Claude")).toHaveAttribute("aria-pressed", "true");
   await expect(알약(page)).toHaveText("4개 파일 변경됨");
   // 표시는 work의 것 하나다 — 두 줄이 같은 범위를 적어도 블록은 둘 그대로다.

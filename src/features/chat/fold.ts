@@ -7,7 +7,7 @@ import type { Quote, RecordLine } from "./types";
 //
 // **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16). Codex의 줄도 Claude 변환기가 옮긴 줄도 `session/update`의
 // `sessionUpdate` 갈래로만 읽는다 — 엔진마다 다른 것은 칩의 목록뿐이다. 뒤의 화면 장들이 여기에 갈래를 더한다: 대기와 멈춤(20),
-// 승인 · 계획 카드(21), 상태 · 상태 줄(23). 도구 줄의 문구 · 출력 · diff · MCP(18)는 접은 도구 호출을 `tool-view.ts`가 읽는다.
+// 승인 · 계획 카드(21), 상태 · 상태 줄(23 — 아래 「상태」). 도구 줄의 문구 · 출력 · diff · MCP(18)는 접은 도구 호출을 `tool-view.ts`가 읽는다.
 //
 // **멈춘 뒤의 도구 줄**(three-axes 티켓 20 · 결정 28)도 ACP 모양으로 가른다. 우리가 멈춘 `cancelled` 턴 끝에서:
 // - 그때까지 끝나지 않은(`completed` · `failed`가 아닌) 도구 줄은 **멈춘 뒤에도 돈다**(`ran-on`) — Codex `session/cancel`은 턴만
@@ -18,6 +18,11 @@ import type { Quote, RecordLine } from "./types";
 //   간 도구(명령 실패)는 멈춤이 아니다.
 // - 권한을 기다리다 멈추기로 요청이 거둬진(`permission` `withdrawn` · `stopped`, 티켓 08) 도구 줄도 **멈춤**이다 — 돌지 않았다.
 //   codex-acp는 그 도구를 `in_progress`로 두고 닫는 update를 보내지 않는다(실측 G2 cancel).
+//
+// **상태와 상태 줄**(three-axes 티켓 23 · S23)도 기록에서 나온다. `session` 줄이 띄우는 중이면 이어 붙이는 중(`connecting`)이고 열림 ·
+// 죽음 · 닫힘 · 로그인 필요가 오면 걷힌다. 되살리기가 새 세션으로 끝난 열림(`how: fresh`) · 프로세스 죽음 · 판 경고는 흐름 안의 한
+// 줄(`notices`)이다. 앱을 다시 켜면 그 기록을 적던 프로세스가 없다 — 앱을 끄면 턴 끝도 죽음 줄도 없이 끝나므로, 대화 목록이 「떠
+// 있지 않다」고 말한 대화(`goneThrough`)는 그 seq까지 열린 채 남은 턴과 물음을 끝난 것으로 접는다.
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라(워크플로 S34) 스키마에 없는 `sessionUpdate`도 오고, 그것이 화면을
 // 멈추면 안 된다.
@@ -118,12 +123,28 @@ export interface ChatModel {
   turns: Turn[];
   /** 마지막 턴이 도는 중인가. */
   running: boolean;
+  /** 에이전트를 띄우거나 되살리는 중인가 — 띄우는 중 줄 뒤로 열림 · 죽음 · 닫힘 · 로그인 필요가 아직 오지 않았다(S23 「이어 붙이는 중」). */
+  connecting: boolean;
+  /** 흐름 안의 상태 줄들 — 온 차례대로(three-axes 티켓 23). */
+  notices: Notice[];
   /**
    * 답하지 않은 권한 요청 — 물은 차례다(three-axes 티켓 21). 맨 앞의 것이 입력창 자리에 승인 카드(계획 승인이면 「이 계획대로
    * 할까요?」)로 선다. 같은 `requestId`의 답(`answered`)이나 거둬짐(`withdrawn`)이 적히면, 또는 에이전트가 사라지면(죽음 ·
    * 닫힘 — 걸린 요청에 답할 곳이 없다) 빠진다.
    */
   pending: PendingPermission[];
+}
+
+/**
+ * 흐름 안의 상태 줄 하나(three-axes 티켓 23) — 되살리기가 새 세션으로 끝남(`fresh`, 스토리 86) · 프로세스 죽음(`died`, 까닭과 함께 —
+ * 스토리 88) · 판 경고(`version`, S6). 턴에 들지 않고 턴 사이에 선다.
+ */
+export interface Notice {
+  key: string;
+  kind: "fresh" | "died" | "version";
+  text: string;
+  /** 이 줄보다 먼저 선 턴의 수 — 흐름에서 그 턴들 뒤, 다음 턴 앞에 선다. */
+  after: number;
 }
 
 /** 권한 요청의 선택지 하나 — 엔진이 준 그대로(ACP `PermissionOption`). */
@@ -156,7 +177,11 @@ const TURN_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "too
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
-export function foldConversation(lines: readonly RecordLine[]): ChatModel {
+/**
+ * 기록 줄을 화면 모델로 접는다. `goneThrough`는 대화 목록이 「에이전트가 이 앱에 떠 있지 않다」고 말할 때의 마지막 seq다(티켓 23) —
+ * 그 seq까지의 줄을 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
+ */
+export function foldConversation(lines: readonly RecordLine[], goneThrough: number | null = null): ChatModel {
   const turns: Turn[] = [];
   let open: Turn | null = null;
   // 도는 턴에서 `failed`로 닫힌 뒤 아무 일도 이어지지 않은 도구 줄들 — 그 턴이 우리의 멈춤으로 끝나면 멈춤이다(머리말).
@@ -178,8 +203,34 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
     closedLast = [];
     return turn;
   };
+  // 띄우는 중인가와 상태 줄(three-axes 티켓 23 — 머리말 「상태」).
+  let connecting = false;
+  const notices: Notice[] = [];
+  const notice = (seq: number, kind: Notice["kind"], words: string) =>
+    notices.push({ key: `n${seq}`, kind, text: words, after: turns.length });
+  // 그 프로세스가 사라졌다 — 열린 턴은 끝났고(답 없이), 걸린 권한 요청에는 답할 곳이 없고, 띄우던 것도 끝났다.
+  const vanish = (at: string, error: string) => {
+    pending.clear();
+    connecting = false;
+    if (!open) return;
+    open.end = {
+      stopReason: null,
+      durationMs: Math.max(0, Date.parse(at) - Date.parse(open.startedAt)) || 0,
+      cancelledByUs: false,
+      error,
+    };
+    open = null;
+  };
+  // 앱을 다시 켜기 전의 줄이 끝났나 — `goneThrough`가 있을 때 그 seq 뒤의 첫 줄(또는 기록 끝)에서 한 번 접는다.
+  let gone = goneThrough === null;
+  let lastAt = "";
 
   for (const line of lines) {
+    if (!gone && line.seq > (goneThrough ?? 0)) {
+      vanish(lastAt || line.at, GONE_WITH_APP);
+      gone = true;
+    }
+    lastAt = line.at;
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
       case "sent":
@@ -301,33 +352,81 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
         break;
       }
       case "session": {
-        if (payload.state !== "died" && payload.state !== "closed") break;
-        // 에이전트가 사라졌다 — 걸린 권한 요청에는 답할 곳이 없으니 카드가 걷힌다.
-        pending.clear();
-        // 답 없이 사라진 턴에는 턴 끝 줄이 없다 — 죽음 · 닫힘 줄이 그 자리를 맡는다(호스트가 그 턴을 쉬는 것으로 돌린다).
-        if (!open) break;
-        open.end = {
-          stopReason: null,
-          durationMs: Math.max(0, Date.parse(line.at) - Date.parse(open.startedAt)) || 0,
-          cancelledByUs: false,
-          error: text(payload.reason) ?? (payload.state === "closed" ? "대화가 닫혔어요" : "에이전트가 끝났어요"),
-        };
-        open = null;
+        switch (payload.state) {
+          case "spawning":
+            // 띄우는 중 — 새 대화와 되살리기가 이 줄로 시작한다(티켓 10). 열림 · 죽음 · 닫힘 · 로그인 필요가 걷는다.
+            connecting = true;
+            break;
+          case "opened":
+            connecting = false;
+            // 되살리려 했지만 맥락을 잇지 못해 새 세션으로 열렸다 — 에이전트가 기억한다고 잘못 믿지 않게 한 줄 선다(스토리 86).
+            if (payload.how === "fresh") notice(line.seq, "fresh", FRESH_NOTICE);
+            break;
+          case "login-required":
+            connecting = false;
+            break;
+          case "version-warning":
+            notice(line.seq, "version", versionNotice(text(payload.agentVersion), payload.supportedMajor));
+            break;
+          case "died":
+          case "closed":
+            // 에이전트가 사라졌다 — 걸린 권한 요청에는 답할 곳이 없으니 카드가 걷힌다. 답 없이 사라진 턴에는 턴 끝 줄이 없다 —
+            // 죽음 · 닫힘 줄이 그 자리를 맡는다(호스트가 그 턴을 쉬는 것으로 돌린다). 죽음의 까닭은 턴 머리줄이 아니라 그 뒤의
+            // 상태 줄이 말한다(스토리 88).
+            vanish(line.at, payload.state === "closed" ? "대화가 닫혔어요" : "에이전트가 끝났어요");
+            if (payload.state === "died") notice(line.seq, "died", diedNotice(text(payload.reason)));
+            break;
+          default:
+            break;
+        }
         break;
       }
       default:
         break;
     }
   }
+  if (!gone) vanish(lastAt, GONE_WITH_APP);
   return {
     turns,
     running: open !== null,
+    connecting,
+    notices,
     // 도구 줄은 접기가 끝난 뒤에 찾는다 — 물음보다 늦게 온 update까지 합친 값이다.
     pending: [...pending.values()].map((one) => {
       const id = text(one.toolCall.toolCallId);
       return { ...one, tool: id ? findTool(turns, id) : null };
     }),
   };
+}
+
+/** 앱을 다시 켜기 전에 끊긴 턴의 끝 까닭 — 앱이 꺼지면 에이전트도 함께 꺼진다(three-axes 결정 19). */
+const GONE_WITH_APP = "앱이 꺼지며 끊겼어요";
+
+/** 「새로 시작함」 상태 줄(스토리 86). */
+const FRESH_NOTICE = "새로 시작함 — 앞의 맥락을 잇지 못해 새 세션으로 열었어요";
+
+/** 프로세스 죽음의 상태 줄 — 호스트가 적은 까닭(「에이전트 프로세스가 끝났습니다 (종료 코드 N)」)과 다음에 일어날 일(스토리 88). */
+function diedNotice(reason: string | null): string {
+  return `${reason ?? "에이전트가 끝났어요"} · 다음 말에서 다시 띄워요`;
+}
+
+/** 판 경고의 상태 줄(S6) — 잰 적 없는 메이저 판이라도 대화는 그대로 연다. */
+function versionNotice(version: string | null, major: unknown): string {
+  const supported = typeof major === "number" ? ` — 확인한 판은 ${major}.x` : "";
+  return `확인하지 않은 에이전트 판이에요(${version ?? "판 모름"}${supported}). 그대로 이어 가요`;
+}
+
+/**
+ * 같은 기록 줄을 한 번만 접는다(three-axes 티켓 23) — 대화 몸(흐름 · 입력창) · 대화 탭의 상태 점 · 레일 `chat`의 점이 같은 줄을 읽는다.
+ * 기록 줄 배열은 바뀔 때마다 새 배열이라(`chat-store.ts`) 그 정체가 열쇠다. 접은 값은 읽기만 한다.
+ */
+const folded = new WeakMap<readonly RecordLine[], { goneThrough: number | null; model: ChatModel }>();
+export function foldOf(lines: readonly RecordLine[], goneThrough: number | null): ChatModel {
+  const hit = folded.get(lines);
+  if (hit && hit.goneThrough === goneThrough) return hit.model;
+  const model = foldConversation(lines, goneThrough);
+  folded.set(lines, { goneThrough, model });
+  return model;
 }
 
 /** 권한 물음 줄을 답할 요청으로 — 선택지는 요청 원문 그대로, 도구 요지는 호스트가 채운 것(없으면 요청 원문의 것)이다. */

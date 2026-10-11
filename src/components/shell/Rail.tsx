@@ -11,6 +11,15 @@ export interface RailItem<Id extends string = string> {
 }
 
 /**
+ * 레일 칸에 선 점 하나 — 그 점이 뜻하는 말(칸의 설명 `aria-description`으로 남는다)과 색의 갈래. `new`는 고친 곳(three-axes 티켓 26 —
+ * 대화창 범위의 파랑), `wait` · `done`은 레일 `chat`의 나를 기다림 · 끝남(티켓 23 — 앱 상태색, 사이드바 · 알림 띠와 같은 색)이다.
+ */
+export interface RailMark {
+  label: string;
+  tone: "new" | "wait" | "done";
+}
+
+/**
  * 작업 화면의 레일(ui-refresh 결정 9 · 10) — 패널 토글 하나와 칸 묶음. 토글은 열림만 뒤집고 고른 칸은 그대로 둔다. 칸을 고르면
  * `onPick`이 그 칸을 받는다 — **켜진 칸을 다시 고르면 부르는 쪽이 닫는다**(열림과 고른 칸의 주인이 부르는 쪽이라서다).
  */
@@ -21,10 +30,10 @@ export interface RailProps<Id extends string = string> {
   active: Id;
   onPick: (id: Id) => void;
   /**
-   * 칸에 선 점 — 그 점이 뜻하는 말이다(칸의 설명 `aria-description`으로 남는다). 없는 칸에는 점이 없다. 지금은 `spec`의 고친 곳
-   * 점(three-axes 티켓 26)이다. 점을 세울지는 부르는 쪽이 정한다 — 무엇이 보이는지(패널 · 고른 칸)를 아는 것이 그쪽이라서다.
+   * 칸에 선 점(`RailMark`). 없는 칸에는 점이 없다. 지금은 `spec`의 고친 곳 점(three-axes 티켓 26)과 `chat`의 기다림 · 끝남 점(티켓
+   * 23)이다. 점을 세울지는 부르는 쪽이 정한다 — 무엇이 보이는지(패널 · 고른 칸 · 가운데 대화창)를 아는 것이 그쪽이라서다.
    */
-  marks?: Partial<Record<Id, string>>;
+  marks?: Partial<Record<Id, RailMark>>;
   /**
    * 패널 밖에 서 있는 칸 — 패널이 그 칸을 안 보여도 **켜진 것으로 읽힌다**. 지금은 `chat` 탭이 대화창을 가운데에 띄운 동안의
    * `chat`이다(three-axes S22 — 한 대화창은 한 곳에). 누르면 무엇을 할지는 부르는 쪽이 정한다(그 칸을 패널로 데려온다).
@@ -106,7 +115,7 @@ function Rail<Id extends string>({
               onClick={() => onPick(id)}
               aria-pressed={on}
               aria-controls={controls}
-              aria-description={mark}
+              aria-description={mark?.label}
               className={cn(
                 "relative flex size-7 items-center justify-center rounded-full transition-colors",
                 on ? "bg-sidebar-accent text-foreground" : "text-tertiary quiet-hover",
@@ -115,12 +124,16 @@ function Rail<Id extends string>({
               <Icon className="size-4" strokeWidth={1.7} />
               {/* 점은 칸 원의 오른쪽 위 7px — 캡슐 바탕색 2px 테두리로 아이콘과 갈린다(프로토타입 D의 `.rdot`, 값은 캔버스 `.cx-dot`).
                   `<div>`가 아니라 `<span>`이다 — 레일 묶음을 첫 `</div>`까지로 자르는 검사가 있다(`WorksPage.test.tsx`). 뜻은 설명이
-                  말하므로 점은 그림일 뿐이다. */}
+                  말하므로 점은 그림일 뿐이다. 고친 곳의 파랑은 대화창 범위 토큰이라 그 값을 드는 표식(`data-change-dot`)이 함께 선다. */}
               {mark && (
                 <span
-                  data-change-dot
+                  data-change-dot={mark.tone === "new" ? "" : undefined}
+                  data-rail-dot={mark.tone}
                   aria-hidden
-                  className="absolute right-0.5 top-0.5 size-[7px] rounded-full bg-(--chat-dot-new) shadow-[0_0_0_2px_var(--card)]"
+                  className={cn(
+                    "absolute right-0.5 top-0.5 size-[7px] rounded-full shadow-[0_0_0_2px_var(--card)]",
+                    mark.tone === "new" ? "bg-(--chat-dot-new)" : mark.tone === "wait" ? "bg-wait" : "bg-done",
+                  )}
                 />
               )}
             </Hint>
