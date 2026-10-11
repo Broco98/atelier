@@ -931,7 +931,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   //
   // 대화 목록과 기록은 **빈 답이 기본이다** — 대화 없는 work이고, 기록도 없다. 자료(L1이 남긴 기록 · 대화 목록)는 대화 spec이
   // `chat-records.ts`로 읽어 덮어쓴다(S26). 이 답들은 상태가 없다: 만든 대화를 목록이 기억하지 않으므로 화면이 만들기 · 닫기의
-  // 응답으로 제 캐시를 고친다.
+  // 응답으로 제 대화 목록을 고친다(`conversation-list.ts`).
   chat_list: [] satisfies Conversation[],
   chat_read_record: [] satisfies RecordLine[],
   // 새 대화 — 설정의 기본 에이전트(처음은 Claude Code)로 연 대화 하나. 이름은 호스트가 짓는다(`Claude` · `Claude 2`). 둘째
@@ -964,7 +964,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   chat_edit_queued: null,
   chat_delete_queued: null,
   chat_send_now: null,
-  // 칩(three-axes 티켓 19) — 에이전트 바꾸기와 모델 · 모드 · 계획 바꾸기. 답은 바뀐 대화이고 화면이 그것으로 목록 캐시를 고친다.
+  // 칩(three-axes 티켓 19) — 에이전트 바꾸기와 모델 · 모드 · 계획 바꾸기. 답은 바뀐 대화이고 화면이 그것으로 대화 목록을 고친다.
   // 기본 답은 새 대화의 그것과 같은 「Claude」다 — 바꾼 값을 재는 `chat-chips.spec.ts`가 그 시나리오의 대화로 갈아 끼운다.
   chat_switch_agent: FIXTURE_CLAUDE,
   chat_set_model: FIXTURE_CLAUDE,

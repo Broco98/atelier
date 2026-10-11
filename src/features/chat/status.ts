@@ -1,8 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { shallow, useStore } from "@tanstack/react-store";
 import { chatRecordStore, chatUnseenStore, conversationKey, linesOf } from "./chat-store";
+import { useListedConversations } from "./conversation-list";
 import { foldOf, type ChatModel } from "./fold";
-import { conversationsQuery } from "./hooks";
 import type { Conversation } from "./types";
 
 // 대화의 상태(three-axes 티켓 23 · S23) — 대화 탭의 상태 점과 레일 `chat`의 점이 읽는다. **화면이 기록에서 계산한다**: 접은 기록
@@ -40,7 +39,7 @@ export function statusOf(model: ChatModel, unseen: boolean): ConversationStatus 
   return unseen ? "done" : null;
 }
 
-/** 그 대화의 접은 기록 — 대화 몸과 같은 값이다(같은 줄은 한 번만 접는다). 기록을 읽는 것은 대화 몸이다(`useRecordLines`). */
+/** 그 대화의 접은 기록 — 대화 몸과 같은 값이다(같은 줄은 한 번만 접는다). 기록을 읽는 것은 대화 목록의 주인이다(`conversation-list.ts`). */
 export function useConversationModel(work: string, conversation: Conversation): ChatModel {
   const lines = useStore(chatRecordStore, (state) => linesOf(state, conversationKey(work, conversation.id)));
   return foldOf(lines, goneThrough(conversation));
@@ -62,7 +61,7 @@ export type WorkChatSignal = "waiting" | "done";
  * **목록을 읽지 않는다** — 대화창은 처음 보일 때 목록을 읽는다(티켓 17).
  */
 export function useWorkChatSignal(work: string | null): WorkChatSignal | null {
-  const listed = useQuery({ ...conversationsQuery(work ?? ""), enabled: false }).data;
+  const listed = useListedConversations(work);
   // 「끝남」은 이 work의 대화 열쇠만 뽑아 얕게 견준다 — 남의 work의 턴이 끝나거나 보일 때 작업 화면을 다시 그리지 않는다(화면-작업 §12).
   const unseen = useStore(chatUnseenStore, (state) => unseenKeysOf(state, work), shallow);
   return useStore(chatRecordStore, (state) => {

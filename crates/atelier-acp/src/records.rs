@@ -99,13 +99,56 @@ pub(crate) fn record_path(agents_dir: &Path, conversation: &str) -> PathBuf {
     agents_dir.join(format!("{conversation}.jsonl"))
 }
 
-/// 기록 파일의 마지막 seq. 없으면 0이다. 끝에 줄바꿈이 없는 꼬리(반쪽 줄)는 세지 않는다.
-pub(crate) fn last_seq(path: &Path) -> u64 {
-    let Ok(text) = std::fs::read_to_string(path) else { return 0 };
-    complete_lines(&text)
-        .rev()
-        .find_map(|line| serde_json::from_str::<Value>(line).ok()?["seq"].as_u64())
-        .unwrap_or(0)
+/// 그 대화의 기록이 답하는 사실 — 호스트가 판단에 쓰는 것. 기록 파일은 여기서 한 번 읽는다. 없거나 읽지 못하면 아무것도
+/// 적히지 않은 기록이다.
+pub(crate) fn facts(agents_dir: &Path, conversation: &str) -> RecordFacts {
+    RecordFacts { text: std::fs::read_to_string(record_path(agents_dir, conversation)).unwrap_or_default() }
+}
+
+/// 한 번 읽은 기록 — 사실마다 그 사실에 드는 줄만 읽는다. 마지막 seq는 끝 줄 하나로 답한다.
+///
+/// 줄을 읽는 규칙은 [`read_lines`]와 같다 — 끝에 줄바꿈이 없는 꼬리(쓰는 중이거나 쓰다 끊긴 줄)는 세지 않고, 읽을 수 없는
+/// 줄은 건너뛴다.
+pub(crate) struct RecordFacts {
+    text: String,
+}
+
+impl RecordFacts {
+    /// 마지막으로 적힌 줄의 seq. 없으면 0이다. 이 판이 모르는 kind의 줄도 센다 — 이어 적는 줄이 그 seq를 다시 쓰지 않게.
+    pub(crate) fn last_seq(&self) -> u64 {
+        complete_lines(&self.text)
+            .rev()
+            .find_map(|line| serde_json::from_str::<Value>(line).ok()?["seq"].as_u64())
+            .unwrap_or(0)
+    }
+
+    /// 보낸 말(`sent`)이 있나 — 에이전트 바꾸기는 첫 말 전에만 된다(three-axes 결정 15).
+    pub(crate) fn sent(&self) -> bool {
+        self.lines().any(|line| line.kind == RecordKind::Sent)
+    }
+
+    /// 지금 에이전트 쪽 세션이 말을 받은 적이 있나 — 세션이 새로 선 마지막 열림 줄(`new` · `fresh`) 뒤에 `sent`가 있나. 되살린
+    /// 열림(`resumed` · `loaded`)은 같은 세션을 이은 것이라 건너뛴다. 되살린 세션이 아직 첫 말을 받지 않았으면 그 첫 말에
+    /// 머리말이 붙는다(S11, three-axes 티켓 10).
+    pub(crate) fn sent_since_session_start(&self) -> bool {
+        self.lines()
+            .rev()
+            .find_map(|line| match line.kind {
+                RecordKind::Sent => Some(true),
+                RecordKind::Session if starts_session(&line.payload) => Some(false),
+                _ => None,
+            })
+            .unwrap_or(false)
+    }
+
+    fn lines(&self) -> impl DoubleEndedIterator<Item = RecordLine> + '_ {
+        complete_lines(&self.text).filter_map(|line| serde_json::from_str(line).ok())
+    }
+}
+
+/// 에이전트 쪽 세션이 새로 선 열림 줄의 payload인가 — 길이 `new` · `fresh`인 열림.
+fn starts_session(payload: &Value) -> bool {
+    matches!(SessionState::deserialize(payload), Ok(SessionState::Opened { how, .. }) if how.starts_session())
 }
 
 /// 기록 파일에서 `after` 다음 seq의 줄들. 파일이 없으면 `NotFound`다.
@@ -126,24 +169,6 @@ pub(crate) fn read_lines(path: &Path, after: u64) -> std::io::Result<Vec<RecordL
         })
         .filter(|record| record.seq > after)
         .collect())
-}
-
-/// 그 기록에 보낸 말(`sent`)이 있나 — 에이전트 바꾸기는 첫 말 전에만 된다. 기록이 없으면 없는 것이다.
-pub(crate) fn has_sent(path: &Path) -> bool {
-    read_lines(path, 0).is_ok_and(|lines| lines.iter().any(|line| line.kind == RecordKind::Sent))
-}
-
-/// 지금 에이전트 쪽 세션이 말을 받은 적이 있나 — 세션이 새로 선 마지막 열림 줄(`new` · `fresh`) 뒤에 `sent`가 있나. 되살린
-/// 열림(`resumed` · `loaded`)은 같은 세션을 이은 것이라 건너뛴다. 되살린 세션이 아직 첫 말을 받지 않았으면 그 첫 말에 머리말이
-/// 붙는다(S11, three-axes 티켓 10).
-pub(crate) fn sent_since_session_start(path: &Path) -> bool {
-    let Ok(lines) = read_lines(path, 0) else { return false };
-    let start = lines.iter().rposition(|line| {
-        line.kind == RecordKind::Session
-            && line.payload["state"] == "opened"
-            && How::deserialize(&line.payload["how"]).is_ok_and(How::starts_session)
-    });
-    lines[start.map_or(0, |at| at + 1)..].iter().any(|line| line.kind == RecordKind::Sent)
 }
 
 /// 기록 파일이 반쪽 줄로 끝나나 — 비어 있지 않은데 끝 바이트가 줄바꿈이 아니다. 없거나 읽지 못하면 아니다.
@@ -210,8 +235,9 @@ pub(crate) enum PermissionLine {
     Withdrawn { request_id: String, reason: Withdrawal },
 }
 
-/// `session` 줄의 payload. `state`로 가른다.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// `session` 줄의 payload. `state`로 가른다. 적는 쪽과 기록을 다시 읽는 쪽([`facts`])이 이 타입 하나를 쓴다 — 적을 때
+/// 빼는 칸은 읽을 때 빈 값이다.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub(crate) enum SessionState {
     /// 띄우는 중 — 프로세스를 띄우기 직전. 다시 켠 뒤 · 죽은 뒤의 되살리기도 이 줄로 시작한다(three-axes 티켓 10).
@@ -226,7 +252,7 @@ pub(crate) enum SessionState {
         modes: Value,
         models: Value,
         config_options: Value,
-        #[serde(skip_serializing_if = "Value::is_null")]
+        #[serde(default, skip_serializing_if = "Value::is_null")]
         meta: Value,
     },
     /// 계정 상태 — 에이전트가 알린 로그인 상태 원문(`_auth/status_update`의 params). 계정 칸은 런타임이 가렸다.
@@ -240,19 +266,19 @@ pub(crate) enum SessionState {
     /// 죽음 — 에이전트가 없어졌다. 까닭과 stderr 꼬리(있으면). 다음 말에서 띄워 되살린다(three-axes 티켓 10).
     Died {
         reason: String,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         stderr_tail: Vec<String>,
     },
     /// 닫힘 — 대화가 꺼지고 다시 띄우지 않는다. 기록 파일은 남는다. 사람이 닫았으면 `cause`가 없고, 그 밖의
     /// 까닭이면 그것을 싣는다.
     Closed {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         cause: Option<CloseCause>,
     },
 }
 
 /// 사람이 닫지 않았는데 대화가 닫힌 까닭.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum CloseCause {
     /// work가 사라졌다(아카이브 · 삭제) — 그 턴이 끝난 뒤, 쉬고 있었으면 사라짐을 안 때 껐다(S10).
@@ -300,7 +326,7 @@ impl Recorder {
     /// 읽히지 않는 줄이 된다. 끊긴 꼬리는 원문 그대로 남고, 읽기가 JSON이 아닌 줄로 건너뛴다.
     pub(crate) fn open(agents_dir: &Path, work: &str, conversation: &str, emit: Arc<Emit>) -> Result<Self, RecordError> {
         let path = record_path(agents_dir, conversation);
-        let last_seq = last_seq(&path);
+        let last_seq = facts(agents_dir, conversation).last_seq();
         let cannot_open = |error: std::io::Error| format!("기록 파일을 열지 못했습니다: {} — {error}", path.display());
         let mut file = OpenOptions::new().create(true).append(true).open(&path).map_err(cannot_open)?;
         if ends_mid_line(&path) {
@@ -404,4 +430,108 @@ impl Recorder {
 /// 기록의 시각 — 로컬 시각대의 RFC 3339, 밀리초까지.
 pub(crate) fn now() -> String {
     chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 기록이_없으면_적힌_줄도_보낸_말도_없다() {
+        let agents = tempfile::tempdir().unwrap();
+        let record = facts(agents.path(), "c1");
+        assert_eq!((record.last_seq(), record.sent(), record.sent_since_session_start()), (0, false, false));
+    }
+
+    fn recorder(agents: &Path) -> Recorder {
+        let emit: Arc<Emit> = Arc::new(|_| {});
+        Recorder::open(agents, "cart", "c1", emit).expect("기록을 연다")
+    }
+
+    fn opened(how: How) -> SessionState {
+        SessionState::Opened {
+            how,
+            agent_version: None,
+            modes: Value::Null,
+            models: Value::Null,
+            config_options: Value::Null,
+            meta: Value::Null,
+        }
+    }
+
+    fn send(recorder: &Recorder, text: &str) {
+        recorder.sent(text, None, &[json!({"type": "text", "text": text})], false).unwrap();
+    }
+
+    #[test]
+    fn 첫_말을_보내기_전에는_보낸_말이_없고_보낸_뒤에는_있다() {
+        let agents = tempfile::tempdir().unwrap();
+        let recorder = recorder(agents.path());
+        recorder.session(SessionState::Spawning).unwrap();
+        recorder.session(opened(How::New)).unwrap();
+        let before = facts(agents.path(), "c1");
+        assert_eq!((before.last_seq(), before.sent()), (2, false));
+
+        send(&recorder, "첫 말");
+        let after = facts(agents.path(), "c1");
+        assert_eq!((after.last_seq(), after.sent()), (3, true));
+    }
+
+    #[test]
+    fn 이_세션이_받은_말은_세션이_새로_선_new_fresh_열림_뒤의_말이고_resumed_loaded는_같은_세션이다() {
+        let agents = tempfile::tempdir().unwrap();
+        let recorder = recorder(agents.path());
+        let in_session = || facts(agents.path(), "c1").sent_since_session_start();
+
+        recorder.session(opened(How::New)).unwrap();
+        assert!(!in_session(), "새로 선 세션은 아직 말을 받지 않았다");
+        send(&recorder, "어제의 말");
+        assert!(in_session());
+
+        recorder.session(SessionState::Died { reason: "끝남".to_owned(), stderr_tail: Vec::new() }).unwrap();
+        recorder.session(opened(How::Resumed)).unwrap();
+        assert!(in_session(), "resume으로 이은 세션은 어제의 말을 받은 그 세션이다");
+        recorder.session(opened(How::Loaded)).unwrap();
+        assert!(in_session(), "load로 이은 세션도 그 세션이다");
+
+        recorder.session(opened(How::Fresh)).unwrap();
+        let fresh = facts(agents.path(), "c1");
+        assert!(!fresh.sent_since_session_start(), "잇지 못해 새로 선 세션은 아직 말을 받지 않았다");
+        assert!(fresh.sent(), "보낸 말은 그대로 있다 — 에이전트 바꾸기는 여전히 거절된다");
+        send(&recorder, "오늘의 말");
+        assert!(in_session());
+    }
+
+    #[test]
+    fn 줄바꿈으로_끝나지_않은_꼬리는_쓰는_중인_줄이라_세지_않는다() {
+        let agents = tempfile::tempdir().unwrap();
+        let recorder = recorder(agents.path());
+        recorder.session(opened(How::New)).unwrap();
+        let path = record_path(agents.path(), "c1");
+        let mut text = std::fs::read_to_string(&path).unwrap();
+        text.push_str(r#"{"seq":2,"at":"2026-10-11T09:00:00.000+09:00","kind":"sent","payload":{"text":"쓰는 중"}}"#);
+        std::fs::write(&path, text).unwrap();
+
+        let record = facts(agents.path(), "c1");
+        assert_eq!(
+            (record.last_seq(), record.sent(), record.sent_since_session_start()),
+            (1, false, false),
+            "JSON으로 읽혀도 끝에 줄바꿈이 없으면 아직 적히지 않은 줄이다"
+        );
+    }
+
+    #[test]
+    fn 이_판이_모르는_줄도_seq는_센다_이어_적는_줄이_그_seq를_다시_쓰지_않게() {
+        let agents = tempfile::tempdir().unwrap();
+        let recorder = recorder(agents.path());
+        recorder.session(opened(How::New)).unwrap();
+        drop(recorder);
+        let path = record_path(agents.path(), "c1");
+        let mut text = std::fs::read_to_string(&path).unwrap();
+        text.push_str("{\"seq\":2,\"at\":\"2026-10-11T09:00:00.000+09:00\",\"kind\":\"from-a-later-build\",\"payload\":{}}\n");
+        text.push_str("쓰다 끊긴 꼬리를 앞선 열기가 줄바꿈으로 끊었다\n");
+        std::fs::write(&path, text).unwrap();
+
+        assert_eq!(facts(agents.path(), "c1").last_seq(), 2);
+    }
 }

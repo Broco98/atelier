@@ -2,7 +2,17 @@ import { expect, test, type Page } from "./evidence";
 
 import type { EngineCheck } from "@/features/chat/types";
 import { answerByArg, WORKS } from "./fixtures";
-import { fireEvent, installFixtureBackend, ipcCallArgs, replaceAnswer, steadyCount, unknownIpcCalls } from "./harness";
+import {
+  fireEvent,
+  heldCalls,
+  holdCommand,
+  installFixtureBackend,
+  ipcCallArgs,
+  releaseCommand,
+  replaceAnswer,
+  steadyCount,
+  unknownIpcCalls,
+} from "./harness";
 import { conversationRow, handToolTurn, streamLines } from "./chat-records";
 import { 레일칸, 작업패널 } from "./chat-screen";
 
@@ -219,5 +229,35 @@ test("못 찾음: `chat` 탭에서 「다시 확인」으로 빠진 엔진을 �
   // 가운데와 작업 패널(숨은 채 마운트돼 있다)에 같은 work의 대화창이 둘 서 있어도, 엔진을 찾은 소식에 대화를 만드는 것은 한 번이다.
   expect(await steadyCount(page, "chat_new")).toBe(1);
   expect((await ipcCallArgs(page, "chat_new", "work")).map(({ args }) => args)).toEqual([{ work: specWork.slug, agent: "claude" }]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("여는 중: 작업 패널에서 첫 대화를 여는 동안 `chat` 탭으로 가도 가운데 대화창이 「대화를 여는 중이에요」를 말하고 + 가 잠겨 있다", async ({
+  page,
+}) => {
+  // 대화 없는 work — 대화창을 처음 열면 기본 에이전트로 첫 대화를 연다. 만들기의 답을 붙잡아 「여는 중」을 세워 둔다.
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  await expect(탭(page, "spec")).toBeVisible({ timeout: 20_000 });
+  await holdCommand(page, "chat_new");
+  await 레일칸(page, "chat").click();
+  await expect.poll(() => heldCalls(page, "chat_new")).toBe(1);
+  await expect(작업패널(page).getByText("대화를 여는 중이에요", { exact: true })).toBeVisible();
+
+  // 가운데로 옮겨도 같은 대화창이다 — 여는 중인 대화는 여는 중으로 보이고, 그동안 + 로 또 열 수 없다.
+  await 탭(page, "chat").click();
+  const 새대화 = 대화탭줄(가운데대화(page)).getByRole("button", { name: "새 대화", exact: true });
+  await expect(가운데대화(page).getByText("대화를 여는 중이에요", { exact: true })).toBeVisible();
+  await expect(가운데대화(page).getByText(/열린 대화가 없어요/)).toHaveCount(0);
+  await expect(새대화).toBeDisabled();
+
+  // 만들기가 돌아오면 그 대화가 가운데에 켜지고 + 가 풀린다. 만든 것은 한 번이다.
+  await releaseCommand(page, "chat_new");
+  await expect(대화탭줄(가운데대화(page)).getByRole("button", { name: "Claude", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(새대화).toBeEnabled();
+  expect(await steadyCount(page, "chat_new")).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
