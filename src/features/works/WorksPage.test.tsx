@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
+import WorksPage, { codeTabClosedByTab, shellClosedByTab, togglesWorkPanel } from "./WorksPage";
 import { ToastProvider } from "@/components/ui/toast";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
@@ -19,6 +19,7 @@ import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import {
   MAX_SHELLS,
   NO_SHELLS,
+  openCodeTab,
   openShell,
   ownerOf,
   shellCapNotice,
@@ -1122,6 +1123,44 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
   it("그 화면의 셸이 0개면 닫을 것이 없다", () => {
     seed(workSeat("남"));
     expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
+  });
+
+  // 파일 탭 쪽 짝(git-integration 스토리 50 · 티켓 07). **분할 중 ⌘W는 포커스가 묶음 열에 있을 때만 닫는다** — 문서 열에
+  // 포커스가 있으면(`tab`이 spec) 옆 열에 파일 탭이 서 있어도 아무 일이 없다(구현 스펙 「단축키」). 주소에 `code`가 남아
+  // 있다는 것(분할의 `code`는 포커스와 상관없이 묶음 열의 것이다)으로 가르면 그 칸이 확인 없이 닫힌다.
+  describe("파일 탭", () => {
+    const owner = ownerFor(work.slug);
+    function seedCode(): number {
+      terminalStore.setState(() => openCodeTab(NO_SHELLS, owner, { project: "billing", path: "src/a.ts" }));
+      return terminalStore.state.activeByOwner[owner]!;
+    }
+
+    it("본문(분할이면 포커스가 든 묶음 열)이 파일 탭이면 그 칸이다", () => {
+      const id = seedCode();
+      expect(codeTabClosedByTab("code", owner, terminalStore.state)).toBe(id);
+    });
+
+    it("`spec`이 켜져 있으면 — 분할에서 문서 열에 포커스가 있어도 — 아무 일도 안 한다", () => {
+      seedCode();
+      expect(codeTabClosedByTab("spec", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("주소가 셸을 말하면 파일 탭을 닫지 않는다", () => {
+      seedCode();
+      expect(codeTabClosedByTab("terminal", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("지금 탭이 셸이면 이 길로 닫지 않는다 — 셸은 확인 창을 거친다", () => {
+      seedCode();
+      // 얹는다 — `seed`는 빈 상태에서 다시 짓는다. 새 셸이 묶음 끝에 서고 지금 탭이 된다.
+      terminalStore.setState((state) => openShell(state, workSeat(work.slug))!.state);
+      expect(codeTabClosedByTab("code", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("고른 작업이 없으면 닫을 것이 없다", () => {
+      seedCode();
+      expect(codeTabClosedByTab("code", null, terminalStore.state)).toBeNull();
+    });
   });
 
   // 배선은 렌더로 못 본다(이펙트다). **정규식으로 블록을 잘라내지 않는다** — 앞쪽

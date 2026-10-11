@@ -544,6 +544,33 @@ test("분할 중 ⌘W가 묶음 열의 파일 탭을 확인 없이 닫고, 이�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 구현 스펙 「단축키」 — **분할 중 ⌘W는 포커스가 묶음 열에 있을 때만 닫는다**(07). 문서 열에 포커스가 있으면 옆 열에 파일 탭이
+// 서 있어도 아무 일이 없다. 분할의 `code`는 포커스와 상관없이 주소에 남으므로(S12) 그것으로 가르면 그 칸이 확인 없이 닫힌다.
+test("분할 중 문서 열에 포커스가 있으면 ⌘W가 묶음 열의 파일 탭을 닫지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(파일탭주소(SOURCE));
+  await expect(page.getByRole("main", { name: SOURCE, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+
+  // 문서 열에 포커스를 둔다(결정 97) — `tab`이 빠지고 `code`는 묶음 열의 것으로 남는다.
+  await page.getByRole("region", { name: "문서", exact: true }).click();
+  await expect(page).not.toHaveURL(/tab=/);
+  await expect(page).toHaveURL(/code=billing%2Fsrc%2Fmain\.ts/);
+
+  await page.keyboard.press("Meta+w");
+  // 묶음 열을 눌러 포커스를 옮기고 다시 ⌘W — 이번에는 닫힌다. 키는 차례대로 처리되므로 앞의 ⌘W가 아무것도 안 닫았다는 것이
+  // 여기서 갈린다(앞의 것이 닫았으면 이 열이 없다).
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await 코드열(page, SOURCE).click();
+  await expect(page).toHaveURL(/tab=code/);
+  await expect(page.locator(`[data-tab="code"][data-code="${SOURCE}"]`)).toHaveCount(1);
+  await page.keyboard.press("Meta+w");
+  await expect(page.locator(`[data-tab="code"][data-code="${SOURCE}"]`)).toHaveCount(0);
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 이웃이 셸이면 묶음 열이 그 셸로 바뀐다 — 셸 화면이 뜨고 주소에서 `code`가 빠진다. 셸의 ⌘W는 여전히 묻는다(스토리 51).
 test("분할 중 ⌘W로 파일 탭을 닫아 이웃이 셸이면 묶음 열이 그 셸이 되고, 셸의 ⌘W는 여전히 묻는다", async ({ page }) => {
   await 셸과파일탭으로분할(page);
