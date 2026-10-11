@@ -20,6 +20,7 @@ import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Card, CardHead, Frame, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import type { RailMark } from "@/components/shell/Rail";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { changeMarksStore, markOpened, marksOf } from "@/features/chat/changes";
 import ChatPane from "@/features/chat/ChatPane";
 import { setQuote } from "@/features/chat/chat-store";
+import { useWorkChatSignal, type WorkChatSignal } from "@/features/chat/status";
 import type { Quote } from "@/features/chat/types";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -117,7 +119,15 @@ interface WorksPageProps {
 }
 
 /** 레일 `spec` 점의 뜻(three-axes 티켓 26) — 칸의 설명으로 남는다. 트리 행의 점은 `SpecTree`의 `UNSEEN_CHANGE`가 말한다. */
-const UNSEEN_IN_SPEC = "고쳐졌는데 아직 열지 않은 파일이 있어요";
+const UNSEEN_IN_SPEC: RailMark = { label: "고쳐졌는데 아직 열지 않은 파일이 있어요", tone: "new" };
+/**
+ * 레일 `chat`의 점(three-axes 티켓 23 · 결정 10) — 그 work의 어느 대화가 나를 기다리거나 끝났고, 대화창이 지금 보이지 않을 때 선다.
+ * 기다림이 이긴다(`useWorkChatSignal`).
+ */
+const CHAT_RAIL_MARKS: Readonly<Record<WorkChatSignal, RailMark>> = {
+  waiting: { label: "나를 기다리는 대화가 있어요", tone: "wait" },
+  done: { label: "끝났는데 아직 보지 않은 대화가 있어요", tone: "done" },
+};
 
 /**
  * ⌘Enter가 **작업 패널 몫인가** (결정 43).
@@ -540,8 +550,13 @@ function WorksPage({
     if (panelWork && openedSpec && unseen.includes(openedSpec)) markOpened(panelWork.slug, openedSpec);
   }, [panelWork, openedSpec, unseen]);
   // 레일 `spec`의 점 — 아직 열지 않은 고친 파일이 있고 트리가 지금 안 보일 때(프로토타입 D). 트리가 보이면 그 행들의 점이 말한다.
-  const railMarks =
-    unseen.length > 0 && !(workPanelOpen && panelView === "spec") ? { spec: UNSEEN_IN_SPEC } : undefined;
+  // 레일 `chat`의 점 — 그 work의 대화가 나를 기다리거나 끝났고 대화창이 지금 안 보일 때(결정 10). 대화창이 보이면(가운데 `chat` 탭
+  // 이거나 작업 패널이 `chat`을 보인다) 대화 탭의 점이 말한다.
+  const chatSignal = useWorkChatSignal(panelWork?.slug ?? null);
+  const chatVisible = chatStands || (panelShown && panelView === "chat");
+  const railMarks: Partial<Record<PanelView, RailMark>> = {};
+  if (unseen.length > 0 && !(workPanelOpen && panelView === "spec")) railMarks.spec = UNSEEN_IN_SPEC;
+  if (chatSignal && !chatVisible) railMarks.chat = CHAT_RAIL_MARKS[chatSignal];
   // 문서에서 고른 자리(three-axes 티켓 27) — 그 work의 지금 대화의 입력창에 인용 칩으로 붙인다. 대화창이 가려져 있으면(작업 패널이
   // 닫혔거나 다른 칸을 보이면) 작업 패널을 `chat`으로 연다 — 켜진 칸을 다시 누른 것이 아니라서 레일 토글 규칙(`pickPanelView`)은
   // 쓰지 않는다: 이미 보이는 대화창을 닫으면 안 된다.

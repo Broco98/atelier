@@ -131,6 +131,61 @@ test("셸이 0개면 창은 뜨고 셸 줄이 없다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// ── 대화(three-axes 티켓 23 · S13) ──
+// 종료하면 대화의 에이전트도 함께 꺼진다. 다시 켜면 말을 보낼 때 되살아나니 쉬는 대화는 잃을 것이 없지만, 도는 턴은 끊기고 대기 중인
+// 말은 메모리에만 있어 사라지고 답하지 않은 승인은 거둬진다 — 그래서 셋을 센다. 셈은 대화 호스트가 앱 전체(지금 열지 않은 work의
+// 대화도)에서 한 번에 답한다(`chat_quit_counts`). 기본 답은 0이라 위의 셸 검사들은 대화 줄 없이 그대로 돈다.
+
+test("대화: 턴이 도는 대화 · 대기 중인 말 · 답하지 않은 승인이 셸 줄 아래 한 줄로 적힌다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    pty_close_checks: { 1: BUSY_SHELL },
+    chat_quit_counts: { running: 2, queued: 3, approvals: 1 },
+  });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await fireQuitRequest(page);
+
+  const dialog = quitDialog(page);
+  await expect(dialog).toContainText("셸 1 · 명령이 도는 셸 1");
+  await expect(dialog).toContainText("턴이 도는 대화 2 · 대기 중인 말 3 · 답하지 않은 승인 1");
+  // 두 줄이 다 창의 설명이다 — 읽기 도구가 제목 다음에 둘 다 읽는다.
+  await expect(dialog).toHaveAccessibleDescription(/셸 1 · 명령이 도는 셸 1\s+턴이 도는 대화 2 · 대기 중인 말 3 · 답하지 않은 승인 1/);
+  expect(await callCount(page, "chat_quit_counts")).toBe(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("대화: 셸이 0개여도 대화 줄은 선다 — 하나라도 있으면 셋을 다 적는다", async ({ page }) => {
+  await installFixtureBackend(page, { chat_quit_counts: { running: 0, queued: 2, approvals: 0 } });
+  await page.goto("/projects");
+  await expect(page.locator("main")).toBeVisible();
+
+  await fireQuitRequest(page);
+
+  const dialog = quitDialog(page);
+  await expect(dialog).toHaveAccessibleDescription("턴이 도는 대화 0 · 대기 중인 말 2 · 답하지 않은 승인 0");
+  await expect(dialog).not.toContainText("셸");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 셈이 던지면 창이 안 떠 앱을 끌 길이 강제 종료뿐이다(UI개선 결정 31) — 대화 셈의 실패는 0으로 센다.
+test("대화: 셈이 거절돼도 창은 뜨고 대화 줄만 없다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    pty_close_checks: { 1: QUIET_SHELL },
+    chat_quit_counts: ipcFailure("대화 호스트가 답하지 않습니다"),
+  });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await fireQuitRequest(page);
+
+  const dialog = quitDialog(page);
+  await expect(dialog).toHaveAccessibleDescription("셸 1 · 명령이 도는 셸 0");
+  await dialog.getByRole("button", { name: "종료", exact: true }).click();
+  await expect.poll(() => callCount(page, "quit_app")).toBe(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // ── 포커스 ──
 
 test("기본 포커스가 「취소」라 반사적 Enter로는 안 꺼지고, 「종료」로 꺼진다", async ({ page }) => {

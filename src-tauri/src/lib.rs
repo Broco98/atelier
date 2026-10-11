@@ -411,6 +411,7 @@ pub fn run() {
             commands::chat_set_mode,
             commands::chat_set_plan,
             commands::chat_engine_lists,
+            commands::chat_quit_counts,
             commands::chat_start_login,
             commands::chat_cancel_login,
         ])

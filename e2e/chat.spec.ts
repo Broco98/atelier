@@ -130,7 +130,8 @@ async function openCodexChat(page: Page, read = linesThrough(codexOneTurn, SENT_
   });
   await page.goto(`/works/${plainWork.slug}`);
   await 레일칸(page, "chat").click();
-  await expect(대화탭(page, "Codex")).toHaveAttribute("aria-pressed", "true");
+  // 도는 턴까지 읽은 대화면 탭 이름에 상태가 붙는다(「Codex — 일하는 중」, three-axes 티켓 23).
+  await expect(대화탭줄(page).getByRole("button", { name: /^Codex( — |$)/ })).toHaveAttribute("aria-pressed", "true");
 }
 
 const 흐름 = (page: Page) => 작업패널(page);

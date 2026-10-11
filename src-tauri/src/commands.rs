@@ -721,6 +721,15 @@ pub async fn chat_engine_lists(
     Ok(chats.engine_lists(agent))
 }
 
+/// 앱 종료 확인 창의 대화 셈(three-axes 티켓 23 · S13) — 앱 전체에서 턴이 도는 대화 · 대기 중인 말 · 답하지 않은 승인. 대기 줄은
+/// 호스트 메모리에만 있고 지금 열지 않은 work의 대화도 함께 꺼지므로 호스트가 센다. 메모리만 읽는다 — 기다리지 않는다.
+#[tauri::command]
+pub async fn chat_quit_counts(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+) -> CmdResult<atelier_acp::QuitCounts> {
+    Ok(chats.quit_counts())
+}
+
 /// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).
 #[tauri::command]
 pub async fn chat_close(

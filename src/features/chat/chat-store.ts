@@ -188,3 +188,41 @@ export const chatAnnouncementStore = new Store<Announcement | null>(null);
 export function announce(text: string): void {
   chatAnnouncementStore.setState((last) => ({ id: (last?.id ?? 0) + 1, text }));
 }
+
+/**
+ * 끝났는데 아직 보지 않은 대화(three-axes 티켓 23 · S23 「끝남」) — 대화 열쇠. 「봤다」는 화면이 메모리에 쥔다: 저장하지 않아 앱을
+ * 다시 켜거나 화면을 새로고침하면 없다. 기록 줄 이벤트로 온 턴 끝(과 죽음)이 세우고(`markFinished`), 그 대화를 보면 지운다.
+ * 처음 그릴 때 읽은 기록의 턴 끝은 세우지 않는다 — 이미 지난 일이다(턴 끝 알림 · 고친 곳과 같은 규칙).
+ */
+export const chatUnseenStore = new Store<Readonly<Record<string, true>>>({});
+
+// 지금 보이는 대화들 — 대화 열쇠마다 그 대화를 보이는 자리의 수(작업 패널과 `chat` 탭이 같은 대화를 함께 보일 수 있다). 보는
+// 동안 끝난 턴은 「끝남」이 서지 않는다.
+const viewing = new Map<string, number>();
+
+/** 그 대화의 턴이 끝났다 — 지금 보이지 않으면 「끝남」을 세운다. */
+export function markFinished(key: string): void {
+  if ((viewing.get(key) ?? 0) > 0) return;
+  chatUnseenStore.setState((state) => (state[key] ? state : { ...state, [key]: true }));
+}
+
+/** 그 대화를 보이기 시작한다 — 「끝남」을 지우고, 보는 동안 끝난 턴에는 세우지 않는다. 돌려준 함수로 보기를 끝낸다. */
+export function seeConversation(key: string): () => void {
+  viewing.set(key, (viewing.get(key) ?? 0) + 1);
+  forgetFinished(key);
+  return () => {
+    const left = (viewing.get(key) ?? 1) - 1;
+    if (left > 0) viewing.set(key, left);
+    else viewing.delete(key);
+  };
+}
+
+/** 「끝남」을 지운다 — 그 대화를 보았거나 닫았다. */
+export function forgetFinished(key: string): void {
+  chatUnseenStore.setState((state) => {
+    if (!state[key]) return state;
+    const rest = { ...state };
+    delete rest[key];
+    return rest;
+  });
+}

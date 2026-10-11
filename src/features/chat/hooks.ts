@@ -9,8 +9,10 @@ import {
   chooseConversation,
   claimRecordRead,
   conversationKey,
+  forgetFinished,
   linesOf,
   markChosen,
+  markFinished,
   mergeLines,
   releaseRecordRead,
   setQueue,
@@ -66,6 +68,8 @@ export function useCloseConversation() {
       queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
         old.filter((one) => one.id !== conversation),
       );
+      // 닫은 대화는 볼 것이 없다 — 레일 `chat`의 점이 닫은 대화의 「끝남」으로 서지 않게(three-axes 티켓 23).
+      forgetFinished(conversationKey(work, conversation));
     },
   });
 }
@@ -135,7 +139,8 @@ export function useRecordLines(work: string, conversation: string): readonly Rec
 /**
  * **기록 줄 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 어느 work의 어느 대화든 받아 스토어에 쌓는다 — 다른 work에
  * 가 있어도 쌓여야 돌아왔을 때 그사이 흐른 줄이 보인다(스토리 14 · 15). 턴 끝 줄이면 한 번 알리고(스토리 121), 고친 곳 줄이면
- * 그 work에 표시를 세우고(티켓 26), 로그인 필요 줄이면 그 엔진을 「안 됨」으로 돌린다(티켓 22) — 셋 다 처음 보는 seq일 때만이다.
+ * 그 work에 표시를 세우고(티켓 26), 로그인 필요 줄이면 그 엔진을 「안 됨」으로 돌린다(티켓 22). 턴 끝 · 죽음 줄이면 그 대화에
+ * 「끝남」을 세운다(티켓 23) — 모두 처음 보는 seq일 때만이다.
  */
 export function useChatRecordFeed(): void {
   const queryClient = useQueryClient();
@@ -146,6 +151,8 @@ export function useChatRecordFeed(): void {
       mergeLines(work, conversation, [line]);
       if (known) return;
       if (line.kind === "turn-end") announceTurnEnd(queryClient, work, conversation);
+      // 턴이 끝났다(죽음으로 끊긴 것도) — 그 대화를 지금 보고 있지 않으면 「끝남」이 선다(S23 · three-axes 티켓 23).
+      if (line.kind === "turn-end" || isDeath(line)) markFinished(key);
       // 권한 물음 — 승인 카드가 선다. 에이전트가 나를 기다리는 것을 알림으로 듣는다(스토리 120 · three-axes 티켓 21).
       if (line.kind === "permission") announceApproval(queryClient, work, conversation, line);
       // 고친 곳(티켓 26) — 표시는 이벤트로 온 `changes`로만 선다. 처음 그릴 때 읽은 기록의 것은 지난 턴이라 세우지 않는다(S19).
@@ -198,6 +205,11 @@ export function useChatQueueFeed(): void {
       void unlisten.then((fn) => fn());
     };
   }, []);
+}
+
+/** 에이전트 프로세스가 죽었다는 `session` 줄인가. */
+function isDeath(line: RecordLine): boolean {
+  return line.kind === "session" && (line.payload as { state?: unknown } | null)?.state === "died";
 }
 
 /** 그 대화의 이름 — 대화 목록 캐시에서. 모르면 「대화」다. */

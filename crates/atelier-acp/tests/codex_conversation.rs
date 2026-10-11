@@ -385,7 +385,7 @@ fn 대화_목록은_열린_대화를_만든_순서로_주고_닫은_대화는_�
     assert_eq!(
         serde_json::to_value(&listed[0]).unwrap(),
         json!({"id": first.id, "agent": "codex", "name": "Codex", "model": null, "mode": null, "plan": null, "lastSeq": 2,
-               "queue": []}),
+               "queue": [], "live": true}),
     );
     let fourth = host.new_conversation("cart", Agent::Codex).expect("넷째 대화");
     assert_eq!(fourth.name, "Codex 2", "닫은 대화의 이름은 다시 쓴다");

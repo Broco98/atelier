@@ -19,8 +19,11 @@ const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: 
 const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
+/** 대화 탭 — 그 이름의 대화. 도는 · 기다리는 대화의 탭 이름에는 상태가 붙는다(「Codex — 나를 기다림」, three-axes 티켓 23). */
 const 대화탭 = (page: Page, name: string) =>
-  작업패널(page).getByRole("group", { name: "대화 탭", exact: true }).getByRole("button", { name, exact: true });
+  작업패널(page)
+    .getByRole("group", { name: "대화 탭", exact: true })
+    .getByRole("button", { name: new RegExp(`^${name}( — |$)`) });
 /** 승인 카드 — 무엇을 묻는지(제목)를 이름으로 단 묶음이다. */
 const 카드 = (page: Page, title: string) => 작업패널(page).getByRole("group", { name: title, exact: true });
 const 머리줄 = (page: Page, name: string) => 작업패널(page).getByRole("button", { name, exact: true });

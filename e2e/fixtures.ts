@@ -7,7 +7,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
+import type { ChatQuitCounts, Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -929,6 +929,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     plan: null,
     lastSeq: 0,
     queue: [],
+    live: true,
   } satisfies Conversation,
   // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   chat_send: null,
@@ -968,6 +969,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     plan: null,
     lastSeq: 0,
     queue: [],
+    live: true,
   } satisfies Conversation,
   chat_set_model: {
     id: "c-fixture-claude",
@@ -978,6 +980,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     plan: null,
     lastSeq: 0,
     queue: [],
+    live: true,
   } satisfies Conversation,
   chat_set_mode: {
     id: "c-fixture-claude",
@@ -988,6 +991,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     plan: null,
     lastSeq: 0,
     queue: [],
+    live: true,
   } satisfies Conversation,
   chat_set_plan: {
     id: "c-fixture-claude",
@@ -998,10 +1002,14 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     plan: null,
     lastSeq: 0,
     queue: [],
+    live: true,
   } satisfies Conversation,
   // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
   // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
   chat_answer_permission: null,
+  // 종료 확인의 대화 셈(three-axes 티켓 23) — 종료 요청마다 셸 셈 옆에서 나간다. **기본은 잃을 것이 없다**(셋 다 0) — 그러면 대화 줄이
+  // 서지 않아 셸만 재는 종료 확인 검사들이 그대로 돈다. 대화 줄은 `quit-confirm.spec.ts`의 대화 검사가 덮어쓴다.
+  chat_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ChatQuitCounts,
   // 엔진 목록(three-axes 티켓 09 · 25, S16) — 설정 › 대화가 열릴 때 엔진마다 한 번 부른다. **기본은 두 엔진 다 빈 목록이다** — 세션을
   // 한 번도 연 적 없는 첫 실행이고, 그때 모델 · 모드 고르기는 「엔진 기본값」 하나뿐이다. 목록을 재는 검사(`settings-chat.spec.ts`)가
   // 엔진마다 덮어쓴다.
