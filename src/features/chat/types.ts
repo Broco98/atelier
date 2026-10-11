@@ -39,8 +39,8 @@ export interface QueuedMessage {
  *   `asked`{requestId, request(요청 원문 — 선택지는 `request.options` 그대로), toolCall(빈 칸을 앞선 도구 줄로 채운 도구 요지)}
  *   뒤에 같은 `requestId`로 `answered`{optionId}나 `withdrawn`{reason: `stopped`(우리가 멈춤) | `agent`(에이전트가 답을 기다리지
  *   않고 턴을 끝냄)}이 선다. 뒤따르는 줄이 없는 물음이 답할 권한이다(승인 카드 — 21).
- * - `config`는 사람이 바꾼 것 — 바꾼 칸과 새 값(`{model}` · `{mode}` · `{plan}`, three-axes 티켓 09). 떠 있는 에이전트에 넣은
- *   바꾸기만 선다 — 띄우지 않은 대화에서 바꾼 값은 대화 목록에만 있다.
+ * - `config`는 사람이 바꾼 것 — 바꾼 칸과 새 값. 에이전트(`{agent}`, 13)와 모델 · 모드 · 계획(`{model}` · `{mode}` · `{plan}`,
+ *   three-axes 티켓 09). 모델 · 모드 · 계획은 떠 있는 에이전트에 넣은 바꾸기만 선다 — 띄우지 않은 대화에서 바꾼 값은 대화 목록에만 있다.
  */
 export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "changes" | "permission" | "config";
 
@@ -102,7 +102,13 @@ export interface ChatQueueEvent {
  */
 export type EngineCheck =
   | { state: "found"; programs: { name: string; path: string }[]; loggedIn: boolean }
-  | { state: "missing"; missing: { name: string; install: string }[] };
+  | { state: "missing"; missing: MissingProgram[] };
+
+/** 로그인 셸의 PATH에서 못 찾은 실행 파일 하나 — 이름과 설치 명령(안내 카드의 「명령 복사」가 이것을 넣는다). */
+export interface MissingProgram {
+  name: string;
+  install: string;
+}
 
 /**
  * 로그인 명령의 진행(`atelier_acp::LoginProgress`). 도는 중이면 명령이 찍은 첫 `https://` URL(「링크 복사」의 값 — 찍기 전에는

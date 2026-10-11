@@ -880,7 +880,10 @@ describe("WorksPage ⌘Enter", () => {
     );
     expect(effect, "⌘Enter 효과를 찾지 못했다").not.toBeNull();
     expect(effect![0]).toContain("togglesWorkPanel");
-    expect(effect![0]).toContain("setWorkPanelOpen");
+    // 뒤집는 몸은 레일의 패널 토글과 같은 함수다 — 대화창이 가운데에 선 동안(three-axes S22) 뒤집기가 열림 하나로 끝나지 않아
+    // 그 판단이 한 함수에 산다. 이펙트는 그것을 참조로 부른다(의존성이 비어 있는 채로).
+    expect(effect![0]).toContain("togglePanelRef.current()");
+    expect(worksPage).toContain("setWorkPanelOpen((open) => !open);");
     // `tab`을 안 보므로 의존성도 비어 있다. 남아 있으면 판단이 아직 탭에 매여 있다는 뜻이다.
     expect(effect![1].trim()).toBe("");
     expect(effect![0]).not.toContain("tab");
@@ -938,7 +941,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       .filter((cell) => cell.kind !== "new" && cell.markup.includes('aria-pressed="true"'))
       .map((cell) => cell.kind);
 
-  it("이 Work의 셸이 `spec` 뒤에 칸으로 선다", () => {
+  it("이 Work의 셸이 `spec` · `chat` 뒤에 칸으로 선다", () => {
     seed(2, work.slug, "~/.atelier/works/some-work/trees/atelier");
     // 남의 work의 셸이 섞이면 안 된다 — `owner`가 이 화면의 것이어야 한다.
     terminalStore.setState(
@@ -949,7 +952,8 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
           cwd: "~/x",
         })!.state,
     );
-    expect(kindsOf(headerOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
+    // `chat`은 `spec` 바로 뒤의 고정 칸이다(three-axes S21) — 셸 칸의 셈에 안 든다.
+    expect(kindsOf(headerOf(render()))).toEqual(["spec", "chat", "shell", "shell", "new"]);
   });
 
   it("세로 목록의 둘째 줄은 안 따라온다", () => {
@@ -1470,5 +1474,70 @@ describe("⋯ 메뉴의 확인 대화", () => {
     // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
     expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");
     expect(worksPage).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
+  });
+});
+
+// three-axes 티켓 24 — **`chat` 탭이 대화창을 가운데에 넓게 띄운다**(S21 · S22). 여기서 보는 것은 「주소가 `tab=chat`이면 화면이
+// 무엇으로 서는가」다 — 누르고 옮기는 손맛(레일을 누르면 대화가 패널로 돌아간다 · 문서 링크 · ⌘ 키)은 L3(`e2e/chat-tab.spec.ts`)가 든다.
+describe("WorksPage `chat` 탭", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const withSpec = specDocs(["overview.md"]);
+  const bodies = { "overview.md": "개요의 본문이다." };
+  /** 탭 줄의 고정 칸 — 마크업 순서대로 칸 id와 켜짐을 읽는다. */
+  const fixedTabs = (markup: string) =>
+    [...(markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "").matchAll(/<button[^>]*data-tab="(spec|chat)"[^>]*>/g)].map(
+      ([tag, id]) => ({ id, pressed: tag.match(/aria-pressed="([^"]*)"/)?.[1] ?? "" }),
+    );
+  /** 가운데 카드 — 본문은 `main` 하나다. */
+  const mainCard = (markup: string) => markup.match(/<main[^>]*>[\s\S]*?<\/main>/)?.[0] ?? "";
+
+  it("탭 줄의 `spec` 바로 뒤에 `chat`이 서고, 켜짐은 「본문이 대화창인가」다", () => {
+    expect(fixedTabs(render(withSpec, "spec"))).toEqual([
+      { id: "spec", pressed: "true" },
+      { id: "chat", pressed: "false" },
+    ]);
+    expect(fixedTabs(render(withSpec, "chat"))).toEqual([
+      { id: "spec", pressed: "false" },
+      { id: "chat", pressed: "true" },
+    ]);
+    expect(fixedTabs(render(withSpec, "terminal"))).toEqual([
+      { id: "spec", pressed: "false" },
+      { id: "chat", pressed: "false" },
+    ]);
+  });
+
+  it("`chat`이면 가운데 카드가 대화창이다 — 대화 탭 줄이 서고 문서는 서지 않는다", () => {
+    const markup = render(withSpec, "chat", null, bodies);
+    const main = mainCard(markup);
+    expect(main).toMatch(/^<main[^>]*aria-label="대화"/);
+    expect(main).toContain('aria-label="대화 탭"');
+    expect(markup).not.toContain(bodies["overview.md"]);
+    // 패널은 같은 자리(본문 바로 뒤)에 선다 — 탭을 오가도 패널 인스턴스가 그대로다(결정 49).
+    expect(markup).toContain("</main><aside");
+  });
+
+  it("`chat` 탭이 떠 있으면 레일 `chat`이 켜진 것으로 읽힌다 — 패널에서 고른 칸은 그대로 켜져 있다", () => {
+    expect(railItems(render(withSpec, "chat"))).toEqual([
+      { name: "spec", pressed: "true" },
+      { name: "chat", pressed: "true" },
+      { name: "info", pressed: "false" },
+    ]);
+  });
+
+  it("분할에는 들지 않는다 — `tab=chat`에 분할이 겹치면 분할이 이기고 `spec ▏터미널`이다", () => {
+    const markup = render(withSpec, "chat", "lr");
+    expect(countOf(markup, "data-column=")).toBe(2);
+    expect(markup.indexOf('data-column="spec"')).toBeLessThan(markup.indexOf('data-column="terminal"'));
+    expect(markup).not.toMatch(/<main[^>]*aria-label="대화"/);
+    expect(fixedTabs(markup)).toEqual([
+      { id: "spec", pressed: "true" },
+      { id: "chat", pressed: "false" },
+    ]);
   });
 });

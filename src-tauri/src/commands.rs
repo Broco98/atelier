@@ -501,13 +501,13 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령(three-axes 티켓 05 · 07 · 08 · 09 · 12) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 멈추기 ·
-// 대기 고치기 · 대기 지우기 · 지금 보내기, 권한 답, 모델 · 모드 · 계획 바꾸기 · 엔진 목록, 그리고 로그인 시작 · 취소. 본체는 대화
-// 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
-// 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
+// 대화 명령(three-axes 티켓 05 · 07 · 08 · 09 · 12 · 13) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 에이전트 바꾸기 · 보내기 ·
+// 대화 닫기, 멈추기 · 대기 고치기 · 대기 지우기 · 지금 보내기, 권한 답, 모델 · 모드 · 계획 바꾸기 · 엔진 목록, 그리고 로그인
+// 시작 · 취소. 본체는 대화 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트
+// 하나를 `State`로 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
-// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓, 모델 · 모드 · 계획 — 엔진의
-//   답)은 blocking 풀에서 기다린다.
+// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 · 에이전트 바꾸기 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓, 모델 · 모드 ·
+//   계획 — 엔진의 답)은 blocking 풀에서 기다린다.
 //   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`). 멈추기 · 지금 보내기도 `session/cancel`을
 //   보내고 곧바로 돌아온다 — 멈춘 턴의 끝과 그 뒤에 간 말은 기록 줄로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다. 권한 답도
 //   답을 보내고 곧바로 돌아온다 — 이어 가는 턴은 기록 줄로 온다.
@@ -563,6 +563,22 @@ pub async fn chat_new(
     tauri::async_runtime::spawn_blocking(move || chats.new_conversation(&work, agent))
         .await
         .map_err(|e| format!("대화를 열지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 에이전트 바꾸기 — 첫 말 전에만 된다. 지금 에이전트를 끄고 같은 대화를 새 엔진으로 띄워 세션이 열릴 때까지 기다린다(13).
+/// 첫 말 뒤에는 거절한다 — 그 글이 잠긴 에이전트 칩의 까닭이다.
+#[tauri::command]
+pub async fn chat_switch_agent(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    agent: atelier_acp::Agent,
+) -> CmdResult<atelier_acp::Conversation> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.switch_agent(&work, &conversation, agent))
+        .await
+        .map_err(|e| format!("에이전트를 바꾸지 못했습니다: {e}"))?
         .map_err(host_err)
 }
 
@@ -767,8 +783,9 @@ mod tests {
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
     /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
     ///   돈다(`pty::end_by_hand`).
-    /// - 대화 셋(three-axes 티켓 05): 엔진 확인은 처음에 로그인 셸을 기다리고(≤10초), 새 대화는 에이전트를 띄워 세션이 열리기를
-    ///   기다리고, 대화 닫기는 stdin을 닫고 1초를 기다린 뒤 그룹째 SIGKILL한다. 엔진 확인은 로그인도 엔진에게 묻는다(≤10초, 티켓 12).
+    /// - 대화 넷(three-axes 티켓 05 · 13): 엔진 확인은 처음에 로그인 셸을 기다리고(≤10초), 새 대화는 에이전트를 띄워 세션이
+    ///   열리기를 기다리고, 에이전트 바꾸기는 옛 에이전트를 끄고 새 엔진의 세션이 열리기를 기다리고, 대화 닫기는 stdin을 닫고
+    ///   1초를 기다린 뒤 그룹째 SIGKILL한다. 엔진 확인은 로그인도 엔진에게 묻는다(≤10초, 티켓 12).
     /// - 로그인 둘(three-axes 티켓 12): 로그인 시작은 처음이면 로그인 셸을 기다리고, 로그인 취소는 SIGTERM 뒤 끝나기를 1초까지
     ///   기다린다.
     /// - 바꾸기 셋(three-axes 티켓 09): 모델 · 모드 · 계획은 떠 있는 에이전트의 답을 기다린다(보통 몇 ms, 한도 10초).
@@ -782,6 +799,7 @@ mod tests {
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
             ("chat_check_engine", "chats.check_engine(", "check_engine("),
             ("chat_new", "chats.new_conversation(", "new_conversation("),
+            ("chat_switch_agent", "chats.switch_agent(", "switch_agent("),
             ("chat_set_model", "chats.set_model(", "set_model("),
             ("chat_set_mode", "chats.set_mode(", "set_mode("),
             ("chat_set_plan", "chats.set_plan(", "set_plan("),

@@ -21,8 +21,10 @@ import {
 // 드러나지 않는다. 그 판정이 여기 두 함수에 있고 그래서 여기서 본다.
 
 describe("주소에 적히는 것", () => {
-  it("터미널만 적힌다", () => {
+  it("터미널과 대화가 적힌다", () => {
     expect(validateWorkSearch({ tab: "terminal" })).toEqual({ tab: "terminal" });
+    // three-axes S21 — `chat` 탭의 주소 값은 `tab=chat`이다(결정 9).
+    expect(validateWorkSearch({ tab: "chat" })).toEqual({ tab: "chat" });
   });
 
   // 값이 없으면 spec이라는 규칙이 이미 있다. `tab=spec`은 같은 것을 두 번 적는 것이다.
@@ -59,9 +61,13 @@ describe("주소를 화면 탭으로 읽는 것", () => {
     expect(viewTab({ tab: "terminal" })).toBe("terminal");
   });
 
+  it("chat이면 대화다", () => {
+    expect(viewTab({ tab: "chat" })).toBe("chat");
+  });
+
   // 라우터가 모르는 키를 그대로 흘려보내므로 이 값들이 **실제로 온다.**
   it("없거나 모르는 값이면 spec이다", () => {
-    for (const tab of [undefined, "", "spec", "zzz", "Terminal", "terminal "]) {
+    for (const tab of [undefined, "", "spec", "zzz", "Terminal", "terminal ", "Chat", "chat "]) {
       expect(viewTab({ tab }), JSON.stringify(tab)).toBe("spec");
     }
   });
@@ -89,6 +95,22 @@ describe("주소를 고치는 짝", () => {
       file: "a.md",
       split: "rl",
       tab: "terminal",
+    });
+  });
+
+  // 대화 탭도 주소에 적히고 보던 문서를 지우지 않는다.
+  it("대화 탭으로 가도 문서가 남고, spec으로 돌아오면 지운다", () => {
+    expect(tabSearch({ file: "a.md" }, "chat")).toEqual({ file: "a.md", tab: "chat" });
+    expect(tabSearch({ file: "a.md", tab: "chat" as const }, "spec")).toEqual({ file: "a.md", tab: undefined });
+  });
+
+  // three-axes S21 — 대화 탭은 분할에 들지 않는다. 분할 중에 대화 탭으로 가면 분할이 꺼진다: 남겨 두면 주소가 `tab=chat&split=lr`이
+  // 되어 분할이 이기고(화면은 `spec ▏터미널` 그대로), 눌러도 아무 일이 없는 칸이 된다.
+  it("분할 중에 대화 탭으로 가면 분할이 꺼진다", () => {
+    expect(tabSearch({ file: "a.md", split: "rl" as const }, "chat")).toEqual({
+      file: "a.md",
+      tab: "chat",
+      split: undefined,
     });
   });
 

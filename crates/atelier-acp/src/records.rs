@@ -128,6 +128,11 @@ pub(crate) fn read_lines(path: &Path, after: u64) -> std::io::Result<Vec<RecordL
         .collect())
 }
 
+/// 그 기록에 보낸 말(`sent`)이 있나 — 에이전트 바꾸기는 첫 말 전에만 된다. 기록이 없으면 없는 것이다.
+pub(crate) fn has_sent(path: &Path) -> bool {
+    read_lines(path, 0).is_ok_and(|lines| lines.iter().any(|line| line.kind == RecordKind::Sent))
+}
+
 /// 줄바꿈으로 끝난 줄들 — 끝의 반쪽 줄은 뺀다.
 fn complete_lines(text: &str) -> std::str::Lines<'_> {
     match text.rfind('\n') {
@@ -164,8 +169,9 @@ pub enum RecordKind {
     Changes,
     /// 권한 — 요청 원문(물음), 그 뒤에 같은 요청 id로 답(고른 optionId)이나 거둬짐(까닭)이 한 줄 더 선다(three-axes 티켓 08).
     Permission,
-    /// 사람이 바꾼 것 — 바꾼 칸과 새 값(`{"model": …}` · `{"mode": …}` · `{"plan": true}`, three-axes 티켓 09). 떠 있는 에이전트에
-    /// 넣은 바꾸기만 적힌다 — 띄우지 않은 대화에서 바꾼 값은 `agents.json`에만 남고, 띄울 때 들어간다(10).
+    /// 사람이 바꾼 것 — 바꾼 칸과 새 값. 에이전트(`{"agent": …}`, 13)와 모델 · 모드 · 계획(`{"model": …}` · `{"mode": …}` ·
+    /// `{"plan": true}`, three-axes 티켓 09). 모델 · 모드 · 계획은 떠 있는 에이전트에 넣은 바꾸기만 적힌다 — 띄우지 않은 대화에서
+    /// 바꾼 값은 `agents.json`에만 남고, 띄울 때 들어간다(10).
     Config,
 }
 
@@ -189,8 +195,17 @@ pub(crate) enum PermissionLine {
 pub(crate) enum SessionState {
     /// 띄우는 중 — 프로세스를 띄우기 직전.
     Spawning,
-    /// 열림 — 어떻게 열렸나(`new`) · 에이전트 판 · 엔진이 준 모드 · 모델 · configOptions 원문.
-    Opened { how: &'static str, agent_version: Option<String>, modes: Value, models: Value, config_options: Value },
+    /// 열림 — 어떻게 열렸나(`new`) · 에이전트 판 · 엔진이 준 모드 · 모델 · configOptions 원문. `session/new`의 답에
+    /// `_meta`가 있으면 그것도 싣는다 — Claude 변환기는 claude의 `initialize` 답(계정 칸을 가린 것)을 여기 싣는다.
+    Opened {
+        how: &'static str,
+        agent_version: Option<String>,
+        modes: Value,
+        models: Value,
+        config_options: Value,
+        #[serde(skip_serializing_if = "Value::is_null")]
+        meta: Value,
+    },
     /// 계정 상태 — 에이전트가 알린 로그인 상태 원문(`_auth/status_update`의 params). 계정 칸은 런타임이 가렸다.
     AuthStatus { params: Value },
     /// 로그인 필요 — 에이전트가 `-32000 Authentication required`로 답했다(Codex `session/new`, 엔진을 가리지 않고 턴
@@ -333,7 +348,7 @@ impl Recorder {
         self.write(RecordKind::Permission, serde_json::to_value(line).expect("permission 줄은 JSON이다"))
     }
 
-    /// 사람이 바꾼 것 — `{"model": "gpt-6-astra"}`처럼 바꾼 칸과 새 값.
+    /// 사람이 바꾼 것 — `{"agent": "claude"}` · `{"model": "gpt-6-astra"}`처럼 바꾼 칸과 새 값.
     pub(crate) fn config(&self, changed: Value) -> Result<(), RecordError> {
         self.write(RecordKind::Config, changed)
     }

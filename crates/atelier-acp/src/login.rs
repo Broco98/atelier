@@ -385,7 +385,7 @@ impl LoginDesk {
         self.lock_waiting().iter().find(|held| held.conversation == conversation).map(|held| held.agent)
     }
 
-    /// 그 대화를 더는 쥐지 않는다 — 닫혔다.
+    /// 그 대화를 더는 쥐지 않는다 — 닫혔거나, 첫 말 전에 에이전트를 바꿨다(three-axes 티켓 13).
     pub(crate) fn forget(&self, conversation: &str) {
         self.lock_waiting().retain(|held| held.conversation != conversation);
     }

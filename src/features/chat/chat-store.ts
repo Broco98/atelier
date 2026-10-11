@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { Quote, RecordLine } from "./types";
+import type { Agent, QueuedMessage, Quote, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
 //
@@ -64,6 +64,18 @@ export function releaseRecordRead(key: string): void {
   readRecords.delete(key);
 }
 
+/**
+ * 대화마다의 대기 줄(three-axes 티켓 20) — 대기 줄 바뀜 이벤트가 실어 온 그 대화의 대기 줄 전체. 대기 줄은 기록에 없고 호스트
+ * 메모리에만 있어(S13) 처음 그릴 때는 대화 목록의 `queue`로 그린다. 이벤트가 한 번이라도 온 대화는 여기 값이 이긴다 — 목록은
+ * 한 번만 읽어(`staleTime: Infinity`) 그 뒤의 바뀜을 모른다. 이벤트는 기록 줄처럼 앱 층이 받는다(`useChatQueueFeed`).
+ */
+export const chatQueueStore = new Store<Readonly<Record<string, readonly QueuedMessage[]>>>({});
+
+export function setQueue(work: string, conversation: string, queue: readonly QueuedMessage[]): void {
+  const key = conversationKey(work, conversation);
+  chatQueueStore.setState((state) => ({ ...state, [key]: queue }));
+}
+
 // 대화 없는 work에서 대화창을 **처음** 열 때만 기본 에이전트로 대화 하나를 연다(S8) — work마다 앱이 도는 동안 한 번이다. 대화를
 // 다 닫은 뒤 다시 와도 저절로 열지 않는다(사람이 닫은 것을 되살리지 않는다). StrictMode가 이펙트를 두 번 돌려도 하나다.
 const firstOpened = new Set<string>();
@@ -81,6 +93,11 @@ interface UiState {
   /** 펼친 턴 — 대화 열쇠 + 턴 열쇠. 턴이 끝나면 접혀 있고, 머리줄을 누르면 여기 든다. */
   expanded: Readonly<Record<string, true>>;
   /**
+   * work마다 열려다 못 연 대화의 에이전트 — 엔진을 못 찾아 대화를 만들지 않았다(three-axes 티켓 22). 그동안 대화창 자리에 그
+   * 엔진의 안내 카드가 서고, 「다시 확인」으로 찾으면 그때 대화를 연다(스토리 102). 대화 탭을 고르면 거둔다.
+   */
+  wanted: Readonly<Record<string, Agent>>;
+  /**
    * work마다 입력창에 붙은 인용(three-axes 티켓 27) — 그 work의 **지금 대화**의 입력창에 칩으로 선다. 인용은 하나라 새로 고르면
    * 바뀐다. 대화가 아니라 work의 열쇠인 것은, 스펙 창에서 고르는 때에는 대화창이 아직 대화를 읽지 않았을 수 있어서다(처음 여는
    * work면 첫 대화가 그 뒤에 선다).
@@ -88,7 +105,20 @@ interface UiState {
   quotes: Readonly<Record<string, Quote>>;
 }
 
-export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, quotes: {} });
+export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {}, quotes: {} });
+
+export function wantConversation(work: string, agent: Agent): void {
+  chatUiStore.setState((state) => ({ ...state, wanted: { ...state.wanted, [work]: agent } }));
+}
+
+export function dropWanted(work: string): void {
+  chatUiStore.setState((state) => {
+    if (!(work in state.wanted)) return state;
+    const wanted = { ...state.wanted };
+    delete wanted[work];
+    return { ...state, wanted };
+  });
+}
 
 export function chooseConversation(work: string, conversation: string): void {
   chatUiStore.setState((state) => ({ ...state, active: { ...state.active, [work]: conversation } }));

@@ -14,11 +14,15 @@ mod quote;
 mod records;
 mod runtime;
 mod spec_changes;
+mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use engines::EngineLists;
-pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, TranslatorCommand};
+pub use host::{
+    Conversation, ConversationDefaults, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, TranslatorCommand,
+};
 pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};
 pub use quote::Quote;
 pub use records::{RecordKind, RecordLine};
+pub use translator::run_claude_translator;
