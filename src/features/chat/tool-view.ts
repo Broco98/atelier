@@ -233,8 +233,8 @@ function pretty(value: unknown): string {
   }
 }
 
-/** 명령 글 — codex는 배열(`["/bin/zsh", "-lc", "echo atelier"]`)로도 준다. 비었으면 null(실측 함정 49). */
-function commandOf(command: unknown): string | null {
+/** 명령 글 — codex는 배열(`["/bin/zsh", "-lc", "echo atelier"]`)로도 준다. 비었으면 null(실측 함정 49). 승인 카드도 쓴다(티켓 21). */
+export function commandOf(command: unknown): string | null {
   if (Array.isArray(command) && command.every((part) => typeof part === "string")) {
     const shell = command.length === 3 && /^-l?c$/.test(command[1]) ? command[2] : command.join(" ");
     return nonEmpty(shell);

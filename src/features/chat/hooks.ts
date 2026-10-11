@@ -14,6 +14,7 @@ import {
   releaseRecordRead,
   setQueue,
 } from "./chat-store";
+import { describeApproval } from "./approval";
 import { applyChanges, changedFiles } from "./changes";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { finalMessages, foldConversation, headline } from "./fold";
@@ -99,6 +100,8 @@ export function useChatRecordFeed(): void {
       mergeLines(work, conversation, [line]);
       if (known) return;
       if (line.kind === "turn-end") announceTurnEnd(queryClient, work, conversation);
+      // 권한 물음 — 승인 카드가 선다. 에이전트가 나를 기다리는 것을 알림으로 듣는다(스토리 120 · three-axes 티켓 21).
+      if (line.kind === "permission") announceApproval(queryClient, work, conversation, line);
       // 고친 곳(티켓 26) — 표시는 이벤트로 온 `changes`로만 선다. 처음 그릴 때 읽은 기록의 것은 지난 턴이라 세우지 않는다(S19).
       if (line.kind === "changes") applyChanges(work, changedFiles(line.payload));
       // 로그인 필요 줄은 그 엔진의 「로그인 안 됨」이다 — 같은 엔진의 대화 자리에 다 안내 카드가 선다(three-axes 티켓 22).
@@ -151,15 +154,36 @@ export function useChatQueueFeed(): void {
   }, []);
 }
 
+/** 그 대화의 이름 — 대화 목록 캐시에서. 모르면 「대화」다. */
+function conversationName(queryClient: QueryClient, work: string, conversation: string): string {
+  return (
+    queryClient
+      .getQueryData<Conversation[]>(conversationsQuery(work).queryKey)
+      ?.find((one) => one.id === conversation)?.name ?? "대화"
+  );
+}
+
+/**
+ * 승인 카드가 설 때의 알림 — 대화 이름 · 카드가 묻는 말 · 무엇을 하려는지(명령 · 경로). 카드와 같은 값(`describeApproval`)을 말한다.
+ * 이미 닫힌 물음(같은 seq 묶음에서 답이 먼저 접힌 것)은 알리지 않는다.
+ */
+function announceApproval(queryClient: QueryClient, work: string, conversation: string, line: RecordLine): void {
+  const payload = line.payload as { state?: unknown; requestId?: unknown } | null;
+  if (payload?.state !== "asked") return;
+  const { pending } = foldConversation(linesOf(chatRecordStore.state, conversationKey(work, conversation)));
+  const request = pending.find((one) => one.requestId === payload.requestId);
+  if (!request) return;
+  const view = describeApproval(request);
+  const head = `${conversationName(queryClient, work, conversation)} · ${view.title}`;
+  announce(view.subject ? `${head} — ${view.subject}` : head);
+}
+
 /** 턴 끝 알림의 글 — 대화 이름 · 머리줄 · 턴 끝 메시지. 마크다운 표식은 소리로 읽히지 않게 걷는다. */
 function announceTurnEnd(queryClient: QueryClient, work: string, conversation: string): void {
   const { turns } = foldConversation(linesOf(chatRecordStore.state, conversationKey(work, conversation)));
   const turn = turns[turns.length - 1];
   if (!turn?.end) return;
-  const name =
-    queryClient
-      .getQueryData<Conversation[]>(conversationsQuery(work).queryKey)
-      ?.find((one) => one.id === conversation)?.name ?? "대화";
+  const name = conversationName(queryClient, work, conversation);
   const answer = finalMessages(turn)
     .map((entry) => (entry.kind === "message" ? entry.text : ""))
     .join("\n")
