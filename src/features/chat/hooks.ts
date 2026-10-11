@@ -12,6 +12,7 @@ import {
   mergeLines,
   releaseRecordRead,
 } from "./chat-store";
+import { applyChanges, changedFiles } from "./changes";
 import { finalMessages, foldConversation, headline } from "./fold";
 import type { Agent, Conversation, RecordLine } from "./types";
 
@@ -83,7 +84,8 @@ export function useRecordLines(work: string, conversation: string): readonly Rec
 
 /**
  * **기록 줄 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 어느 work의 어느 대화든 받아 스토어에 쌓는다 — 다른 work에
- * 가 있어도 쌓여야 돌아왔을 때 그사이 흐른 줄이 보인다(스토리 14 · 15). 턴 끝 줄이면 한 번 알린다(스토리 121).
+ * 가 있어도 쌓여야 돌아왔을 때 그사이 흐른 줄이 보인다(스토리 14 · 15). 턴 끝 줄이면 한 번 알리고(스토리 121), 고친 곳 줄이면
+ * 그 work에 표시를 세운다(티켓 26) — 둘 다 처음 보는 seq일 때만이다.
  */
 export function useChatRecordFeed(): void {
   const queryClient = useQueryClient();
@@ -92,7 +94,10 @@ export function useChatRecordFeed(): void {
       const key = conversationKey(work, conversation);
       const known = linesOf(chatRecordStore.state, key).some((one) => one.seq === line.seq);
       mergeLines(work, conversation, [line]);
-      if (line.kind === "turn-end" && !known) announceTurnEnd(queryClient, work, conversation);
+      if (known) return;
+      if (line.kind === "turn-end") announceTurnEnd(queryClient, work, conversation);
+      // 고친 곳(티켓 26) — 표시는 이벤트로 온 `changes`로만 선다. 처음 그릴 때 읽은 기록의 것은 지난 턴이라 세우지 않는다(S19).
+      if (line.kind === "changes") applyChanges(work, changedFiles(line.payload));
     });
     return () => {
       void unlisten.then((fn) => fn());

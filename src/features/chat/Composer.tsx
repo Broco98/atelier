@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { chatApi } from "./api";
+import { clearChangeMarks } from "./changes";
 import { chatUiStore, setDraft } from "./chat-store";
 import type { Agent } from "./types";
 
@@ -27,9 +28,11 @@ interface ComposerProps {
   /** 대화 열쇠(`conversationKey`) — 입력 중인 글의 열쇠다. */
   draftKey: string;
   agent: Agent;
+  /** 입력창 바로 위, 같은 열에 서는 것 — 「N개 파일 변경됨」 알약(26). 입력창과의 틈은 이 열의 틈(10px)이다. */
+  above?: ReactNode;
 }
 
-function Composer({ work, conversation, draftKey, agent }: ComposerProps) {
+function Composer({ work, conversation, draftKey, agent, above }: ComposerProps) {
   const draft = useStore(chatUiStore, (state) => state.drafts[draftKey] ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -48,6 +51,9 @@ function Composer({ work, conversation, draftKey, agent }: ComposerProps) {
     if (text === "") return;
     setDraft(draftKey, "");
     setProblem(null);
+    // 사람이 다음 말을 보냈다 — 그 work의 고친 곳 표시를 지운다(티켓 26 · S19). 표시는 work의 것이라 어느 대화에서 보내든 같다.
+    // 보내기의 답을 기다리지 않는다: 지우는 때는 사람이 보낸 그 순간이다(결정 22 · 프로토타입 D).
+    clearChangeMarks(work);
     chatApi.send(work, conversation, text).catch((error: unknown) => {
       // 보내지 못했다 — 쓴 글을 돌려놓고 까닭을 보인다. 대기 줄(20)이 서기 전에는 턴이 도는 동안의 보내기도 여기로 온다.
       setDraft(draftKey, text);
@@ -57,6 +63,7 @@ function Composer({ work, conversation, draftKey, agent }: ComposerProps) {
 
   return (
     <div className="flex shrink-0 flex-col gap-2.5 px-4 pb-4 pt-2">
+      {above}
       <form
         className="flex flex-col gap-1.5 rounded-(--chat-radius-composer) bg-card pb-2 pl-[18px] pr-3 pt-[15px] shadow-(--chat-shadow-composer)"
         onSubmit={(event) => {
