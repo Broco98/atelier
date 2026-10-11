@@ -4,6 +4,7 @@ import { expandHome } from "@/features/works/doc-refs";
 import { useHomeDir } from "@/features/works/hooks";
 import { ImageDoc, SourceView } from "@/features/works/SpecViewer";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
+import { fileSize } from "./file-size";
 import { useCodeFile } from "./hooks";
 import type { WorktreeFile } from "./types";
 
@@ -114,16 +115,6 @@ function FileBody({
 function WorktreeImage({ path, name }: { path: string | null; name: string }) {
   const { data: home } = useHomeDir();
   return <ImageDoc path={home && path ? expandHome(path, home) : null} name={name} />;
-}
-
-/**
- * 파일 크기(바이트) — 1KB 아래는 바이트, 1MB 아래는 KB, 그 위는 MB(소수 한 자리). 단위는 1024다(Finder가 아니라 `ls -h`와
- * 같은 셈). 안내의 크기는 무엇인지를 가늠하는 값이라 이만큼이면 된다.
- */
-function fileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 /** 가운데 안내 — 제목과 까닭 한 줄. 큰 빈 화면 부품(`Empty`)을 그대로 쓴다. */
