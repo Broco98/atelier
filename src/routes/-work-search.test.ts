@@ -4,6 +4,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { columnOf } from "@/features/works/split-view";
 import {
   bundleSearch,
   forgetVanishedViews,
@@ -137,6 +138,52 @@ describe("주소를 고치는 짝", () => {
       tab: "chat",
       code: undefined,
     });
+  });
+
+  // 분할에서 묶음 쪽의 변화는 **묶음 열만** 바꾼다 — 문서 열을 가리키던 `tab`은 그대로다(git-integration 티켓 07). 셸이 서면 `code`가
+  // 빠지고, 파일 탭이 서면 `code`가 그 파일이다.
+  it("분할에서 문서 열에 포커스가 있으면 묶음의 지금 탭이 바뀌어도 포커스가 문서 열에 남는다", () => {
+    expect(bundleSearch({ file: "a.md", split: "lr" as const }, "billing/src/a.ts")).toEqual({
+      file: "a.md",
+      split: "lr",
+      tab: undefined,
+      code: "billing/src/a.ts",
+    });
+    expect(bundleSearch({ file: "a.md", split: "rl" as const, code: "billing/src/a.ts" }, null)).toEqual({
+      file: "a.md",
+      split: "rl",
+      tab: undefined,
+      code: undefined,
+    });
+  });
+
+  // three-axes 병합 검토 — 대화 탭은 분할에서 **문서 열**이다(`columnOf`, three-axes S21). `tab=chat&split=lr`은 앱 안의 이동으로는
+  // 안 생기지만(대화 탭으로 가는 `tabSearch`가 분할을 끈다) 손으로 친 주소와 그것을 적어 둔 work 기억으로 닿는다. 그 화면에서
+  // 묶음 쪽이 바뀌었다고 포커스를 묶음 열로 옮기면(`tab=code` · `tab=terminal`), 분할을 켜고 끄는 자리가 읽는 포커스와 갈린다.
+  it("`tab=chat`에 분할이 겹친 주소에서 묶음의 지금 탭이 바뀌어도 `tab`은 그대로다", () => {
+    expect(bundleSearch({ file: "a.md", tab: "chat" as const, split: "lr" as const }, "billing/src/a.ts")).toEqual({
+      file: "a.md",
+      tab: "chat",
+      split: "lr",
+      code: "billing/src/a.ts",
+    });
+    expect(
+      bundleSearch({ file: "a.md", tab: "chat" as const, split: "rl" as const, code: "billing/src/a.ts" }, null),
+    ).toEqual({ file: "a.md", tab: "chat", split: "rl", code: undefined });
+  });
+
+  // 위 둘의 바탕 — 분할에서 묶음의 변화가 포커스가 든 **열**을 옮기지 않는다. 그 열을 읽는 자리가 `columnOf` 하나라 여기서 그것으로
+  // 잰다: 탭마다 따로 적으면 열 규칙이 바뀌는 날(새 화면 탭) 이 함수만 옛 규칙으로 남는다.
+  it("분할에서 묶음의 지금 탭이 바뀌어도 포커스가 든 열은 그대로다", () => {
+    const tabs = [undefined, "terminal", "chat", "code"] as const;
+    for (const tab of tabs) {
+      for (const bundle of [null, "billing/src/b.ts"]) {
+        const prev = { split: "lr" as const, tab, code: "billing/src/a.ts" };
+        const next = bundleSearch(prev, bundle);
+        expect(columnOf(viewTab(next)), `tab=${tab} → ${bundle}`).toBe(columnOf(viewTab(prev)));
+        expect(next.code, `tab=${tab} → ${bundle}`).toBe(bundle ?? undefined);
+      }
+    }
   });
 
   it("분할을 꺼도 탭이 남는다", () => {

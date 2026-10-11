@@ -1,4 +1,5 @@
 import type { CodeTarget } from "@/features/terminal/shell-registry";
+import { columnOf } from "@/features/works/split-view";
 import { validateFileSearch } from "./-file-search";
 import type { FileSearch } from "./-file-search";
 
@@ -225,16 +226,23 @@ export function columnSearch<T extends object>(
  *
  * **고칠 것을 모두 `prev`에서 읽는다.** 묶음의 변화는 다른 이동과 한 틱에 겹친다 — 셸 탭을 끌어 본문 절반에 놓으면 그 셸을 켜는
  * 것과 분할을 켜는 주소가 함께 난다. 화면이 들고 있던 `tab` · `split`으로 지으면 한 틱 늦은 값이 방금 놓은 분할을 덮는다.
+ *
+ * **분할에서 포커스가 든 열은 `columnOf`가 읽는다** — 분할을 켜고 끄는 자리와 같은 판정이다. 그래서 대화 탭도 문서 열이다
+ * (three-axes S21): 손으로 친 `tab=chat&split=lr`(또는 그것을 적어 둔 work 기억)에서 묶음 열이 바뀌어도 `tab`은 그대로다. 여기서
+ * 탭 값을 따로 세면 두 자리가 포커스를 다르게 읽는다(three-axes develop 병합 검토).
  */
 export function bundleSearch<T extends object>(prev: T, bundle: string | null): T & { tab?: AddressTab; code?: string } {
   const search = prev as { tab?: string; code?: string; split?: string };
   const tab = viewTab(search);
-  if (tab === "spec" && splitOf(search) === null) return { ...prev, tab: undefined, code: undefined };
-  // 가운데에 대화창이 선 단일 뷰도 묶음이 화면에 없다(three-axes S21 — 대화 탭은 묶음 밖의 고정 칸이다). 대화창은 그대로다.
-  if (tab === "chat" && splitOf(search) === null) return { ...prev, code: undefined };
+  if (splitOf(search) === null) {
+    if (tab === "spec") return { ...prev, tab: undefined, code: undefined };
+    // 가운데에 대화창이 선 단일 뷰도 묶음이 화면에 없다(three-axes S21 — 대화 탭은 묶음 밖의 고정 칸이다). 대화창은 그대로다.
+    if (tab === "chat") return { ...prev, code: undefined };
+  }
+  const onBundleColumn = columnOf(tab) === "terminal";
   return {
     ...prev,
-    tab: tab === "spec" ? undefined : bundle !== null ? "code" : "terminal",
+    tab: onBundleColumn ? (bundle !== null ? "code" : "terminal") : tab === "spec" ? undefined : tab,
     code: bundle ?? undefined,
   };
 }
