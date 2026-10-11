@@ -6,8 +6,8 @@ import type { Quote, RecordLine } from "./types";
 // 함수는 어디서 온 줄인지 모른다.
 //
 // **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16). Codex의 줄도 Claude 변환기가 옮긴 줄도 `session/update`의
-// `sessionUpdate` 갈래로만 읽는다 — 엔진마다 다른 것은 칩의 목록뿐이다. 뒤의 화면 장들이 여기에 갈래를 더한다: 도구 줄의
-// 문구 · 출력 · diff(18), 대기와 멈춤(20), 승인 · 계획 카드(21), 상태 · 상태 줄(23).
+// `sessionUpdate` 갈래로만 읽는다 — 엔진마다 다른 것은 칩의 목록뿐이다. 뒤의 화면 장들이 여기에 갈래를 더한다: 대기와 멈춤(20),
+// 승인 · 계획 카드(21), 상태 · 상태 줄(23). 도구 줄의 문구 · 출력 · diff · MCP(18)는 접은 도구 호출을 `tool-view.ts`가 읽는다.
 //
 // **멈춘 뒤의 도구 줄**(three-axes 티켓 20 · 결정 28)도 ACP 모양으로 가른다. 우리가 멈춘 `cancelled` 턴 끝에서:
 // - 그때까지 끝나지 않은(`completed` · `failed`가 아닌) 도구 줄은 **멈춘 뒤에도 돈다**(`ran-on`) — Codex `session/cancel`은 턴만
@@ -38,7 +38,7 @@ export interface TurnEnd {
 export type Entry =
   | { kind: "message"; key: string; messageId: string | null; text: string }
   | { kind: "thought"; key: string; messageId: string | null; text: string }
-  /** 도구 호출 — 처음 온 `tool_call`에 뒤의 `tool_call_update`를 덮어 합친 값. 문구 · diff는 18이 그린다. */
+  /** 도구 호출 — 처음 온 `tool_call`에 뒤의 `tool_call_update`를 덮어 합친 값. 문구 · 안의 것은 `tool-view.ts`가 짓는다(티켓 18). */
   | ToolEntry;
 
 /**
@@ -123,7 +123,7 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다(three-axes 결정 28) — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
           let tool = id ? findTool(turns, id) : null;
-          if (tool) tool.call = { ...tool.call, ...update };
+          if (tool) tool.call = mergeCall(tool.call, update);
           else if (id && open) {
             tool = { kind: "tool", key: `u${line.seq}`, toolCallId: id, call: update, output: "", stop: null };
             open.entries.push(tool);
@@ -217,6 +217,17 @@ function quoteOf(value: unknown): Quote | null {
 
 /** 도구 줄이 끝났나 — ACP 도구 상태 넷 가운데 `completed` · `failed`가 끝이다. 상태가 없으면 `pending`이다. */
 export const toolDone = (tool: ToolEntry): boolean => tool.call.status === "completed" || tool.call.status === "failed";
+
+/**
+ * 도구 호출에 update를 덮어 합친다 — 칸은 뒤의 것이 이기고, `_meta`만 한 겹 안쪽까지 합친다(three-axes 티켓 18). update의 `_meta`가
+ * 앞의 것을 통째로 덮으면 앞서 온 표지가 사라진다: codex-acp의 MCP 표지(`is_mcp_tool_call`)는 시작에만 오고, 종료 코드
+ * (`terminal_exit`)는 출력 조각과 다른 update로 온다(실측 A2).
+ */
+function mergeCall(call: Json, update: Json): Json {
+  const merged = { ...call, ...update };
+  if (isObject(call._meta) && isObject(update._meta)) merged._meta = { ...call._meta, ...update._meta };
+  return merged;
+}
 
 /** update가 실어 온 명령 출력 조각(`_meta.terminal_output_delta.data`). 없으면 빈 글이다. */
 function outputOf(update: Json): string {

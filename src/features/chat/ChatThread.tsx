@@ -41,13 +41,16 @@ function ChatThread({ conversationKey, model }: ChatThreadProps) {
 function TurnView({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggle: () => void }) {
   const from = finalFrom(turn);
   // 접힌 턴은 턴 끝 메시지와 멈춘 뒤에도 돈 도구 줄만, 펼친 턴과 도는 턴은 모든 줄을 보인다.
+  const last = turn.entries[turn.entries.length - 1];
+  // 글이 빈 생각은 그리지 않는다 — Claude 2.1.296은 생각의 글을 빈 문자열로 준다(실측 T14). 지금 생각하는 중이면 「생각 중」으로만
+  // 선다. 빈 줄이 도구 줄 사이에 서면 흐름의 틈이 겹치고 잇따른 도구 줄의 묶음이 갈린다(three-axes 티켓 18).
+  const said = (entry: Entry) => entry.kind !== "thought" || entry.text.trim() !== "" || (!turn.end && entry === last);
   const shown =
     turn.end && !open
       ? turn.entries.filter(
           (entry, at) => (at >= from && entry.kind === "message") || (entry.kind === "tool" && entry.stop === "ran-on"),
         )
-      : turn.entries;
-  const last = turn.entries[turn.entries.length - 1];
+      : turn.entries.filter(said);
   return (
     <>
       {turn.sent !== null && <UserMessage text={turn.sent} quote={turn.quote} />}
@@ -73,12 +76,32 @@ function TurnView({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggl
         turn.entries.length > 0 && <RunningHead turn={turn} />
       )}
       {turn.end && open && <hr className="border-0 border-t-[0.5px] border-(--chat-border-heavy)" />}
-      {shown.map((entry) => (
-        <EntryView key={entry.key} entry={entry} end={turn.end} thinking={!turn.end && entry === last} />
-      ))}
+      {runs(shown).map((run) =>
+        run[0].kind === "tool" ? (
+          // 잇따른 도구 줄은 한 묶음이다 — 줄 사이가 흐름의 틈(16)이 아니라 4다(캔버스 `.cx-tools`).
+          <div key={run[0].key} className="flex flex-col gap-1">
+            {run.map((entry) => (
+              <EntryView key={entry.key} entry={entry} end={turn.end} thinking={false} />
+            ))}
+          </div>
+        ) : (
+          <EntryView key={run[0].key} entry={run[0]} end={turn.end} thinking={!turn.end && run[0] === last} />
+        ),
+      )}
       {!turn.end && turn.entries.length === 0 && <Thinking />}
     </>
   );
+}
+
+/** 그릴 줄을 묶는다 — 잇따른 도구 줄은 한 묶음, 그 밖의 줄은 하나씩이다. */
+function runs(entries: readonly Entry[]): Entry[][] {
+  const out: Entry[][] = [];
+  for (const entry of entries) {
+    const last = out[out.length - 1];
+    if (entry.kind === "tool" && last && last[0].kind === "tool") last.push(entry);
+    else out.push([entry]);
+  }
+  return out;
 }
 
 /** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. */
@@ -131,7 +154,7 @@ function EntryView({ entry, end, thinking }: { entry: Entry; end: Turn["end"]; t
       // 지금 생각하는 중이면 「생각 중」이 반짝이고, 지나간 생각은 펼친 턴에서 옅은 글로 읽힌다.
       return thinking ? <Thinking /> : <ChatMarkdown text={entry.text} className="text-tertiary" />;
     case "tool":
-      // 도구 줄 — 지금은 멈춘 턴의 줄만 선다(20). 진행형 → 완료형 문구 · 출력 · diff · MCP는 티켓 18이 `ToolRow`에 더한다.
+      // 도구 줄 — 진행형 → 완료형 문구 · 명령 출력 · diff · MCP(티켓 18), 멈춘 턴의 줄(티켓 20).
       return <ToolRow tool={entry} end={end} />;
   }
 }

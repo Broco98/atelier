@@ -1,75 +1,368 @@
+import { useContext, useState, type ReactNode } from "react";
+import {
+  BookOpen,
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Command,
+  Globe,
+  Pencil,
+  Search,
+  Terminal,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { useHomeDir } from "@/features/works/hooks";
+import { cn } from "@/lib/utils";
+import { ChatDocsContext } from "./chat-docs";
 import { spoken, toolDone, type ToolEntry, type TurnEnd } from "./fold";
+import { baseName, describeTool, lineOf, specPathOf, type DiffPiece, type ToolIcon, type ToolView } from "./tool-view";
 
-// 도구 줄(three-axes 티켓 20) — 지금은 **멈춘 턴의 줄**만 그린다. 진행형 → 완료형 문구 · 명령 출력 · diff · MCP 호출은 티켓 18이
-// 이 자리에 더한다(그때 멈추지 않은 줄도 선다). 멈춘 턴의 줄은 대화 접기가 ACP 모양으로 가른 둘이다(`fold.ts`의 `ToolStop`).
+// 도구 줄(three-axes 티켓 18 · 20) — 에이전트가 지금 무엇을 하는지 따라가는 줄이다(스토리 39). 모양은 캔버스 Tools 보드의
+// `.cx-tool`(아이콘 16 + 사람이 읽는 문장 하나 · 14/21 · 60% 글자)이고, 문구 · 안의 것은 `tool-view.ts`가 ACP 모양으로 짓는다.
 //
-// - **멈춘 뒤에도 도는 중**(`ran-on`, 결정 28) — 캔버스 Tools 보드의 「명령 출력」 셋째 상자다: 스피너와 「Shell · 멈춘 뒤에도 도는
-//   중」, `$` 명령, 늦게 온 출력, 오른쪽 아래 「턴은 N초 후에 멈췄어요 — 명령은 끝까지 돌아요」. 명령이 끝나면 「멈춘 뒤에 끝남」이고
-//   출력은 그대로 붙어 있다.
-// - **멈춤**(`stopped`) — 캔버스 `.cx-tool`의 ■(`.cx-stop` — 16 상자 안 9 네모)와 도구 제목이다. 멈춤과 함께 닫혀 더 올 것이 없다.
+// - **진행형 → 완료형.** `tool_call`이 오면 진행형 문구가 반짝이고(글자만 40% + shimmer), `tool_call_update`가 끝을 알리면 완료형
+//   문구로 바뀐다. 실패는 색이 아니라 문장이다 — 「~하지 못함」, 그리고 펼친 상자의 상태 글(「코드 종료 2」 · 「실패」).
+// - **안의 것.** 명령은 명령 출력 상자(`$` 명령 · 출력 · 오른쪽 아래 상태, 스토리 40), 편집은 diff(스토리 41), MCP 호출은 ⌘ 아이콘과
+//   「서버 통합 · 도구」 문구로 구별되고 펼치면 원본 출력이다(스토리 42). 줄을 누르면 안의 것이 접히고 펴진다. 명령 출력과 diff는
+//   **펴진 채로 선다** — 턴이 도는 동안에도 무엇이 나왔고 어떻게 고쳤는지 본다. 턴이 끝나면 줄째로 머리줄 아래로 접힌다(티켓 17).
+// - **파일 링크.** 줄의 파일(그리고 diff 머리의 경로)이 spec 폴더 안이면 누를 수 있는 링크다 — 스펙 창이 그 파일을 연다(스토리 77).
+//   spec 폴더 밖의 파일은 스펙 창이 보이지 않으므로 글로만 선다.
+// - **멈춘 턴의 줄**(티켓 20)은 대화 접기가 가른 둘이다(`fold.ts`의 `ToolStop`):
+//   - **멈춘 뒤에도 도는 중**(`ran-on`, 결정 28) — 「명령 출력」 셋째 상자: 스피너와 「Shell · 멈춘 뒤에도 도는 중」, `$` 명령, 늦게 온
+//     출력, 오른쪽 아래 「턴은 N초 후에 멈췄어요 — 명령은 끝까지 돌아요」. 명령이 끝나면 「멈춘 뒤에 끝남」이고 출력은 그대로다.
+//   - **멈춤**(`stopped`) — `.cx-stop`의 ■(16 상자 안 9 네모)와 도구 제목이다. 멈춤과 함께 닫혀 더 올 것이 없다.
 //
-// 줄은 도구 제목을 이름으로 단 묶음(`role="group"`)이다 — 상태 글은 그 안의 보이는 글이다.
+// 줄은 그 문구(멈춘 줄은 도구 제목)를 이름으로 단 묶음(`role="group"`)이다 — 상태 글과 안의 것은 그 안의 보이는 글이다.
 
-/** 도구의 화면 이름 — 엔진이 지은 제목, 없으면 명령, 그것도 없으면 「명령」이다(빈 제목의 kind 문구는 18). */
+const ICONS: Record<ToolIcon, LucideIcon> = {
+  execute: Terminal,
+  read: BookOpen,
+  edit: Pencil,
+  search: Search,
+  fetch: Globe,
+  mcp: Command,
+  skill: Wrench,
+  subagent: Bot,
+  other: Wrench,
+};
+
+/** 멈춘 줄의 이름 — 엔진이 지은 제목, 없으면 명령, 그것도 없으면 kind로 지은 대상(실측 함정 49)이다. */
 function titleOf(tool: ToolEntry): string {
   const { title, rawInput } = tool.call;
   if (typeof title === "string" && title.trim() !== "") return title;
   const command = typeof rawInput === "object" && rawInput !== null ? (rawInput as { command?: unknown }).command : null;
   if (typeof command === "string" && command.trim() !== "") return command;
-  if (Array.isArray(command) && command.every((part) => typeof part === "string")) return command.join(" ");
-  return "명령";
+  if (Array.isArray(command) && command.every((part) => typeof part === "string") && command.length > 0) return command.join(" ");
+  return describeTool(tool).phrase.subject ?? "명령";
 }
 
 function ToolRow({ tool, end }: { tool: ToolEntry; end: TurnEnd | null }) {
-  const title = titleOf(tool);
-  if (tool.stop === "ran-on") {
-    const running = !toolDone(tool);
-    const kind = tool.call.kind === "execute" ? "Shell" : "도구";
-    return (
-      <div
-        role="group"
-        aria-label={title}
-        data-tool-stop="ran-on"
-        className="flex flex-col gap-2.5 rounded-(--chat-radius-block) bg-(--chat-surface-tool) py-[9px] pr-3 pl-[9px] shadow-(--chat-shadow-tool)"
-      >
-        <span className="flex items-center gap-1.5 text-caption text-(--chat-fg-tool)">
-          {running && <Spinner className="size-3" aria-hidden />}
-          {kind} · {running ? "멈춘 뒤에도 도는 중" : "멈춘 뒤에 끝남"}
+  if (tool.stop === "ran-on") return <RanOn tool={tool} end={end} />;
+  if (tool.stop === "stopped") return <Stopped tool={tool} />;
+  return <ToolLine tool={tool} />;
+}
+
+/**
+ * 스펙 창이 여는 파일 링크의 자리 — `link`는 경로가 spec 폴더 안이면 그 파일을 여는 일을, 밖이면 null을 준다. `docName`은 diff
+ * 머리에 적을 이름이다: spec 폴더 안이면 spec 폴더 기준 경로, 밖이면 엔진이 준 경로 그대로다.
+ */
+function useDocLink(): {
+  link: (path: string, line: number | null) => (() => void) | null;
+  docName: (path: string) => string;
+} {
+  const docs = useContext(ChatDocsContext);
+  const { data: home } = useHomeDir();
+  const relative = (path: string) => (docs ? specPathOf(path, docs.specDir, home ?? null) : null);
+  return {
+    link: (path, line) => {
+      const rel = relative(path);
+      return docs && rel ? () => docs.onOpenDoc(rel, line) : null;
+    },
+    docName: (path) => relative(path) ?? path,
+  };
+}
+
+function ToolLine({ tool }: { tool: ToolEntry }) {
+  const view = describeTool(tool);
+  const { link, docName } = useDocLink();
+  const mcpOutput = view.mcp && view.mcp.output !== "" ? view.mcp.output : null;
+  const expandable = view.shell !== null || view.diffs.length > 0 || mcpOutput !== null || view.text !== null;
+  // 명령 출력과 diff는 펴진 채로 선다(머리말). MCP 출력 · 오류 글은 펼쳐야 보인다.
+  const [open, setOpen] = useState(view.shell !== null || view.diffs.length > 0);
+  const running = view.state === "running";
+  const added = view.diffs.reduce((sum, piece) => sum + piece.added, 0);
+  const deleted = view.diffs.reduce((sum, piece) => sum + piece.deleted, 0);
+  const Icon = ICONS[view.icon];
+  // 지운 파일은 열 것이 없다 — 링크를 세우지 않는다(알약 목록과 같다, 티켓 26).
+  const fileLink = !running && !view.removed && view.phrase.file ? link(view.phrase.file, lineOf(tool, view.phrase.file)) : null;
+
+  const phrase = running ? (
+    <span className="min-w-0 truncate chat-shimmer [--chat-shimmer-dim:var(--chat-fg-tool-running)]">{view.label}</span>
+  ) : (
+    <span className="min-w-0 truncate">
+      {view.phrase.before}
+      {view.phrase.subject !== null &&
+        (fileLink && !expandable ? (
+          <button
+            type="button"
+            onClick={fileLink}
+            className="text-(--chat-fg-tool-running) underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {view.phrase.subject}
+          </button>
+        ) : (
+          <span className={view.phrase.file ? "text-(--chat-fg-tool-running)" : undefined}>{view.phrase.subject}</span>
+        ))}
+      {view.phrase.after}
+    </span>
+  );
+  const line = (
+    <>
+      <Icon className="size-4 shrink-0" strokeWidth={1.8} aria-hidden />
+      {phrase}
+      {view.diffs.length > 0 && !running && (
+        <span className="shrink-0">
+          <span className="text-(--chat-diff-added)">+{added}</span> <span className="text-(--chat-diff-deleted)">-{deleted}</span>
         </span>
+      )}
+      {(view.removed || (view.diffs.length > 0 && view.diffs.every((piece) => piece.written))) && !running && (
+        <span
+          aria-hidden
+          className={cn("size-[5px] shrink-0 rounded-full", view.removed ? "bg-(--chat-dot-deleted)" : "bg-(--chat-dot-created)")}
+        />
+      )}
+    </>
+  );
+  const rowClass =
+    "flex w-fit max-w-full min-h-[21px] items-center gap-1.5 text-left text-row leading-(--chat-leading-tool) text-(--chat-fg-tool)";
+  return (
+    // 펼친 줄은 아래로 한 틈(4)을 더 둔다 — 상자 바로 밑에 다음 줄이 붙지 않게(묶음의 줄 사이는 4다).
+    <div role="group" aria-label={view.label} className={cn("flex min-w-0 flex-col gap-2", expandable && open && "pb-1")}>
+      {expandable ? (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((was) => !was)}
+          className={cn(rowClass, "group transition-colors hover:text-foreground")}
+        >
+          {line}
+          {open ? (
+            <ChevronDown className="size-3 shrink-0" strokeWidth={1.8} aria-hidden />
+          ) : (
+            <ChevronRight
+              className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              strokeWidth={1.8}
+              aria-hidden
+            />
+          )}
+        </button>
+      ) : (
+        <div className={rowClass}>{line}</div>
+      )}
+      {expandable && open && <Inside tool={tool} view={view} link={link} docName={docName} />}
+    </div>
+  );
+}
+
+/** 펼친 도구 줄의 안 — 명령 출력 · diff · MCP 출력 · 오류 글. */
+function Inside({
+  tool,
+  view,
+  link,
+  docName,
+}: {
+  tool: ToolEntry;
+  view: ToolView;
+  link: (path: string, line: number | null) => (() => void) | null;
+  docName: (path: string) => string;
+}) {
+  if (view.shell) {
+    return (
+      <ShellOutput
+        label="Shell"
+        command={view.shell.command}
+        output={view.shell.output}
+        status={view.shell.status && <StatusText ok={view.shell.ok}>{view.shell.status}</StatusText>}
+      />
+    );
+  }
+  if (view.diffs.length > 0) {
+    return (
+      <>
+        {view.diffs.map((piece, at) => (
+          <DiffView
+            key={`${piece.path}-${at}`}
+            piece={piece}
+            name={docName(piece.path)}
+            open={view.removed ? null : link(piece.path, lineOf(tool, piece.path))}
+          />
+        ))}
+      </>
+    );
+  }
+  if (view.mcp && view.mcp.output !== "") {
+    return (
+      <figure
+        aria-label={`${view.mcp.tool} 출력`}
+        className="rounded-(--chat-radius-block) bg-(--chat-surface-code) shadow-(--chat-shadow-code)"
+      >
+        <figcaption className="px-4 pt-2.5 pb-1 text-caption text-muted-foreground">{view.mcp.tool}</figcaption>
+        <pre className="overflow-x-auto px-4 pt-1.5 pb-3 font-mono text-mono scroll-quiet">{view.mcp.output}</pre>
+      </figure>
+    );
+  }
+  return view.text ? <ShellOutput label="출력" command={null} output={view.text} status={null} /> : null;
+}
+
+/** 명령 출력 상자 — 캔버스 `.cx-shell-out`: 위 kind 글, `$` 명령, 출력, 오른쪽 아래 상태. */
+function ShellOutput({
+  label,
+  command,
+  output,
+  status,
+}: {
+  label: ReactNode;
+  command: string | null;
+  output: string;
+  status: ReactNode;
+}) {
+  return (
+    <figure
+      aria-label="명령 출력"
+      className="flex flex-col gap-2.5 rounded-(--chat-radius-block) bg-(--chat-surface-tool) py-[9px] pr-3 pl-[9px] shadow-(--chat-shadow-tool)"
+    >
+      <figcaption className="flex items-center gap-1.5 text-caption text-(--chat-fg-tool)">{label}</figcaption>
+      {command !== null && (
         <span className="font-mono text-mono break-all whitespace-pre-wrap">
-          <span className="text-tertiary">$</span> {title}
+          <span className="text-tertiary">$</span> {command}
         </span>
-        {tool.output !== "" && (
-          <span className="font-mono text-mono break-all whitespace-pre-wrap text-muted-foreground">
-            {tool.output.replace(/\n+$/, "")}
-          </span>
+      )}
+      {output !== "" && (
+        <span className="font-mono text-mono break-all whitespace-pre-wrap text-muted-foreground">{output}</span>
+      )}
+      {status}
+    </figure>
+  );
+}
+
+function StatusText({ ok, children }: { ok: boolean; children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1 self-end text-ui text-(--chat-fg-tool-status)">
+      {ok && <Check className="size-3" strokeWidth={1.8} aria-hidden />}
+      {children}
+    </span>
+  );
+}
+
+/**
+ * diff — 캔버스 `.cx-diff`: 머리(경로 · `+N` `-N`)와 줄들. 더한 줄은 `<ins>`, 지운 줄은 `<del>`이라 보조 기술도 더함 · 지움을
+ * 읽는다. 바뀌지 않은 줄은 바뀐 줄 둘레만 옅게 남기고 나머지는 건너뛴 자리 한 줄로 접는다. **줄 번호는 없다** — ACP diff 내용은
+ * 파일 안의 자리를 싣지 않고(Claude는 입력의 조각이다, 변환기 S2), 조각 안에서 센 번호는 파일의 줄과 어긋난다.
+ */
+function DiffView({ piece, name, open }: { piece: DiffPiece; name: string; open: (() => void) | null }) {
+  return (
+    <figure
+      aria-label={`${baseName(piece.path)} diff`}
+      className="flex flex-col overflow-hidden rounded-(--chat-radius-block) shadow-(--chat-shadow-diff)"
+    >
+      <figcaption className="flex h-[30px] items-center gap-2 bg-(--chat-diff-header) pr-1.5 pl-2.5 text-ui shadow-(--chat-diff-rule)">
+        {open ? (
+          <button
+            type="button"
+            onClick={open}
+            className="min-w-0 truncate text-left text-(--chat-fg-tool) underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {name}
+          </button>
+        ) : (
+          <span className="min-w-0 truncate text-(--chat-fg-tool)">{name}</span>
         )}
-        {running && end && (
-          <span className="self-end text-ui text-(--chat-fg-tool-status)">
-            턴은 {spoken(end.durationMs)} 후에 멈췄어요 — 명령은 끝까지 돌아요
-          </span>
-        )}
+        <span className="shrink-0 text-(--chat-diff-added)">+{piece.added}</span>
+        <span className="shrink-0 text-(--chat-diff-deleted)">-{piece.deleted}</span>
+      </figcaption>
+      <div className="overflow-x-auto font-mono text-mono-sm leading-(--chat-leading-diff) scroll-quiet">
+        {piece.lines.map((line, at) => {
+          const key = `${at}`;
+          if (line.type === "gap") {
+            return (
+              <div key={key} className="pl-[16px] text-tertiary">
+                ⋯ {line.count}줄
+              </div>
+            );
+          }
+          const text = <span className="pr-3 pl-3 whitespace-pre">{line.text === "" ? " " : line.text}</span>;
+          if (line.type === "add") {
+            return (
+              <ins key={key} className="grid grid-cols-[4px_minmax(0,1fr)] bg-(--chat-diff-added-line) no-underline">
+                <span className="bg-(--chat-diff-added)" />
+                {text}
+              </ins>
+            );
+          }
+          if (line.type === "del") {
+            return (
+              <del key={key} className="grid grid-cols-[4px_minmax(0,1fr)] bg-(--chat-diff-deleted-line) no-underline">
+                <span className="bg-[repeating-linear-gradient(135deg,var(--chat-diff-deleted)_0_1px,transparent_1px_2.8px)]" />
+                {text}
+              </del>
+            );
+          }
+          return (
+            <div key={key} className="grid grid-cols-[4px_minmax(0,1fr)] opacity-50">
+              <span />
+              {text}
+            </div>
+          );
+        })}
       </div>
-    );
-  }
-  if (tool.stop === "stopped") {
-    return (
-      <div
-        role="group"
-        aria-label={title}
-        data-tool-stop="stopped"
-        className="flex w-fit max-w-full items-center gap-1.5 text-row leading-(--chat-leading-tool) text-(--chat-fg-tool)"
-      >
-        <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
-          <span className="size-[9px] rounded-xs bg-current" />
-        </span>
-        <span className="min-w-0 truncate">{title}</span>
-        <span className="shrink-0">멈춤</span>
-      </div>
-    );
-  }
-  return null;
+    </figure>
+  );
+}
+
+function RanOn({ tool, end }: { tool: ToolEntry; end: TurnEnd | null }) {
+  const title = titleOf(tool);
+  const running = !toolDone(tool);
+  const kind = tool.call.kind === "execute" ? "Shell" : "도구";
+  return (
+    <div role="group" aria-label={title} data-tool-stop="ran-on" className="flex min-w-0 flex-col">
+      <ShellOutput
+        label={
+          <>
+            {running && <Spinner className="size-3" aria-hidden />}
+            {kind} · {running ? "멈춘 뒤에도 도는 중" : "멈춘 뒤에 끝남"}
+          </>
+        }
+        command={title}
+        output={tool.output.replace(/\n+$/, "")}
+        status={
+          running && end ? (
+            <StatusText ok={false}>턴은 {spoken(end.durationMs)} 후에 멈췄어요 — 명령은 끝까지 돌아요</StatusText>
+          ) : null
+        }
+      />
+    </div>
+  );
+}
+
+function Stopped({ tool }: { tool: ToolEntry }) {
+  const title = titleOf(tool);
+  return (
+    <div
+      role="group"
+      aria-label={title}
+      data-tool-stop="stopped"
+      className="flex w-fit max-w-full items-center gap-1.5 text-row leading-(--chat-leading-tool) text-(--chat-fg-tool)"
+    >
+      <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+        <span className="size-[9px] rounded-xs bg-current" />
+      </span>
+      <span className="min-w-0 truncate">{title}</span>
+      <span className="shrink-0">멈춤</span>
+    </div>
+  );
 }
 
 export default ToolRow;

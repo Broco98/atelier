@@ -165,6 +165,37 @@ export function selfContinuedTurn(from: number, answer: string, durationMs: numb
   return lines;
 }
 
+/**
+ * 손으로 짓는 **도구 턴**(three-axes 티켓 18) — L1 자료에 없는 도구 모양(실패 · MCP 호출 · 제목이 빈 명령)을 잴 때 쓴다. 꼴은 L1
+ * 기록과 같다: 보낸 말 → `updates`(ACP `session/update`의 `update` 몸, 차례대로) → 답 → 턴 끝(`end_turn`). 도구 모양은 그 엔진이
+ * 내는 것 그대로 부르는 쪽이 짓는다 — Claude는 변환기(`translator/stream.rs`), Codex는 codex-acp 2.2.2다. seq는 `from`부터 오른다.
+ */
+export function handToolTurn(
+  from: number,
+  text: string,
+  updates: readonly Record<string, unknown>[],
+  answer: string,
+  durationMs: number,
+): RecordLine[] {
+  const steps = updates.map((update, at) => handUpdate(from + 1 + at, 1 + at, update));
+  const next = from + 1 + updates.length;
+  return [
+    handSent(from, text),
+    ...steps,
+    handUpdate(next, 1 + updates.length, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "msg_hand_tools",
+      content: { type: "text", text: answer },
+    }),
+    {
+      seq: next + 1,
+      at: handAt(2 + updates.length),
+      kind: "turn-end",
+      payload: { stopReason: "end_turn", durationMs, cancelledByUs: false, outOfTurn: false },
+    },
+  ];
+}
+
 /** 손으로 짓는 `sent` 줄 하나 — 대기 줄의 말이 「지금 보내기」로 간 것(`sendNow`)을 잴 때 쓴다. */
 export const sentLine = (seq: number, text: string, sendNow = false): RecordLine => handSent(seq, text, sendNow);
 

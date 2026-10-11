@@ -1030,6 +1030,21 @@ body[data-palette-open] [data-scrollbar] {
     --chat-fg-tool-status: #88898a;
     --chat-surface-tool: #f2f3f3;
     --chat-shadow-tool: inset 0 0 0 1px #d9dada;
+    /* 도는 도구 줄의 옅은 글자(40% — 반짝임의 바탕)와 줄의 파일 이름(`.cx-tool .dim`), 새로 쓴 · 지운 파일의 점(three-axes 티켓 18 —
+       캔버스 `.cx-shimmer.tool` · `.cx-tool .fdot`) */
+    --chat-fg-tool-running: rgba(26, 28, 31, 0.4);
+    --chat-dot-created: #79a9fa;
+    --chat-dot-deleted: #ec736e;
+    /* diff(three-axes 티켓 18 — 캔버스 `.cx-diff`): 바깥 1px 안쪽 선 · 머리 면과 그 아래 1px 선 · 더한 줄과 지운 줄의 면 · 막대 ·
+       글자 색, 코드의 줄 높이(mono 12/21.6) */
+    --chat-leading-diff: 21.6px;
+    --chat-shadow-diff: inset 0 0 0 1px #ededed;
+    --chat-diff-header: #f8f8f8;
+    --chat-diff-rule: inset 0 -1px 0 #ededed;
+    --chat-diff-added: #00a240;
+    --chat-diff-deleted: #ba2623;
+    --chat-diff-added-line: #e6f4e7;
+    --chat-diff-deleted-line: #fce6e2;
     /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선) */
     --chat-surface-under: #f9f9f9;
     --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);
@@ -1059,8 +1074,15 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility chat-shimmer {
     width: fit-content;
-    background: var(--text-tertiary)
-        linear-gradient(to left, var(--text-tertiary), var(--foreground) 50%, var(--text-tertiary)) no-repeat;
+    /* 바탕의 옅은 글자 — 「생각 중」은 tertiary, 도는 도구 줄은 `--chat-fg-tool-running`(부르는 자리가 `--chat-shimmer-dim`으로 준다) */
+    background: var(--chat-shimmer-dim, var(--text-tertiary))
+        linear-gradient(
+            to left,
+            var(--chat-shimmer-dim, var(--text-tertiary)),
+            var(--foreground) 50%,
+            var(--chat-shimmer-dim, var(--text-tertiary))
+        )
+        no-repeat;
     background-size: 50% 200%;
     -webkit-background-clip: text;
     background-clip: text;

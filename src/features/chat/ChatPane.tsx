@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { ChatDocsContext } from "./chat-docs";
 import { chatUiStore, chooseConversation, claimFirstConversation, conversationKey } from "./chat-store";
 import ChangesPill from "./ChangesPill";
 import ChatThread from "./ChatThread";
@@ -34,13 +35,18 @@ interface ChatPaneProps {
    */
   visible: boolean;
   /**
-   * 대화창의 문서 링크(알약 목록의 파일)를 눌렀다 — 스펙 창이 그 파일을 그 줄에서 연다(three-axes 티켓 26). 줄을 모르면 `null`이다.
-   * 주소를 쥔 것이 화면이라 받아서 부른다. `chat` 탭(24)에서 눌러도 같은 길이다 — 문서를 고르면 탭이 spec으로 돌아간다.
+   * 그 work의 spec 폴더(코어가 준 홈 축약 표기) — 도구 줄의 파일이 이 폴더 안이면 스펙 창으로 여는 링크가 된다(three-axes 티켓 18).
+   */
+  specDir: string;
+  /**
+   * 대화창의 문서 링크(알약 목록의 파일 · 도구 줄의 파일)를 눌렀다 — 스펙 창이 그 파일을 그 줄에서 연다(three-axes 티켓 18 · 26).
+   * 줄을 모르면 `null`이다. 주소를 쥔 것이 화면이라 받아서 부른다. `chat` 탭(24)에서 눌러도 같은 길이다 — 문서를 고르면 탭이
+   * spec으로 돌아간다.
    */
   onOpenDoc: (path: string, line: number | null) => void;
 }
 
-function ChatPane({ work, visible, onOpenDoc }: ChatPaneProps) {
+function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
   const list = useConversations(work, visible);
   const create = useCreateConversation();
   const close = useCloseConversation();
@@ -50,6 +56,8 @@ function ChatPane({ work, visible, onOpenDoc }: ChatPaneProps) {
   // 문서에서 고른 자리(three-axes 티켓 27) — 그 work의 지금 대화의 입력창에 칩으로 붙는다.
   const quote = useStore(chatUiStore, (state) => state.quotes[work] ?? null);
   const createConversation = create.mutate;
+  // 도구 줄의 파일 링크가 흐름 깊숙이 서므로 뿌리에서 한 번 내려 준다(`chat-docs.ts`).
+  const docs = useMemo(() => ({ specDir, onOpenDoc }), [specDir, onOpenDoc]);
 
   // 대화 없는 work에서 대화창을 처음 열면 기본 에이전트로 대화 하나가 열려 있다(스토리 2). work마다 한 번이다.
   useEffect(() => {
@@ -76,54 +84,56 @@ function ChatPane({ work, visible, onOpenDoc }: ChatPaneProps) {
   // 호스트가 거절하면 그 글을 그대로 보인다(호스트의 오류는 화면에 보일 글이다). 못 찾음 · 로그인 안내 카드는 티켓 22다.
   const problem = list.error ?? create.error ?? close.error;
   return (
-    <div data-chat className="flex min-h-0 flex-1 flex-col">
-      <div
-        role="group"
-        aria-label="대화 탭"
-        className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto px-2 shadow-(--chat-hairline-below) scroll-quiet"
-      >
-        {conversations.map((conversation) => (
-          <ConversationTab
-            key={conversation.id}
-            conversation={conversation}
-            on={conversation.id === active?.id}
-            onChoose={() => chooseConversation(work, conversation.id)}
-            onClose={() => closeConversation(conversation)}
-          />
-        ))}
-        <Hint
-          text="새 대화"
-          announce="name"
-          type="button"
-          disabled={create.isPending}
-          onClick={() => create.mutate({ work, agent: DEFAULT_AGENT })}
-          className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
+    <ChatDocsContext.Provider value={docs}>
+      <div data-chat className="flex min-h-0 flex-1 flex-col">
+        <div
+          role="group"
+          aria-label="대화 탭"
+          className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto px-2 shadow-(--chat-hairline-below) scroll-quiet"
         >
-          <Plus className="size-4" strokeWidth={1.8} aria-hidden />
-        </Hint>
+          {conversations.map((conversation) => (
+            <ConversationTab
+              key={conversation.id}
+              conversation={conversation}
+              on={conversation.id === active?.id}
+              onChoose={() => chooseConversation(work, conversation.id)}
+              onClose={() => closeConversation(conversation)}
+            />
+          ))}
+          <Hint
+            text="새 대화"
+            announce="name"
+            type="button"
+            disabled={create.isPending}
+            onClick={() => create.mutate({ work, agent: DEFAULT_AGENT })}
+            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
+          >
+            <Plus className="size-4" strokeWidth={1.8} aria-hidden />
+          </Hint>
+        </div>
+        {problem && (
+          <p role="alert" className="px-4 pt-3 text-caption text-destructive">
+            {String(problem)}
+          </p>
+        )}
+        {conversations.length === 0 ? (
+          <p className="px-4 pt-4 text-ui text-tertiary">
+            {create.isPending || list.isPending ? "대화를 여는 중이에요" : "열린 대화가 없어요 — +로 새 대화를 열어요"}
+          </p>
+        ) : (
+          conversations.map((conversation) => (
+            <ConversationBody
+              key={conversation.id}
+              work={work}
+              conversation={conversation}
+              shown={conversation.id === active?.id}
+              quote={conversation.id === active?.id ? quote : null}
+              onOpenDoc={onOpenDoc}
+            />
+          ))
+        )}
       </div>
-      {problem && (
-        <p role="alert" className="px-4 pt-3 text-caption text-destructive">
-          {String(problem)}
-        </p>
-      )}
-      {conversations.length === 0 ? (
-        <p className="px-4 pt-4 text-ui text-tertiary">
-          {create.isPending || list.isPending ? "대화를 여는 중이에요" : "열린 대화가 없어요 — +로 새 대화를 열어요"}
-        </p>
-      ) : (
-        conversations.map((conversation) => (
-          <ConversationBody
-            key={conversation.id}
-            work={work}
-            conversation={conversation}
-            shown={conversation.id === active?.id}
-            quote={conversation.id === active?.id ? quote : null}
-            onOpenDoc={onOpenDoc}
-          />
-        ))
-      )}
-    </div>
+    </ChatDocsContext.Provider>
   );
 }
 

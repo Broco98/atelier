@@ -144,7 +144,7 @@ function WorkPanel({
           **`treeGeneration` key를 걸지 않는다** — 패널을 접는 것은 대화를 끝내는 일이 아니다(에이전트도 꺼지지 않는다, 스토리 16).
           호스트는 처음 보일 때 부른다(`visible`). */}
       <PanelBody view="chat" shown={view === "chat"}>
-        <ChatPane work={work.slug} visible={open && view === "chat"} onOpenDoc={onOpenDoc} />
+        <ChatPane work={work.slug} visible={open && view === "chat"} specDir={work.specDir} onOpenDoc={onOpenDoc} />
       </PanelBody>
       <PanelBody view="info" shown={view === "info"}>
         <WorkInfo
