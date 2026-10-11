@@ -134,7 +134,8 @@ pub async fn read_spec_file(slug: String, path: String) -> CmdResult<String> {
 }
 
 /// 워크트리 하나의 트리(git-integration 판 01 — files 칸). 워크트리가 없거나 git이 실패한 것은 답의 갈래다(코어 머리말).
-/// git을 두 번 기다리므로 work 목록처럼 blocking 풀에서 돈다 — 칸이 보일 때만 오지만, 큰 워크트리에서는 그 기다림이 수십 ms다.
+/// git을 두세 번 기다리므로(`ls-files` 둘, 걸린 폴더가 있으면 빠른 길을 배우는 `check-ignore` 하나 더) work 목록처럼 blocking
+/// 풀에서 돈다 — 칸이 보일 때만 오지만, 큰 워크트리에서는 그 기다림이 수십 ms다.
 #[tauri::command]
 pub async fn list_worktree_tree(slug: String, project: String) -> CmdResult<WorktreeTree> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -564,7 +565,8 @@ mod tests {
     ///   기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
     /// - `list_works`(티켓 15): 코어의 목록 조회가 워크트리마다 `git status` 프로세스를 기다린다. 명령의 모양(공개 async 함수)은
     ///   그대로다 — 등록 이름 검사와 다리가 그 자리를 본다.
-    /// - `list_worktree_tree`(git-integration 판 01): 워크트리 하나에 `git ls-files`를 두 번 기다린다.
+    /// - `list_worktree_tree`(git-integration 판 01): 워크트리 하나에 `git ls-files`를 두 번 기다리고, 걸린 폴더가 있으면(`target/` ·
+    ///   `node_modules/` — 거의 모든 워크트리) 감시 경로 판정의 빠른 길을 배우는 `git check-ignore`를 한 번 더 기다린다.
     /// - `list_worktree_folder`(git-integration 판 01): 걸린 폴더 하나를 디스크에서 한 겹 읽는다 — `node_modules/` 바로 아래는
     ///   수백 개다.
     /// - `processes_snapshot`(티켓 26): 화면이 열려 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms).
