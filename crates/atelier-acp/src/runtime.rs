@@ -11,7 +11,7 @@
 //! 런타임은 파일을 쓰지 않는다 — 받은 것을 원문으로 호출자에게 넘길 뿐이다. 기록은 호스트가 쓴다
 //! (구현 축의 엔진이 같은 런타임을 쓴다, three-axes 결정 12).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::fmt;
 use std::io::{BufRead, BufReader, Write};
@@ -21,9 +21,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use agent_client_protocol::{Agent as AgentRole, Client, ConnectionTo, Lines, UntypedMessage};
+use agent_client_protocol::{Agent as AgentRole, Client, ConnectionTo, JsonRpcRequest, Lines, Responder, UntypedMessage};
 use futures::channel::{mpsc as async_mpsc, oneshot};
 use futures::SinkExt;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::life::{Death, Life};
@@ -71,6 +72,47 @@ pub(crate) enum RuntimeEvent {
     /// 세션이 열린 뒤 에이전트가 사라졌다 — 수신 EOF와 자식의 끝 가운데 먼저 온 쪽. 한 번만 온다. 그 전에 받은
     /// stderr 줄은 다 넘긴 뒤다. 우리가 끈 것은 죽음이 아니다.
     Died(Death),
+    /// 권한 요청이 왔다. 대기 요청 표에 넣은 뒤에 넘긴다 — 이것을 받은 쪽은 곧바로 답할 수 있다.
+    PermissionAsked(PermissionAsked),
+    /// 걸린 권한 요청에 고른 선택지로 답한다. 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은 에이전트가 이어 보내는
+    /// update보다 앞에 선다.
+    PermissionAnswered { request_id: String, option_id: String },
+    /// 걸린 권한 요청이 거둬졌다 — 우리가 턴을 끊었거나, 에이전트가 답을 기다리지 않고 턴을 끝냈다. 그 턴의 끝보다 앞에
+    /// 넘긴다.
+    PermissionWithdrawn { request_id: String, reason: Withdrawal },
+}
+
+/// 권한 요청 하나(`session/request_permission`).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PermissionAsked {
+    /// JSON-RPC 요청 id를 글로 — 답할 때 이것으로 고른다. Codex는 0부터 센다.
+    pub request_id: String,
+    /// 요청의 params 원문. 선택지(`options`)는 에이전트가 준 그대로다.
+    pub request: Value,
+    /// 도구 요지 — 요청의 `toolCall`에서 빈 칸(제목 · 종류 · 입력)을 같은 id의 앞선 `tool_call`로 채운 것. Codex의 MCP
+    /// 승인은 id · 종류 · 상태만 싣는다(워크플로 S21). 이을 것이 없으면 받은 그대로다.
+    pub tool_call: Value,
+}
+
+/// 권한 요청이 거둬진 까닭.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Withdrawal {
+    /// 우리가 턴을 끊었다 — 그 요청에 `cancelled`로 답했다.
+    Stopped,
+    /// 에이전트가 답을 기다리지 않고 턴을 끝냈다.
+    Agent,
+}
+
+/// 권한 답이 가지 못한 까닭.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AnswerError {
+    /// 걸려 있지 않은 요청 — 이미 답했거나 거둬졌거나, 그런 요청이 없었다.
+    Closed,
+    /// 그 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
+    UnknownOption,
+    /// 에이전트에 답을 보내지 못했다(연결이 끊겼다).
+    Send(String),
 }
 
 /// 턴 하나의 끝.
@@ -100,7 +142,85 @@ pub(crate) struct Turns {
     /// 지금 턴의 「우리가 cancel을 보냈나」. 턴마다 새 표지를 세우고, 그 턴의 답이 자기 표지를 읽는다 — 앞 턴의 멈추기가
     /// 다음 턴에 묻어 가지 않는다.
     cancel_sent: Arc<Mutex<Arc<AtomicBool>>>,
+    /// 대기 요청 표 — 수신 루프의 권한 요청 처리기와 함께 쥔다.
+    permissions: Arc<Permissions>,
 }
+
+/// 대기 요청 표 — 답을 기다리는 권한 요청들과, 빈 `toolCall`을 채울 앞선 도구 요지들.
+///
+/// 권한 요청을 받은 자리(수신 루프)에서 사람을 기다릴 수는 없다 — 붙잡으면 답하는 동안 에이전트의 다른 메시지가 하나도
+/// 들어오지 못한다. 그래서 **답할 자리만 여기 챙겨 두고 루프를 놓는다**(8월 크레이트 `Pending` 그대로).
+///
+/// 표의 잠금은 넘기는 일까지 감싼다 — 답 · 거두기 · 턴 끝의 거두기가 서로 엇갈려도 한 요청은 한 번만 닫히고, 닫힌 줄이
+/// 턴 끝보다 앞에 선다. 잠금 안에서 부르는 sink는 기록만 하고 대화의 잠금을 쥐지 않는다.
+#[derive(Default)]
+struct Permissions {
+    pending: Mutex<Vec<Pending>>,
+    /// 앞선 `tool_call`의 요지(제목 · 종류 · 입력) — 도구 id로 찾는다. 세션이 사는 동안 쥔다.
+    tool_calls: Mutex<HashMap<String, serde_json::Map<String, Value>>>,
+}
+
+/// 답을 기다리는 권한 요청 하나 — 답할 자리와 에이전트가 준 선택지들.
+struct Pending {
+    request_id: String,
+    option_ids: Vec<String>,
+    responder: Responder<Value>,
+}
+
+/// 도구 요지로 채우는 칸 — 제목 · 종류 · 입력(워크플로 S21).
+const TOOL_SUMMARY: [&str; 3] = ["title", "kind", "rawInput"];
+
+impl Permissions {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<Pending>> {
+        self.pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// `session/update` 하나를 본다 — `tool_call`이면 요지를 적고, `tool_call_update`면 온 칸을 덧쓴다.
+    fn note_update(&self, params: &Value) {
+        let update = &params["update"];
+        let (Some(kind), Some(id)) = (update["sessionUpdate"].as_str(), update["toolCallId"].as_str()) else { return };
+        if kind != "tool_call" && kind != "tool_call_update" {
+            return;
+        }
+        let mut calls = self.tool_calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let summary = calls.entry(id.to_owned()).or_default();
+        for key in TOOL_SUMMARY {
+            if let Some(value) = update.get(key).filter(|value| !value.is_null()) {
+                summary.insert(key.to_owned(), value.clone());
+            }
+        }
+    }
+
+    /// 요청의 `toolCall`에서 비었거나 없는 요지 칸을 같은 id의 앞선 도구 요지로 채운다. 온 칸은 그대로 둔다.
+    fn fill(&self, tool_call: &Value) -> Value {
+        let mut filled = tool_call.clone();
+        let Some(id) = tool_call["toolCallId"].as_str() else { return filled };
+        let calls = self.tool_calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (Some(summary), Some(fields)) = (calls.get(id), filled.as_object_mut()) else { return filled };
+        for (key, value) in summary {
+            if fields.get(key).is_none_or(Value::is_null) {
+                fields.insert(key.clone(), value.clone());
+            }
+        }
+        filled
+    }
+
+    /// 걸린 요청을 모두 거둔다 — 까닭을 넘기고 `cancelled`로 답한다. 표의 잠금을 쥔 채 부른다.
+    fn withdraw_all(pending: &mut Vec<Pending>, reason: Withdrawal, sink: &Sink) {
+        for asked in pending.drain(..) {
+            sink(RuntimeEvent::PermissionWithdrawn { request_id: asked.request_id, reason });
+            // 답을 기다리지 않는 에이전트에게도 답은 간다 — JSON-RPC의 요청은 모두 답을 받는다. 연결이 끊겼으면 갈 곳이 없다.
+            let _ = asked.responder.respond(json!({"outcome": {"outcome": "cancelled"}}));
+        }
+    }
+}
+
+/// `session/request_permission` 요청을 **원문 그대로** 받는다 — 카드에 무엇을 그릴지는 화면이 정하고, 기록은 에이전트가
+/// 보낸 것을 그대로 안는다(8월 크레이트 그대로). 답도 날 JSON이다.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonRpcRequest)]
+#[request(method = "session/request_permission", response = serde_json::Value)]
+#[serde(transparent)]
+struct RawPermissionRequest(Value);
 
 /// 열린 세션 — 에이전트가 준 원문 그대로다.
 pub(crate) struct Opened {
@@ -210,21 +330,49 @@ pub(crate) fn open(
     let (outcome_tx, outcome_rx) = mpsc::channel::<Result<(Opened, ConnectionTo<AgentRole>), Refusal>>();
     let (release, released) = oneshot::channel::<()>();
     let notified = Arc::clone(&sink);
+    let asked = Arc::clone(&sink);
+    let permissions = Arc::new(Permissions::default());
+    let noted = Arc::clone(&permissions);
+    let tabled = Arc::clone(&permissions);
     std::thread::spawn(move || {
         let failure = outcome_tx.clone();
-        let builder = Client.builder().name("atelier").on_receive_notification(
-            // 수신 루프 안에서 돈다 — 콜백 하나가 끝나야 다음 메시지를 보므로 **도착 순서가 곧 넘기는 순서**다.
-            async move |message: UntypedMessage, _cx: ConnectionTo<AgentRole>| {
-                match message.method.as_str() {
-                    "session/update" => notified(RuntimeEvent::Update(message.params)),
-                    "_auth/status_update" => notified(RuntimeEvent::AuthStatus(mask_account(message.params))),
-                    // 그 밖의 알림은 이 판이 쓰지 않는다.
-                    _ => {}
-                }
-                Ok(())
-            },
-            agent_client_protocol::on_receive_notification!(),
-        );
+        let builder = Client
+            .builder()
+            .name("atelier")
+            .on_receive_notification(
+                // 수신 루프 안에서 돈다 — 콜백 하나가 끝나야 다음 메시지를 보므로 **도착 순서가 곧 넘기는 순서**다.
+                async move |message: UntypedMessage, _cx: ConnectionTo<AgentRole>| {
+                    match message.method.as_str() {
+                        "session/update" => {
+                            noted.note_update(&message.params);
+                            notified(RuntimeEvent::Update(message.params));
+                        }
+                        "_auth/status_update" => notified(RuntimeEvent::AuthStatus(mask_account(message.params))),
+                        // 그 밖의 알림은 이 판이 쓰지 않는다.
+                        _ => {}
+                    }
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_notification!(),
+            )
+            .on_receive_request(
+                // 권한 요청. **여기서 사람을 기다리지 않는다** — 이 콜백도 수신 루프 안에서 돌아, 붙잡으면 답하는 동안 다른
+                // 메시지가 멎는다. 답할 자리를 표에 넣고 곧바로 놓는다. 표에 먼저 넣고 넘긴다 — 넘긴 것을 본 사람이 곧바로
+                // 눌러도 답할 자리가 있다.
+                async move |request: RawPermissionRequest, responder: Responder<Value>, _cx: ConnectionTo<AgentRole>| {
+                    let request = request.0;
+                    let request_id = responder.id().to_string();
+                    let option_ids = request["options"]
+                        .as_array()
+                        .map(|options| options.iter().filter_map(|option| option["optionId"].as_str()).map(str::to_owned).collect())
+                        .unwrap_or_default();
+                    let tool_call = tabled.fill(&request["toolCall"]);
+                    tabled.lock().push(Pending { request_id: request_id.clone(), option_ids, responder });
+                    asked(RuntimeEvent::PermissionAsked(PermissionAsked { request_id, request, tool_call }));
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_request!(),
+            );
         let ran = futures::executor::block_on(builder.connect_with(
             transport,
             async move |cx: ConnectionTo<AgentRole>| {
@@ -262,6 +410,7 @@ pub(crate) fn open(
                 session_id: opened.session_id.clone(),
                 sink: Arc::downgrade(&agent.sink),
                 cancel_sent: Arc::new(Mutex::new(Arc::new(AtomicBool::new(false)))),
+                permissions,
             });
             // 이제부터의 끝은 죽음이다. 그 전의 끝은 열기 실패로 알렸다.
             agent.life.arm();
@@ -524,6 +673,7 @@ impl Turns {
         let cancel_sent = Arc::new(AtomicBool::new(false));
         *self.cancel_sent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Arc::clone(&cancel_sent);
         let sink = self.sink.clone();
+        let permissions = Arc::clone(&self.permissions);
         self.connection
             .send_request(message)
             .on_receiving_result(async move |result| {
@@ -536,6 +686,9 @@ impl Turns {
                 }
                 // 끈 뒤에 온 답이다 — 받을 쪽이 없다.
                 let Some(sink) = sink.upgrade() else { return Ok(()) };
+                // 답을 받기 전에 에이전트가 턴을 끝냈다 — 걸린 권한 요청은 거둬진 것이다. 턴 끝보다 앞에 넘긴다. 표의 잠금을
+                // 턴 끝을 넘기기 전에 놓는다 — 턴 끝을 받는 쪽은 대화의 잠금을 쥔다.
+                Permissions::withdraw_all(&mut permissions.lock(), Withdrawal::Agent, &sink);
                 let result = result.map_err(|error| {
                     serde_json::to_value(&error).unwrap_or_else(|_| json!({"message": error.to_string()}))
                 });
@@ -548,12 +701,48 @@ impl Turns {
     /// 도는 턴을 멈춘다 — `session/cancel`을 보낸다. 기다리지 않는다: 턴의 끝(`cancelled`)은 sink로 오고, 그 턴 끝에
     /// 「우리가 멈췄나」가 실린다. 에이전트는 cancel 뒤에도 update를 보낼 수 있다(Codex의 돌던 명령, three-axes 결정 28)
     /// — 턴 끝 뒤에 온 것도 원문 그대로 sink로 간다.
+    ///
+    /// 걸린 권한 요청은 `cancelled`로 답하고 「거둬짐(턴이 끊김)」을 넘긴다(ACP 규칙). 진짜 codex-acp는 걸린 요청의 답을
+    /// 기다리지 않고 cancel 뒤 곧바로 턴을 끝내므로(실측 G2), cancel을 보내고 요청을 거두는 동안 대기 요청 표를 쥔다 — 턴 끝이
+    /// 먼저 와도 그 끝은 표가 빈 뒤에 넘어가, 「거둬짐(에이전트)」로 잘못 적히지 않고 거둬진 줄이 턴 끝보다 앞에 선다.
     pub(crate) fn cancel(&self) -> Result<(), String> {
+        let mut pending = self.permissions.lock();
         // 보내기 전에 세운다 — 답이 먼저 와도 표지를 읽는다.
         self.cancel_sent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).store(true, Ordering::SeqCst);
         let message = UntypedMessage::new("session/cancel", json!({"sessionId": self.session_id}))
             .map_err(|error| error.to_string())?;
-        self.connection.send_notification(message).map_err(|error| format!("에이전트에 멈추기를 보내지 못했습니다: {error}"))
+        self.connection
+            .send_notification(message)
+            .map_err(|error| format!("에이전트에 멈추기를 보내지 못했습니다: {error}"))?;
+        if let Some(sink) = self.sink.upgrade() {
+            Permissions::withdraw_all(&mut pending, Withdrawal::Stopped, &sink);
+        }
+        Ok(())
+    }
+
+    /// 걸린 권한 요청에 고른 선택지로 답한다. 기다리지 않는다 — 답을 받은 에이전트가 이어 가는 턴은 sink로 온다.
+    ///
+    /// 걸려 있지 않은 요청(이미 답했거나 거둬졌다)이나 준 선택지에 없는 optionId는 읽히는 오류이고, 요청은 그대로 걸려
+    /// 있다 — 맞는 답을 다시 줄 수 있다. 답은 넘긴 뒤에 보낸다 — 기록에서 답이 그 뒤의 update보다 앞에 선다.
+    pub(crate) fn answer(&self, request_id: &str, option_id: &str) -> Result<(), AnswerError> {
+        let mut pending = self.permissions.lock();
+        let at = pending.iter().position(|asked| asked.request_id == request_id).ok_or(AnswerError::Closed)?;
+        if !pending[at].option_ids.iter().any(|option| option == option_id) {
+            return Err(AnswerError::UnknownOption);
+        }
+        let asked = pending.remove(at);
+        if let Some(sink) = self.sink.upgrade() {
+            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, option_id: option_id.to_owned() });
+        }
+        asked
+            .responder
+            .respond(json!({"outcome": {"outcome": "selected", "optionId": option_id}}))
+            .map_err(|error| AnswerError::Send(format!("에이전트에 권한 답을 보내지 못했습니다: {error}")))
+    }
+
+    /// 답을 기다리는 권한 요청이 있나 — 그동안은 대기 줄이 가지 않는다(S13).
+    pub(crate) fn permission_pending(&self) -> bool {
+        !self.permissions.lock().is_empty()
     }
 }
 

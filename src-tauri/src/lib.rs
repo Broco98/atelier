@@ -406,6 +406,7 @@ pub fn run() {
             commands::chat_edit_queued,
             commands::chat_delete_queued,
             commands::chat_send_now,
+            commands::chat_answer_permission,
             commands::chat_start_login,
             commands::chat_cancel_login,
         ])

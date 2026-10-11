@@ -452,6 +452,30 @@ impl Sandbox {
             .collect()
     }
 
+    /// 가짜 ACP 에이전트가 보낸 요청(권한 요청)에 받은 답들 — 원문 그대로, 받은 차례대로.
+    pub fn acp_responses(&self, session_id: &str) -> Vec<Value> {
+        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.responses")))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("답 영수증 줄은 JSON"))
+            .collect()
+    }
+
+    /// 가짜가 받은 답이 `done`을 채울 때까지 기다린다 — 답은 가짜의 스레드에서 적힌다.
+    pub fn wait_acp_responses(&self, session_id: &str, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            let responses = self.acp_responses(session_id);
+            if done(&responses) {
+                return responses;
+            }
+            if Instant::now() > deadline {
+                panic!("가짜가 받은 답이 기다린 꼴이 되지 않았다:\n{}", lines_text(&responses));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     /// 그 대화의 에이전트 쪽 세션 id(`agents.json`).
     pub fn agent_session_id(&self, slug: &str, conversation: &str) -> String {
         self.agents_row(slug, conversation)["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned()
