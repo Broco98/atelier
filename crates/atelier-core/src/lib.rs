@@ -37,6 +37,9 @@ mod order;
 mod recent;
 mod search;
 mod layout;
+mod worktree;
+mod worktree_file;
+mod worktree_watch;
 
 // 원자 쓰기 하나만 낸다 — 앱의 인스턴스 기록이 같은 규칙으로 쓴다(`atomic.rs`의 그 함수 주석). 읽기
 // (`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록 없음」이라 기본값으로 눕는 그 읽기와 뜻이 다르다.
@@ -70,3 +73,6 @@ pub use works::{
     move_work, read_spec_file, read_work_file, remove_work, render_record, start_work, update_work_pinned,
     update_work_status, update_work_title, ArchiveEntry, WorkReport, WorktreeError,
 };
+pub use worktree::{list_worktree_folder, list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};
+pub use worktree_file::{read_worktree_file, WorktreeFile};
+pub use worktree_watch::{worktree_changes, WorktreeChange};

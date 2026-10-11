@@ -1,4 +1,5 @@
 import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
+import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
@@ -7,6 +8,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
+import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -183,6 +185,68 @@ export const WORKS: WorkView[] = [
     },
   },
 ];
+
+/**
+ * 워크트리 트리를 **손으로 적는** 조각들(git-integration 판 01 — files 칸). 이 층에는 git이 없다 — 트리는 코어가 세워 보낸
+ * 모양(폴더 먼저 · 이름순, 걸린 폴더는 「아직 안 읽음」)을 옮겨 적은 것이고, 화면은 받은 순서 그대로 그린다. 그 규칙 자체는
+ * L1(`worktree.rs`)이 진짜 저장소로 잰다. 한 시나리오만 쓰는 트리(넘치게 긴 트리 따위)는 그 spec이 이것으로 짓는다.
+ */
+export const worktreeFile = (path: string, ignored = false): WorktreeEntry => ({
+  name: path.slice(path.lastIndexOf("/") + 1),
+  path,
+  kind: "file",
+  ignored,
+  children: [],
+});
+export const worktreeFolder = (path: string, children: WorktreeEntry[]): WorktreeEntry => ({
+  ...worktreeFile(path),
+  kind: "folder",
+  children,
+});
+/** gitignore에 걸린 폴더 — 자식을 읽지 않은 채 온다. */
+const ignoredFolder = (path: string): WorktreeEntry => ({ ...worktreeFile(path, true), kind: "folder", children: null });
+/** 하위 모듈 — 다른 저장소라 펼치지 않는 항목이다(S3). 코어는 폴더 쪽에 세운다. */
+const worktreeSubmodule = (path: string): WorktreeEntry => ({ ...worktreeFile(path), kind: "submodule" });
+/** 심링크 — 따라가지 않고 그 자리의 항목이다. 폴더를 가리켜도 파일 쪽에 선다. */
+const worktreeSymlink = (path: string): WorktreeEntry => ({ ...worktreeFile(path), kind: "symlink" });
+
+/**
+ * 프로젝트별 워크트리 트리(`list_worktree_tree`의 답). **인자 `project`로만 가른다** — `billing`은 `pinned-work`와
+ * `multi-work`가 함께 쓰는 답이다. 접힘 기억이 work마다 따로인지는 같은 트리로 재야 갈린다.
+ *
+ * `billing`에 **files 칸이 그리는 갈래가 다 있다** — 점 폴더(`.github`), 걸린 폴더(`dist`), 두 겹 폴더(`src/api`), 하위
+ * 모듈(`vendor-ui` — 제 글리프와 「하위 모듈」), 걸린 점 파일(`.env`), 확장자 없는 점 파일(`.gitignore`), 폴더를 가리키는
+ * 심링크(`docs` — 펼치지 않는 파일 행). 파일 행의 이름에는 확장자 꼬리표가 붙는다(`MD README.md` — `SpecTree`의 `FileGlyph`).
+ */
+export const WORKTREE_TREES: Record<string, WorktreeTree> = {
+  billing: {
+    kind: "listed",
+    entries: [
+      worktreeFolder(".github", [worktreeFile(".github/ci.yml")]),
+      ignoredFolder("dist"),
+      worktreeFolder("src", [worktreeFolder("src/api", [worktreeFile("src/api/client.ts")]), worktreeFile("src/index.ts")]),
+      worktreeSubmodule("vendor-ui"),
+      worktreeFile(".env", true),
+      worktreeFile(".gitignore"),
+      worktreeSymlink("docs"),
+      worktreeFile("README.md"),
+    ],
+  },
+  ledger: {
+    kind: "listed",
+    entries: [worktreeFolder("lib", [worktreeFile("lib/books.rs")]), worktreeFile("Cargo.toml")],
+  },
+};
+
+/**
+ * 걸린 폴더의 **한 겹**(`list_worktree_folder`의 답, git-integration 티켓 02). **인자 `path`로만 가른다** — 걸린 폴더는
+ * `billing`의 `dist` 하나라 경로가 곧 그 폴더다. 안의 것은 모두 걸린 것이고, 자식 폴더(`dist/assets`)는 다시 「아직 안
+ * 읽음」이라 펼치면 다음 겹을 묻는다. 한 겹만 읽는 규칙 자체는 L1(`worktree.rs`)이 진짜 디스크로 잰다.
+ */
+export const WORKTREE_FOLDERS: Record<string, WorktreeTree> = {
+  dist: { kind: "listed", entries: [ignoredFolder("dist/assets"), worktreeFile("dist/app.js", true)] },
+  "dist/assets": { kind: "listed", entries: [worktreeFile("dist/assets/logo.svg", true)] },
+};
 
 /**
  * 작업 행을 끌어 놓았을 때 `move_work`가 돌려주는 목록(UI개선 티켓 05). **인자와 무관한 한 벌이고,
@@ -722,6 +786,50 @@ export const answerByArg = (
 ): ArgAnswers => new ArgAnswers(arg, answers, options && { value: options.otherwise });
 
 /**
+ * 워크트리 파일 읽기의 **경로별** 답(git-integration 판 01 — 파일 탭의 본문). 표에 없는 경로는 「없음」이다 — 지운 파일 ·
+ * 주소가 없는 경로를 가리킨 탭이 그 갈래다(스토리 61 · 82).
+ *
+ * **경로 하나로 가른다** — 인자별 답은 인자 하나만 보므로(`ArgAnswers`) 갈래마다 다른 경로를 둔다. 「워크트리 없음」은
+ * 그 work에 없는 프로젝트를 가리키는 주소가 받는 답이라 그 주소만 쓰는 경로(`ghost.ts`)에 매어 둔다.
+ */
+export const WORKTREE_FILES: Record<string, WorktreeFile> = {
+  // 키워드 · 주석 · 문자열이 섞인 짧은 TS — 줄 번호 붙은 원문을 줄 단위로 잰다.
+  "src/main.ts": {
+    kind: "text",
+    content: 'const answer = 42;\n// 끝까지 읽는다\nexport default "answer";\n',
+    lines: 3,
+  },
+  // **한 줄에** 키워드 · 문자열 · 주석 — WebKit 오토큰 검사(티켓 08)가 강조가 끝난 뒤 셋이 따로 칠해졌는지 잰다.
+  "src/greeting.ts": { kind: "text", content: 'const greeting = "안녕"; // 인사\n', lines: 1 },
+  "README.md": { kind: "text", content: "# 빌링\n", lines: 1 },
+  "ghost.ts": { kind: "worktreeMissing" },
+  "secret.txt": { kind: "outsideLink", target: "~/secrets/token.txt" },
+  // 종류별 몸(티켓 09). 글이 아닌 것은 내용 없이 크기(바이트)만 온다 — 그림은 화면이 asset URL로 건다. 거는 자리는 코어가 링크를
+  // 푼 실제 경로다(`realPath`) — 링크가 아니면 부른 경로 그대로이고, 워크트리 안을 가리키는 링크면 그 대상이다. 고친 시각
+  // (`modifiedMs`)은 크기와 함께 URL에 붙는 판이다(티켓 10).
+  "shots/home.png": { kind: "image", size: 48_213, realPath: "shots/home.png", modifiedMs: 1_760_000_000_000 },
+  "docs/logo.png": { kind: "image", size: 2_048, realPath: "assets/logo.png", modifiedMs: 1_760_000_000_000 },
+  // 점으로 시작하는 이름 아래의 그림 — asset 프로토콜의 범위가 그 자리를 열지 않는다(G4, 티켓 11). 링크면 푼 자리로 가른다:
+  // 이름은 점이 없어도 대상이 점 폴더 안이면 막힌다.
+  ".github/assets/shot.png": {
+    kind: "image",
+    size: 3_512,
+    realPath: ".github/assets/shot.png",
+    modifiedMs: 1_760_000_000_000,
+  },
+  "docs/banner.png": { kind: "image", size: 1_200, realPath: ".media/banner.png", modifiedMs: 1_760_000_000_000 },
+  "build/app.wasm": { kind: "binary", size: 1_536 },
+  "legacy.txt": { kind: "notUtf8", size: 300 },
+  "logs/huge.log": { kind: "tooLarge", size: 7_864_320 },
+  // svg는 그림 확장자이기도 하지만 코어가 텍스트로 읽는다(결정 36).
+  "icon.svg": {
+    kind: "text",
+    content: '<svg xmlns="http://www.w3.org/2000/svg">\n  <circle r="4"/>\n</svg>\n',
+    lines: 3,
+  },
+};
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -900,6 +1008,14 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 던지는 것을 react-query가 삼켜 콘솔에도 안 남는다.
   touch_recent_work: null,
   read_spec_file: answerByArg("path", SPEC_FILE_BODIES, { otherwise: SPEC_FALLBACK_BODY }),
+  // files 칸이 보일 때 프로젝트마다 한 번, 그리고 새로고침 버튼에 나간다(git-integration 판 01). **기본 답이 없다** — 표에 없는
+  // 프로젝트로 읽기가 나가면 그 자리에서 물린다. 태우는 시나리오는 `files-panel.spec.ts`다.
+  list_worktree_tree: answerByArg("project", WORKTREE_TREES),
+  // files 칸에서 걸린 폴더를 펼칠 때, 그리고 펼쳐 둔 채 새로고침 버튼에 나간다(git-integration 티켓 02). **기본 답이 없다** —
+  // 표에 없는 폴더로 읽기가 나가면 그 자리에서 물린다. 태우는 시나리오는 `files-panel.spec.ts`다.
+  list_worktree_folder: answerByArg("path", WORKTREE_FOLDERS),
+  // 파일 탭이 본문에 설 때 나간다(git-integration 판 01). 표에 없는 경로는 「없음」이다(`WORKTREE_FILES` 머리말).
+  read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
   //
   // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` 머리말이

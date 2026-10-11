@@ -187,6 +187,11 @@ test("프로젝트 거르개는 이름과 열림을 말하고 지금 값이 선�
 // 1.6초가 아니라 5초(Base UI 기본)여도 기다리다 보면 사라져 초록이다. 그래서 1.5초에는 남아 있고, 1.6초를 넘기면
 // 곧바로 사라지는 것까지 본다. Base UI는 포인터가 토스트 위에 있거나 창이 포커스를 잃으면 시계를 세우므로(S27),
 // 누른 뒤 포인터를 치운다. 사라지는 전이는 프레임(rAF)을 타서 마지막에는 시계를 다시 흐르게 둔다.
+//
+// **누르기 전에 항목의 패널이 가라앉기를 기다린다.** 처음 뜰 때 문서가 도착하며 트랙이 한 번 자란다(180ms). 그 도중에
+// 누르면 Playwright가 잘린 버튼을 보이려고 패널 안쪽 칸(`overflow-hidden`)을 굴리고, 트랙이 다 자라면 그 굴림이 0으로
+// 돌아와 버튼이 포인터 밑에서 미끄러진다 — 누름과 뗌이 다른 곳에 떨어져 클릭이 버튼에 안 닿는다. 부하 아래 가끔 빨갰고,
+// 누름과 뗌 사이를 200ms 벌리면 80번에 5번 빨갰다(실측 2026-10-11). 이 전이는 CSS라 세운 시계와 상관없이 돈다.
 test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서고, 1.6초가 지나면 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
@@ -196,6 +201,9 @@ test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서�
   const copy = page.getByRole("button", { name: "샷.png 경로 복사", exact: true });
   await expect(copy).toBeAttached();
   await expect(messages).toHaveText("");
+  const panelId = await page.getByRole("button", { name: shipped.title }).getAttribute("aria-controls");
+  if (!panelId) throw new Error("펼친 항목이 패널을 가리키지 않는다");
+  await expect.poll(() => page.locator(`[id="${panelId}"]`).evaluate((el) => el.getAnimations().length)).toBe(0);
 
   await 시계를세운다(page);
   await copy.click();

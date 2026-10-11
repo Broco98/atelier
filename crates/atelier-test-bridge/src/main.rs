@@ -88,6 +88,14 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_spec_file", |a| {
         ok(atelier_core::read_spec_file(&works_dir(), &text(a, "slug")?, &text(a, "path")?))
     }),
+    // 워크트리 읽기는 다른 읽기 명령과 같이 코어를 진짜로 탄다(git-integration 판 01 — 진짜 git이 판정한다).
+    ("list_worktree_tree", |a| {
+        ok(atelier_core::list_worktree_tree(&works_dir(), &text(a, "slug")?, &text(a, "project")?))
+    }),
+    ("list_worktree_folder", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::list_worktree_folder(&works_dir(), &slug, &project, &path))
+    }),
     ("list_archive", |_| ok(atelier_core::list_archive(&archive_dir()))),
     // 아카이브 문서 목록도 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구
     // (`with_archived_spec_tree`)를 진짜로 탄다.
@@ -97,6 +105,11 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(), &text(a, "slug")?, &text(a, "path")?))
+    }),
+    // 워크트리 파일 읽기도 다른 읽기 명령과 같이 코어를 진짜로 탄다(git-integration 판 01).
+    ("read_worktree_file", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path))
     }),
     ("search", |a| {
         ok(atelier_core::search(

@@ -323,7 +323,7 @@ describe("앱으로 돌아가기", () => {
   it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
     const { router, history } = setup(["/works/work-b"]);
     await router.load();
-    rememberView("work-b", { tab: "terminal", split: null, file: null });
+    rememberView("work-b", { tab: "terminal", split: null, file: null, code: null });
 
     await router.navigate({ to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });

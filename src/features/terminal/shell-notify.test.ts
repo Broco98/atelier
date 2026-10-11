@@ -359,6 +359,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
   });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
     shells,
+    bundles: {},
     activeByOwner: {},
     nextId: shells.length + 1,
   });
@@ -507,7 +508,7 @@ describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
     return 사건들.map((one, at) => {
       attention = nextAttention(attention, one);
       const rows = notifyShells(
-        { shells: [셸(attention)], activeByOwner: {}, nextId: 2 },
+        { shells: [셸(attention)], bundles: {}, activeByOwner: {}, nextId: 2 },
         { activeIds: [], focused: false },
         () => "터미널 신호",
       );
