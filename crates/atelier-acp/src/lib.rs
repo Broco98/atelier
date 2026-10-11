@@ -14,7 +14,7 @@ mod runtime;
 mod spec_changes;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
-pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, TranslatorCommand};
+pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, TranslatorCommand};
 pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};
 pub use records::{RecordKind, RecordLine};

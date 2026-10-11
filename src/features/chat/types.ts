@@ -1,4 +1,4 @@
-// 대화창이 대화 호스트와 주고받는 값(three-axes 티켓 05). 모양의 정본은 크레이트 `atelier-acp`의 serde이고, 여기는 그
+// 대화창이 대화 호스트와 주고받는 값(three-axes 티켓 05 · 07). 모양의 정본은 크레이트 `atelier-acp`의 serde이고, 여기는 그
 // 말을 옮겨 적는다 — 칸 이름이 어긋나면 tsc도 IPC 검사도 못 보므로, Rust 쪽 검사가 그 꼴을 글자로 못박는다
 // (`engine_check.rs`의 「화면이 읽는 꼴」 · `chat.rs`의 이벤트 꼴).
 
@@ -17,6 +17,17 @@ export interface Conversation {
   plan: boolean | null;
   /** 기록에 마지막으로 적힌 줄의 seq. 화면은 이 다음부터 기록 줄 이벤트로 잇는다. */
   lastSeq: number;
+  /** 대기 줄 — 호스트 메모리에만 있어 앱을 다시 켠 뒤와 에이전트가 떠 있지 않은 대화에서는 비어 있다. */
+  queue: QueuedMessage[];
+}
+
+/** 대기 줄의 말 하나 — 턴이 도는 동안 보낸 말이다(`atelier_acp::QueuedMessage`). 입력창 위 「대기 중」에 선다. */
+export interface QueuedMessage {
+  /** 대기 id — 고치기 · 지우기 · 지금 보내기가 이것으로 고른다. */
+  id: string;
+  text: string;
+  /** 「지금 보내기」를 눌러 도는 턴의 멈춤을 기다리는 말이다. 그런 말은 늘 맨 앞에 하나뿐이다. */
+  sendNow: boolean;
 }
 
 /**
@@ -43,6 +54,13 @@ export interface ChatRecordEvent {
   conversation: string;
   seq: number;
   line: RecordLine;
+}
+
+/** 대기 줄 바뀜 이벤트가 싣는 것 — 그 대화의 대기 줄 전체다. */
+export interface ChatQueueEvent {
+  work: string;
+  conversation: string;
+  queue: QueuedMessage[];
 }
 
 /**

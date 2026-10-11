@@ -345,6 +345,15 @@ impl Sandbox {
             .collect()
     }
 
+    /// 가짜 ACP 에이전트가 그 세션을 연 뒤 받은 메시지의 메서드들 — 받은 차례대로(요청과 알림 모두).
+    pub fn acp_inbox(&self, session_id: &str) -> Vec<String> {
+        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.inbox")))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
     /// 그 대화의 에이전트 쪽 세션 id(`agents.json`).
     pub fn agent_session_id(&self, slug: &str, conversation: &str) -> String {
         self.agents_row(slug, conversation)["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned()
@@ -675,6 +684,20 @@ impl Events {
             std::thread::sleep(Duration::from_millis(20));
         }
     }
+}
+
+/// 그 대화의 기록 줄 이벤트들을 파일 줄과 같은 꼴(JSON)로.
+pub fn emitted(events: &Events, slug: &str, id: &str) -> Vec<Value> {
+    events
+        .all()
+        .into_iter()
+        .filter_map(|event| match event {
+            HostEvent::Record { work, conversation, line } if work == slug && conversation == id => {
+                Some(serde_json::to_value(line).unwrap())
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// 테스트 프로세스 자신의 Unix 세션 id.

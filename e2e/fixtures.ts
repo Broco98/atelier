@@ -928,6 +928,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     mode: null,
     plan: null,
     lastSeq: 0,
+    queue: [],
   } satisfies Conversation,
   // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   chat_send: null,
