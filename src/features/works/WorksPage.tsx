@@ -606,8 +606,8 @@ function WorksPage({
    * files 트리에서 파일 행을 눌렀다 — 「파일 탭 열기」다(스토리 23 — replace: 트리 훑기는 뒤로가기 기록을 안 쌓는다, 스토리 59).
    * 이미 열린 파일이면 그 탭으로 간다(스토리 24 — 묶음이 정체로 가른다).
    *
-   * **다시 누르면 닫힌다**(git-integration 결정 30 — 사용자가 더한 UX). 누른 파일이 **지금 보이는 탭**(본문에 선 파일 탭)의
-   * 파일이면 그 탭을 닫는다. 닫는 길은 `×` · ⌘W와 같다 — 확인 없이 빼고, 이웃이 켜지고 주소가 따라오는 것은 묶음 → 주소가
+   * **다시 누르면 닫힌다**(git-integration 결정 30 — 사용자가 더한 UX). 누른 파일이 **지금 보이는 탭**(본문이나 분할의 묶음 열에
+   * 선 파일 탭 — 티켓 07)의 파일이면 그 탭을 닫는다. 분할이면 포커스가 문서 열에 있어도 옆 열에 보이는 탭이다. 닫는 길은 `×` · ⌘W와 같다 — 확인 없이 빼고, 이웃이 켜지고 주소가 따라오는 것은 묶음 → 주소가
    * 한다. 열려 있어도 뒤에 있는 탭이면 그 탭으로 갈 뿐이다(스토리 34).
    *
    * **둘째 클릭은 닫기로 치지 않는다**(S15 — `clicks`는 연속 클릭의 몇 번째인가, 키보드로 누르면 0). 더블클릭의 첫 클릭이 연
@@ -617,14 +617,15 @@ function WorksPage({
   const pressCode = useCallback(
     (target: CodeTarget, clicks: number) => {
       const shown = codeTarget !== null && code === codeRefOf(target);
-      const id = shown && clicks < 2 ? codeTabClosedByTab(tab, tabOwner, terminalStore.state) : null;
-      if (id !== null) {
-        closeCodeTab(id);
+      // 보이는 파일 탭은 묶음의 지금 탭이다 — 주소를 따라 켜졌다(「주소 → 묶음」).
+      const visible = shown && clicks < 2 && tabOwner !== null ? activeTabOf(terminalStore.state, tabOwner) : null;
+      if (visible?.kind === "code") {
+        closeCodeTab(visible.id);
         return;
       }
       onOpenCode(target.project, target.path, false);
     },
-    [codeTarget, code, tab, tabOwner, onOpenCode],
+    [codeTarget, code, tabOwner, onOpenCode],
   );
 
   // 바탕 줄의 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼

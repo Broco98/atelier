@@ -563,3 +563,38 @@ test("분할 중 ⌘W로 파일 탭을 닫아 이웃이 셸이면 묶음 열이 
   await expect(page.getByRole("alertdialog")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 수용 기준 「트리에서 연 파일도 묶음 열에 선다」(스토리 54 · 티켓 05의 「파일 탭 열기」). 그 열에 선 파일은 **지금 보이는
+// 탭**이라, 문서 열을 보던 중이어도 트리에서 다시 누르면 닫힌다(결정 30) — 묶음 열은 이웃(셸)으로 바뀌고 분할은 그대로다.
+test("분할 중 트리에서 연 파일이 묶음 열에 서고, 다시 누르면 닫혀 이웃 셸이 그 열에 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${codeWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "terminal"]);
+
+  // 분할을 켜면 패널이 접힌다(결정 88) — 레일의 files 칸을 누르면 그 칸으로 다시 열린다.
+  const files = page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name: "files", exact: true });
+  await files.click();
+  await expect(files).toHaveAttribute("aria-pressed", "true");
+  const row = page.getByRole("region", { name: "작업 패널", exact: true }).getByRole("button", { name: "MD README.md", exact: true });
+  await row.click();
+
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page).toHaveURL(/code=billing%2FREADME\.md/);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(코드열(page, README)).toContainText("# 빌링");
+  await expect(파일탭이름(page, README)).toHaveAttribute("aria-pressed", "true");
+
+  // 문서 열로 옮겨도 그 파일은 옆 열에 보인다 — 트리에서 다시 누르면 닫힌다.
+  await page.getByRole("region", { name: "문서", exact: true }).click();
+  await expect(page).not.toHaveURL(/tab=/);
+  await row.click();
+
+  await expect(page.locator('[data-tab="code"]')).toHaveCount(0);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "terminal"]);
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page).not.toHaveURL(/code=/);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
