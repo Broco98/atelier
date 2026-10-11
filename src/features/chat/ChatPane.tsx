@@ -9,7 +9,7 @@ import ChatThread from "./ChatThread";
 import Composer from "./Composer";
 import { foldConversation } from "./fold";
 import { useCloseConversation, useConversations, useCreateConversation, useRecordLines } from "./hooks";
-import type { Agent, Conversation } from "./types";
+import type { Agent, Conversation, Quote } from "./types";
 
 // 대화창(three-axes 티켓 17) — 대화 탭 줄 · 흐름 · 입력창. 작업 패널의 `chat` 보기가 이것을 그리고, `chat` 탭(24)도 같은 것을
 // 가운데에 띄운다. 모양은 캔버스 보드 04(대화 패널) · 14(말과 입력)이고 값은 대화창 범위 토큰(`[data-chat]`, three-axes 결정 31)이다.
@@ -46,6 +46,8 @@ function ChatPane({ work, visible, onOpenDoc }: ChatPaneProps) {
   const conversations = list.data ?? [];
   const chosen = useStore(chatUiStore, (state) => state.active[work]);
   const active = conversations.find((one) => one.id === chosen) ?? conversations[0] ?? null;
+  // 문서에서 고른 자리(three-axes 티켓 27) — 그 work의 지금 대화의 입력창에 칩으로 붙는다.
+  const quote = useStore(chatUiStore, (state) => state.quotes[work] ?? null);
   const createConversation = create.mutate;
 
   // 대화 없는 work에서 대화창을 처음 열면 기본 에이전트로 대화 하나가 열려 있다(스토리 2). work마다 한 번이다.
@@ -115,6 +117,7 @@ function ChatPane({ work, visible, onOpenDoc }: ChatPaneProps) {
             work={work}
             conversation={conversation}
             shown={conversation.id === active?.id}
+            quote={conversation.id === active?.id ? quote : null}
             onOpenDoc={onOpenDoc}
           />
         ))
@@ -170,11 +173,13 @@ function ConversationBody({
   work,
   conversation,
   shown,
+  quote,
   onOpenDoc,
 }: {
   work: string;
   conversation: Conversation;
   shown: boolean;
+  quote: Quote | null;
   onOpenDoc: (path: string, line: number | null) => void;
 }) {
   const key = conversationKey(work, conversation.id);
@@ -207,6 +212,7 @@ function ConversationBody({
         conversation={conversation.id}
         draftKey={key}
         agent={conversation.agent}
+        quote={quote}
         above={changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}
       />
     </div>

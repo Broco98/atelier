@@ -1,15 +1,16 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { chatApi } from "./api";
 import { clearChangeMarks } from "./changes";
-import { chatUiStore, setDraft } from "./chat-store";
-import type { Agent } from "./types";
+import { chatUiStore, dropQuote, restoreQuote, setDraft } from "./chat-store";
+import { DraftQuoteChip } from "./QuoteChip";
+import type { Agent, Quote } from "./types";
 
 // 입력창(three-axes 티켓 17) — 글을 쓰고 보낸다. 캔버스 보드 14의 `.cx-composer`(r28 · 흰 면 · 그림자 셋 · 안쪽 15 12 8 18)와
-// 보내기 원(32 · 파랑, 비면 옅은 면)이다. 칩(에이전트 · 모델 · 모드 · 계획)과 「/」 메뉴는 19, 대기 줄 · 멈추기는 20, 인용 칩은 27이
-// 이 자리에 더한다.
+// 보내기 원(32 · 파랑, 비면 옅은 면)이다. 칩(에이전트 · 모델 · 모드 · 계획)과 「/」 메뉴는 19, 대기 줄 · 멈추기는 20이 이 자리에
+// 더한다. 문서에서 고른 자리(인용, 27)는 입력칸 위에 칩으로 붙고, 보낼 때 함께 실려 간다.
 //
 // **입력 중인 글은 대화마다 모듈 스토어에 산다**(`chatUiStore.drafts`). 레일에서 `spec`과 오가도 패널 몸은 마운트된 채라 남지만,
 // 작업 패널에 key가 없어 work를 옮기면 같은 컴포넌트가 다른 대화를 그린다 — 그때 글이 따라오지 않게 대화 열쇠로 둔다.
@@ -30,13 +31,23 @@ interface ComposerProps {
   agent: Agent;
   /** 입력창 바로 위, 같은 열에 서는 것 — 「N개 파일 변경됨」 알약(26). 입력창과의 틈은 이 열의 틈(10px)이다. */
   above?: ReactNode;
+  /**
+   * 그 work의 입력창에 붙은 인용(three-axes 티켓 27). 인용은 work의 **지금 대화**의 것이라 대화창은 켜진 대화의 입력창에만 이것을
+   * 넘긴다 — 다른 대화로 옮기면 칩도 그 대화의 입력창으로 따라간다.
+   */
+  quote: Quote | null;
 }
 
-function Composer({ work, conversation, draftKey, agent, above }: ComposerProps) {
+function Composer({ work, conversation, draftKey, agent, above, quote }: ComposerProps) {
   const draft = useStore(chatUiStore, (state) => state.drafts[draftKey] ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const empty = draft.trim() === "";
+
+  // 인용이 붙으면 입력칸으로 간다 — 단추를 누른 그 자리에서 곧바로 이어서 말한다(스토리 79). 새로 고를 때마다다.
+  useEffect(() => {
+    if (quote) field.current?.focus();
+  }, [quote]);
 
   // 글만큼 자란다 — 한 줄에서 시작해 FIELD_MAX까지. 넘으면 칸 안에서 구른다.
   useLayoutEffect(() => {
@@ -54,9 +65,13 @@ function Composer({ work, conversation, draftKey, agent, above }: ComposerProps)
     // 사람이 다음 말을 보냈다 — 그 work의 고친 곳 표시를 지운다(티켓 26 · S19). 표시는 work의 것이라 어느 대화에서 보내든 같다.
     // 보내기의 답을 기다리지 않는다: 지우는 때는 사람이 보낸 그 순간이다(결정 22 · 프로토타입 D).
     clearChangeMarks(work);
-    chatApi.send(work, conversation, text).catch((error: unknown) => {
-      // 보내지 못했다 — 쓴 글을 돌려놓고 까닭을 보인다. 대기 줄(20)이 서기 전에는 턴이 도는 동안의 보내기도 여기로 온다.
+    // 붙은 인용은 이 말과 함께 간다 — 보내는 순간 입력창에서 뗀다. 인용은 그 말 하나의 것이다(three-axes 티켓 27).
+    const sending = quote ?? undefined;
+    if (sending) dropQuote(work);
+    chatApi.send(work, conversation, text, sending).catch((error: unknown) => {
+      // 보내지 못했다 — 쓴 글과 인용을 돌려놓고 까닭을 보인다. 대기 줄(20)이 서기 전에는 턴이 도는 동안의 보내기도 여기로 온다.
       setDraft(draftKey, text);
+      if (sending) restoreQuote(work, sending);
       setProblem(String(error));
     });
   };
@@ -71,6 +86,7 @@ function Composer({ work, conversation, draftKey, agent, above }: ComposerProps)
           send();
         }}
       >
+        {quote && <DraftQuoteChip quote={quote} onDrop={() => dropQuote(work)} />}
         <textarea
           ref={field}
           aria-label="보낼 말"

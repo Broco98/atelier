@@ -15,6 +15,7 @@ use serde_json::{json, Map, Value};
 
 use crate::discovery::Agent;
 use crate::host::{Emit, HostEvent};
+use crate::quote::Quote;
 use crate::spec_changes::FileChange;
 
 const AGENTS_FILE: &str = "agents.json";
@@ -147,7 +148,7 @@ pub struct RecordLine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
-    /// 보낸 말 — 화면에 보일 글 · 실제로 보낸 내용 블록(머리말 포함) · 지금 보내기였는지.
+    /// 보낸 말 — 화면에 보일 글 · 인용(붙었으면) · 실제로 보낸 내용 블록(머리말 · 인용 블록 포함) · 지금 보내기였는지.
     Sent,
     /// `session/update` 원문(턴 밖 것 포함).
     Update,
@@ -261,9 +262,22 @@ impl Recorder {
         self.write(RecordKind::Session, serde_json::to_value(state).expect("session 줄은 JSON이다"))
     }
 
-    /// 보낸 말. `prompt`는 에이전트에게 실제로 간 내용 블록 그대로다.
-    pub(crate) fn sent(&self, text: &str, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
-        self.write(RecordKind::Sent, json!({"text": text, "prompt": prompt, "sendNow": send_now}))
+    /// 보낸 말. `prompt`는 에이전트에게 실제로 간 내용 블록 그대로다. 인용은 화면이 보낸 말 위에 세운다(스토리 81).
+    pub(crate) fn sent(
+        &self,
+        text: &str,
+        quote: Option<&Quote>,
+        prompt: &[Value],
+        send_now: bool,
+    ) -> Result<(), RecordError> {
+        let mut payload = json!({"text": text});
+        // 인용은 붙은 말에만 칸이 선다(three-axes 티켓 27) — 인용 없는 말은 앞 장의 꼴 그대로다.
+        if let Some(quote) = quote {
+            payload["quote"] = serde_json::to_value(quote).expect("인용은 JSON이다");
+        }
+        payload["prompt"] = json!(prompt);
+        payload["sendNow"] = json!(send_now);
+        self.write(RecordKind::Sent, payload)
     }
 
     /// `session/update` 원문.

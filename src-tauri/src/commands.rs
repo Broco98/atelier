@@ -563,15 +563,17 @@ pub async fn chat_new(
         .map_err(host_err)
 }
 
-/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다.
+/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다. `quote`는 스펙 창에서 고른 자리다(three-axes 티켓
+/// 27) — 호스트가 사람의 글 앞에 인용 블록으로 둔다.
 #[tauri::command]
 pub async fn chat_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     work: String,
     conversation: String,
     text: String,
+    quote: Option<atelier_acp::Quote>,
 ) -> CmdResult<()> {
-    chats.send(&work, &conversation, &text).map_err(host_err)
+    chats.send_message(&work, &conversation, &text, quote.as_ref()).map_err(host_err)
 }
 
 /// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).

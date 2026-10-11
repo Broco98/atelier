@@ -33,12 +33,14 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { changeMarksStore, marksOf, overlaps, type LineRange } from "@/features/chat/changes";
+import type { Quote } from "@/features/chat/types";
 import { docRevealStore, settleReveal } from "./doc-reveal";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
 import { specDirRef, specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
+import { QuotePick } from "./QuotePick";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import type { WorkView } from "./types";
 
@@ -61,6 +63,9 @@ interface SpecViewerProps {
   onNavigate: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 토스트 표면의 주인은 화면이다(결정 47).
   onCopy: (text: string) => void;
+  // 고른 글의 「❝ 이 자리를 두고 말하기」를 눌렀다(three-axes 티켓 27) — 그 자리(파일 · 원문 줄 범위 · 글)를 대화창의 입력창에
+  // 붙인다. 대화창을 여는 일까지 작업 패널의 주인인 화면이 한다.
+  onQuote: (quote: Quote) => void;
 }
 
 function SpecViewer({
@@ -71,6 +76,7 @@ function SpecViewer({
   showSource,
   onNavigate,
   onCopy,
+  onQuote,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
@@ -93,6 +99,8 @@ function SpecViewer({
   // 블록이 스크롤 상자 위쪽에 오도록 굴린다. 파일을 옮기면 내용이 한 번 비므로(`specFileQuery`의 `placeholderData`) 내용이 온
   // 뒤에야 찾는다 — 이펙트는 커밋 뒤라 그때는 새 블록이 이미 DOM에 있다. 찾든 못 찾든 요청은 한 번으로 끝낸다.
   const scroller = useRef<HTMLDivElement>(null);
+  // 스크롤 상자 안의 내용 층 — 인용 단추가 이 층 기준으로 서서 글과 함께 구른다(three-axes 티켓 27).
+  const layer = useRef<HTMLDivElement>(null);
   const reveal = useStore(docRevealStore, (pending) =>
     pending && pending.work === work.slug && pending.file === file ? pending : null,
   );
@@ -155,7 +163,7 @@ function SpecViewer({
     // 탭 줄의 바닥(`TAB_ROW_COLUMN`)은 이제 공용 틀의 본문 열이 든다 — 넓은 표 · 코드가 그 바닥에 안 섞이는 것도 그쪽 일이다.
     // 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다.
     <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-      <div className="flex min-h-full min-w-0 flex-col">
+      <div ref={layer} className="relative flex min-h-full min-w-0 flex-col">
         {files.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-10">
             <Empty>
@@ -180,6 +188,10 @@ function SpecViewer({
         ) : (
           // 고친 곳은 문맥으로 내린다 — 블록 래퍼만 읽는다(`ChangedLines` 머리말).
           <ChangedLines.Provider value={changed}>{bodyView(body)}</ChangedLines.Provider>
+        )}
+        {/* 글을 고르면 그 곁에 「❝ 이 자리를 두고 말하기」 — 원문 줄 위치를 아는 두 보기(렌더 · 원문)에서만 선다(three-axes 티켓 27). */}
+        {file && files.length > 0 && (body === "pretty" || body === "source") && (
+          <QuotePick box={scroller} layer={layer} file={file} mode={body} onQuote={onQuote} />
         )}
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { CHAT_ENGINE_EVENT, CHAT_RECORD_EVENT } from "./events";
-import type { Agent, ChatEngineEvent, ChatRecordEvent, Conversation, EngineCheck, RecordLine } from "./types";
+import type { Agent, ChatEngineEvent, ChatRecordEvent, Conversation, EngineCheck, Quote, RecordLine } from "./types";
 
 // 대화 호스트를 부르는 명령(three-axes 티켓 05). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
 // 에이전트가 계속 돈다 — 그래서 대화는 기록에서 다시 그린다: 먼저 기록 줄 이벤트를 구독하고(`onChatRecord`), 그다음
@@ -27,9 +27,12 @@ export const chatApi = {
     invoke<RecordLine[]>("chat_read_record", { work, conversation, after }),
   /** 새 대화 — 만들고 곧바로 띄워 세션을 연다. 세션이 열릴 때까지 기다린다. */
   create: (work: string, agent: Agent) => invoke<Conversation>("chat_new", { work, agent }),
-  /** 말을 보낸다. 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로 온다. */
-  send: (work: string, conversation: string, text: string) =>
-    invoke<void>("chat_send", { work, conversation, text }),
+  /**
+   * 말을 보낸다. 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로 온다. `quote`는 스펙 창에서 고른
+   * 자리다(three-axes 티켓 27) — 객체라 이름으로 넘긴다(위 「평평하게」). 없으면 그 칸이 아예 실리지 않는다.
+   */
+  send: (work: string, conversation: string, text: string, quote?: Quote) =>
+    invoke<void>("chat_send", { work, conversation, text, quote }),
   /** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. */
   close: (work: string, conversation: string) =>
     invoke<void>("chat_close", { work, conversation }),
