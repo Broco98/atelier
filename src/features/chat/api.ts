@@ -4,6 +4,7 @@ import { CHAT_ENGINE_EVENT, CHAT_QUEUE_EVENT, CHAT_RECORD_EVENT } from "./events
 import type {
   Agent,
   ChatEngineEvent,
+  ChatQuitCounts,
   ChatQueueEvent,
   ChatRecordEvent,
   Conversation,
@@ -93,6 +94,11 @@ export const chatApi = {
    * 세션을 한 번도 연 적 없는 엔진은 빈 목록이다(「엔진 기본값」만 고른다).
    */
   engineLists: (agent: Agent) => invoke<EngineLists>("chat_engine_lists", { agent }),
+  /**
+   * 앱 종료 확인 창의 대화 셈(three-axes 티켓 23) — 앱 전체에서 턴이 도는 대화 · 대기 중인 말 · 답하지 않은 승인. 대기 줄은 호스트
+   * 메모리에만 있고 지금 열지 않은 work의 대화도 함께 꺼지므로 호스트가 센다.
+   */
+  quitCounts: () => invoke<ChatQuitCounts>("chat_quit_counts"),
   /** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. */
   close: (work: string, conversation: string) =>
     invoke<void>("chat_close", { work, conversation }),

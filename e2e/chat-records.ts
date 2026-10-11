@@ -38,9 +38,12 @@ export function specCopy(name: string): { files: string[]; bodies: Record<string
   return { files, bodies: Object.fromEntries(files.map((path) => [path, readFileSync(join(root, path), "utf8")])) };
 }
 
-/** 대화 목록의 한 줄(호스트의 `Conversation`). 고르지 않은 값은 엔진 기본값(`null`)이고, 대기 줄은 비어 있다. */
+/**
+ * 대화 목록의 한 줄(호스트의 `Conversation`). 고르지 않은 값은 엔진 기본값(`null`)이고, 대기 줄은 비어 있고, 에이전트는 떠 있다
+ * (`live` — 화면 새로고침이나 같은 앱 안의 꼴이다). 앱을 다시 켠 꼴은 `live: false`로 덮는다(three-axes 티켓 23).
+ */
 export function conversationRow(row: Pick<Conversation, "id" | "agent" | "name"> & Partial<Conversation>): Conversation {
-  return { model: null, mode: null, plan: null, lastSeq: 0, queue: [], ...row };
+  return { model: null, mode: null, plan: null, lastSeq: 0, queue: [], live: true, ...row };
 }
 
 /**
@@ -207,3 +210,15 @@ export async function fireQueue(page: Page, work: string, conversation: string, 
   const event: ChatQueueEvent = { work, conversation, queue };
   await fireEvent(page, CHAT_QUEUE_EVENT, event);
 }
+
+/**
+ * 손으로 짓는 `session` 줄 하나(three-axes 티켓 23) — 띄우는 중 · 열림 · 죽음 · 판 경고. 꼴은 호스트의 `SessionState`(serde
+ * `state` 꼬리표, 칸은 camelCase)와 같다: `{state: "died", reason, stderrTail}` · `{state: "version-warning", agentVersion,
+ * supportedMajor}` · `{state: "opened", how, agentVersion, modes, models, configOptions}`. 죽음 · 판 경고는 S26 목록 밖이라 여기서 짓는다.
+ */
+export const sessionLine = (seq: number, payload: Record<string, unknown>): RecordLine => ({
+  seq,
+  at: handAt(seq % 60),
+  kind: "session",
+  payload,
+});

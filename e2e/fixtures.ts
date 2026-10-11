@@ -7,7 +7,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { Conversation, EngineCheck, RecordLine } from "@/features/chat/types";
+import type { ChatQuitCounts, Conversation, EngineCheck, RecordLine } from "@/features/chat/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -929,6 +929,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     plan: null,
     lastSeq: 0,
     queue: [],
+    live: true,
   } satisfies Conversation,
   // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   chat_send: null,
@@ -960,6 +961,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
   // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
   chat_answer_permission: null,
+  // 종료 확인의 대화 셈(three-axes 티켓 23) — 종료 요청마다 셸 셈 옆에서 나간다. **기본은 잃을 것이 없다**(셋 다 0) — 그러면 대화 줄이
+  // 서지 않아 셸만 재는 종료 확인 검사들이 그대로 돈다. 대화 줄은 `quit-confirm.spec.ts`의 대화 검사가 덮어쓴다.
+  chat_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ChatQuitCounts,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

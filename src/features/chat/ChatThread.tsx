@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Info, TriangleAlert } from "lucide-react";
 import { chatUiStore, toggleTurn, turnKey } from "./chat-store";
 import ChatMarkdown from "./ChatMarkdown";
 import { Checklist, PlanCard } from "./PlanCard";
 import { SentQuoteChip } from "./QuoteChip";
 import ToolRow from "./ToolRow";
-import { finalFrom, headline, runningHeadline, type ChatModel, type Entry, type Turn } from "./fold";
+import { finalFrom, headline, runningHeadline, type ChatModel, type Entry, type Notice, type Turn } from "./fold";
 import type { Quote } from "./types";
 
 // 대화 한 개의 흐름(three-axes 티켓 17) — 기록 줄을 접은 모델(`fold.ts`)을 그린다. 사람의 말은 오른쪽 말풍선, 에이전트의 답은
@@ -20,6 +20,9 @@ import type { Quote } from "./types";
 // 계획(three-axes 티켓 21)은 흐름 안의 카드로 선다 — 엔진의 마크다운 계획은 계획 카드, ACP `plan`은 체크리스트다(`PlanCard`). 둘 다
 // 대화에 하나라 다음 것이 오면 같은 카드가 바뀌고, 접힌 턴에도 남는다.
 //
+// 상태 줄(three-axes 티켓 23) — 되살리기가 새 세션으로 끝남 · 프로세스 죽음 · 판 경고는 턴 사이에 한 줄로 선다(`Notice`). 접은 모델이
+// 그 줄 앞에 선 턴 수를 들고 와서, 그 턴들 뒤 · 다음 턴 앞에 끼운다.
+//
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 이 흐름에는 `aria-live`도 `role="log"`도 없다 — 턴 끝에 대화창 밖
 // 알림 자리(`ChatAnnouncer`)가 한 번 읽는다(스토리 121).
 
@@ -32,13 +35,35 @@ interface ChatThreadProps {
 
 function ChatThread({ conversationKey, model }: ChatThreadProps) {
   const expanded = useStore(chatUiStore, (state) => state.expanded);
+  const noticesAfter = (count: number) =>
+    model.notices.filter((notice) => notice.after === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />);
   return (
     <div className="flex flex-col gap-4 text-row leading-(--chat-leading-prose)">
-      {model.turns.map((turn) => {
+      {noticesAfter(0)}
+      {model.turns.map((turn, at) => {
         const key = turnKey(conversationKey, turn.key);
-        return <TurnView key={turn.key} turn={turn} open={expanded[key] === true} onToggle={() => toggleTurn(key)} />;
+        return (
+          <Fragment key={turn.key}>
+            <TurnView turn={turn} open={expanded[key] === true} onToggle={() => toggleTurn(key)} />
+            {noticesAfter(at + 1)}
+          </Fragment>
+        );
       })}
     </div>
+  );
+}
+
+/**
+ * 상태 줄 하나 — 머리줄과 같은 옅은 글자의 한 줄이다(보드에 없는 부품이라 머리줄의 꼴을 따른다). 「새로 시작함」은 알림(ⓘ), 죽음 ·
+ * 판 경고는 경고 그림이다. 그림은 숨고 글이 말한다. 알림 영역이 아니다 — 흐름의 한 줄이고, 다시 그려도 다시 읽히지 않는다.
+ */
+function NoticeLine({ notice }: { notice: Notice }) {
+  const Icon = notice.kind === "fresh" ? Info : TriangleAlert;
+  return (
+    <p data-notice={notice.kind} className="flex items-start gap-1.5 text-ui text-tertiary">
+      <Icon className="mt-[3px] size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+      <span className="min-w-0 wrap-anywhere">{notice.text}</span>
+    </p>
   );
 }
 

@@ -7,6 +7,7 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
 import { useChatEngineFeed, useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
+import { countChatsForQuit } from "@/features/chat/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
@@ -28,9 +29,18 @@ import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
-import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
+import { QUIT_REQUESTED_EVENT, quitApp, requestQuit, type QuitTally } from "./quit-request";
 import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
 import { navItems, type NavKey } from "./nav-items";
+
+/**
+ * 종료 확인이 적을 수를 함께 센다 — 셸(모든 화면의 목록)과 대화(three-axes 티켓 23 — 대화 호스트가 앱 전체를). 두 물음은 서로를
+ * 기다리지 않고 함께 간다. 대화 셈은 거절돼도 0으로 서므로(`countChatsForQuit`) 이 약속이 셸 셈 밖의 까닭으로 던지지 않는다.
+ */
+async function countForQuit(): Promise<QuitTally> {
+  const [shells, chats] = await Promise.all([quitShellCounts(), countChatsForQuit()]);
+  return { shells, chats };
+}
 
 function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
@@ -125,7 +135,7 @@ function AppShell() {
   // 「아니오」로 접고 갈아 끼운다.
   useEffect(() => {
     const unlisten = listen(QUIT_REQUESTED_EVENT, () => {
-      void requestQuit(quitShellCounts, quitApp);
+      void requestQuit(countForQuit, quitApp);
     });
     return () => {
       void unlisten.then((fn) => fn());

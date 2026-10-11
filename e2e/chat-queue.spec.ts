@@ -46,9 +46,12 @@ async function openChat(page: Page, read = linesThrough(late, END_SEQ - 1), row 
   });
   await page.goto(`/works/${plainWork.slug}`);
   await 레일칸(page, "chat").click();
-  // 대화 탭을 기다린다 — 답하지 않은 권한 물음까지 읽은 대화는 입력칸 대신 승인 카드가 서 있다(티켓 21).
+  // 대화 탭을 기다린다 — 답하지 않은 권한 물음까지 읽은 대화는 입력칸 대신 승인 카드가 서 있다(티켓 21). 도는 대화의 탭 이름에는 상태가
+  // 붙는다(「Codex — 일하는 중」, 티켓 23).
   await expect(
-    작업패널(page).getByRole("group", { name: "대화 탭", exact: true }).getByRole("button", { name: row.name, exact: true }),
+    작업패널(page)
+      .getByRole("group", { name: "대화 탭", exact: true })
+      .getByRole("button", { name: new RegExp(`^${row.name}( — |$)`) }),
   ).toBeVisible({ timeout: 20_000 });
 }
 
