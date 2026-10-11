@@ -93,7 +93,7 @@ export interface ToolEntry {
   call: Record<string, unknown>;
   /**
    * 명령이 낸 출력 — update마다 조각(`_meta.terminal_output_delta.data`, codex-acp)으로 오는 것을 이어 붙인 것. 합친 `call`에서는
-   * 뒤의 `_meta`가 앞의 것을 덮어 조각이 사라지므로 따로 모은다. 멈춘 뒤 늦게 온 조각도 여기 붙는다(결정 28).
+   * 뒤의 `_meta`가 앞의 것을 덮어 조각이 사라지므로 따로 모은다. 멈춘 뒤 늦게 온 조각도 여기 붙는다(three-axes 결정 28).
    */
   output: string;
   stop: ToolStop | null;

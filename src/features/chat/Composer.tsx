@@ -94,7 +94,7 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
     setDraft(draftKey, "");
     setProblem(null);
     // 사람이 다음 말을 보냈다 — 그 work의 고친 곳 표시를 지운다(티켓 26 · S19). 표시는 work의 것이라 어느 대화에서 보내든 같다.
-    // 보내기의 답을 기다리지 않는다: 지우는 때는 사람이 보낸 그 순간이다(결정 22 · 프로토타입 D).
+    // 보내기의 답을 기다리지 않는다: 지우는 때는 사람이 보낸 그 순간이다(three-axes 결정 22 · 프로토타입 D).
     clearChangeMarks(work);
     // 붙은 인용은 이 말과 함께 간다 — 보내는 순간 입력창에서 뗀다. 인용은 그 말 하나의 것이다(three-axes 티켓 27).
     const sending = quote ?? undefined;

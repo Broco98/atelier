@@ -66,7 +66,7 @@ fn 호스트를_다시_지은_뒤_claude_대화에_말을_보내면_가짜_claud
     let revived = &launches[1];
     assert!(has_pair(revived, "--resume", &session), "기록의 세션 id로 되살린다: {revived:?}");
     assert!(!revived.iter().any(|arg| arg == "--session-id"), "되살리기는 --session-id 대신 --resume이다: {revived:?}");
-    assert!(has_pair(revived, "--model", "sonnet"), "기록의 모델을 플래그로 준다(결정 27): {revived:?}");
+    assert!(has_pair(revived, "--model", "sonnet"), "기록의 모델을 플래그로 준다(three-axes 결정 27): {revived:?}");
     assert!(has_pair(revived, "--permission-mode", "plan"), "기록의 모드(띄우지 않은 동안 바꾼 값)를 플래그로 준다: {revived:?}");
     assert_eq!(opened_hows(&record), ["new", "resumed"], "열림 줄이 맥락을 이었다고 말한다");
     assert_eq!(sandbox.agent_session_id("cart", &id), session, "같은 세션이다");

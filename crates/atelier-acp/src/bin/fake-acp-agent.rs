@@ -862,7 +862,7 @@ impl Fake {
 
     /// 되살리기 하나(`session/resume` · `session/load`, three-axes 티켓 10). 모르는 세션이면 오류로 답한다 — 그러면 호스트는 다음
     /// 단계로 간다. 아는 세션이면 그 세션 id로 이어 가고, 답에는 id 없이 모드 · 모델 · configOptions만 싣는다(실측 그대로) —
-    /// 앞서 무엇을 바꿨든 config 기본값이다(결정 27). load는 답 전에 과거를 되감고 답 뒤에 줄 하나를 더 보낸다.
+    /// 앞서 무엇을 바꿨든 config 기본값이다(three-axes 결정 27). load는 답 전에 과거를 되감고 답 뒤에 줄 하나를 더 보낸다.
     fn revive(&mut self, id: &Value, method: &str, params: &Value) {
         let session_id = params["sessionId"].as_str().unwrap_or_default().to_owned();
         let known = std::env::var_os("FAKE_ACP_FORGETS").is_none()

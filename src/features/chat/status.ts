@@ -56,7 +56,7 @@ export function useConversationStatus(work: string, conversation: Conversation):
 export type WorkChatSignal = "waiting" | "done";
 
 /**
- * 그 work의 대화들이 레일에 말할 것(결정 10). 대화 목록을 읽은 work면 그 대화들을, 아직 안 읽었으면(대화창을 연 적 없다) 기록
+ * 그 work의 대화들이 레일에 말할 것(three-axes 결정 10). 대화 목록을 읽은 work면 그 대화들을, 아직 안 읽었으면(대화창을 연 적 없다) 기록
  * 줄 이벤트로 쌓인 대화들을 본다. 레일은 대화창이 보일 때 점을 세우지 않는다 — 그 판단은 무엇이 보이는지 아는 화면의 것이다.
  * **목록을 읽지 않는다** — 대화창은 처음 보일 때 목록을 읽는다(티켓 17).
  */

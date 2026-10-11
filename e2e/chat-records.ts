@@ -108,7 +108,7 @@ export function handTurn(from: number, text: string, answer: string, durationMs:
 
 /**
  * 손으로 짓는 **Claude 꼴의 멈춘 턴**(three-axes 티켓 20) — S26 목록 밖이라 여기서 짓는다. Claude는 interrupt가 돌던 도구까지
- * 멈춘다(결정 28 · 워크플로 실측 2.1.282 `interrupt-sigint`): 열린 `tool_use`에 `is_error` `tool_result`가 오고 나서 `result`가
+ * 멈춘다(three-axes 결정 28 · 워크플로 실측 2.1.282 `interrupt-sigint`): 열린 `tool_use`에 `is_error` `tool_result`가 오고 나서 `result`가
  * 온다. 변환기가 옮긴 ACP 꼴로는 보낸 말 → 도구 호출(`in_progress`) → 그 도구의 `failed` update → 턴 끝(`cancelled`, 우리가
  * 멈춤)이다. seq는 `from`부터 1씩 오른다.
  */

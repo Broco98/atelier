@@ -85,7 +85,7 @@ test("멈춘 뒤의 도구 줄(Codex): 멈출 때 열려 있던 명령이 접힌
   page,
 }) => {
   await openChat(page, linesThrough(late, END_SEQ));
-  // 멈춘 턴은 머리줄 아래로 접혔다 — 그래도 멈출 때 열려 있던 명령은 접힌 턴 아래에 남는다(결정 28 · 스토리 55).
+  // 멈춘 턴은 머리줄 아래로 접혔다 — 그래도 멈출 때 열려 있던 명령은 접힌 턴 아래에 남는다(three-axes 결정 28 · 스토리 55).
   await expect(머리줄(page, "3초 후에 중단했습니다")).toHaveAttribute("aria-expanded", "false");
   const row = 도구줄(page, COMMAND);
   await expect(row).toBeVisible();

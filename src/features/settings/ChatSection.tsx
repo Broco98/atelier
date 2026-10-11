@@ -68,7 +68,7 @@ export function ChatSection({
   return (
     <SettingsSection head="새 대화">
       <SettingsGroup>
-        {/* 기본 에이전트 — 둘 중 하나가 늘 켜져 있다(「테마」 행과 같은 칩 무리). 처음 값은 Claude Code다(결정 16). */}
+        {/* 기본 에이전트 — 둘 중 하나가 늘 켜져 있다(「테마」 행과 같은 칩 무리). 처음 값은 Claude Code다(three-axes 결정 16). */}
         <SettingsRow
           name="기본 에이전트"
           description={`+로 여는 새 대화의 에이전트예요. 처음은 ${AGENT_LABEL.claude}예요.`}

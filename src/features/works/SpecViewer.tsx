@@ -551,7 +551,7 @@ function BlockWrapper({
   const changed = changedLines !== null && overlaps(changedLines, start, end);
   return (
     // 원문 줄 범위를 표식으로 단다(three-axes 티켓 26 · 27) — 고친 곳이 블록을 고르고, 인용이 고른 글의 블록을 이것으로 찾는다.
-    // 고친 곳(`data-changed`)은 옅은 파랑 면과 왼쪽 막대다(결정 22 · 캔버스 `.cx-changed`, 대화창 범위 토큰 — three-axes 결정 31).
+    // 고친 곳(`data-changed`)은 옅은 파랑 면과 왼쪽 막대다(three-axes 결정 22 · 캔버스 `.cx-changed`, 대화창 범위 토큰 — three-axes 결정 31).
     // 면은 블록 상자 밖으로 번진 앞 요소(`before`)라 글자 자리도 거터 버튼 자리도 움직이지 않는다 — 표시가 서고 지워져도 본문이
     // 안 튄다. 앞 요소를 글 뒤에 깔려고 표시가 선 래퍼만 쌓임 맥락(`isolate`)을 연다.
     <div

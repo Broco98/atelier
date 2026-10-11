@@ -88,7 +88,7 @@ fn steer_background_subagent_백그라운드를_건_턴은_result에서_끝나�
     assert_eq!(
         own["response"]["_meta"]["claudeCode"]["result"]["origin"]["kind"],
         "task-notification",
-        "그 턴의 result 원문이 턴 끝 줄에 실린다 — 평가의 재료다(결정 18)"
+        "그 턴의 result 원문이 턴 끝 줄에 실린다 — 평가의 재료다(three-axes 결정 18)"
     );
     let between = &record[second_end + 1..turn_end_at(&record, 2)];
     assert!(between.iter().all(|line| line["kind"] != "sent"), "보낸 말 없이 온 턴이다");
@@ -121,7 +121,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     let queue: Vec<&str> = listed[0].queue.iter().map(|queued| queued.text.as_str()).collect();
     assert_eq!(queue, ["그동안 보낸 말"], "스스로 이어 간 턴이 도는 동안은 대기 줄을 보내지 않는다(S13)");
     std::thread::sleep(std::time::Duration::from_millis(200));
-    assert_eq!(user_lines(&sandbox, &session), 2, "claude에는 아직 가지 않았다 — 도는 턴에 합쳐지지 않게(결정 20)");
+    assert_eq!(user_lines(&sandbox, &session), 2, "claude에는 아직 가지 않았다 — 도는 턴에 합쳐지지 않게(three-axes 결정 20)");
     assert_eq!(
         host.quit_counts(),
         QuitCounts { running: 1, queued: 1, approvals: 0 },

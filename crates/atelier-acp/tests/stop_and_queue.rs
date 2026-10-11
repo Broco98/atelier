@@ -87,7 +87,7 @@ fn 멈춘_뒤에_늦게_온_도구_update가_턴_끝_뒤에_턴_밖_update_줄�
     assert_eq!(
         (opened_tool["sessionUpdate"].clone(), opened_tool["toolCallId"].clone()),
         (json!("tool_call"), json!("exec-fake-late")),
-        "늦은 update는 cancel 때 열려 있던 그 도구 줄의 것이다 — 화면이 그 줄에 붙인다(결정 28)"
+        "늦은 update는 cancel 때 열려 있던 그 도구 줄의 것이다 — 화면이 그 줄에 붙인다(three-axes 결정 28)"
     );
     assert_eq!(common::emitted(&events, "cart", &conversation.id), record, "턴 밖 update도 같은 seq의 기록 줄 이벤트로 나간다");
 

@@ -414,7 +414,7 @@ fn agents_dir(work_dir: &Path) -> PathBuf {
 }
 
 /// work 하나의 자리들 — 절대 경로다. 대화 호스트가 에이전트의 작업 자리(three-axes 결정 17)와 기록 자리
-/// (결정 18)를 여기서 짓는다. 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다.
+/// (three-axes 결정 18)를 여기서 짓는다. 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkPlaces {
     /// `works/<slug>`.

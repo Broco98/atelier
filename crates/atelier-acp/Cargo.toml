@@ -18,7 +18,7 @@ agent-client-protocol = "~2.0"
 futures = "0.3"
 # 자식을 새 세션에 두는 `setsid`(std의 것은 불안정 기능이다)와 그룹째 끄는 `killpg`.
 libc = "0.2"
-# work의 자리(결정 17)와 `agents.json`의 원자 쓰기 — 배치를 아는 곳은 코어 하나다.
+# work의 자리(three-axes 결정 17)와 `agents.json`의 원자 쓰기 — 배치를 아는 곳은 코어 하나다.
 atelier-core = { path = "../atelier-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }

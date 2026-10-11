@@ -62,7 +62,7 @@ fn 호스트를_다시_지으면_대화_목록이_서고_프로세스는_0개다
     assert_eq!(listed[0].id, id);
     assert_eq!(listed[0].last_seq, sandbox.record("cart", &id).last().unwrap()["seq"].as_u64().unwrap());
     host.read_record("cart", &id, 0).expect("기록으로 그린다");
-    assert_eq!(sandbox.acp_launches().len(), 1, "다시 지어도 띄우지 않는다(S8 · 결정 19) — 떠 있는 에이전트는 0개다");
+    assert_eq!(sandbox.acp_launches().len(), 1, "다시 지어도 띄우지 않는다(S8 · three-axes 결정 19) — 떠 있는 에이전트는 0개다");
 
     host.send("cart", &id, "오늘의 말").expect("말을 보내면 띄워 되살린다");
     let record = sandbox.wait_kind("cart", &id, "turn-end", 2);
@@ -221,7 +221,7 @@ fn resume_resets_config_되살린_뒤_가짜가_기록의_모델_모드_계획�
 
     let opened = record.iter().rfind(|line| line["payload"]["state"] == "opened").unwrap();
     assert_eq!(opened["payload"]["how"], "resumed");
-    assert_eq!(opened["payload"]["modes"]["currentModeId"], "agent", "resume은 config 기본값으로 되돌린다(결정 27)");
+    assert_eq!(opened["payload"]["modes"]["currentModeId"], "agent", "resume은 config 기본값으로 되돌린다(three-axes 결정 27)");
     assert_eq!(
         sandbox.acp_config(&session)[1..],
         [
@@ -256,7 +256,7 @@ fn 프로젝트를_나중에_붙인_work에서도_되살린_대화의_cwd는_age
     let work = sandbox.work("cart", &[]);
     let id = yesterday(&sandbox, sandbox.host(sandbox.codex_login_shell("resume-advertised", &[])));
     let spec = work.join("spec");
-    assert_eq!(sandbox.agents_row("cart", &id)["cwd"], json!(spec), "프로젝트가 없는 work의 대화는 spec 폴더에서 일한다(결정 17)");
+    assert_eq!(sandbox.agents_row("cart", &id)["cwd"], json!(spec), "프로젝트가 없는 work의 대화는 spec 폴더에서 일한다(three-axes 결정 17)");
 
     // 그 뒤에 work에 프로젝트가 붙었다.
     sandbox.work("cart", &["shop"]);
@@ -280,7 +280,7 @@ fn 프로젝트를_나중에_붙인_work에서도_되살린_대화의_cwd는_age
     assert_eq!(
         sandbox.agents_row("cart", &newer.id)["cwd"],
         json!(work.join("trees/shop")),
-        "새 대화부터 새 규칙(프로젝트 하나 → 그 워크트리)을 따른다(결정 17)"
+        "새 대화부터 새 규칙(프로젝트 하나 → 그 워크트리)을 따른다(three-axes 결정 17)"
     );
 
     host.shut_down();

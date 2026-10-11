@@ -9,7 +9,7 @@ import type { ChatAgent, ChatEngineDefaults, ChatSettings } from "./types";
 //   이 구획 때문에 달라지지 않는다).
 // - **읽은 것 위에 얹는다.** 손으로 적은 모르는 키는 구획 안에서도, 엔진 칸 안에서도 저장 한 번에 사라지지 않는다.
 
-/** `+`와 첫 대화가 여는 에이전트의 처음 값 — Claude Code다(결정 16). */
+/** `+`와 첫 대화가 여는 에이전트의 처음 값 — Claude Code다(three-axes 결정 16). */
 export const DEFAULT_AGENT: ChatAgent = "claude";
 
 /** 고를 수 있는 에이전트 — 화면의 차례이기도 하다. */

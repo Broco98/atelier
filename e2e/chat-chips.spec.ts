@@ -108,7 +108,7 @@ test("모델 · 모드 칩(Claude): 목록이 기록의 열림 줄 그대로다 
   page,
 }) => {
   await openChat(page, claudeFresh, linesThrough(claudeTwoTurns, CLAUDE_SENT - 1));
-  // 모드 — 엔진의 이름 그대로 다섯(결정 16). 변환기가 내지 않는 bypassPermissions는 없다. 칩 글자는 열림 줄의 지금 모드다.
+  // 모드 — 엔진의 이름 그대로 다섯(three-axes 결정 16). 변환기가 내지 않는 bypassPermissions는 없다. 칩 글자는 열림 줄의 지금 모드다.
   await 단추(page, "모드 auto").click();
   expect(await 줄이름들(page)).toEqual(["default", "acceptEdits", "auto", "dontAsk", "plan"]);
   await expect(메뉴(page).getByRole("menuitemradio", { name: "auto", exact: true })).toHaveAttribute("aria-checked", "true");

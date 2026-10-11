@@ -6,7 +6,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { EngineLists } from "@/features/chat/types";
 import type { Settings } from "@/features/settings/types";
 
-// three-axes 티켓 25 — **설정 「대화」에서 새 대화의 기본값을 고른다**(결정 16 · 스토리 111 · 112 · 113).
+// three-axes 티켓 25 — **설정 「대화」에서 새 대화의 기본값을 고른다**(three-axes 결정 16 · 스토리 111 · 112 · 113).
 //
 // 이 층이 재는 것은 화면이다 — 행 셋이 서고, 고른 값이 저장 명령의 인자로 나가고, 목록이 없는 엔진은 「엔진 기본값」만 고를 수
 // 있다. 그리고 `+`가 설정의 기본 에이전트를 새 대화 명령에 싣는다. 새 대화가 그 모델 · 모드로 열리는지(플래그 · `set_*`)는 L1이
@@ -65,7 +65,7 @@ test("대화 쪽에 행 셋이 서고, 고르면 저장 명령에 그 값이 실
   for (const name of ["Claude Code 기본 모델", "Codex 기본 모델", "Claude Code 시작 모드", "Codex 시작 모드"]) {
     await expect(값(page, name), `${name}는 처음에 엔진 기본값이다`).toHaveText("엔진 기본값");
   }
-  // 처음 기본 에이전트는 Claude Code다(결정 16). 손대지 않으면 저장할 것이 없다.
+  // 처음 기본 에이전트는 Claude Code다(three-axes 결정 16). 손대지 않으면 저장할 것이 없다.
   await expect(에이전트칩(page, "Claude Code")).toHaveAttribute("aria-pressed", "true");
   await expect(에이전트칩(page, "Codex")).toHaveAttribute("aria-pressed", "false");
   await expect(저장(page)).toBeDisabled();

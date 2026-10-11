@@ -890,13 +890,13 @@ impl ConversationHost {
     }
 
     /// 떠 있지 않거나 죽은 대화를 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 대화와 죽은 대화는 말을 보낼 때 띄운다(S8 ·
-    /// 결정 19). 로그인이 「됨」으로 바뀐 뒤의 다시 띄우기(12)도 이 길이다(`Revive::EvenIfRunning`).
+    /// three-axes 결정 19). 로그인이 「됨」으로 바뀐 뒤의 다시 띄우기(12)도 이 길이다(`Revive::EvenIfRunning`).
     ///
-    /// - 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서 연다(결정 17) — work에 프로젝트가 나중에 붙어도
+    /// - 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서 연다(three-axes 결정 17) — work에 프로젝트가 나중에 붙어도
     ///   있던 대화는 그 자리에서 이어진다(스토리 110).
     /// - `agents.json`의 에이전트 쪽 세션 id로 resume → load → 새 세션 순이다. 열림 줄이 그 길(resumed · loaded · fresh)을
     ///   말하고, 새 세션으로 끝나면 다음 첫 말에 머리말이 다시 붙는다(S11).
-    /// - Codex에는 `agents.json`의 모델 · 모드 · 계획을 `set_*`로 다시 넣는다(결정 27, [`Self::open_agent`]).
+    /// - Codex에는 `agents.json`의 모델 · 모드 · 계획을 `set_*`로 다시 넣는다(three-axes 결정 27, [`Self::open_agent`]).
     /// - 떠 있던(죽은) 대화는 기록기와 대기 줄을 그대로 이어 쓴다 — 기록의 seq가 한 셈이고, 대기 줄은 죽어도 그대로다(S13).
     ///   다시 뜨지 못하면(로그인이 또 필요하거나 못 열었으면) 대기 줄은 사라진다 — 떠 있는 대화의 메모리에만 있으므로. 화면이
     ///   옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
@@ -1867,14 +1867,14 @@ enum Revive {
 enum Setting {
     Model(String),
     Mode(String),
-    /// Codex의 「계획」 — `collaboration_mode`가 `plan`인가(결정 29).
+    /// Codex의 「계획」 — `collaboration_mode`가 `plan`인가(three-axes 결정 29).
     Plan(bool),
 }
 
 /// 띄운 Codex에 그 대화의 모델 · 모드 · 계획을 넣는다 — Codex는 `session/new`에 이것을 싣지 못해 새 세션을 config 기본값으로
 /// 열고, resume · load도 config 기본값으로 되돌린다(three-axes 결정 27). 그래서 설정 「대화」의 기본값으로 만든 새 대화(티켓 25),
 /// 띄우지 않은 동안 바꾼 값(티켓 09), 되살린 대화(티켓 10)가 모두 이 길로 그 값을 받는다. 사람이 바꾼 것이 아니므로 `config` 줄은
-/// 적지 않는다. 비어 있는 칸(엔진 기본값)은 넣지 않는다 — Codex는 `set_*`를 받지 않는다(결정 16).
+/// 적지 않는다. 비어 있는 칸(엔진 기본값)은 넣지 않는다 — Codex는 `set_*`를 받지 않는다(three-axes 결정 16).
 ///
 /// 엔진이 거절해도(사라진 모델 · 답 없음) 대화는 연다 — 그 값은 `agents.json`에 남고 엔진은 기본값으로 돈다. 까닭은 앱의
 /// stderr에만 남는다. 수신 루프 밖에서, 대화의 잠금 없이 부른다 — 답을 기다린다. 떠 있는 표에 넣기 전이라 첫 말보다 먼저 닿는다.

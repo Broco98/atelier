@@ -25,7 +25,7 @@ fn codex_modes() -> Value {
     })
 }
 
-/// 실측의 configOptions 다섯 — 모델 목록과 생각 깊이는 앞의 몇 개로 줄였다. 「계획」은 `collaboration_mode`다(결정 29).
+/// 실측의 configOptions 다섯 — 모델 목록과 생각 깊이는 앞의 몇 개로 줄였다. 「계획」은 `collaboration_mode`다(three-axes 결정 29).
 fn codex_config_options() -> Value {
     json!([
         {"id": "mode", "name": "Mode", "description": "Approval and sandboxing preset for the session", "category": "mode",
@@ -113,7 +113,7 @@ fn 모델_모드_계획을_바꾸면_가짜가_set_config_option과_set_mode를_
             json!({"method": "session/set_config_option",
                    "params": {"sessionId": session_id, "configId": "collaboration_mode", "value": "plan"}}),
         ],
-        "모델 → set_config_option{{model}}, 모드 → set_mode, 계획 → set_config_option{{collaboration_mode}}(결정 29)"
+        "모델 → set_config_option{{model}}, 모드 → set_mode, 계획 → set_config_option{{collaboration_mode}}(three-axes 결정 29)"
     );
     let row = sandbox.agents_row("cart", &conversation.id);
     assert_eq!((row["model"].clone(), row["mode"].clone(), row["plan"].clone()), (json!("gpt-6-astra"), json!("read-only"), json!(true)));
@@ -285,7 +285,7 @@ fn plan_mode_plan_update_넷은_update_줄로_switch_mode_요청은_permission_�
         plans[3],
         json!({"type": "markdown", "planId": "fake-plan-1-plan",
                "content": "## Add `hello.txt`\n\n1. Create a repo-root file named `hello.txt` containing `hi`.\n2. Verify the file contains exactly `hi`.\n"}),
-        "계획은 마크다운 전문이 원문 그대로 온다(결정 29)"
+        "계획은 마크다운 전문이 원문 그대로 온다(three-axes 결정 29)"
     );
     let asked = &of_kind(&record, "permission")[0]["payload"];
     assert_eq!(asked["state"], json!("asked"));

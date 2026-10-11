@@ -23,7 +23,7 @@ import {
 describe("주소에 적히는 것", () => {
   it("터미널과 대화가 적힌다", () => {
     expect(validateWorkSearch({ tab: "terminal" })).toEqual({ tab: "terminal" });
-    // three-axes S21 — `chat` 탭의 주소 값은 `tab=chat`이다(결정 9).
+    // three-axes S21 — `chat` 탭의 주소 값은 `tab=chat`이다(three-axes 결정 9).
     expect(validateWorkSearch({ tab: "chat" })).toEqual({ tab: "chat" });
   });
 

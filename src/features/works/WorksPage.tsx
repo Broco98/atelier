@@ -550,7 +550,7 @@ function WorksPage({
     if (panelWork && openedSpec && unseen.includes(openedSpec)) markOpened(panelWork.slug, openedSpec);
   }, [panelWork, openedSpec, unseen]);
   // 레일 `spec`의 점 — 아직 열지 않은 고친 파일이 있고 트리가 지금 안 보일 때(프로토타입 D). 트리가 보이면 그 행들의 점이 말한다.
-  // 레일 `chat`의 점 — 그 work의 대화가 나를 기다리거나 끝났고 대화창이 지금 안 보일 때(결정 10). 대화창이 보이면(가운데 `chat` 탭
+  // 레일 `chat`의 점 — 그 work의 대화가 나를 기다리거나 끝났고 대화창이 지금 안 보일 때(three-axes 결정 10). 대화창이 보이면(가운데 `chat` 탭
   // 이거나 작업 패널이 `chat`을 보인다) 대화 탭의 점이 말한다.
   const chatSignal = useWorkChatSignal(panelWork?.slug ?? null);
   const chatVisible = chatStands || (panelShown && panelView === "chat");

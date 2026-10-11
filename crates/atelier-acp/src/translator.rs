@@ -321,7 +321,7 @@ impl Session {
     /// `mcpServers`는 보지 않는다 — 사용자 MCP와 커넥터는 `claude -p`가 스스로 붙인다(three-axes 결정 23).
     ///
     /// `revive`가 있으면 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델은 새 대화와 같이
-    /// 받은 값을 플래그로 준다 — Codex처럼 열린 뒤에 다시 넣지 않는다(결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
+    /// 받은 값을 플래그로 준다 — Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
     /// 호스트는 다음 단계로 넘어간다.
     fn open(id: &Value, params: &Value, revive: Option<String>, shared: &Arc<Shared>) -> Result<Self, String> {
