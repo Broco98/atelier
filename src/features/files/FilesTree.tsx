@@ -205,6 +205,9 @@ type RowsProps = Omit<TreeRowsProps<FileRow>, "items" | "depth">;
  * 중」 행이 서고(스토리 21), 읽지 못하면 그 자리에 까닭 행이 선다. 안의 폴더도 다시 「아직 안 읽음」이라 펼치면 또 이 몸이다.
  *
  * 펼쳐 둔 동안만 마운트된다 — 그래서 펼칠 때 읽고, 새로고침 버튼은 펼쳐 둔 것만 다시 읽는다(`worktreeFolderQuery`).
+ *
+ * 바로 아래가 상한을 넘으면 코어가 앞에서부터 상한까지만 싣고 나머지를 수로 말한다(`omitted`) — 받은 행 아래에 그 수를 한 줄로
+ * 세운다. 행이 끝난 자리가 폴더의 끝이 아니라는 것을 말해야 한다.
  */
 function UnreadFolder({
   slug,
@@ -223,10 +226,18 @@ function UnreadFolder({
 }) {
   const folder = useQuery(worktreeFolderQuery(slug, project, path, visible));
   const rows = useMemo(() => (folder.data?.kind === "listed" ? rowsOf(folder.data.entries) : []), [folder.data]);
+  const omitted = folder.data?.kind === "listed" ? (folder.data.omitted ?? 0) : 0;
   return answerBody(
     folder,
     rows,
-    (items) => <TreeRows items={items} depth={depth} {...rowsProps} />,
+    (items) => (
+      <>
+        <TreeRows items={items} depth={depth} {...rowsProps} />
+        {omitted > 0 && (
+          <FolderNote depth={depth} text={`그 밖에 ${omitted.toLocaleString("ko-KR")}개는 그리지 않아요`} />
+        )}
+      </>
+    ),
     (text) => <FolderNote depth={depth} text={text} />,
     "비어 있어요",
   );
@@ -257,8 +268,8 @@ function answerBody(
 const sectionNote = (text: string) => <span className={NOTE}>{text}</span>;
 
 /**
- * 펼친 걸린 폴더 아래의 안내 한 줄(「읽는 중」 · 까닭 · 비어 있음) — 자식 행의 자리(높이 · 들여쓰기)에 선다. 까닭은 길 수 있어
- * 잘리고, 툴팁으로 전부 읽힌다.
+ * 펼친 걸린 폴더 아래의 안내 한 줄(「읽는 중」 · 까닭 · 비어 있음 · 싣지 않은 수) — 자식 행의 자리(높이 · 들여쓰기)에 선다.
+ * 까닭은 길 수 있어 잘리고, 툴팁으로 전부 읽힌다.
  */
 function FolderNote({ depth, text }: { depth: number; text: string }) {
   return (

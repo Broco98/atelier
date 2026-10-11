@@ -23,8 +23,11 @@ export interface WorktreeEntry {
  * 워크트리 하나의 트리 목록, 그리고 걸린 폴더 하나의 한 겹(`listed`면 그 폴더 바로 아래 — 모두 걸린 것이다). **워크트리가
  * 없거나 읽지 못한 것도 답이다** — 오류가 아니라 구획(펼친 걸린 폴더면 그 자리)이 그리는 갈래라서 코어가 `kind`로 갈라
  * 보낸다(Rust `#[serde(tag = "kind")]`와 짝).
+ *
+ * `omitted`는 상한에 걸려 코어가 **싣지 않은** 항목의 수다 — 한 겹 읽기만 자른다(빌드 산출물은 한 겹이어도 수만 개다). 자르지
+ * 않았으면 오지 않는다.
  */
 export type WorktreeTree =
-  | { kind: "listed"; entries: WorktreeEntry[] }
+  | { kind: "listed"; entries: WorktreeEntry[]; omitted?: number }
   | { kind: "worktreeMissing" }
   | { kind: "unreadable"; reason: string };

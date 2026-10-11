@@ -44,7 +44,14 @@ pub struct WorktreeEntry {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum WorktreeTree {
     /// 워크트리 뿌리(한 겹 읽기면 그 폴더) 바로 아래의 항목들.
-    Listed { entries: Vec<WorktreeEntry> },
+    ///
+    /// `omitted`는 상한에 걸려 **싣지 않은** 항목의 수다 — 한 겹 읽기만 자른다(`FOLDER_LIMIT`). 자르지 않았으면 0이고, 그때는
+    /// 보내지 않는다(화면은 없으면 0으로 읽는다).
+    Listed {
+        entries: Vec<WorktreeEntry>,
+        #[serde(skip_serializing_if = "is_zero")]
+        omitted: usize,
+    },
     /// 그 프로젝트의 워크트리 폴더가 없다.
     WorktreeMissing,
     /// 폴더는 있지만 읽지 못했다 — 저장소가 아니거나 git이 실패했다. 한 겹 읽기면 그 폴더가 사라졌거나 · 폴더가 아니거나 ·
@@ -109,14 +116,17 @@ pub fn list_worktree_tree(works_root: &Path, slug: &str, project: &str) -> Resul
             }
         }
     }
-    Ok(WorktreeTree::Listed { entries: root.into_entries("") })
+    Ok(WorktreeTree::Listed { entries: root.into_entries(""), omitted: 0 })
 }
 
 /// gitignore에 걸린 폴더 하나의 바로 아래(구현 스펙 「코어 — 워크트리 읽기 › 한 겹 읽기」) — 화면이 그 폴더를 펼칠 때 읽는다.
 ///
 /// git에 묻지 않고 **디스크를 한 겹 읽는다.** 걸린 폴더 안의 것은 모두 걸린 것이라 물을 것이 없다. 자식 폴더는 다시 「아직 안
-/// 읽음」이라 `node_modules/`나 `target/`을 펼쳐도 그 아래 수만 개를 읽지 않는다 — 바로 아래가 수백 개면 그대로 다 준다.
-/// 디스크가 답하므로 빈 폴더도 선다(S2). 링크는 따라가지 않고 그 자리의 항목이다(트리 목록과 같다). 정렬도 트리 목록과 같다(S4).
+/// 읽음」이라 `node_modules/`나 `target/`을 펼쳐도 그 아래를 읽지 않는다. 디스크가 답하므로 빈 폴더도 선다(S2). 링크는 따라가지
+/// 않고 그 자리의 항목이다(트리 목록과 같다). 정렬도 트리 목록과 같다(S4).
+///
+/// **바로 아래가 상한(`FOLDER_LIMIT`)을 넘으면 정렬한 앞에서부터 상한까지만 싣고 나머지는 수로 말한다**(`omitted`). 한 겹이어도
+/// 빌드 산출물은 수만 개다(`target/debug/deps`) — 다 보내면 화면이 그 행을 한꺼번에 세우느라 웹뷰가 몇 초씩 멈춘다.
 ///
 /// **경로 가드는 파일 읽기와 같은 두 겹이다.** 글자로 — 상대 경로의 일반 조각만(`..` · 절대 경로는 `Err`). 그 위에 실제 경로를
 /// 풀어 워크트리 안인지 본다 — 글자 가드는 링크를 막지 못해서다. 밖이면 읽지 않고 「읽지 못함」이다.
@@ -157,7 +167,17 @@ pub fn list_worktree_folder(works_root: &Path, slug: &str, project: &str, rel_pa
         entries.push(WorktreeEntry { path: format!("{parent}/{name}"), name, kind, ignored: true, children });
     }
     sort_entries(&mut entries);
-    Ok(WorktreeTree::Listed { entries })
+    let omitted = entries.len().saturating_sub(FOLDER_LIMIT);
+    entries.truncate(FOLDER_LIMIT);
+    Ok(WorktreeTree::Listed { entries, omitted })
+}
+
+/// 한 겹 읽기가 싣는 항목의 상한. `node_modules/` 바로 아래(대개 수백~천여 개)는 다 들고, 빌드 산출물의 수만 개는 자른다.
+/// 이 크기면 펼칠 때 행을 세우는 데 0.3초 남짓이다(WebKit 실측 — 2천 행 0.3초 · 5천 행 1초 · 2만 행 11초).
+const FOLDER_LIMIT: usize = 2000;
+
+fn is_zero(count: &usize) -> bool {
+    *count == 0
 }
 
 /// 폴더(하위 모듈 포함) 먼저, 그다음 이름순이다(S4). 이름은 대소문자를 가리지 않고 견주고, 같으면 글자 그대로 견준다 — 탐색기의
@@ -313,7 +333,7 @@ mod tests {
 
     fn listed(works: &Path) -> Vec<WorktreeEntry> {
         match list_worktree_tree(works, "w", "fe").unwrap() {
-            WorktreeTree::Listed { entries } => entries,
+            WorktreeTree::Listed { entries, .. } => entries,
             other => panic!("트리가 읽히지 않았다: {other:?}"),
         }
     }
@@ -532,7 +552,7 @@ mod tests {
 
     fn folder(works: &Path, path: &str) -> Vec<WorktreeEntry> {
         match list_worktree_folder(works, "w", "fe", path).unwrap() {
-            WorktreeTree::Listed { entries } => entries,
+            WorktreeTree::Listed { entries, .. } => entries,
             other => panic!("{path}이 읽히지 않았다: {other:?}"),
         }
     }
@@ -586,6 +606,30 @@ mod tests {
         );
         let link = find(&entries, "dist/to-alpha").unwrap();
         assert_eq!((link.kind, &link.children), (WorktreeEntryKind::Symlink, &Some(vec![])));
+    }
+
+    /// 빌드 산출물(`target/debug/deps`)은 한 겹이어도 수만 개다 — 다 그리면 웹뷰가 몇 초씩 멈춘다. 상한까지만 싣고 나머지는
+    /// 수로 말한다. 자르는 것은 정렬한 뒤라 폴더가 먼저 남는다.
+    #[test]
+    fn one_layer_gives_at_most_the_limit_and_counts_the_rest() {
+        let (_tmp, works, worktree) = setup();
+        write(&worktree, ".gitignore", "target/\n");
+        commit_all(&worktree);
+        let deps = worktree.join("target/deps");
+        std::fs::create_dir_all(deps.join("zz-incremental")).unwrap();
+        for n in 0..FOLDER_LIMIT + 3 {
+            std::fs::write(deps.join(format!("f{n:05}.o")), "").unwrap();
+        }
+
+        let answer = list_worktree_folder(&works, "w", "fe", "target/deps").unwrap();
+        let WorktreeTree::Listed { entries, omitted } = &answer else { panic!("읽히지 않았다: {answer:?}") };
+        assert_eq!((entries.len(), *omitted), (FOLDER_LIMIT, 4));
+        // 폴더가 이름이 뒤여도 먼저 남고, 파일은 이름순 앞에서부터다
+        assert_eq!(entries[0].path, "target/deps/zz-incremental");
+        assert_eq!(entries[1].name, "f00000.o");
+        assert_eq!(entries[FOLDER_LIMIT - 1].name, format!("f{:05}.o", FOLDER_LIMIT - 2));
+        // 화면은 그 수를 `omitted`로 받는다
+        assert_eq!(serde_json::to_value(&answer).unwrap()["omitted"], serde_json::json!(4));
     }
 
     #[test]

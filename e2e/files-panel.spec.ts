@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, WORKS, WORKTREE_TREES } from "./fixtures";
+import { answerByArg, WORKS, worktreeFile, WORKTREE_TREES } from "./fixtures";
 import {
   callCount,
   fireEventToAll,
@@ -173,6 +173,9 @@ test("걸린 폴더를 펼치면 「읽는 중」 뒤에 한 겹이 서고, 그 
     { slug: pinnedWork.slug, project: "billing", path: "dist" },
   ]);
 
+  // 잘리지 않은 답에는 싣지 않은 수가 없다
+  await expect(작업패널(page).getByText(/^그 밖에/)).toHaveCount(0);
+
   // 안의 것은 모두 걸린 것이다 — 흐린 글자와 그 까닭. 자식 폴더는 아직 안 읽어 접힌 채다
   await expect(패널행(page, "JS app.js")).toHaveAccessibleDescription("gitignore에 걸림");
   const assets = 패널행(page, "assets");
@@ -194,6 +197,27 @@ test("걸린 폴더를 펼치면 「읽는 중」 뒤에 한 겹이 서고, 그 
   await dist.click();
   await expect(패널행(page, "JS app.js")).toBeVisible();
   await expect.poll(() => callCount(page, FOLDER)).toBeGreaterThan(before);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 한 겹이어도 빌드 산출물은 수만 개다(`target/debug/deps`) — 다 그리면 웹뷰가 몇 초씩 멈춘다. 코어가 상한까지만 싣고 나머지를
+// 수로 말하면(`omitted`) 화면은 받은 행 아래에 그 수를 한 줄로 말한다: 행이 끝난 자리가 폴더의 끝이 아니다.
+test("걸린 폴더의 한 겹이 상한에 걸려 잘려 오면 받은 행 아래에 싣지 않은 수가 선다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    list_worktree_folder: answerByArg("path", {
+      dist: { kind: "listed", entries: [worktreeFile("dist/a.o", true), worktreeFile("dist/b.o", true)], omitted: 76_440 },
+    }),
+  });
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await openFiles(page);
+  await 패널행(page, "dist").click();
+
+  await expect(패널행(page, "O b.o")).toBeVisible();
+  const note = 작업패널(page).getByText("그 밖에 76,440개는 그리지 않아요", { exact: true });
+  await expect(note).toBeVisible();
+  // 받은 행 다음 자리다
+  const [last, below] = await Promise.all([패널행(page, "O b.o").boundingBox(), note.boundingBox()]);
+  expect(below!.y).toBeGreaterThan(last!.y);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
