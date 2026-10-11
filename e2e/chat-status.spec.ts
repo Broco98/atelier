@@ -2,15 +2,16 @@ import { expect, test, type Page } from "./evidence";
 
 import { WORKS } from "./fixtures";
 import { ipcCallArgs, unknownIpcCalls } from "./harness";
-import { conversationRow, linesAfter, linesThrough, record, sessionLine, streamLines } from "./chat-records";
+import { conversationRow, linesAfter, linesThrough, record, renumber, streamLines } from "./chat-records";
 import { openWorkChat, 대화탭, 대화탭줄, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 import type { Conversation, RecordLine } from "@/features/chat/types";
 
 // three-axes 티켓 23 — **대화 상태 점이 서고, 다시 켜면 기록으로 그려지고, 닫기 · 종료가 하던 일을 묻는다.**
 //
 // 상태(S23)는 화면이 기록에서 계산한다 — 이어 붙이는 중(띄우거나 되살리는 중) · 일하는 중(턴이 돈다) · 나를 기다림(답하지 않은
-// 권한 요청) · 끝남(턴이 끝났는데 그 대화를 아직 보지 않았다). 그래서 이 층은 L1이 남긴 기록(S26)과 그 꼴로 지은 손 자료를 쏘고,
-// 대화 탭의 접근성 이름 · 상태 점 · 레일 칸의 설명 · 흐름의 상태 줄을 잰다. 종료 확인의 셈은 `quit-confirm.spec.ts` 옆에서 잰다.
+// 권한 요청) · 끝남(턴이 끝났는데 그 대화를 아직 보지 않았다). 그래서 이 층은 L1이 남긴 기록(S26)을 쏘고 — 다른 기록의 줄은 이
+// 대화의 끝에 seq를 다시 매겨 잇는다 — 대화 탭의 접근성 이름 · 상태 점 · 레일 칸의 설명 · 흐름의 상태 줄을 잰다. 종료 확인의 셈은
+// `quit-confirm.spec.ts` 옆에서 잰다.
 
 const [, plainWork] = WORKS;
 
@@ -31,6 +32,13 @@ const ANSWERED = seqOf(permission, (line) => line.kind === "permission" && (line
 
 const codex = conversationRow({ id: "c-status-codex", agent: "codex", name: "Codex", lastSeq: OPENED });
 const claude = conversationRow({ id: "c-status-claude", agent: "claude", name: "Claude" });
+
+// L1이 남긴 「Claude 두 턴」(S26) — 띄우는 중(seq 1) 뒤에 열림이 온다.
+const claudeTwoTurns = record("claude-two-turns");
+const CLAUDE_OPENED = seqOf(
+  claudeTwoTurns,
+  (line) => line.kind === "session" && (line.payload as { state: string }).state === "opened",
+);
 
 test("상태 점: 대화 탭에 일하는 중 · 나를 기다림 · 끝남 · 이어 붙이는 중이 기록대로 서고, 접근성 이름이 그 상태를 말한다", async ({ page }) => {
   await openChat(page, [codex, claude], { [codex.id]: linesThrough(permission, OPENED), [claude.id]: [] });
@@ -63,12 +71,10 @@ test("상태 점: 대화 탭에 일하는 중 · 나를 기다림 · 끝남 · �
   await expect(상태점(page, codex.id)).toHaveCount(0);
 
   // 띄우는 중(되살리기 포함) → 이어 붙이는 중. 열리면 걷힌다.
-  await streamLines(page, plainWork.slug, claude.id, [sessionLine(1, { state: "spawning" })]);
+  await streamLines(page, plainWork.slug, claude.id, linesThrough(claudeTwoTurns, CLAUDE_OPENED - 1));
   await expect(대화탭(page, "Claude — 이어 붙이는 중")).toBeVisible();
   await expect(상태점(page, claude.id)).toHaveAttribute("data-status", "connecting");
-  await streamLines(page, plainWork.slug, claude.id, [
-    sessionLine(2, { state: "opened", how: "new", agentVersion: "0.18.0", modes: null, models: null, configOptions: [] }),
-  ]);
+  await streamLines(page, plainWork.slug, claude.id, linesThrough(linesAfter(claudeTwoTurns, CLAUDE_OPENED - 1), CLAUDE_OPENED));
   await expect(대화탭(page, "Claude")).toBeVisible();
   await expect(상태점(page, claude.id)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -135,6 +141,13 @@ const 흐름 = (page: Page) => 작업패널(page);
 const 머리줄 = (page: Page, name: string) => 흐름(page).getByRole("button", { name, exact: true });
 const 새로시작함 = "새로 시작함 — 앞의 맥락을 잇지 못해 새 세션으로 열었어요";
 
+// L1이 남긴 「Codex 죽음」(S26, `revive.rs`) — 권한이 걸린 채 에이전트가 죽어 거둬짐과 죽음 줄(까닭 · stderr 꼬리)이 적혔다.
+const died = record("codex-died").find(
+  (line) => line.kind === "session" && (line.payload as { state: string }).state === "died",
+)!;
+// L1이 남긴 「판 경고」(S26, `codex_conversation.rs`) — 잰 적 없는 메이저 판의 에이전트: 띄우는 중 · 판 경고 · 열림.
+const versionWarning = record("codex-version-warning");
+
 /** 앱을 다시 켠 뒤의 대화 — 대화 목록이 「에이전트가 떠 있지 않다」고 말한다(`live: false`). */
 const restarted = conversationRow({ id: "c-status-resume", agent: "codex", name: "Codex", lastSeq: YESTERDAY_END, live: false });
 
@@ -187,22 +200,12 @@ test("상태 줄: 에이전트 프로세스가 죽으면 그 까닭이, 잰 적 
   await openChat(page, [restarted], { [restarted.id]: linesThrough(resume, YESTERDAY_END) });
   await expect(머리줄(page, "8초 동안 작업함")).toBeVisible();
 
-  await streamLines(page, plainWork.slug, restarted.id, [
-    sessionLine(RESPAWN, {
-      state: "died",
-      reason: "에이전트 프로세스가 끝났습니다 (종료 코드 101)",
-      stderrTail: ["thread 'main' panicked at codex-rs/core/src/turn.rs:42"],
-    }),
-  ]);
-  await expect(흐름(page).getByText("에이전트 프로세스가 끝났습니다 (종료 코드 101) · 다음 말에서 다시 띄워요")).toBeVisible();
+  await streamLines(page, plainWork.slug, restarted.id, renumber([died], RESPAWN));
+  await expect(흐름(page).getByText("에이전트 프로세스가 끝났습니다 (종료 코드 3) · 다음 말에서 다시 띄워요")).toBeVisible();
 
-  await streamLines(page, plainWork.slug, restarted.id, [
-    sessionLine(RESPAWN + 1, { state: "spawning" }),
-    sessionLine(RESPAWN + 2, { state: "version-warning", agentVersion: "3.0.0", supportedMajor: 2 }),
-    sessionLine(RESPAWN + 3, { state: "opened", how: "resumed", agentVersion: "3.0.0", modes: null, models: null, configOptions: [] }),
-  ]);
+  await streamLines(page, plainWork.slug, restarted.id, renumber(versionWarning, RESPAWN + 1));
   await expect(흐름(page).getByText("확인하지 않은 에이전트 판이에요(3.0.0 — 확인한 판은 2.x). 그대로 이어 가요")).toBeVisible();
-  // 이어 붙였으니(`resumed`) 「새로 시작함」은 없다.
+  // 새 세션으로 열렸다는 열림(`fresh`)이 아니니 「새로 시작함」은 없다.
   await expect(흐름(page).getByText(새로시작함)).toHaveCount(0);
   await expect(대화탭(page, "Codex")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);

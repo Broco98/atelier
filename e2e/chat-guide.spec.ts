@@ -12,14 +12,15 @@ import {
   replaceAnswer,
   unknownIpcCalls,
 } from "./harness";
-import { conversationRow, handTurn, record, streamLines } from "./chat-records";
+import { conversationRow, linesAfter, linesThrough, record, streamLines } from "./chat-records";
 import { 대화탭, 레일칸, 입력칸, 작업패널 } from "./chat-screen";
 
 // three-axes 티켓 22 — **안내 카드가 못 찾음 · 로그인 안 됨 · 로그인 중을 보이고, 끝나면 대화로 돌아간다**(three-axes 결정 24 · 30).
 //
-// 대화 호스트는 목업 백엔드의 답(엔진 확인)과 이 검사가 쏘는 엔진 상태 이벤트 · 기록 줄 이벤트로 선다. 엔진 상태는 L1(티켓 12)이
-// 못박은 꼴 그대로 손으로 짓는다(`chat.rs`의 「엔진 상태 이벤트는 …」 · `login.rs`). 재는 것은 카드의 이름 · 보이는 글 · 나간
-// 명령의 인자 · 클립보드에 쓴 값이다. 진짜 「로그인」 단추로 끝까지 가는 것(관문 G3)은 사람이 판 끝(28)에서 본다.
+// 대화 호스트는 목업 백엔드의 답(엔진 확인)과 이 검사가 쏘는 엔진 상태 이벤트 · 기록 줄 이벤트로 선다. 기록 줄은 L1이 남긴 기록
+// 그대로다(S26 — 열 때 로그인 필요 · 첫 턴의 -32000). 엔진 상태는 기록에 없어(호스트 메모리) L1(티켓 12)이 못박은 꼴 그대로 손으로
+// 짓는다(`chat.rs`의 「엔진 상태 이벤트는 …」 · `login.rs`). 재는 것은 카드의 이름 · 보이는 글 · 나간 명령의 인자 · 클립보드에 쓴
+// 값이다. 진짜 「로그인」 단추로 끝까지 가는 것(관문 G3)은 사람이 판 끝(28)에서 본다.
 
 const [, plainWork] = WORKS;
 
@@ -165,17 +166,8 @@ test("+: 띄우기 전에 엔진을 확인하고, 못 찾으면 대화를 만들
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// L1(티켓 12)이 못박은 「session/new가 -32000」 기록 — 띄우는 중 · 계정 없음 · 로그인 필요(실측 A3).
-const loginRequiredOnOpen: RecordLine[] = [
-  { seq: 1, at: "2026-10-10T10:00:01.000+09:00", kind: "session", payload: { state: "spawning" } },
-  {
-    seq: 2,
-    at: "2026-10-10T10:00:02.000+09:00",
-    kind: "session",
-    payload: { state: "auth-status", params: { authStatus: { kind: "none", label: "Not logged in" } } },
-  },
-  { seq: 3, at: "2026-10-10T10:00:03.000+09:00", kind: "session", payload: { state: "login-required" } },
-];
+// L1(티켓 12)이 남긴 「session/new가 -32000」 기록(S26, `login.rs`) — 띄우는 중 · 계정 없음 · 로그인 필요(실측 A3).
+const loginRequiredOnOpen = record("login-required");
 
 const LOGGED_OUT = "Codex에 로그인이 안 돼 있어요";
 const LOGGING_IN = "Codex에 로그인하는 중이에요";
@@ -256,35 +248,24 @@ test("로그인 안 됨: 로그인 명령이 끝났는데도 안 됐으면 exit 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// L1(티켓 12 · 16의 S3)이 남긴 「Claude 첫 턴의 -32000」 기록(S26, `claude_revive.rs`) — 열림 · 명령 목록 뒤 보낸 말의 턴이 에이전트의
+// -32000으로 끝나고, 호스트가 턴 끝 바로 뒤에 로그인 필요 줄을 적었다.
+const claudeLoginRequired = record("claude-login-required");
+const claudeSent = claudeLoginRequired.find((line) => line.kind === "sent")!;
+
 test("대화 도중: 턴 도중에 로그인이 풀린 줄이 오면 오류 글이 아니라 같은 안내 카드가 선다 — 엔진을 가리지 않는다", async ({ page }) => {
-  const claude = conversationRow({ id: "c-claude", agent: "claude", name: "Claude" });
+  const claude = conversationRow({ id: "c-claude", agent: "claude", name: "Claude", lastSeq: claudeSent.seq - 1 });
   await recordClipboard(page);
   await installFixtureBackend(page, {
     chat_list: answerByArg("work", { [plainWork.slug]: [claude] }, { otherwise: [] }),
-    chat_read_record: answerByArg("conversation", { [claude.id]: [] }),
+    chat_read_record: answerByArg("conversation", { [claude.id]: linesThrough(claudeLoginRequired, claudeSent.seq - 1) }),
   });
   await page.goto(`/works/${plainWork.slug}`);
   await 레일칸(page, "chat").click();
   await expect(입력칸(page)).toBeVisible();
 
   // 말을 보냈고, 턴이 에이전트의 -32000으로 끝났다 — 호스트는 턴 끝 바로 뒤에 로그인 필요 줄을 적는다(티켓 12 · 16의 S3).
-  const [sent] = handTurn(1, "overview를 고쳐 줘", "", 0);
-  await streamLines(page, plainWork.slug, claude.id, [
-    sent,
-    {
-      seq: 2,
-      at: "2026-10-10T11:00:02.000+09:00",
-      kind: "turn-end",
-      payload: {
-        stopReason: null,
-        durationMs: 1000,
-        cancelledByUs: false,
-        outOfTurn: false,
-        error: { code: -32000, message: "Authentication required" },
-      },
-    },
-    { seq: 3, at: "2026-10-10T11:00:03.000+09:00", kind: "session", payload: { state: "login-required" } },
-  ]);
+  await streamLines(page, plainWork.slug, claude.id, linesAfter(claudeLoginRequired, claudeSent.seq - 1));
   const title = "Claude Code에 로그인이 안 돼 있어요";
   await expect(카드(page, title)).toBeVisible();
   await expect(입력칸(page)).toHaveCount(0);
@@ -296,6 +277,6 @@ test("대화 도중: 턴 도중에 로그인이 풀린 줄이 오면 오류 글�
   await fireEvent(page, CHAT_ENGINE_EVENT, engine({ agent: "claude", found: true, loggedIn: true, login: null }));
   await expect(카드(page, title)).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
-  await expect(작업패널(page).getByText("overview를 고쳐 줘", { exact: true })).toBeVisible();
+  await expect(작업패널(page).getByText("ok 라고만 답해.", { exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

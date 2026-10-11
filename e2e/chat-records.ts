@@ -13,6 +13,11 @@ import { fireEvent } from "./harness";
 // 기록 읽기의 답과 기록 줄 이벤트로 흘린다. 그래서 두 지점이 같은 기록 모양을 본다 — 호스트가 줄 모양을 바꾸면 L1이 그
 // 파일을 다시 쓰고, 화면이 그 모양을 못 읽으면 여기서 빨개진다.
 //
+// **우리 줄의 갈래는 손으로 짓지 않는다.** 죽음 · 판 경고 · 로그인 필요 · 거둬짐 · 멈춤 · 턴 밖 턴 · 에이전트 바꾸기는 L1이 그
+// 갈래를 지나며 남긴 기록에서 잘라 쓴다(`linesThrough` · `linesAfter` · `renumber`). 손 빌더는 가짜가 내지 못하는 ACP 원문 update
+// 몸(코드 블록 · MCP 모양 · 도구 모양)을 잴 때만 쓰고, 그 몸을 감싸는 보낸 말 · 턴 끝은 가장 흔한 꼴(머리말 없는 말 · `end_turn`)
+// 하나다.
+//
 // **`fixtures.ts`에서 읽지 않는다.** 그 모듈은 L2의 `tauri-commands.test`가 임포트하므로 파일을 읽게 만들면 L2도 그 파일에
 // 묶인다. 대화 spec이 이 모듈을 불러 제 답을 덮어쓴다.
 
@@ -99,6 +104,16 @@ export async function streamLines(
 export const linesThrough = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
 export const linesAfter = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq > seq);
 
+/**
+ * 기록 줄들의 seq를 `from`부터 다시 매긴다 — 다른 기록에서 자른 줄을 이 대화의 끝에 잇는다. 시각도 seq를 옮긴 만큼 옮긴다: L1의
+ * 고정값 기록은 시각이 seq를 따라 오르므로(`fix_record`), 이은 줄도 앞 줄보다 늦다.
+ */
+export const renumber = (lines: readonly RecordLine[], from: number): RecordLine[] =>
+  lines.map((line, at) => {
+    const seq = from + at;
+    return { ...line, seq, at: new Date(Date.parse(line.at) + (seq - line.seq) * 1000).toISOString() };
+  });
+
 /** 손 자료의 시각 — 11시 정각부터 n초. */
 const handAt = (n: number) => `2026-10-10T11:00:${String(n).padStart(2, "0")}.000+09:00`;
 
@@ -138,89 +153,6 @@ export function handTurn(from: number, text: string, answer: string, durationMs:
     },
   ];
 }
-
-/**
- * 손으로 짓는 **Claude 꼴의 멈춘 턴**(three-axes 티켓 20) — S26 목록 밖이라 여기서 짓는다. Claude는 interrupt가 돌던 도구까지
- * 멈춘다(three-axes 결정 28 · 워크플로 실측 2.1.282 `interrupt-sigint`): 열린 `tool_use`에 `is_error` `tool_result`가 오고 나서 `result`가
- * 온다. 변환기가 옮긴 ACP 꼴로는 보낸 말 → 도구 호출(`in_progress`) → 그 도구의 `failed` update → 턴 끝(`cancelled`, 우리가
- * 멈춤)이다. seq는 `from`부터 1씩 오른다.
- */
-export function claudeStoppedTurn(from: number, text: string, command: string, durationMs: number): RecordLine[] {
-  return stoppedCommandTurn(from, text, { title: command, rawInput: { command } }, durationMs);
-}
-
-/**
- * [`claudeStoppedTurn`]과 같은 멈춘 턴이되, 도구 호출의 제목 · 입력을 고른다 — 제목이 빈 codex 꼴(실측 함정 49, 배열 명령
- * `["/bin/zsh", "-lc", …]`)의 멈춘 줄을 짓는다.
- */
-export function stoppedCommandTurn(
-  from: number,
-  text: string,
-  call: { title: string; rawInput: Record<string, unknown> },
-  durationMs: number,
-): RecordLine[] {
-  const toolCallId = "toolu_hand_stopped";
-  return [
-    handSent(from, text),
-    handUpdate(from + 1, 1, {
-      sessionUpdate: "tool_call",
-      toolCallId,
-      kind: "execute",
-      title: call.title,
-      status: "in_progress",
-      rawInput: call.rawInput,
-    }),
-    handUpdate(from + 2, 2, {
-      sessionUpdate: "tool_call_update",
-      toolCallId,
-      status: "failed",
-      content: [
-        {
-          type: "content",
-          content: { type: "text", text: "The user doesn't want to proceed with this tool use. The tool use was rejected." },
-        },
-      ],
-    }),
-    {
-      seq: from + 3,
-      at: handAt(3),
-      kind: "turn-end",
-      payload: { stopReason: "cancelled", durationMs, cancelledByUs: true, outOfTurn: false },
-    },
-  ];
-}
-
-/**
- * 손으로 짓는 **스스로 이어 간 턴**(S4, three-axes 티켓 20) — 보낸 말 없이 턴 밖 update로 시작해 턴 밖 끝(`outOfTurn: true`)으로
- * 끝난다. Claude가 백그라운드 작업 알림으로 스스로 시작한 턴을 변환기 · 호스트가 적는 꼴이다(티켓 16). S26 목록 밖이라 여기서
- * 짓는다. `end`가 거짓이면 턴 밖 끝 줄을 빼고 돌려준다(도는 중).
- */
-export function selfContinuedTurn(from: number, answer: string, durationMs: number, end = true): RecordLine[] {
-  const lines: RecordLine[] = [
-    handUpdate(from, 0, {
-      sessionUpdate: "agent_message_chunk",
-      messageId: "msg_hand_self",
-      content: { type: "text", text: answer },
-    }),
-  ];
-  if (end) {
-    lines.push({
-      seq: from + 1,
-      at: handAt(1),
-      kind: "turn-end",
-      payload: { stopReason: "end_turn", durationMs, cancelledByUs: false, outOfTurn: true },
-    });
-  }
-  return lines;
-}
-
-/**
- * 손으로 짓는 **스스로 이어 간 턴의 시작 표지**(S4, three-axes 티켓 16) — 변환기가 걸린 말 없이 claude의 턴 시작(`system/init`)을 받으면
- * 내는 `session_info_update{_meta.atelier.outOfTurn.state: "started"}`를 호스트가 update 줄로 적은 꼴이다(`translator/machine.rs`의
- * `self_turn_started`). 첫 조각보다 먼저 온다.
- */
-export const selfTurnStarted = (seq: number): RecordLine =>
-  handUpdate(seq, 0, { sessionUpdate: "session_info_update", _meta: { atelier: { outOfTurn: { state: "started" } } } });
 
 /**
  * 손으로 짓는 **도구 턴**(three-axes 티켓 18) — L1 자료에 없는 도구 모양(실패 · MCP 호출 · 제목이 빈 명령)을 잴 때 쓴다. 꼴은 L1
@@ -264,15 +196,3 @@ export async function fireQueue(page: Page, work: string, conversation: string, 
   const event: ChatQueueEvent = { work, conversation, queue };
   await fireEvent(page, CHAT_QUEUE_EVENT, event);
 }
-
-/**
- * 손으로 짓는 `session` 줄 하나(three-axes 티켓 23) — 띄우는 중 · 열림 · 죽음 · 판 경고. 꼴은 호스트의 `SessionState`(serde
- * `state` 꼬리표, 칸은 camelCase)와 같다: `{state: "died", reason, stderrTail}` · `{state: "version-warning", agentVersion,
- * supportedMajor}` · `{state: "opened", how, agentVersion, modes, models, configOptions}`. 죽음 · 판 경고는 S26 목록 밖이라 여기서 짓는다.
- */
-export const sessionLine = (seq: number, payload: Record<string, unknown>): RecordLine => ({
-  seq,
-  at: handAt(seq % 60),
-  kind: "session",
-  payload,
-});

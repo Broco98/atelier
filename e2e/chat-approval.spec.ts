@@ -9,9 +9,10 @@ import { countAnnouncements, openWorkChat, 대화탭줄, 레일칸, 입력칸, �
 // three-axes 티켓 21 — **승인 카드와 계획 카드가 입력창 자리에 선다**(스토리 57 · 58 · 59 · 61 · 62 · 65 · 66 · 67 · 120).
 //
 // 자료는 L1이 남긴 기록이다(S26): 「권한」(티켓 08 — 워크트리 밖에 쓰는 명령에 권한을 묻고 「Yes, proceed」로 답한 Codex 턴),
-// 「권한 거부」(같은 물음을 거부해 codex-acp가 턴을 `cancelled`로 끝낸 것), 「Codex 계획」(티켓 09 — `plan_update` 넷과
-// `switch_mode` 요청을 「다시 짜기」로 답한 것). 거둬짐 줄과 ACP `plan`(체크리스트)은 기록에 없어 그 꼴(호스트 `tests/permission.rs`
-// · ACP 스키마) 그대로 손으로 짓는다. Claude 계획 승인은 변환기가 같은 `switch_mode` 모양으로 옮기므로 따로 쏘지 않는다.
+// 「권한 거부」(같은 물음을 거부해 codex-acp가 턴을 `cancelled`로 끝낸 것), 「에이전트가 거둔 권한」 · 「권한이 걸린 채 멈춤」(같은
+// 물음이 답 없이 거둬진 것 — `tests/permission.rs`), 「Codex 계획」(티켓 09 — `plan_update` 넷과 `switch_mode` 요청을 「다시
+// 짜기」로 답한 것). ACP `plan`(체크리스트)은 가짜가 내지 않아 ACP 스키마 그대로 손으로 짓는다. Claude 계획 승인은 변환기가 같은
+// `switch_mode` 모양으로 옮기므로 따로 쏘지 않는다.
 // 재는 것은 역할 · 접근성 이름 · 보이는 글 · 나간 명령의 인자다.
 
 const plainWork = WORKS[1];
@@ -69,44 +70,47 @@ test("승인 카드: 권한 줄이 오면 입력창 자리에 승인 카드가 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** 손으로 짓는 권한 줄 — 호스트가 적는 꼴(`tests/permission.rs`) 그대로다. 시각은 기록의 시각에 이어 붙인다. */
-const permissionLine = (seq: number, payload: Record<string, unknown>): RecordLine => ({
-  seq,
-  at: `2026-10-10T10:00:${String(seq).padStart(2, "0")}.000+09:00`,
-  kind: "permission",
-  payload,
-});
+/** 그 기록의 권한 거둬짐 줄 — 걸린 요청이 답 없이 닫힌 자리다. */
+const withdrawnOf = (lines: readonly RecordLine[]) =>
+  lines.find((line) => line.kind === "permission" && (line.payload as { state: string }).state === "withdrawn")!.seq;
 
-test("승인 카드: 거둬짐 줄이 오면 걷힌다 — 에이전트가 답을 기다리지 않고 턴을 끝냈을 때도, 카드의 멈추기로 멈췄을 때도", async ({
-  page,
-}) => {
-  await openChat(page, permissionCodex, linesThrough(permission, asked.seq));
+// L1이 남긴 「에이전트가 거둔 권한」(S26) — 물음 · 답을 기다리는 동안의 생각 둘 뒤에 에이전트가 답을 기다리지 않고 요청을 거두고
+// (`withdrawn` · `agent`) 턴을 끝냈다.
+const agentWithdrew = record("permission-withdrawn");
+const AGENT_WITHDREW = withdrawnOf(agentWithdrew);
+
+test("승인 카드: 에이전트가 답을 기다리지 않고 턴을 끝내 거둬짐 줄이 오면 걷히고 입력칸이 돌아온다", async ({ page }) => {
+  const row = conversationRow({ id: "c-withdrawn-codex", agent: "codex", name: "Codex", lastSeq: AGENT_WITHDREW - 1 });
+  await openChat(page, row, linesThrough(agentWithdrew, AGENT_WITHDREW - 1));
   const card = 카드(page, "이 명령을 실행하도록 허용할까요?");
   await expect(card).toBeVisible();
+  await expect(입력칸(page)).toHaveCount(0);
   // 에이전트가 거둔 요청(`withdrawn` · `agent`) — 카드가 걷히고 입력칸이 돌아온다.
-  await streamLines(page, plainWork.slug, permissionCodex.id, [
-    permissionLine(asked.seq + 1, { state: "withdrawn", requestId: "0", reason: "agent" }),
-  ]);
+  await streamLines(page, plainWork.slug, row.id, linesThrough(linesAfter(agentWithdrew, AGENT_WITHDREW - 1), AGENT_WITHDREW));
   await expect(card).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
+  expect(await ipcCallArgs(page, "chat_answer_permission", "work")).toEqual([]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
-  // 같은 턴의 둘째 물음 — 입력칸이 카드에 자리를 내주므로 카드가 멈추기를 든다. 누르면 멈추기 명령이 간다.
-  await streamLines(page, plainWork.slug, permissionCodex.id, [{ ...asked.line, seq: asked.seq + 2, payload: { ...asked.payload, requestId: "1" } }]);
+// L1이 남긴 「권한이 걸린 채 멈춤」(S26) — 같은 물음이 걸린 동안 멈추기가 갔다: 호스트가 그 요청을 거두고(`withdrawn` · `stopped`)
+// 턴이 우리의 멈춤으로 끝났다.
+const stopWithdrew = record("permission-stopped");
+const STOP_WITHDREW = withdrawnOf(stopWithdrew);
+
+test("승인 카드: 입력칸이 카드에 자리를 내주므로 카드가 멈추기를 들고, 누르면 멈추기 명령이 가고, 멈춤으로 거둬짐 줄과 멈춘 턴 끝이 오면 걷힌다", async ({
+  page,
+}) => {
+  const row = conversationRow({ id: "c-stopped-codex", agent: "codex", name: "Codex", lastSeq: STOP_WITHDREW - 1 });
+  await openChat(page, row, linesThrough(stopWithdrew, STOP_WITHDREW - 1));
+  const card = 카드(page, "이 명령을 실행하도록 허용할까요?");
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "멈추기", exact: true }).click();
   expect((await ipcCallArgs(page, "chat_stop", "work")).map(({ args }) => args)).toEqual([
-    { work: plainWork.slug, conversation: permissionCodex.id },
+    { work: plainWork.slug, conversation: row.id },
   ]);
   // 호스트가 그 요청을 거두고(`stopped`) 턴이 우리의 멈춤으로 끝난다 — 카드가 걷히고 「N초 후에 중단했습니다」다.
-  await streamLines(page, plainWork.slug, permissionCodex.id, [
-    permissionLine(asked.seq + 3, { state: "withdrawn", requestId: "1", reason: "stopped" }),
-    {
-      seq: asked.seq + 4,
-      at: "2026-10-10T10:00:12.000+09:00",
-      kind: "turn-end",
-      payload: { stopReason: "cancelled", durationMs: 8000, cancelledByUs: true, outOfTurn: false },
-    },
-  ]);
+  await streamLines(page, plainWork.slug, row.id, linesAfter(stopWithdrew, STOP_WITHDREW - 1));
   await expect(card).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
   await expect(머리줄(page, "8초 후에 중단했습니다")).toBeVisible();

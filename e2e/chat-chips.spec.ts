@@ -2,7 +2,7 @@ import { expect, test, type Page } from "./evidence";
 
 import { WORKS } from "./fixtures";
 import { ipcCallArgs, replaceAnswer, unknownIpcCalls, 툴팁 } from "./harness";
-import { conversationRow, linesThrough, record, sentLine, streamLines } from "./chat-records";
+import { conversationRow, linesAfter, linesThrough, record, streamLines } from "./chat-records";
 import { openWorkChat, 대화탭, 입력칸, 작업패널 } from "./chat-screen";
 import type { Conversation, RecordLine } from "@/features/chat/types";
 
@@ -10,8 +10,9 @@ import type { Conversation, RecordLine } from "@/features/chat/types";
 // 34 · 36).
 //
 // 대화 호스트는 목업 백엔드의 답과 이 검사가 쏘는 기록 줄 이벤트로 선다. 칩과 메뉴의 원천은 기록이다(S15) — L1이 남긴 「Claude 두
-// 턴」(티켓 14)과 「Codex 계획」(티켓 09)의 열림 줄(모드 · configOptions)과 명령 목록(`available_commands_update`)을 그대로 쏜다
-// (S26). 재는 것은 역할 · 접근성 이름 · 보이는 글 · 나간 명령의 인자다.
+// 턴」(티켓 14)과 「Codex 계획」(티켓 09)의 열림 줄(모드 · configOptions)과 명령 목록(`available_commands_update`), 「에이전트
+// 바꾸기」의 사람이 바꾼 에이전트(config 줄)와 새 엔진의 열림을 그대로 쏜다(S26). 재는 것은 역할 · 접근성 이름 · 보이는 글 · 나간
+// 명령의 인자다.
 
 const plainWork = WORKS[1];
 
@@ -42,44 +43,42 @@ const codexPlan = record("codex-plan");
 const openChat = (page: Page, row: Conversation, read: readonly RecordLine[]): Promise<void> =>
   openWorkChat(page, [row], { [row.id]: read });
 
-/** 기록 줄들의 seq를 `from`부터 다시 매긴다 — 다른 기록의 줄을 이 대화의 끝에 잇는다. */
-const renumber = (lines: readonly RecordLine[], from: number): RecordLine[] =>
-  lines.map((line, at) => ({ ...line, seq: from + at }));
+// L1이 남긴 「에이전트 바꾸기」(S26, `claude_conversation.rs`) — Codex 대화의 띄우는 중 · 열림 뒤, 첫 말 전에 Claude로 바꿨다: 사람이
+// 바꾼 에이전트(config 줄) → 새 엔진의 띄우는 중 · 열림 · 명령 목록 → 첫 말과 그 턴.
+const switchAgent = record("switch-agent");
+const SWITCHED = switchAgent.find((line) => line.kind === "config")!.seq;
+const SWITCH_SENT = switchAgent.find((line) => line.kind === "sent")!.seq;
+/** 첫 말 전의 Codex 대화 — 기록은 Codex의 열림 줄까지다. */
+const codexFresh = conversationRow({ id: "c-codex-fresh", agent: "codex", name: "Codex", lastSeq: SWITCHED - 1 });
 
 test("에이전트 칩: 첫 말 전에는 Claude Code와 Codex를 골라 바꾸기 명령이 그 인자로 가고, 첫 말 뒤에는 잠겨 눌러도 아무 일이 없고 툴팁이 까닭을 말한다", async ({
   page,
 }) => {
-  await openChat(page, claudeFresh, linesThrough(claudeTwoTurns, CLAUDE_SENT - 1));
-  const 에이전트칩 = 단추(page, "에이전트 Claude Code");
+  await openChat(page, codexFresh, linesThrough(switchAgent, SWITCHED - 1));
+  const 에이전트칩 = 단추(page, "에이전트 Codex");
   await expect(에이전트칩).toHaveAttribute("aria-haspopup", "menu");
   await 에이전트칩.click();
   expect(await 줄이름들(page)).toEqual(["Claude Code", "Codex"]);
-  await expect(메뉴(page).getByRole("menuitemradio", { name: "Claude Code", exact: true })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(메뉴(page).getByRole("menuitemradio", { name: "Codex", exact: true })).toHaveAttribute("aria-checked", "true");
 
   // 고르면 호스트의 에이전트 바꾸기로 간다 — 답은 새 엔진으로 다시 연 대화다(이름도 호스트가 다시 짓는다).
-  const switched = conversationRow({ id: claudeFresh.id, agent: "codex", name: "Codex", lastSeq: CLAUDE_SENT - 1 });
+  const switched = conversationRow({ id: codexFresh.id, agent: "claude", name: "Claude", lastSeq: SWITCHED - 1 });
   await replaceAnswer(page, "chat_switch_agent", switched);
-  await 메뉴(page).getByRole("menuitemradio", { name: "Codex", exact: true }).click();
-  await expect(단추(page, "에이전트 Codex")).toBeVisible();
+  await 메뉴(page).getByRole("menuitemradio", { name: "Claude Code", exact: true }).click();
+  await expect(단추(page, "에이전트 Claude Code")).toBeVisible();
   expect((await ipcCallArgs(page, "chat_switch_agent", "work")).map(({ args }) => args)).toEqual([
-    { work: plainWork.slug, conversation: claudeFresh.id, agent: "codex" },
+    { work: plainWork.slug, conversation: codexFresh.id, agent: "claude" },
   ]);
-  await expect(대화탭(page, "Codex")).toBeVisible();
-  await expect(입력칸(page)).toHaveAttribute("placeholder", "Codex에게 요청하세요");
+  await expect(대화탭(page, "Claude")).toBeVisible();
+  await expect(입력칸(page)).toHaveAttribute("placeholder", "Claude Code에게 요청하세요");
 
   // 바꾸면 기록에 사람이 바꾼 에이전트(config 줄)가 서고, 새 엔진의 띄우는 중 · 열림이 이어진다 — 칩의 목록은 새 엔진의 것이다.
-  const config: RecordLine = { seq: CLAUDE_SENT, at: claudeTwoTurns[0].at, kind: "config", payload: { agent: "codex" } };
-  const codexOpened = renumber(linesThrough(codexPlan, 4), CLAUDE_SENT + 1);
-  await streamLines(page, plainWork.slug, claudeFresh.id, [config, ...codexOpened]);
-  await expect(단추(page, "모드 Auto review")).toBeVisible();
+  await streamLines(page, plainWork.slug, codexFresh.id, linesThrough(linesAfter(switchAgent, SWITCHED - 1), SWITCH_SENT - 1));
+  await expect(단추(page, "모드 auto")).toBeVisible();
 
   // 첫 말 뒤에는 잠긴다 — 누르면 아무 일도 없고(메뉴가 서지 않는다), 툴팁과 설명이 까닭을 말한다.
-  const sentSeq = CLAUDE_SENT + 1 + codexOpened.length;
-  await streamLines(page, plainWork.slug, claudeFresh.id, [sentLine(sentSeq, "hello.txt를 만들어 줘")]);
-  const 잠긴칩 = 단추(page, "에이전트 Codex");
+  await streamLines(page, plainWork.slug, codexFresh.id, linesThrough(linesAfter(switchAgent, SWITCH_SENT - 1), SWITCH_SENT));
+  const 잠긴칩 = 단추(page, "에이전트 Claude Code");
   await expect(잠긴칩).toHaveAttribute("aria-disabled", "true");
   await expect(잠긴칩).toHaveAccessibleDescription(LOCKED);
   await expect(잠긴칩).not.toHaveAttribute("aria-haspopup", "menu");
