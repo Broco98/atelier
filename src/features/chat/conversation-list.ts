@@ -171,7 +171,6 @@ export function openConversation(work: string, agent?: Agent): Promise<void> {
     }
     if (check?.state === "missing") {
       update(work, (state) => ({ ...state, wanted: chosen }));
-      openFoundWanted();
       return;
     }
     update(work, (state) => ({ ...state, wanted: undefined }));
