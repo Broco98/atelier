@@ -989,3 +989,59 @@ body[data-palette-open] [data-scrollbar] {
     min-width: 1px;
     min-height: 1px;
 }
+
+/* ── 대화창 범위 토큰(three-axes 결정 31) ──
+   대화창은 Codex DS 캔버스(「Atelier × Codex」 보드 14 · 04)의 모양을 따른다. 값의 출처는 spec/02-대화창/디자인-참고/의
+   `atelier-codex.css`이고, **전역 토큰이 아니다** — 앱의 DS 이름 토큰(`:root` · `@theme`)은 고치지 않고, 대화창이 쓰는 값만
+   `[data-chat]` 안에서 선다(`[data-titlebar]`와 같은 꼴). `@theme`에 넣지 않는 것도 그래서다: 넣으면 전역 유틸리티가 생긴다.
+   대화창 뿌리(작업 패널의 `chat` 보기 · `chat` 탭이 같이 쓰는 컴포넌트)에 `data-chat`이 달린다. `codex-ds`가 전역 토큰을
+   Codex 값으로 바꾸는 날 이 덩어리를 그쪽 이름으로 옮긴다.
+
+   글자 크기는 여기 없다 — 캔버스의 대화창 글자(11 · 12 · 13 · 14px)는 모두 앱 글자 단계에 있다. 다른 것은 줄 높이뿐이다.
+   hover · 켜짐 면도 여기 없다 — 캔버스의 fill-soft · hover · active는 앱 상태 농도(`--state-*`)로 옮긴다(위 「상태 농도」의 열거). */
+[data-chat] {
+    /* 말풍선 r22 · 입력창 r28 · 코드 상자 r12 · 인라인 코드와 탭 닫기 r4 */
+    --chat-radius-bubble: 22px;
+    --chat-radius-composer: 28px;
+    --chat-radius-block: 12px;
+    --chat-radius-inline: 4px;
+    /* 대화 열 · 말풍선 · 입력칸 · 답의 줄 높이(14/22.75)와 입력칸의 자간 */
+    --chat-leading-prose: 22.75px;
+    --chat-tracking-field: -0.15px;
+    --chat-shadow-composer: 0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006;
+    --chat-shadow-code: inset 0 0 0 1px rgba(26, 28, 31, 0.05);
+    /* 대화 탭 줄 아래 · 표 칸 아래의 0.5px 선, 표 머리 아래의 1px 선 */
+    --chat-hairline-below: inset 0 -0.5px 0 rgba(26, 28, 31, 0.08);
+    --chat-rule-below: inset 0 -1px 0 rgba(13, 13, 13, 0.15);
+    --chat-rule: rgba(13, 13, 13, 0.15);
+    --chat-border-heavy: rgba(26, 28, 31, 0.12);
+    --chat-bubble: #e8f3fe;
+    --chat-send: #3a83f7;
+    --chat-link: #0169cc;
+    --chat-surface-code: #f2f2f3;
+}
+
+/* 「생각 중」의 반짝임(캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 2초마다 지나간다. WebKit은 `-webkit-background-clip`과
+   `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 멎은 옅은 글자다 — 위 동작 줄이기
+   블록은 `data-slot` 부품만 끄므로 제 규칙을 둔다. */
+@keyframes chat-shimmer {
+    0% {
+        background-position: -100% 0;
+    }
+    to {
+        background-position: 250% 0;
+    }
+}
+@utility chat-shimmer {
+    width: fit-content;
+    background: var(--text-tertiary)
+        linear-gradient(to left, var(--text-tertiary), var(--foreground) 50%, var(--text-tertiary)) no-repeat;
+    background-size: 50% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: chat-shimmer 2s linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}

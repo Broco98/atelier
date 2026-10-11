@@ -7,6 +7,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
+import type { Conversation, RecordLine } from "@/features/chat/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -909,6 +910,29 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
     { otherwise: SEARCH_RESULTS },
   ),
+  // ── 대화창(three-axes 티켓 17) ── 태우는 시나리오는 `chat.spec.ts`다. 대화창은 **처음 보일 때** 목록을 읽으므로 작업 화면을
+  // 여는 것만으로는 이 명령들이 안 나간다 — 레일 `chat`을 누른 spec만 지난다.
+  //
+  // 대화 목록과 기록은 **빈 답이 기본이다** — 대화 없는 work이고, 기록도 없다. 자료(L1이 남긴 기록 · 대화 목록)는 대화 spec이
+  // `chat-records.ts`로 읽어 덮어쓴다(S26). 이 답들은 상태가 없다: 만든 대화를 목록이 기억하지 않으므로 화면이 만들기 · 닫기의
+  // 응답으로 제 캐시를 고친다.
+  chat_list: [] satisfies Conversation[],
+  chat_read_record: [] satisfies RecordLine[],
+  // 새 대화 — 설정의 기본 에이전트(처음은 Claude Code)로 연 대화 하나. 이름은 호스트가 짓는다(`Claude` · `Claude 2`). 둘째
+  // 대화를 재는 검사가 `replaceAnswer`로 갈아 끼운다(이름의 수는 오르는 값 표로 못 짓는다 — 첫 이름이 `Claude 1`이 된다).
+  chat_new: {
+    id: "c-fixture-claude",
+    agent: "claude",
+    name: "Claude",
+    model: null,
+    mode: null,
+    plan: null,
+    lastSeq: 0,
+    queue: [],
+  } satisfies Conversation,
+  // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
+  chat_send: null,
+  chat_close: null,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

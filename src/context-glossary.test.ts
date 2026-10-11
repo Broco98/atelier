@@ -127,6 +127,24 @@ describe("말의 사전", () => {
     expect(bodyOf("패널 토글")).toContain("⌘Enter");
   });
 
+  // three-axes 티켓 17. 레일에 `chat` 칸이 서고 작업 패널에 대화창이 뜬다. 사전이 그 말들을 모르면 다음 사람이 「채팅」·「스레드」로
+  // 대화를, 「봇」·「어시스턴트」로 에이전트를 부르고, 「세션」을 화면의 말로 쓴다 — 세션은 에이전트 쪽의 맥락이고 앱은 그 id를
+  // 되살리기에만 쓴다. 거부어에 들어야 위 접근성 이름 검사가 대화창의 이름에서 그 낱말을 문다. 마지막 줄은 그 그물이 대화창을
+  // 실제로 보는지다(대화 탭 줄의 이름).
+  it("「대화창」·「대화」·「에이전트」·「턴」·「모드」가 등재돼 있고, 대화가 「채팅」·「스레드」를, 에이전트가 「봇」·「어시스턴트」를 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["대화창", "대화", "에이전트", "턴", "모드"]));
+    expect(bodyOf("대화")).toContain("_피할 말_: 채팅, 스레드, 세션");
+    expect(bodyOf("대화")).toContain("「대화 3개」");
+    expect(bodyOf("에이전트")).toContain("_피할 말_: 봇, 어시스턴트");
+    expect(refused).toEqual(expect.arrayContaining(["채팅", "스레드", "봇", "어시스턴트"]));
+    // 「세션」은 제 항목이 있어 거부어가 아니다 — 그 항목이 앱이 세션을 어디에 쓰는지 말한다.
+    expect(refused).not.toContain("세션");
+    expect(bodyOf("세션")).toContain("되살리기에만 쓴다");
+    expect(bodyOf("레일")).toContain("`spec` · `chat` · `info`");
+    expect(bodyOf("탭")).toContain("세는 말은 「대화 3개」");
+    expect(ariaLabels).toContain("대화 탭");
+  });
+
   it("문서 어디에도 「패널 탭」이 _피할 말_ 줄 밖에 남지 않는다", () => {
     // 레일 칸이 된 자리를 옛 말로 부르는 문장(탭 · 레이아웃 · 항목 · 표기)이 남으면 사전이 거부한 말을 사전이 쓴다.
     const lines = doc.split("\n").filter((line) => line.includes("패널 탭"));
@@ -304,6 +322,11 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
   it("고르는 자리로 탭 줄을 든다", () => {
     // 소문자 라벨이 서는 자리가 사이드바에서 탭 줄로 옮겨 갔다(결정 7·8).
     expect(notation).toContain("탭 줄");
+  });
+
+  it("소문자 가족이 레일 칸 `chat`을 든다", () => {
+    // three-axes 티켓 17 — 레일 칸이 `spec` · `chat` · `info`가 됐다. 예시가 셋을 함께 들어야 `chat`도 소문자 가족으로 읽힌다.
+    expect(uppercase).toContain("`spec` · `chat` · `info`");
   });
 
   it("대문자 층이 main nav를 든다", () => {
