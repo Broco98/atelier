@@ -18,6 +18,7 @@ import {
   오른쪽메타,
   토큰색,
   툴팁,
+  팔레트,
   행버튼,
 } from "./harness";
 
@@ -548,26 +549,6 @@ const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
     글자.evaluate((el) => getComputedStyle(el).color),
     배경.evaluate((el) => getComputedStyle(el).backgroundColor),
   ]).then(([앞, 뒤]) => 색대비(page, 앞, 뒤));
-
-/**
- * 다크·라이트 팔레트를 손으로 갈아 끼운다 — 앱에 아직 켜는 손잡이가 없다.
- *
- * **갈아 끼운 뒤 색의 전환이 끝날 때까지 기다린다.** 행은 `transition-colors`라 팔레트가 바뀐
- * 직후 행의 글자색을 물려받는 것은 150ms 동안 **라이트와 다크 사이의 중간값**이다 — 그 순간을
- * 재면 다크 배경 위의 라이트 글자색을 재게 된다(실측 1.17 — 행 글자색을 물려받던 신호의 마크에서
- * 났다). 사람 눈에는 전환이 끝난 색이 닿으므로 그것을 잰다. 끝이 있는 것만 기다린다 — 도는
- * 스피너는 끝나지 않는다.
- */
-const 팔레트 = (page: Page, dark: boolean) =>
-  page.evaluate(async (dark) => {
-    document.documentElement.classList.toggle("dark", dark);
-    await Promise.all(
-      document
-        .getAnimations()
-        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
-        .map((one) => one.finished),
-    );
-  }, dark);
 
 test("오른쪽 메타의 셸 수 무리는 사이드바 배경에서 대비 4.5를 넘는다 — 라이트·다크", async ({
   page,

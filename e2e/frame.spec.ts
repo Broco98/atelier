@@ -16,6 +16,7 @@ import {
   토큰값,
   토큰색,
   툴팁,
+  팔레트,
 } from "./harness";
 
 // 판 04 티켓 01 — 공용 틀(`Frame`, ui-refresh 결정 4 · 5 · 27). 탭이 없거나 패널이 없는 화면이 옅은 회색 바탕 위의 둥근
@@ -271,17 +272,8 @@ test("창 바탕은 surface-shell, 카드는 surface, 본문 글자는 fg다 —
   const 라이트 = await 칠한색();
   expect(라이트).toEqual(await 토큰셋());
 
-  // 다크 팔레트를 켜고 색의 전환이 끝날 때까지 기다린다 — 전환 도중의 중간값을 재지 않게(`works-sidebar.spec.ts`의
-  // `팔레트`와 같은 까닭).
-  await page.evaluate(async () => {
-    document.documentElement.classList.add("dark");
-    await Promise.all(
-      document
-        .getAnimations()
-        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
-        .map((one) => one.finished),
-    );
-  });
+  // 다크 팔레트를 켜고 색의 전환이 끝날 때까지 기다린다 — 전환 도중의 중간값을 재지 않게(하네스 `팔레트`).
+  await 팔레트(page, true);
   const 다크 = await 칠한색();
   // **팔레트가 정말 바뀌었는지를 먼저 센다** — `.dark`가 안 먹으면 아래가 라이트 값을 다시 재고, 토큰도 라이트로 풀려
   // 조용히 초록이 된다.

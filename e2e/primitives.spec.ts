@@ -11,6 +11,7 @@ import {
   칠한값,
   토큰값,
   토큰색,
+  팔레트,
   행버튼,
 } from "./harness";
 import { settle } from "./tab-row";
@@ -290,12 +291,8 @@ test("확인 창은 반경 24 · 짙은 그림자 · 옅은 막이고, 제목은
 // 글자의 바닥 4.5 아래). 앱은 `.dark`를 켜지 않지만(codex-ds 결정 17) 다크 값은 지금 맞아야 한다 — 그래서 `.dark`를 켜고 잰다.
 test("위험 버튼의 글자와 스위치 손잡이는 다크에서도 희다", async ({ page }) => {
   await installFixtureBackend(page);
-  /** `.dark`를 켜거나 끄고, 색의 전환이 끝날 때까지 기다린다 — 도는 동안의 중간값을 재지 않게. */
-  const 테마 = (다크: boolean) =>
-    page.evaluate(async (on) => {
-      document.documentElement.classList.toggle("dark", on);
-      await Promise.all(document.getAnimations().map((one) => one.finished.catch(() => undefined)));
-    }, 다크);
+  // 테마는 하네스 `팔레트`로 갈아 끼운다 — 전환이 끝날 때까지 기다리고, 켤 때마다 팔레트가 정말 바뀌었는지(`surface`)를 먼저 센다.
+  // 두 자리의 기대값(흰 글자 · `danger-solid`)은 두 테마에서 같은 값이라, 팔레트가 안 바뀌어도 이 검사만으로는 초록이 된다.
 
   await page.goto(`/projects/${project.slug}`);
   await page.getByRole("button", { name: "제거", exact: true }).click();
@@ -303,13 +300,13 @@ test("위험 버튼의 글자와 스위치 손잡이는 다크에서도 희다",
   await expect(dialog).toBeVisible();
   const 위험 = dialog.getByRole("button", { name: "제거", exact: true });
   for (const 다크 of [false, true]) {
-    await 테마(다크);
+    await 팔레트(page, 다크);
     const 자리 = 다크 ? "다크" : "라이트";
     const [글자, 면] = await 칠한값(위험, "color", "background-color");
     expect([글자, 면], `위험 버튼 — ${자리}`).toEqual(["rgb(255, 255, 255)", await 토큰색(page, "--danger-solid")]);
     expect(await 색대비(page, 글자, 면), `위험 버튼 글자의 대비 — ${자리}`).toBeGreaterThanOrEqual(4.5);
   }
-  await 테마(false);
+  await 팔레트(page, false);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 
@@ -317,7 +314,7 @@ test("위험 버튼의 글자와 스위치 손잡이는 다크에서도 희다",
   const 손잡이 = page.locator("[data-slot=switch-thumb]").first();
   await expect(손잡이).toBeVisible();
   for (const 다크 of [false, true]) {
-    await 테마(다크);
+    await 팔레트(page, 다크);
     expect(await 칠한값(손잡이, "background-color"), `스위치 손잡이 — ${다크 ? "다크" : "라이트"}`).toEqual([
       "rgb(255, 255, 255)",
     ]);

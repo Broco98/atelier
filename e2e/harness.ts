@@ -972,6 +972,38 @@ export const 토큰색 = async (page: Page, name: string, { 다크 = false }: { 
 };
 
 /**
+ * 다크 · 라이트 팔레트를 손으로 갈아 끼운다 — `.dark`를 켜거나 끈다(codex-ds 결정 17 — 앱에 아직 켜는 손잡이가 없고, `index.css`의
+ * `.dark` 블록이 곧 그 팔레트의 정본이다).
+ *
+ * **갈아 끼운 뒤 색의 전환이 끝날 때까지 기다린다.** `transition-colors`를 단 것은 팔레트가 바뀐 직후 150ms 동안 **라이트와
+ * 다크 사이의 중간값**이다 — 그 순간을 재면 다크 배경 위의 라이트 글자색을 재게 된다(실측 1.17 — 사이드바 행의 글자색을
+ * 물려받던 신호의 마크에서 났다). 끝이 있는 애니메이션만 기다린다 — 도는 스피너 · 흐르는 마퀴는 끝나지 않아, 다 기다리면
+ * 영영 안 돌아온다. 도중에 걷힌 것(`finished`가 거절된다)은 끝난 것으로 본다.
+ *
+ * **팔레트가 정말 바뀌었는지를 여기서 먼저 센다**(fail-closed). 테마마다 값이 갈리는 토큰(`--surface`)이 켜고 끈 뒤 다른 색이어야
+ * 한다 — `.dark`가 안 먹으면(클래스 이름이 바뀌거나 선택자가 `[data-theme]`로 옮겨 가면) 뒤의 견줌이 라이트를 다시 재고, 두
+ * 테마에서 같은 값인 자리(위험 버튼의 흰 글자 · 스위치 손잡이)는 조용히 초록이 된다. 이미 그 테마면 바뀔 것이 없어 세지 않는다.
+ *
+ * **여기 사는 이유는 갈아 끼우는 길을 한 벌로 두려는 것이다** — spec마다 적으면 기다림 · 확인이 갈린다(세 벌이 있던 동안
+ * 한 벌은 끝없는 애니메이션까지 기다려 스피너가 도는 화면에서는 돌아오지 않는 꼴이었고, 팔레트가 바뀌었는지는 두 벌만 셌다).
+ */
+export async function 팔레트(page: Page, 다크: boolean): Promise<void> {
+  const 켜져있다 = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+  const 전 = await 토큰색(page, "--surface");
+  await page.evaluate(async (on) => {
+    document.documentElement.classList.toggle("dark", on);
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
+        .map((one) => one.finished.catch(() => undefined)),
+    );
+  }, 다크);
+  if (켜져있다 === 다크) return;
+  expect(await 토큰색(page, "--surface"), `.dark를 ${다크 ? "켰는데" : "껐는데"} 팔레트가 그대로다 — surface`).not.toBe(전);
+}
+
+/**
  * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(위 `토큰색`과 같은 길이고, 색이 아닌
  * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
  * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `CardBox`).
