@@ -29,6 +29,8 @@ use crate::records::{self, CloseCause, ConversationRow, PermissionLine, RecordLi
 use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenError, OpenTerms, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
 
+mod turn_order;
+
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
 const CODEX_ACP_MAJOR: u64 = 2;
 
