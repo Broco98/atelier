@@ -56,11 +56,12 @@
 
    **폭(사이드바 · 목록 패널 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
    거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 290, 240, 400)`, 목록 패널은 Projects ·
-   Archive의 360, 작업 패널은 `panel-layout.ts`의 `WORK_PANEL_WIDTH` 330), 상자마다 제 폭을 인라인 변수로 싣는다. 이 블록에는
+   Archive의 360, 작업 패널은 `panel-layout.ts`의 `WORK_PANEL_WIDTH` 340), 상자마다 제 폭을 인라인 변수로 싣는다. 이 블록에는
    폭이 없다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여 아무 데서도 읽히지 않았다.
    아래 `@theme static`에 선언된 DS 폭(`--size-sidebar` 290 · `--size-list` 264 · `--size-panel` 340)은 **선언만 있고 앱이 읽지
-   않는다** — 기본값을 그 DS 값으로 옮기는 것이 codex-ds 스펙 S4다. 사이드바는 옮겨 같은 수(290)이고(e2e `works-sidebar`가 이
-   토큰과 맞댄다), 목록 패널 · 작업 패널은 아직 두 벌의 값이 달라 화면에 서는 것은 인라인 값이다. */
+   않는다** — 기본값을 그 DS 값으로 옮기는 것이 codex-ds 스펙 S4다. 사이드바(티켓 19)와 작업 패널(티켓 18)은 옮겨 같은
+   수(290 · 340)이고(e2e `works-sidebar`가 사이드바를, `frame`이 작업 패널을 이 토큰과 맞댄다), 목록 패널은 아직 두 벌의 값이
+   달라(티켓 20) 화면에 서는 것은 인라인 값이다. */
 :root {
     /* **머리 줄** — 창 맨 위 48 줄(codex-ds 스펙 §4 · DS `AppShell`). 틈 8 · 머리 카드 32(`--size-head`) · 틈 8이라 그 가운데
        24가 창 컨트롤 · 패널 토글 · 신호등의 가운데 줄이다(`ShellControls` · `tauri.conf.json`의 `trafficLightPosition`).
@@ -84,16 +85,14 @@
        값이 2판과 갈리는 것이 있다: 글 폭 `--measure-read` 760은 스펙 2절 「크기」가 `--size-thread`(48rem)로 바꿔 걷는다 —
        문서 글은 이미 `--size-thread`를 읽고(티켓 15 — `SpecViewer`의 `bodyColumn`), 설정 · 프로젝트 상세 · 편집기가 아직 이것을
        읽는다(티켓 20 · 23). `--gap` · `--card-pad` · `--term-inset`을 `space-*`로
-       옮겨 걷는 것은 티켓 25다. `--rail` 32는 2판의 패널 칸 줄 `--size-prail`과 같은 값이다.
+       옮겨 걷는 것은 티켓 25다. 레일 폭은 여기 없다 — 레일 열과 (레일이 설 때) 머리 줄의 패널 토글 자리가 2판의 줄 폭 `--size-prail`을 읽는다.
          --gap           창 가장자리 · 카드 사이의 틈
-         --rail          레일 폭
          --card-pad      카드 안 좌우
          --card-head     카드 머리 높이
          --measure-read  읽는 글(설정 · 프로젝트 상세 · 편집기)의 폭 상한
          --measure-wide  넓은 화면의 폭 상한
          --term-inset    터미널 카드의 안쪽 여백 — 둥근 모서리에 글자가 닿지 않게 */
     --gap: 8px;
-    --rail: 32px;
     --card-pad: 24px;
     --card-head: var(--size-toolbar);
     --measure-read: 760px;
@@ -499,8 +498,8 @@
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
        높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄의
        높이(`--size-pathbar` — `PathBar`), 문서 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn`), 사이드바 행의 높이
-       (`--size-row-nav` — `SidebarItem` · work 행)와 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)뿐이고, 나머지는
-       선언만 있다(스펙 S2 — 통째로 선언한다).
+       (`--size-row-nav` — `SidebarItem` · work 행), 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)와 레일의 줄 폭
+       (`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
        그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세운다. 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가
        같은 수로 옮긴다 — 화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
     --size-rail: 52px;
@@ -565,10 +564,8 @@
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
        뒤의 `bg-accent`를 0건으로 고정한다.
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
-         `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, ui-refresh 결정 10)이 패널
-                             트리의 고른 행과 같은 면이다(codex-ds 결정 29)
-         `surface`(흰 면)    바탕(`surface-shell`) 위에서 고른 것 — 열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS
-                             `.at-rail-toggle`)이다
+         `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, codex-ds 결정 29)이 패널
+                             트리의 고른 행과 같은 면이다
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널
        토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
     --fill-soft: rgba(26, 28, 31, 0.05);

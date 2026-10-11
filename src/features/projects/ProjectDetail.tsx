@@ -133,7 +133,7 @@ function WorksSection({
                 type="button"
                 onClick={() => onOpenWork(work.slug)}
                 // 옅은 면 위의 행이라 hover는 `fill-hover`다(ui-refresh 결정 16, DS `.at-group-row:hover`) — 흰 카드 위 목록
-                // 행의 `fill-soft`보다 한 단 위이고, info 맨 위 묶음 행과 같은 값이다.
+                // 행의 `fill-soft`보다 한 단 위다.
                 className="flex min-h-10 min-w-0 items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-hover focus-ring"
               >
                 <StatusIcon status={work.status} />

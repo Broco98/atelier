@@ -1546,7 +1546,7 @@ export async function sentNotifications(
 
 /**
  * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
- * (info 맨 위의 복사 줄 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
+ * (work 메뉴의 복사 ▸ · spec 트리 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
  * 받아 적는다. 앱의 입구 하나를 갈아 끼우는 커맨드 붙잡기(`holdCommand`)와 알림 손잡이(`stubNotifications`)와 같은
  * 모양이다 — 새 층이 아니다.
  *

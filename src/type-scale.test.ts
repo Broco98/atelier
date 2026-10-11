@@ -108,7 +108,7 @@ describe("글자 단계", () => {
     ]);
     const uses = new RegExp(`(?<![\\w-])text-(?:${steps.join("|")})(?![\\w-])`, "g");
     expect(sources.length).toBeGreaterThan(100);
-    expect(offenders(uses).length).toBeGreaterThan(200);
+    expect(offenders(uses).length).toBeGreaterThan(150);
   });
 
   it("글자 크기를 임의 값으로 적지 않는다", () => {

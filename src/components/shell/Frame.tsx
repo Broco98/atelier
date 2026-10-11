@@ -5,7 +5,7 @@ import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
 import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
-import Rail, { type RailProps } from "./Rail";
+import Rail, { railStands, type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import useSplitRatio from "./useSplitRatio";
 
@@ -16,13 +16,13 @@ import useSplitRatio from "./useSplitRatio";
 // 편집기의 트리 카드도 이 틀의 칸이다(`split` · `beside`) — 한때 두 화면이 그 칸의 틈 · 끌기 영역 · 손잡이를 제 손으로 다시 적었다.
 // 탭 줄(`ShellTabs`)은 이 틀의 줄이 아니라 본문 카드의 머리다(codex-ds 스펙 §4 「탭 줄」) — 화면이 카드의 `head`로 건넨다.
 //
-//   뿌리(bg-surface-shell) ─ 머리 줄 `<header>`(HeadRow) ─ 머리 카드(본문 열 폭) · 패널 토글 자리(rail이 있을 때만)
+//   뿌리(bg-surface-shell) ─ 머리 줄 `<header>`(HeadRow) ─ 머리 카드(남은 폭 — 레일이 안 서면 끝에 패널 토글) · 패널 토글 자리(레일이 설 때만)
 //                  └ 아래 줄 ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈)
 //                           │                                  ─ list · 본문(카드 하나, 또는 분할의 열 카드 둘) · beside · panel · overlay
-//                           └ 레일 열(rail이 있을 때만, 오른쪽 틈) ─ 칸 묶음(카드 줄 꼭대기부터)
+//                           └ 레일 열(rail의 칸이 둘 이상일 때만, 오른쪽 틈) ─ 칸 묶음(카드 줄 꼭대기부터)
 //
 // **틈도 창을 끄는 자리다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 회색 틈이 드러나는 상자(뿌리 · 머리 줄 ·
-// 패널 토글 자리 · 아래 줄 · 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆 칸) 모두에 단다.
+// 패널 토글 자리(레일이 설 때) · 아래 줄 · 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆 칸) 모두에 단다.
 // 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. 카드 안(카드 머리의 빈 자리도)은 끌기 영역이 아니다 — 머리 카드도 카드다.
 // 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
 //
@@ -66,8 +66,8 @@ export interface BesideSlot extends CardContent {
 
 /**
  * 머리 카드(codex-ds 스펙 §4 · §7 · DS `HeadCard`)에 서는 것 — 지금 보는 것의 아이콘 · 이름과 오른쪽 할 일. 오른쪽은 「할 일 | 그 너머」
- * 둘이고 얇은 세로선이 가른다. 카드 상자(모서리 · 면 · 링)와 자리(본문 열 폭 · 머리 줄 가운데)는 이 틀이 든다. 화면마다 하나씩 건넨다
- * — 어느 화면이든 같은 자리에서 그 화면의 이름과 할 일을 찾는다(스토리 27).
+ * 둘이고 얇은 세로선이 가른다. 카드 상자(모서리 · 면 · 링)와 자리(머리 줄이 남긴 폭 · 머리 줄 가운데)는 이 틀이 든다. 화면마다 하나씩
+ * 건넨다 — 어느 화면이든 같은 자리에서 그 화면의 이름과 할 일을 찾는다(스토리 27).
  */
 export interface HeadSlot {
   /** 아이콘 앞 — 하위 화면에서 돌아가는 길(spec 레이아웃 편집기의 뒤로). 이름 앞에 서는 것은 이것뿐이다. */
@@ -110,8 +110,9 @@ interface FrameProps<Id extends string> {
   /** 오른쪽 작업 패널 카드 — 바깥 상자가 두 번째 `<aside>`다. */
   panel?: SideSlot;
   /**
-   * 작업 화면의 레일 열(`Rail` — 칸 묶음)과 그 위 머리 줄의 패널 토글(`PanelToggle`). 작업을 고른 작업 화면만 건넨다 — 없으면 레일
-   * 열도 토글도 없고 본문 열의 오른쪽 틈 하나가 창 끝이다. 칸의 id 타입(`Id`)이 부르는 쪽의 것 그대로 `onPick`까지 간다.
+   * 작업 화면의 레일 열(`Rail` — 칸 묶음)과 머리 줄의 패널 토글(`PanelToggle`). 작업을 고른 작업 화면만 건넨다 — 없으면 둘 다 없다.
+   * 토글은 건네면 늘 서고, 레일 열은 **칸이 둘 이상일 때만** 선다(codex-ds 결정 25 — `railStands`). 레일 열이 없으면 본문 열의 오른쪽
+   * 틈 하나가 창 끝이고, 토글은 머리 카드 오른쪽 끝에 든다(`HeadRow`). 칸의 id 타입(`Id`)이 부르는 쪽의 것 그대로 `onPick`까지 간다.
    */
   rail?: RailProps<Id>;
   /**
@@ -142,6 +143,8 @@ function Frame<Id extends string>({
 }: FrameProps<Id>) {
   // 패널 토글 · 레일 칸이 가리키는 패널 칸(`aria-controls`). 셋을 이 틀이 함께 그리므로 이음도 여기서 짓는다 — 화면은 모른다.
   const panelId = useId();
+  // 레일이 서는가 — 레일 열을 그릴지와 패널 토글이 어디 설지를 이 판정 하나가 함께 정한다(`railStands`).
+  const railUp = rail !== undefined && railStands(rail.items);
   return (
     // **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)과 머리 줄이 사이드바에게
     // 자리를 요구하는 길이다. 뿌리는 세로라 그 값은 머리 줄과 아래 줄 가운데 큰 쪽이다. 카드 줄은 탭 줄을 품었을 때만 제
@@ -152,6 +155,7 @@ function Frame<Id extends string>({
         sidebarOpen={sidebarOpen}
         head={head}
         toggle={rail && <PanelToggle open={rail.open} onToggle={rail.onToggle} controls={panel ? panelId : undefined} />}
+        railUp={railUp}
       />
       {/* 아래 줄 — 본문 열과 레일 열. 머리 줄 바로 아래(카드 위끝)에서 시작한다. */}
       <div data-tauri-drag-region className="flex min-h-0 flex-1">
@@ -177,9 +181,10 @@ function Frame<Id extends string>({
             {overlay}
           </div>
         </div>
-        {/* 레일 열(ui-refresh 결정 10) — 본문 열의 형제라 머리 줄 `<header>` 밖이다. 왼쪽 틈은 본문 열의 오른쪽 틈(카드 줄의
-            `pr-(--gap)`)이다. 늘 그 자리에 서고(`shrink-0`) 탭 줄의 바닥을 위해 자리를 내주는 것은 작업 패널, 그다음 사이드바다. */}
-        {rail && (
+        {/* 레일 열(ui-refresh 결정 10) — 본문 열의 형제라 머리 줄 `<header>` 밖이다. 칸이 둘 이상일 때만 선다(`railStands` — 하나면
+            그리지 않아 본문 열이 창 오른쪽 틈까지 넓다). 왼쪽 틈은 본문 열의 오른쪽 틈(카드 줄의 `pr-(--gap)`)이다. 서면 늘
+            그 자리이고(`shrink-0`) 탭 줄의 바닥을 위해 자리를 내주는 것은 작업 패널, 그다음 사이드바다. */}
+        {rail && railUp && (
           <Rail
             open={rail.open}
             items={rail.items}
@@ -385,21 +390,35 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
 
 /**
  * 머리 줄 — 창 맨 위 48의 `<header>` 하나(codex-ds 스펙 §4 · DS `AppShell` — 틈 8 · 머리 카드 32 · 틈 8). 문서의 `header`는 이 줄
- * 하나다 — 탭 줄은 이 줄이 아니라 본문 카드의 머리이고 `div`다(`ShellTabs`). 머리 카드(`head`)가 본문 열 폭으로 서고, 작업 화면이면
- * 그 오른쪽 끝 너머 레일 바로 위에 패널 토글이 선다.
+ * 하나다 — 탭 줄은 이 줄이 아니라 본문 카드의 머리이고 `div`다(`ShellTabs`). 머리 카드(`head`)가 줄이 남긴 폭으로 선다.
  *
- * **뿌리의 맨 위 줄이라 폭이 바탕 전체다**(본문 열 + 레일 열). 머리 카드의 오른쪽 끝이 본문 열의 오른쪽 끝과 한 세로줄인 것은 오른쪽
- * 셈이 아래 줄과 같아서다 — 패널 토글 자리(틈 + 레일 폭)가 레일 열과 같은 폭을 비우고, 오른쪽 여백(`pr-(--gap)`)이 레일 열 · 카드 줄의
- * 오른쪽 틈과 같은 값이다.
+ * **머리 카드의 폭은 어느 화면이든 아래 본문 열이다**(codex-ds 스펙 §4 「사이드바 뒤부터 레일 앞까지」). 줄은 뿌리의 맨 위라 폭이
+ * 바탕 전체(본문 열 + 레일 열)이고, 오른쪽 여백(`pr-(--gap)`)이 카드 줄 · 레일 열의 오른쪽 틈과 같은 값이다. 그래서 패널 토글의
+ * 자리가 레일을 따라 갈린다(DS `.at-winhead` · `.with-rail` · `.at-winctl-r`):
+ * - **레일이 서면**(칸 둘 이상) 토글은 머리 카드 밖, 레일 열 바로 위다(DS `.at-railtop` — 「머리 카드 오른쪽 끝 너머, 레일 바로
+ *   위」). 토글 자리(틈 + 줄 폭 `size-prail`)가 레일 열과 같은 폭을 비워 머리 카드는 레일 앞에서 끝난다.
+ * - **서지 않으면**(지금 작업 화면 — codex-ds 결정 25) 레일 열도 토글 자리도 없어 머리 카드가 창 오른쪽 틈까지 서고, 토글은 카드
+ *   안 오른쪽 끝 — 보기 배치(분할) 뒤 — 에 든다(`HeadCard`의 `toggle`).
  *
  * **신호등 inset은 이 줄 하나만 계산한다.** 사이드바가 열렸으면 왼쪽 여백이 0이라 머리 카드가 본문 카드와 한 세로줄(사이드바 뒤)에서
  * 시작하고 — 신호등 · 창 컨트롤은 사이드바 위에 선다 — 접혔으면 `--titlebar-inset-head`(창 컨트롤 끝 + 틈)다(index.css의
  * `[data-titlebar]`). 여백은 사이드바 폭과 같은 박자(`PANEL_MOTION`)로 따라온다.
  *
- * **머리 카드 밖 회색이 창을 끄는 자리다** — 이 줄과 패널 토글 자리가 `data-tauri-drag-region`을 든다(머리말). 머리 카드는 카드라
- * 안이 끌기 영역이 아니고, 줄 안의 버튼은 이 속성이 없어 그대로 눌린다.
+ * **머리 카드 밖 회색이 창을 끄는 자리다** — 이 줄과 (레일이 설 때) 패널 토글 자리가 `data-tauri-drag-region`을 든다(머리말).
+ * 머리 카드는 카드라 안이 끌기 영역이 아니고, 줄 안의 버튼은 이 속성이 없어 그대로 눌린다.
  */
-function HeadRow({ sidebarOpen, head, toggle }: { sidebarOpen: boolean; head: HeadSlot; toggle?: ReactNode }) {
+function HeadRow({
+  sidebarOpen,
+  head,
+  toggle,
+  railUp,
+}: {
+  sidebarOpen: boolean;
+  head: HeadSlot;
+  toggle?: ReactNode;
+  /** 레일이 섰나(`railStands`) — 패널 토글이 머리 카드 밖 레일 열 위에 설지, 카드 안 오른쪽 끝에 들지가 이것으로 갈린다. */
+  railUp: boolean;
+}) {
   return (
     <header
       data-tauri-drag-region
@@ -410,11 +429,11 @@ function HeadRow({ sidebarOpen, head, toggle }: { sidebarOpen: boolean; head: He
         sidebarOpen ? "pl-0" : "pl-(--titlebar-inset-head)",
       )}
     >
-      <HeadCard {...head} />
-      {toggle && (
-        // 패널 토글 자리 — 레일 열과 같은 폭(틈 + 레일)이라 토글이 레일 열의 가운데에 선다(DS `.at-railtop`). 회색이 드러나는
+      <HeadCard {...head} toggle={railUp ? undefined : toggle} />
+      {railUp && toggle && (
+        // 패널 토글 자리 — 레일 열과 같은 폭(틈 + 줄 폭)이라 토글이 레일 열의 가운데에 선다(DS `.at-railtop`). 회색이 드러나는
         // 상자라 끌기 영역이다. 머리 카드가 남는 폭을 다 먹어 이 자리는 줄 오른쪽 끝이다.
-        <div data-tauri-drag-region className="box-content flex w-(--rail) shrink-0 justify-center pl-(--gap)">
+        <div data-tauri-drag-region className="box-content flex w-(--size-prail) shrink-0 justify-center pl-(--gap)">
           {toggle}
         </div>
       )}
@@ -424,14 +443,16 @@ function HeadRow({ sidebarOpen, head, toggle }: { sidebarOpen: boolean; head: He
 
 /**
  * 머리 카드(codex-ds 스펙 §4 · DS `HeadCard` · `.at-winhead`) — 머리 줄에 뜬 흰 카드. 32(`size-head`) · `radius-xl` · `surface`에 0.5px
- * 링(`shadow-hairline`)이고, 폭은 머리 줄이 남긴 자리 전부(`flex-1` — 본문 열)다. 링을 바탕 위 카드처럼 안쪽에 덮어 그리지 않는다 —
- * 넘침을 숨기는 조상이 없어 바깥 링이 잘리지 않는다(`Card`의 안쪽 링은 접히는 칸의 상자 때문이다).
+ * 링(`shadow-hairline`)이고, 폭은 머리 줄이 남긴 자리 전부(`flex-1`)라 아래 본문 열과 같다 — 레일이 서면 그 위의 패널 토글 자리가
+ * 레일 열만큼을 비운다(`HeadRow`). 링을 바탕 위 카드처럼 안쪽에 덮어 그리지 않는다 — 넘침을 숨기는 조상이 없어 바깥 링이 잘리지
+ * 않는다(`Card`의 안쪽 링은 접히는 칸의 상자 때문이다).
  *
  * 왼쪽은 아이콘 · 이름(과 그 뒤 옅은 위치)뿐이다(DS `.at-wtitle` — 24 · 안쪽 8 · 사이 7, 이름 13/500 `fg`, 아이콘 14 `fg-secondary`).
  * 카드 안쪽 8에 이름 칸의 안쪽 8이 더해져 아이콘이 카드 + 16에 선다 — 아래 본문 카드의 탭 줄 첫 칸과 한 세로줄이다. 하위 화면은 그
  * 앞에 돌아가는 길(`lead`)이 하나 선다. 이름 뒤 위치(`sub`)는 DS `.at-winhead .sub`(12 `fg-tertiary`, 이름 끝에서 14)다. 오른쪽은
- * 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 위 줄에 서는 것은 모두 24다(창 컨트롤과
- * 같다 — 글자 버튼은 `Button`의 `top`).
+ * 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 레일이 서지 않은 작업 화면은 그 너머
+ * 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」). 위 줄에 서는 것은 모두 24다(창 컨트롤과 같다 — 글자
+ * 버튼은 `Button`의 `top`).
  *
  * **이름은 틀 뿌리의 바닥에 안 든다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 사이드바를 밀면 안 된다. 그래서 이름 칸은
  * DS의 「제 글자 폭만큼」(`flex: 0 1 auto`)이 아니라 남는 폭을 먹고(`flex-1`) — 제 폭을 알리지 않는 상자라 글자 폭으로는 서지 못한다 —
@@ -440,7 +461,18 @@ function HeadRow({ sidebarOpen, head, toggle }: { sidebarOpen: boolean; head: He
  * 줄의 바닥이라 좁은 창에서도 할 일이 제 폭으로 카드 안에 선다(편집기의 「LLM이 받는 텍스트」 · 「저장」도). 할 일이 없는 화면
  * (Terminal · 빈 Works · 저장이 없는 설정 쪽)에는 묶음이 없다. 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
  */
-function HeadCard({ lead, icon: Icon, name, sub, actions, end }: HeadSlot) {
+function HeadCard({
+  lead,
+  icon: Icon,
+  name,
+  sub,
+  actions,
+  end,
+  toggle,
+}: HeadSlot & {
+  /** 레일이 서지 않을 때의 패널 토글 — 보기 배치(`end`) 뒤, 카드 안 오른쪽 끝에 선다(`HeadRow`). 화면이 건네는 것이 아니라 틀이 넣는다. */
+  toggle?: ReactNode;
+}) {
   return (
     <div
       data-slot="head-card"
@@ -463,13 +495,14 @@ function HeadCard({ lead, icon: Icon, name, sub, actions, end }: HeadSlot) {
           </span>
         )}
       </div>
-      {(actions || end) && (
+      {(actions || end || toggle) && (
         <div data-head-actions className="ml-auto flex shrink-0 items-center gap-1.5">
           {actions}
-          {actions && end && (
+          {actions && (end || toggle) && (
             <div role="separator" aria-orientation="vertical" className="mx-0.5 h-4 w-[0.5px] shrink-0 bg-border-heavy" />
           )}
           {end}
+          {toggle}
         </div>
       )}
     </div>

@@ -12,9 +12,9 @@ import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
 // 아카이브 화면을 통째로 그려 잰다. 목록 패널의 필터와 머리말의 프로젝트 칩은 서로 다른 파일에
 // 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 둘이 한 번에 걸린다.
 //
-// 정보 탭(`WorkInfo.test.tsx`)과 달리 프로바이더를 세운다. 이 화면은 목록도 문서도 스스로
+// 호버 카드 조각(`WorkCard.test.tsx`)과 달리 프로바이더를 세운다. 이 화면은 목록도 문서도 스스로
 // 조회하므로 순수 표현일 수 없고, 「목록이 왔다」와 「아직이다」가 빈 화면의 갈래를
-// 가르기 때문에(`entriesPending`) 캐시를 심어 도착을 흉내낸다 — `WorkPanel.test.tsx` 방식.
+// 가르기 때문에(`entriesPending`) 캐시를 심어 도착을 흉내낸다 — `WorksPage.test.tsx` 방식.
 
 const withProject: ArchiveEntry = {
   slug: "shipped",

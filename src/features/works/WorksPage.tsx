@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
+import { pickRail } from "@/components/shell/Rail";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -77,7 +78,6 @@ interface WorksPageProps {
   // `push`는 히스토리 항목을 만들지 여부다 — 트리는 만들지 않고 문서 링크는 만든다.
   currentFile: string | null;
   onSelectFile: (path: string, push: boolean) => void;
-  onOpenProject: (slug: string) => void;
   // 보고 있는 화면 탭도 주소가 정본이다 — `currentFile`과 같은 결이다.
   tab: ViewTab;
   onSelectTab: (tab: ViewTab) => void;
@@ -167,7 +167,6 @@ function WorksPage({
   selectedSlug,
   currentFile,
   onSelectFile,
-  onOpenProject,
   tab,
   onSelectTab,
   split,
@@ -195,37 +194,38 @@ function WorksPage({
     : remove.isPending
       ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
       : null;
-  // 작업 패널 접기 — 머리 줄의 패널 토글 · ⌘Enter가 이 값 하나를 뒤집고, 켜진 레일 칸을 다시 누르면 닫는다(ui-refresh
-  // 결정 9). 한때 흩어져 있던 둘(창 맨 위 줄의 여는 버튼과 패널 머리의 닫는 `×`)이 그 토글 하나로 합쳐졌다.
+  // 작업 패널 접기 — 머리 줄의 패널 토글 · ⌘Enter가 이 값 하나를 뒤집는다(ui-refresh 결정 9). 레일이 서면(칸이 둘 이상 — codex-ds
+  // 결정 25) 켜진 레일 칸을 다시 눌러도 닫힌다. 한때 흩어져 있던 둘(창 맨 위 줄의 여는 버튼과 패널 머리의 닫는 `×`)이 그 토글 하나로
+  // 합쳐졌다.
   //
   // **초기값이 분할 여부를 본다**(결정 88). `?split=lr`로 새로 뜨거나 새로고침하면 아래
   // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
   // `claude` TUI가 깨진다」가 그대로 재현된다.
   const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
-  // 레일에서 고른 칸(`spec` · `info`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는
-  // 자리가 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지 않는다.
+  // 레일에서 고른 칸 — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는 자리가
+  // 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지 않는다. 지금 칸은 `spec`
+  // 하나라(`PANEL_VIEWS` — info 칸을 걷었다, codex-ds 결정 25) 이 값은 `spec` 그대로이고 레일도 서지 않는다. 칸 목록이 늘면 레일이
+  // 다시 서고 이 값이 그 고름을 든다.
   //
   // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
   // key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워졌기 때문이다. 그것은 코드가 아니라 **구조에서 나온
   // 성질**이었고 되살리지 않는다. 이 화면은 작업을 옮겨도 같은 인스턴스라 이 값도 그대로 따라온다. 패널 접기는 언마운트가
   // 아니라 폭 트랜지션이라 접었다 펴도, 본문 왕복(spec ↔ terminal)에도 유지된다.
   const [panelView, setPanelView] = useState<PanelView>("spec");
-  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). **켜진 칸을 다시 누르면 닫힌다** — 켜짐은 「열렸고 그 칸이 골라졌다」이므로 닫힌 채 누른
-  // 칸은 켜진 칸이 아니다: 그 칸으로 연다. 다른 칸이면 그 칸으로 바꾼다. 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
+  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). 켜진 칸을 다시 누르면 닫히고, 그 밖에는 그 칸으로 연다 — 규칙은 레일의 것이다
+  // (`pickRail`). 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
   const pickPanelView = (next: PanelView) => {
-    if (workPanelOpen && next === panelView) {
-      setWorkPanelOpen(false);
-      return;
-    }
-    setPanelView(next);
-    setWorkPanelOpen(true);
+    const after = pickRail({ open: workPanelOpen, active: panelView }, next);
+    setPanelView(after.active);
+    setWorkPanelOpen(after.open);
   };
   // 작업 패널 카드의 폭. 칸(바깥 상자 · 틈 · 손잡이 · 접힘)은 공용 틀이 그리고 폭은 여기서 건넨다(ui-refresh 결정 27 — 목록 칸과
   // 같은 나눔). 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 서고 왼쪽으로 끌면 넓어진다. 저장 키는 이 패널 전용이다: 목록
   // 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
   //
-  // 기본 폭은 `WORK_PANEL_WIDTH`(330)다 — 그 수가 왜 그 값인지는 그쪽 머리말에 있다(spec 레이아웃 편집기의 트리 카드가 같은 수를
-  // 읽는다). 최대 560은 목록 패널 둘과 같은 값이다.
+  // 기본 폭은 `WORK_PANEL_WIDTH`(340 — DS `size-panel`)다 — 그 수가 왜 그 값인지는 그쪽 머리말에 있다(spec 레이아웃 편집기의 트리
+  // 카드가 같은 수를 읽는다). 범위 260–560은 지금 것 그대로라(codex-ds 스펙 S4) 범위 안에 저장된 폭은 그대로 선다. 최대 560은 목록
+  // 패널 둘과 같은 값이다.
   const panelSize = useResizableWidth("work-panel-width", WORK_PANEL_WIDTH, 260, 560, "right");
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
@@ -699,7 +699,7 @@ function WorksPage({
   // 오른쪽은 **할 일 | 보기 배치**다. 할 일은 상태 배지와 ⋯ — work에 대한 조작이 한 자리에 모인다(ui-refresh 결정 14 · codex-ds
   // 결정 25). 상태 배지가 앞인 것은 자주 누르는 조작이라서다 — 메뉴 뒤에 숨기면 상태를 바꾸는 데 클릭이 두 번 든다. 보기 배치는
   // 분할 토글 하나다. 사이의 세로선과 간격은 틀의 머리 카드가 그린다(`Frame`의 `HeadCard`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위
-  // 줄의 오른쪽 끝 묶음에 섰다. 패널 토글은 머리 카드 밖, 레일 위에 선다(`Frame`의 머리 줄).
+  // 줄의 오른쪽 끝 묶음에 섰다. 패널 토글은 화면이 건네지 않는다 — 레일이 서지 않는 지금은 틀이 분할 뒤에 넣는다(`Frame`의 머리 줄).
   //
   // 지금 선 work(`selected`)가 없으면 머리 카드는 화면 이름 「Works」 하나다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
   // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
@@ -825,7 +825,7 @@ function WorksPage({
   );
 
   return (
-    // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27). 머리 줄에 머리 카드(⚡ · 이름 | 상태 · ⋯ | 분할)와 패널 토글이 서고, 그
+    // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27). 머리 줄에 머리 카드(⚡ · 이름 | 상태 · ⋯ | 분할 · 패널 토글)가 서고, 그
     // 아래 본문 카드(머리가 탭 줄)와 작업 패널 카드가 뜬다.
     //
     // 탭 줄의 바닥은 그 줄을 이는 카드가 들고(`TAB_ROW_CARD`), 모자라면 틀의 본문 열이 사이드바에게 자리를 요구한다
@@ -834,9 +834,10 @@ function WorksPage({
     <Frame
       sidebarOpen={sidebarOpen}
       head={head}
-      // 레일(ui-refresh 결정 9 · 10) — `spec` · `info` 칸과, 그 위 머리 줄의 패널 토글. 패널과 같은 조건으로 선다: 고른 작업이 없으면
-      // 열 패널이 없어 레일도 토글도 없다(그때 본문 열의 오른쪽 틈 하나가 창 끝이다). **두 본문 모두에** 선다 — 한때 터미널 본문에서
-      // 여는 버튼을 뺐던 까닭(결정 11 — 그때 패널이 거기 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
+      // 레일(ui-refresh 결정 9 · 10)의 칸과 머리 줄의 패널 토글. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어
+      // 레일도 토글도 없다. 칸이 `spec` 하나라 레일 열은 서지 않고(codex-ds 결정 25 — `railStands`) 토글만 머리 카드 끝에 선다 — 그래서
+      // 본문 열의 오른쪽 틈 하나가 창 끝이다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던 까닭(결정 11 — 그때 패널이 거기 없었다)은
+      // 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
       rail={
         panelWork
           ? {
@@ -855,8 +856,8 @@ function WorksPage({
         // **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 칸이 spec으로
         // 리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
         // 나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
-        // (a) 본문을 오가도(spec ↔ terminal) 고른 칸이 유지된다 — `info`를 보던 채로
-        //     본문만 갈아탈 수 있다는 뜻이다(고른 칸은 이 화면이 든다 — 위 `panelView`).
+        // (a) 본문을 오가도(spec ↔ terminal) 고른 칸이 유지된다 — 칸이 둘 이상이면 다른 칸을
+        //     보던 채로 본문만 갈아탈 수 있다는 뜻이다(고른 칸은 이 화면이 든다 — 위 `panelView`).
         // (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
         //     전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
         //     기본값(최신 판만 펼침)으로 뜬다.
@@ -877,7 +878,7 @@ function WorksPage({
                   currentFile={currentSpec}
                   onSelectFile={selectFromTree}
                   onCopy={copyText}
-                  onOpenProject={onOpenProject}
+                  onOpenFolder={() => openWorkFolder(panelWork.slug, null)}
                   open={workPanelOpen}
                 />
               ),
@@ -1033,6 +1034,15 @@ function StatusMenu({ work }: { work: WorkView }) {
   );
 }
 
+/**
+ * Finder에서 연다(codex-ds 스펙 S6) — `project`가 `null`이면 그 work의 spec 폴더, 프로젝트 이름이면 그 worktree다. work 메뉴의
+ * Finder ▸와 작업 패널 머리의 「spec 폴더 열기」가 부른다. 못 열면(손으로 지운 폴더 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로
+ * 알린다 — 메뉴는 이미 닫혔고, 그 문장이 어느 폴더가 없는지 말한다. 두 자리가 말을 따로 지으면 한쪽만 고친 날 같은 실패가 두 말로 선다.
+ */
+function openWorkFolder(slug: string, project: string | null): void {
+  worksApi.openFolder(slug, project).catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
+}
+
 // 머리 카드의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 여기는
 // 그 항목이 부르는 동작을 잇는다: Finder 열기 · 이름 바꾸기 창 · 복사 · 상태 · 고정, 그리고 아카이브 · 삭제의 흐름(아래 `run`).
 // 아카이브 · 삭제는 되돌릴 수 없어서 확인 창을 거치고, 거절 사유(커밋 안 된 변경 등)는 코어가 파일 단위로 말해주므로 그대로
@@ -1144,14 +1154,9 @@ function WorkMenu({
   const handleRemove = () =>
     run("삭제", REMOVE_CONFIRM_BODY, () => remove.mutateAsync(work.slug));
 
-  // 메뉴 항목이 부르는 것. Finder 열기가 못 열면(손으로 지운 폴더 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 —
-  // 메뉴는 이미 닫혔고, 그 문장이 어느 폴더가 없는지 말한다.
+  // 메뉴 항목이 부르는 것. Finder 열기는 작업 패널 머리의 spec 폴더 열기와 한 벌이다(`openWorkFolder`).
   const actions: WorkMenuActions = {
-    openFolder: (project) => {
-      worksApi
-        .openFolder(work.slug, project)
-        .catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
-    },
+    openFolder: (project) => openWorkFolder(work.slug, project),
     rename: () => setRenaming(true),
     copy: onCopy,
     setStatus: (status) => setStatus.mutate({ slug: work.slug, status }),

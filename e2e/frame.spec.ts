@@ -102,9 +102,9 @@ for (const screen of SCREENS) {
 }
 
 // 판 06 티켓 07 — **레이아웃 편집기의 트리는 본문 카드 오른쪽의 카드다.** 작업 화면의 spec 패널과 같은 쪽 · 같은 폭(작업 패널의
-// 기본 폭 330)이고, 둘 사이는 `--gap`이다. 트리 카드는 레일 · 접힘 · 손잡이가 없는 늘 열린 `section`이다 — `aside`는 사이드바
+// 기본 폭 340 — DS `size-panel`, codex-ds 스펙 S4)이고, 둘 사이는 `--gap`이다. 트리 카드는 레일 · 접힘 · 손잡이가 없는 늘 열린 `section`이다 — `aside`는 사이드바
 // 하나뿐이다(판 06 「지키는 것」). 트리 위 도구 줄(「항목 편집」)은 그 카드의 머리에 선다.
-test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 330 카드이고 머리에 도구가 서며, 둘 사이 틈이 창을 끄는 자리다", async ({
+test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 340 카드이고 머리에 도구가 서며, 둘 사이 틈이 창을 끄는 자리다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -129,7 +129,7 @@ test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 330 카드이
   const titlebar = await token(page, "--titlebar-height");
   const viewport = page.viewportSize()!;
   const [form, card] = [await boxOf(main), await boxOf(tree)];
-  expect(card.width, "트리 카드 폭").toBe(330);
+  expect(card.width, "트리 카드 폭").toBe(340);
   expect(card.y, "트리 카드 위").toBe(titlebar);
   expect(card.bottom, "트리 카드 아래").toBe(form.bottom);
   expect(card.x - form.right, "본문 카드와 트리 카드 사이 틈").toBe(gap);
@@ -140,10 +140,10 @@ test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 330 카드이
   expect(await draggable(page, form.right + gap / 2, middleY), "두 카드 사이 틈").toBe(true);
   expect(await draggable(page, card.x + card.width / 2, middleY), "트리 카드 안").toBe(false);
 
-  // ⌘B로 사이드바를 접어도 트리 카드는 330 그대로이고, 넓어지는 것은 본문 카드다.
+  // ⌘B로 사이드바를 접어도 트리 카드는 340 그대로이고, 넓어지는 것은 본문 카드다.
   await page.keyboard.press("Meta+b");
   await expect.poll(async () => (await boxOf(main)).x).toBe(gap);
-  expect((await boxOf(tree)).width, "사이드바를 접은 뒤의 트리 카드 폭").toBe(330);
+  expect((await boxOf(tree)).width, "사이드바를 접은 뒤의 트리 카드 폭").toBe(340);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -559,7 +559,6 @@ test("Works: 머리 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   expect(await panel.evaluate((el) => el.closest("aside") === document.querySelectorAll("aside")[1])).toBe(true);
 
   const gap = await token(page, "--gap");
-  const rail = await token(page, "--rail");
   const titlebar = await token(page, "--titlebar-height");
   const viewport = page.viewportSize()!;
   const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
@@ -568,8 +567,13 @@ test("Works: 머리 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   expect(side.y, "패널 카드 위").toBe(titlebar);
   expect(card.x, "문서 카드 왼쪽").toBe(edge);
   expect(side.x - card.right, "문서와 패널 사이 틈").toBe(gap);
-  // 패널 카드 오른쪽은 레일 열이다(ui-refresh 결정 10) — 틈 · 레일 · 틈을 지나 창 끝이다.
-  expect(viewport.width - side.right, "패널 오른쪽 틈 · 레일 · 틈").toBe(gap + rail + gap);
+  // 패널 카드 오른쪽은 곧 창 오른쪽 틈이다 — 레일 칸이 `spec` 하나라 레일 열이 서지 않는다(codex-ds 결정 25).
+  expect(viewport.width - side.right, "패널 오른쪽 틈").toBe(gap);
+  // 끌어 바꾼 폭이 없으면 패널 카드는 DS 패널 폭 `size-panel`로 선다(codex-ds 스펙 S4). 폭 훅이 받는 수(`WORK_PANEL_WIDTH`)를 토큰과
+  // 맞대고, 그 DS 수는 따로 센다 — 토큰이 바뀌는 날 견줌이 함께 흘러가지 않게.
+  const 기본 = Number.parseFloat(await 토큰값(page, "width", "--size-panel"));
+  expect(기본, "DS 수").toBe(340);
+  expect(side.width, "패널 카드 기본 폭 = size-panel").toBe(기본);
   expect(viewport.height - side.bottom, "패널 아래 틈").toBe(gap);
 
   // 손잡이는 그 틈의 가운데이고 여전히 두 번째 `aside`의 자손이다. 드러난 틈은 창을 끄는 자리이고, 카드 안은 아니다.
@@ -582,20 +586,52 @@ test("Works: 머리 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   expect(await draggable(page, side.x + side.width / 2, side.bottom + gap / 2), "패널 카드 아래 틈").toBe(true);
   expect(await draggable(page, side.x + side.width / 2, side.bottom - 4), "패널 카드 안").toBe(false);
 
-  // ⌘Enter로 접으면 틈이 카드와 함께 접혀 문서 카드가 오른쪽 틈 끝(레일 열 앞)까지 넓어진다 — 닫힌 칸 옆에 틈이 겹쳐 남지 않는다.
+  // ⌘Enter로 접으면 틈이 카드와 함께 접혀 문서 카드가 창 오른쪽 틈 끝까지 넓어진다 — 닫힌 칸 옆에 틈이 겹쳐 남지 않는다.
   await page.keyboard.press("Meta+Enter");
-  await expect.poll(async () => (await boxOf(doc)).right).toBe(viewport.width - rail - 2 * gap);
+  await expect.poll(async () => (await boxOf(doc)).right).toBe(viewport.width - gap);
   await page.getByRole("button", { name: "작업 패널 펼치기", exact: true }).click();
   await expect.poll(async () => (await boxOf(panel)).x - (await boxOf(doc)).right).toBe(gap);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// codex-ds 티켓 18 — **작업 패널 머리는 「spec」과 spec 폴더 열기다**(codex-ds 스펙 §4 「패널 머리」 · §6 「작업 패널」). 제목은 DS 패널 머리
+// 제목(`.at-panel-head .title` — 14/20 · 500)이고, 글자가 카드 + 16에 선다(머리 여백 10 + 제목 안쪽 6 — 행 글자 16, 스펙 §4 「여백」).
+// 버튼은 머리 오른쪽 끝, 머리 줄의 가운데에 선다.
+test("Works: 작업 패널 머리 제목이 DS 패널 머리 제목(14/20 · 500)이고 글자가 카드 + 16에 서며, spec 폴더 열기는 머리 오른쪽 끝이다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const panel = 작업패널(page);
+  const head = panel.locator('[data-slot="card-head"]');
+  const title = head.getByText("spec", { exact: true });
+  const open = head.getByRole("button", { name: "spec 폴더 열기", exact: true });
+  await expect(title).toBeVisible();
+  await expect(open).toBeVisible();
+
+  expect(await 칠한값(title, "font-size", "line-height", "font-weight"), "제목 글자").toEqual(["14px", "20px", "500"]);
+  const card = await boxOf(panel);
+  // 글자가 그려진 자리 — 제목 상자의 안쪽 여백이 아니라 글자 줄 자체의 왼쪽 끝을 읽는다.
+  const 글자 = await title.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect().x;
+  });
+  expect(글자 - card.x, "제목 글자 — 카드 + 16").toBe(16);
+  const [row, button] = [await boxOf(head), await boxOf(open)];
+  const [padding] = await 칠한값(head, "padding-right");
+  expect(button.right, "spec 폴더 열기 — 머리 안쪽 오른쪽 끝").toBe(row.right - parseFloat(padding));
+  expect(button.y + button.height / 2, "spec 폴더 열기 — 머리 가운데").toBe(row.y + row.height / 2);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // codex-ds 티켓 13 — **머리 줄에 작업 화면의 머리 카드가 선다**(codex-ds 스펙 §4 · §6 · DS `HeadCard` · `.at-winhead`). 창 맨 위는
-// 48 머리 줄(틈 8 · 머리 카드 32 · 틈 8)이고, 머리 카드는 그 줄에 뜬 흰 카드다 — 폭은 본문 열(사이드바 뒤 ~ 레일 앞), 높이는
-// `size-head`, 모서리는 `radius-xl`, 면은 `surface`에 0.5px 링(`shadow-hairline`)이다. 왼쪽에 ⚡ · work 이름이 서서 사이드바를 보지
-// 않아도 지금 어느 work인지 안다(스토리 23). 오른쪽은 할 일(상태 배지 · ⋯) | 보기 배치(분할)이고 얇은 세로선이 가른다(스토리 24).
-// 이름은 보이기만 한다 — 제자리 이름 바꾸기는 티켓 28이다.
-test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 서고 — 왼쪽에 ⚡ · work 이름, 오른쪽에 상태 배지 · ⋯ | 분할이 선다", async ({
+// 48 머리 줄(틈 8 · 머리 카드 32 · 틈 8)이고, 머리 카드는 그 줄에 뜬 흰 카드다 — 폭은 본문 열(사이드바 뒤 ~ 레일 앞 — 레일이 서지
+// 않는 지금은 창 오른쪽 틈 앞, codex-ds 티켓 18), 높이는 `size-head`, 모서리는 `radius-xl`, 면은 `surface`에 0.5px 링
+// (`shadow-hairline`)이다. 왼쪽에 ⚡ · work 이름이 서서 사이드바를 보지 않아도 지금 어느 work인지 안다(스토리 23). 오른쪽은 할 일
+// (상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리 24 · DS `.at-winctl-r`). 이름은 보이기만 한다 —
+// 제자리 이름 바꾸기는 티켓 28이다.
+test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 서고 — 왼쪽에 ⚡ · work 이름, 오른쪽에 상태 배지 · ⋯ | 분할 · 패널 토글이 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -619,9 +655,12 @@ test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 �
   expect([header.y, header.height], "머리 줄").toEqual([0, row]);
   expect(card.height, "머리 카드 높이").toBe(size);
   expect([card.y, row - card.bottom], "머리 카드 위 · 아래 틈").toEqual([gap, gap]);
-  // 폭은 본문 열이다 — 본문 카드 왼쪽(사이드바 뒤)부터 작업 패널 카드 오른쪽(레일 앞 틈)까지. 카드는 머리 줄 바로 아래에서 시작한다.
+  // 폭은 본문 열이다 — 본문 카드 왼쪽(사이드바 뒤)부터 작업 패널 카드 오른쪽까지. 레일이 서지 않아 그 끝이 창 오른쪽 틈 앞이다.
+  // 카드는 머리 줄 바로 아래에서 시작한다.
+  const viewport = page.viewportSize()!;
   expect(card.x, "머리 카드 왼쪽 = 본문 카드 왼쪽").toBe(doc.x);
   expect(card.right, "머리 카드 오른쪽 = 작업 패널 카드 오른쪽").toBe(side.right);
+  expect(side.right, "작업 패널 카드 오른쪽 = 창 오른쪽 틈").toBe(viewport.width - gap);
   expect(doc.y, "본문 카드 위").toBe(row);
   // 사이드바 맨 위 빈 신호등 줄도 같은 48이다 — 사이드바 목록(nav)이 본문 카드와 한 줄에서 시작한다. 그 줄이 제 높이를 따로 들면
   // 두 열의 위끝이 갈린다.
@@ -644,26 +683,29 @@ test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 �
   // 이름은 보이기만 한다 — 누르는 자리가 아니다.
   await expect(head.getByRole("button", { name: pinnedWork.title })).toHaveCount(0);
 
-  // 오른쪽 — 상태 배지 · ⋯ | 분할. 셋 다 24 높이로 카드 가운데 줄에 서고, ⋯와 분할 사이를 세로선이 가른다. 이름은 그 앞에서 끝난다.
+  // 오른쪽 — 상태 배지 · ⋯ | 분할 · 패널 토글. 넷 다 24 높이로 카드 가운데 줄에 서고, ⋯와 분할 사이를 세로선이 가른다. 이름은 그
+  // 앞에서 끝난다. 패널 토글은 레일이 서지 않아 보기 배치 끝, 카드 안이다(DS `.at-winctl-r` — 레일이 서면 카드 밖 `.at-railtop`).
   const parts = [
     head.getByRole("button", { name: pinnedWork.status, exact: true }),
     head.getByRole("button", { name: "작업 메뉴", exact: true }),
     head.getByRole("separator"),
     head.getByRole("button", { name: "분할", exact: true }),
+    head.getByRole("button", { name: "작업 패널 접기", exact: true }),
   ];
   const boxes = await Promise.all(parts.map(boxOf));
   expect(title.right, "이름이 배지 앞에서 끝난다").toBeLessThanOrEqual(boxes[0].x);
   for (let at = 1; at < boxes.length; at += 1) {
     expect(boxes[at].x, `오른쪽 할 일 ${at}번째가 앞의 것 뒤에 선다`).toBeGreaterThanOrEqual(boxes[at - 1].right);
   }
-  expect(boxes[3].right, "분할이 카드 안").toBeLessThanOrEqual(card.right);
+  const [padding] = await 칠한값(head, "padding-right");
+  expect(boxes[4].right, "패널 토글이 카드 안쪽 오른쪽 끝").toBe(card.right - parseFloat(padding));
   const middle = card.y + card.height / 2;
-  for (const [at, box] of [boxes[0], boxes[1], boxes[3]].entries()) {
+  for (const [at, box] of [boxes[0], boxes[1], boxes[3], boxes[4]].entries()) {
     expect([box.height, box.y + box.height / 2], `오른쪽 조작 ${at}`).toEqual([24, middle]);
   }
   await expect(parts[2]).toHaveAttribute("aria-orientation", "vertical");
 
-  // 작업 패널을 접어도 머리 카드는 본문 열 폭 그대로다 — 오른쪽 끝이 본문 카드 오른쪽(레일 앞 틈)이다.
+  // 작업 패널을 접어도 머리 카드는 본문 열 폭 그대로다 — 오른쪽 끝이 창 오른쪽 틈까지 넓어진 본문 카드의 오른쪽이다.
   await page.keyboard.press("Meta+Enter");
   await expect.poll(async () => (await boxOf(page.locator("main"))).right).toBe(card.right);
   expect((await boxOf(head)).right).toBe(card.right);
@@ -693,16 +735,17 @@ test("Works: 머리 카드의 이름 칸은 520까지이고 긴 이름은 그 �
   expect(card.width).toBeGreaterThan(520 + 200);
   expect((await boxOf(name.locator(".."))).width, "이름 칸 — DS `.at-wtitle` 상한").toBe(520);
   expect(await name.evaluate((el) => el.scrollWidth > el.clientWidth), "이름이 말줄임으로 준다").toBe(true);
-  const split = await boxOf(head.getByRole("button", { name: "분할", exact: true }));
+  // 묶음의 끝은 패널 토글이다 — 레일이 서지 않아 보기 배치(분할) 뒤 카드 안에 든다(DS `.at-winctl-r`).
+  const last = await boxOf(head.getByRole("button", { name: "작업 패널 접기", exact: true }));
   const [padding] = await 칠한값(head, "padding-right");
-  expect(split.right, "할 일 묶음이 카드 안쪽 오른쪽 끝").toBe(card.right - parseFloat(padding));
+  expect(last.right, "할 일 묶음이 카드 안쪽 오른쪽 끝").toBe(card.right - parseFloat(padding));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // 창 컨트롤(사이드바 토글 · ← · → · 검색, 24)과 패널 토글이 머리 카드의 가운데 줄(위에서 24)에 선다(스토리 26). 컨트롤 사이는 Codex
-// 값 2다(DS `.at-winctl`). 패널 토글은 머리 카드 오른쪽 끝 너머, 레일 바로 위에 선다(codex-ds 스펙 §4) — 레일 열의 가운데다. 신호등은
-// 이 층이 그리지 않는다(`trafficLightPosition` — macOS 실기에서 본다).
-test("Works: 창 컨트롤 넷과 패널 토글의 가운데가 머리 카드 가운데와 같은 높이이고, 컨트롤 사이는 2 · 패널 토글은 레일 위다", async ({
+// 값 2다(DS `.at-winctl`). 패널 토글은 레일이 서지 않는 동안 머리 카드 안 오른쪽 끝이다(DS `.at-winctl-r` — 레일이 서면 그 바로 위
+// 카드 밖으로 나가는 것은 진열대의 `rail.spec.ts`가 잰다). 신호등은 이 층이 그리지 않는다(`trafficLightPosition` — macOS 실기에서 본다).
+test("Works: 창 컨트롤 넷과 패널 토글의 가운데가 머리 카드 가운데와 같은 높이이고, 컨트롤 사이는 2 · 패널 토글은 머리 카드 오른쪽 끝이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -727,25 +770,22 @@ test("Works: 창 컨트롤 넷과 패널 토글의 가운데가 머리 카드 �
 
   const toggle = page.getByRole("button", { name: "작업 패널 접기", exact: true });
   const knob = await boxOf(toggle);
-  const viewport = page.viewportSize()!;
-  const rail = await token(page, "--rail");
+  const [padding] = await 칠한값(head, "padding-right");
   expect([knob.width, knob.height, knob.y + knob.height / 2], "패널 토글").toEqual([24, 24, middle]);
-  expect(knob.x + knob.width / 2, "패널 토글 가로 가운데 = 레일 열 가운데").toBe(
-    viewport.width - (await token(page, "--gap")) - rail / 2,
-  );
-  expect(knob.x, "패널 토글은 머리 카드 밖 오른쪽이다").toBeGreaterThan(card.right);
-  // 토글은 머리 줄에 서고 레일 · 머리 카드 · `aside`의 자손이 아니다.
+  expect(knob.right, "패널 토글 = 머리 카드 안쪽 오른쪽 끝").toBe(card.right - parseFloat(padding));
+  // 토글은 머리 줄의 머리 카드 안에 서고 레일 · `aside` · `nav`의 자손이 아니다.
   expect(
     await toggle.evaluate((el) => [
-      el.closest("header") !== null,
-      el.closest('[data-slot="head-card"], aside, nav, [aria-label="레일"]') === null,
+      el.closest('header [data-slot="head-card"]') !== null,
+      el.closest('aside, nav, [aria-label="레일"]') === null,
     ]),
   ).toEqual([true, true]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // 머리 줄의 **머리 카드 밖 회색**이 창을 끄는 자리다(codex-ds 스펙 §4 「드래그 영역」 — 회색이 보이는 상자마다 단다). 머리 카드는
-// 카드라 안(빈 자리까지)이 끄는 자리가 아니고, 그 안의 조작과 패널 토글은 그대로 눌린다.
+// 카드라 안(빈 자리까지)이 끄는 자리가 아니고, 그 안의 조작과 패널 토글(레일이 서지 않아 카드 안이다)은 그대로 눌린다. 레일이 설
+// 때 카드 밖 토글 자리의 둘레는 진열대의 `rail.spec.ts`가 잰다.
 test("Works: 머리 줄의 머리 카드 밖 회색이 창을 끄는 자리이고, 머리 카드 안과 패널 토글은 아니다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
@@ -764,16 +804,15 @@ test("Works: 머리 줄의 머리 카드 밖 회색이 창을 끄는 자리이�
 
   expect(await draggable(page, card.x + card.width / 2, gap / 2), "머리 카드 위 틈").toBe(true);
   expect(await draggable(page, card.x + card.width / 2, card.bottom + gap / 2), "머리 카드 아래 틈").toBe(true);
-  expect(await draggable(page, card.right + gap / 2, middle), "머리 카드와 패널 토글 사이").toBe(true);
-  expect(await draggable(page, knob.x - 2, middle), "패널 토글 왼쪽").toBe(true);
-  expect(await draggable(page, knob.x + knob.width / 2, knob.y - 2), "패널 토글 위").toBe(true);
   expect(await draggable(page, viewport.width - gap / 2, middle), "머리 줄 오른쪽 틈").toBe(true);
+  expect(await draggable(page, knob.x + knob.width / 2, gap / 2), "패널 토글 위 틈").toBe(true);
   // 대조: 머리 카드 안(빈 자리 · 모서리 안쪽 · 이름)과 조작은 끄는 자리가 아니다.
   expect(await draggable(page, (name.right + badge.x) / 2, middle), "머리 카드 안 빈 자리").toBe(false);
   expect(await draggable(page, card.x + 4, middle), "머리 카드 왼쪽 안").toBe(false);
   expect(await draggable(page, name.x + 4, middle), "이름").toBe(false);
   expect(await draggable(page, badge.x + badge.width / 2, middle), "상태 배지").toBe(false);
   expect(await draggable(page, knob.x + knob.width / 2, middle), "패널 토글").toBe(false);
+  expect(await draggable(page, (knob.right + card.right) / 2, middle), "패널 토글 오른쪽 카드 안").toBe(false);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -1230,62 +1269,57 @@ test("Works: work 메뉴 Finder ▸에서 폴더가 사라진 worktree 줄은 55
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 판 04 티켓 04 — **레일**(ui-refresh 결정 9 · 10). 작업 화면 바탕의 오른쪽 끝에 레일 열이 서고, 칸 묶음(`spec` · `info`)은 카드 줄
-// 꼭대기에서 시작한다. 레일 열은 본문 열의 형제라 `aside`도 `nav`도 머리 줄 `<header>`의 자손도 아니고(`aside` · `header` 수와 그것을
-// 집는 검사가 그대로다), 패널을 닫아도 그 자리에 남는다. 패널 토글은 레일이 아니라 머리 줄에 선다 — 레일 바로 위, 레일 열의 가운데다
-// (codex-ds 스펙 §4 · 티켓 13). 레일 열의 빈 자리(칸 묶음 아래 · 오른쪽 틈)는 회색 바탕이 드러나는 자리라 창을 끄는 자리다.
-test("Works: 레일 열이 바탕 오른쪽 끝에 서고 — 칸 묶음은 카드 줄 꼭대기, 패널 토글은 그 위 머리 줄 — 패널을 닫아도 남고, 빈 자리가 창을 끄는 자리다", async ({
+// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4). 작업 화면의 레일 칸은 `spec` 하나라 레일이
+// 서지 않고, 고를 것이 없는 줄이 자리를 차지하지도 않는다 — 작업 패널 카드가 창 오른쪽 틈 끝까지 선다. 레일 열이 없으니 그 위
+// 토글 자리도 없다: 머리 카드가 본문 열 폭 그대로(창 오른쪽 틈 앞까지) 서고, 패널 토글은 그 카드 안 오른쪽 끝에 든다(DS
+// `.at-winctl-r` — 「패널 칸 줄이 있으면 패널 토글은 카드 밖」). 머리 카드 오른쪽 틈은 창을 끄는 자리다. 칸이 둘인 레일의 모양과
+// 그때의 토글 자리는 진열대(`e2e/rail-fixture.tsx` · `rail.spec.ts`)가 잰다.
+test("Works: 레일이 서지 않고 작업 패널 카드와 머리 카드가 창 오른쪽 틈까지 서며 — 패널 토글은 머리 카드 오른쪽 끝이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   const toggle = page.getByRole("button", { name: "작업 패널 접기", exact: true });
-  const group = page.getByRole("group", { name: "레일", exact: true });
   await expect(작업패널(page)).toBeVisible();
   await expect(toggle).toBeVisible();
 
-  // 레일은 머리 줄 밖 · `aside` 밖 · `nav` 밖이다 — `aside`는 둘, `header`는 하나 그대로다. 패널 토글은 머리 줄 안이고 `aside` · `nav` 밖이다.
-  expect(await group.evaluate((el) => el.closest("aside, nav, header")?.tagName ?? null)).toBeNull();
-  expect(await toggle.evaluate((el) => el.closest("aside, nav, header")?.tagName ?? null)).toBe("HEADER");
+  // 레일 묶음도 레일 칸도 없다 — 이름이 `spec`인 버튼은 탭 줄의 칸 하나다. `aside`는 둘, `header`는 하나 그대로다.
+  await expect(page.getByRole("group", { name: "레일", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "spec", exact: true })).toHaveCount(1);
+  await expect(page.locator("[data-tab-row]").getByRole("button", { name: "spec", exact: true })).toHaveCount(1);
   await expect(page.locator("aside")).toHaveCount(2);
   await expect(page.locator("header")).toHaveCount(1);
-  // 칸은 목록 순서대로 `spec` · `info`다.
-  expect(await group.getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
-    "spec",
-    "info",
-  ]);
+  expect(await toggle.evaluate((el) => el.closest("aside, nav, header")?.tagName ?? null)).toBe("HEADER");
 
   const gap = await token(page, "--gap");
-  const rail = await token(page, "--rail");
   const titlebar = await token(page, "--titlebar-height");
   const viewport = page.viewportSize()!;
-  const [knob, pills, side] = [await boxOf(toggle), await boxOf(group), await boxOf(작업패널(page))];
-  // 토글: 24 상자가 머리 줄의 가운데에, 레일 열과 같은 세로줄에 선다(DS `HeadCard` — 위 줄에 서는 것은 모두 24).
-  expect(knob.width, "토글 폭").toBe(24);
+  const [knob, head, side] = [await boxOf(toggle), await boxOf(머리카드(page)), await boxOf(작업패널(page))];
+  // 패널 카드 오른쪽은 곧 창 오른쪽 틈이다 — 그 사이에 레일 열이 없다. 머리 카드도 같은 세로줄에서 끝난다.
+  expect(viewport.width - side.right, "패널 카드 오른쪽 틈").toBe(gap);
+  expect(side.y, "패널 카드 위 = 머리 줄 아래").toBe(titlebar);
+  expect(head.right, "머리 카드 오른쪽 = 패널 카드 오른쪽").toBe(side.right);
+  // 토글: 24 상자가 머리 줄 가운데에, 머리 카드 안쪽 오른쪽 끝에 선다.
+  const [padding] = await 칠한값(머리카드(page), "padding-right");
+  expect([knob.width, knob.height], "토글 상자").toEqual([24, 24]);
   expect(knob.y + knob.height / 2, "토글 세로 가운데 = 머리 줄의 가운데").toBe(titlebar / 2);
-  expect(knob.x + knob.width / 2, "토글 가로 가운데 = 레일 열의 가운데").toBe(viewport.width - gap - rail / 2);
-  // 칸 묶음: 카드 줄 꼭대기에서 시작하고 폭이 레일 폭이다. 패널 카드와 묶음 사이가 틈이다.
-  expect(pills.y, "칸 묶음 위 = 카드 줄 꼭대기").toBe(titlebar);
-  expect(pills.width, "칸 묶음 폭").toBe(rail);
-  expect(viewport.width - pills.right, "레일 오른쪽 틈").toBe(gap);
-  expect(pills.x - side.right, "패널 카드와 레일 사이 틈").toBe(gap);
+  expect(knob.right, "토글 = 머리 카드 안쪽 오른쪽 끝").toBe(head.right - parseFloat(padding));
 
-  // 빈 자리는 창을 끄는 자리다 — 칸 묶음 아래, 레일 오른쪽 틈, 패널 카드와 레일 사이 틈. 토글 둘레는 머리 줄의 검사가 잰다.
-  const railMiddle = viewport.width - gap - rail / 2;
-  expect(await draggable(page, railMiddle, pills.bottom + 40), "칸 묶음 아래").toBe(true);
-  expect(await draggable(page, viewport.width - gap / 2, pills.bottom + 40), "레일 오른쪽 틈").toBe(true);
-  expect(await draggable(page, side.right + gap / 2, pills.bottom + 40), "패널 카드와 레일 사이 틈").toBe(true);
-  // 대조: 칸과 토글 자체는 눌리는 버튼이다.
-  expect(await draggable(page, railMiddle, knob.y + knob.height / 2), "토글").toBe(false);
-  expect(await draggable(page, railMiddle, pills.y + pills.height / 4), "칸").toBe(false);
+  // 머리 카드 오른쪽 틈(회색)은 창을 끄는 자리이고, 카드 안 토글은 눌리는 버튼이다.
+  const middle = titlebar / 2;
+  expect(await draggable(page, viewport.width - gap / 2, middle), "머리 카드 오른쪽 틈").toBe(true);
+  expect(await draggable(page, knob.x + knob.width / 2, middle), "토글").toBe(false);
 
-  // 패널을 닫아도 레일과 토글은 그 자리다 — 칸으로 다시 열 길이 닫힌 패널과 함께 사라지지 않는다(ui-refresh 결정 10).
+  // 패널을 닫으면 문서 카드가 창 오른쪽 틈 끝까지 넓어지고(레일 열 자리가 남지 않는다), 토글과 머리 카드는 그 자리다.
   await toggle.click();
   const closed = page.getByRole("button", { name: "작업 패널 펼치기", exact: true });
   await expect(closed).toHaveAttribute("aria-expanded", "false");
-  await expect.poll(async () => (await boxOf(page.locator("main"))).right).toBe(viewport.width - rail - 2 * gap);
-  expect(await boxOf(group)).toEqual(pills);
+  await expect.poll(async () => (await boxOf(page.locator("main"))).right).toBe(viewport.width - gap);
   expect(await boxOf(closed)).toEqual(knob);
+  expect((await boxOf(머리카드(page))).right).toBe(head.right);
+  await closed.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(async () => viewport.width - (await boxOf(작업패널(page))).right).toBe(gap);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -1352,8 +1386,9 @@ test("Works: 셸 칸을 끄는 동안 겹판이 탭 줄 아래 카드 줄을 덮
   const titlebar = await token(page, "--titlebar-height");
   const viewport = page.viewportSize()!;
   const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
-  // 카드 줄의 오른쪽 끝 — 그 뒤는 레일 열(틈 · 레일)이다. 레일은 카드 줄 밖이라 겹판도 토스트의 가운데도 그것을 안 센다.
-  const rowRight = viewport.width - (await token(page, "--rail")) - (await token(page, "--gap"));
+  // 카드 줄의 오른쪽 끝 — 줄은 제 오른쪽 틈(`pr-(--gap)`)까지 들어 창 오른쪽 끝이다. 레일 열이 서면 그 앞에서 끝나지만(레일 열은
+  // 카드 줄 밖이라 겹판 · 토스트의 가운데가 그것을 안 센다) 지금은 칸이 하나라 서지 않는다(codex-ds 결정 25).
+  const rowRight = viewport.width;
   const toolbar = await token(page, "--size-toolbar");
   const from = await startSplitDrag(page, await boxOf(shellTab));
   const cover = await boxOf(page.locator("[data-drop-half]").first().locator(".."));
@@ -1369,11 +1404,12 @@ test("Works: 셸 칸을 끄는 동안 겹판이 탭 줄 아래 카드 줄을 덮
   await expect(page.locator("[data-drop-half]")).toHaveCount(0);
   await expect(page).not.toHaveURL(/split=/);
 
-  // 토스트 — 셸 0개 화면에서도 서는 말이 아니라, 이 화면이 내는 복사 확인으로 세운다.
+  // 토스트 — 셸 0개 화면에서도 서는 말이 아니라, 이 화면이 내는 복사 확인으로 세운다(work 메뉴의 복사 ▸ slug).
   await recordClipboard(page);
   await page.reload();
-  await page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name: "info", exact: true }).click();
-  await 작업패널(page).getByRole("button", { name: `slug ${plainWork.slug}`, exact: true }).click();
+  await 머리카드(page).getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: "복사", exact: true }).hover();
+  await page.locator("[data-slot=dropdown-menu-sub-content]").getByRole("menuitem").filter({ hasText: "slug" }).click();
   const toast = page.getByRole("region", { name: "메시지", exact: true }).locator('[data-slot="toast"]');
   await expect(toast).toBeVisible();
   const box = await boxOf(toast);

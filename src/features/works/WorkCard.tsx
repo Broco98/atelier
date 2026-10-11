@@ -99,7 +99,7 @@ export function WorkCard({
 const FIELD_LABEL = "w-[46px] shrink-0 text-fg-tertiary";
 
 // 프로젝트 한 줄 — 이름 · `← base` · 「변경 있음」(DS `HoverCard` — `.at-peek .f .b` · `.chg`). 변경이 없으면 「변경 없음」이라 적지
-// 않고 비운다(info 칸이 하던 그대로다). 이름과 base는 고정폭이 아니다 — 브랜치 칸만 고정폭이다(DS).
+// 않고 비운다(한때 info 칸이 하던 그대로다). 이름과 base는 고정폭이 아니다 — 브랜치 칸만 고정폭이다(DS).
 function ProjectField({ label, line }: { label: string; line: ProjectLine }) {
   return (
     <span data-project-line={line.project} className="flex min-w-0 items-baseline gap-2">

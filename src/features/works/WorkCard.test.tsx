@@ -9,7 +9,7 @@ import { specDocs, workFixture } from "./work-fixture";
 // 없다 — 조각을 직접 그리는 이 자리가 카드의 칸들을 재는 그물이다. 카드가 열릴 때 프로젝트
 // 목록을 읽어 프로젝트 줄이 서는 흐름은 L3(`works-sidebar`)가 마우스를 올려 잰다.
 //
-// 프로바이더를 안 세운다: 이 조각이 스스로 조회하면 여기서 바로 터진다(WorkInfo.test.tsx와
+// 프로바이더를 안 세운다: 이 조각이 스스로 조회하면 여기서 바로 터진다(WorkPanel.test.tsx와
 // 같은 계약).
 
 const work: WorkView = workFixture({

@@ -55,7 +55,7 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    // 패널 토글은 레일 열 위 머리 줄(패널 카드 오른쪽 너머, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    // 패널 토글은 머리 줄 오른쪽 끝(레일이 서지 않는 지금은 머리 카드 안 끝, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
       .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
       ?.getBoundingClientRect();
@@ -93,7 +93,7 @@ function expectFits(layout: Layout, at: string) {
   if (layout.panel) {
     expect(layout.panel.right, says).toBeLessThanOrEqual(layout.viewport + 0.5);
     expect(layout.panel.right, says).toBeLessThanOrEqual(layout.panelBoxRight! + 0.5);
-    // 패널을 여닫는 토글도 창 안이다 — 레일 열은 늘 그 자리이고 자리를 내주는 것은 패널 · 사이드바다(판 04 「지키는 것」).
+    // 패널을 여닫는 토글도 창 안이다 — 토글은 머리 줄 오른쪽 끝에 늘 그대로이고 자리를 내주는 것은 패널 · 사이드바다(판 04 「지키는 것」).
     expect(layout.toggleRight!, says).toBeLessThanOrEqual(layout.viewport + 0.5);
     expect(layout.panelScroll!.scrollLeft, says).toBe(0);
     expect(Math.abs(layout.panelScroll!.innerShift), says).toBeLessThanOrEqual(0.5);

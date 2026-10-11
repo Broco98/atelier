@@ -7,6 +7,7 @@ import {
   ipcCallArgs,
   ipcFailure,
   recordClipboard,
+  replaceAnswer,
   unknownIpcCalls,
   workRow,
   시계를세운다,
@@ -15,7 +16,7 @@ import {
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
-// 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · info 맨 위의 복사 줄 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
+// 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · 작업 패널 머리의 spec 폴더 열기 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
 // 셸 열기 `+`는 셸 열기 spec(`shell-picker.spec.ts`)이, 아카이브 거르개는 아카이브 문서 spec이,
 // 기준 브랜치는 프로젝트 목록 spec이 든다.
 //
@@ -39,7 +40,7 @@ const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputed
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
 
-/** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — 복사 줄 절과 토스트 절이 함께 쓴다. */
+/** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — work 메뉴 절과 토스트 절이 함께 쓴다. */
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
@@ -292,7 +293,31 @@ test("Finder가 폴더를 못 열면 그 오류 문장이 「메시지」에 선
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("복사 ▸는 slug · 브랜치 이름 · spec 경로를 클립보드에 쓰고, 복사 줄과 같은 「… 복사됨」이 선다", async ({ page }) => {
+// 작업 패널 머리의 「spec 폴더 열기」(codex-ds 스펙 §6 「작업 패널」 — 머리는 「spec」과 spec 폴더 열기다). work 메뉴의 Finder ▸ spec 폴더와
+// 같은 명령을 slug 하나로 부르고(경로는 백엔드가 푼다 — 스펙 S6), 못 열면 같은 문장이 「메시지」에 선다.
+test("작업 패널 머리에 「spec」과 spec 폴더 열기가 서고, 누르면 그 work의 spec 폴더를 연다 — 못 열면 Finder ▸와 같은 문장이 선다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${multiWork.slug}`);
+  const head = page.getByRole("region", { name: "작업 패널", exact: true }).locator('[data-slot="card-head"]');
+  const open = head.getByRole("button", { name: "spec 폴더 열기", exact: true });
+  await expect(head).toHaveText("spec");
+  await expect(open).toBeVisible();
+
+  await open.click();
+  await expect.poll(() => finder열기(page)).toEqual([{ slug: multiWork.slug, project: null }]);
+
+  const reason = `${multiWork.specDir} 폴더가 없어요`;
+  await replaceAnswer(page, "open_work_folder", ipcFailure(reason));
+  await 시계를세운다(page);
+  await open.click();
+  await expect(메시지(page)).toHaveText(`Finder에서 열지 못했어요: ${reason}`);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("복사 ▸는 slug · 브랜치 이름 · spec 경로를 클립보드에 쓰고, 트리의 경로 복사와 같은 「… 복사됨」이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
   await page.clock.install();
@@ -496,53 +521,6 @@ for (const [what, cancel] of [
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
-
-// ── info 맨 위의 복사 줄 (스토리 64~66, S35 · ui-refresh 결정 14) ──
-// 작업 정보는 레일의 `info` 한 곳에 모인다 — 창 맨 위 줄의 ⓘ 팝오버가 걷히고, 그 복사 줄 셋(브랜치 · 작업 폴더 · 워크트리)이
-// info 패널 맨 위 묶음으로 올라왔다. 행은 복사 버튼이다 — 누르면(Enter 포함) 그 값이 클립보드로 가고 「… 복사됨」 토스트가
-// 선다. 패널의 다른 복사 행과 같은 길이다.
-//
-// 클립보드는 **쓰기를 적는** 하네스 손잡이로 잰다(S35) — WebKit에서 클립보드를 읽는 길은 확인되지 않았다.
-// 첫 행은 브랜치다: 고정된 일에는 브랜치가 있고, 꼬리의 base(`main`)는 행의 이름에 붙어 따라온다.
-// 키로 누른다 — WebKit은 버튼을 눌러도 포커스를 주지 않는다. 시계는 토스트 절(아래)과 같은 까닭으로 세운다.
-//
-// Tab으로 행 사이를 옮기는 것(스토리 64의 가운데)은 여기서 못 잰다 — WebKit의 Tab은 버튼을 건너뛴다. 복사 아이콘의
-// 모양도 실물 확인의 몫이다.
-
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-
-test("레일 `info`를 열면 맨 위 첫 행이 브랜치이고, Enter면 그 값이 클립보드로 가고 토스트가 선다 — 접힌 워크트리 줄은 전체 경로를 낸다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await recordClipboard(page);
-  await page.clock.install();
-  await page.goto(`/works/${pinnedWork.slug}`);
-  await page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name: "info", exact: true }).click();
-  const panel = 작업패널(page);
-  // 첫 버튼이 브랜치 행이다 — 「브랜치 행이 있다」만 보면 행 순서가 뒤집혀도 초록이다. 숨은 `spec` 몸은 접근성 트리에 없다.
-  const branchRow = panel.getByRole("button").first();
-  await expect(branchRow).toHaveAccessibleName(`${pinnedWork.branch} main`);
-  // 행의 이름은 값이고, 도움말 「복사」(툴팁)는 이름보다 더 말하는 것이라 설명으로 남는다(S28).
-  await expect(branchRow).toHaveAccessibleDescription("복사");
-
-  await 시계를세운다(page);
-  await branchRow.focus();
-  await page.keyboard.press("Enter");
-
-  // 나가는 값은 브랜치 이름 그대로다 — 꼬리의 base는 보이는 글자일 뿐 클립보드로 가지 않는다.
-  await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch]);
-  await expect(메시지(page)).toHaveText(`${pinnedWork.branch} 복사됨`);
-  // 토스트는 포커스를 가져가지 않는다(스토리 91) — 다음 행으로 이어 누를 수 있다.
-  await expect(branchRow).toBeFocused();
-
-  // 워크트리 줄은 작업 폴더 기준으로 **접혀 보이고**, 한 번 누르면 접히지 않은 전체 경로가 나간다 — 보이는 꼬리가
-  // 클립보드로 가면 붙여 넣은 경로가 다른 곳을 가리킨다. 이름 전체로 집는다: 아래 「프로젝트」 구획의 worktree 줄은
-  // 라벨이 이름 앞에 붙는다.
-  await panel.getByRole("button", { name: "trees/billing/", exact: true }).click();
-  const worktree = `${pinnedWork.worktrees[0].path}/`;
-  await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch, worktree]);
-  await expect(메시지(page)).toHaveText(`${worktree} 복사됨`);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
 
 // ── 토스트 (스토리 88~91, 결정 11, S14 · S26 · S37) ──
 // 복사했다·셸을 못 열었다 같은 짧은 토스트는 이름 「메시지」를 단 `region`(라이브 영역)에 선다. 자리는 본문과 작업

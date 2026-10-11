@@ -23,17 +23,11 @@ export function workDirRef(slug: string): string {
   return `${WORK_ROOT}${slug}/`;
 }
 
-/** 워크트리: Rust가 내려준 `~` 축약 경로(`worktrees[].path`)에 트레일링 `/`만 보장한다.
- *  **뿌리를 여기서 짓지 않는다** — 코어가 이미 완성해 내려준 경로라, 여기서 앞머리를 다시
- *  지으면 `ATELIER_HOME`을 옮긴 설치에서 앱이 지은 경로와 실물이 갈린다. */
-export function worktreeDirRef(worktreePath: string): string {
-  return asDir(worktreePath);
-}
-
 /** 레이아웃: Rust가 내려준 `~` 축약 경로(레이아웃 상태의 `folder`)에 트레일링 `/`만 보장한다.
  *  설정의 [부탁]이 복사하는 한 줄이다(spec 레이아웃 결정 23). **뿌리를 여기서 짓지 않는다** —
- *  워크트리와 같은 이유로, 옮긴 데이터 루트에서도 코어가 준 경로가 실물이다. 그 모양이 MCP 도구
- *  설명이 가르치는 참조와 같은지는 Rust가 엔진 안에서 잰다. */
+ *  코어가 이미 완성해 내려준 경로라, 여기서 앞머리를 다시 지으면 `ATELIER_HOME`을 옮긴 설치에서
+ *  앱이 지은 경로와 실물이 갈린다. 그 모양이 MCP 도구 설명이 가르치는 참조와 같은지는 Rust가
+ *  엔진 안에서 잰다. */
 export function layoutDirRef(folder: string): string {
   return asDir(folder);
 }
