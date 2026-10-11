@@ -81,14 +81,15 @@
     /* **ui-refresh 때의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 그때의 DS(1판 `base.css`의 `:where(:root)`)
        것이고, codex-ds DS 2판에는 이 이름들이 없다 — 2판의 길이는 아래 `@theme static`의 `--size-*`다. 카드 머리
        `--card-head`는 2판 `--size-toolbar`(46)를 읽는다 — 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
-       값이 2판과 갈리는 것이 있다: 글 폭 `--measure-read` 760은 스펙 2절 「크기」가 `--size-thread`(48rem)로 바꿔 걷는다(문서
-       글 폭은 티켓 15). `--gap` · `--card-pad` · `--term-inset`을 `space-*`로
+       값이 2판과 갈리는 것이 있다: 글 폭 `--measure-read` 760은 스펙 2절 「크기」가 `--size-thread`(48rem)로 바꿔 걷는다 —
+       문서 글은 이미 `--size-thread`를 읽고(티켓 15 — `SpecViewer`의 `bodyColumn`), 설정 · 프로젝트 상세 · 편집기가 아직 이것을
+       읽는다(티켓 20 · 23). `--gap` · `--card-pad` · `--term-inset`을 `space-*`로
        옮겨 걷는 것은 티켓 25다. `--rail` 32는 2판의 패널 칸 줄 `--size-prail`과 같은 값이다.
          --gap           창 가장자리 · 카드 사이의 틈
          --rail          레일 폭
          --card-pad      카드 안 좌우
          --card-head     카드 머리 높이
-         --measure-read  읽는 글(문서 · 설정)의 폭 상한
+         --measure-read  읽는 글(설정 · 프로젝트 상세 · 편집기)의 폭 상한
          --measure-wide  넓은 화면의 폭 상한
          --term-inset    터미널 카드의 안쪽 여백 — 둥근 모서리에 글자가 닿지 않게 */
     --gap: 8px;
@@ -496,8 +497,9 @@
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
-       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드)뿐이고,
-       나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
+       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄의
+       높이(`--size-pathbar` — `PathBar`)와 문서 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn`)뿐이고, 나머지는 선언만
+       있다(스펙 S2 — 통째로 선언한다).
        그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세우고, 폭 셋(사이드바 · 목록 칸 · 작업 패널)의 기본값은 S4가 옮긴다. 그때까지
        화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
     --size-rail: 52px;
@@ -561,9 +563,8 @@
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
        뒤의 `bg-accent`를 0건으로 고정한다.
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
-         `fill-selected`     행 선택(`selected-row`, 위) · 흰 캡슐 안의 켜진 칸 — 원문 전환 알약의 칩
-                             (`segment-group` `pill`, ui-refresh 결정 7의 B)과 레일의 켜진 칸(`Rail`, ui-refresh
-                             결정 10)이 사이드바의 고른 행과 같은 면이다
+         `fill-selected`     행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, ui-refresh 결정 10)이 사이드바의
+                             고른 행과 같은 면이다
          `surface`(흰 면)    바탕(`surface-shell`) 위에서 고른 것 — 열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS
                              `.at-rail-toggle`)이다
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널
@@ -1012,7 +1013,8 @@
 }
 
 /* **아이콘 버튼 규격** — Codex `IconButton`(28 정사각 · `radius-lg`, DS `.at-ib`). 카드 머리의 아이콘 버튼(편집기의 「설정으로
-   돌아가기」 · 프로젝트 목록의 `+` · 문서 열의 복사 · 닫기)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 여기는
+   돌아가기」 · 프로젝트 목록의 `+`)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 경로 줄의
+   동그란 버튼(32 원 — `PathBar`)은 이 규격이 아니다 — 원은 경로 줄의 모양이라 그 파일이 든다(codex-ds 결정 14). 여기는
    모양만 정한다. hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면 어느 쪽이 이길지 유틸리티 정렬
    순서에 맡기게 된다. 옛 원형 규격은 걷었다(codex-ds 결정 3).
    **크기 · 모서리는 변수로 든다** — 작은 단(`icon-button-xs`)이 같은 속성을 다시 적지 않고 변수만 바꿔, 두 클래스가 한 요소에서
@@ -1040,10 +1042,19 @@
 
 /* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 창 위
    줄(셸 컨트롤 · 탭 줄의 `+` · 작업 ⋯ · 분할)과 줄 **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` ·
-   Processes 행의 ⋯ · 토스트 · 전체화면 창 · terminal 열의 닫기)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의
-   셸 컨트롤 폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야 한다(그쪽 주석). */
+   Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec 열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄
+   높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의 셸 컨트롤 폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야
+   한다(그쪽 주석). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
+  --icon-button-radius: var(--radius-md);
+}
+
+/* **16 · `radius-md`** — 글 거터(20) 안에 서는 블록 참조 복사(`SpecViewer`의 `BlockWrapper`) 하나가 쓴다. DS `.at-ib`에는 이 단이
+   없다: 거터가 20이라(codex-ds 결정 27) 버튼과 그 왼쪽 포커스 링 자리(4 — `focus-halo`)가 함께 들어가려면 16이어야 한다. 얹는
+   법은 `icon-button-xs`와 같다. */
+@utility icon-button-2xs {
+  --icon-button-size: 16px;
   --icon-button-radius: var(--radius-md);
 }
 
@@ -1137,8 +1148,8 @@
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
    (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다.
-   **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `fill-selected` 원이고 그림자가
-   없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`SourceToggle.test.tsx`). */
+   **알약 세그먼트(`pill` — 경로 줄의 보기 묶음)는 표식을 두고 모양만 덮는다** — 바닥이 카드의 흰 면이라 칩이 `fill-hover`
+   원이고 그림자가 없다(DS `.at-viewseg`). 검사가 이 이름으로 칩을 찾는다(`PathBar.test.tsx`). */
 @utility segment-on {
   background-color: var(--surface-elevated);
   box-shadow: var(--shadow-hairline), var(--shadow-100);

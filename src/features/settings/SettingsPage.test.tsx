@@ -587,7 +587,7 @@ describe("구획은 제 제목을 들지 않는다", () => {
 
 // ── 본문 머리(UI개선 결정 22 · spec 레이아웃 티켓 08)
 //
-// 머리(`Settings › …` — 카드 머리의 `Crumbs`, ui-refresh 결정 5)와 제목 역할의 줄은 설정 nav와 **같은 표**(`SETTINGS_ITEMS`)를 읽는다 — 넷째 항목을
+// 머리(`Settings › …` — 카드 머리의 위치 글자 `place`, ui-refresh 결정 5)와 제목 역할의 줄은 설정 nav와 **같은 표**(`SETTINGS_ITEMS`)를 읽는다 — 넷째 항목을
 // 표에 더한 것만으로 머리가 선다. 사이드바의 설정 nav가 그 표를 도는 것은 `Sidebar.test.tsx`의 소스
 // 검사가, 눌러서 그 페이지에 서는 것은 L3(`spec-layout-page.spec.ts`)가 잰다.
 describe("본문 머리", () => {
@@ -601,7 +601,7 @@ describe("본문 머리", () => {
 
   it("「spec 레이아웃」 페이지의 머리는 `Settings › spec 레이아웃`이고, 본문의 큰 제목이 같은 낱말이다", () => {
     const html = renderPage("spec-layout");
-    // 카드 머리의 위치 캡슐이다 — 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라 조각만 센다.
+    // 카드 머리의 위치 글자다 — 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라 조각만 센다.
     const head = /<div data-slot="card-head"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
     expect(head).toContain('aria-label="위치"');
     expect([...head.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1])).toEqual(["Settings", "spec 레이아웃"]);

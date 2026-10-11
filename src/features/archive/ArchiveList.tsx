@@ -119,7 +119,7 @@ function ArchiveList({
 
   return (
     <>
-      {/* 목록 카드 머리 — 검색칸 하나가 캡슐 자리에 늘어선다(Archive 프로토타입). */}
+      {/* 목록 카드 머리 — 검색칸 하나가 위치 자리에 늘어선다(Archive 프로토타입). */}
       <CardHead>
         {entries.length > 0 && (
           <InputGroup className="flex-1">

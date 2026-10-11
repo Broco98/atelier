@@ -32,7 +32,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
 
   return (
     <>
-      {/* 목록 카드 머리 — 검색칸이 캡슐 자리에 늘어서고 `+`가 끝이다(Projects 프로토타입). 신호등을 피할 일은 머리 줄의 몫이라
+      {/* 목록 카드 머리 — 검색칸이 위치 자리에 늘어서고 `+`가 끝이다(Projects 프로토타입). 신호등을 피할 일은 머리 줄의 몫이라
           여기에는 사이드바 열림에 따라 갈리는 여백이 없다. */}
       <CardHead
         end={

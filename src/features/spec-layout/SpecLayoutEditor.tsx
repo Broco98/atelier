@@ -27,11 +27,10 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
-import { Card, CardHead, Frame } from "@/components/shell/Frame";
+import { Card, CardHead, CardPlace, Frame } from "@/components/shell/Frame";
 import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
-import { Crumbs } from "@/components/ui/crumbs";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
@@ -418,7 +417,7 @@ function EditorFrame({
         label={`${name} 레이아웃 편집기`}
         // **최소 폭은 머리의 조작(뒤로 · 「LLM이 받는 텍스트」 · 「저장」)이 다 서는 폭이고, 수가 아니라 그 조작들의 폭에서 나온다**
         // (`min-w-min`). 글자가 시스템 글꼴이라 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수는 한쪽 OS에서 「저장」을 자른다.
-        // 그래서 카드의 min-content에 머리만 든다 — 몸은 제 내용 폭을 바깥에 안 알리고(`contain-inline-size`), 위치 캡슐도 그 칸이
+        // 그래서 카드의 min-content에 머리만 든다 — 몸은 제 내용 폭을 바깥에 안 알리고(`contain-inline-size`), 위치 글자도 그 칸이
         // 알리지 않아(아래) 줄어 말줄임이 받는다. 트리 카드가 이 폭을 남기고 자리를 내준다(공용 틀의 옆 칸).
         className="min-w-min flex-1 [&>:not([data-slot=card-head])]:contain-inline-size"
         head={
@@ -431,15 +430,15 @@ function EditorFrame({
             }
             end={actions}
           >
-            {/* 위치 캡슐의 칸 — 남는 폭을 다 받고 제 글자 폭은 바깥에 안 알린다(`contain-inline-size`). 칸의 바닥 28은 캡슐의
-                좌우 안쪽 여백(`px-3.5` 둘)이다 — 그보다 좁으면 빈 캡슐이 옆 조작 위로 삐져나온다. */}
-            <div className="flex min-w-7 flex-1 contain-inline-size">
-              <Crumbs items={["Settings", settingsItem("spec-layout").label, name]} />
+            {/* 위치 글자의 칸 — 남는 폭을 다 받고 제 글자 폭은 바깥에 안 알린다(`contain-inline-size`). 좁아지면 끝 조각의
+                말줄임이 받는다. */}
+            <div className="flex min-w-0 flex-1 contain-inline-size">
+              <CardPlace items={["Settings", settingsItem("spec-layout").label, name]} />
             </div>
           </CardHead>
         }
       >
-        {/* 제목 역할은 이 줄이 진다 — 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
+        {/* 제목 역할은 이 줄이 진다 — 카드 머리의 위치 글자(`CardPlace`)는 제목 역할이 없다(설정 페이지와 같다). */}
         <h2 className="sr-only">{name} 레이아웃</h2>
         {children}
       </Card>
@@ -564,7 +563,7 @@ export function TreeCard({
           사이는 트리 줄 사이와 같은 2px 틈이다(DS `.at-tree`). `relative`는 아래 트리 상자 **위에** 서려는 것이다 — 트리 상자가
           링이 설 자리만큼 위로 4px 나와 이 줄의 아래 끝에 걸치는데(`EntryTree`), 같은 층에 서지 않으면 `spec/`의 아래 끝을
           누른 손을 트리 상자가 받는다. */}
-      <div className="relative shrink-0 px-[calc(var(--card-pad)-14px)] pb-(--row-gap)">
+      <div className="relative shrink-0 px-2.5 pb-(--row-gap)">
         {/* 머리 `spec/`은 항목이 아니다(결정 26) — 끌기·지우기·옮기기의 대상이 아니고, 누르면 spec 폴더 안내(맨 위 항목의
             설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. 모양은 트리의 행이고 폴더 행처럼 한 단 흐리다
             (DS `.at-tree-row.folder`). 도움말은 누르면 서는 칸의 이름이다 — 이름(`spec/`)보다 더 말하는 것이라 설명으로도
@@ -835,7 +834,7 @@ function EntryTree({
       // 줄 사이는 2px 틈이다(DS `.at-tree`). 좌우 여백은 카드 머리와 같고 스크롤 상자 **안**에 둔다 — 밖에 두면 행의 포커스 링이
       // 상자 가장자리에서 잘린다. 위끝도 같다 — 상자가 4px 올라갔다 되돌아(`-mt-1 pt-1`) 첫 행의 링(테두리 바깥 4px)이 서고,
       // 첫 행의 자리는 그대로다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`).
-      className="-mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-[calc(var(--card-pad)-14px)] pt-1 scroll-quiet"
+      className="-mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2.5 pt-1 scroll-quiet"
     >
       {rows.map(({ entry: row, path }) => (
         <TreeRow

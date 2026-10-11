@@ -1122,9 +1122,10 @@ test("Works: 고른 작업이 없는 빈 화면에는 레일 · 패널 토글 ·
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 문서 카드 머리(ui-refresh 결정 5 · 7의 B) — 「지금 보는 것」의 캡슐 `slug › spec › … › 파일`과 원문 전환 · 경로 복사가 선다. 복사는
-// 새 동작이 아니라 트리의 경로 복사가 선 자리 하나가 더 생긴 것이라, **같은 값**을 클립보드에 넣는다.
-test("Works: 문서 카드 머리에 slug › spec › … › 파일 캡슐과 원문 전환 · 경로 복사가 서고, 복사가 트리의 경로 복사와 같은 값을 낸다", async ({
+// 문서 위 경로 줄(codex-ds 스펙 §4 — `PathBar`) — 「지금 보는 것」의 경로 캡슐 `slug › spec › … › 파일`과 원문 전환 · 경로 복사가
+// 선다. 복사는 새 동작이 아니라 트리의 경로 복사가 선 자리 하나가 더 생긴 것이라, **같은 값**을 클립보드에 넣는다. 줄의 기하(48 ·
+// 캡슐 글자와 문서 글이 한 세로줄)는 `path-bar.spec.ts`가 잰다.
+test("Works: 문서 위 경로 줄에 slug › spec › … › 파일 캡슐과 원문 전환 · 경로 복사가 서고, 복사가 트리의 경로 복사와 같은 값을 낸다", async ({
   page,
 }) => {
   const file = "목업/조각.html";
@@ -1132,9 +1133,9 @@ test("Works: 문서 카드 머리에 slug › spec › … › 파일 캡슐과 
   await recordClipboard(page);
   await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent(file)}`);
   const doc = page.locator("main");
-  const crumbs = doc.getByRole("navigation", { name: "위치", exact: true });
-  await expect(crumbs).toBeVisible();
-  expect(await crumbs.locator("span").allTextContents()).toEqual([pinnedWork.slug, "spec", "목업", "조각.html"]);
+  const capsule = doc.getByRole("navigation", { name: "위치", exact: true });
+  await expect(capsule).toBeVisible();
+  expect(await capsule.locator("span").allTextContents()).toEqual([pinnedWork.slug, "spec", "목업", "조각.html"]);
   await expect(doc.getByRole("button", { name: "원문 보기", exact: true })).toBeVisible();
 
   await doc.getByRole("button", { name: "경로 복사", exact: true }).click();

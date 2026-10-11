@@ -83,7 +83,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
         className="flex-1"
         head={
           <CardHead
-            crumbs={selected ? ["Projects", selected.name] : ["Projects"]}
+            place={selected ? ["Projects", selected.name] : ["Projects"]}
             end={
               <>
                 {/* 카드 머리의 흰 버튼(`Button` outline — 32 · `radius-lg`, DS `.at-btn.sm`) — 「제거」는 빨간 글자의 흰 버튼이다. */}

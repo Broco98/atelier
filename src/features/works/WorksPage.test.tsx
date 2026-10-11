@@ -84,6 +84,9 @@ const headActionsOf = (markup: string) => boxOf(headCardOf(markup), /<div[^>]*\s
  */
 const tabRowOf = (markup: string) => boxOf(markup, /<div[^>]*\sdata-tab-row="/);
 
+/** 문서 위 경로 줄(`PathBar`) 상자 — 줄 뒤에 문서의 스크롤 상자(`SpecViewer`)가 이어 선다. 줄이 없으면 빈 글자다. */
+const pathBarOf = (markup: string) => boxOf(markup, /<div[^>]*\sdata-slot="path-bar"/);
+
 // 화면이 토스트 자리(Viewport)를 그리는데 그것은 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트
 // Provider를 렌더 도우미도 싼다(S14). 정적 렌더라 구독은 안 걸리고 자리만 선다.
 //
@@ -252,9 +255,10 @@ describe("WorksPage 패널 토글과 레일", () => {
   });
 });
 
-// 여기가 **본문과 토글을 한 화면에서** 보는 자리다. 토글은 문서 카드 머리에 서고(ui-refresh 판 04 — 한때 패널 머리행에
-// 있었다) 주인은 화면(WorksPage)이다. 머리와 몸(SpecViewer)이 함께 도므로 그 배선이 실제로 이어졌는지가 드러난다(결정 6).
-describe("WorksPage 소스 토글이 문서 카드 머리에 선다", () => {
+// 여기가 **본문과 토글을 한 화면에서** 보는 자리다. 토글(보기 묶음 문서 | 원문)은 문서 위 경로 줄에 서고(codex-ds 스펙 §4 —
+// 한때 패널 머리행, 그다음 문서 카드 머리에 있었다) 주인은 화면(WorksPage)이다. 경로 줄과 몸(SpecViewer)이 함께 도므로 그
+// 배선이 실제로 이어졌는지가 드러난다(결정 6).
+describe("WorksPage 소스 토글이 문서 위 경로 줄에 선다", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -274,12 +278,12 @@ describe("WorksPage 소스 토글이 문서 카드 머리에 선다", () => {
     expect(header).not.toContain("소스");
   });
 
-  it("토글은 문서 카드 머리에 하나 선다", () => {
+  it("토글은 문서 위 경로 줄에 하나 선다", () => {
     const markup = render(specDocs(["overview.md"]));
     const doc = markup.slice(markup.indexOf("<main"), markup.indexOf("</main>"));
-    const head = doc.match(/<div data-slot="card-head"[\s\S]*?<\/div><\/div>/)?.[0] ?? "";
-    expect(head, "문서 카드 머리를 찾지 못했다").not.toBe("");
-    expect(head).toContain(LABEL);
+    const bar = pathBarOf(doc);
+    expect(bar, "문서 위 경로 줄을 찾지 못했다").not.toBe("");
+    expect(bar).toContain(LABEL);
     // 화면 전체에 하나다 — 패널(머리 · 몸)에 남아 있으면 같은 일을 하는 버튼이 둘이다.
     expect(countOf(markup, LABEL)).toBe(1);
   });
@@ -338,7 +342,7 @@ describe("WorksPage 소스 토글이 문서 카드 머리에 선다", () => {
 
   it("터미널 탭에서는 spec 문서가 있어도 토글이 없다", () => {
     // 본문이 셸이면 `</>`가 적용될 곳이 없다 — 살아 있으면 눌러도 아무 일이 없는 버튼이다(결정 11·21). 한때 패널 머리행에
-    // 늘 서 있어 잠가서 막았는데, 이제 토글은 문서 카드 머리에 서므로 문서 카드가 없는 화면에는 토글도 없다. 경로 복사도 같다.
+    // 늘 서 있어 잠가서 막았는데, 이제 토글은 문서 위 경로 줄에 서므로 문서 카드가 없는 화면에는 토글도 없다. 경로 복사도 같다.
     const markup = render(specDocs(["overview.md"]), "terminal");
     expect(toggle(markup)).toBe("");
     expect(markup).not.toContain('aria-label="경로 복사"');
@@ -589,20 +593,21 @@ describe("WorksPage 터미널 탭", () => {
     expect(markup).toContain('aria-label="작업 패널"');
   });
 
-  // 본문이 셸이라 `</>`가 적용될 곳이 없다 — 터미널 카드의 머리는 탭 줄 하나다(ui-refresh 결정 5 · codex-ds 스펙 §4). 위치
-  // 캡슐도 토글도 서지 않는다.
-  it("터미널 카드의 머리는 탭 줄뿐이다 — 위치 캡슐 줄이 없다", () => {
+  // 본문이 셸이라 `</>`가 적용될 곳이 없다 — 터미널 카드의 머리는 탭 줄 하나다(ui-refresh 결정 5 · codex-ds 스펙 §4). 경로
+  // 줄(캡슐 · 보기 묶음)은 문서 위에만 선다.
+  it("터미널 카드의 머리는 탭 줄뿐이다 — 경로 줄이 없다", () => {
     const markup = render({}, "terminal");
     const body = markup.slice(markup.indexOf("<main"), markup.indexOf("</main>"));
     expect(body, "본문 카드를 찾지 못했다").toContain('data-tone="terminal"');
     expect(tabRowOf(body)).not.toBe("");
+    expect(body).not.toContain('data-slot="path-bar"');
     expect(body).not.toContain('data-slot="card-head"');
     expect(markup).not.toContain('aria-label="원문 보기"');
   });
 });
 
 // 탭 줄의 바닥 — 줄을 머리에 이는 **본문 카드**(`TAB_ROW_CARD`)와 공용 틀(`Frame`)의 **본문 열**(`TAB_ROW_COLUMN`)이 함께
-// 든다(ui-refresh 결정 27 · codex-ds 스펙 §4). 카드는 줄 아닌 자식(문서 카드 머리의 캡슐 · 넓은 문서 · 코드뷰 · xterm)의 내용
+// 든다(ui-refresh 결정 27 · codex-ds 스펙 §4). 카드는 줄 아닌 자식(문서 위 경로 줄 · 넓은 문서 · 코드뷰 · xterm)의 내용
 // 폭을 바깥에 안 알리고, 열은 그 카드를 품은 카드 줄만 제 min-content를 알린다 — 소스 보기를 켜고 끌 때마다 패널이 창 밖으로
 // 밀리던 것(한때 이 행이 `min-w-0`이 아니었던 때)이 안 돌아온다. 그 바닥이 없으면 900px 창에서 칸 상자가 0px이 되어 칸이 안
 // 보였다.
@@ -1081,7 +1086,7 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
     );
     expect(tabRowOf(markup)).toBe("");
     expect(kindsOf(markup)).toEqual([]);
-    // 머리 줄은 머리 카드도 패널 토글도 없는 빈 끌기 줄이고, 화면 이름은 빈 화면 카드의 머리(캡슐)가 말한다(ui-refresh 결정 5).
+    // 머리 줄은 머리 카드도 패널 토글도 없는 빈 끌기 줄이고, 화면 이름은 빈 화면 카드의 머리(위치 글자)가 말한다(ui-refresh 결정 5).
     expect(headRowOf(markup)).not.toBe("");
     expect(headCardOf(markup)).toBe("");
     expect(panelToggleTags(markup)).toEqual([]);
@@ -1347,11 +1352,12 @@ describe("분할 뷰", () => {
     expect(countOf(render(withSpec, "spec", "lr"), "data-column=")).toBe(2);
   });
 
-  // 결정 104. basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다. 열 머리는 문서 카드 머리라 캡슐이
-  // `slug › spec › 판 폴더 › 파일`을 조각마다 말한다(ui-refresh 결정 5).
-  it("문서 열 머리의 캡슐이 판 폴더까지 말한다", () => {
+  // 결정 104. basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다. spec 열의 머리는 문서의 경로 줄이라(codex-ds
+  // 스펙 §6 「분할」) 캡슐이 `slug › spec › 판 폴더 › 파일`을 조각마다 말한다.
+  it("spec 열 머리가 경로 줄이고 그 캡슐이 판 폴더까지 말한다", () => {
     const html = render(withSpec, "spec", "lr");
     const head = html.slice(html.indexOf('data-column="spec"')).match(/^[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(head).toMatch(/^data-column="spec"[^>]*data-slot="path-bar"/);
     const pieces = [...head.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
     expect(pieces).toEqual([work.slug, "spec", "05-분할-뷰", "spec.md"]);
   });
@@ -1370,16 +1376,17 @@ describe("분할 뷰", () => {
     expect(countOf(render(withSpec, "terminal", "rl"), "data-column=")).toBe(2);
   });
 
-  // 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다. 원문 전환은 **늘 문서 카드 머리 하나에** 선다(ui-refresh 판 04) —
-  // 한때 분할이면서 패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다. 토글이 패널을 떠났으니 갈래가 필요 없다.
-  it("원문 전환이 문서 카드 머리에 늘 하나 선다", () => {
+  // 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다. 원문 전환은 **늘 문서의 경로 줄 하나에** 선다(ui-refresh 판 04 ·
+  // codex-ds 스펙 §4) — 한때 분할이면서 패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다. 토글이 패널을 떠났으니 갈래가
+  // 필요 없다.
+  it("원문 전환이 문서의 경로 줄에 늘 하나 선다", () => {
     const LABEL = 'aria-label="원문 보기"';
-    // 분할 — 패널이 접혀 있어도(결정 88) 열려 있어도 같은 자리다. 그 자리가 문서 열의 머리다.
+    // 분할 — 패널이 접혀 있어도(결정 88) 열려 있어도 같은 자리다. 그 자리가 spec 열의 머리(경로 줄)다.
     const split = render(withSpec, "spec", "lr");
     expect(countOf(split, LABEL)).toBe(1);
     const head = split.slice(split.indexOf('data-column="spec"'), split.indexOf('data-column="terminal"'));
     expect(head).toContain(LABEL);
-    // 단일 뷰 — 문서 카드의 머리다.
+    // 단일 뷰 — 문서 카드 탭 줄 아래의 경로 줄이다.
     expect(countOf(render(withSpec, "spec", null), LABEL)).toBe(1);
     // 갈래의 표식이 남아 있지 않다.
     expect(split).not.toContain("data-column-source");

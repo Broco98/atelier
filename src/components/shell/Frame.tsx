@@ -1,10 +1,10 @@
 import { useId, useRef, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Crumbs } from "@/components/ui/crumbs";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
 import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
+import { PathPieces } from "./PathBar";
 import Rail, { type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import useSplitRatio from "./useSplitRatio";
@@ -452,7 +452,10 @@ interface CardProps {
   as?: CardTag;
   /** 카드의 이름(`aria-label`). */
   label: string;
-  /** 카드 머리 — 위치 캡슐 줄(`CardHead`)이나 탭 줄(`ShellTabs`)이다. 머리가 없는 카드는 곧바로 내용이 선다(ui-refresh 결정 5). */
+  /**
+   * 카드 머리 — 카드 머리 줄(`CardHead`) · 탭 줄(`ShellTabs`) · 경로 줄(`PathBar`)이다. 머리가 없는 카드는 곧바로 내용이 선다(ui-refresh
+   * 결정 5).
+   */
   head?: ReactNode;
   /**
    * `terminal`이면 카드 바탕이 **터미널 테마의 바탕**이다(판 04 기본값 — 설정이 밝게면 흰 카드). 셸의 집이 칠하는 값과 같은
@@ -500,39 +503,44 @@ function Card({ as: Tag = "section", label, head, tone, className, children }: C
 }
 
 /**
- * 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 브레드크럼 캡슐과 머리의 버튼이 서는 46px 줄이다(`--card-head` — 탭 줄과 같은
- * `size-toolbar`라 문서 카드에서 탭 줄 아래 이 줄이 서도 두 머리가 한 높이다). `div`이고 끌기 영역이 아니다
- * (카드 안이다). 좌우 여백은 캡슐의 안쪽 여백(14)을 뺀 값이라 캡슐의 글자가 카드 안 여백(`--card-pad`)에 선다.
+ * 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 위치 글자와 머리의 버튼이 서는 46px 줄이다(`--card-head` — 탭 줄과 같은
+ * `size-toolbar`). `div`이고 끌기 영역이 아니다(카드 안이다). 문서 카드의 머리는 이것이 아니라 경로 줄(`PathBar`)이다.
  *
- * `lead`는 캡슐 앞(하위 화면의 뒤로), `meta`는 캡슐 바로 뒤(상태 배지 등), `end`는 오른쪽 끝에 고정되는 조작이다. 목록 카드의
- * 머리는 위치를 말하지 않는다 — 캡슐 자리에 검색칸(`children`)이 선다.
+ * `place`는 위치 글자다 — 뿌리부터 지금 선 곳까지의 조각을 셰브런으로 잇고 끝 조각만 진하다(`PathPieces` — 경로 캡슐과 조각을 읽는
+ * 규칙이 한 벌이다). **알약이 없다** — 캡슐은 경로 줄에만 쓴다(codex-ds 결정 14). 글자는 카드 + 16(행 글자 16 — codex-ds 스펙 §4
+ * 「여백」)에 선다: 줄의 좌우 여백 10(`px-2.5`) + 위치 글자의 안쪽 6(`CardPlace`의 `px-1.5`). 줄의 여백은 카드 안 여백
+ * (`--card-pad`)을 따르지 않는다 — 글자 자리는 이 두 값의 합이다. 이 위치는 머리 카드가 그 화면의 이름을 들기 전까지의
+ * 자리다(codex-ds 티켓 14).
+ *
+ * `lead`는 위치 앞(하위 화면의 뒤로), `meta`는 위치 바로 뒤(상태 배지 등), `end`는 오른쪽 끝에 고정되는 조작이다. 목록 카드의
+ * 머리는 위치를 말하지 않는다 — 그 자리에 검색칸(`children`)이 선다.
  */
 function CardHead({
   lead,
-  crumbs,
+  place,
   meta,
   end,
   children,
   ...marks
 }: {
   lead?: ReactNode;
-  /** 뿌리부터 지금 선 곳까지(`Crumbs`). 마지막이 지금 선 곳이다. */
-  crumbs?: readonly string[];
+  /** 뿌리부터 지금 선 곳까지. 마지막이 지금 선 곳이다. */
+  place?: readonly string[];
   meta?: ReactNode;
   end?: ReactNode;
-  /** 캡슐 자리에 서는 다른 것 — 목록 카드 머리의 검색칸 · 작업 패널 머리의 제목(고른 레일 칸). */
+  /** 위치 자리에 서는 다른 것 — 목록 카드 머리의 검색칸 · 작업 패널 머리의 제목(고른 레일 칸). */
   children?: ReactNode;
-  /** 검사가 머리를 정체성으로 집는 표식(분할 열 머리의 `data-column` 등) — 모양(클래스)으로 집으면 규격을 손보는 날 샌다. */
+  /** 검사가 머리를 정체성으로 집는 표식 — 모양(클래스)으로 집으면 규격을 손보는 날 샌다. */
   [mark: `data-${string}`]: string | undefined;
 }) {
   return (
     <div
       {...marks}
       data-slot="card-head"
-      className="flex h-(--card-head) shrink-0 items-center gap-1.5 px-[calc(var(--card-pad)-14px)]"
+      className="flex h-(--card-head) shrink-0 items-center gap-1.5 px-2.5"
     >
       {lead}
-      {crumbs && <Crumbs items={crumbs} />}
+      {place && <CardPlace items={place} />}
       {children}
       {meta}
       {end && <div className="ml-auto flex shrink-0 items-center gap-1.5">{end}</div>}
@@ -540,4 +548,19 @@ function CardHead({
   );
 }
 
-export { Card, CardHead, Frame };
+/**
+ * 카드 머리의 위치 글자(위 `CardHead`의 `place`). 머리가 위치를 제 칸에 따로 담아야 하는 화면(편집기 — 위치가 제 폭을 바깥에 안
+ * 알려야 한다)은 이것을 `children`으로 건넨다. 줄에 눌리면 줄어들고, 줄어드는 몫은 끝 조각의 말줄임이 받는다.
+ */
+function CardPlace({ items }: { items: readonly string[] }) {
+  return (
+    <nav
+      aria-label="위치"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden px-1.5 text-chat-meta whitespace-nowrap text-fg-secondary"
+    >
+      <PathPieces items={items} />
+    </nav>
+  );
+}
+
+export { Card, CardHead, CardPlace, Frame };

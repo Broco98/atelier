@@ -4,7 +4,6 @@ import {
   Archive,
   ChevronDown,
   Columns2,
-  Copy,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -12,11 +11,10 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { SourceToggle } from "@/components/ui/SourceToggle";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Card, CardHead, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
+import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import {
   DropdownMenu,
@@ -69,7 +67,7 @@ import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { dropSplit, otherTab } from "./split-view";
-import { ignoresSourceToggle } from "./doc-refs";
+import { ignoresViewSwitch } from "./doc-refs";
 import { specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
@@ -265,8 +263,8 @@ function WorksPage({
   // 끌고 있는 것. **드래그 중에만 값이 있다** — 그동안만 이 화면이 다시 그려진다.
   const drag = useStore(dragStore, (state) => state);
 
-  // 소스 보기의 주인이 **여기다.** 버튼은 문서 카드 머리에 있고(ui-refresh 판 04 — 한때 패널 머리행에 있었다) 그것이 바꾸는
-  // 것은 카드의 몸(SpecViewer)이라, 머리를 세우는 이 화면이 함께 든다(결정 6·22).
+  // 소스 보기의 주인이 **여기다.** 버튼(보기 묶음)은 문서 위 경로 줄에 있고(ui-refresh 판 04 — 한때 패널 머리행에 있었다) 그것이
+  // 바꾸는 것은 카드의 몸(SpecViewer)이라, 경로 줄을 세우는 이 화면이 함께 든다(결정 6·22).
   // 한때 SpecViewer의 지역 상태였고 그 컴포넌트의 `key={slug}` 덕에 "작업을 옮기면 예쁜
   // 보기로 돌아온다"가 공짜로 따라왔는데, 그 공짜는 결정 49가 고른 패널 칸에서 걷어낸 것과
   // **같은 종류의 것**이라 여기서도 되살리지 않는다. 사람이 켠 값은 작업을 옮겨도 그대로다.
@@ -477,15 +475,15 @@ function WorksPage({
     currentFile && specFiles.includes(currentFile)
       ? currentFile
       : (panelWork?.specTree.defaultDoc ?? null);
-  // 잠김은 **문서가 이 토글을 따르지 않는 모든 경우**다. 둘이다: 파일 종류가 토글을 무시할 때(그림 · md도 html도 아닌
-  // 것), spec 문서가 하나도 없는 작업. 본문이 셸일 때는 따로 잠그지 않는다 — 토글이 문서 카드 머리에 서므로(ui-refresh 판 04)
-  // 문서 카드가 없으면 토글도 없다.
+  // 잠김은 **문서가 보기 묶음(문서 | 원문)을 따르지 않는 모든 경우**다. 둘이다: 파일 종류가 묶음을 무시할 때(그림 · md도 html도
+  // 아닌 것), spec 문서가 하나도 없는 작업. 본문이 셸일 때는 따로 잠그지 않는다 — 묶음이 문서 위 경로 줄에 서므로 문서 카드가
+  // 없으면 묶음도 없다.
   //
   // 파일 종류로 갈리는 일은 표가 안다(`doc-refs`의 표) — 여기서 다시 풀면 본문·트리·아카이브가 다른 말을 할 자리가
   // 생긴다. 문서가 하나도 없는 작업에서 표는 마크다운으로 떨어지는데, 그 기본값은 **본문 분기(예쁜 보기)를 위한
   // 것이지 "누를 것이 있다"는 뜻이 아니다** — 본문은 "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다(결정 11·21).
   // 그래서 `!currentSpec`이 따로 얹힌다.
-  const sourceLocked = !currentSpec || ignoresSourceToggle(currentSpec);
+  const sourceLocked = !currentSpec || ignoresViewSwitch(currentSpec);
 
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
@@ -564,51 +562,41 @@ function WorksPage({
     [collapseOnSplit, onDropInto],
   );
 
-  // 문서 카드 머리(ui-refresh 결정 5) — 「지금 보는 것」의 캡슐 `slug › spec › … › 파일`과, 그 문서에 거는 조작 둘이 끝에 선다.
+  // 경로 줄(codex-ds 스펙 §4 · §6 — `PathBar`) — spec 탭 문서의 머리 줄이다. 단일 뷰면 문서 카드의 탭 줄 아래에 서고, 분할이면
+  // spec 열의 머리다. 경로 캡슐 `slug › spec › … › 파일`과, 그 문서에 거는 조작 둘(보기 묶음 · 경로 복사)이 선다. 닫기 ×는 없다 —
+  // spec 탭은 늘 있는 탭이다(codex-ds 결정 13).
   //
-  // - **원문 전환**(ui-refresh 결정 7의 B)이 한때 작업 패널 머리의 탭 줄에서 이리로 왔다 — 바꾸는 것이 이 카드의 몸이라 그 머리가 제자리다. 한때 분할이면서
-  //   패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다: 토글이 늘 문서 카드 머리 하나에 서므로 같은 일을 하는 버튼이
-  //   한 화면에 둘 설 일이 없다.
+  // - **보기 묶음**(문서 | 원문, ui-refresh 결정 7의 B)이 한때 작업 패널 머리의 탭 줄에서 문서 쪽으로 왔다 — 바꾸는 것이 이 카드의
+  //   몸이라 그 머리가 제자리다. 한때 분할이면서 패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다: 묶음이 늘 문서의 경로
+  //   줄 하나에 서므로 같은 일을 하는 버튼이 한 화면에 둘 설 일이 없다.
   // - **경로 복사**는 트리의 경로 복사와 같은 값을 낸다(`specRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더 생긴 것이다.
   //   가리킬 파일이 없으면(spec 0개) 서지 않는다 — 눌러도 아무 일이 없는 버튼이 된다(결정 11·21).
   //
-  // 캡슐은 보여 주기만 한다(누르는 칸이 아니다 — `Crumbs`). 폴더는 spec 기준 경로의 조각 그대로라 판마다 `spec.md`인 문서도
+  // 캡슐은 보여 주기만 한다(누르는 칸이 아니다 — `PathBar`). 폴더는 spec 기준 경로의 조각 그대로라 판마다 `spec.md`인 문서도
   // 어느 판인지가 캡슐에서 읽힌다(결정 104가 열 머리에 판 폴더를 붙인 그 까닭).
-  const docCrumbs = selected ? [selected.slug, "spec", ...(currentSpec ? currentSpec.split("/") : [])] : [];
-  const docControls = selected && (
-    <>
-      <SourceToggle on={showSource} locked={sourceLocked} onChange={setShowSource} />
-      {currentSpec && (
-        <Hint
-          text="경로 복사"
-          announce="name"
-          render={
-            <Button variant="outline" size="icon" onClick={() => copyText(specRef(selected.slug, currentSpec))} />
-          }
-        >
-          <Copy className="size-4" />
-        </Hint>
-      )}
-    </>
-  );
+  const docPath = selected ? [selected.slug, "spec", ...(currentSpec ? currentSpec.split("/") : [])] : [];
+  const docView: PathView = { source: showSource, locked: sourceLocked, onChange: setShowSource };
+  const copyDocPath = selected && currentSpec ? () => copyText(specRef(selected.slug, currentSpec)) : undefined;
 
-  // 분할의 문서 열 머리 — **분할일 때만 선다**(결정 89). 문서 카드 머리에 그 열을 닫는 `×`가 더해진 것이다. 터미널 열의 머리는
-  // 탭 줄이고 그 열의 `×`는 줄 끝에 선다(아래 `tabRow`). 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧 `tab`이다.
+  // 분할의 spec 열 머리 — **분할일 때만 선다**(결정 89). 문서의 경로 줄 끝에 그 열을 닫는 `×`가 더해진 것이다 — 미리보기 ×가
+  // 아니라 열 닫기다(codex-ds 스펙 S14 · `CONTEXT.md` 「열」). 모양은 터미널 열의 `×`(탭 줄 끝 — 아래 `tabRow`)와 같은 조용한
+  // 아이콘 버튼이다 — 두 열의 닫기가 한 모양이다. 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧 `tab`이다.
   const specHead = (
-    <CardHead
+    <PathBar
       data-column="spec"
-      crumbs={docCrumbs}
+      path={docPath}
+      view={docView}
+      onCopy={copyDocPath}
       end={
-        <>
-          {docControls}
-          <Hint
-            text="spec 열 닫기"
-            announce="name"
-            render={<Button variant="outline" size="icon" onClick={() => changeSplit(null, otherTab("spec"))} />}
-          >
-            <X className="size-4" />
-          </Hint>
-        </>
+        <Hint
+          text="spec 열 닫기"
+          announce="name"
+          type="button"
+          onClick={() => changeSplit(null, otherTab("spec"))}
+          className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring"
+        >
+          <X className="size-3.5" />
+        </Hint>
       }
     />
   );
@@ -811,7 +799,8 @@ function WorksPage({
   //
   // **문서 카드와 터미널 카드가 같은 자리 · 같은 머리다** — 둘 다 탭 줄을 머리(`head`)로 이고 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
   // 오가도 카드와 탭 줄이 새로 서지 않는다(`Frame`의 `Card`) — 방금 누른 `spec` 칸의 포커스와 줄의 스크롤이 그대로다. 그래서 문서
-  // 카드의 위치 캡슐 줄은 머리가 아니라 몸의 첫 줄로 건넨다: 머리 자리에 묶음이 서면 탭 줄이 그 자리에서 다른 것이 된다.
+  // 카드의 경로 줄(`PathBar`)은 머리가 아니라 몸의 첫 줄로 건넨다 — 탭 줄 아래다: 머리 자리에 묶음이 서면 탭 줄이 그 자리에서
+  // 다른 것이 된다.
   const body = splitView ? undefined : terminalWork ? (
     // 터미널 — 탭 줄 아래가 곧 셸이다(Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
     <Card as="main" label="터미널" tone="terminal" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
@@ -819,12 +808,12 @@ function WorksPage({
     </Card>
   ) : selected ? (
     <Card as="main" label="문서" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
-      <CardHead crumbs={docCrumbs} end={docControls} />
+      <PathBar path={docPath} view={docView} onCopy={copyDocPath} />
       {specBody}
     </Card>
   ) : (
     // 고른 작업이 없으면 패널도 탭 줄도 없다 — 카드 머리가 화면 이름을 말하고 머리 줄은 머리 카드 없이 비어 있다.
-    <Card as="main" label={WORKS_COPY.page} className="flex-1" head={<CardHead crumbs={[WORKS_COPY.page]} />}>
+    <Card as="main" label={WORKS_COPY.page} className="flex-1" head={<CardHead place={[WORKS_COPY.page]} />}>
       {/* DS 빈 화면 물음(codex-ds 스펙 §6 · 스토리 64) — 물음 · 설명 · 할 일이 카드 한가운데에 서고 글리프 칸은 없다(`Empty`의
           `question`). 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
       <Empty variant="question">

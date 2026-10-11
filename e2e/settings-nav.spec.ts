@@ -32,7 +32,7 @@ const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "터미널" |
  */
 const 켜짐 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =>
   설정항목(page, name).locator("xpath=..");
-// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
+// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 알약 없는 위치 글자(`place`)이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
 // 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
 const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);

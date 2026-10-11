@@ -128,7 +128,7 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
         className="flex-1"
         head={
           <CardHead
-            crumbs={["Processes"]}
+            place={["Processes"]}
             end={
               // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
               // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
@@ -144,7 +144,7 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
             (ui-refresh 결정 12). 차례는 요약 타일 → 열 머리 → 구획들이고, 구획 사이는 8px이다. */}
         <div className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
           <div className="mx-auto w-full max-w-(--measure-wide) pt-1">
-            {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자라(설정
+            {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — 카드 머리의 위치 글자(`CardHead`의 `place`)는 제목 역할이 없어(설정
                 화면과 같은 사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
             <h2 className="sr-only">Processes</h2>
             {/* 요약 타일(티켓 30) — 메모리 합계와 추이 · CPU · 셸 · 고아. 셸 수(풀의 셸)도 여기 선다. */}
