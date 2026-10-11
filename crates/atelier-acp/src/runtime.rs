@@ -716,6 +716,36 @@ impl Turns {
     pub(crate) fn permission_pending(&self) -> bool {
         !self.permissions.lock().is_empty()
     }
+
+    /// 세션의 모드 · 설정을 바꾼다 — `session/set_mode` · `session/set_config_option`(three-axes 결정 16 · 27). `fields`는
+    /// `sessionId` 밖의 인자(`{modeId}` · `{configId, value}`)다. 바뀐 값은 다음 턴부터 든다.
+    ///
+    /// 답을 `limit`까지 기다린다 — 에이전트가 거절하면(모르는 값) 그 까닭을 돌려준다. 답의 내용은 쓰지 않는다: 둘 다 알림이
+    /// 없고 Codex는 `{}`나 `{configOptions}`로 답할 뿐이라, 값은 부른 쪽이 쥔다. **수신 루프 안에서 부르지 않는다** — 답을
+    /// 받는 것이 그 루프다. 대화의 잠금을 쥔 채 부르지도 않는다: 루프가 턴 끝을 넘기며 그 잠금을 기다리면 답이 오지 않는다.
+    pub(crate) fn change(&self, method: &'static str, fields: Value, limit: Duration) -> Result<(), String> {
+        let mut params = serde_json::Map::new();
+        params.insert("sessionId".into(), json!(self.session_id));
+        if let Value::Object(fields) = fields {
+            params.extend(fields);
+        }
+        let message = UntypedMessage::new(method, Value::Object(params)).map_err(|error| error.to_string())?;
+        let (answered, answer) = mpsc::channel::<Result<(), String>>();
+        self.connection
+            .send_request(message)
+            .on_receiving_result(async move |result| {
+                let _ = answered.send(result.map(|_| ()).map_err(|error| describe(method, &error)));
+                Ok(())
+            })
+            .map_err(|error| format!("에이전트에 {method}를 보내지 못했습니다: {error}"))?;
+        match answer.recv_timeout(limit) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                Err(format!("에이전트가 {}초 안에 {method}에 답하지 않았습니다", limit.as_secs_f32()))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!("{method}에 답하지 않고 끝났습니다")),
+        }
+    }
 }
 
 impl Drop for AgentProcess {

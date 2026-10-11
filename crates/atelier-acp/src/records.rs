@@ -145,7 +145,7 @@ pub struct RecordLine {
     pub payload: Value,
 }
 
-/// 기록 줄의 종류. 설정(09)이 더한다.
+/// 기록 줄의 종류.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RecordKind {
@@ -164,6 +164,9 @@ pub enum RecordKind {
     Changes,
     /// 권한 — 요청 원문(물음), 그 뒤에 같은 요청 id로 답(고른 optionId)이나 거둬짐(까닭)이 한 줄 더 선다(three-axes 티켓 08).
     Permission,
+    /// 사람이 바꾼 것 — 바꾼 칸과 새 값(`{"model": …}` · `{"mode": …}` · `{"plan": true}`, three-axes 티켓 09). 떠 있는 에이전트에
+    /// 넣은 바꾸기만 적힌다 — 띄우지 않은 대화에서 바꾼 값은 `agents.json`에만 남고, 띄울 때 들어간다(10).
+    Config,
 }
 
 /// `permission` 줄의 payload. `state`로 가르고, 같은 요청의 줄들은 `requestId`로 잇는다 — 기록은 덧붙이기만 하므로 답은
@@ -328,6 +331,11 @@ impl Recorder {
 
     pub(crate) fn permission(&self, line: PermissionLine) -> Result<(), RecordError> {
         self.write(RecordKind::Permission, serde_json::to_value(line).expect("permission 줄은 JSON이다"))
+    }
+
+    /// 사람이 바꾼 것 — `{"model": "gpt-6-astra"}`처럼 바꾼 칸과 새 값.
+    pub(crate) fn config(&self, changed: Value) -> Result<(), RecordError> {
+        self.write(RecordKind::Config, changed)
     }
 
     pub(crate) fn turn_end(&self, end: TurnEndLine) -> Result<(), RecordError> {

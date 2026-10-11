@@ -1,4 +1,4 @@
-// 대화창이 대화 호스트와 주고받는 값(three-axes 티켓 05 · 07 · 08). 모양의 정본은 크레이트 `atelier-acp`의 serde이고, 여기는 그
+// 대화창이 대화 호스트와 주고받는 값(three-axes 티켓 05 · 07 · 08 · 09). 모양의 정본은 크레이트 `atelier-acp`의 serde이고, 여기는 그
 // 말을 옮겨 적는다 — 칸 이름이 어긋나면 tsc도 IPC 검사도 못 보므로, Rust 쪽 검사가 그 꼴을 글자로 못박는다
 // (`engine_check.rs`의 「화면이 읽는 꼴」 · `chat.rs`의 이벤트 꼴).
 
@@ -31,7 +31,7 @@ export interface QueuedMessage {
 }
 
 /**
- * 기록 줄의 종류. 설정(09)이 더한다.
+ * 기록 줄의 종류.
  *
  * - `changes`는 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들이고, `turn-end` 바로 앞에 서며 바뀐 것이 없는 턴에는 없다
  *   (three-axes 결정 22).
@@ -39,8 +39,10 @@ export interface QueuedMessage {
  *   `asked`{requestId, request(요청 원문 — 선택지는 `request.options` 그대로), toolCall(빈 칸을 앞선 도구 줄로 채운 도구 요지)}
  *   뒤에 같은 `requestId`로 `answered`{optionId}나 `withdrawn`{reason: `stopped`(우리가 멈춤) | `agent`(에이전트가 답을 기다리지
  *   않고 턴을 끝냄)}이 선다. 뒤따르는 줄이 없는 물음이 답할 권한이다(승인 카드 — 21).
+ * - `config`는 사람이 바꾼 것 — 바꾼 칸과 새 값(`{model}` · `{mode}` · `{plan}`, three-axes 티켓 09). 떠 있는 에이전트에 넣은
+ *   바꾸기만 선다 — 띄우지 않은 대화에서 바꾼 값은 대화 목록에만 있다.
  */
-export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "changes" | "permission";
+export type RecordKind = "sent" | "update" | "turn-end" | "session" | "stderr" | "changes" | "permission" | "config";
 
 /**
  * 기록 줄 하나 — `agents/<id>.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. payload의 갈래는 종류마다 다르고 ACP 원문을
@@ -66,6 +68,17 @@ export interface Quote {
   end: number;
   /** 고른 글. */
   text: string;
+}
+
+/**
+ * 엔진 목록(`atelier_acp::EngineLists`, S16) — 그 엔진의 세션이 마지막으로 열릴 때 본 목록. 항목은 엔진이 준 원문 그대로이고,
+ * 세션을 연 적 없는 엔진은 둘 다 빈 목록이다.
+ */
+export interface EngineLists {
+  /** 모델 — 열림 줄 configOptions `model`의 선택지. */
+  models: { value: string; name: string; description?: string | null }[];
+  /** 모드 — 열림 줄 `modes.availableModes`. */
+  modes: { id: string; name: string; description?: string | null }[];
 }
 
 /** 기록 줄 이벤트가 싣는 것 — 어느 work의 어느 대화에 몇째 줄이 적혔나. `seq`는 `line.seq`와 같다. */

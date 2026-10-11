@@ -4,6 +4,7 @@
 //! 앱 명령은 [`ConversationHost`] 하나만 부른다. 그 아래의 런타임 · 변환기 · 찾기는 호스트가 감춘다.
 
 mod discovery;
+mod engines;
 mod host;
 mod life;
 mod login;
@@ -15,6 +16,7 @@ mod runtime;
 mod spec_changes;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
+pub use engines::EngineLists;
 pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, TranslatorCommand};
 pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};

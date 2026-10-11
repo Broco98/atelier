@@ -8,11 +8,12 @@ import type {
   ChatRecordEvent,
   Conversation,
   EngineCheck,
+  EngineLists,
   Quote,
   RecordLine,
 } from "./types";
 
-// 대화 호스트를 부르는 명령(three-axes 티켓 05 · 07 · 08). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
+// 대화 호스트를 부르는 명령(three-axes 티켓 05 · 07 · 08 · 09). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
 // 에이전트가 계속 돈다 — 그래서 대화는 기록에서 다시 그린다: 먼저 기록 줄 이벤트를 구독하고(`onChatRecord`), 그다음
 // 「이 seq 다음부터」 읽는다(`readRecord`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
@@ -67,6 +68,25 @@ export const chatApi = {
    */
   answerPermission: (work: string, conversation: string, request: string, option: string) =>
     invoke<void>("chat_answer_permission", { work, conversation, request, option }),
+  /**
+   * 모델 바꾸기(three-axes 티켓 09) — 그 대화의 모델을 엔진이 낸 목록의 값(열림 줄 configOptions `model`의 선택지)으로 바꾼다.
+   * 값은 그 대화의 것이고 설정의 기본값은 그대로다. 에이전트가 떠 있으면 곧바로 엔진에 넣고(다음 턴부터 든다) 기록에 `config`
+   * 줄이 서고, 띄우지 않은 대화는 대화 목록의 값만 바뀐다. 답은 바뀐 대화다. 엔진이 거절하면 읽히는 오류이고 아무것도 남지
+   * 않는다.
+   */
+  setModel: (work: string, conversation: string, model: string) =>
+    invoke<Conversation>("chat_set_model", { work, conversation, model }),
+  /** 모드 바꾸기 — 엔진이 낸 모드 목록(열림 줄 `modes`)의 id로 바꾼다. 규칙은 모델 바꾸기와 같다. */
+  setMode: (work: string, conversation: string, mode: string) =>
+    invoke<Conversation>("chat_set_mode", { work, conversation, mode }),
+  /** 계획 켜고 끄기 — Codex의 「계획」 토글(열림 줄 configOptions `collaboration_mode`)이다. 규칙은 모델 바꾸기와 같다. */
+  setPlan: (work: string, conversation: string, plan: boolean) =>
+    invoke<Conversation>("chat_set_plan", { work, conversation, plan }),
+  /**
+   * 엔진 목록(S16) — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록. 설정 「대화」 쪽이 새 대화의 기본값 목록으로 쓴다.
+   * 세션을 한 번도 연 적 없는 엔진은 빈 목록이다(「엔진 기본값」만 고른다).
+   */
+  engineLists: (agent: Agent) => invoke<EngineLists>("chat_engine_lists", { agent }),
   /** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. */
   close: (work: string, conversation: string) =>
     invoke<void>("chat_close", { work, conversation }),

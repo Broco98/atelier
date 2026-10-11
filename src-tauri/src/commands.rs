@@ -501,12 +501,13 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령(three-axes 티켓 05 · 07 · 08 · 12) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 멈추기 ·
-// 대기 고치기 · 대기 지우기 · 지금 보내기, 권한 답, 그리고 로그인 시작 · 취소. 본체는 대화
+// 대화 명령(three-axes 티켓 05 · 07 · 08 · 09 · 12) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 멈추기 ·
+// 대기 고치기 · 대기 지우기 · 지금 보내기, 권한 답, 모델 · 모드 · 계획 바꾸기 · 엔진 목록, 그리고 로그인 시작 · 취소. 본체는 대화
 // 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
 // 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
-// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓)은 blocking 풀에서 기다린다.
+// - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓, 모델 · 모드 · 계획 — 엔진의
+//   답)은 blocking 풀에서 기다린다.
 //   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`). 멈추기 · 지금 보내기도 `session/cancel`을
 //   보내고 곧바로 돌아온다 — 멈춘 턴의 끝과 그 뒤에 간 말은 기록 줄로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다. 권한 답도
 //   답을 보내고 곧바로 돌아온다 — 이어 가는 턴은 기록 줄로 온다.
@@ -637,6 +638,63 @@ pub async fn chat_answer_permission(
     chats.answer_permission(&work, &conversation, &request, &option).map_err(host_err)
 }
 
+/// 모델 바꾸기(three-axes 티켓 09) — 그 대화의 모델을 엔진이 낸 목록의 값(configOptions `model`의 선택지)으로 바꾼다. 값은 그
+/// 대화의 것이고 설정의 기본값은 그대로다. 에이전트가 떠 있으면 곧바로 넣고 답을 기다린다 — 다음 턴부터 든다. 띄우지 않은
+/// 대화는 `agents.json`에만 남는다. 답은 바뀐 대화다.
+#[tauri::command]
+pub async fn chat_set_model(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    model: String,
+) -> CmdResult<atelier_acp::Conversation> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.set_model(&work, &conversation, &model))
+        .await
+        .map_err(|e| format!("모델을 바꾸지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 모드 바꾸기(three-axes 티켓 09) — 그 대화의 모드를 엔진이 낸 목록의 id로 바꾼다. 규칙은 모델 바꾸기와 같다.
+#[tauri::command]
+pub async fn chat_set_mode(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    mode: String,
+) -> CmdResult<atelier_acp::Conversation> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.set_mode(&work, &conversation, &mode))
+        .await
+        .map_err(|e| format!("모드를 바꾸지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 계획 켜고 끄기(three-axes 티켓 09 · 결정 29) — Codex의 「계획」 토글(`collaboration_mode`)이다. 규칙은 모델 바꾸기와 같다.
+#[tauri::command]
+pub async fn chat_set_plan(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    plan: bool,
+) -> CmdResult<atelier_acp::Conversation> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.set_plan(&work, &conversation, plan))
+        .await
+        .map_err(|e| format!("계획을 바꾸지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 엔진 목록(three-axes 티켓 09 · S16) — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록. 설정 「대화」 쪽이 새 대화의
+/// 기본값 목록으로 쓴다. 연 적 없는 엔진은 빈 목록이다. 파일만 읽는다 — 에이전트를 띄우지 않는다.
+#[tauri::command]
+pub async fn chat_engine_lists(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    agent: atelier_acp::Agent,
+) -> CmdResult<atelier_acp::EngineLists> {
+    Ok(chats.engine_lists(agent))
+}
+
 /// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).
 #[tauri::command]
 pub async fn chat_close(
@@ -713,6 +771,7 @@ mod tests {
     ///   기다리고, 대화 닫기는 stdin을 닫고 1초를 기다린 뒤 그룹째 SIGKILL한다. 엔진 확인은 로그인도 엔진에게 묻는다(≤10초, 티켓 12).
     /// - 로그인 둘(three-axes 티켓 12): 로그인 시작은 처음이면 로그인 셸을 기다리고, 로그인 취소는 SIGTERM 뒤 끝나기를 1초까지
     ///   기다린다.
+    /// - 바꾸기 셋(three-axes 티켓 09): 모델 · 모드 · 계획은 떠 있는 에이전트의 답을 기다린다(보통 몇 ms, 한도 10초).
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -723,6 +782,9 @@ mod tests {
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
             ("chat_check_engine", "chats.check_engine(", "check_engine("),
             ("chat_new", "chats.new_conversation(", "new_conversation("),
+            ("chat_set_model", "chats.set_model(", "set_model("),
+            ("chat_set_mode", "chats.set_mode(", "set_mode("),
+            ("chat_set_plan", "chats.set_plan(", "set_plan("),
             ("chat_close", "chats.close_conversation(", "close_conversation("),
             ("chat_start_login", "chats.start_login(", "start_login("),
             ("chat_cancel_login", "chats.cancel_login(", "cancel_login("),

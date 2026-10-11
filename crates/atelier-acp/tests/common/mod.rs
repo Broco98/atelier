@@ -363,6 +363,22 @@ impl Sandbox {
             .collect()
     }
 
+    /// 가짜 ACP 에이전트의 영수증 폴더에 있는 파일 이름들.
+    pub fn acp_receipt_names(&self) -> Vec<String> {
+        fs::read_dir(self.acp_receipts())
+            .map(|entries| entries.flatten().map(|entry| entry.file_name().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default()
+    }
+
+    /// 가짜 ACP 에이전트가 그 세션에서 받은 모드 · 설정 바꾸기들 — `{method, params}` 원문, 받은 차례대로(three-axes 티켓 09).
+    pub fn acp_config(&self, session_id: &str) -> Vec<Value> {
+        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.config")))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("바꾸기 영수증 줄은 JSON"))
+            .collect()
+    }
+
     /// 가짜가 받은 답이 `done`을 채울 때까지 기다린다 — 답은 가짜의 스레드에서 적힌다.
     pub fn wait_acp_responses(&self, session_id: &str, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
         let deadline = Instant::now() + PATIENCE;

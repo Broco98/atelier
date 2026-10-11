@@ -34,7 +34,8 @@
 //! 받은 env · `initialize`와 `session/new`의 인자 · 낳은 후손의 pid. 그 뒤에 일어난 일(stdin EOF)은
 //! `<세션 id>.events`에 한 줄씩, 받은 `session/prompt`의 인자는 `<세션 id>.prompts`에 한 줄씩 더한다. 세션을 연 뒤
 //! 받은 메시지의 메서드는 요청이든 알림이든 `<세션 id>.inbox`에 받은 차례대로 더한다 — 멈추기와 다음 말의 차례를 잰다.
-//! 가짜가 보낸 요청(권한 요청)에 받은 답은 원문 그대로 `<세션 id>.responses`에 한 줄씩 더한다.
+//! 가짜가 보낸 요청(권한 요청)에 받은 답은 원문 그대로 `<세션 id>.responses`에 한 줄씩 더한다. 받은 모드 · 설정 바꾸기
+//! (`session/set_mode` · `session/set_config_option`)는 메서드와 인자를 `<세션 id>.config`에 한 줄씩 더한다.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -63,6 +64,9 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("needs-auth", needs_auth),
     ("asks-permission", asks_permission),
     ("deny-cancels", deny_cancels),
+    ("modes-and-models", modes_and_models),
+    ("commands", commands),
+    ("plan-mode", plan_mode),
 ];
 
 fn main() {
@@ -502,6 +506,94 @@ fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: b
     }
 }
 
+/// codex-acp 2.2.2 모양의 목록을 내는 에이전트(three-axes 티켓 09) — `session/new`의 답에 모드 넷과 configOptions 다섯
+/// (`mode` · `collaboration_mode` · `model` · `reasoning_effort` · `fast-mode`)을 싣고, 모드 · 설정 바꾸기(`session/set_mode` ·
+/// `session/set_config_option`)에 알림 없이 `{}`로 답한다(three-axes 결정 27). 받은 바꾸기는 `config` 영수증에 남는다.
+fn modes_and_models(fake: &mut Fake) {
+    fake.codex_lists = true;
+    fake.converse();
+}
+
+/// 명령 목록을 보내는 에이전트(three-axes 티켓 09) — 진짜 codex-acp처럼 `session/new`의 답 뒤와 턴의 답 뒤마다
+/// `available_commands_update`를 보낸다(실측 turns 6줄 · plan-mode 46줄). 모양은 실측 그대로 `{name, description, input}`이다.
+fn commands(fake: &mut Fake) {
+    fake.commands = true;
+    fake.converse();
+}
+
+/// 계획 모드의 Codex(three-axes 결정 29 · 티켓 09) — codex-acp 2.2.2 모양의 목록과 명령 목록을 내고, 턴마다 답 조각 하나 뒤에
+/// `plan_update`(마크다운, 매번 전문) 넷을 보내고 끝에 「이 계획대로 할까요?」(`session/request_permission{toolCall:{kind:
+/// "switch_mode"}}`, 선택지 `implement_plan` · `revise_plan`)를 묻는다. 모양은 실측 `codex-acp-2.2.2-plan-mode.jsonl` 그대로이고
+/// id만 고정값이다.
+///
+/// - 다시 짜기(`revise_plan`)면 실측처럼 그 도구 줄을 「계획 모드에 남았다」로 닫고 턴을 끝낸다.
+/// - 구현(`implement_plan`)은 재지 않았다 — 그 도구 줄을 닫고 턴을 끝낼 뿐이다.
+/// - 멈추면(`session/cancel`) 걸린 요청의 답을 기다리지 않고 `cancelled`로 끝낸다(`asks-permission`과 같다).
+///
+/// **이 순서가 곧 검사 자료(S26)다** — 바꾸면 `tests/records/codex-plan.jsonl`을 다시 지어야 한다.
+fn plan_mode(fake: &mut Fake) {
+    fake.codex_lists = true;
+    fake.commands = true;
+    fake.on_prompt = plan_turn;
+    fake.converse();
+}
+
+/// `plan-mode`가 보내는 계획 — 실측의 넷 그대로(매번 전문이 자라며 온다).
+const PLAN_STEPS: [&str; 4] = [
+    "## Add `hello.txt`\n\n1. Create",
+    "## Add `hello.txt`\n\n1. Create a repo-root file named `hello.txt`",
+    "## Add `hello.txt`\n\n1. Create a repo-root file named `hello.txt` containing `hi`.\n2. Verify the",
+    "## Add `hello.txt`\n\n1. Create a repo-root file named `hello.txt` containing `hi`.\n2. Verify the file contains exactly `hi`.\n",
+];
+
+/// `plan-mode`의 턴 하나.
+fn plan_turn(fake: &mut Fake, id: &Value, session_id: &str) {
+    let plan_id = "fake-plan-1-plan";
+    let review = format!("plan-review:{plan_id}");
+    let send = |fake: &mut Fake, update: Value| {
+        fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+    };
+    send(
+        fake,
+        json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_plan",
+               "content": {"type": "text",
+                           "text": "I'll check the repo's current state and conventions, then give you a two-step plan without changing files."}}),
+    );
+    for content in PLAN_STEPS {
+        send(fake, json!({"sessionUpdate": "plan_update", "plan": {"type": "markdown", "planId": plan_id, "content": content}}));
+    }
+    let request = fake.request(
+        "session/request_permission",
+        json!({"sessionId": session_id,
+               "toolCall": {"toolCallId": review, "kind": "switch_mode", "status": "pending",
+                            "title": "Implement this plan?", "rawInput": {"plan": PLAN_STEPS[3]}},
+               "options": [
+                   {"optionId": "implement_plan", "name": "Yes, implement this plan", "kind": "allow_once"},
+                   {"optionId": "revise_plan", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
+               ]}),
+    );
+    loop {
+        // 상대가 사라지면 답할 곳이 없다.
+        let Some(message) = fake.read() else { return };
+        if message["method"] == "session/cancel" {
+            return fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        }
+        if message.get("method").is_some() || message["id"] != request {
+            continue;
+        }
+        let outcome = &message["result"]["outcome"];
+        if outcome["outcome"] != "selected" {
+            return fake.wire.reply(id, json!({"stopReason": "cancelled"}));
+        }
+        let mut closed = json!({"sessionUpdate": "tool_call_update", "toolCallId": review, "status": "completed"});
+        if outcome["optionId"] == "revise_plan" {
+            closed["rawOutput"] = json!("User kept the session in plan mode.");
+        }
+        send(fake, closed);
+        return fake.wire.reply(id, json!({"stopReason": "end_turn"}));
+    }
+}
+
 /// 가짜 하나의 상태 — 선과, 영수증에 실을 것들.
 struct Fake {
     wire: Wire,
@@ -523,6 +615,11 @@ struct Fake {
     needs_auth: bool,
     /// 가짜가 보낼 다음 요청의 id. 진짜 codex-acp처럼 0부터 센다(관문 함정 11 — 0을 「없음」으로 다루면 깨진다).
     requests: u64,
+    /// `session/new`의 답이 codex-acp 2.2.2 모양(모드 넷 · configOptions 다섯)이고, 모드 · 설정 바꾸기를 받나. 아니면 작은
+    /// 답을 주고 바꾸기는 모르는 메서드다.
+    codex_lists: bool,
+    /// 명령 목록(`available_commands_update`)을 `session/new`의 답 뒤와 턴의 답 뒤마다 보내나(진짜 codex-acp 그대로).
+    commands: bool,
 }
 
 impl Fake {
@@ -541,6 +638,8 @@ impl Fake {
             edits: 0,
             needs_auth: false,
             requests: 0,
+            codex_lists: false,
+            commands: false,
         }
     }
 
@@ -550,6 +649,26 @@ impl Fake {
         self.requests += 1;
         self.wire.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
         id
+    }
+
+    /// 명령 목록을 보낸다 — 그것을 보내는 시나리오에서만. 모양은 실측(`codex-acp-2.2.2-plan-mode.jsonl` 5줄)의 몇 개다.
+    fn send_commands(&mut self, session_id: &str) {
+        if !self.commands {
+            return;
+        }
+        self.wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "available_commands_update", "availableCommands": [
+                       {"name": "plan", "description": "Turn plan mode on.", "input": null},
+                       {"name": "mcp", "description": "Show the status of the MCP servers, or reconnect them.",
+                        "input": {"hint": "[reconnect]"}},
+                       {"name": "review", "description": "Review uncommitted changes, or review with custom instructions.",
+                        "input": {"hint": "optional review instructions"}},
+                       {"name": "compact", "description": "Summarize conversation to avoid hitting the context limit.", "input": null},
+                       {"name": "$probe-skill", "description": "Probe skill the fake agent lists.", "input": null}
+                   ]}}),
+        );
     }
 
     /// 검사가 그 세션의 턴을 놓을 때까지(`<세션 id>.go`가 설 때까지) 붙잡는다. 영수증 폴더가 없으면 붙잡지 않는다.
@@ -620,9 +739,12 @@ impl Fake {
                                                   "account": {"email": email, "plan": "plus"}}}),
                         );
                     }
-                    // 명령 목록(`available_commands_update`)은 보내지 않는다 — 진짜 codex-acp는 응답 뒤에 보내고
-                    // (실측 turns 6줄), 그 시나리오는 `commands`(티켓 09)가 든다.
-                    self.wire.reply(&id, session_opened(&session_id));
+                    // 명령 목록(`available_commands_update`)은 답 뒤에 보낸다 — 진짜 codex-acp가 그렇다(실측 turns 6줄).
+                    // 그 시나리오는 `commands` · `plan-mode`(티켓 09)가 든다.
+                    let opened =
+                        if self.codex_lists { codex_session_opened(&session_id) } else { session_opened(&session_id) };
+                    self.wire.reply(&id, opened);
+                    self.send_commands(&session_id);
                     let after: usize =
                         std::env::var("FAKE_ACP_UPDATES_AFTER_OPEN").ok().and_then(|n| n.parse().ok()).unwrap_or(0);
                     for _ in 0..after {
@@ -645,6 +767,15 @@ impl Fake {
                     self.prompt = message["params"].clone();
                     let on_prompt = self.on_prompt;
                     on_prompt(self, &id, &session_id);
+                    // 진짜 codex-acp는 턴마다 답 뒤에 명령 목록을 다시 보낸다(실측 plan-mode 46줄).
+                    self.send_commands(&session_id);
+                }
+                // 모드 · 설정 바꾸기 — 알림 없이 `{}`로 답한다(three-axes 결정 27). 진짜는 `set_config_option`에
+                // `{configOptions}`로 답하지만 호스트는 그 답을 쓰지 않는다 — 값은 호스트가 쥔다.
+                method @ ("session/set_mode" | "session/set_config_option") if self.codex_lists => {
+                    let line = json!({"method": method, "params": message["params"]});
+                    self.append_receipt("config", &line.to_string());
+                    self.wire.reply(&id, json!({}));
                 }
                 unknown => {
                     let text = format!("method not found: {unknown}");
@@ -801,6 +932,62 @@ fn session_opened(session_id: &str) -> Value {
         "configOptions": [
             {"id": "model", "name": "Model", "type": "select", "currentValue": "fake-model",
              "options": [{"value": "fake-model", "name": "Fake model"}]}
+        ]
+    })
+}
+
+/// `session/new`의 답 — codex-acp 2.2.2 모양(실측 `codex-acp-2.2.2-session-new-codex0.160.1.json`). 모드 넷은 그대로이고,
+/// 모델 목록과 생각 깊이는 앞의 몇 개로 줄였다. **이 모양이 곧 검사 자료(S26)의 열림 줄이다** — 바꾸면
+/// `tests/records/codex-plan.jsonl`을 다시 지어야 한다.
+fn codex_session_opened(session_id: &str) -> Value {
+    json!({
+        "sessionId": session_id,
+        "models": {
+            "availableModels": [
+                {"modelId": "gpt-6.1-sol[low]", "name": "6.1 Sol (low)",
+                 "description": "Latest workhorse model for coding and everyday work. Fast responses with lighter reasoning"},
+                {"modelId": "gpt-6-astra[low]", "name": "6 Astra (low)",
+                 "description": "Frontier intelligence for the most demanding work. Fast responses with lighter reasoning"}
+            ],
+            "currentModelId": "gpt-6.1-sol[low]"
+        },
+        "modes": {
+            "availableModes": [
+                {"id": "read-only", "name": "Read-only", "description": "Requires approval to edit files and access the internet."},
+                {"id": "workspace-write", "name": "Workspace access",
+                 "description": "Edit workspace files; ask before writing outside the workspace or accessing the network."},
+                {"id": "agent", "name": "Auto review", "description": "Only ask for actions detected as potentially unsafe"},
+                {"id": "agent-full-access", "name": "Full access",
+                 "description": "Unrestricted access to the internet and any file on your computer"}
+            ],
+            "currentModeId": "agent"
+        },
+        "configOptions": [
+            {"id": "mode", "name": "Mode", "description": "Approval and sandboxing preset for the session", "category": "mode",
+             "type": "select", "currentValue": "agent", "options": [
+                {"value": "read-only", "name": "Read-only", "description": "Requires approval to edit files and access the internet."},
+                {"value": "workspace-write", "name": "Workspace access",
+                 "description": "Edit workspace files; ask before writing outside the workspace or accessing the network."},
+                {"value": "agent", "name": "Auto review", "description": "Only ask for actions detected as potentially unsafe"},
+                {"value": "agent-full-access", "name": "Full access",
+                 "description": "Unrestricted access to the internet and any file on your computer"}]},
+            {"id": "collaboration_mode", "name": "Collaboration mode", "description": "How Codex collaborates for subsequent turns",
+             "category": "collaboration_mode", "type": "select", "currentValue": "default", "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "plan", "name": "Plan", "description": "Plan before making changes"}]},
+            {"id": "model", "name": "Model", "description": "Model Codex uses for the session", "category": "model",
+             "type": "select", "currentValue": "gpt-6.1-sol", "options": [
+                {"value": "gpt-6.1-sol", "name": "6.1 Sol", "description": "Latest workhorse model for coding and everyday work."},
+                {"value": "gpt-6-astra", "name": "6 Astra", "description": "Frontier intelligence for the most demanding work."}]},
+            {"id": "reasoning_effort", "name": "Reasoning effort", "description": "How much reasoning effort the model should use",
+             "category": "thought_level", "type": "select", "currentValue": "low", "options": [
+                {"value": "low", "name": "Low", "description": "Fast responses with lighter reasoning"},
+                {"value": "medium", "name": "Medium", "description": "Balances speed and reasoning depth for everyday tasks"},
+                {"value": "high", "name": "High", "description": "Greater reasoning depth for complex problems"}]},
+            {"id": "fast-mode", "name": "Fast mode", "description": "1.5x speed, increased usage", "category": "model_config",
+             "type": "select", "currentValue": "off", "options": [
+                {"value": "off", "name": "Off", "description": "Default speed, normal usage"},
+                {"value": "on", "name": "On", "description": "1.5x speed, increased usage"}]}
         ]
     })
 }

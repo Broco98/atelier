@@ -1,8 +1,9 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
-//! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 권한 답(08), 사라진 work의 대화 끄기(11), 로그인 확인 ·
-//! 로그인 명령 · 로그인 필요 대화의 다시 띄우기(12)가 선다. 앱 잇기(05)가 이 위에 선다.
+//! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 권한 답(08), 모델 · 모드 · 계획 바꾸기와 엔진 목록(09),
+//! 사라진 work의 대화 끄기(11), 로그인 확인 · 로그인 명령 · 로그인 필요 대화의 다시 띄우기(12)가 선다. 앱 잇기(05)가 이 위에
+//! 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -18,6 +19,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
+use crate::engines::{self, EngineLists};
 use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::quote::{Attached, Quote};
@@ -31,6 +33,10 @@ const CODEX_ACP_MAJOR: u64 = 2;
 /// 세션 열기(띄우기 → initialize → `session/new`)의 기본 한도. ACP가 아닌 명령이 말없이 살아 있어도 새 대화가
 /// 끝없이 막히지 않게 한다. 진짜 codex-acp는 1초 안팎에 연다(실측 A1).
 const DEFAULT_OPEN_LIMIT: Duration = Duration::from_secs(30);
+
+/// 모드 · 설정 바꾸기의 답을 기다리는 한도. 진짜 codex-acp는 1~3ms에 답한다(실측 A2) — 답 없이 버티는 에이전트에 화면이
+/// 끝없이 막히지 않게만 둔다.
+const SETTING_LIMIT: Duration = Duration::from_secs(10);
 
 /// 호스트가 내보내는 것 — 기록 줄 · 대기 줄 바뀜(07) · 엔진 상태(12).
 #[derive(Debug, Clone, PartialEq)]
@@ -118,6 +124,7 @@ impl HostBuilder {
             login_env: Mutex::new(None),
             live: Arc::new(Mutex::new(HashMap::new())),
             agents_file: Mutex::new(()),
+            engines_file: Mutex::new(()),
         }
     }
 }
@@ -140,6 +147,8 @@ pub struct ConversationHost {
     live: Arc<LiveTable>,
     /// `agents.json`을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 연 두 대화가 서로의 줄을 지우지 않게.
     agents_file: Mutex<()>,
+    /// 엔진 목록 파일을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 열린 두 엔진이 서로의 목록을 지우지 않게(S16).
+    engines_file: Mutex<()>,
     /// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 대화와 도는 로그인 명령을 쥔다(three-axes 티켓 12).
     logins: Arc<LoginDesk>,
 }
@@ -168,6 +177,9 @@ struct Conv {
     /// 턴 도중에 에이전트가 로그인을 요구하면 그 대화를 로그인 창구에 쥐게 한다(three-axes 티켓 12). 떠 있지 않은 대화에는
     /// 없다.
     login: Option<LoginWatch>,
+    /// 모델 · 모드 · 계획 바꾸기를 하나씩 세운다 — 엔진에 넣은 차례와 `agents.json`에 남는 차례가 엇갈리지 않게(티켓 09).
+    /// `state`와 따로 둔다: 바꾸기는 엔진의 답을 기다리는데, 그동안 `state`를 쥐면 턴 끝이 막혀 답이 오지 않는다.
+    setting: Mutex<()>,
 }
 
 struct ConvState {
@@ -201,6 +213,7 @@ impl Conv {
             }),
             vanish,
             login,
+            setting: Mutex::new(()),
         })
     }
 
@@ -550,6 +563,8 @@ pub enum HostError {
     LoginRequired { agent: Agent, conversation: String },
     /// 에이전트에 말을 보내지 못했다(연결이 끊겼다).
     Send(String),
+    /// 떠 있는 에이전트가 모드 · 설정 바꾸기를 받지 않았다(모르는 값 · 답 없음 · 연결이 끊김). 아무것도 남지 않았다(티켓 09).
+    Setting(String),
     /// 보낸 말의 인용이 올바르지 않다 — spec 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었다(three-axes 티켓 27).
     BadQuote(String),
     /// `agents/`를 읽거나 쓰지 못했다.
@@ -580,6 +595,7 @@ impl fmt::Display for HostError {
                 write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
             }
             HostError::Send(reason) => write!(f, "{reason}"),
+            HostError::Setting(reason) => write!(f, "에이전트가 바꾸기를 받지 않았습니다: {reason}"),
             HostError::BadQuote(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
@@ -763,19 +779,7 @@ impl ConversationHost {
         let places = atelier_core::work_places(&works, &meta);
         let rows = records::read_rows(&places.agents).map_err(HostError::Record)?;
         let live = self.lock_live();
-        Ok(rows
-            .iter()
-            .filter(|row| row.closed_at.is_none())
-            .map(|row| {
-                let (last_seq, queue) = match live.get(&row.id) {
-                    Some(conversation) => {
-                        (conversation.conv.recorder.last_seq(), queue_of(&conversation.conv.lock_state()))
-                    }
-                    None => (records::last_seq(&records::record_path(&places.agents, &row.id)), Vec::new()),
-                };
-                summary(row, last_seq, queue)
-            })
-            .collect())
+        Ok(rows.iter().filter(|row| row.closed_at.is_none()).map(|row| summarize(&live, &places.agents, row)).collect())
     }
 
     /// 기록 읽기 — 그 대화의 기록에서 `after` 다음 seq의 줄들을 준다. 화면은 이것으로 그리고, 그 뒤는 기록 줄
@@ -899,6 +903,13 @@ impl ConversationHost {
             };
 
         conv.lock_state().turns = agent_process.turns();
+        // S16 — 세션이 열릴 때마다 그 엔진의 목록을 덮어 쓴다. 못 써도 대화는 연다: 설정 쪽의 목록이 낡을 뿐이다.
+        {
+            let _file = self.lock_engines_file();
+            if let Err(error) = engines::write(&self.data_root, row.agent, &EngineLists::of_session(&opened.session)) {
+                eprintln!("{error}");
+            }
+        }
         row.agent_session_id = Some(opened.session_id.clone());
         {
             let _file = self.lock_agents_file();
@@ -1103,6 +1114,79 @@ impl ConversationHost {
         change(&found.conv, &mut state, at)
     }
 
+    /// 모델 바꾸기 — 그 대화의 모델을 바꾼다(`session/set_config_option{configId: "model"}`). 값은 그 대화의 것이고 설정의
+    /// 기본값은 그대로다(스토리 31 · 32). 규칙은 [`ConversationHost::set_mode`]와 같다.
+    pub fn set_model(&self, work: &str, conversation: &str, model: &str) -> Result<Conversation, HostError> {
+        self.change_setting(work, conversation, Setting::Model(model.to_owned()))
+    }
+
+    /// 모드 바꾸기 — 그 대화의 모드를 엔진이 낸 목록의 id로 바꾼다(`session/set_mode`, three-axes 결정 16 · 27).
+    ///
+    /// - `agents.json`의 그 대화 줄에 남는다. 설정 파일의 기본값은 건드리지 않는다.
+    /// - 에이전트가 떠 있으면 곧바로 엔진에 넣고 답을 기다린다 — 다음 턴부터 든다. 알림이 없으므로 값은 호스트가 쥔다.
+    ///   넣은 바꾸기는 기록에 `config` 줄로 적힌다. 엔진이 거절하면 아무것도 남기지 않고 그 까닭을 돌려준다.
+    /// - 띄우지 않은 대화(다시 켠 뒤 · 죽은 뒤 · 세션을 열다 로그인을 요구받은 대화)는 `agents.json`에만 남기고 띄우지 않는다. 띄울 때
+    ///   넣는다(티켓 10).
+    /// - 닫은 대화는 바꾸지 않는다.
+    ///
+    /// 막히는 호출이다 — 엔진의 답을 기다린다(한도 10초, 보통 몇 ms).
+    pub fn set_mode(&self, work: &str, conversation: &str, mode: &str) -> Result<Conversation, HostError> {
+        self.change_setting(work, conversation, Setting::Mode(mode.to_owned()))
+    }
+
+    /// 계획 켜고 끄기 — Codex의 「계획」 토글이다(`session/set_config_option{configId: "collaboration_mode"}`의 `plan` ·
+    /// `default`, three-axes 결정 29). 모드와 따로 있는 설정이다. 규칙은 [`ConversationHost::set_mode`]와 같다.
+    pub fn set_plan(&self, work: &str, conversation: &str, plan: bool) -> Result<Conversation, HostError> {
+        self.change_setting(work, conversation, Setting::Plan(plan))
+    }
+
+    fn change_setting(&self, work: &str, conversation: &str, setting: Setting) -> Result<Conversation, HostError> {
+        if !is_conversation_id(conversation) {
+            return Err(HostError::ConversationNotFound(conversation.to_owned()));
+        }
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
+        let places = atelier_core::work_places(&works, &meta);
+        let open_row = |rows: Vec<ConversationRow>| {
+            rows.into_iter()
+                .find(|row| row.id == conversation && row.closed_at.is_none())
+                .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))
+        };
+        open_row(records::read_rows(&places.agents).map_err(HostError::Record)?)?;
+
+        // 에이전트가 떠 있으면 엔진에 먼저 넣는다 — 대화들의 잠금은 놓고 기다린다(턴 끝이 그 잠금을 쥔다).
+        let running: Option<(Arc<Conv>, runtime::Turns)> = {
+            let live = self.lock_live();
+            live.get(conversation).filter(|live| live.work == work).and_then(|found| {
+                let state = found.conv.lock_state();
+                let turns = state.turns.clone().filter(|_| state.alive)?;
+                Some((Arc::clone(&found.conv), turns))
+            })
+        };
+        let _one_at_a_time = running.as_ref().map(|(conv, _)| conv.setting.lock().unwrap_or_else(|p| p.into_inner()));
+        if let Some((_, turns)) = &running {
+            let (method, fields) = setting.request();
+            turns.change(method, fields, SETTING_LIMIT).map_err(HostError::Setting)?;
+        }
+        let row = {
+            let _file = self.lock_agents_file();
+            let mut row = open_row(records::read_rows(&places.agents).map_err(HostError::Record)?)?;
+            setting.apply(&mut row);
+            records::write_row(&places.agents, &row).map_err(HostError::Record)?;
+            row
+        };
+        if let Some((conv, _)) = &running {
+            conv.recorder.config(setting.changed()).map_err(HostError::Record)?;
+        }
+        Ok(summarize(&self.lock_live(), &places.agents, &row))
+    }
+
+    /// 엔진 목록 — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록(S16). 설정 「대화」 쪽이 새 대화의 기본값 목록으로
+    /// 쓴다. 세션을 한 번도 연 적 없는 엔진은 빈 목록이다. 읽기만 한다 — 에이전트를 띄우지 않는다.
+    pub fn engine_lists(&self, agent: Agent) -> EngineLists {
+        engines::read(&self.data_root, agent)
+    }
+
     /// 대화 닫기 — 그 에이전트의 프로세스를 남김없이 끄고(stdin 닫기 → 1초 → 그룹째 SIGKILL), 기록에 `session`
     /// 닫힘 줄을, `agents.json`에 닫은 때를 적는다. 줄은 남기고(S14) 기록 파일도 남긴다 — 평가의 재료다.
     ///
@@ -1219,6 +1303,10 @@ impl ConversationHost {
     fn lock_agents_file(&self) -> MutexGuard<'_, ()> {
         self.agents_file.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+
+    fn lock_engines_file(&self) -> MutexGuard<'_, ()> {
+        self.engines_file.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 /// 에이전트가 일하는 자리(three-axes 결정 17).
@@ -1314,6 +1402,54 @@ fn is_conversation_id(id: &str) -> bool {
 /// 판 글의 메이저 — `2.2.2` → 2. 읽을 수 없으면 `None`이다.
 fn major(version: Option<&str>) -> Option<u64> {
     version?.split('.').next()?.trim().parse().ok()
+}
+
+/// 대화 목록의 한 줄 — 떠 있는 대화면 기록의 마지막 seq와 대기 줄을 메모리에서, 아니면 기록 파일에서 읽는다.
+fn summarize(live: &HashMap<String, Live>, agents_dir: &Path, row: &ConversationRow) -> Conversation {
+    let (last_seq, queue) = match live.get(&row.id) {
+        Some(conversation) => (conversation.conv.recorder.last_seq(), queue_of(&conversation.conv.lock_state())),
+        None => (records::last_seq(&records::record_path(agents_dir, &row.id)), Vec::new()),
+    };
+    summary(row, last_seq, queue)
+}
+
+/// 사람이 바꾸는 대화의 설정 하나(three-axes 티켓 09) — 엔진에 넣는 요청과 `agents.json`의 칸과 `config` 줄이 짝을 이룬다.
+enum Setting {
+    Model(String),
+    Mode(String),
+    /// Codex의 「계획」 — `collaboration_mode`가 `plan`인가(결정 29).
+    Plan(bool),
+}
+
+impl Setting {
+    /// 엔진에 넣는 요청 — 메서드와 `sessionId` 밖의 인자(실측 A2 · plan-mode의 꼴).
+    fn request(&self) -> (&'static str, Value) {
+        match self {
+            Setting::Model(model) => ("session/set_config_option", json!({"configId": "model", "value": model})),
+            Setting::Mode(mode) => ("session/set_mode", json!({"modeId": mode})),
+            Setting::Plan(plan) => (
+                "session/set_config_option",
+                json!({"configId": "collaboration_mode", "value": if *plan { "plan" } else { "default" }}),
+            ),
+        }
+    }
+
+    fn apply(&self, row: &mut ConversationRow) {
+        match self {
+            Setting::Model(model) => row.model = Some(model.clone()),
+            Setting::Mode(mode) => row.mode = Some(mode.clone()),
+            Setting::Plan(plan) => row.plan = Some(*plan),
+        }
+    }
+
+    /// `config` 줄의 payload — 바꾼 칸과 새 값.
+    fn changed(&self) -> Value {
+        match self {
+            Setting::Model(model) => json!({"model": model}),
+            Setting::Mode(mode) => json!({"mode": mode}),
+            Setting::Plan(plan) => json!({"plan": plan}),
+        }
+    }
 }
 
 fn summary(row: &ConversationRow, last_seq: u64, queue: Vec<QueuedMessage>) -> Conversation {
