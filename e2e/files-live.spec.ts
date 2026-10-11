@@ -352,6 +352,27 @@ test.describe("코드 탭", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
+  // 분할이면 포커스가 문서 열이어도 묶음 열의 파일은 보이는 것이다(S9 · 07) — spec을 읽으며 옆 열의 코드를 보는 사람에게도
+  // 에이전트의 고침이 따라온다. 「본문 탭이 code일 때만 읽는다」로 좁히면 여기서 빨개진다.
+  test("분할의 묶음 열에 선 파일 탭은 포커스가 문서 열에 있어도 신호에 다시 읽힌다", async ({ page }) => {
+    await installFixtureBackend(page, { read_worktree_file: 답(줄들(3)) });
+    // `tab`이 없는 분할 주소 — 포커스는 문서 열이고 `code`는 묶음 열의 것이다(S12)
+    await page.goto(`/works/${pinnedWork.slug}?split=lr&code=${encodeURIComponent(`billing/${LONG}`)}`);
+    const column = page.getByRole("region", { name: `billing/${LONG}`, exact: true });
+    await expect.poll(() => 줄글(column)).toContain('const v0 = "값"; // 줄 1');
+    await expect(page).not.toHaveURL(/tab=/);
+    const reads = await steadyCount(page, READ);
+
+    await replaceAnswer(page, READ, 답(줄들(3, { at: 2, text: "const 옆열 = 2; // 에이전트" })));
+    await fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" });
+
+    await expect.poll(() => 줄글(column), { timeout: 60_000 }).toContain("const 옆열 = 2; // 에이전트");
+    expect((await steadyCount(page, READ)) - reads).toBe(1);
+    // 포커스는 그대로 문서 열이다 — 다시 읽기가 포커스를 옮기지 않았다
+    await expect(page).not.toHaveURL(/tab=/);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
   test("본문에 서 있지 않은 파일 탭은 신호에 읽히지 않고, 다시 서는 순간 한 번 읽힌다", async ({ page }) => {
     await installFixtureBackend(page, { read_worktree_file: 답(줄들(3)) });
     // 셸 한 칸이 선 묶음에 파일 탭을 연다
