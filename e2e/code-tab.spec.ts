@@ -5,7 +5,9 @@ import {
   callCount,
   clipboardWrites,
   installFixtureBackend,
+  ipcFailure,
   recordClipboard,
+  steadyCount,
   typeIntoShell,
   unknownIpcCalls,
   writeShell,
@@ -229,6 +231,20 @@ test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 wor
   await expect(ghost).toContainText("워크트리 없음");
   await expect(ghost.getByRole("button", { name: "경로 복사" })).toHaveCount(0);
   await expect(파일탭들(page)).toHaveCount(3);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 구현 스펙 「코어 — 파일 읽기」(04) — 가드가 거절한 경로(`..` · 절대 경로)는 갈래가 아니라 명령 실패로 온다. 화면은 「읽지 못한
+// 파일」과 그 글을 보인다. 손으로 고친 주소나 그 주소를 기억한 work이 이 길을 탄다. 같은 주소는 다시 물어도 같은 답이라 다시
+// 시도하지 않는다 — 기본값(1 · 2 · 4초 뒤 세 번)이면 그 7초 동안 카드 몸이 빈 채다(한 겹 쿼리의 S23과 같은 까닭).
+test("코어가 거절한 경로는 다시 묻지 않고 곧바로 「읽지 못한 파일」과 그 까닭이 탭 안에 뜬다", async ({ page }) => {
+  await installFixtureBackend(page, { read_worktree_file: ipcFailure("invalid path: src/../../x") });
+  await page.goto(codeUrl("billing/src/../../x"));
+
+  const card = 코드카드(page, "billing/src/../../x");
+  await expect(card).toContainText("읽지 못한 파일");
+  await expect(card).toContainText("invalid path: src/../../x");
+  expect(await steadyCount(page, "read_worktree_file")).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
