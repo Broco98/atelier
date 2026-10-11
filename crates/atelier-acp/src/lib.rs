@@ -13,6 +13,7 @@ mod login_env;
 mod process;
 mod quote;
 mod records;
+mod redact;
 mod runtime;
 mod spec_changes;
 mod translator;

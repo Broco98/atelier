@@ -45,7 +45,7 @@ impl EngineLists {
 /// 새로 쓴다.
 pub(crate) fn read(data_root: &Path, agent: Agent) -> EngineLists {
     read_file(data_root)
-        .get(key(agent))
+        .get(agent.key())
         .and_then(|lists| serde_json::from_value(lists.clone()).ok())
         .unwrap_or_default()
 }
@@ -54,7 +54,7 @@ pub(crate) fn read(data_root: &Path, agent: Agent) -> EngineLists {
 /// 부르는 쪽이 잠근다(호스트의 `engines_file` 잠금).
 pub(crate) fn write(data_root: &Path, agent: Agent, lists: &EngineLists) -> Result<(), String> {
     let mut file = read_file(data_root);
-    file.insert(key(agent).to_owned(), serde_json::to_value(lists).expect("엔진 목록은 JSON이다"));
+    file.insert(agent.key().to_owned(), serde_json::to_value(lists).expect("엔진 목록은 JSON이다"));
     atelier_core::write_json_into_existing_dir(data_root, ENGINES_FILE, &file, "엔진 목록을")
         .map_err(|error| format!("엔진 목록을 쓰지 못했습니다: {} — {error}", data_root.join(ENGINES_FILE).display()))
 }
@@ -70,10 +70,3 @@ fn read_file(data_root: &Path) -> Map<String, Value> {
     }
 }
 
-/// 파일 안에서 그 엔진의 칸 이름 — 기록과 화면이 쓰는 에이전트 글자 그대로다.
-fn key(agent: Agent) -> &'static str {
-    match agent {
-        Agent::Claude => "claude",
-        Agent::Codex => "codex",
-    }
-}

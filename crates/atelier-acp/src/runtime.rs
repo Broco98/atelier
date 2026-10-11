@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::fmt;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,7 +28,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::life::{Death, Life};
+use crate::login::AUTH_REQUIRED;
 use crate::process;
+use crate::redact;
 
 /// 끄기에서 stdin을 닫은 뒤 스스로 끝나기를 기다리는 시간(워크플로 §7). 넘으면 그룹째 SIGKILL이다.
 pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
@@ -624,7 +626,7 @@ impl Step<'_> {
                         }
                         None => Err(Refusal::Other(format!("{method}의 답에 sessionId가 없습니다: {session}"))),
                     },
-                    Err(error) if i32::from(error.code) == -32000 => Err(Refusal::AuthRequired),
+                    Err(error) if i32::from(error.code) == AUTH_REQUIRED => Err(Refusal::AuthRequired),
                     Err(error) => Err(Refusal::Other(describe(method, &error))),
                 };
                 let _ = opened_tx.send(outcome);
@@ -647,16 +649,8 @@ impl Step<'_> {
 ///
 /// Claude 쪽 자리(`initialize`의 `account` · `init.plugins[].path`)는 claude의 원문을 처음 읽는 변환기가 가린다(티켓 13).
 fn mask_account(mut params: Value) -> Value {
-    fn mask(value: &mut Value) {
-        match value {
-            Value::String(text) => *text = "<email>".to_string(),
-            Value::Array(items) => items.iter_mut().for_each(mask),
-            Value::Object(fields) => fields.values_mut().for_each(mask),
-            _ => {}
-        }
-    }
     if let Some(account) = params.pointer_mut("/authStatus/account") {
-        mask(account);
+        redact::mask_strings(account);
     }
     params
 }
@@ -710,21 +704,11 @@ fn write_lines(lines: async_mpsc::UnboundedReceiver<String>, stdin: Arc<Mutex<Op
 /// 줄마다 죽음 줄에 실을 꼬리에도 더한다.
 fn read_stderr(stderr: ChildStderr, life: Arc<Life>, sink: Sink) {
     std::thread::spawn(move || {
-        let mut reader = BufReader::new(stderr);
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            match reader.read_until(b'\n', &mut buf) {
-                Ok(0) => break,
-                Ok(_) => {
-                    let line = String::from_utf8_lossy(&buf).trim_end_matches(['\n', '\r']).to_owned();
-                    life.stderr_line(&line);
-                    sink(RuntimeEvent::Stderr(line));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => break,
-            }
-        }
+        process::for_each_line(BufReader::new(stderr), |line| {
+            let line = process::line_text(line);
+            life.stderr_line(&line);
+            sink(RuntimeEvent::Stderr(line));
+        });
         life.stderr_closed();
     });
 }
@@ -732,21 +716,10 @@ fn read_stderr(stderr: ChildStderr, life: Arc<Life>, sink: Sink) {
 /// stdout을 줄 단위로 읽어 넘기는 스레드. EOF면 통로를 닫는다 — 그것이 연결의 수신 EOF이고, 생애에도 알린다.
 fn read_lines(stdout: ChildStdout, lines: async_mpsc::UnboundedSender<std::io::Result<String>>, life: Arc<Life>) {
     std::thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            match reader.read_until(b'\n', &mut buf) {
-                Ok(0) => break,
-                Ok(_) => {
-                    let line = String::from_utf8_lossy(&buf).trim_end_matches(['\n', '\r']).to_owned();
-                    // 받는 쪽(연결)이 먼저 끝났어도 끝까지 읽는다 — EOF를 생애에 알려야 한다.
-                    let _ = lines.unbounded_send(Ok(line));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => break,
-            }
-        }
+        process::for_each_line(BufReader::new(stdout), |line| {
+            // 받는 쪽(연결)이 먼저 끝났어도 끝까지 읽는다 — EOF를 생애에 알려야 한다.
+            let _ = lines.unbounded_send(Ok(process::line_text(line)));
+        });
         drop(lines);
         life.closed_output();
     });

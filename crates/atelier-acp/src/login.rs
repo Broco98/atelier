@@ -9,7 +9,7 @@
 //!   도중)를 쥐고 있다가, 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다. 기록은 그대로다.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,8 +31,9 @@ const CHECK_LIMIT: Duration = Duration::from_secs(10);
 /// 취소의 SIGTERM 뒤 스스로 끝나기를 기다리는 시간. 넘으면 그룹째 SIGKILL이다 — 남은 프로세스를 두지 않는다.
 const CANCEL_GRACE: Duration = Duration::from_secs(1);
 
-/// ACP의 「로그인 필요」 오류 코드(`Authentication required`).
-const AUTH_REQUIRED: i64 = -32000;
+/// ACP의 「로그인 필요」 오류 코드(`Authentication required`) — 엔진을 가리지 않는 하나의 계약값이다. codex-acp가 `session/new`
+/// · 턴에 내고(실측 A3), Claude 변환기가 같은 값으로 내고(S3), 런타임 · 호스트가 이것으로 받는다.
+pub(crate) const AUTH_REQUIRED: i32 = -32000;
 
 /// 엔진 상태 — 엔진 상태 이벤트가 싣는 것(three-axes 구현 스펙 「대화 호스트 › 나오는 것」). 화면의 안내 카드가 이것으로
 /// 「로그인 안 됨 · 로그인 중(링크) · 끝남」을 그린다.
@@ -77,7 +78,7 @@ pub(crate) fn logged_in(agent: Agent, programs: &[FoundProgram], env: &AgentEnv,
 
 /// 에이전트의 답이 「로그인 필요」(`-32000`)인가 — `session/prompt`의 오류 원문(`{code, message, data?}`).
 pub(crate) fn auth_required(error: &Value) -> bool {
-    error["code"].as_i64() == Some(AUTH_REQUIRED)
+    error["code"].as_i64() == Some(i64::from(AUTH_REQUIRED))
 }
 
 /// 확인 · 로그인 명령을 도는 자리 — 로그인 env의 `HOME`(사용자의 집), 없으면 `fallback`(데이터 루트).
@@ -248,17 +249,9 @@ impl LoginDesk {
         for stream in [Box::new(stdout) as Box<dyn Read + Send>, Box::new(stderr)] {
             let desk = Arc::clone(self);
             std::thread::spawn(move || {
-                let mut reader = BufReader::new(stream);
-                let mut buf = Vec::new();
-                loop {
-                    buf.clear();
-                    match reader.read_until(b'\n', &mut buf) {
-                        Ok(0) => break,
-                        Ok(_) => desk.saw_line(agent, pgid, &String::from_utf8_lossy(&buf)),
-                        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                        Err(_) => break,
-                    }
-                }
+                process::for_each_line(BufReader::new(stream), |line| {
+                    desk.saw_line(agent, pgid, &String::from_utf8_lossy(line));
+                });
             });
         }
 

@@ -21,7 +21,7 @@
 //! `<email>`로, `system/init`의 `plugins[].path`(조직 · 계정 id가 실린다, 실측 함정 39)는 `<path>`로 바꾼다.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -31,6 +31,10 @@ use serde_json::{json, Value};
 mod stream;
 
 use stream::Stream;
+
+use crate::login::AUTH_REQUIRED;
+use crate::process;
+use crate::redact;
 
 /// stdin EOF 뒤 claude가 스스로 끝나기를 기다리는 시간. 진짜 claude 2.1.296은 1~1.6초에 끝났다(판 02 실측 G5). 넘으면
 /// claude를 끈다 — 호스트가 없어 그룹째 끄는 손이 없을 때도 고아가 남지 않게.
@@ -42,9 +46,6 @@ const MODES: [&str; 5] = ["default", "acceptEdits", "auto", "dontAsk", "plan"];
 
 /// claude가 미로그인을 알리는 `assistant.error`의 값(실측 함정 32).
 const AUTHENTICATION_FAILED: &str = "authentication_failed";
-
-/// ACP의 「로그인 필요」 오류 코드 — codex-acp가 `session/new`에 내는 것과 같다(실측 A3). 호스트는 엔진을 가리지 않고 받는다.
-const AUTH_REQUIRED: i32 = -32000;
 
 /// 띄운 직후 보내는 stdin `initialize`의 요청 id.
 const INITIALIZE_REQUEST: &str = "atelier-initialize";
@@ -73,26 +74,16 @@ const WITHDRAWN: &str = "The permission request was withdrawn.";
 pub fn run_claude_translator() -> i32 {
     let shared = Arc::new(Shared::default());
     let mut session: Option<Session> = None;
-    let stdin = std::io::stdin();
-    let mut input = stdin.lock();
-    let mut buf = Vec::new();
-    loop {
-        buf.clear();
-        match input.read_until(b'\n', &mut buf) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
-        }
-        let line = String::from_utf8_lossy(&buf);
+    process::for_each_line(std::io::stdin().lock(), |buf| {
+        let line = String::from_utf8_lossy(buf);
         if line.trim().is_empty() {
-            continue;
+            return;
         }
         let message: Value = match serde_json::from_str(&line) {
             Ok(message) => message,
             Err(error) => {
                 eprintln!("변환기: 읽을 수 없는 ACP 줄을 건너뜁니다 — {error}");
-                continue;
+                return;
             }
         };
         let params = &message["params"];
@@ -103,14 +94,14 @@ pub fn run_claude_translator() -> i32 {
                     session.cancel(&shared);
                 }
             }
-            continue;
+            return;
         };
         let Some(method) = message["method"].as_str() else {
             // 메서드 없이 id만 있으면 변환기가 보낸 요청(권한)의 답이다.
             if let Some(session) = session.as_mut() {
                 session.answer(&id, &message, &shared);
             }
-            continue;
+            return;
         };
         match method {
             "initialize" => send(&reply(&id, initialize_result())),
@@ -146,7 +137,7 @@ pub fn run_claude_translator() -> i32 {
             }
             method => send(&error(&id, -32601, &format!("Method not found: {method}"))),
         }
-    }
+    });
     match session {
         Some(session) => session.finish(&shared),
         None => 0,
@@ -546,17 +537,8 @@ fn put_prompt(stdin: &ClaudeStdin, id: &Value, line: &Value, shared: &Shared) {
 fn read_claude(stdout: ChildStdout, shared: Arc<Shared>, child: Arc<Mutex<Child>>, stdin: ClaudeStdin) {
     std::thread::spawn(move || {
         let mut stream = Stream::default();
-        let mut reader = BufReader::new(stdout);
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            match reader.read_until(b'\n', &mut buf) {
-                Ok(0) => break,
-                Ok(_) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => break,
-            }
-            let Ok(mut line) = serde_json::from_slice::<Value>(&buf) else { continue };
+        process::for_each_line(BufReader::new(stdout), |buf| {
+            let Ok(mut line) = serde_json::from_slice::<Value>(buf) else { return };
             mask(&mut line);
             if line["type"] == "control_response" && line["response"]["request_id"] == INITIALIZE_REQUEST {
                 let opening = shared.lock().opening.take();
@@ -588,7 +570,7 @@ fn read_claude(stdout: ChildStdout, shared: Arc<Shared>, child: Arc<Mutex<Child>
             } else {
                 forward(stream.updates(&line), &shared);
             }
-        }
+        });
         claude_closed(&shared, &child);
     });
 }
@@ -643,10 +625,9 @@ fn opened(opening: Opening, response: &Value, shared: &Shared) {
     let commands: Vec<Value> = init["commands"].as_array().into_iter().flatten().map(command).collect();
     let mut state = shared.lock();
     send(&reply(&opening.id, result));
-    send(&notify(
-        "session/update",
-        json!({"sessionId": opening.session_id,
-               "update": {"sessionUpdate": "available_commands_update", "availableCommands": commands}}),
+    send(&session_update(
+        &opening.session_id,
+        json!({"sessionUpdate": "available_commands_update", "availableCommands": commands}),
     ));
     state.open = true;
     state.session_id = Some(opening.session_id);
@@ -660,11 +641,7 @@ fn announce_init(init: Value, shared: &Shared) {
     let mut state = shared.lock();
     let Some(session_id) = state.session_id.clone().filter(|_| !state.init_announced) else { return };
     state.init_announced = true;
-    send(&notify(
-        "session/update",
-        json!({"sessionId": session_id,
-               "update": {"sessionUpdate": "session_info_update", "_meta": {"claudeCode": {"init": init}}}}),
-    ));
+    send(&session_update(&session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"claudeCode": {"init": init}}})));
 }
 
 /// `system/init` — claude가 턴 하나를 시작한다. 걸린 `session/prompt`가 없으면 claude가 백그라운드 작업 알림으로 스스로 시작한
@@ -677,11 +654,7 @@ fn self_turn_started(shared: &Shared) {
     }
     let Some(session_id) = state.session_id.clone() else { return };
     state.self_turn = true;
-    send(&notify(
-        "session/update",
-        json!({"sessionId": session_id, "update": {"sessionUpdate": "session_info_update",
-                                                    "_meta": {"atelier": {"outOfTurn": {"state": "started"}}}}}),
-    ));
+    send(&out_of_turn(&session_id, json!({"state": "started"})));
 }
 
 /// claude가 바꾸기에 답했다(`control_response`) — 기다리던 ACP 요청에 답한다. 거절이면 claude가 준 까닭과 오류 코드로.
@@ -695,8 +668,7 @@ fn changed(response: &Value, shared: &Shared) {
     };
     if response["subtype"] != "success" {
         let reason = response["error"].as_str().unwrap_or("claude가 바꾸기를 거절했습니다");
-        send(&json!({"jsonrpc": "2.0", "id": id,
-                     "error": {"code": -32602, "message": reason, "data": {"errorCode": response["error_code"]}}}));
+        send(&error_with_data(&id, -32602, reason, json!({"errorCode": response["error_code"]})));
         return;
     }
     match model {
@@ -724,10 +696,7 @@ fn mode_changed(status: &Value, shared: &Shared) {
     }
     state.mode = Some(mode.to_owned());
     let Some(session_id) = state.session_id.as_deref() else { return };
-    send(&notify(
-        "session/update",
-        json!({"sessionId": session_id, "update": {"sessionUpdate": "current_mode_update", "currentModeId": mode}}),
-    ));
+    send(&session_update(session_id, json!({"sessionUpdate": "current_mode_update", "currentModeId": mode})));
 }
 
 /// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(티켓 08).
@@ -812,7 +781,7 @@ fn forward(updates: Vec<Value>, shared: &Shared) {
     let state = shared.lock();
     let Some(session_id) = state.session_id.as_deref() else { return };
     for update in updates {
-        send(&notify("session/update", json!({"sessionId": session_id, "update": update})));
+        send(&session_update(session_id, update));
     }
 }
 
@@ -827,29 +796,21 @@ fn turn_ended(result: &Value, stream: &Stream, shared: &Arc<Shared>, stdin: &Cla
     let mut state = shared.lock();
     let Some(session_id) = state.session_id.clone() else { return };
     if let Some(usage) = stream.usage(result) {
-        send(&notify("session/update", json!({"sessionId": session_id, "update": usage})));
+        send(&session_update(&session_id, usage));
     }
     let interrupted = std::mem::take(&mut state.interrupted);
     let auth_failed = std::mem::take(&mut state.auth_failed);
     if let Some(id) = state.prompt.take() {
         if auth_failed {
             // S3 — codex-acp와 같은 모양이라 호스트가 엔진을 가리지 않고 로그인 필요 줄 · 안내 카드로 옮긴다(three-axes 결정 30).
-            send(&json!({"jsonrpc": "2.0", "id": id, "error": {
-                "code": AUTH_REQUIRED, "message": "Authentication required",
-                "data": {"claudeCode": {"result": result}},
-            }}));
+            send(&error_with_data(&id, AUTH_REQUIRED, "Authentication required", json!({"claudeCode": {"result": result}})));
         } else {
             send(&reply(&id, stream::prompt_response(result, interrupted)));
         }
         return;
     }
     state.self_turn = false;
-    let ended = json!({"state": "ended", "response": stream::prompt_response(result, interrupted)});
-    send(&notify(
-        "session/update",
-        json!({"sessionId": session_id, "update": {"sessionUpdate": "session_info_update",
-                                                    "_meta": {"atelier": {"outOfTurn": ended}}}}),
-    ));
+    send(&out_of_turn(&session_id, json!({"state": "ended", "response": stream::prompt_response(result, interrupted)})));
     let Some(held) = state.held.take() else { return };
     state.prompt = Some(held.id.clone());
     drop(state);
@@ -862,16 +823,8 @@ fn turn_ended(result: &Value, stream: &Stream, shared: &Arc<Shared>, stdin: &Cla
 /// - `initialize` 답의 `account` 아래 글자 값은 다 `<email>`이다(이메일 · 조직 · 플랜). Codex의 `_auth/status_update`와 같은 규칙이다.
 /// - `system/init`의 `plugins[].path`는 `<path>`다 — 동기된 플러그인의 경로에 조직 · 계정 id가 든다.
 fn mask(line: &mut Value) {
-    fn mask_strings(value: &mut Value) {
-        match value {
-            Value::String(text) => *text = "<email>".to_string(),
-            Value::Array(items) => items.iter_mut().for_each(mask_strings),
-            Value::Object(fields) => fields.values_mut().for_each(mask_strings),
-            _ => {}
-        }
-    }
     if let Some(account) = line.pointer_mut("/response/response/account") {
-        mask_strings(account);
+        redact::mask_strings(account);
     }
     if line["type"] == "system" && line["subtype"] == "init" {
         for plugin in line["plugins"].as_array_mut().into_iter().flatten() {
@@ -949,8 +902,24 @@ fn error(id: &Value, code: i32, message: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 }
 
+/// 오류 답에 까닭의 원문(`data`)을 싣는다.
+fn error_with_data(id: &Value, code: i32, message: &str, data: Value) -> Value {
+    json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message, "data": data}})
+}
+
 fn notify(method: &str, params: Value) -> Value {
     json!({"jsonrpc": "2.0", "method": method, "params": params})
+}
+
+/// `session/update` 알림 하나 — 그 세션의 update 몸을 봉투(`{sessionId, update}`)에 싼다.
+fn session_update(session_id: &str, update: Value) -> Value {
+    notify("session/update", json!({"sessionId": session_id, "update": update}))
+}
+
+/// 턴 밖 턴의 표지(S4) — `session_info_update`의 `_meta.atelier.outOfTurn`에 시작(`{state: "started"}`) · 끝(`{state: "ended",
+/// response}`)을 싣는다. 호스트와의 계약이다(`host.rs`의 `OutOfTurn`).
+fn out_of_turn(session_id: &str, mark: Value) -> Value {
+    session_update(session_id, json!({"sessionUpdate": "session_info_update", "_meta": {"atelier": {"outOfTurn": mark}}}))
 }
 
 /// ACP 한 줄을 stdout에 쓴다. 두 스레드가 쓰므로 줄 하나를 잠금 하나로 쓴다. 호스트가 떠났으면 쓰기가 실패하고, 할 일이 없다.

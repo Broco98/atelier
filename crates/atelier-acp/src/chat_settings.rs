@@ -30,7 +30,7 @@ const SETTINGS_FILE: &str = "settings.json";
 /// 그 엔진의 새 대화 기본값(모델 · 모드). 파일이 없거나 그 엔진의 칸이 없으면 둘 다 비어 있다(엔진 기본값).
 pub(crate) fn conversation_defaults(data_root: &Path, agent: Agent) -> ConversationDefaults {
     let Some(chat) = read_chat(data_root) else { return ConversationDefaults::default() };
-    let engine = &chat[key(agent)];
+    let engine = &chat[agent.key()];
     ConversationDefaults { model: chosen(&engine["model"]), mode: chosen(&engine["mode"]) }
 }
 
@@ -52,10 +52,3 @@ fn chosen(value: &Value) -> Option<String> {
     value.as_str().filter(|text| !text.trim().is_empty()).map(str::to_owned)
 }
 
-/// 구획 안에서 그 엔진의 칸 이름 — 기록과 화면이 쓰는 에이전트 글자 그대로다.
-fn key(agent: Agent) -> &'static str {
-    match agent {
-        Agent::Claude => "claude",
-        Agent::Codex => "codex",
-    }
-}

@@ -16,6 +16,14 @@ pub enum Agent {
 }
 
 impl Agent {
+    /// 기록 · 화면 · 파일(`engines.json` · `settings.json`의 칸 이름)에 적히는 에이전트 글자 — serde 꼴(`lowercase`)과 같다.
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            Agent::Claude => "claude",
+            Agent::Codex => "codex",
+        }
+    }
+
     /// 대화 이름의 머리 — 이름은 에이전트 이름으로 저절로 붙는다(Claude · Codex · Claude 2, three-axes 결정 15).
     pub fn display_name(self) -> &'static str {
         match self {
@@ -102,4 +110,18 @@ pub(crate) fn look_up(agent: Agent, path: Option<&OsStr>) -> Result<Vec<FoundPro
 /// 실행할 수 있는 파일인가. 심볼릭 링크는 따라간다 — `codex-acp`는 `dist/index.js`를 가리키는 링크다.
 fn executable(path: &Path) -> bool {
     fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **파일의 칸 이름은 기록에 적히는 에이전트 글자와 같다** — 엔진 목록 · 설정의 칸 이름(`key`)과 기록 · 화면의 글자(serde)가
+    /// 어긋나면 그 엔진의 몫을 못 찾는다.
+    #[test]
+    fn the_key_is_the_written_agent() {
+        for agent in [Agent::Claude, Agent::Codex] {
+            assert_eq!(serde_json::to_value(agent).unwrap(), serde_json::Value::from(agent.key()));
+        }
+    }
 }

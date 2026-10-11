@@ -1,6 +1,7 @@
 //! 자식 프로세스의 띄우기 · 끄기 도우미. 이 크레이트가 띄우는 자식(로그인 셸 · 에이전트 · 로그인 명령)은
 //! 모두 새 세션에 두고, 끌 때는 그룹째 끈다.
 
+use std::io::BufRead;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
@@ -19,6 +20,26 @@ pub(crate) fn in_new_session(command: &mut Command) -> &mut Command {
             Ok(())
         })
     }
+}
+
+/// 줄 단위로 끝까지 읽어 줄마다 `on_line`에 넘긴다 — 줄바꿈까지 든 바이트 그대로다. EOF나 읽기 오류에서 멈추고, 시그널에
+/// 끊긴 읽기(EINTR)는 다시 읽는다. 받는 쪽이 할 일이 없어도 끝까지 읽는다 — 자식의 파이프가 차면 그 자식이 막힌다.
+pub(crate) fn for_each_line(mut reader: impl BufRead, mut on_line: impl FnMut(&[u8])) {
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) => return,
+            Ok(_) => on_line(&buf),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return,
+        }
+    }
+}
+
+/// 줄바꿈까지 든 한 줄의 글 — 끝의 줄바꿈(`\n` · `\r`)을 뗀다. UTF-8이 아닌 바이트는 바꿔 읽는다.
+pub(crate) fn line_text(line: &[u8]) -> String {
+    String::from_utf8_lossy(line).trim_end_matches(['\n', '\r']).to_owned()
 }
 
 /// 그룹 전체에 SIGKILL을 보낸다. 번호는 [`signallable`]이 거른다.
