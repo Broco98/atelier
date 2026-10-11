@@ -10,23 +10,8 @@
 
 mod common;
 
-use atelier_acp::{Agent, ConversationHost};
-use common::{of_kind, Sandbox};
+use common::{of_kind, payloads_of, Sandbox};
 use serde_json::{json, Value};
-
-/// 그 원문을 되감는 가짜 claude로 Claude 대화 하나를 연다. `extra`는 가짜 claude에게 가는 env다.
-fn open(sandbox: &Sandbox, fixture: &str, extra: &[(&str, &str)]) -> (ConversationHost, String) {
-    sandbox.work("cart", &[]);
-    let mut env = vec![("FAKE_CLAUDE_FIXTURE", fixture)];
-    env.extend_from_slice(extra);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &env));
-    let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
-    // 명령 목록은 `session/new`의 답 뒤에 따로 온다 — 그것까지 적힌 뒤에 움직여야 턴의 줄과 섞이지 않는다.
-    sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-    });
-    (host, conversation.id)
-}
 
 /// 기록의 update 줄들의 `update` 칸.
 fn updates(record: &[Value]) -> Vec<Value> {
@@ -55,7 +40,7 @@ fn stdin_shape(stdin: &[Value]) -> Vec<String> {
 #[test]
 fn 멈추면_가짜_claude가_interrupt_제어_요청을_받고_sigint는_없고_턴이_cancelled로_끝나고_다음_말이_같은_프로세스_같은_세션으로_간다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/interrupt-sigint", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/interrupt-sigint", &[]);
     host.send("cart", &conversation, "40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해").expect("보내기");
     // 원문은 그 명령이 도는 동안 interrupt를 보냈다 — 도구 줄이 선 뒤에 멈춘다.
     sandbox.wait_record("cart", &conversation, |record| has_tool_call(record, "Bash"));
@@ -107,11 +92,6 @@ fn 멈추면_가짜_claude가_interrupt_제어_요청을_받고_sigint는_없고
     host.shut_down();
 }
 
-/// 기록의 `permission` 줄들의 payload.
-fn permissions(record: &[Value]) -> Vec<Value> {
-    of_kind(record, "permission").into_iter().map(|line| line["payload"].clone()).collect()
-}
-
 /// 가짜 claude가 받은 제어 답들(`control_response`) — 권한 답이다.
 fn answers(sandbox: &Sandbox, session_id: &str) -> Vec<Value> {
     sandbox.claude_stdin(session_id).into_iter().filter(|line| line["type"] == "control_response").collect()
@@ -135,11 +115,11 @@ const DENIED: &str = "/tmp/gate/ws/g1/outside/denied.txt";
 #[test]
 fn permission_stdio_권한_요청이_permission_줄에_서고_세션_제안이_있으면_선택지가_셋이고_허락하면_턴이_이어진다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/permission-stdio", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/permission-stdio", &[]);
     host.send("cart", &conversation, "outside/allowed.txt를 Write로 만들어").expect("보내기");
 
     let record = sandbox.wait_kind("cart", &conversation, "permission", 1);
-    let asked = &permissions(&record)[0];
+    let asked = &payloads_of(&record, "permission")[0];
     let session_id = sandbox.agent_session_id("cart", &conversation);
     assert_eq!((asked["state"].clone(), asked["requestId"].clone()), (json!("asked"), json!("0")));
     assert_eq!(
@@ -163,7 +143,7 @@ fn permission_stdio_권한_요청이_permission_줄에_서고_세션_제안이_�
     host.answer_permission("cart", &conversation, "0", "allow_once").expect("한 번 허락");
 
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 1);
-    assert_eq!(permissions(&record)[1], json!({"requestId": "0", "state": "answered", "optionId": "allow_once"}));
+    assert_eq!(payloads_of(&record, "permission")[1], json!({"requestId": "0", "state": "answered", "optionId": "allow_once"}));
     let end = &of_kind(&record, "turn-end")[0]["payload"];
     assert_eq!((end["stopReason"].clone(), end["cancelledByUs"].clone()), (json!("end_turn"), json!(false)));
     assert_eq!(
@@ -185,11 +165,11 @@ fn permission_stdio_권한_요청이_permission_줄에_서고_세션_제안이_�
 #[test]
 fn 세션_제안이_없는_권한_요청은_선택지가_한_번_허락과_거부_둘이다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/permission-stdio", &[("FAKE_CLAUDE_SUGGESTIONS", "[]")]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/permission-stdio", &[("FAKE_CLAUDE_SUGGESTIONS", "[]")]);
     host.send("cart", &conversation, "outside/allowed.txt를 Write로 만들어").expect("보내기");
 
     let record = sandbox.wait_kind("cart", &conversation, "permission", 1);
-    assert_eq!(permissions(&record)[0]["request"]["options"], claude_options(false));
+    assert_eq!(payloads_of(&record, "permission")[0]["request"]["options"], claude_options(false));
 
     host.shut_down();
 }
@@ -206,10 +186,10 @@ const MIXED_SUGGESTIONS: &str = r#"[
 #[test]
 fn 이_대화에서_허락은_session_제안만_싣고_설정_파일에_쓰는_제안은_claude에_돌려주지_않는다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/permission-stdio", &[("FAKE_CLAUDE_SUGGESTIONS", MIXED_SUGGESTIONS)]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/permission-stdio", &[("FAKE_CLAUDE_SUGGESTIONS", MIXED_SUGGESTIONS)]);
     host.send("cart", &conversation, "outside/allowed.txt를 Write로 만들어").expect("보내기");
     let record = sandbox.wait_kind("cart", &conversation, "permission", 1);
-    assert_eq!(permissions(&record)[0]["request"]["options"], claude_options(true));
+    assert_eq!(payloads_of(&record, "permission")[0]["request"]["options"], claude_options(true));
 
     host.answer_permission("cart", &conversation, "0", "allow_session").expect("이 대화에서 허락");
 
@@ -232,15 +212,15 @@ fn 이_대화에서_허락은_session_제안만_싣고_설정_파일에_쓰는_�
 #[test]
 fn 거부하면_그_도구_호출만_실패하고_턴이_이어져_end_turn으로_끝나고_claude는_거부의_글을_도구_결과로_받는다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/permission-stdio", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/permission-stdio", &[]);
     host.send("cart", &conversation, "outside/allowed.txt를 Write로 만들어").expect("첫 말");
     sandbox.wait_kind("cart", &conversation, "permission", 1);
     host.answer_permission("cart", &conversation, "0", "allow_once").expect("한 번 허락");
     sandbox.wait_kind("cart", &conversation, "turn-end", 1);
     host.send("cart", &conversation, "outside/denied.txt를 Write로 만들어").expect("둘째 말");
     let record = sandbox.wait_kind("cart", &conversation, "permission", 3);
-    assert_eq!(permissions(&record)[2]["requestId"], "1", "변환기의 요청 id는 세션 동안 이어 센다");
-    assert_eq!(permissions(&record)[2]["request"]["toolCall"]["rawInput"]["file_path"], DENIED);
+    assert_eq!(payloads_of(&record, "permission")[2]["requestId"], "1", "변환기의 요청 id는 세션 동안 이어 센다");
+    assert_eq!(payloads_of(&record, "permission")[2]["request"]["toolCall"]["rawInput"]["file_path"], DENIED);
 
     host.answer_permission("cart", &conversation, "1", "reject").expect("거부");
 
@@ -282,7 +262,7 @@ fn 거부하면_그_도구_호출만_실패하고_턴이_이어져_end_turn으�
 #[test]
 fn 권한이_걸린_채_멈추면_claude가_control_cancel_request로_요청을_거두고_거둬짐이_적히고_턴이_cancelled로_끝나고_다음_말이_이어진다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/permission-stdio", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/permission-stdio", &[]);
     host.send("cart", &conversation, "outside/allowed.txt를 Write로 만들어").expect("보내기");
     sandbox.wait_kind("cart", &conversation, "permission", 1);
 
@@ -290,7 +270,7 @@ fn 권한이_걸린_채_멈추면_claude가_control_cancel_request로_요청을_
 
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 1);
     assert_eq!(
-        permissions(&record)[1..],
+        payloads_of(&record, "permission")[1..],
         [json!({"requestId": "0", "state": "withdrawn", "reason": "stopped"})],
         "걸린 요청은 「거둬짐(턴이 끊김)」으로 닫힌다:\n{}",
         common::lines_text(&record)
@@ -317,7 +297,7 @@ fn 권한이_걸린_채_멈추면_claude가_control_cancel_request로_요청을_
     // 같은 claude가 다음 말을 받는다 — 둘째 턴도 권한을 묻는다.
     host.send("cart", &conversation, "outside/denied.txt를 Write로 만들어").expect("다음 말");
     let record = sandbox.wait_kind("cart", &conversation, "permission", 3);
-    assert_eq!(permissions(&record)[2]["request"]["toolCall"]["rawInput"]["file_path"], DENIED);
+    assert_eq!(payloads_of(&record, "permission")[2]["request"]["toolCall"]["rawInput"]["file_path"], DENIED);
     assert_eq!(sandbox.all_claude_receipts().len(), 1);
 
     host.shut_down();
@@ -333,15 +313,10 @@ fn controls(sandbox: &Sandbox, session_id: &str) -> Vec<Value> {
         .collect()
 }
 
-/// 기록의 `config` 줄들의 payload.
-fn configs(record: &[Value]) -> Vec<Value> {
-    of_kind(record, "config").into_iter().map(|line| line["payload"].clone()).collect()
-}
-
 #[test]
 fn 모델과_모드를_바꾸면_가짜_claude가_stdin_set_model과_set_permission_mode를_받고_agents_json과_config_줄에_남는다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/twoturn-tools", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/twoturn-tools", &[]);
     let session_id = sandbox.agent_session_id("cart", &conversation);
 
     let changed = host.set_model("cart", &conversation, "sonnet").expect("모델 바꾸기");
@@ -361,7 +336,7 @@ fn 모델과_모드를_바꾸면_가짜_claude가_stdin_set_model과_set_permiss
     host.send("cart", &conversation, "다음 말").expect("보내기");
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 1);
     assert_eq!(stdin_shape(&sandbox.claude_stdin(&session_id)), ["initialize", "set_model", "set_permission_mode", "user"]);
-    assert_eq!(configs(&record), [json!({"model": "sonnet"}), json!({"mode": "acceptEdits"})], "바꾼 값이 config 줄로 남는다");
+    assert_eq!(payloads_of(&record, "config"), [json!({"model": "sonnet"}), json!({"mode": "acceptEdits"})], "바꾼 값이 config 줄로 남는다");
     assert!(
         !updates(&record).iter().any(|update| update["sessionUpdate"] == "current_mode_update"),
         "사람이 바꾼 모드에 claude가 되돌려 주는 system/status는 config 줄과 겹치므로 옮기지 않는다:\n{}",
@@ -374,7 +349,7 @@ fn 모델과_모드를_바꾸면_가짜_claude가_stdin_set_model과_set_permiss
 #[test]
 fn 엔진_기본값으로_되돌린_모델은_값_없는_set_model이다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/twoturn-tools", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/twoturn-tools", &[]);
     let session_id = sandbox.agent_session_id("cart", &conversation);
 
     host.set_model("cart", &conversation, "default").expect("기본 모델로");
@@ -388,7 +363,7 @@ fn 엔진_기본값으로_되돌린_모델은_값_없는_set_model이다() {
 #[test]
 fn claude가_거절한_바꾸기와_claude에_없는_설정은_읽히는_오류이고_아무것도_남지_않는다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/twoturn-tools", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/twoturn-tools", &[]);
     let record_before = sandbox.record("cart", &conversation);
 
     // 실측 2.1.296 — 띄울 때 허락하지 않은 bypassPermissions는 `bypass_not_launched`(실측 함정 38).
@@ -430,7 +405,7 @@ fn measured_revise_message() -> Value {
 #[test]
 fn 계획_승인은_계획_본문이_든_switch_mode_권한_줄이고_다시_짜기는_deny와_고정_문구_구현은_allow로_가고_승인_뒤_claude가_바꾼_모드는_current_mode_update로_적힌다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.296/g1-plan-revise", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.296/g1-plan-revise", &[]);
     let session_id = sandbox.agent_session_id("cart", &conversation);
     host.set_mode("cart", &conversation, "plan").expect("모드 칩의 plan");
     host.send("cart", &conversation, "hello.txt에 hi를 담는 계획을 두 단계로 짜고 ExitPlanMode로 물어").expect("보내기");
@@ -438,7 +413,7 @@ fn 계획_승인은_계획_본문이_든_switch_mode_권한_줄이고_다시_짜
     // claude가 계획을 다 짜면 ExitPlanMode를 can_use_tool로 묻는다(G1) — codex-acp의 계획 승인과 같은 모양이다.
     let record = sandbox.wait_kind("cart", &conversation, "permission", 1);
     let plans = recorded_plan_requests();
-    let asked = &permissions(&record)[0];
+    let asked = &payloads_of(&record, "permission")[0];
     assert_eq!(
         asked["request"]["toolCall"],
         json!({"toolCallId": plans[0]["request"]["tool_use_id"], "kind": "switch_mode", "status": "pending",
@@ -472,7 +447,7 @@ fn 계획_승인은_계획_본문이_든_switch_mode_권한_줄이고_다시_짜
     host.answer_permission("cart", &conversation, "1", "implement_plan").expect("구현");
     // 승인하면 claude가 default 모드로 가서 구현하고, 그 Write가 다시 묻는다(G1).
     let record = sandbox.wait_kind("cart", &conversation, "permission", 5);
-    assert_eq!(permissions(&record)[4]["request"]["toolCall"]["kind"], "edit");
+    assert_eq!(payloads_of(&record, "permission")[4]["request"]["toolCall"]["kind"], "edit");
     host.answer_permission("cart", &conversation, "2", "allow_once").expect("Write 허락");
 
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 2);

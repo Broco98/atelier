@@ -7,7 +7,7 @@
 mod common;
 
 use atelier_acp::Agent;
-use common::{of_kind, Sandbox};
+use common::{of_kind, payloads_of, Sandbox};
 use serde_json::{json, Value};
 
 /// 실측의 모드 넷(three-axes 결정 27) — 이름 · 설명 · 차례 그대로, 기본값은 `agent`.
@@ -118,7 +118,7 @@ fn 모델_모드_계획을_바꾸면_가짜가_set_config_option과_set_mode를_
     let row = sandbox.agents_row("cart", &conversation.id);
     assert_eq!((row["model"].clone(), row["mode"].clone(), row["plan"].clone()), (json!("gpt-6-astra"), json!("read-only"), json!(true)));
     let record = sandbox.record("cart", &conversation.id);
-    let configs: Vec<Value> = of_kind(&record, "config").into_iter().map(|line| line["payload"].clone()).collect();
+    let configs = payloads_of(&record, "config");
     assert_eq!(
         configs,
         [json!({"model": "gpt-6-astra"}), json!({"mode": "read-only"}), json!({"plan": true})],

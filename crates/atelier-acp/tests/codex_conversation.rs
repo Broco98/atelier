@@ -173,23 +173,13 @@ fn 새_대화가_agents_json에_서고_기록에_띄우는_중_열림_줄이_같
     host.shut_down();
 }
 
-/// 에이전트와 그 후손의 pid — 가짜가 영수증에 적었다.
-fn agent_tree(sandbox: &Sandbox, slug: &str, conversation: &str) -> (String, Vec<u32>) {
-    let row = sandbox.agents_row(slug, conversation);
-    let session_id = row["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned();
-    let receipt = sandbox.acp_receipt(&session_id);
-    let mut pids = vec![receipt["pid"].as_u64().unwrap() as u32];
-    pids.extend(receipt["descendants"].as_array().unwrap().iter().map(|pid| pid.as_u64().unwrap() as u32));
-    (session_id, pids)
-}
-
 #[test]
 fn 대화를_닫으면_자식과_손주까지_꺼지고_닫은_때가_적히고_줄과_기록은_남는다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("spawns-a-child", &[]));
     let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let (session_id, pids) = agent_tree(&sandbox, "cart", &conversation.id);
+    let (session_id, pids) = sandbox.agent_tree("cart", &conversation.id);
     assert_eq!(pids.len(), 3, "에이전트 · 자식 · 손주");
     assert!(pids.iter().all(|pid| is_running(*pid)), "닫기 전에는 셋 다 살아 있다");
 
@@ -210,7 +200,7 @@ fn 끄기를_무시하는_에이전트도_stdin을_닫은_1초_뒤에_그룹째_
     sandbox.work("cart", &[]);
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("ignores-shutdown", &[]));
     let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let (session_id, pids) = agent_tree(&sandbox, "cart", &conversation.id);
+    let (session_id, pids) = sandbox.agent_tree("cart", &conversation.id);
 
     let started = Instant::now();
     host.close_conversation("cart", &conversation.id).expect("닫기");
@@ -230,8 +220,8 @@ fn 호스트를_끄면_모든_대화의_후손이_꺼지고_대화는_닫히지_
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("spawns-a-child", &[]));
     let a = host.new_conversation("cart", Agent::Codex).expect("cart 대화");
     let b = host.new_conversation("site", Agent::Codex).expect("site 대화");
-    let mut pids = agent_tree(&sandbox, "cart", &a.id).1;
-    pids.extend(agent_tree(&sandbox, "site", &b.id).1);
+    let mut pids = sandbox.agent_tree("cart", &a.id).1;
+    pids.extend(sandbox.agent_tree("site", &b.id).1);
     assert_eq!(pids.len(), 6);
 
     host.shut_down();
@@ -250,7 +240,7 @@ fn 호스트_끄기는_모든_대화의_stdin을_함께_닫고_1초를_한_번�
     let mut pids = Vec::new();
     for _ in 0..3 {
         let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-        pids.extend(agent_tree(&sandbox, "cart", &conversation.id).1);
+        pids.extend(sandbox.agent_tree("cart", &conversation.id).1);
     }
 
     let started = Instant::now();

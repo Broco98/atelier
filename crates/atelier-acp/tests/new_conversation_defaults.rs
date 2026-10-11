@@ -6,7 +6,7 @@
 mod common;
 
 use atelier_acp::Agent;
-use common::Sandbox;
+use common::{has_pair, Sandbox};
 use serde_json::json;
 
 /// 데이터 루트의 설정 파일에 이 글을 쓴다 — 사람이 손으로 쓴 것과 같다.
@@ -50,17 +50,6 @@ fn 설정에_codex_기본_모델과_모드가_있으면_새_대화가_그_값으
     host.shut_down();
 }
 
-/// `--flag 값` 짝이 있나.
-fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
-    args.windows(2).any(|pair| pair[0] == flag && pair[1] == value)
-}
-
-/// 가짜 claude가 그 대화의 세션으로 떠서 받은 인자.
-fn claude_args(sandbox: &Sandbox, conversation: &str) -> Vec<String> {
-    let receipt = sandbox.claude_receipt(&sandbox.agent_session_id("cart", conversation));
-    serde_json::from_value(receipt["args"].clone()).expect("받은 인자")
-}
-
 #[test]
 fn 설정에_claude_기본_모델과_모드가_있으면_새_대화가_그_값으로_열리고_claude가_플래그를_받는다() {
     let sandbox = Sandbox::new();
@@ -70,7 +59,7 @@ fn 설정에_claude_기본_모델과_모드가_있으면_새_대화가_그_값�
 
     let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
 
-    let args = claude_args(&sandbox, &conversation.id);
+    let args = sandbox.claude_args("cart", &conversation.id);
     assert!(has_pair(&args, "--model", "sonnet"), "{args:?}");
     assert!(has_pair(&args, "--permission-mode", "acceptEdits"), "{args:?}");
     assert_eq!((conversation.model.as_deref(), conversation.mode.as_deref()), (Some("sonnet"), Some("acceptEdits")));
@@ -119,7 +108,7 @@ fn 설정이_엔진_기본값이면_claude는_모델_모드_플래그를_받지_
 
         let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
 
-        let args = claude_args(&sandbox, &conversation.id);
+        let args = sandbox.claude_args("cart", &conversation.id);
         assert!(
             !args.iter().any(|arg| arg == "--model" || arg == "--permission-mode"),
             "사용자의 모델 · defaultMode를 물려받는다({settings}): {args:?}"

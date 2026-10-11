@@ -8,32 +8,9 @@
 
 mod common;
 
-use atelier_acp::{Agent, ConversationHost, QuitCounts};
-use common::{of_kind, Sandbox};
+use atelier_acp::QuitCounts;
+use common::{payloads_of, sent_texts, Sandbox};
 use serde_json::{json, Value};
-
-/// 그 원문을 되감는 가짜 claude로 Claude 대화 하나를 연다. `extra`는 가짜 claude에게 가는 env다.
-fn open(sandbox: &Sandbox, fixture: &str, extra: &[(&str, &str)]) -> (ConversationHost, String) {
-    sandbox.work("cart", &[]);
-    let mut env = vec![("FAKE_CLAUDE_FIXTURE", fixture)];
-    env.extend_from_slice(extra);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &env));
-    let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
-    sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-    });
-    (host, conversation.id)
-}
-
-/// 기록의 `turn-end` 줄들의 payload.
-fn turn_ends(record: &[Value]) -> Vec<Value> {
-    of_kind(record, "turn-end").into_iter().map(|line| line["payload"].clone()).collect()
-}
-
-/// 기록의 보낸 말 글들.
-fn sent_texts(record: &[Value]) -> Vec<String> {
-    of_kind(record, "sent").iter().map(|line| line["payload"]["text"].as_str().unwrap().to_owned()).collect()
-}
 
 /// 그 자리(`from`) 뒤의 답 조각 글들.
 fn answers_after(record: &[Value], from: usize) -> Vec<String> {
@@ -60,14 +37,14 @@ const SELF_ANSWER: &str = "백그라운드 명령어가 완료되었습니다. 2
 #[test]
 fn steer_background_subagent_백그라운드를_건_턴은_result에서_끝나고_스스로_이어_간_턴은_턴_밖_update와_턴_밖_끝으로_적힌다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/steer-background-subagent", &[]);
+    let (host, conversation) = sandbox.open_claude("2.1.282/steer-background-subagent", &[]);
     host.send("cart", &conversation, "15초 명령을 앞에서 돌리고 TURN-A-END라고 해").expect("첫 말");
     sandbox.wait_kind("cart", &conversation, "turn-end", 1);
 
     host.send("cart", &conversation, "20초 명령을 백그라운드로 걸고 곧바로 STARTED라고 해").expect("둘째 말");
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 3);
 
-    let ends = turn_ends(&record);
+    let ends = payloads_of(&record, "turn-end");
     let started = &ends[1];
     assert_eq!(
         (started["stopReason"].clone(), started["outOfTurn"].clone()),
@@ -107,7 +84,7 @@ fn steer_background_subagent_백그라운드를_건_턴은_result에서_끝나�
 fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기다렸다가_간다() {
     let sandbox = Sandbox::new();
     let (host, conversation) =
-        open(&sandbox, "2.1.282/steer-background-subagent", &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")]);
+        sandbox.open_claude("2.1.282/steer-background-subagent", &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")]);
     let session = sandbox.agent_session_id("cart", &conversation);
     host.send("cart", &conversation, "첫 말").expect("첫 말");
     sandbox.wait_kind("cart", &conversation, "turn-end", 1);
@@ -137,11 +114,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
     assert!(self_end < sent_at, "턴 밖 끝이 적힌 뒤에 대기 줄의 맨 앞이 간다:\n{}", common::lines_text(&record));
     assert_eq!(sent_texts(&record), ["첫 말", "백그라운드로 걸어", "그동안 보낸 말"]);
     assert_eq!(record[sent_at]["payload"]["prompt"], json!([{"type": "text", "text": "그동안 보낸 말"}]));
-    let deadline = std::time::Instant::now() + common::PATIENCE;
-    while user_lines(&sandbox, &session) < 3 {
-        assert!(std::time::Instant::now() < deadline, "대기 줄의 말이 claude에 가지 않았다");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    common::wait_for("대기 줄의 말이 claude에 가지 않았다", || user_lines(&sandbox, &session) >= 3);
     assert!(host.list_conversations("cart").unwrap()[0].queue.is_empty());
 
     host.shut_down();
@@ -151,9 +124,7 @@ fn 스스로_이어_간_턴_동안_보낸_말은_대기_줄에서_그_끝을_기
 fn 스스로_이어_간_턴이_spec_파일을_쓰면_그_턴의_끝에_changes_줄이_적힌다() {
     let sandbox = Sandbox::new();
     // 가짜는 백그라운드 작업이 도는 동안(스스로 이어 갈 턴의 앞에서) 멈춘다 — 진짜 claude 2.1.296은 14초 뒤에 이어 갔다(관문 G4).
-    let (host, conversation) = open(
-        &sandbox,
-        "2.1.296/g4-background",
+    let (host, conversation) = sandbox.open_claude("2.1.296/g4-background",
         &[("FAKE_CLAUDE_PERFORMS_WRITES", "1"), ("FAKE_CLAUDE_HOLD_BACKGROUND", "start")],
     );
     let session = sandbox.agent_session_id("cart", &conversation);
@@ -165,7 +136,7 @@ fn 스스로_이어_간_턴이_spec_파일을_쓰면_그_턴의_끝에_changes_�
     sandbox.release_claude_background(&session);
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 2);
 
-    let ends = turn_ends(&record);
+    let ends = payloads_of(&record, "turn-end");
     assert_eq!((ends[0]["outOfTurn"].clone(), ends[1]["outOfTurn"].clone()), (json!(false), json!(true)));
     let changes: Vec<(usize, Value)> = record
         .iter()
@@ -189,7 +160,7 @@ fn 스스로_이어_간_턴이_spec_파일을_쓰면_그_턴의_끝에_changes_�
 fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_끝에_우리가_멈춤이_실린다() {
     let sandbox = Sandbox::new();
     let (host, conversation) =
-        open(&sandbox, "2.1.282/steer-background-subagent", &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")]);
+        sandbox.open_claude("2.1.282/steer-background-subagent", &[("FAKE_CLAUDE_HOLD_BACKGROUND", "result")]);
     let session = sandbox.agent_session_id("cart", &conversation);
     host.send("cart", &conversation, "첫 말").expect("첫 말");
     sandbox.wait_kind("cart", &conversation, "turn-end", 1);
@@ -198,14 +169,12 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
 
     host.stop("cart", &conversation).expect("스스로 이어 간 턴도 멈춘다");
 
-    let deadline = std::time::Instant::now() + common::PATIENCE;
-    while !sandbox.claude_stdin(&session).iter().any(|line| line["request"]["subtype"] == "interrupt") {
-        assert!(std::time::Instant::now() < deadline, "claude가 interrupt를 받지 않았다");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    common::wait_for("claude가 interrupt를 받지 않았다", || {
+        sandbox.claude_stdin(&session).iter().any(|line| line["request"]["subtype"] == "interrupt")
+    });
     sandbox.release_claude_background(&session);
     let record = sandbox.wait_kind("cart", &conversation, "turn-end", 3);
-    let own = &turn_ends(&record)[2];
+    let own = &payloads_of(&record, "turn-end")[2];
     assert_eq!((own["outOfTurn"].clone(), own["cancelledByUs"].clone()), (json!(true), json!(true)));
     assert!(
         !sandbox.claude_events(&session).iter().any(|event| event == "signal SIGINT"),
@@ -215,84 +184,26 @@ fn 스스로_이어_간_턴을_멈추면_claude가_interrupt를_받고_턴_밖_�
     host.shut_down();
 }
 
-/// 변환기를 ACP로 직접 모는 시험의 줄 받기 — 변환기의 stdout 줄을 차례로 받는다.
-struct Wire {
-    stdin: std::process::ChildStdin,
-    lines: std::sync::mpsc::Receiver<Value>,
-    seen: Vec<Value>,
-}
-
-impl Wire {
-    fn send(&mut self, message: Value) {
-        use std::io::Write;
-        writeln!(self.stdin, "{message}").unwrap();
-    }
-
-    /// `done`을 채우는 줄이 올 때까지 받는다.
-    fn until(&mut self, done: impl Fn(&Value) -> bool) -> Value {
-        loop {
-            let line = self.lines.recv_timeout(common::PATIENCE).expect("변환기가 기다린 줄을 내지 않았다");
-            self.seen.push(line.clone());
-            if done(&line) {
-                return line;
-            }
-        }
-    }
-}
-
 #[test]
 fn 변환기는_스스로_이어_간_턴_동안_온_session_prompt를_그_턴의_result_뒤에_claude에_넣는다() {
-    use std::io::BufRead;
-    use std::os::unix::process::CommandExt;
-
     // 호스트가 스스로 이어 간 턴의 시작을 알기 전에 말을 보낸 꼴 — 변환기를 ACP로 직접 몬다.
     let sandbox = Sandbox::new();
-    let cwd = sandbox.bin("cwd");
-    let claude = sandbox.claude_bin().join("claude");
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_claude-translator"));
-    command
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("FAKE_CLAUDE_FIXTURE", "2.1.282/steer-background-subagent")
-        .env("FAKE_CLAUDE_HOLD_BACKGROUND", "result")
-        .env("FAKE_CLAUDE_RECEIPTS", sandbox.claude_receipts())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    // SAFETY: fork 뒤 exec 전의 자식에서 async-signal-safe한 setsid 하나만 부른다.
-    unsafe {
-        command.pre_exec(|| {
-            libc::setsid();
-            Ok(())
-        });
-    }
-    let mut translator = command.spawn().expect("변환기 시험 bin");
-    let stdout = std::io::BufReader::new(translator.stdout.take().unwrap());
-    let (tx, lines) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        for line in stdout.lines().map_while(Result::ok) {
-            if tx.send(serde_json::from_str::<Value>(&line).unwrap()).is_err() {
-                break;
-            }
-        }
-    });
-    let mut wire = Wire { stdin: translator.stdin.take().unwrap(), lines, seen: Vec::new() };
+    let (mut translator, mut wire) = common::spawn_translator(
+        &sandbox,
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.282/steer-background-subagent"), ("FAKE_CLAUDE_HOLD_BACKGROUND", "result")],
+    );
     let answer_to = |id: u64| move |line: &Value| line["id"] == id && line.get("method").is_none();
     let prompt = |id: u64, text: &str| {
         json!({"jsonrpc": "2.0", "id": id, "method": "session/prompt",
                "params": {"sessionId": "", "prompt": [{"type": "text", "text": text}]}})
     };
 
-    wire.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1}}));
-    let initialized = wire.until(answer_to(1));
+    let (initialized, session) = wire.open_session(&sandbox);
     assert_eq!(
         initialized["result"]["agentCapabilities"],
         json!({"loadSession": true, "sessionCapabilities": {"resume": {}}}),
         "되살리기는 load와 resume을 둘 다 광고한다(워크플로 S19)"
     );
-    wire.send(json!({"jsonrpc": "2.0", "id": 2, "method": "session/new",
-                     "params": {"cwd": cwd, "mcpServers": [], "_meta": {"atelier": {"claudePath": claude}}}}));
-    let session = wire.until(answer_to(2))["result"]["sessionId"].as_str().unwrap().to_owned();
     wire.send(prompt(3, "첫 말"));
     wire.until(answer_to(3));
     wire.send(prompt(4, "백그라운드로 걸어"));
@@ -306,11 +217,7 @@ fn 변환기는_스스로_이어_간_턴_동안_온_session_prompt를_그_턴의
     sandbox.release_claude_background(&session);
     let ended = wire.until(|line| line["params"]["update"]["_meta"]["atelier"]["outOfTurn"]["state"] == "ended");
     assert_eq!(ended["params"]["update"]["_meta"]["atelier"]["outOfTurn"]["response"]["stopReason"], "end_turn");
-    let deadline = std::time::Instant::now() + common::PATIENCE;
-    while user_lines(&sandbox, &session) < 3 {
-        assert!(std::time::Instant::now() < deadline, "미뤄 둔 말이 claude에 가지 않았다");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    common::wait_for("미뤄 둔 말이 claude에 가지 않았다", || user_lines(&sandbox, &session) >= 3);
     let stdin = sandbox.claude_stdin(&session);
     let last_user = stdin.iter().rfind(|line| line["type"] == "user").unwrap();
     assert_eq!(last_user["message"]["content"], json!([{"type": "text", "text": "그동안 보낸 말"}]));
@@ -324,13 +231,5 @@ fn 변환기는_스스로_이어_간_턴_동안_온_session_prompt를_그_턴의
     assert_eq!(wire.until(answer_to(5))["result"]["stopReason"], "cancelled");
 
     drop(wire);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while translator.try_wait().unwrap().is_none() {
-        if std::time::Instant::now() > deadline {
-            // SAFETY: 이 시험이 새 세션에 띄운 그룹이다.
-            unsafe { libc::killpg(translator.id() as i32, libc::SIGKILL) };
-            panic!("변환기가 stdin EOF 뒤에 끝나지 않았다");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    common::assert_translator_exits(&mut translator);
 }

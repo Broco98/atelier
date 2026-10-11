@@ -5,8 +5,8 @@
 
 mod common;
 
-use atelier_acp::{Agent, HostError, HostEvent, QueuedMessage};
-use common::{of_kind, Sandbox};
+use atelier_acp::{Agent, HostError, QueuedMessage};
+use common::{of_kind, payloads_of, sent_texts, Sandbox};
 use serde_json::json;
 
 #[test]
@@ -94,25 +94,6 @@ fn 멈춘_뒤에_늦게_온_도구_update가_턴_끝_뒤에_턴_밖_update_줄�
     host.shut_down();
 }
 
-/// 그 대화의 대기 줄 바뀜 이벤트들 — 이벤트마다 대기 줄의 글들.
-fn queue_texts(events: &common::Events, slug: &str, id: &str) -> Vec<Vec<String>> {
-    queue_events(events, slug, id)
-        .into_iter()
-        .map(|queue| queue.into_iter().map(|queued| queued.text).collect())
-        .collect()
-}
-
-fn queue_events(events: &common::Events, slug: &str, id: &str) -> Vec<Vec<QueuedMessage>> {
-    events
-        .all()
-        .into_iter()
-        .filter_map(|event| match event {
-            HostEvent::Queue { work, conversation, queue } if work == slug && conversation == id => Some(queue),
-            _ => None,
-        })
-        .collect()
-}
-
 /// 대화 목록에 실린 그 대화의 대기 줄.
 fn listed_queue(host: &atelier_acp::ConversationHost, slug: &str, id: &str) -> Vec<QueuedMessage> {
     host.list_conversations(slug)
@@ -121,11 +102,6 @@ fn listed_queue(host: &atelier_acp::ConversationHost, slug: &str, id: &str) -> V
         .find(|conversation| conversation.id == id)
         .expect("목록에 그 대화가 있다")
         .queue
-}
-
-/// 기록의 `sent` 줄들이 화면에 보일 글.
-fn sent_texts(record: &[serde_json::Value]) -> Vec<String> {
-    of_kind(record, "sent").iter().map(|line| line["payload"]["text"].as_str().unwrap().to_owned()).collect()
 }
 
 #[test]
@@ -142,9 +118,9 @@ fn 턴이_도는_동안_보낸_말_둘이_대기_줄에_들어_이벤트와_목�
     host.send("cart", &conversation.id, "둘째 말").expect("도는 동안의 말은 대기 줄에 든다");
     host.send("cart", &conversation.id, "셋째 말").expect("도는 동안의 말은 대기 줄에 든다");
 
-    assert_eq!(queue_texts(&events, "cart", &conversation.id), [vec!["둘째 말"], vec!["둘째 말", "셋째 말"]]);
+    assert_eq!(events.queue_texts("cart", &conversation.id), [vec!["둘째 말"], vec!["둘째 말", "셋째 말"]]);
     let queue = listed_queue(&host, "cart", &conversation.id);
-    assert_eq!(queue, queue_events(&events, "cart", &conversation.id)[1], "목록의 대기 줄이 마지막 이벤트와 같다");
+    assert_eq!(queue, events.queues("cart", &conversation.id)[1], "목록의 대기 줄이 마지막 이벤트와 같다");
     assert!(queue.iter().all(|queued| !queued.send_now) && queue[0].id != queue[1].id, "{queue:?}");
     assert_eq!(sent_texts(&sandbox.record("cart", &conversation.id)), ["첫 말"], "대기 줄은 기록에 없다(메모리에만 둔다)");
     assert_eq!(sandbox.acp_prompts(&session_id).len(), 1, "도는 동안에는 에이전트에 가지 않는다");
@@ -164,7 +140,7 @@ fn 턴이_도는_동안_보낸_말_둘이_대기_줄에_들어_이벤트와_목�
         "대기 줄의 말도 같은 세션의 다음 말이라 머리말이 없다"
     );
     assert_eq!(
-        queue_texts(&events, "cart", &conversation.id)[2..],
+        events.queue_texts("cart", &conversation.id)[2..],
         [vec!["셋째 말"], vec![]],
         "하나씩 갈 때마다 대기 줄 바뀜이 난다"
     );
@@ -191,7 +167,7 @@ fn 대기_줄의_말을_대기_id로_고치고_지우면_대기_줄과_이벤트
     host.delete_queued("cart", &conversation.id, &queue[0].id).expect("지우기");
 
     assert_eq!(
-        queue_texts(&events, "cart", &conversation.id)[3..],
+        events.queue_texts("cart", &conversation.id)[3..],
         [vec!["가", "나를 고쳤다", "다"], vec!["나를 고쳤다", "다"]],
         "고치기 · 지우기마다 대기 줄 바뀜이 난다"
     );
@@ -213,7 +189,7 @@ fn 대기_줄의_말을_대기_id로_고치고_지우면_대기_줄과_이벤트
         host.edit_queued("cart", &conversation.id, "no-such-queued", "글"),
         Err(HostError::QueuedNotFound("no-such-queued".into()))
     );
-    assert_eq!(queue_events(&events, "cart", &conversation.id).len(), 5, "고르지 못한 고치기 · 지우기는 대기 줄을 바꾸지 않는다");
+    assert_eq!(events.queues("cart", &conversation.id).len(), 5, "고르지 못한 고치기 · 지우기는 대기 줄을 바꾸지 않는다");
 
     sandbox.release_turn(&session_id);
 
@@ -267,11 +243,11 @@ fn 지금_보내기는_cancel_cancelled_그_말의_prompt_순이고_sent에_지�
     assert_eq!(send_now, [json!(false), json!(true), json!(false), json!(false)], "sent의 「지금 보내기였는지」");
     assert_eq!(sandbox.acp_prompts(&session_id)[1]["prompt"], json!([{"type": "text", "text": "다"}]));
     assert_eq!(
-        queue_events(&events, "cart", &conversation.id)[3],
+        events.queues("cart", &conversation.id)[3],
         [QueuedMessage { send_now: true, ..queue[2].clone() }, queue[0].clone(), queue[1].clone()],
         "지금 보낸 말은 멈춤을 기다리는 동안 맨 앞에 「지금 보내기」로 선다"
     );
-    assert_eq!(queue_texts(&events, "cart", &conversation.id)[4..], [vec!["가", "나"], vec!["나"], vec![]]);
+    assert_eq!(events.queue_texts("cart", &conversation.id)[4..], [vec!["가", "나"], vec!["나"], vec![]]);
 
     host.shut_down();
 }
@@ -350,7 +326,7 @@ fn 대기_줄에서_간_말의_턴도_고친_곳을_적고_앞_턴이_고친_것
     sandbox.open_gate("first-may-end");
 
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
-    let changes: Vec<_> = of_kind(&record, "changes").into_iter().map(|line| line["payload"].clone()).collect();
+    let changes = payloads_of(&record, "changes");
     assert_eq!(
         changes,
         [
@@ -418,7 +394,7 @@ fn 로그인이_풀려_끝난_턴_뒤에는_대기_줄이_가지_않고_됨이_�
     assert_eq!(prompts[0]["prompt"].as_array().unwrap().len(), 2, "새 세션의 첫 말이라 머리말이 붙는다(S11)");
     assert_eq!(prompts[0]["prompt"][1], json!({"type": "text", "text": "둘째 말"}));
     assert_eq!(listed_queue(&host, "cart", &conversation.id), []);
-    assert_eq!(queue_texts(&events, "cart", &conversation.id).last(), Some(&Vec::<String>::new()), "맨 앞이 가며 빈 대기 줄을 알린다");
+    assert_eq!(events.queue_texts("cart", &conversation.id).last(), Some(&Vec::<String>::new()), "맨 앞이 가며 빈 대기 줄을 알린다");
 
     host.shut_down();
 }

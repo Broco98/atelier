@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 
 use atelier_acp::{Agent, HostEvent, RecordKind};
-use common::{of_kind, Sandbox};
+use common::{of_kind, payloads_of, Sandbox};
 use serde_json::{json, Value};
 
 /// `writes-spec`의 「고친 곳」 단계가 고칠 처음 spec. `keep.md`는 손대지 않는다.
@@ -20,11 +20,6 @@ fn lay_spec(work: &Path) {
     fs::write(spec.join("old.md"), "# 지울 문서\n").unwrap();
     fs::write(spec.join("notes.txt"), "초안\n").unwrap();
     fs::write(spec.join("keep.md"), "# 그대로 둘 문서\n").unwrap();
-}
-
-/// 기록의 `changes` 줄들의 payload.
-fn changes(record: &[Value]) -> Vec<Value> {
-    of_kind(record, "changes").into_iter().map(|line| line["payload"].clone()).collect()
 }
 
 #[test]
@@ -44,7 +39,7 @@ fn writes_spec의_턴_끝에_새_문서_고침_지움이_서고_고친_md의_줄
         "가짜가 고친 새 글 — 옛 글의 3줄이 새 글의 3 · 4줄이 되고, 옛 8줄이 새 9줄이 된다"
     );
     assert_eq!(
-        changes(&record),
+        payloads_of(&record, "changes"),
         [json!({"files": [
             {"path": "drafts/idea.md", "change": "created", "lines": [{"start": 1, "end": 3}]},
             {"path": "notes.txt", "change": "modified"},
@@ -95,7 +90,7 @@ fn 도구_update_없이_셸로_고친_것처럼_쓴_파일도_적힌다() {
         .collect();
     assert_eq!(tool_updates, Vec::<&Value>::new(), "에이전트는 도구 줄을 하나도 보내지 않았다");
     assert_eq!(
-        changes(&record),
+        payloads_of(&record, "changes"),
         [json!({"files": [
             {"path": "old.md", "change": "deleted"},
             {"path": "plan.md", "change": "modified", "lines": [{"start": 5, "end": 5}]},
@@ -129,13 +124,13 @@ fn 두_대화가_겹쳐_돌며_한쪽만_고치면_두_대화의_턴_끝에_모�
         {"path": "plan.md", "change": "modified", "lines": [{"start": 7, "end": 7}]},
         {"path": "together.md", "change": "created", "lines": [{"start": 1, "end": 1}]},
     ]});
-    assert_eq!(changes(&written), std::slice::from_ref(&expected), "고친 대화의 턴 끝");
+    assert_eq!(payloads_of(&written, "changes"), std::slice::from_ref(&expected), "고친 대화의 턴 끝");
     assert_eq!(of_kind(&sandbox.record("cart", &holding.id), "turn-end").len(), 0, "붙잡힌 턴은 아직 돈다");
 
     sandbox.open_gate("holding-may-end");
     let held = sandbox.wait_kind("cart", &holding.id, "turn-end", 1);
 
-    assert_eq!(changes(&held), [expected], "고치지 않은 대화의 턴에도 같은 고친 곳이 적힌다 — 누가 고쳤는지 모를 때도 놓치지 않는다");
+    assert_eq!(payloads_of(&held, "changes"), [expected], "고치지 않은 대화의 턴에도 같은 고친 곳이 적힌다 — 누가 고쳤는지 모를 때도 놓치지 않는다");
 
     host.shut_down();
 }
@@ -174,7 +169,7 @@ fn mb_하나를_넘는_파일은_해시로만_바뀜을_알고_md_텍스트가_�
 
     assert_eq!(fs::metadata(spec.join("image.png")).unwrap().len(), image.len() as u64, "크기는 그대로다");
     assert_eq!(
-        changes(&record),
+        payloads_of(&record, "changes"),
         [json!({"files": [
             {"path": "big.md", "change": "modified"},
             {"path": "image.png", "change": "modified"},
@@ -253,7 +248,7 @@ fn md의_줄_범위는_새_글_기준이고_지우기만_한_자리는_범위가
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
 
     assert_eq!(
-        changes(&record),
+        payloads_of(&record, "changes"),
         [json!({"files": [{"path": "plan.md", "change": "modified", "lines": [{"start": 1, "end": 1}, {"start": 9, "end": 9}]}]})],
         "더한 줄은 새 글의 1줄과 9줄이고, 빈 줄을 지운 자리는 새 글에 줄이 없다"
     );

@@ -10,31 +10,8 @@
 mod common;
 
 use atelier_acp::{Agent, ConversationDefaults, ConversationHost, EngineCheck, EngineState, HostError};
-use common::{of_kind, Sandbox};
+use common::{has_pair, of_kind, opened_hows, Sandbox, NO_BROWSER};
 use serde_json::{json, Value};
-
-/// `--flag 값` 짝이 있나.
-fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
-    args.windows(2).any(|pair| pair[0] == flag && pair[1] == value)
-}
-
-/// 가짜 claude가 뜰 때마다 받은 인자 — 뜬 차례대로.
-fn launch_args(sandbox: &Sandbox) -> Vec<Vec<String>> {
-    sandbox
-        .claude_launches()
-        .iter()
-        .map(|launch| serde_json::from_value(launch["args"].clone()).expect("받은 인자"))
-        .collect()
-}
-
-/// 기록의 열림 줄들이 말하는 길(`how`) — 온 차례대로.
-fn opened_hows(record: &[Value]) -> Vec<String> {
-    record
-        .iter()
-        .filter(|line| line["kind"] == "session" && line["payload"]["state"] == "opened")
-        .map(|line| line["payload"]["how"].as_str().expect("how").to_owned())
-        .collect()
-}
 
 /// 어제의 Claude 대화 — 모델 · 모드를 고른 대화에서 한 턴을 돌리고 호스트를 끈다.
 fn yesterday(sandbox: &Sandbox, host: ConversationHost) -> String {
@@ -61,7 +38,7 @@ fn 호스트를_다시_지은_뒤_claude_대화에_말을_보내면_가짜_claud
     host.send("cart", &id, "오늘의 말").expect("말을 보내면 띄워 되살린다");
     let record = sandbox.wait_kind("cart", &id, "turn-end", 2);
 
-    let launches = launch_args(&sandbox);
+    let launches = sandbox.claude_launch_args();
     assert_eq!(launches.len(), 2, "보낼 때 하나가 뜬다");
     let revived = &launches[1];
     assert!(has_pair(revived, "--resume", &session), "기록의 세션 id로 되살린다: {revived:?}");
@@ -102,7 +79,7 @@ fn 되살릴_세션을_claude가_모르면_load로_다시_띄우지_않고_새_�
     host.send("cart", &id, "오늘의 말").expect("보내기");
     let record = sandbox.wait_kind("cart", &id, "turn-end", 2);
 
-    let launches = launch_args(&sandbox);
+    let launches = sandbox.claude_launch_args();
     assert_eq!(
         launches.len(),
         3,
@@ -125,19 +102,13 @@ fn 되살릴_세션을_claude가_모르면_load로_다시_띄우지_않고_새_�
     let user = stdin.iter().find(|line| line["type"] == "user").expect("새 세션이 받은 말");
     assert_eq!(
         user["message"]["content"][0]["text"],
-        json!(format!(
-            "Atelier work 안에서 열린 대화다.\n\n- work slug: `cart`\n- 제목: cart 제목\n- spec 폴더(specDir): `{}`\n",
-            work.join("spec").display()
-        )),
+        common::preamble(&work, "cart")["text"],
         "새 세션의 첫 말에 머리말이 다시 붙는다(S11)"
     );
     assert_eq!(user["message"]["content"][1]["text"], "오늘의 말");
 
     host.shut_down();
 }
-
-/// 검사에서 진짜 브라우저를 막는 `BROWSER`(실측 함정 40).
-const NO_BROWSER: Option<&str> = Some("/usr/bin/true");
 
 #[test]
 fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_줄과_엔진_상태로_오고_오류_글은_답으로_서지_않는다() {
@@ -183,7 +154,7 @@ fn noauth_첫_턴의_authentication_failed는_codex와_같은_로그인_필요_�
 
     // 터미널에서 로그인하고 「다시 확인」을 눌렀다 — 같은 세션을 --resume으로 다시 띄운다(티켓 10의 길).
     assert!(matches!(host.check_engine(Agent::Claude, true), Ok(EngineCheck::Found { logged_in: true, .. })));
-    let launches = launch_args(&sandbox);
+    let launches = sandbox.claude_launch_args();
     assert_eq!(launches.len(), 2, "떠 있던 claude를 끄고 새로 띄웠다 — 새 로그인을 읽는다는 보장이 없다");
     assert!(has_pair(&launches[1], "--resume", &session), "{:?}", launches[1]);
     assert_eq!(opened_hows(&sandbox.record("cart", &conversation.id)), ["new", "resumed"]);

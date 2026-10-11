@@ -6,7 +6,7 @@
 mod common;
 
 use atelier_acp::{Agent, HostError};
-use common::{emitted, of_kind, Sandbox};
+use common::{emitted, of_kind, payloads_of, Sandbox};
 use serde_json::json;
 
 #[test]
@@ -21,13 +21,7 @@ fn 첫_말은_머리말_블록과_사람의_블록이고_sent에_둘_다_남고_
     host.send("cart", &conversation.id, "둘째 말이다").expect("둘째 말");
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
 
-    let preamble = json!({
-        "type": "text",
-        "text": format!(
-            "Atelier work 안에서 열린 대화다.\n\n- work slug: `cart`\n- 제목: cart 제목\n- spec 폴더(specDir): `{}`\n",
-            work.join("spec").display()
-        )
-    });
+    let preamble = common::preamble(&work, "cart");
     let first = json!({"type": "text", "text": "첫 말이다"});
     let second = json!({"type": "text", "text": "둘째 말이다"});
 
@@ -35,7 +29,7 @@ fn 첫_말은_머리말_블록과_사람의_블록이고_sent에_둘_다_남고_
     let blocks: Vec<_> = prompts.iter().map(|prompt| prompt["prompt"].clone()).collect();
     assert_eq!(blocks, [json!([preamble, first]), json!([second])], "머리말은 에이전트 쪽 세션의 첫 말에만 붙는다(S11)");
 
-    let sent: Vec<_> = of_kind(&record, "sent").into_iter().map(|line| line["payload"].clone()).collect();
+    let sent: Vec<_> = payloads_of(&record, "sent");
     assert_eq!(
         sent,
         [
@@ -88,7 +82,7 @@ fn update가_보낸_순서대로_원문_그대로_적히고_모르는_kind_뒤�
     let mut expected_kinds = vec![json!("update"); 7];
     expected_kinds.push(json!("turn-end"));
     assert_eq!(after_sent, expected_kinds, "sent 뒤로 update 일곱, 그리고 턴 끝");
-    let updates: Vec<_> = of_kind(&record, "update").into_iter().map(|line| line["payload"].clone()).collect();
+    let updates: Vec<_> = payloads_of(&record, "update");
     assert_eq!(updates, codex_one_turn_updates(&session_id), "스키마가 모르는 kind와 칸까지 원문 그대로다");
 
     let end = &of_kind(&record, "turn-end")[0]["payload"];
@@ -148,7 +142,7 @@ fn 에이전트의_stderr가_줄_단위로_stderr_줄로_적힌다() {
     host.send("cart", &conversation.id, "말").expect("보내기");
     let record = sandbox.wait_kind("cart", &conversation.id, "stderr", 2);
 
-    let lines: Vec<_> = of_kind(&record, "stderr").into_iter().map(|line| line["payload"].clone()).collect();
+    let lines: Vec<_> = payloads_of(&record, "stderr");
     assert_eq!(lines, [json!({"line": "codex: warming up"}), json!({"line": "경고: 느린 디스크"})]);
     sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
     let record = sandbox.record("cart", &conversation.id);

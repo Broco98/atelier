@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use atelier_acp::{Agent, ConversationHost, EngineState, HostEvent, ShellSource, TranslatorCommand};
+use atelier_acp::{Agent, ConversationHost, EngineState, HostEvent, QueuedMessage, ShellSource, TranslatorCommand};
 use serde_json::Value;
 
 /// 가짜 로그인 셸의 시나리오.
@@ -125,20 +125,12 @@ impl Sandbox {
 
     /// 가짜 로그인 셸이 받은 호출들 — 줄마다 받은 플래그.
     pub fn shell_calls(&self) -> Vec<String> {
-        fs::read_to_string(self.receipts().join("calls"))
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_owned)
-            .collect()
+        text_lines(&self.receipts().join("calls"))
     }
 
     /// 가짜 로그인 셸이 적은 pid들(셸 자신 · 배경 작업).
     pub fn shell_pids(&self) -> Vec<u32> {
-        fs::read_to_string(self.receipts().join("pids"))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| line.trim().parse().expect("pid 줄"))
-            .collect()
+        pid_lines(&self.receipts().join("pids"))
     }
 
     /// 가짜 로그인 셸이 떠 둔 로그인 env.
@@ -302,6 +294,30 @@ impl Sandbox {
         ))
     }
 
+    /// 그 원문(`FAKE_CLAUDE_FIXTURE`)을 되감는 가짜 claude로 `cart` work에 Claude 대화 하나를 연다. `extra`는 가짜 claude에게
+    /// 가는 env다. 명령 목록은 `session/new`의 답 뒤에 따로 온다 — 그것까지 적힌 뒤에 돌려줘야 턴의 줄과 섞이지 않는다.
+    pub fn open_claude(&self, fixture: &str, extra: &[(&str, &str)]) -> (ConversationHost, String) {
+        self.work("cart", &[]);
+        let mut env = vec![("FAKE_CLAUDE_FIXTURE", fixture)];
+        env.extend_from_slice(extra);
+        let host = self.host(self.claude_login_shell("normal", &env));
+        let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
+        self.wait_record("cart", &conversation.id, |record| {
+            record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
+        });
+        (host, conversation.id)
+    }
+
+    /// 가짜 claude가 그 대화의 세션으로 떠서 받은 인자.
+    pub fn claude_args(&self, slug: &str, conversation: &str) -> Vec<String> {
+        receipt_args(&self.claude_receipt(&self.agent_session_id(slug, conversation)))
+    }
+
+    /// 가짜 claude가 `-p`로 뜰 때마다 받은 인자 — 뜬 차례대로.
+    pub fn claude_launch_args(&self) -> Vec<Vec<String>> {
+        self.claude_launches().iter().map(receipt_args).collect()
+    }
+
     /// 가짜 claude의 영수증 폴더.
     pub fn claude_receipts(&self) -> PathBuf {
         self.receipts().join("claude")
@@ -309,9 +325,7 @@ impl Sandbox {
 
     /// 가짜 claude가 그 세션 id(`--session-id`)로 떠서 남긴 영수증.
     pub fn claude_receipt(&self, session_id: &str) -> Value {
-        let path = self.claude_receipts().join(format!("{session_id}.json"));
-        serde_json::from_str(&fs::read_to_string(&path).unwrap_or_else(|_| panic!("영수증이 없다: {}", path.display())))
-            .unwrap()
+        receipt_at(&self.claude_receipts().join(format!("{session_id}.json")))
     }
 
     /// 가짜 claude가 남긴 영수증 전부 — 세션 id를 모를 때(열기가 실패한 대화).
@@ -331,30 +345,18 @@ impl Sandbox {
 
     /// 가짜 claude가 떠 있는 동안 겪은 일들(stdin EOF · 받은 시그널).
     pub fn claude_events(&self, session_id: &str) -> Vec<String> {
-        fs::read_to_string(self.claude_receipts().join(format!("{session_id}.events")))
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_owned)
-            .collect()
+        text_lines(&self.claude_receipts().join(format!("{session_id}.events")))
     }
 
     /// 가짜 claude가 stdin으로 받은 줄들.
     pub fn claude_stdin(&self, session_id: &str) -> Vec<Value> {
-        fs::read_to_string(self.claude_receipts().join(format!("{session_id}.stdin")))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("가짜 claude가 받은 줄은 JSON"))
-            .collect()
+        json_lines(&self.claude_receipts().join(format!("{session_id}.stdin")))
     }
 
     /// 가짜 claude가 `-p`로 뜰 때마다 남긴 줄 — `{pid, args}`, 뜬 차례대로. 되살리기가 실패해 곧바로 끝난 claude도 선다
     /// (three-axes 티켓 16).
     pub fn claude_launches(&self) -> Vec<Value> {
-        fs::read_to_string(self.claude_receipts().join("launches"))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("영수증 줄은 JSON"))
-            .collect()
+        json_lines(&self.claude_receipts().join("launches"))
     }
 
     /// `FAKE_CLAUDE_HOLD_BACKGROUND`로 붙잡힌 스스로 이어 간 턴을 놓는다 — 가짜가 기다리던 `<세션 id>.go`를 만든다.
@@ -364,11 +366,7 @@ impl Sandbox {
 
     /// 영수증 폴더의 `name` 파일에 한 줄씩 적힌 pid들 — 가짜 `codex-acp` 스크립트가 적는다.
     pub fn receipt_pids(&self, name: &str) -> Vec<u32> {
-        fs::read_to_string(self.acp_receipts().join(name))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| line.trim().parse().expect("pid 줄"))
-            .collect()
+        pid_lines(&self.acp_receipts().join(name))
     }
 
     fn acp_receipts(&self) -> PathBuf {
@@ -382,18 +380,12 @@ impl Sandbox {
 
     /// 가짜 ACP 에이전트가 그 세션을 열 때 남긴 영수증.
     pub fn acp_receipt(&self, session_id: &str) -> Value {
-        let path = self.acp_receipts().join(format!("{session_id}.json"));
-        serde_json::from_str(&fs::read_to_string(&path).unwrap_or_else(|_| panic!("영수증이 없다: {}", path.display())))
-            .unwrap()
+        receipt_at(&self.acp_receipts().join(format!("{session_id}.json")))
     }
 
     /// 가짜 ACP 에이전트가 세션을 연 뒤 겪은 일들(줄마다 하나).
     pub fn acp_events(&self, session_id: &str) -> Vec<String> {
-        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.events")))
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_owned)
-            .collect()
+        text_lines(&self.acp_receipts().join(format!("{session_id}.events")))
     }
 
     /// `pauses-mid-turn`의 턴을 놓는다 — 가짜가 기다리던 `<세션 id>.go`를 만든다.
@@ -420,12 +412,7 @@ impl Sandbox {
 
     /// 그 대화의 기록 파일 줄들.
     pub fn record(&self, slug: &str, conversation: &str) -> Vec<Value> {
-        let path = self.record_path(slug, conversation);
-        fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("없다: {}", path.display()))
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("기록 줄은 JSON"))
-            .collect()
+        record_at(&self.record_path(slug, conversation))
     }
 
     pub fn record_path(&self, slug: &str, conversation: &str) -> PathBuf {
@@ -435,17 +422,7 @@ impl Sandbox {
     /// 기록이 `done`을 채울 때까지 기다린다. 턴은 에이전트의 스레드에서 흐르므로 시험은 기록을 지켜본다.
     /// 마감을 넘기면 그때까지의 기록을 싣고 터진다.
     pub fn wait_record(&self, slug: &str, conversation: &str, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
-        let deadline = Instant::now() + PATIENCE;
-        loop {
-            let record = self.record(slug, conversation);
-            if done(&record) {
-                return record;
-            }
-            if Instant::now() > deadline {
-                panic!("기록이 기다린 꼴이 되지 않았다:\n{}", lines_text(&record));
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        wait_record_at(&self.record_path(slug, conversation), done)
     }
 
     /// 그 kind의 줄이 `n`개 적힐 때까지 기다린다.
@@ -455,29 +432,17 @@ impl Sandbox {
 
     /// 가짜 ACP 에이전트가 그 세션에서 받은 `session/prompt`의 인자들 — 받은 순서대로.
     pub fn acp_prompts(&self, session_id: &str) -> Vec<Value> {
-        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.prompts")))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("prompt 영수증 줄은 JSON"))
-            .collect()
+        self.acp_lines(&format!("{session_id}.prompts"))
     }
 
     /// 가짜 ACP 에이전트가 그 세션을 연 뒤 받은 메시지의 메서드들 — 받은 차례대로(요청과 알림 모두).
     pub fn acp_inbox(&self, session_id: &str) -> Vec<String> {
-        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.inbox")))
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_owned)
-            .collect()
+        text_lines(&self.acp_receipts().join(format!("{session_id}.inbox")))
     }
 
     /// 가짜 ACP 에이전트가 보낸 요청(권한 요청)에 받은 답들 — 원문 그대로, 받은 차례대로.
     pub fn acp_responses(&self, session_id: &str) -> Vec<Value> {
-        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.responses")))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("답 영수증 줄은 JSON"))
-            .collect()
+        self.acp_lines(&format!("{session_id}.responses"))
     }
 
     /// 가짜 ACP 에이전트의 영수증 폴더에 있는 파일 이름들.
@@ -489,26 +454,19 @@ impl Sandbox {
 
     /// 가짜 ACP 에이전트가 그 세션에서 받은 모드 · 설정 바꾸기들 — `{method, params}` 원문, 받은 차례대로(three-axes 티켓 09).
     pub fn acp_config(&self, session_id: &str) -> Vec<Value> {
-        fs::read_to_string(self.acp_receipts().join(format!("{session_id}.config")))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("바꾸기 영수증 줄은 JSON"))
-            .collect()
+        self.acp_lines(&format!("{session_id}.config"))
     }
 
     /// 가짜가 받은 답이 `done`을 채울 때까지 기다린다 — 답은 가짜의 스레드에서 적힌다.
     pub fn wait_acp_responses(&self, session_id: &str, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
-        let deadline = Instant::now() + PATIENCE;
-        loop {
+        wait_until("가짜가 받은 답이 기다린 꼴이 되지 않았다", || {
             let responses = self.acp_responses(session_id);
             if done(&responses) {
-                return responses;
+                Ok(responses)
+            } else {
+                Err(lines_text(&responses))
             }
-            if Instant::now() > deadline {
-                panic!("가짜가 받은 답이 기다린 꼴이 되지 않았다:\n{}", lines_text(&responses));
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        })
     }
 
     /// 가짜 ACP 에이전트가 뜰 때마다(`initialize`를 받을 때마다) 남긴 줄 — `{pid}`, 뜬 차례대로(three-axes 티켓 10).
@@ -523,22 +481,122 @@ impl Sandbox {
     }
 
     fn acp_lines(&self, name: &str) -> Vec<Value> {
-        fs::read_to_string(self.acp_receipts().join(name))
-            .unwrap_or_default()
-            .lines()
-            .map(|line| serde_json::from_str(line).expect("영수증 줄은 JSON"))
-            .collect()
+        json_lines(&self.acp_receipts().join(name))
     }
 
     /// 그 대화의 에이전트 쪽 세션 id(`agents.json`).
     pub fn agent_session_id(&self, slug: &str, conversation: &str) -> String {
         self.agents_row(slug, conversation)["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned()
     }
+
+    /// 가짜 ACP 에이전트와 그 후손의 pid, 그리고 에이전트 쪽 세션 id — 가짜가 영수증에 적었다.
+    pub fn agent_tree(&self, slug: &str, conversation: &str) -> (String, Vec<u32>) {
+        let session_id = self.agent_session_id(slug, conversation);
+        let receipt = self.acp_receipt(&session_id);
+        let mut pids = vec![receipt["pid"].as_u64().unwrap() as u32];
+        pids.extend(receipt["descendants"].as_array().unwrap().iter().map(|pid| pid.as_u64().unwrap() as u32));
+        (session_id, pids)
+    }
 }
 
 /// 변환기 시험 bin — 앱 진입점의 `acp-claude` 갈래와 같은 진입 함수를 부른다.
 pub fn translator() -> TranslatorCommand {
     TranslatorCommand::new(env!("CARGO_BIN_EXE_claude-translator"), Vec::<String>::new())
+}
+
+// ── 변환기를 ACP로 직접 몰기 ─────────────────────────────────────────────────────
+
+/// 변환기 시험 bin을 ACP로 직접 모는 시험의 선 — 변환기의 stdin에 쓰고, stdout 줄을 차례로 받는다. 놓으면(`drop`) 변환기의
+/// stdin이 닫힌다.
+pub struct Wire {
+    stdin: std::process::ChildStdin,
+    lines: std::sync::mpsc::Receiver<Value>,
+    /// 지금까지 받은 줄들 — 받은 차례대로.
+    pub seen: Vec<Value>,
+}
+
+impl Wire {
+    pub fn send(&mut self, message: Value) {
+        use std::io::Write;
+        writeln!(self.stdin, "{message}").unwrap();
+    }
+
+    /// `done`을 채우는 줄이 올 때까지 받는다. 마감(`PATIENCE`) 안에 오지 않거나 변환기가 끝나면 터진다.
+    pub fn until(&mut self, done: impl Fn(&Value) -> bool) -> Value {
+        loop {
+            let line = self.lines.recv_timeout(PATIENCE).expect("변환기가 기다린 줄을 내지 않았다");
+            self.seen.push(line.clone());
+            if done(&line) {
+                return line;
+            }
+        }
+    }
+
+    /// `initialize`(요청 id 1)와 `session/new`(요청 id 2 — 샌드박스의 자리 `cwd`와 가짜 claude의 자리)를 보낸다. `initialize`의
+    /// 답과 연 세션 id를 돌려준다.
+    pub fn open_session(&mut self, sandbox: &Sandbox) -> (Value, String) {
+        let answer_to = |id: u64| move |line: &Value| line["id"] == id && line.get("method").is_none();
+        self.send(serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1}}));
+        let initialized = self.until(answer_to(1));
+        let (cwd, claude) = (sandbox.bin("cwd"), sandbox.claude_bin().join("claude"));
+        self.send(serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "session/new",
+                                     "params": {"cwd": cwd, "mcpServers": [], "_meta": {"atelier": {"claudePath": claude}}}}));
+        let session = self.until(answer_to(2))["result"]["sessionId"].as_str().expect("세션 id").to_owned();
+        (initialized, session)
+    }
+}
+
+/// 변환기 시험 bin을 띄운다 — 호스트 없이. env는 PATH(`/usr/bin:/bin`)와 가짜 claude의 영수증 자리에 `env`를 더한 것뿐이다.
+/// 시험이 실패해도 남은 것을 그룹째 거둘 수 있게 새 세션에 띄운다.
+pub fn spawn_translator(sandbox: &Sandbox, env: &[(&str, &str)]) -> (std::process::Child, Wire) {
+    use std::io::BufRead;
+    use std::os::unix::process::CommandExt;
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_claude-translator"));
+    command
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("FAKE_CLAUDE_RECEIPTS", sandbox.claude_receipts())
+        .envs(env.iter().copied())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    // SAFETY: fork 뒤 exec 전의 자식에서 async-signal-safe한 setsid 하나만 부른다.
+    unsafe {
+        command.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let mut translator = command.spawn().expect("변환기 시험 bin");
+    let stdout = std::io::BufReader::new(translator.stdout.take().unwrap());
+    let (tx, lines) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in stdout.lines().map_while(Result::ok) {
+            if tx.send(serde_json::from_str::<Value>(&line).unwrap()).is_err() {
+                break;
+            }
+        }
+    });
+    let wire = Wire { stdin: translator.stdin.take().unwrap(), lines, seen: Vec::new() };
+    (translator, wire)
+}
+
+/// 변환기가 스스로 끝나기를 기다리고 그 끝을 돌려준다 — stdin EOF 뒤에는 claude를 거두고 끝나야 한다. 마감(`PATIENCE`)을
+/// 넘기면 그룹째 SIGKILL하고 터진다.
+pub fn assert_translator_exits(translator: &mut std::process::Child) -> std::process::ExitStatus {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        if let Some(status) = translator.try_wait().unwrap() {
+            return status;
+        }
+        if Instant::now() > deadline {
+            // SAFETY: 시험이 새 세션에 띄운 그룹이다(`spawn_translator`).
+            unsafe { libc::killpg(translator.id() as i32, libc::SIGKILL) };
+            panic!("변환기가 stdin EOF 뒤에 끝나지 않았다");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 // ── 로그인(three-axes 티켓 12) ──────────────────────────────────────────────────
@@ -631,10 +689,7 @@ impl Sandbox {
 
     /// 로그인 명령이 띄워질 때마다 남긴 영수증(pid · Unix 세션 · stdin이 TTY인가 · 인자 · 손주 pid).
     pub fn login_runs(&self, agent: Agent) -> Vec<Value> {
-        self.login_lines(&format!("{}-login.runs", engine_name(agent)))
-            .iter()
-            .map(|line| serde_json::from_str(line).expect("로그인 영수증 줄은 JSON"))
-            .collect()
+        json_lines(&self.login_receipts().join(format!("{}-login.runs", engine_name(agent))))
     }
 
     /// 로그인 명령이 받은 시그널들(`TERM` · `INT`).
@@ -653,7 +708,7 @@ impl Sandbox {
     }
 
     fn login_lines(&self, name: &str) -> Vec<String> {
-        fs::read_to_string(self.login_receipts().join(name)).unwrap_or_default().lines().map(str::to_owned).collect()
+        text_lines(&self.login_receipts().join(name))
     }
 }
 
@@ -817,21 +872,66 @@ pub fn record_at(path: &Path) -> Vec<Value> {
 
 /// 그 자리의 기록이 `done`을 채울 때까지 기다린다. 마감을 넘기면 그때까지의 기록을 싣고 터진다.
 pub fn wait_record_at(path: &Path, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
-    let deadline = Instant::now() + PATIENCE;
-    loop {
+    wait_until(&format!("기록이 기다린 꼴이 되지 않았다({})", path.display()), || {
         let record = record_at(path);
         if done(&record) {
-            return record;
+            Ok(record)
+        } else {
+            Err(lines_text(&record))
         }
-        if Instant::now() > deadline {
-            panic!("기록이 기다린 꼴이 되지 않았다({}):\n{}", path.display(), lines_text(&record));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    })
 }
 
 /// 턴 · 죽음 같은 비동기 일을 기다리는 마감.
 pub const PATIENCE: Duration = Duration::from_secs(10);
+
+/// `poll`이 값을 낼 때까지 20ms마다 다시 본다 — 턴 · 죽음 · 영수증은 다른 프로세스와 스레드에서 적힌다. 마감(`PATIENCE`)을
+/// 넘기면 `what`과, `poll`이 마지막에 `Err`로 준 그때의 꼴을 싣고 터진다.
+pub fn wait_until<T>(what: &str, mut poll: impl FnMut() -> Result<T, String>) -> T {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        match poll() {
+            Ok(value) => return value,
+            Err(seen) if Instant::now() > deadline => {
+                if seen.is_empty() {
+                    panic!("{what}");
+                }
+                panic!("{what}:\n{seen}");
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(20)),
+        }
+    }
+}
+
+/// `ready`가 참이 될 때까지 기다린다. 마감(`PATIENCE`)을 넘기면 `what`을 싣고 터진다.
+pub fn wait_for(what: &str, mut ready: impl FnMut() -> bool) {
+    wait_until(what, || if ready() { Ok(()) } else { Err(String::new()) })
+}
+
+/// JSON 줄 파일의 줄들 — 영수증 · 기록. 없으면 비어 있다.
+fn json_lines(path: &Path) -> Vec<Value> {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|_| panic!("JSON 줄이 아니다({}): {line}", path.display())))
+        .collect()
+}
+
+/// 글 줄 파일의 줄들. 없으면 비어 있다.
+fn text_lines(path: &Path) -> Vec<String> {
+    fs::read_to_string(path).unwrap_or_default().lines().map(str::to_owned).collect()
+}
+
+/// pid가 한 줄씩 적힌 파일의 pid들. 없으면 비어 있다.
+fn pid_lines(path: &Path) -> Vec<u32> {
+    text_lines(path).iter().map(|line| line.trim().parse().expect("pid 줄")).collect()
+}
+
+/// 영수증 한 장(JSON 파일). 없으면 터진다.
+fn receipt_at(path: &Path) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).unwrap_or_else(|_| panic!("영수증이 없다: {}", path.display())))
+        .unwrap()
+}
 
 /// 기록 줄들을 한 줄씩 — 실패 메시지용.
 pub fn lines_text(record: &[Value]) -> String {
@@ -842,6 +942,49 @@ pub fn lines_text(record: &[Value]) -> String {
 pub fn of_kind<'a>(record: &'a [Value], kind: &str) -> Vec<&'a Value> {
     record.iter().filter(|line| line["kind"] == kind).collect()
 }
+
+/// 기록에서 그 kind의 줄들의 payload.
+pub fn payloads_of(record: &[Value], kind: &str) -> Vec<Value> {
+    of_kind(record, kind).into_iter().map(|line| line["payload"].clone()).collect()
+}
+
+/// 기록의 `sent` 줄들이 화면에 보일 글.
+pub fn sent_texts(record: &[Value]) -> Vec<String> {
+    of_kind(record, "sent").iter().map(|line| line["payload"]["text"].as_str().unwrap().to_owned()).collect()
+}
+
+/// 기록의 열림 줄들이 말하는 길(`how`) — 온 차례대로.
+pub fn opened_hows(record: &[Value]) -> Vec<String> {
+    record
+        .iter()
+        .filter(|line| line["kind"] == "session" && line["payload"]["state"] == "opened")
+        .map(|line| line["payload"]["how"].as_str().expect("how").to_owned())
+        .collect()
+}
+
+/// 호스트의 머리말 블록(S11) — 그 work의 slug · 제목(샌드박스의 work는 `<slug> 제목`) · specDir.
+pub fn preamble(work: &Path, slug: &str) -> Value {
+    serde_json::json!({
+        "type": "text",
+        "text": format!(
+            "Atelier work 안에서 열린 대화다.\n\n- work slug: `{slug}`\n- 제목: {slug} 제목\n- spec 폴더(specDir): `{}`\n",
+            work.join("spec").display()
+        )
+    })
+}
+
+/// 인자 목록에 `--flag 값` 짝이 있나.
+pub fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
+    args.windows(2).any(|pair| pair[0] == flag && pair[1] == value)
+}
+
+/// 가짜 claude의 영수증(띄운 때 한 장 · `launches` 한 줄)에 적힌 받은 인자.
+pub fn receipt_args(receipt: &Value) -> Vec<String> {
+    serde_json::from_value(receipt["args"].clone()).expect("받은 인자")
+}
+
+/// 검사에서 진짜 브라우저를 막는 `BROWSER`(실측 함정 40).
+pub const NO_BROWSER: Option<&str> = Some("/usr/bin/true");
 
 /// 호스트가 내보낸 이벤트들.
 #[derive(Clone, Default)]
@@ -865,17 +1008,30 @@ impl Events {
 
     /// 엔진 상태 이벤트가 `done`을 채울 때까지 기다린다. 로그인 명령의 끝은 그것을 지켜보는 스레드가 알린다.
     pub fn wait_engine(&self, done: impl Fn(&[EngineState]) -> bool) -> Vec<EngineState> {
-        let deadline = Instant::now() + PATIENCE;
-        loop {
+        wait_until("엔진 상태가 기다린 꼴이 되지 않았다", || {
             let states = self.engine_states();
             if done(&states) {
-                return states;
+                Ok(states)
+            } else {
+                Err(format!("{states:#?}"))
             }
-            if Instant::now() > deadline {
-                panic!("엔진 상태가 기다린 꼴이 되지 않았다:\n{states:#?}");
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        })
+    }
+
+    /// 그 대화의 대기 줄 바뀜 이벤트들 — 이벤트마다 그때의 대기 줄 전체.
+    pub fn queues(&self, slug: &str, id: &str) -> Vec<Vec<QueuedMessage>> {
+        self.all()
+            .into_iter()
+            .filter_map(|event| match event {
+                HostEvent::Queue { work, conversation, queue } if work == slug && conversation == id => Some(queue),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 그 대화의 대기 줄 바뀜 이벤트들 — 이벤트마다 대기 줄의 글들.
+    pub fn queue_texts(&self, slug: &str, id: &str) -> Vec<Vec<String>> {
+        self.queues(slug, id).into_iter().map(|queue| queue.into_iter().map(|queued| queued.text).collect()).collect()
     }
 }
 

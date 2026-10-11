@@ -6,7 +6,7 @@
 mod common;
 
 use atelier_acp::{Agent, HostError, Quote};
-use common::{of_kind, Sandbox};
+use common::{of_kind, payloads_of, Sandbox};
 use serde_json::json;
 
 /// 렌더 보기에서 고른 자리 — `plan.md`의 문단 한 블록(3–4줄)이다. 글은 화면이 고른 그대로(두 줄)다.
@@ -29,13 +29,7 @@ fn 인용이_든_첫_말은_머리말_인용_블록_사람의_글_순서로_가�
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
 
     let spec = work.join("spec");
-    let preamble = json!({
-        "type": "text",
-        "text": format!(
-            "Atelier work 안에서 열린 대화다.\n\n- work slug: `cart`\n- 제목: cart 제목\n- spec 폴더(specDir): `{}`\n",
-            spec.display()
-        )
-    });
+    let preamble = common::preamble(&work, "cart");
     // atelier 참조 꼴(실제 경로 + `:L<시작>-<끝>`, 한 줄이면 `:L<n>`)과 마크다운 인용 글 — atelier MCP 안내문이 가르치는 꼴이다.
     let first_quote = json!({
         "type": "text",
@@ -56,7 +50,7 @@ fn 인용이_든_첫_말은_머리말_인용_블록_사람의_글_순서로_가�
         "인용 블록은 사람의 글 바로 앞에 선다(S12) — 머리말은 에이전트 쪽 세션의 첫 말에만 붙는다(S11)"
     );
 
-    let sent: Vec<_> = of_kind(&record, "sent").into_iter().map(|line| line["payload"].clone()).collect();
+    let sent: Vec<_> = payloads_of(&record, "sent");
     assert_eq!(
         sent,
         [

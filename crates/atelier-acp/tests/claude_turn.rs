@@ -8,20 +8,8 @@
 mod common;
 
 use atelier_acp::{Agent, ConversationHost};
-use common::{of_kind, Sandbox};
+use common::{of_kind, payloads_of, Sandbox};
 use serde_json::{json, Value};
-
-/// 그 원문을 되감는 가짜 claude로 Claude 대화 하나를 연다.
-fn open(sandbox: &Sandbox, fixture: &str) -> (ConversationHost, String) {
-    sandbox.work("cart", &[]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", fixture)]));
-    let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
-    // 명령 목록은 `session/new`의 답 뒤에 따로 온다 — 그것까지 적힌 뒤에 말을 보내야 턴의 줄과 섞이지 않는다.
-    sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-    });
-    (host, conversation.id)
-}
 
 /// 말들을 차례로 보내고, 말마다 그 턴이 끝나기를 기다린다. 다 끝난 기록을 돌려준다.
 fn converse(sandbox: &Sandbox, host: &ConversationHost, conversation: &str, texts: &[&str]) -> Vec<Value> {
@@ -52,7 +40,7 @@ fn bodies(updates: &[Value]) -> Vec<Value> {
 #[test]
 fn twoturn_tools는_한_프로세스가_두_턴을_받고_답_생각_도구가_순서대로_acp_update로_적히고_첫_말은_init_전에_들어간다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/twoturn-tools");
+    let (host, conversation) = sandbox.open_claude("2.1.282/twoturn-tools", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["세 낱말로 답해", "notes.txt를 쓰고 읽고 바이트를 세"]);
 
@@ -131,7 +119,7 @@ fn twoturn_tools는_한_프로세스가_두_턴을_받고_답_생각_도구가_�
 #[test]
 fn 둘째_턴의_system_init은_새_세션을_열지_않고_같은_세션에서_턴이_이어진다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/twoturn-tools");
+    let (host, conversation) = sandbox.open_claude("2.1.282/twoturn-tools", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["첫 말", "둘째 말"]);
 
@@ -150,7 +138,7 @@ fn 둘째_턴의_system_init은_새_세션을_열지_않고_같은_세션에서_
 
 /// 기록에서 그 도구 이름의 `tool_call`과, 그 호출의 `tool_call_update`들.
 fn tool_lines(record: &[Value], tool_name: &str) -> (Value, Vec<Value>) {
-    let updates = bodies(&of_kind(record, "update").into_iter().map(|line| line["payload"].clone()).collect::<Vec<_>>());
+    let updates = bodies(&payloads_of(record, "update"));
     let call = updates
         .iter()
         .find(|update| update["sessionUpdate"] == "tool_call" && update["_meta"]["claudeCode"]["toolName"] == tool_name)
@@ -167,7 +155,7 @@ fn tool_lines(record: &[Value], tool_name: &str) -> (Value, Vec<Value>) {
 #[test]
 fn edit_입력은_옛_조각과_새_조각의_diff_내용으로_tool_call에_실리고_변환기는_그_파일을_읽지_않는다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.296/edit-subagent");
+    let (host, conversation) = sandbox.open_claude("2.1.296/edit-subagent", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["note.md의 status를 done으로 고쳐"]);
 
@@ -205,7 +193,7 @@ fn record_text(sandbox: &Sandbox, conversation: &str) -> String {
 #[test]
 fn 모델이_skill을_부를_때_생기는_issynthetic_글은_기록에_없고_스킬_도구_줄과_답만_흐른다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.296/slash-skill-noreplay");
+    let (host, conversation) = sandbox.open_claude("2.1.296/slash-skill-noreplay", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["/probe-skill", "probe-skill 스킬을 Skill 도구로 불러서 답하라"]);
 
@@ -237,7 +225,7 @@ fn builtin_answer(command: &str) -> Value {
 #[test]
 fn 내장_명령_context의_synthetic_답은_agent_message_chunk로_적히고_사람의_말_메아리는_옮기지_않는다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.296/slash-skill-replay");
+    let (host, conversation) = sandbox.open_claude("2.1.296/slash-skill-replay", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["/probe-skill", "/probe-cmd", "/context"]);
 
@@ -261,7 +249,7 @@ fn 내장_명령_context의_synthetic_답은_agent_message_chunk로_적히고_�
 #[test]
 fn 사용량은_result_usage_iterations의_마지막_원소에서_세고_크기는_답한_모델의_컨텍스트_창이다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.282/twoturn-tools");
+    let (host, conversation) = sandbox.open_claude("2.1.282/twoturn-tools", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["첫 말", "도구를 쓰는 둘째 말"]);
 
@@ -283,7 +271,7 @@ fn 사용량은_result_usage_iterations의_마지막_원소에서_세고_크기�
 #[test]
 fn 서브에이전트_도구_호출은_meta에_서브에이전트를_싣고_그_안의_일은_대화가_아니라_그_줄의_meta로_간다() {
     let sandbox = Sandbox::new();
-    let (host, conversation) = open(&sandbox, "2.1.296/edit-subagent");
+    let (host, conversation) = sandbox.open_claude("2.1.296/edit-subagent", &[]);
 
     let record = converse(&sandbox, &host, &conversation, &["note.md를 고쳐", "서브에이전트로 셋째 줄을 읽어 와"]);
 

@@ -7,7 +7,7 @@
 mod common;
 
 use atelier_acp::Agent;
-use common::{of_kind, Sandbox};
+use common::{of_kind, payloads_of, sent_texts, Sandbox};
 use serde_json::{json, Value};
 
 /// 가짜가 묻는 명령(`fake-acp-agent`의 `PERMISSION_COMMAND`).
@@ -22,11 +22,6 @@ fn g2_options() -> Value {
          "kind": "allow_always"},
         {"optionId": "cancel", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
     ])
-}
-
-/// 기록의 `permission` 줄들의 payload.
-fn permissions(record: &[Value]) -> Vec<Value> {
-    of_kind(record, "permission").into_iter().map(|line| line["payload"].clone()).collect()
 }
 
 /// `permission` 줄(물음) 뒤에 적힌 줄들의 kind.
@@ -54,7 +49,7 @@ fn asks_permission_요청이_걸린_동안에도_update가_적히고_선택지�
     host.send("cart", &conversation.id, "워크트리 밖에 써 줘").expect("보내기");
 
     let record = sandbox.wait_record("cart", &conversation.id, asked_and_flowing);
-    let asked = &permissions(&record)[0];
+    let asked = &payloads_of(&record, "permission")[0];
     assert_eq!(asked["state"], json!("asked"));
     assert_eq!(asked["requestId"], json!("0"), "codex-acp의 첫 권한 요청 id는 0이다 — 0을 없음으로 다루지 않는다");
     assert_eq!(
@@ -75,7 +70,7 @@ fn asks_permission_요청이_걸린_동안에도_update가_적히고_선택지�
 
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
     assert_eq!(
-        permissions(&record),
+        payloads_of(&record, "permission"),
         [asked.clone(), json!({"requestId": "0", "state": "answered", "optionId": "allow_once"})],
         "고른 optionId가 그 요청의 답으로 적힌다"
     );
@@ -111,7 +106,7 @@ fn 권한이_걸린_채_멈추면_가짜가_cancelled_답을_받고_거둬짐_�
 
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
     assert_eq!(
-        permissions(&record)[1..],
+        payloads_of(&record, "permission")[1..],
         [json!({"requestId": "0", "state": "withdrawn", "reason": "stopped"})],
         "걸린 요청은 「거둬짐(턴이 끊김)」으로 닫힌다"
     );
@@ -133,7 +128,7 @@ fn 권한이_걸린_채_멈추면_가짜가_cancelled_답을_받고_거둬짐_�
         Err(atelier_acp::HostError::PermissionClosed { conversation: conversation.id.clone(), request: "0".into() }),
         "거둬진 요청에 뒤늦게 준 답은 읽히는 오류다"
     );
-    assert_eq!(permissions(&sandbox.record("cart", &conversation.id)).len(), 2, "뒤늦은 답은 기록에 서지 않는다");
+    assert_eq!(payloads_of(&sandbox.record("cart", &conversation.id), "permission").len(), 2, "뒤늦은 답은 기록에 서지 않는다");
     assert_eq!(sandbox.acp_responses(&session_id).len(), 1, "뒤늦은 답은 에이전트에 가지 않는다");
 
     host.shut_down();
@@ -160,13 +155,13 @@ fn 준_선택지에_없는_option_id는_읽히는_오류이고_요청은_남아_
         "걸린 적 없는 요청 id"
     );
     let record = sandbox.record("cart", &conversation.id);
-    assert_eq!(permissions(&record).len(), 1, "고르지 못한 답은 기록에 서지 않는다");
+    assert_eq!(payloads_of(&record, "permission").len(), 1, "고르지 못한 답은 기록에 서지 않는다");
     assert!(sandbox.acp_responses(&session_id).is_empty(), "고르지 못한 답은 에이전트에 가지 않는다");
 
     host.answer_permission("cart", &conversation.id, "0", "cancel").expect("요청이 남아 있어 맞는 답이 간다");
 
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
-    assert_eq!(permissions(&record)[1], json!({"requestId": "0", "state": "answered", "optionId": "cancel"}));
+    assert_eq!(payloads_of(&record, "permission")[1], json!({"requestId": "0", "state": "answered", "optionId": "cancel"}));
     let end = &of_kind(&record, "turn-end")[0]["payload"];
     assert_eq!(end["stopReason"], json!("end_turn"), "asks-permission의 거부는 그 도구만 실패시키고 턴이 이어진다");
 
@@ -185,7 +180,7 @@ fn 에이전트가_답을_기다리지_않고_턴을_끝내면_거둬짐_에이�
 
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
     assert_eq!(
-        permissions(&record)[1..],
+        payloads_of(&record, "permission")[1..],
         [json!({"requestId": "0", "state": "withdrawn", "reason": "agent"})],
         "에이전트가 거둔 요청 — 우리가 멈춘 것과 까닭이 다르다"
     );
@@ -237,25 +232,6 @@ fn deny_cancels_거부하면_turn_end가_cancelled이고_우리가_멈춤이_fal
     host.shut_down();
 }
 
-/// 그 대화의 대기 줄 바뀜 이벤트들 — 이벤트마다 대기 줄의 글들.
-fn queue_texts(events: &common::Events, slug: &str, id: &str) -> Vec<Vec<String>> {
-    events
-        .all()
-        .into_iter()
-        .filter_map(|event| match event {
-            atelier_acp::HostEvent::Queue { work, conversation, queue } if work == slug && conversation == id => {
-                Some(queue.into_iter().map(|queued| queued.text).collect())
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-/// 기록의 `sent` 줄들이 화면에 보일 글.
-fn sent_texts(record: &[Value]) -> Vec<String> {
-    of_kind(record, "sent").iter().map(|line| line["payload"]["text"].as_str().unwrap().to_owned()).collect()
-}
-
 #[test]
 fn 권한이_걸린_동안_대기_줄은_가지_않고_답한_뒤_턴이_끝나면_간다() {
     let sandbox = Sandbox::new();
@@ -268,7 +244,7 @@ fn 권한이_걸린_동안_대기_줄은_가지_않고_답한_뒤_턴이_끝나�
 
     host.send("cart", &conversation.id, "둘째 말").expect("권한이 걸린 동안의 말은 대기 줄에 든다");
 
-    assert_eq!(queue_texts(&events, "cart", &conversation.id), [vec!["둘째 말"]]);
+    assert_eq!(events.queue_texts("cart", &conversation.id), [vec!["둘째 말"]]);
     assert_eq!(sandbox.acp_prompts(&session_id).len(), 1, "걸린 동안에는 에이전트에 가지 않는다");
 
     host.answer_permission("cart", &conversation.id, "0", "allow_once").expect("권한 답");
@@ -280,7 +256,7 @@ fn 권한이_걸린_동안_대기_줄은_가지_않고_답한_뒤_턴이_끝나�
     let first_end = kinds.iter().position(|kind| *kind == "turn-end").expect("첫 턴의 끝");
     let second_sent = kinds.iter().rposition(|kind| *kind == "sent").unwrap();
     assert!(first_end < second_sent, "대기 말은 답한 뒤 첫 턴이 끝나고서야 간다:\n{}", common::lines_text(&record));
-    assert_eq!(queue_texts(&events, "cart", &conversation.id).last(), Some(&Vec::<String>::new()));
+    assert_eq!(events.queue_texts("cart", &conversation.id).last(), Some(&Vec::<String>::new()));
 
     host.shut_down();
 }
@@ -307,7 +283,7 @@ fn 턴_밖에서_걸린_권한도_대기_줄을_붙잡고_답하는_자리에서
 
     host.send("cart", &conversation.id, "둘째 말").expect("걸린 권한이 있으면 턴이 쉬어도 대기 줄에 든다");
 
-    assert_eq!(queue_texts(&events, "cart", &conversation.id), [vec!["둘째 말"]]);
+    assert_eq!(events.queue_texts("cart", &conversation.id), [vec!["둘째 말"]]);
     assert_eq!(sandbox.acp_prompts(&session_id).len(), 1, "걸린 동안에는 에이전트에 가지 않는다");
 
     host.answer_permission("cart", &conversation.id, "0", "allow_once").expect("권한 답");
@@ -316,7 +292,7 @@ fn 턴_밖에서_걸린_권한도_대기_줄을_붙잡고_답하는_자리에서
     let record = sandbox.wait_kind("cart", &conversation.id, "permission", 3);
     assert_eq!(sent_texts(&record), ["첫 말", "둘째 말"], "걸림이 풀린 자리에서 대기 말이 간다");
     assert_eq!(sandbox.acp_prompts(&session_id).len(), 2);
-    assert_eq!(queue_texts(&events, "cart", &conversation.id).last(), Some(&Vec::<String>::new()));
+    assert_eq!(events.queue_texts("cart", &conversation.id).last(), Some(&Vec::<String>::new()));
 
     host.shut_down();
 }
@@ -332,7 +308,7 @@ fn 빈_tool_call의_권한_요청은_앞선_tool_call의_제목_종류_입력으
     host.send("cart", &conversation.id, "워크트리 밖에 써 줘").expect("보내기");
 
     let record = sandbox.wait_record("cart", &conversation.id, asked_and_flowing);
-    let asked = &permissions(&record)[0];
+    let asked = &payloads_of(&record, "permission")[0];
     assert_eq!(
         asked["request"]["toolCall"],
         json!({"toolCallId": "exec-fake-perm", "kind": "execute", "status": "pending"}),

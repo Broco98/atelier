@@ -11,16 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
 
 use atelier_acp::{Agent, ConversationDefaults, HostError, TranslatorCommand};
-use common::{assert_all_gone, Sandbox};
-
-/// `--flag 값` 짝이 있나.
-fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
-    args.windows(2).any(|pair| pair[0] == flag && pair[1] == value)
-}
-
-fn args_of(receipt: &serde_json::Value) -> Vec<String> {
-    serde_json::from_value(receipt["args"].clone()).expect("받은 인자")
-}
+use common::{assert_all_gone, has_pair, Sandbox};
 
 #[test]
 fn claude_새_대화는_늘_주는_플래그와_새_세션_id로_claude를_띄우고_주지_않는_플래그는_없다() {
@@ -35,7 +26,7 @@ fn claude_새_대화는_늘_주는_플래그와_새_세션_id로_claude를_띄�
     let session_id = sandbox.agent_session_id("cart", &conversation.id);
     assert!(uuid::Uuid::parse_str(&session_id).is_ok(), "새 대화의 세션 id는 변환기가 지은 UUID다: {session_id}");
     let receipt = sandbox.claude_receipt(&session_id);
-    let args = args_of(&receipt);
+    let args = common::receipt_args(&receipt);
     assert!(args.contains(&"-p".to_owned()) && args.contains(&"--verbose".to_owned()), "{args:?}");
     assert!(has_pair(&args, "--input-format", "stream-json"), "{args:?}");
     assert!(has_pair(&args, "--output-format", "stream-json"), "{args:?}");
@@ -68,14 +59,14 @@ fn 모드와_모델이_있는_대화는_플래그로_주고_엔진_기본값_대
         .expect("값이 있는 대화");
     let default = host.new_conversation("cart", Agent::Claude).expect("엔진 기본값 대화");
 
-    let chosen_args = args_of(&sandbox.claude_receipt(&sandbox.agent_session_id("cart", &chosen.id)));
+    let chosen_args = common::receipt_args(&sandbox.claude_receipt(&sandbox.agent_session_id("cart", &chosen.id)));
     assert!(has_pair(&chosen_args, "--permission-mode", "plan"), "{chosen_args:?}");
     assert!(has_pair(&chosen_args, "--model", "sonnet"), "{chosen_args:?}");
     let row = sandbox.agents_row("cart", &chosen.id);
     assert_eq!((row["model"].as_str(), row["mode"].as_str()), (Some("sonnet"), Some("plan")), "대화의 값은 그 대화에 남는다");
     assert_eq!((chosen.model.as_deref(), chosen.mode.as_deref()), (Some("sonnet"), Some("plan")));
 
-    let default_args = args_of(&sandbox.claude_receipt(&sandbox.agent_session_id("cart", &default.id)));
+    let default_args = common::receipt_args(&sandbox.claude_receipt(&sandbox.agent_session_id("cart", &default.id)));
     assert!(
         !default_args.iter().any(|arg| arg == "--permission-mode" || arg == "--model"),
         "엔진 기본값이면 사용자의 defaultMode · 모델을 물려받는다: {default_args:?}"
@@ -93,7 +84,7 @@ fn 함께_여는_폴더가_있는_work에서는_add_dir로_spec_폴더를_주고
     let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
 
     let receipt = sandbox.claude_receipt(&sandbox.agent_session_id("cart", &conversation.id));
-    let args = args_of(&receipt);
+    let args = common::receipt_args(&receipt);
     let spec = work.join("spec");
     assert!(has_pair(&args, "--add-dir", spec.to_str().unwrap()), "{args:?}");
     let cwd = std::path::PathBuf::from(receipt["cwd"].as_str().expect("cwd"));
@@ -284,65 +275,16 @@ fn claude는_변환기의_프로세스_그룹_안에_있고_대화를_닫으면_
 
 #[test]
 fn 변환기의_stdin을_닫으면_claude까지_끝난다() {
-    use std::io::{BufRead, BufReader, Write};
-    use std::os::unix::process::CommandExt;
-
     // 앱이 비정상으로 끝난 꼴 — 그룹째 끄는 호스트가 없고, 변환기의 stdin만 닫힌다. 변환기를 ACP로 직접 몬다.
     let sandbox = Sandbox::new();
-    let cwd = sandbox.bin("cwd");
-    let claude = sandbox.claude_bin().join("claude");
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_claude-translator"));
-    command
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("FAKE_CLAUDE_SCENARIO", "mcp-child")
-        .env("FAKE_CLAUDE_RECEIPTS", sandbox.claude_receipts())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    // 시험이 실패해도 남은 것을 그룹째 거둘 수 있게 새 세션에 띄운다.
-    // SAFETY: fork 뒤 exec 전의 자식에서 async-signal-safe한 setsid 하나만 부른다.
-    unsafe {
-        command.pre_exec(|| {
-            libc::setsid();
-            Ok(())
-        });
-    }
-    let mut translator = command.spawn().expect("변환기 시험 bin");
-    let mut stdin = translator.stdin.take().unwrap();
-    let mut stdout = BufReader::new(translator.stdout.take().unwrap());
-    let session_new = serde_json::json!({
-        "jsonrpc": "2.0", "id": 2, "method": "session/new",
-        "params": {"cwd": cwd, "mcpServers": [], "_meta": {"atelier": {"claudePath": claude}}},
-    });
-    writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":1}}}}"#).unwrap();
-    writeln!(stdin, "{session_new}").unwrap();
-    let mut line = String::new();
-    let session_id = loop {
-        line.clear();
-        assert!(stdout.read_line(&mut line).unwrap() > 0, "변환기가 session/new에 답하지 않고 끝났다");
-        let message: serde_json::Value = serde_json::from_str(&line).unwrap();
-        if message["id"] == 2 {
-            break message["result"]["sessionId"].as_str().expect("세션 id").to_owned();
-        }
-    };
+    let (mut translator, mut wire) = common::spawn_translator(&sandbox, &[("FAKE_CLAUDE_SCENARIO", "mcp-child")]);
+    let (_, session_id) = wire.open_session(&sandbox);
     let receipt = sandbox.claude_receipt(&session_id);
     let pids = [receipt["pid"].as_u64().unwrap() as u32, receipt["descendants"][0].as_u64().unwrap() as u32];
 
-    drop(stdin);
+    drop(wire);
 
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let status = loop {
-        if let Some(status) = translator.try_wait().unwrap() {
-            break status;
-        }
-        if Instant::now() > deadline {
-            // SAFETY: 이 시험이 새 세션에 띄운 그룹이다.
-            unsafe { libc::killpg(translator.id() as i32, libc::SIGKILL) };
-            panic!("변환기가 stdin EOF 뒤에 끝나지 않았다");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
+    let status = common::assert_translator_exits(&mut translator);
     assert!(status.success(), "변환기는 stdin EOF에 스스로 끝난다: {status}");
     assert_all_gone(&pids);
     assert!(sandbox.claude_events(&session_id).contains(&"stdin-eof".to_owned()), "claude가 stdin EOF를 받았다");
@@ -406,7 +348,7 @@ fn 첫_말_전에는_codex를_claude로_바꿔_옛_프로세스를_끄고_새_�
     assert_eq!((row["agent"].as_str(), row["name"].as_str()), (Some("claude"), Some("Claude")));
     let session_id = row["agentSessionId"].as_str().expect("새 엔진의 세션 id").to_owned();
     let claude = sandbox.claude_receipt(&session_id);
-    assert!(has_pair(&args_of(&claude), "--session-id", &session_id), "새 엔진으로 열렸다");
+    assert!(has_pair(&common::receipt_args(&claude), "--session-id", &session_id), "새 엔진으로 열렸다");
     let listed = host.list_conversations("cart").expect("대화 목록");
     assert_eq!(listed.iter().map(|c| (c.id.as_str(), c.agent)).collect::<Vec<_>>(), [(conversation.id.as_str(), Agent::Claude)]);
 
@@ -442,10 +384,8 @@ fn 로그인이_필요한_codex_대화를_첫_말_전에_claude로_바꾸면_로
 
     host.send("cart", &conversation.id, "안녕").expect("Claude로 바꾼 대화는 Codex 로그인을 기다리지 않는다");
     let session_id = sandbox.agent_session_id("cart", &conversation.id);
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !sandbox.claude_stdin(&session_id).iter().any(|line| line["type"] == "user") {
-        assert!(Instant::now() < deadline, "말이 claude의 stdin에 닿는다");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    common::wait_for("말이 claude의 stdin에 닿는다", || {
+        sandbox.claude_stdin(&session_id).iter().any(|line| line["type"] == "user")
+    });
     host.shut_down();
 }

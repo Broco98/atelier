@@ -7,33 +7,8 @@
 mod common;
 
 use atelier_acp::{Agent, ConversationHost};
-use common::{of_kind, Sandbox};
+use common::{of_kind, opened_hows, payloads_of, preamble, sent_texts, Sandbox};
 use serde_json::{json, Value};
-
-/// 기록의 열림 줄들이 말하는 길(`how`) — 온 차례대로.
-fn opened_hows(record: &[Value]) -> Vec<String> {
-    record
-        .iter()
-        .filter(|line| line["kind"] == "session" && line["payload"]["state"] == "opened")
-        .map(|line| line["payload"]["how"].as_str().expect("how").to_owned())
-        .collect()
-}
-
-/// 기록의 보낸 말 글들.
-fn sent_texts(record: &[Value]) -> Vec<String> {
-    of_kind(record, "sent").iter().map(|line| line["payload"]["text"].as_str().unwrap().to_owned()).collect()
-}
-
-/// 머리말 블록 — 그 work의 slug · 제목 · specDir.
-fn preamble(work: &std::path::Path, slug: &str) -> Value {
-    json!({
-        "type": "text",
-        "text": format!(
-            "Atelier work 안에서 열린 대화다.\n\n- work slug: `{slug}`\n- 제목: {slug} 제목\n- spec 폴더(specDir): `{}`\n",
-            work.join("spec").display()
-        )
-    })
-}
 
 /// 한 턴을 돌린 대화를 남기고 호스트를 끈다 — 어제의 대화.
 fn yesterday(sandbox: &Sandbox, host: ConversationHost) -> String {
@@ -240,7 +215,7 @@ fn resume_resets_config_되살린_뒤_가짜가_기록의_모델_모드_계획�
         "설정이 다 든 뒤에 말이 간다"
     );
     assert_eq!(
-        of_kind(&record, "config").iter().map(|line| line["payload"].clone()).collect::<Vec<_>>(),
+        payloads_of(&record, "config"),
         [json!({"model": "gpt-6-astra"})],
         "config 줄은 사람이 떠 있는 엔진에 넣은 바꾸기뿐이다 — 다시 넣은 것은 적지 않는다"
     );
@@ -421,11 +396,7 @@ fn 되살리는_동안_칩으로_바꾼_모델은_되살린_뒤에도_agents_jso
     let host = sandbox.host(sandbox.codex_login_shell("resume-resets-config", &[("FAKE_ACP_REVIVE_HOLDS", "1")]));
     std::thread::scope(|scope| {
         let sending = scope.spawn(|| host.send("cart", &id, "오늘의 말"));
-        let deadline = std::time::Instant::now() + common::PATIENCE;
-        while sandbox.acp_revivals().is_empty() {
-            assert!(std::time::Instant::now() < deadline, "되살리기가 resume까지 가지 않았다");
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        common::wait_for("되살리기가 resume까지 가지 않았다", || !sandbox.acp_revivals().is_empty());
         let changing = scope.spawn(|| host.set_model("cart", &id, "gpt-6-astra"));
         // 바꾸기가 되살리기를 앞질러 끝나는지 잠깐 본다 — 앞질러 끝나든 되살리기를 기다리든 남는 값은 같아야 한다.
         let started = std::time::Instant::now();
@@ -470,19 +441,14 @@ fn 쓰다_끊긴_반쪽_줄이_남은_기록을_되살려도_이어_적은_줄�
     let host = sandbox.host(shell);
     host.send("cart", &id, "오늘의 말").expect("보내기");
     // 반쪽 줄은 JSON으로 읽히지 않으니 파일을 줄마다 읽는 도우미 대신 호스트의 기록 읽기로 지켜본다.
-    let deadline = std::time::Instant::now() + common::PATIENCE;
-    let read = loop {
+    let read = common::wait_until("되살린 턴의 끝이 읽히지 않는다", || {
         let read = host.read_record("cart", &id, yesterday_end).expect("기록 읽기");
         if read.iter().any(|line| line.kind == atelier_acp::RecordKind::TurnEnd) {
-            break read;
+            Ok(read)
+        } else {
+            Err(std::fs::read_to_string(&path).unwrap())
         }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "되살린 턴의 끝이 읽히지 않는다:\n{}",
-            std::fs::read_to_string(&path).unwrap()
-        );
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
+    });
     let seqs: Vec<u64> = read.iter().map(|line| line.seq).collect();
     let expected: Vec<u64> = (yesterday_end + 1..=yesterday_end + seqs.len() as u64).collect();
     assert_eq!(seqs, expected, "반쪽 줄 뒤에 이어 적은 줄이 하나도 빠지지 않는다 — 되살린 첫 줄(띄우는 중)도 읽힌다");

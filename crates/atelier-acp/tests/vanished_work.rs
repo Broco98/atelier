@@ -13,15 +13,6 @@ use atelier_acp::Agent;
 use common::{assert_all_gone, wait_record_at, Sandbox};
 use serde_json::{json, Value};
 
-/// 에이전트와 그 후손의 pid — 가짜가 영수증에 적었다.
-fn agent_tree(sandbox: &Sandbox, slug: &str, conversation: &str) -> (String, Vec<u32>) {
-    let session_id = sandbox.agent_session_id(slug, conversation);
-    let receipt = sandbox.acp_receipt(&session_id);
-    let mut pids = vec![receipt["pid"].as_u64().unwrap() as u32];
-    pids.extend(receipt["descendants"].as_array().unwrap().iter().map(|pid| pid.as_u64().unwrap() as u32));
-    (session_id, pids)
-}
-
 /// 기록 줄의 꼴 — kind와, 줄을 가르는 payload 칸 하나.
 fn shape(line: &Value) -> (String, Value) {
     let payload = &line["payload"];
@@ -55,7 +46,7 @@ fn 턴_도중_work_폴더가_옮겨지면_남은_줄이_옮겨진_같은_파일�
     let work = sandbox.work("cart", &[]);
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("pauses-mid-turn", &[]));
     let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let (session_id, pids) = agent_tree(&sandbox, "cart", &conversation.id);
+    let (session_id, pids) = sandbox.agent_tree("cart", &conversation.id);
     assert_eq!(pids.len(), 3, "에이전트 · 자식 · 손주");
 
     host.send("cart", &conversation.id, "이 work를 아카이브해 줘").expect("보내기");
@@ -91,7 +82,7 @@ fn 턴_도중_work가_지워져도_턴_끝에_꺼지고_옛_자리에_폴더가_
     let work = sandbox.work("cart", &[]);
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("pauses-mid-turn", &[]));
     let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let (session_id, pids) = agent_tree(&sandbox, "cart", &conversation.id);
+    let (session_id, pids) = sandbox.agent_tree("cart", &conversation.id);
 
     host.send("cart", &conversation.id, "이 work를 지워 줘").expect("보내기");
     sandbox.wait_record("cart", &conversation.id, |record| record.iter().any(|line| says(line, "멈추기 전의 답")));
@@ -115,8 +106,8 @@ fn 쉬는_대화의_work가_사라지면_호스트가_사라짐을_안_때_꺼�
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("spawns-a-child", &[]));
     let idle = host.new_conversation("cart", Agent::Codex).expect("사라질 work의 대화");
     let kept = host.new_conversation("keep", Agent::Codex).expect("남는 work의 대화");
-    let (_, idle_pids) = agent_tree(&sandbox, "cart", &idle.id);
-    let (_, kept_pids) = agent_tree(&sandbox, "keep", &kept.id);
+    let (_, idle_pids) = sandbox.agent_tree("cart", &idle.id);
+    let (_, kept_pids) = sandbox.agent_tree("keep", &kept.id);
 
     // 진짜 아카이브 — 앱의 명령과 MCP `atelier_archive_work`가 부르는 코어 함수 그대로(프로젝트가 없어 git이 없다).
     let root = sandbox.data_root();
@@ -146,7 +137,7 @@ fn 턴_도중에_사라짐을_알아도_그_턴은_끊지_않고_턴이_끝나�
     let work = sandbox.work("cart", &[]);
     let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("pauses-mid-turn", &[]));
     let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let (session_id, pids) = agent_tree(&sandbox, "cart", &conversation.id);
+    let (session_id, pids) = sandbox.agent_tree("cart", &conversation.id);
 
     host.send("cart", &conversation.id, "이 work를 아카이브해 줘").expect("보내기");
     sandbox.wait_record("cart", &conversation.id, |record| record.iter().any(|line| says(line, "멈추기 전의 답")));

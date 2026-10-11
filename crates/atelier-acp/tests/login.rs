@@ -10,10 +10,8 @@ mod common;
 use std::sync::Arc;
 
 use atelier_acp::{Agent, EngineCheck, EngineState, FoundProgram, HostError, LoginProgress};
-use common::{assert_all_gone, login_pids, Sandbox};
+use common::{assert_all_gone, login_pids, Sandbox, NO_BROWSER};
 use serde_json::{json, Value};
-
-const NO_BROWSER: Option<&str> = Some("/usr/bin/true");
 
 #[test]
 fn claude_auth_status가_loggedin_false로_exit_1이면_엔진_확인이_로그인_안_됨이고_로그인_파일이_서면_됨이다() {
