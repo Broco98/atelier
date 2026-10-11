@@ -809,6 +809,15 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   // (`modifiedMs`)은 크기와 함께 URL에 붙는 판이다(티켓 10).
   "shots/home.png": { kind: "image", size: 48_213, realPath: "shots/home.png", modifiedMs: 1_760_000_000_000 },
   "docs/logo.png": { kind: "image", size: 2_048, realPath: "assets/logo.png", modifiedMs: 1_760_000_000_000 },
+  // 점으로 시작하는 이름 아래의 그림 — asset 프로토콜의 범위가 그 자리를 열지 않는다(G4, 티켓 11). 링크면 푼 자리로 가른다:
+  // 이름은 점이 없어도 대상이 점 폴더 안이면 막힌다.
+  ".github/assets/shot.png": {
+    kind: "image",
+    size: 3_512,
+    realPath: ".github/assets/shot.png",
+    modifiedMs: 1_760_000_000_000,
+  },
+  "docs/banner.png": { kind: "image", size: 1_200, realPath: ".media/banner.png", modifiedMs: 1_760_000_000_000 },
   "build/app.wasm": { kind: "binary", size: 1_536 },
   "legacy.txt": { kind: "notUtf8", size: 300 },
   "logs/huge.log": { kind: "tooLarge", size: 7_864_320 },

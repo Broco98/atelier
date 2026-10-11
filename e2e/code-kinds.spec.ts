@@ -55,6 +55,29 @@ test("워크트리 안을 가리키는 그림 링크는 코어가 푼 실제 자
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 점으로 시작하는 이름 아래의 그림은 asset 프로토콜이 열지 않는다 — 그 범위(`$HOME/.atelier/works/**`)의 `**`가 점 이름을 건너지
+// 않는다(macOS 기본값, G4 — 티켓 11이 빌드된 앱에서 403을 보았다). 걸면 깨진 그림 하나가 남으므로 그 갈래는 「이미지 · 크기」
+// 안내다. 거는 자리는 코어가 푼 실제 경로라, 이름에 점이 없어도 대상이 점 폴더 안이면 같은 안내다.
+test("점으로 시작하는 이름 아래의 그림은 깨진 그림 대신 「이미지 파일」 안내와 크기가 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const cases = [
+    { ref: "billing/.github/assets/shot.png", size: "3.4KB" },
+    { ref: "billing/docs/banner.png", size: "1.2KB" },
+  ];
+  for (const { ref, size } of cases) {
+    await page.goto(codeUrl(ref));
+    const card = 코드카드(page, ref);
+    await expect(page.locator(`[data-tab="code"][data-code="${ref}"]`)).toHaveCount(1);
+    await expect(card).toContainText("이미지 파일");
+    await expect(card).toContainText(size);
+    await expect(card.locator("img")).toHaveCount(0);
+  }
+  // 점 이름이 없는 자리의 그림은 그대로 그림이다.
+  await page.goto(codeUrl("billing/shots/home.png"));
+  await expect(코드카드(page, "billing/shots/home.png").getByRole("img", { name: "shots/home.png" })).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("바이너리 · UTF-8 아님 · 너무 큼은 탭 안에 각 안내와 크기가 선다", async ({ page }) => {
   await installFixtureBackend(page);
   const cases = [

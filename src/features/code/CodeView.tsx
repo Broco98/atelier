@@ -1,4 +1,14 @@
-import { FileDigit, FileStack, FileType, FileWarning, FileX, FolderX, Link2Off, type LucideIcon } from "lucide-react";
+import {
+  FileDigit,
+  FileImage,
+  FileStack,
+  FileType,
+  FileWarning,
+  FileX,
+  FolderX,
+  Link2Off,
+  type LucideIcon,
+} from "lucide-react";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 import { expandHome } from "@/features/works/doc-refs";
@@ -68,6 +78,16 @@ function FileBody({
       // 자리도 앞 파일의 것이 남는다. 같은 파일의 새 내용은 키가 같아 같은 보기에 들어간다(G6).
       return <HighlightedCode key={codeRefOf(target)} path={target.path} content={file.content} wide={wide} />;
     case "image":
+      // 점으로 시작하는 이름 아래는 asset 프로토콜이 열지 않는다(G4) — 걸면 깨진 그림 하나가 남으니 크기만 말한다.
+      if (outsideAssetScope(file.realPath)) {
+        return (
+          <Notice
+            icon={FileImage}
+            title="이미지 파일"
+            detail={`${fileSize(file.size)} · 점(.)으로 시작하는 폴더나 이름 아래라 앱이 그림을 열지 못해요.`}
+          />
+        );
+      }
       // 대체 글은 부른 경로다 — 링크여도 사람이 연 것은 그 이름이다. 거는 자리만 푼 경로다. 판은 크기와 고친 시각이다 — 에이전트가
       // 그림을 고치면 다시 읽은 답의 판이 달라져 새 URL로 걸린다(티켓 10).
       return (
@@ -115,6 +135,16 @@ function FileBody({
       return unhandled;
     }
   }
+}
+
+/**
+ * **asset 프로토콜이 열지 않는 그림인가**(G4 — 티켓 11이 빌드된 앱에서 403을 보았다). 범위는 `$HOME/.atelier/works/**`(`tauri.conf.json`)
+ * 인데, Tauri의 범위 맞추기는 macOS에서 점으로 시작하는 이름을 글자 그대로 적힌 것만 맞춘다(`require_literal_leading_dot` 기본값) —
+ * `**`가 `.github` 같은 이름을 건너지 않는다. 그래서 워크트리 기준 실제 경로(`realPath`)의 어느 이름이든 점으로 시작하면 막힌다.
+ * 워크트리 자리까지의 이름(`.atelier`)은 범위에 글자 그대로 적혀 있어 막히지 않는다.
+ */
+function outsideAssetScope(realPath: string): boolean {
+  return realPath.split("/").some((name) => name.startsWith("."));
 }
 
 /**
