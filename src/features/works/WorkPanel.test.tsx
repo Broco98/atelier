@@ -44,6 +44,8 @@ function render(
         onCopy={() => {}}
         onOpenProject={() => {}}
         open={open}
+        unseen={[]}
+        onOpenDoc={() => {}}
       />
     </QueryClientProvider>,
   );

@@ -33,12 +33,14 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
+  // 아직 열지 않은 고친 파일 — 그 행에 점이 선다(three-axes 티켓 26, 생략 시 없음). 아카이브 목록은 넘기지 않는다.
+  unseen?: readonly string[];
   // 첫 층의 깊이(생략 시 0). 아카이브는 트리를 아카이브 행 아래 한 단 들여 세운다 — 행과 같은 x에서 시작하면 문서
   // 줄이 아카이브 행과 한 층으로 읽힌다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다).
   depth?: number;
 }
 
-function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, unseen = NOTHING_UNSEEN, depth = 0 }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트(패널 토글)를 넘어 살지
   // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
   // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
@@ -61,10 +63,19 @@ function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
         onOpenChange={setOpen}
         onSelect={onSelect}
         onCopy={onCopy}
+        unseen={unseen}
       />
     </div>
   );
 }
+
+const NOTHING_UNSEEN: readonly string[] = [];
+
+/**
+ * 고친 곳의 점이 하는 말(three-axes 티켓 26) — 이름 버튼의 설명으로 남는다. 점을 이름에 넣지 않는 것은 이름으로 행을 찾는 L3 · L4가
+ * 그 이름을 딛기 때문이다(아래 `FileGlyph` 머리말과 같은 까닭).
+ */
+const UNSEEN_CHANGE = "고쳐졌는데 아직 열지 않았어요";
 
 /**
  * 손대기 전의 펼침. 번호 묶음의 구성원은 **최신 표시가 붙은 것만** 펼친다 — 판이 쌓여도 지금
@@ -87,6 +98,7 @@ function TreeRows({
   onOpenChange,
   onSelect,
   onCopy,
+  unseen,
 }: {
   items: SpecTreeItem[];
   depth: number;
@@ -95,6 +107,7 @@ function TreeRows({
   onOpenChange: (path: string, open: boolean) => void;
   onSelect: (path: string) => void;
   onCopy?: (path: string) => void;
+  unseen: readonly string[];
 }) {
   return (
     <>
@@ -134,6 +147,7 @@ function TreeRows({
                   onOpenChange={onOpenChange}
                   onSelect={onSelect}
                   onCopy={onCopy}
+                  unseen={unseen}
                 />
               </CollapsibleContent>
             </Collapsible>
@@ -154,6 +168,7 @@ function TreeRows({
         // 자기 오른쪽 여백까지 품는다(복사 버튼이 있을 때만 필요하다).
         // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
         // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
+        const marked = unseen.includes(item.path);
         return (
           <div key={item.path} className="flex flex-col">
             <div
@@ -168,6 +183,7 @@ function TreeRows({
               <button
                 type="button"
                 onClick={() => onSelect(item.path)}
+                aria-description={marked ? UNSEEN_CHANGE : undefined}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-[7px] text-left",
                   onCopy && "pr-1.5",
@@ -176,6 +192,10 @@ function TreeRows({
               >
                 <FileGlyph name={item.name} icon={item.icon} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {/* 고친 곳의 점 — 이름 끝 6px(프로토타입 D의 `.udot`, 값은 캔버스 `.cx-dot`). 뜻은 버튼의 설명이 말한다. */}
+                {marked && (
+                  <span data-change-dot aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--chat-dot-new)" />
+                )}
               </button>
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라

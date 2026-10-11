@@ -1,3 +1,4 @@
+import { changedFiles, type ChangedFile } from "./changes";
 import type { RecordLine } from "./types";
 
 // 대화 접기(three-axes 티켓 17) — 기록 줄을 받아 화면 모델(턴 · 메시지 · 생각 · 머리줄 · 도는가)로 접는 **순수 함수**다.
@@ -39,6 +40,11 @@ export interface Turn {
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
   end: TurnEnd | null;
+  /**
+   * 이 턴의 고친 곳 — 호스트가 턴 끝에 적은 `changes` 줄의 파일들(three-axes 결정 22). 바뀐 것이 없었거나 아직 도는 턴이면 null이다.
+   * 입력창 위 알약이 그 대화의 마지막 턴의 이것을 센다(티켓 26).
+   */
+  changes: ChangedFile[] | null;
 }
 
 export interface ChatModel {
@@ -56,7 +62,7 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
   const turns: Turn[] = [];
   let open: Turn | null = null;
   const start = (key: string, sent: string | null, at: string): Turn => {
-    const turn: Turn = { key, sent, startedAt: at, entries: [], end: null };
+    const turn: Turn = { key, sent, startedAt: at, entries: [], end: null, changes: null };
     turns.push(turn);
     return turn;
   };
@@ -91,6 +97,12 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
         const chunk = content.type === "text" ? text(content.text) : null;
         if (chunk === null) break;
         appendChunk(turn, kind === "agent_message_chunk" ? "message" : "thought", text(update.messageId), chunk, line.seq);
+        break;
+      }
+      case "changes": {
+        // `turn-end` 바로 앞에 선다 — 그 턴의 것이다. 턴 없이 오면(있을 수 없는 순서) 마지막 턴에 붙인다.
+        const turn = open ?? turns[turns.length - 1];
+        if (turn) turn.changes = [...(turn.changes ?? []), ...changedFiles(line.payload)];
         break;
       }
       case "turn-end": {

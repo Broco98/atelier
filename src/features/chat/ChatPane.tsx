@@ -11,9 +11,11 @@ import {
   dropWanted,
   wantConversation,
 } from "./chat-store";
+import ChangesPill from "./ChangesPill";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
 import { awaitingLogin, chatEngineStore, checkEngine, checkEngineOnce, guideKind, type GuideKind } from "./engine-store";
+import { foldConversation } from "./fold";
 import GuideCard from "./GuideCard";
 import { useCloseConversation, useConversations, useCreateConversation, useRecordLines } from "./hooks";
 import type { Agent, Conversation, EngineCheck } from "./types";
@@ -39,9 +41,14 @@ interface ChatPaneProps {
    * 마운트돼 있는 동안(작업 패널이 `spec`을 보일 때)은 호스트를 부르지 않는다.
    */
   visible: boolean;
+  /**
+   * 대화창의 문서 링크(알약 목록의 파일)를 눌렀다 — 스펙 창이 그 파일을 그 줄에서 연다(three-axes 티켓 26). 줄을 모르면 `null`이다.
+   * 주소를 쥔 것이 화면이라 받아서 부른다. `chat` 탭(24)에서 눌러도 같은 길이다 — 문서를 고르면 탭이 spec으로 돌아간다.
+   */
+  onOpenDoc: (path: string, line: number | null) => void;
 }
 
-function ChatPane({ work, visible }: ChatPaneProps) {
+function ChatPane({ work, visible, onOpenDoc }: ChatPaneProps) {
   const list = useConversations(work, visible);
   const create = useCreateConversation();
   const close = useCloseConversation();
@@ -166,6 +173,7 @@ function ChatPane({ work, visible }: ChatPaneProps) {
           work={work}
           conversation={conversation}
           shown={conversation.id === active?.id && !(wanted && wantedKind)}
+          onOpenDoc={onOpenDoc}
         />
       ))}
     </div>
@@ -215,9 +223,24 @@ function ConversationTab({
  * 대화 하나의 몸 — 흐름과 입력창. 고르지 않은 대화의 몸도 마운트된 채 숨어 있다: 기록을 읽어 두고, 대화를 오가도 입력 중인
  * 글과 펼친 턴이 남는다. 흐름은 바닥에 붙어 있다가(새 줄이 오면 따라 내려간다) 사람이 위로 굴리면 그 자리에 선다.
  */
-function ConversationBody({ work, conversation, shown }: { work: string; conversation: Conversation; shown: boolean }) {
+function ConversationBody({
+  work,
+  conversation,
+  shown,
+  onOpenDoc,
+}: {
+  work: string;
+  conversation: Conversation;
+  shown: boolean;
+  onOpenDoc: (path: string, line: number | null) => void;
+}) {
   const key = conversationKey(work, conversation.id);
   const lines = useRecordLines(work, conversation.id);
+  // 알약이 세는 것 — 이 대화의 마지막 턴의 고친 곳(티켓 26). 새 턴이 시작하면 그 턴에는 아직 없어 알약이 걷힌다.
+  const changes = useMemo(() => {
+    const { turns } = foldConversation(lines);
+    return turns[turns.length - 1]?.changes ?? null;
+  }, [lines]);
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
   useLayoutEffect(() => {
@@ -242,7 +265,13 @@ function ConversationBody({ work, conversation, shown }: { work: string; convers
       >
         <ChatThread conversationKey={key} lines={lines} />
       </div>
-      <Composer work={work} conversation={conversation.id} draftKey={key} agent={conversation.agent} />
+      <Composer
+        work={work}
+        conversation={conversation.id}
+        draftKey={key}
+        agent={conversation.agent}
+        above={changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}
+      />
     </div>
   );
 }
