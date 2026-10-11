@@ -93,19 +93,26 @@ fn in_worktree(rel: &Path) -> Option<(WorktreeChange, String)> {
 
 /// 그 워크트리의 경로들 가운데 걸리지 않은 것이 있는가.
 fn any_unignored(dir: &Path, rels: &BTreeSet<String>, ignored: &mut AskIgnored) -> bool {
+    // 다른 저장소 안인지는 빠른 길 **뒤에** 본다 — 빠른 길은 글자만 견주고 이것은 디스크를 본다. 빌드 폭주는 대개 빠른 길에서
+    // 끝난다.
     let mut repos = HashMap::new();
-    let rels: Vec<&String> = rels.iter().filter(|rel| !in_other_repository(dir, rel, &mut repos)).collect();
+    let mut in_other = |rel: &str| in_other_repository(dir, rel, &mut repos);
     // `.gitignore`가 바뀌었으면 마지막 트리 목록이 알려 준 걸린 폴더가 더 맞지 않을 수 있다 — 다음 트리 목록까지 빠른 길을 버린다.
-    // 그 파일 자신은 걸리지 않은 변경이라 이 쌍은 나가고, 화면이 보고 있으면 곧바로 트리를 다시 읽어 새로 알려 준다.
-    let rules_changed = rels.iter().any(|rel| rel.rsplit('/').next() == Some(".gitignore"));
+    // 그 파일 자신은 걸리지 않은 변경이라 이 쌍은 나가고, 화면이 보고 있으면 곧바로 트리를 다시 읽어 새로 알려 준다. 다른 저장소
+    // 안의 `.gitignore`는 이 워크트리의 규칙이 아니다.
+    let rules_changed = rels.iter().any(|rel| rel.rsplit('/').next() == Some(".gitignore") && !in_other(rel));
     let folders = if rules_changed {
         forget_ignored_folders(dir);
         Vec::new()
     } else {
         known_ignored_folders(dir)
     };
-    let asked: Vec<String> =
-        rels.into_iter().filter(|rel| !folders.iter().any(|folder| is_under(rel, folder))).cloned().collect();
+    let asked: Vec<String> = rels
+        .iter()
+        .filter(|rel| !folders.iter().any(|folder| is_under(rel, folder)))
+        .filter(|rel| !in_other(rel))
+        .cloned()
+        .collect();
     if asked.is_empty() {
         return false;
     }
@@ -369,6 +376,17 @@ mod tests {
         check("빠른 길 없이");
         crate::list_worktree_tree(&works, "w", "fe").unwrap();
         check("빠른 길로");
+    }
+
+    #[test]
+    fn a_gitignore_inside_another_repository_keeps_the_fast_path() {
+        // 하위 모듈의 규칙은 이 워크트리의 트리를 가르지 않는다 — 소식도 아니고, 트리 목록이 알려 준 걸린 폴더도 그대로 맞다
+        let (tmp, works) = setup();
+        with_other_repositories(tmp.path(), &works);
+        std::fs::create_dir_all(works.join("w/trees/fe/target/debug")).unwrap();
+        crate::list_worktree_tree(&works, "w", "fe").unwrap();
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/libs/sub/.gitignore"])), (vec![], 0));
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/target/debug/a.o"])), (vec![], 0));
     }
 
     #[test]
