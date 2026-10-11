@@ -8,7 +8,8 @@ import ChangesPill from "./ChangesPill";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
 import { foldConversation } from "./fold";
-import { useCloseConversation, useConversations, useCreateConversation, useRecordLines } from "./hooks";
+import { useCloseConversation, useConversations, useCreateConversation, useQueue, useRecordLines } from "./hooks";
+import QueuedMessages from "./QueuedMessages";
 import type { Agent, Conversation, Quote } from "./types";
 
 // 대화창(three-axes 티켓 17) — 대화 탭 줄 · 흐름 · 입력창. 작업 패널의 `chat` 보기가 이것을 그리고, `chat` 탭(24)도 같은 것을
@@ -184,11 +185,12 @@ function ConversationBody({
 }) {
   const key = conversationKey(work, conversation.id);
   const lines = useRecordLines(work, conversation.id);
+  // 흐름 · 알약 · 멈추기가 같은 접은 값을 읽는다 — 기록 줄이 올 때마다 한 번 접는다.
+  const model = useMemo(() => foldConversation(lines), [lines]);
   // 알약이 세는 것 — 이 대화의 마지막 턴의 고친 곳(티켓 26). 새 턴이 시작하면 그 턴에는 아직 없어 알약이 걷힌다.
-  const changes = useMemo(() => {
-    const { turns } = foldConversation(lines);
-    return turns[turns.length - 1]?.changes ?? null;
-  }, [lines]);
+  const changes = model.turns[model.turns.length - 1]?.changes ?? null;
+  // 대기 중인 말(티켓 20) — 턴이 도는 동안 보낸 말. 알약 아래, 입력창 바로 위에 선다(보드 04).
+  const queue = useQueue(work, conversation);
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
   useLayoutEffect(() => {
@@ -205,7 +207,7 @@ function ConversationBody({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 scroll-quiet"
       >
-        <ChatThread conversationKey={key} lines={lines} />
+        <ChatThread conversationKey={key} model={model} />
       </div>
       <Composer
         work={work}
@@ -213,7 +215,13 @@ function ConversationBody({
         draftKey={key}
         agent={conversation.agent}
         quote={quote}
-        above={changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}
+        running={model.running}
+        above={
+          <>
+            {changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}
+            <QueuedMessages work={work} conversation={conversation.id} queue={queue} />
+          </>
+        }
       />
     </div>
   );

@@ -933,6 +933,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   chat_send: null,
   chat_close: null,
+  // 멈추기 · 대기 줄의 고치기 · 지우기 · 지금 보내기(three-axes 티켓 20) — 값은 안 쓰인다. 멈춘 턴의 끝은 기록 줄로, 대기 줄은 대기 줄
+  // 바뀜 이벤트로 오므로 검사가 그 인자를 본 뒤 쏜다.
+  chat_stop: null,
+  chat_edit_queued: null,
+  chat_delete_queued: null,
+  chat_send_now: null,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

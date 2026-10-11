@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { CHAT_RECORD_EVENT } from "@/features/chat/events";
-import type { ChatRecordEvent, Conversation, RecordLine } from "@/features/chat/types";
+import { CHAT_QUEUE_EVENT, CHAT_RECORD_EVENT } from "@/features/chat/events";
+import type { ChatQueueEvent, ChatRecordEvent, Conversation, QueuedMessage, RecordLine } from "@/features/chat/types";
 import { REPO_ROOT } from "./dev-server";
 import type { Page } from "./evidence";
 import { fireEvent } from "./harness";
@@ -63,28 +63,116 @@ export async function streamLines(
 export const linesThrough = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
 export const linesAfter = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq > seq);
 
+/** 손 자료의 시각 — 11시 정각부터 n초. */
+const handAt = (n: number) => `2026-10-10T11:00:${String(n).padStart(2, "0")}.000+09:00`;
+
+/** 손 자료의 `update` 줄 — ACP `session/update` params 원문 꼴(`{sessionId, update}`)이다. */
+const handUpdate = (seq: number, n: number, update: Record<string, unknown>): RecordLine => ({
+  seq,
+  at: handAt(n),
+  kind: "update",
+  payload: { sessionId: "hand-session", update },
+});
+
+/** 손 자료의 `sent` 줄 — 둘째 말부터라 머리말 블록이 없다. */
+const handSent = (seq: number, text: string, sendNow = false): RecordLine => ({
+  seq,
+  at: handAt(0),
+  kind: "sent",
+  payload: { text, prompt: [{ type: "text", text }], sendNow },
+});
+
 /**
  * 손으로 짓는 한 턴 — L1 자료에 없는 모양(코드 블록이 든 답)을 잴 때 쓴다. 꼴은 L1 기록과 같다: 보낸 말(머리말 블록은 없다
  * — 둘째 말부터는 붙지 않는다) → 답 조각 → 턴 끝. seq는 `from`부터 1씩 오른다.
  */
 export function handTurn(from: number, text: string, answer: string, durationMs: number): RecordLine[] {
-  const at = (n: number) => `2026-10-10T11:00:${String(n).padStart(2, "0")}.000+09:00`;
   return [
-    { seq: from, at: at(0), kind: "sent", payload: { text, prompt: [{ type: "text", text }], sendNow: false } },
-    {
-      seq: from + 1,
-      at: at(1),
-      kind: "update",
-      payload: {
-        sessionId: "hand-session",
-        update: { sessionUpdate: "agent_message_chunk", messageId: "msg_hand", content: { type: "text", text: answer } },
-      },
-    },
+    handSent(from, text),
+    handUpdate(from + 1, 1, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "msg_hand",
+      content: { type: "text", text: answer },
+    }),
     {
       seq: from + 2,
-      at: at(2),
+      at: handAt(2),
       kind: "turn-end",
       payload: { stopReason: "end_turn", durationMs, cancelledByUs: false, outOfTurn: false },
     },
   ];
+}
+
+/**
+ * 손으로 짓는 **Claude 꼴의 멈춘 턴**(three-axes 티켓 20) — S26 목록 밖이라 여기서 짓는다. Claude는 interrupt가 돌던 도구까지
+ * 멈춘다(결정 28 · 워크플로 실측 2.1.282 `interrupt-sigint`): 열린 `tool_use`에 `is_error` `tool_result`가 오고 나서 `result`가
+ * 온다. 변환기가 옮긴 ACP 꼴로는 보낸 말 → 도구 호출(`in_progress`) → 그 도구의 `failed` update → 턴 끝(`cancelled`, 우리가
+ * 멈춤)이다. seq는 `from`부터 1씩 오른다.
+ */
+export function claudeStoppedTurn(from: number, text: string, command: string, durationMs: number): RecordLine[] {
+  const toolCallId = "toolu_hand_stopped";
+  return [
+    handSent(from, text),
+    handUpdate(from + 1, 1, {
+      sessionUpdate: "tool_call",
+      toolCallId,
+      kind: "execute",
+      title: command,
+      status: "in_progress",
+      rawInput: { command },
+    }),
+    handUpdate(from + 2, 2, {
+      sessionUpdate: "tool_call_update",
+      toolCallId,
+      status: "failed",
+      content: [
+        {
+          type: "content",
+          content: { type: "text", text: "The user doesn't want to proceed with this tool use. The tool use was rejected." },
+        },
+      ],
+    }),
+    {
+      seq: from + 3,
+      at: handAt(3),
+      kind: "turn-end",
+      payload: { stopReason: "cancelled", durationMs, cancelledByUs: true, outOfTurn: false },
+    },
+  ];
+}
+
+/**
+ * 손으로 짓는 **스스로 이어 간 턴**(S4, three-axes 티켓 20) — 보낸 말 없이 턴 밖 update로 시작해 턴 밖 끝(`outOfTurn: true`)으로
+ * 끝난다. Claude가 백그라운드 작업 알림으로 스스로 시작한 턴을 변환기 · 호스트가 적는 꼴이다(티켓 16). S26 목록 밖이라 여기서
+ * 짓는다. `end`가 거짓이면 턴 밖 끝 줄을 빼고 돌려준다(도는 중).
+ */
+export function selfContinuedTurn(from: number, answer: string, durationMs: number, end = true): RecordLine[] {
+  const lines: RecordLine[] = [
+    handUpdate(from, 0, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "msg_hand_self",
+      content: { type: "text", text: answer },
+    }),
+  ];
+  if (end) {
+    lines.push({
+      seq: from + 1,
+      at: handAt(1),
+      kind: "turn-end",
+      payload: { stopReason: "end_turn", durationMs, cancelledByUs: false, outOfTurn: true },
+    });
+  }
+  return lines;
+}
+
+/** 손으로 짓는 `sent` 줄 하나 — 대기 줄의 말이 「지금 보내기」로 간 것(`sendNow`)을 잴 때 쓴다. */
+export const sentLine = (seq: number, text: string, sendNow = false): RecordLine => handSent(seq, text, sendNow);
+
+/**
+ * 대기 줄 바뀜 이벤트를 쏜다 — 호스트가 대기 줄이 바뀔 때마다 그 대화의 대기 줄 전체를 내보내는 것 그대로다
+ * (`{work, conversation, queue}`). 구독은 앱 층에 하나다(`AppShell`).
+ */
+export async function fireQueue(page: Page, work: string, conversation: string, queue: QueuedMessage[]): Promise<void> {
+  const event: ChatQueueEvent = { work, conversation, queue };
+  await fireEvent(page, CHAT_QUEUE_EVENT, event);
 }

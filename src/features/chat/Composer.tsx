@@ -9,8 +9,12 @@ import { DraftQuoteChip } from "./QuoteChip";
 import type { Agent, Quote } from "./types";
 
 // 입력창(three-axes 티켓 17) — 글을 쓰고 보낸다. 캔버스 보드 14의 `.cx-composer`(r28 · 흰 면 · 그림자 셋 · 안쪽 15 12 8 18)와
-// 보내기 원(32 · 파랑, 비면 옅은 면)이다. 칩(에이전트 · 모델 · 모드 · 계획)과 「/」 메뉴는 19, 대기 줄 · 멈추기는 20이 이 자리에
-// 더한다. 문서에서 고른 자리(인용, 27)는 입력칸 위에 칩으로 붙고, 보낼 때 함께 실려 간다.
+// 보내기 원(32 · 파랑, 비면 옅은 면)이다. 칩(에이전트 · 모델 · 모드 · 계획)과 「/」 메뉴는 19가 이 자리에 더한다. 문서에서 고른
+// 자리(인용, 27)는 입력칸 위에 칩으로 붙고, 보낼 때 함께 실려 간다.
+//
+// **턴이 도는 동안**(three-axes 티켓 20) 보내기 원은 멈추기가 된다(보드 14 「도는 중 — 보내기가 중지가 된다」, 흰 네모). 그동안
+// 쓴 말도 보낸다 — 호스트가 대기 줄 끝에 넣고(S13) 입력창 위 「대기 중」에 선다. 그래서 칸에 글이 있으면 멈추기 앞에 보내기 원이
+// 함께 선다 — 멈추기는 턴이 도는 내내 그 자리에 있다.
 //
 // **입력 중인 글은 대화마다 모듈 스토어에 산다**(`chatUiStore.drafts`). 레일에서 `spec`과 오가도 패널 몸은 마운트된 채라 남지만,
 // 작업 패널에 key가 없어 work를 옮기면 같은 컴포넌트가 다른 대화를 그린다 — 그때 글이 따라오지 않게 대화 열쇠로 둔다.
@@ -36,9 +40,11 @@ interface ComposerProps {
    * 넘긴다 — 다른 대화로 옮기면 칩도 그 대화의 입력창으로 따라간다.
    */
   quote: Quote | null;
+  /** 이 대화의 턴이 도는가 — 기록을 접은 값이다. 돌면 비어 있는 칸의 원이 멈추기다. */
+  running: boolean;
 }
 
-function Composer({ work, conversation, draftKey, agent, above, quote }: ComposerProps) {
+function Composer({ work, conversation, draftKey, agent, above, quote, running }: ComposerProps) {
   const draft = useStore(chatUiStore, (state) => state.drafts[draftKey] ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -69,11 +75,17 @@ function Composer({ work, conversation, draftKey, agent, above, quote }: Compose
     const sending = quote ?? undefined;
     if (sending) dropQuote(work);
     chatApi.send(work, conversation, text, sending).catch((error: unknown) => {
-      // 보내지 못했다 — 쓴 글과 인용을 돌려놓고 까닭을 보인다. 대기 줄(20)이 서기 전에는 턴이 도는 동안의 보내기도 여기로 온다.
+      // 보내지 못했다 — 쓴 글과 인용을 돌려놓고 까닭을 보인다. 턴이 도는 동안의 말은 거절되지 않고 대기 줄에 든다(티켓 20).
       setDraft(draftKey, text);
       if (sending) restoreQuote(work, sending);
       setProblem(String(error));
     });
+  };
+
+  // 멈추기 — 기다리지 않는다. 멈춘 턴의 끝은 `cancelled` 턴 끝 줄로 오고, 그 머리줄이 「N초 후에 중단했습니다」다(S24).
+  const stop = () => {
+    setProblem(null);
+    chatApi.stop(work, conversation).catch((error: unknown) => setProblem(String(error)));
   };
 
   return (
@@ -92,7 +104,7 @@ function Composer({ work, conversation, draftKey, agent, above, quote }: Compose
           aria-label="보낼 말"
           rows={1}
           value={draft}
-          placeholder={`${AGENT_LABEL[agent]}에게 요청하세요`}
+          placeholder={running ? "이어서 말하면 대기 줄에 쌓여요" : `${AGENT_LABEL[agent]}에게 요청하세요`}
           onChange={(event) => setDraft(draftKey, event.target.value)}
           onKeyDown={(event) => {
             // Enter는 보내기, Shift+Enter는 줄바꿈이다. 한국어 입력기가 글자를 짓는 동안의 Enter는 그 글자를 끝내는 키라 보내지 않는다.
@@ -104,17 +116,29 @@ function Composer({ work, conversation, draftKey, agent, above, quote }: Compose
         />
         <div className="flex flex-wrap items-center gap-0.5">
           <span className="flex-1" />
-          <button
-            type="submit"
-            aria-label="보내기"
-            disabled={empty}
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
-              empty ? "bg-state-3 text-tertiary" : "bg-(--chat-send) text-white",
-            )}
-          >
-            <ArrowUp className="size-4" strokeWidth={1.8} aria-hidden />
-          </button>
+          {(!running || !empty) && (
+            <button
+              type="submit"
+              aria-label="보내기"
+              disabled={empty}
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
+                empty ? "bg-state-3 text-tertiary" : "bg-(--chat-send) text-white",
+              )}
+            >
+              <ArrowUp className="size-4" strokeWidth={1.8} aria-hidden />
+            </button>
+          )}
+          {running && (
+            <button
+              type="button"
+              aria-label="멈추기"
+              onClick={stop}
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--chat-send) text-white"
+            >
+              <span className="size-2.5 rounded-xs bg-current" aria-hidden />
+            </button>
+          )}
         </div>
       </form>
       {problem && (

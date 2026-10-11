@@ -1023,6 +1023,16 @@ body[data-palette-open] [data-scrollbar] {
     --chat-surface-code: #f2f2f3;
     /* 인용 칩의 면(three-axes 티켓 27 — 캔버스 `.cx-cite`의 `--accent-soft`). 글자는 `--chat-link`다. */
     --chat-quote: #e5f3ff;
+    /* 도구 줄과 명령 출력 상자(three-axes 티켓 20 — 캔버스 `.cx-tool` · `.cx-shell-out`): 도구 줄 글자(14/21 · 60%), 출력 상자의
+       면과 1px 안쪽 선, 오른쪽 아래 상태 글자 */
+    --chat-leading-tool: 21px;
+    --chat-fg-tool: rgba(26, 28, 31, 0.6);
+    --chat-fg-tool-status: #88898a;
+    --chat-surface-tool: #f2f3f3;
+    --chat-shadow-tool: inset 0 0 0 1px #d9dada;
+    /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선) */
+    --chat-surface-under: #f9f9f9;
+    --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);
 }
 
 /* 고친 곳(three-axes 티켓 26) — 대화창 범위 토큰이지만 그 표시는 대화창 **밖**에도 선다: 스펙 창의 블록 · 트리의 행 · 레일 칸. 그래서
