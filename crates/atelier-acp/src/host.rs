@@ -192,6 +192,7 @@ struct Conv {
     setting: Mutex<()>,
 }
 
+#[derive(Default)]
 struct ConvState {
     /// 에이전트가 살아 있나. 죽으면 다음 말이 되살리기(티켓 10)로 다시 띄운다.
     alive: bool,
@@ -250,16 +251,26 @@ impl ConvState {
     /// 에이전트 쪽 세션이 막 열린 대화 — 살아 있고, 턴이 쉬고, 첫 말에 머리말을 붙인다. 턴 손잡이는 세션이 열린 뒤에
     /// 서고, 대기 줄은 비어 있다.
     fn fresh() -> Self {
-        Self {
-            alive: true,
-            turn: None,
-            needs_preamble: true,
-            turns: None,
-            queue: VecDeque::new(),
-            before: None,
-            self_turn: None,
-            after_last: None,
-        }
+        Self { alive: true, needs_preamble: true, ..Self::default() }
+    }
+
+    /// 턴을 쉬는 것으로 되돌린다 — 에이전트가 죽었거나(`alive = false`) 다시 열렸다(`alive = true`). 턴에 딸린 칸(도는 턴 ·
+    /// 그 앞 · 스스로 이어 간 턴 · 마지막 턴 끝의 「지금」)은 모두 걷고, 대화에 딸린 칸(대기 줄 · 머리말 · 턴 손잡이)만 남긴다
+    /// — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13). 칸을 더하면 기본값으로 걷힌다: 남길 칸만 여기 적는다.
+    fn rest(&mut self, alive: bool) {
+        *self = Self {
+            alive,
+            needs_preamble: self.needs_preamble,
+            turns: self.turns.take(),
+            queue: std::mem::take(&mut self.queue),
+            ..Self::default()
+        };
+    }
+
+    /// 에이전트가 떠 있고 살아 있나 — 세션이 열려 턴 손잡이가 섰다. 대화 목록의 `live`(three-axes 티켓 23)이고, 말을 곧바로
+    /// 보낼 수 있는 대화다. 죽었거나 끈 대화는 아니다.
+    fn is_up(&self) -> bool {
+        self.alive && self.turns.is_some()
     }
 }
 
@@ -307,11 +318,7 @@ impl Conv {
             RuntimeEvent::Died(death) => {
                 // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡고, 턴은 쉬는 것으로 돌린다.
                 let mut state = self.lock_state();
-                state.alive = false;
-                state.turn = None;
-                state.before = None;
-                state.self_turn = None;
-                state.after_last = None;
+                state.rest(false);
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
@@ -871,20 +878,18 @@ impl ConversationHost {
     /// - work가 사라졌거나 대화가 닫혔으면 아무것도 하지 않는다.
     /// - 대기 줄은 다시 뜬 대화가 그대로 이어 쥐고, 로그인이라는 걸림이 풀린 이 자리에서 맨 앞부터 간다(S13, 티켓 07).
     fn relaunch(&self, waiting: &Waiting) -> Result<(), HostError> {
-        let works = atelier_core::works_in(&self.data_root);
-        let Ok(meta) = atelier_core::read_work(&works, &waiting.work) else { return Ok(()) };
-        let places = atelier_core::work_places(&works, &meta);
-        let open = records::read_rows(&places.agents)
-            .map_err(HostError::Record)?
-            .iter()
-            .any(|row| row.id == waiting.conversation && row.closed_at.is_none());
-        if !open {
-            return Ok(());
+        // 호스트가 쥐었던 대화라 id를 다시 검사하지 않는다.
+        let key = ConversationKey { work: &waiting.work, id: &waiting.conversation };
+        let Ok(work_at) = self.open_work(key.work) else { return Ok(()) };
+        match work_at.open_row(key.id) {
+            Ok(_) => {}
+            Err(HostError::ConversationNotFound(_)) => return Ok(()),
+            Err(error) => return Err(error),
         }
-        self.revive(&waiting.work, &waiting.conversation, Revive::EvenIfRunning)?;
-        let live = self.lock_live();
-        if let Some(found) = live.get(&waiting.conversation).filter(|live| live.work == waiting.work) {
-            found.conv.send_queued(&mut found.conv.lock_state(), None);
+        self.revive(key, Revive::EvenIfRunning)?;
+        // 표의 잠금은 놓고 보낸다 — 맨 앞의 턴 앞을 찍느라 spec 폴더를 걷는 동안 다른 대화의 명령을 막지 않게(S2).
+        if let Some(conv) = self.find_live(key) {
+            conv.send_queued(&mut conv.lock_state(), None);
         }
         Ok(())
     }
@@ -902,38 +907,27 @@ impl ConversationHost {
     ///   옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
     ///
     /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다. 대화마다 하나씩 돈다 — 앞선 것이 되살렸으면 아무것도 하지 않는다.
-    fn revive(&self, work: &str, conversation: &str, when: Revive) -> Result<(), HostError> {
-        let gate = self.revival_gate(conversation);
+    fn revive(&self, key: ConversationKey, when: Revive) -> Result<(), HostError> {
+        let gate = self.revival_gate(key.id);
         let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        if when == Revive::IfNotRunning && self.is_running(work, conversation) {
+        if when == Revive::IfNotRunning && self.is_running(key) {
             return Ok(());
         }
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        let places = atelier_core::work_places(&works, &meta);
-        let mut row = records::read_rows(&places.agents)
-            .map_err(HostError::Record)?
-            .into_iter()
-            .find(|row| row.id == conversation && row.closed_at.is_none())
-            .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))?;
+        let work_at = self.open_work(key.work)?;
+        let mut row = work_at.open_row(key.id)?;
         let env = self.login_env(false)?;
         let programs = find_programs(row.agent, &env)?;
-        let conv = match self.take_live(work, conversation) {
+        let conv = match self.take_live(key) {
             Some(mut live) => {
                 shut_down_together(std::slice::from_mut(&mut live));
                 live.conv
             }
-            None => Conv::new(
-                Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-                spec_place(&works, &meta, &places),
-                Some(self.vanish_watch(&works, work, conversation)),
-                Some(self.login_watch(row.agent, work, conversation)),
-            ),
+            None => self.live_conv(&work_at, key, row.agent)?,
         };
         let queued = !conv.lock_state().queue.is_empty();
-        let opened = self.open_agent(work, &places, &mut row, conv, &env, &programs);
-        if queued && !self.lock_live().get(conversation).is_some_and(|live| live.work == work) {
-            (self.emit)(HostEvent::Queue { work: work.to_owned(), conversation: conversation.to_owned(), queue: Vec::new() });
+        let opened = self.open_agent(key.work, &work_at.places, &mut row, conv, &env, &programs);
+        if queued && self.find_live(key).is_none() {
+            (self.emit)(HostEvent::Queue { work: key.work.to_owned(), conversation: key.id.to_owned(), queue: Vec::new() });
         }
         opened.map(|_| ())
     }
@@ -945,12 +939,8 @@ impl ConversationHost {
     }
 
     /// 그 대화의 에이전트가 떠 있고 살아 있나 — 아니면 보내기가 먼저 되살린다.
-    fn is_running(&self, work: &str, conversation: &str) -> bool {
-        let live = self.lock_live();
-        live.get(conversation).filter(|live| live.work == work).is_some_and(|found| {
-            let state = found.conv.lock_state();
-            state.alive && state.turns.is_some()
-        })
+    fn is_running(&self, key: ConversationKey) -> bool {
+        self.find_live(key).is_some_and(|conv| conv.lock_state().is_up())
     }
 
     /// 찾고, 찾았으면 로그인을 묻는다.
@@ -967,12 +957,14 @@ impl ConversationHost {
     /// 대화 목록 — 그 work의 열린 대화들을 만든 순서로 준다. 닫은 대화는 `agents.json`에 줄이 남아도 빠진다
     /// (S14). 읽기만 한다 — `agents/`가 없으면 빈 목록이고, 아무것도 만들지 않는다.
     pub fn list_conversations(&self, work: &str) -> Result<Vec<Conversation>, HostError> {
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        let places = atelier_core::work_places(&works, &meta);
-        let rows = records::read_rows(&places.agents).map_err(HostError::Record)?;
+        let work_at = self.open_work(work)?;
+        let rows = work_at.rows()?;
         let live = self.lock_live();
-        Ok(rows.iter().filter(|row| row.closed_at.is_none()).map(|row| summarize(&live, &places.agents, row)).collect())
+        Ok(rows
+            .iter()
+            .filter(|row| row.closed_at.is_none())
+            .map(|row| summarize(&live, &work_at.places.agents, row))
+            .collect())
     }
 
     /// 기록 읽기 — 그 대화의 기록에서 `after` 다음 seq의 줄들을 준다. 화면은 이것으로 그리고, 그 뒤는 기록 줄
@@ -980,13 +972,9 @@ impl ConversationHost {
     ///
     /// 읽기만 한다 — 에이전트를 띄우지 않고, 아무것도 만들지 않는다.
     pub fn read_record(&self, work: &str, conversation: &str, after: u64) -> Result<Vec<RecordLine>, HostError> {
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
-        let places = atelier_core::work_places(&works, &meta);
-        let path = records::record_path(&places.agents, conversation);
+        let work_at = self.open_work(work)?;
+        let key = ConversationKey::new(work, conversation)?;
+        let path = records::record_path(&work_at.places.agents, key.id);
         records::read_lines(&path, after).map_err(|error| match error.kind() {
             std::io::ErrorKind::NotFound => HostError::ConversationNotFound(conversation.to_owned()),
             _ => HostError::Record(format!("기록을 읽지 못했습니다: {} — {error}", path.display())),
@@ -1017,17 +1005,15 @@ impl ConversationHost {
         agent: Agent,
         defaults: ConversationDefaults,
     ) -> Result<Conversation, HostError> {
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        let places = atelier_core::work_places(&works, &meta);
+        let work_at = self.open_work(work)?;
         let env = self.login_env(false)?;
         let programs = find_programs(agent, &env)?;
-        let place = workplace(&places, meta.projects.len());
+        let place = workplace(&work_at.places, work_at.meta.projects.len());
 
-        records::ensure_agents_dir(&places.agents).map_err(HostError::Record)?;
+        records::ensure_agents_dir(&work_at.places.agents).map_err(HostError::Record)?;
         let row = {
             let _file = self.lock_agents_file();
-            let rows = records::read_rows(&places.agents).map_err(HostError::Record)?;
+            let rows = work_at.rows()?;
             let row = ConversationRow {
                 id: uuid::Uuid::new_v4().to_string(),
                 agent,
@@ -1042,10 +1028,10 @@ impl ConversationHost {
                 closed_at: None,
                 extra: Default::default(),
             };
-            records::write_row(&places.agents, &row).map_err(HostError::Record)?;
+            records::write_row(&work_at.places.agents, &row).map_err(HostError::Record)?;
             row
         };
-        self.start_agent(work, &works, &meta, &places, row, &programs, &env)
+        self.start_agent(work, &work_at, row, &programs, &env)
     }
 
     /// 새 대화의 에이전트를 띄워 세션을 연다. 에이전트는 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서
@@ -1056,24 +1042,17 @@ impl ConversationHost {
     ///   상태(찾음 · 안 됨)를 알린다. 실패가 아니다 — 대화는 서고, 화면은 그 자리에 안내 카드를 세운다. 로그인이 「됨」으로
     ///   바뀌면 다시 띄운다.
     /// - 그 밖의 까닭으로 못 열면 프로세스를 남김없이 끈 뒤 기록에 까닭(`session` 죽음 줄)을 적고 실패한다.
-    #[allow(clippy::too_many_arguments)]
     fn start_agent(
         &self,
         work: &str,
-        works: &Path,
-        meta: &atelier_core::Work,
-        places: &atelier_core::WorkPlaces,
+        work_at: &WorkAt,
         mut row: ConversationRow,
         programs: &[discovery::FoundProgram],
         env: &AgentEnv,
     ) -> Result<Conversation, HostError> {
-        let conv = Conv::new(
-            Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-            spec_place(works, meta, places),
-            Some(self.vanish_watch(works, work, &row.id)),
-            Some(self.login_watch(row.agent, work, &row.id)),
-        );
-        self.open_agent(work, places, &mut row, conv, env, programs)
+        // 호스트가 방금 지은 id라 다시 검사하지 않는다.
+        let conv = self.live_conv(work_at, ConversationKey { work, id: &row.id }, row.agent)?;
+        self.open_agent(work, &work_at.places, &mut row, conv, env, programs)
     }
 
     /// 에이전트 바꾸기 — 첫 말 전에만 된다(three-axes 결정 15 · 스토리 23 · 24). 지금 프로세스를 남김없이 끄고(stdin 닫기 →
@@ -1086,27 +1065,19 @@ impl ConversationHost {
     /// - 새 엔진을 못 찾으면 아무것도 바꾸지 않고 실패한다. 새 엔진이 세션을 열지 못하면 대화는 새 엔진으로 남는다 —
     ///   다음 말에서 다시 띄운다(10).
     pub fn switch_agent(&self, work: &str, conversation: &str, agent: Agent) -> Result<Conversation, HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        let places = atelier_core::work_places(&works, &meta);
-        let mut row = records::read_rows(&places.agents)
-            .map_err(HostError::Record)?
-            .into_iter()
-            .find(|row| row.id == conversation && row.closed_at.is_none())
-            .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))?;
+        let key = ConversationKey::new(work, conversation)?;
+        let work_at = self.open_work(work)?;
+        let mut row = work_at.open_row(conversation)?;
 
         // 떠 있는 표에서 먼저 꺼낸다 — 꺼낸 뒤로는 보내기가 이 대화에 닿지 않아, 첫 말을 확인하는 사이에 말이 끼지 못한다.
         // 바꾸지 않고 돌아갈 때는 그대로 되돌려 둔다.
-        let live = self.take_live(work, conversation);
+        let live = self.take_live(key);
         let put_back = |live: Option<Live>| {
             if let Some(live) = live {
                 self.lock_live().insert(conversation.to_owned(), live);
             }
         };
-        let record = records::record_path(&places.agents, conversation);
+        let record = records::record_path(&work_at.places.agents, conversation);
         if records::has_sent(&record) {
             put_back(live);
             return Err(HostError::AgentLocked(conversation.to_owned()));
@@ -1115,7 +1086,7 @@ impl ConversationHost {
             let (last_seq, queue, up) = match &live {
                 Some(live) => {
                     let state = live.conv.lock_state();
-                    (live.conv.recorder.last_seq(), queue_of(&state), is_up(&state))
+                    (live.conv.recorder.last_seq(), queue_of(&state), state.is_up())
                 }
                 None => (records::last_seq(&record), Vec::new(), false),
             };
@@ -1138,12 +1109,7 @@ impl ConversationHost {
                 shut_down_together(std::slice::from_mut(&mut live));
                 live.conv
             }
-            None => Conv::new(
-                Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-                spec_place(&works, &meta, &places),
-                Some(self.vanish_watch(&works, work, conversation)),
-                Some(self.login_watch(agent, work, conversation)),
-            ),
+            None => self.live_conv(&work_at, key, agent)?,
         };
         // 떠 있던 대화는 기록기를 그대로 쓴다 — 옛 런타임이 끈 뒤에 늦게 넘기는 줄(stderr 꼬리)이 같은 seq 셈에 선다. 턴
         // 도중의 로그인 필요(12)는 새 엔진의 것으로 쥐게 한다.
@@ -1153,23 +1119,20 @@ impl ConversationHost {
         conv.recorder.config(json!({"agent": agent})).map_err(HostError::Record)?;
         {
             let _file = self.lock_agents_file();
-            let others: Vec<ConversationRow> = records::read_rows(&places.agents)
-                .map_err(HostError::Record)?
-                .into_iter()
-                .filter(|other| other.id != conversation)
-                .collect();
+            let others: Vec<ConversationRow> =
+                work_at.rows()?.into_iter().filter(|other| other.id != conversation).collect();
             row.agent = agent;
             row.name = next_name(agent, &others);
             row.model = None;
             row.mode = None;
             row.plan = None;
             row.agent_session_id = None;
-            records::write_row(&places.agents, &row).map_err(HostError::Record)?;
+            records::write_row(&work_at.places.agents, &row).map_err(HostError::Record)?;
         }
         // 새 엔진의 새 세션이다 — 옛 프로세스가 죽어 있었어도 다시 산 것으로 보고, 첫 말에 머리말을 붙인다(S11). 대기 줄은
         // 비어 있다 — 말은 턴이 도는 동안에만 대기 줄에 들고, 턴은 첫 말이 연다(첫 말 뒤에는 위에서 거절했다).
         *conv.lock_state() = ConvState::fresh();
-        self.open_agent(work, &places, &mut row, conv, &env, &programs)
+        self.open_agent(work, &work_at.places, &mut row, conv, &env, &programs)
     }
 
     /// 대화의 에이전트를 띄워 세션을 열고, 떠 있는 표에 넣는다. 열리면 에이전트 쪽 세션 id를 `agents.json`에 적는다.
@@ -1226,11 +1189,7 @@ impl ConversationHost {
         {
             // 대기 줄은 그대로 둔다 — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13).
             let mut state = conv.lock_state();
-            state.alive = true;
-            state.turn = None;
-            state.before = None;
-            state.self_turn = None;
-            state.after_last = None;
+            state.rest(true);
             state.turns = turns;
             state.needs_preamble = needs_preamble;
         }
@@ -1297,54 +1256,49 @@ impl ConversationHost {
         text: &str,
         quote: Option<&Quote>,
     ) -> Result<(), HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        let places = atelier_core::work_places(&works, &meta);
+        let key = ConversationKey::new(work, conversation)?;
+        let work_at = self.open_work(work)?;
         // 인용 블록은 지금 짓는다 — 대기 줄에 들어 턴 끝에 가는 말도 그 블록을 들고 간다(턴 끝에서는 work를 읽지 않는다).
         let quote = match quote {
-            Some(quote) => Some(quote.attach(&places.spec).map_err(|bad| HostError::BadQuote(bad.to_string()))?),
+            Some(quote) => Some(quote.attach(&work_at.places.spec).map_err(|bad| HostError::BadQuote(bad.to_string()))?),
             None => None,
         };
-        // 대화들의 잠금을 쥐기 전에 찍는다 — 폴더를 걷는 동안 다른 대화의 명령을 막지 않게. 그 틈에 다른 대화가
-        // 고친 것은 이 턴의 비교에 든다(함께 돈 대화의 고침은 원래 든다).
-        let before = Snapshot::take(&spec_place(&works, &meta, &places));
+        // 떠 있는 표의 잠금도 이 대화의 잠금도 쥐기 전에 찍는다 — 폴더를 걷는 동안 다른 대화의 명령도, 이 대화의 턴 끝도
+        // 막지 않게. 그 틈에 다른 대화가 고친 것은 이 턴의 비교에 든다(함께 돈 대화의 고침은 원래 든다).
+        let before = Snapshot::take(&work_at.spec_place());
 
         // 떠 있지 않거나 죽은 대화는 먼저 띄워 되살린다(티켓 10). 로그인을 기다리는 대화는 띄우지 않는다 — 로그인이 「됨」이
         // 되면 호스트가 다시 띄운다(12).
-        if !self.is_running(work, conversation) && self.logins.waiting_for(conversation).is_none() {
-            self.revive(work, conversation, Revive::IfNotRunning)?;
+        if !self.is_running(key) && self.logins.waiting_for(conversation).is_none() {
+            self.revive(key, Revive::IfNotRunning)?;
         }
 
-        let live = self.lock_live();
-        let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
+        let Some(conv) = self.find_live(key) else {
             return Err(match self.logins.waiting_for(conversation) {
                 Some(agent) => HostError::LoginRequired { agent, conversation: conversation.to_owned() },
                 None => HostError::NotRunning(conversation.to_owned()),
             });
         };
-        let mut state = found.conv.lock_state();
+        let mut state = conv.lock_state();
         if let Some(agent) = self.logins.waiting_for(conversation) {
             // 턴 도중에 로그인이 풀렸다. 대화의 잠금 안에서 본다 — 턴 끝이 같은 잠금 안에서 쥐게 한다.
             return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
         }
-        if !state.alive || state.turns.is_none() {
+        if !state.is_up() {
             return Err(HostError::NotRunning(conversation.to_owned()));
         }
-        let preamble = preamble(&meta, &places);
-        if found.conv.can_send(&state) && state.queue.is_empty() {
-            return found.conv.begin_turn(&mut state, text, quote.as_ref(), preamble, false, before);
+        let preamble = work_at.preamble();
+        if conv.can_send(&state) && state.queue.is_empty() {
+            return conv.begin_turn(&mut state, text, quote.as_ref(), preamble, false, before);
         }
         // S13 — 턴이 도는 동안의 말은 대기 줄 끝에 든다. 턴이 끝나면 맨 앞부터 차례로 간다.
         let message = QueuedMessage { id: uuid::Uuid::new_v4().to_string(), text: text.to_owned(), send_now: false };
         state.queue.push_back(Queued { message, preamble, quote });
-        if found.conv.can_send(&state) {
+        if conv.can_send(&state) {
             // 쉬는데 대기 줄이 남아 있다 — 맨 앞부터 보낸다. 새 말이 앞지르지 않는다.
-            found.conv.send_queued(&mut state, Some(before));
+            conv.send_queued(&mut state, Some(before));
         } else {
-            found.conv.announce_queue(&state);
+            conv.announce_queue(&state);
         }
         Ok(())
     }
@@ -1357,13 +1311,10 @@ impl ConversationHost {
     ///   엇갈려도 읽히는 오류가 나지 않는다.
     /// - 대기 줄은 거두지 않는다 — 멈춘 턴이 끝나면 다른 턴 끝처럼 맨 앞이 간다(S13). 보내지 않을 말은 먼저 지운다.
     pub fn stop(&self, work: &str, conversation: &str) -> Result<(), HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
-        let live = self.lock_live();
-        let Some(found) = live.get(conversation).filter(|live| live.work == work) else { return Ok(()) };
-        let mut state = found.conv.lock_state();
-        found.conv.stop_turn(&mut state)
+        let key = ConversationKey::new(work, conversation)?;
+        let Some(conv) = self.find_live(key) else { return Ok(()) };
+        let mut state = conv.lock_state();
+        conv.stop_turn(&mut state)
     }
 
     /// 권한 답 — 걸린 권한 요청(`request` — 요청 id)에 고른 선택지(`option` — optionId)로 답한다. 기다리지 않는다: 고른
@@ -1373,27 +1324,26 @@ impl ConversationHost {
     /// - 이미 닫힌 요청(답했다 · 멈춰서 거둬졌다 · 에이전트가 턴을 끝내 거둬졌다 · 에이전트가 떠 있지 않다)도 읽히는 오류다.
     /// - 걸림이 풀리는 자리다 — 턴이 쉬는데 대기 줄이 남아 있으면 맨 앞을 보낸다(S13). 턴 도중의 답이면 턴 끝이 보낸다.
     pub fn answer_permission(&self, work: &str, conversation: &str, request: &str, option: &str) -> Result<(), HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
+        let key = ConversationKey::new(work, conversation)?;
         let closed = || HostError::PermissionClosed { conversation: conversation.to_owned(), request: request.to_owned() };
-        let live = self.lock_live();
-        let found = live.get(conversation).filter(|live| live.work == work).ok_or_else(closed)?;
-        let mut state = found.conv.lock_state();
+        // 표의 잠금은 놓고 답한다 — 걸림이 풀려 대기 줄의 맨 앞을 보내면 그 턴 앞을 찍느라 spec 폴더를 걷는데, 그동안 다른
+        // 대화의 명령을 막지 않게(S2).
+        let conv = self.find_live(key).ok_or_else(closed)?;
+        let mut state = conv.lock_state();
         let turns = state.turns.clone().ok_or_else(closed)?;
         turns.answer(request, option).map_err(|error| match error {
             AnswerError::Closed => closed(),
             AnswerError::UnknownOption => HostError::PermissionOption { request: request.to_owned(), option: option.to_owned() },
             AnswerError::Send(reason) => HostError::Send(reason),
         })?;
-        found.conv.send_queued(&mut state, None);
+        conv.send_queued(&mut state, None);
         Ok(())
     }
 
     /// 대기 고치기 — 대기 줄에서 그 대기 id의 말의 글을 바꾸고 대기 줄 바뀜을 낸다. 대기 id와 차례는 그대로다
     /// (스토리 50). 이미 갔거나 지운 말이면 읽히는 오류다.
     pub fn edit_queued(&self, work: &str, conversation: &str, queued: &str, text: &str) -> Result<(), HostError> {
-        self.change_queued(work, conversation, queued, |conv, state, at| {
+        self.change_queued(ConversationKey::new(work, conversation)?, queued, |conv, state, at| {
             state.queue[at].message.text = text.to_owned();
             conv.announce_queue(state);
             Ok(())
@@ -1403,7 +1353,7 @@ impl ConversationHost {
     /// 대기 지우기 — 대기 줄에서 그 대기 id의 말을 빼고 대기 줄 바뀜을 낸다(스토리 50). 이미 갔거나 지운 말이면
     /// 읽히는 오류다.
     pub fn delete_queued(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
-        self.change_queued(work, conversation, queued, |conv, state, at| {
+        self.change_queued(ConversationKey::new(work, conversation)?, queued, |conv, state, at| {
             state.queue.remove(at);
             conv.announce_queue(state);
             Ok(())
@@ -1421,20 +1371,15 @@ impl ConversationHost {
     /// - 이미 갔거나 지운 말이면 읽히는 오류이고 멈추지 않는다. 로그인을 기다리는 대화(12)도 읽히는 오류다.
     /// - 에이전트가 죽은 대화면 보내기처럼 먼저 띄워 되살린 뒤 그 말을 곧바로 보낸다(티켓 10) — 막히는 호출일 수 있다.
     pub fn send_now(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
-        let dead_with_it = {
-            let live = self.lock_live();
-            live.get(conversation).filter(|live| live.work == work).is_some_and(|found| {
-                let state = found.conv.lock_state();
-                !(state.alive && state.turns.is_some()) && state.queue.iter().any(|item| item.message.id == queued)
-            })
-        };
+        let key = ConversationKey::new(work, conversation)?;
+        let dead_with_it = self.find_live(key).is_some_and(|conv| {
+            let state = conv.lock_state();
+            !state.is_up() && state.queue.iter().any(|item| item.message.id == queued)
+        });
         if dead_with_it && self.logins.waiting_for(conversation).is_none() {
-            self.revive(work, conversation, Revive::IfNotRunning)?;
+            self.revive(key, Revive::IfNotRunning)?;
         }
-        self.change_queued(work, conversation, queued, |conv, state, at| {
+        self.change_queued(key, queued, |conv, state, at| {
             if let Some(agent) = self.logins.waiting_for(conversation) {
                 // 보내기처럼 로그인을 기다린다(티켓 12) — 대기 줄은 그대로 두고 멈추지도 않는다.
                 return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
@@ -1459,23 +1404,19 @@ impl ConversationHost {
     }
 
     /// 그 대화의 대기 줄에서 그 대기 id의 말을 찾아 `change`에 자리와 함께 넘긴다. 대화의 잠금을 쥔 채 부른다 — 턴 끝이
-    /// 맨 앞을 꺼내 보내는 것과 엇갈리지 않는다. 떠 있지 않은 대화의 대기 줄은 늘 비어 있다.
+    /// 맨 앞을 꺼내 보내는 것과 엇갈리지 않는다. 표의 잠금은 쥐지 않는다 — 지금 보내기가 맨 앞을 곧바로 보내며 spec 폴더를
+    /// 걷는 동안 다른 대화의 명령을 막지 않게(S2). 떠 있지 않은 대화의 대기 줄은 늘 비어 있다.
     fn change_queued(
         &self,
-        work: &str,
-        conversation: &str,
+        key: ConversationKey,
         queued: &str,
         change: impl FnOnce(&Conv, &mut ConvState, usize) -> Result<(), HostError>,
     ) -> Result<(), HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
         let not_found = || HostError::QueuedNotFound(queued.to_owned());
-        let live = self.lock_live();
-        let found = live.get(conversation).filter(|live| live.work == work).ok_or_else(not_found)?;
-        let mut state = found.conv.lock_state();
+        let conv = self.find_live(key).ok_or_else(not_found)?;
+        let mut state = conv.lock_state();
         let at = state.queue.iter().position(|item| item.message.id == queued).ok_or_else(not_found)?;
-        change(&found.conv, &mut state, at)
+        change(&conv, &mut state, at)
     }
 
     /// 모델 바꾸기 — 그 대화의 모델을 바꾼다(`session/set_config_option{configId: "model"}`). 값은 그 대화의 것이고 설정의
@@ -1505,32 +1446,22 @@ impl ConversationHost {
     }
 
     fn change_setting(&self, work: &str, conversation: &str, setting: Setting) -> Result<Conversation, HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
+        let key = ConversationKey::new(work, conversation)?;
         // 되살리는 중이면 그 끝을 기다린다 — 되살리기는 시작할 때 읽은 줄로 엔진에 설정을 다시 넣고 `agents.json`을 다시 쓰므로, 그
         // 사이에 `agents.json`에만 쓴 바꾸기는 지워지고 엔진에도 들지 않는다(티켓 09 · 10). 되살린 뒤면 떠 있는 엔진에 곧바로 넣는다.
         let gate = self.revival_gate(conversation);
         let _not_while_reviving = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let works = atelier_core::works_in(&self.data_root);
-        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
-        let places = atelier_core::work_places(&works, &meta);
-        let open_row = |rows: Vec<ConversationRow>| {
-            rows.into_iter()
-                .find(|row| row.id == conversation && row.closed_at.is_none())
-                .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))
-        };
-        open_row(records::read_rows(&places.agents).map_err(HostError::Record)?)?;
+        let work_at = self.open_work(work)?;
+        work_at.open_row(conversation)?;
 
         // 에이전트가 떠 있으면 엔진에 먼저 넣는다 — 대화들의 잠금은 놓고 기다린다(턴 끝이 그 잠금을 쥔다).
-        let running: Option<(Arc<Conv>, runtime::Turns)> = {
-            let live = self.lock_live();
-            live.get(conversation).filter(|live| live.work == work).and_then(|found| {
-                let state = found.conv.lock_state();
-                let turns = state.turns.clone().filter(|_| state.alive)?;
-                Some((Arc::clone(&found.conv), turns))
-            })
-        };
+        let running: Option<(Arc<Conv>, runtime::Turns)> = self.find_live(key).and_then(|conv| {
+            let turns = {
+                let state = conv.lock_state();
+                state.turns.clone().filter(|_| state.alive)
+            }?;
+            Some((conv, turns))
+        });
         let _one_at_a_time = running.as_ref().map(|(conv, _)| conv.setting.lock().unwrap_or_else(|p| p.into_inner()));
         if let Some((_, turns)) = &running {
             let (method, fields) = setting.request();
@@ -1538,15 +1469,15 @@ impl ConversationHost {
         }
         let row = {
             let _file = self.lock_agents_file();
-            let mut row = open_row(records::read_rows(&places.agents).map_err(HostError::Record)?)?;
+            let mut row = work_at.open_row(conversation)?;
             setting.apply(&mut row);
-            records::write_row(&places.agents, &row).map_err(HostError::Record)?;
+            records::write_row(&work_at.places.agents, &row).map_err(HostError::Record)?;
             row
         };
         if let Some((conv, _)) = &running {
             conv.recorder.config(setting.changed()).map_err(HostError::Record)?;
         }
-        Ok(summarize(&self.lock_live(), &places.agents, &row))
+        Ok(summarize(&self.lock_live(), &work_at.places.agents, &row))
     }
 
     /// 엔진 목록 — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록(S16). 설정 「대화」 쪽이 새 대화의 기본값 목록으로
@@ -1560,21 +1491,18 @@ impl ConversationHost {
     ///
     /// 막히는 호출이다 — 끄기가 최대 1초 남짓 걸린다. 이미 닫은 대화를 다시 닫으면 아무 일도 하지 않는다.
     pub fn close_conversation(&self, work: &str, conversation: &str) -> Result<(), HostError> {
-        if !is_conversation_id(conversation) {
-            return Err(HostError::ConversationNotFound(conversation.to_owned()));
-        }
+        let key = ConversationKey::new(work, conversation)?;
         // 되살리는 중이면 그 끝을 기다린다 — 닫은 대화가 되살아나 떠 있는 표에 서지 않게(티켓 10).
         let gate = self.revival_gate(conversation);
         let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let mut live = self.take_live(work, conversation);
+        let mut live = self.take_live(key);
         if let Some(live) = live.as_mut() {
             shut_down_together(std::slice::from_mut(live));
         }
         // 닫은 대화는 로그인이 「됨」이 돼도 다시 띄우지 않는다.
         self.logins.forget(conversation);
 
-        let works = atelier_core::works_in(&self.data_root);
-        let Ok(meta) = atelier_core::read_work(&works, work) else {
+        let Ok(work_at) = self.open_work(work) else {
             // work 폴더가 사라졌다(아카이브 · 삭제). 끈 것으로 끝낸다 — 열어 둔 기록 파일은 옮겨진 자리를 따라가지만,
             // 사라진 자리의 `agents.json`은 다시 만들지 않는다(S10).
             return match live {
@@ -1582,11 +1510,8 @@ impl ConversationHost {
                 None => Err(HostError::WorkNotFound(work.to_owned())),
             };
         };
-        let places = atelier_core::work_places(&works, &meta);
         let _file = self.lock_agents_file();
-        let Some(mut row) =
-            records::read_rows(&places.agents).map_err(HostError::Record)?.into_iter().find(|row| row.id == conversation)
-        else {
+        let Some(mut row) = work_at.rows()?.into_iter().find(|row| row.id == conversation) else {
             return Err(HostError::ConversationNotFound(conversation.to_owned()));
         };
         if row.closed_at.is_some() && live.is_none() {
@@ -1594,16 +1519,18 @@ impl ConversationHost {
         }
         let conv = match live {
             Some(live) => live.conv,
+            // 닫힘 줄만 적으려고 연다 — 턴이 돌지 않으므로 지켜볼 것이 없다.
             None => Conv::new(
-                Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-                spec_place(&works, &meta, &places),
+                Recorder::open(&work_at.places.agents, work, conversation, Arc::clone(&self.emit))
+                    .map_err(HostError::Record)?,
+                work_at.spec_place(),
                 None,
                 None,
             ),
         };
         conv.recorder.session(SessionState::Closed { cause: None }).map_err(HostError::Record)?;
         row.closed_at = Some(records::now());
-        records::write_row(&places.agents, &row).map_err(HostError::Record)
+        records::write_row(&work_at.places.agents, &row).map_err(HostError::Record)
     }
 
     /// 사라진 work의 대화를 끈다(S10) — 앱은 work 목록이 바뀌었다는 감시 소식(`works:changed`)마다 부른다. work가
@@ -1676,11 +1603,37 @@ impl ConversationHost {
         Ok(env)
     }
 
-    /// 그 work의 그 대화가 떠 있으면 꺼낸다.
-    fn take_live(&self, work: &str, conversation: &str) -> Option<Live> {
+    /// 그 work의 자리들(S5) — `works/`에서 `work.json`을 읽고 폴더 자리를 셈한다. `work.json`이 없거나 읽지 못하면 그 work는
+    /// 없다.
+    fn open_work(&self, work: &str) -> Result<WorkAt, HostError> {
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
+        let places = atelier_core::work_places(&works, &meta);
+        Ok(WorkAt { works, meta, places })
+    }
+
+    /// 떠 있을 대화 — 기록을 이어 열고, 턴 끝에 work가 사라졌는지 보고(S10), 턴 도중의 로그인 요구를 창구에 쥐게 한다
+    /// (three-axes 티켓 12).
+    fn live_conv(&self, work_at: &WorkAt, key: ConversationKey, agent: Agent) -> Result<Arc<Conv>, HostError> {
+        Ok(Conv::new(
+            Recorder::open(&work_at.places.agents, key.work, key.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+            work_at.spec_place(),
+            Some(self.vanish_watch(&work_at.works, key.work, key.id)),
+            Some(self.login_watch(agent, key.work, key.id)),
+        ))
+    }
+
+    /// 그 대화가 떠 있으면 그 대화 — 표의 잠금은 곧바로 놓는다(S2). 부른 쪽은 그 대화의 잠금만 쥐고 일하므로, 한 대화가 spec
+    /// 폴더를 찍는 동안에도 다른 대화의 명령이 표에서 막히지 않는다.
+    fn find_live(&self, key: ConversationKey) -> Option<Arc<Conv>> {
+        self.lock_live().get(key.id).filter(|live| live.work == key.work).map(|live| Arc::clone(&live.conv))
+    }
+
+    /// 그 대화가 떠 있으면 표에서 꺼낸다.
+    fn take_live(&self, key: ConversationKey) -> Option<Live> {
         let mut live = self.lock_live();
-        match live.get(conversation) {
-            Some(found) if found.work == work => live.remove(conversation),
+        match live.get(key.id) {
+            Some(found) if found.work == key.work => live.remove(key.id),
             _ => None,
         }
     }
@@ -1714,13 +1667,67 @@ fn workplace(places: &atelier_core::WorkPlaces, projects: usize) -> SessionPlace
     SessionPlace { cwd, additional_directories: vec![places.spec.clone()] }
 }
 
-/// 턴 앞뒤로 찍는 spec 폴더 — 프로젝트가 있어도 워크트리는 찍지 않는다(three-axes 결정 22).
-fn spec_place(works: &Path, meta: &atelier_core::Work, places: &atelier_core::WorkPlaces) -> SpecPlace {
-    SpecPlace {
-        works_root: works.to_path_buf(),
-        work: meta.slug.clone(),
-        work_dir: places.dir.clone(),
-        spec_dir: places.spec.clone(),
+/// 그 work의 자리들(S5) — 명령마다 `works/`에서 읽은 `work.json`과 그것으로 셈한 폴더 자리. [`ConversationHost::open_work`]가
+/// 짓는다.
+struct WorkAt {
+    works: PathBuf,
+    meta: atelier_core::Work,
+    places: atelier_core::WorkPlaces,
+}
+
+impl WorkAt {
+    /// 턴 앞뒤로 찍는 spec 폴더 — 프로젝트가 있어도 워크트리는 찍지 않는다(three-axes 결정 22).
+    fn spec_place(&self) -> SpecPlace {
+        SpecPlace {
+            works_root: self.works.clone(),
+            work: self.meta.slug.clone(),
+            work_dir: self.places.dir.clone(),
+            spec_dir: self.places.spec.clone(),
+        }
+    }
+
+    /// 머리말(S11) — 에이전트가 첫 말에서 어느 work인지 안다(스토리 107). 따로 된 텍스트 블록이라 화면은 이것을
+    /// 그리지 않고 `sent`의 글만 그린다(스토리 108). 봉투처럼 한국어 마크다운 한 장이다(워크플로 S18).
+    fn preamble(&self) -> Value {
+        let text = format!(
+            "Atelier work 안에서 열린 대화다.\n\n- work slug: `{}`\n- 제목: {}\n- spec 폴더(specDir): `{}`\n",
+            self.meta.slug,
+            self.meta.title,
+            self.places.spec.display()
+        );
+        json!({"type": "text", "text": text})
+    }
+
+    /// `agents.json`의 대화 줄들. 없으면 비어 있다.
+    fn rows(&self) -> Result<Vec<ConversationRow>, HostError> {
+        records::read_rows(&self.places.agents).map_err(HostError::Record)
+    }
+
+    /// 그 대화의 열린 줄 — 줄이 없거나 닫은 대화면 그 대화는 없다.
+    fn open_row(&self, conversation: &str) -> Result<ConversationRow, HostError> {
+        self.rows()?
+            .into_iter()
+            .find(|row| row.id == conversation && row.closed_at.is_none())
+            .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))
+    }
+}
+
+/// 대화의 정체 — work slug와 대화 id의 쌍(S8). 떠 있는 표는 대화 id로 키를 잡지만, 다른 work의 같은 id는 그 대화가 아니다.
+/// 화면이 넘긴 id는 [`ConversationKey::new`]가 명령의 문턱에서 한 번 검사한다.
+#[derive(Debug, Clone, Copy)]
+struct ConversationKey<'a> {
+    work: &'a str,
+    id: &'a str,
+}
+
+impl<'a> ConversationKey<'a> {
+    /// 화면이 넘긴 (work, 대화 id). id가 이 호스트가 지은 꼴이 아니면 그 대화는 없다 — 기록 파일 이름이 되므로 경로 요소를
+    /// 들이지 않는다.
+    fn new(work: &'a str, id: &'a str) -> Result<Self, HostError> {
+        if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-') {
+            return Err(HostError::ConversationNotFound(id.to_owned()));
+        }
+        Ok(Self { work, id })
     }
 }
 
@@ -1739,7 +1746,7 @@ fn record_opened(conv: &Arc<Conv>, agent: Agent) -> runtime::OnOpened {
                 })?;
             }
             conv.recorder.session(SessionState::Opened {
-                how: opened.how.as_str(),
+                how: opened.how,
                 agent_version: agent_version.clone(),
                 modes: opened.session.get("modes").cloned().unwrap_or(Value::Null),
                 models: opened.session.get("models").cloned().unwrap_or(Value::Null),
@@ -1806,18 +1813,6 @@ fn find_programs(agent: Agent, env: &AgentEnv) -> Result<Vec<discovery::FoundPro
     discovery::look_up(agent, env.path()).map_err(|missing| HostError::EngineMissing { agent, missing })
 }
 
-/// 머리말(S11) — 에이전트가 첫 말에서 어느 work인지 안다(스토리 107). 따로 된 텍스트 블록이라 화면은 이것을
-/// 그리지 않고 `sent`의 글만 그린다(스토리 108). 봉투처럼 한국어 마크다운 한 장이다(워크플로 S18).
-fn preamble(meta: &atelier_core::Work, places: &atelier_core::WorkPlaces) -> Value {
-    let text = format!(
-        "Atelier work 안에서 열린 대화다.\n\n- work slug: `{}`\n- 제목: {}\n- spec 폴더(specDir): `{}`\n",
-        meta.slug,
-        meta.title,
-        places.spec.display()
-    );
-    json!({"type": "text", "text": text})
-}
-
 /// 열린 대화 가운데 쓰지 않은 가장 작은 이름 — `Codex`, `Codex 2`, `Codex 3` …
 fn next_name(agent: Agent, rows: &[ConversationRow]) -> String {
     let taken: Vec<&str> = rows.iter().filter(|row| row.closed_at.is_none()).map(|row| row.name.as_str()).collect();
@@ -1825,11 +1820,6 @@ fn next_name(agent: Agent, rows: &[ConversationRow]) -> String {
         .map(|n| if n == 1 { agent.display_name().to_owned() } else { format!("{} {n}", agent.display_name()) })
         .find(|name| !taken.contains(&name.as_str()))
         .expect("이름은 언젠가 빈다")
-}
-
-/// 화면이 넘긴 대화 id가 이 호스트가 지은 꼴인가 — 기록 파일 이름이 되므로 경로 요소를 들이지 않는다.
-fn is_conversation_id(id: &str) -> bool {
-    !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
 /// 판 글의 메이저 — `2.2.2` → 2. 읽을 수 없으면 `None`이다.
@@ -1842,16 +1832,11 @@ fn summarize(live: &HashMap<String, Live>, agents_dir: &Path, row: &Conversation
     let (last_seq, queue, up) = match live.get(&row.id) {
         Some(conversation) => {
             let state = conversation.conv.lock_state();
-            (conversation.conv.recorder.last_seq(), queue_of(&state), is_up(&state))
+            (conversation.conv.recorder.last_seq(), queue_of(&state), state.is_up())
         }
         None => (records::last_seq(&records::record_path(agents_dir, &row.id)), Vec::new(), false),
     };
     summary(row, last_seq, queue, up)
-}
-
-/// 에이전트가 떠 있고 살아 있나 — 대화 목록의 `live`(three-axes 티켓 23). 죽었거나 끈 대화는 아니다.
-fn is_up(state: &ConvState) -> bool {
-    state.alive && state.turns.is_some()
 }
 
 /// 되살리기를 언제 하나(three-axes 티켓 10).

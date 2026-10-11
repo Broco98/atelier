@@ -61,8 +61,10 @@ pub(crate) struct OpenTerms {
     pub revive: Option<String>,
 }
 
-/// 세션이 열린 길 — 열림 줄의 `how`다(three-axes 티켓 10).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 세션이 열린 길 — 열림 줄의 `how`다(three-axes 티켓 10). 기록에는 케밥 글자(`new` · `resumed` · `loaded` · `fresh`)로
+/// 적히고, 기록을 다시 읽는 쪽도 이 타입으로 읽는다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(crate) enum How {
     /// 되살릴 세션이 없어 새로 열었다 — 새 대화의 첫 열기.
     New,
@@ -75,15 +77,6 @@ pub(crate) enum How {
 }
 
 impl How {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            How::New => "new",
-            How::Resumed => "resumed",
-            How::Loaded => "loaded",
-            How::Fresh => "fresh",
-        }
-    }
-
     /// 에이전트 쪽 세션이 이 열기에서 새로 섰나 — 그러면 그 세션의 첫 말에 머리말을 붙인다(S11).
     pub(crate) fn starts_session(self) -> bool {
         matches!(self, How::New | How::Fresh)

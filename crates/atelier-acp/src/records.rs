@@ -16,7 +16,7 @@ use serde_json::{json, Map, Value};
 use crate::discovery::Agent;
 use crate::host::{Emit, HostEvent};
 use crate::quote::Quote;
-use crate::runtime::Withdrawal;
+use crate::runtime::{How, Withdrawal};
 use crate::spec_changes::FileChange;
 
 const AGENTS_FILE: &str = "agents.json";
@@ -141,7 +141,7 @@ pub(crate) fn sent_since_session_start(path: &Path) -> bool {
     let start = lines.iter().rposition(|line| {
         line.kind == RecordKind::Session
             && line.payload["state"] == "opened"
-            && matches!(line.payload["how"].as_str(), Some("new" | "fresh"))
+            && How::deserialize(&line.payload["how"]).is_ok_and(How::starts_session)
     });
     lines[start.map_or(0, |at| at + 1)..].iter().any(|line| line.kind == RecordKind::Sent)
 }
@@ -221,7 +221,7 @@ pub(crate) enum SessionState {
     /// 잇지 못해 새 세션 — 화면의 「새로 시작함」 상태 줄). 세션을 연 답에 `_meta`가 있으면 그것도 싣는다 — Claude 변환기는
     /// claude의 `initialize` 답(계정 칸을 가린 것)을 여기 싣는다.
     Opened {
-        how: &'static str,
+        how: How,
         agent_version: Option<String>,
         modes: Value,
         models: Value,
