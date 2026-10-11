@@ -1884,6 +1884,13 @@ test("한 work에서 두 셸이 부르면 오른쪽 메타의 경과·카드의 
   // **첫 셸이 다시 돌기 시작하면 둘째 셸이 이긴다** — 셋이 함께 그 셸로 옮겨 간다. 둘째 칸이
   // 이미 앉아 있으므로 착석 기다림 없이 쏜다(`markAttention`은 「칸이 하나」를 기다린다).
   await fireAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 1);
+  // **띠가 한 줄로 줄면 행에 다시 올린다.** 띠는 목록 위에 서서, 한 줄이 빠지면 목록이 한 행만큼
+  // 올라간다 — 멈춰 있는 포인터 밑에는 이제 **다음 행**이 있다. WebKit은 그 행에 hover를 다시 주고
+  // 350ms 뒤 카드가 그 행의 것으로 바뀐다(실측 2026-10-11: 부하 아래 여섯 번에 한 번, 카드에 「두 저장소
+  // 일」이 섰다). 아래 단언이 그 전에 끝나면 초록, 늦으면 빨강이던 경주를 걷는다.
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("1");
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toContainText(plainWork.title);
   await expect(메타).toHaveText("1m");
   await expect(메타.locator('[role="img"]')).toHaveCount(0);
   await expect(행).toHaveAccessibleDescription(둘째말);
