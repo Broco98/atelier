@@ -5,6 +5,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
+  forgetVanishedViews,
   recallSearch,
   recallView,
   rememberView,
@@ -182,6 +183,29 @@ describe("work마다 마지막으로 보던 화면", () => {
       split: undefined,
       file: "02-판/spec.md",
     });
+  });
+
+  // **분할의 `code`는 포커스가 문서 열이어도 실린다**(git-integration 티켓 07 · 스토리 60). 분할에서 `code`는 묶음 열의 것이라
+  // `tab`이 spec이어도 그 열은 그 파일이다. 「`tab`이 `code`일 때만 싣는다」로 거르면 돌아온 분할의 묶음 열이 셸로 선다.
+  it("분할에서 문서 열에 포커스를 두고 떠난 work은 묶음 열의 파일과 함께 돌아온다", () => {
+    rememberView("자", { tab: "spec", split: "lr", file: null, code: "billing/src/a.ts" });
+    expect(recallSearch("자")).toEqual({
+      tab: undefined,
+      split: "lr",
+      file: undefined,
+      code: "billing/src/a.ts",
+    });
+  });
+
+  // git-integration 판 01 — **키가 slug라** 삭제로 풀린 slug에 새 work이 서면 지운 work의 기억이 그 work의 씨앗이 된다.
+  // `code`가 실려 있으면 새 work의 묶음에 옛 파일 탭이 다시 열린다(스토리 60 — 주소가 가리키는 파일은 연다). 목록에서
+  // 사라지면 걷는다. **이 describe의 마지막에 둔다** — 목록에 없는 slug를 모두 걷으므로 앞의 기억도 함께 걷힌다.
+  it("목록에서 사라진 work의 기억은 걷히고, 목록에 남은 work의 것은 그대로다", () => {
+    rememberView("차", { tab: "code", split: null, file: null, code: "billing/src/a.ts" });
+    rememberView("카", { tab: "terminal", split: "lr", file: "01-판/spec.md", code: null });
+    forgetVanishedViews(["카"]);
+    expect(recallView("차")).toEqual({ tab: "spec", split: null, file: null, code: null });
+    expect(recallView("카")).toEqual({ tab: "terminal", split: "lr", file: "01-판/spec.md", code: null });
   });
 });
 

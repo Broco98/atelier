@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
+import WorksPage, { codeTabClosedByTab, shellClosedByTab, togglesWorkPanel } from "./WorksPage";
 import { ToastProvider } from "@/components/ui/toast";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
@@ -19,6 +19,7 @@ import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import {
   MAX_SHELLS,
   NO_SHELLS,
+  openCodeTab,
   openShell,
   ownerOf,
   shellCapNotice,
@@ -83,6 +84,7 @@ function render(
           onOpenCode={() => {}}
           split={split}
           onSelectSplit={() => {}}
+          onFollowBundle={() => {}}
           onDropInto={() => {}}
         />
       </ToastProvider>
@@ -139,16 +141,19 @@ describe("WorksPage 패널 토글과 레일", () => {
     }
   });
 
-  it("레일 칸이 `spec` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
-    // 칸은 목록으로 받는다(ui-refresh 결정 10) — 지금은 둘이고, 뒤에 files · changes가 한 줄씩 더해진다. 켜짐은 「패널이 열렸고
-    // 그 칸이 골라졌다」이다 — 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서 탭(`aria-selected`)이 아니다.
+  it("레일 칸이 `spec` · `files` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
+    // 칸은 목록으로 받는다(ui-refresh 결정 10) — git-integration이 `files`를 `spec` 뒤에 더했고(그쪽 결정 29), 뒤에 changes가
+    // 한 줄 더 는다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서
+    // 탭(`aria-selected`)이 아니다.
     expect(railItems(render())).toEqual([
       { name: "spec", pressed: "true" },
+      { name: "files", pressed: "false" },
       { name: "info", pressed: "false" },
     ]);
     // 패널이 접혀 있으면 고른 칸은 기억한 채 어느 칸도 켜져 있지 않다.
     expect(railItems(render(specDocs(["overview.md"]), "spec", "lr"))).toEqual([
       { name: "spec", pressed: "false" },
+      { name: "files", pressed: "false" },
       { name: "info", pressed: "false" },
     ]);
   });
@@ -171,8 +176,8 @@ describe("WorksPage 패널 토글과 레일", () => {
     const panelId = markup.match(/<aside[^>]*\bid="([^"]+)"/)?.[1] ?? "";
     expect(panelId, "패널 칸에 id가 없다").not.toBe("");
     expect(panelToggleTags(markup)[0]).toContain(`aria-controls="${panelId}"`);
-    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|info)"/.test(tag));
-    expect(items).toHaveLength(2);
+    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|files|info)"/.test(tag));
+    expect(items).toHaveLength(3);
     for (const tag of items) expect(tag).toContain(`aria-controls="${panelId}"`);
   });
 
@@ -181,7 +186,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // 열 길 자체가 없어진다.
     const markup = render({}, "terminal");
     expect(panelToggleTags(markup)).toHaveLength(1);
-    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "info"]);
+    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "files", "info"]);
   });
 
   it("헤더에 프로젝트 칩이 없고, 상태 배지와 ⋯는 그대로 있다", () => {
@@ -993,6 +998,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
             onOpenCode={() => {}}
             split={null}
             onSelectSplit={() => {}}
+            onFollowBundle={() => {}}
             onDropInto={() => {}}
           />
         </ToastProvider>
@@ -1018,6 +1024,15 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     expect(tabsOn(headerOf(render({}, "spec", null)))).toEqual(["spec"]);
   });
 
+  // git-integration 판 01 — 켜진 칸은 **본문에 선 것**이다. 주소가 셸을 말하는데(`tab=terminal` · `code` 없는 분할) 묶음에
+  // 셸이 없으면 지금 탭이 파일 탭으로 남는다(`withShellActive`가 켤 셸이 없고, 프로젝트가 둘 이상인 work은 자동 셸도 안
+  // 띄운다). 그때 본문은 「아직 셸이 없어요」인데 그 파일 탭을 켜면 보이는 것과 켜진 칸이 어긋난다.
+  it("주소가 셸을 말하는데 묶음에 셸이 없어 지금 탭이 파일 탭으로 남으면 묶음의 칸은 켜지지 않는다", () => {
+    terminalStore.setState(() => openCodeTab(NO_SHELLS, ownerOf(work.slug), { project: "billing", path: "src/a.ts" }));
+    expect(tabsOn(headerOf(render({}, "terminal", null)))).toEqual([]);
+    expect(tabsOn(headerOf(render({}, "terminal", "lr")))).toEqual(["spec"]);
+  });
+
   // 결정 12 — 칸을 본문 위로 끄는 자리를 **이 화면이 만든다.** 탭 줄이 스스로 만들면
   // `terminal → works` 방향이 값 차원에서 생겨 반대 방향과 맞물린다(ShellTabs의 그 prop
   // 주석이 같은 함정을 든다).
@@ -1028,15 +1043,15 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // 배선은 렌더로 못 본다(핸들러는 직렬화되지 않는다). **정규식으로 블록을 잘라내지
   // 않는다** — 이 파일이 그 fail-open을 이미 겪었다. 리터럴 하나로 통째로 못박으면
   // 어느 갈래가 뒤집혀도 반드시 빨개진다.
-  it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 셸 칸을 가른다", () => {
+  //
+  // 묶음의 칸(셸 칸 · 파일 탭 — git-integration 결정 31)은 그 칸의 종류를 싣는다 — 종류는 레지스트리가 id로 안다.
+  it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 묶음의 칸을 그 종류로 가른다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
       `onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
-        armDrag(
-          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
-          from,
-        );
+        const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
+        if (kind) armDrag({ kind, owner, shellId }, from);
       }}`,
     )).toBe(1);
   });
@@ -1117,6 +1132,52 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
   it("그 화면의 셸이 0개면 닫을 것이 없다", () => {
     seed(workSeat("남"));
     expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
+  });
+
+  // git-integration 판 01 — 묶음에는 파일 탭도 선다. 주소가 셸을 말하는데(`tab=terminal`) 묶음에 셸이 없으면 지금 탭이 파일
+  // 탭으로 남는다(`withShellActive`가 켤 셸이 없다 — 자동 셸이 안 뜨는 프로젝트 둘 이상의 work). 그 칸을 셸을 닫는 길에
+  // 넘기면 확인 창을 거치는 길이 셸 아닌 칸을 받는다 — 본문에 셸이 없으니 닫을 것이 없다.
+  it("터미널 탭인데 지금 탭이 파일 탭이면(묶음에 셸이 없다) 셸을 닫는 길에 그 칸을 넘기지 않는다", () => {
+    terminalStore.setState(() => openCodeTab(NO_SHELLS, ownerFor(work.slug), { project: "billing", path: "src/a.ts" }));
+    expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
+  });
+
+  // 파일 탭 쪽 짝(git-integration 스토리 50 · 티켓 07). **분할 중 ⌘W는 포커스가 묶음 열에 있을 때만 닫는다** — 문서 열에
+  // 포커스가 있으면(`tab`이 spec) 옆 열에 파일 탭이 서 있어도 아무 일이 없다(구현 스펙 「단축키」). 주소에 `code`가 남아
+  // 있다는 것(분할의 `code`는 포커스와 상관없이 묶음 열의 것이다)으로 가르면 그 칸이 확인 없이 닫힌다.
+  describe("파일 탭", () => {
+    const owner = ownerFor(work.slug);
+    function seedCode(): number {
+      terminalStore.setState(() => openCodeTab(NO_SHELLS, owner, { project: "billing", path: "src/a.ts" }));
+      return terminalStore.state.activeByOwner[owner]!;
+    }
+
+    it("본문(분할이면 포커스가 든 묶음 열)이 파일 탭이면 그 칸이다", () => {
+      const id = seedCode();
+      expect(codeTabClosedByTab("code", owner, terminalStore.state)).toBe(id);
+    });
+
+    it("`spec`이 켜져 있으면 — 분할에서 문서 열에 포커스가 있어도 — 아무 일도 안 한다", () => {
+      seedCode();
+      expect(codeTabClosedByTab("spec", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("주소가 셸을 말하면 파일 탭을 닫지 않는다", () => {
+      seedCode();
+      expect(codeTabClosedByTab("terminal", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("지금 탭이 셸이면 이 길로 닫지 않는다 — 셸은 확인 창을 거친다", () => {
+      seedCode();
+      // 얹는다 — `seed`는 빈 상태에서 다시 짓는다. 새 셸이 묶음 끝에 서고 지금 탭이 된다.
+      terminalStore.setState((state) => openShell(state, workSeat(work.slug))!.state);
+      expect(codeTabClosedByTab("code", owner, terminalStore.state)).toBeNull();
+    });
+
+    it("고른 작업이 없으면 닫을 것이 없다", () => {
+      seedCode();
+      expect(codeTabClosedByTab("code", null, terminalStore.state)).toBeNull();
+    });
   });
 
   // 배선은 렌더로 못 본다(이펙트다). **정규식으로 블록을 잘라내지 않는다** — 앞쪽
@@ -1382,6 +1443,7 @@ function renderEmpty(projects: ProjectView[] = []): string {
           onOpenCode={() => {}}
           split={null}
           onSelectSplit={() => {}}
+          onFollowBundle={() => {}}
           onDropInto={() => {}}
         />
       </ToastProvider>

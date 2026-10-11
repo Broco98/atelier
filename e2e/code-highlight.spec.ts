@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
-import { codeCard, readCodeView, tokenOf, 주소로간다 } from "./code-view";
+import { codeCard, readCodeView, tokenOf } from "./code-view";
 import { answerByArg, WORKS, WORKTREE_FILES } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, unknownIpcCalls, 파일탭주소 as codeUrl, 주소로간다 } from "./harness";
 import type { WorktreeFile } from "@/features/code/types";
 
 // git-integration 판 01 티켓 08(#481) — **강조된 코드가 보인다.**
@@ -15,7 +15,6 @@ import type { WorktreeFile } from "@/features/code/types";
 test.describe.configure({ timeout: 90_000 });
 
 const [work] = WORKS;
-const codeUrl = (ref: string) => `/works/${work.slug}?tab=code&code=${encodeURIComponent(ref)}`;
 
 // S16 — Codex `syntax-*` 라이트 값(`three-axes` 디자인-참고 `atelier-codex.css`). 계산된 색으로 견준다.
 const KEYWORD = "rgb(171, 79, 122)"; // #ab4f7a

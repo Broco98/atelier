@@ -27,14 +27,17 @@ const addressTabOf = (value: unknown): AddressTab | null =>
 export type ViewTab = "spec" | AddressTab;
 
 /**
- * 분할의 **열**에 서는 화면 탭(결정 87). 열 조합은 늘 `spec ▏터미널`이라 이 둘뿐이다 — 화면 탭이 늘어도(위 목록) 여기는
+ * 분할의 **열**(결정 87). 열 조합은 늘 `spec ▏ 묶음의 지금 탭`이라 이 둘뿐이다 — 화면 탭이 늘어도(위 목록) 여기는
  * 안 는다(three-axes S21 — 넘겨받은 탭은 분할에 들지 않는다). 분할을 다루는 자리가 `ViewTab`이 아니라 이것을 받아야
  * 새 화면 탭이 분할로 새는 것을 컴파일이 막는다.
+ *
+ * **`terminal`은 묶음 열이다**(git-integration 결정 32) — 묶음의 지금 탭이 셸이든 파일 탭이든 그 열에 선다. 이름은 셸만 서던
+ * 때의 것이다. 그 열에 무엇이 서는지는 주소의 `code`가 말한다(아래 `columnSearch`).
  */
 export type ColumnTab = "spec" | "terminal";
 
 /**
- * 분할일 때 **spec이 어느 쪽에 서는가**(결정 97). 열 조합은 늘 `spec ▏터미널`이라
+ * 분할일 때 **spec이 어느 쪽에 서는가**(결정 97). 열 조합은 늘 `spec ▏ 묶음의 지금 탭`이라
  * (결정 87) 좌우 하나로 족하다 — 열마다 상태를 따로 들면 `spec▏spec`이 표현 가능해진다.
  */
 export type SplitSide = "lr" | "rl";
@@ -42,8 +45,8 @@ export type SplitSide = "lr" | "rl";
 export interface WorkSearch extends FileSearch {
   /**
    * **묶음의 지금 탭인 파일 탭**(git-integration 결정 33 · S12) — `<프로젝트>/<워크트리 기준 경로>`, 첫 조각이 프로젝트다.
-   * `tab=code`와 함께만 뜻이 있다: 지금 탭이 셸이면 이 키가 없다(`tabSearch`가 지운다). 열린 파일 탭 목록은 주소에 싣지
-   * 않는다 — 묶음은 메모리에 산다(결정 33).
+   * 단일 뷰에서는 `tab=code`와 함께만, 분할에서는 **묶음 열**이 그 파일일 때 뜻이 있다(`tab`이 어느 열을 가리키든). 지금 탭이
+   * 셸이면 이 키가 없다(`tabSearch`가 지운다). 열린 파일 탭 목록은 주소에 싣지 않는다 — 묶음은 메모리에 산다(결정 33).
    */
   code?: string;
   /**
@@ -127,21 +130,26 @@ export const viewTab = (search: { tab?: string; code?: string }): ViewTab => {
 export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?: AddressTab; code?: string } {
   // **`code`를 함께 지운다** — 지금 탭이 셸이거나 문서면 주소에 파일이 없다(S12). 파일 탭으로 가는 길은 `code`를 다시
   // 얹는 `codeSearch` 하나다.
-  return { ...prev, tab: next === "spec" ? undefined : next, code: undefined };
+  //
+  // **분할이면 셸로 갈 때만 지운다**(git-integration 티켓 07). 분할의 `code`는 **묶음 열**의 것이라 `tab`이 다른 열을 가리켜도
+  // (문서 열에 포커스 · ⌘1 · 문서 고르기) 그 열은 그대로 그 파일이다. 셸로 가는 것만 묶음 열을 셸로 바꾼다.
+  const keepsCode = next !== "terminal" && splitOf(prev as { split?: string }) !== null;
+  return {
+    ...prev,
+    tab: next === "spec" ? undefined : next,
+    code: keepsCode ? (prev as { code?: string }).code : undefined,
+  };
 }
 
 /**
  * 파일 탭으로 갈 때 주소의 `search`를 어떻게 고치는가. **넷째 축이다**(아래 `fileSearch`의 머리말 — 축이 한 파일에 나란히
  * 서야 다음 축이 생기는 날 같은 사고가 안 난다).
  *
- * `tab=code`와 `code`를 함께 적고 **분할을 끈다** — 분할 중에 파일 탭을 고르면 분할이 풀리고 본문에 선다(git-integration
- * 티켓 04 — 분할의 묶음 열은 다음 장이 연다). 보던 문서(`file`)는 그대로 둔다: spec으로 돌아오면 그 문서다.
+ * `tab=code`와 `code`를 함께 적는다. **분할은 그대로다**(git-integration 티켓 07) — 분할 중이면 그 파일이 묶음 열에 선다(결정 32).
+ * 보던 문서(`file`)도 그대로 둔다: spec으로 돌아오면 그 문서다.
  */
-export function codeSearch<T extends object>(
-  prev: T,
-  ref: string,
-): T & { tab?: AddressTab; code: string; split?: SplitSide } {
-  return { ...splitSearch(tabSearch(prev, "code"), null), code: ref };
+export function codeSearch<T extends object>(prev: T, ref: string): T & { tab?: AddressTab; code: string } {
+  return { ...tabSearch(prev, "code"), code: ref };
 }
 
 /**
@@ -172,6 +180,52 @@ export function splitSearch<T extends object>(
   next: SplitSide | null,
 ): T & { split?: SplitSide } {
   return { ...prev, split: next ?? undefined };
+}
+
+/**
+ * 분할을 켜고 끄거나 열을 고를 때 주소의 `search`를 어떻게 고치는가. **다섯째 축 — 열이다**(git-integration 티켓 07).
+ *
+ * 분할의 한쪽은 spec, 다른 쪽은 **묶음 열**이고 거기 묶음의 지금 탭이 선다 — 셸이든 파일 탭이든(결정 32). 그 열에 무엇이 서는지는
+ * 화면만 안다(묶음은 메모리에 산다 — 문서를 보다 분할을 켜면 주소에 없던 파일 탭이 그 열에 선다). 그래서 세 값을 받아 한 번에
+ * 적는다: 분할(`split`), 가리키는 열(`column` — 분할을 끄면 남는 쪽이다, 결정 97), 묶음 열에 설 파일 탭(`bundle` — 묶음의 지금
+ * 탭이 셸이면 `null`). 묶음 열을 가리키는 `tab`은 그 열에 선 것의 종류다 — 파일 탭이면 `code`, 셸이면 `terminal`.
+ *
+ * 분할을 끄고 문서가 남으면 `code`가 빠진다 — 단일 뷰의 `code`는 `tab=code`와만 산다. 셋을 따로 옮기면 한 틱에 겹쳐 앞의 것이
+ * 버려진다(위 `splitSearch` 머리말).
+ */
+export function columnSearch<T extends object>(
+  prev: T,
+  split: SplitSide | null,
+  column: ColumnTab,
+  bundle: string | null,
+): T & { split?: SplitSide; tab?: AddressTab; code?: string } {
+  const code = split !== null || column === "terminal" ? bundle : null;
+  return {
+    ...prev,
+    split: split ?? undefined,
+    tab: column === "spec" ? undefined : code !== null ? "code" : "terminal",
+    code: code ?? undefined,
+  };
+}
+
+/**
+ * 묶음의 지금 탭이 **묶음 쪽에서** 바뀌었을 때 주소를 어떻게 고치는가 — 지금 탭을 닫아 이웃이 켜졌거나(결정 30), 셸이 스스로
+ * 끝나 빠졌거나, 끌어 놓은 칸이 켜졌다. 본문(단일 뷰)이나 묶음 열(분할)이 그 탭을 따라간다: 파일 탭이면 `code`가 그것이고
+ * 셸이면 없다(`bundle`이 `null`). 분할에서 문서 열을 가리키던 `tab`은 그대로다 — 바뀐 것은 옆 열이다. 본문이 문서인 단일
+ * 뷰는 아무것도 안 바뀐다 — 묶음이 화면에 없다.
+ *
+ * **고칠 것을 모두 `prev`에서 읽는다.** 묶음의 변화는 다른 이동과 한 틱에 겹친다 — 셸 탭을 끌어 본문 절반에 놓으면 그 셸을 켜는
+ * 것과 분할을 켜는 주소가 함께 난다. 화면이 들고 있던 `tab` · `split`으로 지으면 한 틱 늦은 값이 방금 놓은 분할을 덮는다.
+ */
+export function bundleSearch<T extends object>(prev: T, bundle: string | null): T & { tab?: AddressTab; code?: string } {
+  const search = prev as { tab?: string; code?: string; split?: string };
+  const tab = viewTab(search);
+  if (tab === "spec" && splitOf(search) === null) return { ...prev, tab: undefined, code: undefined };
+  return {
+    ...prev,
+    tab: tab === "spec" ? undefined : bundle !== null ? "code" : "terminal",
+    code: bundle ?? undefined,
+  };
 }
 
 /**
@@ -206,8 +260,10 @@ export interface WorkMemory {
   /** 보던 문서. `null`은 주소에 `file`이 없는 것과 같은 뜻이다 — 기본 문서를 본다. */
   file: string | null;
   /**
-   * 보던 파일 탭(`<프로젝트>/<경로>`, git-integration S12). `tab`이 `code`일 때만 찬다. 돌아오면 그 탭이 묶음의 지금 탭이 되고,
-   * 그 사이 탭을 닫았으면 끝에 다시 연다(주소가 가리키는 파일은 연다 — 스토리 60).
+   * 보던 파일 탭(`<프로젝트>/<경로>`, git-integration S12). 단일 뷰에서는 `tab`이 `code`일 때만 차고, **분할에서는 `tab`이
+   * 어느 열을 가리키든** 묶음 열의 파일이면 찬다(티켓 07 — 문서 열에 포커스가 있어도 옆 열은 그 파일이다. 주소의 `code`와
+   * 같은 규칙이다 — `WorkSearch.code`). 돌아오면 그 탭이 묶음의 지금 탭이 되고, 그 사이 탭을 닫았으면 끝에 다시 연다(주소가
+   * 가리키는 파일은 연다 — 스토리 60).
    */
   code: string | null;
 }
@@ -224,6 +280,19 @@ export function recallView(slug: string): WorkMemory {
 }
 
 /**
+ * 목록에서 **사라진 work의 기억을 걷는다**(git-integration 판 01). 받는 것은 목록에 남은 slug들이다.
+ *
+ * 키가 slug라서다 — 삭제는 slug를 풀어 주므로 같은 세션에서 같은 slug로 새 work이 설 수 있고, 그러면 지운 work의 마지막
+ * 화면이 새 work을 여는 주소(`recallSearch`)의 씨앗이 된다. `code`가 실려 있으면 새 work의 묶음에 옛 파일 탭이 다시 열린다
+ * (주소가 가리키는 파일은 연다 — 스토리 60). 묶음에서 그 work의 파일 탭을 빼는 것(터미널 스토어의 `closeShellsOf` ·
+ * `settleOwners`)과 짝이라 부르는 자리도 같은 목록 결과다(`ShellOwners`).
+ */
+export function forgetVanishedViews(listed: readonly string[]): void {
+  const kept = new Set(listed);
+  for (const slug of lastView.keys()) if (!kept.has(slug)) lastView.delete(slug);
+}
+
+/**
  * 기억을 **빈 주소 위에 얹어** 새 주소를 짓는다 — 그래서 **떠나는 주소의** `file`이 안
  * 딸려가고, 얹히는 `file`은 언제나 그 work 자신의 것이다(위 주석).
  *
@@ -231,8 +300,8 @@ export function recallView(slug: string): WorkMemory {
  * 합성에는 아래 `recallSearch`라는 이름이 있고, work을 여는 문은 전부 그것을 탄다. 이
  * 머리말은 한때 「짓는 자리가 둘이라(주소 정규화·사이드바 행)」이라고 적었는데, 그 사이
  * 자리가 다섯이 되도록 그 수를 아무도 안 고쳤다 — 그래서 세는 일을 말에서 이름으로 옮겼다.
- * 남은 직접 호출은 `dropInto`의 남의 work 하나다(결정 101): 끌어 놓은 배치가 곧 말한
- * 것이라 기억을 안 얹는다.
+ * 기억을 안 쓰는 쪽이 하나 있다 — `dropInto`의 남의 work이다(결정 101): 끌어 놓은 배치가 곧 말한
+ * 것이라 기억을 안 얹는다. 그 배치는 열 축이라 빈 주소 위에 `columnSearch`로 짓는다(git-integration 티켓 07).
  *
  * `fileSearch`를 쓰지 않는다 — 그쪽은 문서를 **고른** 자리의 규칙이라 `tab`을 spec으로
  * 눕히는데(결정 50), 여기서는 아무것도 안 골랐고 보던 화면을 그대로 세우는 것이라

@@ -933,6 +933,14 @@ body.dragging-row * {
   @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-state-2 px-2 whitespace-nowrap text-muted-foreground;
 }
 
+/* **files 칸 범위의 토큰**(git-integration 결정 37 · 38). 디자인이 없는 자리라 지금 앱 값으로 짓고, 전역 토큰은 고치지 않는다 —
+   `codex-ds`가 전역 토큰을 바꿀 때 이 이름을 그쪽 이름으로 옮긴다(`three-axes`의 대화창 범위 토큰과 같은 방식).
+     --tree-row-dim   흐린 트리 행의 글자 — gitignore에 걸린 것(커밋에 실리지 않는 것). 행(`SpecTree`의 `DIM`)이 읽는다.
+                      흐린 글자(`--text-tertiary`)와 같은 단이다 — 행의 확장자 꼬리표 · 글리프가 이미 그 색이라 걸린 행은 한 색으로 눕는다 */
+[data-files-tree] {
+    --tree-row-dim: var(--text-tertiary);
+}
+
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
    opacity가 여기 있는 것이 페이드다 — 스크립트는 0과 1만 오가고 사라지는 시간은 이 줄이 든다.
    나타남이 사라짐보다 빠른 것은 일부러다: 구르기 시작하면 바로 서고, 멎으면 천천히 빠진다. */

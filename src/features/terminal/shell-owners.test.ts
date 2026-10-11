@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedOwners } from "./shell-owners";
+import { OWNERLESS_TOAST_ID, ownerlessNotice, vanishedCodeTabOwners, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
-import { markOwnerless, NO_SHELLS, openShell, ownerOf, topTerminal } from "./shell-registry";
+import { markOwnerless, NO_SHELLS, openCodeTab, openShell, ownerOf, topTerminal } from "./shell-registry";
 import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 
 // 티켓 12 — **주인 확인**(프로세스 결정 4 · 프로세스 스펙 S13). MCP로 아카이브 · 삭제된 work은 다른 프로세스가 한 일이라
@@ -89,5 +89,35 @@ describe("토스트", () => {
   // 그 자리를 고친다.
   it("id가 하나다", () => {
     expect(OWNERLESS_TOAST_ID).toBe("ownerless");
+  });
+});
+
+// git-integration 판 01 — 사라진 work의 **파일 탭**. 파일 탭은 프로세스가 없어 물을 것이 없다 — 목록이 앉으면 곧바로 묶음에서
+// 뺀다. 셸이 하나도 없이 파일 탭만 선 묶음도 찾아야 한다: 셸 owner만 보는 판정(`vanishedOwners`)에는 그 묶음이 안 걸린다.
+describe("파일 탭이 남은 사라진 owner", () => {
+  const file = { project: "fe", path: "src/a.ts" };
+  // 가는 셸과 파일 탭, 나는 파일 탭만, 다는 셸만이다.
+  const state = [ownerOf("ga"), ownerOf("na")].reduce(
+    (next, owner) => openCodeTab(next, owner, file),
+    shellsAt(originIn("ga"), originIn("da")),
+  );
+
+  it("목록에서 빠진 slug의 owner 중 파일 탭이 선 것만 나온다 — 셸 없이 파일 탭만 선 묶음도", () => {
+    expect(vanishedCodeTabOwners(state, listed("da"), NOTHING_HELD)).toEqual([ownerOf("ga"), ownerOf("na")]);
+    expect(vanishedCodeTabOwners(state, listed("ga", "da"), NOTHING_HELD)).toEqual([ownerOf("na")]);
+    expect(vanishedCodeTabOwners(state, listed("ga", "na", "da"), NOTHING_HELD)).toEqual([]);
+  });
+
+  it.each<[string, ListResult | undefined]>([
+    ["실패", { status: "error", data: [] }],
+    ["로딩", { status: "pending" }],
+    ["결과가 아직 없다", undefined],
+  ])("%s이면 판단하지 않는다", (_, result) => {
+    expect(vanishedCodeTabOwners(state, result, NOTHING_HELD)).toEqual([]);
+  });
+
+  // UI 아카이브 · 삭제는 회수(`closeShellsOf`)에서 제 손으로 뺀다 — 그동안 앉은 재조회는 그 owner를 건너뛴다.
+  it("제외 창에 든 owner는 뺀다", () => {
+    expect(vanishedCodeTabOwners(state, listed(), holding(ownerOf("ga")))).toEqual([ownerOf("na")]);
   });
 });

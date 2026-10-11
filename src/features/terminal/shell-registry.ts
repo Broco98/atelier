@@ -516,6 +516,14 @@ function bundleOwnerOf(state: ShellsState, id: number): ShellOwner | null {
 }
 
 /**
+ * 그 id의 칸이 아직 **어느 묶음에** 있는가 — 셸 칸이든 파일 탭이든. 끄는 칸이 살아 있는지를 묻는 자리(터미널 스토어의 끌기
+ * 거두기)가 딛는다 — 셸 목록만 보면 끄는 파일 탭은 늘 「없는 칸」이라 누르자마자 끌기가 거둬진다.
+ */
+export function hasBundleTab(state: ShellsState, id: number): boolean {
+  return bundleOwnerOf(state, id) !== null;
+}
+
+/**
  * 그 화면 묶음에 **파일 탭**을 연다(git-integration 판 01 — 스토리 23~25). 같은 정체(`CodeTarget`)의 칸이 이미 있으면 새로
  * 서지 않고 그 칸을 켠다. 없으면 묶음 **끝에** 붙이고 켠다 — 이미 선 칸의 자리와 번호가 안 흔들린다(결정 31).
  *
@@ -550,6 +558,19 @@ export function removeCodeTab(state: ShellsState, id: number): ShellsState {
   if (owner === null) return state;
   if (bundleTabOf(state, owner, id)?.kind !== "code") return state;
   return withoutTab(state, owner, id);
+}
+
+/**
+ * 그 화면 묶음의 **파일 탭을 모두** 뺀다 — 그 work이 아카이브 · 삭제되어 화면이 사라질 때다. 셸은 프로세스라 셸을 닫는 길
+ * (`removeShell`)로 빠지고, 파일 탭은 물을 것이 없어 여기서 한꺼번에 빠진다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * 묶음이 비면 키째 걷힌다 — 남기면 지운 work의 slug로 새 work이 설 때 옛 탭이 그 줄에 서고, 켜진 칸도 그것을 가리킨다.
+ * 파일 탭이 없으면 받은 상태 그대로다.
+ */
+export function withoutCodeTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
+  return bundleOf(state, owner)
+    .filter((tab) => tab.kind === "code")
+    .reduce((next, tab) => withoutTab(next, owner, tab.id), state);
 }
 
 /**

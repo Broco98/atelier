@@ -352,6 +352,8 @@ pub fn run() {
             commands::archive_work,
             commands::remove_work,
             commands::read_spec_file,
+            commands::list_worktree_tree,
+            commands::list_worktree_folder,
             commands::list_archive,
             commands::list_archived_docs,
             commands::read_archived_file,

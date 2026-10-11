@@ -12,6 +12,7 @@ import {
   activeIdOf,
   asksBeforeClose,
   atCap,
+  bundleOf,
   CLOSE_NOTICE,
   CLOSE_REASONS,
   closeNotice,
@@ -35,6 +36,7 @@ import {
   needsCloseConfirm,
   NO_QUIET_NOTICE,
   NO_SHELLS,
+  openCodeTab,
   openShell,
   ownerlessCloseNotice,
   ownerlessOf,
@@ -73,6 +75,7 @@ import {
   workDefaultOrigin,
   workShellOrigin,
   workShellProjects,
+  withoutCodeTabsOf,
 } from "./shell-registry";
 import type { Shell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { attentionOn } from "./shell-attention";
@@ -411,6 +414,44 @@ describe("활성 칸을 제거하면 다음 활성이 정해진다", () => {
     const after = removeShell(state, ids[0]);
     expect(after.shells).toEqual([]);
     expect(activeTop(after)).toBeNull();
+  });
+});
+
+// git-integration 판 01 — work이 아카이브 · 삭제되면 그 화면의 묶음이 통째로 사라져야 한다. 셸은 셸을 닫는 길(`removeShell`)로
+// 빠지지만 파일 탭은 그 길을 안 지나, 회수가 셸만 닫으면 묶음과 켜진 칸이 파일 탭을 든 채 남는다. 지운 work의 slug로 새 work이
+// 서면 옛 탭이 새 work의 탭 줄에 선다.
+describe("그 화면의 파일 탭을 한꺼번에 뺀다", () => {
+  const ga = ownerFor("ga");
+  const na = ownerFor("na");
+  const fileA = { project: "fe", path: "src/a.ts" };
+  const fileB = { project: "fe", path: "src/b.ts" };
+
+  it("파일 탭만 모두 빠지고 셸 칸과 남의 화면은 그대로다 — 켜진 칸은 이웃 규칙대로 옮긴다", () => {
+    const { state: shells, ids } = opened(2, originFor("ga"));
+    let state = openCodeTab(shells, ga, fileA);
+    state = openCodeTab(state, ga, fileB);
+    state = openCodeTab(state, na, fileA);
+
+    const after = withoutCodeTabsOf(state, ga);
+    expect(bundleOf(after, ga)).toEqual(ids.map((id) => ({ kind: "shell", id })));
+    // 켜져 있던 `b.ts`(끝)가 빠지면 왼쪽 이웃이다
+    expect(activeIdOf(after, ga)).toBe(ids[1]);
+    expect(bundleOf(after, na)).toBe(bundleOf(state, na));
+    expect(activeIdOf(after, na)).toBe(activeIdOf(state, na));
+    expect(after.shells).toBe(state.shells);
+  });
+
+  it("파일 탭만 선 묶음은 키째 걷히고 켜진 칸도 없다", () => {
+    const state = openCodeTab(openCodeTab(NO_SHELLS, ga, fileA), ga, fileB);
+
+    const after = withoutCodeTabsOf(state, ga);
+    expect(after.bundles).toEqual({});
+    expect(after.activeByOwner).toEqual({});
+  });
+
+  it("파일 탭이 없으면 받은 상태 그대로다", () => {
+    const { state } = opened(2, originFor("ga"));
+    expect(withoutCodeTabsOf(state, ga)).toBe(state);
   });
 });
 

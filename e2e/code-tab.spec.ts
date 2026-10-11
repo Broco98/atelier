@@ -1,7 +1,24 @@
 import { expect, test, type Page } from "./evidence";
-import { readCodeView, 주소로간다 } from "./code-view";
+import { readCodeView } from "./code-view";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownIpcCalls, writeShell } from "./harness";
+import {
+  archiveByMcp,
+  awaitSpawned,
+  callCount,
+  clipboardWrites,
+  fireEvent,
+  installFixtureBackend,
+  ipcFailure,
+  recordClipboard,
+  replaceAnswer,
+  steadyCount,
+  typeIntoShell,
+  unknownIpcCalls,
+  workRow,
+  writeShell,
+  파일탭주소 as codeUrl,
+  주소로간다,
+} from "./harness";
 
 // git-integration 판 01 티켓 04(#477) — **파일 탭이 주소로 열리고, `×`와 ⌘W로 닫힌다.**
 //
@@ -10,10 +27,9 @@ import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownI
 //
 // 본문은 강조된 코드다 — 08이 원문 보기를 갈아 끼웠다. 강조 자체는 `code-highlight.spec.ts`가 잰다.
 
-// 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다.
-const [work, plainWork] = WORKS;
-
-const codeUrl = (ref: string, slug = work.slug) => `/works/${slug}?tab=code&code=${encodeURIComponent(ref)}`;
+// 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다. 프로젝트가 둘인 work은
+// 셸이 저절로 안 뜨는 화면이다.
+const [work, plainWork, multiWork] = WORKS;
 
 /** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일이든 센다. */
 const 묶음 = (page: Page) => page.locator("[data-tab-strip] > [data-tab]");
@@ -233,24 +249,106 @@ test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 wor
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("분할 중에 파일 탭을 고르면 분할이 풀리고 본문에 선다", async ({ page }) => {
+// 구현 스펙 「화면 — 코드 보기 › 카드 머리」(04) — 그 work에 그 프로젝트의 워크트리가 없으면 경로 복사를 세우지 않는다. 프로젝트는
+// 있는데 워크트리 폴더가 사라진 것(work 목록의 `exists: false` — files 칸이 「워크트리 없음」을 띄우는 그 상태)도 같다: 가리킬
+// 파일이 없다. 세우면 없는 경로가 클립보드로 에이전트에게 넘어간다.
+test("워크트리 폴더가 사라진 프로젝트의 파일 탭은 「워크트리 없음」이고 경로 복사가 서지 않는다", async ({ page }) => {
+  const works = WORKS.map((one) =>
+    one.slug === multiWork.slug
+      ? { ...one, worktrees: one.worktrees.map((tree) => (tree.project === "ledger" ? { ...tree, exists: false } : tree)) }
+      : one,
+  );
+  await installFixtureBackend(page, { list_works: works });
+  await page.goto(codeUrl("ledger/ghost.ts", multiWork.slug));
+  const card = 코드카드(page, "ledger/ghost.ts");
+  await expect(card).toContainText("워크트리 없음");
+  await expect(card.getByRole("button", { name: "경로 복사" })).toHaveCount(0);
+
+  // 워크트리가 있는 프로젝트의 파일 탭은 그대로 선다 — 위가 「코드 카드에 경로 복사가 아예 없다」로 통과하지 않게.
+  await 주소로간다(page, codeUrl("billing/src/main.ts", multiWork.slug));
+  await expect(코드카드(page, "billing/src/main.ts").getByRole("button", { name: "경로 복사" })).toHaveCount(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 구현 스펙 「화면 — 주소」 — 주소가 셸을 말하는데(`tab=terminal`) 지금 탭이 파일 탭이면 묶음의 첫 셸이 지금 탭이 된다(04). 셸이
+// 없고 자동 셸도 안 뜨는 work(프로젝트 둘)이면 켤 셸이 없어 지금 탭이 파일 탭으로 남는다. 그때 본문은 「아직 셸이 없어요」이고
+// 켜진 칸은 본문에 선 것이라 그 파일 탭이 켜지지 않는다. ⌘W도 닫을 것이 없다 — 셸 닫기 길에 파일 탭을 넘기지 않는다.
+test("셸 없는 묶음에 주소가 셸을 말하면 파일 탭이 켜진 칸으로 서지 않고, ⌘W가 아무것도 닫지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${work.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  await 주소로간다(page, codeUrl("billing/src/main.ts"));
-  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
-
-  // 셸로 돌아와 분할을 켠다 — spec ▏ 터미널.
-  await 셸칸(page).locator("button[aria-pressed]").click();
-  await page.getByRole("button", { name: "분할", exact: true }).click();
-  await expect(page).toHaveURL(/split=lr/);
-  await expect(page.locator("[data-column]")).toHaveCount(2);
-
-  await 파일탭이름(page, "billing/src/main.ts").click();
-
-  await expect(page.locator("[data-column]")).toHaveCount(0);
-  await expect(page).not.toHaveURL(/split=/);
+  await page.goto(codeUrl("billing/src/main.ts", multiWork.slug));
   await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
   await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "true");
+
+  await 주소로간다(page, `/works/${multiWork.slug}?tab=terminal`);
+  await expect(page.getByText("아직 셸이 없어요", { exact: true })).toBeVisible();
+  await expect(코드카드(page, "billing/src/main.ts")).toHaveCount(0);
+  await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "false");
+
+  await page.keyboard.press("Meta+w");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  // 칸을 누르면 그 파일로 간다 — 키는 차례대로 처리되므로 앞의 ⌘W가 끝난 뒤의 묶음이다.
+  await 파일탭이름(page, "billing/src/main.ts").click();
+  await expect(코드카드(page, "billing/src/main.ts")).toBeVisible();
+  await expect(파일탭이름(page, "billing/src/main.ts")).toHaveAttribute("aria-pressed", "true");
+  expect(await callCount(page, "pty_spawn")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 구현 스펙 「코어 — 파일 읽기」(04) — 가드가 거절한 경로(`..` · 절대 경로)는 갈래가 아니라 명령 실패로 온다. 화면은 「읽지 못한
+// 파일」과 그 글을 보인다. 손으로 고친 주소나 그 주소를 기억한 work이 이 길을 탄다. 같은 주소는 다시 물어도 같은 답이라 다시
+// 시도하지 않는다 — 기본값(1 · 2 · 4초 뒤 세 번)이면 그 7초 동안 카드 몸이 빈 채다(한 겹 쿼리의 S23과 같은 까닭).
+test("코어가 거절한 경로는 다시 묻지 않고 곧바로 「읽지 못한 파일」과 그 까닭이 탭 안에 뜬다", async ({ page }) => {
+  await installFixtureBackend(page, { read_worktree_file: ipcFailure("invalid path: src/../../x") });
+  await page.goto(codeUrl("billing/src/../../x"));
+
+  const card = 코드카드(page, "billing/src/../../x");
+  await expect(card).toContainText("읽지 못한 파일");
+  await expect(card).toContainText("invalid path: src/../../x");
+  expect(await steadyCount(page, "read_worktree_file")).toBe(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 스토리 69 · S17 — 코드 카드 머리의 경로 복사는 그 파일의 **워크트리 경로**를 복사한다: 에이전트에게 그 파일을 그대로 넘긴다.
+// 뿌리는 코어가 준 워크트리 자리다. 그림 링크도 사람이 연 이름 그대로다 — 그림을 거는 자리(코어가 푼 실제 경로)와 갈린다.
+test("코드 카드 머리의 경로 복사가 그 파일의 워크트리 경로를 복사한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  const worktree = work.worktrees.find((one) => one.project === "billing")!.path;
+  await page.goto(codeUrl("billing/src/main.ts"));
+
+  const copy = (ref: string) => 코드카드(page, ref).getByRole("button", { name: "경로 복사", exact: true });
+  await copy("billing/src/main.ts").click();
+  await expect.poll(() => clipboardWrites(page)).toEqual([`${worktree}/src/main.ts`]);
+
+  await 주소로간다(page, codeUrl("billing/docs/logo.png"));
+  await expect(코드카드(page, "billing/docs/logo.png").getByRole("img")).toBeVisible();
+  await copy("billing/docs/logo.png").click();
+  await expect.poll(() => clipboardWrites(page)).toEqual([`${worktree}/src/main.ts`, `${worktree}/docs/logo.png`]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 화면 기억(`lastView`)의 키는 slug다. 삭제는 slug를 풀어 주므로(코어의 `unique_dir_slug`는 남은 폴더만 본다) 같은 세션에서
+// 같은 slug로 새 work이 설 수 있다. 지운 work의 마지막 화면이 파일 탭이었으면 그 기억이 새 work을 여는 주소(`recallSearch`)에
+// 실려 옛 파일 탭이 새 work의 묶음에 다시 열렸다 — 목록에서 사라진 work의 기억은 걷는다(묶음의 파일 탭을 빼는 것과 짝이다).
+// MCP 흉내는 목록 답에서 slug를 빼고 이벤트를 쏘는 것이다(`archiveByMcp` — `shell-ownerless.spec.ts` 머리말).
+test("목록에서 사라진 work의 slug로 새 work이 서면 지운 work이 보던 파일 탭이 되살아나지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(codeUrl("billing/README.md"));
+  await expect(코드카드(page, "billing/README.md")).toBeVisible();
+  await workRow(page, plainWork.slug).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(문서카드(page)).toBeVisible();
+
+  await archiveByMcp(page, WORKS, work.slug);
+  await expect(workRow(page, work.slug)).toHaveCount(0);
+  // 같은 slug로 새 work이 선다.
+  await replaceAnswer(page, "list_works", WORKS);
+  await fireEvent(page, "works:changed", null);
+  await workRow(page, work.slug).click();
+
+  await expect(page).toHaveURL(new RegExp(`/works/${work.slug}`));
+  await expect(문서카드(page)).toBeVisible();
+  await expect(page).not.toHaveURL(/code=/);
+  await expect(파일탭들(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
