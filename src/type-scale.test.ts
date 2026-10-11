@@ -31,12 +31,18 @@ import { blankComments, blankCssComments } from "./blank-comments";
 // 「앱 규격으로 고친 자리」가 registry의 옛 값(`text-sm` · `rounded-xl` 같은)을 적고, 그 기록은 남아야 한다.
 // 주석 밖은 전부 본다 — 문자열 · 템플릿 · CSS 선언(`@apply`)이다.
 //
-// 예외는 `EXCEPTIONS`에 자리와 까닭을 한 줄씩 적는다. 지금은 없다.
+// 예외는 `EXCEPTIONS`에 자리와 까닭을 한 줄씩 적는다. 지금은 하나다 — 그림자 토큰을 안쪽으로 칠하는 카드 링.
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 type Exception = { file: string; className: string; why: string };
-const EXCEPTIONS: Exception[] = [];
+const EXCEPTIONS: Exception[] = [
+  {
+    file: "src/components/shell/Frame.tsx",
+    className: "shadow-[inset_var(--shadow-hairline)]",
+    why: "바탕 위 카드의 0.5px 링(`CardBox`) — Codex `shadow-hairline`을 값 그대로 읽어 안쪽(`inset`)에 칠한다. 바깥에 칠하면 접히는 목록 칸 · 작업 패널의 넘침 숨김에 잘리고, Codex 그림자 단계에는 안쪽 판이 없다",
+  },
+];
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
@@ -182,6 +188,27 @@ describe("그림자 단계", () => {
       return name !== "none" && !shadows.includes(name);
     });
     expect(outside).toEqual([]);
+  });
+
+  // **임의 값 그림자도 막는다** — 반경의 `rounded-[…]`와 같다. 이름 꼴(위)만 막으면 `shadow-[0_8px_24px_#0000001f]`처럼 손으로
+  // 지은 그림자가 단계 밖에 서고, 그 안의 색은 Codex 토큰을 비켜 가 `.dark`도 못 따라온다. 앞말이 붙은 `inset-shadow-[…]` ·
+  // `drop-shadow-[…]`도 같은 일이라 함께 센다. 토큰을 그대로 읽는 자리만 `EXCEPTIONS`에 둔다.
+  it("그림자를 임의 값으로 적지 않는다", () => {
+    const arbitrary = /(?<![\w-])(?:inset-|drop-)?shadow-\[[^\]\s"'`]*\]/g;
+    // 앵커: 꼴을 실제로 잡는다 — 변형(`hover:`)이 붙어도, 앞말이 붙어도 센다.
+    const sample = "shadow-[0_8px_24px_#0000001f] hover:shadow-[0_2px_8px_rgba(0,0,0,.1)] drop-shadow-[0_1px_0_white] shadow-card";
+    expect([...sample.matchAll(arbitrary)].map((m) => m[0])).toEqual([
+      "shadow-[0_8px_24px_#0000001f]",
+      "shadow-[0_2px_8px_rgba(0,0,0,.1)]",
+      "drop-shadow-[0_1px_0_white]",
+    ]);
+    // 앵커: 예외 자리가 지금도 그 글자를 쓴다 — 쓰이지 않는 예외는 다음 그림자의 뒷문이 된다.
+    for (const one of EXCEPTIONS.filter((e) => /shadow-\[/.test(e.className))) {
+      expect(sources.find(({ file }) => file === one.file)?.text, one.file).toContain(one.className);
+    }
+    // 실패하면 그 그림자를 Codex 단계(`shadow-hairline` · `shadow-prominent` …)로 옮긴다 — 겹이 둘이면 합친 이름(`shadow-raised`
+    // 같은)을 `index.css`에 둔다.
+    expect(offenders(arbitrary)).toEqual([]);
   });
 });
 

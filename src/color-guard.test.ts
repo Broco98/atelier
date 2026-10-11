@@ -13,8 +13,9 @@ import { SHADCN_NAMES } from "./css-tokens";
 //   - **shadcn 이름**(`bg-background` · `text-muted-foreground` …). Codex 토큰의 별칭으로 남았지만 읽는 자리는 shadcn 바탕
 //     CSS(`index.css`의 `@layer base`)와 공용 부품(`components/ui` — registry에서 들인 부품이 그 이름으로 온다)뿐이다. 앱
 //     호출부(틀 · 화면)가 쓰면 같은 면이 두 이름으로 갈려, 별칭을 걷거나 바꾸는 날 그 자리만 따로 논다.
-//   - **손으로 고른 색** — Tailwind 팔레트 색(`text-amber-700` · `bg-red-600` · `bg-black/10`), 색 유틸리티의 임의 값 안 색
-//     이름(`bg-[color-mix(…,white_10%)]`), tsx · ts 안의 색 리터럴(hex · `rgb(` · `oklch(` …). Codex 토큰을 비켜 가서, 토큰 값을
+//   - **손으로 고른 색** — Tailwind 팔레트 색(`text-amber-700` · `bg-red-600` · `bg-black/10`)과 그 변수(`--color-red-600`), 색
+//     유틸리티의 임의 값 안 색 이름(`bg-[color-mix(…,white_10%)]`), tsx · ts 안의 색 리터럴(hex · `rgb(` · `oklch(` … — 임의 값의
+//     `_` 뒤도 센다). 그림자의 임의 값(`shadow-[…]`)은 `type-scale.test.ts`가 막는다. Codex 토큰을 비켜 가서, 토큰 값을
 //     고치는 날 그 자리만 옛 색으로 남고 `.dark`도 따라오지 않는다. 인라인 `style`의 색 이름(`color: "red"`)은 다른 문자열과
 //     갈리지 않아 세지 않는다.
 // 셋 다 빌드도 타입 검사도 조용하고 화면에서는 「조금 다른 색」으로만 남아, 눈으로는 지켜지지 않는다.
@@ -177,6 +178,26 @@ describe("색 지킴", () => {
     expect(offenders(utilities(palette, "(?:-\\d+)?"))).toEqual([]);
   });
 
+  // **팔레트 색은 변수 이름으로도 읽힌다.** `@theme`이 색 이름공간을 비우지 않아(`--color-*: initial`이 없다) Tailwind 기본
+  // 팔레트의 변수(`--color-red-600` …)가 그대로 서 있다 — `text-(--color-red-600)` · `bg-[var(--color-amber-500)]`처럼 변수로
+  // 부르면 위 유틸리티 꼴(`text-red-600`)도 아래 리터럴 꼴도 비켜 가고 Codex 밖의 색이 칠해진다. 그래서 그 변수 이름을 어디서든
+  // 막는다 — Codex 토큰의 색 변수(`--color-fg` · `--color-chat-accent-purple` …)는 팔레트 이름으로 시작하지 않는다.
+  const PALETTE_VARIABLE = new RegExp(`--color-(?:${palette.join("|")})(?:-\\d+)?(?![\\w-])`, "g");
+
+  it("Tailwind 팔레트 색을 변수 이름으로 부르지 않는다", () => {
+    // 앵커: 변수 꼴을 실제로 잡는다 — 셋 다 위 두 검사를 비켜 가던 꼴이고, Codex 토큰 변수는 잡지 않는다.
+    expect(
+      offenders(PALETTE_VARIABLE, [
+        {
+          file: "예",
+          text: "text-(--color-red-600) bg-[var(--color-amber-500)] shadow-[0_0_0_1px_var(--color-gray-200)] text-(--color-fg) bg-(--color-chat-accent-purple)",
+        },
+      ]),
+    ).toEqual(["예:1: --color-red-600", "예:1: --color-amber-500", "예:1: --color-gray-200"]);
+    // 실패하면 그 자리를 Codex 토큰으로 옮긴다 — 위 「팔레트 색 유틸리티」의 짝과 같다.
+    expect(offenders(PALETTE_VARIABLE)).toEqual([]);
+  });
+
   /**
    * **색 리터럴의 예외** — 앱 CSS 변수가 닿지 않거나 Codex 토큰에 그 한 단이 없는 자리다. 자리는 파일(과 그 글자)이고 까닭을
    * 한 줄씩 적는다. 예외마다 지금도 어딘가에 걸리는지 함께 센다 — 쓰이지 않는 예외는 다음 리터럴의 뒷문이 된다.
@@ -198,8 +219,35 @@ describe("색 지킴", () => {
     },
   ];
 
+  /**
+   * 색 리터럴 — hex(`#fff` · `#00000014`)와 색 함수(`rgb(` · `oklch(` …). **경계는 영숫자만이다** — `_`는 경계 안이다. Tailwind
+   * 임의 값은 띄어쓰기를 `_`로 적어(`shadow-[0_2px_8px_#00000014]` · `border-[1px_solid_#ddd]`) 색이 `_` 바로 뒤에 선다. 손으로
+   * 적은 색이 가장 잘 나오는 자리가 그 여러 칸짜리 임의 값(그림자 · 테두리 묶음 · 그러데이션)인데, 경계에 `_`를 넣으면(`\w`) 그
+   * 꼴이 통째로 빠진다. `&#`는 HTML 문자 참조라 뺀다.
+   */
+  const LITERAL =
+    /(?<![a-z0-9&])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![a-z0-9-])|(?<![a-z0-9-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/gi;
+
+  it("색 리터럴 꼴이 임의 값의 `_` 뒤에서도 잡힌다", () => {
+    // 앵커: `_` 뒤 · `[` 뒤 · `(` 뒤의 리터럴을 다 잡고, 색이 아닌 `#`(문자 참조 · 낱말 안 · 짧은 낱말)는 잡지 않는다.
+    expect(
+      offenders(LITERAL, [
+        {
+          file: "예",
+          text: "shadow-[0_2px_8px_#00000014] shadow-[0_2px_8px_rgba(0,0,0,.1)] border-[1px_solid_#ddd] bg-[#fff] bg-[linear-gradient(#fff_0%,oklch(0.5_0_0))] &#123; a#bc #ab #section",
+        },
+      ]),
+    ).toEqual([
+      "예:1: #00000014",
+      "예:1: rgba(",
+      "예:1: #ddd",
+      "예:1: #fff",
+      "예:1: #fff",
+      "예:1: oklch(",
+    ]);
+  });
+
   it("tsx · ts 안에 색 리터럴이 없다", () => {
-    const LITERAL = /(?<![\w&])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])|(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/gi;
     // 색 유틸리티의 임의 값(`bg-[…]`) 안의 색 이름 — 팔레트와 같은 이름(`black` · `white` · `red` …)이 `_`(띄어쓰기) · `,` · `(`
     // 사이에 선다(`black_8%`). 변수 이름(`var(--red-500)`) 안의 글자는 세지 않는다.
     const NAMED = new RegExp(
