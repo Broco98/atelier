@@ -39,7 +39,38 @@ export type Entry =
   | { kind: "message"; key: string; messageId: string | null; text: string }
   | { kind: "thought"; key: string; messageId: string | null; text: string }
   /** 도구 호출 — 처음 온 `tool_call`에 뒤의 `tool_call_update`를 덮어 합친 값. 문구 · 안의 것은 `tool-view.ts`가 짓는다(티켓 18). */
-  | ToolEntry;
+  | ToolEntry
+  | PlanEntry
+  | ChecklistEntry;
+
+/**
+ * 계획 카드(three-axes 티켓 21 · 결정 29) — Codex `plan_update`(markdown)의 글, 또는 계획 승인 요청(kind `switch_mode`)의 계획
+ * 본문(`rawInput.plan` — Claude 변환기가 `ExitPlanMode`를 같은 모양으로 옮긴다). **대화에 하나다**: 다음 계획이 오면 같은 카드가
+ * 새 계획으로 바뀐다(스토리 65) — `plan_update`는 올 때마다 전문이다(실측 A2). 같은 턴이면 그 자리에서 글만 바뀌고, 고쳐 온 계획이
+ * 다음 턴에 오면 카드가 그 턴으로 옮겨 간다.
+ */
+export interface PlanEntry {
+  kind: "plan";
+  key: string;
+  text: string;
+}
+
+/** 계획 체크리스트의 항목 하나 — ACP `PlanEntry`(`status`는 `pending` · `in_progress` · `completed`). */
+export interface ChecklistItem {
+  content: string;
+  status: string;
+}
+
+/**
+ * 계획 체크리스트(three-axes 결정 29) — ACP `plan`의 항목들. **엔진이 보낼 때만 선다**(스토리 67): 두 엔진 모두 저절로 보내지
+ * 않으니(실측 A2 · A6) 빈 칸을 미리 세우지 않는다. ACP `plan`은 올 때마다 목록 전체라 계획 카드처럼 대화에 하나이고 같은 칸이
+ * 바뀐다. 빈 목록이 오면 걷힌다.
+ */
+export interface ChecklistEntry {
+  kind: "checklist";
+  key: string;
+  items: ChecklistItem[];
+}
 
 /**
  * 우리가 멈춘 턴에서 그 도구 줄이 어떻게 됐나(three-axes 티켓 20) — `ran-on`은 멈춘 뒤에도 돈다(돌았다), `stopped`는 멈춤과 함께
@@ -87,9 +118,40 @@ export interface ChatModel {
   turns: Turn[];
   /** 마지막 턴이 도는 중인가. */
   running: boolean;
+  /**
+   * 답하지 않은 권한 요청 — 물은 차례다(three-axes 티켓 21). 맨 앞의 것이 입력창 자리에 승인 카드(계획 승인이면 「이 계획대로
+   * 할까요?」)로 선다. 같은 `requestId`의 답(`answered`)이나 거둬짐(`withdrawn`)이 적히면, 또는 에이전트가 사라지면(죽음 ·
+   * 닫힘 — 걸린 요청에 답할 곳이 없다) 빠진다.
+   */
+  pending: PendingPermission[];
+}
+
+/** 권한 요청의 선택지 하나 — 엔진이 준 그대로(ACP `PermissionOption`). */
+export interface PermissionOption {
+  optionId: string;
+  name: string;
+  /** `allow_once` · `allow_always` · `reject_once` · `reject_always`. */
+  kind: string;
+}
+
+/** 답하지 않은 권한 요청 하나(기록의 `permission` `asked`). */
+export interface PendingPermission {
+  /** 권한 답 명령이 싣는 요청 id. */
+  requestId: string;
+  /** 엔진이 준 선택지 그대로 — 차례도 그대로다(스토리 59). */
+  options: PermissionOption[];
+  /** 호스트가 채운 도구 요지(`toolCall`) — 없으면 요청 원문의 `toolCall`이다. */
+  toolCall: Record<string, unknown>;
+  /** 그 요청의 도구 줄 — 흐름에 있으면(물음보다 먼저 온 `tool_call`) 그것이다. 명령 · 경로를 그 줄의 원문에서 읽는다. */
+  tool: ToolEntry | null;
+  /** 계획 승인 요청인가 — ACP 도구 kind `switch_mode`(「Implement this plan?」, three-axes 결정 29). */
+  planReview: boolean;
 }
 
 type Json = Record<string, unknown>;
+
+/** 턴 안의 줄이 되는 `session/update` 갈래 — 답 · 생각 조각, 도구 호출, 계획(markdown) · 체크리스트(three-axes 티켓 21). */
+const TURN_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "tool_call", "plan_update", "plan"]);
 
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
@@ -102,6 +164,14 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
   // 권한 요청 id → 그 요청의 도구 줄 id, 그리고 멈추기로 요청이 거둬진 도구 줄 id들(머리말).
   const askedFor = new Map<string, string>();
   const withdrawnByStop = new Set<string>();
+  // 답하지 않은 권한 요청 — 물은 차례로 든다(Map은 넣은 차례를 지킨다).
+  const pending = new Map<string, Omit<PendingPermission, "tool">>();
+  // 대화에 하나뿐인 계획 카드와 체크리스트 — 어느 턴의 어느 줄인가(머리말 `PlanEntry`).
+  let planCard: Held<PlanEntry> | null = null;
+  let checklist: Held<ChecklistEntry> | null = null;
+  // 계획 승인 요청의 도구 id들 — 그 「도구」는 계획 카드와 「이 계획대로 할까요?」 카드가 맡으므로 도구 줄로 세우지 않는다. codex-acp는
+  // 답한 뒤 그 id(`plan-review:…`)로 `completed` update 하나만 보내고(실측 A2), Claude 변환기는 `ExitPlanMode` 도구 호출을 먼저 낸다.
+  const planReviews = new Set<string>();
   const start = (key: string, sent: string | null, at: string, quote: Quote | null = null): Turn => {
     const turn: Turn = { key, sent, selfContinued: sent === null, quote, startedAt: at, entries: [], end: null, changes: null };
     turns.push(turn);
@@ -122,6 +192,7 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
         if (kind === "tool_call_update") {
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다(three-axes 결정 28) — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
+          if (id && planReviews.has(id)) break;
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
           else if (id && open) {
@@ -133,10 +204,31 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
           if (open && update.status === "failed" && open.entries.includes(tool)) closedLast.push(tool);
           break;
         }
-        if (kind !== "agent_message_chunk" && kind !== "agent_thought_chunk" && kind !== "tool_call") break;
+        if (!TURN_UPDATES.has(kind)) break;
+        if (kind === "tool_call" && planReviews.has(text(update.toolCallId) ?? "")) break;
         // 보낸 말 없이 온 update는 에이전트가 스스로 이어 간 턴이다(S4) — 턴 하나를 연다.
         const turn: Turn = open ?? (open = start(`o${line.seq}`, null, line.at));
         closedLast = [];
+        if (kind === "plan_update") {
+          // 계획(markdown) — 대화의 계획 카드가 이 글로 바뀐다(머리말 `PlanEntry`). 마크다운이 아닌 계획 모양은 아직 없다.
+          const body = isObject(update.plan) && update.plan.type === "markdown" ? text(update.plan.content) : null;
+          if (body === null) break;
+          planCard = settle(planCard, turn, () => ({ kind: "plan", key: `p${line.seq}`, text: body }), null);
+          planCard.entry.text = body;
+          break;
+        }
+        if (kind === "plan") {
+          // 체크리스트(ACP `plan`) — 올 때마다 목록 전체다. 빈 목록이면 걷힌다.
+          const items = checklistOf(update.entries);
+          if (items.length === 0) {
+            if (checklist) drop(checklist.turn, checklist.entry);
+            checklist = null;
+            break;
+          }
+          checklist = settle(checklist, turn, () => ({ kind: "checklist", key: `k${line.seq}`, items }), null);
+          checklist.entry.items = items;
+          break;
+        }
         if (kind === "tool_call") {
           const id = text(update.toolCallId) ?? `seq-${line.seq}`;
           turn.entries.push({ kind: "tool", key: `c${line.seq}`, toolCallId: id, call: update, output: outputOf(update), stop: null });
@@ -172,13 +264,33 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
         break;
       }
       case "permission": {
-        // 권한 줄은 승인 카드(21)가 그린다. 여기서는 멈추기로 거둬진 요청의 도구 줄만 기억한다 — 그 줄은 멈춤이다(머리말).
+        // 뒤따르는 답 · 거둬짐이 없는 물음이 답할 요청이다 — 입력창 자리의 승인 카드(three-axes 티켓 21). 멈추기로 거둬진 요청의
+        // 도구 줄은 따로 기억한다 — 그 줄은 멈춤이다(머리말).
         const requestId = text(payload.requestId);
         if (!requestId) break;
         if (payload.state === "asked") {
           const id = askedToolId(payload);
           if (id) askedFor.set(requestId, id);
-        } else if (payload.state === "withdrawn" && payload.reason === "stopped") {
+          const request = askedOf(requestId, payload);
+          pending.set(requestId, request);
+          // 계획 승인 요청 — 그 계획 본문이 계획 카드가 된다(Claude는 `plan_update` 없이 여기서 처음 온다). 앞서 그 id로 선 도구 줄
+          // (Claude `ExitPlanMode`)은 계획 카드가 그 자리를 맡는다.
+          if (request.planReview && id) {
+            planReviews.add(id);
+            const home = toolHome(turns, id);
+            const turn = home?.turn ?? open ?? turns[turns.length - 1];
+            const rawInput = isObject(request.toolCall.rawInput) ? request.toolCall.rawInput : {};
+            const body = text(rawInput.plan);
+            if (turn && body !== null) {
+              planCard = settle(planCard, turn, () => ({ kind: "plan", key: `p${line.seq}`, text: body }), home?.tool ?? null);
+              planCard.entry.text = body;
+            } else if (home) drop(home.turn, home.tool);
+          }
+          break;
+        }
+        // 답 · 거둬짐 — 그 요청은 닫혔다. 카드가 걷힌다.
+        pending.delete(requestId);
+        if (payload.state === "withdrawn" && payload.reason === "stopped") {
           const id = askedFor.get(requestId);
           if (!id) break;
           withdrawnByStop.add(id);
@@ -189,8 +301,11 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
         break;
       }
       case "session": {
+        if (payload.state !== "died" && payload.state !== "closed") break;
+        // 에이전트가 사라졌다 — 걸린 권한 요청에는 답할 곳이 없으니 카드가 걷힌다.
+        pending.clear();
         // 답 없이 사라진 턴에는 턴 끝 줄이 없다 — 죽음 · 닫힘 줄이 그 자리를 맡는다(호스트가 그 턴을 쉬는 것으로 돌린다).
-        if (!open || (payload.state !== "died" && payload.state !== "closed")) break;
+        if (!open) break;
         open.end = {
           stopReason: null,
           durationMs: Math.max(0, Date.parse(line.at) - Date.parse(open.startedAt)) || 0,
@@ -204,7 +319,26 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
         break;
     }
   }
-  return { turns, running: open !== null };
+  return {
+    turns,
+    running: open !== null,
+    // 도구 줄은 접기가 끝난 뒤에 찾는다 — 물음보다 늦게 온 update까지 합친 값이다.
+    pending: [...pending.values()].map((one) => {
+      const id = text(one.toolCall.toolCallId);
+      return { ...one, tool: id ? findTool(turns, id) : null };
+    }),
+  };
+}
+
+/** 권한 물음 줄을 답할 요청으로 — 선택지는 요청 원문 그대로, 도구 요지는 호스트가 채운 것(없으면 요청 원문의 것)이다. */
+function askedOf(requestId: string, payload: Json): Omit<PendingPermission, "tool"> {
+  const request = isObject(payload.request) ? payload.request : {};
+  const toolCall = isObject(payload.toolCall) ? payload.toolCall : isObject(request.toolCall) ? request.toolCall : {};
+  const options = (Array.isArray(request.options) ? request.options : []).filter(isObject).flatMap((option) => {
+    const optionId = text(option.optionId);
+    return optionId === null ? [] : [{ optionId, name: text(option.name) ?? optionId, kind: text(option.kind) ?? "" }];
+  });
+  return { requestId, options, toolCall, planReview: toolCall.kind === "switch_mode" };
 }
 
 /** `sent`의 인용 — 모양이 어긋나면(기록은 원문이라 무엇이든 올 수 있다) 없는 것으로 읽는다. */
@@ -256,13 +390,54 @@ function askedToolId(payload: Json): string | null {
   return request && isObject(request.toolCall) ? text(request.toolCall.toolCallId) : null;
 }
 
-function findTool(turns: readonly Turn[], id: string): ToolEntry | null {
+/** 대화에 하나뿐인 카드(계획 · 체크리스트)가 선 자리. */
+interface Held<T extends Entry> {
+  turn: Turn;
+  entry: T;
+}
+
+/**
+ * 대화에 하나뿐인 카드를 그 턴에 둔다 — 이미 그 턴에 있으면 그대로(글은 부르는 쪽이 바꾼다), 다른 턴에 있으면 거기서 빼고 이 턴에
+ * 새로 넣는다. `replacing`(그 카드가 맡는 도구 줄)이 있으면 그 줄의 자리에 선다.
+ */
+function settle<T extends Entry>(held: Held<T> | null, turn: Turn, fresh: () => T, replacing: ToolEntry | null): Held<T> {
+  if (held && held.turn === turn) {
+    if (replacing) drop(turn, replacing);
+    return held;
+  }
+  if (held) drop(held.turn, held.entry);
+  const entry = fresh();
+  const at = replacing ? turn.entries.indexOf(replacing) : -1;
+  if (at >= 0) turn.entries.splice(at, 1, entry);
+  else turn.entries.push(entry);
+  return { turn, entry };
+}
+
+function drop(turn: Turn, entry: Entry): void {
+  const at = turn.entries.indexOf(entry);
+  if (at >= 0) turn.entries.splice(at, 1);
+}
+
+/** ACP `plan`의 항목들 — 글이 없는 항목은 버린다. */
+function checklistOf(entries: unknown): ChecklistItem[] {
+  return (Array.isArray(entries) ? entries : []).filter(isObject).flatMap((entry) => {
+    const content = text(entry.content);
+    return content === null || content.trim() === "" ? [] : [{ content, status: text(entry.status) ?? "pending" }];
+  });
+}
+
+/** 그 id의 도구 줄과 그 줄이 든 턴. */
+function toolHome(turns: readonly Turn[], id: string): { turn: Turn; tool: ToolEntry } | null {
   for (let t = turns.length - 1; t >= 0; t -= 1) {
     for (const entry of turns[t].entries) {
-      if (entry.kind === "tool" && entry.toolCallId === id) return entry;
+      if (entry.kind === "tool" && entry.toolCallId === id) return { turn: turns[t], tool: entry };
     }
   }
   return null;
+}
+
+function findTool(turns: readonly Turn[], id: string): ToolEntry | null {
+  return toolHome(turns, id)?.tool ?? null;
 }
 
 /** 조각을 이어 붙인다 — 바로 앞 줄이 같은 갈래 · 같은 메시지면 그 줄에, 아니면 새 줄로. */

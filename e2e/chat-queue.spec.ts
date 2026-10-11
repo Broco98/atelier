@@ -46,7 +46,10 @@ async function openChat(page: Page, read = linesThrough(late, END_SEQ - 1), row 
   });
   await page.goto(`/works/${plainWork.slug}`);
   await 레일칸(page, "chat").click();
-  await expect(입력칸(page)).toBeVisible({ timeout: 20_000 });
+  // 대화 탭을 기다린다 — 답하지 않은 권한 물음까지 읽은 대화는 입력칸 대신 승인 카드가 서 있다(티켓 21).
+  await expect(
+    작업패널(page).getByRole("group", { name: "대화 탭", exact: true }).getByRole("button", { name: row.name, exact: true }),
+  ).toBeVisible({ timeout: 20_000 });
 }
 
 test("멈추기: 턴이 도는 동안 보내기 자리에 멈추기가 서고, 누르면 멈추기 명령이 가고, `cancelled` 턴 끝에 「3초 후에 중단했습니다」 머리줄이 선다", async ({
@@ -128,6 +131,8 @@ test("멈춘 뒤의 도구 줄(권한을 기다리던 명령): 멈추기로 권�
   const read = linesThrough(permission, asked + 2);
   const conversation = conversationRow({ id: "c-perm-codex", agent: "codex", name: "Codex", lastSeq: asked + 2 });
   await openChat(page, read, conversation);
+  // 권한을 기다리는 동안은 입력창 자리에 승인 카드가 서 있다 — 멈추기도 그 카드에 있다.
+  await expect(작업패널(page).getByRole("group", { name: "이 명령을 실행하도록 허용할까요?", exact: true })).toBeVisible();
   const at = (n: number) => `2026-10-10T10:00:${String(n).padStart(2, "0")}.000+09:00`;
   await streamLines(page, plainWork.slug, conversation.id, [
     { seq: asked + 3, at: at(asked + 3), kind: "permission", payload: { state: "withdrawn", requestId: "0", reason: "stopped" } },

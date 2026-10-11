@@ -42,9 +42,14 @@ interface ComposerProps {
   quote: Quote | null;
   /** 이 대화의 턴이 도는가 — 기록을 접은 값이다. 돌면 비어 있는 칸의 원이 멈추기다. */
   running: boolean;
+  /**
+   * 입력창 자리에 서는 카드 — 답하지 않은 권한 요청의 승인 카드 · 「이 계획대로 할까요?」(three-axes 티켓 21). 있으면 입력칸
+   * 대신 선다(위의 알약 · 대기 줄은 그대로). 쓰던 글은 스토어에 있어 카드가 걷히면 그대로 돌아온다.
+   */
+  card?: ReactNode;
 }
 
-function Composer({ work, conversation, draftKey, agent, above, quote, running }: ComposerProps) {
+function Composer({ work, conversation, draftKey, agent, above, quote, running, card }: ComposerProps) {
   const draft = useStore(chatUiStore, (state) => state.drafts[draftKey] ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -55,13 +60,14 @@ function Composer({ work, conversation, draftKey, agent, above, quote, running }
     if (quote) field.current?.focus();
   }, [quote]);
 
-  // 글만큼 자란다 — 한 줄에서 시작해 FIELD_MAX까지. 넘으면 칸 안에서 구른다.
+  // 글만큼 자란다 — 한 줄에서 시작해 FIELD_MAX까지. 넘으면 칸 안에서 구른다. 카드가 걷혀 칸이 다시 설 때도 잰다.
+  const carded = card != null;
   useLayoutEffect(() => {
     const el = field.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, FIELD_MAX)}px`;
-  }, [draft]);
+  }, [draft, carded]);
 
   const send = () => {
     const text = draft.trim();
@@ -91,56 +97,58 @@ function Composer({ work, conversation, draftKey, agent, above, quote, running }
   return (
     <div className="flex shrink-0 flex-col gap-2.5 px-4 pb-4 pt-2">
       {above}
-      <form
-        className="flex flex-col gap-1.5 rounded-(--chat-radius-composer) bg-card pb-2 pl-[18px] pr-3 pt-[15px] shadow-(--chat-shadow-composer)"
-        onSubmit={(event) => {
-          event.preventDefault();
-          send();
-        }}
-      >
-        {quote && <DraftQuoteChip quote={quote} onDrop={() => dropQuote(work)} />}
-        <textarea
-          ref={field}
-          aria-label="보낼 말"
-          rows={1}
-          value={draft}
-          placeholder={running ? "이어서 말하면 대기 줄에 쌓여요" : `${AGENT_LABEL[agent]}에게 요청하세요`}
-          onChange={(event) => setDraft(draftKey, event.target.value)}
-          onKeyDown={(event) => {
-            // Enter는 보내기, Shift+Enter는 줄바꿈이다. 한국어 입력기가 글자를 짓는 동안의 Enter는 그 글자를 끝내는 키라 보내지 않는다.
-            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+      {card ?? (
+        <form
+          className="flex flex-col gap-1.5 rounded-(--chat-radius-composer) bg-card pb-2 pl-[18px] pr-3 pt-[15px] shadow-(--chat-shadow-composer)"
+          onSubmit={(event) => {
             event.preventDefault();
             send();
           }}
-          className="min-h-[23px] resize-none overflow-y-auto bg-transparent text-row leading-(--chat-leading-prose) tracking-(--chat-tracking-field) text-foreground outline-none placeholder:text-tertiary scroll-quiet"
-        />
-        <div className="flex flex-wrap items-center gap-0.5">
-          <span className="flex-1" />
-          {(!running || !empty) && (
-            <button
-              type="submit"
-              aria-label="보내기"
-              disabled={empty}
-              className={cn(
-                "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
-                empty ? "bg-state-3 text-tertiary" : "bg-(--chat-send) text-white",
-              )}
-            >
-              <ArrowUp className="size-4" strokeWidth={1.8} aria-hidden />
-            </button>
-          )}
-          {running && (
-            <button
-              type="button"
-              aria-label="멈추기"
-              onClick={stop}
-              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--chat-send) text-white"
-            >
-              <span className="size-2.5 rounded-xs bg-current" aria-hidden />
-            </button>
-          )}
-        </div>
-      </form>
+        >
+          {quote && <DraftQuoteChip quote={quote} onDrop={() => dropQuote(work)} />}
+          <textarea
+            ref={field}
+            aria-label="보낼 말"
+            rows={1}
+            value={draft}
+            placeholder={running ? "이어서 말하면 대기 줄에 쌓여요" : `${AGENT_LABEL[agent]}에게 요청하세요`}
+            onChange={(event) => setDraft(draftKey, event.target.value)}
+            onKeyDown={(event) => {
+              // Enter는 보내기, Shift+Enter는 줄바꿈이다. 한국어 입력기가 글자를 짓는 동안의 Enter는 그 글자를 끝내는 키라 보내지 않는다.
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              send();
+            }}
+            className="min-h-[23px] resize-none overflow-y-auto bg-transparent text-row leading-(--chat-leading-prose) tracking-(--chat-tracking-field) text-foreground outline-none placeholder:text-tertiary scroll-quiet"
+          />
+          <div className="flex flex-wrap items-center gap-0.5">
+            <span className="flex-1" />
+            {(!running || !empty) && (
+              <button
+                type="submit"
+                aria-label="보내기"
+                disabled={empty}
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
+                  empty ? "bg-state-3 text-tertiary" : "bg-(--chat-send) text-white",
+                )}
+              >
+                <ArrowUp className="size-4" strokeWidth={1.8} aria-hidden />
+              </button>
+            )}
+            {running && (
+              <button
+                type="button"
+                aria-label="멈추기"
+                onClick={stop}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--chat-send) text-white"
+              >
+                <span className="size-2.5 rounded-xs bg-current" aria-hidden />
+              </button>
+            )}
+          </div>
+        </form>
+      )}
       {problem && (
         <p role="alert" className="px-2 text-caption text-destructive">
           {problem}
