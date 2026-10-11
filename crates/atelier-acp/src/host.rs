@@ -986,13 +986,14 @@ impl ConversationHost {
     /// (S14). 읽기만 한다 — `agents/`가 없으면 빈 목록이고, 아무것도 만들지 않는다.
     pub fn list_conversations(&self, work: &str) -> Result<Vec<Conversation>, HostError> {
         let work_at = self.open_work(work)?;
-        let rows = work_at.rows()?;
-        let live = self.lock_live();
-        Ok(rows
-            .iter()
-            .filter(|row| row.closed_at.is_none())
-            .map(|row| summarize(&live, &work_at.places.agents, row))
-            .collect())
+        let rows: Vec<ConversationRow> = work_at.rows()?.into_iter().filter(|row| row.closed_at.is_none()).collect();
+        // 표의 잠금 안에서는 떠 있는 대화를 모으기만 한다 — 쉬는 대화의 기록 파일을 읽고 떠 있는 대화의 잠금을 기다리는 것은
+        // 놓은 뒤다. 턴 끝이 spec 폴더를 걷느라 한 대화의 잠금을 쥐고 있어도 다른 대화의 명령이 표에서 막히지 않게(S2).
+        let found: Vec<Option<Arc<Conv>>> = {
+            let live = self.lock_live();
+            rows.iter().map(|row| live.get(&row.id).filter(|live| live.work == work).map(|live| Arc::clone(&live.conv))).collect()
+        };
+        Ok(rows.iter().zip(found).map(|(row, conv)| summarize(conv.as_deref(), &work_at.places.agents, row)).collect())
     }
 
     /// 기록 읽기 — 그 대화의 기록에서 `after` 다음 seq의 줄들을 준다. 화면은 이것으로 그리고, 그 뒤는 기록 줄
@@ -1518,7 +1519,7 @@ impl ConversationHost {
         if let Some((conv, _)) = &running {
             conv.recorder.config(setting.changed()).map_err(HostError::Record)?;
         }
-        Ok(summarize(&self.lock_live(), &work_at.places.agents, &row))
+        Ok(summarize(self.find_live(key).as_deref(), &work_at.places.agents, &row))
     }
 
     /// 엔진 목록 — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록(S16). 설정 「대화」 쪽이 새 대화의 기본값 목록으로
@@ -1881,16 +1882,15 @@ fn major(version: Option<&str>) -> Option<u64> {
     version?.split('.').next()?.trim().parse().ok()
 }
 
-/// 대화 목록의 한 줄 — 떠 있는 대화면 기록의 마지막 seq와 대기 줄을 메모리에서, 아니면 기록 파일에서 읽는다.
-fn summarize(live: &HashMap<String, Live>, agents_dir: &Path, row: &ConversationRow) -> Conversation {
-    let (last_seq, queue, up) = match live.get(&row.id) {
-        Some(conversation) => {
-            let state = conversation.conv.lock_state();
-            (conversation.conv.recorder.last_seq(), queue_of(&state), state.is_up())
-        }
-        None => (records::facts(agents_dir, &row.id).last_seq(), Vec::new(), false),
-    };
-    summary(row, last_seq, queue, up)
+/// 대화 목록의 한 줄 — 표에서 찾은 대화(`found`)면 기록의 마지막 seq와 대기 줄을 메모리에서, 아니면 기록 파일에서 읽는다.
+///
+/// 표의 잠금 밖에서 부른다 — 찾은 대화의 잠금을 기다리고 기록 파일을 읽는다(S2). 찾은 뒤 다른 명령이 꺼낸 대화는 표에 없는
+/// 대화로 본다([`Conv::lock_found`]).
+fn summarize(found: Option<&Conv>, agents_dir: &Path, row: &ConversationRow) -> Conversation {
+    match found.and_then(|conv| Some((conv, conv.lock_found()?))) {
+        Some((conv, state)) => summary(row, conv.recorder.last_seq(), queue_of(&state), state.is_up()),
+        None => summary(row, records::facts(agents_dir, &row.id).last_seq(), Vec::new(), false),
+    }
 }
 
 /// 되살리기를 언제 하나(three-axes 티켓 10).
