@@ -15,6 +15,7 @@ import {
   wantConversation,
 } from "./chat-store";
 import ChangesPill from "./ChangesPill";
+import { chipLists } from "./chips";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
 import { awaitingLogin, chatEngineStore, checkEngine, checkEngineOnce, guideKind, type GuideKind } from "./engine-store";
@@ -262,6 +263,8 @@ function ConversationBody({
   const lines = useRecordLines(work, conversation.id);
   // 흐름 · 알약 · 멈추기가 같은 접은 값을 읽는다 — 기록 줄이 올 때마다 한 번 접는다.
   const model = useMemo(() => foldConversation(lines), [lines]);
+  // 칩과 「/」 메뉴의 원천(S15, three-axes 티켓 19) — 같은 기록 줄에서 목록과 엔진의 값을 접는다.
+  const lists = useMemo(() => chipLists(lines), [lines]);
   // 알약이 세는 것 — 이 대화의 마지막 턴의 고친 곳(티켓 26). 새 턴이 시작하면 그 턴에는 아직 없어 알약이 걷힌다.
   const changes = model.turns[model.turns.length - 1]?.changes ?? null;
   const asking = model.pending[0] ?? null;
@@ -296,9 +299,9 @@ function ConversationBody({
       <div className={COLUMN}>
         <Composer
           work={work}
-          conversation={conversation.id}
+          conversation={conversation}
           draftKey={key}
-          agent={conversation.agent}
+          lists={lists}
           quote={quote}
           running={model.running}
           card={

@@ -1,6 +1,6 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { AGENT_LABEL } from "@/features/chat/Composer";
+import { AGENT_LABEL } from "@/features/chat/ComposerChips";
 import type { EngineLists } from "@/features/chat/types";
 import { CHAT_AGENTS, defaultAgentOf, engineChoice, type EngineField } from "./chat-settings";
 import { SettingsGroup, SettingsRow, SettingsSection } from "./SettingsGroup";

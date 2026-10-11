@@ -10,13 +10,14 @@ import {
   claimRecordRead,
   conversationKey,
   linesOf,
+  markChosen,
   mergeLines,
   releaseRecordRead,
   setQueue,
 } from "./chat-store";
 import { describeApproval } from "./approval";
 import { applyChanges, changedFiles } from "./changes";
-import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
+import { applyEngineEvent, checkEngine, isLoginRequired, markLoginRequired } from "./engine-store";
 import { finalMessages, foldConversation, headline } from "./fold";
 import type { Agent, Conversation, QueuedMessage, RecordLine } from "./types";
 
@@ -65,6 +66,51 @@ export function useCloseConversation() {
       queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
         old.filter((one) => one.id !== conversation),
       );
+    },
+  });
+}
+
+/** 목록 캐시의 그 대화를 호스트가 돌려준 대화로 갈아 끼운다 — 칩의 바꾸기 답이 바뀐 대화다(three-axes 티켓 19). */
+function replaceConversation(queryClient: QueryClient, work: string, conversation: Conversation): void {
+  queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
+    old.map((one) => (one.id === conversation.id ? conversation : one)),
+  );
+}
+
+/**
+ * 에이전트 바꾸기(three-axes 티켓 19 · 스토리 23) — 첫 말 전에만 된다. 바꾸기 전에 새 엔진을 확인해 둔다(티켓 22): 찾았어도 로그인이
+ * 안 됐으면 바뀐 대화 자리에 곧바로 로그인 카드가 선다. 못 찾았으면 호스트가 바꾸지 않고 그 까닭을 돌려준다. 답(새 엔진으로 연
+ * 대화 — 이름도 다시 붙는다)으로 목록 캐시를 고친다.
+ */
+export function useSwitchAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ work, conversation, agent }: { work: string; conversation: string; agent: Agent }) => {
+      await checkEngine(agent, false).catch(() => null);
+      return chatApi.switchAgent(work, conversation, agent);
+    },
+    onSuccess: (conversation, { work }) => replaceConversation(queryClient, work, conversation),
+  });
+}
+
+/** 칩의 바꾸기 하나 — 칸과 값. 계획은 켬 · 끔이다. */
+export type ChoiceChange = { field: "model" | "mode"; value: string } | { field: "plan"; value: boolean };
+
+/**
+ * 모델 · 모드 · 계획 바꾸기(three-axes 티켓 19 · 스토리 26 · 30 · 31 · 32) — 값은 그 대화의 것이고 설정의 기본값은 그대로다. 답(바뀐
+ * 대화)으로 목록 캐시를 고치고, 그 답의 마지막 seq를 「사람이 고른 때」로 적어 둔다(`markChosen`).
+ */
+export function useChangeChoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ work, conversation, change }: { work: string; conversation: string; change: ChoiceChange }) => {
+      if (change.field === "plan") return chatApi.setPlan(work, conversation, change.value);
+      if (change.field === "model") return chatApi.setModel(work, conversation, change.value);
+      return chatApi.setMode(work, conversation, change.value);
+    },
+    onSuccess: (conversation, { work, change }) => {
+      replaceConversation(queryClient, work, conversation);
+      markChosen(conversationKey(work, conversation.id), change.field, conversation.lastSeq);
     },
   });
 }
