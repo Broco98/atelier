@@ -28,7 +28,11 @@ pub enum WorktreeFile {
     /// 그대로다. 화면은 부른 경로가 아니라 이것으로 건다: asset 프로토콜은 마지막 조각이 상대 링크면 그 대상을 앱의 현재
     /// 폴더 기준으로 풀어 막는다(git은 저장소 안 링크를 흔히 상대 경로로 둔다). 「워크트리 안」이라 판정한 자리와 화면이
     /// 거는 자리도 이것으로 하나다.
-    Image { size: u64, real_path: String },
+    ///
+    /// `modified_ms`는 그 자리의 **고친 시각**(유닉스 밀리초)이다 — 화면이 크기와 함께 asset URL에 붙인다. 자리가 같으면 URL도
+    /// 같아, 에이전트가 그림을 고쳐도 웹뷰가 묵은 그림을 그대로 두어서다(티켓 10). 크기만으로는 같은 크기로 다시 쓴 그림을 가르지
+    /// 못한다. 시각을 읽지 못하면 0이다.
+    Image { size: u64, real_path: String, modified_ms: u64 },
     /// 앞 8KB에 NUL이 있다(git과 같은 판정, 결정 36) — 깨진 글자 대신 「바이너리 파일 · 크기」만 뜬다(스토리 74).
     Binary { size: u64 },
     /// NUL은 없는데 내용이 UTF-8로 풀리지 않는다(EUC-KR 같은 옛 인코딩) — 바이너리처럼 안내만 뜬다(스토리 75).
@@ -95,7 +99,7 @@ pub fn read_worktree_file(works_root: &Path, slug: &str, project: &str, rel_path
         // 위에서 뿌리 안임을 보았다 — 뿌리를 뗀 나머지가 워크트리 기준 실제 경로다.
         let inside = real.strip_prefix(&root).unwrap_or(&real);
         let real_path = inside.iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>().join("/");
-        return Ok(WorktreeFile::Image { size, real_path });
+        return Ok(WorktreeFile::Image { size, real_path, modified_ms: modified_ms(&meta) });
     }
     if size > READ_LIMIT {
         return Ok(WorktreeFile::TooLarge { size });
@@ -112,6 +116,14 @@ pub fn read_worktree_file(works_root: &Path, slug: &str, project: &str, rel_path
         Ok(content) => WorktreeFile::Text { lines: content.lines().count(), content },
         Err(_) => WorktreeFile::NotUtf8 { size },
     })
+}
+
+/// 고친 시각(유닉스 밀리초). 읽지 못하거나 1970년 앞이면 0이다 — 그림의 판을 가르는 데만 쓴다.
+fn modified_ms(meta: &std::fs::Metadata) -> u64 {
+    meta.modified()
+        .ok()
+        .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// 그림으로 거는 확장자(S5) — WKWebView가 그리는 것. **svg는 없다**: 결정 36대로 원문을 읽는 코드다. 대소문자는 가리지
@@ -183,6 +195,16 @@ mod tests {
         read_worktree_file(works, "w", "fe", rel).unwrap()
     }
 
+    /// 파일의 **고친 시각을 못 박는다**(유닉스 밀리초) — 연달아 쓴 두 판의 시각이 파일시스템 해상도에 걸려 같아지지 않게.
+    fn stamp(root: &Path, rel: &str, ms: u64) {
+        std::fs::File::options()
+            .write(true)
+            .open(root.join(rel))
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms))
+            .unwrap();
+    }
+
     #[test]
     fn a_text_file_comes_with_its_content_and_line_count() {
         let (_tmp, works, worktree) = setup();
@@ -199,25 +221,43 @@ mod tests {
         assert_eq!(read(&works, "empty.txt"), WorktreeFile::Text { content: String::new(), lines: 0 });
     }
 
-    /// 그림 답 — 링크가 아니면 거는 자리가 부른 경로 그대로다.
-    fn image(size: u64, real_path: &str) -> WorktreeFile {
-        WorktreeFile::Image { size, real_path: real_path.to_string() }
+    /// 그림 답 — 링크가 아니면 거는 자리가 부른 경로 그대로다. 고친 시각은 디스크가 아는 그 자리의 것이다(그 값을 못 박아
+    /// 재는 것은 `an_image_comes_with_its_modified_time`이다).
+    fn image(worktree: &Path, size: u64, real_path: &str) -> WorktreeFile {
+        let modified = std::fs::metadata(worktree.join(real_path)).unwrap().modified().unwrap();
+        let modified_ms = modified.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        WorktreeFile::Image { size, real_path: real_path.to_string(), modified_ms }
     }
 
     #[test]
-    fn an_image_comes_with_its_size_only() {
+    fn an_image_comes_with_its_size_not_its_content() {
         let (_tmp, works, worktree) = setup();
         // PNG 머리 — 앞에 NUL이 있어도 바이너리가 아니라 그림이다. 확장자로 가른다(S5).
         let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
         write(&worktree, "shots/home.png", png);
-        assert_eq!(read(&works, "shots/home.png"), image(png.len() as u64, "shots/home.png"));
+        assert_eq!(read(&works, "shots/home.png"), image(&worktree, png.len() as u64, "shots/home.png"));
         // 스크린샷은 흔히 대문자 확장자다
         write(&worktree, "Shot.JPG", b"jpg");
-        assert_eq!(read(&works, "Shot.JPG"), image(3, "Shot.JPG"));
+        assert_eq!(read(&works, "Shot.JPG"), image(&worktree, 3, "Shot.JPG"));
         for name in ["a.jpeg", "a.gif", "a.webp", "a.bmp", "favicon.ico"] {
             write(&worktree, name, b"img!");
-            assert_eq!(read(&works, name), image(4, name), "{name}");
+            assert_eq!(read(&works, name), image(&worktree, 4, name), "{name}");
         }
+    }
+
+    /// 그림이 바뀌면 화면은 같은 자리를 다시 받아야 한다 — 그래서 답에 **고친 시각**(밀리초)이 와서 화면이 asset URL에 붙인다.
+    /// 크기만으로는 같은 크기로 다시 쓴 그림(같은 해상도의 새 스크린샷)을 가르지 못한다.
+    #[test]
+    fn an_image_comes_with_its_modified_time() {
+        let (_tmp, works, worktree) = setup();
+        let answer = |modified_ms| WorktreeFile::Image { size: 4, real_path: "shots/home.png".to_string(), modified_ms };
+        write(&worktree, "shots/home.png", b"old!");
+        stamp(&worktree, "shots/home.png", 1_760_000_000_123);
+        assert_eq!(read(&works, "shots/home.png"), answer(1_760_000_000_123));
+        // 에이전트가 같은 크기로 다시 썼다
+        write(&worktree, "shots/home.png", b"new!");
+        stamp(&worktree, "shots/home.png", 1_760_000_000_456);
+        assert_eq!(read(&works, "shots/home.png"), answer(1_760_000_000_456));
     }
 
     /// 화면은 갈래 이름과 필드 이름을 camelCase로 읽는다(`types.ts`의 `WorktreeFile`). 두 낱말 필드가 뱀 꼴(`real_path`)로 나가면
@@ -226,8 +266,12 @@ mod tests {
     fn the_answer_is_a_kind_tagged_camel_case_value() {
         let (_tmp, works, worktree) = setup();
         write(&worktree, "shots/home.png", b"png!");
+        stamp(&worktree, "shots/home.png", 1_760_000_000_123);
         let json = |rel| serde_json::to_value(read(&works, rel)).unwrap();
-        assert_eq!(json("shots/home.png"), serde_json::json!({ "kind": "image", "size": 4, "realPath": "shots/home.png" }));
+        assert_eq!(
+            json("shots/home.png"),
+            serde_json::json!({ "kind": "image", "size": 4, "realPath": "shots/home.png", "modifiedMs": 1_760_000_000_123u64 })
+        );
         assert_eq!(json("gone.txt"), serde_json::json!({ "kind": "missing" }));
         assert_eq!(
             serde_json::to_value(WorktreeFile::NotUtf8 { size: 3 }).unwrap(),
@@ -247,8 +291,8 @@ mod tests {
         // 폴더 링크를 지나는 경로도 같다
         std::os::unix::fs::symlink("assets", worktree.join("pics")).unwrap();
 
-        assert_eq!(read(&works, "docs/logo.png"), image(4, "assets/logo.png"));
-        assert_eq!(read(&works, "pics/logo.png"), image(4, "assets/logo.png"));
+        assert_eq!(read(&works, "docs/logo.png"), image(&worktree, 4, "assets/logo.png"));
+        assert_eq!(read(&works, "pics/logo.png"), image(&worktree, 4, "assets/logo.png"));
     }
 
     #[test]
@@ -321,7 +365,7 @@ mod tests {
         let (_tmp, works, worktree) = setup();
         // 그림은 내용을 싣지 않으니 읽기 상한에 걸릴 것이 없다 — 큰 스크린샷도 그림으로 뜬다
         sparse(&worktree, "shots/full.png", 6 * 1024 * 1024);
-        assert_eq!(read(&works, "shots/full.png"), image(6 * 1024 * 1024, "shots/full.png"));
+        assert_eq!(read(&works, "shots/full.png"), image(&worktree, 6 * 1024 * 1024, "shots/full.png"));
     }
 
     #[test]

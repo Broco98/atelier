@@ -10,8 +10,9 @@ export type WorktreeFile =
   /**
    * 그림(확장자 png · jpg · jpeg · gif · webp · bmp · ico). svg는 텍스트다. `realPath`는 거는 자리 — 워크트리 기준, 링크를 푼
    * 실제 경로다(링크가 아니면 부른 경로 그대로). asset 프로토콜이 상대 링크를 앱의 현재 폴더 기준으로 풀어 막아서다.
+   * `modifiedMs`는 그 자리의 고친 시각(유닉스 밀리초) — 크기와 함께 asset URL에 붙는 판이다(못 읽으면 0).
    */
-  | { kind: "image"; size: number; realPath: string }
+  | { kind: "image"; size: number; realPath: string; modifiedMs: number }
   /** 앞 8KB에 NUL이 있다. */
   | { kind: "binary"; size: number }
   /** 내용이 UTF-8로 풀리지 않는다. */

@@ -314,6 +314,44 @@ test.describe("코드 탭", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
+  // 그림은 내용이 답에 실리지 않는다 — 화면이 그 자리를 asset URL로 건다(티켓 09). 자리가 같으면 URL도 같아 웹뷰가 묵은 그림을
+  // 그대로 두므로(`<img>`의 `src`가 안 바뀌면 다시 받지 않는다), 답의 크기와 고친 시각을 URL에 붙여 바뀐 그림이 새 URL로 걸린다.
+  test("보이는 그림 탭은 그림이 바뀌면 새 asset URL로 다시 걸리고, 지웠다 다시 생겨도 새 그림이다", async ({ page }) => {
+    const SHOT = "shots/home.png";
+    const 그림 = (modifiedMs: number): WorktreeFile => ({ kind: "image", size: 48_213, realPath: SHOT, modifiedMs });
+    const 그림답 = (file: WorktreeFile) =>
+      answerByArg("path", { ...WORKTREE_FILES, [SHOT]: file }, { otherwise: { kind: "missing" } satisfies WorktreeFile });
+    await installFixtureBackend(page, { read_worktree_file: 그림답(그림(1_760_000_000_000)) });
+    await page.goto(codeUrl(`billing/${SHOT}`));
+    const card = codeCard(page, `billing/${SHOT}`);
+    const image = card.getByRole("img", { name: SHOT, exact: true });
+    await expect(image).toBeVisible();
+    const first = (await image.getAttribute("src")) ?? "";
+    const signal = () => fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" });
+    /** 붙은 판을 뗀 거는 자리 — 그림이 바뀌어도 이것은 그대로다. */
+    const 자리 = (src: string) => src.split("?")[0];
+
+    // 에이전트가 같은 크기의 새 스크린샷으로 덮어썼다
+    const reads = await steadyCount(page, READ);
+    await replaceAnswer(page, READ, 그림답(그림(1_760_000_000_500)));
+    await signal();
+    await expect(image).not.toHaveAttribute("src", first);
+    expect((await steadyCount(page, READ)) - reads).toBe(1);
+    const second = (await image.getAttribute("src")) ?? "";
+    expect(자리(second)).toBe(자리(first));
+
+    // 지웠다가 다시 만들었다 — 다시 선 그림도 앞의 어느 URL과도 다르다(웹뷰의 메모리 캐시가 묵은 그림을 내지 않게)
+    await replaceAnswer(page, READ, 그림답({ kind: "missing" }));
+    await signal();
+    await expect(card.getByText("지워진 파일", { exact: true })).toBeVisible();
+    await replaceAnswer(page, READ, 그림답(그림(1_760_000_009_000)));
+    await signal();
+    await expect(image).toBeVisible();
+    const third = (await image.getAttribute("src")) ?? "";
+    expect([자리(third), [first, second].includes(third)]).toEqual([자리(first), false]);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
   test("본문에 서 있지 않은 파일 탭은 신호에 읽히지 않고, 다시 서는 순간 한 번 읽힌다", async ({ page }) => {
     await installFixtureBackend(page, { read_worktree_file: 답(줄들(3)) });
     // 셸 한 칸이 선 묶음에 파일 탭을 연다

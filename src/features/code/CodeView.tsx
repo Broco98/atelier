@@ -68,8 +68,15 @@ function FileBody({
       // 자리도 앞 파일의 것이 남는다. 같은 파일의 새 내용은 키가 같아 같은 보기에 들어간다(G6).
       return <HighlightedCode key={codeRefOf(target)} path={target.path} content={file.content} wide={wide} />;
     case "image":
-      // 대체 글은 부른 경로다 — 링크여도 사람이 연 것은 그 이름이다. 거는 자리만 푼 경로다.
-      return <WorktreeImage path={worktreeDir && `${worktreeDir}${file.realPath}`} name={target.path} />;
+      // 대체 글은 부른 경로다 — 링크여도 사람이 연 것은 그 이름이다. 거는 자리만 푼 경로다. 판은 크기와 고친 시각이다 — 에이전트가
+      // 그림을 고치면 다시 읽은 답의 판이 달라져 새 URL로 걸린다(티켓 10).
+      return (
+        <WorktreeImage
+          path={worktreeDir && `${worktreeDir}${file.realPath}`}
+          version={`${file.size}-${file.modifiedMs}`}
+          name={target.path}
+        />
+      );
     case "binary":
       return (
         <Notice icon={FileDigit} title="바이너리 파일" detail={`${fileSize(file.size)} · 글로 볼 수 없는 파일이에요.`} />
@@ -113,12 +120,14 @@ function FileBody({
 /**
  * 그림 — spec의 그림 보기와 **같은 길**이다: 홈 축약 경로를 펴서 asset URL로 건다(`ImageDoc`). 경로는 위에서 받은 워크트리
  * 자리에 코어가 푼 실제 경로를 이은 것이다 — 뿌리를 여기서 짓지 않는다. 홈을 아직 못 읽었으면 `ImageDoc`의 자리표시다.
+ *
+ * `version`(그 그림의 판)을 URL에 붙인다 — 자리가 같으면 URL도 같아, 그림이 바뀌어도 웹뷰가 묵은 그림을 그대로 둔다.
  */
-function WorktreeImage({ path, name }: { path: string | null; name: string }) {
+function WorktreeImage({ path, version, name }: { path: string | null; version: string; name: string }) {
   const { data: home } = useHomeDir();
   return (
     <ScrollBox>
-      <ImageDoc path={home && path ? expandHome(path, home) : null} name={name} />
+      <ImageDoc path={home && path ? expandHome(path, home) : null} version={version} name={name} />
     </ScrollBox>
   );
 }
