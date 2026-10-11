@@ -1,10 +1,11 @@
 import { useCallback, useState } from "react";
-import { Archive } from "lucide-react";
+import { Archive, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Toaster, showToast } from "@/components/ui/toast";
-import { Card, CardHead, Frame } from "@/components/shell/Frame";
+import { Card, Frame } from "@/components/shell/Frame";
 import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
+import { navItem } from "@/components/shell/nav-items";
 import { PathBar } from "@/components/shell/PathBar";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
@@ -31,6 +32,9 @@ interface ArchivePageProps {
 // 문서 목록이 아직 없을 때의 빈 목록 — 렌더마다 새 배열을 지으면 그것을 받는 본문이 매번 바뀐
 // 값을 받는다.
 const NO_DOCS: string[] = [];
+
+/** 이 화면의 nav 항목 — 고른 아카이브가 없을 때 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
+const PLACE = navItem("archive");
 
 // 목록 카드 + 문서 카드. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
@@ -98,6 +102,11 @@ function ArchivePage({
   const wide = !sidebarOpen && !panelOpen;
 
   const meta = selected && STATUS_META[selected.status];
+  // 머리 카드 이름 뒤의 옅은 글자 — 그 work가 걸쳤던 프로젝트와 치운 날이다(DS `.at-winhead .sub`). 문서 카드의 머리 자리를 경로 줄이
+  // 갖게 되어 옛 카드 머리의 꼬리표 · 날짜가 이리 왔다. 둘 다 없으면 서지 않는다.
+  const about = selected
+    ? [...selected.projects, ...(selected.archivedAt ? [`${formatCreated(selected.archivedAt)}에 치움`] : [])].join(" · ")
+    : "";
 
   // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
   // 여기가 컴파일에서 깨진다. 마지막을 `else`로 두면 새 칸이 **조용히 소스 보기로** 떨어지고
@@ -144,9 +153,22 @@ function ArchivePage({
   };
 
   return (
-    // 공용 틀 위의 목록 카드와 문서 카드(ui-refresh 결정 15 · 27). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이다(ui-refresh 결정 5).
+    // 공용 틀 위의 목록 카드와 문서 카드(ui-refresh 결정 15 · 27). 머리 줄에는 고른 아카이브의 머리 카드가 선다(codex-ds 스펙 §7).
     <Frame
       sidebarOpen={sidebarOpen}
+      // 머리 카드 — 왼쪽은 ⚡(work 아이콘 — 아카이브한 것도 work다)와 그 제목 · 프로젝트 · 치운 날이고, 고른 것이 없으면 nav의 화면
+      // 이름 · 아이콘이다.
+      // 오른쪽은 치운 때의 상태 배지 | 목록 토글이다(스토리 57). 배지는 보이기만 한다 — 작업 화면의 배지와 달리 상태를 바꾸는 메뉴가
+      // 없다(아카이브는 치운 시점 그대로다). 캔버스의 「되살리기」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 결정 31). ⋯ 아카이브
+      // 메뉴와 spec 목록 토글은 codex-ds 티켓 21이고, 그때까지 세로선 너머는 지금의 목록 토글이다.
+      head={{
+        icon: selected ? Zap : PLACE.icon,
+        name: selected?.title ?? PLACE.label,
+        sub: about ? [about] : undefined,
+        // 배지의 모양은 작업 화면 배지와 한 규격이다(DS `StatusBadge` — 24 · 점 · 글자).
+        actions: meta && <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>,
+        end: <ListPanelToggle seat="head" open={panelOpen} onToggle={togglePanel} />,
+      }}
       list={{
         open: panelOpen,
         size: listSize,
@@ -171,56 +193,33 @@ function ArchivePage({
         as="main"
         label="아카이브 문서"
         className="flex-1"
+        // 경로 줄(codex-ds 스펙 §7 「Archive」 · `PathBar`)이 문서 카드의 머리다 — 탭이 없는 카드라 머리 자리에 선다(DS `PathBar`).
+        // 작업 화면의 문서와 같은 줄이다: 경로 캡슐 · 보기 묶음 · 경로 복사이고 닫기 ×는 없다(codex-ds 결정 13). 경로는 work 폴더
+        // 기준이라(`list_archived_docs`) 기록(`record.md`)은 `slug › record.md`, spec 문서는 `slug › spec › …`로 읽힌다. 고른
+        // 아카이브가 없으면 카드 안에 고를 것이 없어 머리도 없다.
         head={
-          <CardHead
-            place={selected ? ["Archive", selected.title] : ["Archive"]}
-            // 상태 배지 · 날짜 · 프로젝트 꼬리표의 모양은 판 03 · 06의 것이다 — 여기서는 자리만 카드 머리로 옮긴다.
-            meta={selected && meta && <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>}
-            end={
-              <>
-                {selected?.archivedAt && (
-                  <span className="text-xs text-fg-tertiary">
-                    {formatCreated(selected.archivedAt)}에 치움
-                  </span>
-                )}
-                {/* 프로젝트 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`, 프로토타입 Archive). 모양은 `tag` 한 곳이 든다. */}
-                {selected?.projects.map((project) => (
-                  <span key={project} className="tag text-xs">
-                    {project}
-                  </span>
-                ))}
-                <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
-              </>
-            }
-          />
+          selected && (
+            <PathBar
+              path={[selected.slug, ...(current ? current.split("/") : [])]}
+              view={{
+                source: showSource,
+                // 잠김도 표에서 나온다 — 본문이 묶음을 안 따르는 파일에서 두 칸이 살아 있으면 선 칸과 본문이 서로 다른 말을
+                // 한다(결정 11).
+                //
+                // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은 항이다(`WorksPage.tsx`의 `sourceLocked`).
+                // 남은 문서가 하나도 없으면 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지 「누를 것이
+                // 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표
+                // 머리말). 본문은 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히 눌리고 칩만 미끄러진다(결정 21).
+                locked: current === null || ignoresViewSwitch(current),
+                onChange: setShowSource,
+              }}
+              // 목록 행의 경로 복사와 같은 값이다(`archiveRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더 생긴 것이다. 가리킬
+              // 문서가 없으면 서지 않는다(결정 11 · 21).
+              onCopy={current ? () => copyText(archiveRef(selected.slug, current)) : undefined}
+            />
+          )
         }
       >
-        {/* 경로 줄(codex-ds 스펙 §7 「Archive」 · `PathBar`) — 고른 아카이브의 문서 위에 선다. 작업 화면의 문서와 같은 줄이다:
-            경로 캡슐 · 보기 묶음 · 경로 복사이고 닫기 ×는 없다(codex-ds 결정 13). 경로는 work 폴더 기준이라(`list_archived_docs`)
-            기록(`record.md`)은 `slug › record.md`, spec 문서는 `slug › spec › …`로 읽힌다. 카드 머리(위치 · 상태 · 날짜 · 목록 토글)가
-            머리 카드로 옮겨 가면 이 줄이 카드의 머리 자리에 선다(codex-ds 티켓 14 — DS `PathBar` 「탭이 없는 카드는 머리 자리」).
-            그때까지는 카드 머리의 위치 글자(`CardPlace`)와 이 줄의 경로 캡슐이 둘 다 「위치」라는 이름의 nav다 — 경로 캡슐의 이름은
-            작업 화면 문서의 것과 한 이름이어야 해서(`PathBar` 머리말) 이쪽을 바꾸지 않는다. */}
-        {selected && (
-          <PathBar
-            path={[selected.slug, ...(current ? current.split("/") : [])]}
-            view={{
-              source: showSource,
-              // 잠김도 표에서 나온다 — 본문이 묶음을 안 따르는 파일에서 두 칸이 살아 있으면 선 칸과 본문이 서로 다른 말을
-              // 한다(결정 11).
-              //
-              // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은 항이다(`WorksPage.tsx`의 `sourceLocked`).
-              // 남은 문서가 하나도 없으면 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지 「누를 것이
-              // 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표
-              // 머리말). 본문은 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히 눌리고 칩만 미끄러진다(결정 21).
-              locked: current === null || ignoresViewSwitch(current),
-              onChange: setShowSource,
-            }}
-            // 목록 행의 경로 복사와 같은 값이다(`archiveRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더 생긴 것이다. 가리킬
-            // 문서가 없으면 서지 않는다(결정 11 · 21).
-            onCopy={current ? () => copyText(archiveRef(selected.slug, current)) : undefined}
-          />
-        )}
         <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
           {/* 아직 모르는 동안에는 아무 말도 하지 않는다 — 목록이 도착하기 전에 "없어요"를
               띄우면, 이 분기가 막으려던 바로 그 모순(왼쪽엔 목록, 본문엔 없다)이 로딩

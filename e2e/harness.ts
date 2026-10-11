@@ -881,8 +881,8 @@ export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**
  * 머리 카드 — 창 맨 위 머리 줄(문서의 `header`)에 뜬 흰 카드(codex-ds 스펙 §4). 지금 보는 것의 아이콘 · 이름과 그 화면의 할
- * 일을 든다. 카드 자신은 역할이 없어(이름은 글자이고 할 일은 저마다 버튼이다) 표식(`data-slot`)으로 집는다. 머리 카드가 없는
- * 화면(작업을 고르지 않은 work 화면 · 아직 채우지 않은 다른 화면)에서는 DOM에 없다.
+ * 일을 든다. 카드 자신은 역할이 없어(이름은 글자이고 할 일은 저마다 버튼이다) 표식(`data-slot`)으로 집는다. 모든 화면에 하나씩
+ * 선다(codex-ds 스펙 §7) — 할 일이 없는 화면(Terminal · 작업을 고르지 않은 Works)에서는 이름만 든다.
  *
  * **여기 사는 이유는 머리 카드를 집는 길을 하나로 두려는 것이다.** 화면마다 머리 카드가 서면 여러 spec이 이 자리를 집는다 —
  * 선택자를 옮겨 적으면 표식이 바뀌는 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)`)가 헛돈다.
@@ -1094,7 +1094,7 @@ export const navButtons = (page: Page) => page.locator("aside nav").getByRole("b
 export const navButton = (page: Page, label: string) =>
   page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
-/** `Processes` 화면의 제목 — 카드 머리의 위치 글자(`CardHead`의 `place`)는 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** `Processes` 화면의 제목 — 머리 카드의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**

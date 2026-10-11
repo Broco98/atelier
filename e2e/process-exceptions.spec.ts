@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_COMMANDS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, ipcFailure, unknownIpcCalls, 시계를세운다 } from "./harness";
+import { callCount, installFixtureBackend, ipcCallArgs, ipcFailure, unknownIpcCalls, 머리카드, 시계를세운다 } from "./harness";
 
 // 설정 › 터미널의 「셸을 닫아도 남길 프로세스」(프로세스 결정 5 · 티켓 06). 목록을 고치고 저장하면 그 목록이 설정
 // 저장에 실리고, 「기본값으로」를 누르고 저장하면 `null`이 실린다 — `null`이 「기본 목록을 쓴다」이고, 그 목록은
@@ -13,7 +13,8 @@ import { callCount, installFixtureBackend, ipcCallArgs, ipcFailure, unknownIpcCa
 const 구획 = (page: Page) => page.getByRole("group", { name: "터미널 설정", exact: true });
 const 목록 = (page: Page) =>
   구획(page).getByRole("textbox", { name: "셸을 닫아도 남길 프로세스", exact: true });
-const 저장 = (page: Page) => 구획(page).getByRole("button", { name: "저장", exact: true });
+// 쪽의 저장은 머리 카드에 선다(codex-ds 티켓 14) — 이 쪽(터미널)의 저장은 그것 하나다.
+const 저장 = (page: Page) => 머리카드(page).getByRole("button", { name: "저장", exact: true });
 const 기본값으로 = (page: Page) => 구획(page).getByRole("button", { name: "기본값으로", exact: true });
 
 /** 백엔드가 준 기본 목록 — 고정 답 표에서 읽는다. 여기 다시 적으면 표와 이 검사가 따로 낡는다. */

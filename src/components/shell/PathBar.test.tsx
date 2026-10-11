@@ -77,8 +77,7 @@ describe("경로 캡슐", () => {
     expect(last.tag).toContain("truncate");
   });
 
-  // 조각 하나도 경로다 — Archive에서 남은 문서가 없으면 경로가 `slug` 하나다(`ArchivePage`). 같은 조각 규칙(`PathPieces`)을 카드
-  // 머리의 위치 글자(`CardPlace` — `Processes` · `Works`)도 읽는다.
+  // 조각 하나도 경로다 — Archive에서 남은 문서가 없으면 경로가 `slug` 하나다(`ArchivePage`).
   it("조각이 하나면 꺾쇠 없이 그 조각이 지금 보는 것이다", () => {
     const markup = render({ path: ["shipped-work"] });
     expect(capsule(markup)).not.toContain("lucide-chevron-right");

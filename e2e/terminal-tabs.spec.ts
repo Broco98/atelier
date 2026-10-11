@@ -472,7 +472,7 @@ for (const screen of SCREENS) {
 
         // 머리 카드 조작(상태 · ⋯ · 분할)도 카드 안 · 창 안이고 제 폭 그대로다(결정 10) — 칸을 보이게 하려고 조작을 밀거나 누르면
         // 안 된다. 사이드바를 접은 배치에서는 머리 줄의 왼쪽 여백이 신호등 · 셸 컨트롤 자리만큼 넓어져 머리 카드가 가장 좁다.
-        // `/terminal`의 머리 줄은 아직 머리 카드 없이 비어 있다.
+        // `/terminal`의 머리 카드는 이름만 들고 할 일 묶음이 없다.
         if (screen.panel) {
           expect(row.workActions, at).not.toBeNull();
           expect(row.workActions!.over, at).toBeLessThanOrEqual(0);

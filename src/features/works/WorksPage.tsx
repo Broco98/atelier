@@ -4,7 +4,7 @@ import { ChevronDown, Columns2, MoreHorizontal, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
-import { Card, CardHead, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
+import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -701,8 +701,9 @@ function WorksPage({
   // 분할 토글 하나다. 사이의 세로선과 간격은 틀의 머리 카드가 그린다(`Frame`의 `HeadCard`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위
   // 줄의 오른쪽 끝 묶음에 섰다. 패널 토글은 머리 카드 밖, 레일 위에 선다(`Frame`의 머리 줄).
   //
-  // 지금 선 work(`selected`)가 없으면 머리 카드도 없다 — 머리 줄은 빈 끌기 줄이다.
-  const head: HeadSlot | undefined = selected
+  // 지금 선 work(`selected`)가 없으면 머리 카드는 화면 이름 「Works」 하나다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
+  // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
+  const head: HeadSlot = selected
     ? {
         icon: Zap,
         name: selected.title,
@@ -721,7 +722,7 @@ function WorksPage({
         //
         // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이 날지를 틀리게 말한다. 설명(`aria-description`)은
         // 안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28).
-        view: (
+        end: (
           <Hint
             text={split !== null ? "분할 끄기" : "분할 켜기"}
             render={
@@ -737,7 +738,7 @@ function WorksPage({
           </Hint>
         ),
       }
-    : undefined;
+    : { icon: Zap, name: WORKS_COPY.page };
 
   // 분할의 열 둘 — 열 하나가 카드 하나다(ui-refresh 결정 15). 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 이 화면은 카드의
   // 안(열 머리와 몸)만 건넨다 — 카드 상자 · 두 열 사이 틈 · 그 가운데 폭 손잡이 · 틈 끌기 영역 · 비율과 그 저장은 공용 틀의 분할이
@@ -798,8 +799,8 @@ function WorksPage({
       {specBody}
     </Card>
   ) : (
-    // 고른 작업이 없으면 패널도 탭 줄도 없다 — 카드 머리가 화면 이름을 말하고 머리 줄은 머리 카드 없이 비어 있다.
-    <Card as="main" label={WORKS_COPY.page} className="flex-1" head={<CardHead place={[WORKS_COPY.page]} />}>
+    // 고른 작업이 없으면 패널도 탭 줄도 없다 — 화면 이름은 머리 카드가 말하고, 카드 안에 고를 것이 없어 카드 머리도 없다.
+    <Card as="main" label={WORKS_COPY.page} className="flex-1">
       {/* DS 빈 화면 물음(codex-ds 스펙 §6 · 스토리 64) — 물음 · 설명 · 할 일이 카드 한가운데에 서고 글리프 칸은 없다(`Empty`의
           `question`). 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
       <Empty variant="question">

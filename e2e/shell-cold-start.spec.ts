@@ -13,6 +13,7 @@ import {
   ipcCallArgs,
   kills,
   ptyGrids,
+  머리카드,
   refuseFirstSpawn,
   releaseCommand,
   sentNotifications,
@@ -517,8 +518,9 @@ test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 
   await expect(page).toHaveURL("/settings/terminal");
   const terminal = page.getByRole("group", { name: "터미널 설정", exact: true });
   await terminal.getByRole("textbox", { name: "터미널 글꼴 크기", exact: true }).fill("22");
-  await terminal.getByRole("button", { name: "저장", exact: true }).click();
-  await expect(terminal.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
+  // 쪽의 저장은 머리 카드에 선다(codex-ds 티켓 14).
+  await 머리카드(page).getByRole("button", { name: "저장", exact: true }).click();
+  await expect(머리카드(page).getByRole("button", { name: "저장", exact: true })).toBeDisabled();
 
   await releaseFonts();
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);

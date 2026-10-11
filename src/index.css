@@ -1021,8 +1021,8 @@
   padding: 4px;
 }
 
-/* **아이콘 버튼 규격** — Codex `IconButton`(28 정사각 · `radius-lg`, DS `.at-ib`). 카드 머리의 아이콘 버튼(편집기의 「설정으로
-   돌아가기」 · 프로젝트 목록의 `+`)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 경로 줄의
+/* **아이콘 버튼 규격** — Codex `IconButton`(28 정사각 · `radius-lg`, DS `.at-ib`). 카드 머리의 아이콘 버튼(프로젝트 목록의 `+` ·
+   Projects 상세 카드의 목록 토글)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 경로 줄의
    동그란 버튼(32 원 — `PathBar`)은 이 규격이 아니다 — 원은 경로 줄의 모양이라 그 파일이 든다(codex-ds 결정 14). 여기는
    모양만 정한다. hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면 어느 쪽이 이길지 유틸리티 정렬
    순서에 맡기게 된다. 옛 원형 규격은 걷었다(codex-ds 결정 3).
@@ -1050,10 +1050,10 @@
 }
 
 /* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 창 위
-   줄(셸 컨트롤 · 탭 줄의 `+` · 작업 ⋯ · 분할)과 줄 **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` ·
-   Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec 열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄
-   높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의 셸 컨트롤 폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야
-   한다(그쪽 주석). */
+   줄(셸 컨트롤 · 머리 카드의 작업 ⋯ · 분할 · 편집기의 「설정으로 돌아가기」 · Archive의 목록 토글)과 탭 줄의 `+`, 줄 **안**에
+   서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec
+   열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의 셸 컨트롤
+   폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야 한다(그쪽 주석). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
   --icon-button-radius: var(--radius-md);
@@ -1433,10 +1433,11 @@ body.dragging-row * {
 }
 
 /* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(`fill-hover`) · `fg-secondary` 글자 · 줄바꿈 없음.
-   줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」, Archive 문서 카드
-   머리의 프로젝트가 이 한 정의를 부른다. 셋은 같은 문자열을 손으로 옮겨 적었고, Archive는 다른 모양(`rounded-lg` · `bg-accent`)이었다.
+   줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」이 이 한 정의를 부른다.
+   두 자리는 같은 문자열을 손으로 옮겨 적었다. Archive가 걸쳤던 프로젝트는 꼬리표가 아니다 — 머리 카드 이름 뒤의 옅은 글자다
+   (`Frame`의 `HeadSlot.sub`, DS `.at-winhead .sub`).
 
-   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」 · 프로젝트는 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는
+   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」은 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는
    그 줄의 고정폭(`text-xs` · `font-mono`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
    덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
    Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */

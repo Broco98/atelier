@@ -36,8 +36,8 @@ export const TAB_ROW_CARD = "min-w-min [&>:not([data-tab-row])]:contain-inline-s
  * 제 min-content를 알린다 — 그 카드 줄 안의 것들이 저마다 제 몫만 알리도록 지어져 있어서다: 탭 줄을 이는 카드는 줄의
  * 바닥(`TAB_ROW_CARD`), 작업 패널은 제 최소 폭(`Frame`의 패널 칸), 덮는 것은 절대 위치라 아무것도. 탭 줄이 없는
  * 카드 줄(Projects · Archive · Processes · Settings)은 통째로 격리되어 목록 · 표의 글자 폭이 사이드바를 밀지 않는다.
- * 하나 예외가 있다 — 옆 칸이 선 카드 줄(편집기)은 이 격리를 벗고 두 카드의 **머리**만 바닥에 더한다(몸은 카드가
- * 격리한다, `Frame`의 `BesideBox`).
+ * 하나 예외가 있다 — 옆 칸이 선 카드 줄(편집기)은 이 격리를 벗고 본문 카드의 바닥과 옆 칸 카드의 **머리**를 바닥에 더한다(몸은
+ * 카드가 격리한다 — 편집기의 폼 카드는 밖 변경 배너가 선 동안만 바닥이 있다, `Frame`의 `BesideBox`).
  */
 export const TAB_ROW_COLUMN = "min-w-min [&>:not(:has([data-tab-row]))]:contain-inline-size";
 

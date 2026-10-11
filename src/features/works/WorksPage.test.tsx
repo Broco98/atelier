@@ -1057,7 +1057,7 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
     expect(markup.replace(row, "")).not.toMatch(/aria-label="[^"]*셸[^"]*닫기"/);
   });
 
-  it("고른 작업이 없으면 탭 줄이 아니라 카드 머리에 화면 이름이 선다", () => {
+  it("고른 작업이 없으면 탭 줄이 없고, 머리 카드가 화면 이름만 든다", () => {
     // **빈 소유자 키 `""`는 최상위 터미널이다**(ui-refresh 결정 23). 고른 작업이 없는 화면이
     // 소유자를 세우면 그 자리가 비어 `ownerOf(undefined)` → `""`가 되는데,
     // 그러면 `/terminal`의 셸이 work 화면의 줄에 서고 `+`는 열 자리가 없어 눌러도 아무 일이
@@ -1086,14 +1086,12 @@ describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
     );
     expect(tabRowOf(markup)).toBe("");
     expect(kindsOf(markup)).toEqual([]);
-    // 머리 줄은 머리 카드도 패널 토글도 없는 빈 끌기 줄이고, 화면 이름은 빈 화면 카드의 머리(위치 글자)가 말한다(ui-refresh 결정 5).
-    expect(headRowOf(markup)).not.toBe("");
-    expect(headCardOf(markup)).toBe("");
+    // 화면 이름은 머리 카드가 말한다(codex-ds 티켓 14) — 지금 보는 work가 없어 할 일 묶음도 패널 토글도 없고, 카드 안에 고를 것이
+    // 없어 빈 화면 카드에는 머리가 없다.
+    expect(headCardOf(markup)).toContain(">Works<");
+    expect(headActionsOf(markup)).toBe("");
     expect(panelToggleTags(markup)).toEqual([]);
-    expect(headRowOf(markup)).not.toContain("Works");
-    const head = markup.slice(markup.indexOf("<main")).match(/<div data-slot="card-head"[\s\S]*?<\/nav>/)?.[0] ?? "";
-    expect(head).toContain('aria-label="위치"');
-    expect(head).toContain(">Works<");
+    expect(markup.slice(markup.indexOf("<main"))).not.toContain('data-slot="card-head"');
   });
 
   // 결정 12 — **분할 중에는 켜진 탭이 둘이다.** 「둘이면 둘을 켠다」는 줄 쪽 seam이 들고

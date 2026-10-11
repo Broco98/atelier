@@ -17,8 +17,8 @@ import { Hint } from "@/components/ui/tooltip";
 // - 오른쪽은 **보기 묶음**(문서 | 원문 — 알약 32 안에 원 28 둘, 고른 쪽 `fill-hover`)과 **동그란 버튼**(32 · 1px `border-heavy` 링,
 //   사이 4)이다. 동그란 버튼은 경로 복사 하나다.
 // - **캡슐 · 원 · 동그라미는 경로 줄의 모양이다**(결정 14 · DS `PathBar` 「규칙」). 경로 캡슐과 동그란 버튼의 모양은 이 파일에,
-//   보기 묶음의 알약 · 원은 `SegmentGroup`의 `pill` 크기에 있다. 다른 화면의 카드 머리 위치는 알약 없는 글자 줄이다(`Frame`의
-//   `CardPlace`).
+//   보기 묶음의 알약 · 원은 `SegmentGroup`의 `pill` 크기에 있다. 다른 화면의 위치는 머리 카드 이름 뒤의 옅은 글자다(`Frame`의
+//   `HeadSlot`의 `sub`).
 // - **닫기 ×는 미리보기에만 단다**(결정 13) — 늘 있는 spec 탭의 문서와 Archive 문서에는 없고, 미리보기는 아직 앱에 없다. 줄 끝
 //   칸(`end`)에 서는 것은 분할의 spec 열을 닫는 ×다 — 미리보기 ×가 아니라 열 닫기다(codex-ds 스펙 S14 · `CONTEXT.md` 「열」).
 
@@ -36,9 +36,9 @@ const ROUND =
  * 뿌리부터 지금 선 곳까지의 조각 — 사이에 셰브런(12 · `fg-tertiary`)이 서고, 끝 조각만 `fg` 500에 넘치면 말줄임이다. 앞 조각은 제
  * 폭 그대로라 줄에 눌리면 줄어드는 몫은 끝 조각이 받는다. 같은 글자의 조각이 둘 설 수 있어(폴더 이름) 자리를 키로 쓴다.
  *
- * 경로 캡슐이 이것을 알약 안에 담고, 카드 머리(`CardHead`)의 위치 글자가 알약 없이 담는다 — 조각을 읽는 규칙이 한 벌이다.
+ * 경로 캡슐이 이것을 알약 안에 담는다.
  */
-export function PathPieces({ items }: { items: readonly string[] }) {
+function PathPieces({ items }: { items: readonly string[] }) {
   const last = items.length - 1;
   return items.map((item, index) => (
     <Fragment key={index}>

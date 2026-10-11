@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Card, Frame } from "@/components/shell/Frame";
+import { navItem } from "@/components/shell/nav-items";
 import { TAB_ROW_CARD } from "@/components/shell/panel-layout";
 import { cn } from "@/lib/utils";
 import ShellTabs from "./ShellTabs";
@@ -50,6 +51,9 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 하나여서 이 판이 그 줄을 되살리며 사라졌다. 본문에 남은 것은 조작이 아니라 **비었다는
 // 표시와 여는 법**이고, 상한에 닿았을 때의 문장도 거기서 읽힌다 — `TerminalPane`의 주석이
 // 사정을 든다.
+/** 이 화면의 nav 항목 — 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
+const PLACE = navItem("terminal");
+
 function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   /**
    * 이 화면의 소유자 — **최상위 터미널**이다(빈 글자 `""` — ui-refresh 결정 23).
@@ -168,8 +172,9 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
 
   return (
     // 탭 줄이 터미널 카드의 머리다(codex-ds 스펙 §4 「탭 줄」 — work 화면과 같은 규칙). 카드가 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
-    // 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이다(이 화면의 머리 카드는 codex-ds 티켓 14다).
-    <Frame sidebarOpen={sidebarOpen}>
+    // 머리 줄의 머리 카드는 화면 이름 「Terminal」 하나다(codex-ds 스펙 §6) — 이 화면에는 머리에 둘 할 일이 없다(셸을 여는 `+`는
+    // 탭 줄의 것이다). 이름 · 아이콘은 nav 항목에서 읽는다(`navItem`).
+    <Frame sidebarOpen={sidebarOpen} head={{ icon: PLACE.icon, name: PLACE.label }}>
       <Card
         as="main"
         label="터미널"

@@ -1,8 +1,9 @@
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
-import { Folder, FolderOpen } from "lucide-react";
+import { Folder, FolderOpen, Trash2 } from "lucide-react";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
+import { navItem } from "@/components/shell/nav-items";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -60,9 +61,35 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
   };
 
   return (
-    // 공용 틀 위의 목록 카드와 상세 카드(ui-refresh 결정 15 · 27). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이다(ui-refresh 결정 5).
+    // 공용 틀 위의 목록 카드와 상세 카드(ui-refresh 결정 15 · 27). 머리 줄에는 고른 프로젝트의 머리 카드가 선다(codex-ds 스펙 §7).
     <Frame
       sidebarOpen={sidebarOpen}
+      // 머리 카드 — 왼쪽은 폴더 아이콘과 고른 프로젝트의 이름(고른 것이 없으면 nav의 화면 이름)이다. 오른쪽은 그 프로젝트에 거는 할 일인
+      // 폴더 열기 | 제거다(스토리 52). 제거는 되돌릴 수 없는 할 일이라 세로선 너머에 떼어 둔다(DS 캔버스). 캔버스의 「LLM이 받는
+      // 텍스트」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 스펙 S13). 이름은 보이기만 한다 — 제자리 이름 바꾸기는 codex-ds 티켓 28.
+      head={{
+        icon: Folder,
+        name: selected?.name ?? navItem("projects").label,
+        actions: selected && (
+          // 머리 카드의 글자 버튼(`Button` top — 24, DS `.at-btn.top`). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
+          <Button
+            variant="ghost"
+            size="top"
+            disabled={selected.missing}
+            onClick={() => projectsApi.openFolder(selected.slug)}
+          >
+            <FolderOpen aria-hidden />
+            폴더 열기
+          </Button>
+        ),
+        // 빨간 글자의 머리 버튼(DS `.at-btn.top.danger-text`) — 지나가도 빨간 글자 그대로다(hover는 면만 선다).
+        end: selected && (
+          <Button variant="ghost" size="top" className="text-danger hover:text-danger" onClick={handleRemove}>
+            <Trash2 aria-hidden />
+            제거
+          </Button>
+        ),
+      }}
       list={{
         open: panelOpen,
         size: listSize,
@@ -81,32 +108,8 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
         as="main"
         label="프로젝트"
         className="flex-1"
-        head={
-          <CardHead
-            place={selected ? ["Projects", selected.name] : ["Projects"]}
-            end={
-              <>
-                {/* 카드 머리의 흰 버튼(`Button` outline — 32 · `radius-lg`, DS `.at-btn.sm`) — 「제거」는 빨간 글자의 흰 버튼이다. */}
-                {selected && (
-                  <>
-                    <Button
-                      variant="outline"
-                      disabled={selected.missing}
-                      onClick={() => projectsApi.openFolder(selected.slug)}
-                    >
-                      <FolderOpen aria-hidden />
-                      폴더 열기
-                    </Button>
-                    <Button variant="outline" className="text-danger" onClick={handleRemove}>
-                      제거
-                    </Button>
-                  </>
-                )}
-                <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
-              </>
-            }
-          />
-        }
+        // 목록 토글은 목록 칸을 걷는 날(codex-ds 티켓 20)까지 상세 카드 머리 끝 그 자리다 — 프로젝트의 이름과 할 일은 머리 카드로 갔다.
+        head={<CardHead end={<ListPanelToggle open={panelOpen} onToggle={togglePanel} />} />}
       >
         <div className="flex-1 overflow-y-auto scroll-quiet">
           {selected ? (

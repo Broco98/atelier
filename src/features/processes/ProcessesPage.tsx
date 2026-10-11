@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { EyeOff, Folder, SquareTerminal, Unlink } from "lucide-react";
-import { Card, CardHead, Frame } from "@/components/shell/Frame";
+import { Card, Frame } from "@/components/shell/Frame";
+import { navItem } from "@/components/shell/nav-items";
 import { SignalLane } from "@/components/shell/shell-signal";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
@@ -61,7 +62,7 @@ import type { CleanupEvent, PoolShell } from "./types";
  * 셸 묶음(작업 구획)은 work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work
  * 행은 그 트리의 합이다. 맨 위에 요약 타일(티켓 30)과 열 머리가 서고, 작업 구획 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 확정 고아 ·
  * 출처 불명 · 다른 인스턴스 · 예외(티켓 31 — `StraySections`), 정리 기록(티켓 32 — `CleanupLogSection`)이 차례로 선다. 자손 행에는
- * [끝내기]와 행 메뉴(「예외로 두기」)가 선다. 머리에는 [조용한 셸 모두 닫기](티켓 32)가 선다. 줄의 열 · 묶음 · 구획 머리의 모양은
+ * [끝내기]와 행 메뉴(「예외로 두기」)가 선다. 머리 카드에는 [조용한 셸 모두 닫기](티켓 32)가 선다. 줄의 열 · 묶음 · 구획 머리의 모양은
  * `tree-rows.tsx`가 든다(ui-refresh 판 06).
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
@@ -69,6 +70,9 @@ import type { CleanupEvent, PoolShell } from "./types";
  * **구획과 트리가 접힌다**(ui-refresh 결정 28). 처음 상태는 ui-refresh 결정 28의 표이고(`OPEN_AT_FIRST` — 줄은 다 펼침), 손으로 바꾼 것은 이 화면이
  * 든다(`useFolds`) — 박자마다 새 스냅샷이 와도 남고, 화면을 떠났다 오면 표로 돌아간다.
  */
+/** 이 화면의 nav 항목 — 머리 카드의 이름 · 아이콘과 제목 역할의 줄이 여기서 읽는다(nav와 한 글자). */
+const PLACE = navItem("processes");
+
 function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const { data: snapshot, dataUpdatedAt } = useProcessSnapshot();
   // **이 화면이 서 있는 동안이 「화면이 열려 있다」다**(티켓 29) — nav 메타의 `●`가 창 포커스와 함께 이것으로 「봤다」를 가른다.
@@ -119,34 +123,32 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const total = useSummaryCache().data?.total;
 
   return (
-    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치와 쪽
-    // 동작은 카드 머리에 선다.
-    <Frame sidebarOpen={sidebarOpen}>
-      <Card
-        as="main"
-        label="Processes"
-        className="flex-1"
-        head={
-          <CardHead
-            place={["Processes"]}
-            end={
-              // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
-              // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
-              // 모양은 카드 안의 흰 버튼(`Button` outline — 32 · `radius-lg`, DS `.at-btn.sm`)이다.
-              <Button variant="outline" onClick={() => void closeQuietShells()}>
-                조용한 셸 모두 닫기
-              </Button>
-            }
-          />
-        }
-      >
-        {/* 카드의 몸 — 좌우 · 아래는 카드 안 여백(`--card-pad`)이고, 내용은 그 안에서 넓은 폭(`--measure-wide`) 가운데에 선다
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 화면 이름과 쪽 동작은 머리 줄의 머리 카드에 선다(codex-ds 스펙 §7 · 스토리 59).
+    <Frame
+      sidebarOpen={sidebarOpen}
+      // 머리 카드 — 「Processes」(nav의 이름 · 아이콘) | [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44). 그 단추는 스토어의 셸 중
+      // 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다. 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) —
+      // 화면의 「조용함」 칸(2초 전 표본)이 아니다. 캔버스의 「새로 고침 · 고아 정리」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 스펙 S13).
+      head={{
+        icon: PLACE.icon,
+        name: PLACE.label,
+        actions: (
+          // 머리 카드의 글자 버튼(`Button` top — 24, DS `.at-btn.top`).
+          <Button variant="ghost" size="top" onClick={() => void closeQuietShells()}>
+            조용한 셸 모두 닫기
+          </Button>
+        ),
+      }}
+    >
+      {/* 카드 안에 고를 것이 없어 카드 머리가 없다 — 몸이 곧바로 선다. */}
+      <Card as="main" label="Processes" className="flex-1">
+        {/* 카드의 몸 — 둘레는 카드 안 여백(`--card-pad`)이고, 내용은 그 안에서 넓은 폭(`--measure-wide`) 가운데에 선다
             (ui-refresh 결정 12). 차례는 요약 타일 → 열 머리 → 구획들이고, 구획 사이는 8px이다. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
-          <div className="mx-auto w-full max-w-(--measure-wide) pt-1">
-            {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — 카드 머리의 위치 글자(`CardHead`의 `place`)는 제목 역할이 없어(설정
+        <div className="min-h-0 flex-1 overflow-y-auto p-(--card-pad) scroll-quiet">
+          <div className="mx-auto w-full max-w-(--measure-wide)">
+            {/* **제목은 머리 카드가 보여 주고, 제목 역할은 이 줄이 진다** — 머리 카드의 이름은 제목 역할이 없는 글자라(설정
                 화면과 같은 사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
-            <h2 className="sr-only">Processes</h2>
+            <h2 className="sr-only">{PLACE.label}</h2>
             {/* 요약 타일(티켓 30) — 메모리 합계와 추이 · CPU · 셸 · 고아. 셸 수(풀의 셸)도 여기 선다. */}
             <SummaryCard snapshot={snapshot} />
             <ColumnHead />

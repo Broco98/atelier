@@ -77,13 +77,14 @@ describe("최상위 터미널의 탭 줄", () => {
     expect(header).not.toContain("data-tab");
   });
 
-  it("머리 줄이 머리 카드 없이 비어 있다 — 패널 토글도 없다", () => {
-    // 머리 카드는 지금 작업 화면만 채운다(codex-ds 스펙 §6). 이 화면의 머리 카드(터미널 아이콘 · 이름)는 codex-ds 티켓 14다 —
-    // 그때까지 머리 줄은 창을 끄기만 하는 빈 줄이다. 레일이 없는 화면이라 그 위의 패널 토글도 없다.
+  it("머리 카드가 화면 이름 「Terminal」만 들고 버튼이 없다 — 패널 토글도 없다", () => {
+    // 이 화면에는 머리 카드에 걸 할 일이 없다(codex-ds 티켓 14 — 셸을 여는 `+`는 탭 줄의 것이다). 레일이 없는 화면이라 그 위의 패널
+    // 토글도 없다.
     terminalStore.setState(() => seed(1, TOP).state);
     const markup = html(true);
     const header = markup.slice(markup.indexOf("<header"), markup.indexOf("</header>"));
-    expect(header).not.toContain('data-slot="head-card"');
+    expect(header).toContain('data-slot="head-card"');
+    expect(header).toContain(">Terminal<");
     expect(header).not.toContain("<button");
   });
 
