@@ -68,26 +68,48 @@ pub enum WorktreeTree {
 ///
 /// 점 파일은 그대로 들어오고, `.git`은 git이 내놓지 않아 저절로 빠진다. 빈 폴더는 git이 몰라 없다(S2). 정렬(폴더 먼저,
 /// 이름순)은 화면이 아니라 여기서 한다(S4).
+///
+/// 읽을 때마다 걸린 폴더를 감시 경로 판정에 알려 준다(빠른 길 — S6, 티켓 10). 걸린 폴더가 있으면 그 이름을 git에 한 번 더
+/// 묻는다 — 규칙에 걸린 폴더만 빠른 길이 된다(`worktree_watch::learn_ignored_folders`).
 pub fn list_worktree_tree(works_root: &Path, slug: &str, project: &str) -> Result<WorktreeTree> {
     let dir = worktree_dir(works_root, slug, project)?;
+    // 감시 경로 판정의 빠른 길(S6)을 새로 쓴다 — 트리 목록을 읽을 때마다다. 읽지 못했으면 버린다.
+    match read_tree(&dir) {
+        Ok(ReadTree { tree, ignored_folders }) => {
+            crate::worktree_watch::learn_ignored_folders(&dir, ignored_folders);
+            Ok(tree)
+        }
+        Err(answer) => {
+            crate::worktree_watch::forget_ignored_folders(&dir);
+            Ok(answer)
+        }
+    }
+}
+
+/// 트리 목록 한 번의 결과 — 답과, 감시 경로 판정에 알려 줄 걸린 폴더들(맨 위에서 처음 걸리는 자리).
+struct ReadTree {
+    tree: WorktreeTree,
+    ignored_folders: Vec<String>,
+}
+
+/// 트리를 읽는다. 읽지 못했으면 `Err`에 그 답(「워크트리 없음」 · 「읽지 못함」)이 든다.
+fn read_tree(dir: &Path) -> std::result::Result<ReadTree, WorktreeTree> {
     if !dir.is_dir() {
-        return Ok(WorktreeTree::WorktreeMissing);
+        return Err(WorktreeTree::WorktreeMissing);
     }
     // 저장소가 아닌 폴더에서 git은 위로 올라가 바깥 저장소를 읽는다 — 그 답은 이 폴더의 트리가 아니다. 뿌리에 `.git`(워크트리면
     // 연결 파일)이 있어야 이 폴더가 저장소의 뿌리다.
     if !dir.join(".git").exists() {
-        return Ok(WorktreeTree::Unreadable { reason: "not a git repository".to_string() });
+        return Err(WorktreeTree::Unreadable { reason: "not a git repository".to_string() });
     }
-    let listed = ls_files(&dir, &["--cached", "--others", "--exclude-standard"]).and_then(|unignored| {
-        ls_files(&dir, &["--others", "--ignored", "--exclude-standard", "--directory"])
+    let listed = ls_files(dir, &["--cached", "--others", "--exclude-standard"]).and_then(|unignored| {
+        ls_files(dir, &["--others", "--ignored", "--exclude-standard", "--directory"])
             .map(|ignored| (unignored, ignored))
     });
-    let (unignored, ignored) = match listed {
-        Ok(both) => both,
-        Err(reason) => return Ok(WorktreeTree::Unreadable { reason }),
-    };
+    let (unignored, ignored) = listed.map_err(|reason| WorktreeTree::Unreadable { reason })?;
 
     let mut root = Folder::default();
+    let mut ignored_folders = Vec::new();
     for rel in &unignored {
         // 끝이 `/`인 것은 추적 안 된 안쪽 저장소다 — git이 들어가지 않는다. 하위 모듈과 같이 펼치지 않는다.
         if let Some(nested) = rel.strip_suffix('/') {
@@ -108,7 +130,10 @@ pub fn list_worktree_tree(works_root: &Path, slug: &str, project: &str) -> Resul
     }
     for rel in &ignored {
         match rel.strip_suffix('/') {
-            Some(folder) => root.insert(folder, Slot::Unread),
+            Some(folder) => {
+                root.insert(folder, Slot::Unread);
+                ignored_folders.push(folder.to_string());
+            }
             None => {
                 let Ok(meta) = std::fs::symlink_metadata(dir.join(rel)) else { continue };
                 let kind = if meta.file_type().is_symlink() { WorktreeEntryKind::Symlink } else { WorktreeEntryKind::File };
@@ -116,7 +141,7 @@ pub fn list_worktree_tree(works_root: &Path, slug: &str, project: &str) -> Resul
             }
         }
     }
-    Ok(WorktreeTree::Listed { entries: root.into_entries(""), omitted: 0 })
+    Ok(ReadTree { tree: WorktreeTree::Listed { entries: root.into_entries(""), omitted: 0 }, ignored_folders })
 }
 
 /// gitignore에 걸린 폴더 하나의 바로 아래(구현 스펙 「코어 — 워크트리 읽기 › 한 겹 읽기」) — 화면이 그 폴더를 펼칠 때 읽는다.
