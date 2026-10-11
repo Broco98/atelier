@@ -98,6 +98,10 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(), &text(a, "slug")?, &text(a, "path")?))
     }),
+    // Finder에서 열기 둘(codex-ds 스펙 S6)은 `open_project_folder`와 같다 — 경로를 푸는 코어 함수(`work_folder` ·
+    // `archived_spec_folder`)는 있어도 하는 일이 탐색기를 여는 것이라, 풀기만 하고 성공을 답하면 열지 않은 것을 「열었다」로 통과시킨다.
+    ("open_work_folder", |_| in_app_only("탐색기를 여는 일입니다 — 경로 풀기는 코어 단위 검사가 잽니다")),
+    ("open_archived_spec_folder", |_| in_app_only("탐색기를 여는 일입니다 — 경로 풀기는 코어 단위 검사가 잽니다")),
     ("search", |a| {
         ok(atelier_core::search(
             // **반드시 코어의 데이터 루트다.** 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 봐서,

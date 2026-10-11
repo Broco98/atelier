@@ -1,30 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
-import {
-  Archive,
-  ChevronDown,
-  Columns2,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  X,
-  Zap,
-} from "lucide-react";
+import { ChevronDown, Columns2, MoreHorizontal, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Card, CardHead, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Spinner } from "@/components/ui/spinner";
@@ -72,9 +55,12 @@ import { specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
 import WorkRenameDialog from "./WorkRenameDialog";
+import { StatusRadioItems, WorkMenuItems, type WorkMenuActions } from "./WorkMenuItems";
+import { worksApi } from "./api";
 import {
   useArchiveWork,
   useRemoveWork,
+  useSetWorkPinned,
   useSetWorkStatus,
   useWorks,
 } from "./hooks";
@@ -82,7 +68,7 @@ import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
 import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
-import type { WorkStatus, WorkView } from "./types";
+import type { WorkView } from "./types";
 
 interface WorksPageProps {
   sidebarOpen: boolean;
@@ -723,7 +709,7 @@ function WorksPage({
         actions: (
           <>
             <StatusMenu work={selected} />
-            <WorkMenu work={selected} archive={archive} remove={remove} />
+            <WorkMenu work={selected} archive={archive} remove={remove} onCopy={copyText} />
           </>
         ),
         // 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽, 터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이
@@ -1039,52 +1025,41 @@ function StatusMenu({ work }: { work: WorkView }) {
         <ChevronDown className="size-[11px] text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
       <DropdownMenuContent>
-        <DropdownMenuRadioGroup
-          value={work.status}
-          // **값이 바뀔 때만 저장한다**(지금 규칙). 부품은 지금 값을 다시 골라도 이것을 부른다.
-          onValueChange={(status: WorkStatus) => {
-            if (status !== work.status) setStatus.mutate({ slug: work.slug, status });
-          }}
-        >
-          {(Object.keys(STATUS_META) as WorkStatus[]).map((status) => {
-            const option = STATUS_META[status];
-            return (
-              // 글자 치기가 맞춰 볼 이름은 라벨이다 — 옆의 설명까지 섞이지 않게 적어 둔다.
-              <DropdownMenuRadioItem key={status} value={status} label={option.label}>
-                <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                <span className="shrink-0 text-xs text-fg-tertiary">{option.desc}</span>
-              </DropdownMenuRadioItem>
-            );
-          })}
-        </DropdownMenuRadioGroup>
+        {/* work 메뉴의 상태 ▸와 같은 한 벌이다 — 값이 바뀔 때만 부른다(`StatusRadioItems`). */}
+        <StatusRadioItems status={work.status} onChange={(status) => setStatus.mutate({ slug: work.slug, status })} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-// 생애주기 조작 — 뷰 토글이 모인 우측 actions가 아니라 StatusMenu 옆에 산다.
-// 둘 다 되돌릴 수 없어서 확인 창을 거치고, 거절 사유(커밋 안 된 변경 등)는
-// 코어가 파일 단위로 말해주므로 그대로 보여준다.
+// 머리 카드의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 여기는
+// 그 항목이 부르는 동작을 잇는다: Finder 열기 · 이름 바꾸기 창 · 복사 · 상태 · 고정, 그리고 아카이브 · 삭제의 흐름(아래 `run`).
+// 아카이브 · 삭제는 되돌릴 수 없어서 확인 창을 거치고, 거절 사유(커밋 안 된 변경 등)는 코어가 파일 단위로 말해주므로 그대로
+// 보여준다. **그 흐름은 이 파일에 둔다** — 차례가 계약이라 검사가 이 파일의 소스 순서로 지킨다(`WorksPage.test.tsx`).
 //
 // 성공 뒤에 선택을 옮기지 않는다 — 목록 무효화로 이 작업이 사라지면 -works-view.tsx의
 // 정규화(`exists`가 false가 되는 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을
 // 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
 //
 // **메뉴 부품(`DropdownMenu`)이 다 한다**(판 3, 스토리 46~48) — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 ·
-// Home/End · 글자 치기), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9). 항목은
-// `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
+// Home/End · 글자 치기), 하위 메뉴 열고 닫기(→ · ←), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9).
+// 항목은 `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
 // 창 끌기 영역이 아니다 — 머리 카드 안이고 버튼이다.
 function WorkMenu({
   work,
   archive,
   remove,
+  onCopy,
 }: {
   work: WorkView;
   // 상태를 위에서 받는다 — 진행 표시가 본문 전체를 덮으므로 소유자가 WorksPage다
   archive: ReturnType<typeof useArchiveWork>;
   remove: ReturnType<typeof useRemoveWork>;
+  // 복사는 화면의 다른 복사와 같은 길이다 — 클립보드에 쓰고 「… 복사됨」 토스트를 세운다(WorksPage의 `copyText`).
+  onCopy: (text: string) => void;
 }) {
+  const setStatus = useSetWorkStatus();
+  const setPinned = useSetWorkPinned();
   // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
   // **이름 바꾸기는 ⋯에서 여는 작은 창이다**(결정 8 · #141). 제목이 머리행에서 빠지면서 제자리 편집도
@@ -1168,6 +1143,22 @@ function WorkMenu({
   const handleRemove = () =>
     run("삭제", REMOVE_CONFIRM_BODY, () => remove.mutateAsync(work.slug));
 
+  // 메뉴 항목이 부르는 것. Finder 열기가 못 열면(손으로 지운 폴더 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 —
+  // 메뉴는 이미 닫혔고, 그 문장이 어느 폴더가 없는지 말한다.
+  const actions: WorkMenuActions = {
+    openFolder: (project) => {
+      worksApi
+        .openFolder(work.slug, project)
+        .catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
+    },
+    rename: () => setRenaming(true),
+    copy: onCopy,
+    setStatus: (status) => setStatus.mutate({ slug: work.slug, status }),
+    setPinned: (pinned) => setPinned.mutate({ slug: work.slug, pinned }),
+    archive: handleArchive,
+    remove: handleRemove,
+  };
+
   return (
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -1199,25 +1190,7 @@ function WorkMenu({
           <MoreHorizontal className="size-4" />
         </Hint>
         <DropdownMenuContent>
-          {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
-              거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다.
-
-              줄의 글자 · 글리프는 부품의 것이다(DS `.at-mi` — 13px 400, 글리프 15px `fg-secondary`, codex-ds 결정 10).
-              여기서 굵기나 크기를 덧칠하지 않는다. */}
-          <DropdownMenuItem onClick={() => setRenaming(true)}>
-            <Pencil />
-            <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleArchive}>
-            <Archive />
-            <span className="min-w-0 flex-1 truncate">아카이빙</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={handleRemove}>
-            <Trash2 />
-            <span className="min-w-0 flex-1 truncate">삭제</span>
-          </DropdownMenuItem>
+          <WorkMenuItems work={work} actions={actions} />
         </DropdownMenuContent>
       </DropdownMenu>
       <WorkRenameDialog

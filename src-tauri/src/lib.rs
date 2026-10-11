@@ -355,6 +355,8 @@ pub fn run() {
             commands::list_archive,
             commands::list_archived_docs,
             commands::read_archived_file,
+            commands::open_work_folder,
+            commands::open_archived_spec_folder,
             commands::search,
             commands::touch_recent_work,
             commands::pty_spawn,

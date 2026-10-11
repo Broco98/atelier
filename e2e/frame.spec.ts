@@ -980,7 +980,8 @@ test("Works: 작업 ⋯ 메뉴는 폭 260 · 반경 16 · shadow-prominent 카�
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
   const menu = page.getByRole("menu");
   const 줄 = menu.getByRole("menuitem");
-  await expect(줄).toHaveText(["이름 바꾸기", "아카이빙", "삭제"]);
+  // 하위 메뉴를 여는 줄(▸ — Finder에서 열기 · 복사 · 상태)도 같은 줄이다(`menu-row`). 순서는 `works-floating.spec.ts`의 work 메뉴 절이 잰다.
+  await expect(줄).toHaveText(["Finder에서 열기", "이름 바꾸기", "복사", "상태", "고정 풀기", "아카이브", "삭제"]);
 
   const 폭 = await 토큰값(page, "width", "--size-menu");
   expect(폭, "메뉴 폭 — size-menu").toBe("260px");
@@ -993,7 +994,7 @@ test("Works: 작업 ⋯ 메뉴는 폭 260 · 반경 16 · shadow-prominent 카�
   for (const one of await 줄.all()) {
     expect(await 칠한값(one, "height", "border-top-left-radius"), `「${await one.textContent()}」 줄`).toEqual(["30px", 줄반경]);
   }
-  // 글리프는 크기 · 색을 안 준 lucide 그림이다(`WorksPage.tsx`의 작업 ⋯) — 줄이 주는 값이 그대로 선다.
+  // 글리프는 크기 · 색을 안 준 lucide 그림이다(work 메뉴의 정의 `WorkMenuItems.tsx`) — 줄이 주는 값이 그대로 선다.
   const 회색 = await 토큰색(page, "--fg-secondary");
   const 글리프 = menu.getByRole("menuitem", { name: "이름 바꾸기" }).locator("svg");
   expect(await 칠한값(글리프, "width", "height", "color"), "줄 글리프").toEqual(["15px", "15px", 회색]);
@@ -1044,6 +1045,39 @@ test("Works: 상태 메뉴에서 지금 상태 줄 끝의 체크는 14 · fg다"
   const 검정 = await 토큰색(page, "--fg");
   expect(검정, "fg와 fg-secondary가 같은 색이다").not.toBe(await 토큰색(page, "--fg-secondary"));
   expect(await 칠한값(체크, "width", "height", "color"), "체크").toEqual(["14px", "14px", 검정]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **끈 줄**(지금 못 하는 칸, codex-ds 결정 10)은 줄째 55%로 옅어지고 글자 · 글리프가 `fg-tertiary`다 — DS `.at-mi.is-off`. 앱에서 그
+// 줄이 서는 첫 자리가 work 메뉴의 Finder에서 열기 ▸, 폴더가 사라진 worktree다(`WorkMenuItems.tsx`). 줄이 끈 것인지(`aria-disabled`)와
+// 눌러도 안 여는 것은 `works-floating.spec.ts`의 work 메뉴 절이 잰다 — 여기는 칠해진 값이다.
+test("Works: work 메뉴 Finder ▸에서 폴더가 사라진 worktree 줄은 55%이고 글자 · 글리프가 fg-tertiary다", async ({ page }) => {
+  const multiWork = WORKS[2];
+  const [billing, ledger] = multiWork.worktrees;
+  await installFixtureBackend(page, {
+    list_works: WORKS.map((work) =>
+      work.slug === multiWork.slug ? { ...work, worktrees: [billing, { ...ledger, exists: false }] } : work,
+    ),
+  });
+  await page.goto(`/works/${multiWork.slug}`);
+  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: "Finder에서 열기", exact: true }).hover();
+  const 하위 = page.locator("[data-slot=dropdown-menu-sub-content]");
+  const 끈줄 = 하위.getByRole("menuitem", { name: /^ledger/ });
+  const 산줄 = 하위.getByRole("menuitem", { name: /^billing/ });
+  await expect(끈줄).toHaveAttribute("aria-disabled", "true");
+
+  const [옅음, 회색, 검정] = [await 토큰색(page, "--fg-tertiary"), await 토큰색(page, "--fg-secondary"), await 토큰색(page, "--fg")];
+  expect(new Set([옅음, 회색, 검정]).size, "fg · fg-secondary · fg-tertiary가 서로 다른 색이다").toBe(3);
+  // 이름은 줄의 첫 글자 칸이다 — 그 뒤의 흐린 「worktree」는 켜진 줄에서도 늘 `fg-tertiary`라 끔을 말하지 못한다.
+  const 칠 = async (row: Locator) => [
+    ...(await 칠한값(row, "opacity")),
+    ...(await 칠한값(row.locator("span").first(), "color")),
+    ...(await 칠한값(row.locator("svg"), "color")),
+  ];
+  // 앵커: 옆의 산 줄은 다른 줄과 같다 — 불투명 · 이름 `fg` · 글리프 `fg-secondary`.
+  expect(await 칠(산줄), "산 worktree 줄의 불투명도 · 이름 · 글리프").toEqual(["1", 검정, 회색]);
+  expect(await 칠(끈줄), "끈 worktree 줄의 불투명도 · 이름 · 글리프").toEqual(["0.55", 옅음, 옅음]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

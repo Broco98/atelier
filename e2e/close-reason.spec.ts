@@ -12,12 +12,12 @@ import { awaitSpawned, installFixtureBackend, kills, unknownIpcCalls, 칸들 } f
 
 const [, plainWork] = WORKS;
 
-/** 작업 화면(터미널 탭)에서 셸 하나가 뜬 뒤 ⋯ 메뉴의 「아카이빙」을 누르고 확인 창에서 한 번 더 누른다. */
+/** 작업 화면(터미널 탭)에서 셸 하나가 뜬 뒤 ⋯ 메뉴의 「아카이브」를 누르고 확인 창의 「아카이빙」을 한 번 더 누른다. */
 async function archive(page: Page, path: string, menu: string): Promise<void> {
   await page.goto(`${path}?tab=terminal`);
   await awaitSpawned(page, 1);
   await page.getByRole("button", { name: menu, exact: true }).click();
-  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이브", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
 }
 
