@@ -598,3 +598,28 @@ test("분할 중 트리에서 연 파일이 묶음 열에 서고, 다시 누르�
   await expect(page).not.toHaveURL(/code=/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 결정 89 · 97 — 열의 `×`로 한쪽을 닫으면 반대쪽이 남는다. 묶음 열이 파일 탭이면 남는 것은 그 파일의 본문이고(탭은 묶음에
+// 그대로), 묶음 열을 닫으면 문서가 남고 주소에서 파일이 빠진다 — 단일 뷰의 `code`는 `tab=code`와만 산다.
+test("묶음 열이 파일 탭일 때 spec 열을 닫으면 그 파일이 본문에 남고, 파일 열을 닫으면 문서가 남는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${codeWork.slug}?split=lr&code=${encodeURIComponent(README)}`);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+
+  await page.getByRole("button", { name: "spec 열 닫기" }).click();
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+  await expect(page.getByRole("main", { name: README, exact: true })).toContainText("# 빌링");
+  await expect(page).toHaveURL(/tab=code/);
+  await expect(page).toHaveURL(/code=billing%2FREADME\.md/);
+  await expect(page).not.toHaveURL(/split=/);
+
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await page.getByRole("button", { name: "README.md 열 닫기" }).click();
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+  await expect(page.getByRole("main", { name: "문서", exact: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/split=|code=|tab=/);
+  // 열을 닫았을 뿐 탭은 묶음에 남는다.
+  await expect(page.locator(`[data-tab="code"][data-code="${README}"]`)).toHaveCount(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
