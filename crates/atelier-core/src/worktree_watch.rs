@@ -23,14 +23,16 @@ pub struct WorktreeChange {
 ///
 /// 1. **구조.** `<slug>/<워크트리 폴더>/<프로젝트>/…` 모양만 남긴다 — 그 밖(spec · `work.json` · 순서 파일)은 `works:changed`의
 ///    몫이다. 워크트리 뿌리의 `.git`(연결 파일)은 버린다. 트리에 서지 않는 것이다. 다른 저장소(하위 모듈 · 안쪽 저장소) 안도
-///    버린다 — 트리는 그것을 펼치지 않고, git은 하위 모듈 안의 경로에 답하지 못한다(`in_other_repository`).
+///    버린다 — 트리는 그것을 펼치지 않고, git은 하위 모듈 안의 경로에 답하지 못한다(`in_other_repository`). 다만 폴더의
+///    `.git` 자신은 그 폴더의 변경으로 묻는다 — 폴더가 저장소가 되거나 그치면 트리에서 그 폴더의 모양이 바뀐다.
 /// 2. **빠른 길(S6).** 마지막 트리 목록이 알려 준 「걸린 맨 위 폴더」 아래는 git에 묻지 않고 버린다 — 빌드 폭주의 대부분이
 ///    여기서 끝난다(`learn_ignored_folders`). 들고 있지 않으면 빠른 길 없이 묻는다.
 /// 3. **gitignore.** 워크트리마다 남은 경로를 **한 번에** git에 묻는다(S1) — 빌드가 수천 경로를 쏟아도 워크트리당 git 한
 ///    번이다. 하나라도 걸리지 않았으면 그 쌍을 낸다.
 ///
-/// git이 답하지 못하면(워크트리가 사라졌거나 저장소가 아니다) **바뀐 것으로 친다** — 화면이 다시 읽어 「워크트리 없음」을
-/// 그리는 편이, 사라진 워크트리를 낡은 트리로 두는 것보다 낫다.
+/// **워크트리 뿌리 자신**이 오면 묻지 않고 바뀐 것으로 친다 — 폴더째 옮겨 가거나(휴지통으로 버리기도 옮김이다) 돌아온 것이고,
+/// 그때 FSEvents는 안의 경로를 주지 않는다. git이 답하지 못해도(워크트리가 사라졌다 · 저장소가 아니다 · `check-ignore`가 죽었다)
+/// **바뀐 것으로 친다** — 화면이 다시 읽어 「워크트리 없음」을 그리는 편이, 사라진 워크트리를 낡은 트리로 두는 것보다 낫다.
 pub fn worktree_changes(works_root: &Path, paths: &[PathBuf]) -> Vec<WorktreeChange> {
     changes_asking(works_root, paths, &mut ignored_by_git)
 }
@@ -65,8 +67,8 @@ fn changes_asking(works_root: &Path, paths: &[PathBuf], ignored: &mut AskIgnored
 /// 워크트리 뿌리 자신의 워크트리 기준 경로 — 빈 경로다.
 const ROOT: &str = "";
 
-/// works 루트 기준 경로가 워크트리 안이면 그 쌍과 워크트리 기준 경로(조각은 `/`). 워크트리 폴더 이름은 work 목록이 쓰는
-/// 자리(`works::worktrees_dir`)에서 읽는다 — 여기 다시 적지 않는다.
+/// works 루트 기준 경로가 워크트리 안이면 그 쌍과 워크트리 기준 경로(조각은 `/`, 뿌리 자신은 `ROOT`). 워크트리 폴더 이름은
+/// work 목록이 쓰는 자리(`works::worktrees_dir`)에서 읽는다 — 여기 다시 적지 않는다.
 fn in_worktree(rel: &Path) -> Option<(WorktreeChange, String)> {
     let slug = match rel.components().next()? {
         Component::Normal(slug) => slug.to_str()?,
@@ -87,8 +89,8 @@ fn in_worktree(rel: &Path) -> Option<(WorktreeChange, String)> {
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
-    // 워크트리 뿌리 자체와 그 `.git`은 트리에 서지 않는다
-    if rest.first().is_none_or(|first| first == ".git") {
+    // 워크트리 뿌리의 `.git`(연결 파일)은 트리에 서지 않는다
+    if rest.first().is_some_and(|first| first == ".git") {
         return None;
     }
     Some((WorktreeChange { slug: slug.to_string(), project: project.to_string() }, rest.join("/")))
@@ -96,6 +98,10 @@ fn in_worktree(rel: &Path) -> Option<(WorktreeChange, String)> {
 
 /// 그 워크트리의 경로들 가운데 걸리지 않은 것이 있는가.
 fn any_unignored(dir: &Path, rels: &BTreeSet<String>, ignored: &mut AskIgnored) -> bool {
+    // 뿌리 자신 — 폴더째 옮겨 가거나 돌아왔다. 안의 경로는 오지 않으니 묻지 않는다.
+    if rels.contains(ROOT) {
+        return true;
+    }
     // `.gitignore`가 바뀌었으면 마지막 트리 목록이 알려 준 걸린 폴더가 더 맞지 않을 수 있다 — 다음 트리 목록까지 빠른 길을 버린다.
     // **한 `.gitignore`가 가르는 것은 제 폴더 아래뿐이라** 빠른 길의 폴더를 품은 것만 그렇다. 그런 `.gitignore`는 걸린 폴더의
     // 위라 그 자신이 걸리지 않은 변경이고, 이 쌍이 나가 화면이 보고 있으면 곧바로 트리를 다시 읽어 새로 알려 준다. 걸린 폴더 안의
@@ -120,8 +126,13 @@ fn any_unignored(dir: &Path, rels: &BTreeSet<String>, ignored: &mut AskIgnored) 
     let asked: Vec<String> = rels
         .iter()
         .filter(|rel| !folders.iter().any(|folder| is_under(rel, folder)))
-        .filter(|rel| !in_other(rel))
-        .cloned()
+        .filter_map(|rel| match rel.strip_suffix("/.git") {
+            // 폴더의 `.git` 자신 — 그 폴더가 저장소가 되었거나(`git init` · `git clone`) 그쳤다. FSEvents는 그 아래만 주고 폴더
+            // 자신은 주지 않으므로, 트리에서 그 폴더의 모양이 바뀌는 소식은 이것뿐이다. 그 폴더를 묻는다 — 걸린 폴더 안이면
+            // 걸렸다고 답한다. 하위 모듈의 연결 파일이 다시 쓰여도(초기화 · 풀기) 여기 와 트리를 한 번 더 읽힌다. 드문 일이다.
+            Some(repository) => (!in_other(repository)).then(|| repository.to_string()),
+            None => (!in_other(rel)).then(|| rel.clone()),
+        })
         .collect();
     if asked.is_empty() {
         return false;
@@ -375,10 +386,12 @@ mod tests {
         let inside = [
             "w/trees/fe/libs/sub/target/debug/a.o",
             "w/trees/fe/libs/sub/node_modules/x/index.js",
-            "w/trees/fe/libs/sub/.git",
-            // 트리에 펼쳐지지 않는 저장소라 그 안의 편집도 트리의 소식이 아니다
+            // 트리에 펼쳐지지 않는 저장소라 그 안의 편집과 커밋도 트리의 소식이 아니다
             "w/trees/fe/libs/sub/src/lib.rs",
             "w/trees/fe/nested/src/main.rs",
+            "w/trees/fe/nested/.git/index",
+            // 다른 저장소 안에서 저장소가 서도 그렇다 — 그 폴더를 git에 물으면 하위 모듈 안이라 죽는다
+            "w/trees/fe/libs/sub/vendor/x/.git",
         ];
         // 하위 모듈 안의 경로 하나가 걸린 곳만 바뀐 묶음 전체를 「바뀜」으로 넘기지 않는다
         let ignored_and_inside = paths(&works, &["w/trees/fe/target/debug/a.o", "w/trees/fe/libs/sub/target/debug/a.o"]);
@@ -402,6 +415,52 @@ mod tests {
         crate::list_worktree_tree(&works, "w", "fe").unwrap();
         assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/libs/sub/.gitignore"])), (vec![], 0));
         assert_eq!(counted(&works, &paths(&works, &["w/trees/fe/target/debug/a.o"])), (vec![], 0));
+    }
+
+    #[test]
+    fn a_folder_becoming_a_repository_names_its_worktree() {
+        // 이미 있는 폴더 안에서 `git init`(또는 빈 폴더에 `git clone`)하면 트리에서 그 폴더가 펼쳐지는 폴더에서 펼치지 않는 한
+        // 항목으로 바뀐다(S3). FSEvents는 `pkg/.git` 아래만 주고 `pkg` 자신은 주지 않는다 — 그 묶음 전체가 「다른 저장소 안」으로
+        // 버려지면 트리가 낡은 폴더로 남는다
+        let (_tmp, works) = setup();
+        let fe = works.join("w/trees/fe");
+        std::fs::create_dir_all(fe.join("pkg")).unwrap();
+        std::fs::write(fe.join("pkg/README.md"), "r").unwrap();
+        run_git(&fe.join("pkg"), &["init", "-b", "main"]);
+        let init = [
+            "w/trees/fe/pkg/.git",
+            "w/trees/fe/pkg/.git/HEAD",
+            "w/trees/fe/pkg/.git/config",
+            "w/trees/fe/pkg/.git/objects",
+        ];
+        assert_eq!(worktree_changes(&works, &paths(&works, &init)), [change("w", "fe")]);
+        // 저장소가 된 뒤 그 안의 편집과 커밋은 트리의 소식이 아니다(S34)
+        let inside = ["w/trees/fe/pkg/src/main.rs", "w/trees/fe/pkg/.git/index", "w/trees/fe/pkg/.git/HEAD"];
+        assert_eq!(worktree_changes(&works, &paths(&works, &inside)), []);
+        // 저장소이기를 그쳐도 그 폴더의 모양이 바뀐다
+        std::fs::remove_dir_all(fe.join("pkg/.git")).unwrap();
+        assert_eq!(worktree_changes(&works, &paths(&works, &init)), [change("w", "fe")]);
+
+        // 걸린 폴더 안에 선 저장소는 트리를 바꾸지 않는다 — 빠른 길 없이는 git이 그 폴더를 걸렸다고 답하고, 빠른 길로는 묻지도 않는다
+        std::fs::create_dir_all(fe.join("target/dep")).unwrap();
+        run_git(&fe.join("target/dep"), &["init", "-b", "main"]);
+        let ignored = paths(&works, &["w/trees/fe/target/dep/.git", "w/trees/fe/target/dep/.git/HEAD"]);
+        assert_eq!(counted(&works, &ignored), (vec![], 1));
+        crate::list_worktree_tree(&works, "w", "fe").unwrap();
+        assert_eq!(counted(&works, &ignored), (vec![], 0));
+    }
+
+    #[test]
+    fn a_worktree_folder_moved_away_or_back_names_its_worktree() {
+        // 폴더째 옮기면(휴지통으로 버리기도 옮김이다) FSEvents는 뿌리 경로 하나만 준다 — 안의 경로는 오지 않는다. 옮겨 가면 화면이
+        // 다시 읽어 「워크트리 없음」을, 돌아오면 다시 트리를 그린다
+        let (tmp, works) = setup();
+        let fe = works.join("w/trees/fe");
+        let away = tmp.path().join("fe-old");
+        std::fs::rename(&fe, &away).unwrap();
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe"])), (vec![change("w", "fe")], 0));
+        std::fs::rename(&away, &fe).unwrap();
+        assert_eq!(counted(&works, &paths(&works, &["w/trees/fe"])), (vec![change("w", "fe")], 0));
     }
 
     #[test]
