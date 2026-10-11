@@ -497,14 +497,15 @@ function WorksPage({
   // 고친 곳(three-axes 티켓 26) — 그 work의 표시. 트리의 점과 레일 `spec`의 점이 「아직 열지 않은 고친 파일」(`unseen`)을 읽는다.
   // **열었다 = 본문에 문서가 서 있고 그 파일이 지금 문서다.** 고친 파일을 보던 중에 턴이 끝났어도 점이 서지 않고(프로토타입 D),
   // 터미널 탭에서 지금 문서가 고쳐졌으면 spec으로 돌아올 때 지운다. 문단의 표시는 스펙 창이 스스로 읽는다(`SpecViewer`).
-  const marks = useStore(changeMarksStore, (state) => marksOf(state, panelWork?.slug ?? ""));
+  // 이 화면은 점(`unseen`)만 구독한다 — 문단의 표시가 서고 지워질 때마다 화면 전체가 다시 그려지지 않게.
+  const unseen = useStore(changeMarksStore, (state) => marksOf(state, panelWork?.slug ?? "").unseen);
   const openedSpec = panelWork && specStands ? currentSpec : null;
   useEffect(() => {
-    if (panelWork && openedSpec && marks.unseen.includes(openedSpec)) markOpened(panelWork.slug, openedSpec);
-  }, [panelWork, openedSpec, marks.unseen]);
+    if (panelWork && openedSpec && unseen.includes(openedSpec)) markOpened(panelWork.slug, openedSpec);
+  }, [panelWork, openedSpec, unseen]);
   // 레일 `spec`의 점 — 아직 열지 않은 고친 파일이 있고 트리가 지금 안 보일 때(프로토타입 D). 트리가 보이면 그 행들의 점이 말한다.
   const railMarks =
-    marks.unseen.length > 0 && !(workPanelOpen && panelView === "spec") ? { spec: UNSEEN_IN_SPEC } : undefined;
+    unseen.length > 0 && !(workPanelOpen && panelView === "spec") ? { spec: UNSEEN_IN_SPEC } : undefined;
   // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 첫 고친 자리로 연다(스토리 72). 문서 링크와 같은 길이라 히스토리를 만들고
   // 탭을 spec으로 돌린다(`fileSearch`). 줄은 스펙 창이 그 파일을 그린 뒤 찾아간다(`doc-reveal`).
   const openDoc = useCallback(
@@ -920,7 +921,7 @@ function WorksPage({
                   onCopy={copyText}
                   onOpenProject={onOpenProject}
                   open={workPanelOpen}
-                  unseen={marks.unseen}
+                  unseen={unseen}
                   onOpenDoc={openDoc}
                 />
               ),
