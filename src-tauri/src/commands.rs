@@ -501,14 +501,15 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령(three-axes 티켓 05 · 07 · 12) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 멈추기 ·
-// 대기 고치기 · 대기 지우기 · 지금 보내기, 그리고 로그인 시작 · 취소. 본체는 대화
+// 대화 명령(three-axes 티켓 05 · 07 · 08 · 12) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 멈추기 ·
+// 대기 고치기 · 대기 지우기 · 지금 보내기, 권한 답, 그리고 로그인 시작 · 취소. 본체는 대화
 // 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
 // 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
 // - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓)은 blocking 풀에서 기다린다.
 //   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`). 멈추기 · 지금 보내기도 `session/cancel`을
-//   보내고 곧바로 돌아온다 — 멈춘 턴의 끝과 그 뒤에 간 말은 기록 줄로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다.
+//   보내고 곧바로 돌아온다 — 멈춘 턴의 끝과 그 뒤에 간 말은 기록 줄로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다. 권한 답도
+//   답을 보내고 곧바로 돌아온다 — 이어 가는 턴은 기록 줄로 온다.
 // - 호스트의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
 // - 다리로 탈 수 없다(`in_app_only`) — 호스트는 오래 사는 에이전트를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
 
@@ -619,6 +620,20 @@ pub async fn chat_send_now(
     queued: String,
 ) -> CmdResult<()> {
     chats.send_now(&work, &conversation, &queued).map_err(host_err)
+}
+
+/// 권한 답 — 걸린 권한 요청(`request` — 기록의 `permission` 줄의 `requestId`)에 고른 선택지(`option` — 그 요청의 optionId)로
+/// 답한다. 기다리지 않는다 — 고른 답은 `permission` 줄로, 이어 가는 턴은 기록 줄로 온다. 준 선택지에 없는 optionId와 이미 닫힌
+/// 요청은 읽히는 오류이고, 요청은 그대로 걸려 있다.
+#[tauri::command]
+pub async fn chat_answer_permission(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    request: String,
+    option: String,
+) -> CmdResult<()> {
+    chats.answer_permission(&work, &conversation, &request, &option).map_err(host_err)
 }
 
 /// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).

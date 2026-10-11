@@ -11,7 +11,7 @@ import type {
   RecordLine,
 } from "./types";
 
-// 대화 호스트를 부르는 명령(three-axes 티켓 05 · 07). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
+// 대화 호스트를 부르는 명령(three-axes 티켓 05 · 07 · 08). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
 // 에이전트가 계속 돈다 — 그래서 대화는 기록에서 다시 그린다: 먼저 기록 줄 이벤트를 구독하고(`onChatRecord`), 그다음
 // 「이 seq 다음부터」 읽는다(`readRecord`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
@@ -58,6 +58,13 @@ export const chatApi = {
    */
   sendNow: (work: string, conversation: string, queued: string) =>
     invoke<void>("chat_send_now", { work, conversation, queued }),
+  /**
+   * 권한 답 — 걸린 권한 요청(`request` — 기록의 `permission` 줄의 `requestId`)에 고른 선택지(`option` — 그 요청의 optionId)로
+   * 답한다. 기다리지 않는다 — 고른 답은 `permission` 줄(`state: "answered"`)로, 이어 가는 턴은 기록 줄로 온다. 준 선택지에 없는
+   * optionId와 이미 닫힌 요청(답했다 · 거둬졌다)은 읽히는 오류다.
+   */
+  answerPermission: (work: string, conversation: string, request: string, option: string) =>
+    invoke<void>("chat_answer_permission", { work, conversation, request, option }),
   /** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. */
   close: (work: string, conversation: string) =>
     invoke<void>("chat_close", { work, conversation }),
