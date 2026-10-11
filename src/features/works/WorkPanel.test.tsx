@@ -42,6 +42,8 @@ function render(
         view={view}
         currentFile={null}
         onSelectFile={() => {}}
+        currentCode={null}
+        onPressCode={() => {}}
         onCopy={() => {}}
         onOpenProject={() => {}}
         open={open}
@@ -150,13 +152,17 @@ describe("WorkPanel 머리와 두 몸", () => {
     expect(bodyTag(spec, "spec")).not.toMatch(/\b(hidden|inert)=/);
     expect(bodyTag(spec, "info")).toMatch(/\bhidden=""/);
     expect(bodyTag(spec, "info")).toMatch(/\binert=""/);
-    // 반대쪽 — info를 고르면 spec 몸이 가려지고, 트리는 여전히 마운트돼 있다. 순서는 spec → info 그대로다.
+    // files 몸도 같다(git-integration 판 01) — 숨은 동안에도 마운트돼 있어 접힘을 든다. 트리를 묻는 것은 보일 때뿐이다(L3).
+    expect(bodyTag(spec, "files")).toMatch(/\bhidden=""/);
+    expect(bodyTag(spec, "files")).toMatch(/\binert=""/);
+    // 반대쪽 — info를 고르면 spec 몸이 가려지고, 트리는 여전히 마운트돼 있다. 순서는 spec → files → info다.
     const info = render(true, {}, undefined, "info");
     expect(info).toContain("overview.md");
     expect(bodyTag(info, "spec")).toMatch(/\bhidden=""/);
     expect(bodyTag(info, "spec")).toMatch(/\binert=""/);
     expect(bodyTag(info, "info")).not.toMatch(/\b(hidden|inert)=/);
-    expect(info.indexOf('data-panel-view="info"')).toBeGreaterThan(info.indexOf('data-panel-view="spec"'));
+    expect(info.indexOf('data-panel-view="files"')).toBeGreaterThan(info.indexOf('data-panel-view="spec"'));
+    expect(info.indexOf('data-panel-view="info"')).toBeGreaterThan(info.indexOf('data-panel-view="files"'));
   });
 
   it("대화창이 가운데(`chat` 탭)에 서 있으면 `chat` 몸은 골라져 있어도 가려진다 — 한 대화창은 한 곳에", () => {

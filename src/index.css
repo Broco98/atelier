@@ -933,6 +933,14 @@ body.dragging-row * {
   @apply inline-flex h-[22px] shrink-0 items-center rounded-pill bg-state-2 px-2 whitespace-nowrap text-muted-foreground;
 }
 
+/* **files 칸 범위의 토큰**(git-integration 결정 37 · 38). 디자인이 없는 자리라 지금 앱 값으로 짓고, 전역 토큰은 고치지 않는다 —
+   `codex-ds`가 전역 토큰을 바꿀 때 이 이름을 그쪽 이름으로 옮긴다(`three-axes`의 대화창 범위 토큰과 같은 방식).
+     --tree-row-dim   흐린 트리 행의 글자 — gitignore에 걸린 것(커밋에 실리지 않는 것). 행(`SpecTree`의 `DIM`)이 읽는다.
+                      흐린 글자(`--text-tertiary`)와 같은 단이다 — 행의 확장자 꼬리표 · 글리프가 이미 그 색이라 걸린 행은 한 색으로 눕는다 */
+[data-files-tree] {
+    --tree-row-dim: var(--text-tertiary);
+}
+
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
    opacity가 여기 있는 것이 페이드다 — 스크립트는 0과 1만 오가고 사라지는 시간은 이 줄이 든다.
    나타남이 사라짐보다 빠른 것은 일부러다: 구르기 시작하면 바로 서고, 멎으면 천천히 빠진다. */
@@ -1100,4 +1108,31 @@ body[data-palette-open] [data-scrollbar] {
     @media (prefers-reduced-motion: reduce) {
         animation: none;
     }
+}
+
+/* **코드 보기 범위 토큰**(git-integration 판 01 S16 · 결정 35 · 38) — 파일 탭의 강조된 코드(`HighlightedCode`)가 읽는다.
+
+   값은 Codex `syntax-*` 라이트 값이다(`three-axes` 디자인-참고 `atelier-codex.css`). 전역 토큰이 아니라 이 범위에만 선다 —
+   `codex-ds`가 전역 토큰을 Codex 값으로 바꿀 때 그쪽 이름으로 옮긴다(`three-axes` 결정 31과 같은 방식). 일곱이 shiki 토큰의
+   어디로 가는지는 `code-theme.ts`의 표가 든다. 주석의 기울임도 그쪽(테마)이 든다.
+
+   아래 `--diffs-*`는 강조 라이브러리(`@pierre/diffs`)가 shadow DOM 안에서 읽는 변수다 — 커스텀 속성은 shadow 경계를 넘어
+   상속되므로 여기서 건네면 그 안까지 간다(앱 CSS의 클래스는 못 들어간다). 줄 번호 · 글꼴 · 줄 높이는 **앱 전역 토큰**을
+   그대로 가리킨다: 줄 번호는 원문 보기(`SourceView`)의 줄 번호와 같은 흐린 글자, 글자는 `text-mono`(13 / 20)다. 라이브러리의
+   어림 줄 높이(가상화가 그리기 전에 쓰는 20px)도 이 값과 같다. 탭 폭 4는 원문 보기와 같다. */
+[data-code-view] {
+    --code-syntax-keyword: #ab4f7a;
+    --code-syntax-literal: #ac4f23;
+    --code-syntax-string: #3a843f;
+    --code-syntax-variable: #643cae;
+    --code-syntax-attribute: #b8802b;
+    --code-syntax-name: #1f4e94;
+    --code-syntax-comment: #4f4f4f;
+
+    --diffs-font-family: var(--font-mono);
+    --diffs-font-features: var(--font-mono--font-feature-settings);
+    --diffs-font-size: var(--text-mono);
+    --diffs-line-height: var(--text-mono--line-height);
+    --diffs-tab-size: 4;
+    --diffs-fg-number-override: var(--text-tertiary);
 }

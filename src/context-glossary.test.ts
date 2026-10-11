@@ -101,6 +101,14 @@ describe("말의 사전", () => {
     expect(names).toContain("탭");
   });
 
+  // git-integration 결정 31 · S10. 셸 레지스트리가 「셸 목록」이 아니라 **탭의 한 줄**을 들게 됐다 — ⌘2~9 · ⌃Tab ·
+  // 닫을 때의 이웃이 그 줄을 센다. 사전에 이름이 없으면 다음 사람이 「셸 목록」으로 부르고, 파일 탭이 같은 줄에 서는 날
+  // 그 말이 거짓이 된다. spec 폴더의 「번호 묶음」과는 다른 말이라 본문이 그 둘을 갈라 적어야 한다.
+  it("「묶음」이 등재돼 있고, 「번호 묶음」과 갈라 적는다", () => {
+    expect(names).toContain("묶음");
+    expect(bodyOf("묶음")).toContain("번호 묶음");
+  });
+
   // **사전이 거부한 말이 화면으로 새지 않는다.** 한 변경이 낱말을 _피할 말_로 등재하면서 같은
   // 낱말을 컨트롤의 접근성 이름으로 스크린 리더에 말할 수 있다 — 사전만 읽는 검사도 소스만 읽는
   // 검사도 그것을 못 본다. 두 쪽을 함께 읽는 자리가 여기다.
@@ -140,7 +148,8 @@ describe("말의 사전", () => {
     // 「세션」은 제 항목이 있어 거부어가 아니다 — 그 항목이 앱이 세션을 어디에 쓰는지 말한다.
     expect(refused).not.toContain("세션");
     expect(bodyOf("세션")).toContain("되살리기에만 쓴다");
-    expect(bodyOf("레일")).toContain("`spec` · `chat` · `info`");
+    // git-integration이 `chat` 뒤에 `files`를 더했다(그쪽 결정 29).
+    expect(bodyOf("레일")).toContain("`spec` · `chat` · `files` · `info`");
     expect(bodyOf("탭")).toContain("세는 말은 「대화 3개」");
     expect(ariaLabels).toContain("대화 탭");
   });
@@ -336,8 +345,9 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
   });
 
   it("소문자 가족이 레일 칸 `chat`을 든다", () => {
-    // three-axes 티켓 17 — 레일 칸이 `spec` · `chat` · `info`가 됐다. 예시가 셋을 함께 들어야 `chat`도 소문자 가족으로 읽힌다.
-    expect(uppercase).toContain("`spec` · `chat` · `info`");
+    // three-axes 티켓 17 — 레일 칸에 `chat`이 섰다(git-integration이 그 뒤에 `files`를 더해 넷이다). 예시가 칸을 함께 들어야
+    // `chat`도 소문자 가족으로 읽힌다.
+    expect(uppercase).toContain("`spec` · `chat` · `files` · `info`");
   });
 
   it("대문자 층이 main nav를 든다", () => {

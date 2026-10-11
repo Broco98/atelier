@@ -1,6 +1,19 @@
 import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, unknownIpcCalls, 툴팁 } from "./harness";
+import {
+  awaitSpawned,
+  callCount,
+  fireEvent,
+  installFixtureBackend,
+  openShell,
+  unknownIpcCalls,
+  writeShell,
+  셸입력,
+  툴팁,
+  파일탭주소,
+  주소로간다,
+} from "./harness";
+import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 03 — **키가 실제로 그 일을 하는가**, 그리고 **탭을 누르면 본문이 바뀌는가.**
 //
@@ -120,6 +133,135 @@ test("탭을 누르면 본문이 그 칸의 것으로 바뀐다", async ({ page 
   // 문서가 남아 있는 상태가 그것이고, 그때 화면은 두 본문이 겹친 것이 된다(뮤테이션으로 확인).
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toHaveCount(0);
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 셸과 파일 탭이 섞인 묶음의 키 (git-integration 판 01 티켓 06 · 결정 31) ──
+// ⌘2~9 · ⌃Tab · 메뉴 막대의 「Tab N」이 세는 것은 **묶음** — 셸이든 파일 탭이든 탭 줄에 보이는 차례다(스토리 48 · 49 · 52).
+// 셸에 포커스가 있어도 같다: 본문을 옮기는 키는 셸이 타이핑하지 않고 창으로 흘린다(`shellHotkey`의 `app`). 셸 상한 8은 셸만
+// 센다 — 파일 탭은 계속 열리고 새 셸만 막힌다(스토리 46).
+//
+// 파일 탭은 주소로 연다(`주소로간다`) — 그 파일이 묶음에 없으면 끝에 선다(S12). 셸 칸에는 이름을 붙여 차례를 글자로 읽는다.
+
+const MAIN = "billing/src/main.ts";
+const README = "billing/README.md";
+
+/** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일 탭이든 센다. */
+const 묶음 = (page: Page) => page.locator("[data-tab-strip] > [data-tab]");
+/** 묶음의 칸 이름, 왼쪽부터 — 셸은 타이틀, 파일 탭은 파일 이름. */
+const 이름들 = (page: Page) =>
+  묶음(page)
+    .locator("button[aria-pressed]")
+    .evaluateAll((buttons) => buttons.map((button) => button.textContent ?? ""));
+/** 켜진 칸의 이름. 없으면 `null`. */
+const 켜진칸 = (page: Page) =>
+  묶음(page)
+    .locator('button[aria-pressed="true"]')
+    .evaluateAll((buttons) => buttons.map((button) => button.textContent ?? "")[0] ?? null);
+/** 코드 카드 — 접근 이름이 그 파일의 경로다. */
+const 코드카드 = (page: Page, ref: string) => page.getByRole("main", { name: ref, exact: true });
+
+/**
+ * 「하나」(셸) · `main.ts` · 「둘」(셸) · `README.md` 묶음을 세운다. 셸 이름은 연 차례의 pty에 쏜 타이틀이다(`openShell` 머리말).
+ * 마지막에 연 `README.md`가 켜져 있다.
+ */
+async function 섞인묶음(page: Page): Promise<void> {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}?tab=terminal`);
+  await expect(shells(page)).toHaveCount(1);
+  await 주소로간다(page, 파일탭주소(MAIN));
+  await expect(묶음(page)).toHaveCount(2);
+  await openShell(page);
+  await 주소로간다(page, 파일탭주소(README));
+  await expect(묶음(page)).toHaveCount(4);
+  await writeShell(page, "\x1b]0;하나\x07", 1);
+  await writeShell(page, "\x1b]0;둘\x07", 2);
+  await expect.poll(() => 이름들(page)).toEqual(["하나", "main.ts", "둘", "README.md"]);
+  expect(await 켜진칸(page)).toBe("README.md");
+}
+
+/** 켜진 셸의 입력칸에 포커스를 넣는다 — 들었는지까지 본다. 안 들었으면 아래 키가 셸 밖 길로 초록이 된다. */
+async function 셸에포커스(page: Page): Promise<void> {
+  await page.locator(".xterm-screen").click();
+  await expect(셸입력(page)).toBeFocused();
+}
+
+test("⌃Tab이 셸과 파일 탭을 섞인 차례대로 한 바퀴 돈다 — 셸에 포커스가 있어도", async ({ page }) => {
+  await 섞인묶음(page);
+  await page.keyboard.press("Meta+2");
+  await expect.poll(() => 켜진칸(page)).toBe("하나");
+
+  await 셸에포커스(page);
+  await page.keyboard.press("Control+Tab");
+  await expect.poll(() => 켜진칸(page)).toBe("main.ts");
+  await expect(코드카드(page, MAIN)).toBeVisible();
+  // 파일 탭에서 다음은 셸이다 — 본문이 셸로 돌아온다.
+  await page.keyboard.press("Control+Tab");
+  await expect.poll(() => 켜진칸(page)).toBe("둘");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+
+  await 셸에포커스(page);
+  await page.keyboard.press("Control+Tab");
+  await expect.poll(() => 켜진칸(page)).toBe("README.md");
+  await expect(코드카드(page, README)).toBeVisible();
+  // 끝에서 돌아온다 — 한 바퀴다.
+  await page.keyboard.press("Control+Tab");
+  await expect.poll(() => 켜진칸(page)).toBe("하나");
+
+  // 거꾸로도 섞인 차례다 — 첫 칸(셸)에서 ⌃⇧Tab이 마지막 파일 탭이다.
+  await 셸에포커스(page);
+  await page.keyboard.press("Control+Shift+Tab");
+  await expect.poll(() => 켜진칸(page)).toBe("README.md");
+  await expect(코드카드(page, README)).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **L3에는 네이티브 메뉴가 없다.** 메뉴가 하는 일은 `hotkey:menu`에 code를 실어 보내는 것 하나라(`lib.rs`), 그 이벤트를 쏘면
+// 메뉴 항목을 누른 것과 같다 — 앱이 그 code로 합성 keydown을 창에 흘리고(`menu-hotkey.ts`) ⌘숫자와 같은 판정이 받는다.
+test("메뉴 막대의 「Tab N」이 ⌘N과 같은 칸을 고른다", async ({ page }) => {
+  await 섞인묶음(page);
+
+  await fireEvent(page, "hotkey:menu", "Digit3");
+  await expect.poll(() => 켜진칸(page)).toBe("main.ts");
+  await expect(코드카드(page, MAIN)).toBeVisible();
+  await fireEvent(page, "hotkey:menu", "Digit4");
+  await expect.poll(() => 켜진칸(page)).toBe("둘");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await fireEvent(page, "hotkey:menu", "Digit5");
+  await expect.poll(() => 켜진칸(page)).toBe("README.md");
+  // 「Tab 1」은 spec이다 — 묶음의 칸이 아니다.
+  await fireEvent(page, "hotkey:menu", "Digit1");
+  await expect(page.locator('[data-tab="spec"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(코드카드(page, README)).toHaveCount(0);
+  expect(await 켜진칸(page)).toBeNull();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("셸이 여덟이어도 파일 탭은 열리고, ⌘T만 막힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}?tab=terminal`);
+  await fillToCap(page);
+
+  await 주소로간다(page, 파일탭주소(MAIN));
+  await expect(코드카드(page, MAIN)).toBeVisible();
+  await expect(shells(page)).toHaveCount(MAX_SHELLS);
+  await expect(묶음(page)).toHaveCount(MAX_SHELLS + 1);
+
+  // ⌘T는 막힌다 — 셸이 안 뜨고 까닭을 토스트로 말한다(결정 47). `+`도 잠긴 채다.
+  const spawned = await callCount(page, "pty_spawn");
+  await page.keyboard.press("Meta+t");
+  await expect(page.getByRole("region", { name: "메시지", exact: true })).toContainText(
+    `셸은 화면마다 ${MAX_SHELLS}개까지예요 — 여기 ${MAX_SHELLS}개`,
+  );
+  await expect(page.locator('[data-tab="new"]')).toHaveAttribute("aria-disabled", "true");
+  await expect(shells(page)).toHaveCount(MAX_SHELLS);
+  expect(await callCount(page, "pty_spawn")).toBe(spawned);
+
+  // 파일 탭은 그 뒤로도 열린다 — 상한은 프로세스의 수라 셸만 센다.
+  await 주소로간다(page, 파일탭주소(README));
+  await expect(코드카드(page, README)).toBeVisible();
+  await expect(묶음(page)).toHaveCount(MAX_SHELLS + 2);
+  await expect(shells(page)).toHaveCount(MAX_SHELLS);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

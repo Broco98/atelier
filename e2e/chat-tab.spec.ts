@@ -12,6 +12,8 @@ import {
   replaceAnswer,
   steadyCount,
   unknownIpcCalls,
+  파일탭주소,
+  주소로간다,
 } from "./harness";
 import { conversationRow, handToolTurn, streamLines } from "./chat-records";
 import { 레일칸, 작업패널 } from "./chat-screen";
@@ -203,6 +205,38 @@ test("분할: `chat` 탭에서 분할을 켜도 `spec ▏터미널`이고, 분�
   await expect(page).not.toHaveURL(/[?&]split=/);
   await expect(입력칸(가운데대화(page))).toBeVisible();
   await expect(page.locator("[data-column]")).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// git-integration 결정 31 — 셸과 파일 탭은 한 **묶음**이고 `chat`은 그 밖의 고정 칸이다. 묶음의 지금 탭이 묶음 쪽에서 바뀌면(닫기의
+// 이웃 · 묶음이 빔) 본문이 묶음을 보이는 동안만 주소가 따라간다 — 가운데에 대화창이 선 동안은 문서를 보는 동안과 같다(three-axes
+// S21). 따라가면 대화창이 말없이 파일 탭이나 `spec`으로 바뀐다. 파일 탭은 확인 없이 닫혀(스토리 37) 그 바뀜을 곧바로 낸다.
+test("묶음 밖: `chat` 탭이 떠 있는 동안 파일 탭을 닫아 이웃이 켜지거나 묶음이 비어도 가운데 대화창이 그대로다", async ({ page }) => {
+  // 주소로 곧장 파일 탭에 들어온다 — 터미널 본문이 한 번도 안 서서 셸이 저절로 뜨지 않는다. 묶음은 파일 탭 둘이다.
+  await openWork(page, `?tab=code&code=${encodeURIComponent("billing/src/main.ts")}`);
+  await 주소로간다(page, 파일탭주소("billing/README.md", specWork.slug));
+  const 파일탭 = (ref: string) => page.locator(`header [data-tab="code"][data-code="${ref}"]`);
+  await expect(파일탭("billing/README.md")).toHaveCount(1);
+  await expect(파일탭("billing/src/main.ts")).toHaveCount(1);
+
+  await 탭(page, "chat").click();
+  await expect(입력칸(가운데대화(page))).toBeVisible();
+  await expect(page).toHaveURL(/[?&]tab=chat\b/);
+
+  // 묶음의 지금 탭(README)을 닫는다 — 이웃(main.ts)이 묶음의 지금 탭이 되지만 본문은 대화창이다.
+  await 파일탭("billing/README.md").locator('button[aria-label$=" 닫기"]').click();
+  await expect(파일탭("billing/README.md")).toHaveCount(0);
+  await expect(page).toHaveURL(/[?&]tab=chat\b/);
+  await expect(page).not.toHaveURL(/[?&]code=/);
+  await expect(입력칸(가운데대화(page))).toBeVisible();
+  await expect(탭(page, "chat")).toHaveAttribute("aria-pressed", "true");
+
+  // 마지막 칸을 닫아 묶음이 빈다 — 본문에 묶음이 없었으니 `spec`으로 걷지 않는다.
+  await 파일탭("billing/src/main.ts").locator('button[aria-label$=" 닫기"]').click();
+  await expect(page.locator('header [data-tab="code"]')).toHaveCount(0);
+  await expect(page).toHaveURL(/[?&]tab=chat\b/);
+  await expect(입력칸(가운데대화(page))).toBeVisible();
+  await expect(문서(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

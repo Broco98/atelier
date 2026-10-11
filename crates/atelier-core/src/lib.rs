@@ -37,6 +37,9 @@ mod order;
 mod recent;
 mod search;
 mod layout;
+mod worktree;
+mod worktree_file;
+mod worktree_watch;
 
 // 원자 쓰기 둘을 낸다 — 폴더를 만드는 쪽 · 만들지 않는 쪽. 읽기(`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록
 // 없음」이라 기본값으로 눕는 그 읽기와 뜻이 다르다.
@@ -80,3 +83,6 @@ pub use works::{read_work, work_places, WorkPlaces};
 // 대화 호스트가 턴 앞뒤로 spec 폴더를 찍을 때 스펙 트리 · 검색과 같은 목록을 걷는다 — 트리에 안 보이는 파일
 // (점 파일)의 고친 곳이 생기지 않게(three-axes 결정 22).
 pub use works::spec_files;
+pub use worktree::{list_worktree_folder, list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};
+pub use worktree_file::{read_worktree_file, WorktreeFile};
+pub use worktree_watch::{worktree_changes, WorktreeChange};

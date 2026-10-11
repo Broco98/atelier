@@ -39,10 +39,22 @@ async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
   await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
 }
 
-/** nav의 `Terminal` — 최상위 터미널도 owner다(빈 키 `""` — ui-refresh 결정 23). 들어가면 셸이 저절로 하나 뜬다. */
+/**
+ * nav의 `Terminal` — 최상위 터미널도 owner다(빈 키 `""` — ui-refresh 결정 23). 들어가면 셸이 저절로 하나 뜬다.
+ *
+ * **그 셸이 앉을 때까지 기다린다.** 이 파일의 검사는 모두 처음 들어가는 길이라 새 spawn이 하나 나간다. 주소만
+ * 보고 곧바로 떠나면 셸이 spawn 전에 칸째 걷혀, 「떠나면 닫힌다」의 앵커(`pty_kill`)가 설 셸이 없다 — 붐비는
+ * 러너에서 그렇게 빨갰다(실측 2026-10-11, 붙여넣기 · 한글 검사: spawn은 주소가 바뀌고 4~450ms 뒤에 나갔다).
+ * **spawn 수로 먼저 잰다**: 칸만 세면 주소가 바뀐 직후 아직 안 걷힌 앞 화면의 칸이 잡혀 곧바로 초록이 된다(실측).
+ */
 async function toTerminal(page: Page): Promise<void> {
+  const spawned = await callCount(page, "pty_spawn");
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
+  await expect
+    .poll(() => callCount(page, "pty_spawn"), { message: "최상위 터미널에 셸이 저절로 안 떴다" })
+    .toBe(spawned + 1);
+  await awaitSpawned(page, 1);
 }
 
 /**
@@ -201,7 +213,8 @@ test("한글만 친 셸은 떠나도 남는다 — IME 다리가 보낸 조합�
   await expect.poll(() => callCount(page, "pty_first_input")).toBe(1);
 
   await toTerminal(page);
-  // 최상위 터미널의 자동 셸(pty 2)이 뜬 뒤에 떠난다 — 뜨기 전에 떠나면 닫을 셸이 없어 앵커가 헛돈다(첫 테스트와 같은 기다림).
+  // 최상위 터미널의 자동 셸(pty 2)이 뜬 뒤에 떠난다 — 뜨기 전에 떠나면 닫을 셸이 아직 없어 아래 앵커가 빈 채로 멎는다.
+  await expect(칸들(page)).toHaveCount(1);
   await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
   await toWork(page, pinnedWork);
   // **앵커** — 최상위 터미널의 입력 없는 자동 셸은 닫혔다.
@@ -230,6 +243,8 @@ test("붙여넣기만 한 셸도 떠나도 남는다", async ({ page }) => {
   await expect.poll(() => callCount(page, "pty_first_input")).toBe(1);
 
   await toTerminal(page);
+  // 최상위 터미널의 자동 셸(pty 2)이 뜬 뒤에 떠난다 — 뜨기 전에 떠나면 닫을 셸이 아직 없어 아래 앵커가 빈 채로 멎는다.
+  await expect(칸들(page)).toHaveCount(1);
   await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
   await toWork(page, pinnedWork);
   await expect.poll(() => killed(page), { message: "앵커: 자동 셸이 안 닫혔다" }).toEqual([2]);

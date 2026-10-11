@@ -19,7 +19,7 @@ const 트리폴더 = (page: Page) => 작업패널(page).getByRole("button", { na
 
 const codex = conversationRow({ id: "c-codex", agent: "codex", name: "Codex" });
 
-test("레일: `chat` 칸이 spec · chat · info 순서로 서고 aria-pressed로 켜지며, 다시 누르면 패널이 닫히고, spec과 오가도 입력 글이 남는다", async ({
+test("레일: `chat` 칸이 spec · chat · files · info 순서로 서고 aria-pressed로 켜지며, 다시 누르면 패널이 닫히고, spec과 오가도 입력 글이 남는다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -32,6 +32,8 @@ test("레일: `chat` 칸이 spec · chat · info 순서로 서고 aria-pressed�
   expect(await 레일(page).getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
     "chat",
+    // git-integration이 `chat` 뒤에 `files`를 더했다(그쪽 결정 29).
+    "files",
     "info",
   ]);
   // 작업 화면을 여는 것만으로는 대화창이 대화 호스트를 부르지 않는다 — 대화창은 처음 보일 때 목록을 읽는다.

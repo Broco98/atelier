@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, ArchiveEntry, ArchivedDocs, Destination,
-    ProjectPatch, ProjectView, SearchResults, WorkView, WorkWithSpecTree,
+    ProjectPatch, ProjectView, SearchResults, WorkView, WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -134,6 +134,30 @@ pub async fn read_spec_file(slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_spec_file(&works_dir(), &slug, &path).map_err(err)
 }
 
+/// 워크트리 하나의 트리(git-integration 판 01 — files 칸). 워크트리가 없거나 git이 실패한 것은 답의 갈래다(코어 머리말).
+/// git을 두세 번 기다리므로(`ls-files` 둘, 걸린 폴더가 있으면 빠른 길을 배우는 `check-ignore` 하나 더) work 목록처럼 blocking
+/// 풀에서 돈다 — 칸이 보일 때만 오지만, 큰 워크트리에서는 그 기다림이 수십 ms다.
+#[tauri::command]
+pub async fn list_worktree_tree(slug: String, project: String) -> CmdResult<WorktreeTree> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::list_worktree_tree(&works_dir(), &slug, &project).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("워크트리 트리를 읽지 못했습니다: {e}"))?
+}
+
+/// gitignore에 걸린 폴더 하나의 바로 아래(git-integration 판 01 — files 칸에서 그 폴더를 펼칠 때). 답은 트리 목록과 같은
+/// 갈래다(코어 머리말). `..` · 절대 경로는 명령 실패다. 디스크를 한 겹 읽으므로 트리 목록처럼 blocking 풀에서 돈다 —
+/// `node_modules/` 바로 아래는 수백 개다.
+#[tauri::command]
+pub async fn list_worktree_folder(slug: String, project: String, path: String) -> CmdResult<WorktreeTree> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::list_worktree_folder(&works_dir(), &slug, &project, &path).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("워크트리 폴더를 읽지 못했습니다: {e}"))?
+}
+
 /// 아카이브 목록. **경량이다** — spec 파일 목록도 워크트리도 담지 않는다.
 /// 아카이브는 쌓이기만 하므로 목록 조회가 무거워지면 갈수록 나빠진다.
 #[tauri::command]
@@ -157,6 +181,21 @@ pub async fn list_archived_docs(slug: String) -> CmdResult<ArchivedDocs> {
 #[tauri::command]
 pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_work_file(&archive_dir(), &slug, &path).map_err(err)
+}
+
+/// 워크트리 파일 하나(git-integration 판 01 — 파일 탭의 본문). 없음 · 워크트리 없음 · 바깥 링크 · 읽지 못함은 답의 갈래다(코어 머리말).
+/// 디스크를 읽고 실제 경로를 푸므로 work 목록처럼 blocking 풀에서 돈다.
+#[tauri::command]
+pub async fn read_worktree_file(
+    slug: String,
+    project: String,
+    path: String,
+) -> CmdResult<atelier_core::WorktreeFile> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("워크트리 파일을 읽지 못했습니다: {e}"))?
 }
 
 /// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 맞추는 규칙도 순위도 층 규칙도
@@ -859,11 +898,17 @@ mod tests {
     ///   기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
     /// - `list_works`(티켓 15): 코어의 목록 조회가 워크트리마다 `git status` 프로세스를 기다린다. 명령의 모양(공개 async 함수)은
     ///   그대로다 — 등록 이름 검사와 다리가 그 자리를 본다.
+    /// - `list_worktree_tree`(git-integration 판 01): 워크트리 하나에 `git ls-files`를 두 번 기다리고, 걸린 폴더가 있으면(`target/` ·
+    ///   `node_modules/` — 거의 모든 워크트리) 감시 경로 판정의 빠른 길을 배우는 `git check-ignore`를 한 번 더 기다린다.
+    /// - `list_worktree_folder`(git-integration 판 01): 걸린 폴더 하나를 디스크에서 한 겹 읽는다 — `node_modules/` 바로 아래는
+    ///   수백 개다.
     /// - `processes_snapshot`(티켓 26): 화면이 열려 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms).
     /// - `processes_summary`(티켓 29): 답은 대개 배경 표본이 앉힌 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 표 한 장과
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
     /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
     ///   돈다(`pty::end_by_hand`).
+    /// - `read_worktree_file`(git-integration 판 01): 디스크에서 파일 하나를 읽고 실제 경로를 두 번 푼다 — 파일 탭이 보일 때만 오지만
+    ///   큰 파일이면 그 읽기가 ms 단위다.
     ///
     /// 대화 명령은 여기 없다 — 어느 호스트 부름이 막히는지는 호스트가 알고, 대화 호스트로 가는 한 길(`to_host`)이 모든 부름을
     /// blocking 풀에서 기다린다. 길은 `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은
@@ -873,9 +918,12 @@ mod tests {
         for (command, call, once) in [
             ("startup_report", "holder.answer()", "answer()"),
             ("list_works", "atelier_core::list_works(", "list_works("),
+            ("list_worktree_tree", "atelier_core::list_worktree_tree(", "list_worktree_tree("),
+            ("list_worktree_folder", "atelier_core::list_worktree_folder(", "list_worktree_folder("),
             ("processes_snapshot", "processes.screen()", ".screen("),
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
+            ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
         ] {
             let body = command_body(command);
             let blocking = body
