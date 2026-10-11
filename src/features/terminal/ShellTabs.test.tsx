@@ -463,7 +463,7 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
 
 // three-axes 결정 9 · S21 — `spec` **바로 뒤에** 화면이 넘기는 고정 칸이 선다(`chat` 탭이 그 첫 손님이다).
 // 이 줄이 지는 것은 자리 하나와 「아무것도 밀지 않는다」는 약속이다: ⌘1은 `spec`, ⌘2~9는 셸 그대로이고, 셸 번호는 셸끼리만
-// 세고, 분할은 늘 `spec ▏터미널`이다. 그 칸이 무엇을 그리는지는 화면이 정한다 — 여기서는 받은 칸 하나로 잰다.
+// 세고, 분할은 늘 `spec ▏ 묶음의 지금 탭`이다. 그 칸이 무엇을 그리는지는 화면이 정한다 — 여기서는 받은 칸 하나로 잰다.
 describe("`spec` 뒤에 넘겨받는 칸", () => {
   const chat = (on = false): FixedTab => ({ id: "chat", label: "chat", icon: MessageSquare, on, onSelect: () => {} });
 
@@ -492,7 +492,7 @@ describe("`spec` 뒤에 넘겨받는 칸", () => {
   });
 
   it("분할에 들지 않는다 — 끄는 자리가 없다", () => {
-    // 분할은 늘 `spec ▏터미널`이다(결정 87 · S21). 끌기는 칸의 `onPointerDown`이 거는데(위 「칸을 본문 위로 끄는 자리」)
+    // 분할은 늘 `spec ▏ 묶음의 지금 탭`이다(결정 87 · S21). 끌기는 칸의 `onPointerDown`이 거는데(위 「칸을 본문 위로 끄는 자리」)
     // 그 배선은 마크업에 안 나온다 — 그래서 소스에서 그 칸을 자른다. 칸의 `data-tab`은 넘겨받은 값이라 표식이 `data-tab={`다.
     // 표식 하나에서 **그 칸의 `<button`부터 `</button>`까지**를 자른다 — 표식 뒤만 보면 표식 앞 속성에 단 끌기가 샌다.
     const src = readFileSync(fileURLToPath(new URL("./ShellTabs.tsx", import.meta.url)), "utf8");
