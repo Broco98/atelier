@@ -20,6 +20,7 @@ use serde_json::{json, Value};
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
+use crate::quote::{Attached, Quote};
 use crate::records::{self, CloseCause, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
 use crate::runtime::{self, AgentProcess, Launch, OpenError, OpenTerms, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
@@ -60,11 +61,12 @@ pub struct QueuedMessage {
     pub send_now: bool,
 }
 
-/// 대기 줄에 든 말과, 보낼 때 그것이 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11). 머리말은 넣을 때 work를
-/// 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는 work를 읽지 않는다.
+/// 대기 줄에 든 말과, 보낼 때 그것이 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 그리고 붙었으면 인용과 그 인용
+/// 블록(three-axes 티켓 27). 머리말과 인용 블록은 넣을 때 work를 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는 work를 읽지 않는다.
 struct Queued {
     message: QueuedMessage,
     preamble: Value,
+    quote: Option<Attached>,
 }
 
 /// 변환기 명령 — Claude 대화가 띄우는 ACP 에이전트. 앱에서는 `current_exe` + `acp-claude`, 검사에서는
@@ -313,7 +315,8 @@ impl Conv {
     }
 
     /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에
-    /// 보낸다. 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙인다(S11). `state`를 쥔 채 부른다.
+    /// 보낸다. 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 인용이 붙은 말이면 사람의 글 바로 앞에 인용
+    /// 블록을 둔다(S12). `state`를 쥔 채 부른다.
     ///
     /// `before`는 턴 앞에 찍은 spec 폴더다 — 턴이 끝나면 지금과 견주어 고친 곳을 적는다(three-axes 결정 22).
     ///
@@ -323,6 +326,7 @@ impl Conv {
         &self,
         state: &mut ConvState,
         text: &str,
+        quote: Option<&Attached>,
         preamble: Value,
         send_now: bool,
         before: Snapshot,
@@ -334,8 +338,12 @@ impl Conv {
         if state.needs_preamble {
             prompt.push(preamble);
         }
+        if let Some(attached) = quote {
+            prompt.push(attached.block.clone());
+        }
         prompt.push(json!({"type": "text", "text": text}));
-        self.recorder.sent(text, &prompt, send_now).map_err(HostError::Record)?;
+        let quoted = quote.map(|attached| &attached.quote);
+        self.recorder.sent(text, quoted, &prompt, send_now).map_err(HostError::Record)?;
         state.turn = Some(Instant::now());
         state.before = Some(before);
         state.needs_preamble = false;
@@ -366,7 +374,8 @@ impl Conv {
         }
         let Some(queued) = state.queue.pop_front() else { return };
         let before = before.unwrap_or_else(|| Snapshot::take(&self.spec));
-        let sent = self.begin_turn(state, &queued.message.text, queued.preamble, queued.message.send_now, before);
+        let Queued { message, preamble, quote } = queued;
+        let sent = self.begin_turn(state, &message.text, quote.as_ref(), preamble, message.send_now, before);
         self.announce_queue(state);
         if let Err(error) = sent {
             // 턴 끝 줄(오류)이 기록에 섰다. 돌려줄 곳이 없다.
@@ -536,6 +545,8 @@ pub enum HostError {
     LoginRequired { agent: Agent, conversation: String },
     /// 에이전트에 말을 보내지 못했다(연결이 끊겼다).
     Send(String),
+    /// 보낸 말의 인용이 올바르지 않다 — spec 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었다(three-axes 티켓 27).
+    BadQuote(String),
     /// `agents/`를 읽거나 쓰지 못했다.
     Record(String),
     /// 로그인 명령을 띄우지 못했다.
@@ -560,6 +571,7 @@ impl fmt::Display for HostError {
                 write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
             }
             HostError::Send(reason) => write!(f, "{reason}"),
+            HostError::BadQuote(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
         }
@@ -1024,13 +1036,34 @@ impl ConversationHost {
     ///   결정 22).
     /// - 턴이 도는 동안의 말은 대기 줄 끝에 넣고 대기 줄 바뀜을 낸다(S13). 턴이 끝나면 맨 앞부터 차례로 간다.
     /// - 에이전트가 떠 있지 않은 대화(다시 켠 뒤 · 죽은 뒤)는 아직 보낼 수 없다 — 다시 띄우기는 티켓 10이다.
+    ///
+    /// 인용 없는 보내기다 — 인용을 붙이는 길은 [`ConversationHost::send_message`].
     pub fn send(&self, work: &str, conversation: &str, text: &str) -> Result<(), HostError> {
+        self.send_message(work, conversation, text, None)
+    }
+
+    /// 보내기 — [`ConversationHost::send`]와 같고, 문서에서 고른 자리(인용)를 붙일 수 있다(three-axes 티켓 27 · S12).
+    /// 인용이 있으면 사람의 글 바로 앞에 인용 블록(실제 경로 + 줄 범위 참조와 마크다운 인용 글)을 따로 된 텍스트 블록으로
+    /// 둔다. `sent` 줄에는 인용과 실제로 보낸 블록이 함께 남는다. 올바르지 않은 인용은 아무것도 보내거나 적지 않고
+    /// 거절한다.
+    pub fn send_message(
+        &self,
+        work: &str,
+        conversation: &str,
+        text: &str,
+        quote: Option<&Quote>,
+    ) -> Result<(), HostError> {
         if !is_conversation_id(conversation) {
             return Err(HostError::ConversationNotFound(conversation.to_owned()));
         }
         let works = atelier_core::works_in(&self.data_root);
         let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
         let places = atelier_core::work_places(&works, &meta);
+        // 인용 블록은 지금 짓는다 — 대기 줄에 들어 턴 끝에 가는 말도 그 블록을 들고 간다(턴 끝에서는 work를 읽지 않는다).
+        let quote = match quote {
+            Some(quote) => Some(quote.attach(&places.spec).map_err(|bad| HostError::BadQuote(bad.to_string()))?),
+            None => None,
+        };
         // 대화들의 잠금을 쥐기 전에 찍는다 — 폴더를 걷는 동안 다른 대화의 명령을 막지 않게. 그 틈에 다른 대화가
         // 고친 것은 이 턴의 비교에 든다(함께 돈 대화의 고침은 원래 든다).
         let before = Snapshot::take(&spec_place(&works, &meta, &places));
@@ -1052,11 +1085,11 @@ impl ConversationHost {
         }
         let preamble = preamble(&meta, &places);
         if found.conv.can_send(&state) && state.queue.is_empty() {
-            return found.conv.begin_turn(&mut state, text, preamble, false, before);
+            return found.conv.begin_turn(&mut state, text, quote.as_ref(), preamble, false, before);
         }
         // S13 — 턴이 도는 동안의 말은 대기 줄 끝에 든다. 턴이 끝나면 맨 앞부터 차례로 간다.
         let message = QueuedMessage { id: uuid::Uuid::new_v4().to_string(), text: text.to_owned(), send_now: false };
-        state.queue.push_back(Queued { message, preamble });
+        state.queue.push_back(Queued { message, preamble, quote });
         if found.conv.can_send(&state) {
             // 쉬는데 대기 줄이 남아 있다 — 맨 앞부터 보낸다. 새 말이 앞지르지 않는다.
             found.conv.send_queued(&mut state, Some(before));

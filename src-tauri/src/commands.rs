@@ -582,15 +582,16 @@ pub async fn chat_switch_agent(
 }
 
 /// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다. 턴이 도는 동안의 말은 대기 줄에 들고(대기 줄 바뀜), 턴이
-/// 끝나면 차례로 간다.
+/// 끝나면 차례로 간다. `quote`는 스펙 창에서 고른 자리다(three-axes 티켓 27) — 호스트가 사람의 글 앞에 인용 블록으로 둔다.
 #[tauri::command]
 pub async fn chat_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     work: String,
     conversation: String,
     text: String,
+    quote: Option<atelier_acp::Quote>,
 ) -> CmdResult<()> {
-    chats.send(&work, &conversation, &text).map_err(host_err)
+    chats.send_message(&work, &conversation, &text, quote.as_ref()).map_err(host_err)
 }
 
 /// 도는 턴을 멈춘다(`session/cancel`). 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다.

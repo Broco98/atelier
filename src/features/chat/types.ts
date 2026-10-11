@@ -49,6 +49,20 @@ export interface RecordLine {
   payload: unknown;
 }
 
+/**
+ * 인용(three-axes 티켓 27, `atelier_acp::Quote`) — 스펙 창에서 고른 자리. 보내기 명령에 실려 가면 호스트가 사람의 글 앞에 인용
+ * 블록(실제 경로 + 줄 범위 참조와 마크다운 인용 글, S12)을 두고, `sent` 줄에 이 값이 그대로 남아 보낸 말 위에 선다.
+ */
+export interface Quote {
+  /** spec 폴더 기준 경로(`drafts/idea.md`). */
+  file: string;
+  /** 원문 줄 범위(1부터, 끝 포함) — 렌더 보기면 고른 글이 걸친 첫 블록의 시작 줄부터 마지막 블록의 끝 줄까지, 원문 보기면 고른 줄 그대로다. */
+  start: number;
+  end: number;
+  /** 고른 글. */
+  text: string;
+}
+
 /** 기록 줄 이벤트가 싣는 것 — 어느 work의 어느 대화에 몇째 줄이 적혔나. `seq`는 `line.seq`와 같다. */
 export interface ChatRecordEvent {
   work: string;
