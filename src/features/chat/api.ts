@@ -8,6 +8,7 @@ import type {
   ChatRecordEvent,
   Conversation,
   EngineCheck,
+  Quote,
   RecordLine,
 } from "./types";
 
@@ -37,10 +38,11 @@ export const chatApi = {
   create: (work: string, agent: Agent) => invoke<Conversation>("chat_new", { work, agent }),
   /**
    * 말을 보낸다. 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로 온다. 턴이 도는 동안의 말은
-   * 대기 줄 끝에 들고(대기 줄 바뀜 이벤트), 턴이 끝나면 맨 앞부터 차례로 간다.
+   * 대기 줄 끝에 들고(대기 줄 바뀜 이벤트), 턴이 끝나면 맨 앞부터 차례로 간다. `quote`는 스펙 창에서 고른 자리다(three-axes 티켓
+   * 27) — 객체라 이름으로 넘긴다(위 「평평하게」). 없으면 그 칸이 아예 실리지 않는다.
    */
-  send: (work: string, conversation: string, text: string) =>
-    invoke<void>("chat_send", { work, conversation, text }),
+  send: (work: string, conversation: string, text: string, quote?: Quote) =>
+    invoke<void>("chat_send", { work, conversation, text, quote }),
   /**
    * 도는 턴을 멈춘다. 기다리지 않는다 — 멈춘 턴의 끝은 `turn-end` 줄(`cancelledByUs: true`)로 온다. 도는 턴이 없으면 아무
    * 일도 하지 않는다.

@@ -252,6 +252,7 @@ describe("SpecViewer 본문 갈래", () => {
         showSource={showSource}
         onNavigate={() => {}}
         onCopy={() => {}}
+        onQuote={() => {}}
       />,
     );
   }
@@ -396,6 +397,7 @@ describe("spec이 없을 때 안내하는 폴더", () => {
         showSource={false}
         onNavigate={() => {}}
         onCopy={() => {}}
+        onQuote={() => {}}
       />,
     );
 

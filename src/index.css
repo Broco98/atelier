@@ -1023,6 +1023,8 @@ body[data-palette-open] [data-scrollbar] {
     --chat-send: #3a83f7;
     --chat-link: #0169cc;
     --chat-surface-code: #f2f2f3;
+    /* 인용 칩의 면(three-axes 티켓 27 — 캔버스 `.cx-cite`의 `--accent-soft`). 글자는 `--chat-link`다. */
+    --chat-quote: #e5f3ff;
 }
 
 /* 고친 곳(three-axes 티켓 26) — 대화창 범위 토큰이지만 그 표시는 대화창 **밖**에도 선다: 스펙 창의 블록 · 트리의 행 · 레일 칸. 그래서

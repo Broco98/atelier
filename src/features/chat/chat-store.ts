@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { Agent, RecordLine } from "./types";
+import type { Agent, Quote, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
 //
@@ -85,9 +85,15 @@ interface UiState {
    * 엔진의 안내 카드가 서고, 「다시 확인」으로 찾으면 그때 대화를 연다(스토리 102). 대화 탭을 고르면 거둔다.
    */
   wanted: Readonly<Record<string, Agent>>;
+  /**
+   * work마다 입력창에 붙은 인용(three-axes 티켓 27) — 그 work의 **지금 대화**의 입력창에 칩으로 선다. 인용은 하나라 새로 고르면
+   * 바뀐다. 대화가 아니라 work의 열쇠인 것은, 스펙 창에서 고르는 때에는 대화창이 아직 대화를 읽지 않았을 수 있어서다(처음 여는
+   * work면 첫 대화가 그 뒤에 선다).
+   */
+  quotes: Readonly<Record<string, Quote>>;
 }
 
-export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {} });
+export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {}, quotes: {} });
 
 export function wantConversation(work: string, agent: Agent): void {
   chatUiStore.setState((state) => ({ ...state, wanted: { ...state.wanted, [work]: agent } }));
@@ -96,8 +102,9 @@ export function wantConversation(work: string, agent: Agent): void {
 export function dropWanted(work: string): void {
   chatUiStore.setState((state) => {
     if (!(work in state.wanted)) return state;
-    const { [work]: _, ...rest } = state.wanted;
-    return { ...state, wanted: rest };
+    const wanted = { ...state.wanted };
+    delete wanted[work];
+    return { ...state, wanted };
   });
 }
 
@@ -107,6 +114,26 @@ export function chooseConversation(work: string, conversation: string): void {
 
 export function setDraft(key: string, text: string): void {
   chatUiStore.setState((state) => ({ ...state, drafts: { ...state.drafts, [key]: text } }));
+}
+
+/** 문서에서 고른 자리를 그 work의 입력창에 붙인다 — 있던 인용은 바뀐다. */
+export function setQuote(work: string, quote: Quote): void {
+  chatUiStore.setState((state) => ({ ...state, quotes: { ...state.quotes, [work]: quote } }));
+}
+
+/** 인용을 뗀다 — 칩의 ×, 그리고 그 인용을 실어 보낸 때. */
+export function dropQuote(work: string): void {
+  chatUiStore.setState((state) => {
+    if (!(work in state.quotes)) return state;
+    const quotes = { ...state.quotes };
+    delete quotes[work];
+    return { ...state, quotes };
+  });
+}
+
+/** 보내지 못한 인용을 되붙인다 — 그사이 새로 고른 인용이 있으면 그것을 둔다. */
+export function restoreQuote(work: string, quote: Quote): void {
+  chatUiStore.setState((state) => (work in state.quotes ? state : { ...state, quotes: { ...state.quotes, [work]: quote } }));
 }
 
 export const turnKey = (key: string, turn: string) => `${key}\u0000${turn}`;

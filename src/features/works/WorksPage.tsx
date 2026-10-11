@@ -35,6 +35,8 @@ import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import { changeMarksStore, markOpened, marksOf } from "@/features/chat/changes";
+import { setQuote } from "@/features/chat/chat-store";
+import type { Quote } from "@/features/chat/types";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
@@ -506,6 +508,19 @@ function WorksPage({
   // 레일 `spec`의 점 — 아직 열지 않은 고친 파일이 있고 트리가 지금 안 보일 때(프로토타입 D). 트리가 보이면 그 행들의 점이 말한다.
   const railMarks =
     unseen.length > 0 && !(workPanelOpen && panelView === "spec") ? { spec: UNSEEN_IN_SPEC } : undefined;
+  // 문서에서 고른 자리(three-axes 티켓 27) — 그 work의 지금 대화의 입력창에 인용 칩으로 붙인다. 대화창이 가려져 있으면(작업 패널이
+  // 닫혔거나 다른 칸을 보이면) 작업 패널을 `chat`으로 연다 — 켜진 칸을 다시 누른 것이 아니라서 레일 토글 규칙(`pickPanelView`)은
+  // 쓰지 않는다: 이미 보이는 대화창을 닫으면 안 된다.
+  const quoteWork = selected?.slug ?? null;
+  const quoteDoc = useCallback(
+    (quote: Quote) => {
+      if (!quoteWork) return;
+      setQuote(quoteWork, quote);
+      setPanelView("chat");
+      setWorkPanelOpen(true);
+    },
+    [quoteWork],
+  );
   // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 첫 고친 자리로 연다(스토리 72). 문서 링크와 같은 길이라 히스토리를 만들고
   // 탭을 spec으로 돌린다(`fileSearch`). 줄은 스펙 창이 그 파일을 그린 뒤 찾아간다(`doc-reveal`).
   const openDoc = useCallback(
@@ -779,6 +794,7 @@ function WorksPage({
       showSource={showSource}
       onNavigate={followLink}
       onCopy={copyText}
+      onQuote={quoteDoc}
     />
   );
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal
