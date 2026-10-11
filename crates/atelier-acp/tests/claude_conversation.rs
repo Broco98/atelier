@@ -3,7 +3,9 @@
 //! 109 · 122).
 //!
 //! 시험은 호스트에 명령을 넣고, 나오는 `agents/` 파일과 가짜 claude가 남긴 영수증(받은 인자 · env · stdin 줄 · 시그널)만
-//! 본다.
+//! 본다. 여기는 프로세스 끝이다 — 띄우기 플래그 · cwd · env · 판 · 열기 한도 · 프로세스 그룹 · stdin EOF · 에이전트 바꾸기.
+//! 열기를 옮기는 갈래(모델 목록 · 모드 · 명령 목록)와 가리기는 변환기 상태 기계의 시험(`src/translator/machine/tests.rs`)이
+//! 재고, 그 둘이 호스트의 기록에 서는 꼴은 S26 자료(`claude_turn.rs`)가 잰다.
 
 mod common;
 
@@ -90,85 +92,6 @@ fn 함께_여는_폴더가_있는_work에서는_add_dir로_spec_폴더를_주고
     assert!(has_pair(&args, "--add-dir", spec.to_str().unwrap()), "{args:?}");
     let cwd = std::path::PathBuf::from(receipt["cwd"].as_str().expect("cwd"));
     assert_eq!(cwd.canonicalize().unwrap(), work.join("trees/atelier").canonicalize().unwrap(), "프로젝트가 하나면 그 워크트리에서 일한다");
-
-    host.shut_down();
-}
-
-/// 판 02 실측 2.1.296의 `initialize` 응답 원문 — 가짜 claude가 되감는 것과 같은 파일이다.
-fn recorded_initialize() -> serde_json::Value {
-    let text = include_str!("fixtures/claude-2.1.296/initialize.json");
-    serde_json::from_str::<serde_json::Value>(text).expect("initialize 원문")["response"]["response"].clone()
-}
-
-#[test]
-fn 열림_줄에_claude의_모델_목록이_configoptions_model로_서고_모드는_다섯이고_명령_목록에_설명이_실린다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
-
-    let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
-
-    let record = sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-    });
-    let opened = record
-        .iter()
-        .find(|line| line["kind"] == "session" && line["payload"]["state"] == "opened")
-        .expect("열림 줄");
-    let payload = &opened["payload"];
-    assert_eq!(payload["agentVersion"], serde_json::json!(env!("CARGO_PKG_VERSION")), "변환기의 판은 앱의 판이다");
-
-    // 모델 — codex-acp와 같은 모양(S1): configOptions의 id `model`, 값은 2.1.296의 `models[].value` 13개 그대로.
-    let model = payload["configOptions"]
-        .as_array()
-        .expect("configOptions")
-        .iter()
-        .find(|option| option["id"] == "model")
-        .expect("configOptions.model");
-    assert_eq!((model["type"].as_str(), model["currentValue"].as_str()), (Some("select"), Some("default")));
-    let values: Vec<&str> = model["options"].as_array().unwrap().iter().map(|o| o["value"].as_str().unwrap()).collect();
-    assert_eq!(
-        values,
-        [
-            "default", "opus", "fable", "sonnet", "haiku", "claude-haiku-4-5-20251001", "claude-sonnet-5",
-            "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6",
-        ]
-    );
-    let opus = model["options"].as_array().unwrap().iter().find(|o| o["value"] == "opus").unwrap();
-    assert_eq!(opus["name"], "Opus 5.5", "이름은 claude의 displayName이다");
-
-    // 모드 — claude의 이름 그대로 다섯. bypassPermissions는 띄울 때 허락하지 않았으면 고를 수 없어 없다.
-    let modes: Vec<&str> =
-        payload["modes"]["availableModes"].as_array().unwrap().iter().map(|m| m["id"].as_str().unwrap()).collect();
-    assert_eq!(modes, ["default", "acceptEdits", "auto", "dontAsk", "plan"]);
-    assert_eq!(payload["modes"]["currentModeId"], "auto", "지금 모드는 claude의 current_permission_mode다");
-
-    // 명령 — 이름 · 설명 · 인자 힌트. 별칭은 찾기 말로 `_meta`에 실린다.
-    let commands = record
-        .iter()
-        .find(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-        .unwrap()["payload"]["update"]["availableCommands"]
-        .as_array()
-        .unwrap()
-        .clone();
-    assert_eq!(commands.len(), recorded_initialize()["commands"].as_array().unwrap().len(), "claude의 명령이 다 온다");
-    let handoff = commands.iter().find(|c| c["name"] == "claude-handoff").expect("사용자 스킬");
-    assert_eq!(
-        handoff["description"],
-        "Hand the current conversation off to a fresh background agent that picks up the work immediately. (user)"
-    );
-    assert_eq!(handoff["input"]["hint"], "What will the next session be used for?");
-    let ask = commands.iter().find(|c| c["name"] == "ask-matt").unwrap();
-    assert!(ask["input"].is_null(), "인자 힌트가 없으면 input은 null이다(codex-acp와 같은 모양)");
-    let creator = commands.iter().find(|c| c["name"] == "skill-creator:skill-creator").unwrap();
-    assert_eq!(creator["_meta"]["aliases"], serde_json::json!(["skill-creator"]));
-
-    // 순서 — 열림이 명령 목록보다 앞에 선다(화면은 열림 줄로 칩을 짓고, 그 뒤 메뉴를 채운다).
-    let seq_of = |pick: &dyn Fn(&serde_json::Value) -> bool| record.iter().find(|l| pick(l)).unwrap()["seq"].as_u64();
-    assert!(
-        seq_of(&|l| l["payload"]["state"] == "opened")
-            < seq_of(&|l| l["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-    );
 
     host.shut_down();
 }
@@ -289,45 +212,6 @@ fn 변환기의_stdin을_닫으면_claude까지_끝난다() {
     assert!(status.success(), "변환기는 stdin EOF에 스스로 끝난다: {status}");
     assert_all_gone(&pids);
     assert!(sandbox.claude_events(&session_id).contains(&"stdin-eof".to_owned()), "claude가 stdin EOF를 받았다");
-}
-
-#[test]
-fn 기록에서_claude의_계정_이메일_플랜과_플러그인_경로가_가려진다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_ACCOUNT_EMAIL", "dana@example.com")]));
-    let conversation = host.new_conversation("cart", Agent::Claude).expect("Claude 새 대화");
-
-    // 첫 말을 보내면 claude가 `system/init`을 낸다 — 그 원문(플러그인 경로가 든다)이 세션 정보로 기록에 실린다.
-    host.send("cart", &conversation.id, "안녕").expect("보내기");
-    let record = sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "session_info_update")
-    });
-
-    // `initialize`의 계정 칸(이메일 · 조직 · 플랜)은 `<email>`이다(워크플로 함정 19). 나머지는 원문 그대로다.
-    let opened = record.iter().find(|line| line["payload"]["state"] == "opened").expect("열림 줄");
-    let initialize = &opened["payload"]["meta"]["claudeCode"]["initialize"];
-    assert_eq!(initialize["claude_code_version"], "2.1.296", "claude의 initialize 답이 열림 줄에 실린다");
-    let account = initialize["account"].as_object().expect("계정 칸");
-    assert!(!account.is_empty() && account.values().all(|value| value == "<email>"), "{account:?}");
-
-    // `system/init`의 `plugins[].path`에는 조직 · 계정 id가 실린다(실측 함정 39).
-    let info = record
-        .iter()
-        .find(|line| line["payload"]["update"]["sessionUpdate"] == "session_info_update")
-        .unwrap();
-    let init = &info["payload"]["update"]["_meta"]["claudeCode"]["init"];
-    assert_eq!((init["type"].as_str(), init["subtype"].as_str()), (Some("system"), Some("init")));
-    let plugins = init["plugins"].as_array().expect("plugins");
-    assert!(!plugins.is_empty() && plugins.iter().all(|plugin| plugin["path"] == "<path>"), "{plugins:?}");
-    assert!(plugins.iter().any(|plugin| plugin["name"] == "hookify"), "경로 말고는 원문 그대로다");
-
-    let text = std::fs::read_to_string(sandbox.record_path("cart", &conversation.id)).unwrap();
-    for secret in ["dana@example.com", "Claude Max", "/.claude/plugins/", "plugins/synced/"] {
-        assert!(!text.contains(secret), "기록에 `{secret}`가 남았다");
-    }
-
-    host.shut_down();
 }
 
 #[test]

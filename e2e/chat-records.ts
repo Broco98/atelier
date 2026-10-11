@@ -216,7 +216,7 @@ export function selfContinuedTurn(from: number, answer: string, durationMs: numb
 
 /**
  * 손으로 짓는 **스스로 이어 간 턴의 시작 표지**(S4, three-axes 티켓 16) — 변환기가 걸린 말 없이 claude의 턴 시작(`system/init`)을 받으면
- * 내는 `session_info_update{_meta.atelier.outOfTurn.state: "started"}`를 호스트가 update 줄로 적은 꼴이다(`translator.rs`의
+ * 내는 `session_info_update{_meta.atelier.outOfTurn.state: "started"}`를 호스트가 update 줄로 적은 꼴이다(`translator/machine.rs`의
  * `self_turn_started`). 첫 조각보다 먼저 온다.
  */
 export const selfTurnStarted = (seq: number): RecordLine =>
