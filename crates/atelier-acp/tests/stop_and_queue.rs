@@ -105,7 +105,7 @@ fn listed_queue(host: &atelier_acp::ConversationHost, slug: &str, id: &str) -> V
 }
 
 #[test]
-fn 턴이_도는_동안_보낸_말_둘이_대기_줄에_들어_이벤트와_목록에_서고_턴이_끝나면_차례로_간다() {
+fn 턴이_도는_동안_보낸_말이_대기_줄에_들어_이벤트와_목록에_서고_대기_id로_고치고_지우면_턴이_끝난_뒤_고친_글이_차례로_간다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);
     // 첫 턴을 검사가 놓을 때까지 붙잡는다. 놓은 뒤의 턴은 곧바로 끝난다.
@@ -115,67 +115,32 @@ fn 턴이_도는_동안_보낸_말_둘이_대기_줄에_들어_이벤트와_목�
     host.send("cart", &conversation.id, "첫 말").expect("첫 말");
     sandbox.wait_kind("cart", &conversation.id, "update", 1);
 
-    host.send("cart", &conversation.id, "둘째 말").expect("도는 동안의 말은 대기 줄에 든다");
-    host.send("cart", &conversation.id, "셋째 말").expect("도는 동안의 말은 대기 줄에 든다");
+    for text in ["둘째 말", "셋째 말", "넷째 말"] {
+        host.send("cart", &conversation.id, text).expect("도는 동안의 말은 대기 줄에 든다");
+    }
 
-    assert_eq!(events.queue_texts("cart", &conversation.id), [vec!["둘째 말"], vec!["둘째 말", "셋째 말"]]);
+    assert_eq!(
+        events.queue_texts("cart", &conversation.id),
+        [vec!["둘째 말"], vec!["둘째 말", "셋째 말"], vec!["둘째 말", "셋째 말", "넷째 말"]]
+    );
     let queue = listed_queue(&host, "cart", &conversation.id);
-    assert_eq!(queue, events.queues("cart", &conversation.id)[1], "목록의 대기 줄이 마지막 이벤트와 같다");
+    assert_eq!(queue, events.queues("cart", &conversation.id)[2], "목록의 대기 줄이 마지막 이벤트와 같다");
     assert!(queue.iter().all(|queued| !queued.send_now) && queue[0].id != queue[1].id, "{queue:?}");
     assert_eq!(sent_texts(&sandbox.record("cart", &conversation.id)), ["첫 말"], "대기 줄은 기록에 없다(메모리에만 둔다)");
     assert_eq!(sandbox.acp_prompts(&session_id).len(), 1, "도는 동안에는 에이전트에 가지 않는다");
 
-    sandbox.release_turn(&session_id);
-
-    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 3);
-    let kinds: Vec<&str> = record.iter().map(|line| line["kind"].as_str().unwrap()).skip_while(|kind| *kind != "sent").collect();
-    let one_turn = ["sent", "update", "update", "turn-end"];
-    assert_eq!(kinds, one_turn.repeat(3), "앞 턴이 끝난 뒤에 다음 말이 간다:\n{}", common::lines_text(&record));
-    assert_eq!(sent_texts(&record), ["첫 말", "둘째 말", "셋째 말"]);
-    assert!(of_kind(&record, "sent").iter().all(|line| line["payload"]["sendNow"] == json!(false)));
-    let prompts: Vec<_> = sandbox.acp_prompts(&session_id).into_iter().map(|prompt| prompt["prompt"].clone()).collect();
-    assert_eq!(
-        prompts[1..],
-        [json!([{"type": "text", "text": "둘째 말"}]), json!([{"type": "text", "text": "셋째 말"}])],
-        "대기 줄의 말도 같은 세션의 다음 말이라 머리말이 없다"
-    );
-    assert_eq!(
-        events.queue_texts("cart", &conversation.id)[2..],
-        [vec!["셋째 말"], vec![]],
-        "하나씩 갈 때마다 대기 줄 바뀜이 난다"
-    );
-    assert_eq!(listed_queue(&host, "cart", &conversation.id), []);
-
-    host.shut_down();
-}
-
-#[test]
-fn 대기_줄의_말을_대기_id로_고치고_지우면_대기_줄과_이벤트에_서고_턴이_끝나면_고친_글이_간다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let (host, events) = sandbox.host_with_events(sandbox.codex_login_shell("pauses-mid-turn", &[]));
-    let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let session_id = sandbox.agent_session_id("cart", &conversation.id);
-    host.send("cart", &conversation.id, "첫 말").expect("첫 말");
-    sandbox.wait_kind("cart", &conversation.id, "update", 1);
-    for text in ["가", "나", "다"] {
-        host.send("cart", &conversation.id, text).expect("대기 줄에 든다");
-    }
-    let queue = listed_queue(&host, "cart", &conversation.id);
-
-    host.edit_queued("cart", &conversation.id, &queue[1].id, "나를 고쳤다").expect("고치기");
+    host.edit_queued("cart", &conversation.id, &queue[1].id, "셋째 말을 고쳤다").expect("고치기");
     host.delete_queued("cart", &conversation.id, &queue[0].id).expect("지우기");
 
     assert_eq!(
         events.queue_texts("cart", &conversation.id)[3..],
-        [vec!["가", "나를 고쳤다", "다"], vec!["나를 고쳤다", "다"]],
+        [vec!["둘째 말", "셋째 말을 고쳤다", "넷째 말"], vec!["셋째 말을 고쳤다", "넷째 말"]],
         "고치기 · 지우기마다 대기 줄 바뀜이 난다"
     );
-    let after = listed_queue(&host, "cart", &conversation.id);
     assert_eq!(
-        after,
+        listed_queue(&host, "cart", &conversation.id),
         [
-            QueuedMessage { id: queue[1].id.clone(), text: "나를 고쳤다".into(), send_now: false },
+            QueuedMessage { id: queue[1].id.clone(), text: "셋째 말을 고쳤다".into(), send_now: false },
             queue[2].clone(),
         ],
         "고쳐도 대기 id와 차례는 그대로다"
@@ -194,9 +159,23 @@ fn 대기_줄의_말을_대기_id로_고치고_지우면_대기_줄과_이벤트
     sandbox.release_turn(&session_id);
 
     let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 3);
-    assert_eq!(sent_texts(&record), ["첫 말", "나를 고쳤다", "다"]);
-    let prompts = sandbox.acp_prompts(&session_id);
-    assert_eq!(prompts[1]["prompt"], json!([{"type": "text", "text": "나를 고쳤다"}]), "에이전트에도 고친 글이 간다");
+    let kinds: Vec<&str> = record.iter().map(|line| line["kind"].as_str().unwrap()).skip_while(|kind| *kind != "sent").collect();
+    let one_turn = ["sent", "update", "update", "turn-end"];
+    assert_eq!(kinds, one_turn.repeat(3), "앞 턴이 끝난 뒤에 다음 말이 간다:\n{}", common::lines_text(&record));
+    assert_eq!(sent_texts(&record), ["첫 말", "셋째 말을 고쳤다", "넷째 말"]);
+    assert!(of_kind(&record, "sent").iter().all(|line| line["payload"]["sendNow"] == json!(false)));
+    let prompts: Vec<_> = sandbox.acp_prompts(&session_id).into_iter().map(|prompt| prompt["prompt"].clone()).collect();
+    assert_eq!(
+        prompts[1..],
+        [json!([{"type": "text", "text": "셋째 말을 고쳤다"}]), json!([{"type": "text", "text": "넷째 말"}])],
+        "에이전트에도 고친 글이 가고, 대기 줄의 말도 같은 세션의 다음 말이라 머리말이 없다"
+    );
+    assert_eq!(
+        events.queue_texts("cart", &conversation.id)[5..],
+        [vec!["넷째 말"], vec![]],
+        "하나씩 갈 때마다 대기 줄 바뀜이 난다"
+    );
+    assert_eq!(listed_queue(&host, "cart", &conversation.id), []);
 
     host.shut_down();
 }

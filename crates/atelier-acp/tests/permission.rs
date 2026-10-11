@@ -236,35 +236,6 @@ fn deny_cancels_거부하면_turn_end가_cancelled이고_우리가_멈춤이_fal
 }
 
 #[test]
-fn 권한이_걸린_동안_대기_줄은_가지_않고_답한_뒤_턴이_끝나면_간다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let (host, events) = sandbox.host_with_events(sandbox.codex_login_shell("asks-permission", &[]));
-    let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    let session_id = sandbox.agent_session_id("cart", &conversation.id);
-    host.send("cart", &conversation.id, "첫 말").expect("첫 말");
-    sandbox.wait_record("cart", &conversation.id, asked_and_flowing);
-
-    host.send("cart", &conversation.id, "둘째 말").expect("권한이 걸린 동안의 말은 대기 줄에 든다");
-
-    assert_eq!(events.queue_texts("cart", &conversation.id), [vec!["둘째 말"]]);
-    assert_eq!(sandbox.acp_prompts(&session_id).len(), 1, "걸린 동안에는 에이전트에 가지 않는다");
-
-    host.answer_permission("cart", &conversation.id, "0", "allow_once").expect("권한 답");
-
-    // 둘째 말의 턴도 권한을 묻는다 — 그 물음까지 적히면 둘째 말이 간 것이다.
-    let record = sandbox.wait_kind("cart", &conversation.id, "permission", 3);
-    assert_eq!(sent_texts(&record), ["첫 말", "둘째 말"]);
-    let kinds: Vec<&str> = record.iter().map(|line| line["kind"].as_str().unwrap()).collect();
-    let first_end = kinds.iter().position(|kind| *kind == "turn-end").expect("첫 턴의 끝");
-    let second_sent = kinds.iter().rposition(|kind| *kind == "sent").unwrap();
-    assert!(first_end < second_sent, "대기 말은 답한 뒤 첫 턴이 끝나고서야 간다:\n{}", common::lines_text(&record));
-    assert_eq!(events.queue_texts("cart", &conversation.id).last(), Some(&Vec::<String>::new()));
-
-    host.shut_down();
-}
-
-#[test]
 fn 턴_밖에서_걸린_권한도_대기_줄을_붙잡고_답하는_자리에서_대기_줄이_간다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);

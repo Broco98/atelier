@@ -1383,6 +1383,23 @@ mod tests {
     }
 
     #[test]
+    fn 턴_도중에_걸린_권한에_답해도_대기_줄은_그_턴의_끝을_기다렸다가_간다() {
+        let mut rig = Rig::new();
+        rig.say("첫 말").unwrap();
+        rig.hands.permission = true;
+        rig.say("둘째 말").unwrap();
+        assert_eq!(rig.since(2), [queue(&["둘째 말"])], "걸린 동안의 말은 대기 줄에 든다");
+
+        let mark = rig.mark();
+        rig.seat().answer("0", "allow_once").unwrap();
+        assert_eq!(rig.since(mark), [Did::Answer], "답해도 우리 턴이 돈다");
+
+        let mark = rig.mark();
+        rig.seat().turn_ended(ended("end_turn")).unwrap();
+        assert_eq!(plain(rig.since(mark)), [Did::Changes(901, 1), turn_end(), sent("둘째 말"), Did::Prompt, queue(&[])]);
+    }
+
+    #[test]
     fn 겹친_턴은_우리_턴이_끝나도_턴_밖_턴이_대기_줄을_붙잡고_그_끝이_새로_찍어_보낸다() {
         let mut rig = Rig::new();
         rig.say("첫 말").unwrap();
