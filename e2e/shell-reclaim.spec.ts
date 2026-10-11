@@ -213,6 +213,9 @@ test("한글만 친 셸은 떠나도 남는다 — IME 다리가 보낸 조합�
   await expect.poll(() => callCount(page, "pty_first_input")).toBe(1);
 
   await toTerminal(page);
+  // 최상위 터미널의 자동 셸(pty 2)이 뜬 뒤에 떠난다 — 뜨기 전에 떠나면 닫을 셸이 아직 없어 아래 앵커가 빈 채로 멎는다.
+  await expect(칸들(page)).toHaveCount(1);
+  await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
   await toWork(page, pinnedWork);
   // **앵커** — 최상위 터미널의 입력 없는 자동 셸은 닫혔다.
   await expect.poll(() => killed(page), { message: "앵커: 자동 셸이 안 닫혔다" }).toEqual([2]);
@@ -240,6 +243,9 @@ test("붙여넣기만 한 셸도 떠나도 남는다", async ({ page }) => {
   await expect.poll(() => callCount(page, "pty_first_input")).toBe(1);
 
   await toTerminal(page);
+  // 최상위 터미널의 자동 셸(pty 2)이 뜬 뒤에 떠난다 — 뜨기 전에 떠나면 닫을 셸이 아직 없어 아래 앵커가 빈 채로 멎는다.
+  await expect(칸들(page)).toHaveCount(1);
+  await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
   await toWork(page, pinnedWork);
   await expect.poll(() => killed(page), { message: "앵커: 자동 셸이 안 닫혔다" }).toEqual([2]);
   await expect(칸들(page)).toHaveCount(1);
