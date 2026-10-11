@@ -49,14 +49,13 @@ function RailShowcase() {
       sidebarOpen
       head={{ icon: Zap, name: "진열대" }}
       rail={{
-        open: state.open,
-        onToggle: () => setState((now) => ({ ...now, open: !now.open })),
         items: TWO_VIEWS,
         active: state.active,
         onPick: (id) => setState((now) => pickRail(now, id)),
       }}
       panel={{
         open: state.open,
+        onToggle: () => setState((now) => ({ ...now, open: !now.open })),
         size,
         label: "진열대 패널",
         children: (

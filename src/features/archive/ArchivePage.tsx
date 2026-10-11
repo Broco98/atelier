@@ -1,20 +1,30 @@
-import { useCallback, useState } from "react";
-import { Archive, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Archive, FolderOpen, MoreHorizontal, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Toaster, showToast } from "@/components/ui/toast";
-import { Card, Frame } from "@/components/shell/Frame";
+import { Hint } from "@/components/ui/tooltip";
+import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
+import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { togglesPanel } from "@/components/shell/PanelToggle";
 import { PathBar } from "@/components/shell/PathBar";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
+import SpecTree from "@/features/works/SpecTree";
 import { docBody, ignoresViewSwitch } from "@/features/works/doc-refs";
 import type { DocBody } from "@/features/works/doc-refs";
-import { archiveRef } from "@/features/works/refs";
-import { formatCreated, STATUS_BADGE, STATUS_META } from "@/features/works/status";
+import { archiveRef, archiveSpecDirRef } from "@/features/works/refs";
+import { STATUS_BADGE, STATUS_META } from "@/features/works/status";
+import { archiveApi } from "./api";
 import { ARCHIVE_COPY } from "./archive-copy";
+import { archivedDayText } from "./archive-days";
+import { archiveTreeItems } from "./archive-tree";
 import ArchiveList from "./ArchiveList";
+import { ArchiveMenuItems } from "./ArchiveMenuItems";
 import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
+import type { ArchivedDocs } from "./types";
 
 interface ArchivePageProps {
   sidebarOpen: boolean;
@@ -22,7 +32,9 @@ interface ArchivePageProps {
   // 보고 있는 문서는 주소가 정본이다 — 여기서 들면 문서를 옮긴 자취가 히스토리에 남지 않아
   // 링크를 따라 들어간 뒤 뒤로가기가 아카이브 전체를 건너뛴다 (Works와 같은 근거).
   currentFile: string | null;
-  // 목록에서 문서를 고르는 것은 아카이브를 고르는 것이기도 하다 — 둘을 함께 넘긴다
+  // 목록 행을 누르면 그 아카이브를 고른다 — 주소를 옮기는 것은 라우트다
+  onSelect: (slug: string) => void;
+  // spec 목록 패널의 트리에서 문서를 고른다 — 어느 아카이브의 문서인지 함께 넘긴다(주소가 둘을 함께 든다)
   onSelectDoc: (slug: string, path: string) => void;
   // 본문 링크는 지금 아카이브 안에서만 움직인다
   onFollowLink: (path: string) => void;
@@ -35,13 +47,15 @@ const NO_DOCS: string[] = [];
 /** 이 화면의 nav 항목 — 고른 아카이브가 없을 때 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("archive");
 
-// 목록 | 문서 한 카드(codex-ds 결정 28). Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
-// (nav 항목 하나뿐) 목록 칸이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
-// 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
+// 목록 | 문서 한 카드(codex-ds 결정 28)와 오른쪽 spec 목록 패널. Projects와 같은 2단 카드다 — 아카이브 목록은 사이드바에 상주하지
+// 않으므로(nav 항목 하나뿐) 목록 칸이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의** 목록 컬럼이고, 그 근거는 같은
+// 목록이 사이드바에 이미 있다는 것이었다. 고른 아카이브의 문서 트리는 따로 여닫는 패널에 선다 — 작업 화면의 작업 패널과 같은
+// 손이다(스토리 55 · 56, codex-ds 결정 32).
 function ArchivePage({
   sidebarOpen,
   selectedSlug,
   currentFile,
+  onSelect,
   onSelectDoc,
   onFollowLink,
 }: ArchivePageProps) {
@@ -54,7 +68,7 @@ function ArchivePage({
 
   // 문서 목록도 같다 — `[]`가 "문서가 없다"와 "아직 모른다"를 겸한다. 겸하게 두면
   // `current`가 null이 되어 본문이 "남은 문서가 없어요"를 띄운다 (결정 30과 같은 결함).
-  // 답에는 spec 트리도 실려 오지만 이 화면이 쓰는 것은 목록뿐이다 — 트리는 목록 칸이 그린다.
+  // 답에는 spec 트리도 실려 온다 — 본문이 목록을, spec 목록 패널이 트리를 한 답에서 읽는다.
   const { data: archived, isPending: docsPending } = useArchivedDocs(selected?.slug ?? null);
   const docs = archived?.docs ?? NO_DOCS;
   // 고른 문서가 **어느 아카이브의 것인지**는 이제 주소가 함께 들고 있다 — 아카이브를 옮길 때
@@ -76,9 +90,32 @@ function ArchivePage({
   const { data: content } = useArchivedFile(selected?.slug ?? null, body === "image" ? null : current);
 
   // 목록 칸의 폭 — 프로젝트 목록(`panel-width`)과 키를 나눠 갖지 않는다(`ArchiveList` 머리말). 기본은 DS `size-list`(264)이고 범위는
-  // 240–560이다(codex-ds 스펙 S4). 목록 칸은 접지 않는다(codex-ds 결정 32) — 지금 이 화면에는 ⌘Enter를 듣는 자리가 없다(그 키로
-  // spec 목록 패널을 여닫는 것은 codex-ds 티켓 21이다).
+  // 240–560이다(codex-ds 스펙 S4). 목록 칸은 접지 않는다(codex-ds 결정 32) — ⌘Enter는 아래 spec 목록 패널의 것이다.
   const listSize = useResizableWidth("archive-panel-width", 264, 240, 560);
+
+  // spec 목록 패널 — 오른쪽에 따로 여닫는 패널 카드다(codex-ds 결정 28 · 32). 머리 카드의 spec 목록 토글과 ⌘Enter가 이 값 하나를
+  // 뒤집는다. 처음에는 열려 있다(DS 캔버스 Archive). 저장하지 않는다 — 작업 패널의 열림도 저장하지 않는다(`WorksPage`). 아카이브를 옮겨도
+  // 같은 인스턴스라 이 값이 그대로 따라온다.
+  const [panelOpen, setPanelOpen] = useState(true);
+  // 패널 카드의 폭 — 작업 패널과 같은 규격(기본 DS `size-panel` 340 · 범위 260–560, codex-ds 스펙 S4)이고 저장 키는 이 패널 전용이다.
+  // 같은 키를 쓰면 두 화면의 패널이 서로의 폭을 덮는다. 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 선다.
+  const panelSize = useResizableWidth("archive-spec-panel-width", WORK_PANEL_WIDTH, 260, 560, "right");
+  // 패널이 서는가 — 고른 아카이브가 있을 때만이다(그 아카이브의 문서 트리를 든다). 없으면 패널도 머리 카드의 토글도 없다.
+  const hasPanel = selected !== null;
+
+  // ⌘Enter — spec 목록 패널을 여닫는다(codex-ds 결정 32 「⌘Enter는 그 화면의 오른쪽 패널」). 판정은 작업 화면의 ⌘Enter와 한 벌이다
+  // (`togglesPanel` — 머리 카드의 패널 토글 곁에 산다) — 입력칸(찾기 칸)이나 편집 가능한 자리에 포커스가 있으면 그쪽 몫이다. 패널이
+  // 없으면 듣지 않는다.
+  useEffect(() => {
+    if (!hasPanel) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!togglesPanel(e)) return;
+      e.preventDefault();
+      setPanelOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hasPanel]);
 
   // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
   const copyText = useCallback((text: string) => {
@@ -97,15 +134,15 @@ function ArchivePage({
   );
 
   // 접을 수 있는 것을 모두 접어 화면을 비웠으면 본문이 넓은 글 폭을 쓴다(SpecViewer의 `bodyColumn` — Works 쪽도 같은 규칙). 이 화면의
-  // 접이식은 사이드바 하나다 — 목록 칸은 접지 않는 카드 안 칸이라(codex-ds 결정 28 · 32) 곁에 서 있어도 넓게를 막지 않는다.
-  const wide = !sidebarOpen;
+  // 접이식은 사이드바와 spec 목록 패널 둘이다 — 목록 칸은 접지 않는 카드 안 칸이라(codex-ds 결정 28 · 32) 곁에 서 있어도 넓게를 막지
+  // 않는다.
+  const wide = !sidebarOpen && !panelOpen;
 
   const meta = selected && STATUS_META[selected.status];
   // 머리 카드 이름 뒤의 옅은 글자 — 그 work가 걸쳤던 프로젝트와 치운 날이다(DS `.at-winhead .sub`). 문서 카드의 머리 자리를 경로 줄이
-  // 갖게 되어 옛 카드 머리의 꼬리표 · 날짜가 이리 왔다. 둘 다 없으면 서지 않는다.
-  const about = selected
-    ? [...selected.projects, ...(selected.archivedAt ? [`${formatCreated(selected.archivedAt)}에 치움`] : [])].join(" · ")
-    : "";
+  // 갖게 되어 옛 카드 머리의 꼬리표 · 날짜가 이리 왔다. 둘 다 없으면 서지 않는다. 날짜는 목록 행의 날짜와 같은 글자다(`archivedDayText`).
+  const day = selected && archivedDayText(selected.archivedAt);
+  const about = selected ? [...selected.projects, ...(day ? [`${day}에 치움`] : [])].join(" · ") : "";
 
   // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
   // 여기가 컴파일에서 깨진다. 마지막을 `else`로 두면 새 칸이 **조용히 소스 보기로** 떨어지고
@@ -152,21 +189,27 @@ function ArchivePage({
   };
 
   return (
-    // 공용 틀 위의 목록 | 문서 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 아카이브의 머리 카드가
-    // 선다(codex-ds 스펙 §7).
+    // 공용 틀 위의 목록 | 문서 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다)와 오른쪽 spec 목록 패널 카드. 머리 줄에는
+    // 고른 아카이브의 머리 카드가 선다(codex-ds 스펙 §7).
     <Frame
       sidebarOpen={sidebarOpen}
       // 머리 카드 — 왼쪽은 ⚡(work 아이콘 — 아카이브한 것도 work다)와 그 제목 · 프로젝트 · 치운 날이고, 고른 것이 없으면 nav의 화면
       // 이름 · 아이콘이다.
-      // 오른쪽은 치운 때의 상태 배지다(스토리 57). 배지는 보이기만 한다 — 작업 화면의 배지와 달리 상태를 바꾸는 메뉴가
-      // 없다(아카이브는 치운 시점 그대로다). 캔버스의 「되살리기」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 결정 31). ⋯ 아카이브
-      // 메뉴와 세로선 너머의 spec 목록 토글은 codex-ds 티켓 21이다.
+      // 오른쪽은 치운 때의 상태 배지와 ⋯ 아카이브 메뉴이고(스토리 57), 세로선 너머 맨 끝에 spec 목록 토글이 선다 — 토글은 틀이 패널
+      // 칸에서 짓는다(`Frame`의 `PanelSlot`). 배지는 보이기만 한다 — 작업 화면의 배지와 달리 상태를 바꾸는 메뉴가 없다(아카이브는
+      // 치운 시점 그대로다). 캔버스의 「되살리기」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 결정 31).
       head={{
         icon: selected ? Zap : PLACE.icon,
         name: selected?.title ?? PLACE.label,
         sub: about ? [about] : undefined,
-        // 배지의 모양은 작업 화면 배지와 한 규격이다(DS `StatusBadge` — 24 · 점 · 글자).
-        actions: meta && <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>,
+        actions: selected && meta && (
+          <>
+            {/* 배지의 모양은 작업 화면 배지와 한 규격이다(DS `StatusBadge` — 24 · 점 · 글자). */}
+            <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>
+            {/* 아카이브를 옮기면 메뉴를 새로 세운다(`key`) — 열어 둔 채 옮기면 화면에 보이는 것과 다른 아카이브를 겨눈다. */}
+            <ArchiveMenu key={selected.slug} slug={selected.slug} onCopy={copyText} />
+          </>
+        ),
       }}
       list={{
         size: listSize,
@@ -176,14 +219,32 @@ function ArchivePage({
             entries={entries}
             selectedSlug={selected?.slug ?? null}
             loading={entriesPending}
-            currentDoc={current}
-            // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
-            // 둘은 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
-            onSelectDoc={onSelectDoc}
-            onCopyDoc={(docSlug, path) => copyText(archiveRef(docSlug, path))}
+            onSelect={onSelect}
           />
         ),
       }}
+      // spec 목록 패널(codex-ds 스펙 §7 「Archive」) — 고른 아카이브의 문서 트리다. 바깥 상자가 둘째 `aside`이고 220ms로 여닫힌다(공용 틀의
+      // 패널 칸 — 작업 패널과 같은 칸이다). 이름 「spec 목록」은 카드의 이름이자 머리 카드 토글의 앞말이다(「spec 목록 접기」).
+      panel={
+        selected
+          ? {
+              open: panelOpen,
+              onToggle: () => setPanelOpen((open) => !open),
+              size: panelSize,
+              label: "spec 목록",
+              children: (
+                <SpecListPanel
+                  slug={selected.slug}
+                  archived={archived}
+                  current={current}
+                  // 트리에서 문서를 고르면 그 아카이브와 문서가 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
+                  onSelect={(path) => onSelectDoc(selected.slug, path)}
+                  onCopy={(path) => copyText(archiveRef(selected.slug, path))}
+                />
+              ),
+            }
+          : undefined
+      }
       // 토스트의 자리 — 카드 줄의 아래 가운데다(판 04 「덮는 것의 기준 상자」). 작업 화면과 같은 부품이고 같은 상자에 선다.
       overlay={<Toaster />}
     >
@@ -212,8 +273,8 @@ function ArchivePage({
                 locked: current === null || ignoresViewSwitch(current),
                 onChange: setShowSource,
               }}
-              // 목록 행의 경로 복사와 같은 값이다(`archiveRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더 생긴 것이다. 가리킬
-              // 문서가 없으면 서지 않는다(결정 11 · 21).
+              // spec 목록 패널의 트리 행이 복사하는 것과 같은 값이다(`archiveRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더
+              // 생긴 것이다. 가리킬 문서가 없으면 서지 않는다(결정 11 · 21).
               onCopy={current ? () => copyText(archiveRef(selected.slug, current)) : undefined}
             />
           )
@@ -262,6 +323,104 @@ function ArchivePage({
         </div>
       </Card>
     </Frame>
+  );
+}
+
+/**
+ * 아카이브된 work의 spec 폴더를 Finder에서 연다(codex-ds 스펙 S6) — 머리 카드 ⋯의 「Finder에서 열기」와 spec 목록 패널 머리의 「spec 폴더
+ * 열기」가 부른다. 못 열면(폴더가 없는 아카이브 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 — work 메뉴의 Finder 열기와 같은
+ * 말이다(`WorksPage`의 `openWorkFolder`).
+ */
+function openArchivedSpecFolder(slug: string): void {
+  archiveApi.openSpecFolder(slug).catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
+}
+
+// 머리 카드의 ⋯ — 아카이브 메뉴(codex-ds 결정 16 「Archive 목록 행」 · 스펙 §7). 무엇을 어떤 차례로 보이는지는 메뉴 정의
+// (`ArchiveMenuItems`)가 들고, 여기는 그 항목이 부르는 동작을 잇는다: Finder 열기와 spec 폴더 경로 복사. 모양과 여닫이는 작업 화면의
+// ⋯(`WorksPage`의 `WorkMenu`)와 같다 — 위 줄의 24 아이콘 버튼이고 펼친 동안 켜진 면이다. 머리 카드 안이고 버튼이라 창 끌기 영역이 아니다.
+function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) => void }) {
+  // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
+  const [open, setOpen] = useState(false);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <Hint
+        text="아카이브 메뉴"
+        announce="name"
+        render={
+          <DropdownMenuTrigger
+            className={cn(
+              "icon-button icon-button-xs transition-colors focus-ring",
+              open ? "toggle-on" : "text-fg-tertiary quiet-hover",
+            )}
+          />
+        }
+      >
+        <MoreHorizontal className="size-4" />
+      </Hint>
+      <DropdownMenuContent>
+        <ArchiveMenuItems
+          actions={{
+            openFolder: () => openArchivedSpecFolder(slug),
+            // 「Finder에서 열기」가 여는 폴더의 참조다(`refs.ts` — 끝에 `/`).
+            copyPath: () => onCopy(archiveSpecDirRef(slug)),
+          }}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * spec 목록 패널의 카드 안(codex-ds 스펙 §7 「Archive」 · DS `.at-panel`) — 머리 「spec」 · spec 폴더 열기와 고른 아카이브의 문서 트리.
+ * 작업 패널(`WorkPanel`)과 같은 짜임이다: 머리는 패널 머리(46 — 카드 머리 `--card-head`)이고 카드에 고정되며, 세로 스크롤은 몸
+ * 안에서만 돈다. 머리 제목은 DS 패널 머리 제목(14/20 · 500)이고 글자가 카드 + 16에 선다(머리 여백 10 + 제목 안쪽 6).
+ *
+ * 트리는 기록 행 곁의 `spec/` 행 아래에 받은 spec 트리를 얹은 것이다(`archiveTreeItems` — 경로는 work 폴더 기준이라 선택 표시 · 복사 ·
+ * 읽기가 그대로 쓴다). 한때 목록 행 안에 펼쳐졌는데 목록이 문서에 파묻혀 이 패널로 옮겼다(스토리 55). **아카이브마다 새로 선다**
+ * (`key`) — 손으로 접은 폴더는 그 아카이브를 보는 동안만 산다. 아카이브끼리는 같은 이름의 폴더(판 폴더 · `tickets`)가 흔해, 이어
+ * 받으면 처음 보는 아카이브가 남의 접힘으로 뜬다.
+ */
+function SpecListPanel({
+  slug,
+  archived,
+  current,
+  onSelect,
+  onCopy,
+}: {
+  slug: string;
+  /** 그 아카이브의 문서 답 — 아직 안 왔으면 `undefined`다. 도착 전에는 아무 말도 하지 않는다(빈 트리와 「아직 모른다」를 가른다). */
+  archived: ArchivedDocs | undefined;
+  current: string | null;
+  onSelect: (path: string) => void;
+  /** work 폴더 기준 경로를 받는다 — 참조 문자열 조립은 부르는 쪽이 한다. */
+  onCopy: (path: string) => void;
+}) {
+  const items = useMemo(() => (archived ? archiveTreeItems(archived) : []), [archived]);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col pb-2">
+      <CardHead
+        end={
+          <Hint
+            text="spec 폴더 열기"
+            announce="name"
+            type="button"
+            onClick={() => openArchivedSpecFolder(slug)}
+            className="icon-button-quiet text-fg-secondary focus-ring"
+          >
+            <FolderOpen className="size-4" />
+          </Hint>
+        }
+      >
+        <span className="px-1.5 text-sm font-medium">spec</span>
+      </CardHead>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
+        {archived === undefined ? null : items.length === 0 ? (
+          <span className="px-2 py-1.5 text-chat-meta text-fg-tertiary">남은 문서가 없어요</span>
+        ) : (
+          <SpecTree key={slug} items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
+        )}
+      </div>
+    </div>
   );
 }
 

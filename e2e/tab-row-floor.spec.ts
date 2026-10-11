@@ -362,6 +362,9 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
 // (`Frame`의 `ListCard`). 앱 창의 최소 폭(900)에 사이드바를 400으로 넓혀 두면 카드가 492라 560 목록 칸이 들지 않는다. 그 칸이
 // 제 폭을 고집하면 카드가 넘침을 잘라 내용 칸이 0으로 눌리고, 세로 선과 그 위의 손잡이도 카드 밖으로 잘려 끌어 되돌릴 길이 없다
 // — 목록 칸은 접지 않아(codex-ds 결정 32) 접어서 치울 길도 없다.
+//
+// Archive는 그 카드 곁에 고른 아카이브의 spec 목록 패널이 열린 채 선다(codex-ds 티켓 21). 그 패널은 카드에 두 칸의 최소를 남기고,
+// 모자라면 제 최소 폭 아래로도 내준다(`Frame`의 `PanelBox` — 걷을 수 있는 칸이 진다). 그래서 두 화면의 셈이 같다.
 const LIST_RANGE = { min: 240, max: 560 };
 
 for (const screen of [
@@ -407,6 +410,8 @@ for (const screen of [
     const says = JSON.stringify(narrow);
     // 앵커: 이 창에서는 정말 모자랐다 — 넉넉했으면 아래 셈은 아무것도 안 잰다.
     expect(narrow.card.width, says).toBeLessThan(LIST_RANGE.max + LIST_RANGE.min);
+    // 카드는 두 칸의 최소만큼은 선다 — 곁의 패널(Archive)이 그 자리를 먹지 않는다.
+    expect(narrow.card.width, says).toBeGreaterThanOrEqual(LIST_RANGE.min * 2);
     // 내용 칸이 카드 오른쪽 끝까지 서고 최소 폭을 지킨다. 목록 칸은 그 나머지라 저장한 폭보다 좁다.
     expect(narrow.main.right, says).toBe(narrow.card.right);
     expect(narrow.main.width, says).toBe(LIST_RANGE.min);
@@ -415,9 +420,10 @@ for (const screen of [
     expect(narrow.handleAt, says).toBe(narrow.list.right);
     expect(narrow.handleHit, says).toBe(true);
 
-    // 줄어든 것은 그려진 폭뿐이다 — 저장한 폭은 그대로라 창을 넓히면 돌아온다.
+    // 줄어든 것은 그려진 폭뿐이다 — 저장한 폭은 그대로라 창을 넓히면 돌아온다. 넓힌 창은 곁의 패널이 제 폭으로 서고도 560 목록
+    // 칸과 내용 칸의 최소가 드는 폭이다(Archive — 1280이면 패널을 빼고 카드가 534라 560이 안 든다).
     expect(await page.evaluate((key) => localStorage.getItem(key), screen.key)).toBe(String(LIST_RANGE.max));
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.setViewportSize({ width: 1920, height: 800 });
     await expect.poll(async () => (await joined()).list.width).toBe(LIST_RANGE.max);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });

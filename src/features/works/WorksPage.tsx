@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
+import { togglesPanel } from "@/components/shell/PanelToggle";
 import { pickRail } from "@/components/shell/Rail";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
@@ -93,46 +94,6 @@ interface WorksPageProps {
 }
 
 /**
- * ⌘Enter가 **작업 패널 몫인가** (결정 43).
- *
- * 앞 판은 이 판단에 `tab === "terminal"`을 얹어 두었다 — 「여는 길은 버튼 하나」(결정 35)의
- * 부산물이었는데, 패널이 이 화면으로 올라오면서 터미널 탭에서도 트리·패널에 포커스가 갈 수
- * 있게 됐다. 그 상태에서 안 듣는 것이 앞 판이 「알려진 비대칭」으로 남긴 구멍이다. 그 줄을
- * 지운다.
- *
- * **셸 안에 포커스가 있으면 여전히 셸 몫이다**(결정 29). 아래 `HTMLTextAreaElement` 가드가
- * 그것을 그대로 지킨다 — **xterm의 입력 자리가 바로 숨은 `<textarea>`**이기 때문이다
- * (`@xterm/xterm`의 `Terminal.textarea`가 `HTMLTextAreaElement`이고, 실제 요소는
- * `document.createElement("textarea")`로 만든 `.xterm-helper-textarea`다 — 둘 다 소스에서 확인함).
- * 셸이 이 키를 삼키지도 않는다: `shellHotkey`가 아는 것은 ⌘T·⌘W 둘뿐이라
- * `attachCustomKeyEventHandler`가 `true`를 돌려주고, 이벤트는 window까지 올라온다.
- *
- * **함수로 꺼낸 이유는 테스트다.** 이 저장소의 컴포넌트 seam은 정적 마크업이라 이펙트가
- * 돌지 않고 키 이벤트도 없다 — 핸들러 안에 두면 소스를 문자열로 훑는 검사밖에 못 건다.
- * 구조적 이벤트 형태를 받는 순수 함수는 `shellHotkey`가 이미 쓰는 방식이고, 그쪽과 같은
- * 이유로 여기도 그렇게 둔다.
- */
-export function togglesWorkPanel(event: {
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  key: string;
-  target: EventTarget | null;
-}): boolean {
-  if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey || event.key !== "Enter")
-    return false;
-  const target = event.target as HTMLElement;
-  if (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target.isContentEditable
-  )
-    return false;
-  return true;
-}
-
-/**
  * ⌘W가 겨누는 칸 — **켜진 탭**이다(결정 13). 닫을 것이 없으면 `null`이다.
  *
  * 「켜진 탭이 무엇인가」는 이 화면만 안다. 두 갈래로 `null`이 나온다:
@@ -148,7 +109,7 @@ export function togglesWorkPanel(event: {
  * 화면에는 「셸이 설 자리가 없는 상태」가 있고, 그것을 「닫을 것이 없다」로 옮기는 자리가
  * 여기 하나다.
  *
- * **함수로 꺼낸 이유는 테스트다**(위 `togglesWorkPanel`과 같다). 이 저장소의 컴포넌트
+ * **함수로 꺼낸 이유는 테스트다**(⌘Enter의 `togglesPanel`과 같다). 이 저장소의 컴포넌트
  * seam은 정적 마크업이라 이펙트가 돌지 않고 키 이벤트도 없다 — 핸들러 안에 두면 소스를
  * 문자열로 훑는 검사밖에 못 걸고, 그 검사는 가드 한 줄이 뒤집혀도 초록이다(실측으로
  * 확인했다: 핸들러 첫 줄에 `return`을 얹어도 리터럴 검사가 전부 통과했다).
@@ -232,13 +193,13 @@ function WorksPage({
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
   //
   // **두 탭 모두에서 듣는다**(결정 43). 한때 여기 있던 터미널 탭 가드 한 줄 — 탭만 보고
-  // 그냥 돌아가던 것 — 을 지웠다. 어느 경우가 셸 몫인지는 `togglesWorkPanel`이 혼자 알고,
-  // 그 판단은 탭이 아니라 **포커스**로 갈린다. `tab`을 안 보므로 의존성도 비었다.
+  // 그냥 돌아가던 것 — 을 지웠다. 어느 경우가 셸 몫인지는 `togglesPanel`이 혼자 알고(패널 토글 곁 — Archive의 ⌘Enter와
+  // 한 벌이다), 그 판단은 탭이 아니라 **포커스**로 갈린다. `tab`을 안 보므로 의존성도 비었다.
   //
   // (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가 주석까지 읽는다.)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!togglesWorkPanel(e)) return;
+      if (!togglesPanel(e)) return;
       e.preventDefault();
       setWorkPanelOpen((open) => !open);
     };
@@ -342,7 +303,7 @@ function WorksPage({
   // **⌘W는 안 넓힌다** — 「이 칸을 닫는다」는 겨눌 칸이 있어야 한다.
   //
   // 언제 비켜야 하는지는 `opensShellFromWindow`가 혼자 안다(제목 편집 중인 `<input>`,
-  // 그리고 **xterm의 숨은 `<textarea>`** — `togglesWorkPanel`이 적어 둔 함정과 같은 자리다).
+  // 그리고 **xterm의 숨은 `<textarea>`** — `togglesPanel`이 적어 둔 함정과 같은 자리다).
   //
   // 딛고 선 작업은 `panelWork`다 — 본문이 셸을 보여주는데 다른 작업의 셸을 여는 일이 없다.
   //
@@ -834,15 +795,13 @@ function WorksPage({
     <Frame
       sidebarOpen={sidebarOpen}
       head={head}
-      // 레일(ui-refresh 결정 9 · 10)의 칸과 머리 줄의 패널 토글. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어
-      // 레일도 토글도 없다. 칸이 `spec` 하나라 레일 열은 서지 않고(codex-ds 결정 25 — `railStands`) 토글만 머리 카드 끝에 선다 — 그래서
-      // 본문 열의 오른쪽 틈 하나가 창 끝이다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던 까닭(결정 11 — 그때 패널이 거기 없었다)은
-      // 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
+      // 레일(ui-refresh 결정 9 · 10)의 칸. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도 머리 줄의 패널
+      // 토글(틀이 패널 칸에서 짓는다)도 없다. 칸이 `spec` 하나라 레일 열은 서지 않고(codex-ds 결정 25 — `railStands`) 토글만 머리 카드
+      // 끝에 선다 — 그래서 본문 열의 오른쪽 틈 하나가 창 끝이다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던
+      // 까닭(결정 11 — 그때 패널이 거기 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
       rail={
         panelWork
           ? {
-              open: workPanelOpen,
-              onToggle: () => setWorkPanelOpen((open) => !open),
               items: PANEL_VIEWS,
               active: panelView,
               onPick: pickPanelView,
@@ -869,6 +828,7 @@ function WorksPage({
         panelWork
           ? {
               open: workPanelOpen,
+              onToggle: () => setWorkPanelOpen((open) => !open),
               size: panelSize,
               label: "작업 패널",
               children: (

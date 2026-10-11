@@ -14,14 +14,13 @@ export interface RailItem<Id extends string = string> {
 }
 
 /**
- * 작업 화면의 레일(ui-refresh 결정 9 · 10)과 패널 토글이 받는 것 — 열림 · 칸 묶음 · 고른 칸. 토글(`onToggle`)은 열림만 뒤집고
- * 고른 칸은 그대로 둔다. 칸을 고르면 `onPick`이 그 칸을 받는다 — 열림과 고른 칸의 주인은 부르는 쪽이고, 고른 뒤의 둘은
- * `pickRail`이 정한다. 토글은 레일이 아니라 머리 줄에 선다(`PanelToggle` — 둘을 `Frame`이 함께 그린다). 레일은 칸이 둘 이상일
- * 때만 서지만(`railStands`) 토글은 칸 수와 상관없이 선다(codex-ds 결정 25) — 레일이 서는지에 따라 머리 줄 안의 자리만 바뀐다.
+ * 작업 화면의 레일(ui-refresh 결정 9 · 10)이 받는 것 — 칸 묶음 · 고른 칸. 칸을 고르면 `onPick`이 그 칸을 받는다 — 열림과 고른 칸의
+ * 주인은 부르는 쪽이고, 고른 뒤의 둘은 `pickRail`이 정한다. 열림과 그것을 뒤집는 패널 토글은 레일이 아니라 패널 칸의 것이다(`Frame`의
+ * `PanelSlot` — 레일이 없는 화면(Archive)의 오른쪽 패널도 같은 토글로 여닫는다, codex-ds 결정 32). 토글은 머리 줄에 선다(`PanelToggle`
+ * — 둘을 `Frame`이 함께 그린다). 레일은 칸이 둘 이상일 때만 서지만(`railStands`) 토글은 칸 수와 상관없이 선다(codex-ds 결정 25) —
+ * 레일이 서는지에 따라 머리 줄 안의 자리만 바뀐다.
  */
 export interface RailProps<Id extends string = string> {
-  open: boolean;
-  onToggle: () => void;
   items: readonly RailItem<Id>[];
   active: Id;
   onPick: (id: Id) => void;
@@ -89,7 +88,9 @@ function Rail<Id extends string>({
   active,
   onPick,
   controls,
-}: Omit<RailProps<Id>, "onToggle"> & {
+}: RailProps<Id> & {
+  /** 레일이 고르는 패널이 열렸나 — 켜진 칸은 「열렸고 그 칸이 골라졌다」다(아래). 패널 칸의 열림을 `Frame`이 건넨다. */
+  open: boolean;
   /** 레일이 고르는 패널의 id(`aria-controls`) — `Frame`이 패널 칸과 함께 짓는다. */
   controls?: string;
 }) {

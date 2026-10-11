@@ -9,8 +9,8 @@ import { archivedDocsQuery, archiveQuery } from "./hooks";
 import type { ArchivedDocs, ArchiveEntry } from "./types";
 import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
 
-// 아카이브 화면을 통째로 그려 잰다. 목록 칸의 필터와 머리 카드의 프로젝트 글자는 서로 다른 파일에
-// 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 둘이 한 번에 걸린다.
+// 아카이브 화면을 통째로 그려 잰다. 목록 머리의 정렬 · 거르기 메뉴와 머리 카드의 프로젝트 글자 · spec 목록 패널의 트리는 서로
+// 다른 자리에 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 한 번에 걸린다.
 //
 // 호버 카드 조각(`WorkCard.test.tsx`)과 달리 프로바이더를 세운다. 이 화면은 목록도 문서도 스스로
 // 조회하므로 순수 표현일 수 없고, 「목록이 왔다」와 「아직이다」가 빈 화면의 갈래를
@@ -28,7 +28,7 @@ const withProject: ArchiveEntry = {
 function render(
   entries: ArchiveEntry[],
   selectedSlug: string | null = null,
-  // 고른 아카이브의 문서 답 — 심으면 그 행이 도착한 트리를 그린다(고른 아카이브는 펼친 채 선다)
+  // 고른 아카이브의 문서 답 — 심으면 spec 목록 패널이 도착한 트리를 그린다(패널은 열린 채 선다)
   docs?: ArchivedDocs,
   currentFile: string | null = null,
 ): string {
@@ -44,6 +44,7 @@ function render(
           sidebarOpen
           selectedSlug={selectedSlug}
           currentFile={currentFile}
+          onSelect={() => {}}
           onSelectDoc={() => {}}
           onFollowLink={() => {}}
         />
@@ -58,10 +59,14 @@ beforeEach(() => {
 });
 
 describe("프로젝트 자리", () => {
-  it("프로젝트가 붙은 아카이브를 그리면 필터도 칩도 선다", () => {
+  // 거르개의 줄(「모든 프로젝트」 · 프로젝트들)은 메뉴 안이라 닫힌 정적 마크업에는 없다 — 메뉴를 열어 고르는 것은 L3
+  // (`archive-docs.spec.ts`)가 잰다. 여기는 그 메뉴를 여는 버튼과 머리 카드의 프로젝트 글자다.
+  it("프로젝트가 붙은 아카이브를 그리면 목록 머리에 정렬 · 거르기 버튼이, 머리 카드에 그 프로젝트가 선다", () => {
     const markup = render([withProject], "shipped");
-    expect(markup).toContain("모든 프로젝트");
-    expect(markup).toContain("atelier");
+    expect(markup).toContain('aria-label="정렬 · 거르기"');
+    // 버튼의 설명이 지금 값이다 — 처음은 백엔드 차례 · 거르지 않음(바꾼 뒤의 설명은 L3 `archive-docs.spec.ts`가 잰다).
+    expect(markup).toContain('aria-description="최근에 치운 순 · 모든 프로젝트"');
+    expect(markup).toContain(">atelier · 8월 16일에 치움<");
   });
 });
 

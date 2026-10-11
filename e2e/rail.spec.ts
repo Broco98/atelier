@@ -97,7 +97,7 @@ test("칸이 둘이면 레일이 바탕 오른쪽 끝에 DS 모양으로 선다 
   const gap = await 길이(page, "--gap");
   const card = await 상자(showcase.getByRole("region", { name: "진열대 본문", exact: true }));
   const panel = await 상자(showcase.getByRole("region", { name: "진열대 패널", exact: true }));
-  const toggle = await 상자(showcase.getByRole("button", { name: "작업 패널 접기", exact: true }));
+  const toggle = await 상자(showcase.getByRole("button", { name: "진열대 패널 접기", exact: true }));
   const viewport = page.viewportSize()!;
   expect(home.y, "레일 위끝 = 카드 위끝").toBe(card.y);
   expect(card.y, "카드 위끝 = 머리 줄 아래").toBe(await 길이(page, "--titlebar-height"));
@@ -116,7 +116,7 @@ test("레일이 서면 패널 토글은 머리 카드 밖 레일 위에 서고 �
 }) => {
   const showcase = await 진열대를세운다(page);
   const rail = showcase.getByRole("group", { name: "레일", exact: true });
-  const toggleButton = showcase.getByRole("button", { name: "작업 패널 접기", exact: true });
+  const toggleButton = showcase.getByRole("button", { name: "진열대 패널 접기", exact: true });
   const gap = await 길이(page, "--gap");
   const prail = await 길이(page, "--size-prail");
   const viewport = page.viewportSize()!;
@@ -159,7 +159,7 @@ test("레일 칸을 누르면 그 칸으로 열리고, 켜진 칸을 다시 누�
   const spec = rail.getByRole("button", { name: "spec", exact: true });
   const files = rail.getByRole("button", { name: "files", exact: true });
   const panel = showcase.getByRole("region", { name: "진열대 패널", exact: true });
-  const toggle = showcase.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
+  const toggle = showcase.getByRole("button", { name: /^진열대 패널 (접기|펼치기)$/ });
   /** 패널 칸(진열대의 `aside`)의 그려진 폭 — 접히면 「틈 + 카드」가 함께 0이 된다. */
   const 패널폭 = () => showcase.locator("aside").evaluate((el) => Math.round(el.getBoundingClientRect().width));
 

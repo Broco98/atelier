@@ -45,7 +45,7 @@ function CleanupLogSection({ events, fold }: { events: ReadonlyArray<CleanupEven
 }
 
 /**
- * 사건 한 줄 — 누르면 대상이 펼쳐진다. **여닫음은 앱의 여닫이 부품이 든다**(`Collapsible` 기본 변형 — `ArchiveList` · `SpecTree`와 같은
+ * 사건 한 줄 — 누르면 대상이 펼쳐진다. **여닫음은 앱의 여닫이 부품이 든다**(`Collapsible` 기본 변형 — `SpecTree`의 폴더와 같은
  * 부품): 줄이 트리거라 `aria-expanded`를 스스로 달고, 대상 목록은 패널이다. 기본 변형이라 움직임 없이 바로 접히고 닫히면 내려간다 —
  * 펼친 것은 사건의 열쇠로 화면이 든다(`eventKeys`). **버튼의 이름이 그 줄의 한 문장이다**(`eventLabel`) — 안의 글자 조각을 이어 읽지
  * 않는다.

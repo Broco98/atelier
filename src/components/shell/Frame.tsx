@@ -38,9 +38,15 @@ interface CardContent {
   children: ReactNode;
 }
 
-/** 오른쪽 패널 카드 한 칸. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다). */
+/**
+ * 오른쪽 패널 카드 한 칸 — 작업 화면의 작업 패널, Archive의 spec 목록 패널이다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
+ * 따로 여닫는 칸이라 머리 줄의 패널 토글이 함께 선다(`PanelToggle` — 이름은 이 칸의 이름 `label`에 할 일을 붙인 것이다). 토글은
+ * `onToggle`을 부르고, ⌘Enter는 화면이 듣고 같은 열림을 뒤집는다 — 둘이 하는 일이 같다(codex-ds 결정 32 「⌘Enter는 그 화면의 오른쪽
+ * 패널」).
+ */
 export interface PanelSlot extends CardContent {
   open: boolean;
+  onToggle: () => void;
   size: ResizableWidth;
 }
 
@@ -100,7 +106,8 @@ export interface HeadSlot {
   actions?: ReactNode;
   /**
    * 세로선 너머 오른쪽 끝 — 작업 화면은 보기 배치(분할), Projects는 제거(되돌릴 수 없는 할 일을 다른 할 일과 떼어 둔다 — DS
-   * 캔버스). Archive는 아직 비어 있다(spec 목록 토글은 codex-ds 티켓 21). 할 일과는 세로선으로 갈린다.
+   * 캔버스). 할 일과는 세로선으로 갈린다. 오른쪽 패널을 든 화면은 이 너머 맨 끝에 패널 토글이 더 선다 — 화면이 건네는 것이 아니라
+   * 틀이 패널 칸에서 짓는다(`HeadRow` — Archive는 이것 없이 토글만 선다).
    */
   end?: ReactNode;
 }
@@ -119,12 +126,15 @@ interface FrameProps<Id extends string> {
    * 두 칸을 가르는 세로 선과 그 위의 폭 손잡이는 이 틀이 들고, 화면은 칸 안(목록 머리와 몸)만 건넨다.
    */
   list?: ListSlot;
-  /** 오른쪽 작업 패널 카드 — 바깥 상자가 두 번째 `<aside>`다. */
+  /**
+   * 오른쪽 패널 카드(작업 패널 · Archive의 spec 목록 패널) — 바깥 상자가 두 번째 `<aside>`다. 건네면 머리 줄에 그 칸의 패널 토글이
+   * 함께 선다(`PanelToggle`). 고른 것(작업 · 아카이브)이 있는 화면만 건넨다 — 없으면 둘 다 없다.
+   */
   panel?: PanelSlot;
   /**
-   * 작업 화면의 레일 열(`Rail` — 칸 묶음)과 머리 줄의 패널 토글(`PanelToggle`). 작업을 고른 작업 화면만 건넨다 — 없으면 둘 다 없다.
-   * 토글은 건네면 늘 서고, 레일 열은 **칸이 둘 이상일 때만** 선다(codex-ds 결정 25 — `railStands`). 레일 열이 없으면 본문 열의 오른쪽
-   * 틈 하나가 창 끝이고, 토글은 머리 카드 오른쪽 끝에 든다(`HeadRow`). 칸의 id 타입(`Id`)이 부르는 쪽의 것 그대로 `onPick`까지 간다.
+   * 작업 화면의 레일 열(`Rail` — 패널이 무엇을 볼지 고르는 칸 묶음). 패널과 같은 조건으로 건넨다. 레일 열은 **칸이 둘 이상일 때만**
+   * 선다(codex-ds 결정 25 — `railStands`). 레일 열이 없으면 본문 열의 오른쪽 틈 하나가 창 끝이고, 패널 토글은 머리 카드 오른쪽 끝에
+   * 든다(`HeadRow`). 칸의 id 타입(`Id`)이 부르는 쪽의 것 그대로 `onPick`까지 간다.
    */
   rail?: RailProps<Id>;
   /**
@@ -166,7 +176,9 @@ function Frame<Id extends string>({
       <HeadRow
         sidebarOpen={sidebarOpen}
         head={head}
-        toggle={rail && <PanelToggle open={rail.open} onToggle={rail.onToggle} controls={panel ? panelId : undefined} />}
+        toggle={
+          panel && <PanelToggle name={panel.label} open={panel.open} onToggle={panel.onToggle} controls={panelId} />
+        }
         railUp={railUp}
       />
       {/* 아래 줄 — 본문 열과 레일 열. 머리 줄 바로 아래(카드 위끝)에서 시작한다. */}
@@ -188,7 +200,9 @@ function Frame<Id extends string>({
           >
             {list ? <ListCard slot={list}>{children}</ListCard> : split ? <SplitBox slot={split} /> : children}
             {beside && <BesideBox slot={beside} />}
-            {panel && <PanelBox id={panelId} slot={panel} />}
+            {/* 목록 | 내용 카드 곁의 패널은 그 카드에 두 칸의 최소 폭(목록 칸의 최소 + 내용 칸에 남기는 그만큼)을 남긴다(`PanelBox`의
+                `reserve`). */}
+            {panel && <PanelBox id={panelId} slot={panel} reserve={list && list.size.min * 2} />}
             {overlay}
           </div>
         </div>
@@ -197,7 +211,7 @@ function Frame<Id extends string>({
             그 자리이고(`shrink-0`) 탭 줄의 바닥을 위해 자리를 내주는 것은 작업 패널, 그다음 사이드바다. */}
         {rail && railUp && (
           <Rail
-            open={rail.open}
+            open={panel?.open ?? false}
             items={rail.items}
             active={rail.active}
             onPick={rail.onPick}
@@ -259,16 +273,22 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
 }
 
 /**
- * 오른쪽 작업 패널 칸(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 바깥 상자가 두 번째 `<aside>`이고(e2e `tab-row-floor`가 `aside`
- * 순서를 잰다) **폭이 「왼쪽 틈 + 카드」다** — 접히면 둘이 함께 0이 되어 문서 카드가 오른쪽 틈 끝까지 넓어진다. 틈은 안쪽 열의
- * 왼쪽 여백이고, 손잡이는 그 틈의 가운데에 선다(여전히 `aside`의 자손이다).
+ * 오른쪽 패널 칸(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나) — 작업 화면의 작업 패널, Archive의 spec 목록 패널. 바깥 상자가 두 번째
+ * `<aside>`이고(e2e `tab-row-floor`가 `aside` 순서를 잰다) **폭이 「왼쪽 틈 + 카드」다** — 접히면 둘이 함께 0이 되어 왼쪽 카드가 오른쪽
+ * 틈 끝까지 넓어진다. 틈은 안쪽 열의 왼쪽 여백이고, 손잡이는 그 틈의 가운데에 선다(여전히 `aside`의 자손이다).
  *
  * 폭은 **카드의 폭**이다(`--work-panel-width`). 틈은 그 위에 더해 그린다.
  *
- * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--work-panel-min`, 폭 훅이 받은 값)까지 문서 카드에 자리를
- * 내주고, 문서 카드에는 **그 최소 폭만큼은 남긴다**(`max-width`). 문서 카드는 머리에 탭 줄을 이고 그 줄의 바닥 아래로는 안
- * 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 카드 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를
- * 내준다. 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
+ * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--work-panel-min`, 폭 훅이 받은 값)까지 왼쪽 카드에 자리를
+ * 내주고, 왼쪽 카드에는 **남길 폭(`reserve`)만큼은 남긴다**(`max-width`). 그 폭은 왼쪽 카드가 화면을 이루는 최소다:
+ * - 작업 화면의 문서 카드에는 패널 자신의 최소 폭만큼이다(`reserve`가 없을 때). 문서 카드는 머리에 탭 줄을 이고 그 줄의 바닥 아래로는
+ *   안 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 카드 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를 내준다.
+ * - Archive의 목록 | 내용 카드에는 두 칸의 최소(목록 칸의 최소 + 내용 칸에 남기는 그만큼 — `ListCard`)다. 그만큼을 남기지 않으면 좁은
+ *   창에서 패널이 제 폭을 지키는 사이 목록 칸이 제 최소로 버텨 내용 칸이 먼저 눌린다. 그 카드 줄은 격리되어(`TAB_ROW_COLUMN`) 사이드바가
+ *   자리를 내주지 않으므로, **여기서는 패널이 제 최소 폭 아래로도 내준다**(최소 폭도 「남은 폭 − 남길 폭」을 넘지 않는다). 목록과 내용은
+ *   접을 수 없는 칸이고 패널은 ⌘Enter · 토글로 걷을 수 있는 칸이라, 모자란 자리는 걷을 수 있는 쪽이 진다 — 900 창에 사이드바를 넓혀
+ *   두면 패널은 틈만큼 가는 띠로 선다.
+ * 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
  *
  * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 카드 줄의
  * min-content에 들어가게 하는 장치다 — 탭 줄을 품은 카드 줄은 제 min-content를 본문 열의 바닥으로 알리는데(`TAB_ROW_COLUMN`),
@@ -278,19 +298,30 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  *
  * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
  */
-function PanelBox({ id, slot }: { id: string; slot: PanelSlot }) {
+function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?: number }) {
   const { open, size, label, children } = slot;
   return (
     <aside
       id={id}
       data-tauri-drag-region
-      style={{ "--work-panel-width": `${size.width}px`, "--work-panel-min": `${size.min}px` } as CSSProperties}
+      style={
+        {
+          "--work-panel-width": `${size.width}px`,
+          "--work-panel-min": `${size.min}px`,
+          "--panel-reserve": `${reserve ?? size.min}px`,
+        } as CSSProperties
+      }
       className={cn(
         "relative flex overflow-hidden contain-inline-size",
         !size.dragging && PANEL_MOTION,
         !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
         open
-          ? "max-w-[calc(100%-var(--work-panel-min))] basis-[calc(var(--work-panel-width)+var(--gap))] min-w-[calc(var(--work-panel-min)+var(--gap))]"
+          ? cn(
+              "max-w-[calc(100%-var(--panel-reserve))] basis-[calc(var(--work-panel-width)+var(--gap))]",
+              reserve === undefined
+                ? "min-w-[calc(var(--work-panel-min)+var(--gap))]"
+                : "min-w-[min(calc(var(--work-panel-min)+var(--gap)),max(0px,calc(100%-var(--panel-reserve))))]",
+            )
           : "basis-0 min-w-0",
       )}
     >
@@ -415,8 +446,8 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 자리가 레일을 따라 갈린다(DS `.at-winhead` · `.with-rail` · `.at-winctl-r`):
  * - **레일이 서면**(칸 둘 이상) 토글은 머리 카드 밖, 레일 열 바로 위다(DS `.at-railtop` — 「머리 카드 오른쪽 끝 너머, 레일 바로
  *   위」). 토글 자리(틈 + 줄 폭 `size-prail`)가 레일 열과 같은 폭을 비워 머리 카드는 레일 앞에서 끝난다.
- * - **서지 않으면**(지금 작업 화면 — codex-ds 결정 25) 레일 열도 토글 자리도 없어 머리 카드가 창 오른쪽 틈까지 서고, 토글은 카드
- *   안 오른쪽 끝 — 보기 배치(분할) 뒤 — 에 든다(`HeadCard`의 `toggle`).
+ * - **서지 않으면**(지금 작업 화면 — codex-ds 결정 25 — 과 레일이 없는 Archive) 레일 열도 토글 자리도 없어 머리 카드가 창 오른쪽
+ *   틈까지 서고, 토글은 카드 안 오른쪽 끝 — 작업 화면은 보기 배치(분할) 뒤 — 에 든다(`HeadCard`의 `toggle`).
  *
  * **신호등 inset은 이 줄 하나만 계산한다.** 사이드바가 열렸으면 왼쪽 여백이 0이라 머리 카드가 본문 카드와 한 세로줄(사이드바 뒤)에서
  * 시작하고 — 신호등 · 창 컨트롤은 사이드바 위에 선다 — 접혔으면 `--titlebar-inset-head`(창 컨트롤 끝 + 틈)다(index.css의
@@ -468,9 +499,9 @@ function HeadRow({
  * 왼쪽은 아이콘 · 이름(과 그 뒤 옅은 위치)뿐이다(DS `.at-wtitle` — 24 · 안쪽 8 · 사이 7, 이름 13/500 `fg`, 아이콘 14 `fg-secondary`).
  * 카드 안쪽 8에 이름 칸의 안쪽 8이 더해져 아이콘이 카드 + 16에 선다 — 아래 본문 카드의 탭 줄 첫 칸과 한 세로줄이다. 하위 화면은 그
  * 앞에 돌아가는 길(`lead`)이 하나 선다. 이름 뒤 위치(`sub`)는 DS `.at-winhead .sub`(12 `fg-tertiary`, 이름 끝에서 14)다. 오른쪽은
- * 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 레일이 서지 않은 작업 화면은 그 너머
- * 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」). 위 줄에 서는 것은 모두 24다(창 컨트롤과 같다 — 글자
- * 버튼은 `Button`의 `top`).
+ * 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 오른쪽 패널을 든 화면은 레일이 서지
+ * 않으면 그 너머 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive 「⋯ | spec 목록 토글」). 위 줄에
+ * 서는 것은 모두 24다(창 컨트롤과 같다 — 글자 버튼은 `Button`의 `top`).
  *
  * **이름은 틀 뿌리의 바닥에 안 든다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 사이드바를 밀면 안 된다. 그래서 이름 칸은
  * DS의 「제 글자 폭만큼」(`flex: 0 1 auto`)이 아니라 남는 폭을 먹고(`flex-1`) — 제 폭을 알리지 않는 상자라 글자 폭으로는 서지 못한다 —

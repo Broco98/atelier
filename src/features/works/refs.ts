@@ -54,10 +54,20 @@ export function specRef(slug: string, path: string, start?: number, end?: number
   return withLines(base, start, end);
 }
 
+/** 아카이브 폴더: 아카이브 루트 + `<slug>/` — 기록(`record.md`)과 spec(`spec/`)이 이 아래다. */
+function archiveDirRef(slug: string): string {
+  return `${ARCHIVE_ROOT}${slug}/`;
+}
+
+/** 아카이브된 spec 폴더: 아카이브 폴더 + `spec/` — Archive 메뉴의 「경로 복사」다(「Finder에서 열기」가 여는 폴더와 같다). */
+export function archiveSpecDirRef(slug: string): string {
+  return `${archiveDirRef(slug)}spec/`;
+}
+
 /** 아카이브 문서(+줄범위): `<아카이브 루트><slug>/<path>[:L<n>[-<m>]]`.
  *  path는 **work 루트 기준**이라 기록(`record.md`)과 spec(`spec/…`)이 한 형식으로 나온다 —
  *  아카이브에서 복사한 참조를 에이전트에게 그대로 넘길 수 있어야 한다. */
 export function archiveRef(slug: string, path: string, start?: number, end?: number): string {
-  const base = `${ARCHIVE_ROOT}${slug}/${path}`;
+  const base = `${archiveDirRef(slug)}${path}`;
   return withLines(base, start, end);
 }

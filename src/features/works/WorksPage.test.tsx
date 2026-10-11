@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
+import WorksPage, { shellClosedByTab } from "./WorksPage";
 import { PANEL_VIEWS } from "./WorkPanel";
 import { ToastProvider } from "@/components/ui/toast";
 import { TAB_ROW_CARD, TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
@@ -706,13 +706,14 @@ describe("WorksPage 작업 패널 칸", () => {
 
   it("줄어들어도 끄는 최소 폭 아래로는 안 주고, 문서 카드에 그 최소 폭만큼은 남긴다", () => {
     // 창이 좁으면 이 패널이 문서 카드에 자리를 내준다. 그 바닥이 끄는 최소 폭과 갈리면 끌어서는 못 만드는 폭으로 선다 —
-    // 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다.
+    // 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다. 문서 카드에 남길 폭(`--panel-reserve`)도 그 최소 폭이다(`Frame`의 `PanelBox`).
     const markup = render();
     expect(markup).toMatch(/--work-panel-min:\s*260px/);
+    expect(markup).toMatch(/--panel-reserve:\s*260px/);
     const root = rootTag(markup);
     if (!root) throw new Error("패널 aside가 없다");
     expect(root).toContain("min-w-[calc(var(--work-panel-min)+var(--gap))]");
-    expect(root).toContain("max-w-[calc(100%-var(--work-panel-min))]");
+    expect(root).toContain("max-w-[calc(100%-var(--panel-reserve))]");
     expect(root).not.toContain("shrink-0");
   });
 
@@ -820,60 +821,10 @@ describe("WorksPage 기본 문서", () => {
 // `if (tab === "terminal") return;` 한 줄이 사라졌고, 그 줄이 남겼던 「알려진 비대칭」
 // (포커스가 트리에 있어도 터미널 탭에서는 안 듣는다)도 함께 사라진다.
 //
-// 판단을 순수 함수로 꺼내 둔 덕에 **이건 소스 훑기가 아니라 진짜로 도는 검사다.**
-// (`shellHotkey`와 같은 방식이다.)
+// 판단은 순수 함수로 꺼내 패널 토글 곁에 둔다(`togglesPanel` — Archive의 ⌘Enter와 한 벌). 그 판정이
+// 진짜로 도는 검사는 `components/shell/PanelToggle.test.ts`에 있고, 여기서 보는 것은 이 화면의 배선이다 —
+// 이펙트는 정적 렌더에서 안 돈다.
 describe("WorksPage ⌘Enter", () => {
-  // 노드 환경에는 DOM 생성자가 없다. `instanceof`가 보는 것은 그 자리의 전역이므로
-  // 세워 두면 그대로 갈린다. 셸의 입력 자리가 숨은 <textarea>라는 것이 이 검사의 전제다.
-  class FakeTextArea extends EventTarget {}
-  class FakeInput extends EventTarget {}
-  class FakeEditable extends EventTarget {
-    isContentEditable = true;
-  }
-
-  beforeEach(() => {
-    vi.stubGlobal("HTMLTextAreaElement", FakeTextArea);
-    vi.stubGlobal("HTMLInputElement", FakeInput);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  type Hotkey = Parameters<typeof togglesWorkPanel>[0];
-  // 트리·패널의 평범한 요소 — 입력도 편집 가능도 아니다
-  const key = (over: Partial<Hotkey> = {}): Hotkey => ({
-    metaKey: true,
-    ctrlKey: false,
-    altKey: false,
-    shiftKey: false,
-    key: "Enter",
-    target: new EventTarget(),
-    ...over,
-  });
-
-  it("포커스가 트리·패널에 있으면 패널 몫이다", () => {
-    expect(togglesWorkPanel(key())).toBe(true);
-  });
-
-  it("셸(xterm의 숨은 <textarea>)에 포커스가 있으면 셸 몫이다", () => {
-    // 결정 29 그대로다. 첫 줄(탭 가드)을 지워도 이 경우는 안 바뀐다는 것이 결정 43의 전제고,
-    // 그 전제가 깨지면 터미널에서 ⌘Enter를 칠 때마다 패널이 여닫힌다.
-    expect(togglesWorkPanel(key({ target: new FakeTextArea() }))).toBe(false);
-  });
-
-  it("입력·편집 가능 요소도 그대로 비켜간다", () => {
-    expect(togglesWorkPanel(key({ target: new FakeInput() }))).toBe(false);
-    expect(togglesWorkPanel(key({ target: new FakeEditable() }))).toBe(false);
-  });
-
-  it("수식키가 하나라도 더 붙거나 다른 키면 아니다", () => {
-    for (const extra of ["ctrlKey", "altKey", "shiftKey"] as const) {
-      expect(togglesWorkPanel(key({ [extra]: true })), extra).toBe(false);
-    }
-    expect(togglesWorkPanel(key({ metaKey: false }))).toBe(false);
-    expect(togglesWorkPanel(key({ key: "t" }))).toBe(false);
-  });
-
   // 결정 93·98. ⌘T가 xterm 밖에서도 들린다 — 셸이 0개인 화면에는 xterm이 없어 그 키를
   // 들을 사람이 없었다. **판정은 `opensShellFromWindow`가 혼자 알고**(그쪽 검사는
   // shell-registry.test.ts에 전수돼 있다) 여기서 보는 것은 그 판정이 이 화면에 실제로
@@ -939,7 +890,7 @@ describe("WorksPage ⌘Enter", () => {
       /useEffect\(\(\) => \{[\s\S]*?window\.addEventListener\("keydown"[\s\S]*?\}, \[([^\]]*)\]\);/,
     );
     expect(effect, "⌘Enter 효과를 찾지 못했다").not.toBeNull();
-    expect(effect![0]).toContain("togglesWorkPanel");
+    expect(effect![0]).toContain("togglesPanel");
     expect(effect![0]).toContain("setWorkPanelOpen");
     // `tab`을 안 보므로 의존성도 비어 있다. 남아 있으면 판단이 아직 탭에 매여 있다는 뜻이다.
     expect(effect![1].trim()).toBe("");
@@ -1129,7 +1080,7 @@ describe("WorksPage 셸 조회가 이 work의 것이다", () => {
 
 // 결정 13. ⌘W의 대상이 **켜진 탭**이 됐다 — 겨눌 칸이 화면에 서게 된 것이 그 근거다(adr-03).
 //
-// **겨누는 칸을 정하는 일이 순수 함수로 나와 있어 이건 진짜로 도는 검사다**(`togglesWorkPanel`과
+// **겨누는 칸을 정하는 일이 순수 함수로 나와 있어 이건 진짜로 도는 검사다**(⌘Enter의 `togglesPanel`과
 // 같은 이유). 핸들러 안에 두면 소스를 문자열로 훑는 검사밖에 못 거는데, 그 검사는 핸들러
 // 첫 줄에 `return`을 얹어도 초록이었다(실측). 키 판정 쪽(`closesShellFromWindow`)은
 // shell-registry.test.ts에 전수돼 있다.

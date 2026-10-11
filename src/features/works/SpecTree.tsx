@@ -20,26 +20,23 @@ const ROWS = "flex flex-col gap-(--row-gap)";
 
 // 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
 // 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
-// 정해지지 않은 수라 클래스로 못 적어서다. 아카이브 목록은 트리 아래 빈 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
-export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+// 정해지지 않은 수라 클래스로 못 적어서다.
+const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
 
 interface TreeProps {
   // 엔진이 가른 spec 트리의 첫 층 — `spec/` 바로 아래의 파일·폴더들. **받은 순서 그대로
   // 그린다** — 앱에는 순서의 규칙도 폴더 이름의 규칙도 없다(spec 레이아웃 결정 13,
   // `src/spec-folder-names.test.ts`가 소스로 본다). 구획 머리도 없다(spec 레이아웃 결정 24): 번호
   // 묶음 폴더도 레이아웃의 자리에 선다. 아카이브는 그 트리를 기록 행 곁의 `spec/` 행 아래에 얹어
-  // 넘긴다(`archive/archive-tree.ts`).
+  // spec 목록 패널에 넘긴다(`archive/archive-tree.ts`) — 작업 패널의 트리처럼 첫 층이 패널 왼쪽 끝에서 선다.
   items: SpecTreeItem[];
   current: string | null;
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
-  // 첫 층의 깊이(생략 시 0). 아카이브는 트리를 아카이브 행 아래 한 단 들여 세운다 — 행과 같은 x에서 시작하면 문서
-  // 줄이 아카이브 행과 한 층으로 읽힌다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다).
-  depth?: number;
 }
 
-function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트(패널 토글)를 넘어 살지
   // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
   // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
@@ -56,7 +53,7 @@ function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
     <div className={cn(ROWS, "shrink-0")}>
       <TreeRows
         items={items}
-        depth={depth}
+        depth={0}
         current={current}
         isOpen={(item) => toggled[item.path] ?? openByDefault(item)}
         onOpenChange={setOpen}

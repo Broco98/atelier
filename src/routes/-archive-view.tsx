@@ -21,8 +21,8 @@ function ArchiveView({ slug, file = null }: { slug: string | null; file?: string
       ? navigate({ to: "/archive/$slug", params: { slug: next }, search: {}, replace })
       : navigate({ to: "/archive", replace }));
 
-  // 목록에서 문서를 고르는 것은 **아카이브를 고르는 것이기도 하다.** 둘을 한 번의 이동으로
-  // 옮겨야 주소가 바뀌는 프레임에 선택이 깜빡이지 않는다. 훑기이므로 히스토리는 만들지
+  // spec 목록 패널의 트리에서 문서를 고르는 것은 **그 아카이브의 문서를 고르는 것이다** — 아카이브와 문서를 한 번의
+  // 이동으로 옮겨야 주소가 바뀌는 프레임에 선택이 깜빡이지 않는다. 훑기이므로 히스토리는 만들지
   // 않는다 — Works의 트리와 같은 규칙이다.
   const selectDoc = useCallback(
     (docSlug: string, path: string) =>
@@ -61,6 +61,9 @@ function ArchiveView({ slug, file = null }: { slug: string | null; file?: string
       sidebarOpen={sidebarOpen}
       selectedSlug={exists ? slug : null}
       currentFile={file}
+      // 목록 행을 누르면 그 아카이브로 간다 — 이동이라 push다(프로젝트 목록과 같은 규칙, `-projects-view.tsx`). 문서는 딸려 보내지
+      // 않아 그 아카이브의 기본 문서가 선다(위 `goTo`).
+      onSelect={(next) => goTo(next)}
       onSelectDoc={selectDoc}
       onFollowLink={followLink}
     />

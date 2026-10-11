@@ -8,7 +8,7 @@
 // 가리키기 때문이다:
 //
 //   ⌘1~9  works에서 문서와 셸 칸 — 다른 화면에는 아예 없다
-//   ⌘↩    works에서 작업 패널 — projects·archive의 목록 칸은 접지 않아(codex-ds 결정 32) 그 화면에는 듣는 자리가 없다
+//   ⌘↩    works에서 작업 패널 · archive에서 spec 목록 패널 — projects의 목록 칸은 접지 않아(codex-ds 결정 32) 그 화면에는 듣는 자리가 없다
 //   ⌘B    어디서나 사이드바 — 화면을 안 탄다
 //   ⌘T    works에서 셸 열기
 //   ⌘K    어디서나 검색 팔레트 — 화면을 안 타고, **이 길이 그 키의 값의 절반이다**(결정 3):
@@ -38,7 +38,8 @@
  * `KeyboardEvent.code`에서 `key`를 되찾는다.
  *
  * **둘 다 실어야 한다.** 리스너가 보는 값이 갈려 있다 — ⌘B·⌘T·⌘K·⌘J·⌘1~9는 `code`를 보고
- * (`AppShell` · `shell-registry` · `shell-recall`), ⌘↩은 `key`를 본다(`WorksPage`). 한쪽만 채우면 그 절반이 조용히 안 먹는다.
+ * (`AppShell` · `shell-registry` · `shell-recall`), ⌘↩은 `key`를 본다(`PanelToggle`의 `togglesPanel` — `WorksPage` · `ArchivePage`가
+ * 함께 쓴다). 한쪽만 채우면 그 절반이 조용히 안 먹는다.
  *
  * **`code`를 보는 쪽이 늘어난 것은 우연이 아니다** — 한글 입력기가 켜지면 `key`가 자모로
  * 오므로, 새 키는 `code`로 보는 것이 이 저장소의 기본값이다.

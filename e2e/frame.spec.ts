@@ -392,7 +392,8 @@ for (const status of ["draft", "active", "review", "done"] as const) {
 // 판 04 티켓 02 · codex-ds 티켓 20 — **목록이 있는 두 화면**(codex-ds 결정 28 · 32). 목록 칸과 그 내용(프로젝트 상세 · 문서)은 **한
 // 카드**이고, 가운데 0.5px `border-heavy` 세로 선이 가른다. 그 선이 폭 손잡이다 — 끌면 목록 폭이 바뀌어 저장되고, 두 번 누르면 기본
 // 폭(`size-list` 264)이다. 목록 칸은 접지 않는다 — 접는 토글도, 그것을 받던 ⌘Enter도 없다. 목록 머리는 내용의 경로 줄과 같은
-// 48(`size-pathbar`)이라 두 머리가 한 줄에 선다. 따로 여닫는 패널만 틈 8로 떨어진 카드다(작업 패널 — 아래 「작업 화면」).
+// 48(`size-pathbar`)이라 두 머리가 한 줄에 선다. 따로 여닫는 패널만 틈 8로 떨어진 카드다(작업 패널 — 아래 「작업 화면」, Archive의
+// spec 목록 패널 — 여닫기는 `archive-docs.spec.ts`).
 const LIST_SCREENS = [
   {
     name: "Projects",
@@ -406,6 +407,8 @@ const LIST_SCREENS = [
       page.getByRole("textbox", { name: "프로젝트 검색", exact: true }),
       page.getByRole("button", { name: "프로젝트 등록", exact: true }),
     ],
+    // 오른쪽 패널이 없는 화면이다.
+    panel: null,
   },
   {
     name: "Archive",
@@ -413,11 +416,13 @@ const LIST_SCREENS = [
     list: "아카이브 목록",
     widthKey: "archive-panel-width",
     head: ["Archive", String(ARCHIVE.length)],
-    // 머리 아래의 찾기 칸과 그 아래 첫 줄의 정렬 — 정렬은 늘 글자 「치운 날」과 함께 선다(이름이 그 글자다).
+    // 머리 아래의 찾기 칸과 머리 끝의 정렬 · 거르기 메뉴 버튼(codex-ds S11 — 아이콘 버튼이라 이름이 그 할 일이다).
     headControls: (page: Page) => [
       page.getByRole("textbox", { name: "아카이브 검색", exact: true }),
-      page.getByRole("button", { name: "치운 날", exact: true }),
+      page.getByRole("button", { name: "정렬 · 거르기", exact: true }),
     ],
+    // 고른 아카이브의 spec 목록 패널(codex-ds 티켓 21) — 목록 | 내용 카드 곁에 떨어진 카드로 서는 둘째 `aside`다.
+    panel: "spec 목록",
   },
 ] as const;
 
@@ -435,7 +440,8 @@ async function boxOf(target: Locator) {
   return { ...box, right: box.x + box.width, bottom: box.y + box.height };
 }
 
-const sidebarRight = (page: Page) => page.locator("aside").evaluate((el) => el.getBoundingClientRect().right);
+/** 사이드바 오른쪽 끝 — 사이드바는 첫 `aside`다(둘째는 오른쪽 패널). */
+const sidebarRight = (page: Page) => page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
 
 for (const screen of LIST_SCREENS) {
   test(`${screen.name}: 목록과 내용이 한 카드이고 0.5px border-heavy 세로 선이 가른다 — 그 선 위가 폭 손잡이다`, async ({
@@ -447,23 +453,28 @@ for (const screen of LIST_SCREENS) {
     const main = page.locator("main");
     await expect(list).toBeVisible();
 
-    // 목록 칸은 `section`이다 — `aside`는 사이드바 하나뿐이고(`works-sidebar`), `header`는 머리 줄 하나다.
+    // 목록 칸은 `section`이다 — `aside`는 사이드바와 (있으면) 오른쪽 패널뿐이고(`works-sidebar`), `header`는 머리 줄 하나다.
     expect(await list.evaluate((el) => el.tagName)).toBe("SECTION");
-    await expect(page.locator("aside")).toHaveCount(1);
+    await expect(page.locator("aside")).toHaveCount(screen.panel ? 2 : 1);
     await expect(page.locator("header")).toHaveCount(1);
-    // 한 카드 — 목록 칸과 내용 칸(`main`)이 같은 카드 안에 선다. 카드 줄의 카드는 그 하나다.
+    // 한 카드 — 목록 칸과 내용 칸(`main`)이 같은 카드 안에 선다. 카드 줄의 카드는 그 하나와 (있으면) 패널의 카드다.
     const card = joinedCard(page, list);
     await expect(card).toHaveCount(1);
     await expect(card.locator("main")).toHaveCount(1);
-    await expect(page.locator('[data-slot="card"]')).toHaveCount(1);
+    await expect(page.locator('[data-slot="card"]')).toHaveCount(screen.panel ? 2 : 1);
+    const panelCard = page.locator("aside").nth(1).locator('[data-slot="card"]');
+    if (screen.panel) await expect(panelCard).toHaveAttribute("aria-label", screen.panel);
 
     const gap = await token(page, "--gap");
     const titlebar = await token(page, "--titlebar-height");
     const edge = await sidebarRight(page);
     const [whole, column, content] = [await boxOf(card), await boxOf(list), await boxOf(main)];
-    // 카드가 머리 줄 바로 아래에서 사이드바에 붙어 시작하고(왼쪽 틈 0) 창 오른쪽에 틈을 남긴다.
+    // 카드가 머리 줄 바로 아래에서 사이드바에 붙어 시작하고(왼쪽 틈 0) 오른쪽에 틈을 남긴다 — 그 너머는 창 끝이거나 패널의 카드이고,
+    // 패널이 서면 그 카드가 창 오른쪽에 틈을 남긴다.
     expect([whole.x, whole.y], "카드 왼쪽 위").toEqual([edge, titlebar]);
-    expect(page.viewportSize()!.width - whole.right, "카드 오른쪽 틈").toBe(gap);
+    const outer = screen.panel ? await boxOf(panelCard) : whole;
+    if (screen.panel) expect([outer.x - whole.right, outer.y], "패널 카드 왼쪽 틈").toEqual([gap, titlebar]);
+    expect(page.viewportSize()!.width - outer.right, "카드 줄 오른쪽 틈").toBe(gap);
     // 목록 칸은 카드 왼쪽 끝, 내용 칸은 그 바로 뒤에서 카드 오른쪽 끝까지다 — 둘 사이에 틈이 없다.
     expect([column.x, column.y, column.bottom], "목록 칸").toEqual([whole.x, whole.y, whole.bottom]);
     expect([content.x, content.y, content.right, content.bottom], "내용 칸").toEqual([
@@ -485,7 +496,7 @@ for (const screen of LIST_SCREENS) {
     expect([handle.y, handle.bottom], "손잡이는 칸의 위에서 아래까지").toEqual([column.y, column.bottom]);
     const middleY = whole.y + whole.height / 2;
     expect(await draggable(page, column.right, middleY), "경계").toBe(false);
-    expect(await draggable(page, whole.right + gap / 2, middleY), "카드 오른쪽 틈").toBe(true);
+    expect(await draggable(page, outer.right + gap / 2, middleY), "카드 줄 오른쪽 틈").toBe(true);
 
     // 목록 칸을 접는 토글이 없다(codex-ds 결정 32).
     await expect(page.getByRole("button", { name: "목록 패널 토글", exact: true })).toHaveCount(0);
@@ -545,6 +556,9 @@ for (const screen of LIST_SCREENS) {
   // 쓴다 — 기본값이 바뀌어도 고른 폭을 버리지 않는다(옛 기본 360도 그대로 선다). 범위 밖 값은 기본으로 선다.
   test(`${screen.name}: 세로 선을 끌면 목록 폭이 바뀌어 저장되고 두 번 누르면 기본 폭 size-list(264)다`, async ({ page }) => {
     await installFixtureBackend(page);
+    // 곁에 패널이 열려 서는 화면(Archive)은 그 패널이 제 폭으로 서고도 560 목록 칸과 내용 칸의 최소가 드는 창에서 잰다 — 모자란 창에서
+    // 목록 칸이 그려진 폭을 내주는 것은 `tab-row-floor.spec.ts`가 잰다.
+    if (screen.panel) await page.setViewportSize({ width: 1600, height: 800 });
     await page.goto(screen.url);
     const list = page.getByRole("region", { name: screen.list, exact: true });
     const main = page.locator("main");
@@ -946,8 +960,10 @@ const HEAD_SCREENS: {
     // 제목 뒤 옅은 글자는 걸쳤던 프로젝트와 치운 날이다 — 문서 카드의 머리 자리를 경로 줄이 가져 이리 왔다.
     words: [ARCHIVE[0].title, new RegExp(`^${ARCHIVE[0].projects.join(" · ")} · .+에 치움$`), ARCHIVE[0].status],
     sub: true,
-    // 배지는 보이기만 한다 — 버튼이 아니다. ⋯ 아카이브 메뉴와 spec 목록 토글은 codex-ds 티켓 21이다.
-    controls: [],
+    // 배지는 보이기만 한다 — 버튼이 아니다. 할 일은 ⋯ 아카이브 메뉴이고, 세로선 너머가 spec 목록 패널의 토글이다(codex-ds 티켓 21 —
+    // 메뉴 안과 여닫기는 `archive-docs.spec.ts`).
+    controls: ["아카이브 메뉴", "spec 목록 접기"],
+    splitBefore: "spec 목록 접기",
     absent: ["되살리기"],
   },
   {

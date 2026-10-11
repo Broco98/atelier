@@ -889,6 +889,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // work 메뉴의 「Finder에서 열기」가 나간다(codex-ds 티켓 16 — `works-floating.spec.ts`의 work 메뉴 절). 값은 안 쓰인다 — 탐색기를
   // 여는 것이 일의 전부다. 검사가 보는 것은 나갔는가와 그 인자(slug · 프로젝트)이고, 못 여는 길은 `ipcFailure`로 덮어 잰다.
   open_work_folder: null,
+  // Archive의 「Finder에서 열기」(머리 카드 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
+  // `archive-docs.spec.ts`). 위 줄과 한 가족이고 같은 까닭으로 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
+  open_archived_spec_folder: null,
   // 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와 무관하다(`WORKS_MOVED`
   // 머리말) — 화면이 이 답으로 캐시를 갈아 끼우는지를 `work-row-drag.spec.ts`가 그 순서로 잰다.
   move_work: WORKS_MOVED,
