@@ -1,16 +1,20 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use atelier_acp::ConversationHost;
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use tauri::{AppHandle, Emitter};
 
 /// `~/.atelier/projects/` 감시 → 관련 변경 시 `projects:changed` emit.
-/// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit.
+/// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit, 그리고 대화 호스트에게 사라진 work를 묻는다.
 /// `~/.atelier/layouts/` 감시 → 관련 변경 시 `layouts:changed` emit.
 /// dotfile(자기 쓰기의 `.tmp` 단계 포함)은 무시한다.
-pub fn start(app: AppHandle) {
+///
+/// `chats`는 앱이 쥔 그 대화 호스트다(셋업이 빌더 앞의 값을 건넨다).
+pub fn start(app: AppHandle, chats: Arc<ConversationHost>) {
     for watch in watches() {
-        spawn_watch(app.clone(), watch);
+        spawn_watch(app.clone(), watch, Arc::clone(&chats));
     }
 }
 
@@ -26,6 +30,9 @@ struct Watch {
     debounce: Duration,
     event: &'static str,
     relevant: fn(&Path) -> bool,
+    /// 종을 친 회차마다 대화 호스트에게 사라진 work의 쉬는 대화를 끄게 하나(three-axes 티켓 11 · S10). work가 사라지는 소식은
+    /// 진행 중 루트의 감시로만 온다 — 사이드바의 아카이브 · 삭제도, 앱 밖 MCP의 아카이브도.
+    tells_chats: bool,
 }
 
 /// 앱이 거는 감시 **전부.** 감시는 걸 때 그 폴더를 만든다(`spawn_watch`) — 여기 없는 자리는
@@ -40,6 +47,7 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(500),
         event: "projects:changed",
         relevant: project_change_is_relevant,
+        tells_chats: false,
     }];
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
     // 빌드 등으로 이벤트가 폭주하므로 무시한다. 대화 기록인 <slug>/agents/ 하위도
@@ -51,6 +59,7 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(300),
         event: "works:changed",
         relevant: works_change_is_relevant,
+        tells_chats: true,
     });
     // spec 레이아웃 폴더(spec 레이아웃 결정 22) — 에이전트가 저장하거나 손으로 고친 레이아웃을 설정의
     // 「spec 레이아웃」과 `spec` 패널이 따라온다. 레이아웃은 이 폴더 안의 `atelier/`에 살고 이벤트는
@@ -65,6 +74,7 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(300),
         event: "layouts:changed",
         relevant: layout_change_is_relevant,
+        tells_chats: false,
     });
     all
 }
@@ -119,7 +129,7 @@ fn is_dotfile(path: &Path) -> bool {
 /// 채널 → `new_debouncer` → `watch` → 회차 루프)이 줄 단위로 같고 오류 문구까지 겹친다.
 /// 그쪽이 따로 선 근거는 **나가는 것**이지(바뀐 셸을 페이로드로 싣는다) 이 배선이 아니므로,
 /// notify의 API가 바뀌거나 오류 처리를 고칠 때는 두 자리를 함께 고쳐야 한다.
-fn spawn_watch(app: AppHandle, watch: Watch) {
+fn spawn_watch(app: AppHandle, watch: Watch, chats: Arc<ConversationHost>) {
     std::thread::spawn(move || {
         let _ = std::fs::create_dir_all(&watch.dir);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -136,11 +146,37 @@ fn spawn_watch(app: AppHandle, watch: Watch) {
         }
         for result in rx {
             let Ok(events) = result else { continue };
-            if events.iter().any(|e| (watch.relevant)(&e.path)) {
-                let _ = app.emit(watch.event, ());
-            }
+            on_news(
+                &watch,
+                events.iter().map(|e| e.path.as_path()),
+                |event| {
+                    let _ = app.emit(event, ());
+                },
+                || {
+                    // 끌 대화가 있으면 끄기가 최대 1초 남짓 막힌다 — 감시의 회차를 붙잡지 않게 따로 띄운다.
+                    let chats = Arc::clone(&chats);
+                    std::thread::spawn(move || chats.check_vanished_works());
+                },
+            );
         }
     });
+}
+
+/// 감시 한 회차 — 바뀐 경로 가운데 화면을 다시 그릴 만한 것이 있으면 종을 치고(`ring`), 대화 호스트에게 알리는 감시면 사라진
+/// work를 묻게 한다(`ask_chats`). 거를 것만 바뀐 회차는 아무것도 하지 않는다.
+fn on_news<'a>(
+    watch: &Watch,
+    paths: impl IntoIterator<Item = &'a Path>,
+    ring: impl FnOnce(&'static str),
+    ask_chats: impl FnOnce(),
+) {
+    if !paths.into_iter().any(|path| (watch.relevant)(path)) {
+        return;
+    }
+    ring(watch.event);
+    if watch.tells_chats {
+        ask_chats();
+    }
 }
 
 #[cfg(test)]
@@ -291,6 +327,27 @@ mod tests {
         }
         assert!(relevant(&works.join("cart")), "work 폴더가 사라진 것이 안 들린다");
         assert!(relevant(&works.join("agents")), "이름이 agents인 work 폴더를 기록으로 읽는다");
+    }
+
+    /// **진행 중 루트의 소식은 대화 호스트에게도 간다**(three-axes 티켓 11 · S10). 사람이 사이드바에서 work를 아카이브하거나
+    /// 지우면 그 소식이 이 감시로만 온다 — 호스트가 그것을 모르면 쉬던 대화의 에이전트가 cwd 없이 앱을 끌 때까지 남는다. 종을 친
+    /// 회차마다 호스트에게 사라진 work를 묻게 한다. 기록 줄만 바뀐 회차(종이 안 울림)와 다른 감시의 소식은 묻지 않는다 — 기록
+    /// 쓰기는 흐르는 답 한 줄마다 온다. 계획에 실린 그대로 잰다.
+    #[test]
+    fn works_news_also_asks_the_chat_host_for_vanished_works_but_other_news_does_not() {
+        let news = |dir: &Path, path: PathBuf| {
+            let (mut rung, mut asked) = (Vec::new(), 0);
+            on_news(&watch_on(dir), [path.as_path()], |event| rung.push(event), || asked += 1);
+            (rung, asked)
+        };
+        let works = atelier_core::works_dir();
+        assert_eq!(news(&works, works.join("cart")), (vec!["works:changed"], 1), "사라진 work 폴더가 호스트에 안 간다");
+        assert_eq!(news(&works, works.join("cart/spec/overview.md")), (vec!["works:changed"], 1));
+        assert_eq!(news(&works, works.join("cart/agents/c1.jsonl")), (vec![], 0), "기록 한 줄마다 호스트를 부른다");
+        let projects = atelier_core::projects_dir();
+        assert_eq!(news(&projects, projects.join("atelier.md")), (vec!["projects:changed"], 0), "프로젝트 소식이 호스트에 간다");
+        let layouts = atelier_core::layouts_dir();
+        assert_eq!(news(&layouts, layouts.join("atelier/layout.json")), (vec!["layouts:changed"], 0), "레이아웃 소식이 호스트에 간다");
     }
 
     /// 프로젝트 쪽 규칙은 그대로다 — `.md` 하나가 프로젝트 하나이므로 그 밖은 소식이 아니다.

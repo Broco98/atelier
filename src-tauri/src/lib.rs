@@ -259,7 +259,8 @@ pub fn run() {
             // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
             // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
             terminate::install(app.handle());
-            watcher::start(app.handle().clone());
+            // 진행 중 루트의 감시는 work가 사라진 소식을 대화 호스트에게도 넘긴다(three-axes 티켓 11) — 빌더 앞에서 세운 그 하나다.
+            watcher::start(app.handle().clone(), Arc::clone(&chats));
             // 대화 호스트가 내보낸 것(기록 줄)을 화면으로 쏜다 — 위 감시와 같은 길이다: 스레드 하나가 emit하고 프런트가
             // `listen`으로 받는다. 빌더 앞에서 받아 둔 채널을 건넨다.
             chat::announce(app.handle().clone(), chat_inbox);
@@ -594,6 +595,19 @@ mod tests {
             "호스트가 내보낸 것을 화면으로 쏠 스레드를 안 건다 — 답이 흘러도 화면이 조용하다"
         );
         assert!(!setup.contains("ConversationHost>>()"), "셋업이 앱에서 대화 호스트를 다시 찾는다 — 빌더 앞의 값을 건네라");
+    }
+
+    /// **감시는 앱이 쥔 그 대화 호스트에게 work가 사라진 소식을 넘긴다**(three-axes 티켓 11 · S10). 사이드바의 아카이브 · 삭제도,
+    /// 앱 밖 MCP의 아카이브도 앱이 아는 길은 진행 중 루트의 감시뿐이다 — 셋업이 호스트를 안 넘기면 쉬던 대화의 에이전트가 앱을 끌
+    /// 때까지 남는다. 넘기는 것은 빌더 앞에서 세운 그 하나다. 셋업은 헤드리스로 못 돌리니 자리로 잰다. 감시가 소식마다 호스트를 묻는
+    /// 규칙은 `watcher.rs`의 단위 검사가, 사라진 work의 대화를 끄는 것은 크레이트 `atelier-acp`의 L1이 잰다.
+    #[test]
+    fn the_watcher_hands_vanished_works_to_the_chat_host_the_app_holds() {
+        let setup = setup_source();
+        assert!(
+            setup.contains("watcher::start(app.handle().clone(), Arc::clone(&chats));"),
+            "감시가 대화 호스트를 받지 않는다 — 아카이브한 work의 쉬던 대화가 앱을 끌 때까지 남는다"
+        );
     }
 
     /// **앱이 닫히면 대화 에이전트도 남김없이 꺼진다**(three-axes 결정 19 · 티켓 05). 셸 정리(`pty::end_for_exit`)는 셸 표식을
