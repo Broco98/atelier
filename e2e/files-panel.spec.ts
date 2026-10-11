@@ -129,6 +129,28 @@ test("트리는 프로젝트 루트만 펼쳐 서고, 걸린 것은 흐린 글�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+test("하위 모듈과 심링크는 펼치지 않는 파일 행이고, 하위 모듈만 제 글리프와 「하위 모듈」을 말한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await openFiles(page);
+
+  // 하위 모듈은 다른 저장소라 펼치지 않는다(S3) — 폴더 쪽에 서도 펼침을 말하지 않는 파일 행이다. 확장자 꼬리표 대신
+  // `FolderGit2` 글리프가 서고, 화면 읽기로 「하위 모듈」을 듣는다(스토리 88).
+  const submodule = 패널행(page, "vendor-ui");
+  await expect(submodule).toBeVisible();
+  await expect(submodule).not.toHaveAttribute("aria-expanded");
+  await expect(submodule).toHaveAccessibleDescription("하위 모듈");
+  await expect(submodule.locator("svg.lucide-folder-git-2")).toHaveCount(1);
+
+  // 심링크는 따라가지 않는다 — 폴더를 가리켜도 그 자리의 파일 행이고 따로 표시하지 않는다(01).
+  const link = 패널행(page, "docs");
+  await expect(link).toBeVisible();
+  await expect(link).not.toHaveAttribute("aria-expanded");
+  await expect(link).toHaveAccessibleDescription("");
+  await expect(link.locator("svg")).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("걸린 폴더를 펼치면 「읽는 중」 뒤에 한 겹이 서고, 그 안의 폴더를 펼치면 다음 겹을 묻는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);

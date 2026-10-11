@@ -205,14 +205,18 @@ export const worktreeFolder = (path: string, children: WorktreeEntry[]): Worktre
 });
 /** gitignore에 걸린 폴더 — 자식을 읽지 않은 채 온다. */
 const ignoredFolder = (path: string): WorktreeEntry => ({ ...worktreeFile(path, true), kind: "folder", children: null });
+/** 하위 모듈 — 다른 저장소라 펼치지 않는 항목이다(S3). 코어는 폴더 쪽에 세운다. */
+const worktreeSubmodule = (path: string): WorktreeEntry => ({ ...worktreeFile(path), kind: "submodule" });
+/** 심링크 — 따라가지 않고 그 자리의 항목이다. 폴더를 가리켜도 파일 쪽에 선다. */
+const worktreeSymlink = (path: string): WorktreeEntry => ({ ...worktreeFile(path), kind: "symlink" });
 
 /**
  * 프로젝트별 워크트리 트리(`list_worktree_tree`의 답). **인자 `project`로만 가른다** — `billing`은 `pinned-work`와
  * `multi-work`가 함께 쓰는 답이다. 접힘 기억이 work마다 따로인지는 같은 트리로 재야 갈린다.
  *
- * `billing`에 **files 칸이 그리는 갈래가 다 있다** — 점 폴더(`.github`), 걸린 폴더(`dist`), 두 겹 폴더(`src/api`), 걸린 점
- * 파일(`.env`), 확장자 없는 점 파일(`.gitignore`). 파일 행의 이름에는 확장자 꼬리표가 붙는다(`MD README.md` — `SpecTree`의
- * `FileGlyph`).
+ * `billing`에 **files 칸이 그리는 갈래가 다 있다** — 점 폴더(`.github`), 걸린 폴더(`dist`), 두 겹 폴더(`src/api`), 하위
+ * 모듈(`vendor-ui` — 제 글리프와 「하위 모듈」), 걸린 점 파일(`.env`), 확장자 없는 점 파일(`.gitignore`), 폴더를 가리키는
+ * 심링크(`docs` — 펼치지 않는 파일 행). 파일 행의 이름에는 확장자 꼬리표가 붙는다(`MD README.md` — `SpecTree`의 `FileGlyph`).
  */
 export const WORKTREE_TREES: Record<string, WorktreeTree> = {
   billing: {
@@ -221,8 +225,10 @@ export const WORKTREE_TREES: Record<string, WorktreeTree> = {
       worktreeFolder(".github", [worktreeFile(".github/ci.yml")]),
       ignoredFolder("dist"),
       worktreeFolder("src", [worktreeFolder("src/api", [worktreeFile("src/api/client.ts")]), worktreeFile("src/index.ts")]),
+      worktreeSubmodule("vendor-ui"),
       worktreeFile(".env", true),
       worktreeFile(".gitignore"),
+      worktreeSymlink("docs"),
       worktreeFile("README.md"),
     ],
   },
