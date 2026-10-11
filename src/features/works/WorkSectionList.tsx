@@ -156,7 +156,7 @@ export function WorkSectionList({
         <div
           data-drop-line=""
           aria-hidden
-          className="pointer-events-none absolute inset-x-3 z-10 h-0.5 -translate-y-1/2 rounded-full bg-(--accent)"
+          className="pointer-events-none absolute inset-x-3 z-10 h-0.5 -translate-y-1/2 rounded-full bg-accent"
           style={{ top: lineY }}
         />
       )}
@@ -234,7 +234,7 @@ function EmptySlot({ section, lit }: { section: keyof SectionsOpen; lit: boolean
       className={cn(
         "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-lg border border-dashed text-chat-meta transition-colors",
         margin,
-        lit ? "border-(--accent) bg-accent-soft text-fg" : "border-border text-fg-tertiary",
+        lit ? "border-accent bg-accent-soft text-fg" : "border-border text-fg-tertiary",
       )}
     >
       {copy}
@@ -633,7 +633,7 @@ function WorkRow({
           event.stopPropagation();
           onTogglePin(work);
         }}
-        className="peer icon-button-tint col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-visible:max-w-6 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover:max-w-6 group-hover:opacity-100"
+        className="peer icon-button-tint col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-visible:max-w-6 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover:max-w-6 group-hover:opacity-100"
       >
         <Pin
           className="size-3"

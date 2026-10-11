@@ -151,7 +151,7 @@ function Trend({ points }: { points: ReadonlyArray<TrendPoint> }) {
             vectorEffect="non-scaling-stroke"
             className="stroke-border"
           />
-          {line.length > 1 && <polygon points={area.map(at).join(" ")} className="fill-(--accent)/8" />}
+          {line.length > 1 && <polygon points={area.map(at).join(" ")} className="fill-accent/8" />}
           {line.length > 0 && (
             <polyline
               points={line.map(at).join(" ")}
@@ -160,14 +160,14 @@ function Trend({ points }: { points: ReadonlyArray<TrendPoint> }) {
               strokeLinejoin="round"
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
-              className="stroke-(--accent)"
+              className="stroke-accent"
             />
           )}
         </svg>
         {last && (
           <span
             aria-hidden
-            className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-(--accent)"
+            className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent"
             style={{ left: `${(last[0] / BOX.width) * 100}%`, top: last[1] }}
           />
         )}

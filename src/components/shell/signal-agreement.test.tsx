@@ -74,15 +74,15 @@ function 셸하나(kind: "waiting" | "done"): ShellsState {
  * 가족은 색의 **낱말**로 가른다(`shell-signal.tsx`의 `TONE`) — 기다림은 부름의 점 `dot-wait` · 무리 `wait-soft`와 잉크
  * `warning`, 안 본 완료는 점 `dot-new` · 무리 `new-soft`와 잉크 `accent-solid`다. 이름을 미리 열거하지 않는 것이 요점이다:
  * `bg-wait-soft`든 `ring-dot-new`든 앞으로 생길 무엇이든 토큰 이름에 그 낱말이 있으면 여기 잡힌다. 열거해 두면 새
- * 유틸리티가 조용히 샌다. 옛 이름의 낱말(`done` — `bg-done` · `text-done-ink` …)도 안 본 완료로 센다. 그 유틸리티는 옛 이름을
- * 걷는 날까지 살아 있어(같은 색을 가리킨다), 한 자리에 옛 이름이 붙는 회귀가 Codex 낱말만 보는 그물을 빠져나간다.
+ * 유틸리티가 조용히 샌다. 옛 이름(`bg-done` · `text-done-ink` …)은 걷혀 CSS가 안 나오고, 다시 쓰는 것은
+ * `src/color-guard.test.ts`가 막는다.
  *
  * **`success`는 따로 한 가족이다.** 안 본 완료가 한때 그 색(초록)이었다 — 한 자리만 옛 색으로 남는 회귀가 「안 본 완료의
  * 가족」으로 섞여 들어가면 세 자리가 다른 색을 말해도 초록이다.
  */
 const 가족낱말: Readonly<Record<"wait" | "new" | "success", readonly string[]>> = {
   wait: ["warning", "wait"],
-  new: ["new", "accent-solid", "done"],
+  new: ["new", "accent-solid"],
   success: ["success"],
 };
 

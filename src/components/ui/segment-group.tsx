@@ -1,4 +1,4 @@
-// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿, 결정 1): 바닥 위를 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 fg, 안 선 칸은 fg-tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기는 둘이고 쓰는 자리가 고른다(기본값이 없다): pill(문서/원문 — 머리 컨트롤이라 알약이다, ui-refresh 결정 6 · 7의 B: 흰 캡슐 · 안쪽 1px border · 안쪽 3px · 칸 사이 2px, 칸 26px 원형, 칩도 원이고 fill-selected · 그림자 없음, DS `.at-seg.pill`), sm(spec 레이아웃 편집기의 종류 파일|폴더 · 템플릿 없음|있음: 눌린 바닥 fill-soft · 10px 모서리 · 안쪽 2px · 글자 폭의 두 칸 격자, 칸 26px · rounded-md · 좌우 10px, 칩 흰 바탕 · rounded-md, DS `.at-seg`). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다. 포커스 링은 Codex 파랑 `ring-(--accent)/50`이다(유틸리티 `accent`는 아직 옅은 면이다).
+// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿, 결정 1): 바닥 위를 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 fg, 안 선 칸은 fg-tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기는 둘이고 쓰는 자리가 고른다(기본값이 없다): pill(문서/원문 — 머리 컨트롤이라 알약이다, ui-refresh 결정 6 · 7의 B: 흰 캡슐 · 안쪽 1px border · 안쪽 3px · 칸 사이 2px, 칸 26px 원형, 칩도 원이고 fill-selected · 그림자 없음, DS `.at-seg.pill`), sm(spec 레이아웃 편집기의 종류 파일|폴더 · 템플릿 없음|있음: 눌린 바닥 fill-soft · 10px 모서리 · 안쪽 2px · 글자 폭의 두 칸 격자, 칸 26px · rounded-md · 좌우 10px, 칩 흰 바탕 · rounded-md, DS `.at-seg`). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다. 포커스 링은 Codex 파랑 `ring-accent/50`이다.
 "use client"
 
 import * as React from "react"
@@ -66,7 +66,7 @@ const segmentChipVariants = cva(
 
 /** relative가 칩 위로 글자·글리프를 올린다 — 칩이 absolute라 그냥 두면 덮인다. */
 const segmentItemVariants = cva(
-  "relative outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-(--accent)/50 disabled:pointer-events-none disabled:opacity-40",
+  "relative outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-accent/50 disabled:pointer-events-none disabled:opacity-40",
   {
     variants: {
       size: {

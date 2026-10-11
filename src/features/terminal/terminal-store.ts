@@ -1271,7 +1271,8 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 여기서 거는 이유는 `onTitleChange`와 같다 — 이펙트에 두면 배경 칸이 못 받는다.
   // 얼굴을 **그때그때 묻는다** — 스냅숏을 넘기면 설정으로 글꼴이나 테마를 바꿨을 때 조합
   // 표시만 옛 얼굴로 남는다. `term.options`가 이 칸의 정본이고 `restyleShells`가 그것을 고친다.
-  // 색은 뒤집어 준다: 터미널 글자색이 표시의 바탕이 된다.
+  // 색은 뒤집어 준다: 터미널 글자색이 표시의 바탕이 된다. 테마 칸이 비면 이 칸의 설정이 고른 벌(`terminalThemeFor`)로 메운다 —
+  // 글꼴의 `look`과 같은 폴백이고, 색을 여기서 따로 고르지 않는다(`color-guard.test.ts`).
   //
   // **다리가 보내는 순간이 사람 입력이다**(프로세스 스펙 S16) — WKWebView는 한글에 조합 사건을 안 준다.
   // 인스턴스는 아래에서 서므로 부를 때 읽는다(다리는 사람이 칠 때만 부른다).
@@ -1280,11 +1281,12 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     term.input(data, true);
   }, () => {
     const theme = term.options.theme ?? {};
+    const chosen = terminalThemeFor(look.theme);
     return {
       family: term.options.fontFamily ?? look.fontFamily,
       size: term.options.fontSize ?? look.fontSize,
-      background: theme.foreground ?? "#000000",
-      foreground: theme.background ?? "#ffffff",
+      background: theme.foreground ?? chosen.foreground,
+      foreground: theme.background ?? chosen.background,
     };
   });
 

@@ -973,7 +973,7 @@ export const 토큰색 = async (page: Page, name: string, { 다크 = false }: { 
 
 /**
  * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는
- * 길이 색 토큰(`text-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
+ * 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
  * 없으면 흰 바탕이다(문서의 바탕).
  */
 export async function 글자대비(element: Locator): Promise<number> {

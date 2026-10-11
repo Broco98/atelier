@@ -506,7 +506,7 @@ function BlockWrapper({
         announce="name"
         type="button"
         onClick={() => onCopy(start, end)}
-        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <Copy className="size-3" aria-hidden />
       </Hint>
@@ -741,7 +741,7 @@ export const PrettyView = memo(function PrettyView({
       // 마크다운이 만드는 input은 GFM 체크박스뿐이라(원시 HTML은 켜져 있지 않다) 분기하지 않는다.
       // disabled는 remark-gfm이 붙여 보낸 것을 그대로 둔다 — 눌러도 문서가 바뀌지 않는다.
       input: ({ node, ...props }) => (
-        <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-(--accent)")} />
+        <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-accent")} />
       ),
       pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];

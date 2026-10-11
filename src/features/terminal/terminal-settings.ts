@@ -58,7 +58,7 @@ export async function loadTerminalSettings(): Promise<void> {
  * 따로 고르면 셸이 실제로 그리는 값과 어긋나 그 사이에 띠가 선다. 구독인 것은 밝게 · 어둡게를 바꾸면 이 칠도 따라와야 해서다
  * (결정 52가 이미 떠 있는 셸을 따라오게 하는 것과 같은 몫).
  */
-export function useShellBackground(): string | undefined {
+export function useShellBackground(): string {
   return useStore(terminalSettingsStore, (settings) => terminalThemeFor(terminalLook(settings).theme).background);
 }
 
@@ -67,6 +67,6 @@ export function useShellBackground(): string | undefined {
  * `×`를 칠한다 — 앱 토큰은 흰 바탕을 위한 값이라 어두운 테마의 카드 위에서 묻히고, 셸과 머리가 다른 글자색이면 한 카드가 둘로
  * 읽힌다. 정본은 같은 테마(`terminal-theme.ts`)다.
  */
-export function useShellForeground(): string | undefined {
+export function useShellForeground(): string {
   return useStore(terminalSettingsStore, (settings) => terminalThemeFor(terminalLook(settings).theme).foreground);
 }

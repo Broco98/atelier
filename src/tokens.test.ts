@@ -5,10 +5,10 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
-import { cssBlocks, declared } from "@/css-tokens";
+import { cssBlocks, declared, SHADCN_NAMES } from "@/css-tokens";
 
 // **앱 팔레트가 Codex 토큰으로 서 있는가**(codex-ds 결정 27 · 스펙 S1 · S2). 이름과 값은 DS 「Atelier」 2판이고,
-// 호출부가 아직 읽는 옛 이름(shadcn · 앱 전용)은 값을 들지 않고 Codex 토큰을 가리킨다.
+// 남은 shadcn 이름은 값을 들지 않고 Codex 토큰을 가리킨다.
 //
 // **유틸리티는 Tailwind를 실제로 돌려 잰다(CSS 훑기).** `@theme`에 줄이 있다고 유틸리티가 서는 것은 아니다 — 시간은
 // `--duration-*`가 아니라 `--transition-duration-*`여야 `duration-panel`이 CSS를 내고, 그림자는 값을 글자로 적으면 유틸리티가
@@ -83,13 +83,12 @@ describe("Codex 토큰", () => {
     }
   });
 
-  // **CSS 변수 `--accent`는 Codex 파랑이지만 유틸리티 `accent`는 아직 옅은 면이다.** shadcn이 그 이름에 건 뜻(`fill-hover`)을
-  // 옛 이름을 읽는 호출부가 남은 동안 지킨다 — 유틸리티가 변수를 따라가면 그 이름으로 칠한 옅은 면이 파랑이 된다. 공용 부품은
-  // 그 면을 Codex 이름(`fill-hover`)으로 옮겨 적었고, 유틸리티로 상태 배경을 칠하는 것은 `state-scale.test.ts`가 막는다.
-  it("유틸리티 bg-accent는 옅은 면(fill-hover)이고, CSS 변수 --accent는 Codex 파랑이다", async () => {
+  // **유틸리티 `accent`는 Codex 파랑이다**(codex-ds 스펙 S1) — CSS 변수 `--accent`를 읽는다. shadcn이 그 이름에 걸던 옅은 면은
+  // Codex `fill-hover`이고, 앱은 그 면을 그 이름으로 적는다. 상태(hover · focus · 켜짐) 뒤에 `bg-accent`를 붙이는 registry의
+  // 쓰임은 `state-scale.test.ts`가 막는다 — 이제 그 면은 파랑이다.
+  it("유틸리티 bg-accent는 CSS 변수 --accent(Codex 파랑 #339cff)를 읽는다", async () => {
     const rule = ruleOf(await utilities(["bg-accent"]), "bg-accent");
-    expect(rule).toContain("var(--fill-hover)");
-    expect(rule).not.toContain("var(--accent)");
+    expect(rule).toContain("background-color: var(--accent)");
     expect(declared(blocks, "light", "accent")).toBe("#339cff");
   });
 
@@ -103,7 +102,8 @@ describe("Codex 토큰", () => {
       ),
     );
     // 앵커: 블록을 실제로 읽었다 — 경로가 새서 빈 목록이면 아래가 그냥 통과한다.
-    expect(reads.length).toBeGreaterThan(100);
+    expect(reads).toEqual(expect.arrayContaining(["surface", "fg", "accent", "st-active", "background"]));
+    expect(reads.length).toBeGreaterThan(90);
     for (const one of reads) {
       expect(declared(blocks, "light", one), `라이트에 --${one}이 없다`).toBeDefined();
       expect(declared(blocks, "dark", one), `다크에 --${one}이 없다`).toBeDefined();
@@ -125,70 +125,23 @@ describe("Codex 토큰", () => {
     }
   });
 
-  // **옛 이름은 값을 들지 않는다** — Codex 토큰을 가리키는 별칭이다(DS README 「앱 토큰 이름과의 짝」). 값이 남으면 팔레트의
-  // 정본이 둘이 되어, Codex 값을 고치는 날 그 이름을 읽는 자리만 옛 색으로 남는다. `.dark`에 따로 적은 값도 같은 일이다.
-  const OLD_NAMES = [
-    // shadcn — `@layer base`(shadcn 바탕 CSS)가 읽는다. 앱 호출부(부품 · 틀 · 화면)는 Codex 이름을 쓴다
-    "background",
-    "foreground",
-    "card",
-    "card-foreground",
-    "popover",
-    "popover-foreground",
-    "primary",
-    "primary-foreground",
-    "secondary",
-    "secondary-foreground",
-    "muted",
-    "muted-foreground",
-    "accent-foreground",
-    "destructive",
-    "input",
-    "ring",
-    "sidebar",
-    "sidebar-foreground",
-    "sidebar-primary",
-    "sidebar-primary-foreground",
-    "sidebar-accent",
-    "sidebar-accent-foreground",
-    "sidebar-border",
-    "sidebar-ring",
-    // 앱 전용
-    "chrome",
-    "chrome-hover",
-    "primary-strong",
-    "primary-ink",
-    "border-pill",
-    "border-strong",
-    "text-tertiary",
-    "text-section",
-    "bg-group",
-    "callout-important",
-    "signal-wait",
-    "signal-wait-soft",
-    "signal-wait-ink",
-    "signal-done",
-    "signal-done-soft",
-    "signal-done-ink",
-    "state-1",
-    "state-2",
-    "state-3",
-    "state-4",
-  ];
-
-  it("옛 이름이 모두 Codex 토큰을 가리키고 손으로 적은 색 값이 없다", () => {
+  // **shadcn 이름은 값을 들지 않는다** — Codex 토큰을 가리키는 별칭이다(codex-ds 스펙 S1 · DS README 「앱 토큰 이름과의 짝」).
+  // 값이 남으면 팔레트의 정본이 둘이 되어, Codex 값을 고치는 날 그 이름을 읽는 자리(shadcn 바탕 CSS · registry에서 들인 부품)만
+  // 옛 색으로 남는다. `.dark`에 따로 적은 값도 같은 일이다. 걷은 앱 전용 이름이 다시 서지 않는 것은 `color-guard.test.ts`가 본다.
+  it("shadcn 이름이 모두 Codex 토큰을 가리키고 손으로 적은 색 값이 없다", () => {
     const COLOR_LITERAL = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color)\(/i;
-    for (const name of OLD_NAMES) {
+    const aliases: readonly string[] = SHADCN_NAMES;
+    for (const name of aliases) {
       const value = declared(blocks, "light", name);
       expect(value, `--${name}이 없다`).toBeDefined();
       expect(value, `--${name}에 색 값이 적혀 있다`).not.toMatch(COLOR_LITERAL);
       const targets = [...value!.matchAll(/var\(--([\w-]+)\)/g)].map((m) => m[1]);
       expect(targets, `--${name}이 아무것도 가리키지 않는다`).not.toEqual([]);
       for (const target of targets) {
-        expect(OLD_NAMES, `--${name}이 옛 이름 --${target}을 가리킨다`).not.toContain(target);
+        expect(aliases, `--${name}이 shadcn 이름 --${target}을 가리킨다`).not.toContain(target);
         expect(declared(blocks, "light", target), `--${name}이 가리키는 --${target}이 없다`).toBeDefined();
       }
-      // 다크 값은 가리키는 Codex 토큰이 든다 — `.dark`만의 상자에 옛 이름이 따로 적히지 않는다.
+      // 다크 값은 가리키는 Codex 토큰이 든다 — `.dark`만의 상자에 shadcn 이름이 따로 적히지 않는다.
       const darkOnly = blocks.filter((block) => block.head.includes(".dark") && !block.head.includes(":root"));
       expect(
         darkOnly.some((block) => block.decls.has(`--${name}`)),

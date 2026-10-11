@@ -1,7 +1,3 @@
-/// <reference types="node" />
-// 소스 스캔이라 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { agentMarkOf } from "./agent-mark";
@@ -38,18 +34,11 @@ describe("도는 것의 마크", () => {
 
   // **브랜드 색을 쓰지 않는다**(결정 15). 글자 색을 따라가므로 다크·라이트 둘 다 살고
   // 대비 바닥 4.5를 저절로 넘는다 — 색을 박으면 한쪽 테마에서 반드시 깨진다.
+  // 이 검사는 `currentColor`가 **있는가**만 본다 — 색 하나를 더 박아 넣어도 통과한다. 소스에 색 리터럴이 아예 없다는
+  // 것은 앱 전체의 색 지킴(`src/color-guard.test.ts`)이 이 파일까지 못박는다.
   it("글자 색으로 칠한다", () => {
     for (const name of ["claude", "codex"]) {
       expect(draw(name)).toContain('fill="currentColor"');
     }
-  });
-
-  // 위 검사는 `currentColor`가 **있는가**만 본다 — 색 하나를 더 박아 넣어도 통과한다.
-  // 소스에 색 리터럴이 아예 없다는 것을 따로 못박는다(리터럴 스캔이라 파서가 샐 자리가 없다).
-  it("소스 어디에도 색 리터럴이 없다", () => {
-    const src = readFileSync(fileURLToPath(new URL("./agent-mark.tsx", import.meta.url)), "utf8");
-    expect(src).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(src).not.toContain("rgb(");
-    expect(src).not.toContain("oklch(");
   });
 });

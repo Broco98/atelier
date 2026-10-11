@@ -928,7 +928,7 @@ function WorksPage({
                   onPointerUp={() => dropHere(dragSource, half)}
                   className={cn(
                     "flex-1 transition-colors duration-basic",
-                    drag.half === half && "bg-(--accent)/12 ring-1 ring-inset ring-(--accent)/40",
+                    drag.half === half && "bg-accent/12 ring-1 ring-inset ring-accent/40",
                   )}
                 />
               ))}
@@ -1030,7 +1030,7 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
         {/* 판 1의 Spinner다 — 앱에 스피너가 한 가지만 있다(스토리 92). 크기와 색은 그대로다(S15). 이 막이
             이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 「불러오는 중」이 한 번 더 읽힌다.
             움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
-        <Spinner aria-hidden className="size-6 text-(--accent)" />
+        <Spinner aria-hidden className="size-6 text-accent" />
         <span className="mt-1 text-heading-xs">{verb} 중…</span>
         <span className="text-chat-meta text-fg-tertiary">{detail}</span>
       </div>

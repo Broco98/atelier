@@ -396,7 +396,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-12 resize-y rounded-2xl border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus:border-(--accent) focus:ring-3 focus:ring-(--accent)/20"
+          className="min-h-12 resize-y rounded-2xl border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus:border-accent focus:ring-3 focus:ring-accent/20"
         />
       ) : (
         // 설명 상자 — 옅은 면 묶음(ui-refresh 결정 16, DS `.at-group.pad`)에 안쪽 14 · 16이다. 누르면 그 자리가 칸이 된다.

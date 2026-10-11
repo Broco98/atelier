@@ -8,4 +8,4 @@
 // 칸(`ProjectDetail`)은 이것을 쓰지 않는다 — 누르기 전의 설명 상자와 같은 자리 · 반경(16) · 글자(`text-sm`)에 서는 인라인 편집기다.
 // 포커스만 이 가족의 것(테두리 Codex 파랑 + 3px 옅은 링)이다.
 export const textareaLook =
-  "w-full resize-y rounded-lg border border-border-heavy bg-surface px-2.5 py-2 text-sm outline-none focus:border-(--accent) focus:ring-3 focus:ring-(--accent)/20";
+  "w-full resize-y rounded-lg border border-border-heavy bg-surface px-2.5 py-2 text-sm outline-none focus:border-accent focus:ring-3 focus:ring-accent/20";

@@ -313,7 +313,7 @@ function Figures({
 function MemoryBar({ share }: { share: number }) {
   return (
     <span aria-hidden className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-fill-active">
-      <span className="block h-full rounded-full bg-(--accent)" style={{ width: `${share}%` }} />
+      <span className="block h-full rounded-full bg-accent" style={{ width: `${share}%` }} />
     </span>
   );
 }

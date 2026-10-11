@@ -36,7 +36,13 @@ import type { TerminalTheme } from "@/features/settings/types";
 // 켜지 않는다) `index.css`의 `.dark`는 DS 다크 값이라, 다크 바탕은 DS 다크 `term-bg`(= 다크 `surface`)이고 커서는
 // 두 벌 모두 `accent`다. 전경 · 선택은 16색과 같은 출처(VS Code Dark+)와 반투명 한 겹으로 둔다(아래).
 
-export const terminalThemeLight: ITheme = {
+/**
+ * **칸이 다 찬 한 벌** — 우리가 정하는 넷(바탕 · 전경 · 커서 · 선택)이 늘 있다. 읽는 쪽(셸의 한글 조합 표시 · 터미널 카드의 칠)이
+ * 빈 칸의 폴백 색을 따로 고르지 않게 한다 — 고르면 그 자리만 이 정본을 비켜 간다.
+ */
+export type TerminalPalette = ITheme & Required<Pick<ITheme, "background" | "foreground" | "cursor" | "selectionBackground">>;
+
+export const terminalThemeLight: TerminalPalette = {
   // 아래 넷은 앱과 어긋나면 안 된다 — 짝을 여기 적어 둔다 (index.css, DS 터미널 낱말 `term-*`). 짝은 `theme-tokens.test.ts`가 본다.
   // 흐린 글자(SGR 2)는 칸이 없다 — xterm이 전경을 반만 칠해 그리므로 `--term-dim`(= `--fg-tertiary`, 본문 50%)과 저절로 같다.
   background: "#ffffff", // --term-bg(= --surface, 카드 면)
@@ -62,7 +68,7 @@ export const terminalThemeLight: ITheme = {
   brightWhite: "#a5a5a5",
 };
 
-export const terminalThemeDark: ITheme = {
+export const terminalThemeDark: TerminalPalette = {
   // 넷 중 **바탕과 커서가 앱과 이어져 있다**(머리말). 전경은 16색과 같은 출처(VS Code Dark+)에서 가져와
   // 한 벌을 흩뜨리지 않고, 선택은 앱의 방식을 따른다.
   background: "#181818", // DS 다크 --term-bg(= 다크 --surface, 카드 면)
@@ -104,6 +110,6 @@ export const terminalThemeDark: ITheme = {
  * 대응을 함수 하나로 두는 이유: store와 설정 화면의 미리보기가 같은 삼항을 각자 적으면 한쪽만
  * 뒤집혀도 조용하다 — 밝게가 어둡게로 그려지는 것은 오류가 아니라 그냥 다른 화면이다.
  */
-export function terminalThemeFor(theme: TerminalTheme): ITheme {
+export function terminalThemeFor(theme: TerminalTheme): TerminalPalette {
   return theme === "light" ? terminalThemeLight : terminalThemeDark;
 }

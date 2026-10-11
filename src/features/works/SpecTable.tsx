@@ -152,7 +152,7 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
         trigger={
           <button
             aria-label="표를 전체화면으로 보기"
-            className="icon-button pointer-events-none absolute right-1.5 top-1.5 z-20 border bg-surface text-fg-tertiary opacity-0 outline-none transition-[color] hover:text-fg focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+            className="icon-button pointer-events-none absolute right-1.5 top-1.5 z-20 border bg-surface text-fg-tertiary opacity-0 outline-none transition-[color] hover:text-fg focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
           />
         }
       >

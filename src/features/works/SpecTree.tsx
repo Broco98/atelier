@@ -188,7 +188,7 @@ function TreeRows({
                   type="button"
                   aria-label={`${item.name} 경로 복사`}
                   onClick={() => onCopy(item.path)}
-                  className="icon-button-tint text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-(--accent)/50 group-hover:opacity-100"
+                  className="icon-button-tint text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover:opacity-100"
                 >
                   <Copy className="size-3" />
                 </Hint>

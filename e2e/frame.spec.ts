@@ -289,9 +289,28 @@ test("창 바탕은 surface-shell, 카드는 surface, 본문 글자는 fg다 —
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **CSS 변수 `--accent`는 Codex 파랑이지만 메뉴의 켜진 줄은 옅은 면(`fill-hover`)이다**(`index.css`의 `--color-accent`).
-// registry는 그 줄을 shadcn `accent`(옅은 면)로 칠했고 부품은 그 면을 Codex 이름(`focus:bg-fill-hover`)으로 옮겨 적었다 —
-// 이름이 겹치는 `accent`가 파랑으로 새지 않았는지를 화면에서 잰다. 상태 메뉴를 키보드로 열어 첫 줄을 켠다.
+// codex-ds 티켓 07 — **유틸리티 `accent`가 Codex 파랑이다**(codex-ds 스펙 S1). 그 유틸리티로 칠한 한 자리(요약 카드 추이의
+// 끝점)를 칠해진 색으로 읽어 `#339cff` · 토큰 `--accent`와 맞댄다. 빌드가 내는 규칙은 `tokens.test.ts`가 보고, 여기서는 그 규칙이
+// 화면에 닿았는지 본다 — 유틸리티가 옛 뜻(옅은 면)에 남으면 이 점이 회색이 된다.
+test("유틸리티 accent로 칠한 자리(요약 추이의 끝점)는 Codex 파랑 #339cff다", async ({ page }) => {
+  const now = Date.now();
+  await installFixtureBackend(page, {
+    processes_trend: [0, 1, 2].map((at) => ({ at: now - (2 - at) * 60_000, total: (2_000 + at * 100) * 1024 * 1024 })),
+  });
+  await page.goto("/processes");
+  // 끝점은 추이 그림 옆의 점 하나다 — 그림이 가로로 늘어나 그 안의 원은 타원이 되므로 그림 밖에 선다(`SummaryCard.tsx`의 `Trend`).
+  const 끝점 = page.getByRole("region", { name: "요약", exact: true }).locator('svg[data-figure="trend"] + span');
+  await expect(끝점).toHaveCount(1);
+
+  const 파랑 = await 토큰색(page, "--accent");
+  expect(파랑).toBe("rgb(51, 156, 255)");
+  await expect(끝점).toHaveCSS("background-color", 파랑);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **옅은 면이던 자리가 파랑으로 바뀌지 않았다** — 메뉴의 켜진 줄은 옅은 면(`fill-hover`)이다. registry는 그 줄을 shadcn
+// `accent`(옅은 면)로 칠했고 부품은 그 면을 Codex 이름(`focus:bg-fill-hover`)으로 옮겨 적었다. 이제 유틸리티 `accent`는 파랑이라,
+// registry의 이름이 하나라도 남았으면 이 줄이 파랑으로 켜진다. 상태 메뉴를 키보드로 열어 첫 줄을 켠다.
 test("메뉴의 켜진 줄은 옅은 면(fill-hover)이고 파랑(accent)이 아니다", async ({ page }) => {
   const [work] = WORKS;
   await installFixtureBackend(page);

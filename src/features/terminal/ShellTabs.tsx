@@ -479,7 +479,7 @@ function ShellTabs({
           <span
             aria-hidden
             data-tab-gap={slot}
-            className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-(--accent)"
+            className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-accent"
             style={{ left: gapLineLeft(geometry, slot) }}
           />
         )}

@@ -886,8 +886,8 @@ function DropLine({ side, left }: { side: "top" | "bottom"; left: number }) {
         side === "top" ? "-top-[3px]" : "-bottom-[3px]",
       )}
     >
-      <span className="size-1.5 shrink-0 rounded-full border-2 border-(--accent) bg-surface" />
-      <span className="h-0.5 flex-1 rounded-full bg-(--accent)" />
+      <span className="size-1.5 shrink-0 rounded-full border-2 border-accent bg-surface" />
+      <span className="h-0.5 flex-1 rounded-full bg-accent" />
     </span>
   );
 }
@@ -974,9 +974,9 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-visible:ring-2 focus-visible:ring-(--accent)/50",
+        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/50",
         drop === "inside"
-          ? "bg-accent-soft text-fg ring-1 ring-inset ring-(--accent)"
+          ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent"
           : selected
             ? "selected-row font-medium"
             : "text-fg hover:bg-fill-soft",
@@ -1354,7 +1354,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-(--accent)/50",
+                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/50",
                   checked ? "toggle-on" : "text-fg-secondary quiet-hover",
                 )}
               >

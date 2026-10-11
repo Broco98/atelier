@@ -202,12 +202,11 @@ export function ResizeHandle({
         edge,
       )}
     >
-      {/* 심 라인 — blur 층은 WebKit에서 잔상(스미어)을 남겨 그라데이션 단일 층만 쓴다. 색은 Codex 파랑 55%다 —
-          유틸리티 `accent`는 아직 옅은 면이라 변수를 바로 읽는다(`via-(--accent)/55`, `index.css`의 `--color-accent`).
+      {/* 심 라인 — blur 층은 WebKit에서 잔상(스미어)을 남겨 그라데이션 단일 층만 쓴다. 색은 Codex 파랑 55%다(`via-accent/55`).
           패널 가장자리에 딱 붙인다 — 왼쪽 패널(사이드바)이면 자기 오른쪽 끝, 오른쪽 패널이면 왼쪽 끝. 틈 자리면 틈의 가운데다. */}
       <div
         className={cn(
-          "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-(--accent)/55 to-transparent transition-opacity duration-basic",
+          "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-accent/55 to-transparent transition-opacity duration-basic",
           line,
           visible,
         )}

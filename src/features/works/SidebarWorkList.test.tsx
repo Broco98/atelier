@@ -507,7 +507,7 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     // 결정 5(스토리 29). 카드 채움(목업의 F·G)은 열여덟 행에 전부 무게를 줘 목록이
     // 게시판이 된다. 행이 두 줄이던 동안 그 유혹이 커졌던 자리라 검사로 못박아 두었다 —
     // 테두리도 배경도 고른 행의 `selected-row` 말고는 없다. 카드 채움은 Codex 이름(`bg-surface` · `bg-surface-under` …)과
-    // 옛 이름(`bg-background`) 둘 다로 센다 — 행은 Codex 이름으로 적히므로 옛 이름만 세면 이 지킴이 조용히 빈다.
+    // shadcn 이름(`bg-background`) 둘 다로 센다 — 행은 Codex 이름으로 적히므로 shadcn 이름만 세면 이 지킴이 조용히 빈다.
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나" });
     const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group grid[^"]*)">/g)].map(
       (m) => m[1],

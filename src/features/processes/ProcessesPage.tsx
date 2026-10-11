@@ -375,9 +375,9 @@ function GroupRow({ group, total, fold }: { group: GroupNode; total: number | nu
       fold={fold}
     >
       {slugOfOwner(group.owner) === null ? (
-        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-(--accent)" />
+        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-accent" />
       ) : group.status !== null ? (
-        <StatusIcon status={group.status} className="text-(--accent)" />
+        <StatusIcon status={group.status} className="text-accent" />
       ) : (
         <span aria-hidden className="size-3.5 shrink-0" />
       )}
