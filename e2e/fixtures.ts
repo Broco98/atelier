@@ -7,7 +7,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { Conversation, RecordLine } from "@/features/chat/types";
+import type { Conversation, EngineCheck, RecordLine } from "@/features/chat/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -932,6 +932,24 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
   chat_send: null,
   chat_close: null,
+  // 엔진 확인(three-axes 티켓 22) — 대화창이 그 엔진의 대화를 처음 보일 때와 `+`를 누를 때 나간다. **기본은 「찾음 · 로그인
+  // 됨」이다** — 안내 카드가 서지 않는 길이라 대화창을 여는 다른 spec들이 그대로 돈다. 못 찾음 · 로그인 안 됨은
+  // `chat-guide.spec.ts`가 덮어쓴다. 경로는 화면이 읽지 않는다.
+  chat_check_engine: answerByArg("agent", {
+    claude: { state: "found", programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }], loggedIn: true },
+    codex: {
+      state: "found",
+      programs: [
+        { name: "codex-acp", path: "/opt/fixture/bin/codex-acp" },
+        { name: "codex", path: "/opt/fixture/bin/codex" },
+        { name: "node", path: "/opt/fixture/bin/node" },
+      ],
+      loggedIn: true,
+    },
+  } satisfies Record<string, EngineCheck>),
+  // 로그인 시작 · 취소 — 값은 안 쓰인다. 진행(링크 · 끝남)은 엔진 상태 이벤트로 오므로 검사가 인자를 본 뒤 그 이벤트를 쏜다.
+  chat_start_login: null,
+  chat_cancel_login: null,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

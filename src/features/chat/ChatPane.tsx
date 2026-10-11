@@ -1,13 +1,22 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { chatUiStore, chooseConversation, claimFirstConversation, conversationKey } from "./chat-store";
+import {
+  chatUiStore,
+  chooseConversation,
+  claimFirstConversation,
+  conversationKey,
+  dropWanted,
+  wantConversation,
+} from "./chat-store";
 import ChatThread from "./ChatThread";
 import Composer from "./Composer";
+import { awaitingLogin, chatEngineStore, checkEngine, checkEngineOnce, guideKind, type GuideKind } from "./engine-store";
+import GuideCard from "./GuideCard";
 import { useCloseConversation, useConversations, useCreateConversation, useRecordLines } from "./hooks";
-import type { Agent, Conversation } from "./types";
+import type { Agent, Conversation, EngineCheck } from "./types";
 
 // 대화창(three-axes 티켓 17) — 대화 탭 줄 · 흐름 · 입력창. 작업 패널의 `chat` 보기가 이것을 그리고, `chat` 탭(24)도 같은 것을
 // 가운데에 띄운다. 모양은 캔버스 보드 04(대화 패널) · 14(말과 입력)이고 값은 대화창 범위 토큰(`[data-chat]`, three-axes 결정 31)이다.
@@ -40,13 +49,53 @@ function ChatPane({ work, visible }: ChatPaneProps) {
   const chosen = useStore(chatUiStore, (state) => state.active[work]);
   const active = conversations.find((one) => one.id === chosen) ?? conversations[0] ?? null;
   const createConversation = create.mutate;
+  const [checking, setChecking] = useState(false);
+
+  // 대화를 열기 전에 그 엔진을 확인한다(three-axes 티켓 22 「언제 확인하나」) — 못 찾았으면 대화를 만들지 않고(호스트도 거절한다)
+  // 그 자리에 안내 카드를 세운다. 찾았으면 로그인이 안 됐어도 연다: Codex는 호스트가 로그인 필요 줄을 적고, 어느 엔진이든 그 대화
+  // 자리에 로그인 카드가 선다. 확인이 거절되면(로그인 셸을 못 읽음) 그대로 열어 호스트의 거절을 보인다.
+  const openConversation = useCallback(
+    async (agent: Agent) => {
+      setChecking(true);
+      let check: EngineCheck | null = null;
+      try {
+        check = await checkEngine(agent, false);
+      } catch {
+        // 호스트의 거절은 만들기에서 다시 서서 그 글이 보인다.
+      } finally {
+        setChecking(false);
+      }
+      if (check?.state === "missing") {
+        wantConversation(work, agent);
+        return;
+      }
+      dropWanted(work);
+      createConversation({ work, agent });
+    },
+    [work, createConversation],
+  );
 
   // 대화 없는 work에서 대화창을 처음 열면 기본 에이전트로 대화 하나가 열려 있다(스토리 2). work마다 한 번이다.
   useEffect(() => {
     if (!visible || !list.isSuccess || list.data.length > 0) return;
     if (!claimFirstConversation(work)) return;
-    createConversation({ work, agent: DEFAULT_AGENT });
-  }, [visible, list.isSuccess, list.data, work, createConversation]);
+    void openConversation(DEFAULT_AGENT);
+  }, [visible, list.isSuccess, list.data, work, openConversation]);
+
+  // 대화창이 그 엔진의 대화를 처음 보일 때 엔진을 확인한다 — 앱이 도는 동안 엔진마다 한 번이고, 그 뒤는 엔진 상태 이벤트가 잇는다.
+  const activeAgent = active?.agent ?? null;
+  useEffect(() => {
+    if (visible && activeAgent) checkEngineOnce(activeAgent);
+  }, [visible, activeAgent]);
+
+  // 못 찾아 열지 못한 대화 — 「다시 확인」으로 찾으면 그때 연다(스토리 102).
+  const wanted = useStore(chatUiStore, (state) => state.wanted[work] ?? null);
+  const wantedView = useStore(chatEngineStore, (state) => (wanted ? state[wanted] : undefined));
+  useEffect(() => {
+    if (!wanted || wantedView?.found !== true) return;
+    dropWanted(work);
+    createConversation({ work, agent: wanted });
+  }, [wanted, wantedView?.found, work, createConversation]);
 
   const closeConversation = (conversation: Conversation) => {
     close.mutate(
@@ -63,8 +112,10 @@ function ChatPane({ work, visible }: ChatPaneProps) {
     );
   };
 
-  // 호스트가 거절하면 그 글을 그대로 보인다(호스트의 오류는 화면에 보일 글이다). 못 찾음 · 로그인 안내 카드는 티켓 22다.
+  // 호스트가 거절하면 그 글을 그대로 보인다(호스트의 오류는 화면에 보일 글이다). 못 찾음 · 로그인은 안내 카드가 말한다.
   const problem = list.error ?? create.error ?? close.error;
+  // 못 찾아 열지 못한 대화가 있으면 대화창 자리에 그 엔진의 카드가 선다 — 켜진 대화 대신이다.
+  const wantedKind = wanted ? guideKind(wantedView, false) : null;
   return (
     <div data-chat className="flex min-h-0 flex-1 flex-col">
       <div
@@ -77,7 +128,10 @@ function ChatPane({ work, visible }: ChatPaneProps) {
             key={conversation.id}
             conversation={conversation}
             on={conversation.id === active?.id}
-            onChoose={() => chooseConversation(work, conversation.id)}
+            onChoose={() => {
+              dropWanted(work);
+              chooseConversation(work, conversation.id);
+            }}
             onClose={() => closeConversation(conversation)}
           />
         ))}
@@ -85,8 +139,8 @@ function ChatPane({ work, visible }: ChatPaneProps) {
           text="새 대화"
           announce="name"
           type="button"
-          disabled={create.isPending}
-          onClick={() => create.mutate({ work, agent: DEFAULT_AGENT })}
+          disabled={checking || create.isPending}
+          onClick={() => void openConversation(DEFAULT_AGENT)}
           className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
         >
           <Plus className="size-4" strokeWidth={1.8} aria-hidden />
@@ -97,20 +151,23 @@ function ChatPane({ work, visible }: ChatPaneProps) {
           {String(problem)}
         </p>
       )}
-      {conversations.length === 0 ? (
+      {wanted && wantedKind ? (
+        <GuidePlace agent={wanted} kind={wantedKind} />
+      ) : conversations.length === 0 ? (
         <p className="px-4 pt-4 text-ui text-tertiary">
-          {create.isPending || list.isPending ? "대화를 여는 중이에요" : "열린 대화가 없어요 — +로 새 대화를 열어요"}
+          {checking || create.isPending || list.isPending
+            ? "대화를 여는 중이에요"
+            : "열린 대화가 없어요 — +로 새 대화를 열어요"}
         </p>
-      ) : (
-        conversations.map((conversation) => (
-          <ConversationBody
-            key={conversation.id}
-            work={work}
-            conversation={conversation}
-            shown={conversation.id === active?.id}
-          />
-        ))
-      )}
+      ) : null}
+      {conversations.map((conversation) => (
+        <ConversationBody
+          key={conversation.id}
+          work={work}
+          conversation={conversation}
+          shown={conversation.id === active?.id && !(wanted && wantedKind)}
+        />
+      ))}
     </div>
   );
 }
@@ -167,6 +224,12 @@ function ConversationBody({ work, conversation, shown }: { work: string; convers
     const el = scroller.current;
     if (el && stuck.current) el.scrollTop = el.scrollHeight;
   }, [lines, shown]);
+  // 못 찾음 · 로그인 안 됨 · 로그인 중이면 기록과 입력창 대신 안내 카드가 선다(three-axes 티켓 22). 엔진이 「됨」이 되면 걷히고
+  // 그 자리에 기록이 그대로 다시 선다 — 대화를 다시 띄우는 것은 호스트다.
+  const view = useStore(chatEngineStore, (state) => state[conversation.agent]);
+  const waiting = useMemo(() => awaitingLogin(lines), [lines]);
+  const kind = guideKind(view, waiting);
+  if (kind) return shown ? <GuidePlace agent={conversation.agent} kind={kind} /> : null;
   return (
     <div hidden={!shown} className="flex min-h-0 flex-1 flex-col">
       <div
@@ -180,6 +243,16 @@ function ConversationBody({ work, conversation, shown }: { work: string; convers
         <ChatThread conversationKey={key} lines={lines} />
       </div>
       <Composer work={work} conversation={conversation.id} draftKey={key} agent={conversation.agent} />
+    </div>
+  );
+}
+
+/** 안내 카드의 자리 — 대화창의 몸(기록과 입력창이 서던 곳) 위쪽에 선다. 카드가 길면 그 자리 안에서 구른다. */
+function GuidePlace({ agent, kind }: { agent: Agent; kind: GuideKind }) {
+  const view = useStore(chatEngineStore, (state) => state[agent]);
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-4 scroll-quiet">
+      <GuideCard agent={agent} kind={kind} view={view} />
     </div>
   );
 }

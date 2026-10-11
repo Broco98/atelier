@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { RecordLine } from "./types";
+import type { Agent, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
 //
@@ -80,9 +80,26 @@ interface UiState {
   drafts: Readonly<Record<string, string>>;
   /** 펼친 턴 — 대화 열쇠 + 턴 열쇠. 턴이 끝나면 접혀 있고, 머리줄을 누르면 여기 든다. */
   expanded: Readonly<Record<string, true>>;
+  /**
+   * work마다 열려다 못 연 대화의 에이전트 — 엔진을 못 찾아 대화를 만들지 않았다(three-axes 티켓 22). 그동안 대화창 자리에 그
+   * 엔진의 안내 카드가 서고, 「다시 확인」으로 찾으면 그때 대화를 연다(스토리 102). 대화 탭을 고르면 거둔다.
+   */
+  wanted: Readonly<Record<string, Agent>>;
 }
 
-export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {} });
+export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {} });
+
+export function wantConversation(work: string, agent: Agent): void {
+  chatUiStore.setState((state) => ({ ...state, wanted: { ...state.wanted, [work]: agent } }));
+}
+
+export function dropWanted(work: string): void {
+  chatUiStore.setState((state) => {
+    if (!(work in state.wanted)) return state;
+    const { [work]: _, ...rest } = state.wanted;
+    return { ...state, wanted: rest };
+  });
+}
 
 export function chooseConversation(work: string, conversation: string): void {
   chatUiStore.setState((state) => ({ ...state, active: { ...state.active, [work]: conversation } }));

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { chatApi, onChatRecord } from "./api";
+import { chatApi, onChatEngine, onChatRecord } from "./api";
 import {
   announce,
   chatRecordStore,
@@ -12,6 +12,7 @@ import {
   mergeLines,
   releaseRecordRead,
 } from "./chat-store";
+import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { finalMessages, foldConversation, headline } from "./fold";
 import type { Agent, Conversation, RecordLine } from "./types";
 
@@ -93,11 +94,31 @@ export function useChatRecordFeed(): void {
       const known = linesOf(chatRecordStore.state, key).some((one) => one.seq === line.seq);
       mergeLines(work, conversation, [line]);
       if (line.kind === "turn-end" && !known) announceTurnEnd(queryClient, work, conversation);
+      // 로그인 필요 줄은 그 엔진의 「로그인 안 됨」이다 — 같은 엔진의 대화 자리에 다 안내 카드가 선다(three-axes 티켓 22).
+      if (!known && isLoginRequired(line)) {
+        const agent = queryClient
+          .getQueryData<Conversation[]>(conversationsQuery(work).queryKey)
+          ?.find((one) => one.id === conversation)?.agent;
+        if (agent) markLoginRequired(agent);
+      }
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
   }, [queryClient]);
+}
+
+/**
+ * **엔진 상태 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다, three-axes 티켓 22). 찾음 · 로그인 · 로그인 진행은 대화가
+ * 아니라 엔진의 것이라 엔진 스토어에 앉히고, 그 엔진의 안내 카드가 다 따라 바뀐다. 대화창이 저마다 들으면 하나만 받는다.
+ */
+export function useChatEngineFeed(): void {
+  useEffect(() => {
+    const unlisten = onChatEngine(applyEngineEvent);
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 }
 
 /** 턴 끝 알림의 글 — 대화 이름 · 머리줄 · 턴 끝 메시지. 마크다운 표식은 소리로 읽히지 않게 걷는다. */

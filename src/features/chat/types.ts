@@ -51,7 +51,13 @@ export interface ChatRecordEvent {
  */
 export type EngineCheck =
   | { state: "found"; programs: { name: string; path: string }[]; loggedIn: boolean }
-  | { state: "missing"; missing: { name: string; install: string }[] };
+  | { state: "missing"; missing: MissingProgram[] };
+
+/** 로그인 셸의 PATH에서 못 찾은 실행 파일 하나 — 이름과 설치 명령(안내 카드의 「명령 복사」가 이것을 넣는다). */
+export interface MissingProgram {
+  name: string;
+  install: string;
+}
 
 /**
  * 로그인 명령의 진행(`atelier_acp::LoginProgress`). 도는 중이면 명령이 찍은 첫 `https://` URL(「링크 복사」의 값 — 찍기 전에는
