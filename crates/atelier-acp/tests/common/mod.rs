@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use atelier_acp::{ConversationHost, HostEvent, ShellSource, TranslatorCommand};
+use atelier_acp::{Agent, ConversationHost, EngineState, HostEvent, ShellSource, TranslatorCommand};
 use serde_json::Value;
 
 /// 가짜 로그인 셸의 시나리오.
@@ -41,7 +41,7 @@ impl Sandbox {
     pub fn new() -> Self {
         let dir = tempfile::tempdir().expect("임시 폴더");
         let root = dir.path().to_path_buf();
-        for sub in ["home", "receipts", "receipts/acp"] {
+        for sub in ["home", "receipts", "receipts/acp", "receipts/login"] {
             fs::create_dir_all(root.join(sub)).unwrap();
         }
         Self { _dir: dir, root }
@@ -351,6 +351,129 @@ impl Sandbox {
     }
 }
 
+// ── 로그인(three-axes 티켓 12) ──────────────────────────────────────────────────
+
+/// 가짜가 영수증 이름에 쓰는 엔진 이름.
+fn engine_name(agent: Agent) -> &'static str {
+    match agent {
+        Agent::Claude => "claude",
+        Agent::Codex => "codex",
+    }
+}
+
+impl Sandbox {
+    /// 로그인 검사의 PATH 폴더. `claude` · `codex` · `codex-acp`는 가짜 claude · 가짜 codex · 가짜 ACP 에이전트 bin을
+    /// 가리키는 링크이고, `node`는 찾기만 하는 가짜, `open`은 받은 인자를 영수증에 적는 기록용 가짜다(실측 함정 40).
+    pub fn login_bin(&self) -> PathBuf {
+        let bin = self.bin("login-bin");
+        if !bin.join("claude").exists() {
+            std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-claude"), bin.join("claude")).unwrap();
+            std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-codex"), bin.join("codex")).unwrap();
+            std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-acp-agent"), bin.join("codex-acp")).unwrap();
+            self.plant(&bin, "node");
+            let open = bin.join("open");
+            fs::write(&open, format!("#!/bin/sh\necho \"$*\" >> '{}'\n", self.login_receipts().join("open").display()))
+                .unwrap();
+            fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        bin
+    }
+
+    /// 로그인 흉내의 영수증 폴더(`FAKE_LOGIN_RECEIPTS`).
+    pub fn login_receipts(&self) -> PathBuf {
+        self.receipts().join("login")
+    }
+
+    /// 로그인 검사의 로그인 셸. 가짜 ACP 에이전트의 시나리오와 로그인 흉내의 자리(영수증 · 엔진마다의 로그인 파일)를
+    /// 로그인 env에 싣는다 — 호스트가 띄우는 로그인 명령 · 에이전트까지 닿는 길은 로그인 env뿐이다.
+    ///
+    /// `browser`는 `BROWSER`의 값이다. 검사는 `/usr/bin/true`로 진짜 브라우저를 막는다(실측 함정 40). `None`이면
+    /// `BROWSER`를 싣지 않는다 — 그러면 엔진은 PATH의 `open`을 부르고, 그것은 이 샌드박스의 기록용 가짜다.
+    pub fn login_shell_for_login(&self, scenario: &str, browser: Option<&str>, extra: &[(&str, &str)]) -> ShellSource {
+        let bin = self.login_bin();
+        let acp = self.acp_receipts().display().to_string();
+        let login = self.login_receipts().display().to_string();
+        let claude_auth = self.auth_file(Agent::Claude).display().to_string();
+        let codex_auth = self.auth_file(Agent::Codex).display().to_string();
+        let mut env = vec![
+            ("FAKE_ACP_SCENARIO", scenario),
+            ("FAKE_ACP_RECEIPTS", acp.as_str()),
+            ("FAKE_LOGIN_RECEIPTS", login.as_str()),
+            ("FAKE_CLAUDE_AUTH", claude_auth.as_str()),
+            ("FAKE_CODEX_AUTH", codex_auth.as_str()),
+        ];
+        if let Some(browser) = browser {
+            env.push(("BROWSER", browser));
+        }
+        env.extend_from_slice(extra);
+        ShellSource::Path(self.login_shell_with_env(
+            LoginShell::Normal,
+            &[&bin, Path::new("/usr/bin"), Path::new("/bin")],
+            &env,
+        ))
+    }
+
+    /// 그 엔진의 로그인 파일 — 있으면 로그인됨이다(진짜는 Claude 키체인 · `~/.codex/auth.json`).
+    pub fn auth_file(&self, agent: Agent) -> PathBuf {
+        self.login_receipts().join(format!("{}.auth", engine_name(agent)))
+    }
+
+    /// 터미널에서 로그인한 것처럼 로그인 파일을 둔다.
+    pub fn log_in(&self, agent: Agent) {
+        fs::write(self.auth_file(agent), "{}").unwrap();
+    }
+
+    /// 로그인이 풀린 것처럼 로그인 파일을 지운다.
+    pub fn log_out(&self, agent: Agent) {
+        let _ = fs::remove_file(self.auth_file(agent));
+    }
+
+    /// 그 엔진의 로그인 파일이 있나.
+    pub fn logged_in_file(&self, agent: Agent) -> bool {
+        self.auth_file(agent).exists()
+    }
+
+    /// 기다리는 로그인 명령을 끝낸다 — `ok`면 로그인 파일을 쓰고 exit 0, 아니면 쓰지 않고 exit 1.
+    pub fn finish_login(&self, agent: Agent, ok: bool) {
+        let gate = format!("{}-login.{}", engine_name(agent), if ok { "go" } else { "fail" });
+        fs::write(self.login_receipts().join(gate), "").unwrap();
+    }
+
+    /// 로그인 명령이 띄워질 때마다 남긴 영수증(pid · Unix 세션 · stdin이 TTY인가 · 인자 · 손주 pid).
+    pub fn login_runs(&self, agent: Agent) -> Vec<Value> {
+        self.login_lines(&format!("{}-login.runs", engine_name(agent)))
+            .iter()
+            .map(|line| serde_json::from_str(line).expect("로그인 영수증 줄은 JSON"))
+            .collect()
+    }
+
+    /// 로그인 명령이 받은 시그널들(`TERM` · `INT`).
+    pub fn login_signals(&self, agent: Agent) -> Vec<String> {
+        self.login_lines(&format!("{}-login.signals", engine_name(agent)))
+    }
+
+    /// 로그인 확인이 불린 인자들 — 부를 때마다 한 줄.
+    pub fn status_calls(&self, agent: Agent) -> Vec<String> {
+        self.login_lines(&format!("{}-status.calls", engine_name(agent)))
+    }
+
+    /// 기록용 가짜 `open`이 받은 것들 — 엔진이 브라우저를 열려고 넘긴 URL.
+    pub fn opened(&self) -> Vec<String> {
+        self.login_lines("open")
+    }
+
+    fn login_lines(&self, name: &str) -> Vec<String> {
+        fs::read_to_string(self.login_receipts().join(name)).unwrap_or_default().lines().map(str::to_owned).collect()
+    }
+}
+
+/// 로그인 명령의 프로세스들 — 가짜 자신과 그 손주.
+pub fn login_pids(run: &Value) -> Vec<u32> {
+    let mut pids = vec![run["pid"].as_u64().expect("pid") as u32];
+    pids.extend(run["grandchild"].as_u64().map(|pid| pid as u32));
+    pids
+}
+
 // ── S26 — L1이 남긴 기록을 L3 자료로 ─────────────────────────────────────────────
 
 /// 검사 자료 폴더. 만드는 쪽(L1)이 갖고, 대화창의 L3 목업 백엔드가 그대로 쏜다.
@@ -525,6 +648,32 @@ pub struct Events(Arc<Mutex<Vec<HostEvent>>>);
 impl Events {
     pub fn all(&self) -> Vec<HostEvent> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// 엔진 상태 이벤트들 — 온 차례대로.
+    pub fn engine_states(&self) -> Vec<EngineState> {
+        self.all()
+            .into_iter()
+            .filter_map(|event| match event {
+                HostEvent::Engine(state) => Some(state),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 엔진 상태 이벤트가 `done`을 채울 때까지 기다린다. 로그인 명령의 끝은 그것을 지켜보는 스레드가 알린다.
+    pub fn wait_engine(&self, done: impl Fn(&[EngineState]) -> bool) -> Vec<EngineState> {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            let states = self.engine_states();
+            if done(&states) {
+                return states;
+            }
+            if Instant::now() > deadline {
+                panic!("엔진 상태가 기다린 꼴이 되지 않았다:\n{states:#?}");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }
 

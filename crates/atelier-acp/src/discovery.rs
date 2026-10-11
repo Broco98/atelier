@@ -53,10 +53,11 @@ const NODE: Program = Program { name: "node", install: "brew install node" };
 /// 엔진 확인의 답. 앱 명령을 건너 화면으로 가므로 `state`로 가르는 꼴로 나간다 — 프런트의 `EngineCheck` 타입과
 /// 같은 말이다(three-axes 티켓 05).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "state", rename_all = "kebab-case")]
+#[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum EngineCheck {
-    /// 찾음 — 드는 실행 파일마다 PATH 앞쪽의 것.
-    Found { programs: Vec<FoundProgram> },
+    /// 찾음 — 드는 실행 파일마다 PATH 앞쪽의 것과, 그 엔진에 로그인돼 있나(three-axes 티켓 12). 로그인이 안 됐으면
+    /// 안내 카드가 첫 말 전에 선다(스토리 93).
+    Found { programs: Vec<FoundProgram>, logged_in: bool },
     /// 못 찾음 — 빠진 것마다 이름과 설치 명령. 찾은 것은 싣지 않는다.
     Missing { missing: Vec<MissingProgram> },
 }
@@ -76,7 +77,9 @@ pub struct MissingProgram {
 /// PATH에서 그 에이전트의 실행 파일들을 찾는다. PATH 앞쪽이 이기고, 실행 권한이 없는 파일은 없는 것으로
 /// 치고 다음 자리를 본다(셸이 명령을 찾는 규칙과 같다). 상대 경로 자리(빈 자리 · `.`)는 보지 않는다 —
 /// 앱의 cwd는 사용자가 고른 자리가 아니다.
-pub(crate) fn look_up(agent: Agent, path: Option<&OsStr>) -> EngineCheck {
+///
+/// 다 찾았으면 찾은 것들, 하나라도 없으면 빠진 것들(찾은 것은 싣지 않는다)이다.
+pub(crate) fn look_up(agent: Agent, path: Option<&OsStr>) -> Result<Vec<FoundProgram>, Vec<MissingProgram>> {
     let dirs: Vec<PathBuf> = path
         .map(|path| std::env::split_paths(path).filter(|dir| dir.is_absolute()).collect())
         .unwrap_or_default();
@@ -90,9 +93,9 @@ pub(crate) fn look_up(agent: Agent, path: Option<&OsStr>) -> EngineCheck {
         }
     }
     if missing.is_empty() {
-        EngineCheck::Found { programs: found }
+        Ok(found)
     } else {
-        EngineCheck::Missing { missing }
+        Err(missing)
     }
 }
 

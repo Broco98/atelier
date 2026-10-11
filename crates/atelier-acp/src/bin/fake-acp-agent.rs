@@ -15,6 +15,8 @@
 //! - `FAKE_ACP_DIES` — `dies-mid-turn`이 어느 쪽부터 사라지나(`exit-first` · `eof-first`).
 //! - `FAKE_ACP_ACCOUNT_EMAIL` — 있으면 `session/new`의 답 앞에 그 이메일이 든 `_auth/status_update`를 보낸다
 //!   (진짜 codex-acp가 로그인된 계정을 알리는 모양 — 실측 turns 4줄).
+//! - `FAKE_CODEX_AUTH` — `needs-auth`가 보는 로그인 파일. 있으면 로그인됨이다 — 가짜 `codex login`이 끝나며 쓴다
+//!   (진짜는 `~/.codex/auth.json`).
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -47,6 +49,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("spawns-a-child", spawns_a_child),
     ("writes-spec", writes_spec),
     ("pauses-mid-turn", pauses_mid_turn),
+    ("needs-auth", needs_auth),
 ];
 
 fn main() {
@@ -286,6 +289,23 @@ fn pauses_mid_turn(fake: &mut Fake) {
     spawns_a_child(fake);
 }
 
+/// 로그인이 안 된 codex-acp(실측 A3 · `codex-acp-2.2.2-noauth.jsonl`) — `initialize`는 정상으로 답하고 곧바로
+/// `_auth/status_update{kind:"none"}`을 보낸 뒤, `session/new`를 `-32000 Authentication required`로 거절한다. 세션이
+/// 열린 뒤 로그인이 풀리면 `session/prompt`도 같은 오류다.
+///
+/// 로그인 파일(`FAKE_CODEX_AUTH`)이 있으면 보통 에이전트다 — 그래서 로그인 명령이 끝난 뒤 다시 띄운 에이전트는 세션을 연다.
+fn needs_auth(fake: &mut Fake) {
+    fake.needs_auth = true;
+    fake.on_prompt = |fake, id, session_id| {
+        if fake.logged_in() {
+            codex_one_turn(fake, id, session_id);
+        } else {
+            fake.wire.reply_error(id, -32000, "Authentication required");
+        }
+    };
+    fake.converse();
+}
+
 /// 가짜 하나의 상태 — 선과, 영수증에 실을 것들.
 struct Fake {
     wire: Wire,
@@ -301,6 +321,8 @@ struct Fake {
     spec_dir: Option<PathBuf>,
     /// 지금까지 보낸 edit 도구 줄의 수 — 도구 id를 매번 같게 짓는다(S26).
     edits: usize,
+    /// 로그인 파일을 보나(`needs-auth`).
+    needs_auth: bool,
 }
 
 impl Fake {
@@ -316,7 +338,13 @@ impl Fake {
             prompt: Value::Null,
             spec_dir: None,
             edits: 0,
+            needs_auth: false,
         }
+    }
+
+    /// 로그인돼 있나 — 로그인 파일을 보지 않는 시나리오는 늘 됐다.
+    fn logged_in(&self) -> bool {
+        !self.needs_auth || std::env::var_os("FAKE_CODEX_AUTH").is_some_and(|path| PathBuf::from(path).exists())
     }
 
     /// stdin이 닫힐 때까지 요청에 답한다. 닫히면 그것을 영수증에 적고 돌아온다.
@@ -339,6 +367,16 @@ impl Fake {
                             }
                         }),
                     );
+                    if !self.logged_in() {
+                        // 미로그인은 initialize의 답 바로 뒤에 알린다(실측 noauth 2 · 3줄).
+                        self.wire.notify(
+                            "_auth/status_update",
+                            json!({"authStatus": {"kind": "none", "label": "Not logged in"}}),
+                        );
+                    }
+                }
+                "session/new" if !self.logged_in() => {
+                    self.wire.reply_error(&id, -32000, "Authentication required");
                 }
                 "session/new" => {
                     // 프로세스마다 다른 id — 검사는 `agents.json`의 에이전트 쪽 세션 id로 영수증을 찾는다.
