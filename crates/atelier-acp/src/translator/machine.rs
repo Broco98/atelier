@@ -804,7 +804,10 @@ impl Machine {
     /// - 나머지(initialize · interrupt · 권한 답)는 버린다.
     fn unwritten(&mut self, line: &Value) {
         if line["type"] == "user" {
-            if let Turn::Ours { id, .. } = std::mem::take(&mut self.turn) {
+            // 그 줄은 방금 건 턴의 말이다 — 우리 턴을 열고 곧바로 낸 줄이기 때문이다.
+            if let Turn::Ours { id, .. } = &self.turn {
+                let id = id.clone();
+                self.turn = Turn::Idle;
                 self.send(error(&id, -32603, "claude에 말을 넣지 못했습니다"));
             }
         } else if let Some(change) = line["request_id"].as_str().and_then(|id| self.changes.remove(id)) {
