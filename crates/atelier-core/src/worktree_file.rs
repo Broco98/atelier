@@ -33,7 +33,7 @@ pub enum WorktreeFile {
     WorktreeMissing,
     /// 심링크의 실제 대상이 워크트리 밖이다 — **읽지 않는다**(스토리 78). 대상은 `~` 축약 표기다.
     OutsideLink { target: String },
-    /// 있는데 읽지 못했다 — 폴더이거나 디스크가 거절했다.
+    /// 있는데 읽지 못했다 — 폴더이거나 · 보통 파일이 아니거나(명명 파이프 · 소켓) · 디스크가 거절했다.
     Unreadable { reason: String },
 }
 
@@ -74,6 +74,12 @@ pub fn read_worktree_file(works_root: &Path, slug: &str, project: &str, rel_path
     };
     if meta.is_dir() {
         return Ok(WorktreeFile::Unreadable { reason: "is a directory".to_string() });
+    }
+    // 보통 파일이 아니면(명명 파이프 · 소켓 · 장치) **열지 않는다.** 걸린 폴더의 한 겹은 디스크 그대로라 그것도 파일 행으로
+    // 서는데, 파이프는 여는 순간 쓰는 쪽이 올 때까지 막혀 그 읽기 스레드가 돌아오지 않는다. 그림 확장자여도 같다 — 그림은
+    // 화면이 asset URL로 그 파일을 연다.
+    if !meta.is_file() {
+        return Ok(WorktreeFile::Unreadable { reason: "not a regular file".to_string() });
     }
     // 내용을 열지 않고 가를 수 있는 것부터 — 그림(확장자)과 너무 큼(크기)은 메타데이터로 끝난다.
     let size = meta.len();
@@ -315,6 +321,41 @@ mod tests {
         let target = crate::paths::collapse_home(&secret.canonicalize().unwrap());
         assert_eq!(read(&works, "out.txt"), WorktreeFile::OutsideLink { target: target.clone() });
         assert_eq!(read(&works, "up/secret.txt"), WorktreeFile::OutsideLink { target });
+    }
+
+    /// 명명 파이프 — 걸린 폴더의 한 겹 읽기가 디스크 그대로라 파일 행으로 선다(S22). 열면 쓰는 쪽이 올 때까지 막힌다.
+    #[cfg(unix)]
+    fn fifo(root: &Path, rel: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let out = Command::new("mkfifo").arg(&path).output().unwrap();
+        assert!(out.status.success(), "mkfifo failed: {}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// 다른 스레드에서 읽고 시한 안에 답을 받는다 — 막히는 읽기가 검사를 끝없이 붙잡지 않고 빨갛게 끝나게.
+    #[cfg(unix)]
+    fn read_within(works: &Path, rel: &str) -> WorktreeFile {
+        let (works, rel) = (works.to_path_buf(), rel.to_string());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(read(&works, &rel)).unwrap());
+        rx.recv_timeout(std::time::Duration::from_secs(5)).expect("읽기가 5초 안에 돌아오지 않았다 — 파일을 열고 막혔다")
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_named_pipe_is_unreadable_without_opening_it() {
+        let (_tmp, works, worktree) = setup();
+        fifo(&worktree, "tmp/agent.fifo");
+        // 그림 확장자여도 같다 — 그림 갈래는 화면이 asset URL로 그 파일을 연다
+        fifo(&worktree, "tmp/shot.png");
+
+        for rel in ["tmp/agent.fifo", "tmp/shot.png"] {
+            assert_eq!(
+                read_within(&works, rel),
+                WorktreeFile::Unreadable { reason: "not a regular file".to_string() },
+                "{rel}"
+            );
+        }
     }
 
     #[test]
