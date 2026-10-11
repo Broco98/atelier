@@ -169,7 +169,10 @@ fn 로그인을_시작하면_링크가_오고_끝나면_저절로_다시_확인�
     let text = std::fs::read_to_string(sandbox.record_path("cart", &conversation.id)).unwrap();
     assert!(!text.contains("someone@example.com"), "기록의 이메일은 가려진다");
     assert!(text.contains("<email>"));
-    assert!(!sandbox.agents_row("cart", &conversation.id)["agentSessionId"].is_null(), "다시 띄운 세션의 id가 적힌다");
+    // 호스트는 열림 줄을 적은 뒤에 agents.json에 세션 id를 쓴다 — 다시 띄우기는 로그인 감시 스레드에서 돌므로 기다린다.
+    common::wait_for("다시 띄운 세션의 id가 적힌다", || {
+        !sandbox.agents_row("cart", &conversation.id)["agentSessionId"].is_null()
+    });
 
     host.send("cart", &conversation.id, "안녕").expect("다시 뜬 대화에는 말이 간다");
     sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
