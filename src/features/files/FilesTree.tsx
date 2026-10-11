@@ -4,6 +4,7 @@ import { FolderGit2, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { TreeRows, type RowLook, type TreeRowItem } from "@/features/works/SpecTree";
 import type { WorktreeView, WorkView } from "@/features/works/types";
 import { foldsOf, rememberFolds, type Folds } from "./folds";
@@ -25,8 +26,19 @@ const NOTE = "px-2 py-1.5 text-ui text-tertiary";
  *
  * `visible`은 「files 칸이 열려 보이는가」다(S9) — 쿼리를 그것으로 켠다. 몸은 숨어도 마운트된 채라 그 값을 몸이 스스로 알 길이
  * 없어 화면이 내려 준다.
+ *
+ * 파일 행을 누르면 `onPress`가 그 파일과 클릭 횟수를 받는다 — 열지 닫을지(결정 30 — 다시 누르면 닫힘)는 화면이 정한다: 지금
+ * 보이는 탭이 무엇인지와 탭을 닫는 길을 화면이 든다.
  */
-function FilesTree({ work, visible }: { work: WorkView; visible: boolean }) {
+function FilesTree({
+  work,
+  visible,
+  onPress,
+}: {
+  work: WorkView;
+  visible: boolean;
+  onPress: (target: CodeTarget, clicks: number) => void;
+}) {
   const { data: projects } = useProjects();
   // 프로젝트가 하나면 구획 머리 없이 바로 트리다(S13) — 대부분의 work가 하나다.
   const headed = work.worktrees.length > 1;
@@ -44,6 +56,7 @@ function FilesTree({ work, visible }: { work: WorkView; visible: boolean }) {
             // 구획 머리는 프로젝트 **표시 이름**이다. 목록이 아직 안 왔거나 등록이 사라졌으면 slug로 선다.
             title={headed ? (projects?.find((p) => p.slug === worktree.project)?.name ?? worktree.project) : null}
             visible={visible}
+            onPress={onPress}
           />
         ))
       )}
@@ -81,11 +94,13 @@ function ProjectSection({
   worktree,
   title,
   visible,
+  onPress,
 }: {
   slug: string;
   worktree: WorktreeView;
   title: string | null;
   visible: boolean;
+  onPress: (target: CodeTarget, clicks: number) => void;
 }) {
   const { project } = worktree;
   // work 목록이 이미 「워크트리 없음」이라 말하면 묻지 않는다. 목록은 낡을 수 있어 물었더니 없다는 답도 같은 안내로 선다.
@@ -118,8 +133,7 @@ function ProjectSection({
             // 걸린 폴더는 아직 안 읽어 펼치지 않는다(펼칠 때 한 겹 읽기는 티켓 02).
             isOpen={(row) => row.entry.children !== null && (folds[row.path] ?? false)}
             onOpenChange={setOpen}
-            // 파일 행을 눌러 파일 탭을 여는 것은 티켓 05다
-            onSelect={() => {}}
+            onSelect={(path, clicks) => onPress({ project, path }, clicks)}
             lookOf={lookOf}
           />
         </div>

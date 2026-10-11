@@ -114,7 +114,11 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
   /** 폴더가 펼쳐져 있는가 — 「처음에 펼쳐 둘 폴더」의 규칙도 여기 든다(spec: 최신 판만, files: 아무것도). */
   isOpen: (item: T) => boolean;
   onOpenChange: (path: string, open: boolean) => void;
-  onSelect: (path: string) => void;
+  /**
+   * 파일 행을 눌렀다. `clicks`는 그 누름이 몇 번째 연속 클릭인가다(`MouseEvent.detail` — 키보드로 누르면 0). spec 트리는 안
+   * 읽고, files 트리가 더블클릭의 둘째 누름을 가른다(git-integration S15).
+   */
+  onSelect: (path: string, clicks: number) => void;
   onCopy?: (path: string) => void;
   lookOf: (item: T) => RowLook;
 }
@@ -212,7 +216,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                   클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
               <button
                 type="button"
-                onClick={() => onSelect(item.path)}
+                onClick={(event) => onSelect(item.path, event.detail)}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-[7px] text-left",
                   onCopy && "pr-1.5",
