@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import {
   Archive,
@@ -73,7 +73,6 @@ import {
   spawnedCountOf,
   terminalStore,
 } from "@/features/terminal/terminal-store";
-import CodeView from "@/features/code/CodeView";
 import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
 import type { ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
@@ -95,6 +94,10 @@ import { WORKS_COPY } from "./work-sections";
 import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
 import type { BundleTab, CodeTarget, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
+
+// 코드 보기는 따로 떼어 받는다(git-integration 결정 35) — 강조 라이브러리(`@pierre/diffs`)가 첫 로드에 붙지 않고 파일 탭이
+// 처음 설 때 온다. 정적으로 부르면 그 약속이 조용히 깨진다(`code-view-chunk.test.ts`가 프로덕션 빌드로 잰다).
+const CodeView = lazy(() => import("@/features/code/CodeView"));
 
 interface WorksPageProps {
   sidebarOpen: boolean;
@@ -972,16 +975,19 @@ function WorksPage({
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal
   // 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다.
   const terminalBody = terminalWork && <TerminalPane key={terminalWork.slug} work={terminalWork} />;
-  // 코드 보기 — 코드 카드의 몸이다(본문 카드든 묶음 열이든). 몸은 그 파일을 읽어 원문 보기나 갈래별 안내를 세운다(`CodeView`).
+  // 코드 보기 — 코드 카드의 몸이다(본문 카드든 묶음 열이든). 몸은 그 파일을 읽어 강조된 코드나 갈래별 몸(그림 · 안내)을
+  // 세운다(`CodeView`). 코드 보기 청크를 받는 처음 한 번은 몸이 비어 있다 — 머리(경로 줄)는 이미 서서 무엇을 여는지 말한다.
   const codeBody = selected && codeTarget && (
-    <CodeView
-      key={selected.slug}
-      slug={selected.slug}
-      target={codeTarget}
-      worktreeDir={codeWorktreeDir}
-      // 문서 본문과 같은 규칙으로 넓어진다 — 화면을 둘 다 비웠을 때만(`SpecViewer`).
-      wide={!sidebarOpen && !workPanelOpen}
-    />
+    <Suspense fallback={null}>
+      <CodeView
+        key={selected.slug}
+        slug={selected.slug}
+        target={codeTarget}
+        worktreeDir={codeWorktreeDir}
+        // 문서 본문과 같은 규칙으로 넓어진다 — 화면을 둘 다 비웠을 때만(`SpecViewer`).
+        wide={!sidebarOpen && !workPanelOpen}
+      />
+    </Suspense>
   );
 
   // 분할의 열 둘 — 열 하나가 카드 하나다(ui-refresh 결정 15). 문서 열은 흰 카드, 묶음 열은 셸이면 터미널 카드 · 파일 탭이면 흰

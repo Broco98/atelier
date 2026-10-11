@@ -997,3 +997,30 @@ body[data-palette-open] [data-scrollbar] {
     min-width: 1px;
     min-height: 1px;
 }
+
+/* **코드 보기 범위 토큰**(git-integration 판 01 S16 · 결정 35 · 38) — 파일 탭의 강조된 코드(`HighlightedCode`)가 읽는다.
+
+   값은 Codex `syntax-*` 라이트 값이다(`three-axes` 디자인-참고 `atelier-codex.css`). 전역 토큰이 아니라 이 범위에만 선다 —
+   `codex-ds`가 전역 토큰을 Codex 값으로 바꿀 때 그쪽 이름으로 옮긴다(`three-axes` 결정 31과 같은 방식). 일곱이 shiki 토큰의
+   어디로 가는지는 `code-theme.ts`의 표가 든다. 주석의 기울임도 그쪽(테마)이 든다.
+
+   아래 `--diffs-*`는 강조 라이브러리(`@pierre/diffs`)가 shadow DOM 안에서 읽는 변수다 — 커스텀 속성은 shadow 경계를 넘어
+   상속되므로 여기서 건네면 그 안까지 간다(앱 CSS의 클래스는 못 들어간다). 줄 번호 · 글꼴 · 줄 높이는 **앱 전역 토큰**을
+   그대로 가리킨다: 줄 번호는 원문 보기(`SourceView`)의 줄 번호와 같은 흐린 글자, 글자는 `text-mono`(13 / 20)다. 라이브러리의
+   어림 줄 높이(가상화가 그리기 전에 쓰는 20px)도 이 값과 같다. 탭 폭 4는 원문 보기와 같다. */
+[data-code-view] {
+    --code-syntax-keyword: #ab4f7a;
+    --code-syntax-literal: #ac4f23;
+    --code-syntax-string: #3a843f;
+    --code-syntax-variable: #643cae;
+    --code-syntax-attribute: #b8802b;
+    --code-syntax-name: #1f4e94;
+    --code-syntax-comment: #4f4f4f;
+
+    --diffs-font-family: var(--font-mono);
+    --diffs-font-features: var(--font-mono--font-feature-settings);
+    --diffs-font-size: var(--text-mono);
+    --diffs-line-height: var(--text-mono--line-height);
+    --diffs-tab-size: 4;
+    --diffs-fg-number-override: var(--text-tertiary);
+}
