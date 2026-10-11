@@ -446,6 +446,50 @@ test("파일 탭을 보다 분할을 켜면 spec 옆 열에 그 파일이 선다
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+/** 그 파일 탭의 이름 버튼 상자 — 끄는 자리다(셸 칸과 같다 — 형제인 `×`는 안 끌린다). */
+async function 파일탭상자(page: Page, ref: string) {
+  const tab = 파일탭이름(page, ref);
+  await expect(tab).toBeVisible();
+  const box = await tab.boundingBox();
+  if (!box) throw new Error("파일 탭의 상자를 못 읽었다");
+  return box;
+}
+
+// 수용 기준 「파일 탭을 왼쪽 · 오른쪽 절반에 놓으면 각각 맞는 좌우로 spec과 그 파일의 분할이 된다」(스토리 56 · 57). 좌우 규칙은 셸
+// 탭과 같다 — 떨군 것이 그 절반에 선다. **뒤에 있는 칸에서 출발한다**: 셸을 보는 중에 끈 파일 탭이 묶음 열에 서야 한다.
+test("파일 탭을 오른쪽 절반에 놓으면 그 파일이 오른쪽 열이, 왼쪽 절반에 놓으면 왼쪽 열이 된다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${codeWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 주소로간다(page, 파일탭주소(SOURCE));
+  await expect(page.getByRole("main", { name: SOURCE, exact: true })).toBeVisible();
+  await 셸탭이름(page).click();
+  await expect(page.locator(".xterm")).toHaveCount(1);
+
+  await startSplitDrag(page, await 파일탭상자(page, SOURCE));
+  await moveOntoHalf(page, "right");
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page).toHaveURL(/code=billing%2Fsrc%2Fmain\.ts/);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(코드열(page, SOURCE)).toContainText("const answer = 42;");
+  await expect(파일탭이름(page, SOURCE)).toHaveAttribute("aria-pressed", "true");
+
+  // 같은 탭을 반대쪽으로 — 한쪽만 재면 좌우를 상수로 적어 둔 것과 구분이 안 된다.
+  await startSplitDrag(page, await 파일탭상자(page, SOURCE));
+  await moveOntoHalf(page, "left");
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/split=rl/);
+  await expect.poll(() => 열차례(page)).toEqual(["code", "spec"]);
+  await expect(코드열(page, SOURCE)).toContainText("const answer = 42;");
+  // 셸은 묶음에 그대로다 — 끌기가 셸을 죽이지 않았다.
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  expect(await callCount(page, "pty_kill")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 수용 기준 「주소: 분할 중 파일 탭이 지금 탭이면 주소에 `split`과 `code`가 있고, 그 주소로 새로 들어와도 같은 분할이 선다」(S12).
 test("분할의 묶음 열이 파일 탭이면 주소에 split과 code가 있고, 그 주소로 새로 들어와도 같은 분할이 선다", async ({ page }) => {
   await installFixtureBackend(page);
