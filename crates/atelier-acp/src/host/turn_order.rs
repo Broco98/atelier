@@ -406,7 +406,8 @@ impl<H: TurnHands> Seat<'_, H> {
                 None
             }
         };
-        let (started, before, stopped) = own.map_or((None, None, false), |own| (Some(own.started), own.before, own.stopped));
+        let (started, before, stopped) =
+            own.map_or((None, None, false), |own| (Some(own.started), own.before, own.stopped));
         let line = finish(started, Some(response), None, stopped, true);
         let closed = self.close(before, line);
         if matches!(self.order.phase, Phase::Ours(_) | Phase::Both(..)) {
@@ -728,8 +729,12 @@ mod tests {
         }
         fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
             let carries = |block: &str| prompt.iter().any(|sent| sent["text"] == block);
-            let did =
-                Did::Sent { text: text.to_owned(), send_now, preamble: carries(PREAMBLE), quote: quote.is_some() && carries(QUOTE_BLOCK) };
+            let did = Did::Sent {
+                text: text.to_owned(),
+                send_now,
+                preamble: carries(PREAMBLE),
+                quote: quote.is_some() && carries(QUOTE_BLOCK),
+            };
             self.write(Line::Sent, did)
         }
         fn login_lost(&mut self) -> Result<(), RecordError> {
@@ -1220,8 +1225,11 @@ mod tests {
         rig.seat().turn_ended(ended("end_turn")).unwrap();
         rig.seat().self_ended(self_response()).unwrap();
 
-        let zeros: Vec<bool> =
-            rig.since(0).iter().filter_map(|did| if let Did::TurnEnd { zero, .. } = did { Some(*zero) } else { None }).collect();
+        let zeros: Vec<bool> = rig
+            .since(0)
+            .iter()
+            .filter_map(|did| if let Did::TurnEnd { zero, .. } = did { Some(*zero) } else { None })
+            .collect();
         assert_eq!(zeros, [false, true, true]);
     }
 

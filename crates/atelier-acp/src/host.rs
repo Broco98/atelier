@@ -9,7 +9,7 @@
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -24,12 +24,14 @@ use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::engines::{self, EngineLists};
 use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
-use crate::quote::{Attached, Quote};
+use crate::quote::Quote;
 use crate::records::{self, CloseCause, ConversationRow, PermissionLine, RecordLine, Recorder, SessionState, TurnEndLine};
 use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenError, OpenTerms, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
 
 mod turn_order;
+
+use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
 const CODEX_ACP_MAJOR: u64 = 2;
@@ -69,14 +71,6 @@ pub struct QueuedMessage {
     pub text: String,
     /// 「지금 보내기」를 눌러 도는 턴의 멈춤(`cancelled`)을 기다리는 말인가. 그런 말은 늘 맨 앞에 하나뿐이다.
     pub send_now: bool,
-}
-
-/// 대기 줄에 든 말과, 보낼 때 그것이 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 그리고 붙었으면 인용과 그 인용
-/// 블록(three-axes 티켓 27). 머리말과 인용 블록은 넣을 때 work를 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는 work를 읽지 않는다.
-struct Queued {
-    message: QueuedMessage,
-    preamble: Value,
-    quote: Option<Attached>,
 }
 
 /// 변환기 명령 — Claude 대화가 띄우는 ACP 에이전트. 앱에서는 `current_exe` + `acp-claude`, 검사에서는
@@ -179,8 +173,8 @@ struct Live {
 
 /// 대화 하나의 기록과 턴의 상태. 런타임의 sink가 함께 쥔다 — 받은 것은 sink가 곧바로 적는다.
 ///
-/// 잠금 순서는 늘 `state` → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고 나서 턴을 비운다 — 그래야 다음 말의
-/// `sent` 줄이 턴 끝 줄보다 앞에 서지 않는다.
+/// 잠금 순서는 늘 `state` → 기록이다. 턴 끝 줄은 `state`를 쥔 채 적고, 같은 잠금 안에서 대기 줄의 다음 말을 보낸다 — 그래야
+/// 다음 말의 `sent` 줄이 턴 끝 줄보다 앞에 서지 않고, 그 사이에 온 보내기가 대기 줄을 앞지르지 못한다.
 struct Conv {
     recorder: Recorder,
     /// 턴 앞뒤로 찍는 spec 폴더(three-axes 결정 22).
@@ -196,42 +190,17 @@ struct Conv {
     setting: Mutex<()>,
 }
 
-#[derive(Default)]
 struct ConvState {
-    /// 에이전트가 살아 있나. 죽으면 다음 말이 되살리기(티켓 10)로 다시 띄운다.
-    alive: bool,
-    /// 도는 턴이 시작한 때. 쉬면 `None`이다.
-    turn: Option<Instant>,
-    /// 다음 말에 머리말을 붙이나 — 에이전트 쪽 세션의 첫 말이다(S11).
-    needs_preamble: bool,
+    /// 턴 차례 — 살아 있나 · 턴 단계 · 대기 줄(S13) · 고친 곳의 앞(three-axes 결정 22) · 머리말 붙임(S11). 대기 줄은 에이전트가
+    /// 죽어도 그대로 두고, 되살린 대화가 이어 쥔다.
+    order: TurnOrder<Snapshot>,
     /// 에이전트에 턴을 열고 멈추는 손잡이. 세션이 열린 뒤에 선다.
     turns: Option<Turns>,
-    /// 대기 줄(S13) — 턴이 도는 동안 받은 말. 메모리에만 둔다: 앱을 다시 켜면 비어 있다(재시작 뒤 저절로 보내는
-    /// 놀람을 피한다). 에이전트가 죽어도 그대로 둔다.
-    queue: VecDeque<Queued>,
-    /// 도는 턴 앞(보내기 직전)에 찍은 spec 폴더. 턴 끝에 지금과 견준다.
-    before: Option<Snapshot>,
-    /// 에이전트가 스스로 이어 간 턴(S4) — Claude가 백그라운드 작업 알림으로 스스로 시작한 턴이다. 변환기가 턴 밖 시작을 알리면
-    /// 서고 턴 밖 끝에서 걷힌다. 그동안은 대기 줄이 가지 않는다(S13).
-    self_turn: Option<SelfTurn>,
-    /// 마지막 턴 끝에 견준 「지금」 — 그 뒤로 대기 줄의 말이 가지 않았으면 쥐어 둔다. 에이전트가 스스로 이어 간 턴(S4)은
-    /// 이것을 그 턴의 앞으로 삼는다 — 쉬는 동안 백그라운드 작업이나 그 턴이 고친 것이 그 턴의 고친 곳으로 선다.
-    after_last: Option<Snapshot>,
     /// 떠 있는 표에서 꺼냈나 — 바꾸기 · 닫기 · 되살리기 · 사라진 work 끄기 · 호스트 끄기가 이 대화를 쥐었다. 명령은 표에서 대화를
     /// 찾은 뒤 표의 잠금을 놓고 이 잠금을 쥐는데(S2), 그 사이에 꺼내졌으면 표에 없는 대화로 본다([`Conv::lock_found`]). 꺼낸 쪽은
     /// 꺼낸 뒤로 명령이 이 대화에 닿지 않는 것에 기댄다 — 바꾸기가 첫 말을 확인한 뒤 옛 엔진을 끄는 사이에 말이 끼지 않고, 닫히는
     /// 대화에 말 · 권한 답이 끼지 않는다. 표에 되돌려 넣을 때 걷힌다.
     taken: bool,
-}
-
-/// 에이전트가 스스로 이어 간 턴 하나(S4).
-struct SelfTurn {
-    started: Instant,
-    /// 그 턴이 시작할 때 찍은 spec 폴더 — 턴 밖 끝에서 견주어 고친 곳을 적는다(three-axes 결정 22). 우리 턴이 도는 사이에
-    /// 시작했으면(변환기가 그 말을 미뤄 두었다) 없다 — 고친 곳은 우리 턴의 끝이 적는다.
-    before: Option<Snapshot>,
-    /// 우리가 멈췄나 — 턴 밖 끝 줄의 「우리가 멈췄나」다.
-    stopped: bool,
 }
 
 /// 변환기가 표시한 턴 밖 턴의 시작 · 끝(S4) — `session_info_update`의 `_meta.atelier.outOfTurn`.
@@ -260,27 +229,13 @@ impl ConvState {
     /// 에이전트 쪽 세션이 막 열린 대화 — 살아 있고, 턴이 쉬고, 첫 말에 머리말을 붙인다. 턴 손잡이는 세션이 열린 뒤에
     /// 서고, 대기 줄은 비어 있다.
     fn fresh() -> Self {
-        Self { alive: true, needs_preamble: true, ..Self::default() }
-    }
-
-    /// 턴을 쉬는 것으로 되돌린다 — 에이전트가 죽었거나(`alive = false`) 다시 열렸다(`alive = true`). 턴에 딸린 칸(도는 턴 ·
-    /// 그 앞 · 스스로 이어 간 턴 · 마지막 턴 끝의 「지금」)은 모두 걷고, 대화에 딸린 칸(대기 줄 · 머리말 · 턴 손잡이 · 꺼냄)만 남긴다
-    /// — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13). 칸을 더하면 기본값으로 걷힌다: 남길 칸만 여기 적는다.
-    fn rest(&mut self, alive: bool) {
-        *self = Self {
-            alive,
-            needs_preamble: self.needs_preamble,
-            turns: self.turns.take(),
-            queue: std::mem::take(&mut self.queue),
-            taken: self.taken,
-            ..Self::default()
-        };
+        Self { order: TurnOrder::new(), turns: None, taken: false }
     }
 
     /// 에이전트가 떠 있고 살아 있나 — 세션이 열려 턴 손잡이가 섰다. 대화 목록의 `live`(three-axes 티켓 23)이고, 말을 곧바로
     /// 보낼 수 있는 대화다. 죽었거나 끈 대화는 아니다.
     fn is_up(&self) -> bool {
-        self.alive && self.turns.is_some()
+        self.order.alive() && self.turns.is_some()
     }
 }
 
@@ -301,6 +256,12 @@ impl Conv {
         (!state.taken).then_some(state)
     }
 
+    /// 쥔 `state`의 턴 차례에 이 대화의 손을 붙인다 — 그 잠금 한 구간 동안만.
+    fn seat<'a>(&'a self, state: &'a mut ConvState) -> Seat<'a, ConvHands<'a>> {
+        let ConvState { order, turns, .. } = state;
+        order.seat(ConvHands { conv: self, turns: turns.as_ref() })
+    }
+
     /// 런타임이 넘긴 것을 기록에 적는 sink.
     fn sink(self: &Arc<Self>) -> Sink {
         let conv = Arc::clone(self);
@@ -312,10 +273,14 @@ impl Conv {
             RuntimeEvent::Update(raw) => match OutOfTurn::of(&raw) {
                 Some(OutOfTurn::Started) => {
                     let written = self.recorder.update(raw);
-                    self.start_self_turn();
+                    let mut state = self.lock_state();
+                    self.seat(&mut state).self_started();
                     written
                 }
-                Some(OutOfTurn::Ended(response)) => self.end_self_turn(response),
+                Some(OutOfTurn::Ended(response)) => {
+                    let mut state = self.lock_state();
+                    self.seat(&mut state).self_ended(response)
+                }
                 None => self.recorder.update(raw),
             },
             RuntimeEvent::Stderr(line) => self.recorder.stderr(line),
@@ -334,59 +299,14 @@ impl Conv {
                 self.recorder.permission(PermissionLine::Withdrawn { request_id, reason })
             }
             RuntimeEvent::Died(death) => {
-                // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡고, 턴은 쉬는 것으로 돌린다.
+                // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡는다.
                 let mut state = self.lock_state();
-                state.rest(false);
+                state.order.died();
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
-                let lost_login = matches!(&end.result, Err(error) if login::auth_required(error));
                 let mut state = self.lock_state();
-                let started = state.turn.take();
-                let before = state.before.take();
-                let (response, error) = match end.result {
-                    Ok(response) => (Some(response), None),
-                    Err(error) => (None, Some(error)),
-                };
-                let ended = self
-                    .end_turn(
-                        before,
-                        TurnEndLine {
-                            stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
-                            duration_ms: elapsed_ms(started),
-                            cancelled_by_us: end.cancelled_by_us,
-                            out_of_turn: false,
-                            response,
-                            error,
-                        },
-                    )
-                    .and_then(|now| {
-                        // 엔진을 가리지 않는다 — 턴 도중의 `-32000`(풀린 Codex 로그인, Claude는 S3)도 `session/new`의 것과
-                        // 같은 로그인 필요 줄이다(three-axes 티켓 12). 대화의 잠금을 쥔 채 적고 쥐어 둔다 — 그 사이에
-                        // 보내기가 끼지 않고, 아래의 대기 줄도 로그인을 기다린다.
-                        if lost_login {
-                            self.recorder.session(SessionState::LoginRequired)?;
-                            if let Some(watch) = &self.login {
-                                watch.required();
-                            }
-                        }
-                        Ok(now)
-                    });
-                let (written, now) = match ended {
-                    Ok(now) => (Ok(()), now),
-                    Err(error) => (Err(error), None),
-                };
-                // S10 — 아카이브를 시킨 에이전트가 바로 이 턴 안에 있을 수 있다(MCP `atelier_archive_work`를 부른
-                // 그 턴). 그래서 턴 도중에는 끄지 않고, 턴 끝 줄을 적은 뒤에 work가 남아 있는지 본다. 꺼질 대화의
-                // 대기 줄은 보내지 않는다.
-                let retiring = self.vanish.as_ref().is_some_and(VanishWatch::retire_if_vanished);
-                if !retiring {
-                    // S13 — 턴이 끝났으니 대기 줄의 맨 앞을 보낸다. 턴 끝 줄과 같은 잠금 안이라, 그 사이에 온 보내기가
-                    // 대기 줄을 앞지르지 못한다. 멈춰서 끝난 턴(`cancelled`)도 같다 — 지금 보내기가 이것을 쓴다.
-                    // 방금 견준 「지금」이 그 말의 턴 앞이다.
-                    self.after_turn(&mut state, now);
-                }
-                written
+                self.seat(&mut state).turn_ended(end)
             }
         };
         if let Err(error) = written {
@@ -394,192 +314,103 @@ impl Conv {
             eprintln!("{error}");
         }
     }
+}
 
-    /// 턴 끝 — 턴 앞에 찍은 spec 폴더를 지금과 견주어 바뀐 것이 있으면 `changes` 줄을 적고, 이어 턴 끝 줄을 적는다
-    /// (three-axes 결정 22). 그래서 화면이 턴 끝 줄을 받을 때 그 턴의 고친 곳은 이미 와 있다. `state`를 쥔 채 부른다.
-    ///
-    /// - 바뀐 것이 없으면 `changes` 줄이 없다 — 화면의 알약이 0개로 서지 않는다.
-    /// - work 폴더가 그 사이 사라졌으면(아카이브 · 삭제) 견주지 않는다. 옛 자리에는 아무것도 없어 모든 파일이
-    ///   「지움」으로 적히기 때문이다. 그 대화는 턴 끝 줄 뒤에 꺼진다(S10).
-    ///
-    /// 견준 「지금」을 돌려준다 — 대기 줄의 다음 말이 곧바로 가면 그 턴의 앞이 된다(폴더를 두 번 걷지 않는다).
-    ///
-    /// `before`는 그 턴 앞에 찍은 것이다 — 우리가 보낸 턴은 보내기 직전, 스스로 이어 간 턴(S4)은 그 턴의 시작.
-    fn end_turn(&self, before: Option<Snapshot>, end: TurnEndLine) -> Result<Option<Snapshot>, records::RecordError> {
-        let mut now = None;
-        if let Some(before) = before {
-            if !work_vanished(&self.spec.works_root, &self.spec.work) {
-                let taken = Snapshot::take(&self.spec);
-                let files = before.compare(&taken);
-                if !files.is_empty() {
-                    self.recorder.changes(&files)?;
-                }
-                now = Some(taken);
-            }
-        }
-        self.recorder.turn_end(end)?;
-        Ok(now)
-    }
+/// 턴 차례가 시키는 일을 이 대화의 기록 · 턴 손잡이 · 로그인 창구 · spec 폴더로 옮기는 것 — [`TurnHands`]의 운영 adapter.
+/// 대화의 `state` 잠금 안에서만 산다. 손잡이는 그 잠금이 쥔 `ConvState::turns`다.
+struct ConvHands<'a> {
+    conv: &'a Conv,
+    turns: Option<&'a Turns>,
+}
 
-    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉬고, 에이전트가 스스로 이어 간 턴도 돌지 않고(S4), 로그인을
-    /// 기다리지 않고(티켓 12 — 턴 도중에 로그인이 풀렸다), 답을 기다리는 권한 요청이 없다(티켓 08). 그동안 받은 말은 대기
-    /// 줄에서 기다린다(S13).
-    fn can_send(&self, state: &ConvState) -> bool {
-        state.alive
-            && state.turn.is_none()
-            && state.self_turn.is_none()
-            && state.turns.as_ref().is_some_and(|turns| !turns.permission_pending())
-            && !self.login.as_ref().is_some_and(LoginWatch::waiting)
-    }
-
-    /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에
-    /// 보낸다. 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 인용이 붙은 말이면 사람의 글 바로 앞에 인용
-    /// 블록을 둔다(S12). `state`를 쥔 채 부른다.
-    ///
-    /// `before`는 턴 앞에 찍은 spec 폴더다 — 턴이 끝나면 지금과 견주어 고친 곳을 적는다(three-axes 결정 22).
-    ///
-    /// 보내지 못하면 턴을 연 채로 두지 않는다 — 화면이 「일하는 중」에 갇히지 않게 턴 끝 줄(오류)까지 적는다. 그 끝은
-    /// 대기 줄을 보내지 않는다: 연결이 끊긴 것이라 다음 말도 가지 못한다.
-    fn begin_turn(
-        &self,
-        state: &mut ConvState,
-        text: &str,
-        quote: Option<&Attached>,
-        preamble: Value,
-        send_now: bool,
-        before: Snapshot,
-    ) -> Result<(), HostError> {
-        let Some(turns) = state.turns.clone() else {
-            return Err(HostError::NotRunning(self.recorder.conversation().to_owned()));
-        };
-        let mut prompt = Vec::new();
-        if state.needs_preamble {
-            prompt.push(preamble);
-        }
-        if let Some(attached) = quote {
-            prompt.push(attached.block.clone());
-        }
-        prompt.push(json!({"type": "text", "text": text}));
-        let quoted = quote.map(|attached| &attached.quote);
-        self.recorder.sent(text, quoted, &prompt, send_now).map_err(HostError::Record)?;
-        state.turn = Some(Instant::now());
-        state.before = Some(before);
-        state.after_last = None;
-        state.needs_preamble = false;
-        if let Err(reason) = turns.prompt(prompt) {
-            let started = state.turn.take();
-            let before = state.before.take();
-            self.end_turn(
-                before,
-                TurnEndLine {
-                    stop_reason: None,
-                    duration_ms: elapsed_ms(started),
-                    cancelled_by_us: false,
-                    out_of_turn: false,
-                    response: None,
-                    error: Some(json!({"message": reason})),
-                },
-            )
-            .map_err(HostError::Record)?;
-            return Err(HostError::Send(reason));
-        }
-        Ok(())
-    }
-
-    /// 대기 줄의 맨 앞을 보낸다(S13) — 보낼 수 있을 때만. 턴 끝(수신 루프 안)이 부른다. 보낸 뒤 대기 줄 바뀜을 낸다.
-    /// `before`는 이미 찍어 둔 spec 폴더다(턴 끝에 견준 「지금」) — 없으면 여기서 찍는다.
-    fn send_queued(&self, state: &mut ConvState, before: Option<Snapshot>) {
-        if !self.can_send(state) {
-            return;
-        }
-        let Some(queued) = state.queue.pop_front() else { return };
-        let before = before.unwrap_or_else(|| Snapshot::take(&self.spec));
-        let Queued { message, preamble, quote } = queued;
-        let sent = self.begin_turn(state, &message.text, quote.as_ref(), preamble, message.send_now, before);
-        self.announce_queue(state);
-        if let Err(error) = sent {
-            // 턴 끝 줄(오류)이 기록에 섰다. 돌려줄 곳이 없다.
-            eprintln!("{error}");
-        }
-    }
-
-    /// 변환기가 턴 밖 턴의 시작을 알렸다(S4) — 에이전트가 스스로 이어 간 턴이 선다. 그 끝까지 대기 줄은 가지 않는다. 고친
-    /// 곳을 견줄 앞은 마지막 턴 끝에 견준 「지금」이고, 없으면 지금 찍는다(우리 턴이 돌면 우리 턴의 것이 맡는다). 수신 루프
-    /// 안에서 돈다.
-    fn start_self_turn(&self) {
-        let mut state = self.lock_state();
-        if !state.alive || state.self_turn.is_some() {
-            return;
-        }
-        let after_last = state.after_last.take();
-        let before = (state.turn.is_none() && !work_vanished(&self.spec.works_root, &self.spec.work))
-            .then(|| after_last.unwrap_or_else(|| Snapshot::take(&self.spec)));
-        state.self_turn = Some(SelfTurn { started: Instant::now(), before, stopped: false });
-    }
-
-    /// 변환기가 턴 밖 끝을 알렸다(S4) — 우리 턴의 끝과 같은 길이다(06 · 07 · 11): 고친 곳을 견주어 `changes` 줄을 적고,
-    /// 턴 밖 턴 표지(`outOfTurn`)를 단 턴 끝 줄을 적고, work가 사라졌으면 끄고, 아니면 대기 줄의 맨 앞을 보낸다. 시작을 못
-    /// 보고 끝만 와도 턴 끝 줄은 선다(걸린 시간 0). 우리 턴이 도는 사이에 온 끝은 우리 턴을 건드리지 않는다.
-    fn end_self_turn(&self, response: Value) -> Result<(), records::RecordError> {
-        let mut state = self.lock_state();
-        let own = state.self_turn.take();
-        let end = TurnEndLine {
-            stop_reason: response["stopReason"].as_str().map(str::to_owned),
-            duration_ms: elapsed_ms(own.as_ref().map(|turn| turn.started)),
-            cancelled_by_us: own.as_ref().is_some_and(|turn| turn.stopped),
-            out_of_turn: true,
-            response: Some(response),
-            error: None,
-        };
-        let (written, now) = match self.end_turn(own.and_then(|turn| turn.before), end) {
-            Ok(now) => (Ok(()), now),
-            Err(error) => (Err(error), None),
-        };
-        if state.turn.is_some() {
-            return written;
-        }
-        let retiring = self.vanish.as_ref().is_some_and(VanishWatch::retire_if_vanished);
-        if !retiring {
-            self.after_turn(&mut state, now);
-        }
-        written
-    }
-
-    /// 턴 끝(우리 턴 · 스스로 이어 간 턴) 뒤 — 보낼 수 있으면 대기 줄의 맨 앞을 보내고(방금 견준 「지금」이 그 말의 턴 앞이다),
-    /// 아니면 그 「지금」을 쥐어 둔다(스스로 이어 간 턴의 앞).
-    fn after_turn(&self, state: &mut ConvState, now: Option<Snapshot>) {
-        if self.can_send(state) && !state.queue.is_empty() {
-            self.send_queued(state, now);
-        } else {
-            state.after_last = now;
-        }
-    }
-
-    /// 도는 턴을 멈춘다 — 우리 턴이든 에이전트가 스스로 이어 간 턴이든 `session/cancel` 하나다. 기다리지 않는다. 도는 것이
-    /// 없으면 아무 일도 하지 않는다.
-    fn stop_turn(&self, state: &mut ConvState) -> Result<(), HostError> {
-        let running = state.alive && (state.turn.is_some() || state.self_turn.is_some());
-        let Some(turns) = state.turns.as_ref().filter(|_| running) else { return Ok(()) };
-        turns.cancel().map_err(HostError::Send)?;
-        if let Some(own) = state.self_turn.as_mut() {
-            own.stopped = true;
-        }
-        Ok(())
-    }
-
-    /// 대기 줄 바뀜을 낸다 — 바뀔 때마다 대기 줄 전체를 싣는다. `state`를 쥔 채 부른다: 알리는 차례가 바뀐 차례다.
-    fn announce_queue(&self, state: &ConvState) {
-        self.recorder.announce(HostEvent::Queue {
-            work: self.recorder.work().to_owned(),
-            conversation: self.recorder.conversation().to_owned(),
-            queue: queue_of(state),
-        });
+impl ConvHands<'_> {
+    /// 걸림 없이 부르는 자리라 손잡이는 늘 있다 — 없으면 떠 있지 않은 대화다.
+    fn turns(&self) -> Result<&Turns, String> {
+        self.turns.ok_or_else(|| format!("에이전트가 떠 있지 않은 대화입니다: {}", self.conv.recorder.conversation()))
     }
 }
 
-/// 화면에 보일 대기 줄.
-fn queue_of(state: &ConvState) -> Vec<QueuedMessage> {
-    state.queue.iter().map(|queued| queued.message.clone()).collect()
+impl TurnHands for ConvHands<'_> {
+    type Shot = Snapshot;
+
+    fn plugged(&self) -> bool {
+        self.turns.is_some()
+    }
+
+    fn permission_pending(&self) -> bool {
+        self.turns.is_some_and(Turns::permission_pending)
+    }
+
+    fn login_waiting(&self) -> Option<Agent> {
+        self.conv.login.as_ref().and_then(LoginWatch::waiting)
+    }
+
+    fn vanished(&self) -> bool {
+        work_vanished(&self.conv.spec.works_root, &self.conv.spec.work)
+    }
+
+    fn shoot(&mut self) -> Snapshot {
+        Snapshot::take(&self.conv.spec)
+    }
+
+    /// 바뀐 것이 없으면 `changes` 줄이 없다 — 화면의 알약이 0개로 서지 않는다.
+    fn changes(&mut self, before: &Snapshot, now: &Snapshot) -> Result<(), records::RecordError> {
+        let files = before.compare(now);
+        if files.is_empty() {
+            return Ok(());
+        }
+        self.conv.recorder.changes(&files)
+    }
+
+    fn turn_end(&mut self, line: TurnEndLine) -> Result<(), records::RecordError> {
+        self.conv.recorder.turn_end(line)
+    }
+
+    fn sent(
+        &mut self,
+        text: &str,
+        quote: Option<&Quote>,
+        prompt: &[Value],
+        send_now: bool,
+    ) -> Result<(), records::RecordError> {
+        self.conv.recorder.sent(text, quote, prompt, send_now)
+    }
+
+    /// 엔진을 가리지 않는다 — 턴 도중의 `-32000`(풀린 Codex 로그인, Claude는 S3)도 `session/new`의 것과 같은 로그인 필요
+    /// 줄이다(three-axes 티켓 12). 대화의 잠금을 쥔 채 적고 쥐어 둔다 — 그 사이에 보내기가 끼지 않고, 대기 줄도 로그인을
+    /// 기다린다.
+    fn login_lost(&mut self) -> Result<(), records::RecordError> {
+        self.conv.recorder.session(SessionState::LoginRequired)?;
+        if let Some(watch) = &self.conv.login {
+            watch.required();
+        }
+        Ok(())
+    }
+
+    fn queue_changed(&mut self, queue: Vec<QueuedMessage>) {
+        let recorder = &self.conv.recorder;
+        recorder.announce(HostEvent::Queue {
+            work: recorder.work().to_owned(),
+            conversation: recorder.conversation().to_owned(),
+            queue,
+        });
+    }
+
+    fn prompt(&mut self, blocks: Vec<Value>) -> Result<(), String> {
+        self.turns()?.prompt(blocks)
+    }
+
+    fn cancel(&mut self) -> Result<(), String> {
+        self.turns()?.cancel()
+    }
+
+    fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError> {
+        self.turns.map_or(Err(AnswerError::Closed), |turns| turns.answer(request, option))
+    }
+
+    fn retire_if_vanished(&mut self) -> bool {
+        self.conv.vanish.as_ref().is_some_and(VanishWatch::retire_if_vanished)
+    }
 }
 
 /// 턴 끝에 그 대화의 work가 사라졌는지 보는 것(S10). 턴 끝은 런타임의 sink 안이라 호스트를 부를 수 없으므로, 떠
@@ -629,9 +460,9 @@ impl LoginWatch {
         *self.agent.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = agent;
     }
 
-    /// 그 대화가 로그인을 기다리나 — 그동안은 대기 줄이 가지 않는다(S13의 걸림).
-    fn waiting(&self) -> bool {
-        self.desk.waiting_for(&self.conversation).is_some()
+    /// 그 대화가 로그인을 기다리면 그 에이전트 — 그동안은 대기 줄이 가지 않는다(S13의 걸림).
+    fn waiting(&self) -> Option<Agent> {
+        self.desk.waiting_for(&self.conversation)
     }
 }
 
@@ -686,10 +517,6 @@ fn shut_down_together(live: &mut [Live]) {
         // 끈 대화는 연결을 쥐지 않는다 — 대화가 든 턴 손잡이의 복제도 놓는다.
         conversation.conv.lock_state().turns = None;
     }
-}
-
-fn elapsed_ms(started: Option<Instant>) -> u64 {
-    started.map_or(0, |at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
 }
 
 /// 새 대화가 처음 쥐는 모델 · 모드. 비우면 엔진 기본값이다(three-axes 결정 16) — Claude는 `--model` · `--permission-mode`를
@@ -918,7 +745,7 @@ impl ConversationHost {
         // 표의 잠금은 놓고 보낸다 — 맨 앞의 턴 앞을 찍느라 spec 폴더를 걷는 동안 다른 대화의 명령을 막지 않게(S2).
         if let Some(conv) = self.find_live(key) {
             if let Some(mut state) = conv.lock_found() {
-                conv.send_queued(&mut state, None);
+                conv.seat(&mut state).resume();
             }
         }
         Ok(())
@@ -954,7 +781,7 @@ impl ConversationHost {
             }
             None => self.live_conv(&work_at, key, row.agent)?,
         };
-        let queued = !conv.lock_state().queue.is_empty();
+        let queued = conv.lock_state().order.queued() > 0;
         let opened = self.open_agent(key.work, &work_at.places, &mut row, conv, &env, &programs);
         if queued && self.find_live(key).is_none() {
             (self.emit)(HostEvent::Queue { work: key.work.to_owned(), conversation: key.id.to_owned(), queue: Vec::new() });
@@ -1123,7 +950,7 @@ impl ConversationHost {
             let (last_seq, queue, up) = match &live {
                 Some(live) => {
                     let state = live.conv.lock_state();
-                    (live.conv.recorder.last_seq(), queue_of(&state), state.is_up())
+                    (live.conv.recorder.last_seq(), state.order.queue(), state.is_up())
                 }
                 None => (record.last_seq(), Vec::new(), false),
             };
@@ -1230,9 +1057,8 @@ impl ConversationHost {
         {
             // 대기 줄은 그대로 둔다 — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13).
             let mut state = conv.lock_state();
-            state.rest(true);
+            state.order.opened(needs_preamble);
             state.turns = turns;
-            state.needs_preamble = needs_preamble;
         }
         // S16 — 세션이 열릴 때마다 그 엔진의 목록을 덮어 쓴다. 못 써도 대화는 연다: 설정 쪽의 목록이 낡을 뿐이다.
         {
@@ -1323,27 +1149,10 @@ impl ConversationHost {
                 None => HostError::NotRunning(conversation.to_owned()),
             });
         };
-        if let Some(agent) = self.logins.waiting_for(conversation) {
-            // 턴 도중에 로그인이 풀렸다. 대화의 잠금 안에서 본다 — 턴 끝이 같은 잠금 안에서 쥐게 한다.
-            return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
-        }
-        if !state.is_up() {
-            return Err(HostError::NotRunning(conversation.to_owned()));
-        }
-        let preamble = work_at.preamble();
-        if conv.can_send(&state) && state.queue.is_empty() {
-            return conv.begin_turn(&mut state, text, quote.as_ref(), preamble, false, before);
-        }
-        // S13 — 턴이 도는 동안의 말은 대기 줄 끝에 든다. 턴이 끝나면 맨 앞부터 차례로 간다.
-        let message = QueuedMessage { id: uuid::Uuid::new_v4().to_string(), text: text.to_owned(), send_now: false };
-        state.queue.push_back(Queued { message, preamble, quote });
-        if conv.can_send(&state) {
-            // 쉬는데 대기 줄이 남아 있다 — 맨 앞부터 보낸다. 새 말이 앞지르지 않는다.
-            conv.send_queued(&mut state, Some(before));
-        } else {
-            conv.announce_queue(&state);
-        }
-        Ok(())
+        // 턴 도중에 로그인이 풀렸으면 거절한다 — 대화의 잠금 안에서 본다(턴 끝이 같은 잠금 안에서 쥐게 한다). S13 — 턴이 도는
+        // 동안의 말은 대기 줄 끝에 들고, 턴이 끝나면 맨 앞부터 차례로 간다.
+        let draft = Draft { text: text.to_owned(), preamble: work_at.preamble(), quote };
+        conv.seat(&mut state).say(draft, before).map_err(|refused| refused.into_host(conversation))
     }
 
     /// 멈추기 — 도는 턴에 `session/cancel`을 보낸다. 기다리지 않는다: 턴 끝(`cancelled`)은 `turn-end` 줄로 오고, 그
@@ -1357,7 +1166,7 @@ impl ConversationHost {
         let key = ConversationKey::new(work, conversation)?;
         let Some(conv) = self.find_live(key) else { return Ok(()) };
         let Some(mut state) = conv.lock_found() else { return Ok(()) };
-        conv.stop_turn(&mut state)
+        conv.seat(&mut state).stop().map_err(|refused| refused.into_host(conversation))
     }
 
     /// 권한 답 — 걸린 권한 요청(`request` — 요청 id)에 고른 선택지(`option` — optionId)로 답한다. 기다리지 않는다: 고른
@@ -1373,34 +1182,27 @@ impl ConversationHost {
         // 대화의 명령을 막지 않게(S2).
         let conv = self.find_live(key).ok_or_else(closed)?;
         let mut state = conv.lock_found().ok_or_else(closed)?;
-        let turns = state.turns.clone().ok_or_else(closed)?;
-        turns.answer(request, option).map_err(|error| match error {
-            AnswerError::Closed => closed(),
-            AnswerError::UnknownOption => HostError::PermissionOption { request: request.to_owned(), option: option.to_owned() },
-            AnswerError::Send(reason) => HostError::Send(reason),
-        })?;
-        conv.send_queued(&mut state, None);
-        Ok(())
+        conv.seat(&mut state).answer(request, option).map_err(|refused| refused.into_host(conversation))
     }
 
     /// 대기 고치기 — 대기 줄에서 그 대기 id의 말의 글을 바꾸고 대기 줄 바뀜을 낸다. 대기 id와 차례는 그대로다
     /// (스토리 50). 이미 갔거나 지운 말이면 읽히는 오류다.
     pub fn edit_queued(&self, work: &str, conversation: &str, queued: &str, text: &str) -> Result<(), HostError> {
-        self.change_queued(ConversationKey::new(work, conversation)?, queued, |conv, state, at| {
-            state.queue[at].message.text = text.to_owned();
-            conv.announce_queue(state);
-            Ok(())
-        })
+        let key = ConversationKey::new(work, conversation)?;
+        let not_found = || HostError::QueuedNotFound(queued.to_owned());
+        let conv = self.find_live(key).ok_or_else(not_found)?;
+        let mut state = conv.lock_found().ok_or_else(not_found)?;
+        conv.seat(&mut state).edit(queued, text).map_err(|refused| refused.into_host(conversation))
     }
 
     /// 대기 지우기 — 대기 줄에서 그 대기 id의 말을 빼고 대기 줄 바뀜을 낸다(스토리 50). 이미 갔거나 지운 말이면
     /// 읽히는 오류다.
     pub fn delete_queued(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
-        self.change_queued(ConversationKey::new(work, conversation)?, queued, |conv, state, at| {
-            state.queue.remove(at);
-            conv.announce_queue(state);
-            Ok(())
-        })
+        let key = ConversationKey::new(work, conversation)?;
+        let not_found = || HostError::QueuedNotFound(queued.to_owned());
+        let conv = self.find_live(key).ok_or_else(not_found)?;
+        let mut state = conv.lock_found().ok_or_else(not_found)?;
+        conv.seat(&mut state).delete(queued).map_err(|refused| refused.into_host(conversation))
     }
 
     /// 지금 보내기 — 대기 줄의 그 말을 맨 앞으로 옮겨 「지금 보내기」로 세우고(대기 줄 바뀜), 도는 턴을 멈춘다
@@ -1416,51 +1218,17 @@ impl ConversationHost {
     pub fn send_now(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
         let key = ConversationKey::new(work, conversation)?;
         let dead_with_it = self.find_live(key).is_some_and(|conv| {
-            conv.lock_found().is_some_and(|state| {
-                !state.is_up() && state.queue.iter().any(|item| item.message.id == queued)
-            })
+            conv.lock_found().is_some_and(|state| !state.is_up() && state.order.contains(queued))
         });
         if dead_with_it && self.logins.waiting_for(conversation).is_none() {
             self.revive(key, Revive::IfNotRunning)?;
         }
-        self.change_queued(key, queued, |conv, state, at| {
-            if let Some(agent) = self.logins.waiting_for(conversation) {
-                // 보내기처럼 로그인을 기다린다(티켓 12) — 대기 줄은 그대로 두고 멈추지도 않는다.
-                return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
-            }
-            if !state.alive {
-                return Err(HostError::NotRunning(conversation.to_owned()));
-            }
-            let mut picked = state.queue.remove(at).expect("찾은 자리다");
-            for other in state.queue.iter_mut() {
-                other.message.send_now = false;
-            }
-            picked.message.send_now = true;
-            state.queue.push_front(picked);
-            if conv.can_send(state) {
-                // 쉬고 있다 — 멈출 턴이 없으니 곧바로 보낸다.
-                conv.send_queued(state, None);
-                return Ok(());
-            }
-            conv.announce_queue(state);
-            conv.stop_turn(state)
-        })
-    }
-
-    /// 그 대화의 대기 줄에서 그 대기 id의 말을 찾아 `change`에 자리와 함께 넘긴다. 대화의 잠금을 쥔 채 부른다 — 턴 끝이
-    /// 맨 앞을 꺼내 보내는 것과 엇갈리지 않는다. 표의 잠금은 쥐지 않는다 — 지금 보내기가 맨 앞을 곧바로 보내며 spec 폴더를
-    /// 걷는 동안 다른 대화의 명령을 막지 않게(S2). 떠 있지 않은 대화의 대기 줄은 늘 비어 있다.
-    fn change_queued(
-        &self,
-        key: ConversationKey,
-        queued: &str,
-        change: impl FnOnce(&Conv, &mut ConvState, usize) -> Result<(), HostError>,
-    ) -> Result<(), HostError> {
+        // 대화의 잠금을 쥔 채 고른다 — 턴 끝이 맨 앞을 꺼내 보내는 것과 엇갈리지 않는다. 표의 잠금은 쥐지 않는다 — 맨 앞을 곧바로
+        // 보내며 spec 폴더를 걷는 동안 다른 대화의 명령을 막지 않게(S2). 떠 있지 않은 대화의 대기 줄은 늘 비어 있다.
         let not_found = || HostError::QueuedNotFound(queued.to_owned());
         let conv = self.find_live(key).ok_or_else(not_found)?;
         let mut state = conv.lock_found().ok_or_else(not_found)?;
-        let at = state.queue.iter().position(|item| item.message.id == queued).ok_or_else(not_found)?;
-        change(&conv, &mut state, at)
+        conv.seat(&mut state).send_now(queued).map_err(|refused| refused.into_host(conversation))
     }
 
     /// 모델 바꾸기 — 그 대화의 모델을 바꾼다(`session/set_config_option{configId: "model"}`). 값은 그 대화의 것이고 설정의
@@ -1502,7 +1270,7 @@ impl ConversationHost {
         let running: Option<(Arc<Conv>, runtime::Turns)> = self.find_live(key).and_then(|conv| {
             let turns = {
                 let state = conv.lock_found()?;
-                state.turns.clone().filter(|_| state.alive)
+                state.turns.clone().filter(|_| state.order.alive())
             }?;
             Some((conv, turns))
         });
@@ -1596,10 +1364,7 @@ impl ConversationHost {
         if vanished.is_empty() {
             return;
         }
-        retire_vanished(&self.live, |_, live| {
-            let state = live.conv.lock_state();
-            vanished.contains(&live.work) && state.turn.is_none() && state.self_turn.is_none()
-        });
+        retire_vanished(&self.live, |_, live| vanished.contains(&live.work) && !live.conv.lock_state().order.turning());
     }
 
     /// 앱 종료 확인 창의 셈(three-axes 티켓 23 · S13) — 떠 있는 대화 모두에서 턴이 도는 대화 · 대기 중인 말 · 답하지 않은
@@ -1612,8 +1377,8 @@ impl ConversationHost {
         let mut counts = QuitCounts::default();
         for conversation in live.values() {
             let state = conversation.conv.lock_state();
-            counts.running += usize::from(state.turn.is_some() || state.self_turn.is_some());
-            counts.queued += state.queue.len();
+            counts.running += usize::from(state.order.turning());
+            counts.queued += state.order.queued();
             counts.approvals += state.turns.as_ref().map_or(0, Turns::pending_permissions);
         }
         counts
@@ -1890,7 +1655,7 @@ fn major(version: Option<&str>) -> Option<u64> {
 /// 대화로 본다([`Conv::lock_found`]).
 fn summarize(found: Option<&Conv>, agents_dir: &Path, row: &ConversationRow) -> Conversation {
     match found.and_then(|conv| Some((conv, conv.lock_found()?))) {
-        Some((conv, state)) => summary(row, conv.recorder.last_seq(), queue_of(&state), state.is_up()),
+        Some((conv, state)) => summary(row, conv.recorder.last_seq(), state.order.queue(), state.is_up()),
         None => summary(row, records::facts(agents_dir, &row.id).last_seq(), Vec::new(), false),
     }
 }
