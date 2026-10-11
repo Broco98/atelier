@@ -52,14 +52,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 앱 셸의 길이 — 타이틀바 띠의 높이, 행의 리듬, 디자인 시스템의 여백.
+/* 앱 셸의 길이 — 타이틀바 띠의 높이, 행의 리듬, ui-refresh 때의 여백.
 
-   **폭(사이드바 · 목록 패널 · 작업 패널)은 여기 적지 않는다.** 기본 · 최소 · 최대의 정본은
-   `useResizableWidth`를 부르는 자리들이고(사이드바는 `Sidebar.tsx`의
-   `useResizableWidth("sidebar-width", 280, 240, 400)`), 상자마다 제 폭을 인라인 변수로 싣는다.
-   여기 한 벌 더 적으면 두 곳이 갈린다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여
-   아무 데서도 읽히지 않았다. 디자인 시스템의 `--panel-width`(작업 패널 330)는 목록 패널이
-   인라인으로 쓰는 같은 이름(360)과 부딪혀서도 적지 않는다 — 작업 패널은 `--work-panel-width`다. */
+   **폭(사이드바 · 목록 패널 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
+   거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 280, 240, 400)`, 목록 패널은 Projects ·
+   Archive의 360, 작업 패널은 `panel-layout.ts`의 `WORK_PANEL_WIDTH` 330), 상자마다 제 폭을 인라인 변수로 싣는다. 이 블록에는
+   폭이 없다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여 아무 데서도 읽히지 않았다.
+   아래 `@theme static`에 선언된 DS 폭(`--size-sidebar` 290 · `--size-list` 264 · `--size-panel` 340)은 **선언만 있고 읽는 곳이
+   없다** — 기본값을 그 DS 값으로 옮기는 것은 codex-ds 스펙 S4(티켓 18 · 19 · 20)다. 그때까지 두 벌의 값이 다르고, 화면에 서는
+   것은 인라인 값이다. */
 :root {
     --titlebar-height: 44px;
     /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 패널 둘이 전부 이
@@ -70,8 +71,11 @@
     /* 행 머리의 글리프 뒤 여백 — 아이콘·화살표가 앉는 상자와 그 옆 글자 사이. */
     --glyph-gap: 9px;
 
-    /* **디자인 시스템의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 DS(`base.css`의
-       `:where(:root)`) 그대로다.
+    /* **ui-refresh 때의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 그때의 DS(1판 `base.css`의 `:where(:root)`)
+       것이고, codex-ds DS 2판에는 이 이름들이 없다 — 2판의 길이는 아래 `@theme static`의 `--size-*`다. 값이 2판과 갈리는
+       것이 있다: 카드 머리 `--card-head` 48은 2판 `--size-toolbar` 46과 다르고(46으로 옮기는 것은 티켓 12), 글 폭
+       `--measure-read` 760은 스펙 2절 「크기」가 `--size-thread`(48rem)로 바꿔 걷는다(문서 글 폭은 티켓 15). `--gap` · `--card-pad` · `--term-inset`을 `space-*`로
+       옮겨 걷는 것은 티켓 25다. `--rail` 32는 2판의 패널 칸 줄 `--size-prail`과 같은 값이다.
          --gap           창 가장자리 · 카드 사이의 틈
          --rail          레일 폭
          --card-pad      카드 안 좌우
@@ -489,6 +493,10 @@
        유일한 방어선이다 */
     --ease-panel: cubic-bezier(0.2, 0, 0, 1);
 
+    /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
+       `--size-menu-ctx`)과 아이콘 버튼(`icon-button`의 `--size-control`)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
+       그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세우고, 폭 셋(사이드바 · 목록 칸 · 작업 패널)의 기본값은 S4가 옮긴다. 그때까지
+       화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -885,7 +893,8 @@
     --term-hi: var(--link);
 
     /* **shadcn 이름** — Codex 토큰의 별칭으로만 남는다(codex-ds 스펙 S1). 지금 읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS —
-       `background` · `foreground` · `ring`) 하나이고, 나머지는 registry에서 들이는 부품이 이 이름으로 오기 때문에 선다. 공용
+       `background` · `foreground`) 하나이고, 나머지(`--ring` · `--sidebar-ring`을 포함해)는 registry에서 들이는 부품이 이 이름으로
+       오기 때문에 선다 — 바탕 CSS가 걸던 `outline-ring/50`은 걷혔다(포커스 링은 `focus-ring` 하나). 공용
        부품(`components/ui`)은 들인 부품의 이 이름들을 Codex 이름으로 옮겨 적었고, 앱 호출부(틀 · 화면)는 쓰지 않는다
        (`color-guard.test.ts`). 짝은 DS README 「앱 토큰 이름과의 짝」이다.
        - **`--accent`는 여기 없다** — 그 이름은 Codex 파랑 그 자체다(위 `:root`). shadcn이 그 이름에 걸던 옅은 면은 Codex

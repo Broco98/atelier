@@ -13,8 +13,9 @@ import { cssBlocks, declared, SHADCN_NAMES } from "@/css-tokens";
 // **유틸리티는 Tailwind를 실제로 돌려 잰다(CSS 훑기).** `@theme`에 줄이 있다고 유틸리티가 서는 것은 아니다 — 시간은
 // `--duration-*`가 아니라 `--transition-duration-*`여야 `duration-panel`이 CSS를 내고, 그림자는 값을 글자로 적으면 유틸리티가
 // 그 값을 박아 넣어 `.dark`가 못 덮는다. 둘 다 빌드도 타입 검사도 조용하고, 화면에는 「안 움직인다」 · 「다크에서 선이
-// 검다」로만 남는다. 쓰는 화면이 아직 없는 토큰(대화 · 도구 · Atelier 낱말)은 L3가 못 재므로 여기서 잰다.
-// 화면의 실제 색(창 바탕 · 카드 · 본문 글자)은 L3가 computed style로 잰다(`e2e/frame.spec.ts`).
+// 검다」로만 남는다. 쓰는 화면이 아직 없는 토큰(대화 · 도구 · diff · 구문색 · 컴포저)은 L3가 못 재므로 여기서 잰다.
+// 화면의 실제 색은 L3가 computed style로 잰다 — 창 바탕 · 카드 · 본문 글자, 상태 넷, 터미널 카드의 `term-bg`(`e2e/frame.spec.ts`)와
+// 부름의 점(`works-sidebar`) · 셸 탭의 채움(`terminal-tabs`)이다. Atelier 낱말은 티켓 06부터 화면이 있어, 여기서는 대표 유틸리티로만 선다.
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const css = readFileSync(join(root, "src/index.css"), "utf8");
