@@ -3,9 +3,9 @@
 // 갈린다(예외 칸만 좌우 9px · 위아래 6px이던 때가 있었다). 그래서 부품 대신 클래스 문자열을 여기 한 곳에 둔다
 // (`dialog-look.ts`와 같은 까닭).
 //
-// 규격은 설정 화면의 한 줄 칸(`Input`의 `field`)과 같은 가족이다 — 모서리 `rounded-lg` · border-heavy · 흰 바탕 · `text-sm`, 포커스는
-// 테두리 Codex 파랑 + 바깥 3px 옅은 링(디자인 시스템의 `.at-textarea` · `.at-input.focus`). 폭은 쓰는 자리가 `className`으로 정한다(`Input`과 같은 규칙 — 기본은 w-full). 프로젝트 설명의 여러 줄
-// 칸(`ProjectDetail`)은 이것을 쓰지 않는다 — 누르기 전의 설명 상자와 같은 자리 · 반경(16) · 글자(`text-sm`)에 서는 인라인 편집기다.
-// 포커스만 이 가족의 것(테두리 Codex 파랑 + 3px 옅은 링)이다.
+// 규격은 설정 화면의 한 줄 칸(`Input`의 `field`)과 같은 가족이다 — 모서리 `radius-md` · border-heavy · 흰 바탕 · `text-sm`, 포커스는
+// 앱의 한 링(`focus-ring` — 디자인 시스템의 `.at-input.area`). 폭은 쓰는 자리가 `className`으로 정한다(`Input`과 같은 규칙 — 기본은
+// w-full). 프로젝트 설명의 여러 줄 칸(`ProjectDetail`)은 이것을 쓰지 않는다 — 누르기 전의 설명 상자와 같은 자리 · 반경(16) ·
+// 글자(`text-sm`)에 서는 인라인 편집기다. 포커스만 이 가족의 것(앱의 한 링)이다.
 export const textareaLook =
-  "w-full resize-y rounded-lg border border-border-heavy bg-surface px-2.5 py-2 text-sm outline-none focus:border-accent focus:ring-3 focus:ring-accent/20";
+  "w-full resize-y rounded-md border border-border-heavy bg-surface px-2.5 py-2 text-sm outline-none focus-ring";

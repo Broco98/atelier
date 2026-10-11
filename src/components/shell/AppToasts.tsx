@@ -63,7 +63,7 @@ function ToastList() {
           </Button>
         ))}
         {actions.length > 0 && (
-          <ToastPrimitive.Close aria-label="닫기" className="icon-button-quiet shrink-0 text-fg-tertiary">
+          <ToastPrimitive.Close aria-label="닫기" className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring">
             <X className="size-3.5" />
           </ToastPrimitive.Close>
         )}

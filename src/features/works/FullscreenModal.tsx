@@ -84,7 +84,7 @@ function FullscreenModal({
               text="닫기"
               shortcut="Esc"
               announce="name"
-              render={<DialogClose className="icon-button-quiet ml-1 text-fg-tertiary" />}
+              render={<DialogClose className="icon-button-quiet icon-button-xs ml-1 text-fg-tertiary focus-ring" />}
             >
               <X className="size-3.5" />
             </Hint>

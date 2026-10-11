@@ -168,7 +168,8 @@ const shadows = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =
 // 「조금 다른 그림자」로만 남아 눈으로는 안 지켜진다(스펙 레이아웃 화면의 메시지가 한 번 그렇게 남았다).
 describe("그림자 단계", () => {
   it("Codex의 그림자 이름이 `@theme`에 있다", () => {
-    expect(shadows).toEqual(["hairline", "100", "200", "300", "400", "card", "composer", "prominent", "2xl"]);
+    // 끝의 둘은 두 겹을 합친 이름이다(`index.css`의 그 주석) — 한 요소에 `shadow-*` 둘을 달면 합치기가 앞의 것을 지운다.
+    expect(shadows).toEqual(["hairline", "100", "200", "300", "400", "card", "composer", "prominent", "2xl", "modal", "raised"]);
   });
 
   it("단계 밖 이름을 쓰지 않는다", () => {

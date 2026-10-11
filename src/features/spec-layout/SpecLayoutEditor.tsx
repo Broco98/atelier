@@ -127,8 +127,8 @@ function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
         <FormBody>
           <div className="flex flex-col items-start gap-3">
             <p className="text-chat-meta text-danger">{String(read.error)}</p>
-            {/* 쪽 동작 버튼이다 — 설정 파일 읽기 게이트의 [다시 읽기]와 같다(`Button`의 ghost · sm). */}
-            <Button variant="ghost" size="sm" onClick={() => void read.refetch()}>
+            {/* 쪽 동작 버튼이다 — 설정 파일 읽기 게이트의 [다시 읽기]와 같다(`Button`의 ghost · xs). */}
+            <Button variant="ghost" size="xs" onClick={() => void read.refetch()}>
               다시 읽기
             </Button>
           </div>
@@ -258,17 +258,16 @@ function EditorScreen({
       onBack={onBack}
       actions={
         <>
-          {/* 카드 머리의 알약이다(`Button` outline · pill — ui-refresh 결정 5 · 6, 프로토타입 `Settings-editor`). 아이콘은 글자
+          {/* 카드 머리의 흰 버튼이다(`Button` outline — 카드 안 버튼 32 · `radius-lg`, DS `.at-btn.sm`). 아이콘은 글자
               앞에 선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
               `aria-expanded`)를 달지 않는다 — 앱의 창 여는 버튼(전체화면 뷰어 · 이름 바꾸기)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
-          <Button ref={opener} variant="outline" size="pill" onClick={() => setPreviewOpen(true)}>
+          <Button ref={opener} variant="outline" onClick={() => setPreviewOpen(true)}>
             <Eye data-icon="inline-start" aria-hidden />
             LLM이 받는 텍스트
           </Button>
-          {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이고, 카드 머리라 알약 크기에 선다. 파란 알약은 글자가
-              주 버튼의 굵기(500)다 — 부품이 든다(DS `.at-pill.primary`). */}
-          <Button size="pill" onClick={() => void save()} disabled={!enabled}>
+          {/* 주 버튼(`Button` 기본 — Codex primary)이다 — 설정의 [저장]과 같은 부품 · 같은 크기다. */}
+          <Button onClick={() => void save()} disabled={!enabled}>
             {write.isPending ? "저장 중…" : "저장"}
           </Button>
         </>
@@ -367,14 +366,14 @@ export function OutsideBanner({
         <button
           type="button"
           onClick={onReload}
-          className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-sm font-medium text-fg transition-colors quiet-hover"
+          className="h-7 shrink-0 whitespace-nowrap rounded-lg border border-warning/30 bg-surface px-3 text-sm font-medium text-fg transition-colors quiet-hover focus-ring"
         >
           새로 불러오기
         </button>
         <button
           type="button"
           onClick={onKeep}
-          className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/10"
+          className="h-7 shrink-0 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-warning transition-colors hover:bg-warning/10 focus-ring"
         >
           내 초안 유지
         </button>
@@ -425,8 +424,8 @@ function EditorFrame({
         head={
           <CardHead
             lead={
-              // 카드 머리의 원형 아이콘 버튼이다(`size="icon-round"` — ui-refresh 결정 6).
-              <Button variant="outline" size="icon-round" onClick={onBack} aria-label="설정으로 돌아가기">
+              // 카드 머리의 아이콘 버튼이다(`size="icon"` — Codex `IconButton` 28 · `radius-lg`, 동그란 버튼은 codex-ds 결정 3이 걷었다).
+              <Button variant="outline" size="icon" onClick={onBack} aria-label="설정으로 돌아가기">
                 <ArrowLeft aria-hidden />
               </Button>
             }
@@ -561,9 +560,11 @@ export function TreeCard({
           onRemove={() => onEdit((current) => removeEntry(current, at))}
         />
       </CardHead>
-      {/* 좌우 여백은 카드 머리와 같다(DS `.at-card-body.tight`) — 머리의 알약과 트리의 행이 한 세로선에 선다. 머리와 첫 행
-          사이는 트리 줄 사이와 같은 2px 틈이다(DS `.at-tree`). */}
-      <div className="shrink-0 px-[calc(var(--card-pad)-14px)] pb-(--row-gap)">
+      {/* 좌우 여백은 카드 머리와 같다(DS `.at-card-body.tight`) — 머리의 버튼과 트리의 행이 한 세로선에 선다. 머리와 첫 행
+          사이는 트리 줄 사이와 같은 2px 틈이다(DS `.at-tree`). `relative`는 아래 트리 상자 **위에** 서려는 것이다 — 트리 상자가
+          링이 설 자리만큼 위로 4px 나와 이 줄의 아래 끝에 걸치는데(`EntryTree`), 같은 층에 서지 않으면 `spec/`의 아래 끝을
+          누른 손을 트리 상자가 받는다. */}
+      <div className="relative shrink-0 px-[calc(var(--card-pad)-14px)] pb-(--row-gap)">
         {/* 머리 `spec/`은 항목이 아니다(결정 26) — 끌기·지우기·옮기기의 대상이 아니고, 누르면 spec 폴더 안내(맨 위 항목의
             설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. 모양은 트리의 행이고 폴더 행처럼 한 단 흐리다
             (DS `.at-tree-row.folder`). 도움말은 누르면 서는 칸의 이름이다 — 이름(`spec/`)보다 더 말하는 것이라 설명으로도
@@ -575,7 +576,7 @@ export function TreeCard({
           onClick={() => onSelect([])}
           aria-pressed={at.length === 0}
           className={cn(
-            "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-chat-meta transition-colors",
+            "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-chat-meta transition-colors focus-ring",
             at.length === 0 ? "selected-row font-medium" : "text-fg-secondary hover:bg-fill-soft",
           )}
         >
@@ -592,8 +593,10 @@ export function TreeCard({
  * 트리 카드의 머리 한 줄(티켓 13 · 구현 스펙 5절 「배치」) — 파일 추가, 폴더 추가, 옮기기 넷, 지우기(휴지통). 옮기는 주된
  * 길은 끌어다 놓기이고, 옮기기 넷과 그 단축키(⌥↑ ⌥↓ ⌥← ⌥→)는 키보드 길로 남긴 것이다.
  *
- * 모양은 카드 머리의 조작이다(판 06 티켓 07, 프로토타입 `Settings-editor`): 더하기 둘은 작은 흰 알약(DS `.at-pill.sm`), 옮기기
- * 넷과 지우기는 28px 원형 아이콘 버튼(DS `.at-icon-btn` — 14px 글리프)이고 오른쪽 끝에 붙어 선다. 옮기기 넷에 묶음 바탕은 없다.
+ * 모양은 카드 머리의 조작이다(판 06 티켓 07, 프로토타입 `Settings-editor`): 더하기 둘은 줄 안의 작은 흰 버튼(`Button` outline ·
+ * xs — DS `.at-btn.xs` 26), 옮기기 넷과 지우기는 아이콘 버튼의 26 단(`icon-button` · `icon-button-sm` — DS `.at-ib.sm` · 14px
+ * 글리프)이고 오른쪽 끝에 붙어 선다. 한 줄에 선 글자 버튼과 아이콘 버튼은 같은 높이다 — 높이가 갈리면 hover 면이 옮겨 갈 때
+ * 커졌다 작아진다. 옮기기 넷에 묶음 바탕은 없다.
  *
  * **무엇이 잠기는지는 여기서 정하지 않는다** — 조작 함수의 답(`editsAt`)을 받는다. 머리 `spec/`을 골랐으면
  * 옮기기와 지우기가 모두 잠긴다. 더하기는 늘 된다.
@@ -611,14 +614,14 @@ function TreeTools({
 }) {
   return (
     <div role="toolbar" aria-label="항목 편집" className="flex min-w-0 flex-1 items-center gap-1.5">
-      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 작은 흰 알약이다
-          (`size="pill-sm"` — Archive 정렬 알약과 같다). */}
+      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 줄 안의 작은 흰
+          버튼이다(`size="xs"` — Archive 정렬 · 거르기와 같다). */}
       {(["file", "folder"] as const).map((kind) => (
         <Hint
           key={kind}
           text={ADD_LABEL[kind]}
           aria-label={ADD_LABEL[kind]}
-          render={<Button variant="outline" size="pill-sm" onClick={() => onAdd(kind)} />}
+          render={<Button variant="outline" size="xs" onClick={() => onAdd(kind)} />}
         >
           <Plus aria-hidden />
           {kind === "file" ? "파일" : "폴더"}
@@ -627,7 +630,7 @@ function TreeTools({
       <div className="ml-auto flex shrink-0 items-center">
         <div role="group" aria-label="고른 항목 옮기기" className="flex items-center">
           {/* 이름이 없는 아이콘 버튼이라 툴팁 글자가 이름이고, 단축키는 Kbd로 붙어 설명으로도 남는다(S28). 잠기면
-              툴팁이 없다(S23) — 버튼이 네이티브 `disabled`다. 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41). */}
+              툴팁이 없다(S23) — 버튼이 네이티브 `disabled`다. 모양과 크기는 아이콘 버튼 규격의 26 단(`icon-button-sm`)이 든다. */}
           {MOVE_TOOLS.map(({ move, label, keys, Icon }) => (
             <Hint
               key={move}
@@ -640,7 +643,7 @@ function TreeTools({
                   type="button"
                   onClick={() => onMove(move)}
                   disabled={!edits[move]}
-                  className="icon-button size-7 text-fg-secondary transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
+                  className="icon-button icon-button-sm text-fg-secondary transition-colors quiet-hover focus-ring disabled:pointer-events-none disabled:opacity-35"
                 />
               }
             >
@@ -661,9 +664,9 @@ function TreeTools({
               onClick={onRemove}
               disabled={!edits.remove}
               aria-label="고른 항목 지우기"
-              // 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41) — 옆 옮기기 넷과 같다.
+              // 모양과 크기는 아이콘 버튼 규격의 26 단이다 — 옆 옮기기 넷과 같다.
               className={cn(
-                "icon-button size-7 transition-colors",
+                "icon-button icon-button-sm transition-colors focus-ring",
                 edits.remove ? "text-danger hover:bg-danger/10" : "text-danger/35",
               )}
             />
@@ -830,8 +833,9 @@ function EntryTree({
       aria-label="레이아웃 항목"
       onKeyDown={onKeyDown}
       // 줄 사이는 2px 틈이다(DS `.at-tree`). 좌우 여백은 카드 머리와 같고 스크롤 상자 **안**에 둔다 — 밖에 두면 행의 포커스 링이
-      // 상자 가장자리에서 잘린다.
-      className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-[calc(var(--card-pad)-14px)] scroll-quiet"
+      // 상자 가장자리에서 잘린다. 위끝도 같다 — 상자가 4px 올라갔다 되돌아(`-mt-1 pt-1`) 첫 행의 링(테두리 바깥 4px)이 서고,
+      // 첫 행의 자리는 그대로다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`).
+      className="-mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-[calc(var(--card-pad)-14px)] pt-1 scroll-quiet"
     >
       {rows.map(({ entry: row, path }) => (
         <TreeRow
@@ -974,7 +978,7 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/50",
+        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-ring",
         drop === "inside"
           ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent"
           : selected
@@ -1309,7 +1313,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
             // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-surface-under`가 `toggle-on`과 겹치면 코어
             // 유틸리티가 뒤에 서서 열린 바탕을 덮고, `quiet-hover`는 꺼진 가지에만 선다(`index.css`의 그 유틸리티).
             className={cn(
-              "flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors",
+              "flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors focus-ring",
               open ? "toggle-on" : "bg-surface-under text-fg-secondary quiet-hover",
             )}
           />
@@ -1354,7 +1358,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/50",
+                  "flex h-[34px] items-center justify-center rounded-lg outline-none transition-colors focus-ring",
                   checked ? "toggle-on" : "text-fg-secondary quiet-hover",
                 )}
               >
@@ -1399,7 +1403,7 @@ export function UnreadableLayout({
           ))}
         </div>
       </div>
-      <Button variant="ghost" size="sm" onClick={onBack}>
+      <Button variant="ghost" size="xs" onClick={onBack}>
         설정으로 돌아가기
       </Button>
     </div>

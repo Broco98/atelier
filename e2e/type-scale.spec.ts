@@ -59,9 +59,9 @@ test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 툴팁 상자는 한 줄 30px이다(`.at-tooltip`, ui-refresh 결정 18) — 글자가 12/18(`text-xs`)이라 위아래 안쪽 6이 그 높이를 채운다.
+// 툴팁 상자는 한 줄 26px이다(Codex 툴팁 `.at-tip`, codex-ds 티켓 09) — 글자가 12/18(`text-xs`)이라 위아래 안쪽 4가 그 높이를 채운다.
 // 높이는 `offsetHeight`로 잰다 — 열림 애니메이션(zoom-in-95)의 scale은 레이아웃 높이를 바꾸지 않는다.
-test("한 줄 툴팁은 12/18 글자에 높이 30px이다", async ({ page }) => {
+test("한 줄 툴팁은 12/18 글자에 높이 26px이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${PROJECTS[0].slug}`);
   // 프로젝트 제목 버튼의 도움말 「클릭해서 편집」 — 포커스로 띄운다.
@@ -70,7 +70,7 @@ test("한 줄 툴팁은 12/18 글자에 높이 30px이다", async ({ page }) => 
   await expect(tooltip).toHaveText("클릭해서 편집");
 
   expect(await 글자(tooltip)).toEqual({ size: "12px", line: "18px", weight: "500", tracking: "0.3px" });
-  expect(await tooltip.evaluate((el) => (el as HTMLElement).offsetHeight)).toBe(30);
+  expect(await tooltip.evaluate((el) => (el as HTMLElement).offsetHeight)).toBe(26);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

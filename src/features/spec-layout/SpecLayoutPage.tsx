@@ -100,7 +100,7 @@ function SpecLayoutPage() {
           <p className="text-chat-meta break-words text-danger">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {state === undefined && (
-            <Button variant="ghost" size="sm" onClick={reread}>
+            <Button variant="ghost" size="xs" onClick={reread}>
               다시 읽기
             </Button>
           )}
@@ -216,7 +216,7 @@ function LayoutRow({
             render={
               <Button
                 variant="ghost"
-                size="sm"
+                size="xs"
                 onClick={onAsk}
                 aria-label={`${name} 레이아웃을 에이전트에게 부탁`}
               />
@@ -226,7 +226,7 @@ function LayoutRow({
             부탁
           </Hint>
           {!fellBack && (
-            <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
+            <Button variant="ghost" size="xs" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
               <Pencil data-icon="inline-start" aria-hidden />
               편집
             </Button>
@@ -234,7 +234,7 @@ function LayoutRow({
           {fellBack && (
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               onClick={onReread}
               aria-label={`${name} 레이아웃 다시 읽기`}
             >
@@ -273,10 +273,10 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
         announce="name"
         render={
           <DropdownMenuTrigger
-            // 아이콘 버튼의 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41) — 옆 글자 버튼(28px)과
-            // 한 줄 높이다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
+            // 아이콘 버튼 규격의 26 단(`icon-button-sm` — DS `.at-ib.sm`)이다 — 옆 줄 안 글자 버튼(`Button` xs, 26)과 한 줄
+            // 높이다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
             className={cn(
-              "icon-button size-7 transition-colors",
+              "icon-button icon-button-sm transition-colors focus-ring",
               open ? "toggle-on" : "text-fg-secondary quiet-hover",
             )}
           />
@@ -376,12 +376,12 @@ function PageNotice({
         <span className="text-chat-meta opacity-75">{children}</span>
       </div>
       {/* 무엇을 닫는지는 자리(이 메시지 `status` 안)가 말한다. 어두운 바탕 위라 hover는 바탕 대신 농도로 선다 —
-          모양은 아이콘 버튼 규격(`icon-button`)이다. */}
+          모양은 줄 안의 작은 아이콘 버튼 규격(`icon-button-xs` — 24)이다. */}
       <button
         type="button"
         onClick={onClose}
         aria-label="닫기"
-        className="icon-button opacity-75 transition-opacity hover:opacity-100"
+        className="icon-button icon-button-xs opacity-75 transition-opacity hover:opacity-100 focus-ring"
       >
         <X aria-hidden className="size-3.5" />
       </button>

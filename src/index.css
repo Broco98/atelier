@@ -98,7 +98,7 @@
    치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. */
 [data-titlebar] {
     --titlebar-controls-left: 88px;
-    /* icon-button 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
+    /* 작은 아이콘 버튼(`icon-button-xs` — 24) 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
        여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
     --titlebar-control-size: 24px;
     /* 셸 컨트롤 사이 간격이자, 그 오른쪽에 이어지는 탭 줄 첫 칸까지의 간격(--tab-lead).
@@ -155,7 +155,7 @@
        아직 쓰는 화면이 없는 것도 든다(codex-ds 스펙 S2).
        **원시 팔레트(`gray-*` · `blue-*` …)는 잇지 않는다** — 이름이 Tailwind 기본 팔레트(`red-500` …)와 같아 그것을
        갈아 끼우게 된다. 원시 값은 `:root`의 변수로만 선다.
-       **`accent`는 Codex 파랑이다**(codex-ds 스펙 S1) — `bg-accent` · `ring-accent/50` · `stroke-accent`가 CSS 변수 `--accent`를
+       **`accent`는 Codex 파랑이다**(codex-ds 스펙 S1) — `bg-accent` · `text-accent` · `stroke-accent`가 CSS 변수 `--accent`를
        읽는다. 이름이 겹치는 shadcn `accent`(옅은 면)는 Codex `fill-hover`이고 앱은 그 면을 그 이름으로 적는다. 상태(hover ·
        focus · 켜짐) 뒤에 `bg-accent`를 붙이는 registry의 쓰임은 `state-scale.test.ts`가 막는다 — 그 면은 이제 파랑이다.
        상태 뒤의 파랑 면 둘(soft 버튼의 hover `hover:bg-(--accent)/20` · 고른 라벨의 면 `has-data-checked:bg-(--accent)/5`)은
@@ -170,6 +170,7 @@
     --color-fg-secondary: var(--fg-secondary);
     --color-fg-tertiary: var(--fg-tertiary);
     --color-fg-inverse: var(--fg-inverse);
+    --color-fg-on-solid: var(--fg-on-solid);
     --color-fill-soft: var(--fill-soft);
     --color-fill-hover: var(--fill-hover);
     --color-fill-active: var(--fill-active);
@@ -239,7 +240,7 @@
     --color-term-hi: var(--term-hi);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
-       읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground` · `outline-ring/50`) 하나다. 나머지는
+       읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
        registry에서 들이는 부품이 그 이름으로 오기 때문에 선다 — 들인 부품은 Codex 이름으로 옮겨 적는다(`components/ui` 머리말
        「앱 규격으로 고친 자리」). 앱 호출부(틀 · 화면)는 이 이름을 쓰지 않는다(`color-guard.test.ts`). */
     --color-sidebar-ring: var(--sidebar-ring);
@@ -281,6 +282,12 @@
     --shadow-composer: var(--shadow-composer);
     --shadow-prominent: var(--shadow-prominent);
     --shadow-2xl: var(--shadow-2xl);
+    /* **DS가 두 그림자를 겹치는 자리** — 한 토큰으로 합친다. Tailwind는 `shadow-*` 둘을 한 요소에 겹치지 못하고(`--tw-shadow`가
+       하나다) 클래스 합치기(`cn`)도 앞의 것을 지운다. 이름은 Atelier가 붙였고 값은 DS의 두 토큰 그대로다 — 다크도 두 토큰이 든다.
+         modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`)
+         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`) */
+    --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
+    --shadow-raised: var(--shadow-hairline), var(--shadow-200);
     /* **Codex 시간의 유틸리티**(`duration-basic` · `duration-panel` …). 값은 아래 `@theme static`의 `--duration-*`이다 —
        Tailwind의 시간 이름공간은 `--transition-duration-*`라 `--duration-*`만 두면 `duration-panel`이 아무 CSS도 안 낸다. */
     --transition-duration-basic: var(--duration-basic);
@@ -406,15 +413,16 @@
    이름(`xs` … `4xl`)은 Codex 값으로 덮이고(`xs`는 Tailwind의 2px가 아니라 Codex의 4px다), Tailwind에만 있는 이름은 남지 않아
    반경 이름공간이 아래 목록과 같다.
    `static`이라 쓰는 유틸리티가 없어도 `:root`에 변수가 선다 — 검사가 이름으로 읽는다(`e2e/frame.spec.ts`).
-     2xs        2     툴팁 화살표
+     xs         4     문서 안 링크의 포커스 링
      sm         6     문서 안 인라인 코드 · 트리의 확장자 꼬리표
-     md         8     10px 컨트롤 **안에** 드는 것 — 세그먼트 칩 · kbd · 24px 이하 툴바 칸
-     lg        10     탭 · 목록 행 · 메뉴 행 · 폼 컨트롤 · 툴팁
+     md         8     입력칸 · 툴팁 · 작은 아이콘 버튼(24 · 26) · 작은 버튼(`Button` xs) · 세그먼트 칸 · kbd · 툴바 칸
+     lg        10     버튼(32) · 아이콘 버튼(28) · 검색칸 · 탭 · 목록 행 · 메뉴 행 · Select
      2xl       16     카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
-     full    9999     알약(머리 컨트롤 · 상태 배지 · 검색칸 · 꼬리표)과 원형(아이콘 버튼)
-   나머지(`xs` 4 · `xl` 12 · `3xl` 20 · `bubble` 22 · `4xl` 24 · `composer` 28)는 아직 쓰는 자리가 없다. 위 자리들은 앱의 옛 단계
-   넷(카드 16 · 알약 · 안쪽 8 · 인라인 6)을 **같은 값의 Codex 이름으로** 옮긴 그대로다 — DS 「간격 · 반경 · 크기」의 쓰임(입력 ·
-   툴팁 8 · 버튼 10 · 머리 카드 12 · 확인 창 24 …)에 맞추는 것은 그 부품 · 화면을 고치는 자리의 일이다.
+     4xl       24     확인 창
+     full    9999     큰 버튼(`Button` lg — 36) · 상태 배지 · 칩 · 스위치 · 꼬리표 · 경로 줄
+   나머지(`2xs` 2 · `xl` 12 · `3xl` 20 · `bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 ·
+   확인 창은 DS 「간격 · 반경 · 크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는
+   자리의 일이다.
    `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
    이 이름들을 모서리로 아는지도 같은 검사가 잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로
    옮기기 전의 기록이다 — 머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
@@ -517,6 +525,12 @@
     --fg-secondary: rgba(26, 28, 31, 0.7);
     --fg-tertiary: rgba(26, 28, 31, 0.5);
     --fg-inverse: #ffffff;
+    /* **DS 표 밖의 이름 하나 — 채운 색 면 위의 흰 것**(`fg-on-solid`). DS 부품은 채운 색 면(`.at-btn.danger` · `.at-btn.accent` ·
+       `.at-send`)의 글자 · 아이콘과 스위치 손잡이(`.at-switch::after`)를 테마와 상관없이 `#ffffff`로 적는데, 토큰 표에는 그 흰색의
+       이름이 없다 — `fg-inverse`는 `fg` 면 위의 뒤집힌 글자라 다크에서 검다(#0d0d0d). 이름은 Atelier가 붙였고(`shadow-modal`과
+       같은 길) 다크에서도 같은 값이라 `.dark`에 다시 적지 않는다. 쓰는 자리는 위험 버튼(`Button` destructive)의 글자와 스위치
+       손잡이다. */
+    --fg-on-solid: #ffffff;
 
     /* 면 알파 · 선 — 전경색의 투명도라 어느 면 위에서도 같은 단계로 보인다(DS 원칙 2). `fill-selected`만 불투명이다.
 
@@ -752,7 +766,7 @@
     --pink-1000: #1a0a11;
 }
 
-/* **Codex 색 · 그림자 — 다크.** 값이 라이트와 같은 토큰(`accent` · `accent-solid` · `danger-solid` · `dot-created` ·
+/* **Codex 색 · 그림자 — 다크.** 값이 라이트와 같은 토큰(`accent` · `accent-solid` · `danger-solid` · `fg-on-solid` · `dot-created` ·
    `dot-deleted` · `new-soft` · `focus-halo` · `shadow-2xl` · `gray-500`과 색 원시 팔레트)은 다시 적지 않는다. */
 .dark {
     --surface: #181818;
@@ -878,7 +892,7 @@
          `fill-hover`다. 그 면에 얹던 글자 `--accent-foreground`만 남아 본문 `fg`를 가리킨다.
        - `--popover`는 짝 표의 `surface`가 아니라 떠 있는 면(`surface-elevated`)이다 — DS 면 표가 메뉴 · 호버 카드 · 토스트를
          그 면에 둔다. 라이트에서는 `surface`와 같고 다크에서 갈린다.
-       - 글자색은 모두 본문 `fg`이고(흰 글자 둘만 `fg-inverse`), `--muted-foreground`만 보조 글자 `fg-secondary`다. */
+       - 글자색은 모두 본문 `fg`이고(뒤집힌 글자 둘만 `fg-inverse`), `--muted-foreground`만 보조 글자 `fg-secondary`다. */
     --background: var(--surface);
     --foreground: var(--fg);
     --card: var(--surface);
@@ -909,9 +923,11 @@
     --sidebar-ring: var(--accent);
 }
 
+/* shadcn 바탕 CSS. registry가 모든 요소에 걸던 `outline-ring/50`(브라우저 포커스 테두리의 색)은 걷었다 — 키보드 포커스의 모양은
+   아래 `focus-ring` 하나가 든다. 그 유틸리티를 안 단 요소는 브라우저 기본 테두리를 그대로 입는다. */
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
     }
   body {
     @apply bg-background text-foreground;
@@ -948,24 +964,85 @@
     }
 }
 
-/* 아이콘 버튼 규격 — 거터 복사·spec 트리 복사·목록 패널 토글·작업 패널 토글·
-   프로젝트 등록 +가 모두 이 한 정의를 쓴다. 여기는 모양만 정한다.
-   hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면
-   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다.
-   **원형이다**(ui-refresh 결정 6 — 아이콘 버튼). 크기 24px은 셸 컨트롤의 `--titlebar-control-size`와
-   묶여 있어 그대로다(`[data-titlebar]`의 주석). */
+/* **키보드 포커스의 링 — 하나다**(codex-ds 결정 11 · DS `Keyboard`). accent 1px 실선이 테두리 바로 바깥(`outline-offset` 0)에 서고,
+   그 바깥으로 옅은 파랑 4px(`focus-halo` — accent 22%)이 번진다. 「지금 이것을 다룬다」는 표시가 앱에 이것 하나라, 포커스를
+   받는 부품(`components/ui`의 버튼 · 토글 · 입력 · 스위치 …)과 화면이 지은 버튼(사이드바 행 · 셸 탭 …)이 모두 이 클래스를 단다.
+   부품마다 적던 링(`ring-2` · `ring-3` · `ring-[3px]` · `focus:border-accent`)은 걷혔고 `state-scale.test.ts`가 다시 못 들어오게
+   막는다. 메뉴 · Select의 줄은 이것을 안 단다 — 줄은 면(`focus:bg-fill-hover`)으로 포커스를 보인다.
+   - **키보드로 왔을 때만 선다**(`:focus-visible`) — 누르는 손에는 링이 없다. 글자칸은 브라우저가 늘 `:focus-visible`로 친다.
+   - **상자가 링을 입는 칸**(검색칸 `InputGroup`)은 바로 안의 입력칸에 포커스가 있을 때 선다(`:has(> input:focus-visible)`).
+   - 무리는 Tailwind 그림자 짜임의 한 자리(`--tw-ring-offset-shadow` — 앱에 `ring-offset-*`을 쓰는 곳이 없다)에 얹는다. 그래서 그
+     요소가 든 그림자(`inset-ring` 테두리 · 켜진 셸 칸의 안쪽 테두리 · `shadow-*`)가 포커스 동안에도 함께 선다 — `box-shadow`를
+     통째로 덮으면 그 테두리가 링에 가려 사라진다. 짜임의 자리마다 빈 그림자를 기본값으로 둔다(그 자리를 쓰는 유틸리티가 없는
+     요소에서도 식이 풀린다). */
+@utility focus-ring {
+  &:focus-visible,
+  &:has(> input:focus-visible) {
+    outline: 1px solid var(--accent);
+    outline-offset: 0;
+    --tw-ring-offset-shadow: 0 0 0 4px var(--focus-halo);
+    box-shadow:
+      var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow),
+      var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000);
+  }
+}
+
+/* **링이 설 자리**(`focus-ring-room`) — 넘침을 자르는 상자(가로로 구르는 탭 줄 · 접히는 구획)는 안 요소의 링도 자른다. 링은
+   테두리 바깥 4px(`focus-halo`)까지 칠해지는데, 그 상자의 안쪽 테두리 밖은 화면에 안 나온다 — 안쪽 여백 없이 칸이 상자 끝에
+   붙어 서면 그 변의 링이 통째로 사라진다. 이 클래스를 단 상자는 안쪽에 링 폭만큼 자리를 두고 같은 만큼 바깥으로 물러난다:
+   안의 것은 한 픽셀도 안 움직이고, 자르는 선만 링 바깥으로 나간다. 상자의 테두리 상자는 사방 4px씩 커지므로 폭을 적는
+   상자(탭 줄의 바닥)는 그 8px을 더해 적는다. 같은 까닭에 0으로 접히는 상자는 그 8px이 남아 안의 것이 4px 비친다 — 접힌 채
+   DOM에 남는 상자(사이드바 구획)는 펼친 동안만 이것을 단다. 닫힘이 끝나면 숨는 상자(`Collapsible` fold)는 늘 달아도 된다. */
+@utility focus-ring-room {
+  margin: -4px;
+  padding: 4px;
+}
+
+/* **아이콘 버튼 규격** — Codex `IconButton`(28 정사각 · `radius-lg`, DS `.at-ib`). 카드 머리의 아이콘 버튼(편집기의 「설정으로
+   돌아가기」 · 프로젝트 목록의 `+` · 문서 열의 복사 · 닫기)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 여기는
+   모양만 정한다. hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면 어느 쪽이 이길지 유틸리티 정렬
+   순서에 맡기게 된다. 옛 원형 규격은 걷었다(codex-ds 결정 3).
+   **크기 · 모서리는 변수로 든다** — 작은 단(`icon-button-xs`)이 같은 속성을 다시 적지 않고 변수만 바꿔, 두 클래스가 한 요소에서
+   정렬 순서와 상관없이 합쳐진다. */
 @utility icon-button {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  @apply rounded-full;
+  width: var(--icon-button-size, var(--size-control));
+  height: var(--icon-button-size, var(--size-control));
+  border-radius: var(--icon-button-radius, var(--radius-lg));
+}
+
+/* 두 변수는 물려받지 않는다 — 작은 단을 단 버튼 안에 아이콘 버튼이 들어앉아도 그 크기가 새어 내려가지 않는다. 값이 없으면
+   `icon-button`의 기본(28 · `radius-lg`)이 선다. */
+@property --icon-button-size {
+  syntax: "*";
+  inherits: false;
+}
+@property --icon-button-radius {
+  syntax: "*";
+  inherits: false;
+}
+
+/* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 창 위
+   줄(셸 컨트롤 · 탭 줄의 `+` · 작업 ⋯ · 분할)과 줄 **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` ·
+   Processes 행의 ⋯ · 토스트 · 전체화면 창 · terminal 열의 닫기)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의
+   셸 컨트롤 폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야 한다(그쪽 주석). */
+@utility icon-button-xs {
+  --icon-button-size: 24px;
+  --icon-button-radius: var(--radius-md);
+}
+
+/* **26 · `radius-md`**(DS `.at-ib.sm`) — 창 머리의 닫기(`Button`의 `icon-sm`)와, 줄 안 글자 버튼(`Button` xs — 26) 옆에 한 줄로
+   서는 아이콘 버튼(spec 레이아웃의 되돌리기 메뉴 · 트리 카드 머리의 옮기기 · 지우기)이 쓴다. 얹는 법은 `icon-button-xs`와 같다. */
+@utility icon-button-sm {
+  --icon-button-size: 26px;
+  --icon-button-radius: var(--radius-md);
 }
 
 /* "켜지지 않는 것의 hover" — 배경 한 단계와 글자색이 함께 진해진다.
-   크기를 정하지 않는 것이 핵심이다. 이 hover는 24px 아이콘 버튼만의 것이 아니라
+   크기를 정하지 않는 것이 핵심이다. 이 hover는 아이콘 버튼만의 것이 아니라
    22px 툴바 버튼·토글의 꺼진 가지에도 똑같이 걸리는데, 규격까지 묶어 두면 그 자리들이
    쓸 수 없어 같은 문자열을 손으로 다시 적게 된다.
 
@@ -1038,10 +1115,11 @@
   color: var(--fg);
 }
 
-/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(`fill-soft`) 위로 한 겹 뜬다(디자인 시스템의 `.at-seg`).
+/* 세그먼트 컨트롤에서 **서 있는 칸 위에 떠 있는 칩** — 눌린 바닥(`fill-soft`) 위로 한 겹 뜬다(디자인 시스템의 `.at-seg .is-on`).
    toggle-on(`fill-active`)을 안 쓰는 것이 핵심이다: 바닥이 이미 회색이라 그 위에 더 진한 회색을
    얹으면 「떠올랐다」가 아니라 「눌렸다」로 읽혀, 두 칸 중 어느 쪽이 서 있는지가 뒤집힌다.
-   여기서 켜짐은 농도가 아니라 **떠오름**이다 — 흰 칩 + 실선 한 겹 + 옅은 그림자.
+   여기서 켜짐은 농도가 아니라 **떠오름**이다 — 떠 있는 면(`surface-elevated`) + Codex 그림자 두 겹(0.5px 링 `shadow-hairline`과
+   옅은 그림자 `shadow-100`, DS 값 그대로).
    hover에 더 진해지지 않는다: 칩은 누르는 것이 아니라 서 있는 칸을 말하는 것이다 — 누르는 것은
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
@@ -1049,10 +1127,8 @@
    **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `fill-selected` 원이고 그림자가
    없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`SourceToggle.test.tsx`). */
 @utility segment-on {
-  background-color: var(--surface);
-  box-shadow:
-    0 0 0 0.5px rgba(20, 20, 28, 0.14),
-    0 1px 1px rgba(20, 20, 28, 0.06);
+  background-color: var(--surface-elevated);
+  box-shadow: var(--shadow-hairline), var(--shadow-100);
 }
 
 /* 패널 폭 드래그 중 — 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다.

@@ -111,7 +111,7 @@ function WorksSection({
           <button
             type="button"
             onClick={() => onOpenWork(null)}
-            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-tertiary transition-colors quiet-hover"
+            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-tertiary transition-colors quiet-hover focus-ring"
           >
             Works에서 모두 보기
             <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
@@ -134,7 +134,7 @@ function WorksSection({
                 onClick={() => onOpenWork(work.slug)}
                 // 옅은 면 위의 행이라 hover는 `fill-hover`다(ui-refresh 결정 16, DS `.at-group-row:hover`) — 흰 카드 위 목록
                 // 행의 `fill-soft`보다 한 단 위이고, info 맨 위 묶음 행과 같은 값이다.
-                className="flex min-h-10 min-w-0 items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-hover"
+                className="flex min-h-10 min-w-0 items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-hover focus-ring"
               >
                 <StatusIcon status={work.status} />
                 <span
@@ -197,7 +197,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
           setDraft(project.name);
           setEditing(true);
         }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-heading-lg transition-colors hover:bg-fill-hover"
+        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-heading-lg transition-colors hover:bg-fill-hover focus-ring"
       >
         {project.name}
       </Hint>
@@ -329,7 +329,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         }}
         // 목록이 서는 프로젝트의 셀렉트 칩(`SelectTrigger`)과 같은 모양이다 — 28px · 모서리 10 · 좌우 7 · 조용한 hover. 값은
         // 옆 줄들과 같은 고정폭 `text-code`다.
-        className="flex h-7 items-center rounded-lg px-[7px] font-mono text-code text-fg-secondary transition-colors quiet-hover"
+        className="flex h-7 items-center rounded-lg px-[7px] font-mono text-code text-fg-secondary transition-colors quiet-hover focus-ring"
       >
         {project.baseBranch}
       </Hint>
@@ -384,7 +384,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
       <Subhead title="설명" note="클릭해서 편집" />
       {editing ? (
         // 고치는 동안의 칸 — 설명 상자와 같은 자리 · 같은 반경(16) · 같은 글자다. 테두리 1px만큼 안쪽을 덜어 글자가
-        // 상자일 때의 자리에 그대로 선다. 포커스는 판 03 입력칸의 것(테두리 `accent` + 3px 옅은 링)이다.
+        // 상자일 때의 자리에 그대로 선다. 포커스는 앱의 한 링(`focus-ring`)이다.
         <textarea
           autoFocus
           value={draft}
@@ -396,7 +396,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-12 resize-y rounded-2xl border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus:border-accent focus:ring-3 focus:ring-accent/20"
+          className="min-h-12 resize-y rounded-2xl border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus-ring"
         />
       ) : (
         // 설명 상자 — 옅은 면 묶음(ui-refresh 결정 16, DS `.at-group.pad`)에 안쪽 14 · 16이다. 누르면 그 자리가 칸이 된다.
@@ -405,7 +405,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           onClick={startEditing}
           className={cn(
             GROUP,
-            "px-4 py-3.5 text-left text-sm transition-colors hover:bg-fill-hover",
+            "px-4 py-3.5 text-left text-sm transition-colors hover:bg-fill-hover focus-ring",
             !project.description && "italic text-fg-tertiary",
           )}
         >

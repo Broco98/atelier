@@ -272,9 +272,17 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
       {/* **위 여백을 갖지 않는다.** 이 상자는 부르는 쪽의 세로 flow 안에 서고 그쪽이 이미
           `gap-(--row-gap)`를 준다 — 여기서 한 번 더 물면 머리행 아래만 간격이 두 배가 되어
           (실측 6px 대 3px) 같은 컬럼에서 「행 사이」와 「머리행 아래」가 다른 값이 된다.
-          접힐 때 함께 사라지는 자리라 오래 안 보였다. */}
-      <div className="overflow-hidden">
-        <div className="flex flex-col gap-(--row-gap)">{children}</div>
+          접힐 때 함께 사라지는 자리라 오래 안 보였다.
+
+          **펼친 동안 링이 설 자리를 둔다**(`focus-ring-room`, codex-ds 결정 11). 접기의 `overflow-hidden`은 행의 포커스
+          링(테두리 바깥 4px)도 자른다 — 행이 이 상자 끝에 붙어 서서 첫 행의 위와 모든 행의 왼쪽 · 오른쪽 링이 사라졌다. 상자가
+          안쪽에 4px을 두고 같은 만큼 바깥으로 물러나 행의 자리는 그대로다. 물러난 테두리는 위 머리행 아래 끝(줄 사이 2px 너머)을
+          덮으므로 그 자리는 누르는 자리가 아니다(`pointer-events-none`) — 머리의 아래 끝을 눌러도 머리가 받는다. 행은 다시 받는다.
+          **접히면 그 자리를 걷는다.** 이 상자는 접힌 뒤에도 DOM에 남는데(위 `inert`), 자리를 둔 채면 트랙이 0이어도 상자가
+          안쪽 8px로 남아 첫 행의 위 4px이 머리 아래에 비친다. 접힌 상자는 포커스를 못 받으니 링이 설 일도 없다 — 걷어도 행의
+          자리는 그대로라(안쪽과 바깥이 같은 만큼이다) 접고 펼 때 행이 움직이지 않는다. */}
+      <div className={cn("pointer-events-none overflow-hidden", open && "focus-ring-room")}>
+        <div className="pointer-events-auto flex flex-col gap-(--row-gap)">{children}</div>
       </div>
     </div>
   );
@@ -326,7 +334,7 @@ function SectionHeader({
         // 훑고 지나갈 때마다 칠해졌다 지워져 사이드바가 들썩였다. 누를 수 있다는 말은 글자가
         // 진해지는 것과 화살표가 뜨는 것(아래 둘)이 계속 한다. 행과 nav는 배경을 **남긴다** —
         // 그쪽은 누르면 가는 목적지라 긴 목록에서 지금 무엇을 가리키는지가 보여야 한다.
-        "group flex h-7 w-full shrink-0 items-center gap-1 rounded-lg px-[9px] text-left",
+        "group flex h-7 w-full shrink-0 items-center gap-1 rounded-lg px-[9px] text-left focus-ring",
         className,
       )}
     >
@@ -531,7 +539,7 @@ function WorkRow({
         // 메타가 없는 행에서 제목 상자가 핀 앞 6px에서 멎어 그만큼 좁아진다. 띄우는 값은 이제
         // **메타 칸이 든다**(`pl-(--glyph-gap)`) — 메타가 있을 때만 난다(S34의 원칙). 제목 상자가
         // 핀 바로 앞에서 끝나는 것을 L3가 잰다.
-        className="col-start-1 row-start-1 flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] text-left"
+        className="col-start-1 row-start-1 flex h-8 min-w-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] text-left focus-ring"
         // **셸의 마지막 말은 설명으로 붙는다**(결정 14 · 스토리 38). 호버 카드는 키보드로 닿지
         // 않으므로, 포커스한 사람이 「왜 부르나」를 듣는 자리가 여기다 — 이름(`제목 — 상태`)
         // 다음에 읽힌다. 이름을 늘리지 않는 것은 그 이름이 행·띠·탭이 함께 쓰는 짧은 말이라서다.
@@ -594,11 +602,11 @@ function WorkRow({
           두지 않는다 — 행에 머물면 호버 카드가 떠서 툴팁이 그 위로 겹친다(S29).
 
           **오른쪽 메타와 같은 2열 1행에 겹쳐 선다**(판 05 결정 1). 그래서 칸 폭이
-          `max(메타, 핀)`이고, **핀이 폭을 가질 때만** 그 24px이 칸에 더해진다 — 메타가 선 행은
+          `max(메타, 핀)`이고, **핀이 폭을 가질 때만** 그 24px(`icon-button-xs`)이 칸에 더해진다 — 메타가 선 행은
           칸이 이미 핀보다 넓어 안 움직이고, 메타가 없는 행만 hover에 제목이 24px 줄어든다.
 
           **쉴 때 폭을 걷는 것이 `max-w-0`이다** — `width`가 아니라 `max-width`인 것은
-          `icon-button`이 `width: 24px`을 들기 때문이다. 둘 다 유틸리티 레이어라 `w-0`으로
+          `icon-button`이 폭(`width`)을 들기 때문이다. 둘 다 유틸리티 레이어라 `w-0`으로
           덮으려 들면 승자가 Tailwind의 정렬 순서에 걸리는데, `max-width`는 다른 속성이라
           그 싸움 밖에 선다. 격자 트랙은 아이템의 max-content 기여를 `max-width`로 clamp하므로
           쉴 때 기여가 **0**이다.
@@ -633,7 +641,7 @@ function WorkRow({
           event.stopPropagation();
           onTogglePin(work);
         }}
-        className="peer icon-button-tint col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-visible:max-w-6 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover:max-w-6 group-hover:opacity-100"
+        className="peer icon-button-tint icon-button-xs col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:max-w-6 focus-visible:opacity-100 group-hover:max-w-6 group-hover:opacity-100"
       >
         <Pin
           className="size-3"

@@ -10,7 +10,10 @@ import {
   startSplitDrag,
   unknownIpcCalls,
   레인,
+  그림자,
   시계를세운다,
+  칠한값,
+  토큰값,
   토큰색,
   툴팁,
 } from "./harness";
@@ -592,43 +595,11 @@ test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창
 });
 
 // codex-ds 티켓 08 — **모서리 · 그림자 · 패널 박자가 Codex 토큰에서 나온다**(codex-ds 결정 27 · 스펙 §2 「반경 · 그림자 · 움직임」).
-// 칠해진 값(computed style)을 토큰을 칠한 값(`토큰값`)과 맞대고, 스펙이 못박은 수(카드 16 · 패널 220ms)는 따로 센다 — 토큰 값이
+// 칠해진 값(computed style — 하네스의 `칠한값`)을 토큰을 칠한 값(하네스의 `토큰값`)과 맞대고, 스펙이 못박은 수(카드 16 · 패널 220ms)는 따로 센다 — 토큰 값이
 // 바뀌는 날 견줌이 함께 흘러가 초록으로 남지 않게.
-
-/**
- * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(하네스의 `토큰색`과 같은 길이고, 색이 아닌
- * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
- * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `CardBox`).
- * **fail-closed** — 안 풀린 `var()`는 그 선언을 무효로 만들어 속성이 초기값으로 떨어진다. 그 값이면 던진다: 토큰이 지워진 날 칠해진
- * 자리도 같은 초기값이라, 견줌이 양쪽 다 초기값으로 초록이 된다.
- */
-const 토큰값 = (page: Page, property: string, name: string, 앞말 = "") =>
-  page.evaluate(
-    ([prop, one, lead]) => {
-      const probe = document.createElement("div");
-      document.body.appendChild(probe);
-      const initial = getComputedStyle(probe).getPropertyValue(prop);
-      probe.style.setProperty(prop, `${lead} var(${one})`.trim());
-      const value = getComputedStyle(probe).getPropertyValue(prop);
-      probe.remove();
-      if (value === initial) throw new Error(`토큰 ${one}이 ${prop}에 안 풀렸다 — ${value}`);
-      return value;
-    },
-    [property, name, 앞말] as const,
-  );
-
-/** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
-const 칠한값 = (target: Locator, ...properties: string[]) =>
-  target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
 
 /** 카드의 링 — 카드가 제 안쪽 가장자리에 덮는 `::after`의 `box-shadow`다(`Frame`의 `CardBox`). */
 const 카드링 = (card: Locator) => card.evaluate((el) => getComputedStyle(el, "::after").boxShadow);
-
-/**
- * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를
- * 투명한 0 그림자로 먼저 깔고 제 그림자를 맨 뒤에 둔다. 걷고 남은 것이 토큰의 그림자다.
- */
-const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
 
 /** `0.22s` · `220ms` → 밀리초. */
 const 밀리초 = (time: string) => (time.endsWith("ms") ? parseFloat(time) : parseFloat(time) * 1000);

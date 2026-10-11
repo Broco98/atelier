@@ -683,16 +683,20 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
     expect(plusOf(markup)).toContain("shrink-0");
   });
 
-  it("상자의 바닥은 칸 하나다 — 칸의 최소 폭과 같은 수이고, 칸이 없으면 바닥도 없다", () => {
+  it("상자의 바닥은 칸 하나다 — 칸의 최소 폭에 링 자리를 더한 수이고, 칸이 없으면 바닥도 없다", () => {
     // 바닥이 `min-w-0`이던 때 900px 창에 작업 패널이 열리면 상자가 0px이 되어 칸이 화면에
     // 없었다. 바닥이 칸 최소 폭보다 작으면 어느 칸도 온전히 안 보이고, 크면 한 칸만 선 줄에
     // 빈자리가 선다 — 그래서 **칸의 클래스에서 읽은 수**와 견준다(손으로 적은 44와 견주면
     // 칸의 최소 폭을 바꾸는 날 둘 다 초록이다). 실제로 칸이 보이는지는 L3가 잰다.
+    //
+    // 상자는 포커스 링이 설 자리(`focus-ring-room` — 안쪽 4px, 같은 만큼 바깥으로 물러난다)를 둬서 테두리 상자가 양옆
+    // 4px씩 크다 — 바닥에 적는 수는 칸의 최소 폭 + 8이고, 줄에서 차지하는 폭(바깥 여백까지)은 칸의 최소 폭 그대로다.
     const markup = render(opened(2).state, { actions: "조작" });
     const floor = /min-w-\[(\d+)px\]/.exec(stripTagOf(markup));
     const cellMin = /min-w-\[(\d+)px\]/.exec(shellCellsOf(markup)[0]);
     if (!floor || !cellMin) throw new Error("상자나 칸의 최소 폭 클래스를 못 찾았다");
-    expect(floor[1]).toBe(cellMin[1]);
+    expect(stripTagOf(markup)).toContain("focus-ring-room");
+    expect(Number(floor[1])).toBe(Number(cellMin[1]) + 2 * 4);
     // 바닥은 폭으로도 적는다 — 열이 버틸 폭(min-content)이 이 수를 세야 한다(`TAB_ROW_COLUMN`).
     expect(stripTagOf(markup)).toContain(`w-[${floor[1]}px]`);
     expect(stripTagOf(markup)).not.toContain("w-max");
@@ -739,6 +743,15 @@ describe("줄 안의 끄는 자리", () => {
     // 끌린다」가 되는데, 화면으로는 어느 자리가 죽었는지가 안 보인다.
     const gap = render(opened(1).state).split('data-tab="new"')[1];
     expect(gap).toContain("data-tauri-drag-region");
+  });
+
+  it("칸 상자도 끄는 자리다 — 링이 설 자리가 칸 위아래와 양옆 틈을 덮는다", () => {
+    // 상자가 포커스 링이 설 자리(`focus-ring-room`)만큼 사방으로 나와 바탕 줄의 끄는 자리(칸 위아래 · 양옆 gap) 위에 선다.
+    // 그 상자가 끄는 자리가 아니면 그만큼 창이 안 끌린다 — Tauri는 누른 요소 자신의 속성만 본다. 칸 안의 버튼은 속성이
+    // 없어 그대로 눌린다.
+    const strip = render(opened(1).state).match(/<div[^>]*data-tab-strip[^>]*>/)?.[0] ?? "";
+    expect(strip).toContain("focus-ring-room");
+    expect(strip).toContain("data-tauri-drag-region");
   });
 
   it("뿌리에 `<header>`가 없다 — 칸들이 바탕 줄의 자식으로 선다", () => {

@@ -5,13 +5,13 @@ import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
-// 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
-// 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 24px 아이콘 버튼과 같은 행에 오지 않는다.
-// 배경 농도만 스케일을 따른다.
+// 툴바 버튼 — 크기는 아이콘 버튼(`icon-button`) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
+// 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 아이콘 버튼과 같은 행에 오지 않는다.
+// 배경 농도만 스케일을 따르고, 포커스는 앱의 한 링(`focus-ring`)이다.
 //
 // 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
 const toolbarButtonQuiet =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-md px-1 text-xs text-fg-tertiary transition-colors quiet-hover";
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-md px-1 text-xs text-fg-tertiary transition-colors quiet-hover focus-ring";
 
 // 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
 // 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.

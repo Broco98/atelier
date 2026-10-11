@@ -66,7 +66,7 @@ function Rail<Id extends string>({
           aria-controls={controls}
           aria-keyshortcuts="Meta+Enter"
           className={cn(
-            "flex size-8 items-center justify-center rounded-full text-fg-secondary transition-colors quiet-hover",
+            "flex size-8 items-center justify-center rounded-full text-fg-secondary transition-colors quiet-hover focus-ring",
             open && "bg-surface text-fg",
           )}
         >
@@ -93,7 +93,7 @@ function Rail<Id extends string>({
               aria-pressed={on}
               aria-controls={controls}
               className={cn(
-                "flex size-7 items-center justify-center rounded-full transition-colors",
+                "flex size-7 items-center justify-center rounded-full transition-colors focus-ring",
                 on ? "bg-fill-selected text-fg" : "text-fg-tertiary quiet-hover",
               )}
             >

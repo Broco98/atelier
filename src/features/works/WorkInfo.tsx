@@ -128,7 +128,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
                     aria-label={`${worktree.project} 프로젝트 상세로 이동`}
                     className={cn(
                       PROJECT_LABEL,
-                      "group flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-left text-fg-secondary transition-colors hover:bg-fill-soft hover:text-fg",
+                      "group flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-left text-fg-secondary transition-colors hover:bg-fill-soft hover:text-fg focus-ring",
                     )}
                   >
                     <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
@@ -265,7 +265,7 @@ function MetaRow({
       announce="description"
       type="button"
       onClick={() => onCopy(value)}
-      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-chat-meta transition-colors hover:bg-fill-hover"
+      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-chat-meta transition-colors hover:bg-fill-hover focus-ring"
     >
       {glyph}
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{shown}</span>
@@ -328,7 +328,7 @@ function Row({
       announce="description"
       type="button"
       onClick={() => copy.onCopy(copy.text)}
-      className="group flex h-7 items-center rounded-lg px-1.5 text-left text-chat-meta transition-colors hover:bg-fill-soft"
+      className="group flex h-7 items-center rounded-lg px-1.5 text-left text-chat-meta transition-colors hover:bg-fill-soft focus-ring"
     >
       {body}
       <Copy

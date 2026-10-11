@@ -81,16 +81,23 @@ async function settleStrip(page: Page): Promise<void> {
   await settle(page, async () => (await rowOf(page)).strip.clientWidth);
 }
 
-/** `+`의 가로 자리와, 그 양옆(칸 상자의 오른쪽 끝 · 조작 묶음의 왼쪽 끝). */
+/**
+ * `+`의 가로 자리와, 그 양옆(칸 상자의 오른쪽 끝 · 조작 묶음의 왼쪽 끝). 칸 상자의 끝은 **줄에서 차지하는 자리**의 끝이다 —
+ * 상자는 포커스 링이 설 자리(`focus-ring-room`)를 두고 같은 만큼 바깥으로 물러나 있어, 테두리가 그 자리보다 양옆 4px씩 크다.
+ */
 async function plusOf(page: Page) {
   return page.evaluate(() => {
     const plus = document.querySelector('[data-tab="new"]')!.getBoundingClientRect();
-    const strip = document.querySelector("[data-tab-strip]")!.getBoundingClientRect();
+    const stripBox = document.querySelector("[data-tab-strip]")!;
+    const strip = stripBox.getBoundingClientRect();
     const actions = document.querySelector("[data-tab-actions]")?.getBoundingClientRect();
     return {
       left: plus.left,
       right: plus.right,
-      stripRight: strip.right,
+      stripRight: strip.right + parseFloat(getComputedStyle(stripBox).marginRight),
+      // `+`의 왼쪽 끝을 누르면 `+`가 받는가 — 칸 상자의 링 자리(테두리)가 그 위에 걸쳐 있다(`ShellTabs`의 `PlusButton` 주석).
+      edgeHit:
+        document.elementFromPoint(plus.left + 0.5, plus.top + plus.height / 2)?.closest('[data-tab="new"]') !== null,
       // 조작이 없는 화면(`/terminal`)에서는 줄의 오른쪽 끝이 그 자리다.
       actionsLeft: actions?.left ?? document.querySelector("header")!.getBoundingClientRect().right,
     };
@@ -162,6 +169,7 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     const plus = await plusOf(page);
     expect(plus.left, at).toBeGreaterThanOrEqual(plus.stripRight - 0.5);
     expect(plus.right, at).toBeLessThanOrEqual(plus.actionsLeft + 0.5);
+    expect(plus.edgeHit, `${at} — \`+\`의 왼쪽 끝`).toBe(true);
   }
 
   // 조작 묶음의 폭이 세 폭에서 모두 같다 — 좁아진다고 눌리지 않는다.
@@ -282,6 +290,7 @@ for (const screen of SCREENS) {
         const plus = await plusOf(page);
         expect(plus.left, at).toBeGreaterThanOrEqual(plus.stripRight - 0.5);
         expect(plus.right, at).toBeLessThanOrEqual(plus.actionsLeft + 0.5);
+        expect(plus.edgeHit, `${at} — \`+\`의 왼쪽 끝`).toBe(true);
         expect(row.pageSpill, at).toBeLessThanOrEqual(0);
 
         // 그리고 **눌린다** — 켜지지 않은 첫 칸을 눌러 켠다.

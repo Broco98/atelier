@@ -132,8 +132,8 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
             end={
               // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
               // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
-              // 모양은 카드 머리의 알약(`Button` outline · pill — ui-refresh 결정 5 · 6)이다.
-              <Button variant="outline" size="pill" onClick={() => void closeQuietShells()}>
+              // 모양은 카드 안의 흰 버튼(`Button` outline — 32 · `radius-lg`, DS `.at-btn.sm`)이다.
+              <Button variant="outline" onClick={() => void closeQuietShells()}>
                 조용한 셸 모두 닫기
               </Button>
             }

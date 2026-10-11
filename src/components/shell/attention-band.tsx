@@ -185,7 +185,7 @@ function MoreToggle({
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="flex h-6 w-full shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary"
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary focus-ring"
     >
       <Chevron className="size-3.5 shrink-0" />
     </Hint>
@@ -225,7 +225,7 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-sm",
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-sm focus-ring",
         // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
         // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
         // 묻혀 한 단 위(`fill-hover`)를 썼다.

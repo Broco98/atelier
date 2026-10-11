@@ -289,7 +289,7 @@ function SettingsFileGate({
         <p className="text-chat-meta text-fg-secondary">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
-        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+        <Button variant="ghost" size="xs" onClick={() => setAttempt((n) => n + 1)}>
           다시 읽기
         </Button>
       </div>
@@ -791,8 +791,8 @@ export function ProcessExceptionsSection({
             </>
           }
           control={
-            // 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · sm) — 주 버튼은 저장 하나다.
-            <Button variant="ghost" size="sm" onClick={onReset} disabled={isDefault}>
+            // 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · xs) — 주 버튼은 저장 하나다.
+            <Button variant="ghost" size="xs" onClick={onReset} disabled={isDefault}>
               기본값으로
             </Button>
           }

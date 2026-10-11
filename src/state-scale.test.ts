@@ -66,3 +66,52 @@ describe("상태 농도 스케일", () => {
     expect(offenders(/[^\s"'`]*hover:bg-fill-hover\s+hover:text-fg(?![\w-])[^\s"'`]*/g)).toEqual([]);
   });
 });
+
+// **키보드 포커스의 표시는 앱에 하나다**(codex-ds 결정 11 · 티켓 09) — accent 1px + 바깥 `focus-halo` 4px, `index.css`의
+// `@utility focus-ring`. 부품 · 화면은 그 클래스를 달 뿐 링을 제 손으로 적지 않는다: registry가 부품마다 들여오던 링
+// (`focus-visible:ring-3` · `ring-[3px]` · `focus:border-accent` …)이 한 자리라도 남으면 그 부품만 다른 링을 입는데, 그 차이는
+// 그 부품을 Tab으로 밟기 전까지 화면에 없다. 그래서 눈이 아니라 여기서 막는다.
+// 포커스와 무관한 링(켜진 셸 칸의 안쪽 테두리 · 끌어 놓을 자리 · 신호 점의 둘레)은 막지 않는다 — 변형에 `focus`가 없다.
+describe("포커스 링", () => {
+  it("검사가 링을 단 자리를 실제로 읽는다", () => {
+    expect(offenders(/(?<![\w-])focus-ring(?![\w-])/g).length).toBeGreaterThan(30);
+  });
+
+  // 포커스 변형(`focus:` · `focus-visible:` · `focus-within:` · `has-[:focus-visible]:` — 변형 어디에든 `focus`가 들면) 뒤에 선
+  // 테두리를 그리는 유틸리티 — 링(`ring-*` · `inset-ring-*`) · `outline-*` · 테두리(`border-*`) · 그림자(`shadow-*`). 포커스 표시를
+  // 그리는 길이 이 넷이고, 어느 하나라도 남으면 그 부품만 다른 표시를 입는다(registry의 `focus-visible:border-ring` ·
+  // `focus-visible:ring-3` · 손으로 적은 `focus-visible:shadow-[…]`).
+  const HAND_FOCUS = /[^\s"'`]*focus[^\s"'`]*:!?(?:inset-ring|ring|outline|border|shadow)(?![a-z])[^\s"'`]*/g;
+  const handFocus = (text: string) => [...text.matchAll(HAND_FOCUS)].map((m) => m[0]);
+
+  it("포커스 변형으로 링 · 테두리 · outline · 그림자를 손으로 적지 않는다", () => {
+    // 앵커: 이 모양이 실제로 걸린다 — 정규식이 좁아지면 아래 「0건」이 저절로 초록이 된다. 포커스 변형 뒤의 면 · 크기 ·
+    // 불투명도(메뉴 줄의 `focus:bg-fill-hover`, 핀의 `focus-visible:max-w-6`)와 포커스 없는 링은 걸리지 않는다.
+    expect(
+      handFocus(
+        "focus-visible:ring-3 focus-visible:border-ring focus-visible:inset-ring-accent focus:border-fg " +
+          "focus-visible:shadow-[0_0_0_2px_var(--accent)] has-[:focus-visible]:outline-none focus-within:!ring-accent",
+      ),
+    ).toHaveLength(7);
+    expect(handFocus("focus:bg-fill-hover focus-visible:max-w-6 focus-visible:opacity-100 inset-ring-border focus-ring")).toEqual(
+      [],
+    );
+    // 실패하면 그 클래스들을 걷고 `focus-ring` 하나를 단다.
+    expect(offenders(HAND_FOCUS)).toEqual([]);
+  });
+
+  it("링의 모양은 index.css의 focus-ring 한 곳이 든다", () => {
+    // 소스는 `focus-halo`를 직접 칠하지 않는다(`shadow-[…focus-halo…]` 같은 손 링).
+    expect(offenders(/[^\s"'`]*focus-halo[^\s"'`]*/g)).toEqual([]);
+    const css = blankComments(readFileSync(join(root, "src", "index.css"), "utf8"));
+    expect(css.match(/@utility focus-ring(?![\w-])/g)).toHaveLength(1);
+    const start = css.indexOf("@utility focus-ring {");
+    const end = css.indexOf("\n}", start);
+    const block = css.slice(start, end);
+    expect(block).toContain("outline: 1px solid var(--accent)");
+    expect(block).toContain("0 0 0 4px var(--focus-halo)");
+    // 그 밖에서 halo를 읽는 것은 Tailwind 색 이름을 잇는 한 줄뿐이다
+    const rest = (css.slice(0, start) + css.slice(end)).replace("--color-focus-halo: var(--focus-halo);", "");
+    expect(rest).not.toMatch(/var\(--focus-halo\)/);
+  });
+});

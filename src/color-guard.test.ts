@@ -165,8 +165,8 @@ describe("옛 색 이름", () => {
 
 describe("색 지킴", () => {
   // **Tailwind 팔레트 이름은 Tailwind에서 읽는다** — 판이 오르며 이름이 는다(4.2의 `mauve` · `olive` · `mist` · `taupe`).
-  // 목록을 여기 적어 두면 새 이름이 조용히 샌다. 검정 · 흰색도 팔레트다 — Codex 토큰에 맨 검정 · 흰색이 없다(면은 `surface` ·
-  // `scrim`, 글자는 `fg` · `fg-inverse`).
+  // 목록을 여기 적어 두면 새 이름이 조용히 샌다. 검정 · 흰색도 팔레트다 — 앱은 그 색을 뜻의 이름으로 적는다(면은 `surface` ·
+  // `scrim`, 글자는 `fg` · `fg-inverse`, 채운 색 면 위의 흰 것은 `fg-on-solid`).
   const tailwindTheme = readFileSync(join(root, "node_modules/tailwindcss/theme.css"), "utf8");
   const palette = [...new Set([...tailwindTheme.matchAll(/--color-([a-z]+)(?:-\d+)?:/g)].map((m) => m[1]))];
 
@@ -195,11 +195,6 @@ describe("색 지킴", () => {
       file: "src/features/works/SpecViewer.tsx",
       literal: "#141413",
       why: "아티팩트 런타임의 껍데기 글자색 — 위와 같다",
-    },
-    {
-      file: "src/components/ui/button.tsx",
-      literal: "black",
-      why: "주 버튼(default)의 hover — 파랑 면 `accent-solid`에 검정 8%를 섞어 한 단 짙게 한다. DS `.at-btn.accent`에 hover가 없어 Codex 토큰에 그 한 단이 없고, `fg`와 섞으면 다크에서 도리어 옅어진다",
     },
   ];
 

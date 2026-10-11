@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 뿌리 h-8·rounded-lg·투명 바탕·테두리→디자인 시스템의 검색칸(`.at-search`, ui-refresh 결정 6 — 머리 컨트롤이라 알약이다: 32px · rounded-full · 옅은 면 bg-surface-under · 테두리 없음 · 좌우 14px · 돋보기와 글자 사이 8px — 프로젝트·아카이브 목록 위의 검색칸), 포커스 ring-3 ring-ring/50→테두리 대신 1px 링 Codex 파랑(`ring-accent`), 앞 덧붙이(inline-start) pl-2·muted 글자→안쪽 없이 fg-tertiary · 돋보기 14px(뿌리의 좌우 14px 안에 선다), 칸의 좌우 안쪽을 걷는다(뿌리가 든다), 칸 자리 글자 muted→fg-tertiary. InputGroupTextarea와 textarea import, 뿌리의 has-[>textarea]:h-auto를 걷었다 — textarea.tsx를 들이지 않는다(P8). 틀린 값(aria-invalid)의 테두리·링과 덧붙이 버튼·글자는 registry 그대로이고 색만 Codex 이름이다(빨강 danger · 글자 fg-secondary — 쓰는 자리가 없다). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다.
+// 앱 규격으로 고친 자리: 뿌리 h-8·rounded-lg·투명 바탕·테두리→디자인 시스템의 검색칸(`.at-search` — 32px · `radius-lg` · 옅은 면 bg-fill-soft · 테두리 없음 · 좌우 8px · 돋보기와 글자 사이 8px — 프로젝트·아카이브 목록 위의 검색칸. 알약은 codex-ds 결정 3이 걷었다), 포커스 ring-3 ring-ring/50→앱의 한 링(`focus-ring` — 상자가 입는다: 바로 안의 칸에 키보드 포커스가 오면 선다, codex-ds 결정 11), 앞 덧붙이(inline-start) pl-2·muted 글자→안쪽 없이 fg-tertiary · 돋보기 14px(뿌리의 좌우 8px 안에 선다), 칸은 Input의 bare(칸만 — 상자 · 링은 뿌리가 든다)이고 칸의 좌우 안쪽을 걷는다(뿌리가 든다), 칸 자리 글자 muted→fg-tertiary. InputGroupTextarea와 textarea import, 뿌리의 has-[>textarea]:h-auto를 걷었다 — textarea.tsx를 들이지 않는다(P8). 틀린 값(aria-invalid)의 빨간 링과 Combobox 안의 링 끄기를 걷었다(쓰는 자리가 없다). 덧붙이 버튼·글자는 registry 그대로이고 색만 Codex 이름이다(글자 fg-secondary — 쓰는 자리가 없다). 덧붙이 버튼의 동그란 아이콘 단(icon-xs의 rounded-full)만 Codex 작은 아이콘 버튼의 모서리 rounded-md(24 · `radius-md`, DS `.at-ib.xs`)로 옮겼다 — 동그란 아이콘 버튼은 codex-ds 결정 3이 걷었다. registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다.
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
@@ -12,7 +12,7 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="input-group"
       role="group"
       className={cn(
-        "group/input-group relative flex h-8 w-full min-w-0 items-center gap-2 rounded-full bg-surface-under px-3.5 transition-colors outline-none in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-accent has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-danger/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3",
+        "group/input-group relative flex h-8 w-full min-w-0 items-center gap-2 rounded-lg bg-fill-soft px-2 transition-colors outline-none focus-ring has-disabled:opacity-50 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3",
         className
       )}
       {...props}
@@ -71,7 +71,7 @@ const inputGroupButtonVariants = cva(
         xs: "h-6 gap-1 rounded-md px-1.5 [&>svg:not([class*='size-'])]:size-3.5",
         sm: "",
         "icon-xs":
-          "size-6 rounded-full p-0 has-[>svg]:p-0",
+          "size-6 rounded-md p-0 has-[>svg]:p-0",
         "icon-sm": "size-8 p-0 has-[>svg]:p-0",
       },
     },
@@ -121,10 +121,8 @@ function InputGroupInput({
   return (
     <Input
       data-slot="input-group-control"
-      className={cn(
-        "flex-1 rounded-none border-0 bg-transparent px-0 shadow-none ring-0 placeholder:text-fg-tertiary focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0",
-        className
-      )}
+      variant="bare"
+      className={cn("h-full flex-1 text-sm placeholder:text-fg-tertiary", className)}
       {...props}
     />
   )

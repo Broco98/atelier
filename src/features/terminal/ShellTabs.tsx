@@ -327,7 +327,7 @@ function ShellTabs({
   }, [activeId, showing]);
 
   // 끄는 동안 이 줄이 틈 소비자다(UI개선 스펙 S10). **바탕 줄 전체**에서 듣는 것은 높이 때문이다 — 스크롤 상자는 칸
-  // 높이(28px)라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이
+  // 높이(32px)에 링 자리(4px씩)만 더한 높이라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이
   // 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
   //
   // **그 줄은 이 컴포넌트의 것이 아니다** — 바탕 줄 `<header>`는 `TitleBar`가 그리고 이 줄은 그 자식들만 내놓는다(위
@@ -386,7 +386,7 @@ function ShellTabs({
             //
             // **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고
             // 켜진 칸은 흰 면(`tab-on`)이다. 꺼진 칸의 글리프만 흐리다(`.at-tab .ic`).
-            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-chat-meta text-fg transition-colors",
+            "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-chat-meta text-fg transition-colors focus-ring",
             spec.on ? "tab-on font-medium" : "hover:bg-fill-soft",
           )}
         >
@@ -427,14 +427,15 @@ function ShellTabs({
           **줄의 폭은 창 폭이 아니다** — 창에서 사이드바를 뺀 나머지라(작업 패널은 줄 아래 카드 줄에 선다 — ui-refresh 결정 4), 창이 더
           작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도 안 들어간다.
 
-          **그래도 칸 하나는 늘 온전히 보인다 — 이 상자의 바닥이 칸 하나(44px)다.** 한때
+          **그래도 칸 하나는 늘 온전히 보인다 — 이 상자 안쪽의 바닥이 칸 하나(44px)다.** 한때
           `min-w-0`이라 바닥이 없었고, 900px 창에 작업 패널이 열린 기본 배치에서 줄이 290px을
           받자 넘치는 몫을 이 상자가 전부 받아 **0px이 됐다** — 칸이 화면에 없어 누를 수도 끌
           수도 없었다(v0.13.0부터). 바닥이 서도 줄이 넘치지 않는 것은 이 줄을 이는 열이 그
           바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_COLUMN`) — 자리를 내주는 것은 사이드바다
           (한때 줄 옆에 섰던 작업 패널도 내줬다).
 
-          **바닥은 폭(`w-[44px]`)으로도 적는다** — 칸의 `min-w-[44px]`과 같은 수다. 그 열이 버틸 폭은 이 줄의 min-content인데, 그
+          **바닥은 폭(`w-[52px]`)으로도 적는다** — 칸의 `min-w-[44px]`에 양옆 링 자리(아래 — 4씩)를 더한
+          수다. 그 열이 버틸 폭은 이 줄의 min-content인데, 그
           계산은 flex가 줄인 폭이 아니라 각 항목이 **적어 둔 폭**을 센다 — 늘 넓게 서는 기준은
           그래서 `w-max`가 아니라 `basis-[max-content]`에 둔다. `w-max`로 두면 열의 바닥이
           칸 여덟의 폭(380)이 되어 좁은 창에서 패널을 필요 이상으로 민다. 칸이 없으면 바닥도
@@ -445,6 +446,13 @@ function ShellTabs({
           `e2e/terminal-tabs.spec.ts`가 화면·창 폭·패널 배치마다 실제로 재고 `spill ≤ 0`과
           「칸 하나가 들어간다」로 든다.
 
+          **링이 설 자리를 둔다**(`focus-ring-room`, codex-ds 결정 11). 구르는 상자는 넘침을 자르므로 칸에 붙은 포커스 링
+          (테두리 바깥 4px)도 자른다 — 여백이 없으면 칸 높이(32)가 곧 상자 높이라 링의 위아래가, 첫 칸의 왼쪽과 끝 칸의
+          오른쪽이 잘린다. 상자가 안쪽에 4px을 두고 같은 만큼 바깥으로 물러나 칸의 자리와 줄의 산술은 그대로이고, 상자의
+          테두리 상자만 사방 4px 크다(바닥이 52인 까닭). 그 테두리가 줄의 끄는 자리(칸 위아래 · 양옆 gap)를 덮으므로 이
+          상자도 끄는 자리다(`data-tauri-drag-region` — 누른 요소 자신만 보는 속성이라 칸 안의 버튼은 그대로 눌린다). 굴러서
+          칸을 들일 때도 그 4px을 남긴다(`scroll-px-1`).
+
           **막대는 저장소 공통 `scroll-quiet`이다**(결정 32). 한때 여기만 손으로 숨겼다 —
           그때의 `scroll-quiet`은 11px을 세워 44px 타이틀바에서 칸을 눌렀기 때문이다.
           이제 막대가 위로 떠서 폭을 안 먹으므로 이 줄만 다른 규칙을 쓸 이유가 없어졌다. */}
@@ -453,10 +461,11 @@ function ShellTabs({
         // 표식이 `data-tab`이 아니라 `data-tab-strip`인 것은 검사가 `data-tab="`로 칸을
         // 잘라내기 때문이다 — 같은 이름을 쓰면 상자가 칸 하나로 세어진다.
         data-tab-strip
+        data-tauri-drag-region
         // `relative`는 아래 틈 선의 기준이다 — 스크롤 상자 안의 절대 위치라 선이 칸과 함께 흐른다.
         className={cn(
-          "relative flex basis-[max-content] items-center gap-1 overflow-x-auto scroll-quiet",
-          shells.length > 0 ? "w-[44px] min-w-[44px]" : "w-0 min-w-0",
+          "relative flex basis-[max-content] items-center gap-1 overflow-x-auto scroll-quiet focus-ring-room scroll-px-1",
+          shells.length > 0 ? "w-[52px] min-w-[52px]" : "w-0 min-w-0",
         )}
       >
         {shells.map((shell) => (
@@ -471,15 +480,16 @@ function ShellTabs({
           />
         ))}
         {/* 끄는 동안 놓일 틈(UI개선 스펙 §6). **절대 위치 세로 선**이다 — 폭을 먹으면 칸이 밀리고
-            좁은 창에서는 상자가 칸 하나 폭까지 줄어 있다(위 상자 주석). 높이는 이 상자(28px) 안이다: 스크롤 상자라
-            세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자 밖으로 안 나간다(`gapLineLeft`).
+            좁은 창에서는 상자가 칸 하나 폭까지 줄어 있다(위 상자 주석). 높이는 이 상자(칸 32 + 링 자리 4씩) 안이다 —
+            위아래 8px씩 들어와 칸 가운데 24px에 선다. 스크롤 상자라 세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자
+            밖으로 안 나간다(`gapLineLeft`).
 
             기하는 누른 순간 잰 **상태**다 — 그리는 중에 ref를 읽지 않는다(위 `geometry` 주석). */}
         {slot !== null && geometry && (
           <span
             aria-hidden
             data-tab-gap={slot}
-            className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-accent"
+            className="pointer-events-none absolute inset-y-2 w-px rounded-full bg-accent"
             style={{ left: gapLineLeft(geometry, slot) }}
           />
         )}
@@ -568,8 +578,12 @@ function PlusButton({
         //
         // 켜짐이 없는 아이콘 버튼이라 hover는 아이콘 버튼의 hover(`quiet-hover` — `fill-hover` 한 겹 · 글자 `fg`)이고, 누를
         // 때도 같은 면이다(ui-refresh 결정 18). 손으로 같은 조합을 다시 적지 않는다(`state-scale` 검사).
-        "-ml-0.5 shrink-0 text-fg-tertiary",
-        full ? "icon-button opacity-40" : "icon-button-quiet active:bg-fill-hover",
+        //
+        // `relative`는 칸 상자 **위에** 서려는 것이다. 칸 상자는 링이 설 자리(`focus-ring-room`)만큼 테두리가 바깥으로
+        // 나와 있고 제가 `relative`라 위치 잡힌 층에 그려지는데, 그 테두리가 이 버튼의 왼쪽 2px(위 `-ml-0.5`) 위에 걸친다 —
+        // 이 버튼이 같은 층에 서지 않으면 그 2px을 누른 손을 칸 상자가 받는다.
+        "relative -ml-0.5 shrink-0 text-fg-tertiary focus-ring",
+        full ? "icon-button icon-button-xs opacity-40" : "icon-button-quiet icon-button-xs active:bg-fill-hover",
         className,
       )}
       {...props}
@@ -735,7 +749,7 @@ const ShellTab = memo(function ShellTab({
         onPointerDown={(event) => onDragTab(shell.id, event)}
         // 이름이 숨은 폭에서는 글리프를 **가운데로** 보낸다 — 왼쪽에 붙여 두면 오른쪽
         // 절반이 빈 칸으로 보여 「비었다」와 「아이콘만 남았다」가 같아진다.
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-left focus-ring @max-[88px]:justify-center"
       >
         {/* **넓은 폭에서는 글리프가 없다**(결정 27). 이름이 이미 그것을 말하기 때문이다 —
             `claude`가 도는 칸의 타이틀이 「✳ Claude」이고, 그 옆에 같은 마크를 하나 더 세우면
@@ -789,7 +803,7 @@ const ShellTab = memo(function ShellTab({
         aria-label={`${name} 닫기`}
         onClick={() => onClose(shell.id)}
         className={cn(
-          "icon-button-tint shrink-0 text-fg-tertiary",
+          "icon-button-tint icon-button-xs shrink-0 text-fg-tertiary focus-ring",
           // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
           // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
           // 켜진 칸도 68px 아래에서는 함께 접는다: 거기부터는 글리프와 닫기가 한 칸에

@@ -338,7 +338,7 @@ function useFrameFocused(frameRef: RefObject<HTMLIFrameElement | null>) {
   return focused;
 }
 
-// 두 줄이 각각 한 번씩만 접히는 폭. 확인 창(`dialogLook.center`, 360px)보다 한 단 좁은 떠 있는 카드다.
+// 두 줄이 각각 한 번씩만 접히는 폭. 확인 창(`dialogLook.center`, 400px)보다 한 단 좁은 떠 있는 카드다.
 const FRAME_HINT_WIDTH = 300;
 
 /**
@@ -506,7 +506,7 @@ function BlockWrapper({
         announce="name"
         type="button"
         onClick={() => onCopy(start, end)}
-        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="icon-button-quiet icon-button-xs absolute right-full top-1 mr-4 cursor-copy text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <Copy className="size-3" aria-hidden />
       </Hint>
@@ -687,7 +687,7 @@ export const PrettyView = memo(function PrettyView({
               if (target.kind === "doc") linkRef.current.onNavigate(target.path);
               else if (target.kind === "external") void openUrl(target.url);
             }}
-            className="text-link hover:underline"
+            className="rounded-xs text-link hover:underline focus-ring"
           >
             {children}
           </a>

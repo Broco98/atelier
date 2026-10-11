@@ -351,6 +351,26 @@ test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
 
   // 끝내 접힌다.
   expect(after).toBe(0);
+  // **속의 행이 한 줄도 비치지 않는다.** 위 높이는 격자(트랙)의 것이고, 행을 자르는 것은 그 안의 칸이다 — 칸이 트랙보다 크면
+  // 트랙이 0이어도 칸 안의 것이 칠해진다. 칸이 포커스 링이 설 자리(`focus-ring-room` — 안쪽 4px, 같은 만큼 바깥으로 물러난다)를
+  // 둔 채 접혔을 때 그렇게 났다: 칸이 8px로 남아 첫 행의 위 4px이 머리 아래에 비쳤다(고른 행이면 그 면이 띠로 보인다).
+  // 그래서 행마다 자르는 조상의 안쪽 테두리와 겹친 높이 — 화면에 칠해지는 높이 — 를 잰다.
+  const 비치는행 = await body.locator("[data-work-row]").evaluateAll((rows) =>
+    rows.flatMap((row) => {
+      let { top, bottom } = row.getBoundingClientRect();
+      for (let at = row.parentElement; at; at = at.parentElement) {
+        const style = getComputedStyle(at);
+        if (style.overflowY === "visible") continue;
+        const r = at.getBoundingClientRect();
+        top = Math.max(top, r.top + parseFloat(style.borderTopWidth));
+        bottom = Math.min(bottom, r.bottom - parseFloat(style.borderBottomWidth));
+      }
+      const 높이 = bottom - top;
+      return 높이 > 0 ? [`${row.getAttribute("data-work-row")} ${높이.toFixed(1)}px`] : [];
+    }),
+  );
+  await expect(body.locator("[data-work-row]").first()).toBeAttached();
+  expect(비치는행, "접힌 구획에서 화면에 비치는 행(과 그 높이)").toEqual([]);
   // **가는 중이 있었다.** 한 번에 사라지면 전이가 안 일어나 이 줄이 빨개진다.
   expect(transitioned).toContain("grid-template-rows");
 

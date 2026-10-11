@@ -49,8 +49,8 @@ interface ListPanelToggleProps {
 
 /**
  * 목록 패널을 접고 펴는 버튼 — 프로젝트·아카이브 화면이 같은 이 하나를 상세 카드 머리의 끝에 둔다. 값은 `useListPanel`이 든다.
- * 모양은 카드 머리의 원형 아이콘 버튼이다(`size="icon-round"`, ui-refresh 결정 5 · 6). 열려 있어도 평소 흰 원 그대로다 — 머리
- * 컨트롤의 펼침 겹은 부품이 메뉴 트리거에만 준다.
+ * 모양은 카드 머리의 흰 아이콘 버튼이다(`Button` outline · icon — 28 · `radius-lg`, 동그란 버튼은 codex-ds 결정 3이 걷었다).
+ * 열려 있어도 평소 모양 그대로다 — 펼침의 면은 부품이 메뉴 트리거에만 준다.
  *
  * **그림은 누르면 될 일이다**(ui-refresh 결정 15) — 열렸으면 상세를 넓히는 쪽이 아니라 목록을 접는 쪽이라 안으로 모이는
  * `Minimize2`, 닫혔으면 다시 펴는 `Maximize2`다. 도움말과 같은 쪽을 말해야 그림과 글이 엇갈리지 않는다.
@@ -67,7 +67,7 @@ function ListPanelToggle({ open, onToggle }: ListPanelToggleProps) {
       render={
         <Button
           variant="outline"
-          size="icon-round"
+          size="icon"
           onClick={onToggle}
         />
       }

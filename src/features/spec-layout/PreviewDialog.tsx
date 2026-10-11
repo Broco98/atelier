@@ -54,7 +54,7 @@ function PreviewDialog({
             text="닫기"
             shortcut="Esc"
             announce="name"
-            render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-fg-secondary" />}
+            render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-fg-secondary focus-ring" />}
           >
             <X aria-hidden className="size-4" />
           </Hint>

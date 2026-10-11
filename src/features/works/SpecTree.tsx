@@ -13,7 +13,7 @@ import type { SpecTreeItem } from "./types";
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta text-fg-secondary transition-colors hover:bg-fill-soft";
+  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta text-fg-secondary transition-colors hover:bg-fill-soft focus-ring";
 
 // 줄 사이는 사이드바 · 아카이브 목록과 같은 2px 틈이다(DS `.at-tree`). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-(--row-gap)";
@@ -170,7 +170,7 @@ function TreeRows({
                 type="button"
                 onClick={() => onSelect(item.path)}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-[7px] text-left",
+                  "flex h-full min-w-0 flex-1 items-center gap-[7px] rounded-lg text-left focus-ring",
                   onCopy && "pr-1.5",
                 )}
                 style={treeIndent(depth)}
@@ -188,7 +188,7 @@ function TreeRows({
                   type="button"
                   aria-label={`${item.name} 경로 복사`}
                   onClick={() => onCopy(item.path)}
-                  className="icon-button-tint text-fg-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/50 group-hover:opacity-100"
+                  className="icon-button-tint icon-button-xs text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   <Copy className="size-3" />
                 </Hint>

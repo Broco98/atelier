@@ -32,18 +32,18 @@ const TREE_DEPTH = 1;
 const SORT_HELP = "아카이브한 날짜 기준 정렬";
 
 /**
- * 정렬 · 거르기 알약 — 작은 흰 알약이다(`size="pill-sm"`, DS `.at-pill.sm`). 줄에 눌리면 거르기의 글자가 말줄임으로
- * 줄어든다(`min-w-0 shrink` — 버튼은 평소 안 줄어든다).
+ * 정렬 · 거르기 버튼 — 줄 안의 작은 흰 버튼이다(`Button` outline · xs — DS `.at-btn.xs`, 알약은 codex-ds 결정 3이 걷었다). 줄에
+ * 눌리면 거르기의 글자가 말줄임으로 줄어든다(`min-w-0 shrink` — 버튼은 평소 안 줄어든다).
  */
-const SMALL_PILL = cn(buttonVariants({ variant: "outline", size: "pill-sm" }), "min-w-0 shrink");
+const SMALL_BUTTON = cn(buttonVariants({ variant: "outline", size: "xs" }), "min-w-0 shrink");
 
 /**
- * 거른 동안의 켜짐(`fill-active`) — 흰 알약 위에 한 겹 얹는다(머리 컨트롤의 hover · 펼침이 같은 방식으로 겹을 얹는다). hover · 펼침의
- * 옅은 겹이 켜짐을 덮지 않게 세 자리를 같은 값으로 묶는다 — 펼침은 부품이 메뉴 트리거에만 주는 겹이라 같은 조건으로 적는다.
- * 켜짐은 알약의 모양이 아니라 이 거르개의 상태라 부품에 두지 않는다.
+ * 거른 동안의 켜짐(`fill-active`) — 버튼의 hover(`fill-soft`) · 펼침(`fill-hover`)이 켜짐을 덮지 않게 세 자리를 같은 값으로
+ * 묶는다 — 펼침은 부품이 메뉴 트리거에만 주는 면이라 같은 조건으로 적는다. 클래스 합치기(`cn`)가 부품의 같은 자리를 이것으로
+ * 갈음한다. 켜짐은 버튼의 모양이 아니라 이 거르개의 상태라 부품에 두지 않는다.
  */
 const FILTER_ON =
-  "bg-[image:linear-gradient(var(--fill-active),var(--fill-active))] hover:bg-[image:linear-gradient(var(--fill-active),var(--fill-active))] aria-[haspopup=menu]:aria-expanded:bg-[image:linear-gradient(var(--fill-active),var(--fill-active))]";
+  "bg-fill-active hover:bg-fill-active aria-[haspopup=menu]:aria-expanded:bg-fill-active";
 
 /**
  * 거르개 값의 보이는 이름. 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 거르개의 글자 · 툴팁 · 설명과 메뉴의 줄이
@@ -138,7 +138,7 @@ function ArchiveList({
       </CardHead>
 
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
-        {/* 첫 줄 — 정렬 · 거르기 알약. 신호등을 피할 일은 바탕 줄의 몫이라 사이드바가 접혀도 글자가 그대로 선다. */}
+        {/* 첫 줄 — 정렬 · 거르기 버튼. 신호등을 피할 일은 바탕 줄의 몫이라 사이드바가 접혀도 글자가 그대로 선다. */}
         <div className="flex shrink-0 items-center gap-1.5 pb-2 pl-0.5">
           {/* 도움말 「아카이브한 날짜 기준 정렬」은 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 그 말은
               설명으로 남는다 — 이름은 글자 「치운 날」이 들고, 도움말은 그보다 더 말하는 것이다. */}
@@ -147,7 +147,7 @@ function ArchiveList({
             announce="description"
             type="button"
             onClick={() => setSortAsc((v) => !v)}
-            className={SMALL_PILL}
+            className={SMALL_BUTTON}
           >
             <ArrowDown className={cn("size-3.5 transition-transform", sortAsc && "rotate-180")} />
             치운 날
@@ -165,7 +165,7 @@ function ArchiveList({
               render={
                 <DropdownMenuTrigger
                   aria-label="프로젝트 거르기"
-                  className={cn(SMALL_PILL, projectFilter && FILTER_ON)}
+                  className={cn(SMALL_BUTTON, projectFilter && FILTER_ON)}
                 />
               }
             >
@@ -209,11 +209,13 @@ function ArchiveList({
             <span className="text-chat-meta text-fg-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
-          <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
+          <div className="-mx-3 -my-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 py-1 scroll-quiet">
             {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
                 패널 가장자리로 간다. 이 목록은 행 오른쪽 끝에 날짜가 서서 막대와 **0px**까지
                 붙어 있었다(실측 콘텐츠 619 · 막대 619~625). 뚫고 나간 지금은 12px 떨어진다.
-                같은 병이 사이드바 work 목록에 있었고 그쪽 주석이 내력을 든다. */}
+                같은 병이 사이드바 work 목록에 있었고 그쪽 주석이 내력을 든다.
+                위아래의 `-my-1 py-1`도 같은 손버릇이다 — 첫 행 · 끝 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 끝에 잘리지
+                않게 상자만 4px씩 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). */}
             {sorted.map((entry) => (
               <ArchiveRow
                 key={entry.slug}
@@ -283,7 +285,7 @@ function ArchiveRow({
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
-      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-2.5 text-left transition-colors hover:bg-fill-soft">
+      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-lg px-2.5 text-left transition-colors hover:bg-fill-soft focus-ring">
         {/* 펼쳤는지는 폴더 아이콘 하나가 말한다 — 늘 보이므로 hover해 보지 않아도 어느 것이
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}

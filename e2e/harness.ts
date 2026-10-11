@@ -972,6 +972,40 @@ export const 토큰색 = async (page: Page, name: string, { 다크 = false }: { 
 };
 
 /**
+ * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(위 `토큰색`과 같은 길이고, 색이 아닌
+ * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
+ * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `CardBox`).
+ * **fail-closed** — 안 풀린 `var()`는 그 선언을 무효로 만들어 속성이 초기값으로 떨어진다. 그 값이면 던진다: 토큰이 지워진 날 칠해진
+ * 자리도 같은 초기값이라, 견줌이 양쪽 다 초기값으로 초록이 된다.
+ *
+ * **여기 사는 이유는 `토큰색`과 같다** — 반경 · 그림자 · 크기 · 시간을 재는 spec(`frame` · `primitives`)이 한 판정을 쓴다.
+ */
+export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "") =>
+  page.evaluate(
+    ([prop, one, lead]) => {
+      const probe = document.createElement("div");
+      document.body.appendChild(probe);
+      const initial = getComputedStyle(probe).getPropertyValue(prop);
+      probe.style.setProperty(prop, `${lead} var(${one})`.trim());
+      const value = getComputedStyle(probe).getPropertyValue(prop);
+      probe.remove();
+      if (value === initial) throw new Error(`토큰 ${one}이 ${prop}에 안 풀렸다 — ${value}`);
+      return value;
+    },
+    [property, name, 앞말] as const,
+  );
+
+/** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
+export const 칠한값 = (target: Locator, ...properties: string[]) =>
+  target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
+
+/**
+ * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를
+ * 투명한 0 그림자로 먼저 깔고 제 그림자를 맨 뒤에 둔다. 걷고 남은 것이 토큰의 그림자다.
+ */
+export const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
+
+/**
  * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는
  * 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
  * 없으면 흰 바탕이다(문서의 바탕).

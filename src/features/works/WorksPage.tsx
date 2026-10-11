@@ -585,7 +585,7 @@ function WorksPage({
             {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
                 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
                 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
-                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` · 켜짐 toggle-on)은 부품의 icon 크기다.
+                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` · 켜짐 toggle-on)은 부품의 icon-xs 크기다.
 
                 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
                 날지를 틀리게 말한다(목록 패널 토글의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
@@ -594,7 +594,7 @@ function WorksPage({
               text={split !== null ? "분할 끄기" : "분할 켜기"}
               render={
                 <Toggle
-                  size="icon"
+                  size="icon-xs"
                   aria-label="분할"
                   pressed={split !== null}
                   onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
@@ -704,7 +704,7 @@ function WorksPage({
           text="경로 복사"
           announce="name"
           render={
-            <Button variant="outline" size="icon-round" onClick={() => copyText(specRef(selected.slug, currentSpec))} />
+            <Button variant="outline" size="icon" onClick={() => copyText(specRef(selected.slug, currentSpec))} />
           }
         >
           <Copy className="size-4" />
@@ -725,7 +725,7 @@ function WorksPage({
           <Hint
             text="spec 열 닫기"
             announce="name"
-            render={<Button variant="outline" size="icon-round" onClick={() => changeSplit(null, otherTab("spec"))} />}
+            render={<Button variant="outline" size="icon" onClick={() => changeSplit(null, otherTab("spec"))} />}
           >
             <X className="size-4" />
           </Hint>
@@ -1002,7 +1002,7 @@ function TerminalHead({ name, onClose }: { name: React.ReactNode; onClose: () =>
         announce="name"
         type="button"
         onClick={onClose}
-        className="icon-button shrink-0 opacity-70 transition-[background-color,opacity] hover:bg-current/10 hover:opacity-100"
+        className="icon-button icon-button-xs shrink-0 opacity-70 transition-[background-color,opacity] hover:bg-current/10 hover:opacity-100 focus-ring"
       >
         <X className="size-3.5" />
       </Hint>
@@ -1060,7 +1060,7 @@ function StatusMenu({ work }: { work: WorkView }) {
         announce="description"
         render={
           <DropdownMenuTrigger
-            className={cn(STATUS_BADGE, "transition-[filter] hover:brightness-95", meta.badgeClass)}
+            className={cn(STATUS_BADGE, "transition-[filter] hover:brightness-95 focus-ring", meta.badgeClass)}
           />
         }
       >
@@ -1211,14 +1211,14 @@ function WorkMenu({
               ref={anchor}
               disabled={busy}
               aria-busy={busy}
-              // **icon-button 규격이다** — 바로 오른쪽 분할 토글(`Toggle`의 icon 크기)과 같은 상자다.
+              // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 바로 오른쪽 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
               // 이웃한 두 아이콘 버튼의 상자가 다르면 hover 배경이 한 버튼에서 다음으로 옮겨갈 때
               // 커졌다 작아진다.
               // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
               // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
               // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
               className={cn(
-                "icon-button transition-colors",
+                "icon-button icon-button-xs transition-colors focus-ring",
                 "disabled:pointer-events-none disabled:opacity-50",
                 open ? "toggle-on" : "text-fg-tertiary quiet-hover",
               )}

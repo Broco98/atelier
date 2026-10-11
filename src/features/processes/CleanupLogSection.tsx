@@ -64,7 +64,7 @@ function EventRow({
           (`fill-hover`)이다. */}
       <CollapsibleTrigger
         aria-label={eventLabel(event)}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover"
+        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover focus-ring"
       >
         <span className="grid w-4.5 shrink-0 place-items-center text-fg-tertiary">
           <FoldChevron open={open} />
