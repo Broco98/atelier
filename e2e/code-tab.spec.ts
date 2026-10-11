@@ -3,7 +3,9 @@ import { WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
+  clipboardWrites,
   installFixtureBackend,
+  recordClipboard,
   typeIntoShell,
   unknownIpcCalls,
   writeShell,
@@ -227,5 +229,24 @@ test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 wor
   await expect(ghost).toContainText("워크트리 없음");
   await expect(ghost.getByRole("button", { name: "경로 복사" })).toHaveCount(0);
   await expect(파일탭들(page)).toHaveCount(3);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 스토리 69 · S17 — 코드 카드 머리의 경로 복사는 그 파일의 **워크트리 경로**를 복사한다: 에이전트에게 그 파일을 그대로 넘긴다.
+// 뿌리는 코어가 준 워크트리 자리다. 그림 링크도 사람이 연 이름 그대로다 — 그림을 거는 자리(코어가 푼 실제 경로)와 갈린다.
+test("코드 카드 머리의 경로 복사가 그 파일의 워크트리 경로를 복사한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  const worktree = work.worktrees.find((one) => one.project === "billing")!.path;
+  await page.goto(codeUrl("billing/src/main.ts"));
+
+  const copy = (ref: string) => 코드카드(page, ref).getByRole("button", { name: "경로 복사", exact: true });
+  await copy("billing/src/main.ts").click();
+  await expect.poll(() => clipboardWrites(page)).toEqual([`${worktree}/src/main.ts`]);
+
+  await 주소로간다(page, codeUrl("billing/docs/logo.png"));
+  await expect(코드카드(page, "billing/docs/logo.png").getByRole("img")).toBeVisible();
+  await copy("billing/docs/logo.png").click();
+  await expect.poll(() => clipboardWrites(page)).toEqual([`${worktree}/src/main.ts`, `${worktree}/docs/logo.png`]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
