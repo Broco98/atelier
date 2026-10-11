@@ -464,13 +464,30 @@ mod tests {
     }
 
     #[test]
-    fn a_worktree_git_cannot_answer_for_counts_as_changed() {
-        // 워크트리가 통째로 지워지면 그 안의 경로가 쏟아지고 git은 답하지 못한다 — 화면이 다시 읽어 「워크트리 없음」을 그린다
+    fn a_vanished_worktree_counts_as_changed() {
+        // 워크트리가 통째로 지워지면 그 안의 경로가 쏟아진다 — 뿌리에 `.git`이 없으니 git에 묻지 않고 바뀐 것으로 친다. 화면이 다시
+        // 읽어 「워크트리 없음」을 그린다
         let (_tmp, works) = setup();
         std::fs::remove_dir_all(works.join("w/trees/be")).unwrap();
         assert_eq!(
-            worktree_changes(&works, &paths(&works, &["w/trees/be/target/debug/a.o", "w/trees/be/a.txt"])),
-            [change("w", "be")]
+            counted(&works, &paths(&works, &["w/trees/be/target/debug/a.o", "w/trees/be/a.txt"])),
+            (vec![change("w", "be")], 0)
+        );
+    }
+
+    #[test]
+    fn a_worktree_git_cannot_answer_for_counts_as_changed() {
+        // 연결 파일은 있는데 그것이 가리키는 자리가 사라졌다(`git worktree prune` 뒤 · 본 저장소를 옮김) — `check-ignore`가 128로
+        // 죽는다(S35). 걸린 곳만 바뀐 묶음이어도 바뀐 것으로 친다 — 답 못 함을 「안 바뀜」으로 읽으면 그 워크트리는 영영 신호를 내지
+        // 않는다
+        let (_tmp, works) = setup();
+        let link = std::fs::read_to_string(works.join("w/trees/be/.git")).unwrap();
+        let gitdir = link.trim().strip_prefix("gitdir: ").expect("워크트리의 연결 파일이 아니다");
+        std::fs::remove_dir_all(gitdir).unwrap();
+        assert_eq!(
+            counted(&works, &paths(&works, &["w/trees/be/target/debug/a.o"])),
+            (vec![change("w", "be")], 1),
+            "git에 물어 답을 못 받아야 한다"
         );
     }
 
