@@ -805,9 +805,10 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   "ghost.ts": { kind: "worktreeMissing" },
   "secret.txt": { kind: "outsideLink", target: "~/secrets/token.txt" },
   // 종류별 몸(티켓 09). 글이 아닌 것은 내용 없이 크기(바이트)만 온다 — 그림은 화면이 asset URL로 건다. 거는 자리는 코어가 링크를
-  // 푼 실제 경로다(`realPath`) — 링크가 아니면 부른 경로 그대로이고, 워크트리 안을 가리키는 링크면 그 대상이다.
-  "shots/home.png": { kind: "image", size: 48_213, realPath: "shots/home.png" },
-  "docs/logo.png": { kind: "image", size: 2_048, realPath: "assets/logo.png" },
+  // 푼 실제 경로다(`realPath`) — 링크가 아니면 부른 경로 그대로이고, 워크트리 안을 가리키는 링크면 그 대상이다. 고친 시각
+  // (`modifiedMs`)은 크기와 함께 URL에 붙는 판이다(티켓 10).
+  "shots/home.png": { kind: "image", size: 48_213, realPath: "shots/home.png", modifiedMs: 1_760_000_000_000 },
+  "docs/logo.png": { kind: "image", size: 2_048, realPath: "assets/logo.png", modifiedMs: 1_760_000_000_000 },
   "build/app.wasm": { kind: "binary", size: 1_536 },
   "legacy.txt": { kind: "notUtf8", size: 300 },
   "logs/huge.log": { kind: "tooLarge", size: 7_864_320 },

@@ -21,6 +21,8 @@ export const codeFileQuery = (slug: string, project: string, path: string) => {
     queryKey,
     queryFn: () => codeApi.readFile(slug, project, path),
     retry: false,
+    // 창 포커스 신호는 앱 루트가 따로 건다 — `worktreeTreeQuery` 머리말.
+    refetchOnWindowFocus: false,
     // 같은 파일을 다시 읽을 때만 이전 내용을 유지한다 — 다른 파일로 가면서 유지하면 새 경로 아래 이전 파일이 보인다.
     placeholderData: (prev, prevQuery) =>
       prevQuery && hashKey(prevQuery.queryKey) === hashKey(queryKey) ? prev : undefined,

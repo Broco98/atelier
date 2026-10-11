@@ -26,10 +26,12 @@ test("그림 파일은 워크트리 절대 경로의 asset URL로 그림이 선�
   const image = card.getByRole("img", { name: "shots/home.png", exact: true });
   await expect(image).toBeVisible();
   // 홈(`/Users/tester`)으로 편 워크트리 자리 + 워크트리 기준 경로를 asset 프로토콜로 건다 — spec 그림과 같은 길이다. 그림
-  // 바이트는 이 층에 오지 않는다(진짜 웹뷰가 아니다) — 거는 자리가 맞는지를 잰다.
+  // 바이트는 이 층에 오지 않는다(진짜 웹뷰가 아니다) — 거는 자리가 맞는지를 잰다. 뒤에 붙는 것은 답의 크기와 고친 시각인
+  // 판이다 — 그림이 바뀌면 URL이 달라진다(티켓 10, `files-live.spec.ts`).
   await expect(image).toHaveAttribute(
     "src",
-    `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/shots/home.png")}`,
+    `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/shots/home.png")}` +
+      "?v=48213-1760000000000",
   );
   // 몸은 그림 하나다 — 글로 읽은 깨진 원문(줄 번호 붙은 보기)이 함께 서지 않는다.
   await expect(card.locator("img")).toHaveCount(1);
@@ -47,7 +49,8 @@ test("워크트리 안을 가리키는 그림 링크는 코어가 푼 실제 자
   await expect(image).toBeVisible();
   await expect(image).toHaveAttribute(
     "src",
-    `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/assets/logo.png")}`,
+    `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/assets/logo.png")}` +
+      "?v=2048-1760000000000",
   );
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

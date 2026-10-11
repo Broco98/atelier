@@ -5,9 +5,10 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use tauri::{AppHandle, Emitter};
 
 /// `~/.atelier/projects/` 감시 → 관련 변경 시 `projects:changed` emit.
-/// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit.
+/// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit. 워크트리 안의 변경은 판정을 거쳐 쌍마다
+/// `worktree:changed { slug, project }` emit(git-integration 티켓 10).
 /// `~/.atelier/layouts/` 감시 → 관련 변경 시 `layouts:changed` emit.
-/// dotfile(자기 쓰기의 `.tmp` 단계 포함)은 무시한다.
+/// dotfile(자기 쓰기의 `.tmp` 단계 포함)은 무시한다 — 워크트리 갈래는 빼고(점 파일도 트리에 선다).
 pub fn start(app: AppHandle) {
     for watch in watches() {
         spawn_watch(app.clone(), watch);
@@ -26,6 +27,16 @@ struct Watch {
     debounce: Duration,
     event: &'static str,
     relevant: fn(&Path) -> bool,
+    /// 둘째 갈래 — 진행 중 루트만 갖는다(git-integration S7). 위 규칙이 버리는 워크트리(`trees/`) 안의 변경을 판정에 넘긴다.
+    worktrees: Option<WorktreeBranch>,
+}
+
+/// 워크트리 갈래(git-integration 티켓 10). **새 OS 감시가 아니다**(사실 13) — 진행 중 루트의 감시가 이미 받는 `trees/` 아래
+/// 이벤트를 코어의 감시 경로 판정(`atelier_core::worktree_changes`)에 넘겨, 걸리지 않은 변경이 있었던 (slug, 프로젝트) 쌍마다
+/// `event`를 쏜다. 빌드가 `target/`에 쏟는 것은 판정이 거른다.
+struct WorktreeBranch {
+    event: &'static str,
+    judge: fn(&[PathBuf]) -> Vec<atelier_core::WorktreeChange>,
 }
 
 /// 앱이 거는 감시 **전부.** 감시는 걸 때 그 폴더를 만든다(`spawn_watch`) — 여기 없는 자리는
@@ -40,16 +51,21 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(500),
         event: "projects:changed",
         relevant: project_change_is_relevant,
+        worktrees: None,
     }];
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
-    // 빌드 등으로 이벤트가 폭주하므로 무시한다.
+    // 빌드 등으로 이벤트가 폭주하므로 `works:changed`로는 무시한다.
     // spec 라이브 리로드는 반응성이 중요해 더 짧게 디바운스한다 (스펙: 300ms)
+    //
+    // trees/ 하위는 둘째 갈래가 받는다(git-integration S7) — gitignore에 걸리지 않은 변경만 워크트리마다 `worktree:changed`로
+    // 쏜다. 디바운스는 같은 값을 같이 쓴다.
     all.push(Watch {
         dir: atelier_core::works_dir(),
         recursive: RecursiveMode::Recursive,
         debounce: Duration::from_millis(300),
         event: "works:changed",
         relevant: works_change_is_relevant,
+        worktrees: Some(WorktreeBranch { event: "worktree:changed", judge: worktree_changes_in_works }),
     });
     // spec 레이아웃 폴더(spec 레이아웃 결정 22) — 에이전트가 저장하거나 손으로 고친 레이아웃을 설정의
     // 「spec 레이아웃」과 `spec` 패널이 따라온다. 레이아웃은 이 폴더 안의 `atelier/`에 살고 이벤트는
@@ -64,8 +80,14 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(300),
         event: "layouts:changed",
         relevant: layout_change_is_relevant,
+        worktrees: None,
     });
     all
+}
+
+/// 진행 중 루트 아래 경로들의 감시 경로 판정 — 갈래가 부르는 것. 트리 목록이 읽는 뿌리와 같은 뿌리라 빠른 길(S6)이 맞물린다.
+fn worktree_changes_in_works(paths: &[PathBuf]) -> Vec<atelier_core::WorktreeChange> {
+    atelier_core::worktree_changes(&atelier_core::works_dir(), paths)
 }
 
 /// 프로젝트 등록부는 파일 하나가 프로젝트 하나다 — 그 `.md`가 아니면 화면이 바뀔 일이 없다.
@@ -98,10 +120,14 @@ fn is_dotfile(path: &Path) -> bool {
 }
 
 /// 폴더 하나를 디바운스로 보며 **종만 친다** — 무엇이 바뀌었는지는 안 싣고, 프런트가 그
-/// 종을 듣고 다시 물어본다.
+/// 종을 듣고 다시 물어본다. 워크트리 갈래만 어느 워크트리인지(slug · 프로젝트)를 싣는다.
+///
+/// **판정이 밀리면 쌓인 묶음과 합친다**(git-integration 티켓 10). 워크트리 갈래는 git에 묻느라 디바운스보다 오래 걸릴 수 있고,
+/// 그동안 온 묶음을 하나씩 따로 판정하면 판정이 판정을 쫓는다 — 받을 때마다 쌓인 것을 다 꺼내 한 번에 본다.
 ///
 /// **`shells.rs`의 `watch_into`와 짝이다.** 디바운서를 세우는 앞 절반(`create_dir_all` →
-/// 채널 → `new_debouncer` → `watch` → 회차 루프)이 줄 단위로 같고 오류 문구까지 겹친다.
+/// 채널 → `new_debouncer` → `watch`)이 줄 단위로 같고 오류 문구까지 겹친다. 회차 루프는 이쪽만
+/// 쌓인 묶음을 합친다(위 문단).
 /// 그쪽이 따로 선 근거는 **나가는 것**이지(바뀐 셸을 페이로드로 싣는다) 이 배선이 아니므로,
 /// notify의 API가 바뀌거나 오류 처리를 고칠 때는 두 자리를 함께 고쳐야 한다.
 fn spawn_watch(app: AppHandle, watch: Watch) {
@@ -119,10 +145,20 @@ fn spawn_watch(app: AppHandle, watch: Watch) {
             eprintln!("atelier: failed to watch {}: {e}", watch.dir.display());
             return;
         }
-        for result in rx {
-            let Ok(events) = result else { continue };
-            if events.iter().any(|e| (watch.relevant)(&e.path)) {
+        while let Ok(first) = rx.recv() {
+            let paths: Vec<PathBuf> = std::iter::once(first)
+                .chain(rx.try_iter())
+                .filter_map(Result::ok)
+                .flatten()
+                .map(|e| e.path)
+                .collect();
+            if paths.iter().any(|path| (watch.relevant)(path)) {
                 let _ = app.emit(watch.event, ());
+            }
+            if let Some(branch) = &watch.worktrees {
+                for change in (branch.judge)(&paths) {
+                    let _ = app.emit(branch.event, change);
+                }
             }
         }
     });
@@ -166,6 +202,26 @@ mod tests {
         let watch = watch_on(&atelier_core::projects_dir());
         assert_eq!(watch.recursive, RecursiveMode::NonRecursive);
         assert_eq!(watch.event, "projects:changed");
+    }
+
+    /// **진행 중 루트는 워크트리의 변경도 쏜다**(git-integration 티켓 10 · S7). 새 OS 감시를 걸지 않는다 — 진행 중 루트의 감시가
+    /// 이미 `trees/` 아래 이벤트를 받고 있어(사실 13) 같은 감시가 갈래를 하나 더 갖는다. 그 갈래는 코어의 감시 경로 판정이고,
+    /// 쌍마다 `worktree:changed`를 쏜다. 다른 감시에는 갈래가 없다.
+    #[test]
+    fn the_work_root_also_rings_worktree_changed_for_its_worktrees() {
+        let works = atelier_core::works_dir();
+        let branch = watch_on(&works).worktrees.expect("진행 중 루트에 워크트리 갈래가 없다");
+        assert_eq!(branch.event, "worktree:changed", "다른 이름을 쏜다 — 아무도 안 듣는다");
+        // 갈래는 코어의 판정이다 — 워크트리 밖은 쌍을 내지 않고, 워크트리 안은 그 쌍을 낸다(없는 워크트리라 git에 묻지 않고
+        // 바뀐 것으로 친다)
+        assert_eq!((branch.judge)(&[works.join("cart/spec/overview.md")]), vec![]);
+        assert_eq!(
+            (branch.judge)(&[works.join("no-such-work-t10/trees/web/src/main.rs")]),
+            vec![atelier_core::WorktreeChange { slug: "no-such-work-t10".into(), project: "web".into() }]
+        );
+        for dir in [atelier_core::projects_dir(), atelier_core::layouts_dir()] {
+            assert!(watch_on(&dir).worktrees.is_none(), "{}가 워크트리 갈래를 갖는다", dir.display());
+        }
     }
 
     /// **앱이 거는 감시는 셋이다** — 프로젝트 등록부 · 진행 중 루트 · 레이아웃 폴더. 감시는 걸 때 그 폴더를
