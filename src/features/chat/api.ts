@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { CHAT_RECORD_EVENT } from "./events";
 import type { Agent, ChatRecordEvent, Conversation, EngineCheck, RecordLine } from "./types";
 
 // 대화 호스트를 부르는 명령(three-axes 티켓 05). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
@@ -39,16 +40,8 @@ export const chatApi = {
     invoke<void>("chat_close", { work, conversation }),
 };
 
-/**
- * 호스트가 내보내는 이벤트 이름 셋 — Rust의 `chat.rs`의 상수와 **문자열로만** 이어진다. 어긋나면 컴파일도 타입 검사도
- * 통과하고 화면만 조용하다. 그래서 `api.test.ts`가 그 선언을 읽어 견준다.
- *
- * - 기록 줄: 기록 파일에 적은 것과 같은 줄. 화면은 대화를 이것 하나로 그린다.
- * - 대기 줄 바뀜(07) · 엔진 상태(12): 이름만 먼저 선다. 싣는 것과 듣는 함수는 그 장이 더한다.
- */
-export const CHAT_RECORD_EVENT = "chat:record";
-export const CHAT_QUEUE_EVENT = "chat:queue";
-export const CHAT_ENGINE_EVENT = "chat:engine";
+// 이벤트 이름 셋은 `events.ts`에 산다 — tauri를 부르지 않는 모듈이라 e2e(Node)도 같은 상수를 읽는다(three-axes 티켓 17).
+export { CHAT_ENGINE_EVENT, CHAT_QUEUE_EVENT, CHAT_RECORD_EVENT } from "./events";
 
 /**
  * 기록 줄이 적힐 때마다 온다 — 어느 work의 어느 대화든. 다른 work에 가 있어도 쌓이도록 화면 하나가 아니라 앱 층이
