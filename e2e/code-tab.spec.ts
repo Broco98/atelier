@@ -7,6 +7,7 @@ import {
   typeIntoShell,
   unknownIpcCalls,
   writeShell,
+  파일탭주소 as codeUrl,
   주소로간다,
 } from "./harness";
 
@@ -19,8 +20,6 @@ import {
 
 // 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다.
 const [work, plainWork] = WORKS;
-
-const codeUrl = (ref: string, slug = work.slug) => `/works/${slug}?tab=code&code=${encodeURIComponent(ref)}`;
 
 /** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일이든 센다. */
 const 묶음 = (page: Page) => page.locator("[data-tab-strip] > [data-tab]");

@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import type { WorktreeTree } from "@/features/files/types";
 import { answerByArg, WORKS, WORKTREE_TREES, worktreeFile, worktreeFolder } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, unknownIpcCalls, 주소로간다 } from "./harness";
+import { awaitSpawned, installFixtureBackend, unknownIpcCalls, 주소로간다, 파일탭주소 as codeUrl } from "./harness";
 
 // git-integration 판 01 티켓 05(#478) — **트리에서 파일을 열고, 다시 누르면 닫힌다.**
 //
@@ -31,7 +31,6 @@ const 셸칸이름 = (page: Page) => page.locator('[data-tab="shell"] button[ari
 const 코드카드 = (page: Page, ref: string) => page.getByRole("main", { name: ref, exact: true });
 const 히스토리길이 = (page: Page) => page.evaluate(() => window.history.length);
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
-const codeUrl = (ref: string) => `/works/${work.slug}?tab=code&code=${encodeURIComponent(ref)}`;
 
 /**
  * 패널보다 **긴** 트리 — 앞 폴더(`many`)를 펼치면 행이 마흔 줄 넘게 서서, 뒤에 선 파일은 스크롤해야 보인다. 「행이 보이는

@@ -114,9 +114,10 @@ interface ShellTabsProps {
    * 칸을 눌렀다 — 끌기를 걸어 둔다(UI개선 결정 11 · 결정 12). 문턱을 넘으면 끄는 중이 되고, 떨군 곳이
    * 정한다: work 화면의 본문 절반이면 분할, 이 줄의 틈이면 순서(UI개선 스펙 S10).
    *
-   * 맨 앞 문서 칸은 `null`, 셸 칸은 그 셸의 id다. **갈래를 새로 만들지 않는다** —
-   * `DragSource`가 `shellId`로 이미 그 둘을 가르고 있고(「`kind`가 `shell`일 때만 있다」)
-   * 여기서 그 타입을 이름으로 부를 수 없을 뿐이다.
+   * 맨 앞 문서 칸은 `null`, 묶음의 칸(셸 칸 · 파일 탭)은 그 칸의 id다. **갈래를 새로 만들지 않는다** —
+   * `DragSource`가 `shellId`로 이미 그 둘을 가르고 있고(「묶음의 칸일 때만 있다」)
+   * 여기서 그 타입을 이름으로 부를 수 없을 뿐이다. 묶음의 칸이 셸인지 파일 탭인지는 id로 부르는 쪽이
+   * 레지스트리에서 찾는다(`onSelect` · `onClose`와 같다).
    *
    * **두 화면 다 준다 — 필수다.** 한때 `/terminal`은 이 콜백을 안 줘서 안 끌렸다(떨굴 분할이
    * work 화면의 것이었다). 이제 그 화면도 순서를 바꾸려고 끌므로(UI개선 결정 11) 선택으로 두면
@@ -507,6 +508,7 @@ function ShellTabs({
                 active={showing && tab.id === activeId}
                 onSelect={tabHandlers.onSelect}
                 onClose={tabHandlers.onClose}
+                onDragTab={tabHandlers.onDragTab}
               />
             );
           }
@@ -898,6 +900,7 @@ interface CodeTabProps {
   active: boolean;
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
+  onDragTab: (id: number, from: { clientX: number; clientY: number }) => void;
 }
 
 /**
@@ -906,14 +909,17 @@ interface CodeTabProps {
  *
  * 다른 것: 글리프 `FileCode`는 **넓은 폭에서도 선다** — 셸 칸은 이름(타이틀)이 이미 무엇이 도는지를 말해 글리프를 걷었는데
  * (결정 27), 파일 이름은 그 칸이 파일이라는 것을 말하지 않는다. 툴팁은 `<프로젝트>/<경로>`다(스토리 28). 닫기는 확인이 없다 —
- * 부르는 쪽이 그 길을 준다(스토리 37). 이 장에서는 끌지 않는다(06).
+ * 부르는 쪽이 그 길을 준다(스토리 37).
+ *
+ * **끌리는 것도 셸 칸과 같다**(결정 31 · 스토리 42) — 이름 버튼이 끄는 자리이고, 묶음의 어느 틈에나 놓인다. 틈 · 측정 · 가장자리
+ * 구르기는 줄이 칸의 종류를 안 가리고 하므로(`measureStrip`) 이 칸이 하는 일은 누른 순간을 알리는 것뿐이다.
  *
  * 정체는 표식(`data-code`)으로 싣는다 — 칸 표식(`data-tab`)은 종류다(셸의 `data-shell-key`와 같은 나눔).
  *
  * 열린 파일 탭끼리 이름이 겹치면 상위 폴더가 흐리게 붙는다(S11 — `index.ts · works`). 붙은 폴더도 이름의 일부라 접근 이름과
  * `×`의 이름에 함께 든다 — `index.ts` 둘의 `×`가 같은 이름이면 화면 읽기로 어느 것을 닫는지 모른다.
  */
-const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose }: CodeTabProps) {
+const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose, onDragTab }: CodeTabProps) {
   const name = tab.path.slice(tab.path.lastIndexOf("/") + 1);
   const label = folder === null ? name : `${name} · ${folder}`;
   const ref = `${tab.project}/${tab.path}`;
@@ -933,6 +939,8 @@ const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose }
         type="button"
         aria-pressed={active}
         onClick={() => onSelect(tab.id)}
+        // 끄는 자리가 이름 버튼인 것은 셸 칸과 같은 이유다 — 형제인 `×`가 끌리면 닫으려다 칸이 옮겨진다.
+        onPointerDown={(event) => onDragTab(tab.id, event)}
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
       >
         <FileCode className={cn("size-3.5 shrink-0", !active && "text-tertiary")} strokeWidth={1.8} />

@@ -1526,8 +1526,17 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
 
   // **200ms는 기다린다**(결정 11) — 목록을 훑고 지나갈 때 제목이 흔들리지 않고, 호버
   // 카드(350ms)보다는 먼저 답한다.
-  await page.waitForTimeout(80);
-  expect(-(await shiftOf(긴제목))).toBeLessThan(2);
+  //
+  // 재는 것은 **엔진이 돌리는 그 트랜지션의 지연**이다. 한때 명목 80ms를 자고 한 번 짚어 「아직 제자리」를
+  // 봤는데, 부하가 큰 러너에서는 hover · 넘침 재기 · 짚기 사이에 200ms가 넘게 흘러 이미 흐르기 시작한 글자를
+  // 짚고 빨갰다(2026-10-11 — 여러 워크트리의 `pnpm verify`에서 매번 이 자리였다). 「아직 안 흐른다」는 늦게 짚으면
+  // 잴 수 없는 단언이라, 그 시각을 정하는 값을 읽는다. 타이밍은 트랜지션만이 든다(결정 12). 흐름 · 속도 · 멈춤은
+  // 아래에서 그대로 실제 시간으로 잰다.
+  await expect
+    .poll(() =>
+      긴제목.locator("span").evaluate((el) => el.getAnimations().map((animation) => animation.effect?.getTiming().delay)),
+    )
+    .toEqual([200]);
 
   // **그다음 천천히 흐른다 — 50px/s, 거리에 비례**(결정 11). 이 단언들이 없으면 「툭 튀어
   // 끝으로 갔다」도 초록이 된다: 실제로 그렇게 났다(실측) — 마퀴를 `:hover`로 켜면 그 행을
@@ -1884,11 +1893,13 @@ test("한 work에서 두 셸이 부르면 오른쪽 메타의 경과·카드의 
   // **첫 셸이 다시 돌기 시작하면 둘째 셸이 이긴다** — 셋이 함께 그 셸로 옮겨 간다. 둘째 칸이
   // 이미 앉아 있으므로 착석 기다림 없이 쏜다(`markAttention`은 「칸이 하나」를 기다린다).
   await fireAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 1);
-  // **포인터를 행에 다시 얹는다.** 첫 셸이 띠에서 빠지면 띠가 한 줄 줄고, 그 아래 목록이 그만큼 올라간다 — 제자리의
-  // 포인터는 이제 **아래 행** 위라, 호버 지연(350ms)이 지나면 카드가 그 행의 것으로 바뀐다. 아래 단언이 그 지연보다
-  // 빨리 끝나면 초록이고 늦으면(부하) 빨강이던 경주다. 줄어든 띠를 먼저 기다려 목록이 멎은 뒤에 짚는다.
+  // **띠가 한 줄로 줄면 행에 다시 올린다.** 띠는 목록 위에 서서, 한 줄이 빠지면 목록이 한 행만큼
+  // 올라간다 — 멈춰 있는 포인터 밑에는 이제 **다음 행**이 있다. WebKit은 그 행에 hover를 다시 주고
+  // 350ms 뒤 카드가 그 행의 것으로 바뀐다(실측 2026-10-11: 부하 아래 여섯 번에 한 번, 카드에 「두 저장소
+  // 일」이 섰다). 아래 단언이 그 전에 끝나면 초록, 늦으면 빨강이던 경주를 걷는다.
   await expect(띠(page).locator("[data-band-count]")).toHaveText("1");
   await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toContainText(plainWork.title);
   await expect(메타).toHaveText("1m");
   await expect(메타.locator('[role="img"]')).toHaveCount(0);
   await expect(행).toHaveAccessibleDescription(둘째말);
