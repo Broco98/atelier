@@ -679,7 +679,7 @@ describe("WorksPage 작업 패널 칸", () => {
       setItem: () => {},
     });
     render();
-    // 사이드바·목록 패널의 키를 건드리면 폭 범위가 다른 둘이 서로를 덮는다
+    // 사이드바·목록 칸의 키를 건드리면 폭 범위가 다른 둘이 서로를 덮는다
     expect(asked).toContain("work-panel-width");
     expect(asked).not.toContain("sidebar-width");
     expect(asked).not.toContain("panel-width");

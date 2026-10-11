@@ -355,14 +355,70 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
   expect(source.panel).toEqual(plain.panel);
 });
 
-test("목록 패널이 있는 화면은 그대로다 — 사이드바가 저장한 폭으로 선다", async ({ page }) => {
-  // 사이드바가 줄어들 수 있게 됐지만, 자리를 요구하는 것은 탭 줄을 이는 열과 편집기의 두 카드 머리(`Frame`의 `BesideBox`)뿐이다.
-  // 다른 화면의 본문은 바닥이 없어(`min-w-0`) 사이드바가 900px 창에서도 고른 폭을 든다.
-  //
-  // (창 전체의 가로 넘침은 여기서 안 든다 — 목록 화면의 몫이고, 그 넘침은 목록 · 상세의 글자 폭에 달려 OS 글꼴마다 갈린다.
-  // 이 검사가 그 사실을 초록이나 빨강으로 삼키지 않게 둔다.)
-  await openWith(page, "/projects", 900, { sidebar: 400, panel: 330 });
-  await expect(page.getByRole("button", { name: "프로젝트 등록" })).toBeVisible();
-  const layout = await settled(page);
-  expect(layout.sidebar).toBe(400);
-});
+// 목록 칸이 있는 화면(codex-ds 결정 28 — 목록 | 내용 한 카드)은 탭 줄이 없는 카드 줄이라 통째로 격리되어(`TAB_ROW_COLUMN`) 바닥을
+// 알리지 않는다. 그래서 목록 칸을 범위(240–560, codex-ds 스펙 S4)의 끝까지 넓혀 둬도 사이드바를 밀지 않는다.
+//
+// 그 대신 자리가 모자라면 **목록 칸이 내준다** — 작업 패널 칸처럼 제 최소 폭까지 좁게 서고, 내용 칸에는 그 최소 폭만큼은 남긴다
+// (`Frame`의 `ListCard`). 앱 창의 최소 폭(900)에 사이드바를 400으로 넓혀 두면 카드가 492라 560 목록 칸이 들지 않는다. 그 칸이
+// 제 폭을 고집하면 카드가 넘침을 잘라 내용 칸이 0으로 눌리고, 세로 선과 그 위의 손잡이도 카드 밖으로 잘려 끌어 되돌릴 길이 없다
+// — 목록 칸은 접지 않아(codex-ds 결정 32) 접어서 치울 길도 없다.
+const LIST_RANGE = { min: 240, max: 560 };
+
+for (const screen of [
+  { url: "/projects", list: "프로젝트 목록", key: "panel-width" },
+  { url: "/archive", list: "아카이브 목록", key: "archive-panel-width" },
+] as const) {
+  test(`목록 칸이 있는 화면(${screen.url})은 목록 칸을 560까지 넓혀 둬도 사이드바가 저장한 폭으로 서고, 내용 칸에 240을 남긴다`, async ({
+    page,
+  }) => {
+    await page.addInitScript((key) => localStorage.setItem(key, "560"), screen.key);
+    await openWith(page, screen.url, 900, { sidebar: 400, panel: 330 });
+    const list = page.getByRole("region", { name: screen.list, exact: true });
+    await expect(list).toBeVisible();
+    // 사이드바가 줄어들 수 있게 됐지만, 자리를 요구하는 것은 탭 줄을 이는 열과 편집기의 두 카드 머리(`Frame`의 `BesideBox`)뿐이다.
+    // 다른 화면의 본문은 바닥이 없어(`min-w-0`) 사이드바가 900px 창에서도 고른 폭을 든다.
+    const layout = await settled(page);
+    expect(layout.sidebar).toBe(400);
+    expect(layout.pageSpill).toBeLessThanOrEqual(0);
+
+    /** 목록 | 내용 카드와 두 칸, 그리고 세로 선 위 손잡이 — 손잡이는 그 가운데를 누르면 정말 그것이 눌리는지까지 잰다. */
+    const joined = () =>
+      page.evaluate(
+        ([name, handleSelector]) => {
+          const column = document.querySelector(`section[aria-label="${name}"]`)!;
+          const box = (el: Element) => {
+            const rect = el.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width };
+          };
+          const handle = column.querySelector(handleSelector)!;
+          const grip = handle.getBoundingClientRect();
+          const hit = document.elementFromPoint(grip.left + grip.width / 2, grip.top + grip.height / 2);
+          return {
+            card: box(column.closest('[data-slot="card"]')!),
+            list: box(column),
+            main: box(document.querySelector("main")!),
+            handleAt: grip.left + grip.width / 2,
+            handleHit: hit?.closest(handleSelector) === handle,
+          };
+        },
+        [screen.list, HANDLE] as const,
+      );
+    const narrow = await settle(page, joined);
+    const says = JSON.stringify(narrow);
+    // 앵커: 이 창에서는 정말 모자랐다 — 넉넉했으면 아래 셈은 아무것도 안 잰다.
+    expect(narrow.card.width, says).toBeLessThan(LIST_RANGE.max + LIST_RANGE.min);
+    // 내용 칸이 카드 오른쪽 끝까지 서고 최소 폭을 지킨다. 목록 칸은 그 나머지라 저장한 폭보다 좁다.
+    expect(narrow.main.right, says).toBe(narrow.card.right);
+    expect(narrow.main.width, says).toBe(LIST_RANGE.min);
+    expect(narrow.list.width, says).toBe(narrow.card.width - LIST_RANGE.min);
+    // 세로 선 위의 손잡이가 카드 안에 서고, 누르면 그것이 눌린다.
+    expect(narrow.handleAt, says).toBe(narrow.list.right);
+    expect(narrow.handleHit, says).toBe(true);
+
+    // 줄어든 것은 그려진 폭뿐이다 — 저장한 폭은 그대로라 창을 넓히면 돌아온다.
+    expect(await page.evaluate((key) => localStorage.getItem(key), screen.key)).toBe(String(LIST_RANGE.max));
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(async () => (await joined()).list.width).toBe(LIST_RANGE.max);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}

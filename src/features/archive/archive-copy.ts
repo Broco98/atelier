@@ -12,7 +12,7 @@ interface ArchiveEmptyScreen {
  * `ArchivePage.test.tsx`가 본다 — 빈 화면 둘은 마크업으로, 좁혀서 0개일 때의 말은 렌더로 닿을 수 없어 소스 검사로.
  */
 export const ARCHIVE_COPY = {
-  /** 목록 패널이 텅 빈 자리 — 짧게 말한다. 옆에 본문이 같은 말을 더 길게 하고 있다. */
+  /** 목록 칸이 텅 빈 자리 — 짧게 말한다. 옆에 본문이 같은 말을 더 길게 하고 있다. */
   emptyList: {
     title: "아직 치운 작업이 없어요",
     body: "끝난 작업의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.",

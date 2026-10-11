@@ -25,7 +25,7 @@ describe("접히는 패널의 박자", () => {
     expect(foldingInnerClass(false)).not.toContain("max-w-full");
   });
 
-  // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — 목록 칸과 함께 `Frame.tsx`에 산다.
+  // 작업 패널의 접히는 상자는 공용 틀의 패널 칸이 든다(ui-refresh 결정 27) — `Frame.tsx`에 산다.
   // 공용 틀의 여백(머리 줄 · 카드 줄)과 분할 열(한때 `WorksPage.tsx`가 그렸다 — 이제 공용 틀의 `split`)도 패널과 함께 움직여
   // 같은 박자를 읽는다.
   it("사이드바와 공용 틀의 칸(목록 · 작업 패널 · 분할)이 이 규격을 쓴다", () => {

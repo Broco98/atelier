@@ -14,7 +14,7 @@ const buttonVariants = cva(
         default: "bg-fg text-fg-inverse",
         secondary: "bg-fill-soft text-fg hover:bg-fill-hover",
         // 흰 카드 위의 보조 동작 — 테두리는 폭을 안 먹는 안쪽 링이라 채운 버튼과 높이가 같다. 펼친 메뉴의 트리거만 한 단
-        // 짙다 — 목록 패널 토글처럼 `aria-expanded`로 「펼쳐져 있다」를 말하는 버튼은 평소 모양 그대로 선다.
+        // 짙다 — 메뉴 트리거가 아니면서 `aria-expanded`로 「펼쳐져 있다」를 말하는 버튼은 평소 모양 그대로 선다.
         outline:
           "text-fg inset-ring inset-ring-border-heavy hover:bg-fill-soft aria-[haspopup=menu]:aria-expanded:bg-fill-hover",
         // 조용한 글자 버튼 — 평소에는 한 단 옅은 글자이고, hover에 버튼 hover(fill-hover)와 본문 글자색이 함께 선다.

@@ -28,6 +28,9 @@ void loadNotifySettings();
 // 화면은 있다(앱 셸의 토스트). 그래도 이펙트에 두지 않는 것은 StrictMode가 이펙트를 두 번 돌려 묻는 것도
 // 두 번이 되기 때문이다 — 답은 스토어에 두고 셸이 서서 읽는다(`startup-report.ts`).
 void loadStartupReport();
+// 목록 칸은 접지 않는다(codex-ds 결정 32). 접던 때 Projects · Archive가 화면마다 적어 둔 접힘 값은 읽는 곳이 없어 **앱이 뜰 때
+// 지운다** — 남겨 두면 걷은 기능의 값이 사람의 저장소에 영영 남는다. 지울 것이 없으면 아무 일도 안 한다.
+for (const key of ["projects-panel-open", "archive-panel-open"]) localStorage.removeItem(key);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

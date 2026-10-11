@@ -1,4 +1,4 @@
-import { Fragment, useId, useRef, type CSSProperties, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
@@ -10,7 +10,8 @@ import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import useSplitRatio from "./useSplitRatio";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-surface-shell`) 맨 위에 48 머리 줄이 서고(codex-ds 스펙 §4), 그 아래
-// 목록 · 본문 · 패널이 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 머리 줄에는 지금 보는 것을 말하는 머리 카드가 뜬다. 화면은
+// 본문 · 패널이 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 목록은 따로 뜨지 않고 본문 카드 안 왼쪽 칸이다(codex-ds 결정 28 — 목록 |
+// 내용 한 카드). 머리 줄에는 지금 보는 것을 말하는 머리 카드가 뜬다. 화면은
 // 카드 내용만 건넨다 — 틈 · 끌기 영역 · 손잡이 · 신호등 inset을 이 파일 한 곳이
 // 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는 어디가 죽었는지가 안 보인다. 분할의 두 열과
 // 편집기의 트리 카드도 이 틀의 칸이다(`split` · `beside`) — 한때 두 화면이 그 칸의 틈 · 끌기 영역 · 손잡이를 제 손으로 다시 적었다.
@@ -18,7 +19,8 @@ import useSplitRatio from "./useSplitRatio";
 //
 //   뿌리(bg-surface-shell) ─ 머리 줄 `<header>`(HeadRow) ─ 머리 카드(남은 폭 — 레일이 안 서면 끝에 패널 토글) · 패널 토글 자리(레일이 설 때만)
 //                  └ 아래 줄 ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈)
-//                           │                                  ─ list · 본문(카드 하나, 또는 분할의 열 카드 둘) · beside · panel · overlay
+//                           │                                  ─ 본문(카드 하나, 목록 | 내용 카드 하나, 또는 분할의 열 카드 둘)
+//                           │                                    · beside · panel · overlay
 //                           └ 레일 열(rail의 칸이 둘 이상일 때만, 오른쪽 틈) ─ 칸 묶음(카드 줄 꼭대기부터)
 //
 // **틈도 창을 끄는 자리다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 회색 틈이 드러나는 상자(뿌리 · 머리 줄 ·
@@ -27,7 +29,8 @@ import useSplitRatio from "./useSplitRatio";
 // 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
 //
 // **카드 줄에 flex `gap`을 쓰지 않는다.** 틈은 칸 상자의 안쪽 여백이다 — 접힌 칸 옆에 틈이 남지 않게(판 04 「지키는 것」). 분할의
-// 두 열 사이 틈도 왼쪽 열 상자의 안쪽 여백이고, 손잡이는 어느 칸에서나 그 틈의 가운데에 선다.
+// 두 열 사이 틈도 왼쪽 열 상자의 안쪽 여백이고, 틈을 둔 칸의 손잡이는 그 틈의 가운데에 선다. 목록 칸은 틈이 아니라 세로 선으로
+// 갈리고 손잡이는 그 선 위에 선다(`ListCard`).
 
 /** 칸 하나가 그리는 카드의 내용 — 이름(`aria-label`)과 카드 안(머리와 몸). 카드 상자(모서리 · 바탕)와 그 둘레의 틈은 칸이 그린다. */
 interface CardContent {
@@ -35,9 +38,17 @@ interface CardContent {
   children: ReactNode;
 }
 
-/** 왼쪽 목록 카드 · 오른쪽 패널 카드 한 칸. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다). */
-export interface SideSlot extends CardContent {
+/** 오른쪽 패널 카드 한 칸. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다). */
+export interface PanelSlot extends CardContent {
   open: boolean;
+  size: ResizableWidth;
+}
+
+/**
+ * 목록 칸(codex-ds 결정 28) — 본문 카드 안 왼쪽 칸이다. 이름은 칸의 `aria-label`이고, 안(목록 머리 · 찾기 칸 · 행)은 화면이 건넨다.
+ * 접지 않는다(codex-ds 결정 32) — 열림이 없다. 저장하는 폭은 **칸의 폭**이다.
+ */
+export interface ListSlot extends CardContent {
   size: ResizableWidth;
 }
 
@@ -88,8 +99,8 @@ export interface HeadSlot {
   /** 오른쪽 할 일 — 그 대상 · 화면에 거는 조작(작업 화면은 상태 배지 · ⋯ 작업 메뉴, Processes는 조용한 셸 모두 닫기). */
   actions?: ReactNode;
   /**
-   * 세로선 너머 오른쪽 끝 — 작업 화면은 보기 배치(분할), Archive는 목록 토글, Projects는 제거(되돌릴 수 없는 할 일을 다른 할 일과
-   * 떼어 둔다 — DS 캔버스). 할 일과는 세로선으로 갈린다.
+   * 세로선 너머 오른쪽 끝 — 작업 화면은 보기 배치(분할), Projects는 제거(되돌릴 수 없는 할 일을 다른 할 일과 떼어 둔다 — DS
+   * 캔버스). Archive는 아직 비어 있다(spec 목록 토글은 codex-ds 티켓 21). 할 일과는 세로선으로 갈린다.
    */
   end?: ReactNode;
 }
@@ -103,12 +114,13 @@ interface FrameProps<Id extends string> {
    */
   head: HeadSlot;
   /**
-   * 왼쪽 목록 카드 — `section`이다(`aside`는 사이드바와 작업 패널 둘뿐이다). 접힘 · 폭 손잡이 · 카드 오른쪽 틈은 이 틀이 들고,
-   * 화면은 카드 안(머리와 몸)만 건넨다.
+   * 목록 칸 — 주면 본문 자리에 목록 | 내용 카드 하나가 서고(`ListCard`), 목록 칸은 그 카드 안 왼쪽 `section`이다(`aside`는 사이드바와
+   * 작업 패널 둘뿐이다). 내용 칸은 `children`의 본문 카드(`<Card as="main">`)다 — 그 카드는 제 모서리 · 면 · 링을 벗고 칸이 된다.
+   * 두 칸을 가르는 세로 선과 그 위의 폭 손잡이는 이 틀이 들고, 화면은 칸 안(목록 머리와 몸)만 건넨다.
    */
-  list?: SideSlot;
+  list?: ListSlot;
   /** 오른쪽 작업 패널 카드 — 바깥 상자가 두 번째 `<aside>`다. */
-  panel?: SideSlot;
+  panel?: PanelSlot;
   /**
    * 작업 화면의 레일 열(`Rail` — 칸 묶음)과 머리 줄의 패널 토글(`PanelToggle`). 작업을 고른 작업 화면만 건넨다 — 없으면 둘 다 없다.
    * 토글은 건네면 늘 서고, 레일 열은 **칸이 둘 이상일 때만** 선다(codex-ds 결정 25 — `railStands`). 레일 열이 없으면 본문 열의 오른쪽
@@ -126,7 +138,7 @@ interface FrameProps<Id extends string> {
    * 카드의 머리)이라, 「끄는 것이 출발한 줄은 덮지 않는다」는 덮는 쪽이 줄 높이(`--size-toolbar`)만큼 내려 선다(`WorksPage`의 놓기 겹판).
    */
   overlay?: ReactNode;
-  /** 본문 카드(`<Card as="main">`). 분할이면(`split`) 비워 둔다. */
+  /** 본문 카드(`<Card as="main">`) — 목록 칸이 있으면(`list`) 목록 | 내용 카드의 내용 칸이 된다. 분할이면(`split`) 비워 둔다. */
   children?: ReactNode;
 }
 
@@ -174,8 +186,7 @@ function Frame<Id extends string>({
               sidebarOpen ? "pl-0" : "pl-(--gap)",
             )}
           >
-            {list && <ListBox slot={list} />}
-            {split ? <SplitBox slot={split} /> : children}
+            {list ? <ListCard slot={list}>{children}</ListCard> : split ? <SplitBox slot={split} /> : children}
             {beside && <BesideBox slot={beside} />}
             {panel && <PanelBox id={panelId} slot={panel} />}
             {overlay}
@@ -199,42 +210,50 @@ function Frame<Id extends string>({
 }
 
 /**
- * 왼쪽 목록 칸(ui-refresh 결정 15 — 칸 하나 = 카드 하나). **접히는 바깥 상자의 폭이 「카드 + 오른쪽 틈」이다** — 닫히면 둘이 함께
- * 0으로 접혀, 닫힌 칸 옆에 틈이 겹쳐 남지 않고 본문 카드가 사이드바 쪽 끝까지 넓어진다. 틈은 안쪽 열의 오른쪽 여백이다(카드 줄에
- * flex `gap`을 쓰지 않는 까닭).
- *
- * 접힘은 사이드바 · 작업 패널과 같은 장치다 — 바깥 상자의 폭 트랜지션(`PANEL_MOTION`)과, 접히는 동안 고정 폭으로 버티는 안쪽 열
- * (`foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를 곧장 따라온다.
- *
- * 폭은 **카드의 폭**이고(`--panel-width`, 저장 키는 화면의 것), 틈은 그 위에 더해 그린다. 손잡이는 카드 모서리가 아니라 그 틈의
- * 가운데에 얹힌다. 바깥 상자 · 안쪽 열 모두 끌기 영역이다 — 틈이 드러나는 상자는 모두 단다(머리말).
+ * 목록 | 내용 카드 안이다(codex-ds 결정 28) — 그 안에 선 `Card`는 제 카드가 아니라 바깥 카드의 내용 칸이라 모서리 · 면 · 링을 그리지
+ * 않는다(바깥 카드가 든다 — DS `.at-joined > .at-col`). 화면은 다른 화면처럼 본문 카드(`<Card as="main">`)를 건네고, 그것이 칸이
+ * 되는 것은 이 틀이 정한다 — 화면마다 칸의 모양을 적으면 한 화면만 링을 두 번 두른다.
  */
-function ListBox({ slot }: { slot: SideSlot }) {
-  const { open, size, label, children } = slot;
+const InListCard = createContext(false);
+
+/**
+ * 목록 | 내용 카드(codex-ds 결정 28 · 스펙 §4 「목록 칸」 · DS `.at-joined`). 본문 자리에 카드 하나가 서고, 그 안 왼쪽이 목록 칸
+ * (`section` — DS `.at-listcol`), 오른쪽이 내용 칸(화면의 본문 카드 — `main`)이다. 둘 사이에 틈이 없다 — 0.5px `border-heavy` 세로
+ * 선이 가른다. 선은 테두리가 아니라 목록 칸 오른쪽 끝 안쪽에 칠한 면이다(`::after` — 0.5px 테두리는 엔진마다 굵기가 갈린다, DS는
+ * 안쪽 그림자 `inset -0.5px 0 0`).
+ *
+ * **그 선이 폭 손잡이다**(`ResizeHandle`의 `rule` 자리 — 선 위에 걸쳐 선다). 끌면 목록 칸의 폭이 바뀌어 저장되고, 두 번 누르면 기본
+ * 폭이다. 폭은 칸의 폭 그대로라(틈이 없다) 출발 폭을 잴 때 뺄 것이 없다. 두 번 눌러 기본 폭으로 돌아가는 순간은 패널과 같은
+ * 박자(`PANEL_MOTION`)로 움직이고, 끄는 동안에는 트랜지션을 꺼서 폭이 커서를 곧장 따라온다.
+ *
+ * **접지 않는다**(codex-ds 결정 32) — 목록 → 내용은 한 쪽의 두 칸이라, 따로 여닫는 것은 오른쪽 패널뿐이다. 칸은 제 폭으로 서고
+ * (`shrink-0`) 남는 폭을 내용 칸이 먹는다. 목록 칸의 안쪽은 좌우 8이고(DS `.at-listcol` — 머리 · 찾기 칸 · 행이 그 안에 선다), 위아래는
+ * 칸 안이 든다. 카드는 카드라 안이 끌기 영역이 아니다 — 회색이 드러나는 자리가 없다.
+ *
+ * **창이 좁으면 목록 칸이 내준다** — 끄는 최소 폭(`--list-min`, 폭 훅이 받은 값)까지 좁게 서고, 내용 칸에는 **그 최소 폭만큼은
+ * 남긴다**(`max-width` — 작업 패널 칸과 같은 손버릇, `PanelBox`). 카드 줄은 바닥을 알리지 않아(`TAB_ROW_COLUMN`) 사이드바가 자리를
+ * 내주지 않으므로, 제 폭을 고집하면 카드가 넘침을 잘라 내용 칸이 0으로 눌리고 세로 선과 손잡이도 카드 밖으로 잘린다 — 접지 않는
+ * 칸이라 치울 길도 없다. 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다. 좁게 선 칸을 끌 때 손잡이가
+ * 안 튀는 것은 폭 훅이 그려진 폭에서 출발해서다(`useResizableWidth`).
+ */
+function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) {
+  const { label, size } = slot;
   return (
-    <div
-      data-tauri-drag-region
-      // 화면 둘(Projects · Archive)이 같은 이름을 각자 세운다 — 한 번에 한 화면만 서고, 이 상자 안에서만 읽힌다.
-      style={{ "--panel-width": `${size.width}px` } as CSSProperties}
-      className={cn(
-        "relative flex shrink-0 overflow-hidden",
-        !size.dragging && PANEL_MOTION,
-        !size.dragging && "transition-[width]",
-        open ? "w-[calc(var(--panel-width)+var(--gap))]" : "w-0",
-      )}
-    >
-      <div
-        data-tauri-drag-region
+    <div data-slot="card" className={cn(CARD_FACE, "flex min-h-0 min-w-0 flex-1 bg-surface")}>
+      <section
+        aria-label={label}
+        style={{ width: size.width, "--list-min": `${size.min}px` } as CSSProperties}
         className={cn(
-          "flex h-full w-[calc(var(--panel-width)+var(--gap))] shrink-0 pr-(--gap)",
-          foldingInnerClass(open),
+          "relative flex min-h-0 max-w-[calc(100%-var(--list-min))] min-w-(--list-min) shrink-0 flex-col px-2",
+          "after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-[0.5px] after:bg-border-heavy",
+          !size.dragging && PANEL_MOTION,
+          !size.dragging && "transition-[width]",
         )}
       >
-        <Card label={label} className="flex-1">
-          {children}
-        </Card>
-      </div>
-      {open && <ResizeHandle control={size} seat="gap" />}
+        {slot.children}
+        <ResizeHandle control={size} seat="rule" />
+      </section>
+      <InListCard.Provider value>{children}</InListCard.Provider>
     </div>
   );
 }
@@ -242,10 +261,9 @@ function ListBox({ slot }: { slot: SideSlot }) {
 /**
  * 오른쪽 작업 패널 칸(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 바깥 상자가 두 번째 `<aside>`이고(e2e `tab-row-floor`가 `aside`
  * 순서를 잰다) **폭이 「왼쪽 틈 + 카드」다** — 접히면 둘이 함께 0이 되어 문서 카드가 오른쪽 틈 끝까지 넓어진다. 틈은 안쪽 열의
- * 왼쪽 여백이고, 손잡이는 그 틈의 가운데에 선다(여전히 `aside`의 자손이다). 목록 칸과 같은 짜임이고 다른 것은 줄어드는 몫이다.
+ * 왼쪽 여백이고, 손잡이는 그 틈의 가운데에 선다(여전히 `aside`의 자손이다).
  *
- * 폭은 **카드의 폭**이다(`--work-panel-width` — 목록 칸의 `--panel-width`와 이름을 가른 것은 같은 이름이 두 상자에서 다른 값을
- * 들면 어느 쪽이 이겼는지가 상속 자리에 달려서다). 틈은 그 위에 더해 그린다.
+ * 폭은 **카드의 폭**이다(`--work-panel-width`). 틈은 그 위에 더해 그린다.
  *
  * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--work-panel-min`, 폭 훅이 받은 값)까지 문서 카드에 자리를
  * 내주고, 문서 카드에는 **그 최소 폭만큼은 남긴다**(`max-width`). 문서 카드는 머리에 탭 줄을 이고 그 줄의 바닥 아래로는 안
@@ -255,12 +273,12 @@ function ListBox({ slot }: { slot: SideSlot }) {
  * 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 이 칸이 제 내용이 아니라 최소 폭으로만 카드 줄의
  * min-content에 들어가게 하는 장치다 — 탭 줄을 품은 카드 줄은 제 min-content를 본문 열의 바닥으로 알리는데(`TAB_ROW_COLUMN`),
  * 넓은 트리 이름이 그 바닥도 칸의 폭도 정하지 않는다. 최소 폭은 **펼 때만** 트랜지션한다 — 펴는 순간 곧장 서면 0에서 최소 폭으로 튄 뒤
- * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바 · 목록 칸과 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
+ * 자란다(접을 때는 곧장 걷는다). 접힘은 사이드바와 같은 장치다(`PANEL_MOTION` · `foldingInnerClass`). 끄는 동안에는 트랜지션을 꺼서 폭이 커서를
  * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
  *
  * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
  */
-function PanelBox({ id, slot }: { id: string; slot: SideSlot }) {
+function PanelBox({ id, slot }: { id: string; slot: PanelSlot }) {
   const { open, size, label, children } = slot;
   return (
     <aside
@@ -531,8 +549,20 @@ interface CardProps {
 }
 
 /**
- * 바탕 위에 뜬 둥근 카드 하나(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 모서리는 카드가 자른다(`overflow-hidden`) — 안의
- * 스크롤 상자 · 셸 화면이 모서리 밖으로 그려지지 않는다. `relative`는 카드 안에 덮이는 것(설정의 메시지 등)의 기준이다.
+ * 바탕 위 카드의 얼굴 — 모서리 `radius-2xl`(16)과 그 안쪽 가장자리에 덮어 그린 0.5px 링(`--shadow-hairline`). 카드(`Card`)와 목록 |
+ * 내용 카드(`ListCard`)가 같은 얼굴이다. 모서리는 카드가 자른다(`overflow-hidden`) — 안의 스크롤 상자 · 셸 화면이 모서리 밖으로
+ * 그려지지 않는다. `relative`는 링 덮개와 카드 안에 덮이는 것(설정의 메시지 등)의 기준이다.
+ *
+ * **링은 카드 안쪽 가장자리에 덮어 그린다**(`::after`의 `inset` 그림자 — 값은 같은 토큰이다). 카드 바깥에 그리는 그림자는 조상의
+ * 넘침 숨김에 잘린다: 작업 패널의 접히는 바깥 상자가 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어
+ * 선다 — 바깥 링이면 틈 쪽 한 변에만 남는다. 덮개는 카드 내용 위에 서서 내용이 가장자리까지 칠해도 링이 안 가려지고, 누름은
+ * 지나보낸다(`pointer-events-none`). 네 변이 칠해지는지는 `e2e/frame.spec.ts`가 픽셀로 잰다.
+ */
+const CARD_FACE =
+  "relative overflow-hidden rounded-2xl after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:shadow-[inset_var(--shadow-hairline)]";
+
+/**
+ * 바탕 위에 뜬 둥근 카드 하나(ui-refresh 결정 4 · 15 — 칸 하나 = 카드 하나). 얼굴(모서리 · 링)은 `CARD_FACE`다.
  *
  * 바탕은 터미널 카드면 설정의 테마에서 읽은 바탕이고, 그 밖은 흰 카드(`bg-surface`)다. **흰 카드와 터미널 카드가 한 컴포넌트다** —
  * 작업 화면의 본문 카드는 문서와 터미널을 오가는데, 둘이 다른 컴포넌트면 오갈 때마다 카드가 새로 서고 머리의 탭 줄도 함께 새로
@@ -540,23 +570,22 @@ interface CardProps {
  * 돌려줘 설정이 바뀌어도 다시 그려지지 않는다(`useShellBackground`). 모서리는 `radius-2xl`(16)이고
  * 외곽은 실선이 아니라 0.5px 링(`--shadow-hairline`)이다 — 바탕 위 카드의 깊이는 그것뿐이다(DS 「깊이」, codex-ds 결정 27).
  *
- * **링은 카드 안쪽 가장자리에 덮어 그린다**(`::after`의 `inset` 그림자 — 값은 같은 토큰이다). 카드 바깥에 그리는 그림자는 조상의
- * 넘침 숨김에 잘린다: 목록 칸 · 작업 패널의 접히는 바깥 상자가 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어
- * 선다 — 바깥 링이면 틈 쪽 한 변에만 남는다. 덮개는 카드 내용 위에 서서 내용이 가장자리까지 칠해도 링이 안 가려지고, 누름은
- * 지나보낸다(`pointer-events-none`). 네 변이 칠해지는지는 `e2e/frame.spec.ts`가 픽셀로 잰다.
+ * **목록 | 내용 카드 안에서는 카드가 아니라 내용 칸이다**(`InListCard` — codex-ds 결정 28). 얼굴과 면을 바깥 카드가 들어 이 상자는
+ * 모서리 · 링 · 면을 그리지 않고, 카드의 표식(`data-slot="card"`)도 바깥 카드의 것이다 — 카드 줄의 카드는 하나다.
  */
 function Card({ as: Tag = "section", label, head, tone, className, children }: CardProps) {
   const background = useShellBackground(tone === "terminal");
+  const column = useContext(InListCard);
   return (
     <Tag
       aria-label={label}
-      data-slot="card"
+      data-slot={column ? undefined : "card"}
       data-tone={tone}
       style={background === undefined ? undefined : { backgroundColor: background }}
       className={cn(
-        "relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl",
-        "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:shadow-[inset_var(--shadow-hairline)]",
-        tone !== "terminal" && "bg-surface",
+        "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
+        !column && CARD_FACE,
+        !column && tone !== "terminal" && "bg-surface",
         className,
       )}
     >
@@ -567,9 +596,9 @@ function Card({ as: Tag = "section", label, head, tone, className, children }: C
 }
 
 /**
- * 카드 머리(ui-refresh 결정 5) — 카드 안에서 고르는 것(목록의 검색칸 · 패널 이름)과 그 곁의 버튼이 서는 46px 줄이다(`--card-head`
- * — 탭 줄과 같은 `size-toolbar`). `div`이고 끌기 영역이 아니다(카드 안이다). 문서 카드의 머리는 이것이 아니라 경로 줄(`PathBar`)이다.
- * 좌우 여백은 10(`px-2.5`)이다.
+ * 카드 머리(ui-refresh 결정 5) — 카드 안에서 고르는 것(패널 이름 · 트리의 도구)과 그 곁의 버튼이 서는 46px 줄이다(`--card-head`
+ * — 탭 줄과 같은 `size-toolbar`). `div`이고 끌기 영역이 아니다(카드 안이다). 문서 카드의 머리는 이것이 아니라 경로 줄(`PathBar`)이고,
+ * 목록 칸의 머리는 목록 머리(`ListHead`)다. 좌우 여백은 10(`px-2.5`)이다.
  *
  * **화면의 이름 · 위치와 할 일은 여기 서지 않는다** — 머리 카드가 든다(`HeadSlot`, codex-ds 스펙 §7). 카드 안에 고를 것이 없으면 그
  * 카드에는 이 줄이 없다. `end`는 오른쪽 끝에 고정되는 조작이다.
@@ -580,7 +609,7 @@ function CardHead({
   ...marks
 }: {
   end?: ReactNode;
-  /** 줄 왼쪽에 서는 것 — 목록 카드 머리의 검색칸 · 작업 패널 머리의 제목(고른 레일 칸). */
+  /** 줄 왼쪽에 서는 것 — 작업 패널 머리의 제목(고른 레일 칸) · 편집기 트리 카드의 도구. */
   children?: ReactNode;
   /** 검사가 머리를 정체성으로 집는 표식 — 모양(클래스)으로 집으면 규격을 손보는 날 샌다. */
   [mark: `data-${string}`]: string | undefined;
@@ -597,4 +626,20 @@ function CardHead({
   );
 }
 
-export { Card, CardHead, Frame };
+/**
+ * 목록 머리(codex-ds 스펙 §4 「목록 머리」 · DS `.at-listcol-head`) — 목록 칸 맨 위 줄이다. 높이는 경로 줄과 같은 48(`size-pathbar`)이라
+ * 내용 칸의 경로 줄과 한 줄에 선다(codex-ds 결정 28). 왼쪽에 제목(14/500 `fg`)과 개수(13 `fg-tertiary` · 고정폭 숫자)가 사이 4로 서고,
+ * 그 목록에 거는 할 일(`end`)이 오른쪽 끝에 선다. 왼쪽 안쪽 8이 목록 칸의 안쪽 8에 더해져 제목이 칸 + 16에 선다 — 아래 행 글자와 한
+ * 세로줄이다(DS 「행 글자 16」). `div`이고 끌기 영역이 아니다(카드 안이다). 표식 `data-slot="list-head"`는 검사가 집는다.
+ */
+function ListHead({ title, count, end }: { title: string; count?: number; end?: ReactNode }) {
+  return (
+    <div data-slot="list-head" className="flex h-(--size-pathbar) shrink-0 items-center gap-1 pl-2">
+      <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+      {count !== undefined && <span className="shrink-0 text-chat-meta text-fg-tertiary tabular-nums">{count}</span>}
+      {end && <div className="ml-auto flex shrink-0 items-center gap-1">{end}</div>}
+    </div>
+  );
+}
+
+export { Card, CardHead, Frame, ListHead };

@@ -308,7 +308,7 @@ function asideClass(open: boolean, dragging: boolean): string {
     // `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts` — 행 메타와 점의 대비를 그 바탕 위에서 잰다).
     "relative overflow-hidden bg-surface-shell",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-    // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
+    // 곡선은 --ease-panel — 폭이 움직이는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
     !dragging && PANEL_MOTION,
     !dragging && (open ? "transition-[width,min-width]" : "transition-[width]"),
     open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0",

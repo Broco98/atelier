@@ -9,7 +9,7 @@ import { archivedDocsQuery, archiveQuery } from "./hooks";
 import type { ArchivedDocs, ArchiveEntry } from "./types";
 import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
 
-// 아카이브 화면을 통째로 그려 잰다. 목록 패널의 필터와 머리말의 프로젝트 칩은 서로 다른 파일에
+// 아카이브 화면을 통째로 그려 잰다. 목록 칸의 필터와 머리 카드의 프로젝트 글자는 서로 다른 파일에
 // 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 둘이 한 번에 걸린다.
 //
 // 호버 카드 조각(`WorkCard.test.tsx`)과 달리 프로바이더를 세운다. 이 화면은 목록도 문서도 스스로
@@ -53,7 +53,7 @@ function render(
 }
 
 beforeEach(() => {
-  // 패널 폭과 접힘이 여기서 온다 — 없으면 첫 렌더에서 던진다
+  // 목록 칸의 폭이 여기서 온다 — 없으면 첫 렌더에서 던진다
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
 });
 
@@ -80,7 +80,7 @@ describe("아무것도 안 치웠을 때", () => {
 // 정적 마크업에는 그럴 손이 없다. 그래서 낱말의 계약은 `archive-copy.test.ts`가 재고,
 // 화면이 리터럴로 되돌아가지 않았는지만 여기서 소스로 본다.
 //
-// **fail-closed로 짠다**: 파일이 옮겨지면 readFileSync가 던지고, 목록 패널이 통째로
+// **fail-closed로 짠다**: 파일이 옮겨지면 readFileSync가 던지고, 목록 칸이 통째로
 // 사라져도 아래 첫 두 줄이 빨개진다. 「못 찾았으니 깨끗하다」로 떨어질 길이 없어야 검사다.
 describe("좁혀서 0개일 때 하는 말", () => {
   it("목록이 그 문장을 손으로 적지 않는다", () => {

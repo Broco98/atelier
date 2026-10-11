@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CardHead } from "@/components/shell/Frame";
+import { ListHead } from "@/components/shell/Frame";
+import { navItem } from "@/components/shell/nav-items";
 import { buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -62,12 +63,11 @@ interface ArchiveListProps {
   onCopyDoc: (slug: string, path: string) => void;
 }
 
-// 아카이브 목록 카드의 안 — 머리(검색칸), 첫 줄(정렬 · 거르기), 몸(아카이브 행). `ProjectList`와 같은 목록 카드이되 문서
-// 트리를 **이 안에** 품는다 — 우측에 따로 문서 패널을 세우면 컬럼이 넷(사이드바+목록+본문+문서)이 되어
-// 1280 창에서 본문이 370px로 쪼그라든다. `works-nav-depth`가 되찾은 폭(536→864)을
-// 아카이브에서 다시 잃을 이유가 없다.
+// 아카이브 목록 칸의 안 — 목록 머리(「Archive」 · 개수), 찾기 칸, 첫 줄(정렬 · 거르기), 몸(아카이브 행). `ProjectList`와 같은 목록
+// 칸이되 문서 트리를 **이 안에** 품는다 — 그 트리를 오른쪽 spec 목록 패널로 옮기고 행을 두 줄 행으로 바꾸는 것은 codex-ds 티켓
+// 21이다.
 //
-// 카드 · 접힘 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`, ui-refresh 결정 15 · 27). 폭은 `ProjectList`와 키를
+// 칸 · 세로 선 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`, codex-ds 결정 28). 폭은 `ProjectList`와 키를
 // 나눠 갖지 않는다(`ArchivePage`의 `archive-panel-width`) — 이쪽은 문서 트리까지 담아 쓸모 있는 폭이 다르다.
 function ArchiveList({
   entries,
@@ -119,25 +119,27 @@ function ArchiveList({
 
   return (
     <>
-      {/* 목록 카드 머리 — 검색칸 하나가 위치 자리에 늘어선다(Archive 프로토타입). */}
-      <CardHead>
-        {entries.length > 0 && (
-          <InputGroup className="flex-1">
-            <InputGroupAddon>
-              <Search />
-            </InputGroupAddon>
-            {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
-            <InputGroupInput
-              aria-label="아카이브 검색"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="아카이브 검색"
-            />
-          </InputGroup>
-        )}
-      </CardHead>
+      {/* 목록 머리 — 제목 · 치운 work 수(DS `.at-listcol-head`). 목록이 오기 전에는 수를 말하지 않는다 — `[]`가 「하나도 없다」와
+          「아직 모른다」를 겸한다(`ArchivePage`). */}
+      <ListHead title={navItem("archive").label} count={loading ? undefined : entries.length} />
 
-      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+      {/* 찾기 칸 — 머리 아래 칸 폭으로 선다(DS `.at-search`). */}
+      {entries.length > 0 && (
+        <InputGroup className="mb-2 shrink-0">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
+          <InputGroupInput
+            aria-label="아카이브 검색"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="아카이브 검색"
+          />
+        </InputGroup>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* 첫 줄 — 정렬 · 거르기 버튼. 신호등을 피할 일은 머리 줄의 몫이라 사이드바가 접혀도 글자가 그대로 선다. */}
         <div className="flex shrink-0 items-center gap-1.5 pb-2 pl-0.5">
           {/* 도움말 「아카이브한 날짜 기준 정렬」은 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 그 말은
@@ -209,13 +211,14 @@ function ArchiveList({
             <span className="text-chat-meta text-fg-tertiary">{narrowedNotice(q !== "")}</span>
           </div>
         ) : (
-          <div className="-mx-3 -my-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 py-1 scroll-quiet">
-            {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
-                패널 가장자리로 간다. 이 목록은 행 오른쪽 끝에 날짜가 서서 막대와 **0px**까지
-                붙어 있었다(실측 콘텐츠 619 · 막대 619~625). 뚫고 나간 지금은 12px 떨어진다.
+          <div className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pt-1 pb-2 scroll-quiet">
+            {/* **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
+                칸 가장자리로 간다. 이 목록은 행 오른쪽 끝에 날짜가 서서 막대와 **0px**까지
+                붙어 있었다(실측 콘텐츠 619 · 막대 619~625). 뚫고 나간 지금은 칸의 안쪽 여백(8)만큼 떨어진다.
                 같은 병이 사이드바 work 목록에 있었고 그쪽 주석이 내력을 든다.
-                위아래의 `-my-1 py-1`도 같은 손버릇이다 — 첫 행 · 끝 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 끝에 잘리지
-                않게 상자만 4px씩 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). */}
+                위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지
+                않게 상자만 4px 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 그 자리이자
+                칸 바닥의 안쪽 8이다(DS `.at-listcol`). */}
             {sorted.map((entry) => (
               <ArchiveRow
                 key={entry.slug}

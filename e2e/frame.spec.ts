@@ -17,9 +17,9 @@ import {
   칠한링,
   토큰값,
   토큰색,
-  툴팁,
   팔레트,
 } from "./harness";
+import { settle } from "./tab-row";
 
 // 판 04 티켓 01 — 공용 틀(`Frame`, ui-refresh 결정 4 · 5 · 27). 탭이 없거나 패널이 없는 화면이 옅은 회색 바탕 위의 둥근
 // 카드로 뜨고, 머리 줄(`<header>`)은 그 위 48에 선다(codex-ds 스펙 §4 — 틈 8 · 머리 카드 32 · 틈 8).
@@ -389,16 +389,19 @@ for (const status of ["draft", "active", "review", "done"] as const) {
   });
 }
 
-// 판 04 티켓 02 — **목록이 있는 두 화면**(ui-refresh 결정 15 — 칸 하나 = 카드 하나). 목록과 상세가 따로 카드이고 사이 틈은
-// `--gap`이다. 틈은 목록 칸의 바깥 상자(카드 + 오른쪽 틈)가 들어, 목록을 닫으면 폭과 함께 0으로 접힌다 — 닫힌 칸 옆에 틈이
-// 겹쳐 남지 않는다. 폭 손잡이는 그 틈의 가운데에 서고, 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
+// 판 04 티켓 02 · codex-ds 티켓 20 — **목록이 있는 두 화면**(codex-ds 결정 28 · 32). 목록 칸과 그 내용(프로젝트 상세 · 문서)은 **한
+// 카드**이고, 가운데 0.5px `border-heavy` 세로 선이 가른다. 그 선이 폭 손잡이다 — 끌면 목록 폭이 바뀌어 저장되고, 두 번 누르면 기본
+// 폭(`size-list` 264)이다. 목록 칸은 접지 않는다 — 접는 토글도, 그것을 받던 ⌘Enter도 없다. 목록 머리는 내용의 경로 줄과 같은
+// 48(`size-pathbar`)이라 두 머리가 한 줄에 선다. 따로 여닫는 패널만 틈 8로 떨어진 카드다(작업 패널 — 아래 「작업 화면」).
 const LIST_SCREENS = [
   {
     name: "Projects",
     url: `/projects/${PROJECTS[0].slug}`,
     list: "프로젝트 목록",
     widthKey: "panel-width",
-    // 목록 카드 머리에 서는 것 — 검색칸과 `+`(이름 「프로젝트 등록」).
+    // 목록 머리 — 제목 · 개수(그리고 끝의 `+`).
+    head: ["Projects", String(PROJECTS.length)],
+    // 목록 칸 위쪽에 서는 조작 — 그 아래 찾기 칸과 머리의 `+`(이름 「프로젝트 등록」).
     headControls: (page: Page) => [
       page.getByRole("textbox", { name: "프로젝트 검색", exact: true }),
       page.getByRole("button", { name: "프로젝트 등록", exact: true }),
@@ -409,7 +412,8 @@ const LIST_SCREENS = [
     url: `/archive/${ARCHIVE[0].slug}`,
     list: "아카이브 목록",
     widthKey: "archive-panel-width",
-    // 머리의 검색칸과 그 아래 첫 줄의 정렬 — 정렬은 늘 글자 「치운 날」과 함께 선다(이름이 그 글자다).
+    head: ["Archive", String(ARCHIVE.length)],
+    // 머리 아래의 찾기 칸과 그 아래 첫 줄의 정렬 — 정렬은 늘 글자 「치운 날」과 함께 선다(이름이 그 글자다).
     headControls: (page: Page) => [
       page.getByRole("textbox", { name: "아카이브 검색", exact: true }),
       page.getByRole("button", { name: "치운 날", exact: true }),
@@ -418,8 +422,12 @@ const LIST_SCREENS = [
 ] as const;
 
 const HANDLE = '[title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]';
-/** 목록 칸의 폭 손잡이 — 사이드바의 손잡이(`aside` 안)와 가른다. */
+/** 목록 칸의 폭 손잡이(세로 선 위) — 사이드바의 손잡이(`aside` 안)와 가른다. */
 const listHandle = (page: Page) => page.locator(`${HANDLE}:not(aside ${HANDLE})`);
+/** 목록 칸을 품은 카드 — 목록 | 내용 한 카드다. */
+const joinedCard = (page: Page, list: Locator) => page.locator('[data-slot="card"]', { has: list });
+/** 목록 칸 맨 위의 목록 머리. */
+const listHead = (list: Locator) => list.locator('[data-slot="list-head"]');
 
 async function boxOf(target: Locator) {
   const box = await target.boundingBox();
@@ -430,7 +438,7 @@ async function boxOf(target: Locator) {
 const sidebarRight = (page: Page) => page.locator("aside").evaluate((el) => el.getBoundingClientRect().right);
 
 for (const screen of LIST_SCREENS) {
-  test(`${screen.name}: 목록과 상세가 각자 카드이고 사이 틈이 --gap이다 — 목록을 닫으면 상세가 사이드바 쪽 끝까지 넓어진다`, async ({
+  test(`${screen.name}: 목록과 내용이 한 카드이고 0.5px border-heavy 세로 선이 가른다 — 그 선 위가 폭 손잡이다`, async ({
     page,
   }) => {
     await installFixtureBackend(page);
@@ -439,73 +447,92 @@ for (const screen of LIST_SCREENS) {
     const main = page.locator("main");
     await expect(list).toBeVisible();
 
-    // 목록 카드는 `section`이다 — `aside`는 사이드바 하나뿐이고(`works-sidebar`), `header`는 머리 줄 하나다.
+    // 목록 칸은 `section`이다 — `aside`는 사이드바 하나뿐이고(`works-sidebar`), `header`는 머리 줄 하나다.
     expect(await list.evaluate((el) => el.tagName)).toBe("SECTION");
     await expect(page.locator("aside")).toHaveCount(1);
     await expect(page.locator("header")).toHaveCount(1);
+    // 한 카드 — 목록 칸과 내용 칸(`main`)이 같은 카드 안에 선다. 카드 줄의 카드는 그 하나다.
+    const card = joinedCard(page, list);
+    await expect(card).toHaveCount(1);
+    await expect(card.locator("main")).toHaveCount(1);
+    await expect(page.locator('[data-slot="card"]')).toHaveCount(1);
 
     const gap = await token(page, "--gap");
     const titlebar = await token(page, "--titlebar-height");
     const edge = await sidebarRight(page);
-    const [card, detail] = [await boxOf(list), await boxOf(main)];
-    // 두 카드가 머리 줄 바로 아래에서 시작하고, 사이드바가 열렸으면 목록 카드가 사이드바에 붙는다(왼쪽 틈 0).
-    expect(card.y, "목록 카드 위").toBe(titlebar);
-    expect(detail.y, "상세 카드 위").toBe(titlebar);
-    expect(card.x, "목록 카드 왼쪽").toBe(edge);
-    expect(detail.x - card.right, "목록과 상세 사이 틈").toBe(gap);
+    const [whole, column, content] = [await boxOf(card), await boxOf(list), await boxOf(main)];
+    // 카드가 머리 줄 바로 아래에서 사이드바에 붙어 시작하고(왼쪽 틈 0) 창 오른쪽에 틈을 남긴다.
+    expect([whole.x, whole.y], "카드 왼쪽 위").toEqual([edge, titlebar]);
+    expect(page.viewportSize()!.width - whole.right, "카드 오른쪽 틈").toBe(gap);
+    // 목록 칸은 카드 왼쪽 끝, 내용 칸은 그 바로 뒤에서 카드 오른쪽 끝까지다 — 둘 사이에 틈이 없다.
+    expect([column.x, column.y, column.bottom], "목록 칸").toEqual([whole.x, whole.y, whole.bottom]);
+    expect([content.x, content.y, content.right, content.bottom], "내용 칸").toEqual([
+      column.right,
+      whole.y,
+      whole.right,
+      whole.bottom,
+    ]);
 
-    // 손잡이는 그 틈의 가운데다 — 카드 모서리 위가 아니다.
+    // 세로 선 — 목록 칸 오른쪽 끝 안쪽에 칠한 0.5px `border-heavy` 면이고, 칸의 위에서 아래까지다.
+    const rule = await list.evaluate((el) => {
+      const style = getComputedStyle(el, "::after");
+      return [style.width, style.right, style.top, style.bottom, style.backgroundColor];
+    });
+    expect(rule, "세로 선").toEqual(["0.5px", "0px", "0px", "0px", await 토큰색(page, "--border-heavy")]);
+    // 손잡이는 그 선 위에 걸친다 — 가운데가 두 칸의 경계다. 카드 안이라 창을 끄는 자리가 아니다.
     const handle = await boxOf(listHandle(page));
-    expect(handle.x + handle.width / 2, "손잡이 가운데").toBe(card.right + gap / 2);
-    // 손잡이 옆에 드러난 틈은 창을 끄는 자리이고, 카드 안은 아니다. 손잡이(5px)가 틈(8px)의 가운데라 드러난 띠는 양쪽 1.5px씩이다 —
-    // 카드 모서리 바로 옆을 짚는다(손잡이 쪽 경계는 서브픽셀이라 짚는 자리가 반올림에 걸린다).
-    const middleY = card.y + card.height / 2;
-    expect(await draggable(page, card.right + 0.5, middleY), "목록 카드 오른쪽 틈").toBe(true);
-    expect(await draggable(page, card.x + card.width / 2, middleY), "목록 카드 안").toBe(false);
+    expect(handle.x + handle.width / 2, "손잡이 가운데 = 경계").toBe(column.right);
+    expect([handle.y, handle.bottom], "손잡이는 칸의 위에서 아래까지").toEqual([column.y, column.bottom]);
+    const middleY = whole.y + whole.height / 2;
+    expect(await draggable(page, column.right, middleY), "경계").toBe(false);
+    expect(await draggable(page, whole.right + gap / 2, middleY), "카드 오른쪽 틈").toBe(true);
 
-    // 목록 토글(ui-refresh 결정 15) — 열렸으면 접는 그림(`Minimize2`)이고, 도움말이 누르면 될 일을 말한다.
-    const toggle = page.getByRole("button", { name: "목록 패널 토글", exact: true });
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(toggle.locator("svg")).toHaveClass(/lucide-minimize-2/);
-    await toggle.focus();
-    await expect(툴팁(page)).toHaveText("목록 패널 접기");
-    await toggle.blur();
-
-    // ⌘Enter로 닫으면 상세가 사이드바 쪽 끝까지 넓어진다 — 접힌 칸 옆에 틈이 겹쳐 남지 않는다.
-    await page.keyboard.press("Meta+Enter");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(toggle.locator("svg")).toHaveClass(/lucide-maximize-2/);
-    await expect.poll(async () => (await boxOf(main)).x).toBe(edge);
-    await toggle.focus();
-    await expect(툴팁(page)).toHaveText("목록 패널 펼치기");
-
-    // 토글을 누르면 다시 선다.
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect.poll(async () => (await boxOf(main)).x).toBe(card.right + gap);
+    // 목록 칸을 접는 토글이 없다(codex-ds 결정 32).
+    await expect(page.getByRole("button", { name: "목록 패널 토글", exact: true })).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test(`${screen.name}: 사이드바를 ⌘B로 접어도 목록 카드 머리의 조작이 카드 안 같은 자리다`, async ({ page }) => {
+  test(`${screen.name}: 목록 머리가 경로 줄과 같은 48(size-pathbar)이고 제목 · 개수가 선다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(screen.url);
+    const list = page.getByRole("region", { name: screen.list, exact: true });
+    const head = listHead(list);
+    await expect(head).toHaveCount(1);
+    await expect(head.locator("span")).toHaveText(screen.head);
+
+    const [box, column] = [await boxOf(head), await boxOf(list)];
+    expect(box.height, "목록 머리 높이").toBe(parseFloat(await 토큰값(page, "height", "--size-pathbar")));
+    expect(box.y, "목록 칸 맨 위").toBe(column.y);
+    // 내용 칸에 경로 줄이 서는 화면(Archive 문서)은 두 머리가 한 줄이다 — 위끝과 높이가 같다.
+    const bar = page.locator('main [data-slot="path-bar"]');
+    if (screen.name === "Archive") await expect(bar).toHaveCount(1);
+    if (await bar.count()) {
+      const line = await boxOf(bar);
+      expect([line.y, line.height], "경로 줄과 한 줄").toEqual([box.y, box.height]);
+    }
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  test(`${screen.name}: 사이드바를 ⌘B로 접어도 목록 칸 위쪽의 조작이 칸 안 같은 자리다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(screen.url);
     const list = page.getByRole("region", { name: screen.list, exact: true });
     await expect(list).toBeVisible();
 
-    /** 조작마다 목록 카드 왼쪽 위에서 잰 자리. */
+    /** 조작마다 목록 칸 왼쪽 위에서 잰 자리. */
     const offsets = async () => {
-      const card = await boxOf(list);
+      const column = await boxOf(list);
       return Promise.all(
         screen.headControls(page).map(async (control) => {
           const box = await boxOf(control);
-          return { x: box.x - card.x, y: box.y - card.y };
+          return { x: box.x - column.x, y: box.y - column.y };
         }),
       );
     };
     const before = await offsets();
 
-    // 신호등을 피할 일은 머리 줄 하나의 몫이다 — 카드 머리에는 그것을 피하는 여백 갈래가 없다. 카드는 창 왼쪽 틈까지 옮겨 가고,
-    // 그 안의 조작은 카드 안에서 같은 자리다.
+    // 신호등을 피할 일은 머리 줄 하나의 몫이다 — 목록 칸에는 그것을 피하는 여백 갈래가 없다. 카드는 창 왼쪽 틈까지 옮겨 가고,
+    // 그 안의 조작은 칸 안에서 같은 자리다.
     await page.keyboard.press("Meta+b");
     const gap = await token(page, "--gap");
     await expect.poll(async () => (await boxOf(list)).x).toBe(gap);
@@ -514,33 +541,98 @@ for (const screen of LIST_SCREENS) {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test(`${screen.name}: 목록 폭을 끌어 바꾸면 카드의 폭이 저장되고 다시 열 때 그 폭이다`, async ({ page }) => {
+  // **폭의 기본은 DS `size-list`(264)이고 범위는 240–560이다**(codex-ds 스펙 S4). 사람이 바꿔 둔 폭(로컬 저장)은 범위 안이면 그대로
+  // 쓴다 — 기본값이 바뀌어도 고른 폭을 버리지 않는다(옛 기본 360도 그대로 선다). 범위 밖 값은 기본으로 선다.
+  test(`${screen.name}: 세로 선을 끌면 목록 폭이 바뀌어 저장되고 두 번 누르면 기본 폭 size-list(264)다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(screen.url);
     const list = page.getByRole("region", { name: screen.list, exact: true });
+    const main = page.locator("main");
     await expect(list).toBeVisible();
-    const start = (await boxOf(list)).width;
+    const 폭 = async () => (await boxOf(list)).width;
+    const 저장 = () => page.evaluate((key) => localStorage.getItem(key), screen.widthKey);
+    const 기본 = parseFloat(await 토큰값(page, "width", "--size-list"));
+    expect(기본, "DS 수").toBe(264);
+    expect(await 폭(), "저장된 폭이 없을 때").toBe(기본);
 
+    // 선을 오른쪽으로 40 끈다 — 목록이 그만큼 넓어지고 내용 칸이 선을 따라온다.
     const handle = await boxOf(listHandle(page));
-    const y = handle.y + handle.height / 2;
-    await page.mouse.move(handle.x + handle.width / 2, y);
+    const [x, y] = [handle.x + handle.width / 2, handle.y + handle.height / 2];
+    await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.mouse.move(handle.x + handle.width / 2 + 40, y, { steps: 5 });
+    await page.mouse.move(x + 40, y, { steps: 5 });
     await page.mouse.up();
-
-    await expect.poll(async () => (await boxOf(list)).width).toBe(start + 40);
-    expect(await page.evaluate((key) => localStorage.getItem(key), screen.widthKey)).toBe(String(start + 40));
+    await expect.poll(폭).toBe(기본 + 40);
+    expect((await boxOf(main)).x, "내용 칸이 선을 따라온다").toBe((await boxOf(list)).right);
+    expect(await 저장()).toBe(String(기본 + 40));
 
     await page.reload();
     await expect(list).toBeVisible();
-    await expect.poll(async () => (await boxOf(list)).width).toBe(start + 40);
+    await expect.poll(폭).toBe(기본 + 40);
+
+    // 두 번 누르면 기본 폭이다.
+    await listHandle(page).dblclick();
+    await expect.poll(폭).toBe(기본);
+    expect(await 저장()).toBe(String(기본));
+
+    for (const [저장값, 선다] of [
+      ["360", 360],
+      ["240", 240],
+      ["560", 560],
+      ["600", 기본],
+      ["239", 기본],
+    ] as const) {
+      await page.evaluate(([key, value]) => localStorage.setItem(key, value), [screen.widthKey, 저장값] as const);
+      await page.reload();
+      await expect(list).toBeVisible();
+      expect(await 폭(), `저장된 폭 ${저장값}`).toBe(선다);
+    }
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
 
+// **Projects의 ⌘Enter는 아무것도 하지 않는다**(codex-ds 결정 32) — 오른쪽 패널이 없는 화면이고, 목록 칸은 접지 않는다. 한때 이 키가
+// 목록 칸을 접었고 그 접힘을 화면마다 로컬 저장에 적었다(`projects-panel-open` · `archive-panel-open`). 접어 둔 값이 남아 있어도
+// 목록 칸이 서고, 앱은 그 값을 읽지 않고 지운다. 「아무 일도 안 한다」는 둘로 잰다: 화면(내용 칸 · 목록 폭 · `aside` 수)이 그대로이고,
+// 그 키를 받아 막은(`preventDefault`) 리스너가 없다 — 화면만 재면 「받아서 다른 일을 했다」가 초록으로 지나간다.
+test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 칸의 저장값은 지워진다", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("projects-panel-open", "0");
+    localStorage.setItem("archive-panel-open", "0");
+  });
+  await installFixtureBackend(page);
+  await page.goto(`/projects/${PROJECTS[0].slug}`);
+  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
+  await expect(list).toBeVisible();
+  expect((await boxOf(list)).width, "접어 둔 값이 있어도 목록 칸이 선다").toBe(
+    parseFloat(await 토큰값(page, "width", "--size-list")),
+  );
+  expect(
+    await page.evaluate(() => [localStorage.getItem("projects-panel-open"), localStorage.getItem("archive-panel-open")]),
+    "접힘 값은 지워진다",
+  ).toEqual([null, null]);
+
+  const 화면 = async () => ({
+    main: await boxOf(page.locator("main")),
+    list: (await boxOf(list)).width,
+    asides: await page.locator("aside").count(),
+  });
+  const before = await settle(page, 화면);
+  // 창에서 그 키가 막혔는지를 적는다 — 앱의 리스너가 먼저 달려 있으므로 이 리스너가 그 뒤에 돈다.
+  await page.evaluate(() => {
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.metaKey) (window as unknown as { 막힌엔터: boolean }).막힌엔터 = e.defaultPrevented;
+    });
+  });
+  await page.keyboard.press("Meta+Enter");
+  expect(await page.evaluate(() => (window as unknown as { 막힌엔터?: boolean }).막힌엔터), "키를 받아 막은 리스너").toBe(false);
+  expect(await settle(page, 화면)).toEqual(before);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 판 04 티켓 03 — **작업 화면**(ui-refresh 결정 4 · 5 · 15). 머리 줄 아래에 문서 카드(`<main>`)와 작업 패널 카드가 각자 뜨고, 사이
 // 틈은 `--gap`이다. 패널의 바깥 상자는 여전히 두 번째 `aside`이고 폭이 「왼쪽 틈 + 카드」라, 접으면 틈이 카드와 함께 0으로 접혀
-// 문서 카드가 오른쪽 틈 끝까지 넓어진다. 폭 손잡이는 그 틈의 가운데다(목록 칸과 같은 자리).
+// 문서 카드가 오른쪽 틈 끝까지 넓어진다. 폭 손잡이는 그 틈의 가운데다(분할의 두 열 사이와 같은 자리).
 const [pinnedWork, plainWork] = WORKS;
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 
@@ -837,8 +929,6 @@ const HEAD_SCREENS: {
   splitBefore?: string;
   /** 캔버스에만 있어 짓지 않은 조작 — 화면 어디에도 없다. */
   absent: readonly string[];
-  /** 본문 카드에 카드 머리(`card-head`)가 남는가 — 고를 것이나 아직 옮기지 않은 조작이 남은 화면만. */
-  cardHead: boolean;
 }[] = [
   {
     name: "Projects",
@@ -848,8 +938,6 @@ const HEAD_SCREENS: {
     controls: ["폴더 열기", "제거"],
     splitBefore: "제거",
     absent: ["LLM이 받는 텍스트"],
-    // 목록 토글은 목록 칸을 걷는 날(codex-ds 티켓 20)까지 상세 카드 머리 그 자리다.
-    cardHead: true,
   },
   {
     name: "Archive",
@@ -858,11 +946,9 @@ const HEAD_SCREENS: {
     // 제목 뒤 옅은 글자는 걸쳤던 프로젝트와 치운 날이다 — 문서 카드의 머리 자리를 경로 줄이 가져 이리 왔다.
     words: [ARCHIVE[0].title, new RegExp(`^${ARCHIVE[0].projects.join(" · ")} · .+에 치움$`), ARCHIVE[0].status],
     sub: true,
-    controls: ["목록 패널 토글"],
-    splitBefore: "목록 패널 토글",
+    // 배지는 보이기만 한다 — 버튼이 아니다. ⋯ 아카이브 메뉴와 spec 목록 토글은 codex-ds 티켓 21이다.
+    controls: [],
     absent: ["되살리기"],
-    // 문서 카드의 머리는 경로 줄이다(`PathBar` — 카드 머리 줄이 아니다).
-    cardHead: false,
   },
   {
     name: "Processes",
@@ -871,7 +957,6 @@ const HEAD_SCREENS: {
     words: ["Processes"],
     controls: ["조용한 셸 모두 닫기"],
     absent: ["새로 고침", "고아 정리"],
-    cardHead: false,
   },
   {
     name: "Settings",
@@ -881,7 +966,6 @@ const HEAD_SCREENS: {
     sub: true,
     controls: ["저장"],
     absent: [],
-    cardHead: false,
   },
   {
     name: "레이아웃 편집기",
@@ -891,9 +975,8 @@ const HEAD_SCREENS: {
     sub: true,
     controls: ["설정으로 돌아가기", "LLM이 받는 텍스트", "저장"],
     absent: [],
-    cardHead: false,
   },
-  { name: "Terminal", url: "/terminal", icon: "square-terminal", words: ["Terminal"], controls: [], absent: [], cardHead: false },
+  { name: "Terminal", url: "/terminal", icon: "square-terminal", words: ["Terminal"], controls: [], absent: [] },
   {
     name: "Works(고른 작업 없음)",
     url: "/works",
@@ -902,7 +985,6 @@ const HEAD_SCREENS: {
     words: ["Works"],
     controls: [],
     absent: [],
-    cardHead: false,
   },
 ];
 
@@ -954,8 +1036,8 @@ for (const screen of HEAD_SCREENS) {
       await expect(page.getByRole("button", { name, exact: true }), `${name}는 캔버스에만 있다`).toHaveCount(0);
     }
 
-    // 고를 것이 남지 않은 본문 카드에는 머리가 없다 — 위치와 할 일은 머리 카드가 말한다.
-    await expect(page.locator('main [data-slot="card-head"]')).toHaveCount(screen.cardHead ? 1 : 0);
+    // 고를 것이 남지 않은 본문 카드에는 머리가 없다 — 위치와 할 일은 머리 카드가 말한다(목록 칸의 찾기 칸 · 머리는 `main` 밖이다).
+    await expect(page.locator('main [data-slot="card-head"]')).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
@@ -981,7 +1063,7 @@ test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창
   expect(right.x - left.right, "두 열 사이 틈").toBe(gap);
 
   // 손잡이는 그 틈의 가운데다. 손잡이(5px)가 틈(8px)의 가운데라 드러난 띠는 양쪽 1.5px씩이고, 손잡이 쪽 경계는 서브픽셀이라 짚는
-  // 자리가 반올림에 걸린다 — 목록 칸(카드 오른쪽 + 0.5) · 패널 칸(카드 왼쪽 − 1)의 검사와 같은 자리를 짚는다.
+  // 자리가 반올림에 걸린다 — 패널 칸(카드 왼쪽 − 1)의 검사와 같은 손버릇으로 카드 모서리 바로 옆을 짚는다.
   const handle = await boxOf(page.locator("main").locator(HANDLE));
   expect(handle.x + handle.width / 2, "손잡이 가운데").toBe(left.right + gap / 2);
   const middleY = left.y + left.height / 2;
@@ -1089,9 +1171,9 @@ async function 링이칠해진변(page: Page, card: Locator) {
   return 칠해진변;
 }
 
-// 바탕 위 카드의 링은 **칠해져야** 한다(codex-ds 결정 27 — 바탕 위 카드의 테두리는 0.5px 링뿐이다). 접히는 칸(목록 칸 · 작업 패널)의
-// 바깥 상자는 접히는 동안 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어 선다 — 링을 카드 바깥에 그리면 그 세
-// 변에서 잘려 틈 쪽 한 변에만 남는다.
+// 바탕 위 카드의 링은 **칠해져야** 한다(codex-ds 결정 27 — 바탕 위 카드의 테두리는 0.5px 링뿐이다). 접히는 칸(작업 패널)의 바깥
+// 상자는 접히는 동안 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어 선다 — 링을 카드 바깥에 그리면 그 세 변에서
+// 잘려 틈 쪽 한 변에만 남는다. 목록 | 내용 카드(codex-ds 결정 28)는 두 칸을 한 링이 두른다 — 안의 칸은 링을 따로 그리지 않는다.
 test("바탕 위 카드의 0.5px 링이 네 변에 다 칠해진다 — 접히는 칸의 상자가 잘라 내지 않는다", async ({ page }) => {
   const 네변 = { 위: true, 아래: true, 왼쪽: true, 오른쪽: true };
   await installFixtureBackend(page);
@@ -1104,7 +1186,7 @@ test("바탕 위 카드의 0.5px 링이 네 변에 다 칠해진다 — 접히�
   await page.goto(`/projects/${PROJECTS[0].slug}`);
   const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
   await expect(list).toBeVisible();
-  expect(await 링이칠해진변(page, list), "목록 카드").toEqual(네변);
+  expect(await 링이칠해진변(page, joinedCard(page, list)), "목록 | 내용 카드").toEqual(네변);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

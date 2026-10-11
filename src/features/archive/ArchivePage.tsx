@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Toaster, showToast } from "@/components/ui/toast";
 import { Card, Frame } from "@/components/shell/Frame";
-import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
 import { navItem } from "@/components/shell/nav-items";
 import { PathBar } from "@/components/shell/PathBar";
 import useResizableWidth from "@/components/shell/useResizableWidth";
@@ -36,8 +35,8 @@ const NO_DOCS: string[] = [];
 /** 이 화면의 nav 항목 — 고른 아카이브가 없을 때 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("archive");
 
-// 목록 카드 + 문서 카드. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
-// (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
+// 목록 | 문서 한 카드(codex-ds 결정 28). Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
+// (nav 항목 하나뿐) 목록 칸이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
 function ArchivePage({
   sidebarOpen,
@@ -46,7 +45,7 @@ function ArchivePage({
   onSelectDoc,
   onFollowLink,
 }: ArchivePageProps) {
-  // `[]`는 "하나도 없다"와 "아직 모른다"를 같이 뜻한다. 아래 두 자리(본문 빈 상태·목록 패널)가
+  // `[]`는 "하나도 없다"와 "아직 모른다"를 같이 뜻한다. 아래 두 자리(본문 빈 상태·목록 칸)가
   // 그것으로 "없어요"라고 단언하므로 둘을 갈라 둔다. 목록이 캐시에 없는 채로 /archive/$slug에
   // 바로 닿는 경로가 있다 — 이 라우트에는 beforeLoad가 없고(세 $slug 라우트 모두 그렇다),
   // archiveQuery는 gcTime이 지나면 캐시에서 빠진다.
@@ -55,7 +54,7 @@ function ArchivePage({
 
   // 문서 목록도 같다 — `[]`가 "문서가 없다"와 "아직 모른다"를 겸한다. 겸하게 두면
   // `current`가 null이 되어 본문이 "남은 문서가 없어요"를 띄운다 (결정 30과 같은 결함).
-  // 답에는 spec 트리도 실려 오지만 이 화면이 쓰는 것은 목록뿐이다 — 트리는 목록 패널이 그린다.
+  // 답에는 spec 트리도 실려 오지만 이 화면이 쓰는 것은 목록뿐이다 — 트리는 목록 칸이 그린다.
   const { data: archived, isPending: docsPending } = useArchivedDocs(selected?.slug ?? null);
   const docs = archived?.docs ?? NO_DOCS;
   // 고른 문서가 **어느 아카이브의 것인지**는 이제 주소가 함께 들고 있다 — 아카이브를 옮길 때
@@ -76,10 +75,10 @@ function ArchivePage({
   // 읽기만 표 밖에 남기면 결정 11이 막으려던 **화면별 예외**가 여기 생긴다.
   const { data: content } = useArchivedFile(selected?.slug ?? null, body === "image" ? null : current);
 
-  // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Projects와 같은 하나를 쓴다.
-  const [panelOpen, togglePanel] = useListPanel("archive-panel-open");
-  // 목록 카드의 폭 — 프로젝트 목록(`panel-width`)과 키를 나눠 갖지 않는다(`ArchiveList` 머리말).
-  const listSize = useResizableWidth("archive-panel-width", 360, 280, 560);
+  // 목록 칸의 폭 — 프로젝트 목록(`panel-width`)과 키를 나눠 갖지 않는다(`ArchiveList` 머리말). 기본은 DS `size-list`(264)이고 범위는
+  // 240–560이다(codex-ds 스펙 S4). 목록 칸은 접지 않는다(codex-ds 결정 32) — 지금 이 화면에는 ⌘Enter를 듣는 자리가 없다(그 키로
+  // spec 목록 패널을 여닫는 것은 codex-ds 티켓 21이다).
+  const listSize = useResizableWidth("archive-panel-width", 264, 240, 560);
 
   // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
   const copyText = useCallback((text: string) => {
@@ -97,9 +96,9 @@ function ArchivePage({
     [slug, current, copyText],
   );
 
-  // 이 화면의 접이식은 사이드바와 목록 패널 둘이다. 둘 다 닫혀 화면을 비웠으면 본문이 넓은 글 폭을 쓴다(SpecViewer의
-  // `bodyColumn` — Works 쪽도 같은 규칙).
-  const wide = !sidebarOpen && !panelOpen;
+  // 접을 수 있는 것을 모두 접어 화면을 비웠으면 본문이 넓은 글 폭을 쓴다(SpecViewer의 `bodyColumn` — Works 쪽도 같은 규칙). 이 화면의
+  // 접이식은 사이드바 하나다 — 목록 칸은 접지 않는 카드 안 칸이라(codex-ds 결정 28 · 32) 곁에 서 있어도 넓게를 막지 않는다.
+  const wide = !sidebarOpen;
 
   const meta = selected && STATUS_META[selected.status];
   // 머리 카드 이름 뒤의 옅은 글자 — 그 work가 걸쳤던 프로젝트와 치운 날이다(DS `.at-winhead .sub`). 문서 카드의 머리 자리를 경로 줄이
@@ -153,24 +152,23 @@ function ArchivePage({
   };
 
   return (
-    // 공용 틀 위의 목록 카드와 문서 카드(ui-refresh 결정 15 · 27). 머리 줄에는 고른 아카이브의 머리 카드가 선다(codex-ds 스펙 §7).
+    // 공용 틀 위의 목록 | 문서 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 아카이브의 머리 카드가
+    // 선다(codex-ds 스펙 §7).
     <Frame
       sidebarOpen={sidebarOpen}
       // 머리 카드 — 왼쪽은 ⚡(work 아이콘 — 아카이브한 것도 work다)와 그 제목 · 프로젝트 · 치운 날이고, 고른 것이 없으면 nav의 화면
       // 이름 · 아이콘이다.
-      // 오른쪽은 치운 때의 상태 배지 | 목록 토글이다(스토리 57). 배지는 보이기만 한다 — 작업 화면의 배지와 달리 상태를 바꾸는 메뉴가
+      // 오른쪽은 치운 때의 상태 배지다(스토리 57). 배지는 보이기만 한다 — 작업 화면의 배지와 달리 상태를 바꾸는 메뉴가
       // 없다(아카이브는 치운 시점 그대로다). 캔버스의 「되살리기」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 결정 31). ⋯ 아카이브
-      // 메뉴와 spec 목록 토글은 codex-ds 티켓 21이고, 그때까지 세로선 너머는 지금의 목록 토글이다.
+      // 메뉴와 세로선 너머의 spec 목록 토글은 codex-ds 티켓 21이다.
       head={{
         icon: selected ? Zap : PLACE.icon,
         name: selected?.title ?? PLACE.label,
         sub: about ? [about] : undefined,
         // 배지의 모양은 작업 화면 배지와 한 규격이다(DS `StatusBadge` — 24 · 점 · 글자).
         actions: meta && <span className={cn(STATUS_BADGE, meta.badgeClass)}>{meta.label}</span>,
-        end: <ListPanelToggle seat="head" open={panelOpen} onToggle={togglePanel} />,
       }}
       list={{
-        open: panelOpen,
         size: listSize,
         label: "아카이브 목록",
         children: (
@@ -193,10 +191,11 @@ function ArchivePage({
         as="main"
         label="아카이브 문서"
         className="flex-1"
-        // 경로 줄(codex-ds 스펙 §7 「Archive」 · `PathBar`)이 문서 카드의 머리다 — 탭이 없는 카드라 머리 자리에 선다(DS `PathBar`).
+        // 문서 칸 — 목록 | 문서 카드의 오른쪽 칸이다. 경로 줄(codex-ds 스펙 §7 「Archive」 · `PathBar`)이 그 머리다 — 탭이 없는 칸이라
+        // 머리 자리에 서고(DS `PathBar`), 목록 칸의 목록 머리와 같은 48이라 둘이 한 줄에 선다(codex-ds 결정 28).
         // 작업 화면의 문서와 같은 줄이다: 경로 캡슐 · 보기 묶음 · 경로 복사이고 닫기 ×는 없다(codex-ds 결정 13). 경로는 work 폴더
         // 기준이라(`list_archived_docs`) 기록(`record.md`)은 `slug › record.md`, spec 문서는 `slug › spec › …`로 읽힌다. 고른
-        // 아카이브가 없으면 카드 안에 고를 것이 없어 머리도 없다.
+        // 아카이브가 없으면 칸 안에 고를 것이 없어 머리도 없다.
         head={
           selected && (
             <PathBar
