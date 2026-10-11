@@ -1,6 +1,20 @@
 import { writeFileSync } from "node:fs";
-import { test as base, type Page, type TestInfo } from "@playwright/test";
+import { test as base, type Browser, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { readIpcRecord } from "./harness";
+
+/**
+ * 브라우저 하나에 여는 페이지 수. 이만큼 열었으면 다음 테스트는 새로 띄운 브라우저에서 연다.
+ *
+ * macOS 27의 Playwright WebKit은 페이지를 열 때마다 브라우저 프로세스의 GCD 일꾼 스레드 하나를 놓아주지 않는다
+ * (`-[NSAnimation _runBlocking]`에 묶인 채 남는다). 묶인 수가 커널 상한(`kern.wq_max_constrained_threads` = 64)에
+ * 닿으면 그 브라우저의 네트워크 일이 돌 스레드가 없어 다음 `page.goto`가 응답 없이 멎는다. 워커는 브라우저를 하나만
+ * 띄우므로 워커마다 대략 60번째 테스트가 빈 화면으로 30초를 다 쓰고 빨개졌다(`browser-recycle.spec.ts`). 상한의
+ * 절반에서 갈아 끼운다 — 한 테스트가 페이지를 몇 개 더 열어도 닿지 않는 자리다.
+ */
+export const PAGES_PER_BROWSER = 32;
+
+/** 페이지 수를 세다가 {@link PAGES_PER_BROWSER}에 닿으면 브라우저를 새로 띄우는 워커 단위의 문. */
+type RecyclingBrowser = { newContext(): Promise<BrowserContext> };
 
 // 실패한 테스트가 **그 순간의 증거**를 파일로 남긴다. 에이전트가 사람에게 "무슨 일이
 // 났는지 봐 달라"고 되묻지 않고 폴더 하나만 읽고 다음 수정을 정할 수 있어야 한다.
@@ -12,7 +26,40 @@ import { readIpcRecord } from "./harness";
 //
 // 트레이스(zip)는 켜지 않는다. 같은 정보를 담지만 뷰어로만 읽히므로 "폴더를 읽어서
 // 판단한다"에 쓸 수 없다. 대신 어느 단계까지 갔는지의 시퀀스는 남지 않는다.
-export const test = base.extend<{ evidence: void }>({
+export const test = base.extend<{ evidence: void }, { recyclingBrowser: RecyclingBrowser }>({
+  // 띄우는 길은 Playwright의 `browser` 픽스처와 같다 — 인자 없는 `launch()`는 설정의 실행 옵션을, 인자 없는
+  // `newContext()`는 `use`의 문맥 옵션(기준 URL · 창 크기)을 받는다. 실패 순간의 스크린숏도 이 브라우저의 문맥에 그대로
+  // 붙는다(러너가 `playwright` 객체에서 모든 문맥을 본다).
+  recyclingBrowser: [
+    async ({ playwright, browserName }, use) => {
+      let browser: Browser | undefined;
+      let pages = 0;
+      await use({
+        async newContext() {
+          if (!browser || pages >= PAGES_PER_BROWSER) {
+            await browser?.close();
+            browser = await playwright[browserName].launch();
+            pages = 0;
+          }
+          const context = await browser.newContext();
+          context.on("page", () => {
+            pages += 1;
+          });
+          return context;
+        },
+      });
+      await browser?.close();
+    },
+    { scope: "worker", timeout: 0 },
+  ],
+
+  // `page`는 이 문맥에서 열린다. Playwright의 문맥은 워커가 처음 띄운 브라우저 하나에서만 나온다.
+  context: async ({ recyclingBrowser }, use) => {
+    const context = await recyclingBrowser.newContext();
+    await use(context);
+    await context.close();
+  },
+
   evidence: [
     async ({ page }, use, testInfo) => {
       const messages: string[] = [];
