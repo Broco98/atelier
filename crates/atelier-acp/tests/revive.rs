@@ -411,6 +411,50 @@ fn 죽은_대화의_대기_말을_지금_보내면_되살린_뒤_그_말이_먼�
 }
 
 #[test]
+fn 되살리는_동안_칩으로_바꾼_모델은_되살린_뒤에도_agents_json과_엔진에_남는다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let id = yesterday(&sandbox, sandbox.host(sandbox.codex_login_shell("resume-resets-config", &[])));
+    let session = sandbox.agent_session_id("cart", &id);
+
+    // 다시 켠 앱 — 되살리기가 resume의 답 앞에서 붙잡힌다.
+    let host = sandbox.host(sandbox.codex_login_shell("resume-resets-config", &[("FAKE_ACP_REVIVE_HOLDS", "1")]));
+    std::thread::scope(|scope| {
+        let sending = scope.spawn(|| host.send("cart", &id, "오늘의 말"));
+        let deadline = std::time::Instant::now() + common::PATIENCE;
+        while sandbox.acp_revivals().is_empty() {
+            assert!(std::time::Instant::now() < deadline, "되살리기가 resume까지 가지 않았다");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let changing = scope.spawn(|| host.set_model("cart", &id, "gpt-6-astra"));
+        // 바꾸기가 되살리기를 앞질러 끝나는지 잠깐 본다 — 앞질러 끝나든 되살리기를 기다리든 남는 값은 같아야 한다.
+        let started = std::time::Instant::now();
+        while !changing.is_finished() && started.elapsed() < std::time::Duration::from_millis(500) {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        sandbox.release_turn(&session);
+        sending.join().unwrap().expect("보내기");
+        changing.join().unwrap().expect("되살리는 동안의 바꾸기도 받는다");
+    });
+    sandbox.wait_kind("cart", &id, "turn-end", 2);
+
+    assert_eq!(
+        sandbox.agents_row("cart", &id)["model"],
+        json!("gpt-6-astra"),
+        "되살리는 동안 바꾼 모델이 되살리기가 다시 쓴 agents.json에 남는다"
+    );
+    let model_set = json!({"method": "session/set_config_option",
+                           "params": {"sessionId": session, "configId": "model", "value": "gpt-6-astra"}});
+    assert!(
+        sandbox.acp_config(&session).contains(&model_set),
+        "되살린 엔진도 그 모델을 받는다: {:?}",
+        sandbox.acp_config(&session)
+    );
+
+    host.shut_down();
+}
+
+#[test]
 fn 쓰다_끊긴_반쪽_줄이_남은_기록을_되살려도_이어_적은_줄이_다_읽힌다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);

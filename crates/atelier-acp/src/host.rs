@@ -1490,10 +1490,10 @@ impl ConversationHost {
     /// - 에이전트가 떠 있으면 곧바로 엔진에 넣고 답을 기다린다 — 다음 턴부터 든다. 알림이 없으므로 값은 호스트가 쥔다.
     ///   넣은 바꾸기는 기록에 `config` 줄로 적힌다. 엔진이 거절하면 아무것도 남기지 않고 그 까닭을 돌려준다.
     /// - 띄우지 않은 대화(다시 켠 뒤 · 죽은 뒤 · 세션을 열다 로그인을 요구받은 대화)는 `agents.json`에만 남기고 띄우지 않는다. 띄울 때
-    ///   넣는다(티켓 10).
+    ///   넣는다(티켓 10). 되살리는 중인 대화는 그 끝을 기다렸다가 떠 있는 엔진에 넣는다.
     /// - 닫은 대화는 바꾸지 않는다.
     ///
-    /// 막히는 호출이다 — 엔진의 답을 기다린다(한도 10초, 보통 몇 ms).
+    /// 막히는 호출이다 — 엔진의 답을 기다린다(한도 10초, 보통 몇 ms). 되살리는 중이면 세션이 열릴 때까지도 기다린다.
     pub fn set_mode(&self, work: &str, conversation: &str, mode: &str) -> Result<Conversation, HostError> {
         self.change_setting(work, conversation, Setting::Mode(mode.to_owned()))
     }
@@ -1508,6 +1508,10 @@ impl ConversationHost {
         if !is_conversation_id(conversation) {
             return Err(HostError::ConversationNotFound(conversation.to_owned()));
         }
+        // 되살리는 중이면 그 끝을 기다린다 — 되살리기는 시작할 때 읽은 줄로 엔진에 설정을 다시 넣고 `agents.json`을 다시 쓰므로, 그
+        // 사이에 `agents.json`에만 쓴 바꾸기는 지워지고 엔진에도 들지 않는다(티켓 09 · 10). 되살린 뒤면 떠 있는 엔진에 곧바로 넣는다.
+        let gate = self.revival_gate(conversation);
+        let _not_while_reviving = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let works = atelier_core::works_in(&self.data_root);
         let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
         let places = atelier_core::work_places(&works, &meta);

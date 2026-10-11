@@ -29,6 +29,8 @@
 //!   저장소가 비었다(three-axes 티켓 10). 없으면 이 영수증 폴더에 `<세션 id>.json`이 있는 세션(가짜가 연 세션)을 안다.
 //! - `FAKE_ACP_DIES_ASKING` — 있으면 `dies-mid-turn`이 죽기 전에 권한을 묻고, `<세션 id>.go`가 설 때까지 기다렸다 죽는다 —
 //!   권한이 걸린 채 죽는 갈래(three-axes 티켓 10).
+//! - `FAKE_ACP_REVIVE_HOLDS` — 있으면 아는 세션의 되살리기(`session/resume` · `session/load`)를 답하기 전에 `<세션 id>.go`가 설
+//!   때까지 붙잡는다 — 되살리는 동안 온 명령(칩의 바꾸기)을 잰다.
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -874,6 +876,9 @@ impl Fake {
         }
         self.session_id = Some(session_id.clone());
         self.append_receipt("inbox", method);
+        if std::env::var_os("FAKE_ACP_REVIVE_HOLDS").is_some() {
+            self.hold_until_released(&session_id);
+        }
         self.spec_dir =
             params["additionalDirectories"][0].as_str().or_else(|| params["cwd"].as_str()).map(PathBuf::from);
         let mut opened = if self.codex_lists { codex_session_opened(&session_id) } else { session_opened(&session_id) };
