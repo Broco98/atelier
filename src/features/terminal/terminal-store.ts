@@ -86,6 +86,7 @@ import { deferAttach, focusOnAttach, focusPlaceOf, nextPendingFocus } from "./sh
 import type { AttachKind, FocusPlace, PendingFocus } from "./shell-focus";
 import { answerKey, humanInput, isInterruptKey, keyRoute } from "./shell-input";
 import type { AnswerKey, InputHappening } from "./shell-input";
+import { dropBrokenMouseReports, traceDroppedMouseReports } from "./mouse-report";
 import { reclaimOnLeave } from "./shell-leave";
 import { nextRecall, recallTarget } from "./shell-recall";
 import type { RecallTarget } from "./shell-recall";
@@ -1393,12 +1394,17 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     if (instance.ptyId !== null) ignoreGone(terminalApi.resize(instance.ptyId, cols, rows));
   });
   term.onData((data) => {
+    // **좌표가 수가 아닌 마우스 보고는 셸에 안 보낸다**(terminal-nan-grid-guard 결정 10) — 떼어진 셸의 xterm이 그런 보고를
+    // 짓는다(`mouse-report.ts` 머리말). 기록 · 쓰기보다 앞에서 거르고, 남은 것이 없으면 둘 다 하지 않는다.
+    const { data: kept, dropped } = dropBrokenMouseReports(data);
+    if (dropped > 0) traceDroppedMouseReports(id, dropped);
+    if (kept === "") return;
     // **xterm이 내보내는 데이터는 사람 입력이 아니다**(프로세스 스펙 S16) — 사람이 친 키의 바이트도 여기로
     // 오지만 그것은 앞의 키다운이 이미 적었고, 데이터만 오는 것은 xterm의 응답(DA · CPR · 포커스 보고)이다.
     // 판정에 그대로 건네는 것은 셸로 가는 모든 길이 한 판정을 지나게 하려는 것이다 — 모양을 보는 갈래가
     // 판정에 생기면 p10k가 프롬프트마다 묻는 커서 위치가 모든 셸을 「입력을 받은」 셸로 만든다.
-    noteInput(instance, { kind: "data", data });
-    if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, data));
+    noteInput(instance, { kind: "data", data: kept });
+    if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, kept));
   });
   // **붙여넣기는 사람 입력이다**(프로세스 스펙 S16). xterm은 입력칸과 화면 두 자리에서 `paste`를 받는데
   // 둘 다 이 집 안이라, 집의 capture 단계에서 한 번에 본다(IME 다리와 같은 자리).
