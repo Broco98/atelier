@@ -1,3 +1,4 @@
+import type { SearchResults } from "@/features/search/types";
 import { expect, test } from "./evidence";
 import type { Locator, Page } from "./evidence";
 import { SEARCH_DESTINATION_QUERY, SEARCH_HITS, WORKS } from "./fixtures";
@@ -8,8 +9,11 @@ import {
   installFixtureBackend,
   readIpcRecord,
   unknownIpcCalls,
+  그림자,
   셸입력,
   시계를세운다,
+  칠한값,
+  토큰값,
   토큰색,
 } from "./harness";
 
@@ -237,10 +241,10 @@ async function gutterOf(row: Locator) {
 
 // 결정 17·18. **글자 시작점이 층을 가로질러 하나다.**
 //
-// 이 층에서만 답이 난다 — 정적 마크업 seam에는 CSS가 없어 x도 27px도 안 나오고, 크기 클래스
+// 이 층에서만 답이 난다 — 정적 마크업 seam에는 CSS가 없어 x도 25px도 안 나오고, 크기 클래스
 // 문자열을 단언하는 것은 그 파일이 스스로 금지한 「모양으로 가르기」다. 여기서 재는 것 셋:
-// 층이 달라도 이름의 x가 같다 · 구획 머리가 글리프와 같은 컬럼이다 · 그 둘이 27px 갈린다
-// (DS 팔레트 행 — 글리프 17 + 틈 10, ui-refresh 결정 25 · 판 06 티켓 08).
+// 층이 달라도 이름의 x가 같다 · 구획 머리가 글리프와 같은 컬럼이다 · 그 둘이 25px 갈린다
+// (DS `.at-palette .row` — 글리프 15 + 틈 10, codex-ds 티켓 24).
 test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
@@ -261,9 +265,9 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   });
   expect(docRow.glyphMidY, "문서 줄에 글리프가 섰다").toBeNull();
 
-  // **구획 머리는 글리프와 같은 컬럼이고, 줄 글자와는 27px 갈린다.**
+  // **구획 머리는 글리프와 같은 컬럼이고, 줄 글자와는 25px 갈린다.**
   expect(Math.round(headX)).toBe(Math.round(docRow.slotX));
-  expect(Math.round(docRow.nameX - headX)).toBe(27);
+  expect(Math.round(docRow.nameX - headX)).toBe(25);
 
   // 같은 팔레트에서 층이 셋인 답으로 갈아 끼운다 — 가는 곳·작업·본문이 함께 선다.
   // **작업 줄이 여기 있어야 하는 이유가 티켓의 문장이다**: 「이름의 x가 목적지 줄과 작업
@@ -297,9 +301,9 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   // 문 이유가 이것이고, 지금까지 어느 층도 그것을 안 쟀다.
   //
   // `basis-1/3`은 **컨테이너 내용폭**의 1/3이라, padding으로 밀었다면 바닥이 그만큼 깎인다
-  // (27px ÷ 3 = 9px). 그래서 「스니펫이 내용폭의 1/3이다」로는 못 잡는다 — 그 등식은 두
+  // (25px ÷ 3 ≈ 8px). 그래서 「스니펫이 내용폭의 1/3이다」로는 못 잡는다 — 그 등식은 두
   // 설계에서 다 참이다. 재는 것은 **줄 상자에서 기본 padding만 뺀 값**의 1/3이고, 그래서
-  // 그 padding이 여전히 12px 두 쪽(DS 팔레트 행의 안쪽 0 12)인 것을 바로 아래에서 따로 못박는다.
+  // 그 padding이 여전히 10px 두 쪽(DS `.at-palette .row`의 안쪽 0 10)인 것을 바로 아래에서 따로 못박는다.
   const floor = await rows(page).nth(2).evaluate((el) => {
     const style = getComputedStyle(el);
     const snippet = el.querySelectorAll("span");
@@ -309,8 +313,160 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
       snippetWidth: snippet[snippet.length - 1].getBoundingClientRect().width,
     };
   });
-  expect(floor.padX, "줄의 좌우 padding이 px-3이 아니다").toBe(24);
+  expect(floor.padX, "줄의 좌우 padding이 10 두 쪽이 아니다").toBe(20);
   expect(floor.snippetWidth).toBeCloseTo((floor.rowWidth - floor.padX) / 3, 1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 24 — **팔레트가 DS `Palette` 모양이다**(codex-ds 스펙 §7 · DS `.at-palette`). 칠해진 값을 토큰과 맞대고, 스펙이
+// 못박은 수(폭 600 · 입력 줄 52 · 줄 36)는 따로 센다. 켜진 줄은 DS의 `fill-soft`가 아니라 `fill-hover`다 — 사이드바의 고른 행과
+// 같은 단이다(codex-ds 스펙 §5 · 티켓 24). 막(`scrim`)은 위 「뒤가 흐려지지 않고 어두워지며」가 잰다.
+//
+// **답은 이 검사가 심는다.** 고정 답은 문서 줄뿐이라 글리프도 오른쪽 칸(「아카이브」)도 안 선다 — 목적지 줄 하나와 아카이브된
+// 작업 줄 하나다.
+test("팔레트는 폭 600 · 반경 16 · shadow-prominent + 2xl 카드에 입력 줄 52와 36 줄이고, 켜진 줄은 fill-hover다", async ({
+  page,
+}) => {
+  const 답: SearchResults = {
+    hits: [
+      { kind: "destination", key: "settings" },
+      { kind: "work", slug: WORKS[1].slug, title: WORKS[1].title, archived: true },
+    ],
+  };
+  await installFixtureBackend(page, { search: 답 });
+  await page.goto("/projects");
+  await searchButton(page).click();
+  await expect(rows(page)).toHaveCount(2);
+  await settled(page);
+
+  // 카드 — 떠 있는 면 · `radius-2xl` · 떠 있는 그림자에 큰 그림자를 겹친 것(두 겹이 한 토큰 `shadow-modal`이다).
+  const 창 = page.getByRole("dialog", { name: "검색" });
+  const 창반경 = await 토큰값(page, "border-top-left-radius", "--radius-2xl");
+  expect(창반경, "radius-2xl").toBe("16px");
+  const 겹 = `${await 토큰값(page, "box-shadow", "--shadow-prominent")}, ${await 토큰값(page, "box-shadow", "--shadow-2xl")}`;
+  const [폭, 반경, 그림자층, 면] = await 칠한값(창, "width", "border-top-left-radius", "box-shadow", "background-color");
+  expect([폭, 반경, 그림자(그림자층), 면], "창 카드").toEqual(["600px", 창반경, 겹, await 토큰색(page, "--surface-elevated")]);
+  const 창상자 = (await 창.boundingBox())!;
+
+  // 입력 줄 — 52 · 안쪽 0 16 · 글리프 16 `fg-tertiary` · 틈 10, 아래에 0.5px `border-heavy` 한 줄(줄 안쪽 바닥에 칠한다).
+  const 입력줄 = box(page).locator("..");
+  expect(await 칠한값(입력줄, "height", "padding-left", "padding-right", "column-gap"), "입력 줄").toEqual([
+    "52px",
+    "16px",
+    "16px",
+    "10px",
+  ]);
+  const 아랫선 = await 입력줄.evaluate((el) => {
+    const line = getComputedStyle(el, "::after");
+    return [line.position, line.bottom, line.height, line.backgroundColor];
+  });
+  expect(아랫선, "입력 줄 아랫선").toEqual(["absolute", "0px", "0.5px", await 토큰색(page, "--border-heavy")]);
+  const 돋보기 = 입력줄.locator("svg");
+  expect(await 칠한값(돋보기, "width", "height", "color"), "입력 줄 글리프").toEqual([
+    "16px",
+    "16px",
+    await 토큰색(page, "--fg-tertiary"),
+  ]);
+  expect(Math.round((await 돋보기.boundingBox())!.x - 창상자.x), "입력 줄 글리프는 카드 끝에서 16").toBe(16);
+  // 목록은 입력 줄 바로 아래에서 시작한다 — 아랫선이 줄 밖에 따로 서서 한 칸을 먹지 않는다.
+  expect((await palette(page).boundingBox())!.y - 창상자.y, "입력 줄 높이").toBe(52);
+
+  // 목록 — 안쪽 6 · 줄 사이 1.
+  expect(await 칠한값(palette(page), "padding-top", "padding-left", "padding-right", "row-gap"), "목록").toEqual([
+    "6px",
+    "6px",
+    "6px",
+    "1px",
+  ]);
+
+  // 줄 — 36 · `radius-lg` · 안쪽 0 10. 켜진 줄(첫 줄)만 `fill-hover` 면이다.
+  const 줄반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  expect(줄반경, "radius-lg").toBe("10px");
+  for (const one of await rows(page).all()) {
+    expect(
+      await 칠한값(one, "height", "border-top-left-radius", "padding-left", "padding-right"),
+      `「${await one.textContent()}」 줄`,
+    ).toEqual(["36px", 줄반경, "10px", "10px"]);
+  }
+  const [켜진면, 옅은면] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fill-soft")];
+  expect(켜진면, "fill-hover와 fill-soft가 같은 색이다").not.toBe(옅은면);
+  expect(await 칠한값(rows(page).nth(0), "background-color"), "켜진 줄").toEqual([켜진면]);
+  expect(await 칠한값(rows(page).nth(1), "background-color"), "다른 줄").toEqual(["rgba(0, 0, 0, 0)"]);
+  // 가리킨 줄은 `fill-soft`라 켜진 줄과 갈린다. 가리켜도 켜짐은 옮겨 가지 않는다 — 켜짐은 방향키가 옮긴다.
+  await rows(page).nth(1).hover();
+  expect(await 칠한값(rows(page).nth(1), "background-color"), "가리킨 줄").toEqual([옅은면]);
+  expect(await 칠한값(rows(page).nth(0), "background-color"), "가리킨 뒤의 켜진 줄").toEqual([켜진면]);
+
+  // 목적지 줄의 글리프 — 15 `fg-secondary`(DS `.row > .ic`).
+  expect(await 칠한값(rows(page).nth(0).locator("svg"), "width", "height", "color"), "줄 글리프").toEqual([
+    "15px",
+    "15px",
+    await 토큰색(page, "--fg-secondary"),
+  ]);
+
+  // 오른쪽 칸 — 줄 끝(안쪽 10)에 붙은 12 `fg-tertiary` 글자(DS `.row .k`). 지금은 「아카이브」가 그 자리에 선다.
+  const 끝칸 = rows(page).nth(1).getByText("아카이브", { exact: true });
+  expect(await 칠한값(끝칸, "font-size", "line-height", "color"), "오른쪽 칸").toEqual([
+    "12px",
+    "18px",
+    await 토큰색(page, "--fg-tertiary"),
+  ]);
+  const [끝칸상자, 줄상자] = [(await 끝칸.boundingBox())!, (await rows(page).nth(1).boundingBox())!];
+  expect(Math.round(줄상자.x + 줄상자.width - (끝칸상자.x + 끝칸상자.width)), "오른쪽 칸은 줄 끝에서 10").toBe(10);
+
+  // 구획 머리 — 12/18 `fg-tertiary` · 위아래 안쪽 6 · 2(DS `.at-msec`). 좌우는 DS의 8이 아니라 줄과 같은 10이다 — 글자가
+  // 글리프 칸과 한 세로선이라는 것은 위 「모든 줄이 같은 거터를 예약한다」가 x로 잰다.
+  expect(
+    await 칠한값(
+      page.locator("[data-head]").first(),
+      "font-size",
+      "line-height",
+      "color",
+      "padding-top",
+      "padding-bottom",
+      "padding-left",
+      "padding-right",
+    ),
+    "구획 머리",
+  ).toEqual(["12px", "18px", await 토큰색(page, "--fg-tertiary"), "6px", "2px", "10px", "10px"]);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 24 — DS `Palette`의 규칙 「바닥 줄에 조작 안내」(`.at-palette .foot`). 안내는 팔레트에 **있는 키만** 말한다 —
+// DS 표본의 「⌘ 숫자 바로 가기」는 앱에 없는 기능이라 서지 않는다(codex-ds 스펙 S13). 바닥 줄은 목록 아래 카드 바닥에 붙고, 목록이 그 위에서
+// 끝난다 — 목록의 「더 있다」 페이드는 바닥 줄 위에서 녹는다.
+test("팔레트 바닥 줄이 있는 키만 안내한다 — ↑↓ 고르기 · ↵ 열기", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await searchButton(page).click();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  await settled(page);
+
+  const 창 = page.getByRole("dialog", { name: "검색" });
+  const 바닥 = 창.locator("[data-foot]");
+  await expect(바닥.locator("span")).toHaveText(["↑↓ 고르기", "↵ 열기"]);
+
+  // 36 · 안쪽 0 14 · 틈 14 · `text-xs`(12/18 · +0.025em) `fg-tertiary`, 위에 0.5px `border-heavy` 한 줄(줄 안쪽 위에 칠한다).
+  expect(
+    await 칠한값(바닥, "height", "padding-left", "padding-right", "column-gap", "font-size", "line-height", "letter-spacing", "color"),
+    "바닥 줄",
+  ).toEqual(["36px", "14px", "14px", "14px", "12px", "18px", "0.3px", await 토큰색(page, "--fg-tertiary")]);
+  const 윗선 = await 바닥.evaluate((el) => {
+    const line = getComputedStyle(el, "::before");
+    return [line.position, line.top, line.height, line.backgroundColor];
+  });
+  expect(윗선, "바닥 줄 윗선").toEqual(["absolute", "0px", "0.5px", await 토큰색(page, "--border-heavy")]);
+
+  // 자리 — 카드 바닥에 붙고, 목록은 그 바로 위에서 끝난다.
+  const [창상자, 바닥상자, 목록상자] = [
+    (await 창.boundingBox())!,
+    (await 바닥.boundingBox())!,
+    (await palette(page).boundingBox())!,
+  ];
+  expect(Math.round(창상자.y + 창상자.height - (바닥상자.y + 바닥상자.height)), "바닥 줄이 카드 바닥에 안 붙었다").toBe(0);
+  expect(Math.round(바닥상자.y - (목록상자.y + 목록상자.height)), "목록이 바닥 줄 위에서 안 끝난다").toBe(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -444,6 +600,35 @@ test("그룹 머리를 누른 뒤에도 ↓와 Enter가 먹는다", async ({ pag
   await expect
     .poll(() => new URL(page.url()).searchParams.get("file"))
     .toBe(specWork.specFiles[1]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 24. 입력 줄은 칸보다 넓다 — 앞에 돋보기가 서고 양옆에 안쪽 16이 있다. 그 자리는 위 그룹 머리와 달리
+// **치려고 누르는 곳**이라, 누른 뒤 친 글자가 칸에 서야 한다. 칸 밖을 누른 포커스가 창으로 가면 방향키는 살아도
+// 글자는 아무 데도 안 들어간다.
+test("입력 줄의 돋보기나 끝 여백을 눌러도 친 글자가 입력칸에 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await searchButton(page).click();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  await settled(page);
+  await box(page).pressSequentially("ab");
+
+  const 입력줄 = box(page).locator("..");
+  await 입력줄.locator("svg").click();
+  await expect(box(page), "돋보기를 누른 뒤").toBeFocused();
+  await page.keyboard.type("c");
+  await expect(box(page)).toHaveValue("abc");
+
+  // 줄 오른쪽 끝의 안쪽 — **칸 밖인 것을 먼저 센다.** 칸이 거기까지 닿으면 이 클릭은 아무것도 안 잰다.
+  const [줄상자, 칸상자] = [(await 입력줄.boundingBox())!, (await box(page).boundingBox())!];
+  const 끝 = { x: 줄상자.x + 줄상자.width - 8, y: 줄상자.y + 줄상자.height / 2 };
+  expect(끝.x, "끝 여백이 칸 안이다").toBeGreaterThan(칸상자.x + 칸상자.width);
+  await page.mouse.click(끝.x, 끝.y);
+  await expect(box(page), "끝 여백을 누른 뒤").toBeFocused();
+  await page.keyboard.type("d");
+  await expect(box(page)).toHaveValue("abcd");
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

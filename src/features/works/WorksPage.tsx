@@ -5,12 +5,10 @@ import {
   ChevronDown,
   Columns2,
   Copy,
-  Folder,
   MoreHorizontal,
   Pencil,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,7 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
@@ -814,30 +812,26 @@ function WorksPage({
   ) : (
     // 고른 작업이 없으면 패널도 없다 — 카드 머리가 화면 이름을 말하고 바탕 줄은 비어 있다.
     <Card as="main" label={WORKS_COPY.page} className="flex-1" head={<CardHead crumbs={[WORKS_COPY.page]} />}>
-      <div className="flex flex-1 items-center justify-center p-10">
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              {needsProject ? <Folder /> : <Zap />}
-            </EmptyMedia>
-            {/* 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
-            <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
-            <EmptyDescription>
-              {needsProject
-                ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
-                : emptyScreen.body}
-            </EmptyDescription>
-          </EmptyHeader>
-          {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
-              atelier_add_project / atelier_start_work를 부른다.
-              아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
-          <EmptyContent>
-            <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-xs text-fg-secondary">
-              {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
-            </code>
-          </EmptyContent>
-        </Empty>
-      </div>
+      {/* DS 빈 화면 물음(codex-ds 스펙 §6 · 스토리 64) — 물음 · 설명 · 할 일이 카드 한가운데에 서고 글리프 칸은 없다(`Empty`의
+          `question`). 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
+      <Empty variant="question">
+        <EmptyHeader>
+          <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
+          <EmptyDescription>
+            {needsProject
+              ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+              : emptyScreen.body}
+          </EmptyDescription>
+        </EmptyHeader>
+        {/* 할 일 — 실제로 통하는 경로만 안내한다. CLI에는 등록·시작 명령이 없고, 에이전트가
+            atelier_add_project / atelier_start_work를 부른다.
+            아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
+        <EmptyContent>
+          <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-xs text-fg-secondary">
+            {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
+          </code>
+        </EmptyContent>
+      </Empty>
     </Card>
   );
 

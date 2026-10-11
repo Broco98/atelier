@@ -10,13 +10,14 @@
 // - 쓰는 자리의 `className`과 `cn`으로 겨루는 것이 지금과 같게 남는다.
 //
 // 창 카드의 모양 자체(카드 모서리 · 흰 바탕 · 테두리 없이 `shadow-prominent`)는 떠 있는 카드 모두의 것이라
-// index.css의 `floating-card`가 든다. 팔레트 · 전체화면 뷰어 · 읽는 창(`dialog.tsx`)도 그 모양만 입는다.
+// index.css의 `floating-card`가 든다. 팔레트 · 전체화면 뷰어 · 읽는 창(`dialog.tsx`)도 그 모양을 입는다.
 //
 // 가운데의 작은 창은 디자인 시스템의 확인 창(`.at-dialog`)이다 — 폭 400 · 안쪽 20 · 모서리 `radius-4xl`(24) · 그림자 `shadow-modal`
 // (떠 있는 그림자 `prominent`에 큰 그림자 `2xl`을 겹친 것 — codex-ds 스펙 §3 「확인 창」). 제목과 설명 사이 8, 설명과 바닥 버튼 사이
 // 20, 바닥 버튼 사이 8이다. 폭 400에 바닥 버튼 셋(떠날 때의 [계속 편집] · [버리고 나가기] · [저장하고 나가기])이 한 줄에 선다.
 // 제목은 `heading-xs`(16/24 · 600), 설명은 `text-sm` fg-secondary다 — DS README 「글자」 표의 확인 창 자리다(codex-ds 티켓 03).
-// 팔레트 · 전체화면 뷰어 · 읽는 창은 이 모양이 아니라 떠 있는 카드(`floating-card`) 그대로다. 제목 조각은 두 부품의 모든 제목이
+// 전체화면 뷰어 · 읽는 창은 이 모양이 아니라 떠 있는 카드(`floating-card`) 그대로이고, 팔레트는 떠 있는 카드에 그림자만 이 창의
+// `shadow-modal`이다(DS 「깊이」 — 팔레트 · 확인 창은 `shadow-2xl`을 더한다, `dialog.tsx`의 `palette`). 제목 조각은 두 부품의 모든 제목이
 // 쓴다 — 가운데 창만이 아니라 「LLM이 받는 텍스트」 미리보기의 머리 줄 제목도 16/24다(codex-ds 스펙 「확인 창 · 다이얼로그 … 제목은
 // heading-xs」).
 export const dialogLook = {

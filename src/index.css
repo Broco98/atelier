@@ -288,7 +288,7 @@
     --shadow-2xl: var(--shadow-2xl);
     /* **DS가 두 그림자를 겹치는 자리** — 한 토큰으로 합친다. Tailwind는 `shadow-*` 둘을 한 요소에 겹치지 못하고(`--tw-shadow`가
        하나다) 클래스 합치기(`cn`)도 앞의 것을 지운다. 이름은 Atelier가 붙였고 값은 DS의 두 토큰 그대로다 — 다크도 두 토큰이 든다.
-         modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`)
+         modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`)과 검색 팔레트(DS `.at-palette`)
          raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`) */
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
