@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use atelier_acp::{Agent, EngineCheck, FoundProgram, LoginShellError, MissingProgram, ShellSource};
 use common::{assert_all_gone, LoginShell, Sandbox};
 
+/// 이 파일의 가짜 실행 파일은 찾기만 하는 `exit 0` 스크립트다. 그래서 로그인 확인에서 `claude auth status`는 JSON을 내지
+/// 않아 「안 됨」이고, `codex login status`는 exit 0이라 「됨」이다 — 로그인의 모양은 `tests/login.rs`가 진짜 같은 가짜로 잰다.
 #[test]
 fn 보통_로그인_셸이면_두_엔진을_모두_찾고_path_앞쪽의_것을_고른다() {
     let sandbox = Sandbox::new();
@@ -26,7 +28,7 @@ fn 보통_로그인_셸이면_두_엔진을_모두_찾고_path_앞쪽의_것을_
 
     assert_eq!(
         host.check_engine(Agent::Claude, false).expect("엔진 확인"),
-        EngineCheck::Found { programs: vec![FoundProgram { name: "claude", path: front.join("claude") }] },
+        EngineCheck::Found { programs: vec![FoundProgram { name: "claude", path: front.join("claude") }], logged_in: false },
     );
     assert_eq!(
         host.check_engine(Agent::Codex, false).expect("엔진 확인"),
@@ -36,6 +38,7 @@ fn 보통_로그인_셸이면_두_엔진을_모두_찾고_path_앞쪽의_것을_
                 FoundProgram { name: "codex", path: back.join("codex") },
                 FoundProgram { name: "node", path: back.join("node") },
             ],
+            logged_in: true,
         },
     );
 }
@@ -88,7 +91,7 @@ fn 배경_작업이_stdout을_쥐어도_end_표지에서_끝나고_남은_프로
 
     assert_eq!(
         host.check_engine(Agent::Claude, false).expect("END 표지에서 돌아와야 한다"),
-        EngineCheck::Found { programs: vec![FoundProgram { name: "claude", path: bin.join("claude") }] },
+        EngineCheck::Found { programs: vec![FoundProgram { name: "claude", path: bin.join("claude") }], logged_in: false },
     );
     let pids = sandbox.shell_pids();
     assert_eq!(pids.len(), 1, "가짜 셸이 배경 작업의 pid를 적었어야 한다");
@@ -170,20 +173,29 @@ fn 설치기가_rc에_더한_path는_다시_확인에서만_보인다() {
     );
     assert_eq!(
         host.check_engine(Agent::Claude, true).expect("다시 확인"),
-        EngineCheck::Found { programs: vec![FoundProgram { name: "claude", path: installed.join("claude") }] },
+        EngineCheck::Found {
+            programs: vec![FoundProgram { name: "claude", path: installed.join("claude") }],
+            logged_in: false,
+        },
     );
 }
 
 /// 엔진 확인의 답은 앱 명령을 건너 화면으로 간다(three-axes 티켓 05). 화면은 `state`로 찾음 · 못 찾음을 가르고,
-/// 안내 카드는 빠진 것마다 이름과 설치 명령을 보인다 — 이 꼴이 프런트의 `EngineCheck` 타입과 같은 말이다.
+/// 안내 카드는 빠진 것마다 이름과 설치 명령을, 찾았는데 로그인이 안 됐으면 로그인을 보인다(티켓 12) — 이 꼴이 프런트의
+/// `EngineCheck` 타입과 같은 말이다.
 #[test]
 fn 엔진_확인의_답은_화면이_읽는_꼴로_나간다() {
     let found = EngineCheck::Found {
         programs: vec![FoundProgram { name: "claude", path: "/Users/me/.local/bin/claude".into() }],
+        logged_in: false,
     };
     assert_eq!(
         serde_json::to_value(&found).unwrap(),
-        serde_json::json!({"state": "found", "programs": [{"name": "claude", "path": "/Users/me/.local/bin/claude"}]}),
+        serde_json::json!({
+            "state": "found",
+            "programs": [{"name": "claude", "path": "/Users/me/.local/bin/claude"}],
+            "loggedIn": false,
+        }),
     );
     let missing = EngineCheck::Missing {
         missing: vec![MissingProgram { name: "codex-acp", install: "npm i -g @agentclientprotocol/codex-acp" }],

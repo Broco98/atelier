@@ -205,6 +205,10 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("chat_edit_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_delete_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
     ("chat_send_now", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    // 로그인 시작 · 취소(three-axes 티켓 12)는 호스트가 쥔 로그인 명령 프로세스를 띄우고 거둔다 — 끝나면 확인을 다시 돌고
+    // 기다리던 대화를 다시 띄우는 것까지 호스트의 일이라, 뜨고 끝나는 다리가 쥘 수 없다.
+    ("chat_start_login", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    ("chat_cancel_login", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가

@@ -501,8 +501,8 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령(three-axes 티켓 05 · 07) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 그리고 멈추기 ·
-// 대기 고치기 · 대기 지우기 · 지금 보내기. 본체는 대화
+// 대화 명령(three-axes 티켓 05 · 07 · 12) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 보내기 · 대화 닫기, 멈추기 ·
+// 대기 고치기 · 대기 지우기 · 지금 보내기, 그리고 로그인 시작 · 취소. 본체는 대화
 // 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
 // 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
@@ -635,6 +635,34 @@ pub async fn chat_close(
         .map_err(host_err)
 }
 
+/// 로그인 시작(three-axes 티켓 12) — 그 엔진의 로그인 명령(`claude auth login` · `codex login`)을 띄운다. 명령이 브라우저를
+/// 연다. 진행(링크 · 끝남)과 끝난 뒤 다시 돈 확인의 답은 엔진 상태 이벤트로 온다(`chat::ENGINE_EVENT`). 이미 돌면 새로
+/// 띄우지 않는다.
+#[tauri::command]
+pub async fn chat_start_login(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    agent: atelier_acp::Agent,
+) -> CmdResult<()> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.start_login(agent))
+        .await
+        .map_err(|e| format!("로그인을 시작하지 못했습니다: {e}"))?
+        .map_err(host_err)
+}
+
+/// 로그인 취소 — 도는 로그인 명령의 프로세스 그룹에 SIGTERM을 보내고, 1초 안에 안 끝나면 SIGKILL한다. 「끝남(취소)」은 엔진
+/// 상태 이벤트로 온다.
+#[tauri::command]
+pub async fn chat_cancel_login(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    agent: atelier_acp::Agent,
+) -> CmdResult<()> {
+    let chats = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || chats.cancel_login(agent))
+        .await
+        .map_err(|e| format!("로그인을 취소하지 못했습니다: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     /// 명령 하나의 몸통 — 서명 뒤에서 열 0의 `}`까지. 잘라 낸 자리가 테스트 모듈을 삼키면 소스 스캔이 제 문자열을
@@ -666,7 +694,9 @@ mod tests {
     /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
     ///   돈다(`pty::end_by_hand`).
     /// - 대화 셋(three-axes 티켓 05): 엔진 확인은 처음에 로그인 셸을 기다리고(≤10초), 새 대화는 에이전트를 띄워 세션이 열리기를
-    ///   기다리고, 대화 닫기는 stdin을 닫고 1초를 기다린 뒤 그룹째 SIGKILL한다.
+    ///   기다리고, 대화 닫기는 stdin을 닫고 1초를 기다린 뒤 그룹째 SIGKILL한다. 엔진 확인은 로그인도 엔진에게 묻는다(≤10초, 티켓 12).
+    /// - 로그인 둘(three-axes 티켓 12): 로그인 시작은 처음이면 로그인 셸을 기다리고, 로그인 취소는 SIGTERM 뒤 끝나기를 1초까지
+    ///   기다린다.
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -678,6 +708,8 @@ mod tests {
             ("chat_check_engine", "chats.check_engine(", "check_engine("),
             ("chat_new", "chats.new_conversation(", "new_conversation("),
             ("chat_close", "chats.close_conversation(", "close_conversation("),
+            ("chat_start_login", "chats.start_login(", "start_login("),
+            ("chat_cancel_login", "chats.cancel_login(", "cancel_login("),
         ] {
             let body = command_body(command);
             let blocking = body

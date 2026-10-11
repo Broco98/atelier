@@ -6,6 +6,7 @@
 mod discovery;
 mod host;
 mod life;
+mod login;
 mod login_env;
 mod process;
 mod records;
@@ -14,5 +15,6 @@ mod spec_changes;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{Conversation, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, TranslatorCommand};
+pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};
 pub use records::{RecordKind, RecordLine};

@@ -1,8 +1,8 @@
 //! 대화 호스트 — 대화창의 몸통. 앱은 이것 하나를 managed state로 쥐고 명령을 위임한다.
 //!
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
-//! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 사라진 work의 대화 끄기(11)가 선다. 앱 잇기(05) ·
-//! 로그인(12)이 이 위에 선다.
+//! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 사라진 work의 대화 끄기(11), 로그인 확인 · 로그인
+//! 명령 · 로그인 필요 대화의 다시 띄우기(12)가 선다. 앱 잇기(05)가 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -18,9 +18,10 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
+use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::records::{self, CloseCause, ConversationRow, RecordLine, Recorder, SessionState, TurnEndLine};
-use crate::runtime::{self, AgentProcess, Launch, RuntimeEvent, SessionPlace, Sink, Turns};
+use crate::runtime::{self, AgentProcess, Launch, OpenError, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
@@ -30,13 +31,16 @@ const CODEX_ACP_MAJOR: u64 = 2;
 /// 끝없이 막히지 않게 한다. 진짜 codex-acp는 1초 안팎에 연다(실측 A1).
 const DEFAULT_OPEN_LIMIT: Duration = Duration::from_secs(30);
 
-/// 호스트가 내보내는 것. 엔진 상태(12)가 이어 선다.
+/// 호스트가 내보내는 것 — 기록 줄 · 대기 줄 바뀜(07) · 엔진 상태(12).
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostEvent {
     /// 기록 줄 — 기록 파일에 적은 것과 같은 줄이다. 화면은 대화를 이것 하나로 그린다.
     Record { work: String, conversation: String, line: RecordLine },
     /// 대기 줄 바뀜 — 그 대화의 대기 줄 전체. 대기 줄은 기록에 없으므로(S13) 화면은 이것과 대화 목록으로 그린다.
     Queue { work: String, conversation: String, queue: Vec<QueuedMessage> },
+    /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 엔진을 확인할 때, 에이전트가 로그인을 요구할 때,
+    /// 로그인 명령이 돌고 끝날 때 나간다(three-axes 티켓 12).
+    Engine(EngineState),
 }
 
 /// 대기 줄의 말 하나(S13) — 턴이 도는 동안 받은 말이다. 화면이 입력창 위 「대기 중」에 그린다.
@@ -102,6 +106,7 @@ impl HostBuilder {
 
     pub fn build(self) -> ConversationHost {
         ConversationHost {
+            logins: LoginDesk::new(Arc::clone(&self.emit)),
             data_root: self.data_root,
             translator: self.translator,
             shell: self.shell,
@@ -133,6 +138,8 @@ pub struct ConversationHost {
     live: Arc<LiveTable>,
     /// `agents.json`을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 연 두 대화가 서로의 줄을 지우지 않게.
     agents_file: Mutex<()>,
+    /// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 대화와 도는 로그인 명령을 쥔다(three-axes 티켓 12).
+    logins: Arc<LoginDesk>,
 }
 
 /// 에이전트가 떠 있는 대화들의 표.
@@ -156,6 +163,9 @@ struct Conv {
     state: Mutex<ConvState>,
     /// 턴 끝에 work가 사라졌는지 본다(S10). 떠 있지 않은 대화(닫힘 줄만 적으려고 연 기록)에는 없다.
     vanish: Option<VanishWatch>,
+    /// 턴 도중에 에이전트가 로그인을 요구하면 그 대화를 로그인 창구에 쥐게 한다(three-axes 티켓 12). 떠 있지 않은 대화에는
+    /// 없다.
+    login: Option<LoginWatch>,
 }
 
 struct ConvState {
@@ -175,7 +185,7 @@ struct ConvState {
 }
 
 impl Conv {
-    fn new(recorder: Recorder, spec: SpecPlace, vanish: Option<VanishWatch>) -> Arc<Self> {
+    fn new(recorder: Recorder, spec: SpecPlace, vanish: Option<VanishWatch>, login: Option<LoginWatch>) -> Arc<Self> {
         Arc::new(Self {
             recorder,
             spec,
@@ -188,6 +198,7 @@ impl Conv {
                 before: None,
             }),
             vanish,
+            login,
         })
     }
 
@@ -215,23 +226,38 @@ impl Conv {
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
+                let lost_login = matches!(&end.result, Err(error) if login::auth_required(error));
                 let mut state = self.lock_state();
                 let started = state.turn.take();
                 let (response, error) = match end.result {
                     Ok(response) => (Some(response), None),
                     Err(error) => (None, Some(error)),
                 };
-                let (written, now) = match self.end_turn(
-                    &mut state,
-                    TurnEndLine {
-                        stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
-                        duration_ms: elapsed_ms(started),
-                        cancelled_by_us: end.cancelled_by_us,
-                        out_of_turn: false,
-                        response,
-                        error,
-                    },
-                ) {
+                let ended = self
+                    .end_turn(
+                        &mut state,
+                        TurnEndLine {
+                            stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
+                            duration_ms: elapsed_ms(started),
+                            cancelled_by_us: end.cancelled_by_us,
+                            out_of_turn: false,
+                            response,
+                            error,
+                        },
+                    )
+                    .and_then(|now| {
+                        // 엔진을 가리지 않는다 — 턴 도중의 `-32000`(풀린 Codex 로그인, Claude는 S3)도 `session/new`의 것과
+                        // 같은 로그인 필요 줄이다(three-axes 티켓 12). 대화의 잠금을 쥔 채 적고 쥐어 둔다 — 그 사이에
+                        // 보내기가 끼지 않고, 아래의 대기 줄도 로그인을 기다린다.
+                        if lost_login {
+                            self.recorder.session(SessionState::LoginRequired)?;
+                            if let Some(watch) = &self.login {
+                                watch.required();
+                            }
+                        }
+                        Ok(now)
+                    });
+                let (written, now) = match ended {
                     Ok(now) => (Ok(()), now),
                     Err(error) => (Err(error), None),
                 };
@@ -278,10 +304,13 @@ impl Conv {
         Ok(now)
     }
 
-    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉰다. 걸린 권한(08) · 스스로 이어 간 턴(16)이 이 자리에
-    /// 조건을 더한다 — 그동안 받은 말은 대기 줄에서 기다린다.
-    fn can_send(state: &ConvState) -> bool {
-        state.alive && state.turn.is_none() && state.turns.is_some()
+    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉬고, 로그인을 기다리지 않는다(티켓 12 — 턴 도중에 로그인이
+    /// 풀렸다). 걸린 권한(08) · 스스로 이어 간 턴(16)이 이 자리에 조건을 더한다 — 그동안 받은 말은 대기 줄에서 기다린다.
+    fn can_send(&self, state: &ConvState) -> bool {
+        state.alive
+            && state.turn.is_none()
+            && state.turns.is_some()
+            && !self.login.as_ref().is_some_and(LoginWatch::waiting)
     }
 
     /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에
@@ -333,7 +362,7 @@ impl Conv {
     /// 대기 줄의 맨 앞을 보낸다(S13) — 보낼 수 있을 때만. 턴 끝(수신 루프 안)이 부른다. 보낸 뒤 대기 줄 바뀜을 낸다.
     /// `before`는 이미 찍어 둔 spec 폴더다(턴 끝에 견준 「지금」) — 없으면 여기서 찍는다.
     fn send_queued(&self, state: &mut ConvState, before: Option<Snapshot>) {
-        if !Self::can_send(state) {
+        if !self.can_send(state) {
             return;
         }
         let Some(queued) = state.queue.pop_front() else { return };
@@ -385,6 +414,26 @@ impl VanishWatch {
             }
         });
         true
+    }
+}
+
+/// 턴 도중에 에이전트가 로그인을 요구하면 그 대화를 로그인 창구에 쥐게 하는 것(three-axes 티켓 12). 턴 끝은 런타임의
+/// sink 안이라 호스트를 부를 수 없으므로 창구를 함께 쥔다 — 창구는 대화의 잠금을 쥔 채 불러도 된다.
+struct LoginWatch {
+    agent: Agent,
+    work: String,
+    conversation: String,
+    desk: Arc<LoginDesk>,
+}
+
+impl LoginWatch {
+    fn required(&self) {
+        self.desk.login_required(self.agent, &self.work, &self.conversation);
+    }
+
+    /// 그 대화가 로그인을 기다리나 — 그동안은 대기 줄이 가지 않는다(S13의 걸림).
+    fn waiting(&self) -> bool {
+        self.desk.waiting_for(&self.conversation).is_some()
     }
 }
 
@@ -469,10 +518,15 @@ pub enum HostError {
     /// 그 대화의 대기 줄에 그 대기 id의 말이 없다 — 이미 갔거나 지웠다. 대기 줄은 메모리에만 있어 다시 켠 뒤에는 늘
     /// 비어 있다.
     QueuedNotFound(String),
+    /// 로그인을 기다리는 대화 — 에이전트가 `-32000`으로 답했다. 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다
+    /// (three-axes 티켓 12).
+    LoginRequired { agent: Agent, conversation: String },
     /// 에이전트에 말을 보내지 못했다(연결이 끊겼다).
     Send(String),
     /// `agents/`를 읽거나 쓰지 못했다.
     Record(String),
+    /// 로그인 명령을 띄우지 못했다.
+    Login(String),
 }
 
 impl fmt::Display for HostError {
@@ -489,8 +543,12 @@ impl fmt::Display for HostError {
             HostError::ConversationNotFound(conversation) => write!(f, "대화를 찾을 수 없습니다: {conversation}"),
             HostError::NotRunning(conversation) => write!(f, "에이전트가 떠 있지 않은 대화입니다: {conversation}"),
             HostError::QueuedNotFound(_) => write!(f, "대기 중인 말을 찾을 수 없습니다. 이미 보냈거나 지운 말입니다"),
+            HostError::LoginRequired { agent, .. } => {
+                write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
+            }
             HostError::Send(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
+            HostError::Login(reason) => write!(f, "{reason}"),
         }
     }
 }
@@ -520,14 +578,147 @@ impl ConversationHost {
         }
     }
 
-    /// 엔진 확인 — 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾는다.
-    /// `reread`는 안내 카드의 「다시 확인」이다. 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 env를
-    /// 새로 읽는다.
+    /// 엔진 확인 — 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾고, 찾았으면 로그인돼 있는지
+    /// 엔진에게 묻는다(three-axes 티켓 12). `reread`는 안내 카드의 「다시 확인」이다. 설치한 뒤 앱을 다시 켜지 않고 이어
+    /// 가도록 로그인 env를 새로 읽는다.
     ///
-    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
+    /// - 답은 엔진 상태 이벤트로도 나간다 — 같은 엔진의 다른 대화 · 카드도 따라 바뀐다.
+    /// - 로그인돼 있으면 그 엔진의 로그인을 기다리던 대화를 다시 띄운다 — 터미널에서 로그인하고 「다시 확인」을 누른 때다.
+    ///
+    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다리고(한도 10초), 로그인을 묻는다(한도 10초).
     pub fn check_engine(&self, agent: Agent, reread: bool) -> Result<EngineCheck, LoginShellError> {
         let env = self.login_env(reread)?;
-        Ok(discovery::look_up(agent, env.path()))
+        let check = self.engine_check(agent, &env);
+        self.logins.announce_check(agent, &check);
+        if matches!(check, EngineCheck::Found { logged_in: true, .. }) {
+            self.relaunch_waiting(agent);
+        }
+        Ok(check)
+    }
+
+    /// 로그인 시작 — 그 엔진의 로그인 명령(`claude auth login` · `codex login`)을 TTY 없이 새 세션에 띄운다(three-axes
+    /// 결정 30). 명령이 브라우저를 스스로 연다. 기다리지 않는다 — 진행은 엔진 상태 이벤트로 온다:
+    ///
+    /// 1. 도는 중(링크 없음) → 명령이 `https://` URL을 찍으면 도는 중(링크) — 「링크 복사」의 값이다.
+    /// 2. 명령이 끝나면 확인을 저절로 다시 돌고 「끝남」과 그 답(됨 · 안 됨)을 알린다.
+    /// 3. 됨이면 그 엔진의 로그인을 기다리던 대화를 다시 띄운다. 기록은 그대로다.
+    ///
+    /// 엔진마다 한 번에 하나다 — 이미 돌면 새로 띄우지 않고 지금의 진행을 다시 알린다. 로그인 명령의 끝을 지켜보는 스레드가
+    /// 호스트를 약하게 쥐므로 `Arc`로 부른다.
+    ///
+    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
+    pub fn start_login(self: Arc<Self>, agent: Agent) -> Result<(), HostError> {
+        let env = self.login_env(false)?;
+        let programs = discovery::look_up(agent, env.path()).map_err(|missing| HostError::EngineMissing { agent, missing })?;
+        let host = Arc::downgrade(&self);
+        self.logins
+            .start(agent, &programs, &env, &login::quiet_place(&env, &self.data_root), move |ended| {
+                if let Some(host) = host.upgrade() {
+                    host.login_ended(agent, ended);
+                }
+            })
+            .map_err(HostError::Login)
+    }
+
+    /// 로그인 취소 — 도는 로그인 명령의 프로세스 그룹에 SIGTERM을 보낸다(SIGINT가 아니다). 1초 안에 끝나지 않으면 그룹째
+    /// SIGKILL이다. 「끝남(취소)」은 엔진 상태 이벤트로 온다. 도는 것이 없으면 아무 일도 하지 않는다.
+    ///
+    /// 막히는 호출이다 — 최대 1초 남짓.
+    pub fn cancel_login(&self, agent: Agent) {
+        self.logins.cancel(agent);
+    }
+
+    /// 로그인 명령이 끝났다 — 확인을 다시 돌고 「끝남」을 알리고, 됨이면 기다리던 대화를 다시 띄운다. 끝을 지켜보는
+    /// 스레드에서 돈다.
+    fn login_ended(&self, agent: Agent, ended: LoginProgress) {
+        let (found, logged_in) = match self.login_env(false) {
+            Ok(env) => match self.engine_check(agent, &env) {
+                EngineCheck::Found { logged_in, .. } => (true, Some(logged_in)),
+                EngineCheck::Missing { .. } => (false, None),
+            },
+            Err(_) => (false, None),
+        };
+        self.logins.announce(EngineState { agent, found, logged_in, login: Some(ended) });
+        if logged_in == Some(true) {
+            self.relaunch_waiting(agent);
+        }
+    }
+
+    /// 그 엔진의 로그인을 기다리던 대화들을 다시 띄운다. 막히는 호출이다 — 대화마다 세션이 열릴 때까지 기다린다.
+    fn relaunch_waiting(&self, agent: Agent) {
+        for waiting in self.logins.take_waiting(agent) {
+            if let Err(error) = self.relaunch(&waiting) {
+                eprintln!("{error}");
+            }
+        }
+    }
+
+    /// 로그인을 기다리던 대화 하나를 다시 띄운다 — 같은 기록 파일에 이어 적고, 새 에이전트 쪽 세션을 연다. 그 세션의 첫
+    /// 말에는 머리말이 다시 붙는다(S11).
+    ///
+    /// - 에이전트가 떠 있으면(턴 도중의 `-32000`) 끄고 새로 띄운다 — 떠 있는 에이전트가 새 로그인을 읽는다는 보장이 없다.
+    /// - work가 사라졌거나 대화가 닫혔으면 아무것도 하지 않는다.
+    /// - 대기 줄은 다시 뜬 대화로 옮겨 맨 앞부터 간다(티켓 07).
+    fn relaunch(&self, waiting: &Waiting) -> Result<(), HostError> {
+        let works = atelier_core::works_in(&self.data_root);
+        let Ok(meta) = atelier_core::read_work(&works, &waiting.work) else { return Ok(()) };
+        let places = atelier_core::work_places(&works, &meta);
+        let Some(row) = records::read_rows(&places.agents)
+            .map_err(HostError::Record)?
+            .into_iter()
+            .find(|row| row.id == waiting.conversation && row.closed_at.is_none())
+        else {
+            return Ok(());
+        };
+        // 대기 줄은 다시 뜬 대화로 옮긴다 — 에이전트가 죽어도 대기 줄을 그대로 두듯이(S13, 티켓 07).
+        let mut queue = VecDeque::new();
+        if let Some(mut live) = self.take_live(&waiting.work, &waiting.conversation) {
+            shut_down_together(std::slice::from_mut(&mut live));
+            queue = std::mem::take(&mut live.conv.lock_state().queue);
+        }
+        let started = (|| {
+            let env = self.login_env(false)?;
+            let programs = discovery::look_up(row.agent, env.path())
+                .map_err(|missing| HostError::EngineMissing { agent: row.agent, missing })?;
+            self.start_agent(&waiting.work, &works, &meta, &places, row, &programs, &env)
+        })();
+        self.hand_over_queue(&waiting.work, &waiting.conversation, queue);
+        started.map(|_| ())
+    }
+
+    /// 다시 뜬 대화에 옛 대기 줄을 넘긴다. 로그인이라는 걸림이 풀린 자리라 보낼 수 있으면 맨 앞부터 간다(S13 — 걸림이
+    /// 풀리는 자리에서 대기 줄을 보낸다). 다시 뜨지 못했으면(로그인이 또 필요하거나 못 열었으면) 넘길 대화가 없다 — 대기
+    /// 줄은 떠 있는 대화의 메모리에만 있으므로 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
+    fn hand_over_queue(&self, work: &str, conversation: &str, queue: VecDeque<Queued>) {
+        if queue.is_empty() {
+            return;
+        }
+        let live = self.lock_live();
+        let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
+            (self.emit)(HostEvent::Queue { work: work.to_owned(), conversation: conversation.to_owned(), queue: Vec::new() });
+            return;
+        };
+        let mut state = found.conv.lock_state();
+        // 다시 뜬 사이에 받은 말이 있으면 그 앞에 선다 — 먼저 든 말이 먼저 간다.
+        for queued in queue.into_iter().rev() {
+            state.queue.push_front(queued);
+        }
+        if found.conv.can_send(&state) {
+            found.conv.send_queued(&mut state, None);
+        } else {
+            found.conv.announce_queue(&state);
+        }
+    }
+
+    /// 찾고, 찾았으면 로그인을 묻는다.
+    fn engine_check(&self, agent: Agent, env: &AgentEnv) -> EngineCheck {
+        match discovery::look_up(agent, env.path()) {
+            Ok(programs) => {
+                let logged_in = login::logged_in(agent, &programs, env, &login::quiet_place(env, &self.data_root));
+                EngineCheck::Found { programs, logged_in }
+            }
+            Err(missing) => EngineCheck::Missing { missing },
+        }
     }
 
     /// 대화 목록 — 그 work의 열린 대화들을 만든 순서로 준다. 닫은 대화는 `agents.json`에 줄이 남아도 빠진다
@@ -589,14 +780,11 @@ impl ConversationHost {
             return Err(HostError::AgentNotReady(agent));
         }
         let env = self.login_env(false)?;
-        let programs = match discovery::look_up(agent, env.path()) {
-            EngineCheck::Found { programs } => programs,
-            EngineCheck::Missing { missing } => return Err(HostError::EngineMissing { agent, missing }),
-        };
+        let programs = discovery::look_up(agent, env.path()).map_err(|missing| HostError::EngineMissing { agent, missing })?;
         let place = workplace(&places, meta.projects.len());
 
         records::ensure_agents_dir(&places.agents).map_err(HostError::Record)?;
-        let mut row = {
+        let row = {
             let _file = self.lock_agents_file();
             let rows = records::read_rows(&places.agents).map_err(HostError::Record)?;
             let row = ConversationRow {
@@ -616,23 +804,57 @@ impl ConversationHost {
             records::write_row(&places.agents, &row).map_err(HostError::Record)?;
             row
         };
+        self.start_agent(work, &works, &meta, &places, row, &programs, &env)
+    }
+
+    /// 대화의 에이전트를 띄워 세션을 연다 — 새 대화와, 로그인이 「됨」으로 바뀐 뒤의 다시 띄우기(three-axes 티켓 12)가 함께
+    /// 쓴다. 에이전트는 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서 일한다(three-axes 결정 17).
+    ///
+    /// - 열리면 에이전트 쪽 세션 id를 `agents.json`에 적고 떠 있는 표에 넣는다.
+    /// - 에이전트가 로그인을 요구하면(`-32000`, 실측 A3) 기록에 로그인 필요 줄을 적고, 로그인 창구가 그 대화를 쥐고 엔진
+    ///   상태(찾음 · 안 됨)를 알린다. 실패가 아니다 — 대화는 서고, 화면은 그 자리에 안내 카드를 세운다. 로그인이 「됨」으로
+    ///   바뀌면 다시 띄운다.
+    /// - 그 밖의 까닭으로 못 열면 프로세스를 남김없이 끈 뒤 기록에 까닭(`session` 죽음 줄)을 적고 실패한다.
+    #[allow(clippy::too_many_arguments)]
+    fn start_agent(
+        &self,
+        work: &str,
+        works: &Path,
+        meta: &atelier_core::Work,
+        places: &atelier_core::WorkPlaces,
+        mut row: ConversationRow,
+        programs: &[discovery::FoundProgram],
+        env: &AgentEnv,
+    ) -> Result<Conversation, HostError> {
         let conv = Conv::new(
             Recorder::open(&places.agents, work, &row.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-            spec_place(&works, &meta, &places),
+            spec_place(works, meta, places),
             Some(VanishWatch {
-                works: works.clone(),
+                works: works.to_path_buf(),
                 work: work.to_owned(),
                 conversation: row.id.clone(),
                 live: Arc::downgrade(&self.live),
+            }),
+            Some(LoginWatch {
+                agent: row.agent,
+                work: work.to_owned(),
+                conversation: row.id.clone(),
+                desk: Arc::clone(&self.logins),
             }),
         );
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
 
-        let launch = codex_launch(&programs, &env, &place);
+        let place = SessionPlace { cwd: row.cwd.clone(), additional_directories: row.additional_directories.clone() };
+        let launch = codex_launch(programs, env, &place);
         let (agent_process, opened) =
             match runtime::open(launch, place, self.open_limit, conv.sink(), record_opened(&conv)) {
                 Ok(opened) => opened,
+                Err(OpenError::AuthRequired { .. }) => {
+                    recorder.session(SessionState::LoginRequired).map_err(HostError::Record)?;
+                    self.logins.login_required(row.agent, work, &row.id);
+                    return Ok(summary(&row, recorder.last_seq(), Vec::new()));
+                }
                 Err(error) => {
                     let reason = error.to_string();
                     recorder
@@ -676,20 +898,27 @@ impl ConversationHost {
 
         let live = self.lock_live();
         let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
-            return Err(HostError::NotRunning(conversation.to_owned()));
+            return Err(match self.logins.waiting_for(conversation) {
+                Some(agent) => HostError::LoginRequired { agent, conversation: conversation.to_owned() },
+                None => HostError::NotRunning(conversation.to_owned()),
+            });
         };
         let mut state = found.conv.lock_state();
+        if let Some(agent) = self.logins.waiting_for(conversation) {
+            // 턴 도중에 로그인이 풀렸다. 대화의 잠금 안에서 본다 — 턴 끝이 같은 잠금 안에서 쥐게 한다.
+            return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
+        }
         if !state.alive || state.turns.is_none() {
             return Err(HostError::NotRunning(conversation.to_owned()));
         }
         let preamble = preamble(&meta, &places);
-        if Conv::can_send(&state) && state.queue.is_empty() {
+        if found.conv.can_send(&state) && state.queue.is_empty() {
             return found.conv.begin_turn(&mut state, text, preamble, false, before);
         }
         // S13 — 턴이 도는 동안의 말은 대기 줄 끝에 든다. 턴이 끝나면 맨 앞부터 차례로 간다.
         let message = QueuedMessage { id: uuid::Uuid::new_v4().to_string(), text: text.to_owned(), send_now: false };
         state.queue.push_back(Queued { message, preamble });
-        if Conv::can_send(&state) {
+        if found.conv.can_send(&state) {
             // 쉬는데 대기 줄이 남아 있다 — 맨 앞부터 보낸다. 새 말이 앞지르지 않는다.
             found.conv.send_queued(&mut state, Some(before));
         } else {
@@ -745,9 +974,14 @@ impl ConversationHost {
     /// 턴 끝을 기다린다.
     ///
     /// - 「지금 보내기」를 기다리는 말은 하나뿐이다. 다른 말을 고르면 앞서 고른 말은 보통 대기 말로 돌아간다.
-    /// - 이미 갔거나 지운 말이면 읽히는 오류이고 멈추지 않는다. 에이전트가 죽은 대화도 읽히는 오류다(다시 띄우기는 10).
+    /// - 이미 갔거나 지운 말이면 읽히는 오류이고 멈추지 않는다. 에이전트가 죽은 대화(다시 띄우기는 10)와 로그인을
+    ///   기다리는 대화(12)도 읽히는 오류다.
     pub fn send_now(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
         self.change_queued(work, conversation, queued, |conv, state, at| {
+            if let Some(agent) = self.logins.waiting_for(conversation) {
+                // 보내기처럼 로그인을 기다린다(티켓 12) — 대기 줄은 그대로 두고 멈추지도 않는다.
+                return Err(HostError::LoginRequired { agent, conversation: conversation.to_owned() });
+            }
             if !state.alive {
                 return Err(HostError::NotRunning(conversation.to_owned()));
             }
@@ -757,7 +991,7 @@ impl ConversationHost {
             }
             picked.message.send_now = true;
             state.queue.push_front(picked);
-            if Conv::can_send(state) {
+            if conv.can_send(state) {
                 // 쉬고 있다 — 멈출 턴이 없으니 곧바로 보낸다.
                 conv.send_queued(state, None);
                 return Ok(());
@@ -802,6 +1036,8 @@ impl ConversationHost {
         if let Some(live) = live.as_mut() {
             shut_down_together(std::slice::from_mut(live));
         }
+        // 닫은 대화는 로그인이 「됨」이 돼도 다시 띄우지 않는다.
+        self.logins.forget(conversation);
 
         let works = atelier_core::works_in(&self.data_root);
         let Ok(meta) = atelier_core::read_work(&works, work) else {
@@ -827,6 +1063,7 @@ impl ConversationHost {
             None => Conv::new(
                 Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
                 spec_place(&works, &meta, &places),
+                None,
                 None,
             ),
         };
@@ -865,8 +1102,11 @@ impl ConversationHost {
     /// 모든 대화의 stdin을 **한꺼번에** 닫고 1초를 **한 번만** 기다린 뒤 그룹들을 SIGKILL한다 — 대화마다 1초씩
     /// 줄을 세우면 N초가 된다.
     pub fn shut_down(&self) {
+        // 로그인 명령도 끈다 — SIGTERM을 먼저 보내 두고, 대화들을 끄는 1초 뒤에 남은 것을 SIGKILL한다.
+        self.logins.begin_close();
         let mut live: Vec<Live> = self.lock_live().drain().map(|(_, live)| live).collect();
         shut_down_together(&mut live);
+        self.logins.finish_close();
     }
 
     /// 쥔 로그인 env. 없거나 다시 읽으라면 셸을 띄워 읽는다. 다시 읽기가 실패하면 쥔 것도 버린다 —

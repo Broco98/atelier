@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { CHAT_QUEUE_EVENT, CHAT_RECORD_EVENT } from "./events";
-import type { Agent, ChatQueueEvent, ChatRecordEvent, Conversation, EngineCheck, RecordLine } from "./types";
+import { CHAT_ENGINE_EVENT, CHAT_QUEUE_EVENT, CHAT_RECORD_EVENT } from "./events";
+import type {
+  Agent,
+  ChatEngineEvent,
+  ChatQueueEvent,
+  ChatRecordEvent,
+  Conversation,
+  EngineCheck,
+  RecordLine,
+} from "./types";
 
 // 대화 호스트를 부르는 명령(three-axes 티켓 05 · 07). 호스트는 앱 프로세스에 하나 살고, 다른 work로 가거나 화면을 새로고침해도
 // 에이전트가 계속 돈다 — 그래서 대화는 기록에서 다시 그린다: 먼저 기록 줄 이벤트를 구독하고(`onChatRecord`), 그다음
@@ -14,8 +22,9 @@ import type { Agent, ChatQueueEvent, ChatRecordEvent, Conversation, EngineCheck,
 // 않아야 한다.
 export const chatApi = {
   /**
-   * 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾는다. `reread`는 안내 카드의 「다시 확인」이다 —
-   * 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 환경을 새로 읽는다. 처음 한 번은 로그인 셸을 기다린다(최대 10초).
+   * 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾고, 찾았으면 로그인돼 있는지 엔진에게 묻는다. `reread`는
+   * 안내 카드의 「다시 확인」이다 — 설치한 뒤 앱을 다시 켜지 않고 이어 가도록 로그인 환경을 새로 읽는다. 처음 한 번은
+   * 로그인 셸을 기다린다(최대 10초). 답은 엔진 상태 이벤트로도 오고, 로그인돼 있으면 로그인을 기다리던 대화가 다시 뜬다.
    */
   checkEngine: (agent: Agent, reread: boolean) =>
     invoke<EngineCheck>("chat_check_engine", { agent, reread }),
@@ -52,6 +61,14 @@ export const chatApi = {
   /** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. */
   close: (work: string, conversation: string) =>
     invoke<void>("chat_close", { work, conversation }),
+  /**
+   * 로그인 시작(three-axes 티켓 12) — 그 엔진의 로그인 명령을 띄운다. 명령이 브라우저를 연다. 진행(링크 · 끝남)은 엔진 상태
+   * 이벤트로 오고(`onChatEngine`), 끝나면 호스트가 확인을 저절로 다시 돌아 「됨」이면 그 엔진의 로그인 필요 대화를 다시
+   * 띄운다. 이미 돌면 새로 띄우지 않는다.
+   */
+  startLogin: (agent: Agent) => invoke<void>("chat_start_login", { agent }),
+  /** 로그인 취소 — 도는 로그인 명령을 거둔다. 「끝남(취소)」은 엔진 상태 이벤트로 온다. */
+  cancelLogin: (agent: Agent) => invoke<void>("chat_cancel_login", { agent }),
 };
 
 // 이벤트 이름 셋은 `events.ts`에 산다 — tauri를 부르지 않는 모듈이라 e2e(Node)도 같은 상수를 읽는다(three-axes 티켓 17).
@@ -71,4 +88,12 @@ export function onChatRecord(listener: (event: ChatRecordEvent) => void): Promis
  */
 export function onChatQueue(listener: (event: ChatQueueEvent) => void): Promise<UnlistenFn> {
   return listen<ChatQueueEvent>(CHAT_QUEUE_EVENT, (event) => listener(event.payload));
+}
+
+/**
+ * 엔진 상태가 바뀔 때마다 온다 — 엔진을 확인할 때, 에이전트가 로그인을 요구할 때, 로그인 명령이 돌고(링크) 끝날 때.
+ * 어느 대화 · 어느 work의 것이 아니라 엔진의 것이라, 같은 엔진의 카드가 다 따라 바뀐다.
+ */
+export function onChatEngine(listener: (event: ChatEngineEvent) => void): Promise<UnlistenFn> {
+  return listen<ChatEngineEvent>(CHAT_ENGINE_EVENT, (event) => listener(event.payload));
 }

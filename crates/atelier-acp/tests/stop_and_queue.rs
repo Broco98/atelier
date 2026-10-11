@@ -369,3 +369,56 @@ fn 대기_줄에서_간_말의_턴도_고친_곳을_적고_앞_턴이_고친_것
 
     host.shut_down();
 }
+
+/// 대기 줄과 로그인(티켓 12)이 만나는 자리. 턴 도중에 로그인이 풀려(`-32000`) 끝난 턴 뒤에는 대기 줄이 가지 않는다 —
+/// 로그인을 기다리는 동안은 보내기처럼 걸림이다. 「다시 확인」이 됨이면 호스트가 그 대화를 새 세션으로 다시 띄우고, 대기
+/// 줄은 다시 뜬 대화로 옮겨져 걸림이 풀린 그 자리에서 맨 앞부터 간다(죽어도 대기 줄을 그대로 두듯이 — 구현 스펙 S13).
+#[test]
+fn 로그인이_풀려_끝난_턴_뒤에는_대기_줄이_가지_않고_됨이_되어_다시_뜬_대화가_맨_앞부터_보낸다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    sandbox.log_in(Agent::Codex);
+    // 로그인이 풀린 채 받은 턴은 검사가 놓을 때까지 붙잡혔다가 `-32000`으로 끝난다.
+    let shell = sandbox.login_shell_for_login("needs-auth", Some("/usr/bin/true"), &[("FAKE_ACP_AUTH_PAUSES", "1")]);
+    let (host, events) = sandbox.host_with_events(shell);
+    let conversation = host.new_conversation("cart", Agent::Codex).expect("로그인돼 있으면 세션이 열린다");
+    let first_session = sandbox.agent_session_id("cart", &conversation.id);
+
+    sandbox.log_out(Agent::Codex);
+    host.send("cart", &conversation.id, "첫 말").expect("첫 말");
+    host.send("cart", &conversation.id, "둘째 말").expect("턴이 도는 동안의 말은 대기 줄에 든다");
+    sandbox.release_turn(&first_session);
+    sandbox.wait_record("cart", &conversation.id, |record| {
+        record.iter().any(|line| line["payload"]["state"] == "login-required")
+    });
+
+    let queued = listed_queue(&host, "cart", &conversation.id);
+    assert_eq!(
+        queued.iter().map(|queued| queued.text.as_str()).collect::<Vec<_>>(),
+        ["둘째 말"],
+        "로그인을 기다리는 대화의 대기 줄은 가지 않고 남는다"
+    );
+    assert_eq!(sandbox.acp_prompts(&first_session).len(), 1, "로그인이 풀린 에이전트에는 대기 말이 가지 않았다");
+    assert_eq!(
+        host.send_now("cart", &conversation.id, &queued[0].id),
+        Err(HostError::LoginRequired { agent: Agent::Codex, conversation: conversation.id.clone() }),
+        "지금 보내기도 보내기처럼 로그인을 기다린다"
+    );
+
+    // 터미널에서 로그인하고 안내 카드의 「다시 확인」을 눌렀다.
+    sandbox.log_in(Agent::Codex);
+    host.check_engine(Agent::Codex, true).expect("다시 확인");
+
+    let second_session = sandbox.agent_session_id("cart", &conversation.id);
+    assert_ne!(second_session, first_session, "로그인 필요 대화는 새 세션으로 다시 뜬다(티켓 12)");
+    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
+    assert_eq!(sent_texts(&record), ["첫 말", "둘째 말"], "대기 말이 다시 뜬 대화에서 갔다:\n{}", common::lines_text(&record));
+    let prompts = sandbox.acp_prompts(&second_session);
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0]["prompt"].as_array().unwrap().len(), 2, "새 세션의 첫 말이라 머리말이 붙는다(S11)");
+    assert_eq!(prompts[0]["prompt"][1], json!({"type": "text", "text": "둘째 말"}));
+    assert_eq!(listed_queue(&host, "cart", &conversation.id), []);
+    assert_eq!(queue_texts(&events, "cart", &conversation.id).last(), Some(&Vec::<String>::new()), "맨 앞이 가며 빈 대기 줄을 알린다");
+
+    host.shut_down();
+}

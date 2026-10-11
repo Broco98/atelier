@@ -16,6 +16,10 @@
 //! - `FAKE_ACP_LONG_TURNS` — `long-turn`에서 cancel을 기다리는 턴의 수(없으면 모든 턴). 그 뒤의 턴은 `normal`이다.
 //! - `FAKE_ACP_ACCOUNT_EMAIL` — 있으면 `session/new`의 답 앞에 그 이메일이 든 `_auth/status_update`를 보낸다
 //!   (진짜 codex-acp가 로그인된 계정을 알리는 모양 — 실측 turns 4줄).
+//! - `FAKE_CODEX_AUTH` — `needs-auth`가 보는 로그인 파일. 있으면 로그인됨이다 — 가짜 `codex login`이 끝나며 쓴다
+//!   (진짜는 `~/.codex/auth.json`).
+//! - `FAKE_ACP_AUTH_PAUSES` — 있으면 `needs-auth`가 로그인이 풀린 채 받은 프롬프트를 `<세션 id>.go`가 설 때까지
+//!   붙잡은 뒤 `-32000`으로 답한다 — 대기 줄에 말이 든 채로 로그인이 풀려 끝나는 턴을 잰다(three-axes 티켓 07 · 12).
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -50,6 +54,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("spawns-a-child", spawns_a_child),
     ("writes-spec", writes_spec),
     ("pauses-mid-turn", pauses_mid_turn),
+    ("needs-auth", needs_auth),
 ];
 
 fn main() {
@@ -321,13 +326,7 @@ fn pauses_mid_turn(fake: &mut Fake) {
                               "content": {"type": "text", "text": "멈추기 전의 답"}}}),
         );
         fake.note("paused");
-        if let Some(go) = fake.receipts.as_ref().map(|dir| dir.join(format!("{session_id}.go"))) {
-            // 검사가 놓지 않고 사라져도 끝없이 남지 않게 한도를 둔다.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-            while !go.exists() && std::time::Instant::now() < deadline {
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-        }
+        fake.hold_until_released(session_id);
         fake.wire.notify(
             "session/update",
             json!({"sessionId": session_id,
@@ -337,6 +336,26 @@ fn pauses_mid_turn(fake: &mut Fake) {
         fake.wire.reply(id, json!({"stopReason": "end_turn"}));
     };
     spawns_a_child(fake);
+}
+
+/// 로그인이 안 된 codex-acp(실측 A3 · `codex-acp-2.2.2-noauth.jsonl`) — `initialize`는 정상으로 답하고 곧바로
+/// `_auth/status_update{kind:"none"}`을 보낸 뒤, `session/new`를 `-32000 Authentication required`로 거절한다. 세션이
+/// 열린 뒤 로그인이 풀리면 `session/prompt`도 같은 오류다.
+///
+/// 로그인 파일(`FAKE_CODEX_AUTH`)이 있으면 보통 에이전트다 — 그래서 로그인 명령이 끝난 뒤 다시 띄운 에이전트는 세션을 연다.
+fn needs_auth(fake: &mut Fake) {
+    fake.needs_auth = true;
+    fake.on_prompt = |fake, id, session_id| {
+        if fake.logged_in() {
+            codex_one_turn(fake, id, session_id);
+        } else {
+            if std::env::var_os("FAKE_ACP_AUTH_PAUSES").is_some() {
+                fake.hold_until_released(session_id);
+            }
+            fake.wire.reply_error(id, -32000, "Authentication required");
+        }
+    };
+    fake.converse();
 }
 
 /// 가짜 하나의 상태 — 선과, 영수증에 실을 것들.
@@ -356,6 +375,8 @@ struct Fake {
     spec_dir: Option<PathBuf>,
     /// 지금까지 보낸 edit 도구 줄의 수 — 도구 id를 매번 같게 짓는다(S26).
     edits: usize,
+    /// 로그인 파일을 보나(`needs-auth`).
+    needs_auth: bool,
 }
 
 impl Fake {
@@ -372,7 +393,24 @@ impl Fake {
             prompt: Value::Null,
             spec_dir: None,
             edits: 0,
+            needs_auth: false,
         }
+    }
+
+    /// 검사가 그 세션의 턴을 놓을 때까지(`<세션 id>.go`가 설 때까지) 붙잡는다. 영수증 폴더가 없으면 붙잡지 않는다.
+    fn hold_until_released(&self, session_id: &str) {
+        if let Some(go) = self.receipts.as_ref().map(|dir| dir.join(format!("{session_id}.go"))) {
+            // 검사가 놓지 않고 사라져도 끝없이 남지 않게 한도를 둔다.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            while !go.exists() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+    }
+
+    /// 로그인돼 있나 — 로그인 파일을 보지 않는 시나리오는 늘 됐다.
+    fn logged_in(&self) -> bool {
+        !self.needs_auth || std::env::var_os("FAKE_CODEX_AUTH").is_some_and(|path| PathBuf::from(path).exists())
     }
 
     /// stdin이 닫힐 때까지 요청에 답한다. 닫히면 그것을 영수증에 적고 돌아온다.
@@ -395,6 +433,16 @@ impl Fake {
                             }
                         }),
                     );
+                    if !self.logged_in() {
+                        // 미로그인은 initialize의 답 바로 뒤에 알린다(실측 noauth 2 · 3줄).
+                        self.wire.notify(
+                            "_auth/status_update",
+                            json!({"authStatus": {"kind": "none", "label": "Not logged in"}}),
+                        );
+                    }
+                }
+                "session/new" if !self.logged_in() => {
+                    self.wire.reply_error(&id, -32000, "Authentication required");
                 }
                 "session/new" => {
                     // 프로세스마다 다른 id — 검사는 `agents.json`의 에이전트 쪽 세션 id로 영수증을 찾는다.

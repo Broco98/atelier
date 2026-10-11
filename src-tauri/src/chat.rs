@@ -18,8 +18,8 @@ use tauri::{AppHandle, Emitter};
 pub const RECORD_EVENT: &str = "chat:record";
 /// 대기 줄 바뀜 — work · 대화 · 대기 줄 전체. 대기 줄은 호스트 메모리에만 있고 기록에 없다(S13).
 pub const QUEUE_EVENT: &str = "chat:queue";
-/// 엔진 상태 — 에이전트 · 찾음 여부 · 로그인 여부 · 로그인 진행.
-#[expect(dead_code, reason = "로그인(three-axes 티켓 12)이 쏜다")]
+/// 엔진 상태 — 에이전트 · 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 안내 카드가 이것으로 「로그인 안 됨 · 로그인
+/// 중 · 끝남」을 그린다(three-axes 티켓 12).
 pub const ENGINE_EVENT: &str = "chat:engine";
 
 /// 앱의 대화 호스트를 짓는다. 데이터 루트는 코어가 정하고(`ATELIER_HOME`), 로그인 셸은 사용자의 것이다.
@@ -48,7 +48,8 @@ pub fn announce(app: AppHandle, events: Receiver<HostEvent>) {
     });
 }
 
-/// 호스트의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ChatRecordEvent` · `ChatQueueEvent`와 같은 말이다.
+/// 호스트의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ChatRecordEvent` · `ChatQueueEvent` ·
+/// `ChatEngineEvent`와 같은 말이다.
 fn wire(event: &HostEvent) -> (&'static str, Value) {
     match event {
         HostEvent::Record { work, conversation, line } => (
@@ -58,6 +59,7 @@ fn wire(event: &HostEvent) -> (&'static str, Value) {
         HostEvent::Queue { work, conversation, queue } => {
             (QUEUE_EVENT, json!({"work": work, "conversation": conversation, "queue": queue}))
         }
+        HostEvent::Engine(state) => (ENGINE_EVENT, serde_json::to_value(state).expect("엔진 상태는 JSON이다")),
     }
 }
 
@@ -117,5 +119,43 @@ mod tests {
                 ],
             }),
         );
+    }
+
+    /// **엔진 상태 이벤트는 에이전트 · 찾음 여부 · 로그인 여부 · 로그인 진행을 싣는다**(three-axes 구현 스펙 「대화 호스트 ›
+    /// 나오는 것」). 안내 카드가 진행의 `state`로 「로그인 중(링크)」과 「끝남」을 가르고, 「링크 복사」는 `url`을 쓴다 —
+    /// 프런트의 `ChatEngineEvent`와 같은 말이다.
+    #[test]
+    fn an_engine_event_carries_the_agent_found_logged_in_and_the_login_progress() {
+        use atelier_acp::{Agent, EngineState, LoginProgress};
+
+        let running = HostEvent::Engine(EngineState {
+            agent: Agent::Claude,
+            found: true,
+            logged_in: None,
+            login: Some(LoginProgress::Running { url: Some("https://claude.com/cai/oauth/authorize?x".into()) }),
+        });
+        assert_eq!(
+            wire(&running),
+            (
+                "chat:engine",
+                json!({
+                    "agent": "claude", "found": true, "loggedIn": null,
+                    "login": {"state": "running", "url": "https://claude.com/cai/oauth/authorize?x"},
+                }),
+            ),
+        );
+        let ended = HostEvent::Engine(EngineState {
+            agent: Agent::Codex,
+            found: true,
+            logged_in: Some(true),
+            login: Some(LoginProgress::Ended { cancelled: false, exit_code: Some(0) }),
+        });
+        assert_eq!(
+            wire(&ended).1,
+            json!({"agent": "codex", "found": true, "loggedIn": true,
+                   "login": {"state": "ended", "cancelled": false, "exitCode": 0}}),
+        );
+        let missing = HostEvent::Engine(EngineState { agent: Agent::Codex, found: false, logged_in: None, login: None });
+        assert_eq!(wire(&missing).1, json!({"agent": "codex", "found": false, "loggedIn": null, "login": null}));
     }
 }

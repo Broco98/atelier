@@ -23,10 +23,19 @@ pub(crate) fn in_new_session(command: &mut Command) -> &mut Command {
 
 /// 그룹 전체에 SIGKILL을 보낸다. 번호는 [`signallable`]이 거른다.
 pub(crate) fn kill_group(pgid: u32) {
+    signal_group(pgid, libc::SIGKILL);
+}
+
+/// 그룹 전체에 SIGTERM을 보낸다 — 로그인 명령의 취소다(three-axes 결정 30). SIGINT가 아니다.
+pub(crate) fn terminate_group(pgid: u32) {
+    signal_group(pgid, libc::SIGTERM);
+}
+
+fn signal_group(pgid: u32, signal: libc::c_int) {
     if let Some(pgid) = signallable(pgid) {
         // SAFETY: killpg는 번호 하나와 신호 하나만 받는다. 없는 그룹이면 ESRCH로 끝난다.
         unsafe {
-            libc::killpg(pgid, libc::SIGKILL);
+            libc::killpg(pgid, signal);
         }
     }
 }
