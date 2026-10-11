@@ -19,6 +19,9 @@ import type { Quote, RecordLine } from "./types";
 // - 권한을 기다리다 멈추기로 요청이 거둬진(`permission` `withdrawn` · `stopped`, 티켓 08) 도구 줄도 **멈춤**이다 — 돌지 않았다.
 //   codex-acp는 그 도구를 `in_progress`로 두고 닫는 update를 보내지 않는다(실측 G2 cancel).
 //
+// **스스로 이어 간 턴**(S4, three-axes 티켓 16)은 보낸 말 없이 시작 표지(`session_info_update`의 `_meta.atelier.outOfTurn`)나 턴 밖
+// update로 열리고 턴 밖 끝(`turn-end{outOfTurn: true}`)으로 닫힌다.
+//
 // **상태와 상태 줄**(three-axes 티켓 23 · S23)도 기록에서 나온다. `session` 줄이 띄우는 중이면 이어 붙이는 중(`connecting`)이고 열림 ·
 // 죽음 · 닫힘 · 로그인 필요가 오면 걷힌다. 되살리기가 새 세션으로 끝난 열림(`how: fresh`) · 프로세스 죽음 · 판 경고는 흐름 안의 한
 // 줄(`notices`)이다. 앱을 다시 켜면 그 기록을 적던 프로세스가 없다 — 앱을 끄면 턴 끝도 죽음 줄도 없이 끝나므로, 대화 목록이 「떠
@@ -107,7 +110,7 @@ export interface Turn {
   /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말 · 인용 블록은 기록에만 있다. 턴 밖 update로 시작한 턴은 null이다. */
   sent: string | null;
   /**
-   * 에이전트가 스스로 이어 간 턴인가(S4) — 보낸 말 없이 턴 밖 update로 시작했거나 턴 밖 끝(`outOfTurn`)만 온 턴이다. 머리줄에
+   * 에이전트가 스스로 이어 간 턴인가(S4) — 보낸 말 없이 시작 표지나 턴 밖 update로 시작했거나 턴 밖 끝(`outOfTurn`)만 온 턴이다. 머리줄에
    * 「스스로 이어 감」 표지가 선다(three-axes 티켓 20).
    */
   selfContinued: boolean;
@@ -262,6 +265,12 @@ export function foldConversation(lines: readonly RecordLine[], goneThrough: numb
           if (!tool) break;
           tool.output += outputOf(update);
           if (open && update.status === "failed" && open.entries.includes(tool)) closedLast.push(tool);
+          break;
+        }
+        if (kind === "session_info_update" && outOfTurnStarted(update)) {
+          // 스스로 이어 간 턴의 시작 표지(S4, three-axes 티켓 16) — 첫 조각 전부터 턴이 돈다(「일하는 중」 · 멈추기 · 닫기 확인).
+          // 호스트의 종료 셈도 이때부터 그 턴을 센다.
+          if (!open) open = start(`o${line.seq}`, null, line.at);
           break;
         }
         if (!TURN_UPDATES.has(kind)) break;
@@ -444,6 +453,17 @@ export function foldOf(lines: readonly RecordLine[], goneThrough: number | null)
   const model = foldConversation(lines, goneThrough);
   folded.set(lines, { goneThrough, model });
   return model;
+}
+
+/**
+ * 에이전트가 스스로 이어 간 턴의 시작 표지인가 — 변환기가 걸린 말 없이 시작한 턴을 `session_info_update`의
+ * `_meta.atelier.outOfTurn.state: "started"`로 알린다(three-axes 티켓 16). 끝 표지는 update가 아니라 턴 밖 `turn-end`로 온다.
+ */
+function outOfTurnStarted(update: Json): boolean {
+  const meta = isObject(update._meta) ? update._meta : null;
+  const atelier = meta && isObject(meta.atelier) ? meta.atelier : null;
+  const mark = atelier && isObject(atelier.outOfTurn) ? atelier.outOfTurn : null;
+  return mark?.state === "started";
 }
 
 /** 권한 물음 줄을 답할 요청으로 — 선택지는 요청 원문 그대로, 도구 요지는 호스트가 채운 것(없으면 요청 원문의 것)이다. */

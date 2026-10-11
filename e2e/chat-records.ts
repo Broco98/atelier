@@ -169,6 +169,14 @@ export function selfContinuedTurn(from: number, answer: string, durationMs: numb
 }
 
 /**
+ * 손으로 짓는 **스스로 이어 간 턴의 시작 표지**(S4, three-axes 티켓 16) — 변환기가 걸린 말 없이 claude의 턴 시작(`system/init`)을 받으면
+ * 내는 `session_info_update{_meta.atelier.outOfTurn.state: "started"}`를 호스트가 update 줄로 적은 꼴이다(`translator.rs`의
+ * `self_turn_started`). 첫 조각보다 먼저 온다.
+ */
+export const selfTurnStarted = (seq: number): RecordLine =>
+  handUpdate(seq, 0, { sessionUpdate: "session_info_update", _meta: { atelier: { outOfTurn: { state: "started" } } } });
+
+/**
  * 손으로 짓는 **도구 턴**(three-axes 티켓 18) — L1 자료에 없는 도구 모양(실패 · MCP 호출 · 제목이 빈 명령)을 잴 때 쓴다. 꼴은 L1
  * 기록과 같다: 보낸 말 → `updates`(ACP `session/update`의 `update` 몸, 차례대로) → 답 → 턴 끝(`end_turn`). 도구 모양은 그 엔진이
  * 내는 것 그대로 부르는 쪽이 짓는다 — Claude는 변환기(`translator/stream.rs`), Codex는 codex-acp 2.2.2다. seq는 `from`부터 오른다.

@@ -6,10 +6,12 @@ import {
   claudeStoppedTurn,
   conversationRow,
   fireQueue,
+  handTurn,
   linesAfter,
   linesThrough,
   record,
   selfContinuedTurn,
+  selfTurnStarted,
   sentLine,
   sessionLine,
   streamLines,
@@ -227,6 +229,35 @@ test("스스로 이어 간 턴: 보낸 말 없이 선 턴의 머리줄에 「스
   await expect(작업패널(page).getByText("dev 서버가 떴어요", { exact: false })).toBeVisible();
   await expect(작업패널(page).getByText("dev 서버를 띄워 줘", { exact: true })).toHaveCount(1);
   await expect(단추(page, "멈추기")).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("스스로 이어 간 턴의 시작: 시작 표지가 오면 첫 조각 전에도 「일하는 중」이고 멈추기가 서며, ×는 닫기 전에 묻는다", async ({
+  page,
+}) => {
+  const claude = conversationRow({ id: "c-hand-self-start", agent: "claude", name: "Claude", lastSeq: 0 });
+  await openChat(page, [], claude);
+  await streamLines(page, plainWork.slug, claude.id, handTurn(1, "dev 서버를 띄워 줘", "띄웠어요", 2000));
+  await expect(머리줄(page, "2초 동안 작업함")).toBeVisible();
+  const 대화탭줄 = 작업패널(page).getByRole("group", { name: "대화 탭", exact: true });
+  await expect(대화탭줄.getByRole("button", { name: "Claude", exact: true })).toBeVisible();
+
+  // 백그라운드 작업이 끝나 에이전트가 스스로 턴을 열었다 — 조각은 아직 없다(three-axes 티켓 16 · S4).
+  await streamLines(page, plainWork.slug, claude.id, [selfTurnStarted(4)]);
+  await expect(대화탭줄.getByRole("button", { name: "Claude — 일하는 중", exact: true })).toBeVisible();
+  await expect(단추(page, "멈추기")).toBeVisible();
+  await 대화탭줄.getByRole("button", { name: "Claude 닫기", exact: true }).click();
+  const 닫기창 = page.getByRole("alertdialog", { name: "대화 닫기", exact: true });
+  await expect(닫기창).toHaveAccessibleDescription("에이전트가 일하는 중이에요 — 닫으면 그 턴이 끊겨요. 닫을까요?");
+  await 닫기창.getByRole("button", { name: "취소", exact: true }).click();
+  expect(await ipcCallArgs(page, "chat_close", "work")).toEqual([]);
+
+  // 첫 조각과 턴 밖 끝 — 같은 턴에 붙고, 끝나면 「스스로 이어 감」 머리줄이다.
+  const [update, end] = selfContinuedTurn(5, "dev 서버가 다시 떴어요", 3000);
+  await streamLines(page, plainWork.slug, claude.id, [update, end]);
+  await expect(머리줄(page, "3초 동안 작업함")).toBeVisible();
+  await expect(작업패널(page).getByText("스스로 이어 감", { exact: true })).toHaveCount(1);
+  await expect(대화탭줄.getByRole("button", { name: "Claude", exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
