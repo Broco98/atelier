@@ -37,6 +37,9 @@ interface WorkPanelProps {
   onOpenProject: (slug: string) => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라(공용 틀의 패널 칸) 패널은 언제나 마운트된 채다.
   open: boolean;
+  // 대화창이 가운데(`chat` 탭)에 서 있는가 — 그동안 이 패널은 `chat` 몸을 보이지 않는다(three-axes S22 · 한 대화창은 한 곳에).
+  // 같은 대화창이 두 곳에 서면 입력칸 · 대화 탭이 두 벌이 된다. 몸은 숨은 채 마운트돼 있다가 대화가 패널로 돌아오면 다시 선다.
+  chatElsewhere: boolean;
   // 아직 열지 않은 고친 파일(three-axes 티켓 26) — 트리의 그 행에 점이 선다. 표시의 주인은 화면이다(열었는지를 아는 것이 그쪽이다).
   unseen: readonly string[];
   // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 그 줄에서 연다(three-axes 티켓 26). 줄을 모르면 `null`이다.
@@ -58,6 +61,7 @@ function WorkPanel({
   onCopy,
   onOpenProject,
   open,
+  chatElsewhere,
   unseen,
   onOpenDoc,
 }: WorkPanelProps) {
@@ -143,8 +147,13 @@ function WorkPanel({
       {/* 대화창(three-axes 티켓 17) — 트리와 함께 숨은 채 마운트돼 있어 `spec`과 오가도 입력 중인 글과 스크롤이 남는다(스토리 12).
           **`treeGeneration` key를 걸지 않는다** — 패널을 접는 것은 대화를 끝내는 일이 아니다(에이전트도 꺼지지 않는다, 스토리 16).
           호스트는 처음 보일 때 부른다(`visible`). */}
-      <PanelBody view="chat" shown={view === "chat"}>
-        <ChatPane work={work.slug} visible={open && view === "chat"} specDir={work.specDir} onOpenDoc={onOpenDoc} />
+      <PanelBody view="chat" shown={view === "chat" && !chatElsewhere}>
+        <ChatPane
+          work={work.slug}
+          visible={open && view === "chat" && !chatElsewhere}
+          specDir={work.specDir}
+          onOpenDoc={onOpenDoc}
+        />
       </PanelBody>
       <PanelBody view="info" shown={view === "info"}>
         <WorkInfo

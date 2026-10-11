@@ -1047,6 +1047,9 @@ body[data-palette-open] [data-scrollbar] {
     --chat-diff-deleted: #ba2623;
     --chat-diff-added-line: #e6f4e7;
     --chat-diff-deleted-line: #fce6e2;
+    /* 흐름과 입력창을 모으는 폭(three-axes 티켓 24 — 캔버스 `.cx-thread`의 `--size-thread`). `chat` 탭처럼 넓은 자리에서 이 폭에
+       가운데로 모인다 — 작업 패널은 이보다 좁아 꽉 찬다. */
+    --chat-thread-width: 48rem;
     /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선) */
     --chat-surface-under: #f9f9f9;
     --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);

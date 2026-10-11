@@ -14,7 +14,7 @@ import type { FileSearch } from "./-file-search";
  * 이 목록 한 줄이다(three-axes 결정 9 — `chat` 탭이 여기 더해진다). 검증기 · `viewTab` · `tabSearch`가 전부 이 목록을
  * 읽으므로, 값 하나를 더하면 주소에 적히는 것과 모르는 값을 `spec`으로 눕히는 것이 함께 따라온다.
  */
-const ADDRESS_TABS = ["terminal"] as const;
+const ADDRESS_TABS = ["terminal", "chat"] as const;
 export type AddressTab = (typeof ADDRESS_TABS)[number];
 
 /** 주소에 적힐 수 있는 화면 탭이면 그 값, 아니면 `null`(`spec`도 `null`이다 — 주소에 안 쓴다). 대소문자 · 공백을 안 봐준다. */
@@ -86,8 +86,11 @@ export const viewTab = (search: { tab?: string }): ViewTab => addressTabOf(searc
  * 형태가 보던 문서(`file`)를 조용히 떨어뜨린다(결정 15). 그 사고를 막는 모양을 부르는 쪽마다
  * 다시 적으면, 검사하는 쪽도 그것을 **베껴 적게 되어** 실제 이동이 퇴화해도 초록이 된다.
  */
-export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?: AddressTab } {
-  return { ...prev, tab: next === "spec" ? undefined : next };
+export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?: AddressTab; split?: SplitSide } {
+  // **대화 탭은 분할에 들지 않는다**(three-axes S21) — 분할은 늘 `spec ▏터미널`이다. 그래서 대화 탭으로 가는 갱신은 분할을 함께
+  // 끈다: 남겨 두면 주소가 `tab=chat&split=lr`이 되어 분할이 이기고(화면이 그대로다) 대화 탭이 눌러도 아무 일이 없는 칸이 된다.
+  // 다른 탭은 분할을 건드리지 않는다 — 분할 중의 `tab`은 포커스가 든 열이다(결정 97).
+  return { ...prev, tab: next === "spec" ? undefined : next, ...(next === "chat" ? { split: undefined } : {}) };
 }
 
 /**

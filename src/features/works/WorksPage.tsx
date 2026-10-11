@@ -6,6 +6,7 @@ import {
   Columns2,
   Copy,
   Folder,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -35,6 +36,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import { changeMarksStore, markOpened, marksOf } from "@/features/chat/changes";
+import ChatPane from "@/features/chat/ChatPane";
 import { setQuote } from "@/features/chat/chat-store";
 import type { Quote } from "@/features/chat/types";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
@@ -235,16 +237,6 @@ function WorksPage({
   // 성질**이었고 되살리지 않는다. 이 화면은 작업을 옮겨도 같은 인스턴스라 이 값도 그대로 따라온다. 패널 접기는 언마운트가
   // 아니라 폭 트랜지션이라 접었다 펴도, 본문 왕복(spec ↔ terminal)에도 유지된다.
   const [panelView, setPanelView] = useState<PanelView>("spec");
-  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). **켜진 칸을 다시 누르면 닫힌다** — 켜짐은 「열렸고 그 칸이 골라졌다」이므로 닫힌 채 누른
-  // 칸은 켜진 칸이 아니다: 그 칸으로 연다. 다른 칸이면 그 칸으로 바꾼다. 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
-  const pickPanelView = (next: PanelView) => {
-    if (workPanelOpen && next === panelView) {
-      setWorkPanelOpen(false);
-      return;
-    }
-    setPanelView(next);
-    setWorkPanelOpen(true);
-  };
   // 작업 패널 카드의 폭. 칸(바깥 상자 · 틈 · 손잡이 · 접힘)은 공용 틀이 그리고 폭은 여기서 건넨다(ui-refresh 결정 27 — 목록 칸과
   // 같은 나눔). 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 서고 왼쪽으로 끌면 넓어진다. 저장 키는 이 패널 전용이다: 목록
   // 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
@@ -261,11 +253,14 @@ function WorksPage({
   // 그 판단은 탭이 아니라 **포커스**로 갈린다. `tab`을 안 보므로 의존성도 비었다.
   //
   // (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가 주석까지 읽는다.)
+  //
+  // **뒤집는 몸은 레일의 패널 토글과 같은 함수다**(`togglePanel` — 아래). 대화창이 가운데에 선 동안(three-axes S22) 「뒤집기」가
+  // 열림 하나로 끝나지 않아서 그 판단이 그 함수 하나에 산다. 이 이펙트는 그것을 그때의 것으로 부른다(참조) — 의존성은 비어 있다.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!togglesWorkPanel(e)) return;
       e.preventDefault();
-      setWorkPanelOpen((open) => !open);
+      togglePanelRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -331,6 +326,45 @@ function WorksPage({
   const specStands = split !== null || tab === "spec";
   const terminalStands = split !== null || tab === "terminal";
   const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
+  // **`chat` 탭 — 대화창이 가운데에 넓게 선다**(three-axes S21 · 결정 9). 분할에는 들지 않는다: 분할은 늘 `spec ▏터미널`이라
+  // `tab=chat`에 분할이 겹치면(손으로 친 주소) 분할이 이긴다. 대화 탭으로 가는 갱신은 분할을 함께 끈다(`tabSearch`).
+  const chatStands = split === null && tab === "chat";
+
+  // **한 대화창은 한 곳에**(three-axes S22). `chat` 탭이 떠 있으면 작업 패널은 `chat`을 보이지 않는다 — 패널이 `chat`을 고른 채였으면
+  // 그동안 패널이 비켜서 가운데가 넓어진다(프로토타입 D). 고른 칸과 열림은 그대로 기억한다: `spec`으로 돌아오면 대화가 패널로 돌아온다.
+  const chatAway = chatStands && panelView === "chat";
+  const panelShown = workPanelOpen && !chatAway;
+  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). **켜진 칸을 다시 누르면 닫힌다** — 켜짐은 「열렸고 그 칸이 골라졌다」이므로 닫힌 채 누른
+  // 칸은 켜진 칸이 아니다: 그 칸으로 연다. 다른 칸이면 그 칸으로 바꾼다. 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
+  //
+  // **`chat` 탭이 떠 있을 때의 `chat`은 예외다**(S22 · 프로토타입 D) — 그 칸은 켜진 것으로 읽히지만 다시 눌러 닫는 칸이 아니라,
+  // 대화를 패널로 데려오는 칸이다: 가운데는 `spec`으로, 작업 패널은 `chat`으로 간다.
+  const pickPanelView = (next: PanelView) => {
+    if (chatStands && next === "chat") {
+      onSelectTab("spec");
+      setPanelView("chat");
+      setWorkPanelOpen(true);
+      return;
+    }
+    if (panelShown && next === panelView) {
+      setWorkPanelOpen(false);
+      return;
+    }
+    setPanelView(next);
+    setWorkPanelOpen(true);
+  };
+  // 패널 토글 · ⌘Enter. 열림만 뒤집는다 — 다만 대화창이 가운데로 가 패널이 비켜선 동안(`chatAway`)은 열림을 뒤집어도 보이는 것이
+  // 없다(그 패널은 `chat`을 못 보인다). 그때 펼치기는 `spec`으로 편다 — 눌러도 아무 일이 없는 버튼이 되지 않게(결정 11·21).
+  const togglePanel = () => {
+    if (chatAway) {
+      setPanelView("spec");
+      setWorkPanelOpen(true);
+      return;
+    }
+    setWorkPanelOpen((open) => !open);
+  };
+  const togglePanelRef = useRef(togglePanel);
+  togglePanelRef.current = togglePanel;
 
   // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
   // (결정 49). 터미널 탭에서 `terminalWork`가 붙들어 둔 작업을 쓰는 것도 그대로 따라온다 —
@@ -554,6 +588,9 @@ function WorksPage({
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
+      // `spec` 바로 뒤의 `chat`(three-axes S21 · 결정 9) — 대화창을 가운데에 띄운다. 숫자 키를 받지 않고(⌘1은 spec, ⌘2~9는 셸 그대로)
+      // 분할에 들지 않는다. 켜짐은 `spec`과 같은 뜻이다 — 「본문이 대화창인가」.
+      fixed={[{ id: "chat", label: "chat", icon: MessageSquare, on: chatStands, onSelect: () => onSelectTab("chat") }]}
       showing={terminalStands}
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
@@ -622,7 +659,8 @@ function WorksPage({
                 주석까지 읽는다.) */}
             {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
                 터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
-                여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
+                여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. **열 탭이 아니면 `spec`이다**: `chat` 탭에서 켜도
+                분할은 `spec ▏터미널`이다(three-axes S21). */}
             {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
                 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
                 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
@@ -638,7 +676,7 @@ function WorksPage({
                   size="icon"
                   aria-label="분할"
                   pressed={split !== null}
-                  onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
+                  onPressedChange={(on) => changeSplit(on ? "lr" : null, tab === "terminal" ? "terminal" : "spec")}
                 />
               }
             >
@@ -844,7 +882,15 @@ function WorksPage({
   // 본문 — 넷 중 하나이고 모두 공용 틀의 카드다(ui-refresh 결정 4 · 15). 분할이면 틀이 `split`으로 받아 그리므로 여기는 비어
   // 있다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을
   // 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
-  const body = splitView ? undefined : terminalWork ? (
+  const body = splitView ? undefined : chatStands && selected ? (
+    // 대화창 — 작업 패널의 `chat` 보기와 **같은 대화창**이 가운데에 넓게 선다(three-axes S21 · 스토리 17 · 18). 머리 없는 흰 카드다:
+    // 대화창이 제 머리(대화 탭 줄)를 든다. 흐름과 입력창은 대화창이 읽기 좋은 폭에 가운데로 모은다(`ChatPane`).
+    //
+    // 문서 링크(도구 줄의 파일 · 알약 목록)는 패널과 같은 길이다 — 문서를 고르면 탭이 `spec`으로 돌아간다(`fileSearch`, 스토리 19).
+    <Card as="main" label="대화" className="flex-1">
+      <ChatPane work={selected.slug} visible specDir={selected.specDir} onOpenDoc={openDoc} />
+    </Card>
+  ) : terminalWork ? (
     // 터미널 — 머리 없는 터미널 카드다(ui-refresh 결정 5 · Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
     <Card as="main" label="터미널" tone="terminal" className="flex-1">
       {terminalBody}
@@ -897,12 +943,14 @@ function WorksPage({
       rail={
         panelWork
           ? {
-              open: workPanelOpen,
-              onToggle: () => setWorkPanelOpen((open) => !open),
+              open: panelShown,
+              onToggle: togglePanel,
               items: PANEL_VIEWS,
               active: panelView,
               onPick: pickPanelView,
               marks: railMarks,
+              // 대화창이 가운데에 선 동안 레일 `chat`은 켜진 것으로 읽힌다(three-axes S22).
+              outside: chatStands ? ["chat"] : [],
             }
           : undefined
       }
@@ -925,7 +973,7 @@ function WorksPage({
         // 두 navigate가 한 틱에 겹친다.
         panelWork
           ? {
-              open: workPanelOpen,
+              open: panelShown,
               size: panelSize,
               label: "작업 패널",
               children: (
@@ -937,6 +985,7 @@ function WorksPage({
                   onCopy={copyText}
                   onOpenProject={onOpenProject}
                   open={workPanelOpen}
+                  chatElsewhere={chatStands}
                   unseen={unseen}
                   onOpenDoc={openDoc}
                 />

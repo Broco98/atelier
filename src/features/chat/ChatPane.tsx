@@ -35,6 +35,13 @@ import type { Agent, Conversation, EngineCheck, Quote } from "./types";
  */
 export const DEFAULT_AGENT: Agent = "claude";
 
+/**
+ * 흐름 · 입력창 · 안내 카드를 모으는 열(three-axes 티켓 24) — 읽기 좋은 폭(`--chat-thread-width`, 캔버스 `.cx-thread`)에 가운데로
+ * 모인다. `chat` 탭은 가운데 카드 전체가 대화창이라 긴 답의 줄이 끝없이 늘지 않게 이 폭에서 멈추고, 작업 패널은 이보다 좁아 꽉
+ * 찬다 — 두 자리가 같은 대화창이다(스토리 18). 대화 탭 줄은 모으지 않는다: 머리는 카드 폭 그대로다.
+ */
+const COLUMN = "mx-auto flex w-full max-w-(--chat-thread-width) flex-col";
+
 interface ChatPaneProps {
   /** 그 work의 slug. 작업 패널에 key가 없어 work를 옮기면 이 값만 바뀐다. */
   work: string;
@@ -280,22 +287,26 @@ function ConversationBody({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 scroll-quiet"
       >
-        <ChatThread conversationKey={key} model={model} />
+        <div className={COLUMN}>
+          <ChatThread conversationKey={key} model={model} />
+        </div>
       </div>
-      <Composer
-        work={work}
-        conversation={conversation.id}
-        draftKey={key}
-        agent={conversation.agent}
-        quote={quote}
-        running={model.running}
-        above={
-          <>
-            {changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}
-            <QueuedMessages work={work} conversation={conversation.id} queue={queue} />
-          </>
-        }
-      />
+      <div className={COLUMN}>
+        <Composer
+          work={work}
+          conversation={conversation.id}
+          draftKey={key}
+          agent={conversation.agent}
+          quote={quote}
+          running={model.running}
+          above={
+            <>
+              {changes && changes.length > 0 && <ChangesPill files={changes} onOpenDoc={onOpenDoc} />}
+              <QueuedMessages work={work} conversation={conversation.id} queue={queue} />
+            </>
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -305,7 +316,9 @@ function GuidePlace({ agent, kind }: { agent: Agent; kind: GuideKind }) {
   const view = useStore(chatEngineStore, (state) => state[agent]);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 scroll-quiet">
-      <GuideCard agent={agent} kind={kind} view={view} />
+      <div className={COLUMN}>
+        <GuideCard agent={agent} kind={kind} view={view} />
+      </div>
     </div>
   );
 }

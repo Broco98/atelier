@@ -25,6 +25,11 @@ export interface RailProps<Id extends string = string> {
    * 점(three-axes 티켓 26)이다. 점을 세울지는 부르는 쪽이 정한다 — 무엇이 보이는지(패널 · 고른 칸)를 아는 것이 그쪽이라서다.
    */
   marks?: Partial<Record<Id, string>>;
+  /**
+   * 패널 밖에 서 있는 칸 — 패널이 그 칸을 안 보여도 **켜진 것으로 읽힌다**. 지금은 `chat` 탭이 대화창을 가운데에 띄운 동안의
+   * `chat`이다(three-axes S22 — 한 대화창은 한 곳에). 누르면 무엇을 할지는 부르는 쪽이 정한다(그 칸을 패널로 데려온다).
+   */
+  outside?: readonly Id[];
 }
 
 /**
@@ -37,7 +42,8 @@ export interface RailProps<Id extends string = string> {
  *
  * **칸은 탭이 아니다** — `aria-pressed` 버튼이다. 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0개일 수 있다(탭 줄이 켜진 칸이 둘일 수
  * 있어 `role="tab"`을 안 쓰는 것과 같은 가족이다 — `ShellTabs`). 그래서 칸 사이 ←/→ 이동이 없고 Tab으로 옮겨 간다. 켜짐은 「패널이
- * 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다(누르면 그 칸으로 열린다).
+ * 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다(누르면 그 칸으로 열린다). 패널 밖에 선 칸
+ * (`outside` — 가운데 `chat` 탭의 대화창)은 패널과 상관없이 켜진 것으로 읽힌다.
  *
  * 토글의 이름과 도움말은 상태를 탄다 — 누르면 무슨 일이 날지를 말한다(분할 토글 · 목록 토글과 같다). 열림은 `aria-expanded`가
  * 이미 말하므로 설명은 달지 않고, 키(⌘Enter)만 도움말 옆 Kbd와 설명으로 남는다(S28 — `Hint`의 `shortcut`).
@@ -52,6 +58,7 @@ function Rail<Id extends string>({
   active,
   onPick,
   marks,
+  outside = [],
   controls,
 }: RailProps<Id> & {
   /** 레일이 여닫고 고르는 패널의 id(`aria-controls`) — `Frame`이 패널 칸과 함께 짓는다. */
@@ -88,7 +95,7 @@ function Rail<Id extends string>({
         className="flex flex-col gap-0.5 rounded-pill bg-card p-0.5 inset-ring inset-ring-border-pill"
       >
         {items.map(({ id, label, icon: Icon }) => {
-          const on = open && id === active;
+          const on = (open && id === active) || outside.includes(id);
           const mark = marks?.[id];
           return (
             <Hint
