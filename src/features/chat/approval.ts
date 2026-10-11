@@ -1,5 +1,6 @@
 import type { PendingPermission, PermissionOption } from "./fold";
-import { commandOf } from "./tool-view";
+import { nonEmpty, type Json } from "./json";
+import { commandOf, diffPathsOf, locationsOf, mcpOf, toolFields, type ToolIcon } from "./tool-view";
 
 // 승인 카드의 화면 값(three-axes 티켓 21) — 답하지 않은 권한 요청(`PendingPermission`)을 무엇을 하려는지(도구 · 제목 · 명령이나
 // 경로 · 까닭)와 선택지 자리로 옮기는 **순수 함수**다. 그리는 것은 `ApprovalCard`이고, 승인 카드가 설 때의 알림(스토리 120)도 같은
@@ -14,13 +15,8 @@ import { commandOf } from "./tool-view";
 // `switch_mode`)만 엔진의 두 선택지를 「구현」 · 「다시 짜기」로 부른다(three-axes 결정 29) — 그 요청의 이름은 엔진의 영어 문장
 // 이고(「Yes, implement this plan」), 카드가 묻는 말(「이 계획대로 할까요?」)의 답으로 읽혀야 해서다.
 
-type Json = Record<string, unknown>;
-
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
-const nonEmpty = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value : null);
-
-/** 카드 머리의 아이콘 갈래. */
-export type ApprovalIcon = "execute" | "file" | "fetch" | "search" | "mcp" | "plan" | "other";
+/** 카드 머리의 아이콘 갈래 — 도구 줄과 같은 아이콘 지도(`tool-icons.ts`)를 쓰고, 계획 승인만 따로다. */
+export type ApprovalIcon = Exclude<ToolIcon, "skill" | "subagent"> | "plan";
 
 export interface ApprovalView {
   icon: ApprovalIcon;
@@ -46,23 +42,16 @@ export interface ApprovalChoice {
 export function describeApproval(request: PendingPermission): ApprovalView {
   // 흐름의 도구 줄이 이긴다(머리말) — 호스트가 채운 요지는 빈 칸만 채운 것이라, 겹치는 칸은 도구 줄의 원문이 더 정확하다.
   const call: Json = { ...request.toolCall, ...(request.tool?.call ?? {}) };
-  const rawInput = isObject(call.rawInput) ? call.rawInput : {};
-  const meta = isObject(call._meta) ? call._meta : {};
-  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
-  const requestMeta = isObject(request.toolCall._meta) ? request.toolCall._meta : {};
-  const requestClaude = isObject(requestMeta.claudeCode) ? requestMeta.claudeCode : {};
+  const fields = toolFields(call);
+  const { claudeCode, toolName, rawInput, title, kind } = fields;
+  const requestClaude = toolFields(request.toolCall).claudeCode;
   const reason = nonEmpty(requestClaude.decisionReason) ?? nonEmpty(claudeCode.decisionReason);
-  const title = nonEmpty(call.title);
-  const toolName = nonEmpty(claudeCode.toolName);
-  const kind = typeof call.kind === "string" ? call.kind : "other";
 
   if (request.planReview) return { icon: "plan", tool: "계획 모드", title: "이 계획대로 할까요?", subject: null, reason };
 
-  const named = toolName?.match(/^mcp__(.+?)__(.+)$/);
-  const server = named?.[1] ?? nonEmpty(rawInput.server);
-  const tool = named?.[2] ?? nonEmpty(rawInput.tool);
-  if (server && tool && (named || meta.is_mcp_tool_call === true || title?.startsWith("mcp.") === true)) {
-    return { icon: "mcp", tool: "MCP", title: "이 MCP 도구를 쓰도록 허용할까요?", subject: `${server} · ${tool}`, reason };
+  const mcp = mcpOf(fields);
+  if (mcp) {
+    return { icon: "mcp", tool: "MCP", title: "이 MCP 도구를 쓰도록 허용할까요?", subject: `${mcp.server} · ${mcp.tool}`, reason };
   }
   const path = pathOf(call, rawInput);
   switch (kind) {
@@ -75,13 +64,13 @@ export function describeApproval(request: PendingPermission): ApprovalView {
         reason,
       };
     case "edit":
-      return { icon: "file", tool: "파일", title: "이 파일을 고치도록 허용할까요?", subject: path ?? title, reason };
+      return { icon: "edit", tool: "파일", title: "이 파일을 고치도록 허용할까요?", subject: path ?? title, reason };
     case "delete":
-      return { icon: "file", tool: "파일", title: "이 파일을 지우도록 허용할까요?", subject: path ?? title, reason };
+      return { icon: "edit", tool: "파일", title: "이 파일을 지우도록 허용할까요?", subject: path ?? title, reason };
     case "move":
-      return { icon: "file", tool: "파일", title: "이 파일을 옮기도록 허용할까요?", subject: path ?? title, reason };
+      return { icon: "edit", tool: "파일", title: "이 파일을 옮기도록 허용할까요?", subject: path ?? title, reason };
     case "read":
-      return { icon: "file", tool: "파일", title: "이 파일을 읽도록 허용할까요?", subject: path ?? title, reason };
+      return { icon: "read", tool: "파일", title: "이 파일을 읽도록 허용할까요?", subject: path ?? title, reason };
     case "fetch":
       return { icon: "fetch", tool: "웹", title: "이 주소를 가져오도록 허용할까요?", subject: nonEmpty(rawInput.url) ?? title, reason };
     case "search":
@@ -93,11 +82,8 @@ export function describeApproval(request: PendingPermission): ApprovalView {
 
 /** 도구가 다루는 파일 — ACP `locations[].path`, 없으면 입력의 경로 칸(Claude `file_path`) · diff 내용의 경로. */
 function pathOf(call: Json, rawInput: Json): string | null {
-  const located = (Array.isArray(call.locations) ? call.locations : []).filter(isObject).map((one) => nonEmpty(one.path));
-  const diffed = (Array.isArray(call.content) ? call.content : [])
-    .filter(isObject)
-    .map((one) => (one.type === "diff" ? nonEmpty(one.path) : null));
-  return [...located, nonEmpty(rawInput.file_path), nonEmpty(rawInput.path), ...diffed].find((one) => one !== null) ?? null;
+  const paths = [...locationsOf(call), nonEmpty(rawInput.file_path), nonEmpty(rawInput.path), ...diffPathsOf(call)];
+  return paths.find((one) => one !== null) ?? null;
 }
 
 /** 선택지마다 카드의 자리와 글 — 차례는 엔진이 준 그대로다. */

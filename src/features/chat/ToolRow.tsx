@@ -1,24 +1,12 @@
 import { useContext, useState, type ReactNode } from "react";
-import {
-  BookOpen,
-  Bot,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Command,
-  Globe,
-  Pencil,
-  Search,
-  Terminal,
-  Wrench,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useHomeDir } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
 import { ChatDocsContext } from "./chat-docs";
 import { spoken, toolDone, type ToolEntry, type TurnEnd } from "./fold";
-import { baseName, describeTool, lineOf, specPathOf, type DiffPiece, type ToolIcon, type ToolView } from "./tool-view";
+import { TOOL_ICONS } from "./tool-icons";
+import { baseName, commandOf, describeTool, lineOf, specPathOf, type DiffPiece, type ToolView } from "./tool-view";
 
 // 도구 줄(three-axes 티켓 18 · 20) — 에이전트가 지금 무엇을 하는지 따라가는 줄이다(스토리 39). 모양은 캔버스 Tools 보드의
 // `.cx-tool`(아이콘 16 + 사람이 읽는 문장 하나 · 14/21 · 60% 글자)이고, 문구 · 안의 것은 `tool-view.ts`가 ACP 모양으로 짓는다.
@@ -38,26 +26,15 @@ import { baseName, describeTool, lineOf, specPathOf, type DiffPiece, type ToolIc
 //
 // 줄은 그 문구(멈춘 줄은 도구 제목)를 이름으로 단 묶음(`role="group"`)이다 — 상태 글과 안의 것은 그 안의 보이는 글이다.
 
-const ICONS: Record<ToolIcon, LucideIcon> = {
-  execute: Terminal,
-  read: BookOpen,
-  edit: Pencil,
-  search: Search,
-  fetch: Globe,
-  mcp: Command,
-  skill: Wrench,
-  subagent: Bot,
-  other: Wrench,
-};
-
-/** 멈춘 줄의 이름 — 엔진이 지은 제목, 없으면 명령, 그것도 없으면 kind로 지은 대상(실측 함정 49)이다. */
+/**
+ * 멈춘 줄의 이름 — 엔진이 지은 제목, 없으면 명령, 그것도 없으면 kind로 지은 대상(실측 함정 49)이다. 명령은 도구 줄 문구와 같은
+ * 규칙으로 읽는다(`commandOf` — codex 배열 명령의 셸 감싸개를 벗긴다): 도는 동안과 멈춘 뒤의 이름이 같다.
+ */
 function titleOf(tool: ToolEntry): string {
   const { title, rawInput } = tool.call;
   if (typeof title === "string" && title.trim() !== "") return title;
-  const command = typeof rawInput === "object" && rawInput !== null ? (rawInput as { command?: unknown }).command : null;
-  if (typeof command === "string" && command.trim() !== "") return command;
-  if (Array.isArray(command) && command.every((part) => typeof part === "string") && command.length > 0) return command.join(" ");
-  return describeTool(tool).phrase.subject ?? "명령";
+  const command = typeof rawInput === "object" && rawInput !== null ? commandOf((rawInput as { command?: unknown }).command) : null;
+  return command ?? describeTool(tool).phrase.subject ?? "명령";
 }
 
 function ToolRow({ tool, end }: { tool: ToolEntry; end: TurnEnd | null }) {
@@ -96,7 +73,7 @@ function ToolLine({ tool }: { tool: ToolEntry }) {
   const running = view.state === "running";
   const added = view.diffs.reduce((sum, piece) => sum + piece.added, 0);
   const deleted = view.diffs.reduce((sum, piece) => sum + piece.deleted, 0);
-  const Icon = ICONS[view.icon];
+  const Icon = TOOL_ICONS[view.icon];
   // 지운 파일은 열 것이 없다 — 링크를 세우지 않는다(알약 목록과 같다, 티켓 26).
   const fileLink = !running && !view.removed && view.phrase.file ? link(view.phrase.file, lineOf(tool, view.phrase.file)) : null;
 

@@ -1,3 +1,4 @@
+import { isObject, text } from "./json";
 import type { RecordLine } from "./types";
 
 // 칩과 「/」 메뉴의 원천(three-axes 티켓 19 · S15) — 기록 줄을 받아 그 대화의 목록(모드 · 모델 · 계획 · 명령)과 지금 값으로 접는
@@ -59,10 +60,6 @@ export interface ChipLists {
   floor: Record<ChoiceField, number>;
 }
 
-type Json = Record<string, unknown>;
-
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
-const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
 const EMPTY_FLOOR: Record<ChoiceField, number> = { model: 0, mode: 0, plan: 0 };
 

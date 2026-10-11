@@ -1,11 +1,11 @@
-import { useId, useState, type ComponentType } from "react";
-import { Command, FileText, Globe, Map as MapIcon, Search, Terminal, Wrench } from "lucide-react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { chatApi } from "./api";
-import { approvalChoices, describeApproval, type ApprovalChoice, type ApprovalIcon } from "./approval";
+import { approvalChoices, describeApproval, type ApprovalChoice } from "./approval";
 import { AGENT_LABEL } from "./ComposerChips";
 import type { PendingPermission } from "./fold";
+import { TOOL_ICONS } from "./tool-icons";
 import type { Agent } from "./types";
 
 // 승인 카드(three-axes 티켓 21) — 에이전트가 권한을 물으면 **입력창 자리에** 서서(스토리 57) 무엇을 하려는지(도구 · 명령이나 경로 ·
@@ -18,16 +18,6 @@ import type { Agent } from "./types";
 //
 // **멈추기가 카드 안에 있다.** 입력창(그 멈추기 단추)이 카드에 자리를 내주므로, 카드가 서 있는 동안 멈추는 길(스토리 62)을 카드가
 // 든다 — 입력창의 멈추기와 같은 단추다. 멈추면 호스트가 그 요청을 거두고 `cancelled`로 답한다(티켓 08).
-
-const ICON: Record<ApprovalIcon, ComponentType<{ className?: string; strokeWidth?: number; "aria-hidden"?: boolean }>> = {
-  execute: Terminal,
-  file: FileText,
-  fetch: Globe,
-  search: Search,
-  mcp: Command,
-  plan: MapIcon,
-  other: Wrench,
-};
 
 /**
  * 선택지 단추가 엔진의 긴 이름(「Yes, and don't ask again for commands that start with …」)을 담는 꼴 — 높이를 풀고 단추 안에서 줄을
@@ -51,7 +41,7 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
   const [problem, setProblem] = useState<string | null>(null);
   const view = describeApproval(request);
   const choices = approvalChoices(request);
-  const Icon = ICON[view.icon];
+  const Icon = TOOL_ICONS[view.icon];
   const name = AGENT_LABEL[agent];
 
   const answer = (choice: ApprovalChoice) => {

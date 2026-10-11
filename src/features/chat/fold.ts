@@ -1,4 +1,5 @@
 import { changedFiles, type ChangedFile } from "./changes";
+import { isObject, text, type Json } from "./json";
 import type { Quote, RecordLine } from "./types";
 
 // 대화 접기(three-axes 티켓 17) — 기록 줄을 받아 화면 모델(턴 · 메시지 · 생각 · 머리줄 · 도는가)로 접는 **순수 함수**다.
@@ -177,13 +178,9 @@ export interface PendingPermission {
   planReview: boolean;
 }
 
-type Json = Record<string, unknown>;
-
 /** 턴 안의 줄이 되는 `session/update` 갈래 — 답 · 생각 조각, 도구 호출, 계획(markdown) · 체크리스트(three-axes 티켓 21). */
 const TURN_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "tool_call", "plan_update", "plan"]);
 
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
-const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
 /**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 대화 목록이 「에이전트가 이 앱에 떠 있지 않다」고 말할 때의 마지막 seq다(티켓 23) —

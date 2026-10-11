@@ -113,6 +113,19 @@ export function handTurn(from: number, text: string, answer: string, durationMs:
  * 멈춤)이다. seq는 `from`부터 1씩 오른다.
  */
 export function claudeStoppedTurn(from: number, text: string, command: string, durationMs: number): RecordLine[] {
+  return stoppedCommandTurn(from, text, { title: command, rawInput: { command } }, durationMs);
+}
+
+/**
+ * [`claudeStoppedTurn`]과 같은 멈춘 턴이되, 도구 호출의 제목 · 입력을 고른다 — 제목이 빈 codex 꼴(실측 함정 49, 배열 명령
+ * `["/bin/zsh", "-lc", …]`)의 멈춘 줄을 짓는다.
+ */
+export function stoppedCommandTurn(
+  from: number,
+  text: string,
+  call: { title: string; rawInput: Record<string, unknown> },
+  durationMs: number,
+): RecordLine[] {
   const toolCallId = "toolu_hand_stopped";
   return [
     handSent(from, text),
@@ -120,9 +133,9 @@ export function claudeStoppedTurn(from: number, text: string, command: string, d
       sessionUpdate: "tool_call",
       toolCallId,
       kind: "execute",
-      title: command,
+      title: call.title,
       status: "in_progress",
-      rawInput: { command },
+      rawInput: call.rawInput,
     }),
     handUpdate(from + 2, 2, {
       sessionUpdate: "tool_call_update",

@@ -1,4 +1,5 @@
 import { Store } from "@tanstack/react-store";
+import { isObject } from "./json";
 
 // 고친 곳(three-axes 티켓 26) — 턴이 끝난 뒤 스펙 창 · 트리 · 레일 · 알약에 서는 표시. **비교는 호스트, 표시는 화면이다**(구현 스펙
 // 「고친 곳」): 호스트가 턴 앞뒤로 spec 폴더를 찍어 견준 것을 `changes` 기록 줄로 적고(`turn-end` 바로 앞, three-axes 결정 22), 화면은
@@ -33,8 +34,6 @@ export interface ChangedFile {
   lines: readonly LineRange[] | null;
 }
 
-type Json = Record<string, unknown>;
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 const KINDS: readonly string[] = ["created", "modified", "deleted"] satisfies ChangeKind[];
 
 /** `changes` 줄의 payload를 좁힌다 — 모르는 모양의 파일은 버리고 나머지는 산다(기록은 원문 그대로라 칸이 늘 수 있다). */

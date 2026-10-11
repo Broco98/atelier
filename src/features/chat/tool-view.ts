@@ -1,5 +1,6 @@
 import { expandHome } from "@/features/works/doc-refs";
 import type { ToolEntry } from "./fold";
+import { isObject, nonEmpty, type Json } from "./json";
 
 // 도구 줄의 화면 값(three-axes 티켓 18) — 접은 도구 호출(`ToolEntry`: 처음 온 `tool_call`에 뒤의 `tool_call_update`를 덮어 합친 값)을
 // 문구 · 아이콘 · 안의 것(명령 출력 · diff · MCP 출력)으로 옮기는 **순수 함수**다. 그리는 것은 `ToolRow`다.
@@ -15,11 +16,6 @@ import type { ToolEntry } from "./fold";
 // **문구는 진행형 → 완료형**(스토리 39)이고 실패는 색이 아니라 문장이다 — 「~하지 못함」(캔버스 Tools 보드). 끝나지 않은 상태
 // (`pending` · `in_progress` · 상태 없음)는 진행형이다. **제목이 빈 도구 줄**(실측 함정 49 — codex의 title 빈 execute)은 kind로 짓는다:
 // 명령이면 「명령」, 파일 도구면 「파일」, 그 밖은 「도구」가 문구의 자리를 채운다.
-
-type Json = Record<string, unknown>;
-
-const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
-const nonEmpty = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value : null);
 
 /**
  * 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김. 끊김은 끝을 받기 전에 그 줄을 적던 에이전트가 사라진 것이다(`ToolEntry.cut`) — 문구는
@@ -74,16 +70,38 @@ export interface ToolView {
   removed: boolean;
 }
 
+/**
+ * 도구 호출 원문에서 갈래를 가르는 칸들 — `_meta` · Claude 변환기의 `_meta.claudeCode` · 그 도구 이름 · 입력 · 제목 · ACP kind. 도구
+ * 줄과 승인 카드(티켓 21)가 같은 칸을 같은 규칙으로 읽는다.
+ */
+export interface ToolFields {
+  meta: Json;
+  claudeCode: Json;
+  toolName: string | null;
+  rawInput: Json;
+  title: string | null;
+  kind: string;
+}
+
+export function toolFields(call: Json): ToolFields {
+  const meta = isObject(call._meta) ? call._meta : {};
+  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
+  return {
+    meta,
+    claudeCode,
+    toolName: nonEmpty(claudeCode.toolName),
+    rawInput: isObject(call.rawInput) ? call.rawInput : {},
+    title: nonEmpty(call.title),
+    kind: typeof call.kind === "string" ? call.kind : "other",
+  };
+}
+
 export function describeTool(tool: ToolEntry): ToolView {
   const call = tool.call;
   const state: ToolState =
     call.status === "completed" ? "done" : call.status === "failed" ? "failed" : tool.cut ? "cut" : "running";
-  const meta = isObject(call._meta) ? call._meta : {};
-  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
-  const toolName = nonEmpty(claudeCode.toolName);
-  const rawInput = isObject(call.rawInput) ? call.rawInput : {};
-  const title = nonEmpty(call.title);
-  const kind = typeof call.kind === "string" ? call.kind : "other";
+  const fields = toolFields(call);
+  const { meta, claudeCode, toolName, rawInput, title, kind } = fields;
   const content = Array.isArray(call.content) ? call.content.filter(isObject) : [];
   const contentText = content
     .map((item) => (item.type === "content" && isObject(item.content) && item.content.type === "text" ? item.content.text : null))
@@ -91,7 +109,7 @@ export function describeTool(tool: ToolEntry): ToolView {
     .join("\n");
   const base = { state, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null, removed: false };
 
-  const mcp = mcpOf(toolName, rawInput, meta, title);
+  const mcp = mcpOf(fields);
   if (mcp) {
     const phrase = sentence(OTHER_VERBS, state, mcp.server, null, " 통합", ` · ${mcp.tool}`);
     return { ...base, icon: "mcp", phrase, label: phraseText(phrase), mcp: { ...mcp, output: mcpOutput(call, contentText) } };
@@ -193,8 +211,11 @@ function sentence(
 /** 문구 한 줄. */
 export const phraseText = (phrase: ToolPhrase): string => `${phrase.before}${phrase.subject ?? ""}${phrase.after}`;
 
-/** MCP 호출의 서버 · 도구 — Claude `mcp__<서버>__<도구>`, codex-acp `rawInput{server, tool}`(머리말). */
-function mcpOf(toolName: string | null, rawInput: Json, meta: Json, title: string | null): { server: string; tool: string } | null {
+/**
+ * MCP 호출의 서버 · 도구 — Claude `mcp__<서버>__<도구>`, codex-acp `rawInput{server, tool}`(머리말). MCP가 아니면 null. 승인 카드도
+ * 이것으로 MCP 도구의 물음을 가른다(티켓 21).
+ */
+export function mcpOf({ toolName, rawInput, meta, title }: ToolFields): { server: string; tool: string } | null {
   const named = toolName?.match(/^mcp__(.+?)__(.+)$/);
   if (named) return { server: named[1], tool: named[2] };
   const server = nonEmpty(rawInput.server);
@@ -263,10 +284,19 @@ function shellOf(call: Json, meta: Json, state: ToolState, command: string | nul
   return { command, output: output.replace(/\n+$/, ""), status, ok: status === "성공" };
 }
 
-/** 도구가 다루는 파일들 — ACP `locations[].path`. */
-function locationsOf(call: Json): string[] {
+/** 도구가 다루는 파일들 — ACP `locations[].path`. 승인 카드도 쓴다(티켓 21). */
+export function locationsOf(call: Json): string[] {
   const locations = Array.isArray(call.locations) ? call.locations.filter(isObject) : [];
   return locations.map((location) => location.path).filter((path): path is string => typeof path === "string" && path !== "");
+}
+
+/** 편집 도구의 diff 내용(ACP `{type: "diff", path}`)이 가리키는 파일들 — 내용 차례대로. 승인 카드가 쓴다(티켓 21). */
+export function diffPathsOf(call: Json): string[] {
+  const content = Array.isArray(call.content) ? call.content.filter(isObject) : [];
+  return content
+    .filter((item) => item.type === "diff")
+    .map((item) => nonEmpty(item.path))
+    .filter((path): path is string => path !== null);
 }
 
 /** 경로의 마지막 이름 — 도구 줄에는 이름만, 전체 경로는 diff 머리에 선다(캔버스 Tools 보드). */

@@ -14,6 +14,7 @@ import {
   selfTurnStarted,
   sentLine,
   sessionLine,
+  stoppedCommandTurn,
   streamLines,
 } from "./chat-records";
 
@@ -168,6 +169,26 @@ test("멈춘 뒤의 도구 줄(Claude 꼴): 멈춤과 함께 `failed`로 닫힌 
   await expect(row).toBeVisible();
   await expect(row).toContainText("멈춤");
   await expect(row).not.toContainText("멈춘 뒤");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("멈춘 뒤의 도구 줄(제목이 빈 codex 배열 명령): 멈춘 줄의 이름도 도는 줄 문구처럼 셸 감싸개를 벗긴 명령이다", async ({ page }) => {
+  // codex는 제목을 비우고 명령을 배열(`["/bin/zsh", "-lc", …]`)로 줄 때가 있다(실측 함정 49). 도는 동안의 문구(「echo atelier 실행 중」)와
+  // 멈춘 뒤의 이름이 같은 명령 글이어야 한다.
+  const claude = conversationRow({ id: "c-hand-bare", agent: "claude", name: "Claude", lastSeq: 0 });
+  await openChat(page, [], claude);
+  await streamLines(
+    page,
+    plainWork.slug,
+    claude.id,
+    stoppedCommandTurn(1, "echo 해 줘", { title: "", rawInput: { command: ["/bin/zsh", "-lc", "echo atelier"] } }, 4000),
+  );
+
+  await 머리줄(page, "4초 후에 중단했습니다").click();
+  const row = 도구줄(page, "echo atelier");
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("멈춤");
+  await expect(도구줄(page, "/bin/zsh -lc echo atelier")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
