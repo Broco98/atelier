@@ -1,99 +1,40 @@
 import { useEffect } from "react";
-import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { chatApi, onChatEngine, onChatQueue, onChatRecord } from "./api";
 import {
   announce,
   chatQueueStore,
   chatRecordStore,
-  chooseConversation,
-  claimRecordRead,
   conversationKey,
-  forgetFinished,
   linesOf,
   markChosen,
   markFinished,
   mergeLines,
-  releaseRecordRead,
   setQueue,
 } from "./chat-store";
 import { describeApproval } from "./approval";
 import { applyChanges, changedFiles } from "./changes";
+import { listedConversation, replaceConversation } from "./conversation-list";
 import { applyEngineEvent, checkEngine, isLoginRequired, markLoginRequired } from "./engine-store";
 import { finalMessages, foldConversation, headline } from "./fold";
 import type { Agent, Conversation, QueuedMessage, RecordLine } from "./types";
 
-// 대화창이 대화 호스트에서 읽는 것(three-axes 티켓 17). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명에 잇는다.
-
-/**
- * 그 work의 열린 대화들 — 만든 순서다. 열쇠는 `["chat", …]`이다: `["works", …]` 아래에 두면 `works:changed`가 올 때마다 함께
- * 낡아 다시 읽힌다(감시가 `agents/`를 빼도 spec을 쓰는 동안은 온다).
- *
- * **스스로 다시 읽지 않는다**(`staleTime: Infinity`). 목록이 바뀌는 것은 이 화면이 부른 새 대화 · 대화 닫기뿐이고, 그 응답으로
- * 캐시를 고친다(`useCreateConversation` · `useCloseConversation`). 창 포커스마다 다시 읽으면 고친 캐시를 덮는다.
- */
-export const conversationsQuery = (work: string) =>
-  queryOptions({
-    queryKey: ["chat", "list", work],
-    queryFn: () => chatApi.list(work),
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
-
-/** 대화 목록 — `enabled`가 거짓이면 읽지 않는다(대화창은 처음 보일 때 읽는다). 이미 읽은 것은 그대로 준다. */
-export function useConversations(work: string, enabled: boolean) {
-  return useQuery({ ...conversationsQuery(work), enabled });
-}
-
-/** 새 대화 — 만들고 곧바로 띄운다(S8). 만든 대화를 목록 끝에 붙이고 그 대화를 고른다. */
-export function useCreateConversation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ work, agent }: { work: string; agent: Agent }) => chatApi.create(work, agent),
-    onSuccess: (conversation, { work }) => {
-      queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
-        old.some((one) => one.id === conversation.id) ? old : [...old, conversation],
-      );
-      chooseConversation(work, conversation.id);
-    },
-  });
-}
-
-/** 대화 닫기 — 에이전트를 끈다. 기록은 남는다. 닫힌 대화를 목록에서 뺀다. */
-export function useCloseConversation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ work, conversation }: { work: string; conversation: string }) => chatApi.close(work, conversation),
-    onSuccess: (_, { work, conversation }) => {
-      queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
-        old.filter((one) => one.id !== conversation),
-      );
-      // 닫은 대화는 볼 것이 없다 — 레일 `chat`의 점이 닫은 대화의 「끝남」으로 서지 않게(three-axes 티켓 23).
-      forgetFinished(conversationKey(work, conversation));
-    },
-  });
-}
-
-/** 목록 캐시의 그 대화를 호스트가 돌려준 대화로 갈아 끼운다 — 칩의 바꾸기 답이 바뀐 대화다(three-axes 티켓 19). */
-function replaceConversation(queryClient: QueryClient, work: string, conversation: Conversation): void {
-  queryClient.setQueryData<Conversation[]>(conversationsQuery(work).queryKey, (old = []) =>
-    old.map((one) => (one.id === conversation.id ? conversation : one)),
-  );
-}
+// 대화창이 대화 호스트에서 읽는 것(three-axes 티켓 17). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명에 잇는다. 그 work의 대화
+// 목록과 그 수명(목록 읽기 · 새 대화 · 닫기 · 기록 읽기)은 `conversation-list.ts`가 쥔다.
 
 /**
  * 에이전트 바꾸기(three-axes 티켓 19 · 스토리 23) — 첫 말 전에만 된다. 바꾸기 전에 새 엔진을 확인해 둔다(티켓 22): 찾았어도 로그인이
  * 안 됐으면 바뀐 대화 자리에 곧바로 로그인 카드가 선다. 못 찾았으면 호스트가 바꾸지 않고 그 까닭을 돌려준다. 답(새 엔진으로 연
- * 대화 — 이름도 다시 붙는다)으로 목록 캐시를 고친다.
+ * 대화 — 이름도 다시 붙는다)으로 대화 목록을 고친다.
  */
 export function useSwitchAgent() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ work, conversation, agent }: { work: string; conversation: string; agent: Agent }) => {
       await checkEngine(agent, false).catch(() => null);
       return chatApi.switchAgent(work, conversation, agent);
     },
-    onSuccess: (conversation, { work }) => replaceConversation(queryClient, work, conversation),
+    onSuccess: (conversation, { work }) => replaceConversation(work, conversation),
   });
 }
 
@@ -102,10 +43,9 @@ export type ChoiceChange = { field: "model" | "mode"; value: string } | { field:
 
 /**
  * 모델 · 모드 · 계획 바꾸기(three-axes 티켓 19 · 스토리 26 · 30 · 31 · 32) — 값은 그 대화의 것이고 설정의 기본값은 그대로다. 답(바뀐
- * 대화)으로 목록 캐시를 고치고, 그 답의 마지막 seq를 「사람이 고른 때」로 적어 둔다(`markChosen`).
+ * 대화)으로 대화 목록을 고치고, 그 답의 마지막 seq를 「사람이 고른 때」로 적어 둔다(`markChosen`).
  */
 export function useChangeChoice() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ work, conversation, change }: { work: string; conversation: string; change: ChoiceChange }) => {
       if (change.field === "plan") return chatApi.setPlan(work, conversation, change.value);
@@ -113,27 +53,10 @@ export function useChangeChoice() {
       return chatApi.setMode(work, conversation, change.value);
     },
     onSuccess: (conversation, { work, change }) => {
-      replaceConversation(queryClient, work, conversation);
+      replaceConversation(work, conversation);
       markChosen(conversationKey(work, conversation.id), change.field, conversation.lastSeq);
     },
   });
-}
-
-/**
- * 그 대화의 기록 줄 — 처음 설 때 기록을 한 번 읽어(「0 다음부터」) 스토어에 합치고, 그 뒤는 앱 층이 받은 기록 줄 이벤트가
- * 잇는다. 같은 seq는 한 줄로 합쳐지므로 읽기와 이벤트가 겹쳐도 줄이 두 번 서지 않는다.
- */
-export function useRecordLines(work: string, conversation: string): readonly RecordLine[] {
-  const key = conversationKey(work, conversation);
-  const lines = useStore(chatRecordStore, (state) => linesOf(state, key));
-  useEffect(() => {
-    if (!claimRecordRead(key)) return;
-    chatApi.readRecord(work, conversation, 0).then(
-      (read) => mergeLines(work, conversation, read),
-      () => releaseRecordRead(key),
-    );
-  }, [key, work, conversation]);
-  return lines;
 }
 
 /**
@@ -143,30 +66,29 @@ export function useRecordLines(work: string, conversation: string): readonly Rec
  * 「끝남」을 세운다(티켓 23) — 모두 처음 보는 seq일 때만이다.
  */
 export function useChatRecordFeed(): void {
-  const queryClient = useQueryClient();
   useEffect(() => {
     const unlisten = onChatRecord(({ work, conversation, line }) => {
       const key = conversationKey(work, conversation);
       const known = linesOf(chatRecordStore.state, key).some((one) => one.seq === line.seq);
       mergeLines(work, conversation, [line]);
       if (known) return;
-      if (line.kind === "turn-end") announceTurnEnd(queryClient, work, conversation);
+      if (line.kind === "turn-end") announceTurnEnd(work, conversation);
       // 턴이 끝났다(죽음으로 끊긴 것도) — 그 대화를 지금 보고 있지 않으면 「끝남」이 선다(S23 · three-axes 티켓 23).
       if (line.kind === "turn-end" || isDeath(line)) markFinished(key);
       // 권한 물음 — 승인 카드가 선다. 에이전트가 나를 기다리는 것을 알림으로 듣는다(스토리 120 · three-axes 티켓 21).
-      if (line.kind === "permission") announceApproval(queryClient, work, conversation, line);
+      if (line.kind === "permission") announceApproval(work, conversation, line);
       // 고친 곳(티켓 26) — 표시는 이벤트로 온 `changes`로만 선다. 처음 그릴 때 읽은 기록의 것은 지난 턴이라 세우지 않는다(S19).
       if (line.kind === "changes") applyChanges(work, changedFiles(line.payload));
       // 로그인 필요 줄은 그 엔진의 「로그인 안 됨」이다 — 같은 엔진의 대화 자리에 다 안내 카드가 선다(three-axes 티켓 22).
       if (isLoginRequired(line)) {
-        const agent = cachedConversation(queryClient, work, conversation)?.agent;
+        const agent = listedConversation(work, conversation)?.agent;
         if (agent) markLoginRequired(agent);
       }
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [queryClient]);
+  }, []);
 }
 
 /**
@@ -210,37 +132,32 @@ function isDeath(line: RecordLine): boolean {
   return line.kind === "session" && (line.payload as { state?: unknown } | null)?.state === "died";
 }
 
-/** 대화 목록 캐시에 있는 그 대화 — 목록을 아직 읽지 않았거나 없는 대화면 `undefined`다. 묻지 않는다(캐시만 본다). */
-function cachedConversation(queryClient: QueryClient, work: string, conversation: string): Conversation | undefined {
-  return queryClient.getQueryData<Conversation[]>(conversationsQuery(work).queryKey)?.find((one) => one.id === conversation);
-}
-
-/** 그 대화의 이름 — 대화 목록 캐시에서. 모르면 「대화」다. */
-function conversationName(queryClient: QueryClient, work: string, conversation: string): string {
-  return cachedConversation(queryClient, work, conversation)?.name ?? "대화";
+/** 그 대화의 이름 — 읽은 대화 목록에서. 모르면 「대화」다. */
+function conversationName(work: string, conversation: string): string {
+  return listedConversation(work, conversation)?.name ?? "대화";
 }
 
 /**
  * 승인 카드가 설 때의 알림 — 대화 이름 · 카드가 묻는 말 · 무엇을 하려는지(명령 · 경로). 카드와 같은 값(`describeApproval`)을 말한다.
  * 이미 닫힌 물음(같은 seq 묶음에서 답이 먼저 접힌 것)은 알리지 않는다.
  */
-function announceApproval(queryClient: QueryClient, work: string, conversation: string, line: RecordLine): void {
+function announceApproval(work: string, conversation: string, line: RecordLine): void {
   const payload = line.payload as { state?: unknown; requestId?: unknown } | null;
   if (payload?.state !== "asked") return;
   const { pending } = foldConversation(linesOf(chatRecordStore.state, conversationKey(work, conversation)));
   const request = pending.find((one) => one.requestId === payload.requestId);
   if (!request) return;
   const view = describeApproval(request);
-  const head = `${conversationName(queryClient, work, conversation)} · ${view.title}`;
+  const head = `${conversationName(work, conversation)} · ${view.title}`;
   announce(view.subject ? `${head} — ${view.subject}` : head);
 }
 
 /** 턴 끝 알림의 글 — 대화 이름 · 머리줄 · 턴 끝 메시지. 마크다운 표식은 소리로 읽히지 않게 걷는다. */
-function announceTurnEnd(queryClient: QueryClient, work: string, conversation: string): void {
+function announceTurnEnd(work: string, conversation: string): void {
   const { turns } = foldConversation(linesOf(chatRecordStore.state, conversationKey(work, conversation)));
   const turn = turns[turns.length - 1];
   if (!turn?.end) return;
-  const name = conversationName(queryClient, work, conversation);
+  const name = conversationName(work, conversation);
   const answer = finalMessages(turn)
     .map((entry) => (entry.kind === "message" ? entry.text : ""))
     .join("\n")
