@@ -884,11 +884,13 @@ function WorksPage({
 
   // 코드 카드 머리(git-integration S17) — 문서 카드 머리와 같은 줄이다: 캡슐 `<프로젝트> › 폴더 › 파일`과 끝의 경로 복사. 복사하는
   // 값은 그 파일의 워크트리 경로다 — 에이전트에게 그 파일을 그대로 넘긴다(스토리 69). 워크트리 자리는 코어가 준 값에서 잇는다
-  // (`worktreeDirRef` — 뿌리를 여기서 짓지 않는다). 그 프로젝트의 워크트리가 이 work에 없으면 가리킬 파일이 없어 서지 않는다.
+  // (`worktreeDirRef` — 뿌리를 여기서 짓지 않는다). 그 프로젝트의 워크트리가 이 work에 없으면 가리킬 파일이 없어 서지 않는다 —
+  // 프로젝트는 있는데 워크트리 폴더가 사라진 것(`exists`가 거짓 — files 칸이 「워크트리 없음」을 띄우는 그 상태)도 같다.
   //
   // 그 워크트리 자리는 코드 카드의 몸도 받는다 — 그림 파일은 같은 자리에 코어가 링크를 푼 실제 경로를 이어 건다(티켓 09). 뿌리를
   // 두 자리가 따로 지으면 복사한 경로와 그린 그림이 다른 워크트리를 가리킬 수 있다.
-  const codeWorktree = codeTarget && selected?.worktrees.find((one) => one.project === codeTarget.project);
+  const codeWorktree =
+    codeTarget && selected?.worktrees.find((one) => one.project === codeTarget.project && one.exists);
   const codeWorktreeDir = codeWorktree ? worktreeDirRef(codeWorktree.path) : null;
   const codeFilePath = codeTarget && codeWorktreeDir ? `${codeWorktreeDir}${codeTarget.path}` : null;
   const codeCrumbs = codeTarget ? [codeTarget.project, ...codeTarget.path.split("/")] : [];

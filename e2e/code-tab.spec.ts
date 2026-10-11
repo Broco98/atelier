@@ -235,6 +235,27 @@ test("없는 파일은 「지워진 파일」, 밖을 가리키는 링크와 wor
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 구현 스펙 「화면 — 코드 보기 › 카드 머리」(04) — 그 work에 그 프로젝트의 워크트리가 없으면 경로 복사를 세우지 않는다. 프로젝트는
+// 있는데 워크트리 폴더가 사라진 것(work 목록의 `exists: false` — files 칸이 「워크트리 없음」을 띄우는 그 상태)도 같다: 가리킬
+// 파일이 없다. 세우면 없는 경로가 클립보드로 에이전트에게 넘어간다.
+test("워크트리 폴더가 사라진 프로젝트의 파일 탭은 「워크트리 없음」이고 경로 복사가 서지 않는다", async ({ page }) => {
+  const works = WORKS.map((one) =>
+    one.slug === multiWork.slug
+      ? { ...one, worktrees: one.worktrees.map((tree) => (tree.project === "ledger" ? { ...tree, exists: false } : tree)) }
+      : one,
+  );
+  await installFixtureBackend(page, { list_works: works });
+  await page.goto(codeUrl("ledger/ghost.ts", multiWork.slug));
+  const card = 코드카드(page, "ledger/ghost.ts");
+  await expect(card).toContainText("워크트리 없음");
+  await expect(card.getByRole("button", { name: "경로 복사" })).toHaveCount(0);
+
+  // 워크트리가 있는 프로젝트의 파일 탭은 그대로 선다 — 위가 「코드 카드에 경로 복사가 아예 없다」로 통과하지 않게.
+  await 주소로간다(page, codeUrl("billing/src/main.ts", multiWork.slug));
+  await expect(코드카드(page, "billing/src/main.ts").getByRole("button", { name: "경로 복사" })).toHaveCount(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 구현 스펙 「화면 — 주소」 — 주소가 셸을 말하는데(`tab=terminal`) 지금 탭이 파일 탭이면 묶음의 첫 셸이 지금 탭이 된다(04). 셸이
 // 없고 자동 셸도 안 뜨는 work(프로젝트 둘)이면 켤 셸이 없어 지금 탭이 파일 탭으로 남는다. 그때 본문은 「아직 셸이 없어요」이고
 // 켜진 칸은 본문에 선 것이라 그 파일 탭이 켜지지 않는다. ⌘W도 닫을 것이 없다 — 셸 닫기 길에 파일 탭을 넘기지 않는다.
