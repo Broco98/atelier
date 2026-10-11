@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { chatApi, onChatQueue, onChatRecord } from "./api";
+import { chatApi, onChatEngine, onChatQueue, onChatRecord } from "./api";
 import {
   announce,
   chatQueueStore,
@@ -15,6 +15,7 @@ import {
   setQueue,
 } from "./chat-store";
 import { applyChanges, changedFiles } from "./changes";
+import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { finalMessages, foldConversation, headline } from "./fold";
 import type { Agent, Conversation, QueuedMessage, RecordLine } from "./types";
 
@@ -87,7 +88,7 @@ export function useRecordLines(work: string, conversation: string): readonly Rec
 /**
  * **기록 줄 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 어느 work의 어느 대화든 받아 스토어에 쌓는다 — 다른 work에
  * 가 있어도 쌓여야 돌아왔을 때 그사이 흐른 줄이 보인다(스토리 14 · 15). 턴 끝 줄이면 한 번 알리고(스토리 121), 고친 곳 줄이면
- * 그 work에 표시를 세운다(티켓 26) — 둘 다 처음 보는 seq일 때만이다.
+ * 그 work에 표시를 세우고(티켓 26), 로그인 필요 줄이면 그 엔진을 「안 됨」으로 돌린다(티켓 22) — 셋 다 처음 보는 seq일 때만이다.
  */
 export function useChatRecordFeed(): void {
   const queryClient = useQueryClient();
@@ -100,11 +101,31 @@ export function useChatRecordFeed(): void {
       if (line.kind === "turn-end") announceTurnEnd(queryClient, work, conversation);
       // 고친 곳(티켓 26) — 표시는 이벤트로 온 `changes`로만 선다. 처음 그릴 때 읽은 기록의 것은 지난 턴이라 세우지 않는다(S19).
       if (line.kind === "changes") applyChanges(work, changedFiles(line.payload));
+      // 로그인 필요 줄은 그 엔진의 「로그인 안 됨」이다 — 같은 엔진의 대화 자리에 다 안내 카드가 선다(three-axes 티켓 22).
+      if (isLoginRequired(line)) {
+        const agent = queryClient
+          .getQueryData<Conversation[]>(conversationsQuery(work).queryKey)
+          ?.find((one) => one.id === conversation)?.agent;
+        if (agent) markLoginRequired(agent);
+      }
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
   }, [queryClient]);
+}
+
+/**
+ * **엔진 상태 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다, three-axes 티켓 22). 찾음 · 로그인 · 로그인 진행은 대화가
+ * 아니라 엔진의 것이라 엔진 스토어에 앉히고, 그 엔진의 안내 카드가 다 따라 바뀐다. 대화창이 저마다 들으면 하나만 받는다.
+ */
+export function useChatEngineFeed(): void {
+  useEffect(() => {
+    const unlisten = onChatEngine(applyEngineEvent);
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 }
 
 /**

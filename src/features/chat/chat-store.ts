@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { QueuedMessage, Quote, RecordLine } from "./types";
+import type { Agent, QueuedMessage, Quote, RecordLine } from "./types";
 
 // 대화창의 모듈 스토어(three-axes 티켓 17). 화면 컴포넌트 밖에 사는 까닭이 둘이다.
 //
@@ -93,6 +93,11 @@ interface UiState {
   /** 펼친 턴 — 대화 열쇠 + 턴 열쇠. 턴이 끝나면 접혀 있고, 머리줄을 누르면 여기 든다. */
   expanded: Readonly<Record<string, true>>;
   /**
+   * work마다 열려다 못 연 대화의 에이전트 — 엔진을 못 찾아 대화를 만들지 않았다(three-axes 티켓 22). 그동안 대화창 자리에 그
+   * 엔진의 안내 카드가 서고, 「다시 확인」으로 찾으면 그때 대화를 연다(스토리 102). 대화 탭을 고르면 거둔다.
+   */
+  wanted: Readonly<Record<string, Agent>>;
+  /**
    * work마다 입력창에 붙은 인용(three-axes 티켓 27) — 그 work의 **지금 대화**의 입력창에 칩으로 선다. 인용은 하나라 새로 고르면
    * 바뀐다. 대화가 아니라 work의 열쇠인 것은, 스펙 창에서 고르는 때에는 대화창이 아직 대화를 읽지 않았을 수 있어서다(처음 여는
    * work면 첫 대화가 그 뒤에 선다).
@@ -100,7 +105,20 @@ interface UiState {
   quotes: Readonly<Record<string, Quote>>;
 }
 
-export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, quotes: {} });
+export const chatUiStore = new Store<UiState>({ active: {}, drafts: {}, expanded: {}, wanted: {}, quotes: {} });
+
+export function wantConversation(work: string, agent: Agent): void {
+  chatUiStore.setState((state) => ({ ...state, wanted: { ...state.wanted, [work]: agent } }));
+}
+
+export function dropWanted(work: string): void {
+  chatUiStore.setState((state) => {
+    if (!(work in state.wanted)) return state;
+    const wanted = { ...state.wanted };
+    delete wanted[work];
+    return { ...state, wanted };
+  });
+}
 
 export function chooseConversation(work: string, conversation: string): void {
   chatUiStore.setState((state) => ({ ...state, active: { ...state.active, [work]: conversation } }));
