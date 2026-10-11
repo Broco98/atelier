@@ -957,6 +957,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   chat_edit_queued: null,
   chat_delete_queued: null,
   chat_send_now: null,
+  // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
+  // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
+  chat_answer_permission: null,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

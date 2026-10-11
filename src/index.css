@@ -1050,9 +1050,11 @@ body[data-palette-open] [data-scrollbar] {
     /* 흐름과 입력창을 모으는 폭(three-axes 티켓 24 — 캔버스 `.cx-thread`의 `--size-thread`). `chat` 탭처럼 넓은 자리에서 이 폭에
        가운데로 모인다 — 작업 패널은 이보다 좁아 꽉 찬다. */
     --chat-thread-width: 48rem;
-    /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선) */
+    /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선). 계획 체크리스트도 같은 면이다(캔버스 `.cx-group`). */
     --chat-surface-under: #f9f9f9;
     --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);
+    /* 계획 카드의 0.5px 바깥 선(three-axes 티켓 21 — 캔버스 `.cx-card`) */
+    --chat-shadow-card: 0 0 0 0.5px rgba(26, 28, 31, 0.12);
 }
 
 /* 고친 곳(three-axes 티켓 26) — 대화창 범위 토큰이지만 그 표시는 대화창 **밖**에도 선다: 스펙 창의 블록 · 트리의 행 · 레일 칸. 그래서
