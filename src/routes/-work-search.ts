@@ -280,6 +280,19 @@ export function recallView(slug: string): WorkMemory {
 }
 
 /**
+ * 목록에서 **사라진 work의 기억을 걷는다**(git-integration 판 01). 받는 것은 목록에 남은 slug들이다.
+ *
+ * 키가 slug라서다 — 삭제는 slug를 풀어 주므로 같은 세션에서 같은 slug로 새 work이 설 수 있고, 그러면 지운 work의 마지막
+ * 화면이 새 work을 여는 주소(`recallSearch`)의 씨앗이 된다. `code`가 실려 있으면 새 work의 묶음에 옛 파일 탭이 다시 열린다
+ * (주소가 가리키는 파일은 연다 — 스토리 60). 묶음에서 그 work의 파일 탭을 빼는 것(터미널 스토어의 `closeShellsOf` ·
+ * `settleOwners`)과 짝이라 부르는 자리도 같은 목록 결과다(`ShellOwners`).
+ */
+export function forgetVanishedViews(listed: readonly string[]): void {
+  const kept = new Set(listed);
+  for (const slug of lastView.keys()) if (!kept.has(slug)) lastView.delete(slug);
+}
+
+/**
  * 기억을 **빈 주소 위에 얹어** 새 주소를 짓는다 — 그래서 **떠나는 주소의** `file`이 안
  * 딸려가고, 얹히는 `file`은 언제나 그 work 자신의 것이다(위 주석).
  *

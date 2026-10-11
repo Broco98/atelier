@@ -1,15 +1,19 @@
 import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import {
+  archiveByMcp,
   awaitSpawned,
   callCount,
   clipboardWrites,
+  fireEvent,
   installFixtureBackend,
   ipcFailure,
   recordClipboard,
+  replaceAnswer,
   steadyCount,
   typeIntoShell,
   unknownIpcCalls,
+  workRow,
   writeShell,
   파일탭주소 as codeUrl,
   주소로간다,
@@ -310,5 +314,31 @@ test("코드 카드 머리의 경로 복사가 그 파일의 워크트리 경로
   await expect(코드카드(page, "billing/docs/logo.png").getByRole("img")).toBeVisible();
   await copy("billing/docs/logo.png").click();
   await expect.poll(() => clipboardWrites(page)).toEqual([`${worktree}/src/main.ts`, `${worktree}/docs/logo.png`]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 화면 기억(`lastView`)의 키는 slug다. 삭제는 slug를 풀어 주므로(코어의 `unique_dir_slug`는 남은 폴더만 본다) 같은 세션에서
+// 같은 slug로 새 work이 설 수 있다. 지운 work의 마지막 화면이 파일 탭이었으면 그 기억이 새 work을 여는 주소(`recallSearch`)에
+// 실려 옛 파일 탭이 새 work의 묶음에 다시 열렸다 — 목록에서 사라진 work의 기억은 걷는다(묶음의 파일 탭을 빼는 것과 짝이다).
+// MCP 흉내는 목록 답에서 slug를 빼고 이벤트를 쏘는 것이다(`archiveByMcp` — `shell-ownerless.spec.ts` 머리말).
+test("목록에서 사라진 work의 slug로 새 work이 서면 지운 work이 보던 파일 탭이 되살아나지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(codeUrl("billing/README.md"));
+  await expect(코드카드(page, "billing/README.md")).toBeVisible();
+  await workRow(page, plainWork.slug).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(문서카드(page)).toBeVisible();
+
+  await archiveByMcp(page, WORKS, work.slug);
+  await expect(workRow(page, work.slug)).toHaveCount(0);
+  // 같은 slug로 새 work이 선다.
+  await replaceAnswer(page, "list_works", WORKS);
+  await fireEvent(page, "works:changed", null);
+  await workRow(page, work.slug).click();
+
+  await expect(page).toHaveURL(new RegExp(`/works/${work.slug}`));
+  await expect(문서카드(page)).toBeVisible();
+  await expect(page).not.toHaveURL(/code=/);
+  await expect(파일탭들(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
