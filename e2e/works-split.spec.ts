@@ -1,7 +1,17 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, middle, moveOntoHalf, startSplitDrag, unknownIpcCalls } from "./harness";
+import {
+  awaitSpawned,
+  callCount,
+  installFixtureBackend,
+  middle,
+  moveOntoHalf,
+  startSplitDrag,
+  unknownIpcCalls,
+  파일탭주소,
+  주소로간다,
+} from "./harness";
 
 // 판 05 — 분할. **이 층에서만 보이는 것 셋이다**: 포인터 제스처(정적 마크업 seam에는
 // 이벤트가 없다), 끄는 동안 그려지는 겹판, 그리고 열 폭이 실제로 PTY 격자까지 내려가는 것.
@@ -355,5 +365,157 @@ test("겹판 밖으로 나가면 밝기가 꺼지고, 거기서 놓아도 분할
   await expect(page).not.toHaveURL(/split=/);
   await expect(page.locator("[data-column]")).toHaveCount(0);
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── git-integration 티켓 07(#480): 분할에서 spec 옆에 파일 탭이 선다 ───
+//
+// 분할의 한쪽은 spec, 다른 쪽은 **묶음 열**이다 — 묶음의 지금 탭이 셸이든 파일 탭이든 거기 선다(결정 32). 묶음 열에 선 파일
+// 탭은 코드 카드 열이다: 열 머리 표식이 `code`이고 열 카드의 접근 이름이 그 파일의 경로다(스토리 89 — 본문 코드 카드와 같다).
+
+const [codeWork] = WORKS;
+const SOURCE = "billing/src/main.ts";
+const README = "billing/README.md";
+
+/** 열 머리의 표식들, 왼쪽부터 — 마크업에서 먼저 나오는 것이 왼쪽 열이다. */
+const 열차례 = (page: Page) =>
+  page.locator("[data-column]").evaluateAll((heads) => heads.map((head) => head.getAttribute("data-column")));
+/** 그 파일 탭의 이름 버튼(켜짐을 말한다) — 정체(`<프로젝트>/<경로>`)로 집는다. */
+const 파일탭이름 = (page: Page, ref: string) => page.locator(`[data-tab="code"][data-code="${ref}"] button[aria-pressed]`);
+/** 묶음 열에 선 코드 카드 — 열 카드의 접근 이름이 그 파일의 경로다. */
+const 코드열 = (page: Page, ref: string) => page.getByRole("region", { name: ref, exact: true });
+const 셸탭이름 = (page: Page) => page.locator('[data-tab="shell"] button[aria-pressed]');
+
+/** 셸 한 칸과 파일 탭 하나(`src/main.ts`)가 선 묶음에서 셸을 켜고 분할을 켠다 — spec ▏ 셸. */
+async function 셸과파일탭으로분할(page: Page) {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${codeWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 주소로간다(page, 파일탭주소(SOURCE));
+  await expect(page.getByRole("main", { name: SOURCE, exact: true })).toBeVisible();
+  await 셸탭이름(page).click();
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+  await expect(page).toHaveURL(/split=lr/);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "terminal"]);
+}
+
+// 수용 기준 「분할 중 파일 탭 → 묶음 열이 코드, 셸 탭 → 셸로 돌아온다」(스토리 53~55). 티켓 04는 분할 중에 파일 탭을 고르면 분할을
+// 풀었다 — 이 장이 그것을 거두고 묶음 열로 바꾼다.
+test("분할 중 파일 탭을 누르면 묶음 열이 그 코드로, 셸 탭을 누르면 같은 셸로 돌아온다", async ({ page }) => {
+  await 셸과파일탭으로분할(page);
+
+  await 파일탭이름(page, SOURCE).click();
+  // 분할이 남고 spec 옆 열이 그 파일이다 — 셸 화면은 spec으로 갈 때와 같이 내려간다.
+  await expect(page).toHaveURL(/split=lr/);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(코드열(page, SOURCE)).toContainText("const answer = 42;");
+  await expect(page.locator(".xterm")).toHaveCount(0);
+  await expect(파일탭이름(page, SOURCE)).toHaveAttribute("aria-pressed", "true");
+  await expect(셸탭이름(page)).toHaveAttribute("aria-pressed", "false");
+
+  // 문서 열을 눌러도(결정 97 — 포커스가 든 열) 묶음 열은 그대로 그 파일이다.
+  await page.getByRole("region", { name: "문서", exact: true }).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(page).toHaveURL(/code=billing%2Fsrc%2Fmain\.ts/);
+
+  await 셸탭이름(page).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "terminal"]);
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page).not.toHaveURL(/code=/);
+  // 같은 셸이다 — 다시 띄우지도 죽이지도 않았다.
+  expect(await callCount(page, "pty_spawn")).toBe(1);
+  expect(await callCount(page, "pty_kill")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 티켓 04는 파일 탭을 보다 분할을 켜면 묶음 열에 셸을 세웠다. 이제 묶음의 지금 탭이 그 열에 선다 — 파일 탭이면 그 파일이다.
+test("파일 탭을 보다 분할을 켜면 spec 옆 열에 그 파일이 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(파일탭주소(README));
+  await expect(page.getByRole("main", { name: README, exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+
+  await expect(page).toHaveURL(/split=lr/);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(코드열(page, README)).toContainText("# 빌링");
+  // 셸이 저절로 뜨지 않는다 — 묶음 열은 셸이 아니다.
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(0);
+  expect(await callCount(page, "pty_spawn")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 수용 기준 「주소: 분할 중 파일 탭이 지금 탭이면 주소에 `split`과 `code`가 있고, 그 주소로 새로 들어와도 같은 분할이 선다」(S12).
+test("분할의 묶음 열이 파일 탭이면 주소에 split과 code가 있고, 그 주소로 새로 들어와도 같은 분할이 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(파일탭주소(README));
+  await expect(page.getByRole("main", { name: README, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+
+  const url = new URL(page.url());
+  expect(url.searchParams.get("split")).toBe("lr");
+  expect(url.searchParams.get("code")).toBe(README);
+
+  // 앱을 새로 세운다 — 묶음(메모리)은 비고, 주소 하나로 같은 분할이 다시 선다(스토리 60 — 주소가 가리키는 파일은 연다).
+  await page.goto(url.pathname + url.search);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(코드열(page, README)).toContainText("# 빌링");
+  await expect(파일탭이름(page, README)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 수용 기준 「⌘W: 분할 중 파일 탭이 확인 없이 닫히고 이웃 규칙대로 묶음 열이 바뀐다」(스토리 50). 이웃 규칙은 오른쪽 → 왼쪽 →
+// (묶음이 비면) spec이다(결정 30) — 묶음이 비면 분할이 풀린다.
+test("분할 중 ⌘W가 묶음 열의 파일 탭을 확인 없이 닫고, 이웃이 그 열에 서며, 묶음이 비면 분할이 풀린다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(파일탭주소(SOURCE));
+  await expect(page.getByRole("main", { name: SOURCE, exact: true })).toBeVisible();
+  await 주소로간다(page, 파일탭주소(README));
+  await expect(page.getByRole("main", { name: README, exact: true })).toBeVisible();
+  // 가운데가 아닌 왼쪽 칸을 켜고 분할 — 닫으면 오른쪽 이웃(README)이 선다.
+  await 파일탭이름(page, SOURCE).click();
+  await expect(page.getByRole("main", { name: SOURCE, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "분할", exact: true }).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+  await expect(코드열(page, SOURCE)).toBeVisible();
+
+  await page.keyboard.press("Meta+w");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.locator(`[data-tab="code"][data-code="${SOURCE}"]`)).toHaveCount(0);
+  await expect(코드열(page, README)).toContainText("# 빌링");
+  await expect(파일탭이름(page, README)).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page).toHaveURL(/code=billing%2FREADME\.md/);
+
+  // 마지막 칸 — 묶음이 비면 분할이 풀리고 spec이다.
+  await page.keyboard.press("Meta+w");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.locator("[data-tab-strip] > [data-tab]")).toHaveCount(0);
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+  await expect(page.getByRole("main", { name: "문서", exact: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/split=|code=|tab=/);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 이웃이 셸이면 묶음 열이 그 셸로 바뀐다 — 셸 화면이 뜨고 주소에서 `code`가 빠진다. 셸의 ⌘W는 여전히 묻는다(스토리 51).
+test("분할 중 ⌘W로 파일 탭을 닫아 이웃이 셸이면 묶음 열이 그 셸이 되고, 셸의 ⌘W는 여전히 묻는다", async ({ page }) => {
+  await 셸과파일탭으로분할(page);
+  await 파일탭이름(page, SOURCE).click();
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "code"]);
+
+  await page.keyboard.press("Meta+w");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.locator('[data-tab="code"]')).toHaveCount(0);
+  await expect.poll(() => 열차례(page)).toEqual(["spec", "terminal"]);
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await expect(셸탭이름(page)).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page).not.toHaveURL(/code=/);
+
+  await page.keyboard.press("Meta+w");
+  await expect(page.getByRole("alertdialog")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
