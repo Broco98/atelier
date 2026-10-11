@@ -38,9 +38,9 @@ export function specCopy(name: string): { files: string[]; bodies: Record<string
   return { files, bodies: Object.fromEntries(files.map((path) => [path, readFileSync(join(root, path), "utf8")])) };
 }
 
-/** 대화 목록의 한 줄(호스트의 `Conversation`). 고르지 않은 값은 엔진 기본값(`null`)이다. */
+/** 대화 목록의 한 줄(호스트의 `Conversation`). 고르지 않은 값은 엔진 기본값(`null`)이고, 대기 줄은 비어 있다. */
 export function conversationRow(row: Pick<Conversation, "id" | "agent" | "name"> & Partial<Conversation>): Conversation {
-  return { model: null, mode: null, plan: null, lastSeq: 0, ...row };
+  return { model: null, mode: null, plan: null, lastSeq: 0, queue: [], ...row };
 }
 
 /**

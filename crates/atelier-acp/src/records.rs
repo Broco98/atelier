@@ -253,6 +253,21 @@ impl Recorder {
         })
     }
 
+    /// 이 기록의 work.
+    pub(crate) fn work(&self) -> &str {
+        &self.work
+    }
+
+    /// 이 기록의 대화 id.
+    pub(crate) fn conversation(&self) -> &str {
+        &self.conversation
+    }
+
+    /// 기록 밖의 소식(대기 줄 바뀜)을 기록 줄과 같은 길로 내보낸다. 받는 closure는 호스트를 다시 부르면 안 된다.
+    pub(crate) fn announce(&self, event: HostEvent) {
+        (self.emit)(event);
+    }
+
     /// 마지막으로 적은 줄의 seq.
     pub(crate) fn last_seq(&self) -> u64 {
         self.file.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq

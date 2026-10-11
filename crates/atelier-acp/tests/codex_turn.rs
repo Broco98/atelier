@@ -5,8 +5,8 @@
 
 mod common;
 
-use atelier_acp::{Agent, HostError, HostEvent};
-use common::{of_kind, Sandbox};
+use atelier_acp::{Agent, HostError};
+use common::{emitted, of_kind, Sandbox};
 use serde_json::json;
 
 #[test]
@@ -93,7 +93,7 @@ fn update가_보낸_순서대로_원문_그대로_적히고_모르는_kind_뒤�
 
     let end = &of_kind(&record, "turn-end")[0]["payload"];
     assert_eq!(end["stopReason"], json!("end_turn"));
-    assert_eq!(end["cancelledByUs"], json!(false), "멈추기가 서기 전에는 늘 false다");
+    assert_eq!(end["cancelledByUs"], json!(false), "우리가 멈추지 않은 턴이다");
     assert_eq!(end["outOfTurn"], json!(false));
     assert!(end["durationMs"].as_u64().is_some(), "걸린 시간: {end}");
     assert_eq!(
@@ -105,26 +105,6 @@ fn update가_보낸_순서대로_원문_그대로_적히고_모르는_kind_뒤�
     let seqs: Vec<u64> = record.iter().map(|line| line["seq"].as_u64().unwrap()).collect();
     assert_eq!(seqs, (1..=record.len() as u64).collect::<Vec<_>>(), "seq는 1부터 빈틈없이 는다");
     assert_eq!(emitted(&events, "cart", &conversation.id), record, "이벤트의 seq · 줄이 파일의 것과 같다");
-
-    host.shut_down();
-}
-
-#[test]
-fn 턴이_도는_동안의_보내기는_읽히는_오류이고_아무것도_보내거나_적지_않는다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("long-turn", &[]));
-    let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
-    host.send("cart", &conversation.id, "오래 걸리는 일").expect("첫 말");
-    sandbox.wait_kind("cart", &conversation.id, "update", 1);
-
-    let error = host.send("cart", &conversation.id, "도는 동안의 말").expect_err("턴이 돈다");
-
-    assert_eq!(error, HostError::TurnRunning(conversation.id.clone()));
-    assert!(error.to_string().contains("턴이 도는 중"), "{error}");
-    let record = sandbox.record("cart", &conversation.id);
-    assert_eq!(of_kind(&record, "sent").len(), 1, "거절한 말은 기록에 없다");
-    assert_eq!(sandbox.acp_prompts(&sandbox.agent_session_id("cart", &conversation.id)).len(), 1, "에이전트에 가지 않았다");
 
     host.shut_down();
 }
@@ -344,18 +324,4 @@ fn agent_pid(sandbox: &Sandbox, conversation: &str) -> (String, u32) {
     let session_id = sandbox.agent_session_id("cart", conversation);
     let pid = sandbox.acp_receipt(&session_id)["pid"].as_u64().unwrap() as u32;
     (session_id, pid)
-}
-
-/// 그 대화의 기록 줄 이벤트들을 파일 줄과 같은 꼴(JSON)로.
-fn emitted(events: &common::Events, slug: &str, id: &str) -> Vec<serde_json::Value> {
-    events
-        .all()
-        .into_iter()
-        .filter_map(|event| match event {
-            HostEvent::Record { work, conversation, line } if work == slug && conversation == id => {
-                Some(serde_json::to_value(line).unwrap())
-            }
-            _ => None,
-        })
-        .collect()
 }

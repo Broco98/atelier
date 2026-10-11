@@ -34,10 +34,23 @@ impl fmt::Display for BadQuote {
     }
 }
 
+/// 보낼 말에 붙은 인용과 그것으로 지은 인용 블록. 대기 줄에 든 말은 넣을 때 지어 둔 이것을 들고 있다가 차례가 오면
+/// 그대로 보낸다.
+#[derive(Debug, Clone)]
+pub(crate) struct Attached {
+    pub(crate) quote: Quote,
+    pub(crate) block: Value,
+}
+
 impl Quote {
+    /// 이 인용을 `spec` 폴더의 것으로 붙인다 — 인용 블록을 짓는다.
+    pub(crate) fn attach(&self, spec: &Path) -> Result<Attached, BadQuote> {
+        Ok(Attached { quote: self.clone(), block: self.block(spec)? })
+    }
+
     /// 인용 블록(S12) — `spec` 폴더 안의 그 파일을 실제 경로로 가리키는 참조 한 줄, 빈 줄, 고른 글의 마크다운 인용.
     /// 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면 보내지 않는다.
-    pub(crate) fn block(&self, spec: &Path) -> Result<Value, BadQuote> {
+    fn block(&self, spec: &Path) -> Result<Value, BadQuote> {
         let inside = !self.file.is_empty()
             && Path::new(&self.file).components().all(|part| matches!(part, Component::Normal(_)));
         if !inside {

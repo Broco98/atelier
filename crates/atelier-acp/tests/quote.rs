@@ -80,6 +80,35 @@ fn 인용이_든_첫_말은_머리말_인용_블록_사람의_글_순서로_가�
 }
 
 #[test]
+fn 턴이_도는_동안_인용을_붙여_보낸_말은_대기_줄에_들었다가_차례가_오면_인용_블록과_함께_간다() {
+    let sandbox = Sandbox::new();
+    let work = sandbox.work("cart", &[]);
+    // 첫 턴을 검사가 놓을 때까지 붙잡는다(three-axes 티켓 07의 대기 줄).
+    let (host, _events) = sandbox.host_with_events(sandbox.codex_login_shell("pauses-mid-turn", &[]));
+    let conversation = host.new_conversation("cart", Agent::Codex).expect("새 대화");
+    let session_id = sandbox.agent_session_id("cart", &conversation.id);
+    host.send("cart", &conversation.id, "첫 말").expect("첫 말");
+    sandbox.wait_kind("cart", &conversation.id, "update", 1);
+
+    host.send_message("cart", &conversation.id, "이 문단을 한 줄로 줄여 줘", Some(&paragraph())).expect("대기 줄에 든다");
+    assert_eq!(sandbox.acp_prompts(&session_id).len(), 1, "도는 동안에는 에이전트에 가지 않는다");
+    sandbox.release_turn(&session_id);
+    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
+
+    let quote_block = json!({
+        "type": "text",
+        "text": format!("{}:L3-4\n\n> 요약 한 줄.\n> 첫 문단을 고쳤다.\n", work.join("spec/plan.md").display())
+    });
+    let human = json!({"type": "text", "text": "이 문단을 한 줄로 줄여 줘"});
+    let prompts = sandbox.acp_prompts(&session_id);
+    assert_eq!(prompts[1]["prompt"], json!([quote_block, human]), "대기 줄에서 간 말도 인용 블록이 사람의 글 앞에 선다");
+    let sent = of_kind(&record, "sent");
+    assert_eq!(sent[1]["payload"]["quote"], json!({"file": "plan.md", "start": 3, "end": 4, "text": "요약 한 줄.\n첫 문단을 고쳤다."}));
+    assert_eq!(sent[1]["payload"]["prompt"], json!([quote_block, human]));
+    host.shut_down();
+}
+
+#[test]
 fn 인용_없는_말의_sent에는_인용_칸이_없다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);
