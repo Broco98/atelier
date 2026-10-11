@@ -786,6 +786,17 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   "README.md": { kind: "text", content: "# 빌링\n", lines: 1 },
   "ghost.ts": { kind: "worktreeMissing" },
   "secret.txt": { kind: "outsideLink", target: "~/secrets/token.txt" },
+  // 종류별 몸(티켓 09). 글이 아닌 것은 내용 없이 크기(바이트)만 온다 — 그림은 화면이 asset URL로 건다.
+  "shots/home.png": { kind: "image", size: 48_213 },
+  "build/app.wasm": { kind: "binary", size: 1_536 },
+  "legacy.txt": { kind: "notUtf8", size: 300 },
+  "logs/huge.log": { kind: "tooLarge", size: 7_864_320 },
+  // svg는 그림 확장자이기도 하지만 코어가 텍스트로 읽는다(결정 36).
+  "icon.svg": {
+    kind: "text",
+    content: '<svg xmlns="http://www.w3.org/2000/svg">\n  <circle r="4"/>\n</svg>\n',
+    lines: 3,
+  },
 };
 
 /**

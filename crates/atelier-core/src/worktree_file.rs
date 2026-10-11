@@ -10,20 +10,29 @@ use serde::Serialize;
 
 use crate::{Error, Result};
 
-/// 파일 읽기의 답. 이미지 · 바이너리 · UTF-8 아님 · 너무 큼은 다음 장(09)이 가른다 — 이 장에서 UTF-8로 못 읽는 것은
-/// 「읽지 못함」이다.
+/// 파일 읽기의 답 — 갈래마다 화면의 몸이 하나다(구현 스펙 「파일 읽기」 표). 글이 아닌 것(그림 · 바이너리 · UTF-8 아님 ·
+/// 너무 큼)은 내용 없이 크기만 싣는다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum WorktreeFile {
     /// 내용과 줄 수. 줄 수는 끝의 줄바꿈 뒤 빈 줄을 세지 않는다.
     Text { content: String, lines: usize },
+    /// 그림 — 확장자로 가른다(S5). **내용을 싣지 않는다**: 화면이 워크트리 절대 경로로 asset URL을 지어 건다(spec의 그림
+    /// 보기와 같은 길). 크기는 바이트다.
+    Image { size: u64 },
+    /// 앞 8KB에 NUL이 있다(git과 같은 판정, 결정 36) — 깨진 글자 대신 「바이너리 파일 · 크기」만 뜬다(스토리 74).
+    Binary { size: u64 },
+    /// NUL은 없는데 내용이 UTF-8로 풀리지 않는다(EUC-KR 같은 옛 인코딩) — 바이너리처럼 안내만 뜬다(스토리 75).
+    NotUtf8 { size: u64 },
+    /// 5MB를 넘는다 — **읽기 전에 크기로 가른다**(스토리 76). 앱이 멈추지 않게 내용을 열지 않는다.
+    TooLarge { size: u64 },
     /// 파일이 없다 — 지워졌거나 주소가 없는 경로를 가리킨다. 탭은 남고 「지워진 파일」이 뜬다.
     Missing,
     /// 그 프로젝트의 워크트리 폴더가 없다(그 work에 없는 프로젝트도 같다).
     WorktreeMissing,
     /// 심링크의 실제 대상이 워크트리 밖이다 — **읽지 않는다**(스토리 78). 대상은 `~` 축약 표기다.
     OutsideLink { target: String },
-    /// 있는데 읽지 못했다 — 폴더이거나, UTF-8이 아니거나, 디스크가 거절했다.
+    /// 있는데 읽지 못했다 — 폴더이거나 디스크가 거절했다.
     Unreadable { reason: String },
 }
 
@@ -33,6 +42,9 @@ pub enum WorktreeFile {
 /// `..` · 절대 경로는 `Err`). 그 위에 **실제 경로를 풀어 워크트리 안인지 본다** — 글자 가드는 심링크를 막지 못해서, 안쪽
 /// 이름이 밖을 가리키면 그 대상을 읽게 된다. 밖이면 읽지 않고 「바깥 링크 + 대상」이다. 워크트리 안을 가리키는 링크는
 /// 그대로 따라가 읽는다.
+///
+/// **가르는 차례**: 그림(확장자) → 너무 큼(5MB 초과) → 바이너리(앞 8000바이트의 NUL) → UTF-8 아님 → 텍스트. 앞의 둘은
+/// 내용을 열지 않는다 — 그림은 화면이 asset URL로 걸고, 너무 큰 것은 열면 앱이 멈춘다. 그래서 큰 스크린샷도 그림이다.
 pub fn read_worktree_file(works_root: &Path, slug: &str, project: &str, rel_path: &str) -> Result<WorktreeFile> {
     let rel = crate::works::safe_rel(rel_path)?;
     let dir = worktree_dir(works_root, slug, project)?;
@@ -54,19 +66,52 @@ pub fn read_worktree_file(works_root: &Path, slug: &str, project: &str, rel_path
     if !real.starts_with(&root) {
         return Ok(WorktreeFile::OutsideLink { target: crate::paths::collapse_home(&real) });
     }
-    if real.is_dir() {
+    let meta = match std::fs::metadata(&real) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(WorktreeFile::Missing),
+        Err(e) => return Ok(WorktreeFile::Unreadable { reason: e.to_string() }),
+    };
+    if meta.is_dir() {
         return Ok(WorktreeFile::Unreadable { reason: "is a directory".to_string() });
+    }
+    // 내용을 열지 않고 가를 수 있는 것부터 — 그림(확장자)과 너무 큼(크기)은 메타데이터로 끝난다.
+    let size = meta.len();
+    if is_image(rel) {
+        return Ok(WorktreeFile::Image { size });
+    }
+    if size > READ_LIMIT {
+        return Ok(WorktreeFile::TooLarge { size });
     }
     let bytes = match std::fs::read(&real) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(WorktreeFile::Missing),
         Err(e) => return Ok(WorktreeFile::Unreadable { reason: e.to_string() }),
     };
+    if bytes[..bytes.len().min(BINARY_SNIFF_LEN)].contains(&0) {
+        return Ok(WorktreeFile::Binary { size });
+    }
     Ok(match String::from_utf8(bytes) {
         Ok(content) => WorktreeFile::Text { lines: content.lines().count(), content },
-        Err(_) => WorktreeFile::Unreadable { reason: "not UTF-8".to_string() },
+        Err(_) => WorktreeFile::NotUtf8 { size },
     })
 }
+
+/// 그림으로 거는 확장자(S5) — WKWebView가 그리는 것. **svg는 없다**: 결정 36대로 원문을 읽는 코드다. 대소문자는 가리지
+/// 않는다(스크린샷은 흔히 `.PNG`다).
+const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"];
+
+fn is_image(rel: &Path) -> bool {
+    rel.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| IMAGE_EXTENSIONS.iter().any(|one| one.eq_ignore_ascii_case(ext)))
+}
+
+/// 읽기 상한(결정 35) — 이것을 넘는 파일은 열지 않는다. 그림은 내용을 싣지 않아 이 상한 앞에서 갈린다.
+const READ_LIMIT: u64 = 5 * 1024 * 1024;
+
+/// 바이너리를 가르는 창 — 앞의 이만큼에 NUL이 있으면 바이너리다. git이 diff · grep에서 쓰는 창(`FIRST_FEW_BYTES`)과 같은
+/// 8000바이트라, 같은 파일을 git과 다르게 부르지 않는다(결정 36 「git과 같은 판정」).
+const BINARY_SNIFF_LEN: usize = 8000;
 
 /// 워크트리 자리. 프로젝트 slug도 work slug와 같은 검사를 지난다 — 경로 조각이 되기 때문이다.
 fn worktree_dir(works_root: &Path, slug: &str, project: &str) -> Result<PathBuf> {
@@ -140,6 +185,95 @@ mod tests {
         assert_eq!(read(&works, "one.txt"), WorktreeFile::Text { content: "only".to_string(), lines: 1 });
         write(&worktree, "empty.txt", b"");
         assert_eq!(read(&works, "empty.txt"), WorktreeFile::Text { content: String::new(), lines: 0 });
+    }
+
+    #[test]
+    fn an_image_comes_with_its_size_only() {
+        let (_tmp, works, worktree) = setup();
+        // PNG 머리 — 앞에 NUL이 있어도 바이너리가 아니라 그림이다. 확장자로 가른다(S5).
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+        write(&worktree, "shots/home.png", png);
+        assert_eq!(read(&works, "shots/home.png"), WorktreeFile::Image { size: png.len() as u64 });
+        // 스크린샷은 흔히 대문자 확장자다
+        write(&worktree, "Shot.JPG", b"jpg");
+        assert_eq!(read(&works, "Shot.JPG"), WorktreeFile::Image { size: 3 });
+        for name in ["a.jpeg", "a.gif", "a.webp", "a.bmp", "favicon.ico"] {
+            write(&worktree, name, b"img!");
+            assert_eq!(read(&works, name), WorktreeFile::Image { size: 4 }, "{name}");
+        }
+    }
+
+    #[test]
+    fn an_svg_is_text() {
+        let (_tmp, works, worktree) = setup();
+        let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\">\n  <circle r=\"4\"/>\n</svg>\n";
+        write(&worktree, "icon.svg", svg.as_bytes());
+
+        // 결정 36 — svg는 그림 확장자이기도 하지만 원문을 읽는 코드다
+        assert_eq!(read(&works, "icon.svg"), WorktreeFile::Text { content: svg.to_string(), lines: 3 });
+    }
+
+    #[test]
+    fn a_nul_in_the_first_8kb_is_binary() {
+        let (_tmp, works, worktree) = setup();
+        write(&worktree, "build/app.wasm", b"\0asm\x01\0\0\0");
+        assert_eq!(read(&works, "build/app.wasm"), WorktreeFile::Binary { size: 8 });
+
+        // NUL이 git의 판정 창(앞 8000바이트) 밖에만 있으면 바이너리로 보지 않는다 — 글로 읽는다
+        let mut late = vec![b'a'; 8000];
+        late.push(0);
+        write(&worktree, "late.txt", &late);
+        assert!(matches!(read(&works, "late.txt"), WorktreeFile::Text { .. }), "앞 8000바이트 밖의 NUL은 바이너리가 아니다");
+    }
+
+    #[test]
+    fn text_that_is_not_utf8_is_not_utf8() {
+        let (_tmp, works, worktree) = setup();
+        // EUC-KR 「한글」 — NUL은 없지만 UTF-8로 풀리지 않는다
+        write(&worktree, "legacy.txt", b"\xc7\xd1\xb1\xdb\n");
+        assert_eq!(read(&works, "legacy.txt"), WorktreeFile::NotUtf8 { size: 5 });
+    }
+
+    /// 큰 파일을 실제로 쓰지 않는다 — 길이만 늘린 성긴 파일이다(구멍은 NUL로 읽힌다).
+    fn sparse(root: &Path, rel: &str, len: u64) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::File::create(&path).unwrap().set_len(len).unwrap();
+    }
+
+    #[test]
+    fn a_file_over_5mb_is_too_large() {
+        let (_tmp, works, worktree) = setup();
+        let five_mb = 5 * 1024 * 1024;
+        sparse(&worktree, "logs/huge.log", five_mb + 1);
+        assert_eq!(read(&works, "logs/huge.log"), WorktreeFile::TooLarge { size: five_mb + 1 });
+
+        // 꼭 5MB는 넘지 않았다 — 읽는다(구멍이 NUL이라 바이너리로 온다)
+        sparse(&worktree, "edge.bin", five_mb);
+        assert_eq!(read(&works, "edge.bin"), WorktreeFile::Binary { size: five_mb });
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn too_large_is_decided_without_reading_the_content() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_tmp, works, worktree) = setup();
+        let size = 6 * 1024 * 1024;
+        sparse(&worktree, "dump.sql", size);
+        // 열 수 없는 파일 — 내용을 읽으려 들면 「읽지 못함」이 된다. 크기는 메타데이터라 읽힌다.
+        std::fs::set_permissions(worktree.join("dump.sql"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let answer = read(&works, "dump.sql");
+        std::fs::set_permissions(worktree.join("dump.sql"), std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert_eq!(answer, WorktreeFile::TooLarge { size });
+    }
+
+    #[test]
+    fn an_image_over_5mb_is_still_an_image() {
+        let (_tmp, works, worktree) = setup();
+        // 그림은 내용을 싣지 않으니 읽기 상한에 걸릴 것이 없다 — 큰 스크린샷도 그림으로 뜬다
+        sparse(&worktree, "shots/full.png", 6 * 1024 * 1024);
+        assert_eq!(read(&works, "shots/full.png"), WorktreeFile::Image { size: 6 * 1024 * 1024 });
     }
 
     #[test]
