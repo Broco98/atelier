@@ -1,22 +1,30 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { filesApi } from "./api";
 
+/** 모든 워크트리 데이터의 머리 — 창 포커스 신호가 통째로 낡았다고 표시한다(`refreshAllWorktrees`). */
+const WORKTREE_ROOT = ["worktree"] as const;
+
 /**
  * 워크트리 데이터의 키 머리 — (slug, 프로젝트, 무엇)으로 잇는다. **`works` 접두사 밖이다**(git-integration 구현 스펙 S8):
  * `works:changed`의 무효화는 `["works"]` 아래를 통째로 지우는데(`invalidateWorks`), 거기 들면 spec 한 줄이 바뀔 때마다
  * 워크트리 트리 · 코드까지 다시 읽는다. 워크트리의 신호는 따로다(티켓 10의 `worktree:changed`).
  */
-export const worktreeKey = (slug: string) => ["worktree", slug] as const;
+export const worktreeKey = (slug: string) => [...WORKTREE_ROOT, slug] as const;
 
 /**
  * 워크트리 하나의 트리. **보일 때만 읽는다**(S9) — 작업 패널의 몸은 숨어도 마운트된 채라(칸 몸은 `hidden` + `inert`)
  * 쿼리를 「보이는가」로 켜고 끈다. 숨은 동안에는 묻지 않고, 보이게 되는 순간 낡았으면 한 번 읽는다.
+ *
+ * **창 포커스로는 react-query가 스스로 다시 읽지 않는다**(`refetchOnWindowFocus: false`). 그 기본값은 `visibilitychange`를
+ * 듣는데, 창 포커스 신호는 앱 루트가 window `focus` 하나로 따로 건다(`useFollowWorktreeChanges`) — 둘이 함께 서면 창으로
+ * 돌아올 때 두 번 읽는다. 워크트리 쿼리 셋(트리 · 한 겹 · 파일 내용)이 모두 같다.
  */
 export const worktreeTreeQuery = (slug: string, project: string, visible: boolean) =>
   queryOptions({
     queryKey: [...worktreeKey(slug), project, "tree"],
     queryFn: () => filesApi.tree(slug, project),
     enabled: visible,
+    refetchOnWindowFocus: false,
   });
 
 /**
@@ -34,6 +42,7 @@ export const worktreeFolderQuery = (slug: string, project: string, path: string,
     queryFn: () => filesApi.folder(slug, project, path),
     enabled: visible,
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
 /**
@@ -42,4 +51,26 @@ export const worktreeFolderQuery = (slug: string, project: string, path: string,
  */
 export function refreshWorktrees(queryClient: QueryClient, slug: string): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: worktreeKey(slug) });
+}
+
+/**
+ * 감시가 그 워크트리의 변경을 알렸다(`worktree:changed` — 티켓 10). 그 (slug, 프로젝트)의 트리와 열린 파일 내용을 낡았다고
+ * 표시한다 — 다시 읽는 것은 **보이는(켜진) 쿼리뿐이고**, 숨은 것은 보이는 순간 읽힌다(S9).
+ *
+ * **걸린 폴더의 한 겹은 건너뛴다**(결정 37) — 감시는 걸리지 않은 곳만 본다. 걸린 폴더 안은 펼칠 때 · 창 포커스 · 새로고침에만
+ * 다시 읽는다. 머리(`[worktree, slug, project]`)만으로 무효로 하면 펼쳐 둔 한 겹까지 걸린다.
+ */
+export function invalidateWorktree(queryClient: QueryClient, slug: string, project: string): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: [...worktreeKey(slug), project],
+    predicate: ({ queryKey }) => queryKey[3] !== "folder",
+  });
+}
+
+/**
+ * 모든 work의 워크트리 데이터를 낡았다고 표시한다 — 창 포커스 신호(결정 34의 예비 신호). 감시가 못 보는 것(커밋 — 워크트리가
+ * 아니라 본 저장소의 `.git`에서 일어난다)과 걸린 폴더 안을 메운다. 다시 읽는 것은 보이는 쿼리뿐이다.
+ */
+export function refreshAllWorktrees(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: WORKTREE_ROOT });
 }
