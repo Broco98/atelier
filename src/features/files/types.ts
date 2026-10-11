@@ -20,8 +20,9 @@ export interface WorktreeEntry {
 }
 
 /**
- * 워크트리 하나의 트리 목록. **워크트리가 없거나 읽지 못한 것도 답이다** — 오류가 아니라 구획이 그리는 갈래라서 코어가
- * `kind`로 갈라 보낸다(Rust `#[serde(tag = "kind")]`와 짝).
+ * 워크트리 하나의 트리 목록, 그리고 걸린 폴더 하나의 한 겹(`listed`면 그 폴더 바로 아래 — 모두 걸린 것이다). **워크트리가
+ * 없거나 읽지 못한 것도 답이다** — 오류가 아니라 구획(펼친 걸린 폴더면 그 자리)이 그리는 갈래라서 코어가 `kind`로 갈라
+ * 보낸다(Rust `#[serde(tag = "kind")]`와 짝).
  */
 export type WorktreeTree =
   | { kind: "listed"; entries: WorktreeEntry[] }

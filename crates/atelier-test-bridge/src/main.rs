@@ -92,6 +92,10 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("list_worktree_tree", |a| {
         ok(atelier_core::list_worktree_tree(&works_dir(), &text(a, "slug")?, &text(a, "project")?))
     }),
+    ("list_worktree_folder", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::list_worktree_folder(&works_dir(), &slug, &project, &path))
+    }),
     ("list_archive", |_| ok(atelier_core::list_archive(&archive_dir()))),
     // 아카이브 문서 목록도 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구
     // (`with_archived_spec_tree`)를 진짜로 탄다.

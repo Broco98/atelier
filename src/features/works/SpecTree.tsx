@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronRight, Copy, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -117,6 +117,11 @@ export interface TreeRowsProps<T extends TreeRowItem<T>> {
   onSelect: (path: string) => void;
   onCopy?: (path: string) => void;
   lookOf: (item: T) => RowLook;
+  /**
+   * 펼친 폴더의 몸을 대신 그린다 — `undefined`를 돌려주면 항목의 자식 행이다. 받는 깊이는 자식 행의 깊이다. files 트리의 아직
+   * 안 읽은 폴더(gitignore에 걸린 폴더)가 펼칠 때 한 겹 읽어 그 자리에 「읽는 중」 · 행 · 까닭을 세운다(git-integration 티켓 02).
+   */
+  folderBody?: (item: T, depth: number) => ReactNode;
 }
 
 // 폴더는 Collapsible이다(판 4, 스토리 114). 행이 트리거라 `aria-expanded`를 스스로 달고, 자식 줄은 패널이다.
@@ -134,6 +139,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
   onSelect,
   onCopy,
   lookOf,
+  folderBody,
 }: TreeRowsProps<T>) {
   return (
     <>
@@ -141,6 +147,8 @@ export function TreeRows<T extends TreeRowItem<T>>({
         const look = lookOf(item);
         if (item.kind === "folder") {
           const expanded = isOpen(item);
+          // 패널은 펼쳤을 때만 마운트되므로 몸도 그때만 짓는다 — files의 걸린 폴더는 그 몸이 한 겹 읽기를 건다
+          const body = expanded ? folderBody?.(item, depth + 1) : undefined;
           return (
             <Collapsible
               key={item.path}
@@ -170,16 +178,21 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </CollapsibleTrigger>
               <CollapsibleContent className={ROWS}>
-                <TreeRows
-                  items={item.children}
-                  depth={depth + 1}
-                  current={current}
-                  isOpen={isOpen}
-                  onOpenChange={onOpenChange}
-                  onSelect={onSelect}
-                  onCopy={onCopy}
-                  lookOf={lookOf}
-                />
+                {body !== undefined ? (
+                  body
+                ) : (
+                  <TreeRows
+                    items={item.children}
+                    depth={depth + 1}
+                    current={current}
+                    isOpen={isOpen}
+                    onOpenChange={onOpenChange}
+                    onSelect={onSelect}
+                    onCopy={onCopy}
+                    lookOf={lookOf}
+                    folderBody={folderBody}
+                  />
+                )}
               </CollapsibleContent>
             </Collapsible>
           );

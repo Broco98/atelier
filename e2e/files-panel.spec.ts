@@ -3,8 +3,12 @@ import { answerByArg, WORKS, WORKTREE_TREES } from "./fixtures";
 import {
   callCount,
   fireEventToAll,
+  holdCommand,
   installFixtureBackend,
   ipcCallArgs,
+  ipcFailure,
+  releaseCommand,
+  replaceAnswer,
   steadyCount,
   unknownIpcCalls,
 } from "./harness";
@@ -15,10 +19,16 @@ import {
 // 한다 — 걸리지 않은 것과 걸린 것을 가르는 규칙, 폴더 먼저 · 이름순은 L1(`worktree.rs`)이 진짜 저장소로 잰다. 이 층이 재는
 // 것은 화면이다: 칸 · 구획 · 처음 펼침 · 흐림의 말 · 「워크트리 없음」 · 언제 묻는가 · 접힘 기억.
 //
-// 픽스처: `pinned-work`는 프로젝트 하나(`billing`), `multi-work`는 둘(`billing` · `ledger`)이다. 트리는 `WORKTREE_TREES`다.
+// 티켓 02 — **걸린 폴더를 펼치면 한 겹 읽힌다.** 걸린 폴더는 트리 목록이 「아직 안 읽음」으로 보낸다. 펼칠 때 그 바로 아래만
+// 묻고(스토리 20), 묻는 동안 「읽는 중」이 선다(스토리 21). 한 겹만 읽는 규칙은 L1(`worktree.rs`)이 잰다.
+//
+// 픽스처: `pinned-work`는 프로젝트 하나(`billing`), `multi-work`는 둘(`billing` · `ledger`)이다. 트리는 `WORKTREE_TREES`,
+// 걸린 폴더의 한 겹은 `WORKTREE_FOLDERS`다.
 
 const [pinnedWork, , multiWork] = WORKS;
 const COMMAND = "list_worktree_tree";
+/** 걸린 폴더의 한 겹(티켓 02) — 그 폴더를 펼칠 때 묻는다. */
+const FOLDER = "list_worktree_folder";
 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
 const 레일칸 = (page: Page, name: "spec" | "files" | "info") => 레일(page).getByRole("button", { name, exact: true });
@@ -114,10 +124,102 @@ test("트리는 프로젝트 루트만 펼쳐 서고, 걸린 것은 흐린 글�
   const colorOf = (name: string) => 패널행(page, name).evaluate((el) => getComputedStyle(el).color);
   expect(await colorOf(".env")).not.toBe(await colorOf("MD README.md"));
   expect(await colorOf("dist")).not.toBe(await colorOf("src"));
+  // 걸린 폴더는 접힌 채 서고, 펼치기 전에는 그 안을 묻지 않는다(스토리 20)
+  expect(await callCount(page, FOLDER)).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
-  // 걸린 폴더는 이 장에서는 펼쳐지지 않는다(펼칠 때 한 겹 읽기는 티켓 02)
+test("걸린 폴더를 펼치면 「읽는 중」 뒤에 한 겹이 서고, 그 안의 폴더를 펼치면 다음 겹을 묻는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await openFiles(page);
+  const dist = 패널행(page, "dist");
+  await expect(dist).toHaveAttribute("aria-expanded", "false");
+
+  // 읽기를 붙잡아 「읽는 중」을 러너 속도와 상관없이 본다(스토리 21)
+  await holdCommand(page, FOLDER);
+  await dist.click();
+  // 걸린 폴더 행도 펼쳐짐을 말한다(스토리 88)
+  await expect(dist).toHaveAttribute("aria-expanded", "true");
+  await expect(작업패널(page).getByText("읽는 중…", { exact: true })).toBeVisible();
+  await expect(패널행(page, "JS app.js")).toHaveCount(0);
+  await releaseCommand(page, FOLDER);
+  await expect(패널행(page, "JS app.js")).toBeVisible();
+  await expect(작업패널(page).getByText("읽는 중…", { exact: true })).toHaveCount(0);
+  // 한 겹 명령이 그 폴더의 (slug, 프로젝트, 경로)로 한 번 불렸다
+  expect((await ipcCallArgs(page, FOLDER, "path")).map(({ args }) => args)).toEqual([
+    { slug: pinnedWork.slug, project: "billing", path: "dist" },
+  ]);
+
+  // 안의 것은 모두 걸린 것이다 — 흐린 글자와 그 까닭. 자식 폴더는 아직 안 읽어 접힌 채다
+  await expect(패널행(page, "JS app.js")).toHaveAccessibleDescription("gitignore에 걸림");
+  const assets = 패널행(page, "assets");
+  await expect(assets).toHaveAccessibleDescription("gitignore에 걸림");
+  await expect(assets).toHaveAttribute("aria-expanded", "false");
+  await expect(패널행(page, "SVG logo.svg")).toHaveCount(0);
+
+  // 그 안의 폴더를 펼치면 다음 겹이다
+  await assets.click();
+  await expect(assets).toHaveAttribute("aria-expanded", "true");
+  await expect(패널행(page, "SVG logo.svg")).toBeVisible();
+  expect((await ipcCallArgs(page, FOLDER, "path")).map(({ args }) => args.path)).toEqual(["dist", "dist/assets"]);
+
+  // 접었다 다시 펼치면 또 읽는다 — 펼칠 때 읽는다(결정 37)
+  await dist.click();
+  await expect(dist).toHaveAttribute("aria-expanded", "false");
+  await expect(패널행(page, "JS app.js")).toHaveCount(0);
+  const before = await steadyCount(page, FOLDER);
+  await dist.click();
+  await expect(패널행(page, "JS app.js")).toBeVisible();
+  await expect.poll(() => callCount(page, FOLDER)).toBeGreaterThan(before);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("새로고침 버튼이 트리 목록과 펼쳐 둔 걸린 폴더의 한 겹을 다시 묻는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await openFiles(page);
   await 패널행(page, "dist").click();
-  await expect(패널행(page, "dist")).toHaveAttribute("aria-expanded", "false");
+  await 패널행(page, "assets").click();
+  await expect(패널행(page, "SVG logo.svg")).toBeVisible();
+  const trees = await steadyCount(page, COMMAND);
+  const folders = await steadyCount(page, FOLDER);
+
+  await 패널머리(page).getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect.poll(() => callCount(page, COMMAND)).toBeGreaterThan(trees);
+  // 펼쳐 둔 걸린 폴더 둘이 다시 불린다
+  await expect
+    .poll(async () => (await ipcCallArgs(page, FOLDER, "path")).slice(folders).map(({ args }) => args.path).sort())
+    .toEqual(["dist", "dist/assets"]);
+  // 다시 읽는 동안에도 행은 그대로 서 있다 — 「읽는 중」으로 돌아가지 않는다
+  await expect(패널행(page, "SVG logo.svg")).toBeVisible();
+  await expect(패널행(page, "JS app.js")).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("한 겹 명령이 실패하면 그 폴더 아래에 까닭 행이 서고, 나머지 트리는 그대로다", async ({ page }) => {
+  await installFixtureBackend(page, { list_worktree_folder: ipcFailure("Permission denied (os error 13)") });
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await openFiles(page);
+  const dist = 패널행(page, "dist");
+  await dist.click();
+
+  await expect(작업패널(page).getByText("읽지 못했어요 — Permission denied (os error 13)", { exact: true })).toBeVisible();
+  await expect(dist).toHaveAttribute("aria-expanded", "true");
+  await expect(패널행(page, "src")).toBeVisible();
+  await expect(패널행(page, "MD README.md")).toBeVisible();
+
+  // 코어가 답으로 「읽지 못함」을 말해도 같은 자리에 그 까닭이 선다 — 새로고침이 다시 묻는다
+  await replaceAnswer(
+    page,
+    FOLDER,
+    answerByArg("path", { dist: { kind: "unreadable", reason: "No such file or directory (os error 2)" } }),
+  );
+  await 패널머리(page).getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect(
+    작업패널(page).getByText("읽지 못했어요 — No such file or directory (os error 2)", { exact: true }),
+  ).toBeVisible();
+  await expect(작업패널(page).getByText(/Permission denied/)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -144,6 +144,18 @@ pub async fn list_worktree_tree(slug: String, project: String) -> CmdResult<Work
     .map_err(|e| format!("워크트리 트리를 읽지 못했습니다: {e}"))?
 }
 
+/// gitignore에 걸린 폴더 하나의 바로 아래(git-integration 판 01 — files 칸에서 그 폴더를 펼칠 때). 답은 트리 목록과 같은
+/// 갈래다(코어 머리말). `..` · 절대 경로는 명령 실패다. 디스크를 한 겹 읽으므로 트리 목록처럼 blocking 풀에서 돈다 —
+/// `node_modules/` 바로 아래는 수백 개다.
+#[tauri::command]
+pub async fn list_worktree_folder(slug: String, project: String, path: String) -> CmdResult<WorktreeTree> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::list_worktree_folder(&works_dir(), &slug, &project, &path).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("워크트리 폴더를 읽지 못했습니다: {e}"))?
+}
+
 /// 아카이브 목록. **경량이다** — spec 파일 목록도 워크트리도 담지 않는다.
 /// 아카이브는 쌓이기만 하므로 목록 조회가 무거워지면 갈수록 나빠진다.
 #[tauri::command]
@@ -553,6 +565,8 @@ mod tests {
     /// - `list_works`(티켓 15): 코어의 목록 조회가 워크트리마다 `git status` 프로세스를 기다린다. 명령의 모양(공개 async 함수)은
     ///   그대로다 — 등록 이름 검사와 다리가 그 자리를 본다.
     /// - `list_worktree_tree`(git-integration 판 01): 워크트리 하나에 `git ls-files`를 두 번 기다린다.
+    /// - `list_worktree_folder`(git-integration 판 01): 걸린 폴더 하나를 디스크에서 한 겹 읽는다 — `node_modules/` 바로 아래는
+    ///   수백 개다.
     /// - `processes_snapshot`(티켓 26): 화면이 열려 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms).
     /// - `processes_summary`(티켓 29): 답은 대개 배경 표본이 앉힌 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 표 한 장과
     ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
@@ -566,6 +580,7 @@ mod tests {
             ("startup_report", "holder.answer()", "answer()"),
             ("list_works", "atelier_core::list_works(", "list_works("),
             ("list_worktree_tree", "atelier_core::list_worktree_tree(", "list_worktree_tree("),
+            ("list_worktree_folder", "atelier_core::list_worktree_folder(", "list_worktree_folder("),
             ("processes_snapshot", "processes.screen()", ".screen("),
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),

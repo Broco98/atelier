@@ -72,5 +72,5 @@ pub use works::{
     move_work, read_spec_file, read_work_file, remove_work, render_record, start_work, update_work_pinned,
     update_work_status, update_work_title, ArchiveEntry, WorkReport, WorktreeError,
 };
-pub use worktree::{list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};
+pub use worktree::{list_worktree_folder, list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};
 pub use worktree_file::{read_worktree_file, WorktreeFile};
