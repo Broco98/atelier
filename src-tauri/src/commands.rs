@@ -501,14 +501,15 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령(three-axes 티켓 05 · 13) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 에이전트 바꾸기 · 보내기 · 대화 닫기,
-// 그리고 로그인 시작 · 취소(티켓 12). 본체는 대화
+// 대화 명령(three-axes 티켓 05 · 07 · 12 · 13) — 엔진 확인 · 대화 목록 · 기록 읽기 · 새 대화 · 에이전트 바꾸기 · 보내기 · 대화
+// 닫기, 멈추기 · 대기 고치기 · 대기 지우기 · 지금 보내기, 그리고 로그인 시작 · 취소. 본체는 대화
 // 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다 — 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로
 // 찾는다(`lib.rs`). 뒤의 호스트 장(07~)이 제 명령을 이 꼴로 더한다.
 //
 // - 기다리는 것(엔진 확인 — 로그인 셸 ≤10초, 새 대화 · 에이전트 바꾸기 — 세션 열기, 대화 닫기 — 끄기 ≤1초 남짓)은 blocking
 //   풀에서 기다린다.
-//   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`).
+//   보내기는 턴을 기다리지 않는다 — 답은 기록 줄 이벤트로 흐른다(`chat::RECORD_EVENT`). 멈추기 · 지금 보내기도 `session/cancel`을
+//   보내고 곧바로 돌아온다 — 멈춘 턴의 끝과 그 뒤에 간 말은 기록 줄로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다.
 // - 호스트의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
 // - 다리로 탈 수 없다(`in_app_only`) — 호스트는 오래 사는 에이전트를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
 
@@ -580,7 +581,8 @@ pub async fn chat_switch_agent(
         .map_err(host_err)
 }
 
-/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다.
+/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다. 턴이 도는 동안의 말은 대기 줄에 들고(대기 줄 바뀜), 턴이
+/// 끝나면 차례로 간다.
 #[tauri::command]
 pub async fn chat_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -589,6 +591,51 @@ pub async fn chat_send(
     text: String,
 ) -> CmdResult<()> {
     chats.send(&work, &conversation, &text).map_err(host_err)
+}
+
+/// 도는 턴을 멈춘다(`session/cancel`). 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다.
+#[tauri::command]
+pub async fn chat_stop(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+) -> CmdResult<()> {
+    chats.stop(&work, &conversation).map_err(host_err)
+}
+
+/// 대기 줄의 그 말(`queued` — 대기 id)의 글을 고친다. 대기 줄 바뀜 이벤트가 난다.
+#[tauri::command]
+pub async fn chat_edit_queued(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    queued: String,
+    text: String,
+) -> CmdResult<()> {
+    chats.edit_queued(&work, &conversation, &queued, &text).map_err(host_err)
+}
+
+/// 대기 줄에서 그 말(`queued` — 대기 id)을 지운다. 대기 줄 바뀜 이벤트가 난다.
+#[tauri::command]
+pub async fn chat_delete_queued(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    queued: String,
+) -> CmdResult<()> {
+    chats.delete_queued(&work, &conversation, &queued).map_err(host_err)
+}
+
+/// 지금 보내기 — 대기 줄의 그 말(`queued` — 대기 id)을 맨 앞에 세우고 도는 턴을 멈춘다. 턴이 `cancelled`로 끝나면 그 말이 먼저
+/// 간다. 기다리지 않는다.
+#[tauri::command]
+pub async fn chat_send_now(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    conversation: String,
+    queued: String,
+) -> CmdResult<()> {
+    chats.send_now(&work, &conversation, &queued).map_err(host_err)
 }
 
 /// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).
