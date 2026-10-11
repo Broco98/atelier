@@ -146,6 +146,14 @@ pub(crate) fn sent_since_session_start(path: &Path) -> bool {
     lines[start.map_or(0, |at| at + 1)..].iter().any(|line| line.kind == RecordKind::Sent)
 }
 
+/// 기록 파일이 반쪽 줄로 끝나나 — 비어 있지 않은데 끝 바이트가 줄바꿈이 아니다. 없거나 읽지 못하면 아니다.
+fn ends_mid_line(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = File::open(path) else { return false };
+    let mut last = [0u8; 1];
+    file.seek(SeekFrom::End(-1)).is_ok() && file.read_exact(&mut last).is_ok() && last[0] != b'\n'
+}
+
 /// 줄바꿈으로 끝난 줄들 — 끝의 반쪽 줄은 뺀다.
 fn complete_lines(text: &str) -> std::str::Lines<'_> {
     match text.rfind('\n') {
@@ -287,14 +295,17 @@ struct RecordFile {
 
 impl Recorder {
     /// 기록 파일을 이어 쓰도록 연다. 파일은 만들어도 폴더는 만들지 않는다.
+    ///
+    /// 끝에 반쪽 줄(쓰다 끊긴 줄)이 남아 있으면 줄바꿈 하나로 먼저 끊는다 — 그러지 않으면 이어 적는 첫 줄이 그 꼬리에 붙어
+    /// 읽히지 않는 줄이 된다. 끊긴 꼬리는 원문 그대로 남고, 읽기가 JSON이 아닌 줄로 건너뛴다.
     pub(crate) fn open(agents_dir: &Path, work: &str, conversation: &str, emit: Arc<Emit>) -> Result<Self, RecordError> {
         let path = record_path(agents_dir, conversation);
         let last_seq = last_seq(&path);
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|error| format!("기록 파일을 열지 못했습니다: {} — {error}", path.display()))?;
+        let cannot_open = |error: std::io::Error| format!("기록 파일을 열지 못했습니다: {} — {error}", path.display());
+        let mut file = OpenOptions::new().create(true).append(true).open(&path).map_err(cannot_open)?;
+        if ends_mid_line(&path) {
+            file.write_all(b"\n").map_err(cannot_open)?;
+        }
         Ok(Self {
             work: work.to_owned(),
             conversation: conversation.to_owned(),

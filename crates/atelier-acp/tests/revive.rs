@@ -411,6 +411,47 @@ fn 죽은_대화의_대기_말을_지금_보내면_되살린_뒤_그_말이_먼�
 }
 
 #[test]
+fn 쓰다_끊긴_반쪽_줄이_남은_기록을_되살려도_이어_적은_줄이_다_읽힌다() {
+    let sandbox = Sandbox::new();
+    sandbox.work("cart", &[]);
+    let shell = sandbox.codex_login_shell("resume-advertised", &[]);
+    let id = yesterday(&sandbox, sandbox.host(shell.clone()));
+    let yesterday_end = sandbox.record("cart", &id).last().unwrap()["seq"].as_u64().unwrap();
+    // 앱이 줄을 쓰다 죽었다 — 끝에 줄바꿈이 없는 반쪽 줄이 남는다.
+    let path = sandbox.record_path("cart", &id);
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str(&format!("{{\"seq\":{},\"at", yesterday_end + 1));
+    std::fs::write(&path, text).unwrap();
+
+    let host = sandbox.host(shell);
+    host.send("cart", &id, "오늘의 말").expect("보내기");
+    // 반쪽 줄은 JSON으로 읽히지 않으니 파일을 줄마다 읽는 도우미 대신 호스트의 기록 읽기로 지켜본다.
+    let deadline = std::time::Instant::now() + common::PATIENCE;
+    let read = loop {
+        let read = host.read_record("cart", &id, yesterday_end).expect("기록 읽기");
+        if read.iter().any(|line| line.kind == atelier_acp::RecordKind::TurnEnd) {
+            break read;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "되살린 턴의 끝이 읽히지 않는다:\n{}",
+            std::fs::read_to_string(&path).unwrap()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let seqs: Vec<u64> = read.iter().map(|line| line.seq).collect();
+    let expected: Vec<u64> = (yesterday_end + 1..=yesterday_end + seqs.len() as u64).collect();
+    assert_eq!(seqs, expected, "반쪽 줄 뒤에 이어 적은 줄이 하나도 빠지지 않는다 — 되살린 첫 줄(띄우는 중)도 읽힌다");
+    assert_eq!(
+        serde_json::to_value(&read[0]).unwrap()["payload"],
+        json!({"state": "spawning"}),
+        "되살리기의 첫 줄이 반쪽 꼬리에 붙지 않고 제 줄로 선다"
+    );
+
+    host.shut_down();
+}
+
+#[test]
 fn 다시_켠_뒤_함께_온_보내기_둘은_에이전트를_하나만_띄운다() {
     let sandbox = Sandbox::new();
     sandbox.work("cart", &[]);
