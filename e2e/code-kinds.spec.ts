@@ -34,6 +34,21 @@ test("그림 파일은 워크트리 절대 경로의 asset URL로 그림이 선�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 저장소 안의 그림 링크(`docs/logo.png -> ../assets/logo.png`)는 git이 흔히 상대 경로로 둔다. 링크 이름으로 걸면 asset 프로토콜이
+// 그 상대 대상을 앱의 현재 폴더 기준으로 풀어 막는다 — 그래서 코어가 푼 실제 자리로 건다. 대체 글은 사람이 연 이름 그대로다.
+test("워크트리 안을 가리키는 그림 링크는 코어가 푼 실제 자리의 asset URL로 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(codeUrl("billing/docs/logo.png"));
+
+  const image = 코드카드(page, "billing/docs/logo.png").getByRole("img", { name: "docs/logo.png", exact: true });
+  await expect(image).toBeVisible();
+  await expect(image).toHaveAttribute(
+    "src",
+    `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/assets/logo.png")}`,
+  );
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("바이너리 · UTF-8 아님 · 너무 큼은 탭 안에 각 안내와 크기가 선다", async ({ page }) => {
   await installFixtureBackend(page);
   const cases = [

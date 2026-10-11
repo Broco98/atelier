@@ -15,18 +15,18 @@ import type { WorktreeFile } from "./types";
  * 보기를 빌린다. 그 밖의 답은 **탭 안의 안내**다: 파일이 없다고 spec으로 조용히 돌아가지 않고 무엇이 없는지를 말한다
  * (스토리 61 · 82), 글이 아닌 것은 깨진 글자 대신 무엇인지와 크기만 말한다(스토리 74–76).
  *
- * `filePath`는 그 파일의 워크트리 경로(`~` 축약)다 — 카드 머리의 경로 복사가 복사하는 그 값이고, 그림은 그것을 펴서 건다.
- * 그 프로젝트의 워크트리가 이 work에 없으면 `null`이다.
+ * `worktreeDir`는 그 프로젝트의 워크트리 자리(`~` 축약, 끝에 `/`)다 — 카드 머리의 경로 복사가 그 파일의 경로를 잇는 그
+ * 뿌리이고, 그림은 거기에 코어가 링크를 푼 실제 경로를 이어 건다. 그 프로젝트의 워크트리가 이 work에 없으면 `null`이다.
  */
 function CodeView({
   slug,
   target,
-  filePath,
+  worktreeDir,
   wide,
 }: {
   slug: string;
   target: CodeTarget;
-  filePath: string | null;
+  worktreeDir: string | null;
   wide: boolean;
 }) {
   const { data, error } = useCodeFile(slug, target.project, target.path);
@@ -38,7 +38,7 @@ function CodeView({
           // 코어가 거절한 주소(`..` · 절대 경로)다 — 답의 갈래가 아니라 실패로 온다.
           <Notice icon={FileWarning} title="읽지 못한 파일" detail={String(error)} />
         ) : data ? (
-          <FileBody file={data} target={target} filePath={filePath} wide={wide} />
+          <FileBody file={data} target={target} worktreeDir={worktreeDir} wide={wide} />
         ) : null}
       </div>
     </div>
@@ -52,12 +52,12 @@ function CodeView({
 function FileBody({
   file,
   target,
-  filePath,
+  worktreeDir,
   wide,
 }: {
   file: WorktreeFile;
   target: CodeTarget;
-  filePath: string | null;
+  worktreeDir: string | null;
   wide: boolean;
 }) {
   switch (file.kind) {
@@ -65,7 +65,8 @@ function FileBody({
       // `.md` · svg도 여기다 — 렌더된 문서는 spec 칸의 몫이고, svg는 원문을 읽는 코드다(결정 36).
       return <SourceView content={file.content} wide={wide} />;
     case "image":
-      return <WorktreeImage filePath={filePath} name={target.path} />;
+      // 대체 글은 부른 경로다 — 링크여도 사람이 연 것은 그 이름이다. 거는 자리만 푼 경로다.
+      return <WorktreeImage path={worktreeDir && `${worktreeDir}${file.realPath}`} name={target.path} />;
     case "binary":
       return (
         <Notice icon={FileDigit} title="바이너리 파일" detail={`${fileSize(file.size)} · 글로 볼 수 없는 파일이에요.`} />
@@ -108,11 +109,11 @@ function FileBody({
 
 /**
  * 그림 — spec의 그림 보기와 **같은 길**이다: 홈 축약 경로를 펴서 asset URL로 건다(`ImageDoc`). 경로는 위에서 받은 워크트리
- * 경로 하나다 — 뿌리를 여기서 짓지 않는다. 홈을 아직 못 읽었으면 `ImageDoc`의 자리표시다.
+ * 자리에 코어가 푼 실제 경로를 이은 것이다 — 뿌리를 여기서 짓지 않는다. 홈을 아직 못 읽었으면 `ImageDoc`의 자리표시다.
  */
-function WorktreeImage({ filePath, name }: { filePath: string | null; name: string }) {
+function WorktreeImage({ path, name }: { path: string | null; name: string }) {
   const { data: home } = useHomeDir();
-  return <ImageDoc path={home && filePath ? expandHome(filePath, home) : null} name={name} />;
+  return <ImageDoc path={home && path ? expandHome(path, home) : null} name={name} />;
 }
 
 /**

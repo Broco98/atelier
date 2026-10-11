@@ -20,7 +20,12 @@ pub enum WorktreeFile {
     Text { content: String, lines: usize },
     /// 그림 — 확장자로 가른다(S5). **내용을 싣지 않는다**: 화면이 워크트리 절대 경로로 asset URL을 지어 건다(spec의 그림
     /// 보기와 같은 길). 크기는 바이트다.
-    Image { size: u64 },
+    ///
+    /// `real_path`는 그 그림을 **거는 자리**다 — 워크트리 기준, 링크를 푼 실제 경로(조각은 `/`). 링크가 아니면 부른 경로
+    /// 그대로다. 화면은 부른 경로가 아니라 이것으로 건다: asset 프로토콜은 마지막 조각이 상대 링크면 그 대상을 앱의 현재
+    /// 폴더 기준으로 풀어 막는다(git은 저장소 안 링크를 흔히 상대 경로로 둔다). 「워크트리 안」이라 판정한 자리와 화면이
+    /// 거는 자리도 이것으로 하나다.
+    Image { size: u64, real_path: String },
     /// 앞 8KB에 NUL이 있다(git과 같은 판정, 결정 36) — 깨진 글자 대신 「바이너리 파일 · 크기」만 뜬다(스토리 74).
     Binary { size: u64 },
     /// NUL은 없는데 내용이 UTF-8로 풀리지 않는다(EUC-KR 같은 옛 인코딩) — 바이너리처럼 안내만 뜬다(스토리 75).
@@ -84,7 +89,10 @@ pub fn read_worktree_file(works_root: &Path, slug: &str, project: &str, rel_path
     // 내용을 열지 않고 가를 수 있는 것부터 — 그림(확장자)과 너무 큼(크기)은 메타데이터로 끝난다.
     let size = meta.len();
     if is_image(rel) {
-        return Ok(WorktreeFile::Image { size });
+        // 위에서 뿌리 안임을 보았다 — 뿌리를 뗀 나머지가 워크트리 기준 실제 경로다.
+        let inside = real.strip_prefix(&root).unwrap_or(&real);
+        let real_path = inside.iter().map(|part| part.to_string_lossy()).collect::<Vec<_>>().join("/");
+        return Ok(WorktreeFile::Image { size, real_path });
     }
     if size > READ_LIMIT {
         return Ok(WorktreeFile::TooLarge { size });
@@ -188,20 +196,41 @@ mod tests {
         assert_eq!(read(&works, "empty.txt"), WorktreeFile::Text { content: String::new(), lines: 0 });
     }
 
+    /// 그림 답 — 링크가 아니면 거는 자리가 부른 경로 그대로다.
+    fn image(size: u64, real_path: &str) -> WorktreeFile {
+        WorktreeFile::Image { size, real_path: real_path.to_string() }
+    }
+
     #[test]
     fn an_image_comes_with_its_size_only() {
         let (_tmp, works, worktree) = setup();
         // PNG 머리 — 앞에 NUL이 있어도 바이너리가 아니라 그림이다. 확장자로 가른다(S5).
         let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
         write(&worktree, "shots/home.png", png);
-        assert_eq!(read(&works, "shots/home.png"), WorktreeFile::Image { size: png.len() as u64 });
+        assert_eq!(read(&works, "shots/home.png"), image(png.len() as u64, "shots/home.png"));
         // 스크린샷은 흔히 대문자 확장자다
         write(&worktree, "Shot.JPG", b"jpg");
-        assert_eq!(read(&works, "Shot.JPG"), WorktreeFile::Image { size: 3 });
+        assert_eq!(read(&works, "Shot.JPG"), image(3, "Shot.JPG"));
         for name in ["a.jpeg", "a.gif", "a.webp", "a.bmp", "favicon.ico"] {
             write(&worktree, name, b"img!");
-            assert_eq!(read(&works, name), WorktreeFile::Image { size: 4 }, "{name}");
+            assert_eq!(read(&works, name), image(4, name), "{name}");
         }
+    }
+
+    /// 워크트리 안을 가리키는 그림 링크는 **푼 자리**로 건다 — 화면의 asset 프로토콜은 마지막 조각이 상대 링크면 그 대상을
+    /// 앱의 현재 폴더 기준으로 풀어 막는다. git은 저장소 안 링크를 흔히 상대 경로로 둔다.
+    #[test]
+    #[cfg(unix)]
+    fn an_image_link_inside_the_worktree_comes_with_its_real_path() {
+        let (_tmp, works, worktree) = setup();
+        write(&worktree, "assets/logo.png", b"logo");
+        std::fs::create_dir_all(worktree.join("docs")).unwrap();
+        std::os::unix::fs::symlink("../assets/logo.png", worktree.join("docs/logo.png")).unwrap();
+        // 폴더 링크를 지나는 경로도 같다
+        std::os::unix::fs::symlink("assets", worktree.join("pics")).unwrap();
+
+        assert_eq!(read(&works, "docs/logo.png"), image(4, "assets/logo.png"));
+        assert_eq!(read(&works, "pics/logo.png"), image(4, "assets/logo.png"));
     }
 
     #[test]
@@ -274,7 +303,7 @@ mod tests {
         let (_tmp, works, worktree) = setup();
         // 그림은 내용을 싣지 않으니 읽기 상한에 걸릴 것이 없다 — 큰 스크린샷도 그림으로 뜬다
         sparse(&worktree, "shots/full.png", 6 * 1024 * 1024);
-        assert_eq!(read(&works, "shots/full.png"), WorktreeFile::Image { size: 6 * 1024 * 1024 });
+        assert_eq!(read(&works, "shots/full.png"), image(6 * 1024 * 1024, "shots/full.png"));
     }
 
     #[test]
