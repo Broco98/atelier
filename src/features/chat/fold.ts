@@ -16,6 +16,8 @@ import type { Quote, RecordLine } from "./types";
 //   `tool_use`마다 `is_error` `tool_result`(변환기가 옮기면 `failed` update)를 낸 뒤 `result`를 낸다(워크플로 실측 2.1.282).
 //   「바로 앞」은 그 `failed` 뒤로 답 · 생각 조각이나 새 도구 호출이 없었다는 뜻이다 — 턴 앞쪽에서 실패하고 에이전트가 이어
 //   간 도구(명령 실패)는 멈춤이 아니다.
+// - 권한을 기다리다 멈추기로 요청이 거둬진(`permission` `withdrawn` · `stopped`, 티켓 08) 도구 줄도 **멈춤**이다 — 돌지 않았다.
+//   codex-acp는 그 도구를 `in_progress`로 두고 닫는 update를 보내지 않는다(실측 G2 cancel).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라(워크플로 S34) 스키마에 없는 `sessionUpdate`도 오고, 그것이 화면을
 // 멈추면 안 된다.
@@ -97,6 +99,9 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
   let open: Turn | null = null;
   // 도는 턴에서 `failed`로 닫힌 뒤 아무 일도 이어지지 않은 도구 줄들 — 그 턴이 우리의 멈춤으로 끝나면 멈춤이다(머리말).
   let closedLast: ToolEntry[] = [];
+  // 권한 요청 id → 그 요청의 도구 줄 id, 그리고 멈추기로 요청이 거둬진 도구 줄 id들(머리말).
+  const askedFor = new Map<string, string>();
+  const withdrawnByStop = new Set<string>();
   const start = (key: string, sent: string | null, at: string, quote: Quote | null = null): Turn => {
     const turn: Turn = { key, sent, selfContinued: sent === null, quote, startedAt: at, entries: [], end: null, changes: null };
     turns.push(turn);
@@ -160,10 +165,27 @@ export function foldConversation(lines: readonly RecordLine[]): ChatModel {
           cancelledByUs: payload.cancelledByUs === true,
           error,
         };
-        if (open.end.stopReason === "cancelled" && open.end.cancelledByUs) markStopped(open, closedLast);
+        if (open.end.stopReason === "cancelled" && open.end.cancelledByUs) markStopped(open, closedLast, withdrawnByStop);
         if (payload.outOfTurn === true) open.selfContinued = true;
         open = null;
         closedLast = [];
+        break;
+      }
+      case "permission": {
+        // 권한 줄은 승인 카드(21)가 그린다. 여기서는 멈추기로 거둬진 요청의 도구 줄만 기억한다 — 그 줄은 멈춤이다(머리말).
+        const requestId = text(payload.requestId);
+        if (!requestId) break;
+        if (payload.state === "asked") {
+          const id = askedToolId(payload);
+          if (id) askedFor.set(requestId, id);
+        } else if (payload.state === "withdrawn" && payload.reason === "stopped") {
+          const id = askedFor.get(requestId);
+          if (!id) break;
+          withdrawnByStop.add(id);
+          // 거둬짐이 멈춘 턴의 끝보다 늦게 와도 같다.
+          const tool = findTool(turns, id);
+          if (tool?.stop === "ran-on") tool.stop = "stopped";
+        }
         break;
       }
       case "session": {
@@ -203,13 +225,24 @@ function outputOf(update: Json): string {
   return (delta && text(delta.data)) ?? "";
 }
 
-/** 우리가 멈춘 턴의 도구 줄을 가른다(머리말) — 끝나지 않은 줄은 멈춘 뒤에도 돌고, 끝 바로 앞에서 실패로 닫힌 줄은 멈춤이다. */
-function markStopped(turn: Turn, closedLast: readonly ToolEntry[]): void {
+/**
+ * 우리가 멈춘 턴의 도구 줄을 가른다(머리말) — 끝나지 않은 줄은 멈춘 뒤에도 돌고, 끝 바로 앞에서 실패로 닫힌 줄과 권한 요청이
+ * 거둬진 줄은 멈춤이다.
+ */
+function markStopped(turn: Turn, closedLast: readonly ToolEntry[], withdrawn: ReadonlySet<string>): void {
   for (const entry of turn.entries) {
     if (entry.kind !== "tool") continue;
-    if (!toolDone(entry)) entry.stop = "ran-on";
+    if (!toolDone(entry)) entry.stop = withdrawn.has(entry.toolCallId) ? "stopped" : "ran-on";
     else if (closedLast.includes(entry)) entry.stop = "stopped";
   }
+}
+
+/** 권한 물음의 도구 줄 id — 호스트가 채운 도구 요지(`toolCall`), 없으면 요청 원문의 `toolCall`에서. */
+function askedToolId(payload: Json): string | null {
+  const summary = isObject(payload.toolCall) ? text(payload.toolCall.toolCallId) : null;
+  if (summary) return summary;
+  const request = isObject(payload.request) ? payload.request : null;
+  return request && isObject(request.toolCall) ? text(request.toolCall.toolCallId) : null;
 }
 
 function findTool(turns: readonly Turn[], id: string): ToolEntry | null {

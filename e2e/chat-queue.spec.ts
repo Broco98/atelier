@@ -120,6 +120,34 @@ test("멈춘 뒤의 도구 줄(Claude 꼴): 멈춤과 함께 `failed`로 닫힌 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+test("멈춘 뒤의 도구 줄(권한을 기다리던 명령): 멈추기로 권한 요청이 거둬진 도구는 돌지 않았으니 「멈춤」이다", async ({ page }) => {
+  // L1이 남긴 「권한」 기록(S26 — 티켓 08)의 물음까지, 그 뒤는 손으로 짓는다: 멈추기로 거둬짐(`stopped`) → 멈춘 턴의 끝. 진짜
+  // codex-acp는 권한을 기다리는 도구를 `in_progress`로 두고 닫는 update를 보내지 않는다(실측 G2 cancel).
+  const permission = record("permission");
+  const asked = permission.find((line) => line.kind === "permission")!.seq;
+  const read = linesThrough(permission, asked + 2);
+  const conversation = conversationRow({ id: "c-perm-codex", agent: "codex", name: "Codex", lastSeq: asked + 2 });
+  await openChat(page, read, conversation);
+  const at = (n: number) => `2026-10-10T10:00:${String(n).padStart(2, "0")}.000+09:00`;
+  await streamLines(page, plainWork.slug, conversation.id, [
+    { seq: asked + 3, at: at(asked + 3), kind: "permission", payload: { state: "withdrawn", requestId: "0", reason: "stopped" } },
+    {
+      seq: asked + 4,
+      at: at(asked + 4),
+      kind: "turn-end",
+      payload: { stopReason: "cancelled", durationMs: 7000, cancelledByUs: true, outOfTurn: false },
+    },
+  ]);
+  const header = 머리줄(page, "7초 후에 중단했습니다");
+  await expect(header).toBeVisible();
+  const title = "printf 'g2' > /tmp/fake-outside/g2.txt";
+  await expect(도구줄(page, title)).toHaveCount(0);
+  await header.click();
+  await expect(도구줄(page, title)).toContainText("멈춤");
+  await expect(도구줄(page, title)).not.toContainText("멈춘 뒤");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("스스로 이어 간 턴: 보낸 말 없이 선 턴의 머리줄에 「스스로 이어 감」 표지가 서고, 사용자 메시지는 서지 않는다", async ({
   page,
 }) => {
