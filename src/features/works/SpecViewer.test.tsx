@@ -77,10 +77,10 @@ describe("PrettyView 참조 복사 버튼", () => {
   it("언어 없는 코드블록은 블록으로, 인라인 코드만 껍데기를 쓴다", () => {
     const 블록 = render("```\n첫 줄\n둘째 줄\n```");
     expect(블록).toContain("<pre");
-    expect(블록).not.toContain("rounded-sm");
+    expect(블록).not.toContain("rounded-xs");
 
     const 인라인 = render("문단 안 `코드` 하나");
-    expect(인라인).toContain("rounded-sm");
+    expect(인라인).toContain("rounded-xs");
     expect(인라인).not.toContain("<pre");
   });
 

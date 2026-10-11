@@ -160,8 +160,9 @@ function MermaidBlock({ code }: { code: string }) {
   }, [fullBody, size]);
 
   return (
-    // 코드 블록이다 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · `rounded-2xl` · 테두리 없음. 머리 줄과 그림 사이에도 선이 없다.
-    <div className="overflow-hidden rounded-2xl bg-surface-code">
+    // 코드 블록이다 — 머리 줄을 든 DS `.at-code`: 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · `radius-3xl`(20) · 안쪽 1px
+    // `border-light` 링(문서 본문의 코드 블록과 같은 값 — `SpecViewer`의 `pre`). 머리 줄과 그림 사이에는 선이 없다.
+    <div className="overflow-hidden rounded-3xl bg-surface-code inset-ring inset-ring-border-light">
       <div className="flex items-center justify-between px-2.5 py-1.5">
         <span className="font-mono text-xs text-fg-tertiary">mermaid</span>
         <span className="flex items-center gap-1">

@@ -594,10 +594,11 @@ export const PrettyView = memo(function PrettyView({
       p: block("p", "", "mt-1.5"),
       ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent}`, "mt-1.5"),
       ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent}`, "mt-1.5"),
-      // 인용은 두 얼굴이다 — 첫 줄에 `[!TYPE]` 마커가 있으면 콜아웃, 없으면 흐린 글자의 옅은 면이다.
+      // 인용은 두 얼굴이다 — 첫 줄에 `[!TYPE]` 마커가 있으면 콜아웃, 없으면 평범한 인용이다.
       // 마커가 있을 때**만** 갈리는 것이 이 자리의 계약이다: 기존 스펙들이
       // `> **커버:** …` 같은 평범한 인용을 많이 쓰고 있어, 그것들이 색을 갖는 순간 회귀다.
-      // 둘 다 카드 안 묶음(ui-refresh 결정 16 — `surface-under` · `rounded-2xl` · 테두리 없음)이고, 갈리는 것은 제목뿐이다.
+      // 평범한 인용은 DS `Prose`의 인용이다 — 면 없이 왼쪽 3px `rule` 막대(위아래 2 안쪽 · `radius-2xs`)와 글자 사이 16, 글자는
+      // `fg-secondary`(DS `.at-prose blockquote`). 콜아웃은 면을 가진 묶음이다(아래 `Callout`).
       blockquote: ({ node, children, className: hastClass, ...props }: any) => {
         const first = firstLineOf(node) ?? "";
         const callout = calloutKind(first);
@@ -610,7 +611,10 @@ export const PrettyView = memo(function PrettyView({
           </Callout>
         ) : (
           <blockquote
-            className={cn("rounded-2xl bg-surface-under px-4 py-3 text-fg-secondary", hastClass)}
+            className={cn(
+              "relative pl-4 text-fg-secondary before:absolute before:inset-y-0.5 before:left-0 before:w-[3px] before:rounded-2xs before:bg-rule",
+              hastClass,
+            )}
             {...props}
           >
             {children}
@@ -624,7 +628,8 @@ export const PrettyView = memo(function PrettyView({
           </BlockWrapper>
         );
       },
-      hr: block("hr", "border-border", "mt-4"),
+      // 가름선 — 0.5px `border-heavy` 한 줄이다(DS `.at-prose hr`). 테두리가 아니라 면으로 칠한다 — 0.5px 테두리는 엔진마다 굵기가 갈린다.
+      hr: block("hr", "h-[0.5px] border-0 bg-border-heavy", "mt-4"),
       // 표는 가로 스크롤과 전체화면 확대와 열 폭 조절을 자기가 챙긴다 — 규격도 거기 있다.
       // key: 조절한 열 폭이 다른 문서로 넘어가지 않는다는 계약이 사는 자리다.
       // 오늘은 이게 없어도 초기화되긴 한다 — useSpecFile이 파일을 바꿀 때 내용을 한 번
@@ -752,9 +757,10 @@ export const PrettyView = memo(function PrettyView({
           lang === "mermaid" ? (
             <MermaidBlock code={hastText(code)} />
           ) : (
-            // 코드 블록 — 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · 안쪽 12 · 16, 글자는 `text-code`(13/20) 단계 그대로다.
+            // 코드 블록 — DS `.at-code`다: 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · `radius-3xl`(20, DS 「간격 · 반경 · 크기」의
+            // 코드 블록) · 안쪽 1px `border-light` 링. 안쪽 12 · 16, 글자는 `text-code`(13/20) 단계 그대로다.
             <pre
-              className="overflow-x-auto rounded-2xl bg-surface-code px-4 py-3 font-mono text-code scroll-quiet"
+              className="overflow-x-auto rounded-3xl bg-surface-code px-4 py-3 font-mono text-code inset-ring inset-ring-border-light scroll-quiet"
               {...props}
             >
               {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
@@ -783,9 +789,9 @@ export const PrettyView = memo(function PrettyView({
         className?.includes("language-") ? (
           <code className={className}>{children}</code>
         ) : (
-          // 인라인 코드 — 코드 면(`surface-code`) · 테두리 없음 · 안쪽 1 · 6(DS `.at-doc code`). 글자는 DS `Prose` 인라인 코드의
+          // 인라인 코드 — DS `Prose`의 인라인 코드(`.at-prose code`): 옅은 면 `fill-soft` · `radius-xs`(4) · 테두리 없음 · 안쪽 1 · 5. 글자는
           // 13 — `text-code`(13/20) 단계다. 단계라 제목 안에서도 13이다(제목을 따라 커지지 않는다).
-          <code className="rounded-sm bg-surface-code px-1.5 py-px font-mono text-code wrap-anywhere">
+          <code className="rounded-xs bg-fill-soft px-[5px] py-px font-mono text-code wrap-anywhere">
             {children}
           </code>
         ),
@@ -809,9 +815,10 @@ export const PrettyView = memo(function PrettyView({
 
 // ─── 콜아웃 ───
 
-// 종류마다 다른 것은 아이콘과 제목색 둘뿐이다. 면은 인용과 같은 옅은 면이고(ui-refresh 결정 16) 왼쪽 색 선은
-// 없다 — **제목만 색을 갖는다**(handoff 「콜아웃은 왼쪽 색 선을 버리고 옅은 면에 제목만 색을 갖는다」). 인용과 형제로
-// 보이는 것은 그대로다: 둘이 같은 면이고, 갈리는 것은 색 든 제목 한 줄이다. 본문 글자는 문서 본문을 물려받는다(DS `.at-callout`).
+// 종류마다 다른 것은 아이콘과 제목색 둘뿐이다. 콜아웃은 DS `Prose`의 콜아웃(`.at-callout`)이다 — 옅은 면 `surface-under` ·
+// `radius-xl`(12) · 0.5px `border` 안쪽 링 · 안쪽 12 · 14이고, 왼쪽 색 선은 없다 — **제목만 색을 갖는다**(DS 「왼쪽 색 선을 쓰지
+// 않는다」). 평범한 인용은 면 없이 왼쪽 막대만 서므로(위 `blockquote`), 면이 있는 묶음은 콜아웃뿐이다. 본문 글자는 문서 본문을
+// 물려받는다.
 // 라벨은 마커와 같은 영문이다: 같은 파일을 GitHub·Obsidian에서 열어도 같게 보이는 것이
 // 이 다섯 종을 고른 이유였다 (결정 9).
 //
@@ -838,7 +845,7 @@ function Callout({
 }) {
   const { label, Glyph, tone } = CALLOUT_STYLE[kind];
   return (
-    <div className="rounded-2xl bg-surface-under px-4 py-3">
+    <div className="rounded-xl bg-surface-under px-3.5 py-3 inset-ring-[0.5px] inset-ring-border">
       {/* 제목 줄 — 글리프 15 · 사이 6 · 600 · 아래 2(DS `.at-callout-title`) */}
       <div className={cn("mb-0.5 flex items-center gap-1.5 font-semibold", tone)}>
         <Glyph className="size-[15px] shrink-0" aria-hidden />
