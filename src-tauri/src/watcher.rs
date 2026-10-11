@@ -152,31 +152,45 @@ fn spawn_watch(app: AppHandle, watch: Watch, chats: Arc<ConversationHost>) {
                 |event| {
                     let _ = app.emit(event, ());
                 },
-                || {
-                    // 끌 대화가 있으면 끄기가 최대 1초 남짓 막힌다 — 감시의 회차를 붙잡지 않게 따로 띄운다.
-                    let chats = Arc::clone(&chats);
-                    std::thread::spawn(move || chats.check_vanished_works());
-                },
+                &chats,
             );
         }
     });
 }
 
+/// 감시가 사라진 work를 알리는 곳 — 앱에서는 앱이 쥔 대화 호스트다(three-axes 티켓 11 · S10). 감시의 회차가 호스트에 닿는 길을
+/// 검사가 가짜 호스트로 그대로 타려고 둔 자리다.
+trait VanishedWorks: Send + Sync + 'static {
+    /// 사라진 work의 쉬는 대화를 끈다 — 끌 대화가 있으면 1초 남짓 막힌다.
+    fn check_vanished_works(&self);
+}
+
+impl VanishedWorks for ConversationHost {
+    fn check_vanished_works(&self) {
+        ConversationHost::check_vanished_works(self);
+    }
+}
+
 /// 감시 한 회차 — 바뀐 경로 가운데 화면을 다시 그릴 만한 것이 있으면 종을 치고(`ring`), 대화 호스트에게 알리는 감시면 사라진
-/// work를 묻게 한다(`ask_chats`). 거를 것만 바뀐 회차는 아무것도 하지 않는다.
-fn on_news<'a>(
+/// work를 묻는다(`chats`). 거를 것만 바뀐 회차는 아무것도 하지 않는다.
+///
+/// 묻기는 따로 띄운 스레드가 한다 — 끌 대화가 있으면 끄기가 최대 1초 남짓 막히는데, 감시의 회차를 붙잡지 않게. 띄운 스레드를
+/// 돌려준다(물을 일이 없었으면 `None`). 감시는 기다리지 않고 놓는다.
+fn on_news<'a, C: VanishedWorks>(
     watch: &Watch,
     paths: impl IntoIterator<Item = &'a Path>,
     ring: impl FnOnce(&'static str),
-    ask_chats: impl FnOnce(),
-) {
+    chats: &Arc<C>,
+) -> Option<std::thread::JoinHandle<()>> {
     if !paths.into_iter().any(|path| (watch.relevant)(path)) {
-        return;
+        return None;
     }
     ring(watch.event);
-    if watch.tells_chats {
-        ask_chats();
+    if !watch.tells_chats {
+        return None;
     }
+    let chats = Arc::clone(chats);
+    Some(std::thread::spawn(move || chats.check_vanished_works()))
 }
 
 #[cfg(test)]
@@ -329,16 +343,39 @@ mod tests {
         assert!(relevant(&works.join("agents")), "이름이 agents인 work 폴더를 기록으로 읽는다");
     }
 
+    /// 대화 호스트 자리에 서는 가짜 — 사라진 work를 물은 스레드를 적는다.
+    #[derive(Default)]
+    struct Host {
+        asked_on: std::sync::Mutex<Vec<std::thread::ThreadId>>,
+    }
+
+    impl VanishedWorks for Host {
+        fn check_vanished_works(&self) {
+            self.asked_on.lock().unwrap().push(std::thread::current().id());
+        }
+    }
+
     /// **진행 중 루트의 소식은 대화 호스트에게도 간다**(three-axes 티켓 11 · S10). 사람이 사이드바에서 work를 아카이브하거나
     /// 지우면 그 소식이 이 감시로만 온다 — 호스트가 그것을 모르면 쉬던 대화의 에이전트가 cwd 없이 앱을 끌 때까지 남는다. 종을 친
-    /// 회차마다 호스트에게 사라진 work를 묻게 한다. 기록 줄만 바뀐 회차(종이 안 울림)와 다른 감시의 소식은 묻지 않는다 — 기록
+    /// 회차마다 호스트에게 사라진 work를 묻는다. 기록 줄만 바뀐 회차(종이 안 울림)와 다른 감시의 소식은 묻지 않는다 — 기록
     /// 쓰기는 흐르는 답 한 줄마다 온다. 계획에 실린 그대로 잰다.
+    ///
+    /// **묻는 것은 감시의 회차 밖이다** — 끌 대화가 있으면 끄기가 1초 남짓 막히는데, 그동안 회차를 붙잡으면 다음 소식이 밀린다.
+    /// 호스트에 닿는 길(회차 → 띄운 스레드 → 호스트)을 그대로 탄다: 그 스레드가 호스트를 안 부르거나 회차 안에서 부르면 빨갛다.
     #[test]
-    fn works_news_also_asks_the_chat_host_for_vanished_works_but_other_news_does_not() {
+    fn works_news_asks_the_chat_host_for_vanished_works_off_the_watch_round_but_other_news_does_not() {
         let news = |dir: &Path, path: PathBuf| {
-            let (mut rung, mut asked) = (Vec::new(), 0);
-            on_news(&watch_on(dir), [path.as_path()], |event| rung.push(event), || asked += 1);
-            (rung, asked)
+            let host = Arc::new(Host::default());
+            let mut rung = Vec::new();
+            if let Some(asking) = on_news(&watch_on(dir), [path.as_path()], |event| rung.push(event), &host) {
+                asking.join().expect("호스트에 묻던 스레드가 죽었다");
+            }
+            let asked_on = std::mem::take(&mut *host.asked_on.lock().unwrap());
+            assert!(
+                !asked_on.contains(&std::thread::current().id()),
+                "감시의 회차 안에서 호스트를 부른다 — 끌 대화가 있으면 회차가 1초 남짓 막힌다"
+            );
+            (rung, asked_on.len())
         };
         let works = atelier_core::works_dir();
         assert_eq!(news(&works, works.join("cart")), (vec!["works:changed"], 1), "사라진 work 폴더가 호스트에 안 간다");
