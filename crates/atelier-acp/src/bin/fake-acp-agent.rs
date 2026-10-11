@@ -20,6 +20,11 @@
 //!   (진짜는 `~/.codex/auth.json`).
 //! - `FAKE_ACP_AUTH_PAUSES` — 있으면 `needs-auth`가 로그인이 풀린 채 받은 프롬프트를 `<세션 id>.go`가 설 때까지
 //!   붙잡은 뒤 `-32000`으로 답한다 — 대기 줄에 말이 든 채로 로그인이 풀려 끝나는 턴을 잰다(three-axes 티켓 07 · 12).
+//! - `FAKE_ACP_PERMISSION_TOOL_CALL` — `bare`면 `asks-permission`의 권한 요청 `toolCall`에 `toolCallId` · `kind` ·
+//!   `status`만 싣는다(codex의 MCP 승인 모양 — 워크플로 G12). 런타임이 앞선 `tool_call`로 채우는지 잰다.
+//! - `FAKE_ACP_PERMISSION_WITHDRAWS` — 있으면 `asks-permission`이 권한을 묻고 **답을 기다리지 않고** 턴을 끝낸다.
+//! - `FAKE_ACP_PERMISSION_OUT_OF_TURN` — 있으면 `asks-permission`이 턴을 먼저 끝내고(`end_turn`) 그 뒤에 묻는다 — 턴 밖에서
+//!   걸린 권한이다. 답 뒤의 도구 update도 턴 밖에서 온다.
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -29,6 +34,7 @@
 //! 받은 env · `initialize`와 `session/new`의 인자 · 낳은 후손의 pid. 그 뒤에 일어난 일(stdin EOF)은
 //! `<세션 id>.events`에 한 줄씩, 받은 `session/prompt`의 인자는 `<세션 id>.prompts`에 한 줄씩 더한다. 세션을 연 뒤
 //! 받은 메시지의 메서드는 요청이든 알림이든 `<세션 id>.inbox`에 받은 차례대로 더한다 — 멈추기와 다음 말의 차례를 잰다.
+//! 가짜가 보낸 요청(권한 요청)에 받은 답은 원문 그대로 `<세션 id>.responses`에 한 줄씩 더한다.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -55,6 +61,8 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("writes-spec", writes_spec),
     ("pauses-mid-turn", pauses_mid_turn),
     ("needs-auth", needs_auth),
+    ("asks-permission", asks_permission),
+    ("deny-cancels", deny_cancels),
 ];
 
 fn main() {
@@ -358,6 +366,142 @@ fn needs_auth(fake: &mut Fake) {
     fake.converse();
 }
 
+/// 권한을 묻는 에이전트(three-axes 티켓 08) — 도구를 쓰기 전에 `session/request_permission`을 보내고 답을 기다린다.
+/// 허락이면 도구가 끝나고 턴이 이어지고(`end_turn`), 거부면 그 도구만 실패하고 턴이 이어진다. 멈추면(`session/cancel`)
+/// 진짜 codex-acp처럼 **걸린 요청의 답을 기다리지 않고** 곧바로 `cancelled`로 끝낸다(실측 G2 · `codex-acp-2.2.2-g2-cancel.jsonl`).
+///
+/// 모양은 codex-acp 2.2.2 실측 G2(`workspace-write` 모드에서 워크트리 밖에 쓰는 명령)를 줄였다 — 선택지 셋 · 요청 id 0.
+/// 요청을 보낸 뒤 답을 기다리는 동안에도 update 둘을 보낸다. 진짜에는 없는 줄이지만, 호스트의 수신 루프가 요청에 막히지
+/// 않는지를 이것으로 잰다. **이 순서가 곧 검사 자료(S26)다** — 바꾸면 `tests/records/permission.jsonl`을 다시 지어야 한다.
+fn asks_permission(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| ask_permission(fake, id, session_id, false);
+    fake.converse();
+}
+
+/// 권한 거부가 턴을 끝내는 에이전트 — codex-acp 2.2.2는 거부 선택지(`cancel`)를 받으면 그 도구를 `failed`로 닫고 턴을
+/// `stopReason: cancelled`로 끝낸다. 우리가 cancel을 보내지 않았는데도 그렇다(실측 G2 · 워크플로 함정 14). **이 순서가 곧
+/// 검사 자료(S26)다** — 바꾸면 `tests/records/permission-deny.jsonl`을 다시 지어야 한다.
+fn deny_cancels(fake: &mut Fake) {
+    fake.on_prompt = |fake, id, session_id| ask_permission(fake, id, session_id, true);
+    fake.converse();
+}
+
+/// 권한을 물을 명령 — 워크트리 밖에 쓴다(실측 G2와 같은 꼴, 경로만 고정값).
+const PERMISSION_COMMAND: &str = "printf 'g2' > /tmp/fake-outside/g2.txt";
+
+/// `asks-permission` · `deny-cancels`의 턴 하나. `deny_cancels`면 거부가 턴을 `cancelled`로 끝낸다.
+fn ask_permission(fake: &mut Fake, id: &Value, session_id: &str, deny_cancels: bool) {
+    let call = if deny_cancels { "exec-fake-deny" } else { "exec-fake-perm" };
+    let send = |fake: &mut Fake, update: Value| {
+        fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+    };
+    // 턴의 답은 한 번만 간다 — 턴 밖에서 묻는 갈래는 처음에 답했다.
+    let mut answered_turn = false;
+    let mut end_turn = |fake: &mut Fake, stop_reason: &str| {
+        if !std::mem::replace(&mut answered_turn, true) {
+            fake.wire.reply(id, json!({"stopReason": stop_reason}));
+        }
+    };
+    if std::env::var_os("FAKE_ACP_PERMISSION_OUT_OF_TURN").is_some() {
+        end_turn(fake, "end_turn");
+    }
+    send(
+        fake,
+        json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_1",
+               "content": {"type": "text", "text": "I'll request escalated permission for that exact command.\n"}}),
+    );
+    send(
+        fake,
+        json!({"sessionUpdate": "session_info_update",
+               "_meta": {"codex": {"threadStatus": {"type": "active", "activeFlags": ["waitingOnApproval"]}}}}),
+    );
+    send(
+        fake,
+        json!({"sessionUpdate": "tool_call", "toolCallId": call, "kind": "execute", "title": PERMISSION_COMMAND,
+               "status": "in_progress", "content": [{"type": "terminal", "terminalId": call}],
+               "rawInput": {"command": PERMISSION_COMMAND, "cwd": "/tmp/fake-worktree"}}),
+    );
+    let tool_call = match std::env::var("FAKE_ACP_PERMISSION_TOOL_CALL").as_deref() {
+        // codex의 MCP 승인 모양 — 제목도 입력도 없다(워크플로 G12).
+        Ok("bare") => json!({"toolCallId": call, "kind": "execute", "status": "pending"}),
+        _ => json!({"toolCallId": call, "title": "Run command",
+                    "rawInput": {"command": format!("\"{PERMISSION_COMMAND}\""), "cwd": "/tmp/fake-worktree"},
+                    "kind": "execute", "status": "pending"}),
+    };
+    let options = json!([
+        {"optionId": "allow_once", "name": "Yes, proceed", "kind": "allow_once"},
+        {"optionId": "accept_execpolicy_amendment",
+         "name": format!("Yes, and don't ask again for commands that start with `{PERMISSION_COMMAND}`"),
+         "kind": "allow_always"},
+        {"optionId": "cancel", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
+    ]);
+    let request = fake.request(
+        "session/request_permission",
+        json!({"sessionId": session_id, "toolCall": tool_call, "options": options}),
+    );
+    for text in ["승인을 기다리는 동안에도", " update는 흐른다."] {
+        send(
+            fake,
+            json!({"sessionUpdate": "agent_thought_chunk", "messageId": "rs_fake_perm",
+                   "content": {"type": "text", "text": text}}),
+        );
+    }
+    if std::env::var_os("FAKE_ACP_PERMISSION_WITHDRAWS").is_some() {
+        // 답을 기다리지 않고 턴을 끝낸다 — 걸린 요청은 남은 채다. 뒤에 온 답은 `responses` 영수증에 남는다.
+        return end_turn(fake, "end_turn");
+    }
+    loop {
+        // 상대가 사라지면 답할 곳이 없다.
+        let Some(message) = fake.read() else { return };
+        if message["method"] == "session/cancel" {
+            // 진짜 codex-acp는 걸린 요청의 답을 기다리지 않고 턴을 끝낸다(실측 G2). 뒤에 온 답은 영수증에 남는다.
+            return end_turn(fake, "cancelled");
+        }
+        if message.get("method").is_some() || message["id"] != request {
+            continue;
+        }
+        let outcome = &message["result"]["outcome"];
+        let chosen = outcome["optionId"].as_str().unwrap_or_default();
+        let kind = options
+            .as_array()
+            .and_then(|options| options.iter().find(|option| option["optionId"] == chosen))
+            .and_then(|option| option["kind"].as_str())
+            .unwrap_or_default();
+        if outcome["outcome"] != "selected" {
+            return end_turn(fake, "cancelled");
+        }
+        if kind.starts_with("allow") {
+            send(
+                fake,
+                json!({"sessionUpdate": "tool_call_update", "toolCallId": call, "name": "exec_command",
+                       "status": "completed",
+                       "_meta": {"terminal_exit": {"exit_code": 0, "signal": null, "terminal_id": call}}}),
+            );
+            send(
+                fake,
+                json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_2",
+                       "content": {"type": "text", "text": "Done."}}),
+            );
+            return end_turn(fake, "end_turn");
+        }
+        // 거부 — 그 도구가 실패로 닫힌다.
+        send(
+            fake,
+            json!({"sessionUpdate": "tool_call_update", "toolCallId": call, "status": "failed",
+                   "_meta": {"terminal_exit": {"exit_code": null, "signal": null, "terminal_id": call}}}),
+        );
+        if deny_cancels {
+            return end_turn(fake, "cancelled");
+        }
+        send(
+            fake,
+            json!({"sessionUpdate": "agent_message_chunk", "messageId": "msg_fake_perm_2",
+                   "content": {"type": "text", "text": "REFUSED"}}),
+        );
+        return end_turn(fake, "end_turn");
+    }
+}
+
 /// 가짜 하나의 상태 — 선과, 영수증에 실을 것들.
 struct Fake {
     wire: Wire,
@@ -377,6 +521,8 @@ struct Fake {
     edits: usize,
     /// 로그인 파일을 보나(`needs-auth`).
     needs_auth: bool,
+    /// 가짜가 보낼 다음 요청의 id. 진짜 codex-acp처럼 0부터 센다(관문 함정 11 — 0을 「없음」으로 다루면 깨진다).
+    requests: u64,
 }
 
 impl Fake {
@@ -394,7 +540,16 @@ impl Fake {
             spec_dir: None,
             edits: 0,
             needs_auth: false,
+            requests: 0,
         }
+    }
+
+    /// 에이전트 쪽에서 요청 하나를 보내고 그 id를 돌려준다. 답은 `read`가 받아 `responses` 영수증에 남긴다.
+    fn request(&mut self, method: &str, params: Value) -> Value {
+        let id = json!(self.requests);
+        self.requests += 1;
+        self.wire.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
+        id
     }
 
     /// 검사가 그 세션의 턴을 놓을 때까지(`<세션 id>.go`가 설 때까지) 붙잡는다. 영수증 폴더가 없으면 붙잡지 않는다.
@@ -416,6 +571,10 @@ impl Fake {
     /// stdin이 닫힐 때까지 요청에 답한다. 닫히면 그것을 영수증에 적고 돌아온다.
     fn converse(&mut self) {
         while let Some(message) = self.read() {
+            // 메서드가 없으면 가짜가 보낸 요청의 답이다 — `read`가 영수증에 남겼다.
+            if message.get("method").is_none() {
+                continue;
+            }
             // id가 없으면 알림이다. 알림에는 답하지 않는다.
             let Some(id) = message.get("id").cloned() else { continue };
             match message["method"].as_str().unwrap_or_default() {
@@ -496,11 +655,13 @@ impl Fake {
         self.note("stdin-eof");
     }
 
-    /// 다음 메시지. 세션이 열린 뒤에 받은 것이면 그 메서드를 `inbox` 영수증에 더한다.
+    /// 다음 메시지. 세션이 열린 뒤에 받은 것이면 그 메서드를 `inbox` 영수증에 더하고, 가짜가 보낸 요청의 답이면 원문을
+    /// `responses` 영수증에 더한다.
     fn read(&mut self) -> Option<Value> {
         let message = self.wire.read()?;
-        if let Some(method) = message["method"].as_str() {
-            self.append_receipt("inbox", method);
+        match message["method"].as_str() {
+            Some(method) => self.append_receipt("inbox", method),
+            None => self.append_receipt("responses", &message.to_string()),
         }
         Some(message)
     }
