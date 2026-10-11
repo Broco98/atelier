@@ -653,12 +653,14 @@ function WorksPage({
       // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다. 원천이 slug가
       // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
       // 때문이다.
+      //
+      // 묶음의 칸은 **그 칸의 종류**를 싣는다 — 셸 칸이든 파일 탭이든 줄의 틈에 놓이고(git-integration 결정 31), 본문
+      // 절반이 받는 것은 받는 쪽이 종류로 거른다(`tabDragOf`). 종류는 레지스트리가 id로 안다(`onSelect`와 같다). 누르는
+      // 사이 그 칸이 빠졌으면 걸 끌기가 없다.
       onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
-        armDrag(
-          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
-          from,
-        );
+        const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
+        if (kind) armDrag({ kind, owner, shellId }, from);
       }}
       // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
       // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
