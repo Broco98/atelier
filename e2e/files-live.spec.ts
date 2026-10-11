@@ -5,6 +5,8 @@ import {
   awaitSpawned,
   callCount,
   callsSinceRelease,
+  exitShell,
+  fireAttention,
   fireEventToAll,
   fireWindowEvent,
   heldCalls,
@@ -12,6 +14,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   markAttention,
+  openShell,
   releaseCommand,
   replaceAnswer,
   steadyCount,
@@ -59,6 +62,28 @@ async function settle(page: Page): Promise<void> {
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
 }
+
+/**
+ * 창으로 돌아온다. 최소화 · 다른 Space에서 돌아오면 웹뷰는 `visibilitychange`와 window `focus`를 둘 다 쏜다 — react-query는
+ * `visibilitychange`만 듣고(`focusManager`) 앱 루트는 `focus`만 듣는다. 워크트리 쿼리가 react-query의 길을 끄지 않으면(S33) 한 번
+ * 돌아올 때 두 번 읽는데, `focus`만 쏘면 그것이 안 보인다.
+ */
+async function returnToWindow(page: Page): Promise<void> {
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange", { bubbles: true })));
+  await fireWindowEvent(page, "focus");
+}
+
+/** 에이전트가 턴을 시작하는 훅 상태 — 그 셸이 「도는 중」이 된다. */
+const turnStart = () => ({ agent: "claude", event: "UserPromptSubmit", at: Date.now() });
+
+/** 에이전트가 턴을 마치는 훅 상태 — 「도는 중」이 끝난다. */
+const turnStop = () => ({
+  agent: "claude",
+  event: "Stop",
+  at: Date.now(),
+  payload: { last_assistant_message: "다 했어요" },
+  stopped: true,
+});
 
 async function openFiles(page: Page): Promise<void> {
   await 레일칸(page, "files").click();
@@ -154,7 +179,7 @@ test("다른 work의 워크트리 신호에는 묻지 않고, 프로젝트가 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("창 `focus` · 이 work 셸의 「도는 중」 끝 · 칸을 다시 열기 · 새로고침이 각각 트리를 한 번 다시 묻는다", async ({ page }) => {
+test("창으로 돌아오기 · 이 work 셸의 「도는 중」 끝 · 칸을 다시 열기 · 새로고침이 각각 트리를 한 번 다시 묻는다", async ({ page }) => {
   await installFixtureBackend(page);
   // 셸이 저절로 뜨는 work이다 — 그 셸이 턴을 마친다
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
@@ -168,23 +193,16 @@ test("창 `focus` · 이 work 셸의 「도는 중」 끝 · 칸을 다시 열�
     return (await steadyCount(page, TREE)) - before;
   };
 
-  // 창으로 돌아왔다 — 감시가 못 보는 커밋(워크트리 밖 `.git/worktrees/…`)을 메운다
-  expect(await askedAfter(() => fireWindowEvent(page, "focus")), "창 focus").toBe(1);
+  // 창으로 돌아왔다 — 감시가 못 보는 커밋(워크트리 밖 `.git/worktrees/…`)을 메운다. react-query의 `visibilitychange` 길은 꺼져
+  // 있어 한 번이다(S33)
+  expect(await askedAfter(() => returnToWindow(page)), "창으로 돌아오기").toBe(1);
 
   // 에이전트가 턴을 시작하는 것은 신호가 아니다 — 멎을 때다
   const started = await steadyCount(page, TREE);
-  await markAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now() });
+  await markAttention(page, turnStart());
   await settle(page);
   expect(await steadyCount(page, TREE)).toBe(started);
-  const ended = () =>
-    markAttention(page, {
-      agent: "claude",
-      event: "Stop",
-      at: Date.now(),
-      payload: { last_assistant_message: "다 했어요" },
-      stopped: true,
-    });
-  expect(await askedAfter(ended), "도는 중 끝").toBe(1);
+  expect(await askedAfter(() => markAttention(page, turnStop())), "도는 중 끝").toBe(1);
 
   // 칸을 닫았다 다시 연다(켜진 칸을 다시 누르면 닫힌다)
   await 레일칸(page, "files").click();
@@ -196,23 +214,64 @@ test("창 `focus` · 이 work 셸의 「도는 중」 끝 · 칸을 다시 열�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed`로는 다시 묻지 않고, 창 `focus` · 새로고침에는 다시 묻는다", async ({ page }) => {
+// 「도는 중」 끝은 도는 중이던 셸이 죽을 때도 친다(구현 스펙 「화면 — 다시 읽기」). 죽는 길은 둘이다 — 깨끗이 끝나면(종료 코드 0,
+// 사람이 Ctrl-D) 셸이 목록에서 빠지고, 아니면(claude가 죽었다) 「끝남」으로 남아 상태를 읽는 문(`attentionOn`)이 「없음」을 준다.
+// 「사라진 셸은 건너뛴다」거나 상태를 그 문 없이 읽으면 그 턴은 트리를 다시 읽지 않는다.
+test("「도는 중」이던 셸이 죽으면 — 깨끗이 끝나 빠지든 「끝남」으로 남든 — 트리를 한 번 다시 묻는다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${pinnedWork.slug}`);
+  await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await openShell(page);
+  await openFiles(page);
+  /** 신호 하나를 주고, 트리를 그 뒤로 몇 번 더 물었는지 멎은 값으로 센다. */
+  const askedAfter = async (signal: () => Promise<void>) => {
+    const before = await steadyCount(page, TREE);
+    await signal();
+    await expect.poll(() => callCount(page, TREE)).toBeGreaterThan(before);
+    return (await steadyCount(page, TREE)) - before;
+  };
+
+  // 두 칸 다 앉았다(`openShell`) — 착석을 칸 수로 기다리는 `markAttention`은 첫 칸에 쓰지 못한다
+  await fireAttention(page, turnStart(), 1);
+  await settle(page);
+  expect(await askedAfter(() => exitShell(page, 1, 1)), "죽어 「끝남」으로 남은 셸").toBe(1);
+  await fireAttention(page, turnStart(), 2);
+  await settle(page);
+  expect(await askedAfter(() => exitShell(page, 2, 0)), "깨끗이 끝나 빠진 셸").toBe(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 37 — 걸린 폴더 안은 실시간 신호로 다시 읽지 않는다. 펼칠 때 · 창 포커스 · 새로고침에만 읽는다. 턴 끝은 실시간 신호와
+// 같은 쪽이다 — 새로고침 버튼과 같은 문을 쓰면 턴마다 펼쳐 둔 `target/debug/deps`를 통째로 다시 읽는다.
+test("펼쳐 둔 걸린 폴더의 한 겹은 `worktree:changed` · 「도는 중」 끝으로는 다시 묻지 않고, 창으로 돌아오기 · 새로고침에는 한 번씩 다시 묻는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  // 셸이 저절로 뜨는 work이다 — 그 셸이 턴을 마친다
+  await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
   await openFiles(page);
   await 패널행(page, "dist").click();
   await expect(패널행(page, "JS app.js")).toBeVisible();
   const folders = await steadyCount(page, FOLDER);
+  /** 신호 하나를 주고 트리를 다시 묻기를 기다린다 — 한 겹이 그대로인지는 그 뒤에 잰다. */
+  const treeAskedAfter = async (signal: () => Promise<unknown>) => {
+    const trees = await steadyCount(page, TREE);
+    await signal();
+    await expect.poll(() => callCount(page, TREE)).toBeGreaterThan(trees);
+    await steadyCount(page, TREE);
+  };
 
-  // 감시는 걸리지 않은 곳만 본다(결정 37) — 트리는 다시 읽어도 한 겹은 그대로다
-  const trees = await steadyCount(page, TREE);
-  await fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" });
-  await expect.poll(() => callCount(page, TREE)).toBeGreaterThan(trees);
-  await steadyCount(page, TREE);
-  expect(await steadyCount(page, FOLDER)).toBe(folders);
+  // 감시는 걸리지 않은 곳만 본다 — 트리는 다시 읽어도 한 겹은 그대로다
+  await treeAskedAfter(() => fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" }));
+  expect(await steadyCount(page, FOLDER), "worktree:changed").toBe(folders);
+  await markAttention(page, turnStart());
+  await treeAskedAfter(() => markAttention(page, turnStop()));
+  expect(await steadyCount(page, FOLDER), "도는 중 끝").toBe(folders);
 
-  await fireWindowEvent(page, "focus");
+  await returnToWindow(page);
   await expect.poll(() => callCount(page, FOLDER)).toBe(folders + 1);
+  expect(await steadyCount(page, FOLDER), "창으로 돌아오기").toBe(folders + 1);
   await 작업패널(page).getByRole("button", { name: "새로고침", exact: true }).click();
   await expect.poll(() => callCount(page, FOLDER)).toBe(folders + 2);
   expect(await steadyCount(page, FOLDER)).toBe(folders + 2);
@@ -370,6 +429,20 @@ test.describe("코드 탭", () => {
     expect((await steadyCount(page, READ)) - reads).toBe(1);
     // 포커스는 그대로 문서 열이다 — 다시 읽기가 포커스를 옮기지 않았다
     await expect(page).not.toHaveURL(/tab=/);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  test("창으로 돌아오면 보이는 파일 탭을 한 번만 다시 읽는다", async ({ page }) => {
+    await installFixtureBackend(page, { read_worktree_file: 답(줄들(3)) });
+    await page.goto(codeUrl(`billing/${LONG}`));
+    const card = codeCard(page, `billing/${LONG}`);
+    await expect.poll(() => 줄글(card)).toContain('const v0 = "값"; // 줄 1');
+    const reads = await steadyCount(page, READ);
+
+    await returnToWindow(page);
+    await expect.poll(() => callCount(page, READ)).toBeGreaterThan(reads);
+    // react-query의 `visibilitychange` 길은 꺼져 있다 — 앱 루트의 `focus` 한 번이다(S33)
+    expect((await steadyCount(page, READ)) - reads).toBe(1);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 

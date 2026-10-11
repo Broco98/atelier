@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { attentionOn } from "@/features/terminal/shell-attention";
 import { slugOfOwner, type ShellsState } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
-import { invalidateWorktree, refreshAllWorktrees, refreshWorktrees } from "./hooks";
+import { invalidateAfterTurn, invalidateWorktree, refreshAllWorktrees } from "./hooks";
 
 /** 감시자가 워크트리 안의 걸리지 않은 변경마다 쏘는 이름(`watcher.rs`의 워크트리 갈래). */
 const WORKTREE_CHANGED = "worktree:changed";
@@ -27,7 +27,8 @@ interface WorktreeChange {
  * - 창 `focus`(window 이벤트) — 모든 워크트리, 걸린 폴더의 한 겹까지. 감시가 못 보는 것(커밋 — 워크트리가 아니라 본 저장소의
  *   `.git`에서 일어난다)을 메운다. Tauri `onFocusChanged`는 쓰지 않는다 — L3 픽스처가 모르는 IPC다(`lib/window-focus.ts`
  *   머리말). 분할의 spec 프레임에서 돌아올 때도 오지만, 보이는 것 몇 개를 한 번 더 읽을 뿐이다.
- * - 이 work 셸의 「도는 중」이 끝날 때 — 에이전트가 턴을 마쳤다(결정 9의 「턴 끝」). 그 work의 워크트리 전부.
+ * - 이 work 셸의 「도는 중」이 끝날 때 — 에이전트가 턴을 마쳤다(결정 9의 「턴 끝」). 그 work의 워크트리 전부(걸린 폴더의 한 겹은
+ *   빼고 — 결정 37).
  *
  * 예비 신호의 나머지 둘은 여기 없다 — 칸을 열면 트리 쿼리가 켜지며 읽고(`staleTime` 0), 새로고침 버튼은 칸 머리에 선다
  * (`FilesRefresh`). 여기 셋과 새로고침 버튼은 같은 무효화 문을 지나 몰려도 합쳐진다(`./hooks`의 `invalidateMerging`).
@@ -43,7 +44,7 @@ export function useFollowWorktreeChanges(): void {
     window.addEventListener("focus", onFocus);
     let before = terminalStore.state;
     const turns = terminalStore.subscribe((after) => {
-      for (const slug of turnsEnded(before, after)) void refreshWorktrees(queryClient, slug);
+      for (const slug of turnsEnded(before, after)) void invalidateAfterTurn(queryClient, slug);
       before = after;
     });
     return () => {

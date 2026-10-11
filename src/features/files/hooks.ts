@@ -1,4 +1,4 @@
-import { queryOptions, type InvalidateQueryFilters, type QueryClient } from "@tanstack/react-query";
+import { queryOptions, type InvalidateQueryFilters, type Query, type QueryClient } from "@tanstack/react-query";
 import { filesApi } from "./api";
 
 /** 모든 워크트리 데이터의 머리 — 창 포커스 신호가 통째로 낡았다고 표시한다(`refreshAllWorktrees`). */
@@ -32,7 +32,7 @@ export const worktreeTreeQuery = (slug: string, project: string, visible: boolea
  * 때만 읽는다(S9). 그래서 **펼칠 때 읽는다** — 접으면 관찰자가 사라지고, 다시 펼치면 낡은 값(`staleTime` 0)을 한 번 더 묻는다.
  *
  * - 키는 트리와 같은 머리(`worktreeKey(slug)`) 아래 `"folder"`다. 새로고침 버튼이 펼쳐 둔 걸린 폴더도 함께 다시 읽는다.
- *   걸린 폴더 안은 실시간 신호로 다시 읽지 않으므로(결정 37) `worktree:changed`의 무효화는 이 갈래를 건너뛰어야 한다.
+ *   걸린 폴더 안은 실시간 신호로 다시 읽지 않으므로(결정 37) `worktree:changed` · 턴 끝의 무효화는 이 갈래를 건너뛴다(`notOneLayer`).
  * - **다시 시도하지 않는다**(`retry: false`). 디스크가 거절한 폴더(권한 · 사라짐)는 1 · 2 · 4초 뒤에도 같다 — 기본값이면 그
  *   7초 동안 「읽는 중」에 멈춰 있다가 까닭이 선다. 다시 펼치거나 새로고침하면 다시 묻는다.
  */
@@ -46,25 +46,38 @@ export const worktreeFolderQuery = (slug: string, project: string, path: string,
   });
 
 /**
- * 새로고침 버튼(스토리 16) — 그 work의 워크트리 데이터를 모두 다시 읽는다. 버튼은 files 칸이 보일 때만 서서, 다시 읽는 것은
- * 보이는(켜진) 쿼리뿐이다 — 숨은 것은 낡음 표시만 남아 보이는 순간 읽힌다.
+ * 새로고침 버튼(스토리 16) — 그 work의 워크트리 데이터를 모두 다시 읽는다. 펼쳐 둔 걸린 폴더의 한 겹까지다. 버튼은 files 칸이
+ * 보일 때만 서서, 다시 읽는 것은 보이는(켜진) 쿼리뿐이다 — 숨은 것은 낡음 표시만 남아 보이는 순간 읽힌다.
  */
 export function refreshWorktrees(queryClient: QueryClient, slug: string): Promise<void> {
   return invalidateMerging(queryClient, { queryKey: worktreeKey(slug) });
 }
 
 /**
+ * 걸린 폴더의 한 겹이 아닌 것. 걸린 폴더 안은 펼칠 때 · 창 포커스 · 새로고침에만 다시 읽는다(결정 37) — 감시 · 턴 끝 두 신호는
+ * 이 갈래를 건너뛴다. 머리만으로 무효로 하면 펼쳐 둔 한 겹까지 걸린다.
+ */
+const notOneLayer = ({ queryKey }: Query) => queryKey[3] !== "folder";
+
+/**
  * 감시가 그 워크트리의 변경을 알렸다(`worktree:changed` — 티켓 10). 그 (slug, 프로젝트)의 트리와 열린 파일 내용을 낡았다고
  * 표시한다 — 다시 읽는 것은 **보이는(켜진) 쿼리뿐이고**, 숨은 것은 보이는 순간 읽힌다(S9).
  *
- * **걸린 폴더의 한 겹은 건너뛴다**(결정 37) — 감시는 걸리지 않은 곳만 본다. 걸린 폴더 안은 펼칠 때 · 창 포커스 · 새로고침에만
- * 다시 읽는다. 머리(`[worktree, slug, project]`)만으로 무효로 하면 펼쳐 둔 한 겹까지 걸린다.
+ * **걸린 폴더의 한 겹은 건너뛴다**(결정 37, `notOneLayer`) — 감시는 걸리지 않은 곳만 본다.
  */
 export function invalidateWorktree(queryClient: QueryClient, slug: string, project: string): Promise<void> {
-  return invalidateMerging(queryClient, {
-    queryKey: [...worktreeKey(slug), project],
-    predicate: ({ queryKey }) => queryKey[3] !== "folder",
-  });
+  return invalidateMerging(queryClient, { queryKey: [...worktreeKey(slug), project], predicate: notOneLayer });
+}
+
+/**
+ * 그 work 셸의 「도는 중」이 끝났다 — 에이전트가 턴을 마쳤다(결정 34의 예비 신호). 그 work의 워크트리 데이터를 모두 낡았다고
+ * 표시한다 — 감시가 놓친 것(커밋 등)을 턴마다 메운다. 다시 읽는 것은 보이는 쿼리뿐이다(S9).
+ *
+ * **걸린 폴더의 한 겹은 건너뛴다**(결정 37, `notOneLayer`). 턴 끝은 한 겹을 다시 읽는 세 때(펼칠 때 · 창 포커스 · 새로고침)에 들지
+ * 않는다 — 새로고침 버튼의 문(`refreshWorktrees`)을 쓰면 턴마다 펼쳐 둔 `target/debug/deps`를 통째로 다시 읽는다.
+ */
+export function invalidateAfterTurn(queryClient: QueryClient, slug: string): Promise<void> {
+  return invalidateMerging(queryClient, { queryKey: worktreeKey(slug), predicate: notOneLayer });
 }
 
 /**
