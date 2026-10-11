@@ -28,4 +28,4 @@ pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};
 pub use quote::Quote;
 pub use records::{RecordKind, RecordLine};
-pub use translator::run_claude_translator;
+pub use translator::{run_claude_translator, CLAUDE_TRANSLATOR_MODE};

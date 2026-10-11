@@ -638,7 +638,8 @@ mod tests {
     }
 
     /// **진입점은 Tauri를 짓기 전에 첫 인자로 갈라, 정확히 `acp-claude`면 Claude 변환기가 된다**(three-axes 티켓 13, 워크플로
-    /// S4 · G17). 대화 호스트가 Claude 대화마다 이 실행 파일 자신을 `acp-claude`로 띄운다(`chat::host`). Tauri를 지은 뒤에 가르면
+    /// S4 · G17). 대화 호스트가 Claude 대화마다 이 실행 파일 자신을 `acp-claude`로 띄운다(`chat::host`) — 띄우는 쪽과 가르는 쪽이
+    /// 같은 상수(`atelier_acp::CLAUDE_TRANSLATOR_MODE`)를 쓰는지도 잰다. Tauri를 지은 뒤에 가르면
     /// 대화마다 Dock 아이콘이 서고 기동이 무거워진다. 갈래가 부르는 함수는 L1이 호스트에 넘기는 변환기 시험 bin과 **같은 함수**다
     /// — 그래야 L1이 잰 변환기가 앱이 띄우는 변환기다. `main`은 헤드리스로 못 돌리니 자리로 잰다. 변환기 자체(플래그 · stdin
     /// `initialize` · 가리기 · stdin EOF)는 크레이트 `atelier-acp`의 L1이 잰다.
@@ -646,8 +647,14 @@ mod tests {
     fn the_entry_point_becomes_the_claude_translator_before_tauri_on_acp_claude() {
         let main = without_comment_lines(include_str!("main.rs"));
         let branch = main
-            .find("if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(\"acp-claude\")) {")
-            .expect("진입점이 첫 인자가 정확히 `acp-claude`인지로 가르지 않는다");
+            .find("if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(atelier_acp::CLAUDE_TRANSLATOR_MODE)) {")
+            .expect("진입점이 첫 인자가 정확히 하위 모드 상수인지로 가르지 않는다");
+        assert_eq!(atelier_acp::CLAUDE_TRANSLATOR_MODE, "acp-claude", "하위 모드의 이름은 `acp-claude`다");
+        assert!(
+            without_comment_lines(include_str!("chat.rs"))
+                .contains("TranslatorCommand::new(exe, [atelier_acp::CLAUDE_TRANSLATOR_MODE])"),
+            "대화 호스트가 진입점이 가르는 상수와 다른 인자로 변환기를 띄운다 — 앱의 Claude 대화가 열리지 않는다"
+        );
         let translator = main
             .find("std::process::exit(atelier_acp::run_claude_translator());")
             .expect("`acp-claude` 갈래가 변환기의 진입 함수를 부르고 그 종료 코드로 끝나지 않는다");

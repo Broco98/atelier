@@ -69,8 +69,13 @@ and wait for the user's next message describing what to change.";
 /// 거둬진 요청이 아직 claude를 붙잡고 있을 때 싣는 글 — 우리가 멈추지 않았는데 호스트가 요청을 거뒀다(에이전트가 턴을 끝냄).
 const WITHDRAWN: &str = "The permission request was withdrawn.";
 
-/// 변환기의 몸통 — 앱 진입점의 `acp-claude` 갈래와 변환기 시험 bin이 이것 하나를 부른다. stdin이 닫히면 끝나고 종료 코드를
-/// 돌려준다. **stdout이 곧 ACP 선이다** — 이 함수 밖에서 stdout에 아무것도 쓰지 않는다.
+/// 앱 실행 파일이 Claude 변환기가 되는 하위 모드의 이름 — 첫 인자가 정확히 이것이면 진입점이 Tauri를 짓지 않고
+/// [`run_claude_translator`]로 간다(three-axes 티켓 13, 워크플로 S4). 띄우는 쪽(앱의 대화 호스트)과 받는 쪽(진입점)이 이 상수
+/// 하나를 함께 쓴다 — 한쪽만 이름을 바꾸면 앱의 Claude 대화만 열리지 않는다.
+pub const CLAUDE_TRANSLATOR_MODE: &str = "acp-claude";
+
+/// 변환기의 몸통 — 앱 진입점의 `acp-claude` 갈래([`CLAUDE_TRANSLATOR_MODE`])와 변환기 시험 bin이 이것 하나를 부른다. stdin이
+/// 닫히면 끝나고 종료 코드를 돌려준다. **stdout이 곧 ACP 선이다** — 이 함수 밖에서 stdout에 아무것도 쓰지 않는다.
 pub fn run_claude_translator() -> i32 {
     let shared = Arc::new(Shared::default());
     let mut session: Option<Session> = None;
