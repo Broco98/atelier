@@ -1,4 +1,4 @@
-import { queryOptions, type QueryClient } from "@tanstack/react-query";
+import { queryOptions, type InvalidateQueryFilters, type QueryClient } from "@tanstack/react-query";
 import { filesApi } from "./api";
 
 /** 모든 워크트리 데이터의 머리 — 창 포커스 신호가 통째로 낡았다고 표시한다(`refreshAllWorktrees`). */
@@ -50,7 +50,7 @@ export const worktreeFolderQuery = (slug: string, project: string, path: string,
  * 보이는(켜진) 쿼리뿐이다 — 숨은 것은 낡음 표시만 남아 보이는 순간 읽힌다.
  */
 export function refreshWorktrees(queryClient: QueryClient, slug: string): Promise<void> {
-  return queryClient.invalidateQueries({ queryKey: worktreeKey(slug) });
+  return invalidateMerging(queryClient, { queryKey: worktreeKey(slug) });
 }
 
 /**
@@ -61,7 +61,7 @@ export function refreshWorktrees(queryClient: QueryClient, slug: string): Promis
  * 다시 읽는다. 머리(`[worktree, slug, project]`)만으로 무효로 하면 펼쳐 둔 한 겹까지 걸린다.
  */
 export function invalidateWorktree(queryClient: QueryClient, slug: string, project: string): Promise<void> {
-  return queryClient.invalidateQueries({
+  return invalidateMerging(queryClient, {
     queryKey: [...worktreeKey(slug), project],
     predicate: ({ queryKey }) => queryKey[3] !== "folder",
   });
@@ -72,5 +72,25 @@ export function invalidateWorktree(queryClient: QueryClient, slug: string, proje
  * 아니라 본 저장소의 `.git`에서 일어난다)과 걸린 폴더 안을 메운다. 다시 읽는 것은 보이는 쿼리뿐이다.
  */
 export function refreshAllWorktrees(queryClient: QueryClient): Promise<void> {
-  return queryClient.invalidateQueries({ queryKey: WORKTREE_ROOT });
+  return invalidateMerging(queryClient, { queryKey: WORKTREE_ROOT });
+}
+
+/**
+ * 워크트리 데이터를 낡았다고 표시하는 문 — 신호 셋(감시 · 창 포커스 · 턴 끝)과 새로고침 버튼이 모두 여기를 지난다.
+ *
+ * **도는 조회를 버리고 새로 띄우지 않는다**(`cancelRefetch: false`). 에이전트가 이어 쓰면 신호가 디바운스(300ms)마다 오는데,
+ * 버리고 띄우면 IPC는 못 끊어 git이 겹겹이 돌고, 트리를 읽는 데 그보다 오래 걸리는 워크트리에서는 답이 영영 서지 않는다.
+ * 대신 **도는 동안 온 신호는 그 조회가 끝난 뒤 한 번 더 읽는다** — 그 조회는 쓰기 전을 읽었을 수 있다. 몇 번 왔든 한 번이다:
+ * 뒤따르는 조회가 이미 돌고 있으면 거기에 합류한다(`works:changed`의 문 `invalidateWorks`와 같은 합치기).
+ */
+async function invalidateMerging(queryClient: QueryClient, filters: InvalidateQueryFilters): Promise<void> {
+  const busy = queryClient
+    .getQueryCache()
+    .findAll(filters)
+    .filter((query) => query.state.fetchStatus === "fetching");
+  // 도는 조회는 새로 띄우지 않고 그것이 끝나기를 기다린다 — 나머지 보이는 쿼리는 여기서 다시 읽는다.
+  await queryClient.invalidateQueries(filters, { cancelRefetch: false });
+  await Promise.all(
+    busy.map(({ queryKey }) => queryClient.invalidateQueries({ queryKey, exact: true }, { cancelRefetch: false })),
+  );
 }

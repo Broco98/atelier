@@ -4,11 +4,15 @@ import { answerByArg, WORKS, worktreeFile, WORKTREE_FILES, WORKTREE_TREES } from
 import {
   awaitSpawned,
   callCount,
+  callsSinceRelease,
   fireEventToAll,
   fireWindowEvent,
+  heldCalls,
+  holdCommand,
   installFixtureBackend,
   ipcCallArgs,
   markAttention,
+  releaseCommand,
   replaceAnswer,
   steadyCount,
   unknownIpcCalls,
@@ -77,6 +81,29 @@ test("files 칸이 보일 때 그 워크트리의 `worktree:changed`가 오면 �
   await expect(패널행(page, "MD CHANGELOG.md")).toBeVisible();
   // 이벤트 한 번에 한 번이다 — 구독이 여럿이 되어 그 수만큼 다시 읽지 않는다
   expect((await steadyCount(page, TREE)) - before).toBe(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **신호가 몰려도 조회는 하나씩이다.** 에이전트가 이어 쓰면 신호가 디바운스(300ms)마다 온다 — 도는 조회를 버리고 새로 띄우면
+// IPC는 못 끊어 git이 겹겹이 돌고, 트리를 읽는 데 그보다 오래 걸리는 워크트리에서는 답이 영영 서지 않는다. 도는 동안 온 신호는
+// 끝난 뒤 한 번으로 합친다 — 그 조회는 쓰기 전을 읽었을 수 있다(`works-changed.spec.ts`의 같은 검사와 같은 꼴).
+test("트리를 붙잡아 둔 채 신호를 세 번 쏘고 풀면, 붙잡힌 부름은 하나이고 놓은 뒤에 한 번 더 묻는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await openFiles(page);
+  await steadyCount(page, TREE);
+
+  await holdCommand(page, TREE);
+  for (let n = 0; n < 3; n += 1) await fireEventToAll(page, EVENT, { slug: pinnedWork.slug, project: "billing" });
+  await expect.poll(() => heldCalls(page, TREE)).toBeGreaterThan(0);
+  await settle(page);
+  expect(await heldCalls(page, TREE)).toBe(1);
+
+  await replaceAnswer(page, TREE, billingWith("CHANGELOG.md"));
+  await releaseCommand(page, TREE);
+  await expect(패널행(page, "MD CHANGELOG.md")).toBeVisible();
+  await steadyCount(page, TREE);
+  expect(await callsSinceRelease(page, TREE)).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
