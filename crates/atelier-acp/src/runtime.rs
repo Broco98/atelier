@@ -55,6 +55,37 @@ pub(crate) struct OpenTerms {
     /// 에이전트가 `initialize`의 `agentInfo.version`에 실어야 하는 판. 다르면 `session/new`를 보내지 않고 열기를 실패시킨다
     /// — 앱의 하위 모드로 도는 변환기가 앱과 다른 판이면(설치본을 갈아 끼우는 틈에 띄웠다) 쓰지 않는다(워크플로 S4).
     pub required_version: Option<String>,
+    /// 되살릴 에이전트 쪽 세션 id(three-axes 티켓 10). 있으면 resume → load → 새 세션 순으로 열고, 없으면 곧바로 새 세션이다.
+    pub revive: Option<String>,
+}
+
+/// 세션이 열린 길 — 열림 줄의 `how`다(three-axes 티켓 10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum How {
+    /// 되살릴 세션이 없어 새로 열었다 — 새 대화의 첫 열기.
+    New,
+    /// `session/resume`으로 이었다 — 맥락이 이어진다.
+    Resumed,
+    /// `session/load`로 이었다 — 맥락이 이어진다. 응답 전에 온 재생 update는 버렸다.
+    Loaded,
+    /// 되살리려 했지만 resume도 load도 못 해 새 세션으로 열었다 — 맥락을 잇지 못했다(스토리 86).
+    Fresh,
+}
+
+impl How {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            How::New => "new",
+            How::Resumed => "resumed",
+            How::Loaded => "loaded",
+            How::Fresh => "fresh",
+        }
+    }
+
+    /// 에이전트 쪽 세션이 이 열기에서 새로 섰나 — 그러면 그 세션의 첫 말에 머리말을 붙인다(S11).
+    pub(crate) fn starts_session(self) -> bool {
+        matches!(self, How::New | How::Fresh)
+    }
 }
 
 /// 런타임이 호출자에게 넘기는 것. 받은 것을 **원문 그대로, 온 순서대로** 넘긴다 — 스키마 타입으로 다시
@@ -77,8 +108,8 @@ pub(crate) enum RuntimeEvent {
     /// 걸린 권한 요청에 고른 선택지로 답한다. 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은 에이전트가 이어 보내는
     /// update보다 앞에 선다.
     PermissionAnswered { request_id: String, option_id: String },
-    /// 걸린 권한 요청이 거둬졌다 — 우리가 턴을 끊었거나, 에이전트가 답을 기다리지 않고 턴을 끝냈다. 그 턴의 끝보다 앞에
-    /// 넘긴다.
+    /// 걸린 권한 요청이 거둬졌다 — 우리가 턴을 끊었거나, 에이전트가 답을 기다리지 않고 턴을 끝냈거나, 에이전트가 죽었다. 그
+    /// 턴의 끝(죽음이면 죽음)보다 앞에 넘긴다.
     PermissionWithdrawn { request_id: String, reason: Withdrawal },
 }
 
@@ -102,6 +133,8 @@ pub(crate) enum Withdrawal {
     Stopped,
     /// 에이전트가 답을 기다리지 않고 턴을 끝냈다.
     Agent,
+    /// 에이전트 프로세스가 죽었다 — 답할 곳이 없다(three-axes 티켓 10).
+    Died,
 }
 
 /// 권한 답이 가지 못한 까닭.
@@ -156,6 +189,8 @@ pub(crate) struct Turns {
 #[derive(Default)]
 struct Permissions {
     pending: Mutex<Vec<Pending>>,
+    /// 에이전트가 죽어 표를 닫았다 — 그 뒤에 늦게 넘어온 요청도 곧바로 거둔다. `pending`의 잠금 안에서만 읽고 쓴다.
+    closed: AtomicBool,
     /// 앞선 `tool_call`의 요지(제목 · 종류 · 입력) — 도구 id로 찾는다. 세션이 사는 동안 쥔다.
     tool_calls: Mutex<HashMap<String, serde_json::Map<String, Value>>>,
 }
@@ -205,6 +240,14 @@ impl Permissions {
         filled
     }
 
+    /// 에이전트가 죽었다 — 걸린 요청을 모두 「거둬짐(죽음)」으로 거두고 표를 닫는다. 닫힌 뒤에 넘어온 요청(죽음과 엇갈려 늦게
+    /// 읽힌 줄)도 받는 자리에서 곧바로 거둔다 — 죽은 대화에 승인 카드가 남지 않는다.
+    fn close(&self, sink: &Sink) {
+        let mut pending = self.lock();
+        self.closed.store(true, Ordering::SeqCst);
+        Self::withdraw_all(&mut pending, Withdrawal::Died, sink);
+    }
+
     /// 걸린 요청을 모두 거둔다 — 까닭을 넘기고 `cancelled`로 답한다. 표의 잠금을 쥔 채 부른다.
     fn withdraw_all(pending: &mut Vec<Pending>, reason: Withdrawal, sink: &Sink) {
         for asked in pending.drain(..) {
@@ -227,9 +270,12 @@ pub(crate) struct Opened {
     /// `initialize`의 답. 광고한 능력(`agentCapabilities.loadSession` · `sessionCapabilities.resume`)과
     /// `agentInfo`가 여기 있다 — 되살리기(10)가 이것을 본다.
     pub initialize: Value,
-    /// `session/new`의 답 — 모드 · 모델 · configOptions.
+    /// 세션을 연 답(`session/new` · `session/resume` · `session/load`) — 모드 · 모델 · configOptions.
     pub session: Value,
+    /// 에이전트 쪽 세션 id — 새 세션이면 답의 것, 되살렸으면 되살린 그 id다(resume · load의 답에는 id가 없다).
     pub session_id: String,
+    /// 어느 길로 열렸나.
+    pub how: How,
 }
 
 /// 열지 못한 까닭. 어느 경우든 띄운 프로세스는 그룹째 끈 뒤에 돌아온다.
@@ -318,8 +364,14 @@ pub(crate) fn open(
     let exits = Arc::clone(&life);
     process::watch_exit(pid, move |exit| exits.exited(exit));
     read_stderr(stderr, Arc::clone(&life), Arc::clone(&sink));
+    let permissions = Arc::new(Permissions::default());
     let deaths = Arc::clone(&sink);
-    life.watch_death(pid, move |death| deaths(RuntimeEvent::Died(death)));
+    let orphaned = Arc::clone(&permissions);
+    life.watch_death(pid, move |death| {
+        // 걸린 권한 요청은 답할 곳이 없다 — 「거둬짐(죽음)」을 죽음 줄 앞에 넘긴다(three-axes 티켓 10).
+        orphaned.close(&deaths);
+        deaths(RuntimeEvent::Died(death));
+    });
 
     let (outgoing, outgoing_lines) = async_mpsc::unbounded::<String>();
     write_lines(outgoing_lines, Arc::clone(&stdin));
@@ -331,9 +383,12 @@ pub(crate) fn open(
     let (release, released) = oneshot::channel::<()>();
     let notified = Arc::clone(&sink);
     let asked = Arc::clone(&sink);
-    let permissions = Arc::new(Permissions::default());
     let noted = Arc::clone(&permissions);
     let tabled = Arc::clone(&permissions);
+    // `session/load`의 답이 오기 전에 온 update(재생)를 버리는 동안 선다. load를 보내기 직전에 켜고, load 답의 순서 장벽 안에서
+    // 끈다 — 그래서 답 앞의 update는 버려지고 답 뒤의 것은 산다.
+    let replaying = Arc::new(AtomicBool::new(false));
+    let skipped = Arc::clone(&replaying);
     std::thread::spawn(move || {
         let failure = outcome_tx.clone();
         let builder = Client
@@ -343,6 +398,8 @@ pub(crate) fn open(
                 // 수신 루프 안에서 돈다 — 콜백 하나가 끝나야 다음 메시지를 보므로 **도착 순서가 곧 넘기는 순서**다.
                 async move |message: UntypedMessage, _cx: ConnectionTo<AgentRole>| {
                     match message.method.as_str() {
+                        // 화면은 앱의 기록으로 그린다 — load가 되감는 과거는 기록에 두 번 쌓이지 않게 버린다(티켓 10).
+                        "session/update" if skipped.load(Ordering::SeqCst) => {}
                         "session/update" => {
                             noted.note_update(&message.params);
                             notified(RuntimeEvent::Update(message.params));
@@ -367,8 +424,14 @@ pub(crate) fn open(
                         .map(|options| options.iter().filter_map(|option| option["optionId"].as_str()).map(str::to_owned).collect())
                         .unwrap_or_default();
                     let tool_call = tabled.fill(&request["toolCall"]);
-                    tabled.lock().push(Pending { request_id: request_id.clone(), option_ids, responder });
+                    let mut pending = tabled.lock();
+                    let orphan = tabled.closed.load(Ordering::SeqCst);
+                    pending.push(Pending { request_id: request_id.clone(), option_ids, responder });
                     asked(RuntimeEvent::PermissionAsked(PermissionAsked { request_id, request, tool_call }));
+                    if orphan {
+                        // 죽은 에이전트의 늦은 줄이다 — 넘긴 자리에서 곧바로 거둔다.
+                        Permissions::withdraw_all(&mut pending, Withdrawal::Died, &asked);
+                    }
                     Ok(())
                 },
                 agent_client_protocol::on_receive_request!(),
@@ -376,7 +439,7 @@ pub(crate) fn open(
         let ran = futures::executor::block_on(builder.connect_with(
             transport,
             async move |cx: ConnectionTo<AgentRole>| {
-                let opened = open_session(&cx, &place, &terms, on_opened).await;
+                let opened = open_session(&cx, &place, &terms, &replaying, on_opened).await;
                 let opened_ok = opened.is_ok();
                 let _ = outcome_tx.send(opened.map(|opened| (opened, cx.clone())));
                 if opened_ok {
@@ -447,17 +510,23 @@ impl From<String> for Refusal {
     }
 }
 
-/// initialize → `session/new`. 둘 다 날 JSON으로 보낸다 — 2.0 크레이트의 타입으로는 `clientCapabilities.plan`을
-/// 실을 수 없고(기능 뒤에 숨어 있다), 답은 원문 그대로 넘긴다.
+/// initialize → 세션 열기. 모두 날 JSON으로 보낸다 — 2.0 크레이트의 타입으로는 `clientCapabilities.plan`을 실을 수
+/// 없고(기능 뒤에 숨어 있다), 답은 원문 그대로 넘긴다.
 ///
-/// `session/new`의 답은 순서 장벽(`on_receiving_result`)으로 받는다 — 진짜 codex-acp는 답 바로 뒤에 명령 목록을
-/// 보내는데(실측 turns 5 · 6줄), 다른 자리에서 답을 기다리면 그 update가 「열림」보다 앞에 적힌다.
+/// 되살릴 세션 id(`terms.revive`)가 있으면 resume → load → 새 세션 순이다(three-axes 티켓 10 · 워크플로 §7). 앞 단계의 오류는
+/// 다음 단계로 넘어간다. 에이전트가 광고하지 않은 단계(`sessionCapabilities.resume` · `agentCapabilities.loadSession`)는
+/// 건너뛴다. 그 id가 없으면 곧바로 새 세션이다.
 ///
-/// `session/new`가 `-32000`이면 로그인 필요다(실측 A3) — 다른 거절과 갈라 넘긴다.
+/// 세션을 연 답은 순서 장벽(`on_receiving_result`)으로 받는다 — 진짜 codex-acp는 `session/new` · `session/resume`의 답 바로
+/// 뒤에 명령 목록을 보내는데(실측 turns 5 · 6줄 · session-resume), 다른 자리에서 답을 기다리면 그 update가 「열림」보다 앞에
+/// 적힌다. `session/load`는 답 **전에** 과거를 되감는다(실측 session-load-replay) — 그 동안의 update는 `replaying`이 버린다.
+///
+/// 새 세션이 `-32000`이면 로그인 필요다(실측 A3) — 다른 거절과 갈라 넘긴다.
 async fn open_session(
     cx: &ConnectionTo<AgentRole>,
     place: &SessionPlace,
     terms: &OpenTerms,
+    replaying: &Arc<AtomicBool>,
     on_opened: OnOpened,
 ) -> Result<Opened, Refusal> {
     let initialize = request(cx, "initialize", initialize_params()).await?;
@@ -481,27 +550,95 @@ async fn open_session(
     if let Some(meta) = &terms.meta {
         params.insert("_meta".into(), meta.clone());
     }
-    let message = UntypedMessage::new("session/new", Value::Object(params)).map_err(|error| error.to_string())?;
-    let (opened_tx, opened_rx) = oneshot::channel::<Result<Opened, Refusal>>();
-    cx.send_request(message)
-        .on_receiving_result(async move |result| {
-            let outcome = match result {
-                Ok(session) => match session["sessionId"].as_str().map(str::to_owned) {
-                    Some(session_id) => {
-                        let opened = Opened { initialize, session, session_id };
-                        on_opened(&opened);
-                        Ok(opened)
-                    }
-                    None => Err(Refusal::Other(format!("session/new의 답에 sessionId가 없습니다: {session}"))),
-                },
-                Err(error) if i32::from(error.code) == -32000 => Err(Refusal::AuthRequired),
-                Err(error) => Err(Refusal::Other(describe("session/new", &error))),
-            };
-            let _ = opened_tx.send(outcome);
-            Ok(())
-        })
-        .map_err(|error| error.to_string())?;
-    opened_rx.await.map_err(|_| Refusal::Other("session/new에 답하지 않고 끝났습니다".to_string()))?
+
+    let on_opened = Arc::new(Mutex::new(Some(on_opened)));
+    if let Some(session_id) = &terms.revive {
+        let mut revive = params.clone();
+        revive.insert("sessionId".into(), json!(session_id));
+        let steps = [
+            ("session/resume", How::Resumed, !initialize["agentCapabilities"]["sessionCapabilities"]["resume"].is_null()),
+            ("session/load", How::Loaded, initialize["agentCapabilities"]["loadSession"] == true),
+        ];
+        for (method, how, advertised) in steps {
+            if !advertised {
+                continue;
+            }
+            let replay = (how == How::Loaded).then(|| Arc::clone(replaying));
+            let step = Step { method, how, initialize: &initialize, session_id: Some(session_id), replay };
+            // 오류는 다음 단계로 넘어간다 — 까닭은 남기지 않는다. 열림 줄의 길이 결과를 말한다.
+            if let Ok(opened) = step.send(cx, &revive, &on_opened).await {
+                return Ok(opened);
+            }
+        }
+    }
+    let how = if terms.revive.is_some() { How::Fresh } else { How::New };
+    Step { method: "session/new", how, initialize: &initialize, session_id: None, replay: None }
+        .send(cx, &params, &on_opened)
+        .await
+}
+
+/// 세션을 여는 요청 하나 — `session/new` · `session/resume` · `session/load`.
+struct Step<'a> {
+    method: &'static str,
+    how: How,
+    initialize: &'a Value,
+    /// 되살리는 세션 id. 새 세션이면 `None`이고 id는 답에서 읽는다.
+    session_id: Option<&'a String>,
+    /// load면 답이 올 때까지 update를 버리는 표지.
+    replay: Option<Arc<AtomicBool>>,
+}
+
+impl Step<'_> {
+    /// 보내고 답을 순서 장벽으로 받는다. 열리면 그 자리에서 `on_opened`를 한 번 부른다.
+    async fn send(
+        self,
+        cx: &ConnectionTo<AgentRole>,
+        params: &serde_json::Map<String, Value>,
+        on_opened: &Arc<Mutex<Option<OnOpened>>>,
+    ) -> Result<Opened, Refusal> {
+        let Step { method, how, initialize, session_id, replay } = self;
+        let message = UntypedMessage::new(method, Value::Object(params.clone())).map_err(|error| error.to_string())?;
+        let (opened_tx, opened_rx) = oneshot::channel::<Result<Opened, Refusal>>();
+        let initialize = initialize.clone();
+        let asked_id = session_id.cloned();
+        let on_opened = Arc::clone(on_opened);
+        let replay_flag = replay.clone();
+        if let Some(replay) = &replay {
+            replay.store(true, Ordering::SeqCst);
+        }
+        let sent = cx
+            .send_request(message)
+            .on_receiving_result(async move |result| {
+                // 답이 왔다 — 이 뒤의 update는 재생이 아니다.
+                if let Some(replay) = &replay {
+                    replay.store(false, Ordering::SeqCst);
+                }
+                let outcome = match result {
+                    Ok(session) => match asked_id.or_else(|| session["sessionId"].as_str().map(str::to_owned)) {
+                        Some(session_id) => {
+                            let opened = Opened { initialize, session, session_id, how };
+                            if let Some(on_opened) = on_opened.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take() {
+                                on_opened(&opened);
+                            }
+                            Ok(opened)
+                        }
+                        None => Err(Refusal::Other(format!("{method}의 답에 sessionId가 없습니다: {session}"))),
+                    },
+                    Err(error) if i32::from(error.code) == -32000 => Err(Refusal::AuthRequired),
+                    Err(error) => Err(Refusal::Other(describe(method, &error))),
+                };
+                let _ = opened_tx.send(outcome);
+                Ok(())
+            })
+            .map_err(|error| error.to_string());
+        if let Err(error) = sent {
+            if let Some(replay) = replay_flag {
+                replay.store(false, Ordering::SeqCst);
+            }
+            return Err(Refusal::Other(error));
+        }
+        opened_rx.await.map_err(|_| Refusal::Other(format!("{method}에 답하지 않고 끝났습니다")))?
+    }
 }
 
 /// 원문의 **유일한 예외** — 계정 이메일 · 플랜을 `<email>`로 가린다(워크플로 S34). 기록이 fixture나 이슈로

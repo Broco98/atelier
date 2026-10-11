@@ -2,9 +2,8 @@
 //!
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
 //! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 권한 답(08), 모델 · 모드 · 계획 바꾸기와 엔진 목록(09),
-//! 사라진 work의 대화 끄기(11), 로그인 확인 · 로그인 명령 · 로그인 필요 대화의 다시 띄우기(12), Claude 대화 열기 · 에이전트
-//! 바꾸기(13)가 선다. 앱 잇기(05)가 이 위에
-//! 선다.
+//! 앱을 다시 켠 뒤 · 에이전트가 죽은 뒤의 되살리기(10), 사라진 work의 대화 끄기(11), 로그인 확인 · 로그인 명령 · 로그인 필요
+//! 대화의 다시 띄우기(12), Claude 대화 열기 · 에이전트 바꾸기(13)가 선다. 앱 잇기(05)가 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -129,6 +128,7 @@ impl HostBuilder {
             open_limit: self.open_limit,
             login_env: Mutex::new(None),
             live: Arc::new(Mutex::new(HashMap::new())),
+            revivals: Mutex::new(HashMap::new()),
             agents_file: Mutex::new(()),
             engines_file: Mutex::new(()),
         }
@@ -150,6 +150,9 @@ pub struct ConversationHost {
     /// 에이전트가 떠 있는 대화들 — 대화 id로 찾는다. 대화마다 이 표를 약하게 쥔다 — 사라진 work의 대화가 턴
     /// 끝에 스스로 표에서 빠져 꺼진다(S10).
     live: Arc<LiveTable>,
+    /// 대화마다 띄우기(되살리기 · 닫기)를 하나씩 세우는 잠금 — 함께 온 보내기 둘이 에이전트를 둘 띄우지 않고, 되살리는 사이에
+    /// 닫힌 대화가 다시 떠 있는 표에 서지 않게(three-axes 티켓 10). 대화 id로 찾는다.
+    revivals: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// `agents.json`을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 연 두 대화가 서로의 줄을 지우지 않게.
     agents_file: Mutex<()>,
     /// 엔진 목록 파일을 읽고 고쳐 쓰는 사이를 잠근다 — 함께 열린 두 엔진이 서로의 목록을 지우지 않게(S16).
@@ -188,7 +191,7 @@ struct Conv {
 }
 
 struct ConvState {
-    /// 에이전트가 살아 있나. 죽으면 다시 띄우기(티켓 10) 전까지 말을 받지 않는다.
+    /// 에이전트가 살아 있나. 죽으면 다음 말이 되살리기(티켓 10)로 다시 띄운다.
     alive: bool,
     /// 도는 턴이 시작한 때. 쉬면 `None`이다.
     turn: Option<Instant>,
@@ -562,7 +565,7 @@ pub enum HostError {
     ConversationNotFound(String),
     /// 첫 말 뒤의 에이전트 바꾸기 — Claude와 Codex는 서로의 대화를 읽지 못해 맥락이 끊긴다(three-axes 결정 15).
     AgentLocked(String),
-    /// 에이전트가 떠 있지 않은 대화 — 다시 켠 뒤이거나 에이전트가 죽었다. 다시 띄우기는 티켓 10이다.
+    /// 에이전트가 떠 있지 않은 대화 — 보내기가 되살린 뒤에도 에이전트가 곧바로 죽었다(three-axes 티켓 10).
     NotRunning(String),
     /// 그 대화의 대기 줄에 그 대기 id의 말이 없다 — 이미 갔거나 지웠다. 대기 줄은 메모리에만 있어 다시 켠 뒤에는 늘
     /// 비어 있다.
@@ -716,60 +719,93 @@ impl ConversationHost {
         }
     }
 
-    /// 로그인을 기다리던 대화 하나를 다시 띄운다 — 같은 기록 파일에 이어 적고, 새 에이전트 쪽 세션을 연다. 그 세션의 첫
-    /// 말에는 머리말이 다시 붙는다(S11).
+    /// 로그인을 기다리던 대화 하나를 다시 띄운다 — 같은 기록 파일에 이어 적고, 되살리기(티켓 10)의 길(resume → load → 새
+    /// 세션)로 연다. 새 세션으로 끝나면 그 첫 말에 머리말이 다시 붙는다(S11).
     ///
     /// - 에이전트가 떠 있으면(턴 도중의 `-32000`) 끄고 새로 띄운다 — 떠 있는 에이전트가 새 로그인을 읽는다는 보장이 없다.
     /// - work가 사라졌거나 대화가 닫혔으면 아무것도 하지 않는다.
-    /// - 대기 줄은 다시 뜬 대화로 옮겨 맨 앞부터 간다(티켓 07).
+    /// - 대기 줄은 다시 뜬 대화가 그대로 이어 쥐고, 로그인이라는 걸림이 풀린 이 자리에서 맨 앞부터 간다(S13, 티켓 07).
     fn relaunch(&self, waiting: &Waiting) -> Result<(), HostError> {
         let works = atelier_core::works_in(&self.data_root);
         let Ok(meta) = atelier_core::read_work(&works, &waiting.work) else { return Ok(()) };
         let places = atelier_core::work_places(&works, &meta);
-        let Some(row) = records::read_rows(&places.agents)
+        let open = records::read_rows(&places.agents)
             .map_err(HostError::Record)?
-            .into_iter()
-            .find(|row| row.id == waiting.conversation && row.closed_at.is_none())
-        else {
+            .iter()
+            .any(|row| row.id == waiting.conversation && row.closed_at.is_none());
+        if !open {
             return Ok(());
-        };
-        // 대기 줄은 다시 뜬 대화로 옮긴다 — 에이전트가 죽어도 대기 줄을 그대로 두듯이(S13, 티켓 07).
-        let mut queue = VecDeque::new();
-        if let Some(mut live) = self.take_live(&waiting.work, &waiting.conversation) {
-            shut_down_together(std::slice::from_mut(&mut live));
-            queue = std::mem::take(&mut live.conv.lock_state().queue);
         }
-        let started = (|| {
-            let env = self.login_env(false)?;
-            let programs = find_programs(row.agent, &env)?;
-            self.start_agent(&waiting.work, &works, &meta, &places, row, &programs, &env)
-        })();
-        self.hand_over_queue(&waiting.work, &waiting.conversation, queue);
-        started.map(|_| ())
+        self.revive(&waiting.work, &waiting.conversation, Revive::EvenIfRunning)?;
+        let live = self.lock_live();
+        if let Some(found) = live.get(&waiting.conversation).filter(|live| live.work == waiting.work) {
+            found.conv.send_queued(&mut found.conv.lock_state(), None);
+        }
+        Ok(())
     }
 
-    /// 다시 뜬 대화에 옛 대기 줄을 넘긴다. 로그인이라는 걸림이 풀린 자리라 보낼 수 있으면 맨 앞부터 간다(S13 — 걸림이
-    /// 풀리는 자리에서 대기 줄을 보낸다). 다시 뜨지 못했으면(로그인이 또 필요하거나 못 열었으면) 넘길 대화가 없다 — 대기
-    /// 줄은 떠 있는 대화의 메모리에만 있으므로 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
-    fn hand_over_queue(&self, work: &str, conversation: &str, queue: VecDeque<Queued>) {
-        if queue.is_empty() {
-            return;
+    /// 떠 있지 않거나 죽은 대화를 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 대화와 죽은 대화는 말을 보낼 때 띄운다(S8 ·
+    /// 결정 19). 로그인이 「됨」으로 바뀐 뒤의 다시 띄우기(12)도 이 길이다(`Revive::EvenIfRunning`).
+    ///
+    /// - 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서 연다(결정 17) — work에 프로젝트가 나중에 붙어도
+    ///   있던 대화는 그 자리에서 이어진다(스토리 110).
+    /// - `agents.json`의 에이전트 쪽 세션 id로 resume → load → 새 세션 순이다. 열림 줄이 그 길(resumed · loaded · fresh)을
+    ///   말하고, 새 세션으로 끝나면 다음 첫 말에 머리말이 다시 붙는다(S11).
+    /// - Codex에는 `agents.json`의 모델 · 모드 · 계획을 `set_*`로 다시 넣는다(결정 27, [`Self::open_agent`]).
+    /// - 떠 있던(죽은) 대화는 기록기와 대기 줄을 그대로 이어 쓴다 — 기록의 seq가 한 셈이고, 대기 줄은 죽어도 그대로다(S13).
+    ///   다시 뜨지 못하면(로그인이 또 필요하거나 못 열었으면) 대기 줄은 사라진다 — 떠 있는 대화의 메모리에만 있으므로. 화면이
+    ///   옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
+    ///
+    /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다. 대화마다 하나씩 돈다 — 앞선 것이 되살렸으면 아무것도 하지 않는다.
+    fn revive(&self, work: &str, conversation: &str, when: Revive) -> Result<(), HostError> {
+        let gate = self.revival_gate(conversation);
+        let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if when == Revive::IfNotRunning && self.is_running(work, conversation) {
+            return Ok(());
         }
-        let live = self.lock_live();
-        let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
-            (self.emit)(HostEvent::Queue { work: work.to_owned(), conversation: conversation.to_owned(), queue: Vec::new() });
-            return;
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).map_err(|_| HostError::WorkNotFound(work.to_owned()))?;
+        let places = atelier_core::work_places(&works, &meta);
+        let mut row = records::read_rows(&places.agents)
+            .map_err(HostError::Record)?
+            .into_iter()
+            .find(|row| row.id == conversation && row.closed_at.is_none())
+            .ok_or_else(|| HostError::ConversationNotFound(conversation.to_owned()))?;
+        let env = self.login_env(false)?;
+        let programs = find_programs(row.agent, &env)?;
+        let conv = match self.take_live(work, conversation) {
+            Some(mut live) => {
+                shut_down_together(std::slice::from_mut(&mut live));
+                live.conv
+            }
+            None => Conv::new(
+                Recorder::open(&places.agents, work, conversation, Arc::clone(&self.emit)).map_err(HostError::Record)?,
+                spec_place(&works, &meta, &places),
+                Some(self.vanish_watch(&works, work, conversation)),
+                Some(self.login_watch(row.agent, work, conversation)),
+            ),
         };
-        let mut state = found.conv.lock_state();
-        // 다시 뜬 사이에 받은 말이 있으면 그 앞에 선다 — 먼저 든 말이 먼저 간다.
-        for queued in queue.into_iter().rev() {
-            state.queue.push_front(queued);
+        let queued = !conv.lock_state().queue.is_empty();
+        let opened = self.open_agent(work, &places, &mut row, conv, &env, &programs);
+        if queued && !self.lock_live().get(conversation).is_some_and(|live| live.work == work) {
+            (self.emit)(HostEvent::Queue { work: work.to_owned(), conversation: conversation.to_owned(), queue: Vec::new() });
         }
-        if found.conv.can_send(&state) {
-            found.conv.send_queued(&mut state, None);
-        } else {
-            found.conv.announce_queue(&state);
-        }
+        opened.map(|_| ())
+    }
+
+    /// 그 대화의 띄우기 잠금.
+    fn revival_gate(&self, conversation: &str) -> Arc<Mutex<()>> {
+        let mut gates = self.revivals.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Arc::clone(gates.entry(conversation.to_owned()).or_default())
+    }
+
+    /// 그 대화의 에이전트가 떠 있고 살아 있나 — 아니면 보내기가 먼저 되살린다.
+    fn is_running(&self, work: &str, conversation: &str) -> bool {
+        let live = self.lock_live();
+        live.get(conversation).filter(|live| live.work == work).is_some_and(|found| {
+            let state = found.conv.lock_state();
+            state.alive && state.turns.is_some()
+        })
     }
 
     /// 찾고, 찾았으면 로그인을 묻는다.
@@ -863,8 +899,8 @@ impl ConversationHost {
         self.start_agent(work, &works, &meta, &places, row, &programs, &env)
     }
 
-    /// 대화의 에이전트를 띄워 세션을 연다 — 새 대화와, 로그인이 「됨」으로 바뀐 뒤의 다시 띄우기(three-axes 티켓 12)가 함께
-    /// 쓴다. 에이전트는 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서 일한다(three-axes 결정 17).
+    /// 새 대화의 에이전트를 띄워 세션을 연다. 에이전트는 대화를 만들 때 정한 자리(`agents.json`의 cwd · 함께 여는 폴더)에서
+    /// 일한다(three-axes 결정 17). 다시 띄우기(다시 켠 뒤 · 죽은 뒤 · 로그인 뒤)는 [`Self::revive`]다.
     ///
     /// - 열리면 에이전트 쪽 세션 id를 `agents.json`에 적고 떠 있는 표에 넣는다.
     /// - 에이전트가 로그인을 요구하면(`-32000`, 실측 A3) 기록에 로그인 필요 줄을 적고, 로그인 창구가 그 대화를 쥐고 엔진
@@ -998,10 +1034,13 @@ impl ConversationHost {
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
         let place = SessionPlace { cwd: row.cwd.clone(), additional_directories: row.additional_directories.clone() };
-        let (launch, terms) = match row.agent {
+        let (launch, mut terms) = match row.agent {
             Agent::Codex => (codex_launch(programs, env, &place), OpenTerms::default()),
             Agent::Claude => claude_launch(&self.translator, programs, env, &place, row),
         };
+        // 에이전트 쪽 세션 id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤(티켓 10). 새 대화와 에이전트 바꾸기는 id가
+        // 비어 곧바로 새 세션이다.
+        terms.revive = row.agent_session_id.clone();
         let limit = self.open_limit.unwrap_or(match row.agent {
             Agent::Codex => CODEX_OPEN_LIMIT,
             Agent::Claude => CLAUDE_OPEN_LIMIT,
@@ -1023,7 +1062,24 @@ impl ConversationHost {
             }
         };
 
-        conv.lock_state().turns = agent_process.turns();
+        let turns = agent_process.turns();
+        if row.agent == Agent::Codex {
+            if let Some(turns) = &turns {
+                reapply_settings(turns, row);
+            }
+        }
+        // 에이전트 쪽 세션의 첫 말이면 머리말을 붙인다(S11) — 새로 선 세션이거나, 되살린 세션이 아직 말을 받은 적이 없다.
+        let needs_preamble =
+            opened.how.starts_session() || !records::sent_since_session_start(&records::record_path(&places.agents, &row.id));
+        {
+            // 대기 줄은 그대로 둔다 — 죽은 대화의 대기 줄은 되살린 대화가 이어 쥔다(S13).
+            let mut state = conv.lock_state();
+            state.alive = true;
+            state.turn = None;
+            state.before = None;
+            state.turns = turns;
+            state.needs_preamble = needs_preamble;
+        }
         // S16 — 세션이 열릴 때마다 그 엔진의 목록을 덮어 쓴다. 못 써도 대화는 연다: 설정 쪽의 목록이 낡을 뿐이다.
         {
             let _file = self.lock_engines_file();
@@ -1068,7 +1124,8 @@ impl ConversationHost {
     /// - 보내기 직전에 spec 폴더를 찍는다. 턴이 끝나면 지금과 견주어 고친 곳(`changes` 줄)을 적는다(three-axes
     ///   결정 22).
     /// - 턴이 도는 동안의 말은 대기 줄 끝에 넣고 대기 줄 바뀜을 낸다(S13). 턴이 끝나면 맨 앞부터 차례로 간다.
-    /// - 에이전트가 떠 있지 않은 대화(다시 켠 뒤 · 죽은 뒤)는 아직 보낼 수 없다 — 다시 띄우기는 티켓 10이다.
+    /// - 에이전트가 떠 있지 않은 대화(다시 켠 뒤 · 죽은 뒤)는 먼저 띄워 되살린다(three-axes 티켓 10, [`Self::revive`]) — 그래서
+    ///   막히는 호출일 수 있다(세션이 열릴 때까지). 죽은 대화에 남은 대기 줄은 이 말보다 먼저 간다.
     ///
     /// 인용 없는 보내기다 — 인용을 붙이는 길은 [`ConversationHost::send_message`].
     pub fn send(&self, work: &str, conversation: &str, text: &str) -> Result<(), HostError> {
@@ -1100,6 +1157,12 @@ impl ConversationHost {
         // 대화들의 잠금을 쥐기 전에 찍는다 — 폴더를 걷는 동안 다른 대화의 명령을 막지 않게. 그 틈에 다른 대화가
         // 고친 것은 이 턴의 비교에 든다(함께 돈 대화의 고침은 원래 든다).
         let before = Snapshot::take(&spec_place(&works, &meta, &places));
+
+        // 떠 있지 않거나 죽은 대화는 먼저 띄워 되살린다(티켓 10). 로그인을 기다리는 대화는 띄우지 않는다 — 로그인이 「됨」이
+        // 되면 호스트가 다시 띄운다(12).
+        if !self.is_running(work, conversation) && self.logins.waiting_for(conversation).is_none() {
+            self.revive(work, conversation, Revive::IfNotRunning)?;
+        }
 
         let live = self.lock_live();
         let Some(found) = live.get(conversation).filter(|live| live.work == work) else {
@@ -1203,9 +1266,22 @@ impl ConversationHost {
     /// 턴 끝을 기다린다.
     ///
     /// - 「지금 보내기」를 기다리는 말은 하나뿐이다. 다른 말을 고르면 앞서 고른 말은 보통 대기 말로 돌아간다.
-    /// - 이미 갔거나 지운 말이면 읽히는 오류이고 멈추지 않는다. 에이전트가 죽은 대화(다시 띄우기는 10)와 로그인을
-    ///   기다리는 대화(12)도 읽히는 오류다.
+    /// - 이미 갔거나 지운 말이면 읽히는 오류이고 멈추지 않는다. 로그인을 기다리는 대화(12)도 읽히는 오류다.
+    /// - 에이전트가 죽은 대화면 보내기처럼 먼저 띄워 되살린 뒤 그 말을 곧바로 보낸다(티켓 10) — 막히는 호출일 수 있다.
     pub fn send_now(&self, work: &str, conversation: &str, queued: &str) -> Result<(), HostError> {
+        if !is_conversation_id(conversation) {
+            return Err(HostError::ConversationNotFound(conversation.to_owned()));
+        }
+        let dead_with_it = {
+            let live = self.lock_live();
+            live.get(conversation).filter(|live| live.work == work).is_some_and(|found| {
+                let state = found.conv.lock_state();
+                !(state.alive && state.turns.is_some()) && state.queue.iter().any(|item| item.message.id == queued)
+            })
+        };
+        if dead_with_it && self.logins.waiting_for(conversation).is_none() {
+            self.revive(work, conversation, Revive::IfNotRunning)?;
+        }
         self.change_queued(work, conversation, queued, |conv, state, at| {
             if let Some(agent) = self.logins.waiting_for(conversation) {
                 // 보내기처럼 로그인을 기다린다(티켓 12) — 대기 줄은 그대로 두고 멈추지도 않는다.
@@ -1334,6 +1410,9 @@ impl ConversationHost {
         if !is_conversation_id(conversation) {
             return Err(HostError::ConversationNotFound(conversation.to_owned()));
         }
+        // 되살리는 중이면 그 끝을 기다린다 — 닫은 대화가 되살아나 떠 있는 표에 서지 않게(티켓 10).
+        let gate = self.revival_gate(conversation);
+        let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut live = self.take_live(work, conversation);
         if let Some(live) = live.as_mut() {
             shut_down_together(std::slice::from_mut(live));
@@ -1489,7 +1568,7 @@ fn record_opened(conv: &Arc<Conv>, agent: Agent) -> runtime::OnOpened {
                 })?;
             }
             conv.recorder.session(SessionState::Opened {
-                how: "new",
+                how: opened.how.as_str(),
                 agent_version: agent_version.clone(),
                 modes: opened.session.get("modes").cloned().unwrap_or(Value::Null),
                 models: opened.session.get("models").cloned().unwrap_or(Value::Null),
@@ -1545,6 +1624,7 @@ fn claude_launch(
     let terms = OpenTerms {
         meta: Some(json!({"atelier": atelier})),
         required_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+        revive: None,
     };
     (launch, terms)
 }
@@ -1594,6 +1674,15 @@ fn summarize(live: &HashMap<String, Live>, agents_dir: &Path, row: &Conversation
     summary(row, last_seq, queue)
 }
 
+/// 되살리기를 언제 하나(three-axes 티켓 10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Revive {
+    /// 떠 있지 않거나 죽었을 때만 — 보내기.
+    IfNotRunning,
+    /// 떠 있어도 끄고 다시 — 로그인이 「됨」으로 바뀐 뒤(티켓 12).
+    EvenIfRunning,
+}
+
 /// 사람이 바꾸는 대화의 설정 하나(three-axes 티켓 09) — 엔진에 넣는 요청과 `agents.json`의 칸과 `config` 줄이 짝을 이룬다.
 enum Setting {
     Model(String),
@@ -1602,7 +1691,36 @@ enum Setting {
     Plan(bool),
 }
 
+/// 띄운 Codex에 그 대화의 모델 · 모드 · 계획을 다시 넣는다 — resume · load는 config 기본값으로 되돌리고(three-axes 결정 27),
+/// 새 세션도 기본값으로 연다. 띄우지 않은 동안 바꾼 값(티켓 09)도 이때 든다. 사람이 바꾼 것이 아니므로 `config` 줄은 적지 않는다.
+///
+/// 엔진이 거절해도(사라진 모델 · 답 없음) 대화는 연다 — 그 값은 `agents.json`에 남고 엔진은 기본값으로 돈다. 까닭은 앱의
+/// stderr에만 남는다. 수신 루프 밖에서, 대화의 잠금 없이 부른다 — 답을 기다린다.
+fn reapply_settings(turns: &Turns, row: &ConversationRow) {
+    for setting in Setting::of_row(row) {
+        let (method, fields) = setting.request();
+        if let Err(error) = turns.change(method, fields, SETTING_LIMIT) {
+            eprintln!("되살린 대화에 설정을 다시 넣지 못했습니다: {} — {error}", row.id);
+        }
+    }
+}
+
 impl Setting {
+    /// 그 대화 줄에 든 설정들 — 모델 · 모드 · 계획 차례. 비어 있는 칸(엔진 기본값)은 넣지 않는다.
+    fn of_row(row: &ConversationRow) -> Vec<Setting> {
+        let mut settings = Vec::new();
+        if let Some(model) = &row.model {
+            settings.push(Setting::Model(model.clone()));
+        }
+        if let Some(mode) = &row.mode {
+            settings.push(Setting::Mode(mode.clone()));
+        }
+        if let Some(plan) = row.plan {
+            settings.push(Setting::Plan(plan));
+        }
+        settings
+    }
+
     /// 엔진에 넣는 요청 — 메서드와 `sessionId` 밖의 인자(실측 A2 · plan-mode의 꼴).
     fn request(&self) -> (&'static str, Value) {
         match self {
