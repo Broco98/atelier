@@ -17,7 +17,10 @@ import {
   pickUpEntry,
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
+  그림자,
   머리카드,
+  칠한값,
+  토큰값,
   토큰색,
 } from "./harness";
 
@@ -547,6 +550,55 @@ test("항목을 끌다 Esc를 누르면 표시가 걷히고, 그 자리에서 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// codex-ds 티켓 23 — **트리 행은 DS `Tree`다**(`.at-tree-row`): 28(`size-row-tree`) · `radius-lg` · `chat-meta`(13/18), 글리프 14
+// `fg-tertiary`. 파일 행은 본문 글자색 `fg`이고 폴더 행은 한 단 흐린 `fg-secondary`다(`.at-tree-row.folder` — 문서 트리 `SpecTree`와 같다).
+// 고른 행은 흰 카드 안의 고른 면 `fill-selected`에 500 · `fg`이고(`selected-row` — 바탕에 붙은 사이드바의 `fill-hover`가 아니다), 폴더도
+// 고르면 그렇다. 지나는 행은 `fill-soft`이며 고른 행은 지나도 그 면 그대로다. 머리 `spec/`도 같은 규격의 폴더 행이다. 값은 토큰에서 읽어
+// 맞댄다.
+test("트리 행은 DS Tree 값이다 — 28 · radius-lg · 13/18 · 글리프 14 fg-tertiary, 폴더 행 fg-secondary, 고른 행 fill-selected · 500, 지나는 행 fill-soft", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+  const [고른, 다른, 폴더, 머리] = [
+    행(page, "overview.md"),
+    행(page, "decisions.md"),
+    행(page, "tickets/"),
+    page.getByRole("button", { name: "spec/", exact: true }),
+  ];
+  // 앵커: 처음에는 첫 최상위 항목을 골랐다.
+  await expect(고른).toHaveAttribute("aria-selected", "true");
+
+  const 높이 = await 토큰값(page, "height", "--size-row-tree");
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  const 글리프색 = await 토큰색(page, "--fg-tertiary");
+  for (const [이름, row] of [["고른 행", 고른], ["다른 행", 다른], ["폴더 행", 폴더], ["머리 spec/", 머리]] as const) {
+    expect(await 칠한값(row, "height", "border-top-left-radius", "font-size", "line-height"), 이름).toEqual([높이, 반경, "13px", "18px"]);
+    expect(await 칠한값(row.locator("svg").first(), "width", "height", "color"), `${이름} 글리프`).toEqual(["14px", "14px", 글리프색]);
+  }
+
+  const [본문색, 흐린색] = [await 토큰색(page, "--fg"), await 토큰색(page, "--fg-secondary")];
+  const [고른면, 지나는면] = [await 토큰색(page, "--fill-selected"), await 토큰색(page, "--fill-soft")];
+  expect(await 칠한값(고른, "background-color", "font-weight", "color"), "고른 행").toEqual([고른면, "500", 본문색]);
+  expect(await 칠한값(다른, "background-color", "font-weight", "color"), "다른 행(파일)").toEqual(["rgba(0, 0, 0, 0)", "400", 본문색]);
+  expect(await 칠한값(폴더, "background-color", "font-weight", "color"), "폴더 행").toEqual(["rgba(0, 0, 0, 0)", "400", 흐린색]);
+  expect(await 칠한값(머리, "color"), "머리 spec/").toEqual([흐린색]);
+  await 다른.hover();
+  await expect.poll(() => 칠한값(다른, "background-color"), "지나는 행").toEqual([지나는면]);
+  await 고른.hover();
+  await expect.poll(() => 칠한값(고른, "background-color"), "고른 행은 지나도 그 면").toEqual([고른면]);
+
+  // 고른 폴더 행은 고른 면에 500 · 본문색이다(앱의 고른 행 `selected-row`) — 흐린 글자는 고르지 않은 폴더 행의 것이다. 면과 글자색은
+  // 전환(`transition-colors`)을 타고 바뀌어 다 바뀔 때까지 기다린다.
+  await 폴더.click();
+  await expect(폴더).toHaveAttribute("aria-selected", "true");
+  await expect
+    .poll(() => 칠한값(폴더, "background-color", "font-weight", "color"), "고른 폴더 행")
+    .toEqual([고른면, "500", 본문색]);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 키보드 길 — 버튼 넷과 단축키 넷은 같은 조작이다. 같은 차례로 누르면 같은 모양이 저장에 실린다.
 for (const way of ["단축키로", "버튼으로"] as const) {
   test(`고른 항목을 ${way} 아래로 옮기고 들여쓰면 앞 폴더의 마지막 자식이 되어 저장 명령에 그 모양이 실린다`, async ({
@@ -797,5 +849,46 @@ test("「LLM이 받는 텍스트」를 누르면 팝업이 미리보기의 글�
   await 팝업(page).getByRole("button", { name: "닫기", exact: true }).click();
   await expect(팝업(page)).toHaveCount(0);
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 23 — **팝업은 DS `Dialog` 모양이다**(codex-ds 스펙 §3 「확인 창 · 다이얼로그」 · DS `.at-dialog`): 떠 있는 면 · `radius-4xl`(24) ·
+// 떠 있는 그림자에 큰 그림자를 겹친 것(`shadow-modal`) · 막 `scrim`이고, 제목은 `heading-xs`(16/24 · 600)이며 창 안쪽 20에 선다. 머리 줄과
+// 글 사이는 0.5px `border-heavy` 한 줄이다(DS의 선). 확인 창과 같은 계열이라 같은 토큰에서 읽어 맞댄다(`primitives` 「확인 창」).
+test("「LLM이 받는 텍스트」 창은 DS Dialog 모양이다 — radius-4xl · shadow-modal · 막 scrim, 제목 heading-xs가 안쪽 20에 선다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+  await 미리보기(page).click();
+  const 창 = 팝업(page);
+  await expect(창).toBeVisible();
+  // 열림 애니메이션(크기 95% → 100%)이 끝난 뒤에 잰다 — 도는 동안의 상자는 제 자리가 아니다.
+  await expect.poll(() => 창.evaluate((el) => el.getAnimations().length)).toBe(0);
+
+  const 창반경 = await 토큰값(page, "border-top-left-radius", "--radius-4xl");
+  expect(창반경, "radius-4xl").toBe("24px");
+  const 겹 = `${await 토큰값(page, "box-shadow", "--shadow-prominent")}, ${await 토큰값(page, "box-shadow", "--shadow-2xl")}`;
+  const [반경, 그림자층, 면] = await 칠한값(창, "border-top-left-radius", "box-shadow", "background-color");
+  expect([반경, 그림자(그림자층), 면], "창").toEqual([창반경, 겹, await 토큰색(page, "--surface-elevated")]);
+  expect(await 칠한값(page.locator("[data-slot=dialog-overlay]"), "background-color"), "막").toEqual([
+    await 토큰색(page, "--scrim"),
+  ]);
+
+  // 제목 — heading-xs, 창 왼쪽 안쪽 20.
+  const 제목 = 창.getByRole("heading", { name: "LLM이 받는 텍스트", exact: true });
+  expect(await 칠한값(제목, "font-size", "line-height", "font-weight"), "제목").toEqual(["16px", "24px", "600"]);
+  const [창상자, 제목상자] = [(await 창.boundingBox())!, (await 제목.boundingBox())!];
+  expect(제목상자.x - 창상자.x, "제목은 안쪽 20").toBe(20);
+
+  // 머리 줄 아랫선 — 줄 안쪽 바닥의 0.5px `border-heavy` 면(`::after`).
+  const 아랫선 = await 제목.locator("xpath=..").evaluate((el) => {
+    const line = getComputedStyle(el, "::after");
+    return [line.position, line.bottom, line.height, line.backgroundColor];
+  });
+  expect(아랫선, "머리 줄 아랫선").toEqual(["absolute", "0px", "0.5px", await 토큰색(page, "--border-heavy")]);
+
+  await page.keyboard.press("Escape");
+  await expect(창).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

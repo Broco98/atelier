@@ -249,7 +249,8 @@ function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: Setti
       {/* 카드가 `relative`라 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
           본문이 아니라 이 카드의 바닥에 선다. */}
       <Card as="main" label="Settings" className="flex-1">
-        <div className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
+        {/* 옆은 글 거터 20이다(DS `.at-set` — 문서 글과 같은 거터). 위 24 · 아래 48과 글 폭은 설정 틀의 몸(`SettingsBody`)이 든다. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 scroll-quiet">
           {/* 읽는 중 · 읽지 못한 갈래도 이 틀 안에 선다 — 큰 제목은 늘 있고, 그 아래만 갈래마다 다르다. */}
           <SettingsBody>
             {/* **제목 역할은 이 큰 제목이 진다.** 머리 카드의 위치는 제목 역할이 없는 글자라, 이것이 없으면
@@ -758,7 +759,8 @@ export function TerminalSection({
 
         {/* 미리보기 — **필수다**(결정 52). 글꼴 이름을 잘못 적으면 오류 없이 폴백으로 그려지는
             조용한 실패를, 저장하기 전에 눈에 보이게 만드는 값싼 길이다. 색도 고른 테마의 것을
-            그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. */}
+            그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. 밝은 테마의 바탕은
+            흰 묶음과 같은 흰색이라, 가장자리는 안쪽 1px `border-light` 링이 세운다(코드 상자 `.at-code`와 같은 링). */}
         <SettingsRow
           name="미리보기"
           below={
@@ -771,7 +773,7 @@ export function TerminalSection({
                 // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
                 fontSize: `${fontSize ?? FONT_SIZE}px`,
               }}
-              className="flex min-h-[52px] items-center overflow-x-auto rounded-2xl px-[18px] leading-[1.6] whitespace-pre scroll-quiet"
+              className="flex min-h-[52px] items-center overflow-x-auto rounded-2xl px-[18px] leading-[1.6] whitespace-pre inset-ring inset-ring-border-light scroll-quiet"
             >
               {PREVIEW_LINE}
             </div>
@@ -1023,8 +1025,9 @@ export function HooksSection({
                   {status.writeError !== null && status.writeError !== status.error && (
                     <p className="text-chat-meta break-words text-danger">{status.writeError}</p>
                   )}
-                  {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 옅은 면 위의 흰 면이다. */}
-                  <pre className="max-h-[168px] overflow-auto rounded-2xl bg-surface px-4 py-3 font-mono text-code scroll-quiet">
+                  {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 모양은 문서의 코드 블록과 같은 DS `.at-code`다 —
+                      흰 묶음 위의 코드 면(`surface-code`) · `radius-3xl` · 안쪽 1px `border-light` 링. */}
+                  <pre className="max-h-[168px] overflow-auto rounded-3xl bg-surface-code px-4 py-3 font-mono text-code inset-ring inset-ring-border-light scroll-quiet">
                     {status.preview}
                   </pre>
                 </div>

@@ -337,9 +337,9 @@ const OUTSIDE_MESSAGE: Record<BannerVerdict, string> = {
  * 고르게 할 뿐 합치지 않는다. [새로 불러오기]는 초안을 버리고 새로 읽은 것을 보인다(깨졌으면 「읽지 못함」 화면이다).
  * [내 초안 유지]는 배너를 닫고 기준본만 새것으로 바꾼다.
  *
- * 자리는 폼 카드 맨 위(위 20 — 설정 틀 몸의 위와 같다)이고 폼과 같은 글 폭(`--measure-read`) 가운데다 — 설정 페이지의 메시지(`PageNotice`)와 같은 나눔이다.
- * 폼과 함께 구르지 않는다(스크롤 상자 밖). 모양은 경고색(`warning`) 띠다 — 묶음의 옅은 면(ui-refresh 결정 16)이 아니다: 폼의 묶음과 같은 면이면
- * 알림이 폼의 한 행으로 읽힌다(판 06 티켓 07).
+ * 자리는 폼 카드 맨 위(위 24 · 옆 글 거터 20 — 설정 틀 몸과 같다)이고 폼과 같은 글 폭(`size-thread`) 가운데다 — 설정 페이지의 메시지(`PageNotice`)와
+ * 같은 나눔이다. 폼과 함께 구르지 않는다(스크롤 상자 밖). 모양은 경고색(`warning`) 띠다 — 묶음의 흰 면(DS `SettingsGroup`)이 아니다: 폼의 묶음과
+ * 같은 면이면 알림이 폼의 한 행으로 읽힌다(판 06 티켓 07).
  */
 export function OutsideBanner({
   verdict,
@@ -353,12 +353,12 @@ export function OutsideBanner({
   return (
     // **배너가 선 동안은 이 상자가 폼 카드의 바닥이다**(`data-floor` — `EditorFrame`). 폼 카드는 몸을 격리해 바닥이 없어, 이것까지
     // 격리하면 최소 창에서 사이드바를 넓혔을 때 카드가 배너보다 좁아져 글이 카드 모서리에 잘린다.
-    <div data-floor className="shrink-0 px-(--card-pad) pt-5">
+    <div data-floor className="shrink-0 px-5 pt-6">
       {/* 폼 카드가 좁으면(최소 창) 두 버튼이 다음 줄로 내려간다 — 글이 한 글자씩 꺾여 세로로 서지 않게 글에 최소 폭을 둔다. 아이콘과
           글은 한 덩이라 함께 선다 — 줄바꿈하는 줄의 바닥은 가장 넓은 덩이 하나라, 둘이 따로면 바닥에서 아이콘이 글 위 줄로 떨어진다. */}
       <div
         role="alert"
-        className="mx-auto flex max-w-(--measure-read) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-warning/10 py-1.5 pr-1.5 pl-4"
+        className="mx-auto flex max-w-(--size-thread) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-warning/10 py-1.5 pr-1.5 pl-4"
       >
         <span className="flex flex-1 items-center gap-3">
           <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
@@ -450,14 +450,13 @@ function EditorFrame({
 }
 
 /**
- * 폼 카드의 몸 — 카드 안 여백(`--card-pad`)을 든 스크롤 상자와 그 안의 설정 틀 몸(`SettingsBody` — 읽는 폭 `--measure-read`
- * 가운데, ui-refresh 결정 12). 설정 페이지와 같은 나눔이다 — 여백을 폭 상자 밖에 두어 글 폭이 760 그대로다. 이름(`label`)을 주면
- * 그 이름의 영역(`section`)이다.
+ * 폼 카드의 몸 — 글 거터(옆 20)를 든 스크롤 상자와 그 안의 설정 틀 몸(`SettingsBody` — 글 폭 `size-thread` 가운데, 위 24 · 아래 48).
+ * 설정 페이지와 같은 나눔이다 — 거터를 폭 상자 밖에 두어 글 폭이 48rem 그대로다. 이름(`label`)을 주면 그 이름의 영역(`section`)이다.
  */
 function FormBody({ label, children }: { label?: string; children: ReactNode }) {
   const Tag = label === undefined ? "div" : "section";
   return (
-    <Tag aria-label={label} className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
+    <Tag aria-label={label} className="min-h-0 flex-1 overflow-y-auto px-5 scroll-quiet">
       <SettingsBody>{children}</SettingsBody>
     </Tag>
   );
@@ -929,8 +928,9 @@ function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boo
  * 골라야 하는지 트리에서 보인다.
  *
  * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-chat-meta` · 14px `fg-tertiary` 글리프와 이름 사이 7px · hover
- * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 항목 행은 파일 · 폴더 모두 본문 글자색이다 — 한 단 흐린 것은 머리 `spec/`
- * 하나다(프로토타입 `Settings-editor`).
+ * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 파일 행은 본문 글자색이고 폴더 행은 머리 `spec/`처럼 한 단 흐린 `fg-secondary`다
+ * (DS `.at-tree-row.folder` — 문서 트리 `SpecTree`와 같다, codex-ds 티켓 23). 고른 행은 폴더도 `selected-row`의 본문색이다 — 앱의 고른
+ * 행은 모두 그 한 유틸리티의 글자색이다(DS의 고른 행 `.is-on`은 글자색을 말하지 않는다).
  */
 function TreeRow({
   entry,
@@ -985,7 +985,7 @@ function TreeRow({
           ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent"
           : selected
             ? "selected-row font-medium"
-            : "text-fg hover:bg-fill-soft",
+            : cn("hover:bg-fill-soft", folder ? "text-fg-secondary" : "text-fg"),
         hasError && "text-danger",
         dragged && "opacity-40",
       )}
@@ -1311,7 +1311,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
           <PopoverTrigger
             aria-label="아이콘 바꾸기"
             // 큰 제목 앞의 아이콘 상자다(판 06 티켓 07, 프로토타입 `Settings-editor`) — 44px · 옅은 면 · 테두리 없음. 모서리는
-            // DS에 12가 없어 컨트롤의 10(`rounded-lg`)이다.
+            // 누르는 것이라 버튼의 `radius-lg`(10)다 — DS는 반경을 쓰임으로 정한다(DS README 「간격 · 반경 · 크기」).
             // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-surface-under`가 `toggle-on`과 겹치면 코어
             // 유틸리티가 뒤에 서서 열린 바탕을 덮고, `quiet-hover`는 꺼진 가지에만 선다(`index.css`의 그 유틸리티).
             className={cn(
@@ -1377,7 +1377,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
 /**
  * 읽지 못하는 레이아웃(티켓 11) — **편집 UI를 세우지 않는다.** 까닭(엔진이 준 오류 전부)과 설정으로
  * 돌아가는 길만 보인다. 고치는 길은 설정의 레이아웃 행에 있다: 에이전트에게 부탁, 손으로 고치기, 되돌리기.
- * 어느 쪽이든 감시가 따라온다. 자리(카드 안 여백 · 글 폭)는 부르는 쪽의 폼 몸(`FormBody`)이 든다 — 트리 카드는 서지 않는다.
+ * 어느 쪽이든 감시가 따라온다. 자리(글 거터 · 글 폭)는 부르는 쪽의 폼 몸(`FormBody`)이 든다 — 트리 카드는 서지 않는다.
  */
 export function UnreadableLayout({
   read,
