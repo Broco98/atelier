@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownIpcCalls, writeShell } from "./harness";
+import {
+  awaitSpawned,
+  callCount,
+  installFixtureBackend,
+  typeIntoShell,
+  unknownIpcCalls,
+  writeShell,
+  파일탭주소 as codeUrl,
+  주소로간다,
+} from "./harness";
 
 // git-integration 판 01 티켓 04(#477) — **파일 탭이 주소로 열리고, `×`와 ⌘W로 닫힌다.**
 //
@@ -11,8 +20,6 @@ import { awaitSpawned, callCount, installFixtureBackend, typeIntoShell, unknownI
 
 // 워크트리가 하나(`billing`)인 work — 셸이 저절로 뜨는 화면이다. 옆 work은 옮겨 갔다 오는 자리다.
 const [work, plainWork] = WORKS;
-
-const codeUrl = (ref: string, slug = work.slug) => `/works/${slug}?tab=code&code=${encodeURIComponent(ref)}`;
 
 /** 묶음의 칸들 — 탭 줄 스크롤 상자 안, 왼쪽부터. 셸이든 파일이든 센다. */
 const 묶음 = (page: Page) => page.locator("[data-tab-strip] > [data-tab]");
@@ -29,19 +36,6 @@ const 파일탭차례 = (page: Page) => 파일탭들(page).evaluateAll((cells) =
 const 닫기 = (page: Page, ref: string) => 파일탭(page, ref).locator('button[aria-label$=" 닫기"]');
 const 셸칸 = (page: Page) => page.locator('[data-tab="shell"]');
 const 문서카드 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
-
-/**
- * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트 · 대화창이 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
- * 메모리에만 사는 묶음(결정 33)을 지운다. 라우터의 기록(`@tanstack/history`)이 `pushState`를 감싸 듣고 있어 이 한 번으로
- * 화면이 따라오고, 뒤로가기도 이 자리를 센다.
- */
-async function 주소로간다(page: Page, url: string): Promise<void> {
-  await page.evaluate((next) => {
-    const state = (window.history.state ?? {}) as Record<string, unknown>;
-    const index = (typeof state.__TSR_index === "number" ? state.__TSR_index : 0) + 1;
-    window.history.pushState({ ...state, __TSR_index: index, key: `t${index}`, __TSR_key: `t${index}` }, "", next);
-  }, url);
-}
 
 test("주소가 가리키는 파일이 묶음 끝에 파일 탭으로 서고, 본문에 줄 번호 붙은 원문과 경로 줄이 뜬다", async ({ page }) => {
   await installFixtureBackend(page);

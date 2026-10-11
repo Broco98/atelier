@@ -516,6 +516,14 @@ function bundleOwnerOf(state: ShellsState, id: number): ShellOwner | null {
 }
 
 /**
+ * 그 id의 칸이 아직 **어느 묶음에** 있는가 — 셸 칸이든 파일 탭이든. 끄는 칸이 살아 있는지를 묻는 자리(터미널 스토어의 끌기
+ * 거두기)가 딛는다 — 셸 목록만 보면 끄는 파일 탭은 늘 「없는 칸」이라 누르자마자 끌기가 거둬진다.
+ */
+export function hasBundleTab(state: ShellsState, id: number): boolean {
+  return bundleOwnerOf(state, id) !== null;
+}
+
+/**
  * 그 화면 묶음에 **파일 탭**을 연다(git-integration 판 01 — 스토리 23~25). 같은 정체(`CodeTarget`)의 칸이 이미 있으면 새로
  * 서지 않고 그 칸을 켠다. 없으면 묶음 **끝에** 붙이고 켠다 — 이미 선 칸의 자리와 번호가 안 흔들린다(결정 31).
  *

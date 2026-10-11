@@ -1213,6 +1213,29 @@ export const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
 export const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
 
 /**
+ * 파일 탭 하나를 가리키는 work 화면 주소 — `?tab=code&code=<프로젝트>/<경로>`(git-integration 결정 33 · S12). work을 안 주면
+ * 워크트리가 하나(`billing`)인 `WORKS[0]`이다.
+ */
+export const 파일탭주소 = (ref: string, slug = WORKS[0].slug) =>
+  `/works/${slug}?tab=code&code=${encodeURIComponent(ref)}`;
+
+/**
+ * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트 · 대화창이 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
+ * 메모리에만 사는 묶음(git-integration 결정 33)을 지운다. 라우터의 기록(`@tanstack/history`)이 `pushState`를 감싸 듣고 있어
+ * 이 한 번으로 화면이 따라오고, 뒤로가기도 이 자리를 센다.
+ *
+ * 파일 탭을 묶음에 세우는 길이 지금은 주소 하나라(주소가 가리키는 파일이 묶음에 없으면 끝에 연다 — git-integration S12) 파일
+ * 탭을 여럿 세우는 검사가 이것으로 하나씩 연다.
+ */
+export async function 주소로간다(page: Page, url: string): Promise<void> {
+  await page.evaluate((next) => {
+    const state = (window.history.state ?? {}) as Record<string, unknown>;
+    const index = (typeof state.__TSR_index === "number" ? state.__TSR_index : 0) + 1;
+    window.history.pushState({ ...state, __TSR_index: index, key: `t${index}`, __TSR_key: `t${index}` }, "", next);
+  }, url);
+}
+
+/**
  * `그냥 일`(`WORKS[1]`)의 터미널 탭에 칸 둘을 세우고 **첫째를 켠다** — 말하는 것은 둘째(pty 2, `openShell` 머리말)다. 켠 칸에 온
  * 확인할 것은 그 순간 「봤다」가 되어(terminal-activity-signal 결정 7) 띠에 안 서므로, 보는 셸과 부르는 셸을 가른다. 픽스처
  * 백엔드는 덮어쓰기 없이 여기서 깐다 — 시계를 쓰는 검사는 그 전에 `page.clock.install()`을 건다.
