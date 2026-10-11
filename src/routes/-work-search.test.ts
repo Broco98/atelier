@@ -108,7 +108,7 @@ describe("주소를 고치는 짝", () => {
   });
 
   // three-axes S21 — 대화 탭은 분할에 들지 않는다. 분할 중에 대화 탭으로 가면 분할이 꺼진다: 남겨 두면 주소가 `tab=chat&split=lr`이
-  // 되어 분할이 이기고(화면은 `spec ▏터미널` 그대로), 눌러도 아무 일이 없는 칸이 된다.
+  // 되어 분할이 이기고(화면은 `spec ▏ 묶음의 지금 탭` 그대로), 눌러도 아무 일이 없는 칸이 된다.
   it("분할 중에 대화 탭으로 가면 분할이 꺼진다", () => {
     expect(tabSearch({ file: "a.md", split: "rl" as const }, "chat")).toEqual({
       file: "a.md",

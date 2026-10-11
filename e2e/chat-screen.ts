@@ -11,7 +11,7 @@ import { installFixtureBackend } from "./harness";
 /** 레일 — 작업 화면 오른쪽 끝의 칸 묶음. */
 export const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
 /** 레일 칸 — 탭 줄의 칸과 이름이 갈리도록 레일 묶음 안에서 집는다. */
-export const 레일칸 = (page: Page, name: "spec" | "chat" | "info") => 레일(page).getByRole("button", { name, exact: true });
+export const 레일칸 = (page: Page, name: "spec" | "chat" | "files" | "info") => 레일(page).getByRole("button", { name, exact: true });
 export const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 export const 입력칸 = (page: Page) => 작업패널(page).getByRole("textbox", { name: "보낼 말", exact: true });
 export const 대화탭줄 = (page: Page) => 작업패널(page).getByRole("group", { name: "대화 탭", exact: true });

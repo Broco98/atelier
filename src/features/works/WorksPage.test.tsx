@@ -1602,7 +1602,7 @@ describe("WorksPage `chat` 탭", () => {
     ]);
   });
 
-  it("분할에는 들지 않는다 — `tab=chat`에 분할이 겹치면 분할이 이기고 `spec ▏터미널`이다", () => {
+  it("분할에는 들지 않는다 — `tab=chat`에 분할이 겹치면 분할이 이기고 `spec ▏ 묶음의 지금 탭`이다", () => {
     const markup = render(withSpec, "chat", "lr");
     expect(countOf(markup, "data-column=")).toBe(2);
     expect(markup.indexOf('data-column="spec"')).toBeLessThan(markup.indexOf('data-column="terminal"'));

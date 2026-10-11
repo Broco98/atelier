@@ -400,8 +400,9 @@ function WorksPage({
   const specStands = split !== null || tab === "spec";
   const terminalStands = (split !== null && codeTarget === null) || tab === "terminal";
   const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
-  // **`chat` 탭 — 대화창이 가운데에 넓게 선다**(three-axes S21 · 결정 9). 분할에는 들지 않는다: 분할은 늘 `spec ▏터미널`이라
-  // `tab=chat`에 분할이 겹치면(손으로 친 주소) 분할이 이긴다. 대화 탭으로 가는 갱신은 분할을 함께 끈다(`tabSearch`).
+  // **`chat` 탭 — 대화창이 가운데에 넓게 선다**(three-axes S21 · 결정 9). 분할에는 들지 않는다: 분할은 늘 `spec ▏ 묶음의 지금 탭`이라
+  // `tab=chat`에 분할이 겹치면(손으로 친 주소 · 그것을 적어 둔 기억) 분할이 이기고 포커스는 문서 열이다(`columnOf`). 대화 탭으로
+  // 가는 갱신은 분할을 함께 끈다(`tabSearch`).
   const chatStands = split === null && tab === "chat";
 
   // **한 대화창은 한 곳에**(three-axes S22). `chat` 탭이 떠 있으면 작업 패널은 `chat`을 보이지 않는다 — 패널이 `chat`을 고른 채였으면
@@ -836,9 +837,9 @@ function WorksPage({
                 (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
                 주석까지 읽는다.) */}
             {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
-                터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
-                여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. **열 탭이 아니면 `spec`이다**: `chat` 탭에서 켜도
-                분할은 `spec ▏터미널`이다(three-axes S21). */}
+                묶음 열(묶음의 지금 탭 — 셸이든 파일 탭이든, git-integration 결정 32)이 오른쪽이다. 끄면 `tab`이 가리키는
+                쪽이 남으므로(결정 97) 여기서 정할 것이 없다 — 지금 `tab`이 든 열을 그대로 넘긴다. **대화 탭은 문서 열이다**
+                (`columnOf`): `chat` 탭에서 켜도 분할은 `spec ▏ 묶음의 지금 탭`이다(three-axes S21). */}
             {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
                 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
                 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와

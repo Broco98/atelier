@@ -184,7 +184,7 @@ test("⌘ 키: `chat` 탭에서도 ⌘2는 첫 셸, ⌘1은 `spec`이다 — 입
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("분할: `chat` 탭에서 분할을 켜도 `spec ▏터미널`이고, 분할 중에 `chat` 탭을 누르면 분할이 꺼지고 대화창이 선다", async ({ page }) => {
+test("분할: `chat` 탭에서 분할을 켜도 `spec ▏ 묶음의 지금 탭`이고, 분할 중에 `chat` 탭을 누르면 분할이 꺼지고 대화창이 선다", async ({ page }) => {
   await openWork(page, "?tab=chat");
   await expect(입력칸(가운데대화(page))).toBeVisible();
 
