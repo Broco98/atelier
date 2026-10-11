@@ -219,11 +219,15 @@ impl Sandbox {
 
     /// Codex를 띄우는 데 드는 셋을 둔 PATH 폴더. `codex-acp`는 가짜 ACP 에이전트 bin을 가리키는 링크이고,
     /// `codex` · `node`는 찾기만 하는 가짜다.
+    ///
+    /// 두 번 불러도 된다 — 앱을 다시 켠 꼴(호스트를 다시 짓기)에서 로그인 셸을 새로 쓸 때 같은 폴더를 쓴다.
     pub fn codex_bin(&self) -> PathBuf {
         let bin = self.bin("codex-bin");
-        std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-acp-agent"), bin.join("codex-acp")).unwrap();
-        self.plant(&bin, "codex");
-        self.plant(&bin, "node");
+        if fs::symlink_metadata(bin.join("codex-acp")).is_err() {
+            std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-acp-agent"), bin.join("codex-acp")).unwrap();
+            self.plant(&bin, "codex");
+            self.plant(&bin, "node");
+        }
         bin
     }
 
@@ -492,6 +496,25 @@ impl Sandbox {
         }
     }
 
+    /// 가짜 ACP 에이전트가 뜰 때마다(`initialize`를 받을 때마다) 남긴 줄 — `{pid}`, 뜬 차례대로(three-axes 티켓 10).
+    pub fn acp_launches(&self) -> Vec<Value> {
+        self.acp_lines("launches")
+    }
+
+    /// 가짜 ACP 에이전트가 받은 되살리기(`session/resume` · `session/load`) — `{pid, method, params, ok}`, 받은 차례대로.
+    /// 모르는 세션이면 `ok`가 false다(three-axes 티켓 10).
+    pub fn acp_revivals(&self) -> Vec<Value> {
+        self.acp_lines("revivals")
+    }
+
+    fn acp_lines(&self, name: &str) -> Vec<Value> {
+        fs::read_to_string(self.acp_receipts().join(name))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("영수증 줄은 JSON"))
+            .collect()
+    }
+
     /// 그 대화의 에이전트 쪽 세션 id(`agents.json`).
     pub fn agent_session_id(&self, slug: &str, conversation: &str) -> String {
         self.agents_row(slug, conversation)["agentSessionId"].as_str().expect("에이전트 쪽 세션 id").to_owned()
@@ -636,6 +659,13 @@ pub fn records_dir() -> PathBuf {
 /// 다시 지은 기록을 고정값으로 바꾼다 — 매번 달라지는 것은 시각 · 걸린 시간 · 임시 데이터 루트 · 에이전트 쪽
 /// 세션 id다. 시각은 `기준 + seq초`로 다시 찍는다. 그래서 L3에서 「N초 동안 작업함」이 0이 아닌 값으로 선다.
 pub fn fix_record(record: &[Value], data_root: &Path, session_id: &str) -> Vec<Value> {
+    fix_record_sessions(record, data_root, &[session_id])
+}
+
+/// [`fix_record`]와 같되 에이전트 쪽 세션이 여럿인 기록 — 되살리기가 새 세션으로 끝난 대화(three-axes 티켓 10). 첫째는
+/// `fake-session`, 그 뒤는 `fake-session-2` …로 바꾼다. 가짜의 세션 id는 `fake-<pid>`라 한 id가 다른 id의 앞부분일 수 있어,
+/// 긴 것부터 바꾼다.
+pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&str]) -> Vec<Value> {
     fn at(seq: u64) -> String {
         format!("2026-10-10T10:{:02}:{:02}.000+09:00", seq / 60, seq % 60)
     }
@@ -661,7 +691,12 @@ pub fn fix_record(record: &[Value], data_root: &Path, session_id: &str) -> Vec<V
                 _ => {}
             }
             replace(&mut line, &root, "~/.atelier");
-            replace(&mut line, session_id, "fake-session");
+            let mut sessions: Vec<(usize, &str)> = session_ids.iter().copied().enumerate().collect();
+            sessions.sort_by_key(|(_, id)| std::cmp::Reverse(id.len()));
+            for (at, id) in sessions {
+                let fixed = if at == 0 { "fake-session".to_owned() } else { format!("fake-session-{}", at + 1) };
+                replace(&mut line, id, &fixed);
+            }
             line
         })
         .collect()
@@ -841,6 +876,11 @@ pub fn emitted(events: &Events, slug: &str, id: &str) -> Vec<Value> {
             _ => None,
         })
         .collect()
+}
+
+/// 영수증 줄들의 `pid`.
+pub fn pids_of(lines: &[Value]) -> Vec<u32> {
+    lines.iter().map(|line| line["pid"].as_u64().expect("pid") as u32).collect()
 }
 
 /// 테스트 프로세스 자신의 Unix 세션 id.

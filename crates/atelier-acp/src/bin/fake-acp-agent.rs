@@ -25,6 +25,10 @@
 //! - `FAKE_ACP_PERMISSION_WITHDRAWS` — 있으면 `asks-permission`이 권한을 묻고 **답을 기다리지 않고** 턴을 끝낸다.
 //! - `FAKE_ACP_PERMISSION_OUT_OF_TURN` — 있으면 `asks-permission`이 턴을 먼저 끝내고(`end_turn`) 그 뒤에 묻는다 — 턴 밖에서
 //!   걸린 권한이다. 답 뒤의 도구 update도 턴 밖에서 온다.
+//! - `FAKE_ACP_FORGETS` — 있으면 되살리기(`session/resume` · `session/load`)를 모르는 세션으로 거절한다 — 에이전트의 세션
+//!   저장소가 비었다(three-axes 티켓 10). 없으면 이 영수증 폴더에 `<세션 id>.json`이 있는 세션(가짜가 연 세션)을 안다.
+//! - `FAKE_ACP_DIES_ASKING` — 있으면 `dies-mid-turn`이 죽기 전에 권한을 묻고, `<세션 id>.go`가 설 때까지 기다렸다 죽는다 —
+//!   권한이 걸린 채 죽는 갈래(three-axes 티켓 10).
 //!
 //! - `writes-spec` 시나리오의 `hold` 단계는 영수증 폴더에 그 이름의 파일(문)이 생길 때까지 턴을 붙잡는다.
 //! - 영수증 폴더의 `<세션 id>.go` — `pauses-mid-turn`이 턴 도중 이 파일이 생길 때까지 기다린다. 검사가 턴 한가운데에서
@@ -36,6 +40,10 @@
 //! 받은 메시지의 메서드는 요청이든 알림이든 `<세션 id>.inbox`에 받은 차례대로 더한다 — 멈추기와 다음 말의 차례를 잰다.
 //! 가짜가 보낸 요청(권한 요청)에 받은 답은 원문 그대로 `<세션 id>.responses`에 한 줄씩 더한다. 받은 모드 · 설정 바꾸기
 //! (`session/set_mode` · `session/set_config_option`)는 메서드와 인자를 `<세션 id>.config`에 한 줄씩 더한다.
+//!
+//! 세션과 상관없는 영수증 둘(three-axes 티켓 10): 뜰 때마다(`initialize`를 받을 때마다) `launches`에 `{pid}` 한 줄, 받은
+//! 되살리기마다 `revivals`에 `{pid, method, params, ok}` 한 줄. 되살린 세션은 옛 세션 id를 그대로 쓰므로 그 뒤의 영수증
+//! (`prompts` · `inbox` · `config` …)은 옛 세션의 파일에 이어 적힌다.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -67,6 +75,9 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("modes-and-models", modes_and_models),
     ("commands", commands),
     ("plan-mode", plan_mode),
+    ("resume-advertised", resume_advertised),
+    ("replays-on-load", replays_on_load),
+    ("resume-resets-config", resume_resets_config),
 ];
 
 fn main() {
@@ -96,14 +107,39 @@ fn refuses_prompt(fake: &mut Fake) {
 /// 호스트는 수신 EOF와 자식의 끝을 둘 다 본다. 어느 쪽이 먼저 와도 죽음을 알아야 하므로 순서를 고를 수 있다.
 /// - `exit-first`: 출력을 쥔 손주(`sleep`)를 남기고 exit 3 — 자식은 끝났지만 수신 EOF는 오지 않는다.
 /// - `eof-first`: stdout을 닫고 살아 버틴다 — 수신 EOF는 왔지만 자식은 끝나지 않는다.
+///
+/// `FAKE_ACP_DIES_ASKING`이 있으면 죽기 전에 권한을 묻고, 검사가 `<세션 id>.go`로 놓을 때까지 걸린 채 기다렸다 죽는다.
+///
+/// 한 번만 죽는다 — 죽을 때 영수증 폴더에 표지(`dies-mid-turn.died`)를 두고, 표지가 있으면 그 뒤에 뜬 가짜는 「Codex 한 턴」으로
+/// 답한다. 죽은 대화가 다음 말에서 다시 뜬 뒤 이어 가는지를 잰다(three-axes 티켓 10).
 fn dies_mid_turn(fake: &mut Fake) {
-    fake.on_prompt = |fake, _id, session_id| {
+    fake.on_prompt = |fake, id, session_id| {
+        let marker = fake.receipts.as_ref().map(|dir| dir.join("dies-mid-turn.died"));
+        if marker.as_ref().is_some_and(|marker| marker.exists()) {
+            return codex_one_turn(fake, id, session_id);
+        }
         fake.wire.notify(
             "session/update",
             json!({"sessionId": session_id,
                    "update": {"sessionUpdate": "agent_message_chunk",
                               "content": {"type": "text", "text": "시작한다…"}}}),
         );
+        if std::env::var_os("FAKE_ACP_DIES_ASKING").is_some() {
+            fake.request(
+                "session/request_permission",
+                json!({"sessionId": session_id,
+                       "toolCall": {"toolCallId": "exec-fake-dies", "kind": "execute", "status": "pending",
+                                    "title": PERMISSION_COMMAND, "rawInput": {"command": PERMISSION_COMMAND}},
+                       "options": [
+                           {"optionId": "allow_once", "name": "Yes, proceed", "kind": "allow_once"},
+                           {"optionId": "cancel", "name": "No, and tell Codex what to do differently", "kind": "reject_once"}
+                       ]}),
+            );
+            fake.hold_until_released(session_id);
+        }
+        if let Some(marker) = marker {
+            let _ = std::fs::write(marker, "");
+        }
         eprintln!("thread 'main' panicked at codex-rs/core/src/turn.rs:42");
         eprintln!("note: run with RUST_BACKTRACE=1");
         match std::env::var("FAKE_ACP_DIES").as_deref() {
@@ -594,6 +630,32 @@ fn plan_turn(fake: &mut Fake, id: &Value, session_id: &str) {
     }
 }
 
+/// 되살리기를 광고하는 에이전트(three-axes 티켓 10) — 진짜 codex-acp 2.2.2처럼 `sessionCapabilities.resume`과 `loadSession`을
+/// 둘 다 광고한다(실측 `codex-acp-2.2.2-initialize.json`). `session/resume`은 아는 세션이면 과거를 되감지 않고 답하고, 답 뒤에
+/// 명령 목록을 보낸다(실측 session-resume). 모르는 세션이면(`FAKE_ACP_FORGETS`) resume도 load도 거절한다.
+fn resume_advertised(fake: &mut Fake) {
+    fake.resumes = true;
+    fake.loads = true;
+    fake.converse();
+}
+
+/// `session/load`만 광고하는 에이전트 — load는 답 **전에** 과거를 되감는다(실측 `codex-acp-2.2.2-session-load-replay.jsonl`:
+/// 명령 목록 · 사람의 말 조각 · 답 조각). 답 뒤에는 `session_info_update` 하나를 보낸다 — 재생이 아니라 살아야 하는 줄이다.
+fn replays_on_load(fake: &mut Fake) {
+    fake.loads = true;
+    fake.converse();
+}
+
+/// 되살리면 config 기본값으로 돌아가는 Codex(three-axes 결정 27) — `resume-advertised`에 codex-acp 2.2.2 모양의 목록과 모드 ·
+/// 설정 바꾸기(`modes-and-models`)를 더했다. 되살린 답의 모드 · 모델은 앞서 무엇을 바꿨든 늘 기본값이다. 받은 바꾸기는 `config`
+/// 영수증에 남는다.
+fn resume_resets_config(fake: &mut Fake) {
+    fake.resumes = true;
+    fake.loads = true;
+    fake.codex_lists = true;
+    fake.converse();
+}
+
 /// 가짜 하나의 상태 — 선과, 영수증에 실을 것들.
 struct Fake {
     wire: Wire,
@@ -620,6 +682,10 @@ struct Fake {
     codex_lists: bool,
     /// 명령 목록(`available_commands_update`)을 `session/new`의 답 뒤와 턴의 답 뒤마다 보내나(진짜 codex-acp 그대로).
     commands: bool,
+    /// `sessionCapabilities.resume`을 광고하고 `session/resume`을 받나(티켓 10).
+    resumes: bool,
+    /// `loadSession`을 광고하고 `session/load`를 받나(티켓 10).
+    loads: bool,
 }
 
 impl Fake {
@@ -640,6 +706,8 @@ impl Fake {
             requests: 0,
             codex_lists: false,
             commands: false,
+            resumes: false,
+            loads: false,
         }
     }
 
@@ -698,6 +766,7 @@ impl Fake {
             let Some(id) = message.get("id").cloned() else { continue };
             match message["method"].as_str().unwrap_or_default() {
                 "initialize" => {
+                    self.append_shared("launches", &json!({"pid": std::process::id()}).to_string());
                     self.initialize = message["params"].clone();
                     let version = self.version.clone();
                     self.wire.reply(
@@ -706,8 +775,9 @@ impl Fake {
                             "protocolVersion": 1,
                             "agentInfo": {"name": "atelier-fake-acp-agent", "title": "Fake ACP agent", "version": version},
                             "agentCapabilities": {
-                                "loadSession": false,
-                                "promptCapabilities": {"image": false, "audio": false, "embeddedContext": false}
+                                "loadSession": self.loads,
+                                "promptCapabilities": {"image": false, "audio": false, "embeddedContext": false},
+                                "sessionCapabilities": if self.resumes { json!({"resume": {}}) } else { json!({}) }
                             }
                         }),
                     );
@@ -772,6 +842,8 @@ impl Fake {
                 }
                 // 모드 · 설정 바꾸기 — 알림 없이 `{}`로 답한다(three-axes 결정 27). 진짜는 `set_config_option`에
                 // `{configOptions}`로 답하지만 호스트는 그 답을 쓰지 않는다 — 값은 호스트가 쥔다.
+                method @ "session/resume" if self.resumes => self.revive(&id, method, &message["params"]),
+                method @ "session/load" if self.loads => self.revive(&id, method, &message["params"]),
                 method @ ("session/set_mode" | "session/set_config_option") if self.codex_lists => {
                     let line = json!({"method": method, "params": message["params"]});
                     self.append_receipt("config", &line.to_string());
@@ -784,6 +856,46 @@ impl Fake {
             }
         }
         self.note("stdin-eof");
+    }
+
+    /// 되살리기 하나(`session/resume` · `session/load`, three-axes 티켓 10). 모르는 세션이면 오류로 답한다 — 그러면 호스트는 다음
+    /// 단계로 간다. 아는 세션이면 그 세션 id로 이어 가고, 답에는 id 없이 모드 · 모델 · configOptions만 싣는다(실측 그대로) —
+    /// 앞서 무엇을 바꿨든 config 기본값이다(결정 27). load는 답 전에 과거를 되감고 답 뒤에 줄 하나를 더 보낸다.
+    fn revive(&mut self, id: &Value, method: &str, params: &Value) {
+        let session_id = params["sessionId"].as_str().unwrap_or_default().to_owned();
+        let known = std::env::var_os("FAKE_ACP_FORGETS").is_none()
+            && !session_id.is_empty()
+            && self.receipts.as_ref().is_some_and(|dir| dir.join(format!("{session_id}.json")).exists());
+        let receipt = json!({"pid": std::process::id(), "method": method, "params": params, "ok": known});
+        self.append_shared("revivals", &receipt.to_string());
+        if !known {
+            // 진짜 codex는 저장소에 없는 스레드를 이 꼴로 거절한다.
+            return self.wire.reply_error(id, -32603, &format!("Internal error: no rollout found for thread id {session_id}"));
+        }
+        self.session_id = Some(session_id.clone());
+        self.append_receipt("inbox", method);
+        self.spec_dir =
+            params["additionalDirectories"][0].as_str().or_else(|| params["cwd"].as_str()).map(PathBuf::from);
+        let mut opened = if self.codex_lists { codex_session_opened(&session_id) } else { session_opened(&session_id) };
+        opened.as_object_mut().expect("답은 객체다").remove("sessionId");
+        let send = |fake: &mut Fake, update: Value| {
+            fake.wire.notify("session/update", json!({"sessionId": session_id, "update": update}));
+        };
+        if method == "session/load" {
+            // 과거를 되감는다 — 화면은 앱의 기록으로 그리므로 호스트가 버려야 한다.
+            for update in [
+                json!({"sessionUpdate": "available_commands_update", "availableCommands": []}),
+                json!({"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "되감은 사람의 말"}}),
+                json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "되감은 답"}}),
+            ] {
+                send(self, update);
+            }
+            self.wire.reply(id, opened);
+            send(self, json!({"sessionUpdate": "session_info_update", "title": "되살린 세션"}));
+        } else {
+            self.wire.reply(id, opened);
+            self.send_commands(&session_id);
+        }
     }
 
     /// 다음 메시지. 세션이 열린 뒤에 받은 것이면 그 메서드를 `inbox` 영수증에 더하고, 가짜가 보낸 요청의 답이면 원문을
@@ -903,6 +1015,14 @@ impl Fake {
     /// 세션이 열린 뒤에 일어난 일 한 줄.
     fn note(&self, event: &str) {
         self.append_receipt("events", event);
+    }
+
+    /// 세션과 상관없는 영수증 `<what>`에 한 줄을 더한다 — 뜬 것(`launches`)과 되살리기(`revivals`)처럼 세션 id를 알기 전이나
+    /// 모르는 세션의 일이다.
+    fn append_shared(&self, what: &str, line: &str) {
+        let Some(dir) = &self.receipts else { return };
+        let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join(what)) else { return };
+        let _ = writeln!(file, "{line}");
     }
 
     /// 그 세션의 `<세션 id>.<what>` 영수증에 한 줄을 더한다.
