@@ -52,7 +52,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 앱 셸의 길이 — 타이틀바 띠의 높이, 행의 리듬, ui-refresh 때의 여백.
+/* 앱 셸의 길이 — 머리 줄의 높이, 행의 리듬, ui-refresh 때의 여백.
 
    **폭(사이드바 · 목록 패널 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
    거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 280, 240, 400)`, 목록 패널은 Projects ·
@@ -62,7 +62,14 @@
    없다** — 기본값을 그 DS 값으로 옮기는 것은 codex-ds 스펙 S4(티켓 18 · 19 · 20)다. 그때까지 두 벌의 값이 다르고, 화면에 서는
    것은 인라인 값이다. */
 :root {
-    --titlebar-height: 44px;
+    /* **머리 줄** — 창 맨 위 48 줄(codex-ds 스펙 §4 · DS `AppShell`). 틈 8 · 머리 카드 32(`--size-head`) · 틈 8이라 그 가운데
+       24가 창 컨트롤 · 패널 토글 · 신호등의 가운데 줄이다(`ShellControls` · `tauri.conf.json`의 `trafficLightPosition`).
+       신호등은 y 26이다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
+       tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 값이다(2026-10-11 — y 24면 가운데가
+       22다). 이 값을 고치면 y도 함께 고친다.
+       식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
+       읽는다. 사이드바 맨 위 빈 신호등 자리도 이 값이다(`Sidebar`). 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
+    --titlebar-height: 48px;
     /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 패널 둘이 전부 이
        값을 읽는다. 한때 여덟 자리에 `gap-[3px]`로 흩어져 있었고, 그러면 한 곳만 손봐도
        같은 컬럼 안에서 리듬이 갈린다. `gap-(--row-gap)`으로 받는다. */
@@ -93,11 +100,11 @@
     --term-inset: 12px;
 }
 
-/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 바탕 줄(`Frame`의 `TitleBar`) 하나가 --tab-lead /
-   --titlebar-inset-tabs를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리(탭 줄도)는 바탕 줄 아래에 서서 피할 것이 없다.
-   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고,
-   그 뒤 --tab-lead를 띄운 곳부터 바탕 줄의 내용이 설 수 있다 — 지금 왼쪽에 서는 것은 없다(작업 화면의 조작은
-   오른쪽 끝에 붙는다). 컨트롤이 늘면 여기 칸 수만 고치면 된다.
+/* 머리 줄 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 머리 줄(`Frame`의 `HeadRow`) 하나가 사이드바가 접혔을 때
+   --titlebar-inset-head를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리(탭 줄도)는 머리 줄 아래에 서서 피할 것이 없다.
+   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고, 사이드바가 접히면 그 뒤
+   틈(`--gap`) 하나를 띄운 곳부터 머리 카드가 선다(DS 「머리 카드는 창 컨트롤 뒤부터」 · `.at-winhead.free`). 사이드바가
+   열렸으면 컨트롤은 사이드바 위에 서서 머리 줄이 피할 것이 없다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
@@ -107,10 +114,10 @@
     /* 작은 아이콘 버튼(`icon-button-xs` — 24) 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
        여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
     --titlebar-control-size: 24px;
-    /* 셸 컨트롤 사이 간격이자 작업 화면 바탕 줄 조작(상태 · ⋯ · 분할) 사이 간격이고, 바탕 줄 왼쪽 여백
-       (--tab-lead)이다. 24px 상자에 16px 글리프라 좌우 4px씩이 이미 비어 있어, 여기 값이 작으면 글리프끼리
-       붙어 보인다 */
-    --titlebar-control-gap: 6px;
+    /* 셸 컨트롤 사이 — Codex 값 2다(codex-ds 스펙 §4 · DS `.at-winctl`). 24px 상자에 16px 글리프라 좌우 4px씩이
+       이미 비어 있어, 글리프 사이는 10이다. 한때 6이었다(그때는 작업 화면의 조작 · 창 맨 위 줄 왼쪽 여백과 한 값이었다 —
+       조작은 이제 머리 카드의 할 일이고 그 사이는 DS `.at-winctl-r`의 6이다). */
+    --titlebar-control-gap: 2px;
     /* 사이드바 토글 · 뒤로 · 앞으로 · 검색 네 칸. ShellControls가 이 폭을 그대로 쓰므로
        칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다.
        **칸 사이는 한 값뿐이다** — 검색을 「지나온 길」과 무리로 가르려고 이 식에 넓은 틈을
@@ -119,17 +126,12 @@
     --titlebar-controls-width: calc(
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
-    /* **바탕 줄의 내용이 왼쪽의 것과 벌어지는 거리 — 한 값이다**(결정 24).
-       사이드바가 열렸으면 그 경계선에서, 접혔으면 셸 컨트롤에서 재는데 두 경우가 같은 값을 쓴다.
-
-       이름과 값은 탭 줄이 이 줄에 서던 때의 것이다 — 그때 줄의 첫 칸(제 상자에 여백을 가진 알약
-       `spec`이나 버튼 `+`)이 이 거리에 섰다. 탭 줄이 본문 카드 머리로 내려간 뒤(codex-ds 스펙 §4)
-       왼쪽에 서는 것이 없어, 지금 이 여백은 바탕 줄의 내용이 신호등 · 셸 컨트롤 밑으로 들어가지
-       않는 경계로만 일한다(`Frame`의 `TitleBar`). */
-    --tab-lead: var(--titlebar-control-gap);
-    /* 사이드바가 접혔을 때 — 위 거리를 셸 컨트롤 끝에서 잰 값이다. */
-    --titlebar-inset-tabs: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--tab-lead)
+    /* **사이드바가 접혔을 때 머리 줄의 왼쪽 여백** — 셸 컨트롤 끝에서 틈 하나(`--gap`)를 띄운다. 머리 카드가 신호등 ·
+       셸 컨트롤 밑으로 들어가지 않는 경계다(셸 컨트롤은 `absolute` · `z-20`이라 겹치면 머리 카드를 덮는다). 사이드바가
+       열렸으면 머리 줄의 왼쪽 여백은 0이다 — 머리 카드가 본문 카드와 한 세로줄(사이드바 뒤)에서 시작한다.
+       한때 이 자리에 `--tab-lead`(탭 줄이 이 줄에 서던 때의 첫 칸 거리)가 있었다 — 탭 줄은 본문 카드 머리로 내려갔다. */
+    --titlebar-inset-head: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--gap)
     );
 }
 
@@ -494,7 +496,8 @@
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
-       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
+       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드)뿐이고,
+       나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
        그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세우고, 폭 셋(사이드바 · 목록 칸 · 작업 패널)의 기본값은 S4가 옮긴다. 그때까지
        화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
     --size-rail: 52px;
@@ -1118,7 +1121,7 @@
 
 /* 탭 줄의 **켜진 탭** — 흰 카드 머리 위의 옅은 면 `fill-hover`다(codex-ds 스펙 §4 「탭 줄」 · DS `.at-tab.is-on`). 꺼진 칸의
    hover(`fill-soft`)보다 한 단 진하다. toggle-on(`fill-active`)을 안 쓰는 것은 그 농도가 「눌린 칸」으로 읽혀서다 — 켜진 탭은
-   고른 칸이지 눌러 둔 스위치가 아니다. 한때 탭 줄이 회색 바탕 줄에 서던 동안은 흰 면이었다.
+   고른 칸이지 눌러 둔 스위치가 아니다. 한때 탭 줄이 창 맨 위 회색 줄에 서던 동안은 흰 면이었다.
    hover에 바뀌지 않는다(DS `.at-tab.is-on:hover`) — 고른 칸은 다시 눌러 끄는 것이 아니다. */
 @utility tab-on {
   background: var(--fill-hover);

@@ -144,7 +144,7 @@ function ArchivePage({
   };
 
   return (
-    // 공용 틀 위의 목록 카드와 문서 카드(ui-refresh 결정 15 · 27). 바탕 줄은 비어 있는 끌기 줄이다(ui-refresh 결정 5 — 탭이 없는 화면).
+    // 공용 틀 위의 목록 카드와 문서 카드(ui-refresh 결정 15 · 27). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이다(ui-refresh 결정 5).
     <Frame
       sidebarOpen={sidebarOpen}
       list={{

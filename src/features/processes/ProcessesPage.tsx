@@ -119,7 +119,7 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const total = useSummaryCache().data?.total;
 
   return (
-    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 바탕 줄은 비어 있는 끌기 줄이고(ui-refresh 결정 5 — 탭이 없는 화면), 위치와 쪽
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치와 쪽
     // 동작은 카드 머리에 선다.
     <Frame sidebarOpen={sidebarOpen}>
       <Card

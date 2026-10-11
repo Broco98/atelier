@@ -322,7 +322,7 @@ describe("WorkPanel 소스 토글", () => {
   });
 });
 
-// 이 패널은 바탕 줄 아래에 뜬 카드다(ui-refresh 결정 4) — 머리는 다른 카드와 같은 카드 머리(46px — `--card-head`)다.
+// 이 패널은 머리 줄 아래에 뜬 카드다(ui-refresh 결정 4) — 머리는 다른 카드와 같은 카드 머리(46px — `--card-head`)다.
 describe("WorkPanel 머리행", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -333,7 +333,7 @@ describe("WorkPanel 머리행", () => {
 
   it("머리 행이 카드 머리 높이를 그대로 읽는다", () => {
     // 값을 손으로 적으면(h-12 같은 것) 카드 머리 높이가 바뀔 때 이 줄만 남아 옆 문서 카드의 머리와 어긋난다.
-    // 머리는 카드 안이라 창을 끄는 자리가 아니다 — 그 일은 바탕 줄과 회색 틈이 한다.
+    // 머리는 카드 안이라 창을 끄는 자리가 아니다 — 그 일은 머리 줄과 회색 틈이 한다.
     const markup = render(true);
     expect(markup).toContain("h-(--card-head)");
     expect(markup).not.toContain("h-(--titlebar-height)");

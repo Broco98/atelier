@@ -59,8 +59,8 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
   return (
     <div
       data-tauri-drag-region
-      // 전체화면에 들고 날 때 왼쪽 끝(`--titlebar-controls-left`)이 옮겨 간다 — 같은 값에서 나오는 바탕 줄의 왼쪽 여백(`Frame`의
-      // `TitleBar`)과 같은 박자(`PANEL_MOTION`)로 움직여야 둘 사이가 도는 동안 벌어지지 않는다.
+      // 전체화면에 들고 날 때 왼쪽 끝(`--titlebar-controls-left`)이 옮겨 간다 — 같은 값에서 나오는 머리 줄의 왼쪽 여백(`Frame`의
+      // `HeadRow`)과 같은 박자(`PANEL_MOTION`)로 움직여야 둘 사이가 도는 동안 벌어지지 않는다.
       className={cn(
         "absolute left-(--titlebar-controls-left) top-[calc((var(--titlebar-height)-var(--titlebar-control-size))/2)] z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left]",
         PANEL_MOTION,

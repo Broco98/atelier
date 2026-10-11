@@ -35,7 +35,7 @@ import type { Attention } from "./shell-attention";
 //
 // **이 줄은 지워졌던 그 컴포넌트가 아니다.** 옛것은 「탭 줄이 타이틀바를 겸하는가」를
 // prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 본문 카드의 머리다** — 창 드래그
-// 영역·신호등 회피·트랜지션 곡선은 바탕 줄(`Frame`의 `TitleBar`)의 성질이라 화면의 seam이 재고,
+// 영역·신호등 회피·트랜지션 곡선은 머리 줄(`Frame`의 `HeadRow`)의 성질이라 화면의 seam이 재고,
 // 여기서는 머리 상자와 그 안에 창 끄는 자리가 없는 것만 본다(아래 「카드의 머리」).
 
 // **소유자는 `ownerOf`가 짓는다**(결정 10) — 이 줄이 받는 값과 셸에 앉는 값이 같은 함수에서
@@ -734,7 +734,7 @@ describe("칸을 본문 위로 끄는 자리", () => {
   });
 });
 
-// 바탕 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `TitleBar`가 들고, 그
+// 머리 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `HeadRow`가 들고, 그
 // 줄을 실제로 세우는 화면의 seam(`TerminalPage.test.tsx`)이 잰다. 이 줄이 지는 것은 **본문 카드의 머리 상자**다(codex-ds
 // 스펙 §4 「탭 줄」 · DS `.at-toolbar`). 높이 · 선 · 칸 규격의 실물은 e2e `terminal-tabs.spec.ts`가 화면마다 잰다.
 describe("카드의 머리", () => {
@@ -749,12 +749,12 @@ describe("카드의 머리", () => {
     expect(root).toContain("after:bg-border-heavy");
   });
 
-  it("뿌리에 `<header>`가 없다 — 창 맨 위 바탕 줄의 머리와 둘이 되지 않는다", () => {
+  it("뿌리에 `<header>`가 없다 — 창 맨 위 머리 줄과 둘이 되지 않는다", () => {
     expect(render(opened(2).state)).not.toContain("<header");
   });
 
   it("창을 끄는 자리가 없다 — 카드 안이다", () => {
-    // 끄는 자리는 회색이 보이는 상자다(바탕 줄 · 카드 둘레의 틈 — codex-ds 스펙 §4 「드래그 영역」). 카드의 흰 머리가 창을 끌면 칸 사이를
+    // 끄는 자리는 회색이 보이는 상자다(머리 줄 · 카드 둘레의 틈 — codex-ds 스펙 §4 「드래그 영역」). 카드의 흰 머리가 창을 끌면 칸 사이를
     // 잘못 누른 손이 창을 옮긴다.
     expect(render(opened(2).state, { actions: "조작" })).not.toContain("data-tauri-drag-region");
   });
@@ -766,7 +766,7 @@ describe("카드의 머리", () => {
   });
 
   it("조작이 없으면 오른쪽 묶음도 없다", () => {
-    // 상태 · ⋯ · 분할은 바탕 줄에 선다(`WorksPage`) — 이 줄에 조작이 서는 것은 분할의 터미널 열(그 열을 닫는 `×`)뿐이다.
+    // 상태 · ⋯ · 분할은 머리 카드에 선다(`WorksPage`) — 이 줄에 조작이 서는 것은 분할의 터미널 열(그 열을 닫는 `×`)뿐이다.
     expect(render(opened(2).state)).not.toContain("data-tab-actions");
     expect(render(opened(2).state, { actions: "조작" })).toContain("data-tab-actions");
   });

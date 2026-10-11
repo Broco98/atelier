@@ -29,7 +29,8 @@
 export const TAB_ROW_CARD = "min-w-min [&>:not([data-tab-row])]:contain-inline-size";
 
 /**
- * 공용 틀의 **본문 열**(`Frame`)의 바닥 — 바탕 줄(`header`)과, 탭 줄을 품은 카드 줄이 열의 min-content를 정한다.
+ * 공용 틀의 **본문 열**(`Frame`)의 바닥 — 탭 줄을 품은 카드 줄이 열의 min-content를 정한다. 머리 줄(`header`)은 이 열이 아니라
+ * 틀 뿌리의 맨 위 줄이라(codex-ds 스펙 §4) 제 min-content를 뿌리에 따로 알린다(`Frame`의 `HeadRow`).
  *
  * 열의 min-width가 min-content이면 옆의 사이드바가 제 최소 폭까지 자리를 내준다. 카드 줄은 **탭 줄을 품었을 때만**
  * 제 min-content를 알린다 — 그 카드 줄 안의 것들이 저마다 제 몫만 알리도록 지어져 있어서다: 탭 줄을 이는 카드는 줄의
@@ -38,7 +39,7 @@ export const TAB_ROW_CARD = "min-w-min [&>:not([data-tab-row])]:contain-inline-s
  * 하나 예외가 있다 — 옆 칸이 선 카드 줄(편집기)은 이 격리를 벗고 두 카드의 **머리**만 바닥에 더한다(몸은 카드가
  * 격리한다, `Frame`의 `BesideBox`).
  */
-export const TAB_ROW_COLUMN = "min-w-min [&>:not(header):not(:has([data-tab-row]))]:contain-inline-size";
+export const TAB_ROW_COLUMN = "min-w-min [&>:not(:has([data-tab-row]))]:contain-inline-size";
 
 /**
  * 작업 패널 카드의 기본 폭(px) — 끌어 바꾼 폭이 없을 때 선다(`WorksPage`의 폭 훅). spec 레이아웃 편집기의 트리 카드가 같은 폭으로
@@ -58,8 +59,8 @@ export const WORK_PANEL_WIDTH = 330;
  * 안쪽 열이 폭이 다 오기 전에 잘리거나(지연이 짧다) 다 온 뒤에 한 번 더 되흐른다(길다). 둘이 같은 토큰(`--duration-panel`)을
  * 읽는 것으로 그 같음을 든다(`panel-layout.test.ts`).
  *
- * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 사이드바 폭을 따라오는 공용 틀의 여백(바탕 줄 · 카드 줄)과 분할 열 폭이 훌쩍
- * 뛰는 순간(둘 다 `Frame`), 그리고 전체화면에 들고 날 때 바탕 줄의 왼쪽 여백과 함께 옮겨 가는 셸 컨트롤 줄(`ShellControls`)이다.
+ * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 사이드바 폭을 따라오는 공용 틀의 여백(머리 줄 · 카드 줄)과 분할 열 폭이 훌쩍
+ * 뛰는 순간(둘 다 `Frame`), 그리고 전체화면에 들고 날 때 머리 줄의 왼쪽 여백과 함께 옮겨 가는 셸 컨트롤 줄(`ShellControls`)이다.
  * 제 리터럴로 다시 적으면 한쪽만 고친 날 카드 모서리가 사이드바 경계를 지나쳤다 되돌아온다. 분할 열이 뛰는 순간을 끝내는 타이머는
  * CSS가 아니라서 같은 토큰을 `panelMotionMs`로 읽는다.
  */

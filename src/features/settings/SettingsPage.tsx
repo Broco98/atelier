@@ -215,7 +215,7 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
  */
 function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
   return (
-    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 바탕 줄은 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치는 카드 머리의
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치는 카드 머리의
     // `Crumbs[Settings, 항목]`이다. 몸은 설정 틀(`SettingsGroup.tsx`)이다 — 큰 제목 → 구획 → 묶음.
     <Frame sidebarOpen={sidebarOpen}>
       {/* 카드가 `relative`라 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는

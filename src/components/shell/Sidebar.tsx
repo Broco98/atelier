@@ -269,10 +269,9 @@ function SidebarFrame({
           foldingInnerClass(open),
         )}
       >
-        {/* traffic light strip — same height as the main header (the header no
-            longer draws a bottom border; the 44px strip is what keeps the two
-            columns aligned). It is also the nav's top breathing room, which is
-            why the nav below carries no top padding of its own. */}
+        {/* 신호등 자리 — 머리 줄과 같은 48(`--titlebar-height`)의 빈 끌기 줄이다(codex-ds 스펙 §4). 머리 줄에 아래 선이 없어
+            이 높이가 두 열의 위끝을 맞춘다 — 사이드바 목록과 본문 카드가 같은 줄에서 시작한다. 신호등 · 창 컨트롤이 이 줄 가운데에
+            뜨고(`ShellControls`), 아래 nav의 위 숨 자리도 이 줄이라 nav에는 제 위 여백이 없다. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
         {children}
       </div>

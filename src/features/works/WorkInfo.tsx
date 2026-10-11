@@ -63,10 +63,10 @@ export function sharedBase(projects: ProjectView[] | undefined, slugs: string[])
 }
 
 // info 몸 — 헤더와 패널로 갈려 있던 이 작업의 사실을 한 자리에서 말한다. 작업 정보는 레일의 info 한 곳에
-// 모인다(ui-refresh 결정 14) — 바탕 줄의 ⓘ 팝오버에 살던 복사 줄 셋이 맨 위 묶음으로 올라왔다.
+// 모인다(ui-refresh 결정 14) — 창 맨 위 줄의 ⓘ 팝오버에 살던 복사 줄 셋이 맨 위 묶음으로 올라왔다.
 //
 // **순수 표현 컴포넌트다.** 데이터를 스스로 조회하지 않고 전부 prop으로 받는다.
-// 상태 배지는 바탕 줄에만 둔다 — 여기에 읽기 전용으로 한 번 더 쓰지 않는다.
+// 상태 배지는 머리 카드에만 둔다 — 여기에 읽기 전용으로 한 번 더 쓰지 않는다.
 function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoProps) {
   const workDir = workDirRef(work.slug);
   const specDir = specDirRef(work.slug);

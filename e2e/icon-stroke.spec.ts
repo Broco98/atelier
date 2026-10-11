@@ -11,7 +11,7 @@ import { installFixtureBackend, unknownIpcCalls } from "./harness";
 test("16px 아이콘의 그려진 선이 1.5px다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${WORKS[0].slug}`);
-  // 바탕 줄의 ⋯(16px)이 섰으면 작업 화면의 머리 · 사이드바 · 레일 아이콘이 함께 서 있다.
+  // 머리 카드의 ⋯(16px)이 섰으면 작업 화면의 머리 · 사이드바 · 레일 아이콘이 함께 서 있다.
   await expect(page.getByRole("button", { name: "작업 메뉴", exact: true })).toBeVisible();
 
   // 화면의 lucide 아이콘 가운데 그려진 폭이 16px인 것 모두. 선은 svg가 아니라 그 안의 도형이 그린다 — 도형의 계산된

@@ -55,7 +55,7 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    // 패널 토글은 레일 열(패널 카드 오른쪽, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    // 패널 토글은 레일 열 위 머리 줄(패널 카드 오른쪽 너머, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
       .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
       ?.getBoundingClientRect();
@@ -66,7 +66,7 @@ async function layoutOf(page: Page) {
       sidebar: Math.round(sidebar.width),
       panel: panel ? { left: panel.left, width: Math.round(panel.width), right: panel.right } : null,
       // 패널 칸(두 번째 `aside`)의 오른쪽 끝 — 패널이 창 안에 있어도 안쪽 열이 잘리면 카드 오른쪽이 이 끝을 넘는다. 한때는
-      // 패널 머리 오른쪽 끝의 `×`로 쟀는데, 그 버튼이 레일의 패널 토글로 합쳐져 패널 밖으로 나갔다.
+      // 패널 머리 오른쪽 끝의 `×`로 쟀는데, 그 버튼이 패널 토글로 합쳐져 패널 밖으로 나갔다.
       panelBoxRight: panelAside ? panelAside.getBoundingClientRect().right : null,
       toggleRight: toggle ? toggle.right : null,
       // 패널이 **제 안에서 가로로 밀려 있지 않다** — 넘침을 감춘 상자라도 `scrollLeft`가 서면(Playwright가 잘린

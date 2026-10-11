@@ -60,12 +60,12 @@ describe("최상위 터미널의 탭 줄", () => {
     terminalStore.setState(() => seed(2, TOP).state);
     const markup = html(true);
     expect(kindsOf(markup)).toEqual(["shell", "shell", "new"]);
-    // 바탕 줄이 **하나뿐이다** — 브레드크럼 머리가 남아 있으면 층이 둘이 되고,
+    // 머리 줄이 **하나뿐이다** — 브레드크럼 머리가 남아 있으면 층이 둘이 되고,
     // 창을 끄는 자리와 신호등 회피 여백도 둘로 갈린다.
     expect(markup.split("<header").length - 1).toBe(1);
   });
 
-  it("탭 줄이 터미널 카드 안 맨 위에 선다 — 바탕 줄에는 칸이 없다", () => {
+  it("탭 줄이 터미널 카드 안 맨 위에 선다 — 머리 줄에는 칸이 없다", () => {
     // codex-ds 스펙 §4 「탭 줄」. 줄이 그 탭이 보여 줄 카드의 머리다 — 카드의 첫 자식이 줄 상자(`data-tab-row`)다.
     terminalStore.setState(() => seed(1, TOP).state);
     const markup = html(true);
@@ -75,6 +75,16 @@ describe("최상위 터미널의 탭 줄", () => {
     expect(markup.slice(markup.indexOf(">", card) + 1)).toMatch(/^<div[^>]*\sdata-tab-row="/);
     const header = markup.slice(markup.indexOf("<header"), markup.indexOf("</header>"));
     expect(header).not.toContain("data-tab");
+  });
+
+  it("머리 줄이 머리 카드 없이 비어 있다 — 패널 토글도 없다", () => {
+    // 머리 카드는 지금 작업 화면만 채운다(codex-ds 스펙 §6). 이 화면의 머리 카드(터미널 아이콘 · 이름)는 codex-ds 티켓 14다 —
+    // 그때까지 머리 줄은 창을 끄기만 하는 빈 줄이다. 레일이 없는 화면이라 그 위의 패널 토글도 없다.
+    terminalStore.setState(() => seed(1, TOP).state);
+    const markup = html(true);
+    const header = markup.slice(markup.indexOf("<header"), markup.indexOf("</header>"));
+    expect(header).not.toContain('data-slot="head-card"');
+    expect(header).not.toContain("<button");
   });
 
   it("이 화면의 셸만 선다 — work의 셸은 안 온다", () => {
@@ -123,23 +133,24 @@ describe("최상위 터미널의 탭 줄", () => {
   });
 
   it("창을 끌 수 있다", () => {
-    // 이 화면 맨 위가 바탕 줄이다. 없으면 창이 아예 안 끌린다 — 옛 브레드크럼 머리가 지고 있던 몫을
-    // 바탕 줄(`Frame`의 `TitleBar`)이 그대로 물려받는다. 탭 줄은 카드 안이라 창을 끌지 않는다.
+    // 이 화면 맨 위가 머리 줄이다. 없으면 창이 아예 안 끌린다 — 옛 브레드크럼 머리가 지고 있던 몫을
+    // 머리 줄(`Frame`의 `HeadRow`)이 그대로 물려받는다. 탭 줄은 카드 안이라 창을 끌지 않는다.
     terminalStore.setState(() => seed(1, TOP).state);
     expect(headerTag(html(true))).toContain("data-tauri-drag-region");
   });
 
   it("사이드바가 접히면 신호등을 피한다", () => {
-    // 왼쪽에 남은 것이 사이드바뿐이라, 접히면 바탕 줄이 창 왼쪽 끝에 붙어 그 줄에 선 것이 신호등에 깔린다. 여백은 틀
-    // (`Frame`)의 규칙이라 이 화면의 바탕 줄이 지금 비어 있어도 선다.
-    expect(headerTag(html(false))).toContain("pl-(--titlebar-inset-tabs)");
-    expect(headerTag(html(true))).toContain("pl-(--tab-lead)");
+    // 왼쪽에 남은 것이 사이드바뿐이라, 접히면 머리 줄이 창 왼쪽 끝에 붙어 그 줄에 선 것이 신호등 · 창 컨트롤에 깔린다. 여백은
+    // 틀(`Frame`)의 규칙이라 이 화면의 머리 줄이 지금 비어 있어도 선다. 열렸으면 여백이 없다 — 신호등 · 창 컨트롤은 사이드바 위에
+    // 서고, 줄에 선 머리 카드는 본문 카드와 한 세로줄에서 시작한다.
+    expect(headerTag(html(false))).toContain("pl-(--titlebar-inset-head)");
+    expect(headerTag(html(true))).toContain("pl-0");
   });
 
   it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
-    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 바탕 줄 첫 자리의 화면상 위치가 사이드바
+    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 머리 줄 첫 자리의 화면상 위치가 사이드바
     // 폭과 이 여백의 합이라서다(index.css의 `--ease-panel` 주석). 한때 ShellTabs.test가 들었는데,
-    // 바탕 줄이 그 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 줄을 실제로 세우는 이 화면이 든다.
+    // 그 줄이 탭 줄의 것이 아니게 되어(`Frame`의 `HeadRow`) 줄을 실제로 세우는 이 화면이 든다.
     const tag = headerTag(html(true)) ?? "";
     expect(tag).toContain("ease-panel");
     expect(tag).toContain("transition-[padding]");

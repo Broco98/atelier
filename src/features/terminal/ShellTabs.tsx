@@ -127,7 +127,7 @@ interface ShellTabsProps {
    * 자리가 안 움직인다.
    *
    * 무엇이 오는지는 화면이 정한다 — work 화면은 분할의 터미널 열에서 그 열을 닫는 `×`를 두고(codex-ds 스펙 S14),
-   * 그 밖에서는 아무것도 안 둔다. 상태 배지 · ⋯ · 분할은 이 줄이 아니라 바탕 줄에 선다(`WorksPage`).
+   * 그 밖에서는 아무것도 안 둔다. 상태 배지 · ⋯ · 분할은 이 줄이 아니라 머리 카드에 선다(`WorksPage`).
    */
   actions?: React.ReactNode;
   /** 검사가 이 줄을 정체성으로 집는 표식(분할 열 머리의 `data-column`) — 줄의 머리 상자에 그대로 단다. */
@@ -142,11 +142,11 @@ interface ShellTabsProps {
 // 순서를 눈에 보이게 하는 것뿐이다. 화면에 보이는 순서와 ⌘1~9가 고르는 것이 어긋나면
 // 이 줄이 한 일이 없다.
 //
-// **이 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」 · DS `TabRow`). 한때 창 맨 위 바탕 줄(`<header>`)에 서던 줄이
+// **이 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」 · DS `TabRow`). 한때 창 맨 위 줄(`<header>` — 지금의 머리 줄)에 서던 줄이
 // 그 탭이 보여 줄 카드 안 맨 위로 내려왔다 — 문서 카드 · 터미널 카드 · 분할의 터미널 열 · `/terminal`의 카드가 이 줄을
 // 머리로 인다(`head`). 머리 상자(46 · 아래 0.5px 선 · 안쪽 8)를 이 컴포넌트가 그리고 `data-tab-row`를 단다 — 그 줄을 이는
 // 카드의 바닥(`panel-layout`의 `TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 그 표식으로 줄을 가른다. 카드 안이라 창을 끄는 자리가
-// 아니다 — 끄는 자리는 바탕 줄과 카드 둘레의 회색 틈이다(`Frame` 머리말).
+// 아니다 — 끄는 자리는 머리 줄과 카드 둘레의 회색 틈이다(`Frame` 머리말).
 //
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
@@ -522,12 +522,13 @@ function ShellTabs({
           탭과 조작 사이의 남는 폭을 먹어 조작을 줄 끝에 붙이고, `min-w-4`는 칸이 꽉 찼을 때도 `+`와 조작이 맞붙지 않게
           남기는 값이다. 조작이 없는 줄에는 빈 자리도 없다 — 줄의 바닥(min-content)에 쓸모없는 16px이 들지 않게.
 
-          조작이 여럿이면 그 사이는 바탕 줄의 조작 · 셸 컨트롤과 같은 간격이다(결정 24 — `--titlebar-control-gap`). 아이콘
-          버튼이 자리마다 다른 간격을 쓰면 그중 하나만 따로 떨어진 것처럼 읽힌다. 지금은 `×` 하나라 그 간격이 드러나지 않는다. */}
+          조작이 여럿이면 그 사이는 DS 툴바의 4다(`.at-toolbar` — 줄 안 칸 사이와 같은 값). 한때 셸 컨트롤 간격
+          (`--titlebar-control-gap`)을 빌렸는데, 그 값은 창 컨트롤의 Codex 값(2)이 되어 이 줄의 것이 아니다. 지금은 `×` 하나라
+          그 간격이 드러나지 않는다. */}
       {actions && (
         <>
           <span className="min-w-4 flex-1" />
-          <div data-tab-actions className="flex shrink-0 items-center gap-(--titlebar-control-gap)">
+          <div data-tab-actions className="flex shrink-0 items-center gap-1">
             {actions}
           </div>
         </>

@@ -384,7 +384,7 @@ export function OutsideBanner({
 
 /**
  * 편집기의 틀 — 공용 틀 위의 본문 카드(ui-refresh 결정 27)와 그 카드 머리(뒤로 · 위치 · 동작), 그리고 편집할 때는 그 오른쪽의
- * 트리 카드(`tree`). 바탕 줄은 비어 있는 끌기 줄이다(ui-refresh 결정 5). 위치는 세 칸이다: `Settings › spec 레이아웃 › Atelier`.
+ * 트리 카드(`tree`). 머리 줄은 머리 카드 없이 비어 있는 끌기 줄이다(ui-refresh 결정 5). 위치는 세 칸이다: `Settings › spec 레이아웃 › Atelier`.
  * 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
  *
  * **트리 카드는 공용 틀의 패널 칸(`Frame`의 `panel`)이 아니라 옆 칸(`beside`)이다**(판 06 티켓 07). 패널 칸은 두 번째 `<aside>`를
