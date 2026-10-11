@@ -347,6 +347,21 @@ impl Sandbox {
             .collect()
     }
 
+    /// 가짜 claude가 `-p`로 뜰 때마다 남긴 줄 — `{pid, args}`, 뜬 차례대로. 되살리기가 실패해 곧바로 끝난 claude도 선다
+    /// (three-axes 티켓 16).
+    pub fn claude_launches(&self) -> Vec<Value> {
+        fs::read_to_string(self.claude_receipts().join("launches"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("영수증 줄은 JSON"))
+            .collect()
+    }
+
+    /// `FAKE_CLAUDE_HOLD_BACKGROUND`로 붙잡힌 스스로 이어 간 턴을 놓는다 — 가짜가 기다리던 `<세션 id>.go`를 만든다.
+    pub fn release_claude_background(&self, session_id: &str) {
+        fs::write(self.claude_receipts().join(format!("{session_id}.go")), "").unwrap();
+    }
+
     /// 영수증 폴더의 `name` 파일에 한 줄씩 적힌 pid들 — 가짜 `codex-acp` 스크립트가 적는다.
     pub fn receipt_pids(&self, name: &str) -> Vec<u32> {
         fs::read_to_string(self.acp_receipts().join(name))

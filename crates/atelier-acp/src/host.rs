@@ -3,7 +3,8 @@
 //! 엔진 확인(three-axes 티켓 02) 위에 대화 목록 · 새 대화 · 대화 닫기 · 호스트 끄기(03), 보내기 · 기록 읽기(04),
 //! 턴 앞뒤의 spec 비교(06), 멈추기 · 대기 줄 · 지금 보내기(07), 권한 답(08), 모델 · 모드 · 계획 바꾸기와 엔진 목록(09),
 //! 앱을 다시 켠 뒤 · 에이전트가 죽은 뒤의 되살리기(10), 사라진 work의 대화 끄기(11), 로그인 확인 · 로그인 명령 · 로그인 필요
-//! 대화의 다시 띄우기(12), Claude 대화 열기 · 에이전트 바꾸기(13)가 선다. 앱 잇기(05)가 이 위에 선다.
+//! 대화의 다시 띄우기(12), Claude 대화 열기 · 에이전트 바꾸기(13), 에이전트가 스스로 이어 간 턴(16, S4)이 선다. 앱 잇기(05)가
+//! 이 위에 선다.
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
@@ -204,13 +205,60 @@ struct ConvState {
     queue: VecDeque<Queued>,
     /// 도는 턴 앞(보내기 직전)에 찍은 spec 폴더. 턴 끝에 지금과 견준다.
     before: Option<Snapshot>,
+    /// 에이전트가 스스로 이어 간 턴(S4) — Claude가 백그라운드 작업 알림으로 스스로 시작한 턴이다. 변환기가 턴 밖 시작을 알리면
+    /// 서고 턴 밖 끝에서 걷힌다. 그동안은 대기 줄이 가지 않는다(S13).
+    self_turn: Option<SelfTurn>,
+    /// 마지막 턴 끝에 견준 「지금」 — 그 뒤로 대기 줄의 말이 가지 않았으면 쥐어 둔다. 에이전트가 스스로 이어 간 턴(S4)은
+    /// 이것을 그 턴의 앞으로 삼는다 — 쉬는 동안 백그라운드 작업이나 그 턴이 고친 것이 그 턴의 고친 곳으로 선다.
+    after_last: Option<Snapshot>,
+}
+
+/// 에이전트가 스스로 이어 간 턴 하나(S4).
+struct SelfTurn {
+    started: Instant,
+    /// 그 턴이 시작할 때 찍은 spec 폴더 — 턴 밖 끝에서 견주어 고친 곳을 적는다(three-axes 결정 22). 우리 턴이 도는 사이에
+    /// 시작했으면(변환기가 그 말을 미뤄 두었다) 없다 — 고친 곳은 우리 턴의 끝이 적는다.
+    before: Option<Snapshot>,
+    /// 우리가 멈췄나 — 턴 밖 끝 줄의 「우리가 멈췄나」다.
+    stopped: bool,
+}
+
+/// 변환기가 표시한 턴 밖 턴의 시작 · 끝(S4) — `session_info_update`의 `_meta.atelier.outOfTurn`.
+enum OutOfTurn {
+    Started,
+    /// 끝 — 몸은 `session/prompt`의 답과 같은 꼴(`stopReason` · `_meta`)이다.
+    Ended(Value),
+}
+
+impl OutOfTurn {
+    fn of(raw: &Value) -> Option<Self> {
+        let update = &raw["update"];
+        if update["sessionUpdate"] != "session_info_update" {
+            return None;
+        }
+        let mark = &update["_meta"]["atelier"]["outOfTurn"];
+        match mark["state"].as_str()? {
+            "started" => Some(OutOfTurn::Started),
+            "ended" => Some(OutOfTurn::Ended(mark["response"].clone())),
+            _ => None,
+        }
+    }
 }
 
 impl ConvState {
     /// 에이전트 쪽 세션이 막 열린 대화 — 살아 있고, 턴이 쉬고, 첫 말에 머리말을 붙인다. 턴 손잡이는 세션이 열린 뒤에
     /// 서고, 대기 줄은 비어 있다.
     fn fresh() -> Self {
-        Self { alive: true, turn: None, needs_preamble: true, turns: None, queue: VecDeque::new(), before: None }
+        Self {
+            alive: true,
+            turn: None,
+            needs_preamble: true,
+            turns: None,
+            queue: VecDeque::new(),
+            before: None,
+            self_turn: None,
+            after_last: None,
+        }
     }
 }
 
@@ -231,7 +279,15 @@ impl Conv {
 
     fn receive(&self, event: RuntimeEvent) {
         let written = match event {
-            RuntimeEvent::Update(raw) => self.recorder.update(raw),
+            RuntimeEvent::Update(raw) => match OutOfTurn::of(&raw) {
+                Some(OutOfTurn::Started) => {
+                    let written = self.recorder.update(raw);
+                    self.start_self_turn();
+                    written
+                }
+                Some(OutOfTurn::Ended(response)) => self.end_self_turn(response),
+                None => self.recorder.update(raw),
+            },
             RuntimeEvent::Stderr(line) => self.recorder.stderr(line),
             RuntimeEvent::AuthStatus(params) => self.recorder.session(SessionState::AuthStatus { params }),
             // 권한 줄은 대화의 잠금을 쥐지 않고 적는다 — 답 · 멈추기는 대화의 잠금을 쥔 채 런타임을 부르고, 런타임은 그 안에서
@@ -253,19 +309,22 @@ impl Conv {
                 state.alive = false;
                 state.turn = None;
                 state.before = None;
+                state.self_turn = None;
+                state.after_last = None;
                 self.recorder.session(SessionState::Died { reason: death.reason, stderr_tail: death.stderr_tail })
             }
             RuntimeEvent::TurnEnd(end) => {
                 let lost_login = matches!(&end.result, Err(error) if login::auth_required(error));
                 let mut state = self.lock_state();
                 let started = state.turn.take();
+                let before = state.before.take();
                 let (response, error) = match end.result {
                     Ok(response) => (Some(response), None),
                     Err(error) => (None, Some(error)),
                 };
                 let ended = self
                     .end_turn(
-                        &mut state,
+                        before,
                         TurnEndLine {
                             stop_reason: response.as_ref().and_then(|r| r["stopReason"].as_str()).map(str::to_owned),
                             duration_ms: elapsed_ms(started),
@@ -299,7 +358,7 @@ impl Conv {
                     // S13 — 턴이 끝났으니 대기 줄의 맨 앞을 보낸다. 턴 끝 줄과 같은 잠금 안이라, 그 사이에 온 보내기가
                     // 대기 줄을 앞지르지 못한다. 멈춰서 끝난 턴(`cancelled`)도 같다 — 지금 보내기가 이것을 쓴다.
                     // 방금 견준 「지금」이 그 말의 턴 앞이다.
-                    self.send_queued(&mut state, now);
+                    self.after_turn(&mut state, now);
                 }
                 written
             }
@@ -318,9 +377,11 @@ impl Conv {
     ///   「지움」으로 적히기 때문이다. 그 대화는 턴 끝 줄 뒤에 꺼진다(S10).
     ///
     /// 견준 「지금」을 돌려준다 — 대기 줄의 다음 말이 곧바로 가면 그 턴의 앞이 된다(폴더를 두 번 걷지 않는다).
-    fn end_turn(&self, state: &mut ConvState, end: TurnEndLine) -> Result<Option<Snapshot>, records::RecordError> {
+    ///
+    /// `before`는 그 턴 앞에 찍은 것이다 — 우리가 보낸 턴은 보내기 직전, 스스로 이어 간 턴(S4)은 그 턴의 시작.
+    fn end_turn(&self, before: Option<Snapshot>, end: TurnEndLine) -> Result<Option<Snapshot>, records::RecordError> {
         let mut now = None;
-        if let Some(before) = state.before.take() {
+        if let Some(before) = before {
             if !work_vanished(&self.spec.works_root, &self.spec.work) {
                 let taken = Snapshot::take(&self.spec);
                 let files = before.compare(&taken);
@@ -334,12 +395,13 @@ impl Conv {
         Ok(now)
     }
 
-    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉬고, 로그인을 기다리지 않고(티켓 12 — 턴 도중에 로그인이
-    /// 풀렸다), 답을 기다리는 권한 요청이 없다(티켓 08). 스스로 이어 간 턴(16)이 이 자리에 조건을 더한다 — 그동안 받은 말은
-    /// 대기 줄에서 기다린다(S13).
+    /// 지금 말을 보낼 수 있나 — 에이전트가 살아 있고 턴이 쉬고, 에이전트가 스스로 이어 간 턴도 돌지 않고(S4), 로그인을
+    /// 기다리지 않고(티켓 12 — 턴 도중에 로그인이 풀렸다), 답을 기다리는 권한 요청이 없다(티켓 08). 그동안 받은 말은 대기
+    /// 줄에서 기다린다(S13).
     fn can_send(&self, state: &ConvState) -> bool {
         state.alive
             && state.turn.is_none()
+            && state.self_turn.is_none()
             && state.turns.as_ref().is_some_and(|turns| !turns.permission_pending())
             && !self.login.as_ref().is_some_and(LoginWatch::waiting)
     }
@@ -376,11 +438,13 @@ impl Conv {
         self.recorder.sent(text, quoted, &prompt, send_now).map_err(HostError::Record)?;
         state.turn = Some(Instant::now());
         state.before = Some(before);
+        state.after_last = None;
         state.needs_preamble = false;
         if let Err(reason) = turns.prompt(prompt) {
             let started = state.turn.take();
+            let before = state.before.take();
             self.end_turn(
-                state,
+                before,
                 TurnEndLine {
                     stop_reason: None,
                     duration_ms: elapsed_ms(started),
@@ -411,6 +475,70 @@ impl Conv {
             // 턴 끝 줄(오류)이 기록에 섰다. 돌려줄 곳이 없다.
             eprintln!("{error}");
         }
+    }
+
+    /// 변환기가 턴 밖 턴의 시작을 알렸다(S4) — 에이전트가 스스로 이어 간 턴이 선다. 그 끝까지 대기 줄은 가지 않는다. 고친
+    /// 곳을 견줄 앞은 마지막 턴 끝에 견준 「지금」이고, 없으면 지금 찍는다(우리 턴이 돌면 우리 턴의 것이 맡는다). 수신 루프
+    /// 안에서 돈다.
+    fn start_self_turn(&self) {
+        let mut state = self.lock_state();
+        if !state.alive || state.self_turn.is_some() {
+            return;
+        }
+        let after_last = state.after_last.take();
+        let before = (state.turn.is_none() && !work_vanished(&self.spec.works_root, &self.spec.work))
+            .then(|| after_last.unwrap_or_else(|| Snapshot::take(&self.spec)));
+        state.self_turn = Some(SelfTurn { started: Instant::now(), before, stopped: false });
+    }
+
+    /// 변환기가 턴 밖 끝을 알렸다(S4) — 우리 턴의 끝과 같은 길이다(06 · 07 · 11): 고친 곳을 견주어 `changes` 줄을 적고,
+    /// 턴 밖 턴 표지(`outOfTurn`)를 단 턴 끝 줄을 적고, work가 사라졌으면 끄고, 아니면 대기 줄의 맨 앞을 보낸다. 시작을 못
+    /// 보고 끝만 와도 턴 끝 줄은 선다(걸린 시간 0). 우리 턴이 도는 사이에 온 끝은 우리 턴을 건드리지 않는다.
+    fn end_self_turn(&self, response: Value) -> Result<(), records::RecordError> {
+        let mut state = self.lock_state();
+        let own = state.self_turn.take();
+        let end = TurnEndLine {
+            stop_reason: response["stopReason"].as_str().map(str::to_owned),
+            duration_ms: elapsed_ms(own.as_ref().map(|turn| turn.started)),
+            cancelled_by_us: own.as_ref().is_some_and(|turn| turn.stopped),
+            out_of_turn: true,
+            response: Some(response),
+            error: None,
+        };
+        let (written, now) = match self.end_turn(own.and_then(|turn| turn.before), end) {
+            Ok(now) => (Ok(()), now),
+            Err(error) => (Err(error), None),
+        };
+        if state.turn.is_some() {
+            return written;
+        }
+        let retiring = self.vanish.as_ref().is_some_and(VanishWatch::retire_if_vanished);
+        if !retiring {
+            self.after_turn(&mut state, now);
+        }
+        written
+    }
+
+    /// 턴 끝(우리 턴 · 스스로 이어 간 턴) 뒤 — 보낼 수 있으면 대기 줄의 맨 앞을 보내고(방금 견준 「지금」이 그 말의 턴 앞이다),
+    /// 아니면 그 「지금」을 쥐어 둔다(스스로 이어 간 턴의 앞).
+    fn after_turn(&self, state: &mut ConvState, now: Option<Snapshot>) {
+        if self.can_send(state) && !state.queue.is_empty() {
+            self.send_queued(state, now);
+        } else {
+            state.after_last = now;
+        }
+    }
+
+    /// 도는 턴을 멈춘다 — 우리 턴이든 에이전트가 스스로 이어 간 턴이든 `session/cancel` 하나다. 기다리지 않는다. 도는 것이
+    /// 없으면 아무 일도 하지 않는다.
+    fn stop_turn(&self, state: &mut ConvState) -> Result<(), HostError> {
+        let running = state.alive && (state.turn.is_some() || state.self_turn.is_some());
+        let Some(turns) = state.turns.as_ref().filter(|_| running) else { return Ok(()) };
+        turns.cancel().map_err(HostError::Send)?;
+        if let Some(own) = state.self_turn.as_mut() {
+            own.stopped = true;
+        }
+        Ok(())
     }
 
     /// 대기 줄 바뀜을 낸다 — 바뀔 때마다 대기 줄 전체를 싣는다. `state`를 쥔 채 부른다: 알리는 차례가 바뀐 차례다.
@@ -1077,6 +1205,8 @@ impl ConversationHost {
             state.alive = true;
             state.turn = None;
             state.before = None;
+            state.self_turn = None;
+            state.after_last = None;
             state.turns = turns;
             state.needs_preamble = needs_preamble;
         }
@@ -1198,6 +1328,7 @@ impl ConversationHost {
     /// 멈추기 — 도는 턴에 `session/cancel`을 보낸다. 기다리지 않는다: 턴 끝(`cancelled`)은 `turn-end` 줄로 오고, 그
     /// 줄에 「우리가 멈췄나」(`cancelledByUs`)가 true로 실린다. 같은 세션이 다음 말을 받는다(스토리 53 · 54).
     ///
+    /// - 에이전트가 스스로 이어 간 턴(S4)도 멈춘다 — 그 턴 밖 끝 줄에 「우리가 멈췄나」가 실린다.
     /// - 도는 턴이 없으면(쉬는 대화 · 죽은 대화 · 떠 있지 않은 대화) 아무 일도 하지 않는다 — 멈추기 단추와 턴 끝이
     ///   엇갈려도 읽히는 오류가 나지 않는다.
     /// - 대기 줄은 거두지 않는다 — 멈춘 턴이 끝나면 다른 턴 끝처럼 맨 앞이 간다(S13). 보내지 않을 말은 먼저 지운다.
@@ -1207,11 +1338,8 @@ impl ConversationHost {
         }
         let live = self.lock_live();
         let Some(found) = live.get(conversation).filter(|live| live.work == work) else { return Ok(()) };
-        let state = found.conv.lock_state();
-        match (&state.turns, state.alive && state.turn.is_some()) {
-            (Some(turns), true) => turns.cancel().map_err(HostError::Send),
-            _ => Ok(()),
-        }
+        let mut state = found.conv.lock_state();
+        found.conv.stop_turn(&mut state)
     }
 
     /// 권한 답 — 걸린 권한 요청(`request` — 요청 id)에 고른 선택지(`option` — optionId)로 답한다. 기다리지 않는다: 고른
@@ -1302,10 +1430,7 @@ impl ConversationHost {
                 return Ok(());
             }
             conv.announce_queue(state);
-            match (&state.turns, state.turn.is_some()) {
-                (Some(turns), true) => turns.cancel().map_err(HostError::Send),
-                _ => Ok(()),
-            }
+            conv.stop_turn(state)
         })
     }
 
@@ -1473,7 +1598,8 @@ impl ConversationHost {
             return;
         }
         retire_vanished(&self.live, |_, live| {
-            vanished.contains(&live.work) && live.conv.lock_state().turn.is_none()
+            let state = live.conv.lock_state();
+            vanished.contains(&live.work) && state.turn.is_none() && state.self_turn.is_none()
         });
     }
 
