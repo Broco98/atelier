@@ -44,8 +44,13 @@ export interface RowLook {
   glyph: LucideIcon | null;
   /** 글자를 흐리게 그린다. 그 까닭은 `note`가 말한다. */
   dim?: boolean;
-  /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」). */
+  /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」, spec: 「고쳐졌는데 아직 열지 않았어요」). */
   note?: string;
+  /**
+   * 이름 끝에 고친 곳의 점을 세운다(three-axes 티켓 26 — spec 트리의 아직 열지 않은 고친 파일). 그 뜻은 `note`가 말한다. 파일 행만
+   * 읽는다 — 고친 곳은 파일에 선다.
+   */
+  changed?: boolean;
 }
 
 interface TreeProps {
@@ -59,12 +64,14 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
+  // 아직 열지 않은 고친 파일 — 그 행에 점이 선다(three-axes 티켓 26, 생략 시 없음). 아카이브 목록은 넘기지 않는다.
+  unseen?: readonly string[];
   // 첫 층의 깊이(생략 시 0). 아카이브는 트리를 아카이브 행 아래 한 단 들여 세운다 — 행과 같은 x에서 시작하면 문서
   // 줄이 아카이브 행과 한 층으로 읽힌다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다).
   depth?: number;
 }
 
-function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, unseen = NOTHING_UNSEEN, depth = 0 }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트(패널 토글)를 넘어 살지
   // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
   // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
@@ -87,11 +94,19 @@ function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
         onOpenChange={setOpen}
         onSelect={onSelect}
         onCopy={onCopy}
-        lookOf={specLook}
+        lookOf={(item) => specLook(item, unseen)}
       />
     </div>
   );
 }
+
+const NOTHING_UNSEEN: readonly string[] = [];
+
+/**
+ * 고친 곳의 점이 하는 말(three-axes 티켓 26) — 이름 버튼의 설명으로 남는다. 점을 이름에 넣지 않는 것은 이름으로 행을 찾는 L3 · L4가
+ * 그 이름을 딛기 때문이다(아래 `FileGlyph` 머리말과 같은 까닭).
+ */
+const UNSEEN_CHANGE = "고쳐졌는데 아직 열지 않았어요";
 
 /**
  * 손대기 전의 펼침. 번호 묶음의 구성원은 **최신 표시가 붙은 것만** 펼친다 — 판이 쌓여도 지금
@@ -103,8 +118,12 @@ function openByDefault(item: SpecTreeItem): boolean {
   return item.group === null || item.group.latest;
 }
 
-// spec 행의 글리프는 레이아웃 항목이 준 아이콘이다. 흐린 행도 덧붙이는 말도 없다.
-const specLook = (item: SpecTreeItem): RowLook => ({ glyph: specIconOf(item.icon) });
+// spec 행의 글리프는 레이아웃 항목이 준 아이콘이다. 흐린 행은 없다. 아직 열지 않은 고친 파일이면 점이 서고 그 뜻을 덧붙여
+// 말한다(three-axes 티켓 26).
+const specLook = (item: SpecTreeItem, unseen: readonly string[]): RowLook => {
+  const glyph = specIconOf(item.icon);
+  return unseen.includes(item.path) ? { glyph, note: UNSEEN_CHANGE, changed: true } : { glyph };
+};
 
 /** 행 묶음의 입력. 접힘의 주인은 부르는 쪽이다 — spec 트리는 제 상태에, files 트리는 work · 프로젝트별 기억에 둔다. */
 export interface TreeRowsProps<T extends TreeRowItem<T>> {
@@ -243,6 +262,11 @@ export function TreeRows<T extends TreeRowItem<T>>({
               >
                 <FileGlyph name={item.name} glyph={look.glyph} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {/* 고친 곳의 점 — 이름 끝 6px(three-axes 프로토타입 D의 `.udot`, 값은 캔버스 `.cx-dot`). 뜻은 버튼의 설명(`note`)이
+                    말한다. */}
+                {look.changed && (
+                  <span data-change-dot aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--chat-dot-new)" />
+                )}
               </button>
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라

@@ -141,18 +141,20 @@ describe("WorksPage 패널 토글과 레일", () => {
     }
   });
 
-  it("레일 칸이 `spec` · `files` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
-    // 칸은 목록으로 받는다(ui-refresh 결정 10) — git-integration이 `files`를 `spec` 뒤에 더했고(그쪽 결정 29), 뒤에 changes가
-    // 한 줄 더 는다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서
-    // 탭(`aria-selected`)이 아니다.
+  it("레일 칸이 `spec` · `chat` · `files` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
+    // 칸은 목록으로 받는다(ui-refresh 결정 10) — `chat`은 `spec` 바로 뒤이고(three-axes 구현 스펙 S20), git-integration이 `files`를
+    // 그 뒤에 더했다(그쪽 결정 29). 뒤에 changes가 한 줄 더 는다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 켜진 칸을 다시
+    // 누르면 닫혀 켜진 칸이 0일 수 있어서 탭(`aria-selected`)이 아니다.
     expect(railItems(render())).toEqual([
       { name: "spec", pressed: "true" },
+      { name: "chat", pressed: "false" },
       { name: "files", pressed: "false" },
       { name: "info", pressed: "false" },
     ]);
     // 패널이 접혀 있으면 고른 칸은 기억한 채 어느 칸도 켜져 있지 않다.
     expect(railItems(render(specDocs(["overview.md"]), "spec", "lr"))).toEqual([
       { name: "spec", pressed: "false" },
+      { name: "chat", pressed: "false" },
       { name: "files", pressed: "false" },
       { name: "info", pressed: "false" },
     ]);
@@ -176,8 +178,8 @@ describe("WorksPage 패널 토글과 레일", () => {
     const panelId = markup.match(/<aside[^>]*\bid="([^"]+)"/)?.[1] ?? "";
     expect(panelId, "패널 칸에 id가 없다").not.toBe("");
     expect(panelToggleTags(markup)[0]).toContain(`aria-controls="${panelId}"`);
-    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|files|info)"/.test(tag));
-    expect(items).toHaveLength(3);
+    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|chat|files|info)"/.test(tag));
+    expect(items).toHaveLength(4);
     for (const tag of items) expect(tag).toContain(`aria-controls="${panelId}"`);
   });
 
@@ -186,7 +188,7 @@ describe("WorksPage 패널 토글과 레일", () => {
     // 열 길 자체가 없어진다.
     const markup = render({}, "terminal");
     expect(panelToggleTags(markup)).toHaveLength(1);
-    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "files", "info"]);
+    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "chat", "files", "info"]);
   });
 
   it("헤더에 프로젝트 칩이 없고, 상태 배지와 ⋯는 그대로 있다", () => {
@@ -885,7 +887,10 @@ describe("WorksPage ⌘Enter", () => {
     );
     expect(effect, "⌘Enter 효과를 찾지 못했다").not.toBeNull();
     expect(effect![0]).toContain("togglesWorkPanel");
-    expect(effect![0]).toContain("setWorkPanelOpen");
+    // 뒤집는 몸은 레일의 패널 토글과 같은 함수다 — 대화창이 가운데에 선 동안(three-axes S22) 뒤집기가 열림 하나로 끝나지 않아
+    // 그 판단이 한 함수에 산다. 이펙트는 그것을 참조로 부른다(의존성이 비어 있는 채로).
+    expect(effect![0]).toContain("togglePanelRef.current()");
+    expect(worksPage).toContain("setWorkPanelOpen((open) => !open);");
     // `tab`을 안 보므로 의존성도 비어 있다. 남아 있으면 판단이 아직 탭에 매여 있다는 뜻이다.
     expect(effect![1].trim()).toBe("");
     expect(effect![0]).not.toContain("tab");
@@ -943,7 +948,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       .filter((cell) => cell.kind !== "new" && cell.markup.includes('aria-pressed="true"'))
       .map((cell) => cell.kind);
 
-  it("이 Work의 셸이 `spec` 뒤에 칸으로 선다", () => {
+  it("이 Work의 셸이 `spec` · `chat` 뒤에 칸으로 선다", () => {
     seed(2, work.slug, "~/.atelier/works/some-work/trees/atelier");
     // 남의 work의 셸이 섞이면 안 된다 — `owner`가 이 화면의 것이어야 한다.
     terminalStore.setState(
@@ -954,7 +959,8 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
           cwd: "~/x",
         })!.state,
     );
-    expect(kindsOf(headerOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
+    // `chat`은 `spec` 바로 뒤의 고정 칸이다(three-axes S21) — 셸 칸의 셈에 안 든다.
+    expect(kindsOf(headerOf(render()))).toEqual(["spec", "chat", "shell", "shell", "new"]);
   });
 
   it("세로 목록의 둘째 줄은 안 따라온다", () => {
@@ -1414,10 +1420,11 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
 //
 // 두 가지를 함께 못박는다: **분할이면 분할째로 걷는다**(빈 터미널 열이 반을 차지한 채
 // 남으면 두 열을 세운 이유와 정면으로 어긋난다) · **본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만**이다
-// (문서를 읽는 중에 사이드바로 셸을 닫은 것은 화면에서 아무것도 안 바뀌어야 한다 — git-integration 결정 30).
-it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 가만있는다", () => {
+// (문서를 읽는 중에 사이드바로 셸을 닫은 것은 화면에서 아무것도 안 바뀌어야 한다 — git-integration 결정 30). 가운데에
+// 대화창이 선 동안(`chat` 탭 — 묶음 밖, three-axes S21)도 문서를 읽는 중과 같다 — 묶음이 화면에 없다.
+it("마지막 셸이 닫히면 분할째로 걷고, 문서나 대화창만 보던 중이면 가만있는다", () => {
   expect(source("WorksPage.tsx")).toContain(
-    'if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");',
+    'if (emptied && ((tab !== "spec" && tab !== "chat") || split !== null)) changeSplit(null, "spec");',
   );
 });
 
@@ -1538,5 +1545,71 @@ describe("⋯ 메뉴의 확인 대화", () => {
     // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
     expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");
     expect(worksPage).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
+  });
+});
+
+// three-axes 티켓 24 — **`chat` 탭이 대화창을 가운데에 넓게 띄운다**(S21 · S22). 여기서 보는 것은 「주소가 `tab=chat`이면 화면이
+// 무엇으로 서는가」다 — 누르고 옮기는 손맛(레일을 누르면 대화가 패널로 돌아간다 · 문서 링크 · ⌘ 키)은 L3(`e2e/chat-tab.spec.ts`)가 든다.
+describe("WorksPage `chat` 탭", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const withSpec = specDocs(["overview.md"]);
+  const bodies = { "overview.md": "개요의 본문이다." };
+  /** 탭 줄의 고정 칸 — 마크업 순서대로 칸 id와 켜짐을 읽는다. */
+  const fixedTabs = (markup: string) =>
+    [...(markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "").matchAll(/<button[^>]*data-tab="(spec|chat)"[^>]*>/g)].map(
+      ([tag, id]) => ({ id, pressed: tag.match(/aria-pressed="([^"]*)"/)?.[1] ?? "" }),
+    );
+  /** 가운데 카드 — 본문은 `main` 하나다. */
+  const mainCard = (markup: string) => markup.match(/<main[^>]*>[\s\S]*?<\/main>/)?.[0] ?? "";
+
+  it("탭 줄의 `spec` 바로 뒤에 `chat`이 서고, 켜짐은 「본문이 대화창인가」다", () => {
+    expect(fixedTabs(render(withSpec, "spec"))).toEqual([
+      { id: "spec", pressed: "true" },
+      { id: "chat", pressed: "false" },
+    ]);
+    expect(fixedTabs(render(withSpec, "chat"))).toEqual([
+      { id: "spec", pressed: "false" },
+      { id: "chat", pressed: "true" },
+    ]);
+    expect(fixedTabs(render(withSpec, "terminal"))).toEqual([
+      { id: "spec", pressed: "false" },
+      { id: "chat", pressed: "false" },
+    ]);
+  });
+
+  it("`chat`이면 가운데 카드가 대화창이다 — 대화 탭 줄이 서고 문서는 서지 않는다", () => {
+    const markup = render(withSpec, "chat", null, bodies);
+    const main = mainCard(markup);
+    expect(main).toMatch(/^<main[^>]*aria-label="대화"/);
+    expect(main).toContain('aria-label="대화 탭"');
+    expect(markup).not.toContain(bodies["overview.md"]);
+    // 패널은 같은 자리(본문 바로 뒤)에 선다 — 탭을 오가도 패널 인스턴스가 그대로다(결정 49).
+    expect(markup).toContain("</main><aside");
+  });
+
+  it("`chat` 탭이 떠 있으면 레일 `chat`이 켜진 것으로 읽힌다 — 패널에서 고른 칸은 그대로 켜져 있다", () => {
+    expect(railItems(render(withSpec, "chat"))).toEqual([
+      { name: "spec", pressed: "true" },
+      { name: "chat", pressed: "true" },
+      { name: "files", pressed: "false" },
+      { name: "info", pressed: "false" },
+    ]);
+  });
+
+  it("분할에는 들지 않는다 — `tab=chat`에 분할이 겹치면 분할이 이기고 `spec ▏ 묶음의 지금 탭`이다", () => {
+    const markup = render(withSpec, "chat", "lr");
+    expect(countOf(markup, "data-column=")).toBe(2);
+    expect(markup.indexOf('data-column="spec"')).toBeLessThan(markup.indexOf('data-column="terminal"'));
+    expect(markup).not.toMatch(/<main[^>]*aria-label="대화"/);
+    expect(fixedTabs(markup)).toEqual([
+      { id: "spec", pressed: "true" },
+      { id: "chat", pressed: "false" },
+    ]);
   });
 });

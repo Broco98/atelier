@@ -5,6 +5,9 @@ import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
+import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
+import { useChatEngineFeed, useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
+import { countChatsForQuit } from "@/features/chat/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
@@ -27,9 +30,18 @@ import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
-import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
+import { QUIT_REQUESTED_EVENT, quitApp, requestQuit, type QuitTally } from "./quit-request";
 import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
 import { navItems, type NavKey } from "./nav-items";
+
+/**
+ * 종료 확인이 적을 수를 함께 센다 — 셸(모든 화면의 목록)과 대화(three-axes 티켓 23 — 대화 호스트가 앱 전체를). 두 물음은 서로를
+ * 기다리지 않고 함께 간다. 대화 셈은 거절돼도 0으로 서므로(`countChatsForQuit`) 이 약속이 셸 셈 밖의 까닭으로 던지지 않는다.
+ */
+async function countForQuit(): Promise<QuitTally> {
+  const [shells, chats] = await Promise.all([quitShellCounts(), countChatsForQuit()]);
+  return { shells, chats };
+}
 
 function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
@@ -91,6 +103,15 @@ function AppShell() {
     };
   }, [queryClient]);
 
+  // **대화의 기록 줄을 듣는 자리가 여기 하나다**(three-axes 티켓 17). 대화 호스트는 앱 프로세스에 살아 다른 work로 가도 대화가
+  // 돌고, 화면은 그 줄을 이 구독 하나로 받아 모듈 스토어에 쌓는다 — 대화창이 저마다 들으면 보이지 않는 work의 줄이 버려져
+  // 돌아왔을 때 그사이 흐른 답이 빈다(스토리 14 · 15). 턴 끝 알림도 여기서 한 번 낸다(스토리 121, 알림 자리는 `ChatAnnouncer`).
+  useChatRecordFeed();
+  // 엔진 상태(찾음 · 로그인 · 로그인 진행)도 여기 하나로 듣는다 — 대화창의 안내 카드가 그것으로 선다(three-axes 티켓 22).
+  useChatEngineFeed();
+  // 대기 줄 바뀜도 같은 까닭으로 여기 하나다(three-axes 티켓 20) — 다른 work에 가 있는 동안 대기 말이 가도 돌아오면 맞는 대기 줄이다.
+  useChatQueueFeed();
+
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open`(위)과 같은 뿌리에서 듣는 것은 그쪽도
   // 같은 성질이기 때문이다: OS 메뉴가 웹뷰보다 먼저 먹는 것을 유리하게 쓰는 길.
@@ -120,7 +141,7 @@ function AppShell() {
   // 「아니오」로 접고 갈아 끼운다.
   useEffect(() => {
     const unlisten = listen(QUIT_REQUESTED_EVENT, () => {
-      void requestQuit(quitShellCounts, quitApp);
+      void requestQuit(countForQuit, quitApp);
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -316,6 +337,8 @@ function AppShell() {
       {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
           찾는다. 쿼리 구독은 제 파일에 있다. */}
       <ShellOwners />
+      {/* 대화의 턴 끝 알림(three-axes 티켓 17) — 스크린리더에만 읽히는 알림 자리 하나. 대화창이 둘이어도 알림은 여기서 한 번이다. */}
+      <ChatAnnouncer />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />

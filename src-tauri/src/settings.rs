@@ -94,6 +94,11 @@ impl NotificationSettings {
 }
 
 /// 파일 전체. 구획이 `terminal`·`notifications` 둘이다 — 다른 구획이 생기면 여기 한 줄이다.
+///
+/// **대화 구획(`chat`)은 여기 칸이 없다**(three-axes 결정 16 · 티켓 25) — 새 대화의 기본 에이전트 · 엔진별 기본 모델 · 시작 모드다.
+/// 화면이 고르고(`src/features/settings/chat-settings.ts`) 대화 호스트가 새 대화 때 읽기만 한다(`atelier-acp`의
+/// `chat_settings.rs` — 깨진 값은 엔진 기본값으로 눕는다). 이 파일에서는 `extra`로 글자 그대로 왕복한다 — 칸을 세우면 손으로
+/// 잘못 적은 에이전트 이름 하나가 설정 화면 전체의 읽기를 막는다.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -331,6 +336,27 @@ mod tests {
         let out = std::fs::read_to_string(settings_path(&root)).unwrap();
         assert!(out.contains("\"tabWidth\""), "모르는 구획이 사라졌다: {out}");
         assert!(out.contains("\"bell\""), "모르는 키가 사라졌다: {out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 대화 구획(three-axes 티켓 25)은 칸 없이 `extra`로 산다 — 그 안의 모르는 키까지 글자 그대로 돌아간다.
+    #[test]
+    fn the_chat_section_survives_a_roundtrip_with_its_unknown_keys() {
+        let root = temp_root("chat");
+        let chat = serde_json::json!({
+            "defaultAgent": "codex",
+            "claude": {"model": "sonnet", "effort": "high"},
+            "codex": {"mode": "workspace-write"},
+            "rolePresets": []
+        });
+        std::fs::write(settings_path(&root), serde_json::json!({"chat": chat}).to_string()).unwrap();
+
+        let s = read(&root).unwrap();
+        write(&root, &s).unwrap();
+
+        let out: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(out["chat"], chat, "대화 구획이 글자 그대로가 아니다");
         let _ = std::fs::remove_dir_all(&root);
     }
 

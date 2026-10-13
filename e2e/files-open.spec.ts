@@ -13,7 +13,7 @@ import { awaitSpawned, installFixtureBackend, unknownIpcCalls, 주소로간다, 
 
 const [work] = WORKS;
 
-const 레일칸 = (page: Page, name: "spec" | "files" | "info") =>
+const 레일칸 = (page: Page, name: "spec" | "chat" | "files" | "info") =>
   page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name, exact: true });
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 /** 트리의 행 — 폴더 행은 이름이 곧 이름이고, 파일 행은 확장자 꼬리표가 앞에 붙는다(`TS index.ts`). */

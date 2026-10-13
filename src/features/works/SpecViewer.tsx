@@ -1,15 +1,18 @@
 import {
   Children,
   cloneElement,
+  createContext,
   isValidElement,
   memo,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   type RefObject,
 } from "react";
+import { useStore } from "@tanstack/react-store";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -28,12 +31,17 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
+import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
+import { changeMarksStore, marksOf, overlaps, type LineRange } from "@/features/chat/changes";
+import type { Quote } from "@/features/chat/types";
+import { docRevealStore, settleReveal } from "./doc-reveal";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
 import { specDirRef, specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
+import { QuotePick } from "./QuotePick";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import type { WorkView } from "./types";
 
@@ -56,6 +64,9 @@ interface SpecViewerProps {
   onNavigate: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 토스트 표면의 주인은 화면이다(결정 47).
   onCopy: (text: string) => void;
+  // 고른 글의 「❝ 이 자리를 두고 말하기」를 눌렀다(three-axes 티켓 27) — 그 자리(파일 · 원문 줄 범위 · 글)를 대화창의 입력창에
+  // 붙인다. 대화창을 여는 일까지 작업 패널의 주인인 화면이 한다.
+  onQuote: (quote: Quote) => void;
 }
 
 function SpecViewer({
@@ -66,6 +77,7 @@ function SpecViewer({
   showSource,
   onNavigate,
   onCopy,
+  onQuote,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
@@ -80,6 +92,26 @@ function SpecViewer({
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
+  // 지금 문서의 고친 곳(three-axes 티켓 26) — 그 work의 표시에서 이 파일의 바뀐 줄 범위. 표시가 없으면 `null`이다. 스토어가 든 배열
+  // 그대로라 이 파일의 표시가 바뀔 때만 새 값이다.
+  const changed = useStore(changeMarksStore, (state) => (file ? (marksOf(state, work.slug).files[file] ?? null) : null));
+
+  // 그 줄에서 열기(three-axes 티켓 26 — 알약 목록의 파일). 이 문서를 기다리는 요청이 있으면, 이 문서의 내용이 그려진 뒤 그 줄의
+  // 블록이 스크롤 상자 위쪽에 오도록 굴린다. 파일을 옮기면 내용이 한 번 비므로(`specFileQuery`의 `placeholderData`) 내용이 온
+  // 뒤에야 찾는다 — 이펙트는 커밋 뒤라 그때는 새 블록이 이미 DOM에 있다. 찾든 못 찾든 요청은 한 번으로 끝낸다.
+  const scroller = useRef<HTMLDivElement>(null);
+  // 스크롤 상자 안의 내용 층 — 인용 단추가 이 층 기준으로 서서 글과 함께 구른다(three-axes 티켓 27).
+  const layer = useRef<HTMLDivElement>(null);
+  const reveal = useStore(docRevealStore, (pending) =>
+    pending && pending.work === work.slug && pending.file === file ? pending : null,
+  );
+  useEffect(() => {
+    const box = scroller.current;
+    if (!reveal || content === undefined || !box) return;
+    const target = lineTarget(box, reveal.line);
+    if (target) box.scrollTop += target.getBoundingClientRect().top - box.getBoundingClientRect().top - REVEAL_GAP;
+    settleReveal(reveal);
+  }, [reveal, content, body]);
 
   const copyRef = useCallback(
     (start: number, end: number) => {
@@ -131,8 +163,8 @@ function SpecViewer({
     //
     // 탭 줄의 바닥(`TAB_ROW_COLUMN`)은 이제 공용 틀의 본문 열이 든다 — 넓은 표 · 코드가 그 바닥에 안 섞이는 것도 그쪽 일이다.
     // 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다.
-    <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-      <div className="flex min-h-full min-w-0 flex-col">
+    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+      <div ref={layer} className="relative flex min-h-full min-w-0 flex-col">
         {files.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-10">
             <Empty>
@@ -155,12 +187,41 @@ function SpecViewer({
             </Empty>
           </div>
         ) : (
-          bodyView(body)
+          // 고친 곳은 문맥으로 내린다 — 블록 래퍼만 읽는다(`ChangedLines` 머리말).
+          <ChangedLines.Provider value={changed}>{bodyView(body)}</ChangedLines.Provider>
+        )}
+        {/* 글을 고르면 그 곁에 「❝ 이 자리를 두고 말하기」 — 원문 줄 위치를 아는 두 보기(렌더 · 원문)에서만 선다(three-axes 티켓 27). */}
+        {file && files.length > 0 && (body === "pretty" || body === "source") && (
+          <QuotePick box={scroller} layer={layer} file={file} mode={body} onQuote={onQuote} />
         )}
       </div>
     </div>
   );
 }
+
+/** 그 줄에서 열 때 블록 위에 남기는 틈 — 블록이 스크롤 상자 끝에 붙어 첫 줄이 잘려 보이지 않게. */
+const REVEAL_GAP = 16;
+
+/**
+ * 원문 줄이 서 있는 자리 — 예쁜 보기는 그 줄을 품은(없으면 그 뒤의 첫) 최상위 블록(`data-src-start`), 원문 보기는 그 줄의 행
+ * (`data-line`)이다. 블록으로 감싸지 않는 것(빈 줄 · 감싸지 않는 요소) 위의 줄이면 그 뒤 블록으로 간다.
+ */
+function lineTarget(box: HTMLElement, line: number): HTMLElement | null {
+  const row = box.querySelector<HTMLElement>(`[data-line="${line}"]`);
+  if (row) return row;
+  for (const block of box.querySelectorAll<HTMLElement>("[data-src-start]")) {
+    if (Number(block.dataset.srcEnd) >= line) return block;
+  }
+  return null;
+}
+
+/**
+ * 지금 문서의 고친 곳 — 바뀐 줄 범위(three-axes 티켓 26). **블록 래퍼만 이것을 읽는다.** 예쁜 보기의 렌더러 표(`components`)가
+ * 이 값에 기대면 표시가 서고 지워질 때마다 렌더러 함수의 정체가 바뀌어 마크다운 트리가 통째로 다시 마운트된다(Mermaid 다시 그림 ·
+ * 표 열 폭 초기화 — 아래 `PrettyView`의 `fileRef` 머리말과 같은 까닭). 문맥으로 내리면 예쁜 보기는 memo 그대로 건너뛰고 래퍼만 다시
+ * 그린다. 아카이브 화면은 이것을 주지 않는다(기본값 `null` — 표시가 없다).
+ */
+const ChangedLines = createContext<readonly LineRange[] | null>(null);
 
 /**
  * 그림 한 장을 본문에 세운다 — 트리에서 그림 파일을 고른 자리.
@@ -409,7 +470,8 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
-            <div key={i} className="flex">
+            // 원문 줄 번호를 표식으로 단다(three-axes 티켓 26 · 27) — 그 줄에서 열기가 이 행으로 굴러가고, 인용이 고른 줄을 이것으로 안다.
+            <div key={i} data-line={i + 1} className="flex">
               {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
                   폭 48px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터 버튼의
                   오른쪽 끝과 같은 자리에 온다. 남는 32px이 네 자리 줄번호(31.2px)의 자리다 */}
@@ -491,8 +553,19 @@ function BlockWrapper({
   children: React.ReactNode;
 }) {
   const range = end !== start ? `${start}–${end}` : `${start}`;
+  const changedLines = useContext(ChangedLines);
+  const changed = changedLines !== null && overlaps(changedLines, start, end);
   return (
-    <div className={cn("group relative py-1", spacing)}>
+    // 원문 줄 범위를 표식으로 단다(three-axes 티켓 26 · 27) — 고친 곳이 블록을 고르고, 인용이 고른 글의 블록을 이것으로 찾는다.
+    // 고친 곳(`data-changed`)은 옅은 파랑 면과 왼쪽 막대다(three-axes 결정 22 · 캔버스 `.cx-changed`, 대화창 범위 토큰 — three-axes 결정 31).
+    // 면은 블록 상자 밖으로 번진 앞 요소(`before`)라 글자 자리도 거터 버튼 자리도 움직이지 않는다 — 표시가 서고 지워져도 본문이
+    // 안 튄다. 앞 요소를 글 뒤에 깔려고 표시가 선 래퍼만 쌓임 맥락(`isolate`)을 연다.
+    <div
+      data-src-start={start}
+      data-src-end={end}
+      data-changed={changed ? "" : undefined}
+      className={cn("group relative py-1", spacing, changed && CHANGED_BLOCK)}
+    >
       {/* 거터는 본문 좌측 여백(bodyColumn의 px) 안쪽에 오른쪽 정렬로 얹힌다 —
           버튼의 오른쪽 끝이 본문과 16px 떨어져, 소스 보기 줄번호의 오른쪽 끝과 같은 자리에 온다.
           top-1은 버튼 중심(4+12=16px)을 숫자가 있던 자리의 중심에 그대로 둔다.
@@ -518,6 +591,10 @@ function BlockWrapper({
     </div>
   );
 }
+
+// 고친 곳의 칠 — 블록 좌우로 12px 번진 옅은 면(r10)과 그 왼쪽 3px 막대(프로토타입 D의 `.blk.chg`). 값은 `index.css`의 고친 곳 토큰이다.
+const CHANGED_BLOCK =
+  "isolate before:absolute before:inset-y-0 before:-inset-x-3 before:-z-10 before:rounded-lg before:bg-(--chat-accent-soft) before:shadow-[inset_3px_0_0_var(--chat-dot-new)]";
 
 // 블록의 시작 위치를 여는 열쇠 — 최상위를 담을 때와 꺼내 볼 때가 같은 문자열을 써야 한다
 const blockKey = (line: number, column: number) => `${line}:${column}`;
@@ -746,9 +823,7 @@ export const PrettyView = memo(function PrettyView({
       ),
       pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
-        const lang: string | undefined = code?.properties?.className
-          ?.find?.((c: string) => c.startsWith("language-"))
-          ?.slice("language-".length);
+        const lang = codeLang(code);
         const inner =
           lang === "mermaid" ? (
             <MermaidBlock code={hastText(code)} />
@@ -874,14 +949,6 @@ function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNod
   // 마커 한 줄뿐인 문단은 통째로 뺀다 — 빈 문단이 남으면 머리글 아래가 벌어진다
   if (next.length === 0) return items.filter((_, i) => i !== index);
   return items.map((item, i) => (i === index ? cloneElement(paragraph, undefined, ...next) : item));
-}
-
-// hast 노드에서 텍스트만 추출 (mermaid 코드 등)
-function hastText(node: unknown): string {
-  if (!node || typeof node !== "object") return "";
-  const n = node as { type?: string; value?: string; children?: unknown[] };
-  if (n.type === "text") return n.value ?? "";
-  return (n.children ?? []).map(hastText).join("");
 }
 
 export default SpecViewer;

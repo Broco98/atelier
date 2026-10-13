@@ -998,6 +998,118 @@ body[data-palette-open] [data-scrollbar] {
     min-height: 1px;
 }
 
+/* ── 대화창 범위 토큰(three-axes 결정 31) ──
+   대화창은 Codex DS 캔버스(「Atelier × Codex」 보드 14 · 04)의 모양을 따른다. 값의 출처는 spec/02-대화창/디자인-참고/의
+   `atelier-codex.css`이고, **전역 토큰이 아니다** — 앱의 DS 이름 토큰(`:root` · `@theme`)은 고치지 않고, 대화창이 쓰는 값만
+   `[data-chat]` 안에서 선다(`[data-titlebar]`와 같은 꼴). `@theme`에 넣지 않는 것도 그래서다: 넣으면 전역 유틸리티가 생긴다.
+   대화창 뿌리(작업 패널의 `chat` 보기 · `chat` 탭이 같이 쓰는 컴포넌트)에 `data-chat`이 달린다. `codex-ds`가 전역 토큰을
+   Codex 값으로 바꾸는 날 이 덩어리를 그쪽 이름으로 옮긴다.
+
+   글자 크기는 여기 없다 — 캔버스의 대화창 글자(11 · 12 · 13 · 14px)는 모두 앱 글자 단계에 있다. 다른 것은 줄 높이뿐이다.
+   hover · 켜짐 면도 여기 없다 — 캔버스의 fill-soft · hover · active는 앱 상태 농도(`--state-*`)로 옮긴다(위 「상태 농도」의 열거). */
+[data-chat] {
+    /* 말풍선 r22 · 입력창 r28 · 코드 상자 r12 · 인라인 코드와 탭 닫기 r4 */
+    --chat-radius-bubble: 22px;
+    --chat-radius-composer: 28px;
+    --chat-radius-block: 12px;
+    --chat-radius-inline: 4px;
+    /* 대화 열 · 말풍선 · 입력칸 · 답의 줄 높이(14/22.75)와 입력칸의 자간 */
+    --chat-leading-prose: 22.75px;
+    --chat-tracking-field: -0.15px;
+    --chat-shadow-composer: 0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006;
+    --chat-shadow-code: inset 0 0 0 1px rgba(26, 28, 31, 0.05);
+    /* 「N개 파일 변경됨」 알약 — 0.5px 실선과 카드 그림자(캔버스 `.cx-floatpill`) */
+    --chat-shadow-pill: 0 0 0 0.5px #0000001a, 0 4px 16px 0 #0000000d;
+    /* 대화 탭 줄 아래 · 표 칸 아래의 0.5px 선, 표 머리 아래의 1px 선 */
+    --chat-hairline-below: inset 0 -0.5px 0 rgba(26, 28, 31, 0.08);
+    --chat-rule-below: inset 0 -1px 0 rgba(13, 13, 13, 0.15);
+    --chat-rule: rgba(13, 13, 13, 0.15);
+    --chat-border-heavy: rgba(26, 28, 31, 0.12);
+    /* 승인 · 안내 카드의 엔진 줄과 까닭 글, 도구 줄 글자(60%) — 캔버스 `--fg-tool` 하나다 */
+    --chat-fg-tool: rgba(26, 28, 31, 0.6);
+    --chat-bubble: #e8f3fe;
+    --chat-send: #3a83f7;
+    --chat-link: #0169cc;
+    --chat-surface-code: #f2f2f3;
+    /* 도구 줄과 명령 출력 상자(three-axes 티켓 20 — 캔버스 `.cx-tool` · `.cx-shell-out`): 도구 줄의 줄 높이(14/21, 글자는 위의
+       `--chat-fg-tool`), 출력 상자의 면과 1px 안쪽 선, 오른쪽 아래 상태 글자 */
+    --chat-leading-tool: 21px;
+    --chat-fg-tool-status: #88898a;
+    --chat-surface-tool: #f2f3f3;
+    --chat-shadow-tool: inset 0 0 0 1px #d9dada;
+    /* 도는 도구 줄의 옅은 글자(40% — 반짝임의 바탕)와 줄의 파일 이름(`.cx-tool .dim`), 새로 쓴 · 지운 파일의 점(three-axes 티켓 18 —
+       캔버스 `.cx-shimmer.tool` · `.cx-tool .fdot`) */
+    --chat-fg-tool-running: rgba(26, 28, 31, 0.4);
+    --chat-dot-created: #79a9fa;
+    --chat-dot-deleted: #ec736e;
+    /* diff(three-axes 티켓 18 — 캔버스 `.cx-diff`): 바깥 1px 안쪽 선 · 머리 면과 그 아래 1px 선 · 더한 줄과 지운 줄의 면 · 막대 ·
+       글자 색, 코드의 줄 높이(mono 12/21.6) */
+    --chat-leading-diff: 21.6px;
+    --chat-shadow-diff: inset 0 0 0 1px #ededed;
+    --chat-diff-header: #f8f8f8;
+    --chat-diff-rule: inset 0 -1px 0 #ededed;
+    --chat-diff-added: #00a240;
+    --chat-diff-deleted: #ba2623;
+    --chat-diff-added-line: #e6f4e7;
+    --chat-diff-deleted-line: #fce6e2;
+    /* 흐름과 입력창을 모으는 폭(three-axes 티켓 24 — 캔버스 `.cx-thread`의 `--size-thread`). `chat` 탭처럼 넓은 자리에서 이 폭에
+       가운데로 모인다 — 작업 패널은 이보다 좁아 꽉 찬다. */
+    --chat-thread-width: 48rem;
+    /* 대기 중인 말의 줄(캔버스 보드 04의 대기 줄 — #f9f9f9 면 · 0.5px 안쪽 선). 계획 체크리스트도 같은 면이다(캔버스 `.cx-group`). */
+    --chat-surface-under: #f9f9f9;
+    --chat-shadow-under: inset 0 0 0 0.5px rgba(26, 28, 31, 0.08);
+    /* 「/」 메뉴(three-axes 티켓 19 — 캔버스 `.cx-menu`): 입력창 위에 뜨는 명령 메뉴의 그림자(`--shadow-prominent`) */
+    --chat-shadow-menu: 0 0 0 0.5px #1a1c1f1f, 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
+    /* 계획 카드의 0.5px 바깥 선(three-axes 티켓 21 — 캔버스 `.cx-card`) */
+    --chat-shadow-card: 0 0 0 0.5px rgba(26, 28, 31, 0.12);
+}
+
+/* 캔버스 강조 둘 — 같은 캔버스 토큰은 범위에서도 한 이름이다(three-axes 결정 31 — codex-ds가 전역을 바꾸면 그쪽 이름으로 한 번에
+   옮긴다).
+   - `--chat-accent-soft`(캔버스 `--accent-soft`): 인용 칩의 면(티켓 27 · `.cx-cite`), 켠 「계획」 칩의 면(티켓 19 · `.cx-ctl.plan-on`),
+     고친 곳의 면(티켓 26 · `.cx-changed`). 칩 글자는 `--chat-link`다.
+   - `--chat-dot-new`(캔버스 `--dot-new` · `--accent`): 고친 곳의 막대와 점(`.cx-dot`).
+   고친 곳의 표시는 대화창 **밖**에도 선다(스펙 창의 블록 · 트리의 행 · 레일 칸). 그래서 대화창 뿌리와 함께 표시가 서는 요소
+   자신(`data-changed` · `data-change-dot`)이 같은 값을 든다 — 전역 토큰은 고치지 않는다. */
+[data-chat],
+[data-changed],
+[data-change-dot] {
+    --chat-accent-soft: #e5f3ff;
+    --chat-dot-new: #339cff;
+}
+
+/* 「생각 중」의 반짝임(캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 2초마다 지나간다. WebKit은 `-webkit-background-clip`과
+   `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 멎은 옅은 글자다 — 위 동작 줄이기
+   블록은 `data-slot` 부품만 끄므로 제 규칙을 둔다. */
+@keyframes chat-shimmer {
+    0% {
+        background-position: -100% 0;
+    }
+    to {
+        background-position: 250% 0;
+    }
+}
+@utility chat-shimmer {
+    width: fit-content;
+    /* 바탕의 옅은 글자 — 「생각 중」은 tertiary, 도는 도구 줄은 `--chat-fg-tool-running`(부르는 자리가 `--chat-shimmer-dim`으로 준다) */
+    background: var(--chat-shimmer-dim, var(--text-tertiary))
+        linear-gradient(
+            to left,
+            var(--chat-shimmer-dim, var(--text-tertiary)),
+            var(--foreground) 50%,
+            var(--chat-shimmer-dim, var(--text-tertiary))
+        )
+        no-repeat;
+    background-size: 50% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: chat-shimmer 2s linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
 /* **코드 보기 범위 토큰**(git-integration 판 01 S16 · 결정 35 · 38) — 파일 탭의 강조된 코드(`HighlightedCode`)가 읽는다.
 
    값은 Codex `syntax-*` 라이트 값이다(`three-axes` 디자인-참고 `atelier-codex.css`). 전역 토큰이 아니라 이 범위에만 선다 —

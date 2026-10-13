@@ -34,6 +34,9 @@ serde = { version = "1", features = ["derive"] }
 # 잴 수 있게 되는 것도 여기서 온다.
 serde_json = { version = "1", features = ["preserve_order"] }
 atelier-core = { path = "../crates/atelier-core" }
+# 대화 호스트(three-axes 결정 12 · 티켓 05) — 앱이 하나를 쥐고 대화 명령을 위임한다. 에이전트 프로세스 · 기록 · 찾기는
+# 그 크레이트가 감춘다.
+atelier-acp = { path = "../crates/atelier-acp" }
 tauri-plugin-dialog = "2"
 notify-debouncer-mini = "0.7"
 # PTY는 데스크톱 앱만 쓴다 — MCP·CLI가 쓸 일이 없어 워크스페이스 공용으로 올리지 않는다.

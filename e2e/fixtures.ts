@@ -8,6 +8,7 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
+import type { ChatQuitCounts, Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
 import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
@@ -786,6 +787,22 @@ export const answerByArg = (
 ): ArgAnswers => new ArgAnswers(arg, answers, options && { value: options.otherwise });
 
 /**
+ * 고정 답의 대화 하나 — 설정의 기본 에이전트(처음은 Claude Code)로 연 새 대화. 새 대화 · 칩의 바꾸기(에이전트 · 모델 · 모드 · 계획)의
+ * 기본 답이 이것을 함께 가리킨다 — `Conversation`에 칸이 늘면 여기 하나만 고친다.
+ */
+const FIXTURE_CLAUDE = {
+  id: "c-fixture-claude",
+  agent: "claude",
+  name: "Claude",
+  model: null,
+  mode: null,
+  plan: null,
+  lastSeq: 0,
+  queue: [],
+  live: true,
+} satisfies Conversation;
+
+/**
  * 워크트리 파일 읽기의 **경로별** 답(git-integration 판 01 — 파일 탭의 본문). 표에 없는 경로는 「없음」이다 — 지운 파일 ·
  * 주소가 없는 경로를 가리킨 탭이 그 갈래다(스토리 61 · 82).
  *
@@ -1025,6 +1042,60 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
     { otherwise: SEARCH_RESULTS },
   ),
+  // ── 대화창(three-axes 티켓 17) ── 태우는 시나리오는 `chat.spec.ts`다. 대화창은 **처음 보일 때** 목록을 읽으므로 작업 화면을
+  // 여는 것만으로는 이 명령들이 안 나간다 — 레일 `chat`을 누른 spec만 지난다.
+  //
+  // 대화 목록과 기록은 **빈 답이 기본이다** — 대화 없는 work이고, 기록도 없다. 자료(L1이 남긴 기록 · 대화 목록)는 대화 spec이
+  // `chat-records.ts`로 읽어 덮어쓴다(S26). 이 답들은 상태가 없다: 만든 대화를 목록이 기억하지 않으므로 화면이 만들기 · 닫기의
+  // 응답으로 제 대화 목록을 고친다(`conversation-list.ts`).
+  chat_list: [] satisfies Conversation[],
+  chat_read_record: [] satisfies RecordLine[],
+  // 새 대화 — 설정의 기본 에이전트(처음은 Claude Code)로 연 대화 하나. 이름은 호스트가 짓는다(`Claude` · `Claude 2`). 둘째
+  // 대화를 재는 검사가 `replaceAnswer`로 갈아 끼운다(이름의 수는 오르는 값 표로 못 짓는다 — 첫 이름이 `Claude 1`이 된다).
+  chat_new: FIXTURE_CLAUDE,
+  // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
+  chat_send: null,
+  chat_close: null,
+  // 엔진 확인(three-axes 티켓 22) — 대화창이 그 엔진의 대화를 처음 보일 때와 `+`를 누를 때 나간다. **기본은 「찾음 · 로그인
+  // 됨」이다** — 안내 카드가 서지 않는 길이라 대화창을 여는 다른 spec들이 그대로 돈다. 못 찾음 · 로그인 안 됨은
+  // `chat-guide.spec.ts`가 덮어쓴다. 경로는 화면이 읽지 않는다.
+  chat_check_engine: answerByArg("agent", {
+    claude: { state: "found", programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }], loggedIn: true },
+    codex: {
+      state: "found",
+      programs: [
+        { name: "codex-acp", path: "/opt/fixture/bin/codex-acp" },
+        { name: "codex", path: "/opt/fixture/bin/codex" },
+        { name: "node", path: "/opt/fixture/bin/node" },
+      ],
+      loggedIn: true,
+    },
+  } satisfies Record<string, EngineCheck>),
+  // 로그인 시작 · 취소 — 값은 안 쓰인다. 진행(링크 · 끝남)은 엔진 상태 이벤트로 오므로 검사가 인자를 본 뒤 그 이벤트를 쏜다.
+  chat_start_login: null,
+  chat_cancel_login: null,
+  // 멈추기 · 대기 줄의 고치기 · 지우기 · 지금 보내기(three-axes 티켓 20) — 값은 안 쓰인다. 멈춘 턴의 끝은 기록 줄로, 대기 줄은 대기 줄
+  // 바뀜 이벤트로 오므로 검사가 그 인자를 본 뒤 쏜다.
+  chat_stop: null,
+  chat_edit_queued: null,
+  chat_delete_queued: null,
+  chat_send_now: null,
+  // 칩(three-axes 티켓 19) — 에이전트 바꾸기와 모델 · 모드 · 계획 바꾸기. 답은 바뀐 대화이고 화면이 그것으로 대화 목록을 고친다.
+  // 기본 답은 새 대화의 그것과 같은 「Claude」다 — 바꾼 값을 재는 `chat-chips.spec.ts`가 그 시나리오의 대화로 갈아 끼운다.
+  chat_switch_agent: FIXTURE_CLAUDE,
+  chat_set_model: FIXTURE_CLAUDE,
+  chat_set_mode: FIXTURE_CLAUDE,
+  chat_set_plan: FIXTURE_CLAUDE,
+  // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
+  // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
+  chat_answer_permission: null,
+  // 종료 확인의 대화 셈(three-axes 티켓 23) — 종료 요청마다 셸 셈 옆에서 나간다. **기본은 잃을 것이 없다**(셋 다 0) — 그러면 대화 줄이
+  // 서지 않아 셸만 재는 종료 확인 검사들이 그대로 돈다. 대화 줄은 `quit-confirm.spec.ts`의 대화 검사가 덮어쓴다.
+  chat_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ChatQuitCounts,
+  // 엔진 목록(three-axes 티켓 09 · 25, S16) — 설정 › 대화가 열릴 때 엔진마다 한 번 부른다. **기본은 두 엔진 다 빈 목록이다** — 세션을
+  // 한 번도 연 적 없는 첫 실행이고, 그때 모델 · 모드 고르기는 「엔진 기본값」 하나뿐이다. 목록을 재는 검사(`settings-chat.spec.ts`)가
+  // 엔진마다 덮어쓴다.
+  chat_engine_lists: { models: [], modes: [] } satisfies EngineLists,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

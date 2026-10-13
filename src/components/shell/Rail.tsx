@@ -3,11 +3,20 @@ import { PanelRight } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/** 레일의 칸 하나 — 소문자 영어 이름(`spec` · `info`, CONTEXT.md)이다. 칸은 목록으로 받아 뒤에 더해진다. */
+/** 레일의 칸 하나 — 소문자 영어 이름(`spec` · `chat` · `files` · `info`, CONTEXT.md)이다. 칸은 목록으로 받아 뒤에 더해진다. */
 export interface RailItem<Id extends string = string> {
   id: Id;
   label: string;
   icon: LucideIcon;
+}
+
+/**
+ * 레일 칸에 선 점 하나 — 그 점이 뜻하는 말(칸의 설명 `aria-description`으로 남는다)과 색의 갈래. `new`는 고친 곳(three-axes 티켓 26 —
+ * 대화창 범위의 파랑), `wait` · `done`은 레일 `chat`의 나를 기다림 · 끝남(티켓 23 — 앱 상태색, 사이드바 · 알림 띠와 같은 색)이다.
+ */
+export interface RailMark {
+  label: string;
+  tone: "new" | "wait" | "done";
 }
 
 /**
@@ -20,6 +29,16 @@ export interface RailProps<Id extends string = string> {
   items: readonly RailItem<Id>[];
   active: Id;
   onPick: (id: Id) => void;
+  /**
+   * 칸에 선 점(`RailMark`). 없는 칸에는 점이 없다. 지금은 `spec`의 고친 곳 점(three-axes 티켓 26)과 `chat`의 기다림 · 끝남 점(티켓
+   * 23)이다. 점을 세울지는 부르는 쪽이 정한다 — 무엇이 보이는지(패널 · 고른 칸 · 가운데 대화창)를 아는 것이 그쪽이라서다.
+   */
+  marks?: Partial<Record<Id, RailMark>>;
+  /**
+   * 패널 밖에 서 있는 칸 — 패널이 그 칸을 안 보여도 **켜진 것으로 읽힌다**. 지금은 `chat` 탭이 대화창을 가운데에 띄운 동안의
+   * `chat`이다(three-axes S22 — 한 대화창은 한 곳에). 누르면 무엇을 할지는 부르는 쪽이 정한다(그 칸을 패널로 데려온다).
+   */
+  outside?: readonly Id[];
 }
 
 /**
@@ -32,7 +51,8 @@ export interface RailProps<Id extends string = string> {
  *
  * **칸은 탭이 아니다** — `aria-pressed` 버튼이다. 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0개일 수 있다(탭 줄이 켜진 칸이 둘일 수
  * 있어 `role="tab"`을 안 쓰는 것과 같은 가족이다 — `ShellTabs`). 그래서 칸 사이 ←/→ 이동이 없고 Tab으로 옮겨 간다. 켜짐은 「패널이
- * 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다(누르면 그 칸으로 열린다).
+ * 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다(누르면 그 칸으로 열린다). 패널 밖에 선 칸
+ * (`outside` — 가운데 `chat` 탭의 대화창)은 패널과 상관없이 켜진 것으로 읽힌다.
  *
  * 토글의 이름과 도움말은 상태를 탄다 — 누르면 무슨 일이 날지를 말한다(분할 토글 · 목록 토글과 같다). 열림은 `aria-expanded`가
  * 이미 말하므로 설명은 달지 않고, 키(⌘Enter)만 도움말 옆 Kbd와 설명으로 남는다(S28 — `Hint`의 `shortcut`).
@@ -46,6 +66,8 @@ function Rail<Id extends string>({
   items,
   active,
   onPick,
+  marks,
+  outside = [],
   controls,
 }: RailProps<Id> & {
   /** 레일이 여닫고 고르는 패널의 id(`aria-controls`) — `Frame`이 패널 칸과 함께 짓는다. */
@@ -82,7 +104,8 @@ function Rail<Id extends string>({
         className="flex flex-col gap-0.5 rounded-pill bg-card p-0.5 inset-ring inset-ring-border-pill"
       >
         {items.map(({ id, label, icon: Icon }) => {
-          const on = open && id === active;
+          const on = (open && id === active) || outside.includes(id);
+          const mark = marks?.[id];
           return (
             <Hint
               key={id}
@@ -92,12 +115,27 @@ function Rail<Id extends string>({
               onClick={() => onPick(id)}
               aria-pressed={on}
               aria-controls={controls}
+              aria-description={mark?.label}
               className={cn(
-                "flex size-7 items-center justify-center rounded-full transition-colors",
+                "relative flex size-7 items-center justify-center rounded-full transition-colors",
                 on ? "bg-sidebar-accent text-foreground" : "text-tertiary quiet-hover",
               )}
             >
               <Icon className="size-4" strokeWidth={1.7} />
+              {/* 점은 칸 원의 오른쪽 위 7px — 캡슐 바탕색 2px 테두리로 아이콘과 갈린다(프로토타입 D의 `.rdot`, 값은 캔버스 `.cx-dot`).
+                  `<div>`가 아니라 `<span>`이다 — 레일 묶음을 첫 `</div>`까지로 자르는 검사가 있다(`WorksPage.test.tsx`). 뜻은 설명이
+                  말하므로 점은 그림일 뿐이다. 고친 곳의 파랑은 대화창 범위 토큰이라 그 값을 드는 표식(`data-change-dot`)이 함께 선다. */}
+              {mark && (
+                <span
+                  data-change-dot={mark.tone === "new" ? "" : undefined}
+                  data-rail-dot={mark.tone}
+                  aria-hidden
+                  className={cn(
+                    "absolute right-0.5 top-0.5 size-[7px] rounded-full shadow-[0_0_0_2px_var(--card)]",
+                    mark.tone === "new" ? "bg-(--chat-dot-new)" : mark.tone === "wait" ? "bg-wait" : "bg-done",
+                  )}
+                />
+              )}
             </Hint>
           );
         })}

@@ -251,7 +251,9 @@ pub(crate) fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
     Ok(works_root.join(slug))
 }
 
-pub(crate) fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
+/// work 하나의 `work.json`을 읽는다. slug가 경로 요소를 품었거나 `work.json`이 없으면 `WorkNotFound`다 —
+/// 「work가 있나」의 판정이 이것이다(`work.json`이 파일인가).
+pub fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
     let path = work_dir(works_root, slug)?.join("work.json");
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::WorkNotFound(slug.to_string()))?;
@@ -405,6 +407,40 @@ pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
+/// 앱이 대화를 기록하는 폴더(three-axes 결정 18). spec 밖이라 스펙 트리 · 검색 · 아카이브 문서에 뜨지 않고,
+/// 아카이브가 work 폴더째 옮기므로 기록도 함께 간다.
+fn agents_dir(work_dir: &Path) -> PathBuf {
+    work_dir.join("agents")
+}
+
+/// work 하나의 자리들 — 절대 경로다. 대화 호스트가 에이전트의 작업 자리(three-axes 결정 17)와 기록 자리
+/// (three-axes 결정 18)를 여기서 짓는다. 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkPlaces {
+    /// `works/<slug>`.
+    pub dir: PathBuf,
+    /// spec 폴더.
+    pub spec: PathBuf,
+    /// 워크트리들을 담는 폴더 `trees/`.
+    pub trees: PathBuf,
+    /// 프로젝트마다의 워크트리 `trees/<project>` — `projects`에 적힌 순서다.
+    pub worktrees: Vec<PathBuf>,
+    /// 대화 기록 폴더 `agents/`. 있다고 보증하지 않는다 — 만드는 쪽이 `work.json`을 보고 만든다.
+    pub agents: PathBuf,
+}
+
+/// 읽은 work의 자리들. 파일을 읽거나 폴더를 만들지 않는다.
+pub fn work_places(works_root: &Path, work: &Work) -> WorkPlaces {
+    let dir = works_root.join(&work.slug);
+    WorkPlaces {
+        spec: spec_dir(&dir),
+        trees: worktrees_dir(&dir),
+        worktrees: worktree_paths(works_root, work),
+        agents: agents_dir(&dir),
+        dir,
+    }
+}
+
 /// 아카이브 기록의 파일 이름. **spec/ 밖, work 디렉터리 루트다** — spec은 사람과
 /// 에이전트가 쓴 것이고 기록은 기계가 뽑은 것이라, 섞으면 장래의 증류가 "의도"와
 /// "증거"를 대조할 두 항을 잃는다. spec 안의 파일명은 자유롭게 쓰기로 한 관습이 있어
@@ -421,7 +457,7 @@ const HEAD_LABEL: &str = "- 워크트리 HEAD:";
 const COMMITS_HEADING: &str = "### 커밋";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
-pub(crate) fn spec_files(work_dir: &Path) -> Vec<String> {
+pub fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
@@ -1211,6 +1247,31 @@ mod tests {
             assert!(t.exists);
             assert!(!t.dirty);
         }
+    }
+
+    /// **work의 자리가 시작이 만든 폴더와 같다** — 대화 호스트가 에이전트의 작업 자리를 여기서 짓는다(three-axes
+    /// 결정 17 · 18). 자리를 옮기는 날 이것이 빨개진다.
+    #[test]
+    fn work_places_are_the_folders_start_made() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", Some("cart"), &slugs(&["fe", "be"]), Some("feat/cart"))
+            .unwrap();
+
+        let work = read_work(&works, "cart").unwrap();
+        let places = work_places(&works, &work);
+        let dir = works.join("cart");
+        assert_eq!(
+            places,
+            WorkPlaces {
+                dir: dir.clone(),
+                spec: dir.join("spec"),
+                trees: dir.join("trees"),
+                worktrees: vec![dir.join("trees/fe"), dir.join("trees/be")],
+                agents: dir.join("agents"),
+            }
+        );
+        assert!(places.spec.is_dir() && places.worktrees.iter().all(|tree| tree.is_dir()));
+        assert!(!places.agents.exists(), "자리를 짓기만 하고 폴더를 만들지 않는다");
     }
 
     #[test]

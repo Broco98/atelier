@@ -31,6 +31,7 @@ function render(
   override: Partial<WorkView> = {},
   projects?: ProjectView[],
   view: PanelView = "spec",
+  chatElsewhere = false,
 ): string {
   const client = new QueryClient();
   if (projects !== undefined) client.setQueryData(projectsQuery().queryKey, projects);
@@ -46,6 +47,9 @@ function render(
         onCopy={() => {}}
         onOpenProject={() => {}}
         open={open}
+        chatElsewhere={chatElsewhere}
+        unseen={[]}
+        onOpenDoc={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -159,6 +163,15 @@ describe("WorkPanel 머리와 두 몸", () => {
     expect(bodyTag(info, "info")).not.toMatch(/\b(hidden|inert)=/);
     expect(info.indexOf('data-panel-view="files"')).toBeGreaterThan(info.indexOf('data-panel-view="spec"'));
     expect(info.indexOf('data-panel-view="info"')).toBeGreaterThan(info.indexOf('data-panel-view="files"'));
+  });
+
+  it("대화창이 가운데(`chat` 탭)에 서 있으면 `chat` 몸은 골라져 있어도 가려진다 — 한 대화창은 한 곳에", () => {
+    // three-axes S22. 같은 대화창이 두 곳에 서면 대화 탭 줄과 입력칸이 두 벌이 된다. 몸은 마운트된 채 숨는다 — 대화가 패널로
+    // 돌아오면 그대로 다시 선다.
+    expect(bodyTag(render(true, {}, undefined, "chat"), "chat")).not.toMatch(/\b(hidden|inert)=/);
+    const away = render(true, {}, undefined, "chat", true);
+    expect(bodyTag(away, "chat")).toMatch(/\bhidden=""/);
+    expect(bodyTag(away, "chat")).toMatch(/\binert=""/);
   });
 
   it("몸 안의 스크롤 영역이 패널 카드의 남는 높이를 차지한다", () => {
