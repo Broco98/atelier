@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactElement } from "react";
+import { opensEditMenu } from "@/components/shell/EditMenu";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useWorks } from "./hooks";
 import { WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
@@ -10,6 +11,12 @@ import { WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
 // 메뉴를 세우지 않는 것은 행 파일이 훅을 안 부르는 그림이라서다(`SidebarWorkList.test.tsx`의 지킴) — 메뉴 상태(어느 work · 열렸나)는
 // 이 조각이 쥐고, 행은 「내가 대상인가」 하나를 받아 테두리만 그린다. 대상이 아닌 자리(구획 머리 · 빈 자리 · 위쪽 Terminal 줄)를
 // 우클릭하면 열기를 거둔다 — 웹뷰의 기본 메뉴는 앱 뿌리가 막으므로(`AppShell`) 그 자리에는 아무것도 서지 않는다(결정 8).
+//
+// **감싼 자리 안의 입력칸은 이 메뉴의 자리가 아니다.** 사이드바 행의 이름을 고치는 칸(`InlineRename`)은 목록 안에 서는데, 그
+// 칸의 우클릭은 편집 메뉴다(`EditMenu`, 티켓 31). 그 자리에서는 Trigger가 물러선다(`opensEditMenu` — 제 처리를 건너뛰어 사건을
+// 멈추지 않는다) — 사건이 document까지 올라가 편집 메뉴가 연다. ⇧F10 · 메뉴 키는 물러설 것이 없다: 이 키를 받는 것은 대상
+// 요소 자신의 `onKeyDown`(`openMenuByKey`)인데, 이름을 고치는 칸은 그 요소(행의 이름 버튼 · 머리 카드 이름)를 갈아 끼우고 서서
+// 그 칸의 키가 거기 안 간다.
 //
 // **고름도 주소도 안 바뀐다**(결정 7). 대상이 고른 work가 아니어도 그 줄의 work에 대한 메뉴이고, 열고 닫는 동안 목록의 고름과 주소는
 // 그대로다. 열린 동안 대상에 테두리(`focus-ring` — 포커스 링과 같은 모양)가 서는 것이 「어느 것의 메뉴인가」를 말한다(결정 11).
@@ -91,6 +98,10 @@ export function WorkContextMenu({
       <ContextMenuTrigger
         ref={(node: HTMLElement | null) => {
           trigger.current = node;
+        }}
+        // 그 안의 편집 메뉴 자리(이름을 고치는 칸)에서는 물러선다 — 열지도 멈추지도 않아 사건이 document의 편집 메뉴에 닿는다(머리말).
+        onContextMenu={(event) => {
+          if (event.target instanceof Element && opensEditMenu(event.target)) event.preventBaseUIHandler();
         }}
         render={children(open && menu ? menu.id : null)}
       />

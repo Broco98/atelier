@@ -16,11 +16,15 @@ import { cn } from "@/lib/utils";
 //   테두리 · 바탕 · 자리는 그 칸이 든다(`focus-ring`은 바로 안 입력칸의 포커스에도 선다).
 //
 // 규칙은 한 벌이다.
-// - **들어가면 이름 전체가 골라진다**(`autoFocus` + 포커스 때 `select()`) — 곧바로 새 이름을 치면 옛 이름을 갈아 쓴다.
+// - **들어가면 이름 전체가 골라진다**(`autoFocus` + 처음 포커스 때 `select()`) — 곧바로 새 이름을 치면 옛 이름을 갈아 쓴다. 다시
+//   받는 포커스(메뉴에서 돌아옴)는 다시 고르지 않는다 — 사람이 그 사이 만든 고름이 남는다.
 // - **손대기 전에는 지금 이름을 따른다.** 고치는 동안 바깥(에이전트의 MCP · 다른 창)이 이름을 바꾸면 손대지 않은 입력칸은 새 이름을
 //   든다 — 다시 전부 골라진 채다. 손대지 않은 채 끝내면 아무것도 부르지 않는다: 옛 이름을 쥔 칸이 「다른 곳 = 저장」으로 닫혀 바깥이
 //   바꾼 이름을 말없이 되돌리지 않는다. 한 글자라도 친 뒤에는 친 글자가 앞선다.
 // - **Enter · 다른 곳 누르기는 저장, Esc는 취소다.** 다른 곳은 blur로 듣는다. 둘 다 끝낸 뒤 고치기를 접는 것(`onDone`)은 부르는 쪽이다.
+// - **메뉴 카드로 간 포커스는 「다른 곳」이 아니다.** 입력칸의 우클릭 · ⇧F10은 편집 메뉴를 열고(`EditMenu`) 그 카드가 포커스를
+//   쥔다 — 그 blur로 끝내면 메뉴가 사라진 칸을 고친다. 그래서 포커스가 메뉴(`[role="menu"]`)로 가면 기다린다: 메뉴가 닫히며
+//   포커스가 칸으로 돌아오면(편집 메뉴의 `finalFocus`) 이어 고치고, 메뉴에서 칸이 아닌 곳으로 가면 그때 저장한다.
 // - **입력칸이 blur 없이 내려가도 저장이다.** 키로 화면이 바뀌면(⌘, · ⌘J) 고치던 이름 자리가 포커스를 쥔 채 걷히는데, React는 커밋
 //   중의 언마운트로 생긴 blur를 `onBlur`로 넘기지 않는다. 그 내려감도 「다른 곳으로 갔다」라 마지막 그림의 값으로 저장하고
 //   `onDone`을 부른다 — 대상은 그때 고치던 것이다(마지막 그림의 `onCommit`). 고치던 행이 바깥에서 사라진 때도 같다(MCP 아카이브 ·
@@ -83,18 +87,37 @@ export function InlineRename({
     if (last.current.draft === null && el !== null && document.activeElement === el) el.select();
   }, [value]);
 
+  // 그림 밖에서 「다른 곳으로 갔다」로 끝낸다 — 마지막 그림의 값으로 저장하고 끝을 알린다. ref만 읽어 어느 그림의 것을 불러도 같다.
+  const finishOutside = () => {
+    if (finished.current) return;
+    finished.current = true;
+    const { draft, value, emptyMeans, onCommit, onDone } = last.current;
+    commitIfChanged(draft, value, emptyMeans, onCommit);
+    onDone();
+  };
+
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       queueMicrotask(() => {
-        if (mounted.current || finished.current) return;
-        finished.current = true;
-        const { draft, value, emptyMeans, onCommit, onDone } = last.current;
-        commitIfChanged(draft, value, emptyMeans, onCommit);
-        onDone();
+        if (!mounted.current) finishOutside();
       });
     };
+  }, []);
+
+  // 처음 들어섰나 — 전부 고름은 그때 한 번이다. 메뉴에서 돌아온 포커스는 그 사이의 고름을 그대로 둔다(머리말).
+  const entered = useRef(false);
+  // 포커스가 메뉴 카드에 가 있나(머리말). 그 사이 포커스가 칸도 메뉴도 아닌 곳에 서면 그때 「다른 곳」으로 끝낸다.
+  const inMenu = useRef(false);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      if (!inMenu.current || event.target === field.current || isMenu(event.target)) return;
+      inMenu.current = false;
+      finishOutside();
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
   }, []);
 
   const finish = (save: boolean, byKey: boolean) => {
@@ -116,8 +139,16 @@ export function InlineRename({
       spellCheck={false}
       autoComplete="off"
       onChange={(event) => setDraft(event.target.value)}
-      onFocus={(event) => event.currentTarget.select()}
-      onBlur={() => finish(true, false)}
+      onFocus={(event) => {
+        inMenu.current = false;
+        if (entered.current) return;
+        entered.current = true;
+        event.currentTarget.select();
+      }}
+      onBlur={(event) => {
+        if (isMenu(event.relatedTarget)) inMenu.current = true;
+        else finish(true, false);
+      }}
       onKeyDown={(event) => {
         if (imeHolds(event.nativeEvent)) return;
         if (event.key === "Enter") {
@@ -150,6 +181,11 @@ export function InlineRename({
       {input}
     </span>
   );
+}
+
+/** 메뉴 카드(또는 그 안의 줄)인가 — 입력칸의 포커스가 그리로 가면 고치기를 접지 않는다(머리말). */
+function isMenu(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[role="menu"]') !== null;
 }
 
 /** 저장할 이름이면 부른다 — 손대지 않음 · 그대로 · `revert`로 비운 이름은 부르지 않는다(머리말). */

@@ -9,6 +9,7 @@
     "opener:default",
     "dialog:default",
     "notification:default",
-    "core:window:allow-set-badge-count"
+    "core:window:allow-set-badge-count",
+    "clipboard-manager:allow-read-text"
   ]
 }

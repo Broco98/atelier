@@ -537,6 +537,52 @@ export async function requestCloseShell(id: number): Promise<void> {
 }
 
 /**
+ * 터미널 메뉴가 그 셸에 하는 것(codex-ds 스펙 S9 · `EditMenu`). 셸 닫기는 여기 없다 — ⌘W · `×`와 같은 `requestCloseShell`이다.
+ *
+ * `selection`은 **메뉴를 연 순간의** 고른 글자다. 우클릭은 xterm이 먼저 받아(제 `contextmenu` 리스너) macOS에서는 누른 낱말을
+ * 고르고, 고름 안을 누르면 고름을 그대로 둔다 — 그 뒤에 읽으므로 사람이 화면에서 보는 고름과 같다.
+ */
+export interface ShellEdit {
+  /** 레지스트리의 셸 id — 셸 닫기가 이것으로 `requestCloseShell`을 부른다. */
+  id: number;
+  selection: string;
+  /** xterm의 숨은 입력칸 — 메뉴가 닫히면 포커스가 여기로 돌아온다. */
+  input: HTMLElement | null;
+  selectAll(): void;
+  /** 화면 지우기 — 커서가 선 줄(프롬프트)만 남기고 화면과 스크롤백을 지운다(xterm `clear`). */
+  clear(): void;
+  /**
+   * 클립보드에서 읽은 글자를 셸에 붙인다 — xterm의 붙여넣기 길이다(줄 바꿈이 Enter가 되고, 셸이 켰으면 bracketed paste로
+   * 싼다). 그 바이트는 `onData` 하나를 지나 나가고, 사람 입력으로 적는다(프로세스 스펙 S16 — ⌘V의 붙여넣기와 같다).
+   */
+  paste(text: string): void;
+}
+
+/** 그 요소가 든 셸 — 붙어 있는 셸의 집 안이면 그 셸의 편집 손잡이를, 아니면 `null`을 돌려준다. */
+export function shellEditAt(element: Element): ShellEdit | null {
+  const instance = [...instances.values()].find((one) => isAttached(one) && one.wrapper.contains(element));
+  if (!instance) return null;
+  const { term } = instance;
+  return {
+    id: instance.id,
+    selection: term.getSelection(),
+    input: term.textarea ?? null,
+    // 메뉴가 떠 있는 사이에 셸이 닫힐 수 있다 — 닫힌 셸의 Terminal은 dispose돼 부르면 던진다(`closed`).
+    selectAll: () => {
+      if (!instance.closed) term.selectAll();
+    },
+    clear: () => {
+      if (!instance.closed) term.clear();
+    },
+    paste: (text) => {
+      if (instance.closed) return;
+      noteInput(instance, { kind: "paste" });
+      term.paste(text);
+    },
+  };
+}
+
+/**
  * 셸 **하나**를 닫기 전에 묻는 창(ux-papercuts 결정 92 · 105). 셸 탭의 `×` · ⌘W(`requestCloseShell`)와 `Processes`의 화면 밖 셸
  * [닫기](`closeOffscreenShell`)가 같은 창으로 묻는다 — 창 모양이 두 벌이면 한쪽만 늙는다(코드 리뷰 표준 43). 본문은 부르는
  * 쪽이 판정과 함께 넘긴다(`closeNotice` — ux-papercuts 결정 105 · 프로세스 스펙 P6).

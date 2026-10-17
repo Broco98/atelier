@@ -23,13 +23,18 @@ import table from "./hotkeys.json";
 // 아니라 설정을 여는 항목이라 `menu`가 없다. `lib.rs`의 `build_menu`가 이 줄에서 가속키만 만든다(`SETTINGS_ACCELERATOR`). 웹뷰의
 // keydown에는 오지 않는 키라(OS 메뉴가 먼저 먹는다 — `lib.rs`의 `SETTINGS_MENU_ID`) 판정 함수가 없다.
 //
+// **⌘X · ⌘C · ⌘V · ⌘A(`cut` · `copy` · `paste` · `selectAll`)는 표의 메뉴 바 항목이 아니다**(`menu`가 없다). 메뉴 바에서 그 키를 드는
+// 것은 앱이 적은 항목이 아니라 Edit 메뉴의 기본 항목이고(Tauri가 OS 관습대로 단다 — `lib.rs`의 `build_menu`), 키는 웹뷰가 제
+// 편집으로 받는다. 표에 든 것은 입력칸 · 터미널의 편집 메뉴(`EditMenu`)가 단축키 칸에 이 글자를 적어서다 — 판정 함수가 없다.
+//
 // 메뉴 바에 서지 않는 것들과 그 까닭(`lib.rs`의 `MENU_HOTKEYS` 독이 메뉴 쪽 사정을 든다):
 // - ⌘W — 그 메뉴 항목이 있으면 OS가 웹뷰보다 먼저 먹어 창이 닫히고 셸이 전부 죽는다.
 // - ⌃Tab · ⌃⇧Tab — 항목은 서는데 accelerator 경로만 죽는다(실측).
 // - F2(이름 바꾸기) · ⇧F10과 메뉴 키(대상 메뉴) — 무엇에 거는지가 포커스에 달려 있다(codex-ds 스펙 §8). ⇧F10 · 메뉴 키는 포커스된
-//   대상이 제 `onKeyDown`에서 받아 그 대상의 메뉴를 연다(`context-menu.tsx`의 `opensTargetMenu` · `openMenuByKey`). F2도 포커스된
-//   이름 자리(머리 카드 이름 · 사이드바 work 행 · 프로젝트 목록 행)가 제 `onKeyDown`에서 받아 그 이름을 그 자리에서 고친다
-//   (`InlineRename`, codex-ds 스펙 §9).
+//   대상이 제 `onKeyDown`에서 받아 그 대상의 메뉴를 열고(`context-menu.tsx`의 `opensTargetMenu` · `openMenuByKey`), 포커스된
+//   입력칸에서는 편집 메뉴가 document에서 받아 연다(`EditMenu` — 이름을 고치는 칸도 입력칸이다). 셸에서는 셸로 간다(`keyRoute`).
+//   F2도 포커스된 이름 자리(머리 카드 이름 · 사이드바 work 행 · 프로젝트 목록 행)가 제 `onKeyDown`에서 받아 그 이름을 그 자리에서
+//   고친다(`InlineRename`, codex-ds 스펙 §9).
 // - ⌥↑ ⌥↓ ⌥← ⌥→(spec 레이아웃 편집기 트리의 항목 옮기기) · Esc(떠 있는 창 닫기) — 한 화면 안의 키다.
 //
 // **표 밖에 남는 키는 단축키가 아니거나 앱이 적지 않은 키다.**
@@ -37,7 +42,7 @@ import table from "./hotkeys.json";
 //   메뉴 키뿐이라는 것(결정 19)이 그 가름을 말한다.
 // - 입력 칸 · 셸 안의 편집 키 — 프로젝트 설명 칸의 ⌘Enter(저장) · Esc(그만두기, `ProjectDetail`), 셸에 줄 바꿈 바이트를 보내는
 //   ⇧Enter(`shellRewrite`). 그 칸에 글을 쓰는 동안만 뜻이 있다.
-// - macOS 기본 메뉴 항목의 키(Edit의 ⌘Z · ⌘C · ⌘V · ⌘A, 앱 메뉴의 ⌘H · ⌘Q, Window의 ⌘M …) — Tauri의 기본 항목이 OS 관습대로 달고
+// - 나머지 macOS 기본 메뉴 항목의 키(Edit의 ⌘Z · ⇧⌘Z, 앱 메뉴의 ⌘H · ⌘Q, Window의 ⌘M …) — Tauri의 기본 항목이 OS 관습대로 달고
 //   앱은 적지 않는다(`lib.rs`의 `build_menu`).
 //
 // **값 import는 JSON 한 장뿐이다.** 셸 레지스트리처럼 DOM 없는 순수 모듈이 이것을 값으로 들이므로(`shell-registry.test.ts`의 소스 스캔이

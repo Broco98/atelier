@@ -53,9 +53,10 @@ function keyAriaOf(code: string): string {
 
 describe("표가 제 말과 맞는다", () => {
   // 앵커: 표가 비어 있으면 아래 `it.each`가 하나도 안 돌고 초록이다.
-  it("항목이 있다 — 지금 단축키와 새 셋(F2 · ⇧F10 · 메뉴 키)", () => {
+  it("항목이 있다 — 지금 단축키와 새 셋(F2 · ⇧F10 · 메뉴 키), 편집 메뉴 · 터미널 메뉴가 단축키 칸에 적는 편집 넷", () => {
     expect(ids.length).toBeGreaterThan(14);
-    for (const id of ["search", "rename", "openMenu", "menuKey"] as const) expect(ids).toContain(id);
+    for (const id of ["search", "rename", "openMenu", "menuKey", "cut", "copy", "paste", "selectAll"] as const)
+      expect(ids).toContain(id);
   });
 
   it.each(ids)("%s — 수식키는 넷 가운데서 ⌃ ⌥ ⇧ ⌘ 차례로 한 번씩 적는다", (id) => {
@@ -92,9 +93,12 @@ describe("표가 제 말과 맞는다", () => {
     for (const one of bar) expect(menuHotkeyOf(one.code)).toBe(one);
   });
 
+  // 편집 넷은 macOS Edit 메뉴(`lib.rs`의 `build_menu`가 기본 항목으로 세운다)의 키다 — View 메뉴에도 서면 한 키에 메뉴 항목이 둘이다.
   it("메뉴 바에 서지 않는 항목의 키 코드로는 메뉴 바 항목을 못 찾는다", () => {
-    expect(HOTKEYS.closeShell.menu).toBeNull();
-    expect(menuHotkeyOf(HOTKEYS.closeShell.code)).toBeNull();
+    for (const id of ["closeShell", "cut", "copy", "paste", "selectAll"] as const) {
+      expect(HOTKEYS[id].menu, id).toBeNull();
+      expect(menuHotkeyOf(HOTKEYS[id].code), id).toBeNull();
+    }
   });
 
   // ⌘1~9의 번호는 차례에서 나온다(`shellNavKey`) — 차례가 섞이면 ⌘3이 둘째 칸으로 간다.

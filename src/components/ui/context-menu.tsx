@@ -6,6 +6,13 @@
 // 여기 새로 서는 것은 여는 길(Root — 우클릭 · 길게 누르기, Trigger — 그 대상 · 키 — ⇧F10과 메뉴 키)과 카드의 자리뿐이다.
 //
 // 웹뷰의 기본 메뉴는 앱 뿌리가 늘 막는다(`AppShell`, codex-ds 결정 8) — 이 메뉴가 없는 자리를 우클릭하면 아무것도 서지 않는다.
+// 입력칸 · 터미널의 편집 메뉴도 이 바탕이다(`EditMenu`) — document에서 우클릭을 가려 숨은 Trigger로 연다. 대상 메뉴의 Trigger는
+// 우클릭을 받아 멈추므로 대상 위의 우클릭은 대상 메뉴다. 그 Trigger가 감싼 자리 안의 입력칸(사이드바 행의 이름을 고치는 칸)만은
+// Trigger가 물러서 편집 메뉴다(`WorkContextMenu`).
+//
+// **Root(와 그 안의 Trigger)가 감싸는 자리에 다른 메뉴를 두지 않는다.** Base UI는 우클릭 메뉴 Root의 밑에 선 메뉴 줄을 모두 「우클릭
+// 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음으로만 고른다 — 그 밑의 ⋯ 메뉴(`DropdownMenu`)를 누른 채 끌어 줄 위에서 놓으면 아무것도 안
+// 돈다. 그래서 편집 메뉴는 앱을 감싸지 않고, 대상 메뉴의 Trigger는 그 대상(행 목록 · 띠 · 머리 카드 이름)만 감싼다.
 import type * as React from "react"
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu"
 
@@ -73,7 +80,8 @@ export const TARGET_MENU_ARIA = [HOTKEYS.openMenu.aria, HOTKEYS.menuKey.aria].jo
  * (`ContextMenuTrigger`)이 같은 메뉴를 연다. 자리는 대상의 왼쪽 아래다(커서가 없다). 그렇게 열면 카드 자신이 포커스를 쥐고 ↓가 첫
  * 항목이다 — ⋯를 눌러 연 것과 같다.
  *
- * 키의 기본 동작은 막는다 — 메뉴 키를 스스로 아는 웹뷰가 제 메뉴를 한 번 더 내지 않게.
+ * 키의 기본 동작은 막는다 — 메뉴 키를 스스로 아는 웹뷰가 제 메뉴를 한 번 더 내지 않게. 입력칸의 이 키는 여기 안 온다 — 이것을 다는
+ * 대상 안에 입력칸이 없고, 이름을 고치는 칸은 그 대상을 갈아 끼우고 선다. 입력칸에서는 편집 메뉴가 document에서 받는다(`EditMenu`).
  */
 export function openMenuByKey(event: React.KeyboardEvent<HTMLElement>): void {
   if (!opensTargetMenu(event)) return

@@ -15,6 +15,7 @@ import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-sto
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
 import { pressed } from "@/lib/hotkeys";
+import EditMenu from "./EditMenu";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
@@ -104,10 +105,14 @@ function AppShell() {
     };
   }, []);
 
-  // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 대상만
-  // 제 메뉴를 연다(`ContextMenuTrigger` — work 행 · 띠 줄 · 머리 카드 이름). 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
+  // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 자리만
+  // 제 메뉴를 연다 — 대상(work 행 · 띠 줄 · 머리 카드 이름)은 제 `ContextMenuTrigger`가, 입력칸 · 터미널은 편집 메뉴(`EditMenu`)가
+  // 연다. 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
   // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.
-  // - **`preventDefault`만 부른다** — 사건은 그대로 흘러, 제 메뉴를 여는 대상(Base UI Trigger)과 우클릭을 보는 다른 자리가 받는다.
+  // - **`preventDefault`만 부르고 전파는 안 끊는다.** document에 닿은 사건은 난 자리의 리스너(xterm의 우클릭 고름 …)를 이미 다
+  //   지났고, 같은 document에서 듣는 편집 메뉴는 이 막기와 상관없이 받는다. 대상의 Trigger는 제 자리에서 기본 동작을 막고 사건을
+  //   멈추므로(React가 그 전파를 `#root`에서 끊는다) 그 우클릭은 여기까지 안 온다 — 막을 것이 이미 막혀 있다. 그 Trigger 안의
+  //   입력칸(사이드바 행의 이름을 고치는 칸)은 Trigger가 물러서 여기까지 오고, 다른 입력칸처럼 편집 메뉴가 연다(`WorkContextMenu`).
   // - **닿지 않는 곳이 하나 있다**: HTML 문서(`SpecViewer`의 `HtmlDoc`)는 same-origin이 없는 iframe이라 그 안의 우클릭은 부모까지
   //   오지 않고, 거기서는 웹뷰 메뉴가 선다. 그 틈을 메우는 길 둘을 다 안 간다 — 구현 노트 Q5의 물러선 꼴(「iframe 안은 남는다」)이다.
   //   - srcdoc에 막는 스크립트를 넣는 길: 껍데기는 발행 쪽에서 그대로 베낀 것이고 온전한 문서는 손대지 않고 통과한다(`SpecViewer`의
@@ -333,6 +338,9 @@ function AppShell() {
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />
+      {/* 입력칸 · 터미널의 편집 메뉴 — 앱 전체에 하나이고, 우클릭 · ⇧F10을 document에서 듣는다. 아무것도 감싸지 않는다 — 감싸면
+          그 밑의 메뉴가 모두 우클릭 메뉴의 줄처럼 군다(`EditMenu`, codex-ds 스펙 §9 · 구현 노트 Q12). */}
+      <EditMenu />
     </div>
   );
 }

@@ -343,6 +343,8 @@ pub fn run() {
         // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
+        // 입력칸 · 터미널 메뉴의 붙여넣기가 클립보드를 읽는 길(codex-ds 스펙 S9). 열린 권한은 읽기 하나다(`capabilities`).
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Arc::clone(&pool))
         .manage(Arc::clone(&process_service))
         // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
@@ -642,6 +644,20 @@ mod tests {
         }
     }
 
+    /// **⌘X · ⌘C · ⌘V · ⌘A는 View 메뉴에 없고 Edit 메뉴의 기본 항목이다**(codex-ds 스펙 S9). 네 줄은 표에 있다 — 입력칸 · 터미널
+    /// 메뉴의 단축키 칸이 그 글자를 읽는다. 키를 받는 것은 Edit 메뉴의 기본 항목이라 View 메뉴에도 서면 한 키에 메뉴 항목이 둘이다.
+    #[test]
+    fn 편집_넷은_view_메뉴에_없고_edit_메뉴의_기본_항목이다() {
+        for code in ["KeyX", "KeyC", "KeyV", "KeyA"] {
+            assert!(row_of(code, &["meta"])["menu"].is_null(), "⌘ {code} 줄에 View 메뉴 라벨이 있다");
+            assert!(view_items().iter().all(|(one, _, _)| one != code), "{code}가 View 메뉴에 선다");
+        }
+        let body = without_comment_lines(body_of(include_str!("lib.rs"), "fn build_menu<", "\n}\n"));
+        for item in [".cut()", ".copy()", ".paste()", ".select_all()"] {
+            assert!(body.contains(item), "Edit 메뉴에 {item}가 없다 — 그 키가 웹뷰의 편집에 안 닿는다");
+        }
+    }
+
     /// **셸 신호의 세 자리가 앱이 뜰 때 다 서는가.** 셋 다 헤드리스로는 못 돌린다 —
     /// `run()`은 창과 웹뷰가 있어야 하고, 여기 없으면 나는 일은 조용한 무음이다: 훅을 깔
     /// 스크립트가 홈에 없고(사람이 「설치했는데 아무 일도 안 난다」를 만난다), 지난 실행의
@@ -815,6 +831,32 @@ mod tests {
             builder_source().contains(".plugin(tauri_plugin_notification::init())"),
             "알림 플러그인이 안 걸려 있다 — 프런트가 울려도 아무 소리가 안 난다"
         );
+    }
+
+    /// **클립보드 플러그인이 앱에 걸려 있는가**(codex-ds 스펙 S9). 빠지면 입력칸 · 터미널 메뉴의 붙여넣기가 「없는 명령」으로
+    /// 거절당하고, 메뉴는 그 실패를 삼켜 아무것도 안 붙인다 — 앱을 띄워야만 보이는 무음이라 자리로 잰다.
+    #[test]
+    fn 클립보드_플러그인이_빌더에_걸려_있다() {
+        assert!(
+            builder_source().contains(".plugin(tauri_plugin_clipboard_manager::init())"),
+            "클립보드 플러그인이 안 걸려 있다 — 메뉴의 붙여넣기가 아무것도 안 붙인다"
+        );
+    }
+
+    /// **열린 클립보드 권한은 읽기 하나다.** 쓰기(복사 · 잘라내기)는 웹 클립보드로 나가고, 플러그인의 기본 권한 묶음은 비어 있다 —
+    /// 읽기를 안 열면 붙여넣기가 거절당하고, 더 열면 쓰지 않는 길이 열린다.
+    #[test]
+    fn 클립보드는_읽기_권한만_열려_있다() {
+        let src = include_str!("../capabilities/default.json");
+        let cap: serde_json::Value = serde_json::from_str(src).expect("capabilities가 JSON이다");
+        let clipboard: Vec<&str> = cap["permissions"]
+            .as_array()
+            .expect("permissions가 배열이다")
+            .iter()
+            .map(|one| one.as_str().expect("권한 하나는 문자열이다"))
+            .filter(|one| one.starts_with("clipboard-manager:"))
+            .collect();
+        assert_eq!(clipboard, ["clipboard-manager:allow-read-text"]);
     }
 
     /// **권한이 안 열려 있으면 그 호출은 거절당한다.** capabilities는 사람이 손으로 적는

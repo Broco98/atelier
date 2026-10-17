@@ -586,8 +586,9 @@ function WorkRow({
       {/* **이름을 고치는 동안 이름 버튼 자리에 레인과 입력칸이 선다**(codex-ds 스펙 §9). 버튼 안에는 입력칸을 둘 수 없어 버튼이 아닌
           상자로 갈아 끼운다 — 자리(`nameCell`)는 같아 레인과 글자가 움직이지 않는다. 입력칸은 제목 상자 자리의 남는 폭을 먹고, 글자가
           제목 글자와 한 세로줄에 서도록 왼쪽으로 4 넓힌 만큼 안쪽을 둔다. 입력칸 안의 누름은 행으로 올라가지 않는다 — 행은 누르면
-          열고 끌면 옮긴다(`InlineRename`). 키로 끝내면 포커스가 다시 선 이름 버튼으로 돌아온다. 이 상자는 우클릭 메뉴의 대상이 아니다
-          — 위의 대상 찾기가 행의 첫 버튼만 집는다(`SidebarWorkList`의 `rowTarget`). */}
+          열고 끌면 옮긴다(`InlineRename`). 키로 끝내면 포커스가 다시 선 이름 버튼으로 돌아온다. 이 상자는 work 메뉴의 대상이 아니다
+          — 위의 대상 찾기가 행의 첫 버튼만 집는다(`SidebarWorkList`의 `rowTarget`). 입력칸의 우클릭은 편집 메뉴다(`EditMenu` — 행
+          메뉴의 Trigger가 그 자리에서 물러선다, `WorkContextMenu`). */}
       {editing ? (
         <div className={nameCell}>
           {lane}

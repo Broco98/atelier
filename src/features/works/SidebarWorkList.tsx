@@ -460,7 +460,8 @@ function SidebarWorkList({
 /**
  * 목록 안 우클릭의 대상 — 그 자리를 품은 work 행이고, 테두리 · 포커스는 그 행의 이름 버튼(행의 첫 요소)이다(`WorkRow`). 행 밖(구획
  * 머리 · 빈 자리 · 끄는 동안의 받침)이면 `null`이라 메뉴가 안 선다. **이름을 고치는 행도 `null`이다** — 그동안 이름 버튼 자리는 입력칸을
- * 품은 상자라 첫 요소가 버튼이 아니다. 그 행의 핀(뒤의 버튼)을 대상으로 집지 않는다.
+ * 품은 상자라 첫 요소가 버튼이 아니다. 그 행의 핀(뒤의 버튼)을 대상으로 집지 않는다. 그 입력칸 위의 우클릭은 여기 안 온다 — 편집
+ * 메뉴의 자리라 Trigger가 물러선다(`WorkContextMenu`).
  */
 function rowTarget(from: Element): MenuTarget | null {
   const row = from.closest<HTMLElement>("[data-work-row]");

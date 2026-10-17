@@ -28,6 +28,9 @@ const MOCKS_SOURCE = readFileSync(
   "utf8",
 );
 
+/** 클립보드 읽기의 와이어 이름 — `@tauri-apps/plugin-clipboard-manager`의 `readText`가 이것으로 나간다. 글자를 심는 도구도 이 줄을 간다. */
+const CLIPBOARD_READ = "plugin:clipboard-manager|read_text";
+
 /**
  * 와이어 층의 `plugin:*` 커맨드. 대응하는 코어 함수가 없어 L3·L4 모두 하네스가 직접 답한다.
  * 이 문자열은 `src/` 트리에 없다 — 전부 의존성 래퍼 안에 있어 소스에서 긁어낼 수 없고,
@@ -53,6 +56,9 @@ const PLUGINS: Record<string, unknown> = {
   // 독 배지(#206 · 스토리 65). 값은 안 쓰이지만 **답이 있어야 화이트리스트를 안 넘는다** —
   // 실제로 무엇이 실려 나갔는지는 IPC 기록에서 읽는다(`e2e/shell-notify.spec.ts`).
   "plugin:window|set_badge_count": null,
+  // 입력칸 · 터미널 메뉴의 붙여넣기가 클립보드를 읽는 길(codex-ds 스펙 S9 · 티켓 31). 기본 답은 글자 한 줄이고, 붙여넣기를 재는
+  // 시나리오는 제 글자를 심는다(`클립보드를심는다`). L4도 이 답을 받는다 — 진짜 클립보드는 검사가 도는 기계의 것이라 읽지 않는다.
+  [CLIPBOARD_READ]: "클립보드의 글자",
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
@@ -397,6 +403,25 @@ export async function replaceAnswer(page: Page, command: string, answer: unknown
       tables.byName[command] = entry;
     },
     { tablesKey: TABLES_KEY, command, entry },
+  );
+}
+
+/**
+ * **클립보드에 글자를 심는다** — 앱이 다음에 클립보드를 읽을 때(`readText` — 입력칸 · 터미널 메뉴의 붙여넣기, 티켓 31) 받을 답을 간다.
+ * 거절(`ipcFailure`)을 주면 빈 클립보드 · 글자가 아닌 것이다 — 플러그인이 그때 거절한다. 페이지가 뜬 뒤에 부르고, 바꾼 답은 위
+ * `replaceAnswer`처럼 같은 표를 지나 처음 답과 같은 문(거절 · 기록)으로 나간다.
+ *
+ * **따로 선 이유**: `replaceAnswer`는 우리 커맨드(`FIXTURE_COMMANDS`)만 받는다 — 그 이름 검사가 개명된 커맨드를 잡는 그물이라 플러그인
+ * 이름까지 넓히지 않는다. 플러그인 답 가운데 시나리오마다 갈아야 하는 것은 이것 하나다.
+ */
+export async function 클립보드를심는다(page: Page, answer: string | ReturnType<typeof ipcFailure>): Promise<void> {
+  await page.evaluate(
+    ({ tablesKey, command, entry }) => {
+      const tables = (window as unknown as Record<string, FixtureTables | undefined>)[tablesKey];
+      if (!tables) throw new Error("installFixtureBackend를 먼저 깔아야 한다");
+      tables.byName[command] = entry;
+    },
+    { tablesKey: TABLES_KEY, command: CLIPBOARD_READ, entry: entryOf(answer) },
   );
 }
 
