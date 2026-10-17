@@ -4,10 +4,13 @@ import {
   clipboardWrites,
   installFixtureBackend,
   ipcCallArgs,
+  markAttention,
   processesTitle,
   recordClipboard,
   unknownIpcCalls,
   navButton,
+  다떴다,
+  띠,
   줄차례,
   탭으로,
   탭차례,
@@ -134,6 +137,69 @@ test("레일이 서면 Tab은 패널 다음에 레일로 간다 — 칸마다 �
   // 레일이 서면 패널 토글은 머리 카드 밖 머리 줄에 선다(`rail.spec`).
   expect(영역차례(자리들)).toEqual(["머리 줄", "패널", "레일"]);
   expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 알림 띠 ──
+// 띠는 부르는 셸이 있을 때만 선다 — 위 사이드바 차례는 띠가 없는 화면에서 잰 것이다. 띠는 목록 다섯이 아니라 roving이 없고, 줄마다 ·
+// ⌄가 저마다 Tab 정류장이다. 줄은 work 대상이다(codex-ds 스펙 §9 대상 표 「알림 띠 행」).
+//
+// **차례는 띠 앞뒤만 Tab으로 걷는다**(`탭차례`가 아니다) — 띠가 서는 터미널 화면에서는 xterm이 Tab을 셸 입력으로 받아 포커스가 그
+// 칸에서 안 나온다.
+
+test("알림 띠의 줄과 ⌄에도 Tab이 앉고, 줄의 ⇧F10 · 메뉴 키는 그 work 메뉴를 줄 곁에 열며, ⌄의 Enter는 띠를 펼친다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  // 셸 넷이 함께 부른다 — 띠가 ⌄로 접히는 가장 작은 수(`BAND_LIMIT` + 1)다. 칸은 ⌘T로 열고, 연 순서가 곧 pty 번호다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  for (const ptyId of [1, 2, 3, 4]) {
+    if (ptyId > 1) await page.keyboard.press("Meta+t");
+    await markAttention(
+      page,
+      { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: `말 ${ptyId}` } },
+      ptyId,
+    );
+  }
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("4");
+  const 줄들 = 띠(page).locator("[data-band-line]");
+  await expect(줄들).toHaveCount(3);
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+
+  // 칸의 xterm이 쥔 포커스를 내려놓고 창 앞에서 걷는다 — nav 다음이 띠의 줄 셋과 ⌄이고, 그다음이 work 목록의 고른 행이다.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await 탭으로(page, 줄들.nth(0));
+  for (const 다음 of [줄들.nth(1), 줄들.nth(2), 더보기, 목록행(page, plainWork.slug)]) {
+    await page.keyboard.press("Tab");
+    await expect(다음).toBeFocused();
+  }
+  // 거꾸로도 같은 정류장이다.
+  for (const 앞 of [더보기, 줄들.nth(2), 줄들.nth(1), 줄들.nth(0)]) {
+    await page.keyboard.press("Shift+Tab");
+    await expect(앞).toBeFocused();
+  }
+
+  // 메뉴를 닫으면 포커스가 줄로 돌아오므로 다음 키도 그 줄에서 누른다.
+  for (const key of ["Shift+F10", "ContextMenu"]) {
+    await page.keyboard.press(key);
+    const menu = 메뉴(page);
+    await expect(menu).toBeVisible();
+    // 그 work의 메뉴다 — 고정되지 않은 work라 정리 묶음의 첫 줄이 「고정」이다.
+    await expect(menu.getByRole("menuitem", { name: "고정", exact: true })).toBeVisible();
+    // 커서가 없으니 줄의 왼쪽 아래에 선다.
+    await 다떴다(menu);
+    const spot = (await 줄들.nth(0).boundingBox())!;
+    const card = (await menu.boundingBox())!;
+    expect([Math.round(card.x), Math.round(card.y)], key).toEqual([Math.round(spot.x), Math.round(spot.y + spot.height)]);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(줄들.nth(0), key).toBeFocused();
+  }
+
+  await 탭으로(page, 더보기);
+  await page.keyboard.press("Enter");
+  await expect(줄들).toHaveCount(4);
+  await expect(띠(page).getByRole("button", { name: "접기", exact: true })).toHaveAttribute("aria-expanded", "true");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

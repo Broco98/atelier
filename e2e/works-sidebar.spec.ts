@@ -1131,8 +1131,8 @@ test("⌄에 올리면 버튼 이름이 툴팁으로 뜨고, 동작 줄이기면
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **키보드로 닿은 ⌄에도 툴팁이 뜨고, Enter로 펼친다**(`sidebar-active-band` 스토리 22). WebKit은 Tab이 버튼을
-// 건너뛰므로(판 05 결정 7의 정정) 포커스는 `focus()`로 옮긴다.
+// **키보드로 닿은 ⌄에도 툴팁이 뜨고, Enter로 펼친다**(`sidebar-active-band` 스토리 22). 포커스는 `focus()`로 바로 옮긴다 — 여기서
+// 재는 것은 키보드 포커스에 뜨는 툴팁이고, Tab이 ⌄에 앉는지는 `keyboard.spec`이 진짜 Tab으로 잰다.
 //
 // **이 검사는 포인터를 한 번도 안 쓴다**(`넷이부르게한다` 머리말) — Base UI가 macOS WebKit에서
 // 「키보드 포커스인가」를 마지막 입력으로 가르므로, 앞서 누른 것이 있으면 이 툴팁은 안 뜬다.

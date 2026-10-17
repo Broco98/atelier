@@ -206,6 +206,8 @@ function MoreToggle({
       text={label}
       announce="name"
       type="button"
+      // Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
+      tabIndex={0}
       onClick={onToggle}
       aria-expanded={expanded}
       className="flex h-6 w-full shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary focus-ring"
@@ -248,6 +250,9 @@ function BandLine({
   return (
     <button
       type="button"
+      // Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 메뉴가 없는
+      // 최상위 셸 줄도 Enter로 그 셸에 가는 줄이라 정류장이다.
+      tabIndex={0}
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       // ⌃클릭은 열지 않는다 — macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 —
       // 사이드바 work 행의 `onClick`과 같은 거름이다). 메뉴가 없는 최상위 셸 줄도 같다 — 우클릭이 아무것도 안 하는 줄이다.
