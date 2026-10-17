@@ -6,19 +6,19 @@ import { useSetWorkTitle } from "./hooks";
 import type { WorkView } from "./types";
 
 /**
- * 이름 바꾸기 창(결정 8). 머리 카드 ⋯ 메뉴의 「이름 바꾸기」가 연다. slug는 바뀌지 않는다(ProjectDetail의
- * TitleEditor와 같은 계약).
+ * 이름 바꾸기 창(결정 8). work 메뉴의 「이름 바꾸기」가 연다 — 머리 카드의 ⋯와 우클릭 메뉴(사이드바 행 · 알림 띠 줄 · 머리 카드
+ * 이름 — `WorkContextMenu`)가 같은 메뉴다. slug는 바뀌지 않는다(ProjectDetail의 TitleEditor와 같은 계약).
  *
  * **한때 ⋯ 메뉴 안의 입력이었다.** 메뉴가 메뉴 부품(`DropdownMenu`)이 되면서 항목이 입력칸을 품을 수 없게
- * 됐고, 머리 카드의 work 이름은 보이기만 하고 그 자리에서 바뀌지 않는다(제자리 바꾸기는 codex-ds 티켓 28) — 그래서 확인
+ * 됐고, 머리 카드의 work 이름은 그 자리에서 바뀌지 않는다(제자리 바꾸기는 codex-ds 티켓 28) — 그래서 확인
  * 창과 한 계열인 작은 창에서 받는다. 입력 규칙은 그대로다:
  * Enter는 저장, Esc는 취소.
  *
  * **바깥 누르기는 취소다**(P7). 옛 입력은 포커스를 잃으면 저장했는데, 창 밖을 누른 것은 「그만두겠다」로
  * 읽힌다 — 입력 중인 이름이 모르는 새 저장되지 않게 한다.
  *
- * 닫히면 포커스는 ⋯로 돌아간다(`returnFocus`). 창을 연 메뉴 항목은 그때 이미 사라졌으므로 부품의 기본값
- * (열기 전 자리)에 맡기지 않는다.
+ * 닫히면 포커스는 메뉴를 연 자리(⋯ · 우클릭 대상)로 돌아간다(`returnFocus`). 창을 연 메뉴 항목은 그때 이미 사라졌으므로 부품의
+ * 기본값(열기 전 자리)에 맡기지 않는다.
  */
 function WorkRenameDialog({
   work,
@@ -30,7 +30,7 @@ function WorkRenameDialog({
   open: boolean;
   /** 어느 길로 닫히든(저장 · 취소 · Esc · 바깥 누르기) 여기로 온다. 저장은 창이 이미 했다. */
   onClose: () => void;
-  /** 닫힌 뒤 포커스가 갈 자리 — 창을 연 메뉴의 ⋯. */
+  /** 닫힌 뒤 포커스가 갈 자리 — 창을 연 메뉴의 ⋯나 그 우클릭 대상. */
   returnFocus: RefObject<HTMLElement | null>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);

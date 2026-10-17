@@ -892,6 +892,23 @@ export const HEAD_CARD = 'header [data-slot="head-card"]';
 export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
 
 /**
+ * 메뉴 카드의 **줄 차례** — 카드에 바로 선 줄을 위에서부터, 항목은 제 글자로 구분선은 「—」로 읽는다. 묶음은 구분선이 가르므로
+ * 항목 순서와 구분선 수를 따로 세면 구분선이 다른 틈으로 옮겨 가도 그대로 통과한다 — 한 목록으로 읽어야 묶음이 재진다. 하위 메뉴
+ * 카드는 제 포털에 서서 부모 카드의 줄에 안 섞인다.
+ *
+ * **여기 사는 이유는 ⋯ 메뉴와 우클릭 메뉴를 같은 잣대로 읽으려는 것이다**(codex-ds 결정 6) — 두 메뉴의 차례를 재는 spec이 둘이다
+ * (`works-floating.spec.ts` · `work-context-menu.spec.ts`).
+ */
+export const 줄차례 = (menu: Locator) =>
+  menu.evaluate((card) =>
+    [...card.children].flatMap((row) => {
+      const role = row.getAttribute("role");
+      if (role === "separator") return ["—"];
+      return role === "menuitem" ? [row.textContent ?? ""] : [];
+    }),
+  );
+
+/**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
  * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
  *

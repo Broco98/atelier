@@ -328,7 +328,7 @@ function ArchivePage({
 /**
  * 아카이브된 work의 spec 폴더를 Finder에서 연다(codex-ds 스펙 S6) — 머리 카드 ⋯의 「Finder에서 열기」와 spec 목록 패널 머리의 「spec 폴더
  * 열기」가 부른다. 못 열면(폴더가 없는 아카이브 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 — work 메뉴의 Finder 열기와 같은
- * 말이다(`WorksPage`의 `openWorkFolder`).
+ * 말이다(`work-menu-actions.ts`의 `openWorkFolder`).
  */
 function openArchivedSpecFolder(slug: string): void {
   archiveApi.openSpecFolder(slug).catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));

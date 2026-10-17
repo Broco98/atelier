@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { searchHotkey, shellHotkey, shellNavKey } from "@/features/terminal/shell-registry";
 import { recallHotkey } from "@/features/terminal/shell-recall";
 import { togglesPanel } from "@/components/shell/PanelToggle";
+import { opensTargetMenu } from "@/components/ui/context-menu";
 import { HOTKEYS, menuHotkeyOf, pressed, TAB_HOTKEYS, type HotkeyId, type Modifier } from "./hotkeys";
 
 // codex-ds 티켓 26 — **단축키 표**(`hotkeys.json`, 결정 19 · 스펙 S16 · 「Testing Decisions」 경계 ③). 표는 데이터 한 장이고, 메뉴 바
@@ -195,6 +196,8 @@ describe("판정 함수가 아는 키는 모두 표에 있다", () => {
     ["부르는 셸(recallHotkey)", recallHotkey, 1],
     // ⌘Enter와 ⌘ + 숫자 패드 Enter — 한 키의 두 자리다.
     ["패널(togglesPanel)", togglesPanel, 2],
+    // ⇧F10과 메뉴 키 — 포커스한 대상의 메뉴를 연다(codex-ds 티켓 27).
+    ["대상 메뉴(opensTargetMenu)", opensTargetMenu, 2],
   ] as const)("%s", (_이름, judge, count) => {
     const known = 아는키(judge as (event: ReturnType<typeof keydown>) => unknown);
     expect(known).toHaveLength(count);

@@ -770,8 +770,8 @@ test("Works: 작업 패널 머리 제목이 DS 패널 머리 제목(14/20 · 500
 // 48 머리 줄(틈 8 · 머리 카드 32 · 틈 8)이고, 머리 카드는 그 줄에 뜬 흰 카드다 — 폭은 본문 열(사이드바 뒤 ~ 레일 앞 — 레일이 서지
 // 않는 지금은 창 오른쪽 틈 앞, codex-ds 티켓 18), 높이는 `size-head`, 모서리는 `radius-xl`, 면은 `surface`에 0.5px 링
 // (`shadow-hairline`)이다. 왼쪽에 ⚡ · work 이름이 서서 사이드바를 보지 않아도 지금 어느 work인지 안다(스토리 23). 오른쪽은 할 일
-// (상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리 24 · DS `.at-winctl-r`). 이름은 보이기만 한다 —
-// 제자리 이름 바꾸기는 티켓 28이다.
+// (상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리 24 · DS `.at-winctl-r`). 이름은 누르는 자리가
+// 아니다 — 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이고(티켓 27 — `work-context-menu.spec.ts`), 제자리 이름 바꾸기는 티켓 28이다.
 test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 서고 — 왼쪽에 ⚡ · work 이름, 오른쪽에 상태 배지 · ⋯ | 분할 · 패널 토글이 선다", async ({
   page,
 }) => {
@@ -821,8 +821,11 @@ test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 �
   const [icon, title] = [await boxOf(zap), await boxOf(name)];
   expect(icon.x - card.x, "⚡ — 카드 + 16").toBe(16);
   expect(title.x, "이름은 ⚡ 뒤").toBeGreaterThan(icon.right);
-  // 이름은 보이기만 한다 — 누르는 자리가 아니다.
+  // 이름은 버튼이 아니다 — 누르는 자리가 아니다(메뉴의 대상이라 포커스만 받는다). 역할이 없으니 메뉴를 여는 키를 말한다 —
+  // ⇧F10 · 메뉴 키(`work-context-menu.spec.ts`가 그 키로 메뉴가 서는 것을 잰다).
   await expect(head.getByRole("button", { name: pinnedWork.title })).toHaveCount(0);
+  await expect(name).toHaveAttribute("tabindex", "0");
+  await expect(name).toHaveAttribute("aria-keyshortcuts", "Shift+F10 ContextMenu");
 
   // 오른쪽 — 상태 배지 · ⋯ | 분할 · 패널 토글. 넷 다 24 높이로 카드 가운데 줄에 서고, ⋯와 분할 사이를 세로선이 가른다. 이름은 그
   // 앞에서 끝난다. 패널 토글은 레일이 서지 않아 보기 배치 끝, 카드 안이다(DS `.at-winctl-r` — 레일이 서면 카드 밖 `.at-railtop`).

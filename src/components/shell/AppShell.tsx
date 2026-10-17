@@ -104,6 +104,24 @@ function AppShell() {
     };
   }, []);
 
+  // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 대상만
+  // 제 메뉴를 연다(`ContextMenuTrigger` — work 행 · 띠 줄 · 머리 카드 이름). 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
+  // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.
+  // - **`preventDefault`만 부른다** — 사건은 그대로 흘러, 제 메뉴를 여는 대상(Base UI Trigger)과 우클릭을 보는 다른 자리가 받는다.
+  // - **닿지 않는 곳이 하나 있다**: HTML 문서(`SpecViewer`의 `HtmlDoc`)는 same-origin이 없는 iframe이라 그 안의 우클릭은 부모까지
+  //   오지 않고, 거기서는 웹뷰 메뉴가 선다. 그 틈을 메우는 길 둘을 다 안 간다 — 구현 노트 Q5의 물러선 꼴(「iframe 안은 남는다」)이다.
+  //   - srcdoc에 막는 스크립트를 넣는 길: 껍데기는 발행 쪽에서 그대로 베낀 것이고 온전한 문서는 손대지 않고 통과한다(`SpecViewer`의
+  //     `htmlSrcdoc` — 그 파일의 결정 2). 스크립트를 넣으면 문서가 발행본과 갈린다.
+  //   - Rust에서 wry가 지은 WKWebView 클래스의 `willOpenMenu:withEvent:`를 고치는 길: 그 메뉴가 서는지를 L1도 L3(Playwright
+  //     WebKit — 네이티브 메뉴가 없다)도 못 잰다. 잴 수 없는 채로 남이 지은 클래스를 고치지 않는다.
+  // - **이 막기를 걷지 않는다**(결정 15 메모) — 웹뷰 메뉴가 오른쪽 버튼의 놓음을 삼키면 xterm의 끌기 리스너가 남아 셸로 엉뚱한
+  //   마우스 보고가 갔다.
+  useEffect(() => {
+    const block = (event: MouseEvent) => event.preventDefault();
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
+  }, []);
+
   // **레이아웃 폴더가 바뀌면 그것에서 나온 화면이 따라온다**(spec 레이아웃 결정 22) — 설정의 「spec
   // 레이아웃」, `spec` 패널, 아카이브 문서 트리. 구독은 앱 전역에 하나라 뿌리인 여기서 한 번 부른다
   // (spec 레이아웃 구현 스펙 3절). 무엇을 지우는지는 그 훅이 든다 — 이 자리는 배선뿐이다.

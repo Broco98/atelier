@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
+import { useWorkMenuFlows } from "@/features/works/work-menu-actions";
+import { WorkContextMenu, type MenuTarget } from "@/features/works/WorkContextMenu";
 import {
   ownerOf,
   shellCountsOf,
@@ -111,6 +113,9 @@ function Sidebar({
   const bandNow = useNow(items.length > 0);
   // 띠의 줄을 누르면 그 셸로 간다 — ⌘J(방금 부른 셸로)와 **같은 길**이다(`useGoToShell`).
   const openBand = useGoToShell();
+  // **work 우클릭 메뉴의 흐름**(codex-ds 결정 6) — 띠 줄과 목록 행의 메뉴가 함께 쓴다. 셸 수 · 셸 닫기가 그 안에 있어 터미널을 아는
+  // 이 자리가 짓고 목록에 내린다(목록은 터미널을 모른다 — `shells`와 같은 길).
+  const menu = useWorkMenuFlows();
 
   // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — nav·띠·작업 목록·바닥 Settings가
   // 빠지고 「← 앱으로 돌아가기」와 항목만 선다.
@@ -196,21 +201,29 @@ function Sidebar({
 
           그래서 낮은 창에서 양보하는 쪽이 「띠가 굴러간다」이고 지키는 쪽이 「목록과
           Settings가 남는다」다(스토리 39). */}
-      <div className={cn("flex min-h-0 flex-col", GUTTER)}>
-        <AttentionBand
-          items={items}
-          now={bandNow}
-          expanded={bandOpen}
-          onToggle={() => setBandOpen((on) => !on)}
-          onOpen={openBand}
-        />
-      </div>
+      {/* **띠 줄의 우클릭은 그 work의 메뉴다**(codex-ds 결정 6 · 7) — 띠 하나에 메뉴 하나이고, 난 자리의 줄이 대상이다(`bandTarget`).
+          누르면 셸로 가는 줄이지만 우클릭은 아무 데도 안 간다 — 고름도 주소도 그대로다. */}
+      <WorkContextMenu flows={menu} targetOf={bandTarget}>
+        {(menuTarget) => (
+          <div className={cn("flex min-h-0 flex-col", GUTTER)}>
+            <AttentionBand
+              items={items}
+              now={bandNow}
+              expanded={bandOpen}
+              onToggle={() => setBandOpen((on) => !on)}
+              onOpen={openBand}
+              menuTarget={menuTarget}
+            />
+          </div>
+        )}
+      </WorkContextMenu>
 
       <SidebarWorkList
         open={open}
         // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
         // 나를 뿐 터미널을 한 번도 참조하지 않는다.
         shells={{ shellCounts, signals, notes, renderRowMeta }}
+        menu={menu}
       />
 
       {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
@@ -413,13 +426,26 @@ function titleResolver(works: ReadonlyArray<WorkView>): (owner: ShellOwner) => s
   };
 }
 
-/** 줄에 화면의 이름을 붙인다. 규칙은 위 하나이고 여기는 그것을 줄마다 부르기만 한다. */
+/**
+ * 줄에 화면의 이름을 붙인다. 규칙은 위 하나이고 여기는 그것을 줄마다 부르기만 한다. 그 셸의 work(`slug` — 줄의 우클릭 메뉴가 펴는
+ * work)도 함께 붙인다 — 최상위 셸이면 `null`이다.
+ */
 function bandItems(
   rows: ReadonlyArray<BandRow>,
   resolve: (owner: ShellOwner) => string,
 ): BandItem[] {
   if (rows.length === 0) return [];
-  return rows.map((row) => ({ ...row, title: resolve(row.owner) }));
+  return rows.map((row) => ({ ...row, title: resolve(row.owner), slug: slugOfOwner(row.owner) }));
+}
+
+/**
+ * 띠 안 우클릭의 대상 — 그 자리를 품은 work의 셸 줄이다(`BandLine`의 표식). 머리 · ⌄ · 최상위 셸 줄이면 `null`이라 메뉴가 안 선다.
+ */
+function bandTarget(from: Element): MenuTarget | null {
+  const line = from.closest<HTMLElement>("[data-band-work]");
+  const slug = line?.dataset.bandWork;
+  const id = line?.dataset.bandLine;
+  return line && slug && id ? { slug, id, element: line } : null;
 }
 
 /**

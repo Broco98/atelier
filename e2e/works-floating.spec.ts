@@ -11,6 +11,7 @@ import {
   unknownIpcCalls,
   workRow,
   시계를세운다,
+  줄차례,
   툴팁,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
@@ -154,20 +155,6 @@ const 하위메뉴를연다 = async (page: Page, name: string) => {
   await expect(sub).toBeVisible();
   return sub;
 };
-
-/**
- * 메뉴 카드의 **줄 차례** — 카드에 바로 선 줄을 위에서부터, 항목은 제 글자로 구분선은 「—」로 읽는다. 묶음은 구분선이 가르므로
- * 항목 순서와 구분선 수를 따로 세면 구분선이 다른 틈으로 옮겨 가도 그대로 통과한다 — 한 목록으로 읽어야 묶음이 재진다. 하위 메뉴
- * 카드는 제 포털에 서서 부모 카드의 줄에 안 섞인다.
- */
-const 줄차례 = (menu: Locator) =>
-  menu.evaluate((card) =>
-    [...card.children].flatMap((row) => {
-      const role = row.getAttribute("role");
-      if (role === "separator") return ["—"];
-      return role === "menuitem" ? [row.textContent ?? ""] : [];
-    }),
-  );
 
 /** 부른 Finder 열기의 인자들, 부른 차례대로. */
 const finder열기 = async (page: Page) =>

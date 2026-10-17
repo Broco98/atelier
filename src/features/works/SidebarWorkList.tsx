@@ -9,6 +9,8 @@ import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
 import { useMoveWork, useSetWorkPinned, useWorks } from "./hooks";
 import { projectLines, WorkCard } from "./WorkCard";
+import { WorkContextMenu, type MenuTarget } from "./WorkContextMenu";
+import type { WorkMenuFlows } from "./WorkMenuItems";
 import { WorkSectionList, type WorkRowShells } from "./WorkSectionList";
 import {
   edgeScrollStep,
@@ -40,6 +42,7 @@ const WORKS_OPEN_KEY = "sidebar-works-open";
 function SidebarWorkList({
   open,
   shells,
+  menu,
 }: {
   open: boolean;
   /**
@@ -48,6 +51,11 @@ function SidebarWorkList({
    * 나를 뿐이다. 이 목록이 스스로 쓰는 것은 호버 카드에 건넬 말(`notes`) 하나다.
    */
   shells: WorkRowShells;
+  /**
+   * 행의 우클릭 메뉴가 부르는 흐름(codex-ds 결정 6 — ⋯ 메뉴와 같은 흐름). **셸 수 · 셸 닫기가 그 안에 있어 위(Sidebar)가 지어 내린다** —
+   * 이 목록이 그 흐름을 스스로 지으면 터미널을 알게 된다(`shells`와 같은 이유).
+   */
+  menu: WorkMenuFlows;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
@@ -362,30 +370,38 @@ function SidebarWorkList({
             `aside .scroll-quiet`로 집었는데, 그 클래스는 「굴러가는 상자」라는 겉모습이라
             같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 알림 띠가 펼쳐지면
             그렇다) 자리(`.first()`)로 고르는 쪽이 **엉뚱한 상자를 집는다.** */}
-        <div
-          data-worklist=""
-          ref={listBox}
-          onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
-          // `relative`는 틈 선의 기준이다 — 선이 내용 좌표로 서서 목록과 함께 구른다(구획 목록의 선 주석).
-          // 위 2는 DS 기둥(`.at-sidebar`)의 줄 사이 2다 — 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이에 그것이 든다(`SectionHeader`).
-          className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-0.5 pb-1 scroll-quiet"
-        >
-          <WorkSectionList
-            sections={sections}
-            open={sectionsOpen}
-            selectedSlug={selectedSlug}
-            shells={shells}
-            onToggleSection={toggleSection}
-            onOpen={goTo}
-            onHover={openCardAfterDelay}
-            onLeave={closeCard}
-            onTogglePin={togglePin}
-            draggedSlug={draggedSlug}
-            lineY={lineY}
-            litEmptySlot={litEmptySlot}
-            onArmDrag={startDrag}
-          />
-        </div>
+        {/* **행의 우클릭 메뉴는 목록에 하나다**(codex-ds 결정 6 · 7 · 11) — 목록 상자가 우클릭을 받고, 난 자리의 행이 대상이다
+            (`rowTarget`). 메뉴 상태는 여기(그 조각)가 쥐고 행은 「내가 대상인가」만 받는다 — 구획 목록 파일은 훅을 안 부른다. 열리면
+            떠 있던 호버 카드를 닫는다(메뉴 카드와 같은 자리에 겹친다). */}
+        <WorkContextMenu flows={menu} targetOf={rowTarget} onOpen={closeCard}>
+          {(menuTarget) => (
+            <div
+              data-worklist=""
+              ref={listBox}
+              onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
+              // `relative`는 틈 선의 기준이다 — 선이 내용 좌표로 서서 목록과 함께 구른다(구획 목록의 선 주석).
+              // 위 2는 DS 기둥(`.at-sidebar`)의 줄 사이 2다 — 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이에 그것이 든다(`SectionHeader`).
+              className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-0.5 pb-1 scroll-quiet"
+            >
+              <WorkSectionList
+                sections={sections}
+                open={sectionsOpen}
+                selectedSlug={selectedSlug}
+                shells={shells}
+                onToggleSection={toggleSection}
+                onOpen={goTo}
+                onHover={openCardAfterDelay}
+                onLeave={closeCard}
+                onTogglePin={togglePin}
+                draggedSlug={draggedSlug}
+                lineY={lineY}
+                litEmptySlot={litEmptySlot}
+                onArmDrag={startDrag}
+                menuTarget={menuTarget}
+              />
+            </div>
+          )}
+        </WorkContextMenu>
       </div>
 
       {/* 바깥 클릭 막이 없다 — 막이 깔리면 포인터를 가로채 앵커에서 곧바로 mouseleave가 나 열자마자
@@ -409,6 +425,17 @@ function SidebarWorkList({
       )}
     </>
   );
+}
+
+/**
+ * 목록 안 우클릭의 대상 — 그 자리를 품은 work 행이고, 테두리 · 포커스는 그 행의 이름 버튼이다(`WorkRow`). 행 밖(구획 머리 · 빈 자리
+ * · 끄는 동안의 받침)이면 `null`이라 메뉴가 안 선다.
+ */
+function rowTarget(from: Element): MenuTarget | null {
+  const row = from.closest<HTMLElement>("[data-work-row]");
+  const slug = row?.dataset.workRow;
+  const element = row?.querySelector<HTMLElement>(":scope > button");
+  return slug && element ? { slug, id: slug, element } : null;
 }
 
 /**

@@ -730,7 +730,7 @@ export const answerByArg = (
  * 값은 답 그대로이거나 인자별 답(`answerByArg`)이다. 페이지를 열 때 덮어쓰는 것은 `installFixtureBackend`,
  * 뜬 뒤에 가는 것은 `replaceAnswer`다(`harness.ts`).
  *
- * **아직 어느 시나리오도 태우지 않는 명령은 표에 없다**(`get_work` · `remove_work` 등) — 답을 지어내 앉히지 않는다. 그
+ * **아직 어느 시나리오도 태우지 않는 명령은 표에 없다**(`get_work` 등) — 답을 지어내 앉히지 않는다. 그
  * 명령을 태우는 화면이 생기는 날 그 호출이 화이트리스트 탐지기에 물려, 이 표에 줄을 더하라고 말해 준다.
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
@@ -875,6 +875,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 코어가 돌려주는 것이 없고, 화면은 성공인지만 본다. 목록은 그대로 그 work을 답하므로 행이 안 사라지지만, 거기서
   // 재는 것은 셸뿐이다.
   archive_work: null,
+  // 삭제 — 아카이브와 한 벌이다(`work-context-menu.spec.ts`가 확인 창의 「삭제」 뒤에 나간 slug를 잰다). 같은 까닭으로 답이 비어
+  // 있고, 목록은 그대로 그 work을 답한다.
+  remove_work: null,
   list_archive: ARCHIVE,
   // 아카이브의 문서 목록과 본문 — **인자를 한 겹 더 본다.** 한 시나리오가 아카이브 둘의 서로 다른 목록을 보고,
   // 그 안의 문서를 각각 연다.

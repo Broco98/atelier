@@ -7,6 +7,7 @@ import {
   type CallingNote,
   type ShellSignal,
 } from "@/components/shell/shell-signal";
+import { openMenuByKey } from "@/components/ui/context-menu";
 import type { DragPoint } from "@/lib/pointer-drag";
 import { emptyMainNotice, WORKS_COPY } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -96,6 +97,7 @@ export function WorkSectionList({
   lineY,
   litEmptySlot,
   onArmDrag,
+  menuTarget,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
@@ -121,6 +123,11 @@ export function WorkSectionList({
   litEmptySlot: keyof SectionsOpen | null;
   /** 행이 눌렸다 — 끌기를 무장하는 것은 위의 일이다(기하를 재는 자리가 거기다). */
   onArmDrag: (slug: string, from: DragPoint) => void;
+  /**
+   * 우클릭 메뉴가 열린 행(codex-ds 결정 11) — 그 행의 이름 버튼에 대상 테두리가 선다. 닫혔으면 `null`이다. **메뉴 상태는 위
+   * (`SidebarWorkList`의 `WorkContextMenu`)가 쥐고 여기는 받기만 한다** — 끌리는 행과 같은 규칙이다.
+   */
+  menuTarget: string | null;
 }) {
   const { pinned, main } = sections;
   // **받침은 끄는 동안만, 행이 하나도 없는 구획에만 선다**(티켓 06 · 스펙 S7). 끄는 것이 작업 행일 때만이다 —
@@ -136,6 +143,7 @@ export function WorkSectionList({
       work={work}
       active={work.slug === selectedSlug}
       dragging={work.slug === draggedSlug}
+      menuTarget={work.slug === menuTarget}
       shellCount={shells.shellCounts[work.slug] ?? 0}
       signal={shells.signals[work.slug] ?? null}
       note={shells.notes[work.slug] ?? null}
@@ -396,6 +404,7 @@ function WorkRow({
   onTogglePin,
   onArmDrag,
   dragging,
+  menuTarget,
   shellCount,
   signal,
   note,
@@ -405,6 +414,8 @@ function WorkRow({
   active: boolean;
   /** 이 행이 끌리는 중인가 — 흐려진다. 행 모양이 정해지는 자리가 여기 하나라 이 값도 여기로 온다. */
   dragging: boolean;
+  /** 이 행의 우클릭 메뉴가 열려 있는가 — 이름 버튼에 대상 테두리가 선다(codex-ds 결정 11). 고름(`active`)과 따로다(결정 7). */
+  menuTarget: boolean;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
@@ -438,9 +449,9 @@ function WorkRow({
       data-work-row={work.slug}
       // **끌기는 여기서 무장만 한다** — 5px을 넘어야 끌기이고, 그 안쪽은 아래 `onClick`의 클릭이다
       // (공용 제스처 `lib/pointer-drag`). 주 버튼만 받는다: 보조 클릭으로 끌리면 메뉴를 열려던 손이
-      // 순서를 흔든다.
+      // 순서를 흔든다. ⌃클릭도 받지 않는다 — macOS에서 ⌃클릭은 우클릭이라(같은 메뉴가 열린다) 주 버튼으로 와도 메뉴를 여는 손이다.
       onPointerDown={(event) => {
-        if (event.button === 0) onArmDrag(work.slug, event);
+        if (event.button === 0 && !event.ctrlKey) onArmDrag(work.slug, event);
       }}
       // **누르면 그 work로 간다 — 행 어디를 눌러도 그렇다**(결정 6 · `sidebar-active-band` 스토리
       // 34). 이 자리가 이름 버튼이 아니라 바깥 상자인 것은 이름 버튼이 1열만 덮기 때문이다:
@@ -451,7 +462,11 @@ function WorkRow({
       // 그래서 **이름 버튼은 onClick을 안 든다** — 눌러도, 키보드로 켜도 그 클릭이 여기로
       // 올라온다(두 자리에 두면 한 번 눌러 두 번 돈다). 끊는 것은 핀 하나뿐이고, 그 한
       // 줄이 `stopPropagation`이다(핀 주석).
-      onClick={() => onOpen(work.slug)}
+      //
+      // ⌃클릭은 열지 않는다 — 우클릭과 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 · 위 `onPointerDown`).
+      onClick={(event) => {
+        if (!event.ctrlKey) onOpen(work.slug);
+      }}
       onMouseEnter={(e) => {
         // **재는 것은 속도 하나이고, 이 한 번뿐이다**(결정 12). 흐르는 거리는 CSS가 정하므로
         // (결정 10) 여기서 넘침을 읽는 것은 그 거리를 **시간으로** 바꾸기 위해서다 —
@@ -557,6 +572,11 @@ function WorkRow({
         // **`className` 뒤에 적는다.** 행 이름을 모으는 마크업 검사가 여는 태그를 `aria-label`
         // 바로 뒤에 `class`가 오는 모양으로 읽는다(`SidebarWorkList.test.tsx`의 `namesOf`).
         aria-description={note?.message}
+        // **우클릭 메뉴의 대상이 이 버튼이다**(codex-ds 결정 6 · 11). 열린 동안 표식이 서고 `focus-ring`이 그것을 포커스 링과 같은
+        // 테두리로 그린다(`index.css`). ⇧F10 · 메뉴 키는 포커스된 이 버튼이 받아 같은 메뉴를 곁에 연다(`openMenuByKey`). 메뉴가
+        // 닫히면 포커스가 여기로 돌아온다.
+        data-menu-target={menuTarget ? "" : undefined}
+        onKeyDown={openMenuByKey}
       >
         {/* **레인** — 행 왼쪽의 14px 한 칸(두 줄 행을 연 판의 결정 5). 화면값이 있으면 점·스피너가,
             없으면 work 상태 아이콘이 선다(#203). 표식(`data-lane`)은 검사 셋이 이 칸을 집는

@@ -1002,13 +1002,16 @@
    막는다. 메뉴 · Select의 줄은 이것을 안 단다 — 줄은 면(`focus:bg-fill-hover`)으로 포커스를 보인다.
    - **키보드로 왔을 때만 선다**(`:focus-visible`) — 누르는 손에는 링이 없다. 글자칸은 브라우저가 늘 `:focus-visible`로 친다.
    - **상자가 링을 입는 칸**(검색칸 `InputGroup`)은 바로 안의 입력칸에 포커스가 있을 때 선다(`:has(> input:focus-visible)`).
+   - **우클릭 메뉴가 열린 대상**도 같은 링을 입는다(`[data-menu-target]`, codex-ds 결정 11 「대상 테두리」) — 「이것의 메뉴다」를
+     말한다. 그 메뉴가 열린 동안만 대상에 서는 표식이라(`WorkContextMenu`) 닫히면 걷히고, 닫힌 화면의 마크업에는 없다.
    - 무리는 Tailwind 그림자 짜임의 한 자리(`--tw-ring-offset-shadow` — 앱에 `ring-offset-*`을 쓰는 곳이 없다)에 얹는다. 그래서 그
      요소가 든 그림자(`inset-ring` 테두리 · 켜진 셸 칸의 안쪽 테두리 · `shadow-*`)가 포커스 동안에도 함께 선다 — `box-shadow`를
      통째로 덮으면 그 테두리가 링에 가려 사라진다. 짜임의 자리마다 빈 그림자를 기본값으로 둔다(그 자리를 쓰는 유틸리티가 없는
      요소에서도 식이 풀린다). */
 @utility focus-ring {
   &:focus-visible,
-  &:has(> input:focus-visible) {
+  &:has(> input:focus-visible),
+  &[data-menu-target] {
     outline: 1px solid var(--accent);
     outline-offset: 0;
     --tw-ring-offset-shadow: 0 0 0 4px var(--focus-halo);

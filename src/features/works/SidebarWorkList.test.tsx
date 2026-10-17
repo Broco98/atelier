@@ -58,6 +58,7 @@ function render(
     draggedSlug = null,
     lineY = null,
     litEmptySlot = null,
+    menuTarget = null,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
@@ -66,6 +67,7 @@ function render(
     draggedSlug?: string | null;
     lineY?: number | null;
     litEmptySlot?: keyof SectionsOpen | null;
+    menuTarget?: string | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -90,6 +92,7 @@ function render(
       lineY={lineY}
       litEmptySlot={litEmptySlot}
       onArmDrag={() => {}}
+      menuTarget={menuTarget}
     />,
   );
 }
@@ -681,6 +684,28 @@ describe("끄는 동안의 그림", () => {
   it("구획 머리가 어느 구획인지 말한다 — 기하를 재는 자리가 이것으로 집는다", () => {
     const heads = [...render(works("pin:가", "나")).matchAll(/data-drop-head="([^"]*)"/g)].map((m) => m[1]);
     expect(heads).toEqual(["pinned", "works"]);
+  });
+});
+
+// **우클릭 메뉴의 대상**(codex-ds 결정 7 · 11). 메뉴 상태는 위(`SidebarWorkList`의 `WorkContextMenu`)가 쥐고 행은 「내가 대상인가」만
+// 받는다 — 표식이 서는 것은 받은 그 행의 이름 버튼 하나이고, 고름과 따로다. 표식이 칠하는 테두리 · 여닫음은 L3가 잰다
+// (`work-context-menu.spec.ts`).
+describe("우클릭 메뉴의 대상", () => {
+  const targets = (markup: string) =>
+    [...markup.matchAll(/<div data-work-row="([^"]*)"[^>]*><button[^>]*data-menu-target=""/g)].map((m) => m[1]);
+
+  it("받은 행 **하나의** 이름 버튼에만 표식이 선다", () => {
+    expect(targets(render(works("pin:가", "나", "다"), ALL, { menuTarget: "나" }))).toEqual(["나"]);
+  });
+
+  it("고른 행과 따로다 — 대상이 아닌 고른 행은 고른 채 표식이 없다", () => {
+    const markup = render(works("pin:가", "나", "다"), ALL, { selectedSlug: "가", menuTarget: "다" });
+    expect(targets(markup)).toEqual(["다"]);
+    expect(markup).toMatch(/<div data-work-row="가" class="[^"]*selected-row/);
+  });
+
+  it("메뉴가 닫혔으면 어느 행에도 없다", () => {
+    expect(render(works("pin:가", "나"))).not.toContain("data-menu-target");
   });
 });
 

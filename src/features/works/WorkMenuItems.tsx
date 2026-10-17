@@ -15,8 +15,8 @@ import type { WorkStatus, WorkView } from "./types";
 
 /**
  * work 메뉴가 부르는 동작 — **부르는 쪽이 넘긴다.** 메뉴는 무엇을 어떤 차례로 보이고 무엇을 부를지만 정하고, 부르는 길(IPC ·
- * 클립보드 · 확인 창)은 메뉴를 다는 자리의 것이다. 아카이브 · 삭제의 흐름(바쁨 막기 → 띄운 프로세스 수 → 확인 창 → 주인 붙들기 →
- * 부르기 → 실패 알림 → 셸 닫기)이 `WorksPage`의 `WorkMenu`에 그대로 있는 까닭이다(codex-ds 스펙 §6).
+ * 클립보드 · 확인 창)은 메뉴 밖의 것이다. 아카이브 · 삭제의 흐름(바쁨 막기 → 띄운 프로세스 수 → 확인 창 → 주인 붙들기 →
+ * 부르기 → 실패 알림 → 셸 닫기)은 `work-menu-actions.ts` 한 자리에 있고, 메뉴를 다는 자리 넷이 모두 그것을 받는다(codex-ds 스펙 §6).
  */
 export interface WorkMenuActions {
   /** Finder에서 연다 — `null`이면 spec 폴더, 프로젝트 이름이면 그 worktree다. 경로는 백엔드가 푼다(codex-ds 스펙 S6). */
@@ -32,9 +32,20 @@ export interface WorkMenuActions {
 }
 
 /**
- * **대상 메뉴 「work」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). 지금은 머리 카드의 ⋯(`DropdownMenu`)가 이것을 펴고,
- * 우클릭 메뉴(`ContextMenu`)가 같은 것을 펴는 것은 codex-ds 티켓 27이다. 항목 · 구분선 · 하위 메뉴는 두 메뉴가 함께 쓰는 부품이라
- * (`context-menu.tsx` 머리말) 이 조각이 어느 쪽 카드 안에서도 그대로 선다. 훅이 없다 — 상태를 쥘 수 없는 자리(사이드바 행 —
+ * **work 메뉴의 흐름 한 벌** — 메뉴를 다는 자리가 받는 값이다(`work-menu-actions.ts`의 `useWorkMenuFlows`가 짓는다). 대상 work마다
+ * 동작을 꺼낸다 — 대상은 고른 work가 아닐 수 있다(codex-ds 결정 7). 이름 바꾸기만은 메뉴를 다는 자리가 넘긴다: 창이 닫히면 포커스가
+ * 그 자리(⋯ · 우클릭 대상)로 돌아가야 해서다.
+ */
+export interface WorkMenuFlows {
+  /** 아카이브 · 삭제가 하나라도 도는 중이다 — 그동안 work 메뉴는 열리지 않는다. */
+  busy: boolean;
+  actionsFor: (work: WorkView, rename: () => void) => WorkMenuActions;
+}
+
+/**
+ * **대상 메뉴 「work」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). 머리 카드의 ⋯(`DropdownMenu`)와 우클릭 메뉴(`ContextMenu`
+ * — 사이드바 행 · 알림 띠 줄 · 머리 카드 이름, `WorkContextMenu`)가 이것을 편다. 항목 · 구분선 · 하위 메뉴는 두 메뉴가 함께 쓰는
+ * 부품이라(`context-menu.tsx` 머리말) 이 조각이 어느 쪽 카드 안에서도 그대로 선다. 훅이 없다 — 상태를 쥘 수 없는 자리(사이드바 행 —
  * `SidebarWorkList.test.tsx`의 훅 금지)에서도 펼 수 있게.
  *
  * 묶음은 다섯이고 사이는 구분선이다(codex-ds 결정 10): 열기 — 고치기 — 상태 — 정리 — 되돌릴 수 없는 것. 하위 메뉴는 한 단계다.

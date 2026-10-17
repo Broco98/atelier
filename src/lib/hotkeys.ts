@@ -2,9 +2,9 @@ import table from "./hotkeys.json";
 
 // **단축키 표 — 앱의 단축키는 곁의 `hotkeys.json` 한 장에만 적는다**(codex-ds 결정 19 · 스펙 §8 · S16). macOS 메뉴 바(`src-tauri/src/
 // lib.rs`가 빌드 때 그 파일을 싣는다) · 메뉴 오른쪽 단축키 칸(`DropdownMenuItem`의 `shortcut`) · 툴팁(`Hint`의 `shortcut`) · 키 판정
-// (`searchHotkey` · `shellHotkey` · `shellNavKey` · `recallHotkey` · `togglesPanel` · ⌘B · 항목 옮기기)이 그 표를 읽어, 어디서 본
-// 단축키든 같다. 키를 하나 옮길 때 고치는 곳이 그 한 장이다. 한때 이 사실들은 메뉴 바(`lib.rs`가 손으로 적은 목록과 ⌘,) · 툴팁
-// 글자 · 화면별 keydown에 따로 적혀 있었다.
+// (`searchHotkey` · `shellHotkey` · `shellNavKey` · `recallHotkey` · `togglesPanel` · `opensTargetMenu` · ⌘B · 항목 옮기기)이 그
+// 표를 읽어, 어디서 본 단축키든 같다. 키를 하나 옮길 때 고치는 곳이 그 한 장이다. 한때 이 사실들은 메뉴 바(`lib.rs`가 손으로
+// 적은 목록과 ⌘,) · 툴팁 글자 · 화면별 keydown에 따로 적혀 있었다.
 //
 // **표가 JSON인 것은 두 언어가 함께 읽어서다.** 주석을 못 다는 대신 항목의 뜻을 여기 적는다. 항목은 이름(`HotkeyId`)마다 하나이고
 // 드는 것은 다섯이다.
@@ -26,7 +26,9 @@ import table from "./hotkeys.json";
 // 메뉴 바에 서지 않는 것들과 그 까닭(`lib.rs`의 `MENU_HOTKEYS` 독이 메뉴 쪽 사정을 든다):
 // - ⌘W — 그 메뉴 항목이 있으면 OS가 웹뷰보다 먼저 먹어 창이 닫히고 셸이 전부 죽는다.
 // - ⌃Tab · ⌃⇧Tab — 항목은 서는데 accelerator 경로만 죽는다(실측).
-// - F2(이름 바꾸기) · ⇧F10과 메뉴 키(대상 메뉴) — 무엇에 거는지가 포커스에 달려 있다(codex-ds 스펙 §8). 뜻은 티켓 27 · 28이 잇는다.
+// - F2(이름 바꾸기) · ⇧F10과 메뉴 키(대상 메뉴) — 무엇에 거는지가 포커스에 달려 있다(codex-ds 스펙 §8). ⇧F10 · 메뉴 키는 포커스된
+//   대상이 제 `onKeyDown`에서 받아 그 대상의 메뉴를 연다(`context-menu.tsx`의 `opensTargetMenu` · `openMenuByKey`). F2의 뜻은
+//   티켓 28이 잇는다.
 // - ⌥↑ ⌥↓ ⌥← ⌥→(spec 레이아웃 편집기 트리의 항목 옮기기) · Esc(떠 있는 창 닫기) — 한 화면 안의 키다.
 //
 // **표 밖에 남는 키는 단축키가 아니거나 앱이 적지 않은 키다.**

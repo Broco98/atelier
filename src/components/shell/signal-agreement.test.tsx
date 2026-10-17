@@ -136,6 +136,7 @@ function 행(state: ShellsState): string {
       lineY={null}
       litEmptySlot={null}
       onArmDrag={() => {}}
+      menuTarget={null}
     />,
   );
 }
@@ -143,11 +144,12 @@ function 행(state: ShellsState): string {
 function 띠(state: ShellsState): string {
   return renderToStaticMarkup(
     <AttentionBand
-      items={bandRows(state).map((row) => ({ ...row, title: WORK.title }))}
+      items={bandRows(state).map((row) => ({ ...row, title: WORK.title, slug: WORK.slug }))}
       now={1000}
       expanded={false}
       onToggle={() => {}}
       onOpen={() => {}}
+      menuTarget={null}
     />,
   );
 }

@@ -1,5 +1,15 @@
-import { createContext, Fragment, useContext, useId, useRef, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useId,
+  useRef,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
+import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { cn } from "@/lib/utils";
@@ -94,8 +104,17 @@ export interface HeadSlot {
    * 오른쪽 배지가 말한다), 프로젝트는 폴더, 그 밖의 화면은 nav의 그 아이콘이다.
    */
   icon: LucideIcon;
-  /** 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 보이기만 한다 — 그 자리에서 바꾸는 것은 codex-ds 티켓 28이다. */
+  /**
+   * 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 그 자리에서 바꾸지는 않는다(codex-ds 티켓 28). 고른
+   * 것에 메뉴가 있으면 이름이 그 메뉴의 대상이 된다(`nameMenu`).
+   */
   name: string;
+  /**
+   * 이름의 우클릭 메뉴(codex-ds 결정 6 — 작업 화면은 그 work의 메뉴). 틀이 이름 요소를 그리는 함수(`renderName`)를 건네고, 화면은 그것을
+   * 메뉴의 대상으로 감싸 돌려준다 — 메뉴가 무엇을 펴는지는 화면이 알고, 이름의 모양과 자리는 틀이 든다. 받는 값은 「메뉴가 열려 있나」이고
+   * 열린 동안 이름에 대상 테두리가 선다(결정 11). 이 이름은 포커스를 받아 ⇧F10 · 메뉴 키로도 그 메뉴를 연다. 없으면 이름은 보이기만 한다.
+   */
+  nameMenu?: (renderName: (open: boolean) => ReactElement) => ReactNode;
   /**
    * 이름 뒤의 옅은 글자(DS `.at-winhead .sub`) — 그 화면 안에서 지금 선 곳(Settings는 항목, 편집기는 항목 › 레이아웃)이거나 고른 것을
    * 짚는 짧은 글(Archive는 프로젝트 · 치운 날)이다. 조각이 둘 이상이면 꺾쇠가 가른다. 캡슐이 아니다 — 캡슐은 경로 줄에만 선다(codex-ds
@@ -519,6 +538,7 @@ function HeadCard({
   lead,
   icon: Icon,
   name,
+  nameMenu,
   sub,
   actions,
   end,
@@ -527,6 +547,24 @@ function HeadCard({
   /** 레일이 서지 않을 때의 패널 토글 — 보기 배치(`end`) 뒤, 카드 안 오른쪽 끝에 선다(`HeadRow`). 화면이 건네는 것이 아니라 틀이 넣는다. */
   toggle?: ReactNode;
 }) {
+  const nameClass = "min-w-0 truncate text-chat-meta font-medium text-fg";
+  // **메뉴가 있는 이름은 대상이다**(`nameMenu`) — 포커스를 받고(⇧F10 · 메뉴 키가 포커스된 대상의 메뉴를 연다), 열린 동안 표식이 서서
+  // `focus-ring`이 테두리를 그린다. 모서리는 링이 따라 돌 몫이다. 버튼이 아닌 것은 누르면 할 일이 없어서다 — 이름을 그 자리에서
+  // 바꾸는 것은 티켓 28이다.
+  // - **역할이 없으니 키를 말한다**(`aria-keyshortcuts` — 표의 ⇧F10 · 메뉴 키, `TARGET_MENU_ARIA`). 포커스가 서면 글자(이름)와 함께
+  //   「여기서 이 키가 듣는다」가 읽힌다. `aria-haspopup`은 안 단다 — 역할 없는 요소(generic)에는 ARIA가 그 속성을 허락하지 않는다.
+  //   역할을 지어 붙이지 않는 것은 그 역할이 거짓말이 되어서다(`button`이면 누를 것이 있어야 한다 — 구현 노트 Q6).
+  const renderName = (open: boolean) => (
+    <span
+      tabIndex={0}
+      aria-keyshortcuts={TARGET_MENU_ARIA}
+      onKeyDown={openMenuByKey}
+      data-menu-target={open ? "" : undefined}
+      className={cn(nameClass, "rounded-md focus-ring")}
+    >
+      {name}
+    </span>
+  );
   return (
     <div
       data-slot="head-card"
@@ -535,7 +573,7 @@ function HeadCard({
       {lead}
       <div className="flex h-6 max-w-[520px] min-w-0 flex-1 items-center gap-1.75 px-2 contain-inline-size">
         <Icon className="size-3.5 shrink-0 text-fg-secondary" />
-        <span className="min-w-0 truncate text-chat-meta font-medium text-fg">{name}</span>
+        {nameMenu ? nameMenu(renderName) : <span className={nameClass}>{name}</span>}
         {sub && (
           // 이름 끝에서 위치까지 DS는 14다 — 이름 칸의 오른쪽 안쪽 8 + 머리 카드의 사이 4 + `.sub`의 왼쪽 2. 위치가 이름 칸 안이라 칸
           // 안의 사이 7에 7을 더한다. 앞 조각은 제 폭이고 줄어드는 몫은 마지막 조각의 말줄임이 받는다.

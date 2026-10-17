@@ -277,6 +277,14 @@ export function useMoveWork() {
   return useMutation(moveWorkOptions(queryClient));
 }
 
+/**
+ * **아카이브 · 삭제의 뮤테이션 키 머리**(codex-ds 티켓 27). work 메뉴가 서는 자리가 여럿이라(머리 카드의 ⋯ · 사이드바 행 · 알림 띠
+ * 줄 · 머리 카드 이름 — `work-menu-actions.ts`) 뮤테이션 인스턴스도 자리마다 따로 선다. 「지금 하나가 돈다」(메뉴의 바쁨 ·
+ * `WorksPage`의 막)는 인스턴스가 아니라 이 키로 캐시에 묻는다 — 한 자리에서 연 아카이빙을 다른 자리의 메뉴도 안다. 둘째 칸이 어느
+ * 조작인지(`"archive"` · `"remove"`)이고, 변수가 그 work의 slug다.
+ */
+export const WORK_LIFECYCLE_KEY = ["work-lifecycle"] as const;
+
 // 아카이브와 삭제 모두 작업 목록에서 사라지게 만든다. 다만 아카이브는 **반대편에 하나를
 // 더한다** — 파일 감시가 뒤늦게 알려주기를 기다리지 않고 여기서 함께 무효화한다.
 // 그러지 않으면 방금 치운 작업이 Archive 화면에 바로 나타나지 않는다. 반대편(아카이브 목록)은
@@ -284,6 +292,7 @@ export function useMoveWork() {
 export function useArchiveWork() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: [...WORK_LIFECYCLE_KEY, "archive"],
     mutationFn: (slug: string) => worksApi.archive(slug),
     // **여기만 기다리지 않는다.** 문 둘을 함께 열던 자리라 예전부터 블록 몸통이었고, 그래서
     // 아카이빙의 `isPending`은 원래부터 커맨드가 돌아오면 풀렸다.
@@ -296,6 +305,7 @@ export function useArchiveWork() {
 export function useRemoveWork() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: [...WORK_LIFECYCLE_KEY, "remove"],
     mutationFn: (slug: string) => worksApi.remove(slug),
     onSuccess: () => invalidateWorks(queryClient),
   });
