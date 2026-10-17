@@ -278,9 +278,9 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  * `<aside>`이고(e2e `tab-row-floor`가 `aside` 순서를 잰다) **폭이 「왼쪽 틈 + 카드」다** — 접히면 둘이 함께 0이 되어 왼쪽 카드가 오른쪽
  * 틈 끝까지 넓어진다. 틈은 안쪽 열의 왼쪽 여백이고, 손잡이는 그 틈의 가운데에 선다(여전히 `aside`의 자손이다).
  *
- * 폭은 **카드의 폭**이다(`--work-panel-width`). 틈은 그 위에 더해 그린다.
+ * 폭은 **카드의 폭**이다(`--panel-width`). 틈은 그 위에 더해 그린다.
  *
- * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--work-panel-min`, 폭 훅이 받은 값)까지 왼쪽 카드에 자리를
+ * **이 칸은 줄어든다**(`shrink-0`이 없다). 창이 좁으면 끄는 최소 폭(`--panel-min`, 폭 훅이 받은 값)까지 왼쪽 카드에 자리를
  * 내주고, 왼쪽 카드에는 **남길 폭(`reserve`)만큼은 남긴다**(`max-width`). 그 폭은 왼쪽 카드가 화면을 이루는 최소다:
  * - 작업 화면의 문서 카드에는 패널 자신의 최소 폭만큼이다(`reserve`가 없을 때). 문서 카드는 머리에 탭 줄을 이고 그 줄의 바닥 아래로는
  *   안 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 카드 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를 내준다.
@@ -307,8 +307,8 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
       data-tauri-drag-region
       style={
         {
-          "--work-panel-width": `${size.width}px`,
-          "--work-panel-min": `${size.min}px`,
+          "--panel-width": `${size.width}px`,
+          "--panel-min": `${size.min}px`,
           "--panel-reserve": `${reserve ?? size.min}px`,
         } as CSSProperties
       }
@@ -318,10 +318,10 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
         !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
         open
           ? cn(
-              "max-w-[calc(100%-var(--panel-reserve))] basis-[calc(var(--work-panel-width)+var(--space-2))]",
+              "max-w-[calc(100%-var(--panel-reserve))] basis-[calc(var(--panel-width)+var(--space-2))]",
               reserve === undefined
-                ? "min-w-[calc(var(--work-panel-min)+var(--space-2))]"
-                : "min-w-[min(calc(var(--work-panel-min)+var(--space-2)),max(0px,calc(100%-var(--panel-reserve))))]",
+                ? "min-w-[calc(var(--panel-min)+var(--space-2))]"
+                : "min-w-[min(calc(var(--panel-min)+var(--space-2)),max(0px,calc(100%-var(--panel-reserve))))]",
             )
           : "basis-0 min-w-0",
       )}
@@ -331,7 +331,7 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
       <div
         data-tauri-drag-region
         className={cn(
-          "flex h-full w-[calc(var(--work-panel-width)+var(--space-2))] shrink-0 pl-2",
+          "flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2",
           foldingInnerClass(open),
         )}
       >

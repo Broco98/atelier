@@ -7,7 +7,7 @@ import { Toaster, showToast } from "@/components/ui/toast";
 import { Hint } from "@/components/ui/tooltip";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
-import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { togglesPanel } from "@/components/shell/PanelToggle";
 import { PathBar } from "@/components/shell/PathBar";
 import useResizableWidth from "@/components/shell/useResizableWidth";
@@ -97,9 +97,9 @@ function ArchivePage({
   // 뒤집는다. 처음에는 열려 있다(DS 캔버스 Archive). 저장하지 않는다 — 작업 패널의 열림도 저장하지 않는다(`WorksPage`). 아카이브를 옮겨도
   // 같은 인스턴스라 이 값이 그대로 따라온다.
   const [panelOpen, setPanelOpen] = useState(true);
-  // 패널 카드의 폭 — 작업 패널과 같은 규격(기본 DS `size-panel` 340 · 범위 260–560, codex-ds 스펙 S4)이고 저장 키는 이 패널 전용이다.
+  // 패널 카드의 폭 — 작업 패널과 같은 규격(기본 DS `size-panel` 340 · 범위는 `panel-layout`의 한 벌, codex-ds 스펙 S4)이고 저장 키는 이 패널 전용이다.
   // 같은 키를 쓰면 두 화면의 패널이 서로의 폭을 덮는다. 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 선다.
-  const panelSize = useResizableWidth("archive-spec-panel-width", WORK_PANEL_WIDTH, 260, 560, "right");
+  const panelSize = useResizableWidth("archive-spec-panel-width", WORK_PANEL_WIDTH, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, "right");
   // 패널이 서는가 — 고른 아카이브가 있을 때만이다(그 아카이브의 문서 트리를 든다). 없으면 패널도 머리 카드의 토글도 없다.
   const hasPanel = selected !== null;
 

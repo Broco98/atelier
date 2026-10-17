@@ -31,7 +31,7 @@ import { blankComments, blankCssComments } from "./blank-comments";
 //   - **CSS 선언의 길이**(`index.css`의 `padding: 4px` — `focus-ring-room`)와 **인라인 `style`의 여백**(`paddingLeft: 8 + depth * 14` —
 //     트리 들여쓰기)은 세지 않는다 — 다른 수와 글자로 갈리지 않는다. 깊이처럼 정해지지 않은 수를 셈하는 자리가 거기 선다.
 //   - **크기**(`w-[…]` · `h-[22px]` · `max-w-[calc(…)]`)와 **옮기기**(`translate-*`)는 이 검사 밖이다 — 간격이 아니다(티켓은 간격만
-//     말한다). 크기의 임의 값 안에서 틈을 더하는 셈(`w-[calc(var(--work-panel-width)+var(--space-2))]`)도 그래서 세지 않는다.
+//     말한다). 크기의 임의 값 안에서 틈을 더하는 셈(`w-[calc(var(--panel-width)+var(--space-2))]`)도 그래서 세지 않는다.
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 

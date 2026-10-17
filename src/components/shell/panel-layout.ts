@@ -1,7 +1,7 @@
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
-// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass` · `panelMotionMs`), 그리고 작업 패널 카드의 기본
-// 폭(`WORK_PANEL_WIDTH`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이 바닥을 들면 패널이 좁게
-// 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 기본 폭은 그 패널 칸의 값이고
+// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass` · `panelMotionMs`), 그리고 오른쪽 패널 카드의
+// 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
+// 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
 // 작업 화면 · spec 레이아웃 편집기 · Archive(spec 목록 패널) 세 기능이 함께 읽어 어느 한 기능의 폴더에 두지 않는다.
 //
 // **기능 폴더 밖에 산다.** 한때 이 바닥이 `features/terminal/ShellTabs`에서 나와 문서 뷰어(`SpecViewer`)가 그것을
@@ -46,13 +46,21 @@ export const TAB_ROW_COLUMN = "min-w-min [&>:not(:has([data-tab-row]))]:contain-
  * 고정해 선다 — 작업 화면의 spec 패널과 같은 쪽 · 같은 폭이다(판 06 티켓 07). Archive의 spec 목록 패널도 이 폭을 기본으로 선다
  * (`ArchivePage`의 폭 훅 — 같은 칸 규격이고 저장 키만 따로다). 한 수를 여러 자리에 적으면 한 자리만 고친 날 서로 갈린다.
  *
- * **값은 DS 패널 폭 `size-panel`(340)이다**(codex-ds 스펙 S4 — 「폭 기본은 DS, 범위는 지금 것」). 그래서 저장된 폭은 범위(260–560)
- * 안이면 그대로 선다 — 기본만 바뀐다. 수로 적는 것은 폭 훅이 수를 받아서다(`--size-panel`과 같은 값 — 그려진 기본 폭을 e2e
+ * **값은 DS 패널 폭 `size-panel`(340)이다**(codex-ds 스펙 S4 — 「폭 기본은 DS, 범위는 지금 것」). 그래서 저장된 폭은 범위(아래 `PANEL_MIN_WIDTH` ·
+ * `PANEL_MAX_WIDTH`) 안이면 그대로 선다 — 기본만 바뀐다. 수로 적는 것은 폭 훅이 수를 받아서다(`--size-panel`과 같은 값 — 그려진 기본 폭을 e2e
  * `frame.spec`이 그 토큰과 맞댄다). 레일의 L3 진열대(`e2e/rail-fixture.tsx`)도 이 수를 읽는다. 앞의 330은 사용자가 끌어서
  * 고른 폭이었다(2026-08-17, 실측 326.38px을 반올림 — 296은 좁아 경로와 파일 이름의 꼬리가 잘렸고, 한 번 420으로 올렸다가 사람이
  * 다시 줄였다). DS 값이 그 자리를 이었다.
  */
 export const WORK_PANEL_WIDTH = 340;
+
+/**
+ * 오른쪽 패널 카드의 폭 범위(px) — 끌어서 고를 수 있는 가장 좁은 폭과 넓은 폭이다. 작업 패널(`WorksPage`)과 spec 목록 패널
+ * (`ArchivePage`)이 같은 칸 규격이라 둘의 폭 훅이 함께 읽는다(레일의 L3 진열대도). 범위는 지금 것 그대로다(codex-ds 스펙 S4). 최대
+ * 560은 목록 칸 둘(Projects · Archive)과 같은 값이다. 최소 폭은 창이 좁을 때 카드가 줄어드는 바닥이기도 하다(`Frame`의 `PanelBox`).
+ */
+export const PANEL_MIN_WIDTH = 260;
+export const PANEL_MAX_WIDTH = 560;
 
 /**
  * 접히는 패널 **바깥 상자**의 폭 트랜지션 길이와 곡선 — Atelier 토큰 `duration-panel`(220ms) · `ease-panel`이다(index.css의

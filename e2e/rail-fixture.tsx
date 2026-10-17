@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { FileText, Files, Zap } from "lucide-react";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
-import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { PanelBody, pickRail, type RailItem } from "@/components/shell/Rail";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -43,7 +43,7 @@ function Fold({ name }: { name: string }) {
 
 function RailShowcase() {
   const [state, setState] = useState<{ open: boolean; active: RailView }>({ open: true, active: "spec" });
-  const size = useResizableWidth("rail-fixture-panel-width", WORK_PANEL_WIDTH, 260, 560, "right");
+  const size = useResizableWidth("rail-fixture-panel-width", WORK_PANEL_WIDTH, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, "right");
   return (
     <Frame
       sidebarOpen

@@ -8,7 +8,7 @@ import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/
 import { togglesPanel } from "@/components/shell/PanelToggle";
 import { pickRail } from "@/components/shell/Rail";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
-import { TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
@@ -185,9 +185,9 @@ function WorksPage({
   // 칸과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
   //
   // 기본 폭은 `WORK_PANEL_WIDTH`(340 — DS `size-panel`)다 — 그 수가 왜 그 값인지는 그쪽 머리말에 있다(spec 레이아웃 편집기의 트리
-  // 카드가 같은 수를 읽는다). 범위 260–560은 지금 것 그대로라(codex-ds 스펙 S4) 범위 안에 저장된 폭은 그대로 선다. 최대 560은 목록
-  // 칸 둘과 같은 값이다.
-  const panelSize = useResizableWidth("work-panel-width", WORK_PANEL_WIDTH, 260, 560, "right");
+  // 카드가 같은 수를 읽는다). 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`)는 spec 목록 패널과 한 벌이고 지금 것 그대로라(codex-ds
+  // 스펙 S4) 범위 안에 저장된 폭은 그대로 선다.
+  const panelSize = useResizableWidth("work-panel-width", WORK_PANEL_WIDTH, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, "right");
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.

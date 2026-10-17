@@ -696,23 +696,23 @@ describe("WorksPage 작업 패널 칸", () => {
   it("기본 폭 340(DS `size-panel`)으로 서고, 바깥과 안쪽이 같은 폭(틈 + 카드)을 읽는다", () => {
     // codex-ds 스펙 S4 — 기본은 DS 값이고 범위(260–560)는 지금 것이다. 범위 안에 저장된 폭은 그대로 선다(아래 「지난번에 바꾼 폭」).
     const markup = render();
-    expect(markup).toMatch(/--work-panel-width:\s*340px/);
+    expect(markup).toMatch(/--panel-width:\s*340px/);
     // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다. 바깥은 접히는 폭이고 안쪽은 그 폭으로 버티는
     // 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다 — 바깥은 flex 기준(`basis`)으로, 안쪽은 폭으로
     // 읽는다(바깥이 문서 카드에 자리를 내줄 수 있어야 해서다). 둘 다 **틈을 더한** 값이다 — 저장하는 폭은 카드의 폭이다.
-    expect(countOf(markup, "basis-[calc(var(--work-panel-width)+var(--space-2))]")).toBe(1);
-    expect(countOf(markup, " w-[calc(var(--work-panel-width)+var(--space-2))]")).toBe(1);
+    expect(countOf(markup, "basis-[calc(var(--panel-width)+var(--space-2))]")).toBe(1);
+    expect(countOf(markup, " w-[calc(var(--panel-width)+var(--space-2))]")).toBe(1);
   });
 
   it("줄어들어도 끄는 최소 폭 아래로는 안 주고, 문서 카드에 그 최소 폭만큼은 남긴다", () => {
     // 창이 좁으면 이 패널이 문서 카드에 자리를 내준다. 그 바닥이 끄는 최소 폭과 갈리면 끌어서는 못 만드는 폭으로 선다 —
     // 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다. 문서 카드에 남길 폭(`--panel-reserve`)도 그 최소 폭이다(`Frame`의 `PanelBox`).
     const markup = render();
-    expect(markup).toMatch(/--work-panel-min:\s*260px/);
+    expect(markup).toMatch(/--panel-min:\s*260px/);
     expect(markup).toMatch(/--panel-reserve:\s*260px/);
     const root = rootTag(markup);
     if (!root) throw new Error("패널 aside가 없다");
-    expect(root).toContain("min-w-[calc(var(--work-panel-min)+var(--space-2))]");
+    expect(root).toContain("min-w-[calc(var(--panel-min)+var(--space-2))]");
     expect(root).toContain("max-w-[calc(100%-var(--panel-reserve))]");
     expect(root).not.toContain("shrink-0");
   });
@@ -720,7 +720,7 @@ describe("WorksPage 작업 패널 칸", () => {
   it("지난번에 바꾼 폭으로 다시 선다", () => {
     // **기본 폭과 다른 값이어야 한다.** 같으면 저장값을 통째로 무시해도 이 검사가 초록이다.
     vi.stubGlobal("localStorage", { getItem: () => "500", setItem: () => {} });
-    expect(render()).toMatch(/--work-panel-width:\s*500px/);
+    expect(render()).toMatch(/--panel-width:\s*500px/);
   });
 
   // ui-refresh 결정 4로 **뒤집혔다** — 한때 「떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼」이었다(창 끝에서 끝까지 가는
