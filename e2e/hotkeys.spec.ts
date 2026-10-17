@@ -7,7 +7,8 @@ import { fireEvent, installFixtureBackend, processesTitle, unknownIpcCalls, 칠�
 // 메뉴 바 · 메뉴 오른쪽 단축키 칸 · 툴팁 · 키 판정이 그 표를 읽는다. 여기서 재는 것은 사람이 보고 누르는 쪽이다.
 // - 툴팁: 사이드바 토글에 ⌘B가 서고(스토리 98), 단축키가 있는 버튼은 그 키를 설명과 `aria-keyshortcuts`로 함께 말한다.
 // - 메뉴 줄: 단축키 칸이 표의 글자를 DS `.at-mi .k` 값(12/18 · `fg-tertiary`)으로 줄 끝에 세우고, 줄은 그 키를 `aria-keyshortcuts`로
-//   말한다. 단축키 칸을 다는 앱의 메뉴는 아직 없어(F2 · ⌘W가 서는 것은 티켓 28 · 29) 메뉴 부품의 진열대(`e2e/menu-fixture.tsx`)에서 잰다.
+//   말한다. 앱의 메뉴에서 단축키 칸을 다는 줄은 work 메뉴의 「이름 바꾸기」(F2) 하나라(⌘W가 서는 것은 티켓 29) 칸의 모양은 메뉴
+//   부품의 진열대(`e2e/menu-fixture.tsx`)에서 잰다.
 // - 메뉴 바: L3에는 네이티브 메뉴가 없다 — 메뉴가 하는 일은 `hotkey:menu`에 code를 실어 보내는 것 하나라(`lib.rs`의 `on_menu_event`)
 //   그것을 손으로 쏜다. 표의 메뉴 바 항목마다 되돌린 keydown이 그 항목의 화음이고, 그 키가 직접 누른 것과 같은 일을 한다.
 //

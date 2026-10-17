@@ -116,6 +116,11 @@ function Sidebar({
   // **work 우클릭 메뉴의 흐름**(codex-ds 결정 6) — 띠 줄과 목록 행의 메뉴가 함께 쓴다. 셸 수 · 셸 닫기가 그 안에 있어 터미널을 아는
   // 이 자리가 짓고 목록에 내린다(목록은 터미널을 모른다 — `shells`와 같은 길).
   const menu = useWorkMenuFlows();
+  // **이름을 그 자리에서 고치는 work**(codex-ds 스펙 §9) — 고치는 자리는 목록의 그 work 행이고, 들어가는 길은 행의 F2 · 우클릭 메뉴와
+  // 띠 줄의 우클릭 메뉴다. 띠의 메뉴는 목록 밖이라 띠와 목록을 함께 품은 여기서 쥔다. 띠 줄은 셸 줄이라 이름을 적는 자리가 아니어서,
+  // 띠에서 들어가도 목록의 그 행이 고친다(접힌 구획이면 목록이 연다 — `SidebarWorkList`). 고치던 행이 바깥에서 사라져도(MCP 아카이브 ·
+  // 지우기) 이 값은 비워진다 — 입력칸이 blur 없이 내려가도 끝을 알린다(`InlineRename`의 `onDone`).
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — nav·띠·작업 목록·바닥 Settings가
   // 빠지고 「← 앱으로 돌아가기」와 항목만 선다.
@@ -202,8 +207,9 @@ function Sidebar({
           그래서 낮은 창에서 양보하는 쪽이 「띠가 굴러간다」이고 지키는 쪽이 「목록과
           Settings가 남는다」다(스토리 39). */}
       {/* **띠 줄의 우클릭은 그 work의 메뉴다**(codex-ds 결정 6 · 7) — 띠 하나에 메뉴 하나이고, 난 자리의 줄이 대상이다(`bandTarget`).
-          누르면 셸로 가는 줄이지만 우클릭은 아무 데도 안 간다 — 고름도 주소도 그대로다. */}
-      <WorkContextMenu flows={menu} targetOf={bandTarget}>
+          누르면 셸로 가는 줄이지만 우클릭은 아무 데도 안 간다 — 고름도 주소도 그대로다. 「이름 바꾸기」는 아래 목록의 그 work 행을
+          고친다(위 `renaming`). */}
+      <WorkContextMenu flows={menu} targetOf={bandTarget} onRename={setRenaming}>
         {(menuTarget) => (
           <div className={cn("flex min-h-0 flex-col", GUTTER)}>
             <AttentionBand
@@ -224,6 +230,9 @@ function Sidebar({
         // 나를 뿐 터미널을 한 번도 참조하지 않는다.
         shells={{ shellCounts, signals, notes, renderRowMeta }}
         menu={menu}
+        renaming={renaming}
+        onRename={setRenaming}
+        onRenameEnd={() => setRenaming(null)}
       />
 
       {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).

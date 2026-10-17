@@ -14,8 +14,8 @@ test("고정 데이터가 주어지면 목록 화면이 그 데이터를 그린�
 
   await page.goto("/projects");
 
-  // 행의 접근성 이름은 이름과 경로를 함께 담는다. 이름만으로 찾으면 상세 화면의
-  // 제목 버튼과 둘 다 걸린다 — 경로까지 넣어 목록의 행 하나를 정확히 가리킨다.
+  // 행의 접근성 이름은 이름과 경로를 함께 담는다 — 경로까지 넣어 목록의 행 하나를 정확히 가리킨다(머리 카드의 이름 글자도
+  // 같은 이름이지만 버튼이 아니다).
   for (const project of PROJECTS) {
     await expect(
       page.getByRole("button", { name: `${project.name} ${project.path}` }),
@@ -151,28 +151,5 @@ test("로컬 브랜치가 없는 프로젝트의 기준 브랜치는 목록 대�
   await expect(input).toHaveValue(bare.baseBranch);
   // 앵커(입력칸이 섰다) 뒤에 — 목록을 여는 버튼은 이 프로젝트에 없다.
   await expect(기준브랜치(page)).toHaveCount(0);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// ── 제자리 편집 자리 (S28 · S29) ──
-// 프로젝트 제목은 누르면 그 자리가 입력칸이 되는 버튼이다. 버튼이라 `title` 예외(S29 — 버튼이 아닌 자리)가 아니고,
-// 도움말 「클릭해서 편집」은 앱 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로 이름(제목)보다 더 말하는 그 말이
-// 버튼의 설명으로도 남는다(S28). 포커스로 뜨는 툴팁은 포인터를 한 번도 안 쓴 검사에서 잰다(「좋은 검사」).
-
-test("프로젝트 제목은 포커스에 툴팁 「클릭해서 편집」을 띄우고 그 말을 설명으로 말한다 — 이름은 제목 그대로다", async ({
-  page,
-}) => {
-  await installFixtureBackend(page);
-  await page.goto(`/projects/${project.slug}`);
-  // 목록 행도 같은 이름으로 시작한다 — 머리(h1) 안으로 좁힌다.
-  const title = page.getByRole("heading", { level: 1 }).getByRole("button", { name: project.name, exact: true });
-  const tooltip = 툴팁(page);
-  await expect(title).toBeVisible();
-  await expect(tooltip).toHaveCount(0);
-
-  await title.focus();
-
-  await expect(tooltip).toHaveText("클릭해서 편집");
-  await expect(title).toHaveAccessibleDescription("클릭해서 편집");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

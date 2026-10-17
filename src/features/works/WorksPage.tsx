@@ -51,10 +51,9 @@ import { ignoresViewSwitch } from "./doc-refs";
 import { specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
-import WorkRenameDialog from "./WorkRenameDialog";
 import { WorkContextMenu } from "./WorkContextMenu";
 import { StatusRadioItems, WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
-import { WORK_LIFECYCLE_KEY, useSetWorkStatus, useWorks } from "./hooks";
+import { WORK_LIFECYCLE_KEY, useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
 import { copyText, openWorkFolder, useWorkMenuFlows } from "./work-menu-actions";
@@ -137,6 +136,12 @@ function WorksPage({
 
   // work 메뉴의 흐름 — 머리 카드의 ⋯와 이름의 우클릭 메뉴가 함께 쓴다(`work-menu-actions.ts`).
   const menuFlows = useWorkMenuFlows();
+  // **머리 카드 이름을 고치는 중인 work**(codex-ds 스펙 §9) — 들어가는 길이 셋이라(이름의 두 번 클릭 · F2, ⋯와 이름 우클릭 메뉴의
+  // 「이름 바꾸기」) 그 셋을 다 가진 이 화면이 쥔다. 값이 slug인 것은 고른 work가 바뀌면 그 그림에서 곧바로 꺼지게 하려는 것이다
+  // (`editing`이 `selected.slug`와 견준다) — 다른 work의 이름 자리에 고치던 입력칸이 남지 않는다. 키로 옮겨(⌘J) 입력칸이 blur 없이
+  // 내려가도 입력칸이 마지막 그림의 값(고치던 work)으로 저장하고 끝을 알려 이 값을 비운다(`InlineRename`).
+  const [renamingHead, setRenamingHead] = useState<string | null>(null);
+  const setTitle = useSetWorkTitle();
   // 작업 패널 접기 — 머리 줄의 패널 토글 · ⌘Enter가 이 값 하나를 뒤집는다(ui-refresh 결정 9). 레일이 서면(칸이 둘 이상 — codex-ds
   // 결정 25) 켜진 레일 칸을 다시 눌러도 닫힌다. 한때 흩어져 있던 둘(창 맨 위 줄의 여는 버튼과 패널 머리의 닫는 `×`)이 그 토글 하나로
   // 합쳐졌다.
@@ -649,8 +654,8 @@ function WorksPage({
   ) : undefined;
 
   // 머리 카드(codex-ds 스펙 §6 · 스토리 23 · 24) — 왼쪽은 ⚡(work 아이콘 — 상태 글리프가 아니다)와 work 이름이다. 사이드바를 보지
-  // 않아도 지금 어느 work인지 안다(⌘B로 사이드바를 접어도). 이름을 그 자리에서 바꾸는 것은 codex-ds 티켓 28이고, 그때까지 이름을
-  // 고치는 길은 work 메뉴의 창이다(아래 `WorkMenu`).
+  // 않아도 지금 어느 work인지 안다(⌘B로 사이드바를 접어도). **이름은 그 자리에서 바꾼다**(codex-ds 스펙 §9 · `rename`) — 이름의 두 번
+  // 클릭 · F2, 또는 ⋯ · 이름 우클릭 메뉴의 「이름 바꾸기」로 들어가고, 지금 work 이름 명령(`set_work_title`)으로 저장한다.
   //
   // **이름은 work 메뉴의 대상이다**(codex-ds 결정 6 — `nameMenu`). 우클릭하거나 포커스해 ⇧F10 · 메뉴 키를 누르면 ⋯와 같은 메뉴가
   // 이름 곁에 선다 — 겨누는 것은 고른 work이다. `key`가 work을 갈아 끼우면 메뉴를 새로 세운다: 열어 둔 채 다른 work으로 옮기면
@@ -672,14 +677,27 @@ function WorksPage({
             key={selected.slug}
             flows={menuFlows}
             targetOf={(_from, trigger) => ({ slug: selected.slug, id: selected.slug, element: trigger })}
+            onRename={setRenamingHead}
           >
             {(menuTarget) => renderName(menuTarget !== null)}
           </WorkContextMenu>
         ),
+        rename: {
+          editing: renamingHead === selected.slug,
+          onStart: () => setRenamingHead(selected.slug),
+          onEnd: () => setRenamingHead(null),
+          onCommit: (title) => setTitle.mutate({ slug: selected.slug, title }),
+          label: "작업 이름",
+        },
         actions: (
           <>
             <StatusMenu work={selected} />
-            <WorkMenu work={selected} flows={menuFlows} processing={shownLifecycle !== undefined} />
+            <WorkMenu
+              work={selected}
+              flows={menuFlows}
+              processing={shownLifecycle !== undefined}
+              onRename={() => setRenamingHead(selected.slug)}
+            />
           </>
         ),
         // 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽, 터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이
@@ -1005,7 +1023,8 @@ function StatusMenu({ work }: { work: WorkView }) {
 
 // 머리 카드의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 그 항목이
 // 부르는 동작과 아카이브 · 삭제의 흐름은 `work-menu-actions.ts` 한 자리다 — 우클릭 메뉴 셋(사이드바 행 · 띠 줄 · 머리 카드 이름)이 같은
-// 흐름을 받는다(codex-ds 결정 6). 여기 남는 것은 ⋯의 몫이다: 열림 · 이름 바꾸기 창 · 포커스가 돌아올 자리.
+// 흐름을 받는다(codex-ds 결정 6). 여기 남는 것은 ⋯의 몫이다: 열림과 닫힌 뒤 포커스가 갈 자리. 「이름 바꾸기」는 머리 카드 이름의
+// 제자리 고치기를 켠다(`onRename` — 고치는 중인지는 화면이 쥔다).
 //
 // **메뉴 부품(`DropdownMenu`)이 다 한다**(판 3, 스토리 46~48) — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 ·
 // Home/End · 글자 치기), 하위 메뉴 열고 닫기(→ · ←), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9).
@@ -1015,22 +1034,22 @@ function WorkMenu({
   work,
   flows,
   processing,
+  onRename,
 }: {
   work: WorkView;
   flows: WorkMenuFlows;
   /** 도는 아카이브 · 삭제가 **이 work의 것이다** — 그때만 ⋯가 `aria-busy`다(아래 `busy`와 다르다). */
   processing: boolean;
+  /** 「이름 바꾸기」 — 머리 카드 이름을 그 자리에서 고치기 시작한다. */
+  onRename: () => void;
 }) {
   // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
-  // **이름 바꾸기는 메뉴에서 여는 작은 창이다**(결정 8 · #141). 제목이 머리행에서 빠지면서 제자리 편집도
-  // 함께 사라졌는데, 이름을 고칠 길이 없어지면 안 된다. 메뉴 항목은 입력칸을 품을 수 없어 창에서 받는다.
-  const [renaming, setRenaming] = useState(false);
-  // ⋯ 자신. 메뉴 항목에서 연 창이 닫히면 포커스가 여기로 온다 — 창을 연 항목은 그때 이미 사라졌다.
-  // 이름 바꾸기 창은 이것을 받아 돌려준다(`finalFocus`). 확인 창은 앱 루트의 한 자리가 그려 이것을 모르지만,
-  // 부품의 기본값이 여기로 온다 — 열기 전 자리(메뉴 항목)가 사라졌으면 그 앞에 포커스가 있던 자리로 간다
-  // (Base UI의 포커스 기록). 그래서 물음(`askDanger`)에 돌아갈 자리를 싣지 않는다. 둘 다 L3가 잰다.
-  const anchor = useRef<HTMLButtonElement>(null);
+  // **「이름 바꾸기」로 닫혔나** — 그때는 메뉴가 닫히며 포커스를 ⋯로 돌리지 않는다(`finalFocus`). 머리 카드 이름 자리에 막 선 입력칸이
+  // 포커스를 받는데, ⋯로 돌아가면 입력칸이 곧바로 blur되어 「다른 곳 = 저장」으로 닫힌다(구현 노트 Q7). 그 밖의 닫힘은 부품의
+  // 기본값이 ⋯로 돌린다. 확인 창(`askDanger`)은 앱 루트의 한 자리가 그려 ⋯를 모르지만, 그 창이 닫히면 부품의 기본값이 여기로 온다 —
+  // 열기 전 자리(메뉴 항목)가 사라졌으면 그 앞에 포커스가 있던 자리로 간다(Base UI의 포커스 기록). L3가 잰다.
+  const renamed = useRef(false);
   // 아카이브 · 삭제가 도는 동안은 ⋯가 꺼진다 — **어느 work의 조작이든**, 어느 메뉴에서 불렀든 같다(흐름의 `busy` — 바쁨은 앱
   // 하나다). 그런데 「바쁘다」(`aria-busy`)는 이 work이 치워지는 중일 때만 말한다(`processing`) — 사이드바에서 다른 work을
   // 아카이브하는 동안 이 ⋯가 바쁘다고 하면 이 work이 바뀌는 중이라고 읽힌다.
@@ -1041,59 +1060,56 @@ function WorkMenu({
   //
   // **이 이펙트가 그 일을 한다** — 이 메뉴는 공용 틀의 머리 카드에 서서(codex-ds 스펙 §6) 작업을 옮겨도 다시 세워지지 않는다.
   // 한때 머리행이 key={slug}인 SpecViewer 안에 있어 문서 탭에서는 리마운트가 먼저 닫았고, 이 줄은 터미널 탭에서만 일했다.
-  //
-  // 이름 바꾸기 창도 함께 닫는다 — 남겨 두면 **다른 작업의 이름**을 고치는 창이 서 있다.
   useEffect(() => {
     setOpen(false);
-    setRenaming(false);
   }, [work.slug]);
 
-  // 메뉴 항목이 부르는 것 — 이 work을 겨눈 흐름 한 벌이다. 이름 바꾸기만 ⋯가 쥔 창을 연다.
-  const actions = flows.actionsFor(work, () => setRenaming(true));
+  // 메뉴 항목이 부르는 것 — 이 work을 겨눈 흐름 한 벌이다. 이름 바꾸기만 화면에 고치기를 켜 달라고 한다.
+  const actions = flows.actionsFor(work, () => {
+    renamed.current = true;
+    onRename();
+  });
 
   return (
-    <>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
-            중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 무엇이 도는지는 이 work의 조작이면
-            가림막(`LifecycleOverlay`)이 말하고, 다른 work의 조작이면 이 화면에서는 아무것도 말하지 않는다 — ⋯가 꺼져
-            있을 뿐이고, 끝은 그 work이 목록에서 사라지거나(성공) 「…하지 못했습니다」 창이 서는 것(실패)으로 보인다. */}
-        <Hint
-          text="작업 메뉴"
-          announce="name"
-          disabled={busy}
-          render={
-            <DropdownMenuTrigger
-              ref={anchor}
-              disabled={busy}
-              aria-busy={processing}
-              // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 세로선 너머 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
-              // 위 줄에 서는 것은 모두 24다(DS `HeadCard`) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
-              // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-              className={cn(
-                "icon-button icon-button-xs transition-colors focus-ring",
-                "disabled:pointer-events-none disabled:opacity-50",
-                open ? "toggle-on" : "text-fg-tertiary quiet-hover",
-              )}
-            />
-          }
-        >
-          {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
-              깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
-              disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-          <MoreHorizontal className="size-3.75" />
-        </Hint>
-        <DropdownMenuContent>
-          <WorkMenuItems work={work} actions={actions} />
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <WorkRenameDialog
-        work={work}
-        open={renaming}
-        onClose={() => setRenaming(false)}
-        returnFocus={anchor}
-      />
-    </>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
+          중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 무엇이 도는지는 이 work의 조작이면
+          가림막(`LifecycleOverlay`)이 말하고, 다른 work의 조작이면 이 화면에서는 아무것도 말하지 않는다 — ⋯가 꺼져
+          있을 뿐이고, 끝은 그 work이 목록에서 사라지거나(성공) 「…하지 못했습니다」 창이 서는 것(실패)으로 보인다. */}
+      <Hint
+        text="작업 메뉴"
+        announce="name"
+        disabled={busy}
+        render={
+          <DropdownMenuTrigger
+            disabled={busy}
+            aria-busy={processing}
+            // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 세로선 너머 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
+            // 위 줄에 서는 것은 모두 24다(DS `HeadCard`) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
+            // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
+            className={cn(
+              "icon-button icon-button-xs transition-colors focus-ring",
+              "disabled:pointer-events-none disabled:opacity-50",
+              open ? "toggle-on" : "text-fg-tertiary quiet-hover",
+            )}
+          />
+        }
+      >
+        {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
+            깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
+            disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
+        <MoreHorizontal className="size-3.75" />
+      </Hint>
+      <DropdownMenuContent
+        finalFocus={() => {
+          if (!renamed.current) return true;
+          renamed.current = false;
+          return false;
+        }}
+      >
+        <WorkMenuItems work={work} actions={actions} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

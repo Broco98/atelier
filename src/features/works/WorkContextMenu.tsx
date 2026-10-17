@@ -2,7 +2,6 @@ import { useRef, useState, type ReactElement } from "react";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useWorks } from "./hooks";
 import { WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
-import WorkRenameDialog from "./WorkRenameDialog";
 
 // **work의 우클릭 메뉴**(codex-ds 스펙 §9 · 결정 6 · 7 · 11). 대상은 셋이다 — 사이드바 work 행 · 알림 띠 줄 · 머리 카드 이름. 펴는
 // 목록은 ⋯ 메뉴와 같은 정의(`WorkMenuItems`)이고 부르는 흐름도 같다(`flows` — `work-menu-actions.ts`).
@@ -14,7 +13,9 @@ import WorkRenameDialog from "./WorkRenameDialog";
 //
 // **고름도 주소도 안 바뀐다**(결정 7). 대상이 고른 work가 아니어도 그 줄의 work에 대한 메뉴이고, 열고 닫는 동안 목록의 고름과 주소는
 // 그대로다. 열린 동안 대상에 테두리(`focus-ring` — 포커스 링과 같은 모양)가 서는 것이 「어느 것의 메뉴인가」를 말한다(결정 11).
-// 닫히면 포커스가 그 대상으로 돌아간다(`finalFocus`) — 이름 바꾸기 창도 닫히면 그 대상으로 돌려준다.
+// 닫히면 포커스가 그 대상으로 돌아간다(`finalFocus`). **「이름 바꾸기」로 닫힐 때만은 돌리지 않는다** — 메뉴를 다는 자리가 그 work의
+// 이름을 그 자리에서 고치기 시작하고(`onRename`, codex-ds 스펙 §9), 막 선 입력칸이 포커스를 받는다. 대상으로 돌아가면 입력칸이 곧바로
+// blur되어 「다른 곳 = 저장」으로 닫힌다(구현 노트 Q7).
 
 /** 우클릭이 겨눈 대상. */
 export interface MenuTarget {
@@ -33,6 +34,7 @@ export function WorkContextMenu({
   flows,
   targetOf,
   onOpen,
+  onRename,
   children,
 }: {
   /** 메뉴가 부르는 흐름 — 메뉴를 다는 자리가 `useWorkMenuFlows`로 지어 건넨다(그 파일 머리말). */
@@ -44,6 +46,8 @@ export function WorkContextMenu({
   targetOf: (from: Element, trigger: HTMLElement) => MenuTarget | null;
   /** 메뉴가 열렸다 — 사이드바 목록은 떠 있던 호버 카드를 닫는다(메뉴 카드와 겹친다). */
   onOpen?: () => void;
+  /** 「이름 바꾸기」 — 그 work의 이름을 대상 자리에서 고치기 시작한다(머리 카드 이름 · 사이드바 행). */
+  onRename: (slug: string) => void;
   /**
    * 메뉴를 다는 요소를 그린다 — 받는 값은 **지금 열린 메뉴의 대상 이름**(`MenuTarget.id`)이고(닫혔으면 `null`) 그 대상이 테두리를 그린다. 그린 요소가
    * 우클릭을 받는 자리가 된다(`ContextMenuTrigger`의 `render`).
@@ -53,62 +57,60 @@ export function WorkContextMenu({
   const { data: works = [] } = useWorks();
   // 메뉴가 겨누는 work와 열림. 닫혀도 slug를 남긴다 — 닫히는 움직임 동안 카드가 같은 항목을 그린다.
   const [menu, setMenu] = useState<{ slug: string; id: string; open: boolean } | null>(null);
-  // 이름 바꾸기 창(28 전까지는 창이다). 메뉴가 닫힌 뒤에 서므로 메뉴와 따로 든다 — 같은 이유로 닫혀도 slug를 남긴다.
-  const [rename, setRename] = useState<{ slug: string; open: boolean } | null>(null);
   const trigger = useRef<HTMLElement | null>(null);
-  // 테두리가 서고 포커스가 돌아갈 요소 — 메뉴 카드와 이름 바꾸기 창이 닫힐 때 여기로 돌려준다.
+  // 테두리가 서고 포커스가 돌아갈 요소 — 메뉴 카드가 닫힐 때 여기로 돌려준다.
   const target = useRef<HTMLElement | null>(null);
-  // **목록에서 찾는다** — 열어 둔 사이 그 work가 아카이브 · 삭제되면 메뉴도 창도 사라진다.
+  // 「이름 바꾸기」로 닫혔나 — 그때는 포커스를 돌리지 않는다(머리말).
+  const renamed = useRef(false);
+  // **목록에서 찾는다** — 열어 둔 사이 그 work가 아카이브 · 삭제되면 메뉴도 사라진다.
   const menuWork = works.find((work) => work.slug === menu?.slug);
-  const renameWork = works.find((work) => work.slug === rename?.slug);
   const open = menu?.open === true && menuWork !== undefined;
 
   return (
-    <>
-      <ContextMenu
-        open={open}
-        // **아카이브 · 삭제가 도는 동안은 안 열린다** — 그 사이 다른 조작을 겹치면 두 번째가 사라진 work을 부른다(`flows.busy`).
-        disabled={flows.busy}
-        onOpenChange={(next, details) => {
-          if (!next) {
-            setMenu((now) => now && { ...now, open: false });
-            return;
-          }
-          const from = details.event.target;
-          const found = from instanceof Element && trigger.current ? targetOf(from, trigger.current) : null;
-          // 대상이 아닌 자리, 또는 목록에 아직 없는 work(띠가 슬러그로 적는 셸)면 열기를 거둔다.
-          if (!found || !works.some((work) => work.slug === found.slug)) {
-            details.cancel();
-            return;
-          }
-          target.current = found.element;
-          setMenu({ slug: found.slug, id: found.id, open: true });
-          onOpen?.();
+    <ContextMenu
+      open={open}
+      // **아카이브 · 삭제가 도는 동안은 안 열린다** — 그 사이 다른 조작을 겹치면 두 번째가 사라진 work을 부른다(`flows.busy`).
+      disabled={flows.busy}
+      onOpenChange={(next, details) => {
+        if (!next) {
+          setMenu((now) => now && { ...now, open: false });
+          return;
+        }
+        const from = details.event.target;
+        const found = from instanceof Element && trigger.current ? targetOf(from, trigger.current) : null;
+        // 대상이 아닌 자리, 또는 목록에 아직 없는 work(띠가 슬러그로 적는 셸)면 열기를 거둔다.
+        if (!found || !works.some((work) => work.slug === found.slug)) {
+          details.cancel();
+          return;
+        }
+        target.current = found.element;
+        setMenu({ slug: found.slug, id: found.id, open: true });
+        onOpen?.();
+      }}
+    >
+      <ContextMenuTrigger
+        ref={(node: HTMLElement | null) => {
+          trigger.current = node;
+        }}
+        render={children(open && menu ? menu.id : null)}
+      />
+      <ContextMenuContent
+        finalFocus={() => {
+          if (!renamed.current) return target.current ?? true;
+          renamed.current = false;
+          return false;
         }}
       >
-        <ContextMenuTrigger
-          ref={(node: HTMLElement | null) => {
-            trigger.current = node;
-          }}
-          render={children(open && menu ? menu.id : null)}
-        />
-        <ContextMenuContent finalFocus={target}>
-          {menuWork && (
-            <WorkMenuItems
-              work={menuWork}
-              actions={flows.actionsFor(menuWork, () => setRename({ slug: menuWork.slug, open: true }))}
-            />
-          )}
-        </ContextMenuContent>
-      </ContextMenu>
-      {renameWork && (
-        <WorkRenameDialog
-          work={renameWork}
-          open={rename?.open === true}
-          onClose={() => setRename((now) => now && { ...now, open: false })}
-          returnFocus={target}
-        />
-      )}
-    </>
+        {menuWork && (
+          <WorkMenuItems
+            work={menuWork}
+            actions={flows.actionsFor(menuWork, () => {
+              renamed.current = true;
+              onRename(menuWork.slug);
+            })}
+          />
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

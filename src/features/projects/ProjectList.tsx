@@ -6,7 +6,9 @@ import { navItem } from "@/components/shell/nav-items";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { InlineRename } from "@/components/ui/inline-rename";
 import { Hint } from "@/components/ui/tooltip";
+import { pressed } from "@/lib/hotkeys";
 import type { ProjectView } from "./types";
 
 interface ProjectListProps {
@@ -14,11 +16,32 @@ interface ProjectListProps {
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
   onAdd: () => void;
+  /** 이름을 그 자리에서 고치는 중인 행(slug). 없으면 null. 고치는 상태는 화면이 쥔다(`ProjectsPage`). */
+  renaming: string | null;
+  /** 행에서 F2 — 그 행의 이름을 고치기 시작한다. */
+  onRename: (slug: string) => void;
+  /** 고친 이름으로 저장한다 — 바뀐 때만 부른다(`InlineRename`). */
+  onRenameCommit: (slug: string, name: string) => void;
+  /** 저장이든 취소든 고치기가 끝났다. */
+  onRenameEnd: () => void;
 }
+
+// 두 줄 행(DS `.at-row.two`)의 자리 — 50 이상 · 안쪽 7 8 · 모서리 10, 이름 줄과 경로 줄이 2 사이로 선다. 글자가 칸 + 16에 서서
+// 목록 머리의 제목과 한 세로줄이다. 행 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다.
+const ROW = "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 transition-colors";
 
 // 목록 칸의 안 — 목록 머리(「Projects」 · 개수 · `+`), 찾기 칸, 두 줄 행(DS `.at-listcol` · `.at-row.two`). 칸 · 세로 선 · 폭 손잡이는
 // 공용 틀의 목록 칸이 든다(`Frame`의 `list` — codex-ds 결정 28). 폭의 저장도 화면(`ProjectsPage`)이 그 칸에 건넨다.
-function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListProps) {
+function ProjectList({
+  projects,
+  selectedSlug,
+  onSelect,
+  onAdd,
+  renaming,
+  onRename,
+  onRenameCommit,
+  onRenameEnd,
+}: ProjectListProps) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -95,29 +118,39 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
               칸 바닥의 안쪽 8이다(DS `.at-listcol`). */}
           {filtered.map((project) => {
             const active = project.slug === selectedSlug;
-            return (
-              <button
-                key={project.slug}
-                type="button"
-                onClick={() => onSelect(project.slug)}
-                className={cn(
-                  // 두 줄 행(DS `.at-row.two`) — 50 이상 · 안쪽 7 8 · 모서리 10, 이름 줄과 경로 줄이 2 사이로 선다. 글자가 칸 + 16에
-                  // 서서 목록 머리의 제목과 한 세로줄이다. 고른 행과 hover는 카드 안 목록의 두 단이다.
-                  "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 text-left transition-colors focus-ring",
-                  active ? "selected-row" : "hover:bg-fill-soft",
-                )}
-              >
-                {/* 이름 줄 — 폴더 글리프 14(`fg-secondary`)와 이름 14/500. 폴더를 못 찾은 프로젝트는 끝에 「누락」 꼬리표가 선다. */}
+            const editing = project.slug === renaming;
+            // 고른 행과 hover는 카드 안 목록의 두 단이다.
+            const tone = active ? "selected-row" : "hover:bg-fill-soft";
+            const lines = (
+              <>
+                {/* 이름 줄 — 폴더 글리프 14(`fg-secondary`)와 이름 14/500. 폴더를 못 찾은 프로젝트는 끝에 「누락」 꼬리표가 선다.
+                    이름을 고치는 동안은 이름 글자 자리에 입력칸이 선다 — 줄 높이(20)와 글자 자리가 이름 글자와 같아 행이 움직이지
+                    않는다(왼쪽으로 4 넓힌 만큼 안쪽을 둔다). */}
                 <span className="flex w-full min-w-0 items-center gap-2">
                   <Folder aria-hidden className="size-3.5 shrink-0 text-fg-secondary" />
-                  <span
-                    className={cn(
-                      "min-w-0 truncate text-sm font-medium",
-                      project.missing && "text-fg-secondary line-through",
-                    )}
-                  >
-                    {project.name}
-                  </span>
+                  {editing ? (
+                    <InlineRename
+                      value={project.name}
+                      label="프로젝트 이름"
+                      emptyMeans="revert"
+                      fit="fill"
+                      onCommit={(name) => onRenameCommit(project.slug, name)}
+                      onDone={onRenameEnd}
+                      returnFocus={() =>
+                        document.querySelector<HTMLElement>(`button[data-project-row="${project.slug}"]`)
+                      }
+                      className="-ml-1 h-5 px-1 text-sm font-medium text-fg"
+                    />
+                  ) : (
+                    <span
+                      className={cn(
+                        "min-w-0 truncate text-sm font-medium",
+                        project.missing && "text-fg-secondary line-through",
+                      )}
+                    >
+                      {project.name}
+                    </span>
+                  )}
                   {project.missing && (
                     // 꼬리표(`tag` — DS `Tag`)의 빨간 갈래(`.at-tag.danger`)다.
                     <span className="tag ml-auto bg-danger/8 text-xs text-danger">누락</span>
@@ -125,6 +158,34 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                 </span>
                 {/* 경로 줄 — 고정폭 12 `fg-tertiary`(행 메타, DS 「대비」)이고 이름 글자 밑에서 시작한다(글리프 14 + 사이 8). */}
                 <span className="w-full truncate pl-5.5 font-mono text-xs text-fg-tertiary">{project.path}</span>
+              </>
+            );
+            // **이름을 고치는 동안 행 버튼 자리에 버튼이 아닌 상자가 선다**(codex-ds 스펙 §9) — 버튼 안에는 입력칸을 둘 수 없다. 자리
+            // (`ROW`)와 두 줄은 같아 행이 움직이지 않는다. 입력칸 안의 누름은 행으로 올라가지 않아 그 행이 골라지지 않는다
+            // (`InlineRename`). 키로 끝내면 포커스가 다시 선 행 버튼으로 돌아온다.
+            if (editing) {
+              return (
+                <div key={project.slug} className={cn(ROW, tone)}>
+                  {lines}
+                </div>
+              );
+            }
+            return (
+              <button
+                key={project.slug}
+                type="button"
+                // 이름을 고친 뒤 포커스가 돌아올 자리를 찾는 표(`returnFocus`).
+                data-project-row={project.slug}
+                onClick={() => onSelect(project.slug)}
+                // **F2는 이 행의 이름을 그 자리에서 고친다**(codex-ds 스펙 §9). 고르지 않은 행에서도 그 행의 이름이다.
+                onKeyDown={(event) => {
+                  if (!pressed(event, "rename")) return;
+                  event.preventDefault();
+                  onRename(project.slug);
+                }}
+                className={cn(ROW, "text-left focus-ring", tone)}
+              >
+                {lines}
               </button>
             );
           })}

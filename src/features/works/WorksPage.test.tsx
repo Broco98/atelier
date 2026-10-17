@@ -323,7 +323,8 @@ describe("WorksPage 소스 토글이 문서 위 경로 줄에 선다", () => {
 
 // 머리 카드 배치(codex-ds 스펙 §6 · 스토리 23~25) — 왼쪽은 ⚡ · work 이름, **조작은 전부 오른쪽 한 묶음**(결정 10)이다.
 // 한때는 제목이 화면에서 빠지고(사이드바 행이 말했다) 창 맨 위 줄에 조작 묶음만 남았었다 — ⌘B로 사이드바를 접으면 화면 어디에도
-// 제목이 없었다. 그 줄이 48 머리 줄이 되면서 머리 카드가 제목을 다시 든다(제자리 편집은 codex-ds 티켓 28 — 지금은 work 메뉴의 대상이다).
+// 제목이 없었다. 그 줄이 48 머리 줄이 되면서 머리 카드가 제목을 다시 든다(work 메뉴의 대상이고, 그 자리에서 이름을 바꾼다 — codex-ds
+// 결정 6 · 스펙 §9).
 describe("WorksPage 머리 카드 배치", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -424,8 +425,9 @@ describe("WorksPage 머리 카드 배치", () => {
     expect(name, "제목이 없다").toBeGreaterThan(zap);
     expect(name).toBeLessThan(card.indexOf("data-head-actions"));
     expect(headCardOf(render({ status: "done" }))).toContain("lucide-zap");
-    // 제목은 버튼도 입력칸도 아니다 — 누르거나 고치는 자리가 아니다(제자리 편집은 codex-ds 티켓 28, 지금 고치는 길은 work 메뉴의
-    // 창 — #141). 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이라 포커스만 받는다(`tabIndex` — codex-ds 결정 6).
+    // 제목은 버튼도 입력칸도 아니다 — 평소에는 포커스만 받는 글자다(`tabIndex`). 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이고
+    // (codex-ds 결정 6), 두 번 클릭 · F2로 그 자리가 입력칸이 된다 — 입력칸은 고치는 동안에만 선다(codex-ds 스펙 §9 ·
+    // `e2e/inline-rename.spec.ts`). 누르면 고친다는 도움말(「클릭해서 편집」)도 없다.
     const lead = card.slice(0, card.indexOf("data-head-actions"));
     expect(lead).not.toMatch(/<button|<input|contenteditable/);
     expect(lead).not.toContain('title="클릭해서 편집"');

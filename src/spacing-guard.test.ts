@@ -475,6 +475,11 @@ describe("눈금의 사분 단", () => {
       why: "머리 카드의 이름 끝에서 위치까지 DS 14 — 위치가 이름 칸 안에 서서, 칸 안의 사이 7(DS `.at-wtitle`)에 7을 더한다",
     },
     {
+      file: "src/components/shell/Frame.tsx",
+      className: "pr-5.25",
+      why: "바꿀 수 있는 머리 카드 이름의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 4",
+    },
+    {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",
       className: "-top-0.75",
       why: "놓일 자리 선(높이 6 — `h-1.5`)을 행의 위끝 가운데에 세운다 — 6 / 2 = 3",

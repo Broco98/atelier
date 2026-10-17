@@ -12,9 +12,10 @@ import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
 /**
- * 제자리 편집 자리 둘(제목 · git 정보가 없을 때의 기준 브랜치)의 도움말. 둘은 이미 `<button>`이라 `title` 예외
- * (S29 — 버튼이 아닌 자리)가 아니다 — 앱 툴팁이다. 이름은 보이는 값이고, 누르면 편집이 열린다는 이 말은 이름보다
- * 더 말하는 하는 일이라 설명(`aria-description`)으로도 남는다(S28).
+ * 제자리 편집 자리(git 정보가 없을 때의 기준 브랜치)의 도움말. 이미 `<button>`이라 `title` 예외(S29 — 버튼이 아닌 자리)가
+ * 아니다 — 앱 툴팁이다. 이름은 보이는 값이고, 누르면 편집이 열린다는 이 말은 이름보다 더 말하는 하는 일이라
+ * 설명(`aria-description`)으로도 남는다(S28). 프로젝트 이름은 여기서 고치지 않는다 — 머리 카드의 이름과 목록 행이 그 자리에서
+ * 고친다(codex-ds 스펙 S12 · §9).
  */
 const EDIT_HELP = "클릭해서 편집";
 
@@ -43,9 +44,6 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         </Alert>
       )}
 
-      <h1>
-        <TitleEditor key={project.slug} project={project} />
-      </h1>
       {/* 속성 — DS `List`(흰 묶음 · 0.5px 고리 · 행 44 · 행 사이 0.5px 선). 이름 열 96이고 값은 고정폭 `text-code`다. */}
       <dl className={LIST}>
         <PropertyRow label="경로">
@@ -174,60 +172,6 @@ function WorksSection({
         )}
       </div>
     </Section>
-  );
-}
-
-// 표시 이름 인라인 편집 — slug는 바뀌지 않는다 (스펙 #3)
-//
-// 작업 이름 바꾸기 창(works/WorkRenameDialog.tsx)이 같은 입력 규칙을 쓴다 — Enter 확정, Escape 취소,
-// 공백·동일 값 미저장, 두 번 커밋되는 것을 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다.
-// **갈리는 것 하나**: 여기서는 blur가 확정이지만 그 창에서는 바깥 누르기가 취소다(판 3 P7) — 창 밖을 누른
-// 것은 「그만두겠다」로 읽힌다. 이 인라인 편집기는 그대로 둔다(결정 8은 작업 이름 바꾸기에 한한다).
-function TitleEditor({ project }: { project: ProjectView }) {
-  const updateProject = useUpdateProject();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(project.name);
-  const finished = useRef(false);
-
-  const finish = (commit: boolean) => {
-    if (finished.current) return;
-    finished.current = true;
-    setEditing(false);
-    const value = draft.trim();
-    if (commit && value && value !== project.name) {
-      updateProject.mutate({ slug: project.slug, patch: { name: value } });
-    }
-  };
-
-  if (!editing) {
-    return (
-      <Hint
-        text={EDIT_HELP}
-        announce="description"
-        type="button"
-        onClick={() => {
-          finished.current = false;
-          setDraft(project.name);
-          setEditing(true);
-        }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-heading-lg transition-colors hover:bg-fill-hover focus-ring"
-      >
-        {project.name}
-      </Hint>
-    );
-  }
-  return (
-    <Input
-      variant="inline-title"
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => finish(true)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") finish(true);
-        if (e.key === "Escape") finish(false);
-      }}
-    />
   );
 }
 

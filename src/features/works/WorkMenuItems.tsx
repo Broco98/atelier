@@ -33,8 +33,8 @@ export interface WorkMenuActions {
 
 /**
  * **work 메뉴의 흐름 한 벌** — 메뉴를 다는 자리가 받는 값이다(`work-menu-actions.ts`의 `useWorkMenuFlows`가 짓는다). 대상 work마다
- * 동작을 꺼낸다 — 대상은 고른 work가 아닐 수 있다(codex-ds 결정 7). 이름 바꾸기만은 메뉴를 다는 자리가 넘긴다: 창이 닫히면 포커스가
- * 그 자리(⋯ · 우클릭 대상)로 돌아가야 해서다.
+ * 동작을 꺼낸다 — 대상은 고른 work가 아닐 수 있다(codex-ds 결정 7). 이름 바꾸기만은 메뉴를 다는 자리가 넘긴다: 그 이름을 그 자리에서
+ * 고치는 입력칸(머리 카드 이름 · 사이드바 행)을 세우는 것이 그쪽이라서다(codex-ds 스펙 §9).
  */
 export interface WorkMenuFlows {
   /** 아카이브 · 삭제가 하나라도 도는 중이다 — 그동안 work 메뉴는 열리지 않는다. */
@@ -52,7 +52,8 @@ export interface WorkMenuFlows {
  * - **해당 없는 칸은 숨긴다.** 프로젝트가 없으면 Finder ▸에 worktree가, 브랜치가 아직 없으면(첫 프로젝트가 붙을 때 정해진다) 복사 ▸에
  *   브랜치 이름이 없다.
  * - **지금 못 하는 칸은 흐리다**(`disabled` — 눌리지 않고 `aria-disabled`). 폴더가 사라진 worktree가 그렇다.
- * - 단축키 칸은 아직 없다 — 「이름 바꾸기」의 F2는 그 키가 서는 티켓이 단다(실제로 있는 단축키만 적는다, 결정 10).
+ * - 단축키 칸은 「이름 바꾸기」의 F2 하나다 — 그 이름 자리(머리 카드 이름 · 사이드바 행)에 포커스를 두고 누르는 키다(실제로 있는
+ *   단축키만 적는다, 결정 10).
  *
  * 줄의 글자 · 글리프는 부품의 것이다(DS `.at-mi` — 13px 400, 글리프 15px `fg-secondary`). 여기서 굵기나 크기를 덧칠하지 않는다 —
  * 상태 ▸의 글리프(지금 상태의 아이콘)만 제 크기(14)를 들고 있어 줄 글리프의 15로 맞춘다. 이름 뒤의 흐린 글자는 그 줄이 무엇을
@@ -87,8 +88,8 @@ export function WorkMenuItems({ work, actions }: { work: WorkView; actions: Work
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       <DropdownMenuSeparator />
-      {/* 「이름 바꾸기」는 지금 작은 창을 연다(`WorkRenameDialog`) — 그 자리에서 고치는 것은 codex-ds 티켓 28이다. */}
-      <DropdownMenuItem onClick={actions.rename}>
+      {/* 「이름 바꾸기」는 그 work의 이름을 그 자리에서 입력칸으로 바꾼다(codex-ds 스펙 §9). 창이 뜨지 않는다. */}
+      <DropdownMenuItem onClick={actions.rename} shortcut="rename">
         <Pencil />
         <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
       </DropdownMenuItem>

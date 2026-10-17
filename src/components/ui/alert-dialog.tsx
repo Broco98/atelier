@@ -57,7 +57,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         // Base UI Dialog는 모달임을 바깥의 `aria-hidden`으로만 말한다 — 창 자신이 말하게 둔다(S31).
         aria-modal="true"
-        // 창 상자와 가운데 자리 · 폭 · 안쪽은 이름 바꾸기 창(dialog의 default)과 같은 것이다.
+        // 창 상자와 가운데 자리 · 폭 · 안쪽은 `dialog`의 기본 변형(default)과 같은 것이다(`dialogLook.center`).
         className={cn(dialogLook.popup, dialogLook.center, className)}
         {...props}
       />

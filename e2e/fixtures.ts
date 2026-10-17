@@ -853,7 +853,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
-  // 프로젝트 화면의 기준 브랜치를 바꾸는 쓰기(판 3 — `projects-list.spec.ts`의 기준 브랜치 절). 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시
+  // 프로젝트 화면의 기준 브랜치 · 이름을 바꾸는 쓰기(판 3 — `projects-list.spec.ts`의 기준 브랜치 절, `inline-rename.spec.ts`의 프로젝트
+  // 절). 고치기는 부분 patch라 바꾼 칸만 실린다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시
   // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
   // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
   update_project: null,
@@ -863,7 +864,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   quit_app: null,
   // ── 작업 · 아카이브 · 검색 · 셸 띄우기 ──
   list_works: WORKS,
-  // 이름 바꾸기 창에서 저장하면 나가는 쓰기(판 3 — `works-floating.spec.ts`의 이름 바꾸기 절). 돌려주는 값은
+  // work 이름을 그 자리에서 고쳐 저장하면 나가는 쓰기(codex-ds 스펙 §9 — `inline-rename.spec.ts`). 돌려주는 값은
   // 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는 것이 화면을 고치는 자리다(`useSetWorkTitle`). 그래서 답은
   // `null`이고, 이름을 **기억하지 않는다**. 검사가 재는 것은 「무엇이 나갔나」다.
   set_work_title: null,

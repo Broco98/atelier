@@ -36,7 +36,7 @@ const [pinnedWork, plainWork] = WORKS;
 const 작업메뉴차례 = (pinned: boolean) => [
   "Finder에서 열기",
   "—",
-  "이름 바꾸기",
+  "이름 바꾸기F2",
   "복사",
   "—",
   "상태",

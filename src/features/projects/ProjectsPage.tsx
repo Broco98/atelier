@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import { Folder, FolderOpen, Trash2 } from "lucide-react";
@@ -9,7 +10,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { projectsApi } from "./api";
-import { useCreateProject, useDeleteProject, useProjects } from "./hooks";
+import { useCreateProject, useDeleteProject, useProjects, useUpdateProject } from "./hooks";
 
 interface ProjectsPageProps {
   sidebarOpen: boolean;
@@ -26,6 +27,14 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
   const listSize = useResizableWidth("panel-width", 264, 240, 560);
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
+  const updateProject = useUpdateProject();
+  // **이름을 그 자리에서 고치는 중인 프로젝트**(codex-ds 스펙 §9) — 자리가 둘이라(머리 카드 이름 · 목록 행) 따로 든다. 값이 slug인
+  // 것은 고친 대상이 고른 것과 다를 수 있어서다(목록 행은 고르지 않은 행에서도 F2로 고친다). 머리 카드 쪽은 고른 프로젝트가 바뀌면
+  // 그 그림에서 곧바로 꺼진다(`editing`이 `selected.slug`와 견준다) — 입력칸이 blur 없이 내려가도 마지막 그림의 값으로 저장하고 끝을
+  // 알려 이 값을 비운다(`InlineRename`). 저장은 지금 프로젝트 고치기 명령의 이름만 실은 patch다.
+  const [renamingHead, setRenamingHead] = useState<string | null>(null);
+  const [renamingRow, setRenamingRow] = useState<string | null>(null);
+  const rename = (slug: string, name: string) => updateProject.mutate({ slug, patch: { name } });
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
   const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
@@ -66,10 +75,21 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
       sidebarOpen={sidebarOpen}
       // 머리 카드 — 왼쪽은 폴더 아이콘과 고른 프로젝트의 이름(고른 것이 없으면 nav의 화면 이름)이다. 오른쪽은 그 프로젝트에 거는 할 일인
       // 폴더 열기 | 제거다(스토리 52). 제거는 되돌릴 수 없는 할 일이라 세로선 너머에 떼어 둔다(DS 캔버스). 캔버스의 「LLM이 받는
-      // 텍스트」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 스펙 S13). 이름은 보이기만 한다 — 제자리 이름 바꾸기는 codex-ds 티켓 28.
+      // 텍스트」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 스펙 S13). **고른 프로젝트의 이름은 그 자리에서 바꾼다**(codex-ds 스펙
+      // §9 · S12 — 이름의 두 번 클릭 · F2, `rename`). 상세 칸에는 제목이 없다 — 이름은 머리 카드가 든다. 이 이름의 메뉴(우클릭)는
+      // codex-ds 티켓 30이다.
       head={{
         icon: Folder,
         name: selected?.name ?? navItem("projects").label,
+        rename: selected
+          ? {
+              editing: renamingHead === selected.slug,
+              onStart: () => setRenamingHead(selected.slug),
+              onEnd: () => setRenamingHead(null),
+              onCommit: (name) => rename(selected.slug, name),
+              label: "프로젝트 이름",
+            }
+          : undefined,
         actions: selected && (
           // 머리 카드의 글자 버튼(`Button` top — 24, DS `.at-btn.top`). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
           <Button
@@ -99,6 +119,10 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             selectedSlug={selected?.slug ?? null}
             onSelect={onSelect}
             onAdd={handleAdd}
+            renaming={renamingRow}
+            onRename={setRenamingRow}
+            onRenameCommit={rename}
+            onRenameEnd={() => setRenamingRow(null)}
           />
         ),
       }}

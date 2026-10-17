@@ -17,8 +17,8 @@ import { HOTKEYS } from "@/lib/hotkeys";
 // work 메뉴 Finder ▸의 사라진 worktree 줄)가 잰다. 하위 메뉴의 모양(트리거의 셰브런 · 연 줄의 면, 카드의 폭 · 자리, → · ← · 포인터로
 // 여닫기)은 메뉴 부품의 진열대 위에서 L3(`e2e/submenu.spec.ts`)가 잰다 — 앱의 work 메뉴도 하위 메뉴를 달지만 그 줄 길이가 work의
 // slug · 프로젝트 이름을 따라가 카드 폭의 두 끝을 골라 세울 수 없다(`e2e/menu-fixture.tsx` 머리말). 단축키 칸의 칠해진 크기 · 색 ·
-// 자리와 줄의 `aria-keyshortcuts`도 같은 진열대 위에서 L3(`e2e/hotkeys.spec.ts`)가 잰다 — 단축키 칸을 다는 앱의 메뉴는 아직 없다(F2 ·
-// ⌘W가 서는 것은 티켓 28 · 29).
+// 자리와 줄의 `aria-keyshortcuts`도 같은 진열대 위에서 L3(`e2e/hotkeys.spec.ts`)가 잰다 — 앱의 메뉴에서 단축키 칸을 다는 줄은 work
+// 메뉴의 「이름 바꾸기」(F2) 하나라(⌘W가 서는 것은 티켓 29) 칸의 모양은 진열대가 잰다.
 //
 // **단축키 칸은 항목의 `shortcut`이다**(codex-ds 티켓 26). 단축키 표의 항목 이름을 받아 그 글자를 칸에, 그 값을 줄의 `aria-keyshortcuts`에
 // 준다 — 칸 부품은 내보내지 않아 글자를 손으로 넘기는 길이 없다.

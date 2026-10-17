@@ -261,7 +261,7 @@ function EditorScreen({
         <>
           {/* 머리 카드의 글자 버튼이다(`Button` ghost · top — 24 · `radius-md`, DS `.at-btn.top`). 아이콘은 글자 앞에
               선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
-              `aria-expanded`)를 달지 않는다 — 앱의 창 여는 버튼(전체화면 뷰어 · 이름 바꾸기)과 같다: 창이 뜨면 창이
+              `aria-expanded`)를 달지 않는다 — 앱의 다른 창 여는 버튼(전체화면 뷰어)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
           <Button ref={opener} variant="ghost" size="top" onClick={() => setPreviewOpen(true)}>
             <Eye data-icon="inline-start" aria-hidden />

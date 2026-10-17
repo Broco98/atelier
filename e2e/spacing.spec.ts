@@ -171,7 +171,9 @@ test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프
   await installFixtureBackend(page);
   await page.goto(`/projects/${billing.slug}`);
   const content = page.getByRole("main", { name: "프로젝트", exact: true });
-  await expect(content.locator("h1")).toHaveText(billing.name);
+  // 상세의 첫 글은 속성 묶음이다 — 상세 칸에는 제목이 없고 이름은 머리 카드가 든다(codex-ds 스펙 S12 · 티켓 28).
+  const 속성 = content.locator("dl");
+  await expect(속성).toContainText(billing.path);
   const [행글자, 거터, 위] = [await 간격(page, 4), await 간격(page, 5), await 간격(page, 6)];
 
   // 목록 | 내용은 한 카드다(codex-ds 결정 28) — 목록 칸의 것은 그 카드 끝에서, 상세는 내용 칸 끝에서 잰다.
@@ -185,17 +187,16 @@ test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프
   for (const [이름, x] of 자리) expect((await x) - card.x, `${이름} — 카드 + 16`).toBe(행글자);
 
   const contentBox = await 상자(content);
-  const heading = await 상자(content.locator("h1"));
+  const first = await 상자(속성);
   const thread = parseFloat(await 토큰값(page, "max-width", "--size-thread"));
   // 앵커: 기본 창에서는 내용 칸이 글 폭 + 거터 둘보다 좁다 — 글이 거터에 붙어 서서 아래 셈이 거터를 잰다.
   expect(contentBox.width, "내용 칸이 글 폭 + 거터 둘보다 좁다").toBeLessThan(thread + 2 * 거터);
-  expect(heading.x - contentBox.x, "상세 글 — 내용 칸 + 20").toBe(거터);
-  expect(heading.y - contentBox.y, "상세 글 — 위 24").toBe(위);
+  expect(first.x - contentBox.x, "상세 글 — 내용 칸 + 20").toBe(거터);
+  expect(first.y - contentBox.y, "상세 글 — 위 24").toBe(위);
 
   // 넓은 창 — 글이 서는 폭이 `size-thread` 그대로이고 내용 칸 가운데에 선다. 거터 20은 그 폭 밖(구르는 칸)이 든다 — 설정 틀 · 문서
   // 글과 같은 나눔이다(`settings-group.spec` · `path-bar.spec`). 거터를 몸 안에 두면 글 폭이 48rem − 40으로 준다.
   await page.setViewportSize({ width: 1600, height: 900 });
-  const 속성 = content.locator("dl");
   await expect.poll(async () => (await 상자(속성)).width, "속성 묶음 폭 = size-thread").toBe(thread);
   const [wide, wideList] = [await 상자(content), await 상자(속성)];
   expect(wideList.x - wide.x, "가운데").toBeCloseTo(wide.right - wideList.right, 0);

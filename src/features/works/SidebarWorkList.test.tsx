@@ -59,6 +59,7 @@ function render(
     lineY = null,
     litEmptySlot = null,
     menuTarget = null,
+    renaming = null,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
@@ -68,6 +69,7 @@ function render(
     lineY?: number | null;
     litEmptySlot?: keyof SectionsOpen | null;
     menuTarget?: string | null;
+    renaming?: string | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -93,6 +95,10 @@ function render(
       litEmptySlot={litEmptySlot}
       onArmDrag={() => {}}
       menuTarget={menuTarget}
+      renaming={renaming}
+      onRename={() => {}}
+      onRenameCommit={() => {}}
+      onRenameEnd={() => {}}
     />,
   );
 }
@@ -706,6 +712,38 @@ describe("우클릭 메뉴의 대상", () => {
 
   it("메뉴가 닫혔으면 어느 행에도 없다", () => {
     expect(render(works("pin:가", "나"))).not.toContain("data-menu-target");
+  });
+});
+
+// **이름을 그 자리에서 고치는 행**(codex-ds 스펙 §9). 고치는 상태는 위(`Sidebar`)가 쥐고 행은 「내가 고치는 행인가」만 받는다 — 받은
+// 행 하나의 이름 버튼 자리에 레인과 입력칸이 서고, 다른 행은 그대로 이름 버튼이다. 들어가는 길(F2 · 메뉴)과 저장 · 취소 · 포커스는
+// L3가 잰다(`inline-rename.spec.ts`).
+describe("이름을 고치는 행", () => {
+  // 행 상자 하나씩 — 여는 태그에서 다음 행 상자 앞까지다.
+  const rowsOf = (markup: string) =>
+    markup
+      .split(/(?=<div data-work-row=")/)
+      .filter((chunk) => chunk.startsWith("<div data-work-row="))
+      .map((chunk) => ({ slug: /^<div data-work-row="([^"]*)"/.exec(chunk)![1], html: chunk }));
+  const inputOf = (row: string) => /<input[^>]*>/.exec(row)?.[0] ?? null;
+
+  it("받은 행 **하나만** 이름 버튼 자리에 레인과 지금 이름을 든 입력칸이 선다", () => {
+    const rows = rowsOf(render(works("pin:가", "나", "다"), ALL, { renaming: "나" }));
+    expect(rows.map((row) => row.slug)).toEqual(["가", "나", "다"]);
+    const editing = rows.find((row) => row.slug === "나")!.html;
+    const input = inputOf(editing);
+    expect(input).toContain('aria-label="작업 이름"');
+    expect(input).toContain('value="나"');
+    // 이름 버튼은 없다 — 버튼 안에는 입력칸을 둘 수 없어 버튼이 아닌 상자로 갈아 끼운다. 레인은 그 상자의 첫 칸으로 남는다.
+    expect(editing).toMatch(/^<div data-work-row="나"[^>]*><div[^>]*><span data-lane=""/);
+    for (const row of rows.filter((one) => one.slug !== "나")) {
+      expect(inputOf(row.html), row.slug).toBeNull();
+      expect(row.html, row.slug).toMatch(/^<div data-work-row="[^"]*"[^>]*><button/);
+    }
+  });
+
+  it("고치는 행이 없으면 어느 행에도 입력칸이 없다", () => {
+    expect(render(works("pin:가", "나"))).not.toContain("<input");
   });
 });
 

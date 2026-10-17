@@ -7,7 +7,7 @@ import { recallSearch } from "@/routes/-work-search";
 import { workSlugOf } from "@/lib/path-prefix";
 import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
-import { useMoveWork, useSetWorkPinned, useWorks } from "./hooks";
+import { useMoveWork, useSetWorkPinned, useSetWorkTitle, useWorks } from "./hooks";
 import { projectLines, WorkCard } from "./WorkCard";
 import { WorkContextMenu, type MenuTarget } from "./WorkContextMenu";
 import type { WorkMenuFlows } from "./WorkMenuItems";
@@ -43,6 +43,9 @@ function SidebarWorkList({
   open,
   shells,
   menu,
+  renaming,
+  onRename,
+  onRenameEnd,
 }: {
   open: boolean;
   /**
@@ -56,10 +59,20 @@ function SidebarWorkList({
    * 이 목록이 그 흐름을 스스로 지으면 터미널을 알게 된다(`shells`와 같은 이유).
    */
   menu: WorkMenuFlows;
+  /**
+   * 이름을 그 자리에서 고치는 행(codex-ds 스펙 §9) — 없으면 `null`이다. **위(Sidebar)가 쥔다** — 들어가는 길에 이 목록 밖의 것이 있어서다:
+   * 알림 띠 줄의 우클릭 메뉴 「이름 바꾸기」도 그 work의 이 목록 행을 고친다(띠 줄은 셸 줄이라 이름을 적는 자리가 아니다).
+   */
+  renaming: string | null;
+  /** 행의 F2 · 우클릭 메뉴 「이름 바꾸기」 — 그 행의 이름 고치기를 켠다. */
+  onRename: (slug: string) => void;
+  /** 고치기가 끝났다(저장이든 취소든). */
+  onRenameEnd: () => void;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
   const setPinned = useSetWorkPinned();
+  const setTitle = useSetWorkTitle();
   const [pinnedOpen, setPinnedOpen] = useState(
     () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
   );
@@ -73,6 +86,15 @@ function SidebarWorkList({
   useEffect(() => {
     localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
   }, [worksOpen]);
+  // **고칠 행이 접힌 구획에 있으면 그 구획을 편다** — 알림 띠에서 들어오면 그 work의 행이 접혀 있을 수 있다. 접힌 구획의 속은
+  // `inert`라 그 안에 선 입력칸은 포커스를 못 받고, 포커스가 없으면 blur도 없어 「다른 곳 = 저장」으로 닫히지 않는다. 그래서 펼침은
+  // 두 겹이다 — 고치는 동안은 그린 순간부터 펴 있고(아래 `sectionsOpen`, 입력칸이 마운트되며 포커스를 받는다), 이 효과가 그 펼침을
+  // 사람의 설정으로 남긴다. 편 채로 둔다 — 접기는 사람이 명시적으로 하는 설정이고, 이 펼침도 사람이 이름을 고치려 한 결과다.
+  const renamingWork = renaming === null ? undefined : works.find((work) => work.slug === renaming);
+  useEffect(() => {
+    if (renamingWork) (renamingWork.pinned ? setPinnedOpen : setWorksOpen)(true);
+    // 고치기에 들어선 순간에만 본다(목록은 의존에 안 넣는다) — 목록이 다시 와도 사람이 그 사이 접은 구획을 다시 펴지 않는다.
+  }, [renaming]);
 
   // 어느 항목을 강조할지는 URL이 정한다 — 셸은 그것을 비출 뿐이다 (AppShell의 activeKey와 같은 규칙).
   //
@@ -88,8 +110,8 @@ function SidebarWorkList({
   });
 
   const sectionsOpen: SectionsOpen = {
-    pinned: pinnedOpen,
-    works: worksOpen,
+    pinned: pinnedOpen || renamingWork?.pinned === true,
+    works: worksOpen || renamingWork?.pinned === false,
   };
   const sections = splitWorkSections(works, sectionsOpen);
   const { visible } = sections;
@@ -111,7 +133,11 @@ function SidebarWorkList({
   // 카드가 따라 사라져야 한다. 행이 언마운트되면 mouseleave가 오지 않아 카드를 닫을 사람이
   // 없고, 앵커가 문서에서 떨어져 위치 계산이 0,0으로 무너진다. (예: `고정`이 접힌 채로
   // 호버 중인 작업을 고정하면 그 행이 접힌 구획으로 옮겨져 사라진다)
-  const hovered = visible.find((work) => work.slug === hoveredSlug) ?? null;
+  //
+  // **이름을 고치는 행에도 카드가 없다**(`renaming`) — 손이 다른 일을 시작하면 카드를 닫는 목록이다(메뉴 · 고정 · 끌기 · 옮겨
+  // 가기). 고치는 행 옆에 옛 이름을 적은 카드가 서지 않는다. 카드가 떠 있던 행이 고치기에 들면 그 카드는 아래 `hoverLost`로 닫히고,
+  // 고치는 동안 다시 올려 타이머가 차도 같은 길로 닫힌다 — 그 사이 카드는 한 번도 그려지지 않는다.
+  const hovered = visible.find((work) => work.slug === hoveredSlug && work.slug !== renaming) ?? null;
 
   // **목록이 내려가 있는가**(UI개선 결정 24). 윗 가장자리의 선이 이 한 값을 읽는다. 스크롤
   // 위치 자체가 아니라 「0인가」만 들고 있어, 굴러가는 동안 같은 값이 연달아 와도 React가
@@ -373,7 +399,7 @@ function SidebarWorkList({
         {/* **행의 우클릭 메뉴는 목록에 하나다**(codex-ds 결정 6 · 7 · 11) — 목록 상자가 우클릭을 받고, 난 자리의 행이 대상이다
             (`rowTarget`). 메뉴 상태는 여기(그 조각)가 쥐고 행은 「내가 대상인가」만 받는다 — 구획 목록 파일은 훅을 안 부른다. 열리면
             떠 있던 호버 카드를 닫는다(메뉴 카드와 같은 자리에 겹친다). */}
-        <WorkContextMenu flows={menu} targetOf={rowTarget} onOpen={closeCard}>
+        <WorkContextMenu flows={menu} targetOf={rowTarget} onOpen={closeCard} onRename={onRename}>
           {(menuTarget) => (
             <div
               data-worklist=""
@@ -398,6 +424,10 @@ function SidebarWorkList({
                 litEmptySlot={litEmptySlot}
                 onArmDrag={startDrag}
                 menuTarget={menuTarget}
+                renaming={renaming}
+                onRename={onRename}
+                onRenameCommit={(slug, title) => setTitle.mutate({ slug, title })}
+                onRenameEnd={onRenameEnd}
               />
             </div>
           )}
@@ -428,13 +458,14 @@ function SidebarWorkList({
 }
 
 /**
- * 목록 안 우클릭의 대상 — 그 자리를 품은 work 행이고, 테두리 · 포커스는 그 행의 이름 버튼이다(`WorkRow`). 행 밖(구획 머리 · 빈 자리
- * · 끄는 동안의 받침)이면 `null`이라 메뉴가 안 선다.
+ * 목록 안 우클릭의 대상 — 그 자리를 품은 work 행이고, 테두리 · 포커스는 그 행의 이름 버튼(행의 첫 요소)이다(`WorkRow`). 행 밖(구획
+ * 머리 · 빈 자리 · 끄는 동안의 받침)이면 `null`이라 메뉴가 안 선다. **이름을 고치는 행도 `null`이다** — 그동안 이름 버튼 자리는 입력칸을
+ * 품은 상자라 첫 요소가 버튼이 아니다. 그 행의 핀(뒤의 버튼)을 대상으로 집지 않는다.
  */
 function rowTarget(from: Element): MenuTarget | null {
   const row = from.closest<HTMLElement>("[data-work-row]");
   const slug = row?.dataset.workRow;
-  const element = row?.querySelector<HTMLElement>(":scope > button");
+  const element = row?.querySelector<HTMLElement>(":scope > button:first-child");
   return slug && element ? { slug, id: slug, element } : null;
 }
 

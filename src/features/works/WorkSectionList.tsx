@@ -8,6 +8,8 @@ import {
   type ShellSignal,
 } from "@/components/shell/shell-signal";
 import { openMenuByKey } from "@/components/ui/context-menu";
+import { InlineRename } from "@/components/ui/inline-rename";
+import { pressed } from "@/lib/hotkeys";
 import type { DragPoint } from "@/lib/pointer-drag";
 import { emptyMainNotice, WORKS_COPY } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -98,6 +100,10 @@ export function WorkSectionList({
   litEmptySlot,
   onArmDrag,
   menuTarget,
+  renaming,
+  onRename,
+  onRenameCommit,
+  onRenameEnd,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
@@ -128,6 +134,18 @@ export function WorkSectionList({
    * (`SidebarWorkList`의 `WorkContextMenu`)가 쥐고 여기는 받기만 한다** — 끌리는 행과 같은 규칙이다.
    */
   menuTarget: string | null;
+  /**
+   * 이름을 그 자리에서 고치는 행(codex-ds 스펙 §9) — 그 행의 이름 자리가 입력칸이 된다. 아무 행도 아니면 `null`이다. **고치는 상태도
+   * 위가 쥐고 여기는 받기만 한다**(스펙 §9 — 행은 상태를 갖는 훅을 둘 수 없다). 들어가는 길은 이름 버튼의 F2(`onRename`)와 우클릭
+   * 메뉴 · 알림 띠 메뉴의 「이름 바꾸기」(위의 `WorkContextMenu`)다. 두 번 클릭은 들어가는 길이 아니다 — 행의 두 번 클릭은 열기다.
+   */
+  renaming: string | null;
+  /** 이름 버튼에서 F2 — 그 행의 이름 고치기를 켜 달라고 한다. */
+  onRename: (slug: string) => void;
+  /** 바뀐 이름으로 저장한다(그대로이거나 비운 이름은 안 온다 — `InlineRename`). */
+  onRenameCommit: (slug: string, title: string) => void;
+  /** 고치기가 끝났다(저장이든 취소든). */
+  onRenameEnd: () => void;
 }) {
   const { pinned, main } = sections;
   // **받침은 끄는 동안만, 행이 하나도 없는 구획에만 선다**(티켓 06 · 스펙 S7). 끄는 것이 작업 행일 때만이다 —
@@ -144,6 +162,10 @@ export function WorkSectionList({
       active={work.slug === selectedSlug}
       dragging={work.slug === draggedSlug}
       menuTarget={work.slug === menuTarget}
+      editing={work.slug === renaming}
+      onRename={onRename}
+      onRenameCommit={onRenameCommit}
+      onRenameEnd={onRenameEnd}
       shellCount={shells.shellCounts[work.slug] ?? 0}
       signal={shells.signals[work.slug] ?? null}
       note={shells.notes[work.slug] ?? null}
@@ -405,6 +427,10 @@ function WorkRow({
   onArmDrag,
   dragging,
   menuTarget,
+  editing,
+  onRename,
+  onRenameCommit,
+  onRenameEnd,
   shellCount,
   signal,
   note,
@@ -416,6 +442,11 @@ function WorkRow({
   dragging: boolean;
   /** 이 행의 우클릭 메뉴가 열려 있는가 — 이름 버튼에 대상 테두리가 선다(codex-ds 결정 11). 고름(`active`)과 따로다(결정 7). */
   menuTarget: boolean;
+  /** 이 행의 이름을 고치는 중인가 — 이름 버튼 자리에 레인과 입력칸이 선다(codex-ds 스펙 §9). */
+  editing: boolean;
+  onRename: (slug: string) => void;
+  onRenameCommit: (slug: string, title: string) => void;
+  onRenameEnd: () => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
@@ -443,6 +474,25 @@ function WorkRow({
   // 훅을 안 부르는 자리가 되면서(`SidebarWorkList.test.tsx`의 소스 검사) 이벤트가 온 행 안에서 찾는다.
   // 행마다 제목 상자는 하나이고, 찾는 때도 hover 진입·이탈 두 순간뿐이다.
   const titleBoxOf = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-title]");
+  // 이름 칸의 자리 — 이름 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다(높이 · 레인과 제목 사이 · 안쪽은 버튼 주석).
+  const nameCell = "col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center gap-2.25 rounded-lg pl-2";
+  // **레인** — 행 왼쪽의 14px 한 칸(두 줄 행을 연 판의 결정 5). 화면값이 있으면 점·스피너가,
+  // 없으면 work 상태 아이콘이 선다(#203). 표식(`data-lane`)은 검사 셋이 이 칸을 집는
+  // 이름이다(마크업 seam · hover · 폭 드래그).
+  // **폭을 안 내준다.** 실제로 그것을 지키는 것은 옆 제목 상자다 — `[data-title]`이
+  // `min-width: 0`이라 좁아지는 값을 전부 흡수하므로 이 줄이 넘칠 일이 없고, 그래서
+  // `shrink-0`을 지워도 지금은 화면이 안 바뀐다(L3 실측). 그래도 적는 것은 제목 쪽
+  // 규칙이 바뀌는 날 **이 자리가 먼저 찌그러지는 것**이 가장 나쁜 회귀라서다:
+  // 제목은 잘려도 읽히지만 8px 점은 12px만 줄어도 사라진다.
+  const lane = (
+    <span data-lane="" className="flex size-3.5 shrink-0 items-center justify-center">
+      {/* **화면값이 있으면 그것이 이 자리를 가져간다**(결정 5). 없으면 work 상태 아이콘이
+          그대로 선다 — draft·review·done을 가르던 자리가 사라지지 않는 것이 스토리 19다.
+          둘이 함께 서는 갈래는 없다: 레인은 14px 한 칸이고, 거기서 두 글리프가 겹치면
+          「한 자리만 보면 된다」(스토리 18)가 깨진다. */}
+      {signal === null ? <StatusIcon status={work.status} /> : <SignalLane kind={signal} />}
+    </span>
+  );
   return (
     <div
       // **표식은 끄는 동안 기하를 재는 자리가 이 행을 slug로 집기 위한 것이다**(UI개선 스펙 S6).
@@ -533,91 +583,107 @@ function WorkRow({
         dragging && "opacity-40",
       )}
     >
-      <button
-        type="button"
-        // **화면값이 있으면 이름에 그 말이 붙는다**(스토리 33 · 결정 8). 레인의 점·스피너는
-        // `aria-hidden`이라(shell-signal.tsx) 상태를 말하는 자리가 여기 하나다 — 색만이
-        // 신호여선 안 된다. 말은 `SIGNAL_LABEL` 하나에서 오고 탭(#205)·띠(#204)가 같은
-        // 표를 읽는다.
-        //
-        // **`aria-label`이지 숨은 글자가 아니다.** 이름을 이 속성이 통째로 정하면 붙는 자리와
-        // 순서가 한눈에 보이고(제목이 먼저, 상태가 뒤), 값이 없을 때는 속성 자체가 없어
-        // 이름이 안에 든 제목 글자 그대로가 된다 — 조용한 행의 이름으로 행을 집는 검사가
-        // 그대로 산다.
-        aria-label={signal === null ? undefined : `${work.title} — ${SIGNAL_LABEL[signal]}`}
-        // **여는 것은 이 버튼이 아니라 행 상자다**(그쪽 주석) — 여기 onClick이 없는 것은
-        // 클릭이 두 번 도는 것을 막기 위해서다. 그래도 버튼인 이유는 **이름과 포커스**다:
-        // 「어느 행이든 누르면 그 work로 간다」(결정 6)를 스크린리더와 Tab에 말하는 자리가
-        // 여기 하나이고, 상태 축이 들어오면서(#203) 그 말이 이 버튼의 이름에 덧붙었다(위 `aria-label`).
-        // 한때 고른 work의 행만은 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그
-        // 갈래가 통째로 사라졌다 — 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙이다.
-        //
-        // **행의 높이를 이 버튼이 든다**(`size-row-nav`) — 바깥이 grid라 `h-full`은 자기가 잰 높이를 되받는
-        // 순환이 된다. nav 항목과 같은 32px이고(DS `SidebarRow`), 셸이 몇 개든 무엇이 돌든 모든 work 행이 이
-        // 높이다 — 겹쳐 선 메타·핀은 둘 다 이보다 낮다. 제목 폭을 푸는 자리도 이 상자이고
-        // (`data-title`이 그 안에서 `flex-1`이다) 포커스 링이 그려지는 자리도 여기다.
-        //
-        // **오른쪽 여백은 없다.** 판 05는 여기 `pr-1.5`(6px)를 물어 제목과 2열을 띄웠는데, 그러면
-        // 메타가 없는 행에서 제목 상자가 핀 앞 6px에서 멎어 그만큼 좁아진다. 띄우는 값은 이제
-        // **메타 칸이 든다**(`pl-2.25`) — 메타가 있을 때만 난다(S34의 원칙). 제목 상자가
-        // 핀 바로 앞에서 끝나는 것을 L3가 잰다.
-        className="col-start-1 row-start-1 flex h-(--size-row-nav) min-w-0 items-center gap-2.25 rounded-lg pl-2 text-left focus-ring"
-        // **셸의 마지막 말은 설명으로 붙는다**(결정 14 · 스토리 38). 호버 카드는 키보드로 닿지
-        // 않으므로, 포커스한 사람이 「왜 부르나」를 듣는 자리가 여기다 — 이름(`제목 — 상태`)
-        // 다음에 읽힌다. 이름을 늘리지 않는 것은 그 이름이 행·띠·탭이 함께 쓰는 짧은 말이라서다.
-        //
-        // **`aria-describedby`를 달지 않는다.** 달면 이 속성이 무시된다. 라이브 영역도 아니라서
-        // 말이 바뀌어도 알리지 않는다 — 설명만 새 말로 바뀐다.
-        //
-        // **`className` 뒤에 적는다.** 행 이름을 모으는 마크업 검사가 여는 태그를 `aria-label`
-        // 바로 뒤에 `class`가 오는 모양으로 읽는다(`SidebarWorkList.test.tsx`의 `namesOf`).
-        aria-description={note?.message}
-        // **우클릭 메뉴의 대상이 이 버튼이다**(codex-ds 결정 6 · 11). 열린 동안 표식이 서고 `focus-ring`이 그것을 포커스 링과 같은
-        // 테두리로 그린다(`index.css`). ⇧F10 · 메뉴 키는 포커스된 이 버튼이 받아 같은 메뉴를 곁에 연다(`openMenuByKey`). 메뉴가
-        // 닫히면 포커스가 여기로 돌아온다.
-        data-menu-target={menuTarget ? "" : undefined}
-        onKeyDown={openMenuByKey}
-      >
-        {/* **레인** — 행 왼쪽의 14px 한 칸(두 줄 행을 연 판의 결정 5). 화면값이 있으면 점·스피너가,
-            없으면 work 상태 아이콘이 선다(#203). 표식(`data-lane`)은 검사 셋이 이 칸을 집는
-            이름이다(마크업 seam · hover · 폭 드래그).
-            **폭을 안 내준다.** 실제로 그것을 지키는 것은 옆 제목 상자다 — `[data-title]`이
-            `min-width: 0`이라 좁아지는 값을 전부 흡수하므로 이 줄이 넘칠 일이 없고, 그래서
-            `shrink-0`을 지워도 지금은 화면이 안 바뀐다(L3 실측). 그래도 적는 것은 제목 쪽
-            규칙이 바뀌는 날 **이 자리가 먼저 찌그러지는 것**이 가장 나쁜 회귀라서다:
-            제목은 잘려도 읽히지만 8px 점은 12px만 줄어도 사라진다. */}
-        <span data-lane="" className="flex size-3.5 shrink-0 items-center justify-center">
-          {/* **화면값이 있으면 그것이 이 자리를 가져간다**(결정 5). 없으면 work 상태 아이콘이
-              그대로 선다 — draft·review·done을 가르던 자리가 사라지지 않는 것이 스토리 19다.
-              둘이 함께 서는 갈래는 없다: 레인은 14px 한 칸이고, 거기서 두 글리프가 겹치면
-              「한 자리만 보면 된다」(스토리 18)가 깨진다. */}
-          {signal === null ? <StatusIcon status={work.status} /> : <SignalLane kind={signal} />}
-        </span>
-        {/* **제목은 `…`이 아니라 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
-            읽힌다**(결정 9). 폭으로는 이 문제를 못 풀어서다 — 핀을 띄워도 +24px, 이 버튼의
-            여백을 없애도 +6px, 기본 사이드바 폭 조정은 저장된 폭이 이겨 0px이라 다 합쳐도
-            두 글자다. 그래서 이 판은 제목 폭을 짜내지 않는다.
-
-            **상자와 안쪽 글자가 갈려 있다.** 상자가 컨테이너이자 마스크이고 흐르는 것은
-            안쪽 글자다 — 규격도 거리도 `index.css`의 `[data-title]`이 든다(결정 10·11).
-            여기 `flex-1 min-w-0`은 그 딸린 조정이다: `container-type: inline-size`가
-            「내 폭이 내용에 안 달렸다」는 선언이라, 내용 기반 flex-basis로 두면 상자가
-            **0으로 무너져** 제목이 통째로 사라진다.
-
-            색은 상자가 든다 — 안쪽 글자가 그대로 물려받는다. **안쪽 글자에는 클래스가
-            없다** — 규격을 유틸리티로 다시 적으면 그것들이 `utilities` 레이어에 들어가 레이어
-            밖의 `[data-title] > span`에 무조건 져서, 고쳐도 화면이 안 바뀌는 손잡이가 된다. */}
-        <span
-          data-title=""
-          className={cn(
-            // 굵기는 400이다 — nav 항목만 500이다(DS `.at-row` · `.at-row.nav`). 목적지 넷과 작업 목록이 무게로 갈린다.
-            "min-w-0 flex-1 text-sm",
-            work.status === "done" && "text-fg-tertiary",
-          )}
+      {/* **이름을 고치는 동안 이름 버튼 자리에 레인과 입력칸이 선다**(codex-ds 스펙 §9). 버튼 안에는 입력칸을 둘 수 없어 버튼이 아닌
+          상자로 갈아 끼운다 — 자리(`nameCell`)는 같아 레인과 글자가 움직이지 않는다. 입력칸은 제목 상자 자리의 남는 폭을 먹고, 글자가
+          제목 글자와 한 세로줄에 서도록 왼쪽으로 4 넓힌 만큼 안쪽을 둔다. 입력칸 안의 누름은 행으로 올라가지 않는다 — 행은 누르면
+          열고 끌면 옮긴다(`InlineRename`). 키로 끝내면 포커스가 다시 선 이름 버튼으로 돌아온다. 이 상자는 우클릭 메뉴의 대상이 아니다
+          — 위의 대상 찾기가 행의 첫 버튼만 집는다(`SidebarWorkList`의 `rowTarget`). */}
+      {editing ? (
+        <div className={nameCell}>
+          {lane}
+          <InlineRename
+            value={work.title}
+            label="작업 이름"
+            emptyMeans="revert"
+            fit="fill"
+            onCommit={(title) => onRenameCommit(work.slug, title)}
+            onDone={onRenameEnd}
+            returnFocus={() => document.querySelector<HTMLElement>(`[data-work-row="${work.slug}"] > button`)}
+            className="-ml-1 h-6 px-1 text-sm text-fg"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          // **화면값이 있으면 이름에 그 말이 붙는다**(스토리 33 · 결정 8). 레인의 점·스피너는
+          // `aria-hidden`이라(shell-signal.tsx) 상태를 말하는 자리가 여기 하나다 — 색만이
+          // 신호여선 안 된다. 말은 `SIGNAL_LABEL` 하나에서 오고 탭(#205)·띠(#204)가 같은
+          // 표를 읽는다.
+          //
+          // **`aria-label`이지 숨은 글자가 아니다.** 이름을 이 속성이 통째로 정하면 붙는 자리와
+          // 순서가 한눈에 보이고(제목이 먼저, 상태가 뒤), 값이 없을 때는 속성 자체가 없어
+          // 이름이 안에 든 제목 글자 그대로가 된다 — 조용한 행의 이름으로 행을 집는 검사가
+          // 그대로 산다.
+          aria-label={signal === null ? undefined : `${work.title} — ${SIGNAL_LABEL[signal]}`}
+          // **여는 것은 이 버튼이 아니라 행 상자다**(그쪽 주석) — 여기 onClick이 없는 것은
+          // 클릭이 두 번 도는 것을 막기 위해서다. 그래도 버튼인 이유는 **이름과 포커스**다:
+          // 「어느 행이든 누르면 그 work로 간다」(결정 6)를 스크린리더와 Tab에 말하는 자리가
+          // 여기 하나이고, 상태 축이 들어오면서(#203) 그 말이 이 버튼의 이름에 덧붙었다(위 `aria-label`).
+          // 한때 고른 work의 행만은 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그
+          // 갈래가 통째로 사라졌다 — 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙이다.
+          //
+          // **행의 높이를 이 버튼이 든다**(`size-row-nav`) — 바깥이 grid라 `h-full`은 자기가 잰 높이를 되받는
+          // 순환이 된다. nav 항목과 같은 32px이고(DS `SidebarRow`), 셸이 몇 개든 무엇이 돌든 모든 work 행이 이
+          // 높이다 — 겹쳐 선 메타·핀은 둘 다 이보다 낮다. 제목 폭을 푸는 자리도 이 상자이고
+          // (`data-title`이 그 안에서 `flex-1`이다) 포커스 링이 그려지는 자리도 여기다.
+          //
+          // **오른쪽 여백은 없다.** 판 05는 여기 `pr-1.5`(6px)를 물어 제목과 2열을 띄웠는데, 그러면
+          // 메타가 없는 행에서 제목 상자가 핀 앞 6px에서 멎어 그만큼 좁아진다. 띄우는 값은 이제
+          // **메타 칸이 든다**(`pl-2.25`) — 메타가 있을 때만 난다(S34의 원칙). 제목 상자가
+          // 핀 바로 앞에서 끝나는 것을 L3가 잰다.
+          className={`${nameCell} text-left focus-ring`}
+          // **셸의 마지막 말은 설명으로 붙는다**(결정 14 · 스토리 38). 호버 카드는 키보드로 닿지
+          // 않으므로, 포커스한 사람이 「왜 부르나」를 듣는 자리가 여기다 — 이름(`제목 — 상태`)
+          // 다음에 읽힌다. 이름을 늘리지 않는 것은 그 이름이 행·띠·탭이 함께 쓰는 짧은 말이라서다.
+          //
+          // **`aria-describedby`를 달지 않는다.** 달면 이 속성이 무시된다. 라이브 영역도 아니라서
+          // 말이 바뀌어도 알리지 않는다 — 설명만 새 말로 바뀐다.
+          //
+          // **`className` 뒤에 적는다.** 행 이름을 모으는 마크업 검사가 여는 태그를 `aria-label`
+          // 바로 뒤에 `class`가 오는 모양으로 읽는다(`SidebarWorkList.test.tsx`의 `namesOf`).
+          aria-description={note?.message}
+          // **우클릭 메뉴의 대상이 이 버튼이다**(codex-ds 결정 6 · 11). 열린 동안 표식이 서고 `focus-ring`이 그것을 포커스 링과 같은
+          // 테두리로 그린다(`index.css`). ⇧F10 · 메뉴 키는 포커스된 이 버튼이 받아 같은 메뉴를 곁에 연다(`openMenuByKey`). 메뉴가
+          // 닫히면 포커스가 여기로 돌아온다.
+          //
+          // **F2도 이 버튼이 듣는다**(codex-ds 스펙 §9) — 이 행의 이름을 그 자리에서 고친다. 고치는 상태는 위가 쥔다(`onRename`).
+          data-menu-target={menuTarget ? "" : undefined}
+          onKeyDown={(event) => {
+            if (pressed(event, "rename")) {
+              event.preventDefault();
+              onRename(work.slug);
+              return;
+            }
+            openMenuByKey(event);
+          }}
         >
-          <span>{work.title}</span>
-        </span>
-      </button>
+          {lane}
+          {/* **제목은 `…`이 아니라 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
+              읽힌다**(결정 9). 폭으로는 이 문제를 못 풀어서다 — 핀을 띄워도 +24px, 이 버튼의
+              여백을 없애도 +6px, 기본 사이드바 폭 조정은 저장된 폭이 이겨 0px이라 다 합쳐도
+              두 글자다. 그래서 이 판은 제목 폭을 짜내지 않는다.
+
+              **상자와 안쪽 글자가 갈려 있다.** 상자가 컨테이너이자 마스크이고 흐르는 것은
+              안쪽 글자다 — 규격도 거리도 `index.css`의 `[data-title]`이 든다(결정 10·11).
+              여기 `flex-1 min-w-0`은 그 딸린 조정이다: `container-type: inline-size`가
+              「내 폭이 내용에 안 달렸다」는 선언이라, 내용 기반 flex-basis로 두면 상자가
+              **0으로 무너져** 제목이 통째로 사라진다.
+
+              색은 상자가 든다 — 안쪽 글자가 그대로 물려받는다. **안쪽 글자에는 클래스가
+              없다** — 규격을 유틸리티로 다시 적으면 그것들이 `utilities` 레이어에 들어가 레이어
+              밖의 `[data-title] > span`에 무조건 져서, 고쳐도 화면이 안 바뀌는 손잡이가 된다. */}
+          <span
+            data-title=""
+            className={cn(
+              // 굵기는 400이다 — nav 항목만 500이다(DS `.at-row` · `.at-row.nav`). 목적지 넷과 작업 목록이 무게로 갈린다.
+              "min-w-0 flex-1 text-sm",
+              work.status === "done" && "text-fg-tertiary",
+            )}
+          >
+            <span>{work.title}</span>
+          </span>
+        </button>
+      )}
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
           좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
           페이드가 없는 것은 icon-button-tint가 정한다(옆 행으로 옮겨 갈 때 두 핀이

@@ -8,10 +8,12 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight, Pencil, type LucideIcon } from "lucide-react";
 import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
+import { InlineRename } from "@/components/ui/inline-rename";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
+import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
@@ -105,14 +107,20 @@ export interface HeadSlot {
    */
   icon: LucideIcon;
   /**
-   * 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 그 자리에서 바꾸지는 않는다(codex-ds 티켓 28). 고른
-   * 것에 메뉴가 있으면 이름이 그 메뉴의 대상이 된다(`nameMenu`).
+   * 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 고른 것에 메뉴가 있으면 이름이 그 메뉴의 대상이
+   * 되고(`nameMenu`), 바꿀 수 있으면 그 자리에서 바꾼다(`rename`).
    */
   name: string;
   /**
+   * 이름을 그 자리에서 바꾸기(codex-ds 스펙 §9 · 결정 18) — 고른 work · 프로젝트의 이름에만 선다. 두 번 클릭 · F2(이름에 포커스가 선
+   * 때)로 들어가고, 메뉴 「이름 바꾸기」는 화면이 `editing`을 켜서 들어간다. 고치는 동안은 이름 자리에 입력칸이 선다(`InlineRename`).
+   */
+  rename?: HeadRename;
+  /**
    * 이름의 우클릭 메뉴(codex-ds 결정 6 — 작업 화면은 그 work의 메뉴). 틀이 이름 요소를 그리는 함수(`renderName`)를 건네고, 화면은 그것을
    * 메뉴의 대상으로 감싸 돌려준다 — 메뉴가 무엇을 펴는지는 화면이 알고, 이름의 모양과 자리는 틀이 든다. 받는 값은 「메뉴가 열려 있나」이고
-   * 열린 동안 이름에 대상 테두리가 선다(결정 11). 이 이름은 포커스를 받아 ⇧F10 · 메뉴 키로도 그 메뉴를 연다. 없으면 이름은 보이기만 한다.
+   * 열린 동안 이름에 대상 테두리가 선다(결정 11). 이 이름은 포커스를 받아 ⇧F10 · 메뉴 키로도 그 메뉴를 연다. 이것도 `rename`도 없으면 이름은
+   * 보이기만 한다. 이름을 고치는 동안은 메뉴가 없다 — 이름 자리에 입력칸이 서고, 입력칸의 메뉴는 그 칸의 것이다.
    */
   nameMenu?: (renderName: (open: boolean) => ReactElement) => ReactNode;
   /**
@@ -129,6 +137,23 @@ export interface HeadSlot {
    * 틀이 패널 칸에서 짓는다(`HeadRow` — Archive는 이것 없이 토글만 선다).
    */
   end?: ReactNode;
+}
+
+/**
+ * 머리 카드 이름의 제자리 바꾸기(`HeadSlot.rename`). 고치는 중인지는 화면이 쥔다 — 메뉴 「이름 바꾸기」가 화면의 것이라서다. 틀은 들어가는
+ * 키 · 두 번 클릭을 듣고(`onStart`), 고치기가 끝나면(저장이든 취소든) `onEnd`를 부른다.
+ */
+export interface HeadRename {
+  /** 지금 고치는 중인가 — 켜진 동안 이름 자리에 입력칸이 선다. */
+  editing: boolean;
+  /** 두 번 클릭 · F2 — 화면이 `editing`을 켠다. */
+  onStart: () => void;
+  /** 고치기가 끝났다 — 화면이 `editing`을 끈다. */
+  onEnd: () => void;
+  /** 바뀐 이름으로 저장한다. 그대로이거나 비운 이름(원래 이름)은 부르지 않는다(`InlineRename`). */
+  onCommit: (name: string) => void;
+  /** 입력칸의 이름(`aria-label`) — 「작업 이름」 · 「프로젝트 이름」. */
+  label: string;
 }
 
 interface FrameProps<Id extends string> {
@@ -539,6 +564,7 @@ function HeadCard({
   icon: Icon,
   name,
   nameMenu,
+  rename,
   sub,
   actions,
   end,
@@ -548,22 +574,70 @@ function HeadCard({
   toggle?: ReactNode;
 }) {
   const nameClass = "min-w-0 truncate text-chat-meta font-medium text-fg";
-  // **메뉴가 있는 이름은 대상이다**(`nameMenu`) — 포커스를 받고(⇧F10 · 메뉴 키가 포커스된 대상의 메뉴를 연다), 열린 동안 표식이 서서
-  // `focus-ring`이 테두리를 그린다. 모서리는 링이 따라 돌 몫이다. 버튼이 아닌 것은 누르면 할 일이 없어서다 — 이름을 그 자리에서
-  // 바꾸는 것은 티켓 28이다.
-  // - **역할이 없으니 키를 말한다**(`aria-keyshortcuts` — 표의 ⇧F10 · 메뉴 키, `TARGET_MENU_ARIA`). 포커스가 서면 글자(이름)와 함께
-  //   「여기서 이 키가 듣는다」가 읽힌다. `aria-haspopup`은 안 단다 — 역할 없는 요소(generic)에는 ARIA가 그 속성을 허락하지 않는다.
-  //   역할을 지어 붙이지 않는 것은 그 역할이 거짓말이 되어서다(`button`이면 누를 것이 있어야 한다 — 구현 노트 Q6).
+  const nameEl = useRef<HTMLSpanElement>(null);
+  // **메뉴가 있거나 바꿀 수 있는 이름은 대상이다**(`nameMenu` · `rename`) — 포커스를 받는다. 메뉴가 있으면 ⇧F10 · 메뉴 키가 그 메뉴를
+  // 열고 열린 동안 표식이 서서 `focus-ring`이 테두리를 그린다. 바꿀 수 있으면 F2 · 두 번 클릭이 고치기에 든다(codex-ds 스펙 §9 — F2는
+  // 포커스된 대상의 `onKeyDown`이 듣는다, 화면의 window keydown이 아니다). 모서리는 링이 따라 돌 몫이다. 버튼이 아닌 것은 누르면 할
+  // 일이 없어서다(구현 노트 Q6 — 한 번 누르기는 아무것도 하지 않고, 두 번 클릭이 고치기다).
+  // - **역할이 없으니 키를 말한다**(`aria-keyshortcuts` — 표의 F2와 ⇧F10 · 메뉴 키, `TARGET_MENU_ARIA`). 포커스가 서면 글자(이름)와
+  //   함께 「여기서 이 키가 듣는다」가 읽힌다. `aria-haspopup`은 안 단다 — 역할 없는 요소(generic)에는 ARIA가 그 속성을 허락하지 않는다.
+  //   역할을 지어 붙이지 않는 것은 그 역할이 거짓말이 되어서다(`button`이면 누를 것이 있어야 한다).
+  // - **바꿀 수 있는 이름은 hover에 면과 연필이 선다**(DS `.at-wtitle:hover` · `.pen`). 면은 글자 상자에 단다 — 이름 칸은 짧은 이름에도
+  //   520까지 넓다. 글자는 제자리에 두고 면만 왼쪽으로 4 넓히며(`-ml-1` · `pl-1`), 오른쪽은 글자 뒤 5 · 연필 12 · 끝 4다(DS `.pen`의
+  //   왼쪽 -2가 사이 7에서 빠진다). 높이는 이름 칸의 24다(DS `.at-wtitle`). 글자는 이 요소의 바로 안이다 — 말줄임이 연필 앞에서 끊기고,
+  //   글자로 이름을 찾는 쪽(`getByText`)이 포커스 받는 이 요소에 닿는다.
+  // - **고치는 동안 이름 자리는 입력칸이다**(`InlineRename`). 폭은 이름 글자만큼이다(`fit="text"` — DS `.at-wtitle.is-edit`도 글자 폭을
+  //   그대로 둔다). 이름 칸은 짧은 이름에도 520까지 넓어, 그 폭을 다 먹으면 고치기에 들 때 테두리가 글자 폭에서 520으로 튄다. 글자가
+  //   같은 자리에 서도록 입력칸도 왼쪽으로 4 넓히고 그만큼 안쪽을 둔다. 메뉴는 그동안 서지 않는다(`nameMenu`를 안 부른다). 키로
+  //   끝내면 포커스가 다시 선 이 이름으로 돌아온다(`nameEl`).
+  const shortcuts = [rename && HOTKEYS.rename.aria, nameMenu && TARGET_MENU_ARIA].filter(Boolean).join(" ");
   const renderName = (open: boolean) => (
     <span
+      ref={nameEl}
       tabIndex={0}
-      aria-keyshortcuts={TARGET_MENU_ARIA}
-      onKeyDown={openMenuByKey}
+      aria-keyshortcuts={shortcuts}
+      onKeyDown={(event) => {
+        if (rename && pressed(event, "rename")) {
+          event.preventDefault();
+          rename.onStart();
+          return;
+        }
+        openMenuByKey(event);
+      }}
+      onDoubleClick={rename?.onStart}
       data-menu-target={open ? "" : undefined}
-      className={cn(nameClass, "rounded-md focus-ring")}
+      className={cn(
+        nameClass,
+        "rounded-md focus-ring",
+        rename && "group/name relative -ml-1 h-6 pr-5.25 pl-1 leading-6 transition-colors hover:bg-fill-hover",
+      )}
     >
       {name}
+      {rename && (
+        <Pencil
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-fg-tertiary opacity-0 transition-opacity group-hover/name:opacity-100"
+        />
+      )}
     </span>
+  );
+  const nameNode = rename?.editing ? (
+    <InlineRename
+      value={name}
+      label={rename.label}
+      emptyMeans="revert"
+      fit="text"
+      onCommit={rename.onCommit}
+      onDone={rename.onEnd}
+      returnFocus={() => nameEl.current}
+      className="-ml-1 h-6 px-1 text-chat-meta font-medium text-fg"
+    />
+  ) : nameMenu ? (
+    nameMenu(renderName)
+  ) : rename ? (
+    renderName(false)
+  ) : (
+    <span className={nameClass}>{name}</span>
   );
   return (
     <div
@@ -573,7 +647,7 @@ function HeadCard({
       {lead}
       <div className="flex h-6 max-w-[520px] min-w-0 flex-1 items-center gap-1.75 px-2 contain-inline-size">
         <Icon className="size-3.5 shrink-0 text-fg-secondary" />
-        {nameMenu ? nameMenu(renderName) : <span className={nameClass}>{name}</span>}
+        {nameNode}
         {sub && (
           // 이름 끝에서 위치까지 DS는 14다 — 이름 칸의 오른쪽 안쪽 8 + 머리 카드의 사이 4 + `.sub`의 왼쪽 2. 위치가 이름 칸 안이라 칸
           // 안의 사이 7에 7을 더한다. 앞 조각은 제 폭이고 줄어드는 몫은 마지막 조각의 말줄임이 받는다.

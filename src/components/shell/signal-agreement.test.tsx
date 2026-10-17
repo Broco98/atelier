@@ -137,6 +137,10 @@ function 행(state: ShellsState): string {
       litEmptySlot={null}
       onArmDrag={() => {}}
       menuTarget={null}
+      renaming={null}
+      onRename={() => {}}
+      onRenameCommit={() => {}}
+      onRenameEnd={() => {}}
     />,
   );
 }
