@@ -1,10 +1,14 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
+import { pressed, TAB_HOTKEYS } from "@/lib/hotkeys";
 import type { Attention } from "./shell-attention";
 import type { CloseCheck, CloseReason, PtyExit } from "./types";
 
-// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
-// 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
-// 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. 값 import는 단축키 표(`@/lib/hotkeys` — 그 모듈도
+// JSON 한 장만 들인다) 하나이고 나머지는 타입뿐이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가
+// 선례). 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+//
+// **키 판정은 단축키 표를 읽는다**(codex-ds 결정 19 · S16). 어느 키인가(물리 키와 수식키 넷)는 표의 항목이 정하고, 여기 남는 것은
+// 그 키가 이 모듈에게 무엇인가(새 칸 · 닫기 · 앱 몫 · 본문 옮기기)와 어디서 눌렸나(`typesInto`)다.
 //
 // **키 판정 중 `searchHotkey`(⌘K)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
 // (이 파일에서 `팔레트 결정 N`은 `palette-key-and-home`의 결정문이다 — 맨 `결정 N`이
@@ -900,9 +904,8 @@ export function shellHotkey(event: KeyPress): ShellHotkey | null {
   // window에서 듣는 앱 셸이 그것을 받아 연다. 셸에 포커스가 있는 시간이 이 앱에서 제일
   // 길기 때문에 이 한 줄이 「어디서든 열린다」의 절반을 든다.
   if (shellNavKey(event) !== null || searchHotkey(event)) return "app";
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
-  if (event.code === "KeyT") return "new";
-  if (event.code === "KeyW") return "close";
+  if (pressed(event, "newShell")) return "new";
+  if (pressed(event, "closeShell")) return "close";
   return null;
 }
 
@@ -926,12 +929,10 @@ export type ShellNav = { kind: "index"; n: number } | { kind: "cycle"; delta: 1 
  */
 export function shellNavKey(event: KeyPress): ShellNav | null {
   if (event.type !== "keydown") return null;
-  if (event.code === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
-    return { kind: "cycle", delta: event.shiftKey ? -1 : 1 };
-  }
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
-  const digit = /^Digit([1-9])$/.exec(event.code);
-  return digit ? { kind: "index", n: Number(digit[1]) } : null;
+  if (pressed(event, "nextTab")) return { kind: "cycle", delta: 1 };
+  if (pressed(event, "prevTab")) return { kind: "cycle", delta: -1 };
+  const at = TAB_HOTKEYS.findIndex((id) => pressed(event, id));
+  return at === -1 ? null : { kind: "index", n: at + 1 };
 }
 
 /**
@@ -983,9 +984,7 @@ function isShellInput(target: EventTarget | null): boolean {
  * 물음이고 주인도 다르다 — 부르는 쪽(앱 셸)이 막는다.
  */
 export function searchHotkey(event: KeyPress): boolean {
-  if (event.type !== "keydown") return false;
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
-  return event.code === "KeyK";
+  return event.type === "keydown" && pressed(event, "search");
 }
 
 /**

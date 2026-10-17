@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { SquareTerminal } from "lucide-react";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
+import { HOTKEYS } from "@/lib/hotkeys";
 import {
   activeIdOf,
   activeShellOf,
@@ -173,11 +174,11 @@ function TerminalPane({ work }: { work: WorkView | null }) {
               <EmptyTitle>아직 셸이 없어요</EmptyTitle>
               <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>
             </EmptyHeader>
-            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 한때 이 키를 「상한에 닿았으면
+            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 글자는 단축키 표의 `newShell`이다. 한때 이 키를 「상한에 닿았으면
                 안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는 것이 되어서인데, 위 주석대로
                 그 조건이 여기서는 늘 거짓이다. */}
             <EmptyContent>
-              <Kbd>⌘T</Kbd>
+              <Kbd>{HOTKEYS.newShell.glyph}</Kbd>
             </EmptyContent>
           </Empty>
         </div>

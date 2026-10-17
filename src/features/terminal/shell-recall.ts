@@ -1,4 +1,5 @@
 import type { ShellSignal } from "@/components/shell/shell-signal";
+import { pressed } from "@/lib/hotkeys";
 import { isCalling } from "./shell-attention";
 import type { Shell } from "./shell-registry";
 
@@ -77,7 +78,8 @@ export const CLOSED_SHELL_NOTICE = "그 셸은 닫혔어요";
 export const CLOSED_SHELL_TOAST_ID = "recall:closed";
 
 /**
- * ⌘J인가(프로세스 스펙 P3). 메뉴가 쏜 합성 keydown(`menu-hotkey.ts`)과 직접 누른 키가 같은 판정을 지난다.
+ * ⌘J인가(프로세스 스펙 P3). 메뉴가 쏜 합성 keydown(`menu-hotkey.ts`)과 직접 누른 키가 같은 판정을 지난다. 어느 키인가는 단축키 표의
+ * `recall`이 정한다(`@/lib/hotkeys`).
  *
  * **`code`로 본다** — 한글 입력기가 켜져 있으면 `key`가 자모로 온다(`searchHotkey`와 같은 까닭). 수식키가 하나라도 더 붙으면
  * 아니다. 셸 안에서 눌러도 셸이 먹지 않는다: xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라온다
@@ -91,7 +93,5 @@ export function recallHotkey(event: {
   altKey: boolean;
   shiftKey: boolean;
 }): boolean {
-  if (event.type !== "keydown") return false;
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
-  return event.code === "KeyJ";
+  return event.type === "keydown" && pressed(event, "recall");
 }

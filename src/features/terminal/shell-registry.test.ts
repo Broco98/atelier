@@ -79,6 +79,7 @@ import { attentionOn } from "./shell-attention";
 import type { Attention } from "./shell-attention";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import { workFixture } from "@/features/works/work-fixture";
+import { HOTKEYS } from "@/lib/hotkeys";
 
 // 소스를 **문자열로만** 본다. 자르거나 파싱하는 정규식은 파서가 새는 순간 조용히 통과하고,
 // 이 저장소는 그것을 fail-open이라 부른다 — 실제로 그 사고가 있었다(아래 「본문도 DOM 전역을
@@ -605,11 +606,13 @@ it("react·tauri·xterm을 import하지 않는다", () => {
   expect(imported.filter((one) => /^(react|@tauri-apps\/|@xterm\/)/.test(one))).toEqual([]);
 
   // 판 03이 works의 `WorkView`를 끌어오면서 목록이 더 늘었다. 이름을 하나씩 막는 대신
-  // **값 import가 하나도 없는 것**을 본다 — 위 셋은 그 성질이 깨지는 흔한 길일 뿐이다.
-  const valueImports = [...source.matchAll(/^\s*import\s+(?!type\b).*$/gm)].map((found) =>
-    found[0].trim(),
-  );
-  expect(valueImports).toEqual([]);
+  // **값 import가 단축키 표 하나뿐인 것**을 본다 — 위 셋은 그 성질이 깨지는 흔한 길일 뿐이다.
+  // 그 하나는 키 판정이 표를 읽어서다(codex-ds 결정 19 · S16). **표 모듈도 같은 그물에 넣는다** — 그쪽의 값 import가
+  // JSON 한 장뿐이어야 이 모듈이 그것을 통해 무엇도 끌어오지 않는다. 화이트리스트가 열리는 자리는 데이터 한 장까지다.
+  const valueImports = (text: string) =>
+    [...text.matchAll(/^\s*import\s+(?!type\b).*$/gm)].map((found) => found[0].trim());
+  expect(valueImports(source)).toEqual(['import { pressed, TAB_HOTKEYS } from "@/lib/hotkeys";']);
+  expect(valueImports(read("../../lib/hotkeys.ts"))).toEqual(['import table from "./hotkeys.json";']);
 });
 
 // **위 검사는 import만 본다 — 그것이 fail-open이었다.** 머리말은 「DOM 없는 기본 환경에서
@@ -1120,6 +1123,9 @@ describe("앱이 가져가는 키", () => {
 // ⌘W는 **두 자리가 함께여야** 성립한다. 프런트가 잡아도 macOS 메뉴에 `Close Window`가
 // 있으면 OS가 먼저 먹어 창이 닫히고 셸이 전부 죽는다 — 실물에서 그렇게 잃었다. 프런트만
 // 보는 검사는 그 회귀에 초록이므로, 메뉴 쪽 자리를 여기서 함께 못박는다.
+//
+// **메뉴 바의 단축키는 이 판정과 같은 표에서 나온다**(codex-ds 결정 19 · S16) — `lib.rs`가 빌드 때 그 파일을 싣는다. ⌘W 줄이
+// 메뉴 바에 서지 않는 것(`menu`가 없다)은 표 쪽에서 본다. 표에서 만든 메뉴의 차례 · ⌘W 없음은 `lib.rs`의 테스트가 잰다.
 it("macOS 메뉴에 Close Window가 없다 — 있으면 ⌘W가 웹뷰까지 못 온다", () => {
   const menu = readFileSync(
     fileURLToPath(new URL("../../../src-tauri/src/lib.rs", import.meta.url)),
@@ -1131,6 +1137,12 @@ it("macOS 메뉴에 Close Window가 없다 — 있으면 ⌘W가 웹뷰까지 �
   expect(menu).not.toMatch(/\.close_window\(\)/);
   // 메뉴를 통째로 지우면 ⌘C·⌘V·⌘A가 함께 죽는다. Edit이 살아 있는지 본다.
   expect(menu).toContain(".select_all()");
+  // 메뉴 바가 읽는 표가 이 판정이 읽는 그 파일이다 — 다른 사본이면 메뉴와 판정이 갈린다.
+  expect(menu).toContain('include_str!("../../src/lib/hotkeys.json")');
+  expect(HOTKEYS.closeShell, "⌘W 줄이 메뉴 바에 선다").toMatchObject({ code: "KeyW", mods: ["meta"], menu: null });
+  expect(shellHotkey({ type: "keydown", code: "KeyW", ctrlKey: false, metaKey: true, altKey: false, shiftKey: false })).toBe(
+    "close",
+  );
 });
 
 

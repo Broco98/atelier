@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import * as Context from "./context-menu";
 import * as Dropdown from "./dropdown-menu";
+import { HOTKEYS } from "@/lib/hotkeys";
 
 // codex-ds 티켓 11 — **우클릭 메뉴 바탕은 ⋯ 메뉴와 같은 항목 부품으로 그린다**(codex-ds 결정 15 — 정의 하나), 그리고 메뉴 줄에
 // **단축키 칸**과 **하위 메뉴**가 선다(codex-ds 결정 10).
@@ -15,8 +16,12 @@ import * as Dropdown from "./dropdown-menu";
 // 뜨는 박자), 체크(14 · `fg`), 끈 줄(55% · 글자 · 글리프 `fg-tertiary`)은 L3(`e2e/frame.spec.ts`의 「작업 ⋯ 메뉴」 · 「상태 메뉴」 ·
 // work 메뉴 Finder ▸의 사라진 worktree 줄)가 잰다. 하위 메뉴의 모양(트리거의 셰브런 · 연 줄의 면, 카드의 폭 · 자리, → · ← · 포인터로
 // 여닫기)은 메뉴 부품의 진열대 위에서 L3(`e2e/submenu.spec.ts`)가 잰다 — 앱의 work 메뉴도 하위 메뉴를 달지만 그 줄 길이가 work의
-// slug · 프로젝트 이름을 따라가 카드 폭의 두 끝을 골라 세울 수 없다(`e2e/menu-fixture.tsx` 머리말). 단축키 칸의 칠해진 크기 · 색은 아직
-// 어느 층도 재지 않는다 — 단축키 칸을 다는 화면이 아직 없고, 그것을 처음 쓰는 화면의 L3가 잴 몫이다.
+// slug · 프로젝트 이름을 따라가 카드 폭의 두 끝을 골라 세울 수 없다(`e2e/menu-fixture.tsx` 머리말). 단축키 칸의 칠해진 크기 · 색 ·
+// 자리와 줄의 `aria-keyshortcuts`도 같은 진열대 위에서 L3(`e2e/hotkeys.spec.ts`)가 잰다 — 단축키 칸을 다는 앱의 메뉴는 아직 없다(F2 ·
+// ⌘W가 서는 것은 티켓 28 · 29).
+//
+// **단축키 칸은 항목의 `shortcut`이다**(codex-ds 티켓 26). 단축키 표의 항목 이름을 받아 그 글자를 칸에, 그 값을 줄의 `aria-keyshortcuts`에
+// 준다 — 칸 부품은 내보내지 않아 글자를 손으로 넘기는 길이 없다.
 
 /** 우클릭 메뉴가 ⋯ 메뉴에게서 받아 쓰는 부품 — 이름의 뒷부분이 같다(`ContextMenuItem` ↔ `DropdownMenuItem`). */
 const SHARED_PARTS = [
@@ -30,16 +35,14 @@ const SHARED_PARTS = [
   "SubTrigger",
   "SubContent",
   "Separator",
-  "Shortcut",
 ] as const;
 
 /** 메뉴 줄 네 가지 — 단축키 칸이 선 글리프 줄, 단축키가 없는 글리프 줄, 구분선, 지우기 줄. */
 const rows = (
   <>
-    <Dropdown.DropdownMenuItem>
+    <Dropdown.DropdownMenuItem shortcut="rename">
       <Pencil />
       <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
-      <Dropdown.DropdownMenuShortcut>F2</Dropdown.DropdownMenuShortcut>
     </Dropdown.DropdownMenuItem>
     <Dropdown.DropdownMenuItem>
       <Copy />
@@ -152,5 +155,13 @@ describe("단축키 칸", () => {
 
   it("단축키가 없는 줄에는 칸이 서지 않는다", () => {
     expect(shortcutOf(rowOf(inDropdown(rows), "경로 복사"))).toBeNull();
+  });
+
+  // 읽어 주는 몫 — 칸을 이름에서 뺀 대신 줄이 그 키를 말한다. 글자와 값이 표의 같은 항목에서 온다.
+  it("줄이 표의 그 항목을 aria-keyshortcuts로 말하고, 단축키가 없는 줄은 말하지 않는다", () => {
+    const opening = (name: string) => rowOf(inDropdown(rows), name).match(/^<div[^>]*>/)?.[0] ?? "";
+    expect(opening("이름 바꾸기")).toContain(`aria-keyshortcuts="${HOTKEYS.rename.aria}"`);
+    expect(shortcutOf(rowOf(inDropdown(rows), "이름 바꾸기"))?.text).toBe(HOTKEYS.rename.glyph);
+    expect(opening("경로 복사")).not.toContain("aria-keyshortcuts");
   });
 });

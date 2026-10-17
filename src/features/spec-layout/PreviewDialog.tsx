@@ -56,7 +56,7 @@ function PreviewDialog({
               버튼 26 단(`icon-button-sm` — DS `.at-ib.sm`)이다. */}
           <Hint
             text="닫기"
-            shortcut="Esc"
+            shortcut="dismiss"
             announce="name"
             render={<DialogClose className="icon-button-quiet icon-button-sm ml-auto text-fg-secondary focus-ring" />}
           >

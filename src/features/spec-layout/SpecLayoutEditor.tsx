@@ -41,6 +41,7 @@ import { settingsItem } from "@/features/settings/pages";
 import { SettingsBody, SettingsGroup, SettingsRow, SettingsSection } from "@/features/settings/SettingsGroup";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
 import { layoutDirRef } from "@/features/works/refs";
+import { pressed, type HotkeyId, type KeyChord } from "@/lib/hotkeys";
 import { armDrag, cancelPress, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import {
@@ -631,13 +632,15 @@ function TreeTools({
       ))}
       <div className="ml-auto flex shrink-0 items-center">
         <div role="group" aria-label="고른 항목 옮기기" className="flex items-center">
-          {/* 이름이 없는 아이콘 버튼이라 툴팁 글자가 이름이고, 단축키는 Kbd로 붙어 설명으로도 남는다(S28). 잠기면
+          {/* 이름이 없는 아이콘 버튼이라 툴팁 글자가 이름이고, 단축키는 Kbd로 붙어 설명으로도 남는다(S28). 그 키는 트리에 초점이
+              있을 때 먹어(`moveOfKey`) 이 버튼을 누르는 키가 아니다 — `aria-keyshortcuts`는 안 단다(`shortcutElsewhere`). 잠기면
               툴팁이 없다(S23) — 버튼이 네이티브 `disabled`다. 모양과 크기는 아이콘 버튼 규격의 26 단(`icon-button-sm`)이 든다. */}
-          {MOVE_TOOLS.map(({ move, label, keys, Icon }) => (
+          {MOVE_TOOLS.map(({ move, label, hotkey, Icon }) => (
             <Hint
               key={move}
               text={label}
-              shortcut={keys}
+              shortcut={hotkey}
+              shortcutElsewhere
               announce="name"
               disabled={!edits[move]}
               render={
@@ -684,32 +687,23 @@ function TreeTools({
 /** 더하기 둘의 이름 — 보이는 글자는 종류(「파일」·「폴더」)뿐이다. */
 const ADD_LABEL: Record<"file" | "folder", string> = { file: "파일 항목 추가", folder: "폴더 항목 추가" };
 
-/** 옮기기 넷 — 줄에 선 순서이고, 단축키는 이 키들에 ⌥를 누른 것이다(`moveOfKey`). */
-const MOVE_TOOLS: { move: EntryMove; label: string; keys: string; Icon: LucideIcon }[] = [
-  { move: "up", label: "위로", keys: "⌥↑", Icon: ArrowUp },
-  { move: "down", label: "아래로", keys: "⌥↓", Icon: ArrowDown },
-  { move: "outdent", label: "내어쓰기", keys: "⌥←", Icon: IndentDecrease },
-  { move: "indent", label: "들여쓰기", keys: "⌥→", Icon: IndentIncrease },
+/**
+ * 옮기기 넷 — 줄에 선 순서이고, 단축키는 단축키 표의 그 항목이다(⌥만 누른 화살표 — `entryUp` …). 버튼의 도움말 글자와 트리의 판정
+ * (`moveOfKey`)이 같은 줄을 읽는다.
+ */
+const MOVE_TOOLS: { move: EntryMove; label: string; hotkey: HotkeyId; Icon: LucideIcon }[] = [
+  { move: "up", label: "위로", hotkey: "entryUp", Icon: ArrowUp },
+  { move: "down", label: "아래로", hotkey: "entryDown", Icon: ArrowDown },
+  { move: "outdent", label: "내어쓰기", hotkey: "entryOutdent", Icon: IndentDecrease },
+  { move: "indent", label: "들여쓰기", hotkey: "entryIndent", Icon: IndentIncrease },
 ];
 
 /**
  * 단축키의 옮기기 — ⌥만 누른 화살표다. **트리에 초점이 있을 때만 받는다**(트리의 `onKeyDown`): 설명 칸과 템플릿
  * 칸 안에서 ⌥←·⌥→는 macOS의 단어 이동이다.
  */
-function moveOfKey(event: KeyboardEvent): EntryMove | null {
-  if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return null;
-  switch (event.key) {
-    case "ArrowUp":
-      return "up";
-    case "ArrowDown":
-      return "down";
-    case "ArrowLeft":
-      return "outdent";
-    case "ArrowRight":
-      return "indent";
-    default:
-      return null;
-  }
+function moveOfKey(event: KeyChord): EntryMove | null {
+  return MOVE_TOOLS.find(({ hotkey }) => pressed(event, hotkey))?.move ?? null;
 }
 
 /**

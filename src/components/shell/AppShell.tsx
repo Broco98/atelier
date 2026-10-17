@@ -14,6 +14,7 @@ import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/feat
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
+import { pressed } from "@/lib/hotkeys";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
@@ -95,7 +96,8 @@ function AppShell() {
   // 같은 성질이기 때문이다: OS 메뉴가 웹뷰보다 먼저 먹는 것을 유리하게 쓰는 길.
   useEffect(() => {
     const unlisten = listen<string>("hotkey:menu", ({ payload: code }) => {
-      window.dispatchEvent(new KeyboardEvent("keydown", menuHotkeyInit(code)));
+      const init = menuHotkeyInit(code);
+      if (init) window.dispatchEvent(new KeyboardEvent("keydown", init));
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -158,13 +160,13 @@ function AppShell() {
     [router],
   );
 
-  // ⌘B는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
+  // ⌘B(단축키 표의 `sidebar`)는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
   // 그렇게 두는 근거는 이 키가 답을 요구하지 않기 때문이다(창은 그대로 서 있다). 그물은
   // L3 한 줄뿐이라(`search-palette.spec.ts`), 아래 게이트를 이 리스너로 끌어올리면 조용히
   // 죽는다.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === "KeyB") {
+      if (pressed(e, "sidebar")) {
         e.preventDefault();
         toggleSidebar();
       }

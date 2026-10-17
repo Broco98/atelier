@@ -82,7 +82,7 @@ function FullscreenModal({
             {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 이름보다 더 말하던 단축키는 설명으로 남긴다(S28 — `shortcut`). */}
             <Hint
               text="닫기"
-              shortcut="Esc"
+              shortcut="dismiss"
               announce="name"
               render={<DialogClose className="icon-button-quiet icon-button-xs ml-1 text-fg-tertiary focus-ring" />}
             >

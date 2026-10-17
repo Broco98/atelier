@@ -608,9 +608,13 @@ for (const way of ["단축키로", "버튼으로"] as const) {
     await openEditor(page);
 
     await 행(page, "decisions.md").click();
-    // 버튼의 도움말이 그 단축키를 말한다 — 툴팁의 Kbd이자 버튼의 설명이다(S28)
+    // 버튼의 도움말이 그 단축키를 말한다 — 툴팁의 Kbd이자 버튼의 설명이다(S28). `aria-keyshortcuts`는 없다 — 그 키는 트리에
+    // 초점이 있을 때 먹고, 이 버튼을 누르거나 버튼에 초점을 주는 키가 아니다(ARIA의 그 속성이 말하는 키는 그것뿐이다).
     await expect(도구(page, "아래로")).toHaveAccessibleDescription("⌥↓");
     await expect(도구(page, "들여쓰기")).toHaveAccessibleDescription("⌥→");
+    for (const name of ["위로", "아래로", "내어쓰기", "들여쓰기"]) {
+      await expect(도구(page, name)).not.toHaveAttribute("aria-keyshortcuts", /.*/);
+    }
     if (way === "단축키로") {
       await page.keyboard.press("Alt+ArrowDown");
       await expect(page.getByRole("treeitem")).toHaveText(["overview.md", "{n}-{name}/", "tickets/", "decisions.md"]);
@@ -833,9 +837,11 @@ test("「LLM이 받는 텍스트」를 누르면 팝업이 미리보기의 글�
     rows.map((row) => getComputedStyle(row).backgroundColor),
   );
   expect(line).not.toBe("rgba(0, 0, 0, 0)");
-  // 열리면 창 자신이 포커스를 받는다(S45) — 닫기 버튼에 링과 툴팁이 서지 않는다. Esc는 닫기의 설명으로도 읽힌다.
+  // 열리면 창 자신이 포커스를 받는다(S45) — 닫기 버튼에 링과 툴팁이 서지 않는다. Esc는 닫기의 설명으로도 읽히고, 창 어디서나
+  // 닫기와 같은 일이라 버튼의 `aria-keyshortcuts`로도 선다(옮기기 넷과 갈리는 자리).
   await expect(팝업(page)).toBeFocused();
   await expect(팝업(page).getByRole("button", { name: "닫기", exact: true })).toHaveAccessibleDescription("Esc");
+  await expect(팝업(page).getByRole("button", { name: "닫기", exact: true })).toHaveAttribute("aria-keyshortcuts", "Escape");
 
   // 닫히면 포커스가 여는 버튼으로 돌아온다 — WebKit은 누른 버튼에 포커스를 주지 않아 부품의 기본값이면 `<body>`다.
   await page.keyboard.press("Escape");

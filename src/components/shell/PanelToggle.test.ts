@@ -31,13 +31,18 @@ describe("⌘Enter가 패널 토글 몫인가", () => {
     ctrlKey: false,
     altKey: false,
     shiftKey: false,
-    key: "Enter",
+    code: "Enter",
     target: new EventTarget(),
     ...over,
   });
 
   it("포커스가 트리·패널에 있으면 패널 몫이다", () => {
     expect(togglesPanel(key())).toBe(true);
+  });
+
+  it("숫자 패드 Enter(맥북의 fn+Return)도 같은 키다", () => {
+    // `code`만 `NumpadEnter`로 갈리고 `key`는 같은 Enter다 — 한때 이 판정이 `key`를 볼 때도 받았다.
+    expect(togglesPanel(key({ code: "NumpadEnter" }))).toBe(true);
   });
 
   it("셸(xterm의 숨은 <textarea>)에 포커스가 있으면 셸 몫이다", () => {
@@ -57,6 +62,6 @@ describe("⌘Enter가 패널 토글 몫인가", () => {
       expect(togglesPanel(key({ [extra]: true })), extra).toBe(false);
     }
     expect(togglesPanel(key({ metaKey: false }))).toBe(false);
-    expect(togglesPanel(key({ key: "t" }))).toBe(false);
+    expect(togglesPanel(key({ code: "KeyT" }))).toBe(false);
   });
 });

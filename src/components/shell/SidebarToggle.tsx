@@ -1,4 +1,5 @@
 import { PanelLeft } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 
 interface SidebarToggleProps {
   open: boolean;
@@ -6,9 +7,16 @@ interface SidebarToggleProps {
 }
 
 // 셸 컨트롤 행의 첫 칸 — 자리는 ShellControls가 잡는다.
+//
+// 도움말은 상태를 타고(「사이드바 접기」 · 「사이드바 펼치기」 — 오른쪽 끝의 패널 토글과 같은 말투) 옆에 ⌘B(단축키 표의 `sidebar`)가
+// 선다 — 있는 단축키를 버튼에서 배운다(codex-ds 스토리 98). 이름은 상태를 안 타고 「사이드바 토글」 그대로다 — 열림은
+// `aria-expanded`가 말하고, 키는 설명 · `aria-keyshortcuts`로 남는다(S28 — `Hint`의 `shortcut`). 트리거에 직접 준 이름이 `Hint`의
+// 것보다 이긴다.
 function SidebarToggle({ open, onToggle }: SidebarToggleProps) {
   return (
-    <button
+    <Hint
+      text={open ? "사이드바 접기" : "사이드바 펼치기"}
+      shortcut="sidebar"
       type="button"
       onClick={onToggle}
       aria-label="사이드바 토글"
@@ -20,7 +28,7 @@ function SidebarToggle({ open, onToggle }: SidebarToggleProps) {
       className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
     >
       <PanelLeft className="size-3.75" />
-    </button>
+    </Hint>
   );
 }
 

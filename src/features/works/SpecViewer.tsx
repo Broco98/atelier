@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
+import { HOTKEYS } from "@/lib/hotkeys";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -371,17 +372,17 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
       <div data-frame-hint role="status" className="flex flex-col gap-1">
         <span className="text-chat-meta font-semibold">단축키 둘이 지금 안 먹어요</span>
-        {/* **둘만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩·⌘K는 네이티브 메뉴가 대신 받아 되살아난다
-            (`components/shell/menu-hotkey.ts`). 남은 둘이 왜 그 길에 못 실리는지는
-            `src-tauri/src/lib.rs`의 `HOTKEYS` 독이 든다 — 둘의 사정이 서로 다르다.
+        {/* **둘만 남았다.** 메뉴 바에 서는 키(단축키 표에서 `menu`가 있는 줄 — ⌘1~9·⌘B·⌘T·⌘↩·⌘K·⌘J)는 네이티브 메뉴가
+            대신 받아 되살아난다(`components/shell/menu-hotkey.ts`). 남은 둘이 왜 그 길에 못 실리는지는
+            `src-tauri/src/lib.rs`의 `MENU_HOTKEYS` 독이 든다 — 둘의 사정이 서로 다르다.
 
             **⇧⇧가 여기서 빠진 것은 걷혔기 때문이다**(팔레트 결정 2). 그 몸짓은 accelerator 문법에
             실을 자리가 없어 메뉴로 되살릴 수도 없었는데, 그것을 ⌘K로 바꾼 값의 절반이
             정확히 이 자리다 — 프레임 안에서도 열린다. */}
-        {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 그대로다 — 둘 사이의 「·」까지
+        {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 단축키 표의 그 줄(`nextTab` · `closeShell`)이다 — 둘 사이의 「·」까지
             붙여 둔다. 사이를 띄우면 「어느 둘인지」를 세는 L3(`spec-html.spec.ts`)의 글자가 갈린다. */}
         <span className="text-chat-meta text-fg-tertiary">
-          <Kbd>⌃Tab</Kbd>·<Kbd>⌘W</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
+          <Kbd>{HOTKEYS.nextTab.glyph}</Kbd>·<Kbd>{HOTKEYS.closeShell.glyph}</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
     </PopoverPortal>
