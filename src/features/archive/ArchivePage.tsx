@@ -34,8 +34,8 @@ interface ArchivePageProps {
   currentFile: string | null;
   // 목록 행을 누르면 그 아카이브를 고른다 — 주소를 옮기는 것은 라우트다
   onSelect: (slug: string) => void;
-  // spec 목록 패널의 트리에서 문서를 고른다 — 어느 아카이브의 문서인지 함께 넘긴다(주소가 둘을 함께 든다)
-  onSelectDoc: (slug: string, path: string) => void;
+  // spec 목록 패널의 트리에서 문서를 고른다 — 패널은 고른 아카이브의 것이라 경로만 넘긴다(주소를 옮기는 것은 라우트다)
+  onSelectDoc: (path: string) => void;
   // 본문 링크는 지금 아카이브 안에서만 움직인다
   onFollowLink: (path: string) => void;
 }
@@ -237,8 +237,7 @@ function ArchivePage({
                   slug={selected.slug}
                   archived={archived}
                   current={current}
-                  // 트리에서 문서를 고르면 그 아카이브와 문서가 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
-                  onSelect={(path) => onSelectDoc(selected.slug, path)}
+                  onSelect={onSelectDoc}
                   onCopy={(path) => copyText(archiveRef(selected.slug, path))}
                 />
               ),

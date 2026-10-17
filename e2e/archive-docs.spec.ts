@@ -113,27 +113,30 @@ test("아카이브의 spec/ 아래는 받은 트리대로 서고, 읽기와 복�
   await installFixtureBackend(page);
   await recordClipboard(page);
   await page.goto(`/archive/${shipped.slug}`);
-  await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+  const main = page.locator("main");
+  await expect(main.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
 
+  // 트리는 spec 목록 패널에, 고른 문서는 문서 칸(`main`)에 선다 — 그 자리로 좁혀 집는다(같은 이름이 다른 자리에 서도 초록이 되지 않게).
+  //
   // 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다(허용 차이 4) — 폴더 행에 그려진 그림이
   // 여닫이 화살표 하나뿐이다. 이름으로 알아보던 앱은 여기 `list-checks`를 그렸다.
-  const tickets = page.getByRole("button", { name: "tickets", exact: true });
+  const tickets = 패널(page).getByRole("button", { name: "tickets", exact: true });
   await expect(tickets).toHaveAttribute("aria-expanded", "true");
   await expect(tickets.locator("svg")).toHaveCount(1);
   await expect(tickets.locator("svg.lucide-chevron-right")).toHaveCount(1);
 
   // 문서 읽기 IPC의 경로에 `spec/`가 붙는다 — 트리의 경로(`tickets/할일.md`) 그대로 나가면 기록과 같은
   // 자리(work 폴더)에서 찾아 없는 파일이 된다.
-  const ticket = page.getByRole("button", { name: "MD 할일.md", exact: true });
+  const ticket = 패널(page).getByRole("button", { name: "MD 할일.md", exact: true });
   await ticket.click();
-  await expect(page.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  await expect(main.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
   expect((await ipcCallArgs(page, "read_archived_file", "path")).map(({ args }) => args.path)).toContain(TICKET);
   expect(TICKET).toBe("spec/tickets/할일.md");
 
   // 경로를 복사하면 `spec/`가 붙은 아카이브 참조가 클립보드에 적히고(S35의 기록기), 「메시지」 토스트도 같은
   // 참조를 적는다.
   await ticket.hover();
-  await page.getByRole("button", { name: "할일.md 경로 복사", exact: true }).click();
+  await 패널(page).getByRole("button", { name: "할일.md 경로 복사", exact: true }).click();
   await expect
     .poll(() => clipboardWrites(page))
     .toEqual(["~/.atelier/archive/shipped-work/spec/tickets/할일.md"]);
@@ -364,6 +367,32 @@ test("목록 행은 펼치지 않는 두 줄 행이고, 고른 아카이브의 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **보고 있는 아카이브의 행을 다시 누르면 아무 일도 없다.** 행은 그 아카이브로 옮겨 가는 이동이고 이동은 문서를 딸려 보내지 않는다 —
+// 같은 아카이브로도 그렇게 옮기면 보던 문서를 버리고(`?file=`이 빠진다) 그 아카이브의 기본 문서로 떨어지며, 주소가 바뀌어 히스토리가
+// 한 칸 쌓인다(뒤로가기가 같은 아카이브를 한 번 더 지난다).
+test("보고 있는 아카이브의 행을 다시 눌러도 보던 문서가 그대로고 히스토리가 쌓이지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/archive/${shipped.slug}`);
+  const main = page.locator("main");
+  await expect(main.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+
+  await 패널(page).getByRole("button", { name: "MD 할일.md", exact: true }).click();
+  await expect(main.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  const url = page.url();
+  expect(url).toContain("file=");
+  const depth = await page.evaluate(() => window.history.length);
+
+  const row = 목록(page).getByRole("button", { name: new RegExp(`^${shipped.title} `) });
+  await expect(row).toHaveClass(/selected-row/);
+  await row.click();
+  // 「아무 일도 안 났다」는 곧바로 초록이라, 누름이 부른 이동이 주소와 화면에 닿을 두 프레임을 넘긴 뒤 잰다.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(page.url()).toBe(url);
+  expect(await page.evaluate(() => window.history.length)).toBe(depth);
+  await expect(main.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // **⌘Enter와 머리 카드의 spec 목록 토글이 패널을 여닫는다**(codex-ds 결정 32 — 「⌘Enter는 그 화면의 오른쪽 패널」, 스토리 56 · 57). 토글은
 // 머리 카드 오른쪽 끝, 세로선 너머다(⋯ | spec 목록 토글). 이름이 누르면 일어날 일을 말하고 `aria-expanded` · `aria-controls`가 패널을
 // 가리킨다. 닫힌 패널은 폭이 0으로 접혀(220ms — 작업 패널과 같은 칸) 문서 카드가 창 오른쪽 틈 끝까지 넓어진다. 찾기 칸에서의 ⌘Enter는
@@ -413,6 +442,16 @@ test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 �
   await page.locator("main").click();
   await page.keyboard.press("Meta+Enter");
   await expect(open).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(asideWidth).toBe(0);
+
+  // 거꾸로도 그렇다 — ⌘Enter로 펴고 토글로 접는다. 두 길이 저마다 여닫기를 다 한다(한쪽만 뒤집으면 위 흐름이 그대로 초록이다).
+  await page.keyboard.press("Meta+Enter");
+  await expect(close).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(cardRight).toBeLessThan(viewport.width - gap - 200);
+  await close.click();
+  await expect(open).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(asideWidth).toBe(0);
+  await expect.poll(cardRight).toBe(viewport.width - gap);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
