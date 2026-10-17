@@ -32,7 +32,9 @@ import { cn } from "@/lib/utils";
 //   태스크에서 다시 붙었는지를 본다.
 // - **비움의 뜻은 부르는 쪽이 정한다**(`emptyMeans`, 구현 노트 Q8). work · 프로젝트는 「원래 이름」(`revert` — 아무것도 부르지 않는다),
 //   셸 탭은 「붙인 이름을 지운다」(`clear` — 빈 이름으로 부른다, 스펙 S7). 앞뒤 빈칸은 늘 걷는다.
-// - **이름이 그대로면 아무것도 부르지 않는다.**
+// - **이름이 그대로면 아무것도 부르지 않는다.** 「그대로」는 저장된 이름과 견준다(`saved` — 없으면 보이는 이름 `value`). 보이는 이름이
+//   저장된 이름이 아닐 수 있는 자리가 그것을 준다 — 셸 탭은 붙인 이름이 없으면 OSC 타이틀 · 셸 이름이 보이는데, 그 글자를 손수 다시
+//   쳐서 저장한 것도 사람이 고른 이름이라 붙어야 다음 타이틀에 안 덮인다(스펙 S7). 손대지 않은 채 끝낸 것은 여전히 부르지 않는다(위).
 // - **키로 끝내면 포커스가 이름으로 돌아간다**(`returnFocus`) — 입력칸이 사라지는 자리에 포커스가 남으면 문서 몸으로 떨어진다. 다른 곳을
 //   눌러 끝낸 때는 그 자리가 포커스를 가져갔으니 돌려주지 않는다. 이름 요소는 입력칸이 사라진 뒤에야 다시 서므로 다음 그림에서 찾는다.
 // - **입력칸 안의 누름 · 키는 둘레로 올라가지 않는다.** 사이드바 행은 누르면 열고 끌면 옮기며, 화면은 window에서 Enter · Esc를 듣는다
@@ -43,6 +45,7 @@ import { cn } from "@/lib/utils";
 // 끝은 한 번뿐이다(`finished`). Enter로 끝내 입력칸이 사라질 때 따라오는 blur가 한 번 더 저장하지 않는다.
 export function InlineRename({
   value,
+  saved,
   label,
   emptyMeans,
   fit,
@@ -51,8 +54,10 @@ export function InlineRename({
   returnFocus,
   className,
 }: {
-  /** 지금 이름. 고치기는 이 글자에서 시작하고, 손대기 전에는 이것을 따르며, 「그대로」 · 「원래 이름」은 이것과 견준다. */
+  /** 지금 이름. 고치기는 이 글자에서 시작하고, 손대기 전에는 이것을 따르며, `saved`가 없으면 「그대로」도 이것과 견준다. */
   value: string;
+  /** 저장된 이름 — 「그대로」는 이것과 견준다(머리말). 보이는 이름이 다른 갈래에서 올 수 있는 자리가 준다. 없으면 `value`다. */
+  saved?: string;
   /** 입력칸의 이름(`aria-label`) — 무엇의 이름인가(「작업 이름」 · 「프로젝트 이름」). */
   label: string;
   /** 비운 채 저장할 때의 뜻 — `revert`는 원래 이름(부르지 않는다), `clear`는 빈 이름으로 부른다. */
@@ -75,9 +80,10 @@ export function InlineRename({
   const finished = useRef(false);
   const mounted = useRef(false);
   // 마지막 그림의 값 — blur 없이 내려간 뒤 끝내는 데 쓴다(머리말). 그림마다 커밋 뒤에 옮겨 둔다.
-  const last = useRef({ draft, value, emptyMeans, onCommit, onDone });
+  const kept = saved ?? value;
+  const last = useRef({ draft, kept, emptyMeans, onCommit, onDone });
   useLayoutEffect(() => {
-    last.current = { draft, value, emptyMeans, onCommit, onDone };
+    last.current = { draft, kept, emptyMeans, onCommit, onDone };
   });
 
   // 손대기 전에 이름이 바뀌면 새 이름을 다시 전부 고른다 — 바뀐 글자 끝으로 커서가 가면 곧바로 친 글자가 새 이름 뒤에 붙는다.
@@ -91,8 +97,8 @@ export function InlineRename({
   const finishOutside = () => {
     if (finished.current) return;
     finished.current = true;
-    const { draft, value, emptyMeans, onCommit, onDone } = last.current;
-    commitIfChanged(draft, value, emptyMeans, onCommit);
+    const { draft, kept, emptyMeans, onCommit, onDone } = last.current;
+    commitIfChanged(draft, kept, emptyMeans, onCommit);
     onDone();
   };
 
@@ -123,7 +129,7 @@ export function InlineRename({
   const finish = (save: boolean, byKey: boolean) => {
     if (finished.current) return;
     finished.current = true;
-    if (save) commitIfChanged(draft, value, emptyMeans, onCommit);
+    if (save) commitIfChanged(draft, kept, emptyMeans, onCommit);
     onDone();
     if (byKey) requestAnimationFrame(() => returnFocus?.()?.focus());
   };
@@ -188,14 +194,14 @@ function isMenu(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[role="menu"]') !== null;
 }
 
-/** 저장할 이름이면 부른다 — 손대지 않음 · 그대로 · `revert`로 비운 이름은 부르지 않는다(머리말). */
+/** 저장할 이름이면 부른다 — 손대지 않음 · 그대로(저장된 이름 `kept`와 같음) · `revert`로 비운 이름은 부르지 않는다(머리말). */
 function commitIfChanged(
   draft: string | null,
-  value: string,
+  kept: string,
   emptyMeans: "revert" | "clear",
   onCommit: (name: string) => void,
 ) {
   if (draft === null) return;
   const next = draft.trim();
-  if (next !== value && (next !== "" || emptyMeans === "clear")) onCommit(next);
+  if (next !== kept && (next !== "" || emptyMeans === "clear")) onCommit(next);
 }

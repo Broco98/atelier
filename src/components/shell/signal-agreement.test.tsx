@@ -173,10 +173,12 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       owner={소유}
       projects={["atelier"]}
       defaultCwd={null}
-      spec={{ on: !켜짐, onSelect: () => {} }}
+      spec={{ on: !켜짐, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} }}
       showing={켜짐}
       onSelect={() => {}}
       onClose={() => {}}
+      onRename={() => {}}
+      onCloseOthers={() => {}}
       onOpen={() => {}}
       onDragTab={() => {}}
       slot={null}

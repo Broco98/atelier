@@ -32,6 +32,13 @@ export function layoutDirRef(folder: string): string {
   return asDir(folder);
 }
 
+/** 셸이 뜬 폴더: 코어가 내려준 `~` 축약 경로(셸의 `cwd`)에 트레일링 `/`만 보장한다. 셸 탭 메뉴의 「작업 폴더 경로 복사」가
+ *  복사하는 한 줄이다(codex-ds 스펙 §9). 레이아웃 참조와 같은 까닭으로 **뿌리를 여기서 짓지 않는다** — 워크트리 경로는 코어가
+ *  완성해 내려준다. */
+export function cwdRef(cwd: string): string {
+  return asDir(cwd);
+}
+
 /** 코어가 완성해 내려준 폴더 경로를 폴더 참조로 — 끝의 `/` 하나만 보장한다. */
 function asDir(path: string): string {
   return path.endsWith("/") ? path : `${path}/`;

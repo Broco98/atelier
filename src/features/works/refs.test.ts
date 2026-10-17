@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { archiveRef, archiveSpecDirRef, layoutDirRef, specDirRef, specRef, workDirRef } from "./refs";
+import { archiveRef, archiveSpecDirRef, cwdRef, layoutDirRef, specDirRef, specRef, workDirRef } from "./refs";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
 // 그래서 아래 기대값은 `refs.ts`의 뿌리 상수를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
@@ -56,6 +56,14 @@ describe("레이아웃 참조", () => {
     expect(layoutDirRef("/tmp/atelier-home/layouts/atelier")).toBe(
       "/tmp/atelier-home/layouts/atelier/",
     );
+  });
+});
+
+// 셸 탭 메뉴의 「작업 폴더 경로 복사」(codex-ds 스펙 §9)는 그 셸이 뜬 폴더 — 코어가 내려준 `~` 축약 cwd — 를 폴더 참조로 쓴다.
+describe("셸 폴더 참조", () => {
+  it("받은 cwd에 `/`만 보장한다", () => {
+    expect(cwdRef("~/.atelier/works/multi-work/trees/billing")).toBe("~/.atelier/works/multi-work/trees/billing/");
+    expect(cwdRef("~/.atelier/works/multi-work/trees/billing/")).toBe("~/.atelier/works/multi-work/trees/billing/");
   });
 });
 

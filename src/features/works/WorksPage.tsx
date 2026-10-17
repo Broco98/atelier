@@ -34,10 +34,12 @@ import {
   workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
+  closeOtherShells,
   dropShellOnSlot,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
+  renameShell,
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
@@ -48,7 +50,7 @@ import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { dropSplit, otherTab } from "./split-view";
 import { ignoresViewSwitch } from "./doc-refs";
-import { specRef } from "./refs";
+import { cwdRef, specDirRef, specRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
 import { WorkContextMenu } from "./WorkContextMenu";
@@ -590,7 +592,14 @@ function WorksPage({
       defaultCwd={workDefaultOrigin(panelWork).cwd}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
-      spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
+      //
+      // 우클릭 메뉴(codex-ds 스펙 §9)의 두 줄은 work 메뉴의 Finder ▸ 「spec」 · 복사 ▸ 「spec 경로」와 같은 길이다.
+      spec={{
+        on: specStands,
+        onSelect: () => onSelectTab("spec"),
+        onOpenFolder: () => openWorkFolder(panelWork.slug, null),
+        onCopyPath: () => copyText(specDirRef(panelWork.slug)),
+      }}
       showing={terminalStands}
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
@@ -603,6 +612,10 @@ function WorksPage({
       }}
       // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
       onClose={requestCloseShell}
+      // 셸 탭 메뉴(codex-ds 스펙 §9 · S7 · S8). 붙인 이름은 메모리에만 있다. 작업 폴더는 그 셸이 뜬 곳을 참조 표기(끝에 `/`)로 쓴다.
+      onRename={renameShell}
+      onCloseOthers={(id) => void closeOtherShells(id)}
+      onCopyCwd={(cwd) => copyText(cwdRef(cwd))}
       onOpen={(place) => {
         // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
         // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —

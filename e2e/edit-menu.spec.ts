@@ -506,6 +506,60 @@ test("이름을 고치는 칸의 편집 메뉴 밖을 누르면 메뉴만 닫히
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// ── 셸 이름을 고치는 칸 ──
+
+// 셸 탭의 제자리 이름 바꾸기(티켓 29)도 같은 칸이다. 그 칸은 셸 탭 메뉴의 대상(탭 칸) 안에 선다 — 그래도 우클릭 · ⇧F10은 셸 탭 메뉴가
+// 아니라 편집 메뉴를 열고 고치기가 이어진다. 붙인 이름은 메모리에만 살아(IPC가 없다) 저장은 탭 글자로 잰다.
+
+for (const { how, open } of 여는길) {
+  test(`셸 이름을 고치는 칸에서 ${how}면 셸 탭 메뉴가 아니라 편집 메뉴가 서고 고치기가 이어진다 — 메뉴로 붙인 이름을 Enter가 저장한다`, async ({
+    page,
+  }) => {
+    await installFixtureBackend(page);
+    await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+    await awaitSpawned(page, 1);
+    const 링 = `1px solid ${await 토큰색(page, "--accent")}`;
+    const cell = page.locator('[data-tab="shell"]').first();
+    const 이름 = cell.locator("button[aria-pressed]");
+    await 이름.focus();
+    await page.keyboard.press("F2");
+    const field = cell.getByRole("textbox", { name: "셸 이름", exact: true, includeHidden: true });
+    await expect(field).toBeFocused();
+    await field.fill("abc def");
+    await 고른다(field, 0, 3);
+
+    await open(page, field);
+    const menu = 메뉴(page);
+    await expect(menu).toBeVisible();
+    // 선 메뉴는 편집 메뉴 하나다 — 셸 탭 메뉴(이름 바꾸기 · 닫기 …)는 안 선다.
+    await expect(menu).toHaveCount(1);
+    expect(await 줄차례(menu)).toEqual(입력칸차례);
+    // 고치기는 끝나지 않았다 — 칸이 친 글자째 남고, 대상 테두리는 그 칸이 입는다(탭 칸이 아니다).
+    await expect(field).toHaveValue("abc def");
+    await expect.poll(() => 테두리(field)).toBe(링);
+    expect(await 테두리(cell)).toBeNull();
+
+    // Esc는 메뉴만 닫는다 — 포커스가 고름째 그 칸으로 돌아온다.
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(field).toBeFocused();
+    expect(await 고름(field)).toEqual([0, 3]);
+    await expect(field).not.toHaveAttribute("data-menu-target");
+
+    // 메뉴의 붙여넣기가 그 칸의 고름을 갈아 끼우고, Enter가 그 셸의 이름으로 세운다.
+    await 클립보드를심는다(page, "고친");
+    await open(page, field);
+    await 항목(page, "붙여넣기").click();
+    await expect(menu).toHaveCount(0);
+    await expect(field).toHaveValue("고친 def");
+    await expect(field).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(field).toHaveCount(0);
+    await expect(이름).toHaveText("고친 def");
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
 // ── 터미널 ──
 
 const 셸칸 = (page: Page) => page.locator('[data-tab="shell"]');

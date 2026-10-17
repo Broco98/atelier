@@ -18,9 +18,11 @@ import {
   topTerminal,
 } from "./shell-registry";
 import {
+  closeOtherShells,
   dropShellOnSlot,
   onNewShellRequested,
   openNewShell,
+  renameShell,
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
@@ -199,6 +201,10 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
             onSelect={selectShellWithFocus}
             // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
             onClose={requestCloseShell}
+            // 셸 탭 메뉴(codex-ds 스펙 §9 · S7 · S8). 「작업 폴더 경로 복사」는 주지 않는다 — 이 화면의 셸은 데이터 루트에서 떠 작업
+            // 폴더가 없다(구현 노트 Q10). 안 주면 그 줄이 안 선다.
+            onRename={renameShell}
+            onCloseOthers={(id) => void closeOtherShells(id)}
             onOpen={() => openNewShell(topTerminal())}
             // **이 화면도 탭을 끈다**(UI개선 결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
             // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
