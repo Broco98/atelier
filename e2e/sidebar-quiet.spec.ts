@@ -148,8 +148,8 @@ test("목록이 스크롤됐을 때만 윗 가장자리에 선이 서고, 맨 �
 test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   // **창 높이가 좁은 창문 안에 있어야 한다** — 처음엔 `SCROLL`만큼 넘치고, `작업`을 접으면 안
-  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 188px → 접으면 122px).
-  // 목록 상자 = 창 높이 − 230px라(머리 줄 48 · 바닥 Settings 위 선은 자리를 안 먹는 0.5px 면) 창문은 352~378px다. 그 안의 값을 고른다.
+  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 182px → 접으면 116px).
+  // 목록 상자 = 창 높이 − 230px라(머리 줄 48 · 바닥 Settings 위 선은 자리를 안 먹는 0.5px 면) 창문은 346~372px다. 그 안의 값을 고른다.
   await page.setViewportSize({ width: 1280, height: 362 });
   await page.goto("/projects");
   await 넘칠때까지(page);

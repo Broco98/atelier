@@ -104,17 +104,20 @@ export function AttentionBand({
     <div
       data-band=""
       className={cn(
-        "flex shrink-0 flex-col gap-(--row-gap)",
+        "flex shrink-0 flex-col gap-0.5",
         // **한 덩어리 상자다** — 바탕 위의 흰 카드(DS `.at-band` — `surface` · `radius-2xl` · `shadow-hairline` + `shadow-200`, 합친
-        // 이름 `shadow-raised`). 바탕에 붙은 사이드바에서 흰 것은 이 상자 하나다(codex-ds 스펙 §5 · 스토리 38). 안쪽 위아래 6 ·
-        // 아래 여백 8은 목업 `.strip` 그대로다. 목록 위에 **뜬 것**으로 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가
-        // 성립하는데, 상자가 없으면 아래 work 행들과 같은 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와
-        // 떼는 몫이다. 그림자는 상자 바깥에 칠해져 아래 `overflow-y-auto`에 안 잘리고, 사이드바 거터(8) 안에 든다.
-        "mt-1.5 mb-2 rounded-2xl bg-surface py-1.5 shadow-raised",
+        // 이름 `shadow-raised`). 바탕에 붙은 사이드바에서 흰 것은 이 상자 하나다(codex-ds 스펙 §5 · 스토리 38). 안쪽 위아래 4 ·
+        // 줄 사이 2는 DS `.at-band` 값이다. 바깥은 위 8 · 아래 0이다 — DS `.at-band`의 위 바깥 6에 기둥(`.at-sidebar`)의 줄 사이
+        // 2를 더한 것이 nav와 떼는 몫이고(이 기둥은 줄 사이를 `gap`으로 두지 않아 그 2를 여기 싣는다), 아래 바깥은 DS 그대로 없다.
+        // 목록과는 목록 쪽이 뗀다(목록 위끝의 줄 사이 2 + 구획 소제목의 위 12 — `SidebarWorkList` · `WorkSectionList`). 목록 위에
+        // **뜬 것**으로 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래 work 행들과 같은
+        // 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 그림자는 상자 바깥에 칠해져 아래 `overflow-y-auto`에 안 잘리고,
+        // 사이드바 거터(8) 안에 든다.
+        "mt-2 rounded-2xl bg-surface py-1 shadow-raised",
         // **양옆 4는 줄의 포커스 링이 설 자리다**(codex-ds 결정 11 — 링은 테두리 바깥 4px까지 칠해진다). 이 상자는 아래에서
         // 세로로 구르느라 넘침을 자르는데(`overflow-y-auto`면 가로도 잘린다), 줄이 상자 양끝에 붙어 서면 키보드로 고른 줄의 링이
         // 위아래 선만 남는다. 상자의 폭과 자리는 그대로 두고 안쪽에 링 폭만큼 자리를 둔다 — 그만큼 줄 · 머리의 안쪽 여백을
-        // 줄여, 점 · 제목 · 경과 · 수가 서는 x는 여백을 두기 전과 같다(work 행과 같은 x — 아래 `BandLine`의 레인 주석).
+        // 줄여, 점 · 제목 · 경과 · 수가 서는 x는 DS의 행 안쪽 8 그대로다(work 행과 같은 x — 아래 `BandLine`의 레인 주석).
         "px-1",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
@@ -128,13 +131,14 @@ export function AttentionBand({
         "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
       )}
     >
-      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 띠 끝에서 글자까지 9 — 띠의 링 자리 4 + 안쪽 5 · 틈 4)는
-          구획 헤더(`SectionHeader`)와 같되 접히지 않는다. 띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
+      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 띠 끝에서 글자까지 8 — 띠의 링 자리 4 + 안쪽 4, DS `.at-band-head`)는
+          구획 헤더(`SectionHeader` — 높이 30, DS `.at-label`의 세로를 따른다)처럼 라벨과 수가 한 줄에 서되 접히지 않는다. 띠가
+          접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
           것이 둘이면 같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 라벨 글자는 둘이 다르다 —
           띠 머리는 DS `.at-band-head`의 12(`text-xs`), 구획 라벨은 DS 「소제목 13」(`chat-meta`)이다.
           수(`text-xs`)가 오른쪽 끝에 서는 것은 바로 아래 구획 헤더들과 같은 계약이다 — 한 컬럼에
           세로로 붙어 서는 수들이 다른 무게로 읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
-      <div className="flex h-7 shrink-0 items-center gap-1 px-[5px]">
+      <div className="flex h-7 shrink-0 items-center gap-1 px-1">
         <span className="shrink-0 text-xs text-fg-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
@@ -231,8 +235,9 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        // 안쪽 왼 5 · 오른 6은 띠 상자의 링 자리(4)를 뺀 값이다 — 점 · 경과가 띠 끝에서 9 · 10에 서던 x를 지킨다.
-        "flex h-(--size-row-band) w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[5px] pr-1.5 text-left text-sm focus-ring",
+        // 안쪽 좌우 4는 띠 상자의 링 자리(4)를 뺀 값이다 — 점 레인 · 경과가 띠 끝에서 DS 행 안쪽 8에 선다(창 끝 + 16 — 사이드바
+        // 행 글자의 세로줄). 레인과 제목 사이는 DS `.at-band .at-row`의 10이다(work 행은 `.at-row`의 9).
+        "flex h-(--size-row-band) w-full shrink-0 items-center gap-2.5 rounded-lg px-1 text-left text-sm focus-ring",
         // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
         // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
         // 묻혀 한 단 위(`fill-hover`)를 썼다.

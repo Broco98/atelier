@@ -81,7 +81,7 @@ function WorkPanel({ work, view, currentFile, onSelectFile, onCopy, onOpenFolder
 
           **든 것은 고른 칸의 이름과 그 칸의 할 일이다**(codex-ds 스펙 §6 「작업 패널」). 칸을 고르는 탭은 레일로, 닫는 `×`는 머리
           줄의 패널 토글로 나갔다(ui-refresh 결정 9 · 10) — 같은 일을 하는 컨트롤이 한 화면에 둘이 서지 않는다. 이름은 DS 패널 머리
-          제목(`.at-panel-head .title` — 14/20 · 500)이고 글자가 카드 + 16에 선다(머리 여백 10 + 제목 안쪽 6 — 행 글자 16, codex-ds
+          제목(`.at-panel-head .title` — 14/20 · 500)이고 글자가 카드 + 16에 선다(머리 여백 8 + 제목 안쪽 8 — 행 글자 16, codex-ds
           스펙 §4 「여백」). 라벨은 소문자 영어다(결정 41) — 탭 줄의 `spec`과 같은 어휘다. 문장 속 한국어는 그대로다(CONTEXT.md).
 
           `spec`의 할 일은 spec 폴더 열기 하나다 — DS 아이콘 버튼(`.at-ib` 28 · `fg-secondary`, hover `fill-hover`)이 머리 오른쪽
@@ -99,7 +99,7 @@ function WorkPanel({ work, view, currentFile, onSelectFile, onCopy, onOpenFolder
           </Hint>
         }
       >
-        <span className="px-1.5 text-sm font-medium">{view}</span>
+        <span className="px-2 text-sm font-medium">{view}</span>
       </CardHead>
       {/* 몸은 칸마다 하나이고 고른 칸의 몸만 보인다(레일의 `PanelBody`). 보이지 않는 몸도 마운트된 채로 두는 것이 그 상자의
           계약이다(결정 9) — 칸이 더해지면 다녀와도 접어 둔 판 · 폴더가 그대로다(칸이 둘인 진열대에서 L3 `rail.spec.ts`가 잰다). */}

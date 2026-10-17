@@ -13,8 +13,9 @@ import { cn } from "@/lib/utils";
 /**
  * 몸의 틀(`.at-set`) — 글 폭(`size-thread`) 가운데에 서고 위 24 · 아래 48이다(DS 「글 거터 20 · 위 24」). 글 거터(옆 20)는 이 상자
  * 밖(스크롤하는 쪽)이 들어 글자가 서는 폭이 48rem 그대로다 — 문서 글(`bodyColumn`)과 같은 나눔이고, 스펙 2절 「글 폭은 `size-thread`」를
- * 글자의 폭으로 읽은 것이다. DS `.at-set`과 프로젝트 상세(`ProjectDetail`)는 거터를 이 폭 **안**에 두어(border-box) 글자가 48rem − 40이라,
- * 넓은 창에서 설정과 프로젝트 상세의 글 폭이 40 갈린다. 어느 나눔으로 맞출지는 여백을 맞추는 티켓 25의 몫이다.
+ * 글자의 폭으로 읽은 것이다(DS `tokens.json`의 `size-thread` 「문서 · 설정 글 폭 상한」). 프로젝트 상세(`ProjectDetail`)도 같은 나눔이라
+ * 넓은 창에서 세 화면의 글 폭이 같다. DS 미리보기 `.at-set`은 거터를 이 폭 **안**에 두어(border-box) 글자가 48rem − 40이다 — 앱은 글
+ * 폭 상한을 글자에 거는 쪽을 골랐다(codex-ds 티켓 25).
  */
 export function SettingsBody({ children }: { children: ReactNode }) {
   return <div className="mx-auto w-full max-w-(--size-thread) pt-6 pb-12">{children}</div>;

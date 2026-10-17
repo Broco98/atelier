@@ -386,7 +386,7 @@ test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 �
   const line = await head.getByRole("separator").boundingBox();
   expect((await close.boundingBox())!.x, "토글은 세로선 너머").toBeGreaterThan(line!.x);
 
-  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap")));
+  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")));
   const viewport = page.viewportSize()!;
   const cardRight = async () => (await card.boundingBox())!.x + (await card.boundingBox())!.width;
   const asideWidth = async () => (await aside.boundingBox())!.width;

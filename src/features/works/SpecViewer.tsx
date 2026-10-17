@@ -429,14 +429,17 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
 //   카드가 글 폭보다 넓어질 때 글이 캡슐 글자에서 떨어져 나간다(DS `.at-thread`는 가운데지만 캔버스의 문서 카드는 글 폭보다
 //   좁아 그 차이가 안 보였다). `w-full`은 짧은 문서에서도 두 보기의 열이 같은 폭이게 한다.
 // **글 폭은 토큰이다** — 글자가 서는 폭이 좁을 때 `--size-thread`(48rem — DS 「글 폭」), 넓을 때 `--measure-wide`(1120)이고,
-//   거터(좌우 20)는 그 **밖**이다. 그래서 열의 최대 폭은 글 폭 + 40px이다.
+//   거터(좌우 20)는 그 **밖**이다. 그래서 열의 최대 폭은 글 폭 + 거터 둘(`2 × space-5`)이다.
 //   `box-content`로 패딩을 폭 밖에 두는 길은 안 된다 — `w-full`이 부모 폭에 패딩을 더해 좁은 카드에서 넘친다.
 // 화면을 비웠는데 본문이 안 넓어지던 것을 없앤다 — 접을 수 있는 것을 **둘 다** 접었을
 // 때만 넓어진다(결정 5·13). 원래 짝은 사이드바 + 목록 패널이었는데 nav 개편이 목록
 // 컬럼을 지워, 그 자리를 작업 패널 접기가 물려받았다. 프로토타입(A4)은 760 하나로 그렸지만 이 동작은 남긴다
 // (판 06 「정한 것」 — 빼면 기능을 빼는 것이다).
 export const bodyColumn = (wide: boolean) =>
-  cn("w-full px-5", wide ? "max-w-[calc(var(--measure-wide)+40px)]" : "max-w-[calc(var(--size-thread)+40px)]");
+  cn(
+    "w-full px-5",
+    wide ? "max-w-[calc(var(--measure-wide)+2*var(--space-5))]" : "max-w-[calc(var(--size-thread)+2*var(--space-5))]",
+  );
 
 // 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
 // 둘은 반드시 함께 움직인다. 들여쓰기를 바꾸면 체크박스를 되돌리는 폭도 같이 바꿔야
@@ -444,8 +447,8 @@ export const bodyColumn = (wide: boolean) =>
 // 우측 여백 5.21px의 근거: 거터 22 - 체크박스 13 - 체크박스 뒤에 오는 공백 한 칸 3.79 = 5.21.
 // 3.79px은 본문 글꼴(macOS 시스템 글꼴 SF Pro, `chat-body` 14px)에서 실측한 값이다(L3 WebKit 2026-10-11) — 글꼴이나 본문 크기가
 // 바뀌면 다시 재야 한다. 시스템 글꼴이라 다른 OS에서는 공백 폭이 달라 첫 글자가 1px 안쪽으로 어긋날 수 있다.
-const listIndent = "pl-[22px]";
-const checkboxGutter = "-ml-[22px] mr-[5.21px]";
+const listIndent = "pl-5.5";
+const checkboxGutter = "-ml-5.5 mr-[5.21px]";
 
 interface PrettyViewProps {
   // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데 쓰고,
@@ -653,7 +656,9 @@ export const PrettyView = memo(function PrettyView({
         );
       },
       // 표의 칸 — 옅은 면(`SpecTable`) 위의 행이다(ui-refresh 결정 16). 줄 사이 선이 없고, 줄은 hover에 `fill-hover`로
-      // 갈린다(DS `.at-doc-table`). 칠하는 것은 칸이다 — 표 줄(`tr`)에는 모서리가 안 서서, 첫 · 끝 칸이 줄의 둥근
+      // 갈린다 — ui-refresh 때 DS(판 1)의 `.at-doc-table`을 이은 모양이고, DS 2판에는 그 부품이 없어 표는 `Prose`의 선 그은
+      // 표뿐이다. 칸의 위아래 8은 그 2판 표의 칸(`.at-prose td` — 위아래 8)이고, 옆 12는 줄의 둥근 면 안쪽이다(판 1의 12 —
+      // 2판 표는 면이 없어 옆이 0 · 16이다). 칠하는 것은 칸이다 — 표 줄(`tr`)에는 모서리가 안 서서, 첫 · 끝 칸이 줄의 둥근
       // 끝(`rounded-lg`, 10)을 든다. 그래서 표가 `border-separate`다(`collapse`면 칸의 모서리가 무시된다).
       // 머리 줄은 hover하지 않는다 — 고를 줄이 아니라 열의 이름이다.
       tr: ({ children }) => <tr className="group/row">{children}</tr>,
@@ -668,7 +673,7 @@ export const PrettyView = memo(function PrettyView({
         </th>
       ),
       td: ({ children }) => (
-        <td className="px-3 py-[9px] first:rounded-l-lg last:rounded-r-lg group-hover/row:bg-fill-hover">{children}</td>
+        <td className="px-3 py-2 first:rounded-l-lg last:rounded-r-lg group-hover/row:bg-fill-hover">{children}</td>
       ),
       // 링크는 두 가지만 산다 — 문서 간 이동과 외부 URL (결정 3).
       // target="_blank"는 **Tauri 웹뷰에서 아무 일도 하지 않는다.** 그래서 여기가 직접 연다.
@@ -793,7 +798,7 @@ export const PrettyView = memo(function PrettyView({
         ) : (
           // 인라인 코드 — DS `Prose`의 인라인 코드(`.at-prose code`): 옅은 면 `fill-soft` · `radius-xs`(4) · 테두리 없음 · 안쪽 1 · 5. 글자는
           // 13 — `text-code`(13/20) 단계다. 단계라 제목 안에서도 13이다(제목을 따라 커지지 않는다).
-          <code className="rounded-xs bg-fill-soft px-[5px] py-px font-mono text-code wrap-anywhere">
+          <code className="rounded-xs bg-fill-soft px-1.25 py-px font-mono text-code wrap-anywhere">
             {children}
           </code>
         ),

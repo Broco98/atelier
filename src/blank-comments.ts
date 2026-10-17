@@ -1,5 +1,5 @@
 // **소스 지킴 검사가 주석을 빼고 읽는 길** — 글자 단계(`type-scale.test.ts`) · 아이콘 선(`icon-stroke.test.ts`) · 상태 면
-// (`state-scale.test.ts`) · 색 지킴(`color-guard.test.ts`)이 함께 쓴다.
+// (`state-scale.test.ts`) · 색 지킴(`color-guard.test.ts`) · 여백 지킴(`spacing-guard.test.ts`)이 함께 쓴다.
 // 주석은 옛 값을 기록으로 남기는 자리라(부품 머리말 「앱 규격으로 고친 자리」), 그 글자를 어긴 자리로 세면 안 된다.
 //
 // 테스트 파일이 아니다 — `*.test.ts`면 vitest가 이것을 테스트로 돌린다. 앱 코드는 이것을 부르지 않는다.

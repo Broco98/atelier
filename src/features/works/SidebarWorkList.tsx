@@ -367,7 +367,8 @@ function SidebarWorkList({
           ref={listBox}
           onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
           // `relative`는 틈 선의 기준이다 — 선이 내용 좌표로 서서 목록과 함께 구른다(구획 목록의 선 주석).
-          className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pb-1 scroll-quiet"
+          // 위 2는 DS 기둥(`.at-sidebar`)의 줄 사이 2다 — 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이에 그것이 든다(`SectionHeader`).
+          className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-0.5 pb-1 scroll-quiet"
         >
           <WorkSectionList
             sections={sections}

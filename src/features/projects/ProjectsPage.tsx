@@ -105,7 +105,8 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
     >
       {/* 상세 칸 — 목록 | 상세 카드의 오른쪽 칸이다. 머리가 없다: 프로젝트의 이름과 할 일은 머리 카드가 들고, 칸 안에 고를 것이 없다. */}
       <Card as="main" label="프로젝트" className="flex-1">
-        <div className="flex-1 overflow-y-auto scroll-quiet">
+        {/* 옆은 글 거터 20이다 — 설정 본문과 같은 나눔이다(위 24 · 글 폭은 상세의 몸이 든다, `ProjectDetail`). */}
+        <div className="flex-1 overflow-y-auto px-5 scroll-quiet">
           {selected ? (
             <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (

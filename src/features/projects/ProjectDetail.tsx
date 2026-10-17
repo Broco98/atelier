@@ -26,9 +26,11 @@ interface ProjectDetailProps {
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
-    // 상세 칸의 몸(DS `.at-thread` · `SettingsGroup`의 틀) — 글 폭(`size-thread` 48rem) 가운데에 서고 거터 20 · 위 24 · 아래 40이다.
-    // 구획 사이는 28이다(DS `.at-set`). 칸이 글 폭보다 좁으면 칸 끝에서 20 들어와 선다.
-    <div className="mx-auto flex w-full max-w-(--size-thread) flex-col gap-7 px-5 pt-6 pb-10">
+    // 상세 칸의 몸(DS `.at-thread` · `SettingsGroup`의 틀) — 글 폭(`size-thread` 48rem) 가운데에 서고 위 24 · 아래 40이다. 옆의 글
+    // 거터 20은 이 상자 밖(구르는 쪽 — `ProjectsPage`의 상세 칸)이 든다 — 글자가 서는 폭이 48rem 그대로라 설정 틀(`SettingsBody`) ·
+    // 문서 글(`SpecViewer`의 `bodyColumn`)과 같은 나눔이다(DS `size-thread` 「문서 · 설정 글 폭 상한」). 구획 사이는 28이다(DS
+    // `.at-set`). 칸이 글 폭 + 거터 둘보다 좁으면 칸 끝에서 20 들어와 선다.
+    <div className="mx-auto flex w-full max-w-(--size-thread) flex-col gap-7 pt-6 pb-10">
       {/* 경로를 못 찾은 프로젝트의 빨간 띠 — 경고 부품(Alert)의 모양이다. 글자는 그대로다. */}
       {project.missing && (
         <Alert variant="destructive">
@@ -59,7 +61,7 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         <PropertyRow label="baseBranch">
           {/* 칩(셀렉트 칩 · 인라인 편집기)의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
               칩의 모양은 부품 그대로이고, 이것은 그 칩을 이 열에 앉히는 자리 맞춤이다. */}
-          <div className="-ml-[7px] flex min-w-0">
+          <div className="-ml-1.75 flex min-w-0">
             <BaseBranchControl key={project.slug} project={project} />
           </div>
         </PropertyRow>
@@ -158,7 +160,7 @@ function WorksSection({
                 </span>
                 <span className="ml-auto flex shrink-0 items-center gap-3">
                   {worktree?.exists && (
-                    <span className="flex items-center gap-[5px] font-mono text-xs text-fg-secondary">
+                    <span className="flex items-center gap-1.25 font-mono text-xs text-fg-secondary">
                       <GitFork className="size-3" />
                       {work.branch}
                     </span>
@@ -330,7 +332,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         }}
         // 목록이 서는 프로젝트의 셀렉트 칩(`SelectTrigger`)과 같은 모양이다 — 28px · 모서리 10 · 좌우 7 · 조용한 hover. 값은
         // 옆 줄들과 같은 고정폭 `text-code`다.
-        className="flex h-7 items-center rounded-lg px-[7px] font-mono text-code text-fg-secondary transition-colors quiet-hover focus-ring"
+        className="flex h-7 items-center rounded-lg px-1.75 font-mono text-code text-fg-secondary transition-colors quiet-hover focus-ring"
       >
         {project.baseBranch}
       </Hint>

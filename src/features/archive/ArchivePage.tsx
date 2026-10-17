@@ -373,7 +373,7 @@ function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) =>
 /**
  * spec 목록 패널의 카드 안(codex-ds 스펙 §7 「Archive」 · DS `.at-panel`) — 머리 「spec」 · spec 폴더 열기와 고른 아카이브의 문서 트리.
  * 작업 패널(`WorkPanel`)과 같은 짜임이다: 머리는 패널 머리(46 — 카드 머리 `--card-head`)이고 카드에 고정되며, 세로 스크롤은 몸
- * 안에서만 돈다. 머리 제목은 DS 패널 머리 제목(14/20 · 500)이고 글자가 카드 + 16에 선다(머리 여백 10 + 제목 안쪽 6).
+ * 안에서만 돈다. 머리 제목은 DS 패널 머리 제목(14/20 · 500)이고 글자가 카드 + 16에 선다(머리 여백 8 + 제목 안쪽 8).
  *
  * 트리는 기록 행 곁의 `spec/` 행 아래에 받은 spec 트리를 얹은 것이다(`archiveTreeItems` — 경로는 work 폴더 기준이라 선택 표시 · 복사 ·
  * 읽기가 그대로 쓴다). 한때 목록 행 안에 펼쳐졌는데 목록이 문서에 파묻혀 이 패널로 옮겼다(스토리 55). **아카이브마다 새로 선다**
@@ -411,7 +411,7 @@ function SpecListPanel({
           </Hint>
         }
       >
-        <span className="px-1.5 text-sm font-medium">spec</span>
+        <span className="px-2 text-sm font-medium">spec</span>
       </CardHead>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
         {archived === undefined ? null : items.length === 0 ? (

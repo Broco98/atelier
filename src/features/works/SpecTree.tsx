@@ -7,16 +7,16 @@ import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
 
-// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 7px · hover
+// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 6px · hover
 // `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
 // `selected-row`에 굵기 500이다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta text-fg-secondary transition-colors hover:bg-fill-soft focus-ring";
+  "flex h-7 items-center gap-1.5 rounded-lg pr-2 text-left text-chat-meta text-fg-secondary transition-colors hover:bg-fill-soft focus-ring";
 
-// 줄 사이는 사이드바 · 아카이브 목록과 같은 2px 틈이다(DS `.at-tree`). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
-const ROWS = "flex flex-col gap-(--row-gap)";
+// 줄 사이는 1px 틈이다(DS `.at-tree` — 사이드바 · 목록 칸의 행 사이 2보다 촘촘하다). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
+const ROWS = "flex flex-col gap-px";
 
 // 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
 // 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
@@ -110,10 +110,10 @@ function TreeRows({
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
-                {/* 셰브론은 12px `fg-tertiary`이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
+                {/* 셰브론은 12px `fg-tertiary`이고 글리프와 행의 사이 6으로 떨어진다(DS `.at-tree-row > .ic.chev`). */}
                 <ChevronRight
                   className={cn(
-                    "-mr-[3px] size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-basic",
+                    "size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-basic",
                     expanded && "rotate-90",
                   )}
                   strokeWidth={SMALL_GLYPH_STROKE}
@@ -167,7 +167,7 @@ function TreeRows({
                 type="button"
                 onClick={() => onSelect(item.path)}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-[7px] rounded-lg text-left focus-ring",
+                  "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
                   onCopy && "pr-1.5",
                 )}
                 style={treeIndent(depth)}

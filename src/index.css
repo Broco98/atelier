@@ -52,7 +52,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 앱 셸의 길이 — 머리 줄의 높이, 행의 리듬, ui-refresh 때의 여백.
+/* 앱 셸의 길이 — 머리 줄의 높이, DS 간격 토큰, 카드 머리 · 넓은 화면의 폭.
 
    **폭(사이드바 · 목록 칸 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
    거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 290, 240, 400)`, 목록 칸은 Projects ·
@@ -70,37 +70,43 @@
        식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
        읽는다. 사이드바 맨 위 빈 신호등 자리도 이 값이다(`Sidebar`). 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
     --titlebar-height: 48px;
-    /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 칸 둘이 전부 이
-       값을 읽는다. 한때 여덟 자리에 `gap-[3px]`로 흩어져 있었고, 그러면 한 곳만 손봐도
-       같은 컬럼 안에서 리듬이 갈린다. `gap-(--row-gap)`으로 받는다. */
-    --row-gap: 2px;
 
-    /* 행 머리의 글리프 뒤 여백 — 아이콘·화살표가 앉는 상자와 그 옆 글자 사이. */
-    --glyph-gap: 9px;
+    /* **간격** — DS 2판 `tokens.json`의 `space-*` 그대로다(4px 눈금 — Tailwind `--spacing`의 그 칸과 같은 값이다,
+       `spacing-guard.test.ts`가 맞댄다). 화면은 세 줄에 맞춘다(codex-ds 스펙 §4 「여백」 · DS README 「간격 · 반경 · 크기」):
+         틈 8       `space-2` — 창 끝 · 카드 사이 · 카드 끝에서 행까지
+         행 글자 16  `space-4` — 틈 8 + 행 안쪽 8. 사이드바 행 · 소제목 · 카드 머리 제목 · 탭 아이콘 · 찾기 아이콘 · 셸 화면
+         글 거터 20  `space-5` — 문서 · 설정 글의 옆. 글은 위 24(`space-6`)에서 시작한다
+       **유틸리티는 눈금으로 적는다**(`p-2` · `px-5` · `pt-6`) — 이 이름은 `@theme`이 아니라 `:root`에 선언해 유틸리티를 내지
+       않는다. Tailwind 4.3.3에서 `--space-*`는 `space-x-*` · `space-y-*`의 테마 이름공간이라, `@theme`에 올리면 `space-x-2` 같은
+       유틸리티가 이 값으로 선다 — 테마에 간격 이름이 오르는 것은 `spacing-guard.test.ts`가 막는다. 이 변수를 읽는 것은 CSS
+       변수가 있어야 하는 자리뿐이다: 틈(`--space-2`)을 더하는 폭 셈(`Frame`의 작업 패널 칸 · 분할 · 옆 칸,
+       `useResizableWidth`의 그린 폭과 손잡이 자리)과 머리 줄의 왼쪽 여백(아래 `--titlebar-inset-head`), 그리고 길이를 토큰에서
+       읽어 맞대는 e2e다. 나머지는 선언만 있다(DS 이름을 통째로 선언한다 — 스펙 S2와 같은 손버릇).
+       식으로 적지 않는다 — 위 `--titlebar-height`와 같은 까닭이다. ui-refresh 때의 이름(`--gap` · `--card-pad` · `--term-inset` ·
+       `--row-gap` · `--glyph-gap`)은 걷었다(codex-ds 티켓 25) — 그 값은 이제 DS 값이다(카드 안 24 → 글 거터 20 · 위 24, 터미널 12 →
+       DS `Terminal` 16, 행 사이 2 → 사이드바 · 목록 2 · 트리 1, 글리프 뒤 9 → 행 9 · 알림 띠 줄 10). */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-11: 44px;
 
-    /* **ui-refresh 때의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 그때의 DS(1판 `base.css`의 `:where(:root)`)
-       것이고, codex-ds DS 2판에는 이 이름들이 없다 — 2판의 길이는 아래 `@theme static`의 `--size-*`다. 카드 머리
-       `--card-head`는 2판 `--size-toolbar`(46)를 읽는다 — 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
-       값이 2판과 갈리는 것이 있다: `--gap` · `--card-pad` · `--term-inset`을 `space-*`로 옮겨 걷는 것은 티켓 25다. 읽는 글의
-       폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(티켓 15 — `SpecViewer`의 `bodyColumn`) · 프로젝트 상세(티켓 20 —
-       `ProjectDetail`) · 설정 틀과 편집기의 폼(티켓 23 — `SettingsBody`)이 모두 2판의 `--size-thread`(48rem)를 읽는다.
-       레일 폭도 여기 없다 — 레일 열과 (레일이 설 때) 머리 줄의 패널 토글 자리가 2판의 줄 폭 `--size-prail`을 읽는다.
-         --gap           창 가장자리 · 카드 사이의 틈
-         --card-pad      카드 안 좌우
-         --card-head     카드 머리 높이
-         --measure-wide  넓은 화면의 폭 상한
-         --term-inset    터미널 카드의 안쪽 여백 — 둥근 모서리에 글자가 닿지 않게 */
-    --gap: 8px;
-    --card-pad: 24px;
+    /* 카드 머리 높이 — DS 2판 `--size-toolbar`(46)를 읽는다. 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
+       넓은 화면의 폭 상한 `--measure-wide`(1120 — Processes · 넓게 보는 문서)는 ui-refresh 때의 값을 잇는다(Codex가 말하지 않는다).
+       읽는 글의 폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(`SpecViewer`의 `bodyColumn`) · 프로젝트 상세(`ProjectDetail`) · 설정
+       틀과 편집기의 폼(`SettingsBody`)이 모두 2판의 `--size-thread`(48rem)를 읽는다. 레일 폭도 여기 없다 — 레일 열과 (레일이 설 때)
+       머리 줄의 패널 토글 자리가 2판의 줄 폭 `--size-prail`을 읽는다. */
     --card-head: var(--size-toolbar);
     --measure-wide: 1120px;
-    --term-inset: 12px;
 }
 
 /* 머리 줄 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 머리 줄(`Frame`의 `HeadRow`) 하나가 사이드바가 접혔을 때
    --titlebar-inset-head를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리(탭 줄도)는 머리 줄 아래에 서서 피할 것이 없다.
    컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고, 사이드바가 접히면 그 뒤
-   틈(`--gap`) 하나를 띄운 곳부터 머리 카드가 선다(DS 「머리 카드는 창 컨트롤 뒤부터」 · `.at-winhead.free`). 사이드바가
+   틈(`--space-2`) 하나를 띄운 곳부터 머리 카드가 선다(DS 「머리 카드는 창 컨트롤 뒤부터」 · `.at-winhead.free`). 사이드바가
    열렸으면 컨트롤은 사이드바 위에 서서 머리 줄이 피할 것이 없다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
 
@@ -123,12 +129,15 @@
     --titlebar-controls-width: calc(
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
-    /* **사이드바가 접혔을 때 머리 줄의 왼쪽 여백** — 셸 컨트롤 끝에서 틈 하나(`--gap`)를 띄운다. 머리 카드가 신호등 ·
+    /* 셸 컨트롤의 위 — 머리 줄의 가운데에 컨트롤을 세운다((48 − 24) / 2 = 12). 머리 줄의 높이나 컨트롤의 크기가 바뀌어도 가운데다 —
+       같은 가운데 줄에 머리 카드 · 패널 토글 · 신호등이 선다(위 `--titlebar-height`). */
+    --titlebar-controls-top: calc((var(--titlebar-height) - var(--titlebar-control-size)) / 2);
+    /* **사이드바가 접혔을 때 머리 줄의 왼쪽 여백** — 셸 컨트롤 끝에서 틈 하나(`--space-2`)를 띄운다. 머리 카드가 신호등 ·
        셸 컨트롤 밑으로 들어가지 않는 경계다(셸 컨트롤은 `absolute` · `z-20`이라 겹치면 머리 카드를 덮는다). 사이드바가
        열렸으면 머리 줄의 왼쪽 여백은 0이다 — 머리 카드가 본문 카드와 한 세로줄(사이드바 뒤)에서 시작한다.
        한때 이 자리에 `--tab-lead`(탭 줄이 이 줄에 서던 때의 첫 칸 거리)가 있었다 — 탭 줄은 본문 카드 머리로 내려갔다. */
     --titlebar-inset-head: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--gap)
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--space-2)
     );
 }
 
@@ -497,13 +506,13 @@
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
-       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄과
+       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`, 분할 끌기 겹판의 위끝), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄과
        목록 머리의 높이(`--size-pathbar` — `PathBar` · `ListHead`), 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn` ·
        `ProjectDetail` · 설정 틀의 `SettingsBody`와 그 열에 서는 편집기 배너 · spec 레이아웃 메시지), 사이드바 행의 높이
        (`--size-row-nav` — `SidebarItem` · work 행), 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)와 레일의 줄 폭
        (`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
-       그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세운다. 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가
-       같은 수로 옮긴다 — 화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
+       폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
+       `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다. */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -1415,20 +1424,20 @@ body.dragging-row * {
   }
 }
 
-/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 5px.
+/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 4px.
    조용한 갈래(`ShellMeta` — 셸 수)와 신호 갈래(`SignalMeta` — 경과)가 이 한 정의를 부른다.
    두 파일이 같은 문자열을 옮겨 적던 자리다. nav `Processes`의 메모리 합계(`ProcessesNavMeta`)도 nav `Terminal`과 같은
    오른쪽 끝에 서야 해서 이것을 부른다.
 
    두 갈래가 work 행의 **같은 칸에 번갈아** 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
-   숫자의 오른쪽 끝이 튄다. 오른쪽 여백 5px은 행의 `pr-1`(4px)과 합쳐 9px이 되어, 그 끝이 구획
+   숫자의 오른쪽 끝이 튄다. 오른쪽 여백 4px은 행의 `pr-1`(4px)과 합쳐 행 안쪽 8(DS `.at-row`)이 되어, 그 끝이 구획
    헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
 
    **색은 안 정한다** — 칸에 서는 조각이 저마다 든다. 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 두고 무리가 한 단
    올린 `fg-secondary`를 들며(`shell-meta.tsx`), 신호 갈래의 경과도 그 조각이 제 `fg-secondary`를 든다(`SignalElapsed` —
    codex-ds 스펙 S17). */
 @utility row-meta {
-  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-xs;
+  @apply flex shrink-0 items-center gap-1.5 pr-1 text-xs;
 }
 
 /* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(`fill-hover`) · `fg-secondary` 글자 · 줄바꿈 없음.

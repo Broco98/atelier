@@ -145,7 +145,7 @@ function Sidebar({
   return (
     <SidebarFrame open={open} size={size}>
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
-      <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+      <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)}>
         {/* **`navItems`를 돈다**(#183) — 활성 판정(AppShell)과 팔레트의 「가는 곳」(`destinations.ts`)도 같은
             배열을 본다. */}
         {navItems.map((item) => (
@@ -339,7 +339,7 @@ function SettingsNav({
       <div className={cn("shrink-0 pb-3", GUTTER)}>
         <SidebarItem icon={ArrowLeft} label="앱으로 돌아가기" active={false} onClick={onLeave} />
       </div>
-      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)}>
         {SETTINGS_ITEMS.map((item) => (
           <SidebarItem
             key={item.key}
@@ -562,7 +562,8 @@ function SidebarItem({
   return (
     <div
       className={cn(
-        // DS `SidebarRow` — 32(`size-row-nav`) · `radius-lg`. 글자는 이름 버튼의 `nav-row`(14/20 500)이고 아이콘은 17이다.
+        // DS `SidebarRow` — 32(`size-row-nav`) · `radius-lg`. 글자는 이름 버튼의 `nav-row`(14/20 500)이고 아이콘은 17이다. 아이콘은
+        // 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이다(DS 「행 글자 16」 · `.at-row`의 안쪽 8 · 아이콘과 글자 사이 9).
         "flex h-(--size-row-nav) shrink-0 items-center rounded-lg pr-1 transition-colors",
         // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
         // 고른 행은 `fill-hover`(사이드바 안의 `selected-row`), 지나는 행은 `fill-soft`다(DS `.at-row.is-on` · `.at-row:hover`).
@@ -572,14 +573,14 @@ function SidebarItem({
       <button
         type="button"
         onClick={onClick}
-        className="flex h-full min-w-0 flex-1 items-center gap-[9px] rounded-lg pl-[9px] pr-1.5 text-left text-nav-row focus-ring"
+        className="flex h-full min-w-0 flex-1 items-center gap-2.25 rounded-lg pl-2 pr-1.5 text-left text-nav-row focus-ring"
       >
         <Icon className="size-[17px] shrink-0" />
         <span className="min-w-0 truncate">{label}</span>
       </button>
       {/* 배지가 아니라 옅은 숫자다 — 구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로
           붙어 서는 둘이 다른 무게로 읽히지 않는다(GUTTER 주석과 같은 계약). 오른쪽 끝도
-          그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
+          그 헤더와 같은 8px(행 안쪽 — DS `.at-row`)에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 4px만 더한다.
           **그 계약이 사는 자리는 둘이다** — 여기와 work 행의 오른쪽 메타(판 05 결정 13의 「두
           자리」). 두 줄 행에서는 work 행이 메타를 둘째 줄로 내려 여기 하나였다가, 행이 한 줄로
           돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `row-meta`

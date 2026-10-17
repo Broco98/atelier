@@ -760,7 +760,8 @@ export function TerminalSection({
         {/* 미리보기 — **필수다**(결정 52). 글꼴 이름을 잘못 적으면 오류 없이 폴백으로 그려지는
             조용한 실패를, 저장하기 전에 눈에 보이게 만드는 값싼 길이다. 색도 고른 테마의 것을
             그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. 밝은 테마의 바탕은
-            흰 묶음과 같은 흰색이라, 가장자리는 안쪽 1px `border-light` 링이 세운다(코드 상자 `.at-code`와 같은 링). */}
+            흰 묶음과 같은 흰색이라, 가장자리는 안쪽 1px `border-light` 링이 세운다(코드 상자 `.at-code`와 같은 링). 좌우 안쪽은
+            터미널 카드와 같은 16이다(DS `Terminal` 「안쪽 16」) — 셸 화면이 카드 끝에서 서는 자리 그대로 글자가 선다. */}
         <SettingsRow
           name="미리보기"
           below={
@@ -773,7 +774,7 @@ export function TerminalSection({
                 // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
                 fontSize: `${fontSize ?? FONT_SIZE}px`,
               }}
-              className="flex min-h-[52px] items-center overflow-x-auto rounded-2xl px-[18px] leading-[1.6] whitespace-pre inset-ring inset-ring-border-light scroll-quiet"
+              className="flex min-h-[52px] items-center overflow-x-auto rounded-2xl px-4 leading-[1.6] whitespace-pre inset-ring inset-ring-border-light scroll-quiet"
             >
               {PREVIEW_LINE}
             </div>

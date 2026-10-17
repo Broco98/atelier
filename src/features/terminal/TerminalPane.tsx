@@ -91,8 +91,9 @@ function TerminalPane({ work }: { work: WorkView | null }) {
     // 것이다. **위에 형제가 없다**(결정 1) — 종료 줄이 흐름에서 빠지면서 프래그먼트도
     // 함께 걷혔고, 이 상자가 카드 머리(탭 줄) 바로 아래에서 시작한다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {/* 셸이 들어앉는 자리. **안쪽 여백이 `--term-inset`(12)이다**(ui-refresh 판 04 기본값 — 터미널 카드의 안쪽 여백).
-          셸이 둥근 카드에 앉으면서 글자가 모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
+      {/* 셸이 들어앉는 자리. **안쪽 여백이 16(`p-4`)이다**(DS `Terminal` 「안쪽 16」 — 행 글자 16의 세로줄이라 셸 화면이 탭 줄의
+          아이콘과 한 x에 선다, codex-ds 스펙 §4 「여백」). 셸이 둥근 카드에 앉으면서(ui-refresh 판 04 — 그때는 12였다) 글자가
+          모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
           빈 배경이라 `cols`가 준다). 여백은 **집의 것**이다 — 셸(xterm 래퍼)은 집의 내용 상자를 100%로 받아 `fit()`이
           여백을 뺀 자리로 격자를 재고, 여백 띠는 아래 칠을 함께 받아 셸 색이다. 카드에 여백을 주면 그 띠가 카드 색이 된다.
 
@@ -111,7 +112,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
       <div
         ref={hostRef}
         data-shell-host=""
-        className="min-h-0 min-w-0 flex-1 p-(--term-inset)"
+        className="min-h-0 min-w-0 flex-1 p-4"
         style={activeId === null ? undefined : { backgroundColor: shellBackground }}
       />
       {/* 죽은 셸의 한 문장(결정 22·45). **흐름에 끼지 않고 셸 위에 겹쳐 뜬다**(결정 1).

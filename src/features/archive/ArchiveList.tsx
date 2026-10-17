@@ -127,7 +127,7 @@ function ArchiveList({ entries, selectedSlug, loading, onSelect }: ArchiveListPr
           <span className="text-chat-meta text-fg-tertiary">{narrowedNotice(q !== "")}</span>
         </div>
       ) : (
-        <div className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pt-1 pb-2 scroll-quiet">
+        <div className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet">
           {/* **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
               칸 가장자리로 간다. 상자가 안쪽 여백 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
               그만큼 더 안쪽에 서서 행 위로 들어온다. 같은 병이 사이드바 work 목록에 있었고 그쪽 주석이 내력을 든다.

@@ -183,7 +183,7 @@ function Frame<Id extends string>({
       />
       {/* 아래 줄 — 본문 열과 레일 열. 머리 줄 바로 아래(카드 위끝)에서 시작한다. */}
       <div data-tauri-drag-region className="flex min-h-0 flex-1">
-        <div data-tauri-drag-region className={cn("flex flex-1 flex-col pb-(--gap)", TAB_ROW_COLUMN)}>
+        <div data-tauri-drag-region className={cn("flex flex-1 flex-col pb-2", TAB_ROW_COLUMN)}>
           {/* 카드 줄. 사이드바가 열렸으면 왼쪽 틈이 0이다 — 사이드바 쪽 여백이 그 틈으로 보인다(프로토타입 `.at-main` ·
               `.at-sidebar`). 사이드바가 접히면 카드가 창 왼쪽 틈까지 넓어진다. 여백은 머리 줄의 여백과 같은 곡선으로
               따라온다 — 사이드바 폭 트랜지션(`PANEL_MOTION`)과 박자가 다르면 카드 모서리가 자리를 지나쳤다 되돌아온다(index.css의
@@ -193,9 +193,9 @@ function Frame<Id extends string>({
             data-tauri-drag-region
             style={beside ? { contain: "none" } : undefined}
             className={cn(
-              "relative flex min-h-0 flex-1 pr-(--gap) transition-[padding]",
+              "relative flex min-h-0 flex-1 pr-2 transition-[padding]",
               PANEL_MOTION,
-              sidebarOpen ? "pl-0" : "pl-(--gap)",
+              sidebarOpen ? "pl-0" : "pl-2",
             )}
           >
             {list ? <ListCard slot={list}>{children}</ListCard> : split ? <SplitBox slot={split} /> : children}
@@ -207,7 +207,7 @@ function Frame<Id extends string>({
           </div>
         </div>
         {/* 레일 열(ui-refresh 결정 10) — 본문 열의 형제라 머리 줄 `<header>` 밖이다. 칸이 둘 이상일 때만 선다(`railStands` — 하나면
-            그리지 않아 본문 열이 창 오른쪽 틈까지 넓다). 왼쪽 틈은 본문 열의 오른쪽 틈(카드 줄의 `pr-(--gap)`)이다. 서면 늘
+            그리지 않아 본문 열이 창 오른쪽 틈까지 넓다). 왼쪽 틈은 본문 열의 오른쪽 틈(카드 줄의 `pr-2`)이다. 서면 늘
             그 자리이고(`shrink-0`) 탭 줄의 바닥을 위해 자리를 내주는 것은 작업 패널, 그다음 사이드바다. */}
         {rail && railUp && (
           <Rail
@@ -317,10 +317,10 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
         !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
         open
           ? cn(
-              "max-w-[calc(100%-var(--panel-reserve))] basis-[calc(var(--work-panel-width)+var(--gap))]",
+              "max-w-[calc(100%-var(--panel-reserve))] basis-[calc(var(--work-panel-width)+var(--space-2))]",
               reserve === undefined
-                ? "min-w-[calc(var(--work-panel-min)+var(--gap))]"
-                : "min-w-[min(calc(var(--work-panel-min)+var(--gap)),max(0px,calc(100%-var(--panel-reserve))))]",
+                ? "min-w-[calc(var(--work-panel-min)+var(--space-2))]"
+                : "min-w-[min(calc(var(--work-panel-min)+var(--space-2)),max(0px,calc(100%-var(--panel-reserve))))]",
             )
           : "basis-0 min-w-0",
       )}
@@ -330,7 +330,7 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
       <div
         data-tauri-drag-region
         className={cn(
-          "flex h-full w-[calc(var(--work-panel-width)+var(--gap))] shrink-0 pl-(--gap)",
+          "flex h-full w-[calc(var(--work-panel-width)+var(--space-2))] shrink-0 pl-2",
           foldingInnerClass(open),
         )}
       >
@@ -344,17 +344,17 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
 }
 
 /**
- * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--gap`)에서 읽는다 — 숫자를
+ * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--space-2`)에서 읽는다 — 숫자를
  * 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
  */
 function sharedWidth(host: HTMLElement | null): number {
   if (!host) return 0;
-  const gap = parseFloat(getComputedStyle(host).getPropertyValue("--gap")) || 0;
+  const gap = parseFloat(getComputedStyle(host).getPropertyValue("--space-2")) || 0;
   return Math.max(0, host.getBoundingClientRect().width - gap);
 }
 
 /**
- * 분할(ui-refresh 결정 15 — 열 하나 = 카드 하나). 본문 자리의 `<main>` 안에 열 카드 둘이 틈(`--gap`)을 두고 선다. `<main>`은 카드가
+ * 분할(ui-refresh 결정 15 — 열 하나 = 카드 하나). 본문 자리의 `<main>` 안에 열 카드 둘이 틈(`--space-2`)을 두고 선다. `<main>`은 카드가
  * 아니라 회색 바탕이 드러나는 자리라 창을 끄는 자리다(머리말).
  *
  * **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널 · 사이드바와 같은 관용구). 왼쪽 열의 상자가 「카드 + 오른쪽
@@ -381,9 +381,9 @@ function SplitBox({ slot }: { slot: SplitSlot }) {
     <main ref={host} data-tauri-drag-region className="flex min-h-0 min-w-min flex-1">
       <div
         data-tauri-drag-region
-        style={{ width: `calc((100% - var(--gap)) * ${size.ratio} + var(--gap))` }}
+        style={{ width: `calc((100% - var(--space-2)) * ${size.ratio} + var(--space-2))` }}
         className={cn(
-          "relative flex min-w-min pr-(--gap)",
+          "relative flex min-w-min pr-2",
           size.snapping && PANEL_MOTION,
           size.snapping && "transition-[width]",
         )}
@@ -427,8 +427,8 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
   return (
     <div
       data-tauri-drag-region
-      style={{ flexBasis: `calc(${slot.width}px + var(--gap))` }}
-      className="flex min-w-0 pl-(--gap)"
+      style={{ flexBasis: `calc(${slot.width}px + var(--space-2))` }}
+      className="flex min-w-0 pl-2"
     >
       <Card label={slot.label} className="flex-1 [&>:not([data-slot=card-head])]:contain-inline-size">
         {slot.children}
@@ -442,7 +442,7 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 하나다 — 탭 줄은 이 줄이 아니라 본문 카드의 머리이고 `div`다(`ShellTabs`). 머리 카드(`head`)가 줄이 남긴 폭으로 선다.
  *
  * **머리 카드의 폭은 어느 화면이든 아래 본문 열이다**(codex-ds 스펙 §4 「사이드바 뒤부터 레일 앞까지」). 줄은 뿌리의 맨 위라 폭이
- * 바탕 전체(본문 열 + 레일 열)이고, 오른쪽 여백(`pr-(--gap)`)이 카드 줄 · 레일 열의 오른쪽 틈과 같은 값이다. 그래서 패널 토글의
+ * 바탕 전체(본문 열 + 레일 열)이고, 오른쪽 여백(`pr-2`)이 카드 줄 · 레일 열의 오른쪽 틈과 같은 값이다. 그래서 패널 토글의
  * 자리가 레일을 따라 갈린다(DS `.at-winhead` · `.with-rail` · `.at-winctl-r`):
  * - **레일이 서면**(칸 둘 이상) 토글은 머리 카드 밖, 레일 열 바로 위다(DS `.at-railtop` — 「머리 카드 오른쪽 끝 너머, 레일 바로
  *   위」). 토글 자리(틈 + 줄 폭 `size-prail`)가 레일 열과 같은 폭을 비워 머리 카드는 레일 앞에서 끝난다.
@@ -473,7 +473,7 @@ function HeadRow({
       data-tauri-drag-region
       className={cn(
         // 아래 경계선이 없다 — 바탕이 선으로 잘리지 않고 카드 줄로 이어진다.
-        "flex h-(--titlebar-height) shrink-0 items-center pr-(--gap) transition-[padding]",
+        "flex h-(--titlebar-height) shrink-0 items-center pr-2 transition-[padding]",
         PANEL_MOTION,
         sidebarOpen ? "pl-0" : "pl-(--titlebar-inset-head)",
       )}
@@ -482,7 +482,7 @@ function HeadRow({
       {railUp && toggle && (
         // 패널 토글 자리 — 레일 열과 같은 폭(틈 + 줄 폭)이라 토글이 레일 열의 가운데에 선다(DS `.at-railtop`). 회색이 드러나는
         // 상자라 끌기 영역이다. 머리 카드가 남는 폭을 다 먹어 이 자리는 줄 오른쪽 끝이다.
-        <div data-tauri-drag-region className="box-content flex w-(--size-prail) shrink-0 justify-center pl-(--gap)">
+        <div data-tauri-drag-region className="box-content flex w-(--size-prail) shrink-0 justify-center pl-2">
           {toggle}
         </div>
       )}
@@ -629,7 +629,8 @@ function Card({ as: Tag = "section", label, head, tone, className, children }: C
 /**
  * 카드 머리(ui-refresh 결정 5) — 카드 안에서 고르는 것(패널 이름 · 트리의 도구)과 그 곁의 버튼이 서는 46px 줄이다(`--card-head`
  * — 탭 줄과 같은 `size-toolbar`). `div`이고 끌기 영역이 아니다(카드 안이다). 문서 카드의 머리는 이것이 아니라 경로 줄(`PathBar`)이고,
- * 목록 칸의 머리는 목록 머리(`ListHead`)다. 좌우 여백은 10(`px-2.5`)이다.
+ * 목록 칸의 머리는 목록 머리(`ListHead`)다. 좌우 여백은 8(`px-2` — DS `.at-toolbar` · `.at-panel-head`의 안쪽 8)이라 머리의 첫 버튼이
+ * 카드 끝에서 8, 제목은 제 안쪽 8을 더해 카드 + 16(행 글자 16 — 아래 트리 행의 글리프와 한 세로줄)에 선다.
  *
  * **화면의 이름 · 위치와 할 일은 여기 서지 않는다** — 머리 카드가 든다(`HeadSlot`, codex-ds 스펙 §7). 카드 안에 고를 것이 없으면 그
  * 카드에는 이 줄이 없다. `end`는 오른쪽 끝에 고정되는 조작이다.
@@ -649,7 +650,7 @@ function CardHead({
     <div
       {...marks}
       data-slot="card-head"
-      className="flex h-(--card-head) shrink-0 items-center gap-1.5 px-2.5"
+      className="flex h-(--card-head) shrink-0 items-center gap-1.5 px-2"
     >
       {children}
       {end && <div className="ml-auto flex shrink-0 items-center gap-1.5">{end}</div>}

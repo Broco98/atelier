@@ -59,13 +59,13 @@ export function nextWidth({
 /**
  * 손잡이가 얹힌 칸이 지금 그려진 폭 — 손잡이의 부모 상자의 폭이다. **틈 자리(`seat="gap"`)면 그 상자가 「카드 + 틈」이라 틈을
  * 뺀다** — 저장하는 폭이 카드의 폭이고(틈은 더하지 않는다), 좁게 선 칸에서 틈만큼 넓게 읽으면 첫 움직임에 손잡이가 그만큼 튄다.
- * 틈의 값은 토큰(`--gap`)에서 읽는다 — 숫자를 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 가장자리 · 세로 선 자리(`edge` ·
+ * 틈의 값은 토큰(`--space-2`)에서 읽는다 — 숫자를 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 가장자리 · 세로 선 자리(`edge` ·
  * `rule`)의 부모는 칸 그 자체라 뺄 것이 없다.
  */
 function drawnWidth(handle: HTMLElement): number | undefined {
   const box = handle.parentElement?.getBoundingClientRect().width;
   if (box === undefined || handle.dataset.seat !== "gap") return box;
-  return box - (parseFloat(getComputedStyle(handle).getPropertyValue("--gap")) || 0);
+  return box - (parseFloat(getComputedStyle(handle).getPropertyValue("--space-2")) || 0);
 }
 
 /** 끌기로 치는 최소 이동(px). 이보다 덜 움직인 눌림은 폭을 안 바꾸고 저장도 안 바꾼다. */
@@ -178,7 +178,7 @@ export function ResizeHandle({
   // (`useSplitRatio`)이 같은 핸들을 쓴다 — 잡는 자리와 글로우가 갈리면 같은 제스처가
   // 화면마다 다르게 보인다.
   control: Pick<ResizableWidth, "dragging" | "side" | "handleProps">;
-  /** 얹히는 자리 — 패널의 바깥 경계선 위(`edge`), 카드 옆 틈(`--gap`)의 가운데(`gap`), 또는 칸을 가르는 세로 선 위(`rule`). */
+  /** 얹히는 자리 — 패널의 바깥 경계선 위(`edge`), 카드 옆 틈(`--space-2`)의 가운데(`gap`), 또는 칸을 가르는 세로 선 위(`rule`). */
   seat?: "edge" | "gap" | "rule";
 }) {
   // 드래그 도중 핸들이 사라지면(Cmd+B·Cmd+Enter로 패널 접기) pointerup도 pointercancel도 오지 않는다.
@@ -189,8 +189,8 @@ export function ResizeHandle({
   const edge =
     seat === "gap"
       ? control.side === "right"
-        ? "left-[calc((var(--gap)-5px)/2)]"
-        : "right-[calc((var(--gap)-5px)/2)]"
+        ? "left-[calc((var(--space-2)-5px)/2)]"
+        : "right-[calc((var(--space-2)-5px)/2)]"
       : seat === "rule"
         ? control.side === "right"
           ? "left-0 -translate-x-1/2"

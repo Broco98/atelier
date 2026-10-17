@@ -185,7 +185,7 @@ function LayoutRow({
           <div className="flex items-start gap-2">
             <TriangleAlert
               aria-hidden
-              className="mt-[3px] size-3.5 shrink-0 text-warning"
+              className="mt-0.5 size-3.5 shrink-0 text-warning"
             />
             <div className="flex min-w-0 flex-col gap-0.5">
               {/* 경고색 글자는 medium이다 — `warning`은 흰 면 위 3.8:1이라 13px 이상 medium 글자에만 쓴다(DS README 「대비」). */}
@@ -294,7 +294,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
           aria-describedby={noteId}
           onClick={onRevert}
         >
-          <RotateCcw aria-hidden className="mt-[3px] size-3.5" />
+          <RotateCcw aria-hidden className="mt-0.5 size-3.5" />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
@@ -369,7 +369,7 @@ function PageNotice({
       className="absolute inset-x-5 bottom-7 z-20 mx-auto flex max-w-(--size-thread) items-start gap-2.5 rounded-2xl bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-prominent"
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
-      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-chat-meta font-medium break-words">
           {title} <code className="font-mono text-xs opacity-80">{reference}</code>
         </span>

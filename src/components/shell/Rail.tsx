@@ -95,7 +95,7 @@ function Rail<Id extends string>({
   controls?: string;
 }) {
   return (
-    <div data-tauri-drag-region className="box-content flex w-(--size-prail) shrink-0 flex-col items-center pr-(--gap)">
+    <div data-tauri-drag-region className="box-content flex w-(--size-prail) shrink-0 flex-col items-center pr-2">
       {/* 칸 묶음 — 세그먼트를 세우고 색을 뒤집은 것이다(DS `.at-seg.vert` · codex-ds 결정 29). 홈은 옆 패널 카드와 같은 흰 면
           (`surface` · `shadow-hairline` · `radius-lg`, 안쪽 2 · 칸 사이 2)이고 칸은 28 · `radius-md`라 홈 폭이 줄 폭(32)이다. 켜진 칸은
           패널 트리의 고른 행과 같은 `fill-selected`이고, 꺼진 칸의 hover는 `fill-soft`다 — 켜진 칸은 hover해도 그 면 그대로다(DS

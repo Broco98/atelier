@@ -231,12 +231,12 @@ test("틈의 손잡이를 끌면 터미널 격자가 따라가고 비율이 저�
   await expect.poll(() => callCount(page, "pty_spawn")).toBeGreaterThan(0);
   const before = await callCount(page, "pty_resize");
 
-  // 두 열은 각자 카드이고(ui-refresh 결정 15) 사이에 틈(`--gap`)이 있다. 폭 핸들은 그 **틈의 가운데**에 얹힌 5px 띠다.
+  // 두 열은 각자 카드이고(ui-refresh 결정 15) 사이에 틈(`--space-2`)이 있다. 폭 핸들은 그 **틈의 가운데**에 얹힌 5px 띠다.
   // 열 머리가 그 카드의 폭을 그대로 쓰므로 두 머리의 마주 보는 끝에서 틈을 읽는다 — 좌표를 손으로 적지 않는다.
   const head = await page.locator('[data-column="spec"]').boundingBox();
   const other = await page.locator('[data-column="terminal"]').boundingBox();
   if (!head || !other) throw new Error("열 머리의 상자를 못 읽었다");
-  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap")));
+  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")));
   expect(other.x - (head.x + head.width), "두 열 카드 사이 틈").toBe(gap);
   const edge = (head.x + head.width + other.x) / 2;
   const y = head.y + head.height + 120;

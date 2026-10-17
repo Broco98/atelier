@@ -142,10 +142,11 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
     >
       {/* 카드 안에 고를 것이 없어 카드 머리가 없다 — 몸이 곧바로 선다. */}
       <Card as="main" label="Processes" className="flex-1">
-        {/* 카드의 몸 — 둘레는 카드 안 여백(`--card-pad`)이고, 내용은 그 안에서 넓은 폭(`--measure-wide`) 가운데에 선다
-            (ui-refresh 결정 12 — Codex가 글 폭을 말하지 않아 잇는다). 차례는 요약 타일 → 열 머리(22 아래) → 구획들이고, 펼친 구획의
-            몸 끝에 10이 남는다(`Section`). */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-(--card-pad) scroll-quiet">
+        {/* 카드의 몸 — 옆은 글 거터 20 · 위 24 · 아래 40이다(DS `ProcessTree` 미리보기의 몸 `padding: 24px 20px 40px` — `.at-thread`와
+            같은 셋 · codex-ds 스펙 §4 「`card-pad` 24 옆 여백은 20」). 아래 40은 간격 토큰에 없는 값이라 눈금 `pb-10`으로 적는다.
+            내용은 그 안에서 넓은 폭(`--measure-wide`) 가운데에 선다(ui-refresh 결정 12 — Codex가 글 폭을 말하지 않아 잇는다).
+            차례는 요약 타일 → 열 머리(22 아래) → 구획들이고, 펼친 구획의 몸 끝에 10이 남는다(`Section`). */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-10 scroll-quiet">
           <div className="mx-auto w-full max-w-(--measure-wide)">
             {/* **제목은 머리 카드가 보여 주고, 제목 역할은 이 줄이 진다** — 머리 카드의 이름은 제목 역할이 없는 글자라(설정
                 화면과 같은 사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}

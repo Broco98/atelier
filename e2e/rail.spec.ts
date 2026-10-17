@@ -94,7 +94,7 @@ test("칸이 둘이면 레일이 바탕 오른쪽 끝에 DS 모양으로 선다 
   await expect.poll(() => 칠한값(spec, "background-color"), "켜진 칸 hover").toEqual([await 토큰색(page, "--fill-selected")]);
 
   // 자리 — 위끝이 카드 위끝(머리 줄 아래)이고, 패널 카드와 틈 · 창 끝과 틈을 둔다. 패널 토글은 그 위 머리 줄, 줄의 가운데다.
-  const gap = await 길이(page, "--gap");
+  const gap = await 길이(page, "--space-2");
   const card = await 상자(showcase.getByRole("region", { name: "진열대 본문", exact: true }));
   const panel = await 상자(showcase.getByRole("region", { name: "진열대 패널", exact: true }));
   const toggle = await 상자(showcase.getByRole("button", { name: "진열대 패널 접기", exact: true }));
@@ -117,7 +117,7 @@ test("레일이 서면 패널 토글은 머리 카드 밖 레일 위에 서고 �
   const showcase = await 진열대를세운다(page);
   const rail = showcase.getByRole("group", { name: "레일", exact: true });
   const toggleButton = showcase.getByRole("button", { name: "진열대 패널 접기", exact: true });
-  const gap = await 길이(page, "--gap");
+  const gap = await 길이(page, "--space-2");
   const prail = await 길이(page, "--size-prail");
   const viewport = page.viewportSize()!;
   const [home, head, panel, toggle] = [

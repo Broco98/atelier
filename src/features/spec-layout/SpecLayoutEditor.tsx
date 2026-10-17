@@ -561,11 +561,12 @@ export function TreeCard({
           onRemove={() => onEdit((current) => removeEntry(current, at))}
         />
       </CardHead>
-      {/* 좌우 여백은 카드 머리와 같다(DS `.at-card-body.tight`) — 머리의 버튼과 트리의 행이 한 세로선에 선다. 머리와 첫 행
-          사이는 트리 줄 사이와 같은 2px 틈이다(DS `.at-tree`). `relative`는 아래 트리 상자 **위에** 서려는 것이다 — 트리 상자가
+      {/* 좌우 여백은 카드 머리(DS `.at-toolbar` — 좌우 8)와 같은 8이다 — 머리의 첫 버튼과 트리의 행이 한 세로선에 서고, 행
+          글리프는 행 안쪽 8(DS `.at-tree-row`)을 더해 카드 + 16이다(행 글자 16 — 스펙 §4). 머리와 첫 행 사이는 트리 줄 사이와 같은 1px
+          틈이다(DS `.at-tree`). `relative`는 아래 트리 상자 **위에** 서려는 것이다 — 트리 상자가
           링이 설 자리만큼 위로 4px 나와 이 줄의 아래 끝에 걸치는데(`EntryTree`), 같은 층에 서지 않으면 `spec/`의 아래 끝을
           누른 손을 트리 상자가 받는다. */}
-      <div className="relative shrink-0 px-2.5 pb-(--row-gap)">
+      <div className="relative shrink-0 px-2 pb-px">
         {/* 머리 `spec/`은 항목이 아니다(결정 26) — 끌기·지우기·옮기기의 대상이 아니고, 누르면 spec 폴더 안내(맨 위 항목의
             설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. 모양은 트리의 행이고 폴더 행처럼 한 단 흐리다
             (DS `.at-tree-row.folder`). 도움말은 누르면 서는 칸의 이름이다 — 이름(`spec/`)보다 더 말하는 것이라 설명으로도
@@ -577,7 +578,7 @@ export function TreeCard({
           onClick={() => onSelect([])}
           aria-pressed={at.length === 0}
           className={cn(
-            "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-chat-meta transition-colors focus-ring",
+            "flex h-7 w-full items-center gap-1.5 rounded-lg px-2 text-left text-chat-meta transition-colors focus-ring",
             at.length === 0 ? "selected-row font-medium" : "text-fg-secondary hover:bg-fill-soft",
           )}
         >
@@ -833,10 +834,10 @@ function EntryTree({
       role="tree"
       aria-label="레이아웃 항목"
       onKeyDown={onKeyDown}
-      // 줄 사이는 2px 틈이다(DS `.at-tree`). 좌우 여백은 카드 머리와 같고 스크롤 상자 **안**에 둔다 — 밖에 두면 행의 포커스 링이
+      // 줄 사이는 1px 틈이다(DS `.at-tree`). 좌우 여백은 카드 머리와 같고 스크롤 상자 **안**에 둔다 — 밖에 두면 행의 포커스 링이
       // 상자 가장자리에서 잘린다. 위끝도 같다 — 상자가 4px 올라갔다 되돌아(`-mt-1 pt-1`) 첫 행의 링(테두리 바깥 4px)이 서고,
       // 첫 행의 자리는 그대로다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`).
-      className="-mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2.5 pt-1 scroll-quiet"
+      className="-mt-1 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pt-1 scroll-quiet"
     >
       {rows.map(({ entry: row, path }) => (
         <TreeRow
@@ -888,7 +889,7 @@ function DropLine({ side, left }: { side: "top" | "bottom"; left: number }) {
       style={{ left }}
       className={cn(
         "pointer-events-none absolute right-1.5 flex h-1.5 items-center",
-        side === "top" ? "-top-[3px]" : "-bottom-[3px]",
+        side === "top" ? "-top-0.75" : "-bottom-0.75",
       )}
     >
       <span className="size-1.5 shrink-0 rounded-full border-2 border-accent bg-surface" />
@@ -927,7 +928,7 @@ function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boo
  * 이름이면 종류의 흐린 글리프다. 모르는 아이콘·템플릿 누락과 검증 오류는 행 끝에 표시가 붙는다 — 어디를
  * 골라야 하는지 트리에서 보인다.
  *
- * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-chat-meta` · 14px `fg-tertiary` 글리프와 이름 사이 7px · hover
+ * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-chat-meta` · 14px `fg-tertiary` 글리프와 이름 사이 6px · hover
  * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 파일 행은 본문 글자색이고 폴더 행은 머리 `spec/`처럼 한 단 흐린 `fg-secondary`다
  * (DS `.at-tree-row.folder` — 문서 트리 `SpecTree`와 같다, codex-ds 티켓 23). 고른 행은 폴더도 `selected-row`의 본문색이다 — 앱의 고른
  * 행은 모두 그 한 유틸리티의 글자색이다(DS의 고른 행 `.is-on`은 글자색을 말하지 않는다).
@@ -980,7 +981,7 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-ring",
+        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-ring",
         drop === "inside"
           ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent"
           : selected
@@ -1017,7 +1018,7 @@ function TreeRow({
 /**
  * 제목 아래 줄(오류 · 모르는 아이콘 경고)의 왼쪽 여백 — 아이콘 상자(44)와 그 뒤 틈(6)이다. 줄이 이름 틀 칸의 왼쪽 끝에서 시작한다.
  */
-const UNDER_TITLE = "pl-[50px]";
+const UNDER_TITLE = "pl-12.5";
 
 /**
  * 검증 오류의 붉은 줄들 — 엔진이 준 글 그대로다. `id`를 주면 줄마다 그 뒤에 번호를 붙인 id가 선다 — 칸이 그 줄들을
@@ -1391,7 +1392,7 @@ export function UnreadableLayout({
       <div className="flex items-start gap-2">
         <TriangleAlert
           aria-hidden
-          className="mt-[3px] size-3.5 shrink-0 text-warning"
+          className="mt-0.5 size-3.5 shrink-0 text-warning"
         />
         <div className="flex min-w-0 flex-col gap-0.5 text-chat-meta">
           <span className="font-medium text-warning">

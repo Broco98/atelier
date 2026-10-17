@@ -27,16 +27,16 @@ describe("터미널 본문의 자리", () => {
     return opened.id;
   };
 
-  // ui-refresh 판 04 기본값 — 셸이 둥근 카드에 앉으면서 집의 안쪽 여백이 `--term-inset` 하나다(한때 0이었다 — 결정 94).
-  // 여백이 그 토큰 **하나뿐**이어야 한다: 셸 화면에서 여백은 빈 배경이라 늘어난 만큼 `cols`가 줄고, spec 본문의 거터
+  // 셸이 둥근 카드에 앉으면서(ui-refresh 판 04) 집의 안쪽 여백이 DS `Terminal`의 16(`p-4`) 하나다(한때 0이었다 — 결정 94).
+  // 여백이 그 값 **하나뿐**이어야 한다: 셸 화면에서 여백은 빈 배경이라 늘어난 만큼 `cols`가 줄고, spec 본문의 거터
   // 같은 다른 값이 섞이면 카드 모서리와 글자 사이가 화면마다 갈린다. 그 띠가 셸 색인지는 e2e/terminal-fill.spec.ts가 잰다.
-  it("셸이 들어앉는 자리의 여백이 `--term-inset` 하나다", () => {
+  it("셸이 들어앉는 자리의 여백이 DS 안쪽 16 하나다", () => {
     // 셸의 집은 `data-shell-host`로 집는다 — **자리로 집지 않는다.** 한때 「마크업의
     // 마지막 빈 div」였는데, 그 판정은 이 컴포넌트에 무엇 하나만 더 그려져도 여백과
     // 무관하게 깨져서 「여백이 늘었다」로 잘못 보고한다.
     const host = /<div data-shell-host="" class="([^"]*)"/.exec(html());
     expect(host, "셸이 들어앉는 빈 자리를 찾지 못했다").not.toBeNull();
-    expect(padding(classesOf(host))).toEqual(["p-(--term-inset)"]);
+    expect(padding(classesOf(host))).toEqual(["p-4"]);
   });
 
   /**

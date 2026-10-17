@@ -664,7 +664,7 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(box).toMatch(/cursor-col-resize/);
     // 틈 자리 손잡이(`seat="gap"`)이고, 오른쪽 패널이라 그 틈은 카드의 **왼쪽**이다.
     expect(box).toContain('data-seat="gap"');
-    expect(box).toContain("left-[calc((var(--gap)-5px)/2)]");
+    expect(box).toContain("left-[calc((var(--space-2)-5px)/2)]");
     // 손잡이는 absolute다. 이 상자가 기준이 아니면 조상 어딘가를 기준으로 서서 화면 엉뚱한 곳에 붙는다.
     expect(rootTag(render())).toMatch(/class="[^"]*\brelative\b/);
   });
@@ -700,8 +700,8 @@ describe("WorksPage 작업 패널 칸", () => {
     // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다. 바깥은 접히는 폭이고 안쪽은 그 폭으로 버티는
     // 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다 — 바깥은 flex 기준(`basis`)으로, 안쪽은 폭으로
     // 읽는다(바깥이 문서 카드에 자리를 내줄 수 있어야 해서다). 둘 다 **틈을 더한** 값이다 — 저장하는 폭은 카드의 폭이다.
-    expect(countOf(markup, "basis-[calc(var(--work-panel-width)+var(--gap))]")).toBe(1);
-    expect(countOf(markup, " w-[calc(var(--work-panel-width)+var(--gap))]")).toBe(1);
+    expect(countOf(markup, "basis-[calc(var(--work-panel-width)+var(--space-2))]")).toBe(1);
+    expect(countOf(markup, " w-[calc(var(--work-panel-width)+var(--space-2))]")).toBe(1);
   });
 
   it("줄어들어도 끄는 최소 폭 아래로는 안 주고, 문서 카드에 그 최소 폭만큼은 남긴다", () => {
@@ -712,7 +712,7 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(markup).toMatch(/--panel-reserve:\s*260px/);
     const root = rootTag(markup);
     if (!root) throw new Error("패널 aside가 없다");
-    expect(root).toContain("min-w-[calc(var(--work-panel-min)+var(--gap))]");
+    expect(root).toContain("min-w-[calc(var(--work-panel-min)+var(--space-2))]");
     expect(root).toContain("max-w-[calc(100%-var(--panel-reserve))]");
     expect(root).not.toContain("shrink-0");
   });
