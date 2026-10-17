@@ -21,7 +21,7 @@ import { blankComments, blankCssComments } from "./blank-comments";
 //     눈금 밖의 값을 이름 뒤로 들인다. `--space-*`는 `:root`에 선다.
 //   - **눈금의 사분 단**(`.25` · `.75` 칸과 `px` — `gap-2.25` · `py-1.75` · `gap-px`). 눈금 위의 수지만 홀수 px라 세 줄을 비켜 가기
 //     쉽다. DS 부품 값에 홀수 px가 있어(행의 아이콘 틈 9 · 버튼 안쪽 9 · 두 줄 행 위아래 7, DS `.at-row` · `.at-btn.xs` · `.at-row.two`)
-//     막지는 않고, 서는 자리마다 그 출처를 `QUARTERS`에 적는다.
+//     막지는 않고, 서는 자리마다 그 출처를 `QUARTERS`에 한 줄씩 적는다(한 줄이 한 자리다).
 // 모두 빌드도 타입 검사도 조용하고 화면에서는 「1px 들쭉날쭉」으로만 남아, 눈으로는 지켜지지 않는다. 화면이 세 줄에 서는지는 L3가
 // 상자로 잰다(`e2e/spacing.spec.ts` · `frame.spec` · `path-bar.spec` · `settings-group.spec`).
 //
@@ -62,8 +62,20 @@ function places(pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): 
 }
 const where = (place: Place) => `${place.file}:${place.line}: ${place.text}`;
 
+/**
+ * 목록의 자리 가운데 **정확히 한 번** 걸리지 않는 것 — `파일: 클래스 × 걸린 수`로 보인다. 목록의 한 줄은 그 파일의 한 자리다. 안 걸린
+ * 줄(0)은 남은 허락이고, 두 번 걸린 줄은 같은 파일의 둘째 자리가 그 줄 하나로 지나간 것이다 — 어느 쪽이든 다음 쓰임의 뒷문이 된다.
+ */
+function notOnce(list: { file: string; className: string }[], found: Place[]): string[] {
+  return list.flatMap((one) => {
+    const times = found.filter((place) => one.file === place.file && one.className === place.text).length;
+    return times === 1 ? [] : [`${one.file}: ${one.className} × ${times}`];
+  });
+}
+
 // 간격을 받는 유틸리티의 앞말 — 안쪽(`p-*` …) · 바깥(`m-*` …) · 틈(`gap-*` · `space-x-*`) · 자리(`inset-*` · `top-*` …) · 구를 때의
-// 여백(`scroll-m*` · `scroll-p*`) · 들여쓰기(`indent-*`). 크기(`w-*` · `size-*` …)와 옮기기(`translate-*`)는 아니다(머리말).
+// 여백(`scroll-m*` · `scroll-p*`) · 들여쓰기(`indent-*`) · 표 칸 사이(`border-spacing-*`). 크기(`w-*` · `size-*` …)와 옮기기
+// (`translate-*`)는 아니다(머리말).
 // 방향은 Tailwind 4.3.3의 이름 그대로다 — 한 글자(`pt` · `ps` …)와 블록 방향 두 글자(`pbs` · `pbe`), 자리는 `inset-x` · `-y` · `-s` ·
 // `-e` · `-bs` · `-be`(`tailwindcss/dist/lib.js`).
 const DIRECTION = "(?:[xytrblse]|b[se])";
@@ -81,6 +93,7 @@ const SPACING = [
   "end",
   `scroll-[mp]${DIRECTION}?`,
   "indent",
+  "border-spacing(?:-[xy])?",
 ];
 
 /** 간격 유틸리티 뒤에 `value` 꼴이 붙은 것 — 변형(`hover:` · `has-[>kbd]:`) · `!` · 음수(`-mt-…`)를 함께 센다. */
@@ -96,7 +109,7 @@ const nameOf = (place: Place) => /\((?:[\w-]+:)?(--[\w-]+)\)$/.exec(place.text)!
 
 // 간격을 정하는 CSS 속성 — 임의 속성(`[padding-left:9px]`)은 유틸리티 이름 없이 속성을 바로 적어 위 앞말에 안 걸린다. 방향 ·
 // 논리 방향은 속성 이름 뒤에 붙는다(`padding-inline-start` · `margin-block-end` · `inset-inline` …).
-const PROPERTIES = ["padding", "margin", "gap", "row-gap", "column-gap", "inset", "top", "right", "bottom", "left", "scroll-padding", "scroll-margin", "text-indent"];
+const PROPERTIES = ["padding", "margin", "gap", "row-gap", "column-gap", "inset", "top", "right", "bottom", "left", "scroll-padding", "scroll-margin", "text-indent", "border-spacing"];
 /** 임의 속성 — `[padding-left:9px]` · `hover:[margin-block-end:3px]`. */
 const ARBITRARY_PROPERTY = new RegExp(
   `(?<![\\w-])(?:[^\\s"'\`]*:)?!?\\[(?:${PROPERTIES.join("|")})(?:-[a-z]+)*:[^\\]\\s"'\`]*\\]`,
@@ -110,7 +123,7 @@ const QUARTER = spacing(`(?:\\d+\\.(?:25|75)|px)`);
 // 올리면 `space-x-2`가 그 값을 읽는다(`tailwindcss/dist/lib.js`의 유틸리티마다 이름공간 — `["--padding", "--spacing"]` …). 그림자의
 // `--inset-shadow-*` · `--inset-ring-*`는 간격이 아니다.
 const THEME_SPACING =
-  /(?<![\w-])--(?:spacing|padding|margin|gap|inset(?!-shadow|-ring)|space|scroll-margin|scroll-padding|text-indent)(?:-[\w-]+)?(?=\s*:)/g;
+  /(?<![\w-])--(?:spacing|padding|margin|gap|inset(?!-shadow|-ring)|space|scroll-margin|scroll-padding|text-indent|border-spacing)(?:-[\w-]+)?(?=\s*:)/g;
 
 /** `@theme` 블록 안의 간격 이름 선언 — 블록 밖(`:root`의 `--space-*`)은 유틸리티를 내지 않는다. */
 function themeSpacing(source: Source): Place[] {
@@ -141,7 +154,8 @@ it("검사가 실제로 소스를 읽는다", () => {
 describe("임의 간격", () => {
   /**
    * **임의 값의 예외** — 눈금(0.25칸 = 1px)으로 적을 수 없는 자리다. 자리는 파일과 그 클래스 글자 그대로이고 까닭을 한 줄씩 적는다.
-   * 예외마다 지금도 그 자리에 걸리는지 함께 센다 — 쓰이지 않는 예외는 다음 임의 값의 뒷문이 된다.
+   * 한 줄이 그 파일의 한 자리라, 예외마다 지금 **정확히 한 번** 걸리는지 함께 센다(`notOnce`) — 쓰이지 않는 예외도, 같은 파일에서
+   * 한 번 더 쓰인 예외도 다음 임의 값의 뒷문이 된다.
    */
   const EXCEPTIONS: { file: string; className: string; why: string }[] = [
     {
@@ -174,11 +188,14 @@ describe("임의 간격", () => {
   const excused = (place: Place) => EXCEPTIONS.some((one) => one.file === place.file && one.className === place.text);
 
   it("임의 값 꼴이 변형 · 음수 · 식까지 잡고, 간격이 아닌 것은 잡지 않는다", () => {
-    // 앵커: 셋째 · 넷째는 변형의 대괄호(`has-[>kbd]`)와 음수 안 값을, 다섯째는 식을, 여섯째는 `gap-[--spacing(…)]`을 잡는다. 크기 ·
-    // 옮기기 · 글자 정렬(`text-left` · `items-start`) · 테두리 링(`inset-ring-[…]`) · 그림자(`inset-shadow-[…]`)는 잡지 않는다.
+    // 앵커: 셋째 · 넷째는 변형의 대괄호(`has-[>kbd]`)와 음수 안 값을, 다섯째는 식을, 여섯째는 `gap-[--spacing(…)]`을, 끝의 둘은 표 칸
+    // 사이(`border-spacing` — 눈금을 읽는 간격이다)를 잡는다. 크기 · 옮기기 · 글자 정렬(`text-left` · `items-start`) · 테두리 링
+    // (`inset-ring-[…]`) · 그림자(`inset-shadow-[…]`) · 눈금 위의 표 칸 사이(`border-spacing-0`)는 잡지 않는다.
     const sample =
       "p-[7px] hover:gap-[9px] -mt-[3px] has-[>kbd]:ml-[-0.15rem] left-[calc((var(--space-2)-5px)/2)] gap-[--spacing(2)] inset-x-[3px] " +
-      "p-2 gap-1.75 text-left items-start justify-end size-[17px] max-w-[calc(100%-4rem)] inset-ring-[1px] inset-shadow-[0_1px] translate-x-[3px]";
+      "border-spacing-[3px] border-spacing-y-[2px] " +
+      "p-2 gap-1.75 text-left items-start justify-end size-[17px] max-w-[calc(100%-4rem)] inset-ring-[1px] inset-shadow-[0_1px] translate-x-[3px] " +
+      "border-spacing-0";
     expect(places(ARBITRARY, [{ file: "예", text: sample }]).map((place) => place.text)).toEqual([
       "p-[7px]",
       "hover:gap-[9px]",
@@ -187,6 +204,8 @@ describe("임의 간격", () => {
       "left-[calc((var(--space-2)-5px)/2)]",
       "gap-[--spacing(2)]",
       "inset-x-[3px]",
+      "border-spacing-[3px]",
+      "border-spacing-y-[2px]",
     ]);
   });
 
@@ -211,7 +230,7 @@ describe("임의 간격", () => {
     // 앵커: `[padding-left:9px]`는 유틸리티 이름 없이 CSS 속성을 바로 적는 꼴이라 위 앞말 목록에 안 걸린다. 변수 선언
     // (`[--toggle-gap:2]`) · 크기(`[width:3px]`) · 변형의 대괄호(`[&_svg]:size-3`)는 잡지 않는다.
     const sample =
-      "[padding-left:9px] hover:[margin-block-end:3px] [gap:5px] [inset-inline-start:2px] [scroll-padding-top:4px] [text-indent:1em] " +
+      "[padding-left:9px] hover:[margin-block-end:3px] [gap:5px] [inset-inline-start:2px] [scroll-padding-top:4px] [text-indent:1em] [border-spacing:3px] " +
       "[--toggle-gap:2] [width:3px] [&_svg]:size-3 [&>[role=radio]]:mt-1";
     expect(places(ARBITRARY_PROPERTY, [{ file: "예", text: sample }]).map((place) => place.text)).toEqual([
       "[padding-left:9px]",
@@ -220,6 +239,7 @@ describe("임의 간격", () => {
       "[inset-inline-start:2px]",
       "[scroll-padding-top:4px]",
       "[text-indent:1em]",
+      "[border-spacing:3px]",
     ]);
   });
 
@@ -228,8 +248,7 @@ describe("임의 간격", () => {
     // `pt-6`)이나 그 부품의 DS 값(`bundle.css`의 `.at-*`)이다. 눈금 밖이어야 하는 까닭이 있으면 `EXCEPTIONS`에 이름과 까닭을 적는다.
     const found = [...places(ARBITRARY), ...places(ARBITRARY_PROPERTY)];
     expect(found.filter((place) => !excused(place)).map(where)).toEqual([]);
-    const unused = EXCEPTIONS.filter((one) => !found.some((place) => one.file === place.file && one.className === place.text));
-    expect(unused).toEqual([]);
+    expect(notOnce(EXCEPTIONS, found)).toEqual([]);
   });
 
   /**
@@ -305,8 +324,9 @@ describe("임의 간격", () => {
   });
 
   it("테마에 간격 이름을 올리지 않는다", () => {
-    const sample = "@theme { --spacing-card: 7px; --radius-md: 8px; }\n@theme inline { --space-2: 8px; --inset-shadow-sm: none; }";
-    expect(themeSpacing({ file: "예", text: sample }).map((place) => place.text)).toEqual(["--spacing-card", "--space-2"]);
+    const sample =
+      "@theme { --spacing-card: 7px; --radius-md: 8px; }\n@theme inline { --space-2: 8px; --inset-shadow-sm: none; --border-spacing-cell: 3px; }";
+    expect(themeSpacing({ file: "예", text: sample }).map((place) => place.text)).toEqual(["--spacing-card", "--space-2", "--border-spacing-cell"]);
     expect(themeSpacing(stylesheet).map(where)).toEqual([]);
   });
 });
@@ -325,7 +345,8 @@ describe("눈금의 사분 단", () => {
 
   /**
    * **사분 단이 서는 자리** — 눈금 위의 수지만 홀수 px라, 서는 자리마다 그 값의 출처(대개 DS 부품의 값 — `bundle.css`의 `.at-*`)를
-   * 한 줄씩 적는다. 자리는 파일과 그 클래스 글자 그대로다. 쓰이지 않는 자리는 다음 사분 단의 뒷문이 되어 함께 센다.
+   * 한 줄씩 적는다. 자리는 파일과 그 클래스 글자 그대로이고 한 줄이 그 파일의 한 자리다. 쓰이지 않는 자리도, 같은 파일에서 한 번
+   * 더 선 자리도 다음 사분 단의 뒷문이 되어 정확히 한 번인지 함께 센다(`notOnce`).
    */
   const QUARTERS: { file: string; className: string; why: string }[] = [
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
@@ -480,8 +501,7 @@ describe("눈금의 사분 단", () => {
     const found = places(QUARTER);
     const listed = (place: Place) => QUARTERS.some((one) => one.file === place.file && one.className === place.text);
     expect(found.filter((place) => !listed(place)).map(where)).toEqual([]);
-    const unused = QUARTERS.filter((one) => !found.some((place) => one.file === place.file && one.className === place.text));
-    expect(unused).toEqual([]);
+    expect(notOnce(QUARTERS, found)).toEqual([]);
   });
 });
 
