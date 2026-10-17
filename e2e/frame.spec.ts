@@ -668,7 +668,7 @@ test("Works: 머리 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   const gap = await token(page, "--space-2");
   const titlebar = await token(page, "--titlebar-height");
   const viewport = page.viewportSize()!;
-  const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
+  const edge = await sidebarRight(page);
   const [card, side] = [await boxOf(doc), await boxOf(panel)];
   expect(card.y, "문서 카드 위").toBe(titlebar);
   expect(side.y, "패널 카드 위").toBe(titlebar);
@@ -700,6 +700,40 @@ test("Works: 머리 줄 아래에 문서 카드와 작업 패널 카드가 틈 -
   await expect.poll(async () => (await boxOf(panel)).x - (await boxOf(doc)).right).toBe(gap);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+/** Tab을 `번` 번 누르는 동안 포커스가 둘째 `aside`(오른쪽 패널) 안에 선 횟수 — 포커스를 걷고 돈다. 한 바퀴가 이보다 짧아 여러 바퀴를 돈다. */
+async function 패널정류장(page: Page, 번 = 60): Promise<number> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  let count = 0;
+  for (let n = 0; n < 번; n += 1) {
+    await page.keyboard.press("Tab");
+    if (await page.evaluate(() => document.querySelectorAll("aside")[1]?.contains(document.activeElement) ?? false)) count += 1;
+  }
+  return count;
+}
+
+// **닫힌 오른쪽 패널은 Tab이 지나친다**(`Frame`의 `PanelBox`). 닫힌 칸은 폭만 0으로 접혀 DOM에 남으므로, 막지 않으면 Tab이 보이지
+// 않는 트리 행에 선다(옛 Archive는 행 안에 펼친 트리를 `inert`로 막았다). 열린 동안은 그 행(폴더 머리)이 Tab 정류장이라 두 상태를
+// 같은 길로 잰다 — 열린 쪽이 0이면 닫힌 쪽의 0도 아무것도 말하지 않는다. 칸은 두 화면이 한 벌이다(작업 패널 · spec 목록 패널).
+const PANEL_SCREENS = [
+  { name: "Works", url: `/works/${pinnedWork.slug}`, panel: "작업 패널" },
+  { name: "Archive", url: `/archive/${ARCHIVE[0].slug}`, panel: "spec 목록" },
+] as const;
+
+for (const screen of PANEL_SCREENS) {
+  test(`${screen.name}: 닫힌 오른쪽 패널은 Tab이 지나치고, 열린 동안은 그 안의 트리 행에 선다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(screen.url);
+    const aside = page.locator("aside").nth(1);
+    await expect(aside.getByRole("region", { name: screen.panel, exact: true })).toBeVisible();
+    expect(await 패널정류장(page), "열린 패널").toBeGreaterThan(0);
+
+    await page.getByRole("button", { name: `${screen.panel} 접기`, exact: true }).click();
+    await expect.poll(async () => (await aside.boundingBox())!.width).toBe(0);
+    expect(await 패널정류장(page), "닫힌 패널").toBe(0);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
 
 // codex-ds 티켓 18 — **작업 패널 머리는 「spec」과 spec 폴더 열기다**(codex-ds 스펙 §4 「패널 머리」 · §6 「작업 패널」). 제목은 DS 패널 머리
 // 제목(`.at-panel-head .title` — 14/20 · 500)이고, 글자가 카드 + 16에 선다(머리 여백 8 + 제목 안쪽 8 — 행 글자 16, 스펙 §4 「여백」).
@@ -1532,7 +1566,7 @@ test("Works: 셸 칸을 끄는 동안 겹판이 탭 줄 아래 카드 줄을 덮
 
   const titlebar = await token(page, "--titlebar-height");
   const viewport = page.viewportSize()!;
-  const edge = await page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
+  const edge = await sidebarRight(page);
   // 카드 줄의 오른쪽 끝 — 줄은 제 오른쪽 틈(`pr-2`)까지 들어 창 오른쪽 끝이다. 레일 열이 서면 그 앞에서 끝나지만(레일 열은
   // 카드 줄 밖이라 겹판 · 토스트의 가운데가 그것을 안 센다) 지금은 칸이 하나라 서지 않는다(codex-ds 결정 25).
   const rowRight = viewport.width;

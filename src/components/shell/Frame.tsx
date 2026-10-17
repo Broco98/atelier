@@ -298,6 +298,8 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  * 곧장 따라온다. translateX로 밀어내는 길은 이미 실패한 길이다 — 제 상자 밖 넘침을 문서가 받아 도는 동안 가로 스크롤이 깜빡인다.
  *
  * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
+ * 그래서 **닫힌 동안 안쪽 열은 `inert`다** — 폭만 0인 칸 안의 트리 행에 Tab · 찾기가 닿지 않게 한다(레일의 `PanelBody` · 사이드바 목록
+ * 구획과 같은 손). 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다.
  */
 function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?: number }) {
   const { open, size, label, children } = slot;
@@ -330,6 +332,7 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
           오른쪽이 잘리지 않게. 박자와 까닭은 `panel-layout`의 `foldingInnerClass`에 있다. */}
       <div
         data-tauri-drag-region
+        inert={!open}
         className={cn(
           "flex h-full w-[calc(var(--panel-width)+var(--space-2))] shrink-0 pl-2",
           foldingInnerClass(open),
