@@ -695,7 +695,7 @@ function WorksPage({
               />
             }
           >
-            <Columns2 className="size-4" />
+            <Columns2 className="size-3.75" />
           </Hint>
         ),
       }
@@ -984,7 +984,7 @@ function StatusMenu({ work }: { work: WorkView }) {
         }
       >
         {meta.label}
-        <ChevronDown className="size-[11px] text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
+        <ChevronDown className="size-3 text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
       <DropdownMenuContent>
         {/* work 메뉴의 상태 ▸와 같은 한 벌이다 — 값이 바뀔 때만 부른다(`StatusRadioItems`). */}
@@ -1153,7 +1153,7 @@ function WorkMenu({
           {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
               깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
               disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontal className="size-3.75" />
         </Hint>
         <DropdownMenuContent>
           <WorkMenuItems work={work} actions={actions} />

@@ -39,7 +39,7 @@ function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
       aria-keyshortcuts="Meta+Enter"
       className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
     >
-      <PanelRight className="size-4" />
+      <PanelRight className="size-3.75" />
     </Hint>
   );
 }

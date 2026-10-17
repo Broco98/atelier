@@ -355,7 +355,7 @@ function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) =>
           />
         }
       >
-        <MoreHorizontal className="size-4" />
+        <MoreHorizontal className="size-3.75" />
       </Hint>
       <DropdownMenuContent>
         <ArchiveMenuItems

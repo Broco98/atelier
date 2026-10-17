@@ -69,14 +69,14 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
       <SidebarToggle open={sidebarOpen} onToggle={onToggleSidebar} />
       {/* 마우스 사이드 버튼이 부르는 window.history.back()과 같은 길로 보낸다 */}
       <HistoryButton label="뒤로" disabled={!canGoBack} onClick={() => router.history.back()}>
-        <ArrowLeft className="size-4" />
+        <ArrowLeft className="size-3.75" />
       </HistoryButton>
       <HistoryButton
         label="앞으로"
         disabled={!canGoForward}
         onClick={() => router.history.forward()}
       >
-        <ArrowRight className="size-4" />
+        <ArrowRight className="size-3.75" />
       </HistoryButton>
       {/* **뒤로·앞으로와 같은 간격으로 이어 붙는다 — 무리를 가르지 않는다.** 「지나온 길」과
           검색이 다른 성질인 것은 맞지만, 그것으로 간격을 가르는 규칙은 이 행에 없다: 첫 칸의
@@ -117,7 +117,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
         aria-keyshortcuts="Meta+K"
         className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
       >
-        <Search className="size-4" />
+        <Search className="size-3.75" />
       </Hint>
     </div>
   );

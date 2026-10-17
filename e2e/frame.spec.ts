@@ -889,6 +889,54 @@ test("Works: 창 컨트롤 넷과 패널 토글의 가운데가 머리 카드 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 머리 줄 아이콘의 크기(codex-ds 스펙 §3 「머리 카드와 창 컨트롤 15」 · DS `AppShell` · `HeadCard` 미리보기의 `at-ib xs` + `s15`). 창
+// 컨트롤 넷과 머리 카드의 아이콘 버튼(⋯ · 분할 · 패널 토글 · 편집기의 뒤로)은 24 상자에 15 글리프다. 머리 카드의 화면 아이콘(⚡ 등)은
+// DS 부품 규칙 `.at-wtitle > .ic`의 14이고 — 스펙 문장의 15보다 부품이 못박은 값이 앞선다(스펙 머리말 「모양 정본은 DS」) — 상태
+// 배지의 ⌄는 DS 미리보기의 `s12`다. 레일 칸 · 카드 안 28 아이콘 버튼의 16은 이 줄의 것이 아니다.
+const HEAD_GLYPH_SCREENS = [
+  {
+    name: "Works",
+    url: `/works/${pinnedWork.slug}`,
+    icon: "zap",
+    buttons: ["작업 메뉴", "분할", "작업 패널 접기"],
+    chevron: pinnedWork.status,
+  },
+  { name: "Archive", url: `/archive/${ARCHIVE[0].slug}`, icon: "zap", buttons: ["아카이브 메뉴", "spec 목록 접기"] },
+  { name: "레이아웃 편집기", url: SPEC_LAYOUT_EDITOR, icon: "settings", buttons: ["설정으로 돌아가기"] },
+] as const;
+
+/** 그 요소 안 글리프(svg) 하나의 [폭, 높이]. 둘 이상이면 어느 것을 쟀는지 모르므로 먼저 하나임을 센다. */
+async function glyphOf(target: Locator) {
+  const glyph = target.locator("svg");
+  await expect(glyph).toHaveCount(1);
+  const box = await boxOf(glyph);
+  return [box.width, box.height];
+}
+
+for (const screen of HEAD_GLYPH_SCREENS) {
+  test(`${screen.name}: 창 컨트롤 · 머리 카드 아이콘 버튼의 글리프가 15이고, 머리 카드의 화면 아이콘은 14다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(screen.url);
+    const head = 머리카드(page);
+    await expect(head.getByRole("button", { name: screen.buttons[screen.buttons.length - 1], exact: true })).toBeVisible();
+
+    // 창 컨트롤은 머리 카드 밖 왼쪽 위 묶음이다(`ShellControls`) — 화면마다 같은 것이 선다.
+    for (const name of ["사이드바 토글", "뒤로", "앞으로", "검색"]) {
+      expect(await glyphOf(page.getByRole("button", { name, exact: true })), `창 컨트롤 ${name}`).toEqual([15, 15]);
+    }
+    for (const name of screen.buttons) {
+      expect(await glyphOf(head.getByRole("button", { name, exact: true })), `머리 카드 ${name}`).toEqual([15, 15]);
+    }
+    const icon = await boxOf(head.locator(`svg.lucide-${screen.icon}`));
+    expect([icon.width, icon.height], "머리 카드의 화면 아이콘 — DS `.at-wtitle > .ic`").toEqual([14, 14]);
+    if ("chevron" in screen) {
+      const badge = head.getByRole("button", { name: screen.chevron, exact: true });
+      expect(await glyphOf(badge), "상태 배지 ⌄ — DS `s12`").toEqual([12, 12]);
+    }
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
 // 머리 줄의 **머리 카드 밖 회색**이 창을 끄는 자리다(codex-ds 스펙 §4 「드래그 영역」 — 회색이 보이는 상자마다 단다). 머리 카드는
 // 카드라 안(빈 자리까지)이 끄는 자리가 아니고, 그 안의 조작과 패널 토글(레일이 서지 않아 카드 안이다)은 그대로 눌린다. 레일이 설
 // 때 카드 밖 토글 자리의 둘레는 진열대의 `rail.spec.ts`가 잰다.

@@ -420,7 +420,7 @@ function EditorFrame({
         // 머리 카드의 작은 아이콘 버튼(`icon-button-xs` — 24 · `radius-md`, 위 줄에 서는 것은 모두 24다 — DS `HeadCard`).
         lead: (
           <Button variant="ghost" size="icon-xs" onClick={onBack} aria-label="설정으로 돌아가기">
-            <ArrowLeft aria-hidden className="size-4" />
+            <ArrowLeft aria-hidden className="size-3.75" />
           </Button>
         ),
         icon: SettingsIcon,
