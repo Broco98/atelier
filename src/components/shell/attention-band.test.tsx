@@ -187,23 +187,21 @@ describe("줄 하나", () => {
 // 서고, 무게가 안 갈리면 「기다림 › 안 본 완료」가 점 색 하나에만 매달린다 — 「열여덟 행을 훑지 않고
 // 거기만 본다」(스토리 36)가 그 둘에 기댄다.
 describe("띠는 목록 위에 뜬 상자다", () => {
-  // 그림자는 DS `.at-band`의 두 겹(`shadow-hairline` + `shadow-200`)을 합친 이름이다 — 칠해진 값은 L3(`works-sidebar`)가 토큰과 맞댄다.
-  it("상자가 바닥색과 반지름과 그림자를 든다", () => {
+  // 그림자(DS `.at-band`의 두 겹 — `shadow-hairline` + `shadow-200`)는 칠해진 값으로 L3(`works-sidebar`)가 토큰과 맞댄다 — 여기서는 그
+  // 클래스 글자를 재지 않는다(구현-스펙 「클래스 문자열은 재지 않는다」).
+  it("상자가 바닥색과 반지름을 든다", () => {
     const 상자 = 여는태그(band(줄들(1)), "data-band");
     expect(상자).toContain("bg-surface");
     expect(상자).toContain("rounded-2xl");
-    expect(상자).toContain("shadow-raised");
   });
 
   // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다(DS `.at-band .at-row.wait` — 진한 글자 500). 점 색으로만
-  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다.
-  it("기다림 줄과 완료 줄의 무게가 갈린다", () => {
+  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다. 무게(기다림 500 · 완료 400)는 칠해진 값으로 L3(`works-sidebar`)가 잰다.
+  it("기다림 줄과 완료 줄의 글자색이 갈린다", () => {
     const 줄태그 = (kind: "waiting" | "done") =>
       /<button[^>]*aria-label[^>]*>/.exec(band([줄({ kind })]))![0];
     expect(줄태그("waiting")).not.toContain("text-fg-secondary");
-    expect(줄태그("waiting")).toContain("font-medium");
     expect(줄태그("done")).toContain("text-fg-secondary");
-    expect(줄태그("done")).not.toContain("font-medium");
   });
 
   // **hover가 바닥에 안 묻는다.** 줄의 hover는 상태 겹(`fill-soft`)이고 상자 바닥은 흰 카드다 —

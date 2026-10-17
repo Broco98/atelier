@@ -736,17 +736,15 @@ describe("칸을 본문 위로 끄는 자리", () => {
 
 // 머리 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `HeadRow`가 들고, 그
 // 줄을 실제로 세우는 화면의 seam(`TerminalPage.test.tsx`)이 잰다. 이 줄이 지는 것은 **본문 카드의 머리 상자**다(codex-ds
-// 스펙 §4 「탭 줄」 · DS `.at-toolbar`). 높이 · 선 · 칸 규격의 실물은 e2e `terminal-tabs.spec.ts`가 화면마다 잰다.
+// 스펙 §4 「탭 줄」 · DS `.at-toolbar`). 높이 · 선 · 칸 규격의 실물은 e2e `terminal-tabs.spec.ts`가 화면마다 칠해진 값으로 잰다
+// (높이 46 = `size-toolbar` · 아래 0.5px `border-heavy` 선) — 여기서는 그 클래스 글자를 재지 않는다(구현-스펙 「클래스 문자열은 재지 않는다」).
 describe("카드의 머리", () => {
   const rootOf = (markup: string) => markup.match(/^<div[^>]*>/)![0];
 
-  it("뿌리가 머리 상자다 — `data-tab-row` · 46px(`size-toolbar`) · 아래 0.5px `border-heavy` 선", () => {
+  it("뿌리가 머리 상자다 — `data-tab-row` 표식을 단다", () => {
     // 줄을 이는 카드의 바닥(`TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 이 표식으로 줄을 가른다.
     const root = rootOf(render(opened(2).state));
     expect(root).toMatch(/\sdata-tab-row="/);
-    expect(root).toContain("h-(--size-toolbar)");
-    expect(root).toContain("after:h-[0.5px]");
-    expect(root).toContain("after:bg-border-heavy");
   });
 
   it("뿌리에 `<header>`가 없다 — 창 맨 위 머리 줄과 둘이 되지 않는다", () => {
