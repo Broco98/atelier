@@ -112,8 +112,9 @@ function AppShell() {
   // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.
   // - **`preventDefault`만 부르고 전파는 안 끊는다.** document에 닿은 사건은 난 자리의 리스너(xterm의 우클릭 고름 …)를 이미 다
   //   지났고, 같은 document에서 듣는 편집 메뉴는 이 막기와 상관없이 받는다. 대상의 Trigger · 자리는 기본 동작을 막고 사건을
-  //   멈추므로(React가 그 전파를 `#root`에서 끊는다) 그 우클릭은 여기까지 안 온다 — 막을 것이 이미 막혀 있다. 그 Trigger 안의
-  //   입력칸(사이드바 행의 이름을 고치는 칸)은 Trigger가 물러서 여기까지 오고, 다른 입력칸처럼 편집 메뉴가 연다(`WorkContextMenu`).
+  //   멈추므로(React가 그 전파를 `#root`에서 끊는다) 그 우클릭은 여기까지 안 온다 — 막을 것이 이미 막혀 있다. 그 Trigger · 자리
+  //   안의 이름을 고치는 칸(사이드바 행 — `WorkContextMenu`의 `opensEditMenu`, 셸 탭 — `ShellTabs`의 `editing`, 프로젝트 목록 행 —
+  //   `TargetMenu`의 `opensEditMenu`)은 Trigger · 자리가 물러서 여기까지 오고, 다른 입력칸처럼 편집 메뉴가 연다.
   // - **닿지 않는 곳이 하나 있다**: HTML 문서(`SpecViewer`의 `HtmlDoc`)는 same-origin이 없는 iframe이라 그 안의 우클릭은 부모까지
   //   오지 않고, 거기서는 웹뷰 메뉴가 선다. 그 틈을 메우는 길 둘을 다 안 간다 — 구현 노트 Q5의 물러선 꼴(「iframe 안은 남는다」)이다.
   //   - srcdoc에 막는 스크립트를 넣는 길: 껍데기는 발행 쪽에서 그대로 베낀 것이고 온전한 문서는 손대지 않고 통과한다(`SpecViewer`의

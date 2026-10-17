@@ -173,7 +173,8 @@ function targetAt(from: Element): EditTarget | null {
 
 /**
  * 그 자리의 우클릭이 편집 메뉴의 것인가(입력칸 · 터미널). 제 메뉴를 가진 대상이 그 안의 이 자리에서 물러서는 데 쓴다 —
- * 사이드바 행 목록 안의 이름을 고치는 칸이 그렇다(`WorkContextMenu`).
+ * 사이드바 행 목록 안의 이름을 고치는 칸(`WorkContextMenu`)과 대상 메뉴 자리 안의 입력칸(`TargetMenu` — 프로젝트 목록 행의 이름을
+ * 고치는 칸)이 그렇다.
  */
 export function opensEditMenu(from: Element): boolean {
   return targetAt(from) !== null;
