@@ -39,6 +39,13 @@ export function cwdRef(cwd: string): string {
   return asDir(cwd);
 }
 
+/** 프로젝트 폴더: 프로젝트의 `path`(코어가 `~` 축약으로 내려준 등록 경로)에 끝의 `/`만 보장한다. 프로젝트 메뉴의 「경로 복사」가
+ *  복사하는 한 줄이고, 같은 메뉴의 「Finder에서 열기」가 여는 폴더다(codex-ds 티켓 30). 레이아웃 참조와 같은 까닭에 앞머리를 여기서
+ *  다시 짓지 않는다 — 프로젝트는 어디에든 등록되는 저장소라 뿌리가 없다. */
+export function projectDirRef(path: string): string {
+  return asDir(path);
+}
+
 /** 코어가 완성해 내려준 폴더 경로를 폴더 참조로 — 끝의 `/` 하나만 보장한다. */
 function asDir(path: string): string {
   return path.endsWith("/") ? path : `${path}/`;

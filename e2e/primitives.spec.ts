@@ -87,12 +87,14 @@ const 링폭 = 4;
  *
  * 페이지 안에서 도는 함수다(`evaluateAll`) — 자르는 변을 `<상자> 변`으로 돌려준다. `굴러나간것은뺀다`면 자르는 상자 안에
  * 다 들어와 있지 않은 요소(굴러서 반쯤 · 통째로 나간 것, 접힌 구획 안의 것)는 세지 않는다 — 그 링이 안 보이는 것은 그 요소가
- * 안 보이기 때문이다. 크기가 없는 요소도 같다.
+ * 안 보이기 때문이다. 크기가 없는 요소도 같다. **링을 안쪽에 입는 것**(`data-ring-inset` — 카드 끝까지 차는 문서 글)은 테두리
+ * 바깥으로 차지하는 것이 없어 요소 상자 그대로 잰다.
  */
-function 잘린링(els: Element[], { 폭, 굴러나간것은뺀다 }: { 폭: number; 굴러나간것은뺀다: boolean }): string[] {
+function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }: { 폭: number; 굴러나간것은뺀다: boolean }): string[] {
   const cut: string[] = [];
   for (const el of els) {
     const box = el.getBoundingClientRect();
+    const 폭 = el.hasAttribute("data-ring-inset") ? 0 : 바깥폭;
     if (굴러나간것은뺀다 && (box.width === 0 || box.height === 0)) continue;
     const 이름 = `<${el.tagName.toLowerCase()}> 「${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 24)}」`;
     const 변: string[] = [];

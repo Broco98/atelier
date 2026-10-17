@@ -11,11 +11,12 @@ import {
   recordClipboard,
   unknownIpcCalls,
   writeShell,
+  다떴다,
   띠,
   줄차례,
-  칠한값,
   칸들,
   이름표,
+  테두리,
   토큰색,
 } from "./harness";
 import { rowOf, settle, squeezedWidth, widenSidebar } from "./tab-row";
@@ -37,16 +38,6 @@ const 터미널셸메뉴차례 = ["이름 바꾸기F2", "—", "닫기⌘W", "�
 
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 항목 = (page: Page, name: string) => 메뉴(page).getByRole("menuitem", { name, exact: true });
-
-/** 카드가 다 떴을 때까지 기다린다 — 뜨는 동안은 카드가 작게 시작해 커지므로(열림 애니메이션) 그 사이의 상자는 자리가 어긋난다. */
-const 다떴다 = (menu: Locator) =>
-  menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
-
-/** 대상 테두리 — 포커스 링과 같은 accent 1px 실선이다(`focus-ring`의 `[data-menu-target]`, 결정 11). 없으면 `null`. */
-const 테두리 = async (target: Locator) => {
-  const [굵기, 모양, 색] = await 칠한값(target, "outline-width", "outline-style", "outline-color");
-  return 모양 === "none" ? null : `${굵기} ${모양} ${색}`;
-};
 
 /** 맨 앞 문서 칸. */
 const 스펙탭 = (page: Page) => page.locator('[data-tab="spec"]');

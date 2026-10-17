@@ -1,6 +1,7 @@
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
+import { copyText } from "@/components/shell/copy-text";
+import { openInFinder } from "@/components/shell/open-in-finder";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
-import { showToast } from "@/components/ui/toast";
 import { closingShellsNotice, ownerOf, runningShellsOf } from "@/features/terminal/shell-registry";
 import { closeShellsOf, holdOwner, spawnedCountOf, terminalStore } from "@/features/terminal/terminal-store";
 import { worksApi } from "./api";
@@ -24,24 +25,12 @@ import type { WorkView } from "./types";
 // 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
 
 /**
- * 글자를 클립보드에 쓰고 「… 복사됨」을 알린다 — 작업 화면의 복사가 모두 이 길이다(work 메뉴의 복사 ▸ · 트리 · 문서 링크). 모듈 함수라
- * 참조가 늘 같다 — 작업 화면이 다시 그려질 때 이것을 받는 마크다운 트리가 리마운트(깜빡임)되지 않는다.
- *
- * 토스트는 그 화면의 자리(`Toaster`)에 선다 — 자리가 있는 화면은 Works · Archive다. 다른 화면의 사이드바에서 연 메뉴의 복사는
- * 클립보드에는 쓰이고 알림은 서지 않는다.
- */
-export function copyText(text: string): void {
-  navigator.clipboard.writeText(text);
-  showToast(`${text} 복사됨`);
-}
-
-/**
  * Finder에서 연다(codex-ds 스펙 S6) — `project`가 `null`이면 그 work의 spec 폴더, 프로젝트 이름이면 그 worktree다. work 메뉴의
- * Finder ▸와 작업 패널 머리의 「spec 폴더 열기」가 부른다. 못 열면(손으로 지운 폴더 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로
- * 알린다 — 메뉴는 이미 닫혔고, 그 문장이 어느 폴더가 없는지 말한다. 두 자리가 말을 따로 지으면 한쪽만 고친 날 같은 실패가 두 말로 선다.
+ * Finder ▸와 작업 패널 머리의 「spec 폴더 열기」가 부른다. 못 열었을 때의 말은 Archive · 프로젝트의 Finder 열기와 한 자리다
+ * (`openInFinder`).
  */
 export function openWorkFolder(slug: string, project: string | null): void {
-  worksApi.openFolder(slug, project).catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
+  openInFinder(() => worksApi.openFolder(slug, project));
 }
 
 /**

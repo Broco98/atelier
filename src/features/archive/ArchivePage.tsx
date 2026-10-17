@@ -3,14 +3,18 @@ import { Archive, FolderOpen, MoreHorizontal, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Toaster, showToast } from "@/components/ui/toast";
+import { Toaster } from "@/components/ui/toast";
 import { Hint } from "@/components/ui/tooltip";
+import { copyText } from "@/components/shell/copy-text";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
+import { openInFinder } from "@/components/shell/open-in-finder";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { togglesPanel } from "@/components/shell/PanelToggle";
-import { PathBar } from "@/components/shell/PathBar";
+import { PathBar, type PathView } from "@/components/shell/PathBar";
+import { TargetMenu } from "@/components/shell/TargetMenu";
 import useResizableWidth from "@/components/shell/useResizableWidth";
+import { DocTextBox } from "@/features/works/DocText";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import SpecTree from "@/features/works/SpecTree";
 import { docBody, ignoresViewSwitch } from "@/features/works/doc-refs";
@@ -23,6 +27,7 @@ import { archivedDayText } from "./archive-days";
 import { archiveTreeItems } from "./archive-tree";
 import ArchiveList from "./ArchiveList";
 import { ArchiveMenuItems } from "./ArchiveMenuItems";
+import type { ArchiveMenuActions } from "./ArchiveMenuItems";
 import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
 import type { ArchivedDocs } from "./types";
 
@@ -117,12 +122,6 @@ function ArchivePage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [hasPanel]);
 
-  // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
-  const copyText = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-    showToast(`${text} 복사됨`);
-  }, []);
-
   // 참조가 안정적이어야 이 화면이 다시 그려질 때 마크다운 트리가 리마운트되지 않는다
   const slug = selected?.slug;
   const copyBlockRef = useCallback(
@@ -130,7 +129,7 @@ function ArchivePage({
       if (!slug || !current) return;
       copyText(archiveRef(slug, current, start, end));
     },
-    [slug, current, copyText],
+    [slug, current],
   );
 
   // 접을 수 있는 것을 모두 접어 화면을 비웠으면 본문이 넓은 글 폭을 쓴다(SpecViewer의 `bodyColumn` — Works 쪽도 같은 규칙). 이 화면의
@@ -188,6 +187,23 @@ function ArchivePage({
     }
   };
 
+  // 경로 줄의 보기 묶음 · 경로 복사 — 문서 글의 우클릭 메뉴(`DocTextBox`)도 같은 값을 받는다(codex-ds 티켓 30).
+  const docView: PathView = {
+    source: showSource,
+    // 잠김도 표에서 나온다 — 본문이 묶음을 안 따르는 파일에서 두 칸이 살아 있으면 선 칸과 본문이 서로 다른 말을
+    // 한다(결정 11).
+    //
+    // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은 항이다(`WorksPage.tsx`의 `sourceLocked`).
+    // 남은 문서가 하나도 없으면 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지 「누를 것이
+    // 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표
+    // 머리말). 본문은 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히 눌리고 칩만 미끄러진다(결정 21).
+    locked: current === null || ignoresViewSwitch(current),
+    onChange: setShowSource,
+  };
+  // spec 목록 패널의 트리 행이 복사하는 것과 같은 값이다(`archiveRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더
+  // 생긴 것이다. 가리킬 문서가 없으면 서지 않는다(결정 11 · 21).
+  const copyDocPath = selected && current ? () => copyText(archiveRef(selected.slug, current)) : undefined;
+
   return (
     // 공용 틀 위의 목록 | 문서 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다)와 오른쪽 spec 목록 패널 카드. 머리 줄에는
     // 고른 아카이브의 머리 카드가 선다(codex-ds 스펙 §7).
@@ -214,13 +230,27 @@ function ArchivePage({
       list={{
         size: listSize,
         label: "아카이브 목록",
+        // 목록 행의 메뉴(codex-ds 티켓 30) — 머리 카드 ⋯과 같은 정의(`ArchiveMenuItems`)이고 같은 동작을 그 행의 아카이브로 부른다.
+        // 행 목록 하나가 메뉴 하나를 맡는다(`TargetMenu`). 고른 행이 아니어도 그 행의 것이다(결정 7) — 고름 · 주소는 그대로다.
         children: (
-          <ArchiveList
-            entries={entries}
-            selectedSlug={selected?.slug ?? null}
-            loading={entriesPending}
-            onSelect={onSelect}
-          />
+          <TargetMenu
+            targetOf={(from) => {
+              const row = from.closest<HTMLElement>("button[data-archive-row]");
+              const slug = row?.dataset.archiveRow;
+              return row && slug ? { of: slug, ring: row } : null;
+            }}
+            items={(slug) => <ArchiveMenuItems actions={archiveMenuActions(slug, copyText)} />}
+          >
+            {(region) => (
+              <ArchiveList
+                entries={entries}
+                selectedSlug={selected?.slug ?? null}
+                loading={entriesPending}
+                onSelect={onSelect}
+                rowMenu={region}
+              />
+            )}
+          </TargetMenu>
         ),
       }}
       // spec 목록 패널(codex-ds 스펙 §7 「Archive」) — 고른 아카이브의 문서 트리다. 바깥 상자가 둘째 `aside`이고 220ms로 여닫힌다(공용 틀의
@@ -260,78 +290,80 @@ function ArchivePage({
           selected && (
             <PathBar
               path={[selected.slug, ...(current ? current.split("/") : [])]}
-              view={{
-                source: showSource,
-                // 잠김도 표에서 나온다 — 본문이 묶음을 안 따르는 파일에서 두 칸이 살아 있으면 선 칸과 본문이 서로 다른 말을
-                // 한다(결정 11).
-                //
-                // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은 항이다(`WorksPage.tsx`의 `sourceLocked`).
-                // 남은 문서가 하나도 없으면 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지 「누를 것이
-                // 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표
-                // 머리말). 본문은 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히 눌리고 칩만 미끄러진다(결정 21).
-                locked: current === null || ignoresViewSwitch(current),
-                onChange: setShowSource,
-              }}
-              // spec 목록 패널의 트리 행이 복사하는 것과 같은 값이다(`archiveRef` → `copyText`) — 새 동작이 아니라 자리가 하나 더
-              // 생긴 것이다. 가리킬 문서가 없으면 서지 않는다(결정 11 · 21).
-              onCopy={current ? () => copyText(archiveRef(selected.slug, current)) : undefined}
+              view={docView}
+              onCopy={copyDocPath}
             />
           )
         }
       >
-        <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-          {/* 아직 모르는 동안에는 아무 말도 하지 않는다 — 목록이 도착하기 전에 "없어요"를
-              띄우면, 이 분기가 막으려던 바로 그 모순(왼쪽엔 목록, 본문엔 없다)이 로딩
-              타이밍에서 되살아난다. */}
-          {!selected ? (
-            entriesPending ? null : (
-            <div className="flex h-full items-center justify-center p-10">
-              <Empty>
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <Archive />
-                  </EmptyMedia>
-                  {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
-                      왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
-                      stale한 slug가 남았을 때 실제로 그렇게 된다. */}
-                  <EmptyTitle>
-                    {entries.length === 0
-                      ? ARCHIVE_COPY.emptyScreen.title
-                      : "그 아카이브를 찾을 수 없어요"}
-                  </EmptyTitle>
-                  <EmptyDescription>
-                    {entries.length === 0
-                      ? ARCHIVE_COPY.emptyScreen.body
-                      : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            </div>
-            )
-          ) : (
-            <div className="flex min-h-full min-w-0 flex-col">
-              {docsPending ? null : current === null ? (
-                <div className="flex flex-1 items-center justify-center p-10 text-sm text-fg-tertiary">
-                  남은 문서가 없어요
-                </div>
-              ) : (
-                bodyView(body, current)
-              )}
-            </div>
-          )}
-        </div>
+        {/* 문서가 서면 몸이 **문서 글**이다(`DocTextBox` — 우클릭 · ⇧F10의 메뉴, 포커스를 받는 자리). 고른 아카이브가 없거나 남은
+            문서가 없으면 같은 모양의 상자일 뿐이다 — 거기 우클릭은 아무것도 안 선다. */}
+        {selected && !docsPending && current !== null ? (
+          <DocTextBox menu={{ view: docView, onCopyPath: copyDocPath }} className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+            <div className="flex min-h-full min-w-0 flex-col">{bodyView(body, current)}</div>
+          </DocTextBox>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+            {/* 아직 모르는 동안에는 아무 말도 하지 않는다 — 목록이 도착하기 전에 "없어요"를
+                띄우면, 이 분기가 막으려던 바로 그 모순(왼쪽엔 목록, 본문엔 없다)이 로딩
+                타이밍에서 되살아난다. */}
+            {!selected ? (
+              entriesPending ? null : (
+              <div className="flex h-full items-center justify-center p-10">
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Archive />
+                    </EmptyMedia>
+                    {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
+                        왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
+                        stale한 slug가 남았을 때 실제로 그렇게 된다. */}
+                    <EmptyTitle>
+                      {entries.length === 0
+                        ? ARCHIVE_COPY.emptyScreen.title
+                        : "그 아카이브를 찾을 수 없어요"}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {entries.length === 0
+                        ? ARCHIVE_COPY.emptyScreen.body
+                        : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              </div>
+              )
+            ) : (
+              <div className="flex min-h-full min-w-0 flex-col">
+                {docsPending ? null : (
+                  <div className="flex flex-1 items-center justify-center p-10 text-sm text-fg-tertiary">
+                    남은 문서가 없어요
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
     </Frame>
   );
 }
 
 /**
- * 아카이브된 work의 spec 폴더를 Finder에서 연다(codex-ds 스펙 S6) — 머리 카드 ⋯의 「Finder에서 열기」와 spec 목록 패널 머리의 「spec 폴더
- * 열기」가 부른다. 못 열면(폴더가 없는 아카이브 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 — work 메뉴의 Finder 열기와 같은
- * 말이다(`work-menu-actions.ts`의 `openWorkFolder`).
+ * 아카이브된 work의 spec 폴더를 Finder에서 연다(codex-ds 스펙 S6) — 아카이브 메뉴(머리 카드 ⋯ · 목록 행)의 「Finder에서 열기」와 spec
+ * 목록 패널 머리의 「spec 폴더 열기」가 부른다. 못 열면(폴더가 없는 아카이브 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 —
+ * 앱의 Finder 열기가 모두 그 한 길이다(`openInFinder`).
  */
 function openArchivedSpecFolder(slug: string): void {
-  archiveApi.openSpecFolder(slug).catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
+  openInFinder(() => archiveApi.openSpecFolder(slug));
+}
+
+/** 아카이브 메뉴가 그 아카이브로 부르는 동작 — 머리 카드 ⋯와 목록 행의 메뉴가 같은 한 벌을 쓴다. */
+function archiveMenuActions(slug: string, onCopy: (text: string) => void): ArchiveMenuActions {
+  return {
+    openFolder: () => openArchivedSpecFolder(slug),
+    // 「Finder에서 열기」가 여는 폴더의 참조다(`refs.ts` — 끝에 `/`).
+    copyPath: () => onCopy(archiveSpecDirRef(slug)),
+  };
 }
 
 // 머리 카드의 ⋯ — 아카이브 메뉴(codex-ds 결정 16 「Archive 목록 행」 · 스펙 §7). 무엇을 어떤 차례로 보이는지는 메뉴 정의
@@ -357,13 +389,7 @@ function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) =>
         <MoreHorizontal className="size-3.75" />
       </Hint>
       <DropdownMenuContent>
-        <ArchiveMenuItems
-          actions={{
-            openFolder: () => openArchivedSpecFolder(slug),
-            // 「Finder에서 열기」가 여는 폴더의 참조다(`refs.ts` — 끝에 `/`).
-            copyPath: () => onCopy(archiveSpecDirRef(slug)),
-          }}
-        />
+        <ArchiveMenuItems actions={archiveMenuActions(slug, onCopy)} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

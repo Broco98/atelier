@@ -934,6 +934,38 @@ export const 줄차례 = (menu: Locator) =>
   );
 
 /**
+ * 메뉴 카드가 **다 떴을 때까지** 기다린다 — 뜨는 동안은 카드가 작게 시작해 커지므로(열림 애니메이션) 그 사이의 상자는 자리가 어긋난다.
+ *
+ * **여기 사는 이유는 카드의 자리를 재는 spec들이 한 기다림을 쓰려는 것이다** — ⋯ · 우클릭 · ⇧F10 메뉴가 선 자리를 재는 spec이 여럿이다
+ * (`edit-menu` · `work-context-menu` · `shell-tab-menu` · `target-menus` · `processes-strays` · `spec-layout-page`).
+ */
+export const 다떴다 = (menu: Locator) =>
+  menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
+
+/**
+ * 버튼 메뉴(⋯ · 상태 메뉴)를 **누른 채 끌어 그 줄 위에서 놓는다** — 놓은 줄이 돌고 카드가 닫혀야 한다. 우클릭 메뉴의 뿌리가 그 버튼
+ * 메뉴의 조상이면 Base UI가 그 밑의 줄을 모두 「우클릭 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음만 받는다 — 왼쪽 버튼으로 끌어 놓으면 메뉴가
+ * 열린 채 아무것도 안 돈다. 이 몸짓이 그 함정(편집 메뉴 · 대상 메뉴가 버튼 메뉴를 감싸는 것)을 잰다.
+ *
+ * **여기 사는 이유는 버튼 메뉴를 품은 자리마다 같은 몸짓으로 재려는 것이다** — Works 머리 카드(`edit-menu`) · Processes 행
+ * (`processes-strays`) · spec 레이아웃 행(`spec-layout-page`).
+ */
+export async function 끌어놓는다(page: Page, button: Locator, row: (menu: Locator) => Locator): Promise<void> {
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await 다떴다(menu);
+  // 누른 뒤 200ms 안의 놓음은 고름으로 치지 않는다(Base UI — 누르고 바로 떼면 메뉴가 열린 채 남는다). 그 뒤에 놓는다.
+  await page.waitForTimeout(250);
+  const at = (await row(menu).boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(menu).toHaveCount(0);
+}
+
+/**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
  * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
  *
@@ -1138,6 +1170,17 @@ export const 첫글자 = (scope: Locator) =>
 /** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
 export const 칠한값 = (target: Locator, ...properties: string[]) =>
   target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
+
+/**
+ * **대상 테두리** — 포커스 링과 같은 accent 1px 실선이다(`focus-ring`의 `[data-menu-target]`, codex-ds 결정 11). 없으면 `null`. 메뉴가
+ * 열린 동안은 포커스가 카드에 있어 대상은 포커스 링을 안 입는다 — 이 테두리가 곧 「어느 것의 메뉴인가」의 표식이다.
+ *
+ * **여기 사는 이유는 대상 메뉴를 재는 spec들이 한 잣대로 읽으려는 것이다** — 테두리의 모양(결정 11)이 바뀌는 날 이 한 곳을 고친다.
+ */
+export const 테두리 = async (target: Locator) => {
+  const [굵기, 모양, 색] = await 칠한값(target, "outline-width", "outline-style", "outline-color");
+  return 모양 === "none" ? null : `${굵기} ${모양} ${색}`;
+};
 
 /**
  * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를

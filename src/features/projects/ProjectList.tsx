@@ -3,6 +3,7 @@ import { Folder, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ListHead } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
+import type { TargetRegion } from "@/components/shell/TargetMenu";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -24,6 +25,11 @@ interface ProjectListProps {
   onRenameCommit: (slug: string, name: string) => void;
   /** 저장이든 취소든 고치기가 끝났다. */
   onRenameEnd: () => void;
+  /**
+   * 행 메뉴의 손잡이(`TargetMenu`) — 행이 구르는 상자가 우클릭 · ⇧F10을 받아 그 행의 프로젝트 메뉴를 연다(codex-ds 티켓 30). 메뉴의
+   * 상태와 목록은 화면이 든다(`ProjectsPage`) — 행은 표식(`data-project-row`)과 테두리 자리(`focus-ring`)만 든다.
+   */
+  rowMenu?: TargetRegion;
 }
 
 // 두 줄 행(DS `.at-row.two`)의 자리 — 50 이상 · 안쪽 7 8 · 모서리 10, 이름 줄과 경로 줄이 2 사이로 선다. 글자가 칸 + 16에 서서
@@ -41,6 +47,7 @@ function ProjectList({
   onRename,
   onRenameCommit,
   onRenameEnd,
+  rowMenu,
 }: ProjectListProps) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
@@ -108,7 +115,11 @@ function ProjectList({
           <span className="text-chat-meta text-fg-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
-        <div className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet">
+        <div
+          onContextMenu={rowMenu?.onContextMenu}
+          onKeyDown={rowMenu?.onKeyDown}
+          className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet"
+        >
           {/* **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
               칸 가장자리로 간다. 상자가 안쪽 여백 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
               그만큼 더 안쪽에 서서 행 위로 들어온다. 사이드바 work 목록이 그 병을 실측으로
@@ -174,7 +185,8 @@ function ProjectList({
               <button
                 key={project.slug}
                 type="button"
-                // 이름을 고친 뒤 포커스가 돌아올 자리를 찾는 표(`returnFocus`).
+                // 이름을 고친 뒤 포커스가 돌아올 자리를 찾는 표(`returnFocus`)이자, 행 메뉴가 대상을 가르는 표다(`rowMenu`). 메뉴가
+                // 열린 동안 이 버튼이 대상 테두리를 입는다(`focus-ring`의 `[data-menu-target]`).
                 data-project-row={project.slug}
                 onClick={() => onSelect(project.slug)}
                 // **F2는 이 행의 이름을 그 자리에서 고친다**(codex-ds 스펙 §9). 고르지 않은 행에서도 그 행의 이름이다.

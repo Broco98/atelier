@@ -4,6 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import { ChevronDown, Columns2, MoreHorizontal, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth from "@/components/shell/useResizableWidth";
+import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { togglesPanel } from "@/components/shell/PanelToggle";
 import { pickRail } from "@/components/shell/Rail";
@@ -58,7 +59,7 @@ import { StatusRadioItems, WorkMenuItems, type WorkMenuFlows } from "./WorkMenuI
 import { WORK_LIFECYCLE_KEY, useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
-import { copyText, openWorkFolder, useWorkMenuFlows } from "./work-menu-actions";
+import { openWorkFolder, useWorkMenuFlows } from "./work-menu-actions";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkView } from "./types";
 
@@ -225,8 +226,8 @@ function WorksPage({
   // 옮기지 않았다 — 이 화면의 토스트는 이 화면의 자리(`Toaster`)에 선다.
   useEffect(() => onShellOpenRejected((notice) => showToast(notice, "rejected")), []);
 
-  // 복사는 모듈 함수 `copyText`다(`work-menu-actions.ts`) — 참조가 늘 같아 이 화면이 다시 그려질 때 마크다운 트리가 리마운트(깜빡임)되지
-  // 않는다.
+  // 복사는 모듈 함수 `copyText`다(`copy-text.ts` — Archive · 프로젝트와 한 길) — 참조가 늘 같아 이 화면이 다시 그려질 때 마크다운
+  // 트리가 리마운트(깜빡임)되지 않는다.
 
   // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
   // 있어야 한다. 두 갈래가 이 화면에서 갈리는 것은 트리(패널)와 링크(본문)가 이제 형제라서다.
@@ -560,6 +561,7 @@ function WorksPage({
       showSource={showSource}
       onNavigate={followLink}
       onCopy={copyText}
+      docMenu={{ view: docView, onCopyPath: copyDocPath }}
     />
   );
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal

@@ -27,8 +27,9 @@ import { requestCloseShell, shellEditAt, type ShellEdit } from "@/features/termi
 // 오른쪽 버튼의 놓음만 받게 된다.
 // - **터미널을 먼저 본다** — xterm의 숨은 입력칸도 `textarea`라, 입력칸을 먼저 보면 둘째 우클릭이 입력칸 메뉴가 된다. 둘 다 아니면
 //   아무것도 안 연다(결정 8 — 웹뷰의 기본 메뉴는 `AppShell`이 같은 document에서 막는다).
-// - **제 메뉴를 가진 대상**(work 행 · 띠 줄 · 머리 카드 이름 — `WorkContextMenu`)의 우클릭은 document까지 안 온다 — 그 Trigger가
-//   사건을 멈추고, React가 그 전파를 앱 뿌리(`#root`)에서 끊는다. 대상 위의 우클릭은 대상 메뉴다. **그 Trigger 안의 입력칸은
+// - **제 메뉴를 가진 대상**(work 행 · 띠 줄 · 머리 카드 이름 — `WorkContextMenu`, 셸 탭 · spec 탭 — `ShellTabs`, 프로젝트 · Archive
+//   목록 행 · Processes 행 · spec 레이아웃 행 · 문서 글 — `TargetMenu`)의 우클릭은 document까지 안 온다 — 그 Trigger · 자리가 사건을
+//   멈추고, React가 그 전파를 앱 뿌리(`#root`)에서 끊는다. 대상 위의 우클릭은 대상 메뉴다. **그 Trigger 안의 입력칸은
 //   이 메뉴의 자리다** — 사이드바 행의 이름을 고치는 칸(`InlineRename`)은 행의 우클릭을 받는 목록 안에 서는데, 그 자리에서는
 //   Trigger가 물러서(`opensEditMenu`) 사건이 여기 닿는다. 머리 카드 이름은 고치는 동안 입력칸이 이름 자리를 갈아 끼워 Trigger 밖이다.
 // - 포털(검색 팔레트 · 확인 창)은 `#root` 밖이지만 사건은 document까지 오므로, 그 안의 칸도 같은 메뉴를 받는다.

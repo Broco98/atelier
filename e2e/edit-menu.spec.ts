@@ -10,11 +10,13 @@ import {
   unknownIpcCalls,
   workRow,
   writeShell,
+  끌어놓는다,
+  다떴다,
   머리카드,
   셸입력,
   줄차례,
-  칠한값,
   클립보드를심는다,
+  테두리,
   토큰색,
   행버튼,
 } from "./harness";
@@ -47,10 +49,6 @@ const 터미널차례 = ["복사⌘C", "붙여넣기⌘V", "모두 고르기⌘A
 /** 줄마다의 `aria-keyshortcuts` — 스크린리더가 듣는 키다. 단축키가 없는 줄은 `null`이다. */
 const 단축키값 = (menu: Locator) =>
   menu.getByRole("menuitem").evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-keyshortcuts")));
-
-/** 카드가 다 떴을 때까지 기다린다 — 뜨는 동안은 카드가 작게 시작해 커지므로(열림 애니메이션) 그 사이의 상자는 자리가 어긋난다. */
-const 다떴다 = (menu: Locator) =>
-  menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
 
 /**
  * 우클릭이 남긴 것을 받아 적기 시작한다 — 웹뷰 메뉴가 막혔나(사건의 `defaultPrevented` — 창이 가장 먼저 받는 자리에서 쥐어 두고 사건이
@@ -100,15 +98,6 @@ const 고름 = (field: Locator) =>
   field.evaluate((el) => [(el as HTMLInputElement).selectionStart, (el as HTMLInputElement).selectionEnd]);
 
 // ── 입력칸 ──
-
-/**
- * 대상 테두리 — 포커스 링과 같은 accent 1px 실선이다(`focus-ring`의 `[data-menu-target]`, 결정 11). 없으면 `null`. 메뉴가 열린 동안은
- * 포커스가 카드에 있어(칸은 포커스 링을 안 입는다) 이 테두리가 곧 대상 표식이다.
- */
-const 테두리 = async (target: Locator) => {
-  const [굵기, 모양, 색] = await 칠한값(target, "outline-width", "outline-style", "outline-color");
-  return 모양 === "none" ? null : `${굵기} ${모양} ${색}`;
-};
 
 /**
  * 메뉴를 받는 칸들. `ring`은 대상 테두리가 서는 자리 — 그 칸이 포커스 링을 입는 자리다. 검색칸은 감싼 상자가 입고(`InputGroup`),
@@ -696,28 +685,12 @@ test("⋯ 메뉴 · 상태 메뉴를 누른 채 끌어 줄 위에서 놓으면 �
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
 
-  /** 버튼을 누른 채 그 메뉴의 줄 위로 끌어 가 놓는다. */
-  async function 끌어놓는다(button: Locator, row: (menu: Locator) => Locator) {
-    const box = (await button.boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    const menu = 메뉴(page);
-    await expect(menu).toBeVisible();
-    await 다떴다(menu);
-    // 누른 뒤 200ms 안의 놓음은 고름으로 치지 않는다(Base UI — 누르고 바로 떼면 메뉴가 열린 채 남는다). 그 뒤에 놓는다.
-    await page.waitForTimeout(250);
-    const at = (await row(menu).boundingBox())!;
-    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2, { steps: 4 });
-    await page.mouse.up();
-    await expect(menu).toHaveCount(0);
-  }
-
-  await 끌어놓는다(page.getByRole("button", { name: "작업 메뉴", exact: true }), (menu) =>
+  await 끌어놓는다(page, page.getByRole("button", { name: "작업 메뉴", exact: true }), (menu) =>
     menu.getByRole("menuitem", { name: "고정 풀기", exact: true }),
   );
   await expect.poll(async () => (await ipcCallArgs(page, "set_work_pinned", "pinned")).map(({ args }) => args.pinned)).toEqual([false]);
 
-  await 끌어놓는다(page.getByRole("button", { name: pinnedWork.status, exact: true }), (menu) =>
+  await 끌어놓는다(page, page.getByRole("button", { name: pinnedWork.status, exact: true }), (menu) =>
     menu.getByRole("menuitemradio", { checked: false }).first(),
   );
   await expect.poll(() => callCount(page, "set_work_status")).toBe(1);

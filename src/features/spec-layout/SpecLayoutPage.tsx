@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
+import { TargetMenu, type TargetRegion } from "@/components/shell/TargetMenu";
 import { cn } from "@/lib/utils";
 import { SettingsGroup, SettingsLead, SettingsRow, SettingsSection } from "@/features/settings/SettingsGroup";
 import { layoutDirRef } from "@/features/works/refs";
@@ -119,6 +120,11 @@ function SpecLayoutPage() {
  * 제목은 두지 않는다(판 06 문구 표 S9 — 줄이 하나뿐이라 큰 제목 「spec 레이아웃」을 되풀이한다). 값을 들지 않는다:
  * 페이지가 들고 이쪽은 그리기만 한다(마크업 테스트가 클릭을 못 건다 — `HooksSection`과 같은 이유). ⋯ 메뉴가
  * 열렸는지만 그 행이 든다 — 화면 밖 누구도 그것을 묻지 않는다.
+ *
+ * **고친 행은 우클릭 · ⇧F10에도 ⋯과 같은 메뉴가 선다**(codex-ds 티켓 30 · 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 11) — 목록은 한
+ * 정의다(`RevertMenuItems`). 대상은 행 전체이고, 열린 동안 행이 대상 테두리를 입는다. 행 자신은 포커스를 받지 않아 우클릭으로 연
+ * 메뉴가 닫히면 포커스가 그 행의 ⋯로 간다(`back`). 메뉴의 뿌리(`TargetMenu`)는 묶음 밖에 선다 — 행을 감싸면 그 밑의 ⋯이 우클릭
+ * 메뉴의 줄로 쳐지고, 묶음(`ul`) 안이면 숨은 Trigger가 목록의 자식이 된다. 내장본 행에는 되돌릴 것이 없어 ⋯도 우클릭 메뉴도 없다.
  */
 export function SpecLayoutSection({
   state,
@@ -144,9 +150,26 @@ export function SpecLayoutSection({
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
       </SettingsLead>
       <SettingsSection>
-        <SettingsGroup as="ul">
-          <LayoutRow state={state} onAsk={onAsk} onEdit={onEdit} onReread={onReread} onRevert={onRevert} />
-        </SettingsGroup>
+        <TargetMenu
+          targetOf={(_from, row) =>
+            state.edited ? { of: LAYOUT_NAME, ring: row, back: row.querySelector<HTMLElement>("[aria-haspopup='menu']") } : null
+          }
+          items={() => <RevertMenuItems onRevert={onRevert} />}
+          label={revertMenuLabel(LAYOUT_NAME)}
+        >
+          {(region) => (
+            <SettingsGroup as="ul">
+              <LayoutRow
+                state={state}
+                onAsk={onAsk}
+                onEdit={onEdit}
+                onReread={onReread}
+                onRevert={onRevert}
+                rowMenu={state.edited ? region : undefined}
+              />
+            </SettingsGroup>
+          )}
+        </TargetMenu>
       </SettingsSection>
     </>
   );
@@ -164,12 +187,15 @@ function LayoutRow({
   onEdit,
   onReread,
   onRevert,
+  rowMenu,
 }: {
   state: SpecLayoutState;
   onAsk: () => void;
   onEdit: () => void;
   onReread: () => void;
   onRevert: () => void;
+  /** 행 메뉴의 손잡이 — 고친 행에만 온다. 그 행이 대상 테두리 자리(`focus-ring` · 묶음의 모서리)를 함께 단다. */
+  rowMenu?: TargetRegion;
 }) {
   // 행의 머리. 편집기의 위치 · 되돌리기 창과 같은 이름이다.
   const name = LAYOUT_NAME;
@@ -178,6 +204,10 @@ function LayoutRow({
   return (
     <SettingsRow
       name={name}
+      onContextMenu={rowMenu?.onContextMenu}
+      onKeyDown={rowMenu?.onKeyDown}
+      // 대상 테두리는 묶음의 모서리(`radius-xl`)를 따른다 — 첫 행은 위, 끝 행은 아래 모서리다.
+      className={rowMenu && "focus-ring first:rounded-t-xl last:rounded-b-xl"}
       // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-xs`)다.
       tail={state.edited ? <span className="tag text-xs">고침</span> : undefined}
       description={
@@ -261,9 +291,7 @@ function LayoutRow({
 function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) {
   // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
-  const titleId = useId();
-  const noteId = useId();
-  const label = `${name} 레이아웃 메뉴`;
+  const label = revertMenuLabel(name);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -286,26 +314,44 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
       </Hint>
       {/* 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다. */}
       <DropdownMenuContent align="end" aria-label={label}>
-        <DropdownMenuItem
-          variant="destructive"
-          size="note"
-          // 이름은 머리 한 줄이고, 아래 줄은 그 설명이다 — 이름에 섞이면 「기본값으로 되돌리기폴더를…」이 된다.
-          aria-labelledby={titleId}
-          aria-describedby={noteId}
-          onClick={onRevert}
-        >
-          <RotateCcw aria-hidden className="mt-0.5 size-3.5" />
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span id={titleId} className="font-medium">
-              기본값으로 되돌리기
-            </span>
-            <span id={noteId} className="text-xs text-fg-tertiary">
-              폴더를 지우고 내장본으로 돌아가요
-            </span>
-          </span>
-        </DropdownMenuItem>
+        <RevertMenuItems onRevert={onRevert} />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** 행 메뉴의 접근성 이름 — ⋯의 이름이자 카드의 이름이다(⋯ · 우클릭 카드가 같다). */
+function revertMenuLabel(name: string): string {
+  return `${name} 레이아웃 메뉴`;
+}
+
+/**
+ * **고친 행 메뉴의 정의 — 한 자리다** — 붉은 「기본값으로 되돌리기」 하나. ⋯(`RevertMenu`)과 행의 우클릭 · ⇧F10(`SpecLayoutSection`의
+ * `TargetMenu`)이 같은 이것을 편다. 항목은 메뉴 부품이라 ⋯(`DropdownMenu`)과 우클릭(`ContextMenu`) 어느 카드 안에서도 그대로 선다
+ * (`context-menu.tsx` 머리말). 고르면 메뉴가 닫히고 부르는 쪽에 알린다 — 확인 창은 부르는 쪽이 묻는다.
+ */
+function RevertMenuItems({ onRevert }: { onRevert: () => void }) {
+  const titleId = useId();
+  const noteId = useId();
+  return (
+    <DropdownMenuItem
+      variant="destructive"
+      size="note"
+      // 이름은 머리 한 줄이고, 아래 줄은 그 설명이다 — 이름에 섞이면 「기본값으로 되돌리기폴더를…」이 된다.
+      aria-labelledby={titleId}
+      aria-describedby={noteId}
+      onClick={onRevert}
+    >
+      <RotateCcw aria-hidden className="mt-0.5 size-3.5" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span id={titleId} className="font-medium">
+          기본값으로 되돌리기
+        </span>
+        <span id={noteId} className="text-xs text-fg-tertiary">
+          폴더를 지우고 내장본으로 돌아가요
+        </span>
+      </span>
+    </DropdownMenuItem>
   );
 }
 

@@ -30,6 +30,7 @@ import { HOTKEYS } from "@/lib/hotkeys";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { DocTextBox, type DocMenu } from "./DocText";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
@@ -57,6 +58,8 @@ interface SpecViewerProps {
   onNavigate: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 토스트 표면의 주인은 화면이다(결정 47).
   onCopy: (text: string) => void;
+  // 문서 글의 우클릭 메뉴가 받는 것 — 경로 줄의 보기 묶음 · 경로 복사와 같은 값이다(`DocText`, codex-ds 티켓 30).
+  docMenu: DocMenu;
 }
 
 function SpecViewer({
@@ -67,6 +70,7 @@ function SpecViewer({
   showSource,
   onNavigate,
   onCopy,
+  docMenu,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
@@ -133,9 +137,12 @@ function SpecViewer({
     // 탭 줄의 바닥은 그 줄을 머리에 인 문서 카드가 든다(`TAB_ROW_CARD`) — 이 상자는 그 카드의 줄 아닌 자식이라 격리되어 넓은
     // 표 · 코드가 그 바닥에 안 섞인다.
     // 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다.
-    <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-      <div className="flex min-h-full min-w-0 flex-col">
-        {files.length === 0 ? (
+    //
+    // 문서가 서면 이 상자가 **문서 글**이다(`DocTextBox` — 우클릭 · ⇧F10의 메뉴, 포커스를 받는 자리). spec이 없는 work의 빈 자리는
+    // 문서 글이 아니라 같은 모양의 상자일 뿐이다 — 거기 우클릭은 아무것도 안 선다.
+    files.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+        <div className="flex min-h-full min-w-0 flex-col">
           <div className="flex flex-1 items-center justify-center p-10">
             <Empty>
               <EmptyHeader>
@@ -156,11 +163,13 @@ function SpecViewer({
               </EmptyContent>
             </Empty>
           </div>
-        ) : (
-          bodyView(body)
-        )}
+        </div>
       </div>
-    </div>
+    ) : (
+      <DocTextBox menu={docMenu} className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+        <div className="flex min-h-full min-w-0 flex-col">{bodyView(body)}</div>
+      </DocTextBox>
+    )
   );
 }
 

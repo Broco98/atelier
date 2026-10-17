@@ -858,6 +858,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
   // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
   update_project: null,
+  // 프로젝트 메뉴(목록 행 · 머리 카드 이름의 우클릭)의 「Finder에서 열기」와 머리 카드 「폴더 열기」가 나간다(codex-ds 티켓 30 —
+  // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
+  open_project_folder: null,
+  // 같은 메뉴의 「제거」 — 확인 창을 거친 뒤에 나간다. 답은 비어 있고(코어가 돌려주는 것이 없다), 목록은 그대로 그 프로젝트를
+  // 답한다. 검사가 재는 것은 「무엇이 나갔나」다.
+  delete_project: null,
   // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
   // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
   // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.

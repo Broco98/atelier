@@ -168,8 +168,12 @@ const KIND: Record<RowKind, string> = {
  * — 줄은 평평한 채다(S58, 중첩 `group`이 없다). 자식이 없는 줄은 같은 18px을 비운다.
  *
  * **프로세스 줄의 동작([끝내기] · ⋯)은 손이 닿을 때만 보인다**(ui-refresh 「같은 날 더 정한 것」) — 줄에 포인터가 있거나 키보드
- * 포커스가 줄 안에 있거나 그 줄의 메뉴가 열려 있을 때다. 불투명도만 바꾼다: 자리는 늘 차지해 숫자 칸이 흔들리지 않고, 숨은 동안에도
- * 접근성 트리에 남는다. 셸 줄의 [이동] · [닫기]는 늘 보인다.
+ * 포커스가 줄 안에 있거나 그 줄의 메뉴(⋯ · 우클릭)가 열려 있을 때다. 불투명도만 바꾼다: 자리는 늘 차지해 숫자 칸이 흔들리지 않고,
+ * 숨은 동안에도 접근성 트리에 남는다. 셸 줄의 [이동] · [닫기]는 늘 보인다.
+ *
+ * **행 메뉴가 있는 줄**(`menu` — 그 이름)은 동작 칸 끝에 ⋯(`RowMenu`)이 서고, 같은 이름이 줄의 표식(`data-row-menu`)이 된다 — 화면의
+ * 대상 메뉴(`TargetMenu`)가 그 표식으로 이 줄의 우클릭 · ⇧F10을 같은 목록(`ProcessRowMenuItems`)으로 편다(codex-ds 티켓 30). 그 메뉴가
+ * 열린 동안 줄이 대상 테두리를 입는다(`focus-ring`의 `[data-menu-target]` — 줄은 포커스를 받지 않아 키보드 링은 서지 않는다).
  *
  * 자손 줄의 명령줄 전체는 **이름 글자의** `title`이다(줄이 아니다 — 줄 안의 ⋯가 앱 툴팁을 들어 줄에 걸면 둘이 겹친다). 앱
  * 툴팁(`Hint`)이 아닌 것은 `sidebar-active-band` S29의 「버튼이 아닌 자리」와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에
@@ -184,6 +188,7 @@ export function TreeRow({
   share = null,
   fold,
   actions,
+  menu,
   className,
   children,
   ...rest
@@ -200,6 +205,8 @@ export function TreeRow({
   /** 자식이 있는 줄의 여닫음. 없으면 접을 것이 없는 줄이다. */
   fold?: RowFold;
   actions?: React.ReactNode;
+  /** 행 메뉴가 서는 줄이면 「예외로 두기」가 더할 이름(`exceptionName`). 없으면 ⋯도 우클릭 메뉴도 없다. */
+  menu?: string;
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -207,7 +214,16 @@ export function TreeRow({
       aria-level={level}
       aria-label={label}
       aria-expanded={fold?.open}
-      className={cn("group/row", COLUMNS, ROW_RULE, "items-center px-3 hover:bg-fill-soft", KIND[kind], className)}
+      data-row-menu={menu}
+      className={cn(
+        "group/row",
+        COLUMNS,
+        ROW_RULE,
+        "items-center px-3 hover:bg-fill-soft",
+        KIND[kind],
+        menu !== undefined && "focus-ring",
+        className,
+      )}
       {...rest}
     >
       <span className="flex min-w-0 items-center gap-1.5 self-stretch">
@@ -230,10 +246,11 @@ export function TreeRow({
         className={cn(
           "flex items-center justify-end gap-0.5",
           kind === "process" &&
-            "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-[[aria-expanded=true]]:opacity-100",
+            "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 group-data-menu-target/row:opacity-100 has-[[aria-expanded=true]]:opacity-100",
         )}
       >
         {actions}
+        {menu !== undefined && <RowMenu name={menu} />}
       </span>
     </div>
   );
@@ -360,8 +377,22 @@ export function SectionButton({ onClick, children }: { onClick: () => void; chil
 }
 
 /**
- * **행 메뉴** — 「예외로 두기」 하나(프로세스 스펙 S7 · 티켓 31). 누르면 그 이름이 설정의 예외 목록에 더해진다(`keepAsException`).
- * 셸 자손과 고아 행에 선다 — 다른 인스턴스와 예외 행은 보기 전용이라 안 선다.
+ * **행 메뉴의 정의 — 한 자리다** — 「예외로 두기」 하나(프로세스 스펙 S7 · 티켓 31). 누르면 그 이름이 설정의 예외 목록에 더해진다
+ * (`keepAsException`). 줄 끝의 ⋯(`RowMenu`)과 줄의 우클릭 · ⇧F10(`ProcessesPage`의 `TargetMenu`, codex-ds 스펙 §9 · 결정 6)이 같은
+ * 이것을 편다. 항목은 메뉴 부품이라 ⋯(`DropdownMenu`)과 우클릭(`ContextMenu`) 어느 카드 안에서도 그대로 선다(`context-menu.tsx`
+ * 머리말).
+ */
+export function ProcessRowMenuItems({ name }: { name: string }) {
+  return (
+    <DropdownMenuItem onClick={() => void keepAsException(name)}>
+      <span className="min-w-0 flex-1 truncate">예외로 두기</span>
+    </DropdownMenuItem>
+  );
+}
+
+/**
+ * **행 메뉴의 ⋯** — 목록은 `ProcessRowMenuItems`다. 셸 자손과 고아 행에 선다(`TreeRow`의 `menu`) — 다른 인스턴스와 예외 행은 보기
+ * 전용이라 안 선다.
  *
  * **메뉴 부품(`DropdownMenu`)이 다 한다** — 작업 ⋯ · 셸 열기 `+`와 같은 부품이다. 첫 항목은 키보드로 열 때만 켜진다(Base UI의
  * 기본 — 마우스로 열면 팝업 자신이 포커스를 받는다. 셸 열기 `+`는 앱이 따로 켜 주지만(sidebar-active-band S10) 이 메뉴는 작업 ⋯처럼
@@ -370,7 +401,7 @@ export function SectionButton({ onClick, children }: { onClick: () => void; chil
  * 가지 안에만 둔다 — 줄 끝 글자 버튼(`RowButton`)과 같은 버튼 단(`quiet-hover`)이다(줄의 hover 위에서 갈려 보이게). 항목의 모양 · 폭 · 굵기는
  * 부품의 기본값이다(DS `.at-mi` — 400) — 작업 ⋯ 메뉴와 같이 여기서 덧칠하지 않는다.
  */
-export function RowMenu({ name }: { name: string }) {
+function RowMenu({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -390,9 +421,7 @@ export function RowMenu({ name }: { name: string }) {
       </Hint>
       {/* 줄의 오른쪽 끝에 선 버튼이라 오른쪽 맞춤이다 — 왼쪽 맞춤이면 메뉴가 창 밖으로 뻗는다. */}
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => void keepAsException(name)}>
-          <span className="min-w-0 flex-1 truncate">예외로 두기</span>
-        </DropdownMenuItem>
+        <ProcessRowMenuItems name={name} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

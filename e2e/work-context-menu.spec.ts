@@ -12,10 +12,12 @@ import {
   releaseCommand,
   typeIntoShell,
   unknownIpcCalls,
+  다떴다,
   띠,
   머리카드,
   줄차례,
   칠한값,
+  테두리,
   토큰값,
   토큰색,
   행버튼,
@@ -48,16 +50,6 @@ const 작업메뉴차례 = (pinned: boolean) => [
 ];
 
 const 메뉴 = (page: Page) => page.getByRole("menu");
-
-/** 카드가 다 떴을 때까지 기다린다 — 뜨는 동안은 카드가 작게 시작해 커지므로(열림 애니메이션) 그 사이의 상자는 자리가 어긋난다. */
-const 다떴다 = (menu: Locator) =>
-  menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
-
-/** 대상 테두리 — 포커스 링과 같은 accent 1px 실선이다(`focus-ring`의 `[data-menu-target]`, 결정 11). 없으면 `null`. */
-const 테두리 = async (target: Locator) => {
-  const [굵기, 모양, 색] = await 칠한값(target, "outline-width", "outline-style", "outline-color");
-  return 모양 === "none" ? null : `${굵기} ${모양} ${색}`;
-};
 
 /**
  * 버튼을 역할로 집되 **메뉴가 열린 동안에도 찾는다** — 메뉴가 열리면 부품이 바깥을 보조 기술에서 숨겨(`aria-hidden`) 역할로는 대상이
@@ -367,17 +359,26 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   const list = (await page.locator("[data-worklist]").boundingBox())!;
   const lastRow = (await page.locator("[data-work-row]").last().boundingBox())!;
   const nav = (await navButton(page, "Projects").boundingBox())!;
+  const bar = (await page.locator("[data-slot=path-bar]").first().boundingBox())!;
   const viewport = page.viewportSize()!;
   const spots: Array<[string, number, number]> = [
     ["머리 줄 오른쪽 회색", viewport.width - 4, card.y + card.height / 2],
     ["머리 카드 안 빈 자리", (name.x + name.width + badge.x) / 2, card.y + card.height / 2],
-    ["본문 카드 바닥", viewport.width / 2 + 120, viewport.height - 12],
+    // 문서 카드의 빈 곳은 경로 줄의 가운데다 — 카드의 몸은 문서가 서면 문서 글이라 제 메뉴가 선다(`target-menus.spec.ts`).
+    ["문서 카드 경로 줄 빈 자리", bar.x + bar.width / 2, bar.y + bar.height / 2],
     ["사이드바 nav 항목", nav.x + nav.width / 2, nav.y + nav.height / 2],
     // 목록 안이지만 행이 아닌 자리 — 목록이 대상을 찾지 못해 메뉴를 안 연다.
     ["목록 빈 자리", list.x + list.width / 2, list.y + list.height - 6],
   ];
   // 앵커: 목록 빈 자리는 마지막 행 아래이고 목록 안이다 — 행에 떨어지거나 밖으로 새면 「목록이 대상을 못 찾는다」가 아무것도 안 잰다.
   expect(list.y + list.height - 6).toBeGreaterThan(lastRow.y + lastRow.height);
+  // 앵커: 경로 줄의 가운데는 경로 칩 · 버튼 · 문서 글 어느 것도 아니다 — 거기 떨어지면 「빈 곳」을 안 잰다.
+  expect(
+    await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest("button, a, [data-doc-text]") === null,
+      [bar.x + bar.width / 2, bar.y + bar.height / 2],
+    ),
+  ).toBe(true);
 
   for (const [, x, y] of spots) {
     await page.mouse.click(x, y, { button: "right" });

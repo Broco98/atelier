@@ -13,9 +13,9 @@ export interface ArchiveMenuActions {
 }
 
 /**
- * **대상 메뉴 「Archive 목록 행」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). 지금은 Archive 머리 카드의 ⋯가 이것을 펴고,
- * 목록 행의 우클릭이 같은 것을 펴는 것은 codex-ds 티켓 30이다. 항목은 메뉴 부품이라 ⋯(`DropdownMenu`)과 우클릭(`ContextMenu`) 어느
- * 카드 안에서도 그대로 선다(`context-menu.tsx` 머리말). 훅이 없다 — 행 목록처럼 상태를 쥐지 않는 자리에서도 펼 수 있게.
+ * **대상 메뉴 「Archive 목록 행」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). Archive 머리 카드의 ⋯와 목록 행의 우클릭 ·
+ * ⇧F10(`TargetMenu`)이 같은 이것을 편다. 항목은 메뉴 부품이라 ⋯(`DropdownMenu`)과 우클릭(`ContextMenu`) 어느 카드 안에서도 그대로
+ * 선다(`context-menu.tsx` 머리말). 훅이 없다 — 행 목록처럼 상태를 쥐지 않는 자리에서도 펼 수 있게.
  *
  * 항목은 Finder에서 열기 · 경로 복사 둘이고 한 묶음이다(결정 16의 「열기 · 보기」). 결정 16 표의 「되살리기」는 숨긴다 — 지금 앱(core ·
  * IPC · MCP)에 그 동작이 없다(codex-ds 결정 31 · 결정 10 「해당하지 않는 항목은 숨긴다」).
