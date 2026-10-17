@@ -40,7 +40,6 @@ export interface MenuTarget {
 export function WorkContextMenu({
   flows,
   targetOf,
-  onOpen,
   onRename,
   children,
 }: {
@@ -51,8 +50,6 @@ export function WorkContextMenu({
    * (머리 카드 이름은 그것이 곧 대상이다).
    */
   targetOf: (from: Element, trigger: HTMLElement) => MenuTarget | null;
-  /** 메뉴가 열렸다 — 사이드바 목록은 떠 있던 호버 카드를 닫는다(메뉴 카드와 겹친다). */
-  onOpen?: () => void;
   /** 「이름 바꾸기」 — 그 work의 이름을 대상 자리에서 고치기 시작한다(머리 카드 이름 · 사이드바 행). */
   onRename: (slug: string) => void;
   /**
@@ -92,7 +89,6 @@ export function WorkContextMenu({
         }
         target.current = found.element;
         setMenu({ slug: found.slug, id: found.id, open: true });
-        onOpen?.();
       }}
     >
       <ContextMenuTrigger

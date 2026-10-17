@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
+import { durationMs, hoverGroup, instantNow, menuOpen, useInHoverGroup } from "@/components/ui/hover-group";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { recallSearch } from "@/routes/-work-search";
@@ -24,9 +25,6 @@ import {
 import { splitWorkSections } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
-
-// 목록을 훑어 지나가는 동안 카드가 연달아 튀어나오지 않을 만큼은 머물러야 한다
-const HOVER_DELAY_MS = 350;
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 한때 초안 구역의 접힘(`sidebar-drafts-open`)도 여기 있었다 — 구역이 걷히면서(UI개선 결정 5) 키도
@@ -126,9 +124,19 @@ function SidebarWorkList({
   // 지금은 작업을 선택해야만 보이던 브랜치와 spec 파일 수까지 마우스만 올리면 보인다.
   // 여는 행을 슬러그로 들고 있어서 목록이 갱신되면 카드 내용도 따라오고, 그 작업이
   // 사라지면 카드도 사라진다.
+  //
+  // **뜨고 닫히는 시간은 툴팁과 한 무리다**(codex-ds 결정 20 · `hover-group.ts`). 행에 멈춘 지 `duration-tip`에 서고, 포인터로 선
+  // 툴팁이나 카드가 떠 있는 동안(그리고 닫힌 직후 잠깐) 옮겨 온 행에는 곧바로 선다. 떠난 지 `duration-peek-close`에 닫히고, 그 사이 카드
+  // 안으로 들어오거나 그 행으로 돌아오면 남는다. 메뉴가 열린 동안은 서지 않고, 열리는 순간 떠 있던 카드도 닫힌다.
+  // 타이머 하나(`hoverTimer`)가 그 둘을 번갈아 든다 — 걸린 열기와 걸린 닫기는 함께 있을 일이 없다.
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
   const hoverAnchor = useRef<HTMLElement | null>(null);
   const hoverTimer = useRef<number | null>(null);
+  // **포인터로 누른 행에는 포인터가 떠날 때까지 카드가 다시 서지 않는다** — 행을 누르면(옮겨 가기 · 고정) 카드가 곧바로 닫히는데,
+  // 카드는 멈춤을 재느라 행 위의 움직임마다 다시 겨누므로 이것이 없으면 누른 손이 조금만 움직여도 카드가 되살아난다. 툴팁이
+  // 누르면 닫히고 포인터가 떠나야 다시 서는 것과 같은 꼴이다. **키로 누른 것은 잠재우지 않는다** — 깨우는 것이 그 행을 떠나는
+  // 포인터라, 포인터가 없던 행을 잠재우면 나중에 처음 올린 포인터에 카드가 안 선다(키로 켠 클릭은 `detail` 0 — `WorkRow`의 `onOpen`).
+  const quiet = useRef<string | null>(null);
   // visible에서 찾는다 — works가 아니다. 작업이 지워질 때뿐 아니라 **화면에서만 빠질 때**도
   // 카드가 따라 사라져야 한다. 행이 언마운트되면 mouseleave가 오지 않아 카드를 닫을 사람이
   // 없고, 앵커가 문서에서 떨어져 위치 계산이 0,0으로 무너진다. (예: `고정`이 접힌 채로
@@ -136,39 +144,69 @@ function SidebarWorkList({
   //
   // **이름을 고치는 행에도 카드가 없다**(`renaming`) — 손이 다른 일을 시작하면 카드를 닫는 목록이다(메뉴 · 고정 · 끌기 · 옮겨
   // 가기). 고치는 행 옆에 옛 이름을 적은 카드가 서지 않는다. 카드가 떠 있던 행이 고치기에 들면 그 카드는 아래 `hoverLost`로 닫히고,
-  // 고치는 동안 다시 올려 타이머가 차도 같은 길로 닫힌다 — 그 사이 카드는 한 번도 그려지지 않는다.
+  // 고치는 동안 다시 올리면 겨누지 않는다(`aimCard`) — 그 사이 카드는 한 번도 그려지지 않는다.
   const hovered = visible.find((work) => work.slug === hoveredSlug && work.slug !== renaming) ?? null;
+  // 떠 있는 동안 무리에 든다 — 그동안 툴팁이 곧바로 서고, 닫힌 직후 잠깐도 그렇다. 카드가 서면 키보드 포커스로 서 있던 툴팁은 비킨다(`Tooltip`).
+  useInHoverGroup("shown", hovered !== null);
+  const blocked = useStore(hoverGroup, menuOpen);
 
   // **목록이 내려가 있는가**(UI개선 결정 24). 윗 가장자리의 선이 이 한 값을 읽는다. 스크롤
   // 위치 자체가 아니라 「0인가」만 들고 있어, 굴러가는 동안 같은 값이 연달아 와도 React가
   // 다시 그리지 않는다 — 다시 그려지는 것은 맨 위를 떠나고 돌아오는 두 순간뿐이다.
   const [scrolled, setScrolled] = useState(false);
 
-  const closeCard = () => {
+  const stopTimer = () => {
     if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
     hoverTimer.current = null;
+  };
+  /** 곧바로 닫는다 — 손이 다른 일을 시작한 자리들(옮겨 가기 · 고정 · 끌기 · 메뉴 · 접기)이다. */
+  const closeCard = () => {
+    stopTimer();
     setHoveredSlug(null);
   };
-  const openCardAfterDelay = (slug: string, row: HTMLElement) => {
-    if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
+  /**
+   * 포인터가 행에 들거나 그 위에서 움직였다 — **멈춤을 다시 잰다**. 움직일 때마다 처음부터 기다리므로, 사이드바를 지나 본문으로
+   * 가는 포인터가 스치는 행마다 카드가 서지 않는다(툴팁의 지연과 같은 꼴이다).
+   */
+  const aimCard = (slug: string, row: HTMLElement) => {
+    // 고치는 행 · 누른 행은 겨누지 않는다 — 옛 행에 걸린 닫기도 그대로 간다.
+    if (slug === renaming || slug === quiet.current) return;
+    stopTimer();
+    // 이 행의 카드가 이미 섰다 — 걸린 닫기를 거두는 것으로 끝이다(카드에서 행으로 돌아왔다).
+    if (hovered?.slug === slug) return;
     // **끄는 동안엔 카드가 안 뜬다**(UI개선 스펙 §4) — 놓을 자리를 가린다. 끄는 것이 탭이어도
-    // 같다: 사이드바를 스쳐 가는 포인터마다 행이 hover를 받는다. 기다리는 사이 끌기가 시작될 수
-    // 있어 뜨는 순간에도 다시 본다.
-    if (dragStore.state.source !== null) return;
-    hoverTimer.current = window.setTimeout(() => {
-      if (dragStore.state.source !== null) return;
+    // 같다: 사이드바를 스쳐 가는 포인터마다 행이 hover를 받는다. 메뉴가 열린 동안도 그렇다. 기다리는
+    // 사이 끌기가 시작되거나 메뉴가 열릴 수 있어 뜨는 순간에도 다시 본다.
+    const held = () => dragStore.state.source !== null || menuOpen(hoverGroup.state);
+    if (held()) return;
+    const show = () => {
       hoverAnchor.current = row;
       setHoveredSlug(slug);
-    }, HOVER_DELAY_MS);
+    };
+    if (instantNow(hoverGroup.state)) return show();
+    hoverTimer.current = window.setTimeout(() => {
+      hoverTimer.current = null;
+      if (!held()) show();
+    }, durationMs("--duration-tip"));
+  };
+  /** 포인터가 행이나 카드를 떠났다 — 걸린 열기는 거두고, 떠 있는 카드는 `duration-peek-close` 뒤에 닫는다. */
+  const leaveCard = () => {
+    quiet.current = null;
+    stopTimer();
+    if (hovered === null) return;
+    hoverTimer.current = window.setTimeout(closeCard, durationMs("--duration-peek-close"));
   };
 
   // 사이드바가 접히면 행은 DOM에 남은 채 폭만 0이 된다 — 열려 있던 카드가 허공에 남는다.
   // 앵커 행이 목록에서 빠져 카드가 이미 사라진 경우에는 남아 있는 슬러그도 지운다 —
   // 그 행이 도로 나타났을 때 마우스가 그대로인데 카드가 되살아나지 않게.
+  //
+  // **메뉴가 열리면 닫는다**(codex-ds 결정 20) — 걸린 열기도 함께 거둔다. 메뉴는 어느 것이든 무리에 알리므로(`hover-group.ts`)
+  // 이 목록의 우클릭 메뉴가 아니어도 같다 — 포인터가 행에 멈춘 채 키(⇧F10)로 연 메뉴, 행의 ⋯ · 상태 메뉴.
   const hoverLost = hoveredSlug !== null && hovered === null;
   useEffect(() => {
-    if (!open || hoverLost) closeCard();
-  }, [open, hoverLost]);
+    if (!open || hoverLost || blocked) closeCard();
+  }, [open, hoverLost, blocked]);
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
@@ -176,8 +214,9 @@ function SidebarWorkList({
   // 터미널을 보다 옆 작업을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이
   // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `recallSearch`가 빈 객체 위에 얹으므로
   // 실리는 것은 **이 작업의 기억**뿐이고, 그 `file`도 이 작업 안의 문서다.
-  const goTo = (slug: string) => {
+  const goTo = (slug: string, pointer: boolean) => {
     closeCard();
+    if (pointer) quiet.current = slug;
     void navigate({
       to: "/works/$slug",
       params: { slug },
@@ -187,8 +226,9 @@ function SidebarWorkList({
 
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
   // (결정 82) — 앵커 행이 사라지면 카드가 허공에 남는다.
-  const togglePin = (work: WorkView) => {
+  const togglePin = (work: WorkView, pointer: boolean) => {
     closeCard();
+    if (pointer) quiet.current = work.slug;
     setPinned.mutate({ slug: work.slug, pinned: !work.pinned });
   };
 
@@ -213,7 +253,7 @@ function SidebarWorkList({
     latest.current = { sections, sectionsOpen };
   });
 
-  // 문턱을 넘는 순간 이미 떠 있던 카드를 닫는다 — 끄는 것이 탭이어도(위 `openCardAfterDelay`).
+  // 문턱을 넘는 순간 이미 떠 있던 카드를 닫는다 — 떠난 지 기다리지 않는다. 끄는 것이 탭이어도 같다(위 `aimCard`).
   useEffect(() => {
     if (dragging) closeCard();
   }, [dragging]);
@@ -398,8 +438,9 @@ function SidebarWorkList({
             그렇다) 자리(`.first()`)로 고르는 쪽이 **엉뚱한 상자를 집는다.** */}
         {/* **행의 우클릭 메뉴는 목록에 하나다**(codex-ds 결정 6 · 7 · 11) — 목록 상자가 우클릭을 받고, 난 자리의 행이 대상이다
             (`rowTarget`). 메뉴 상태는 여기(그 조각)가 쥐고 행은 「내가 대상인가」만 받는다 — 구획 목록 파일은 훅을 안 부른다. 열리면
-            떠 있던 호버 카드를 닫는다(메뉴 카드와 같은 자리에 겹친다). */}
-        <WorkContextMenu flows={menu} targetOf={rowTarget} onOpen={closeCard} onRename={onRename}>
+            떠 있던 호버 카드가 닫힌다(메뉴 카드와 같은 자리에 겹친다) — 어느 메뉴든 열린 동안 카드가 없다는 한 규칙의 한 갈래다(위
+            `blocked`). */}
+        <WorkContextMenu flows={menu} targetOf={rowTarget} onRename={onRename}>
           {(menuTarget) => (
             <div
               data-worklist=""
@@ -416,8 +457,8 @@ function SidebarWorkList({
                 shells={shells}
                 onToggleSection={toggleSection}
                 onOpen={goTo}
-                onHover={openCardAfterDelay}
-                onLeave={closeCard}
+                onHover={aimCard}
+                onLeave={leaveCard}
                 onTogglePin={togglePin}
                 draggedSlug={draggedSlug}
                 lineY={lineY}
@@ -435,9 +476,14 @@ function SidebarWorkList({
       </div>
 
       {/* 바깥 클릭 막이 없다 — 막이 깔리면 포인터를 가로채 앵커에서 곧바로 mouseleave가 나 열자마자
-          닫힌다. 이 카드의 여닫음은 행의 hover가 온전히 소유한다(`PopoverPortal` 머리말). */}
+          닫힌다. 이 카드의 여닫음은 행과 카드의 hover가 소유한다(`PopoverPortal` 머리말) — 카드에 든 포인터가
+          걸린 닫기를 거두고(`stopTimer`), 카드를 떠나면 행을 떠난 것과 같은 길이 뒤에 닫힌다.
+
+          **행이 바뀌면 상자를 새로 세운다**(`key`) — 상자는 앵커를 선 순간에 재므로, 떠 있는 카드가 곧바로 옆 행으로
+          옮겨 갈 때 그대로 두면 옛 행 옆에 남는다. */}
       {hovered && (
         <PopoverPortal
+          key={hovered.slug}
           anchorRef={hoverAnchor}
           side="right"
           // **행에서 재는 값이다**(결정 30). 행의 오른쪽 끝은 거터 8px만큼 사이드바
@@ -447,6 +493,8 @@ function SidebarWorkList({
           gap={4}
           // 폭은 DS `size-peek`, 안쪽은 위아래 14 · 옆 16이다(DS `HoverCard`).
           className="w-(--size-peek) px-4 py-3.5"
+          onMouseEnter={stopTimer}
+          onMouseLeave={leaveCard}
         >
           {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
               말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}

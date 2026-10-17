@@ -37,7 +37,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <QueryClientProvider client={queryClient}>
       {/* 툴팁의 지연을 앱 전체가 **한 Provider**에서 나눠 쓴다(S3) — 한 번 뜬 뒤 옆 트리거로
           옮기면 바로 뜨는 것이 이 묶음 덕이다. registry의 `Tooltip`은 제 Provider를 싸지 않으므로
-          이것이 없으면 지연이 트리거마다 따로 돈다. 600ms는 부품 파일의 기본값이다. */}
+          이것이 없으면 지연이 트리거마다 따로 돈다. 길이(`duration-tip` · 닫힌 직후 잠깐)는 부품 파일의
+          기본값이다 — 호버 카드와 한 무리로 맞춘 값이라(codex-ds 결정 20) 여기서 따로 주지 않는다. */}
       <TooltipProvider>
         {/* 토스트도 Provider는 **여기 하나**다(S14). 자리(Viewport)는 화면마다 지금 토스트 자리에 두고 —
             작업 화면과 아카이브 화면 — 한 번에 한 화면만 서므로 늘 하나다. Tooltip과 달리 Viewport는

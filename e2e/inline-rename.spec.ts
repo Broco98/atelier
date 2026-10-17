@@ -484,7 +484,7 @@ test("고치는 사이드바 행에는 호버 카드가 서지 않는다 — 올
   await expect(input).toBeFocused();
   await expect(card).toHaveCount(0);
 
-  // 나갔다 다시 올린다 — 카드가 뜨는 350ms(`HOVER_DELAY_MS`)를 넘겨 머문다.
+  // 나갔다 다시 올린다 — 카드가 뜨는 시간(멈춘 지 `duration-tip`, 150ms)을 넉넉히 넘겨 머문다.
   const main = (await page.getByRole("main").last().boundingBox())!;
   await page.mouse.move(main.x + main.width / 2, main.y + main.height / 2);
   await workRow(page, pinnedWork.slug).hover();

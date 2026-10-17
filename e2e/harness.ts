@@ -943,6 +943,16 @@ export const 줄차례 = (menu: Locator) =>
 export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /**
+ * 떠 있는 호버 카드 — 사이드바 작업 행의 카드(`SidebarWorkList`)다. 한 번에 하나만 선다.
+ *
+ * **카드만 드는 필드 표(`[data-card-fields]`)를 품은 상자로 좁힌다.** 카드의 상자 표식(`[data-popover]`)은 메뉴 · Select · Popover
+ * 카드도 단다 — 상자 표식으로 세면 「메뉴가 열린 동안 카드가 없다」가 열린 메뉴 카드를 세어 빨개지고, 「카드가 섰다」는 메뉴만 떠도
+ * 초록이 된다. 여기 사는 이유는 `툴팁`과 같다 — 카드의 시간을 재는 spec(`hover-timing` · `works-floating`)이 한 길로 집는다.
+ */
+export const 호버카드 = (page: Page) =>
+  page.locator("[data-popover]").filter({ has: page.locator("[data-card-fields]") });
+
+/**
  * 대비를 재는 **페이지 안** 계산(WCAG 대비비 — 1에서 21). 직렬화되어 페이지로 가므로 모듈의 이름을 못 읽는다.
  *
  * `layers`는 글자에서 바깥으로 올라가는 겹이다 — 겹 하나는 요소 하나의 배경색과 불투명도다. 바탕은 그 가운데 처음 만나는
@@ -1097,6 +1107,16 @@ export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "
     },
     [property, name, 앞말] as const,
   );
+
+/**
+ * 시간 토큰 하나를 ms 수로 — 칠해진 값은 `0.15s` 꼴로 나온다(위 `토큰값`). 시계로 지연을 재는 spec(`hover-timing` · `works-floating`)이
+ * 리터럴 대신 이것을 쓴다 — 리터럴로 적으면 토큰을 고친 날 검사만 옛 길이를 잰다.
+ */
+export async function 토큰시간(page: Page, name: string): Promise<number> {
+  const value = await 토큰값(page, "transition-duration", name);
+  const time = parseFloat(value);
+  return value.endsWith("ms") ? time : time * 1000;
+}
 
 /**
  * 그 안 첫 글자가 선 자리(왼쪽 x · 위 y · 오른쪽 끝) — 비지 않은 첫 글자 마디를 `Range`로 잰다. 요소의 상자는 안쪽 여백을 품어

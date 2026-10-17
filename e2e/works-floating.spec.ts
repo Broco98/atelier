@@ -12,7 +12,9 @@ import {
   workRow,
   시계를세운다,
   줄차례,
+  토큰시간,
   툴팁,
+  호버카드,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
@@ -687,19 +689,21 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
 });
 
 // ── 툴팁 (스토리 112 · 113, S28 · S29 · P13) ──
-// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 600ms 뒤에, 포커스면 곧바로 선다. 단축키가 있으면 옆에 Kbd로
+// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 멈춘 지 `duration-tip`(150ms)에, 포커스면 곧바로 선다(codex-ds
+// 결정 20 — 무리의 나머지 시간은 `hover-timing` spec이 잰다). 단축키가 있으면 옆에 Kbd로
 // 붙는다(「검색 ⌘K」). 툴팁은 역할도 설명도 주지 않으므로(S28) 글자는 표식(`data-slot`)으로 집고, 이름보다 더 말하던 것
 // (단축키)은 버튼의 접근성 설명으로 따로 잰다. 대표는 사이드바의 검색 버튼 하나다 — 사이드바에서 `title`을 들던 버튼이
 // 그것뿐이고(P13), 규칙이 부품 한 곳이라 나머지 자리는 같은 부품을 부른다.
 //
-// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 350ms 호버 카드가 600ms 툴팁보다 먼저 서므로, 카드가
-// 선 순간에 「툴팁이 없다」를 재면 행에 툴팁을 잘못 달아도 초록이다 — 카드를 앵커로 본 뒤 시계로 툴팁 지연을 넘겨 돌리고
-// 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인 판을 가른다).
+// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 호버 카드와 툴팁은 같은 길이(`duration-tip`)에 서는 한
+// 무리라(codex-ds 결정 20), 카드가 선 순간에 「툴팁이 없다」를 재면 같은 틱에 설 툴팁을 앞질러 행에 툴팁을 잘못 달아도 초록이다
+// — 카드를 앵커로 본 뒤 시계를 넉넉히 돌리고 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인
+// 판을 가른다). 핀은 행 안에 있어 올려도 카드가 그대로다 — 티켓 33의 「고정 핀 위에는 카드가 없다(그대로)」가 이 검사다.
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
 const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
 
-test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
+test("검색 버튼에 올려 멈추면 duration-tip 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -711,13 +715,15 @@ test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 
   // 이름은 그대로 「검색」이고, 이름보다 더 말하던 단축키는 설명이다(S28).
   await expect(search).toHaveAccessibleDescription("⌘K");
   await expect(tooltip).toHaveCount(0);
+  const tip = await 토큰시간(page, "--duration-tip");
+  expect(tip, "duration-tip").toBe(150);
 
   await 시계를세운다(page);
   await search.hover();
-  await page.clock.runFor(500);
+  await page.clock.runFor(tip - 1);
   // 아래에서 곧 선다 — 이 「없다」는 그 앵커에 기대어 지연이 0이 아님을 잰다.
   await expect(tooltip).toHaveCount(0);
-  await page.clock.runFor(200);
+  await page.clock.runFor(1);
   await expect(tooltip).toContainText("검색");
   await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -743,13 +749,19 @@ test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁�
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
   const row = workRow(page, plainWork.slug);
-  const card = page.locator("[data-popover]");
+  const card = 호버카드(page);
   const tooltip = 툴팁(page);
   await expect(row).toBeVisible();
   await expect(card).toHaveCount(0);
+  const tip = await 토큰시간(page, "--duration-tip");
+  expect(tip, "duration-tip").toBe(150);
 
+  await 시계를세운다(page);
   await row.hover();
-  // 앵커: 호버 카드가 섰다(350ms). 툴팁(600ms)은 그 뒤라, 여기서 재면 헛돈다.
+  // 앵커: 호버 카드가 멈춘 지 `duration-tip`에 섰다 — 툴팁과 같은 틱이라 여기서 「툴팁이 없다」를 재면 헛돈다.
+  await page.clock.runFor(tip - 1);
+  await expect(card).toHaveCount(0);
+  await page.clock.runFor(1);
   await expect(card).toBeVisible();
   await page.clock.runFor(1000);
   await expect(tooltip).toHaveCount(0);

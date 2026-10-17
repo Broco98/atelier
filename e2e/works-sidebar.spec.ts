@@ -1549,8 +1549,8 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   expect(hover넘침).toBe(넘침 + PIN_WIDTH);
   const 거리 = hover넘침 + TITLE_FADE;
 
-  // **200ms는 기다린다**(결정 11) — 목록을 훑고 지나갈 때 제목이 흔들리지 않고, 호버
-  // 카드(350ms)보다는 먼저 답한다.
+  // **200ms는 기다린다**(결정 11) — 목록을 훑고 지나갈 때 제목이 흔들리지 않는다. 호버 카드는
+  // 그보다 먼저 선다(멈춘 지 `duration-tip` 150ms — codex-ds 결정 20).
   await page.waitForTimeout(80);
   expect(-(await shiftOf(긴제목))).toBeLessThan(2);
 
@@ -1575,8 +1575,8 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
     })
     .toBe(true);
 
-  // **호버 카드는 그대로다**(결정 11) — 350ms 뒤에 떠서 전체 제목을 줄바꿈해 보여준다.
-  // 마퀴가 빠른 답, 카드가 완전한 답이라 이 판은 카드를 안 건드린다.
+  // **호버 카드는 그대로다**(결정 11) — 멈춘 지 `duration-tip`에 떠서(마퀴보다 먼저다) 전체 제목을 줄바꿈해
+  // 보여준다. 마퀴는 제목 자리에서 일부를 흘려 보이고 카드가 완전한 답이라 이 판은 카드를 안 건드린다.
   await expect(page.locator("[data-popover]")).toContainText(pinnedWork.title);
 
   // **끝에서 멈춘다 — 반복하지 않는다**(결정 11). 왕복 루프는 시선을 계속 잡아끈다.
@@ -1732,7 +1732,7 @@ test("호버 카드는 행 바로 옆에 서서 사이드바 오른쪽 끝 위�
   await expect(card).toHaveCount(0);
 
   await row.hover();
-  // 350ms 머물러야 뜬다(HOVER_DELAY_MS). 자리를 재기 전 한 프레임은 invisible이라
+  // 멈춘 지 `duration-tip`에 뜬다(codex-ds 결정 20 — 시간은 `hover-timing` spec이 잰다). 자리를 재기 전 한 프레임은 invisible이라
   // toBeVisible이 그 프레임까지 함께 기다린다.
   await expect(card).toBeVisible();
 

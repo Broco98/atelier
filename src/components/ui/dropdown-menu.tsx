@@ -9,10 +9,22 @@ import { HOTKEYS, type HotkeyId } from "@/lib/hotkeys"
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon } from "lucide-react"
 
+import { useOpenInHoverGroup } from "@/components/ui/hover-group"
 import { MenuCheck } from "@/components/ui/menu-check"
 
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+// **열린 동안 앱 무리에 든다**(`hover-group.ts`, codex-ds 결정 20) — 메뉴가 열려 있으면 툴팁도 호버 카드도 서지 않는다. 앱의 메뉴는 모두
+// 이 Root나 우클릭 메뉴의 Root(`context-menu.tsx`)를 지나므로, 여는 자리마다 알리지 않는다. 열림은 제어하는 쪽이 주면 그 값이고, 아니면
+// 부품이 바꿀 때 받아 적는다 — 거둔 열기(`isCanceled`)는 열림이 아니다. 받아 적는 길은 툴팁 · 우클릭 메뉴와 하나다(`useOpenInHoverGroup`).
+function DropdownMenu({ open, onOpenChange, ...props }: MenuPrimitive.Root.Props) {
+  const report = useOpenInHoverGroup("menus", { open, onOpenChange })
+  return (
+    <MenuPrimitive.Root
+      data-slot="dropdown-menu"
+      open={open}
+      onOpenChange={report.onOpenChange}
+      {...props}
+    />
+  )
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {

@@ -111,10 +111,13 @@ export function WorkSectionList({
   /** 행이 셸에서 받는 값 넷(`WorkRowShells`). 행마다 제 slug의 것을 꺼내 `WorkRow`에 건넨다. */
   shells: WorkRowShells;
   onToggleSection: (section: keyof SectionsOpen) => void;
-  onOpen: (slug: string) => void;
+  /** 행을 눌렀다 — 그 work로 간다. `pointer`는 포인터로 눌렀는가다(`WorkRow`의 같은 이름). */
+  onOpen: (slug: string, pointer: boolean) => void;
+  /** 포인터가 행에 들었거나 그 위에서 움직였다 — 카드는 멈춤을 잰다(`SidebarWorkList`의 `aimCard`). */
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
-  onTogglePin: (work: WorkView) => void;
+  /** 핀을 눌렀다. `pointer`는 `onOpen`의 것과 같다. */
+  onTogglePin: (work: WorkView, pointer: boolean) => void;
   /**
    * 지금 끌리고 있는 행(UI개선 스펙 §4). **구독은 위(`SidebarWorkList`)가 하고 여기는 받기만 한다** —
    * 이 파일이 훅을 부르면 정적 마크업 seam이 서지 못한다(그 계약을 소스 검사가 센다).
@@ -399,9 +402,10 @@ function SectionHeader({
 // 카드가 이미 싣는다. **모든 행이 같은 높이라 높이는 아무 말도 안 한다**(판 05 결정 0) — 바로
 // 위 nav 항목과 규격(높이·반지름·왼쪽 여백·글자 크기)이 다시 같다.
 // 좁은 폭이라 제목이 자주 넘치는데, hover하면 마퀴가 흘려 보여주고 호버 카드가 전체를
-// 줄바꿈해 보여준다 — **마퀴가 빠른 답, 카드가 완전한 답**이다(결정 11). title 속성을 함께
-// 두면 OS 툴팁이 카드 위로 겹쳐 뜬다. 앱 툴팁도 같은 까닭으로 안 단다 — 350ms 카드와 600ms 툴팁이
-// 한 자리에 겹친다(S29 · 스토리 113). 작업 화면 떠 있는 것 spec의 툴팁 절이 그것을 잰다.
+// 줄바꿈해 보여준다 — 마퀴는 제목 자리에서 일부를 흘려 보이고 **카드가 완전한 답**이다(결정 11). title 속성을 함께
+// 두면 OS 툴팁이 카드 위로 겹쳐 뜬다. 앱 툴팁도 같은 까닭으로 안 단다 — 카드와 툴팁은 같은 길이
+// (`duration-tip`)에 서는 한 무리라(codex-ds 결정 20) 둘이 한 자리에 함께 선다(S29 · 스토리 113).
+// 작업 화면 떠 있는 것 spec의 툴팁 절이 그것을 잰다.
 //
 // 행 전체가 button이던 것이 **바깥 상자 + 형제 버튼 둘**이 됐다. 중첩 button은 HTML에서
 // 허용되지 않고, span role="button"으로 흉내 내면 Tab으로 도달할 수 없다 — SpecTree의
@@ -447,10 +451,16 @@ function WorkRow({
   onRename: (slug: string) => void;
   onRenameCommit: (slug: string, title: string) => void;
   onRenameEnd: () => void;
-  onOpen: (slug: string) => void;
+  /**
+   * 행을 눌렀다 — 그 work로 간다. **`pointer`는 포인터로 눌렀는가다** — 키(Enter · Space)로 켠 클릭은 `detail`이 0이다. 누른 행에
+   * 카드를 잠재우는 것은 포인터로 누른 것뿐이다(`SidebarWorkList`의 `quiet` — 포인터가 떠나야 깨는데, 키로 누른 행에는 떠날 포인터가 없다).
+   */
+  onOpen: (slug: string, pointer: boolean) => void;
+  /** 포인터가 행에 들었거나 그 위에서 움직였다 — 카드는 멈춤을 잰다(`SidebarWorkList`의 `aimCard`). */
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
-  onTogglePin: (work: WorkView) => void;
+  /** 핀을 눌렀다. `pointer`는 `onOpen`의 것과 같다. */
+  onTogglePin: (work: WorkView, pointer: boolean) => void;
   onArmDrag: (slug: string, from: DragPoint) => void;
   /** 이 work의 셸 수 — **오른쪽 메타가 서는 조건이다**(결정 2·3). 0이면 그 칸이 없다. */
   shellCount: number;
@@ -515,13 +525,14 @@ function WorkRow({
       //
       // ⌃클릭은 열지 않는다 — 우클릭과 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 · 위 `onPointerDown`).
       onClick={(event) => {
-        if (!event.ctrlKey) onOpen(work.slug);
+        if (!event.ctrlKey) onOpen(work.slug, event.detail > 0);
       }}
       onMouseEnter={(e) => {
         // **재는 것은 속도 하나이고, 이 한 번뿐이다**(결정 12). 흐르는 거리는 CSS가 정하므로
         // (결정 10) 여기서 넘침을 읽는 것은 그 거리를 **시간으로** 바꾸기 위해서다 —
         // `calc()`는 길이를 시간으로 못 바꾼다. 자리가 이 핸들러인 것은 호버 카드 타이머를
-        // 이미 여기서 걸기 때문이고, 그래서 **쉴 때 계측도 관찰자도 없다**: 사이드바 폭이
+        // 이미 여기서 걸기 때문이고(움직임마다 다시 거는 것은 아래 `onMouseMove`이고, 재는 일은 들 때 한 번이다),
+        // 그래서 **쉴 때 계측도 관찰자도 없다**: 사이드바 폭이
         // 바뀌면 `100cqw`가 스스로 다시 풀리고, 호버 중에 폭을 끄는 경우는 없다.
         //
         // **표식을 지속시간과 함께 단다.** 마퀴를 `:hover`로 켜면 브라우저가 이 핸들러보다
@@ -539,6 +550,9 @@ function WorkRow({
         }
         onHover(work.slug, e.currentTarget);
       }}
+      // **움직이는 동안은 카드가 기다린다** — 멈춘 지 `duration-tip`에 선다(codex-ds 결정 20). 툴팁의 지연과 같은 꼴이라
+      // 움직일 때마다 처음부터 다시 잰다.
+      onMouseMove={(e) => onHover(work.slug, e.currentTarget)}
       onMouseLeave={(e) => {
         // 제자리로 돌아온다 — 복귀 시간(180ms)은 표식이 없는 평상시 규칙이 든다(결정 11).
         titleBoxOf(e.currentTarget)?.removeAttribute("data-marquee");
@@ -733,7 +747,7 @@ function WorkRow({
           // 때마다 그 work가 함께 열린다 — 클릭이 행 상자로 올라가게 되면서 처음 생긴
           // 길이라, 이 한 줄이 그 길의 유일한 마개다.
           event.stopPropagation();
-          onTogglePin(work);
+          onTogglePin(work, event.detail > 0);
         }}
         className="peer icon-button-tint icon-button-xs col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:max-w-6 focus-visible:opacity-100 group-hover:max-w-6 group-hover:opacity-100"
       >

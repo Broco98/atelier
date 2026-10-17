@@ -30,10 +30,20 @@ import {
   MenuCard,
   type MenuCardProps,
 } from "@/components/ui/dropdown-menu"
+import { useOpenInHoverGroup } from "@/components/ui/hover-group"
 import { HOTKEYS, pressed, type KeyChord } from "@/lib/hotkeys"
 
-function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
+// 열린 동안 앱 무리에 든다 — ⋯ 메뉴의 Root(`DropdownMenu`)와 같은 까닭 · 같은 길이다.
+function ContextMenu({ open, onOpenChange, ...props }: ContextMenuPrimitive.Root.Props) {
+  const report = useOpenInHoverGroup("menus", { open, onOpenChange })
+  return (
+    <ContextMenuPrimitive.Root
+      data-slot="context-menu"
+      open={open}
+      onOpenChange={report.onOpenChange}
+      {...props}
+    />
+  )
 }
 
 function ContextMenuTrigger({ ...props }: ContextMenuPrimitive.Trigger.Props) {

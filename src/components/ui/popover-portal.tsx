@@ -5,10 +5,12 @@ import { cn } from "@/lib/utils";
 // **떠 있는 것 가운데 부품(Base UI)으로 옮기지 않은 둘이 쓰는 카드다.** 쓰는 자리는 둘뿐이다.
 //
 // 1. **사이드바 작업 행의 호버 카드**(`SidebarWorkList`). 사이드바 구조는 이 전환의 범위 밖이고
-//    (`sidebar-active-band` 결정 3), 호버 카드는 HoverCard로 바꾸지 않는다. 여닫음은 행의 hover가
-//    온전히 소유한다 — 350ms 지연, 끄는 동안 억제, 행이 화면에서 빠지거나 사이드바가 접히면 함께
-//    닫힘. 키보드로는 닿지 않고(스토리 38) 포커스도 안 받는다. 스크린리더가 들을 말은 행 버튼의
-//    이름과 설명이 든다.
+//    (`sidebar-active-band` 결정 3), 호버 카드는 HoverCard로 바꾸지 않는다. 여닫음은 그 목록이
+//    소유한다 — 툴팁과 한 무리로 멈춘 지 `duration-tip`에 서고 떠난 지 `duration-peek-close`에
+//    닫히며(codex-ds 결정 20), 끄는 동안 억제, 행이 화면에서 빠지거나 사이드바가 접히면 함께
+//    닫힘. 카드 안으로 들어온 포인터가 닫기를 멈추므로 이 상자는 포인터의 들고 남을 부르는 쪽에
+//    건넨다(`onMouseEnter` · `onMouseLeave`). 키보드로는 닿지 않고(스토리 38) 포커스도 안 받는다.
+//    스크린리더가 들을 말은 행 버튼의 이름과 설명이 든다.
 // 2. **틀 이동 힌트**(`SpecViewer`의 `FrameFocusHint`). HTML 문서의 프레임이 포커스를 쥔 동안에만
 //    서서 「⌃Tab·⌘W가 이 문서 안으로 들어간다」를 말한다. 여는 트리거도 닫는 몸짓도 없고, 포커스를
 //    뺏으면 안 되며(프레임 안 조작이 계속 먹어야 한다), 포인터도 안 받는다(`pointer-events-none`).
@@ -39,6 +41,8 @@ export function PopoverPortal({
   gap = 4,
   width,
   className,
+  onMouseEnter,
+  onMouseLeave,
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
@@ -50,6 +54,9 @@ export function PopoverPortal({
   // 없으면 `className`이 폭을 준다(위 머리말).
   width?: number;
   className?: string;
+  // 포인터가 카드에 들고 날 때 — 호버 카드가 「안으로 들어오면 남는다」를 듣는 자리다(위 머리말).
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   children: ReactNode;
 }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -102,6 +109,8 @@ export function PopoverPortal({
       // 이 상자는 body 직계라 조상으로 못 찾는다 — 자리를 재는 검사가 붙잡을 손잡이다
       data-popover
       style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={cn(
         "fixed z-50 overflow-hidden floating-card",
         // 위치를 재기 전 한 프레임을 엉뚱한 자리에 그리지 않는다
