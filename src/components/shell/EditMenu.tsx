@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
-  ContextMenuTrigger,
   opensTargetMenu,
+  useHiddenContextMenu,
 } from "@/components/ui/context-menu";
 import { focusPlaceOf } from "@/features/terminal/shell-focus";
 import { requestCloseShell, shellEditAt, type ShellEdit } from "@/features/terminal/terminal-store";
@@ -21,10 +21,10 @@ import { requestCloseShell, shellEditAt, type ShellEdit } from "@/features/termi
 //
 // **메뉴 하나가 앱 전체를 맡고, 앱의 아무것도 감싸지 않는다**(Q12). 이 조각은 앱 뿌리 안의 형제로 서고(`AppShell`), 우클릭은
 // document에서 듣는다 — 사건이 거기까지 올라온 뒤 그것이 난 자리를 가르고(`targetAt`), 편집 메뉴의 자리면 이 메뉴의 숨은 Trigger에
-// 같은 자리의 우클릭 사건을 대신 낸다(`openAt`). 그러면 우클릭 메뉴의 길(`ContextMenuTrigger`)이 그대로 돈다 — 카드가 커서 자리에
-// 서고, 메뉴를 연 오른쪽 버튼의 놓음은 줄을 누르지 않는다. 메뉴의 뿌리(`ContextMenu`)를 앱 둘레에 두지 않는 까닭: Base UI는 우클릭
-// 메뉴 뿌리의 밑에 선 메뉴 줄을 모두 「우클릭 메뉴의 줄」로 쳐서, 앱의 다른 메뉴(⋯ · 상태 · 셸 고르기 …)를 누른 채 끌어 놓는 고름이
-// 오른쪽 버튼의 놓음만 받게 된다.
+// 같은 자리의 우클릭 사건을 대신 낸다(`openAt` — 대상 메뉴 `TargetMenu`와 한 손잡이 `useHiddenContextMenu`다). 그러면 우클릭 메뉴의
+// 길(`ContextMenuTrigger`)이 그대로 돈다 — 카드가 커서 자리에 서고, 메뉴를 연 오른쪽 버튼의 놓음은 줄을 누르지 않는다. 메뉴의
+// 뿌리(`ContextMenu`)를 앱 둘레에 두지 않는 까닭: Base UI는 우클릭 메뉴 뿌리의 밑에 선 메뉴 줄을 모두 「우클릭 메뉴의 줄」로 쳐서,
+// 앱의 다른 메뉴(⋯ · 상태 · 셸 고르기 …)를 누른 채 끌어 놓는 고름이 오른쪽 버튼의 놓음만 받게 된다.
 // - **터미널을 먼저 본다** — xterm의 숨은 입력칸도 `textarea`라, 입력칸을 먼저 보면 둘째 우클릭이 입력칸 메뉴가 된다. 둘 다 아니면
 //   아무것도 안 연다(결정 8 — 웹뷰의 기본 메뉴는 `AppShell`이 같은 document에서 막는다).
 // - **제 메뉴를 가진 대상**(work 행 · 띠 줄 · 머리 카드 이름 — `WorkContextMenu`, 셸 탭 · spec 탭 — `ShellTabs`, 프로젝트 · Archive
@@ -40,7 +40,7 @@ import { requestCloseShell, shellEditAt, type ShellEdit } from "@/features/termi
 // 셸 안의 프로그램이 받는 키다).
 //
 // **대상 테두리**(`focus-ring`의 `[data-menu-target]` — 결정 11)는 메뉴가 열린 동안 그 입력칸에 선다. 칸은 앱 곳곳의 부품이라 표식을
-// 이 조각이 칸에 직접 달고 닫히면 걷는다. 링이 서는 자리는 그 칸이 포커스 링을 입는 자리다 — 칸 자신, 검색칸은 감싼 상자
+// 손잡이가 칸에 직접 달고(`ringOf`) 닫히면 걷는다. 링이 서는 자리는 그 칸이 포커스 링을 입는 자리다 — 칸 자신, 검색칸은 감싼 상자
 // (`InputGroup` — `focus-ring`의 `:has` 갈래). 링을 두지 않는 칸(검색 팔레트의 입력 줄 — Input의 `bare`)에는 테두리도 없다.
 // 터미널에도 없다 — 셸 화면은 포커스 링을 입지 않는 자리이고(`TerminalPane`), 메뉴가 다룰 글자는 xterm의 고름이 보인다.
 //
@@ -182,23 +182,18 @@ export function opensEditMenu(from: Element): boolean {
 
 /** 편집 메뉴 — 앱 뿌리 안에 형제로 하나 선다(`AppShell`). 아무것도 감싸지 않는다(머리말). */
 export default function EditMenu() {
-  // 메뉴가 겨누는 칸 · 셸과 열림. 닫혀도 대상을 남긴다 — 닫히는 움직임 동안 카드가 같은 줄을 그린다.
-  const [menu, setMenu] = useState<{ target: EditTarget; open: boolean } | null>(null);
   // 닫히면 포커스가 돌아갈 자리 — 그 칸, 또는 셸의 숨은 입력칸.
   const back = useRef<HTMLElement | null>(null);
-  // 숨은 Trigger — 우클릭 · 키를 대신 받아 메뉴를 여는 자리다. 화면에 안 서고 포커스도 안 받는다.
-  const trigger = useRef<HTMLElement | null>(null);
-  // 다음 열기가 겨눌 대상. document가 가른 것을 숨은 Trigger의 열기(`onOpenChange`)가 받아 간다.
-  const pending = useRef<EditTarget | null>(null);
+  // 숨은 Trigger · 닫혀도 남는 칸 · 셸 · 대상 테두리는 대상 메뉴와 한 손잡이다(머리말). 테두리는 입력칸에만 선다.
+  const { menu, openAt, trigger, root, hiddenTrigger } = useHiddenContextMenu<EditTarget>({
+    ringOf: (target) => (target.kind === "field" ? target.edit.element : null),
+    onOpen: (target) => {
+      back.current = target.kind === "shell" ? target.edit.input : target.edit.element;
+    },
+  });
 
   useEffect(() => {
-    /** 그 대상의 메뉴를 화면의 그 자리(`x` · `y`)에 연다 — 숨은 Trigger에 그 자리의 우클릭 사건을 낸다. */
-    const openAt = (target: EditTarget, x: number, y: number) => {
-      pending.current = target;
-      trigger.current?.dispatchEvent(
-        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }),
-      );
-    };
+    // 숨은 Trigger에 낸 우클릭도 document까지 올라온다 — 그것은 다시 가르지 않는다.
     const onContextMenu = (event: MouseEvent) => {
       if (!(event.target instanceof Element) || event.target === trigger.current) return;
       const target = targetAt(event.target);
@@ -220,41 +215,11 @@ export default function EditMenu() {
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
-
-  // 대상 테두리 — 열린 동안 그 칸에 `data-menu-target`을 단다(머리말).
-  const ringed = menu?.open === true && menu.target.kind === "field" ? menu.target.edit.element : null;
-  useEffect(() => {
-    if (!ringed) return;
-    ringed.setAttribute("data-menu-target", "");
-    return () => ringed.removeAttribute("data-menu-target");
-  }, [ringed]);
+  }, [openAt, trigger]);
 
   return (
-    <ContextMenu
-      open={menu?.open === true}
-      onOpenChange={(next, details) => {
-        if (!next) {
-          setMenu((now) => now && { ...now, open: false });
-          return;
-        }
-        // 숨은 Trigger만 연다 — 가른 대상이 없는 열기는 거둔다.
-        const target = pending.current;
-        pending.current = null;
-        if (!target) {
-          details.cancel();
-          return;
-        }
-        back.current = target.kind === "shell" ? target.edit.input : target.edit.element;
-        setMenu({ target, open: true });
-      }}
-    >
-      <ContextMenuTrigger
-        ref={(node: HTMLElement | null) => {
-          trigger.current = node;
-        }}
-        render={<span hidden />}
-      />
+    <ContextMenu {...root}>
+      {hiddenTrigger}
       <ContextMenuContent finalFocus={back}>
         {menu?.target.kind === "field" && <FieldItems edit={menu.target.edit} />}
         {menu?.target.kind === "shell" && <ShellItems edit={menu.target.edit} />}

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger, opensTargetMenu } from "@/components/ui/context-menu";
+import { useRef, type ReactNode } from "react";
+import { ContextMenu, ContextMenuContent, opensTargetMenu, useHiddenContextMenu } from "@/components/ui/context-menu";
 import { opensEditMenu } from "./EditMenu";
 
 // **대상 메뉴 — 자리 하나가 그 안의 대상들의 메뉴를 맡고, 그 자리를 감싸지 않는다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 11).
@@ -10,7 +10,7 @@ import { opensEditMenu } from "./EditMenu";
 // **우클릭 메뉴의 뿌리(`ContextMenu`)가 자리를 감싸지 않는다.** Base UI는 우클릭 메뉴 뿌리 밑에 선 메뉴 줄을 모두 「우클릭 메뉴의
 // 줄」로 쳐서 오른쪽 버튼의 놓음으로만 고른다 — 그 밑의 ⋯ · 정렬 메뉴(`DropdownMenu`)를 누른 채 끌어 놓는 고름이 안 돈다. 이 자리들은
 // 안에 ⋯을 품어(Processes 행 · spec 레이아웃 행) 뿌리를 자리 곁의 형제로 두고, 숨은 Trigger에 같은 자리의 우클릭 사건을 대신 낸다
-// (`openAt` — 입력칸의 편집 메뉴 `EditMenu`와 같은 길). 그러면 우클릭 메뉴의 길이 그대로 돈다 — 카드가 커서 자리에 서고, 메뉴를 연
+// (`openAt` — 입력칸의 편집 메뉴 `EditMenu`와 한 손잡이 `useHiddenContextMenu`다). 그러면 우클릭 메뉴의 길이 그대로 돈다 — 카드가 커서 자리에 서고, 메뉴를 연
 // 오른쪽 버튼의 놓음은 줄을 누르지 않는다. 자리는 받은 손잡이(`TargetRegion`)를 제 요소에 단다.
 // - **대상이 아닌 자리**(목록의 빈 자리 · 메뉴가 없는 행)의 우클릭은 그대로 둔다 — 웹뷰의 기본 메뉴는 앱 뿌리가 막으므로(`AppShell`)
 //   아무것도 서지 않는다(결정 8). **입력칸 · 터미널**은 편집 메뉴의 자리라 물러선다(`opensEditMenu` — 멈추지 않아 사건이 document의
@@ -25,8 +25,8 @@ import { opensEditMenu } from "./EditMenu";
 // 쥐어 ↓가 첫 항목이다. 키의 기본 동작은 막는다 — 그 키로 `contextmenu`를 스스로 내는 웹뷰가 한 번 더 열지 않게.
 //
 // **고름도 주소도 안 바뀐다**(결정 7) — 대상이 고른 것이 아니어도 그 대상의 메뉴다. 열린 동안 대상에 테두리(`focus-ring`의
-// `[data-menu-target]`)가 서는 것이 「어느 것의 메뉴인가」를 말한다(결정 11) — 표식은 이 조각이 대상 요소에 직접 달고 닫히면 걷는다
-// (`ring`). 닫히면 포커스가 돌아간다(`finalFocus`) — 우클릭으로 열었으면 `back`(없으면 테두리가 선 대상), 키로 열었으면 그 키를 받은
+// `[data-menu-target]`)가 서는 것이 「어느 것의 메뉴인가」를 말한다(결정 11) — 표식은 손잡이가 대상 요소(`ring`)에 직접 달고 닫히면
+// 걷는다. 닫히면 포커스가 돌아간다(`finalFocus`) — 우클릭으로 열었으면 `back`(없으면 테두리가 선 대상), 키로 열었으면 그 키를 받은
 // 요소다. **포커스를 남기고 닫히는 항목**(「이름 바꾸기」 — 막 선 입력칸이 포커스를 쥔다)은 `leaveFocus`를 부른다: 대상으로 돌아가면
 // 입력칸이 곧바로 blur되어 「다른 곳 = 저장」으로 닫힌다(구현 노트 Q7).
 
@@ -73,21 +73,17 @@ export function TargetMenu<T>({
   /** 자리를 그린다 — 손잡이를 받아 제 요소에 달고, 지금 열린 메뉴의 대상(닫혔으면 `null`)을 받는다. */
   children: (region: TargetRegion, open: T | null) => ReactNode;
 }) {
-  // 메뉴가 겨누는 대상과 열림. 닫혀도 대상을 남긴다 — 닫히는 움직임 동안 카드가 같은 항목을 그린다.
-  const [menu, setMenu] = useState<{ hit: TargetHit<T>; open: boolean } | null>(null);
-  // 숨은 Trigger — 자리가 가른 우클릭 · 키를 대신 받아 메뉴를 여는 자리다. 화면에 안 서고 포커스도 안 받는다.
-  const trigger = useRef<HTMLElement | null>(null);
-  // 다음 열기가 겨눌 대상. 자리가 가른 것을 숨은 Trigger의 열기(`onOpenChange`)가 받아 간다.
-  const pending = useRef<TargetHit<T> | null>(null);
   // 닫히면 포커스가 돌아갈 자리와, 이번에는 돌리지 않는가(`leaveFocus`).
   const back = useRef<HTMLElement | null>(null);
   const left = useRef(false);
-
-  /** 그 대상의 메뉴를 화면의 그 자리(`x` · `y`)에 연다 — 숨은 Trigger에 그 자리의 우클릭 사건을 낸다. */
-  const openAt = (hit: TargetHit<T>, x: number, y: number) => {
-    pending.current = hit;
-    trigger.current?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
-  };
+  // 숨은 Trigger · 닫혀도 남는 대상 · 대상 테두리(`ring`)는 편집 메뉴와 한 손잡이다(머리말).
+  const { menu, openAt, root, hiddenTrigger } = useHiddenContextMenu<TargetHit<T>>({
+    ringOf: (hit) => hit.ring,
+    onOpen: (hit) => {
+      left.current = false;
+      onOpen?.(hit.of);
+    },
+  });
 
   const region: TargetRegion = {
     onContextMenu: (event) => {
@@ -115,49 +111,18 @@ export function TargetMenu<T>({
     },
   };
 
-  // 대상 테두리 — 열린 동안 그 요소에 `data-menu-target`을 단다(머리말).
-  const ringed = menu?.open === true ? (menu.hit.ring ?? null) : null;
-  useEffect(() => {
-    if (!ringed) return;
-    ringed.setAttribute("data-menu-target", "");
-    return () => ringed.removeAttribute("data-menu-target");
-  }, [ringed]);
-
   return (
     <>
-      {children(region, menu?.open === true ? menu.hit.of : null)}
-      <ContextMenu
-        open={menu?.open === true}
-        onOpenChange={(next, details) => {
-          if (!next) {
-            setMenu((now) => now && { ...now, open: false });
-            return;
-          }
-          // 숨은 Trigger만 연다 — 가른 대상이 없는 열기는 거둔다.
-          const hit = pending.current;
-          pending.current = null;
-          if (!hit) {
-            details.cancel();
-            return;
-          }
-          left.current = false;
-          setMenu({ hit, open: true });
-          onOpen?.(hit.of);
-        }}
-      >
-        <ContextMenuTrigger
-          ref={(node: HTMLElement | null) => {
-            trigger.current = node;
-          }}
-          render={<span hidden />}
-        />
+      {children(region, menu?.open === true ? menu.target.of : null)}
+      <ContextMenu {...root}>
+        {hiddenTrigger}
         <ContextMenuContent
           aria-label={label}
           finalFocus={() => (left.current ? false : (back.current ?? true))}
-          onFocus={() => menu && onFocusIn?.(menu.hit.of)}
+          onFocus={() => menu && onFocusIn?.(menu.target.of)}
         >
           {menu &&
-            items(menu.hit.of, {
+            items(menu.target.of, {
               leaveFocus: () => {
                 left.current = true;
               },

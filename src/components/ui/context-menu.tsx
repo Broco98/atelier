@@ -9,8 +9,8 @@
 // 입력칸 · 터미널의 편집 메뉴도 이 바탕이다(`EditMenu`) — document에서 우클릭을 가려 숨은 Trigger로 연다. 대상 메뉴의 Trigger는
 // 우클릭을 받아 멈추므로 대상 위의 우클릭은 대상 메뉴다. 그 Trigger가 감싼 자리 안의 입력칸(사이드바 행의 이름을 고치는 칸 —
 // `WorkContextMenu`, 셸 탭 이름을 고치는 칸 — `ShellTabs`의 `editing`)에서는 Trigger가 물러서 편집 메뉴다. 프로젝트 · Archive 목록
-// 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행 · 문서 글의 메뉴는 편집 메뉴와 같은 길이다(`TargetMenu`) — 자리가 우클릭을
-// 받아 대상을 가르고 멈춘 뒤, 자리 곁의 숨은 Trigger로 연다. 자리 안의 입력칸(프로젝트 목록 행의 이름을 고치는 칸)에서는 자리가
+// 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행 · 문서 글의 메뉴도 숨은 Trigger로 연다(`TargetMenu`) — 자리가 우클릭을
+// 받아 대상을 가르고 멈춘 뒤, 자리 곁의 숨은 Trigger로 연다. 두 메뉴의 숨은 Trigger는 한 손잡이다(`useHiddenContextMenu`). 자리 안의 입력칸(프로젝트 목록 행의 이름을 고치는 칸)에서는 자리가
 // 물러서 편집 메뉴다(`opensEditMenu`).
 //
 // **Root(와 그 안의 Trigger)가 감싸는 자리에 다른 메뉴를 두지 않는다.** Base UI는 우클릭 메뉴 Root의 밑에 선 메뉴 줄을 모두 「우클릭
@@ -18,6 +18,7 @@
 // 돈다. 그래서 편집 메뉴는 앱을 감싸지 않고, work · 탭 대상 메뉴의 Trigger는 그 대상(행 목록 · 띠 · 머리 카드 이름 · 탭 칸 하나)만
 // 감싼다. 안에 ⋯을 품은 자리(Processes 행 · spec 레이아웃 행)는 Root를 자리 곁의 형제로 둔다(`TargetMenu`).
 import type * as React from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu"
 
 import {
@@ -104,6 +105,83 @@ export function openMenuByKey(event: React.KeyboardEvent<HTMLElement>): void {
   event.currentTarget.dispatchEvent(
     new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: spot.left, clientY: spot.bottom }),
   )
+}
+
+/**
+ * **숨은 Trigger로 여는 우클릭 메뉴의 손잡이** — 뿌리가 대상을 감싸지 않는 두 메뉴(입력칸 · 터미널의 편집 메뉴 `EditMenu`, 목록 행 ·
+ * 문서 글의 대상 메뉴 `TargetMenu`)가 함께 쓴다. 부르는 쪽이 우클릭 · 키를 받아 대상을 가른 뒤 `openAt`을 부르면, 화면에 안 서는
+ * Trigger(`hiddenTrigger`)에 그 자리의 우클릭 사건을 대신 낸다. 그러면 우클릭 메뉴의 길(`ContextMenuTrigger`)이 그대로 돈다 — 카드가
+ * 그 자리에 서고, 메뉴를 연 오른쪽 버튼의 놓음은 줄을 누르지 않는다.
+ * - **숨은 Trigger만 연다** — `openAt`이 겨눈 대상이 없는 열기는 거둔다(`details.cancel()`).
+ * - **닫혀도 대상을 남긴다**(`menu`) — 닫히는 움직임 동안 카드가 같은 줄을 그린다.
+ * - **대상 테두리**(`focus-ring`의 `[data-menu-target]` — codex-ds 결정 11)는 열린 동안 `ringOf`가 준 요소에 달고 닫히면 걷는다.
+ *
+ * 무엇을 듣고 대상을 어떻게 가르는지, 닫힐 때 포커스가 어디로 가는지는 부르는 쪽 몫이다.
+ */
+export function useHiddenContextMenu<T>({
+  ringOf,
+  onOpen,
+}: {
+  /** 열린 동안 테두리가 설 요소. 없으면 테두리가 없다. */
+  ringOf: (target: T) => HTMLElement | null | undefined
+  /** 메뉴가 그 대상으로 열렸다. */
+  onOpen?: (target: T) => void
+}) {
+  const [menu, setMenu] = useState<{ target: T; open: boolean } | null>(null)
+  // 숨은 Trigger — 화면에 안 서고 포커스도 안 받는다.
+  const trigger = useRef<HTMLElement | null>(null)
+  // 다음 열기가 겨눌 대상. 부르는 쪽이 가른 것을 숨은 Trigger의 열기(`onOpenChange`)가 받아 간다.
+  const pending = useRef<{ target: T } | null>(null)
+
+  /** 그 대상의 메뉴를 화면의 그 자리(`x` · `y`)에 연다 — 숨은 Trigger에 그 자리의 우클릭 사건을 낸다. */
+  const openAt = useCallback((target: T, x: number, y: number) => {
+    pending.current = { target }
+    trigger.current?.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }),
+    )
+  }, [])
+
+  const ringed = menu?.open === true ? (ringOf(menu.target) ?? null) : null
+  useEffect(() => {
+    if (!ringed) return
+    ringed.setAttribute("data-menu-target", "")
+    return () => ringed.removeAttribute("data-menu-target")
+  }, [ringed])
+
+  const onOpenChange = (next: boolean, details: ContextMenuPrimitive.Root.ChangeEventDetails) => {
+    if (!next) {
+      setMenu((now) => now && { ...now, open: false })
+      return
+    }
+    // 숨은 Trigger만 연다 — 가른 대상이 없는 열기는 거둔다.
+    const hit = pending.current
+    pending.current = null
+    if (!hit) {
+      details.cancel()
+      return
+    }
+    setMenu({ target: hit.target, open: true })
+    onOpen?.(hit.target)
+  }
+
+  return {
+    /** 메뉴가 겨누는 대상과 열림. 한 번도 안 열렸으면 `null`이다. */
+    menu,
+    openAt,
+    /** 숨은 Trigger 요소 — 거기 낸 사건을 document에서 다시 가르지 않으려는 쪽(`EditMenu`)이 읽는다. */
+    trigger,
+    /** `ContextMenu`에 그대로 편다. */
+    root: { open: menu?.open === true, onOpenChange },
+    /** `ContextMenu` 안에 세운다. */
+    hiddenTrigger: (
+      <ContextMenuTrigger
+        ref={(node: HTMLElement | null) => {
+          trigger.current = node
+        }}
+        render={<span hidden />}
+      />
+    ),
+  }
 }
 
 export {
