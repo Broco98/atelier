@@ -10,6 +10,7 @@ import {
   workRow,
   레인,
   띠,
+  첫글자,
   토큰값,
 } from "./harness";
 
@@ -36,20 +37,6 @@ async function 상자(target: Locator) {
   if (!box) throw new Error("상자를 못 읽었다");
   return { ...box, right: box.x + box.width, bottom: box.y + box.height };
 }
-
-/** 그 안 첫 글자가 선 자리 — 비지 않은 첫 글자 마디를 `Range`로 잰다. */
-const 첫글자 = (scope: Locator) =>
-  scope.evaluate((root) => {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode: (node) => (node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
-    });
-    const text = walker.nextNode();
-    if (!text) throw new Error("글자 마디가 없다");
-    const range = document.createRange();
-    range.selectNodeContents(text);
-    const box = range.getBoundingClientRect();
-    return { x: box.left, y: box.top, right: box.right };
-  });
 
 /** 그 안 첫 아이콘(svg)의 상자. */
 const 아이콘 = (scope: Locator) => 상자(scope.locator("svg").first());

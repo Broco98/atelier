@@ -4,6 +4,7 @@ import { expect, test, type Locator, type Page } from "./evidence";
 import { ARCHIVE, PROJECTS, WORKS } from "./fixtures";
 import {
   clipboardWrites,
+  HEAD_CARD,
   installFixtureBackend,
   recordClipboard,
   SPEC_LAYOUT_EDITOR,
@@ -881,10 +882,10 @@ test("Works: 창 컨트롤 넷과 패널 토글의 가운데가 머리 카드 �
   expect(knob.right, "패널 토글 = 머리 카드 안쪽 오른쪽 끝").toBe(card.right - parseFloat(padding));
   // 토글은 머리 줄의 머리 카드 안에 서고 레일 · `aside` · `nav`의 자손이 아니다.
   expect(
-    await toggle.evaluate((el) => [
-      el.closest('header [data-slot="head-card"]') !== null,
-      el.closest('aside, nav, [aria-label="레일"]') === null,
-    ]),
+    await toggle.evaluate(
+      (el, card) => [el.closest(card) !== null, el.closest('aside, nav, [aria-label="레일"]') === null],
+      HEAD_CARD,
+    ),
   ).toEqual([true, true]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

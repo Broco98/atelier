@@ -1,6 +1,6 @@
 import { expect } from "./evidence";
 import type { Page } from "./evidence";
-import { openShell } from "./harness";
+import { HEAD_CARD, openShell } from "./harness";
 
 // 탭 줄을 재는 손잡이 — `terminal-tabs.spec.ts`(좁은 창의 줄)와 `tab-order.spec.ts`(끄는 동안의
 // 줄)가 **같은 측정**으로 `spill ≤ 0`을 든다. 스펙 파일끼리는 import할 수 없어(Playwright가
@@ -98,7 +98,7 @@ export interface Row {
  * 줄은 **셸 칸 상자(`data-tab-strip`)를 든 머리**다(codex-ds 스펙 §11) — 본문 카드 맨 위에 선다. 조작 묶음은 그 줄의 자식이다.
  */
 export async function rowOf(page: Page): Promise<Row> {
-  return page.evaluate(() => {
+  return page.evaluate((card) => {
     const strip = document.querySelector("[data-tab-strip]")!;
     const row = strip.parentElement!;
     const box = row.getBoundingClientRect();
@@ -106,7 +106,7 @@ export async function rowOf(page: Page): Promise<Row> {
     const mark = document.querySelector('[data-tab="shell"] [role="img"]');
     const markCell = mark?.closest('[data-tab="shell"]') ?? null;
     const actions = row.querySelector(":scope > [data-tab-actions]")?.getBoundingClientRect() ?? null;
-    const head = document.querySelector<HTMLElement>('header [data-slot="head-card"]');
+    const head = document.querySelector<HTMLElement>(card);
     const work = head?.querySelector<HTMLElement>("[data-head-actions]") ?? null;
     const workBox = work?.getBoundingClientRect() ?? null;
     let natural = 0;
@@ -146,7 +146,7 @@ export async function rowOf(page: Page): Promise<Row> {
         outside: workBox.right - document.documentElement.clientWidth,
       },
     };
-  });
+  }, HEAD_CARD);
 }
 
 /**

@@ -885,9 +885,11 @@ export const 띠 = (page: Page) => page.locator("[data-band]");
  * 선다(codex-ds 스펙 §7) — 할 일이 없는 화면(Terminal · 작업을 고르지 않은 Works)에서는 이름만 든다.
  *
  * **여기 사는 이유는 머리 카드를 집는 길을 하나로 두려는 것이다.** 화면마다 머리 카드가 서면 여러 spec이 이 자리를 집는다 —
- * 선택자를 옮겨 적으면 표식이 바뀌는 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)`)가 헛돈다.
+ * 선택자를 옮겨 적으면 표식이 바뀌는 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)` · `closest(…) === null`)가 헛돈다. 진열대처럼
+ * 쪽 안의 한 상자에서 집을 때는 그 상자를 건넨다. 페이지 안(`evaluate`)에서 집을 때는 선택자 `HEAD_CARD`를 인자로 넘긴다.
  */
-export const 머리카드 = (page: Page) => page.locator('header [data-slot="head-card"]');
+export const HEAD_CARD = 'header [data-slot="head-card"]';
+export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
 
 /**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
@@ -1053,6 +1055,23 @@ export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "
     },
     [property, name, 앞말] as const,
   );
+
+/**
+ * 그 안 첫 글자가 선 자리(왼쪽 x · 위 y · 오른쪽 끝) — 비지 않은 첫 글자 마디를 `Range`로 잰다. 요소의 상자는 안쪽 여백을 품어
+ * 글자 자리가 아니다. 거터 · 행 글자의 세로줄을 재는 spec(`path-bar` · `spacing`)이 한 판정을 쓴다.
+ */
+export const 첫글자 = (scope: Locator) =>
+  scope.evaluate((root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => (node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    const text = walker.nextNode();
+    if (!text) throw new Error("글자 마디가 없다");
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const box = range.getBoundingClientRect();
+    return { x: box.left, y: box.top, right: box.right };
+  });
 
 /** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
 export const 칠한값 = (target: Locator, ...properties: string[]) =>

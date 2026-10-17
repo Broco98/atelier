@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import { ARCHIVE, WORKS } from "./fixtures";
-import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCalls, 칠한값, 토큰값, 토큰색 } from "./harness";
+import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCalls, 첫글자, 칠한값, 토큰값, 토큰색 } from "./harness";
 
 // codex-ds 티켓 15 — **문서 위에 경로 줄이 선다**(스펙 §4 「카드 머리 · 경로 줄」 · DS `PathBar` · 결정 12 · 13 · 27). 줄은 48(틈 8 ·
 // 컨트롤 32 · 틈 8)이고 왼쪽에 경로 캡슐, 오른쪽에 보기 묶음(문서 | 원문)과 동그란 경로 복사가 선다. 캡슐 안 글자는 카드 + 20 —
@@ -16,20 +16,6 @@ const [shipped] = ARCHIVE;
 
 const 경로줄 = (card: Locator) => card.locator('[data-slot="path-bar"]');
 const 캡슐 = (bar: Locator) => bar.getByRole("navigation", { name: "위치", exact: true });
-
-/** 그 안 첫 글자가 선 자리(왼쪽 x · 위 y) — 비지 않은 첫 글자 마디를 `Range`로 잰다. */
-const 첫글자 = (scope: Locator) =>
-  scope.evaluate((root) => {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode: (node) => (node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
-    });
-    const text = walker.nextNode();
-    if (!text) throw new Error("글자 마디가 없다");
-    const range = document.createRange();
-    range.selectNodeContents(text);
-    const box = range.getBoundingClientRect();
-    return { x: box.left, y: box.top };
-  });
 
 async function 상자(target: Locator) {
   const box = await target.boundingBox();

@@ -1,5 +1,15 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { installFixtureBackend, processesTitle, unknownIpcCalls, 그림자, 칠한값, 토큰값, 토큰색 } from "./harness";
+import {
+  HEAD_CARD,
+  installFixtureBackend,
+  processesTitle,
+  unknownIpcCalls,
+  그림자,
+  머리카드,
+  칠한값,
+  토큰값,
+  토큰색,
+} from "./harness";
 
 // codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 서고, 서면 DS `PanelRail` 모양이다**(codex-ds 결정 25 · 29 · 스펙 §4). 바탕 오른쪽
 // 끝의 세로 묶음이고, 홈은 옆 패널 카드와 같은 흰 면(`surface` · `shadow-hairline` · `radius-lg`, 안쪽 2), 칸은 28 · `radius-md`, 켜진
@@ -122,7 +132,7 @@ test("레일이 서면 패널 토글은 머리 카드 밖 레일 위에 서고 �
   const viewport = page.viewportSize()!;
   const [home, head, panel, toggle] = [
     await 상자(rail),
-    await 상자(showcase.locator('header [data-slot="head-card"]')),
+    await 상자(머리카드(showcase)),
     await 상자(showcase.getByRole("region", { name: "진열대 패널", exact: true })),
     await 상자(toggleButton),
   ];
@@ -132,7 +142,7 @@ test("레일이 서면 패널 토글은 머리 카드 밖 레일 위에 서고 �
   expect(viewport.width - head.right, "머리 카드 뒤 = 틈 · 레일 · 틈").toBe(gap + prail + gap);
   // 패널 토글 — 머리 줄 안, 머리 카드 밖이다.
   expect(
-    await toggleButton.evaluate((el) => [el.closest("header") !== null, el.closest('[data-slot="head-card"]') === null]),
+    await toggleButton.evaluate((el, card) => [el.closest("header") !== null, el.closest(card) === null], HEAD_CARD),
   ).toEqual([true, true]);
   expect(toggle.x, "패널 토글은 머리 카드 오른쪽 너머").toBeGreaterThan(head.right);
 
