@@ -8,17 +8,20 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { ChevronRight, Pencil, type LucideIcon } from "lucide-react";
+import { ChevronRight, Pencil, Search, type LucideIcon } from "lucide-react";
 import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { InlineRename } from "@/components/ui/inline-rename";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
+import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN } from "./panel-layout";
+import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import Rail, { railStands, type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
+import type { TargetRegion } from "./TargetMenu";
 import useSplitRatio from "./useSplitRatio";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-surface-shell`) 맨 위에 48 머리 줄이 서고(codex-ds 스펙 §4), 그 아래
@@ -343,12 +346,14 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  *
  * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
  * 그래서 **닫힌 동안 안쪽 열은 `inert`다** — 폭만 0인 칸 안의 트리 행에 Tab · 찾기가 닿지 않게 한다(레일의 `PanelBody` · 사이드바 목록
- * 구획과 같은 손). 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다.
+ * 구획과 같은 손). 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다. 안에 있던 포커스는 패널 토글로 간다(`useFoldedFocus`).
  */
 function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?: number }) {
   const { open, size, label, children } = slot;
+  const box = useFoldedFocus<HTMLElement>(open);
   return (
     <aside
+      ref={box}
       id={id}
       data-tauri-drag-region
       style={
@@ -791,4 +796,57 @@ function ListHead({ title, count, end }: { title: string; count?: number; end?: 
   );
 }
 
-export { Card, CardHead, Frame, ListHead };
+/**
+ * 목록 칸의 찾기 칸(DS `.at-search`) — 목록 머리 아래 칸 폭으로 서고 행과 8 떨어진다. Projects · Archive 목록이 쓴다. 이름은
+ * `aria-label`이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자라 같은 글자를 겸한다.
+ */
+function ListSearch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <InputGroup className="mb-2 shrink-0">
+      <InputGroupAddon>
+        <Search />
+      </InputGroupAddon>
+      <InputGroupInput
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={label}
+      />
+    </InputGroup>
+  );
+}
+
+/**
+ * 목록 칸의 두 줄 행(DS `.at-row.two`)의 자리 — 50 이상 · 안쪽 7 8 · 모서리 10, 두 줄 사이 2. 글자가 칸 + 16에 서서 목록 머리의 제목과
+ * 한 세로줄이다. Projects · Archive 목록의 행 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다. 고른 행 · hover의 면은 행이
+ * 더한다(카드 안 목록의 두 단 — `selected-row` · `fill-soft`).
+ */
+const TWO_LINE_ROW = "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 transition-colors";
+
+/**
+ * 목록 칸의 구르는 상자 — 두 줄 행이 여기 선다. 상자가 목록의 키를 받는다: 행 메뉴의 우클릭 · ⇧F10(`menu` — `TargetMenu`의 손잡이)과
+ * 목록 안 ↑↓(`roving` — 목록 하나가 Tab 정류장 하나다, `@/lib/roving`). 행은 표식(`data-roving` · 메뉴가 대상을 가르는 표)만 든다.
+ *
+ * **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만 칸 가장자리로 간다. 상자가 안쪽 여백 안에
+ * 들어앉아 있으면 막대(상자 안쪽 3~9px)가 그만큼 더 안쪽에 서서 행 위로 들어온다. 같은 병이 사이드바 work 목록에 있었고 그쪽 주석이
+ * 내력을 든다. 위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지 않게 상자만
+ * 4px 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 그 자리이자 칸 바닥의 안쪽 8이다(DS
+ * `.at-listcol`).
+ */
+function ListScroll({ menu, roving, children }: { menu?: TargetRegion; roving: RovingBox; children: ReactNode }) {
+  return (
+    <div
+      onContextMenu={menu?.onContextMenu}
+      onKeyDown={(event) => {
+        menu?.onKeyDown(event);
+        roving.onKeyDown(event);
+      }}
+      onFocus={roving.onFocus}
+      className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet"
+    >
+      {children}
+    </div>
+  );
+}
+
+export { Card, CardHead, Frame, ListHead, ListScroll, ListSearch, TWO_LINE_ROW };

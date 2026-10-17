@@ -7,6 +7,7 @@ import {
   openShell,
   processesTitle,
   unknownIpcCalls,
+  탭으로,
   띠,
   그림자,
   머리카드,
@@ -32,23 +33,12 @@ import { settle } from "./tab-row";
 // 다닐 때 보는 것」이다. 링은 accent 1px(`outline`) + 바깥 4px `focus-halo`(`box-shadow`)다.
 //
 // **WebKit의 Tab은 맨 `<button>`에 서지 않는다**(실측 10-11) — macOS의 「키보드 탐색」이 꺼진 기본값에서 Tab은 입력칸과
-// `tabindex`를 단 것(Base UI 부품은 스스로 단다)만 다닌다. 사이드바 구획 머리 · 행과 셸 탭의 이름 버튼은 화면이 지은 맨 버튼이라
-// Tab이 지나친다 — 목록과 탭 줄을 Tab 정류장으로 세우는 것은 codex-ds 티켓 32다. 그 둘은 그래서 포커스를 바로 준다: 셸 입력칸
-// (늘 `:focus-visible`인 글자칸)에서 옮겨 간 포커스라 WebKit이 `:focus-visible`을 물려 준다(`works-sidebar.spec.ts`의 핀 검사와 같은 길).
-// 티켓 32가 그 둘을 Tab 정류장으로 세우면 이 검사도 `.focus()`를 걷고 `탭으로` 간다 — 그날부터 Tab이 닿는 길의 링을 여기서 잰다.
+// `tabindex`를 단 것(Base UI 부품은 스스로 단다)만 다닌다. 사이드바 행과 셸 탭의 이름 버튼은 화면이 지은 버튼이라 `tabindex`를
+// 명시해 Tab 정류장이 됐다(codex-ds 티켓 32 — 목록은 정류장 하나, 탭 줄은 칸마다). 그래서 여기서도 Tab이 온 길로 닿는다(`탭으로`).
+// 사이드바 구획 머리는 목록 안의 행이라 Tab이 아니라 ↑로 간다 — 목록 안을 화살표로 옮긴 포커스도 키보드가 온 길이라 `:focus-visible`이다.
 
 const project = PROJECTS[0];
 const [, plainWork] = WORKS;
-
-/** Tab을 눌러 `target`에 포커스가 올 때까지 간다. `최대` 번 안에 못 닿으면 던진다 — 그 자리가 Tab 정류장이 아니다. */
-async function 탭으로(page: Page, target: Locator, 최대 = 120): Promise<void> {
-  await expect(target).toBeVisible();
-  for (let n = 0; n < 최대; n += 1) {
-    if (await target.evaluate((el) => el === document.activeElement)) return;
-    await page.keyboard.press("Tab");
-  }
-  throw new Error(`Tab ${최대}번 안에 닿지 않았다 — ${target}`);
-}
 
 /** 그 요소에 칠해진 포커스 링 — `outline`(굵기 · 모양 · 색)과 자리, `box-shadow`. */
 async function 링(target: Locator) {
@@ -159,18 +149,23 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
   await 탭으로(page, 칩);
   await 링이선다(page, 칩, "칩 토글");
 
-  // 작업 화면 — 사이드바 행의 이름 버튼과 셸 탭의 이름 버튼. 부품이 아니라 화면이 지은 버튼이고, 전에는 링이 없던 자리다.
+  // 작업 화면 — 사이드바 행의 이름 버튼 · 구획 머리와 셸 탭의 이름 버튼. 부품이 아니라 화면이 지은 버튼이고, 전에는 링이 없던
+  // 자리다. 셸 입력칸은 Tab을 셸에 보내므로 포커스를 내려놓고 창의 Tab 차례에서 간다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  for (const [이름, target] of [
-    ["사이드바 구획 머리", page.locator("[data-worklist] [data-section]").first()],
-    ["사이드바 행", 행버튼(page, plainWork.title)],
-    ["셸 탭", 이름표(page, 0)],
-  ] as const) {
-    await target.focus();
-    await expect(target).toBeFocused();
-    await 링이선다(page, target, 이름);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const 행 = 행버튼(page, plainWork.title);
+  await 탭으로(page, 행);
+  await 링이선다(page, 행, "사이드바 행");
+  const 구획머리 = page.locator("[data-worklist] [data-section]").first();
+  for (let n = 0; n < 6 && !(await 구획머리.evaluate((el) => el === document.activeElement)); n += 1) {
+    await page.keyboard.press("ArrowUp");
   }
+  await expect(구획머리).toBeFocused();
+  await 링이선다(page, 구획머리, "사이드바 구획 머리");
+  const 셸탭 = 이름표(page, 0);
+  await 탭으로(page, 셸탭);
+  await 링이선다(page, 셸탭, "셸 탭");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

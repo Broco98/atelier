@@ -542,6 +542,7 @@ function WorksPage({
           text="spec 열 닫기"
           announce="name"
           type="button"
+          tabIndex={0}
           onClick={() => changeSplit(null, otherTab("spec"))}
           className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring"
         >
@@ -658,6 +659,7 @@ function WorksPage({
             text="terminal 열 닫기"
             announce="name"
             type="button"
+            tabIndex={0}
             onClick={() => changeSplit(null, otherTab("terminal"))}
             className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring"
           >

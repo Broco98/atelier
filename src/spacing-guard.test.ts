@@ -397,14 +397,9 @@ describe("눈금의 사분 단", () => {
       why: "두 줄 메뉴 항목(`note`) — 위아래 안쪽 7(DS `.at-mi.tall`)",
     },
     {
-      file: "src/features/archive/ArchiveList.tsx",
+      file: "src/components/shell/Frame.tsx",
       className: "py-1.75",
-      why: "Archive 목록의 두 줄 행 — 위아래 안쪽 7(DS `.at-row.two`)",
-    },
-    {
-      file: "src/features/projects/ProjectList.tsx",
-      className: "py-1.75",
-      why: "Projects 목록의 두 줄 행 — 위아래 안쪽 7(DS `.at-row.two`)",
+      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Projects · Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
     },
     {
       file: "src/components/ui/input.tsx",

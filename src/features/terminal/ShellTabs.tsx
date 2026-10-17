@@ -186,6 +186,9 @@ interface ShellTabsProps {
 // 카드의 바닥(`panel-layout`의 `TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 그 표식으로 줄을 가른다. 카드 안이라 창을 끄는 자리가
 // 아니다 — 끄는 자리는 머리 줄과 카드 둘레의 회색 틈이다(`Frame` 머리말).
 //
+// **칸은 Tab으로 다닌다**(codex-ds 스펙 §9 — 목록이 아니라 roving이 없다). spec 칸 · 셸 칸 이름 · 닫기 · `+`가 저마다 정류장이고
+// `tabIndex`를 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
+//
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
 // 그 성질이 사라진다: `@xterm/*`와 그 CSS가 따라 들어온다. 구독은 화면(WorksPage)이 한다 —
@@ -586,6 +589,7 @@ function PlusButton({
       data-tab="new"
       aria-label="셸 열기"
       aria-disabled={full || undefined}
+      tabIndex={0}
       className={cn(
         // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
         // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
@@ -824,6 +828,7 @@ const ShellTab = memo(function ShellTab({
                 disabled={tooltip === null}
                 type="button"
                 aria-pressed={active}
+                tabIndex={0}
                 // **상태가 이름에 붙는다**(스토리 55 · 결정 8). 채움은 `aria-hidden`도 아니고 그냥
                 // 색이라 스크린리더에 아무것도 안 남긴다 — 색만이 신호여선 안 되므로 그 사실을
                 // 말하는 자리가 이 이름 하나다. 말은 `SIGNAL_LABEL` 하나에서 오고 행 버튼·띠 줄이
@@ -912,6 +917,7 @@ const ShellTab = memo(function ShellTab({
               type="button"
               aria-label={`${name} 닫기`}
               onClick={() => onClose(shell.id)}
+              tabIndex={0}
               className={cn(
                 "icon-button-tint icon-button-xs shrink-0 text-fg-tertiary focus-ring",
                 // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
@@ -989,6 +995,7 @@ function SpecTabButton({ spec, onDragTab }: { spec: SpecTab; onDragTab: (id: nul
             type="button"
             data-tab="spec"
             aria-pressed={spec.on}
+            tabIndex={0}
             data-menu-target={menuOpen ? "" : undefined}
             // ⌃클릭은 macOS의 우클릭이다 — 메뉴를 여는 몸짓이라 문서로 가지 않는다(구현 노트 Q9).
             onClick={(event) => {

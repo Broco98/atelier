@@ -11,7 +11,7 @@ import { openMenuByKey } from "@/components/ui/context-menu";
 import { InlineRename } from "@/components/ui/inline-rename";
 import { pressed } from "@/lib/hotkeys";
 import type { DragPoint } from "@/lib/pointer-drag";
-import { emptyMainNotice, WORKS_COPY } from "./work-sections";
+import { emptyMainNotice, sectionKey, WORKS_COPY } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
 import { StatusIcon } from "./status";
 import type { WorkView } from "./types";
@@ -89,6 +89,7 @@ export function WorkSectionList({
   sections,
   open,
   selectedSlug,
+  stop,
   shells,
   onToggleSection,
   onOpen,
@@ -108,6 +109,11 @@ export function WorkSectionList({
   sections: WorkSections;
   open: SectionsOpen;
   selectedSlug: string | null;
+  /**
+   * 목록의 Tab 정류장 — 그 키(행의 slug · 구획 머리의 `sectionKey`)를 단 자리만 `tabIndex={0}`이고 나머지는 `-1`이다(roving,
+   * codex-ds 스펙 S10). 무엇이 정류장인지는 위(`SidebarWorkList`의 `useRoving`)가 정한다 — 이 파일은 훅을 안 부른다.
+   */
+  stop: string | null;
   /** 행이 셸에서 받는 값 넷(`WorkRowShells`). 행마다 제 slug의 것을 꺼내 `WorkRow`에 건넨다. */
   shells: WorkRowShells;
   onToggleSection: (section: keyof SectionsOpen) => void;
@@ -163,6 +169,7 @@ export function WorkSectionList({
       key={work.slug}
       work={work}
       active={work.slug === selectedSlug}
+      stop={work.slug === stop}
       dragging={work.slug === draggedSlug}
       menuTarget={work.slug === menuTarget}
       editing={work.slug === renaming}
@@ -204,6 +211,7 @@ export function WorkSectionList({
             label="고정"
             className="mt-1.5"
             open={open.pinned}
+            stop={stop === sectionKey("pinned")}
             count={pinned.length}
             onToggle={() => onToggleSection("pinned")}
           />
@@ -218,6 +226,7 @@ export function WorkSectionList({
         label={WORKS_COPY.label}
         className="mt-1.5"
         open={open.works}
+        stop={stop === sectionKey("works")}
         count={main.length}
         onToggle={() => onToggleSection("works")}
       />
@@ -344,6 +353,7 @@ function SectionHeader({
   section,
   label,
   open,
+  stop,
   count,
   onToggle,
   className,
@@ -352,6 +362,8 @@ function SectionHeader({
   section: keyof SectionsOpen;
   label: string;
   open: boolean;
+  /** 목록의 Tab 정류장인가 — 머리도 행처럼 ↑↓로 지나는 자리다(Enter가 접는다). */
+  stop: boolean;
   count: number;
   onToggle: () => void;
   className?: string;
@@ -366,6 +378,8 @@ function SectionHeader({
       // 위 표식은 「구획 머리인가」, 이것은 「어느 구획인가」다. 하나로 합치면 위를 `""`로 집는
       // 마크업 검사가 갈린다.
       data-drop-head={section}
+      tabIndex={stop ? 0 : -1}
+      data-roving={sectionKey(section)}
       onClick={onToggle}
       aria-expanded={open}
       className={cn(
@@ -424,6 +438,7 @@ function SectionHeader({
 function WorkRow({
   work,
   active,
+  stop,
   onOpen,
   onHover,
   onLeave,
@@ -442,6 +457,8 @@ function WorkRow({
 }: {
   work: WorkView;
   active: boolean;
+  /** 이 행이 목록의 Tab 정류장인가 — 이름 버튼이 `tabIndex={0}`을 받는다(roving, 목록 주석). */
+  stop: boolean;
   /** 이 행이 끌리는 중인가 — 흐려진다. 행 모양이 정해지는 자리가 여기 하나라 이 값도 여기로 온다. */
   dragging: boolean;
   /** 이 행의 우클릭 메뉴가 열려 있는가 — 이름 버튼에 대상 테두리가 선다(codex-ds 결정 11). 고름(`active`)과 따로다(결정 7). */
@@ -572,7 +589,7 @@ function WorkRow({
         // **2열은 아무것도 예약하지 않는다 — 그냥 `auto`다**(S34). 판 05의 결정 2·5는 여기에 한
         // 무리분(28px)을 **바닥으로** 깔라고 했고, 그것이 실물 앱을 보고 **기각됐다**:
         // 「아이콘을 고려해서 미리 빼놨다는건 말이 안됨. 아이콘 생기면 그때 가변되는게 맞아.」
-        // 자리는 선 것이 **실제로 있을 때** 난다. 그 「선 것」에 **핀도 든다** — 핀은 hover·포커스에만
+        // 자리는 선 것이 **실제로 있을 때** 난다. 그 「선 것」에 **핀도 든다** — 핀은 hover에만
         // 폭을 가지므로 메타가 없는 행은 칸도 그때만 24px이 된다(핀 주석).
         //
         // **그래서 제목이 끊기는 자리는 셋일 때 움직인다**(사람이 고른 원칙의 대가, 판 2 실물 확인):
@@ -647,6 +664,11 @@ function WorkRow({
           // **메타 칸이 든다**(`pl-2.25`) — 메타가 있을 때만 난다(S34의 원칙). 제목 상자가
           // 핀 바로 앞에서 끝나는 것을 L3가 잰다.
           className={`${nameCell} text-left focus-ring`}
+          // **목록 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10) — 정류장 행의 이 버튼만 `0`이고 나머지는 `-1`이다. ↑↓는 목록
+          // 상자가 받아 옆 행의 이 버튼으로 옮긴다(`@/lib/roving`). 표식은 그 키(slug)다. 아래 `aria-description`과 같은 까닭으로
+          // `className` 뒤에 적는다.
+          tabIndex={stop ? 0 : -1}
+          data-roving={work.slug}
           // **셸의 마지막 말은 설명으로 붙는다**(결정 14 · 스토리 38). 호버 카드는 키보드로 닿지
           // 않으므로, 포커스한 사람이 「왜 부르나」를 듣는 자리가 여기다 — 이름(`제목 — 상태`)
           // 다음에 읽힌다. 이름을 늘리지 않는 것은 그 이름이 행·띠·탭이 함께 쓰는 짧은 말이라서다.
@@ -702,8 +724,10 @@ function WorkRow({
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
           좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
           페이드가 없는 것은 icon-button-tint가 정한다(옆 행으로 옮겨 갈 때 두 핀이
-          겹쳐 미끄러져 보인다). focus-visible:opacity-100이 없으면 Tab으로 도달은
-          하는데 보이지 않는다 — spec 트리의 복사 버튼이 이미 같은 답을 한다.
+          겹쳐 미끄러져 보인다).
+          **Tab 정류장이 아니다**(`tabIndex={-1}`, codex-ds 스펙 S10) — 목록은 Tab 한 번이고(이름 버튼 주석) 행 안 버튼은
+          빠진다. 키보드로 고정하는 길은 그 행의 work 메뉴(⇧F10 · 메뉴 키)의 「고정」이다. 그래서 포커스에 뜨는 갈래도 없다.
+          포커스는 여전히 받으므로(보조 기술 · 코드, WebKit 밖의 누름) 링(`focus-ring`)은 단다 — 없으면 브라우저 기본 테두리다.
           채운 핀 / 빈 핀으로 갈린다. PinOff(사선 그은 핀)를 쓰지 않는 것은 이 저장소의
           아이콘이 전부 외곽선이고, 결정 85가 말한 것도 「채운 핀」이기 때문이다.
           켜짐은 aria-pressed가 말한다(WorkPanel의 `</>` 토글과 같은 규칙). title도 앱 툴팁도
@@ -717,13 +741,9 @@ function WorkRow({
           `icon-button`이 폭(`width`)을 들기 때문이다. 둘 다 유틸리티 레이어라 `w-0`으로
           덮으려 들면 승자가 Tailwind의 정렬 순서에 걸리는데, `max-width`는 다른 속성이라
           그 싸움 밖에 선다. 격자 트랙은 아이템의 max-content 기여를 `max-width`로 clamp하므로
-          쉴 때 기여가 **0**이다.
-
-          **`display:none`은 안 된다 — 포커스가 안 들어간다.** 이 핀은 hover뿐 아니라
-          **포커스에도** 떠야 하는데(판 05 결정 7) `display:none`인 요소는 `.focus()`를 받지 못해,
-          e2e가 `pin.focus()`로 세는 그 계약이 통째로 무너진다. `max-w-0`은 상자를 지우지
-          않으므로 포커스가 그대로 들어가고 `focus-visible:max-w-6`이 폭을 되돌린다.
-          `overflow-hidden`은 그 0폭 상자 밖으로 글리프가 삐져나오지 않게 하는 것이다.
+          쉴 때 기여가 **0**이다. `overflow-hidden`은 그 0폭 상자 밖으로 글리프가 삐져나오지 않게 하는
+          것이다. (한때 이 핀은 포커스에도 떴고(판 05 결정 7) `display:none`이면 포커스가 안 들어가 상자를
+          지우지 않는 이 꼴이 됐다 — Tab에서 빠진 지금도 꼴은 그대로다.)
 
           **트랜지션을 안 건다.** `icon-button-tint`가 `transition-property: color`뿐이라
           폭은 즉시 바뀌는데, 그게 맞다 — 행의 `onMouseEnter`가 hover 스타일이 **이미 적용된
@@ -732,12 +752,7 @@ function WorkRow({
 
           **`justify-self-end`가 자리를 붙든다.** 칸이 핀보다 넓을 때(메타가 선 행) 격자
           기본값 stretch면 핀 상자가 칸만큼 늘어나 글리프가 가운데로 밀린다. 끝에 붙이면
-          메타가 있든 없든 **메타 자리의 끝 한 자리**다(스토리 32).
-
-          `peer`는 **뒤에 선 메타가 이 버튼의 포커스를 보기 위한 것이다**(판 05 결정 7): 이 핀은
-          hover뿐 아니라 포커스에도 뜨므로, 메타를 `group-hover`로만 물리면 키보드로 닿았을 때
-          둘이 겹쳐 그려진다. 후행 형제에만 걸리는 선택자인데 DOM 순서가
-          `이름 버튼 → 핀 → 메타`라 그대로 먹는다. */}
+          메타가 있든 없든 **메타 자리의 끝 한 자리**다(스토리 32). */}
       <button
         type="button"
         aria-label={`${work.title} 고정`}
@@ -749,7 +764,8 @@ function WorkRow({
           event.stopPropagation();
           onTogglePin(work, event.detail > 0);
         }}
-        className="peer icon-button-tint icon-button-xs col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:max-w-6 focus-visible:opacity-100 group-hover:max-w-6 group-hover:opacity-100"
+        tabIndex={-1}
+        className="icon-button-tint icon-button-xs col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-fg-tertiary opacity-0 outline-none focus-ring group-hover:max-w-6 group-hover:opacity-100"
       >
         <Pin
           className="size-3"
@@ -782,9 +798,8 @@ function WorkRow({
           안 건다 — 옆 행으로 옮겨 갈 때 두 페이드가 겹쳐 미끄러져 보인다(icon-button-tint가
           opacity를 뺀 것과 같은 이유). **잃는 것은 커서가 이미 가 있는 행 하나의 메타다** —
           「훑어서 찾고 → 가리켜서 누른다」에서 가리키는 순간은 이미 고른 뒤다.
-          **`peer-focus-visible`이 함께 가는 이유는 핀이 포커스에도 뜨기 때문이다**(판 05 결정 7).
-          `group-focus-within`은 틀린 답이다 — 이름 버튼에 포커스가 가도 메타가 물러나는데
-          그때는 핀이 안 떠서 그 자리가 통째로 빈다.
+          **포커스에는 물러나지 않는다** — 핀이 Tab에서 빠져(핀 주석) 포커스에 뜨는 것이 없다.
+          `group-focus-within`으로 물리면 이름 버튼에 포커스가 갈 때 메타만 사라져 그 자리가 통째로 빈다.
 
           **표시 전용이다.** 무리 하나가 셸 여럿을 접으므로 무리와 셸이 1:1이 아니고, 누르면
           어느 셸로 갈지 정해지지 않는다. 그래서 `pointer-events-none`이 **상시다**(판 05 결정
@@ -804,7 +819,7 @@ function WorkRow({
         <div
           data-row-meta={work.slug}
           data-shells={signal === null ? work.slug : undefined}
-          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end pl-2.25 group-hover:opacity-0 peer-focus-visible:opacity-0 empty:hidden"
+          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end pl-2.25 group-hover:opacity-0 empty:hidden"
         >
           {meta}
         </div>

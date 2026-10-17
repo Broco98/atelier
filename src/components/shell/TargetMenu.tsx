@@ -3,8 +3,9 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger, opensTargetMenu } 
 import { opensEditMenu } from "./EditMenu";
 
 // **대상 메뉴 — 자리 하나가 그 안의 대상들의 메뉴를 맡고, 그 자리를 감싸지 않는다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 11).
-// 프로젝트(목록 행 · 머리 카드 이름) · Archive 목록 행 · Processes 행 · spec 레이아웃 행 · 문서 글이 이것을 쓴다. 메뉴의 목록은 그
-// 대상의 ⋯과 같은 정의이고(`items`), 대상을 가르는 것은 메뉴를 다는 화면이다(`targetOf`).
+// 프로젝트(목록 행 · 머리 카드 이름) · Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행(작업 · Archive 패널의
+// 「경로 복사」) · 문서 글이 이것을 쓴다. 메뉴의 목록은 그 대상의 ⋯과 같은 정의이고(`items` — ⋯이 없는 트리 파일 행은 행의 복사
+// 버튼과 같은 일이다), 대상을 가르는 것은 메뉴를 다는 화면이다(`targetOf`).
 //
 // **우클릭 메뉴의 뿌리(`ContextMenu`)가 자리를 감싸지 않는다.** Base UI는 우클릭 메뉴 뿌리 밑에 선 메뉴 줄을 모두 「우클릭 메뉴의
 // 줄」로 쳐서 오른쪽 버튼의 놓음으로만 고른다 — 그 밑의 ⋯ · 정렬 메뉴(`DropdownMenu`)를 누른 채 끌어 놓는 고름이 안 돈다. 이 자리들은

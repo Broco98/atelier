@@ -154,8 +154,9 @@ function folderRow(markup: string, name: string): string {
 
 // 경로 복사는 **진짜 button**이어야 하고 파일 이름 선택 버튼의 **형제**여야 한다.
 // 이 둘이 깨진 적이 있다: 복사가 이름 버튼 안에 span role="button"으로 들어가 있었고,
-// 그러면 Tab으로 도달할 수 없을뿐더러 ARIA의 presentational-children 규칙상
-// 스크린리더에는 존재조차 읽히지 않는다. 화면에는 멀쩡히 보이므로 눈으로는 안 잡힌다.
+// 그러면 ARIA의 presentational-children 규칙상 스크린리더에는 존재조차 읽히지 않는다.
+// 화면에는 멀쩡히 보이므로 눈으로는 안 잡힌다. (Tab 정류장은 아니다 — 행 안 버튼은 Tab에서
+// 빠지고 키보드의 길은 행 메뉴의 「경로 복사」다(codex-ds 스펙 S10). L3 `keyboard.spec`이 잰다.)
 describe("SpecTree 경로 복사 버튼", () => {
   const two = [file("overview.md", "compass"), folder("01-판", [file("01-판/spec.md")])];
 
@@ -175,5 +176,15 @@ describe("SpecTree 경로 복사 버튼", () => {
 
   it("onCopy가 없으면 복사 버튼도 없다", () => {
     expect(render(two)).not.toMatch(/경로 복사/);
+  });
+
+  // Tab 정류장이 아니어도 포커스는 받는다(보조 기술 · 코드 · WebKit 밖의 누름) — 그때 브라우저 기본 테두리가 아니라 앱의 포커스
+  // 링이다(codex-ds 결정 11). 다만 포커스에 뜨는 갈래는 없다 — 뜨는 것은 hover뿐이다.
+  it("포커스를 받으면 앱의 포커스 링을 입고, 포커스로는 뜨지 않는다", () => {
+    const copy = render(two, () => {}).match(/<button[^>]*aria-label="overview\.md 경로 복사"[^>]*>/)?.[0] ?? "";
+    expect(copy).toMatch(/class="[^"]*(?<![\w:-])focus-ring(?![\w-])/);
+    expect(copy).toMatch(/class="[^"]*(?<![\w:-])outline-none(?![\w-])/);
+    expect(copy).toContain("group-hover:opacity-100");
+    expect(copy).not.toContain("focus-visible:opacity-100");
   });
 });

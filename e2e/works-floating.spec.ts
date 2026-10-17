@@ -13,6 +13,7 @@ import {
   시계를세운다,
   줄차례,
   토큰시간,
+  탭으로,
   툴팁,
   호버카드,
 } from "./harness";
@@ -436,8 +437,48 @@ test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 포인터를 안 쓴다 — 포인터가 토스트 위에 있으면 Base UI가 시계를 세운다(S27). 키로 복사해야 포커스가 복사한 자리에
-// 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+// 아래 둘은 **키보드의 복사 길**로 복사한다 — 트리 행에 포커스를 두고 그 행의 메뉴(⇧F10)의 「경로 복사」다. 행 안 복사 버튼은
+// Tab 정류장이 아니다(codex-ds 스펙 S10). 포인터를 안 쓰는 까닭은 둘이다: 포인터가 토스트 위에 있으면 Base UI가 시계를
+// 세우고(S27), 키로 복사해야 포커스가 복사한 자리에 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+
+/** 작업 패널 트리의 그 파일 행(이름 버튼 — 목록의 roving 줄). */
+const 트리행 = (page: Page, path: string) => page.locator(`aside:not([data-sidebar]) [data-roving="${path}"]`);
+
+/** 메뉴 카드의 움직임(CSS)이 다 멎었는가 — 그 움직임은 세운 시계가 아니라 실제 시간을 탄다. */
+const 카드가멎었다 = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[role="menu"]')].every((menu) =>
+      menu.getAnimations({ subtree: true }).every((one) => one.playState !== "running"),
+    ),
+  );
+
+/**
+ * 세운 시계에서 프레임(rAF)을 한 장씩(16ms) 밀어 그 조건을 기다린다 — 실제 시간이 토스트의 시계로 새지 않는다. 카드는 프레임을
+ * 받은 뒤 제 움직임이 끝나기를 실제 시간으로 기다려 걷히므로(Base UI), 한 장을 밀 때마다 그 움직임이 멎기를 기다린다.
+ */
+async function 프레임을민다(page: Page, done: () => Promise<boolean>, 최대 = 20): Promise<void> {
+  for (let n = 0; n < 최대; n += 1) {
+    if (await done()) return;
+    await page.clock.runFor(16);
+    await expect.poll(() => 카드가멎었다(page)).toBe(true);
+  }
+  throw new Error(`프레임 ${최대}장을 밀어도 닿지 않았다`);
+}
+
+/**
+ * 세운 시계에서, 포커스가 선 트리 행의 메뉴(⇧F10)로 그 경로를 복사한다. 카드가 포커스를 쥐는 것도, 닫힌 카드가 걷히고 포커스가
+ * 행으로 돌아가는 것도 프레임을 타서(세운 시계에는 저절로 안 온다) 그 둘을 프레임을 밀어 기다린다.
+ */
+async function 메뉴로복사한다(page: Page): Promise<void> {
+  const menu = page.getByRole("menu");
+  await page.keyboard.press("Shift+F10");
+  await 프레임을민다(page, () => page.evaluate(() => document.activeElement?.closest('[role="menu"]') != null));
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "경로 복사", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await 프레임을민다(page, async () => (await menu.count()) === 0);
+}
+
 test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글자로 갈아 끼우고, 포커스는 복사한 자리에 남는다", async ({
   page,
 }) => {
@@ -446,16 +487,14 @@ test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글�
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
   const messages = 메시지(page);
-  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
-  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
-  await expect(first).toBeAttached();
+  await 탭으로(page, 트리행(page, "overview.md"));
 
   await 시계를세운다(page);
-  await first.focus();
-  await page.keyboard.press("Enter");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
-  await second.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await expect(트리행(page, "메타.json")).toBeFocused();
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
 
   const [, copied] = await clipboardWrites(page);
@@ -463,8 +502,8 @@ test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글�
   // 한도에 걸려 남은 것(`data-limited`)까지 세어 한 장이다.
   await expect(messages.locator("[data-slot=toast]")).toHaveCount(1);
   await expect(messages.getByRole("dialog")).toHaveCount(1);
-  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91).
-  await expect(second).toBeFocused();
+  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91) — 메뉴가 닫히며 돌려준 행에 그대로 있다.
+  await expect(트리행(page, "메타.json")).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -480,13 +519,10 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await page.goto(`/works/${pinnedWork.slug}`);
   const messages = 메시지(page);
   const toast = messages.getByRole("dialog");
-  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
-  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
-  await expect(first).toBeAttached();
+  await 탭으로(page, 트리행(page, "overview.md"));
 
   await 시계를세운다(page);
-  await first.focus();
-  await page.keyboard.press("Enter");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
   await expect(toast).toHaveCount(1);
   expect(await 전이(toast)).not.toBe("none");
@@ -494,13 +530,13 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await expect.poll(() => 전이(toast)).toBe("none");
 
   await page.clock.runFor(1000);
-  await second.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
   const [, copied] = await clipboardWrites(page);
   await expect(messages).toHaveText(`${copied} 복사됨`);
 
-  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초다.
+  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초에, 닫힌 카드를 걷느라 민 프레임 몇 장(`메뉴로복사한다`)을 더한 만큼이다.
   await page.clock.runFor(1000);
   await expect(messages).toHaveText(`${copied} 복사됨`);
   // 뒤의 것에서 1.6초를 넘겼다.

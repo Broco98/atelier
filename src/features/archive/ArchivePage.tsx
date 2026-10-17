@@ -429,6 +429,7 @@ function SpecListPanel({
             text="spec 폴더 열기"
             announce="name"
             type="button"
+            tabIndex={0}
             onClick={() => openArchivedSpecFolder(slug)}
             className="icon-button-quiet text-fg-secondary focus-ring"
           >

@@ -94,7 +94,7 @@ export function PathBar({
       <ViewSwitch {...view} />
       <div className="flex shrink-0 items-center gap-1">
         {onCopy && (
-          <Hint text="경로 복사" announce="name" type="button" onClick={onCopy} className={ROUND}>
+          <Hint text="경로 복사" announce="name" type="button" tabIndex={0} onClick={onCopy} className={ROUND}>
             <Copy aria-hidden className="size-4" />
           </Hint>
         )}

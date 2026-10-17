@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { focusRow, ROVING, useRoving } from "@/lib/roving";
+import { TargetMenu, type TargetRegion } from "@/components/shell/TargetMenu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ContextMenuItem } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
@@ -32,9 +35,17 @@ interface TreeProps {
   items: SpecTreeItem[];
   current: string | null;
   onSelect: (path: string) => void;
-  // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
+  // 파일 행 hover 시 경로 복사 버튼과, 그 행의 대상 메뉴(⇧F10 · 메뉴 키 · 우클릭)의 「경로 복사」 (생략 시 둘 다 미표시)
   onCopy?: (path: string) => void;
 }
+
+// **트리 하나가 Tab 정류장 하나다**(roving — codex-ds 스펙 §9 · S10, `@/lib/roving`). ↑↓는 보이는 행(펼친 폴더의 자식까지)을 화면
+// 차례로 옮기고, Enter는 행의 누름이다(파일은 열고 폴더는 접고 편다). →는 접힌 폴더를 펴고 펼친 폴더에서는 첫 자식으로 간다. ←는 펼친
+// 폴더를 접고, 아니면 부모 폴더로 간다(APG 트리 뷰의 길). 끝에서 돌지 않는다. ⌥가 걸린 화살표는 받지 않는다 — spec 레이아웃 편집기
+// 트리의 들이기 · 내기 키다(그 편집기는 이 트리를 안 쓴다).
+//
+// 경로 복사 버튼은 **Tab 정류장이 아니다**(행 안 버튼은 빠진다) — 키보드의 길은 그 파일 행의 대상 메뉴(⇧F10 · 메뉴 키)의 「경로
+// 복사」이고 같은 동작이다(구현 노트 Q16). 메뉴는 `onCopy`가 있을 때만 선다 — 없으면 메뉴에 남는 항목이 없다.
 
 function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트를 넘어 살지 않는다. **언제
@@ -52,19 +63,98 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   // Collapsible은 **다음** 상태를 알린다 — 받은 값을 그대로 적는다.
   const setOpen = (path: string, open: boolean) => setToggled((prev) => ({ ...prev, [path]: open }));
-  return (
-    <div className={cn(ROWS, "shrink-0")}>
+  const isOpen = (item: SpecTreeItem) => toggled[item.path] ?? openByDefault(item);
+  // 정류장은 연 문서의 행에서 시작한다 — 그 행이 접힌 폴더 안이면 첫 행이다(`useRoving`).
+  const roving = useRoving(shownPaths(items, isOpen), current);
+
+  const tree = (menu?: TargetRegion) => (
+    <div
+      className={cn(ROWS, "shrink-0")}
+      onContextMenu={menu?.onContextMenu}
+      onFocus={roving.box.onFocus}
+      onKeyDown={(event) => {
+        menu?.onKeyDown(event);
+        roving.box.onKeyDown(event);
+        walkTree(event, items, isOpen, setOpen);
+      }}
+    >
       <TreeRows
         items={items}
         depth={0}
         current={current}
-        isOpen={(item) => toggled[item.path] ?? openByDefault(item)}
+        stop={roving.stop}
+        isOpen={isOpen}
         onOpenChange={setOpen}
         onSelect={onSelect}
         onCopy={onCopy}
       />
     </div>
   );
+  if (!onCopy) return tree();
+  // 파일 행의 대상 메뉴 — 대상은 그 행(`data-spec-file`)이고 테두리는 이름 버튼에 선다. 폴더 행 · 빈 자리는 대상이 아니다.
+  return (
+    <TargetMenu<string>
+      targetOf={(from) => {
+        const row = from.closest<HTMLElement>("[data-spec-file]");
+        const path = row?.dataset.specFile;
+        if (row === null || path === undefined) return null;
+        return { of: path, ring: row.querySelector<HTMLElement>(`[${ROVING}]`) };
+      }}
+      items={(path) => (
+        <ContextMenuItem onClick={() => onCopy(path)}>
+          <Copy />
+          <span className="min-w-0 flex-1 truncate">경로 복사</span>
+        </ContextMenuItem>
+      )}
+    >
+      {(region) => tree(region)}
+    </TargetMenu>
+  );
+}
+
+/** 지금 보이는 행의 경로 — 화면 차례다. 펼친 폴더만 자식을 낸다. */
+function shownPaths(items: SpecTreeItem[], isOpen: (item: SpecTreeItem) => boolean): string[] {
+  return items.flatMap((item) => [
+    item.path,
+    ...(item.kind === "folder" && isOpen(item) ? shownPaths(item.children, isOpen) : []),
+  ]);
+}
+
+/** 그 경로의 항목과 부모 폴더(첫 층이면 `null`). */
+function locate(
+  items: SpecTreeItem[],
+  path: string,
+  parent: SpecTreeItem | null = null,
+): { item: SpecTreeItem; parent: SpecTreeItem | null } | null {
+  for (const item of items) {
+    if (item.path === path) return { item, parent };
+    const inner = locate(item.children, path, item);
+    if (inner) return inner;
+  }
+  return null;
+}
+
+/** ← · → — 폴더를 접고 펴거나 부모 · 첫 자식으로 간다(트리 머리말). ↑↓는 `useRoving`이 받는다. */
+function walkTree(
+  event: KeyboardEvent<HTMLElement>,
+  items: SpecTreeItem[],
+  isOpen: (item: SpecTreeItem) => boolean,
+  setOpen: (path: string, open: boolean) => void,
+) {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  if (event.defaultPrevented || event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  const path = (event.target as HTMLElement).getAttribute(ROVING);
+  const spot = path === null ? null : locate(items, path);
+  if (!spot) return;
+  event.preventDefault();
+  const { item, parent } = spot;
+  const open = item.kind === "folder" && isOpen(item);
+  if (event.key === "ArrowRight") {
+    if (item.kind !== "folder") return;
+    if (!open) setOpen(item.path, true);
+    else if (item.children[0]) focusRow(event.currentTarget, item.children[0].path);
+  } else if (open) setOpen(item.path, false);
+  else if (parent) focusRow(event.currentTarget, parent.path);
 }
 
 /**
@@ -84,6 +174,7 @@ function TreeRows({
   items,
   depth,
   current,
+  stop,
   isOpen,
   onOpenChange,
   onSelect,
@@ -92,6 +183,8 @@ function TreeRows({
   items: SpecTreeItem[];
   depth: number;
   current: string | null;
+  /** 트리의 Tab 정류장 행(경로) — 그 행의 버튼만 `tabIndex={0}`이다(트리 머리말). */
+  stop: string | null;
   isOpen: (item: SpecTreeItem) => boolean;
   onOpenChange: (path: string, open: boolean) => void;
   onSelect: (path: string) => void;
@@ -109,7 +202,12 @@ function TreeRows({
               onOpenChange={(open) => onOpenChange(item.path, open)}
               className={ROWS}
             >
-              <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
+              <CollapsibleTrigger
+                className={COLLAPSE_ROW}
+                style={treeIndent(depth)}
+                tabIndex={item.path === stop ? 0 : -1}
+                data-roving={item.path}
+              >
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
@@ -131,6 +229,7 @@ function TreeRows({
                   items={item.children}
                   depth={depth + 1}
                   current={current}
+                  stop={stop}
                   isOpen={isOpen}
                   onOpenChange={onOpenChange}
                   onSelect={onSelect}
@@ -142,7 +241,7 @@ function TreeRows({
         }
         // 파일 행은 버튼 하나가 아니라 div + 형제 버튼 둘이다. 복사가 이름 선택 안에
         // 중첩돼 있으면 두 가지가 동시에 깨진다 — 중첩 버튼은 HTML에서 허용되지 않아
-        // 안쪽을 span role="button"으로 흉내 내야 했고, 그러면 Tab으로 도달할 수 없다.
+        // 안쪽을 span role="button"으로 흉내 내야 했고, 그러면 누름도 포커스도 손으로 흉내 내야 한다.
         // 게다가 ARIA의 presentational-children 규칙상 button의 자식은 접근성 트리에서
         // 무시되므로 스크린리더에는 존재조차 읽히지 않았다. 형제로 푸는 것이 유일한 길이다.
         //
@@ -156,7 +255,9 @@ function TreeRows({
         // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
         // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
         return (
-          <div key={item.path} className="flex flex-col">
+          // 바깥 상자의 표는 대상 메뉴가 행을 가르는 자리다(트리 머리말) — 복사 버튼 위의 우클릭도 그 행의 메뉴다. 안쪽 행 상자에
+          // 달지 않는다 — 고른 행을 `<div class="… selected-row …">`로 집는 마크업 검사가 있다(`WorksPage.test` · `ArchivePage.test`).
+          <div key={item.path} className="flex flex-col" data-spec-file={item.path}>
             <div
               className={cn(
                 "group flex h-7 items-center rounded-lg pr-1 text-chat-meta transition-colors",
@@ -168,6 +269,9 @@ function TreeRows({
                   클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
               <button
                 type="button"
+                // 트리의 정류장 행만 Tab이 앉는다(트리 머리말). 이름(`aria-*`)은 달지 않는다 — 행의 글자가 이름이다.
+                tabIndex={item.path === stop ? 0 : -1}
+                data-roving={item.path}
                 onClick={() => onSelect(item.path)}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
@@ -181,14 +285,15 @@ function TreeRows({
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
                 // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
-                // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
-                // 거터 복사 버튼이 이미 같은 답을 하고 있다
+                // Tab 정류장이 아니라(`tabIndex={-1}`, 트리 머리말) 포커스에 뜨는 갈래가 없다 — 키보드는 행 메뉴의 「경로 복사」다.
+                // 포커스는 여전히 받으므로(보조 기술 · 코드, WebKit 밖의 누름) 링(`focus-ring`)은 단다 — 없으면 브라우저 기본 테두리다.
                 <Hint
                   text="경로 복사"
                   type="button"
                   aria-label={`${item.name} 경로 복사`}
+                  tabIndex={-1}
                   onClick={() => onCopy(item.path)}
-                  className="icon-button-tint icon-button-xs text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100"
+                  className="icon-button-tint icon-button-xs text-fg-tertiary opacity-0 outline-none focus-ring group-hover:opacity-100"
                 >
                   <Copy className="size-3" />
                 </Hint>

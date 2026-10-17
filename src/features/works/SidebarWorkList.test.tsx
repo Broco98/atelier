@@ -77,6 +77,8 @@ function render(
       sections={splitWorkSections(list, open)}
       open={open}
       selectedSlug={selectedSlug}
+      // 정류장을 고르는 것은 위(`SidebarWorkList`의 `useRoving`)다 — 여기서는 고른 행을 그대로 건넨다.
+      stop={selectedSlug}
       shells={{
         shellCounts,
         signals,
@@ -297,8 +299,18 @@ describe("핀 버튼", () => {
       expect(pin).toContain("opacity-0");
       // 이 한 줄이 없으면 opacity-0으로 **영영** 안 보인다.
       expect(pin).toContain("group-hover:opacity-100");
-      // Tab으로 도달은 하는데 보이지 않는 자리가 되지 않게.
-      expect(pin).toContain("focus-visible:opacity-100");
+      // 포커스에 뜨는 갈래는 없다 — 핀은 Tab 정류장이 아니고(codex-ds 스펙 S10), 키보드로 고정하는 길은 행의 work 메뉴(⇧F10)의
+      // 「고정」이다. Tab 차례에 핀이 없는 것은 L3 `keyboard.spec.ts`가 잰다.
+      expect(pin).not.toContain("focus-visible:opacity-100");
+    }
+  });
+
+  // Tab에서 빠져도 포커스는 받는다 — 보조 기술 · 코드가 옮기고, WebKit 밖에서는 누름도 준다. 그때 링이 없으면 브라우저 기본 테두리를
+  // 입는다(`index.css`의 바탕 — `focus-ring`을 안 단 요소). 앱의 포커스 모양은 하나다(codex-ds 결정 11).
+  it("포커스를 받으면 앱의 포커스 링을 입는다", () => {
+    for (const pin of pinsOf(render(works("pin:가", "나")))) {
+      expect(pin).toMatch(/class="[^"]*(?<![\w:-])focus-ring(?![\w-])/);
+      expect(pin).toMatch(/class="[^"]*(?<![\w:-])outline-none(?![\w-])/);
     }
   });
 
@@ -335,11 +347,10 @@ describe("핀 버튼", () => {
   // 칸이 핀을 몰라 **핀이 제목 글자 위에 얹혔다** — 페이드 띠와 글리프가 둘 다 250~262px에
   // 섰다(실측). 그 겹침을 없애는 값이 hover의 24px 뜀이다.
   //
-  // **폭을 걷는 것이 `max-w-0`인 것은 두 이유가 겹쳐서다.** `w-0`은 `icon-button`의
-  // `width: 24px`과 같은 레이어라 승자가 Tailwind의 정렬 순서에 걸리고, `display:none`은
-  // 요소를 지워 **포커스가 안 들어간다** — 이 핀은 포커스에도 떠야 하므로(결정 7, 바로 위
-  // 검사) 그 길이 막힌다. 실제 폭과 겹침은 e2e가 실측으로 잰다.
-  it("2열에 서고, 폭은 hover·포커스에만 갖는다", () => {
+  // **폭을 걷는 것이 `max-w-0`인 것은** `w-0`이 `icon-button`의 `width: 24px`과 같은 레이어라 승자가 Tailwind의 정렬
+  // 순서에 걸려서다. (한때 핀이 포커스에도 떠서(결정 7) `display:none`도 막혔다 — 요소를 지우면 포커스가 안 들어간다.
+  // 핀이 Tab에서 빠진 지금도 꼴은 그대로다.) 실제 폭과 겹침은 e2e가 실측으로 잰다.
+  it("2열에 서고, 폭은 hover에만 갖는다", () => {
     for (const pin of pinsOf(render(works("pin:가", "나", "draft:다")))) {
       // 칸이 핀의 폭을 세려면 격자 안이어야 한다.
       expect(pin).toContain("col-start-2");
@@ -348,7 +359,6 @@ describe("핀 버튼", () => {
       // 쉴 때 트랙 기여가 0 — 그리고 뜰 때 되돌아온다.
       expect(pin).toContain("max-w-0");
       expect(pin).toContain("group-hover:max-w-6");
-      expect(pin).toContain("focus-visible:max-w-6");
       // 0폭 상자 밖으로 글리프가 새지 않게.
       expect(pin).toContain("overflow-hidden");
       // 칸이 핀보다 넓을 때(메타가 선 행) stretch되면 글리프가 가운데로 밀린다.
@@ -464,10 +474,10 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
 
   // _한때 여기 「메타와 핀이 2열 1행 같은 칸에 선다」와 「메타는 hover·핀 포커스에 투명해지고, 레인은
   // 그대로다」가 있었다._ 두 줄 행의 핀을 한 줄 행으로 뒤집으며 클래스 문자열 단언(`col-start-2` ·
-  // `group-hover:opacity-0` · `peer-focus-visible:opacity-0` · 「`transition`이 없다」)으로 다시 쓴
-  // 것이라 걷었다 — 스펙은 클래스 문자열을 안 보고, hover·핀 포커스의 투명은 L3가 잰다
+  // `group-hover:opacity-0` · 그때의 핀 포커스 갈래 · 「`transition`이 없다」)으로 다시 쓴
+  // 것이라 걷었다 — 스펙은 클래스 문자열을 안 보고, hover의 투명은 L3가 잰다
   // (`works-sidebar.spec.ts` 「hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 — …」: 핀과 메타의
-  // 오른쪽 끝이 같은 x, 핀 포커스·행 hover에 메타 opacity 0 · 레인 1).
+  // 오른쪽 끝이 같은 x, 행 hover에 메타 opacity 0 · 레인 1). 핀은 이제 Tab에서 빠져 포커스 갈래가 없다(위 「핀 버튼」).
 
   it("이름 버튼은 여전히 **행 상자의 직계 자식**이다", () => {
     // 행을 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어, 그것으로 배경 상자를

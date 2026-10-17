@@ -114,6 +114,7 @@ function 행(state: ShellsState): string {
       sections={splitWorkSections([WORK], { pinned: true, works: true })}
       open={{ pinned: true, works: true }}
       selectedSlug={null}
+      stop={null}
       shells={{
         shellCounts: { [WORK.slug]: 1 },
         signals,

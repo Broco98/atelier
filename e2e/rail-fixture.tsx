@@ -30,12 +30,13 @@ const TWO_VIEWS: readonly RailItem<RailView>[] = [
 
 /**
  * 몸 하나에 선 접는 것 — 펼침을 제 상태로 든다. 칸을 다녀온 뒤에도 접어 둔 그대로인지가 「안 보이는 몸도 마운트된 채다」를 보인다
- * (`PanelBody` · ui-refresh 결정 9 — 작업 화면에서는 spec 트리의 폴더 접힘이다).
+ * (`PanelBody` · ui-refresh 결정 9 — 작업 화면에서는 spec 트리의 폴더 접힘이다). Tab 정류장이다(`tabIndex` — WebKit의 Tab은 맨
+ * `<button>`에 서지 않는다) — 창의 Tab이 패널을 지나 레일로 가는 차례를 `keyboard.spec`이 이 진열대에서 잰다.
  */
 function Fold({ name }: { name: string }) {
   const [open, setOpen] = useState(true);
   return (
-    <button type="button" aria-expanded={open} onClick={() => setOpen((now) => !now)}>
+    <button type="button" aria-expanded={open} tabIndex={0} onClick={() => setOpen((now) => !now)}>
       {name} 폴더
     </button>
   );

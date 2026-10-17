@@ -77,7 +77,7 @@ export function PanelBody<Id extends string>({ view, shown, children }: { view: 
  *
  * **칸은 탭도 라디오도 아니다** — `aria-pressed` 버튼이다. 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0개일 수 있다(DS는 `radiogroup`을
  * 적지만 라디오는 고른 것을 끌 수 없다 — 탭 줄이 `role="tab"`을 안 쓰는 것과 같은 가족이다, `ShellTabs`). 그래서 칸 사이 ←/→ 이동이
- * 없고 Tab으로 옮겨 간다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다.
+ * 없고 Tab으로 옮겨 간다 — 칸마다 `tabIndex`를 명시한다(WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다, `@/lib/roving` 머리말). 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다.
  *
  * **빈 자리는 창을 끄는 자리다** — 레일 열은 회색 바탕이 드러나는 상자라 `data-tauri-drag-region`을 단다(`Frame` 머리말). 폭은 DS
  * 줄 폭 `size-prail`(32)이고, 왼쪽 틈은 본문 열의 오른쪽 틈이라 오른쪽 틈 하나만 든다(DS `.at-rail`의 `margin-right: 8px`).
@@ -112,6 +112,7 @@ function Rail<Id extends string>({
               onClick={() => onPick(id)}
               aria-pressed={on}
               aria-controls={controls}
+              tabIndex={0}
               className={cn(
                 "flex size-7 items-center justify-center rounded-md transition-colors focus-ring",
                 on ? "bg-fill-selected text-fg" : "text-fg-secondary hover:bg-fill-soft hover:text-fg",

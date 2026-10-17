@@ -966,6 +966,84 @@ export async function 끌어놓는다(page: Page, button: Locator, row: (menu: L
 }
 
 /**
+ * Tab을 눌러 `target`에 포커스가 올 때까지 간다. `최대` 번 안에 못 닿으면 던진다 — 그 자리가 Tab 정류장이 아니다.
+ *
+ * **여기 사는 이유는 「Tab이 닿는가」를 한 몸짓으로 재려는 것이다** — 링을 Tab이 온 길로 재는 `primitives`와 창의 Tab 차례를 재는
+ * `keyboard`가 이것을 쓴다. `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
+ */
+export async function 탭으로(page: Page, target: Locator, 최대 = 120): Promise<void> {
+  await expect(target).toBeVisible();
+  for (let n = 0; n < 최대; n += 1) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  throw new Error(`Tab ${최대}번 안에 닿지 않았다 — ${target}`);
+}
+
+/** 포커스가 선 자리 하나 — 창의 어느 영역인가 · 그 요소의 이름(접근성 이름 · 글자) · 목록의 행이면 그 키(`data-roving`). */
+export interface 포커스자리 {
+  영역: "창 컨트롤" | "사이드바" | "머리 카드" | "머리 줄" | "본문" | "패널" | "레일" | "그 밖";
+  이름: string;
+  행: string | null;
+}
+
+/**
+ * 지금 포커스가 선 자리(`포커스자리`) — 포커스가 없으면(`body`) `null`. 영역은 창의 Tab 차례를 이루는 상자들이다(codex-ds 스펙 §9):
+ * 창 컨트롤(사이드바 토글이 선 줄) · 사이드바(`#app-sidebar`) · 머리 카드 · 머리 줄(카드 밖 — 레일이 설 때의 패널 토글) · 레일 ·
+ * 패널(사이드바가 아닌 `aside`) · 본문(카드).
+ */
+export const 포커스자리 = (page: Page): Promise<포커스자리 | null> =>
+  page.evaluate((headCard) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || el === document.body) return null;
+    const controls = document.querySelector('[aria-label="사이드바 토글"]')?.parentElement;
+    const 영역 = controls?.contains(el)
+      ? "창 컨트롤"
+      : el.closest("#app-sidebar")
+        ? "사이드바"
+        : el.closest(headCard)
+          ? "머리 카드"
+          : el.closest("header")
+            ? "머리 줄"
+            : el.closest('[role="group"][aria-label="레일"]')
+              ? "레일"
+              : el.closest("aside")
+                ? "패널"
+                : el.closest('[data-slot="card"], main')
+                  ? "본문"
+                  : "그 밖";
+    const 이름 = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
+    return { 영역, 이름, 행: el.getAttribute("data-roving") } as const;
+  }, HEAD_CARD);
+
+/**
+ * 포커스를 내려놓고 Tab을 누르며 선 자리를 차례로 적는다 — 첫 자리로 돌아오거나 포커스가 창 밖(`body`)으로 나가면 멈춘다. `최대`
+ * 번 안에 안 끝나면 던진다. `범위`(선택자)를 주면 그 안에 선 자리만 적는다 — 앱 화면 위에 세운 진열대가 그렇다. 창의 Tab 차례
+ * (영역 순서 · 목록마다 정류장 하나)를 재는 `keyboard` spec이 쓴다.
+ */
+export async function 탭차례(page: Page, { 범위, 최대 = 80 }: { 범위?: string; 최대?: number } = {}): Promise<포커스자리[]> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const 자리들: 포커스자리[] = [];
+  let 첫: string | null = null;
+  for (let n = 0; n < 최대; n += 1) {
+    await page.keyboard.press("Tab");
+    const 지금 = await 포커스자리(page);
+    if (지금 === null) return 자리들;
+    const 표 = await page.evaluate((scope) => {
+      const el = document.activeElement as HTMLElement & { __탭표?: string };
+      if (scope !== null && el.closest(scope) === null) return null;
+      el.__탭표 ??= Math.random().toString(36).slice(2);
+      return el.__탭표;
+    }, 범위 ?? null);
+    if (표 === null) continue;
+    if (표 === 첫) return 자리들;
+    첫 ??= 표;
+    자리들.push(지금);
+  }
+  throw new Error(`Tab ${최대}번 안에 한 바퀴를 못 돌았다`);
+}
+
+/**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
  * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
  *

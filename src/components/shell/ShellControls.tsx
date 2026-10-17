@@ -22,6 +22,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
+      tabIndex={0}
       className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
@@ -42,6 +43,9 @@ interface ShellControlsProps {
 
 // 신호등 오른쪽에 붙는 셸 컨트롤 행 — 사이드바 토글 → 뒤로 → 앞으로 → 검색.
 // 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
+//
+// **창의 첫 Tab 영역이다** — 그림은 `absolute`로 사이드바 위에 뜨지만 DOM은 사이드바 앞이다(`AppShell`). 칸마다 `tabIndex`를
+// 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 흐려진 뒤로 · 앞으로는 `disabled`라 지난다.
 //
 // 폭을 --titlebar-controls-width에 딱 맞추고 세로도 컨트롤 높이만큼만 차지한다.
 // **칸이 늘면 그 값의 칸 수도 함께 고쳐야 한다**(index.css) — 안 고치면 넘친다.
@@ -114,6 +118,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
         announce="name"
         type="button"
         onClick={onOpenSearch}
+        tabIndex={0}
         className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
       >
         <Search className="size-3.75" />

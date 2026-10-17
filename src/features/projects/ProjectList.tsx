@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { Folder, Plus, Search } from "lucide-react";
+import { Folder, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ListHead } from "@/components/shell/Frame";
+import { ListHead, ListScroll, ListSearch, TWO_LINE_ROW } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import type { TargetRegion } from "@/components/shell/TargetMenu";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { InlineRename } from "@/components/ui/inline-rename";
 import { Hint } from "@/components/ui/tooltip";
 import { pressed } from "@/lib/hotkeys";
+import { useRoving } from "@/lib/roving";
 import type { ProjectView } from "./types";
 
 interface ProjectListProps {
@@ -32,12 +32,9 @@ interface ProjectListProps {
   rowMenu?: TargetRegion;
 }
 
-// 두 줄 행(DS `.at-row.two`)의 자리 — 50 이상 · 안쪽 7 8 · 모서리 10, 이름 줄과 경로 줄이 2 사이로 선다. 글자가 칸 + 16에 서서
-// 목록 머리의 제목과 한 세로줄이다. 행 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다.
-const ROW = "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 transition-colors";
-
-// 목록 칸의 안 — 목록 머리(「Projects」 · 개수 · `+`), 찾기 칸, 두 줄 행(DS `.at-listcol` · `.at-row.two`). 칸 · 세로 선 · 폭 손잡이는
-// 공용 틀의 목록 칸이 든다(`Frame`의 `list` — codex-ds 결정 28). 폭의 저장도 화면(`ProjectsPage`)이 그 칸에 건넨다.
+// 목록 칸의 안 — 목록 머리(「Projects」 · 개수 · `+`), 찾기 칸, 두 줄 행(DS `.at-listcol` · `.at-row.two` — 이름 줄과 경로 줄). 칸 ·
+// 세로 선 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list` — codex-ds 결정 28). 폭의 저장도 화면(`ProjectsPage`)이 그 칸에 건넨다.
+// 찾기 칸 · 구르는 상자 · 행의 자리는 Archive 목록과 같은 조각이다(`Frame`의 `ListSearch` · `ListScroll` · `TWO_LINE_ROW`).
 function ProjectList({
   projects,
   selectedSlug,
@@ -56,6 +53,8 @@ function ProjectList({
         [p.name, p.path, p.git?.remoteSlug ?? ""].some((s) => s.toLowerCase().includes(q)),
       )
     : projects;
+  // **목록 하나가 Tab 정류장 하나다**(codex-ds 스펙 S10) — 걸러진 행이 다닐 차례이고, 정류장은 고른 프로젝트에서 시작한다.
+  const roving = useRoving(filtered.map((project) => project.slug), selectedSlug);
 
   // 숫자 단축키는 여기에 없다 — 사이드바 작업 목록에도 없다. 한때 사이드바 N번째 작업을
   // 여는 키였는데, ⌘1~9가 한 화면 안에서 본문을 옮기는 키로 바뀌면서 걷혔다
@@ -79,21 +78,7 @@ function ProjectList({
         }
       />
 
-      {/* 찾기 칸 — 머리 아래 칸 폭으로 서고 행과 8 떨어진다(DS `.at-search`). */}
-      {projects.length > 0 && (
-        <InputGroup className="mb-2 shrink-0">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
-          <InputGroupInput
-            aria-label="프로젝트 검색"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="프로젝트 검색"
-          />
-        </InputGroup>
-      )}
+      {projects.length > 0 && <ListSearch label="프로젝트 검색" value={query} onChange={setQuery} />}
 
       {projects.length === 0 ? (
         <Empty variant="list" className="my-1">
@@ -115,18 +100,7 @@ function ProjectList({
           <span className="text-chat-meta text-fg-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
-        <div
-          onContextMenu={rowMenu?.onContextMenu}
-          onKeyDown={rowMenu?.onKeyDown}
-          className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet"
-        >
-          {/* **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
-              칸 가장자리로 간다. 상자가 안쪽 여백 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
-              그만큼 더 안쪽에 서서 행 위로 들어온다. 사이드바 work 목록이 그 병을 실측으로
-              드러냈고(그쪽 주석), 이 목록도 같은 자리였다.
-              위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지 않게
-              상자만 4px 올라갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 그 자리이자
-              칸 바닥의 안쪽 8이다(DS `.at-listcol`). */}
+        <ListScroll menu={rowMenu} roving={roving.box}>
           {filtered.map((project) => {
             const active = project.slug === selectedSlug;
             const editing = project.slug === renaming;
@@ -172,11 +146,11 @@ function ProjectList({
               </>
             );
             // **이름을 고치는 동안 행 버튼 자리에 버튼이 아닌 상자가 선다**(codex-ds 스펙 §9) — 버튼 안에는 입력칸을 둘 수 없다. 자리
-            // (`ROW`)와 두 줄은 같아 행이 움직이지 않는다. 입력칸 안의 누름은 행으로 올라가지 않아 그 행이 골라지지 않는다
+            // (`TWO_LINE_ROW`)와 두 줄은 같아 행이 움직이지 않는다. 입력칸 안의 누름은 행으로 올라가지 않아 그 행이 골라지지 않는다
             // (`InlineRename`). 키로 끝내면 포커스가 다시 선 행 버튼으로 돌아온다.
             if (editing) {
               return (
-                <div key={project.slug} className={cn(ROW, tone)}>
+                <div key={project.slug} className={cn(TWO_LINE_ROW, tone)}>
                   {lines}
                 </div>
               );
@@ -188,6 +162,9 @@ function ProjectList({
                 // 이름을 고친 뒤 포커스가 돌아올 자리를 찾는 표(`returnFocus`)이자, 행 메뉴가 대상을 가르는 표다(`rowMenu`). 메뉴가
                 // 열린 동안 이 버튼이 대상 테두리를 입는다(`focus-ring`의 `[data-menu-target]`).
                 data-project-row={project.slug}
+                // 목록의 정류장 행만 Tab이 앉는다 — 나머지 행은 ↑↓로 간다(`ListScroll`). Enter는 버튼의 누름이라 그 행을 고른다.
+                tabIndex={project.slug === roving.stop ? 0 : -1}
+                data-roving={project.slug}
                 onClick={() => onSelect(project.slug)}
                 // **F2는 이 행의 이름을 그 자리에서 고친다**(codex-ds 스펙 §9). 고르지 않은 행에서도 그 행의 이름이다.
                 onKeyDown={(event) => {
@@ -195,13 +172,13 @@ function ProjectList({
                   event.preventDefault();
                   onRename(project.slug);
                 }}
-                className={cn(ROW, "text-left focus-ring", tone)}
+                className={cn(TWO_LINE_ROW, "text-left focus-ring", tone)}
               >
                 {lines}
               </button>
             );
           })}
-        </div>
+        </ListScroll>
       )}
     </>
   );

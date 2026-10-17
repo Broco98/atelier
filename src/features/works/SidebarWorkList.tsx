@@ -22,7 +22,8 @@ import {
   type RowGap,
   type SectionGeometry,
 } from "./row-drop";
-import { splitWorkSections } from "./work-sections";
+import { useRoving } from "@/lib/roving";
+import { rovingKeys, splitWorkSections } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
@@ -119,6 +120,9 @@ function SidebarWorkList({
   };
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
+  // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행, 고른 것이 없거나 접힌 구획에 있으면 첫 머리다. ↑↓는 목록
+  // 상자가 받는다(아래 `data-worklist`).
+  const roving = useRoving(rovingKeys(sections, sectionsOpen), selectedSlug);
 
   // 호버 정보 카드 — 한 줄로 줄이며 행에서 빠진 것(프로젝트·생성일)을 돌려주고,
   // 지금은 작업을 선택해야만 보이던 브랜치와 spec 파일 수까지 마우스만 올리면 보인다.
@@ -445,6 +449,7 @@ function SidebarWorkList({
             <div
               data-worklist=""
               ref={listBox}
+              {...roving.box}
               onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
               // `relative`는 틈 선의 기준이다 — 선이 내용 좌표로 서서 목록과 함께 구른다(구획 목록의 선 주석).
               // 위 2는 DS 기둥(`.at-sidebar`)의 줄 사이 2다 — 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이에 그것이 든다(`SectionHeader`).
@@ -454,6 +459,7 @@ function SidebarWorkList({
                 sections={sections}
                 open={sectionsOpen}
                 selectedSlug={selectedSlug}
+                stop={roving.stop}
                 shells={shells}
                 onToggleSection={toggleSection}
                 onOpen={goTo}

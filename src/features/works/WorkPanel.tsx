@@ -92,6 +92,7 @@ function WorkPanel({ work, view, currentFile, onSelectFile, onCopy, onOpenFolder
             text="spec 폴더 열기"
             announce="name"
             type="button"
+            tabIndex={0}
             onClick={onOpenFolder}
             className="icon-button-quiet text-fg-secondary focus-ring"
           >

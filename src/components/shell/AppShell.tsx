@@ -107,8 +107,8 @@ function AppShell() {
 
   // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 자리만
   // 제 메뉴를 연다 — work 대상(work 행 · 띠 줄 · 머리 카드 이름)과 셸 탭 · spec 탭은 제 `ContextMenuTrigger`가, 그 밖의 대상(프로젝트 ·
-  // Archive 목록 행 · Processes 행 · spec 레이아웃 행 · 문서 글)은 그 자리의 `TargetMenu`가, 입력칸 · 터미널은 편집 메뉴(`EditMenu`)가
-  // 연다. 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
+  // Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행 · 문서 글)은 그 자리의 `TargetMenu`가, 입력칸 · 터미널은 편집
+  // 메뉴(`EditMenu`)가 연다. 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
   // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.
   // - **`preventDefault`만 부르고 전파는 안 끊는다.** document에 닿은 사건은 난 자리의 리스너(xterm의 우클릭 고름 …)를 이미 다
   //   지났고, 같은 document에서 듣는 편집 메뉴는 이 막기와 상관없이 받는다. 대상의 Trigger · 자리는 기본 동작을 막고 사건을
@@ -280,6 +280,19 @@ function AppShell() {
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
       className="relative flex h-screen flex-col bg-surface text-fg"
     >
+      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을
+          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
+          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
+          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석).
+
+          **DOM에서 사이드바보다 앞이다** — 창의 Tab이 창 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)에서 시작해 사이드바 →
+          머리 카드 → 본문 → 패널 → 레일로 간다(codex-ds 스펙 §9). 그림은 `absolute`라 자리와 겹침(z-20)이 DOM 차례를 타지
+          않는다 — 사이드바를 접어도 첫 조작이 화면 왼쪽 위의 그것이다. */}
+      <ShellControls
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        onOpenSearch={openSearch}
+      />
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
@@ -313,15 +326,6 @@ function AppShell() {
         />
         <Outlet />
       </div>
-      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을
-          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
-          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
-          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석). */}
-      <ShellControls
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={toggleSidebar}
-        onOpenSearch={openSearch}
-      />
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야
           하는 물음이 위다. 둘 다 `body` 끝의 포털로 서고 뜰 때 붙으므로, 나중에 뜬 확인 창이 늘

@@ -22,6 +22,8 @@ import {
 //
 // - 프로젝트(목록 행 · 머리 카드 이름): Finder에서 열기 · 경로 복사 — 이름 바꾸기 F2 — 제거(확인 창). 「LLM이 받는 텍스트」는 없다(S13).
 // - Archive 목록 행: 머리 카드 ⋯(아카이브 메뉴)와 같은 목록 — Finder에서 열기 · 경로 복사.
+// - spec 트리 파일 행(작업 · Archive 패널, 티켓 32 — 구현 노트 Q16): 경로 복사 하나다. 행의 복사 버튼이 Tab 정류장이 아니어서 키보드의
+//   복사 길이 이 메뉴다. 폴더 행은 대상이 아니다.
 // - 문서 글(Works · Archive 문서): 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사.
 //
 // **문서 글의 고름은 검사가 만든다** — macOS WebKit은 우클릭한 낱말을 스스로 고르고 리눅스 WebKit은 안 고른다(`edit-menu.spec.ts`와
@@ -45,14 +47,17 @@ const 항목 = (page: Page, name: string) => 메뉴(page).getByRole("menuitem", 
  */
 const 버튼 = (scope: Locator | Page, name: string) => scope.getByRole("button", { name, exact: true, includeHidden: true });
 
-/** 목록에서 고른 행의 표식 값 — 고름이 그대로인지는 이것으로 잰다. */
+/**
+ * 목록에서 고른 행의 표식 값 — 고름이 그대로인지는 이것으로 잰다. 고른 줄(`selected-row`)이 표식을 단 행 자신이거나(목록 행) 그 안에
+ * 선다(spec 트리 — 표식은 파일 행을 감싼 상자에 있다).
+ */
 const 고른행 = (page: Page, mark: string) =>
   page
-    .locator(`[${mark}]`)
-    .evaluateAll(
-      (rows, mark) => rows.filter((row) => row.classList.contains("selected-row")).map((row) => row.getAttribute(mark)),
-      mark,
-    );
+    .locator(".selected-row")
+    .evaluateAll((rows, mark) => rows.flatMap((row) => row.closest(`[${mark}]`)?.getAttribute(mark) ?? []), mark);
+
+/** spec 트리에서 그 경로의 파일 행 이름 버튼 — 메뉴가 열린 동안에도 집도록 역할이 아니라 표식으로 집는다. */
+const 트리파일 = (page: Page, path: string) => page.locator(`[data-spec-file="${path}"] [data-roving]`);
 
 /** 그 대상을 커서로 우클릭해 메뉴가 뜬 것을 본다. */
 async function 우클릭한다(page: Page, target: Locator): Promise<Locator> {
@@ -113,6 +118,21 @@ const 대상들: 대상[] = [
       return { target: page.locator(`[data-archive-row="${bare.slug}"]`), order, mark: "data-archive-row", selected: shipped.slug };
     },
   },
+  // spec 트리 파일 행 — 대상은 고른 파일이 아닌 행이고, 테두리 · 돌아올 포커스는 그 행의 이름 버튼(목록의 roving 줄)이다.
+  {
+    name: "작업 패널의 spec 트리 파일 행",
+    setUp: async (page) => {
+      await page.goto(`/works/${pinnedWork.slug}`);
+      return { target: 트리파일(page, "메타.json"), order: ["경로 복사"], mark: "data-spec-file", selected: "overview.md" };
+    },
+  },
+  {
+    name: "Archive 패널의 spec 트리 파일 행",
+    setUp: async (page) => {
+      await page.goto(`/archive/${shipped.slug}`);
+      return { target: 트리파일(page, "spec/tickets/할일.md"), order: ["경로 복사"], mark: "data-spec-file", selected: RECORD };
+    },
+  },
 ];
 
 for (const { name, setUp } of 대상들) {
@@ -171,7 +191,7 @@ for (const { name, setUp } of 대상들) {
       // 카드 자신이 포커스를 쥐고, 그 뒤의 ↓가 첫 항목이다 — ⋯를 눌러 연 것과 같다.
       await expect(menu).toBeFocused();
       await page.keyboard.press("ArrowDown");
-      await expect(항목(page, "Finder에서 열기")).toBeFocused();
+      await expect(항목(page, order[0])).toBeFocused();
 
       await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
@@ -320,6 +340,24 @@ test("Archive 목록 행의 메뉴는 그 행의 아카이브로 Finder 열기 �
   await 항목(page, "경로 복사").click();
   await expect.poll(() => clipboardWrites(page)).toEqual([`~/.atelier/archive/${bare.slug}/spec/`]);
   await expect(page).toHaveURL(`/archive/${shipped.slug}`);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── spec 트리 파일 행이 부르는 것 ──
+// 작업 패널의 복사는 `keyboard.spec.ts`(⇧F10)가 잰다. Archive 패널은 그 아카이브 안의 참조를 쓴다 — 보던 문서 · 주소는 그대로다.
+
+test("Archive 패널의 spec 트리 파일 행 메뉴에서 「경로 복사」는 그 아카이브 안 파일의 참조를 쓰고, 보던 문서는 그대로다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.goto(`/archive/${shipped.slug}`);
+  const url = page.url();
+
+  await 우클릭한다(page, 트리파일(page, "spec/tickets/할일.md"));
+  await 항목(page, "경로 복사").click();
+  await expect(메뉴(page)).toHaveCount(0);
+  await expect.poll(() => clipboardWrites(page)).toEqual([`~/.atelier/archive/${shipped.slug}/spec/tickets/할일.md`]);
+  expect(page.url()).toBe(url);
+  expect(await 고른행(page, "data-spec-file")).toEqual([RECORD]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

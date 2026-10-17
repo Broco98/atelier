@@ -26,6 +26,9 @@ interface PanelToggleProps {
  * 이름과 도움말은 상태를 탄다 — 누르면 무슨 일이 날지를 말한다(분할 토글과 같다). 앞말은 여닫는 패널의 이름이다(`name` — 공용 틀이 패널
  * 칸의 이름을 건넨다). 열림은 `aria-expanded`가 이미 말하므로 설명은 달지 않고, 키(⌘Enter — 단축키 표의 `panel`)만 도움말 옆 Kbd와
  * 설명 · `aria-keyshortcuts`로 남는다(S28 — `Hint`의 `shortcut`).
+ *
+ * Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 패널이 포커스를
+ * 품은 채 접히면 그 포커스가 이리 온다(`controls` — `panel-layout`의 `useFoldedFocus`).
  */
 function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
   return (
@@ -37,6 +40,7 @@ function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
       onClick={onToggle}
       aria-expanded={open}
       aria-controls={controls}
+      tabIndex={0}
       className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
     >
       <PanelRight className="size-3.75" />

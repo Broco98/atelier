@@ -1,12 +1,12 @@
 import { Fragment, useState } from "react";
-import { Archive, ListFilter, Search } from "lucide-react";
+import { Archive, ListFilter } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ListHead } from "@/components/shell/Frame";
+import { ListHead, ListScroll, ListSearch, TWO_LINE_ROW } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import type { TargetRegion } from "@/components/shell/TargetMenu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Hint } from "@/components/ui/tooltip";
+import { useRoving } from "@/lib/roving";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,7 +53,8 @@ interface ArchiveListProps {
 // 패널이 든다(`ArchivePage`). 목록이 문서에 파묻히지 않는다(스토리 55).
 //
 // 칸 · 세로 선 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`, codex-ds 결정 28). 폭은 `ProjectList`와 키를
-// 나눠 갖지 않는다(`ArchivePage`의 `archive-panel-width`) — 두 목록의 이름 길이가 달라 쓸모 있는 폭이 다르다.
+// 나눠 갖지 않는다(`ArchivePage`의 `archive-panel-width`) — 두 목록의 이름 길이가 달라 쓸모 있는 폭이 다르다. 찾기 칸 · 구르는
+// 상자 · 행의 자리는 Projects 목록과 같은 조각이다(`Frame`의 `ListSearch` · `ListScroll` · `TWO_LINE_ROW`).
 function ArchiveList({ entries, selectedSlug, loading, onSelect, rowMenu }: ArchiveListProps) {
   // 정렬·필터·검색은 **영속하지 않는다.** 화면이 백엔드 순서 위에 자기 순서를 얹으면
   // 진입 정규화(pickSlug의 "목록 첫 항목")가 고르는 것과 눈에 보이는 첫 항목이 갈린다 —
@@ -80,6 +81,9 @@ function ArchiveList({ entries, selectedSlug, loading, onSelect, rowMenu }: Arch
             (a.archivedAt ?? "").localeCompare(b.archivedAt ?? "") || a.slug.localeCompare(b.slug),
         )
       : filtered;
+  // **목록 하나가 Tab 정류장 하나다**(codex-ds 스펙 S10) — 보이는 차례(정렬 뒤, 날짜 소제목은 행이 아니다)가 ↑↓의 차례이고,
+  // 정류장은 고른 아카이브에서 시작한다.
+  const roving = useRoving(sorted.map((entry) => entry.slug), selectedSlug);
 
   return (
     <>
@@ -101,21 +105,7 @@ function ArchiveList({ entries, selectedSlug, loading, onSelect, rowMenu }: Arch
         }
       />
 
-      {/* 찾기 칸 — 머리 아래 칸 폭으로 서고 행과 8 떨어진다(DS `.at-search`). */}
-      {entries.length > 0 && (
-        <InputGroup className="mb-2 shrink-0">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
-          <InputGroupInput
-            aria-label="아카이브 검색"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="아카이브 검색"
-          />
-        </InputGroup>
-      )}
+      {entries.length > 0 && <ListSearch label="아카이브 검색" value={query} onChange={setQuery} />}
 
       {/* 도착 전에는 비어 있다고 말하지 않는다 — 본문 빈 상태와 같은 이유다 */}
       {loading ? null : entries.length === 0 ? (
@@ -134,17 +124,7 @@ function ArchiveList({ entries, selectedSlug, loading, onSelect, rowMenu }: Arch
           <span className="text-chat-meta text-fg-tertiary">{narrowedNotice(q !== "")}</span>
         </div>
       ) : (
-        <div
-          onContextMenu={rowMenu?.onContextMenu}
-          onKeyDown={rowMenu?.onKeyDown}
-          className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet"
-        >
-          {/* **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
-              칸 가장자리로 간다. 상자가 안쪽 여백 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
-              그만큼 더 안쪽에 서서 행 위로 들어온다. 같은 병이 사이드바 work 목록에 있었고 그쪽 주석이 내력을 든다.
-              위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지
-              않게 상자만 4px 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 그 자리이자
-              칸 바닥의 안쪽 8이다(DS `.at-listcol`). */}
+        <ListScroll menu={rowMenu} roving={roving.box}>
           {groupByDay(sorted, new Date()).map(({ heading, rows }) => (
             <Fragment key={heading}>
               {/* 날짜 소제목 — DS `.at-label`(13 · `fg-tertiary`, 위 12 · 옆 8 · 아래 6). 글자가 칸 + 16에 서서 행 글자와 한
@@ -156,12 +136,13 @@ function ArchiveList({ entries, selectedSlug, loading, onSelect, rowMenu }: Arch
                   key={entry.slug}
                   entry={entry}
                   selected={entry.slug === selectedSlug}
+                  stop={entry.slug === roving.stop}
                   onSelect={() => onSelect(entry.slug)}
                 />
               ))}
             </Fragment>
           ))}
-        </div>
+        </ListScroll>
       )}
     </>
   );
@@ -255,18 +236,21 @@ function SortFilterMenu({
   );
 }
 
-// 아카이브 한 줄 — 두 줄 행이다(DS `.at-row.two` — 50 이상 · 안쪽 7 8 · 모서리 10, 두 줄 사이 2). 첫 줄은 제목(14 · 본문 색), 둘째
+// 아카이브 한 줄 — 두 줄 행이다(`Frame`의 `TWO_LINE_ROW` — DS `.at-row.two`). 첫 줄은 제목(14 · 본문 색), 둘째
 // 줄은 치운 날과 치운 때의 상태(12 `fg-tertiary` — 행 메타, DS 「대비」)다. 날짜가 없는 폴더(손으로 옮긴 것)는 상태만 선다. 글자가 칸 +
 // 16에 서서 목록 머리의 제목 · 날짜 소제목과 한 세로줄이다. **펼치지 않는다** — 누르면 그 아카이브를 고른다. 고른 행과 hover는 카드
 // 안 목록의 두 단이다(`ProjectList`의 행과 같다). 표식(`data-archive-row`)은 행 메뉴가 대상을 가르는 표이고, 메뉴가 열린 동안 이
-// 버튼이 대상 테두리를 입는다(`focus-ring`의 `[data-menu-target]`).
+// 버튼이 대상 테두리를 입는다(`focus-ring`의 `[data-menu-target]`). 목록의 정류장 행(`stop`)만 Tab이 앉고 나머지 행은 ↑↓로 간다
+// (`ListScroll`) — Enter는 버튼의 누름이라 그 행을 고른다.
 function ArchiveRow({
   entry,
   selected,
+  stop,
   onSelect,
 }: {
   entry: ArchiveEntry;
   selected: boolean;
+  stop: boolean;
   onSelect: () => void;
 }) {
   const meta = [archivedDayText(entry.archivedAt), STATUS_META[entry.status].label].filter(Boolean).join(" · ");
@@ -274,11 +258,10 @@ function ArchiveRow({
     <button
       type="button"
       data-archive-row={entry.slug}
+      tabIndex={stop ? 0 : -1}
+      data-roving={entry.slug}
       onClick={onSelect}
-      className={cn(
-        "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 text-left transition-colors focus-ring",
-        selected ? "selected-row" : "hover:bg-fill-soft",
-      )}
+      className={cn(TWO_LINE_ROW, "text-left focus-ring", selected ? "selected-row" : "hover:bg-fill-soft")}
     >
       <span className="w-full truncate text-sm">{entry.title}</span>
       <span className="w-full truncate text-xs text-fg-tertiary">{meta}</span>

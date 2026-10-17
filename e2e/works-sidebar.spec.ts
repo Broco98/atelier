@@ -1364,9 +1364,10 @@ test("사이드바를 좁혀도 띠의 점과 경과는 그대로고 제목이 �
 // 답이 함께 돌아온다.
 //
 // - **투명해질 뿐 자리를 안 내준다**(결정 6). `display:none`이면 칸이 핀의 24px로 줄어 메타가
-//   선 행도 hover마다 제목이 뛴다. 그래서 메타가 선 행은 hover에 제목 폭이 그대로다.
-// - **핀 포커스에도 투명해진다**(결정 7). 핀은 포커스에도 뜨므로 hover에만 물리면 키보드로
-//   닿았을 때 둘이 겹쳐 그려진다. 레인은 어느 쪽에서도 안 물러난다 — 신호를 말하는 자리다.
+//   선 행도 hover마다 제목이 뛴다. 그래서 메타가 선 행은 hover에 제목 폭이 그대로다. 레인은 안
+//   물러난다 — 신호를 말하는 자리다.
+// - 핀은 Tab 정류장이 아니다(codex-ds 스펙 S10 — 키보드로 고정하는 길은 행의 work 메뉴다,
+//   `keyboard.spec.ts`). 그래서 한때 여기 있던 「핀 포커스에도 투명해진다」(결정 7)는 걷혔다.
 // - **메타는 늘 포인터를 안 받는다**(결정 6의 정정). DOM에서 핀보다 뒤라 핀 위에 그려지므로,
 //   받으면 핀의 클릭을 가로챈다 — 마지막 단언이 그것을 잰다.
 //
@@ -1376,8 +1377,8 @@ test("사이드바를 좁혀도 띠의 점과 경과는 그대로고 제목이 �
 // 얹혔다.** 사람이 고른 것이 그 갈림이다: 「호버하면, 자동으로 아이콘 위치만큼 text의 최대
 // 크기가 조정되지? 이런걸 원하는거임. (안겹치게)」
 //
-// **이 층에서만 보인다**: 겹침도 칸 폭도 `focus-visible`도 진짜 CSS와 레이아웃이 있어야 난다.
-test("hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 — 핀 포커스에도, 제목은 핀 앞에서 끝난다", async ({
+// **이 층에서만 보인다**: 겹침도 칸 폭도 진짜 CSS와 레이아웃이 있어야 난다.
+test("hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 — 제목은 핀 앞에서 끝난다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -1392,14 +1393,6 @@ test("hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 �
   await expect(pin).toHaveCSS("opacity", "0");
   await expect(메타).toHaveCSS("opacity", "1");
   const 평소 = (await title.boundingBox())!.width;
-
-  // **핀에 포커스가 가면 메타가 투명해진다**(결정 7). 포인터를 쓰기 전에 잰다 — WebKit은
-  // 프로그램적 포커스에도 `:focus-visible`을 물려 준다(판 05 결정 7의 정정).
-  await pin.focus();
-  await expect(pin).toBeFocused();
-  await expect(pin).toHaveCSS("opacity", "1");
-  await expect(메타).toHaveCSS("opacity", "0");
-  await expect(lane).toHaveCSS("opacity", "1");
 
   await title.hover();
   await expect(pin).toHaveCSS("opacity", "1");

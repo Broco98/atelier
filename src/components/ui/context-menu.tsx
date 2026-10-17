@@ -8,8 +8,9 @@
 // 웹뷰의 기본 메뉴는 앱 뿌리가 늘 막는다(`AppShell`, codex-ds 결정 8) — 이 메뉴가 없는 자리를 우클릭하면 아무것도 서지 않는다.
 // 입력칸 · 터미널의 편집 메뉴도 이 바탕이다(`EditMenu`) — document에서 우클릭을 가려 숨은 Trigger로 연다. 대상 메뉴의 Trigger는
 // 우클릭을 받아 멈추므로 대상 위의 우클릭은 대상 메뉴다. 그 Trigger가 감싼 자리 안의 입력칸(사이드바 행의 이름을 고치는 칸)만은
-// Trigger가 물러서 편집 메뉴다(`WorkContextMenu`). 프로젝트 · Archive 목록 행 · Processes 행 · spec 레이아웃 행 · 문서 글의 메뉴는
-// 편집 메뉴와 같은 길이다(`TargetMenu`) — 자리가 우클릭을 받아 대상을 가르고 멈춘 뒤, 자리 곁의 숨은 Trigger로 연다.
+// Trigger가 물러서 편집 메뉴다(`WorkContextMenu`). 프로젝트 · Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일
+// 행 · 문서 글의 메뉴는 편집 메뉴와 같은 길이다(`TargetMenu`) — 자리가 우클릭을 받아 대상을 가르고 멈춘 뒤, 자리 곁의 숨은 Trigger로
+// 연다.
 //
 // **Root(와 그 안의 Trigger)가 감싸는 자리에 다른 메뉴를 두지 않는다.** Base UI는 우클릭 메뉴 Root의 밑에 선 메뉴 줄을 모두 「우클릭
 // 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음으로만 고른다 — 그 밑의 ⋯ 메뉴(`DropdownMenu`)를 누른 채 끌어 줄 위에서 놓으면 아무것도 안

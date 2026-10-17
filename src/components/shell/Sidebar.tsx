@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft, Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
+import { useRoving, type RovingBox } from "@/lib/roving";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
@@ -26,7 +27,7 @@ import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-sto
 import ProcessesNavMeta from "@/features/processes/ProcessesNavMeta";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
 import { AttentionBand, type BandItem } from "./attention-band";
-import { foldingInnerClass, PANEL_MOTION } from "./panel-layout";
+import { foldingInnerClass, PANEL_MOTION, SIDEBAR_ID, useFoldedFocus } from "./panel-layout";
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
@@ -121,6 +122,16 @@ function Sidebar({
   // 띠에서 들어가도 목록의 그 행이 고친다(접힌 구획이면 목록이 연다 — `SidebarWorkList`). 고치던 행이 바깥에서 사라져도(MCP 아카이브 ·
   // 지우기) 이 값은 비워진다 — 입력칸이 blur 없이 내려가도 끝을 알린다(`InlineRename`의 `onDone`).
   const [renaming, setRenaming] = useState<string | null>(null);
+  // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
+  // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
+  const navRoving = useRoving(
+    navItems.map((item) => item.key),
+    activeKey,
+  );
+  const settingsRoving = useRoving(
+    SETTINGS_ITEMS.map((item) => item.key),
+    currentSettingsItem,
+  );
 
   // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — nav·띠·작업 목록·바닥 Settings가
   // 빠지고 「← 앱으로 돌아가기」와 항목만 선다.
@@ -137,6 +148,8 @@ function Sidebar({
       <SidebarFrame open={open} size={size}>
         <SettingsNav
           current={currentSettingsItem}
+          stop={settingsRoving.stop}
+          rovingBox={settingsRoving.box}
           onLeave={onLeaveSettings}
           onPick={onPickSettingsItem}
         />
@@ -155,7 +168,7 @@ function Sidebar({
   return (
     <SidebarFrame open={open} size={size}>
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
-      <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)}>
+      <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...navRoving.box}>
         {/* **`navItems`를 돈다**(#183) — 활성 판정(AppShell)과 팔레트의 「가는 곳」(`destinations.ts`)도 같은
             배열을 본다. */}
         {navItems.map((item) => (
@@ -164,6 +177,7 @@ function Sidebar({
             icon={item.icon}
             label={item.label}
             active={item.key === activeKey}
+            roving={{ key: item.key, stop: item.key === navRoving.stop }}
             onClick={() => onSelect(item.key)}
             // **최상위 셸이 몇 개인가는 남는다**(결정 6이 걷은 것은 펼침이지 이 숫자가
             // 아니다). work 행이 오른쪽 메타로 「여기서 일이 돌고 있다」를 말하는 것과 같은
@@ -257,7 +271,7 @@ function Sidebar({
           GUTTER,
         )}
       >
-        {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). */}
+        {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). 목록이 아니라 혼자 선 Tab 정류장이다. */}
         <SidebarItem icon={Settings} label="Settings" active={false} onClick={onOpenSettings} />
       </div>
     </SidebarFrame>
@@ -278,10 +292,13 @@ function SidebarFrame({
   size: ResizableWidth;
   children: ReactNode;
 }) {
+  const box = useFoldedFocus<HTMLElement>(open);
   return (
     // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 바탕에 붙은 이 안에서는 `selected-row`가 `fill-hover`다(index.css의 그
     // 유틸리티 · codex-ds 스펙 §5). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
     <aside
+      ref={box}
+      id={SIDEBAR_ID}
       data-sidebar=""
       style={
         {
@@ -297,7 +314,10 @@ function SidebarFrame({
           사이드바가 탭 줄에 자리를 내줘 좁게 서면 고정 폭 그대로는 행 오른쪽의 셸 수·신호가
           잘린다. 상한은 작업 패널과 같은 `100%`다 — 바깥 상자에 오른쪽 경계선이 없어(ui-refresh 결정 4)
           안쪽 열이 든 폭이 곧 바깥 폭이다. */}
+      {/* **접힌 동안 `inert`다** — 폭 0에 가려 안 보이는 nav · 목록이 Tab 정류장으로 남지 않게(오른쪽 패널의 안쪽 열 · 접힌 구획과
+          같은 장치). 접힐 때 안에 있던 포커스는 사이드바 토글로 간다(바깥 상자의 `useFoldedFocus`). */}
       <div
+        inert={!open}
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col pb-2.5",
           foldingInnerClass(open),
@@ -349,25 +369,32 @@ function asideClass(open: boolean, dragging: boolean): string {
  */
 function SettingsNav({
   current,
+  stop,
+  rovingBox,
   onLeave,
   onPick,
 }: {
   current: SettingsItemKey;
+  /** 설정 nav의 Tab 정류장 — 고르는 것은 `Sidebar`다(그 컴포넌트가 갈림 앞에서 훅을 다 부른다). */
+  stop: string | null;
+  rovingBox: RovingBox;
   onLeave: () => void;
   onPick: (key: SettingsItemKey) => void;
 }) {
   return (
     <>
+      {/* 돌아가기는 목록이 아니라 혼자 선 Tab 정류장이다 — 그 아래 항목들이 목록이다. */}
       <div className={cn("shrink-0 pb-3", GUTTER)}>
         <SidebarItem icon={ArrowLeft} label="앱으로 돌아가기" active={false} onClick={onLeave} />
       </div>
-      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)}>
+      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...rovingBox}>
         {SETTINGS_ITEMS.map((item) => (
           <SidebarItem
             key={item.key}
             icon={item.icon}
             label={item.label}
             active={item.key === current}
+            roving={{ key: item.key, stop: item.key === stop }}
             onClick={() => onPick(item.key)}
           />
         ))}
@@ -580,12 +607,18 @@ function SidebarItem({
   icon: Icon,
   label,
   active,
+  roving,
   onClick,
   meta = null,
 }: {
   icon: LucideIcon;
   label: string;
   active: boolean;
+  /**
+   * 목록(nav) 안의 항목이면 그 키와 정류장인가(roving — `@/lib/roving`). 정류장만 `tabIndex={0}`이고 나머지는 `-1`이다. 없으면
+   * 혼자 선 정류장이다(바닥 Settings · 앱으로 돌아가기) — 그래도 `0`을 적는다: WebKit의 Tab은 맨 `<button>`에 서지 않는다.
+   */
+  roving?: { key: string; stop: boolean };
   onClick: () => void;
   /**
    * 이 항목이 안고 있는 셸의 **메타**(결정 13). 개수가 아니라 슬롯인 것은 그 값이 터미널
@@ -608,6 +641,8 @@ function SidebarItem({
       <button
         type="button"
         onClick={onClick}
+        tabIndex={roving === undefined || roving.stop ? 0 : -1}
+        data-roving={roving?.key}
         className="flex h-full min-w-0 flex-1 items-center gap-2.25 rounded-lg pl-2 pr-1.5 text-left text-nav-row focus-ring"
       >
         <Icon className="size-[17px] shrink-0" />
