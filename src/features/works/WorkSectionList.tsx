@@ -271,7 +271,7 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
     >
       {/* **위 여백을 갖지 않는다.** 이 상자는 부르는 쪽의 세로 flow 안에 서고 그쪽이 이미
           줄 사이 2(`gap-0.5`)를 준다 — 여기서 한 번 더 물면 머리행 아래만 간격이 두 배가 되어
-          (실측 6px 대 3px) 같은 컬럼에서 「행 사이」와 「머리행 아래」가 다른 값이 된다.
+          (4px 대 2px) 같은 컬럼에서 「행 사이」와 「머리행 아래」가 다른 값이 된다.
           접힐 때 함께 사라지는 자리라 오래 안 보였다.
 
           **펼친 동안 링이 설 자리를 둔다**(`focus-ring-room`, codex-ds 결정 11). 접기의 `overflow-hidden`은 행의 포커스

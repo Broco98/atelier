@@ -617,7 +617,7 @@ function TreeTools({
   return (
     <div role="toolbar" aria-label="항목 편집" className="flex min-w-0 flex-1 items-center gap-1.5">
       {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 줄 안의 작은 흰
-          버튼이다(`size="xs"` — Archive 정렬 · 거르기와 같다). */}
+          버튼이다(`size="xs"`). */}
       {(["file", "folder"] as const).map((kind) => (
         <Hint
           key={kind}
