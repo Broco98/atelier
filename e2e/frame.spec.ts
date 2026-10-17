@@ -1421,6 +1421,51 @@ test("Works: 상태 메뉴에서 지금 상태 줄 끝의 체크는 14 · fg다"
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 라디오 줄도 메뉴의 다른 줄처럼 **줄 사이 2px**로 선다(DS `.at-menu`의 `gap: 2px` — 앱은 `menu-list`). 라디오 줄은 묶음
+// (`DropdownMenuRadioGroup`) 안에 서서 목록의 flex 사이를 받지 못한다 — 묶음이 같은 사이를 다시 준다. 한때 묶음이 맨 div라 라디오 줄만
+// 30 간격으로 붙어 섰다(codex-ds 티켓 34의 화면 맞대기). 기준은 같은 메뉴 부품의 보통 줄(work ⋯ 메뉴의 「이름 바꾸기」 → 「복사」)이고,
+// 라디오 묶음이 서는 두 자리 — 상태 메뉴(머리 카드 배지 · work 메뉴의 상태 ▸가 같은 줄을 쓴다)와 Archive 정렬 · 거르기의 두 묶음(라벨과
+// 줄) — 를 잰다. 카드는 0.98에서 떠오르므로 다 뜬 뒤에 잰다.
+test("Works · Archive: 상태 메뉴와 정렬 · 거르기 메뉴의 라디오 줄도 보통 메뉴 줄처럼 2px 사이로 선다", async ({ page }) => {
+  const 사이들 = (rows: Locator) =>
+    rows.evaluateAll((els) =>
+      els.slice(1).map((el, i) => Math.round(el.getBoundingClientRect().top - els[i].getBoundingClientRect().bottom)),
+    );
+  const 다뜬 = (menu: Locator) => menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished)));
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+
+  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  const 작업메뉴 = page.getByRole("menu");
+  await 다뜬(작업메뉴);
+  const 보통 = 작업메뉴.getByRole("menuitem", { name: /^(이름 바꾸기|복사)$/ });
+  await expect(보통).toHaveCount(2);
+  expect(await 사이들(보통), "보통 줄 사이").toEqual([2]);
+  await page.keyboard.press("Escape");
+  await expect(작업메뉴).toHaveCount(0);
+
+  await 머리카드(page).getByRole("button", { name: pinnedWork.status, exact: true }).click();
+  const 상태메뉴 = page.getByRole("menu");
+  await 다뜬(상태메뉴);
+  const 상태줄 = 상태메뉴.getByRole("menuitemradio");
+  await expect(상태줄).toHaveCount(4);
+  expect(await 사이들(상태줄), "상태 메뉴의 라디오 줄 사이").toEqual([2, 2, 2]);
+  await page.keyboard.press("Escape");
+  await expect(상태메뉴).toHaveCount(0);
+
+  await page.goto(`/archive/${ARCHIVE[0].slug}`);
+  await page.getByRole("button", { name: "정렬 · 거르기", exact: true }).click();
+  const 거르기 = page.getByRole("menu", { name: "정렬 · 거르기", exact: true });
+  await 다뜬(거르기);
+  for (const 묶음 of ["정렬", "프로젝트"]) {
+    const 칸 = 거르기.getByRole("group", { name: 묶음, exact: true }).locator(":scope > *");
+    const 수 = await 칸.count();
+    expect(수, `「${묶음}」 묶음 — 라벨 하나와 줄 둘 이상`).toBeGreaterThanOrEqual(3);
+    expect(await 사이들(칸), `「${묶음}」 묶음의 라벨 · 줄 사이`).toEqual(Array(수 - 1).fill(2));
+  }
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // **끈 줄**(지금 못 하는 칸, codex-ds 결정 10)은 줄째 55%로 옅어지고 글자 · 글리프가 `fg-tertiary`다 — DS `.at-mi.is-off`. 앱에서 그
 // 줄이 서는 첫 자리가 work 메뉴의 Finder에서 열기 ▸, 폴더가 사라진 worktree다(`WorkMenuItems.tsx`). 줄이 끈 것인지(`aria-disabled`)와
 // 눌러도 안 여는 것은 `works-floating.spec.ts`의 work 메뉴 절이 잰다 — 여기는 칠해진 값이다.

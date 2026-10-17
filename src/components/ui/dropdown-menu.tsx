@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-prominent·bg-surface-elevated, DS `.at-menu`), 폭 w-(--anchor-width)·min-w-32→size-menu 260(DS `.at-menu`), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 6px·항목 사이 2px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 열림 duration-100·zoom-in-95·slide-in→duration-dropdown·ease-enter-snappy·30ms 지연·zoom-in-98(DS 「움직임」 — 메뉴는 scale 0.98 → 1, 지연 동안은 첫 장면에 머문다)·닫힘 duration-basic·ease-exit·zoom-out-98(DS 「움직임」 — 사라질 때 ease-exit), 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 30px·10px 모서리·좌우 8px·gap 10px·text-chat-meta·글리프 15px fg-secondary·shrink-0, Select 항목과 같은 것, DS `.at-mi`), 항목의 켜짐 — registry의 옅은 면(유틸리티 `accent` · 글자 `accent-foreground`)→focus:bg-fill-hover·focus:text-fg(같은 면을 Codex 이름으로 — 유틸리티 `accent`는 Codex 파랑과 이름이 겹친다, `state-scale.test.ts`), 지우기 줄의 빨강 destructive→danger 글자(켜짐은 다른 줄과 같은 면이다 — DS `.at-mi.danger`), 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-fg-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1·h-px·bg-border→mx-1 my-1·0.5px·bg-border-heavy(DS `.at-msep`), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 라디오 항목은 보통 항목과 같은 줄이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3.5·fg·앱 기본 굵기, DS `.at-mi .chk`, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 하위 메뉴(Sub·SubTrigger·SubContent)는 registry 카드 덮기(rounded-lg·bg-popover·ring-1·p-1)를 걷고 앱 카드와 같은 카드 · 같은 줄로 되살렸다(codex-ds 결정 10 · 15 — 한 단계까지, 트리거 끝에 14px 셰브런 fg-tertiary, 연 줄은 켜진 줄의 면, DS `.at-mi .sub` · `.is-open`). 단축키 칸 text-caption·tracking-widest·muted-foreground→줄 오른쪽 끝의 text-xs·fg-tertiary(DS `.at-mi .k`) — 켜진 줄에서도 같은 색이고 접근성 이름에서 빠진다(글자는 항목의 `shortcut`이 단축키 표에서 받는다). 체크 항목은 라디오 항목과 같은 줄이다 — registry의 py-1·pr-8·pl-1.5·gap-1.5·글리프 size-4·absolute right-2 체크→ROW·menu-row·MenuCheck(우클릭 메뉴가 함께 쓰는 부품이라 다른 줄과 갈리지 않게). 끈 줄 opacity-50→55%·글자 · 글리프 fg-tertiary(DS `.at-mi.is-off`). 라벨 px-1.5·py-1·font-medium·fg-secondary→위 4·좌우 8·아래 6·text-xs·fg-tertiary(DS `.at-mhead`). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px, DS `.at-mi.tall`)를 더했다.
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-prominent·bg-surface-elevated, DS `.at-menu`), 폭 w-(--anchor-width)·min-w-32→size-menu 260(DS `.at-menu`), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 6px·항목 사이 2px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 열림 duration-100·zoom-in-95·slide-in→duration-dropdown·ease-enter-snappy·30ms 지연·zoom-in-98(DS 「움직임」 — 메뉴는 scale 0.98 → 1, 지연 동안은 첫 장면에 머문다)·닫힘 duration-basic·ease-exit·zoom-out-98(DS 「움직임」 — 사라질 때 ease-exit), 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 30px·10px 모서리·좌우 8px·gap 10px·text-chat-meta·글리프 15px fg-secondary·shrink-0, Select 항목과 같은 것, DS `.at-mi`), 항목의 켜짐 — registry의 옅은 면(유틸리티 `accent` · 글자 `accent-foreground`)→focus:bg-fill-hover·focus:text-fg(같은 면을 Codex 이름으로 — 유틸리티 `accent`는 Codex 파랑과 이름이 겹친다, `state-scale.test.ts`), 지우기 줄의 빨강 destructive→danger 글자(켜짐은 다른 줄과 같은 면이다 — DS `.at-mi.danger`), 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-fg-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1·h-px·bg-border→mx-1 my-1·0.5px·bg-border-heavy(DS `.at-msep`), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 라디오 항목은 보통 항목과 같은 줄이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3.5·fg·앱 기본 굵기, DS `.at-mi .chk`, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 묶음(Group · RadioGroup)은 registry의 맨 div→menu-list와 같은 세로 flex · 항목 사이 2px(묶음 안의 줄은 목록의 flex 사이를 받지 못한다). 하위 메뉴(Sub·SubTrigger·SubContent)는 registry 카드 덮기(rounded-lg·bg-popover·ring-1·p-1)를 걷고 앱 카드와 같은 카드 · 같은 줄로 되살렸다(codex-ds 결정 10 · 15 — 한 단계까지, 트리거 끝에 14px 셰브런 fg-tertiary, 연 줄은 켜진 줄의 면, DS `.at-mi .sub` · `.is-open`). 단축키 칸 text-caption·tracking-widest·muted-foreground→줄 오른쪽 끝의 text-xs·fg-tertiary(DS `.at-mi .k`) — 켜진 줄에서도 같은 색이고 접근성 이름에서 빠진다(글자는 항목의 `shortcut`이 단축키 표에서 받는다). 체크 항목은 라디오 항목과 같은 줄이다 — registry의 py-1·pr-8·pl-1.5·gap-1.5·글리프 size-4·absolute right-2 체크→ROW·menu-row·MenuCheck(우클릭 메뉴가 함께 쓰는 부품이라 다른 줄과 갈리지 않게). 끈 줄 opacity-50→55%·글자 · 글리프 fg-tertiary(DS `.at-mi.is-off`). 라벨 px-1.5·py-1·font-medium·fg-secondary→위 4·좌우 8·아래 6·text-xs·fg-tertiary(DS `.at-mhead`). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px, DS `.at-mi.tall`)를 더했다.
 //
 // **우클릭 메뉴(`context-menu.tsx`)가 이 파일의 부품을 그대로 쓴다**(codex-ds 결정 15 — 정의 하나). 항목 · 구분선 · 하위 메뉴는
 // 같은 함수이고(단축키 칸은 항목의 `shortcut`이다), 카드는 같은 `MenuCard`에 폭만 다르게 준다. Base UI의 `ContextMenu`도 Root · Trigger 말고는 Menu 부품을 다시 내보낸
@@ -108,8 +108,13 @@ function DropdownMenuContent({
   )
 }
 
-function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
-  return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
+// 묶음(Group · RadioGroup)은 **목록과 같은 세로 flex · 항목 사이 2px**다(`menu-list`의 사이 — DS `.at-menu` `gap: 2px`). 묶음 안의
+// 줄은 목록의 직접 자식이 아니라 목록의 flex 사이를 받지 못한다 — registry의 맨 div 그대로면 묶음 안의 줄만 30 간격으로 붙어 선다
+// (상태 메뉴 · Archive 정렬 · 거르기, codex-ds 티켓 34). 안쪽 여백은 목록이 이미 주어 묶음은 사이만 든다.
+const GROUP = "flex flex-col gap-0.5"
+
+function DropdownMenuGroup({ className, ...props }: MenuPrimitive.Group.Props) {
+  return <MenuPrimitive.Group data-slot="dropdown-menu-group" className={cn(GROUP, className)} {...props} />
 }
 
 // 묶음의 머리 글자 — DS `.at-mhead`(위 4 · 좌우 8 · 아래 6, `text-xs` · `fg-tertiary`, 오른쪽 끝에 링크 하나가 설 수 있다).
@@ -214,10 +219,11 @@ function DropdownMenuCheckboxItem({
   )
 }
 
-function DropdownMenuRadioGroup({ ...props }: MenuPrimitive.RadioGroup.Props) {
+function DropdownMenuRadioGroup({ className, ...props }: MenuPrimitive.RadioGroup.Props) {
   return (
     <MenuPrimitive.RadioGroup
       data-slot="dropdown-menu-radio-group"
+      className={cn(GROUP, className)}
       {...props}
     />
   )
