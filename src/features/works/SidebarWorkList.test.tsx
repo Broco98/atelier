@@ -299,20 +299,11 @@ describe("핀 버튼", () => {
       expect(pin).toContain("opacity-0");
       // 이 한 줄이 없으면 opacity-0으로 **영영** 안 보인다.
       expect(pin).toContain("group-hover:opacity-100");
-      // 포커스에 뜨는 갈래는 없다 — 핀은 Tab 정류장이 아니고(codex-ds 스펙 S10), 키보드로 고정하는 길은 행의 work 메뉴(⇧F10)의
-      // 「고정」이다. Tab 차례에 핀이 없는 것은 L3 `keyboard.spec.ts`가 잰다.
-      expect(pin).not.toContain("focus-visible:opacity-100");
     }
   });
-
-  // Tab에서 빠져도 포커스는 받는다 — 보조 기술 · 코드가 옮기고, WebKit 밖에서는 누름도 준다. 그때 링이 없으면 브라우저 기본 테두리를
-  // 입는다(`index.css`의 바탕 — `focus-ring`을 안 단 요소). 앱의 포커스 모양은 하나다(codex-ds 결정 11).
-  it("포커스를 받으면 앱의 포커스 링을 입는다", () => {
-    for (const pin of pinsOf(render(works("pin:가", "나")))) {
-      expect(pin).toMatch(/class="[^"]*(?<![\w:-])focus-ring(?![\w-])/);
-      expect(pin).toMatch(/class="[^"]*(?<![\w:-])outline-none(?![\w-])/);
-    }
-  });
+  // 핀은 Tab 정류장이 아니고(codex-ds 스펙 S10), 키보드로 고정하는 길은 행의 work 메뉴(⇧F10)의 「고정」이다 — Tab 차례에 핀이
+  // 없는 것은 L3 `keyboard.spec.ts`가 잰다. 그래도 포커스는 받으므로(보조 기술 · 코드, WebKit 밖의 누름) 그때 앱의 링이고 포커스만으로는
+  // 뜨지 않는 것은 칠한 값으로 L3 `primitives.spec.ts` 「키보드 포커스는 … 행 안 버튼에서 같은 링이다」가 잰다(클래스 문자열은 재지 않는다).
 
   it("고정된 행은 채운 핀, 안 된 행은 빈 핀이다", () => {
     const [pinnedRow, plainRow] = pinsOf(render(works("pin:가", "나")));

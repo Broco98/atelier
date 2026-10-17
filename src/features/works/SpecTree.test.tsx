@@ -178,13 +178,7 @@ describe("SpecTree 경로 복사 버튼", () => {
     expect(render(two)).not.toMatch(/경로 복사/);
   });
 
-  // Tab 정류장이 아니어도 포커스는 받는다(보조 기술 · 코드 · WebKit 밖의 누름) — 그때 브라우저 기본 테두리가 아니라 앱의 포커스
-  // 링이다(codex-ds 결정 11). 다만 포커스에 뜨는 갈래는 없다 — 뜨는 것은 hover뿐이다.
-  it("포커스를 받으면 앱의 포커스 링을 입고, 포커스로는 뜨지 않는다", () => {
-    const copy = render(two, () => {}).match(/<button[^>]*aria-label="overview\.md 경로 복사"[^>]*>/)?.[0] ?? "";
-    expect(copy).toMatch(/class="[^"]*(?<![\w:-])focus-ring(?![\w-])/);
-    expect(copy).toMatch(/class="[^"]*(?<![\w:-])outline-none(?![\w-])/);
-    expect(copy).toContain("group-hover:opacity-100");
-    expect(copy).not.toContain("focus-visible:opacity-100");
-  });
+  // 복사 버튼은 Tab 정류장이 아니어도 포커스는 받는다(보조 기술 · 코드 · WebKit 밖의 누름). 그때 앱의 포커스 링이고(codex-ds 결정 11)
+  // 포커스만으로는 뜨지 않으며 행 hover에 뜨는 것은 칠한 값으로 L3 `primitives.spec.ts` 「키보드 포커스는 … 행 안 버튼에서 같은
+  // 링이다」가 잰다(클래스 문자열은 재지 않는다).
 });

@@ -36,9 +36,11 @@ import { settle } from "./tab-row";
 // `tabindex`를 단 것(Base UI 부품은 스스로 단다)만 다닌다. 사이드바 행과 셸 탭의 이름 버튼은 화면이 지은 버튼이라 `tabindex`를
 // 명시해 Tab 정류장이 됐다(codex-ds 티켓 32 — 목록은 정류장 하나, 탭 줄은 칸마다). 그래서 여기서도 Tab이 온 길로 닿는다(`탭으로`).
 // 사이드바 구획 머리는 목록 안의 행이라 Tab이 아니라 ↑로 간다 — 목록 안을 화살표로 옮긴 포커스도 키보드가 온 길이라 `:focus-visible`이다.
+// Tab 정류장이 아닌 **행 안 버튼**(사이드바 핀 · spec 트리의 경로 복사)은 키보드로 이웃에 간 뒤 `focus()`로 옮긴다 — 키보드가 온
+// 뒤라 그 포커스도 `:focus-visible`이다.
 
 const project = PROJECTS[0];
-const [, plainWork] = WORKS;
+const [pinnedWork, plainWork] = WORKS;
 
 /** 그 요소에 칠해진 포커스 링 — `outline`(굵기 · 모양 · 색)과 자리, `box-shadow`. */
 async function 링(target: Locator) {
@@ -121,7 +123,7 @@ async function 링이다보인다(target: Locator, 이름: string): Promise<void
   expect(잘림, `${이름} — 링을 자르는 상자(그 변과, 상자 끝까지 남은 거리)`).toEqual([]);
 }
 
-test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · 사이드바 행 · 탭에서 같은 링이다", async ({ page }) => {
+test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · 사이드바 행 · 탭 · 행 안 버튼에서 같은 링이다", async ({ page }) => {
   await installFixtureBackend(page);
 
   // Projects — 글자 버튼 · 아이콘 버튼과, 상자가 링을 입는 검색칸(포커스는 안의 입력칸에 있다).
@@ -163,9 +165,30 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
   }
   await expect(구획머리).toBeFocused();
   await 링이선다(page, 구획머리, "사이드바 구획 머리");
+  // **행 안 버튼**(사이드바 핀 · 아래 spec 트리의 경로 복사)은 Tab 정류장이 아니어도 포커스는 받는다 — 보조 기술 · 코드가 옮기고, WebKit
+  // 밖에서는 누름도 준다. 그때도 앱의 링이다(브라우저 기본 테두리가 아니다). 다만 포커스만으로는 뜨지 않는다 — 뜨는 것은 hover뿐이고,
+  // 키보드의 길은 그 행 메뉴의 「고정」 · 「경로 복사」다(codex-ds 스펙 S10).
+  const 핀 = 행버튼(page, `${plainWork.title} 고정`);
+  await 핀.focus();
+  await expect(핀).toBeFocused();
+  await 링이선다(page, 핀, "사이드바 핀");
+  expect(await 칠한값(핀, "opacity"), "포커스만 받은 핀이 떴다").toEqual(["0"]);
   const 셸탭 = 이름표(page, 0);
   await 탭으로(page, 셸탭);
   await 링이선다(page, 셸탭, "셸 탭");
+
+  // spec 트리의 경로 복사 — 키보드로 그 행(트리의 정류장)에 간 뒤 옮긴다. 포커스로는 안 뜨던 버튼이 그 행에 포인터가 오면 뜬다.
+  await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
+  const 패널 = page.locator("aside:not([data-sidebar])");
+  const 트리행 = 패널.locator('[data-roving="overview.md"]');
+  await 탭으로(page, 트리행);
+  const 복사 = 패널.getByRole("button", { name: "overview.md 경로 복사", exact: true });
+  await 복사.focus();
+  await expect(복사).toBeFocused();
+  await 링이선다(page, 복사, "spec 트리 경로 복사");
+  expect(await 칠한값(복사, "opacity"), "포커스만 받은 경로 복사가 떴다").toEqual(["0"]);
+  await 트리행.hover();
+  await expect.poll(async () => (await 칠한값(복사, "opacity"))[0]).toBe("1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

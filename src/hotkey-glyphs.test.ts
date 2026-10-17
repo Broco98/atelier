@@ -11,7 +11,8 @@ import { blankComments } from "./blank-comments";
 // 읽는다. 표 밖에서 손으로 적은 단축키는 표와 조용히 갈린다 — 키를 옮긴 날 메뉴 바는 새 키를, 그 툴팁은 옛 키를 가르친다. 그래서
 // 표 밖의 이 꼴들을 막는다.
 //   - **수식키 글리프**(⌘ ⌃ ⌥ ⇧)가 든 글자 — `"⌘Enter"` · `<Kbd>⌘T</Kbd>` · `"⌥↑"`. 화면에 서는 수식키 글자는 단축키 표의 것뿐이다.
-//   - **`aria-keyshortcuts`의 리터럴 값** — `aria-keyshortcuts="Meta+K"`. 그 값은 표의 `aria`이고 `Hint` · 메뉴 항목이 단다.
+//   - **`aria-keyshortcuts`의 리터럴 값** — `aria-keyshortcuts="Meta+K"`. 조건식의 갈래(`={open ? "Meta+K" : undefined}`)도 리터럴이다.
+//     그 값은 표의 `aria`이고 `Hint` · 메뉴 항목이 단다.
 //   - **Kbd 안의 날글자** — `<Kbd>Esc</Kbd>` · `<Kbd>{"Esc"}</Kbd>`. 수식키가 없는 키(F2 · Esc)도 표의 항목이다. Kbd 안은 표를 읽는
 //     식(`{HOTKEYS.<항목>.glyph}`)이어야 하고, 문자열 식(`{"…"}` · ``{`…`}``)은 날글자와 같다.
 // 셋 다 빌드도 타입 검사도 조용하다(`Hint` · 메뉴 항목의 `shortcut`은 표의 항목 이름만 받아 타입이 먼저 막지만, 문장 속 글자와
@@ -41,8 +42,12 @@ const sources = sourceFiles(join(root, "src")).map((path) => ({
 
 /** 수식키 글리프 — 단축키 표의 `glyph`가 앞에 다는 넷. */
 const MODIFIER_GLYPH = /[⌘⌃⌥⇧]/g;
-/** `aria-keyshortcuts`에 문자열을 바로 준 자리 — JSX 속성(`="…"` · `={"…"}` · ``={`…`}``)과 객체 키(`"aria-keyshortcuts": "…"`). */
-const LITERAL_ARIA = /aria-keyshortcuts["']?\s*[=:]\s*\{?\s*["'`]/g;
+/**
+ * `aria-keyshortcuts`에 문자열을 바로 준 자리 — JSX 속성(`="…"` · `={"…"}` · ``={`…`}``)과 객체 키(`"aria-keyshortcuts": "…"`), 그리고
+ * 식 안에 선 문자열(`={open ? "…" : undefined}`). 표를 읽는 식은 조건식이어도(`={elsewhere ? undefined : hotkey?.aria}`) 따옴표가 없어
+ * 안 센다.
+ */
+const LITERAL_ARIA = /aria-keyshortcuts["']?\s*[=:]\s*(?:["'`]|\{[^}]*?["'`])/g;
 /** Kbd 안에 표를 읽는 식이 아니라 글자가 선 자리 — 날글자(`<Kbd>Esc</Kbd>`)와 문자열 식(`<Kbd>{"Esc"}</Kbd>` · ``<Kbd>{`F2`}</Kbd>``). */
 const LITERAL_KBD = /<Kbd\b[^>]*>\s*(?:[^\s{<]|\{\s*["'`])/g;
 
@@ -64,6 +69,7 @@ describe("꼴이 막을 것을 막는다", () => {
     ['aria-keyshortcuts="Meta+K"', LITERAL_ARIA],
     ['aria-keyshortcuts={"Meta+K"}', LITERAL_ARIA],
     ["aria-keyshortcuts={`Meta+${key}`}", LITERAL_ARIA],
+    ['aria-keyshortcuts={open ? "Meta+K" : undefined}', LITERAL_ARIA],
     ['{ "aria-keyshortcuts": "F2" }', LITERAL_ARIA],
     ["<Kbd>Esc</Kbd>", LITERAL_KBD],
     ['<Kbd className="x">F2</Kbd>', LITERAL_KBD],
@@ -77,6 +83,7 @@ describe("꼴이 막을 것을 막는다", () => {
   it.each([
     ["<Kbd>{HOTKEYS.newShell.glyph}</Kbd>", LITERAL_KBD],
     ["aria-keyshortcuts={hotkey?.aria}", LITERAL_ARIA],
+    ["aria-keyshortcuts={shortcutElsewhere ? undefined : hotkey?.aria}", LITERAL_ARIA],
     ['<Hint shortcut="search" />', MODIFIER_GLYPH],
     ["// ⌘K가 팔레트를 연다", MODIFIER_GLYPH],
     ["{/* <Kbd>⌘T</Kbd> */}", MODIFIER_GLYPH],

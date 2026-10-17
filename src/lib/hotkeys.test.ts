@@ -144,6 +144,8 @@ const 키들 = [
   ...[..."0123456789"].map((d) => `Digit${d}`),
   ...Array.from({ length: 12 }, (_, n) => `F${n + 1}`),
   ...["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+  // 쪽 넘기기 · 처음 · 끝 · 끼우기 — ⌃PageDown · ⌃PageUp은 탭 넘기기에 흔한 화음이다.
+  ...["PageUp", "PageDown", "Home", "End", "Insert"],
   ...["Enter", "NumpadEnter", "Tab", "Escape", "Space", "Backspace", "Delete", "ContextMenu"],
   ...["Comma", "Period", "Slash", "Backslash", "BracketLeft", "BracketRight", "Backquote", "Minus", "Equal", "Semicolon", "Quote"],
 ];
