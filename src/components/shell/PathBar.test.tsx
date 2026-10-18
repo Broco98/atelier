@@ -73,8 +73,6 @@ describe("경로 캡슐", () => {
     expect(last.tag).toContain("font-medium");
     expect(last.tag).toMatch(본문색);
     expect(last.tag).toContain('aria-current="page"');
-    // 긴 이름은 끝 조각에서 말줄임으로 접힌다 — 앞 조각은 줄지 않는다.
-    expect(last.tag).toContain("truncate");
   });
 
   // 조각 하나도 경로다 — Archive에서 남은 문서가 없으면 경로가 `slug` 하나다(`ArchivePage`).

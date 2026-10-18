@@ -1,8 +1,9 @@
-import { Fragment, type ReactNode } from "react";
-import { ChevronRight, CodeXml, Copy, Eye } from "lucide-react";
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { ChevronRight, CodeXml, Copy, Eye, FolderTree } from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
 import { Hint } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 // 경로 줄(codex-ds 스펙 §4 「카드 머리 · 경로 줄」 · DS `PathBar` · `.at-pathbar` — codex-ds 결정 12 · 13 · 14 · 27). 문서 카드의 머리 줄이다 —
 // 작업 화면에서는 spec 탭의 문서(탭 줄 아래)와 분할의 spec 열(열 머리), Archive에서는 문서 카드에 선다. 한때 그 자리는 흰 알약의
@@ -10,10 +11,14 @@ import { Hint } from "@/components/ui/tooltip";
 //
 // - 줄은 48(`--size-pathbar`) = 틈 8 · 컨트롤 32 · 틈 8이다. 아래 선이 없다.
 // - 왼쪽은 **경로 캡슐** — 옅은 테두리(1px `border-heavy`) 알약 · 안쪽 12 · `chat-meta`. 앞 칸은 `fg-secondary`, 끝 칸(지금 보는 것)만
-//   `fg` 500이고 넘치면 말줄임이다. **캡슐 안 글자는 카드 + 20**(줄 안쪽 8 + 캡슐 안쪽 12) — 아래 문서 글의 거터 20과 한
-//   세로줄이다(결정 27 · `SpecViewer`의 `bodyColumn`). 보여 주기만 한다 — 조각은 누르는 칸이 아니다. 위치를 옮기는 길은 사이드바 ·
-//   트리 · 팔레트가 든다. 이름은 「위치」다 — 옛 문서 카드 머리의 위치 캡슐이 갖던 이름 그대로라 모양이 바뀌어도 스크린리더와
-//   검사가 같은 이름으로 찾는다(codex-ds 스펙 스토리 109).
+//   `fg` 500이다. **캡슐 안 글자는 카드 + 20**(줄 안쪽 8 + 캡슐 안쪽 12) — 아래 문서 글의 거터 20과 한 세로줄이다(결정 27 ·
+//   `SpecViewer`의 `bodyColumn`). 보여 주기만 한다 — 조각은 누르는 칸이 아니다. 위치를 옮기는 길은 사이드바 · 트리 · 팔레트가 든다.
+//   이름은 「위치」다 — 옛 문서 카드 머리의 위치 캡슐이 갖던 이름 그대로라 모양이 바뀌어도 스크린리더와 검사가 같은 이름으로
+//   찾는다(codex-ds 스펙 스토리 109).
+// - **경로가 다 안 들어가면 캡슐이 접힌다** — 32 원 안에 아이콘(`FolderTree` 16) 하나가 서고, 가리키면 경로 전체가 툴팁으로 뜬다
+//   (조각 사이는 캡슐의 꺾쇠와 같은 「›」). 말줄임으로 끊긴 경로(「slug › spec › (」)는 어디를 보는지 말하지 못해서다 — 좁은 창 ·
+//   가장 좁게 끈 분할 열이 그 폭이다. 접혀도 조각은 nav 안에 남아(칠하지만 않는다) 스크린리더는 같은 경로를 듣는다. 툴팁은 포인터의
+//   것이다 — 원은 누르는 칸이 아니라 Tab 정류장도 아니다.
 // - 오른쪽은 **보기 묶음**(문서 | 원문 — 알약 32 안에 원 28 둘, 고른 쪽 `fill-hover`)과 **동그란 버튼**(32 · 1px `border-heavy` 링,
 //   사이 4)이다. 동그란 버튼은 경로 복사 하나다.
 // - **캡슐 · 원 · 동그라미는 경로 줄의 모양이다**(결정 14 · DS `PathBar` 「규칙」). 경로 캡슐과 동그란 버튼의 모양은 이 파일에,
@@ -33,8 +38,8 @@ const ROUND =
   "flex size-8 shrink-0 items-center justify-center rounded-full text-fg-secondary inset-ring inset-ring-border-heavy transition-colors outline-none hover:bg-fill-soft hover:text-fg focus-ring";
 
 /**
- * 뿌리부터 지금 선 곳까지의 조각 — 사이에 셰브런(12 · `fg-tertiary`)이 서고, 끝 조각만 `fg` 500에 넘치면 말줄임이다. 앞 조각은 제
- * 폭 그대로라 줄에 눌리면 줄어드는 몫은 끝 조각이 받는다. 같은 글자의 조각이 둘 설 수 있어(폴더 이름) 자리를 키로 쓴다.
+ * 뿌리부터 지금 선 곳까지의 조각 — 사이에 셰브런(12 · `fg-tertiary`)이 서고, 끝 조각만 `fg` 500이다. 조각은 줄지 않는다 — 다 안
+ * 들어가면 캡슐이 접힌다(`useFolded`). 같은 글자의 조각이 둘 설 수 있어(폴더 이름) 자리를 키로 쓴다.
  *
  * 경로 캡슐이 이것을 알약 안에 담는다.
  */
@@ -44,14 +49,34 @@ function PathPieces({ items }: { items: readonly string[] }) {
     <Fragment key={index}>
       {index > 0 && <ChevronRight aria-hidden className="size-3 shrink-0 text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />}
       {index === last ? (
-        <span aria-current="page" className="min-w-0 truncate font-medium text-fg">
+        <span aria-current="page" className="font-medium text-fg">
           {item}
         </span>
       ) : (
-        <span className="shrink-0">{item}</span>
+        <span>{item}</span>
       )}
     </Fragment>
   ));
+}
+
+/**
+ * 캡슐이 접히는가 — 조각이 다 서려는 폭(`crumbs`, 제 글자 폭 `w-max`)이 캡슐이 설 자리(`room`)보다 넓으면 접힌다. 자리는 줄이 보기
+ * 묶음 · 버튼에 주고 남은 폭이라(`flex-1` · 바탕 0) 캡슐이 접히든 펴지든 같다 — 재는 값이 접힘을 따라 흔들리지 않는다. 둘 중 하나의
+ * 폭이 바뀌면(창 · 분할 열 · 경로) 다시 잰다. 그리기 전에 재니(`useLayoutEffect`) 넘친 캡슐이 한 프레임도 서지 않는다.
+ */
+function useFolded(room: RefObject<HTMLDivElement | null>, crumbs: RefObject<HTMLDivElement | null>) {
+  const [folded, setFolded] = useState(false);
+  useLayoutEffect(() => {
+    const [box, line] = [room.current, crumbs.current];
+    if (!box || !line) return;
+    const measure = () => setFolded(line.getBoundingClientRect().width > box.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, [room, crumbs]);
+  return folded;
 }
 
 export interface PathView {
@@ -81,16 +106,38 @@ export function PathBar({
   end?: ReactNode;
   [mark: `data-${string}`]: string | undefined;
 }) {
+  const room = useRef<HTMLDivElement>(null);
+  const crumbs = useRef<HTMLDivElement>(null);
+  const folded = useFolded(room, crumbs);
   return (
     <div {...marks} data-slot="path-bar" className="flex h-(--size-pathbar) shrink-0 items-center gap-2 px-2">
-      {/* 캡슐은 줄에 눌리면 줄어든다. 줄어드는 몫은 끝 조각의 말줄임이 받고, 끝 조각이 다 줄어도 모자라면(가장 좁게 끈 분할 열)
-          캡슐이 넘침을 자른다 — 앞 조각이 알약 밖으로 나와 보기 묶음 밑까지 칠해지지 않는다. */}
-      <nav
-        aria-label="위치"
-        className="flex h-8 min-w-0 items-center gap-1.5 overflow-hidden rounded-full px-3 text-chat-meta whitespace-nowrap text-fg-secondary inset-ring inset-ring-border-heavy"
-      >
-        <PathPieces items={path} />
-      </nav>
+      {/* 캡슐이 설 자리 — 보기 묶음 · 버튼이 제 폭을 갖고 남은 폭 전부다. 그래서 묶음이 줄 오른쪽 끝으로 밀린다. 접히면 조각 줄은
+          제자리에서 칠하지만 않는다(투명 · 포인터 안 받음) — 눈에서만 빠지고 스크린리더와 재는 값(`useFolded`)에는 그대로 남는다. 캡슐
+          안쪽 12는 조각 줄의 것이라 펴진 캡슐의 글자는 카드 + 20 그대로다. */}
+      <div ref={room} className="flex min-w-0 flex-1">
+        <nav
+          aria-label="위치"
+          className={cn(
+            "relative flex h-8 min-w-0 items-center overflow-hidden rounded-full text-chat-meta whitespace-nowrap text-fg-secondary inset-ring inset-ring-border-heavy",
+            folded && "w-8 shrink-0",
+          )}
+        >
+          <div
+            ref={crumbs}
+            className={cn(
+              "flex w-max shrink-0 items-center gap-1.5 px-3",
+              folded && "pointer-events-none absolute top-0 left-0 h-full opacity-0",
+            )}
+          >
+            <PathPieces items={path} />
+          </div>
+          {folded && (
+            <Hint text={path.join(" › ")} render={<div className="flex size-8 items-center justify-center" />}>
+              <FolderTree aria-hidden className="size-4" />
+            </Hint>
+          )}
+        </nav>
+      </div>
       <ViewSwitch {...view} />
       <div className="flex shrink-0 items-center gap-1">
         {onCopy && (
@@ -127,7 +174,6 @@ function ViewSwitch({ source, locked, onChange }: PathView) {
       // 선 칸을 눌러 비운 값(`[]`)도 뒤집기다 — 두 칸이 한 토글의 두 얼굴이다(위 주석).
       onValueChange={([pick]) => onChange(pick === undefined ? !source : pick === "source")}
       disabled={locked}
-      className="ml-auto"
     >
       <View value="doc" label="문서로 보기" locked={locked}>
         <Eye aria-hidden className="size-4" />
