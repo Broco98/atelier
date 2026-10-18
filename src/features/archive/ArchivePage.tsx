@@ -52,10 +52,11 @@ const NO_DOCS: string[] = [];
 /** 이 화면의 nav 항목 — 고른 아카이브가 없을 때 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("archive");
 
-// 목록 | 문서 한 카드(codex-ds 결정 28)와 오른쪽 spec 목록 패널. Projects와 같은 2단 카드다 — 아카이브 목록은 사이드바에 상주하지
-// 않으므로(nav 항목 하나뿐) 목록 칸이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의** 목록 컬럼이고, 그 근거는 같은
-// 목록이 사이드바에 이미 있다는 것이었다. 고른 아카이브의 문서 트리는 따로 여닫는 패널에 선다 — 작업 화면의 작업 패널과 같은
-// 손이다(스토리 55 · 56, codex-ds 결정 32).
+// 문서 | 목록 한 카드(codex-ds 결정 28)와 그 오른쪽의 spec 목록 패널 — 왼쪽부터 문서 · 목록 · 패널이다. Projects와 같은 2단 카드다 —
+// 아카이브 목록은 사이드바에 상주하지 않으므로(nav 항목 하나뿐) 목록 칸이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
+// 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다. 고른 아카이브의 문서 트리는 따로 여닫는 패널에 선다 — 작업
+// 화면의 작업 패널과 같은 손이다(스토리 55 · 56, codex-ds 결정 32). 패널이 목록 칸 너머 맨 오른쪽인 것은 목록과 문서가 한 카드의 두
+// 칸이라 그 사이에 설 수 없고, ⌘Enter와 머리 카드 끝의 토글이 여닫는 것이 「그 화면의 오른쪽 패널」이라서다.
 function ArchivePage({
   sidebarOpen,
   selectedSlug,
@@ -95,8 +96,9 @@ function ArchivePage({
   const { data: content } = useArchivedFile(selected?.slug ?? null, body === "image" ? null : current);
 
   // 목록 칸의 폭 — 프로젝트 목록(`panel-width`)과 키를 나눠 갖지 않는다(`ArchiveList` 머리말). 기본은 DS `size-list`(264)이고 범위는
-  // 240–560이다(codex-ds 스펙 S4). 목록 칸은 접지 않는다(codex-ds 결정 32) — ⌘Enter는 아래 spec 목록 패널의 것이다.
-  const listSize = useResizableWidth("archive-panel-width", 264, 240, 560);
+  // 240–560이다(codex-ds 스펙 S4). 목록 칸은 카드의 오른쪽 칸이라(`Frame`의 `ListCard`) 손잡이가 칸의 왼쪽 끝이다 — `"right"`가
+  // 끄는 방향을 뒤집는다. 목록 칸은 접지 않는다(codex-ds 결정 32) — ⌘Enter는 아래 spec 목록 패널의 것이다.
+  const listSize = useResizableWidth("archive-panel-width", 264, 240, 560, "right");
 
   // spec 목록 패널 — 오른쪽에 따로 여닫는 패널 카드다(codex-ds 결정 28 · 32). 머리 카드의 spec 목록 토글과 ⌘Enter가 이 값 하나를
   // 뒤집는다. 처음에는 열려 있다(DS 캔버스 Archive). 저장하지 않는다 — 작업 패널의 열림도 저장하지 않는다(`WorksPage`). 아카이브를 옮겨도
@@ -205,7 +207,7 @@ function ArchivePage({
   const copyDocPath = selected && current ? () => copyText(archiveRef(selected.slug, current)) : undefined;
 
   return (
-    // 공용 틀 위의 목록 | 문서 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다)와 오른쪽 spec 목록 패널 카드. 머리 줄에는
+    // 공용 틀 위의 문서 | 목록 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다)와 오른쪽 spec 목록 패널 카드. 머리 줄에는
     // 고른 아카이브의 머리 카드가 선다(codex-ds 스펙 §7).
     <Frame
       sidebarOpen={sidebarOpen}
@@ -281,7 +283,7 @@ function ArchivePage({
         as="main"
         label="아카이브 문서"
         className="flex-1"
-        // 문서 칸 — 목록 | 문서 카드의 오른쪽 칸이다. 경로 줄(codex-ds 스펙 §7 「Archive」 · `PathBar`)이 그 머리다 — 탭이 없는 칸이라
+        // 문서 칸 — 문서 | 목록 카드의 왼쪽 칸이다. 경로 줄(codex-ds 스펙 §7 「Archive」 · `PathBar`)이 그 머리다 — 탭이 없는 칸이라
         // 머리 자리에 서고(DS `PathBar`), 목록 칸의 목록 머리와 같은 48이라 둘이 한 줄에 선다(codex-ds 결정 28).
         // 작업 화면의 문서와 같은 줄이다: 경로 캡슐 · 보기 묶음 · 경로 복사이고 닫기 ×는 없다(codex-ds 결정 13). 경로는 work 폴더
         // 기준이라(`list_archived_docs`) 기록(`record.md`)은 `slug › record.md`, spec 문서는 `slug › spec › …`로 읽힌다. 고른
@@ -305,7 +307,7 @@ function ArchivePage({
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
             {/* 아직 모르는 동안에는 아무 말도 하지 않는다 — 목록이 도착하기 전에 "없어요"를
-                띄우면, 이 분기가 막으려던 바로 그 모순(왼쪽엔 목록, 본문엔 없다)이 로딩
+                띄우면, 이 분기가 막으려던 바로 그 모순(목록 칸엔 있고, 본문엔 없다)이 로딩
                 타이밍에서 되살아난다. */}
             {!selected ? (
               entriesPending ? null : (
@@ -316,7 +318,7 @@ function ArchivePage({
                       <Archive />
                     </EmptyMedia>
                     {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
-                        왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
+                        목록 칸이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
                         stale한 slug가 남았을 때 실제로 그렇게 된다. */}
                     <EmptyTitle>
                       {entries.length === 0
@@ -326,7 +328,7 @@ function ArchivePage({
                     <EmptyDescription>
                       {entries.length === 0
                         ? ARCHIVE_COPY.emptyScreen.body
-                        : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
+                        : "옮겨졌거나 이름이 바뀐 것 같아요. 오른쪽 목록에서 골라 주세요."}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

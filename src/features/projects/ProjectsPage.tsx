@@ -23,15 +23,16 @@ interface ProjectsPageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
   onSelect: (slug: string | null) => void;
-  onOpenWork: (slug: string | null) => void;
+  onOpenWork: (slug: string) => void;
 }
 
 function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
   // 목록 칸의 폭 — 이 목록만 쓰는 키다(사이드바는 `sidebar-width`, 아카이브 목록은 `archive-panel-width`를 따로 갖는다). 기본은 DS
   // `size-list`(264)이고 범위는 240–560이다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면 그대로 선다(`useResizableWidth`가
-  // 저장값을 읽는 규칙). 목록 칸은 접지 않는다(codex-ds 결정 32) — 이 화면에는 오른쪽 패널이 없어 ⌘Enter를 듣는 자리도 없다.
-  const listSize = useResizableWidth("panel-width", 264, 240, 560);
+  // 저장값을 읽는 규칙). 목록 칸은 카드의 오른쪽 칸이라(`Frame`의 `ListCard`) 손잡이가 칸의 왼쪽 끝이다 — `"right"`가 끄는 방향을
+  // 뒤집는다. 목록 칸은 접지 않는다(codex-ds 결정 32) — 이 화면에는 오른쪽 패널이 없어 ⌘Enter를 듣는 자리도 없다.
+  const listSize = useResizableWidth("panel-width", 264, 240, 560, "right");
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
   const updateProject = useUpdateProject();
@@ -102,7 +103,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
   };
 
   return (
-    // 공용 틀 위의 목록 | 상세 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 프로젝트의 머리 카드가
+    // 공용 틀 위의 상세 | 목록 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 프로젝트의 머리 카드가
     // 선다(codex-ds 스펙 §7).
     <Frame
       sidebarOpen={sidebarOpen}
@@ -201,7 +202,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
       // 연 문장이 여기 선다.
       overlay={<Toaster />}
     >
-      {/* 상세 칸 — 목록 | 상세 카드의 오른쪽 칸이다. 머리가 없다: 프로젝트의 이름과 할 일은 머리 카드가 들고, 칸 안에 고를 것이 없다. */}
+      {/* 상세 칸 — 상세 | 목록 카드의 왼쪽 칸이다. 머리가 없다: 프로젝트의 이름과 할 일은 머리 카드가 들고, 칸 안에 고를 것이 없다. */}
       <Card as="main" label="프로젝트" className="flex-1">
         {/* 옆은 글 거터 20이다 — 설정 본문과 같은 나눔이다(위 24 · 글 폭은 상세의 몸이 든다, `ProjectDetail`). */}
         <div className="flex-1 overflow-y-auto px-5 scroll-quiet">

@@ -391,8 +391,8 @@ for (const status of ["draft", "active", "review", "done"] as const) {
 }
 
 // 판 04 티켓 02 · codex-ds 티켓 20 — **목록이 있는 두 화면**(codex-ds 결정 28 · 32). 목록 칸과 그 내용(프로젝트 상세 · 문서)은 **한
-// 카드**이고, 가운데 0.5px `border-heavy` 세로 선이 가른다. 그 선이 폭 손잡이다 — 끌면 목록 폭이 바뀌어 저장되고, 두 번 누르면 기본
-// 폭(`size-list` 264)이다. 목록 칸은 접지 않는다 — 접는 토글도, 그것을 받던 ⌘Enter도 없다. 목록 머리는 내용의 경로 줄과 같은
+// 카드**이고, 내용이 왼쪽 · 목록 칸이 오른쪽이다 — 가운데 0.5px `border-heavy` 세로 선이 가른다. 그 선이 폭 손잡이다 — 왼쪽으로 끌면
+// 목록이 넓어져 저장되고, 두 번 누르면 기본 폭(`size-list` 264)이다. 목록 칸은 접지 않는다 — 접는 토글도, 그것을 받던 ⌘Enter도 없다. 목록 머리는 내용의 경로 줄과 같은
 // 48(`size-pathbar`)이라 두 머리가 한 줄에 선다. 따로 여닫는 패널만 틈 8로 떨어진 카드다(작업 패널 — 아래 「작업 화면」, Archive의
 // spec 목록 패널 — 여닫기는 `archive-docs.spec.ts`).
 const LIST_SCREENS = [
@@ -422,7 +422,7 @@ const LIST_SCREENS = [
       page.getByRole("textbox", { name: "아카이브 검색", exact: true }),
       page.getByRole("button", { name: "정렬 · 거르기", exact: true }),
     ],
-    // 고른 아카이브의 spec 목록 패널(codex-ds 티켓 21) — 목록 | 내용 카드 곁에 떨어진 카드로 서는 둘째 `aside`다.
+    // 고른 아카이브의 spec 목록 패널(codex-ds 티켓 21) — 내용 | 목록 카드 곁에 떨어진 카드로 서는 둘째 `aside`다.
     panel: "spec 목록",
   },
 ] as const;
@@ -430,7 +430,7 @@ const LIST_SCREENS = [
 const HANDLE = '[title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]';
 /** 목록 칸의 폭 손잡이(세로 선 위) — 사이드바의 손잡이(`aside` 안)와 가른다. */
 const listHandle = (page: Page) => page.locator(`${HANDLE}:not(aside ${HANDLE})`);
-/** 목록 칸을 품은 카드 — 목록 | 내용 한 카드다. */
+/** 목록 칸을 품은 카드 — 내용 | 목록 한 카드다. */
 const joinedCard = (page: Page, list: Locator) => page.locator('[data-slot="card"]', { has: list });
 /** 목록 칸 맨 위의 목록 머리. */
 const listHead = (list: Locator) => list.locator('[data-slot="list-head"]');
@@ -476,27 +476,27 @@ for (const screen of LIST_SCREENS) {
     const outer = screen.panel ? await boxOf(panelCard) : whole;
     if (screen.panel) expect([outer.x - whole.right, outer.y], "패널 카드 왼쪽 틈").toEqual([gap, titlebar]);
     expect(page.viewportSize()!.width - outer.right, "카드 줄 오른쪽 틈").toBe(gap);
-    // 목록 칸은 카드 왼쪽 끝, 내용 칸은 그 바로 뒤에서 카드 오른쪽 끝까지다 — 둘 사이에 틈이 없다.
-    expect([column.x, column.y, column.bottom], "목록 칸").toEqual([whole.x, whole.y, whole.bottom]);
-    expect([content.x, content.y, content.right, content.bottom], "내용 칸").toEqual([
-      column.right,
+    // 내용 칸은 카드 왼쪽 끝, 목록 칸은 그 바로 뒤에서 카드 오른쪽 끝까지다 — 둘 사이에 틈이 없다.
+    expect([content.x, content.y, content.bottom], "내용 칸").toEqual([whole.x, whole.y, whole.bottom]);
+    expect([column.x, column.y, column.right, column.bottom], "목록 칸").toEqual([
+      content.right,
       whole.y,
       whole.right,
       whole.bottom,
     ]);
 
-    // 세로 선 — 목록 칸 오른쪽 끝 안쪽에 칠한 0.5px `border-heavy` 면이고, 칸의 위에서 아래까지다.
+    // 세로 선 — 목록 칸 왼쪽 끝 안쪽에 칠한 0.5px `border-heavy` 면이고, 칸의 위에서 아래까지다.
     const rule = await list.evaluate((el) => {
       const style = getComputedStyle(el, "::after");
-      return [style.width, style.right, style.top, style.bottom, style.backgroundColor];
+      return [style.width, style.left, style.top, style.bottom, style.backgroundColor];
     });
     expect(rule, "세로 선").toEqual(["0.5px", "0px", "0px", "0px", await 토큰색(page, "--border-heavy")]);
     // 손잡이는 그 선 위에 걸친다 — 가운데가 두 칸의 경계다. 카드 안이라 창을 끄는 자리가 아니다.
     const handle = await boxOf(listHandle(page));
-    expect(handle.x + handle.width / 2, "손잡이 가운데 = 경계").toBe(column.right);
+    expect(handle.x + handle.width / 2, "손잡이 가운데 = 경계").toBe(column.x);
     expect([handle.y, handle.bottom], "손잡이는 칸의 위에서 아래까지").toEqual([column.y, column.bottom]);
     const middleY = whole.y + whole.height / 2;
-    expect(await draggable(page, column.right, middleY), "경계").toBe(false);
+    expect(await draggable(page, column.x, middleY), "경계").toBe(false);
     expect(await draggable(page, outer.right + gap / 2, middleY), "카드 줄 오른쪽 틈").toBe(true);
 
     // 목록 칸을 접는 토글이 없다(codex-ds 결정 32).
@@ -547,7 +547,7 @@ for (const screen of LIST_SCREENS) {
     // 그 안의 조작은 칸 안에서 같은 자리다.
     await page.keyboard.press("Meta+b");
     const gap = await token(page, "--space-2");
-    await expect.poll(async () => (await boxOf(list)).x).toBe(gap);
+    await expect.poll(async () => (await boxOf(joinedCard(page, list))).x).toBe(gap);
     await expect.poll(offsets).toEqual(before);
     for (const control of screen.headControls(page)) await expect(control).toBeVisible();
     expect(await unknownIpcCalls(page)).toEqual([]);
@@ -570,15 +570,15 @@ for (const screen of LIST_SCREENS) {
     expect(기본, "DS 수").toBe(264);
     expect(await 폭(), "저장된 폭이 없을 때").toBe(기본);
 
-    // 선을 오른쪽으로 40 끈다 — 목록이 그만큼 넓어지고 내용 칸이 선을 따라온다.
+    // 선을 왼쪽으로 40 끈다 — 목록이 그만큼 넓어지고 내용 칸의 오른쪽 끝이 선을 따라온다.
     const handle = await boxOf(listHandle(page));
     const [x, y] = [handle.x + handle.width / 2, handle.y + handle.height / 2];
     await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.mouse.move(x + 40, y, { steps: 5 });
+    await page.mouse.move(x - 40, y, { steps: 5 });
     await page.mouse.up();
     await expect.poll(폭).toBe(기본 + 40);
-    expect((await boxOf(main)).x, "내용 칸이 선을 따라온다").toBe((await boxOf(list)).right);
+    expect((await boxOf(main)).right, "내용 칸이 선을 따라온다").toBe((await boxOf(list)).x);
     expect(await 저장()).toBe(String(기본 + 40));
 
     await page.reload();
@@ -1276,7 +1276,7 @@ async function 링이칠해진변(page: Page, card: Locator) {
 
 // 바탕 위 카드의 링은 **칠해져야** 한다(codex-ds 결정 27 — 바탕 위 카드의 테두리는 0.5px 링뿐이다). 접히는 칸(작업 패널)의 바깥
 // 상자는 접히는 동안 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어 선다 — 링을 카드 바깥에 그리면 그 세 변에서
-// 잘려 틈 쪽 한 변에만 남는다. 목록 | 내용 카드(codex-ds 결정 28)는 두 칸을 한 링이 두른다 — 안의 칸은 링을 따로 그리지 않는다.
+// 잘려 틈 쪽 한 변에만 남는다. 내용 | 목록 카드(codex-ds 결정 28)는 두 칸을 한 링이 두른다 — 안의 칸은 링을 따로 그리지 않는다.
 test("바탕 위 카드의 0.5px 링이 네 변에 다 칠해진다 — 접히는 칸의 상자가 잘라 내지 않는다", async ({ page }) => {
   const 네변 = { 위: true, 아래: true, 왼쪽: true, 오른쪽: true };
   await installFixtureBackend(page);
@@ -1289,7 +1289,7 @@ test("바탕 위 카드의 0.5px 링이 네 변에 다 칠해진다 — 접히�
   await page.goto(`/projects/${PROJECTS[0].slug}`);
   const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
   await expect(list).toBeVisible();
-  expect(await 링이칠해진변(page, joinedCard(page, list)), "목록 | 내용 카드").toEqual(네변);
+  expect(await 링이칠해진변(page, joinedCard(page, list)), "내용 | 목록 카드").toEqual(네변);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

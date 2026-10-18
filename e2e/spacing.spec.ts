@@ -165,7 +165,7 @@ test("문서 표: 칸의 위아래가 8이다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프가 카드 끝에서 16이고, 상세 글은 내용 칸의 거터 20 · 위 24에서 시작한다", async ({
+test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프가 목록 칸 왼쪽 끝에서 16이고, 상세 글은 내용 칸의 거터 20 · 위 24에서 시작한다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -176,15 +176,15 @@ test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프
   await expect(속성).toContainText(billing.path);
   const [행글자, 거터, 위] = [await 간격(page, 4), await 간격(page, 5), await 간격(page, 6)];
 
-  // 목록 | 내용은 한 카드다(codex-ds 결정 28) — 목록 칸의 것은 그 카드 끝에서, 상세는 내용 칸 끝에서 잰다.
-  const card = await 상자(page.locator('[data-slot="card"]').first());
+  // 내용 | 목록은 한 카드다(codex-ds 결정 28) — 목록 칸의 것은 그 칸 왼쪽 끝(두 칸을 가르는 세로 선)에서, 상세는 내용 칸 끝에서 잰다.
   const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
+  const column = await 상자(list);
   const 자리: [string, Promise<number>][] = [
     ["목록 머리 제목", 첫글자(list.locator('[data-slot="list-head"]')).then((box) => box.x)],
     ["찾기 돋보기", 아이콘(list.getByRole("group").first()).then((box) => box.x)],
     ["목록 행 글리프", 아이콘(list.getByRole("button", { name: new RegExp(billing.name) }).first()).then((box) => box.x)],
   ];
-  for (const [이름, x] of 자리) expect((await x) - card.x, `${이름} — 카드 + 16`).toBe(행글자);
+  for (const [이름, x] of 자리) expect((await x) - column.x, `${이름} — 목록 칸 + 16`).toBe(행글자);
 
   const contentBox = await 상자(content);
   const first = await 상자(속성);

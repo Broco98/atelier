@@ -81,7 +81,7 @@ describe("ResizeHandle", () => {
 });
 
 // 순수 함수와 핸들을 따로 검사하면 **둘을 잇는 훅이 통째로 사각지대에 남는다.** 특히
-// 기존 세 패널의 부호를 실제로 정하는 것은 훅의 side 기본값 하나인데, 그 값이 뒤집혀도
+// 사이드바의 부호를 실제로 정하는 것은 훅의 side 기본값 하나인데, 그 값이 뒤집혀도
 // 위 검사들은 전부 초록이다. 그래서 훅을 진짜로 렌더한다 —
 // 초기 폭을 localStorage에서 읽으므로 node 환경에 그것만 세워 준다.
 function Panel({ side }: { side?: PanelSide }) {
@@ -98,13 +98,14 @@ describe("useResizableWidth가 핸들까지 잇는 배선", () => {
   });
 
   it("side를 넘기지 않은 패널은 왼쪽 패널이라 핸들이 오른쪽 가장자리에 붙는다", () => {
-    // 사이드바·프로젝트 목록·아카이브 목록 세 곳이 정확히 이 호출 모양이다
+    // 사이드바가 정확히 이 호출 모양이다
     const markup = renderToStaticMarkup(<Panel />);
     expect(markup.match(/right-0/g)).toHaveLength(2);
     expect(markup).not.toMatch(/left-0/);
   });
 
   it("훅에 넘긴 side가 핸들 가장자리까지 도달한다", () => {
+    // 오른쪽 패널(작업 패널 · Archive의 spec 목록 패널)과 목록 칸(프로젝트 · 아카이브 목록)이 이 호출 모양이다
     const markup = renderToStaticMarkup(<Panel side="right" />);
     expect(markup.match(/left-0/g)).toHaveLength(2);
     expect(markup).not.toMatch(/right-0/);

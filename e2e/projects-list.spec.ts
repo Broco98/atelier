@@ -58,6 +58,25 @@ test("이 프로젝트의 work을 열면 그 work의 마지막 자리가 열린�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **Works 구획에서 작업으로 가는 문은 작업 행뿐이다** — Works 화면은 언제나 work 하나를 연다(`/works`는 마지막에 띄운 work으로
+// 옮겨 간다 — `-works-view.tsx`). 작업을 모아 보는 자리는 사이드바와 팔레트라, 구획 머리에 「모두 보기」로 갈 곳이 없다. 머리는
+// 이름 · 곁글뿐이다.
+test("프로젝트 상세의 Works 구획 머리는 이름과 곁글뿐이고 구획 안의 버튼은 이 프로젝트의 작업 행이다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/projects/${project.slug}`);
+
+  const 구획 = page.locator("main section", { has: page.getByRole("heading", { name: "Works", exact: true }) });
+  await expect(구획).toHaveCount(1);
+  await expect(구획.getByText("이 프로젝트에서 시작된 작업", { exact: true })).toBeVisible();
+  await expect(page.getByText("모두 보기")).toHaveCount(0);
+  const 작업들 = WORKS.filter((w) => w.projects.includes(project.slug));
+  expect(작업들.length, "픽스처에 이 프로젝트의 작업이 있다").toBeGreaterThan(0);
+  await expect(구획.getByRole("button")).toHaveCount(작업들.length);
+  for (const [i, w] of 작업들.entries()) await expect(구획.getByRole("button").nth(i)).toContainText(w.title);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // ── 기준 브랜치 (스토리 67~69, S28 · S32 · S37) ──
 // 프로젝트 화면의 기준 브랜치는 로컬 브랜치 목록(Select)에서 고른다. 여는 버튼이 `combobox`이고 목록이
 // `listbox`라, 지금 값이 「선택됨」으로 읽힌다. 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔

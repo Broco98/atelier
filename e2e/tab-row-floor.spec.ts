@@ -355,7 +355,7 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
   expect(source.panel).toEqual(plain.panel);
 });
 
-// 목록 칸이 있는 화면(codex-ds 결정 28 — 목록 | 내용 한 카드)은 탭 줄이 없는 카드 줄이라 통째로 격리되어(`TAB_ROW_COLUMN`) 바닥을
+// 목록 칸이 있는 화면(codex-ds 결정 28 — 내용 | 목록 한 카드)은 탭 줄이 없는 카드 줄이라 통째로 격리되어(`TAB_ROW_COLUMN`) 바닥을
 // 알리지 않는다. 그래서 목록 칸을 범위(240–560, codex-ds 스펙 S4)의 끝까지 넓혀 둬도 사이드바를 밀지 않는다.
 //
 // 그 대신 자리가 모자라면 **목록 칸이 내준다** — 작업 패널 칸처럼 제 최소 폭까지 좁게 서고, 내용 칸에는 그 최소 폭만큼은 남긴다
@@ -384,7 +384,7 @@ for (const screen of [
     expect(layout.sidebar).toBe(400);
     expect(layout.pageSpill).toBeLessThanOrEqual(0);
 
-    /** 목록 | 내용 카드와 두 칸, 그리고 세로 선 위 손잡이 — 손잡이는 그 가운데를 누르면 정말 그것이 눌리는지까지 잰다. */
+    /** 내용 | 목록 카드와 두 칸, 그리고 세로 선 위 손잡이 — 손잡이는 그 가운데를 누르면 정말 그것이 눌리는지까지 잰다. */
     const joined = () =>
       page.evaluate(
         ([name, handleSelector]) => {
@@ -412,12 +412,13 @@ for (const screen of [
     expect(narrow.card.width, says).toBeLessThan(LIST_RANGE.max + LIST_RANGE.min);
     // 카드는 두 칸의 최소만큼은 선다 — 곁의 패널(Archive)이 그 자리를 먹지 않는다.
     expect(narrow.card.width, says).toBeGreaterThanOrEqual(LIST_RANGE.min * 2);
-    // 내용 칸이 카드 오른쪽 끝까지 서고 최소 폭을 지킨다. 목록 칸은 그 나머지라 저장한 폭보다 좁다.
-    expect(narrow.main.right, says).toBe(narrow.card.right);
+    // 내용 칸이 카드 왼쪽 끝에서 서고 최소 폭을 지킨다. 목록 칸은 그 나머지라 카드 오른쪽 끝까지 서고 저장한 폭보다 좁다.
+    expect(narrow.main.left, says).toBe(narrow.card.left);
     expect(narrow.main.width, says).toBe(LIST_RANGE.min);
+    expect(narrow.list.right, says).toBe(narrow.card.right);
     expect(narrow.list.width, says).toBe(narrow.card.width - LIST_RANGE.min);
     // 세로 선 위의 손잡이가 카드 안에 서고, 누르면 그것이 눌린다.
-    expect(narrow.handleAt, says).toBe(narrow.list.right);
+    expect(narrow.handleAt, says).toBe(narrow.list.left);
     expect(narrow.handleHit, says).toBe(true);
 
     // 줄어든 것은 그려진 폭뿐이다 — 저장한 폭은 그대로라 창을 넓히면 돌아온다. 넓힌 창은 곁의 패널이 제 폭으로 서고도 560 목록

@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Hint } from "@/components/ui/tooltip";
@@ -21,8 +20,8 @@ const EDIT_HELP = "클릭해서 편집";
 
 interface ProjectDetailProps {
   project: ProjectView;
-  // null = 선택 변경 없이 Works 화면으로 이동
-  onOpenWork: (slug: string | null) => void;
+  /** 「이 프로젝트에서 시작된 작업」 행을 누르면 그 work을 연다. */
+  onOpenWork: (slug: string) => void;
 }
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
@@ -74,14 +73,13 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
 
 /**
  * 구획 제목(DS `.at-set-sec > h2`) — 이름(`text-sm` · 600, 왼쪽 2) 뒤에 곁글(`text-xs` · `fg-secondary`)이 한 줄에 선다. 묶음과는
- * 10 떨어진다(`Section`). `end`는 오른쪽 끝의 조작이다.
+ * 10 떨어진다(`Section`).
  */
-function Subhead({ title, note, end }: { title: string; note: string; end?: React.ReactNode }) {
+function Subhead({ title, note }: { title: string; note: string }) {
   return (
     <div className="flex items-baseline gap-2 pl-0.5">
       <h2 className="text-sm font-semibold">{title}</h2>
       <span className="text-xs text-fg-secondary">{note}</span>
-      {end}
     </div>
   );
 }
@@ -111,27 +109,14 @@ function WorksSection({
   onOpenWork,
 }: {
   projectSlug: string;
-  onOpenWork: (slug: string | null) => void;
+  onOpenWork: (slug: string) => void;
 }) {
   const { data: works = [] } = useWorks();
   const related = works.filter((w) => w.projects.includes(projectSlug));
 
   return (
     <Section>
-      <Subhead
-        title="Works"
-        note="이 프로젝트에서 시작된 작업"
-        end={
-          <button
-            type="button"
-            onClick={() => onOpenWork(null)}
-            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-tertiary transition-colors quiet-hover focus-ring"
-          >
-            Works에서 모두 보기
-            <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
-          </button>
-        }
-      />
+      <Subhead title="Works" note="이 프로젝트에서 시작된 작업" />
       {/* 흰 목록 묶음(DS `List`). 빈 묶음도 같은 면 안에서 행 하나 높이의 글이다. */}
       <div className={LIST}>
         {related.length === 0 ? (

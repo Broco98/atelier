@@ -121,6 +121,44 @@ test("프로젝트 목록 · Archive 목록 · Archive의 spec 트리도 Tab이 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+/**
+ * 본문 카드 안에서 Tab이 앉은 칸의 차례 — 내용 칸(`main`)인가 그 이름의 목록 칸(`section`)인가. 카드 밖 자리는 건너뛰고, 이어진 같은
+ * 칸은 하나로 접는다. 한 바퀴(포커스가 창을 벗어나거나 처음 자리로 돌아오기)까지 잰다.
+ */
+async function 칸차례(page: Page, 목록: string): Promise<string[]> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const 칸들: string[] = [];
+  let 첫: string | null = null;
+  for (let n = 0; n < 80; n += 1) {
+    await page.keyboard.press("Tab");
+    const 지금 = await page.evaluate((name) => {
+      const el = document.activeElement as (HTMLElement & { __칸표?: string }) | null;
+      if (!el || el === document.body) return null;
+      el.__칸표 ??= Math.random().toString(36).slice(2);
+      const 칸 = el.closest(`section[aria-label="${name}"]`) ? "목록" : el.closest("main") ? "내용" : "밖";
+      return { 표: el.__칸표, 칸 };
+    }, 목록);
+    if (지금 === null || 지금.표 === 첫) return 칸들;
+    첫 ??= 지금.표;
+    if (지금.칸 !== "밖" && 칸들[칸들.length - 1] !== 지금.칸) 칸들.push(지금.칸);
+  }
+  throw new Error("Tab 80번 안에 한 바퀴를 못 돌았다");
+}
+
+// 내용 | 목록 카드(codex-ds 결정 28)의 두 칸은 DOM 차례가 보이는 차례다 — 왼쪽 내용 칸을 다 지나고 오른쪽 목록 칸으로 간다. 목록
+// 칸을 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다.
+test("프로젝트 · Archive의 본문 카드 안 Tab은 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/projects/${billing.slug}`);
+  await expect(page.locator(`button[data-project-row="${billing.slug}"]`)).toBeVisible();
+  expect(await 칸차례(page, "프로젝트 목록")).toEqual(["내용", "목록"]);
+
+  await page.goto(`/archive/${shipped.slug}`);
+  await expect(트리행(page, "record.md")).toBeVisible();
+  expect(await 칸차례(page, "아카이브 목록")).toEqual(["내용", "목록"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("레일이 서면 Tab은 패널 다음에 레일로 간다 — 칸마다 앉는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/processes");

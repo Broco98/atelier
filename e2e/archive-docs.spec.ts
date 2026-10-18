@@ -17,7 +17,7 @@ import {
 const [shipped, bare] = ARCHIVE;
 const [RECORD, IMAGE, HTML, TICKET] = ARCHIVED_DOCS[shipped.slug].docs;
 
-/** 목록 | 문서 카드의 왼쪽 칸 — 목록 머리 · 찾기 칸 · 날짜 소제목 · 두 줄 행. */
+/** 문서 | 목록 카드의 오른쪽 칸 — 목록 머리 · 찾기 칸 · 날짜 소제목 · 두 줄 행. */
 const 목록 = (page: Page) => page.getByRole("region", { name: "아카이브 목록", exact: true });
 /** 오른쪽 spec 목록 패널의 카드 — 고른 아카이브의 문서 트리가 선다(둘째 `aside` 안). */
 const 패널 = (page: Page) => page.getByRole("region", { name: "spec 목록", exact: true });
@@ -397,7 +397,7 @@ test("보고 있는 아카이브의 행을 다시 눌러도 보던 문서가 그
 // 머리 카드 오른쪽 끝, 세로선 너머다(⋯ | spec 목록 토글). 이름이 누르면 일어날 일을 말하고 `aria-expanded` · `aria-controls`가 패널을
 // 가리킨다. 닫힌 패널은 폭이 0으로 접혀(220ms — 작업 패널과 같은 칸) 문서 카드가 창 오른쪽 틈 끝까지 넓어진다. 찾기 칸에서의 ⌘Enter는
 // 입력칸의 몫이라 패널을 안 건드린다(작업 화면과 한 판정).
-test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 목록 | 문서 카드가 창 오른쪽 틈까지 넓어진다", async ({
+test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 문서 | 목록 카드가 창 오른쪽 틈까지 넓어진다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
