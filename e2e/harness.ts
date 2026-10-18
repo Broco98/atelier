@@ -943,6 +943,29 @@ export const 다떴다 = (menu: Locator) =>
   menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
 
 /**
+ * 주소를 바꾸는 부름(`pushState` · `replaceState`)을 그 차례로 적기 시작한다 — 적힌 것은 `적힌주소`가 읽고, `표를꽂는다`가 그 줄에
+ * 「표」를 끼운다. ⌃클릭이 **아무 데도 안 갔다**를 기다려서 보지 않고(언제까지 기다리나가 없다) 재는 길이다: ⌃클릭 뒤에 표를 꽂고
+ * ⌃ 없는 클릭으로 가게 하면, 적힌 줄의 첫 칸이 그 표일 때 ⌃클릭은 주소를 안 바꿨다.
+ *
+ * **여기 사는 이유는 누르면 가는 대상마다 ⌃클릭의 거름을 같은 길로 재려는 것이다**(codex-ds 결정 7) — work 행 · 띠 줄
+ * (`work-context-menu`)과 프로젝트 · Archive 목록 행 · spec 트리 파일 행(`target-menus`).
+ */
+export const 주소적기 = (page: Page) =>
+  page.evaluate(() => {
+    const log: string[] = [];
+    (window as unknown as { 주소들: string[] }).주소들 = log;
+    for (const method of ["pushState", "replaceState"] as const) {
+      const original = history[method].bind(history);
+      history[method] = (...args: Parameters<History["pushState"]>) => {
+        log.push(String(args[2]));
+        original(...args);
+      };
+    }
+  });
+export const 표를꽂는다 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들.push("표"));
+export const 적힌주소 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들);
+
+/**
  * 버튼 메뉴(⋯ · 상태 메뉴)를 **누른 채 끌어 그 줄 위에서 놓는다** — 놓은 줄이 돌고 카드가 닫혀야 한다. 우클릭 메뉴의 뿌리가 그 버튼
  * 메뉴의 조상이면 Base UI가 그 밑의 줄을 모두 「우클릭 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음만 받는다 — 왼쪽 버튼으로 끌어 놓으면 메뉴가
  * 열린 채 아무것도 안 돈다. 이 몸짓이 그 함정(편집 메뉴 · 대상 메뉴가 버튼 메뉴를 감싸는 것)을 잰다.

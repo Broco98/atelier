@@ -9,9 +9,12 @@ import {
   unknownIpcCalls,
   다떴다,
   머리카드,
+  적힌주소,
+  주소적기,
   줄차례,
   테두리,
   토큰색,
+  표를꽂는다,
 } from "./harness";
 
 // codex-ds 티켓 30 — **프로젝트 · Archive · 문서 글을 우클릭한다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 10 · 11, 스토리 70 · 73
@@ -200,6 +203,34 @@ for (const { name, setUp } of 대상들) {
       expect(await unknownIpcCalls(page)).toEqual([]);
     });
   }
+}
+
+// ── ⌃클릭은 우클릭이다 (결정 7) ──
+// macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 연다 — 그 손이 그 행을 골라 버리면 「메뉴는 고름을 안 바꾼다」가 깨진다. 누르면 그 대상을
+// 고르는 행(프로젝트 · Archive 목록 행 · spec 트리 파일 행)은 그 클릭에서 ⌃를 거른다 — work 행 · 띠 줄과 같은 거름이고, 재는 길도 그
+// 검사(`work-context-menu.spec.ts`)와 같다: ⌃가 실린 `click` 사건을 내고, 주소를 바꾸는 부름을 적어(`주소적기`) ⌃클릭 뒤에 꽂은 표보다
+// 먼저 적힌 것이 없음을 잰다. 머리 카드 이름은 누르면 고르는 자리가 아니라 뺀다. 키보드 Enter의 고름은 `keyboard.spec.ts`가 잰다.
+
+for (const { name, setUp } of 대상들.filter((one) => one.name !== "프로젝트 머리 카드 이름")) {
+  test(`${name}을 ⌃클릭하면 고름 · 주소가 그대로다 — ⌃ 없는 클릭은 그 행을 고른다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    const { target, mark, selected } = await setUp(page);
+    // 앵커: 화면이 섰고 고른 행이 섰다 — 적기 전에 주소가 멎었다(뒤늦은 정규화가 표 앞에 적히지 않게).
+    await expect(target).toBeVisible();
+    await expect.poll(() => 고른행(page, mark)).toEqual([selected]);
+    const own = await target.evaluate((el, mark) => el.closest(`[${mark}]`)?.getAttribute(mark) ?? null, mark);
+    await 주소적기(page);
+
+    await target.dispatchEvent("click", { ctrlKey: true });
+    await 표를꽂는다(page);
+    await target.dispatchEvent("click");
+    // 앵커: ⌃ 없는 클릭은 그 행을 골랐고, 적기가 그 부름을 봤다.
+    await expect.poll(() => 고른행(page, mark)).toEqual([own]);
+    const 주소들 = await 적힌주소(page);
+    expect(주소들.length).toBeGreaterThan(1);
+    expect(주소들[0], `⌃클릭이 ${selected}에서 옮겼다`).toBe("표");
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
 }
 
 // ── 프로젝트 메뉴가 부르는 것 ──

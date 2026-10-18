@@ -15,11 +15,14 @@ import {
   다떴다,
   띠,
   머리카드,
+  적힌주소,
+  주소적기,
   줄차례,
   칠한값,
   테두리,
   토큰값,
   토큰색,
+  표를꽂는다,
   행버튼,
 } from "./harness";
 
@@ -256,23 +259,8 @@ for (const { name, setUp } of 대상들) {
 // 가는 대상(행 · 띠 줄)은 그 클릭에서 ⌃를 거른다. ⌃클릭이 WebKit에서 어떤 사건 줄을 내는지는 러너가 흉내 내지 않으므로, 거름 자체를
 // ⌃가 실린 `click` 사건으로 잰다.
 //
-// 「안 갔다」는 기다려서 보지 않는다(언제까지 기다리나가 없다). 주소를 바꾸는 부름(`pushState` · `replaceState`)을 차례로 적고, ⌃클릭
-// 뒤에 표를 꽂은 다음 ⌃ 없는 클릭으로 가게 한다 — 적힌 줄의 첫 칸이 그 표면 ⌃클릭은 아무 데도 안 갔다.
-
-const 주소적기 = (page: Page) =>
-  page.evaluate(() => {
-    const log: string[] = [];
-    (window as unknown as { 주소들: string[] }).주소들 = log;
-    for (const method of ["pushState", "replaceState"] as const) {
-      const original = history[method].bind(history);
-      history[method] = (...args: Parameters<History["pushState"]>) => {
-        log.push(String(args[2]));
-        original(...args);
-      };
-    }
-  });
-const 표를꽂는다 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들.push("표"));
-const 적힌주소 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들);
+// 「안 갔다」는 기다려서 보지 않는다(언제까지 기다리나가 없다). 주소를 바꾸는 부름을 차례로 적고(`주소적기`), ⌃클릭 뒤에 표를 꽂은
+// 다음 ⌃ 없는 클릭으로 가게 한다 — 적힌 줄의 첫 칸이 그 표면 ⌃클릭은 아무 데도 안 갔다.
 
 for (const { name, setUp } of 대상들.filter((one) => one.name !== "머리 카드 이름")) {
   test(`${name}을 ⌃클릭하면 그 work로 가지 않는다 — ⌃ 없는 클릭은 간다`, async ({ page }) => {

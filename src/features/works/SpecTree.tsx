@@ -272,7 +272,11 @@ function TreeRows({
                 // 트리의 정류장 행만 Tab이 앉는다(트리 머리말). 이름(`aria-*`)은 달지 않는다 — 행의 글자가 이름이다.
                 tabIndex={item.path === stop ? 0 : -1}
                 data-roving={item.path}
-                onClick={() => onSelect(item.path)}
+                // ⌃클릭은 그 문서를 열지 않는다 — macOS에서 ⌃클릭은 우클릭이라 행 메뉴를 여는 손이고, 우클릭은 고름을 안 바꾼다(codex-ds
+                // 결정 7 — 사이드바 work 행의 `onClick`과 같은 거름이다).
+                onClick={(event) => {
+                  if (!event.ctrlKey) onSelect(item.path);
+                }}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
                   onCopy && "pr-1.5",

@@ -165,7 +165,11 @@ function ProjectList({
                 // 목록의 정류장 행만 Tab이 앉는다 — 나머지 행은 ↑↓로 간다(`ListScroll`). Enter는 버튼의 누름이라 그 행을 고른다.
                 tabIndex={project.slug === roving.stop ? 0 : -1}
                 data-roving={project.slug}
-                onClick={() => onSelect(project.slug)}
+                // ⌃클릭은 고르지 않는다 — macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 —
+                // 사이드바 work 행의 `onClick`과 같은 거름이다).
+                onClick={(event) => {
+                  if (!event.ctrlKey) onSelect(project.slug);
+                }}
                 // **F2는 이 행의 이름을 그 자리에서 고친다**(codex-ds 스펙 §9). 고르지 않은 행에서도 그 행의 이름이다.
                 onKeyDown={(event) => {
                   if (!pressed(event, "rename")) return;

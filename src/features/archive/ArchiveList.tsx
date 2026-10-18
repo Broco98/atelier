@@ -260,7 +260,11 @@ function ArchiveRow({
       data-archive-row={entry.slug}
       tabIndex={stop ? 0 : -1}
       data-roving={entry.slug}
-      onClick={onSelect}
+      // ⌃클릭은 고르지 않는다 — macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 —
+      // 사이드바 work 행의 `onClick`과 같은 거름이다).
+      onClick={(event) => {
+        if (!event.ctrlKey) onSelect();
+      }}
       className={cn(TWO_LINE_ROW, "text-left focus-ring", selected ? "selected-row" : "hover:bg-fill-soft")}
     >
       <span className="w-full truncate text-sm">{entry.title}</span>
