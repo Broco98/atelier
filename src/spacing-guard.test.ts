@@ -1,10 +1,10 @@
 /// <reference types="node" />
 // Node 타입을 이 파일만 끌어오는 이유는 tauri-commands.test.ts 상단 주석과 같다.
-import { readdirSync, readFileSync, type Dirent } from "fs";
+import { readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankComments, blankCssComments } from "./blank-comments";
+import { blankCssComments, blankedSources } from "./blank-comments";
 
 // **여백은 DS 간격 눈금으로만 적는다**(codex-ds 스펙 §4 「여백」 · 결정 24 · 티켓 25). 눈금은 Tailwind의 `--spacing`(4px)이고 DS
 // `space-*`가 곧 그 칸이다(`space-2` = `p-2` = 8). 화면은 세 줄에 맞춘다 — 틈 8 · 행 글자 16 · 글 거터 20(글 위 24). 그 밖에서 간격을
@@ -35,19 +35,8 @@ import { blankComments, blankCssComments } from "./blank-comments";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
-  });
-}
-
 // 주석을 지운 원문들 — `file`은 저장소 뿌리에서 잰 경로다.
-const scripts = sourceFiles(join(root, "src")).map((path) => ({
-  file: path.slice(root.length),
-  text: blankComments(readFileSync(path, "utf8")),
-}));
+const scripts = blankedSources();
 const stylesheet = { file: "src/index.css", text: blankCssComments(readFileSync(join(root, "src/index.css"), "utf8")) };
 
 type Source = { file: string; text: string };

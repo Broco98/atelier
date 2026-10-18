@@ -1,10 +1,5 @@
-/// <reference types="node" />
-// Node 타입을 이 파일만 끌어오는 이유는 tauri-commands.test.ts 상단 주석과 같다.
-import { readdirSync, readFileSync, type Dirent } from "fs";
-import { join } from "path";
-import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankComments } from "./blank-comments";
+import { blankComments, blankedSources } from "./blank-comments";
 
 // **단축키 글자 지킴**(codex-ds 결정 19 · 스펙 「Testing Decisions」 경계 ② · 티켓 26). 단축키는 `src/lib/hotkeys.json` 한 장에만 적고,
 // 툴팁(`Hint`의 `shortcut`) · 메뉴 단축키 칸(`DropdownMenuItem`의 `shortcut`) · 안내 문장의 Kbd(`HOTKEYS.<항목>.glyph`)가 그 표를
@@ -24,21 +19,8 @@ import { blankComments } from "./blank-comments";
 // 세는 곳은 `src`의 소스(테스트 빼고)이고 **주석은 세지 않는다**(`blank-comments.ts`) — 주석은 「⌘K가 연다」처럼 키를 이름으로
 // 적는 자리다. 표(`hotkeys.json`)는 소스가 아니라 데이터라 세는 곳 밖이다. 테스트는 사람이 보는 글자를 그대로 적어 재므로 뺀다.
 
-const root = fileURLToPath(new URL("..", import.meta.url));
-
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
-  });
-}
-
 // 주석을 지운 원문들 — `file`은 저장소 뿌리에서 잰 경로다.
-const sources = sourceFiles(join(root, "src")).map((path) => ({
-  file: path.slice(root.length),
-  text: blankComments(readFileSync(path, "utf8")),
-}));
+const sources = blankedSources();
 
 /** 수식키 글리프 — 단축키 표의 `glyph`가 앞에 다는 넷. */
 const MODIFIER_GLYPH = /[⌘⌃⌥⇧]/g;

@@ -1,7 +1,16 @@
+/// <reference types="node" />
+// Node 타입을 이 파일만 끌어오는 이유는 tauri-commands.test.ts 상단 주석과 같다.
+import { readdirSync, readFileSync, type Dirent } from "fs";
+import { join } from "path";
+import { fileURLToPath } from "url";
+
 // **소스 지킴 검사가 주석을 빼고 읽는 길** — 글자 단계(`type-scale.test.ts`) · 아이콘 선(`icon-stroke.test.ts`) · 상태 면
 // (`state-scale.test.ts`) · 색 지킴(`color-guard.test.ts`) · 여백 지킴(`spacing-guard.test.ts`) · 단축키 글자 지킴
 // (`hotkey-glyphs.test.ts`)이 함께 쓴다.
 // 주석은 옛 값을 기록으로 남기는 자리라(부품 머리말 「앱 규격으로 고친 자리」), 그 글자를 어긴 자리로 세면 안 된다.
+//
+// `src`를 걷고 읽는 것(`blankedSources`)도 여기 한 벌이다 — 색 · 여백 · 아이콘 선 · 단축키 글자 지킴이 부른다.
+// codex-ds 전부터 있던 여섯 검사의 걷기는 `origin/develop`과 겹치는 파일을 늘리지 않으려고 제 파일에 둔다.
 //
 // 테스트 파일이 아니다 — `*.test.ts`면 vitest가 이것을 테스트로 돌린다. 앱 코드는 이것을 부르지 않는다.
 
@@ -86,4 +95,23 @@ export function blankComments(source: string): string {
 // CSS의 주석(`/* … */`)도 같은 길이의 공백으로 지운다.
 export function blankCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
+}
+
+// pathname은 한글 경로를 퍼센트 인코딩해서 넘긴다 — 이 저장소의 워크트리 경로가 그렇다
+const root = fileURLToPath(new URL("..", import.meta.url));
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
+/** `src`의 소스(tsx · ts, 테스트 빼고)를 주석을 지운 원문으로 읽는다 — `file`은 저장소 뿌리에서 잰 경로다(`src/main.tsx`). */
+export function blankedSources(): { file: string; text: string }[] {
+  return sourceFiles(join(root, "src")).map((path) => ({
+    file: path.slice(root.length),
+    text: blankComments(readFileSync(path, "utf8")),
+  }));
 }
