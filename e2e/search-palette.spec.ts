@@ -479,6 +479,8 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
 
   await pressSearchKey(page);
   await expect(rows(page).nth(0)).toHaveAttribute("aria-selected", "true");
+  // **포커스가 칸에 들어온 뒤에 누른다.** 그 전의 글자 아닌 키는 첫 프레임 가드가 삼킨다(S24).
+  await expect(box(page)).toBeFocused();
 
   await page.keyboard.press("ArrowDown");
   await expect(rows(page).nth(1)).toHaveAttribute("aria-selected", "true");
@@ -813,6 +815,8 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
   await expect(scrim).toHaveCSS("background-color", 막색);
 
   // 닫으면 표식이 걷혀 막대가 되돌아온다 — 남으면 앱이 도는 내내 막대가 없다.
+  // **포커스가 칸에 들어온 뒤에 누른다.** 그 전의 글자 아닌 키는 첫 프레임 가드가 삼킨다(S24).
+  await expect(box(page)).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(palette(page)).toHaveCount(0);
   await expect(bar).not.toHaveCSS("display", "none");
