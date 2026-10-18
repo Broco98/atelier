@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
 // 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass` · `panelMotionMs`)과 접힐 때의
-// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
+// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
+// 카드 사이 틈을 스크립트가 읽는 길(`cardGapPx`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
 // 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
 // 작업 화면 · spec 레이아웃 편집기 · Archive(spec 목록 패널) 세 기능이 함께 읽어 어느 한 기능의 폴더에 두지 않는다.
 //
@@ -63,6 +64,16 @@ export const WORK_PANEL_WIDTH = 340;
  */
 export const PANEL_MIN_WIDTH = 260;
 export const PANEL_MAX_WIDTH = 560;
+
+/**
+ * 카드 사이 틈(px) — 토큰 `--space-2`를 그 요소에서 읽는다. 카드 줄의 패널 칸과 분할의 두 열이 이 틈을 두고 서서(`Frame`), 그려진
+ * 상자의 폭에서 틈을 빼야 카드의 폭이 나오는 자리가 부른다 — 틈 자리 손잡이가 재는 칸의 폭(`useResizableWidth`의 `drawnWidth`)과
+ * 분할의 두 열이 나눠 갖는 폭(`Frame`의 `sharedWidth`)이다. 숫자를 그 자리에 적으면 토큰이 바뀌는 날 그 자리만 낡는다.
+ * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다.
+ */
+export function cardGapPx(from: HTMLElement): number {
+  return parseFloat(getComputedStyle(from).getPropertyValue("--space-2")) || 0;
+}
 
 /**
  * 접히는 패널 **바깥 상자**의 폭 트랜지션 길이와 곡선 — Atelier 토큰 `duration-panel`(220ms) · `ease-panel`이다(index.css의

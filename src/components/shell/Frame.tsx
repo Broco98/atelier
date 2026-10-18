@@ -17,7 +17,7 @@ import { useShellBackground } from "@/features/terminal/terminal-settings";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
+import { cardGapPx, foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import Rail, { railStands, type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
@@ -397,13 +397,12 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
 }
 
 /**
- * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--space-2`)에서 읽는다 — 숫자를
- * 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
+ * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--space-2`)에서 읽는다
+ * (`cardGapPx`). 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
  */
 function sharedWidth(host: HTMLElement | null): number {
   if (!host) return 0;
-  const gap = parseFloat(getComputedStyle(host).getPropertyValue("--space-2")) || 0;
-  return Math.max(0, host.getBoundingClientRect().width - gap);
+  return Math.max(0, host.getBoundingClientRect().width - cardGapPx(host));
 }
 
 /**
