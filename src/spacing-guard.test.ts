@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankCssComments, blankedSources } from "./blank-comments";
+import { blankCssComments, blankedSources, type Place, placesOf, type Source, where } from "./blank-comments";
 
 // **여백은 DS 간격 눈금으로만 적는다**(codex-ds 스펙 §4 「여백」 · 결정 24 · 티켓 25). 눈금은 Tailwind의 `--spacing`(4px)이고 DS
 // `space-*`가 곧 그 칸이다(`space-2` = `p-2` = 8). 화면은 세 줄에 맞춘다 — 틈 8 · 행 글자 16 · 글 거터 20(글 위 24). 그 밖에서 간격을
@@ -39,17 +39,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const scripts = blankedSources();
 const stylesheet = { file: "src/index.css", text: blankCssComments(readFileSync(join(root, "src/index.css"), "utf8")) };
 
-type Source = { file: string; text: string };
-
-/** 어긴 자리 하나 — `파일:줄: 글자`로 보인다. */
-type Place = { file: string; line: number; text: string };
-
-function places(pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): Place[] {
-  return sources.flatMap(({ file, text }) =>
-    [...text.matchAll(pattern)].map((m) => ({ file, line: text.slice(0, m.index).split("\n").length, text: m[0] })),
-  );
-}
-const where = (place: Place) => `${place.file}:${place.line}: ${place.text}`;
+// 어긴 자리 — `where`로 `파일:줄: 글자`가 된다. 원문을 안 넘기면 소스와 `index.css`를 함께 센다.
+const places = (pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): Place[] => placesOf(pattern, sources);
 
 /**
  * 목록의 자리 가운데 **정확히 한 번** 걸리지 않는 것 — `파일: 클래스 × 걸린 수`로 보인다. 목록의 한 줄은 그 파일의 한 자리다. 안 걸린

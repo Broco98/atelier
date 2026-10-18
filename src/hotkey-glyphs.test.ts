@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blankComments, blankedSources } from "./blank-comments";
+import { blankComments, blankedSources, placesOf, type Source, where } from "./blank-comments";
 
 // **단축키 글자 지킴**(codex-ds 결정 19 · 스펙 「Testing Decisions」 경계 ② · 티켓 26). 단축키는 `src/lib/hotkeys.json` 한 장에만 적고,
 // 툴팁(`Hint`의 `shortcut`) · 메뉴 단축키 칸(`DropdownMenuItem`의 `shortcut`) · 안내 문장의 Kbd(`HOTKEYS.<항목>.glyph`)가 그 표를
@@ -34,10 +34,8 @@ const LITERAL_ARIA = /aria-keyshortcuts["']?\s*[=:]\s*(?:["'`]|\{[^}]*?["'`])/g;
 const LITERAL_KBD = /<Kbd\b[^>]*>\s*(?:[^\s{<]|\{\s*["'`])/g;
 
 // 어긴 자리를 `파일:줄: 글자`로 센다.
-function offenders(pattern: RegExp, from: { file: string; text: string }[] = sources): string[] {
-  return from.flatMap(({ file, text }) =>
-    [...text.matchAll(pattern)].map((m) => `${file}:${text.slice(0, m.index).split("\n").length}: ${m[0]}`),
-  );
+function offenders(pattern: RegExp, from: Source[] = sources): string[] {
+  return placesOf(pattern, from).map(where);
 }
 
 describe("꼴이 막을 것을 막는다", () => {

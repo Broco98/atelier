@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankCssComments, blankedSources } from "./blank-comments";
+import { blankCssComments, blankedSources, placesOf, type Source, where } from "./blank-comments";
 import { SHADCN_NAMES } from "./css-tokens";
 
 // **색은 Codex 이름으로만 적는다**(codex-ds 결정 27 · 스펙 S1 · 티켓 07). 값의 정본은 `index.css`의 Codex 토큰 하나다 — 그
@@ -29,13 +29,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const scripts = blankedSources();
 const stylesheet = { file: "src/index.css", text: blankCssComments(readFileSync(join(root, "src/index.css"), "utf8")) };
 
-type Source = { file: string; text: string };
-
 // 어긴 자리를 `파일:줄: 글자`로 센다.
 function offenders(pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): string[] {
-  return sources.flatMap(({ file, text }) =>
-    [...text.matchAll(pattern)].map((m) => `${file}:${text.slice(0, m.index).split("\n").length}: ${m[0]}`),
-  );
+  return placesOf(pattern, sources).map(where);
 }
 
 // 색을 받는 유틸리티의 앞말 — `bg-*` · `text-*` · `border-t-*` · `inset-ring-*` · `from-*` …(Tailwind의 `--color-*` 이름공간).
