@@ -43,7 +43,7 @@ const 고른자리 = (input: Locator) =>
 const 머리이름 = (page: Page, name: string) => 머리카드(page).getByText(name, { exact: true });
 
 /**
- * **바깥이 work 이름을 바꿨다** — 에이전트의 MCP `atelier_edit_work`나 다른 창. 앱은 감시자의 `works:changed` 뒤의 목록 재조회로만
+ * **바깥이 work 이름을 바꿨다** — 에이전트의 MCP `atelier_edit_work`나 다른 인스턴스. 앱은 감시자의 `works:changed` 뒤의 목록 재조회로만
  * 안다(`archiveByMcp`와 같은 흉내 — 목록 답을 갈고 그 이벤트를 쏜다).
  */
 const 바깥이이름을바꾼다 = async (page: Page, slug: string, title: string) => {
