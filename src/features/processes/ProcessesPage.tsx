@@ -5,7 +5,7 @@ import { EyeOff, Folder, SquareTerminal, Unlink } from "lucide-react";
 import { Card, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import { SignalLane } from "@/components/shell/shell-signal";
-import { TargetMenu } from "@/components/shell/TargetMenu";
+import { rowMenuButton, TargetMenu } from "@/components/shell/TargetMenu";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Button } from "@/components/ui/button";
@@ -163,9 +163,7 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
           targetOf={(from) => {
             const row = from.closest<HTMLElement>("[data-row-menu]");
             const name = row?.dataset.rowMenu;
-            return row && name !== undefined
-              ? { of: name, ring: row, back: row.querySelector<HTMLElement>("[aria-haspopup='menu']") }
-              : null;
+            return row && name !== undefined ? { of: name, ring: row, back: rowMenuButton(row) } : null;
           }}
           items={(name) => <ProcessRowMenuItems name={name} />}
         >

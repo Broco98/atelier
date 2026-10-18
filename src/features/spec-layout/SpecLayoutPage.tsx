@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
-import { TargetMenu, type TargetRegion } from "@/components/shell/TargetMenu";
+import { rowMenuButton, TargetMenu, type TargetRegion } from "@/components/shell/TargetMenu";
 import { cn } from "@/lib/utils";
 import { SettingsGroup, SettingsLead, SettingsRow, SettingsSection } from "@/features/settings/SettingsGroup";
 import { layoutDirRef } from "@/features/works/refs";
@@ -151,9 +151,7 @@ export function SpecLayoutSection({
       </SettingsLead>
       <SettingsSection>
         <TargetMenu
-          targetOf={(_from, row) =>
-            state.edited ? { of: LAYOUT_NAME, ring: row, back: row.querySelector<HTMLElement>("[aria-haspopup='menu']") } : null
-          }
+          targetOf={(_from, row) => (state.edited ? { of: LAYOUT_NAME, ring: row, back: rowMenuButton(row) } : null)}
           items={() => <RevertMenuItems onRevert={onRevert} />}
           label={revertMenuLabel(LAYOUT_NAME)}
         >

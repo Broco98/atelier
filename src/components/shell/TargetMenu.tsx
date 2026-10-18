@@ -37,10 +37,21 @@ export interface TargetHit<T> {
   of: T;
   /** 열린 동안 테두리가 설 요소. 없으면 테두리가 없다. */
   ring?: HTMLElement | null;
-  /** 우클릭으로 연 메뉴가 닫힐 때 포커스가 갈 요소. 없으면 `ring`이다 — 행 자신이 포커스를 받지 않는 대상은 그 행의 ⋯을 준다. */
+  /**
+   * 우클릭으로 연 메뉴가 닫힐 때 포커스가 갈 요소. 없으면 `ring`이다 — 행 자신이 포커스를 받지 않는 대상은 그 행의 ⋯을 준다
+   * (`rowMenuButton`).
+   */
   back?: HTMLElement | null;
   /** 키로 열 때 카드가 설 자리. 없으면 `ring`(없으면 키를 받은 요소)의 왼쪽 아래다. */
   at?: { x: number; y: number };
+}
+
+/**
+ * 행이 품은 ⋯ — 메뉴를 여는 버튼(`aria-haspopup="menu"`)의 첫째다. 행 자신이 포커스를 받지 않는 자리(Processes 행 · spec 레이아웃
+ * 행)가 `back`으로 준다. 못 찾으면 `null`이고, 그러면 포커스는 `ring`으로 간다.
+ */
+export function rowMenuButton(row: HTMLElement): HTMLElement | null {
+  return row.querySelector<HTMLElement>("[aria-haspopup='menu']");
 }
 
 /** 자리가 제 요소에 다는 손잡이. */
