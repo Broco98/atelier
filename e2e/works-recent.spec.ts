@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { SEARCH_HITS, WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 검색팔레트를연다 } from "./harness";
 
 // 결정 12·14. **work 화면이 떠 있게 되면 그 work을 「열었다」로 센다.**
 //
@@ -16,7 +16,6 @@ const [specWork, otherWork] = WORKS;
 
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
-const box = (page: Page) => page.getByRole("textbox", { name: "검색어" });
 
 /** 「열었다」가 나간 slug들. **중복을 안 지운다** — 이 검사가 세려는 것이 그 수다. */
 async function touched(page: Page): Promise<string[]> {
@@ -50,11 +49,8 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
   expect(await touched(page), "아무것도 안 바꿨는데 「열었다」가 또 나갔다").toEqual(afterOpen);
 
   // ── ② 문서를 바꾼다. 같은 work 안이라 「열었다」는 그대로여야 한다.
-  await page.keyboard.press("Meta+k");
+  await 검색팔레트를연다(page);
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
-  // **포커스가 칸에 들어온 뒤에 누른다.** 그 전의 글자 아닌 키는 첫 프레임 가드가 삼킨다(S24). 줄이 다 섰어도
-  // 포커스는 Base UI가 다음 프레임에 옮겨서, 부하가 있으면 아래 ↓ · Enter가 삼켜져 팔레트가 남는다.
-  await expect(box(page)).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(palette(page)).toHaveCount(0);

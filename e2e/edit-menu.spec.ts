@@ -10,6 +10,8 @@ import {
   unknownIpcCalls,
   workRow,
   writeShell,
+  검색어칸,
+  검색팔레트를연다,
   끌어놓는다,
   다떴다,
   머리카드,
@@ -138,10 +140,9 @@ const 입력칸들: Array<{ name: string; setUp: (page: Page) => Promise<Locator
     setUp: async (page) => {
       await page.goto("/archive/shipped-work");
       await expect(page.getByRole("textbox", { name: "아카이브 검색", exact: true })).toBeVisible();
-      await page.keyboard.press("Meta+k");
+      await 검색팔레트를연다(page);
       const palette = page.getByRole("dialog", { name: "검색", includeHidden: true });
       const field = palette.getByRole("textbox", { name: "검색어", exact: true, includeHidden: true });
-      await expect(field).toBeFocused();
       // 창이 다 뜬 뒤에 잰다 — 뜨는 동안은 창이 커지며 칸이 움직여, 그 사이에 연 메뉴의 자리와 다 뜬 칸의 자리가 어긋난다.
       await palette.evaluate((el) =>
         Promise.all(el.getAnimations({ subtree: true }).map((one) => one.finished.catch(() => undefined))),
@@ -329,10 +330,9 @@ test("검색 팔레트의 검색어 칸에서 메뉴로 복사 · 붙여넣기�
   await installFixtureBackend(page);
   await page.goto("/archive/shipped-work");
   await expect(page.getByRole("textbox", { name: "아카이브 검색", exact: true })).toBeVisible();
-  await page.keyboard.press("Meta+k");
+  await 검색팔레트를연다(page);
   const palette = page.getByRole("dialog", { name: "검색" });
-  const field = palette.getByRole("textbox", { name: "검색어", exact: true });
-  await expect(field).toBeFocused();
+  const field = 검색어칸(palette);
   await field.fill("abc치운");
   const 첫자리 = await 글자첫자리(field);
 

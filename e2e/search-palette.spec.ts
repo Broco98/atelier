@@ -9,6 +9,8 @@ import {
   installFixtureBackend,
   readIpcRecord,
   unknownIpcCalls,
+  검색어칸,
+  검색팔레트를연다,
   그림자,
   셸입력,
   시계를세운다,
@@ -38,7 +40,6 @@ const [specWork] = WORKS;
 
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
-const box = (page: Page) => page.getByRole("textbox", { name: "검색어" });
 /** 셸 컨트롤 행 맨 오른쪽 칸. `exact`가 없으면 팔레트의 「검색어」·「검색 결과」까지 문다. */
 const searchButton = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
 
@@ -73,7 +74,10 @@ async function destinationsAsked(page: Page): Promise<string[]> {
   return args.destinations.map((place) => place.key);
 }
 
-/** 팔레트를 여는 키. 화음 하나라 준비도 상태도 없다(팔레트 결정 1). */
+/**
+ * 팔레트를 여는 키. 화음 하나라 준비도 상태도 없다(팔레트 결정 1). 연 뒤에 칸의 포커스를 딛고 이어 가는 검사는 하네스의
+ * `검색팔레트를연다`로 연다 — 칸의 포커스를 기다린다.
+ */
 async function pressSearchKey(page: Page) {
   await page.keyboard.press("Meta+k");
 }
@@ -111,13 +115,12 @@ test("치면 그 글자가 그대로 명령으로 나간다", async ({ page }) =
   await page.goto(`/works/${specWork.slug}`);
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  await pressSearchKey(page);
   // **팔레트가 포커스를 가져와야 한다.** 안 가져오면 친 글자가 칸이 아니라 뒤 화면으로 간다.
-  await expect(box(page)).toBeFocused();
+  await 검색팔레트를연다(page);
 
-  await box(page).pressSequentially("고정");
+  await 검색어칸(page).pressSequentially("고정");
 
-  await expect(box(page)).toHaveValue("고정");
+  await expect(검색어칸(page)).toHaveValue("고정");
   // 열 때 한 번(빈 질의), 글자마다 한 번씩. 마지막 물음이 **지금 칸에 있는 것**이다.
   await expect.poll(() => askedFor(page)).toEqual(["", "고", "고정"]);
   // 치는 사이에 목록이 비지 않는다 — 픽스처가 질의를 안 보므로 줄 수는 내내 같다.
@@ -139,9 +142,8 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
 
-  await pressSearchKey(page);
-  await expect(box(page)).toBeFocused();
-  await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
+  await 검색팔레트를연다(page);
+  await 검색어칸(page).pressSequentially(SEARCH_DESTINATION_QUERY);
 
   // **`exact`가 있어야 한다.** 이름 맞추기는 대소문자를 접으므로, 라벨 되찾기가 통째로 죽어
   // key(`settings`)가 그대로 서도 `exact` 없이는 초록이 된다.
@@ -195,7 +197,7 @@ test("메뉴가 쏜 ⌘K가 팔레트를 연다", async ({ page }) => {
   await expect(palette(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   // 뜬 것이 키로 여는 것과 **같은 조각**이다 — 포커스를 가져오는 것이 그 조각의 일이다.
-  await expect(box(page)).toBeFocused();
+  await expect(검색어칸(page)).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -272,7 +274,7 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   // 같은 팔레트에서 층이 셋인 답으로 갈아 끼운다 — 가는 곳·작업·본문이 함께 선다.
   // **작업 줄이 여기 있어야 하는 이유가 티켓의 문장이다**: 「이름의 x가 목적지 줄과 작업
   // 줄에서 같다」. 고정 답은 문서 줄만 내므로 그 층은 이 답으로만 잴 수 있다.
-  await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
+  await 검색어칸(page).pressSequentially(SEARCH_DESTINATION_QUERY);
   await expect(rows(page)).toHaveCount(3);
   const [destRow, workRow, textRow] = [
     await gutterOf(rows(page).nth(0)),
@@ -350,7 +352,7 @@ test("팔레트는 폭 600 · 반경 16 · shadow-prominent + 2xl 카드에 입�
   const 창상자 = (await 창.boundingBox())!;
 
   // 입력 줄 — 52 · 안쪽 0 16 · 글리프 16 `fg-tertiary` · 틈 10, 아래에 0.5px `border-heavy` 한 줄(줄 안쪽 바닥에 칠한다).
-  const 입력줄 = box(page).locator("..");
+  const 입력줄 = 검색어칸(page).locator("..");
   expect(await 칠한값(입력줄, "height", "padding-left", "padding-right", "column-gap"), "입력 줄").toEqual([
     "52px",
     "16px",
@@ -477,10 +479,8 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
   await page.goto(`/works/${specWork.slug}?tab=terminal&split=lr`);
   await expect(page.locator(".xterm")).toHaveCount(1);
 
-  await pressSearchKey(page);
+  await 검색팔레트를연다(page);
   await expect(rows(page).nth(0)).toHaveAttribute("aria-selected", "true");
-  // **포커스가 칸에 들어온 뒤에 누른다.** 그 전의 글자 아닌 키는 첫 프레임 가드가 삼킨다(S24).
-  await expect(box(page)).toBeFocused();
 
   await page.keyboard.press("ArrowDown");
   await expect(rows(page).nth(1)).toHaveAttribute("aria-selected", "true");
@@ -533,10 +533,9 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
   await expect(셸입력(page)).toBeFocused();
   const before = page.url();
 
-  await pressSearchKey(page);
-  await expect(palette(page)).toBeVisible();
   // 입력칸이 생기면서 포커스가 셸을 떠난다 — 빌린 것이 있어야 돌려줄 것도 있다.
-  await expect(box(page)).toBeFocused();
+  await 검색팔레트를연다(page);
+  await expect(palette(page)).toBeVisible();
 
   await page.keyboard.press("Escape");
 
@@ -562,7 +561,7 @@ test("팔레트는 창으로 읽히고, ↓로 켠 결과를 입력칸이 가리
   await expect(dialog).toBeVisible();
   // 입력칸과 목록이 **그 창 안에** 선다 — 창만 따로 떠 있고 목록이 밖이면 읽기 도구는 창을 비어 있게 읽는다.
   await expect(dialog.getByRole("listbox", { name: "검색 결과" })).toBeVisible();
-  await expect(dialog.getByRole("textbox", { name: "검색어" })).toBeFocused();
+  await expect(검색어칸(dialog)).toBeFocused();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
 
   await page.keyboard.press("ArrowDown");
@@ -573,9 +572,9 @@ test("팔레트는 창으로 읽히고, ↓로 켠 결과를 입력칸이 가리
   expect(id, "켜진 줄에 id가 없다 — 입력칸이 가리킬 곳이 없다").toBeTruthy();
   // 그 id가 **그 줄 하나**를 가리킨다 — 줄마다 같은 id면 가리키는 것이 첫 줄로 눕는다.
   await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
-  await expect(box(page)).toHaveAttribute("aria-activedescendant", id!);
+  await expect(검색어칸(page)).toHaveAttribute("aria-activedescendant", id!);
   // 옮긴 것은 켜짐뿐이다 — 포커스는 입력칸에 머문다.
-  await expect(box(page)).toBeFocused();
+  await expect(검색어칸(page)).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -614,22 +613,22 @@ test("입력 줄의 돋보기나 끝 여백을 눌러도 친 글자가 입력칸
   await searchButton(page).click();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   await settled(page);
-  await box(page).pressSequentially("ab");
+  await 검색어칸(page).pressSequentially("ab");
 
-  const 입력줄 = box(page).locator("..");
+  const 입력줄 = 검색어칸(page).locator("..");
   await 입력줄.locator("svg").click();
-  await expect(box(page), "돋보기를 누른 뒤").toBeFocused();
+  await expect(검색어칸(page), "돋보기를 누른 뒤").toBeFocused();
   await page.keyboard.type("c");
-  await expect(box(page)).toHaveValue("abc");
+  await expect(검색어칸(page)).toHaveValue("abc");
 
   // 줄 오른쪽 끝의 안쪽 — **칸 밖인 것을 먼저 센다.** 칸이 거기까지 닿으면 이 클릭은 아무것도 안 잰다.
-  const [줄상자, 칸상자] = [(await 입력줄.boundingBox())!, (await box(page).boundingBox())!];
+  const [줄상자, 칸상자] = [(await 입력줄.boundingBox())!, (await 검색어칸(page).boundingBox())!];
   const 끝 = { x: 줄상자.x + 줄상자.width - 8, y: 줄상자.y + 줄상자.height / 2 };
   expect(끝.x, "끝 여백이 칸 안이다").toBeGreaterThan(칸상자.x + 칸상자.width);
   await page.mouse.click(끝.x, 끝.y);
-  await expect(box(page), "끝 여백을 누른 뒤").toBeFocused();
+  await expect(검색어칸(page), "끝 여백을 누른 뒤").toBeFocused();
   await page.keyboard.type("d");
-  await expect(box(page)).toHaveValue("abcd");
+  await expect(검색어칸(page)).toHaveValue("abcd");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -652,12 +651,13 @@ test("셸에서 ⌘K로 연 바로 뒤에 친 글자는 셸이 아니라 입력�
   const written = await callCount(page, "pty_write");
 
   await 시계를세운다(page);
+  // 칸의 포커스를 기다리지 않는다(`검색팔레트를연다`로 열지 않는다) — 기다리면 이 검사가 재는 틈이 지나간다.
   await pressSearchKey(page);
   await page.keyboard.press("x");
   await page.clock.resume();
 
   await expect(page.getByRole("dialog", { name: "검색" })).toBeVisible();
-  await expect(box(page)).toHaveValue("x");
+  await expect(검색어칸(page)).toHaveValue("x");
   expect(await callCount(page, "pty_write")).toBe(written);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -691,7 +691,7 @@ test("검색 버튼이 ⌘K와 같은 팔레트를 연다", async ({ page }) => 
   await expect(palette(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   // 포커스를 가져오는 것은 팔레트 조각의 일이다 — ⌘K로 연 것과 같은 것이 떴다는 뜻이다.
-  await expect(box(page)).toBeFocused();
+  await expect(검색어칸(page)).toBeFocused();
 
   // 같은 자리를 다시 누른다. 그 위에 있는 것은 버튼이 아니라 팔레트의 배경이라 닫힌다.
   await page.mouse.click(point.x, point.y);
@@ -796,7 +796,7 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
   const bar = page.locator('[data-scrollbar="vertical"]');
   await expect(bar).toHaveAttribute("data-on", "");
 
-  await pressSearchKey(page);
+  await 검색팔레트를연다(page);
   await expect(palette(page)).toBeVisible();
 
   // **막대가 걷힌다.** `opacity: 0`이 아니라 `display: none`인 것은, 스크립트가 `data-on`을
@@ -815,8 +815,6 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
   await expect(scrim).toHaveCSS("background-color", 막색);
 
   // 닫으면 표식이 걷혀 막대가 되돌아온다 — 남으면 앱이 도는 내내 막대가 없다.
-  // **포커스가 칸에 들어온 뒤에 누른다.** 그 전의 글자 아닌 키는 첫 프레임 가드가 삼킨다(S24).
-  await expect(box(page)).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(palette(page)).toHaveCount(0);
   await expect(bar).not.toHaveCSS("display", "none");

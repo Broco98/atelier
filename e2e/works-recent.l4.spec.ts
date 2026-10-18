@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { installRealBackend, unknownIpcCalls } from "./harness";
+import { installRealBackend, unknownIpcCalls, 검색팔레트를연다 } from "./harness";
 import { expect, seedWork, test } from "./l4";
 import type { Page } from "./evidence";
 
@@ -72,10 +72,8 @@ test("마지막으로 연 work이 빈 팔레트의 첫 작업 줄이다", async 
   // 이력이 비어 있을 때의 기본 순서 — 만든 순이다.
   await page.goto("/projects");
   await expect(page.getByText("등록된 프로젝트가 없어요")).toBeVisible();
-  await page.keyboard.press("Meta+k");
+  await 검색팔레트를연다(page);
   await expect.poll(() => workRows(page)).toEqual(["나중에 만든 작업", "먼저 만든 작업"]);
-  // **포커스가 칸에 들어온 뒤에 누른다.** 그 전의 글자 아닌 키는 첫 프레임 가드가 삼킨다(S24).
-  await expect(page.getByRole("textbox", { name: "검색어" })).toBeFocused();
   await page.keyboard.press("Escape");
 
   // 만든 순으로는 아래인 쪽을 연다.

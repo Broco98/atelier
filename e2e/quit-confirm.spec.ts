@@ -9,6 +9,8 @@ import {
   openShell,
   readIpcRecord,
   unknownIpcCalls,
+  검색어칸,
+  검색팔레트를연다,
   셸입력,
   시계를세운다,
 } from "./harness";
@@ -372,7 +374,8 @@ test("팔레트 위에 뜬 창은 Esc 한 번에 창만 닫히고, 팔레트는 
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
-  await page.keyboard.press("Meta+k");
+  // 칸이 포커스를 쥔 뒤에 창을 띄운다 — 창이 닫히며 돌려주는 「열기 전 자리」가 그 칸이어야 아래 단언이 선다.
+  await 검색팔레트를연다(page);
   const palette = page.getByRole("listbox", { name: "검색 결과" });
   await expect(palette).toBeVisible();
 
@@ -385,7 +388,7 @@ test("팔레트 위에 뜬 창은 Esc 한 번에 창만 닫히고, 팔레트는 
   await expect(quitDialog(page)).toHaveCount(0);
   await expect(palette).toBeVisible();
   // 창은 열기 전 자리로 포커스를 돌려준다 — 팔레트의 입력칸이다. 안 돌아오면 다음 글자가 어디에도 안 선다.
-  await expect(page.getByRole("textbox", { name: "검색어" })).toBeFocused();
+  await expect(검색어칸(page)).toBeFocused();
   expect(await callCount(page, "quit_app")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

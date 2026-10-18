@@ -966,6 +966,32 @@ export const 표를꽂는다 = (page: Page) => page.evaluate(() => (window as un
 export const 적힌주소 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들);
 
 /**
+ * 검색 팔레트의 「검색어」 칸. 창 안을 집으려면 그 창을 넘긴다(`검색어칸(dialog)`).
+ *
+ * **여기 사는 이유는 그 칸을 집는 길을 하나로 두려는 것이다** — 팔레트를 여는 spec마다 이 칸을 집는다(`search-palette` ·
+ * `settings-nav` · `shell-focus` · `edit-menu` · `quit-confirm`, 아래 `검색팔레트를연다`).
+ */
+export const 검색어칸 = (scope: Page | Locator) => scope.getByRole("textbox", { name: "검색어", exact: true });
+
+/**
+ * ⌘K로 검색 팔레트를 열고 「검색어」 칸이 포커스를 받기까지 기다린다. **연 뒤에 그 칸의 포커스를 딛고 이어 가는 검사(키를 누른다 ·
+ * 글자를 넣는다 · 그 포커스가 남는지 본다)는 이것으로 연다** — 창은 첫 포커스를 다음 프레임에 옮기고(Base UI), 그 전의 글자 아닌
+ * 키(방향키 · Enter · Esc · ⇧F10)는 첫 프레임 가드가 삼킨다(S24). 줄이 다 섰어도 포커스는 아직일 수 있어서, 부하가 있으면 그 키가
+ * 삼켜져 팔레트가 남는다.
+ *
+ * 이것으로 열지 않는 검사가 있다. ⌘K 바로 뒤의 틈을 재는 검사(`search-palette`의 「셸에서 ⌘K로 연 바로 뒤에 친 글자는 …」)는
+ * 기다리면 그 틈이 지나간다. 연 뒤에 칸을 안 쓰는 검사(마우스로 고르기 · 종료 요청 · 안 열림)는 기다릴 까닭이 없다. 메뉴가 열린
+ * 채 ⌘K를 누르는 검사(`edit-menu`)는 칸에 온 포커스가 재는 것 자체라 제 단언으로 잰다.
+ *
+ * **여기 사는 이유는 ⌘K 뒤의 기다림을 한 벌로 두려는 것이다** — 연 뒤에 칸이 포커스를 쥐어야 하는 spec이 여럿이다
+ * (`search-palette` · `works-recent` · `settings-nav` · `shell-focus` · `edit-menu` · `quit-confirm`, L4 `works-recent.l4`).
+ */
+export async function 검색팔레트를연다(page: Page): Promise<void> {
+  await page.keyboard.press("Meta+k");
+  await expect(검색어칸(page)).toBeFocused();
+}
+
+/**
  * 버튼 메뉴(⋯ · 상태 메뉴)를 **누른 채 끌어 그 줄 위에서 놓는다** — 놓은 줄이 돌고 카드가 닫혀야 한다. 우클릭 메뉴의 뿌리가 그 버튼
  * 메뉴의 조상이면 Base UI가 그 밑의 줄을 모두 「우클릭 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음만 받는다 — 왼쪽 버튼으로 끌어 놓으면 메뉴가
  * 열린 채 아무것도 안 돈다. 이 몸짓이 그 함정(편집 메뉴 · 대상 메뉴가 버튼 메뉴를 감싸는 것)을 잰다.
