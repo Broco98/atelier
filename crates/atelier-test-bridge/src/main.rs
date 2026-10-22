@@ -88,6 +88,14 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_spec_file", |a| {
         ok(atelier_core::read_spec_file(&works_dir(), &text(a, "slug")?, &text(a, "path")?))
     }),
+    // 워크트리 읽기는 다른 읽기 명령과 같이 코어를 진짜로 탄다(git-integration 판 01 — 진짜 git이 판정한다).
+    ("list_worktree_tree", |a| {
+        ok(atelier_core::list_worktree_tree(&works_dir(), &text(a, "slug")?, &text(a, "project")?))
+    }),
+    ("list_worktree_folder", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::list_worktree_folder(&works_dir(), &slug, &project, &path))
+    }),
     ("list_archive", |_| ok(atelier_core::list_archive(&archive_dir()))),
     // 아카이브 문서 목록도 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구
     // (`with_archived_spec_tree`)를 진짜로 탄다.
@@ -102,6 +110,11 @@ const HANDLERS: &[(&str, Handler)] = &[
     // `archived_spec_folder`)는 있어도 하는 일이 탐색기를 여는 것이라, 풀기만 하고 성공을 답하면 열지 않은 것을 「열었다」로 통과시킨다.
     ("open_work_folder", |_| in_app_only("탐색기를 여는 일입니다 — 경로 풀기는 코어 단위 검사가 잽니다")),
     ("open_archived_spec_folder", |_| in_app_only("탐색기를 여는 일입니다 — 경로 풀기는 코어 단위 검사가 잽니다")),
+    // 워크트리 파일 읽기도 다른 읽기 명령과 같이 코어를 진짜로 탄다(git-integration 판 01).
+    ("read_worktree_file", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path))
+    }),
     ("search", |a| {
         ok(atelier_core::search(
             // **반드시 코어의 데이터 루트다.** 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 봐서,

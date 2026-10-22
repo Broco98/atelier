@@ -7,9 +7,10 @@ import { PanelBody, pickRail, type RailItem } from "@/components/shell/Rail";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-// **레일의 진열대** — 칸이 둘인 레일(codex-ds 결정 25 · 29 · DS `PanelRail`)을 L3가 칠해진 값으로 재려고 세운다(`rail.spec.ts`). 앱의 작업
-// 화면은 레일 칸이 `spec` 하나라 레일이 서지 않고(codex-ds 티켓 18), 앱 안에서 칸 정의를 늘릴 길이 없다. 그래서 시험용 둘째 칸
-// `files`(git-integration이 더할 칸의 이름이다 — DS `PanelRail`)를 여기서만 든다.
+// **레일의 진열대** — 칸이 둘인 레일(codex-ds 결정 25 · 29 · DS `PanelRail`)을 L3가 칠해진 값으로 재려고 세운다(`rail.spec.ts`). 세울
+// 때 앱의 작업 화면은 레일 칸이 `spec` 하나라 레일이 서지 않았다(codex-ds 티켓 18) — 그래서 시험용 둘째 칸 `files`(git-integration이
+// 더할 칸의 이름이다 — DS `PanelRail`)를 여기서만 든다. 지금은 앱에도 `files`가 더해져 레일이 서고, 그 자리는 `frame.spec.ts`가
+// 잰다. 진열대는 레일의 모양 · 고르는 규칙을 앱의 데이터(트리 · 문서) 없이 따로 재는 자리로 남는다.
 //
 // 앱이 이 파일을 들이지 않는다. 검사가 앱 화면 위에서 Vite dev 서버로 들인다(`page.addScriptTag`의 모듈 스크립트가
 // `/e2e/rail-fixture.tsx`를 `import`한다 — `menu-fixture.tsx`와 같은 길). 그래서 같은 React · 같은 공용 틀(`Frame`) · 같은 `index.css`가

@@ -122,6 +122,9 @@ test("상태 메뉴에서 지금 상태를 다시 고르면 닫히기만 하고 
   await badge.focus();
   await page.keyboard.press("ArrowDown");
   await expect(menu).toBeVisible();
+  // 두 번째 ↓는 첫 줄이 포커스를 쥔 **뒤에** 누른다. 메뉴는 보인 다음 프레임에 첫 줄을 켠다 — 그 전에 누른 ↓는
+  // 그 일에 덮여 첫 줄이 켜진 채로 남는다(느린 러너에서 그랬다: PR #489 · #490의 verify).
+  await expect(상태줄(menu, "draft")).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(상태줄(menu, pinnedWork.status)).toBeFocused();
   await page.keyboard.press("Enter");

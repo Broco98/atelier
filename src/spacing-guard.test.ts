@@ -179,6 +179,21 @@ describe("임의 간격", () => {
       why: "registry `ToggleGroup`의 `spacing` — 칸 사이를 눈금의 칸 수로 받아 `--spacing`에 곱한다. 그 수의 타입이 정수 · 반 칸(`ToggleGap` — 0 · 0.5 · 1 · 1.5 · 2)이라 값이 늘 눈금 위다(설정 칩 1.5 · 기본 2)",
     },
     {
+      file: "src/features/code/HighlightedCode.tsx",
+      className: "pl-[2ch]",
+      why: "코드뷰 평문 보기의 줄 번호 칸 왼쪽 — 라이브러리(`@pierre/diffs`)가 줄 번호를 세우는 2ch 그대로다. 글자 폭의 몫이라 눈금이 없고, 풀이 서서 보기가 바뀌어도 글자가 안 뛰게 그 자리를 따른다(`PlainCode`)",
+    },
+    {
+      file: "src/features/code/HighlightedCode.tsx",
+      className: "pr-[1ch]",
+      why: "위와 같다 — 줄 번호 칸 오른쪽 1ch",
+    },
+    {
+      file: "src/features/code/HighlightedCode.tsx",
+      className: "px-[1ch]",
+      why: "위와 같다 — 줄 글의 좌우 1ch",
+    },
+    {
       file: "src/features/works/SpecViewer.tsx",
       className: "mr-[5.21px]",
       why: "체크박스 항목의 되돌림 — 목록 거터 22 − 체크박스 13 − 그 뒤 공백 한 칸 3.79(본문 글꼴에서 잰 값). 본문 첫 글자를 불릿 항목과 한 x에 세우는 실측값이다",
@@ -452,6 +467,11 @@ describe("눈금의 사분 단", () => {
       file: "src/features/works/SpecTree.tsx",
       className: "gap-px",
       why: "작업 패널 트리 — 줄 사이 1(DS `.at-tree`)",
+    },
+    {
+      file: "src/features/files/FilesTree.tsx",
+      className: "gap-px",
+      why: "작업 패널 files 트리 — spec 트리와 같은 줄 사이 1(DS `.at-tree`)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",

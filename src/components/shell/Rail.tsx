@@ -53,7 +53,7 @@ export function railStands(items: readonly RailItem[]): boolean {
  *
  * **제 상자가 없다**(`contents`) — 안의 스크롤 상자가 패널 몸의 직계 flex 자식으로 남아야 해서다(`WorkPanel`의 `SpecTab` 머리말).
  * 표식(`data-panel-view`)은 검사가 몸을 정체성으로 집는 고리다. 작업 화면(`WorkPanel`)과 칸이 둘인 레일의 L3 진열대
- * (`e2e/rail-fixture.tsx`)가 이 상자를 함께 쓴다 — 지금 작업 화면의 몸은 `spec` 하나라 안 보이는 몸이 앱에 서지 않는다.
+ * (`e2e/rail-fixture.tsx`)가 이 상자를 함께 쓴다 — 작업 화면의 몸은 `spec` · `files` 둘이다.
  */
 export function PanelBody<Id extends string>({ view, shown, children }: { view: Id; shown: boolean; children: ReactNode }) {
   return (
@@ -69,8 +69,8 @@ export function PanelBody<Id extends string>({ view, shown, children }: { view: 
  * 위 머리 줄에 선다(codex-ds 스펙 §4).
  *
  * **칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4 — `railStands`). 서지 않을 때는 공용 틀(`Frame`)이 이 열을 통째로 그리지
- * 않아 본문 열이 창 오른쪽 틈 끝까지 넓어지고, 패널을 여닫는 길은 머리 카드 오른쪽 끝의 패널 토글 · ⌘Enter다. 지금 작업 화면의 칸은
- * `spec` 하나라 서지 않는다. 칸이 더해지면 이 열이 다시 선다.
+ * 않아 본문 열이 창 오른쪽 틈 끝까지 넓어지고, 패널을 여닫는 길은 머리 카드 오른쪽 끝의 패널 토글 · ⌘Enter다. 작업 화면의 칸이
+ * `spec` 하나이던 동안은 서지 않았고, `files`가 더해져 다시 선다.
  *
  * **`aside`도 `nav`도 아니다**(판 04 「지키는 것」 · DS `PanelRail` 「구현 고리」). `aside`는 사이드바와 오른쪽 패널(작업 패널 · spec 목록
  * 패널) 둘뿐이라 e2e가 그 순서를 재고(`tab-row-floor` · `archive-docs`), `nav`는 사이드바 버튼을 집는 고리다(`harness.ts`). 머리 줄 `<header>` 밖이다.

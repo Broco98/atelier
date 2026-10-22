@@ -32,6 +32,12 @@ export default defineConfig(async () => ({
     },
   },
 
+  // 코드 보기의 강조 워커(`@pierre/diffs/worker/worker.js`)는 ES 모듈이다 — 언어 문법과 WASM 엔진을 `import()`로 나눠 받는다.
+  // 기본(`iife`)으로는 그 나눔을 묶지 못한다. 워커는 `{ type: "module" }`로 띄운다(`HighlightedCode`).
+  worker: {
+    format: "es" as const,
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

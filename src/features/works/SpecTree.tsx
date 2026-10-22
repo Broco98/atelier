@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronRight, Copy } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronRight, Copy, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
@@ -12,16 +12,42 @@ import type { SpecTreeItem } from "./types";
 // `selected-row`에 굵기 500이다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
+// 글자색은 여기 없다 — 흐린 행(`DIM`)과 갈리는 자리라 행이 고른다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-1.5 rounded-lg pr-2 text-left text-chat-meta text-fg-secondary transition-colors hover:bg-fill-soft focus-ring";
+  "flex h-7 items-center gap-1.5 rounded-lg pr-2 text-left text-chat-meta transition-colors hover:bg-fill-soft focus-ring";
+
+// 흐린 행의 글자 — files 칸이 gitignore에 걸린 것을 이렇게 그린다(git-integration 결정 37). 값은 그 칸 범위의 토큰이라
+// (`index.css`의 `[data-files-tree]`) 전역 토큰을 고치지 않는다(git-integration 결정 38).
+const DIM = "text-(--tree-row-dim)";
 
 // 줄 사이는 1px 틈이다(DS `.at-tree` — 사이드바 · 목록 칸의 행 사이 2보다 촘촘하다). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
 const ROWS = "flex flex-col gap-px";
 
 // 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
 // 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
-// 정해지지 않은 수라 클래스로 못 적어서다.
-const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+// 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
+export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+
+/**
+ * 트리 행이 읽는 항목의 모양 — spec 트리(`SpecTreeItem`)와 files 트리가 같은 행을 쓴다(git-integration 결정 37). `children`은
+ * 그리는 순서 그대로이고, 파일이면 비어 있다.
+ */
+export interface TreeRowItem<T> {
+  name: string;
+  path: string;
+  kind: "file" | "folder";
+  children: readonly T[];
+}
+
+/** 행의 겉 — 항목 타입마다 다르게 읽는다(`TreeRows`의 `lookOf`). */
+export interface RowLook {
+  /** 행의 글리프. 파일 행에서 `null`이면 확장자 꼬리표가 선다. */
+  glyph: LucideIcon | null;
+  /** 글자를 흐리게 그린다. 그 까닭은 `note`가 말한다. */
+  dim?: boolean;
+  /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」). */
+  note?: string;
+}
 
 interface TreeProps {
   // 엔진이 가른 spec 트리의 첫 층 — `spec/` 바로 아래의 파일·폴더들. **받은 순서 그대로
@@ -62,6 +88,7 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
         onOpenChange={setOpen}
         onSelect={onSelect}
         onCopy={onCopy}
+        lookOf={specLook}
       />
     </div>
   );
@@ -77,10 +104,38 @@ function openByDefault(item: SpecTreeItem): boolean {
   return item.group === null || item.group.latest;
 }
 
+// spec 행의 글리프는 레이아웃 항목이 준 아이콘이다. 흐린 행도 덧붙이는 말도 없다.
+const specLook = (item: SpecTreeItem): RowLook => ({ glyph: specIconOf(item.icon) });
+
+/** 행 묶음의 입력. 접힘의 주인은 부르는 쪽이다 — spec 트리는 제 상태에, files 트리는 work · 프로젝트별 기억에 둔다. */
+export interface TreeRowsProps<T extends TreeRowItem<T>> {
+  items: readonly T[];
+  depth: number;
+  current: string | null;
+  /** 폴더가 펼쳐져 있는가 — 「처음에 펼쳐 둘 폴더」의 규칙도 여기 든다(spec: 최신 판만, files: 아무것도). */
+  isOpen: (item: T) => boolean;
+  onOpenChange: (path: string, open: boolean) => void;
+  /**
+   * 파일 행을 눌렀다. `clicks`는 그 누름이 몇 번째 연속 클릭인가다(`MouseEvent.detail` — 키보드로 누르면 0). spec 트리는 안
+   * 읽고, files 트리가 더블클릭의 둘째 누름을 가른다(git-integration S15).
+   */
+  onSelect: (path: string, clicks: number) => void;
+  onCopy?: (path: string) => void;
+  lookOf: (item: T) => RowLook;
+  /**
+   * 펼친 폴더의 몸을 대신 그린다 — `undefined`를 돌려주면 항목의 자식 행이다. 받는 깊이는 자식 행의 깊이다. files 트리의 아직
+   * 안 읽은 폴더(gitignore에 걸린 폴더)가 펼칠 때 한 겹 읽어 그 자리에 「읽는 중」 · 행 · 까닭을 세운다(git-integration 티켓 02).
+   */
+  folderBody?: (item: T, depth: number) => ReactNode;
+}
+
 // 폴더는 Collapsible이다(판 4, 스토리 114). 행이 트리거라 `aria-expanded`를 스스로 달고, 자식 줄은 패널이다.
 // 기본 변형이라 움직임 없이 **바로** 접히고 닫히면 언마운트된다 — 지금까지의 조건부 렌더와 같다.
 // 뿌리가 곧 노드 상자(`flex flex-col`)라 상자가 느는 것은 자식 줄을 싸는 패널 하나다.
-function TreeRows({
+//
+// **files 트리도 이 행을 쓴다**(git-integration 결정 37 · 38) — 그래서 항목 타입과 펼침 규칙 · 행의 겉을 받는다. `codex-ds`가
+// 전역 토큰을 바꾸면 두 트리가 함께 칠해진다.
+export function TreeRows<T extends TreeRowItem<T>>({
   items,
   depth,
   current,
@@ -88,20 +143,17 @@ function TreeRows({
   onOpenChange,
   onSelect,
   onCopy,
-}: {
-  items: SpecTreeItem[];
-  depth: number;
-  current: string | null;
-  isOpen: (item: SpecTreeItem) => boolean;
-  onOpenChange: (path: string, open: boolean) => void;
-  onSelect: (path: string) => void;
-  onCopy?: (path: string) => void;
-}) {
+  lookOf,
+  folderBody,
+}: TreeRowsProps<T>) {
   return (
     <>
       {items.map((item) => {
+        const look = lookOf(item);
         if (item.kind === "folder") {
           const expanded = isOpen(item);
+          // 패널은 펼쳤을 때만 마운트되므로 몸도 그때만 짓는다 — files의 걸린 폴더는 그 몸이 한 겹 읽기를 건다
+          const body = expanded ? folderBody?.(item, depth + 1) : undefined;
           return (
             <Collapsible
               key={item.path}
@@ -109,7 +161,11 @@ function TreeRows({
               onOpenChange={(open) => onOpenChange(item.path, open)}
               className={ROWS}
             >
-              <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
+              <CollapsibleTrigger
+                className={cn(COLLAPSE_ROW, look.dim ? DIM : "text-fg-secondary")}
+                style={treeIndent(depth)}
+                aria-description={look.note}
+              >
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
@@ -121,21 +177,27 @@ function TreeRows({
                   )}
                   strokeWidth={SMALL_GLYPH_STROKE}
                 />
-                <FolderGlyph icon={item.icon} />
+                <FolderGlyph glyph={look.glyph} />
                 {/* 폴더 이름을 그대로 보여준다 — 경로 복사가 붙어 있는 트리라 화면의 이름이
                     디스크의 이름과 어긋나면 안 된다. 판 폴더 이름은 길어서 자른다 */}
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </CollapsibleTrigger>
               <CollapsibleContent className={ROWS}>
-                <TreeRows
-                  items={item.children}
-                  depth={depth + 1}
-                  current={current}
-                  isOpen={isOpen}
-                  onOpenChange={onOpenChange}
-                  onSelect={onSelect}
-                  onCopy={onCopy}
-                />
+                {body !== undefined ? (
+                  body
+                ) : (
+                  <TreeRows
+                    items={item.children}
+                    depth={depth + 1}
+                    current={current}
+                    isOpen={isOpen}
+                    onOpenChange={onOpenChange}
+                    onSelect={onSelect}
+                    onCopy={onCopy}
+                    lookOf={lookOf}
+                    folderBody={folderBody}
+                  />
+                )}
               </CollapsibleContent>
             </Collapsible>
           );
@@ -168,14 +230,19 @@ function TreeRows({
                   클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
               <button
                 type="button"
-                onClick={() => onSelect(item.path)}
+                onClick={(event) => onSelect(item.path, event.detail)}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
                   onCopy && "pr-1.5",
+                  look.dim && DIM,
                 )}
                 style={treeIndent(depth)}
+                aria-description={look.note}
+                // 고른 행은 면과 굵기로 보이고 화면 읽기에는 `aria-current`로 말한다 — spec 트리는 보는 문서, files 트리는 본문에
+                // 선 파일 탭의 파일이다.
+                aria-current={item.path === current ? "page" : undefined}
               >
-                <FileGlyph name={item.name} icon={item.icon} />
+                <FileGlyph name={item.name} glyph={look.glyph} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </button>
               {onCopy && (
@@ -204,22 +271,20 @@ function TreeRows({
 // 폴더 · 파일 행의 글리프는 14px `fg-tertiary`다(DS `.at-tree-row .ic`).
 const GLYPH = "size-3.5 shrink-0 text-fg-tertiary";
 
-// 폴더 행의 글리프 — 항목이 준 아이콘이다. 없거나 표에 없는 이름이면 아무것도 안 그린다:
+// 폴더 행의 글리프 — 행의 겉이 준 것이다(spec: 항목이 준 아이콘). 없으면 아무것도 안 그린다:
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
-function FolderGlyph({ icon }: { icon: string | null }) {
-  const Glyph = specIconOf(icon);
+function FolderGlyph({ glyph: Glyph }: { glyph: LucideIcon | null }) {
   return Glyph && <Glyph className={GLYPH} />;
 }
 
-// 파일 행의 글리프. 항목이 아이콘을 줬으면 **확장자 라벨 대신** 그 아이콘이다. 라벨은 글자라 이름
+// 파일 행의 글리프. 행의 겉이 글리프를 줬으면(spec: 항목이 준 아이콘) **확장자 라벨 대신** 그것이다. 라벨은 글자라 이름
 // 버튼의 접근성 이름에 들어가서, 둘을 함께 그리면 `overview.md` 행의 이름이 `MD overview.md`가
 // 된다 — 이름으로 행을 찾는 L3·L4가 그것을 딛는다(spec 레이아웃 구현 스펙 4절).
 //
-// 아이콘이 없거나 표에 없는 이름이면 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
+// 글리프가 없으면(spec: 아이콘이 없거나 표에 없는 이름) 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
 // 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-2xs` 10 / 14 · `font-mono` · 500)에 문서 안 인라인
 // 코드와 같은 옅은 면 · `rounded-sm`이고 테두리가 없다(ui-refresh 결정 16 · 25).
-function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
-  const Glyph = specIconOf(icon);
+function FileGlyph({ name, glyph: Glyph }: { name: string; glyph: LucideIcon | null }) {
   if (Glyph) return <Glyph className={GLYPH} />;
   const dot = name.lastIndexOf(".");
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";

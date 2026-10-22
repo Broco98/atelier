@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ChevronDown, Columns2, MoreHorizontal, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,10 @@ import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
   activeIdOf,
+  activeShellOf,
+  activeTabOf,
+  bundleOf,
+  bundleTabOf,
   closesShellFromWindow,
   closingShellsNotice,
   opensShellFromWindow,
@@ -31,11 +35,11 @@ import {
   shellNavFromWindow,
   shellsEmptied,
   placeOrigin,
-  shellsOf,
   workDefaultOrigin,
   workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
+  closeCodeTab,
   closeShellsOf,
   dropShellOnSlot,
   holdOwner,
@@ -45,15 +49,18 @@ import {
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
+  showCodeTab,
+  showShellTab,
   spawnedCountOf,
   terminalStore,
 } from "@/features/terminal/terminal-store";
-import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
+import type { ColumnTab, SplitSide, ViewTab } from "@/routes/-work-search";
 import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
-import { dropSplit, otherTab } from "./split-view";
+import { columnOf, dropSplit, otherTab } from "./split-view";
 import { ignoresViewSwitch } from "./doc-refs";
-import { specRef } from "./refs";
+import { specRef, worktreeDirRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
 import WorkRenameDialog from "./WorkRenameDialog";
@@ -69,8 +76,12 @@ import {
 import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
 import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
-import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
+import type { BundleTab, CodeTarget, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkView } from "./types";
+
+// 코드 보기는 따로 떼어 받는다(git-integration 결정 35) — 강조 라이브러리(`@pierre/diffs`)가 첫 로드에 붙지 않고 파일 탭이
+// 처음 설 때 온다. 정적으로 부르면 그 약속이 조용히 깨진다(`code-view-chunk.test.ts`가 프로덕션 빌드로 잰다).
+const CodeView = lazy(() => import("@/features/code/CodeView"));
 
 interface WorksPageProps {
   sidebarOpen: boolean;
@@ -82,15 +93,24 @@ interface WorksPageProps {
   // 보고 있는 화면 탭도 주소가 정본이다 — `currentFile`과 같은 결이다.
   tab: ViewTab;
   onSelectTab: (tab: ViewTab) => void;
+  // 본문이나 분할의 묶음 열에 선 **파일 탭**(`<프로젝트>/<경로>`) — 단일 뷰면 `tab`이 `code`일 때만, 분할이면 묶음 열이 파일
+  // 탭일 때 찬다(git-integration S12 · 티켓 07). 이것도 주소가 정본이다: 묶음(메모리)은 이 값을 따라 그 탭을 열고 켠다.
+  // `onOpenCode`가 「파일 탭 열기」다 — 트리는 replace, 링크는 push다.
+  code: string | null;
+  onOpenCode: (project: string, path: string, push: boolean) => void;
   // 분할도 주소가 정본이다(결정 97). `null`이면 단일 뷰다.
   //
-  // **바꾸는 콜백이 `tab`을 함께 받는다**: 열의 `×`는 분할을 끄면서 남는 쪽을 정하고
-  // (결정 89), 헤더 토글은 지금 `tab`을 그대로 넘긴다. 둘을 따로 옮기면 한 틱에 겹친다.
+  // **바꾸는 콜백이 열을 함께 받는다**: 열의 `×`는 분할을 끄면서 남는 쪽을 정하고
+  // (결정 89), 헤더 토글은 지금 열을 그대로 넘긴다. 둘을 따로 옮기면 한 틱에 겹친다. 묶음 열에 설 파일 탭(`bundle`)도
+  // 함께다 — 그것은 묶음(메모리)만 안다(git-integration 티켓 07).
   split: SplitSide | null;
-  onSelectSplit: (split: SplitSide | null, tab: ViewTab) => void;
+  onSelectSplit: (split: SplitSide | null, column: ColumnTab, bundle: string | null) => void;
+  // 묶음의 지금 탭이 묶음 쪽에서 바뀌었다(닫기의 이웃 · 셸의 끝 · 끌어 놓기) — 본문이나 묶음 열이 그 탭을 따라가게 주소를
+  // 고친다. `bundle`은 그 탭이 파일 탭이면 `<프로젝트>/<경로>`, 셸이면 `null`이다.
+  onFollowBundle: (bundle: string | null) => void;
   // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립해야 해서**(결정 101)
-  // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다.
-  onDropInto: (source: DragSource, split: SplitSide) => void;
+  // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다. `bundle`은 묶음 열에 설 파일 탭이다(위 `onSelectSplit`).
+  onDropInto: (source: DragSource, split: SplitSide, bundle: string | null) => void;
 }
 
 /**
@@ -100,9 +120,11 @@ interface WorksPageProps {
  * - **`spec`이 켜져 있다.** 고정 탭이라 `×`가 없는 것과 같은 말이다. 분할이면 열 둘이
  *   함께 서지만 `tab`은 그때 **포커스가 든 열**을 가리키므로(결정 97의 `focusColumn`)
  *   여기서 한 번 더 가를 것이 없다.
- * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다.
+ * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다. 묶음의 지금 탭이 파일 탭으로 남은 것도 같다
+ *   (git-integration 판 01 — 주소가 셸을 말하는데 묶음에 켤 셸이 없다: 본문은 「아직 셸이 없어요」다). 그 칸을 셸을 닫는 길에
+ *   넘기지 않는다 — 겨누는 것은 **켜진 셸**이다(`activeShellOf`).
  *
- * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **「고른 작업이 없다」를 여기서 한 번
+ * `activeShellOf`를 그냥 부르지 않고 이 함수를 두는 것은 **「고른 작업이 없다」를 여기서 한 번
  * 가르기** 위해서다. 앞 판에는 `owner`가 `null`이면 그 값이 최상위 터미널을 가리켜 고른
  * 작업이 없는 work 화면의 ⌘W가 **`/terminal`의 셸을 닫았다.** 지금은 소유자가 늘 문자열이라
  * (`ShellOwner`) 그 사고를 L0가 먼저 막지만, 이 가드가 사라질 이유는 아니다 — 여전히 이
@@ -120,8 +142,43 @@ export function shellClosedByTab(
   state: ShellsState,
 ): number | null {
   if (tab !== "terminal" || owner === null) return null;
-  return activeIdOf(state, owner);
+  return activeShellOf(state, owner)?.id ?? null;
 }
+
+/**
+ * ⌘W가 겨누는 **파일 탭** — 본문이 파일 탭이면 그 칸이다(git-integration 스토리 50). 아니면 `null`이다.
+ *
+ * 위 `shellClosedByTab`과 **따로 둔다** — 닫는 길이 다르다: 파일 탭은 확인 없이 닫고(`closeCodeTab`), 셸은 확인 창을 거치는
+ * 하나다(`requestCloseShell`). 한 함수가 둘을 돌려주면 받는 쪽이 종류를 다시 갈라야 하고, 그 갈림이 틀리면 셸이 확인 없이 닫힌다.
+ */
+export function codeTabClosedByTab(
+  tab: ViewTab,
+  owner: ShellOwner | null,
+  state: ShellsState,
+): number | null {
+  if (tab !== "code" || owner === null) return null;
+  const active = activeTabOf(state, owner);
+  return active?.kind === "code" ? active.id : null;
+}
+
+/** 묶음의 지금 탭을 한 글자로 — 화면이 「지금 탭이 바뀌었나」를 값으로 견주는 자리(`WorksPage`의 주소 따라가기)가 쓴다. */
+function shownTabKey(tab: BundleTab | null): string | null {
+  if (tab === null) return null;
+  return tab.kind === "code" ? codeRefOf(tab) : SHELL_SHOWN;
+}
+
+/**
+ * 그 화면 묶음 열에 설 **파일 탭**(`<프로젝트>/<경로>`) — 묶음의 지금 탭이 파일 탭이면 그것이고, 셸이거나 칸이 없으면 `null`이다
+ * (git-integration 결정 32 — 묶음 열에는 묶음의 지금 탭이 선다). 분할을 켜거나 칸을 끌어 놓는 순간에 읽는다: 문서를 보는 중에도
+ * 묶음의 지금 탭은 기억으로 남아 있어, 분할을 켜면 그 탭이 옆 열에 선다.
+ */
+function bundleRefOf(state: ShellsState, owner: ShellOwner | null): string | null {
+  const active = owner === null ? null : activeTabOf(state, owner);
+  return active?.kind === "code" ? codeRefOf(active) : null;
+}
+
+/** 지금 탭이 셸이다 — 어느 셸인지는 주소에 없으므로(결정 33) 한 값으로 접는다. `<프로젝트>/<경로>`와 겹칠 수 없는 글자다. */
+const SHELL_SHOWN = "shell:";
 
 function WorksPage({
   sidebarOpen,
@@ -130,8 +187,11 @@ function WorksPage({
   onSelectFile,
   tab,
   onSelectTab,
+  code,
+  onOpenCode,
   split,
   onSelectSplit,
+  onFollowBundle,
   onDropInto,
 }: WorksPageProps) {
   const { data: works = [] } = useWorks();
@@ -163,10 +223,9 @@ function WorksPage({
   // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
   // `claude` TUI가 깨진다」가 그대로 재현된다.
   const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
-  // 레일에서 고른 칸 — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는 자리와 그리는 자리가
-  // 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지 않는다. 지금 칸은 `spec`
-  // 하나라(`PANEL_VIEWS` — info 칸을 걷었다, codex-ds 결정 25) 이 값은 `spec` 그대로이고 레일도 서지 않는다. 칸 목록이 늘면 레일이
-  // 다시 서고 이 값이 그 고름을 든다.
+  // 레일에서 고른 칸(`spec` · `files`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는
+  // 자리와 그리는 자리가 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지
+  // 않는다. info 칸은 걷었다(codex-ds 결정 25) — 칸이 둘이라 레일이 선다.
   //
   // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
   // key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워졌기 때문이다. 그것은 코드가 아니라 **구조에서 나온
@@ -262,10 +321,14 @@ function WorksPage({
   // 다시 마운트돼도 문서를 다시 읽을 뿐 프로세스가 생기지 않는다.
   const lastSelected = useRef(selected);
   if (selected) lastSelected.current = selected;
-  // **분할이면 둘 다 선다**(결정 87) — 단일 뷰에서만 `tab`이 하나를 고른다. 이 두 값이
+  // **분할이면 열 둘이 선다**(결정 87) — 문서와 묶음 열이다. 단일 뷰에서만 `tab`이 하나를 고른다. 이 값들이
   // 아래에서 「어느 본문을 그리나」와 「`</>`가 적용될 곳이 있나」를 함께 정한다.
+  //
+  // **파일 탭**은 본문에 서거나(git-integration 티켓 04) 분할의 **묶음 열**에 선다(티켓 07 · 결정 32 — 묶음 열에는 묶음의 지금
+  // 탭이 선다). 그때 터미널 카드는 spec으로 갈 때와 같이 내려간다 — 셸 프로세스와 화면 버퍼는 스토어에 산다(결정 20 · 21).
+  const codeTarget = code !== null && (tab === "code" || split !== null) ? codeTargetOf(code) : null;
   const specStands = split !== null || tab === "spec";
-  const terminalStands = split !== null || tab === "terminal";
+  const terminalStands = (split !== null && codeTarget === null) || tab === "terminal";
   const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
 
   // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
@@ -337,7 +400,8 @@ function WorksPage({
   }, [panelWork, tabOwner, onSelectTab]);
 
   /**
-   * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
+   * ⌘1은 spec, ⌘2~9는 **그 화면의 묶음**, ⌃Tab은 그 묶음의 순회(결정 78·79·109 · git-integration 결정 31).
+   * 고른 칸이 셸이면 그 셸을 켜고 터미널로, 파일 탭이면 그 파일로 간다(「파일 탭 열기」).
    *
    * 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다 — 한 화면 안에서 본문을 옮기는 한 벌이
    * 됐고, ⌘T가 그 벌에 이미 들어 있다(결정 98). 세는 것은 **이 화면의 셸**이지 사이드바에
@@ -360,22 +424,27 @@ function WorksPage({
       // 여기서 다시 좁혀야 하고, 좁히는 가드가 「고른 작업이 없다」와 겹쳐 뜻이 흐려진다.
       // 짓는 함수가 하나(`ownerOf`)라 두 값이 갈릴 수는 없다.
       const owner = ownerOf(panelWork.slug);
-      const shells = shellsOf(state, owner);
-      // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
-      // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
+      const tabs = bundleOf(state, owner);
+      // **⌘1만 이 화면의 것이다** — 문서는 묶음의 칸이 아니라 여기서 가른다. 나머지는 한 칸
+      // 밀린 묶음 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
       if (nav.kind === "index" && nav.n === 1) {
         onSelectTab("spec");
         return;
       }
-      const next = shellForNav(shells, activeIdOf(state, owner), nav, 2);
-      if (next !== null) {
-        selectShell(next);
-        onSelectTab("terminal");
+      const next = shellForNav(tabs, activeIdOf(state, owner), nav, 2);
+      if (next === null) return;
+      // 고른 칸이 파일 탭이면 그 파일로 간다 — 켜는 일은 주소를 받은 자리가 한다(아래 주소 따라가기).
+      const picked = bundleTabOf(state, owner, next);
+      if (picked?.kind === "code") {
+        onOpenCode(picked.project, picked.path, false);
+        return;
       }
+      selectShell(next);
+      onSelectTab("terminal");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab]);
+  }, [panelWork, onSelectTab, onOpenCode]);
 
   /**
    * ⌘W — **켜진 탭을 닫는다**(결정 13).
@@ -402,6 +471,14 @@ function WorksPage({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!closesShellFromWindow(e)) return;
+      // 본문이 파일 탭이면 **확인 없이** 닫는다(git-integration 스토리 50) — 프로세스가 없어 물을 것이 없다. 다음 탭과 주소는
+      // 셸을 닫을 때와 같은 길로 따라온다(이웃 규칙 · 아래 주소 따라가기).
+      const codeId = codeTabClosedByTab(tab, tabOwner, terminalStore.state);
+      if (codeId !== null) {
+        e.preventDefault();
+        closeCodeTab(codeId);
+        return;
+      }
       const id = shellClosedByTab(tab, tabOwner, terminalStore.state);
       if (id === null) return;
       e.preventDefault();
@@ -410,6 +487,47 @@ function WorksPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [tabOwner, tab]);
+
+  /**
+   * **주소 → 묶음**(git-integration S12 — 주소가 정본이다). 주소가 파일 탭을 가리키면 그 탭이 묶음의 지금 탭이다 — 묶음에
+   * 없으면 끝에 연다(스토리 60: 뒤로가기 · work 기억 · 링크가 닫힌 파일을 가리킬 수 있다). 주소가 「본문은 셸이다」라고
+   * 말하는데(`tab=terminal` · 분할의 묶음 열) 지금 탭이 파일 탭이면 셸을 켠다.
+   *
+   * **주소가 바뀔 때만 돈다** — 묶음이 바뀌었다고 돌면 방금 닫은 파일 탭을 주소가 아직 가리키는 한 틱에 그 탭을 되살린다.
+   * 묶음 쪽에서 난 변화를 주소로 옮기는 것은 아래 효과의 일이다.
+   */
+  useEffect(() => {
+    if (tabOwner === null) return;
+    if (codeTarget) showCodeTab(tabOwner, codeTarget);
+    else if (tab === "terminal" || split !== null) showShellTab(tabOwner);
+  }, [tabOwner, tab, code, split]);
+
+  /**
+   * **묶음 → 주소.** 묶음의 지금 탭이 묶음 쪽에서 바뀌면 — 지금 탭을 닫아 이웃이 켜졌거나(결정 30), 셸이 스스로 끝나 빠졌다
+   * (결정 48) — 본문이나 분할의 묶음 열이 묶음을 보여주는 동안에는 주소가 그 탭을 따라간다: 셸이면 `code`가 없고(본문이면
+   * `tab=terminal`), 파일 탭이면 `code`가 그 파일이다(git-integration 티켓 07 — 분할이면 묶음 열이 따라간다). 이 갈림을 닫는
+   * 길마다 적지 않고 여기 하나에 둔다 — 셸을 닫는 길은 확인 창 뒤(`requestCloseShell`)와 셸 스스로의 끝까지 여럿이다.
+   *
+   * 단일 뷰에서 문서를 보는 중(`spec`)이면 따라가지 않는다 — 탭 줄에서 뒤에 있는 칸을 닫은 것은 본문을 안 바꾼다. 묶음이 빈
+   * 것은 따로다(아래 「묶음이 비면 spec」). **work을 옮긴 순간은 세지 않는다** — 그때의 지금 탭은 다른 work의 것이다.
+   *
+   * 지금 탭은 한 글자로 접어 구독한다 — 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 다시 그려지지 않게. **의존성이 그 값과
+   * 소유자뿐인 것은 의도다** — 주소(`tab` · `code`)가 바뀌어서 돌면 방금 사람이 옮긴 주소를 옛 지금 탭으로 되돌린다.
+   */
+  const shownKey = useStore(terminalStore, (state) =>
+    tabOwner === null ? null : shownTabKey(activeTabOf(state, tabOwner)),
+  );
+  const shown = useRef({ owner: tabOwner, key: shownKey });
+  useEffect(() => {
+    const before = shown.current;
+    shown.current = { owner: tabOwner, key: shownKey };
+    if (before.owner !== tabOwner || before.key === shownKey || shownKey === null) return;
+    if (tab === "spec" && split === null) return;
+    const bundle = shownKey === SHELL_SHOWN ? null : shownKey;
+    // 주소가 이미 그 탭을 말한다 — 주소를 따라 켜진 탭이다(위 「주소 → 묶음」).
+    if (bundle === code) return;
+    onFollowBundle(bundle);
+  }, [tabOwner, shownKey]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다** — 트리의 "지금
   // 이 문서" 표시와 본문이 따로 정하면 뷰 탭을 오갈 때마다 트리 표시가 켜졌다 꺼진다(결정 49 —
@@ -432,15 +550,44 @@ function WorksPage({
   // 그래서 `!currentSpec`이 따로 얹힌다.
   const sourceLocked = !currentSpec || ignoresViewSwitch(currentSpec);
 
+  /**
+   * files 트리에서 파일 행을 눌렀다 — 「파일 탭 열기」다(스토리 23 — replace: 트리 훑기는 뒤로가기 기록을 안 쌓는다, 스토리 59).
+   * 이미 열린 파일이면 그 탭으로 간다(스토리 24 — 묶음이 정체로 가른다).
+   *
+   * **다시 누르면 닫힌다**(git-integration 결정 30 — 사용자가 더한 UX). 누른 파일이 **지금 보이는 탭**(본문이나 분할의 묶음 열에
+   * 선 파일 탭 — 티켓 07)의 파일이면 그 탭을 닫는다. 분할이면 포커스가 문서 열에 있어도 옆 열에 보이는 탭이다. 닫는 길은 `×` · ⌘W와 같다 — 확인 없이 빼고, 이웃이 켜지고 주소가 따라오는 것은 묶음 → 주소가
+   * 한다. 열려 있어도 뒤에 있는 탭이면 그 탭으로 갈 뿐이다(스토리 34).
+   *
+   * **둘째 클릭은 닫기로 치지 않는다**(S15 — `clicks`는 연속 클릭의 몇 번째인가, 키보드로 누르면 0). 더블클릭의 첫 클릭이 연
+   * 탭을 둘째 클릭이 닫는 깜빡임이 없다 — 닫힌 파일을 두 번 누르면 열린 채 남는다. 탭 줄의 칸 자체를 다시 누르는 것은 여기를
+   * 지나지 않아 닫지 않는다(스토리 36).
+   */
+  const pressCode = useCallback(
+    (target: CodeTarget, clicks: number) => {
+      const shown = codeTarget !== null && code === codeRefOf(target);
+      // 보이는 파일 탭은 묶음의 지금 탭이다 — 주소를 따라 켜졌다(「주소 → 묶음」).
+      const visible = shown && clicks < 2 && tabOwner !== null ? activeTabOf(terminalStore.state, tabOwner) : null;
+      if (visible?.kind === "code") {
+        closeCodeTab(visible.id);
+        return;
+      }
+      onOpenCode(target.project, target.path, false);
+    },
+    [codeTarget, code, tabOwner, onOpenCode],
+  );
+
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
   // 쪽이 그 값이다. 이미 그 값이면 옮기지 않는다: 열 머리의 `×`처럼 한 틱에 두 이동이
   // 겹치는 자리에서 앞의 것이 조용히 이기기 때문이다.
+  //
+  // 묶음 열은 그대로다 — 그 열에 선 파일 탭(`code`)을 함께 넘긴다(git-integration 티켓 07). 묶음 열을 가리키는 `tab`은 그 열에
+  // 선 것의 종류다(`columnSearch`).
   const focusColumn = useCallback(
-    (next: ViewTab) => {
-      if (next !== tab) onSelectTab(next);
+    (next: ColumnTab) => {
+      if (next !== columnOf(tab)) onSelectSplit(split, next, code);
     },
-    [tab, onSelectTab],
+    [tab, split, code, onSelectSplit],
   );
 
   /**
@@ -460,16 +607,20 @@ function WorksPage({
   );
 
   // 분할을 바꾸는 **유일한 자리**다 — 켜기·끄기·좌우 맞바꾸기가 전부 여기를 지난다.
+  //
+  // 묶음 열에 설 것은 **묶음의 지금 탭**이다(git-integration 결정 32) — 누른 그 순간 묶음에서 읽는다. 문서를 보다 켜도 묶음의
+  // 지금 탭은 기억으로 남아 있어, 그것이 파일 탭이면 옆 열이 그 파일이다(`bundleRefOf`).
   const changeSplit = useCallback(
-    (next: SplitSide | null, nextTab: ViewTab) => {
+    (next: SplitSide | null, column: ColumnTab) => {
       collapseOnSplit(next);
-      onSelectSplit(next, nextTab);
+      onSelectSplit(next, column, bundleRefOf(terminalStore.state, tabOwner));
     },
-    [collapseOnSplit, onSelectSplit],
+    [collapseOnSplit, onSelectSplit, tabOwner],
   );
 
   /**
-   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.**
+   * **묶음의 마지막 칸이 닫히면 본문이 문서로 돌아온다.** 세는 것은 셸이 아니라 **묶음의 칸**이다(git-integration 결정 30 —
+   * 묶음이 비면 spec으로 간다). 셸이든 파일 탭이든 마지막 칸이 빠지면 걷는다.
    *
    * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
    * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
@@ -482,29 +633,32 @@ function WorksPage({
    *
    * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
    * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
-   * 개수는 셸을 열고 닫을 때만 바뀐다.
+   * 개수는 칸을 열고 닫을 때만 바뀐다.
    */
-  const shellCount = useStore(terminalStore, (state) =>
-    panelWork ? shellsOf(state, ownerOf(panelWork.slug)).length : 0,
+  const tabCount = useStore(terminalStore, (state) =>
+    panelWork ? bundleOf(state, ownerOf(panelWork.slug)).length : 0,
   );
-  const tally = useRef<ShellTally>({ owner: tabOwner, count: shellCount });
+  const tally = useRef<ShellTally>({ owner: tabOwner, count: tabCount });
   useEffect(() => {
-    const now = { owner: tabOwner, count: shellCount };
+    const now = { owner: tabOwner, count: tabCount };
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
-    // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
+    // 본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
     // 화면에서 아무것도 안 바뀌어야 한다.
-    if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");
-  }, [shellCount, tabOwner, tab, split, changeSplit]);
+    if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");
+  }, [tabCount, tabOwner, tab, split, changeSplit]);
 
-  // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
+  // 떨궜다. **묶음의 칸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
+  //
+  // 끈 칸이 셸이든 파일 탭이든 묶음 열에 선다(git-integration 결정 32 · 스토리 56) — 켠 뒤 묶음의 지금 탭을 읽으면 그 칸이다.
+  // 문서 칸을 끌었으면 묶음은 그대로라 지금 탭이 옆 열에 선다.
   const dropHere = useCallback(
     (source: DragSource, half: SplitHalf) => {
-      if (source.kind === "shell" && source.shellId !== null) selectShell(source.shellId);
+      if (source.kind !== "spec" && source.shellId !== null) selectShell(source.shellId);
       const next = dropSplit(source.kind, half);
       collapseOnSplit(next);
-      onDropInto(source, next);
+      onDropInto(source, next, bundleRefOf(terminalStore.state, source.owner));
     },
     [collapseOnSplit, onDropInto],
   );
@@ -524,6 +678,22 @@ function WorksPage({
   const docPath = selected ? [selected.slug, "spec", ...(currentSpec ? currentSpec.split("/") : [])] : [];
   const docView: PathView = { source: showSource, locked: sourceLocked, onChange: setShowSource };
   const copyDocPath = selected && currentSpec ? () => copyText(specRef(selected.slug, currentSpec)) : undefined;
+
+  // 코드 카드의 경로 줄(git-integration S17) — 문서의 경로 줄과 같은 줄이다: 캡슐 `<프로젝트> › 폴더 › 파일`과 끝의 경로 복사. 보기
+  // 묶음은 없다 — 코드 카드의 몸은 늘 코드다. 복사하는 값은 그 파일의 워크트리 경로다 — 에이전트에게 그 파일을 그대로 넘긴다(스토리
+  // 69). 워크트리 자리는 코어가 준 값에서 잇는다(`worktreeDirRef` — 뿌리를 여기서 짓지 않는다). 그 프로젝트의 워크트리가 이 work에
+  // 없으면 가리킬 파일이 없어 서지 않는다 — 프로젝트는 있는데 워크트리 폴더가 사라진 것(`exists`가 거짓 — files 칸이 「워크트리
+  // 없음」을 띄우는 그 상태)도 같다.
+  //
+  // 그 워크트리 자리는 코드 카드의 몸도 받는다 — 그림 파일은 같은 자리에 코어가 링크를 푼 실제 경로를 이어 건다(티켓 09). 뿌리를
+  // 두 자리가 따로 지으면 복사한 경로와 그린 그림이 다른 워크트리를 가리킬 수 있다.
+  const codeWorktree =
+    codeTarget && selected?.worktrees.find((one) => one.project === codeTarget.project && one.exists);
+  const codeWorktreeDir = codeWorktree ? worktreeDirRef(codeWorktree.path) : null;
+  const codeFilePath = codeTarget && codeWorktreeDir ? `${codeWorktreeDir}${codeTarget.path}` : null;
+  const codePath = codeTarget ? [codeTarget.project, ...codeTarget.path.split("/")] : [];
+  const copyCodePath = codeFilePath ? () => copyText(codeFilePath) : undefined;
+  const codeBar = codeTarget && <PathBar path={codePath} onCopy={copyCodePath} />;
 
   // 분할의 spec 열 머리 — **분할일 때만 선다**(결정 89). 문서의 경로 줄 끝에 그 열을 닫는 `×`가 더해진 것이다 — 미리보기 ×가
   // 아니라 열 닫기다(codex-ds 스펙 S14 · `CONTEXT.md` 「열」). 모양은 터미널 열의 `×`(탭 줄 끝 — 아래 `tabRow`)와 같은 조용한
@@ -563,22 +733,38 @@ function WorksPage({
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal
   // 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다.
   const terminalBody = terminalWork && <TerminalPane key={terminalWork.slug} work={terminalWork} />;
+  // 코드 보기 — 코드 카드의 몸이다(본문 카드든 묶음 열이든). 몸은 그 파일을 읽어 강조된 코드나 갈래별 몸(그림 · 안내)을
+  // 세운다(`CodeView`). 코드 보기 청크를 받는 처음 한 번은 몸이 비어 있다 — 머리(경로 줄)는 이미 서서 무엇을 여는지 말한다.
+  const codeBody = selected && codeTarget && (
+    <Suspense fallback={null}>
+      <CodeView
+        key={selected.slug}
+        slug={selected.slug}
+        target={codeTarget}
+        worktreeDir={codeWorktreeDir}
+        // 문서 본문과 같은 규칙으로 넓어진다 — 화면을 둘 다 비웠을 때만(`SpecViewer`).
+        wide={!sidebarOpen && !workPanelOpen}
+      />
+    </Suspense>
+  );
 
-  // 분할이 실제로 서는가 — 두 본문이 다 설 때만이다(아래 `splitView`). 탭 줄이 어느 카드의 머리인지가 이것으로 갈린다.
-  const splitting = split !== null && Boolean(specBody) && Boolean(terminalBody);
+  // 분할이 실제로 서는가 — 문서와 묶음 열(셸이든 파일 탭이든)의 본문이 다 설 때만이다(아래 `splitView`). 탭 줄이 어느 카드의
+  // 머리인지가 이것으로 갈린다.
+  const splitting = split !== null && Boolean(specBody) && Boolean(codeBody || terminalBody);
 
   // 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
   // (`Works / 제목`)은 그때 사라졌고, work 제목은 지금 머리 카드가 말한다(아래 `head`).
   //
   // **그 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」) — 탭이 그 탭이 보여 줄 카드에 붙는다. 단일 뷰면 본문 카드(문서 ·
-  // 터미널 어느 쪽이든 같은 자리)의 머리이고, 분할이면 터미널 열의 머리다 — 그때 그 열을 닫는 `×`가 줄 끝에 서고(codex-ds 스펙
-  // S14), 열 머리를 집는 표식(`data-column`)을 단다. 고른 작업이 없으면 **칸이 설 자리가 없다** — 세울 소유자가 없다: 그 값은
+  // 터미널 · 코드 어느 쪽이든 같은 자리)의 머리이고, 분할이면 묶음 열의 머리다 — 그때 그 열을 닫는 `×`가 줄 끝에 서고(codex-ds 스펙
+  // S14), 열 머리를 집는 표식(`data-column`)을 단다. 표식은 그 열에 선 것의 종류다 — 셸이면 `terminal`, 파일 탭이면 `code`(탭 줄의
+  // 칸 표식 `data-tab`과 같은 종류 이름, git-integration 티켓 07). 고른 작업이 없으면 **칸이 설 자리가 없다** — 세울 소유자가 없다: 그 값은
   // work의 slug에서 나오는데(`ownerOf(…)`) 고른 작업이 없으면 그 자리가 비고, 빈 키는 **최상위 터미널**이라 `/terminal`의 셸이
   // 이 줄에 서게 된다. `+`도 열 자리가 없어 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것). 그때 본문 카드의
   // 머리는 화면 이름이다(아래 `body`).
   const tabRow = panelWork ? (
     <ShellTabs
-      data-column={splitting ? "terminal" : undefined}
+      data-column={splitting ? (codeTarget ? "code" : "terminal") : undefined}
       state={shellState}
       owner={ownerOf(panelWork.slug)}
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
@@ -591,18 +777,33 @@ function WorksPage({
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
-      showing={terminalStands}
+      // 본문이 묶음을 보여줄 때 — 셸이든 파일 탭이든 — 켜진 칸이 선다. 주소가 셸을 말해도 **켜진 셸이 없으면** 본문은 「아직
+      // 셸이 없어요」다(git-integration 판 01): 묶음에 켤 셸이 없어 지금 탭이 파일 탭으로 남았고(`withShellActive`), 자동 셸도
+      // 안 뜨는 work(프로젝트 둘 이상)이다. 그 파일 탭을 켜면 본문과 켜진 칸이 다른 것을 말한다.
+      showing={codeTarget !== null || (terminalStands && activeShellOf(shellState, ownerOf(panelWork.slug)) !== null)}
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
       // 보고 있는 work의 것이기 때문이다.
       //
       // **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
+      //
+      // 파일 탭이면 그 파일로 간다(「파일 탭 열기」, replace — 탭을 고르는 손짓은 기록을 안 쌓는다). 켜는 것은 주소를 받은
+      // 자리다(주소 → 묶음).
       onSelect={(id) => {
+        const picked = bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id);
+        if (picked?.kind === "code") {
+          onOpenCode(picked.project, picked.path, false);
+          return;
+        }
         selectShellWithFocus(id);
         onSelectTab("terminal");
       }}
-      // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
-      onClose={requestCloseShell}
+      // 셸은 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다. 파일 탭은 **확인 없이** 닫는다(git-integration
+      // 스토리 37) — 프로세스가 없다. 그 판정은 레지스트리가 칸의 종류로 한다(`removeCodeTab`은 셸 칸을 안 뺀다).
+      onClose={(id) => {
+        if (bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id)?.kind === "code") closeCodeTab(id);
+        else void requestCloseShell(id);
+      }}
       onOpen={(place) => {
         // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
         // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
@@ -622,12 +823,14 @@ function WorksPage({
       // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다. 원천이 slug가
       // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
       // 때문이다.
+      //
+      // 묶음의 칸은 **그 칸의 종류**를 싣는다 — 셸 칸이든 파일 탭이든 줄의 틈에 놓이고(git-integration 결정 31), 본문
+      // 절반이 받는 것은 받는 쪽이 종류로 거른다(`tabDragOf`). 종류는 레지스트리가 id로 안다(`onSelect`와 같다). 누르는
+      // 사이 그 칸이 빠졌으면 걸 끌기가 없다.
       onDragTab={(shellId, from) => {
         const owner = ownerOf(panelWork.slug);
-        armDrag(
-          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
-          from,
-        );
+        const kind = shellId === null ? "spec" : bundleTabOf(terminalStore.state, owner, shellId)?.kind;
+        if (kind) armDrag({ kind, owner, shellId }, from);
       }}
       // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
       // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
@@ -635,12 +838,15 @@ function WorksPage({
       onSlot={hoverSlot}
       onDropSlot={dropShellOnSlot}
       dragging={drag.source !== null}
-      // 오른쪽 끝 고정(결정 10) — 분할이면 터미널 열을 닫는 `×`다. 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧
+      // 오른쪽 끝 고정(결정 10) — 분할이면 묶음 열을 닫는 `×`다. 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧
       // `tab`이다. 단일 뷰의 줄 끝에는 아무것도 안 선다 — 상태 배지 · ⋯ · 분할은 머리 카드에 선다(아래 `head`).
+      //
+      // 이름은 그 열에 선 것이다 — 셸이면 `terminal`, 파일 탭이면 그 파일 이름이다(탭 줄의 파일 탭 칸이 파일 이름으로 서는 것과
+      // 같다 — 그 칸의 `×`는 「<이름> 닫기」, 이것은 「<이름> 열 닫기」). 열을 닫을 뿐 탭을 닫지 않는다 — 탭은 묶음에 그대로 남는다.
       actions={
         splitting ? (
           <Hint
-            text="terminal 열 닫기"
+            text={`${codeTarget ? codePath[codePath.length - 1] : "terminal"} 열 닫기`}
             announce="name"
             type="button"
             onClick={() => changeSplit(null, otherTab("terminal"))}
@@ -660,7 +866,7 @@ function WorksPage({
   // 오른쪽은 **할 일 | 보기 배치**다. 할 일은 상태 배지와 ⋯ — work에 대한 조작이 한 자리에 모인다(ui-refresh 결정 14 · codex-ds
   // 결정 25). 상태 배지가 앞인 것은 자주 누르는 조작이라서다 — 메뉴 뒤에 숨기면 상태를 바꾸는 데 클릭이 두 번 든다. 보기 배치는
   // 분할 토글 하나다. 사이의 세로선과 간격은 틀의 머리 카드가 그린다(`Frame`의 `HeadCard`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위
-  // 줄의 오른쪽 끝 묶음에 섰다. 패널 토글은 화면이 건네지 않는다 — 레일이 서지 않는 지금은 틀이 분할 뒤에 넣는다(`Frame`의 머리 줄).
+  // 줄의 오른쪽 끝 묶음에 섰다. 패널 토글은 화면이 건네지 않는다 — 레일이 서는 지금은 틀이 머리 카드 밖 레일 위에 세운다(`Frame`의 머리 줄).
   //
   // 지금 선 work(`selected`)가 없으면 머리 카드는 화면 이름 「Works」 하나다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
   // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
@@ -674,8 +880,9 @@ function WorksPage({
             <WorkMenu work={selected} archive={archive} remove={remove} onCopy={copyText} />
           </>
         ),
-        // 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽, 터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이
-        // 남으므로(결정 97) 여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다.
+        // 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽, 묶음의 지금 탭이 오른쪽이다 — 파일 탭을 보다 켜면 그
+        // 파일이다(git-integration 티켓 07). 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97) 여기서 정할 것이 없다 — 지금 열을 그대로
+        // 넘긴다.
         //
         // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다.
         // 라벨이 대상을 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말한다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` ·
@@ -691,7 +898,7 @@ function WorksPage({
                 size="icon-xs"
                 aria-label="분할"
                 pressed={split !== null}
-                onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
+                onPressedChange={(on) => changeSplit(on ? "lr" : null, columnOf(tab))}
               />
             }
           >
@@ -701,11 +908,11 @@ function WorksPage({
       }
     : { icon: Zap, name: WORKS_COPY.page };
 
-  // 분할의 열 둘 — 열 하나가 카드 하나다(ui-refresh 결정 15). 문서 열은 흰 카드, 터미널 열은 터미널 카드다. 이 화면은 카드의
-  // 안(열 머리와 몸)만 건넨다 — 카드 상자 · 두 열 사이 틈 · 그 가운데 폭 손잡이 · 틈 끌기 영역 · 비율과 그 저장은 공용 틀의 분할이
-  // 든다(ui-refresh 결정 27 — `Frame`의 `split`).
+  // 분할의 열 둘 — 열 하나가 카드 하나다(ui-refresh 결정 15). 문서 열은 흰 카드, 묶음 열은 셸이면 터미널 카드 · 파일 탭이면 흰
+  // 코드 카드다. 이 화면은 카드의 안(열 머리와 몸)만 건넨다 — 카드 상자 · 두 열 사이 틈 · 그 가운데 폭 손잡이 · 틈 끌기 영역 ·
+  // 비율과 그 저장은 공용 틀의 분할이 든다(ui-refresh 결정 27 — `Frame`의 `split`).
   //
-  // **조합은 늘 `spec ▏터미널`이고 좌우만 바뀐다**(결정 87). 그래서 정할 것이 하나다.
+  // **조합은 늘 `spec ▏ 묶음의 지금 탭`이고 좌우만 바뀐다**(결정 87 · git-integration 결정 32). 그래서 정할 것이 하나다.
   //
   // 순서를 여기 한 줄에서 정한다 — 열을 그리는 조각이 둘이면 「마크업에서 먼저 나오는 것이
   // 왼쪽」이라는, 검사가 기대는 규칙이 두 자리로 갈린다.
@@ -717,21 +924,34 @@ function WorksPage({
       </ColumnInside>
     ),
   };
-  const terminalColumn: SplitColumn = {
-    label: "터미널",
-    tone: "terminal",
-    children: (
-      <ColumnInside tab="terminal" head={tabRow} onFocus={focusColumn}>
-        {terminalBody}
-      </ColumnInside>
-    ),
-  };
+  // 묶음 열 — 셸이면 터미널 열, 파일 탭이면 코드 열이다. 어느 쪽이든 같은 열(`terminal`)이라 포커스가 들면 `tab`이 그 열을 가리킨다.
+  // 머리는 둘 다 탭 줄이다(위 `tabRow`) — 코드 열은 그 아래 몸의 첫 줄에 경로 줄이 선다(단일 뷰의 코드 카드와 같다). 코드 열 카드의
+  // 접근 이름은 본문 코드 카드처럼 그 파일의 경로다(스토리 89).
+  const bundleColumn: SplitColumn = codeTarget
+    ? {
+        label: codeRefOf(codeTarget),
+        children: (
+          <ColumnInside tab="terminal" head={tabRow} onFocus={focusColumn}>
+            {codeBar}
+            {codeBody}
+          </ColumnInside>
+        ),
+      }
+    : {
+        label: "터미널",
+        tone: "terminal",
+        children: (
+          <ColumnInside tab="terminal" head={tabRow} onFocus={focusColumn}>
+            {terminalBody}
+          </ColumnInside>
+        ),
+      };
   // 분할 — 두 본문이 다 설 때만이다(위 `splitting`). 비율의 저장 키는 판 05 spec이 적어 둔 `work-split-ratio`다(`useSplitRatio` 머리말).
   const splitView: SplitSlot | undefined =
     splitting
       ? {
           ratioKey: "work-split-ratio",
-          columns: split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn],
+          columns: split === "lr" ? [specColumn, bundleColumn] : [bundleColumn, specColumn],
         }
       : undefined;
 
@@ -745,14 +965,21 @@ function WorksPage({
   // 있다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을
   // 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
   //
-  // **문서 카드와 터미널 카드가 같은 자리 · 같은 머리다** — 둘 다 탭 줄을 머리(`head`)로 이고 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
-  // 오가도 카드와 탭 줄이 새로 서지 않는다(`Frame`의 `Card`) — 방금 누른 `spec` 칸의 포커스와 줄의 스크롤이 그대로다. 그래서 문서
+  // **문서 · 터미널 · 코드 카드가 같은 자리 · 같은 머리다** — 셋 다 탭 줄을 머리(`head`)로 이고 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
+  // 오가도 카드와 탭 줄이 새로 서지 않는다(`Frame`의 `Card`) — 방금 누른 칸의 포커스와 줄의 스크롤이 그대로다. 그래서 문서 · 코드
   // 카드의 경로 줄(`PathBar`)은 머리가 아니라 몸의 첫 줄로 건넨다 — 탭 줄 아래다: 머리 자리에 묶음이 서면 탭 줄이 그 자리에서
   // 다른 것이 된다.
   const body = splitView ? undefined : terminalWork ? (
     // 터미널 — 탭 줄 아래가 곧 셸이다(Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
     <Card as="main" label="터미널" tone="terminal" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
       {terminalBody}
+    </Card>
+  ) : selected && codeTarget ? (
+    // 코드 카드 — 파일 탭의 본문이다(git-integration 티켓 04). **접근 이름이 그 파일의 경로다**(스토리 89) — 화면 읽기가
+    // 지금 무엇을 읽는지를 카드 이름으로 듣는다. 몸은 분할의 코드 열과 같은 경로 줄과 `codeBody`다.
+    <Card as="main" label={codeRefOf(codeTarget)} className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
+      {codeBar}
+      {codeBody}
     </Card>
   ) : selected ? (
     <Card as="main" label="문서" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
@@ -795,10 +1022,10 @@ function WorksPage({
     <Frame
       sidebarOpen={sidebarOpen}
       head={head}
-      // 레일(ui-refresh 결정 9 · 10)의 칸. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도 머리 줄의 패널
-      // 토글(틀이 패널 칸에서 짓는다)도 없다. 칸이 `spec` 하나라 레일 열은 서지 않고(codex-ds 결정 25 — `railStands`) 토글만 머리 카드
-      // 끝에 선다 — 그래서 본문 열의 오른쪽 틈 하나가 창 끝이다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던
-      // 까닭(결정 11 — 그때 패널이 거기 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
+      // 레일(ui-refresh 결정 9 · 10)의 칸 — `spec` · `files`. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도
+      // 머리 줄의 패널 토글(틀이 패널 칸에서 짓는다)도 없다. 칸이 둘이라 레일 열이 서고(codex-ds 결정 25 — `railStands`) 토글은 그
+      // 위 머리 줄에 선다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던 까닭(결정 11 — 그때 패널이 거기
+      // 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
       rail={
         panelWork
           ? {
@@ -837,6 +1064,8 @@ function WorksPage({
                   view={panelView}
                   currentFile={currentSpec}
                   onSelectFile={selectFromTree}
+                  currentCode={codeTarget}
+                  onPressCode={pressCode}
                   onCopy={copyText}
                   onOpenFolder={() => openWorkFolder(panelWork.slug, null)}
                   open={workPanelOpen}
@@ -910,9 +1139,9 @@ function ColumnInside({
   onFocus,
   children,
 }: {
-  tab: ViewTab;
+  tab: ColumnTab;
   head: React.ReactNode;
-  onFocus: (tab: ViewTab) => void;
+  onFocus: (tab: ColumnTab) => void;
   children: React.ReactNode;
 }) {
   return (

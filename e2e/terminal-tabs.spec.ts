@@ -18,6 +18,8 @@ import {
   토큰색,
   unknownIpcCalls,
   writeShell,
+  파일탭주소,
+  주소로간다,
 } from "./harness";
 
 // 판 03 — `/terminal`의 카드 머리도 work 화면과 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
@@ -31,7 +33,7 @@ import {
 //
 // 픽스처 백엔드가 `pty_spawn`을 답해 xterm이 실제로 뜬다(terminal-fill.spec.ts가 선례다).
 
-const [, plainWork] = WORKS;
+const [fileWork, plainWork] = WORKS;
 
 test("⌘1이 탭 줄에 보이는 첫 칸을 고른다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -295,7 +297,7 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   // 1280은 실물 기본 창, 900은 **창이 작아질 수 있는 끝**(tauri.conf의 `minWidth`), 1120은 그 사이다.
   //
   // **줄이 받는 폭은 창 폭이 아니다.** 줄을 머리에 인 본문 카드의 폭이라 창에서 사이드바 · 열린 작업 패널을 뺀 나머지다
-  // (codex-ds 스펙 §4 — 레일은 칸이 하나라 안 선다). 1280에서는 여덟 칸이 이름을 숨긴 폭으로 다 들어가고, 1120 · 900에서는 어떤 최소 폭으로도
+  // (codex-ds 스펙 §4 — 레일 열(`spec` · `files`)도 선다). 1280에서는 여덟 칸이 이름을 숨긴 폭으로 다 들어가고, 1120 · 900에서는 어떤 최소 폭으로도
   // 안 들어간다 — 결정 20이 「그 아래는 스크롤」로 답한 자리다. 줄이 더 좁아지면 패널이 제 최소 폭까지, 그다음 사이드바가
   // 자리를 내주고 줄은 칸 하나가 보이는 데서 멈춘다(`panel-layout`의 `TAB_ROW_CARD` · `TAB_ROW_COLUMN` · `tab-row-floor`).
   for (const width of [1280, 1120, 900]) {
@@ -413,6 +415,64 @@ for (const at of ["900px", "칸 하나 폭 상자"] as const) {
   });
 }
 
+// git-integration 판 01 티켓 06 — **파일 탭도 같은 줄의 칸이다**(결정 31). 셸과 파일 탭이 섞여 넘친 줄에서 ⌘숫자 · ⌃Tab이 고른
+// 칸이 파일 탭이어도 보이는 자리로 온다(스토리 45). 켜진 칸을 집는 말(`aria-pressed`)이 종류를 안 가려서 같은 줄이 돈다 —
+// 이 검사는 그 말이 파일 탭에도 서는지, 파일 탭으로 가는 길(주소)을 지나서도 줄이 따라오는지를 본다.
+test("셸과 파일 탭이 섞여 넘친 줄에서도 ⌘숫자 · ⌃Tab으로 고른 끝쪽 파일 탭이 보이는 자리로 온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto(`/works/${fileWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await openShell(page);
+  // 파일 탭 여섯 — 묶음이 여덟 칸이 되어 900px 창에서 줄이 넘친다(위 셸 여덟과 같은 붐빔). 픽스처에 없는 경로라 본문은
+  // 「지워진 파일」이지만 칸은 선다.
+  const bundle = page.locator("[data-tab-strip] > [data-tab]");
+  const files = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"];
+  for (const [at, name] of files.entries()) {
+    await 주소로간다(page, 파일탭주소(`billing/${name}`));
+    await expect(bundle).toHaveCount(2 + at + 1);
+  }
+  await settleStrip(page);
+
+  const strip = page.locator("[data-tab-strip]");
+  const first = bundle.first();
+  const last = bundle.last();
+  await expect(last).toHaveAttribute("data-code", "billing/f.ts");
+  // **줄이 정말 넘쳤다** — 안 넘치면 아래 「안」이 늘 참이라 뜻이 없다.
+  const row = await rowOf(page);
+  expect(row.strip.scrollWidth, JSON.stringify(row.strip)).toBeGreaterThan(row.strip.clientWidth);
+
+  const inside = (cell: typeof first) => async () => {
+    const own = (await cell.boundingBox())!;
+    const box = (await strip.boundingBox())!;
+    return own.x >= box.x - 1 && own.x + own.width <= box.x + box.width + 1;
+  };
+
+  // ⌘2가 첫 셸이다 — 줄이 맨 앞으로 가고 마지막 파일 탭은 밖이다. 이것이 없으면 아래가 「원래 보이고 있어서」 초록이다.
+  await page.keyboard.press("Meta+2");
+  await expect.poll(inside(first)).toBe(true);
+  await expect.poll(inside(last)).toBe(false);
+
+  // ⌘9가 여덟째 칸 — 끝쪽 파일 탭이다. 그 칸이 상자 안으로 오고 켜지며, 본문이 그 파일이다.
+  await page.keyboard.press("Meta+9");
+  await expect.poll(inside(last)).toBe(true);
+  await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("main", { name: "billing/f.ts", exact: true })).toBeVisible();
+  await expect.poll(inside(first)).toBe(false);
+
+  // 끝쪽 칸에서 ⌃Tab은 돌아 첫 셸이다 — 줄이 다시 맨 앞으로 온다.
+  await page.keyboard.press("Control+Tab");
+  await expect.poll(inside(first)).toBe(true);
+  await expect(first.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(inside(last)).toBe(false);
+  // 거꾸로 돌면 다시 끝쪽 파일 탭으로 — 줄이 따라간다.
+  await page.keyboard.press("Control+Shift+Tab");
+  await expect.poll(inside(last)).toBe(true);
+  await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 위 두 검사는 「줄이 안 넘친다」와 「고른 칸이 상자 안으로 온다」를 들지만 **상자에 칸 하나가
 // 들어갈 폭이 남는가**는 안 든다 — 상자가 0px이면 넘침도 없다. 900px 창에서 작업 패널이 열린
 // 기본 배치가 그랬다(줄 290px · 상자 0px): 칸이 화면에 없어 누를 수도, 끌어 옮길 수도 없었다.
@@ -421,7 +481,7 @@ for (const at of ["900px", "칸 하나 폭 상자"] as const) {
 //
 // 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 두
 // 화면 모두를 본다. 가장 좁은 줄은 work 화면의 것이다 — 줄을 머리에 인 본문 카드 옆에 작업 패널 카드가 서서 그만큼 줄이 받는
-// 폭이 준다(codex-ds 스펙 §4 — 레일 열은 칸이 둘 이상일 때만 서서 지금은 없다, codex-ds 결정 25). 배치는 셋이다 — 패널을 연
+// 폭이 준다(codex-ds 스펙 §4 — 칸이 `spec` · `files` 둘이라 레일 열도 서서 그 폭까지 준다, codex-ds 결정 25). 배치는 셋이다 — 패널을 연
 // 채(줄이 가장 좁다), 접은 채, 그리고 ⌘B로 사이드바를 접은 채(머리 줄의 왼쪽 여백이 신호등 자리만큼 넓어지는 `inset` 갈래다 —
 // 줄은 카드 안이라 그 여백을 안 받고 카드와 함께 창 왼쪽 틈까지 넓어진다). `/terminal`에는 작업 패널이 없어 패널 갈래가 하나다.
 const SCREENS = [

@@ -3,20 +3,18 @@ import { test as base, type Browser, type BrowserContext, type Page, type TestIn
 import { readIpcRecord } from "./harness";
 
 /**
- * 브라우저 하나가 여는 쪽(page)의 상한 — 이만큼 열면 다음 컨텍스트를 새 브라우저에서 연다.
+ * 브라우저 하나에 여는 페이지 수. 이만큼 열었으면 다음 테스트는 새로 띄운 브라우저에서 연다.
  *
- * **WebKit 브라우저 하나는 쪽을 63개까지만 연다**(macOS 27.0.1 · Playwright WebKit 2336에서 실측, 2026-10-11). 64번째 쪽은
- * 서지만 탐색이 나가지 않는다 — 요청이 서버에 닿지 않고 `page.goto`가 `load`를 영영 기다린다. 앱과 무관하다: Vite 서버 대신 맨
- * 정적 서버여도, `data:` 주소여도, 컨텍스트 하나에서 쪽만 갈아 열어도 꼭 64번째에서 멈췄고, 닫힌 쪽의 웹 프로세스가 쌓이지도
- * 않았다. 브라우저를 새로 띄우면 수가 처음부터 다시 센다(160쪽을 50마다 갈아 띄워 모두 열렸다).
- *
- * 워커는 브라우저 하나로 테스트를 차례로 돌리므로(쪽 하나씩), 워커마다 64번째 테스트가 30초를 다 쓰고 실패했다 — L3 한 판에
- * 워커 수만큼, 시작 2분쯤 늘 같은 자리에서 「`page.goto` 시간 초과」가 났던 까닭이다(codex-ds 구현 기록의 「판마다 정확히 6건」).
- * 실패하면 워커가 새로 떠서 수가 다시 0이 되므로, 판마다 워커 하나에 꼭 한 건씩이었다.
- *
- * 상한은 63에 여유를 둔 값이다 — 갈아 띄우기는 컨텍스트를 열 때만 하므로, 한 테스트가 쪽을 여럿 열어도 넘치지 않게 둔다.
+ * macOS 27의 Playwright WebKit은 페이지를 열 때마다 브라우저 프로세스의 GCD 일꾼 스레드 하나를 놓아주지 않는다
+ * (`-[NSAnimation _runBlocking]`에 묶인 채 남는다). 묶인 수가 커널 상한(`kern.wq_max_constrained_threads` = 64)에
+ * 닿으면 그 브라우저의 네트워크 일이 돌 스레드가 없어 다음 `page.goto`가 응답 없이 멎는다. 워커는 브라우저를 하나만
+ * 띄우므로 워커마다 대략 60번째 테스트가 빈 화면으로 30초를 다 쓰고 빨개졌다(`browser-recycle.spec.ts`). 상한의
+ * 절반에서 갈아 끼운다 — 한 테스트가 페이지를 몇 개 더 열어도 닿지 않는 자리다.
  */
-const 쪽상한 = 50;
+export const PAGES_PER_BROWSER = 32;
+
+/** 페이지 수를 세다가 {@link PAGES_PER_BROWSER}에 닿으면 브라우저를 새로 띄우는 워커 단위의 문. */
+type RecyclingBrowser = { newContext(): Promise<BrowserContext> };
 
 // 실패한 테스트가 **그 순간의 증거**를 파일로 남긴다. 에이전트가 사람에게 "무슨 일이
 // 났는지 봐 달라"고 되묻지 않고 폴더 하나만 읽고 다음 수정을 정할 수 있어야 한다.
@@ -28,43 +26,40 @@ const 쪽상한 = 50;
 //
 // 트레이스(zip)는 켜지 않는다. 같은 정보를 담지만 뷰어로만 읽히므로 "폴더를 읽어서
 // 판단한다"에 쓸 수 없다. 대신 어느 단계까지 갔는지의 시퀀스는 남지 않는다.
-export const test = base.extend<{ evidence: void }>({
-  /**
-   * **워커의 브라우저를 쪽 `쪽상한`개마다 갈아 띄운다**(위 상한의 머리말). Playwright의 `browser`는 워커 하나에 하나라 그 값을
-   * 바꿀 길이 없다 — 그래서 지금 브라우저를 가리키는 대리(Proxy)를 내주고, 컨텍스트를 여는 자리(`newContext`)에서만 끼어든다.
-   * 쪽은 그 컨텍스트의 `page` 사건으로 센다. 옛 브라우저는 그 컨텍스트들이 다 닫힌 뒤(앞 테스트의 해체가 끝난 뒤)에 닫는다.
-   * 띄우는 길은 Playwright의 것 그대로다(`playwright[browserName].launch()` — 설정의 실행 옵션을 읽는다).
-   */
-  browser: [
+export const test = base.extend<{ evidence: void }, { recyclingBrowser: RecyclingBrowser }>({
+  // 띄우는 길은 Playwright의 `browser` 픽스처와 같다 — 인자 없는 `launch()`는 설정의 실행 옵션을, 인자 없는
+  // `newContext()`는 `use`의 문맥 옵션(기준 URL · 창 크기)을 받는다. 실패 순간의 스크린숏도 이 브라우저의 문맥에 그대로
+  // 붙는다(러너가 `playwright` 객체에서 모든 문맥을 본다).
+  recyclingBrowser: [
     async ({ playwright, browserName }, use) => {
-      let 지금: Browser = await playwright[browserName].launch();
-      let 연쪽 = 0;
-      const 대리 = new Proxy(지금, {
-        get(_, key) {
-          if (key === "newContext") {
-            return async (...args: Parameters<Browser["newContext"]>): Promise<BrowserContext> => {
-              if (연쪽 >= 쪽상한) {
-                const 옛 = 지금;
-                지금 = await playwright[browserName].launch();
-                연쪽 = 0;
-                await 옛.close();
-              }
-              const context = await 지금.newContext(...args);
-              context.on("page", () => {
-                연쪽 += 1;
-              });
-              return context;
-            };
+      let browser: Browser | undefined;
+      let pages = 0;
+      await use({
+        async newContext() {
+          if (!browser || pages >= PAGES_PER_BROWSER) {
+            await browser?.close();
+            browser = await playwright[browserName].launch();
+            pages = 0;
           }
-          const value: unknown = Reflect.get(지금, key);
-          return typeof value === "function" ? value.bind(지금) : value;
+          const context = await browser.newContext();
+          context.on("page", () => {
+            pages += 1;
+          });
+          return context;
         },
       });
-      await use(대리);
-      await 지금.close();
+      await browser?.close();
     },
     { scope: "worker", timeout: 0 },
   ],
+
+  // `page`는 이 문맥에서 열린다. Playwright의 문맥은 워커가 처음 띄운 브라우저 하나에서만 나온다.
+  context: async ({ recyclingBrowser }, use) => {
+    const context = await recyclingBrowser.newContext();
+    await use(context);
+    await context.close();
+  },
+
   evidence: [
     async ({ page }, use, testInfo) => {
       const messages: string[] = [];

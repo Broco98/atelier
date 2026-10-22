@@ -8,13 +8,13 @@ import ShellTabs from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
   activeIdOf,
+  bundleOf,
   closesShellFromWindow,
   opensShellFromWindow,
   ownerOf,
   sameScreen,
   shellForNav,
   shellNavFromWindow,
-  shellsOf,
   topTerminal,
 } from "./shell-registry";
 import {
@@ -132,10 +132,11 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       if (!nav) return;
       e.preventDefault();
       const state = terminalStore.state;
-      const shells = shellsOf(state, owner);
+      // 세는 것은 이 화면의 **묶음**이다 — `/terminal`의 묶음에는 셸만 선다.
+      const tabs = bundleOf(state, owner);
       // 첫 셸이 ⌘1이다 — 이 화면에는 문서가 없어 자리를 밀지 않는다. 아래 탭 줄도 같은
       // 이유로 셸부터 세우므로(`spec={null}`) 보이는 순서와 이 키가 고르는 것이 같다.
-      const next = shellForNav(shells, activeIdOf(state, owner), nav, 1);
+      const next = shellForNav(tabs, activeIdOf(state, owner), nav, 1);
       if (next !== null) selectShell(next);
     };
     window.addEventListener("keydown", onKeyDown);

@@ -1283,6 +1283,7 @@ describe("소유자별 화면값", () => {
         셸(소유("나"), null, 3),
         셸(소유("다"), 상태({ kind: "done" }), 4),
       ],
+      bundles: {},
       activeByOwner: {},
       nextId: 5,
     };
@@ -1292,7 +1293,7 @@ describe("소유자별 화면값", () => {
   // 최상위 셸은 어느 work의 것도 아니라 행이 없다 — 빈 문자열 키가 슬러그인 척하면
   // 그 키를 읽는 행이 영영 안 나온다(`shellCountsOf`와 같은 가름).
   it("최상위 셸은 안 든다", () => {
-    const state = { shells: [셸(소유(), 상태({ kind: "waiting" }), 1)], activeByOwner: {}, nextId: 2 };
+    const state = { shells: [셸(소유(), 상태({ kind: "waiting" }), 1)], bundles: {}, activeByOwner: {}, nextId: 2 };
     expect(signalsOf(state)).toEqual({});
   });
 });
@@ -1349,6 +1350,7 @@ describe("띠의 줄", () => {
   const 칸이 = (over: Partial<Shell>): Shell => ({ ...칸(null), ...over });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
     shells,
+    bundles: {},
     activeByOwner: {},
     nextId: shells.length + 1,
   });
@@ -1445,6 +1447,7 @@ describe("「봤다」", () => {
 describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
   const 목록 = (...list: ReadonlyArray<Attention | null>): ShellsState => ({
     shells: 칸들(...list),
+    bundles: {},
     activeByOwner: {},
     nextId: list.length + 1,
   });
@@ -1474,7 +1477,7 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
   // **여럿을 받는 계약**(결정 7의 「분할 중이면 켜진 탭이 둘」). 하나만 세면 다른 열의
   // 안 본 완료가 안 꺼진다.
   //
-  // **이 앱은 아직 그 화면을 못 만든다** — 분할의 조합이 늘 `spec ▏터미널`이라(결정 87)
+  // **이 앱은 아직 그 화면을 못 만든다** — 분할의 조합이 늘 `spec ▏ 묶음의 지금 탭`이라(결정 87)
   // 셸 열이 하나뿐이고, 배선(`terminal-store`의 `shownShell`)도 그래서 하나다. 그러니
   // 스토리 51이 사는 자리는 지금 이 층뿐이고, 그 사정은
   // `spec/물음-봤다의-셋째-조건.md`가 사람에게 열어 두고 있다.

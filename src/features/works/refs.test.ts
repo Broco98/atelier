@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { archiveRef, archiveSpecDirRef, layoutDirRef, specDirRef, specRef, workDirRef } from "./refs";
+import { archiveRef, archiveSpecDirRef, layoutDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
 // 그래서 아래 기대값은 `refs.ts`의 뿌리 상수를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
@@ -40,9 +40,20 @@ describe("참조 생성기", () => {
     expect(workDirRef("s")).toMatch(/^~\/\.atelier\//);
     expect(archiveRef("s", "record.md")).toMatch(/^~\/\.atelier\//);
   });
+
+  // 워크트리는 코어가 완성해 내려준 경로다 — 앞머리를 여기서 다시 지으면
+  // `ATELIER_HOME`을 옮긴 설치에서 앱이 지은 경로와 실물이 갈린다.
+  it("워크트리 참조는 받은 경로에 `/`만 보장한다", () => {
+    expect(worktreeDirRef("~/.atelier/works/w/trees/atelier")).toBe(
+      "~/.atelier/works/w/trees/atelier/",
+    );
+    expect(worktreeDirRef("~/.atelier/works/w/trees/atelier/")).toBe(
+      "~/.atelier/works/w/trees/atelier/",
+    );
+  });
 });
 
-// 레이아웃 참조(spec 레이아웃 결정 23)는 설정의 [부탁]이 복사하는 한 줄이다. **코어가 준
+// 레이아웃 참조(spec 레이아웃 결정 23)는 설정의 [부탁]이 복사하는 한 줄이다. 워크트리처럼 **코어가 준
 // 경로**(상태의 `folder`)로 짓는다 — 여기서 뿌리를 다시 지으면 `ATELIER_HOME`을 옮긴 설치에서 붙인
 // 참조가 실물과 갈린다. 그 참조가 에이전트가 배우는 모양과 같은지는 Rust 쪽
 // (`the_layout_reference_the_settings_page_copies_is_the_one_the_tools_teach`)이 엔진 안에서 잰다.
