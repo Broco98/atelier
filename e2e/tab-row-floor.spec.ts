@@ -55,7 +55,7 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    // 패널 토글은 머리 줄 오른쪽 끝(레일이 서지 않는 지금은 머리 카드 안 끝, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    // 패널 토글은 머리 줄 오른쪽 끝(레일이 서는 지금은 머리 카드 밖 레일 열 위, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
       .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
       ?.getBoundingClientRect();

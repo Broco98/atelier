@@ -1,6 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorkPanel from "./WorkPanel";
+import WorkPanel, { type PanelView } from "./WorkPanel";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 
@@ -8,22 +9,29 @@ import { specDocs, workFixture } from "./work-fixture";
 // 카드 · 틈 · 폭 손잡이 · 접힘은 공용 틀의 패널 칸이 들어(ui-refresh 결정 27) 그 단언은 화면을 통째로 그리는 `WorksPage.test.tsx`에
 // 있다. 칸을 고르고 여닫는 자리(레일 · 패널 토글)도 패널 밖이라 그쪽에 있다(ui-refresh 결정 9 · 10).
 //
-// 몸은 `spec` 하나다 — `info` 몸을 걷었다(codex-ds 결정 25: 보기는 호버 카드가, 복사 · Finder 열기는 work 메뉴가 든다). 그래서 이
-// 패널은 스스로 조회하지 않는다 — 프로바이더를 안 세운다(조회가 되살아나면 여기서 바로 터진다).
+// 몸은 `spec` · `files` 둘이다 — `info` 몸을 걷었다(codex-ds 결정 25: 보기는 호버 카드가, 복사 · Finder 열기는 work 메뉴가 든다).
+// files 몸(git-integration 판 01)은 워크트리 트리를 스스로 조회하므로 프로바이더를 세운다 — 정적 렌더는 이펙트를 돌리지 않아
+// 요청은 나가지 않는다.
 
 const work: WorkView = workFixture(specDocs(["overview.md"]));
 
-function render(open: boolean, override: Partial<WorkView> = {}): string {
+// `view`는 레일에서 고른 칸이다 — 그 값의 주인은 화면(`WorksPage`)이고 이 컴포넌트는 받은 대로 그린다. 맨 **뒤에** 두는 것은
+// 기본값이 있어 기존 호출이 바뀌지 않게 하려는 것이다.
+function render(open: boolean, override: Partial<WorkView> = {}, view: PanelView = "spec"): string {
   return renderToStaticMarkup(
-    <WorkPanel
-      work={{ ...work, ...override }}
-      view="spec"
-      currentFile={null}
-      onSelectFile={() => {}}
-      onCopy={() => {}}
-      onOpenFolder={() => {}}
-      open={open}
-    />,
+    <QueryClientProvider client={new QueryClient()}>
+      <WorkPanel
+        work={{ ...work, ...override }}
+        view={view}
+        currentFile={null}
+        onSelectFile={() => {}}
+        currentCode={null}
+        onPressCode={() => {}}
+        onCopy={() => {}}
+        onOpenFolder={() => {}}
+        open={open}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -84,19 +92,33 @@ describe("WorkPanel 머리와 몸", () => {
     expect(markup).not.toContain('aria-label="셸 열기"');
   });
 
-  it("몸은 `spec` 하나이고 보인다 — `info` 몸과 그 프로젝트 · 워크트리 칸이 없다", () => {
+  it("몸은 `spec` · `files` 둘이다 — `info` 몸과 그 프로젝트 · 워크트리 칸이 없다", () => {
     // codex-ds 결정 25. info의 보기는 사이드바 행의 호버 카드가(프로젝트마다 base · 변경 있음), 복사 · Finder 열기는 work 메뉴가
-    // 든다 — 같은 정보를 두 자리에서 보지 않는다.
+    // 든다 — 같은 정보를 두 자리에서 보지 않는다. files 몸은 spec 뒤에 선다(git-integration 결정 29).
     const markup = render(true, {
       projects: ["atelier"],
       worktrees: [{ project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false }],
     });
-    expect(bodyTag(markup, "spec")).not.toBe("");
-    expect(bodyTag(markup, "spec")).not.toMatch(/\b(hidden|inert)=/);
-    expect(markup.match(/data-panel-view="([^"]+)"/g)).toEqual(['data-panel-view="spec"']);
+    expect(markup.match(/data-panel-view="([^"]+)"/g)).toEqual(['data-panel-view="spec"', 'data-panel-view="files"']);
     expect(markup).not.toContain("trees/atelier");
     expect(markup).not.toContain("프로젝트 상세로 이동");
     expect(markup).toContain(">overview.md<");
+  });
+
+  it("보이지 않는 몸도 함께 마운트돼 있고, `hidden` · `inert`로 가려진다", () => {
+    // files 몸은 지금 안 보이지만 마크업에 있다(git-integration 판 01) — 숨은 동안에도 마운트돼 있어 접힘을 든다. 트리를 묻는
+    // 것은 보일 때뿐이다(L3). 언마운트하면 files를 보고 spec으로 돌아왔을 때 접어둔 판이 펴져 있다(결정 9·13).
+    const spec = render(true);
+    expect(bodyTag(spec, "spec")).not.toBe("");
+    expect(bodyTag(spec, "spec")).not.toMatch(/\b(hidden|inert)=/);
+    expect(bodyTag(spec, "files")).toMatch(/\bhidden=""/);
+    expect(bodyTag(spec, "files")).toMatch(/\binert=""/);
+    // 반대쪽 — files를 고르면 spec 몸이 가려지고, 트리는 여전히 마운트돼 있다.
+    const files = render(true, {}, "files");
+    expect(files).toContain("overview.md");
+    expect(bodyTag(files, "spec")).toMatch(/\bhidden=""/);
+    expect(bodyTag(files, "spec")).toMatch(/\binert=""/);
+    expect(bodyTag(files, "files")).not.toMatch(/\b(hidden|inert)=/);
   });
 
   it("몸 안의 스크롤 영역이 패널 카드의 남는 높이를 차지한다", () => {

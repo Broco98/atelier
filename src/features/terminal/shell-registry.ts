@@ -146,11 +146,46 @@ export interface Shell {
   ownerless: boolean;
 }
 
+/**
+ * **묶음**의 칸 하나(CONTEXT 「묶음」 · git-integration 판 01 S10) — 탭의 종류와 그 칸이 가리키는 것만 든다.
+ *
+ * 종류는 둘이다 — 셸과 **파일 탭**(`code`, CONTEXT 「파일 탭」). 셸 칸의 데이터(상태 · 이름 · 키 …)는 지금처럼
+ * `ShellsState.shells`에 살고, 칸은 그 셸을 id로 가리킨다 — 데이터를 칸에 옮겨 담으면 셸을 갈아 끼우는 리듀서(`patch`)가
+ * 두 자리를 고쳐야 한다. 파일 탭은 데이터가 정체(`CodeTarget`)뿐이라 칸이 직접 든다. 02판이 `diff`를 더한다.
+ *
+ * **id는 종류를 가리지 않고 한 줄에서 발급한다**(`nextId`). 켜진 칸(`activeByOwner`) · 끌기 · 탭 줄의 콜백이 모두 수 하나로
+ * 칸을 부르므로, 번호가 종류마다 따로 돌면 셸 3과 파일 탭 3이 같은 칸으로 읽힌다.
+ */
+export type BundleTab = { kind: "shell"; id: number } | ({ kind: "code"; id: number } & CodeTarget);
+
+/**
+ * 파일 탭이 가리키는 것 — 그 work의 **프로젝트**와 그 워크트리 기준 **경로**(조각은 `/`). 이 둘이 파일 탭의 정체다 —
+ * 같은 정체의 칸은 한 묶음에 하나만 선다(git-integration 결정 30 · `openCodeTab`). 워크트리의 자리는 여기 없다: 그것은
+ * 코어가 work slug와 프로젝트로 찾는다.
+ */
+export interface CodeTarget {
+  project: string;
+  path: string;
+}
+
 export interface ShellsState {
+  /**
+   * 셸들의 데이터. **차례는 묶음의 셸 차례와 같다** — 묶음의 차례를 바꾸는 자리(`withBundle`)가 이 배열도 함께 다시
+   * 앉힌다. 이 배열을 통째로 읽는 화면(`Processes`의 셸 묶음)이 탭의 차례를 그대로 받는 것이 그 덕이다. 여러 화면의
+   * 셸이 섞여 사는 것은 그대로다.
+   */
   shells: ReadonlyArray<Shell>;
   /**
+   * **묶음 — 화면마다 탭 한 줄의 차례다**(CONTEXT 「묶음」 · git-integration 판 01 S10). 키는 아래 `activeByOwner`와 같은
+   * 소유자다. ⌘2~9 · ⌃Tab · 닫을 때의 이웃 · 끌어 옮기기가 이 차례를 센다(`bundleOf`).
+   *
+   * 「셸 목록」과 따로 두는 것은 탭이 셸만이 아니게 되어서다(git-integration 결정 31 — 셸과 파일 탭이 한 줄에 공평하게 선다). 셸 상한
+   * 8은 여전히 셸만 센다(`atCap`).
+   */
+  bundles: Readonly<Record<string, ReadonlyArray<BundleTab>>>;
+  /**
    * **켜진 칸은 화면마다 따로다.** 키는 소유자 그대로이고, 최상위 터미널은 빈 글자 `""`다 —
-   * Work slug는 비어 있을 수 없어 둘이 안 겹친다(`slugOfOwner`).
+   * Work slug는 비어 있을 수 없어 둘이 안 겹친다(`slugOfOwner`). 값은 그 화면 **묶음의 칸** id다.
    *
    * 하나로 두면 Work 가에서 나로 갔다 오는 것만으로 가의 줄에 켜진 칸이 없어지고,
    * 그 자리에서 「없으면 하나 띄운다」가 돌면 이미 있는 셸 옆에 셸이 또 뜬다. `×`의
@@ -161,7 +196,7 @@ export interface ShellsState {
   nextId: number;
 }
 
-export const NO_SHELLS: ShellsState = { shells: [], activeByOwner: {}, nextId: 1 };
+export const NO_SHELLS: ShellsState = { shells: [], bundles: {}, activeByOwner: {}, nextId: 1 };
 
 /**
  * 셸의 소유자 — **어느 화면의 셸인가.** work의 셸이면 그 slug(`spec-search`)이고, 최상위 터미널은
@@ -448,6 +483,11 @@ export function openShell(
   return {
     state: {
       shells: [...state.shells, shell],
+      // 새 칸은 묶음 **끝에** 선다(git-integration 결정 31) — 셸 배열 끝에 붙는 것과 같은 차례다.
+      bundles: {
+        ...state.bundles,
+        [origin.owner]: [...bundleOf(state, origin.owner), { kind: "shell", id }],
+      },
       activeByOwner: { ...state.activeByOwner, [origin.owner]: id },
       nextId: id + 1,
     },
@@ -460,6 +500,132 @@ export function openShell(
  */
 export function shellsOf(state: ShellsState, owner: ShellOwner): ReadonlyArray<Shell> {
   return state.shells.filter((shell) => shell.owner === owner);
+}
+
+/**
+ * 이 화면의 **묶음** — 탭 줄 스크롤 상자에 서는 칸들, 보이는 차례 그대로(CONTEXT 「묶음」). ⌘2~9 · ⌃Tab(`shellForNav`) ·
+ * 닫을 때의 이웃(`removeShell`) · 끌어 옮기기(`moveShell`)가 이것을 센다. **셸을 세는 자리는 위 `shellsOf`다** — 상한 ·
+ * 사이드바의 셸 수 · 닫기 확인은 묶음이 아니라 프로세스를 센다.
+ *
+ * 빈 화면은 늘 **같은 빈 배열**이다 — 화면의 구독(`sameScreen`)이 칸 목록을 정체로 견주므로, 부를 때마다 새 배열이면
+ * 칸이 없는 화면이 매번 「바뀌었다」로 읽힌다.
+ */
+export function bundleOf(state: ShellsState, owner: ShellOwner): ReadonlyArray<BundleTab> {
+  return state.bundles[owner] ?? NO_TABS;
+}
+
+const NO_TABS: ReadonlyArray<BundleTab> = [];
+
+/**
+ * 그 id의 칸이 선 묶음의 소유자. 어느 묶음에도 없으면 `null`이다 — 그리는 것과 누르는 것 사이에 칸이 빠질 수 있다
+ * (`activateShell`). 칸을 id 하나로 받는 조작(켜기 · 옮기기)이 그 칸의 화면을 여기서 찾는다.
+ */
+function bundleOwnerOf(state: ShellsState, id: number): ShellOwner | null {
+  for (const [owner, tabs] of Object.entries(state.bundles)) {
+    if (tabs.some((tab) => tab.id === id)) return owner;
+  }
+  return null;
+}
+
+/**
+ * 그 id의 칸이 아직 **어느 묶음에** 있는가 — 셸 칸이든 파일 탭이든. 끄는 칸이 살아 있는지를 묻는 자리(터미널 스토어의 끌기
+ * 거두기)가 딛는다 — 셸 목록만 보면 끄는 파일 탭은 늘 「없는 칸」이라 누르자마자 끌기가 거둬진다.
+ */
+export function hasBundleTab(state: ShellsState, id: number): boolean {
+  return bundleOwnerOf(state, id) !== null;
+}
+
+/**
+ * 그 화면 묶음에 **파일 탭**을 연다(git-integration 판 01 — 스토리 23~25). 같은 정체(`CodeTarget`)의 칸이 이미 있으면 새로
+ * 서지 않고 그 칸을 켠다. 없으면 묶음 **끝에** 붙이고 켠다 — 이미 선 칸의 자리와 번호가 안 흔들린다(결정 31).
+ *
+ * **최상위 터미널(`""`)은 받지 않는다** — 파일 탭은 work 화면에만 선다(결정 「묻지 않고 둔 기본값」). 그때는 받은 상태 그대로다.
+ * 셸 상한(`atCap`)은 안 본다: 상한은 프로세스의 수라 셸만 센다(스토리 46).
+ */
+export function openCodeTab(state: ShellsState, owner: ShellOwner, target: CodeTarget): ShellsState {
+  if (slugOfOwner(owner) === null) return state;
+  const tabs = bundleOf(state, owner);
+  const same = tabs.find(
+    (tab) => tab.kind === "code" && tab.project === target.project && tab.path === target.path,
+  );
+  if (same) return activateShell(state, same.id);
+  const id = state.nextId;
+  const tab: BundleTab = { kind: "code", id, project: target.project, path: target.path };
+  return {
+    ...state,
+    bundles: { ...state.bundles, [owner]: [...tabs, tab] },
+    activeByOwner: { ...state.activeByOwner, [owner]: id },
+    nextId: id + 1,
+  };
+}
+
+/**
+ * 파일 탭 하나를 **확인 없이** 묶음에서 뺀다(스토리 37 · 50 — 프로세스가 없어 물을 것이 없다). 다음 켜질 칸은 셸을 닫을
+ * 때와 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * **셸 칸은 여기로 빼지 않는다** — 받은 상태 그대로다. 셸을 닫는 길은 확인 창을 거치는 하나다(`requestCloseShell`).
+ */
+export function removeCodeTab(state: ShellsState, id: number): ShellsState {
+  const owner = bundleOwnerOf(state, id);
+  if (owner === null) return state;
+  if (bundleTabOf(state, owner, id)?.kind !== "code") return state;
+  return withoutTab(state, owner, id);
+}
+
+/**
+ * 그 화면 묶음의 **파일 탭을 모두** 뺀다 — 그 work이 아카이브 · 삭제되어 화면이 사라질 때다. 셸은 프로세스라 셸을 닫는 길
+ * (`removeShell`)로 빠지고, 파일 탭은 물을 것이 없어 여기서 한꺼번에 빠진다. 켜진 칸은 칸마다 같은 이웃 규칙이다(`withoutTab`).
+ *
+ * 묶음이 비면 키째 걷힌다 — 남기면 지운 work의 slug로 새 work이 설 때 옛 탭이 그 줄에 서고, 켜진 칸도 그것을 가리킨다.
+ * 파일 탭이 없으면 받은 상태 그대로다.
+ */
+export function withoutCodeTabsOf(state: ShellsState, owner: ShellOwner): ShellsState {
+  return bundleOf(state, owner)
+    .filter((tab) => tab.kind === "code")
+    .reduce((next, tab) => withoutTab(next, owner, tab.id), state);
+}
+
+/**
+ * 그 화면 **묶음의 지금 탭** — 셸이든 파일 탭이든. 켜진 칸이 없으면 `null`이다. 「켜진 셸」은 `activeShellOf`가 따로 답한다
+ * (지금 탭이 파일 탭이면 그쪽은 `null`이다).
+ */
+export function activeTabOf(state: ShellsState, owner: ShellOwner): BundleTab | null {
+  const id = activeIdOf(state, owner);
+  return id === null ? null : bundleTabOf(state, owner, id);
+}
+
+/**
+ * 그 화면 묶음에서 그 id의 칸. 없으면 `null`이다 — 그리는 것과 누르는 것 사이에 칸이 빠질 수 있다(`activateShell`). 칸을 id
+ * 하나로 받은 화면이 그 칸의 종류(셸 · 파일 탭)로 할 일을 가를 때 쓴다.
+ */
+export function bundleTabOf(state: ShellsState, owner: ShellOwner, id: number): BundleTab | null {
+  return bundleOf(state, owner).find((tab) => tab.id === id) ?? null;
+}
+
+/**
+ * 지금 탭이 셸이 되게 한다 — 이미 셸이거나 묶음에 셸이 없으면 받은 상태 그대로다. 지금 탭이 파일 탭이면 **묶음의 첫 셸**을
+ * 켠다.
+ *
+ * 주소가 「본문은 셸이다」(`tab=terminal`)라고 말하는데 묶음의 지금 탭이 파일 탭인 자리가 있다 — 파일 탭을 연 뒤 뒤로가기로
+ * 셸 화면 주소에 돌아왔을 때다. 주소에는 어느 셸인지가 없어(결정 33) 고를 것이 묶음의 차례뿐이다.
+ */
+export function withShellActive(state: ShellsState, owner: ShellOwner): ShellsState {
+  if (activeTabOf(state, owner)?.kind !== "code") return state;
+  const shell = bundleOf(state, owner).find((tab) => tab.kind === "shell");
+  return shell ? activateShell(state, shell.id) : state;
+}
+
+/**
+ * 그 화면의 묶음을 새 차례로 갈아 끼운다. **묶음의 차례를 바꾸는 자리가 이것 하나다** — 셸 배열(`shells`)에 앉은 그 화면의
+ * 셸들도 같은 차례로 다시 앉힌다(`ShellsState.shells`의 약속). 남의 화면 셸은 한 칸도 안 움직인다: 그 화면 셸들이 앉아 있던
+ * **전역 자리 묶음**에 새 차례로 앉힐 뿐이다.
+ */
+function withBundle(state: ShellsState, owner: ShellOwner, tabs: ReadonlyArray<BundleTab>): ShellsState {
+  const byId = new Map(state.shells.map((shell) => [shell.id, shell]));
+  const order = tabs.flatMap((tab) => byId.get(tab.id) ?? []);
+  let next = 0;
+  const shells = state.shells.map((one) => (one.owner === owner ? order[next++] : one));
+  return { ...state, shells, bundles: { ...state.bundles, [owner]: tabs } };
 }
 
 /**
@@ -519,7 +685,10 @@ export function activeIdOf(state: ShellsState, owner: ShellOwner): number | null
   return state.activeByOwner[owner] ?? null;
 }
 
-/** 어느 화면에 셸이 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. */
+/**
+ * 어느 화면의 **묶음에 칸이** 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. 셸과 파일 탭을 함께 센다.
+ * 세는 것이 셸이 아니라 칸인 것은 git-integration 결정 30이 「묶음이 비면 spec」이라서다.
+ */
 export interface ShellTally {
   /**
    * **`null`이 남아 있다 — 「고른 작업이 없다」다.** 그 화면에는 셸이 설 자리가 아예 없어
@@ -531,7 +700,7 @@ export interface ShellTally {
 }
 
 /**
- * **마지막 셸이 방금 사라졌는가.**
+ * **마지막 셸이 방금 사라졌는가** — 셈은 묶음의 칸이다(`ShellTally`). 이름이 「셸」인 것은 묶음에 셸만 서던 때의 것이다.
  *
  * 「지금 0개다」가 아니라 「0이 됐다」인 것이 요점이다. 화면에 들어올 때는 0에서 시작해
  * 진입 이펙트가 하나를 띄우므로(`ensureShell`), 서 있는 값으로 재면 들어오자마자 되돌아
@@ -804,12 +973,12 @@ export function runningOfId(state: ShellsState, id: number): string | null {
 /**
  * 칸을 고른다. **없는 id는 무시한다** — 그리는 것과 누르는 것 사이에 그 칸이 빠질 수 있고,
  * 없는 칸을 활성으로 만들면 켜진 칸도 본문도 없는 화면이 이유 없이 남는다.
+ *
+ * 고르는 것은 **묶음의 칸**이다 — 그 칸이 선 묶음의 화면에서 켜진다(`bundleOwnerOf`). 셸 id든 파일 탭 id든 받는다.
  */
 export function activateShell(state: ShellsState, id: number): ShellsState {
-  const shell = state.shells.find((one) => one.id === id);
-  if (!shell) return state;
-
-  const key = shell.owner;
+  const key = bundleOwnerOf(state, id);
+  if (key === null) return state;
   if (state.activeByOwner[key] === id) return state;
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
@@ -826,37 +995,34 @@ export function isInPlaceGap(from: number, gap: number): boolean {
 }
 
 /**
- * 칸을 **그 화면 셸들 사이의 틈**으로 옮긴다(UI개선 결정 11 · UI개선 스펙 §6). `gap`은
+ * 칸을 **그 화면 묶음의 틈**으로 옮긴다(UI개선 결정 11 · UI개선 스펙 §6). `gap`은
  * 0..n이다 — 0이 그 화면 첫 칸 앞, n이 마지막 칸 뒤이고, 끄는 칸도 세어진 채의 번호다.
+ * 세는 것은 셸이 아니라 **묶음의 칸**이다(git-integration 판 01 S10) — 셸과 파일 탭이 한 차례에 선다.
  *
- * **틈이 전역 배열의 자리가 아닌 것**은 이 배열에 여러 화면의 셸이 섞여 살아서다. 전역
+ * **틈이 전역 배열의 자리가 아닌 것**은 셸 배열에 여러 화면의 셸이 섞여 살아서다. 전역
  * 자리로 받으면 부르는 쪽(탭 줄)이 남의 셸 수를 알아야 하고, 옮기는 김에 남의 셸이 밀린다.
- * 그래서 이 화면 셸들의 상대 순서만 바꾸고, 그 셸들이 앉아 있던 **전역 자리 묶음**에
- * 새 순서로 다시 앉힌다 — 남의 셸은 한 칸도 안 움직인다.
+ * 그래서 이 화면 묶음의 차례만 바꾸고, 셸 배열은 `withBundle`이 같은 차례로 다시 앉힌다 —
+ * 남의 셸은 한 칸도 안 움직인다.
  *
  * 원래 자리 `i`의 양옆 틈(`i`·`i+1`)은 제자리라 **받은 상태를 그대로** 돌려준다. 모르는
  * id도 같다(그리는 것과 놓는 것 사이에 칸이 빠질 수 있다 — `activateShell`과 같은 이유).
  * 켜진 칸은 id로 적혀 있어 순서와 무관하게 그대로다.
  *
- * ⌘1~9·⌃Tab·`×` 이웃 규칙·에이전트 목록은 이 배열을 세므로 **새 규칙 없이 따라온다.**
+ * ⌘1~9·⌃Tab·`×` 이웃 규칙은 묶음을, 에이전트 목록은 셸 배열을 세므로 **새 규칙 없이 따라온다.**
  * 순서는 메모리에만 있다(UI개선 결정 12).
  */
 export function moveShell(state: ShellsState, id: number, gap: number): ShellsState {
-  const shell = state.shells.find((one) => one.id === id);
-  if (!shell) return state;
+  const owner = bundleOwnerOf(state, id);
+  if (owner === null) return state;
 
-  const mine = state.shells.filter((one) => one.owner === shell.owner);
-  const from = mine.indexOf(shell);
-  if (isInPlaceGap(from, gap) || gap < 0 || gap > mine.length) return state;
+  const tabs = bundleOf(state, owner);
+  const from = tabs.findIndex((tab) => tab.id === id);
+  if (isInPlaceGap(from, gap) || gap < 0 || gap > tabs.length) return state;
 
-  const rest = mine.filter((one) => one !== shell);
+  const rest = tabs.filter((tab) => tab.id !== id);
   // 틈 번호는 끄는 칸이 **아직 있는** 줄에서 센 것이다 — 그 뒤쪽 틈은 빠진 한 칸만큼 당겨진다.
   const at = gap > from ? gap - 1 : gap;
-  const order = [...rest.slice(0, at), shell, ...rest.slice(at)];
-
-  let next = 0;
-  const shells = state.shells.map((one) => (one.owner === shell.owner ? order[next++] : one));
-  return { ...state, shells };
+  return withBundle(state, owner, [...rest.slice(0, at), tabs[from], ...rest.slice(at)]);
 }
 
 /**
@@ -1007,8 +1173,8 @@ export function searchHotkey(event: KeyPress): boolean {
 /**
  * 두 상태가 **이 화면에게 같은가.**
  *
- * 한 화면의 탭 줄이 그리는 것은 둘뿐이다 — 자기 셸들과 그중 켜진 칸. 남의 work의 셸이
- * 프롬프트마다 쏘는 OSC 타이틀에는 그 둘 중 아무것도 안 바뀐다.
+ * 한 화면의 탭 줄이 그리는 것은 셋뿐이다 — 자기 묶음의 차례, 그 칸들이 가리키는 셸들, 그중 켜진 칸. 남의 work의 셸이
+ * 프롬프트마다 쏘는 OSC 타이틀에는 그 셋 중 아무것도 안 바뀐다.
  *
  * **화면이 하나가 아니라서 필요하다.** 상한도 탭 줄도 화면마다이므로(결정 23) 스토어를
  * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 화면이 함께 다시 그려진다. 판 04
@@ -1032,6 +1198,8 @@ export function sameScreen(
   if (a === b) return true;
   if (a.shells.length !== b.shells.length) return false;
   if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
+  // 묶음은 그 화면의 차례가 바뀔 때만 새 배열이다(`openShell` · `withBundle` · `removeShell`) — 정체로 견주면 된다.
+  if (bundleOf(a, owner) !== bundleOf(b, owner)) return false;
   const mine = shellsOf(a, owner);
   const theirs = shellsOf(b, owner);
   return mine.length === theirs.length && mine.every((shell, at) => shell === theirs[at]);
@@ -1045,31 +1213,33 @@ export function sameScreen(
  * 딛는 것이 이 함수의 전부다: 따로 두면 순회가 한쪽에서만 끝에서 돌아오거나, 한쪽만 자리를
  * 밀어 마지막 셸을 영영 못 고르게 된다.
  *
- * **세는 것은 받은 목록이다**(결정 109) — 부르는 쪽이 그 화면의 셸만 담아 준다.
+ * **세는 것은 받은 목록이다**(결정 109) — 부르는 쪽이 그 화면의 **묶음**(`bundleOf`)을 담아 준다(git-integration 결정 31 ·
+ * S10 — 셸이든 아니든 보이는 차례가 번호다). 고른 것은 칸의 id라 파일 탭일 수 있다 — 무엇을 할지는 부르는 쪽이 그 칸의
+ * 종류로 가른다. 칸에서 보는 것은 id 하나라 칸이든 셸이든 받는다.
  */
 export function shellForNav(
-  shells: ReadonlyArray<Shell>,
+  tabs: ReadonlyArray<{ id: number }>,
   activeId: number | null,
   nav: ShellNav,
   firstKey: number,
 ): number | null {
-  if (nav.kind === "cycle") return cycleShell(shells, activeId, nav.delta);
-  return shells[nav.n - firstKey]?.id ?? null;
+  if (nav.kind === "cycle") return cycleShell(tabs, activeId, nav.delta);
+  return tabs[nav.n - firstKey]?.id ?? null;
 }
 
 /**
  * 순회했을 때 켜질 칸(결정 80). 끝에서 **돌아온다** — 여덟 번째에서 다음을 누르면 첫 칸이다.
- * 켜진 칸이 없으면 방향에 따라 첫 칸 또는 마지막 칸이다.
+ * 켜진 칸이 없으면 방향에 따라 첫 칸 또는 마지막 칸이다. 도는 것은 받은 목록 — 묶음 전체다(위 `shellForNav`).
  */
 export function cycleShell(
-  shells: ReadonlyArray<Shell>,
+  tabs: ReadonlyArray<{ id: number }>,
   activeId: number | null,
   delta: 1 | -1,
 ): number | null {
-  if (shells.length === 0) return null;
-  const at = shells.findIndex((shell) => shell.id === activeId);
-  if (at === -1) return (delta === 1 ? shells[0] : shells[shells.length - 1]).id;
-  return shells[(at + delta + shells.length) % shells.length].id;
+  if (tabs.length === 0) return null;
+  const at = tabs.findIndex((tab) => tab.id === activeId);
+  if (at === -1) return (delta === 1 ? tabs[0] : tabs[tabs.length - 1]).id;
+  return tabs[(at + delta + tabs.length) % tabs.length].id;
 }
 
 /**
@@ -1539,32 +1709,43 @@ export function quitNotice({ live, running, spawned }: QuitCounts): string | und
 }
 
 /**
- * **목록에서 빼는 유일한 조작이다.** 못 뜬 칸은 빠지지 않고, 끝난 칸은 `markExited`가
+ * **셸 목록에서 빼는 유일한 조작이다.** 못 뜬 칸은 빠지지 않고, 끝난 칸은 `markExited`가
  * 정상 종료를 가려 이리로 보낼 때만 빠진다(결정 48) — 그 길도 결국 이 함수라, 다음에
  * 켜질 칸을 정하는 규칙은 여전히 한 벌이다.
  *
- * 활성 칸을 빼면 다음 활성은 **오른쪽 이웃 → 없으면 왼쪽 이웃 → 그 화면이 비면 없음**이다.
- * 판 02의 `×`가 이 규칙에 붙는다.
- *
- * **이웃은 같은 소유자 안에서 고른다.** 전체 목록에서 고르면 남의 Work 셸이 켜져, 그 줄에
- * 켜진 칸이 없어진다.
+ * 셸이 빠지면 그 칸도 묶음에서 빠진다. 다음 켜질 칸은 `withoutTab`이 묶음에서 고른다.
  */
 export function removeShell(state: ShellsState, id: number): ShellsState {
   const gone = state.shells.find((shell) => shell.id === id);
   if (!gone) return state;
 
-  const shells = state.shells.filter((shell) => shell.id !== id);
-  const key = gone.owner;
-  if (state.activeByOwner[key] !== id) return { ...state, shells };
+  return withoutTab({ ...state, shells: state.shells.filter((shell) => shell.id !== id) }, gone.owner, id);
+}
 
-  const siblings = state.shells.filter((shell) => shell.owner === gone.owner);
+/**
+ * 그 화면의 묶음에서 칸 하나를 뺀다. **닫을 때의 이웃 규칙이 여기 하나다** — 칸의 종류가 늘어도 이웃은 이 자리에서 고른다.
+ *
+ * 켜진 칸을 빼면 다음 켜질 칸은 **오른쪽 이웃 → 없으면 왼쪽 이웃 → 그 묶음이 비면 없음**이다.
+ * 판 02의 `×`가 이 규칙에 붙는다. 이웃은 **묶음의 칸**에서 고른다(git-integration 판 01 S10 — 셸이 아닌 칸도 이웃이다).
+ *
+ * **이웃은 같은 소유자 안에서 고른다.** 전체 목록에서 고르면 남의 Work 칸이 켜져, 그 줄에
+ * 켜진 칸이 없어진다.
+ */
+function withoutTab(state: ShellsState, owner: ShellOwner, id: number): ShellsState {
+  const siblings = bundleOf(state, owner);
+  const rest = siblings.filter((tab) => tab.id !== id);
+  // 빈 묶음은 키째 걷는다 — 아카이브된 work의 빈 줄이 표에 쌓이지 않게. 읽는 쪽은 `bundleOf`가 빈 배열로 받는다.
+  const bundles = { ...state.bundles };
+  if (rest.length > 0) bundles[owner] = rest;
+  else delete bundles[owner];
+  if (state.activeByOwner[owner] !== id) return { ...state, bundles };
+
   // 빠진 자리의 index가 곧 오른쪽 이웃이다. 없으면 그 앞이 왼쪽 이웃이고, 둘 다 없으면 빈 화면이다.
-  const at = siblings.findIndex((shell) => shell.id === id);
-  const rest = siblings.filter((shell) => shell.id !== id);
+  const at = siblings.findIndex((tab) => tab.id === id);
   const next = rest[at] ?? rest[at - 1] ?? null;
 
   const activeByOwner = { ...state.activeByOwner };
-  if (next) activeByOwner[key] = next.id;
-  else delete activeByOwner[key];
-  return { ...state, shells, activeByOwner };
+  if (next) activeByOwner[owner] = next.id;
+  else delete activeByOwner[owner];
+  return { ...state, bundles, activeByOwner };
 }

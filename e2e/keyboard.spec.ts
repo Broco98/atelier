@@ -20,7 +20,7 @@ import {
 } from "./harness";
 
 // codex-ds 티켓 32 — **목록은 ↑↓, 영역은 Tab으로 다닌다**(codex-ds 스펙 §9 「키보드」 · S10). 창의 Tab은 영역 차례로 간다 — 창
-// 컨트롤 → 사이드바 → 머리 카드 → 본문 카드 → 패널 → 레일이고, 영역 안은 DOM 차례다. 목록 다섯(사이드바 work 목록 · main nav ·
+// 컨트롤 → 사이드바 → 머리 카드 → 머리 줄 → 본문 카드 → 패널 → 레일이고, 영역 안은 DOM 차례다. 목록 다섯(사이드바 work 목록 · main nav ·
 // 프로젝트 목록 · Archive 목록 · spec 트리)은 저마다 **Tab 정류장 하나**이고(roving tabindex — `@/lib/roving`), 목록 안은 ↑↓로 옮기고
 // Enter로 연다. 트리는 →가 펴고 ←가 접는다. 행 안 버튼(고정 · 경로 복사)은 Tab에서 빠지고, 그 동작은 행의 대상 메뉴(⇧F10 · 메뉴 키)에
 // 있다 — 고정은 work 메뉴의 「고정」, 경로 복사는 spec 트리 파일 행 메뉴의 「경로 복사」다(구현 노트 Q16).
@@ -28,7 +28,8 @@ import {
 // **Tab은 진짜 키로 누른다.** `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
 // 차례는 포커스를 내려놓고 Tab을 누르며 선 자리를 적어(`탭차례`) 그 자리를 품은 상자로 영역을 가른다(`포커스자리`).
 //
-// 레일은 진열대에서 잰다 — 앱의 작업 화면은 칸이 `spec` 하나라 레일이 서지 않는다(`rail.spec.ts` 머리말).
+// 작업 화면은 칸이 `spec` · `files` 둘이라 레일이 선다(git-integration 결정 29) — 패널 토글이 머리 카드 밖 머리 줄로 나가고 레일의 칸이
+// 차례 끝에 선다. 레일의 모양은 진열대(`rail.spec.ts`)가 잰다.
 
 const [billing, ledger] = PROJECTS;
 const [shipped, bare] = ARCHIVE;
@@ -74,7 +75,7 @@ async function 항목으로(page: Page, name: string): Promise<Locator> {
 
 // ── 영역 차례 ──
 
-test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 → 본문 → 패널 차례이고, 목록마다 한 번 앉으며 행 안 버튼에는 안 앉는다", async ({
+test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄 → 본문 → 패널 → 레일 차례이고, 목록마다 한 번 앉으며 행 안 버튼에는 안 앉는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -82,7 +83,10 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
   await expect(트리행(page, "overview.md")).toBeVisible();
 
   const 자리들 = await 탭차례(page);
-  expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "본문", "패널"]);
+  expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "머리 줄", "본문", "패널", "레일"]);
+  // 머리 줄(머리 카드 밖)의 정류장은 패널 토글 하나이고, 레일은 칸마다 앉는다.
+  expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual(["작업 패널 접기"]);
+  expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
   // 사이드바는 nav 하나 · work 목록 하나 · 바닥 Settings다 — nav의 정류장은 첫 항목(켜진 것이 없다), 목록의 정류장은 고른 행이다.
   // 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
   expect(자리들.filter(({ 영역 }) => 영역 === "사이드바").map(({ 이름, 행 }) => [이름, 행])).toEqual([

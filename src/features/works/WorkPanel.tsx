@@ -1,22 +1,29 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, FolderOpen } from "lucide-react";
+import { FileText, FolderOpen, FolderTree } from "lucide-react";
 import { CardHead } from "@/components/shell/Frame";
 import { PanelBody, type RailItem } from "@/components/shell/Rail";
 import { Hint } from "@/components/ui/tooltip";
+import FilesTree, { FilesRefresh } from "@/features/files/FilesTree";
+import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
 import type { SpecTreeItem, WorkView } from "./types";
 
 /** 레일에서 고르는 작업 패널의 칸 — 이 패널이 그리는 몸 하나씩이다. */
-export type PanelView = "spec";
+export type PanelView = "spec" | "files";
 
 /**
  * 레일의 칸 목록(ui-refresh 결정 10) — 순서가 레일의 위에서 아래다. 몸을 그리는 이 파일이 칸도 함께 든다: 칸이 하나 늘면
  * 몸도 하나 는다(DS `PanelRail` — 대화 · files · changes가 한 줄씩 더해진다). 라벨은 소문자 영어다(결정 41 — 탭 줄의 `spec`과 한
- * 가족). **지금은 `spec` 하나다** — `info` 칸을 걷었다(codex-ds 결정 25: 보기는 사이드바 행의 호버 카드가, 복사 · Finder 열기는
- * work 메뉴가 든다). 칸이 하나라 레일이 서지 않는다(`Rail`).
+ * 가족). `info` 칸은 걷었다(codex-ds 결정 25: 보기는 사이드바 행의 호버 카드가, 복사 · Finder 열기는 work 메뉴가 든다).
+ *
+ * `files`는 `spec` 뒤다(git-integration 결정 29 — spec · chat은 스펙 축, files · changes · git은 코드 축이라 붙여 둔다). 칸이 둘이라
+ * 레일이 선다(`railStands`).
  */
-export const PANEL_VIEWS: readonly RailItem<PanelView>[] = [{ id: "spec", label: "spec", icon: FileText }];
+export const PANEL_VIEWS: readonly RailItem<PanelView>[] = [
+  { id: "spec", label: "spec", icon: FileText },
+  { id: "files", label: "files", icon: FolderTree },
+];
 
 interface WorkPanelProps {
   work: WorkView;
@@ -25,6 +32,10 @@ interface WorkPanelProps {
   view: PanelView;
   currentFile: string | null;
   onSelectFile: (path: string) => void;
+  // 본문에 선 파일 탭 — files 트리가 그 행을 강조하고 따라간다(git-integration 스토리 14 · 15). 셸이나 문서가 서 있으면 `null`이다.
+  currentCode: CodeTarget | null;
+  // files 트리의 파일 행을 눌렀다(git-integration 결정 30). 열지 닫을지는 화면이 정한다 — 지금 보이는 탭과 닫는 길을 그쪽이 든다.
+  onPressCode: (target: CodeTarget, clicks: number) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
   onCopy: (text: string) => void;
   // 머리의 「spec 폴더 열기」 — 그 work의 spec 폴더를 Finder에서 연다. work 메뉴의 Finder ▸와 같은 명령이고(codex-ds 스펙 S6)
@@ -34,14 +45,24 @@ interface WorkPanelProps {
   open: boolean;
 }
 
-// 작업 패널 — 몸은 `spec` 하나다. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가 **사이드바 가지로 갔다**(결정 71). 같은 것을 두
-// 자리에서 고르게 두면 어느 쪽이 지금인지가 화면마다 갈린다. `info` 몸도 있었다 — 같은 정보를 두 자리에서 보지 않게 걷었다(codex-ds
-// 결정 25). PR 연동 카드는 v2.
+// 작업 패널 — `spec` · `files` 두 몸. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가 **사이드바 가지로 갔다**(결정 71). 같은 것을
+// 두 자리에서 고르게 두면 어느 쪽이 지금인지가 화면마다 갈린다. `info` 몸도 있었다 — 같은 정보를 두 자리에서 보지 않게
+// 걷었다(codex-ds 결정 25). PR 연동 카드는 v2.
 //
 // **카드 안만 그린다**(ui-refresh 결정 4 · 27). 바깥 상자(두 번째 `aside`) · 카드 · 왼쪽 틈 · 폭 손잡이 · 접힘은 공용 틀(`Frame`)의
 // 패널 칸이 들고, 폭 훅은 화면(`WorksPage`)이 불러 그 칸에 건넨다 — 목록 칸과 같은 나눔이다. 칸을 고르는 레일과 여닫는 패널 토글도
 // 그 틀의 것이다.
-function WorkPanel({ work, view, currentFile, onSelectFile, onCopy, onOpenFolder, open }: WorkPanelProps) {
+function WorkPanel({
+  work,
+  view,
+  currentFile,
+  onSelectFile,
+  currentCode,
+  onPressCode,
+  onCopy,
+  onOpenFolder,
+  open,
+}: WorkPanelProps) {
   // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
   // 넘어 살지 않는다"** 는 계약이 그 언마운트에 기대고 있었으므로, 접힐 때 안쪽만 새로
   // 세워 그 일을 대신한다.
@@ -85,19 +106,25 @@ function WorkPanel({ work, view, currentFile, onSelectFile, onCopy, onOpenFolder
           스펙 §4 「여백」). 라벨은 소문자 영어다(결정 41) — 탭 줄의 `spec`과 같은 어휘다. 문장 속 한국어는 그대로다(CONTEXT.md).
 
           `spec`의 할 일은 spec 폴더 열기 하나다 — DS 아이콘 버튼(`.at-ib` 28 · `fg-secondary`, hover `fill-hover`)이 머리 오른쪽
-          끝에 선다. 문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 왼쪽 문서라 문서 위 경로 줄로 갔다(ui-refresh 판 04). */}
+          끝에 선다. 문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 왼쪽 문서라 문서 위 경로 줄로 갔다(ui-refresh 판 04).
+
+          `files`의 할 일은 새로고침 하나다(git-integration 스토리 16) — 그 칸의 몸을 다시 읽는 것이라 몸의 머리에 선다. */}
       <CardHead
         end={
-          <Hint
-            text="spec 폴더 열기"
-            announce="name"
-            type="button"
-            tabIndex={0}
-            onClick={onOpenFolder}
-            className="icon-button-quiet text-fg-secondary focus-ring"
-          >
-            <FolderOpen className="size-4" />
-          </Hint>
+          view === "files" ? (
+            <FilesRefresh slug={work.slug} />
+          ) : (
+            <Hint
+              text="spec 폴더 열기"
+              announce="name"
+              type="button"
+              tabIndex={0}
+              onClick={onOpenFolder}
+              className="icon-button-quiet text-fg-secondary focus-ring"
+            >
+              <FolderOpen className="size-4" />
+            </Hint>
+          )
         }
       >
         <span className="px-2 text-sm font-medium">{view}</span>
@@ -112,6 +139,11 @@ function WorkPanel({ work, view, currentFile, onSelectFile, onCopy, onOpenFolder
           onSelect={onSelectFile}
           onCopy={(path) => onCopy(specRef(work.slug, path))}
         />
+      </PanelBody>
+      {/* files 트리는 「트리 세대」를 타지 않는다(git-integration S14) — 접힘은 work · 프로젝트별 기억에 있고 패널 접기에
+          리셋되지 않는다. 트리는 칸이 열려 보일 때만 읽는다(S9). */}
+      <PanelBody view="files" shown={view === "files"}>
+        <FilesTree work={work} visible={open && view === "files"} current={currentCode} onPress={onPressCode} />
       </PanelBody>
     </div>
   );

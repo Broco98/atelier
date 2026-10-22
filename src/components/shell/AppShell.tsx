@@ -8,6 +8,7 @@ import { dialogStore } from "@/components/ui/confirm-store";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
+import { useFollowWorktreeChanges } from "@/features/files/follow-worktrees";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
 import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/features/terminal/shell-recall";
@@ -133,6 +134,11 @@ function AppShell() {
   // 레이아웃」, `spec` 패널, 아카이브 문서 트리. 구독은 앱 전역에 하나라 뿌리인 여기서 한 번 부른다
   // (spec 레이아웃 구현 스펙 3절). 무엇을 지우는지는 그 훅이 든다 — 이 자리는 배선뿐이다.
   useFollowLayoutChanges();
+
+  // **워크트리가 바뀌면 보고 있는 트리와 파일 탭이 따라온다**(git-integration 티켓 10 · 결정 34). 감시의 `worktree:changed`와
+  // 예비 신호(창 포커스 · 셸의 턴 끝)를 앱 전역에 하나 건다 — 쓰는 자리(files 칸 · 파일 탭)마다 들으면 신호 한 번에 그 수만큼
+  // 다시 읽는다. 무엇을 다시 읽는지는 그 훅이 든다 — 이 자리는 배선뿐이다.
+  useFollowWorktreeChanges();
 
   // **앱을 끄려는 요청이 여기로 온다**(결정 14 · #223) — 빨간 버튼도, ⌘Q·메뉴 Quit·Dock도(#224의
   // 델리게이트 훅) 같은 이벤트다. 셸이 하나도 없어도 묻는다. 무엇을 세고 언제 무시하고 어디서 「묻는 중」을

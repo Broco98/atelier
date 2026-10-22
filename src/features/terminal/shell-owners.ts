@@ -46,16 +46,45 @@ export function vanishedOwners(
   result: ListResult | undefined,
   held: HeldOwners,
 ): ShellOwner[] {
-  if (result?.status !== "success" || result.data === undefined) return [];
-  const listed = new Set(result.data.map((item) => item.slug));
+  const isGone = goneJudge(result, held);
   const gone: ShellOwner[] = [];
   for (const shell of state.shells) {
-    if (shell.ownerless) continue;
-    const slug = slugOfOwner(shell.owner);
-    if (slug === null || listed.has(slug) || held.has(shell.owner) || gone.includes(shell.owner)) continue;
+    if (shell.ownerless || !isGone(shell.owner) || gone.includes(shell.owner)) continue;
     gone.push(shell.owner);
   }
   return gone;
+}
+
+/**
+ * 목록에서 **slug가 사라졌는데 파일 탭이 남은** owner들(git-integration 판 01). 파일 탭은 프로세스가 없어 물을 것이 없다 — 터미널
+ * 스토어가 곧바로 묶음에서 뺀다(`withoutCodeTabsOf`). 묶음을 보고 찾는다: 셸 없이 파일 탭만 선 묶음은 셸 owner만 보는
+ * `vanishedOwners`에 안 걸린다.
+ *
+ * 무엇이 사라졌는가의 판정은 `vanishedOwners`와 같다 — 성공한 결과만 보고, 최상위 터미널은 안 나오고, 제외 창의 owner는
+ * 뺀다(UI 아카이브 · 삭제는 회수 `closeShellsOf`에서 제 손으로 뺀다).
+ */
+export function vanishedCodeTabOwners(
+  state: ShellsState,
+  result: ListResult | undefined,
+  held: HeldOwners,
+): ShellOwner[] {
+  const isGone = goneJudge(result, held);
+  return Object.entries(state.bundles)
+    .filter(([owner, tabs]) => isGone(owner) && tabs.some((tab) => tab.kind === "code"))
+    .map(([owner]) => owner);
+}
+
+/**
+ * 「그 owner의 work이 목록에서 사라졌는가」 — 위 두 판정이 함께 쓴다. **성공한 결과가 아니면 늘 아니다**(fail-closed), 최상위
+ * 터미널(`slugOfOwner`가 `null`)과 제외 창의 owner도 아니다.
+ */
+function goneJudge(result: ListResult | undefined, held: HeldOwners): (owner: ShellOwner) => boolean {
+  if (result?.status !== "success" || result.data === undefined) return () => false;
+  const listed = new Set(result.data.map((item) => item.slug));
+  return (owner) => {
+    const slug = slugOfOwner(owner);
+    return slug !== null && !listed.has(slug) && !held.has(owner);
+  };
 }
 
 /**

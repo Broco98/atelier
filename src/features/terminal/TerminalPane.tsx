@@ -5,7 +5,6 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Kbd } from "@/components/ui/kbd";
 import { HOTKEYS } from "@/lib/hotkeys";
 import {
-  activeIdOf,
   activeShellOf,
   ownerOf,
   shellEndLabels,
@@ -44,7 +43,11 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   // 「비었나」가 영영 참이라 이 화면에 들어올 때마다 새 셸이 하나씩 뜬다 — 둘 다 `work`만
   // 딛게 두는 것이 그 짝을 지키는 방법 전부다(`originOf`).
   const owner = ownerOf(work?.slug);
-  const activeId = activeIdOf(state, owner);
+  // 이 자리에 들일 것은 **켜진 셸**이다 — 묶음의 지금 탭이 파일 탭이면(git-integration 판 01) 들일 셸이 없다. 주소가 터미널을
+  // 말하는 동안 그런 순간은 보통 한 틱뿐이다(화면이 곧 묶음의 첫 셸을 켠다 — `showShellTab`). 묶음에 셸이 없으면 켤 것이
+  // 없어 그대로 남는다 — 자동 셸이 안 뜨는 work(프로젝트 둘 이상)이면 아래 「아직 셸이 없어요」가 서고, 탭 줄도 그 파일 탭을
+  // 켜지 않는다(`WorksPage`의 `showing`).
+  const activeId = activeShellOf(state, owner)?.id ?? null;
 
   // **화면에 들어올 때만** 「없으면 하나 띄운다」다. 마지막 칸을 `×`로 닫은 자리에서는
   // 뜨지 않는다 — 닫자마자 새 셸이 뜨면 `×`가 무의미해진다.

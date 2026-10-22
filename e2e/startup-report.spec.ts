@@ -3,13 +3,17 @@ import { startupCleaned } from "./fixtures";
 import {
   callCount,
   cleanupText,
+  heldCalls,
+  holdCommand,
   HOOKS_TEXT,
   installFixtureBackend,
   ipcFailure,
+  releaseCommand,
   toastOf,
   toastRegion,
   toastsNow,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 
 // **앱이 뜰 때 한 번 묻는 시작 보고와, 어느 화면에서든 서는 토스트**(프로세스 관리 티켓 02 · 프로세스
@@ -59,16 +63,31 @@ for (const { screen, path } of [
 // **이미 깔린 훅을 앱이 뜰 때 지금 목록으로 맞췄으면 한 번 알린다**(프로세스 결정 15 · 프로세스 스펙 S36 · 티켓 21). 맞춘
 // 에이전트가 둘이어도 말은 하나이고, 동작 버튼 없는 짧은 토스트다. 첫 화면은 설정 — 사람이 훅을 떠올리는 자리가 아니어도
 // 선다는 것을 정리 토스트가 이미 두 화면에서 쟀고, 여기서는 그 자리를 이 말이 함께 쓰는지를 본다.
+//
+// **이 토스트는 1.6초면 내려가므로 시계를 세운 채 센다**(`page.clock`). 저절로 흐르게 두면 느린 러너에서 「섰다」와
+// 「센다」 사이에 1.6초가 흘러 이미 내려간 토스트를 0으로 센다. 화면이 선 뒤에 시계를 세우려고 보고의 답을 붙잡아 두었다가
+// 세운 뒤에 놓는다 — 부팅부터 세우면 화면을 그리는 타이머까지 멎는다. 세운 시계에서는 프레임(rAF)도 멎어 `settle` 대신
+// 시계를 돌려 둘째가 그려질 틈을 준다.
 test("시작 보고에 훅 맞춤이 있으면 그 토스트가 한 번 서고 곧 사라진다", async ({ page }) => {
+  await page.clock.install();
   await installFixtureBackend(page, { [STARTUP]: { cleaned: [], hooksUpdated: ["claude", "codex"] } });
+  await holdCommand(page, STARTUP);
   await page.goto("/settings/terminal");
+  // 앵커: 화면이 섰고 보고를 물었다 — 답은 아직 붙잡혀 있다.
+  await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toBeVisible();
+  await expect.poll(() => heldCalls(page, STARTUP)).toBe(1);
 
+  await 시계를세운다(page);
+  await releaseCommand(page, STARTUP);
   const toast = toastOf(page, HOOKS_TEXT);
   await expect(toast).toBeVisible();
-  await settle(page);
+  await page.clock.runFor(100);
   expect(await toastsNow(page)).toBe(1);
   expect(await callCount(page, STARTUP)).toBe(1);
 
+  // 1.6초를 넘기면 내려간다. 사라지는 전이는 프레임을 타서 시계를 다시 흐르게 둔다.
+  await page.clock.runFor(1_600);
+  await page.clock.resume();
   await expect(toast).toBeHidden({ timeout: 5_000 });
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

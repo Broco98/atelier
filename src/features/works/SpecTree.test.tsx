@@ -136,9 +136,12 @@ describe("SpecTree 행의 글리프", () => {
   });
 });
 
-/** 파일 행의 이름 버튼 하나(여는 button부터 닫는 button까지). 못 찾으면 빈 문자열이다. */
+/**
+ * 파일 행의 이름 버튼 하나(여는 button부터 닫는 button까지). 못 찾으면 빈 문자열이다. 이름이 따로 달린 버튼(경로 복사)과
+ * 접히는 버튼(폴더 행)을 거른다 — 고른 행의 이름 버튼은 `aria-current`를 달아도 이름 버튼이다.
+ */
 function fileRow(markup: string, name: string): string {
-  const buttons = markup.match(/<button(?![^>]*aria-)[^>]*>[\s\S]*?<\/button>/g) ?? [];
+  const buttons = markup.match(/<button(?![^>]*aria-(?:label|expanded))[^>]*>[\s\S]*?<\/button>/g) ?? [];
   return buttons.find((button) => button.includes(`>${name}</span></button>`)) ?? "";
 }
 

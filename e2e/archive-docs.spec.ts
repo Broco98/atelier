@@ -303,6 +303,12 @@ test("날짜순 목록에 날짜 소제목(이번 주 · 달 · 해와 달 · �
 // 1.6초가 아니라 5초(Base UI 기본)여도 기다리다 보면 사라져 초록이다. 그래서 1.5초에는 남아 있고, 1.6초를 넘기면
 // 곧바로 사라지는 것까지 본다. Base UI는 포인터가 토스트 위에 있거나 창이 포커스를 잃으면 시계를 세우므로(S27),
 // 누른 뒤 포인터를 치운다. 사라지는 전이는 프레임(rAF)을 타서 마지막에는 시계를 다시 흐르게 둔다.
+//
+// **누르기 전에 문서 트리가 선 자리가 가라앉기를 기다린다.** 움직이는 도중에 누르면 Playwright가 잘린 버튼을 보이려고 안쪽
+// 칸(`overflow-hidden`)을 굴리고, 움직임이 끝나면 그 굴림이 0으로 돌아와 버튼이 포인터 밑에서 미끄러진다 — 누름과 뗌이 다른
+// 곳에 떨어져 클릭이 버튼에 안 닿는다. 펼치는 행 안에 트리가 서던 때 부하 아래 가끔 빨갰고, 누름과 뗌 사이를 200ms 벌리면
+// 80번에 5번 빨갰다(실측 2026-10-11). 트리는 이제 행 안이 아니라 둘째 `aside`인 spec 목록 패널에 서므로(codex-ds 티켓 21) 그
+// 패널 안의 전이를 기다린다. 전이는 CSS라 세운 시계와 상관없이 돈다.
 test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서고, 1.6초가 지나면 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
@@ -312,6 +318,9 @@ test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서�
   const copy = page.getByRole("button", { name: "샷.png 경로 복사", exact: true });
   await expect(copy).toBeAttached();
   await expect(messages).toHaveText("");
+  await expect
+    .poll(() => page.locator("aside").nth(1).evaluate((el) => el.getAnimations({ subtree: true }).length))
+    .toBe(0);
 
   await 시계를세운다(page);
   await copy.click();
