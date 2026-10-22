@@ -258,7 +258,8 @@ test("고친 행을 우클릭하면 ⋯과 같은 메뉴가 커서 자리에 서
   await 다떴다(menu);
   const spot = (await 행(page).boundingBox())!;
   const card = (await menu.boundingBox())!;
-  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x + 6), Math.round(spot.y + 6)]);
+  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 행이 반 픽셀에 서면(리눅스 WebKit의 글자 높이) 카드는 그 아래 정수에 선다.
+  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
   await expect.poll(() => 테두리(행(page))).toBe(링);
   await expect(page).toHaveURL("/settings/spec-layout");
 
@@ -298,7 +299,8 @@ test("행 안 버튼에 포커스를 두고 ⇧F10 · 메뉴 키를 누르면 �
     await 다떴다(menu);
     const below = (await 행(page).boundingBox())!;
     const card = (await menu.boundingBox())!;
-    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(below.x), Math.round(below.y + below.height)]);
+    // 키로 연 자리도 우클릭 사건으로 낸다(`openMenuByKey`) — 그래서 정수 픽셀이다(위 우클릭 검사).
+    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(below.x), Math.floor(below.y + below.height)]);
     await expect.poll(() => 테두리(행(page))).toBe(링);
     await expect(menu).toBeFocused();
     await page.keyboard.press("ArrowDown");

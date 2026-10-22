@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { fireEvent, installFixtureBackend, processesTitle, unknownIpcCalls, 칠한값, 토큰색, 툴팁 } from "./harness";
+import { fireEvent, installFixtureBackend, processesTitle, unknownIpcCalls, 다떴다, 칠한값, 토큰색, 툴팁 } from "./harness";
 
 // codex-ds 티켓 26 — **단축키가 한 표에서 나온다**(결정 19 · 스펙 §8 · S16). 단축키는 `src/lib/hotkeys.json` 한 장에만 적고, macOS
 // 메뉴 바 · 메뉴 오른쪽 단축키 칸 · 툴팁 · 키 판정이 그 표를 읽는다. 여기서 재는 것은 사람이 보고 누르는 쪽이다.
@@ -89,7 +89,9 @@ test("메뉴 줄의 단축키 칸은 표의 글자를 12/18 · fg-tertiary로 �
 
   const 흐린글자 = await 토큰색(page, "--fg-tertiary");
   expect(await 칠한값(칸, "font-size", "line-height", "color")).toEqual(["12px", "18px", 흐린글자]);
-  // 줄의 마지막 칸이다 — 오른쪽 끝이 줄의 안쪽 끝(좌우 8)에 붙는다.
+  // 줄의 마지막 칸이다 — 오른쪽 끝이 줄의 안쪽 끝(좌우 8)에 붙는다. 카드가 다 뜬 뒤에 잰다 — 뜨는 동안은 카드가 0.98에서 자라
+  // 두 상자를 따로 재는 사이에 자리가 옮는다.
+  await 다떴다(page.getByRole("menu"));
   const [칸상자, 줄상자] = [await 칸.boundingBox(), await 줄.boundingBox()];
   if (!칸상자 || !줄상자) throw new Error("상자가 없다");
   expect(Math.abs(줄상자.x + 줄상자.width - 8 - (칸상자.x + 칸상자.width))).toBeLessThanOrEqual(0.5);
