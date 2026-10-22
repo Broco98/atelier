@@ -89,12 +89,12 @@ describe("레이아웃 행", () => {
     expect(buttonsOf(row)).toEqual(["부탁", "편집", "Atelier 레이아웃 메뉴"]);
   });
 
-  // 읽지 못한 행도 가린 폴더가 있으므로 고친 행이다(구현 스펙 5절). 앰버 한 줄이 「내장본으로 물러섰다」를
+  // 읽지 못한 행도 가린 폴더가 있으므로 고친 행이다(구현 스펙 5절). 경고색(`warning`) 한 줄이 「내장본으로 물러섰다」를
   // 말하고, 이유는 엔진이 준 글 그대로다 — 에이전트가 물러선 안내문에서 받는 것과 같은 까닭이다.
-  it("읽지 못한 행은 앰버 한 줄과 이유 한 줄, 그리고 [다시 읽기]를 둔다", () => {
+  it("읽지 못한 행은 경고색 한 줄과 이유 한 줄, 그리고 [다시 읽기]를 둔다", () => {
     const row = rowOf(render(broken));
     expect(row).toContain(">고침</span>");
-    expect(row).toMatch(/<span class="[^"]*text-amber-[^"]*">읽지 못해 내장본으로 보여 주고 있어요<\/span>/);
+    expect(row).toMatch(/<span class="[^"]*text-warning[^"]*">읽지 못해 내장본으로 보여 주고 있어요<\/span>/);
     expect(textOf(row)).toContain("~/.atelier/layouts/atelier/");
     expect(textOf(row)).toContain(
       "root.children[0]: kind must be &quot;file&quot; or &quot;folder&quot;",

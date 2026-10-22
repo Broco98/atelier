@@ -10,6 +10,8 @@ import {
   navButton,
   typeIntoShell,
   unknownIpcCalls,
+  검색어칸,
+  검색팔레트를연다,
   띠,
   셸입력,
   칸들,
@@ -133,24 +135,20 @@ test("최상위 터미널에서 이미 켜진 셸 탭을 다시 누르면 포커
 // 셸은 글꼴이 온 뒤에야 열린다(`loadFont`). 그 틈에 사람이 다른 입력칸으로 갔으면 늦게 열린 셸이 그 포커스를 가져가면
 // 안 된다 — 한때 여는 함수 안의 포커스 한 줄에 조건이 없어 가져갔다. 틈은 글꼴을 붙잡아 세운다(`holdTerminalFonts`).
 
-/** 팔레트의 검색어 칸 — 앱의 다른 입력칸이다. */
-const searchBox = (page: Page) => page.getByRole("textbox", { name: "검색어" });
-
 test("글꼴이 늦게 와 셸이 열려도 팔레트 입력칸의 포커스를 빼앗지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(칸들(page)).toHaveCount(1);
 
-  await page.keyboard.press("Meta+k");
-  await expect(searchBox(page)).toBeFocused();
+  await 검색팔레트를연다(page);
   await releaseFonts();
 
   // **앵커** — 셸이 열리고 떴다. 포커스를 주는 줄은 여는 자리에서 곧바로 돌므로, 이 뒤에 입력칸이 포커스를 쥐고 있으면
   // 늦게 열린 셸이 안 가져간 것이다.
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(1);
   await awaitSpawned(page, 1);
-  await expect(searchBox(page)).toBeFocused();
+  await expect(검색어칸(page)).toBeFocused();
   expect(await focusOutsideShell(page)).toBe(true);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -168,14 +166,13 @@ test("요청한 셸도 늦게 열리면서 그 뒤에 간 팔레트 입력칸의
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(0);
 
   await lit.click();
-  await page.keyboard.press("Meta+k");
-  await expect(searchBox(page)).toBeFocused();
+  await 검색팔레트를연다(page);
   await releaseFonts();
 
   // **앵커** — 위 검사와 같다. 셸이 열리고 떴으니 포커스 줄은 이미 지나갔다.
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(1);
   await awaitSpawned(page, 1);
-  await expect(searchBox(page)).toBeFocused();
+  await expect(검색어칸(page)).toBeFocused();
   expect(await focusOutsideShell(page)).toBe(true);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -993,6 +993,43 @@ pub fn read_work_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<S
     Ok(std::fs::read_to_string(dir.join(safe_rel(rel_path)?))?)
 }
 
+/// Finder에서 열 work의 폴더 — 프로젝트를 안 주면 spec 폴더, 주면 그 프로젝트의 worktree다(codex-ds 스펙 S6).
+///
+/// **경로는 여기서 푼다.** 앱의 work 메뉴는 slug와 프로젝트 이름만 넘긴다 — 날 경로를 받으면 그 길로 work 밖의 아무
+/// 폴더나 열 수 있고, 데이터 루트를 옮긴 설치(`ATELIER_HOME`)에서 앱이 지은 경로와 실물이 갈린다. 프로젝트는 이
+/// work에 적힌 것만 받는다 — 그래서 프로젝트 이름으로 `trees/` 밖을 가리킬 수도 없다.
+///
+/// 폴더가 없으면 어느 폴더인지 홈 축약 표기로 말한다(`FolderMissing`). 손으로 지운 worktree가 그 경우다.
+pub fn work_folder(works_root: &Path, slug: &str, project: Option<&str>) -> Result<PathBuf> {
+    let work = read_work(works_root, slug)?;
+    let dir = works_root.join(&work.slug);
+    let folder = match project {
+        None => spec_dir(&dir),
+        Some(project) if work.projects.iter().any(|p| p == project) => worktrees_dir(&dir).join(project),
+        Some(project) => {
+            return Err(Error::Validation(format!("project '{project}' is not in work '{slug}'")))
+        }
+    };
+    existing_folder(folder)
+}
+
+/// 아카이브된 work의 spec 폴더 — `work_folder`와 같은 가족이고 뿌리만 보존소다. 아카이브된 work에는 worktree가 없다.
+pub fn archived_spec_folder(archive_root: &Path, slug: &str) -> Result<PathBuf> {
+    let dir = work_dir(archive_root, slug)?;
+    if !dir.join("work.json").is_file() {
+        return Err(Error::WorkNotFound(slug.to_string()));
+    }
+    existing_folder(spec_dir(&dir))
+}
+
+fn existing_folder(folder: PathBuf) -> Result<PathBuf> {
+    if folder.is_dir() {
+        Ok(folder)
+    } else {
+        Err(Error::FolderMissing(collapse_home(&folder)))
+    }
+}
+
 /// 아카이브된 work가 가진 문서들. 경로는 **work 루트 기준**이라 `read_work_file`에 그대로
 /// 넘어간다. 기록이 맨 앞이고, 없으면 넣지 않는다 — 손으로 옮겨 둔 폴더에는 기록이 없을 수
 /// 있고(`ArchiveEntry::archived_at`이 없을 수 있는 것과 같은 이유), 목록이 곧 화면이 가진
@@ -2472,6 +2509,76 @@ mod tests {
             read_work_file(&works, "없는작업", "record.md"),
             Err(Error::WorkNotFound(_))
         ));
+    }
+
+    // ── Finder에서 열 폴더 (codex-ds 스펙 S6) ──────────────────────────────
+    // 프런트는 slug와 프로젝트만 넘기고 경로는 여기서 푼다 — 날 경로를 받으면 work 밖의 아무 폴더나 열 수 있다.
+
+    #[test]
+    fn work_folder_resolves_the_spec_folder_and_each_worktree() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), None).unwrap();
+
+        assert_eq!(work_folder(&works, "카트", None).unwrap(), works.join("카트/spec"));
+        assert_eq!(work_folder(&works, "카트", Some("fe")).unwrap(), works.join("카트/trees/fe"));
+        assert_eq!(work_folder(&works, "카트", Some("be")).unwrap(), works.join("카트/trees/be"));
+    }
+
+    #[test]
+    fn work_folder_refuses_a_project_outside_the_work_and_an_unknown_work() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+
+        // 등록된 프로젝트여도 이 work에 안 붙었으면 그 worktree는 없다. 프로젝트 이름으로 `trees/` 밖을 가리키는 것도 같이 막힌다 —
+        // work에 적힌 프로젝트만 통과하므로.
+        for project in ["be", "../spec", ""] {
+            assert!(
+                matches!(work_folder(&works, "카트", Some(project)), Err(Error::Validation(_))),
+                "work에 없는 프로젝트를 풀었다: {project:?}"
+            );
+        }
+        assert!(matches!(work_folder(&works, "없는작업", None), Err(Error::WorkNotFound(_))));
+        assert!(matches!(work_folder(&works, "../탈출", None), Err(Error::WorkNotFound(_))));
+    }
+
+    /// 손으로 지운 폴더를 Finder가 열 수는 없다. 열기 전에 **어느 폴더가 없는지** 말한다 — 홈 축약 표기다(앱이 보이는 경로와 같은 꼴).
+    #[test]
+    fn work_folder_names_the_folder_that_is_gone() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+
+        std::fs::remove_dir_all(works.join("카트/trees/fe")).unwrap();
+        match work_folder(&works, "카트", Some("fe")) {
+            Err(Error::FolderMissing(path)) => assert_eq!(path, collapse_home(&works.join("카트/trees/fe"))),
+            other => panic!("없는 worktree를 오류로 말하지 않았다: {other:?}"),
+        }
+
+        std::fs::remove_dir_all(works.join("카트/spec")).unwrap();
+        match work_folder(&works, "카트", None) {
+            Err(Error::FolderMissing(path)) => assert_eq!(path, collapse_home(&works.join("카트/spec"))),
+            other => panic!("없는 spec 폴더를 오류로 말하지 않았다: {other:?}"),
+        }
+    }
+
+    /// 아카이브된 work의 spec 폴더 — 같은 가족이고 뿌리만 보존소다. 아카이브된 work에는 worktree가 없어 프로젝트를 받지 않는다.
+    #[test]
+    fn archived_spec_folder_resolves_under_the_archive_root() {
+        let (_tmp, works, projects) = setup();
+        let archive = archive_root(&works);
+        // 보존소의 work도 같은 모양(`work.json` · `spec/`)이다 — 그 모양을 아카이빙 없이 세운다(위 `list_archived_docs` 검사와 같은 길).
+        start_work(&archive, &works, &projects, "끝난 일", None, &[], None).unwrap();
+        // 아직 일하는 work — 작업 루트에 있고 spec 폴더도 있다.
+        start_work(&works, &archive, &projects, "카트", None, &[], None).unwrap();
+
+        assert_eq!(archived_spec_folder(&archive, "끝난-일").unwrap(), archive.join("끝난-일/spec"));
+        // 보존소 뿌리로는 작업 루트의 work를 못 찾는다 — 아직 일하는 work의 폴더가 아카이브 길로 열리면 안 된다. 그 길은 늘 보존소
+        // 뿌리를 넘긴다(`open_archived_spec_folder`).
+        assert!(works.join("카트/spec").is_dir(), "앵커: 일하는 work의 spec 폴더가 있다");
+        assert!(matches!(archived_spec_folder(&archive, "카트"), Err(Error::WorkNotFound(_))));
+        assert!(matches!(archived_spec_folder(&archive, "../works"), Err(Error::WorkNotFound(_))));
+
+        std::fs::remove_dir_all(archive.join("끝난-일/spec")).unwrap();
+        assert!(matches!(archived_spec_folder(&archive, "끝난-일"), Err(Error::FolderMissing(_))));
     }
 
     #[test]

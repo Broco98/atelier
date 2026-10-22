@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { openMenuByKey } from "@/components/ui/context-menu";
 import { Hint } from "@/components/ui/tooltip";
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { SIGNAL_LABEL, SignalElapsed, SignalLane, type CallingKind } from "./shell-signal";
@@ -42,10 +43,10 @@ export const BAND_LABEL = "알림";
 export const BAND_LIMIT = 3;
 
 /**
- * 줄 **글자**의 무게(결정 3의 우선순위). 기다림은 사이드바 행 글자색(`sidebar-foreground`, DS
- * `.at-band .at-row`)이고, 안 본 완료만 한 단 내려간다 — 둘을 같은 색으로 두면 「기다림 › 안 본
- * 완료」가 점 색에만 남아 색을 못 가르는 사람에게 그 순서가 사라진다. 띠가 목록과 갈리는 것은
- * 글자가 아니라 흰 상자가 한다(`AttentionBand`의 상자 주석).
+ * 줄 **글자**의 무게(결정 3의 우선순위 · DS `.at-band .at-row`). 기다림은 진한 글자 `fg` 500(`.wait`)이고, 안 본 완료는
+ * 한 단 내려간 `fg-secondary` 400이다 — 둘을 같은 무게로 두면 「기다림 › 안 본 완료」가 점 색에만 남아 색을 못 가르는 사람에게
+ * 그 순서가 사라진다. 경과는 두 갈래가 같은 `fg-secondary`라(`SignalElapsed` — codex-ds 스펙 S17) 그 순서를 글자로 말하는 자리가
+ * 이 표 하나다. 띠가 목록과 갈리는 것은 글자가 아니라 흰 상자가 한다(`AttentionBand`의 상자 주석).
  *
  * **삼항이 아니라 표다.** 갈래가 느는 날 삼항은 새 값을 조용히 아래쪽 가지로 흘려보내는데,
  * `Record<CallingKind, …>`는 그 자리에서 컴파일이 막는다 — `SIGNAL_LABEL`·`TONE`이 같은
@@ -54,8 +55,8 @@ export const BAND_LIMIT = 3;
  * (말로 선다, 색은 없다 — `FAILED_LABEL`)이라 부르는 갈래는 여전히 둘이다.
  */
 const WEIGHT: Readonly<Record<CallingKind, string>> = {
-  waiting: "text-sidebar-foreground",
-  done: "text-muted-foreground",
+  waiting: "text-fg font-medium",
+  done: "text-fg-secondary",
 };
 
 /**
@@ -71,6 +72,11 @@ const WEIGHT: Readonly<Record<CallingKind, string>> = {
 export interface BandItem extends BandRow {
   /** 화면의 이름 — work 제목이거나, 최상위 셸이면 `Terminal`이다(결정 13의 다섯째). */
   title: string;
+  /**
+   * 그 셸이 앉은 work — 줄의 우클릭 메뉴가 이 work의 메뉴다(codex-ds 결정 6). 최상위 셸이면 `null`이고 메뉴가 없다. `owner`에서 푸는 것은
+   * 고르는 자리(`Sidebar`)의 일이다 — 이 조각은 그 규칙을 모른다.
+   */
+  slug: string | null;
 }
 
 export function AttentionBand({
@@ -79,6 +85,7 @@ export function AttentionBand({
   expanded,
   onToggle,
   onOpen,
+  menuTarget,
 }: {
   /** 부르는 셸 전부, **이미 줄 세워진 채로**(기다림 먼저 · 오래된 순). 자르는 것은 여기다. */
   items: ReadonlyArray<BandItem>;
@@ -87,6 +94,12 @@ export function AttentionBand({
   expanded: boolean;
   onToggle: () => void;
   onOpen: (item: BandItem) => void;
+  /**
+   * 우클릭 메뉴가 열린 줄의 칸 번호(`BandRow.id`를 글자로) — 그 **셸 줄**에 대상 테두리가 선다(codex-ds 결정 11). work가 아니라 줄인
+   * 것은 한 work에서 둘이 부르면 줄이 둘이라서다(결정 5) — 우클릭한 그 줄에만 선다. 닫혔으면 `null`이다. 메뉴 상태는 위(`Sidebar`의
+   * `WorkContextMenu`)가 쥔다 — 펼침과 같은 규칙이다.
+   */
+  menuTarget: string | null;
 }) {
   // **부르는 것이 없으면 통째로 없다**(스토리 38). 위쪽에서 `items.length`로 갈라 이 조각을
   // 아예 안 부르는 안은 기각했다 — 그 조건이 호출부로 새면 「띠가 없다」의 정의가 두 자리에
@@ -104,12 +117,21 @@ export function AttentionBand({
     <div
       data-band=""
       className={cn(
-        "flex shrink-0 flex-col gap-(--row-gap)",
-        // **한 덩어리 상자다** — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band` — 카드 반경 16 ·
-        // 바닥 `card`). 안쪽 위아래 6 · 아래 여백 8은 목업 `.strip` 그대로다. 목록 위에 **뜬 것**으로
-        // 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래
-        // work 행들과 같은 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
-        "mt-1.5 mb-2 rounded-card bg-card py-1.5",
+        "flex shrink-0 flex-col gap-0.5",
+        // **한 덩어리 상자다** — 바탕 위의 흰 카드(DS `.at-band` — `surface` · `radius-2xl` · `shadow-hairline` + `shadow-200`, 합친
+        // 이름 `shadow-raised`). 바탕에 붙은 사이드바에서 흰 것은 이 상자 하나다(codex-ds 스펙 §5 · 스토리 38). 안쪽 위아래 4 ·
+        // 줄 사이 2는 DS `.at-band` 값이다. 바깥은 위 8 · 아래 0이다 — DS `.at-band`의 위 바깥 6에 기둥(`.at-sidebar`)의 줄 사이
+        // 2를 더한 것이 nav와 떼는 몫이고(이 기둥은 줄 사이를 `gap`으로 두지 않아 그 2를 여기 싣는다), 아래 바깥은 DS 그대로 없다.
+        // 목록과는 목록 쪽이 뗀다(목록 위끝의 줄 사이 2 + 구획 소제목의 위 12 — `SidebarWorkList` · `WorkSectionList`). 목록 위에
+        // **뜬 것**으로 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래 work 행들과 같은
+        // 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 그림자는 상자 바깥에 칠해져 아래 `overflow-y-auto`에 안 잘리고,
+        // 사이드바 거터(8) 안에 든다.
+        "mt-2 rounded-2xl bg-surface py-1 shadow-raised",
+        // **양옆 4는 줄의 포커스 링이 설 자리다**(codex-ds 결정 11 — 링은 테두리 바깥 4px까지 칠해진다). 이 상자는 아래에서
+        // 세로로 구르느라 넘침을 자르는데(`overflow-y-auto`면 가로도 잘린다), 줄이 상자 양끝에 붙어 서면 키보드로 고른 줄의 링이
+        // 위아래 선만 남는다. 상자의 폭과 자리는 그대로 두고 안쪽에 링 폭만큼 자리를 둔다 — 그만큼 줄 · 머리의 안쪽 여백을
+        // 줄여, 점 · 제목 · 경과 · 수가 서는 x는 DS의 행 안쪽 8 그대로다(work 행과 같은 x — 아래 `BandLine`의 레인 주석).
+        "px-1",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
         // 아무것도 없었다 — 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 낮은
@@ -122,25 +144,27 @@ export function AttentionBand({
         "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
       )}
     >
-      {/* **누를 것이 없는 머리다** — 구획 헤더(`SectionHeader`)와 규격은 같되 접히지 않는다.
-          띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는 것이 둘이면
-          같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 수가 오른쪽 끝에 서는 것은 바로
-          아래 구획 헤더들과 같은 계약이다 — 한 컬럼에 세로로 붙어 서는 것들이 다른 무게로
-          읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
-      <div className="flex h-7 shrink-0 items-center gap-1 px-[9px]">
-        <span className="shrink-0 text-caption text-section">{BAND_LABEL}</span>
+      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 띠 끝에서 글자까지 8 — 띠의 링 자리 4 + 안쪽 4, DS `.at-band-head`)는
+          구획 헤더(`SectionHeader` — 높이 30, DS `.at-label`의 세로를 따른다)처럼 라벨과 수가 한 줄에 서되 접히지 않는다. 띠가
+          접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
+          것이 둘이면 같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 라벨 글자는 둘이 다르다 —
+          띠 머리는 DS `.at-band-head`의 12(`text-xs`), 구획 라벨은 DS 「소제목 13」(`chat-meta`)이다.
+          수(`text-xs`)가 오른쪽 끝에 서는 것은 바로 아래 구획 헤더들과 같은 계약이다 — 한 컬럼에
+          세로로 붙어 서는 수들이 다른 무게로 읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
+      <div className="flex h-7 shrink-0 items-center gap-1 px-1">
+        <span className="shrink-0 text-xs text-fg-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
         <span
           data-band-count=""
-          className="ml-auto shrink-0 text-meta tabular-nums text-section"
+          className="ml-auto shrink-0 text-xs tabular-nums text-fg-tertiary"
         >
           {items.length}
         </span>
       </div>
 
       {shown.map((item) => (
-        <BandLine key={item.id} item={item} now={now} onOpen={onOpen} />
+        <BandLine key={item.id} item={item} now={now} onOpen={onOpen} menuTarget={String(item.id) === menuTarget} />
       ))}
 
       {/* **자리는 굴러가는 띠 상자 안이다**(`sidebar-active-band` 결정 15) — 펼쳐서 넘치면 ⌃도 줄과 함께 굴러
@@ -163,7 +187,7 @@ export function AttentionBand({
  * 이름으로 따로 단다. 이름과 툴팁 글자가 한 값(`label`)에서 나오는 것이 요점이다 — 둘을
  * 각자 적으면 눈과 귀가 다른 말을 듣는다(`nameOf`와 같은 이유).
  *
- * 폭은 띠 전체, 높이 24px, 아이콘 14px이다. hover는 줄과 같은 `state-1` 한 겹이다(`BandLine` 참조).
+ * 폭은 띠 전체, 높이 24px, 아이콘 14px이다. hover는 줄과 같은 `fill-soft` 한 겹이다(`BandLine` 참조).
  */
 function MoreToggle({
   expanded,
@@ -182,18 +206,19 @@ function MoreToggle({
       text={label}
       announce="name"
       type="button"
+      // Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
+      tabIndex={0}
       onClick={onToggle}
       aria-expanded={expanded}
-      className="flex h-6 w-full shrink-0 items-center justify-center rounded-inner text-tertiary transition-colors hover:bg-state-1 hover:text-muted-foreground"
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary focus-ring"
     >
-      {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
-      <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
+      <Chevron className="size-3.5 shrink-0" />
     </Hint>
   );
 }
 
 /**
- * 줄 하나 — `점 · 제목 · (셸 이름) · 경과`, 28px(결정 5). 에이전트 마크는 없다(ui-refresh 결정 13 —
+ * 줄 하나 — `점 · 제목 · (셸 이름) · 경과`, 30px(`size-row-band` — DS `.at-band .at-row`). 에이전트 마크는 없다(ui-refresh 결정 13 —
  * 무엇이 도는지는 호버 카드와 셸 탭이 말한다).
  *
  * **행(#203)과 어휘가 같고 규격이 다르다.** 점은 같은 조각(`SignalLane`)이고 말도 같은
@@ -214,23 +239,42 @@ function BandLine({
   item,
   now,
   onOpen,
+  menuTarget,
 }: {
   item: BandItem;
   now: number;
   onOpen: (item: BandItem) => void;
+  /** 이 줄의 우클릭 메뉴가 열려 있는가 — 대상 테두리가 선다(codex-ds 결정 11). */
+  menuTarget: boolean;
 }) {
   return (
     <button
       type="button"
+      // Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 메뉴가 없는
+      // 최상위 셸 줄도 Enter로 그 셸에 가는 줄이라 정류장이다.
+      tabIndex={0}
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
-      onClick={() => onOpen(item)}
+      // ⌃클릭은 열지 않는다 — macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 —
+      // 사이드바 work 행의 `onClick`과 같은 거름이다). 메뉴가 없는 최상위 셸 줄도 같다 — 우클릭이 아무것도 안 하는 줄이다.
+      onClick={(event) => {
+        if (!event.ctrlKey) onOpen(item);
+      }}
+      // **work의 셸 줄은 우클릭 메뉴의 대상이다**(codex-ds 결정 6 — 그 work의 메뉴). 표식이 그 줄을 집는 이름이고(`Sidebar`의
+      // `bandTarget`), 열린 동안 `data-menu-target`이 `focus-ring`의 테두리를 세운다. ⇧F10 · 메뉴 키도 포커스된 이 줄이 받는다.
+      // 최상위 셸 줄은 어느 work의 것도 아니라 메뉴가 없다.
+      data-band-line={item.id}
+      data-band-work={item.slug ?? undefined}
+      data-menu-target={menuTarget ? "" : undefined}
+      onKeyDown={item.slug === null ? undefined : openMenuByKey}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[9px] pr-[10px] text-left text-ui",
-        // **hover는 흰 상자 위의 `state-1` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
-        // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 `state-1`이던 동안은 같은 값이
-        // 묻혀 한 단 위(`state-2`)를 썼다.
-        "transition-colors hover:bg-state-1",
-        // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(목업 `.strip .it` / `.it.d`).
+        // 안쪽 좌우 4는 띠 상자의 링 자리(4)를 뺀 값이다 — 점 레인 · 경과가 띠 끝에서 DS 행 안쪽 8에 선다(창 끝 + 16 — 사이드바
+        // 행 글자의 세로줄). 레인과 제목 사이는 DS `.at-band .at-row`의 10이다(work 행은 `.at-row`의 9).
+        "flex h-(--size-row-band) w-full shrink-0 items-center gap-2.5 rounded-lg px-1 text-left text-sm focus-ring",
+        // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
+        // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
+        // 묻혀 한 단 위(`fill-hover`)를 썼다.
+        "transition-colors hover:bg-fill-soft",
+        // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(DS `.at-band .at-row` / `.wait`).
         // 표는 위 `WEIGHT` 하나다.
         WEIGHT[item.kind],
       )}
@@ -247,10 +291,11 @@ function BandLine({
         {item.title}
         {/* **셸 이름은 제목 뒤에 옅게**(결정 5). 같은 상자 안이라 페이드도 함께 받는다 —
             밖에 세우면 이 조각이 폭을 먹어 제목이 그만큼 먼저 잘린다. */}
-        {item.shellName !== null && <span className="text-tertiary"> {item.shellName}</span>}
+        {item.shellName !== null && <span className="text-fg-tertiary"> {item.shellName}</span>}
       </span>
-      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — 상태색의 잉크, DS `.at-row-meta.wait`). */}
-      <SignalElapsed kind={item.kind} ms={now - item.since} />
+      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — `fg-secondary` 500. DS 띠 줄의 `.end`는 상태색 잉크인데
+          글자 대비 바닥에 못 미쳐 codex-ds 스펙 S17대로 낮췄다 — 그 조각의 머리말). */}
+      <SignalElapsed ms={now - item.since} />
     </button>
   );
 }

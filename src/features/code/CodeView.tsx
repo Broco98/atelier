@@ -169,7 +169,7 @@ function Notice({ icon: Icon, title, detail }: { icon: LucideIcon; title: string
       <Empty>
         <EmptyHeader>
           <EmptyMedia variant="icon">
-            <Icon strokeWidth={1.6} />
+            <Icon />
           </EmptyMedia>
           <EmptyTitle>{title}</EmptyTitle>
           <EmptyDescription>{detail}</EmptyDescription>

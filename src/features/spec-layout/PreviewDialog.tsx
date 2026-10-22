@@ -38,7 +38,8 @@ function PreviewDialog({
   const popup = useRef<HTMLDivElement>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* 부품의 닫기(×)를 세우지 않는다 — 머리 줄의 오른쪽 끝에 제 닫기가 있다. 창의 이름은 제목이 준다. */}
+      {/* 부품의 닫기(×)를 세우지 않는다 — 머리 줄의 오른쪽 끝에 제 닫기가 있다. 창의 이름은 제목이 준다. 창은 DS `Dialog` 모양이다
+          (`variant="preview"` — `radius-4xl` · `shadow-modal` · 막 `scrim`, 제목 `heading-xs`). */}
       <DialogContent
         ref={popup}
         variant="preview"
@@ -46,22 +47,25 @@ function PreviewDialog({
         initialFocus={popup}
         finalFocus={opener}
       >
-        <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border pr-3 pl-5">
+        {/* 머리 줄 — 52 · 제목이 창 안쪽 20에 선다(DS `.at-dialog`의 안쪽). 아랫선은 0.5px `border-heavy`이고 테두리가 아니라 줄 안쪽
+            바닥에 칠한 면이다(검색 팔레트의 입력 줄과 같다 — 0.5px 테두리는 엔진마다 굵기가 갈린다). */}
+        <div className="relative flex h-13 shrink-0 items-center gap-2.5 pr-3 pl-5 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border-heavy">
           <DialogTitle>LLM이 받는 텍스트</DialogTitle>
-          <span className="text-ui text-tertiary">저장 전 초안</span>
-          {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 단축키는 설명으로 남긴다(S28 — `shortcut`). */}
+          <span className="text-chat-meta text-fg-tertiary">저장 전 초안</span>
+          {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 단축키는 설명으로 남긴다(S28 — `shortcut`). 크기는 창 머리의 닫기와 같은 아이콘
+              버튼 26 단(`icon-button-sm` — DS `.at-ib.sm`)이다. */}
           <Hint
             text="닫기"
-            shortcut="Esc"
+            shortcut="dismiss"
             announce="name"
-            render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-muted-foreground" />}
+            render={<DialogClose className="icon-button-quiet icon-button-sm ml-auto text-fg-secondary focus-ring" />}
           >
-            <X aria-hidden className="size-4" strokeWidth={2} />
+            <X aria-hidden className="size-4" />
           </Hint>
         </div>
-        {/* 글 상자는 카드 안 묶음과 같은 옅은 면이다(ui-refresh 결정 16의 `bg-group`, 판 06 티켓 07) — 사이드바 색(창 바탕의
-            회색)이 아니다. */}
-        <div className="min-h-0 flex-1 overflow-y-auto bg-group pt-3.5 pb-5 scroll-quiet">
+        {/* 글 상자는 카드 안의 무대 면(`surface-under` — DS `Card` 「카드 안에서 무리를 묶을 때」)이다 — 사이드바 색(창 바탕의 회색)이
+            아니다. 창의 둥근 아래 모서리는 창이 잘라 준다(`overflow-hidden`). */}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-surface-under pt-3.5 pb-5 scroll-quiet">
           <PreviewText answer={answer} selected={selected} />
         </div>
       </DialogContent>
@@ -80,11 +84,11 @@ function PreviewDialog({
 export function PreviewText({ answer, selected }: { answer: LayoutPreview | null; selected: EntryPath }) {
   if (answer === null) return null;
   if (answer.errors.length > 0 || answer.text === null) {
-    return <p className="px-5 text-ui leading-[1.6] text-tertiary">오류를 고치면 보여요</p>;
+    return <p className="px-5 text-chat-meta text-fg-tertiary">오류를 고치면 보여요</p>;
   }
   const held = answer.lines.find(({ path }) => samePath(path, selected));
   return (
-    <div className="font-mono text-mono-sm leading-[1.65] text-foreground">
+    <div className="font-mono text-xs text-fg">
       {answer.text.split("\n").map((line, index) => {
         const picked = held !== undefined && index >= held.start && index < held.start + held.count;
         return (
@@ -92,7 +96,7 @@ export function PreviewText({ answer, selected }: { answer: LayoutPreview | null
             key={index}
             data-line=""
             data-selected={picked ? "" : undefined}
-            className={cn("min-h-5 whitespace-pre-wrap break-words px-5", picked && "bg-primary/10")}
+            className={cn("min-h-5 whitespace-pre-wrap break-words px-5", picked && "bg-accent-soft")}
           >
             {line}
           </div>

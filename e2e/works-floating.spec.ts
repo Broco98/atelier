@@ -5,18 +5,24 @@ import {
   clipboardWrites,
   installFixtureBackend,
   ipcCallArgs,
+  ipcFailure,
   recordClipboard,
+  replaceAnswer,
   unknownIpcCalls,
   workRow,
   시계를세운다,
+  줄차례,
+  토큰시간,
+  탭으로,
   툴팁,
+  호버카드,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
-// 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · info 맨 위의 복사 줄 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
+// 작업 ⋯ · 상태 메뉴 · 작업 패널 머리의 spec 폴더 열기 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
 // 셸 열기 `+`는 셸 열기 spec(`shell-picker.spec.ts`)이, 아카이브 거르개는 아카이브 문서 spec이,
-// 기준 브랜치는 프로젝트 목록 spec이 든다.
+// 기준 브랜치는 프로젝트 목록 spec이, ⋯의 「이름 바꾸기」가 켜는 제자리 이름 바꾸기는 `inline-rename.spec.ts`가 든다.
 //
 // **절마다 머리 주석 한 줄로 가른다**(`// ── 무엇 ──`). 표면이 늘어도 한 파일이라, 절 머리가 곧 목차다.
 // 도우미는 이 파일 맨 위에 둔다 — 둘 이상의 절이 쓰는 것만. 한 절만 쓰는 것은 그 절 안에 둔다.
@@ -34,17 +40,18 @@ const [pinnedWork, plainWork, multiWork] = WORKS;
 const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).animationName);
 
 /**
- * 바탕 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
+ * 머리 카드의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
 
-/** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — 복사 줄 절과 토스트 절이 함께 쓴다. */
+/** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — work 메뉴 절과 토스트 절이 함께 쓴다. */
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
-// 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라
-// 전역 CSS 한 곳이라(`index.css`의 `[data-slot][class*="animate-"]`) 메뉴 하나로 잰다 — 메뉴는 판 3이 처음
-// 들인 떠 있는 부품이고, 셸 열기 `+`가 그 첫 쓰는 자리다.
+// 떠 있는 것은 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 박자는 부품마다 다르다 — 메뉴는 DS 「움직임」의
+// `duration-dropdown` · 30ms 지연 · 0.98 → 1이고(그 값은 `frame.spec.ts`의 「작업 ⋯ 메뉴」가 잰다), 툴팁 · 팝오버는 100ms다.
+// 끄는 규칙은 부품마다가 아니라 전역 CSS 한 곳이라(`index.css`의 `[data-slot][class*="animate-"]`) 메뉴 하나로 잰다 —
+// 메뉴는 판 3이 처음 들인 떠 있는 부품이고, 셸 열기 `+`가 그 첫 쓰는 자리다.
 
 test("메뉴는 애니메이션으로 뜨고, 움직임을 끄면 애니메이션 없이 선다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -68,7 +75,7 @@ test("메뉴는 애니메이션으로 뜨고, 움직임을 끄면 애니메이�
 });
 
 // ── 상태 메뉴 (스토리 46~48 · 51 · 52, S33) ──
-// 머리행의 상태 배지가 라디오 메뉴를 연다. 배지는 여는 버튼이라 「메뉴를 연다」와 「열렸다/닫혔다」를 말하고,
+// 머리 카드의 상태 배지가 라디오 메뉴를 연다. 배지는 여는 버튼이라 「메뉴를 연다」와 「열렸다/닫혔다」를 말하고,
 // 지금 상태는 `menuitemradio`의 `aria-checked`로 읽힌다(체크 아이콘은 보이는 쪽의 말일 뿐이다). 고르면 닫힌다 —
 // 라디오 항목의 부품 기본은 안 닫힘이라(S33) 그것을 여기서 잰다. 저장은 **값이 바뀔 때만**이다(지금 규칙).
 //
@@ -133,12 +140,33 @@ test("상태 메뉴에서 지금 상태를 다시 고르면 닫히기만 하고 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 작업 ⋯ (스토리 46~48 · 56 · 57) ──
-// 머리행의 ⋯가 메뉴를 연다: 이름 바꾸기 · 구분선 · 아카이빙 · 구분선 · 삭제. 줄 옮기기와 Esc 닫기, ⋯로 포커스
-// 돌려주기는 메뉴 부품이 한다. 아카이빙·삭제는 확인 창을 부르는데, 그 창이 닫히면 포커스는 **⋯로** 간다 — 창을
-// 부른 메뉴 항목은 그때 이미 사라졌다. 처리 중인 ⋯는 재지 않는다 — 가림막이 머리행까지 덮어 손이 안 닿는다.
+// ── 작업 ⋯ — work 메뉴 (스토리 46~48 · 56 · 57 · codex-ds 결정 10 · 16 · 스펙 §6 · §9) ──
+// 머리 카드의 ⋯가 work 메뉴를 연다. 묶음이 다섯이고 사이는 구분선이다: Finder에서 열기 ▸ — 이름 바꾸기 · 복사 ▸ — 상태 ▸ —
+// 고정(고정 풀기) · 아카이브 — 삭제. 하위 메뉴 셋(▸)은 줄을 올리거나 →로 열린다(그 모양은 `submenu.spec.ts`가 진열대에서 잰다).
+// 해당 없는 칸은 숨긴다 — 프로젝트가 없으면 Finder ▸에 worktree가, 브랜치가 아직 없으면 복사 ▸에 브랜치 이름이 없다. 지금 못
+// 하는 칸은 흐리다(`aria-disabled`) — 폴더가 사라진 worktree가 그렇다.
+//
+// 줄 옮기기와 Esc 닫기, ⋯로 포커스 돌려주기는 메뉴 부품이 한다. 아카이브 · 삭제는 확인 창을 부르는데, 그 창이 닫히면 포커스는
+// **⋯로** 간다 — 창을 부른 메뉴 항목은 그때 이미 사라졌다. 처리 중인 ⋯는 재지 않는다 — 진행 중에는 `disabled`이고 가림막이 카드
+// 줄을 덮는다.
 
-test("작업 ⋯를 열면 메뉴가 서고 ↓가 첫 항목에 간다 — Esc로 닫으면 포커스가 ⋯로 돌아온다", async ({ page }) => {
+/** 열린 하위 메뉴의 카드 — 부모 메뉴와 같은 `menu` 역할이라 표식으로 가른다(`submenu.spec.ts`와 같다). */
+const 하위메뉴 = (page: Page) => page.locator("[data-slot=dropdown-menu-sub-content]");
+
+/** ⋯를 열고 그 하위 메뉴를 연다. 줄에 올리면 열린다 — 열린 카드를 돌려준다. */
+const 하위메뉴를연다 = async (page: Page, name: string) => {
+  await 작업메뉴(page).click();
+  await page.getByRole("menu").getByRole("menuitem", { name, exact: true }).hover();
+  const sub = 하위메뉴(page);
+  await expect(sub).toBeVisible();
+  return sub;
+};
+
+/** 부른 Finder 열기의 인자들, 부른 차례대로. */
+const finder열기 = async (page: Page) =>
+  (await ipcCallArgs(page, "open_work_folder", "slug")).map(({ args }) => args);
+
+test("작업 ⋯를 열면 다섯 묶음의 work 메뉴가 서고 ↓가 첫 항목에 간다 — Esc로 닫으면 포커스가 ⋯로 돌아온다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   const more = 작업메뉴(page);
@@ -148,14 +176,21 @@ test("작업 ⋯를 열면 메뉴가 서고 ↓가 첫 항목에 간다 — Esc�
   await more.click();
   await expect(menu).toBeVisible();
   await expect(more).toHaveAttribute("aria-expanded", "true");
-  // 항목은 셋이고 순서가 이렇다 — 되돌릴 수 있는 이름 바꾸기가 맨 위, 되돌릴 수 없는 둘이 구분선 아래다.
-  await expect(menu.getByRole("menuitem")).toHaveText(["이름 바꾸기", "아카이빙", "삭제"]);
-  await expect(menu.getByRole("separator")).toHaveCount(2);
+  // 열기 — 고치기 — 상태 — 정리 — 되돌릴 수 없는 것(codex-ds 결정 10). 고정된 work라 정리 묶음의 첫 줄이 「고정 풀기」다.
+  await expect
+    .poll(() => 줄차례(menu))
+    .toEqual(["Finder에서 열기", "—", "이름 바꾸기F2", "복사", "—", "상태", "—", "고정 풀기", "아카이브", "—", "삭제"]);
+  // 「이름 바꾸기」의 단축키 칸은 F2다(codex-ds 스펙 §9) — 보이는 글자는 줄 끝에 서고, 줄은 그 키를 `aria-keyshortcuts`로 말한다.
+  await expect(menu.getByRole("menuitem", { name: "이름 바꾸기", exact: true })).toHaveAttribute("aria-keyshortcuts", "F2");
+  // ▸ 셋이 하위 메뉴를 연다고 말한다 — 나머지는 누르면 바로 하는 줄이다.
+  for (const name of ["Finder에서 열기", "복사", "상태"]) {
+    await expect(menu.getByRole("menuitem", { name, exact: true })).toHaveAttribute("aria-haspopup", "menu");
+  }
 
   // 눌러서 열면 카드 자신이 포커스를 쥔다. 그 뒤의 ↓가 첫 항목이다.
   await expect(menu).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(menu.getByRole("menuitem", { name: "이름 바꾸기" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Finder에서 열기" })).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
@@ -164,178 +199,217 @@ test("작업 ⋯를 열면 메뉴가 서고 ↓가 첫 항목에 간다 — Esc�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("「아카이빙」이 띄운 확인 창을 「취소」로 닫으면 포커스가 ⋯로 돌아온다", async ({ page }) => {
+test("Finder에서 열기 ▸는 spec 폴더와 프로젝트마다 worktree를 들고, 고르면 slug · 프로젝트로 여는 명령이 나간다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${pinnedWork.slug}`);
-  const more = 작업메뉴(page);
+  await page.goto(`/works/${multiWork.slug}`);
 
-  await more.click();
-  await page.getByRole("menuitem", { name: "아카이빙" }).click();
-  const dialog = page.getByRole("alertdialog", { name: `'${pinnedWork.title}' 아카이빙` });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+  let sub = await 하위메뉴를연다(page, "Finder에서 열기");
+  // spec 폴더가 먼저이고, 구분선 아래 worktree가 프로젝트 순서대로 선다 — 이름 뒤의 흐린 「worktree」는 무엇을 여는지 말한다.
+  await expect.poll(() => 줄차례(sub)).toEqual(["spec 폴더", "—", "billingworktree", "ledgerworktree"]);
+  await sub.getByRole("menuitem", { name: "spec 폴더" }).click();
+  // 고르면 메뉴가 통째로 닫힌다 — 하위 메뉴만 닫히고 부모가 남으면 한 번 더 눌러 닫아야 한다.
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect.poll(() => finder열기(page)).toEqual([{ slug: multiWork.slug, project: null }]);
 
-  // 앵커: 창이 닫혔다. 그다음에 포커스의 자리와 「안 나갔다」를 잰다.
-  await expect(dialog).toHaveCount(0);
-  await expect(more).toBeFocused();
-  expect(await callCount(page, "archive_work")).toBe(0);
+  sub = await 하위메뉴를연다(page, "Finder에서 열기");
+  await sub.getByRole("menuitem", { name: /^ledger/ }).click();
+  // 날 경로를 넘기지 않는다 — 경로는 백엔드가 slug와 프로젝트로 푼다(codex-ds 스펙 S6).
+  await expect
+    .poll(() => finder열기(page))
+    .toEqual([
+      { slug: multiWork.slug, project: null },
+      { slug: multiWork.slug, project: "ledger" },
+    ]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 이름 바꾸기 창 (결정 8, 스토리 58~63, S38 · P7 · P12) ──
-// ⋯의 「이름 바꾸기」가 작은 창을 연다. 입력칸이 지금 이름을 **전부 고른 채** 포커스를 받는다. Enter는 앞뒤
-// 공백을 떼고 저장하되, 비었거나 그대로면 저장 없이 닫는다. Esc와 바깥 누르기는 취소다 — 바깥 누르기가 저장이던
-// 옛 인라인 편집기와 여기서 갈린다(P7). 어느 길로 닫혀도 포커스는 ⋯로 간다.
-//
-// 「안 나갔다」(IPC 0)는 늘 **창이 닫힌 것을 본 뒤에** 잰다 — 닫는 일이 아예 안 일어나도 0이다.
+test("프로젝트가 없는 work는 Finder에서 열기 ▸에 spec 폴더만, 브랜치가 없으면 복사 ▸에 브랜치 이름이 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
 
-const 이름바꾸기를연다 = async (page: Page) => {
+  const finder = await 하위메뉴를연다(page, "Finder에서 열기");
+  // worktree가 없으니 그 앞의 구분선도 없다 — 카드 끝에 홀로 남은 선이 서지 않는다.
+  await expect.poll(() => 줄차례(finder)).toEqual(["spec 폴더"]);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  const copy = await 하위메뉴를연다(page, "복사");
+  await expect(copy.getByRole("menuitem")).toHaveText([`slug${plainWork.slug}`, "spec 경로"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("폴더가 사라진 worktree는 Finder에서 열기 ▸에 흐리게 서고, 골라도 아무것도 안 연다", async ({ page }) => {
+  const [billing, ledger] = multiWork.worktrees;
+  await installFixtureBackend(page, {
+    list_works: WORKS.map((work) =>
+      work.slug === multiWork.slug ? { ...work, worktrees: [billing, { ...ledger, exists: false }] } : work,
+    ),
+  });
+  await page.goto(`/works/${multiWork.slug}`);
+  const sub = 하위메뉴(page);
+  const gone = sub.getByRole("menuitem", { name: /^ledger/ });
+  const alive = sub.getByRole("menuitem", { name: /^billing/ });
+
+  // 키로 연다 — ↓가 첫 줄(Finder에서 열기), →가 하위 메뉴를 열고 그 첫 줄(spec 폴더)에 간다.
   await 작업메뉴(page).click();
-  await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
-  const dialog = page.getByRole("dialog", { name: "작업 이름 바꾸기" });
-  await expect(dialog).toBeVisible();
-  const input = dialog.getByRole("textbox", { name: "작업 이름" });
-  await expect(input).toBeFocused();
-  return { dialog, input, save: dialog.getByRole("button", { name: "저장", exact: true }) };
-};
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowRight");
+  await expect(sub).toBeVisible();
+  // 앵커: 포커스가 하위 메뉴의 첫 줄에 들었다. 카드가 선 뒤에야 포커스가 옮겨 가는 WebKit이 있다(리눅스) — 그 전의 ↓는 부모 메뉴가 받는다.
+  await expect(sub.getByRole("menuitem").first()).toBeFocused();
+  // 해당은 하니 숨기지 않고, 지금 못 하니 흐리다(codex-ds 결정 10) — 옆의 살아 있는 worktree는 그대로다.
+  await expect(gone).toHaveAttribute("aria-disabled", "true");
+  await expect(alive).not.toHaveAttribute("aria-disabled", "true");
 
-/** 입력칸에서 골라 둔 자리 `[시작, 끝]`. 전부 골랐으면 `[0, 글자 수]`다. */
-const 고른자리 = (input: Locator) =>
-  input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]);
+  // 흐린 줄에도 키로 설 수는 있다(메뉴 부품의 규칙 — 읽어 줄 수 있게). Enter가 그 줄에서는 아무것도 안 한다 — 메뉴가 그대로 남는다.
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(gone).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(gone).toBeFocused();
+  // 앵커: 한 줄 위의 살아 있는 worktree는 열린다 — 그다음에야 「흐린 줄은 안 열었다」가 뜻을 갖는다.
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => finder열기(page)).toEqual([{ slug: multiWork.slug, project: "billing" }]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
-test("「이름 바꾸기」는 「작업 이름 바꾸기」 창을 열고, 입력칸이 지금 이름을 전부 고른 채 포커스를 받는다", async ({
+test("Finder가 폴더를 못 열면 그 오류 문장이 「메시지」에 선다", async ({ page }) => {
+  // 명령이 사라진 폴더에 돌려주는 문장이다(`commands.rs`의 `folder_err` — 해요체로 어느 폴더인지 말한다).
+  const reason = `${multiWork.worktrees[0].path} 폴더가 없어요`;
+  await installFixtureBackend(page, { open_work_folder: ipcFailure(reason) });
+  await page.clock.install();
+  await page.goto(`/works/${multiWork.slug}`);
+
+  const sub = await 하위메뉴를연다(page, "Finder에서 열기");
+  // 시계는 고르기 직전에 세운다 — 토스트(1.6초)를 느린 기계에서도 놓치지 않게(아래 토스트 절). 하위 메뉴가 열리는 동안은 흐르게 둔다.
+  await 시계를세운다(page);
+  await sub.getByRole("menuitem", { name: /^billing/ }).click();
+  await expect(메시지(page)).toHaveText(`Finder에서 열지 못했어요: ${reason}`);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 작업 패널 머리의 「spec 폴더 열기」(codex-ds 스펙 §6 「작업 패널」 — 머리는 「spec」과 spec 폴더 열기다). work 메뉴의 Finder ▸ spec 폴더와
+// 같은 명령을 slug 하나로 부르고(경로는 백엔드가 푼다 — 스펙 S6), 못 열면 같은 문장이 「메시지」에 선다.
+test("작업 패널 머리에 「spec」과 spec 폴더 열기가 서고, 누르면 그 work의 spec 폴더를 연다 — 못 열면 Finder ▸와 같은 문장이 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-  const { input } = await 이름바꾸기를연다(page);
+  await page.clock.install();
+  await page.goto(`/works/${multiWork.slug}`);
+  const head = page.getByRole("region", { name: "작업 패널", exact: true }).locator('[data-slot="card-head"]');
+  const open = head.getByRole("button", { name: "spec 폴더 열기", exact: true });
+  await expect(head).toHaveText("spec");
+  await expect(open).toBeVisible();
 
-  await expect(input).toHaveValue(plainWork.title);
-  await expect.poll(() => 고른자리(input)).toEqual([0, plainWork.title.length]);
+  await open.click();
+  await expect.poll(() => finder열기(page)).toEqual([{ slug: multiWork.slug, project: null }]);
+
+  const reason = `${multiWork.specDir} 폴더가 없어요`;
+  await replaceAnswer(page, "open_work_folder", ipcFailure(reason));
+  await 시계를세운다(page);
+  await open.click();
+  await expect(메시지(page)).toHaveText(`Finder에서 열지 못했어요: ${reason}`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Enter면 앞뒤 공백을 뗀 이름으로 제목 IPC가 나가고, 창이 닫혀 포커스가 ⋯에 선다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-  const { dialog, input } = await 이름바꾸기를연다(page);
-
-  await input.fill("  새 이름  ");
-  await input.press("Enter");
-
-  await expect(dialog).toHaveCount(0);
-  await expect(작업메뉴(page)).toBeFocused();
-  await expect
-    .poll(async () => (await ipcCallArgs(page, "set_work_title", "title")).map(({ args }) => args))
-    .toEqual([{ slug: plainWork.slug, title: "새 이름" }]);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-for (const [what, value] of [
-  ["그대로인 이름", plainWork.title],
-  ["빈 이름", "   "],
-] as const) {
-  test(`${what}으로 Enter를 누르면 창만 닫히고 제목 IPC는 안 나간다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/works/${plainWork.slug}`);
-    const { dialog, input } = await 이름바꾸기를연다(page);
-
-    await input.fill(value);
-    await input.press("Enter");
-
-    await expect(dialog).toHaveCount(0);
-    await expect(작업메뉴(page)).toBeFocused();
-    expect(await callCount(page, "set_work_title")).toBe(0);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
-
-test("「저장」은 이름이 비었거나 그대로면 누를 수 없고, 글자를 바꾸면 풀린다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-  const { input, save } = await 이름바꾸기를연다(page);
-
-  // 연 그대로는 지금 이름이다 — 저장해도 바뀌는 것이 없다.
-  await expect(save).toBeDisabled();
-  await input.fill("");
-  await expect(save).toBeDisabled();
-  // 공백만 있으면 뗀 뒤 빈 이름이다. 앞뒤 공백만 붙인 지금 이름도 뗀 뒤 그대로다.
-  await input.fill("   ");
-  await expect(save).toBeDisabled();
-  await input.fill(` ${plainWork.title} `);
-  await expect(save).toBeDisabled();
-
-  await input.fill(`${plainWork.title}!`);
-  await expect(save).toBeEnabled();
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-for (const [what, cancel] of [
-  ["Esc", (page: Page) => page.keyboard.press("Escape")],
-  // 가림막 위 창 밖의 한 점. 창은 가운데에 서므로 왼쪽 위 모서리는 늘 바깥이다.
-  ["바깥 누르기", (page: Page) => page.mouse.click(8, 8)],
-] as const) {
-  test(`${what}는 취소다 — 고친 이름이 있어도 제목 IPC가 안 나가고, 포커스가 ⋯에 선다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/works/${plainWork.slug}`);
-    const { dialog, input } = await 이름바꾸기를연다(page);
-
-    await input.fill("고치다 만 이름");
-    await cancel(page);
-
-    await expect(dialog).toHaveCount(0);
-    await expect(작업메뉴(page)).toBeFocused();
-    expect(await callCount(page, "set_work_title")).toBe(0);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
-
-// ── info 맨 위의 복사 줄 (스토리 64~66, S35 · ui-refresh 결정 14) ──
-// 작업 정보는 레일의 `info` 한 곳에 모인다 — 바탕 줄의 ⓘ 팝오버가 걷히고, 그 복사 줄 셋(브랜치 · 작업 폴더 · 워크트리)이
-// info 패널 맨 위 묶음으로 올라왔다. 행은 복사 버튼이다 — 누르면(Enter 포함) 그 값이 클립보드로 가고 「… 복사됨」 토스트가
-// 선다. 패널의 다른 복사 행과 같은 길이다.
-//
-// 클립보드는 **쓰기를 적는** 하네스 손잡이로 잰다(S35) — WebKit에서 클립보드를 읽는 길은 확인되지 않았다.
-// 첫 행은 브랜치다: 고정된 일에는 브랜치가 있고, 꼬리의 base(`main`)는 행의 이름에 붙어 따라온다.
-// 키로 누른다 — WebKit은 버튼을 눌러도 포커스를 주지 않는다. 시계는 토스트 절(아래)과 같은 까닭으로 세운다.
-//
-// Tab으로 행 사이를 옮기는 것(스토리 64의 가운데)은 여기서 못 잰다 — WebKit의 Tab은 버튼을 건너뛴다. 복사 아이콘의
-// 모양도 실물 확인의 몫이다.
-
-const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
-
-test("레일 `info`를 열면 맨 위 첫 행이 브랜치이고, Enter면 그 값이 클립보드로 가고 토스트가 선다 — 접힌 워크트리 줄은 전체 경로를 낸다", async ({ page }) => {
+test("복사 ▸는 slug · 브랜치 이름 · spec 경로를 클립보드에 쓰고, 트리의 경로 복사와 같은 「… 복사됨」이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await recordClipboard(page);
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
-  await page.getByRole("group", { name: "레일", exact: true }).getByRole("button", { name: "info", exact: true }).click();
-  const panel = 작업패널(page);
-  // 첫 버튼이 브랜치 행이다 — 「브랜치 행이 있다」만 보면 행 순서가 뒤집혀도 초록이다. 숨은 `spec` 몸은 접근성 트리에 없다.
-  const branchRow = panel.getByRole("button").first();
-  await expect(branchRow).toHaveAccessibleName(`${pinnedWork.branch} main`);
-  // 행의 이름은 값이고, 도움말 「복사」(툴팁)는 이름보다 더 말하는 것이라 설명으로 남는다(S28).
-  await expect(branchRow).toHaveAccessibleDescription("복사");
+  // spec 경로는 앱의 참조 표기다(`specDirRef` — 끝에 `/`). 에이전트에게 그대로 넘기는 값이라 폴더임을 끝의 `/`가 말한다.
+  const specPath = `${pinnedWork.specDir}/`;
+  const branch = pinnedWork.branch;
+  if (branch === null) throw new Error("고정된 일에는 브랜치가 있어야 복사 ▸에 브랜치 이름이 선다");
+  const copies = [
+    [`slug${pinnedWork.slug}`, pinnedWork.slug],
+    [`브랜치 이름${branch}`, branch],
+    ["spec 경로", specPath],
+  ] as const;
 
-  await 시계를세운다(page);
-  await branchRow.focus();
-  await page.keyboard.press("Enter");
+  const sub = await 하위메뉴를연다(page, "복사");
+  await expect(sub.getByRole("menuitem")).toHaveText(copies.map(([row]) => row));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
 
-  // 나가는 값은 브랜치 이름 그대로다 — 꼬리의 base는 보이는 글자일 뿐 클립보드로 가지 않는다.
-  await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch]);
-  await expect(메시지(page)).toHaveText(`${pinnedWork.branch} 복사됨`);
-  // 토스트는 포커스를 가져가지 않는다(스토리 91) — 다음 행으로 이어 누를 수 있다.
-  await expect(branchRow).toBeFocused();
-
-  // 워크트리 줄은 작업 폴더 기준으로 **접혀 보이고**, 한 번 누르면 접히지 않은 전체 경로가 나간다 — 보이는 꼬리가
-  // 클립보드로 가면 붙여 넣은 경로가 다른 곳을 가리킨다. 이름 전체로 집는다: 아래 「프로젝트」 구획의 worktree 줄은
-  // 라벨이 이름 앞에 붙는다.
-  await panel.getByRole("button", { name: "trees/billing/", exact: true }).click();
-  const worktree = `${pinnedWork.worktrees[0].path}/`;
-  await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch, worktree]);
-  await expect(메시지(page)).toHaveText(`${worktree} 복사됨`);
+  // 시계는 **고르기 직전에** 세운다 — 토스트(1.6초)를 느린 기계에서도 놓치지 않게(아래 토스트 절). 메뉴를 여는 동안은 흐르게 둔다:
+  // 하위 메뉴가 올린 뒤 잠깐 있다 열리고, 닫힌 메뉴는 사라지는 애니메이션의 프레임이 와야 걷힌다.
+  const written: string[] = [];
+  for (const [row, value] of copies) {
+    await page.clock.resume();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    const opened = await 하위메뉴를연다(page, "복사");
+    await 시계를세운다(page);
+    await opened.getByRole("menuitem").filter({ hasText: row }).click();
+    written.push(value);
+    await expect.poll(() => clipboardWrites(page)).toEqual(written);
+    await expect(메시지(page)).toHaveText(`${value} 복사됨`);
+  }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+test("상태 ▸는 상태 배지와 같은 라디오다 — 지금 상태가 고른 줄이고, 다른 상태를 고르면 바꾸는 IPC가 나가고 닫힌다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+
+  const sub = await 하위메뉴를연다(page, "상태");
+  await expect(sub.getByRole("menuitemradio")).toHaveCount(4);
+  await expect(sub.getByRole("menuitemradio", { checked: true })).toHaveCount(1);
+  await expect(상태줄(sub, pinnedWork.status)).toHaveAttribute("aria-checked", "true");
+
+  await 상태줄(sub, "review").click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect
+    .poll(async () => (await ipcCallArgs(page, "set_work_status", "status")).map(({ args }) => args))
+    .toEqual([{ slug: pinnedWork.slug, status: "review" }]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+for (const [work, row, topic, pinned] of [
+  [pinnedWork, "고정 풀기", "는", false],
+  [multiWork, "고정", "은", true],
+] as const) {
+  test(`「${row}」${topic} 사이드바 핀과 같은 고정 IPC를 부른다 — pinned ${pinned}`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(`/works/${work.slug}`);
+
+    await 작업메뉴(page).click();
+    await page.getByRole("menu").getByRole("menuitem", { name: row, exact: true }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect
+      .poll(async () => (await ipcCallArgs(page, "set_work_pinned", "pinned")).map(({ args }) => args))
+      .toEqual([{ slug: work.slug, pinned }]);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+for (const [row, verb, command] of [
+  ["아카이브", "아카이빙", "archive_work"],
+  ["삭제", "삭제", "remove_work"],
+] as const) {
+  test(`「${row}」는 확인 창을 거친다 — 「취소」로 닫으면 아무것도 안 나가고 포커스가 ⋯로 돌아온다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(`/works/${pinnedWork.slug}`);
+    const more = 작업메뉴(page);
+
+    await more.click();
+    await page.getByRole("menuitem", { name: row, exact: true }).click();
+    const dialog = page.getByRole("alertdialog", { name: `'${pinnedWork.title}' ${verb}` });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "취소", exact: true }).click();
+
+    // 앵커: 창이 닫혔다. 그다음에 포커스의 자리와 「안 나갔다」를 잰다.
+    await expect(dialog).toHaveCount(0);
+    await expect(more).toBeFocused();
+    expect(await callCount(page, command)).toBe(0);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
 
 // ── 토스트 (스토리 88~91, 결정 11, S14 · S26 · S37) ──
 // 복사했다·셸을 못 열었다 같은 짧은 토스트는 이름 「메시지」를 단 `region`(라이브 영역)에 선다. 자리는 본문과 작업
@@ -368,8 +442,48 @@ test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 포인터를 안 쓴다 — 포인터가 토스트 위에 있으면 Base UI가 시계를 세운다(S27). 키로 복사해야 포커스가 복사한 자리에
-// 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+// 아래 둘은 **키보드의 복사 길**로 복사한다 — 트리 행에 포커스를 두고 그 행의 메뉴(⇧F10)의 「경로 복사」다. 행 안 복사 버튼은
+// Tab 정류장이 아니다(codex-ds 스펙 S10). 포인터를 안 쓰는 까닭은 둘이다: 포인터가 토스트 위에 있으면 Base UI가 시계를
+// 세우고(S27), 키로 복사해야 포커스가 복사한 자리에 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+
+/** 작업 패널 트리의 그 파일 행(이름 버튼 — 목록의 roving 줄). */
+const 트리행 = (page: Page, path: string) => page.locator(`aside:not([data-sidebar]) [data-roving="${path}"]`);
+
+/** 메뉴 카드의 움직임(CSS)이 다 멎었는가 — 그 움직임은 세운 시계가 아니라 실제 시간을 탄다. */
+const 카드가멎었다 = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[role="menu"]')].every((menu) =>
+      menu.getAnimations({ subtree: true }).every((one) => one.playState !== "running"),
+    ),
+  );
+
+/**
+ * 세운 시계에서 프레임(rAF)을 한 장씩(16ms) 밀어 그 조건을 기다린다 — 실제 시간이 토스트의 시계로 새지 않는다. 카드는 프레임을
+ * 받은 뒤 제 움직임이 끝나기를 실제 시간으로 기다려 걷히므로(Base UI), 한 장을 밀 때마다 그 움직임이 멎기를 기다린다.
+ */
+async function 프레임을민다(page: Page, done: () => Promise<boolean>, 최대 = 20): Promise<void> {
+  for (let n = 0; n < 최대; n += 1) {
+    if (await done()) return;
+    await page.clock.runFor(16);
+    await expect.poll(() => 카드가멎었다(page)).toBe(true);
+  }
+  throw new Error(`프레임 ${최대}장을 밀어도 닿지 않았다`);
+}
+
+/**
+ * 세운 시계에서, 포커스가 선 트리 행의 메뉴(⇧F10)로 그 경로를 복사한다. 카드가 포커스를 쥐는 것도, 닫힌 카드가 걷히고 포커스가
+ * 행으로 돌아가는 것도 프레임을 타서(세운 시계에는 저절로 안 온다) 그 둘을 프레임을 밀어 기다린다.
+ */
+async function 메뉴로복사한다(page: Page): Promise<void> {
+  const menu = page.getByRole("menu");
+  await page.keyboard.press("Shift+F10");
+  await 프레임을민다(page, () => page.evaluate(() => document.activeElement?.closest('[role="menu"]') != null));
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "경로 복사", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await 프레임을민다(page, async () => (await menu.count()) === 0);
+}
+
 test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글자로 갈아 끼우고, 포커스는 복사한 자리에 남는다", async ({
   page,
 }) => {
@@ -378,16 +492,14 @@ test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글�
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
   const messages = 메시지(page);
-  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
-  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
-  await expect(first).toBeAttached();
+  await 탭으로(page, 트리행(page, "overview.md"));
 
   await 시계를세운다(page);
-  await first.focus();
-  await page.keyboard.press("Enter");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
-  await second.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await expect(트리행(page, "메타.json")).toBeFocused();
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
 
   const [, copied] = await clipboardWrites(page);
@@ -395,8 +507,8 @@ test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글�
   // 한도에 걸려 남은 것(`data-limited`)까지 세어 한 장이다.
   await expect(messages.locator("[data-slot=toast]")).toHaveCount(1);
   await expect(messages.getByRole("dialog")).toHaveCount(1);
-  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91).
-  await expect(second).toBeFocused();
+  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91) — 메뉴가 닫히며 돌려준 행에 그대로 있다.
+  await expect(트리행(page, "메타.json")).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -412,13 +524,10 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await page.goto(`/works/${pinnedWork.slug}`);
   const messages = 메시지(page);
   const toast = messages.getByRole("dialog");
-  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
-  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
-  await expect(first).toBeAttached();
+  await 탭으로(page, 트리행(page, "overview.md"));
 
   await 시계를세운다(page);
-  await first.focus();
-  await page.keyboard.press("Enter");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
   await expect(toast).toHaveCount(1);
   expect(await 전이(toast)).not.toBe("none");
@@ -426,13 +535,13 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await expect.poll(() => 전이(toast)).toBe("none");
 
   await page.clock.runFor(1000);
-  await second.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
   const [, copied] = await clipboardWrites(page);
   await expect(messages).toHaveText(`${copied} 복사됨`);
 
-  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초다.
+  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초에, 닫힌 카드를 걷느라 민 프레임 몇 장(`메뉴로복사한다`)을 더한 만큼이다.
   await page.clock.runFor(1000);
   await expect(messages).toHaveText(`${copied} 복사됨`);
   // 뒤의 것에서 1.6초를 넘겼다.
@@ -621,19 +730,21 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
 });
 
 // ── 툴팁 (스토리 112 · 113, S28 · S29 · P13) ──
-// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 600ms 뒤에, 포커스면 곧바로 선다. 단축키가 있으면 옆에 Kbd로
+// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 멈춘 지 `duration-tip`(150ms)에, 포커스면 곧바로 선다(codex-ds
+// 결정 20 — 무리의 나머지 시간은 `hover-timing` spec이 잰다). 단축키가 있으면 옆에 Kbd로
 // 붙는다(「검색 ⌘K」). 툴팁은 역할도 설명도 주지 않으므로(S28) 글자는 표식(`data-slot`)으로 집고, 이름보다 더 말하던 것
 // (단축키)은 버튼의 접근성 설명으로 따로 잰다. 대표는 사이드바의 검색 버튼 하나다 — 사이드바에서 `title`을 들던 버튼이
 // 그것뿐이고(P13), 규칙이 부품 한 곳이라 나머지 자리는 같은 부품을 부른다.
 //
-// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 350ms 호버 카드가 600ms 툴팁보다 먼저 서므로, 카드가
-// 선 순간에 「툴팁이 없다」를 재면 행에 툴팁을 잘못 달아도 초록이다 — 카드를 앵커로 본 뒤 시계로 툴팁 지연을 넘겨 돌리고
-// 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인 판을 가른다).
+// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 호버 카드와 툴팁은 같은 길이(`duration-tip`)에 서는 한
+// 무리라(codex-ds 결정 20), 카드가 선 순간에 「툴팁이 없다」를 재면 같은 틱에 설 툴팁을 앞질러 행에 툴팁을 잘못 달아도 초록이다
+// — 카드를 앵커로 본 뒤 시계를 넉넉히 돌리고 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인
+// 판을 가른다). 핀은 행 안에 있어 올려도 카드가 그대로다 — 티켓 33의 「고정 핀 위에는 카드가 없다(그대로)」가 이 검사다.
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
 const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
 
-test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
+test("검색 버튼에 올려 멈추면 duration-tip 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -645,13 +756,15 @@ test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 
   // 이름은 그대로 「검색」이고, 이름보다 더 말하던 단축키는 설명이다(S28).
   await expect(search).toHaveAccessibleDescription("⌘K");
   await expect(tooltip).toHaveCount(0);
+  const tip = await 토큰시간(page, "--duration-tip");
+  expect(tip, "duration-tip").toBe(150);
 
   await 시계를세운다(page);
   await search.hover();
-  await page.clock.runFor(500);
+  await page.clock.runFor(tip - 1);
   // 아래에서 곧 선다 — 이 「없다」는 그 앵커에 기대어 지연이 0이 아님을 잰다.
   await expect(tooltip).toHaveCount(0);
-  await page.clock.runFor(200);
+  await page.clock.runFor(1);
   await expect(tooltip).toContainText("검색");
   await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -677,13 +790,19 @@ test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁�
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
   const row = workRow(page, plainWork.slug);
-  const card = page.locator("[data-popover]");
+  const card = 호버카드(page);
   const tooltip = 툴팁(page);
   await expect(row).toBeVisible();
   await expect(card).toHaveCount(0);
+  const tip = await 토큰시간(page, "--duration-tip");
+  expect(tip, "duration-tip").toBe(150);
 
+  await 시계를세운다(page);
   await row.hover();
-  // 앵커: 호버 카드가 섰다(350ms). 툴팁(600ms)은 그 뒤라, 여기서 재면 헛돈다.
+  // 앵커: 호버 카드가 멈춘 지 `duration-tip`에 섰다 — 툴팁과 같은 틱이라 여기서 「툴팁이 없다」를 재면 헛돈다.
+  await page.clock.runFor(tip - 1);
+  await expect(card).toHaveCount(0);
+  await page.clock.runFor(1);
   await expect(card).toBeVisible();
   await page.clock.runFor(1000);
   await expect(tooltip).toHaveCount(0);

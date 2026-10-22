@@ -149,12 +149,12 @@ function renderedBody(file: string | null): "pretty" | "html" | null {
 }
 
 /**
- * 이 파일이 `[소스]` 토글을 무시하는가 — 그러면 두 칸을 함께 잠근다(결정 21).
+ * 이 파일이 경로 줄의 보기 묶음(문서 | 원문 — 위 표의 `[소스]` 토글)을 무시하는가 — 그러면 두 칸을 함께 잠근다(결정 21).
  *
  * **표에서 파생한다.** 「켜든 끄든 본문이 같다」가 곧 「눌러도 아무 일이 없다」이므로,
  * 잠김 규칙을 따로 적으면 표가 바뀔 때 한쪽만 늙는다.
  */
-export function ignoresSourceToggle(file: string | null): boolean {
+export function ignoresViewSwitch(file: string | null): boolean {
   return docBody(file, false) === docBody(file, true);
 }
 

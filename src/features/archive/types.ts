@@ -14,8 +14,9 @@ export interface ArchiveEntry {
 
 /**
  * 아카이브 하나의 문서 — 커널의 문서 목록과, 그중 `spec/` 아래를 엔진이 가른 spec 트리가 **한
- * 응답으로** 온다(코어 `ArchivedDocs`). 따로 오면 행을 펼치는 애니메이션 도중 트리만 늦게 도착해
- * 높이가 튄다.
+ * 응답으로** 온다(코어 `ArchivedDocs`). spec 목록 패널은 둘을 한 트리로 잇는다 — 기록 행 곁에
+ * `spec/` 행을 세우고 그 아래에 받은 트리를 얹는다(`archiveTreeItems`). 따로 오면 트리가 기록 행만으로
+ * 먼저 섰다가 `spec/` 행이 늦게 끼어들며 튄다.
  */
 export interface ArchivedDocs {
   /** work 폴더 기준 경로(`record.md`, `spec/…`). 기록이 맨 앞이고, 첫 문서가 기본 문서다. */

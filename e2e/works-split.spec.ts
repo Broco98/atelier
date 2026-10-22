@@ -12,6 +12,7 @@ import {
   파일탭주소,
   주소로간다,
 } from "./harness";
+import { settle } from "./tab-row";
 
 // 판 05 — 분할. **이 층에서만 보이는 것 셋이다**: 포인터 제스처(정적 마크업 seam에는
 // 이벤트가 없다), 끄는 동안 그려지는 겹판, 그리고 열 폭이 실제로 PTY 격자까지 내려가는 것.
@@ -62,7 +63,7 @@ test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
 
 // ─── 결정 12(판 03): 분할을 **탭**에서 만든다 ───
 //
-// 사이드바 행이 하던 몸짓의 출발점이 머리행의 탭 줄로 옮겨 왔다(adr-03이 그 행을 걷었다).
+// 사이드바 행이 하던 몸짓의 출발점이 탭 줄(본문 카드 머리)로 옮겨 왔다(adr-03이 그 행을 걷었다).
 // **놓일 자리도 분할 계산도 그대로다** — 바뀐 것은 끌 수 있는 것뿐이다. 한때 같은 것을
 // 사이드바 잎·행에서 재던 검사 둘이 이 아래 둘과 겹쳐, 판 04가 그 행을 걷으면서 지웠다.
 //
@@ -174,15 +175,16 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
 
-  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 레일의 패널 토글이 「펼치기」인 것이 그 모습이다. 누르면 이름이
+  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 머리 줄의 패널 토글이 「펼치기」인 것이 그 모습이다. 누르면 이름이
   // 「접기」로 바뀌어(ui-refresh 결정 9) 이 이름의 버튼이 없어진다.
   const opener = page.getByRole("button", { name: "작업 패널 펼치기" });
   await expect(opener).toBeVisible();
   await opener.click();
   await expect(opener).toHaveCount(0);
 
-  // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다.
-  await startSplitDrag(page, await specTab(page));
+  // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다. 문서 칸은 터미널 열 머리의 탭 줄에 서서(codex-ds 스펙 §4) 패널이 펴지는
+  // 동안(220ms) 열과 함께 옮겨 간다 — 배치가 멈춘 뒤의 자리를 잡는다(`settle`).
+  await startSplitDrag(page, await settle(page, () => specTab(page)));
   await moveOntoHalf(page, "right");
   await page.mouse.up();
   await expect(page).toHaveURL(/split=rl/);
@@ -215,7 +217,7 @@ test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) =
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const from = await startSplitDrag(page, await specTab(page));
-  // 본문까지 갔다가 다시 칸 위로. 머리행은 겹판이 안 덮으므로 칸이 그대로 포인터를 받는다.
+  // 본문까지 갔다가 다시 칸 위로. 겹판은 탭 줄 아래부터 덮으므로(`top-(--size-toolbar)`) 칸이 그대로 포인터를 받는다.
   await moveOntoHalf(page, "right");
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();
@@ -239,12 +241,12 @@ test("틈의 손잡이를 끌면 터미널 격자가 따라가고 비율이 저�
   await expect.poll(() => callCount(page, "pty_spawn")).toBeGreaterThan(0);
   const before = await callCount(page, "pty_resize");
 
-  // 두 열은 각자 카드이고(ui-refresh 결정 15) 사이에 틈(`--gap`)이 있다. 폭 핸들은 그 **틈의 가운데**에 얹힌 5px 띠다.
+  // 두 열은 각자 카드이고(ui-refresh 결정 15) 사이에 틈(`--space-2`)이 있다. 폭 핸들은 그 **틈의 가운데**에 얹힌 5px 띠다.
   // 열 머리가 그 카드의 폭을 그대로 쓰므로 두 머리의 마주 보는 끝에서 틈을 읽는다 — 좌표를 손으로 적지 않는다.
   const head = await page.locator('[data-column="spec"]').boundingBox();
   const other = await page.locator('[data-column="terminal"]').boundingBox();
   if (!head || !other) throw new Error("열 머리의 상자를 못 읽었다");
-  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--gap")));
+  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")));
   expect(other.x - (head.x + head.width), "두 열 카드 사이 틈").toBe(gap);
   const edge = (head.x + head.width + other.x) / 2;
   const y = head.y + head.height + 120;
@@ -446,13 +448,18 @@ test("파일 탭을 보다 분할을 켜면 spec 옆 열에 그 파일이 선다
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** 그 파일 탭의 이름 버튼 상자 — 끄는 자리다(셸 칸과 같다 — 형제인 `×`는 안 끌린다). */
+/**
+ * 그 파일 탭의 이름 버튼 상자 — 끄는 자리다(셸 칸과 같다 — 형제인 `×`는 안 끌린다). 탭 줄은 묶음 열 카드의 머리라(codex-ds 스펙
+ * §4) 분할이 서며 패널이 접히는 동안(220ms) 열과 함께 옮겨 간다 — 배치가 멈춘 뒤의 자리를 잡는다(`settle`).
+ */
 async function 파일탭상자(page: Page, ref: string) {
   const tab = 파일탭이름(page, ref);
   await expect(tab).toBeVisible();
-  const box = await tab.boundingBox();
-  if (!box) throw new Error("파일 탭의 상자를 못 읽었다");
-  return box;
+  return settle(page, async () => {
+    const box = await tab.boundingBox();
+    if (!box) throw new Error("파일 탭의 상자를 못 읽었다");
+    return box;
+  });
 }
 
 // 수용 기준 「파일 탭을 왼쪽 · 오른쪽 절반에 놓으면 각각 맞는 좌우로 spec과 그 파일의 분할이 된다」(스토리 56 · 57). 좌우 규칙은 셸

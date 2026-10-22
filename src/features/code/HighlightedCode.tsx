@@ -107,7 +107,7 @@ export function HighlightedCode({ path, content, wide }: { path: string; content
         className="min-h-0 flex-1 overflow-y-auto scroll-quiet"
         contentClassName={cn(bodyColumn(wide), "py-4")}
       >
-        {/* 범위 토큰(`--code-syntax-*`)이 이 상자에서 서고, 강조 결과가 서는 shadow DOM 안으로 상속된다(`index.css`).
+        {/* 범위 토큰(`--diffs-*`)이 이 상자에서 서고, 강조 결과가 서는 shadow DOM 안으로 상속된다(`index.css`).
             -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 줄 번호의 자리다(`SourceView`와 같다). */}
         <div data-code-view="" className="-ml-12">
           {phase === "starting" ? <PlainCode content={content} /> : <FileView file={file} options={options} />}
@@ -151,16 +151,16 @@ function PlainCode({ content }: { content: string }) {
     return { text: lines.join("\n"), numbers: lines.map((_, i) => i + 1).join("\n") };
   }, [content]);
   return (
-    <div className="flex py-2 font-mono text-mono [tab-size:4]">
+    <div className="flex py-2 font-mono text-code [tab-size:4]">
       {/* 줄 번호는 읽을 글이 아니다 — 고를 수도 없다(라이브러리의 줄 번호 칸과 같다). */}
       <pre
         data-plain-numbers=""
         aria-hidden
-        className="shrink-0 select-none border-r-2 border-background pr-[1ch] pl-[2ch] text-right text-tertiary"
+        className="shrink-0 select-none border-r-2 border-surface pr-[1ch] pl-[2ch] text-right text-fg-tertiary"
       >
         {numbers}
       </pre>
-      <pre data-plain-lines="" className="min-w-0 flex-1 overflow-x-auto px-[1ch] text-foreground scroll-quiet">
+      <pre data-plain-lines="" className="min-w-0 flex-1 overflow-x-auto px-[1ch] text-fg scroll-quiet">
         {text}
       </pre>
     </div>

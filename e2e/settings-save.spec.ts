@@ -1,16 +1,17 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_COMMANDS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, 머리카드 } from "./harness";
 
 // 설정의 **구획별 저장**(#225 · 결정 21). 터미널 설정과 알림 설정이 각자 저장 버튼을 갖고,
-// 에이전트 훅은 누르면 바로 적용된다. 항목마다 페이지가 따로다(#226 · UI개선 결정 22).
+// 에이전트 훅은 누르면 바로 적용된다. 항목마다 페이지가 따로다(#226 · UI개선 결정 22). 저장 버튼은 그 쪽의
+// 머리 카드에 선다(codex-ds 스펙 §7 · 스토리 60) — 쪽 조각이 그리지만 서는 자리는 창 맨 위다.
 //
 // 「최신 설정에 자기 칸만 덮는다」는 L2가 잰다(`save-section.test.ts`) — 여기 고정 백엔드는
 // 쓰기를 기억하지 않아 「그사이 저장된 값」을 못 세운다. **이 층이 재는 것은 초안이 항목 페이지
 // 안에 사는가**다: 초안을 레이아웃이나 스토어로 올리면 L2의 저장 함수는 멀쩡한데 알림을 저장할 때
 // 고치다 만 터미널 값이 함께 실려 나가고, 돌아온 터미널 설정 페이지에 버렸어야 할 값이 남는다.
 
-/** 한 구획 조각. 저장 버튼을 **그 조각 안에서** 집어야 둘 중 어느 것인지가 갈린다. */
+/** 한 구획 조각 — 그 쪽의 칸들이 이 안에 선다. */
 const 구획 = (page: Page, name: "터미널 설정" | "알림 설정") =>
   page.getByRole("group", { name, exact: true });
 
@@ -20,21 +21,30 @@ const 항목 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =
 
 const 저장 = { name: "저장", exact: true } as const;
 
+/**
+ * 지금 쪽의 저장 버튼 — 머리 카드의 할 일이다. 한 화면에 쪽이 하나라(항목 하나 = 페이지 하나) 머리 카드의 저장이 곧 그 쪽의
+ * 것이고, 어느 쪽인지는 그 쪽 조각이 서 있는지로 함께 센다.
+ */
+const 저장버튼 = (page: Page) => 머리카드(page).getByRole("button", 저장);
+
 /** 나간 `write_settings`들의 인자. 기록 형식이 낯설면 던진다 — 조용한 빈 목록은 fail-open이다. */
 async function writtenSettings(page: Page): Promise<unknown[]> {
   return (await ipcCallArgs(page, "write_settings", "settings")).map(({ args }) => args.settings);
 }
 
-test("터미널 설정과 알림 설정에 저장 버튼이 각자 있고, 에이전트 훅에는 없다", async ({ page }) => {
+test("터미널 설정과 알림 설정은 머리 카드에 저장 버튼이 각자 서고, 에이전트 훅에는 없다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
 
-  await expect(구획(page, "터미널 설정").getByRole("button", 저장)).toHaveCount(1);
-  // 화면 전체에 하나뿐이다 — 구획 밖의 공용 저장이 남아 있으면 여기서 걸린다.
+  await expect(구획(page, "터미널 설정")).toBeVisible();
+  await expect(저장버튼(page)).toHaveCount(1);
+  // 화면 전체에 하나뿐이다 — 몸의 바닥에 옛 저장이 남아 있거나 공용 저장이 따로 서면 여기서 걸린다.
   await expect(page.getByRole("button", 저장)).toHaveCount(1);
+  await expect(구획(page, "터미널 설정").getByRole("button", 저장)).toHaveCount(0);
 
   await 항목(page, "알림").click();
-  await expect(구획(page, "알림 설정").getByRole("button", 저장)).toHaveCount(1);
+  await expect(구획(page, "알림 설정")).toBeVisible();
+  await expect(저장버튼(page)).toHaveCount(1);
   await expect(page.getByRole("button", 저장)).toHaveCount(1);
 
   await 항목(page, "에이전트 훅").click();
@@ -64,22 +74,19 @@ test("터미널 설정을 고친 채 알림으로 옮겨 저장하면 터미널 
 
   // 터미널 설정을 고치고 **저장하지 않는다**.
   await 크기.fill("16");
-  await expect(
-    구획(page, "터미널 설정").getByRole("button", 저장),
-    "터미널 설정이 고친 것으로 안 읽혔다",
-  ).toBeEnabled();
+  await expect(저장버튼(page), "터미널 설정이 고친 것으로 안 읽혔다").toBeEnabled();
 
   await 항목(page, "알림").click();
   await expect(page).toHaveURL("/settings/notifications");
   const 알림 = 구획(page, "알림 설정");
   // 알림 구획은 고친 것이 없다 — 초안을 같이 들면 여기서 이미 열린다.
-  await expect(알림.getByRole("button", 저장)).toBeDisabled();
+  await expect(저장버튼(page)).toBeDisabled();
 
   // 소리는 스위치 하나다(결정 12) — 파일에 알림 구획이 없어 켜진 채로 서 있고, 누르면 꺼진다.
   await 알림.getByRole("switch", { name: "알림에 소리", exact: true }).click();
-  await 알림.getByRole("button", 저장).click();
+  await 저장버튼(page).click();
   // 쓰기가 돌아온 순간을 기다린다 — 저장이 끝나면 고칠 것이 없어져 잠긴다.
-  await expect(알림.getByRole("button", 저장), "저장이 안 끝났다").toBeDisabled();
+  await expect(저장버튼(page), "저장이 안 끝났다").toBeDisabled();
 
   const written = await writtenSettings(page);
   expect(written, "쓰기가 한 번 나가야 한다").toHaveLength(1);
@@ -92,7 +99,7 @@ test("터미널 설정을 고친 채 알림으로 옮겨 저장하면 터미널 
   await 항목(page, "터미널").click();
   await expect(page).toHaveURL("/settings/terminal");
   await expect(크기, "다른 항목으로 갔는데 터미널 초안이 남았다").toHaveValue(원래);
-  await expect(구획(page, "터미널 설정").getByRole("button", 저장)).toBeDisabled();
+  await expect(저장버튼(page)).toBeDisabled();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -128,7 +135,7 @@ test("알림과 소리는 스위치 하나씩이고, 누르면 aria-checked가 �
   await page.keyboard.press("Space");
   await expect(켬끔).toHaveAttribute("aria-checked", "false");
   // 켬끔만 바뀐 채다 — 저장이 열린다.
-  await expect(알림.getByRole("button", 저장)).toBeEnabled();
+  await expect(저장버튼(page)).toBeEnabled();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -155,7 +162,7 @@ test("켜진 테마 칩을 다시 눌러도 켜진 채고, 옆 칩은 누르면 
   await 밝게.click();
   await expect(밝게).toHaveAttribute("aria-pressed", "true");
   await expect(어둡게).toHaveAttribute("aria-pressed", "false");
-  await expect(터미널.getByRole("button", 저장)).toBeEnabled();
+  await expect(저장버튼(page)).toBeEnabled();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

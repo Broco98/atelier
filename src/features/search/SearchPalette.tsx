@@ -9,6 +9,7 @@ import {
   type Ref,
 } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import { Dialog, DialogOverlay, DialogPopup, DialogPortal } from "@/components/ui/dialog";
 import { createFirstFrameGuard } from "@/components/ui/first-frame-guard";
 import { Input } from "@/components/ui/input";
@@ -25,8 +26,9 @@ import type { SearchHit } from "./types";
  * (`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **바깥은 Dialog다**(결정 10) — 창(`dialog`)으로 읽히고, 포커스를 가두고, 닫히면 열기 전 자리로
- * 포커스를 돌려주는 것은 Base UI가 한다. 모양(자리 12vh · 폭 600px · 떠 있는 카드)은 부품 파일의
- * `palette` 변형이 든다(`components/ui/dialog.tsx`). **목록은 우리 listbox 그대로다** — 순서와
+ * 포커스를 돌려주는 것은 Base UI가 한다. 카드의 모양(자리 12vh · 폭 600px · 떠 있는 카드에 `shadow-modal`)은 부품 파일의
+ * `palette` 변형이 든다(`components/ui/dialog.tsx`). 카드 안 입력 줄 · 목록 · 줄 · 바닥 줄은 DS `Palette`(`.at-palette`)의 값을
+ * 아래 `SearchList`가 든다. **목록은 우리 listbox 그대로다** — 순서와
  * 묶음은 코어가 정하고, 입력칸이 켜진 줄을 `aria-activedescendant`로 가리킨다.
  *
  * **여는 키(⌘K)의 판정은 여기 없다** — `shell-registry.ts`의 `searchHotkey`가 든다. 그 키가
@@ -109,7 +111,7 @@ function rowKey(hit: SearchHit): string {
 }
 
 /**
- * 창 안에 그려지는 것 전부 — 입력칸과 목록. **상태와 콜백만 받는다** — 이 조각이 정적 마크업
+ * 창 안에 그려지는 것 전부 — 입력 줄 · 목록 · 바닥 줄. **상태와 콜백만 받는다** — 이 조각이 정적 마크업
  * seam에서 재는 것이다. 그래서 여기에는 포털을 넣지 않는다: 포털은 정적 렌더에서 아무것도 안
  * 그린다. 창(바깥)과 키 처리는 아래 `PalettePopup`이 든다.
  */
@@ -161,29 +163,39 @@ export function SearchList({
 
   return (
     <>
-      {/* **디바운스가 없다**(결정 29). 글자 하나마다 그대로 물어본다 — 그만큼 싼 일에
-          지연을 얹으면 「치는 동안 즉시 따라온다」를 스스로 깨는 것이다. 얼마나 싼지는
-          코어 주석 한 자리에 있다(`search.rs`의 `search`). */}
-      <Input
-        ref={inputRef}
-        // 팔레트에 제목이 없다(결정 17) — 이 칸이 첫 줄이라 아래 목록과 선 하나로 갈린다.
-        variant="flush"
-        // DS 팔레트의 입력 줄(`.at-palette-input`)이다 — 높이 52 · 글자 14 · 좌우 18이라 글자가 아래 글리프 칸과
-        // 한 세로선에 선다(6 + 12). 부품의 `flush`는 판 03이 팔레트 몫으로 남긴 채라 그 값을 여기서 준다
-        // (ui-refresh 결정 25 · 판 06 티켓 08 — 부품 파일은 이 판에서 고치지 않는다).
-        className="h-13 px-4.5 text-row"
-        type="text"
-        value={query}
-        onChange={(event) => onQuery(event.target.value)}
-        aria-label="검색어"
-        // 판 02가 뒤지는 것을 늘렸으므로 안내말도 함께 는다 — 「이름으로」만 적혀 있으면
-        // 본문으로도 찾는다는 것을 아무 데서도 말하지 않는다.
-        placeholder="이름과 본문으로 좁히기"
-        // **포커스는 이 칸에 머물고 켜짐만 옮긴다**(스토리 84) — 읽기 도구는 칸을 떠나지 않고 켜진
-        // 줄을 읽는다. 목록이 비면 가리킬 줄이 없다.
-        aria-controls={listId}
-        aria-activedescendant={selected >= 0 ? rowId(selected) : undefined}
-      />
+      {/* 팔레트에 제목이 없다(결정 17) — 입력 줄이 첫 줄이라 아래 목록과 선 하나로 갈린다. DS 팔레트의 입력 줄
+          (`.at-palette .in`)이다 — 52 · 안쪽 0 16 · 틈 10, 앞에 16 돋보기(`fg-tertiary`)가 서서 아래 줄들의 글리프 칸과
+          한 세로선이다(목록 안쪽 6 + 줄 안쪽 10). 아랫선은 0.5px `border-heavy`이고 줄 안쪽 바닥에 칠한다 — DS가 안쪽
+          그림자로 그리는 자리라 줄 밖에 따로 세우면 목록이 반 px 밀린다. 글자는 입력의 단계 `text-sm`(14/20)이다 — DS 묶음의
+          15px은 DS 글자 단계에 없다(DS README 「글자」 표가 입력을 `text-sm`에 둔다).
+
+          **줄이 칸의 `<label>`이다.** 칸은 줄 높이를 채워도 폭은 돋보기와 양옆 안쪽만큼 좁은데, 그 자리를 누르면 포커스가
+          창으로 가서(아래 `PalettePopup`의 S25) 그 뒤로 친 글자가 아무 데도 안 들어간다. 돋보기는 치려고 누르는 자리다 —
+          `<label>`의 내용을 누르면 그 안의 칸이 포커스를 받는다. 칸의 이름은 그대로 `aria-label`(「검색어」)이 정한다. */}
+      <label className="relative flex h-13 shrink-0 items-center gap-2.5 px-4 after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border-heavy">
+        <Search aria-hidden className="size-4 shrink-0 text-fg-tertiary" />
+        {/* **디바운스가 없다**(결정 29). 글자 하나마다 그대로 물어본다 — 그만큼 싼 일에
+            지연을 얹으면 「치는 동안 즉시 따라온다」를 스스로 깨는 것이다. 얼마나 싼지는
+            코어 주석 한 자리에 있다(`search.rs`의 `search`). */}
+        <Input
+          ref={inputRef}
+          // 칸만 — 줄의 높이 · 선은 위 줄이 든다. 포커스는 카드가 떠 있는 동안 늘 여기 있으므로 링으로 따로 말하지
+          // 않는다. 칸은 줄 높이를 다 채운다 — 줄의 나머지(돋보기 · 안쪽)는 위 `<label>`이 칸으로 넘긴다.
+          variant="bare"
+          className="h-full text-sm"
+          type="text"
+          value={query}
+          onChange={(event) => onQuery(event.target.value)}
+          aria-label="검색어"
+          // 판 02가 뒤지는 것을 늘렸으므로 안내말도 함께 는다 — 「이름으로」만 적혀 있으면
+          // 본문으로도 찾는다는 것을 아무 데서도 말하지 않는다.
+          placeholder="이름과 본문으로 좁히기"
+          // **포커스는 이 칸에 머물고 켜짐만 옮긴다**(스토리 84) — 읽기 도구는 칸을 떠나지 않고 켜진
+          // 줄을 읽는다. 목록이 비면 가리킬 줄이 없다.
+          aria-controls={listId}
+          aria-activedescendant={selected >= 0 ? rowId(selected) : undefined}
+        />
+      </label>
       <div
         ref={listRef}
         id={listId}
@@ -207,11 +219,11 @@ export function SearchList({
                   낸다. 머리는 `role="option"`이 아니라 방향키가 여기 서지 않는다: 서면
                   Enter가 갈 곳이 없는 자리가 생긴다. */}
               {(at === 0 || hits[at - 1].kind !== hit.kind) && (
-                // 무리 머리는 DS `.at-palette-cap`이다 — 12px 구획 머리 색, 안쪽 10 12 4. 좌우가 줄과 같아 글자가
-                // 글리프 칸과 한 세로선이다(ui-refresh 결정 25).
+                // 무리 머리는 DS `.at-msec`이다 — `text-xs` · `fg-tertiary`, 위아래 안쪽 6 · 2. 좌우는 DS의 8이 아니라 줄과
+                // 같은 10이다 — 글자가 글리프 칸과 한 세로선에 서야 한다(결정 17 · 18, codex-ds 티켓 24).
                 <p
                   data-head=""
-                  className="shrink-0 px-3 pt-2.5 pb-1 text-caption text-section"
+                  className="shrink-0 px-2.5 pt-1.5 pb-0.5 text-xs text-fg-tertiary"
                 >
                   {GROUP_NAMES[hit.kind]}
                 </p>
@@ -227,10 +239,11 @@ export function SearchList({
                 aria-selected={at === selected}
                 onClick={() => onGo(hit)}
                 className={cn(
-                  // DS 팔레트 행(`.at-palette-row`)이다 — 36px · 모서리 10 · 안쪽 0 12 · 틈 10(ui-refresh 결정 6 · 25).
-                  // 슬롯 17px과 틈이 합쳐 거터가 27px이고, 켜진 줄은 `state-2`다.
-                  "flex h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 outline-none",
-                  at === selected ? "bg-state-2" : "hover:bg-state-1",
+                  // DS 팔레트 행(`.at-palette .row`)이다 — 36px · `radius-lg` · 안쪽 0 10 · 틈 10 · `text-sm`. 슬롯 15px과 틈이 합쳐
+                  // 거터가 25px이다. 켜진 줄은 DS의 `fill-soft`가 아니라 `fill-hover`다 — 사이드바의 고른 행과 같은 단이고
+                  // (codex-ds 스펙 §5 · 티켓 24), 가리킨 줄이 `fill-soft`라 둘이 갈린다.
+                  "flex h-9 shrink-0 items-center gap-2.5 rounded-lg px-2.5 outline-none",
+                  at === selected ? "bg-fill-hover" : "hover:bg-fill-soft",
                 )}
               >
                 {/* **거터는 모든 줄이 예약한다**(결정 18). 목적지가 아닌 줄은 빈 슬롯을
@@ -242,9 +255,10 @@ export function SearchList({
                     **내용폭**의 1/3이라 padding이 그 바닥까지 175.3px → 166.7px로 깎는다.
                     자식은 내용폭을 안 바꾼다.
 
-                    글리프는 줄(`items-center`)의 세로 가운데에 서고, 색은 DS 팔레트의 글리프 색이다. */}
-                <span data-gutter="" className="size-[17px] shrink-0 text-muted-foreground">
-                  {Glyph !== null && <Glyph className="size-[17px]" strokeWidth={1.7} />}
+                    글리프는 줄(`items-center`)의 세로 가운데에 서고, 크기 · 색은 DS 팔레트의 글리프(`.row > .ic` — 15 ·
+                    `fg-secondary`)다. */}
+                <span data-gutter="" className="size-3.75 shrink-0 text-fg-secondary">
+                  {Glyph !== null && <Glyph className="size-3.75" />}
                 </span>
                 {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
                     스니펫 혼자 무는데, 실측(2026-08-30, 줄 폭 526px)에서 제목이 39자인
@@ -252,11 +266,11 @@ export function SearchList({
                     길면 0이 되고 줄이 가로로 넘친다.
 
                     **그 숫자는 스니펫에 바닥이 생기기 전의 것이다.** 지금 스니펫은
-                    `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 27px이
+                    `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 25px이
                     나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
-                <span className="truncate text-row">{name}</span>
+                <span className="truncate text-sm">{name}</span>
                 {detail !== undefined && (
-                  <span className="truncate text-ui text-tertiary">{detail}</span>
+                  <span className="truncate text-chat-meta text-fg-tertiary">{detail}</span>
                 )}
                 {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6). 코어는
                     맞은 문단을 통째로 펴서 보내고, 「한 줄에 얼마나 보일까」는 화면 폭이
@@ -264,13 +278,14 @@ export function SearchList({
                     (같은 실측에서 175px·한글 13자). 남는 폭이 그보다 넓으면 그만큼 다
                     갖고(`grow`), 모자라면 이름과 경로가 대신 줄어든다. */}
                 {snippet !== undefined && (
-                  <span className="shrink-0 grow basis-1/3 truncate text-ui text-tertiary">
+                  <span className="shrink-0 grow basis-1/3 truncate text-chat-meta text-fg-tertiary">
                     {snippet}
                   </span>
                 )}
-                {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
+                {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. 자리는 줄 오른쪽 끝 칸(DS `.row .k` —
+                    `text-xs` · `fg-tertiary`)이다. DS가 줄의 단축키를 두는 칸이고, 팔레트의 줄에는 단축키가 없어 이 꼬리표가 선다. */}
                 {isArchived(hit) && (
-                  <span className="ml-auto shrink-0 text-caption text-tertiary">
+                  <span className="ml-auto shrink-0 text-xs text-fg-tertiary">
                     아카이브
                   </span>
                 )}
@@ -279,9 +294,9 @@ export function SearchList({
           );
         })}
         {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
-            여기 서지 않는다(`role="option"`이 없다). */}
+            여기 서지 않는다(`role="option"`이 없다). 좌우는 줄과 같은 10이라 글자가 글리프 칸에 선다. */}
         {state === "ready" && hits.length === 0 && (
-          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
+          <p data-note="" className="px-2.5 py-1.5 text-chat-meta text-fg-secondary">
             맞는 것이 없습니다
           </p>
         )}
@@ -290,10 +305,21 @@ export function SearchList({
             (`showProblem`의 「…하지 못했습니다」). **이유는 안 적는다** — 여기로 오는 것은
             IO 오류뿐이라 사용자 손에 고칠 것이 없고, 다시 치는 것이 곧 다시 묻는 것이다. */}
         {state === "failed" && (
-          <p data-note="" className="px-3 py-1.5 text-ui text-muted-foreground">
+          <p data-note="" className="px-2.5 py-1.5 text-chat-meta text-fg-secondary">
             검색하지 못했습니다
           </p>
         )}
+      </div>
+      {/* 바닥 줄은 조작 안내다(DS `Palette` 규칙 · `.at-palette .foot`) — 36 · 안쪽 0 14 · 틈 14 · `text-xs` `fg-tertiary`, 위에
+          0.5px `border-heavy`를 입력 줄의 아랫선처럼 줄 안쪽에 칠한다. 목록은 이 줄 위에서 끝나고, 「더 있다」 페이드도 그 위에서
+          녹는다. 안내는 이 팔레트에 **있는 키만** 말한다(아래 `PalettePopup`의 방향키 · Enter) — DS 표본의 「⌘ 숫자 바로 가기」는
+          앱에 없는 기능이다(codex-ds 스펙 S13 — 그림은 모양과 자리를 정할 뿐 기능을 더하지 않는다). */}
+      <div
+        data-foot=""
+        className="relative flex h-9 shrink-0 items-center gap-3.5 px-3.5 text-xs text-fg-tertiary before:absolute before:inset-x-0 before:top-0 before:h-[0.5px] before:bg-border-heavy"
+      >
+        <span>↑↓ 고르기</span>
+        <span>↵ 열기</span>
       </div>
     </>
   );
@@ -433,7 +459,7 @@ function SearchPalette({
   //
   // 막대를 위로 올려 해결하지 않는다: 뒤 화면은 **팔레트가 떠 있는 동안 구를 수 없고**
   // (가림막이 포인터를 다 받는다) 구를 수 없는 것의 막대는 거짓이다. 팔레트 제 목록의
-  // 막대도 함께 걷힌다 — 어차피 카드(`bg-background`, z-50)가 그 자리를 덮어 보인 적이 없다.
+  // 막대도 함께 걷힌다 — 어차피 카드(`floating-card`, z-50)가 그 자리를 덮어 보인 적이 없다.
   //
   // 자리가 `body`인 것은 막대가 `body` 직계 fixed라서다(`lib/scroll-quiet.ts`) — 이 컴포넌트의
   // 서브트리 안에서는 그 노드에 닿는 선택자를 쓸 수 없다.

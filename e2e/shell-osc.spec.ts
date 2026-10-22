@@ -32,7 +32,7 @@ const [pinnedWork, plainWork] = WORKS;
 //      바이트를 넣는다. 핸들러가 이펙트에 붙어 있으면 그 순간 아무 일도 안 일어난다.
 //   3. 그 신호가 스토어를 한 바퀴 돌아 **띠와 탭까지** 간다.
 //
-// **spec 탭으로 옮겨 두는 것은 초록을 세우기 위해서이기도 하다**(결정 7) — 보고 있는 셸에
+// **spec 탭으로 옮겨 두는 것은 안 본 완료를 세우기 위해서이기도 하다**(결정 7) — 보고 있는 셸에
 // 도착한 완료는 그 순간 「봤다」가 되어 화면에 안 선다.
 
 /** 이스케이프 시작. 소스에 제어문자를 그대로 박지 않는다 — 편집기와 diff에서 안 보인다. */
@@ -46,7 +46,7 @@ const 눈을뗀다 = async (page: Page) => {
   await expect(page).not.toHaveURL(/tab=terminal/);
 };
 
-test("접두사 없는 OSC 9는 초록을 세우고 그 본문을 그대로 보인다", async ({ page }) => {
+test("접두사 없는 OSC 9는 안 본 완료를 세우고 그 본문을 그대로 보인다", async ({ page }) => {
   await stubNotifications(page);
   await stubWindowFocus(page);
   await installFixtureBackend(page);
@@ -114,7 +114,7 @@ test("OSC 777도 같은 문으로 들어온다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 출력이 그것을 푼다", async ({ page }) => {
+test("승인 접두사가 붙은 OSC 9는 기다림을 세우고, 다시 흐르는 출력이 그것을 푼다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -131,9 +131,9 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
     "Bash(git push)",
   );
 
-  // **Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보낸다** — 앰버를 푸는 것은 사람이
+  // **Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보낸다** — 기다림을 푸는 것은 사람이
   // 승인한 뒤 **다시 흐르기 시작한 출력**이다(스펙 전이 표의 마지막 줄). 이 줄이 없으면
-  // 훅 없는 Codex 셸이 승인 뒤에도 영영 앰버로 남는다.
+  // 훅 없는 Codex 셸이 승인 뒤에도 영영 기다림으로 남는다.
   await writeShell(page, "running git push...\r\n");
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
@@ -176,7 +176,7 @@ test("벨은 아는 에이전트가 도는 칸에서만 삼켜진다", async ({ 
   await expect(띠(page).locator("button[aria-label]")).toHaveCount(1);
 
   // 어느 칸인지까지 못박는다 — 수만 보면 첫 칸이 부르고 둘째 칸이 조용해도 초록이다.
-  // **탭 줄은 spec을 보는 중에도 그 자리에 있다**(머리행이라 본문과 함께 갈리지 않는다).
+  // **탭 줄은 spec을 보는 중에도 그 자리에 있다**(본문 카드의 머리라 문서를 볼 때도 같은 줄이 선다).
   const tabs = page.locator('[data-tab="shell"] button[aria-pressed]');
   await expect(tabs.nth(0)).not.toHaveAttribute("aria-label", /확인할 것/);
   await expect(tabs.nth(1)).toHaveAttribute("aria-label", /확인할 것/);
@@ -193,7 +193,7 @@ test("훅이 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", a
 
   // **칸이 하나일 때 먼저 말하게 한다** — `markAttention`은 셸이 정확히 n개일 때까지
   // 기다리는 손잡이라(`awaitSpawned`) 둘째 칸을 연 뒤에는 첫 칸을 못 고른다.
-  // 앰버는 「봤다」로 안 꺼지므로 보고 있는 중에 받아도 그대로 선다(terminal-activity-signal 결정 7). 앰버를 세우는 훅은 사람에게 묻는
+  // 기다림은 「봤다」로 안 꺼지므로 보고 있는 중에 받아도 그대로 선다(terminal-activity-signal 결정 7). 기다림을 세우는 훅은 사람에게 묻는
   // 것(`Elicitation`)이다 — 턴의 끝(`Stop`)은 프로세스 결정 13이 「확인할 것」으로 옮겨, 보고 있는 칸에서는 곧바로
   // 「봤다」가 된다.
   await markAttention(
@@ -206,7 +206,7 @@ test("훅이 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", a
 
   // **같은 바이트를 두 칸에 넣는다.** 이 검사가 fail-closed인 자리가 여기다 — 한 칸만 보면
   // 「훅이 이겼다」와 「바이트가 아무 데도 안 갔다」가 구분되지 않는다. 둘째 칸이 실제로
-  // 초록이 되는 것이 곧 「길은 살아 있다」의 증거이고, 그 위에서만 첫 칸의 앰버가 뜻을 갖는다.
+  // 안 본 완료가 되는 것이 곧 「길은 살아 있다」의 증거이고, 그 위에서만 첫 칸의 기다림이 뜻을 갖는다.
   await writeShell(page, `${ESC}]9;PR #174 열었다${BEL}`, 1);
   await writeShell(page, `${ESC}]9;PR #174 열었다${BEL}`, 2);
 
@@ -215,7 +215,7 @@ test("훅이 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", a
   await expect(tabs.nth(0)).toHaveAttribute("aria-label", /나를 기다림/);
 
   // **출력도 훅이 세운 기다림을 못 푼다**(권위 규칙 안쪽). 이 문이 넓어지면 claude가 답을
-  // 기다리며 찍는 커서 갱신 한 번에 앰버가 꺼진다.
+  // 기다리며 찍는 커서 갱신 한 번에 기다림이 꺼진다.
   await writeShell(page, "still thinking...\r\n", 1);
   await expect(tabs.nth(0)).toHaveAttribute("aria-label", /나를 기다림/);
   // 말도 훅이 준 것 그대로다 — OSC 본문이 덮지 않았다. 기다림이 완료보다 앞서 골리므로
@@ -231,12 +231,12 @@ test("훅이 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", a
 // 파싱을 다음 tick으로 미루는데(`WriteBuffer._scheduleInnerWrite`), 바로 앞에 사람 입력이
 // 있었으면 그 한 번은 **`write()` 안에서 동기로** 파싱한다(`_didUserInput` 갈래). 그래서
 // 출력 알림과 OSC 핸들러의 **순서가 이 갈래에서만 뒤집히고**, 뒤집힌 순서에서는 방금 선
-// 앰버를 같은 프레임의 출력 알림이 그 자리에서 지운다.
+// 기다림을 같은 프레임의 출력 알림이 그 자리에서 지운다.
 //
 // 그 자리가 정확히 이 판이 존재하는 이유다: 훅 없는 codex에서 사람이 `y`로 승인하면 그다음
 // 승인 요청이 첫 프레임에 실려 오고, 그 프레임이 바로 이 동기 갈래를 탄다. 위 검사들은 키를
 // 한 번도 안 쳐서 늘 비동기 갈래만 지났다 — 그물이 fail-open이었다.
-test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 앰버로 선다", async ({ page }) => {
+test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 기다림으로 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -256,7 +256,7 @@ test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 앰�
   await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveAccessibleDescription(
     "Bash(git push)",
   );
-  // **앰버가 도는 중으로 뒤집히지 않았다**를 못박는다. 위 한 줄만 보면 「아직 안 앉았다」와
+  // **기다림이 도는 중으로 뒤집히지 않았다**를 못박는다. 위 한 줄만 보면 「아직 안 앉았다」와
   // 「앉았다 꺼졌다」가 갈리지 않는데, 이 갈래의 실패는 늘 후자다.
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(0);
 

@@ -11,7 +11,7 @@ import type { ShellSignal } from "./shell-signal";
 // `ShellMeta`와 같은 조건으로 산다: props만 받는 순수 컴포넌트라 터미널 스토어도 DOM도
 // 안 물고, 값을 고르는 자리는 `Sidebar.tsx`에 따로 있다.
 //
-// 여기서 재는 것은 **마크업이 무엇을 말하는가**다. 점이 실제로 앰버로 칠해지는지, 스피너가
+// 여기서 재는 것은 **마크업이 무엇을 말하는가**다. 점이 실제로 그 토큰 색으로 칠해지는지, 스피너가
 // 정말 도는지, 대비가 얼마인지는 진짜 CSS가 있어야 나므로 L3가 그쪽의 유일한 그물이다.
 
 const lane = (kind: ShellSignal) => renderToStaticMarkup(<SignalLane kind={kind} />);
@@ -24,7 +24,7 @@ const lane = (kind: ShellSignal) => renderToStaticMarkup(<SignalLane kind={kind}
 const 겉태그 = (markup: string) => /^<[^>]*>/.exec(markup)?.[0] ?? "";
 
 describe("레인 — 화면값 셋이 갈린다", () => {
-  // 결정 3·5. 기다림은 앰버 점, 안 본 완료는 초록 점, 도는 중은 스피너다. **셋이 갈리는
+  // 결정 3·5. 기다림은 `dot-wait` 점, 안 본 완료는 `dot-new` 점, 도는 중은 스피너다. **셋이 갈리는
   // 것부터** 세지 않으면 아래 규격 검사들이 「어차피 다 같은 것」을 재게 된다.
   it("셋이 서로 다른 것을 그린다", () => {
     const 그림 = (["waiting", "done", "working"] as const).map(lane);
@@ -32,17 +32,17 @@ describe("레인 — 화면값 셋이 갈린다", () => {
   });
 
   it.each([
-    ["waiting", "wait"],
-    ["done", "done"],
-  ] as const)("%s는 8px 점 + 3px 후광이다", (kind, tone) => {
+    ["waiting", "bg-dot-wait", "ring-wait-soft"],
+    ["done", "bg-dot-new", "ring-new-soft"],
+  ] as const)("%s는 8px 점 + 3px 후광이다", (kind, dot, halo) => {
     const markup = lane(kind);
     // 점 8px(`size-2`)에 3px 후광 — 후광은 `ring`이라 **자리를 안 먹는다**. 그림자로
     // 그리는 것이 목업의 `box-shadow: 0 0 0 3px`와 같은 모양이고, 레인 폭 14px 안에서
-    // 점이 커지지 않는 유일한 길이다.
+    // 점이 커지지 않는 유일한 길이다. 점은 부름의 점(Atelier 낱말 `dot-wait` · `dot-new`), 후광은 그 무리(`wait-soft` · `new-soft`)다.
     expect(markup).toContain("size-2");
     expect(markup).toContain("rounded-full");
-    expect(markup).toContain(`bg-${tone}`);
-    expect(markup).toContain(`ring-${tone}-soft`);
+    expect(markup).toContain(dot);
+    expect(markup).toContain(halo);
     expect(markup).toContain("ring-[3px]");
   });
 
@@ -104,13 +104,13 @@ describe("오른쪽 메타 — 부름은 경과만, 도는 중은 비움", () =>
   const signalMeta = (kind: ShellSignal, ms = 0) =>
     renderToStaticMarkup(<SignalMeta kind={kind} since={0} now={ms} />);
 
-  it.each([
-    ["waiting", "text-wait-ink"],
-    ["done", "text-done-ink"],
-  ] as const)("%s는 경과 하나만 서고, 상태색의 잉크로 칠한다", (kind, ink) => {
+  // 경과는 두 갈래가 같은 `fg-secondary`다(codex-ds 스펙 S17) — DS가 둔 상태색 잉크(`warning` · `accent-solid`)는 12px 글자의
+  // 대비 바닥 4.5에 못 미친다(대비는 L3 `works-sidebar`가 잰다). 부름의 색은 레인의 점이 든다.
+  it.each(["waiting", "done"] as const)("%s는 경과 하나만 서고, fg-secondary로 칠한다", (kind) => {
     const markup = signalMeta(kind, 125_000);
     expect(markup.replace(/<[^>]*>/g, "")).toBe("2m");
-    expect(markup).toContain(ink);
+    expect(markup).toContain("text-fg-secondary");
+    expect(markup).not.toMatch(/text-(?:warning|accent-solid)/);
     expect(markup).not.toContain('role="img"');
   });
 
@@ -123,7 +123,7 @@ describe("오른쪽 메타 — 부름은 경과만, 도는 중은 비움", () =>
 
 describe("도는 레인은 자바스크립트로 안 돈다", () => {
   // 스토리 30. **레인의 글리프를 고르는 파일은 이 하나뿐이라** 여기만 본다 — 사이드바 쪽은 호버
-  // 카드 타이머를 이미 들고 있어(`HOVER_DELAY_MS`) 같은 스캔을 걸면 스피너와 무관한 이유로 빨개진다.
+  // 카드 타이머를 이미 들고 있어(`SidebarWorkList`의 `hoverTimer`) 같은 스캔을 걸면 스피너와 무관한 이유로 빨개진다.
   //
   // 이 스캔이 잡는 것은 「이 조각이 스스로 각도를 돌리기 시작했다」 하나이고, **회전이 실제로
   // CSS의 일인가**는 L3가 계산된 스타일로 잰다(호의 `linear` 1초와 `prefers-reduced-motion`의 원).

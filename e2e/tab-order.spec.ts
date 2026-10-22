@@ -12,7 +12,7 @@ import {
   파일탭주소,
   주소로간다,
 } from "./harness";
-import { BELOW_APP_MIN, fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, widenSidebar } from "./tab-row";
+import { fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, squeezedWidth, widenSidebar } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
 // 소비자가 나눠 본다** — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」 — 그리고 놓은 곳이
@@ -222,9 +222,10 @@ test.describe("work 화면", () => {
   // 줄어 있어 폭을 먹는 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
   // 바꾸면 누른 순간 잰 기하가 낡아 재는 것이 달라진다.
   //
-  // **사이드바를 넓혀 둔다**(400). 작업 패널이 탭 줄 아래로 내려온 뒤로(ui-refresh 결정 4) 줄을 좁히는 것은 사이드바와
-  // 창뿐이다. 세 폭은 셋의 넘침을 고른 것이다 — 1060은 넘침이 한 칸보다 작고, 900(앱 창의 최소 폭)은 여러 칸이 넘치고,
-  // `BELOW_APP_MIN`은 상자가 칸 하나 폭이다(`tab-row.ts` 머리말 — 앱 창은 거기까지 안 좁아지지만 그 상자의 장치는 그대로다).
+  // **사이드바를 넓혀 둔다**(400). 줄을 좁히는 것은 창 · 사이드바 · 줄 옆의 작업 패널이다(탭 줄은 본문 카드의 머리 —
+  // codex-ds 스펙 §4). 세 폭은 셋의 넘침을 고른 것이다 — 1060은 넘침이 한 칸보다 작고, 900(앱 창의 최소 폭)은 여러 칸이 넘치고,
+  // 마지막은 상자가 칸 하나 폭이다(`squeezedWidth` — 탭 줄의 바닥을 재서 낸 창 폭, `tab-row.ts` 머리말. 앱 창은 거기까지 안
+  // 좁아지지만 그 상자의 장치는 그대로다).
   //
   // 셸이 여덟이라 줄이 가로로 스크롤된다(결정 20) — 그래도 틈이 맞는지를 **놓아서** 본다.
   // 스크롤은 **누른 뒤에** 한 칸만큼 더 민다: 누른 순간과 움직이는 순간의 `scrollLeft`가 달라야
@@ -236,7 +237,7 @@ test.describe("work 화면", () => {
     await fillToCap(page);
 
     let order = [...names];
-    for (const width of [1060, 900, BELOW_APP_MIN]) {
+    for (const width of [1060, 900, await squeezedWidth(page)]) {
       const at = `${width}px`;
       await page.setViewportSize({ width, height: 800 });
       // 가장 좁은 폭에서도 끌 칸과 틈이 화면에 있어야 한다(`terminal-tabs`의 「셸 칸이 보이고 눌린다」가 같은 바닥을 든다).
@@ -294,7 +295,7 @@ test.describe("work 화면", () => {
 
       const row = await rowOf(page);
       expect(row.spill, at).toBeLessThanOrEqual(0);
-      expect(row.height, at).toBe(44);
+      expect(row.height, at).toBe(46);
       // 선이 칸 상자를 넓히지도, 세로로 넘치게 하지도 않는다.
       expect(row.strip.scrollWidth, at).toBe(before.strip.scrollWidth);
       const vertical = await page
@@ -313,12 +314,12 @@ test.describe("work 화면", () => {
 
 // **칸 하나 폭 상자**(`ShellTabs`의 상자 바닥)에서는 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라, 줄이
 // 따라 구르지 않으면 두 칸짜리 줄조차 못 바꾼다 — 한때 L3는 누른 채 `scrollLeft`를 스크립트로 밀어 이것을 가렸다.
-// 여기서는 **포인터만** 쓴다. 그 상자는 한때 900px 창에 작업 패널이 열린 기본 배치였고, 패널이 탭 줄 아래로 내려온
-// 뒤로는 넓힌 사이드바와 앱 창의 최소 폭 아래에서 선다(`BELOW_APP_MIN`, `tab-row.ts` 머리말).
+// 여기서는 **포인터만** 쓴다. 그 상자는 한때 900px 창에 작업 패널이 열린 기본 배치였고, 지금은 넓힌 사이드바가 탭
+// 줄의 바닥(줄 + 열린 패널의 최소 폭)에 눌리는, 앱 창의 최소 폭 아래에서 선다(`squeezedWidth`, `tab-row.ts` 머리말).
 test("칸 하나 폭 상자에서 두 칸을 끌어 바꾼다 — 줄 가장자리에 붙이면 줄이 따라 구른다", async ({ page }) => {
   await widenSidebar(page);
   await openWork(page, ["하나", "둘"]);
-  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
+  await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   await settleLayout(page, () => rowOf(page));
 
   const strip = page.locator("[data-tab-strip]");
@@ -368,12 +369,12 @@ test("칸 하나 폭 상자에서 두 칸을 끌어 바꾼다 — 줄 가장자�
 });
 
 // 같은 배치에서 **본문 절반으로 가려고 곧장 아래로 끄는 손**은 줄을 안 굴린다. 칸 하나 폭 상자는 한가운데
-// 한 픽셀 말고는 전부 가장자리 띠라, 문턱을 넘은 뒤 머리행을 벗어나기 전 몇 프레임 동안 줄이 구르면 누른
+// 한 픽셀 말고는 전부 가장자리 띠라, 문턱을 넘은 뒤 탭 줄을 벗어나기 전 몇 프레임 동안 줄이 구르면 누른
 // 칸이 옆으로 밀리고, 이미 켜진 칸을 놓으면 되돌리는 스크롤도 안 선다.
 test("칸 하나 폭 상자에서 칸을 곧장 아래로 끌면 줄이 안 구른다", async ({ page }) => {
   await widenSidebar(page);
   await openWork(page, ["하나", "둘", "셋"]);
-  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
+  await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   await settleLayout(page, () => rowOf(page));
 
   const strip = page.locator("[data-tab-strip]");
@@ -396,7 +397,7 @@ test("칸 하나 폭 상자에서 칸을 곧장 아래로 끌면 줄이 안 구�
   await page.mouse.move(press.x, press.y + 6);
   await page.mouse.move(press.x, press.y + 12);
   await expect(page.locator("body")).toHaveClass(/dragging-row/);
-  // 아직 44px 머리행 안이다(칸 가운데에서 22px까지). 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.
+  // 아직 46px 탭 줄 안이다(칸 가운데에서 23px까지). 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.
   await page.waitForTimeout(300);
   expect(await strip.evaluate((el) => el.scrollLeft)).toBe(scrollBefore);
   await page.mouse.up();
@@ -663,7 +664,7 @@ test.describe("끌기가 사는 경우", () => {
     await exitShell(page, 1, 1);
     // 종료가 실제로 닿았음을 먼저 본다 — 아래 단언들은 종료 전에도 참이라, 이것 없이는 종료 프레임이
     // 안 와도 초록이다. 끝난 칸은 줄에 남아 코드 꼬리표(`shellEndLabels`의 `mark`)를 단다.
-    await expect(nameButton(page, 0).locator("span.text-tertiary")).toHaveText("1");
+    await expect(nameButton(page, 0).locator("span.text-fg-tertiary")).toHaveText("1");
     await settle(page);
     await expect.poll(() => namesOf(page)).toHaveLength(2);
     await expect(page.locator("body")).toHaveClass(/dragging-row/);

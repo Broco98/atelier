@@ -5,9 +5,10 @@ import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorksPage, { codeTabClosedByTab, shellClosedByTab, togglesWorkPanel } from "./WorksPage";
+import WorksPage, { codeTabClosedByTab, shellClosedByTab } from "./WorksPage";
+import { PANEL_VIEWS } from "./WorkPanel";
 import { ToastProvider } from "@/components/ui/toast";
-import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
+import { TAB_ROW_CARD, TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
@@ -34,8 +35,9 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 
-// 작업 패널을 여닫는 길은 **레일 맨 위의 패널 토글 하나**다(ui-refresh 결정 9) — 한때 흩어져 있던 둘(패널 머리의 `×`와, 닫혔을
-// 때만 바탕 줄에 뜨던 「작업 패널 펼치기」)이 그것 하나로 합쳐졌다. 토글은 늘 그 자리에 있고 이름과 `aria-expanded`가 상태를 탄다.
+// 작업 패널을 여닫는 길은 **머리 줄의 패널 토글 하나**다(ui-refresh 결정 9 · codex-ds 스펙 §10 — 레일이 서는 지금은 머리 카드 밖
+// 레일 바로 위) — 한때 흩어져 있던 둘(패널 머리의 `×`와, 닫혔을 때만 창 맨 위 줄에 뜨던 「작업 패널 펼치기」)이 그것 하나로 합쳐졌다.
+// 토글은 늘 그 자리에 있고 이름과 `aria-expanded`가 상태를 탄다.
 //
 // 이 화면은 작업 하나가 골라져 있어야 헤더 우측이 그려진다. 조회를 가로채는 대신
 // 쿼리 캐시에 목록을 미리 넣어 둔다 — 정적 렌더는 이펙트를 돌리지 않으므로 IPC는 나가지
@@ -45,13 +47,49 @@ const work: WorkView = workFixture();
 // 이 화면의 소스를 문자열로 읽는다. 렌더로 볼 수 없는 불변조건(이펙트·리마운트 자리)이
 // 여기 걸리고, 그 방식은 이 저장소가 파일 간 계약에 쓰는 것과 같다
 // (state-scale.test.ts · theme-tokens.test.ts · tauri-commands.test.ts).
-function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal-store.ts"): string {
+function source(
+  file: "WorksPage.tsx" | "SpecViewer.tsx" | "work-menu-actions.ts" | "../terminal/terminal-store.ts",
+): string {
   return readFileSync(fileURLToPath(new URL(`./${file}`, import.meta.url)), "utf8");
 }
 
 // 리터럴이 **몇 번** 나오는가. 파싱이 필요 없어 파서가 샐 자리가 없다 —
 // 개수가 달라지면 반드시 빨개진다(shell-registry.test.ts가 같은 것을 쓴다).
 const countOf = (text: string, literal: string) => text.split(literal).length - 1;
+
+/** 창 맨 위 머리 줄(`<header>` — codex-ds 스펙 §4). 머리 카드가 서고, 작업 화면이면 패널 토글이 그 카드 밖 레일 열 위에 선다(레일이 선다). */
+const headRowOf = (markup: string) => markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+
+/**
+ * `start`에 맞는 여는 `<div`부터 짝이 맞는 `</div>`까지의 마크업. 상자 안에 `div`가 겹쳐 서서 깊이를 센다 — 「다음 닫는 태그까지」로는
+ * 그 상자만 안 남는다. 맞는 상자가 없으면 빈 글자다.
+ */
+function boxOf(markup: string, start: RegExp): string {
+  const open = markup.search(start);
+  if (open < 0) return "";
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let tag = tags.exec(markup); tag; tag = tags.exec(markup)) {
+    depth += tag[0] === "</div>" ? -1 : 1;
+    if (depth === 0) return markup.slice(open, tag.index + tag[0].length);
+  }
+  return "";
+}
+
+/** 머리 줄의 머리 카드(`data-slot="head-card"` — `Frame`의 `HeadCard`). 고른 작업이 없으면 빈 글자다. */
+const headCardOf = (markup: string) => boxOf(headRowOf(markup), /<div[^>]*\sdata-slot="head-card"/);
+
+/** 머리 카드 오른쪽의 할 일 | 보기 배치 묶음(`data-head-actions`) — 상태 배지 · ⋯ | 분할. */
+const headActionsOf = (markup: string) => boxOf(headCardOf(markup), /<div[^>]*\sdata-head-actions/);
+
+/**
+ * 탭 줄(`data-tab-row`) 상자의 마크업. 줄은 본문 카드의 머리라(codex-ds 스펙 §4) 뒤에 카드 본문이 이어 선다. 줄이 없으면 빈 글자다.
+ */
+const tabRowOf = (markup: string) => boxOf(markup, /<div[^>]*\sdata-tab-row="/);
+
+/** 문서 위 경로 줄(`PathBar`) 상자 — 줄 뒤에 문서의 스크롤 상자(`SpecViewer`)가 이어 선다. 줄이 없으면 빈 글자다. */
+const pathBarOf = (markup: string) => boxOf(markup, /<div[^>]*\sdata-slot="path-bar"/);
 
 // 화면이 토스트 자리(Viewport)를 그리는데 그것은 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트
 // Provider를 렌더 도우미도 싼다(S14). 정적 렌더라 구독은 안 걸리고 자리만 선다.
@@ -77,7 +115,6 @@ function render(
           selectedSlug={work.slug}
           currentFile={null}
           onSelectFile={() => {}}
-          onOpenProject={() => {}}
           tab={tab}
           onSelectTab={() => {}}
           code={null}
@@ -115,8 +152,8 @@ describe("WorksPage 패널 토글과 레일", () => {
   });
 
   it("패널이 열려 있으면 토글이 하나이고 「작업 패널 접기」 · `aria-expanded=\"true\"`다", () => {
-    // ui-refresh 결정 9로 **뒤집혔다** — 한때 「열려 있으면 여는 아이콘이 없다 · 늘 보이는 토글이 없다」였다(여는 길은 바탕 줄,
-    // 닫는 길은 패널 머리의 `×`). 이제 그 둘이 레일의 토글 하나로 합쳐져 늘 서 있고, 누르면 무슨 일이 날지를 이름이 말한다.
+    // ui-refresh 결정 9로 **뒤집혔다** — 한때 「열려 있으면 여는 아이콘이 없다 · 늘 보이는 토글이 없다」였다(여는 길은 창 맨 위
+    // 줄, 닫는 길은 패널 머리의 `×`). 이제 그 둘이 토글 하나로 합쳐져 늘 서 있고, 누르면 무슨 일이 날지를 이름이 말한다.
     // 첫 화면은 패널이 열린 상태다(WorksPage의 workPanelOpen 초기값).
     const tags = panelToggleTags(render());
     expect(tags).toHaveLength(1);
@@ -132,52 +169,67 @@ describe("WorksPage 패널 토글과 레일", () => {
     expect(tags[0]).toContain('aria-expanded="false"');
   });
 
-  it("바탕 줄 조작에 「작업 패널 펼치기」가 없다 — 토글은 바탕 줄 밖 레일에 선다", () => {
-    // 조작은 상태 · ⋯ · 분할이다(ui-refresh 결정 14). 접혀 있을 때 바탕 줄에 펼치기가 하나 더 서던 갈래가 없어졌다.
+  it("레일이 서서 패널 토글은 머리 카드 밖, 머리 줄 오른쪽 끝에 하나 선다", () => {
+    // 칸이 `spec` · `files` 둘이라 레일이 서고(codex-ds 결정 25 — `railStands`), 토글은 머리 카드 오른쪽 끝 너머 레일 열 위로
+    // 나간다(DS `.at-railtop` 「머리 카드 오른쪽 끝 너머, 레일 바로 위」). 머리 카드의 보기 배치는 분할 하나로 끝난다. 레일이 서지
+    // 않는 화면(Archive)에서는 토글이 카드 안 오른쪽 끝에 든다 — 그 자리는 Archive의 검사가 잰다. 접혀 있을 때 펼치기가 하나 더
+    // 서던 갈래는 없다.
     for (const split of [null, "lr"] as const) {
-      const header = render(specDocs(["overview.md"]), "spec", split).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
-      expect(header, `${split}`).not.toBe("");
-      expect(header, `${split}`).not.toMatch(/작업 패널 (?:접기|펼치기)/);
+      const markup = render(specDocs(["overview.md"]), "spec", split);
+      const row = headRowOf(markup);
+      const card = headCardOf(markup);
+      const group = headActionsOf(markup);
+      expect(group, `${split}`).not.toBe("");
+      const tags = panelToggleTags(row);
+      expect(tags, `${split}`).toHaveLength(1);
+      expect(panelToggleTags(card), `${split} — 머리 카드 밖`).toHaveLength(0);
+      expect(row.indexOf(tags[0] ?? ""), `${split} — 머리 카드 뒤`).toBeGreaterThan(row.indexOf(card) + card.length - 1);
+      // 머리 카드 묶음의 맨 끝 버튼은 분할이다 — 토글이 빠져 그 뒤에 서는 조작이 없다.
+      const buttons = group.match(/<button[^>]*>/g) ?? [];
+      expect(buttons[buttons.length - 1], `${split}`).toContain('aria-label="분할"');
     }
   });
 
-  it("레일 칸이 `spec` · `files` · `info` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
-    // 칸은 목록으로 받는다(ui-refresh 결정 10) — git-integration이 `files`를 `spec` 뒤에 더했고(그쪽 결정 29), 뒤에 changes가
-    // 한 줄 더 는다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서
-    // 탭(`aria-selected`)이 아니다.
+  it("레일 칸이 `spec` · `files` 순서의 `aria-pressed` 버튼이고, 열린 칸만 켜져 있다", () => {
+    // 칸은 목록으로 받는다(ui-refresh 결정 10) — git-integration이 `files`를 `spec` 뒤에 더했고(그쪽 결정 29), `info`는 걷었다
+    // (codex-ds 결정 25). 레일은 칸이 둘 이상일 때만 서므로(스펙 §4) 이제 선다. 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 —
+    // 켜진 칸을 다시 누르면 닫혀 켜진 칸이 0일 수 있어서 탭(`aria-selected`)이 아니다.
+    expect(PANEL_VIEWS.map((one) => one.id)).toEqual(["spec", "files"]);
     expect(railItems(render())).toEqual([
       { name: "spec", pressed: "true" },
       { name: "files", pressed: "false" },
-      { name: "info", pressed: "false" },
     ]);
     // 패널이 접혀 있으면 고른 칸은 기억한 채 어느 칸도 켜져 있지 않다.
     expect(railItems(render(specDocs(["overview.md"]), "spec", "lr"))).toEqual([
       { name: "spec", pressed: "false" },
       { name: "files", pressed: "false" },
-      { name: "info", pressed: "false" },
     ]);
   });
 
-  it("레일은 `aside` · `nav` · `header` 밖이고, 칸과 토글이 패널을 가리킨다", () => {
-    // `aside`는 사이드바와 작업 패널 둘뿐이고(e2e `tab-row-floor`가 순서를 잰다) `nav`는 사이드바 버튼을 집는 고리이며
-    // (`harness.ts`), 첫 `header`는 탭 줄이다(`tab-row.ts`). 레일이 그 어느 것 안에 서도 그 고리가 샌다(판 04 「지키는 것」).
+  it("토글은 `aside` · `nav` 밖 머리 줄 안이고, 작업 패널 칸을 가리킨다", () => {
+    // `aside`는 사이드바와 작업 패널 둘뿐이고(e2e `tab-row-floor`가 순서를 잰다) `nav`는 사이드바 버튼을 집는 고리다(`harness.ts`).
+    // 토글은 레일 열이 아니라 머리 줄에 선다(codex-ds 스펙 §10) — `header` 안이고, `aside` · `nav`에는 안 든다.
     const markup = render();
-    const at = markup.indexOf('aria-label="레일"');
-    expect(at, "레일 묶음이 없다").toBeGreaterThan(-1);
-    const before = markup.slice(0, at);
-    for (const tag of ["aside", "nav", "header"]) {
-      expect(countOf(before, `<${tag}`), tag).toBe(countOf(before, `</${tag}>`));
-    }
-    // 토글도 같다 — 레일 열의 맨 위에 선다.
     const toggleAt = markup.indexOf('aria-label="작업 패널 접기"');
-    expect(toggleAt).toBeGreaterThan(markup.indexOf("</header>"));
-    expect(toggleAt).toBeGreaterThan(markup.lastIndexOf("</aside>"));
+    expect(toggleAt, "토글이 없다").toBeGreaterThan(-1);
+    const beforeToggle = markup.slice(0, toggleAt);
+    for (const tag of ["aside", "nav"]) {
+      expect(countOf(beforeToggle, `<${tag}`), tag).toBe(countOf(beforeToggle, `</${tag}>`));
+    }
+    expect(countOf(beforeToggle, "<header")).toBe(countOf(beforeToggle, "</header>") + 1);
     // `aria-controls`가 가리키는 것은 작업 패널 칸(두 번째 `aside`)이다.
     const panelId = markup.match(/<aside[^>]*\bid="([^"]+)"/)?.[1] ?? "";
     expect(panelId, "패널 칸에 id가 없다").not.toBe("");
     expect(panelToggleTags(markup)[0]).toContain(`aria-controls="${panelId}"`);
-    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|files|info)"/.test(tag));
-    expect(items).toHaveLength(3);
+    // 레일도 `aside` · `nav` · `header` 밖이고(첫 `header`는 머리 카드다), 칸이 같은 패널을 가리킨다.
+    const railAt = markup.indexOf('aria-label="레일"');
+    expect(railAt, "레일 묶음이 없다").toBeGreaterThan(-1);
+    const beforeRail = markup.slice(0, railAt);
+    for (const tag of ["aside", "nav", "header"]) {
+      expect(countOf(beforeRail, `<${tag}`), tag).toBe(countOf(beforeRail, `</${tag}>`));
+    }
+    const items = (markup.match(/<button[^>]*>/g) ?? []).filter((tag) => /aria-label="(?:spec|files)"/.test(tag));
+    expect(items).toHaveLength(2);
     for (const tag of items) expect(tag).toContain(`aria-controls="${panelId}"`);
   });
 
@@ -186,13 +238,12 @@ describe("WorksPage 패널 토글과 레일", () => {
     // 열 길 자체가 없어진다.
     const markup = render({}, "terminal");
     expect(panelToggleTags(markup)).toHaveLength(1);
-    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "files", "info"]);
+    expect(railItems(markup).map((one) => one.name)).toEqual(["spec", "files"]);
   });
 
-  it("헤더에 프로젝트 칩이 없고, 상태 배지와 ⋯는 그대로 있다", () => {
-    // 칩은 정보 탭으로 갔다 — 그 프로젝트의 base·워크트리와 한 덩어리로 묶여야 어느 것이
-    // 어느 프로젝트 것인지가 이어진다. 정보 탭 본문도 같은 화면에 마운트돼 있으므로
-    // (두 탭 동시 마운트) 이름을 세는 것으로는 안 되고 **헤더 안에서만** 본다.
+  it("머리 줄에 프로젝트 칩이 없고, 상태 배지와 ⋯는 그대로 있다", () => {
+    // 프로젝트는 머리에 칩으로 서지 않는다 — 프로젝트마다 base · 변경 있음은 사이드바 행의 호버 카드가 한 덩어리로 든다(codex-ds
+    // 결정 25 — 한때 레일의 info 칸이 들었다). 머리 줄 안에서 본다.
     const markup = render({
       projects: ["atelier"],
       worktrees: [
@@ -204,20 +255,19 @@ describe("WorksPage 패널 토글과 레일", () => {
         },
       ],
     });
-    const header = markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    const header = headRowOf(markup);
     expect(header).not.toBe("");
     expect(header).not.toContain("atelier");
     // 상태 배지와 ⋯는 남는다 — 자주 누르는 조작이라 탭 뒤에 숨기면 클릭이 두 번 든다
     expect(header).toContain("active");
     expect(header).toMatch(/aria-label="작업 메뉴"/);
-    // 그리고 프로젝트 덩어리는 정보 탭에 있다
-    expect(markup).toContain("trees/atelier/");
   });
 });
 
-// 여기가 **본문과 토글을 한 화면에서** 보는 자리다. 토글은 문서 카드 머리에 서고(ui-refresh 판 04 — 한때 패널 머리행에
-// 있었다) 주인은 화면(WorksPage)이다. 머리와 몸(SpecViewer)이 함께 도므로 그 배선이 실제로 이어졌는지가 드러난다(결정 6).
-describe("WorksPage 소스 토글이 문서 카드 머리에 선다", () => {
+// 여기가 **본문과 토글을 한 화면에서** 보는 자리다. 토글(보기 묶음 문서 | 원문)은 문서 위 경로 줄에 서고(codex-ds 스펙 §4 —
+// 한때 패널 머리행, 그다음 문서 카드 머리에 있었다) 주인은 화면(WorksPage)이다. 경로 줄과 몸(SpecViewer)이 함께 도므로 그
+// 배선이 실제로 이어졌는지가 드러난다(결정 6).
+describe("WorksPage 소스 토글이 문서 위 경로 줄에 선다", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -231,18 +281,18 @@ describe("WorksPage 소스 토글이 문서 카드 머리에 선다", () => {
     return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
   }
 
-  it("헤더에 [소스] 버튼이 없다", () => {
-    const header = render(specDocs(["overview.md"])).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+  it("머리 줄에 [소스] 버튼이 없다", () => {
+    const header = headRowOf(render(specDocs(["overview.md"])));
     expect(header).not.toBe("");
     expect(header).not.toContain("소스");
   });
 
-  it("토글은 문서 카드 머리에 하나 선다", () => {
+  it("토글은 문서 위 경로 줄에 하나 선다", () => {
     const markup = render(specDocs(["overview.md"]));
     const doc = markup.slice(markup.indexOf("<main"), markup.indexOf("</main>"));
-    const head = doc.match(/<div data-slot="card-head"[\s\S]*?<\/div><\/div>/)?.[0] ?? "";
-    expect(head, "문서 카드 머리를 찾지 못했다").not.toBe("");
-    expect(head).toContain(LABEL);
+    const bar = pathBarOf(doc);
+    expect(bar, "문서 위 경로 줄을 찾지 못했다").not.toBe("");
+    expect(bar).toContain(LABEL);
     // 화면 전체에 하나다 — 패널(머리 · 몸)에 남아 있으면 같은 일을 하는 버튼이 둘이다.
     expect(countOf(markup, LABEL)).toBe(1);
   });
@@ -301,18 +351,18 @@ describe("WorksPage 소스 토글이 문서 카드 머리에 선다", () => {
 
   it("터미널 탭에서는 spec 문서가 있어도 토글이 없다", () => {
     // 본문이 셸이면 `</>`가 적용될 곳이 없다 — 살아 있으면 눌러도 아무 일이 없는 버튼이다(결정 11·21). 한때 패널 머리행에
-    // 늘 서 있어 잠가서 막았는데, 이제 토글은 문서 카드 머리에 서므로 문서 카드가 없는 화면에는 토글도 없다. 경로 복사도 같다.
+    // 늘 서 있어 잠가서 막았는데, 이제 토글은 문서 위 경로 줄에 서므로 문서 카드가 없는 화면에는 토글도 없다. 경로 복사도 같다.
     const markup = render(specDocs(["overview.md"]), "terminal");
     expect(toggle(markup)).toBe("");
     expect(markup).not.toContain('aria-label="경로 복사"');
   });
 });
 
-// 머리행 배치 — **탭 줄이 되면서 조작이 전부 오른쪽 끝으로 모였다**(결정 10).
-// 한때는 「작업 그 자체를 말하는 것(제목 · ⓘ · ⋯)은 브레드크럼, 지금 무엇을 하는가(상태 ·
-// 패널)는 오른쪽」이었는데, 제목이 화면에서 빠지면서 왼쪽 덩어리 자체가 없어졌다 —
-// 그 자리를 탭이 쓴다.
-describe("WorksPage 머리행 배치", () => {
+// 머리 카드 배치(codex-ds 스펙 §6 · 스토리 23~25) — 왼쪽은 ⚡ · work 이름, **조작은 전부 오른쪽 한 묶음**(결정 10)이다.
+// 한때는 제목이 화면에서 빠지고(사이드바 행이 말했다) 창 맨 위 줄에 조작 묶음만 남았었다 — ⌘B로 사이드바를 접으면 화면 어디에도
+// 제목이 없었다. 그 줄이 48 머리 줄이 되면서 머리 카드가 제목을 다시 든다(work 메뉴의 대상이고, 그 자리에서 이름을 바꾼다 — codex-ds
+// 결정 6 · 스펙 §9).
+describe("WorksPage 머리 카드 배치", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -320,29 +370,29 @@ describe("WorksPage 머리행 배치", () => {
     vi.unstubAllGlobals();
   });
 
-  function header(markup: string): string {
-    return markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
-  }
-  // actions는 헤더(바탕 줄)의 마지막 자식이다 (ShellTabs가 그 자리에 세운다)
-  function actions(markup: string): string {
-    return header(markup).match(/<div data-tab-actions[^>]*>([\s\S]*)<\/div><\/header>/)?.[1] ?? "";
-  }
+  const header = headRowOf;
+  const actions = headActionsOf;
 
-  it("상태 다음이 ⋯, 그다음이 분할이고 「작업 메타」가 없다", () => {
-    // ui-refresh 결정 14 — 바탕 줄 조작은 상태 · ⋯ · 분할이다(패널 토글은 레일 맨 위). 상태 배지와 ⋯ 사이에 서던 ⓘ
-    // 팝오버(「작업 메타」)가 걷히고, 그 복사 줄 셋은 info 맨 위로 올라갔다 — 레일의 info와 ⓘ 둘이 위아래로 붙지 않는다.
+  it("상태 다음이 ⋯, 세로선 너머가 분할이고 「작업 메타」가 없다", () => {
+    // ui-refresh 결정 14 — 머리 카드의 조작은 상태 · ⋯ · 분할이다(패널 토글은 레일이 서서 카드 밖이다 — 위 「패널 토글」).
+    // 상태 배지와 ⋯ 사이에 서던 ⓘ 팝오버(「작업 메타」)가 걷혔다 — 그 복사 줄은 ⋯의 복사 ▸가 든다(codex-ds 결정 16 · 25).
+    // 할 일(상태 · ⋯)과 보기 배치(분할)는 얇은 세로선이 가른다(DS `HeadCard`) — 선은 장식이 아니라 구분이라 `separator`다.
     const a = actions(render());
     const status = a.indexOf('aria-description="상태 변경"');
     const menu = a.indexOf('aria-label="작업 메뉴"');
+    const line = a.indexOf('role="separator"');
     const split = a.indexOf('aria-label="분할"');
     expect(status).toBeGreaterThan(-1);
     expect(menu).toBeGreaterThan(status);
-    expect(split).toBeGreaterThan(menu);
+    expect(line).toBeGreaterThan(menu);
+    expect(split).toBeGreaterThan(line);
+    expect(countOf(a, 'role="separator"')).toBe(1);
+    expect(a).toContain('aria-orientation="vertical"');
     expect(render()).not.toContain("작업 메타");
   });
 
   it("⋯와 분할이 같은 상자를 쓴다", () => {
-    // 줄 안에서 이웃한 두 아이콘 버튼의 상자가 다르면 hover 배경이 한 버튼에서 다음으로 옮겨갈 때 커졌다 작아진다.
+    // 머리 카드의 한 줄(세로선을 사이에 둔 ⋯와 분할)에 선 아이콘 버튼은 모두 24다 — 상자가 다르면 하나만 튀어 보인다.
     // 눈으로는 "살짝 튄다"로만 보여서, 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에 안 드러난다.
     // ⋯가 22px·radius 7이었던 것은 옛 이웃인 상태 배지에 맞춘 값인데, 그 배지가 오른쪽
     // actions로 가면서 맞출 상대가 24px 아이콘 버튼으로 바뀌었다.
@@ -351,6 +401,7 @@ describe("WorksPage 머리행 배치", () => {
       tags.find((tag) => tag.includes(`aria-label="${label}"`))?.match(/class="([^"]*)"/)?.[1] ?? "";
     expect(box("작업 메뉴")).toMatch(/\bicon-button\b/);
     expect(box("분할")).toMatch(/\bicon-button\b/);
+    // 크기 단까지 같은지(둘 다 24)는 L3가 칠해진 상자로 잰다(`e2e/primitives.spec.ts`)
     // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
@@ -361,9 +412,9 @@ describe("WorksPage 머리행 배치", () => {
     expect(markup).toContain('aria-label="분할"');
   });
 
-  it("조작이 전부 오른쪽 끝 한 묶음에 있다", () => {
-    // 결정 10. 상태 배지 · ⋯ · 분할이 한 자리에 모인다(패널 토글은 바탕 줄 밖 레일에 선다 — ui-refresh 결정 9 ·
-    // 위 「WorksPage 패널 토글과 레일」).
+  it("조작이 전부 머리 카드 오른쪽 한 묶음에 있다", () => {
+    // 결정 10. 상태 배지 · ⋯ · 분할이 한 자리에 모인다(패널 토글은 레일이 서서 카드 밖 레일 위다 — 위 「WorksPage 패널 토글과
+    // 레일」).
     //
     // **왼쪽에 남는 것이 있으면 안 된다.** 하나라도 왼쪽에 남으면 탭이 늘고 줄 때마다
     // 그것의 자리가 함께 움직인다 — 결정 10이 오른쪽 끝을 고른 이유가 그것이다.
@@ -377,18 +428,48 @@ describe("WorksPage 머리행 배치", () => {
     ]) {
       expect(a, one).toContain(one);
     }
+    // 레일이 서서 패널 토글은 이 묶음이 아니라 카드 밖 레일 위다(DS `.at-railtop`).
+    expect(panelToggleTags(a)).toHaveLength(0);
   });
 
-  // 결정 10. work 제목은 화면에서 사라진다 — 사이드바 행이 말한다.
-  // _감수한 것_: ⌘B로 사이드바를 접으면 화면 어디에도 제목이 없다.
-  it("work 제목이 머리행에 없다", () => {
-    const h = header(render());
-    expect(h).not.toBe("");
-    expect(h).not.toContain(work.title);
-    // 제자리 편집도 함께 걷혔다 — 여는 자리가 ⋯ 메뉴로 갔다(#141).
-    expect(h).not.toContain('title="클릭해서 편집"');
-    // 브레드크럼 자체가 없다. `Works /`가 남아 있으면 탭이 그만큼 밀린다.
-    expect(h).not.toContain("Works");
+  it("머리 줄이 창을 끄는 자리이고 머리 카드는 빈 자리까지 끈다", () => {
+    // 끄는 자리는 회색이 보이는 상자다(codex-ds 스펙 §4 「드래그 영역」) — 머리 줄이 맨값 속성을 들고, 머리 카드는 `deep`이라 안의 빈
+    // 자리도 끈다(codex-ds 결정 37). 누를 것(버튼 · 포커스 받는 이름)은 Tauri가 스스로 비켜 둔다 — 어느 점이 끌리는지는 L3
+    // (`frame.spec.ts`의 `끄는자리`)가 잰다. 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의 `rowOf`)가 집는다. 레일이 서서 카드
+    // 밖 토글 자리(회색 위 상자)도 끌기 영역이다 — 그 자리의 상자는 L3(`frame.spec.ts`)가 잰다.
+    const row = header(render());
+    expect(row.match(/^<header[^>]*>/)?.[0] ?? "", "머리 줄이 없다").toContain("data-tauri-drag-region");
+    const card = headCardOf(render());
+    expect(card, "머리 카드를 못 찾았다").not.toBe("");
+    expect(card.match(/^<div[^>]*>/)?.[0] ?? "").toContain('data-tauri-drag-region="deep"');
+    expect(actions(render()), "할 일 묶음을 못 찾았다").not.toBe("");
+    // 머리 줄에서 끌기 영역은 줄 · 머리 카드 · 레일 위 토글 자리 셋이다.
+    expect(countOf(row, "data-tauri-drag-region")).toBe(3);
+    const buttons = row.match(/<button[^>]*>/g) ?? [];
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const tag of buttons) expect(tag).not.toContain("data-tauri-drag-region");
+  });
+
+  // codex-ds 스토리 23 · 24 — 머리 카드 왼쪽이 지금 어느 work인지 말한다. ⌘B로 사이드바를 접어도 제목이 화면에 남는다.
+  // 한때(결정 10) 제목은 화면에서 빠지고 사이드바 행만 말했다 — 접으면 화면 어디에도 제목이 없던 그 감수가 풀렸다.
+  it("머리 카드 왼쪽에 ⚡와 work 제목이 서고, 제목은 버튼이 아니다", () => {
+    const card = headCardOf(render());
+    expect(card).not.toBe("");
+    // ⚡는 work 아이콘이다 — 상태 글리프가 아니라 상태가 바뀌어도 그대로다.
+    const zap = card.indexOf("lucide-zap");
+    const name = card.indexOf(`>${work.title}<`);
+    expect(zap, "⚡가 없다").toBeGreaterThan(-1);
+    expect(name, "제목이 없다").toBeGreaterThan(zap);
+    expect(name).toBeLessThan(card.indexOf("data-head-actions"));
+    expect(headCardOf(render({ status: "done" }))).toContain("lucide-zap");
+    // 제목은 버튼도 입력칸도 아니다 — 평소에는 포커스만 받는 글자다(`tabIndex`). 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이고
+    // (codex-ds 결정 6), 두 번 클릭 · F2로 그 자리가 입력칸이 된다 — 입력칸은 고치는 동안에만 선다(codex-ds 스펙 §9 ·
+    // `e2e/inline-rename.spec.ts`). 누르면 고친다는 도움말(「클릭해서 편집」)도 없다.
+    const lead = card.slice(0, card.indexOf("data-head-actions"));
+    expect(lead).not.toMatch(/<button|<input|contenteditable/);
+    expect(lead).not.toContain('title="클릭해서 편집"');
+    // 브레드크럼이 아니다. `Works /`가 남아 있으면 제목 앞에 이유 없는 글자가 선다.
+    expect(header(render())).not.toContain("Works");
   });
 });
 
@@ -402,13 +483,7 @@ describe("WorksPage 헤더에서 뷰 탭이 걷혔다", () => {
     vi.unstubAllGlobals();
   });
 
-  function actions(markup: string): string {
-    return (
-      markup
-        .match(/<header[\s\S]*?<\/header>/)?.[0]
-        .match(/<div data-tab-actions[^>]*>([\s\S]*)<\/div><\/header>/)?.[1] ?? ""
-    );
-  }
+  const actions = headActionsOf;
 
   // 결정 70. 본문을 고르는 자리가 **사이드바 트리로 갔다.** 되살아나면 같은 것을 두 자리에서
   // 고르게 되고, 화면으로는 둘 다 멀쩡해 보여서 어느 쪽이 지금인지가 안 드러난다 —
@@ -439,19 +514,21 @@ describe("WorksPage 터미널 탭", () => {
     vi.unstubAllGlobals();
   });
 
-  // 여는 길(레일의 패널 토글)이 탭을 안 가리는지는 위 「WorksPage 패널 토글과 레일」의 「터미널 본문에서도 레일과 토글이
-  // 선다」가 렌더로 잰다 — 토글이 늘 서게 되면서(ui-refresh 결정 9) 접힌 상태를 만들지 않고도 보인다.
+  // 여는 길(머리 줄의 패널 토글)이 탭을 안 가리는지는 위 「WorksPage 패널 토글과 레일」이 두 본문 모두에서 렌더로
+  // 잰다 — 토글이 늘 서게 되면서(ui-refresh 결정 9) 접힌 상태를 만들지 않고도 보인다.
 
   // 결정 26. **순서가 계약이다** — dirty 판정은 확인 대화가 아니라 그 뒤 코어에서 나므로,
   // 먼저 죽이면 거부당했을 때 Work는 남고 돌던 claude만 사라진다. 이것도 렌더로 못 본다
   // (네이티브 대화가 끼어 있다). 자리를 세 지점의 **순서**로 못박는다 — 문자열 하나를
   // 통째로 맞추면 줄바꿈만 바뀌어도 깨지고, 순서가 이 계약의 전부다.
+  //
+  // 흐름은 work 메뉴 넷(⋯ · 우클릭 대상 셋)이 함께 부르는 한 자리(`work-menu-actions.ts`)에 있다(codex-ds 결정 6).
   it("셸은 명령이 성공한 뒤에 거둔다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const call = worksPage.indexOf("await call();");
+    const menuActions = source("work-menu-actions.ts");
+    const call = menuActions.indexOf("await call();");
     // `await` **뒤에서** 찾는다 — 같은 문구가 위쪽 주석에도 나온다(실측으로 걸렸다).
-    const bail = worksPage.indexOf("return;", worksPage.indexOf("하지 못했습니다", call));
-    const reap = worksPage.indexOf("closeShellsOf(ownerOf(work.slug))");
+    const bail = menuActions.indexOf("return;", menuActions.indexOf("하지 못했습니다", call));
+    const reap = menuActions.indexOf("closeShellsOf(ownerOf(work.slug))");
 
     expect(call, "await call()을 찾지 못했다").toBeGreaterThan(-1);
     // 실패하면 **거두지 않고 돌아간다** — 이 return이 빠지면 거부당한 Work의 셸이 죽는다.
@@ -466,15 +543,15 @@ describe("WorksPage 터미널 탭", () => {
   // 돌아오고 아카이브는 안 기다리므로 워처의 재조회가 회수 앞뒤 어디에나 올 수 있다 — 창이 이만큼 넓어야 한다.
   // 렌더로 못 보는 것은 위 검사와 같다(창과 코어 호출이 프로미스 뒤에 있다). 자리를 **순서**로 못박는다.
   it("제외 창은 확인 뒤 · 코어 호출 전에 열고, 회수 뒤에 닫으며, 실패하면 곧바로 닫는다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const asked = worksPage.indexOf("if (!(await askDanger(");
-    const hold = worksPage.indexOf("const release = holdOwner(ownerOf(work.slug));");
-    const call = worksPage.indexOf("await call();");
-    const failed = worksPage.indexOf("} catch (e) {", call);
-    const earlyRelease = worksPage.indexOf("release();", failed);
-    const problem = worksPage.indexOf("await showProblem(", failed);
-    const reap = worksPage.indexOf("closeShellsOf(ownerOf(work.slug));");
-    const lateRelease = worksPage.indexOf("release();", reap);
+    const menuActions = source("work-menu-actions.ts");
+    const asked = menuActions.indexOf("if (!(await askDanger(");
+    const hold = menuActions.indexOf("const release = holdOwner(ownerOf(work.slug));");
+    const call = menuActions.indexOf("await call();");
+    const failed = menuActions.indexOf("} catch (e) {", call);
+    const earlyRelease = menuActions.indexOf("release();", failed);
+    const problem = menuActions.indexOf("await showProblem(", failed);
+    const reap = menuActions.indexOf("closeShellsOf(ownerOf(work.slug));");
+    const lateRelease = menuActions.indexOf("release();", reap);
 
     expect(asked, "확인 창을 찾지 못했다").toBeGreaterThan(-1);
     expect(hold, "제외 창은 확인 창이 참을 돌려준 뒤에 연다").toBeGreaterThan(asked);
@@ -482,8 +559,9 @@ describe("WorksPage 터미널 탭", () => {
     expect(earlyRelease, "실패하면 제외 창을 닫는다").toBeGreaterThan(failed);
     expect(problem, "실패하면 알림 창보다 먼저 닫는다").toBeGreaterThan(earlyRelease);
     expect(lateRelease, "회수 뒤에 제외 창을 닫는다").toBeGreaterThan(reap);
-    // 여는 자리는 하나다 — 둘이면 한쪽이 안 닫혀 그 slug가 영영 감지에서 빠진다.
-    expect(worksPage.split("holdOwner(").length - 1).toBe(1);
+    // 여는 자리는 하나다 — 둘이면 한쪽이 안 닫혀 그 slug가 영영 감지에서 빠진다. 작업 화면이 흐름을 따로 들면 그것이 둘째 자리다.
+    expect(menuActions.split("holdOwner(").length - 1).toBe(1);
+    expect(source("WorksPage.tsx")).not.toContain("holdOwner(");
   });
 
   // 결정 102·19. 정상 종료한 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은
@@ -494,14 +572,15 @@ describe("WorksPage 터미널 탭", () => {
   // 되살렸으므로 결정 19가 본문의 여는 자리를 걷었다 — 남는 것은 **비었다는 표시와 여는
   // 법**이고, 여는 자리는 탭 줄의 `+` 하나다.
   //
-  // **머리행 뒤부터 `</main>` 앞까지만 본다.** 패널에도 같은 이름의 `+`가 설 수 있고
+  // **탭 줄 뒤부터 `</main>` 앞까지만 본다.** 패널에도 같은 이름의 `+`가 설 수 있고
   // 탭 줄에는 실제로 하나 선다 — 마크업 전체에서 세면 「본문에 있다」와 「어딘가 있다」가
-  // 같아진다.
+  // 같아진다. 탭 줄은 본문 카드의 머리라(codex-ds 스펙 §4) 카드 안 맨 위에 선다.
   it("셸이 0개면 본문은 안내만 내고, 여는 자리는 탭 줄뿐이다", () => {
     const markup = render({}, "terminal");
-    const headEnd = markup.indexOf("</header>");
+    const row = tabRowOf(markup);
+    expect(row, "탭 줄을 찾지 못했다").not.toBe("");
+    const headEnd = markup.indexOf(row) + row.length;
     const bodyEnd = markup.indexOf("</main><aside");
-    expect(headEnd, "머리행의 끝을 찾지 못했다").toBeGreaterThan(-1);
     expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(headEnd);
     const body = markup.slice(headEnd, bodyEnd);
 
@@ -510,38 +589,42 @@ describe("WorksPage 터미널 탭", () => {
       "아직 셸이 없어요",
     );
     expect(body.match(/aria-label="셸 열기"/g), "본문에 여는 자리가 남았다").toBeNull();
-    // 그리고 여는 자리는 **머리행에** 있다. 둘 다 없으면 열 길이 아예 사라진 것이다.
-    expect(markup.slice(0, headEnd)).toContain('aria-label="셸 열기"');
+    // 그리고 여는 자리는 **탭 줄에** 있다. 둘 다 없으면 열 길이 아예 사라진 것이다.
+    expect(row).toContain('aria-label="셸 열기"');
     // 패널이 **함께** 있다. 그 카드의 이름으로 확인한다.
     expect(markup).toContain('aria-label="작업 패널"');
   });
 
   it("spec 본문에는 여는 자리가 없다 — 여는 자리는 탭 줄의 `+`다", () => {
     // 결정 7. 셸을 여는 자리가 화면 안으로 돌아왔다(adr-03) — 그래서 문서를 읽는 중에도
-    // `+`가 **머리행에** 서고, 본문에는 여전히 없다. 본문에 또 서면 그것이 어느 화면의
+    // `+`가 **탭 줄에** 서고, 본문에는 여전히 없다. 본문에 또 서면 그것이 어느 화면의
     // 셸을 여는지가 흐려진다.
     const markup = render({}, "spec");
-    const headEnd = markup.indexOf("</header>");
-    expect(headEnd, "머리행의 끝을 찾지 못했다").toBeGreaterThan(-1);
-    expect(markup.slice(0, headEnd)).toContain('aria-label="셸 열기"');
-    expect(markup.slice(headEnd)).not.toContain('aria-label="셸 열기"');
+    const row = tabRowOf(markup);
+    expect(row, "탭 줄을 찾지 못했다").not.toBe("");
+    expect(row).toContain('aria-label="셸 열기"');
+    expect(markup.replace(row, "")).not.toContain('aria-label="셸 열기"');
     expect(markup).toContain('aria-label="작업 패널"');
   });
 
-  // 본문이 셸이라 `</>`가 적용될 곳이 없다 — 터미널 카드에는 머리가 없다(ui-refresh 결정 5). 캡슐도 토글도 서지 않는다.
-  it("터미널 카드에는 머리가 없다", () => {
+  // 본문이 셸이라 `</>`가 적용될 곳이 없다 — 터미널 카드의 머리는 탭 줄 하나다(ui-refresh 결정 5 · codex-ds 스펙 §4). 경로
+  // 줄(캡슐 · 보기 묶음)은 문서 위에만 선다.
+  it("터미널 카드의 머리는 탭 줄뿐이다 — 경로 줄이 없다", () => {
     const markup = render({}, "terminal");
     const body = markup.slice(markup.indexOf("<main"), markup.indexOf("</main>"));
     expect(body, "본문 카드를 찾지 못했다").toContain('data-tone="terminal"');
+    expect(tabRowOf(body)).not.toBe("");
+    expect(body).not.toContain('data-slot="path-bar"');
     expect(body).not.toContain('data-slot="card-head"');
     expect(markup).not.toContain('aria-label="원문 보기"');
   });
 });
 
-// 탭 줄의 바닥(`TAB_ROW_COLUMN`) — 공용 틀(`Frame`)의 **본문 열**이 든다(ui-refresh 결정 27). 그 열의 머리가 바탕 줄(`header`)이고
-// 그 아래 카드 줄(본문 카드 + 작업 패널)이 `header` 아닌 자식이라, 카드 줄은 제 내용 폭(넓은 문서 · 코드뷰 · xterm)을 바깥에
-// 안 알린다 — 소스 보기를 켜고 끌 때마다 패널이 창 밖으로 밀리던 것(한때 이 행이 `min-w-0`이 아니었던 때)이 안 돌아온다. 그
-// 바닥이 없으면 900px 창에서 칸 상자가 0px이 되어 칸이 안 보였다.
+// 탭 줄의 바닥 — 줄을 머리에 이는 **본문 카드**(`TAB_ROW_CARD`)와 공용 틀(`Frame`)의 **본문 열**(`TAB_ROW_COLUMN`)이 함께
+// 든다(ui-refresh 결정 27 · codex-ds 스펙 §4). 카드는 줄 아닌 자식(문서 위 경로 줄 · 넓은 문서 · 코드뷰 · xterm)의 내용
+// 폭을 바깥에 안 알리고, 열은 그 카드를 품은 카드 줄만 제 min-content를 알린다 — 소스 보기를 켜고 끌 때마다 패널이 창 밖으로
+// 밀리던 것(한때 이 행이 `min-w-0`이 아니었던 때)이 안 돌아온다. 그 바닥이 없으면 900px 창에서 칸 상자가 0px이 되어 칸이 안
+// 보였다.
 //
 // 레이아웃은 정적 마크업으로 볼 수 없으므로 클래스와 자리만 본다 — 실제로 칸이 남고
 // 넓은 문서에서 패널이 안 밀리는지는 `e2e/tab-row-floor.spec.ts`가 잰다.
@@ -553,28 +636,30 @@ describe("WorksPage 탭 줄을 이는 본문 열의 바닥", () => {
     vi.unstubAllGlobals();
   });
 
-  it("카드 줄은 바탕 줄 바로 뒤의 `header` 아닌 자식이고, 본문 카드와 작업 패널을 함께 담는다", () => {
+  it("카드 줄은 머리 줄 아래 본문 열의 첫 자식이고, 본문 카드와 작업 패널을 함께 담는다", () => {
     const markup = render(specDocs(["overview.md"]));
     const after = markup.slice(markup.indexOf("</header>") + "</header>".length);
-    // 바탕 줄 다음 형제가 카드 줄이다 — `header`가 아니므로 바닥 클래스의 `[&>:not(header)]`가 이 줄에 걸린다.
-    const row = after.match(/^<div[^>]*>/)?.[0] ?? "";
-    expect(row, "바탕 줄 바로 뒤에 카드 줄이 없다").not.toBe("");
+    // 머리 줄 다음 형제가 아래 줄, 그 첫 자식이 본문 열, 다시 그 첫 자식이 카드 줄이다 — 탭 줄을 품었으므로 열의 바닥 클래스가
+    // 이 줄을 격리하지 않는다(`TAB_ROW_COLUMN`).
+    const row = after.match(/^<div[^>]*><div[^>]*>(<div[^>]*>)/)?.[1] ?? "";
+    expect(row, "머리 줄 아래 본문 열 첫머리에 카드 줄이 없다").not.toBe("");
     // relative는 덮는 것(놓기 겹판 · 토스트 · 생애 겹판)이 이 줄을 기준으로 서기 위한 것이다(`Frame`의 overlay 칸).
     expect(row).toContain("relative");
-    // 본문 카드와 작업 패널이 이 줄 안에 함께 선다 — 패널이 바탕 줄 옆으로 올라가면 줄과 폭을 다투게 된다.
+    // 본문 카드와 작업 패널이 이 줄 안에 함께 선다 — 패널이 줄 밖 옆 칸으로 나가면 줄과 폭을 다투게 된다.
     expect(after.indexOf("<main")).toBeGreaterThan(0);
     expect(after.indexOf("<aside")).toBeGreaterThan(after.indexOf("</main>"));
   });
 
   it("탭 줄을 이는 본문 열이 세 갈래 모두 그 바닥을 든다", () => {
-    // 문서 · 터미널 · 분할 — 머리행이 서는 열이 갈래마다 다른 요소라, 한 갈래만 빠져도 그
+    // 문서 · 터미널 · 분할 — 갈래마다 본문 열 안이 다르게 서므로, 한 갈래만 빠져도 그
     // 본문에서만 칸이 사라진다. 바닥 클래스는 `panel-layout`이 내보낸 한 벌을 그대로 쓴다.
     const floor = TAB_ROW_COLUMN.split(" ");
+    // 본문 열 — 머리 줄 다음 형제(아래 줄)의 첫 자식이다(`Frame`).
     const columnOf = (markup: string) => {
-      const at = markup.indexOf("<header");
-      if (at < 0) throw new Error("머리행이 없다");
-      const open = markup.lastIndexOf("<", markup.lastIndexOf(">", at - 1));
-      return markup.slice(open, markup.indexOf(">", open) + 1).replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+      const at = markup.indexOf("</header>");
+      if (at < 0) throw new Error("머리 줄이 없다");
+      const tag = markup.slice(at + "</header>".length).match(/^<div[^>]*>(<div[^>]*>)/)?.[1] ?? "";
+      return tag.replace(/&gt;/g, ">").replace(/&amp;/g, "&");
     };
     for (const [tab, split] of [["spec", null], ["terminal", null], ["spec", "lr"]] as const) {
       const markup = render(specDocs(["overview.md"]), tab, split);
@@ -583,6 +668,21 @@ describe("WorksPage 탭 줄을 이는 본문 열의 바닥", () => {
       const column = columnOf(markup);
       for (const one of floor) expect(column, `${tab} ${split}`).toContain(one);
       expect(column, `${tab} ${split}`).not.toContain("min-w-0");
+    }
+  });
+
+  it("탭 줄을 머리에 이는 카드가 세 갈래 모두 줄의 바닥을 든다", () => {
+    // 줄은 카드의 첫 자식이라 줄 바로 앞의 여는 태그가 그 카드다. 문서 · 터미널은 본문 카드(`main`)이고 분할이면 터미널 열의
+    // 카드다 — 그 카드가 바닥을 안 들면 줄이 카드 모서리에 잘린다.
+    const floor = TAB_ROW_CARD.split(" ");
+    for (const [tab, split] of [["spec", null], ["terminal", null], ["spec", "lr"]] as const) {
+      const markup = render(specDocs(["overview.md"]), tab, split);
+      const at = markup.search(/<div[^>]*\sdata-tab-row="/);
+      expect(at, `${tab} ${split} — 탭 줄이 없다`).toBeGreaterThan(-1);
+      const open = markup.lastIndexOf("<", at - 1);
+      const card = markup.slice(open, at).replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+      expect(card, `${tab} ${split}`).toContain('data-slot="card"');
+      for (const one of floor) expect(card, `${tab} ${split}`).toContain(one);
     }
   });
 });
@@ -609,7 +709,7 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(box).toMatch(/cursor-col-resize/);
     // 틈 자리 손잡이(`seat="gap"`)이고, 오른쪽 패널이라 그 틈은 카드의 **왼쪽**이다.
     expect(box).toContain('data-seat="gap"');
-    expect(box).toContain("left-[calc((var(--gap)-5px)/2)]");
+    expect(box).toContain("left-[calc((var(--space-2)-5px)/2)]");
     // 손잡이는 absolute다. 이 상자가 기준이 아니면 조상 어딘가를 기준으로 서서 화면 엉뚱한 곳에 붙는다.
     expect(rootTag(render())).toMatch(/class="[^"]*\brelative\b/);
   });
@@ -624,7 +724,7 @@ describe("WorksPage 작업 패널 칸", () => {
       setItem: () => {},
     });
     render();
-    // 사이드바·목록 패널의 키를 건드리면 폭 범위가 다른 둘이 서로를 덮는다
+    // 사이드바·목록 칸의 키를 건드리면 폭 범위가 다른 둘이 서로를 덮는다
     expect(asked).toContain("work-panel-width");
     expect(asked).not.toContain("sidebar-width");
     expect(asked).not.toContain("panel-width");
@@ -638,41 +738,43 @@ describe("WorksPage 작업 패널 칸", () => {
     expect(panelBox(markup)).not.toMatch(/cursor-col-resize/);
   });
 
-  it("기본 폭 330으로 서고, 바깥과 안쪽이 같은 폭(틈 + 카드)을 읽는다", () => {
+  it("기본 폭 340(DS `size-panel`)으로 서고, 바깥과 안쪽이 같은 폭(틈 + 카드)을 읽는다", () => {
+    // codex-ds 스펙 S4 — 기본은 DS 값이고 범위(260–560)는 지금 것이다. 범위 안에 저장된 폭은 그대로 선다(아래 「지난번에 바꾼 폭」).
     const markup = render();
-    expect(markup).toMatch(/--work-panel-width:\s*330px/);
+    expect(markup).toMatch(/--panel-width:\s*340px/);
     // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다. 바깥은 접히는 폭이고 안쪽은 그 폭으로 버티는
     // 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다 — 바깥은 flex 기준(`basis`)으로, 안쪽은 폭으로
     // 읽는다(바깥이 문서 카드에 자리를 내줄 수 있어야 해서다). 둘 다 **틈을 더한** 값이다 — 저장하는 폭은 카드의 폭이다.
-    expect(countOf(markup, "basis-[calc(var(--work-panel-width)+var(--gap))]")).toBe(1);
-    expect(countOf(markup, " w-[calc(var(--work-panel-width)+var(--gap))]")).toBe(1);
+    expect(countOf(markup, "basis-[calc(var(--panel-width)+var(--space-2))]")).toBe(1);
+    expect(countOf(markup, " w-[calc(var(--panel-width)+var(--space-2))]")).toBe(1);
   });
 
   it("줄어들어도 끄는 최소 폭 아래로는 안 주고, 문서 카드에 그 최소 폭만큼은 남긴다", () => {
     // 창이 좁으면 이 패널이 문서 카드에 자리를 내준다. 그 바닥이 끄는 최소 폭과 갈리면 끌어서는 못 만드는 폭으로 선다 —
-    // 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다.
+    // 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다. 문서 카드에 남길 폭(`--panel-reserve`)도 그 최소 폭이다(`Frame`의 `PanelBox`).
     const markup = render();
-    expect(markup).toMatch(/--work-panel-min:\s*260px/);
+    expect(markup).toMatch(/--panel-min:\s*260px/);
+    expect(markup).toMatch(/--panel-reserve:\s*260px/);
     const root = rootTag(markup);
     if (!root) throw new Error("패널 aside가 없다");
-    expect(root).toContain("min-w-[calc(var(--work-panel-min)+var(--gap))]");
-    expect(root).toContain("max-w-[calc(100%-var(--work-panel-min))]");
+    expect(root).toContain("min-w-[calc(var(--panel-min)+var(--space-2))]");
+    expect(root).toContain("max-w-[calc(100%-var(--panel-reserve))]");
     expect(root).not.toContain("shrink-0");
   });
 
   it("지난번에 바꾼 폭으로 다시 선다", () => {
     // **기본 폭과 다른 값이어야 한다.** 같으면 저장값을 통째로 무시해도 이 검사가 초록이다.
     vi.stubGlobal("localStorage", { getItem: () => "500", setItem: () => {} });
-    expect(render()).toMatch(/--work-panel-width:\s*500px/);
+    expect(render()).toMatch(/--panel-width:\s*500px/);
   });
 
   // ui-refresh 결정 4로 **뒤집혔다** — 한때 「떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼」이었다(창 끝에서 끝까지 가는
-  // surface라 둥근 모서리가 설 자리가 없었다). 이제 패널은 바탕 줄 아래에 뜬 둥근 흰 카드이고, 문서와의 구분은 틈이 맡는다.
+  // surface라 둥근 모서리가 설 자리가 없었다). 이제 패널은 머리 줄 아래에 뜬 둥근 흰 카드이고, 문서와의 구분은 틈이 맡는다.
   it("패널은 둥근 카드이고 왼쪽 경계선이 없다", () => {
     const box = panelBox(render());
     const card = box.match(/<section[^>]*aria-label="작업 패널"[^>]*>/)?.[0] ?? "";
     expect(card, "패널 카드를 찾지 못했다").not.toBe("");
-    expect(card).toContain("rounded-card");
+    expect(card).toContain("rounded-2xl");
     expect(box).not.toContain("border-l");
   });
 });
@@ -764,60 +866,10 @@ describe("WorksPage 기본 문서", () => {
 // `if (tab === "terminal") return;` 한 줄이 사라졌고, 그 줄이 남겼던 「알려진 비대칭」
 // (포커스가 트리에 있어도 터미널 탭에서는 안 듣는다)도 함께 사라진다.
 //
-// 판단을 순수 함수로 꺼내 둔 덕에 **이건 소스 훑기가 아니라 진짜로 도는 검사다.**
-// (`shellHotkey`와 같은 방식이다.)
+// 판단은 순수 함수로 꺼내 패널 토글 곁에 둔다(`togglesPanel` — Archive의 ⌘Enter와 한 벌). 그 판정이
+// 진짜로 도는 검사는 `components/shell/PanelToggle.test.ts`에 있고, 여기서 보는 것은 이 화면의 배선이다 —
+// 이펙트는 정적 렌더에서 안 돈다.
 describe("WorksPage ⌘Enter", () => {
-  // 노드 환경에는 DOM 생성자가 없다. `instanceof`가 보는 것은 그 자리의 전역이므로
-  // 세워 두면 그대로 갈린다. 셸의 입력 자리가 숨은 <textarea>라는 것이 이 검사의 전제다.
-  class FakeTextArea extends EventTarget {}
-  class FakeInput extends EventTarget {}
-  class FakeEditable extends EventTarget {
-    isContentEditable = true;
-  }
-
-  beforeEach(() => {
-    vi.stubGlobal("HTMLTextAreaElement", FakeTextArea);
-    vi.stubGlobal("HTMLInputElement", FakeInput);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  type Hotkey = Parameters<typeof togglesWorkPanel>[0];
-  // 트리·패널의 평범한 요소 — 입력도 편집 가능도 아니다
-  const key = (over: Partial<Hotkey> = {}): Hotkey => ({
-    metaKey: true,
-    ctrlKey: false,
-    altKey: false,
-    shiftKey: false,
-    key: "Enter",
-    target: new EventTarget(),
-    ...over,
-  });
-
-  it("포커스가 트리·패널에 있으면 패널 몫이다", () => {
-    expect(togglesWorkPanel(key())).toBe(true);
-  });
-
-  it("셸(xterm의 숨은 <textarea>)에 포커스가 있으면 셸 몫이다", () => {
-    // 결정 29 그대로다. 첫 줄(탭 가드)을 지워도 이 경우는 안 바뀐다는 것이 결정 43의 전제고,
-    // 그 전제가 깨지면 터미널에서 ⌘Enter를 칠 때마다 패널이 여닫힌다.
-    expect(togglesWorkPanel(key({ target: new FakeTextArea() }))).toBe(false);
-  });
-
-  it("입력·편집 가능 요소도 그대로 비켜간다", () => {
-    expect(togglesWorkPanel(key({ target: new FakeInput() }))).toBe(false);
-    expect(togglesWorkPanel(key({ target: new FakeEditable() }))).toBe(false);
-  });
-
-  it("수식키가 하나라도 더 붙거나 다른 키면 아니다", () => {
-    for (const extra of ["ctrlKey", "altKey", "shiftKey"] as const) {
-      expect(togglesWorkPanel(key({ [extra]: true })), extra).toBe(false);
-    }
-    expect(togglesWorkPanel(key({ metaKey: false }))).toBe(false);
-    expect(togglesWorkPanel(key({ key: "t" }))).toBe(false);
-  });
-
   // 결정 93·98. ⌘T가 xterm 밖에서도 들린다 — 셸이 0개인 화면에는 xterm이 없어 그 키를
   // 들을 사람이 없었다. **판정은 `opensShellFromWindow`가 혼자 알고**(그쪽 검사는
   // shell-registry.test.ts에 전수돼 있다) 여기서 보는 것은 그 판정이 이 화면에 실제로
@@ -884,7 +936,7 @@ describe("WorksPage ⌘Enter", () => {
       /useEffect\(\(\) => \{[\s\S]*?window\.addEventListener\("keydown"[\s\S]*?\}, \[([^\]]*)\]\);/,
     );
     expect(effect, "⌘Enter 효과를 찾지 못했다").not.toBeNull();
-    expect(effect![0]).toContain("togglesWorkPanel");
+    expect(effect![0]).toContain("togglesPanel");
     expect(effect![0]).toContain("setWorkPanelOpen");
     // `tab`을 안 보므로 의존성도 비어 있다. 남아 있으면 판단이 아직 탭에 매여 있다는 뜻이다.
     expect(effect![1].trim()).toBe("");
@@ -892,12 +944,12 @@ describe("WorksPage ⌘Enter", () => {
   });
 });
 
-// ─── 결정 7·10·13(판 03): 머리행이 탭 줄이 된다 ───
+// ─── 결정 7·10·13(판 03): 탭 줄 — 지금은 본문 카드의 머리다(codex-ds 스펙 §4) ───
 
 // **이 화면이 그 줄을 조립한다** — 줄 자체(ShellTabs)는 상태와 콜백만 받으므로, 「이 work의
 // 셸이 실제로 칸으로 서는가」는 스토어를 여기서 손으로 채워야 보인다. 줄 쪽 seam은
 // 상태를 직접 넣고(ShellTabs.test.tsx), 이 seam은 그 둘이 이어졌는지를 본다.
-describe("WorksPage 머리행이 탭 줄이다", () => {
+describe("WorksPage 본문 카드 머리가 탭 줄이다", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -923,7 +975,6 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     seedOrigin({ owner: ownerOf(slug), project: null, cwd }, count);
   }
 
-  const headerOf = (markup: string) => markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
   // 칸을 표식으로 자른다 — ShellTabs.test.tsx의 같은 관용구다(정규식으로 블록을 잘라내는
   // 판정은 쓰지 않는다: 이 저장소는 그 fail-open으로 데었다).
   const kindsOf = (markup: string) =>
@@ -932,9 +983,8 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       .slice(1)
       .map((chunk) => chunk.slice(0, chunk.indexOf('"')));
 
-  // **켜진 칸**의 종류. `+` 뒤 조각은 세지 않는다 — 거기엔 오른쪽 끝 조작이 딸려 오고
-  // 분할 토글이 자기 켜짐을 **같은 말**로 하므로(`aria-pressed`) 칸으로 세면 분할을 켤
-  // 때마다 켜진 칸이 하나 더 있는 것으로 읽힌다.
+  // **켜진 칸**의 종류. `+` 뒤 조각은 세지 않는다 — 거기엔 오른쪽 끝 조작(분할의 터미널 열을 닫는 `×`)이 딸려 오고,
+  // 조작이 자기 켜짐을 **같은 말**(`aria-pressed`)로 하면 칸으로 세어 켜진 칸이 하나 더 있는 것으로 읽힌다.
   const tabsOn = (markup: string) =>
     markup
       .split('data-tab="')
@@ -954,7 +1004,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
           cwd: "~/x",
         })!.state,
     );
-    expect(kindsOf(headerOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
+    expect(kindsOf(tabRowOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
   });
 
   it("세로 목록의 둘째 줄은 안 따라온다", () => {
@@ -964,17 +1014,17 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     expect(render()).not.toContain("~/.atelier/works/some-work/trees/atelier");
   });
 
-  it("셸을 닫는 `×`가 칸마다 하나씩, 머리행 안에만 있다", () => {
+  it("셸을 닫는 `×`가 칸마다 하나씩, 탭 줄 안에만 있다", () => {
     // 결정 71이 이 화면에서 걷어낸 것은 **세로 목록**이다. 닫는 길은 여전히 하나이고
     // (결정 22·92) 그것이 이제 탭의 `×`다 — 본문·패널에 또 서면 두 자리가 된다.
     seed(2, work.slug, "~/.atelier/works/some-work/trees/atelier");
     const markup = render();
-    const header = headerOf(markup);
-    expect(header.match(/aria-label="[^"]*닫기"/g)).toHaveLength(2);
-    expect(markup.slice(markup.indexOf("</header>"))).not.toMatch(/aria-label="[^"]*셸[^"]*닫기"/);
+    const row = tabRowOf(markup);
+    expect(row.match(/aria-label="[^"]*닫기"/g)).toHaveLength(2);
+    expect(markup.replace(row, "")).not.toMatch(/aria-label="[^"]*셸[^"]*닫기"/);
   });
 
-  it("고른 작업이 없으면 탭 줄이 아니라 카드 머리에 화면 이름이 선다", () => {
+  it("고른 작업이 없으면 탭 줄이 없고, 머리 카드가 화면 이름만 든다", () => {
     // **빈 소유자 키 `""`는 최상위 터미널이다**(ui-refresh 결정 23). 고른 작업이 없는 화면이
     // 소유자를 세우면 그 자리가 비어 `ownerOf(undefined)` → `""`가 되는데,
     // 그러면 `/terminal`의 셸이 work 화면의 줄에 서고 `+`는 열 자리가 없어 눌러도 아무 일이
@@ -991,7 +1041,6 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
             selectedSlug={null}
             currentFile={null}
             onSelectFile={() => {}}
-            onOpenProject={() => {}}
             tab="spec"
             onSelectTab={() => {}}
             code={null}
@@ -1004,12 +1053,14 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
         </ToastProvider>
       </QueryClientProvider>,
     );
-    expect(kindsOf(headerOf(markup))).toEqual([]);
-    // 바탕 줄은 비어 있는 끌기 줄이고, 화면 이름은 빈 화면 카드의 머리(캡슐)가 말한다(ui-refresh 결정 5).
-    expect(headerOf(markup)).not.toContain("Works");
-    const head = markup.slice(markup.indexOf("<main")).match(/<div data-slot="card-head"[\s\S]*?<\/nav>/)?.[0] ?? "";
-    expect(head).toContain('aria-label="위치"');
-    expect(head).toContain(">Works<");
+    expect(tabRowOf(markup)).toBe("");
+    expect(kindsOf(markup)).toEqual([]);
+    // 화면 이름은 머리 카드가 말한다(codex-ds 티켓 14) — 지금 보는 work가 없어 할 일 묶음도 패널 토글도 없고, 카드 안에 고를 것이
+    // 없어 빈 화면 카드에는 머리가 없다.
+    expect(headCardOf(markup)).toContain(">Works<");
+    expect(headActionsOf(markup)).toBe("");
+    expect(panelToggleTags(markup)).toEqual([]);
+    expect(markup.slice(markup.indexOf("<main"))).not.toContain('data-slot="card-head"');
   });
 
   // 결정 12 — **분할 중에는 켜진 탭이 둘이다.** 「둘이면 둘을 켠다」는 줄 쪽 seam이 들고
@@ -1017,11 +1068,11 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // `specStands`를, `showing`에 `terminalStands`를 주는데 분할이면 둘 다 참이다.
   it("분할이면 켜진 칸이 문서 칸과 그 셸 둘이다", () => {
     seed(1, work.slug, "~/.atelier/works/some-work/trees/atelier");
-    expect(tabsOn(headerOf(render({}, "terminal", "lr")))).toEqual(["spec", "shell"]);
+    expect(tabsOn(tabRowOf(render({}, "terminal", "lr")))).toEqual(["spec", "shell"]);
     // 단일 뷰에서는 하나다 — 이것이 없으면 위가 「늘 둘을 켠다」로도 통과한다. 그리고
     // `tab`에 따라 **다른 칸**이 켜지는 것이 「지금 보고 있는 것이 하나」라는 말이다.
-    expect(tabsOn(headerOf(render({}, "terminal", null)))).toEqual(["shell"]);
-    expect(tabsOn(headerOf(render({}, "spec", null)))).toEqual(["spec"]);
+    expect(tabsOn(tabRowOf(render({}, "terminal", null)))).toEqual(["shell"]);
+    expect(tabsOn(tabRowOf(render({}, "spec", null)))).toEqual(["spec"]);
   });
 
   // git-integration 판 01 — 켜진 칸은 **본문에 선 것**이다. 주소가 셸을 말하는데(`tab=terminal` · `code` 없는 분할) 묶음에
@@ -1029,8 +1080,8 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // 띄운다). 그때 본문은 「아직 셸이 없어요」인데 그 파일 탭을 켜면 보이는 것과 켜진 칸이 어긋난다.
   it("주소가 셸을 말하는데 묶음에 셸이 없어 지금 탭이 파일 탭으로 남으면 묶음의 칸은 켜지지 않는다", () => {
     terminalStore.setState(() => openCodeTab(NO_SHELLS, ownerOf(work.slug), { project: "billing", path: "src/a.ts" }));
-    expect(tabsOn(headerOf(render({}, "terminal", null)))).toEqual([]);
-    expect(tabsOn(headerOf(render({}, "terminal", "lr")))).toEqual(["spec"]);
+    expect(tabsOn(tabRowOf(render({}, "terminal", null)))).toEqual([]);
+    expect(tabsOn(tabRowOf(render({}, "terminal", "lr")))).toEqual(["spec"]);
   });
 
   // 결정 12 — 칸을 본문 위로 끄는 자리를 **이 화면이 만든다.** 탭 줄이 스스로 만들면
@@ -1080,15 +1131,15 @@ describe("WorksPage 셸 조회가 이 work의 것이다", () => {
   });
 
   // 「셸 N개가 닫혀요」의 N(결정 26). 남의 셸을 세면 엉뚱한 수를 말하고 — 0이라 아예 안 묻고 — 정작 닫히는 것은 이
-  // work의 셸들이다.
+  // work의 셸들이다. 묻는 흐름은 work 메뉴 넷이 함께 부르는 자리(`work-menu-actions.ts`)에 있고, `work`는 그 메뉴의 대상이다.
   it("아카이브 확인이 말하는 수가 이 work의 것이다", () => {
-    expect(countOf(worksPage, "runningShellsOf(state, ownerOf(work.slug))")).toBe(1);
+    expect(countOf(source("work-menu-actions.ts"), "runningShellsOf(terminalStore.state, ownerOf(work.slug))")).toBe(1);
   });
 });
 
 // 결정 13. ⌘W의 대상이 **켜진 탭**이 됐다 — 겨눌 칸이 화면에 서게 된 것이 그 근거다(adr-03).
 //
-// **겨누는 칸을 정하는 일이 순수 함수로 나와 있어 이건 진짜로 도는 검사다**(`togglesWorkPanel`과
+// **겨누는 칸을 정하는 일이 순수 함수로 나와 있어 이건 진짜로 도는 검사다**(⌘Enter의 `togglesPanel`과
 // 같은 이유). 핸들러 안에 두면 소스를 문자열로 훑는 검사밖에 못 거는데, 그 검사는 핸들러
 // 첫 줄에 `return`을 얹어도 초록이었다(실측). 키 판정 쪽(`closesShellFromWindow`)은
 // shell-registry.test.ts에 전수돼 있다.
@@ -1325,11 +1376,12 @@ describe("분할 뷰", () => {
     expect(countOf(render(withSpec, "spec", "lr"), "data-column=")).toBe(2);
   });
 
-  // 결정 104. basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다. 열 머리는 문서 카드 머리라 캡슐이
-  // `slug › spec › 판 폴더 › 파일`을 조각마다 말한다(ui-refresh 결정 5).
-  it("문서 열 머리의 캡슐이 판 폴더까지 말한다", () => {
+  // 결정 104. basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다. spec 열의 머리는 문서의 경로 줄이라(codex-ds
+  // 스펙 §6 「분할」) 캡슐이 `slug › spec › 판 폴더 › 파일`을 조각마다 말한다.
+  it("spec 열 머리가 경로 줄이고 그 캡슐이 판 폴더까지 말한다", () => {
     const html = render(withSpec, "spec", "lr");
     const head = html.slice(html.indexOf('data-column="spec"')).match(/^[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(head).toMatch(/^data-column="spec"[^>]*data-slot="path-bar"/);
     const pieces = [...head.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
     expect(pieces).toEqual([work.slug, "spec", "05-분할-뷰", "spec.md"]);
   });
@@ -1348,16 +1400,17 @@ describe("분할 뷰", () => {
     expect(countOf(render(withSpec, "terminal", "rl"), "data-column=")).toBe(2);
   });
 
-  // 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다. 원문 전환은 **늘 문서 카드 머리 하나에** 선다(ui-refresh 판 04) —
-  // 한때 분할이면서 패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다. 토글이 패널을 떠났으니 갈래가 필요 없다.
-  it("원문 전환이 문서 카드 머리에 늘 하나 선다", () => {
+  // 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다. 원문 전환은 **늘 문서의 경로 줄 하나에** 선다(ui-refresh 판 04 ·
+  // codex-ds 스펙 §4) — 한때 분할이면서 패널이 접혔을 때만 열 머리에 서던 갈래(결정 106)는 걷혔다. 토글이 패널을 떠났으니 갈래가
+  // 필요 없다.
+  it("원문 전환이 문서의 경로 줄에 늘 하나 선다", () => {
     const LABEL = 'aria-label="원문 보기"';
-    // 분할 — 패널이 접혀 있어도(결정 88) 열려 있어도 같은 자리다. 그 자리가 문서 열의 머리다.
+    // 분할 — 패널이 접혀 있어도(결정 88) 열려 있어도 같은 자리다. 그 자리가 spec 열의 머리(경로 줄)다.
     const split = render(withSpec, "spec", "lr");
     expect(countOf(split, LABEL)).toBe(1);
     const head = split.slice(split.indexOf('data-column="spec"'), split.indexOf('data-column="terminal"'));
     expect(head).toContain(LABEL);
-    // 단일 뷰 — 문서 카드의 머리다.
+    // 단일 뷰 — 문서 카드 탭 줄 아래의 경로 줄이다.
     expect(countOf(render(withSpec, "spec", null), LABEL)).toBe(1);
     // 갈래의 표식이 남아 있지 않다.
     expect(split).not.toContain("data-column-source");
@@ -1368,6 +1421,17 @@ describe("분할 뷰", () => {
     const html = render(withSpec, "spec", "lr");
     expect(countOf(html, 'aria-label="spec 열 닫기"')).toBe(1);
     expect(countOf(html, 'aria-label="terminal 열 닫기"')).toBe(1);
+  });
+
+  // 터미널 열의 머리는 따로 서지 않는다 — 그 열의 머리가 탭 줄이다(codex-ds 스펙 §4). 그 열을 닫는 `×`는 줄 오른쪽 끝 묶음
+  // (`data-tab-actions`)에 서고, 열 머리를 집는 표식(`data-column`)도 그 줄이 든다.
+  it("터미널 열의 머리가 탭 줄이고, 그 열을 닫는 `×`가 줄 오른쪽 끝에 선다", () => {
+    const row = tabRowOf(render(withSpec, "spec", "lr"));
+    expect(row).toMatch(/^<div[^>]*data-column="terminal"/);
+    expect(row.slice(row.indexOf("data-tab-actions"))).toContain('aria-label="terminal 열 닫기"');
+    // 단일 뷰의 줄에는 조작 묶음이 없다 — 상태 · ⋯ · 분할은 머리 카드에 선다.
+    expect(tabRowOf(render(withSpec, "terminal", null))).not.toContain("data-tab-actions");
+    expect(tabRowOf(render(withSpec, "terminal", null))).not.toContain("data-column=");
   });
 
   // 결정 86. 뷰 탭이 있던 자리다 — 단일 뷰에도 있어야 켤 수 있다.
@@ -1401,7 +1465,7 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
   // 새로고침·링크로 **분할인 채 들어오는** 길이 있고, 그때는 「켠 순간」이 한 번도 안 돈다.
   // 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸」이 그대로 재현된다.
   //
-  // 접혔다는 것은 **레일의 패널 토글 이름이 「펼치기」인 것**으로 보인다(이름이 상태를 탄다 — ui-refresh 결정 9).
+  // 접혔다는 것은 **머리 줄의 패널 토글 이름이 「펼치기」인 것**으로 보인다(이름이 상태를 탄다 — ui-refresh 결정 9).
   it("분할인 채 들어와도 3열로 서지 않는다", () => {
     const withSpec = specDocs(["05-분할-뷰/spec.md"]);
     expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업 패널 펼치기"')).toBe(1);
@@ -1436,7 +1500,6 @@ function renderEmpty(projects: ProjectView[] = []): string {
           selectedSlug={null}
           currentFile={null}
           onSelectFile={() => {}}
-          onOpenProject={() => {}}
           tab="spec"
           onSelectTab={() => {}}
           code={null}
@@ -1529,14 +1592,14 @@ describe("프로젝트를 고르는 `+`", () => {
 // 확인 대화의 문장은 `askDanger` 프로미스 뒤에 있어 이 저장소의 정적 마크업 seam에 아예
 // 안 걸린다 — 낱말의 계약은 `work-menu-copy.test.ts`가 글자까지 재고, 여기서 보는 것은
 // **화면이 그 표를 부르는가**뿐이다(`work-sections`·`archive-copy`와 같은 나눔).
-describe("⋯ 메뉴의 확인 대화", () => {
+describe("work 메뉴의 확인 대화", () => {
   it("문장을 손으로 안 적고 표에서 꺼낸다", () => {
-    const worksPage = source("WorksPage.tsx");
-    expect(worksPage).toContain("ARCHIVE_CONFIRM_BODY");
-    expect(worksPage).toContain("REMOVE_CONFIRM_BODY");
+    const menuActions = source("work-menu-actions.ts");
+    expect(menuActions).toContain("ARCHIVE_CONFIRM_BODY");
+    expect(menuActions).toContain("REMOVE_CONFIRM_BODY");
     // **리터럴이 남아 있으면 안 된다.** 표를 부르면서 옛 문장을 그대로 둔 판은 위 두 줄로는
     // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
-    expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");
-    expect(worksPage).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
+    expect(menuActions).not.toContain("워크트리 폴더가 정리돼요");
+    expect(menuActions).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
   });
 });

@@ -1,5 +1,7 @@
-import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
-import { Card, CardHead, Frame } from "@/components/shell/Frame";
+import { createContext, Fragment, useContext, useEffect, useId, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { SettingsIcon } from "lucide-react";
+import { Card, Frame } from "@/components/shell/Frame";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -185,58 +187,82 @@ const THEME_LABELS: Record<TerminalTheme, string> = {
 };
 
 /**
- * 설정 항목마다 본문에 서는 조각. **항목 표(`SETTINGS_ITEMS`)의 key 전부를 받는 `Record`다** — 항목을
- * 하나 더하고 본문을 잊으면 사이드바에 항목만 서고 본문이 비는데, 이 모양이면 그 자리에서 L0가
+ * 설정 항목마다 본문에 서는 조각(`body`)과, 그 쪽에 저장이 있는가(`saves`). **항목 표(`SETTINGS_ITEMS`)의 key 전부를 받는
+ * `Record`다** — 항목을 하나 더하고 본문을 잊으면 사이드바에 항목만 서고 본문이 비는데, 이 모양이면 그 자리에서 L0가
  * 빨개진다.
+ *
+ * `saves`면 머리 카드에 저장 자리(`HeadActionsSlot`)가 선다 — 조각의 `SaveButton`이 그리로 간다. 저장이 없는 쪽에는 그 자리를 안
+ * 세운다: 빈 자리라도 머리 카드에 할 일 묶음이 서면 「할 일이 있다」는 표식(`data-head-actions`)이 거짓말을 한다. 저장이 있는 쪽을
+ * `false`로 두면 저장 버튼이 갈 곳이 없어 안 선다(L3 `settings-save`가 잡는다).
  */
-const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
-  terminal: () => (
-    <SettingsFileGate>{(settings) => <TerminalSettingsPage initial={settings} />}</SettingsFileGate>
-  ),
-  notifications: () => (
-    <SettingsFileGate>
-      {(settings) => <NotificationSettingsPage initial={settings} />}
-    </SettingsFileGate>
-  ),
+const ITEM_PAGES: Record<SettingsItemKey, { body: () => ReactNode; saves: boolean }> = {
+  terminal: {
+    body: () => <SettingsFileGate>{(settings) => <TerminalSettingsPage initial={settings} />}</SettingsFileGate>,
+    saves: true,
+  },
+  notifications: {
+    body: () => <SettingsFileGate>{(settings) => <NotificationSettingsPage initial={settings} />}</SettingsFileGate>,
+    saves: true,
+  },
   // **읽기 실패의 게이트가 없다.** 이 항목이 고치는 것은 `~/.atelier/settings.json`이 아니라
-  // 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔 이유가 없다.
-  hooks: () => <AgentHooksPage />,
+  // 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔 이유가 없다. 설치 · 제거는 누르면 바로 적용되어 저장이 없다.
+  hooks: { body: () => <AgentHooksPage />, saves: false },
   // **이 항목도 게이트가 없다** — 레이아웃은 `settings.json`에 살지 않고(spec 레이아웃 결정 25) 설정
-  // 초안의 저장 버튼도 지나지 않는다. 우리 파일이 깨져 있다고 레이아웃을 못 볼 이유가 없다.
-  "spec-layout": () => <SpecLayoutPage />,
+  // 초안의 저장 버튼도 지나지 않는다. 우리 파일이 깨져 있다고 레이아웃을 못 볼 이유가 없다. 저장은 편집기의 것이다.
+  "spec-layout": { body: () => <SpecLayoutPage />, saves: false },
 };
 
 /**
- * 설정 항목 하나의 화면(UI개선 결정 22). 머리는 `Settings › 터미널`이고 본문은 그 항목 하나다.
+ * 머리 카드의 할 일 자리 — 쪽 조각이 제 저장 버튼을 그리로 보낸다(`SaveButton`, 포털). 저장은 쪽의 초안과 함께 살아야 해서
+ * (`useSectionSave` — 결정 26) 버튼을 그리는 것은 조각이고, 서는 자리는 머리 카드다(codex-ds 스펙 §7 · 스토리 60). 조각을 머리 쪽으로
+ * 끌어올리면 초안이 항목 페이지 밖으로 나가 항목을 옮겨도 남는다 — 그래서 자리만 내려보낸다. 그 자리가 아직 그려지지 않았거나
+ * 저장이 없는 쪽이면(`ITEM_PAGES`의 `saves`) `null`이다.
+ */
+const HeadActionsSlot = createContext<HTMLElement | null>(null);
+
+/**
+ * 설정 항목 하나의 화면(UI개선 결정 22). 머리 카드는 「Settings」 · 항목 이름과 그 쪽의 저장이고(codex-ds 스펙 §7), 본문은 그 항목 하나다.
  *
  * **초안은 항목 페이지 안에 산다**(결정 26) — 항목을 옮기면 주소가 바뀌어 페이지가 내려가고,
  * 저장 안 한 편집이 함께 버려진다. 경고하지 않는다: 설정 화면을 떠날 때 이미 그랬고, 같은 규칙이
  * 항목 경계에도 걸리는 것이다.
  */
 function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
+  // 머리 카드의 할 일 자리에 놓는 그릇 — 제 상자가 없어(`contents`) 보낸 버튼이 할 일 묶음의 자식처럼 선다. 저장이 있는 쪽에만
+  // 선다(`ITEM_PAGES`의 `saves`) — 저장이 없는 쪽(에이전트 훅 · spec 레이아웃)의 머리 카드에는 할 일 묶음이 없다.
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
+  const page = ITEM_PAGES[item];
   return (
-    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 바탕 줄은 비어 있는 끌기 줄이고(ui-refresh 결정 5), 위치는 카드 머리의
-    // `Crumbs[Settings, 항목]`이다. 몸은 설정 틀(`SettingsGroup.tsx`)이다 — 큰 제목 → 구획 → 묶음.
-    <Frame sidebarOpen={sidebarOpen}>
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 위치(「Settings」 · 항목 이름)와 쪽의 저장은 머리 줄의 머리 카드에 서고 —
+    // 이름은 설정 nav와 같은 표(`SETTINGS_ITEMS`)에서 읽는다 — 카드 안에 고를 것이 없어 본문 카드에는 머리가 없다. 몸은 설정 틀
+    // (`SettingsGroup.tsx`)이다 — 큰 제목 → 구획 → 묶음. 쪽 단위의 「기본값으로」는 지금 앱에 없어 머리에 서지 않는다(행 안의
+    // 「기본값으로」는 그 행의 것이다 — 예외 목록).
+    <Frame
+      sidebarOpen={sidebarOpen}
+      head={{
+        icon: SettingsIcon,
+        name: "Settings",
+        sub: [settingsItem(item).label],
+        actions: page.saves ? <span ref={setActionsSlot} className="contents" /> : undefined,
+      }}
+    >
       {/* 카드가 `relative`라 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
           본문이 아니라 이 카드의 바닥에 선다. */}
-      <Card
-        as="main"
-        label="Settings"
-        className="flex-1"
-        head={<CardHead crumbs={["Settings", settingsItem(item).label]} />}
-      >
-        <div className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
+      <Card as="main" label="Settings" className="flex-1">
+        {/* 옆은 글 거터 20이다(DS `.at-set` — 문서 글과 같은 거터). 위 24 · 아래 48과 글 폭은 설정 틀의 몸(`SettingsBody`)이 든다. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 scroll-quiet">
           {/* 읽는 중 · 읽지 못한 갈래도 이 틀 안에 선다 — 큰 제목은 늘 있고, 그 아래만 갈래마다 다르다. */}
           <SettingsBody>
-            {/* **제목 역할은 이 큰 제목이 진다.** 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자라, 이것이 없으면
+            {/* **제목 역할은 이 큰 제목이 진다.** 머리 카드의 위치는 제목 역할이 없는 글자라, 이것이 없으면
                 페이지에 제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. 한때 감춘 줄(`sr-only`)이었고
                 설정 틀이 서며 보이는 큰 제목이 됐다 — 요소와 레벨은 그대로다(판 06 티켓 06). */}
-            <h2 className="text-title">{settingsItem(item).label}</h2>
+            <h2 className="text-heading-lg">{settingsItem(item).label}</h2>
             {/* **항목이 곧 key다.** 두 항목의 본문이 같은 게이트로 시작해, key가 없으면 React가
                 항목을 옮길 때 게이트를 이어 써 옛 사본을 들고 파일을 다시 안 읽을 수 있다 —
                 항목마다 새로 서야 초안도 사본도 따라오지 않는다(위 결정 26). */}
-            <Fragment key={item}>{ITEM_BODIES[item]()}</Fragment>
+            <HeadActionsSlot.Provider value={actionsSlot}>
+              <Fragment key={item}>{page.body()}</Fragment>
+            </HeadActionsSlot.Provider>
           </SettingsBody>
         </div>
       </Card>
@@ -285,11 +311,11 @@ function SettingsFileGate({
     // 큰 제목 아래 구획 자리에 선다(설정 틀) — 묶음 대신 까닭과 「다시 읽기」다.
     return (
       <div className="mt-7 flex flex-col items-start gap-3">
-        <p className="text-ui break-words text-red-600">{readError}</p>
-        <p className="text-ui text-muted-foreground">
+        <p className="text-chat-meta break-words text-danger">{readError}</p>
+        <p className="text-chat-meta text-fg-secondary">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
-        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
+        <Button variant="ghost" size="xs" onClick={() => setAttempt((n) => n + 1)}>
           다시 읽기
         </Button>
       </div>
@@ -415,6 +441,7 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
 
   return (
     <div role="group" aria-label="터미널 설정">
+      <SaveButton {...section.button(enabled)} />
       <TerminalSection
         settings={view}
         sizeText={sizeText}
@@ -428,7 +455,6 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
         onChange={changeExceptions}
         onReset={resetExceptions}
       />
-      <SaveButton {...section.button(enabled)} />
     </div>
   );
 }
@@ -513,8 +539,8 @@ function NotificationSettingsPage({ initial }: { initial: Settings }) {
 
   return (
     <div role="group" aria-label="알림 설정">
-      <NotificationSection settings={view} granted={granted} onChange={change} />
       <SaveButton {...section.button(enabled)} />
+      <NotificationSection settings={view} granted={granted} onChange={change} />
     </div>
   );
 }
@@ -571,7 +597,12 @@ function AgentHooksPage() {
   );
 }
 
-/** 구획 하나의 저장 버튼과 그 저장이 실패한 까닭 — 설정 틀의 바닥 줄이다(오른쪽 끝, 실패 글은 그 왼쪽). */
+/**
+ * 구획 하나의 저장 버튼과 그 저장이 실패한 까닭. **버튼은 머리 카드의 할 일 자리에 선다**(`HeadActionsSlot` — codex-ds 스펙 §7) — 어느
+ * 쪽이든 저장을 같은 자리에서 찾는다(스토리 60). 그리는 것은 이 조각이라 초안 · 저장 규칙(「쓰는 순간의 최신에 자기 칸만 덮는다」,
+ * `save-section.ts`)은 그대로다. 실패 글은 몸에 남아 큰 제목 바로 아래(조각의 맨 위)에 선다 — 머리 카드는 24 한 줄이라 긴 까닭이
+ * 들어가지 않고, 몸의 맨 위가 누른 버튼에서 가장 가깝다.
+ */
 function SaveButton({
   enabled,
   saving,
@@ -583,14 +614,19 @@ function SaveButton({
   error: string | null;
   onSave: () => void;
 }) {
+  const slot = useContext(HeadActionsSlot);
   return (
-    <SettingsFoot>
-      {error !== null && <span className="text-ui text-red-600">{error}</span>}
-      {/* 주 버튼(Button의 기본) — 프로젝트 빈 화면의 「프로젝트 등록」과 한 규격이다. */}
-      <Button onClick={onSave} disabled={!enabled}>
-        {saving ? "저장 중…" : "저장"}
-      </Button>
-    </SettingsFoot>
+    <>
+      {error !== null && <p className="mt-2.5 text-chat-meta break-words text-danger">{error}</p>}
+      {slot !== null &&
+        createPortal(
+          // 주 버튼(Button의 기본 — DS `.at-btn.top.primary`)이고 머리 카드의 글자 버튼 단(`top` — 24)이다. 편집기의 [저장]과 같은 규격이다.
+          <Button size="top" onClick={onSave} disabled={!enabled}>
+            {saving ? "저장 중…" : "저장"}
+          </Button>,
+          slot,
+        )}
+    </>
   );
 }
 
@@ -693,7 +729,7 @@ export function TerminalSection({
                 placeholder="기본"
                 onChange={(e) => onChangeSize(e.target.value)}
               />
-              <span className="text-ui text-muted-foreground">px</span>
+              <span className="text-chat-meta text-fg-secondary">px</span>
             </Field>
           }
         />
@@ -723,7 +759,9 @@ export function TerminalSection({
 
         {/* 미리보기 — **필수다**(결정 52). 글꼴 이름을 잘못 적으면 오류 없이 폴백으로 그려지는
             조용한 실패를, 저장하기 전에 눈에 보이게 만드는 값싼 길이다. 색도 고른 테마의 것을
-            그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. */}
+            그대로 쓴다 — 「어둡게」가 실제로 어떤 어둠인지는 이름으로 알 수 없다. 밝은 테마의 바탕은
+            흰 묶음과 같은 흰색이라, 가장자리는 안쪽 1px `border-light` 링이 세운다(코드 상자 `.at-code`와 같은 링). 좌우 안쪽은
+            터미널 카드와 같은 16이다(DS `Terminal` 「안쪽 16」) — 셸 화면이 카드 끝에서 서는 자리 그대로 글자가 선다. */}
         <SettingsRow
           name="미리보기"
           below={
@@ -736,7 +774,7 @@ export function TerminalSection({
                 // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
                 fontSize: `${fontSize ?? FONT_SIZE}px`,
               }}
-              className="flex min-h-[52px] items-center overflow-x-auto rounded-card px-[18px] leading-[1.6] whitespace-pre scroll-quiet"
+              className="flex min-h-[52px] items-center overflow-x-auto rounded-2xl px-4 leading-[1.6] whitespace-pre inset-ring inset-ring-border-light scroll-quiet"
             >
               {PREVIEW_LINE}
             </div>
@@ -791,8 +829,8 @@ export function ProcessExceptionsSection({
             </>
           }
           control={
-            // 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · sm) — 주 버튼은 저장 하나다.
-            <Button variant="ghost" size="sm" onClick={onReset} disabled={isDefault}>
+            // 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · xs) — 주 버튼은 저장 하나다.
+            <Button variant="ghost" size="xs" onClick={onReset} disabled={isDefault}>
               기본값으로
             </Button>
           }
@@ -806,10 +844,10 @@ export function ProcessExceptionsSection({
                 onChange={(e) => onChange(e.target.value)}
                 rows={3}
                 spellCheck={false}
-                className={cn(textareaLook, "min-h-20 font-mono text-mono disabled:opacity-40")}
+                className={cn(textareaLook, "min-h-20 font-mono text-code disabled:opacity-40")}
               />
               {defaultsFailed && (
-                <span className="text-ui text-red-600">기본 목록을 읽지 못했어요.</span>
+                <span className="text-chat-meta text-danger">기본 목록을 읽지 못했어요.</span>
               )}
             </div>
           }
@@ -881,7 +919,7 @@ export function NotificationSection({
             granted === false ? (
               // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
               // 아니라 OS가 안 준 것이라, 사람이 갈 곳을 적는 것이 이 줄이 하는 일 전부다.
-              <p className="text-ui text-muted-foreground">
+              <p className="text-chat-meta text-fg-secondary">
                 macOS가 알림 권한을 안 줬어요. 시스템 설정 › 알림에서 아틀리에를 켜 주세요.
               </p>
             ) : undefined
@@ -963,7 +1001,7 @@ export function HooksSection({
         {/* **아래 글자가 「더해지는 것」임을 말한다.** claude 쪽 미리보기는 설정이 비어
             있을 때의 결과 파일이라, 이 줄이 없으면 예순 줄짜리 설정을 가진 사람에게는
             「내 파일이 이걸로 바뀐다」로 읽힌다 — 이 구획이 없애려던 그 불안이다. */}
-        아래는 <strong className="font-medium text-foreground">더해지는 부분</strong>이에요 — 이미 있는
+        아래는 <strong className="font-medium text-fg">더해지는 부분</strong>이에요 — 이미 있는
         내용은 그대로 두고 여기에만 얹어요.
       </SettingsLead>
 
@@ -975,21 +1013,22 @@ export function HooksSection({
             <SettingsRow
               key={status.agent}
               name={status.agent}
-              description={<span className="font-mono text-mono-sm">{status.path}</span>}
+              description={<span className="font-mono text-xs">{status.path}</span>}
               // 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다.
-              control={<span className="text-ui font-medium whitespace-nowrap">{hookStateLabel(status)}</span>}
+              control={<span className="text-chat-meta font-medium whitespace-nowrap">{hookStateLabel(status)}</span>}
               below={
                 <div className="flex flex-col gap-2">
-                  {status.error !== null && <p className="text-ui break-words text-red-600">{status.error}</p>}
+                  {status.error !== null && <p className="text-chat-meta break-words text-danger">{status.error}</p>}
                   {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
                       낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
                       경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
                       두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
                   {status.writeError !== null && status.writeError !== status.error && (
-                    <p className="text-ui break-words text-red-600">{status.writeError}</p>
+                    <p className="text-chat-meta break-words text-danger">{status.writeError}</p>
                   )}
-                  {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 옅은 면 위의 흰 면이다. */}
-                  <pre className="max-h-[168px] overflow-auto rounded-card bg-card px-4 py-3 text-mono scroll-quiet">
+                  {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). 모양은 문서의 코드 블록과 같은 DS `.at-code`다 —
+                      흰 묶음 위의 코드 면(`surface-code`) · `radius-3xl` · 안쪽 1px `border-light` 링. */}
+                  <pre className="max-h-[168px] overflow-auto rounded-3xl bg-surface-code px-4 py-3 font-mono text-code inset-ring inset-ring-border-light scroll-quiet">
                     {status.preview}
                   </pre>
                 </div>
@@ -1000,9 +1039,10 @@ export function HooksSection({
       </SettingsSection>
 
       <SettingsFoot>
-        {error !== null && <span className="text-ui text-red-600">{error}</span>}
-        {/* 폼 버튼이다(10px 모서리 — handoff 「머리 버튼과 폼 버튼」). 저장 버튼(주 버튼)은 터미널 설정 · 알림 설정에만 있고,
-            이 둘은 그 자리를 안 지나는 별개의 쓰기다. 오른쪽 끝이 하는 일(설치)이다 — 프로토타입의 차례. */}
+        {error !== null && <span className="text-chat-meta text-danger">{error}</span>}
+        {/* 폼 버튼이다(10px 모서리 — handoff 「머리 버튼과 폼 버튼」). 저장 버튼(주 버튼)은 터미널 설정 · 알림 설정에만 있고
+            (머리 카드), 이 둘은 그것을 안 지나는 별개의 쓰기라 미리보기 바로 아래 몸에 남는다. 오른쪽 끝이 하는 일(설치)이다 —
+            프로토타입의 차례. */}
         <Button variant="ghost" onClick={onUninstall} disabled={busy}>
           제거
         </Button>

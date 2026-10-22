@@ -1,14 +1,14 @@
 # 번들한 글꼴 — `JetBrainsMonoNL Nerd Font`
 
-앱 안 터미널이 쓰는 글꼴이다. **앱 전체 모노(`--font-mono`)는 여전히 `Geist Mono`다** —
-여기 것이 가는 곳은 터미널 하나뿐이다.
+앱 안 터미널이 쓰는 글꼴이다. **앱 전체 모노(`--font-mono`)는 시스템 mono 줄이다**(SF Mono ·
+Menlo …, codex-ds 결정 3) — 여기 것이 가는 곳은 터미널 하나뿐이다.
 
 ## 무엇이 왜 여기 있나
 
-사용자의 셸 프롬프트와 상태줄이 Nerd Font 아이콘을 쓰는데 `Geist Mono`에는 그 글리프가 없다.
-그래서 앱 안 터미널에서 두부(￿)로 보였다. 지금 앱의 글꼴은 전부 `@fontsource-variable/*`로
-오지만 **Nerd Font 패치본은 fontsource에 없어서** 파일을 저장소에 넣고 `src/index.css`가
-`@font-face`로 직접 들인다.
+사용자의 셸 프롬프트와 상태줄이 Nerd Font 아이콘을 쓰는데 앱의 mono 글꼴(한때 `Geist Mono`, 지금은
+시스템 고정폭)에는 그 글리프가 없다. 그래서 앱 안 터미널에서 두부(￿)로 보였다. **앱이 들이는 글꼴은
+이 두 벌뿐이다** — 나머지 글자는 시스템 글꼴이라 들일 것이 없고, Nerd Font 패치본은 npm 패키지로도
+없어서 파일을 저장소에 넣고 `src/index.css`가 `@font-face`로 직접 들인다.
 
 | 파일 | 크기 | 무게 |
 | --- | --- | --- |

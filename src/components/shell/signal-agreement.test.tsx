@@ -24,8 +24,8 @@ import { SIGNAL_LABEL, SignalMeta } from "./shell-signal";
 
 // **세 자리가 한 사실을 말한다**(스토리 79). 사이드바 행(#203) · 알림 띠(#204) ·
 // 셸 탭(#205)은 어휘가 셋이다 — 점 · 줄 · 채움. 결정 6이 그것을 허락했다(「표면이 다르면
-// 문법이 달라도 된다」). 그런데 **색과 말은 하나여야 한다**: 같은 셸이 사이드바에서 앰버인데
-// 탭에서 초록이면 사람은 둘 중 무엇을 믿을지 알 수 없고, 그 어긋남은 세 파일 어디를 봐도
+// 문법이 달라도 된다」). 그런데 **색과 말은 하나여야 한다**: 같은 셸이 사이드바에서 기다림의 색인데
+// 탭에서 안 본 완료의 색이면 사람은 둘 중 무엇을 믿을지 알 수 없고, 그 어긋남은 세 파일 어디를 봐도
 // 안 보인다.
 //
 // **그물이 여기 따로 서는 이유가 그것이다.** 각 자리의 검사는 자기 마크업만 보므로
@@ -69,17 +69,30 @@ function 셸하나(kind: "waiting" | "done"): ShellsState {
 
 /**
  * 마크업이 쓴 **상태색의 가족**. `class` 속성 안의 낱말만 본다 — 마크업 전체에서 글자를 찾으면
- * work 제목이나 셸 이름에 든 `wait`·`done`이 색으로 세어진다.
+ * work 제목이나 셸 이름에 든 낱말이 색으로 세어진다.
  *
- * 이름을 미리 열거하지 않는 것이 요점이다: `bg-wait-soft`든 `ring-done-soft`든 앞으로 생길
- * 무엇이든 토큰 이름에 그 낱말이 있으면 여기 잡힌다. 열거해 두면 새 유틸리티가 조용히 샌다.
+ * 가족은 색의 **낱말**로 가른다(`shell-signal.tsx`의 `TONE`) — 기다림은 부름의 점 `dot-wait` · 무리 `wait-soft`와 잉크
+ * `warning`, 안 본 완료는 점 `dot-new` · 무리 `new-soft`와 잉크 `accent-solid`다. 이름을 미리 열거하지 않는 것이 요점이다:
+ * `bg-wait-soft`든 `ring-dot-new`든 앞으로 생길 무엇이든 토큰 이름에 그 낱말이 있으면 여기 잡힌다. 열거해 두면 새
+ * 유틸리티가 조용히 샌다. 옛 이름(`bg-done` · `text-done-ink` …)은 걷혀 CSS가 안 나오고, 다시 쓰는 것은
+ * `src/color-guard.test.ts`가 막는다.
+ *
+ * **`success`는 따로 한 가족이다.** 안 본 완료가 한때 그 색(초록)이었다 — 한 자리만 옛 색으로 남는 회귀가 「안 본 완료의
+ * 가족」으로 섞여 들어가면 세 자리가 다른 색을 말해도 초록이다.
  */
+const 가족낱말: Readonly<Record<"wait" | "new" | "success", readonly string[]>> = {
+  wait: ["warning", "wait"],
+  new: ["new", "accent-solid"],
+  success: ["success"],
+};
+
 function 색가족(markup: string): Set<string> {
   const out = new Set<string>();
   for (const [, value] of markup.matchAll(/class="([^"]*)"/g)) {
     for (const token of value.split(/\s+/)) {
-      if (token.includes("wait")) out.add("wait");
-      if (token.includes("done")) out.add("done");
+      for (const [family, words] of Object.entries(가족낱말)) {
+        if (words.some((word) => token.includes(word))) out.add(family);
+      }
     }
   }
   return out;
@@ -101,6 +114,7 @@ function 행(state: ShellsState): string {
       sections={splitWorkSections([WORK], { pinned: true, works: true })}
       open={{ pinned: true, works: true }}
       selectedSlug={null}
+      stop={null}
       shells={{
         shellCounts: { [WORK.slug]: 1 },
         signals,
@@ -123,6 +137,11 @@ function 행(state: ShellsState): string {
       lineY={null}
       litEmptySlot={null}
       onArmDrag={() => {}}
+      menuTarget={null}
+      renaming={null}
+      onRename={() => {}}
+      onRenameCommit={() => {}}
+      onRenameEnd={() => {}}
     />,
   );
 }
@@ -130,18 +149,19 @@ function 행(state: ShellsState): string {
 function 띠(state: ShellsState): string {
   return renderToStaticMarkup(
     <AttentionBand
-      items={bandRows(state).map((row) => ({ ...row, title: WORK.title }))}
+      items={bandRows(state).map((row) => ({ ...row, title: WORK.title, slug: WORK.slug }))}
       now={1000}
       expanded={false}
       onToggle={() => {}}
       onOpen={() => {}}
+      menuTarget={null}
     />,
   );
 }
 
 /**
  * **켜짐을 인자로 받는다.** 탭 물들임의 주 경로는 「다른 셸을 보는 동안 부르는 칸」 —
- * 즉 **안 켜진** 칸이고, 켜진 칸은 흰 면(`tab-on`)이 물러나고 테두리가 서는 유일한 자리라(결정 6)
+ * 즉 **안 켜진** 칸이고, 켜진 칸은 옅은 면(`tab-on`)이 물러나고 테두리가 서는 유일한 자리라(결정 6)
  * 색을 다시 고르기 가장 쉬운 자리다. 한쪽만 그리면 나머지 한쪽이 이 그물 밖에 남는다.
  *
  * `showing`이 거짓이면 그 화면의 셸 칸이 하나도 안 켜진다(`ShellTabs`의 그 prop) —
@@ -154,10 +174,12 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       owner={소유}
       projects={["atelier"]}
       defaultCwd={null}
-      spec={{ on: !켜짐, onSelect: () => {} }}
+      spec={{ on: !켜짐, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} }}
       showing={켜짐}
       onSelect={() => {}}
       onClose={() => {}}
+      onRename={() => {}}
+      onCloseOthers={() => {}}
       onOpen={() => {}}
       onDragTab={() => {}}
       slot={null}
@@ -182,7 +204,7 @@ describe("행·띠·탭이 같은 셸에 같은 것을 말한다", () => {
     for (const [자리, markup] of Object.entries(셋)) {
       // **정확히 그 가족 하나다.** 「그 색이 있다」만 보면 둘 다 쓰는 그림이 통과한다.
       expect([...색가족(markup)].sort(), `${자리} — 색`).toEqual([
-        kind === "waiting" ? "wait" : "done",
+        kind === "waiting" ? "wait" : "new",
       ]);
       expect([...말가족(markup)], `${자리} — 말`).toEqual([kind]);
     }

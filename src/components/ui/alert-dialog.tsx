@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-float·bg-popover, DS `.at-float`)에 폭 360px · 안쪽 20px(size 변형을 걷었다, DS `.at-dialog`), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·muted-foreground·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-2 — 가림막·창 상자·가운데 자리·머리·제목·설명·바닥은 창(dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다(설명의 whitespace-pre-line만 여기 것이다), Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(Codex `scrim`, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 떠 있는 면 bg-surface-elevated)에 DS 확인 창(`.at-dialog`)의 모양 — 폭 400 · 안쪽 20 · `radius-4xl` · `shadow-modal`(prominent + 2xl)(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-2, 제목 text-base font-medium→heading-xs(16/24 · 600 — DS README 「글자」 표의 확인 창 제목), 설명 muted→fg-secondary·whitespace-pre-line(P4 — 글자는 registry의 text-sm 그대로이고 값은 DS 14/20이다), 바닥 회색 띠→오른쪽 정렬 gap-2 — 가림막·창 상자·가운데 자리·머리·제목·설명·바닥은 창(dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다(설명의 whitespace-pre-line만 여기 것이다), Action·Cancel은 카드 안 버튼(Button 기본 크기 32 — DS 확인 창의 `.at-btn.sm`)이고 Cancel의 변형 outline→secondary(옅은 면 `fill-soft` — DS 확인 창의 「취소」). 아이콘 칸(Media)의 바탕 bg-muted→bg-fill-soft(5% — 같은 값).
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 import { cn } from "@/lib/utils"
@@ -57,7 +57,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         // Base UI Dialog는 모달임을 바깥의 `aria-hidden`으로만 말한다 — 창 자신이 말하게 둔다(S31).
         aria-modal="true"
-        // 창 상자와 가운데 자리 · 폭 · 안쪽은 이름 바꾸기 창(dialog의 default)과 같은 것이다.
+        // 창 상자와 가운데 자리 · 폭 · 안쪽은 `dialog`의 기본 변형(default)과 같은 것이다(`dialogLook.center`).
         className={cn(dialogLook.popup, dialogLook.center, className)}
         {...props}
       />
@@ -99,7 +99,7 @@ function AlertDialogMedia({
     <div
       data-slot="alert-dialog-media"
       className={cn(
-        "mb-2 inline-flex size-10 items-center justify-center rounded-lg bg-muted *:[svg:not([class*='size-'])]:size-6",
+        "mb-2 inline-flex size-10 items-center justify-center rounded-lg bg-fill-soft *:[svg:not([class*='size-'])]:size-6",
         className
       )}
       {...props}
@@ -136,14 +136,12 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
-  size = "dialog",
   ...props
 }: React.ComponentProps<typeof Button>) {
   return (
     <Button
       data-slot="alert-dialog-action"
       className={cn(className)}
-      size={size}
       {...props}
     />
   )
@@ -152,8 +150,8 @@ function AlertDialogAction({
 // 「취소」는 창을 닫는 버튼이다(Base UI Close). 누르면 창이 `onOpenChange(false)`로 알린다 — Esc와 같은 길이다.
 function AlertDialogCancel({
   className,
-  variant = "ghost",
-  size = "dialog",
+  variant = "secondary",
+  size,
   ...props
 }: AlertDialogPrimitive.Close.Props &
   Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {

@@ -15,6 +15,8 @@ import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/feat
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
+import { pressed } from "@/lib/hotkeys";
+import EditMenu from "./EditMenu";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
@@ -96,11 +98,36 @@ function AppShell() {
   // 같은 성질이기 때문이다: OS 메뉴가 웹뷰보다 먼저 먹는 것을 유리하게 쓰는 길.
   useEffect(() => {
     const unlisten = listen<string>("hotkey:menu", ({ payload: code }) => {
-      window.dispatchEvent(new KeyboardEvent("keydown", menuHotkeyInit(code)));
+      const init = menuHotkeyInit(code);
+      if (init) window.dispatchEvent(new KeyboardEvent("keydown", init));
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
+  }, []);
+
+  // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 자리만
+  // 제 메뉴를 연다 — work 대상(work 행 · 띠 줄 · 머리 카드 이름)과 셸 탭 · spec 탭은 제 `ContextMenuTrigger`가, 그 밖의 대상(프로젝트 ·
+  // Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행 · 문서 글)은 그 자리의 `TargetMenu`가, 입력칸 · 터미널은 편집
+  // 메뉴(`EditMenu`)가 연다. 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
+  // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.
+  // - **`preventDefault`만 부르고 전파는 안 끊는다.** document에 닿은 사건은 난 자리의 리스너(xterm의 우클릭 고름 …)를 이미 다
+  //   지났고, 같은 document에서 듣는 편집 메뉴는 이 막기와 상관없이 받는다. 대상의 Trigger · 자리는 기본 동작을 막고 사건을
+  //   멈추므로(React가 그 전파를 `#root`에서 끊는다) 그 우클릭은 여기까지 안 온다 — 막을 것이 이미 막혀 있다. 그 Trigger · 자리
+  //   안의 이름을 고치는 칸(사이드바 행 — `WorkContextMenu`의 `opensEditMenu`, 셸 탭 — `ShellTabs`의 `editing`, 프로젝트 목록 행 —
+  //   `TargetMenu`의 `opensEditMenu`)은 Trigger · 자리가 물러서 여기까지 오고, 다른 입력칸처럼 편집 메뉴가 연다.
+  // - **닿지 않는 곳이 하나 있다**: HTML 문서(`SpecViewer`의 `HtmlDoc`)는 same-origin이 없는 iframe이라 그 안의 우클릭은 부모까지
+  //   오지 않고, 거기서는 웹뷰 메뉴가 선다. 그 틈을 메우는 길 둘을 다 안 간다 — 구현 노트 Q5의 물러선 꼴(「iframe 안은 남는다」)이다.
+  //   - srcdoc에 막는 스크립트를 넣는 길: 껍데기는 발행 쪽에서 그대로 베낀 것이고 온전한 문서는 손대지 않고 통과한다(`SpecViewer`의
+  //     `htmlSrcdoc` — 그 파일의 결정 2). 스크립트를 넣으면 문서가 발행본과 갈린다.
+  //   - Rust에서 wry가 지은 WKWebView 클래스의 `willOpenMenu:withEvent:`를 고치는 길: 그 메뉴가 서는지를 L1도 L3(Playwright
+  //     WebKit — 네이티브 메뉴가 없다)도 못 잰다. 잴 수 없는 채로 남이 지은 클래스를 고치지 않는다.
+  // - **이 막기를 걷지 않는다**(결정 15 메모) — 웹뷰 메뉴가 오른쪽 버튼의 놓음을 삼키면 xterm의 끌기 리스너가 남아 셸로 엉뚱한
+  //   마우스 보고가 갔다.
+  useEffect(() => {
+    const block = (event: MouseEvent) => event.preventDefault();
+    document.addEventListener("contextmenu", block);
+    return () => document.removeEventListener("contextmenu", block);
   }, []);
 
   // **레이아웃 폴더가 바뀌면 그것에서 나온 화면이 따라온다**(spec 레이아웃 결정 22) — 설정의 「spec
@@ -164,13 +191,13 @@ function AppShell() {
     [router],
   );
 
-  // ⌘B는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
+  // ⌘B(단축키 표의 `sidebar`)는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
   // 그렇게 두는 근거는 이 키가 답을 요구하지 않기 때문이다(창은 그대로 서 있다). 그물은
   // L3 한 줄뿐이라(`search-palette.spec.ts`), 아래 게이트를 이 리스너로 끌어올리면 조용히
   // 죽는다.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === "KeyB") {
+      if (pressed(e, "sidebar")) {
         e.preventDefault();
         toggleSidebar();
       }
@@ -258,8 +285,21 @@ function AppShell() {
   return (
     <div
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
-      className="relative flex h-screen flex-col bg-background text-foreground"
+      className="relative flex h-screen flex-col bg-surface text-fg"
     >
+      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을
+          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
+          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
+          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석).
+
+          **DOM에서 사이드바보다 앞이다** — 창의 Tab이 창 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)에서 시작해 사이드바 →
+          머리 카드 → 본문 → 패널 → 레일로 간다(codex-ds 스펙 §9). 그림은 `absolute`라 자리와 겹침(z-20)이 DOM 차례를 타지
+          않는다 — 사이드바를 접어도 첫 조작이 화면 왼쪽 위의 그것이다. */}
+      <ShellControls
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        onOpenSearch={openSearch}
+      />
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
@@ -293,15 +333,6 @@ function AppShell() {
         />
         <Outlet />
       </div>
-      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을
-          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
-          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
-          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석). */}
-      <ShellControls
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={toggleSidebar}
-        onOpenSearch={openSearch}
-      />
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야
           하는 물음이 위다. 둘 다 `body` 끝의 포털로 서고 뜰 때 붙으므로, 나중에 뜬 확인 창이 늘
@@ -319,6 +350,9 @@ function AppShell() {
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />
+      {/* 입력칸 · 터미널의 편집 메뉴 — 앱 전체에 하나이고, 우클릭 · ⇧F10을 document에서 듣는다. 아무것도 감싸지 않는다 — 감싸면
+          그 밑의 메뉴가 모두 우클릭 메뉴의 줄처럼 군다(`EditMenu`, codex-ds 스펙 §9 · 구현 노트 Q12). */}
+      <EditMenu />
     </div>
   );
 }

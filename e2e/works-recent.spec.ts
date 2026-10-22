@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { SEARCH_HITS, WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 검색팔레트를연다 } from "./harness";
 
 // 결정 12·14. **work 화면이 떠 있게 되면 그 work을 「열었다」로 센다.**
 //
@@ -49,7 +49,7 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
   expect(await touched(page), "아무것도 안 바꿨는데 「열었다」가 또 나갔다").toEqual(afterOpen);
 
   // ── ② 문서를 바꾼다. 같은 work 안이라 「열었다」는 그대로여야 한다.
-  await page.keyboard.press("Meta+k");
+  await 검색팔레트를연다(page);
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");

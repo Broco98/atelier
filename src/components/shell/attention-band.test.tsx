@@ -16,6 +16,7 @@ const 줄 = (over: Partial<BandItem> = {}): BandItem => ({
   id: 1,
   owner: ownerOf("plain"),
   title: "그냥 일",
+  slug: "plain",
   shellName: null,
   kind: "waiting",
   since: 0,
@@ -28,7 +29,7 @@ const 줄들 = (n: number): BandItem[] =>
 
 const band = (
   items: BandItem[],
-  over: { expanded?: boolean; now?: number } = {},
+  over: { expanded?: boolean; now?: number; menuTarget?: string | null } = {},
 ) =>
   renderToStaticMarkup(
     <AttentionBand
@@ -37,6 +38,7 @@ const band = (
       expanded={over.expanded ?? false}
       onToggle={() => {}}
       onOpen={() => {}}
+      menuTarget={over.menuTarget ?? null}
     />,
   );
 
@@ -172,43 +174,66 @@ describe("줄 하나", () => {
     expect(이름들(markup)).toEqual(["그냥 일 — 나를 기다림"]);
   });
 
-  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS `.at-row-meta.wait`).
-  it.each([
-    ["waiting", "text-wait-ink"],
-    ["done", "text-done-ink"],
-  ] as const)("%s 줄의 경과는 상태색의 잉크다", (kind, ink) => {
-    expect(여는태그(band([줄({ kind })]), "data-elapsed")).toContain(ink);
+  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 두 갈래가 같은 `fg-secondary`다(codex-ds 스펙 S17 — DS
+  // 띠 줄 `.end`의 상태색 잉크는 글자 대비 바닥에 못 미친다. 대비는 L3 `works-sidebar`가 잰다).
+  it.each(["waiting", "done"] as const)("%s 줄의 경과는 fg-secondary다", (kind) => {
+    const 경과 = 여는태그(band([줄({ kind })]), "data-elapsed");
+    expect(경과).toContain("text-fg-secondary");
+    expect(경과).not.toMatch(/text-(?:warning|accent-solid)/);
   });
 });
 
 // **띠는 한 덩어리 상자다**(목업/행-신호-세-안.html의 `.strip`). 색과 모서리는 이제 디자인 시스템이
-// 정한다 — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `card`). 줄은
-// 종류로 무게가 갈린다(목업의 `.it` / `.it.d`만 muted). 상자가 없으면 띠가 아래 목록과 같은 평면에
+// 정한다 — 바탕 위의 흰 카드(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `surface` · 그림자 두 겹). 줄은
+// 종류로 무게가 갈린다(DS `.at-band .at-row` — 기다림 `fg` 500, 안 본 완료 한 단 옅은 `fg-secondary`). 상자가 없으면 띠가 아래 목록과 같은 평면에
 // 서고, 무게가 안 갈리면 「기다림 › 안 본 완료」가 점 색 하나에만 매달린다 — 「열여덟 행을 훑지 않고
 // 거기만 본다」(스토리 36)가 그 둘에 기댄다.
+// **줄의 우클릭 메뉴**(codex-ds 결정 6 · 7 · 11). 메뉴는 띠에 하나라(`Sidebar`의 `WorkContextMenu`) 줄은 「어느 work의 줄인가」를
+// 적고 「내가 대상인가」를 받을 뿐이다. 위쪽 Terminal의 셸은 work이 아니라 work 메뉴가 없다 — 그 줄은 work을 안 적어 우클릭이 대상을
+// 못 찾는다. 대상 표식은 **줄 하나**에 선다: 한 work에서 둘이 부르면 줄이 둘이고, 우클릭한 그 줄이 대상이다. 여닫음 · 테두리는 L3가
+// 잰다(`work-context-menu.spec.ts`).
+describe("줄의 우클릭 메뉴", () => {
+  const 줄태그 = (markup: string) => [...markup.matchAll(/<button[^>]*data-band-line="[^"]*"[^>]*>/g)].map(([tag]) => tag);
+
+  it("work 줄은 제 work을 적고, Terminal 줄은 안 적는다", () => {
+    const tags = 줄태그(band([줄({ id: 1, slug: "plain" }), 줄({ id: 2, owner: "", slug: null, title: "Terminal" })]));
+    expect(tags).toHaveLength(2);
+    expect(tags[0]).toContain('data-band-work="plain"');
+    expect(tags[1]).not.toContain("data-band-work");
+  });
+
+  it("대상 표식은 받은 줄 하나에만 선다 — 같은 work의 다른 줄에는 없다", () => {
+    const tags = 줄태그(band([줄({ id: 1 }), 줄({ id: 2 })], { menuTarget: "2" }));
+    expect(tags.map((tag) => tag.includes("data-menu-target"))).toEqual([false, true]);
+    expect(band([줄({ id: 1 })])).not.toContain("data-menu-target");
+  });
+});
+
 describe("띠는 목록 위에 뜬 상자다", () => {
+  // 그림자(DS `.at-band`의 두 겹 — `shadow-hairline` + `shadow-200`)는 칠해진 값으로 L3(`works-sidebar`)가 토큰과 맞댄다 — 여기서는 그
+  // 클래스 글자를 재지 않는다(구현-스펙 「클래스 문자열은 재지 않는다」).
   it("상자가 바닥색과 반지름을 든다", () => {
     const 상자 = 여는태그(band(줄들(1)), "data-band");
-    expect(상자).toContain("bg-card");
-    expect(상자).toContain("rounded-card");
+    expect(상자).toContain("bg-surface");
+    expect(상자).toContain("rounded-2xl");
   });
 
-  // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다. 점 색으로만
-  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다.
-  it("기다림 줄과 완료 줄의 무게가 갈린다", () => {
+  // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다(DS `.at-band .at-row.wait` — 진한 글자 500). 점 색으로만
+  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다. 무게(기다림 500 · 완료 400)는 칠해진 값으로 L3(`works-sidebar`)가 잰다.
+  it("기다림 줄과 완료 줄의 글자색이 갈린다", () => {
     const 줄태그 = (kind: "waiting" | "done") =>
       /<button[^>]*aria-label[^>]*>/.exec(band([줄({ kind })]))![0];
-    expect(줄태그("waiting")).not.toContain("text-muted-foreground");
-    expect(줄태그("done")).toContain("text-muted-foreground");
+    expect(줄태그("waiting")).not.toContain("text-fg-secondary");
+    expect(줄태그("done")).toContain("text-fg-secondary");
   });
 
-  // **hover가 바닥에 안 묻는다.** 줄의 hover는 상태 겹(`state-1`)이고 상자 바닥은 흰 카드다 —
-  // 바닥이 같은 겹이면 눌러도 되는 줄이라는 것을 화면이 안 말한다(바닥이 `state-1`이던 동안은 그래서
-  // 줄이 한 단 위 `state-2`를 썼다). 상자가 상태 겹을 바닥으로 들지 않는 것까지 함께 센다.
+  // **hover가 바닥에 안 묻는다.** 줄의 hover는 상태 겹(`fill-soft`)이고 상자 바닥은 흰 카드다 —
+  // 바닥이 같은 겹이면 눌러도 되는 줄이라는 것을 화면이 안 말한다(바닥이 같은 겹이던 동안은 그래서
+  // 줄이 한 단 위 `fill-hover`를 썼다). 상자가 상태 겹을 바닥으로 들지 않는 것까지 함께 센다.
   it("hover는 흰 바닥 위의 상태 겹이다", () => {
     const markup = band(줄들(4));
-    expect(여는태그(markup, "data-band")).not.toMatch(/\bbg-state-\d/);
-    expect(markup).toContain("hover:bg-state-1");
+    expect(여는태그(markup, "data-band")).not.toMatch(/(?<![\w-])bg-(?:fill-|state-\d)/);
+    expect(markup).toContain("hover:bg-fill-soft");
   });
 });
 

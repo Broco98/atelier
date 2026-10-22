@@ -207,7 +207,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
   // 아카이브 코어 호출을 붙잡아 「호출이 아직 안 돌아왔다」를 세운다.
   await holdCommand(page, "archive_work");
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
-  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이브", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
   await expect.poll(() => heldCalls(page, "archive_work")).toBe(1);
 
