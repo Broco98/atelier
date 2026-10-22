@@ -28,7 +28,8 @@ import {
 // 넷을 하나로 모았다 — `works-changed.spec.ts`), 그것을 여기 기대값으로 적으면 앱의 변경이 이 파일을 깬다.
 //
 // (5)는 뒤에 하네스로 올라온 도구다 — `works-changed.spec.ts`가 딛는 멎은 호출 수(`steadyCount`)가 멎지 않는 커맨드에서 끝없이
-// 기다리지 않고 센 수를 싣고 던지는지를 잰다.
+// 기다리지 않고 센 수를 싣고 던지는지를 잰다. 증거 문(`evidence.ts`)이 워커의 브라우저를 갈아 띄우는지는 `browser-recycle.spec.ts`가
+// 잰다.
 
 const [pinnedWork, plainWork] = WORKS;
 const [project] = PROJECTS;

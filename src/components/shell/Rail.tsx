@@ -54,8 +54,8 @@ function Rail<Id extends string>({
   return (
     <div data-tauri-drag-region className="box-content flex w-(--rail) shrink-0 flex-col items-center pr-(--gap)">
       <div data-tauri-drag-region className="flex h-(--titlebar-height) shrink-0 items-center">
-        {/* 패널 토글(ui-refresh 결정 9) — 왼쪽 사이드바 토글(`PanelLeft`)을 뒤집은 그림이다. 열렸으면 켜진 모양(흰 원)이고, 바탕
-            위 버튼이라 hover는 바탕의 한 단(`chrome-hover`)이다(DS `.at-rail-toggle` · `.at-icon-btn.on-chrome`). */}
+        {/* 패널 토글(ui-refresh 결정 9) — 왼쪽 사이드바 토글(`PanelLeft`)을 뒤집은 그림이다. 열렸으면 켜진 모양(흰 원)이고, hover는
+            아이콘 버튼의 hover(`quiet-hover` — `fill-hover` 한 겹 · 글자 `fg`, DS `.at-ib:hover`)다. 바탕 위라고 다른 면을 쓰지 않는다. */}
         <Hint
           text={open ? "작업 패널 접기" : "작업 패널 펼치기"}
           shortcut="⌘Enter"
@@ -66,20 +66,20 @@ function Rail<Id extends string>({
           aria-controls={controls}
           aria-keyshortcuts="Meta+Enter"
           className={cn(
-            "flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-chrome-hover hover:text-foreground",
-            open && "bg-card text-foreground",
+            "flex size-8 items-center justify-center rounded-full text-fg-secondary transition-colors quiet-hover focus-ring",
+            open && "bg-surface text-fg",
           )}
         >
-          <PanelRight className="size-4" strokeWidth={1.7} />
+          <PanelRight className="size-4" />
         </Hint>
       </div>
       {/* 칸 묶음 — 흰 알약 캡슐(안쪽 2px · 칸 사이 2px) 안의 28px 원 칸이라 캡슐 폭이 레일 폭(32)이다(DS `.at-rail-group`).
           이름은 패널(`작업 패널`)과 다르다 — 같으면 「작업 패널」로 집는 자리가 둘이 된다. 켜진 칸은 사이드바의 고른 행과 같은
-          `sidebar-accent`이고, 꺼진 칸의 hover(`quiet-hover`)는 꺼진 가지에만 둔다 — 켜진 칸에 겹치면 hover가 켜짐을 덮는다. */}
+          `fill-selected`이고, 꺼진 칸의 hover(`quiet-hover`)는 꺼진 가지에만 둔다 — 켜진 칸에 겹치면 hover가 켜짐을 덮는다. */}
       <div
         role="group"
         aria-label="레일"
-        className="flex flex-col gap-0.5 rounded-pill bg-card p-0.5 inset-ring inset-ring-border-pill"
+        className="flex flex-col gap-0.5 rounded-full bg-surface p-0.5 inset-ring inset-ring-border"
       >
         {items.map(({ id, label, icon: Icon }) => {
           const on = open && id === active;
@@ -93,11 +93,11 @@ function Rail<Id extends string>({
               aria-pressed={on}
               aria-controls={controls}
               className={cn(
-                "flex size-7 items-center justify-center rounded-full transition-colors",
-                on ? "bg-sidebar-accent text-foreground" : "text-tertiary quiet-hover",
+                "flex size-7 items-center justify-center rounded-full transition-colors focus-ring",
+                on ? "bg-fill-selected text-fg" : "text-fg-tertiary quiet-hover",
               )}
             >
-              <Icon className="size-4" strokeWidth={1.7} />
+              <Icon className="size-4" />
             </Hint>
           );
         })}

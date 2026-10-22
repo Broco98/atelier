@@ -9,7 +9,7 @@ const CELLS = ["doc", "source"] as const;
 // 지금 보고 있는 것이 **문서인가 원문인가**를 두 칸으로 말한다(결정 33).
 //
 // 한때 `</>` 하나가 켜졌다 꺼졌다. 그 판에서는 「지금 원문이다」와 「누르면 원문으로 간다」가
-// 한 버튼의 **농도 한 단계**에 걸려 있었다 — 켜짐(state-3)과 hover(state-2)의 차이가 그 말
+// 한 버튼의 **농도 한 단계**에 걸려 있었다 — 켜짐과 hover의 면 한 단 차이가 그 말
 // 전부라, 포인터를 얹은 채로는 둘이 사실상 같은 색이었다. 두 칸이면 어느 칸이 서 있는가가
 // 그 말을 대신한다: 색이 아니라 **자리**가 모드를 적는다.
 //
@@ -28,7 +28,7 @@ const CELLS = ["doc", "source"] as const;
 // 여기서는 그것을 **뒤집기**로 읽는다(S16 — 편집기의 종류 · 템플릿은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
 // 칸마다 네이티브 `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일
 // (`segment-group.tsx`)이 든다 — 카드 머리의 컨트롤이라 알약(`pill`)이다: 흰 캡슐 안에 원형 칸 둘이 서고, 선 칸은
-// `sidebar-accent` 원이다(ui-refresh 결정 7의 B).
+// `fill-selected` 원이다(ui-refresh 결정 7의 B).
 export function SourceToggle({
   on,
   locked = false,
@@ -52,10 +52,10 @@ export function SourceToggle({
       className={className}
     >
       <Segment value="doc" label="문서로 보기" locked={locked}>
-        <Eye className="size-3.5" strokeWidth={1.9} />
+        <Eye className="size-3.5" />
       </Segment>
       <Segment value="source" label="원문 보기" locked={locked}>
-        <CodeXml className="size-3.5" strokeWidth={2} />
+        <CodeXml className="size-3.5" />
       </Segment>
     </SegmentGroup>
   );

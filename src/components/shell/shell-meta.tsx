@@ -34,28 +34,28 @@ export function ShellMeta({
   if (shellCount <= 0) return null;
 
   return (
-    // **바깥의 `text-tertiary`는 아무 글자도 안 칠한다 — 그래도 남긴다.** 무리가 한 단 올린 색을
+    // **바깥의 `text-fg-tertiary`는 아무 글자도 안 칠한다 — 그래도 남긴다.** 무리가 한 단 올린 색을
     // 들므로(아래) 이 값은 덮이기만 하는데, 덮이는 그 순간이 곧 이 자리의 그물이다: 무리가 자기
-    // 색을 잃으면 글자가 곧장 tertiary로 떨어져 work 행 오른쪽 메타의 대비 검사(L3)가 빨개진다.
-    // 지우면 그때 색이 부모의 것(행 글자색 — `sidebar-foreground` · 고른 행 `foreground`)으로 조용히
+    // 색을 잃으면 글자가 곧장 fg-tertiary로 떨어져 work 행 오른쪽 메타의 대비 검사(L3)가 빨개진다.
+    // 지우면 그때 색이 부모의 것(행 글자색 `fg` — 고른 행도 같다)으로 조용히
     // 대체돼 **그 검사가 아무것도 못 잡는다.**
     //
     // 규격(가로 한 줄 · 글자 · 간격 · 오른쪽 여백)은 `row-meta` 하나다 — 신호 갈래(`SignalMeta`)가
     // 같은 칸에 번갈아 서며 같은 정의를 부른다(index.css).
-    <span className="row-meta text-tertiary">
+    <span className="row-meta text-fg-tertiary">
       {/* 「셸이 열려 있다」 — ⌘W로 닫을 셸을 찾던 길이 그 자리에 그대로 남는다. 글리프는 셸 탭이
           이름을 숨기는 폭에서 세우는 것과 같다(결정 20·4) — 두 자리가 같은 규칙을 쓰는 것이 「통일성」이다.
 
-          **색은 바깥보다 한 단 올린다.** 바깥의 tertiary를 물려받으면 사이드바 배경에서 ≈3.0이고,
+          **색은 바깥보다 한 단 올린다.** 바깥의 fg-tertiary를 물려받으면 사이드바 배경에서 ≈3.2이고,
           이 무리가 **가장 자주 서는** 메타라(셸은 열려 있는데 부르지도 돌지도 않는다) work 행 메타가
-          통째로 3.0으로 서던 자리다 — 두 줄 행을 연 판이 시작된 말이 「이 한 줄이 가독성이 안
+          통째로 그 대비로 서던 자리다 — 두 줄 행을 연 판이 시작된 말이 「이 한 줄이 가독성이 안
           좋다」였다. 그 대비를 L3가 계산해 잰다.
 
           **이름을 달지 않는다.** 표시 전용이고(결정 5 — 무리 하나가 셸 여럿을 접어 누르면 어느 셸로
           갈지 정해지지 않는다), `title`도 안 단다: work 행에 머물면 호버 카드가 떠서 OS 툴팁이 그
           위로 겹친다(핀 버튼과 같은 이유). */}
-      <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-        <SquareTerminal className="size-3 shrink-0" strokeWidth={1.8} />
+      <span className="flex shrink-0 items-center gap-1 text-fg-secondary">
+        <SquareTerminal className="size-3 shrink-0" />
         <span className="tabular-nums">{shellCount}</span>
       </span>
     </span>

@@ -109,7 +109,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           띠가 된다. 창 높이가 바뀌면 잉여도 0~19px에서 함께 바뀌므로 「16px」을 값으로 어디에도
           적어 두지 않는다. 셀 높이를 억지로 늘려 잉여를 없애는 안은 글꼴을 흔들어서 안 쓴다.
           **셸이 있을 때만 칠한다** — 0개인 화면까지 칠하면 결정 102의 안내가 커다란 어두운
-          판 위에 서고, 그 화면에는 덮을 잉여도 없다. 터미널 카드는 늘 셸 색이므로 그 화면은 아래 덮개가 카드 색(`bg-card`)으로
+          판 위에 서고, 그 화면에는 덮을 잉여도 없다. 터미널 카드는 늘 셸 색이므로 그 화면은 아래 덮개가 카드 색(`bg-surface`)으로
           덮는다. */}
       <div
         ref={hostRef}
@@ -126,14 +126,14 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           죽은 셸 화면의 첫 행이 가려지는 것이고, 그 행은 스크롤로 되찾을 수 있다.
 
           바탕을 앱 배경으로 두는 것은 지금 모습을 그대로 두려는 것이다: 이 줄은 예전에도
-          앱 배경 위의 `text-muted-foreground`였다. 바탕 없이 셸 위에 얹으면 `#565759`가
-          다크 셸 바탕 `#1e1e1e` 위 2.3:1로 묻힌다.
+          앱 배경 위의 보조 글자였다. 바탕 없이 셸 위에 얹으면 그 글자(어두운 글자의
+          70% — `fg-secondary`)가 다크 셸 바탕 `#181818` 위 1.03:1로 묻힌다.
 
           `pointer-events-none` — 겹친 만큼 xterm이 포인터를 잃으면 안 된다. */}
       {notice !== null && (
         <div
           data-shell-notice=""
-          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-background text-caption text-muted-foreground"
+          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-surface text-xs text-fg-secondary"
         >
           {notice}
         </div>
@@ -161,16 +161,16 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유).
           빈 화면 부품(Empty)은 그 덮개 **안에** 선다 — 덮개를 부품으로 갈아 끼우지 않는다.
 
-          **덮개가 카드 색으로 칠한다**(`bg-card`). 터미널 카드는 설정의 테마로 칠해져(판 04 기본값) 어둡게면 어두운 판인데,
+          **덮개가 카드 색으로 칠한다**(`bg-surface`). 터미널 카드는 설정의 테마로 칠해져(판 04 기본값) 어둡게면 어두운 판인데,
           그 위에 이 안내가 서면 글자가 묻힌다 — 위 집이 셸이 있을 때만 칠하는 것과 같은 까닭이다. */}
       {shells.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-card p-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface p-10">
           <Empty>
             <EmptyHeader>
               {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를
                   한 번에 잡게 한다. 칸 모양은 다른 빈 화면과 같은 부품의 것이다. */}
               <EmptyMedia variant="icon">
-                <SquareTerminal strokeWidth={1.6} />
+                <SquareTerminal />
               </EmptyMedia>
               <EmptyTitle>아직 셸이 없어요</EmptyTitle>
               <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>

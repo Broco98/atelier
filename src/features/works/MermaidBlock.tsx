@@ -1,16 +1,17 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
-// 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
-// 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 24px 아이콘 버튼과 같은 행에 오지 않는다.
-// 배경 농도만 스케일을 따른다.
+// 툴바 버튼 — 크기는 아이콘 버튼(`icon-button`) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
+// 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 아이콘 버튼과 같은 행에 오지 않는다.
+// 배경 농도만 스케일을 따르고, 포커스는 앱의 한 링(`focus-ring`)이다.
 //
 // 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
 const toolbarButtonQuiet =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-inner px-1 text-caption text-tertiary transition-colors quiet-hover";
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-md px-1 text-xs text-fg-tertiary transition-colors quiet-hover focus-ring";
 
 // 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
 // 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
@@ -47,9 +48,9 @@ function CopyCodeButton({ code }: { code: string }) {
   return (
     <Hint text="원본 mermaid 코드 복사" announce="name" type="button" onClick={onCopy} className={toolbarButtonQuiet}>
       {copied ? (
-        <Check className="size-3 text-green-700" strokeWidth={2.4} />
+        <Check className="size-3 text-success" strokeWidth={SMALL_GLYPH_STROKE} />
       ) : (
-        <Copy className="size-3" strokeWidth={2} />
+        <Copy className="size-3" />
       )}
     </Hint>
   );
@@ -159,10 +160,11 @@ function MermaidBlock({ code }: { code: string }) {
   }, [fullBody, size]);
 
   return (
-    // 카드 안 묶음(ui-refresh 결정 16) — 옅은 면 · `rounded-card` · 테두리 없음. 머리 줄과 그림 사이에도 선이 없다.
-    <div className="overflow-hidden rounded-card bg-group">
+    // 코드 블록이다 — 머리 줄을 든 DS `.at-code`: 코드 면(`surface-code`, DS 면 표의 「코드 블록」) · `radius-3xl`(20) · 안쪽 1px
+    // `border-light` 링(문서 본문의 코드 블록과 같은 값 — `SpecViewer`의 `pre`). 머리 줄과 그림 사이에는 선이 없다.
+    <div className="overflow-hidden rounded-3xl bg-surface-code inset-ring inset-ring-border-light">
       <div className="flex items-center justify-between px-2.5 py-1.5">
-        <span className="font-mono text-mono-sm text-tertiary">mermaid</span>
+        <span className="font-mono text-xs text-fg-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
@@ -202,18 +204,18 @@ function MermaidBlock({ code }: { code: string }) {
       </div>
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
-          <span className="text-ui text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-mono text-muted-foreground scroll-quiet">{code}</pre>
+          <span className="text-chat-meta text-danger">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
+          <pre className="overflow-x-auto font-mono text-code text-fg-secondary scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        // 면은 블록이 이미 든다 — 원본 코드는 같은 면 위에 바로 선다(코드 블록과 같은 안쪽 12 · 16, `text-mono` 13/20).
-        <pre className="overflow-x-auto px-4 py-3 font-mono text-mono text-muted-foreground scroll-quiet">{code}</pre>
+        // 면은 블록이 이미 든다 — 원본 코드는 같은 면 위에 바로 선다(코드 블록과 같은 안쪽 12 · 16, `text-code` 13/20).
+        <pre className="overflow-x-auto px-4 py-3 font-mono text-code text-fg-secondary scroll-quiet">{code}</pre>
       ) : (
         <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (
             <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
-            <span className="text-ui text-tertiary">렌더링 중…</span>
+            <span className="text-chat-meta text-fg-tertiary">렌더링 중…</span>
           )}
         </div>
       )}

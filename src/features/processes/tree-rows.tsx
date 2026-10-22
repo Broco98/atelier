@@ -3,6 +3,7 @@ import { ChevronRight, Ellipsis, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { keepAsException } from "./actions";
@@ -23,7 +24,7 @@ const COLUMNS = "grid grid-cols-[minmax(0,1fr)_136px_72px_152px_124px]";
  * 옅은 면 묶음(ui-refresh 결정 16, DS `.at-pr-block`) — 테두리 없이 면과 큰 반경으로 묶고 줄 사이 선이 없다. 작업은 하나마다 한
  * 묶음이고, 다른 구획은 구획의 줄이 한 묶음이다.
  */
-export const BLOCK = "flex flex-col rounded-card bg-group p-1";
+export const BLOCK = "flex flex-col rounded-2xl bg-surface-under p-1";
 
 /**
  * 열 머리(판 06 문구 표 R5) — 줄과 같은 격자 위의 이름 · 메모리 · CPU · 포트다. 숫자 열은 오른쪽 맞춤이다. 접근성 트리에서 감춘다 —
@@ -32,7 +33,7 @@ export const BLOCK = "flex flex-col rounded-card bg-group p-1";
  */
 export function ColumnHead() {
   return (
-    <div aria-hidden className={cn(COLUMNS, "mt-5 h-8 items-center px-1 text-caption text-muted-foreground")}>
+    <div aria-hidden className={cn(COLUMNS, "mt-5 h-8 items-center px-1 text-xs text-fg-secondary")}>
       <span className="pl-12.5">이름</span>
       <span className="pr-2 text-right">메모리</span>
       <span className="pr-2 text-right">CPU</span>
@@ -54,7 +55,7 @@ export function FoldChevron({ open }: { open: boolean }) {
       aria-hidden
       data-fold-chevron=""
       className={cn("size-3 shrink-0 transition-[rotate] duration-160 ease-panel", open && "rotate-90")}
-      strokeWidth={2.2}
+      strokeWidth={SMALL_GLYPH_STROKE}
     />
   );
 }
@@ -102,19 +103,19 @@ export function Section({
       render={<section aria-labelledby={id} />}
       className="mt-2 flex flex-col"
     >
-      <div className="relative flex h-8 min-w-0 items-center gap-1.5 rounded-lg pr-1 pl-1.5 hover:bg-state-1">
+      <div className="relative flex h-8 min-w-0 items-center gap-1.5 rounded-lg pr-1 pl-1.5 hover:bg-fill-soft">
         <h3 className="flex min-w-0 shrink-0">
-          <CollapsibleTrigger className="flex min-w-0 items-center gap-1.5 text-left text-ui font-semibold after:absolute after:inset-0 after:rounded-lg">
-            <span className="grid w-4.5 shrink-0 place-items-center text-tertiary">
+          <CollapsibleTrigger className="flex min-w-0 items-center gap-1.5 rounded-md text-left text-chat-meta font-semibold focus-ring after:absolute after:inset-0 after:rounded-lg">
+            <span className="grid w-4.5 shrink-0 place-items-center text-fg-tertiary">
               <FoldChevron open={fold.open} />
             </span>
-            <Icon aria-hidden className={cn("size-3.5 shrink-0", warn ? "text-wait-ink" : "text-tertiary")} />
+            <Icon aria-hidden className={cn("size-3.5 shrink-0", warn ? "text-warning" : "text-fg-tertiary")} />
             <span id={id} className="truncate">
               {title}
             </span>
           </CollapsibleTrigger>
         </h3>
-        <span className="ml-0.5 min-w-0 truncate text-caption text-muted-foreground">{note}</span>
+        <span className="ml-0.5 min-w-0 truncate text-xs text-fg-secondary">{note}</span>
         {/* 머리 줄을 덮은 트리거의 누르는 자리 위에 선다(`relative` — 같은 쌓임에서 뒤에 그려진다). */}
         <span className="relative ml-auto flex shrink-0 items-center gap-0.5">{action}</span>
       </div>
@@ -133,10 +134,10 @@ export function Section({
 export type RowKind = "work" | "shell" | "process" | "helper";
 
 const KIND: Record<RowKind, string> = {
-  work: "h-11 text-row font-medium",
-  shell: "h-8 text-ui",
-  process: "h-7.5 text-ui text-muted-foreground",
-  helper: "h-7 text-caption text-tertiary",
+  work: "h-11 text-sm font-medium",
+  shell: "h-8 text-chat-meta",
+  process: "h-7.5 text-chat-meta text-fg-secondary",
+  helper: "h-7 text-xs text-fg-tertiary",
 };
 
 /**
@@ -191,7 +192,7 @@ export function TreeRow({
       aria-level={level}
       aria-label={label}
       aria-expanded={fold?.open}
-      className={cn("group/row", COLUMNS, "items-center rounded-lg hover:bg-state-2", KIND[kind], className)}
+      className={cn("group/row", COLUMNS, "items-center rounded-lg hover:bg-fill-hover", KIND[kind], className)}
       {...rest}
     >
       <span className="flex min-w-0 items-center gap-1.5 self-stretch pl-1.5">
@@ -233,7 +234,7 @@ function FoldButton({ fold }: { fold: RowFold }) {
       type="button"
       aria-label={`${fold.name} ${fold.open ? "접기" : "펼치기"}`}
       onClick={fold.onToggle}
-      className="grid size-4.5 shrink-0 place-items-center rounded-inner text-tertiary transition-colors hover:bg-state-3 hover:text-foreground"
+      className="grid size-4.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-active hover:text-fg focus-ring"
     >
       <FoldChevron open={fold.open} />
     </button>
@@ -241,14 +242,15 @@ function FoldButton({ fold }: { fold: RowFold }) {
 }
 
 /**
- * 안내선 한 칸 — 18px 자리의 가운데에 1px 선. 칸 뒤의 틈(6)을 덜어 깊이마다 18px씩 들어간다. 선 색은 상태 겹 한 단(`state-3`)이다 —
- * 판 03 토큰에 선 전용 값이 없고, 옅은 면 위에서 프로토타입의 선(검정 10%)과 가장 가까운 단이다.
+ * 안내선 한 칸 — 18px 자리의 가운데에 1px 선. 칸 뒤의 틈(6)을 덜어 깊이마다 18px씩 들어간다. 선이라 면 알파(`fill-*`)가
+ * 아니라 선 토큰을 읽는다 — 짙은 선 `border-heavy`(검정 12%)다. 프로토타입의 선은 검정 10%이고, Codex 선 둘(`border` 8% ·
+ * `border-heavy` 12%) 가운데 이 선이 전부터 그리던 12%를 잇는 쪽이다.
  */
 function Guide() {
   return (
     <span
       aria-hidden
-      className="relative -mr-1.5 w-4.5 shrink-0 self-stretch before:absolute before:inset-y-0 before:left-2 before:w-px before:bg-state-3"
+      className="relative -mr-1.5 w-4.5 shrink-0 self-stretch before:absolute before:inset-y-0 before:left-2 before:w-px before:bg-border-heavy"
     />
   );
 }
@@ -274,7 +276,7 @@ function Figures({
   quiet: boolean;
 }) {
   const listed = formatPorts(metrics.ports);
-  const tone = quiet && "text-muted-foreground";
+  const tone = quiet && "text-fg-secondary";
   return (
     <>
       <span className={cn("flex items-center justify-end gap-2.5 pr-2 whitespace-nowrap", tone)}>
@@ -291,7 +293,7 @@ function Figures({
           {metrics.ports.map((port, at) => (
             <Fragment key={port}>
               {at > 0 && <span className="sr-only">{PORT_SEPARATOR}</span>}
-              <span className="inline-flex h-5 shrink-0 items-center rounded-inner bg-card px-1.5 font-mono text-mono-sm font-normal text-foreground inset-ring inset-ring-border-pill">
+              <span className="inline-flex h-5 shrink-0 items-center rounded-md bg-surface px-1.5 font-mono text-xs font-normal text-fg inset-ring inset-ring-border">
                 {formatPort(port)}
               </span>
             </Fragment>
@@ -310,8 +312,8 @@ function Figures({
  */
 function MemoryBar({ share }: { share: number }) {
   return (
-    <span aria-hidden className="h-1 w-12 shrink-0 overflow-hidden rounded-pill bg-state-3">
-      <span className="block h-full rounded-pill bg-primary" style={{ width: `${share}%` }} />
+    <span aria-hidden className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-fill-active">
+      <span className="block h-full rounded-full bg-accent" style={{ width: `${share}%` }} />
     </span>
   );
 }
@@ -327,12 +329,12 @@ export function memoryShare(part: number | null, whole: number | null | undefine
 
 /**
  * 줄 끝의 글자 버튼 — [이동] · [닫기] · [끝내기] · [정리] · [모두 닫기]가 같은 모양이다. **앱 버튼 부품의 조용한 글자 버튼이다**
- * (`Button` ghost · xs — 24px · `rounded-inner` · `text-caption`, `sidebar-active-band` 결정 1 · 2). hover는 한 단 짙은 상태 겹(`state-3`)이다 —
- * 줄의 hover(`state-2`) 위에서 버튼이 갈려 보여야 한다.
+ * (`Button` ghost · xs — 26px · `rounded-md` · `text-xs`, DS `.at-btn.xs` — `sidebar-active-band` 결정 1 · 2). hover는 한 단 짙은 상태 겹(`fill-active`)이다 —
+ * 줄의 hover(`fill-hover`) 위에서 버튼이 갈려 보여야 한다.
  */
 export function RowButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <Button variant="ghost" size="xs" onClick={onClick} className="hover:bg-state-3">
+    <Button variant="ghost" size="xs" onClick={onClick} className="hover:bg-fill-active">
       {children}
     </Button>
   );
@@ -345,9 +347,9 @@ export function RowButton({ onClick, children }: { onClick: () => void; children
  * **메뉴 부품(`DropdownMenu`)이 다 한다** — 작업 ⋯ · 셸 열기 `+`와 같은 부품이다. 첫 항목은 키보드로 열 때만 켜진다(Base UI의
  * 기본 — 마우스로 열면 팝업 자신이 포커스를 받는다. 셸 열기 `+`는 앱이 따로 켜 주지만(sidebar-active-band S10) 이 메뉴는 작업 ⋯처럼
  * 부품의 기본대로 둔다). Esc · 바깥 누르기는 닫기만 하고 포커스를 여는 버튼으로 돌려준다. 버튼은 이름이 없는 아이콘 버튼이라 툴팁 글자가 곧 이름이다(`Hint`, sidebar-active-band S28 — 작업
- * ⋯와 같다). 이 버튼을 감싸는 것에는 `title`을 걸지 않는다 — 브라우저 툴팁이 이 툴팁과 겹친다(명령줄은 이름 글자에 — `TreeRow`). 모양과 크기(24px)는 `icon-button` 한 곳이 든다. 켜짐이 있는 아이콘 버튼이라 hover는 꺼진
+ * ⋯와 같다). 이 버튼을 감싸는 것에는 `title`을 걸지 않는다 — 브라우저 툴팁이 이 툴팁과 겹친다(명령줄은 이름 글자에 — `TreeRow`). 모양과 크기(24px — 작은 단)는 아이콘 버튼 규격(`icon-button` · `icon-button-xs`)이 든다. 켜짐이 있는 아이콘 버튼이라 hover는 꺼진
  * 가지 안에만 둔다 — 줄 끝 글자 버튼(`RowButton`)과 같은 한 단 짙은 겹이다(줄의 hover 위에서 갈려 보이게). 항목의 모양 · 폭 · 굵기는
- * 부품의 기본값이다(DS `.at-menu-row` — 400) — 작업 ⋯ 메뉴와 같이 여기서 덧칠하지 않는다.
+ * 부품의 기본값이다(DS `.at-mi` — 400) — 작업 ⋯ 메뉴와 같이 여기서 덧칠하지 않는다.
  */
 export function RowMenu({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
@@ -359,8 +361,8 @@ export function RowMenu({ name }: { name: string }) {
         render={
           <DropdownMenuTrigger
             className={cn(
-              "icon-button transition-colors",
-              open ? "toggle-on" : "text-muted-foreground hover:bg-state-3 hover:text-foreground",
+              "icon-button icon-button-xs transition-colors focus-ring",
+              open ? "toggle-on" : "text-fg-secondary hover:bg-fill-active hover:text-fg",
             )}
           />
         }

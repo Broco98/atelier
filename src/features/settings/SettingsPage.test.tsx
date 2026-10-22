@@ -296,13 +296,13 @@ describe("셸을 닫아도 남길 프로세스", () => {
   });
 
   // 여러 줄 칸은 부품이 없어 클래스를 한 곳(`textareaLook`)에서 받는다 — 옮겨 적으면 한쪽만 고쳐져 여백이 갈린다. 이 자리 것은
-  // 고정폭 글자 단계(`text-mono`)뿐이고, 폭은 규격의 폭 가득(`w-full`)이다 — 설정 행의 아래 줄을 가득 쓴다(판 06 티켓 06).
+  // 고정폭 글자 단계(`text-code`)뿐이고, 폭은 규격의 폭 가득(`w-full`)이다 — 설정 행의 아래 줄을 가득 쓴다(판 06 티켓 06).
   // 폭은 **하나만** 실려야 한다 — 클래스를 `cn` 없이 이어 붙이면 둘이 함께 실리고, 어느 쪽이 이기는지는 CSS의 차례가 정한다.
   it("칸이 여러 줄 칸의 규격을 그대로 쓰고, 폭은 규격의 폭 가득 하나다", () => {
     const classes = /<textarea[^>]*class="([^"]*)"/.exec(renderExceptions())?.[1].split(" ") ?? [];
-    // 글자 단계(`text-ui`와 그 줄 높이)는 이 자리의 고정폭 단계가 갈아 낀다.
-    const look = textareaLook.split(" ").filter((name) => name !== "text-ui" && !name.startsWith("leading-"));
-    expect(classes).toEqual(expect.arrayContaining([...look, "font-mono", "text-mono"]));
+    // 글자 단계(`text-sm`)는 이 자리의 고정폭 단계가 갈아 낀다.
+    const look = textareaLook.split(" ").filter((name) => name !== "text-sm");
+    expect(classes).toEqual(expect.arrayContaining([...look, "font-mono", "text-code"]));
     // 앵커: 규격에 폭 가득이 있다 — 없으면 아래가 저절로 「폭이 없다」로 빨개진다.
     expect(textareaLook.split(" ")).toContain("w-full");
     expect(

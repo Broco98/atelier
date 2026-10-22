@@ -172,25 +172,26 @@ describe("줄 하나", () => {
     expect(이름들(markup)).toEqual(["그냥 일 — 나를 기다림"]);
   });
 
-  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS `.at-row-meta.wait`).
+  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS 띠 줄의 `.end` — 기다림
+  // `warning`, 안 본 완료 `accent-solid`).
   it.each([
-    ["waiting", "text-wait-ink"],
-    ["done", "text-done-ink"],
+    ["waiting", "text-warning"],
+    ["done", "text-accent-solid"],
   ] as const)("%s 줄의 경과는 상태색의 잉크다", (kind, ink) => {
     expect(여는태그(band([줄({ kind })]), "data-elapsed")).toContain(ink);
   });
 });
 
 // **띠는 한 덩어리 상자다**(목업/행-신호-세-안.html의 `.strip`). 색과 모서리는 이제 디자인 시스템이
-// 정한다 — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `card`). 줄은
-// 종류로 무게가 갈린다(목업의 `.it` / `.it.d`만 muted). 상자가 없으면 띠가 아래 목록과 같은 평면에
+// 정한다 — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `surface`). 줄은
+// 종류로 무게가 갈린다(목업의 `.it` / `.it.d`만 한 단 옅은 `fg-secondary`). 상자가 없으면 띠가 아래 목록과 같은 평면에
 // 서고, 무게가 안 갈리면 「기다림 › 안 본 완료」가 점 색 하나에만 매달린다 — 「열여덟 행을 훑지 않고
 // 거기만 본다」(스토리 36)가 그 둘에 기댄다.
 describe("띠는 목록 위에 뜬 상자다", () => {
   it("상자가 바닥색과 반지름을 든다", () => {
     const 상자 = 여는태그(band(줄들(1)), "data-band");
-    expect(상자).toContain("bg-card");
-    expect(상자).toContain("rounded-card");
+    expect(상자).toContain("bg-surface");
+    expect(상자).toContain("rounded-2xl");
   });
 
   // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다. 점 색으로만
@@ -198,17 +199,17 @@ describe("띠는 목록 위에 뜬 상자다", () => {
   it("기다림 줄과 완료 줄의 무게가 갈린다", () => {
     const 줄태그 = (kind: "waiting" | "done") =>
       /<button[^>]*aria-label[^>]*>/.exec(band([줄({ kind })]))![0];
-    expect(줄태그("waiting")).not.toContain("text-muted-foreground");
-    expect(줄태그("done")).toContain("text-muted-foreground");
+    expect(줄태그("waiting")).not.toContain("text-fg-secondary");
+    expect(줄태그("done")).toContain("text-fg-secondary");
   });
 
-  // **hover가 바닥에 안 묻는다.** 줄의 hover는 상태 겹(`state-1`)이고 상자 바닥은 흰 카드다 —
-  // 바닥이 같은 겹이면 눌러도 되는 줄이라는 것을 화면이 안 말한다(바닥이 `state-1`이던 동안은 그래서
-  // 줄이 한 단 위 `state-2`를 썼다). 상자가 상태 겹을 바닥으로 들지 않는 것까지 함께 센다.
+  // **hover가 바닥에 안 묻는다.** 줄의 hover는 상태 겹(`fill-soft`)이고 상자 바닥은 흰 카드다 —
+  // 바닥이 같은 겹이면 눌러도 되는 줄이라는 것을 화면이 안 말한다(바닥이 같은 겹이던 동안은 그래서
+  // 줄이 한 단 위 `fill-hover`를 썼다). 상자가 상태 겹을 바닥으로 들지 않는 것까지 함께 센다.
   it("hover는 흰 바닥 위의 상태 겹이다", () => {
     const markup = band(줄들(4));
-    expect(여는태그(markup, "data-band")).not.toMatch(/\bbg-state-\d/);
-    expect(markup).toContain("hover:bg-state-1");
+    expect(여는태그(markup, "data-band")).not.toMatch(/(?<![\w-])bg-(?:fill-|state-\d)/);
+    expect(markup).toContain("hover:bg-fill-soft");
   });
 });
 

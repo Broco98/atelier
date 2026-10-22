@@ -61,18 +61,18 @@ function EventRow({
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className="flex flex-col">
       {/* 사건 줄 — 묶음 안의 32px 줄(DS `.at-pr-log`): 셰브론 칸(18) · 까닭 · 대상 수 · 오른쪽 끝의 때. hover는 옅은 면 위의 한 단
-          (`state-2`)이다. */}
+          (`fill-hover`)이다. */}
       <CollapsibleTrigger
         aria-label={eventLabel(event)}
-        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover"
+        className="flex h-8 min-w-0 items-center gap-2 rounded-lg pr-2 pl-1.5 text-left transition-colors quiet-hover focus-ring"
       >
-        <span className="grid w-4.5 shrink-0 place-items-center text-tertiary">
+        <span className="grid w-4.5 shrink-0 place-items-center text-fg-tertiary">
           <FoldChevron open={open} />
         </span>
-        <span className="shrink-0 text-ui font-medium">{reasonLabel(event.reason)}</span>
-        <span className="shrink-0 text-caption text-muted-foreground">{processCount(event.targets.length)}</span>
+        <span className="shrink-0 text-chat-meta font-medium">{reasonLabel(event.reason)}</span>
+        <span className="shrink-0 text-xs text-fg-secondary">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
-        <span className="shrink-0 text-caption tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
+        <span className="shrink-0 text-xs tabular-nums text-fg-secondary">{loggedAt(event.at)}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         {/* 대상은 까닭 글자와 같은 x에서 선다 — 줄 안쪽 6 + 셰브론 칸 18 + 틈 8. */}
@@ -80,13 +80,13 @@ function EventRow({
           {event.targets.map((target, at) => (
             // 대상 한 줄 — 이름 · 결과, 그 밑에 명령줄. 명령줄은 Rust가 적을 때 앞 200자로 잘랐다(토큰 같은 비밀 — S12). 줄을 넘기며
             // 다 보인다: 무엇을 끝냈는지 읽는 자리라 말줄임으로 자르지 않는다.
-            <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-ui">
+            <li key={`${target.pid}#${at}`} aria-label={targetLabel(target)} className="flex min-w-0 flex-col text-chat-meta">
               <span className="flex min-w-0 items-center gap-2">
                 <span className="min-w-0 truncate">{target.name}</span>
-                <span className="shrink-0 text-tertiary">{outcomeLabel(target.outcome)}</span>
+                <span className="shrink-0 text-fg-tertiary">{outcomeLabel(target.outcome)}</span>
               </span>
               {target.command && (
-                <span data-cell="command" className="break-all font-mono text-mono-sm text-muted-foreground">
+                <span data-cell="command" className="break-all font-mono text-xs text-fg-secondary">
                   {target.command}
                 </span>
               )}

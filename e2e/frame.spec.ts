@@ -9,7 +9,14 @@ import {
   SPEC_LAYOUT_EDITOR,
   startSplitDrag,
   unknownIpcCalls,
+  레인,
+  그림자,
+  시계를세운다,
+  칠한값,
+  토큰값,
+  토큰색,
   툴팁,
+  팔레트,
 } from "./harness";
 
 // 판 04 티켓 01 — 공용 틀(`Frame`, ui-refresh 결정 4 · 5 · 27). 탭이 없거나 패널이 없는 화면이 옅은 회색 바탕 위의 둥근
@@ -136,6 +143,10 @@ test("레이아웃 편집기: 트리가 본문 카드 오른쪽의 330 카드이
 // 앱의 최소 창(900 — `tauri.conf.json`)에서 사이드바를 연 채로도 두 카드 머리의 조작이 카드 안에 다 선다. 트리 카드가 330을
 // 고집하면 폼 카드가 머리의 조작(뒤로 · 「LLM이 받는 텍스트」 · 「저장」)보다 좁아진다 — 카드가 모서리 밖을 자르므로
 // (`overflow-hidden`) 넘친 「저장」이 반쯤 잘린다. 그래서 그 폭에서만 트리 카드가 폼 카드에 자리를 내준다(작업 패널 칸과 같은 손버릇).
+//
+// **두 머리의 폭은 수로 정해져 있지 않다** — 글자가 시스템 글꼴이라 OS마다 다르다(macOS SF Pro · 리눅스 PR 게이트의 제 글꼴). 그래서
+// 폼 카드의 바닥이 제 머리의 폭이고, 두 머리가 창에 안 들면 사이드바가 자리를 내준다(`Frame`의 `BesideBox`). 이 검사는 어느 글꼴에서나
+// 같은 관계를 잰다: 조작이 카드 안이고, 트리 카드도 창 안이다 — 창 밖으로 밀린 카드의 조작은 「카드 안」이어도 안 보인다.
 test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 두 카드 머리의 조작이 카드 안에 다 선다", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
   await installFixtureBackend(page);
@@ -155,6 +166,8 @@ test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 두
   expect(await inside(page.getByRole("button", { name: "저장", exact: true }), main), "저장").toBe(true);
   expect(await inside(page.getByRole("button", { name: "파일 항목 추가", exact: true }), tree), "파일").toBe(true);
   expect(await inside(page.getByRole("button", { name: "고른 항목 지우기", exact: true }), tree), "지우기").toBe(true);
+  const edge = page.viewportSize()!.width - (await token(page, "--gap"));
+  expect((await boxOf(tree)).right, "트리 카드가 창 안").toBeLessThanOrEqual(edge);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -208,10 +221,152 @@ for (const theme of ["light", "dark"] as const) {
         band: painted(box.left + band / 2, box.top + box.height / 2),
       };
     }, inset);
-    // 앵커: 두 테마가 정말 다른 색으로 칠해졌는가 — 같으면 아래 비교는 테마를 안 보고도 초록이다.
-    expect(colors.shell).toBe(theme === "light" ? "rgb(255, 255, 255)" : "rgb(30, 30, 30)");
+    // 셸의 바탕은 DS 터미널 낱말 `term-bg`다 — 밝게는 라이트 값(카드 면), 어둡게는 DS 다크 값이다. 앱은 `.dark`를
+    // 켜지 않으므로 다크 값은 `.dark` 상자 안에서 읽는다(`토큰색`).
+    // 앵커: 두 테마가 정말 다른 색이다 — 같으면 아래 비교는 테마를 안 보고도 초록이다.
+    const [밝게, 어둡게] = [await 토큰색(page, "--term-bg"), await 토큰색(page, "--term-bg", { 다크: true })];
+    expect(밝게, "term-bg의 라이트와 다크가 같다").not.toBe(어둡게);
+    expect(colors.shell).toBe(theme === "light" ? 밝게 : 어둡게);
     expect(colors.card, "카드 바탕").toBe(colors.shell);
     expect(colors.band, "카드 안쪽 여백 띠").toBe(colors.shell);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+// codex-ds 티켓 01 — **앱이 Codex 색을 입는다**(codex-ds 결정 27). 창 바탕 · 카드 · 본문 글자를 칠해진 색(computed
+// style)으로 읽어 토큰(CSS 변수)과 맞댄다 — 바탕은 `surface-shell`, 카드는 `surface`, 본문 글자는 `fg`다. 다크는 앱이 켜지
+// 않지만(codex-ds 결정 17) `.dark`를 켜면 같은 자리가 DS 다크 값이어야 한다 — 그 팔레트의 정본이 `index.css`의 `.dark`다.
+//
+// 바탕은 **카드 오른쪽 틈에 실제로 칠해진 색**으로 읽는다 — 틈의 상자들은 투명하고 공용 틀의 뿌리가 바탕을 칠한다.
+test("창 바탕은 surface-shell, 카드는 surface, 본문 글자는 fg다 — .dark를 켜면 같은 자리가 DS 다크 값이다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/processes");
+  await expect(page.locator("main")).toHaveCount(1);
+
+  const gap = await token(page, "--gap");
+  const 칠한색 = () =>
+    page.evaluate((band) => {
+      const painted = (x: number, y: number): string | null => {
+        for (let node = document.elementFromPoint(x, y); node; node = node.parentElement) {
+          const bg = getComputedStyle(node).backgroundColor;
+          if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") return bg;
+        }
+        return null;
+      };
+      const card = document.querySelector("main")!;
+      const box = card.getBoundingClientRect();
+      return {
+        바탕: painted(box.right + band / 2, box.top + box.height / 2),
+        카드: getComputedStyle(card).backgroundColor,
+        글자: getComputedStyle(card).color,
+      };
+    }, gap);
+  const 토큰셋 = async () => ({
+    바탕: await 토큰색(page, "--surface-shell"),
+    카드: await 토큰색(page, "--surface"),
+    글자: await 토큰색(page, "--fg"),
+  });
+
+  const 라이트 = await 칠한색();
+  expect(라이트).toEqual(await 토큰셋());
+
+  // 다크 팔레트를 켜고 색의 전환이 끝날 때까지 기다린다 — 전환 도중의 중간값을 재지 않게(하네스 `팔레트`).
+  await 팔레트(page, true);
+  const 다크 = await 칠한색();
+  // **팔레트가 정말 바뀌었는지를 먼저 센다** — `.dark`가 안 먹으면 아래가 라이트 값을 다시 재고, 토큰도 라이트로 풀려
+  // 조용히 초록이 된다.
+  for (const 자리 of ["바탕", "카드", "글자"] as const) {
+    expect(다크[자리], `다크 · ${자리} — 라이트 색이 그대로다`).not.toBe(라이트[자리]);
+  }
+  expect(다크).toEqual(await 토큰셋());
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 07 — **유틸리티 `accent`가 Codex 파랑이다**(codex-ds 스펙 S1). 그 유틸리티로 칠한 한 자리(요약 카드 추이의
+// 끝점)를 칠해진 색으로 읽어 `#339cff` · 토큰 `--accent`와 맞댄다. 빌드가 내는 규칙은 `tokens.test.ts`가 보고, 여기서는 그 규칙이
+// 화면에 닿았는지 본다 — 유틸리티가 옛 뜻(옅은 면)에 남으면 이 점이 회색이 된다.
+test("유틸리티 accent로 칠한 자리(요약 추이의 끝점)는 Codex 파랑 #339cff다", async ({ page }) => {
+  const now = Date.now();
+  await installFixtureBackend(page, {
+    processes_trend: [0, 1, 2].map((at) => ({ at: now - (2 - at) * 60_000, total: (2_000 + at * 100) * 1024 * 1024 })),
+  });
+  await page.goto("/processes");
+  // 끝점은 추이 그림 옆의 점 하나다 — 그림이 가로로 늘어나 그 안의 원은 타원이 되므로 그림 밖에 선다(`SummaryCard.tsx`의 `Trend`).
+  const 끝점 = page.getByRole("region", { name: "요약", exact: true }).locator('svg[data-figure="trend"] + span');
+  await expect(끝점).toHaveCount(1);
+
+  const 파랑 = await 토큰색(page, "--accent");
+  expect(파랑).toBe("rgb(51, 156, 255)");
+  await expect(끝점).toHaveCSS("background-color", 파랑);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **옅은 면이던 자리가 파랑으로 바뀌지 않았다** — 메뉴의 켜진 줄은 옅은 면(`fill-hover`)이다. registry는 그 줄을 shadcn
+// `accent`(옅은 면)로 칠했고 부품은 그 면을 Codex 이름(`focus:bg-fill-hover`)으로 옮겨 적었다. 이제 유틸리티 `accent`는 파랑이라,
+// registry의 이름이 하나라도 남았으면 이 줄이 파랑으로 켜진다. 상태 메뉴를 키보드로 열어 첫 줄을 켠다.
+test("메뉴의 켜진 줄은 옅은 면(fill-hover)이고 파랑(accent)이 아니다", async ({ page }) => {
+  const [work] = WORKS;
+  await installFixtureBackend(page);
+  await page.goto(`/works/${work.slug}`);
+  const badge = page.getByRole("button", { name: work.status, exact: true });
+  await badge.focus();
+  await page.keyboard.press("ArrowDown");
+  const first = page.getByRole("menu").getByRole("menuitemradio").first();
+  await expect(first).toBeFocused();
+
+  const [옅은면, 파랑] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--accent")];
+  await expect.poll(() => first.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(옅은면);
+  expect(옅은면, "fill-hover와 accent가 같은 색이다").not.toBe(파랑);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 06 — **상태 넷이 Atelier 낱말 색을 입는다**(codex-ds 스펙 2절 「Atelier 낱말」 · DS `st-*`). 상태 표
+// (`status.tsx`의 `STATUS_META` · `StatusIcon`)가 칠하는 세 자리 — 머리의 상태 배지 앞 점, 그 배지가 여는 상태 메뉴의 점,
+// 사이드바 행 레인의 상태 아이콘 — 를 칠해진 색으로 읽어 그 상태의 토큰(`st-draft` · `st-active` · `st-review` ·
+// `st-done`)과 맞댄다. 배지 자신은 DS `StatusBadge`다 — 색은 점 하나에만 쓰고, 글자 · 면 · 모서리는 상태와 상관없이
+// `fg-secondary` · `fill-soft` · `radius-sm`이다(상태색 글자는 글자 바닥 아래이고, 알약은 머리 컨트롤의 모양이 아니다 — `status.tsx` 머리말).
+//
+// **상태마다 하나씩 잰다.** 상태 하나만 재면 표의 네 줄이 한 색으로 무너져도(한 줄을 베껴 넷에 붙이면) 초록이다.
+// 픽스처 목록은 상태를 기억하지 않으므로(`set_work_status`의 답 — `fixtures.ts`) 목록을 덮어 그 상태의 work로 연다.
+for (const status of ["draft", "active", "review", "done"] as const) {
+  test(`상태 ${status}: 배지 점 · 상태 메뉴의 점 · 행 레인의 상태 아이콘이 st-${status}이고, 배지는 회색 면 · fg-secondary 글자다`, async ({
+    page,
+  }) => {
+    const work = { ...WORKS[1], status };
+    await installFixtureBackend(page, {
+      list_works: WORKS.map((one) => (one.slug === work.slug ? work : one)),
+    });
+    await page.goto(`/works/${work.slug}`);
+    const 색 = await 토큰색(page, `--st-${status}`);
+
+    const badge = page.getByRole("button", { name: status, exact: true });
+    await expect(badge).toBeVisible();
+    // 배지 — 24 높이 · `radius-sm`(6) · 좌우 8, 면 `fill-soft` · 글자 `fg-secondary`(DS `.at-badge`). 수는 따로도 센다.
+    expect(await 칠한값(badge, "height", "border-top-left-radius", "padding-left", "padding-right")).toEqual([
+      "24px",
+      await 토큰값(page, "border-top-left-radius", "--radius-sm"),
+      "8px",
+      "8px",
+    ]);
+    expect(await 토큰값(page, "border-top-left-radius", "--radius-sm"), "radius-sm").toBe("6px");
+    await expect(badge).toHaveCSS("background-color", await 토큰색(page, "--fill-soft"));
+    await expect(badge).toHaveCSS("color", await 토큰색(page, "--fg-secondary"));
+    // 앞의 점 — 6px 원이 그 상태의 색이다(배지의 `::before`).
+    expect(
+      await badge.evaluate((el) => {
+        const dot = getComputedStyle(el, "::before");
+        return [dot.width, dot.height, dot.backgroundColor];
+      }),
+    ).toEqual(["6px", "6px", 색]);
+    // 셸이 부르지 않는 행이라 레인에는 상태 아이콘이 선다(부르면 그 자리를 부름의 점이 갖는다 — `works-sidebar.spec.ts`).
+    await expect(레인(page, work.slug).locator("svg")).toHaveCSS("color", 색);
+
+    await badge.click();
+    // 줄의 첫 자식이 점이다(`WorksPage.tsx`의 `StatusMenu`) — 줄 끝의 체크는 부품이 뒤에 붙인다.
+    const 줄 = page.getByRole("menu").getByRole("menuitemradio", { name: new RegExp(`^${status}\\b`) });
+    await expect(줄.locator(":scope > span").first()).toHaveCSS("background-color", 색);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
@@ -448,6 +603,247 @@ test("Works: 분할이면 두 열이 각자 카드이고 사이 틈 --gap이 창
   expect(await draggable(page, left.x + left.width / 2, middleY), "왼쪽 열 카드 안").toBe(false);
   expect(await draggable(page, right.x + right.width / 2, middleY), "오른쪽 열 카드 안").toBe(false);
   expect(await draggable(page, left.right + gap / 2, middleY), "손잡이").toBe(false);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 08 — **모서리 · 그림자 · 패널 박자가 Codex 토큰에서 나온다**(codex-ds 결정 27 · 스펙 §2 「반경 · 그림자 · 움직임」).
+// 칠해진 값(computed style — 하네스의 `칠한값`)을 토큰을 칠한 값(하네스의 `토큰값`)과 맞대고, 스펙이 못박은 수(카드 16 · 패널 220ms)는 따로 센다 — 토큰 값이
+// 바뀌는 날 견줌이 함께 흘러가 초록으로 남지 않게.
+
+/** 카드의 링 — 카드가 제 안쪽 가장자리에 덮는 `::after`의 `box-shadow`다(`Frame`의 `CardBox`). */
+const 카드링 = (card: Locator) => card.evaluate((el) => getComputedStyle(el, "::after").boxShadow);
+
+/** `0.22s` · `220ms` → 밀리초. */
+const 밀리초 = (time: string) => (time.endsWith("ms") ? parseFloat(time) : parseFloat(time) * 1000);
+
+test("Works: 카드는 반경 16에 0.5px 링(--shadow-hairline)을 두르고, 메뉴는 떠 있는 그림자(shadow-prominent)다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const panel = 작업패널(page);
+  await expect(panel).toBeVisible();
+
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-2xl");
+  const 링 = await 토큰값(page, "box-shadow", "--shadow-hairline");
+  expect(반경, "카드 반경 — radius-2xl").toBe("16px");
+  // 카드의 링은 같은 토큰을 카드 안쪽에 칠한다 — 그 링이 네 변에 다 칠해지는지는 아래 「링이 네 변에」가 픽셀로 잰다.
+  const 안쪽링 = await 토큰값(page, "box-shadow", "--shadow-hairline", "inset");
+  for (const [자리, card] of [
+    ["문서 카드", page.locator("main")],
+    ["작업 패널 카드", panel],
+  ] as const) {
+    const [위왼, 아래오른] = await 칠한값(card, "border-top-left-radius", "border-bottom-right-radius");
+    expect([위왼, 아래오른], `${자리} 반경`).toEqual([반경, 반경]);
+    expect(그림자(await 카드링(card)), `${자리} 링`).toBe(안쪽링);
+  }
+
+  // 떠 있는 카드 — 상태 메뉴를 키보드로 연다(위 「메뉴의 켜진 줄」과 같은 길). 모서리는 바탕 위 카드와 같은 단계다.
+  await page.getByRole("button", { name: pinnedWork.status, exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitemradio").first()).toBeFocused();
+  const 뜬그림자 = await 토큰값(page, "box-shadow", "--shadow-prominent");
+  expect(뜬그림자, "떠 있는 그림자가 바탕 위 링과 같다").not.toBe(링);
+  const [메뉴반경, 메뉴그림자] = await 칠한값(menu, "border-top-left-radius", "box-shadow");
+  expect([메뉴반경, 그림자(메뉴그림자)], "메뉴 반경 · 그림자").toEqual([반경, 뜬그림자]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/**
+ * 카드의 네 변에 링이 **칠해졌나** — 변마다 경계를 가로지르는 6px 띠를 찍어, 그 안에 카드 바깥 바탕보다 뚜렷이 어두운 픽셀이
+ * 있는지 본다. 링이 없으면 띠에는 바탕(`surface-shell` 246)과 카드 면(흰 255)뿐이고 둘 다 그 바탕보다 어둡지 않다. 링(라이트
+ * `#0000001a`)은 카드 안쪽에 칠하든 바깥 바탕 위에 칠하든 그 바탕보다 어둡다 — 흰 면 위 229(실측) · 바탕 위 221. 문턱 8은 그
+ * 차이(17)의 절반쯤이다. 카드 변이 온 px에 서서(위 배치 검사) 0.5px 링이 기기 픽셀 하나를 온전히 칠한다.
+ *
+ * **computed style로는 못 잰다.** 링이 조상의 `overflow`에 잘려도 `box-shadow` 값은 그대로라, 값을 맞대는 검사는 잘린 링에도 초록이다.
+ * 띠는 왼쪽 · 오른쪽 변의 가운데가 아니라 위 1/3에 선다 — 작업 패널 왼쪽 틈 가운데의 폭 손잡이를 비킨다.
+ */
+async function 링이칠해진변(page: Page, card: Locator) {
+  const box = await boxOf(card);
+  const [midX, thirdY] = [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 3)];
+  // `바깥`이 띠의 어느 끝이 카드 밖인지다 — 그 끝 픽셀이 견줄 바탕이다.
+  const 띠 = {
+    위: { clip: { x: midX, y: box.y - 3, width: 1, height: 6 }, 바깥: "앞" },
+    아래: { clip: { x: midX, y: box.bottom - 3, width: 1, height: 6 }, 바깥: "뒤" },
+    왼쪽: { clip: { x: box.x - 3, y: thirdY, width: 6, height: 1 }, 바깥: "앞" },
+    오른쪽: { clip: { x: box.right - 3, y: thirdY, width: 6, height: 1 }, 바깥: "뒤" },
+  } as const;
+  const 칠해진변: Record<string, boolean> = {};
+  for (const [변, { clip, 바깥 }] of Object.entries(띠)) {
+    const png = (await page.screenshot({ clip, animations: "disabled" })).toString("base64");
+    칠해진변[변] = await page.evaluate(
+      async ([data, fromEnd]) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${data}`;
+        await image.decode();
+        const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
+        pen.canvas.width = image.width;
+        pen.canvas.height = image.height;
+        pen.drawImage(image, 0, 0);
+        const { data: rgba } = pen.getImageData(0, 0, image.width, image.height);
+        // 띠의 긴 축을 따라 한 줄로 편다 — 짧은 축(기기 픽셀 둘)은 평균한다.
+        const along = image.width > image.height;
+        const length = along ? image.width : image.height;
+        const across = along ? image.height : image.width;
+        const line = Array.from({ length }, (_, i) => {
+          let sum = 0;
+          for (let j = 0; j < across; j += 1) {
+            const at = 4 * (along ? j * image.width + i : i * image.width + j);
+            sum += (rgba[at] + rgba[at + 1] + rgba[at + 2]) / 3;
+          }
+          return sum / across;
+        });
+        const 바탕 = fromEnd ? line[length - 1] : line[0];
+        return 바탕 - Math.min(...line) >= 8;
+      },
+      [png, 바깥 === "뒤"] as const,
+    );
+  }
+  return 칠해진변;
+}
+
+// 바탕 위 카드의 링은 **칠해져야** 한다(codex-ds 결정 27 — 바탕 위 카드의 테두리는 0.5px 링뿐이다). 접히는 칸(목록 칸 · 작업 패널)의
+// 바깥 상자는 접히는 동안 안쪽 열을 잘라 내려고 넘침을 숨기고, 카드는 그 상자의 세 변에 붙어 선다 — 링을 카드 바깥에 그리면 그 세
+// 변에서 잘려 틈 쪽 한 변에만 남는다.
+test("바탕 위 카드의 0.5px 링이 네 변에 다 칠해진다 — 접히는 칸의 상자가 잘라 내지 않는다", async ({ page }) => {
+  const 네변 = { 위: true, 아래: true, 왼쪽: true, 오른쪽: true };
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await expect(작업패널(page)).toBeVisible();
+  // 앵커: 잘라 내는 상자가 없는 문서 카드 — 재는 길이 링을 보는지를 먼저 센다.
+  expect(await 링이칠해진변(page, page.locator("main")), "문서 카드").toEqual(네변);
+  expect(await 링이칠해진변(page, 작업패널(page)), "작업 패널 카드").toEqual(네변);
+
+  await page.goto(`/projects/${PROJECTS[0].slug}`);
+  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
+  await expect(list).toBeVisible();
+  expect(await 링이칠해진변(page, list), "목록 카드").toEqual(네변);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("Works: 접히는 칸(사이드바 · 작업 패널)과 셸 컨트롤 줄이 220ms · ease-panel로 움직인다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await expect(작업패널(page)).toBeVisible();
+
+  const 길이 = await 토큰값(page, "transition-duration", "--duration-panel");
+  const 곡선 = await 토큰값(page, "transition-timing-function", "--ease-panel");
+  expect(밀리초(길이), "패널 여닫기 — duration-panel").toBe(220);
+  const 움직이는칸 = {
+    사이드바: page.locator("aside").first(),
+    "작업 패널": page.locator("aside").nth(1),
+    // 셸 컨트롤 줄 — 첫 칸이 사이드바 토글이다. 전체화면에 들고 날 때 바탕 줄의 왼쪽 여백과 함께 옮겨 간다(`ShellControls`).
+    "셸 컨트롤": page.getByRole("button", { name: "사이드바 토글", exact: true }).locator(".."),
+  };
+  for (const [자리, box] of Object.entries(움직이는칸)) {
+    expect(await 칠한값(box, "transition-duration", "transition-timing-function"), 자리).toEqual([길이, 곡선]);
+  }
+  // 펴진 칸의 안쪽 열은 바깥 폭이 다 온 뒤에 상한을 받는다 — 그 지연이 같은 토큰이다(`panel-layout`의 `foldingInnerClass`).
+  const [지연] = await 칠한값(page.locator("aside").nth(1).locator(":scope > div").first(), "transition-delay");
+  expect(지연.split(",").map((one) => one.trim()), "작업 패널 안쪽 열의 지연").toEqual(["0s", 길이]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 분할의 되돌림 — 손잡이를 두 번 눌러 반반으로 돌아가는 순간만 두 열이 패널과 같은 박자로 움직이고(`Frame`의 분할), 그 순간을 끝내는
+// 타이머도 같은 토큰을 읽는다(`useSplitRatio`). 토큰을 늘려 두고 시계로 잰다 — 타이머가 220을 따로 들면 늘린 길이보다 먼저 끝난다.
+test("Works: 분할을 두 번 눌러 되돌리는 동안 두 열이 duration-panel · ease-panel로 움직이고, 그 길이가 지나면 멈춘다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+  const handle = page.locator("main").locator(HANDLE);
+  // 몫을 드는 왼쪽 열 상자 — 손잡이가 그 자식이다(`Frame`의 분할).
+  const column = handle.locator("..");
+  await expect(handle).toBeVisible();
+  await page.evaluate(() => document.documentElement.style.setProperty("--duration-panel", "400ms"));
+  const 곡선 = await 토큰값(page, "transition-timing-function", "--ease-panel");
+  expect(await 칠한값(column, "transition-duration"), "되돌리기 전에는 트랜지션이 없다").toEqual(["0s"]);
+
+  await 시계를세운다(page);
+  await handle.dblclick();
+  await expect.poll(() => 칠한값(column, "transition-duration", "transition-timing-function")).toEqual(["0.4s", 곡선]);
+  await page.clock.runFor(300);
+  expect(await 칠한값(column, "transition-duration"), "늘린 길이 안에서는 아직 움직인다").toEqual(["0.4s"]);
+  await page.clock.runFor(200);
+  await expect.poll(() => 칠한값(column, "transition-duration")).toEqual(["0s"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 11 — **메뉴가 Codex `Menu` 모양이다**(codex-ds 결정 10 · 스펙 §3 「메뉴」 · DS `.at-menu` · `.at-mi`). 작업 ⋯ 메뉴 하나를
+// 열어 칠해진 값을 토큰과 맞댄다 — 카드의 폭 · 반경 · 그림자, 줄의 높이 · 반경, 줄 글리프의 크기 · 색, 지우기 줄의 글자색, 뜨는 박자.
+// 스펙이 못박은 수(폭 260 · 줄 30 · 글리프 15)는 따로 센다. 앱의 메뉴는 모두 같은 부품(`dropdown-menu.tsx`)이 그려 한 메뉴로 잰다.
+test("Works: 작업 ⋯ 메뉴는 폭 260 · 반경 16 · shadow-prominent 카드에 30 줄이고, 줄 글리프는 15 fg-secondary · 삭제는 danger 글자다 — duration-dropdown · ease-enter-snappy로 0.98에서 뜬다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  const menu = page.getByRole("menu");
+  const 줄 = menu.getByRole("menuitem");
+  await expect(줄).toHaveText(["이름 바꾸기", "아카이빙", "삭제"]);
+
+  const 폭 = await 토큰값(page, "width", "--size-menu");
+  expect(폭, "메뉴 폭 — size-menu").toBe("260px");
+  const 카드 = [폭, await 토큰값(page, "border-top-left-radius", "--radius-2xl"), await 토큰값(page, "box-shadow", "--shadow-prominent")];
+  const [카드폭, 카드반경, 카드그림자] = await 칠한값(menu, "width", "border-top-left-radius", "box-shadow");
+  expect([카드폭, 카드반경, 그림자(카드그림자)], "카드 폭 · 반경 · 그림자").toEqual(카드);
+
+  const 줄반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  expect(줄반경, "메뉴 줄 반경 — radius-lg").toBe("10px");
+  for (const one of await 줄.all()) {
+    expect(await 칠한값(one, "height", "border-top-left-radius"), `「${await one.textContent()}」 줄`).toEqual(["30px", 줄반경]);
+  }
+  // 글리프는 크기 · 색을 안 준 lucide 그림이다(`WorksPage.tsx`의 작업 ⋯) — 줄이 주는 값이 그대로 선다.
+  const 회색 = await 토큰색(page, "--fg-secondary");
+  const 글리프 = menu.getByRole("menuitem", { name: "이름 바꾸기" }).locator("svg");
+  expect(await 칠한값(글리프, "width", "height", "color"), "줄 글리프").toEqual(["15px", "15px", 회색]);
+  const 빨강 = await 토큰색(page, "--danger");
+  expect(빨강, "danger와 fg-secondary가 같은 색이다").not.toBe(회색);
+  const 삭제 = menu.getByRole("menuitem", { name: "삭제" });
+  expect([...(await 칠한값(삭제, "color")), ...(await 칠한값(삭제.locator("svg"), "color"))], "삭제 줄의 글자 · 글리프").toEqual([빨강, 빨강]);
+
+  // 뜨는 박자 — 열림 애니메이션은 `data-open`에서 붙어 열려 있는 동안 남는다(`works-floating.spec.ts`의 「애니메이션」). 지연 30ms는 DS 값이다.
+  const 길이 = await 토큰값(page, "animation-duration", "--duration-dropdown");
+  expect(밀리초(길이), "메뉴 열림 — duration-dropdown").toBe(320);
+  const 곡선 = await 토큰값(page, "animation-timing-function", "--ease-enter-snappy");
+  expect(await 칠한값(menu, "animation-duration", "animation-timing-function", "animation-delay"), "열림 박자").toEqual([
+    길이,
+    곡선,
+    "0.03s",
+  ]);
+
+  // 첫 장면 — 0.98 크기의 투명한 카드에서 시작한다. 끝난 애니메이션은 읽을 것이 없어, 토큰을 늘려 두고 다시 열어 도는 애니메이션을
+  // 처음에 세운다(지연 동안도 첫 장면이다 — `fill-mode-backwards`). 늘린 길이가 그대로 칠해지는 것이 박자가 토큰을 읽는다는 증거다.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await page.evaluate(() => document.documentElement.style.setProperty("--duration-dropdown", "60s"));
+  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  const 첫장면 = await menu.evaluate((el) => {
+    const [animation] = el.getAnimations();
+    animation.pause();
+    animation.currentTime = 0;
+    const style = getComputedStyle(el);
+    const { a, d } = new DOMMatrix(style.transform);
+    return { 길이: style.animationDuration, 크기: [a, d].map((one) => Math.round(one * 1000) / 1000), 불투명도: style.opacity };
+  });
+  expect(첫장면, "열림의 첫 장면").toEqual({ 길이: "60s", 크기: [0.98, 0.98], 불투명도: "0" });
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 고른 값의 체크(`MenuCheck`)는 줄의 다른 글리프(15 · `fg-secondary`)와 다르다 — DS `.at-mi .chk`(`ic-check s14`)대로 14 · `fg`다.
+// 상태 메뉴의 지금 상태 줄이 그 체크를 그리는 자리다(라디오 줄 — Select 목록의 고른 줄도 같은 그림이다).
+test("Works: 상태 메뉴에서 지금 상태 줄 끝의 체크는 14 · fg다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  await page.getByRole("button", { name: pinnedWork.status, exact: true }).click();
+  const 지금 = page.getByRole("menu").getByRole("menuitemradio", { checked: true });
+  await expect(지금).toHaveCount(1);
+  const 체크 = 지금.locator("svg.lucide-check");
+  await expect(체크).toHaveCount(1);
+
+  const 검정 = await 토큰색(page, "--fg");
+  expect(검정, "fg와 fg-secondary가 같은 색이다").not.toBe(await 토큰색(page, "--fg-secondary"));
+  expect(await 칠한값(체크, "width", "height", "color"), "체크").toEqual(["14px", "14px", 검정]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

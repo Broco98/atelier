@@ -746,16 +746,20 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
     expect(plusOf(markup)).toContain("shrink-0");
   });
 
-  it("상자의 바닥은 칸 하나다 — 칸의 최소 폭과 같은 수이고, 칸이 없으면 바닥도 없다", () => {
+  it("상자의 바닥은 칸 하나다 — 칸의 최소 폭에 링 자리를 더한 수이고, 칸이 없으면 바닥도 없다", () => {
     // 바닥이 `min-w-0`이던 때 900px 창에 작업 패널이 열리면 상자가 0px이 되어 칸이 화면에
     // 없었다. 바닥이 칸 최소 폭보다 작으면 어느 칸도 온전히 안 보이고, 크면 한 칸만 선 줄에
     // 빈자리가 선다 — 그래서 **칸의 클래스에서 읽은 수**와 견준다(손으로 적은 44와 견주면
     // 칸의 최소 폭을 바꾸는 날 둘 다 초록이다). 실제로 칸이 보이는지는 L3가 잰다.
+    //
+    // 상자는 포커스 링이 설 자리(`focus-ring-room` — 안쪽 4px, 같은 만큼 바깥으로 물러난다)를 둬서 테두리 상자가 양옆
+    // 4px씩 크다 — 바닥에 적는 수는 칸의 최소 폭 + 8이고, 줄에서 차지하는 폭(바깥 여백까지)은 칸의 최소 폭 그대로다.
     const markup = render(opened(2).state, { actions: "조작" });
     const floor = /min-w-\[(\d+)px\]/.exec(stripTagOf(markup));
     const cellMin = /min-w-\[(\d+)px\]/.exec(shellCellsOf(markup)[0]);
     if (!floor || !cellMin) throw new Error("상자나 칸의 최소 폭 클래스를 못 찾았다");
-    expect(floor[1]).toBe(cellMin[1]);
+    expect(stripTagOf(markup)).toContain("focus-ring-room");
+    expect(Number(floor[1])).toBe(Number(cellMin[1]) + 2 * 4);
     // 바닥은 폭으로도 적는다 — 열이 버틸 폭(min-content)이 이 수를 세야 한다(`TAB_ROW_COLUMN`).
     expect(stripTagOf(markup)).toContain(`w-[${floor[1]}px]`);
     expect(stripTagOf(markup)).not.toContain("w-max");
@@ -802,6 +806,15 @@ describe("줄 안의 끄는 자리", () => {
     // 끌린다」가 되는데, 화면으로는 어느 자리가 죽었는지가 안 보인다.
     const gap = render(opened(1).state).split('data-tab="new"')[1];
     expect(gap).toContain("data-tauri-drag-region");
+  });
+
+  it("칸 상자도 끄는 자리다 — 링이 설 자리가 칸 위아래와 양옆 틈을 덮는다", () => {
+    // 상자가 포커스 링이 설 자리(`focus-ring-room`)만큼 사방으로 나와 바탕 줄의 끄는 자리(칸 위아래 · 양옆 gap) 위에 선다.
+    // 그 상자가 끄는 자리가 아니면 그만큼 창이 안 끌린다 — Tauri는 누른 요소 자신의 속성만 본다. 칸 안의 버튼은 속성이
+    // 없어 그대로 눌린다.
+    const strip = render(opened(1).state).match(/<div[^>]*data-tab-strip[^>]*>/)?.[0] ?? "";
+    expect(strip).toContain("focus-ring-room");
+    expect(strip).toContain("data-tauri-drag-region");
   });
 
   it("뿌리에 `<header>`가 없다 — 칸들이 바탕 줄의 자식으로 선다", () => {
@@ -935,18 +948,19 @@ describe("칸이 물든다", () => {
     return `${tag}${cell.slice(cell.indexOf('role="img"')).split(">")[0]}`;
   };
 
-  it("안 켜진 칸이 부르면 물든다 — 기다림은 앰버, 안 본 완료는 초록", () => {
-    // 색 이름을 여기서 새로 짓지 않는다 — 토큰 넷은 #203이 들였고(`index.css`) 행·띠가 이미
-    // 같은 이름을 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
+  it("안 켜진 칸이 부르면 물든다 — 기다림은 wait-soft, 안 본 완료는 new-soft", () => {
+    // 색 이름을 여기서 새로 짓지 않는다 — 행·띠·탭이 알림 표(`shell-signal.tsx`의 `TONE`) 하나에서 같은 이름을
+    // 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
     expect(물든칸("waiting")).toContain("bg-wait-soft");
-    expect(물든칸("done")).toContain("bg-done-soft");
+    expect(물든칸("done")).toContain("bg-new-soft");
 
-    // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」).
-    expect(이름span(물든칸통째("waiting"))).toContain("text-wait-ink");
-    expect(이름span(물든칸통째("done"))).toContain("text-done-ink");
+    // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」). 잉크는 기다리는 칸에만 있다 — 안 본
+    // 완료의 이름은 DS `.at-tab`대로 무채색이라, 안 물든 칸의 이름과 같은 class다(물든 칸 위 파란 이름은 2.7:1이었다).
+    expect(이름span(물든칸통째("waiting"))).toContain("text-warning");
+    expect(이름span(물든칸통째("done"))).toBe(이름span(물든칸통째(null)));
   });
 
-  it("켜진 칸이 기다리면 앰버가 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
+  it("켜진 칸이 기다리면 기다림의 채움이 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
     // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 켜짐 면(`tab-on`)이 물러난다 — 안 물러나면
     // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
     // 흰 면이 하던 말을 테두리가 받는다.
@@ -957,7 +971,7 @@ describe("칸이 물든다", () => {
     // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
     expect(켜진기다림).toContain("ring-1");
     expect(켜진기다림).toContain("ring-inset");
-    expect(켜진기다림).toContain("ring-wait");
+    expect(켜진기다림).toContain("ring-dot-wait");
     expect(켜진기다림).not.toContain("border");
 
     // 안 켜진 칸에는 테두리가 없다 — 있으면 여덟 칸이 다 고른 칸으로 보인다.
@@ -996,19 +1010,19 @@ describe("칸이 물든다", () => {
     //
     // `ring-*`이 이 목록에 드는 것은 **그림자라 흐름을 안 건드리기 때문이다** — `border-*`는
     // 여기 없으므로 테두리로 갈아타는 날 이 검사가 잡는다.
-    // **잉크 이름(`text-*-ink`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
+    // **잉크 이름(`text-warning` · `text-accent-solid`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
     // 받는다」가 그 자리를 따로 지킨다).
     const 색어휘 = new Set([
-      "hover:bg-state-1",
+      "hover:bg-fill-soft",
       "tab-on",
       "font-medium",
       "bg-wait-soft",
-      "bg-done-soft",
+      "bg-new-soft",
       "ring-1",
       "ring-inset",
-      "ring-wait",
-      "ring-done",
+      "ring-dot-wait",
+      "ring-dot-new",
     ]);
 
     const 차집합 = (a: string, b: string) => {
@@ -1027,10 +1041,10 @@ describe("칸이 물든다", () => {
 
     // **이름 글자도 같은 규율을 진다.** 잉크가 상자에서 이름으로 내려왔으므로(아래 「마크는
     // 상태색을 안 받는다」) 여기도 색만 갈려야 한다 — 잉크를 얹으면서 `font-*`나 여백을
-    // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다.
+    // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다. 안 본 완료의 이름은 아무것도 안 갈린다(잉크가 없다).
     for (const kind of ["waiting", "done"] as const) {
       const 갈린것 = 차집합(이름span(물든칸통째(kind)), 이름span(물든칸통째(null)));
-      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-wait-ink" : "text-done-ink"]);
+      expect(갈린것, kind).toEqual(kind === "waiting" ? ["text-warning"] : []);
     }
   });
 
@@ -1059,9 +1073,9 @@ describe("칸이 물든다", () => {
     // 내내 색을 띤 채라 「부른다」가 뜻을 잃는다.
     for (const kind of ["working", null] as const) {
       const 칸 = 물든칸(kind);
-      expect(칸, String(kind)).toContain("hover:bg-state-1");
+      expect(칸, String(kind)).toContain("hover:bg-fill-soft");
       expect(칸, String(kind)).not.toContain("bg-wait-soft");
-      expect(칸, String(kind)).not.toContain("bg-done-soft");
+      expect(칸, String(kind)).not.toContain("bg-new-soft");
     }
   });
 
@@ -1071,22 +1085,30 @@ describe("칸이 물든다", () => {
     //
     // 탭에서는 그럴 수가 없다 — 마크가 칸 상자 **안**에 서므로, 잉크를 상자에 붙이면 이름이
     // 숨는 폭(`@max-[88px]`)에서만 서는 그 글리프가 `currentColor`로 물든다. 하필 스토리 53이
-    // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 앰버가 되는 것이다.
+    // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 상태색(기다림이면 `warning`)이 되는 것이다.
     // 그래서 **잉크는 이름 글자에만** 붙는다.
+    // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료는 이름에 잉크가 없다(DS `.at-tab` — 무채색). 「상자 · 마크에
+    // 없다」는 두 부름의 잉크(`warning` · 띠 경과의 `accent-solid`)를 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에
+    // 붙어도 초록이다.
+    const 잉크 = /(?<![\w-])text-(?:warning|accent-solid)(?![\w-])/;
     for (const [kind, ink] of [
-      ["waiting", "text-wait-ink"],
-      ["done", "text-done-ink"],
+      ["waiting", "text-warning"],
+      ["done", null],
     ] as const) {
       const cell = 물든칸통째(kind);
-      // 칸 안에 잉크가 **딱 한 번** 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —
+      // 칸 안에 잉크가 **딱 한 번**(안 본 완료는 한 번도 안) 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —
       // 수로 재면 「어딘가 하나 더 붙었다」까지 함께 잡힌다.
-      expect(cell.split(ink).length - 1, kind).toBe(1);
-      expect(이름span(cell), kind).toContain(ink);
-      expect(마크span(cell), kind).not.toContain("-ink");
+      if (ink === null) {
+        expect(cell, kind).not.toMatch(잉크);
+      } else {
+        expect(cell.split(ink).length - 1, kind).toBe(1);
+        expect(이름span(cell), kind).toContain(ink);
+      }
+      expect(마크span(cell), kind).not.toMatch(잉크);
       // **상자에 없다**가 핵심이다 — 있으면 안쪽 전부가 `currentColor`로 상속받는다. 켜진
       // 칸도 같다: 물들임이 이기는 자리라 잉크가 거기서 되살아나기 가장 쉽다.
-      expect(물든칸(kind), kind).not.toContain("-ink");
-      expect(물든칸(kind, { active: true }), kind).not.toContain("-ink");
+      expect(물든칸(kind), kind).not.toMatch(잉크);
+      expect(물든칸(kind, { active: true }), kind).not.toMatch(잉크);
     }
   });
 
@@ -1118,12 +1140,12 @@ describe("칸이 물든다", () => {
     // 안 하는 것이다 — 채움과 안 겹치는 어휘(테두리)는 이 줄에서 이미 「고른 칸이다」를
     // 뜻하므로 hover에 쓰면 여덟 칸이 다 고른 칸으로 읽힌다.
     //
-    // **위 「폭·자리」 검사는 이 사실을 감춘다** — `hover:bg-state-1`이 그 허용 목록에 들어
+    // **위 「폭·자리」 검사는 이 사실을 감춘다** — `hover:bg-fill-soft`가 그 허용 목록에 들어
     // 있어 차집합에서 조용히 지나간다. 그래서 여기서 이름으로 말한다.
     for (const kind of ["waiting", "done"] as const) {
       expect(물든칸(kind), kind).not.toContain("hover:");
       expect(물든칸(kind, { active: true }), kind).not.toContain("hover:");
     }
-    expect(물든칸(null)).toContain("hover:bg-state-1");
+    expect(물든칸(null)).toContain("hover:bg-fill-soft");
   });
 });

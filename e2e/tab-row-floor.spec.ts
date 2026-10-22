@@ -2,7 +2,7 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
-import { BELOW_APP_MIN, rowOf, settle } from "./tab-row";
+import { rowOf, settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
 
 // 탭 줄의 **바닥** — 어느 창 폭·어느 패널 폭에서도 셸 칸 하나는 온전히 보인다(`panel-layout`의
 // `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
@@ -12,9 +12,10 @@ import { BELOW_APP_MIN, rowOf, settle } from "./tab-row";
 // 아래로는 안 줄고, 창 밖으로 밀리지 않고, 사람이 끌어 고른 폭(저장값)은 창이 좁아진다고 안 지워지고,
 // 좁게 선 채로 끌어도 손잡이가 안 튄다.
 //
-// **사이드바가 좁게 서는 것은 이제 앱 창의 최소 폭(900, `tauri.conf.json`) 아래에서만이다** — 탭 줄의 바닥이 약
-// 345px이라 넓힌 사이드바(400)와 더해도 900에 못 미친다. 그 장치(열의 `min-w-min`)는 그대로 있으므로, 사이드바를
-// 좁게 세워야 하는 검사는 일부러 그 아래 폭(`BELOW_APP_MIN`, `tab-row.ts`)에서 잰다.
+// **사이드바가 좁게 서는 것은 이제 앱 창의 최소 폭(900, `tauri.conf.json`) 아래에서만이다** — 탭 줄의 바닥과 넓힌
+// 사이드바(400)를 더해도 900에 못 미친다(OS마다 잰 바닥은 `tab-row.ts` 머리말). 그 장치(열의 `min-w-min`)는 그대로 있으므로,
+// 사이드바를 좁게 세워야 하는 검사는 일부러 그 아래 폭에서 잰다. 그 폭은 수가 아니라 **지금 줄의 바닥을 재서** 낸다
+// (`squeezedWidth`, `tab-row.ts`) — 바닥에는 줄의 글자가 들고, 글자가 시스템 글꼴이라 OS마다 폭이 다르다(codex-ds 결정 3).
 //
 // 칸이 보이는지 · 눌리는지 · `+`가 줄 안인지는 `terminal-tabs.spec.ts`가 세 화면 × 두 폭 × 세
 // 배치로 든다. 여기는 **기본 폭이 아닌 배치**와 **움직이는 동안**이다.
@@ -185,10 +186,12 @@ test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라
   await page.mouse.up();
   expect(during.panel!.left - before.panel!.left, JSON.stringify({ before, during })).toBeLessThanOrEqual(41);
 
-  // 사이드바 — 앱 창의 최소 폭 아래에서 400을 고른 사이드바가 좁게 선다(머리말). 왼쪽으로 20px 끌면 그만큼 좁아진다.
-  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
+  // 사이드바 — 탭 줄이 바닥에 닿는 창(머리말)에서 400을 고른 사이드바가 좁게 선다. 왼쪽으로 20px 끌면 그만큼 좁아진다.
+  await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
-  expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400);
+  // 창 폭을 지금 줄의 바닥에서 냈으므로 사이드바는 정해 둔 폭에 선다 — 저장값(400)보다 좁고, 20px을 끌 자리가 최소 폭(240) 위에 있다.
+  expect(narrow.sidebar, JSON.stringify(narrow)).toBeGreaterThanOrEqual(SQUEEZED_SIDEBAR);
+  expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThanOrEqual(SQUEEZED_SIDEBAR + 1);
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
   const sy = sideHandle.y + sideHandle.height / 2;
   await page.mouse.move(narrow.sidebar - 2, sy);
@@ -238,8 +241,8 @@ test("좁게 선 패널·사이드바를 바깥으로 끌어도 고른 폭이 �
   await page.mouse.up();
   expect(await page.evaluate(() => localStorage.getItem("work-panel-width"))).toBe("560");
 
-  // 사이드바 — 앱 창의 최소 폭 아래에서 좁게 선다(머리말). 손잡이가 오른쪽 가장자리라 바깥은 오른쪽이다.
-  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
+  // 사이드바 — 탭 줄이 바닥에 닿는 창에서 좁게 선다(머리말). 손잡이가 오른쪽 가장자리라 바깥은 오른쪽이다.
+  await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400 - 40);
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
@@ -351,11 +354,11 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
 });
 
 test("목록 패널이 있는 화면은 그대로다 — 사이드바가 저장한 폭으로 선다", async ({ page }) => {
-  // 사이드바가 줄어들 수 있게 됐지만, 자리를 요구하는 것은 탭 줄을 이는 열뿐이다. 다른 화면의
-  // 본문은 바닥이 없어(`min-w-0`) 사이드바가 900px 창에서도 고른 폭을 든다.
+  // 사이드바가 줄어들 수 있게 됐지만, 자리를 요구하는 것은 탭 줄을 이는 열과 편집기의 두 카드 머리(`Frame`의 `BesideBox`)뿐이다.
+  // 다른 화면의 본문은 바닥이 없어(`min-w-0`) 사이드바가 900px 창에서도 고른 폭을 든다.
   //
-  // (창 전체의 가로 넘침은 여기서 안 든다 — 이 배치에서는 이 수정 전부터 41px이 넘친다. 목록
-  // 화면의 몫이라 이 검사가 그 사실을 초록이나 빨강으로 삼키지 않게 둔다.)
+  // (창 전체의 가로 넘침은 여기서 안 든다 — 목록 화면의 몫이고, 그 넘침은 목록 · 상세의 글자 폭에 달려 OS 글꼴마다 갈린다.
+  // 이 검사가 그 사실을 초록이나 빨강으로 삼키지 않게 둔다.)
   await openWith(page, "/projects", 900, { sidebar: 400, panel: 330 });
   await expect(page.getByRole("button", { name: "프로젝트 등록" })).toBeVisible();
   const layout = await settled(page);

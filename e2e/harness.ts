@@ -894,9 +894,10 @@ export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]"
  * 바탕은 `backs`에서 처음 만나는 **불투명한** 색이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에
  * 달려 잴 수 없다). 글자색(`ink`)은 제 알파에 `opacity`를 곱해 그 바탕 위에 섞은 색으로 잰다 — 눈에 닿는 색이다.
  *
- * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는 대비를 못 잰다.
- * 그리고 브라우저는 `oklch`를 그대로 돌려준다(WebKit 실측: `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한
- * 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다 짧고 새지 않는다.
+ * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 hex · 알파(`rgba`) · `color-mix(…)`로 갈려 있어 「무슨 색을 골랐나」로는
+ * 대비를 못 잰다. 그리고 브라우저는 `oklch` · `color(…)` 같은 표기를 그대로 돌려준다(WebKit 실측:
+ * `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다
+ * 짧고 새지 않는다.
  */
 const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[]; opacity: number }): number => {
   const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
@@ -936,8 +937,109 @@ export const 색대비 = (page: Page, 앞: string, 뒤: string): Promise<number>
   page.evaluate(contrastInPage, { ink: 앞, backs: [뒤], opacity: 1 });
 
 /**
+ * 토큰 하나를 브라우저가 쓰는 색 문자열로 바꾼다 — 빈 상자에 `background-color: var(--name)`을 칠해 읽는다.
+ * **값을 검사에 손으로 적지 않기 위해서다** — 색을 박아 두면 팔레트를 손보는 날 그 줄이 정본과 갈리고, 무엇보다
+ * 「화면이 그 토큰을 그대로 읽는가」를 못 재게 된다. `getPropertyValue("--surface")`는 적힌 글자(`#ffffff`)를 돌려줘
+ * `getComputedStyle(el).backgroundColor`(`rgb(…)`)와 바로 못 맞대므로 칠해서 읽는다.
+ *
+ * `다크`면 상자를 `.dark` 상자 안에 둔다 — 앱이 `.dark`를 켜지 않은 채로 DS 다크 값을 읽는 길이다(터미널의 어둡게
+ * 테마는 앱 팔레트와 따로 켜진다). 별칭이 `.dark`에서도 다시 풀리는 것은 `index.css`의 별칭 묶음(`:root, .dark`)이 든다.
+ *
+ * **여기 사는 이유는 토큰을 색으로 바꾸는 길을 한 벌로 두려는 것이다** — 아래 「안 풀렸다」의 판정이 spec마다 갈리면
+ * 한쪽만 fail-open이 된다.
+ */
+export const 토큰색 = async (page: Page, name: string, { 다크 = false }: { 다크?: boolean } = {}) => {
+  const 색 = await page.evaluate(
+    ([one, dark]) => {
+      const probe = document.createElement("div");
+      probe.style.backgroundColor = `var(${one})`;
+      const holder = dark ? document.createElement("div") : null;
+      holder?.classList.add("dark");
+      holder?.appendChild(probe);
+      document.body.appendChild(holder ?? probe);
+      const 값 = getComputedStyle(probe).backgroundColor;
+      (holder ?? probe).remove();
+      return 값;
+    },
+    [name, 다크] as const,
+  );
+  // **fail-closed.** 없는 `var()`는 computed 시점에 그 선언을 통째로 무효로 만들고 프로퍼티가 초기값(투명,
+  // `rgba(0, 0, 0, 0)` — WebKit 실측)으로 떨어진다. 그대로 돌려주면 팔레트가 지워지는 날 견줌이 **양쪽 다 투명**이라
+  // 전부 초록이 된다 — 토큰이 죽으면 그 토큰을 읽는 유틸리티 규칙도 함께 죽어 칠해질 자리도 투명해지기 때문이다.
+  // 여기서 끊으면 그날 검사가 색이 아니라 **원인**을 말한다.
+  if (색 === "rgba(0, 0, 0, 0)" || 색 === "") throw new Error(`토큰 ${name}이 안 풀렸다 — ${색 || "빈 값"}`);
+  return 색;
+};
+
+/**
+ * 다크 · 라이트 팔레트를 손으로 갈아 끼운다 — `.dark`를 켜거나 끈다(codex-ds 결정 17 — 앱에 아직 켜는 손잡이가 없고, `index.css`의
+ * `.dark` 블록이 곧 그 팔레트의 정본이다).
+ *
+ * **갈아 끼운 뒤 색의 전환이 끝날 때까지 기다린다.** `transition-colors`를 단 것은 팔레트가 바뀐 직후 150ms 동안 **라이트와
+ * 다크 사이의 중간값**이다 — 그 순간을 재면 다크 배경 위의 라이트 글자색을 재게 된다(실측 1.17 — 사이드바 행의 글자색을
+ * 물려받던 신호의 마크에서 났다). 끝이 있는 애니메이션만 기다린다 — 도는 스피너 · 흐르는 마퀴는 끝나지 않아, 다 기다리면
+ * 영영 안 돌아온다. 도중에 걷힌 것(`finished`가 거절된다)은 끝난 것으로 본다.
+ *
+ * **팔레트가 정말 바뀌었는지를 여기서 먼저 센다**(fail-closed). 테마마다 값이 갈리는 토큰(`--surface`)이 켜고 끈 뒤 다른 색이어야
+ * 한다 — `.dark`가 안 먹으면(클래스 이름이 바뀌거나 선택자가 `[data-theme]`로 옮겨 가면) 뒤의 견줌이 라이트를 다시 재고, 두
+ * 테마에서 같은 값인 자리(위험 버튼의 흰 글자 · 스위치 손잡이)는 조용히 초록이 된다. 이미 그 테마면 바뀔 것이 없어 세지 않는다.
+ *
+ * **여기 사는 이유는 갈아 끼우는 길을 한 벌로 두려는 것이다** — spec마다 적으면 기다림 · 확인이 갈린다(세 벌이 있던 동안
+ * 한 벌은 끝없는 애니메이션까지 기다려 스피너가 도는 화면에서는 돌아오지 않는 꼴이었고, 팔레트가 바뀌었는지는 두 벌만 셌다).
+ */
+export async function 팔레트(page: Page, 다크: boolean): Promise<void> {
+  const 켜져있다 = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+  const 전 = await 토큰색(page, "--surface");
+  await page.evaluate(async (on) => {
+    document.documentElement.classList.toggle("dark", on);
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
+        .map((one) => one.finished.catch(() => undefined)),
+    );
+  }, 다크);
+  if (켜져있다 === 다크) return;
+  expect(await 토큰색(page, "--surface"), `.dark를 ${다크 ? "켰는데" : "껐는데"} 팔레트가 그대로다 — surface`).not.toBe(전);
+}
+
+/**
+ * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(위 `토큰색`과 같은 길이고, 색이 아닌
+ * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
+ * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `CardBox`).
+ * **fail-closed** — 안 풀린 `var()`는 그 선언을 무효로 만들어 속성이 초기값으로 떨어진다. 그 값이면 던진다: 토큰이 지워진 날 칠해진
+ * 자리도 같은 초기값이라, 견줌이 양쪽 다 초기값으로 초록이 된다.
+ *
+ * **여기 사는 이유는 `토큰색`과 같다** — 반경 · 그림자 · 크기 · 시간을 재는 spec(`frame` · `primitives`)이 한 판정을 쓴다.
+ */
+export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "") =>
+  page.evaluate(
+    ([prop, one, lead]) => {
+      const probe = document.createElement("div");
+      document.body.appendChild(probe);
+      const initial = getComputedStyle(probe).getPropertyValue(prop);
+      probe.style.setProperty(prop, `${lead} var(${one})`.trim());
+      const value = getComputedStyle(probe).getPropertyValue(prop);
+      probe.remove();
+      if (value === initial) throw new Error(`토큰 ${one}이 ${prop}에 안 풀렸다 — ${value}`);
+      return value;
+    },
+    [property, name, 앞말] as const,
+  );
+
+/** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
+export const 칠한값 = (target: Locator, ...properties: string[]) =>
+  target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
+
+/**
+ * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를
+ * 투명한 0 그림자로 먼저 깔고 제 그림자를 맨 뒤에 둔다. 걷고 남은 것이 토큰의 그림자다.
+ */
+export const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
+
+/**
  * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는
- * 길이 색 토큰(`text-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
+ * 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
  * 없으면 흰 바탕이다(문서의 바탕).
  */
 export async function 글자대비(element: Locator): Promise<number> {
@@ -1361,7 +1463,7 @@ export async function fireAttention(
  * 길이 없다 — 실측(2026-09-10): 한 컨텍스트에 페이지 둘을 띄우고 `bringToFront`로 번갈아
  * 앞세워도 양쪽 다 `document.hasFocus()`가 참이다. 그래서 **브라우저가 답하는 그 한 줄만**
  * 갈아 끼우고, 앱이 그것을 실제로 딛는지를 잰다: 여기서 거짓을 돌려주는데도 「봤다」가 서면
- * 앱은 포커스를 안 보고 있는 것이다(그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서
+ * 앱은 포커스를 안 보고 있는 것이다(그 fail-open은 안 본 완료가 안 뜨는 것으로만 나타나 화면에서
  * 안 보인다 — `src/lib/window-focus.ts`의 `windowFocused` 머리말).
  *
  * **값과 이벤트를 갈라 둔다.** `hasFocus`가 바뀌는 것과 `focus`/`blur`가 도착하는 것은 다른

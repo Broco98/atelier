@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import { LucideProvider } from "lucide-react";
+import { ICON_STROKE } from "@/components/ui/icon-stroke";
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { router } from "./router";
@@ -45,7 +47,11 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
             아래 화면들의 토스트를 가로채지 않는다. 그래서 작업 · 아카이브 화면에는 두 영역(「메시지」 · 「앱
             메시지」)이 함께 설 수 있다. S14 · S26을 넘는 이 예외는 사람 결정으로 남았다(develop 머지). */}
         <ToastProvider>
-          <RouterProvider router={router} />
+          {/* lucide 아이콘의 선 굵기도 **여기 하나**에서 준다(codex-ds 스펙 S3) — 값과 까닭은 `icon-stroke.ts`가 든다.
+              호출부는 굵기를 고르지 않으므로, 이것이 빠지면 모든 아이콘이 lucide 기본(24칸 2 — 16px에서 1.33px)으로 그려진다. */}
+          <LucideProvider strokeWidth={ICON_STROKE}>
+            <RouterProvider router={router} />
+          </LucideProvider>
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>

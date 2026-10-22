@@ -98,13 +98,14 @@ function RenameBody({
           if (e.key === "Enter") finish(true);
         }}
       />
-      {/* 버튼은 확인 창(`AppDialog`)과 같은 창 바닥 버튼이다(Button의 `dialog` 크기). */}
+      {/* 버튼은 확인 창(`AppDialog`)과 같은 창 바닥 버튼이다(Button의 기본 크기 — 32, DS `.at-btn.sm`). 「취소」도 확인 창의 그것과
+          같은 secondary(옅은 면 `fill-soft` — DS 확인 창의 「취소」)다. */}
       <DialogFooter>
-        <Button variant="ghost" size="dialog" onClick={() => finish(false)}>
+        <Button variant="secondary" onClick={() => finish(false)}>
           취소
         </Button>
         {/* 저장될 것이 없으면 누를 수 없고 흐리게 선다(P12) — 눌러도 아무 일이 없는 버튼을 두지 않는다. */}
-        <Button size="dialog" disabled={!changed} onClick={() => finish(true)}>
+        <Button disabled={!changed} onClick={() => finish(true)}>
           저장
         </Button>
       </DialogFooter>

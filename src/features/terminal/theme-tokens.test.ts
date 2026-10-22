@@ -3,6 +3,9 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { cssBlocks, resolved } from "@/css-tokens";
+import type { CssScope } from "@/css-tokens";
+import { fontList, SYSTEM_MONO } from "@/system-font";
 import { FONT_FAMILY } from "./terminal-defaults";
 import { terminalThemeDark, terminalThemeFor, terminalThemeLight } from "./terminal-theme";
 
@@ -18,65 +21,66 @@ import { terminalThemeDark, terminalThemeFor, terminalThemeLight } from "./termi
 // 틀릴 수 있다.
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const read = (path: string) => readFileSync(root + path, "utf8");
+const blocks = cssBlocks(readFileSync(root + "src/index.css", "utf8"));
 
-const css = read("src/index.css");
+// 그 범위(라이트 `:root` · 다크 `.dark`)에서 **실제로 풀리는 값**이다 — `--term-bg: var(--surface)` 같은 별칭은 끝까지
+// 따라간다(`src/css-tokens.ts`). 다크 벌은 다크 범위와 견준다 — 지금 두 범위의 `--accent`가 같아도, `.dark`가 제 값을
+// 갖는 날 라이트 값과 견주던 검사는 초록인 채 다크 커서만 앱에서 떨어진다.
+const cssToken = (name: string, scope: CssScope = "light") => resolved(blocks, scope, name);
 
-// `:root`(라이트)가 `.dark`보다 먼저 나오므로 **첫 번째** 정의가 라이트 값이다.
-// 앱은 아직 다크를 출하하지 않는다 — `.dark` 블록은 shadcn 기본값이고 아무도 켜지 않는다.
-function cssToken(name: string): string {
-  const found = css.match(new RegExp(`--${name}:\\s*([^;]+);`));
-  if (!found) throw new Error(`index.css에서 --${name}을 찾지 못했다`);
-  return found[1].trim();
-}
-
-// 따옴표와 공백만 다른 것은 같은 목록이다: CSS는 `'Geist Mono Variable', ui-monospace, …`,
-// xterm 옵션은 따옴표 없는 한 문자열이다.
-const fontList = (raw: string) =>
-  raw
-    .replace(/['"]/g, "")
-    .split(",")
-    .map((one) => one.trim())
-    .join(", ");
+// `@theme`에 선 값(글꼴) — 라이트 · 다크 범위가 아니다.
+const themeToken = (name: string) => {
+  const value = blocks.find((block) => block.head.includes("@theme inline"))?.decls.get(`--${name}`);
+  if (value === undefined) throw new Error(`index.css의 @theme inline에서 --${name}을 찾지 못했다`);
+  return value;
+};
 
 describe("터미널이 앱 팔레트에서 옮겨 적은 값", () => {
-  // **이 짝은 이 판에서 일부러 끊겼다.** 여기 있던 검사는 「터미널 글꼴 목록이 `--font-mono`와
+  // **이 짝은 일부러 끊겨 있다.** 여기 있던 검사는 「터미널 글꼴 목록이 `--font-mono`와
   // 같다」였는데, 결정 55가 터미널만 `JetBrainsMonoNL Nerd Font`로 옮기고 앱 전체 mono는
-  // `Geist Mono`로 남겼다 — 아이콘이 필요한 곳은 터미널 하나고, 문서 코드 블록·경로·spec
-  // 원문에는 필요 없다(`index.css` 머리말의 「`--font-mono`는 건드리지 않는다」).
+  // 남겼다 — 아이콘이 필요한 곳은 터미널 하나고, 문서 코드 블록·경로·spec 원문에는 필요 없다
+  // (`index.css` 머리말의 「`--font-mono`는 터미널 글꼴을 따르지 않는다」). 앱 전체 mono는 이제
+  // 시스템 mono 줄이다(codex-ds 결정 3 — 글꼴도 캔버스 값). 그 줄은 `src/system-font.ts`가 DS에서 옮겨 들고, L3
+  // `system-font`가 같은 줄로 실제 요소를 잰다.
   //
   // 그래서 지키는 것을 「같다」에서 **「갈라진 채로 있다」**로 뒤집는다. 터미널 글꼴을 다시
   // 만지는 사람이 「짝이 어긋났네」 하고 `--font-mono`까지 끌고 가면 앱의 모노 글자가 전부
   // 아이콘 글꼴로 바뀌는데, 그 변화는 화면 어디에도 「바꿨다」고 적히지 않는다.
-  it("앱 전체 --font-mono는 터미널 글꼴을 따라가지 않는다", () => {
-    const appMono = fontList(cssToken("font-mono"));
-    expect(appMono.startsWith("Geist Mono Variable"), `--font-mono가 바뀌었다: ${appMono}`).toBe(
-      true,
-    );
+  it("앱 전체 --font-mono는 시스템 mono 줄이고 터미널 글꼴을 따라가지 않는다", () => {
+    const appMono = fontList(themeToken("font-mono"));
+    expect(appMono, `--font-mono가 시스템 mono 줄이 아니다: ${appMono}`).toBe(fontList(SYSTEM_MONO));
     expect(appMono, "터미널 글꼴이 앱 전체 mono를 함께 끌고 갔다").not.toBe(fontList(FONT_FAMILY));
   });
 
-  // 티켓이 「앱과 어긋나면 안 되는 넷」으로 못박은 짝들이다(결정 33). **라이트만** 짝이 있다 —
-  // 다크에는 짝이 될 앱 토큰이 없다(결정 54, terminal-theme.ts 머리말).
-  it("foreground가 --foreground와 같다", () => {
-    expect(terminalThemeLight.foreground).toBe(cssToken("foreground"));
+  // 티켓이 「앱과 어긋나면 안 되는 넷」으로 못박은 짝들이다(결정 33) — 바탕 = 카드 면, 글자 = 본문, 커서 = 강조,
+  // 고름 = 면 알파. 앱 쪽 이름은 DS의 터미널 낱말(`term-bg` · `term-fg` · `term-dim`)과 Codex 토큰(`accent` · `fill-active`)이다
+  // (codex-ds 티켓 06). 넷 다 xterm이 직접 읽는 표기(`#rrggbb` · `rgba()`)라 글자 그대로 견준다. 흐린 글자는 xterm이 글자색에서
+  // 만든다(맨 아래). 다크 바탕은 L3가 칠해진 색으로 잰다(`e2e/frame.spec.ts`).
+  it("background가 --term-bg(카드 면)와 같다", () => {
+    expect(terminalThemeLight.background).toBe(cssToken("term-bg"));
   });
 
-  it("cursor가 --primary와 같다", () => {
-    expect(terminalThemeLight.cursor).toBe(cssToken("primary"));
+  it("foreground가 --term-fg(본문)와 같다", () => {
+    expect(terminalThemeLight.foreground).toBe(cssToken("term-fg"));
   });
 
-  it("selectionBackground이 --state-3과 같다", () => {
-    expect(terminalThemeLight.selectionBackground).toBe(cssToken("state-3"));
+  it("cursor가 --accent와 같다", () => {
+    expect(terminalThemeLight.cursor).toBe(cssToken("accent"));
   });
 
-  // 넷 중 이것만 문자열로 못 견준다 — `--background`는 `oklch(1 0 0)`이고 xterm은 그 표기를
-  // 직접 파싱하지 못해(css.toColor가 #rrggbb·rgb()·rgba()만 본다) 테마에는 `#ffffff`로 적혀
-  // 있다. 그래서 **앱 쪽을 고정한다**: 앱 배경이 흰색을 벗어나면 이 검사가 깨지고,
-  // 깨진 사람이 terminal-theme.ts를 다시 보게 된다.
-  it("앱 배경이 흰색인 동안에만 테마의 #ffffff가 맞다", () => {
-    expect(cssToken("background")).toBe("oklch(1 0 0)");
-    expect(terminalThemeLight.background).toBe("#ffffff");
+  it("selectionBackground이 --fill-active와 같다", () => {
+    expect(terminalThemeLight.selectionBackground).toBe(cssToken("fill-active"));
+  });
+
+  // **흐린 글자(SGR 2)는 테마에 칸이 없다** — xterm이 글자색을 반만 칠해 그린다(DOM 그리기의 `.xterm-dim`, WebGL 그리기의
+  // `DIM_OPACITY` — 둘 다 0.5). DS의 흐린 글자 `term-dim`(= `fg-tertiary`)이 바로 본문의 50%라, 글자색이 `term-fg`면 흐린
+  // 글자는 저절로 `term-dim`이다. 그 셈을 여기서 견준다 — `fg-tertiary`의 알파가 바뀌거나 글자색이 본문에서 떨어지는 날 둘이 갈린다.
+  it("흐린 글자(글자색의 반)가 --term-dim과 같다", () => {
+    const XTERM_DIM_OPACITY = 0.5;
+    const found = terminalThemeLight.foreground?.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/);
+    if (!found) throw new Error(`#rrggbb가 아니다: ${terminalThemeLight.foreground}`);
+    const [r, g, b] = found.slice(1).map((channel) => parseInt(channel, 16));
+    expect(`rgba(${r}, ${g}, ${b}, ${XTERM_DIM_OPACITY})`).toBe(cssToken("term-dim"));
   });
 });
 
@@ -107,8 +111,8 @@ function brightness(hex: string | undefined): number {
   return (parseInt(found[1], 16) + parseInt(found[2], 16) + parseInt(found[3], 16)) / 3;
 }
 
-// 다크는 앱과 견줄 짝이 커서 하나뿐이라, 나머지는 **두 벌 사이**를 견준다 — 한 벌만 고치고
-// 다른 벌을 잊는 것이 이 파일이 썩는 방식이기 때문이다.
+// 다크에서 이 파일이 앱과 견주는 짝은 커서 하나라(바탕은 L3가 잰다), 나머지는 **두 벌 사이**를 견준다 — 한 벌만
+// 고치고 다른 벌을 잊는 것이 이 파일이 썩는 방식이기 때문이다.
 describe("터미널 테마 두 벌", () => {
   // 여기 있던 「기본은 어둡게다」(다크 별칭이 다크를 가리키는가)의 자리다. 그 별칭은 store가
   // 고른 값을 직접 받게 되면서 지워졌고, **「기본은 어둡게」(결정 54)는 `terminalLook`으로
@@ -136,10 +140,10 @@ describe("터미널 테마 두 벌", () => {
     }
   });
 
-  // 다크에서 앱과 이어진 값은 이것 하나다 — 결정 54가 「커서는 앱 --primary를 그대로」로
-  // 못박았고, 그 연결이 끊기면 다크 터미널에 앱의 색이 한 점도 남지 않는다.
-  it("다크 커서가 앱 --primary와 같다", () => {
-    expect(terminalThemeDark.cursor).toBe(cssToken("primary"));
+  // 결정 54가 「커서는 앱 강조색 그대로」로 못박았다(그때 이름은 `--primary` — 지금은 Codex `accent`를 가리키는
+  // 별칭이다). 그 연결이 끊기면 다크 터미널의 커서만 앱과 다른 파랑이 된다.
+  it("다크 커서가 앱 다크 범위의 --accent와 같다", () => {
+    expect(terminalThemeDark.cursor).toBe(cssToken("accent", "dark"));
   });
 
   it("밝게는 바탕이 글자보다 밝고, 어둡게는 그 반대다", () => {

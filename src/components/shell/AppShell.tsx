@@ -258,7 +258,7 @@ function AppShell() {
   return (
     <div
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
-      className="relative flex h-screen flex-col bg-background text-foreground"
+      className="relative flex h-screen flex-col bg-surface text-fg"
     >
       <div className="flex min-h-0 flex-1">
         <Sidebar

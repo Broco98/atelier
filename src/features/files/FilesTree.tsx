@@ -22,7 +22,7 @@ const IGNORED_NOTE = "gitignore에 걸림";
 const SUBMODULE_NOTE = "하위 모듈";
 
 // 몸 안의 안내 한 줄 — spec 몸의 「아직 spec 파일이 없어요」와 같은 규격이다.
-const NOTE = "px-2 py-1.5 text-ui text-tertiary";
+const NOTE = "px-2 py-1.5 text-chat-meta text-fg-tertiary";
 
 /**
  * files 몸 — 이 work의 워크트리 트리(git-integration 판 01, 결정 37). 프로젝트마다 구획이 하나다.
@@ -189,7 +189,7 @@ function ProjectSection({
   if (title === null) return body;
   return (
     <div role="group" aria-labelledby={headingId} className="flex shrink-0 flex-col">
-      <h3 id={headingId} className="truncate px-2 pb-1 pt-2 text-ui font-semibold">
+      <h3 id={headingId} className="truncate px-2 pb-1 pt-2 text-chat-meta font-semibold">
         {title}
       </h3>
       {body}
@@ -273,7 +273,7 @@ const sectionNote = (text: string) => <span className={NOTE}>{text}</span>;
  */
 function FolderNote({ depth, text }: { depth: number; text: string }) {
   return (
-    <div className="flex h-7 items-center pr-2 text-ui text-tertiary" style={treeIndent(depth)} title={text}>
+    <div className="flex h-7 items-center pr-2 text-chat-meta text-fg-tertiary" style={treeIndent(depth)} title={text}>
       <span className="min-w-0 truncate">{text}</span>
     </div>
   );
@@ -308,9 +308,9 @@ export function FilesRefresh({ slug }: { slug: string }) {
     <Hint
       text="새로고침"
       announce="name"
-      render={<Button variant="outline" size="icon-round" onClick={() => void refreshWorktrees(queryClient, slug)} />}
+      render={<Button variant="outline" size="icon" onClick={() => void refreshWorktrees(queryClient, slug)} />}
     >
-      <RotateCw className="size-4" strokeWidth={1.8} />
+      <RotateCw className="size-4" />
     </Hint>
   );
 }

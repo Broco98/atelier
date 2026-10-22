@@ -86,19 +86,18 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             crumbs={selected ? ["Projects", selected.name] : ["Projects"]}
             end={
               <>
-                {/* 카드 머리의 알약(ui-refresh 결정 5 · 6) — 「제거」는 빨간 글자의 흰 알약이다(DS `.at-pill.danger`). */}
+                {/* 카드 머리의 흰 버튼(`Button` outline — 32 · `radius-lg`, DS `.at-btn.sm`) — 「제거」는 빨간 글자의 흰 버튼이다. */}
                 {selected && (
                   <>
                     <Button
                       variant="outline"
-                      size="pill"
                       disabled={selected.missing}
                       onClick={() => projectsApi.openFolder(selected.slug)}
                     >
-                      <FolderOpen aria-hidden strokeWidth={1.8} />
+                      <FolderOpen aria-hidden />
                       폴더 열기
                     </Button>
-                    <Button variant="outline" size="pill" className="text-destructive" onClick={handleRemove}>
+                    <Button variant="outline" className="text-danger" onClick={handleRemove}>
                       제거
                     </Button>
                   </>
@@ -117,7 +116,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
               <Empty>
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <Folder strokeWidth={1.6} />
+                    <Folder />
                   </EmptyMedia>
                   <EmptyTitle>등록된 프로젝트가 없어요</EmptyTitle>
                   <EmptyDescription>

@@ -351,6 +351,7 @@ describe("WorksPage 머리행 배치", () => {
       tags.find((tag) => tag.includes(`aria-label="${label}"`))?.match(/class="([^"]*)"/)?.[1] ?? "";
     expect(box("작업 메뉴")).toMatch(/\bicon-button\b/);
     expect(box("분할")).toMatch(/\bicon-button\b/);
+    // 크기 단까지 같은지(둘 다 24)는 L3가 칠해진 상자로 잰다(`e2e/primitives.spec.ts`)
     // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
@@ -672,7 +673,7 @@ describe("WorksPage 작업 패널 칸", () => {
     const box = panelBox(render());
     const card = box.match(/<section[^>]*aria-label="작업 패널"[^>]*>/)?.[0] ?? "";
     expect(card, "패널 카드를 찾지 못했다").not.toBe("");
-    expect(card).toContain("rounded-card");
+    expect(card).toContain("rounded-2xl");
     expect(box).not.toContain("border-l");
   });
 });

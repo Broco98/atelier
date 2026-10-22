@@ -131,7 +131,7 @@ function WorkPanel({
           files 칸만 제목 끝에 새로고침 버튼 하나를 더 든다(git-integration 스토리 16) — 그 칸의 몸을 다시 읽는 것이라 몸의 머리에
           선다. */}
       <CardHead end={view === "files" ? <FilesRefresh slug={work.slug} /> : undefined}>
-        <span className="pl-3.5 text-ui font-semibold">{view}</span>
+        <span className="pl-3.5 text-chat-meta font-semibold">{view}</span>
       </CardHead>
       {/* **보이지 않는 몸도 마운트된 채로 둔다**(결정 9) — 언마운트하면 info를 보고 spec으로 돌아왔을 때 접어 둔 판·폴더가
           도로 펴져 있다. 한때 탭 패널의 `keepMounted`가 지키던 것을 이제 몸의 상자가 직접 지킨다. */}
@@ -204,7 +204,7 @@ function SpecTab({
     // 세로 스크롤은 여기까지 — 머리는 패널 카드에 고정되어 항상 보인다
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
       {items.length === 0 ? (
-        <span className="px-2 py-1.5 text-ui text-tertiary">아직 spec 파일이 없어요</span>
+        <span className="px-2 py-1.5 text-chat-meta text-fg-tertiary">아직 spec 파일이 없어요</span>
       ) : (
         <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
       )}

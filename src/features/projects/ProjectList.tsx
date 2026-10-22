@@ -39,16 +39,16 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
           <Hint
             text="프로젝트 등록"
             announce="name"
-            render={<Button variant="outline" size="icon-round" onClick={onAdd} />}
+            render={<Button variant="outline" size="icon" onClick={onAdd} />}
           >
-            <Plus className="size-4" strokeWidth={1.8} />
+            <Plus className="size-4" />
           </Hint>
         }
       >
         {projects.length > 0 && (
           <InputGroup className="flex-1">
             <InputGroupAddon>
-              <Search strokeWidth={1.8} />
+              <Search />
             </InputGroupAddon>
             {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
             <InputGroupInput
@@ -66,27 +66,29 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
           <Empty variant="list" className="my-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Folder strokeWidth={1.6} />
+                <Folder />
               </EmptyMedia>
               <EmptyTitle>프로젝트가 없어요</EmptyTitle>
               <EmptyDescription>로컬 저장소 폴더를 등록해 시작하세요.</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button variant="soft" size="sm" onClick={onAdd}>
+              <Button variant="soft" size="xs" onClick={onAdd}>
                 프로젝트 등록
               </Button>
             </EmptyContent>
           </Empty>
         ) : filtered.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
-            <span className="text-ui text-tertiary">검색 결과가 없어요</span>
+            <span className="text-chat-meta text-fg-tertiary">검색 결과가 없어요</span>
           </div>
         ) : (
-          <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pb-2 scroll-quiet">
+          <div className="-mx-3 -mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pt-1 pb-2 scroll-quiet">
             {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
                 패널 가장자리로 간다. 상자가 바깥 거터 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
                 그만큼 더 안쪽에 서서 행 위로 들어온다. 사이드바 work 목록이 그 병을 실측으로
-                드러냈고(그쪽 주석), 이 목록은 행이 짧아 눈에 덜 띄었을 뿐 같은 자리였다. */}
+                드러냈고(그쪽 주석), 이 목록은 행이 짧아 눈에 덜 띄었을 뿐 같은 자리였다.
+                위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지 않게
+                상자만 4px 올라갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 이미 그 자리다. */}
             {filtered.map((project) => {
               const active = project.slug === selectedSlug;
               return (
@@ -97,31 +99,31 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                   className={cn(
                     // 테두리 없는 평평한 목록 행(DS `.at-list-row`) — 이름 줄 + 경로 줄 + 원격 줄이 2px 사이로 선다.
                     // 안쪽 8 · 12 · 모서리 10(ui-refresh 결정 6 — 목록 행). 고른 행과 hover는 카드 안 목록의 두 단이다.
-                    "flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors",
-                    active ? "selected-row" : "hover:bg-state-1",
+                    "flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors focus-ring",
+                    active ? "selected-row" : "hover:bg-fill-soft",
                   )}
                 >
                   <span className="flex w-full items-center gap-2">
                     <span
                       className={cn(
-                        "min-w-0 truncate text-row font-medium",
-                        project.missing && "text-muted-foreground line-through",
+                        "min-w-0 truncate text-sm font-medium",
+                        project.missing && "text-fg-secondary line-through",
                       )}
                     >
                       {project.name}
                     </span>
                     {project.missing && (
                       // 꼬리표(`tag` — DS `Tag`)의 빨간 갈래(`.at-tag.danger`)다.
-                      <span className="tag ml-auto bg-destructive/8 text-caption text-destructive">누락</span>
+                      <span className="tag ml-auto bg-danger/8 text-xs text-danger">누락</span>
                     )}
                   </span>
-                  <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
-                    <Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
+                  <span className="flex min-w-0 items-center gap-[7px] font-mono text-xs text-fg-secondary">
+                    <Folder className="size-[13px] shrink-0 text-fg-tertiary" />
                     <span className="truncate">{project.path}</span>
                   </span>
                   {project.git?.remoteSlug && (
-                    <span className="flex min-w-0 items-center gap-[7px] font-mono text-mono-sm text-muted-foreground">
-                      <GitFork className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />
+                    <span className="flex min-w-0 items-center gap-[7px] font-mono text-xs text-fg-secondary">
+                      <GitFork className="size-[13px] shrink-0 text-fg-tertiary" />
                       <span className="truncate">{project.git.remoteSlug}</span>
                       {/* 꼬리표(`tag` — DS `Tag`). 글자는 이 줄의 고정폭을 물려받는다. */}
                       <span className="tag">{project.baseBranch}</span>

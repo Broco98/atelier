@@ -2,18 +2,19 @@ import { useState, type ReactNode } from "react";
 import { ChevronRight, Copy, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
 
-// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-ui` · 글리프와 이름 사이 7px · hover
-// state-1. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `muted-foreground`다(Archive · Main 프로토타입). 고른 행은
+// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 7px · hover
+// `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
 // `selected-row`에 굵기 500이다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 // 글자색은 여기 없다 — 흐린 행(`DIM`)과 갈리는 자리라 행이 고른다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-ui transition-colors hover:bg-state-1";
+  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta transition-colors hover:bg-fill-soft focus-ring";
 
 // 흐린 행의 글자 — files 칸이 gitignore에 걸린 것을 이렇게 그린다(git-integration 결정 37). 값은 그 칸 범위의 토큰이라
 // (`index.css`의 `[data-files-tree]`) 전역 토큰을 고치지 않는다(git-integration 결정 38).
@@ -161,20 +162,20 @@ export function TreeRows<T extends TreeRowItem<T>>({
               className={ROWS}
             >
               <CollapsibleTrigger
-                className={cn(COLLAPSE_ROW, look.dim ? DIM : "text-muted-foreground")}
+                className={cn(COLLAPSE_ROW, look.dim ? DIM : "text-fg-secondary")}
                 style={treeIndent(depth)}
                 aria-description={look.note}
               >
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
-                {/* 셰브론은 12px tertiary이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
+                {/* 셰브론은 12px `fg-tertiary`이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
                 <ChevronRight
                   className={cn(
-                    "-mr-[3px] size-3 shrink-0 text-tertiary transition-[rotate] duration-150",
+                    "-mr-[3px] size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-basic",
                     expanded && "rotate-90",
                   )}
-                  strokeWidth={2.2}
+                  strokeWidth={SMALL_GLYPH_STROKE}
                 />
                 <FolderGlyph glyph={look.glyph} />
                 {/* 폴더 이름을 그대로 보여준다 — 경로 복사가 붙어 있는 트리라 화면의 이름이
@@ -208,7 +209,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
         // 무시되므로 스크린리더에는 존재조차 읽히지 않았다. 형제로 푸는 것이 유일한 길이다.
         //
         // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
-        // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
+        // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-fill-soft를 붙인다.
         // 글자색은 고르든 안 고르든 본문 색이다 — 고른 행은 면과 굵기가 말한다(DS `.at-tree-row.is-on`).
         // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
         // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
@@ -220,8 +221,8 @@ export function TreeRows<T extends TreeRowItem<T>>({
           <div key={item.path} className="flex flex-col">
             <div
               className={cn(
-                "group flex h-7 items-center rounded-lg pr-1 text-ui transition-colors",
-                item.path === current ? "selected-row font-medium" : "hover:bg-state-1",
+                "group flex h-7 items-center rounded-lg pr-1 text-chat-meta transition-colors",
+                item.path === current ? "selected-row font-medium" : "hover:bg-fill-soft",
               )}
             >
               {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
@@ -231,7 +232,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 type="button"
                 onClick={(event) => onSelect(item.path, event.detail)}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-[7px] text-left",
+                  "flex h-full min-w-0 flex-1 items-center gap-[7px] rounded-lg text-left focus-ring",
                   onCopy && "pr-1.5",
                   look.dim && DIM,
                 )}
@@ -254,9 +255,9 @@ export function TreeRows<T extends TreeRowItem<T>>({
                   type="button"
                   aria-label={`${item.name} 경로 복사`}
                   onClick={() => onCopy(item.path)}
-                  className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+                  className="icon-button-tint icon-button-xs text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100"
                 >
-                  <Copy className="size-3" strokeWidth={1.8} />
+                  <Copy className="size-3" />
                 </Hint>
               )}
             </div>
@@ -267,13 +268,13 @@ export function TreeRows<T extends TreeRowItem<T>>({
   );
 }
 
-// 폴더 · 파일 행의 글리프는 14px tertiary다(DS `.at-tree-row .ic`).
-const GLYPH = "size-3.5 shrink-0 text-tertiary";
+// 폴더 · 파일 행의 글리프는 14px `fg-tertiary`다(DS `.at-tree-row .ic`).
+const GLYPH = "size-3.5 shrink-0 text-fg-tertiary";
 
 // 폴더 행의 글리프 — 행의 겉이 준 것이다(spec: 항목이 준 아이콘). 없으면 아무것도 안 그린다:
 // 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
 function FolderGlyph({ glyph: Glyph }: { glyph: LucideIcon | null }) {
-  return Glyph && <Glyph className={GLYPH} strokeWidth={1.9} />;
+  return Glyph && <Glyph className={GLYPH} />;
 }
 
 // 파일 행의 글리프. 행의 겉이 글리프를 줬으면(spec: 항목이 준 아이콘) **확장자 라벨 대신** 그것이다. 라벨은 글자라 이름
@@ -281,15 +282,15 @@ function FolderGlyph({ glyph: Glyph }: { glyph: LucideIcon | null }) {
 // 된다 — 이름으로 행을 찾는 L3·L4가 그것을 딛는다(spec 레이아웃 구현 스펙 4절).
 //
 // 글리프가 없으면(spec: 아이콘이 없거나 표에 없는 이름) 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
-// 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-mono-micro` — 10 / 14 · 500)에 문서 안 인라인
-// 코드와 같은 옅은 면 · `rounded-inline`이고 테두리가 없다(ui-refresh 결정 16 · 25).
+// 아니라 파일의 성질이라 남는다. 꼬리표는 DS `at-ext`의 글자(`text-2xs` 10 / 14 · `font-mono` · 500)에 문서 안 인라인
+// 코드와 같은 옅은 면 · `rounded-sm`이고 테두리가 없다(ui-refresh 결정 16 · 25).
 function FileGlyph({ name, glyph: Glyph }: { name: string; glyph: LucideIcon | null }) {
-  if (Glyph) return <Glyph className={GLYPH} strokeWidth={1.9} />;
+  if (Glyph) return <Glyph className={GLYPH} />;
   const dot = name.lastIndexOf(".");
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded-inline bg-group px-1 font-mono text-mono-micro text-tertiary">
+    <span className="shrink-0 rounded-sm bg-surface-under px-1 font-mono text-2xs font-medium text-fg-tertiary">
       {ext}
     </span>
   );

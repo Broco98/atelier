@@ -1,4 +1,5 @@
 import { ArrowRight, ChevronRight, Copy, Folder, GitBranch, PanelTop } from "lucide-react";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ProjectView } from "@/features/projects/types";
@@ -83,7 +84,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
       {/* **맨 위는 「한 클릭에 복사하고 싶은 것」이다**(ui-refresh 결정 14) — 에이전트에게 작업을 넘길 때 가장 자주 집는
           값 셋이다. 테두리 없는 옅은 면 묶음이다(ui-refresh 결정 16). 아래 구획(작업 · 프로젝트)에도 작업 폴더 · 워크트리 복사가 있어
           값이 겹친다 — 그쪽은 전체 메타를 읽는 자리이고, 이쪽은 한 번에 집는 자리다(프로토타입 Works-info도 둘 다 그린다). */}
-      <div className="flex flex-col rounded-card bg-group p-1">
+      <div className="flex flex-col rounded-2xl bg-surface-under p-1">
         <WorkMetaRows work={work} base={branchBase} onCopy={onCopy} />
       </div>
       {/* 아래 구획은 셋 다 「이름 | 값」 두 칸 표다(프로토타입 Works-info — DS `.at-subhead` · `.at-props.narrow`). */}
@@ -106,7 +107,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
 
       <Section title="프로젝트">
         {work.projects.length === 0 ? (
-          <p className="px-1.5 py-1 text-caption leading-normal text-tertiary">{noProjects}</p>
+          <p className="px-1.5 py-1 text-xs text-fg-tertiary">{noProjects}</p>
         ) : (
           // **워크트리 목록만 돈다.** 코어의 뷰 변환이 워크트리를 프로젝트에서 1:1로 만들어
           // 개수도 순서도 같고 각 항목이 이름·경로·존재·변경을 모두 들고 있다. 두 배열을
@@ -118,7 +119,7 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
               // 프로젝트 하나가 줄 덩어리 하나다 — 프로젝트 이름이 첫 줄의 이름 칸에 서서, 아래 줄들이 어느 프로젝트 것인지가
               // 위치로 이어진다. 덩어리 사이는 줄 사이(4)보다 한 단 넓다.
               <div key={worktree.project} className="flex flex-col gap-1 not-first:mt-2">
-                <div className="flex min-h-7 items-center text-ui">
+                <div className="flex min-h-7 items-center text-chat-meta">
                   {/* 이름 칸이 버튼이다 — 값 칸(base · 알 수 없다)은 버튼 밖이라 접근성 이름에 묻히지 않고 읽힌다. */}
                   <Hint
                     text="프로젝트 상세로 이동"
@@ -127,26 +128,26 @@ function WorkInfo({ work, bases, branchBase, onCopy, onOpenProject }: WorkInfoPr
                     aria-label={`${worktree.project} 프로젝트 상세로 이동`}
                     className={cn(
                       PROJECT_LABEL,
-                      "group flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-left text-muted-foreground transition-colors hover:bg-state-1 hover:text-foreground",
+                      "group flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-left text-fg-secondary transition-colors hover:bg-fill-soft hover:text-fg focus-ring",
                     )}
                   >
                     <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
                     <ChevronRight
-                      className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-                      strokeWidth={2}
+                      className="size-3 shrink-0 text-fg-tertiary opacity-0 transition-opacity group-hover:opacity-100"
+                      strokeWidth={SMALL_GLYPH_STROKE}
                     />
                   </Hint>
                   {/* base는 **프로젝트마다 다를 수 있다.** 한 줄로 합치면(feat/… → develop, main)
                       어느 base가 어느 프로젝트 것인지 그 줄에서 사라진다.
                       못 찾는 두 경우는 다른 말을 한다 — 그러라고 값이 둘로 갈려 온다. */}
                   {unregistered ? (
-                    <span className="min-w-0 flex-1 py-1.5 text-caption text-tertiary">
+                    <span className="min-w-0 flex-1 py-1.5 text-xs text-fg-tertiary">
                       알 수 없다 — 프로젝트가 등록돼 있지 않다
                     </span>
                   ) : (
                     base !== null && (
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-mono-sm">
-                        <ArrowRight className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-xs">
+                        <ArrowRight className="size-3 shrink-0 text-fg-tertiary" />
                         <span className="min-w-0 truncate">{base}</span>
                       </span>
                     )
@@ -201,14 +202,14 @@ function WorkMetaRows({
           빈 줄로 남기면 누를 수는 있는데 아무것도 복사되지 않는 줄이 된다. */}
       {work.branch !== null && (
         <MetaRow
-          glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          glyph={<GitBranch className="size-[13px] shrink-0 text-fg-tertiary" />}
           value={work.branch}
-          tail={base ? <span className="shrink-0 text-meta text-tertiary">{base}</span> : undefined}
+          tail={base ? <span className="shrink-0 text-xs text-fg-tertiary">{base}</span> : undefined}
           onCopy={onCopy}
         />
       )}
       <MetaRow
-        glyph={<Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+        glyph={<Folder className="size-[13px] shrink-0 text-fg-tertiary" />}
         value={workDirRef(work.slug)}
         onCopy={onCopy}
       />
@@ -219,7 +220,7 @@ function WorkMetaRows({
       {work.worktrees.map((worktree) => (
         <MetaRow
           key={worktree.project}
-          glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          glyph={<PanelTop className="size-[13px] shrink-0 text-fg-tertiary" />}
           value={worktreeDirRef(worktree.path)}
           relativeTo={workDirRef(work.slug)}
           onCopy={onCopy}
@@ -257,18 +258,18 @@ function MetaRow({
   // 도움말 「복사」는 툴팁이다. 행의 이름은 값이라, 「누르면 복사한다」는 이름보다 더 말하는 것 — 설명으로도
   // 남긴다(S28 — 툴팁은 스크린리더에 아무것도 주지 않는다).
   //
-  // 모양은 DS의 묶음 행(`.at-group-row.sm`)이다 — 32px · 좌우 12 · 사이 10 · 10px 모서리, 옅은 면 위라 hover는 한 단 짙은 state-2다.
+  // 모양은 DS의 묶음 행(`.at-group-row.sm`)이다 — 32px · 좌우 12 · 사이 10 · 10px 모서리, 옅은 면 위라 hover는 한 단 짙은 `fill-hover`다.
   return (
     <Hint
       text="복사"
       announce="description"
       type="button"
       onClick={() => onCopy(value)}
-      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-ui transition-colors hover:bg-state-2"
+      className="flex h-8 items-center gap-2.5 rounded-lg px-3 text-left text-chat-meta transition-colors hover:bg-fill-hover focus-ring"
     >
       {glyph}
-      <span className="min-w-0 flex-1 truncate font-mono text-mono-sm">{shown}</span>
-      {tail ?? <Copy className="size-3 shrink-0 text-tertiary" strokeWidth={1.8} />}
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">{shown}</span>
+      {tail ?? <Copy className="size-3 shrink-0 text-fg-tertiary" />}
     </Hint>
   );
 }
@@ -284,13 +285,13 @@ const PROJECT_LABEL = "w-[82px] shrink-0";
 function Section({ title, first = false, children }: { title: string; first?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex flex-col">
-      <span className={cn("mb-2.5 px-1.5 text-ui font-semibold", first ? "mt-6" : "mt-7")}>{title}</span>
+      <span className={cn("mb-2.5 px-1.5 text-chat-meta font-semibold", first ? "mt-6" : "mt-7")}>{title}</span>
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );
 }
 
-// 「이름 | 값」 한 줄(DS `.at-props.narrow` — 이름 13px `muted-foreground`, 값 12px 고정폭 본문 색, 줄 28).
+// 「이름 | 값」 한 줄(DS `.at-props.narrow` — 이름 13px `fg-secondary`, 값 12px 고정폭 본문 색, 줄 28).
 // **값은 원값 그대로다** — 정보 탭은 slug와 경로를 사람 말로 다듬지 않고 읽는 자리다. 한 항목만 다듬으면 구획 안에서 등록이 갈린다.
 // 값이 원값이 아니라 사실을 적는 말이면(「변경 있음」) `prose`로 고정폭을 뗀다(프로토타입의 그 줄도 그렇다).
 function Row({
@@ -314,12 +315,12 @@ function Row({
 }) {
   const body = (
     <>
-      <span className={cn(LABEL, "truncate pr-2 text-muted-foreground")}>{label}</span>
-      <span className={cn("min-w-0 flex-1 truncate", prose ? "text-caption" : "font-mono text-mono-sm")}>{value}</span>
+      <span className={cn(LABEL, "truncate pr-2 text-fg-secondary")}>{label}</span>
+      <span className={cn("min-w-0 flex-1 truncate", prose ? "text-xs" : "font-mono text-xs")}>{value}</span>
     </>
   );
   if (!copy) {
-    return <div className="flex h-7 items-center px-1.5 text-ui">{body}</div>;
+    return <div className="flex h-7 items-center px-1.5 text-chat-meta">{body}</div>;
   }
   return (
     <Hint
@@ -327,12 +328,11 @@ function Row({
       announce="description"
       type="button"
       onClick={() => copy.onCopy(copy.text)}
-      className="group flex h-7 items-center rounded-lg px-1.5 text-left text-ui transition-colors hover:bg-state-1"
+      className="group flex h-7 items-center rounded-lg px-1.5 text-left text-chat-meta transition-colors hover:bg-fill-soft focus-ring"
     >
       {body}
       <Copy
-        className="ml-1.5 size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-        strokeWidth={1.8}
+        className="ml-1.5 size-3 shrink-0 text-fg-tertiary opacity-0 transition-opacity group-hover:opacity-100"
       />
     </Hint>
   );
@@ -366,7 +366,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-7 items-center px-1.5">
       <span aria-hidden className={LABEL} />
-      <span className="min-w-0 flex-1 text-caption text-tertiary">{children}</span>
+      <span className="min-w-0 flex-1 text-xs text-fg-tertiary">{children}</span>
     </div>
   );
 }

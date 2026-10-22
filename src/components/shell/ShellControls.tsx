@@ -1,8 +1,10 @@
 import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import { useCanGoBack, useRouter } from "@tanstack/react-router";
+import { PANEL_MOTION } from "./panel-layout";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
 import { Hint } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface HistoryButtonProps {
   label: string;
@@ -20,7 +22,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="icon-button-quiet text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -57,19 +59,24 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
   return (
     <div
       data-tauri-drag-region
-      className="absolute left-(--titlebar-controls-left) top-[calc((var(--titlebar-height)-var(--titlebar-control-size))/2)] z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left] duration-[220ms] ease-panel"
+      // 전체화면에 들고 날 때 왼쪽 끝(`--titlebar-controls-left`)이 옮겨 간다 — 같은 값에서 나오는 바탕 줄의 왼쪽 여백(`Frame`의
+      // `TitleBar`)과 같은 박자(`PANEL_MOTION`)로 움직여야 둘 사이가 도는 동안 벌어지지 않는다.
+      className={cn(
+        "absolute left-(--titlebar-controls-left) top-[calc((var(--titlebar-height)-var(--titlebar-control-size))/2)] z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left]",
+        PANEL_MOTION,
+      )}
     >
       <SidebarToggle open={sidebarOpen} onToggle={onToggleSidebar} />
       {/* 마우스 사이드 버튼이 부르는 window.history.back()과 같은 길로 보낸다 */}
       <HistoryButton label="뒤로" disabled={!canGoBack} onClick={() => router.history.back()}>
-        <ArrowLeft className="size-4" strokeWidth={1.7} />
+        <ArrowLeft className="size-4" />
       </HistoryButton>
       <HistoryButton
         label="앞으로"
         disabled={!canGoForward}
         onClick={() => router.history.forward()}
       >
-        <ArrowRight className="size-4" strokeWidth={1.7} />
+        <ArrowRight className="size-4" />
       </HistoryButton>
       {/* **뒤로·앞으로와 같은 간격으로 이어 붙는다 — 무리를 가르지 않는다.** 「지나온 길」과
           검색이 다른 성질인 것은 맞지만, 그것으로 간격을 가르는 규칙은 이 행에 없다: 첫 칸의
@@ -109,9 +116,9 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
         type="button"
         onClick={onOpenSearch}
         aria-keyshortcuts="Meta+K"
-        className="icon-button-quiet text-muted-foreground"
+        className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
       >
-        <Search className="size-4" strokeWidth={1.7} />
+        <Search className="size-4" />
       </Hint>
     </div>
   );

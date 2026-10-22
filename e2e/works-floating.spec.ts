@@ -42,9 +42,10 @@ const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 �
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
-// 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라
-// 전역 CSS 한 곳이라(`index.css`의 `[data-slot][class*="animate-"]`) 메뉴 하나로 잰다 — 메뉴는 판 3이 처음
-// 들인 떠 있는 부품이고, 셸 열기 `+`가 그 첫 쓰는 자리다.
+// 떠 있는 것은 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 박자는 부품마다 다르다 — 메뉴는 DS 「움직임」의
+// `duration-dropdown` · 30ms 지연 · 0.98 → 1이고(그 값은 `frame.spec.ts`의 「작업 ⋯ 메뉴」가 잰다), 툴팁 · 팝오버는 100ms다.
+// 끄는 규칙은 부품마다가 아니라 전역 CSS 한 곳이라(`index.css`의 `[data-slot][class*="animate-"]`) 메뉴 하나로 잰다 —
+// 메뉴는 판 3이 처음 들인 떠 있는 부품이고, 셸 열기 `+`가 그 첫 쓰는 자리다.
 
 test("메뉴는 애니메이션으로 뜨고, 움직임을 끄면 애니메이션 없이 선다", async ({ page }) => {
   await installFixtureBackend(page);

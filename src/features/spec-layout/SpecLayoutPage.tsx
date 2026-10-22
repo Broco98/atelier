@@ -97,10 +97,10 @@ function SpecLayoutPage() {
           자리다(설정 틀 — 설정 파일 읽기 게이트의 실패와 같다). */}
       {query.error !== null && (
         <div className="mt-7 flex flex-col items-start gap-3">
-          <p className="text-ui break-words text-red-600">{String(query.error)}</p>
+          <p className="text-chat-meta break-words text-danger">{String(query.error)}</p>
           {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {state === undefined && (
-            <Button variant="ghost" size="sm" onClick={reread}>
+            <Button variant="ghost" size="xs" onClick={reread}>
               다시 읽기
             </Button>
           )}
@@ -140,7 +140,7 @@ export function SpecLayoutSection({
     <>
       <SettingsLead>
         <code>spec</code> 패널과 에이전트가 받는 안내문이 같은 레이아웃에서 나와요.{" "}
-        <strong className="font-medium text-foreground">부탁</strong>을 누르면 참조가 복사돼요 —
+        <strong className="font-medium text-fg">부탁</strong>을 누르면 참조가 복사돼요 —
         앱 터미널의 에이전트에게 붙이고 원하는 모양을 이어 적으세요.
       </SettingsLead>
       <SettingsSection>
@@ -154,7 +154,7 @@ export function SpecLayoutSection({
 
 /**
  * 레이아웃 한 행. 상태는 셋 중 하나다 — 내장본 그대로, 고침(가린 폴더 경로와 템플릿 개수), 읽지 못해
- * 내장본으로 물러섬(앰버 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
+ * 내장본으로 물러섬(경고색 `warning`의 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
  * 고친 행이다(구현 스펙 5절) — 그래서 ⋯(기본값으로 되돌리기)는 둘 다에 선다. 읽지 못하는 행에는 [편집] 대신
  * [다시 읽기]가 선다: 편집기가 열 레이아웃이 없다.
  */
@@ -178,18 +178,18 @@ function LayoutRow({
   return (
     <SettingsRow
       name={name}
-      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-caption`)다.
-      tail={state.edited ? <span className="tag text-caption">고침</span> : undefined}
+      // 「고침」 꼬리표 — 디자인 시스템의 `Tag`(`.at-tag`)이고 모양은 `tag` 한 곳이 든다. 글자는 DS의 12px(`text-xs`)다.
+      tail={state.edited ? <span className="tag text-xs">고침</span> : undefined}
       description={
         fellBack ? (
           <div className="flex items-start gap-2">
             <TriangleAlert
               aria-hidden
-              className="mt-[3px] size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
-              strokeWidth={2}
+              className="mt-[3px] size-3.5 shrink-0 text-warning"
             />
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-amber-700 dark:text-amber-400">
+              {/* 경고색 글자는 medium이다 — `warning`은 흰 면 위 3.8:1이라 13px 이상 medium 글자에만 쓴다(DS README 「대비」). */}
+              <span className="font-medium text-warning">
                 읽지 못해 내장본으로 보여 주고 있어요
               </span>
               {/* 까닭은 엔진의 글 그대로다 — 에이전트가 물러선 안내문에서 받는 것과 같다. */}
@@ -216,25 +216,25 @@ function LayoutRow({
             render={
               <Button
                 variant="ghost"
-                size="sm"
+                size="xs"
                 onClick={onAsk}
                 aria-label={`${name} 레이아웃을 에이전트에게 부탁`}
               />
             }
           >
-            <Bot data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+            <Bot data-icon="inline-start" aria-hidden />
             부탁
           </Hint>
           {!fellBack && (
-            <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
-              <Pencil data-icon="inline-start" aria-hidden strokeWidth={1.9} />
+            <Button variant="ghost" size="xs" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
+              <Pencil data-icon="inline-start" aria-hidden />
               편집
             </Button>
           )}
           {fellBack && (
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               onClick={onReread}
               aria-label={`${name} 레이아웃 다시 읽기`}
             >
@@ -273,19 +273,19 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
         announce="name"
         render={
           <DropdownMenuTrigger
-            // 아이콘 버튼의 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41) — 옆 글자 버튼(28px)과
-            // 한 줄 높이다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
+            // 아이콘 버튼 규격의 26 단(`icon-button-sm` — DS `.at-ib.sm`)이다 — 옆 줄 안 글자 버튼(`Button` xs, 26)과 한 줄
+            // 높이다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
             className={cn(
-              "icon-button size-7 transition-colors",
-              open ? "toggle-on" : "text-muted-foreground quiet-hover",
+              "icon-button icon-button-sm transition-colors focus-ring",
+              open ? "toggle-on" : "text-fg-secondary quiet-hover",
             )}
           />
         }
       >
-        <MoreHorizontal aria-hidden className="size-4" strokeWidth={2} />
+        <MoreHorizontal aria-hidden className="size-4" />
       </Hint>
       {/* 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다. */}
-      <DropdownMenuContent align="end" width="layout" aria-label={label}>
+      <DropdownMenuContent align="end" aria-label={label}>
         <DropdownMenuItem
           variant="destructive"
           size="note"
@@ -294,12 +294,12 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
           aria-describedby={noteId}
           onClick={onRevert}
         >
-          <RotateCcw aria-hidden className="mt-[3px] size-3.5" strokeWidth={1.9} />
+          <RotateCcw aria-hidden className="mt-[3px] size-3.5" />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
-            <span id={noteId} className="text-caption text-tertiary">
+            <span id={noteId} className="text-xs text-fg-tertiary">
               폴더를 지우고 내장본으로 돌아가요
             </span>
           </span>
@@ -328,7 +328,7 @@ export function CopiedNotice({ reference, onClose }: { reference: string; onClos
 export function RevertedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
   return (
     <PageNotice title="되돌렸어요" reference={reference} onClose={onClose}>
-      내장본으로 돌아갔어요. <code className="text-mono-sm">spec</code> 패널과 에이전트 안내문도
+      내장본으로 돌아갔어요. <code className="font-mono text-xs">spec</code> 패널과 에이전트 안내문도
       따라가요.
     </PageNotice>
   );
@@ -346,6 +346,11 @@ export function RevertedNotice({ reference, onClose }: { reference: string; onCl
  *
  * 스펙이 「복사 알림」이라 부른 것을 코드는 「메시지」라 부른다 — 앱의 「알림」은 셸이 나를 부르는 사건의 말이다
  * (`CONTEXT.md` 「알림 띠」: 토스트를 「알림」이라 부르지 않는다).
+ *
+ * 면은 뒤집힌 면(`fg` 위 `fg-inverse` — DS 툴팁 · `.at-split`과 같은 짝)이고, **체크도 글자색이다.** Codex의 뜻의 색은
+ * 그 테마의 면 위에서 읽히게 고른 값이라 뒤집힌 면 위에 얹을 `success`가 없다 — 라이트 `success`(#00692a)는 이 면(#1a1c1f)
+ * 위 2.5:1로 그림 요소의 바닥(3:1)에 못 미친다. DS의 뒤집힌 면들도 뜻의 색을 얹지 않는다. 카드 위에 떠 있는 것이라 그림자는
+ * 메뉴 · 토스트와 같은 `shadow-prominent`다(스펙 §2 「그림자」).
  */
 function PageNotice({
   title,
@@ -361,24 +366,24 @@ function PageNotice({
   return (
     <div
       role="status"
-      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-card bg-foreground py-3 pr-3 pl-3.5 text-background shadow-lg"
+      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-2xl bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-prominent"
     >
-      <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-green-400" strokeWidth={2.2} />
+      <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <span className="text-ui font-medium break-words">
-          {title} <code className="text-mono-sm opacity-80">{reference}</code>
+        <span className="text-chat-meta font-medium break-words">
+          {title} <code className="font-mono text-xs opacity-80">{reference}</code>
         </span>
-        <span className="text-ui leading-[1.6] opacity-75">{children}</span>
+        <span className="text-chat-meta opacity-75">{children}</span>
       </div>
       {/* 무엇을 닫는지는 자리(이 메시지 `status` 안)가 말한다. 어두운 바탕 위라 hover는 바탕 대신 농도로 선다 —
-          모양은 아이콘 버튼 규격(`icon-button`)이다. */}
+          모양은 줄 안의 작은 아이콘 버튼 규격(`icon-button-xs` — 24)이다. */}
       <button
         type="button"
         onClick={onClose}
         aria-label="닫기"
-        className="icon-button opacity-75 transition-opacity hover:opacity-100"
+        className="icon-button icon-button-xs opacity-75 transition-opacity hover:opacity-100 focus-ring"
       >
-        <X aria-hidden className="size-3.5" strokeWidth={2} />
+        <X aria-hidden className="size-3.5" />
       </button>
     </div>
   );

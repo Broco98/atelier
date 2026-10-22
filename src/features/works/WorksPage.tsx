@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
@@ -746,7 +747,7 @@ function WorksPage({
             {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
                 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
                 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
-                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 tertiary · 켜짐 toggle-on)은 부품의 icon 크기다.
+                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` · 켜짐 toggle-on)은 부품의 icon-xs 크기다.
 
                 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
                 날지를 틀리게 말한다(목록 패널 토글의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
@@ -755,7 +756,7 @@ function WorksPage({
               text={split !== null ? "분할 끄기" : "분할 켜기"}
               render={
                 <Toggle
-                  size="icon"
+                  size="icon-xs"
                   aria-label="분할"
                   pressed={split !== null}
                   // 켜면 spec 옆 묶음 열에 묶음의 지금 탭이 선다 — 파일 탭을 보다 켜면 그 파일이다(git-integration 티켓 07).
@@ -763,7 +764,7 @@ function WorksPage({
                 />
               }
             >
-              <Columns2 className="size-4" strokeWidth={2} />
+              <Columns2 className="size-4" />
             </Hint>
           </>
         )
@@ -876,10 +877,10 @@ function WorksPage({
           text="경로 복사"
           announce="name"
           render={
-            <Button variant="outline" size="icon-round" onClick={() => copyText(specRef(selected.slug, currentSpec))} />
+            <Button variant="outline" size="icon" onClick={() => copyText(specRef(selected.slug, currentSpec))} />
           }
         >
-          <Copy className="size-4" strokeWidth={1.8} />
+          <Copy className="size-4" />
         </Hint>
       )}
     </>
@@ -901,9 +902,9 @@ function WorksPage({
     <Hint
       text="경로 복사"
       announce="name"
-      render={<Button variant="outline" size="icon-round" onClick={() => copyText(codeFilePath)} />}
+      render={<Button variant="outline" size="icon" onClick={() => copyText(codeFilePath)} />}
     >
-      <Copy className="size-4" strokeWidth={1.8} />
+      <Copy className="size-4" />
     </Hint>
   );
   const codeHead = codeTarget && <CardHead crumbs={codeCrumbs} end={codeControls} />;
@@ -922,9 +923,9 @@ function WorksPage({
           <Hint
             text="spec 열 닫기"
             announce="name"
-            render={<Button variant="outline" size="icon-round" onClick={() => changeSplit(null, otherTab("spec"))} />}
+            render={<Button variant="outline" size="icon" onClick={() => changeSplit(null, otherTab("spec"))} />}
           >
-            <X className="size-4" strokeWidth={1.8} />
+            <X className="size-4" />
           </Hint>
         </>
       }
@@ -950,9 +951,9 @@ function WorksPage({
           <Hint
             text={`${codeCrumbs[codeCrumbs.length - 1]} 열 닫기`}
             announce="name"
-            render={<Button variant="outline" size="icon-round" onClick={() => changeSplit(null, otherTab("terminal"))} />}
+            render={<Button variant="outline" size="icon" onClick={() => changeSplit(null, otherTab("terminal"))} />}
           >
-            <X className="size-4" strokeWidth={1.8} />
+            <X className="size-4" />
           </Hint>
         </>
       }
@@ -1066,7 +1067,7 @@ function WorksPage({
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              {needsProject ? <Folder strokeWidth={1.6} /> : <Zap strokeWidth={1.6} />}
+              {needsProject ? <Folder /> : <Zap />}
             </EmptyMedia>
             {/* 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
             <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
@@ -1080,7 +1081,7 @@ function WorksPage({
               atelier_add_project / atelier_start_work를 부른다.
               아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
           <EmptyContent>
-            <code className="select-all rounded-lg bg-group px-3 py-2 font-mono text-mono-sm text-muted-foreground">
+            <code className="select-all rounded-lg bg-surface-code px-3 py-2 font-mono text-xs text-fg-secondary">
               {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
             </code>
           </EmptyContent>
@@ -1177,8 +1178,8 @@ function WorksPage({
                   onPointerMove={() => hoverHalf(half)}
                   onPointerUp={() => dropHere(dragSource, half)}
                   className={cn(
-                    "flex-1 transition-colors duration-150",
-                    drag.half === half && "bg-primary/12 ring-1 ring-inset ring-primary/40",
+                    "flex-1 transition-colors duration-basic",
+                    drag.half === half && "bg-accent/12 ring-1 ring-inset ring-accent/40",
                   )}
                 />
               ))}
@@ -1244,7 +1245,7 @@ function TerminalHead({ name, onClose }: { name: React.ReactNode; onClose: () =>
     <div
       data-column="terminal"
       style={{ color }}
-      className="flex h-9 shrink-0 items-center gap-2 pl-(--term-inset) pr-2 text-caption"
+      className="flex h-9 shrink-0 items-center gap-2 pl-(--term-inset) pr-2 text-xs"
     >
       <span className="min-w-0 flex-1 truncate opacity-70">{name}</span>
       <Hint
@@ -1252,9 +1253,9 @@ function TerminalHead({ name, onClose }: { name: React.ReactNode; onClose: () =>
         announce="name"
         type="button"
         onClick={onClose}
-        className="icon-button shrink-0 opacity-70 transition-[background-color,opacity] hover:bg-current/10 hover:opacity-100"
+        className="icon-button icon-button-xs shrink-0 opacity-70 transition-[background-color,opacity] hover:bg-current/10 hover:opacity-100 focus-ring"
       >
-        <X className="size-3.5" strokeWidth={2} />
+        <X className="size-3.5" />
       </Hint>
     </div>
   );
@@ -1274,15 +1275,15 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
     <div
       role="status"
       aria-live="polite"
-      className="absolute inset-0 z-30 flex items-center justify-center bg-background/80 backdrop-blur-[2px]"
+      className="absolute inset-0 z-30 flex items-center justify-center bg-surface/80 backdrop-blur-[2px]"
     >
       <div className="flex flex-col items-center gap-2">
         {/* 판 1의 Spinner다 — 앱에 스피너가 한 가지만 있다(스토리 92). 크기와 색은 그대로다(S15). 이 막이
             이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 「불러오는 중」이 한 번 더 읽힌다.
             움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
-        <Spinner aria-hidden className="size-6 text-primary" />
-        <span className="mt-1 text-body font-semibold">{verb} 중…</span>
-        <span className="text-ui text-tertiary">{detail}</span>
+        <Spinner aria-hidden className="size-6 text-accent" />
+        <span className="mt-1 text-heading-xs">{verb} 중…</span>
+        <span className="text-chat-meta text-fg-tertiary">{detail}</span>
       </div>
     </div>
   );
@@ -1310,12 +1311,12 @@ function StatusMenu({ work }: { work: WorkView }) {
         announce="description"
         render={
           <DropdownMenuTrigger
-            className={cn(STATUS_BADGE, "transition-[filter] hover:brightness-95", meta.badgeClass)}
+            className={cn(STATUS_BADGE, "transition-[filter] hover:brightness-95 focus-ring", meta.badgeClass)}
           />
         }
       >
         {meta.label}
-        <ChevronDown className="size-[11px] opacity-80" strokeWidth={2.2} />
+        <ChevronDown className="size-[11px] text-fg-tertiary" strokeWidth={SMALL_GLYPH_STROKE} />
       </Hint>
       <DropdownMenuContent>
         <DropdownMenuRadioGroup
@@ -1332,7 +1333,7 @@ function StatusMenu({ work }: { work: WorkView }) {
               <DropdownMenuRadioItem key={status} value={status} label={option.label}>
                 <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
                 <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                <span className="shrink-0 text-caption text-tertiary">{option.desc}</span>
+                <span className="shrink-0 text-xs text-fg-tertiary">{option.desc}</span>
               </DropdownMenuRadioItem>
             );
           })}
@@ -1461,16 +1462,16 @@ function WorkMenu({
               ref={anchor}
               disabled={busy}
               aria-busy={busy}
-              // **icon-button 규격이다** — 바로 오른쪽 분할 토글(`Toggle`의 icon 크기)과 같은 상자다.
+              // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 바로 오른쪽 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
               // 이웃한 두 아이콘 버튼의 상자가 다르면 hover 배경이 한 버튼에서 다음으로 옮겨갈 때
               // 커졌다 작아진다.
               // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
               // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
               // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
               className={cn(
-                "icon-button transition-colors",
+                "icon-button icon-button-xs transition-colors focus-ring",
                 "disabled:pointer-events-none disabled:opacity-50",
-                open ? "toggle-on" : "text-tertiary quiet-hover",
+                open ? "toggle-on" : "text-fg-tertiary quiet-hover",
               )}
             />
           }
@@ -1478,26 +1479,26 @@ function WorkMenu({
           {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
               깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
               disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-          <MoreHorizontal className="size-4" strokeWidth={2.2} />
+          <MoreHorizontal className="size-4" />
         </Hint>
         <DropdownMenuContent>
           {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
               거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다.
 
-              줄의 글자 · 글리프는 부품의 것이다(DS `.at-menu-row` — 13px 400, 글리프 15px tertiary, ui-refresh 결정 17).
+              줄의 글자 · 글리프는 부품의 것이다(DS `.at-mi` — 13px 400, 글리프 15px `fg-secondary`, codex-ds 결정 10).
               여기서 굵기나 크기를 덧칠하지 않는다. */}
           <DropdownMenuItem onClick={() => setRenaming(true)}>
-            <Pencil strokeWidth={1.9} />
+            <Pencil />
             <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleArchive}>
-            <Archive strokeWidth={1.9} />
+            <Archive />
             <span className="min-w-0 flex-1 truncate">아카이빙</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={handleRemove}>
-            <Trash2 strokeWidth={1.9} />
+            <Trash2 />
             <span className="min-w-0 flex-1 truncate">삭제</span>
           </DropdownMenuItem>
         </DropdownMenuContent>

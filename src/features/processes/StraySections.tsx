@@ -109,7 +109,7 @@ const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 
 /** 프로세스 결정 10 그림의 「보기 전용」 — 구획 머리의 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {
-  return <span className="shrink-0 px-2 text-caption text-tertiary">보기 전용</span>;
+  return <span className="shrink-0 px-2 text-xs text-fg-tertiary">보기 전용</span>;
 }
 
 /**

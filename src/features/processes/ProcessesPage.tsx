@@ -132,8 +132,8 @@ function ProcessesPage({ sidebarOpen }: { sidebarOpen: boolean }) {
             end={
               // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 스토어의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
               // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
-              // 모양은 카드 머리의 알약(`Button` outline · pill — ui-refresh 결정 5 · 6)이다.
-              <Button variant="outline" size="pill" onClick={() => void closeQuietShells()}>
+              // 모양은 카드 안의 흰 버튼(`Button` outline — 32 · `radius-lg`, DS `.at-btn.sm`)이다.
+              <Button variant="outline" onClick={() => void closeQuietShells()}>
                 조용한 셸 모두 닫기
               </Button>
             }
@@ -358,7 +358,7 @@ function withKey<T>(set: ReadonlySet<T>, key: T, present: boolean): ReadonlySet<
 }
 
 /**
- * work 행 — 앞에 work 상태 글리프(사이드바와 같은 것, `primary` — ui-refresh 판 06), 이름, 셸 수, 그 work 셸들의 트리 합. 메모리 칸
+ * work 행 — 앞에 work 상태 글리프(사이드바와 같은 것, Codex `accent` — ui-refresh 판 06), 이름, 셸 수, 그 work 셸들의 트리 합. 메모리 칸
  * 앞의 막대는 그 합이 요약 합계의 얼마인지다(`memoryShare`). 최상위 터미널은 셸 글리프이고, 목록에 없는 work(목록을 아직 못 읽었다 ·
  * 주인 잃은 셸의 work)은 글리프 없이 그 자리만 비워 이름이 다른 work의 이름과 같은 x에 선다.
  */
@@ -375,14 +375,14 @@ function GroupRow({ group, total, fold }: { group: GroupNode; total: number | nu
       fold={fold}
     >
       {slugOfOwner(group.owner) === null ? (
-        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-primary" />
+        <SquareTerminal aria-hidden className="size-3.5 shrink-0 text-accent" />
       ) : group.status !== null ? (
-        <StatusIcon status={group.status} className="text-primary" />
+        <StatusIcon status={group.status} className="text-accent" />
       ) : (
         <span aria-hidden className="size-3.5 shrink-0" />
       )}
       <span className="min-w-0 truncate">{group.name}</span>
-      <span className="ml-0.5 shrink-0 text-caption font-normal text-muted-foreground">
+      <span className="ml-0.5 shrink-0 text-xs font-normal text-fg-secondary">
         {shellCount(group.shells.length)}
       </span>
     </TreeRow>
@@ -471,9 +471,9 @@ function ShellRows({
           </>
         }
       >
-        <SquareTerminal aria-hidden className="size-3.75 shrink-0 text-tertiary" />
+        <SquareTerminal aria-hidden className="size-3.75 shrink-0 text-fg-tertiary" />
         <span className="min-w-0 truncate">{name}</span>
-        <span className="ml-1 flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground">
+        <span className="ml-1 flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (

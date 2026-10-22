@@ -183,7 +183,7 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
     // B-2:152 `last_assistant_message`·`agent_id`·`agent_type`.
     ["Stop", { last_assistant_message: "테스트 셋 통과\n커밋할까요?", agent_id: "a1", agent_type: "general" }, "stop", "테스트 셋 통과"],
     // **실측**: `SessionEnd`가 이유를 싣는 키는 **`reason`**이다(위 실측 픽스처).
-    // 이 한 글자가 틀리면 `/clear` 줄이 실물에서 한 번도 안 서고, 방금 지운 화면에 초록이 뜬다.
+    // 이 한 글자가 틀리면 `/clear` 줄이 실물에서 한 번도 안 서고, 방금 지운 화면에 안 본 완료가 뜬다.
     ["SessionEnd", { reason: "clear" }, "clear", null],
     ["SessionEnd", { reason: "logout" }, "end", null],
     // ── 프로세스 결정 14가 더한 여섯. 키의 출처: 도구 셋은 Claude Code 훅 문서(2026-09-26, 티켓 18이 읽음) —
@@ -230,7 +230,7 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
   });
 
   // **모르는 이벤트는 아무것도 안 만든다** — 「모르면 아무 주장도 안 한다」(결정 3)가 여기서
-  // 시작된다. 사용자가 더 걸어 둔 훅이 상태를 흔들면 앰버가 이유 없이 켜진다. 앱이 안 거는 이름
+  // 시작된다. 사용자가 더 걸어 둔 훅이 상태를 흔들면 기다림이 이유 없이 켜진다. 앱이 안 거는 이름
   // (프로세스 결정 14의 「더하지 않음」)이 여기 선다.
   it.each(["Notification", "PermissionDenied", "SessionStart", "PostToolBatch", ""])("모르는 이벤트 %s는 아무것도 아니다", (event) => {
     expect(foldHookState(hook("claude", event, { tool_name: "Bash" }))).toBeNull();
@@ -377,7 +377,7 @@ describe("훅이 나르는 어휘가 Rust와 TS에서 같다", () => {
 // **프로세스 결정 13의 전이 표 그대로**다. 재는 것은 「어느 훅 사건이 오면 화면이 읽는 상태가 무엇이 되는가」 하나 —
 // 어댑터가 무엇으로 접었는지는 이 표의 관심이 아니다.
 //
-// terminal-activity-signal 구현 스펙의 전이 표(`Stop` → 기다림, `clear` → 도는 중, `SessionEnd` → 초록)를 프로세스
+// terminal-activity-signal 구현 스펙의 전이 표(`Stop` → 기다림, `clear` → 도는 중, `SessionEnd` → 안 본 완료)를 프로세스
 // 결정 13이 이렇게 고쳤다: 턴을 마치면 **확인할 것**이고, `/clear`와 중단은 상태가 **없어지고**, 세션 끝은 도는 중 ·
 // 기다림만 지운다. 「나를 기다림」은 사람이 답해야 할 때(승인 · elicitation · `AskUserQuestion`)만 선다.
 const 직전: Attention = {
@@ -421,7 +421,7 @@ describe("전이 표 — 프로세스 결정 13", () => {
     ["claude 새 턴", 직전, hook("claude", "UserPromptSubmit", { prompt: "고쳐" }), 훅상태({ message: "직전에 하던 말" })],
     ["codex 새 턴", 직전, hook("codex", "UserPromptSubmit", { permission_mode: "default" }), 훅상태({ message: "직전에 하던 말", agent: "codex" })],
     // `tool` → 도는 중. **기다림이 풀린다** — 승인한 도구가 끝나면 PostToolUse가 오고(티켓 18 실측: 승인과
-    // PostToolUse 사이에는 오는 훅이 없다), 그때 앰버가 내려간다.
+    // PostToolUse 사이에는 오는 훅이 없다), 그때 기다림이 내려간다.
     ["claude PreToolUse가 기다림을 푼다", 기다리던것, hook("claude", "PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "toolu_10" }), 훅상태({ message: "Bash · git push" })],
     ["claude PostToolUse가 기다림을 푼다", 기다리던것, hook("claude", "PostToolUse", { tool_name: "Bash", tool_input: { command: "git push" }, tool_response: {}, tool_use_id: "toolu_02" }), 훅상태({ message: "Bash · git push" })],
     ["claude 중단 아닌 실패도 도는 중이다(S56)", 기다리던것, hook("claude", "PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "git push" }, tool_use_id: "toolu_02", error: "Exit code 1" }), 훅상태({ message: "Bash · git push" })],
@@ -710,12 +710,12 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     expect(applySignal(null, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_TURN)?.kind).toBe("done");
   });
 
-  // **훅 없는 Codex 셸의 앰버를 푸는 것은 출력이다**(스펙 전이 표의 마지막 줄 · 구현 스펙
-  // 3절). Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보내므로, OSC가 세운 앰버를
+  // **훅 없는 Codex 셸의 기다림을 푸는 것은 출력이다**(스펙 전이 표의 마지막 줄 · 구현 스펙
+  // 3절). Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보내므로, OSC가 세운 기다림을
   // 풀 OSC가 영영 안 온다 — 사람이 승인한 뒤 다시 흐르기 시작한 **출력 자체**가 답이다.
   //
   // **훅 셸에는 안 건다.** claude는 답을 기다리는 동안에도 커서를 다시 그리느라 출력을
-  // 내므로, 여기가 권위 규칙 밖으로 넓어지면 훅이 세운 앰버가 곧바로 꺼진다.
+  // 내므로, 여기가 권위 규칙 밖으로 넓어지면 훅이 세운 기다림이 곧바로 꺼진다.
   describe("출력이 도착하면 OSC가 세운 기다림만 풀린다", () => {
     const osc가세운기다림: Attention = { ...훅이말한것, source: "osc", agent: null };
 
@@ -737,8 +737,8 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
       expect(nextOnOutput(훅이말한것, 300)).toBe(훅이말한것);
     });
 
-    // **초록은 출력으로 안 꺼진다.** 스펙이 푸는 것은 「화면값이 `waiting`」인 자리 하나이고,
-    // 안 본 완료를 지우는 것은 사람이 본 순간뿐이다(결정 7) — 여기서 넓히면 벨이 세운 초록이
+    // **안 본 완료는 출력으로 안 꺼진다.** 스펙이 푸는 것은 「화면값이 `waiting`」인 자리 하나이고,
+    // 안 본 완료를 지우는 것은 사람이 본 순간뿐이다(결정 7) — 여기서 넓히면 벨이 세운 안 본 완료가
     // 다음 프롬프트가 그려지는 순간 사라져 아무도 못 본다.
     it.each(["done", "working"] as const)("%s는 출력이 안 건드린다 — 같은 객체다", (kind) => {
       const 그것: Attention = { ...osc가세운기다림, kind };
@@ -1184,7 +1184,7 @@ const 상태 = (over: Partial<Attention> = {}): Attention => ({
 describe("화면값", () => {
   it.each([
     ["기다림은 그대로 선다", 상태({ kind: "waiting" }), "waiting"],
-    ["안 본 완료는 초록이다", 상태({ kind: "done", seen: false }), "done"],
+    ["안 본 완료는 그대로 선다", 상태({ kind: "done", seen: false }), "done"],
     // **본 완료는 아무것도 안 그린다**(결정 7). `kind`는 그대로 `done`이고 화면값만 없다 —
     // 사실을 지우는 게 아니라 안 그리는 것이다.
     ["본 완료는 아무것도 아니다", 상태({ kind: "done", seen: true }), null],
@@ -1197,7 +1197,7 @@ describe("화면값", () => {
   });
 
   // **죽은 칸의 상태는 눕는다.** 정상 종료는 레지스트리가 칸을 통째로 빼므로 여기 올 일이
-  // 없고, 남는 것은 이유가 있는 끝뿐이다 — 그 칸에 앰버가 굳어 있으면 영영 나를 부른다.
+  // 없고, 남는 것은 이유가 있는 끝뿐이다 — 그 칸에 기다림이 굳어 있으면 영영 나를 부른다.
   // 가름을 여기 하나에 두는 것은 `runningOn`과 같은 이유다: 읽는 화면마다 가르면 한쪽이
   // 빠뜨린다. 뒤늦게 도착한 훅 이벤트도 이 문에서 함께 막힌다.
   it.each([
@@ -1210,7 +1210,7 @@ describe("화면값", () => {
 });
 
 // 우선순위(결정 3)와 띠 정렬(결정 5·8). 둘 다 화면값만 읽는다 — `kind`를 직접 세면 「본
-// 완료」가 셈에 남아 행이 초록인데 띠에는 없는 어긋남이 난다.
+// 완료」가 셈에 남아 행이 물들었는데 띠에는 없는 어긋남이 난다.
 const 칸들 = (...list: ReadonlyArray<Attention | null>): ReadonlyArray<Shell> =>
   list.map((attention, index) => ({ ...칸(attention), id: index + 1 }));
 
@@ -1413,7 +1413,7 @@ describe("띠의 줄", () => {
 });
 
 // **「봤다」의 판정은 여기 하나다**(결정 7). 탭 물들임(#205)과 알림 억제(#206)가 같은 함수를
-// 쓴다 — 두 벌이 되면 한쪽에서만 초록이 꺼진다.
+// 쓴다 — 두 벌이 되면 한쪽에서만 안 본 완료가 꺼진다.
 describe("「봤다」", () => {
   it("켜진 탭 + 창 포커스면 봤다", () => {
     expect(isShellSeen(3, { activeIds: [3], focused: true })).toBe(true);
@@ -1429,7 +1429,7 @@ describe("「봤다」", () => {
     expect(isShellSeen(4, { activeIds: [3], focused: true })).toBe(false);
   });
 
-  // **분할 중이면 켜진 탭이 둘이고 둘 다 봤다.** 하나만 세면 다른 열의 초록이 안 꺼진다.
+  // **분할 중이면 켜진 탭이 둘이고 둘 다 봤다.** 하나만 세면 다른 열의 안 본 완료가 안 꺼진다.
   it.each([3, 7])("분할 중 켜진 탭 둘 다 봤다 — %i", (id) => {
     expect(isShellSeen(id, { activeIds: [3, 7], focused: true })).toBe(true);
   });
@@ -1475,7 +1475,7 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
   });
 
   // **여럿을 받는 계약**(결정 7의 「분할 중이면 켜진 탭이 둘」). 하나만 세면 다른 열의
-  // 초록이 안 꺼진다.
+  // 안 본 완료가 안 꺼진다.
   //
   // **이 앱은 아직 그 화면을 못 만든다** — 분할의 조합이 늘 `spec ▏ 묶음의 지금 탭`이라(결정 87)
   // 셸 열이 하나뿐이고, 배선(`terminal-store`의 `shownShell`)도 그래서 하나다. 그러니
@@ -1487,7 +1487,7 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
     expect([signalOf(뒤.shells[0]), signalOf(뒤.shells[2])]).toEqual([null, null]);
   });
 
-  // 판정이 두 벌이 되면 탭에서만 초록이 꺼지거나 알림만 조용해진다. 소스로 못박는다 —
+  // 판정이 두 벌이 되면 탭에서만 안 본 완료가 꺼지거나 알림만 조용해진다. 소스로 못박는다 —
   // 이 함수는 스스로 조건을 적지 않고 `isShellSeen`을 부른다.
   it("판정을 다시 적지 않고 `isShellSeen`을 부른다", () => {
     // **본문의 끝을 표식으로 닫는다.** 파일 끝까지를 「본문」으로 삼으면 이 함수 **아래**에
