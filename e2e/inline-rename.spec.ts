@@ -337,9 +337,10 @@ test("머리 카드의 입력칸은 이름 글자만큼이고, 친 글자를 따
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   const name = 머리이름(page, plainWork.title);
+  // 이름 상자는 앞에 아이콘 글리프를 품는다(DS `.at-wtitle`) — 잴 것은 그 뒤의 글자 마디다.
   const 글자폭 = await name.evaluate((el) => {
     const range = document.createRange();
-    range.selectNodeContents(el.firstChild!);
+    range.selectNodeContents([...el.childNodes].find((node) => node.nodeType === Node.TEXT_NODE)!);
     return range.getBoundingClientRect().width;
   });
 

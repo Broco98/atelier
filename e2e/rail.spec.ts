@@ -5,6 +5,7 @@ import {
   processesTitle,
   unknownIpcCalls,
   그림자,
+  끄는자리,
   머리카드,
   칠한값,
   토큰값,
@@ -46,17 +47,6 @@ const 상자 = async (target: Locator) => {
 /** 배치 변수 하나의 값(px) — 뿌리에서 읽는다(`frame.spec`의 `token`과 같은 길이고, 이 변수들은 `:root`에 선다). */
 const 길이 = (page: Page, name: string) =>
   page.evaluate((one) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(one)), name);
-
-/**
- * 그 점에서 눌리는 요소 **자신**이 창을 끄는 자리인가(`frame.spec`의 `draggable`과 같은 판정). Tauri는 누른 요소 자신의
- * `data-tauri-drag-region`만 본다 — 회색이 드러나는 상자 하나가 그 속성을 빠뜨려도 화면으로는 안 보이고 이 층에서만 잡힌다.
- * 진열대는 앱 화면 위를 덮어(`position: fixed` · `z-index`) 그 점의 맨 위 요소가 진열대의 것이다.
- */
-const 끄는자리 = (page: Page, x: number, y: number) =>
-  page.evaluate(
-    ([px, py]) => document.elementFromPoint(px, py)?.hasAttribute("data-tauri-drag-region") ?? null,
-    [x, y],
-  );
 
 test("칸이 둘이면 레일이 바탕 오른쪽 끝에 DS 모양으로 선다 — 흰 홈 · 28 칸 · 켜진 칸 fill-selected · hover fill-soft · 위끝 = 카드 위끝 · 칸이 패널을 가리킨다", async ({
   page,
@@ -147,6 +137,7 @@ test("레일이 서면 패널 토글은 머리 카드 밖 레일 위에 서고 �
   expect(toggle.x, "패널 토글은 머리 카드 오른쪽 너머").toBeGreaterThan(head.right);
 
   // 빈 자리는 창을 끄는 자리다 — 칸 묶음 아래, 레일 오른쪽 틈, 패널 카드와 레일 사이 틈, 머리 카드와 토글 사이, 토글 오른쪽 틈.
+  // 진열대는 앱 화면 위를 덮어(`position: fixed` · `z-index`) 그 점의 맨 위 요소가 진열대의 것이다(`끄는자리`는 맨 위 요소에서 잰다).
   const railMiddle = home.x + home.width / 2;
   const below = home.bottom + 40;
   const middle = toggle.y + toggle.height / 2;

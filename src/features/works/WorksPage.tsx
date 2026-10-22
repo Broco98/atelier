@@ -706,6 +706,10 @@ function WorksPage({
           onCommit: (title) => setTitle.mutate({ slug: selected.slug, title }),
           label: "작업 이름",
         },
+        // 이름 뒤의 ⑂ 브랜치 — 프로젝트가 붙은 work만 선다. 프로젝트가 없으면 이름이 미리 정해졌어도(`start_work`의 `branch`) 그
+        // 이름을 가진 저장소도 worktree도 아직 없다 — ⑂는 실제 git 브랜치의 말이다(프로젝트 화면 Works 행도 worktree가 있을 때만 ⑂를
+        // 세운다). 미리 정한 이름은 사이드바 행의 호버 카드가 말한다.
+        branch: selected.projects.length > 0 ? (selected.branch ?? undefined) : undefined,
         actions: (
           <>
             <StatusMenu work={selected} />
@@ -1009,7 +1013,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 // `aria-checked`로 읽힌다. 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
 //
 // 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 상태 모듈의
-// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 창 끌기 영역이 아니다 — 머리 카드 안이고 버튼이다.
+// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 창을 끌지 않는다 — 머리 카드의 빈 자리는
+// 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `HeadCard`).
 function StatusMenu({ work }: { work: WorkView }) {
   const setStatus = useSetWorkStatus();
   const meta = STATUS_META[work.status];
@@ -1046,7 +1051,7 @@ function StatusMenu({ work }: { work: WorkView }) {
 // **메뉴 부품(`DropdownMenu`)이 다 한다**(판 3, 스토리 46~48) — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 ·
 // Home/End · 글자 치기), 하위 메뉴 열고 닫기(→ · ←), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9).
 // 항목은 `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
-// 창 끌기 영역이 아니다 — 머리 카드 안이고 버튼이다.
+// 창을 끌지 않는다 — 머리 카드의 빈 자리는 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `HeadCard`).
 function WorkMenu({
   work,
   flows,

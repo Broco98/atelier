@@ -395,19 +395,19 @@ describe("WorksPage 머리 카드 배치", () => {
     expect(panelToggleTags(a)).toHaveLength(1);
   });
 
-  it("머리 줄이 창을 끄는 자리이고 머리 카드는 아니다", () => {
-    // 끄는 자리는 회색이 보이는 상자다(codex-ds 스펙 §4 「드래그 영역」) — 머리 줄이 속성을 들고, 머리 카드는 카드라 안의 빈 자리 ·
-    // 이름 · 조작(패널 토글까지) 어디도 안 든다. Tauri는 누른 요소 자신만 보므로 카드 상자에 속성이 없으면 카드 안을 눌러 창이
-    // 끌리지 않는다. 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의 `rowOf`)가 집는다. 레일이 설 때의 토글 자리(회색 위
-    // 상자)는 진열대의 L3(`rail.spec.ts`)가 잰다.
+  it("머리 줄이 창을 끄는 자리이고 머리 카드는 빈 자리까지 끈다", () => {
+    // 끄는 자리는 회색이 보이는 상자다(codex-ds 스펙 §4 「드래그 영역」) — 머리 줄이 맨값 속성을 들고, 머리 카드는 `deep`이라 안의 빈
+    // 자리도 끈다(codex-ds 결정 37). 누를 것(버튼 · 포커스 받는 이름)은 Tauri가 스스로 비켜 둔다 — 어느 점이 끌리는지는 L3
+    // (`frame.spec.ts`의 `끄는자리`)가 잰다. 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의 `rowOf`)가 집는다. 레일이 설 때의
+    // 토글 자리(회색 위 상자)는 진열대의 L3(`rail.spec.ts`)가 잰다.
     const row = header(render());
     expect(row.match(/^<header[^>]*>/)?.[0] ?? "", "머리 줄이 없다").toContain("data-tauri-drag-region");
     const card = headCardOf(render());
     expect(card, "머리 카드를 못 찾았다").not.toBe("");
-    expect(card).not.toContain("data-tauri-drag-region");
+    expect(card.match(/^<div[^>]*>/)?.[0] ?? "").toContain('data-tauri-drag-region="deep"');
     expect(actions(render()), "할 일 묶음을 못 찾았다").not.toBe("");
-    // 레일이 서지 않아 카드 밖 토글 자리가 없다 — 머리 줄에서 끌기 영역은 줄 하나다.
-    expect(countOf(row, "data-tauri-drag-region")).toBe(1);
+    // 레일이 서지 않아 카드 밖 토글 자리가 없다 — 머리 줄에서 끌기 영역은 줄과 머리 카드 둘이다.
+    expect(countOf(row, "data-tauri-drag-region")).toBe(2);
     const buttons = row.match(/<button[^>]*>/g) ?? [];
     expect(buttons.length).toBeGreaterThan(0);
     for (const tag of buttons) expect(tag).not.toContain("data-tauri-drag-region");

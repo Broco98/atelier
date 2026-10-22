@@ -8,7 +8,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { ChevronRight, Pencil, Search, type LucideIcon } from "lucide-react";
+import { ChevronRight, GitFork, Pencil, Search, type LucideIcon } from "lucide-react";
 import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { InlineRename } from "@/components/ui/inline-rename";
@@ -38,10 +38,12 @@ import useSplitRatio from "./useSplitRatio";
 //                           │                                    · beside · panel · overlay
 //                           └ 레일 열(rail의 칸이 둘 이상일 때만, 오른쪽 틈) ─ 칸 묶음(카드 줄 꼭대기부터)
 //
-// **틈도 창을 끄는 자리다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 회색 틈이 드러나는 상자(뿌리 · 머리 줄 ·
-// 패널 토글 자리(레일이 설 때) · 아래 줄 · 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆 칸) 모두에 단다.
-// 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. 카드 안(카드 머리의 빈 자리도)은 끌기 영역이 아니다 — 머리 카드도 카드다.
-// 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
+// **틈도 창을 끄는 자리다.** 맨값 `data-tauri-drag-region`은 Tauri가 누른 요소 **자신**에서만 본다 — 회색 틈이 드러나는 상자(뿌리 ·
+// 머리 줄 · 패널 토글 자리(레일이 설 때) · 아래 줄 · 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆
+// 칸) 모두에 단다. 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. **머리 카드는 빈 자리도 창을 끈다** — 창 맨 위 줄이라
+// 제목 막대의 관례를 따른다. 그 뿌리에 `deep`을 달아 안의 빈 자리 · 보이기만 하는 것(아이콘 · 이름 글자 · 위치 · 브랜치 · 배지 글자)
+// 어디를 눌러도 끌리고, 누를 것(버튼 · 포커스 받는 이름 · 입력칸)은 Tauri가 스스로 비켜 둔다(`HeadCard`). 그 밖의 카드 안(본문 · 패널
+// 카드와 그 머리)은 끌기 영역이 아니다. 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
 //
 // **카드 줄에 flex `gap`을 쓰지 않는다.** 틈은 칸 상자의 안쪽 여백이다 — 접힌 칸 옆에 틈이 남지 않게(판 04 「지키는 것」). 분할의
 // 두 열 사이 틈도 왼쪽 열 상자의 안쪽 여백이고, 틈을 둔 칸의 손잡이는 그 틈의 가운데에 선다. 목록 칸은 틈이 아니라 세로 선으로
@@ -126,6 +128,12 @@ export interface HeadSlot {
    * 보이기만 한다. 이름을 고치는 동안은 메뉴가 없다 — 이름 자리에 입력칸이 서고, 입력칸의 메뉴는 그 칸의 것이다.
    */
   nameMenu?: (renderName: (open: boolean) => ReactElement) => ReactNode;
+  /**
+   * 이름 뒤 그 대상의 브랜치(⑂ · 고정폭 — 프로젝트 화면 Works 행의 말) — 작업 화면이 고른 work의 것을 건넨다(프로젝트가 붙은 work만 —
+   * `WorksPage`). 보이기만 한다. 이름에 자리를 내준다 — 이름 상자가 제 폭을 먼저 갖고, 브랜치는 그 뒤 남는 폭에서 말줄임으로 주다가
+   * 남는 폭이 80 아래면 걷힌다.
+   */
+  branch?: string;
   /**
    * 이름 뒤의 옅은 글자(DS `.at-winhead .sub`) — 그 화면 안에서 지금 선 곳(Settings는 항목, 편집기는 항목 › 레이아웃)이거나 고른 것을
    * 짚는 짧은 글(Archive는 프로젝트 · 치운 날)이다. 조각이 둘 이상이면 꺾쇠가 가른다. 캡슐이 아니다 — 캡슐은 경로 줄에만 선다(codex-ds
@@ -508,8 +516,8 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 시작하고 — 신호등 · 창 컨트롤은 사이드바 위에 선다 — 접혔으면 `--titlebar-inset-head`(창 컨트롤 끝 + 틈)다(index.css의
  * `[data-titlebar]`). 여백은 사이드바 폭과 같은 박자(`PANEL_MOTION`)로 따라온다.
  *
- * **머리 카드 밖 회색이 창을 끄는 자리다** — 이 줄과 (레일이 설 때) 패널 토글 자리가 `data-tauri-drag-region`을 든다(머리말).
- * 머리 카드는 카드라 안이 끌기 영역이 아니고, 줄 안의 버튼은 이 속성이 없어 그대로 눌린다.
+ * **머리 줄 전부가 창을 끄는 자리다** — 이 줄과 (레일이 설 때) 패널 토글 자리가 맨값 `data-tauri-drag-region`을 들어 회색이 끌고,
+ * 머리 카드는 `deep`이라 그 안의 빈 자리도 끈다(머리말 · `HeadCard`). 줄 안의 버튼은 속성이 없어 그대로 눌린다.
  */
 function HeadRow({
   sidebarOpen,
@@ -551,20 +559,31 @@ function HeadRow({
  * 레일 열만큼을 비운다(`HeadRow`). 링을 바탕 위 카드처럼 안쪽에 덮어 그리지 않는다 — 넘침을 숨기는 조상이 없어 바깥 링이 잘리지
  * 않는다(`Card`의 안쪽 링은 접히는 칸의 상자 때문이다).
  *
- * 왼쪽은 아이콘 · 이름(과 그 뒤 옅은 위치)뿐이다(DS `.at-wtitle` — 24 · 안쪽 8 · 사이 7, 이름 13/500 `fg`, 아이콘 14 `fg-secondary`).
- * 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다 — 스펙 §3의 「머리 카드 15」보다 부품이 못박은 값이 앞선다(모양 정본은 DS). 카드
- * 안쪽 8에 이름 칸의 안쪽 8이 더해져 아이콘이 카드 + 16에 선다 — 아래 본문 카드의 탭 줄 첫 칸과 한 세로줄이다. 하위 화면은 그 앞에
- * 돌아가는 길(`lead`)이 하나 선다. 이름 뒤 위치(`sub`)는 DS `.at-winhead .sub`(12 `fg-tertiary`, 이름 끝에서 14)다. 오른쪽은 할 일 |
- * 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 오른쪽 패널을 든 화면은 레일이 서지 않으면 그
- * 너머 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive 「⋯ | spec 목록 토글」). 위 줄에 서는 것은
- * 모두 24다(창 컨트롤과 같다 — 글자 버튼은 `Button`의 `top`). 아이콘 버튼의 글리프는 창 컨트롤처럼 15다(스펙 §3 · DS `HeadCard`의 `s15`).
+ * 왼쪽은 **이름 상자**(DS `.at-wtitle` — 아이콘 · 이름 · 연필을 품은 24 상자, 안쪽 0 8 · 사이 7 · `radius-md`, 이름 13/500 `fg`, 아이콘 14
+ * `fg-secondary`)와 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다 — 스펙 §3의 「머리
+ * 카드 15」보다 부품이 못박은 값이 앞선다(모양 정본은 DS). 카드 안쪽 8에 이름 상자의 안쪽 8이 더해져 아이콘이 카드 + 16에 선다 — 아래
+ * 본문 카드의 탭 줄 첫 칸과 한 세로줄이다. 하위 화면은 그 앞에 돌아가는 길(`lead`)이 하나 선다. 브랜치 · 위치는 이름 상자 밖 형제이고
+ * 상자 끝에서 6에 선다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 연필이 없는 이름이면 이름 끝에서 14다). 위치는 DS
+ * `.at-winhead .sub`(12 `fg-tertiary`)이고, 브랜치는 프로젝트 화면 Works 행의 ⑂ 브랜치와 같은 말(⑂ 12 · 고정폭 12 `fg-secondary` · 사이
+ * 5)이다. 오른쪽은 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 오른쪽 패널을 든 화면은
+ * 레일이 서지 않으면 그 너머 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive 「⋯ | spec 목록
+ * 토글」). 위 줄에 서는 것은 모두 24다(창 컨트롤과 같다 — 글자 버튼은 `Button`의 `top`). 아이콘 버튼의 글리프는 창 컨트롤처럼 15다
+ * (스펙 §3 · DS `HeadCard`의 `s15`).
  *
- * **이름은 틀 뿌리의 바닥에 안 든다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 사이드바를 밀면 안 된다. 그래서 이름 칸은
- * DS의 「제 글자 폭만큼」(`flex: 0 1 auto`)이 아니라 남는 폭을 먹고(`flex-1`) — 제 폭을 알리지 않는 상자라 글자 폭으로는 서지 못한다 —
- * DS 상한 520(`max-width`)에서 멈추며, 넘치는 이름은 그 안에서 말줄임으로 준다. 위치도 그 칸 안이라(DS는 칸 밖 형제다) 이름 바로 뒤에
- * 붙어 서고 함께 준다. 오른쪽 묶음은 카드 안쪽 오른쪽 끝에 붙고(`ml-auto` — DS `.at-winctl-r`) 줄지 않는다(`shrink-0`) — 그 폭이 머리
- * 줄의 바닥이라 좁은 창에서도 할 일이 제 폭으로 카드 안에 선다(편집기의 「LLM이 받는 텍스트」 · 「저장」도). 할 일이 없는 화면
- * (Terminal · 빈 Works · 저장이 없는 설정 쪽)에는 묶음이 없다. 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ * **이름 칸은 틀 뿌리의 바닥에 안 든다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 사이드바를 밀면 안 된다. 제 폭을 알리지
+ * 않는 상자라 글자 폭으로는 서지 못해, 이름 칸(이름 상자 · 브랜치 · 위치의 줄)은 남는 폭을 먹는다(`flex-1`). 그 안에서 이름 상자는 DS
+ * 그대로 제 글자 폭이고(`flex: 0 1 auto`) DS 상한 520에서 멈추며, 넘치는 이름은 그 안에서 말줄임으로 준다. 브랜치는 기준 폭이 0이라
+ * (`flex-[1_1_0]`) 이름 상자가 제 폭을 다 가진 뒤 남는 폭만 받는다 — 이름이 먼저다. 그 남는 폭이 80 아래면 ⑂와 몇 글자도 못 들어
+ * 통째로 걷힌다(`@container` — 반쯤 잘린 ⑂가 서지 않게). 위치는 이름 상자와 함께 준다(마지막 조각의 말줄임). 오른쪽 묶음은 카드
+ * 안쪽 오른쪽 끝에 붙고(`ml-auto` — DS `.at-winctl-r`) 줄지 않는다(`shrink-0`) — 그 폭이 머리 줄의 바닥이라 좁은 창에서도 할 일이 제
+ * 폭으로 카드 안에 선다(편집기의 「LLM이 받는 텍스트」 · 「저장」도). 할 일이 없는 화면(Terminal · 빈 Works · 저장이 없는 설정 쪽)에는
+ * 묶음이 없다. 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ *
+ * **빈 자리는 창을 끈다**(머리말) — 카드 뿌리의 `data-tauri-drag-region="deep"`이라 그 아래 어디를 눌러도 끌리고, Tauri는 누를 수
+ * 있는 요소(버튼 · `tabindex` · 입력칸 · 누르는 역할)를 만나면 끌지 않는다. 그래서 보이기만 하는 것(아이콘 · 이름 글자 · 위치 · 브랜치 ·
+ * Archive의 배지 글자 · 할 일 사이)은 끌고, 버튼과 포커스 받는 이름 상자(그 안의 아이콘까지)는 눌린다 — 끄는 자리의 두 번 클릭은 창
+ * 키우기라, 두 번 클릭이 이름 바꾸기인 이름은 끌면 안 된다. 고치는 동안의 이름 상자는 포커스를 받지 않아 `false`로 막는다. 이
+ * 판정은 Tauri의 것(`drag.js`의 `isDragRegion`)이라 누를 것을 새로 들일 때는 그 넷 중 하나로 짓는다 — `onClick`만 단 `span`은 끌린다.
  */
 function HeadCard({
   lead,
@@ -572,6 +591,7 @@ function HeadCard({
   name,
   nameMenu,
   rename,
+  branch,
   sub,
   actions,
   end,
@@ -580,23 +600,31 @@ function HeadCard({
   /** 레일이 서지 않을 때의 패널 토글 — 보기 배치(`end`) 뒤, 카드 안 오른쪽 끝에 선다(`HeadRow`). 화면이 건네는 것이 아니라 틀이 넣는다. */
   toggle?: ReactNode;
 }) {
-  const nameClass = "min-w-0 truncate text-chat-meta font-medium text-fg";
   const nameEl = useRef<HTMLSpanElement>(null);
-  // **메뉴가 있거나 바꿀 수 있는 이름은 대상이다**(`nameMenu` · `rename`) — 포커스를 받는다. 메뉴가 있으면 ⇧F10 · 메뉴 키가 그 메뉴를
-  // 열고 열린 동안 표식이 서서 `focus-ring`이 테두리를 그린다. 바꿀 수 있으면 F2 · 두 번 클릭이 고치기에 든다(codex-ds 스펙 §9 — F2는
-  // 포커스된 대상의 `onKeyDown`이 듣는다, 화면의 window keydown이 아니다). 모서리는 링이 따라 돌 몫이다. 버튼이 아닌 것은 누르면 할
-  // 일이 없어서다(구현 노트 Q6 — 한 번 누르기는 아무것도 하지 않고, 두 번 클릭이 고치기다).
+  // **이름 상자 한 벌**(DS `.at-wtitle`) — 24 · 상한 520 · `radius-md` · 안쪽 왼쪽 8. 줄 상자(`block` · 줄 높이 24)이고 글자가 이 상자의
+  // 바로 안이다 — 말줄임이 이 상자에서 끊기고, 글자로 이름을 찾는 쪽(`getByText`)이 이 상자(포커스 받는 그것)에 닿는다. 아이콘은 줄
+  // 안의 글리프로 서서(`inline-block` · 위 5 — 24 줄에 14) 오른쪽 7을 둔다. 오른쪽 안쪽은 연필이 없으면 8, 있으면 연필 자리까지다(이름
+  // 끝 5 · 연필 12 · 끝 8 — DS `.pen`의 왼쪽 -2가 사이 7에서 빠진다). 연필은 줄 밖에 떠(`absolute`) 말줄임이 그 앞에서 끊긴다.
+  const titleBox = "block h-6 max-w-[520px] min-w-0 truncate rounded-md pl-2 text-chat-meta leading-6 font-medium text-fg";
+  const titleEnd = rename ? "pr-6.25" : "pr-2";
+  // 아이콘 한 벌 — 쉴 때(줄 안의 글리프)와 고칠 때(flex 줄의 칸)가 같은 크기 · 색 · 사이 7이다.
+  const glyphClass = "mr-1.75 size-3.5 text-fg-secondary";
+  const glyph = <Icon aria-hidden className={cn(glyphClass, "mt-1.25 inline-block align-top")} />;
+  // **메뉴가 있거나 바꿀 수 있는 이름은 대상이다**(`nameMenu` · `rename`) — 이름 상자가 포커스를 받는다. 메뉴가 있으면 ⇧F10 · 메뉴
+  // 키가 그 메뉴를 열고 열린 동안 표식이 서서 `focus-ring`이 테두리를 그린다 — 링 · 테두리가 아이콘부터 연필 자리까지 상자 전부를
+  // 두른다. 바꿀 수 있으면 F2 · 두 번 클릭이 고치기에 든다(codex-ds 스펙 §9 — F2는 포커스된 대상의 `onKeyDown`이 듣는다, 화면의
+  // window keydown이 아니다). 버튼이 아닌 것은 누르면 할 일이 없어서다(구현 노트 Q6 — 한 번 누르기는 아무것도 하지 않고, 두 번 클릭이
+  // 고치기다).
   // - **역할이 없으니 키를 말한다**(`aria-keyshortcuts` — 표의 F2와 ⇧F10 · 메뉴 키, `TARGET_MENU_ARIA`). 포커스가 서면 글자(이름)와
   //   함께 「여기서 이 키가 듣는다」가 읽힌다. `aria-haspopup`은 안 단다 — 역할 없는 요소(generic)에는 ARIA가 그 속성을 허락하지 않는다.
   //   역할을 지어 붙이지 않는 것은 그 역할이 거짓말이 되어서다(`button`이면 누를 것이 있어야 한다).
-  // - **바꿀 수 있는 이름은 hover에 면과 연필이 선다**(DS `.at-wtitle:hover` · `.pen`). 면은 글자 상자에 단다 — 이름 칸은 짧은 이름에도
-  //   520까지 넓다. 글자는 제자리에 두고 면만 왼쪽으로 4 넓히며(`-ml-1` · `pl-1`), 오른쪽은 글자 뒤 5 · 연필 12 · 끝 4다(DS `.pen`의
-  //   왼쪽 -2가 사이 7에서 빠진다). 높이는 이름 칸의 24다(DS `.at-wtitle`). 글자는 이 요소의 바로 안이다 — 말줄임이 연필 앞에서 끊기고,
-  //   글자로 이름을 찾는 쪽(`getByText`)이 포커스 받는 이 요소에 닿는다.
-  // - **고치는 동안 이름 자리는 입력칸이다**(`InlineRename`). 폭은 이름 글자만큼이다(`fit="text"` — DS `.at-wtitle.is-edit`도 글자 폭을
-  //   그대로 둔다). 이름 칸은 짧은 이름에도 520까지 넓어, 그 폭을 다 먹으면 고치기에 들 때 테두리가 글자 폭에서 520으로 튄다. 글자가
-  //   같은 자리에 서도록 입력칸도 왼쪽으로 4 넓히고 그만큼 안쪽을 둔다. 메뉴는 그동안 서지 않는다(`nameMenu`를 안 부른다). 키로
-  //   끝내면 포커스가 다시 선 이 이름으로 돌아온다(`nameEl`).
+  // - **바꿀 수 있는 이름은 hover에 면과 연필이 선다**(DS `button.at-wtitle:hover` · `.pen`). 면은 이름 상자 전부다 — 아이콘 앞 8부터
+  //   연필 뒤 8까지 안쪽이 같다. 글리프는 면이 서도 제자리다(면은 칠만 한다).
+  // - **고치는 동안 이름 글자 자리는 입력칸이다**(`InlineRename`). 폭은 이름 글자만큼이다(`fit="text"` — DS `.at-wtitle.is-edit`도 글자
+  //   폭을 그대로 둔다). 상자는 같은 안쪽 · 같은 아이콘으로 서고, 입력칸은 둘레(링)를 위해 왼쪽으로 4 넓히고 그만큼 안쪽을 둬 글자가
+  //   쉴 때의 자리에서 시작한다 — 오른쪽 안쪽은 입력칸 둘레 4만큼 덜어 상자 끝이 거의 그대로다. 링은 입력칸이 든다(`focus-ring` 한
+  //   벌 — DS `.is-edit`은 상자 전부를 두른다). 상자는 끌기를 막는다(`false` — 위 머리말). 메뉴는 그동안 서지 않는다(`nameMenu`를 안
+  //   부른다). 키로 끝내면 포커스가 다시 선 이 이름으로 돌아온다(`nameEl`).
   const shortcuts = [rename && HOTKEYS.rename.aria, nameMenu && TARGET_MENU_ARIA].filter(Boolean).join(" ");
   const renderName = (open: boolean) => (
     <span
@@ -614,51 +642,69 @@ function HeadCard({
       onDoubleClick={rename?.onStart}
       data-menu-target={open ? "" : undefined}
       className={cn(
-        nameClass,
-        "rounded-md focus-ring",
-        rename && "group/name relative -ml-1 h-6 pr-5.25 pl-1 leading-6 transition-colors hover:bg-fill-hover",
+        titleBox,
+        titleEnd,
+        "focus-ring",
+        rename && "group/name relative transition-colors hover:bg-fill-hover",
       )}
     >
+      {glyph}
       {name}
       {rename && (
         <Pencil
           aria-hidden
-          className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-fg-tertiary opacity-0 transition-opacity group-hover/name:opacity-100"
+          className="pointer-events-none absolute top-1/2 right-2 size-3 -translate-y-1/2 text-fg-tertiary opacity-0 transition-opacity group-hover/name:opacity-100"
         />
       )}
     </span>
   );
   const nameNode = rename?.editing ? (
-    <InlineRename
-      value={name}
-      label={rename.label}
-      emptyMeans="revert"
-      fit="text"
-      onCommit={rename.onCommit}
-      onDone={rename.onEnd}
-      returnFocus={() => nameEl.current}
-      className="-ml-1 h-6 px-1 text-chat-meta font-medium text-fg"
-    />
+    <span data-tauri-drag-region="false" className="flex h-6 max-w-[520px] min-w-0 items-center pr-5.25 pl-2">
+      <Icon aria-hidden className={cn(glyphClass, "shrink-0")} />
+      <InlineRename
+        value={name}
+        label={rename.label}
+        emptyMeans="revert"
+        fit="text"
+        onCommit={rename.onCommit}
+        onDone={rename.onEnd}
+        returnFocus={() => nameEl.current}
+        className="-ml-1 h-6 px-1 text-chat-meta font-medium text-fg"
+      />
+    </span>
   ) : nameMenu ? (
     nameMenu(renderName)
   ) : rename ? (
     renderName(false)
   ) : (
-    <span className={nameClass}>{name}</span>
+    <span className={cn(titleBox, titleEnd)}>
+      {glyph}
+      {name}
+    </span>
   );
   return (
     <div
       data-slot="head-card"
+      data-tauri-drag-region="deep"
       className="flex h-(--size-head) min-w-0 flex-1 items-center gap-1 rounded-xl bg-surface px-2 shadow-hairline"
     >
       {lead}
-      <div className="flex h-6 max-w-[520px] min-w-0 flex-1 items-center gap-1.75 px-2 contain-inline-size">
-        <Icon className="size-3.5 shrink-0 text-fg-secondary" />
+      <div className="flex h-6 min-w-0 flex-1 items-center contain-inline-size">
         {nameNode}
+        {branch && (
+          // 브랜치의 칸 — 기준 폭 0이라 이름 상자가 제 폭을 다 가진 뒤 남는 폭만 받고, 그 폭을 제가 잰다(`@container`). 80 아래면 안이
+          // 걷히고 빈 칸만 남는다. 상자 끝에서 6은 안의 왼쪽 여백이다 — 칸의 여백이면 걷힌 동안에도 이름에서 6을 앗는다.
+          <span className="@container flex min-w-0 flex-[1_1_0]">
+            <span className="ml-1.5 hidden min-w-0 items-center gap-1.25 font-mono text-xs text-fg-secondary @min-[80px]:flex">
+              <GitFork aria-hidden className="size-3 shrink-0" />
+              <span className="min-w-0 truncate">{branch}</span>
+            </span>
+          </span>
+        )}
         {sub && (
-          // 이름 끝에서 위치까지 DS는 14다 — 이름 칸의 오른쪽 안쪽 8 + 머리 카드의 사이 4 + `.sub`의 왼쪽 2. 위치가 이름 칸 안이라 칸
-          // 안의 사이 7에 7을 더한다. 앞 조각은 제 폭이고 줄어드는 몫은 마지막 조각의 말줄임이 받는다.
-          <span className="ml-1.75 flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap text-fg-tertiary">
+          // 이름 상자 끝에서 위치까지 6이다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 위 머리말). 앞 조각은 제 폭이고 줄어드는 몫은
+          // 마지막 조각의 말줄임이 받는다.
+          <span className="ml-1.5 flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap text-fg-tertiary">
             {sub.map((part, at) => (
               <Fragment key={at}>
                 {at > 0 && <ChevronRight aria-hidden className="size-3 shrink-0" strokeWidth={SMALL_GLYPH_STROKE} />}

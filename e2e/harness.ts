@@ -917,6 +917,44 @@ export const HEAD_CARD = 'header [data-slot="head-card"]';
 export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
 
 /**
+ * 그 점을 누르면 **창이 끌리는가** — 그 점의 맨 위 요소에서 조상으로 올라가며 Tauri의 판정(`tauri` 2.11 `window/scripts/drag.js`의
+ * `isDragRegion`)을 그대로 따른다. 점 아래에 요소가 없으면 `null`이다(창 밖).
+ * - 속성 `data-tauri-drag-region`이 맨값이면 **누른 요소 자신**일 때만 끈다 — 조상의 맨값은 자식을 누른 것을 끌지 않는다. 회색 틈을
+ *   드러내는 상자마다 이것을 단다(`Frame` 머리말).
+ * - `deep`이면 그 아래 어디를 눌러도 끈다(머리 카드), `false`면 그 아래를 막는다(고치는 동안의 이름 상자).
+ * - 속성 없이 누를 수 있는 요소(버튼 · 링크 · 입력칸 · `tabindex` · 누르는 역할)를 먼저 만나면 끌지 않는다 — 머리 카드의 버튼 · 포커스
+ *   받는 이름이 `deep` 아래에서도 눌리는 까닭이다.
+ * - HTML 요소가 아닌 것(svg 글리프)은 건너뛴다 — 글리프를 누르면 그것을 품은 상자가 판정한다.
+ *
+ * **여기 사는 이유는 끄는 자리를 재는 spec(`frame` · `rail`)이 한 판정을 쓰려는 것이다** — Tauri가 판정을 바꾸는 날 이 한 곳을 고친다.
+ */
+export const 끄는자리 = (page: Page, x: number, y: number) =>
+  page.evaluate(
+    ([px, py]) => {
+      const target = document.elementFromPoint(px, py);
+      if (!target) return null;
+      const tags = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "LABEL", "SUMMARY"]);
+      const roles = new Set(["button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option"]);
+      const clickable = (el: HTMLElement) =>
+        tags.has(el.tagName) ||
+        (el.hasAttribute("contenteditable") && el.getAttribute("contenteditable") !== "false") ||
+        (el.hasAttribute("tabindex") && el.getAttribute("tabindex") !== "-1") ||
+        roles.has(el.getAttribute("role") ?? "");
+      for (let el: Element | null = target; el; el = el.parentElement) {
+        if (!(el instanceof HTMLElement)) continue;
+        const attr = el.getAttribute("data-tauri-drag-region");
+        if (clickable(el) && attr === null) return false;
+        if (attr === null) continue;
+        if (attr === "false") return false;
+        if (attr === "deep") return true;
+        if (attr === "" || attr === "true") return el === target;
+      }
+      return false;
+    },
+    [x, y],
+  );
+
+/**
  * 메뉴 카드의 **줄 차례** — 카드에 바로 선 줄을 위에서부터, 항목은 제 글자로 구분선은 「—」로 읽는다. 묶음은 구분선이 가르므로
  * 항목 순서와 구분선 수를 따로 세면 구분선이 다른 틈으로 옮겨 가도 그대로 통과한다 — 한 목록으로 읽어야 묶음이 재진다. 하위 메뉴
  * 카드는 제 포털에 서서 부모 카드의 줄에 안 섞인다.

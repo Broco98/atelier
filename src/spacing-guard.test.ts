@@ -332,8 +332,13 @@ describe("눈금의 사분 단", () => {
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
     {
       file: "src/components/shell/Frame.tsx",
-      className: "gap-1.75",
-      why: "머리 카드의 이름 칸 — 아이콘과 이름 사이 7(DS `.at-wtitle`)",
+      className: "mr-1.75",
+      why: "머리 카드의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
+    },
+    {
+      file: "src/components/shell/Frame.tsx",
+      className: "gap-1.25",
+      why: "머리 카드의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
     },
     {
       file: "src/components/shell/Sidebar.tsx",
@@ -446,13 +451,18 @@ describe("눈금의 사분 단", () => {
     // 셈에서 나오는 홀수 px
     {
       file: "src/components/shell/Frame.tsx",
-      className: "ml-1.75",
-      why: "머리 카드의 이름 끝에서 위치까지 DS 14 — 위치가 이름 칸 안에 서서, 칸 안의 사이 7(DS `.at-wtitle`)에 7을 더한다",
+      className: "pr-6.25",
+      why: "바꿀 수 있는 머리 카드 이름 상자의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 8",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "pr-5.25",
-      why: "바꿀 수 있는 머리 카드 이름의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 4",
+      why: "고치는 동안의 머리 카드 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
+    },
+    {
+      file: "src/components/shell/Frame.tsx",
+      className: "mt-1.25",
+      why: "머리 카드 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",

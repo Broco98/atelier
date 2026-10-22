@@ -605,7 +605,8 @@ describe("본문 머리", () => {
     // 머리 카드의 이름과 그 뒤 옅은 위치다 — 캡슐이 아니다(캡슐은 경로 줄에만 선다). 카드 안에 고를 것이 없어 카드 머리는 없다.
     const head = /<header[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
     expect(head).toContain('data-slot="head-card"');
-    expect([...head.matchAll(/<span[^>]*>([^<]+)<\/span>/g)].map((m) => m[1])).toEqual(["Settings", "spec 레이아웃"]);
+    // 이름 상자는 아이콘 글리프를 품는다(DS `.at-wtitle`) — 글자는 `</svg>` 뒤 또는 `<span>` 바로 안이다.
+    expect([...head.matchAll(/(?:<span[^>]*>|<\/svg>)([^<]+)<\/span>/g)].map((m) => m[1])).toEqual(["Settings", "spec 레이아웃"]);
     expect(html).not.toContain('data-slot="card-head"');
     // 제목 역할의 줄이 보이는 큰 제목이다(판 06 티켓 06) — 같은 요소 · 같은 레벨이고, 감춰 두지 않는다.
     const title = /<h2\b([^>]*)>([^<]*)<\/h2>/.exec(html);
