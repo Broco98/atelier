@@ -50,6 +50,8 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
 
   // ── ② 문서를 바꾼다. 같은 work 안이라 「열었다」는 그대로여야 한다.
   await page.keyboard.press("Meta+k");
+  // 입력칸이 포커스를 받은 뒤에 누른다 — 그 전의 키는 팔레트의 첫 프레임 가드가 삼킨다(S24).
+  await expect(page.getByRole("textbox", { name: "검색어", exact: true })).toBeFocused();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
