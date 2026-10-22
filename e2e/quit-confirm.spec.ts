@@ -260,7 +260,14 @@ test("창에 포커스가 들어온 뒤의 Enter는 창만 답한다", async ({ 
 
 const dismissals: Array<[string, (page: Page) => Promise<void>]> = [
   ["「취소」", (page) => quitDialog(page).getByRole("button", { name: "취소", exact: true }).click()],
-  ["Esc", (page) => page.keyboard.press("Escape")],
+  // **포커스가 창에 들어온 뒤에 누른다.** 그 전의 키는 첫 프레임 가드가 삼킨다(S24).
+  [
+    "Esc",
+    async (page) => {
+      await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
+      await page.keyboard.press("Escape");
+    },
+  ],
   // 창 바깥의 막(`modal-scrim`)을 누른다 — 창은 가운데 400px라 왼쪽 위 모서리는 늘 바깥이다.
   ["바깥 클릭", (page) => page.mouse.click(8, 8)],
 ];
