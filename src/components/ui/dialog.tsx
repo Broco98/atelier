@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(Codex `scrim`, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-prominent·bg-surface-elevated, DS `.at-float`), 글자는 registry의 text-sm 그대로(값은 DS 14/20), 가림막·창 상자·머리·제목·설명·바닥은 확인 창(alert-dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 600px(DS `.at-palette`), 높이 60vh까지, 안쪽 없이 세로로 쌓는다, 그림자는 `shadow-modal`)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 모양 — 폭 400 · `radius-4xl` · `shadow-modal`·max-w-[calc(100%-4rem)](dialogLook.center — 이름 바꾸기 창이 첫 쓰는 자리다, DS `.at-dialog`). 닫기 버튼은 아이콘 버튼의 26 단(Button의 icon-sm — `icon-button-sm`)이다. 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다. 변형 preview(spec 레이아웃 편집기의 「LLM이 받는 텍스트」 — 가운데 760×640px, 창이 작으면 사방 36px 안쪽까지 줄고, 모서리 · 그림자는 DS `Dialog`의 `radius-4xl` · `shadow-modal`, 안쪽 없이 세로로 쌓는다)를 더했다.
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(Codex `scrim`, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-prominent·bg-surface-elevated, DS `.at-float`), 글자는 registry의 text-sm 그대로(값은 DS 14/20), 가림막·창 상자·머리·제목·설명·바닥은 확인 창(alert-dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 600px(DS `.at-palette`), 높이 60vh까지, 안쪽 없이 세로로 쌓는다, 그림자는 `shadow-modal`)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 모양 — 폭 400 · `radius-4xl` · `shadow-modal`·max-w-[calc(100%-4rem)](dialogLook.center — DS `.at-dialog`. 지금 이 변형을 쓰는 창은 없다 — 이름은 그 자리에서 바꾼다, codex-ds 스펙 §9). 닫기 버튼은 아이콘 버튼의 26 단(Button의 icon-sm — `icon-button-sm`)이다. 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다. 변형 preview(spec 레이아웃 편집기의 「LLM이 받는 텍스트」 — 가운데 760×640px, 창이 작으면 사방 36px 안쪽까지 줄고, 모서리 · 그림자는 DS `Dialog`의 `radius-4xl` · `shadow-modal`, 안쪽 없이 세로로 쌓는다)를 더했다.
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -45,8 +45,8 @@ const dialogPopupVariants = cva(
   {
     variants: {
       variant: {
-        // 가운데의 작은 창(이름 바꾸기). 확인 창(`alert-dialog`)과 한 계열이라 자리·폭·안쪽을 그 창과
-        // 함께 `dialogLook.center`에서 읽는다.
+        // 가운데의 작은 창 — 부품의 기본 모양이다(지금 쓰는 창은 없다). 확인 창(`alert-dialog`)과 한 계열이라 자리·폭·안쪽을
+        // 그 창과 함께 `dialogLook.center`에서 읽는다.
         default: dialogLook.center,
         // 검색 팔레트. 위쪽 12vh에 선다(확인 창은 가운데다). 첫 줄이 입력 줄, 끝 줄이 바닥 줄이고 그 사이를 목록이
         // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다. 폭은 DS 팔레트(`.at-palette`)의 600이고,

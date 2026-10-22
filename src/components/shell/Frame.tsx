@@ -1,17 +1,32 @@
-import { createContext, Fragment, useContext, useId, useRef, type CSSProperties, type ReactNode } from "react";
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useId,
+  useRef,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { ChevronRight, GitFork, Pencil, Search, type LucideIcon } from "lucide-react";
+import { TARGET_MENU_ARIA, openMenuByKey } from "@/components/ui/context-menu";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
+import { InlineRename } from "@/components/ui/inline-rename";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useShellBackground } from "@/features/terminal/terminal-settings";
+import { HOTKEYS, pressed } from "@/lib/hotkeys";
+import type { RovingBox } from "@/lib/roving";
 import { cn } from "@/lib/utils";
-import { foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN } from "./panel-layout";
+import { cardGapPx, foldingInnerClass, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import Rail, { railStands, type RailProps } from "./Rail";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
+import type { TargetRegion } from "./TargetMenu";
 import useSplitRatio from "./useSplitRatio";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27). 옅은 회색 바탕(`bg-surface-shell`) 맨 위에 48 머리 줄이 서고(codex-ds 스펙 §4), 그 아래
-// 본문 · 패널이 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 목록은 따로 뜨지 않고 본문 카드 안 왼쪽 칸이다(codex-ds 결정 28 — 목록 |
-// 내용 한 카드). 머리 줄에는 지금 보는 것을 말하는 머리 카드가 뜬다. 화면은
+// 본문 · 패널이 각자 둥근 흰 카드로 뜬다(ui-refresh 결정 4). 목록은 따로 뜨지 않고 본문 카드 안 오른쪽 칸이다(codex-ds 결정 28 — 내용 |
+// 목록 한 카드). 머리 줄에는 지금 보는 것을 말하는 머리 카드가 뜬다. 화면은
 // 카드 내용만 건넨다 — 틈 · 끌기 영역 · 손잡이 · 신호등 inset을 이 파일 한 곳이
 // 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 틈 하나를 빠뜨려도 화면으로는 어디가 죽었는지가 안 보인다. 분할의 두 열과
 // 편집기의 트리 카드도 이 틀의 칸이다(`split` · `beside`) — 한때 두 화면이 그 칸의 틈 · 끌기 영역 · 손잡이를 제 손으로 다시 적었다.
@@ -19,14 +34,16 @@ import useSplitRatio from "./useSplitRatio";
 //
 //   뿌리(bg-surface-shell) ─ 머리 줄 `<header>`(HeadRow) ─ 머리 카드(남은 폭 — 레일이 안 서면 끝에 패널 토글) · 패널 토글 자리(레일이 설 때만)
 //                  └ 아래 줄 ─ 본문 열(TAB_ROW_COLUMN, 아래 틈) ─ 카드 줄(오른쪽 틈 · 사이드바를 접으면 왼쪽 틈)
-//                           │                                  ─ 본문(카드 하나, 목록 | 내용 카드 하나, 또는 분할의 열 카드 둘)
+//                           │                                  ─ 본문(카드 하나, 내용 | 목록 카드 하나, 또는 분할의 열 카드 둘)
 //                           │                                    · beside · panel · overlay
 //                           └ 레일 열(rail의 칸이 둘 이상일 때만, 오른쪽 틈) ─ 칸 묶음(카드 줄 꼭대기부터)
 //
-// **틈도 창을 끄는 자리다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 회색 틈이 드러나는 상자(뿌리 · 머리 줄 ·
-// 패널 토글 자리(레일이 설 때) · 아래 줄 · 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆 칸) 모두에 단다.
-// 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. 카드 안(카드 머리의 빈 자리도)은 끌기 영역이 아니다 — 머리 카드도 카드다.
-// 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
+// **틈도 창을 끄는 자리다.** 맨값 `data-tauri-drag-region`은 Tauri가 누른 요소 **자신**에서만 본다 — 회색 틈이 드러나는 상자(뿌리 ·
+// 머리 줄 · 패널 토글 자리(레일이 설 때) · 아래 줄 · 본문 열 · 카드 줄 · 레일 열 · 접히는 바깥 상자 · 분할의 `<main>`과 왼쪽 열 상자 · 옆
+// 칸) 모두에 단다. 하나라도 빠지면 그 틈은 창을 못 끄는 죽은 자리가 된다. **머리 카드는 빈 자리도 창을 끈다** — 창 맨 위 줄이라
+// 제목 막대의 관례를 따른다. 그 뿌리에 `deep`을 달아 안의 빈 자리 · 보이기만 하는 것(아이콘 · 이름 글자 · 위치 · 브랜치 · 배지 글자)
+// 어디를 눌러도 끌리고, 누를 것(버튼 · 포커스 받는 이름 · 입력칸)은 Tauri가 스스로 비켜 둔다(`HeadCard`). 그 밖의 카드 안(본문 · 패널
+// 카드와 그 머리)은 끌기 영역이 아니다. 틈의 실제 자리와 그 자리를 누르면 무엇이 눌리는지는 `e2e/frame.spec.ts`가 잰다.
 //
 // **카드 줄에 flex `gap`을 쓰지 않는다.** 틈은 칸 상자의 안쪽 여백이다 — 접힌 칸 옆에 틈이 남지 않게(판 04 「지키는 것」). 분할의
 // 두 열 사이 틈도 왼쪽 열 상자의 안쪽 여백이고, 틈을 둔 칸의 손잡이는 그 틈의 가운데에 선다. 목록 칸은 틈이 아니라 세로 선으로
@@ -51,7 +68,7 @@ export interface PanelSlot extends CardContent {
 }
 
 /**
- * 목록 칸(codex-ds 결정 28) — 본문 카드 안 왼쪽 칸이다. 이름은 칸의 `aria-label`이고, 안(목록 머리 · 찾기 칸 · 행)은 화면이 건넨다.
+ * 목록 칸(codex-ds 결정 28) — 본문 카드 안 오른쪽 칸이다. 이름은 칸의 `aria-label`이고, 안(목록 머리 · 찾기 칸 · 행)은 화면이 건넨다.
  * 접지 않는다(codex-ds 결정 32) — 열림이 없다. 저장하는 폭은 **칸의 폭**이다.
  */
 export interface ListSlot extends CardContent {
@@ -94,8 +111,29 @@ export interface HeadSlot {
    * 오른쪽 배지가 말한다), 프로젝트는 폴더, 그 밖의 화면은 nav의 그 아이콘이다.
    */
   icon: LucideIcon;
-  /** 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 보이기만 한다 — 그 자리에서 바꾸는 것은 codex-ds 티켓 28이다. */
+  /**
+   * 지금 보는 것의 이름 — 고른 것(work · 프로젝트)이 있으면 그 이름, 없으면 화면 이름. 고른 것에 메뉴가 있으면 이름이 그 메뉴의 대상이
+   * 되고(`nameMenu`), 바꿀 수 있으면 그 자리에서 바꾼다(`rename`).
+   */
   name: string;
+  /**
+   * 이름을 그 자리에서 바꾸기(codex-ds 스펙 §9 · 결정 18) — 고른 work · 프로젝트의 이름에만 선다. 두 번 클릭 · F2(이름에 포커스가 선
+   * 때)로 들어가고, 메뉴 「이름 바꾸기」는 화면이 `editing`을 켜서 들어간다. 고치는 동안은 이름 자리에 입력칸이 선다(`InlineRename`).
+   */
+  rename?: HeadRename;
+  /**
+   * 이름의 우클릭 메뉴(codex-ds 결정 6 — 작업 화면은 그 work의 메뉴). 틀이 이름 요소를 그리는 함수(`renderName`)를 건네고, 화면은 그것을
+   * 메뉴의 대상으로 감싸 돌려준다 — 메뉴가 무엇을 펴는지는 화면이 알고, 이름의 모양과 자리는 틀이 든다. 받는 값은 「메뉴가 열려 있나」이고
+   * 열린 동안 이름에 대상 테두리가 선다(결정 11). 이 이름은 포커스를 받아 ⇧F10 · 메뉴 키로도 그 메뉴를 연다. 이것도 `rename`도 없으면 이름은
+   * 보이기만 한다. 이름을 고치는 동안은 메뉴가 없다 — 이름 자리에 입력칸이 서고, 입력칸의 메뉴는 그 칸의 것이다.
+   */
+  nameMenu?: (renderName: (open: boolean) => ReactElement) => ReactNode;
+  /**
+   * 이름 뒤 그 대상의 브랜치(⑂ · 고정폭 — 프로젝트 화면 Works 행의 말) — 작업 화면이 고른 work의 것을 건넨다(프로젝트가 붙은 work만 —
+   * `WorksPage`). 보이기만 한다. 이름에 자리를 내준다 — 이름 상자가 제 폭을 먼저 갖고, 브랜치는 그 뒤 남는 폭에서 말줄임으로 주다가
+   * 남는 폭이 80 아래면 걷힌다.
+   */
+  branch?: string;
   /**
    * 이름 뒤의 옅은 글자(DS `.at-winhead .sub`) — 그 화면 안에서 지금 선 곳(Settings는 항목, 편집기는 항목 › 레이아웃)이거나 고른 것을
    * 짚는 짧은 글(Archive는 프로젝트 · 치운 날)이다. 조각이 둘 이상이면 꺾쇠가 가른다. 캡슐이 아니다 — 캡슐은 경로 줄에만 선다(codex-ds
@@ -112,6 +150,23 @@ export interface HeadSlot {
   end?: ReactNode;
 }
 
+/**
+ * 머리 카드 이름의 제자리 바꾸기(`HeadSlot.rename`). 고치는 중인지는 화면이 쥔다 — 메뉴 「이름 바꾸기」가 화면의 것이라서다. 틀은 들어가는
+ * 키 · 두 번 클릭을 듣고(`onStart`), 고치기가 끝나면(저장이든 취소든) `onEnd`를 부른다.
+ */
+export interface HeadRename {
+  /** 지금 고치는 중인가 — 켜진 동안 이름 자리에 입력칸이 선다. */
+  editing: boolean;
+  /** 두 번 클릭 · F2 — 화면이 `editing`을 켠다. */
+  onStart: () => void;
+  /** 고치기가 끝났다 — 화면이 `editing`을 끈다. */
+  onEnd: () => void;
+  /** 바뀐 이름으로 저장한다. 그대로이거나 비운 이름(원래 이름)은 부르지 않는다(`InlineRename`). */
+  onCommit: (name: string) => void;
+  /** 입력칸의 이름(`aria-label`) — 「작업 이름」 · 「프로젝트 이름」. */
+  label: string;
+}
+
 interface FrameProps<Id extends string> {
   /** 사이드바가 열렸나 — 머리 줄의 왼쪽 여백과 카드 줄의 왼쪽 틈이 이것으로 갈린다. */
   sidebarOpen: boolean;
@@ -121,7 +176,7 @@ interface FrameProps<Id extends string> {
    */
   head: HeadSlot;
   /**
-   * 목록 칸 — 주면 본문 자리에 목록 | 내용 카드 하나가 서고(`ListCard`), 목록 칸은 그 카드 안 왼쪽 `section`이다(`aside`는 사이드바와
+   * 목록 칸 — 주면 본문 자리에 내용 | 목록 카드 하나가 서고(`ListCard`), 목록 칸은 그 카드 안 오른쪽 `section`이다(`aside`는 사이드바와
    * 오른쪽 패널 — 작업 패널 · spec 목록 패널 — 둘뿐이다). 내용 칸은 `children`의 본문 카드(`<Card as="main">`)다 — 그 카드는 제
    * 모서리 · 면 · 링을 벗고 칸이 된다.
    * 두 칸을 가르는 세로 선과 그 위의 폭 손잡이는 이 틀이 들고, 화면은 칸 안(목록 머리와 몸)만 건넨다.
@@ -149,7 +204,7 @@ interface FrameProps<Id extends string> {
    * 카드의 머리)이라, 「끄는 것이 출발한 줄은 덮지 않는다」는 덮는 쪽이 줄 높이(`--size-toolbar`)만큼 내려 선다(`WorksPage`의 놓기 겹판).
    */
   overlay?: ReactNode;
-  /** 본문 카드(`<Card as="main">`) — 목록 칸이 있으면(`list`) 목록 | 내용 카드의 내용 칸이 된다. 분할이면(`split`) 비워 둔다. */
+  /** 본문 카드(`<Card as="main">`) — 목록 칸이 있으면(`list`) 내용 | 목록 카드의 내용 칸이 된다. 분할이면(`split`) 비워 둔다. */
   children?: ReactNode;
 }
 
@@ -201,7 +256,7 @@ function Frame<Id extends string>({
           >
             {list ? <ListCard slot={list}>{children}</ListCard> : split ? <SplitBox slot={split} /> : children}
             {beside && <BesideBox slot={beside} />}
-            {/* 목록 | 내용 카드 곁의 패널은 그 카드에 두 칸의 최소 폭(목록 칸의 최소 + 내용 칸에 남기는 그만큼)을 남긴다(`PanelBox`의
+            {/* 내용 | 목록 카드 곁의 패널은 그 카드에 두 칸의 최소 폭(목록 칸의 최소 + 내용 칸에 남기는 그만큼)을 남긴다(`PanelBox`의
                 `reserve`). */}
             {panel && <PanelBox id={panelId} slot={panel} reserve={list && list.size.min * 2} />}
             {overlay}
@@ -225,23 +280,26 @@ function Frame<Id extends string>({
 }
 
 /**
- * 목록 | 내용 카드 안이다(codex-ds 결정 28) — 그 안에 선 `Card`는 제 카드가 아니라 바깥 카드의 내용 칸이라 모서리 · 면 · 링을 그리지
+ * 내용 | 목록 카드 안이다(codex-ds 결정 28) — 그 안에 선 `Card`는 제 카드가 아니라 바깥 카드의 내용 칸이라 모서리 · 면 · 링을 그리지
  * 않는다(바깥 카드가 든다 — DS `.at-joined > .at-col`). 화면은 다른 화면처럼 본문 카드(`<Card as="main">`)를 건네고, 그것이 칸이
  * 되는 것은 이 틀이 정한다 — 화면마다 칸의 모양을 적으면 한 화면만 링을 두 번 두른다.
  */
 const InListCard = createContext(false);
 
 /**
- * 목록 | 내용 카드(codex-ds 결정 28 · 스펙 §4 「목록 칸」 · DS `.at-joined`). 본문 자리에 카드 하나가 서고, 그 안 왼쪽이 목록 칸
- * (`section` — DS `.at-listcol`), 오른쪽이 내용 칸(화면의 본문 카드 — `main`)이다. 둘 사이에 틈이 없다 — 0.5px `border-heavy` 세로
- * 선이 가른다. 선은 테두리가 아니라 목록 칸 오른쪽 끝 안쪽에 칠한 면이다(`::after` — 0.5px 테두리는 엔진마다 굵기가 갈린다, DS는
- * 안쪽 그림자 `inset -0.5px 0 0`).
+ * 내용 | 목록 카드(codex-ds 결정 28 · 스펙 §4 「목록 칸」 · DS `.at-joined`). 본문 자리에 카드 하나가 서고, 그 안 왼쪽이 내용 칸
+ * (화면의 본문 카드 — `main`), 오른쪽이 목록 칸(`section` — DS `.at-listcol`)이다. 둘 사이에 틈이 없다 — 0.5px `border-heavy` 세로
+ * 선이 가른다. 선은 테두리가 아니라 목록 칸 왼쪽 끝 안쪽에 칠한 면이다(`::after` — 0.5px 테두리는 엔진마다 굵기가 갈린다).
  *
- * **그 선이 폭 손잡이다**(`ResizeHandle`의 `rule` 자리 — 선 위에 걸쳐 선다). 끌면 목록 칸의 폭이 바뀌어 저장되고, 두 번 누르면 기본
+ * **마크업 차례가 보이는 차례다** — 내용 칸이 먼저, 목록 칸이 뒤다. 그래서 Tab이 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다. 목록
+ * 칸을 CSS(`order` · `flex-row-reverse`)로 오른쪽에 세우면 Tab이 보이는 차례를 거슬러 간다.
+ *
+ * **그 선이 폭 손잡이다**(`ResizeHandle`의 `rule` 자리 — 선 위에 걸쳐 선다). 목록 칸이 카드 오른쪽 끝에 붙어 선은 칸의 왼쪽 끝이라,
+ * 왼쪽으로 끌면 목록 칸이 넓어진다(폭 훅의 `side`가 `"right"` — 화면이 건넨다). 끈 폭은 저장되고, 두 번 누르면 기본
  * 폭이다. 폭은 칸의 폭 그대로라(틈이 없다) 출발 폭을 잴 때 뺄 것이 없다. 두 번 눌러 기본 폭으로 돌아가는 순간은 패널과 같은
  * 박자(`PANEL_MOTION`)로 움직이고, 끄는 동안에는 트랜지션을 꺼서 폭이 커서를 곧장 따라온다.
  *
- * **접지 않는다**(codex-ds 결정 32) — 목록 → 내용은 한 쪽의 두 칸이라, 따로 여닫는 것은 오른쪽 패널뿐이다. 칸은 제 폭으로 서고
+ * **접지 않는다**(codex-ds 결정 32) — 내용 | 목록은 한 카드의 두 칸이라, 따로 여닫는 것은 오른쪽 패널뿐이다. 칸은 제 폭으로 서고
  * (`shrink-0`) 남는 폭을 내용 칸이 먹는다. 목록 칸의 안쪽은 좌우 8이고(DS `.at-listcol` — 머리 · 찾기 칸 · 행이 그 안에 선다), 위아래는
  * 칸 안이 든다. 카드는 카드라 안이 끌기 영역이 아니다 — 회색이 드러나는 자리가 없다.
  *
@@ -255,12 +313,13 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
   const { label, size } = slot;
   return (
     <div data-slot="card" className={cn(CARD_FACE, "flex min-h-0 min-w-0 flex-1 bg-surface")}>
+      <InListCard.Provider value>{children}</InListCard.Provider>
       <section
         aria-label={label}
         style={{ width: size.width, "--list-min": `${size.min}px` } as CSSProperties}
         className={cn(
           "relative flex min-h-0 max-w-[calc(100%-var(--list-min))] min-w-(--list-min) shrink-0 flex-col px-2",
-          "after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-[0.5px] after:bg-border-heavy",
+          "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-[0.5px] after:bg-border-heavy",
           !size.dragging && PANEL_MOTION,
           !size.dragging && "transition-[width]",
         )}
@@ -268,7 +327,6 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
         {slot.children}
         <ResizeHandle control={size} seat="rule" />
       </section>
-      <InListCard.Provider value>{children}</InListCard.Provider>
     </div>
   );
 }
@@ -284,7 +342,7 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  * 내주고, 왼쪽 카드에는 **남길 폭(`reserve`)만큼은 남긴다**(`max-width`). 그 폭은 왼쪽 카드가 화면을 이루는 최소다:
  * - 작업 화면의 문서 카드에는 패널 자신의 최소 폭만큼이다(`reserve`가 없을 때). 문서 카드는 머리에 탭 줄을 이고 그 줄의 바닥 아래로는
  *   안 준다(`TAB_ROW_CARD`) — 패널이 최소 폭까지 줄고도 둘이 카드 줄에 안 들면 그 합이 본문 열의 바닥이 되어 사이드바가 자리를 내준다.
- * - Archive의 목록 | 내용 카드에는 두 칸의 최소(목록 칸의 최소 + 내용 칸에 남기는 그만큼 — `ListCard`)다. 그만큼을 남기지 않으면 좁은
+ * - Archive의 문서 | 목록 카드에는 두 칸의 최소(목록 칸의 최소 + 내용 칸에 남기는 그만큼 — `ListCard`)다. 그만큼을 남기지 않으면 좁은
  *   창에서 패널이 제 폭을 지키는 사이 목록 칸이 제 최소로 버텨 내용 칸이 먼저 눌린다. 그 카드 줄은 격리되어(`TAB_ROW_COLUMN`) 사이드바가
  *   자리를 내주지 않으므로, **여기서는 패널이 제 최소 폭 아래로도 내준다**(최소 폭도 「남은 폭 − 남길 폭」을 넘지 않는다). 목록과 내용은
  *   접을 수 없는 칸이고 패널은 ⌘Enter · 토글로 걷을 수 있는 칸이라, 모자란 자리는 걷을 수 있는 쪽이 진다 — 900 창에 사이드바를 넓혀
@@ -299,12 +357,14 @@ function ListCard({ slot, children }: { slot: ListSlot; children?: ReactNode }) 
  *
  * `id`는 패널 토글 · 레일 칸이 가리키는 자리다(`aria-controls`). 접혀도 이 상자는 그대로 서 있어(폭만 0) 가리킴이 끊기지 않는다.
  * 그래서 **닫힌 동안 안쪽 열은 `inert`다** — 폭만 0인 칸 안의 트리 행에 Tab · 찾기가 닿지 않게 한다(레일의 `PanelBody` · 사이드바 목록
- * 구획과 같은 손). 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다.
+ * 구획과 같은 손). 접히는 동안 아직 보이는 안쪽에도 포커스가 닿지 않는다. 안에 있던 포커스는 패널 토글로 간다(`useFoldedFocus`).
  */
 function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?: number }) {
   const { open, size, label, children } = slot;
+  const box = useFoldedFocus<HTMLElement>(open);
   return (
     <aside
+      ref={box}
       id={id}
       data-tauri-drag-region
       style={
@@ -348,13 +408,12 @@ function PanelBox({ id, slot, reserve }: { id: string; slot: PanelSlot; reserve?
 }
 
 /**
- * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--space-2`)에서 읽는다 — 숫자를
- * 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
+ * 분할의 두 열이 나눠 갖는 폭 — `<main>`의 폭에서 두 열 사이 틈 하나를 뺀다(아래 `SplitBox`). 틈은 토큰(`--space-2`)에서 읽는다
+ * (`cardGapPx`). 상자를 못 읽었으면 0이고, 그러면 비율 훅이 움직이지 않는다(`nextRatio`).
  */
 function sharedWidth(host: HTMLElement | null): number {
   if (!host) return 0;
-  const gap = parseFloat(getComputedStyle(host).getPropertyValue("--space-2")) || 0;
-  return Math.max(0, host.getBoundingClientRect().width - gap);
+  return Math.max(0, host.getBoundingClientRect().width - cardGapPx(host));
 }
 
 /**
@@ -458,8 +517,8 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 시작하고 — 신호등 · 창 컨트롤은 사이드바 위에 선다 — 접혔으면 `--titlebar-inset-head`(창 컨트롤 끝 + 틈)다(index.css의
  * `[data-titlebar]`). 여백은 사이드바 폭과 같은 박자(`PANEL_MOTION`)로 따라온다.
  *
- * **머리 카드 밖 회색이 창을 끄는 자리다** — 이 줄과 (레일이 설 때) 패널 토글 자리가 `data-tauri-drag-region`을 든다(머리말).
- * 머리 카드는 카드라 안이 끌기 영역이 아니고, 줄 안의 버튼은 이 속성이 없어 그대로 눌린다.
+ * **머리 줄 전부가 창을 끄는 자리다** — 이 줄과 (레일이 설 때) 패널 토글 자리가 맨값 `data-tauri-drag-region`을 들어 회색이 끌고,
+ * 머리 카드는 `deep`이라 그 안의 빈 자리도 끈다(머리말 · `HeadCard`). 줄 안의 버튼은 속성이 없어 그대로 눌린다.
  */
 function HeadRow({
   sidebarOpen,
@@ -501,25 +560,39 @@ function HeadRow({
  * 레일 열만큼을 비운다(`HeadRow`). 링을 바탕 위 카드처럼 안쪽에 덮어 그리지 않는다 — 넘침을 숨기는 조상이 없어 바깥 링이 잘리지
  * 않는다(`Card`의 안쪽 링은 접히는 칸의 상자 때문이다).
  *
- * 왼쪽은 아이콘 · 이름(과 그 뒤 옅은 위치)뿐이다(DS `.at-wtitle` — 24 · 안쪽 8 · 사이 7, 이름 13/500 `fg`, 아이콘 14 `fg-secondary`).
- * 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다 — 스펙 §3의 「머리 카드 15」보다 부품이 못박은 값이 앞선다(모양 정본은 DS). 카드
- * 안쪽 8에 이름 칸의 안쪽 8이 더해져 아이콘이 카드 + 16에 선다 — 아래 본문 카드의 탭 줄 첫 칸과 한 세로줄이다. 하위 화면은 그 앞에
- * 돌아가는 길(`lead`)이 하나 선다. 이름 뒤 위치(`sub`)는 DS `.at-winhead .sub`(12 `fg-tertiary`, 이름 끝에서 14)다. 오른쪽은 할 일 |
- * 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 오른쪽 패널을 든 화면은 레일이 서지 않으면 그
- * 너머 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive 「⋯ | spec 목록 토글」). 위 줄에 서는 것은
- * 모두 24다(창 컨트롤과 같다 — 글자 버튼은 `Button`의 `top`). 아이콘 버튼의 글리프는 창 컨트롤처럼 15다(스펙 §3 · DS `HeadCard`의 `s15`).
+ * 왼쪽은 **이름 상자**(DS `.at-wtitle` — 아이콘 · 이름 · 연필을 품은 24 상자, 안쪽 0 8 · 사이 7 · `radius-md`, 이름 13/500 `fg`, 아이콘 14
+ * `fg-secondary`)와 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다 — 스펙 §3의 「머리
+ * 카드 15」보다 부품이 못박은 값이 앞선다(모양 정본은 DS). 카드 안쪽 8에 이름 상자의 안쪽 8이 더해져 아이콘이 카드 + 16에 선다 — 아래
+ * 본문 카드의 탭 줄 첫 칸과 한 세로줄이다. 하위 화면은 그 앞에 돌아가는 길(`lead`)이 하나 선다. 브랜치 · 위치는 이름 상자 밖 형제이고
+ * 상자 끝에서 6에 선다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 연필이 없는 이름이면 이름 끝에서 14다). 위치는 DS
+ * `.at-winhead .sub`(12 `fg-tertiary`)이고, 브랜치는 프로젝트 화면 Works 행의 ⑂ 브랜치와 같은 말(⑂ 12 · 고정폭 12 `fg-secondary` · 사이
+ * 5)이다. 오른쪽은 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 오른쪽 패널을 든 화면은
+ * 레일이 서지 않으면 그 너머 맨 끝에 패널 토글이 든다(`toggle` — DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive 「⋯ | spec 목록
+ * 토글」). 위 줄에 서는 것은 모두 24다(창 컨트롤과 같다 — 글자 버튼은 `Button`의 `top`). 아이콘 버튼의 글리프는 창 컨트롤처럼 15다
+ * (스펙 §3 · DS `HeadCard`의 `s15`).
  *
- * **이름은 틀 뿌리의 바닥에 안 든다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 사이드바를 밀면 안 된다. 그래서 이름 칸은
- * DS의 「제 글자 폭만큼」(`flex: 0 1 auto`)이 아니라 남는 폭을 먹고(`flex-1`) — 제 폭을 알리지 않는 상자라 글자 폭으로는 서지 못한다 —
- * DS 상한 520(`max-width`)에서 멈추며, 넘치는 이름은 그 안에서 말줄임으로 준다. 위치도 그 칸 안이라(DS는 칸 밖 형제다) 이름 바로 뒤에
- * 붙어 서고 함께 준다. 오른쪽 묶음은 카드 안쪽 오른쪽 끝에 붙고(`ml-auto` — DS `.at-winctl-r`) 줄지 않는다(`shrink-0`) — 그 폭이 머리
- * 줄의 바닥이라 좁은 창에서도 할 일이 제 폭으로 카드 안에 선다(편집기의 「LLM이 받는 텍스트」 · 「저장」도). 할 일이 없는 화면
- * (Terminal · 빈 Works · 저장이 없는 설정 쪽)에는 묶음이 없다. 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ * **이름 칸은 틀 뿌리의 바닥에 안 든다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 사이드바를 밀면 안 된다. 제 폭을 알리지
+ * 않는 상자라 글자 폭으로는 서지 못해, 이름 칸(이름 상자 · 브랜치 · 위치의 줄)은 남는 폭을 먹는다(`flex-1`). 그 안에서 이름 상자는 DS
+ * 그대로 제 글자 폭이고(`flex: 0 1 auto`) DS 상한 520에서 멈추며, 넘치는 이름은 그 안에서 말줄임으로 준다. 브랜치는 기준 폭이 0이라
+ * (`flex-[1_1_0]`) 이름 상자가 제 폭을 다 가진 뒤 남는 폭만 받는다 — 이름이 먼저다. 그 남는 폭이 80 아래면 ⑂와 몇 글자도 못 들어
+ * 통째로 걷힌다(`@container` — 반쯤 잘린 ⑂가 서지 않게). 위치는 이름 상자와 함께 준다(마지막 조각의 말줄임). 오른쪽 묶음은 카드
+ * 안쪽 오른쪽 끝에 붙고(`ml-auto` — DS `.at-winctl-r`) 줄지 않는다(`shrink-0`) — 그 폭이 머리 줄의 바닥이라 좁은 창에서도 할 일이 제
+ * 폭으로 카드 안에 선다(편집기의 「LLM이 받는 텍스트」 · 「저장」도). 할 일이 없는 화면(Terminal · 빈 Works · 저장이 없는 설정 쪽)에는
+ * 묶음이 없다. 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ *
+ * **빈 자리는 창을 끈다**(머리말) — 카드 뿌리의 `data-tauri-drag-region="deep"`이라 그 아래 어디를 눌러도 끌리고, Tauri는 누를 수
+ * 있는 요소(버튼 · `tabindex` · 입력칸 · 누르는 역할)를 만나면 끌지 않는다. 그래서 보이기만 하는 것(아이콘 · 이름 글자 · 위치 · 브랜치 ·
+ * Archive의 배지 글자 · 할 일 사이)은 끌고, 버튼과 포커스 받는 이름 상자(그 안의 아이콘까지)는 눌린다 — 끄는 자리의 두 번 클릭은 창
+ * 키우기라, 두 번 클릭이 이름 바꾸기인 이름은 끌면 안 된다. 고치는 동안의 이름 상자는 포커스를 받지 않아 `false`로 막는다. 이
+ * 판정은 Tauri의 것(`drag.js`의 `isDragRegion`)이라 누를 것을 새로 들일 때는 그 넷 중 하나로 짓는다 — `onClick`만 단 `span`은 끌린다.
  */
 function HeadCard({
   lead,
   icon: Icon,
   name,
+  nameMenu,
+  rename,
+  branch,
   sub,
   actions,
   end,
@@ -528,19 +601,111 @@ function HeadCard({
   /** 레일이 서지 않을 때의 패널 토글 — 보기 배치(`end`) 뒤, 카드 안 오른쪽 끝에 선다(`HeadRow`). 화면이 건네는 것이 아니라 틀이 넣는다. */
   toggle?: ReactNode;
 }) {
+  const nameEl = useRef<HTMLSpanElement>(null);
+  // **이름 상자 한 벌**(DS `.at-wtitle`) — 24 · 상한 520 · `radius-md` · 안쪽 왼쪽 8. 줄 상자(`block` · 줄 높이 24)이고 글자가 이 상자의
+  // 바로 안이다 — 말줄임이 이 상자에서 끊기고, 글자로 이름을 찾는 쪽(`getByText`)이 이 상자(포커스 받는 그것)에 닿는다. 아이콘은 줄
+  // 안의 글리프로 서서(`inline-block` · 위 5 — 24 줄에 14) 오른쪽 7을 둔다. 오른쪽 안쪽은 연필이 없으면 8, 있으면 연필 자리까지다(이름
+  // 끝 5 · 연필 12 · 끝 8 — DS `.pen`의 왼쪽 -2가 사이 7에서 빠진다). 연필은 줄 밖에 떠(`absolute`) 말줄임이 그 앞에서 끊긴다.
+  const titleBox = "block h-6 max-w-[520px] min-w-0 truncate rounded-md pl-2 text-chat-meta leading-6 font-medium text-fg";
+  const titleEnd = rename ? "pr-6.25" : "pr-2";
+  // 아이콘 한 벌 — 쉴 때(줄 안의 글리프)와 고칠 때(flex 줄의 칸)가 같은 크기 · 색 · 사이 7이다.
+  const glyphClass = "mr-1.75 size-3.5 text-fg-secondary";
+  const glyph = <Icon aria-hidden className={cn(glyphClass, "mt-1.25 inline-block align-top")} />;
+  // **메뉴가 있거나 바꿀 수 있는 이름은 대상이다**(`nameMenu` · `rename`) — 이름 상자가 포커스를 받는다. 메뉴가 있으면 ⇧F10 · 메뉴
+  // 키가 그 메뉴를 열고 열린 동안 표식이 서서 `focus-ring`이 테두리를 그린다 — 링 · 테두리가 아이콘부터 연필 자리까지 상자 전부를
+  // 두른다. 바꿀 수 있으면 F2 · 두 번 클릭이 고치기에 든다(codex-ds 스펙 §9 — F2는 포커스된 대상의 `onKeyDown`이 듣는다, 화면의
+  // window keydown이 아니다). 버튼이 아닌 것은 누르면 할 일이 없어서다(구현 노트 Q6 — 한 번 누르기는 아무것도 하지 않고, 두 번 클릭이
+  // 고치기다).
+  // - **역할이 없으니 키를 말한다**(`aria-keyshortcuts` — 표의 F2와 ⇧F10 · 메뉴 키, `TARGET_MENU_ARIA`). 포커스가 서면 글자(이름)와
+  //   함께 「여기서 이 키가 듣는다」가 읽힌다. `aria-haspopup`은 안 단다 — 역할 없는 요소(generic)에는 ARIA가 그 속성을 허락하지 않는다.
+  //   역할을 지어 붙이지 않는 것은 그 역할이 거짓말이 되어서다(`button`이면 누를 것이 있어야 한다).
+  // - **바꿀 수 있는 이름은 hover에 면과 연필이 선다**(DS `button.at-wtitle:hover` · `.pen`). 면은 이름 상자 전부다 — 아이콘 앞 8부터
+  //   연필 뒤 8까지 안쪽이 같다. 글리프는 면이 서도 제자리다(면은 칠만 한다).
+  // - **고치는 동안 이름 글자 자리는 입력칸이다**(`InlineRename`). 폭은 이름 글자만큼이다(`fit="text"` — DS `.at-wtitle.is-edit`도 글자
+  //   폭을 그대로 둔다). 상자는 같은 안쪽 · 같은 아이콘으로 서고, 입력칸은 둘레(링)를 위해 왼쪽으로 4 넓히고 그만큼 안쪽을 둬 글자가
+  //   쉴 때의 자리에서 시작한다 — 오른쪽 안쪽은 입력칸 둘레 4만큼 덜어 상자 끝이 거의 그대로다. 링은 입력칸이 든다(`focus-ring` 한
+  //   벌 — DS `.is-edit`은 상자 전부를 두른다). 상자는 끌기를 막는다(`false` — 위 머리말). 메뉴는 그동안 서지 않는다(`nameMenu`를 안
+  //   부른다). 키로 끝내면 포커스가 다시 선 이 이름으로 돌아온다(`nameEl`).
+  const shortcuts = [rename && HOTKEYS.rename.aria, nameMenu && TARGET_MENU_ARIA].filter(Boolean).join(" ");
+  const renderName = (open: boolean) => (
+    <span
+      ref={nameEl}
+      tabIndex={0}
+      aria-keyshortcuts={shortcuts}
+      onKeyDown={(event) => {
+        if (rename && pressed(event, "rename")) {
+          event.preventDefault();
+          rename.onStart();
+          return;
+        }
+        openMenuByKey(event);
+      }}
+      onDoubleClick={rename?.onStart}
+      data-menu-target={open ? "" : undefined}
+      className={cn(
+        titleBox,
+        titleEnd,
+        "focus-ring",
+        rename && "group/name relative transition-colors hover:bg-fill-hover",
+      )}
+    >
+      {glyph}
+      {name}
+      {rename && (
+        <Pencil
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-2 size-3 -translate-y-1/2 text-fg-tertiary opacity-0 transition-opacity group-hover/name:opacity-100"
+        />
+      )}
+    </span>
+  );
+  const nameNode = rename?.editing ? (
+    <span data-tauri-drag-region="false" className="flex h-6 max-w-[520px] min-w-0 items-center pr-5.25 pl-2">
+      <Icon aria-hidden className={cn(glyphClass, "shrink-0")} />
+      <InlineRename
+        value={name}
+        label={rename.label}
+        emptyMeans="revert"
+        fit="text"
+        onCommit={rename.onCommit}
+        onDone={rename.onEnd}
+        returnFocus={() => nameEl.current}
+        className="-ml-1 h-6 px-1 text-chat-meta font-medium text-fg"
+      />
+    </span>
+  ) : nameMenu ? (
+    nameMenu(renderName)
+  ) : rename ? (
+    renderName(false)
+  ) : (
+    <span className={cn(titleBox, titleEnd)}>
+      {glyph}
+      {name}
+    </span>
+  );
   return (
     <div
       data-slot="head-card"
+      data-tauri-drag-region="deep"
       className="flex h-(--size-head) min-w-0 flex-1 items-center gap-1 rounded-xl bg-surface px-2 shadow-hairline"
     >
       {lead}
-      <div className="flex h-6 max-w-[520px] min-w-0 flex-1 items-center gap-1.75 px-2 contain-inline-size">
-        <Icon className="size-3.5 shrink-0 text-fg-secondary" />
-        <span className="min-w-0 truncate text-chat-meta font-medium text-fg">{name}</span>
+      <div className="flex h-6 min-w-0 flex-1 items-center contain-inline-size">
+        {nameNode}
+        {branch && (
+          // 브랜치의 칸 — 기준 폭 0이라 이름 상자가 제 폭을 다 가진 뒤 남는 폭만 받고, 그 폭을 제가 잰다(`@container`). 80 아래면 안이
+          // 걷히고 빈 칸만 남는다. 상자 끝에서 6은 안의 왼쪽 여백이다 — 칸의 여백이면 걷힌 동안에도 이름에서 6을 앗는다.
+          <span className="@container flex min-w-0 flex-[1_1_0]">
+            <span className="ml-1.5 hidden min-w-0 items-center gap-1.25 font-mono text-xs text-fg-secondary @min-[80px]:flex">
+              <GitFork aria-hidden className="size-3 shrink-0" />
+              <span className="min-w-0 truncate">{branch}</span>
+            </span>
+          </span>
+        )}
         {sub && (
-          // 이름 끝에서 위치까지 DS는 14다 — 이름 칸의 오른쪽 안쪽 8 + 머리 카드의 사이 4 + `.sub`의 왼쪽 2. 위치가 이름 칸 안이라 칸
-          // 안의 사이 7에 7을 더한다. 앞 조각은 제 폭이고 줄어드는 몫은 마지막 조각의 말줄임이 받는다.
-          <span className="ml-1.75 flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap text-fg-tertiary">
+          // 이름 상자 끝에서 위치까지 6이다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 위 머리말). 앞 조각은 제 폭이고 줄어드는 몫은
+          // 마지막 조각의 말줄임이 받는다.
+          <span className="ml-1.5 flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap text-fg-tertiary">
             {sub.map((part, at) => (
               <Fragment key={at}>
                 {at > 0 && <ChevronRight aria-hidden className="size-3 shrink-0" strokeWidth={SMALL_GLYPH_STROKE} />}
@@ -586,8 +751,8 @@ interface CardProps {
 }
 
 /**
- * 바탕 위 카드의 얼굴 — 모서리 `radius-2xl`(16)과 그 안쪽 가장자리에 덮어 그린 0.5px 링(`--shadow-hairline`). 카드(`Card`)와 목록 |
- * 내용 카드(`ListCard`)가 같은 얼굴이다. 모서리는 카드가 자른다(`overflow-hidden`) — 안의 스크롤 상자 · 셸 화면이 모서리 밖으로
+ * 바탕 위 카드의 얼굴 — 모서리 `radius-2xl`(16)과 그 안쪽 가장자리에 덮어 그린 0.5px 링(`--shadow-hairline`). 카드(`Card`)와 내용 |
+ * 목록 카드(`ListCard`)가 같은 얼굴이다. 모서리는 카드가 자른다(`overflow-hidden`) — 안의 스크롤 상자 · 셸 화면이 모서리 밖으로
  * 그려지지 않는다. `relative`는 링 덮개와 카드 안에 덮이는 것(설정의 메시지 등)의 기준이다.
  *
  * **링은 카드 안쪽 가장자리에 덮어 그린다**(`::after`의 `inset` 그림자 — 값은 같은 토큰이다). 카드 바깥에 그리는 그림자는 조상의
@@ -607,7 +772,7 @@ const CARD_FACE =
  * 돌려줘 설정이 바뀌어도 다시 그려지지 않는다(`useShellBackground`). 모서리는 `radius-2xl`(16)이고
  * 외곽은 실선이 아니라 0.5px 링(`--shadow-hairline`)이다 — 바탕 위 카드의 깊이는 그것뿐이다(DS 「깊이」, codex-ds 결정 27).
  *
- * **목록 | 내용 카드 안에서는 카드가 아니라 내용 칸이다**(`InListCard` — codex-ds 결정 28). 얼굴과 면을 바깥 카드가 들어 이 상자는
+ * **내용 | 목록 카드 안에서는 카드가 아니라 내용 칸이다**(`InListCard` — codex-ds 결정 28). 얼굴과 면을 바깥 카드가 들어 이 상자는
  * 모서리 · 링 · 면을 그리지 않고, 카드의 표식(`data-slot="card"`)도 바깥 카드의 것이다 — 카드 줄의 카드는 하나다.
  */
 function Card({ as: Tag = "section", label, head, tone, className, children }: CardProps) {
@@ -680,4 +845,57 @@ function ListHead({ title, count, end }: { title: string; count?: number; end?: 
   );
 }
 
-export { Card, CardHead, Frame, ListHead };
+/**
+ * 목록 칸의 찾기 칸(DS `.at-search`) — 목록 머리 아래 칸 폭으로 서고 행과 8 떨어진다. Projects · Archive 목록이 쓴다. 이름은
+ * `aria-label`이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자라 같은 글자를 겸한다.
+ */
+function ListSearch({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <InputGroup className="mb-2 shrink-0">
+      <InputGroupAddon>
+        <Search />
+      </InputGroupAddon>
+      <InputGroupInput
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={label}
+      />
+    </InputGroup>
+  );
+}
+
+/**
+ * 목록 칸의 두 줄 행(DS `.at-row.two`)의 자리 — 50 이상 · 안쪽 7 8 · 모서리 10, 두 줄 사이 2. 글자가 칸 + 16에 서서 목록 머리의 제목과
+ * 한 세로줄이다. Projects · Archive 목록의 행 버튼과, 이름을 고치는 동안 그 자리에 서는 상자가 함께 쓴다. 고른 행 · hover의 면은 행이
+ * 더한다(카드 안 목록의 두 단 — `selected-row` · `fill-soft`).
+ */
+const TWO_LINE_ROW = "flex min-h-12.5 w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-1.75 transition-colors";
+
+/**
+ * 목록 칸의 구르는 상자 — 두 줄 행이 여기 선다. 상자가 목록의 키를 받는다: 행 메뉴의 우클릭 · ⇧F10(`menu` — `TargetMenu`의 손잡이)과
+ * 목록 안 ↑↓(`roving` — 목록 하나가 Tab 정류장 하나다, `@/lib/roving`). 행은 표식(`data-roving` · 메뉴가 대상을 가르는 표)만 든다.
+ *
+ * **`-mx-2 px-2`가 칸의 안쪽 여백을 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만 칸 가장자리로 간다. 상자가 안쪽 여백 안에
+ * 들어앉아 있으면 막대(상자 안쪽 3~9px)가 그만큼 더 안쪽에 서서 행 위로 들어온다. 같은 병이 사이드바 work 목록에 있었고 그쪽 주석이
+ * 내력을 든다. 위끝의 `-mt-1 pt-1`도 같은 손버릇이다 — 첫 행의 포커스 링(테두리 바깥 4px)이 구르는 상자의 위끝에 잘리지 않게 상자만
+ * 4px 나갔다 되돌린다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`). 아래끝은 `pb-2`가 그 자리이자 칸 바닥의 안쪽 8이다(DS
+ * `.at-listcol`).
+ */
+function ListScroll({ menu, roving, children }: { menu?: TargetRegion; roving: RovingBox; children: ReactNode }) {
+  return (
+    <div
+      onContextMenu={menu?.onContextMenu}
+      onKeyDown={(event) => {
+        menu?.onKeyDown(event);
+        roving.onKeyDown(event);
+      }}
+      onFocus={roving.onFocus}
+      className="-mx-2 -mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2 scroll-quiet"
+    >
+      {children}
+    </div>
+  );
+}
+
+export { Card, CardHead, Frame, ListHead, ListScroll, ListSearch, TWO_LINE_ROW };

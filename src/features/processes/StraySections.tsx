@@ -13,7 +13,7 @@ import {
   type ProcessNode,
   type ShownNode,
 } from "./process-tree";
-import { RowMenu, Section, SectionButton, TreeRow } from "./tree-rows";
+import { Section, SectionButton, TreeRow } from "./tree-rows";
 
 /**
  * **셸 묶음 밑의 네 묶음** — 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31).
@@ -136,7 +136,7 @@ function StrayRow({
       kind="process"
       metrics={row.metrics}
       fold={parent ? folds.row(foldKey.process(row.id), processLabel(row)) : undefined}
-      actions={menu && <RowMenu name={exceptionName(row)} />}
+      menu={menu ? exceptionName(row) : undefined}
     >
       <span title={row.command ?? undefined} className="min-w-0 truncate">
         {processLabel(row)}

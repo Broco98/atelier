@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { openMenuByKey } from "@/components/ui/context-menu";
 import { Hint } from "@/components/ui/tooltip";
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { SIGNAL_LABEL, SignalElapsed, SignalLane, type CallingKind } from "./shell-signal";
@@ -71,6 +72,11 @@ const WEIGHT: Readonly<Record<CallingKind, string>> = {
 export interface BandItem extends BandRow {
   /** 화면의 이름 — work 제목이거나, 최상위 셸이면 `Terminal`이다(결정 13의 다섯째). */
   title: string;
+  /**
+   * 그 셸이 앉은 work — 줄의 우클릭 메뉴가 이 work의 메뉴다(codex-ds 결정 6). 최상위 셸이면 `null`이고 메뉴가 없다. `owner`에서 푸는 것은
+   * 고르는 자리(`Sidebar`)의 일이다 — 이 조각은 그 규칙을 모른다.
+   */
+  slug: string | null;
 }
 
 export function AttentionBand({
@@ -79,6 +85,7 @@ export function AttentionBand({
   expanded,
   onToggle,
   onOpen,
+  menuTarget,
 }: {
   /** 부르는 셸 전부, **이미 줄 세워진 채로**(기다림 먼저 · 오래된 순). 자르는 것은 여기다. */
   items: ReadonlyArray<BandItem>;
@@ -87,6 +94,12 @@ export function AttentionBand({
   expanded: boolean;
   onToggle: () => void;
   onOpen: (item: BandItem) => void;
+  /**
+   * 우클릭 메뉴가 열린 줄의 칸 번호(`BandRow.id`를 글자로) — 그 **셸 줄**에 대상 테두리가 선다(codex-ds 결정 11). work가 아니라 줄인
+   * 것은 한 work에서 둘이 부르면 줄이 둘이라서다(결정 5) — 우클릭한 그 줄에만 선다. 닫혔으면 `null`이다. 메뉴 상태는 위(`Sidebar`의
+   * `WorkContextMenu`)가 쥔다 — 펼침과 같은 규칙이다.
+   */
+  menuTarget: string | null;
 }) {
   // **부르는 것이 없으면 통째로 없다**(스토리 38). 위쪽에서 `items.length`로 갈라 이 조각을
   // 아예 안 부르는 안은 기각했다 — 그 조건이 호출부로 새면 「띠가 없다」의 정의가 두 자리에
@@ -151,7 +164,7 @@ export function AttentionBand({
       </div>
 
       {shown.map((item) => (
-        <BandLine key={item.id} item={item} now={now} onOpen={onOpen} />
+        <BandLine key={item.id} item={item} now={now} onOpen={onOpen} menuTarget={String(item.id) === menuTarget} />
       ))}
 
       {/* **자리는 굴러가는 띠 상자 안이다**(`sidebar-active-band` 결정 15) — 펼쳐서 넘치면 ⌃도 줄과 함께 굴러
@@ -193,6 +206,8 @@ function MoreToggle({
       text={label}
       announce="name"
       type="button"
+      // Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
+      tabIndex={0}
       onClick={onToggle}
       aria-expanded={expanded}
       className="flex h-6 w-full shrink-0 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-fill-soft hover:text-fg-secondary focus-ring"
@@ -224,16 +239,33 @@ function BandLine({
   item,
   now,
   onOpen,
+  menuTarget,
 }: {
   item: BandItem;
   now: number;
   onOpen: (item: BandItem) => void;
+  /** 이 줄의 우클릭 메뉴가 열려 있는가 — 대상 테두리가 선다(codex-ds 결정 11). */
+  menuTarget: boolean;
 }) {
   return (
     <button
       type="button"
+      // Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 메뉴가 없는
+      // 최상위 셸 줄도 Enter로 그 셸에 가는 줄이라 정류장이다.
+      tabIndex={0}
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
-      onClick={() => onOpen(item)}
+      // ⌃클릭은 열지 않는다 — macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 여는 손이고, 메뉴는 고름을 안 바꾼다(codex-ds 결정 7 —
+      // 사이드바 work 행의 `onClick`과 같은 거름이다). 메뉴가 없는 최상위 셸 줄도 같다 — 우클릭이 아무것도 안 하는 줄이다.
+      onClick={(event) => {
+        if (!event.ctrlKey) onOpen(item);
+      }}
+      // **work의 셸 줄은 우클릭 메뉴의 대상이다**(codex-ds 결정 6 — 그 work의 메뉴). 표식이 그 줄을 집는 이름이고(`Sidebar`의
+      // `bandTarget`), 열린 동안 `data-menu-target`이 `focus-ring`의 테두리를 세운다. ⇧F10 · 메뉴 키도 포커스된 이 줄이 받는다.
+      // 최상위 셸 줄은 어느 work의 것도 아니라 메뉴가 없다.
+      data-band-line={item.id}
+      data-band-work={item.slug ?? undefined}
+      data-menu-target={menuTarget ? "" : undefined}
+      onKeyDown={item.slug === null ? undefined : openMenuByKey}
       className={cn(
         // 안쪽 좌우 4는 띠 상자의 링 자리(4)를 뺀 값이다 — 점 레인 · 경과가 띠 끝에서 DS 행 안쪽 8에 선다(창 끝 + 16 — 사이드바
         // 행 글자의 세로줄). 레인과 제목 사이는 DS `.at-band .at-row`의 10이다(work 행은 `.at-row`의 9).

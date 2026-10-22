@@ -28,7 +28,7 @@ export const dialogLook = {
   // 창 상자 — 가로 가운데에 서는 떠 있는 카드. 세로 자리·폭·안쪽은 창마다 정한다.
   popup:
     "fixed left-1/2 z-50 -translate-x-1/2 floating-card text-fg duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-  // 가운데의 작은 창 — 확인 창과 이름 바꾸기 창. 모서리 · 그림자는 떠 있는 카드의 것을 덮는다(코어 유틸리티가 커스텀
+  // 가운데의 작은 창 — 확인 창과 `dialog`의 기본 변형. 모서리 · 그림자는 떠 있는 카드의 것을 덮는다(코어 유틸리티가 커스텀
   // @utility 뒤에 서서 이긴다 — toggle.tsx 머리말).
   center: "top-1/2 grid w-100 max-w-[calc(100%-4rem)] -translate-y-1/2 gap-5 rounded-4xl p-5 shadow-modal",
   header: "grid gap-2",

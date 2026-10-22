@@ -86,7 +86,7 @@ describe("포커스 링", () => {
 
   it("포커스 변형으로 링 · 테두리 · outline · 그림자를 손으로 적지 않는다", () => {
     // 앵커: 이 모양이 실제로 걸린다 — 정규식이 좁아지면 아래 「0건」이 저절로 초록이 된다. 포커스 변형 뒤의 면 · 크기 ·
-    // 불투명도(메뉴 줄의 `focus:bg-fill-hover`, 핀의 `focus-visible:max-w-6`)와 포커스 없는 링은 걸리지 않는다.
+    // 불투명도(메뉴 줄의 `focus:bg-fill-hover`, 표 복사 버튼의 `focus-visible:opacity-100`)와 포커스 없는 링은 걸리지 않는다.
     expect(
       handFocus(
         "focus-visible:ring-3 focus-visible:border-ring focus-visible:inset-ring-accent focus:border-fg " +

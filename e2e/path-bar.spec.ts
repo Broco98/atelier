@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import { ARCHIVE, WORKS } from "./fixtures";
-import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCalls, 첫글자, 칠한값, 토큰값, 토큰색 } from "./harness";
+import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCalls, 첫글자, 칠한값, 토큰값, 토큰색, 툴팁 } from "./harness";
 
 // codex-ds 티켓 15 — **문서 위에 경로 줄이 선다**(스펙 §4 「카드 머리 · 경로 줄」 · DS `PathBar` · 결정 12 · 13 · 27). 줄은 48(틈 8 ·
 // 컨트롤 32 · 틈 8)이고 왼쪽에 경로 캡슐, 오른쪽에 보기 묶음(문서 | 원문)과 동그란 경로 복사가 선다. 캡슐 안 글자는 카드 + 20 —
@@ -97,10 +97,10 @@ test("Works 분할: spec 열의 머리가 경로 줄이고, 그 끝의 ×는 그
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 줄이 모자랄 때 — 앞 조각은 제 폭 그대로이고 줄어드는 몫은 끝 조각의 말줄임이 받는다(`PathPieces`). 끝 조각이 0까지 줄어도 모자라면
-// 캡슐이 넘침을 자른다: 자르지 않으면 앞 조각이 알약 테 밖으로 나와 보기 묶음과의 틈을 건너 그 밑까지 칠해진다. 분할의 spec 열은
-// 가장 좁게(`useSplitRatio`의 `SPLIT_MIN` 0.25) 끌 수 있어 1280 창에서도 그 폭이 된다.
-test("Works 분할: spec 열을 가장 좁게 끌어도 경로 조각이 캡슐 밖으로 새지 않고, 보기 묶음 · 경로 복사 · ×는 제 폭 그대로다", async ({
+// 줄이 모자랄 때 — 경로가 캡슐에 다 안 들어가면 캡슐이 **32 원으로 접히고** 그 안에 아이콘 하나가 선다. 말줄임으로 끊긴 경로
+// (「slug › spec › (」)는 어디를 보는지 말하지 못한다. 경로 전체는 가리키면 툴팁으로 뜨고, 스크린리더는 접혀도 「위치」 nav에서 그대로
+// 듣는다. 분할의 spec 열은 가장 좁게(`useSplitRatio`의 `SPLIT_MIN` 0.25) 끌 수 있어 1280 창에서도 그 폭이 되고, 창을 넓히면 다시 펴진다.
+test("Works 분할: spec 열을 가장 좁게 끌면 경로 캡슐이 아이콘 원으로 접히고 가리키면 경로가 뜨며, 넓히면 다시 펴진다 — 조작은 제 폭 그대로다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -109,29 +109,31 @@ test("Works 분할: spec 열을 가장 좁게 끌어도 경로 조각이 캡슐 
 
   const bar = page.locator('[data-column="spec"]');
   const capsule = 캡슐(bar);
-  await expect(capsule.locator("span")).toHaveText([pinnedWork.slug, "spec", "목업", "조각.html"]);
-  // 줄이 정말 모자라다 — 조각이 다 서려는 폭이 캡슐보다 넓다. 이것이 안 서면 아래 검사는 넘침이 없는 판을 초록으로 읽는다.
-  expect(await capsule.evaluate((nav) => nav.scrollWidth - nav.clientWidth), "캡슐 안 넘침").toBeGreaterThan(0);
+  const 조각 = [pinnedWork.slug, "spec", "목업", "조각.html"];
+  /** 눈에 선 조각 — 조각에서 캡슐까지 겹친 불투명도가 0이면 글자가 칠해지지 않는다. */
+  const 보이는조각 = () =>
+    capsule.locator("span").evaluateAll((spans) =>
+      spans
+        .filter((span) => {
+          let opacity = 1;
+          for (let at: Element | null = span; at && at.tagName !== "NAV"; at = at.parentElement) {
+            opacity *= parseFloat(getComputedStyle(at).opacity);
+          }
+          return opacity > 0;
+        })
+        .map((span) => span.textContent),
+    );
 
-  // 캡슐과 보기 묶음 사이 틈에 칠해진 것은 줄 자신이다 — 조각이 새면 그 자리를 조각의 글자가 든다.
-  const nav = await 상자(capsule);
-  const doc = await 상자(bar.getByRole("button", { name: "문서로 보기", exact: true }));
-  const y = nav.y + nav.height / 2;
-  const 틈에선것 = await page.evaluate(
-    ({ from, to, y }) => {
-      const hits: string[] = [];
-      for (let x = Math.ceil(from); x < to; x++) {
-        const hit = document.elementFromPoint(x, y);
-        if (hit?.closest("nav")) hits.push(`${x}: ${hit.textContent}`);
-      }
-      return hits;
-    },
-    { from: nav.right, to: doc.x, y },
-  );
-  expect(doc.x - nav.right, "캡슐과 보기 묶음 사이 틈").toBeGreaterThan(0);
-  expect(틈에선것, "틈에 칠해진 캡슐 조각").toEqual([]);
+  // 접힌 캡슐은 32 원이고 조각은 칠해지지 않는다. 경로는 그래도 「위치」 nav 안의 글자다 — 스크린리더가 듣는 것이다.
+  await expect(capsule.locator("span")).toHaveText(조각);
+  await expect.poll(async () => [(await 상자(capsule)).width, (await 상자(capsule)).height], "접힌 캡슐").toEqual([32, 32]);
+  expect(await 보이는조각(), "접힌 캡슐에 칠해진 조각").toEqual([]);
 
-  // 줄에 눌려 줄어드는 것은 캡슐뿐이다 — 조작은 제 폭이고 줄 끝까지 다 선다.
+  // 가리키면 경로 전체가 툴팁으로 뜬다 — 조각 사이는 캡슐의 꺾쇠와 같은 「›」다.
+  await capsule.hover();
+  await expect(툴팁(page)).toHaveText(조각.join(" › "));
+
+  // 줄에 눌려 접히는 것은 캡슐뿐이다 — 조작은 제 폭이고 줄 끝까지 다 선다.
   const buttons = bar.getByRole("button");
   expect(
     await buttons.evaluateAll((all) => all.map((one) => [one.getAttribute("aria-label"), one.getBoundingClientRect().width])),
@@ -142,6 +144,11 @@ test("Works 분할: spec 열을 가장 좁게 끌어도 경로 조각이 캡슐 
     ["spec 열 닫기", 24],
   ]);
   expect((await 상자(buttons.last())).right, "× 오른쪽 끝 ≤ 줄 오른쪽 끝").toBeLessThanOrEqual((await 상자(bar)).right);
+
+  // 창을 넓혀 경로가 다 들어가면 캡슐이 다시 펴진다 — 조각이 모두 칠해지고 캡슐은 원보다 넓다.
+  await page.setViewportSize({ width: 2560, height: 900 });
+  await expect.poll(보이는조각, "펴진 캡슐의 조각").toEqual(조각);
+  expect((await 상자(capsule)).width, "펴진 캡슐").toBeGreaterThan(32);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

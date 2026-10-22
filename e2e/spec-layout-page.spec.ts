@@ -9,7 +9,12 @@ import {
   recordClipboard,
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
+  끌어놓는다,
+  다떴다,
   머리카드,
+  줄차례,
+  테두리,
+  토큰색,
 } from "./harness";
 
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 티켓 08 · 결정 20·23·25).
@@ -220,5 +225,173 @@ test("[되돌리기]를 고르면 되돌리기가 인자 없이 한 번 나가�
   await 되돌린메시지(page).getByRole("button", { name: "닫기", exact: true }).click();
   await expect(되돌린메시지(page)).toHaveCount(0);
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **고친 행을 우클릭해도 ⋯과 같은 메뉴가 선다**(codex-ds 티켓 30 · 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 11). 메뉴의 대상은 행
+// 전체다 — 카드는 커서 자리에 서고, 열린 동안 행에 대상 테두리가 서며, 닫히면 포커스가 그 행의 ⋯로 간다(행 자신은 포커스를 받지
+// 않는다). 행 안 버튼에 포커스를 두고 ⇧F10을 누르면 같은 메뉴가 행의 왼쪽 아래에 선다. 내장본 행에는 ⋯이 없듯 우클릭 메뉴도 없다.
+// 메뉴가 열린 동안은 부품이 바깥을 보조 기술에서 숨겨, 역할로 집을 때 숨은 것까지 집는다.
+
+const 숨은메뉴버튼 = (page: Page) =>
+  page.getByRole("button", { name: "Atelier 레이아웃 메뉴", exact: true, includeHidden: true });
+
+test("고친 행을 우클릭하면 ⋯과 같은 메뉴가 커서 자리에 서고, 「기본값으로 되돌리기」는 같은 확인 창을 거친다 — 취소하면 안 나가고 포커스가 ⋯로 간다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(1);
+  const menu = page.getByRole("menu");
+  const 링 = `1px solid ${await 토큰색(page, "--accent")}`;
+
+  await 메뉴(page).click();
+  const 점점점 = await 줄차례(menu);
+  expect(점점점).toEqual(["기본값으로 되돌리기폴더를 지우고 내장본으로 돌아가요"]);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  expect(await 테두리(행(page))).toBeNull();
+
+  await 행(page).click({ button: "right", position: { x: 6, y: 6 } });
+  await expect(menu).toBeVisible();
+  expect(await 줄차례(menu)).toEqual(점점점);
+  await 다떴다(menu);
+  const spot = (await 행(page).boundingBox())!;
+  const card = (await menu.boundingBox())!;
+  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 행이 반 픽셀에 서면(리눅스 WebKit의 글자 높이) 카드는 그 아래 정수에 선다.
+  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
+  await expect.poll(() => 테두리(행(page))).toBe(링);
+  await expect(page).toHaveURL("/settings/spec-layout");
+
+  await menu.getByRole("menuitem", { name: "기본값으로 되돌리기", exact: true }).click();
+  const dialog = 확인창(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(`${SPEC_LAYOUT_STATE.folder}/ 폴더를 지워요.`);
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+  await expect(메뉴(page)).toBeFocused();
+  await expect.poll(() => 테두리(행(page))).toBeNull();
+
+  // Esc로 닫아도 포커스는 ⋯로 간다.
+  await 행(page).click({ button: "right", position: { x: 6, y: 6 } });
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(메뉴(page)).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("행 안 버튼에 포커스를 두고 ⇧F10 · 메뉴 키를 누르면 같은 메뉴가 행의 왼쪽 아래에 서고, 고르면 확인 창을 거쳐 되돌린다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(1);
+  const menu = page.getByRole("menu");
+  const 링 = `1px solid ${await 토큰색(page, "--accent")}`;
+
+  for (const key of ["Shift+F10", "ContextMenu"]) {
+    await 메뉴(page).focus();
+    await page.keyboard.press(key);
+    await expect(menu).toBeVisible();
+    await 다떴다(menu);
+    const below = (await 행(page).boundingBox())!;
+    const card = (await menu.boundingBox())!;
+    // 키로 연 자리도 우클릭 사건으로 낸다(`openMenuByKey`) — 그래서 정수 픽셀이다(위 우클릭 검사).
+    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(below.x), Math.floor(below.y + below.height)]);
+    await expect.poll(() => 테두리(행(page))).toBe(링);
+    await expect(menu).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem", { name: "기본값으로 되돌리기", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(메뉴(page)).toBeFocused();
+  }
+
+  await 숨은메뉴버튼(page).focus();
+  await page.keyboard.press("Shift+F10");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  const dialog = 확인창(page);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await ipcCalls(page, "revert_spec_layout")).toEqual(["revert_spec_layout"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 행 메뉴의 뿌리는 행을 감싸지 않는다(`TargetMenu` · 묶음 밖) — 감싸면 행 안의 ⋯이 「우클릭 메뉴의 줄」로 쳐져, 누른 채 끌어 놓는 고름이
+// 안 돈다. 이 몸짓이 그 자리를 잠근다(`끌어놓는다` — Works 머리 카드의 ⋯과 같은 잣대).
+test("고친 행의 ⋯을 누른 채 끌어 「기본값으로 되돌리기」 위에서 놓으면 그 줄이 돌아 확인 창이 선다 — 행 메뉴가 ⋯을 감싸지 않는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(1);
+
+  await 끌어놓는다(page, 메뉴(page), (menu) => menu.getByRole("menuitem", { name: "기본값으로 되돌리기", exact: true }));
+  const dialog = 확인창(page);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ⋯의 카드는 포털로 `body` 밑에 서지만 React로는 행의 자손이라, 그 안의 우클릭 · 키도 React 트리를 타고 행의 손잡이까지 올라온다.
+// 행 DOM 밖에서 난 것이라 행 메뉴는 물러선다(`TargetMenu`) — 그 위에 같은 카드가 하나 더 서면 두 모달 메뉴가 포커스를 다툰다.
+test("⋯을 연 채 그 항목을 우클릭하거나 ⇧F10 · 메뉴 키를 눌러도 행 메뉴가 겹쳐 서지 않는다 — 열린 메뉴는 ⋯의 것 하나다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(1);
+  // 카드를 숨은 것까지 센다 — 모달 메뉴가 서면 바깥을 보조 기술에서 숨겨, 역할로만 세면 아래 깔린 카드가 안 잡힌다.
+  const menus = page.getByRole("menu", { includeHidden: true });
+  // 행 메뉴는 숨은 Trigger에 낸 사건으로 다음 그림에 선다 — 「안 섰다」를 재기 전에 두 그림을 기다린다.
+  const 두그림 = () =>
+    page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
+  await 메뉴(page).click();
+  await expect(menus).toHaveCount(1);
+  await 되돌리기항목(page).click({ button: "right" });
+  await 두그림();
+  await expect(menus).toHaveCount(1);
+  expect(await 테두리(행(page))).toBeNull();
+
+  // 키는 ⋯ 카드의 항목에서 누른다 — ↓가 그 항목에 포커스를 준다.
+  await page.keyboard.press("ArrowDown");
+  await expect(되돌리기항목(page)).toBeFocused();
+  for (const key of ["Shift+F10", "ContextMenu"]) {
+    await page.keyboard.press(key);
+    await 두그림();
+    await expect(menus).toHaveCount(1);
+    expect(await 테두리(행(page))).toBeNull();
+    await expect(되돌리기항목(page)).toBeFocused();
+  }
+
+  // 그 카드는 여전히 ⋯의 것이다 — Esc면 닫히고 포커스가 ⋯로 간다. 아무것도 되돌리지 않았다.
+  await page.keyboard.press("Escape");
+  await expect(menus).toHaveCount(0);
+  await expect(메뉴(page)).toBeFocused();
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("내장본 행(되돌릴 것이 없다)을 우클릭하면 웹뷰 메뉴가 막히고 아무 메뉴도 서지 않는다", async ({ page }) => {
+  await installFixtureBackend(page, { spec_layout_state: BUILTIN_LAYOUT_STATE });
+  await page.goto("/settings/spec-layout");
+  await expect(행(page)).toContainText("내장본 그대로예요");
+  await expect(메뉴(page)).toHaveCount(0);
+  await page.evaluate(() => {
+    const seen: boolean[] = [];
+    (window as unknown as { 막힘: boolean[] }).막힘 = seen;
+    window.addEventListener("contextmenu", (event) => setTimeout(() => seen.push(event.defaultPrevented)), true);
+  });
+  await 행(page).click({ button: "right", position: { x: 6, y: 6 } });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { 막힘: boolean[] }).막힘)).toEqual([true]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

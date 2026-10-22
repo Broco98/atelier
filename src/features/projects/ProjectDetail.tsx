@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Hint } from "@/components/ui/tooltip";
@@ -12,16 +11,17 @@ import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
 /**
- * 제자리 편집 자리 둘(제목 · git 정보가 없을 때의 기준 브랜치)의 도움말. 둘은 이미 `<button>`이라 `title` 예외
- * (S29 — 버튼이 아닌 자리)가 아니다 — 앱 툴팁이다. 이름은 보이는 값이고, 누르면 편집이 열린다는 이 말은 이름보다
- * 더 말하는 하는 일이라 설명(`aria-description`)으로도 남는다(S28).
+ * 제자리 편집 자리(git 정보가 없을 때의 기준 브랜치)의 도움말. 이미 `<button>`이라 `title` 예외(S29 — 버튼이 아닌 자리)가
+ * 아니다 — 앱 툴팁이다. 이름은 보이는 값이고, 누르면 편집이 열린다는 이 말은 이름보다 더 말하는 하는 일이라
+ * 설명(`aria-description`)으로도 남는다(S28). 프로젝트 이름은 여기서 고치지 않는다 — 머리 카드의 이름과 목록 행이 그 자리에서
+ * 고친다(codex-ds 스펙 S12 · §9).
  */
 const EDIT_HELP = "클릭해서 편집";
 
 interface ProjectDetailProps {
   project: ProjectView;
-  // null = 선택 변경 없이 Works 화면으로 이동
-  onOpenWork: (slug: string | null) => void;
+  /** 「이 프로젝트에서 시작된 작업」 행을 누르면 그 work을 연다. */
+  onOpenWork: (slug: string) => void;
 }
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
@@ -43,9 +43,6 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         </Alert>
       )}
 
-      <h1>
-        <TitleEditor key={project.slug} project={project} />
-      </h1>
       {/* 속성 — DS `List`(흰 묶음 · 0.5px 고리 · 행 44 · 행 사이 0.5px 선). 이름 열 96이고 값은 고정폭 `text-code`다. */}
       <dl className={LIST}>
         <PropertyRow label="경로">
@@ -76,14 +73,13 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
 
 /**
  * 구획 제목(DS `.at-set-sec > h2`) — 이름(`text-sm` · 600, 왼쪽 2) 뒤에 곁글(`text-xs` · `fg-secondary`)이 한 줄에 선다. 묶음과는
- * 10 떨어진다(`Section`). `end`는 오른쪽 끝의 조작이다.
+ * 10 떨어진다(`Section`).
  */
-function Subhead({ title, note, end }: { title: string; note: string; end?: React.ReactNode }) {
+function Subhead({ title, note }: { title: string; note: string }) {
   return (
     <div className="flex items-baseline gap-2 pl-0.5">
       <h2 className="text-sm font-semibold">{title}</h2>
       <span className="text-xs text-fg-secondary">{note}</span>
-      {end}
     </div>
   );
 }
@@ -113,27 +109,14 @@ function WorksSection({
   onOpenWork,
 }: {
   projectSlug: string;
-  onOpenWork: (slug: string | null) => void;
+  onOpenWork: (slug: string) => void;
 }) {
   const { data: works = [] } = useWorks();
   const related = works.filter((w) => w.projects.includes(projectSlug));
 
   return (
     <Section>
-      <Subhead
-        title="Works"
-        note="이 프로젝트에서 시작된 작업"
-        end={
-          <button
-            type="button"
-            onClick={() => onOpenWork(null)}
-            className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-tertiary transition-colors quiet-hover focus-ring"
-          >
-            Works에서 모두 보기
-            <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} />
-          </button>
-        }
-      />
+      <Subhead title="Works" note="이 프로젝트에서 시작된 작업" />
       {/* 흰 목록 묶음(DS `List`). 빈 묶음도 같은 면 안에서 행 하나 높이의 글이다. */}
       <div className={LIST}>
         {related.length === 0 ? (
@@ -174,60 +157,6 @@ function WorksSection({
         )}
       </div>
     </Section>
-  );
-}
-
-// 표시 이름 인라인 편집 — slug는 바뀌지 않는다 (스펙 #3)
-//
-// 작업 이름 바꾸기 창(works/WorkRenameDialog.tsx)이 같은 입력 규칙을 쓴다 — Enter 확정, Escape 취소,
-// 공백·동일 값 미저장, 두 번 커밋되는 것을 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다.
-// **갈리는 것 하나**: 여기서는 blur가 확정이지만 그 창에서는 바깥 누르기가 취소다(판 3 P7) — 창 밖을 누른
-// 것은 「그만두겠다」로 읽힌다. 이 인라인 편집기는 그대로 둔다(결정 8은 작업 이름 바꾸기에 한한다).
-function TitleEditor({ project }: { project: ProjectView }) {
-  const updateProject = useUpdateProject();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(project.name);
-  const finished = useRef(false);
-
-  const finish = (commit: boolean) => {
-    if (finished.current) return;
-    finished.current = true;
-    setEditing(false);
-    const value = draft.trim();
-    if (commit && value && value !== project.name) {
-      updateProject.mutate({ slug: project.slug, patch: { name: value } });
-    }
-  };
-
-  if (!editing) {
-    return (
-      <Hint
-        text={EDIT_HELP}
-        announce="description"
-        type="button"
-        onClick={() => {
-          finished.current = false;
-          setDraft(project.name);
-          setEditing(true);
-        }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-lg px-2 py-1 text-left text-heading-lg transition-colors hover:bg-fill-hover focus-ring"
-      >
-        {project.name}
-      </Hint>
-    );
-  }
-  return (
-    <Input
-      variant="inline-title"
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => finish(true)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") finish(true);
-        if (e.key === "Escape") finish(false);
-      }}
-    />
   );
 }
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 // 설정 화면의 틀(판 06 · 「같은 날 더 정한 것」 설정 화면의 정렬 — Codex 설정을 참고했다). **큰 제목 → 구획 제목 → 묶음**
@@ -79,7 +79,8 @@ export function SettingsGroup({ as: Tag = "div", children }: { as?: "div" | "ul"
  *
  * `nameFor`를 주면 이름 칸이 그 컨트롤의 `<label>`이다 — 이름 글자를 눌러도 컨트롤이 받는다(설정의 스위치). 컨트롤의
  * 이름을 따로 정하지 않은 자리에서는 이 글자가 곧 이름이다. `descriptionId`는 설명 줄의 id다 — 컨트롤이
- * `aria-describedby`로 가리킨다.
+ * `aria-describedby`로 가리킨다. 그 밖의 속성(`className` · 사건 손잡이)은 행 요소에 그대로 간다 — 행 메뉴가 있는 행(spec
+ * 레이아웃의 고친 행)이 우클릭 · ⇧F10 손잡이와 대상 테두리 자리를 단다.
  */
 export function SettingsRow({
   name,
@@ -89,6 +90,8 @@ export function SettingsRow({
   descriptionId,
   control,
   below,
+  className,
+  ...rest
 }: {
   name: ReactNode;
   nameFor?: string;
@@ -97,7 +100,7 @@ export function SettingsRow({
   descriptionId?: string;
   control?: ReactNode;
   below?: ReactNode;
-}) {
+} & Omit<HTMLAttributes<HTMLElement>, "children">) {
   const Tag = useContext(InList) ? "li" : "div";
   return (
     <Tag
@@ -105,7 +108,9 @@ export function SettingsRow({
       className={cn(
         "relative grid min-h-15 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 px-4 py-3",
         "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[0.5px] before:bg-border-heavy first:before:hidden",
+        className,
       )}
+      {...rest}
     >
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-center gap-2">

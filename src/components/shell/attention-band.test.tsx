@@ -16,6 +16,7 @@ const 줄 = (over: Partial<BandItem> = {}): BandItem => ({
   id: 1,
   owner: ownerOf("plain"),
   title: "그냥 일",
+  slug: "plain",
   shellName: null,
   kind: "waiting",
   since: 0,
@@ -28,7 +29,7 @@ const 줄들 = (n: number): BandItem[] =>
 
 const band = (
   items: BandItem[],
-  over: { expanded?: boolean; now?: number } = {},
+  over: { expanded?: boolean; now?: number; menuTarget?: string | null } = {},
 ) =>
   renderToStaticMarkup(
     <AttentionBand
@@ -37,6 +38,7 @@ const band = (
       expanded={over.expanded ?? false}
       onToggle={() => {}}
       onOpen={() => {}}
+      menuTarget={over.menuTarget ?? null}
     />,
   );
 
@@ -186,6 +188,27 @@ describe("줄 하나", () => {
 // 종류로 무게가 갈린다(DS `.at-band .at-row` — 기다림 `fg` 500, 안 본 완료 한 단 옅은 `fg-secondary`). 상자가 없으면 띠가 아래 목록과 같은 평면에
 // 서고, 무게가 안 갈리면 「기다림 › 안 본 완료」가 점 색 하나에만 매달린다 — 「열여덟 행을 훑지 않고
 // 거기만 본다」(스토리 36)가 그 둘에 기댄다.
+// **줄의 우클릭 메뉴**(codex-ds 결정 6 · 7 · 11). 메뉴는 띠에 하나라(`Sidebar`의 `WorkContextMenu`) 줄은 「어느 work의 줄인가」를
+// 적고 「내가 대상인가」를 받을 뿐이다. 위쪽 Terminal의 셸은 work이 아니라 work 메뉴가 없다 — 그 줄은 work을 안 적어 우클릭이 대상을
+// 못 찾는다. 대상 표식은 **줄 하나**에 선다: 한 work에서 둘이 부르면 줄이 둘이고, 우클릭한 그 줄이 대상이다. 여닫음 · 테두리는 L3가
+// 잰다(`work-context-menu.spec.ts`).
+describe("줄의 우클릭 메뉴", () => {
+  const 줄태그 = (markup: string) => [...markup.matchAll(/<button[^>]*data-band-line="[^"]*"[^>]*>/g)].map(([tag]) => tag);
+
+  it("work 줄은 제 work을 적고, Terminal 줄은 안 적는다", () => {
+    const tags = 줄태그(band([줄({ id: 1, slug: "plain" }), 줄({ id: 2, owner: "", slug: null, title: "Terminal" })]));
+    expect(tags).toHaveLength(2);
+    expect(tags[0]).toContain('data-band-work="plain"');
+    expect(tags[1]).not.toContain("data-band-work");
+  });
+
+  it("대상 표식은 받은 줄 하나에만 선다 — 같은 work의 다른 줄에는 없다", () => {
+    const tags = 줄태그(band([줄({ id: 1 }), 줄({ id: 2 })], { menuTarget: "2" }));
+    expect(tags.map((tag) => tag.includes("data-menu-target"))).toEqual([false, true]);
+    expect(band([줄({ id: 1 })])).not.toContain("data-menu-target");
+  });
+});
+
 describe("띠는 목록 위에 뜬 상자다", () => {
   // 그림자(DS `.at-band`의 두 겹 — `shadow-hairline` + `shadow-200`)는 칠해진 값으로 L3(`works-sidebar`)가 토큰과 맞댄다 — 여기서는 그
   // 클래스 글자를 재지 않는다(구현-스펙 「클래스 문자열은 재지 않는다」).

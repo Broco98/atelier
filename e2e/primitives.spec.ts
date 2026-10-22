@@ -7,6 +7,7 @@ import {
   openShell,
   processesTitle,
   unknownIpcCalls,
+  탭으로,
   띠,
   그림자,
   머리카드,
@@ -32,23 +33,14 @@ import { settle } from "./tab-row";
 // 다닐 때 보는 것」이다. 링은 accent 1px(`outline`) + 바깥 4px `focus-halo`(`box-shadow`)다.
 //
 // **WebKit의 Tab은 맨 `<button>`에 서지 않는다**(실측 10-11) — macOS의 「키보드 탐색」이 꺼진 기본값에서 Tab은 입력칸과
-// `tabindex`를 단 것(Base UI 부품은 스스로 단다)만 다닌다. 사이드바 구획 머리 · 행과 셸 탭의 이름 버튼은 화면이 지은 맨 버튼이라
-// Tab이 지나친다 — 목록과 탭 줄을 Tab 정류장으로 세우는 것은 codex-ds 티켓 32다. 그 둘은 그래서 포커스를 바로 준다: 셸 입력칸
-// (늘 `:focus-visible`인 글자칸)에서 옮겨 간 포커스라 WebKit이 `:focus-visible`을 물려 준다(`works-sidebar.spec.ts`의 핀 검사와 같은 길).
-// 티켓 32가 그 둘을 Tab 정류장으로 세우면 이 검사도 `.focus()`를 걷고 `탭으로` 간다 — 그날부터 Tab이 닿는 길의 링을 여기서 잰다.
+// `tabindex`를 단 것(Base UI 부품은 스스로 단다)만 다닌다. 사이드바 행과 셸 탭의 이름 버튼은 화면이 지은 버튼이라 `tabindex`를
+// 명시해 Tab 정류장이 됐다(codex-ds 티켓 32 — 목록은 정류장 하나, 탭 줄은 칸마다). 그래서 여기서도 Tab이 온 길로 닿는다(`탭으로`).
+// 사이드바 구획 머리는 목록 안의 행이라 Tab이 아니라 ↑로 간다 — 목록 안을 화살표로 옮긴 포커스도 키보드가 온 길이라 `:focus-visible`이다.
+// Tab 정류장이 아닌 **행 안 버튼**(사이드바 핀 · spec 트리의 경로 복사)은 키보드로 이웃에 간 뒤 `focus()`로 옮긴다 — 키보드가 온
+// 뒤라 그 포커스도 `:focus-visible`이다.
 
 const project = PROJECTS[0];
-const [, plainWork] = WORKS;
-
-/** Tab을 눌러 `target`에 포커스가 올 때까지 간다. `최대` 번 안에 못 닿으면 던진다 — 그 자리가 Tab 정류장이 아니다. */
-async function 탭으로(page: Page, target: Locator, 최대 = 120): Promise<void> {
-  await expect(target).toBeVisible();
-  for (let n = 0; n < 최대; n += 1) {
-    if (await target.evaluate((el) => el === document.activeElement)) return;
-    await page.keyboard.press("Tab");
-  }
-  throw new Error(`Tab ${최대}번 안에 닿지 않았다 — ${target}`);
-}
+const [pinnedWork, plainWork] = WORKS;
 
 /** 그 요소에 칠해진 포커스 링 — `outline`(굵기 · 모양 · 색)과 자리, `box-shadow`. */
 async function 링(target: Locator) {
@@ -87,12 +79,14 @@ const 링폭 = 4;
  *
  * 페이지 안에서 도는 함수다(`evaluateAll`) — 자르는 변을 `<상자> 변`으로 돌려준다. `굴러나간것은뺀다`면 자르는 상자 안에
  * 다 들어와 있지 않은 요소(굴러서 반쯤 · 통째로 나간 것, 접힌 구획 안의 것)는 세지 않는다 — 그 링이 안 보이는 것은 그 요소가
- * 안 보이기 때문이다. 크기가 없는 요소도 같다.
+ * 안 보이기 때문이다. 크기가 없는 요소도 같다. **링을 안쪽에 입는 것**(`data-ring-inset` — 카드 끝까지 차는 문서 글)은 테두리
+ * 바깥으로 차지하는 것이 없어 요소 상자 그대로 잰다.
  */
-function 잘린링(els: Element[], { 폭, 굴러나간것은뺀다 }: { 폭: number; 굴러나간것은뺀다: boolean }): string[] {
+function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }: { 폭: number; 굴러나간것은뺀다: boolean }): string[] {
   const cut: string[] = [];
   for (const el of els) {
     const box = el.getBoundingClientRect();
+    const 폭 = el.hasAttribute("data-ring-inset") ? 0 : 바깥폭;
     if (굴러나간것은뺀다 && (box.width === 0 || box.height === 0)) continue;
     const 이름 = `<${el.tagName.toLowerCase()}> 「${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 24)}」`;
     const 변: string[] = [];
@@ -129,7 +123,7 @@ async function 링이다보인다(target: Locator, 이름: string): Promise<void
   expect(잘림, `${이름} — 링을 자르는 상자(그 변과, 상자 끝까지 남은 거리)`).toEqual([]);
 }
 
-test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · 사이드바 행 · 탭에서 같은 링이다", async ({ page }) => {
+test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · 사이드바 행 · 탭 · 행 안 버튼에서 같은 링이다", async ({ page }) => {
   await installFixtureBackend(page);
 
   // Projects — 글자 버튼 · 아이콘 버튼과, 상자가 링을 입는 검색칸(포커스는 안의 입력칸에 있다).
@@ -157,18 +151,44 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
   await 탭으로(page, 칩);
   await 링이선다(page, 칩, "칩 토글");
 
-  // 작업 화면 — 사이드바 행의 이름 버튼과 셸 탭의 이름 버튼. 부품이 아니라 화면이 지은 버튼이고, 전에는 링이 없던 자리다.
+  // 작업 화면 — 사이드바 행의 이름 버튼 · 구획 머리와 셸 탭의 이름 버튼. 부품이 아니라 화면이 지은 버튼이고, 전에는 링이 없던
+  // 자리다. 셸 입력칸은 Tab을 셸에 보내므로 포커스를 내려놓고 창의 Tab 차례에서 간다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  for (const [이름, target] of [
-    ["사이드바 구획 머리", page.locator("[data-worklist] [data-section]").first()],
-    ["사이드바 행", 행버튼(page, plainWork.title)],
-    ["셸 탭", 이름표(page, 0)],
-  ] as const) {
-    await target.focus();
-    await expect(target).toBeFocused();
-    await 링이선다(page, target, 이름);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const 행 = 행버튼(page, plainWork.title);
+  await 탭으로(page, 행);
+  await 링이선다(page, 행, "사이드바 행");
+  const 구획머리 = page.locator("[data-worklist] [data-section]").first();
+  for (let n = 0; n < 6 && !(await 구획머리.evaluate((el) => el === document.activeElement)); n += 1) {
+    await page.keyboard.press("ArrowUp");
   }
+  await expect(구획머리).toBeFocused();
+  await 링이선다(page, 구획머리, "사이드바 구획 머리");
+  // **행 안 버튼**(사이드바 핀 · 아래 spec 트리의 경로 복사)은 Tab 정류장이 아니어도 포커스는 받는다 — 보조 기술 · 코드가 옮기고, WebKit
+  // 밖에서는 누름도 준다. 그때도 앱의 링이다(브라우저 기본 테두리가 아니다). 다만 포커스만으로는 뜨지 않는다 — 뜨는 것은 hover뿐이고,
+  // 키보드의 길은 그 행 메뉴의 「고정」 · 「경로 복사」다(codex-ds 스펙 S10).
+  const 핀 = 행버튼(page, `${plainWork.title} 고정`);
+  await 핀.focus();
+  await expect(핀).toBeFocused();
+  await 링이선다(page, 핀, "사이드바 핀");
+  expect(await 칠한값(핀, "opacity"), "포커스만 받은 핀이 떴다").toEqual(["0"]);
+  const 셸탭 = 이름표(page, 0);
+  await 탭으로(page, 셸탭);
+  await 링이선다(page, 셸탭, "셸 탭");
+
+  // spec 트리의 경로 복사 — 키보드로 그 행(트리의 정류장)에 간 뒤 옮긴다. 포커스로는 안 뜨던 버튼이 그 행에 포인터가 오면 뜬다.
+  await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
+  const 패널 = page.locator("aside:not([data-sidebar])");
+  const 트리행 = 패널.locator('[data-roving="overview.md"]');
+  await 탭으로(page, 트리행);
+  const 복사 = 패널.getByRole("button", { name: "overview.md 경로 복사", exact: true });
+  await 복사.focus();
+  await expect(복사).toBeFocused();
+  await 링이선다(page, 복사, "spec 트리 경로 복사");
+  expect(await 칠한값(복사, "opacity"), "포커스만 받은 경로 복사가 떴다").toEqual(["0"]);
+  await 트리행.hover();
+  await expect.poll(async () => (await 칠한값(복사, "opacity"))[0]).toBe("1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

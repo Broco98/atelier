@@ -1,10 +1,10 @@
 /// <reference types="node" />
 // Node 타입을 이 파일만 끌어오는 이유는 tauri-commands.test.ts 상단 주석과 같다.
-import { readdirSync, readFileSync, type Dirent } from "fs";
+import { readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankComments, blankCssComments } from "./blank-comments";
+import { blankCssComments, blankedSources, type Place, placesOf, type Source, where } from "./blank-comments";
 
 // **여백은 DS 간격 눈금으로만 적는다**(codex-ds 스펙 §4 「여백」 · 결정 24 · 티켓 25). 눈금은 Tailwind의 `--spacing`(4px)이고 DS
 // `space-*`가 곧 그 칸이다(`space-2` = `p-2` = 8). 화면은 세 줄에 맞춘다 — 틈 8 · 행 글자 16 · 글 거터 20(글 위 24). 그 밖에서 간격을
@@ -35,32 +35,12 @@ import { blankComments, blankCssComments } from "./blank-comments";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
-  });
-}
-
 // 주석을 지운 원문들 — `file`은 저장소 뿌리에서 잰 경로다.
-const scripts = sourceFiles(join(root, "src")).map((path) => ({
-  file: path.slice(root.length),
-  text: blankComments(readFileSync(path, "utf8")),
-}));
+const scripts = blankedSources();
 const stylesheet = { file: "src/index.css", text: blankCssComments(readFileSync(join(root, "src/index.css"), "utf8")) };
 
-type Source = { file: string; text: string };
-
-/** 어긴 자리 하나 — `파일:줄: 글자`로 보인다. */
-type Place = { file: string; line: number; text: string };
-
-function places(pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): Place[] {
-  return sources.flatMap(({ file, text }) =>
-    [...text.matchAll(pattern)].map((m) => ({ file, line: text.slice(0, m.index).split("\n").length, text: m[0] })),
-  );
-}
-const where = (place: Place) => `${place.file}:${place.line}: ${place.text}`;
+// 어긴 자리 — `where`로 `파일:줄: 글자`가 된다. 원문을 안 넘기면 소스와 `index.css`를 함께 센다.
+const places = (pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): Place[] => placesOf(pattern, sources);
 
 /**
  * 목록의 자리 가운데 **정확히 한 번** 걸리지 않는 것 — `파일: 클래스 × 걸린 수`로 보인다. 목록의 한 줄은 그 파일의 한 자리다. 안 걸린
@@ -367,8 +347,13 @@ describe("눈금의 사분 단", () => {
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
     {
       file: "src/components/shell/Frame.tsx",
-      className: "gap-1.75",
-      why: "머리 카드의 이름 칸 — 아이콘과 이름 사이 7(DS `.at-wtitle`)",
+      className: "mr-1.75",
+      why: "머리 카드의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
+    },
+    {
+      file: "src/components/shell/Frame.tsx",
+      className: "gap-1.25",
+      why: "머리 카드의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
     },
     {
       file: "src/components/shell/Sidebar.tsx",
@@ -412,14 +397,9 @@ describe("눈금의 사분 단", () => {
       why: "두 줄 메뉴 항목(`note`) — 위아래 안쪽 7(DS `.at-mi.tall`)",
     },
     {
-      file: "src/features/archive/ArchiveList.tsx",
+      file: "src/components/shell/Frame.tsx",
       className: "py-1.75",
-      why: "Archive 목록의 두 줄 행 — 위아래 안쪽 7(DS `.at-row.two`)",
-    },
-    {
-      file: "src/features/projects/ProjectList.tsx",
-      className: "py-1.75",
-      why: "Projects 목록의 두 줄 행 — 위아래 안쪽 7(DS `.at-row.two`)",
+      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Projects · Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
     },
     {
       file: "src/components/ui/input.tsx",
@@ -491,8 +471,18 @@ describe("눈금의 사분 단", () => {
     // 셈에서 나오는 홀수 px
     {
       file: "src/components/shell/Frame.tsx",
-      className: "ml-1.75",
-      why: "머리 카드의 이름 끝에서 위치까지 DS 14 — 위치가 이름 칸 안에 서서, 칸 안의 사이 7(DS `.at-wtitle`)에 7을 더한다",
+      className: "pr-6.25",
+      why: "바꿀 수 있는 머리 카드 이름 상자의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 8",
+    },
+    {
+      file: "src/components/shell/Frame.tsx",
+      className: "pr-5.25",
+      why: "고치는 동안의 머리 카드 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
+    },
+    {
+      file: "src/components/shell/Frame.tsx",
+      className: "mt-1.25",
+      why: "머리 카드 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",

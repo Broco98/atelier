@@ -11,14 +11,18 @@ import {
   unknownIpcCalls,
   workRow,
   시계를세운다,
+  줄차례,
+  토큰시간,
+  탭으로,
   툴팁,
+  호버카드,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
-// 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · 작업 패널 머리의 spec 폴더 열기 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
+// 작업 ⋯ · 상태 메뉴 · 작업 패널 머리의 spec 폴더 열기 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
 // 셸 열기 `+`는 셸 열기 spec(`shell-picker.spec.ts`)이, 아카이브 거르개는 아카이브 문서 spec이,
-// 기준 브랜치는 프로젝트 목록 spec이 든다.
+// 기준 브랜치는 프로젝트 목록 spec이, ⋯의 「이름 바꾸기」가 켜는 제자리 이름 바꾸기는 `inline-rename.spec.ts`가 든다.
 //
 // **절마다 머리 주석 한 줄로 가른다**(`// ── 무엇 ──`). 표면이 늘어도 한 파일이라, 절 머리가 곧 목차다.
 // 도우미는 이 파일 맨 위에 둔다 — 둘 이상의 절이 쓰는 것만. 한 절만 쓰는 것은 그 절 안에 둔다.
@@ -158,20 +162,6 @@ const 하위메뉴를연다 = async (page: Page, name: string) => {
   return sub;
 };
 
-/**
- * 메뉴 카드의 **줄 차례** — 카드에 바로 선 줄을 위에서부터, 항목은 제 글자로 구분선은 「—」로 읽는다. 묶음은 구분선이 가르므로
- * 항목 순서와 구분선 수를 따로 세면 구분선이 다른 틈으로 옮겨 가도 그대로 통과한다 — 한 목록으로 읽어야 묶음이 재진다. 하위 메뉴
- * 카드는 제 포털에 서서 부모 카드의 줄에 안 섞인다.
- */
-const 줄차례 = (menu: Locator) =>
-  menu.evaluate((card) =>
-    [...card.children].flatMap((row) => {
-      const role = row.getAttribute("role");
-      if (role === "separator") return ["—"];
-      return role === "menuitem" ? [row.textContent ?? ""] : [];
-    }),
-  );
-
 /** 부른 Finder 열기의 인자들, 부른 차례대로. */
 const finder열기 = async (page: Page) =>
   (await ipcCallArgs(page, "open_work_folder", "slug")).map(({ args }) => args);
@@ -189,7 +179,9 @@ test("작업 ⋯를 열면 다섯 묶음의 work 메뉴가 서고 ↓가 첫 항
   // 열기 — 고치기 — 상태 — 정리 — 되돌릴 수 없는 것(codex-ds 결정 10). 고정된 work라 정리 묶음의 첫 줄이 「고정 풀기」다.
   await expect
     .poll(() => 줄차례(menu))
-    .toEqual(["Finder에서 열기", "—", "이름 바꾸기", "복사", "—", "상태", "—", "고정 풀기", "아카이브", "—", "삭제"]);
+    .toEqual(["Finder에서 열기", "—", "이름 바꾸기F2", "복사", "—", "상태", "—", "고정 풀기", "아카이브", "—", "삭제"]);
+  // 「이름 바꾸기」의 단축키 칸은 F2다(codex-ds 스펙 §9) — 보이는 글자는 줄 끝에 서고, 줄은 그 키를 `aria-keyshortcuts`로 말한다.
+  await expect(menu.getByRole("menuitem", { name: "이름 바꾸기", exact: true })).toHaveAttribute("aria-keyshortcuts", "F2");
   // ▸ 셋이 하위 메뉴를 연다고 말한다 — 나머지는 누르면 바로 하는 줄이다.
   for (const name of ["Finder에서 열기", "복사", "상태"]) {
     await expect(menu.getByRole("menuitem", { name, exact: true })).toHaveAttribute("aria-haspopup", "menu");
@@ -419,114 +411,6 @@ for (const [row, verb, command] of [
   });
 }
 
-// ── 이름 바꾸기 창 (결정 8, 스토리 58~63, S38 · P7 · P12) ──
-// ⋯의 「이름 바꾸기」가 작은 창을 연다. 입력칸이 지금 이름을 **전부 고른 채** 포커스를 받는다. Enter는 앞뒤
-// 공백을 떼고 저장하되, 비었거나 그대로면 저장 없이 닫는다. Esc와 바깥 누르기는 취소다 — 바깥 누르기가 저장이던
-// 옛 인라인 편집기와 여기서 갈린다(P7). 어느 길로 닫혀도 포커스는 ⋯로 간다.
-//
-// 「안 나갔다」(IPC 0)는 늘 **창이 닫힌 것을 본 뒤에** 잰다 — 닫는 일이 아예 안 일어나도 0이다.
-
-const 이름바꾸기를연다 = async (page: Page) => {
-  await 작업메뉴(page).click();
-  await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
-  const dialog = page.getByRole("dialog", { name: "작업 이름 바꾸기" });
-  await expect(dialog).toBeVisible();
-  const input = dialog.getByRole("textbox", { name: "작업 이름" });
-  await expect(input).toBeFocused();
-  return { dialog, input, save: dialog.getByRole("button", { name: "저장", exact: true }) };
-};
-
-/** 입력칸에서 골라 둔 자리 `[시작, 끝]`. 전부 골랐으면 `[0, 글자 수]`다. */
-const 고른자리 = (input: Locator) =>
-  input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]);
-
-test("「이름 바꾸기」는 「작업 이름 바꾸기」 창을 열고, 입력칸이 지금 이름을 전부 고른 채 포커스를 받는다", async ({
-  page,
-}) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-  const { input } = await 이름바꾸기를연다(page);
-
-  await expect(input).toHaveValue(plainWork.title);
-  await expect.poll(() => 고른자리(input)).toEqual([0, plainWork.title.length]);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("Enter면 앞뒤 공백을 뗀 이름으로 제목 IPC가 나가고, 창이 닫혀 포커스가 ⋯에 선다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-  const { dialog, input } = await 이름바꾸기를연다(page);
-
-  await input.fill("  새 이름  ");
-  await input.press("Enter");
-
-  await expect(dialog).toHaveCount(0);
-  await expect(작업메뉴(page)).toBeFocused();
-  await expect
-    .poll(async () => (await ipcCallArgs(page, "set_work_title", "title")).map(({ args }) => args))
-    .toEqual([{ slug: plainWork.slug, title: "새 이름" }]);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-for (const [what, value] of [
-  ["그대로인 이름", plainWork.title],
-  ["빈 이름", "   "],
-] as const) {
-  test(`${what}으로 Enter를 누르면 창만 닫히고 제목 IPC는 안 나간다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/works/${plainWork.slug}`);
-    const { dialog, input } = await 이름바꾸기를연다(page);
-
-    await input.fill(value);
-    await input.press("Enter");
-
-    await expect(dialog).toHaveCount(0);
-    await expect(작업메뉴(page)).toBeFocused();
-    expect(await callCount(page, "set_work_title")).toBe(0);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
-
-test("「저장」은 이름이 비었거나 그대로면 누를 수 없고, 글자를 바꾸면 풀린다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-  const { input, save } = await 이름바꾸기를연다(page);
-
-  // 연 그대로는 지금 이름이다 — 저장해도 바뀌는 것이 없다.
-  await expect(save).toBeDisabled();
-  await input.fill("");
-  await expect(save).toBeDisabled();
-  // 공백만 있으면 뗀 뒤 빈 이름이다. 앞뒤 공백만 붙인 지금 이름도 뗀 뒤 그대로다.
-  await input.fill("   ");
-  await expect(save).toBeDisabled();
-  await input.fill(` ${plainWork.title} `);
-  await expect(save).toBeDisabled();
-
-  await input.fill(`${plainWork.title}!`);
-  await expect(save).toBeEnabled();
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-for (const [what, cancel] of [
-  ["Esc", (page: Page) => page.keyboard.press("Escape")],
-  // 가림막 위 창 밖의 한 점. 창은 가운데에 서므로 왼쪽 위 모서리는 늘 바깥이다.
-  ["바깥 누르기", (page: Page) => page.mouse.click(8, 8)],
-] as const) {
-  test(`${what}는 취소다 — 고친 이름이 있어도 제목 IPC가 안 나가고, 포커스가 ⋯에 선다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/works/${plainWork.slug}`);
-    const { dialog, input } = await 이름바꾸기를연다(page);
-
-    await input.fill("고치다 만 이름");
-    await cancel(page);
-
-    await expect(dialog).toHaveCount(0);
-    await expect(작업메뉴(page)).toBeFocused();
-    expect(await callCount(page, "set_work_title")).toBe(0);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
-
 // ── 토스트 (스토리 88~91, 결정 11, S14 · S26 · S37) ──
 // 복사했다·셸을 못 열었다 같은 짧은 토스트는 이름 「메시지」를 단 `region`(라이브 영역)에 선다. 자리는 본문과 작업
 // 패널을 합친 상자의 아래 가운데다 — 뷰 분기 밖이라 본문이 셸이든 문서든 같은 자리다. 이어서 오면 **같은 id 하나로**
@@ -558,8 +442,48 @@ test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 포인터를 안 쓴다 — 포인터가 토스트 위에 있으면 Base UI가 시계를 세운다(S27). 키로 복사해야 포커스가 복사한 자리에
-// 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+// 아래 둘은 **키보드의 복사 길**로 복사한다 — 트리 행에 포커스를 두고 그 행의 메뉴(⇧F10)의 「경로 복사」다. 행 안 복사 버튼은
+// Tab 정류장이 아니다(codex-ds 스펙 S10). 포인터를 안 쓰는 까닭은 둘이다: 포인터가 토스트 위에 있으면 Base UI가 시계를
+// 세우고(S27), 키로 복사해야 포커스가 복사한 자리에 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+
+/** 작업 패널 트리의 그 파일 행(이름 버튼 — 목록의 roving 줄). */
+const 트리행 = (page: Page, path: string) => page.locator(`aside:not([data-sidebar]) [data-roving="${path}"]`);
+
+/** 메뉴 카드의 움직임(CSS)이 다 멎었는가 — 그 움직임은 세운 시계가 아니라 실제 시간을 탄다. */
+const 카드가멎었다 = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[role="menu"]')].every((menu) =>
+      menu.getAnimations({ subtree: true }).every((one) => one.playState !== "running"),
+    ),
+  );
+
+/**
+ * 세운 시계에서 프레임(rAF)을 한 장씩(16ms) 밀어 그 조건을 기다린다 — 실제 시간이 토스트의 시계로 새지 않는다. 카드는 프레임을
+ * 받은 뒤 제 움직임이 끝나기를 실제 시간으로 기다려 걷히므로(Base UI), 한 장을 밀 때마다 그 움직임이 멎기를 기다린다.
+ */
+async function 프레임을민다(page: Page, done: () => Promise<boolean>, 최대 = 20): Promise<void> {
+  for (let n = 0; n < 최대; n += 1) {
+    if (await done()) return;
+    await page.clock.runFor(16);
+    await expect.poll(() => 카드가멎었다(page)).toBe(true);
+  }
+  throw new Error(`프레임 ${최대}장을 밀어도 닿지 않았다`);
+}
+
+/**
+ * 세운 시계에서, 포커스가 선 트리 행의 메뉴(⇧F10)로 그 경로를 복사한다. 카드가 포커스를 쥐는 것도, 닫힌 카드가 걷히고 포커스가
+ * 행으로 돌아가는 것도 프레임을 타서(세운 시계에는 저절로 안 온다) 그 둘을 프레임을 밀어 기다린다.
+ */
+async function 메뉴로복사한다(page: Page): Promise<void> {
+  const menu = page.getByRole("menu");
+  await page.keyboard.press("Shift+F10");
+  await 프레임을민다(page, () => page.evaluate(() => document.activeElement?.closest('[role="menu"]') != null));
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "경로 복사", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await 프레임을민다(page, async () => (await menu.count()) === 0);
+}
+
 test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글자로 갈아 끼우고, 포커스는 복사한 자리에 남는다", async ({
   page,
 }) => {
@@ -568,16 +492,14 @@ test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글�
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
   const messages = 메시지(page);
-  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
-  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
-  await expect(first).toBeAttached();
+  await 탭으로(page, 트리행(page, "overview.md"));
 
   await 시계를세운다(page);
-  await first.focus();
-  await page.keyboard.press("Enter");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
-  await second.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await expect(트리행(page, "메타.json")).toBeFocused();
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
 
   const [, copied] = await clipboardWrites(page);
@@ -585,8 +507,8 @@ test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글�
   // 한도에 걸려 남은 것(`data-limited`)까지 세어 한 장이다.
   await expect(messages.locator("[data-slot=toast]")).toHaveCount(1);
   await expect(messages.getByRole("dialog")).toHaveCount(1);
-  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91).
-  await expect(second).toBeFocused();
+  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91) — 메뉴가 닫히며 돌려준 행에 그대로 있다.
+  await expect(트리행(page, "메타.json")).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -602,13 +524,10 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await page.goto(`/works/${pinnedWork.slug}`);
   const messages = 메시지(page);
   const toast = messages.getByRole("dialog");
-  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
-  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
-  await expect(first).toBeAttached();
+  await 탭으로(page, 트리행(page, "overview.md"));
 
   await 시계를세운다(page);
-  await first.focus();
-  await page.keyboard.press("Enter");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
   await expect(toast).toHaveCount(1);
   expect(await 전이(toast)).not.toBe("none");
@@ -616,13 +535,13 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await expect.poll(() => 전이(toast)).toBe("none");
 
   await page.clock.runFor(1000);
-  await second.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await 메뉴로복사한다(page);
   await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
   const [, copied] = await clipboardWrites(page);
   await expect(messages).toHaveText(`${copied} 복사됨`);
 
-  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초다.
+  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초에, 닫힌 카드를 걷느라 민 프레임 몇 장(`메뉴로복사한다`)을 더한 만큼이다.
   await page.clock.runFor(1000);
   await expect(messages).toHaveText(`${copied} 복사됨`);
   // 뒤의 것에서 1.6초를 넘겼다.
@@ -811,19 +730,21 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
 });
 
 // ── 툴팁 (스토리 112 · 113, S28 · S29 · P13) ──
-// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 600ms 뒤에, 포커스면 곧바로 선다. 단축키가 있으면 옆에 Kbd로
+// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 멈춘 지 `duration-tip`(150ms)에, 포커스면 곧바로 선다(codex-ds
+// 결정 20 — 무리의 나머지 시간은 `hover-timing` spec이 잰다). 단축키가 있으면 옆에 Kbd로
 // 붙는다(「검색 ⌘K」). 툴팁은 역할도 설명도 주지 않으므로(S28) 글자는 표식(`data-slot`)으로 집고, 이름보다 더 말하던 것
 // (단축키)은 버튼의 접근성 설명으로 따로 잰다. 대표는 사이드바의 검색 버튼 하나다 — 사이드바에서 `title`을 들던 버튼이
 // 그것뿐이고(P13), 규칙이 부품 한 곳이라 나머지 자리는 같은 부품을 부른다.
 //
-// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 350ms 호버 카드가 600ms 툴팁보다 먼저 서므로, 카드가
-// 선 순간에 「툴팁이 없다」를 재면 행에 툴팁을 잘못 달아도 초록이다 — 카드를 앵커로 본 뒤 시계로 툴팁 지연을 넘겨 돌리고
-// 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인 판을 가른다).
+// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 호버 카드와 툴팁은 같은 길이(`duration-tip`)에 서는 한
+// 무리라(codex-ds 결정 20), 카드가 선 순간에 「툴팁이 없다」를 재면 같은 틱에 설 툴팁을 앞질러 행에 툴팁을 잘못 달아도 초록이다
+// — 카드를 앵커로 본 뒤 시계를 넉넉히 돌리고 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인
+// 판을 가른다). 핀은 행 안에 있어 올려도 카드가 그대로다 — 티켓 33의 「고정 핀 위에는 카드가 없다(그대로)」가 이 검사다.
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
 const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
 
-test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
+test("검색 버튼에 올려 멈추면 duration-tip 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -835,13 +756,15 @@ test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 
   // 이름은 그대로 「검색」이고, 이름보다 더 말하던 단축키는 설명이다(S28).
   await expect(search).toHaveAccessibleDescription("⌘K");
   await expect(tooltip).toHaveCount(0);
+  const tip = await 토큰시간(page, "--duration-tip");
+  expect(tip, "duration-tip").toBe(150);
 
   await 시계를세운다(page);
   await search.hover();
-  await page.clock.runFor(500);
+  await page.clock.runFor(tip - 1);
   // 아래에서 곧 선다 — 이 「없다」는 그 앵커에 기대어 지연이 0이 아님을 잰다.
   await expect(tooltip).toHaveCount(0);
-  await page.clock.runFor(200);
+  await page.clock.runFor(1);
   await expect(tooltip).toContainText("검색");
   await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -867,13 +790,19 @@ test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁�
   await page.clock.install();
   await page.goto(`/works/${pinnedWork.slug}`);
   const row = workRow(page, plainWork.slug);
-  const card = page.locator("[data-popover]");
+  const card = 호버카드(page);
   const tooltip = 툴팁(page);
   await expect(row).toBeVisible();
   await expect(card).toHaveCount(0);
+  const tip = await 토큰시간(page, "--duration-tip");
+  expect(tip, "duration-tip").toBe(150);
 
+  await 시계를세운다(page);
   await row.hover();
-  // 앵커: 호버 카드가 섰다(350ms). 툴팁(600ms)은 그 뒤라, 여기서 재면 헛돈다.
+  // 앵커: 호버 카드가 멈춘 지 `duration-tip`에 섰다 — 툴팁과 같은 틱이라 여기서 「툴팁이 없다」를 재면 헛돈다.
+  await page.clock.runFor(tip - 1);
+  await expect(card).toHaveCount(0);
+  await page.clock.runFor(1);
   await expect(card).toBeVisible();
   await page.clock.runFor(1000);
   await expect(tooltip).toHaveCount(0);

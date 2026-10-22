@@ -38,6 +38,8 @@ import {
   NO_SHELLS,
   openCodeTab,
   openShell,
+  otherCloseNotice,
+  otherShellsOf,
   ownerlessCloseNotice,
   ownerlessOf,
   placeHint,
@@ -52,6 +54,7 @@ import {
   runningShellsOf,
   searchHotkey,
   setAttention,
+  setLabel,
   setRunning,
   setShellKey,
   setShellName,
@@ -63,6 +66,7 @@ import {
   shellRewrite,
   shellNavFromWindow,
   shellNavKey,
+  shellNameTail,
   shellRowName,
   shellsOf,
   cycleShell,
@@ -82,6 +86,7 @@ import { attentionOn } from "./shell-attention";
 import type { Attention } from "./shell-attention";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import { workFixture } from "@/features/works/work-fixture";
+import { HOTKEYS } from "@/lib/hotkeys";
 
 // 소스를 **문자열로만** 본다. 자르거나 파싱하는 정규식은 파서가 새는 순간 조용히 통과하고,
 // 이 저장소는 그것을 fail-open이라 부른다 — 실제로 그 사고가 있었다(아래 「본문도 DOM 전역을
@@ -646,11 +651,13 @@ it("react·tauri·xterm을 import하지 않는다", () => {
   expect(imported.filter((one) => /^(react|@tauri-apps\/|@xterm\/)/.test(one))).toEqual([]);
 
   // 판 03이 works의 `WorkView`를 끌어오면서 목록이 더 늘었다. 이름을 하나씩 막는 대신
-  // **값 import가 하나도 없는 것**을 본다 — 위 셋은 그 성질이 깨지는 흔한 길일 뿐이다.
-  const valueImports = [...source.matchAll(/^\s*import\s+(?!type\b).*$/gm)].map((found) =>
-    found[0].trim(),
-  );
-  expect(valueImports).toEqual([]);
+  // **값 import가 단축키 표 하나뿐인 것**을 본다 — 위 셋은 그 성질이 깨지는 흔한 길일 뿐이다.
+  // 그 하나는 키 판정이 표를 읽어서다(codex-ds 결정 19 · S16). **표 모듈도 같은 그물에 넣는다** — 그쪽의 값 import가
+  // JSON 한 장뿐이어야 이 모듈이 그것을 통해 무엇도 끌어오지 않는다. 화이트리스트가 열리는 자리는 데이터 한 장까지다.
+  const valueImports = (text: string) =>
+    [...text.matchAll(/^\s*import\s+(?!type\b).*$/gm)].map((found) => found[0].trim());
+  expect(valueImports(source)).toEqual(['import { pressed, TAB_HOTKEYS } from "@/lib/hotkeys";']);
+  expect(valueImports(read("../../lib/hotkeys.ts"))).toEqual(['import table from "./hotkeys.json";']);
 });
 
 // **위 검사는 import만 본다 — 그것이 fail-open이었다.** 머리말은 「DOM 없는 기본 환경에서
@@ -1016,6 +1023,47 @@ describe("고를 수 있는 프로젝트와 열리는 자리", () => {
   });
 });
 
+// codex-ds 스펙 S7 — **사람이 붙인 이름은 이름의 셋째 갈래이고 맨 앞이다.** 셸은 프롬프트마다 타이틀을 쏘므로(zsh의 precmd) 붙인
+// 이름이 타이틀 뒤에 서면 붙이자마자 덮인다. 비우면 그 앞 갈래로 돌아간다 — 지운 이름이 「셸」 같은 기본값으로 굳지 않는다.
+describe("붙인 이름은 타이틀 · 셸 이름보다 앞선다", () => {
+  it("붙인 이름이 있으면 타이틀도 셸 이름도 이긴다", () => {
+    const { state, ids } = opened(1);
+    const named = setLabel(setTitle(setShellName(state, ids[0], "zsh"), ids[0], "user@host"), ids[0], "빌드");
+    expect(shellRowName(shellOf(named, ids[0]))).toBe("빌드");
+    // 뒤에 온 타이틀도 붙인 이름을 못 덮는다.
+    expect(shellRowName(shellOf(setTitle(named, ids[0], "다른 타이틀"), ids[0]))).toBe("빌드");
+  });
+
+  it("앞뒤 공백을 걷어 붙인다", () => {
+    const { state, ids } = opened(1);
+    expect(shellOf(setLabel(state, ids[0], "  내 셸  "), ids[0]).label).toBe("내 셸");
+  });
+
+  it("비우면 붙인 이름을 지우고 타이틀로, 타이틀이 없으면 셸 이름으로 돌아간다", () => {
+    const { state, ids } = opened(1);
+    const zsh = setShellName(state, ids[0], "zsh");
+    const titled = setTitle(zsh, ids[0], "user@host");
+    for (const blank of ["", "   "]) {
+      const cleared = setLabel(setLabel(titled, ids[0], "빌드"), ids[0], blank);
+      expect(shellOf(cleared, ids[0]).label).toBeNull();
+      expect(shellRowName(shellOf(cleared, ids[0]))).toBe("user@host");
+      expect(shellRowName(shellOf(setLabel(setLabel(zsh, ids[0], "빌드"), ids[0], blank), ids[0]))).toBe("zsh");
+    }
+  });
+
+  it("같은 이름을 다시 붙이면 상태가 그대로다 — 다른 칸은 안 바뀐다", () => {
+    const { state, ids } = opened(2);
+    const named = setLabel(state, ids[0], "빌드");
+    expect(setLabel(named, ids[0], " 빌드 ")).toBe(named);
+    expect(shellOf(named, ids[1]).label).toBeNull();
+  });
+
+  it("뜬 칸에는 붙인 이름이 없다", () => {
+    const { state, ids } = opened(1);
+    expect(shellOf(state, ids[0]).label).toBeNull();
+  });
+});
+
 // 결정 45·46. 셸 행은 두 줄이고, 그 두 줄을 정하는 것이 이 함수 둘이다. **프로젝트를
 // 버리지 않는 것**이 여기서 지켜야 할 전부다 — 앞 판의 가로 탭 줄은 타이틀이 오는 순간
 // 프로젝트를 버렸고, 그래서 어느 워크트리의 셸인지가 실물에서 사라졌다(결정 104가 그
@@ -1047,6 +1095,15 @@ describe("셸 행의 두 줄", () => {
   it("이름이 하나도 없어도 비지 않는다", () => {
     const { state, id } = 칸(null, "~/w");
     expect(shellRowName(shellOf(state, id)).trim()).not.toBe("");
+  });
+
+  // 이름 입력칸은 뒤 갈래만 든다(구현 노트 Q8) — 어느 워크트리의 셸인지는 사람이 고칠 말이 아니라 앞에 그대로 남는다.
+  it("붙인 이름도 프로젝트 뒤에 선다 — 입력칸이 드는 것은 뒤 갈래뿐이다", () => {
+    const { state, id } = 칸("cli", "~/w/trees/cli");
+    const named = setLabel(setTitle(state, id, "user@host"), id, "빌드");
+    expect(shellRowName(shellOf(named, id))).toBe("cli · 빌드");
+    expect(shellNameTail(shellOf(named, id))).toBe("빌드");
+    expect(shellNameTail(shellOf(setLabel(named, id, ""), id))).toBe("user@host");
   });
 
   it("프로젝트만 있고 이름이 없으면 그 이름을 두 번 적지 않는다", () => {
@@ -1161,6 +1218,9 @@ describe("앱이 가져가는 키", () => {
 // ⌘W는 **두 자리가 함께여야** 성립한다. 프런트가 잡아도 macOS 메뉴에 `Close Window`가
 // 있으면 OS가 먼저 먹어 창이 닫히고 셸이 전부 죽는다 — 실물에서 그렇게 잃었다. 프런트만
 // 보는 검사는 그 회귀에 초록이므로, 메뉴 쪽 자리를 여기서 함께 못박는다.
+//
+// **메뉴 바의 단축키는 이 판정과 같은 표에서 나온다**(codex-ds 결정 19 · S16) — `lib.rs`가 빌드 때 그 파일을 싣는다. ⌘W 줄이
+// 메뉴 바에 서지 않는 것(`menu`가 없다)은 표 쪽에서 본다. 표에서 만든 메뉴의 차례 · ⌘W 없음은 `lib.rs`의 테스트가 잰다.
 it("macOS 메뉴에 Close Window가 없다 — 있으면 ⌘W가 웹뷰까지 못 온다", () => {
   const menu = readFileSync(
     fileURLToPath(new URL("../../../src-tauri/src/lib.rs", import.meta.url)),
@@ -1172,6 +1232,12 @@ it("macOS 메뉴에 Close Window가 없다 — 있으면 ⌘W가 웹뷰까지 �
   expect(menu).not.toMatch(/\.close_window\(\)/);
   // 메뉴를 통째로 지우면 ⌘C·⌘V·⌘A가 함께 죽는다. Edit이 살아 있는지 본다.
   expect(menu).toContain(".select_all()");
+  // 메뉴 바가 읽는 표가 이 판정이 읽는 그 파일이다 — 다른 사본이면 메뉴와 판정이 갈린다.
+  expect(menu).toContain('include_str!("../../src/lib/hotkeys.json")');
+  expect(HOTKEYS.closeShell, "⌘W 줄이 메뉴 바에 선다").toMatchObject({ code: "KeyW", mods: ["meta"], menu: null });
+  expect(shellHotkey({ type: "keydown", code: "KeyW", ctrlKey: false, metaKey: true, altKey: false, shiftKey: false })).toBe(
+    "close",
+  );
 });
 
 
@@ -1354,6 +1420,7 @@ describe("닫기의 까닭", () => {
       "mcpArchive",
       "offscreen",
       "openFailed",
+      "others",
       "ownerless",
       "person",
       "quiet",
@@ -1365,6 +1432,8 @@ describe("닫기의 까닭", () => {
     // 「화면 밖 셸」은 까닭이 아니다 — 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다.
     expect(CLOSE_REASONS.quiet).toBe("shellClose");
     expect(CLOSE_REASONS.offscreen).toBe("shellClose");
+    // 셸 탭의 「다른 셸 모두 닫기」(codex-ds 티켓 29 · S8)도 사람이 누른 닫기다.
+    expect(CLOSE_REASONS.others).toBe("shellClose");
   });
 });
 
@@ -1769,7 +1838,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // ⌘W에 대해 거짓이다 — 그 핸들러가 `closeShell`과 **같은 모듈**에 살아 비공개가 아무것도
   // 막지 못한다(실측: `requestCloseShell`을 `closeShell`로 되돌려도 tsc가 exit 0이었다).
   // 타입으로 못 막으니 **자리를 센다**: 확인을 건너뛰는 이름을 부르는 곳은 넷뿐이다.
-  it("확인을 건너뛰는 길이 일곱뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수·안 쓴 자동 셸 회수·조용한 셸·[모두 닫기]·[조용한 셸 모두 닫기]", () => {
+  it("확인을 건너뛰는 길이 여덟뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수·안 쓴 자동 셸 회수·조용한 셸·[모두 닫기]·[조용한 셸 모두 닫기]·「다른 셸 모두 닫기」", () => {
     // 정의. 밖으로 안 나가는 것은 `×`(모듈 밖)에 대해서는 여전히 유효한 절반이다.
     expect(store).toContain("function closeShell(id: number, path: ClosePath): void {");
     // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
@@ -1797,12 +1866,18 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(store).toContain(
       'for (const shell of quiet) if (isLiveShellOf(terminalStore.state, shell.id)) closeShell(shell.id, "quiet");',
     );
-    // 여덟째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
+    // 셸 탭의 「다른 셸 모두 닫기」(codex-ds 티켓 29 · S8). 셸마다 묻지 않고 **한 번** 물었다(`otherCloseNotice`). 무엇을 닫는지는
+    // `otherShellsOf` 하나가 정한다 — 그 사이 사람이 먼저 닫은 칸은 건너뛴다.
+    expect(store).toContain("const others = otherShellsOf(terminalStore.state, id);");
+    expect(store).toContain(
+      'if (terminalStore.state.shells.some((one) => one.id === shell.id)) closeShell(shell.id, "others");',
+    );
+    // 아홉째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
     // `C` 때문에 이 부분문자열에 안 걸린다 — 그래서 세는 것으로 충분하다.
     expect(
       countOf(store, "closeShell("),
       "`closeShell`을 직접 부르는 자리가 늘었다 — ⌘W·`×`는 `requestCloseShell`만 부른다",
-    ).toBe(7);
+    ).toBe(8);
   });
 
   // 티켓 11. **닫기의 까닭은 표 한 곳에서 고른다**(`CLOSE_REASONS`). 닫기 IPC를 부르는 자리가 까닭 글자를 손으로
@@ -2491,6 +2566,75 @@ describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
     expect(isLiveShellOf(state, a)).toBe(false);
     expect(isLiveShellOf(state, b)).toBe(false);
     expect(isLiveShellOf(state, c)).toBe(true);
+  });
+});
+
+// codex-ds 스펙 S8 · 구현 노트 Q11. 셸 탭 메뉴의 「다른 셸 모두 닫기」 — 그 셸과 **같은 화면**의 다른 칸을 모두 닫고, 다른 셸 어느 것이든
+// 닫기 전 물음에 걸리면 [조용한 셸 모두 닫기]의 모양으로 **한 번** 묻는다.
+describe("다른 셸 모두 닫기", () => {
+  const check = (command: boolean, descendants: number) => ({ command, descendants });
+
+  it("닫는 것은 같은 화면의 그 셸 밖 모든 칸이다 — 끝난 칸 · 못 뜬 칸도 들고, 다른 화면의 셸은 안 든다", () => {
+    let state = opened(4, originFor("w")).state;
+    const [a, b, c, d] = state.shells.map((shell) => shell.id);
+    const elsewhere = openShell(state, originFor("x"))!;
+    state = markFailed(markExited(elsewhere.state, c, EXIT_42), d, "폴더가 없습니다");
+    expect(otherShellsOf(state, b).map((shell) => shell.id)).toEqual([a, c, d]);
+    expect(otherShellsOf(state, elsewhere.id)).toEqual([]);
+  });
+
+  it("없는 셸이면 아무것도 안 닫는다", () => {
+    const { state } = opened(2);
+    expect(otherShellsOf(state, 999)).toEqual([]);
+  });
+
+  it("다른 셸이 모두 조용하면 묻지 않는다 — 끝난 칸은 물을 프로세스가 없다", () => {
+    const three = opened(3).state;
+    const [a, b, c] = three.shells.map((shell) => shell.id);
+    const state = markExited(three, c, EXIT_42);
+    const others = otherShellsOf(state, b);
+    expect(otherCloseNotice(others, new Map([[a, check(false, 0)]]))).toBeNull();
+  });
+
+  // 셸 하나의 답만 빠진 것은 셸 하나의 닫기(`needsCloseConfirm`)처럼 안 묻는다.
+  it("셸 하나의 답이 빠졌으면 그 셸은 안 묻는다", () => {
+    const { state, ids } = opened(3);
+    expect(otherCloseNotice(otherShellsOf(state, ids[1]), new Map([[ids[0], check(false, 0)]]))).toBeNull();
+  });
+
+  it("다른 셸 하나라도 걸리면 그 다른 셸 전부를 센다", () => {
+    const { state, ids } = opened(3);
+    const [a, b, c] = ids;
+    const others = otherShellsOf(state, b);
+    expect(
+      otherCloseNotice(
+        others,
+        new Map([
+          [a, check(false, 0)],
+          [c, check(true, 0)],
+        ]),
+      ),
+    ).toBe("다른 셸 2개를 닫아요.");
+  });
+
+  it("함께 끝날 프로세스가 있으면 살아 있는 셸들의 수를 붙인다", () => {
+    const { state, ids } = opened(3);
+    const [a, b, c] = ids;
+    expect(
+      otherCloseNotice(
+        otherShellsOf(state, b),
+        new Map([
+          [a, check(false, 2)],
+          [c, check(true, 1)],
+        ]),
+      ),
+    ).toBe("다른 셸 2개를 닫아요(띄운 프로세스 3개 포함).");
+  });
+
+  // 셸 여럿을 한 번에 닫는 자리라 모르면 묻는다 — 수는 모르니 안 붙는다.
+  it("배치 물음 전체가 실패하면 셸 수만으로 묻는다", () => {
+    const { state, ids } = opened(3);
+    expect(otherCloseNotice(otherShellsOf(state, ids[1]), null)).toBe("다른 셸 2개를 닫아요.");
   });
 });
 

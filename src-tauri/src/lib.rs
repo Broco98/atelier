@@ -39,14 +39,60 @@ const MAIN_WINDOW: &str = "main";
 ///
 /// **뒤에 붙는 것은 그 키의 `KeyboardEvent.code`다** (`hotkey:KeyB` · `hotkey:Digit3`).
 /// 그렇게 두면 프런트가 받은 문자열을 **그대로** 합성 keydown의 `code`에 넣을 수 있어,
-/// 「메뉴 항목 ↔ 키」를 잇는 표가 어느 쪽에도 안 생긴다. 표가 생기면 키를 하나 옮길 때마다
-/// 두 언어를 함께 고쳐야 한다.
+/// 「메뉴 항목 ↔ 키」를 잇는 짝이 따로 안 생긴다 — 메뉴 항목도 프런트의 판정도 같은 단축키
+/// 표(`HOTKEY_TABLE`)의 code를 쓴다. 프런트는 그 code로 표의 항목을 되찾아 수식키를 싣는다
+/// (`menu-hotkey.ts`).
 const HOTKEY_PREFIX: &str = "hotkey:";
 
-/// 되살리는 키들 — `(code, 메뉴에 적히는 이름)`.
+/// **단축키 표 — 데이터 한 장**(codex-ds 결정 19 · 스펙 S16). 프런트가 import하는 바로 그 파일을
+/// 빌드 때 싣는다 — macOS 메뉴 바 · 메뉴 오른쪽 단축키 칸 · 툴팁 · 키 판정이 이 한 장을 읽어,
+/// 어디서 본 단축키든 같다. 항목마다 드는 것(키 코드 · 수식키 · 보이는 글자 · `aria-keyshortcuts`
+/// 값 · 메뉴 바 라벨)과 그 뜻은 곁의 `src/lib/hotkeys.ts` 머리말이 든다. 여기서 읽는 것은 View
+/// 메뉴 라벨(`menu`)이 있는 줄(`MENU_HOTKEYS`)과 앱 메뉴 Settings…의 `settings` 줄(`SETTINGS_ACCELERATOR`)이고,
+/// **표의 차례가 곧 View 메뉴의 차례다.**
 ///
-/// **accelerator는 안 적는다 — `accelerator_of`가 code에서 만든다.** 손으로 적으면 두
-/// 문자열이 한 줄에 나란히 서서 눈으로는 잘 맞아 보이는데, 어긋나는 순간 사람이 누른 키와
+/// **`pnpm tauri dev` 중에 이 파일을 고치면 프런트만 따라온다.** 프런트는 vite가 곧바로 다시 읽지만, tauri CLI가
+/// Rust를 다시 빌드하려고 지켜보는 것은 Cargo 워크스페이스 멤버의 폴더(`src-tauri` · `crates/*`)이고 이 파일은 그 밖
+/// (`src/lib`)이라 메뉴 바는 옛 표 그대로다. dev를 다시 띄우면 실린다 — cargo는 `include_str!`한 파일을 따라가 다음
+/// 빌드에 새 표를 싣는다.
+///
+/// **차례는 `serde_json`의 `preserve_order`가 지킨다**(Cargo.toml — 그 기능을 켠 까닭은
+/// `hooks.rs`의 것이다). 그 기능이 빠지면 표가 이름순으로 읽혀 메뉴가 조용히 섞이는데, 그
+/// 자리는 아래 차례 검사(`검색이_메뉴의_맨_앞이다` · `번호_항목이_메뉴_뒤쪽에_몰려_있다`)가 문다.
+const HOTKEY_TABLE: &str = include_str!("../../src/lib/hotkeys.json");
+
+/// 표의 한 줄 가운데 메뉴 바가 읽는 것. 보이는 글자 · `aria-keyshortcuts` 값은 화면의 몫이라 안 읽는다.
+#[derive(serde::Deserialize)]
+struct HotkeyRow {
+    code: String,
+    mods: Vec<Modifier>,
+    /// View 메뉴의 라벨. 없으면(`null`) View 메뉴에 서지 않는다 — Settings…(⌘,)는 이것이 없이 앱 메뉴에 선다(`build_menu`).
+    menu: Option<String>,
+}
+
+/// 수식키 넷 — 표에는 소문자 이름으로 적힌다(`"meta"` …).
+#[derive(serde::Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "lowercase")]
+enum Modifier {
+    Ctrl,
+    Alt,
+    Shift,
+    Meta,
+}
+
+/// View 메뉴에 서는 항목 하나 — 표의 한 줄에서 나온다.
+struct MenuHotkey {
+    /// `KeyboardEvent.code` — 항목 id의 꼬리이고 프런트에 실어 보내는 값이다.
+    code: String,
+    /// 메뉴에 적히는 이름.
+    label: String,
+    mods: Vec<Modifier>,
+}
+
+/// 메뉴 바에 되살리는 키들 — 표에서 `menu`가 있는 줄을 표의 차례대로.
+///
+/// **accelerator는 표에 안 적는다 — `accelerator_of`가 code와 수식키에서 만든다.** 손으로 적으면
+/// 두 문자열이 한 줄에 나란히 서서 눈으로는 잘 맞아 보이는데, 어긋나는 순간 사람이 누른 키와
 /// 앱이 도는 동작이 **다른 키가 된다.**
 ///
 /// 이름은 `CONTEXT.md`의 말이다. ⌘1~9가 옮기는 것은 **탭**이다 — 「work·터미널 화면 본문 카드
@@ -54,24 +100,26 @@ const HOTKEY_PREFIX: &str = "hotkey:";
 /// 정확히 겹친다. **「열」이 아니다**: 열은 분할했을 때만 생기고 늘 둘이라 아홉이 될 수 없고,
 /// 그 문서가 열을 「칸·패널·페인」으로 부르지 말라고 못 박고 있다.
 ///
-/// **⌘W는 여기 없다.** 창이 닫히면 이 앱은 창이 하나뿐이라 그대로 종료되고 돌던 셸이 전부
-/// 죽는다(`build_menu` 주석의 그 사고). 실측으로는 커스텀 id 항목이 `performClose:`에 안 매여
-/// 창이 살아 있었지만 **dev 빌드에서만 쟀고**, 얻는 것이 「칸 닫기」 하나인데 잃을 수 있는
-/// 것이 셸 전부라 저울이 한쪽으로 명백히 기운다.
+/// **⌘W는 메뉴 바에 없다**(표의 `closeShell` 줄에 `menu`가 없다). 창이 닫히면 이 앱은 창이
+/// 하나뿐이라 그대로 종료되고 돌던 셸이 전부 죽는다(`build_menu` 주석의 그 사고). 실측으로는
+/// 커스텀 id 항목이 `performClose:`에 안 매여 창이 살아 있었지만 **dev 빌드에서만 쟀고**, 얻는
+/// 것이 「칸 닫기」 하나인데 잃을 수 있는 것이 셸 전부라 저울이 한쪽으로 명백히 기운다.
 ///
-/// **⌃Tab·⌃⇧Tab은 없다.** 항목이 제대로 서는데도(AX로 `mods=12 vk=48`을 확인했다)
+/// **⌃Tab·⌃⇧Tab도 없다.** 항목이 제대로 서는데도(AX로 `mods=12 vk=48`을 확인했다)
 /// **accelerator 경로만 죽는다** — 실제로 던져서 0/6 · 0/3이었다.
+///
+/// **F2 · ⇧F10 · 메뉴 키도 없다**(codex-ds 스펙 §8). 이름 바꾸기와 대상 메뉴는 무엇에 거는지가
+/// 포커스에 달려 있어 메뉴 바 한 줄로 설 자리가 없다. 화면 안 키(⌥화살표 · Esc)도 같다.
 ///
 /// **⇧⇧는 여기 실을 수 없었고, 그래서 키를 바꿨다**(결정 1·2). 「같은 수식키를 300ms 안에
 /// 두 번」은 몸짓이라 accelerator 문법에 실을 자리가 없고, `Shift+Shift`는 파싱에 실패한다.
 /// 그런데 Tauri가 그 오류를 조용히 버려(`menu/normal.rs`의 `parse().ok()`) **단축키 없는
-/// 항목이 선다** — 빌드가 통과하는 것이 곧 등록된 것이 아니다. 그 사실이 이 표의 성질을
+/// 항목이 선다** — 빌드가 통과하는 것이 곧 등록된 것이 아니다. 그 사실이 이 목록의 성질을
 /// 하나 못 박는다: **여기 실을 수 있느냐가 여는 키를 고르는 조건**이었고, ⌘K는 실린다.
 ///
 /// **`Search`가 맨 앞이다**(결정 3). 화면을 안 타고 어디서나 여는 유일한 항목이라 목록 첫
 /// 줄에 서는 것이 읽힌다 — 나머지는 전부 「지금 이 화면의」 무엇이다. 그 자리를 검사가
-/// 못 박는다(`검색이_표의_맨_앞이다`): 메뉴를 세우는 함수가 tauri 핸들을 요구해 단위 검사가
-/// 안 태우므로, 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
+/// 못 박는다(`검색이_메뉴의_맨_앞이다`): 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
 ///
 /// **⌘J는 「방금 부른 셸로」다**(프로세스 결정 16 · 프로세스 스펙 P3 · 티켓 23) — 가장 최근에 사람을 부른 셸로 가서 키보드
 /// 포커스를 그 셸에 준다. OS 알림을 누르는 길이 안 되는(판 03 선행 시험) 자리를 이 키가 맡는다. **앱 안 단축키다** — 전역
@@ -79,39 +127,95 @@ const HOTKEY_PREFIX: &str = "hotkey:";
 /// 있어도 듣는 길인 것은 위 다른 항목과 같다. 번호 항목들 **앞**에 선다 — 금이 첫 번호 앞에 그어지므로 뒤에 두면 번호들
 /// 사이에 끼고, 그 자리는 `방금_부른_셸로가_번호_항목들_앞에_선다`가 못 박는다. 이름은 코드의 말(`callingShells`의 「부른다」)을
 /// 영어로 옮긴 것이다 — View 메뉴의 다른 항목처럼 영어다.
-const HOTKEYS: &[(&str, &str)] = &[
-    ("KeyK", "Search"),
-    ("KeyB", "Sidebar"),
-    ("Enter", "Panel"),
-    ("KeyT", "New Shell"),
-    ("KeyJ", "Last Calling Shell"),
-    ("Digit1", "Tab 1"),
-    ("Digit2", "Tab 2"),
-    ("Digit3", "Tab 3"),
-    ("Digit4", "Tab 4"),
-    ("Digit5", "Tab 5"),
-    ("Digit6", "Tab 6"),
-    ("Digit7", "Tab 7"),
-    ("Digit8", "Tab 8"),
-    ("Digit9", "Tab 9"),
-];
+///
+/// **이름이 `MENU_HOTKEYS`인 것은 프런트의 `HOTKEYS`와 가르려는 것이다** — 그쪽은 표 전부이고(`src/lib/hotkeys.ts`), 이것은 그
+/// 가운데 View 메뉴 줄뿐이다.
+static MENU_HOTKEYS: std::sync::LazyLock<Vec<MenuHotkey>> = std::sync::LazyLock::new(|| menu_hotkeys(HOTKEY_TABLE));
 
-/// `KeyboardEvent.code`에서 그 키의 accelerator를 만든다.
+/// `atelier ▸ Settings…`의 가속키 — 표의 `settings` 줄(⌘,)에서 만든다. 그 줄은 View 메뉴 라벨이 없다: 자리는 macOS 관습(앱
+/// 메뉴 About 아래)이고, 되살림 항목(`hotkey:`)이 아니라 `settings:open`을 쏘는 항목이라 `view_entries`의 몫이 아니다.
+static SETTINGS_ACCELERATOR: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let row = hotkey_rows(HOTKEY_TABLE)
+        .into_iter()
+        .find_map(|(id, row)| (id == "settings").then_some(row))
+        .expect("단축키 표에 settings 줄이 있다");
+    accelerator_of(&row.mods, &row.code)
+});
+
+/// 표의 줄들 — `(이름, 줄)`을 표의 차례대로. 표가 깨졌으면 **던진다** — 프런트도 같은 파일을 빌드 때 읽어
+/// 그 전에 멎지만, 여기서 조용히 빈 메뉴를 세우면 단축키가 통째로 사라진 앱이 뜬다.
+fn hotkey_rows(table: &str) -> Vec<(String, HotkeyRow)> {
+    let rows: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(table).expect("단축키 표가 이름 → 항목의 JSON이다");
+    rows.into_iter()
+        .map(|(id, row)| {
+            let row: HotkeyRow =
+                serde_json::from_value(row).unwrap_or_else(|err| panic!("단축키 표의 {id} 줄을 못 읽는다: {err}"));
+            (id, row)
+        })
+        .collect()
+}
+
+/// 표에서 View 메뉴 항목을 뽑는다 — 라벨(`menu`)이 있는 줄을 표의 차례대로.
+fn menu_hotkeys(table: &str) -> Vec<MenuHotkey> {
+    hotkey_rows(table)
+        .into_iter()
+        .filter_map(|(_, row)| row.menu.map(|label| MenuHotkey { code: row.code, label, mods: row.mods }))
+        .collect()
+}
+
+/// 표의 한 줄에서 그 키의 accelerator를 만든다 — 수식키 다음에 키.
 ///
 /// **프런트의 `keyOfCode`와 짝이지만 만드는 것이 다르다** — 그쪽은 `code`에서 `key`를,
 /// 이쪽은 `code`에서 accelerator 문자열을 만든다. 같은 해체(`Digit*` · `Key*`)를 두 언어가
 /// 각각 하는 것은 그 사이에 건널 다리가 없어서다: 메뉴를 세우는 것은 Rust이고 이벤트를
 /// 만드는 것은 프런트다. **잇는 끈은 `code` 문자열 하나**이고, 그것이 `HOTKEY_PREFIX`가
-/// id에 code를 그대로 싣는 이유다.
-fn accelerator_of(code: &str) -> String {
-    if let Some(n) = code.strip_prefix("Digit") {
-        format!("CmdOrCtrl+{n}")
-    } else if let Some(c) = code.strip_prefix("Key") {
-        format!("CmdOrCtrl+{c}")
-    } else {
-        // Enter처럼 이름이 곧 키인 것들.
-        format!("CmdOrCtrl+{code}")
+/// id에 code를 그대로 싣는 이유다. ⌘는 `CmdOrCtrl`이다 — macOS에서 ⌘다.
+fn accelerator_of(mods: &[Modifier], code: &str) -> String {
+    let key = code.strip_prefix("Digit").or_else(|| code.strip_prefix("Key")).unwrap_or(code);
+    let mut parts: Vec<&str> = mods
+        .iter()
+        .map(|one| match one {
+            Modifier::Ctrl => "Ctrl",
+            Modifier::Alt => "Alt",
+            Modifier::Shift => "Shift",
+            Modifier::Meta => "CmdOrCtrl",
+        })
+        .collect();
+    // Enter처럼 이름이 곧 키인 것들은 그대로 붙는다.
+    parts.push(key);
+    parts.join("+")
+}
+
+/// View 메뉴의 한 칸 — 금이거나 항목이거나.
+#[derive(Debug, PartialEq)]
+enum ViewEntry<'a> {
+    Line,
+    Item { id: String, label: &'a str, accelerator: String },
+}
+
+/// View 메뉴에 무엇이 어느 차례로 서는가 — `build_menu`가 이것을 **그대로** 세운다.
+///
+/// 메뉴를 실제로 세우는 일은 tauri 핸들을 요구해 단위 검사가 못 태운다. 그래서 세울 것을 여기서
+/// 다 정하고(차례 · 금 · id · accelerator) `build_menu`는 받아 그리기만 한다 — 검사가 재는 것이
+/// 곧 메뉴에 서는 것이다.
+fn view_entries(hotkeys: &[MenuHotkey]) -> Vec<ViewEntry<'_>> {
+    let mut entries = Vec::new();
+    let mut drew_line = false;
+    for hotkey in hotkeys {
+        // 얼개를 만지는 것들(⌘B·⌘↩·⌘T)과 탭 번호 사이에 금 하나. **자리를 세지 않는다** —
+        // 「번호가 처음 나오는 곳」이 곧 그 경계라, 항목을 끼워도 금이 따라 움직인다.
+        if !drew_line && hotkey.code.starts_with("Digit") {
+            entries.push(ViewEntry::Line);
+            drew_line = true;
+        }
+        entries.push(ViewEntry::Item {
+            id: format!("{HOTKEY_PREFIX}{}", hotkey.code),
+            label: &hotkey.label,
+            accelerator: accelerator_of(&hotkey.mods, &hotkey.code),
+        });
     }
+    entries
 }
 
 /// macOS 기본 메뉴에서 **`Close Window`(⌘W)만 뺀 것.**
@@ -127,9 +231,9 @@ fn accelerator_of(code: &str) -> String {
 /// 함께 죽는다.** 창을 닫는 길은 신호등의 빨간 버튼과 ⌘Q로 남는다.
 fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
     // ⌘,는 macOS가 「환경설정」으로 약속해 둔 키다 — 우리가 고른 값이 아니라 그 관습이다.
-    // 자리도 관습을 따라 About 바로 아래다.
+    // 자리도 관습을 따라 About 바로 아래다. 키는 다른 단축키처럼 표의 줄(`settings`)에서 온다.
     let settings = MenuItemBuilder::with_id(SETTINGS_MENU_ID, "Settings…")
-        .accelerator("CmdOrCtrl+,")
+        .accelerator(SETTINGS_ACCELERATOR.as_str())
         .build(handle)?;
 
     let app = SubmenuBuilder::new(handle, "atelier")
@@ -162,21 +266,19 @@ fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<
     // 먹는다」고 적어 둔 그 성질을 여기서 한 번 더 유리하게 쓴다.
     //
     // **항목이 동작을 들지 않는다.** 아래 `on_menu_event`가 「그 키가 눌렸다」만 쏘고 판정은
-    // 프런트에 남는다 — 같은 키가 화면마다 다른 것을 가리키므로(HOTKEYS 주석) 동작을 여기
-    // 두면 그 표가 Rust로 새고, 화면이 하나 늘 때마다 두 언어를 고쳐야 한다.
+    // 프런트에 남는다 — 같은 키가 화면마다 다른 것을 가리키므로(`menu-hotkey.ts` 머리말) 동작을
+    // 여기 두면 그 갈래가 Rust로 새고, 화면이 하나 늘 때마다 두 언어를 고쳐야 한다. 단축키 표도
+    // 동작은 안 든다 — 키와 그 글자 · 라벨뿐이다.
+    //
+    // 무엇이 어느 차례로 서는지는 단축키 표에서 `view_entries`가 정한다 — 여기는 받아 그리기만 한다.
     let mut view = SubmenuBuilder::new(handle, "View");
-    let mut drew_line = false;
-    for (code, label) in HOTKEYS {
-        // 얼개를 만지는 것들(⌘B·⌘↩·⌘T)과 탭 번호 사이에 금 하나. **자리를 세지 않는다** —
-        // 「번호가 처음 나오는 곳」이 곧 그 경계라, 항목을 끼워도 금이 따라 움직인다.
-        if !drew_line && code.starts_with("Digit") {
-            view = view.separator();
-            drew_line = true;
-        }
-        let item = MenuItemBuilder::with_id(format!("{HOTKEY_PREFIX}{code}"), label)
-            .accelerator(accelerator_of(code))
-            .build(handle)?;
-        view = view.item(&item);
+    for entry in view_entries(&MENU_HOTKEYS) {
+        view = match entry {
+            ViewEntry::Line => view.separator(),
+            ViewEntry::Item { id, label, accelerator } => {
+                view.item(&MenuItemBuilder::with_id(id, label).accelerator(accelerator).build(handle)?)
+            }
+        };
     }
     let view = view.build()?;
 
@@ -217,7 +319,7 @@ pub fn run() {
                 let _ = app.emit("settings:open", ());
             } else if let Some(code) = id.strip_prefix(HOTKEY_PREFIX) {
                 // **키 이름 하나만 실어 보낸다**(#153). 이 키가 무엇을 가리키는지는 화면마다
-                // 다르고 그 표는 프런트에만 있다 — 여기서 아는 것은 「이 code가 눌렸다」뿐이다.
+                // 다르고 그 갈래는 프런트에만 있다 — 여기서 아는 것은 「이 code가 눌렸다」뿐이다.
                 let _ = app.emit("hotkey:menu", code.to_string());
             }
         })
@@ -241,6 +343,8 @@ pub fn run() {
         // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
+        // 입력칸 · 터미널 메뉴의 붙여넣기가 클립보드를 읽는 길(codex-ds 스펙 S9). 열린 권한은 읽기 하나다(`capabilities`).
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Arc::clone(&pool))
         .manage(Arc::clone(&process_service))
         // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
@@ -412,39 +516,149 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    /// **⌘W가 이 표에 있으면 안 된다** (#153). 근거는 `HOTKEYS` 독이 든다 — 여기가 막는 것은
-    /// 표를 늘리다 무심코 한 줄 더 적는 것이고, 그 한 줄의 값이 **돌던 셸 전부**다.
+    /// 표에서 만든 View 메뉴의 항목 — `(code, 라벨, accelerator)`를 메뉴의 차례대로. 금은 뺀다.
+    /// **재는 것은 `build_menu`가 그리는 그것이다**(`view_entries`) — 표를 따로 읽어 재면 메뉴를 만드는 길이 틀려도 초록이다.
+    fn view_items() -> Vec<(String, String, String)> {
+        view_entries(&MENU_HOTKEYS)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                ViewEntry::Line => None,
+                ViewEntry::Item { id, label, accelerator } => {
+                    let code = id.strip_prefix(HOTKEY_PREFIX).expect("항목 id가 접두사로 시작한다").to_string();
+                    Some((code, label.to_string(), accelerator))
+                }
+            })
+            .collect()
+    }
+
+    /// 표의 모든 줄 — `(이름, 줄)`을 표의 차례대로. 메뉴 바가 안 읽는 줄(⌘W · F2 …)까지 본다.
+    fn table_rows() -> Vec<(String, serde_json::Value)> {
+        let rows: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(HOTKEY_TABLE).expect("단축키 표가 JSON이다");
+        rows.into_iter().collect()
+    }
+
+    /// 표에서 그 키(수식키 + code)의 줄. 앵커로 쓴다 — 그 줄이 표에 있어야 「메뉴 바에 없다」가 뜻이 있다.
+    fn row_of(code: &str, mods: &[&str]) -> serde_json::Value {
+        table_rows()
+            .into_iter()
+            .map(|(_, row)| row)
+            .find(|row| row["code"] == code && row["mods"] == serde_json::json!(mods))
+            .unwrap_or_else(|| panic!("{mods:?} {code} 줄이 표에 없다"))
+    }
+
+    /// **⌘W가 메뉴 바에 있으면 안 된다** (#153). 근거는 `MENU_HOTKEYS` 독이 든다 — 여기가 막는 것은
+    /// 표를 늘리다 무심코 그 줄에 라벨을 다는 것이고, 그 한 줄의 값이 **돌던 셸 전부**다.
+    /// ⌘W 줄 자체는 표에 있다 — 판정(`shellHotkey`)과 메뉴 단축키 칸이 그 줄을 읽는다.
     #[test]
-    fn 표에_cmd_w가_없다() {
-        for (code, label) in HOTKEYS {
-            assert_ne!(*code, "KeyW", "{label}이 ⌘W를 든다");
+    fn 메뉴에_cmd_w가_없다() {
+        assert!(row_of("KeyW", &["meta"])["menu"].is_null(), "⌘W 줄에 메뉴 바 라벨이 있다");
+        for (code, label, accelerator) in view_items() {
+            assert_ne!(code, "KeyW", "{label}이 ⌘W를 든다");
+            assert_ne!(accelerator, "CmdOrCtrl+W", "{label}이 ⌘W를 든다");
         }
     }
 
-    /// `accelerator_of`가 muda가 아는 문자열을 만드는가.
+    /// `accelerator_of`가 muda가 아는 문자열을 만드는가 — 수식키 다음에 키.
     ///
     /// **한때 이 자리에 「표의 셋째 칸이 code와 짝이 맞는가」가 있었다.** 그 검사의 본문이
     /// 곧 유도 함수였다 — 검사가 유도를 알고 있다면 그 유도는 코드에 있어야 한다. 셋째 칸을
-    /// 걷고 `accelerator_of`를 세우면서 그 검사도 함께 사라졌고, 남은 것이 이것이다.
+    /// 걷고 `accelerator_of`를 세우면서 그 검사도 함께 사라졌고, 남은 것이 이것이다. 단축키 표에도
+    /// accelerator 칸은 없다.
     #[test]
-    fn accelerator를_code에서_만든다() {
-        assert_eq!(accelerator_of("KeyK"), "CmdOrCtrl+K");
-        assert_eq!(accelerator_of("KeyJ"), "CmdOrCtrl+J");
-        assert_eq!(accelerator_of("Digit1"), "CmdOrCtrl+1");
-        assert_eq!(accelerator_of("Digit9"), "CmdOrCtrl+9");
-        assert_eq!(accelerator_of("KeyB"), "CmdOrCtrl+B");
-        assert_eq!(accelerator_of("KeyT"), "CmdOrCtrl+T");
-        assert_eq!(accelerator_of("Enter"), "CmdOrCtrl+Enter");
+    fn accelerator를_수식키와_code에서_만든다() {
+        use Modifier::*;
+        assert_eq!(accelerator_of(&[Meta], "KeyK"), "CmdOrCtrl+K");
+        assert_eq!(accelerator_of(&[Meta], "Digit1"), "CmdOrCtrl+1");
+        assert_eq!(accelerator_of(&[Meta], "Enter"), "CmdOrCtrl+Enter");
+        assert_eq!(accelerator_of(&[Ctrl, Shift], "Tab"), "Ctrl+Shift+Tab");
+        assert_eq!(accelerator_of(&[Shift], "F10"), "Shift+F10");
+        assert_eq!(accelerator_of(&[], "F2"), "F2");
+        // muda는 `Comma`를 그 키로 읽는다(`,`와 같은 키 — muda 0.19 `parse_code`).
+        assert_eq!(accelerator_of(&[Meta], "Comma"), "CmdOrCtrl+Comma");
+    }
+
+    /// **Settings…(⌘,)의 가속키도 표에서 나온다**(codex-ds 결정 19) — 표의 `settings` 줄이다. 그 줄은 View 메뉴에 서지 않는다:
+    /// 앱 메뉴의 관습 자리에 서고, 되살림 항목이 아니라 `settings:open`을 쏜다(`SETTINGS_MENU_ID`).
+    #[test]
+    fn 설정의_가속키가_표의_settings_줄에서_나온다() {
+        assert_eq!(SETTINGS_ACCELERATOR.as_str(), "CmdOrCtrl+Comma");
+        assert!(row_of("Comma", &["meta"])["menu"].is_null(), "⌘, 줄에 View 메뉴 라벨이 있다");
+        assert!(view_items().iter().all(|(code, _, _)| code != "Comma"), "⌘,가 View 메뉴에 선다");
+    }
+
+    /// **`build_menu`에 손으로 적은 가속키가 없다**(codex-ds 결정 19) — 메뉴의 가속키는 모두 표의 줄에서 만든다(`accelerator_of`).
+    /// 문자열을 바로 적으면 표와 조용히 갈린다 — 키를 옮긴 날 메뉴는 옛 키를, 툴팁 · 판정은 새 키를 가르친다.
+    #[test]
+    fn build_menu에_손으로_적은_가속키가_없다() {
+        let body = without_comment_lines(body_of(include_str!("lib.rs"), "fn build_menu<", "\n}\n"));
+        assert!(body.contains(".accelerator("), "가속키를 다는 자리를 못 찾았다 — 아래 견줌이 저절로 초록이다");
+        assert!(!body.contains(".accelerator(\""), "build_menu가 가속키를 문자열로 적는다");
+    }
+
+    /// **표에서 만든 메뉴의 가속키가 지금 단축키 그대로다** — ⌘K · ⌘B · ⌘↩ · ⌘T · ⌘J · ⌘1~9. 표를 옮기며 수식키 하나가 빠지면
+    /// (⌘ 없는 K) 메뉴가 그 키를 먹어 글자를 못 치게 되는데, 빌드도 다른 검사도 그것을 말하지 않는다.
+    #[test]
+    fn 메뉴의_가속키가_지금_단축키다() {
+        let accelerators: Vec<String> = view_items().into_iter().map(|(_, _, accelerator)| accelerator).collect();
+        let mut want: Vec<String> =
+            ["K", "B", "Enter", "T", "J"].iter().map(|key| format!("CmdOrCtrl+{key}")).collect();
+        want.extend((1..=9).map(|n| format!("CmdOrCtrl+{n}")));
+        assert_eq!(accelerators, want);
     }
 
     /// id가 겹치면 뒤 항목의 클릭이 앞 항목으로 간다 — 메뉴는 그것을 오류로 말하지 않는다.
     #[test]
     fn id가_겹치지_않는다() {
-        let mut ids: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
+        let mut ids: Vec<String> = view_items().into_iter().map(|(code, _, _)| code).collect();
         ids.sort_unstable();
         let count = ids.len();
         ids.dedup();
-        assert_eq!(ids.len(), count, "HOTKEYS에 같은 code가 두 번 있다");
+        assert_eq!(ids.len(), count, "메뉴 바에 같은 code가 두 번 선다");
+    }
+
+    /// **표의 메뉴 바 항목이 모두 메뉴에 선다**(codex-ds 스펙 「Testing Decisions」 경계 ③) — 라벨이 있는 줄이 빠짐없이, 표의
+    /// 차례대로, 그 라벨로. 메뉴를 만드는 길(`menu_hotkeys` · `view_entries`)이 줄을 흘리면 프런트는 그 키를 메뉴 바 키로 알고
+    /// 되돌림을 기다리는데(`menu-hotkey.ts`) 메뉴에는 그 항목이 없다.
+    #[test]
+    fn 표의_메뉴_바_항목이_모두_메뉴에_선다() {
+        let want: Vec<(String, String)> = table_rows()
+            .into_iter()
+            .filter_map(|(_, row)| {
+                let label = row["menu"].as_str()?.to_string();
+                Some((row["code"].as_str().expect("code가 문자열이다").to_string(), label))
+            })
+            .collect();
+        assert!(!want.is_empty(), "표에 메뉴 바 항목이 없다 — 아래 견줌이 빈 목록끼리 초록이다");
+        let got: Vec<(String, String)> = view_items().into_iter().map(|(code, label, _)| (code, label)).collect();
+        assert_eq!(got, want);
+    }
+
+    /// **F2 · ⇧F10 · 메뉴 키는 메뉴 바에 없다**(codex-ds 스펙 §8) — 이름 바꾸기와 대상 메뉴는 무엇에 거는지가 포커스에 달려 있다.
+    /// 세 줄 자체는 표에 있다(앵커) — 메뉴 단축키 칸과 판정이 그 줄을 읽는다(뜻은 티켓 27 · 28).
+    #[test]
+    fn f2와_shift_f10과_메뉴_키는_메뉴_바에_없다() {
+        for (code, mods) in [("F2", &[][..]), ("F10", &["shift"][..]), ("ContextMenu", &[][..])] {
+            assert!(row_of(code, mods)["menu"].is_null(), "{mods:?} {code} 줄에 메뉴 바 라벨이 있다");
+            assert!(
+                view_items().iter().all(|(one, _, _)| one != code),
+                "{code}가 메뉴 바에 선다"
+            );
+        }
+    }
+
+    /// **⌘X · ⌘C · ⌘V · ⌘A는 View 메뉴에 없고 Edit 메뉴의 기본 항목이다**(codex-ds 스펙 S9). 네 줄은 표에 있다 — 입력칸 · 터미널
+    /// 메뉴의 단축키 칸이 그 글자를 읽는다. 키를 받는 것은 Edit 메뉴의 기본 항목이라 View 메뉴에도 서면 한 키에 메뉴 항목이 둘이다.
+    #[test]
+    fn 편집_넷은_view_메뉴에_없고_edit_메뉴의_기본_항목이다() {
+        for code in ["KeyX", "KeyC", "KeyV", "KeyA"] {
+            assert!(row_of(code, &["meta"])["menu"].is_null(), "⌘ {code} 줄에 View 메뉴 라벨이 있다");
+            assert!(view_items().iter().all(|(one, _, _)| one != code), "{code}가 View 메뉴에 선다");
+        }
+        let body = without_comment_lines(body_of(include_str!("lib.rs"), "fn build_menu<", "\n}\n"));
+        for item in [".cut()", ".copy()", ".paste()", ".select_all()"] {
+            assert!(body.contains(item), "Edit 메뉴에 {item}가 없다 — 그 키가 웹뷰의 편집에 안 닿는다");
+        }
     }
 
     /// **셸 신호의 세 자리가 앱이 뜰 때 다 서는가.** 셋 다 헤드리스로는 못 돌린다 —
@@ -622,6 +836,32 @@ mod tests {
         );
     }
 
+    /// **클립보드 플러그인이 앱에 걸려 있는가**(codex-ds 스펙 S9). 빠지면 입력칸 · 터미널 메뉴의 붙여넣기가 「없는 명령」으로
+    /// 거절당하고, 메뉴는 그 실패를 삼켜 아무것도 안 붙인다 — 앱을 띄워야만 보이는 무음이라 자리로 잰다.
+    #[test]
+    fn 클립보드_플러그인이_빌더에_걸려_있다() {
+        assert!(
+            builder_source().contains(".plugin(tauri_plugin_clipboard_manager::init())"),
+            "클립보드 플러그인이 안 걸려 있다 — 메뉴의 붙여넣기가 아무것도 안 붙인다"
+        );
+    }
+
+    /// **열린 클립보드 권한은 읽기 하나다.** 쓰기(복사 · 잘라내기)는 웹 클립보드로 나가고, 플러그인의 기본 권한 묶음은 비어 있다 —
+    /// 읽기를 안 열면 붙여넣기가 거절당하고, 더 열면 쓰지 않는 길이 열린다.
+    #[test]
+    fn 클립보드는_읽기_권한만_열려_있다() {
+        let src = include_str!("../capabilities/default.json");
+        let cap: serde_json::Value = serde_json::from_str(src).expect("capabilities가 JSON이다");
+        let clipboard: Vec<&str> = cap["permissions"]
+            .as_array()
+            .expect("permissions가 배열이다")
+            .iter()
+            .map(|one| one.as_str().expect("권한 하나는 문자열이다"))
+            .filter(|one| one.starts_with("clipboard-manager:"))
+            .collect();
+        assert_eq!(clipboard, ["clipboard-manager:allow-read-text"]);
+    }
+
     /// **권한이 안 열려 있으면 그 호출은 거절당한다.** capabilities는 사람이 손으로 적는
     /// JSON이라 오타 하나로 조용히 빠지고, 그 실패는 앱을 띄워야만 보인다.
     ///
@@ -696,59 +936,66 @@ mod tests {
         );
     }
 
-    /// 살리기로 한 것이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.
-    /// 무엇이 왜 빠졌는지는 `HOTKEYS` 독이 든다.
+    /// 살리기로 한 것이 다 있는가 — 메뉴 바가 조용히 줄어드는 것을 막는다.
+    /// 무엇이 왜 빠졌는지는 `MENU_HOTKEYS` 독이 든다.
     #[test]
     fn 살리기로_한_키가_다_있다() {
-        let codes: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
+        let codes: Vec<String> = view_items().into_iter().map(|(code, _, _)| code).collect();
         for want in ["KeyK", "KeyB", "KeyT", "KeyJ", "Enter"] {
-            assert!(codes.contains(&want), "{want}가 표에 없다");
+            assert!(codes.iter().any(|one| one == want), "{want}가 메뉴 바에 없다");
         }
         for n in 1..=9 {
             let want = format!("Digit{n}");
-            assert!(codes.contains(&want.as_str()), "{want}가 표에 없다");
+            assert!(codes.contains(&want), "{want}가 메뉴 바에 없다");
         }
     }
 
     /// 결정 3. **`Search`가 View 메뉴 맨 위다.** 다른 항목이 전부 「지금 이 화면의」 무엇인데
     /// 이것만 화면을 안 타고 어디서나 열어서, 목록 첫 줄에 서는 것이 읽힌다.
     ///
-    /// **자리를 세는 검사가 여기 필요한 이유가 있다.** 메뉴를 실제로 세우는 `build_menu`는
-    /// tauri 핸들을 요구해 단위 검사가 못 태우므로, 표의 순서가 곧 화면의 순서인데 그 순서를
-    /// 아무도 안 본다 — 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
-    /// 위 「다 있다」는 자리를 안 보므로 이것을 대신하지 못한다.
+    /// **자리를 세는 검사가 여기 필요한 이유가 있다.** 표의 순서가 곧 메뉴의 순서인데, 다음 사람이
+    /// 표를 알파벳순으로 정리하면 조용히 밀린다. 위 「다 있다」는 자리를 안 보므로 이것을 대신하지 못한다.
+    /// 재는 것은 표가 아니라 표에서 만든 메뉴의 첫 칸이다 — 금이 맨 앞에 끼어도 빨개진다.
     #[test]
-    fn 검색이_표의_맨_앞이다() {
-        assert_eq!(HOTKEYS[0], ("KeyK", "Search"));
+    fn 검색이_메뉴의_맨_앞이다() {
+        match view_entries(&MENU_HOTKEYS).first() {
+            Some(ViewEntry::Item { id, label, accelerator }) => {
+                assert_eq!((id.as_str(), *label, accelerator.as_str()), ("hotkey:KeyK", "Search", "CmdOrCtrl+K"));
+            }
+            other => panic!("View 메뉴의 첫 칸이 검색이 아니다 — {other:?}"),
+        }
     }
 
-    /// **구분선이 한 자리에만 그어진다.** `build_menu`는 「첫 `Digit*` 항목 앞」에서 한 번만
+    /// **구분선이 한 자리에만 그어진다.** `view_entries`는 「첫 `Digit*` 항목 앞」에서 한 번만
     /// 금을 긋는데(자리를 안 세고 갈래로 가른다), 그 규칙이 뜻대로 되려면 번호 항목들이
     /// **표 뒤쪽에 몰려 있어야** 한다. 섞이면 금이 엉뚱한 자리에 서고 뒤에 오는 번호들이
     /// 얼개 항목들과 한 무리로 읽힌다 — 눈으로만 보이는 어긋남이라 아무도 안 잡는다.
     ///
     /// ⌘K를 맨 앞에 끼운 것이 금을 안 움직인다는 것도 이 성질이 말한다.
     #[test]
-    fn 번호_항목이_표_뒤쪽에_몰려_있다() {
-        let first_digit =
-            HOTKEYS.iter().position(|(code, _)| code.starts_with("Digit")).expect("번호 항목이 없다");
+    fn 번호_항목이_메뉴_뒤쪽에_몰려_있다() {
+        let entries = view_entries(&MENU_HOTKEYS);
+        let lines: Vec<usize> =
+            entries.iter().enumerate().filter(|(_, entry)| **entry == ViewEntry::Line).map(|(at, _)| at).collect();
+        assert_eq!(lines.len(), 1, "금이 한 번이 아니다 — {lines:?}");
+        let digit = |entry: &ViewEntry| matches!(entry, ViewEntry::Item { id, .. } if id.starts_with("hotkey:Digit"));
+        assert!(!entries[..lines[0]].iter().any(digit), "금 앞에 번호 항목이 있다");
         assert!(
-            HOTKEYS[first_digit..].iter().all(|(code, _)| code.starts_with("Digit")),
+            entries[lines[0] + 1..].iter().all(digit),
             "번호 항목 사이에 다른 항목이 끼었다 — 구분선이 엉뚱한 자리에 선다"
         );
     }
 
     /// **「방금 부른 셸로」(⌘J)가 번호 항목들 앞에 선다**(프로세스 스펙 P3 · 티켓 23). 금은 「첫 `Digit*` 항목 앞」에 한 번만
-    /// 그어지므로(`번호_항목이_표_뒤쪽에_몰려_있다`), 번호 뒤에 붙이면 그 검사가 빨개지고 번호 사이에 끼우면 금이 엉뚱한 자리에
-    /// 선다. 자리를 못 박는 것은 위 「맨 앞이다」와 같은 까닭이다 — 표의 순서가 곧 메뉴의 순서인데 메뉴를 세우는 함수는 단위
-    /// 검사가 못 태운다.
+    /// 그어지므로(`번호_항목이_메뉴_뒤쪽에_몰려_있다`), 번호 뒤에 붙이면 그 검사가 빨개지고 번호 사이에 끼우면 금이 엉뚱한 자리에
+    /// 선다. 자리를 못 박는 것은 위 「맨 앞이다」와 같은 까닭이다 — 표의 순서가 곧 메뉴의 순서다.
     #[test]
     fn 방금_부른_셸로가_번호_항목들_앞에_선다() {
-        let at = HOTKEYS.iter().position(|(code, _)| *code == "KeyJ").expect("⌘J가 표에 없다");
-        let first_digit =
-            HOTKEYS.iter().position(|(code, _)| code.starts_with("Digit")).expect("번호 항목이 없다");
+        let items = view_items();
+        let at = items.iter().position(|(code, _, _)| code == "KeyJ").expect("⌘J가 메뉴 바에 없다");
+        let first_digit = items.iter().position(|(code, _, _)| code.starts_with("Digit")).expect("번호 항목이 없다");
         assert!(at < first_digit, "⌘J({at})가 번호 항목({first_digit}) 뒤에 있다");
-        assert_eq!(HOTKEYS[at].1, "Last Calling Shell");
+        assert_eq!(items[at].1, "Last Calling Shell");
     }
 
     /// **시작 보고의 자리가 앱에 서는가**(프로세스 스펙 S11). 명령은 그 자리를 `State`로 찾는데, `manage`가

@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// **메뉴 부품의 진열대** — 하위 메뉴(codex-ds 결정 10)의 모양을 L3가 칠해진 값으로 재려고 세운다(`submenu.spec.ts`).
+// **메뉴 부품의 진열대** — 하위 메뉴(codex-ds 결정 10)와 단축키 칸(결정 19)의 모양을 L3가 칠해진 값으로 재려고 세운다(`submenu.spec.ts` ·
+// `hotkeys.spec.ts`).
 // 앱이 이 파일을 들이지 않는다. 검사가 앱 화면 위에서 Vite dev 서버로 들인다(`page.addScriptTag`의 모듈 스크립트가
 // `/e2e/menu-fixture.tsx`를 `import`한다) — 그래서 같은 React · 같은 부품 · 같은 `index.css`가 칠한다. 들이는 것은 앱이 이미 들이는 묶음(`react-dom` · `lucide-react` ·
 // Base UI 메뉴)뿐이라 Vite가 의존성을 다시 묶지 않는다(다시 묶으면 열린 쪽이 모두 새로 고쳐진다).
@@ -36,7 +37,8 @@ export function 메뉴진열대를세운다(): void {
     <DropdownMenu>
       <DropdownMenuTrigger>진열대 메뉴</DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem>
+        {/* 단축키 칸을 다는 줄 — 칸의 칠해진 값과 줄의 `aria-keyshortcuts`를 L3가 잰다(`hotkeys.spec.ts`). F2는 DS 보드의 그 줄이다. */}
+        <DropdownMenuItem shortcut="rename">
           <Pencil />
           <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
         </DropdownMenuItem>

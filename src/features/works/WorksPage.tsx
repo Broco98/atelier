@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useMutationState } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { ChevronDown, Columns2, MoreHorizontal, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import useResizableWidth from "@/components/shell/useResizableWidth";
+import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { togglesPanel } from "@/components/shell/PanelToggle";
 import { pickRail } from "@/components/shell/Rail";
@@ -26,10 +27,8 @@ import {
   bundleOf,
   bundleTabOf,
   closesShellFromWindow,
-  closingShellsNotice,
   opensShellFromWindow,
   ownerOf,
-  runningShellsOf,
   sameScreen,
   shellForNav,
   shellNavFromWindow,
@@ -40,18 +39,17 @@ import {
 } from "@/features/terminal/shell-registry";
 import {
   closeCodeTab,
-  closeShellsOf,
+  closeOtherShells,
   dropShellOnSlot,
-  holdOwner,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
+  renameShell,
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
   showCodeTab,
   showShellTab,
-  spawnedCountOf,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import { codeRefOf, codeTargetOf } from "@/routes/-work-search";
@@ -60,22 +58,15 @@ import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { columnOf, dropSplit, otherTab } from "./split-view";
 import { ignoresViewSwitch } from "./doc-refs";
-import { specRef, worktreeDirRef } from "./refs";
+import { cwdRef, specDirRef, specRef, worktreeDirRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
-import WorkRenameDialog from "./WorkRenameDialog";
-import { StatusRadioItems, WorkMenuItems, type WorkMenuActions } from "./WorkMenuItems";
-import { worksApi } from "./api";
-import {
-  useArchiveWork,
-  useRemoveWork,
-  useSetWorkPinned,
-  useSetWorkStatus,
-  useWorks,
-} from "./hooks";
+import { WorkContextMenu } from "./WorkContextMenu";
+import { StatusRadioItems, WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
+import { WORK_LIFECYCLE_KEY, useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_BADGE, STATUS_META } from "./status";
 import { WORKS_COPY } from "./work-sections";
-import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
+import { openWorkFolder, useWorkMenuFlows } from "./work-menu-actions";
 import type { BundleTab, CodeTarget, ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkView } from "./types";
 
@@ -206,15 +197,14 @@ function WorksPage({
   // 아무것도 안 골랐을 때 본문이 하는 말(US 22) — 사이드바의 빈 구획과 한 표에서 나온다(`work-sections.ts`).
   const emptyScreen = WORKS_COPY.screen;
 
-  // 생애주기 조작은 ⋯ 메뉴가 부르지만 **상태는 여기서 소유한다** — 진행 표시가 메뉴 하나가
-  // 아니라 본문 전체를 덮기 때문이다. 메뉴 안에 두면 그 표시를 메뉴 크기 안에서만 할 수 있다.
-  const archive = useArchiveWork();
-  const remove = useRemoveWork();
-  const running = archive.isPending
-    ? { verb: "아카이빙", detail: "워크트리를 정리하고 있어요" }
-    : remove.isPending
-      ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
-      : null;
+  // work 메뉴의 흐름 — 머리 카드의 ⋯와 이름의 우클릭 메뉴가 함께 쓴다(`work-menu-actions.ts`).
+  const menuFlows = useWorkMenuFlows();
+  // **머리 카드 이름을 고치는 중인 work**(codex-ds 스펙 §9) — 들어가는 길이 셋이라(이름의 두 번 클릭 · F2, ⋯와 이름 우클릭 메뉴의
+  // 「이름 바꾸기」) 그 셋을 다 가진 이 화면이 쥔다. 값이 slug인 것은 고른 work가 바뀌면 그 그림에서 곧바로 꺼지게 하려는 것이다
+  // (`editing`이 `selected.slug`와 견준다) — 다른 work의 이름 자리에 고치던 입력칸이 남지 않는다. 키로 옮겨(⌘J) 입력칸이 blur 없이
+  // 내려가도 입력칸이 마지막 그림의 값(고치던 work)으로 저장하고 끝을 알려 이 값을 비운다(`InlineRename`).
+  const [renamingHead, setRenamingHead] = useState<string | null>(null);
+  const setTitle = useSetWorkTitle();
   // 작업 패널 접기 — 머리 줄의 패널 토글 · ⌘Enter가 이 값 하나를 뒤집는다(ui-refresh 결정 9). 레일이 서면(칸이 둘 이상 — codex-ds
   // 결정 25) 켜진 레일 칸을 다시 눌러도 닫힌다. 한때 흩어져 있던 둘(창 맨 위 줄의 여는 버튼과 패널 머리의 닫는 `×`)이 그 토글 하나로
   // 합쳐졌다.
@@ -295,11 +285,8 @@ function WorksPage({
   // 옮기지 않았다 — 이 화면의 토스트는 이 화면의 자리(`Toaster`)에 선다.
   useEffect(() => onShellOpenRejected((notice) => showToast(notice, "rejected")), []);
 
-  // 참조가 안정적이어야 이 화면이 다시 그려질 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
-  const copyText = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-    showToast(`${text} 복사됨`);
-  }, []);
+  // 복사는 모듈 함수 `copyText`다(`copy-text.ts` — Archive · 프로젝트와 한 길) — 참조가 늘 같아 이 화면이 다시 그려질 때 마크다운
+  // 트리가 리마운트(깜빡임)되지 않는다.
 
   // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
   // 있어야 한다. 두 갈래가 이 화면에서 갈리는 것은 트리(패널)와 링크(본문)가 이제 형제라서다.
@@ -309,6 +296,22 @@ function WorksPage({
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/works.index.tsx).
   // 「기억한 것 → 목록 첫 줄」 규칙도 그쪽 pickSlug가 들고 있다.
   const selected = works.find((w) => w.slug === selectedSlug) ?? null;
+
+  // **도는 아카이브 · 삭제를 캐시에서 읽는다** — 진행 표시가 메뉴 하나가 아니라 카드 줄 전체를 덮기 때문이다(`LifecycleOverlay`).
+  // 그 조작을 부르는 메뉴는 넷이라(⋯ · 사이드바 행 · 띠 줄 · 머리 카드 이름 — codex-ds 결정 6) 어느 하나가 상태를 쥘 수 없고, 뮤테이션
+  // 열쇠(`WORK_LIFECYCLE_KEY`)가 그 넷을 한 캐시에서 묶는다. **덮는 것은 이 화면이 보여 주는 work의 조작일 때다** — 사이드바에서 다른
+  // work을 아카이브하는 동안 이 work의 본문을 덮으면 엉뚱한 것을 「정리하고 있어요」라 말한다. 그 사이 모든 work 메뉴가 닫혀 있는
+  // 것은 흐름의 바쁨이 한다(`useWorkMenuFlows`의 `busy`).
+  const lifecycle = useMutationState({
+    filters: { mutationKey: WORK_LIFECYCLE_KEY, status: "pending" },
+    select: (mutation) => ({ kind: mutation.options.mutationKey?.[1], slug: mutation.state.variables }),
+  });
+  const shownLifecycle = selected ? lifecycle.find((m) => m.slug === selected.slug) : undefined;
+  const running = !shownLifecycle
+    ? null
+    : shownLifecycle.kind === "remove"
+      ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
+      : { verb: "아카이빙", detail: "워크트리를 정리하고 있어요" };
 
   // **마지막으로 고른 작업을 붙들고 있는다.** 목록이 한 프레임이라도 이 작업을 잃으면
   // (조회가 흔들리거나 갱신 사이에 낀 렌더) 아래 터미널 가지가 통째로 언마운트되고, 다시
@@ -709,6 +712,7 @@ function WorksPage({
           text="spec 열 닫기"
           announce="name"
           type="button"
+          tabIndex={0}
           onClick={() => changeSplit(null, otherTab("spec"))}
           className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring"
         >
@@ -728,6 +732,7 @@ function WorksPage({
       showSource={showSource}
       onNavigate={followLink}
       onCopy={copyText}
+      docMenu={{ view: docView, onCopyPath: copyDocPath }}
     />
   );
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal
@@ -776,7 +781,14 @@ function WorksPage({
       defaultCwd={workDefaultOrigin(panelWork).cwd}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
-      spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
+      //
+      // 우클릭 메뉴(codex-ds 스펙 §9)의 두 줄은 work 메뉴의 Finder ▸ 「spec」 · 복사 ▸ 「spec 경로」와 같은 길이다.
+      spec={{
+        on: specStands,
+        onSelect: () => onSelectTab("spec"),
+        onOpenFolder: () => openWorkFolder(panelWork.slug, null),
+        onCopyPath: () => copyText(specDirRef(panelWork.slug)),
+      }}
       // 본문이 묶음을 보여줄 때 — 셸이든 파일 탭이든 — 켜진 칸이 선다. 주소가 셸을 말해도 **켜진 셸이 없으면** 본문은 「아직
       // 셸이 없어요」다(git-integration 판 01): 묶음에 켤 셸이 없어 지금 탭이 파일 탭으로 남았고(`withShellActive`), 자동 셸도
       // 안 뜨는 work(프로젝트 둘 이상)이다. 그 파일 탭을 켜면 본문과 켜진 칸이 다른 것을 말한다.
@@ -804,6 +816,10 @@ function WorksPage({
         if (bundleTabOf(terminalStore.state, ownerOf(panelWork.slug), id)?.kind === "code") closeCodeTab(id);
         else void requestCloseShell(id);
       }}
+      // 셸 탭 메뉴(codex-ds 스펙 §9 · S7 · S8). 붙인 이름은 메모리에만 있다. 작업 폴더는 그 셸이 뜬 곳을 참조 표기(끝에 `/`)로 쓴다.
+      onRename={renameShell}
+      onCloseOthers={(id) => void closeOtherShells(id)}
+      onCopyCwd={(cwd) => copyText(cwdRef(cwd))}
       onOpen={(place) => {
         // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
         // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
@@ -849,6 +865,7 @@ function WorksPage({
             text={`${codeTarget ? codePath[codePath.length - 1] : "terminal"} 열 닫기`}
             announce="name"
             type="button"
+            tabIndex={0}
             onClick={() => changeSplit(null, otherTab("terminal"))}
             className="icon-button-quiet icon-button-xs shrink-0 text-fg-tertiary focus-ring"
           >
@@ -860,8 +877,12 @@ function WorksPage({
   ) : undefined;
 
   // 머리 카드(codex-ds 스펙 §6 · 스토리 23 · 24) — 왼쪽은 ⚡(work 아이콘 — 상태 글리프가 아니다)와 work 이름이다. 사이드바를 보지
-  // 않아도 지금 어느 work인지 안다(⌘B로 사이드바를 접어도). 이름은 보이기만 한다 — 그 자리에서 바꾸는 것은 codex-ds 티켓 28이고,
-  // 그때까지 이름을 고치는 길은 ⋯ 메뉴의 창이다(아래 `WorkMenu`).
+  // 않아도 지금 어느 work인지 안다(⌘B로 사이드바를 접어도). **이름은 그 자리에서 바꾼다**(codex-ds 스펙 §9 · `rename`) — 이름의 두 번
+  // 클릭 · F2, 또는 ⋯ · 이름 우클릭 메뉴의 「이름 바꾸기」로 들어가고, 지금 work 이름 명령(`set_work_title`)으로 저장한다.
+  //
+  // **이름은 work 메뉴의 대상이다**(codex-ds 결정 6 — `nameMenu`). 우클릭하거나 포커스해 ⇧F10 · 메뉴 키를 누르면 ⋯와 같은 메뉴가
+  // 이름 곁에 선다 — 겨누는 것은 고른 work이다. `key`가 work을 갈아 끼우면 메뉴를 새로 세운다: 열어 둔 채 다른 work으로 옮기면
+  // 메뉴가 화면에 보이는 것과 다른 work을 겨눈다(⋯의 slug 이펙트와 같은 이유).
   //
   // 오른쪽은 **할 일 | 보기 배치**다. 할 일은 상태 배지와 ⋯ — work에 대한 조작이 한 자리에 모인다(ui-refresh 결정 14 · codex-ds
   // 결정 25). 상태 배지가 앞인 것은 자주 누르는 조작이라서다 — 메뉴 뒤에 숨기면 상태를 바꾸는 데 클릭이 두 번 든다. 보기 배치는
@@ -874,10 +895,36 @@ function WorksPage({
     ? {
         icon: Zap,
         name: selected.title,
+        nameMenu: (renderName) => (
+          <WorkContextMenu
+            key={selected.slug}
+            flows={menuFlows}
+            targetOf={(_from, trigger) => ({ slug: selected.slug, id: selected.slug, element: trigger })}
+            onRename={setRenamingHead}
+          >
+            {(menuTarget) => renderName(menuTarget !== null)}
+          </WorkContextMenu>
+        ),
+        rename: {
+          editing: renamingHead === selected.slug,
+          onStart: () => setRenamingHead(selected.slug),
+          onEnd: () => setRenamingHead(null),
+          onCommit: (title) => setTitle.mutate({ slug: selected.slug, title }),
+          label: "작업 이름",
+        },
+        // 이름 뒤의 ⑂ 브랜치 — 프로젝트가 붙은 work만 선다. 프로젝트가 없으면 이름이 미리 정해졌어도(`start_work`의 `branch`) 그
+        // 이름을 가진 저장소도 worktree도 아직 없다 — ⑂는 실제 git 브랜치의 말이다(프로젝트 화면 Works 행도 worktree가 있을 때만 ⑂를
+        // 세운다). 미리 정한 이름은 사이드바 행의 호버 카드가 말한다.
+        branch: selected.projects.length > 0 ? (selected.branch ?? undefined) : undefined,
         actions: (
           <>
             <StatusMenu work={selected} />
-            <WorkMenu work={selected} archive={archive} remove={remove} onCopy={copyText} />
+            <WorkMenu
+              work={selected}
+              flows={menuFlows}
+              processing={shownLifecycle !== undefined}
+              onRename={() => setRenamingHead(selected.slug)}
+            />
           </>
         ),
         // 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽, 묶음의 지금 탭이 오른쪽이다 — 파일 탭을 보다 켜면 그
@@ -1166,8 +1213,8 @@ function ColumnInside({
 //
 // 공용 틀의 `overlay` 칸이라 카드 줄(본문 카드와 그 머리의 탭 줄 + 패널)을 덮고 머리 줄은 덮지 않는다(판 04 「덮는 것의 기준
 // 상자」) — 치워지는 작업에 셸을 새로 열 길도 함께 막힌다. 머리 카드의 ⋯는
-// 진행 중 `disabled`라(아래 `WorkMenu`) 다시 눌러 같은 조작을 겨눌 수 없다. 사이드바도 덮지 않는다 — 이 조작은 본문이 보여주는
-// 작업 하나에만 걸린다.
+// 진행 중 `disabled`이고 우클릭 메뉴도 안 열려(`useWorkMenuFlows`의 `busy`) 다시 같은 조작을 겨눌 수 없다. 사이드바는 덮지 않는다 —
+// 막이 서는 것은 본문이 보여 주는 work의 조작일 때뿐이다(위 `lifecycle`).
 function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
   return (
     <div
@@ -1195,7 +1242,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 // `aria-checked`로 읽힌다. 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
 //
 // 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 상태 모듈의
-// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 창 끌기 영역이 아니다 — 머리 카드 안이고 버튼이다.
+// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 창을 끌지 않는다 — 머리 카드의 빈 자리는
+// 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `HeadCard`).
 function StatusMenu({ work }: { work: WorkView }) {
   const setStatus = useSetWorkStatus();
   const meta = STATUS_META[work.status];
@@ -1224,178 +1272,95 @@ function StatusMenu({ work }: { work: WorkView }) {
   );
 }
 
-/**
- * Finder에서 연다(codex-ds 스펙 S6) — `project`가 `null`이면 그 work의 spec 폴더, 프로젝트 이름이면 그 worktree다. work 메뉴의
- * Finder ▸와 작업 패널 머리의 「spec 폴더 열기」가 부른다. 못 열면(손으로 지운 폴더 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로
- * 알린다 — 메뉴는 이미 닫혔고, 그 문장이 어느 폴더가 없는지 말한다. 두 자리가 말을 따로 지으면 한쪽만 고친 날 같은 실패가 두 말로 선다.
- */
-function openWorkFolder(slug: string, project: string | null): void {
-  worksApi.openFolder(slug, project).catch((e: unknown) => showToast(`Finder에서 열지 못했어요: ${e}`, "rejected"));
-}
-
-// 머리 카드의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 여기는
-// 그 항목이 부르는 동작을 잇는다: Finder 열기 · 이름 바꾸기 창 · 복사 · 상태 · 고정, 그리고 아카이브 · 삭제의 흐름(아래 `run`).
-// 아카이브 · 삭제는 되돌릴 수 없어서 확인 창을 거치고, 거절 사유(커밋 안 된 변경 등)는 코어가 파일 단위로 말해주므로 그대로
-// 보여준다. **그 흐름은 이 파일에 둔다** — 차례가 계약이라 검사가 이 파일의 소스 순서로 지킨다(`WorksPage.test.tsx`).
-//
-// 성공 뒤에 선택을 옮기지 않는다 — 목록 무효화로 이 작업이 사라지면 -works-view.tsx의
-// 정규화(`exists`가 false가 되는 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을
-// 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
+// 머리 카드의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 그 항목이
+// 부르는 동작과 아카이브 · 삭제의 흐름은 `work-menu-actions.ts` 한 자리다 — 우클릭 메뉴 셋(사이드바 행 · 띠 줄 · 머리 카드 이름)이 같은
+// 흐름을 받는다(codex-ds 결정 6). 여기 남는 것은 ⋯의 몫이다: 열림과 닫힌 뒤 포커스가 갈 자리. 「이름 바꾸기」는 머리 카드 이름의
+// 제자리 고치기를 켠다(`onRename` — 고치는 중인지는 화면이 쥔다).
 //
 // **메뉴 부품(`DropdownMenu`)이 다 한다**(판 3, 스토리 46~48) — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 ·
 // Home/End · 글자 치기), 하위 메뉴 열고 닫기(→ · ←), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9).
 // 항목은 `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
-// 창 끌기 영역이 아니다 — 머리 카드 안이고 버튼이다.
+// 창을 끌지 않는다 — 머리 카드의 빈 자리는 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `HeadCard`).
 function WorkMenu({
   work,
-  archive,
-  remove,
-  onCopy,
+  flows,
+  processing,
+  onRename,
 }: {
   work: WorkView;
-  // 상태를 위에서 받는다 — 진행 표시가 본문 전체를 덮으므로 소유자가 WorksPage다
-  archive: ReturnType<typeof useArchiveWork>;
-  remove: ReturnType<typeof useRemoveWork>;
-  // 복사는 화면의 다른 복사와 같은 길이다 — 클립보드에 쓰고 「… 복사됨」 토스트를 세운다(WorksPage의 `copyText`).
-  onCopy: (text: string) => void;
+  flows: WorkMenuFlows;
+  /** 도는 아카이브 · 삭제가 **이 work의 것이다** — 그때만 ⋯가 `aria-busy`다(아래 `busy`와 다르다). */
+  processing: boolean;
+  /** 「이름 바꾸기」 — 머리 카드 이름을 그 자리에서 고치기 시작한다. */
+  onRename: () => void;
 }) {
-  const setStatus = useSetWorkStatus();
-  const setPinned = useSetWorkPinned();
   // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
-  // **이름 바꾸기는 ⋯에서 여는 작은 창이다**(결정 8 · #141). 제목이 머리행에서 빠지면서 제자리 편집도
-  // 함께 사라졌는데, 이름을 고칠 길이 없어지면 안 된다. 메뉴 항목은 입력칸을 품을 수 없어 창에서 받는다.
-  const [renaming, setRenaming] = useState(false);
-  // ⋯ 자신. 메뉴 항목에서 연 창이 닫히면 포커스가 여기로 온다 — 창을 연 항목은 그때 이미 사라졌다.
-  // 이름 바꾸기 창은 이것을 받아 돌려준다(`finalFocus`). 확인 창은 앱 루트의 한 자리가 그려 이것을 모르지만,
-  // 부품의 기본값이 여기로 온다 — 열기 전 자리(메뉴 항목)가 사라졌으면 그 앞에 포커스가 있던 자리로 간다
-  // (Base UI의 포커스 기록). 그래서 물음(`askDanger`)에 돌아갈 자리를 싣지 않는다. 둘 다 L3가 잰다.
-  const anchor = useRef<HTMLButtonElement>(null);
-  const busy = archive.isPending || remove.isPending;
-  // 이 Work의 **살아 있는** 셸. 확인 대화가 그 수를 말한다(결정 26). 고르는 규칙은
-  // `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
-  //
-  // 끝난 칸과 못 뜬 칸은 세지 않는다 — 그 칸들은 남아 있지만 죽일 프로세스가 없어서,
-  // 함께 세면 "셸 2개가 닫혀요"라고 해놓고 실제로는 하나만 끝난다. **거두는 것은 그래도
-  // 전부다**(아래): Work가 사라지는데 그 Work를 가리키는 칸만 남으면 닫을 길이 없다.
-  const liveShells = useStore(terminalStore, (state) =>
-    runningShellsOf(state, ownerOf(work.slug)),
-  );
+  // **「이름 바꾸기」로 닫혔나** — 그때는 메뉴가 닫히며 포커스를 ⋯로 돌리지 않는다(`finalFocus`). 머리 카드 이름 자리에 막 선 입력칸이
+  // 포커스를 받는데, ⋯로 돌아가면 입력칸이 곧바로 blur되어 「다른 곳 = 저장」으로 닫힌다(구현 노트 Q7). 그 밖의 닫힘은 부품의
+  // 기본값이 ⋯로 돌린다. 확인 창(`askDanger`)은 앱 루트의 한 자리가 그려 ⋯를 모르지만, 그 창이 닫히면 부품의 기본값이 여기로 온다 —
+  // 열기 전 자리(메뉴 항목)가 사라졌으면 그 앞에 포커스가 있던 자리로 간다(Base UI의 포커스 기록). L3가 잰다.
+  const renamed = useRef(false);
+  // 아카이브 · 삭제가 도는 동안은 ⋯가 꺼진다 — **어느 work의 조작이든**, 어느 메뉴에서 불렀든 같다(흐름의 `busy` — 바쁨은 앱
+  // 하나다). 그런데 「바쁘다」(`aria-busy`)는 이 work이 치워지는 중일 때만 말한다(`processing`) — 사이드바에서 다른 work을
+  // 아카이브하는 동안 이 ⋯가 바쁘다고 하면 이 work이 바뀌는 중이라고 읽힌다.
+  const busy = flows.busy;
 
   // 다른 작업으로 옮겨가면 닫는다 — 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는
   // 것과 다른 작업**을 겨눈다.
   //
   // **이 이펙트가 그 일을 한다** — 이 메뉴는 공용 틀의 머리 카드에 서서(codex-ds 스펙 §6) 작업을 옮겨도 다시 세워지지 않는다.
   // 한때 머리행이 key={slug}인 SpecViewer 안에 있어 문서 탭에서는 리마운트가 먼저 닫았고, 이 줄은 터미널 탭에서만 일했다.
-  //
-  // 이름 바꾸기 창도 함께 닫는다 — 남겨 두면 **다른 작업의 이름**을 고치는 창이 서 있다.
   useEffect(() => {
     setOpen(false);
-    setRenaming(false);
   }, [work.slug]);
 
-  // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
-  // 성공한 아카이빙 위에 "아카이빙하지 못했습니다" 창이 뜨는 것이 그 결과다.
-  //
-  // 메뉴는 항목을 누르면 스스로 닫힌다 — 여기서 닫을 것이 없다.
-  const run = async (
-    verb: string,
-    detail: string,
-    call: () => Promise<unknown>,
-  ) => {
-    if (busy) return;
-    // 셸은 이 Work의 워크트리에서 도는 프로세스라 폴더가 정리되면 함께 끝난다. 누르기 전에
-    // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
-    // 다른 것을 센 것처럼 읽힌다). 0개면 그 줄을 쓰지 않는다.
-    //
-    // 그 셸들에서 띄운 프로세스(dev 서버 등)도 함께 끝난다(프로세스 결정 3) — 그 수를 **창을 띄우기 전에** 물어
-    // 셸 줄 뒤에 붙인다(프로세스 스펙 S18). 못 얻으면 붙이지 않고 창은 그대로 뜬다.
-    const spawned = liveShells > 0 ? await spawnedCountOf(ownerOf(work.slug)) : null;
-    const shellLine = closingShellsNotice(liveShells, spawned);
-    const notice = shellLine ? `${detail}\n${shellLine}` : detail;
-    // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
-    // 앱 밖의 일처럼 읽힌다.
-    if (!(await askDanger(`'${work.title}' ${verb}`, notice, verb))) return;
-    // **제외 창을 연다**(티켓 12 · 프로세스 스펙 S13). 앱 루트는 목록이 새로 앉을 때마다 slug가 사라진 work의 셸을
-    // 「주인 잃은 셸」로 세운다(MCP로 아카이브된 work을 알아채는 길이 그것뿐이다). 이 길은 성공한 뒤 제 손으로
-    // 닫으므로 그동안 이 owner를 감지에서 뺀다 — 삭제는 재조회가 앉은 뒤에야 돌아오고 아카이브는 안 기다려서,
-    // 재조회가 회수 앞뒤 어디에나 올 수 있다. 닫는 자리는 회수 뒤와, 실패하면 그 자리다.
-    const release = holdOwner(ownerOf(work.slug));
-    try {
-      await call();
-    } catch (e) {
-      release();
-      await showProblem(`${verb}하지 못했습니다: ${e}`);
-      return;
-    }
-    // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
-    // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
-    // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
-    // (in-app-terminal 결정 26이 「알려진 대가」로 남긴 MCP 길은 프로세스 결정 4가 이렇게 고쳤다 — 위 제외 창의 감지가 그 길이다.)
-    closeShellsOf(ownerOf(work.slug));
-    release();
-  };
-
-  // 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는 꺼내 쓰기만 한다. `askDanger`는 OS가 아니라
-  // 앱의 창이지만 여기서는 프로미스 뒤에 있어, 이 저장소의 정적 마크업 seam에 문장이 아예 안 걸린다.
-  const handleArchive = () =>
-    run("아카이빙", ARCHIVE_CONFIRM_BODY, () => archive.mutateAsync(work.slug));
-
-  const handleRemove = () =>
-    run("삭제", REMOVE_CONFIRM_BODY, () => remove.mutateAsync(work.slug));
-
-  // 메뉴 항목이 부르는 것. Finder 열기는 작업 패널 머리의 spec 폴더 열기와 한 벌이다(`openWorkFolder`).
-  const actions: WorkMenuActions = {
-    openFolder: (project) => openWorkFolder(work.slug, project),
-    rename: () => setRenaming(true),
-    copy: onCopy,
-    setStatus: (status) => setStatus.mutate({ slug: work.slug, status }),
-    setPinned: (pinned) => setPinned.mutate({ slug: work.slug, pinned }),
-    archive: handleArchive,
-    remove: handleRemove,
-  };
+  // 메뉴 항목이 부르는 것 — 이 work을 겨눈 흐름 한 벌이다. 이름 바꾸기만 화면에 고치기를 켜 달라고 한다.
+  const actions = flows.actionsFor(work, () => {
+    renamed.current = true;
+    onRename();
+  });
 
   return (
-    <>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
-            중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 그 말은 가림막이 한다. */}
-        <Hint
-          text="작업 메뉴"
-          announce="name"
-          disabled={busy}
-          render={
-            <DropdownMenuTrigger
-              ref={anchor}
-              disabled={busy}
-              aria-busy={busy}
-              // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 세로선 너머 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
-              // 위 줄에 서는 것은 모두 24다(DS `HeadCard`) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
-              // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-              className={cn(
-                "icon-button icon-button-xs transition-colors focus-ring",
-                "disabled:pointer-events-none disabled:opacity-50",
-                open ? "toggle-on" : "text-fg-tertiary quiet-hover",
-              )}
-            />
-          }
-        >
-          {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
-              깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
-              disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-          <MoreHorizontal className="size-3.75" />
-        </Hint>
-        <DropdownMenuContent>
-          <WorkMenuItems work={work} actions={actions} />
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <WorkRenameDialog
-        work={work}
-        open={renaming}
-        onClose={() => setRenaming(false)}
-        returnFocus={anchor}
-      />
-    </>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
+          중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 무엇이 도는지는 이 work의 조작이면
+          가림막(`LifecycleOverlay`)이 말하고, 다른 work의 조작이면 이 화면에서는 아무것도 말하지 않는다 — ⋯가 꺼져
+          있을 뿐이고, 끝은 그 work이 목록에서 사라지거나(성공) 「…하지 못했습니다」 창이 서는 것(실패)으로 보인다. */}
+      <Hint
+        text="작업 메뉴"
+        announce="name"
+        disabled={busy}
+        render={
+          <DropdownMenuTrigger
+            disabled={busy}
+            aria-busy={processing}
+            // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 세로선 너머 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
+            // 위 줄에 서는 것은 모두 24다(DS `HeadCard`) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
+            // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
+            className={cn(
+              "icon-button icon-button-xs transition-colors focus-ring",
+              "disabled:pointer-events-none disabled:opacity-50",
+              open ? "toggle-on" : "text-fg-tertiary quiet-hover",
+            )}
+          />
+        }
+      >
+        {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
+            깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
+            disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
+        <MoreHorizontal className="size-3.75" />
+      </Hint>
+      <DropdownMenuContent
+        finalFocus={() => {
+          if (!renamed.current) return true;
+          renamed.current = false;
+          return false;
+        }}
+      >
+        <WorkMenuItems work={work} actions={actions} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

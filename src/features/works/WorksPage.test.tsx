@@ -47,7 +47,9 @@ const work: WorkView = workFixture();
 // 이 화면의 소스를 문자열로 읽는다. 렌더로 볼 수 없는 불변조건(이펙트·리마운트 자리)이
 // 여기 걸리고, 그 방식은 이 저장소가 파일 간 계약에 쓰는 것과 같다
 // (state-scale.test.ts · theme-tokens.test.ts · tauri-commands.test.ts).
-function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal-store.ts"): string {
+function source(
+  file: "WorksPage.tsx" | "SpecViewer.tsx" | "work-menu-actions.ts" | "../terminal/terminal-store.ts",
+): string {
   return readFileSync(fileURLToPath(new URL(`./${file}`, import.meta.url)), "utf8");
 }
 
@@ -358,7 +360,8 @@ describe("WorksPage 소스 토글이 문서 위 경로 줄에 선다", () => {
 
 // 머리 카드 배치(codex-ds 스펙 §6 · 스토리 23~25) — 왼쪽은 ⚡ · work 이름, **조작은 전부 오른쪽 한 묶음**(결정 10)이다.
 // 한때는 제목이 화면에서 빠지고(사이드바 행이 말했다) 창 맨 위 줄에 조작 묶음만 남았었다 — ⌘B로 사이드바를 접으면 화면 어디에도
-// 제목이 없었다. 그 줄이 48 머리 줄이 되면서 머리 카드가 제목을 다시 든다(보이기만 — 제자리 편집은 codex-ds 티켓 28).
+// 제목이 없었다. 그 줄이 48 머리 줄이 되면서 머리 카드가 제목을 다시 든다(work 메뉴의 대상이고, 그 자리에서 이름을 바꾼다 — codex-ds
+// 결정 6 · 스펙 §9).
 describe("WorksPage 머리 카드 배치", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -429,19 +432,19 @@ describe("WorksPage 머리 카드 배치", () => {
     expect(panelToggleTags(a)).toHaveLength(0);
   });
 
-  it("머리 줄이 창을 끄는 자리이고 머리 카드는 아니다", () => {
-    // 끄는 자리는 회색이 보이는 상자다(codex-ds 스펙 §4 「드래그 영역」) — 머리 줄이 속성을 들고, 머리 카드는 카드라 안의 빈 자리 ·
-    // 이름 · 조작(패널 토글까지) 어디도 안 든다. Tauri는 누른 요소 자신만 보므로 카드 상자에 속성이 없으면 카드 안을 눌러 창이
-    // 끌리지 않는다. 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의 `rowOf`)가 집는다. 레일이 서서 카드 밖 토글
-    // 자리(회색 위 상자)도 끌기 영역이다 — 그 자리의 상자는 L3(`frame.spec.ts`)가 잰다.
+  it("머리 줄이 창을 끄는 자리이고 머리 카드는 빈 자리까지 끈다", () => {
+    // 끄는 자리는 회색이 보이는 상자다(codex-ds 스펙 §4 「드래그 영역」) — 머리 줄이 맨값 속성을 들고, 머리 카드는 `deep`이라 안의 빈
+    // 자리도 끈다(codex-ds 결정 37). 누를 것(버튼 · 포커스 받는 이름)은 Tauri가 스스로 비켜 둔다 — 어느 점이 끌리는지는 L3
+    // (`frame.spec.ts`의 `끄는자리`)가 잰다. 표식(`data-head-actions`)은 좁은 창의 L3(`tab-row.ts`의 `rowOf`)가 집는다. 레일이 서서 카드
+    // 밖 토글 자리(회색 위 상자)도 끌기 영역이다 — 그 자리의 상자는 L3(`frame.spec.ts`)가 잰다.
     const row = header(render());
     expect(row.match(/^<header[^>]*>/)?.[0] ?? "", "머리 줄이 없다").toContain("data-tauri-drag-region");
     const card = headCardOf(render());
     expect(card, "머리 카드를 못 찾았다").not.toBe("");
-    expect(card).not.toContain("data-tauri-drag-region");
+    expect(card.match(/^<div[^>]*>/)?.[0] ?? "").toContain('data-tauri-drag-region="deep"');
     expect(actions(render()), "할 일 묶음을 못 찾았다").not.toBe("");
-    // 머리 줄에서 끌기 영역은 줄과, 레일 위 토글 자리 둘이다.
-    expect(countOf(row, "data-tauri-drag-region")).toBe(2);
+    // 머리 줄에서 끌기 영역은 줄 · 머리 카드 · 레일 위 토글 자리 셋이다.
+    expect(countOf(row, "data-tauri-drag-region")).toBe(3);
     const buttons = row.match(/<button[^>]*>/g) ?? [];
     expect(buttons.length).toBeGreaterThan(0);
     for (const tag of buttons) expect(tag).not.toContain("data-tauri-drag-region");
@@ -449,7 +452,7 @@ describe("WorksPage 머리 카드 배치", () => {
 
   // codex-ds 스토리 23 · 24 — 머리 카드 왼쪽이 지금 어느 work인지 말한다. ⌘B로 사이드바를 접어도 제목이 화면에 남는다.
   // 한때(결정 10) 제목은 화면에서 빠지고 사이드바 행만 말했다 — 접으면 화면 어디에도 제목이 없던 그 감수가 풀렸다.
-  it("머리 카드 왼쪽에 ⚡와 work 제목이 서고, 제목은 보이기만 한다", () => {
+  it("머리 카드 왼쪽에 ⚡와 work 제목이 서고, 제목은 버튼이 아니다", () => {
     const card = headCardOf(render());
     expect(card).not.toBe("");
     // ⚡는 work 아이콘이다 — 상태 글리프가 아니라 상태가 바뀌어도 그대로다.
@@ -459,7 +462,9 @@ describe("WorksPage 머리 카드 배치", () => {
     expect(name, "제목이 없다").toBeGreaterThan(zap);
     expect(name).toBeLessThan(card.indexOf("data-head-actions"));
     expect(headCardOf(render({ status: "done" }))).toContain("lucide-zap");
-    // 제목은 글자일 뿐이다 — 누르거나 고치는 자리가 아니다(제자리 편집은 codex-ds 티켓 28, 지금 여는 자리는 ⋯ 메뉴 — #141).
+    // 제목은 버튼도 입력칸도 아니다 — 평소에는 포커스만 받는 글자다(`tabIndex`). 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이고
+    // (codex-ds 결정 6), 두 번 클릭 · F2로 그 자리가 입력칸이 된다 — 입력칸은 고치는 동안에만 선다(codex-ds 스펙 §9 ·
+    // `e2e/inline-rename.spec.ts`). 누르면 고친다는 도움말(「클릭해서 편집」)도 없다.
     const lead = card.slice(0, card.indexOf("data-head-actions"));
     expect(lead).not.toMatch(/<button|<input|contenteditable/);
     expect(lead).not.toContain('title="클릭해서 편집"');
@@ -516,12 +521,14 @@ describe("WorksPage 터미널 탭", () => {
   // 먼저 죽이면 거부당했을 때 Work는 남고 돌던 claude만 사라진다. 이것도 렌더로 못 본다
   // (네이티브 대화가 끼어 있다). 자리를 세 지점의 **순서**로 못박는다 — 문자열 하나를
   // 통째로 맞추면 줄바꿈만 바뀌어도 깨지고, 순서가 이 계약의 전부다.
+  //
+  // 흐름은 work 메뉴 넷(⋯ · 우클릭 대상 셋)이 함께 부르는 한 자리(`work-menu-actions.ts`)에 있다(codex-ds 결정 6).
   it("셸은 명령이 성공한 뒤에 거둔다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const call = worksPage.indexOf("await call();");
+    const menuActions = source("work-menu-actions.ts");
+    const call = menuActions.indexOf("await call();");
     // `await` **뒤에서** 찾는다 — 같은 문구가 위쪽 주석에도 나온다(실측으로 걸렸다).
-    const bail = worksPage.indexOf("return;", worksPage.indexOf("하지 못했습니다", call));
-    const reap = worksPage.indexOf("closeShellsOf(ownerOf(work.slug))");
+    const bail = menuActions.indexOf("return;", menuActions.indexOf("하지 못했습니다", call));
+    const reap = menuActions.indexOf("closeShellsOf(ownerOf(work.slug))");
 
     expect(call, "await call()을 찾지 못했다").toBeGreaterThan(-1);
     // 실패하면 **거두지 않고 돌아간다** — 이 return이 빠지면 거부당한 Work의 셸이 죽는다.
@@ -536,15 +543,15 @@ describe("WorksPage 터미널 탭", () => {
   // 돌아오고 아카이브는 안 기다리므로 워처의 재조회가 회수 앞뒤 어디에나 올 수 있다 — 창이 이만큼 넓어야 한다.
   // 렌더로 못 보는 것은 위 검사와 같다(창과 코어 호출이 프로미스 뒤에 있다). 자리를 **순서**로 못박는다.
   it("제외 창은 확인 뒤 · 코어 호출 전에 열고, 회수 뒤에 닫으며, 실패하면 곧바로 닫는다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const asked = worksPage.indexOf("if (!(await askDanger(");
-    const hold = worksPage.indexOf("const release = holdOwner(ownerOf(work.slug));");
-    const call = worksPage.indexOf("await call();");
-    const failed = worksPage.indexOf("} catch (e) {", call);
-    const earlyRelease = worksPage.indexOf("release();", failed);
-    const problem = worksPage.indexOf("await showProblem(", failed);
-    const reap = worksPage.indexOf("closeShellsOf(ownerOf(work.slug));");
-    const lateRelease = worksPage.indexOf("release();", reap);
+    const menuActions = source("work-menu-actions.ts");
+    const asked = menuActions.indexOf("if (!(await askDanger(");
+    const hold = menuActions.indexOf("const release = holdOwner(ownerOf(work.slug));");
+    const call = menuActions.indexOf("await call();");
+    const failed = menuActions.indexOf("} catch (e) {", call);
+    const earlyRelease = menuActions.indexOf("release();", failed);
+    const problem = menuActions.indexOf("await showProblem(", failed);
+    const reap = menuActions.indexOf("closeShellsOf(ownerOf(work.slug));");
+    const lateRelease = menuActions.indexOf("release();", reap);
 
     expect(asked, "확인 창을 찾지 못했다").toBeGreaterThan(-1);
     expect(hold, "제외 창은 확인 창이 참을 돌려준 뒤에 연다").toBeGreaterThan(asked);
@@ -552,8 +559,9 @@ describe("WorksPage 터미널 탭", () => {
     expect(earlyRelease, "실패하면 제외 창을 닫는다").toBeGreaterThan(failed);
     expect(problem, "실패하면 알림 창보다 먼저 닫는다").toBeGreaterThan(earlyRelease);
     expect(lateRelease, "회수 뒤에 제외 창을 닫는다").toBeGreaterThan(reap);
-    // 여는 자리는 하나다 — 둘이면 한쪽이 안 닫혀 그 slug가 영영 감지에서 빠진다.
-    expect(worksPage.split("holdOwner(").length - 1).toBe(1);
+    // 여는 자리는 하나다 — 둘이면 한쪽이 안 닫혀 그 slug가 영영 감지에서 빠진다. 작업 화면이 흐름을 따로 들면 그것이 둘째 자리다.
+    expect(menuActions.split("holdOwner(").length - 1).toBe(1);
+    expect(source("WorksPage.tsx")).not.toContain("holdOwner(");
   });
 
   // 결정 102·19. 정상 종료한 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은
@@ -1123,9 +1131,9 @@ describe("WorksPage 셸 조회가 이 work의 것이다", () => {
   });
 
   // 「셸 N개가 닫혀요」의 N(결정 26). 남의 셸을 세면 엉뚱한 수를 말하고 — 0이라 아예 안 묻고 — 정작 닫히는 것은 이
-  // work의 셸들이다.
+  // work의 셸들이다. 묻는 흐름은 work 메뉴 넷이 함께 부르는 자리(`work-menu-actions.ts`)에 있고, `work`는 그 메뉴의 대상이다.
   it("아카이브 확인이 말하는 수가 이 work의 것이다", () => {
-    expect(countOf(worksPage, "runningShellsOf(state, ownerOf(work.slug))")).toBe(1);
+    expect(countOf(source("work-menu-actions.ts"), "runningShellsOf(terminalStore.state, ownerOf(work.slug))")).toBe(1);
   });
 });
 
@@ -1584,14 +1592,14 @@ describe("프로젝트를 고르는 `+`", () => {
 // 확인 대화의 문장은 `askDanger` 프로미스 뒤에 있어 이 저장소의 정적 마크업 seam에 아예
 // 안 걸린다 — 낱말의 계약은 `work-menu-copy.test.ts`가 글자까지 재고, 여기서 보는 것은
 // **화면이 그 표를 부르는가**뿐이다(`work-sections`·`archive-copy`와 같은 나눔).
-describe("⋯ 메뉴의 확인 대화", () => {
+describe("work 메뉴의 확인 대화", () => {
   it("문장을 손으로 안 적고 표에서 꺼낸다", () => {
-    const worksPage = source("WorksPage.tsx");
-    expect(worksPage).toContain("ARCHIVE_CONFIRM_BODY");
-    expect(worksPage).toContain("REMOVE_CONFIRM_BODY");
+    const menuActions = source("work-menu-actions.ts");
+    expect(menuActions).toContain("ARCHIVE_CONFIRM_BODY");
+    expect(menuActions).toContain("REMOVE_CONFIRM_BODY");
     // **리터럴이 남아 있으면 안 된다.** 표를 부르면서 옛 문장을 그대로 둔 판은 위 두 줄로는
     // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
-    expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");
-    expect(worksPage).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
+    expect(menuActions).not.toContain("워크트리 폴더가 정리돼요");
+    expect(menuActions).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
   });
 });

@@ -454,7 +454,7 @@
                       (DS `SettingsGroup` — spec 레이아웃 편집기의 폼도)
      2xl       16     카드 · 카드 안 묶음(문서의 표) · 떠 있는 것(메뉴 · 팔레트 · 전체화면 뷰어 · 토스트)
      3xl       20     코드 블록(문서 · mermaid · 에이전트 훅 설정의 미리보기)
-     4xl       24     확인 창 · 가운데 창(이름 바꾸기) · 「LLM이 받는 텍스트」 창(DS `Dialog`)
+     4xl       24     확인 창 · 「LLM이 받는 텍스트」 창(DS `Dialog`)
      full    9999     큰 버튼(`Button` lg — 36) · 점 · 칩 · 스위치 · 꼬리표 · 경로 줄
    나머지(`bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 · 확인 창은 DS 「간격 · 반경 ·
    크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는 자리의 일이다.
@@ -1022,19 +1022,32 @@
    막는다. 메뉴 · Select의 줄은 이것을 안 단다 — 줄은 면(`focus:bg-fill-hover`)으로 포커스를 보인다.
    - **키보드로 왔을 때만 선다**(`:focus-visible`) — 누르는 손에는 링이 없다. 글자칸은 브라우저가 늘 `:focus-visible`로 친다.
    - **상자가 링을 입는 칸**(검색칸 `InputGroup`)은 바로 안의 입력칸에 포커스가 있을 때 선다(`:has(> input:focus-visible)`).
+   - **우클릭 메뉴가 열린 대상**도 같은 링을 입는다(`[data-menu-target]`, codex-ds 결정 11 「대상 테두리」) — 「이것의 메뉴다」를
+     말한다. 그 메뉴가 열린 동안만 대상에 서는 표식이라(`WorkContextMenu` · 셸 탭 · spec 탭의 `ShellTabs` · 입력칸의 편집 메뉴
+     `EditMenu` · 목록 행 · 문서 글의 `TargetMenu`) 닫히면 걷히고, 닫힌 화면의 마크업에는 없다. 상자가 링을 입는 칸은 표식이 안의
+     입력칸에 서도 상자가 입는다(`:has(> input[data-menu-target])`).
+   - **카드 끝까지 차는 상자는 링을 안쪽에 입는다**(`data-ring-inset` — 문서 글 `DocTextBox`). 바깥 링은 그 상자를 자르는 카드에
+     가려 안 보인다. 무리가 테두리에서 안으로 4px 번지고, accent 실선은 그 안쪽 끝에 선다 — 바깥 링을 안팎으로 뒤집은 모양이다.
    - 무리는 Tailwind 그림자 짜임의 한 자리(`--tw-ring-offset-shadow` — 앱에 `ring-offset-*`을 쓰는 곳이 없다)에 얹는다. 그래서 그
      요소가 든 그림자(`inset-ring` 테두리 · 켜진 셸 칸의 안쪽 테두리 · `shadow-*`)가 포커스 동안에도 함께 선다 — `box-shadow`를
      통째로 덮으면 그 테두리가 링에 가려 사라진다. 짜임의 자리마다 빈 그림자를 기본값으로 둔다(그 자리를 쓰는 유틸리티가 없는
      요소에서도 식이 풀린다). */
 @utility focus-ring {
   &:focus-visible,
-  &:has(> input:focus-visible) {
+  &:has(> input:focus-visible),
+  &[data-menu-target],
+  &:has(> input[data-menu-target]) {
     outline: 1px solid var(--accent);
     outline-offset: 0;
     --tw-ring-offset-shadow: 0 0 0 4px var(--focus-halo);
     box-shadow:
       var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow),
       var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000);
+  }
+  &[data-ring-inset]:focus-visible,
+  &[data-ring-inset][data-menu-target] {
+    outline-offset: -5px;
+    --tw-ring-offset-shadow: inset 0 0 0 4px var(--focus-halo);
   }
 }
 
@@ -1288,16 +1301,18 @@ body.dragging-row * {
     transform: translateX(
         max(calc(var(--title-over) - var(--title-fade)), calc(var(--title-over) * 1000))
     );
-    /* **200ms 머물러야 흐르기 시작한다**(결정 11) — 훑고 지나갈 때 안 흔들리고, 호버
-       카드(350ms)보다 먼저 답한다. 속도는 거리에 비례하고(`--marquee-ms`), 넣는 자리는 그
+    /* **200ms 머물러야 흐르기 시작한다**(결정 11) — 훑고 지나갈 때 안 흔들린다. 결정 11은
+       「카드보다 먼저 답한다」도 까닭으로 들었지만 카드의 길이는 그때 것(350ms)을 그대로 둔다고만
+       했다 — codex-ds 결정 20이 카드를 멈춘 지 `duration-tip`(150ms)으로 정해, 지금은 호버 카드가
+       마퀴보다 먼저 선다. 속도는 거리에 비례하고(`--marquee-ms`), 넣는 자리는 그
        카드 타이머를 이미 거는 핸들러다(결정 12). **끝에서 멈춘다** — 왕복 루프는 시선을
        계속 잡아끈다. */
     transition: transform var(--marquee-ms, 0ms) linear 200ms;
 }
 
 /* 모션을 줄여 둔 사람에게는 **안 흐른다. 페이드는 남는다**(결정 11). 그때 전체 제목을 보는
-   길은 호버 카드 하나이고, 카드는 줄바꿈해 한눈에 보여준다 — **마퀴가 빠른 답, 카드가 완전한
-   답**이라 카드의 제목은 이 판에서 그대로 둔다. */
+   길은 호버 카드 하나이고, 카드는 줄바꿈해 한눈에 보여준다 — 마퀴는 제목 자리에서 한 번에 일부만
+   흘려 보이고 **카드가 완전한 답**이라(결정 11) 카드의 제목은 이 판에서 그대로 둔다. */
 @media (prefers-reduced-motion: reduce) {
     [data-title][data-marquee] > span {
         transform: none;

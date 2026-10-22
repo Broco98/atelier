@@ -1,5 +1,6 @@
 import { PanelRight } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
+import { pressed, type KeyChord } from "@/lib/hotkeys";
 
 interface PanelToggleProps {
   /** 여닫는 패널의 이름 — 토글의 이름 · 도움말이 그 뒤에 할 일을 붙인다(「작업 패널 접기」 · 「spec 목록 펼치기」). */
@@ -23,20 +24,23 @@ interface PanelToggleProps {
  * 같이 `aria-expanded`와 이름이 말한다. 한때 레일 열 맨 위의 32 원이었고 열리면 흰 원이었다(그때는 머리 줄이 없었다).
  *
  * 이름과 도움말은 상태를 탄다 — 누르면 무슨 일이 날지를 말한다(분할 토글과 같다). 앞말은 여닫는 패널의 이름이다(`name` — 공용 틀이 패널
- * 칸의 이름을 건넨다). 열림은 `aria-expanded`가 이미 말하므로 설명은 달지 않고, 키(⌘Enter)만 도움말 옆 Kbd와 설명으로 남는다(S28 —
- * `Hint`의 `shortcut`).
+ * 칸의 이름을 건넨다). 열림은 `aria-expanded`가 이미 말하므로 설명은 달지 않고, 키(⌘Enter — 단축키 표의 `panel`)만 도움말 옆 Kbd와
+ * 설명 · `aria-keyshortcuts`로 남는다(S28 — `Hint`의 `shortcut`).
+ *
+ * Tab 정류장임을 `tabIndex`로 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 패널이 포커스를
+ * 품은 채 접히면 그 포커스가 이리 온다(`controls` — `panel-layout`의 `useFoldedFocus`).
  */
 function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
   return (
     <Hint
       text={open ? `${name} 접기` : `${name} 펼치기`}
-      shortcut="⌘Enter"
+      shortcut="panel"
       announce="name"
       type="button"
       onClick={onToggle}
       aria-expanded={open}
       aria-controls={controls}
-      aria-keyshortcuts="Meta+Enter"
+      tabIndex={0}
       className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
     >
       <PanelRight className="size-3.75" />
@@ -59,20 +63,15 @@ function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
  * `attachCustomKeyEventHandler`가 `true`를 돌려주고, 이벤트는 window까지 올라온다. 탭은 보지 않는다 — 갈림은 탭이 아니라
  * **포커스**다(같은 결정 43 — 작업 화면이 한때 얹었던 터미널 탭 가드의 사연은 그쪽 리스너 곁에 있다).
  *
+ * 어느 키인가는 단축키 표의 `panel`이 정한다(`@/lib/hotkeys` — 물리 키 `Enter`에 ⌘ 하나, 숫자 패드 Enter도 같은 키다). 한때 이
+ * 판정만 `key`를 봤다 — `code`로 옮기며 숫자 패드 Enter는 `pressed`가 같은 키로 접어 그대로 받는다.
+ *
  * **함수로 꺼낸 이유는 테스트다.** 이 저장소의 컴포넌트 seam은 정적 마크업이라 이펙트가 돌지 않고 키 이벤트도 없다 — 핸들러
  * 안에 두면 소스를 문자열로 훑는 검사밖에 못 건다. 구조적 이벤트 형태를 받는 순수 함수는 `shellHotkey`가 이미 쓰는 방식이고,
  * 그쪽과 같은 이유로 여기도 그렇게 둔다.
  */
-export function togglesPanel(event: {
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  key: string;
-  target: EventTarget | null;
-}): boolean {
-  if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey || event.key !== "Enter")
-    return false;
+export function togglesPanel(event: KeyChord & { target: EventTarget | null }): boolean {
+  if (!pressed(event, "panel")) return false;
   const target = event.target as HTMLElement;
   if (
     target instanceof HTMLInputElement ||

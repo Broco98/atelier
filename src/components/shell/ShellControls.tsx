@@ -22,6 +22,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
+      tabIndex={0}
       className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
@@ -42,6 +43,9 @@ interface ShellControlsProps {
 
 // 신호등 오른쪽에 붙는 셸 컨트롤 행 — 사이드바 토글 → 뒤로 → 앞으로 → 검색.
 // 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
+//
+// **창의 첫 Tab 영역이다** — 그림은 `absolute`로 사이드바 위에 뜨지만 DOM은 사이드바 앞이다(`AppShell`). 칸마다 `tabIndex`를
+// 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 흐려진 뒤로 · 앞으로는 `disabled`라 지난다.
 //
 // 폭을 --titlebar-controls-width에 딱 맞추고 세로도 컨트롤 높이만큼만 차지한다.
 // **칸이 늘면 그 값의 칸 수도 함께 고쳐야 한다**(index.css) — 안 고치면 넘친다.
@@ -96,25 +100,25 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           규칙). 그래서 토글로 만들 것이 없다 — 여는 갈래 하나면 된다. 여는 함수 자체도
           같은 setter라 두 번 열려도 한 번 연 것과 같다.
 
-          **이 행에서 유일하게 도움말을 든다 — 알릴 것이 글리프 밖에 있기 때문이다.** 이웃
-          셋은 그림이 곧 이름이지만(패널·화살표), 이 버튼의 값은 「누를 수 있다」보다 **⌘K라는
-          키가 있다는 것을 알리는 것**에 가깝다. 사이드바 목록의 핀이 도움말을 피한 이유(행에
-          머물면 호버 카드가 떠서 툴팁이 그 위로 겹친다 — S29)는 여기 없다 — 타이틀바에는 뜨는
-          카드가 없다. 도움말은 앱 툴팁이고 키는 옆에 Kbd로 뗀다(스토리 112). 사이드바에서
-          `title`을 들던 버튼이 이것 하나라 툴팁도 이것 하나다 — 도움말이 없던 이웃 셋에는 새로
-          달지 않는다(P9 · P13).
+          **이 행에서 도움말을 드는 것은 키가 있는 둘이다 — 이것과 사이드바 토글(⌘B).** 알릴 것이
+          글리프 밖에 있기 때문이다: 그림이 곧 이름이어도(패널 · 돋보기) 그 버튼의 값은 「누를 수
+          있다」보다 **키가 있다는 것을 알리는 것**에 가깝다(codex-ds 스토리 98 — 있는 단축키를 버튼에서
+          배운다). 사이드바 목록의 핀이 도움말을 피한 이유(행에 머물면 호버 카드가 떠서 툴팁이 그 위로
+          겹친다 — S29)는 여기 없다 — 타이틀바에는 뜨는 카드가 없다. 도움말은 앱 툴팁이고 키는 옆에
+          Kbd로 뗀다(스토리 112). 키가 없는 뒤로 · 앞으로에는 달지 않는다(P9 · P13).
           **키를 aria-keyshortcuts로도 적는다 — ⇧⇧ 때는 못 적었다**(결정 21). 그 값은
           **대안들의** 공백 구분 목록이라 「⇧ 다음 ⇧」가 「⇧ 또는 ⇧」로 읽혔는데, 화음인
-          ⌘K는 `Meta+K` 하나로 정확히 적힌다. aria-label은 여전히 이름만 든다 — 읽어 주는
+          ⌘K는 `Meta+K` 하나로 정확히 적힌다. 글자와 그 값은 단축키 표의 `search` 한 줄에서
+          나온다(`Hint`의 `shortcut`). aria-label은 여전히 이름만 든다 — 읽어 주는
           이름에 키가 섞이면 소음이 된다. 툴팁은 스크린리더에 아무것도 주지 않으므로, 옛 `title`이
           이름 다음에 읽어 주던 키는 설명(`aria-description`)으로 남긴다(S28 — `Hint`의 `shortcut`). */}
       <Hint
         text="검색"
-        shortcut="⌘K"
+        shortcut="search"
         announce="name"
         type="button"
         onClick={onOpenSearch}
-        aria-keyshortcuts="Meta+K"
+        tabIndex={0}
         className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
       >
         <Search className="size-3.75" />

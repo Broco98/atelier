@@ -15,6 +15,7 @@ const 칸 = (id: number, over: Partial<Shell> = {}): Shell => ({
   id,
   status: { kind: "running" },
   title: null,
+  label: null,
   shellName: "zsh",
   shellKey: `G-${id}`,
   owner: ownerOf("plain-work"),

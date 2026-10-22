@@ -1,10 +1,10 @@
 /// <reference types="node" />
 // Node 타입을 이 파일만 끌어오는 이유는 tauri-commands.test.ts 상단 주석과 같다.
-import { readdirSync, readFileSync, type Dirent } from "fs";
+import { readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankComments, blankCssComments } from "./blank-comments";
+import { blankCssComments, blankedSources, placesOf, type Source, where } from "./blank-comments";
 import { SHADCN_NAMES } from "./css-tokens";
 
 // **색은 Codex 이름으로만 적는다**(codex-ds 결정 27 · 스펙 S1 · 티켓 07). 값의 정본은 `index.css`의 Codex 토큰 하나다 — 그
@@ -25,28 +25,13 @@ import { SHADCN_NAMES } from "./css-tokens";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
-  });
-}
-
 // 주석을 지운 원문들 — `file`은 저장소 뿌리에서 잰 경로다.
-const scripts = sourceFiles(join(root, "src")).map((path) => ({
-  file: path.slice(root.length),
-  text: blankComments(readFileSync(path, "utf8")),
-}));
+const scripts = blankedSources();
 const stylesheet = { file: "src/index.css", text: blankCssComments(readFileSync(join(root, "src/index.css"), "utf8")) };
-
-type Source = { file: string; text: string };
 
 // 어긴 자리를 `파일:줄: 글자`로 센다.
 function offenders(pattern: RegExp, sources: Source[] = [...scripts, stylesheet]): string[] {
-  return sources.flatMap(({ file, text }) =>
-    [...text.matchAll(pattern)].map((m) => `${file}:${text.slice(0, m.index).split("\n").length}: ${m[0]}`),
-  );
+  return placesOf(pattern, sources).map(where);
 }
 
 // 색을 받는 유틸리티의 앞말 — `bg-*` · `text-*` · `border-t-*` · `inset-ring-*` · `from-*` …(Tailwind의 `--color-*` 이름공간).

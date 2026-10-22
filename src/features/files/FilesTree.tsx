@@ -299,7 +299,8 @@ function scrollToRow(row: HTMLElement): void {
 
 /**
  * 새로고침 버튼(스토리 16) — files 칸 머리에 선다. 무언가 낡아 보이면 손으로 그 work의 워크트리를 다시 읽는다. 머리 컨트롤의
- * 규격(DS `.at-ib` 28 · `fg-secondary`)은 `spec` 칸 머리의 spec 폴더 열기와 같다(`WorkPanel`).
+ * 규격(DS `.at-ib` 28 · `fg-secondary`)은 `spec` 칸 머리의 spec 폴더 열기와 같다(`WorkPanel`). Tab 정류장임을 `tabIndex`로
+ * 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
  */
 export function FilesRefresh({ slug }: { slug: string }) {
   const queryClient = useQueryClient();
@@ -308,6 +309,7 @@ export function FilesRefresh({ slug }: { slug: string }) {
       text="새로고침"
       announce="name"
       type="button"
+      tabIndex={0}
       onClick={() => void refreshWorktrees(queryClient, slug)}
       className="icon-button-quiet text-fg-secondary focus-ring"
     >

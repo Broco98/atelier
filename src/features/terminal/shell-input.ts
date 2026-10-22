@@ -1,6 +1,7 @@
 import { shellHotkey, shellRewrite } from "./shell-registry";
 import type { ShellHotkey } from "./shell-registry";
-import { IME_KEYCODE, isModifierKey } from "./terminal-ime";
+import { IME_KEYCODE } from "@/lib/ime";
+import { isModifierKey } from "./terminal-ime";
 
 /**
  * 사람 입력(프로세스 스펙 S16)과 키다운 가르기 — **DOM 사건 하나를 받아 답하는 순수 함수들**이다.

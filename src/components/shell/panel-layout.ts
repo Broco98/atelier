@@ -1,6 +1,9 @@
+import { useLayoutEffect, useRef, type RefObject } from "react";
+
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
-// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass` · `panelMotionMs`), 그리고 오른쪽 패널 카드의
-// 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
+// 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass` · `panelMotionMs`)과 접힐 때의
+// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
+// 카드 사이 틈을 스크립트가 읽는 길(`cardGapPx`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
 // 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
 // 작업 화면 · spec 레이아웃 편집기 · Archive(spec 목록 패널) 세 기능이 함께 읽어 어느 한 기능의 폴더에 두지 않는다.
 //
@@ -63,6 +66,16 @@ export const PANEL_MIN_WIDTH = 260;
 export const PANEL_MAX_WIDTH = 560;
 
 /**
+ * 카드 사이 틈(px) — 토큰 `--space-2`를 그 요소에서 읽는다. 카드 줄의 패널 칸과 분할의 두 열이 이 틈을 두고 서서(`Frame`), 그려진
+ * 상자의 폭에서 틈을 빼야 카드의 폭이 나오는 자리가 부른다 — 틈 자리 손잡이가 재는 칸의 폭(`useResizableWidth`의 `drawnWidth`)과
+ * 분할의 두 열이 나눠 갖는 폭(`Frame`의 `sharedWidth`)이다. 숫자를 그 자리에 적으면 토큰이 바뀌는 날 그 자리만 낡는다.
+ * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다.
+ */
+export function cardGapPx(from: HTMLElement): number {
+  return parseFloat(getComputedStyle(from).getPropertyValue("--space-2")) || 0;
+}
+
+/**
  * 접히는 패널 **바깥 상자**의 폭 트랜지션 길이와 곡선 — Atelier 토큰 `duration-panel`(220ms) · `ease-panel`이다(index.css의
  * `@theme static`, DS 「움직임」 — 패널 여닫기는 Codex가 말하지 않아 지금 앱의 값을 이었다).
  *
@@ -101,4 +114,28 @@ export function foldingInnerClass(open: boolean): string {
   return open
     ? "max-w-full transition-[opacity,max-width] opacity-100 delay-[0s,var(--duration-panel)] duration-[var(--duration-panel),0s]"
     : "max-w-[100vw] opacity-0 transition-opacity duration-basic";
+}
+
+/** 사이드바 상자의 id — 사이드바 토글이 가리키는 자리다(`aria-controls`, 셸 컨트롤의 `SidebarToggle`). 오른쪽 패널은 `Frame`이 id를 짓는다. */
+export const SIDEBAR_ID = "app-sidebar";
+
+/**
+ * 접히는 패널 바깥 상자에 다는 ref — **포커스를 품은 채 접히면 그 포커스를 패널을 여닫는 토글로 넘긴다**(사이드바는 사이드바 토글,
+ * 오른쪽 패널은 패널 토글). 닫힌 안쪽 열은 `inert`라 그 안의 포커스가 문서 뿌리(`body`)로 떨어지는데, 그대로 두면 다음 Tab이 창 맨
+ * 앞에서 다시 시작한다(⌘B · ⌘Enter로 접은 자리). 토글은 상자의 id를 `aria-controls`로 가리키는 첫 요소다 — 오른쪽 패널은 레일 칸도
+ * 같은 id를 가리키는데 패널 토글이 DOM에서 앞이다.
+ *
+ * **blur를 기다리지 않고 접힌 그 커밋에서 옮긴다**(레이아웃 이펙트). 포커스가 이벤트 없이 떨어지는 길이 있다 — 작업 패널은 접힐 때
+ * 트리를 새로 세워(`WorkPanel`의 `treeGeneration`) 포커스를 쥔 행이 문서에서 빠지고, 빠진 요소는 blur를 쏘지 않는다. 접힌 커밋의
+ * 레이아웃 이펙트에서는 그 행이 아직 문서에 있고 포커스도 쥐고 있다(`inert`가 포커스를 빼는 것은 다음 그리기 때다). 포커스가 상자
+ * 밖에 있었으면(토글을 눌러 접었거나 셸에서 ⌘Enter) 그대로 둔다. L3 `keyboard.spec`이 두 패널에서 잰다.
+ */
+export function useFoldedFocus<T extends HTMLElement>(open: boolean): RefObject<T | null> {
+  const box = useRef<T>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (open || el === null || !el.contains(document.activeElement)) return;
+    document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(el.id)}"]`)?.focus();
+  }, [open]);
+  return box;
 }

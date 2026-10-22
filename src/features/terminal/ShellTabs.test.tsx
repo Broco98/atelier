@@ -67,7 +67,7 @@ function opened(
   return { state, ids };
 }
 
-const SPEC = { on: false, onSelect: () => {} };
+const SPEC = { on: false, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} };
 
 function render(
   state: ShellsState,
@@ -92,6 +92,8 @@ function render(
       actions={actions}
       onSelect={() => {}}
       onClose={() => {}}
+      onRename={() => {}}
+      onCloseOthers={() => {}}
       onOpen={() => {}}
       onDragTab={() => {}}
       slot={null}
@@ -391,6 +393,8 @@ describe("칸이 `memo` 경계다", () => {
     expect(tag).not.toContain("=>");
     expect(tag).toContain("onSelect={tabHandlers.onSelect}");
     expect(tag).toContain("onClose={tabHandlers.onClose}");
+    expect(tag).toContain("onRename={tabHandlers.onRename}");
+    expect(tag).toContain("onCloseOthers={tabHandlers.onCloseOthers}");
     expect(tag).toContain("onDragTab={tabHandlers.onDragTab}");
   });
 
@@ -400,7 +404,9 @@ describe("칸이 `memo` 경계다", () => {
     const src = source();
     expect(countOf(src, "useMemo(")).toBe(1);
     expect(src).toContain("const tabHandlers = useMemo(");
-    expect(src).toContain("latest.current = { onSelect, onClose, onDragTab, onSlot, onDropSlot };");
+    expect(src).toContain(
+      "latest.current = { onSelect, onClose, onRename, onCloseOthers, onCopyCwd, onDragTab, onSlot, onDropSlot };",
+    );
   });
 
   // 틈 알림(UI개선 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
@@ -432,7 +438,7 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
   it("셸 칸과 같은 알약이다", () => {
     // 눌린 자리로 종류를 가르는 안은 실물에서 접었다(결정 25) — 그 칸만 규격이 갈리면
     // 줄에서 튄다. 되살아나면 여기가 빨개진다.
-    const markup = render(opened(2).state, { spec: { on: false, onSelect: () => {} } });
+    const markup = render(opened(2).state, { spec: { ...SPEC, on: false } });
     expect(spec(markup)).not.toContain("bg-inset");
     expect(spec(markup)).toContain("rounded-lg");
     expect(firstShell(markup)).toContain("rounded-lg");
@@ -542,7 +548,7 @@ describe("켜짐을 말하는 법", () => {
   it("본문이 문서면 켜진 칸이 `spec` 하나다", () => {
     // `activeIdOf`는 그 work의 **기억**이지 지금 화면이 아니다(걷힌 셸 목록의 `showing`과 같은
     // 계약) — 문서를 읽는 중에 셸 칸까지 켜져 있으면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
-    const cells = cellsOf(render(opened(3).state, { spec: { on: true, onSelect: () => {} }, showing: false }));
+    const cells = cellsOf(render(opened(3).state, { spec: { ...SPEC, on: true }, showing: false }));
     const on = cells.filter((cell) => cell.markup.includes('aria-pressed="true"'));
     expect(on).toHaveLength(1);
     expect(on[0].kind).toBe("spec");
@@ -550,7 +556,7 @@ describe("켜짐을 말하는 법", () => {
 
   it("분할이면 켜진 칸이 둘이다", () => {
     // 결정 12. 이 상태가 실재하는 것이 `role="tab"`을 안 쓰는 근거다.
-    const cells = cellsOf(render(opened(3).state, { spec: { on: true, onSelect: () => {} } }));
+    const cells = cellsOf(render(opened(3).state, { spec: { ...SPEC, on: true } }));
     expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"'))).toHaveLength(2);
   });
 

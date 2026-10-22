@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { cardGapPx } from "./panel-layout";
 
 // 패널이 **놓인 쪽**이다 — 핸들이 붙는 가장자리가 아니다. 핸들은 늘 그 반대쪽 가장자리,
 // 즉 패널의 바깥 경계선 위에 얹히고 끄는 방향의 부호도 거기서 따라온다.
@@ -59,20 +60,20 @@ export function nextWidth({
 /**
  * 손잡이가 얹힌 칸이 지금 그려진 폭 — 손잡이의 부모 상자의 폭이다. **틈 자리(`seat="gap"`)면 그 상자가 「카드 + 틈」이라 틈을
  * 뺀다** — 저장하는 폭이 카드의 폭이고(틈은 더하지 않는다), 좁게 선 칸에서 틈만큼 넓게 읽으면 첫 움직임에 손잡이가 그만큼 튄다.
- * 틈의 값은 토큰(`--space-2`)에서 읽는다 — 숫자를 여기 적으면 토큰이 바뀌는 날 이 자리만 낡는다. 가장자리 · 세로 선 자리(`edge` ·
- * `rule`)의 부모는 칸 그 자체라 뺄 것이 없다.
+ * 틈의 값은 토큰(`--space-2`)에서 읽는다(`cardGapPx`). 가장자리 · 세로 선 자리(`edge` · `rule`)의 부모는 칸 그 자체라 뺄 것이
+ * 없다.
  */
 function drawnWidth(handle: HTMLElement): number | undefined {
   const box = handle.parentElement?.getBoundingClientRect().width;
   if (box === undefined || handle.dataset.seat !== "gap") return box;
-  return box - (parseFloat(getComputedStyle(handle).getPropertyValue("--space-2")) || 0);
+  return box - cardGapPx(handle);
 }
 
 /** 끌기로 치는 최소 이동(px). 이보다 덜 움직인 눌림은 폭을 안 바꾸고 저장도 안 바꾼다. */
 const RESIZE_THRESHOLD = 3;
 
 // 패널 폭 드래그 조절 + 더블클릭으로 기본 폭 복원. localStorage에 유지된다.
-// side를 생략하면 왼쪽 패널이다 — 이 기본값이 사이드바와 목록 칸 둘의 부호를 정한다.
+// side를 생략하면 왼쪽 패널이다 — 이 기본값을 쓰는 것은 사이드바다. 목록 칸(카드 오른쪽 칸)과 오른쪽 패널은 "right"를 건넨다.
 function useResizableWidth(
   key: string,
   defaultWidth: number,
@@ -167,8 +168,9 @@ function useResizableWidth(
 // 그 부모는 「카드 + 틈」 상자라, 출발 폭을 잴 때 틈을 뺀다(`drawnWidth` — 자리를 `data-seat`로 싣는다). 글로우 선도 틈의
 // 가운데다 — 카드 모서리에 붙이면 선이 둥근 모서리를 따라 잘린 것처럼 보인다.
 //
-// **`seat="rule"`이면 칸 바깥 가장자리의 세로 선 위에 걸쳐 선다**(codex-ds 결정 28 — 목록 | 내용 카드에서 두 칸을 가르는 0.5px 선이
-// 손잡이다, `Frame`의 `ListCard`). 손잡이의 가운데가 그 가장자리라 선을 짚으면 손잡이를 잡는다. 글로우 선도 그 가운데 — 선 위다.
+// **`seat="rule"`이면 두 칸이 맞닿은 가장자리의 세로 선 위에 걸쳐 선다**(codex-ds 결정 28 — 내용 | 목록 카드에서 두 칸을 가르는 0.5px 선이
+// 손잡이다, `Frame`의 `ListCard`). 어느 가장자리인지는 control.side가 정한다 — 오른쪽 칸(`"right"`)이면 왼쪽 끝이다. 손잡이의
+// 가운데가 그 가장자리라 선을 짚으면 손잡이를 잡는다. 글로우 선도 그 가운데 — 선 위다.
 // 부모는 칸 그 자체라 출발 폭에서 뺄 것이 없다.
 export function ResizeHandle({
   control,

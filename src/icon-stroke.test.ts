@@ -1,10 +1,5 @@
-/// <reference types="node" />
-// Node 타입을 이 파일만 끌어오는 이유는 tauri-commands.test.ts 상단 주석과 같다.
-import { readdirSync, readFileSync, type Dirent } from "fs";
-import { join } from "path";
-import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { blankComments } from "./blank-comments";
+import { blankedSources, type Place, placesOf, where } from "./blank-comments";
 
 // **아이콘 선은 한 자리에서 정한다**(codex-ds 스펙 S3). 값은 `components/ui/icon-stroke.ts`가 들고, 앱의 lucide 기본값은
 // `main.tsx`의 `LucideProvider` 하나가 준다. 호출부는 굵기를 고르지 않는다.
@@ -16,16 +11,6 @@ import { blankComments } from "./blank-comments";
 // 세는 곳은 `src`의 소스(테스트 빼고)이고 **주석은 세지 않는다**(`blank-comments.ts`) — 한 자리의 머리말이 DS의
 // 「`strokeWidth={1.5}` + `absoluteStrokeWidth`」를 인용한다. 그려진 굵기(16px에서 1.5px)는 진짜 CSS가 있어야 나오므로
 // L3(`e2e/icon-stroke.spec.ts`)가 잰다.
-
-const root = fileURLToPath(new URL("..", import.meta.url));
-
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
-  });
-}
 
 type DsException = { name: string; why: string; icon?: RegExp; maxPx?: number; file?: string };
 
@@ -62,31 +47,21 @@ const NOT_ICONS: NotIcon[] = [
 ];
 
 // 주석을 지운 원문들 — `file`은 저장소 뿌리에서 잰 경로다.
-const sources = sourceFiles(join(root, "src")).map((path) => ({
-  file: path.slice(root.length),
-  text: blankComments(readFileSync(path, "utf8")),
-}));
+const sources = blankedSources();
 
-/** 굵기를 고른 자리 하나 — 파일 · 줄, `strokeWidth=` 뒤의 값, 그 값을 받은 요소의 여는 태그(아래 `tag`). */
-type StrokeSite = { file: string; line: number; value: string; tag: string };
+/** 굵기를 고른 자리 하나 — 파일 · 줄과 `strokeWidth=…`(`text`), `strokeWidth=` 뒤의 값, 그 값을 받은 요소의 여는 태그(아래 `tag`). */
+type StrokeSite = Place & { value: string; tag: string };
 
-const sites: StrokeSite[] = sources.flatMap(({ file, text }) =>
-  // 값은 `{…}` 또는 따옴표 문자열이다. `tag`는 값 앞의 마지막 `<`에서 그 뒤 첫 `/>`까지다 — 아이콘 · svg 도형은
-  // 자식이 없어 스스로 닫히므로 이것이 그 요소의 여는 태그다. 자식을 감싸는 요소(`main.tsx`의 `LucideProvider`)는
-  // 첫 자식의 `/>`까지 이어지는데, 그 자리에서는 이름(`tagName`)만 읽는다. 못 찾으면 빈 글자라 아래 검사가 짚는다.
-  [...text.matchAll(/\bstrokeWidth=(\{[^}]*\}|"[^"]*"|'[^']*')/g)].map((m) => {
-    const start = text.lastIndexOf("<", m.index);
-    const end = text.indexOf("/>", m.index);
-    return {
-      file,
-      line: text.slice(0, m.index).split("\n").length,
-      value: m[1],
-      tag: start === -1 || end === -1 ? "" : text.slice(start, end + 2),
-    };
-  }),
-);
+// 값은 `{…}` 또는 따옴표 문자열이다. `tag`는 값 앞의 마지막 `<`에서 그 뒤 첫 `/>`까지다 — 아이콘 · svg 도형은
+// 자식이 없어 스스로 닫히므로 이것이 그 요소의 여는 태그다. 자식을 감싸는 요소(`main.tsx`의 `LucideProvider`)는
+// 첫 자식의 `/>`까지 이어지는데, 그 자리에서는 이름(`tagName`)만 읽는다. 못 찾으면 빈 글자라 아래 검사가 짚는다.
+const sites: StrokeSite[] = placesOf(/\bstrokeWidth=(\{[^}]*\}|"[^"]*"|'[^']*')/g, sources).map((place) => {
+  const { index, input } = place.match;
+  const start = input.lastIndexOf("<", index);
+  const end = input.indexOf("/>", index);
+  return { ...place, value: place.match[1], tag: start === -1 || end === -1 ? "" : input.slice(start, end + 2) };
+});
 
-const where = (site: StrokeSite) => `${site.file}:${site.line}: strokeWidth=${site.value}`;
 const tagName = (site: StrokeSite) => /^<([\w.]+)/.exec(site.tag)?.[1] ?? "";
 const isNumber = (site: StrokeSite) => /^[{"']\s*[\d.]+\s*[}"']$/.test(site.value);
 const notIcon = (place: NotIcon, tag: string) => (site: StrokeSite) =>

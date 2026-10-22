@@ -40,6 +40,23 @@ export function splitWorkSections(
   return { pinned, main, visible };
 }
 
+/** 구획 머리의 목록 키(`data-roving`) — slug에는 `:`가 없어 행의 키와 겹치지 않는다. */
+export function sectionKey(section: keyof SectionsOpen): string {
+  return `section:${section}`;
+}
+
+// 목록의 Tab 정류장이 고를 수 있는 키 — **화면 차례**다(roving, codex-ds 스펙 S10). 구획 머리도 행처럼 ↑↓로 지나는 자리라 함께
+// 들고(Enter가 그 구획을 접는다), 접힌 구획의 행은 뺀다(`inert`라 포커스를 못 받는다). `고정` 머리는 고정된 것이 있을 때만 선다.
+export function rovingKeys(sections: WorkSections, open: SectionsOpen): string[] {
+  const slugs = (works: WorkView[]) => works.map((work) => work.slug);
+  return [
+    ...(sections.pinned.length > 0 ? [sectionKey("pinned")] : []),
+    ...(open.pinned ? slugs(sections.pinned) : []),
+    sectionKey("works"),
+    ...(open.works ? slugs(sections.main) : []),
+  ];
+}
+
 /** 고른 것이 없을 때 본문 한가운데가 하는 말 — 제목·설명·붙여 넣을 한 줄. */
 interface EmptyScreen {
   title: string;

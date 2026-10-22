@@ -114,6 +114,7 @@ function 행(state: ShellsState): string {
       sections={splitWorkSections([WORK], { pinned: true, works: true })}
       open={{ pinned: true, works: true }}
       selectedSlug={null}
+      stop={null}
       shells={{
         shellCounts: { [WORK.slug]: 1 },
         signals,
@@ -136,6 +137,11 @@ function 행(state: ShellsState): string {
       lineY={null}
       litEmptySlot={null}
       onArmDrag={() => {}}
+      menuTarget={null}
+      renaming={null}
+      onRename={() => {}}
+      onRenameCommit={() => {}}
+      onRenameEnd={() => {}}
     />,
   );
 }
@@ -143,11 +149,12 @@ function 행(state: ShellsState): string {
 function 띠(state: ShellsState): string {
   return renderToStaticMarkup(
     <AttentionBand
-      items={bandRows(state).map((row) => ({ ...row, title: WORK.title }))}
+      items={bandRows(state).map((row) => ({ ...row, title: WORK.title, slug: WORK.slug }))}
       now={1000}
       expanded={false}
       onToggle={() => {}}
       onOpen={() => {}}
+      menuTarget={null}
     />,
   );
 }
@@ -167,10 +174,12 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       owner={소유}
       projects={["atelier"]}
       defaultCwd={null}
-      spec={{ on: !켜짐, onSelect: () => {} }}
+      spec={{ on: !켜짐, onSelect: () => {}, onOpenFolder: () => {}, onCopyPath: () => {} }}
       showing={켜짐}
       onSelect={() => {}}
       onClose={() => {}}
+      onRename={() => {}}
+      onCloseOthers={() => {}}
       onOpen={() => {}}
       onDragTab={() => {}}
       slot={null}

@@ -244,7 +244,7 @@ test("끄는 동안 호버 카드가 안 뜨고, 떠 있던 카드는 문턱을 
   await pickUpRow(page, plainWork.slug);
   await expect(card).toHaveCount(0);
 
-  // 다른 행 위에 카드가 뜰 만큼(350ms) 머문다.
+  // 다른 행 위에 카드가 뜰 만큼(멈춘 지 `duration-tip`, 150ms) 넉넉히 머문다.
   await hoverRowPoint(page, workRow(page, multiWork.slug), "middle");
   await page.waitForTimeout(700);
   await expect(card).toHaveCount(0);

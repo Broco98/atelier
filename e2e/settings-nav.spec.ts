@@ -9,6 +9,8 @@ import {
   stubWindowFocus,
   typeIntoShell,
   unknownIpcCalls,
+  검색어칸,
+  검색팔레트를연다,
   띠,
   머리카드,
   칠한값,
@@ -161,10 +163,8 @@ test("설정 안에서 ⌘,와 팔레트의 Settings는 주소도 히스토리�
   await expect(page).toHaveURL("/settings/notifications");
   expect(await historyLength(page)).toBe(before);
 
-  await page.keyboard.press("Meta+k");
-  const box = page.getByRole("textbox", { name: "검색어" });
-  await expect(box).toBeFocused();
-  await box.pressSequentially(SEARCH_DESTINATION_QUERY);
+  await 검색팔레트를연다(page);
+  await 검색어칸(page).pressSequentially(SEARCH_DESTINATION_QUERY);
   const row = page.getByRole("option", { name: "Settings", exact: true });
   await expect(row).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Enter");

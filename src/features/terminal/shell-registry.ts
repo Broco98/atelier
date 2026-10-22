@@ -1,10 +1,14 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
+import { pressed, TAB_HOTKEYS } from "@/lib/hotkeys";
 import type { Attention } from "./shell-attention";
 import type { CloseCheck, CloseReason, PtyExit } from "./types";
 
-// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
-// 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
-// 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. 값 import는 단축키 표(`@/lib/hotkeys` — 그 모듈도
+// JSON 한 장만 들인다) 하나이고 나머지는 타입뿐이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가
+// 선례). 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+//
+// **키 판정은 단축키 표를 읽는다**(codex-ds 결정 19 · S16). 어느 키인가(물리 키와 수식키 넷)는 표의 항목이 정하고, 여기 남는 것은
+// 그 키가 이 모듈에게 무엇인가(새 칸 · 닫기 · 앱 몫 · 본문 옮기기)와 어디서 눌렸나(`typesInto`)다.
 //
 // **키 판정 중 `searchHotkey`(⌘K)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
 // (이 파일에서 `팔레트 결정 N`은 `palette-key-and-home`의 결정문이다 — 맨 `결정 N`이
@@ -41,8 +45,8 @@ export type ShellStatus =
   | { kind: "failed"; reason: string };
 
 /**
- * 칸 하나. `title`과 `shellName`은 **이름의 두 갈래**를 그대로 들고 있는다(결정 31) —
- * 합쳐 놓으면 타이틀이 비었을 때 무엇으로 돌아가야 하는지가 사라진다. 고르는 규칙은
+ * 칸 하나. `label` · `title` · `shellName`은 **이름의 세 갈래**를 그대로 들고 있는다(결정 31 · codex-ds 스펙 S7) —
+ * 합쳐 놓으면 붙인 이름이나 타이틀이 비었을 때 무엇으로 돌아가야 하는지가 사라진다. 고르는 규칙은
  * `shellRowName`이 혼자 안다.
  *
  * **cwd가 여기 있다 — 한때 없었다.** 「셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안
@@ -54,6 +58,12 @@ export type ShellStatus =
 export interface Shell {
   id: number;
   status: ShellStatus;
+  /**
+   * **사람이 붙인 이름**(codex-ds 스펙 S7) — 탭에서 고친 이름이다. 셸의 OSC 타이틀보다 앞선다: 셸은 프롬프트마다 타이틀을
+   * 쏘므로, 뒤에 서면 붙이자마자 덮인다. 메모리에만 있다 — 저장도 IPC도 없어 셸이 닫히거나 앱이 다시 뜨면 사라진다.
+   * 붙이지 않았거나 비웠으면 `null`이다(`setLabel`).
+   */
+  label: string | null;
   /** 셸이 OSC 0·2로 쏜 타이틀. 안 쏘는 셸도 많아서 대개 null이다. */
   title: string | null;
   /** `$SHELL`의 basename. 백엔드가 spawn 응답에 실어 준다(결정 8) — 프런트는 모른다. */
@@ -450,6 +460,8 @@ export function openShell(
   const shell: Shell = {
     id,
     status: { kind: "running" },
+    // 사람이 붙인 이름은 뜬 뒤에 탭에서 붙는다(`setLabel`).
+    label: null,
     title: null,
     shellName: null,
     // 세대는 백엔드만 안다 — spawn 응답이 실어 온다(`setShellKey`).
@@ -788,6 +800,15 @@ export function setTitle(state: ShellsState, id: number, title: string): ShellsS
   return patch(state, id, (shell) => (shell.title === next ? shell : { ...shell, title: next }));
 }
 
+/**
+ * 사람이 탭에서 붙인 이름(codex-ds 스펙 S7). 앞뒤 공백을 걷고, **비면 붙인 이름을 지운다**(`null`) — 그러면
+ * `shellRowName`이 타이틀 · 셸 이름으로 돌아간다. 같은 값이면 같은 상태다(`patch`).
+ */
+export function setLabel(state: ShellsState, id: number, label: string): ShellsState {
+  const next = label.trim() || null;
+  return patch(state, id, (shell) => (shell.label === next ? shell : { ...shell, label: next }));
+}
+
 /** spawn 응답이 실어 준 `$SHELL`의 basename(결정 8). 타이틀이 없을 때의 이름이다. */
 export function setShellName(state: ShellsState, id: number, shellName: string): ShellsState {
   return patch(state, id, (shell) =>
@@ -1066,9 +1087,8 @@ export function shellHotkey(event: KeyPress): ShellHotkey | null {
   // window에서 듣는 앱 셸이 그것을 받아 연다. 셸에 포커스가 있는 시간이 이 앱에서 제일
   // 길기 때문에 이 한 줄이 「어디서든 열린다」의 절반을 든다.
   if (shellNavKey(event) !== null || searchHotkey(event)) return "app";
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
-  if (event.code === "KeyT") return "new";
-  if (event.code === "KeyW") return "close";
+  if (pressed(event, "newShell")) return "new";
+  if (pressed(event, "closeShell")) return "close";
   return null;
 }
 
@@ -1092,12 +1112,10 @@ export type ShellNav = { kind: "index"; n: number } | { kind: "cycle"; delta: 1 
  */
 export function shellNavKey(event: KeyPress): ShellNav | null {
   if (event.type !== "keydown") return null;
-  if (event.code === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
-    return { kind: "cycle", delta: event.shiftKey ? -1 : 1 };
-  }
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
-  const digit = /^Digit([1-9])$/.exec(event.code);
-  return digit ? { kind: "index", n: Number(digit[1]) } : null;
+  if (pressed(event, "nextTab")) return { kind: "cycle", delta: 1 };
+  if (pressed(event, "prevTab")) return { kind: "cycle", delta: -1 };
+  const at = TAB_HOTKEYS.findIndex((id) => pressed(event, id));
+  return at === -1 ? null : { kind: "index", n: at + 1 };
 }
 
 /**
@@ -1149,9 +1167,7 @@ function isShellInput(target: EventTarget | null): boolean {
  * 물음이고 주인도 다르다 — 부르는 쪽(앱 셸)이 막는다.
  */
 export function searchHotkey(event: KeyPress): boolean {
-  if (event.type !== "keydown") return false;
-  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
-  return event.code === "KeyK";
+  return event.type === "keydown" && pressed(event, "search");
 }
 
 /**
@@ -1343,8 +1359,17 @@ export function shellEndLabels(shell: Shell): { mark: string; notice: string } |
  */
 export function shellRowName(shell: Shell): string {
   // 프로젝트를 앞에 적었으니 뒤 갈래에서는 뺀다 — 안 빼면 타이틀 없는 칸이 `cli · cli`가 된다.
-  const tail = shell.title ?? shell.shellName ?? UNNAMED;
+  const tail = shellNameTail(shell);
   return shell.project ? `${shell.project} · ${tail}` : tail;
+}
+
+/**
+ * 이름의 **뒤 갈래** — 붙인 이름 → 타이틀 → 셸 이름 → 「셸」 차례로 처음 있는 것(codex-ds 스펙 S7). 붙인 이름이 맨 앞인 것은
+ * 셸이 프롬프트마다 타이틀을 쏘아서다. 탭의 이름 입력칸이 이 값만 들고(구현 노트 Q8), 앞의 `프로젝트 · `는 칸 밖에 남는다 —
+ * 어느 워크트리의 셸인지는 사람이 고칠 말이 아니다.
+ */
+export function shellNameTail(shell: Shell): string {
+  return shell.label ?? shell.title ?? shell.shellName ?? UNNAMED;
 }
 
 /**
@@ -1478,6 +1503,32 @@ export function quietCloseNotice(count: number): string {
 }
 
 /**
+ * 「다른 셸 모두 닫기」가 닫는 셸(codex-ds 스펙 S8 · 구현 노트 Q11) — **그 셸과 같은 화면**의 그 셸 밖 모든 칸이다. 끝난 칸 · 못
+ * 뜬 칸도 든다: 고른 셸 하나만 남기는 것이 이 줄의 뜻이라, 죽은 이유를 읽으라고 남은 칸(in-app-terminal 결정 22)도 함께 걷는다 —
+ * [조용한 셸 모두 닫기](`quietShellsOf`)와 갈리는 자리다. 차례는 탭 줄 그대로다. 없는 id면 빈 목록이다.
+ */
+export function otherShellsOf(state: ShellsState, id: number): Shell[] {
+  const shell = state.shells.find((one) => one.id === id);
+  if (!shell) return [];
+  return shellsOf(state, shell.owner).filter((one) => one.id !== id);
+}
+
+/**
+ * 「다른 셸 모두 닫기」가 **한 번** 묻는 말(codex-ds 스펙 S8 · 구현 노트 Q11). 묻지 않아도 되면 `null`이다 — 살아 있는 다른 셸
+ * 어느 것도 닫기 전 물음에 걸리지 않을 때(`asksBeforeClose`)다. 끝난 칸 · 못 뜬 칸은 물을 프로세스가 없다.
+ *
+ * **배치 물음이 실패하면(`checks`가 `null`) 묻는다** — 사람이 고른 닫기지만 셸 여럿을 한 번에 닫는 자리라, 모르면 묻는 쪽이
+ * 안전하다. 셸 하나의 답만 빠진 것은 셸 하나의 닫기(`needsCloseConfirm`)처럼 「안 묻는다」로 읽는다. 셀 수는 그 다른 셸 전부이고,
+ * 띄운 프로세스 수는 살아 있는 셸들의 자손 합이다(`spawnedNote` — 모르면 안 붙는다). 모양은 [조용한 셸 모두 닫기](`quietCloseNotice`)다.
+ */
+export function otherCloseNotice(others: ReadonlyArray<Shell>, checks: CloseChecks | null): string | null {
+  const live = others.filter(isAlive);
+  if (checks && !live.some((shell) => asksBeforeClose(checks.get(shell.id) ?? null))) return null;
+  const spawned = checks ? live.reduce((sum, shell) => sum + (checks.get(shell.id)?.descendants ?? 0), 0) : null;
+  return `다른 셸 ${others.length}개를 닫아요${spawnedNote(spawned)}.`;
+}
+
+/**
  * 닫을 조용한 셸이 없을 때 [조용한 셸 모두 닫기]가 세우는 짧은 토스트. 「0개를 닫아요」 창은 물을 것이 없는 물음이고, 아무 일도
  * 안 하면 버튼이 눌렸는지가 안 보인다(티켓 32가 구현에 맡긴 N=0의 모양).
  */
@@ -1495,6 +1546,7 @@ export const NO_QUIET_NOTICE = "닫을 조용한 셸이 없어요";
  * - `ownerless` — 주인 잃은 셸의 [모두 닫기](`closeOwnerless` · 티켓 12). 토스트와 `Processes`의 묶음(티켓 32)이 함께 쓴다.
  * - `quiet` — `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32).
  * - `offscreen` — `Processes`의 화면 밖 셸 [닫기](`closeOffscreenShell` · 티켓 32). 스토어에 칸이 없는 셸이다.
+ * - `others` — 셸 탭 메뉴의 「다른 셸 모두 닫기」(`closeOtherShells` · codex-ds 스펙 S8).
  * - `openFailed` — xterm 열기 실패(`failOpen`).
  * - `spawnRace` — spawn 왕복 중에 닫힌 칸의, 늦게 온 셸.
  */
@@ -1506,6 +1558,7 @@ export type ClosePath =
   | "ownerless"
   | "quiet"
   | "offscreen"
+  | "others"
   | "openFailed"
   | "spawnRace";
 
@@ -1521,7 +1574,8 @@ export type ClosePath =
  * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 [모두 닫기]를 누를 때마다 점이 선다.
  *
  * `Processes`의 닫기 둘(`quiet` · `offscreen` · 티켓 32)도 사람이 누른 닫기라 「셸 닫기」다(프로세스 스펙 S44 · S42). 「화면 밖
- * 셸」은 까닭이 아니다 — 기록은 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다.
+ * 셸」은 까닭이 아니다 — 기록은 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다. 셸 탭 메뉴의 「다른 셸 모두 닫기」(`others`)도
+ * 사람이 고른 닫기라 「셸 닫기」다(codex-ds 스펙 S8).
  */
 export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
   person: "shellClose",
@@ -1531,6 +1585,7 @@ export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
   ownerless: "shellClose",
   quiet: "shellClose",
   offscreen: "shellClose",
+  others: "shellClose",
   openFailed: "shellClose",
   spawnRace: "shellClose",
 };

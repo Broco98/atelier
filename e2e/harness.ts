@@ -28,6 +28,9 @@ const MOCKS_SOURCE = readFileSync(
   "utf8",
 );
 
+/** 클립보드 읽기의 와이어 이름 — `@tauri-apps/plugin-clipboard-manager`의 `readText`가 이것으로 나간다. 글자를 심는 도구도 이 줄을 간다. */
+const CLIPBOARD_READ = "plugin:clipboard-manager|read_text";
+
 /**
  * 와이어 층의 `plugin:*` 커맨드. 대응하는 코어 함수가 없어 L3·L4 모두 하네스가 직접 답한다.
  * 이 문자열은 `src/` 트리에 없다 — 전부 의존성 래퍼 안에 있어 소스에서 긁어낼 수 없고,
@@ -53,6 +56,9 @@ const PLUGINS: Record<string, unknown> = {
   // 독 배지(#206 · 스토리 65). 값은 안 쓰이지만 **답이 있어야 화이트리스트를 안 넘는다** —
   // 실제로 무엇이 실려 나갔는지는 IPC 기록에서 읽는다(`e2e/shell-notify.spec.ts`).
   "plugin:window|set_badge_count": null,
+  // 입력칸 · 터미널 메뉴의 붙여넣기가 클립보드를 읽는 길(codex-ds 스펙 S9 · 티켓 31). 기본 답은 글자 한 줄이고, 붙여넣기를 재는
+  // 시나리오는 제 글자를 심는다(`클립보드를심는다`). L4도 이 답을 받는다 — 진짜 클립보드는 검사가 도는 기계의 것이라 읽지 않는다.
+  [CLIPBOARD_READ]: "클립보드의 글자",
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
@@ -397,6 +403,25 @@ export async function replaceAnswer(page: Page, command: string, answer: unknown
       tables.byName[command] = entry;
     },
     { tablesKey: TABLES_KEY, command, entry },
+  );
+}
+
+/**
+ * **클립보드에 글자를 심는다** — 앱이 다음에 클립보드를 읽을 때(`readText` — 입력칸 · 터미널 메뉴의 붙여넣기, 티켓 31) 받을 답을 간다.
+ * 거절(`ipcFailure`)을 주면 빈 클립보드 · 글자가 아닌 것이다 — 플러그인이 그때 거절한다. 페이지가 뜬 뒤에 부르고, 바꾼 답은 위
+ * `replaceAnswer`처럼 같은 표를 지나 처음 답과 같은 문(거절 · 기록)으로 나간다.
+ *
+ * **따로 선 이유**: `replaceAnswer`는 우리 커맨드(`FIXTURE_COMMANDS`)만 받는다 — 그 이름 검사가 개명된 커맨드를 잡는 그물이라 플러그인
+ * 이름까지 넓히지 않는다. 플러그인 답 가운데 시나리오마다 갈아야 하는 것은 이것 하나다.
+ */
+export async function 클립보드를심는다(page: Page, answer: string | ReturnType<typeof ipcFailure>): Promise<void> {
+  await page.evaluate(
+    ({ tablesKey, command, entry }) => {
+      const tables = (window as unknown as Record<string, FixtureTables | undefined>)[tablesKey];
+      if (!tables) throw new Error("installFixtureBackend를 먼저 깔아야 한다");
+      tables.byName[command] = entry;
+    },
+    { tablesKey: TABLES_KEY, command: CLIPBOARD_READ, entry: entryOf(answer) },
   );
 }
 
@@ -892,6 +917,220 @@ export const HEAD_CARD = 'header [data-slot="head-card"]';
 export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
 
 /**
+ * 그 점을 누르면 **창이 끌리는가** — 그 점의 맨 위 요소에서 조상으로 올라가며 Tauri의 판정(`tauri` 2.11 `window/scripts/drag.js`의
+ * `isDragRegion`)을 그대로 따른다. 점 아래에 요소가 없으면 `null`이다(창 밖).
+ * - 속성 `data-tauri-drag-region`이 맨값이면 **누른 요소 자신**일 때만 끈다 — 조상의 맨값은 자식을 누른 것을 끌지 않는다. 회색 틈을
+ *   드러내는 상자마다 이것을 단다(`Frame` 머리말).
+ * - `deep`이면 그 아래 어디를 눌러도 끈다(머리 카드), `false`면 그 아래를 막는다(고치는 동안의 이름 상자).
+ * - 속성 없이 누를 수 있는 요소(버튼 · 링크 · 입력칸 · `tabindex` · 누르는 역할)를 먼저 만나면 끌지 않는다 — 머리 카드의 버튼 · 포커스
+ *   받는 이름이 `deep` 아래에서도 눌리는 까닭이다.
+ * - HTML 요소가 아닌 것(svg 글리프)은 건너뛴다 — 글리프를 누르면 그것을 품은 상자가 판정한다.
+ *
+ * **여기 사는 이유는 끄는 자리를 재는 spec(`frame` · `rail`)이 한 판정을 쓰려는 것이다** — Tauri가 판정을 바꾸는 날 이 한 곳을 고친다.
+ */
+export const 끄는자리 = (page: Page, x: number, y: number) =>
+  page.evaluate(
+    ([px, py]) => {
+      const target = document.elementFromPoint(px, py);
+      if (!target) return null;
+      const tags = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "LABEL", "SUMMARY"]);
+      const roles = new Set(["button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option"]);
+      const clickable = (el: HTMLElement) =>
+        tags.has(el.tagName) ||
+        (el.hasAttribute("contenteditable") && el.getAttribute("contenteditable") !== "false") ||
+        (el.hasAttribute("tabindex") && el.getAttribute("tabindex") !== "-1") ||
+        roles.has(el.getAttribute("role") ?? "");
+      for (let el: Element | null = target; el; el = el.parentElement) {
+        if (!(el instanceof HTMLElement)) continue;
+        const attr = el.getAttribute("data-tauri-drag-region");
+        if (clickable(el) && attr === null) return false;
+        if (attr === null) continue;
+        if (attr === "false") return false;
+        if (attr === "deep") return true;
+        if (attr === "" || attr === "true") return el === target;
+      }
+      return false;
+    },
+    [x, y],
+  );
+
+/**
+ * 메뉴 카드의 **줄 차례** — 카드에 바로 선 줄을 위에서부터, 항목은 제 글자로 구분선은 「—」로 읽는다. 묶음은 구분선이 가르므로
+ * 항목 순서와 구분선 수를 따로 세면 구분선이 다른 틈으로 옮겨 가도 그대로 통과한다 — 한 목록으로 읽어야 묶음이 재진다. 하위 메뉴
+ * 카드는 제 포털에 서서 부모 카드의 줄에 안 섞인다.
+ *
+ * **여기 사는 이유는 ⋯ 메뉴와 우클릭 메뉴를 같은 잣대로 읽으려는 것이다**(codex-ds 결정 6) — 두 메뉴의 차례를 재는 spec이 둘이다
+ * (`works-floating.spec.ts` · `work-context-menu.spec.ts`).
+ */
+export const 줄차례 = (menu: Locator) =>
+  menu.evaluate((card) =>
+    [...card.children].flatMap((row) => {
+      const role = row.getAttribute("role");
+      if (role === "separator") return ["—"];
+      return role === "menuitem" ? [row.textContent ?? ""] : [];
+    }),
+  );
+
+/**
+ * 메뉴 카드가 **다 떴을 때까지** 기다린다 — 뜨는 동안은 카드가 작게 시작해 커지므로(열림 애니메이션) 그 사이의 상자는 자리가 어긋난다.
+ *
+ * **여기 사는 이유는 카드의 자리를 재는 spec들이 한 기다림을 쓰려는 것이다** — ⋯ · 우클릭 · ⇧F10 메뉴가 선 자리를 재는 spec이 여럿이다
+ * (`edit-menu` · `work-context-menu` · `shell-tab-menu` · `target-menus` · `processes-strays` · `spec-layout-page`).
+ */
+export const 다떴다 = (menu: Locator) =>
+  menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
+
+/**
+ * 주소를 바꾸는 부름(`pushState` · `replaceState`)을 그 차례로 적기 시작한다 — 적힌 것은 `적힌주소`가 읽고, `표를꽂는다`가 그 줄에
+ * 「표」를 끼운다. ⌃클릭이 **아무 데도 안 갔다**를 기다려서 보지 않고(언제까지 기다리나가 없다) 재는 길이다: ⌃클릭 뒤에 표를 꽂고
+ * ⌃ 없는 클릭으로 가게 하면, 적힌 줄의 첫 칸이 그 표일 때 ⌃클릭은 주소를 안 바꿨다.
+ *
+ * **여기 사는 이유는 누르면 가는 대상마다 ⌃클릭의 거름을 같은 길로 재려는 것이다**(codex-ds 결정 7) — work 행 · 띠 줄
+ * (`work-context-menu`)과 프로젝트 · Archive 목록 행 · spec 트리 파일 행(`target-menus`).
+ */
+export const 주소적기 = (page: Page) =>
+  page.evaluate(() => {
+    const log: string[] = [];
+    (window as unknown as { 주소들: string[] }).주소들 = log;
+    for (const method of ["pushState", "replaceState"] as const) {
+      const original = history[method].bind(history);
+      history[method] = (...args: Parameters<History["pushState"]>) => {
+        log.push(String(args[2]));
+        original(...args);
+      };
+    }
+  });
+export const 표를꽂는다 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들.push("표"));
+export const 적힌주소 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들);
+
+/**
+ * 검색 팔레트의 「검색어」 칸. 창 안을 집으려면 그 창을 넘긴다(`검색어칸(dialog)`).
+ *
+ * **여기 사는 이유는 그 칸을 집는 길을 하나로 두려는 것이다** — 팔레트를 여는 spec마다 이 칸을 집는다(`search-palette` ·
+ * `settings-nav` · `shell-focus` · `edit-menu` · `quit-confirm`, 아래 `검색팔레트를연다`).
+ */
+export const 검색어칸 = (scope: Page | Locator) => scope.getByRole("textbox", { name: "검색어", exact: true });
+
+/**
+ * ⌘K로 검색 팔레트를 열고 「검색어」 칸이 포커스를 받기까지 기다린다. **연 뒤에 그 칸의 포커스를 딛고 이어 가는 검사(키를 누른다 ·
+ * 글자를 넣는다 · 그 포커스가 남는지 본다)는 이것으로 연다** — 창은 첫 포커스를 다음 프레임에 옮기고(Base UI), 그 전의 글자 아닌
+ * 키(방향키 · Enter · Esc · ⇧F10)는 첫 프레임 가드가 삼킨다(S24). 줄이 다 섰어도 포커스는 아직일 수 있어서, 부하가 있으면 그 키가
+ * 삼켜져 팔레트가 남는다.
+ *
+ * 이것으로 열지 않는 검사가 있다. ⌘K 바로 뒤의 틈을 재는 검사(`search-palette`의 「셸에서 ⌘K로 연 바로 뒤에 친 글자는 …」)는
+ * 기다리면 그 틈이 지나간다. 연 뒤에 칸을 안 쓰는 검사(마우스로 고르기 · 종료 요청 · 안 열림)는 기다릴 까닭이 없다. 메뉴가 열린
+ * 채 ⌘K를 누르는 검사(`edit-menu`)는 칸에 온 포커스가 재는 것 자체라 제 단언으로 잰다.
+ *
+ * **여기 사는 이유는 ⌘K 뒤의 기다림을 한 벌로 두려는 것이다** — 연 뒤에 칸이 포커스를 쥐어야 하는 spec이 여럿이다
+ * (`search-palette` · `works-recent` · `settings-nav` · `shell-focus` · `edit-menu` · `quit-confirm`, L4 `works-recent.l4`).
+ */
+export async function 검색팔레트를연다(page: Page): Promise<void> {
+  await page.keyboard.press("Meta+k");
+  await expect(검색어칸(page)).toBeFocused();
+}
+
+/**
+ * 버튼 메뉴(⋯ · 상태 메뉴)를 **누른 채 끌어 그 줄 위에서 놓는다** — 놓은 줄이 돌고 카드가 닫혀야 한다. 우클릭 메뉴의 뿌리가 그 버튼
+ * 메뉴의 조상이면 Base UI가 그 밑의 줄을 모두 「우클릭 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음만 받는다 — 왼쪽 버튼으로 끌어 놓으면 메뉴가
+ * 열린 채 아무것도 안 돈다. 이 몸짓이 그 함정(편집 메뉴 · 대상 메뉴가 버튼 메뉴를 감싸는 것)을 잰다.
+ *
+ * **여기 사는 이유는 버튼 메뉴를 품은 자리마다 같은 몸짓으로 재려는 것이다** — Works 머리 카드(`edit-menu`) · Processes 행
+ * (`processes-strays`) · spec 레이아웃 행(`spec-layout-page`).
+ */
+export async function 끌어놓는다(page: Page, button: Locator, row: (menu: Locator) => Locator): Promise<void> {
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await 다떴다(menu);
+  // 누른 뒤 200ms 안의 놓음은 고름으로 치지 않는다(Base UI — 누르고 바로 떼면 메뉴가 열린 채 남는다). 그 뒤에 놓는다.
+  await page.waitForTimeout(250);
+  const at = (await row(menu).boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(menu).toHaveCount(0);
+}
+
+/**
+ * Tab을 눌러 `target`에 포커스가 올 때까지 간다. `최대` 번 안에 못 닿으면 던진다 — 그 자리가 Tab 정류장이 아니다.
+ *
+ * **여기 사는 이유는 「Tab이 닿는가」를 한 몸짓으로 재려는 것이다** — 링을 Tab이 온 길로 재는 `primitives`와 창의 Tab 차례를 재는
+ * `keyboard`가 이것을 쓴다. `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
+ */
+export async function 탭으로(page: Page, target: Locator, 최대 = 120): Promise<void> {
+  await expect(target).toBeVisible();
+  for (let n = 0; n < 최대; n += 1) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  throw new Error(`Tab ${최대}번 안에 닿지 않았다 — ${target}`);
+}
+
+/** 포커스가 선 자리 하나 — 창의 어느 영역인가 · 그 요소의 이름(접근성 이름 · 글자) · 목록의 행이면 그 키(`data-roving`). */
+export interface 포커스자리 {
+  영역: "창 컨트롤" | "사이드바" | "머리 카드" | "머리 줄" | "본문" | "패널" | "레일" | "그 밖";
+  이름: string;
+  행: string | null;
+}
+
+/**
+ * 지금 포커스가 선 자리(`포커스자리`) — 포커스가 없으면(`body`) `null`. 영역은 창의 Tab 차례를 이루는 상자들이다(codex-ds 스펙 §9):
+ * 창 컨트롤(사이드바 토글이 선 줄) · 사이드바(`#app-sidebar`) · 머리 카드 · 머리 줄(카드 밖 — 레일이 설 때의 패널 토글) · 레일 ·
+ * 패널(사이드바가 아닌 `aside`) · 본문(카드).
+ */
+export const 포커스자리 = (page: Page): Promise<포커스자리 | null> =>
+  page.evaluate((headCard) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || el === document.body) return null;
+    const controls = document.querySelector('[aria-label="사이드바 토글"]')?.parentElement;
+    const 영역 = controls?.contains(el)
+      ? "창 컨트롤"
+      : el.closest("#app-sidebar")
+        ? "사이드바"
+        : el.closest(headCard)
+          ? "머리 카드"
+          : el.closest("header")
+            ? "머리 줄"
+            : el.closest('[role="group"][aria-label="레일"]')
+              ? "레일"
+              : el.closest("aside")
+                ? "패널"
+                : el.closest('[data-slot="card"], main')
+                  ? "본문"
+                  : "그 밖";
+    const 이름 = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
+    return { 영역, 이름, 행: el.getAttribute("data-roving") } as const;
+  }, HEAD_CARD);
+
+/**
+ * 포커스를 내려놓고 Tab을 누르며 선 자리를 차례로 적는다 — 첫 자리로 돌아오거나 포커스가 창 밖(`body`)으로 나가면 멈춘다. `최대`
+ * 번 안에 안 끝나면 던진다. `범위`(선택자)를 주면 그 안에 선 자리만 적는다 — 앱 화면 위에 세운 진열대가 그렇다. 창의 Tab 차례
+ * (영역 순서 · 목록마다 정류장 하나)를 재는 `keyboard` spec이 쓴다.
+ */
+export async function 탭차례(page: Page, { 범위, 최대 = 80 }: { 범위?: string; 최대?: number } = {}): Promise<포커스자리[]> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const 자리들: 포커스자리[] = [];
+  let 첫: string | null = null;
+  for (let n = 0; n < 최대; n += 1) {
+    await page.keyboard.press("Tab");
+    const 지금 = await 포커스자리(page);
+    if (지금 === null) return 자리들;
+    const 표 = await page.evaluate((scope) => {
+      const el = document.activeElement as HTMLElement & { __탭표?: string };
+      if (scope !== null && el.closest(scope) === null) return null;
+      el.__탭표 ??= Math.random().toString(36).slice(2);
+      return el.__탭표;
+    }, 범위 ?? null);
+    if (표 === null) continue;
+    if (표 === 첫) return 자리들;
+    첫 ??= 표;
+    자리들.push(지금);
+  }
+  throw new Error(`Tab ${최대}번 안에 한 바퀴를 못 돌았다`);
+}
+
+/**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
  * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
  *
@@ -899,6 +1138,16 @@ export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
  * 한 파일만 고쳐지고, 고쳐지지 않은 쪽의 「툴팁이 없다」(`toHaveCount(0)`)는 헛돌아 초록이 된다.
  */
 export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
+
+/**
+ * 떠 있는 호버 카드 — 사이드바 작업 행의 카드(`SidebarWorkList`)다. 한 번에 하나만 선다.
+ *
+ * **카드만 드는 필드 표(`[data-card-fields]`)를 품은 상자로 좁힌다.** 카드의 상자 표식(`[data-popover]`)은 메뉴 · Select · Popover
+ * 카드도 단다 — 상자 표식으로 세면 「메뉴가 열린 동안 카드가 없다」가 열린 메뉴 카드를 세어 빨개지고, 「카드가 섰다」는 메뉴만 떠도
+ * 초록이 된다. 여기 사는 이유는 `툴팁`과 같다 — 카드의 시간을 재는 spec(`hover-timing` · `works-floating`)이 한 길로 집는다.
+ */
+export const 호버카드 = (page: Page) =>
+  page.locator("[data-popover]").filter({ has: page.locator("[data-card-fields]") });
 
 /**
  * 대비를 재는 **페이지 안** 계산(WCAG 대비비 — 1에서 21). 직렬화되어 페이지로 가므로 모듈의 이름을 못 읽는다.
@@ -1057,6 +1306,16 @@ export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "
   );
 
 /**
+ * 시간 토큰 하나를 ms 수로 — 칠해진 값은 `0.15s` 꼴로 나온다(위 `토큰값`). 시계로 지연을 재는 spec(`hover-timing` · `works-floating`)이
+ * 리터럴 대신 이것을 쓴다 — 리터럴로 적으면 토큰을 고친 날 검사만 옛 길이를 잰다.
+ */
+export async function 토큰시간(page: Page, name: string): Promise<number> {
+  const value = await 토큰값(page, "transition-duration", name);
+  const time = parseFloat(value);
+  return value.endsWith("ms") ? time : time * 1000;
+}
+
+/**
  * 그 안 첫 글자가 선 자리(왼쪽 x · 위 y · 오른쪽 끝) — 비지 않은 첫 글자 마디를 `Range`로 잰다. 요소의 상자는 안쪽 여백을 품어
  * 글자 자리가 아니다. 거터 · 행 글자의 세로줄을 재는 spec(`path-bar` · `spacing`)이 한 판정을 쓴다.
  */
@@ -1076,6 +1335,17 @@ export const 첫글자 = (scope: Locator) =>
 /** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
 export const 칠한값 = (target: Locator, ...properties: string[]) =>
   target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
+
+/**
+ * **대상 테두리** — 포커스 링과 같은 accent 1px 실선이다(`focus-ring`의 `[data-menu-target]`, codex-ds 결정 11). 없으면 `null`. 메뉴가
+ * 열린 동안은 포커스가 카드에 있어 대상은 포커스 링을 안 입는다 — 이 테두리가 곧 「어느 것의 메뉴인가」의 표식이다.
+ *
+ * **여기 사는 이유는 대상 메뉴를 재는 spec들이 한 잣대로 읽으려는 것이다** — 테두리의 모양(결정 11)이 바뀌는 날 이 한 곳을 고친다.
+ */
+export const 테두리 = async (target: Locator) => {
+  const [굵기, 모양, 색] = await 칠한값(target, "outline-width", "outline-style", "outline-color");
+  return 모양 === "none" ? null : `${굵기} ${모양} ${색}`;
+};
 
 /**
  * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를

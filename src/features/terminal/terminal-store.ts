@@ -53,6 +53,8 @@ import {
   NO_SHELLS,
   openCodeTab,
   openShell,
+  otherCloseNotice,
+  otherShellsOf,
   ownerlessCloseNotice,
   ownerlessOf,
   NO_QUIET_NOTICE,
@@ -62,6 +64,7 @@ import {
   removeShell,
   runningOfId,
   setAttention,
+  setLabel,
   setRunning,
   setShellKey,
   setShellName,
@@ -535,12 +538,12 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
  *
  * **밖으로 내보내지 않는다**(결정 92). ⌘W와 `×`는 확인을 거치는 `requestCloseShell`만
  * 볼 수 있어야 한다 — 「두 길이 같은 판정을 쓴다」를 주석으로 부탁하는 대신, 확인을
- * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 여섯이다 — 아카이빙의
+ * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 일곱이다 — 아카이빙의
  * 회수(`closeShellsOf`)에는 사람이 이미 한 번 확인했고, 안 쓴 자동 셸의 회수(`closeUnusedShells`)에는
  * 물을 것이 없다(입력이 없으면 자손은 모두 셸 도우미다 — 프로세스 스펙 P1). MCP로 아카이브된 work의
  * 조용한 셸(`settleOwners`)에도 물을 것이 없고(명령도 사람이 띄운 자손도 없다), 주인 잃은 셸의
- * [모두 닫기](`closeOwnerless`)와 `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32)는 셸마다가 아니라
- * **한 번** 물었다(티켓 12 · 프로세스 스펙 S44).
+ * [모두 닫기](`closeOwnerless`), `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32), 셸 탭 메뉴의 「다른 셸 모두
+ * 닫기」(`closeOtherShells` · codex-ds 스펙 S8)는 셸마다가 아니라 **한 번** 물었다(티켓 12 · 프로세스 스펙 S44).
  *
  * 부르는 쪽은 **닫는 자리**(`path`)를 말한다 — 까닭은 그 자리로 표가 고른다(`CLOSE_REASONS` · 티켓 11).
  */
@@ -569,6 +572,79 @@ export async function requestCloseShell(id: number): Promise<void> {
   const shell = terminalStore.state.shells.find((one) => one.id === id);
   if (!(await confirmClose(shell, await fetchCloseCheck(id), shellCloseDialog))) return;
   closeShell(id, "person");
+}
+
+/**
+ * 셸 탭에서 사람이 붙인 이름(codex-ds 스펙 S7). **메모리에만 산다** — 저장도 IPC도 없다. 비우면 붙인 이름을 지워 타이틀 · 셸
+ * 이름으로 돌아간다(`setLabel`).
+ */
+export function renameShell(id: number, name: string): void {
+  terminalStore.setState((state) => setLabel(state, id, name));
+}
+
+/**
+ * 셸 탭 메뉴의 「다른 셸 모두 닫기」(codex-ds 스펙 S8 · 구현 노트 Q11) — 그 셸과 같은 화면의 다른 칸을 모두 닫는다(끝난 · 못 뜬
+ * 칸까지 — `otherShellsOf`). 살아 있는 칸은 배치 물음 **한 번**으로 보고, 하나라도 닫기 전 물음에 걸리거나 물음이 실패하면 수로
+ * **한 번** 묻는다(`otherCloseNotice` — 모양은 [조용한 셸 모두 닫기]다). 사람이 고른 닫기라 까닭은 「셸 닫기」다.
+ *
+ * **창에 답한 뒤 다시 본다**: 묻는 동안 사라진 칸은 건너뛴다. 그 사이 새로 연 칸은 안 넣는다 — 창의 N보다 많이 닫지 않는다.
+ */
+export async function closeOtherShells(id: number): Promise<void> {
+  const others = otherShellsOf(terminalStore.state, id);
+  if (others.length === 0) return;
+  const live = others.filter((shell) => isLiveShellOf(terminalStore.state, shell.id));
+  const checks = live.length === 0 ? new Map() : await fetchCloseChecks(live.map((shell) => shell.id));
+  const body = otherCloseNotice(others, checks);
+  if (body !== null && !(await askDialog({ title: "다른 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
+  for (const shell of others) {
+    if (terminalStore.state.shells.some((one) => one.id === shell.id)) closeShell(shell.id, "others");
+  }
+}
+
+/**
+ * 터미널 메뉴가 그 셸에 하는 것(codex-ds 스펙 S9 · `EditMenu`). 셸 닫기는 여기 없다 — ⌘W · `×`와 같은 `requestCloseShell`이다.
+ *
+ * `selection`은 **메뉴를 연 순간의** 고른 글자다. 우클릭은 xterm이 먼저 받아(제 `contextmenu` 리스너) macOS에서는 누른 낱말을
+ * 고르고, 고름 안을 누르면 고름을 그대로 둔다 — 그 뒤에 읽으므로 사람이 화면에서 보는 고름과 같다.
+ */
+export interface ShellEdit {
+  /** 레지스트리의 셸 id — 셸 닫기가 이것으로 `requestCloseShell`을 부른다. */
+  id: number;
+  selection: string;
+  /** xterm의 숨은 입력칸 — 메뉴가 닫히면 포커스가 여기로 돌아온다. */
+  input: HTMLElement | null;
+  selectAll(): void;
+  /** 화면 지우기 — 커서가 선 줄(프롬프트)만 남기고 화면과 스크롤백을 지운다(xterm `clear`). */
+  clear(): void;
+  /**
+   * 클립보드에서 읽은 글자를 셸에 붙인다 — xterm의 붙여넣기 길이다(줄 바꿈이 Enter가 되고, 셸이 켰으면 bracketed paste로
+   * 싼다). 그 바이트는 `onData` 하나를 지나 나가고, 사람 입력으로 적는다(프로세스 스펙 S16 — ⌘V의 붙여넣기와 같다).
+   */
+  paste(text: string): void;
+}
+
+/** 그 요소가 든 셸 — 붙어 있는 셸의 집 안이면 그 셸의 편집 손잡이를, 아니면 `null`을 돌려준다. */
+export function shellEditAt(element: Element): ShellEdit | null {
+  const instance = [...instances.values()].find((one) => isAttached(one) && one.wrapper.contains(element));
+  if (!instance) return null;
+  const { term } = instance;
+  return {
+    id: instance.id,
+    selection: term.getSelection(),
+    input: term.textarea ?? null,
+    // 메뉴가 떠 있는 사이에 셸이 닫힐 수 있다 — 닫힌 셸의 Terminal은 dispose돼 부르면 던진다(`closed`).
+    selectAll: () => {
+      if (!instance.closed) term.selectAll();
+    },
+    clear: () => {
+      if (!instance.closed) term.clear();
+    },
+    paste: (text) => {
+      if (instance.closed) return;
+      noteInput(instance, { kind: "paste" });
+      term.paste(text);
+    },
+  };
 }
 
 /**

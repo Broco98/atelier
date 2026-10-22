@@ -64,10 +64,10 @@ test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
 test("한 줄 툴팁은 12/18 글자에 높이 26px이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${PROJECTS[0].slug}`);
-  // 프로젝트 제목 버튼의 도움말 「클릭해서 편집」 — 포커스로 띄운다.
-  await page.getByRole("heading", { level: 1 }).getByRole("button", { name: PROJECTS[0].name, exact: true }).focus();
+  // 기준 브랜치 셀렉트 칩의 도움말 「브랜치 목록에서 변경」 — 포커스로 띄운다.
+  await page.getByRole("combobox", { name: "기준 브랜치" }).focus();
   const tooltip = 툴팁(page);
-  await expect(tooltip).toHaveText("클릭해서 편집");
+  await expect(tooltip).toHaveText("브랜치 목록에서 변경");
 
   expect(await 글자(tooltip)).toEqual({ size: "12px", line: "18px", weight: "500", tracking: "0.3px" });
   expect(await tooltip.evaluate((el) => (el as HTMLElement).offsetHeight)).toBe(26);
