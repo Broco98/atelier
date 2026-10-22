@@ -303,6 +303,26 @@
     --transition-duration-tip: var(--duration-tip);
     --transition-duration-peek-close: var(--duration-peek-close);
     --transition-duration-panel: var(--duration-panel);
+    /* **메뉴 카드의 들고남**(`animate-menu-enter` · `animate-menu-exit`, DS 「움직임」의 메뉴 값). tw-animate의 `animate-in` ·
+       `animate-out`을 쓰지 않는다 — 그 키프레임(`enter` · `exit`)은 늘 `filter: blur(…)`도 움직이고, 그것이 `ease-enter-snappy`
+       곡선과 만나면 리눅스 WebKit(CI의 L3 WebKitGTK)의 웹 프로세스가 죽는다. 그래서 불투명도 · 크기만 움직이는 키프레임을 따로
+       둔다. 뜰 때는 30ms 지연 동안 첫 장면(투명 · 0.98)에 머물고(`backwards`), 닫힐 때는 사라진 장면을 붙들지 않는다. */
+    --animate-menu-enter: menu-enter var(--duration-dropdown) var(--ease-enter-snappy) 30ms backwards;
+    --animate-menu-exit: menu-exit var(--duration-basic) var(--ease-exit);
+}
+
+@keyframes menu-enter {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+}
+
+@keyframes menu-exit {
+    to {
+        opacity: 0;
+        transform: scale(0.98);
+    }
 }
 
 /* **글자 단계 — DS 단계뿐이다**(codex-ds 결정 27 · 티켓 03). 이름과 값은 DS 「Atelier」 2판 `type.groups` 그대로이고, 단계마다
@@ -1254,7 +1274,7 @@ body.dragging-row * {
 
     /* **shadcn 부품의 움직임도 여기 한 곳에서 끈다**(결정 7) — 부품 파일마다 적으면 부품이 늘
        때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 모두 `data-open`·
-       `data-closed`에서 `animate-in`·`animate-out` 키프레임으로 움직이고, 그 요소에는 늘
+       `data-closed`에서 `animate-in`·`animate-out`(메뉴 카드는 `animate-menu-*`) 키프레임으로 움직이고, 그 요소에는 늘
        `data-slot`이 있다. 이 규칙은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
        상관없이 이긴다. 애니메이션이 없으면 Base UI는 곧바로 언마운트한다 — 닫힘이 멈추지 않는다.
        Spinner의 호(`animate-spin`)도 걸리지만 동작 줄이기면 호가 숨으므로 해가 없다. */
