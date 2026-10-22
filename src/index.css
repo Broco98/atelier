@@ -52,50 +52,62 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 앱 셸의 길이 — 타이틀바 띠의 높이, 행의 리듬, ui-refresh 때의 여백.
+/* 앱 셸의 길이 — 머리 줄의 높이, DS 간격 토큰, 카드 머리 · 넓은 화면의 폭.
 
-   **폭(사이드바 · 목록 패널 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
-   거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 280, 240, 400)`, 목록 패널은 Projects ·
-   Archive의 360, 작업 패널은 `panel-layout.ts`의 `WORK_PANEL_WIDTH` 330), 상자마다 제 폭을 인라인 변수로 싣는다. 이 블록에는
+   **폭(사이드바 · 목록 칸 · 작업 패널)의 정본은 아직 `useResizableWidth`를 부르는 자리들이다** — 기본 · 최소 · 최대를
+   거기서 적고(사이드바는 `Sidebar.tsx`의 `useResizableWidth("sidebar-width", 290, 240, 400)`, 목록 칸은 Projects ·
+   Archive의 264(240–560), 작업 패널은 `panel-layout.ts`의 `WORK_PANEL_WIDTH` 340), 상자마다 제 폭을 인라인으로 싣는다. 이 블록에는
    폭이 없다 — 한때 있던 `--sidebar-width: 248px`은 늘 인라인에 덮여 아무 데서도 읽히지 않았다.
-   아래 `@theme static`에 선언된 DS 폭(`--size-sidebar` 290 · `--size-list` 264 · `--size-panel` 340)은 **선언만 있고 읽는 곳이
-   없다** — 기본값을 그 DS 값으로 옮기는 것은 codex-ds 스펙 S4(티켓 18 · 19 · 20)다. 그때까지 두 벌의 값이 다르고, 화면에 서는
-   것은 인라인 값이다. */
+   아래 `@theme static`에 선언된 DS 폭(`--size-sidebar` 290 · `--size-list` 264 · `--size-panel` 340)은 **선언만 있고 앱이 읽지
+   않는다** — 기본값을 그 DS 값으로 옮기는 것이 codex-ds 스펙 S4다. 셋 다 옮겨 같은 수(290 · 264 · 340)이고(e2e `works-sidebar`가
+   사이드바를, `frame`이 목록 칸과 작업 패널을 이 토큰과 맞댄다), 화면에 서는 것은 인라인 값이다. */
 :root {
-    --titlebar-height: 44px;
-    /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 패널 둘이 전부 이
-       값을 읽는다. 한때 여덟 자리에 `gap-[3px]`로 흩어져 있었고, 그러면 한 곳만 손봐도
-       같은 컬럼 안에서 리듬이 갈린다. `gap-(--row-gap)`으로 받는다. */
-    --row-gap: 2px;
+    /* **머리 줄** — 창 맨 위 48 줄(codex-ds 스펙 §4 · DS `AppShell`). 틈 8 · 머리 카드 32(`--size-head`) · 틈 8이라 그 가운데
+       24가 창 컨트롤 · 패널 토글 · 신호등의 가운데 줄이다(`ShellControls` · `tauri.conf.json`의 `trafficLightPosition`).
+       신호등은 y 26이다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
+       tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 값이다(2026-10-11 — y 24면 가운데가
+       22다). 이 값을 고치면 y도 함께 고친다.
+       식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
+       읽는다. 사이드바 맨 위 빈 신호등 자리도 이 값이다(`Sidebar`). 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
+    --titlebar-height: 48px;
 
-    /* 행 머리의 글리프 뒤 여백 — 아이콘·화살표가 앉는 상자와 그 옆 글자 사이. */
-    --glyph-gap: 9px;
+    /* **간격** — DS 2판 `tokens.json`의 `space-*` 그대로다(4px 눈금 — Tailwind `--spacing`의 그 칸과 같은 값이다,
+       `spacing-guard.test.ts`가 맞댄다). 화면은 세 줄에 맞춘다(codex-ds 스펙 §4 「여백」 · DS README 「간격 · 반경 · 크기」):
+         틈 8       `space-2` — 창 끝 · 카드 사이 · 카드 끝에서 행까지
+         행 글자 16  `space-4` — 틈 8 + 행 안쪽 8. 사이드바 행 · 소제목 · 카드 머리 제목 · 탭 아이콘 · 찾기 아이콘 · 셸 화면
+         글 거터 20  `space-5` — 문서 · 설정 글의 옆. 글은 위 24(`space-6`)에서 시작한다
+       **유틸리티는 눈금으로 적는다**(`p-2` · `px-5` · `pt-6`) — 이 이름은 `@theme`이 아니라 `:root`에 선언해 유틸리티를 내지
+       않는다. Tailwind 4.3.3에서 `--space-*`는 `space-x-*` · `space-y-*`의 테마 이름공간이라, `@theme`에 올리면 `space-x-2` 같은
+       유틸리티가 이 값으로 선다 — 테마에 간격 이름이 오르는 것은 `spacing-guard.test.ts`가 막는다. 이 변수를 읽는 것은 CSS
+       변수가 있어야 하는 자리뿐이다: 틈(`--space-2`)을 더하는 폭 셈(`Frame`의 작업 패널 칸 · 분할 · 옆 칸,
+       `useResizableWidth`의 그린 폭과 손잡이 자리)과 머리 줄의 왼쪽 여백(아래 `--titlebar-inset-head`), 그리고 길이를 토큰에서
+       읽어 맞대는 e2e다. 나머지는 선언만 있다(DS 이름을 통째로 선언한다 — 스펙 S2와 같은 손버릇).
+       식으로 적지 않는다 — 위 `--titlebar-height`와 같은 까닭이다. ui-refresh 때의 이름(`--gap` · `--card-pad` · `--term-inset` ·
+       `--row-gap` · `--glyph-gap`)은 걷었다(codex-ds 티켓 25) — 그 값은 이제 DS 값이다(카드 안 24 → 글 거터 20 · 위 24, 터미널 12 →
+       DS `Terminal` 16, 행 사이 2 → 사이드바 · 목록 2 · 트리 1, 글리프 뒤 9 → 행 9 · 알림 띠 줄 10). */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-11: 44px;
 
-    /* **ui-refresh 때의 여백** — 4px 격자(ui-refresh 결정 12). 이름은 그때의 DS(1판 `base.css`의 `:where(:root)`)
-       것이고, codex-ds DS 2판에는 이 이름들이 없다 — 2판의 길이는 아래 `@theme static`의 `--size-*`다. 값이 2판과 갈리는
-       것이 있다: 카드 머리 `--card-head` 48은 2판 `--size-toolbar` 46과 다르고(46으로 옮기는 것은 티켓 12), 글 폭
-       `--measure-read` 760은 스펙 2절 「크기」가 `--size-thread`(48rem)로 바꿔 걷는다(문서 글 폭은 티켓 15). `--gap` · `--card-pad` · `--term-inset`을 `space-*`로
-       옮겨 걷는 것은 티켓 25다. `--rail` 32는 2판의 패널 칸 줄 `--size-prail`과 같은 값이다.
-         --gap           창 가장자리 · 카드 사이의 틈
-         --rail          레일 폭
-         --card-pad      카드 안 좌우
-         --card-head     카드 머리 높이
-         --measure-read  읽는 글(문서 · 설정)의 폭 상한
-         --measure-wide  넓은 화면의 폭 상한
-         --term-inset    터미널 카드의 안쪽 여백 — 둥근 모서리에 글자가 닿지 않게 */
-    --gap: 8px;
-    --rail: 32px;
-    --card-pad: 24px;
-    --card-head: 48px;
-    --measure-read: 760px;
+    /* 카드 머리 높이 — DS 2판 `--size-toolbar`(46)를 읽는다. 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
+       넓은 화면의 폭 상한 `--measure-wide`(1120 — Processes · 넓게 보는 문서)는 ui-refresh 때의 값을 잇는다(Codex가 말하지 않는다).
+       읽는 글의 폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(`SpecViewer`의 `bodyColumn`) · 프로젝트 상세(`ProjectDetail`) · 설정
+       틀과 편집기의 폼(`SettingsBody`)이 모두 2판의 `--size-thread`(48rem)를 읽는다. 레일 폭도 여기 없다 — 레일 열과 (레일이 설 때)
+       머리 줄의 패널 토글 자리가 2판의 줄 폭 `--size-prail`을 읽는다. */
+    --card-head: var(--size-toolbar);
     --measure-wide: 1120px;
-    --term-inset: 12px;
 }
 
-/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 바탕 줄(`Frame`의 `TitleBar`) 하나가 --tab-lead /
-   --titlebar-inset-tabs를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리는 바탕 줄 아래에 서서 피할 것이 없다.
-   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고,
-   그 뒤 --tab-lead를 띄운 곳부터 탭 줄이 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
+/* 머리 줄 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 머리 줄(`Frame`의 `HeadRow`) 하나가 사이드바가 접혔을 때
+   --titlebar-inset-head를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리(탭 줄도)는 머리 줄 아래에 서서 피할 것이 없다.
+   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고, 사이드바가 접히면 그 뒤
+   틈(`--space-2`) 하나를 띄운 곳부터 머리 카드가 선다(DS 「머리 카드는 창 컨트롤 뒤부터」 · `.at-winhead.free`). 사이드바가
+   열렸으면 컨트롤은 사이드바 위에 서서 머리 줄이 피할 것이 없다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
@@ -105,32 +117,27 @@
     /* 작은 아이콘 버튼(`icon-button-xs` — 24) 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
        여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
     --titlebar-control-size: 24px;
-    /* 셸 컨트롤 사이 간격이자, 그 오른쪽에 이어지는 탭 줄 첫 칸까지의 간격(--tab-lead).
-       24px 상자에 16px 글리프라 좌우 4px씩이 이미 비어 있어, 여기 값이 작으면 글리프끼리
-       붙어 보인다 */
-    --titlebar-control-gap: 6px;
+    /* 셸 컨트롤 사이 — Codex 값 2다(codex-ds 스펙 §4 · DS `.at-winctl`). 24px 상자에 15px 글리프(스펙 §3 · DS `AppShell`의
+       `s15`)라 좌우 4.5px씩이 이미 비어 있어, 글리프 사이는 11이다. 한때 6이었다(그때는 작업 화면의 조작 · 창 맨 위 줄 왼쪽
+       여백과 한 값이었다 — 조작은 이제 머리 카드의 할 일이고 그 사이는 DS `.at-winctl-r`의 6이다). */
+    --titlebar-control-gap: 2px;
     /* 사이드바 토글 · 뒤로 · 앞으로 · 검색 네 칸. ShellControls가 이 폭을 그대로 쓰므로
        칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다.
        **칸 사이는 한 값뿐이다** — 검색을 「지나온 길」과 무리로 가르려고 이 식에 넓은 틈을
-       하나 더 두지 않는다. 그러면 이 폭 뒤에 --titlebar-control-gap으로 이어 붙는 탭 줄
-       첫 칸(결정 24)보다 행 안쪽이 더 벌어져, 마지막 칸이 오른쪽 줄에 붙어 보인다
-       (ShellControls의 검색 버튼 주석) */
+       하나 더 두지 않는다. 24px 넷뿐인 줄에서 무리를 가르는 틈은 「묶였다」가 아니라 「하나가
+       떨어졌다」로 보인다(ShellControls의 검색 버튼 주석) */
     --titlebar-controls-width: calc(
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
-    /* **탭 줄이 왼쪽의 것과 벌어지는 거리 — 한 값이다**(결정 24).
-       사이드바가 열렸으면 그 경계선에서, 접혔으면 셸 컨트롤에서 재는데 **두 경우가 같은 값을
-       쓴다.** 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직이고, 화면으로는
-       「접으면 왜 더 멀어지지」로만 보인다.
-
-       값이 --titlebar-control-gap인 것은 이 줄의 첫 칸이 **글자가 아니기 때문이다** — 결정 10이
-       제목을 빼면서 그 자리에 알약(`spec`)이나 버튼(`+`)이 섰고, 그것들은 제 상자에 여백을 이미
-       갖고 있다. 글자 머리(옛 브레드크럼)가 쓰던 12px 띄움을 그대로 쓰면 그만큼 더 벌어져 첫 칸만
-       혼자 떨어져 보인다. */
-    --tab-lead: var(--titlebar-control-gap);
-    /* 사이드바가 접혔을 때 — 위 거리를 셸 컨트롤 끝에서 잰 값이다. */
-    --titlebar-inset-tabs: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--tab-lead)
+    /* 셸 컨트롤의 위 — 머리 줄의 가운데에 컨트롤을 세운다((48 − 24) / 2 = 12). 머리 줄의 높이나 컨트롤의 크기가 바뀌어도 가운데다 —
+       같은 가운데 줄에 머리 카드 · 패널 토글 · 신호등이 선다(위 `--titlebar-height`). */
+    --titlebar-controls-top: calc((var(--titlebar-height) - var(--titlebar-control-size)) / 2);
+    /* **사이드바가 접혔을 때 머리 줄의 왼쪽 여백** — 셸 컨트롤 끝에서 틈 하나(`--space-2`)를 띄운다. 머리 카드가 신호등 ·
+       셸 컨트롤 밑으로 들어가지 않는 경계다(셸 컨트롤은 `absolute` · `z-20`이라 겹치면 머리 카드를 덮는다). 사이드바가
+       열렸으면 머리 줄의 왼쪽 여백은 0이다 — 머리 카드가 본문 카드와 한 세로줄(사이드바 뒤)에서 시작한다.
+       한때 이 자리에 `--tab-lead`(탭 줄이 이 줄에 서던 때의 첫 칸 거리)가 있었다 — 탭 줄은 본문 카드 머리로 내려갔다. */
+    --titlebar-inset-head: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--space-2)
     );
 }
 
@@ -288,8 +295,9 @@
     --shadow-2xl: var(--shadow-2xl);
     /* **DS가 두 그림자를 겹치는 자리** — 한 토큰으로 합친다. Tailwind는 `shadow-*` 둘을 한 요소에 겹치지 못하고(`--tw-shadow`가
        하나다) 클래스 합치기(`cn`)도 앞의 것을 지운다. 이름은 Atelier가 붙였고 값은 DS의 두 토큰 그대로다 — 다크도 두 토큰이 든다.
-         modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`)
-         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`) */
+         modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`), 「LLM이 받는
+                                        텍스트」 창(같은 DS `Dialog`)과 검색 팔레트(DS `.at-palette`)
+         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`)와 사이드바의 알림 띠(DS `.at-band`) */
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
     /* **Codex 시간의 유틸리티**(`duration-basic` · `duration-panel` …). 값은 아래 `@theme static`의 `--duration-*`이다 —
@@ -437,16 +445,19 @@
    이름(`xs` … `4xl`)은 Codex 값으로 덮이고(`xs`는 Tailwind의 2px가 아니라 Codex의 4px다), Tailwind에만 있는 이름은 남지 않아
    반경 이름공간이 아래 목록과 같다.
    `static`이라 쓰는 유틸리티가 없어도 `:root`에 변수가 선다 — 검사가 이름으로 읽는다(`e2e/frame.spec.ts`).
-     xs         4     문서 안 링크의 포커스 링
-     sm         6     문서 안 인라인 코드 · 트리의 확장자 꼬리표
+     2xs        2     문서 인용의 왼쪽 막대 · Processes의 메모리 막대
+     xs         4     문서 안 링크의 포커스 링 · 문서 안 인라인 코드
+     sm         6     상태 배지 · 트리의 확장자 꼬리표 · Processes의 포트 칩
      md         8     입력칸 · 툴팁 · 작은 아이콘 버튼(24 · 26) · 작은 버튼(`Button` xs) · 세그먼트 칸 · kbd · 툴바 칸
      lg        10     버튼(32) · 아이콘 버튼(28) · 검색칸 · 탭 · 목록 행 · 메뉴 행 · Select
-     2xl       16     카드 · 카드 안 묶음 · 떠 있는 것(메뉴 · 창 · 토스트)
-     4xl       24     확인 창
-     full    9999     큰 버튼(`Button` lg — 36) · 상태 배지 · 칩 · 스위치 · 꼬리표 · 경로 줄
-   나머지(`2xs` 2 · `xl` 12 · `3xl` 20 · `bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 ·
-   확인 창은 DS 「간격 · 반경 · 크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는
-   자리의 일이다.
+     xl        12     머리 카드 · 문서의 콜아웃 · Processes의 요약 타일 · Projects 상세의 묶음(DS `List`) · 설명 상자 · 설정 묶음
+                      (DS `SettingsGroup` — spec 레이아웃 편집기의 폼도)
+     2xl       16     카드 · 카드 안 묶음(문서의 표) · 떠 있는 것(메뉴 · 팔레트 · 전체화면 뷰어 · 토스트)
+     3xl       20     코드 블록(문서 · mermaid · 에이전트 훅 설정의 미리보기)
+     4xl       24     확인 창 · 가운데 창(이름 바꾸기) · 「LLM이 받는 텍스트」 창(DS `Dialog`)
+     full    9999     큰 버튼(`Button` lg — 36) · 점 · 칩 · 스위치 · 꼬리표 · 경로 줄
+   나머지(`bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 · 확인 창은 DS 「간격 · 반경 ·
+   크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는 자리의 일이다.
    `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
    이 이름들을 모서리로 아는지도 같은 검사가 잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로
    옮기기 전의 기록이다 — 머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
@@ -499,7 +510,7 @@
     --default-transition-timing-function: var(--ease-default);
     /* 패널이 열리고 닫힐 때 쓰는 곡선(Atelier — 지금 앱의 곡선을 이었다). 출발이 빠르고 끝에서 감속한다 —
        ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다.
-       접히는 패널 셋(사이드바·목록 패널 둘·작업 패널)의 폭 트랜지션이 같은 곡선을 써야
+       폭이 움직이는 칸(사이드바·작업 패널·목록 칸 둘)의 폭 트랜지션이 같은 곡선을 써야
        한 화면에서 따로 논다는 인상이 없다. 읽는 길은 유틸리티 `ease-panel` 하나다 — 작업 패널이
        키프레임 애니메이션을 쓰던 시절에는 변수를 직접 읽는 길이 하나 더 있었는데,
        그 패널도 폭 접기로 옮기면서 사라졌다.
@@ -514,9 +525,14 @@
     --ease-panel: cubic-bezier(0.2, 0, 0, 1);
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
-       `--size-menu-ctx`)과 아이콘 버튼(`icon-button`의 `--size-control`)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
-       그것을 읽는 틀 · 화면은 PR ②의 티켓들이 세우고, 폭 셋(사이드바 · 목록 칸 · 작업 패널)의 기본값은 S4가 옮긴다. 그때까지
-       화면의 폭은 인라인 값이다(위 `:root`의 길이 머리말). */
+       `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
+       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`, 분할 끌기 겹판의 위끝), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄과
+       목록 머리의 높이(`--size-pathbar` — `PathBar` · `ListHead`), 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn` ·
+       `ProjectDetail` · 설정 틀의 `SettingsBody`와 그 열에 서는 편집기 배너 · spec 레이아웃 메시지), 사이드바 행의 높이
+       (`--size-row-nav` — `SidebarItem` · work 행), 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)와 레일의 줄 폭
+       (`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
+       폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
+       `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다. */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -566,24 +582,23 @@
        `fill-hover`(8%) · `fill-active`(12%). **앱이 적는 상태 배경은 이 이름으로 적는다.** Codex에 12% 위 단이 없어 켜진
        버튼의 hover가 켜짐과 같은 면이다.
        이 부등식은 깨지면 안 된다:
-         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록
+         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록 · 트리
+         행 hover(`fill-soft`)    < 행 선택(`fill-hover`) = 선택된 행 hover      — 바탕에 붙은 사이드바
+         탭 hover(`fill-soft`)    < 켜진 탭(`fill-hover`, `tab-on`) = 켜진 탭 hover — 카드 머리의 탭 줄
          버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
-       **행 선택은 면 알파 밖의 불투명한 `fill-selected`(#eff0f0)다**(`selected-row`). 선택된 행은
-       hover해도 그 색 그대로다(DS `.at-row.is-on:hover`). 흰 카드 안 목록에서는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택(#eff0f0)으로
-       갈린다. **바탕(`surface-shell`) 위의 사이드바에서는 행 줄의 부등식이 뒤집힌다** — hover(회색 위 5% ≈ #ebebeb)가 선택보다
-       짙다. 행 줄의 부등식이 깨지는 자리는 거기 하나다.
+       **행 선택의 면은 행이 놓인 면이 고른다**(`selected-row`). 흰 카드 안 목록 · 트리에서는 면 알파 밖의 불투명한
+       `fill-selected`(#eff0f0, DS `.at-tree-row.is-on`)라 hover(흰 면 위 5% ≈ #f4f4f4) < 선택(#eff0f0)으로 갈리고, 바탕(`surface-shell`)에
+       붙은 사이드바에서는 `fill-hover`다(DS `.at-row.is-on` · codex-ds 스펙 §5) — 회색 위에서는 불투명한 `fill-selected`가 hover(회색
+       위 5% ≈ #ebebeb)보다 옅어 부등식이 뒤집힌다. 선택된 행은 어디서나 hover해도 그 면 그대로다.
        **유틸리티 `accent`로 상태 배경을 칠하지 않는다** — shadcn은 그 이름에 옅은 면을 걸었지만 Codex에서는 같은 이름이
        파랑이고(`@theme inline`의 Codex 색 머리말), 그 이름은 행 hover인지 버튼 hover인지도 말하지 않는다. 메뉴 · Select의 켜진
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
        뒤의 `bg-accent`를 0건으로 고정한다.
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
-         `fill-selected`     행 선택(`selected-row`, 위) · 흰 캡슐 안의 켜진 칸 — 원문 전환 알약의 칩
-                             (`segment-group` `pill`, ui-refresh 결정 7의 B)과 레일의 켜진 칸(`Rail`, ui-refresh
-                             결정 10)이 사이드바의 고른 행과 같은 면이다
-         `surface`(흰 면)    바탕(`surface-shell`) 위에서 고른 것 — 바탕 줄의 켜진 탭(`tab-on`, ui-refresh 결정 18)과
-                             열린 패널 토글(`Rail`, ui-refresh 결정 9 · DS `.at-rail-toggle`)이다
-       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 바탕 위 버튼(탭 줄의 `+` · 패널
-       토글)의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
+         `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, codex-ds 결정 29)이 패널
+                             트리의 고른 행과 같은 면이다
+       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널
+       토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
     --fill-soft: rgba(26, 28, 31, 0.05);
     --fill-hover: rgba(26, 28, 31, 0.08);
     --fill-active: rgba(26, 28, 31, 0.12);
@@ -939,14 +954,14 @@
     --input: var(--border-heavy);
     --ring: var(--accent);
     /* 사이드바는 창 바탕에 붙는다(DS 원칙 6) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)가 아니라 `surface-shell`이다.
-       고른 행의 `--sidebar-accent`는 불투명한 `fill-selected`다. 사이드바 자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) ·
-       work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라 Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를
-       읽는 자리는 없다. */
+       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-hover`다(아래 `selected-row`). 사이드바
+       자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) · work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라
+       Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를 읽는 자리는 없다. */
     --sidebar: var(--surface-shell);
     --sidebar-foreground: var(--fg);
     --sidebar-primary: var(--accent);
     --sidebar-primary-foreground: var(--fg-inverse);
-    --sidebar-accent: var(--fill-selected);
+    --sidebar-accent: var(--fill-hover);
     --sidebar-accent-foreground: var(--fg);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
@@ -968,9 +983,12 @@
 
 /* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
-   배경은 불투명한 `fill-selected`(#eff0f0)이고 **hover해도 같은 색이다**(ui-refresh 결정 11 · 30 — DS
-   `.at-row.is-on:hover`). 바탕 위의 사이드바에서는 옆 행의 hover보다 옅다 — 그 까닭은 `:root`의 상태 농도
-   부등식 주석에 있다. 흰 카드 안 목록에서는 hover보다 짙다.
+   배경은 **행이 놓인 면이 고르고, 어디서나 hover해도 같은 색이다**(ui-refresh 결정 11 · 30):
+     흰 카드 안 목록 · 트리   불투명한 `fill-selected`(#eff0f0, DS `.at-tree-row.is-on`)
+     사이드바(`data-sidebar`)  `fill-hover`(DS `.at-row.is-on` · codex-ds 스펙 §5) — 바탕에 붙어 있어 불투명한 면이 옆 행의
+                               hover(`fill-soft`)보다 옅게 읽힌다. 그 부등식은 `:root`의 상태 농도 주석에 있다.
+   갈래를 호출부 클래스로 덮지 않고 여기서 가르는 것은 배경 유틸리티 두 벌의 승자를 정렬 순서가 정하기 때문이다 — 사이드바 행
+   셋(nav · 설정 nav · work 행)이 이 클래스 이름을 그대로 단다(e2e `settings-nav` · `works-sidebar`가 그 이름으로 집는다).
    선택되지 않은 행의 hover는 호출부가 hover:bg-fill-soft로 붙인다 (두 hover가 같은 자리에서
    충돌하지 않도록 분기 안에만 둔다).
 
@@ -990,6 +1008,10 @@
   color: var(--fg);
   &:hover {
     background: var(--fill-selected);
+    }
+  [data-sidebar] &,
+  [data-sidebar] &:hover {
+    background: var(--fill-hover);
     }
 }
 
@@ -1027,8 +1049,9 @@
   padding: 4px;
 }
 
-/* **아이콘 버튼 규격** — Codex `IconButton`(28 정사각 · `radius-lg`, DS `.at-ib`). 카드 머리의 아이콘 버튼(편집기의 「설정으로
-   돌아가기」 · 프로젝트 목록의 `+` · 문서 열의 복사 · 닫기)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 여기는
+/* **아이콘 버튼 규격** — Codex `IconButton`(28 정사각 · `radius-lg`, DS `.at-ib`). 칸 머리의 아이콘 버튼(프로젝트 목록 머리의
+   `+`)과 부품의 아이콘 크기(`Button`의 `icon` · `Toggle`의 `icon`)가 이 한 정의를 쓴다. 경로 줄의
+   동그란 버튼(32 원 — `PathBar`)은 이 규격이 아니다 — 원은 경로 줄의 모양이라 그 파일이 든다(codex-ds 결정 14). 여기는
    모양만 정한다. hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면 어느 쪽이 이길지 유틸리티 정렬
    순서에 맡기게 된다. 옛 원형 규격은 걷었다(codex-ds 결정 3).
    **크기 · 모서리는 변수로 든다** — 작은 단(`icon-button-xs`)이 같은 속성을 다시 적지 않고 변수만 바꿔, 두 클래스가 한 요소에서
@@ -1055,15 +1078,24 @@
 }
 
 /* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 창 위
-   줄(셸 컨트롤 · 탭 줄의 `+` · 작업 ⋯ · 분할)과 줄 **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` ·
-   Processes 행의 ⋯ · 토스트 · 전체화면 창 · terminal 열의 닫기)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의
-   셸 컨트롤 폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야 한다(그쪽 주석). */
+   줄(셸 컨트롤 · 머리 카드의 작업 ⋯ · 분할 · 편집기의 「설정으로 돌아가기」)과 탭 줄의 `+`, 줄 **안**에
+   서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec
+   열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의 셸 컨트롤
+   폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야 한다(그쪽 주석). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
   --icon-button-radius: var(--radius-md);
 }
 
-/* **26 · `radius-md`**(DS `.at-ib.sm`) — 창 머리의 닫기(`Button`의 `icon-sm`)와, 줄 안 글자 버튼(`Button` xs — 26) 옆에 한 줄로
+/* **16 · `radius-md`** — 글 거터(20) 안에 서는 블록 참조 복사(`SpecViewer`의 `BlockWrapper`) 하나가 쓴다. DS `.at-ib`에는 이 단이
+   없다: 거터가 20이라(codex-ds 결정 27) 버튼과 그 왼쪽 포커스 링 자리(4 — `focus-halo`)가 함께 들어가려면 16이어야 한다. 얹는
+   법은 `icon-button-xs`와 같다. */
+@utility icon-button-2xs {
+  --icon-button-size: 16px;
+  --icon-button-radius: var(--radius-md);
+}
+
+/* **26 · `radius-md`**(DS `.at-ib.sm`) — 창 머리의 닫기(`Button`의 `icon-sm` · 「LLM이 받는 텍스트」 창의 닫기)와, 줄 안 글자 버튼(`Button` xs — 26) 옆에 한 줄로
    서는 아이콘 버튼(spec 레이아웃의 되돌리기 메뉴 · 트리 카드 머리의 옮기기 · 지우기)이 쓴다. 얹는 법은 `icon-button-xs`와 같다. */
 @utility icon-button-sm {
   --icon-button-size: 26px;
@@ -1135,12 +1167,12 @@
     }
 }
 
-/* 바탕 줄의 **켜진 탭** — 회색 바탕 위의 흰 면이다(ui-refresh 결정 18 · DS `.at-tab.is-on`).
-   toggle-on을 안 쓰는 것은 바닥이 이미 회색(`surface-shell`)이라서다: 그 위에 더 진한 회색을 얹으면 「고른 칸」이 아니라
-   「눌린 칸」으로 읽힌다. 켜진 탭은 바탕에서 떠오른 카드이고, 그래서 그 아래 본문 카드와 같은 흰 면이다.
+/* 탭 줄의 **켜진 탭** — 흰 카드 머리 위의 옅은 면 `fill-hover`다(codex-ds 스펙 §4 「탭 줄」 · DS `.at-tab.is-on`). 꺼진 칸의
+   hover(`fill-soft`)보다 한 단 진하다. toggle-on(`fill-active`)을 안 쓰는 것은 그 농도가 「눌린 칸」으로 읽혀서다 — 켜진 탭은
+   고른 칸이지 눌러 둔 스위치가 아니다. 한때 탭 줄이 창 맨 위 회색 줄에 서던 동안은 흰 면이었다.
    hover에 바뀌지 않는다(DS `.at-tab.is-on:hover`) — 고른 칸은 다시 눌러 끄는 것이 아니다. */
 @utility tab-on {
-  background: var(--surface);
+  background: var(--fill-hover);
   color: var(--fg);
 }
 
@@ -1153,8 +1185,8 @@
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
    (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다.
-   **알약 세그먼트(`pill`)는 표식을 두고 모양만 덮는다** — 바닥이 흰 캡슐이라 칩이 `fill-selected` 원이고 그림자가
-   없다(ui-refresh 결정 7의 B). 검사가 이 이름으로 칩을 찾는다(`SourceToggle.test.tsx`). */
+   **알약 세그먼트(`pill` — 경로 줄의 보기 묶음)는 표식을 두고 모양만 덮는다** — 바닥이 카드의 흰 면이라 칩이 `fill-hover`
+   원이고 그림자가 없다(DS `.at-viewseg`). 검사가 이 이름으로 칩을 찾는다(`PathBar.test.tsx`). */
 @utility segment-on {
   background-color: var(--surface-elevated);
   box-shadow: var(--shadow-hairline), var(--shadow-100);
@@ -1297,7 +1329,7 @@ body.dragging-row * {
 }
 
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
-   패널이 좌우 다른 규칙으로 움직이지 않도록, 좌측 사이드바·목록 패널과 같은 폭 접기로
+   패널이 좌우 다른 규칙으로 움직이지 않도록, 그때 접히던 좌측 사이드바·목록 패널과 같은 폭 접기로
    바꾸면서 쓸 곳이 없어졌다. 그때 확인된 사실은 남겨 둔다: **translateX는 안 된다.**
    패널이 본문 스크롤 영역의 형제라 제 상자 밖 넘침을 문서(viewport)가 받고,
    애니메이션이 도는 동안 가로 스크롤이 깜빡인다. 폭 접기에는 그 경로가 없다. */
@@ -1412,29 +1444,31 @@ body.dragging-row * {
   }
 }
 
-/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 5px.
+/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 4px.
    조용한 갈래(`ShellMeta` — 셸 수)와 신호 갈래(`SignalMeta` — 경과)가 이 한 정의를 부른다.
    두 파일이 같은 문자열을 옮겨 적던 자리다. nav `Processes`의 메모리 합계(`ProcessesNavMeta`)도 nav `Terminal`과 같은
    오른쪽 끝에 서야 해서 이것을 부른다.
 
    두 갈래가 work 행의 **같은 칸에 번갈아** 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
-   숫자의 오른쪽 끝이 튄다. 오른쪽 여백 5px은 행의 `pr-1`(4px)과 합쳐 9px이 되어, 그 끝이 구획
+   숫자의 오른쪽 끝이 튄다. 오른쪽 여백 4px은 행의 `pr-1`(4px)과 합쳐 행 안쪽 8(DS `.at-row`)이 되어, 그 끝이 구획
    헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
 
-   **색은 안 정한다.** 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
-   갈래의 경과는 상태색의 잉크를 든다(`SignalElapsed`) — 갈래마다 달라 부르는 자리가 든다. */
+   **색은 안 정한다** — 칸에 서는 조각이 저마다 든다. 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 두고 무리가 한 단
+   올린 `fg-secondary`를 들며(`shell-meta.tsx`), 신호 갈래의 경과도 그 조각이 제 `fg-secondary`를 든다(`SignalElapsed` —
+   codex-ds 스펙 S17). */
 @utility row-meta {
-  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-xs;
+  @apply flex shrink-0 items-center gap-1.5 pr-1 text-xs;
 }
 
 /* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(`fill-hover`) · `fg-secondary` 글자 · 줄바꿈 없음.
-   줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」, Archive 문서 카드
-   머리의 프로젝트가 이 한 정의를 부른다. 셋은 같은 문자열을 손으로 옮겨 적었고, Archive는 다른 모양(`rounded-lg` · `bg-accent`)이었다.
+   줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」이 이 한 정의를 부른다.
+   두 자리는 같은 문자열을 손으로 옮겨 적었다. Archive가 걸쳤던 프로젝트는 꼬리표가 아니다 — 머리 카드 이름 뒤의 옅은 글자다
+   (`Frame`의 `HeadSlot.sub`, DS `.at-winhead .sub`).
 
-   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」 · 프로젝트는 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는
+   **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」은 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는
    그 줄의 고정폭(`text-xs` · `font-mono`)을 물려받는다. 빨간 갈래(DS `.at-tag.danger`)는 부르는 자리가 면과 글자를 코어 유틸리티로
    덮는다 — 그쪽이 이 뒤에 서서 이긴다(`floating-card`의 주석).
-   Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-pr-port` — 20px · 흰 면 · 테두리)이라 `tree-rows.tsx`가 든다. */
+   Processes 줄의 포트 칩은 이것이 아니다 — DS의 다른 부품(`.at-port` — 20px · `radius-sm` · `fill-soft` · 고정폭)이라 `tree-rows.tsx`가 든다. */
 @utility tag {
   @apply inline-flex h-[22px] shrink-0 items-center rounded-full bg-fill-hover px-2 whitespace-nowrap text-fg-secondary;
 }

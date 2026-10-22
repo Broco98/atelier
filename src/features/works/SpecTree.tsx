@@ -7,25 +7,25 @@ import { Hint } from "@/components/ui/tooltip";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
 
-// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 7px · hover
+// 행의 규격은 DS `.at-tree-row`다(ui-refresh 결정 6 · 25) — 28px · 모서리 10 · `text-chat-meta` · 글리프와 이름 사이 6px · hover
 // `fill-soft`. 파일 행은 본문 글자색이고, 폴더 행은 한 단 흐린 `fg-secondary`다(Archive · Main 프로토타입). 고른 행은
 // `selected-row`에 굵기 500이다.
 //
 // 접기 행 하나의 규격. 폴더 행이 쓴다. 오른쪽 8px은 DS 행의 안쪽 여백이다 — 긴 폴더 이름의 말줄임이 행 끝에 붙지 않는다.
 // 글자색은 여기 없다 — 흐린 행(`DIM`)과 갈리는 자리라 행이 고른다.
 const COLLAPSE_ROW =
-  "flex h-7 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta transition-colors hover:bg-fill-soft focus-ring";
+  "flex h-7 items-center gap-1.5 rounded-lg pr-2 text-left text-chat-meta transition-colors hover:bg-fill-soft focus-ring";
 
 // 흐린 행의 글자 — files 칸이 gitignore에 걸린 것을 이렇게 그린다(git-integration 결정 37). 값은 그 칸 범위의 토큰이라
 // (`index.css`의 `[data-files-tree]`) 전역 토큰을 고치지 않는다(git-integration 결정 38).
 const DIM = "text-(--tree-row-dim)";
 
-// 줄 사이는 사이드바 · 아카이브 목록과 같은 2px 틈이다(DS `.at-tree`). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
-const ROWS = "flex flex-col gap-(--row-gap)";
+// 줄 사이는 1px 틈이다(DS `.at-tree` — 사이드바 · 목록 칸의 행 사이 2보다 촘촘하다). 폴더 상자와 그 패널도 같은 틈으로 줄을 잇는다.
+const ROWS = "flex flex-col gap-px";
 
 // 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
 // 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
-// 정해지지 않은 수라 클래스로 못 적어서다. 아카이브 목록은 트리 아래 빈 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
+// 정해지지 않은 수라 클래스로 못 적어서다. files 트리는 빈 폴더 · 못 읽은 줄을 같은 들여쓰기에 세우려고 이것을 읽는다.
 export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
 
 /**
@@ -54,21 +54,21 @@ interface TreeProps {
   // 그린다** — 앱에는 순서의 규칙도 폴더 이름의 규칙도 없다(spec 레이아웃 결정 13,
   // `src/spec-folder-names.test.ts`가 소스로 본다). 구획 머리도 없다(spec 레이아웃 결정 24): 번호
   // 묶음 폴더도 레이아웃의 자리에 선다. 아카이브는 그 트리를 기록 행 곁의 `spec/` 행 아래에 얹어
-  // 넘긴다(`archive/archive-tree.ts`).
+  // spec 목록 패널에 넘긴다(`archive/archive-tree.ts`) — 작업 패널의 트리처럼 첫 층이 패널 왼쪽 끝에서 선다.
   items: SpecTreeItem[];
   current: string | null;
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
-  // 첫 층의 깊이(생략 시 0). 아카이브는 트리를 아카이브 행 아래 한 단 들여 세운다 — 행과 같은 x에서 시작하면 문서
-  // 줄이 아카이브 행과 한 층으로 읽힌다(Archive 프로토타입, 생성기 `atree`의 깊이가 1부터다).
-  depth?: number;
 }
 
-function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
-  // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트(패널 토글)를 넘어 살지
-  // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
-  // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
+function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
+  // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트를 넘어 살지 않는다. **언제
+  // 리마운트하는지는 트리를 세우는 패널이 정하고 두 패널이 다르다:**
+  // - 작업 패널은 패널을 접을 때 트리를 새로 세운다(`WorkPanel`의 `treeGeneration`). 작업 전환은
+  //   리마운트가 아니다 — 결정 49가 패널을 화면으로 올리며 `key`를 떼서, 작업을 옮겨도 이 기억이
+  //   유지된다(그 결정이 감수한 것이다).
+  // - spec 목록 패널은 아카이브마다 새로 세운다(`ArchivePage`의 `key`). 패널을 접었다 펴도 그대로다.
   //
   // 손으로 바꾼 것만 기억하고 기본값은 매번 받은 트리의 파일·폴더에서 낸다. 판이 새로 생겼을 때
   // 그것이 저절로 「펼쳐진 최신 판」이 되려면, 처음 그린 때의 펼침을 굳혀 두면 안 된다.
@@ -82,7 +82,7 @@ function SpecTree({ items, current, onSelect, onCopy, depth = 0 }: TreeProps) {
     <div className={cn(ROWS, "shrink-0")}>
       <TreeRows
         items={items}
-        depth={depth}
+        depth={0}
         current={current}
         isOpen={(item) => toggled[item.path] ?? openByDefault(item)}
         onOpenChange={setOpen}
@@ -169,10 +169,10 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
                     독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
                     (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
-                {/* 셰브론은 12px `fg-tertiary`이고 오른쪽을 3px 당겨 글리프에 붙는다(DS `.at-tree-row .chev`). */}
+                {/* 셰브론은 12px `fg-tertiary`이고 글리프와 행의 사이 6으로 떨어진다(DS `.at-tree-row > .ic.chev`). */}
                 <ChevronRight
                   className={cn(
-                    "-mr-[3px] size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-basic",
+                    "size-3 shrink-0 text-fg-tertiary transition-[rotate] duration-basic",
                     expanded && "rotate-90",
                   )}
                   strokeWidth={SMALL_GLYPH_STROKE}
@@ -232,7 +232,7 @@ export function TreeRows<T extends TreeRowItem<T>>({
                 type="button"
                 onClick={(event) => onSelect(item.path, event.detail)}
                 className={cn(
-                  "flex h-full min-w-0 flex-1 items-center gap-[7px] rounded-lg text-left focus-ring",
+                  "flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left focus-ring",
                   onCopy && "pr-1.5",
                   look.dim && DIM,
                 )}

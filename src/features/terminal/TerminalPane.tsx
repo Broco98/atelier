@@ -17,9 +17,9 @@ import { attachShell, detachShell, ensureShell, showShell, terminalStore } from 
 import type { WorkView } from "@/features/works/types";
 
 /**
- * 터미널 본문 — 셸이 들어앉는 자리. **머리행은 여기 없다**: 두 화면이 각자 이고 있다.
- * 두 화면 다 같은 줄이다 — Work의 터미널도 `/terminal`도 `ShellTabs`가 머리행이다
- * (결정 7·8). 한때 최상위만 브레드크럼 머리였는데 #142가 그것도 이 줄로 옮겼다.
+ * 터미널 본문 — 셸이 들어앉는 자리. **탭 줄은 여기 없다**: 두 화면이 각자 카드의 머리로 인다.
+ * 두 화면 다 같은 줄이다 — Work의 터미널도 `/terminal`도 `ShellTabs`가 터미널 카드의 머리다
+ * (결정 7·8 · codex-ds 스펙 §4). 한때 최상위만 브레드크럼 머리였는데 #142가 그것도 이 줄로 옮겼다.
  *
  * 이 컴포넌트가 소유하는 것은 **자리 하나뿐이다.** 셸도 xterm도 terminal-store가 들고 있어
  * 이 화면이 사라져도 그대로 산다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
@@ -92,10 +92,11 @@ function TerminalPane({ work }: { work: WorkView | null }) {
     // 상자는 여백을 갖지 않는다 — 여백은 아래 셸의 집 하나가 든다(그래야 그 띠가 셸 색으로 칠해진다).
     // `relative`는 셸이 0개일 때 덮는 안내와 죽은 셸의 안내를 이 영역 안에 세우기 위한
     // 것이다. **위에 형제가 없다**(결정 1) — 종료 줄이 흐름에서 빠지면서 프래그먼트도
-    // 함께 걷혔고, 이 상자가 머리행 바로 아래에서 시작한다.
+    // 함께 걷혔고, 이 상자가 카드 머리(탭 줄) 바로 아래에서 시작한다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {/* 셸이 들어앉는 자리. **안쪽 여백이 `--term-inset`(12)이다**(ui-refresh 판 04 기본값 — 터미널 카드의 안쪽 여백).
-          셸이 둥근 카드에 앉으면서 글자가 모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
+      {/* 셸이 들어앉는 자리. **안쪽 여백이 16(`p-4`)이다**(DS `Terminal` 「안쪽 16」 — 행 글자 16의 세로줄이라 셸 화면이 탭 줄의
+          아이콘과 한 x에 선다, codex-ds 스펙 §4 「여백」). 셸이 둥근 카드에 앉으면서(ui-refresh 판 04 — 그때는 12였다) 글자가
+          모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
           빈 배경이라 `cols`가 준다). 여백은 **집의 것**이다 — 셸(xterm 래퍼)은 집의 내용 상자를 100%로 받아 `fit()`이
           여백을 뺀 자리로 격자를 재고, 여백 띠는 아래 칠을 함께 받아 셸 색이다. 카드에 여백을 주면 그 띠가 카드 색이 된다.
 
@@ -114,7 +115,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
       <div
         ref={hostRef}
         data-shell-host=""
-        className="min-h-0 min-w-0 flex-1 p-(--term-inset)"
+        className="min-h-0 min-w-0 flex-1 p-4"
         style={activeId === null ? undefined : { backgroundColor: shellBackground }}
       />
       {/* 죽은 셸의 한 문장(결정 22·45). **흐름에 끼지 않고 셸 위에 겹쳐 뜬다**(결정 1).
@@ -147,7 +148,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           일을 하는 버튼이 둘이 되고, 그것을 이 저장소는 두지 않는다(결정 89가 `</>`를
           패널이 열렸을 때 열 머리에서 뺀 것과 같은 규칙).
 
-          **그렇다고 빈 채로 두지 않는다.** 여는 법이 화면 밖(머리행)에 있으므로 아무 말도
+          **그렇다고 빈 채로 두지 않는다.** 여는 법이 본문 밖(탭 줄)에 있으므로 아무 말도
           없는 빈 판은 「아직 없다」가 아니라 **고장**으로 읽힌다. 그래서 남는 것은 조작이
           아니라 **비었다는 표시와 여는 법** — Works의 「아직 작업이 없어요」와 같은 관용구다.
 

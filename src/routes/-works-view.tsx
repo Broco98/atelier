@@ -243,9 +243,6 @@ function WorksView({
       onSelectSplit={selectSplit}
       onFollowBundle={followBundle}
       onDropInto={dropInto}
-      onOpenProject={(project) =>
-        void navigate({ to: "/projects/$slug", params: { slug: project } })
-      }
     />
   );
 }

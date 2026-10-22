@@ -135,7 +135,7 @@ const ROW =
 // toggle.tsx 머리말).
 const ITEM_SIZE = {
   default: "menu-row items-center",
-  note: "menu-row h-auto items-start py-[7px]",
+  note: "menu-row h-auto items-start py-1.75",
 } as const
 
 function DropdownMenuItem({

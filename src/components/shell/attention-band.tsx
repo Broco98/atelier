@@ -42,10 +42,10 @@ export const BAND_LABEL = "알림";
 export const BAND_LIMIT = 3;
 
 /**
- * 줄 **글자**의 무게(결정 3의 우선순위). 기다림은 사이드바 행 글자색(`fg`, DS
- * `.at-band .at-row`)이고, 안 본 완료만 한 단 내려간다 — 둘을 같은 색으로 두면 「기다림 › 안 본
- * 완료」가 점 색에만 남아 색을 못 가르는 사람에게 그 순서가 사라진다. 띠가 목록과 갈리는 것은
- * 글자가 아니라 흰 상자가 한다(`AttentionBand`의 상자 주석).
+ * 줄 **글자**의 무게(결정 3의 우선순위 · DS `.at-band .at-row`). 기다림은 진한 글자 `fg` 500(`.wait`)이고, 안 본 완료는
+ * 한 단 내려간 `fg-secondary` 400이다 — 둘을 같은 무게로 두면 「기다림 › 안 본 완료」가 점 색에만 남아 색을 못 가르는 사람에게
+ * 그 순서가 사라진다. 경과는 두 갈래가 같은 `fg-secondary`라(`SignalElapsed` — codex-ds 스펙 S17) 그 순서를 글자로 말하는 자리가
+ * 이 표 하나다. 띠가 목록과 갈리는 것은 글자가 아니라 흰 상자가 한다(`AttentionBand`의 상자 주석).
  *
  * **삼항이 아니라 표다.** 갈래가 느는 날 삼항은 새 값을 조용히 아래쪽 가지로 흘려보내는데,
  * `Record<CallingKind, …>`는 그 자리에서 컴파일이 막는다 — `SIGNAL_LABEL`·`TONE`이 같은
@@ -54,7 +54,7 @@ export const BAND_LIMIT = 3;
  * (말로 선다, 색은 없다 — `FAILED_LABEL`)이라 부르는 갈래는 여전히 둘이다.
  */
 const WEIGHT: Readonly<Record<CallingKind, string>> = {
-  waiting: "text-fg",
+  waiting: "text-fg font-medium",
   done: "text-fg-secondary",
 };
 
@@ -104,16 +104,20 @@ export function AttentionBand({
     <div
       data-band=""
       className={cn(
-        "flex shrink-0 flex-col gap-(--row-gap)",
-        // **한 덩어리 상자다** — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band` — 카드 반경 16 ·
-        // 바닥 `surface`). 안쪽 위아래 6 · 아래 여백 8은 목업 `.strip` 그대로다. 목록 위에 **뜬 것**으로
-        // 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래
-        // work 행들과 같은 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
-        "mt-1.5 mb-2 rounded-2xl bg-surface py-1.5",
+        "flex shrink-0 flex-col gap-0.5",
+        // **한 덩어리 상자다** — 바탕 위의 흰 카드(DS `.at-band` — `surface` · `radius-2xl` · `shadow-hairline` + `shadow-200`, 합친
+        // 이름 `shadow-raised`). 바탕에 붙은 사이드바에서 흰 것은 이 상자 하나다(codex-ds 스펙 §5 · 스토리 38). 안쪽 위아래 4 ·
+        // 줄 사이 2는 DS `.at-band` 값이다. 바깥은 위 8 · 아래 0이다 — DS `.at-band`의 위 바깥 6에 기둥(`.at-sidebar`)의 줄 사이
+        // 2를 더한 것이 nav와 떼는 몫이고(이 기둥은 줄 사이를 `gap`으로 두지 않아 그 2를 여기 싣는다), 아래 바깥은 DS 그대로 없다.
+        // 목록과는 목록 쪽이 뗀다(목록 위끝의 줄 사이 2 + 구획 소제목의 위 12 — `SidebarWorkList` · `WorkSectionList`). 목록 위에
+        // **뜬 것**으로 읽혀야 「열여덟 행을 훑지 않고 거기만 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래 work 행들과 같은
+        // 평면에 서서 눈에 띄는 근거가 점 색 하나로 줄어든다. 그림자는 상자 바깥에 칠해져 아래 `overflow-y-auto`에 안 잘리고,
+        // 사이드바 거터(8) 안에 든다.
+        "mt-2 rounded-2xl bg-surface py-1 shadow-raised",
         // **양옆 4는 줄의 포커스 링이 설 자리다**(codex-ds 결정 11 — 링은 테두리 바깥 4px까지 칠해진다). 이 상자는 아래에서
         // 세로로 구르느라 넘침을 자르는데(`overflow-y-auto`면 가로도 잘린다), 줄이 상자 양끝에 붙어 서면 키보드로 고른 줄의 링이
         // 위아래 선만 남는다. 상자의 폭과 자리는 그대로 두고 안쪽에 링 폭만큼 자리를 둔다 — 그만큼 줄 · 머리의 안쪽 여백을
-        // 줄여, 점 · 제목 · 경과 · 수가 서는 x는 여백을 두기 전과 같다(work 행과 같은 x — 아래 `BandLine`의 레인 주석).
+        // 줄여, 점 · 제목 · 경과 · 수가 서는 x는 DS의 행 안쪽 8 그대로다(work 행과 같은 x — 아래 `BandLine`의 레인 주석).
         "px-1",
         // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
         // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
@@ -127,13 +131,14 @@ export function AttentionBand({
         "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
       )}
     >
-      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 띠 끝에서 글자까지 9 — 띠의 링 자리 4 + 안쪽 5 · 틈 4)는
-          구획 헤더(`SectionHeader`)와 같되 접히지 않는다. 띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
+      {/* **누를 것이 없는 머리다** — 상자(높이 28 · 띠 끝에서 글자까지 8 — 띠의 링 자리 4 + 안쪽 4, DS `.at-band-head`)는
+          구획 헤더(`SectionHeader` — 높이 30, DS `.at-label`의 세로를 따른다)처럼 라벨과 수가 한 줄에 서되 접히지 않는다. 띠가
+          접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는
           것이 둘이면 같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 라벨 글자는 둘이 다르다 —
           띠 머리는 DS `.at-band-head`의 12(`text-xs`), 구획 라벨은 DS 「소제목 13」(`chat-meta`)이다.
           수(`text-xs`)가 오른쪽 끝에 서는 것은 바로 아래 구획 헤더들과 같은 계약이다 — 한 컬럼에
           세로로 붙어 서는 수들이 다른 무게로 읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
-      <div className="flex h-7 shrink-0 items-center gap-1 px-[5px]">
+      <div className="flex h-7 shrink-0 items-center gap-1 px-1">
         <span className="shrink-0 text-xs text-fg-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
@@ -198,7 +203,7 @@ function MoreToggle({
 }
 
 /**
- * 줄 하나 — `점 · 제목 · (셸 이름) · 경과`, 28px(결정 5). 에이전트 마크는 없다(ui-refresh 결정 13 —
+ * 줄 하나 — `점 · 제목 · (셸 이름) · 경과`, 30px(`size-row-band` — DS `.at-band .at-row`). 에이전트 마크는 없다(ui-refresh 결정 13 —
  * 무엇이 도는지는 호버 카드와 셸 탭이 말한다).
  *
  * **행(#203)과 어휘가 같고 규격이 다르다.** 점은 같은 조각(`SignalLane`)이고 말도 같은
@@ -230,13 +235,14 @@ function BandLine({
       aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
-        // 안쪽 왼 5 · 오른 6은 띠 상자의 링 자리(4)를 뺀 값이다 — 점 · 경과가 띠 끝에서 9 · 10에 서던 x를 지킨다.
-        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-lg pl-[5px] pr-1.5 text-left text-sm focus-ring",
+        // 안쪽 좌우 4는 띠 상자의 링 자리(4)를 뺀 값이다 — 점 레인 · 경과가 띠 끝에서 DS 행 안쪽 8에 선다(창 끝 + 16 — 사이드바
+        // 행 글자의 세로줄). 레인과 제목 사이는 DS `.at-band .at-row`의 10이다(work 행은 `.at-row`의 9).
+        "flex h-(--size-row-band) w-full shrink-0 items-center gap-2.5 rounded-lg px-1 text-left text-sm focus-ring",
         // **hover는 흰 상자 위의 `fill-soft` 한 겹이다**(DS `.at-band .at-row` — 사이드바 행과 같은 겹).
         // 상자 바닥이 흰색이라 그 한 겹이 그대로 보인다 — 바닥이 같은 겹(`fill-soft`)이던 동안은 같은 값이
         // 묻혀 한 단 위(`fill-hover`)를 썼다.
         "transition-colors hover:bg-fill-soft",
-        // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(목업 `.strip .it` / `.it.d`).
+        // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(DS `.at-band .at-row` / `.wait`).
         // 표는 위 `WEIGHT` 하나다.
         WEIGHT[item.kind],
       )}
@@ -255,9 +261,9 @@ function BandLine({
             밖에 세우면 이 조각이 폭을 먹어 제목이 그만큼 먼저 잘린다. */}
         {item.shellName !== null && <span className="text-fg-tertiary"> {item.shellName}</span>}
       </span>
-      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — 상태색의 잉크, DS 띠 줄의 `.end` — 기다림 `warning` ·
-          안 본 완료 `accent-solid`). */}
-      <SignalElapsed kind={item.kind} ms={now - item.since} />
+      {/* 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed` — `fg-secondary` 500. DS 띠 줄의 `.end`는 상태색 잉크인데
+          글자 대비 바닥에 못 미쳐 codex-ds 스펙 S17대로 낮췄다 — 그 조각의 머리말). */}
+      <SignalElapsed ms={now - item.since} />
     </button>
   );
 }

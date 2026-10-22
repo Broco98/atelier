@@ -153,13 +153,15 @@ interface ShellTabsProps {
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
    *
-   * 무엇이 오는지는 화면이 정한다 — work 화면은 상태 배지·⋯·분할이고(패널 토글은 레일 맨 위),
-   * 이 모듈이 알 수 없는 `features/works`의 것이다.
+   * 무엇이 오는지는 화면이 정한다 — work 화면은 분할의 터미널 열에서 그 열을 닫는 `×`를 두고(codex-ds 스펙 S14),
+   * 그 밖에서는 아무것도 안 둔다. 상태 배지 · ⋯ · 분할은 이 줄이 아니라 머리 카드에 선다(`WorksPage`).
    */
   actions?: React.ReactNode;
+  /** 검사가 이 줄을 정체성으로 집는 표식(분할 열 머리의 `data-column`) — 줄의 머리 상자에 그대로 단다. */
+  [mark: `data-${string}`]: string | undefined;
 }
 
-// 화면 머리행의 **가로 탭 줄**(결정 7·8·10). `[spec][고정 칸…][묶음…][+]`가 왼쪽부터 차고 오른쪽 끝에
+// 본문 카드 머리의 **가로 탭 줄**(결정 7·8·10). `[spec][고정 칸…][묶음…][+]`가 왼쪽부터 차고 오른쪽 끝에
 // 조작이 고정된다. 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아온 것이다(adr-03).
 // 고정 칸은 화면이 넘기는 `FixedTab`이다(three-axes 결정 9) — 숫자 키를 안 받아 아래 순서의 셈에 안 든다.
 // **묶음**(CONTEXT)은 스크롤 상자 안의 칸들이고 그 차례는 레지스트리가 든다(`bundleOf`) — 셸 칸과 **파일 탭** 칸이 구분선 없이
@@ -170,11 +172,11 @@ interface ShellTabsProps {
 // 순서를 눈에 보이게 하는 것뿐이다. 화면에 보이는 순서와 ⌘1~9가 고르는 것이 어긋나면
 // 이 줄이 한 일이 없다.
 //
-// **이 줄은 바탕 줄에 선다 — 그 줄 자체가 아니다**(ui-refresh 결정 5 · 27). 44px 층 높이 · 창 드래그 영역 · 신호등 회피
-// 여백은 바탕 줄(`Frame`의 `TitleBar`, `<header>`)의 성질이고, 이 컴포넌트는 그 줄의 **자식들**(칸 · 세로선 · `+` · 끄는
-// 여백 · 조작)을 내놓는다 — 뿌리가 프래그먼트라 칸들이 `<header>`의 자식으로 바로 서고, 조작 묶음(`data-tab-actions`)이 여전히
-// 그 줄의 **마지막 자식**이다(e2e `tab-row.ts` · `WorksPage.test`가 그 자리로 집는다). 줄 안의 끄는 자리(세로선 · 빈 여백)는
-// 그대로 이 줄이 제 자식에 단다.
+// **이 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」 · DS `TabRow`). 한때 창 맨 위 줄(`<header>` — 지금의 머리 줄)에 서던 줄이
+// 그 탭이 보여 줄 카드 안 맨 위로 내려왔다 — 문서 카드 · 터미널 카드 · 분할의 터미널 열 · `/terminal`의 카드가 이 줄을
+// 머리로 인다(`head`). 머리 상자(46 · 아래 0.5px 선 · 안쪽 8)를 이 컴포넌트가 그리고 `data-tab-row`를 단다 — 그 줄을 이는
+// 카드의 바닥(`panel-layout`의 `TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 그 표식으로 줄을 가른다. 카드 안이라 창을 끄는 자리가
+// 아니다 — 끄는 자리는 머리 줄과 카드 둘레의 회색 틈이다(`Frame` 머리말).
 //
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
@@ -198,6 +200,7 @@ function ShellTabs({
   onDropSlot,
   dragging,
   actions,
+  ...marks
 }: ShellTabsProps) {
   // 상한도 그리는 것도 **이 화면**의 것이다(결정 23). 두 값이 같은 상태에서 같은 범위로
   // 나오는 것이 결정 30의 전부다.
@@ -245,11 +248,11 @@ function ShellTabs({
   // 새 줄에서 그 칸이 몇 번째인지 되찾을 길이 없다.
   const pressedId = useRef<number | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
-  // 누른 동안 머리행 위 포인터의 뷰포트 x(머리행을 벗어나면 `null`)와, 가장자리 자동 스크롤의 프레임.
+  // 누른 동안 탭 줄 위 포인터의 뷰포트 x(줄을 벗어나면 `null`)와, 가장자리 자동 스크롤의 프레임.
   // 포인터가 **가만히 있어도** 구르므로 이동 이벤트가 아니라 프레임에서 굴린다(아래 `onDragTab`).
   const pointerX = useRef<number | null>(null);
   // 누른 자리와, 그 뒤 **옆으로 끌 뜻**이 한 번이라도 보였는가(`tab-gap`의 `sidewaysIntent`). 뜻이 보이기
-  // 전에는 가장자리여도 안 구른다 — 본문 절반으로 곧장 내려가는 손이 머리행을 지나며 줄을 밀지 않게.
+  // 전에는 가장자리여도 안 구른다 — 본문 절반으로 곧장 내려가는 손이 탭 줄을 지나며 줄을 밀지 않게.
   // 한 번 보이면 끌기 끝까지 붙든다 — 끝에 붙여 가만히 있는 손도 굴러야 한다.
   const pressedAt = useRef<{ x: number; y: number } | null>(null);
   const sideways = useRef(false);
@@ -295,7 +298,7 @@ function ShellTabs({
           // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
           // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
           // **가장자리 자동 스크롤** — 끄는 중이고(`dragging`) 옆으로 끌 뜻이 보였고(`sideways`) 포인터가 줄
-          // 가장자리 띠나 그 너머(같은 머리행)에 있으면 프레임마다 굴리고, 굴렀으면 가만한 포인터 아래의 틈을 다시 알린다. 기하는 다시
+          // 가장자리 띠나 그 너머(같은 탭 줄)에 있으면 프레임마다 굴리고, 굴렀으면 가만한 포인터 아래의 틈을 다시 알린다. 기하는 다시
           // 안 잰다 — 내용 좌표라 그 순간의 `scrollLeft`만 더하면 된다(`tab-gap.ts` 머리말).
           stopScroll.current?.();
           pointerX.current = null;
@@ -364,30 +367,25 @@ function ShellTabs({
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeId, showing]);
 
-  // 끄는 동안 이 줄이 틈 소비자다(UI개선 스펙 S10). **바탕 줄 전체**에서 듣는 것은 높이 때문이다 — 스크롤 상자는 칸
-  // 높이(32px)에 링 자리(4px씩)만 더한 높이라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이
-  // 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
-  //
-  // **그 줄은 이 컴포넌트의 것이 아니다** — 바탕 줄 `<header>`는 `TitleBar`가 그리고 이 줄은 그 자식들만 내놓는다(위
-  // 머리말). 그래서 React 속성으로 못 달고 그 상자에 손으로 단다. 칸 상자(`stripRef`)는 늘 서 있어 그 줄을 늘 찾는다.
-  // 줄 위에서 떼면 이 듣기가 창의 듣기(`drop` · 제스처의 `end`)보다 먼저 받는다 — 요소가 창보다 먼저 버블을 받는다.
-  useEffect(() => {
-    const row = stripRef.current?.closest("header");
-    if (!row) return;
-    row.addEventListener("pointermove", tabHandlers.onSlotMove);
-    row.addEventListener("pointerleave", tabHandlers.onSlotLeave);
-    row.addEventListener("pointerup", tabHandlers.onSlotDrop);
-    return () => {
-      row.removeEventListener("pointermove", tabHandlers.onSlotMove);
-      row.removeEventListener("pointerleave", tabHandlers.onSlotLeave);
-      row.removeEventListener("pointerup", tabHandlers.onSlotDrop);
-    };
-  }, [tabHandlers]);
-
   return (
-    // 뿌리가 없다 — 칸들이 바탕 줄 `<header>`(`TitleBar`)의 자식으로 바로 선다(머리말). 줄의 높이 · 칸 사이 간격(gap) ·
-    // 여백 · 창 끌기는 그 줄의 것이다.
-    <>
+    // 머리 상자 — DS `.at-toolbar`다(`size-toolbar` 46 · 칸 사이 4 · 안쪽 8 · 아래 0.5px `border-heavy` 선). 선은 테두리가
+    // 아니라 바닥에 붙인 0.5px 면이다 — 0.5px 테두리는 엔진마다 굵기가 갈리고(`SpecViewer`의 가름선과 같은 손버릇), 면이라 줄
+    // 높이 46 안에 선다. 바탕은 흰 면(`surface`)이다 — 터미널 카드의 바탕은 터미널 테마를 따라 어두울 수 있는데(`Frame`의
+    // `Card`), 칸 글자는 앱 토큰이라 그 위에서 묻힌다. 머리는 앱의 것이고 그 아래가 셸의 면이다.
+    //
+    // **끄는 동안 이 줄이 틈 소비자다**(UI개선 스펙 S10). **줄 전체**에서 듣는 것은 높이 때문이다 — 스크롤 상자는 칸
+    // 높이(28px)에 링 자리(4px씩)만 더한 높이라 46px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는 상자 밖이면 틈이
+    // 아니다(`tabGap`). 본문 받침(놓기 겹판)은 이 줄 아래부터 덮으므로(`WorksPage`) 두 소비자가 겹치지 않는다. 줄 위에서 떼면
+    // 이 듣기가 창의 듣기(`drop` · 제스처의 `end`)보다 먼저 받는다 — React는 앱의 뿌리 요소에서 듣고, 그 요소가 창보다
+    // 먼저 버블을 받는다.
+    <div
+      {...marks}
+      data-tab-row
+      onPointerMove={tabHandlers.onSlotMove}
+      onPointerLeave={tabHandlers.onSlotLeave}
+      onPointerUp={tabHandlers.onSlotDrop}
+      className="relative flex h-(--size-toolbar) shrink-0 items-center gap-1 bg-surface px-2 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border-heavy"
+    >
       {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
           고정된다. ⌘W가 여기서 아무 일도 안 하는 것(결정 13)이 같은 말이다.
 
@@ -397,7 +395,7 @@ function ShellTabs({
 
           글리프는 한때 사이드바에 있던 `spec` 줄이 쓰던 `File` 그대로다 — 판 04가 그 줄을
           걷어(결정 6) 지금은 이 칸이 문서를 고르는 유일한 자리다. 라벨이 소문자 영어인 것은
-          CONTEXT.md다 — 「무엇을 볼까」를 고르는 것들의 한 가족(`spec`·`info`)이다. */}
+          CONTEXT.md다 — 「무엇을 볼까」를 고르는 것들(탭 줄 · 레일 칸)의 한 가족이다. */}
       {spec && (
         <button
           type="button"
@@ -440,14 +438,10 @@ function ShellTabs({
           바탕이 따로 한다.
 
           **고정 칸(`spec` · 그 뒤 칸들)이 있을 때만 선다.** `/terminal`에는 그 칸이 없어(결정 8) 가를 것이 없는데,
-          조건 없이 두면 그 화면에서 줄 맨 앞에 이유 없는 선 하나가 남는다.
-
-          창을 끄는 자리를 뺏지 않는다 — 이 줄은 타이틀바를 겸하므로(머리말) 속성이 없는
-          자식은 그만큼 죽은 자리가 된다. 아래 `min-w-4 flex-1` 여백과 같은 이유다. */}
+          조건 없이 두면 그 화면에서 줄 맨 앞에 이유 없는 선 하나가 남는다. */}
       {(spec || fixed.length > 0) && (
         <span
           aria-hidden
-          data-tauri-drag-region
           data-tab-rule
           // 좌우 2px이다 — 줄의 gap 4px과 합쳐 8px씩 벌어진다. 더 벌리면 **900px 창에서 줄이
           // 넘친다**(결정 20의 산술이 이 선까지 센다: mx-1이면 1px 모자랐다, 실측).
@@ -457,27 +451,28 @@ function ShellTabs({
 
       {/* 묶음의 칸만 **가로로 스크롤한다**(결정 20). `spec`·`+`·조작은 이 상자 밖이라 자리가
           고정이고, 줄이 넘치는 몫은 이 상자 하나가 받는다 — 형제가 모두 `shrink-0`이고
-          여기만 줄어들 수 있어서다. 그래서 **머리행 자체는 넘치지 않는다**: 조작이
+          여기만 줄어들 수 있어서다. 그래서 **탭 줄 자체는 넘치지 않는다**: 조작이
           창 밖으로 밀려나던 것이 그것 때문이었다.
 
           칸은 그 전에 먼저 균등하게 줄어든다(결정 11). 스크롤은 여덟 칸이 다 최소 폭에
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
           여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 그 옆에 자리가 고정된 것들
-          (`spec` · 세로선 · `+` · 끄는 여백 · 조작 · 줄 사이 gap · 좌우 패딩)이 이어 선다.
-          **줄의 폭은 창 폭이 아니다** — 창에서 사이드바를 뺀 나머지라(작업 패널은 줄 아래 카드 줄에 선다 — ui-refresh 결정 4), 창이 더
-          작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도 안 들어간다.
+          (`spec` · 세로선 · `+` · 조작 · 줄 사이 gap · 좌우 안쪽)이 이어 선다.
+          **줄의 폭은 창 폭이 아니다** — 이 줄을 머리에 인 카드의 폭이라 창에서 사이드바 · 열린 작업 패널(분할이면 옆
+          열까지) · 레일 열(칸이 둘 이상일 때만 선다)을 뺀 나머지다. 창이 더 작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도
+          안 들어간다.
 
           **그래도 칸 하나는 늘 온전히 보인다 — 이 상자 안쪽의 바닥이 칸 하나(44px)다.** 한때
           `min-w-0`이라 바닥이 없었고, 900px 창에 작업 패널이 열린 기본 배치에서 줄이 290px을
           받자 넘치는 몫을 이 상자가 전부 받아 **0px이 됐다** — 칸이 화면에 없어 누를 수도 끌
-          수도 없었다(v0.13.0부터). 바닥이 서도 줄이 넘치지 않는 것은 이 줄을 이는 열이 그
-          바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_COLUMN`) — 자리를 내주는 것은 사이드바다
-          (한때 줄 옆에 섰던 작업 패널도 내줬다).
+          수도 없었다(v0.13.0부터). 바닥이 서도 줄이 넘치지 않는 것은 이 줄을 이는 카드가 그
+          바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_CARD`) — 자리를 내주는 것은 작업 패널(제 최소 폭까지),
+          그다음 사이드바다.
 
           **바닥은 폭(`w-[52px]`)으로도 적는다** — 칸의 `min-w-[44px]`에 양옆 링 자리(아래 — 4씩)를 더한
-          수다. 그 열이 버틸 폭은 이 줄의 min-content인데, 그
+          수다. 그 카드가 버틸 폭은 이 줄의 min-content인데, 그
           계산은 flex가 줄인 폭이 아니라 각 항목이 **적어 둔 폭**을 센다 — 늘 넓게 서는 기준은
-          그래서 `w-max`가 아니라 `basis-[max-content]`에 둔다. `w-max`로 두면 열의 바닥이
+          그래서 `w-max`가 아니라 `basis-[max-content]`에 둔다. `w-max`로 두면 카드의 바닥이
           칸 여덟의 폭(380)이 되어 좁은 창에서 패널을 필요 이상으로 민다. 칸이 없으면 바닥도
           없다 — 빈 44px이 `+` 앞에 서면 안 된다.
 
@@ -487,11 +482,9 @@ function ShellTabs({
           「칸 하나가 들어간다」로 든다.
 
           **링이 설 자리를 둔다**(`focus-ring-room`, codex-ds 결정 11). 구르는 상자는 넘침을 자르므로 칸에 붙은 포커스 링
-          (테두리 바깥 4px)도 자른다 — 여백이 없으면 칸 높이(32)가 곧 상자 높이라 링의 위아래가, 첫 칸의 왼쪽과 끝 칸의
+          (테두리 바깥 4px)도 자른다 — 여백이 없으면 칸 높이(28)가 곧 상자 높이라 링의 위아래가, 첫 칸의 왼쪽과 끝 칸의
           오른쪽이 잘린다. 상자가 안쪽에 4px을 두고 같은 만큼 바깥으로 물러나 칸의 자리와 줄의 산술은 그대로이고, 상자의
-          테두리 상자만 사방 4px 크다(바닥이 52인 까닭). 그 테두리가 줄의 끄는 자리(칸 위아래 · 양옆 gap)를 덮으므로 이
-          상자도 끄는 자리다(`data-tauri-drag-region` — 누른 요소 자신만 보는 속성이라 칸 안의 버튼은 그대로 눌린다). 굴러서
-          칸을 들일 때도 그 4px을 남긴다(`scroll-px-1`).
+          테두리 상자만 사방 4px 크다(바닥이 52인 까닭). 굴러서 칸을 들일 때도 그 4px을 남긴다(`scroll-px-1`).
 
           **막대는 저장소 공통 `scroll-quiet`이다**(결정 32). 한때 여기만 손으로 숨겼다 —
           그때의 `scroll-quiet`은 11px을 세워 44px 타이틀바에서 칸을 눌렀기 때문이다.
@@ -501,7 +494,6 @@ function ShellTabs({
         // 표식이 `data-tab`이 아니라 `data-tab-strip`인 것은 검사가 `data-tab="`로 칸을
         // 잘라내기 때문이다 — 같은 이름을 쓰면 상자가 칸 하나로 세어진다.
         data-tab-strip
-        data-tauri-drag-region
         // `relative`는 아래 틈 선의 기준이다 — 스크롤 상자 안의 절대 위치라 선이 칸과 함께 흐른다.
         className={cn(
           "relative flex basis-[max-content] items-center gap-1 overflow-x-auto scroll-quiet focus-ring-room scroll-px-1",
@@ -539,8 +531,8 @@ function ShellTabs({
           );
         })}
         {/* 끄는 동안 놓일 틈(UI개선 스펙 §6). **절대 위치 세로 선**이다 — 폭을 먹으면 칸이 밀리고
-            좁은 창에서는 상자가 칸 하나 폭까지 줄어 있다(위 상자 주석). 높이는 이 상자(칸 32 + 링 자리 4씩) 안이다 —
-            위아래 8px씩 들어와 칸 가운데 24px에 선다. 스크롤 상자라 세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자
+            좁은 창에서는 상자가 칸 하나 폭까지 줄어 있다(위 상자 주석). 높이는 이 상자(칸 28 + 링 자리 4씩) 안이다 —
+            위아래 8px씩 들어와 칸 가운데 20px에 선다. 스크롤 상자라 세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자
             밖으로 안 나간다(`gapLineLeft`).
 
             기하는 누른 순간 잰 **상태**다 — 그리는 중에 ref를 읽지 않는다(위 `geometry` 주석). */}
@@ -585,23 +577,22 @@ function ShellTabs({
         />
       )}
 
-      {/* 탭과 조작 사이의 남는 자리. **이 줄에서 가장 넓은 끄는 자리다** — 속성이 빠지면
-          「창이 가끔만 끌린다」가 되는데 화면으로는 어느 자리가 죽었는지가 안 보인다.
-          `min-w-4`는 칸이 꽉 찼을 때도 `+`와 조작이 맞붙지 않게 남기는 값이다. */}
-      <span data-tauri-drag-region className="min-w-4 flex-1" />
+      {/* 오른쪽 끝 조작 — 조작이 있을 때만 선다(지금은 분할의 터미널 열을 닫는 `×` 하나 — `WorksPage`). 앞의 빈 자리가
+          탭과 조작 사이의 남는 폭을 먹어 조작을 줄 끝에 붙이고, `min-w-4`는 칸이 꽉 찼을 때도 `+`와 조작이 맞붙지 않게
+          남기는 값이다. 조작이 없는 줄에는 빈 자리도 없다 — 줄의 바닥(min-content)에 쓸모없는 16px이 들지 않게.
 
-      {/* 조작 사이 간격이 **왼쪽 셸 컨트롤과 같은 값이다**(결정 24 — `--titlebar-control-gap`).
-          한 줄에 선 아이콘 버튼이 자리마다 다른 간격을 쓰면 그중 하나만 따로 떨어진 것처럼
-          읽힌다. */}
+          조작이 여럿이면 그 사이는 DS 툴바의 4다(`.at-toolbar` — 줄 안 칸 사이와 같은 값). 한때 셸 컨트롤 간격
+          (`--titlebar-control-gap`)을 빌렸는데, 그 값은 창 컨트롤의 Codex 값(2)이 되어 이 줄의 것이 아니다. 지금은 `×` 하나라
+          그 간격이 드러나지 않는다. */}
       {actions && (
-        <div
-          data-tab-actions
-          className="flex shrink-0 items-center gap-(--titlebar-control-gap)"
-        >
-          {actions}
-        </div>
+        <>
+          <span className="min-w-4 flex-1" />
+          <div data-tab-actions className="flex shrink-0 items-center gap-1">
+            {actions}
+          </div>
+        </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -616,18 +607,19 @@ function ShellTabs({
  * **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를 가르는 안은 실물에서 접었다 — 그 칸만 규격이
  * 갈리면 줄에서 튄다. 「다른 종류」는 옆의 세로선 하나가 말한다.
  *
- * **높이 · 색은 DS `.at-tab`이다**(ui-refresh 결정 18) — 32px, 글자는 켜짐과 무관하게 본문 색이고 켜진 칸은 흰 면(`tab-on`)이다.
- * 꺼진 칸의 글리프만 흐리다(`.at-tab .ic` — `fixedGlyphClass`).
+ * **높이 · 모양 · 켜짐 · 글자색은 DS `.at-tab`이다**(codex-ds 스펙 §4 「탭 줄」 · 결정 27) — 28px · `radius-lg` ·
+ * `chat-meta`이고, 켜진 칸은 옅은 면에 `fg`(`tab-on` — `fill-hover`)다. 꺼진 칸의 글자는 `fg-secondary`이고 가리키면
+ * `fg`다. 글리프는 한 단 흐리다(`.at-tab .ic` — 꺼짐 `fg-tertiary` · 켜짐 `fg-secondary`, `fixedGlyphClass`).
  */
 function fixedTabClass(on: boolean): string {
   return cn(
-    "flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-chat-meta text-fg transition-colors focus-ring",
-    on ? "tab-on font-medium" : "hover:bg-fill-soft",
+    "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-lg pl-2 pr-2.5 text-chat-meta transition-colors focus-ring",
+    on ? "tab-on font-medium" : "text-fg-secondary hover:bg-fill-soft hover:text-fg",
   );
 }
 
 function fixedGlyphClass(on: boolean): string {
-  return cn("size-3.5 shrink-0", !on && "text-fg-tertiary");
+  return cn("size-3.5 shrink-0", on ? "text-fg-secondary" : "text-fg-tertiary");
 }
 
 /**
@@ -745,11 +737,11 @@ const ShellTab = memo(function ShellTab({
     // 바깥이 가진 padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무
     // 일이 없는 죽은 자리가 된다(커밋 c0978b1이 spec 트리에서 없앤 것).
     //
-    // hover는 **꺼진 가지 안에만** 둔다. 켜진 칸의 흰 면(`tab-on`)은 hover에 안 바뀌는데(DS `.at-tab.is-on:hover`),
+    // hover는 **꺼진 가지 안에만** 둔다. 켜진 칸의 옅은 면(`tab-on`)은 hover에 안 바뀌는데(DS `.at-tab.is-on:hover`),
     // 꺼진 칸의 hover를 함께 얹으면 배경 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고) —
-    // 지면 켜진 칸이 가리킬 때마다 회색으로 꺼진다.
-    // 꺼진 칸이 `quiet-hover`(2)가 아니라 1인 것은 2가 **행이 선택된** 농도라서다 —
-    // 꺼진 칸을 2로 밝히면 「선택됨」으로 읽힌다.
+    // 지면 켜진 칸이 가리킬 때마다 꺼진 칸의 면으로 옅어진다.
+    // 꺼진 칸의 hover가 `fill-soft`(1)이고 `fill-hover`(2)가 아닌 것은 2가 **켜진 칸의** 농도라서다(DS `.at-tab:hover` ·
+    // `.at-tab.is-on`) — 꺼진 칸을 2로 밝히면 「켜짐」으로 읽힌다.
     //
     // **폭을 이름이 정하지 않는다**(결정 20). 칸마다 같은 폭을 주고 넘칠 때도 그 값에서
     // 깎이게 둔다 — flex가 넘친 폭을 기준 폭에 비례해 나누므로, 기준이 같으면 여덟 칸이
@@ -772,7 +764,7 @@ const ShellTab = memo(function ShellTab({
     // 그것은 창 폭을 잰 것이었다. 이 줄이 받는 폭은 창에서 사이드바를
     // 뺀 나머지다(위 스크롤 상자 주석의 산술).
     //
-    // `@container`가 **칸마다 자기 폭을 재게** 한다. 줄(header)을 재면 안 되는 것은 한
+    // `@container`가 **칸마다 자기 폭을 재게** 한다. 줄을 재면 안 되는 것은 한
     // 칸의 폭이 줄 폭이 아니라 `줄 폭 ÷ 칸 수`이고 칸 수를 CSS가 모르기 때문이다.
     // `container-type: inline-size`가 내용으로 폭을 정하는 길을 막지만 여기서는 손해가
     // 아니다 — 이 칸의 폭은 이미 flex가 정한다.
@@ -781,9 +773,9 @@ const ShellTab = memo(function ShellTab({
       // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
       data-shell-key={shell.shellKey ?? undefined}
       className={cn(
-        // 높이 32 · 글자 본문 색은 DS `.at-tab`이다(ui-refresh 결정 18 — 탭 글자는 본문 색 `fg`) — 켜짐을 글자색으로
-        // 가르지 않는다. 그것은 켜진 칸의 흰 면이 한다.
-        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-chat-meta text-fg transition-colors",
+        // 높이 28 · `radius-lg` · 글자 `chat-meta` · 글자색은 DS `.at-tab`이다(codex-ds 스펙 §4 「탭 줄」 · 결정 27). 켜진 칸의
+        // 글자는 `fg`, 꺼진 칸은 `fg-secondary`이고 가리키면 `fg`다 — 색은 아래 켜짐 · 물들임 갈래가 함께 정한다.
+        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-lg text-chat-meta transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
         // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
         // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.
@@ -796,10 +788,16 @@ const ShellTab = memo(function ShellTab({
         // 물들어 에이전트 마크까지 상태색을 받는다 — 잉크가 붙는 자리는 이름 글자 하나이고
         // 그 근거는 `signalTint` 머리말이 든다. 그래서 물든 칸도 회색 잉크를 그대로 쓴다.
         //
-        // **물들면 켜짐의 면이 물러난다**(결정 6). 켜진 칸의 흰 면(`tab-on`)까지 그렇다 —
+        // **물들면 켜짐의 면이 물러난다**(결정 6). 켜진 칸의 옅은 면(`tab-on`)까지 그렇다 —
         // 「부르는 탭」이 「고른 탭」보다 위 사실이라, 둘을 겹쳐 두면 유틸리티 정렬 순서가
-        // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49).
-        tint === null ? (active ? "tab-on" : "hover:bg-fill-soft") : tint.cell,
+        // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 글자색은 물러나지 않는다 —
+        // 물든 칸도 켜졌으면 `fg`, 꺼졌으면 `fg-secondary`다(기다리는 칸의 이름은 그 위에 잉크가 선다).
+        // 물든 칸에는 hover가 없다(채움이 그 자리를 쓴다 — `ShellTabs.test`의 「물든 칸은 hover 회색을 안 얹는다」).
+        tint === null
+          ? active
+            ? "tab-on"
+            : "text-fg-secondary hover:bg-fill-soft hover:text-fg"
+          : cn(tint.cell, active ? "text-fg" : "text-fg-secondary"),
       )}
     >
       {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
@@ -847,6 +845,9 @@ const ShellTab = memo(function ShellTab({
 
             **꼬리표가 있으면 안 선다** — 죽은 칸은 그 자리를 이미 먹고 있다.
 
+            **색은 칸의 글자색을 물려받는다.** 이 글리프는 이름 옆에 서는 아이콘이 아니라 이름 대신 서는 것이라, DS
+            `.at-tab .ic`의 한 단 흐린 색(`spec` 칸의 `File`이 쓴다)이 아니라 이름과 같은 색이다.
+
             글리프 svg가 `aria-hidden`이라(agent-mark의 계약) 이름을 따로 안 달면 도는 칸이
             **눈에만** 보인다. 역할 없는 span의 `aria-label`은 읽히는 것이 보장되지 않아
             `role="img"`을 함께 준다 — 넓은 폭에서는 이름 글자가 그 몫을 하므로 `sr-only`로
@@ -869,13 +870,13 @@ const ShellTab = memo(function ShellTab({
             칸이 스크린리더에 「버튼」으로만 불린다. 자리는 안 먹고 이름은 남긴다. */}
         {/* **잉크가 여기 붙는다**(판 04 결정 15). 칸 상자가 아니라 이 글자 하나다 —
             상자에 얹으면 좁은 폭의 마크가 함께 물든다(`signalTint` 머리말). 잉크는 기다리는 칸에만
-            있다 — 안 본 완료의 이름은 DS `.at-tab`대로 칸의 본문 글자색이다(`TONE`의 `tab`). */}
+            있다 — 안 본 완료의 이름은 DS `.at-tab`대로 칸의 글자색이다(`TONE`의 `tab`). */}
         <span className={cn("min-w-0 truncate @max-[88px]:sr-only", tint?.ink)}>{name}</span>
         {/* 죽은 칸을 **누르지 않고** 알아보는 자리다(결정 17). 왜 죽었는지 한 문장은
             그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
             안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로
             쓴 것과 정면으로 어긋난다.
-            직접 선언한 색이라 칸의 본문 글자색에 안 덮인다. */}
+            직접 선언한 색이라 칸의 글자색에 안 덮인다. */}
         {end && <span className="shrink-0 text-fg-tertiary">{end.mark}</span>}
       </Hint>
       {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span
@@ -939,8 +940,8 @@ const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose, 
       data-tab="code"
       data-code={ref}
       className={cn(
-        "@container flex h-8 w-[180px] min-w-[44px] shrink items-center rounded-lg text-chat-meta text-fg transition-colors",
-        active ? "tab-on font-medium" : "hover:bg-fill-soft",
+        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-lg text-chat-meta transition-colors",
+        active ? "tab-on font-medium" : "text-fg-secondary hover:bg-fill-soft hover:text-fg",
       )}
     >
       {/* 켜짐은 `aria-pressed`로 말한다 — 셸 칸과 같은 어휘다(스토리 87). */}
@@ -954,7 +955,7 @@ const CodeTab = memo(function CodeTab({ tab, folder, active, onSelect, onClose, 
         onPointerDown={(event) => onDragTab(tab.id, event)}
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-left focus-ring @max-[88px]:justify-center"
       >
-        <FileCode className={cn("size-3.5 shrink-0", !active && "text-fg-tertiary")} />
+        <FileCode className={cn("size-3.5 shrink-0", active ? "text-fg-secondary" : "text-fg-tertiary")} />
         <span className="min-w-0 truncate @max-[88px]:sr-only">
           {name}
           {folder !== null && <span className="text-fg-tertiary"> · {folder}</span>}

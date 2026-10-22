@@ -111,12 +111,12 @@ test("명령도 자손도 없으면 묻지 않고 닫는다", async ({ page }) =
 
 // ── 아카이브 확인 창(S18) ──
 
-/** 작업 화면(터미널 탭)에서 셸 하나가 뜬 뒤 ⋯ 메뉴의 「아카이빙」을 누른다. 확인 창을 돌려준다. */
+/** 작업 화면(터미널 탭)에서 셸 하나가 뜬 뒤 ⋯ 메뉴의 「아카이브」를 누른다. 확인 창을 돌려준다. */
 async function askToArchive(page: Page, path: string, menu: string, title: string): Promise<Locator> {
   await page.goto(`${path}?tab=terminal`);
   await awaitSpawned(page, 1);
   await page.getByRole("button", { name: menu, exact: true }).click();
-  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이브", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: `'${title}' 아카이빙` });
   await expect(dialog).toBeVisible();
   return dialog;

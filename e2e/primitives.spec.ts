@@ -9,6 +9,7 @@ import {
   unknownIpcCalls,
   띠,
   그림자,
+  머리카드,
   색대비,
   이름표,
   칠한값,
@@ -228,13 +229,15 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
 
-  // 글자 버튼 — 카드 안의 버튼(DS `.at-btn.sm` 32 · `radius-lg`). 알약은 걷혔다(codex-ds 결정 3).
+  // 머리 카드의 글자 버튼 — DS `.at-btn.top`(24 · `radius-md`). 머리 줄에 서는 것은 모두 24다(창 컨트롤 · 작업 ⋯와 같다).
   const 버튼반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   expect(버튼반경, "radius-lg").toBe("10px");
+  const 작은반경 = await 토큰값(page, "border-top-left-radius", "--radius-md");
+  expect(작은반경, "radius-md").toBe("8px");
   expect(
-    await 칠한값(page.getByRole("button", { name: "폴더 열기", exact: true }), "height", "border-top-left-radius"),
-    "글자 버튼",
-  ).toEqual(["32px", 버튼반경]);
+    await 칠한값(머리카드(page).getByRole("button", { name: "폴더 열기", exact: true }), "height", "border-top-left-radius"),
+    "머리 카드의 글자 버튼",
+  ).toEqual(["24px", 작은반경]);
   // 아이콘 버튼 — Codex `IconButton`(`size-control` 정사각 · `radius-lg`). 동그란 아이콘 버튼은 걷혔다.
   const 컨트롤 = await 토큰값(page, "width", "--size-control");
   expect(컨트롤, "size-control").toBe("28px");
@@ -254,16 +257,21 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   ).toEqual(["32px", 버튼반경, await 토큰색(page, "--fill-soft")]);
 
   // 입력칸 — DS `.at-input`(32 · `radius-md`).
-  const 작은반경 = await 토큰값(page, "border-top-left-radius", "--radius-md");
-  expect(작은반경, "radius-md").toBe("8px");
   await page.goto("/settings/terminal");
   expect(
     await 칠한값(page.getByRole("textbox", { name: "터미널 글꼴", exact: true }), "height", "border-top-left-radius"),
     "입력칸",
   ).toEqual(["32px", 작은반경]);
 
-  // 작은 아이콘 버튼 — 바탕 줄의 작업 ⋯와 분할(DS `.at-ib.xs` 24 · `radius-md`). 한 줄에 이웃한 둘이라 상자가 같아야 한다 —
-  // 갈리면 hover 면이 한 버튼에서 다음으로 옮겨 갈 때 커졌다 작아진다.
+  // 카드 안의 글자 버튼 — DS `.at-btn.sm`(32 · `radius-lg`, 에이전트 훅의 「설치」). 알약은 걷혔다(codex-ds 결정 3).
+  await page.goto("/settings/hooks");
+  expect(
+    await 칠한값(page.locator("main").getByRole("button", { name: "설치", exact: true }), "height", "border-top-left-radius"),
+    "카드 안의 글자 버튼",
+  ).toEqual(["32px", 버튼반경]);
+
+  // 작은 아이콘 버튼 — 머리 카드의 작업 ⋯와 분할(DS `.at-ib.xs` 24 · `radius-md`). 둘은 세로선을 사이에 두고 한 줄에 서고,
+  // 머리 줄에 서는 것은 모두 24다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
   await page.goto(`/works/${plainWork.slug}`);
   for (const name of ["작업 메뉴", "분할"]) {
     expect(

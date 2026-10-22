@@ -115,7 +115,7 @@ function SpecLayoutPage() {
 }
 
 /**
- * 머리글과 레이아웃 행 — 설정 묶음(목록) 하나에 행 하나다(프로토타입 `Settings-layout`, ui-refresh 결정 16의 옅은 면). 구획
+ * 머리글과 레이아웃 행 — 설정 묶음(목록) 하나에 행 하나다(프로토타입 `Settings-layout`, DS `SettingsGroup`의 흰 묶음). 구획
  * 제목은 두지 않는다(판 06 문구 표 S9 — 줄이 하나뿐이라 큰 제목 「spec 레이아웃」을 되풀이한다). 값을 들지 않는다:
  * 페이지가 들고 이쪽은 그리기만 한다(마크업 테스트가 클릭을 못 건다 — `HooksSection`과 같은 이유). ⋯ 메뉴가
  * 열렸는지만 그 행이 든다 — 화면 밖 누구도 그것을 묻지 않는다.
@@ -185,7 +185,7 @@ function LayoutRow({
           <div className="flex items-start gap-2">
             <TriangleAlert
               aria-hidden
-              className="mt-[3px] size-3.5 shrink-0 text-warning"
+              className="mt-0.5 size-3.5 shrink-0 text-warning"
             />
             <div className="flex min-w-0 flex-col gap-0.5">
               {/* 경고색 글자는 medium이다 — `warning`은 흰 면 위 3.8:1이라 13px 이상 medium 글자에만 쓴다(DS README 「대비」). */}
@@ -294,7 +294,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
           aria-describedby={noteId}
           onClick={onRevert}
         >
-          <RotateCcw aria-hidden className="mt-[3px] size-3.5" />
+          <RotateCcw aria-hidden className="mt-0.5 size-3.5" />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span id={titleId} className="font-medium">
               기본값으로 되돌리기
@@ -336,8 +336,8 @@ export function RevertedNotice({ reference, onClose }: { reference: string; onCl
 
 /**
  * 화면 아래에 서는 어두운 메시지 하나의 모양 — 머리 한 줄(무엇을 했는가와 그 참조), 설명 한 줄, 닫기.
- * 설정 본문 카드(`SettingsPage`의 `main`)의 바닥에 서고, 폭은 설정 틀의 글 폭(`--measure-read`)이라 묶음과 같은 열에 가운데
- * 선다 — 카드가 그보다 좁으면 카드 안 여백(`--card-pad`)까지다.
+ * 설정 본문 카드(`SettingsPage`의 `main`)의 바닥에 서고, 폭은 설정 틀의 글 폭(`size-thread`)이라 묶음과 같은 열에 가운데
+ * 선다 — 카드가 그보다 좁으면 글 거터(20)까지다.
  *
  * **앱의 토스트(`showToast`)가 아니다.** 토스트는 한 장 · 한 줄 · 1600ms · 닫기 없음이고 부르는 길이
  * `showToast(title, kind)` 하나뿐이다(S26 · S27 · S47). 이 메시지는 붙여 넣을 참조와 다음에 할 일을 두 줄로
@@ -366,10 +366,10 @@ function PageNotice({
   return (
     <div
       role="status"
-      className="absolute inset-x-(--card-pad) bottom-7 z-20 mx-auto flex max-w-(--measure-read) items-start gap-2.5 rounded-2xl bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-prominent"
+      className="absolute inset-x-5 bottom-7 z-20 mx-auto flex max-w-(--size-thread) items-start gap-2.5 rounded-2xl bg-fg py-3 pr-3 pl-3.5 text-fg-inverse shadow-prominent"
     >
       <Check aria-hidden className="mt-0.5 size-4 shrink-0" />
-      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-chat-meta font-medium break-words">
           {title} <code className="font-mono text-xs opacity-80">{reference}</code>
         </span>

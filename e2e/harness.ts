@@ -880,6 +880,18 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**
+ * 머리 카드 — 창 맨 위 머리 줄(문서의 `header`)에 뜬 흰 카드(codex-ds 스펙 §4). 지금 보는 것의 아이콘 · 이름과 그 화면의 할
+ * 일을 든다. 카드 자신은 역할이 없어(이름은 글자이고 할 일은 저마다 버튼이다) 표식(`data-slot`)으로 집는다. 모든 화면에 하나씩
+ * 선다(codex-ds 스펙 §7) — 할 일이 없는 화면(Terminal · 작업을 고르지 않은 Works)에서는 이름만 든다.
+ *
+ * **여기 사는 이유는 머리 카드를 집는 길을 하나로 두려는 것이다.** 화면마다 머리 카드가 서면 여러 spec이 이 자리를 집는다 —
+ * 선택자를 옮겨 적으면 표식이 바뀌는 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)` · `closest(…) === null`)가 헛돈다. 진열대처럼
+ * 쪽 안의 한 상자에서 집을 때는 그 상자를 건넨다. 페이지 안(`evaluate`)에서 집을 때는 선택자 `HEAD_CARD`를 인자로 넘긴다.
+ */
+export const HEAD_CARD = 'header [data-slot="head-card"]';
+export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
+
+/**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
  * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
  *
@@ -891,15 +903,22 @@ export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]"
 /**
  * 대비를 재는 **페이지 안** 계산(WCAG 대비비 — 1에서 21). 직렬화되어 페이지로 가므로 모듈의 이름을 못 읽는다.
  *
- * 바탕은 `backs`에서 처음 만나는 **불투명한** 색이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에
- * 달려 잴 수 없다). 글자색(`ink`)은 제 알파에 `opacity`를 곱해 그 바탕 위에 섞은 색으로 잰다 — 눈에 닿는 색이다.
+ * `layers`는 글자에서 바깥으로 올라가는 겹이다 — 겹 하나는 요소 하나의 배경색과 불투명도다. 바탕은 그 가운데 처음 만나는
+ * **불투명한** 배경이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에 달려 잴 수 없다). 바탕과 글자 사이의
+ * **반투명한 면은 바탕 위에 차례로 섞는다** — 사이드바의 고른 행(`fill-hover`)처럼 글자 바로 밑에 깔린 면이다.
+ * 건너뛰면 그 면의 알파가 커져 대비가 바닥 아래로 내려가도 맨 바탕 위의 값으로 초록이 된다. 글자색(`ink`)은 그렇게 섞은 면 위에
+ * 섞는다 — 눈에 닿는 색이다.
+ *
+ * **불투명도는 그 요소가 그리는 것 전부(제 배경 · 자손 · 글자)에 걸린다.** 그래서 겹 하나의 알파는 제 알파에 그 요소부터 바탕 바로
+ * 안쪽까지의 불투명도를 곱한 값이고, 글자의 알파는 글자 요소부터 거기까지의 곱이다. 바탕과 그 바깥의 불투명도는 바탕과 글자를
+ * 함께 옅게 하므로 셈에 넣지 않는다.
  *
  * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 hex · 알파(`rgba`) · `color-mix(…)`로 갈려 있어 「무슨 색을 골랐나」로는
  * 대비를 못 잰다. 그리고 브라우저는 `oklch` · `color(…)` 같은 표기를 그대로 돌려준다(WebKit 실측:
  * `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다
  * 짧고 새지 않는다.
  */
-const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[]; opacity: number }): number => {
+const contrastInPage = ({ ink, layers }: { ink: string; layers: { back: string; opacity: number }[] }): number => {
   const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
   if (!pen) throw new Error("캔버스를 못 열었다 — 색을 읽을 수 없다");
   const rgba = (color: string): [number, number, number, number] => {
@@ -910,11 +929,21 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
     const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
     return [r, g, b, a / 255];
   };
-  const back = backs.map(rgba).find(([, , , a]) => a === 1);
-  if (!back) throw new Error(`대비를 잴 수 없다 — 불투명한 바탕이 없다: ${backs.join(" · ")}`);
+  const painted = layers.map(({ back, opacity }) => ({ color: rgba(back), opacity }));
+  const base = painted.findIndex(({ color: [, , , a] }) => a === 1);
+  if (base < 0) throw new Error(`대비를 잴 수 없다 — 불투명한 바탕이 없다: ${layers.map(({ back }) => back).join(" · ")}`);
+  const over = (under: number[], [r, g, b]: number[], alpha: number) =>
+    [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * under[at]);
+  // 바탕에서 글자 쪽으로 겹을 올린다 — `fade`는 지금 겹부터 바탕 바로 안쪽까지의 불투명도 곱이다.
+  let back = painted[base].color.slice(0, 3);
+  let fade = 1;
+  for (let at = base - 1; at >= 0; at -= 1) {
+    const { color, opacity } = painted[at];
+    fade *= opacity;
+    back = over(back, color, color[3] * fade);
+  }
   const [r, g, b, a] = rgba(ink);
-  const alpha = a * opacity;
-  const mixed = [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * back[at]);
+  const mixed = over(back, [r, g, b], a * fade);
   const luminance = (channels: number[]) => {
     const [lr, lg, lb] = channels.map((channel) => {
       const c = channel / 255;
@@ -922,7 +951,7 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
     });
     return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
   };
-  const [light, dark] = [luminance(mixed), luminance(back.slice(0, 3))].sort((x, y) => y - x);
+  const [light, dark] = [luminance(mixed), luminance(back)].sort((x, y) => y - x);
   return (light + 0.05) / (dark + 0.05);
 };
 
@@ -934,7 +963,7 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
  * 손잡이가 생겨 색 읽기를 바로잡는 날) 같은 「대비 바닥」을 두 spec이 다른 값으로 잰다.
  */
 export const 색대비 = (page: Page, 앞: string, 뒤: string): Promise<number> =>
-  page.evaluate(contrastInPage, { ink: 앞, backs: [뒤], opacity: 1 });
+  page.evaluate(contrastInPage, { ink: 앞, layers: [{ back: 뒤, opacity: 1 }] });
 
 /**
  * 토큰 하나를 브라우저가 쓰는 색 문자열로 바꾼다 — 빈 상자에 `background-color: var(--name)`을 칠해 읽는다.
@@ -1006,7 +1035,7 @@ export async function 팔레트(page: Page, 다크: boolean): Promise<void> {
 /**
  * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(위 `토큰색`과 같은 길이고, 색이 아닌
  * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
- * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `CardBox`).
+ * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `Card`).
  * **fail-closed** — 안 풀린 `var()`는 그 선언을 무효로 만들어 속성이 초기값으로 떨어진다. 그 값이면 던진다: 토큰이 지워진 날 칠해진
  * 자리도 같은 초기값이라, 견줌이 양쪽 다 초기값으로 초록이 된다.
  *
@@ -1027,6 +1056,23 @@ export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "
     [property, name, 앞말] as const,
   );
 
+/**
+ * 그 안 첫 글자가 선 자리(왼쪽 x · 위 y · 오른쪽 끝) — 비지 않은 첫 글자 마디를 `Range`로 잰다. 요소의 상자는 안쪽 여백을 품어
+ * 글자 자리가 아니다. 거터 · 행 글자의 세로줄을 재는 spec(`path-bar` · `spacing`)이 한 판정을 쓴다.
+ */
+export const 첫글자 = (scope: Locator) =>
+  scope.evaluate((root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => (node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    const text = walker.nextNode();
+    if (!text) throw new Error("글자 마디가 없다");
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const box = range.getBoundingClientRect();
+    return { x: box.left, y: box.top, right: box.right };
+  });
+
 /** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
 export const 칠한값 = (target: Locator, ...properties: string[]) =>
   target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
@@ -1038,20 +1084,30 @@ export const 칠한값 = (target: Locator, ...properties: string[]) =>
 export const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
 
 /**
- * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는
- * 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
- * 없으면 흰 바탕이다(문서의 바탕).
+ * 그 요소에 칠해진 `box-shadow`를 층으로 갈라 투명한 빈 층을 걷은 나머지 — 링 유틸리티(`inset-ring-*`)만 두른 자리면 그 링 하나가
+ * 남는다. `그림자`와 같은 빈 층을 걷되 층의 자리를 가리지 않고, 층마다 따로 맞대도록 목록으로 돌려준다. 층 사이의 쉼표만 가르고
+ * 색 함수(`rgb(…)`) 안의 쉼표는 둔다.
+ */
+export const 칠한링 = async (target: Locator) =>
+  (await 칠한값(target, "box-shadow"))[0]
+    .split(/,(?![^(]*\))/)
+    .map((one) => one.trim())
+    .filter((one) => !one.startsWith("rgba(0, 0, 0, 0)"));
+
+/**
+ * 그 요소 글자의 **바탕과의 대비**. 글자에서 위로 올라가며 요소마다 배경색과 불투명도를 모아, 처음 만나는 불투명한 배경 위에 그
+ * 사이의 반투명한 면과 글자색을 차례로 섞어 잰다(`contrastInPage`) — 옅게 하는 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은
+ * 값으로 읽히고, 고른 행처럼 글자 밑에 반투명한 면이 깔린 자리는 그 면까지 얹은 바탕 위에서 잰다. 끝까지 불투명한 배경이 없으면
+ * 흰 바탕이다(문서의 바탕).
  */
 export async function 글자대비(element: Locator): Promise<number> {
   const arg = await element.evaluate((node) => {
-    const backs: string[] = [];
-    let opacity = 1;
+    const layers: { back: string; opacity: number }[] = [];
     for (let at: Element | null = node; at !== null; at = at.parentElement) {
       const style = getComputedStyle(at);
-      opacity *= Number(style.opacity);
-      backs.push(style.backgroundColor);
+      layers.push({ back: style.backgroundColor, opacity: Number(style.opacity) });
     }
-    return { ink: getComputedStyle(node).color, backs: [...backs, "rgb(255, 255, 255)"], opacity };
+    return { ink: getComputedStyle(node).color, layers: [...layers, { back: "rgb(255, 255, 255)", opacity: 1 }] };
   });
   return element.page().evaluate(contrastInPage, arg);
 }
@@ -1068,7 +1124,7 @@ export const navButtons = (page: Page) => page.locator("aside nav").getByRole("b
 export const navButton = (page: Page, label: string) =>
   page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
-/** `Processes` 화면의 제목 — 카드 머리의 캡슐(`Crumbs`)은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** `Processes` 화면의 제목 — 머리 카드의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
@@ -1543,7 +1599,7 @@ export async function sentNotifications(
 
 /**
  * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
- * (info 맨 위의 복사 줄 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
+ * (work 메뉴의 복사 ▸ · spec 트리 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
  * 받아 적는다. 앱의 입구 하나를 갈아 끼우는 커맨드 붙잡기(`holdCommand`)와 알림 손잡이(`stubNotifications`)와 같은
  * 모양이다 — 새 층이 아니다.
  *

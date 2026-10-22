@@ -172,31 +172,32 @@ describe("줄 하나", () => {
     expect(이름들(markup)).toEqual(["그냥 일 — 나를 기다림"]);
   });
 
-  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 상태색의 잉크로 선다(DS 띠 줄의 `.end` — 기다림
-  // `warning`, 안 본 완료 `accent-solid`).
-  it.each([
-    ["waiting", "text-warning"],
-    ["done", "text-accent-solid"],
-  ] as const)("%s 줄의 경과는 상태색의 잉크다", (kind, ink) => {
-    expect(여는태그(band([줄({ kind })]), "data-elapsed")).toContain(ink);
+  // 경과는 행 오른쪽 메타의 경과와 **같은 조각**이다(`SignalElapsed`) — 두 갈래가 같은 `fg-secondary`다(codex-ds 스펙 S17 — DS
+  // 띠 줄 `.end`의 상태색 잉크는 글자 대비 바닥에 못 미친다. 대비는 L3 `works-sidebar`가 잰다).
+  it.each(["waiting", "done"] as const)("%s 줄의 경과는 fg-secondary다", (kind) => {
+    const 경과 = 여는태그(band([줄({ kind })]), "data-elapsed");
+    expect(경과).toContain("text-fg-secondary");
+    expect(경과).not.toMatch(/text-(?:warning|accent-solid)/);
   });
 });
 
 // **띠는 한 덩어리 상자다**(목업/행-신호-세-안.html의 `.strip`). 색과 모서리는 이제 디자인 시스템이
-// 정한다 — 바탕 위의 흰 묶음(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `surface`). 줄은
-// 종류로 무게가 갈린다(목업의 `.it` / `.it.d`만 한 단 옅은 `fg-secondary`). 상자가 없으면 띠가 아래 목록과 같은 평면에
+// 정한다 — 바탕 위의 흰 카드(ui-refresh 결정 11 · DS `.at-band`, 카드 반경 16 · 바닥 `surface` · 그림자 두 겹). 줄은
+// 종류로 무게가 갈린다(DS `.at-band .at-row` — 기다림 `fg` 500, 안 본 완료 한 단 옅은 `fg-secondary`). 상자가 없으면 띠가 아래 목록과 같은 평면에
 // 서고, 무게가 안 갈리면 「기다림 › 안 본 완료」가 점 색 하나에만 매달린다 — 「열여덟 행을 훑지 않고
 // 거기만 본다」(스토리 36)가 그 둘에 기댄다.
 describe("띠는 목록 위에 뜬 상자다", () => {
+  // 그림자(DS `.at-band`의 두 겹 — `shadow-hairline` + `shadow-200`)는 칠해진 값으로 L3(`works-sidebar`)가 토큰과 맞댄다 — 여기서는 그
+  // 클래스 글자를 재지 않는다(구현-스펙 「클래스 문자열은 재지 않는다」).
   it("상자가 바닥색과 반지름을 든다", () => {
     const 상자 = 여는태그(band(줄들(1)), "data-band");
     expect(상자).toContain("bg-surface");
     expect(상자).toContain("rounded-2xl");
   });
 
-  // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다. 점 색으로만
-  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다.
-  it("기다림 줄과 완료 줄의 무게가 갈린다", () => {
+  // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다(DS `.at-band .at-row.wait` — 진한 글자 500). 점 색으로만
+  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다. 무게(기다림 500 · 완료 400)는 칠해진 값으로 L3(`works-sidebar`)가 잰다.
+  it("기다림 줄과 완료 줄의 글자색이 갈린다", () => {
     const 줄태그 = (kind: "waiting" | "done") =>
       /<button[^>]*aria-label[^>]*>/.exec(band([줄({ kind })]))![0];
     expect(줄태그("waiting")).not.toContain("text-fg-secondary");

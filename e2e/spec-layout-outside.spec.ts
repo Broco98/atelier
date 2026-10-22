@@ -1,5 +1,5 @@
 import type { ReadableSpecLayout, SpecLayoutJson, SpecLayoutRead, TemplateBodies } from "@/features/spec-layout/types";
-import { expect, test, type Page } from "./evidence";
+import { expect, test, type Locator, type Page } from "./evidence";
 import { CHANGED_SPEC_LAYOUT_READ, SPEC_LAYOUT_READ, SPEC_LAYOUT_RENDERED, UNREADABLE_ATELIER_READ } from "./fixtures";
 import {
   callCount,
@@ -15,7 +15,7 @@ import {
 
 // 밖에서 바뀐 레이아웃(spec 레이아웃 티켓 15 · 결정 22). 에이전트가 레이아웃을 저장하거나 사람이 손으로 고치면 감시가
 // `layouts:changed`를 쏘고, 전역 구독 하나가 레이아웃 읽기를 다시 부른다. 편집기는 따로 듣지 않고 다시 읽힌 답을
-// 기준본과 내용으로 견준다 — 초안이 없으면 조용히 따라가고, 있으면 머리 아래의 배너로 한쪽을 고르게 한다.
+// 기준본과 내용으로 견준다 — 초안이 없으면 조용히 따라가고, 있으면 폼 카드 맨 위의 배너로 한쪽을 고르게 한다.
 // 판정 표의 여섯 줄은 L2가 잰다(`outside.test.ts`).
 //
 // **이 층이 드는 것은 그 줄이 화면까지 이어지는가다.** fixture의 답은 설치할 때 한 번 정해지므로, 편집기가 연 뒤에
@@ -120,6 +120,51 @@ test("[내 초안 유지]는 배너를 닫고 초안을 남기며, 저장하면 
   // 합치지 않는다 — 밖에서 고친 `decisions.md`의 설명도 초안의 것으로 덮는다
   expect(layout.root.children).toEqual([{ ...OVERVIEW, description: MINE }, DECISIONS, SPEC_LAYOUT_READ.layout.root.children![2]]);
   expect(templates).toEqual(SPEC_LAYOUT_READ.templates);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 앱의 최소 창(900 — `tauri.conf.json`)에서 사이드바를 끝까지(400) 넓혀도 배너가 폼 카드 안에 다 선다. 폼 카드는 몸을 격리해
+// 바닥이 없는데(그 머리의 조작은 머리 카드로 갔다), 그대로면 이 창에서 카드가 배너보다 좁아져 글이 카드 모서리에 잘린다 — 무엇이
+// 바뀌었는지 못 읽은 채 한쪽을 고르게 된다. 배너가 선 동안은 그 배너가 폼 카드의 바닥이다(`EditorFrame`).
+test("최소 창에서 사이드바를 끝까지 넓혀도 배너의 아이콘 · 글 · 버튼이 폼 카드 안에 다 선다", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 600 });
+  await page.addInitScript(() => localStorage.setItem("sidebar-width", "400"));
+  await installFixtureBackend(page);
+  await openEditor(page);
+  const rect = (target: Locator) =>
+    target.evaluate((el) => {
+      const { left, right, top, bottom, width } = el.getBoundingClientRect();
+      return { left, right, top, bottom, width };
+    });
+  const form = page.locator("main");
+  const before = await rect(form);
+
+  await 설명(page).fill(MINE);
+  await changeOutside(page, CHANGED_SPEC_LAYOUT_READ);
+  const banner = 배너(page);
+  await expect(banner).toContainText("밖에서 이 레이아웃이 바뀌었어요");
+
+  const card = await rect(form);
+  const parts = {
+    아이콘: await rect(banner.locator("svg")),
+    글: await rect(banner.getByText("밖에서 이 레이아웃이 바뀌었어요", { exact: true })),
+    "새로 불러오기": await rect(배너버튼(page, "새로 불러오기")),
+    "내 초안 유지": await rect(배너버튼(page, "내 초안 유지")),
+  };
+  for (const [name, box] of Object.entries(parts)) {
+    expect([box.left >= card.left, box.right <= card.right], `${name} — 폼 카드 안`).toEqual([true, true]);
+  }
+  // 아이콘과 글은 한 줄이다 — 글 앞에 아이콘이 선다(좁으면 내려가는 것은 두 버튼이다).
+  expect(parts.아이콘.right, "아이콘이 글 앞").toBeLessThanOrEqual(parts.글.left);
+  expect(parts.아이콘.top, "아이콘이 글과 한 줄").toBeGreaterThanOrEqual(parts.글.top);
+  expect(parts.아이콘.bottom, "아이콘이 글과 한 줄").toBeLessThanOrEqual(parts.글.bottom);
+  // 앵커: 배너가 서기 전의 폼 카드는 배너보다 좁았다 — 이 창이 넉넉하면 위 견줌이 아무것도 재지 않는다. 배너가 서며 카드가
+  // 넓어진 몫은 트리 카드 · 사이드바가 내준 자리다.
+  expect(card.width, "배너가 선 뒤의 폼 카드가 그 전보다 넓다").toBeGreaterThan(before.width);
+  // 트리 카드도 창 안이다 — 폼 카드가 넓어진 몫을 창 밖으로 밀어내 얻지 않았다.
+  const edge = page.viewportSize()!.width;
+  expect((await rect(page.getByRole("region", { name: "항목 트리", exact: true }))).right, "트리 카드가 창 안").toBeLessThanOrEqual(edge);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

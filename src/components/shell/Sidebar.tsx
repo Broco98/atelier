@@ -67,7 +67,9 @@ function Sidebar({
   onPickSettingsItem,
   onLeaveSettings,
 }: SidebarProps) {
-  const size = useResizableWidth("sidebar-width", 280, 240, 400);
+  // 기본 폭은 DS `size-sidebar`(290)이고 범위(240–400)는 지금 것을 잇는다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면
+  // 그대로 선다(`useResizableWidth`가 저장값을 읽는 규칙) — 기본값이 바뀌어도 고른 폭을 버리지 않는다.
+  const size = useResizableWidth("sidebar-width", 290, 240, 400);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 `WorkRowShells`(`WorkSectionList.tsx`) 머리말에 있다.
@@ -143,7 +145,7 @@ function Sidebar({
   return (
     <SidebarFrame open={open} size={size}>
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
-      <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+      <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)}>
         {/* **`navItems`를 돈다**(#183) — 활성 판정(AppShell)과 팔레트의 「가는 곳」(`destinations.ts`)도 같은
             배열을 본다. */}
         {navItems.map((item) => (
@@ -218,14 +220,21 @@ function Sidebar({
           규격을 쓰면서 자리가 갈린다. 그래서 규격은 `SidebarItem` 하나로, 거터는 GUTTER
           하나로 묶어 「같은 규격」이 주석이 아니라 구조가 되게 했다.
 
-          **윗변에 늘 1px 선이 있다**(UI개선 결정 25) — 작업 목록과 설정 사이다. 스크롤과
+          **윗변에 늘 선이 있다**(UI개선 결정 25) — 작업 목록과 설정 사이다. 스크롤과
           무관하다: 목록 **윗** 가장자리의 선은 굴렀을 때만 서지만(`SidebarWorkList`), 바닥은
-          목록이 어디에 있든 「여기부터 목록이 아니다」라서. 이 칸은 스크롤 상자가 아니라
-          테두리가 막대를 밀 일이 없다 — 목록 윗선이 테두리를 못 쓰는 이유가 여기엔 없다.
+          목록이 어디에 있든 「여기부터 목록이 아니다」라서. 선은 0.5px `border-heavy`(DS `.at-side-foot`
+          — codex-ds 티켓 19)이고 테두리가 아니라 칸 윗변에 겹쳐 칠한 면(`::before`)이다 — 0.5px 테두리는
+          엔진마다 굵기가 갈린다(탭 줄의 아랫선 · 호버 카드의 가름선과 같은 손버릇). 목록 윗선과 같은 선이다.
 
           표식은 검사가 이 칸을 정체성으로 집기 위한 것이다 — 버튼에서 부모를 몇 겹 거슬러
           오르는 길은 `SidebarItem`의 감싸개 수에 묶인다. */}
-      <div data-sidebar-foot="" className={cn("shrink-0 border-t pt-1.5", GUTTER)}>
+      <div
+        data-sidebar-foot=""
+        className={cn(
+          "relative shrink-0 pt-1.5 before:absolute before:inset-x-0 before:top-0 before:h-[0.5px] before:bg-border-heavy",
+          GUTTER,
+        )}
+      >
         {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). */}
         <SidebarItem icon={Settings} label="Settings" active={false} onClick={onOpenSettings} />
       </div>
@@ -248,7 +257,10 @@ function SidebarFrame({
   children: ReactNode;
 }) {
   return (
+    // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 바탕에 붙은 이 안에서는 `selected-row`가 `fill-hover`다(index.css의 그
+    // 유틸리티 · codex-ds 스펙 §5). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
     <aside
+      data-sidebar=""
       style={
         {
           "--sidebar-width": `${size.width}px`,
@@ -269,10 +281,9 @@ function SidebarFrame({
           foldingInnerClass(open),
         )}
       >
-        {/* traffic light strip — same height as the main header (the header no
-            longer draws a bottom border; the 44px strip is what keeps the two
-            columns aligned). It is also the nav's top breathing room, which is
-            why the nav below carries no top padding of its own. */}
+        {/* 신호등 자리 — 머리 줄과 같은 48(`--titlebar-height`)의 빈 끌기 줄이다(codex-ds 스펙 §4). 머리 줄에 아래 선이 없어
+            이 높이가 두 열의 위끝을 맞춘다 — 사이드바 목록과 본문 카드가 같은 줄에서 시작한다. 신호등 · 창 컨트롤이 이 줄 가운데에
+            뜨고(`ShellControls`), 아래 nav의 위 숨 자리도 이 줄이라 nav에는 제 위 여백이 없다. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
         {children}
       </div>
@@ -285,10 +296,11 @@ function SidebarFrame({
 function asideClass(open: boolean, dragging: boolean): string {
   return cn(
     // **탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다) 끄는 최소 폭(`--sidebar-min`)
-    // 까지만 준다. 탭 줄이 모자랄 때 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`) — 작업 패널은 줄 아래
-    // 카드 줄에 서서(ui-refresh 결정 4) 줄과 폭을 다투지 않으므로, 이제 그 차례는 앱 창의 최소 폭(900) 아래에서만
-    // 온다(e2e `tab-row.ts`의 `squeezedWidth`). 탭 줄 말고 자리를 요구하는 것은 편집기의 두 카드 머리 하나다(`Frame`의
-    // `BesideBox` — 넓혀 둔 사이드바와 좁은 창이면 온다). 다른 화면의 본문은 자리를 요구하지 않아 그 화면들에서는 늘 고른 폭이다.
+    // 까지만 준다. 탭 줄이 모자랄 때 여기 차례가 온다(`panel-layout`의 `TAB_ROW_COLUMN`) — 탭 줄은 본문 카드의
+    // 머리라 작업 패널과 같은 카드 줄에 서고(codex-ds 스펙 §4) 패널이 제 최소 폭까지 먼저 자리를 내주므로, 그 차례는 앱 창의
+    // 최소 폭(900) 아래에서만 온다(e2e `tab-row.ts`의 `squeezedWidth`). 탭 줄 말고 자리를 요구하는 것은 머리 카드의 할 일 묶음과
+    // 편집기 트리 카드의 머리다(`Frame`의 `HeadCard` · `BesideBox` — 넓혀 둔 사이드바와 좁은 창이면 온다). 다른 화면의 본문은 자리를
+    // 요구하지 않는다.
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
     // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.
@@ -296,7 +308,7 @@ function asideClass(open: boolean, dragging: boolean): string {
     // `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts` — 행 메타와 점의 대비를 그 바탕 위에서 잰다).
     "relative overflow-hidden bg-surface-shell",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-    // 곡선은 --ease-panel — 접히는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
+    // 곡선은 --ease-panel — 폭이 움직이는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
     !dragging && PANEL_MOTION,
     !dragging && (open ? "transition-[width,min-width]" : "transition-[width]"),
     open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0",
@@ -327,7 +339,7 @@ function SettingsNav({
       <div className={cn("shrink-0 pb-3", GUTTER)}>
         <SidebarItem icon={ArrowLeft} label="앱으로 돌아가기" active={false} onClick={onLeave} />
       </div>
-      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)}>
         {SETTINGS_ITEMS.map((item) => (
           <SidebarItem
             key={item.key}
@@ -550,22 +562,25 @@ function SidebarItem({
   return (
     <div
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-lg pr-1 transition-colors",
+        // DS `SidebarRow` — 32(`size-row-nav`) · `radius-lg`. 글자는 이름 버튼의 `nav-row`(14/20 500)이고 아이콘은 17이다. 아이콘은
+        // 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이다(DS 「행 글자 16」 · `.at-row`의 안쪽 8 · 아이콘과 글자 사이 9).
+        "flex h-(--size-row-nav) shrink-0 items-center rounded-lg pr-1 transition-colors",
         // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
+        // 고른 행은 `fill-hover`(사이드바 안의 `selected-row`), 지나는 행은 `fill-soft`다(DS `.at-row.is-on` · `.at-row:hover`).
         active ? "selected-row" : "text-fg hover:bg-fill-soft",
       )}
     >
       <button
         type="button"
         onClick={onClick}
-        className="flex h-full min-w-0 flex-1 items-center gap-[9px] rounded-lg pl-[9px] pr-1.5 text-left text-nav-row focus-ring"
+        className="flex h-full min-w-0 flex-1 items-center gap-2.25 rounded-lg pl-2 pr-1.5 text-left text-nav-row focus-ring"
       >
         <Icon className="size-[17px] shrink-0" />
         <span className="min-w-0 truncate">{label}</span>
       </button>
       {/* 배지가 아니라 옅은 숫자다 — 구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로
           붙어 서는 둘이 다른 무게로 읽히지 않는다(GUTTER 주석과 같은 계약). 오른쪽 끝도
-          그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
+          그 헤더와 같은 8px(행 안쪽 — DS `.at-row`)에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 4px만 더한다.
           **그 계약이 사는 자리는 둘이다** — 여기와 work 행의 오른쪽 메타(판 05 결정 13의 「두
           자리」). 두 줄 행에서는 work 행이 메타를 둘째 줄로 내려 여기 하나였다가, 행이 한 줄로
           돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `row-meta`

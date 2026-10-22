@@ -23,6 +23,7 @@ import {
   IndentDecrease,
   IndentIncrease,
   Plus,
+  SettingsIcon,
   Trash2,
   TriangleAlert,
   type LucideIcon,
@@ -31,7 +32,6 @@ import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
-import { Crumbs } from "@/components/ui/crumbs";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
@@ -104,7 +104,7 @@ import {
 // **저장은 이 화면의 `save` 하나다** — 머리의 [저장]과 떠날 때 창의 [저장하고 나가기]가 부른다. 설정 초안의 저장
 // 버튼과 따로이고, 둘 중 하나를 누르기 전에는 아무것도 쓰지 않는다.
 // 저장하지 않은 초안을 두고 떠나면 묻는다(티켓 15, `leave.ts`). 레이아웃이 밖에서 바뀌면 초안이 없을 때는 조용히
-// 따라가고, 있으면 폼 카드 머리 아래의 배너로 한쪽을 고르게 한다(`outside.ts`).
+// 따라가고, 있으면 폼 카드 맨 위의 배너로 한쪽을 고르게 한다(`outside.ts`).
 
 /** 편집기 주소를 연다 — 레이아웃을 읽어, 읽을 수 있으면 편집 UI를, 없으면 까닭과 돌아가는 길을 세운다. */
 function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
@@ -258,16 +258,16 @@ function EditorScreen({
       onBack={onBack}
       actions={
         <>
-          {/* 카드 머리의 흰 버튼이다(`Button` outline — 카드 안 버튼 32 · `radius-lg`, DS `.at-btn.sm`). 아이콘은 글자
-              앞에 선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
+          {/* 머리 카드의 글자 버튼이다(`Button` ghost · top — 24 · `radius-md`, DS `.at-btn.top`). 아이콘은 글자 앞에
+              선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
               `aria-expanded`)를 달지 않는다 — 앱의 창 여는 버튼(전체화면 뷰어 · 이름 바꾸기)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
-          <Button ref={opener} variant="outline" onClick={() => setPreviewOpen(true)}>
+          <Button ref={opener} variant="ghost" size="top" onClick={() => setPreviewOpen(true)}>
             <Eye data-icon="inline-start" aria-hidden />
             LLM이 받는 텍스트
           </Button>
-          {/* 주 버튼(`Button` 기본 — Codex primary)이다 — 설정의 [저장]과 같은 부품 · 같은 크기다. */}
-          <Button onClick={() => void save()} disabled={!enabled}>
+          {/* 주 버튼(`Button` 기본 — Codex primary)이다 — 설정의 [저장]과 같은 부품 · 같은 크기(`top`)다. */}
+          <Button size="top" onClick={() => void save()} disabled={!enabled}>
             {write.isPending ? "저장 중…" : "저장"}
           </Button>
         </>
@@ -337,9 +337,9 @@ const OUTSIDE_MESSAGE: Record<BannerVerdict, string> = {
  * 고르게 할 뿐 합치지 않는다. [새로 불러오기]는 초안을 버리고 새로 읽은 것을 보인다(깨졌으면 「읽지 못함」 화면이다).
  * [내 초안 유지]는 배너를 닫고 기준본만 새것으로 바꾼다.
  *
- * 자리는 카드 머리 바로 아래이고 폼과 같은 글 폭(`--measure-read`) 가운데다 — 설정 페이지의 메시지(`PageNotice`)와 같은 나눔이다.
- * 폼과 함께 구르지 않는다(스크롤 상자 밖). 모양은 경고색(`warning`) 띠다 — 묶음의 옅은 면(ui-refresh 결정 16)이 아니다: 폼의 묶음과 같은 면이면
- * 알림이 폼의 한 행으로 읽힌다(판 06 티켓 07).
+ * 자리는 폼 카드 맨 위(위 24 · 옆 글 거터 20 — 설정 틀 몸과 같다)이고 폼과 같은 글 폭(`size-thread`) 가운데다 — 설정 페이지의 메시지(`PageNotice`)와
+ * 같은 나눔이다. 폼과 함께 구르지 않는다(스크롤 상자 밖). 모양은 경고색(`warning`) 띠다 — 묶음의 흰 면(DS `SettingsGroup`)이 아니다: 폼의 묶음과
+ * 같은 면이면 알림이 폼의 한 행으로 읽힌다(판 06 티켓 07).
  */
 export function OutsideBanner({
   verdict,
@@ -351,15 +351,18 @@ export function OutsideBanner({
   onKeep: () => void;
 }) {
   return (
-    <div className="shrink-0 px-(--card-pad)">
-      {/* 폼 카드가 좁으면(최소 창) 두 버튼이 다음 줄로 내려간다 — 글이 한 글자씩 꺾여 세로로 서지 않게 글에 최소 폭을 둔다. */}
+    // **배너가 선 동안은 이 상자가 폼 카드의 바닥이다**(`data-floor` — `EditorFrame`). 폼 카드는 몸을 격리해 바닥이 없어, 이것까지
+    // 격리하면 최소 창에서 사이드바를 넓혔을 때 카드가 배너보다 좁아져 글이 카드 모서리에 잘린다.
+    <div data-floor className="shrink-0 px-5 pt-6">
+      {/* 폼 카드가 좁으면(최소 창) 두 버튼이 다음 줄로 내려간다 — 글이 한 글자씩 꺾여 세로로 서지 않게 글에 최소 폭을 둔다. 아이콘과
+          글은 한 덩이라 함께 선다 — 줄바꿈하는 줄의 바닥은 가장 넓은 덩이 하나라, 둘이 따로면 바닥에서 아이콘이 글 위 줄로 떨어진다. */}
       <div
         role="alert"
-        className="mx-auto flex max-w-(--measure-read) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-warning/10 py-1.5 pr-1.5 pl-4"
+        className="mx-auto flex max-w-(--size-thread) flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-warning/10 py-1.5 pr-1.5 pl-4"
       >
-        <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
-        <span className="min-w-40 flex-1 text-chat-meta font-medium text-warning">
-          {OUTSIDE_MESSAGE[verdict]}
+        <span className="flex flex-1 items-center gap-3">
+          <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
+          <span className="min-w-40 flex-1 text-chat-meta font-medium text-warning">{OUTSIDE_MESSAGE[verdict]}</span>
         </span>
         {/* 두 버튼은 경고색 띠의 것이라 `Button`의 변형이 없다(develop도 그 띠를 손으로 짓는다). 흰 버튼의 hover는
             앱의 버튼 농도(`fill-hover` — `quiet-hover`)다. */}
@@ -383,9 +386,10 @@ export function OutsideBanner({
 }
 
 /**
- * 편집기의 틀 — 공용 틀 위의 본문 카드(ui-refresh 결정 27)와 그 카드 머리(뒤로 · 위치 · 동작), 그리고 편집할 때는 그 오른쪽의
- * 트리 카드(`tree`). 바탕 줄은 비어 있는 끌기 줄이다(ui-refresh 결정 5). 위치는 세 칸이다: `Settings › spec 레이아웃 › Atelier`.
- * 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
+ * 편집기의 틀 — 공용 틀 위의 본문 카드(ui-refresh 결정 27)와 머리 줄의 머리 카드(뒤로 · 위치 | 동작 — codex-ds 스펙 §7), 그리고 편집할
+ * 때는 본문 카드 오른쪽의 트리 카드(`tree`). 위치는 설정 화면의 머리 카드에 한 칸을 더 이은 것이다: 「Settings」 · `spec 레이아웃 ›
+ * Atelier`. 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다. 본문 카드 안에는
+ * 고를 것이 없어 카드 머리가 없다.
  *
  * **트리 카드는 공용 틀의 패널 칸(`Frame`의 `panel`)이 아니라 옆 칸(`beside`)이다**(판 06 티켓 07). 패널 칸은 두 번째 `<aside>`를
  * 그리고 접힘 · 폭 손잡이를 요구하는데, 편집기 트리는 레일 · 패널 토글 · 폭 조절이 없는 늘 열린 카드다. 칸의 틈 · 끌기 영역 · 좁은
@@ -409,6 +413,21 @@ function EditorFrame({
   return (
     <Frame
       sidebarOpen={sidebarOpen}
+      // 머리 카드 — 뒤로 · 「Settings」 · 위치 | 「LLM이 받는 텍스트」 · 저장(`actions`, 편집할 때만). **좁은 창의 바닥은 이 할 일이
+      // 든다** — 머리 카드의 할 일 묶음은 줄지 않고 그 폭을 머리 줄의 바닥으로 알린다(`Frame`의 `HeadCard`). 글자가 시스템 글꼴이라
+      // 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수는 한쪽 OS에서 「저장」을 자르는데, 이 바닥은 수가 아니라 그 조작들의 폭이다.
+      head={{
+        // 머리 카드의 작은 아이콘 버튼(`icon-button-xs` — 24 · `radius-md`, 위 줄에 서는 것은 모두 24다 — DS `HeadCard`).
+        lead: (
+          <Button variant="ghost" size="icon-xs" onClick={onBack} aria-label="설정으로 돌아가기">
+            <ArrowLeft aria-hidden className="size-3.75" />
+          </Button>
+        ),
+        icon: SettingsIcon,
+        name: "Settings",
+        sub: [settingsItem("spec-layout").label, name],
+        actions,
+      }}
       // 트리 카드의 폭은 작업 패널의 기본 폭(`WORK_PANEL_WIDTH`)이다 — 작업 화면의 spec 패널과 같은 쪽 · 같은 폭(판 06 티켓 07).
       // 폭 조절 · 접기는 없다.
       beside={tree === undefined ? undefined : { label: "항목 트리", width: WORK_PANEL_WIDTH, children: tree }}
@@ -416,30 +435,13 @@ function EditorFrame({
       <Card
         as="main"
         label={`${name} 레이아웃 편집기`}
-        // **최소 폭은 머리의 조작(뒤로 · 「LLM이 받는 텍스트」 · 「저장」)이 다 서는 폭이고, 수가 아니라 그 조작들의 폭에서 나온다**
-        // (`min-w-min`). 글자가 시스템 글꼴이라 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수는 한쪽 OS에서 「저장」을 자른다.
-        // 그래서 카드의 min-content에 머리만 든다 — 몸은 제 내용 폭을 바깥에 안 알리고(`contain-inline-size`), 위치 캡슐도 그 칸이
-        // 알리지 않아(아래) 줄어 말줄임이 받는다. 트리 카드가 이 폭을 남기고 자리를 내준다(공용 틀의 옆 칸).
-        className="min-w-min flex-1 [&>:not([data-slot=card-head])]:contain-inline-size"
-        head={
-          <CardHead
-            lead={
-              // 카드 머리의 아이콘 버튼이다(`size="icon"` — Codex `IconButton` 28 · `radius-lg`, 동그란 버튼은 codex-ds 결정 3이 걷었다).
-              <Button variant="outline" size="icon" onClick={onBack} aria-label="설정으로 돌아가기">
-                <ArrowLeft aria-hidden />
-              </Button>
-            }
-            end={actions}
-          >
-            {/* 위치 캡슐의 칸 — 남는 폭을 다 받고 제 글자 폭은 바깥에 안 알린다(`contain-inline-size`). 칸의 바닥 28은 캡슐의
-                좌우 안쪽 여백(`px-3.5` 둘)이다 — 그보다 좁으면 빈 캡슐이 옆 조작 위로 삐져나온다. */}
-            <div className="flex min-w-7 flex-1 contain-inline-size">
-              <Crumbs items={["Settings", settingsItem("spec-layout").label, name]} />
-            </div>
-          </CardHead>
-        }
+        // 몸은 제 내용 폭을 바깥에 안 알린다(`contain-inline-size`) — 넓은 폼 칸이 틀의 바닥을 부풀려 사이드바를 밀지 않는다. 그래서
+        // 이 카드의 바닥은 밖 변경 배너(`data-floor`)가 선 동안의 그 배너뿐이다(`min-w-min`). 배너가 없으면 바닥이 없어 좁은 창에서
+        // 트리 카드가 이 카드에 자리를 내주지 않고, 배너가 선 동안은 이 카드가 배너보다 좁아지기 전에 트리 카드 — 그 머리까지 줄면
+        // 사이드바 — 가 자리를 내준다(공용 틀의 옆 칸).
+        className="min-w-min flex-1 [&>:not([data-floor])]:contain-inline-size"
       >
-        {/* 제목 역할은 이 줄이 진다 — 카드 머리의 위치(`Crumbs`)는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
+        {/* 제목 역할은 이 줄이 진다 — 머리 카드의 위치는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
         <h2 className="sr-only">{name} 레이아웃</h2>
         {children}
       </Card>
@@ -448,14 +450,13 @@ function EditorFrame({
 }
 
 /**
- * 폼 카드의 몸 — 카드 안 여백(`--card-pad`)을 든 스크롤 상자와 그 안의 설정 틀 몸(`SettingsBody` — 읽는 폭 `--measure-read`
- * 가운데, ui-refresh 결정 12). 설정 페이지와 같은 나눔이다 — 여백을 폭 상자 밖에 두어 글 폭이 760 그대로다. 이름(`label`)을 주면
- * 그 이름의 영역(`section`)이다.
+ * 폼 카드의 몸 — 글 거터(옆 20)를 든 스크롤 상자와 그 안의 설정 틀 몸(`SettingsBody` — 글 폭 `size-thread` 가운데, 위 24 · 아래 48).
+ * 설정 페이지와 같은 나눔이다 — 거터를 폭 상자 밖에 두어 글 폭이 48rem 그대로다. 이름(`label`)을 주면 그 이름의 영역(`section`)이다.
  */
 function FormBody({ label, children }: { label?: string; children: ReactNode }) {
   const Tag = label === undefined ? "div" : "section";
   return (
-    <Tag aria-label={label} className="min-h-0 flex-1 overflow-y-auto px-(--card-pad) pb-(--card-pad) scroll-quiet">
+    <Tag aria-label={label} className="min-h-0 flex-1 overflow-y-auto px-5 scroll-quiet">
       <SettingsBody>{children}</SettingsBody>
     </Tag>
   );
@@ -560,11 +561,12 @@ export function TreeCard({
           onRemove={() => onEdit((current) => removeEntry(current, at))}
         />
       </CardHead>
-      {/* 좌우 여백은 카드 머리와 같다(DS `.at-card-body.tight`) — 머리의 버튼과 트리의 행이 한 세로선에 선다. 머리와 첫 행
-          사이는 트리 줄 사이와 같은 2px 틈이다(DS `.at-tree`). `relative`는 아래 트리 상자 **위에** 서려는 것이다 — 트리 상자가
+      {/* 좌우 여백은 카드 머리(DS `.at-toolbar` — 좌우 8)와 같은 8이다 — 머리의 첫 버튼과 트리의 행이 한 세로선에 서고, 행
+          글리프는 행 안쪽 8(DS `.at-tree-row`)을 더해 카드 + 16이다(행 글자 16 — 스펙 §4). 머리와 첫 행 사이는 트리 줄 사이와 같은 1px
+          틈이다(DS `.at-tree`). `relative`는 아래 트리 상자 **위에** 서려는 것이다 — 트리 상자가
           링이 설 자리만큼 위로 4px 나와 이 줄의 아래 끝에 걸치는데(`EntryTree`), 같은 층에 서지 않으면 `spec/`의 아래 끝을
           누른 손을 트리 상자가 받는다. */}
-      <div className="relative shrink-0 px-[calc(var(--card-pad)-14px)] pb-(--row-gap)">
+      <div className="relative shrink-0 px-2 pb-px">
         {/* 머리 `spec/`은 항목이 아니다(결정 26) — 끌기·지우기·옮기기의 대상이 아니고, 누르면 spec 폴더 안내(맨 위 항목의
             설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. 모양은 트리의 행이고 폴더 행처럼 한 단 흐리다
             (DS `.at-tree-row.folder`). 도움말은 누르면 서는 칸의 이름이다 — 이름(`spec/`)보다 더 말하는 것이라 설명으로도
@@ -576,7 +578,7 @@ export function TreeCard({
           onClick={() => onSelect([])}
           aria-pressed={at.length === 0}
           className={cn(
-            "flex h-7 w-full items-center gap-[7px] rounded-lg px-2 text-left text-chat-meta transition-colors focus-ring",
+            "flex h-7 w-full items-center gap-1.5 rounded-lg px-2 text-left text-chat-meta transition-colors focus-ring",
             at.length === 0 ? "selected-row font-medium" : "text-fg-secondary hover:bg-fill-soft",
           )}
         >
@@ -615,7 +617,7 @@ function TreeTools({
   return (
     <div role="toolbar" aria-label="항목 편집" className="flex min-w-0 flex-1 items-center gap-1.5">
       {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 줄 안의 작은 흰
-          버튼이다(`size="xs"` — Archive 정렬 · 거르기와 같다). */}
+          버튼이다(`size="xs"`). */}
       {(["file", "folder"] as const).map((kind) => (
         <Hint
           key={kind}
@@ -832,10 +834,10 @@ function EntryTree({
       role="tree"
       aria-label="레이아웃 항목"
       onKeyDown={onKeyDown}
-      // 줄 사이는 2px 틈이다(DS `.at-tree`). 좌우 여백은 카드 머리와 같고 스크롤 상자 **안**에 둔다 — 밖에 두면 행의 포커스 링이
+      // 줄 사이는 1px 틈이다(DS `.at-tree`). 좌우 여백은 카드 머리와 같고 스크롤 상자 **안**에 둔다 — 밖에 두면 행의 포커스 링이
       // 상자 가장자리에서 잘린다. 위끝도 같다 — 상자가 4px 올라갔다 되돌아(`-mt-1 pt-1`) 첫 행의 링(테두리 바깥 4px)이 서고,
       // 첫 행의 자리는 그대로다(codex-ds 결정 11 · `index.css`의 `focus-ring-room`).
-      className="-mt-1 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-[calc(var(--card-pad)-14px)] pt-1 scroll-quiet"
+      className="-mt-1 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pt-1 scroll-quiet"
     >
       {rows.map(({ entry: row, path }) => (
         <TreeRow
@@ -887,7 +889,7 @@ function DropLine({ side, left }: { side: "top" | "bottom"; left: number }) {
       style={{ left }}
       className={cn(
         "pointer-events-none absolute right-1.5 flex h-1.5 items-center",
-        side === "top" ? "-top-[3px]" : "-bottom-[3px]",
+        side === "top" ? "-top-0.75" : "-bottom-0.75",
       )}
     >
       <span className="size-1.5 shrink-0 rounded-full border-2 border-accent bg-surface" />
@@ -926,9 +928,10 @@ function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boo
  * 이름이면 종류의 흐린 글리프다. 모르는 아이콘·템플릿 누락과 검증 오류는 행 끝에 표시가 붙는다 — 어디를
  * 골라야 하는지 트리에서 보인다.
  *
- * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-chat-meta` · 14px `fg-tertiary` 글리프와 이름 사이 7px · hover
- * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 항목 행은 파일 · 폴더 모두 본문 글자색이다 — 한 단 흐린 것은 머리 `spec/`
- * 하나다(프로토타입 `Settings-editor`).
+ * 규격은 DS `.at-tree-row`다(판 06 티켓 02 · 07) — 28px · 모서리 10 · `text-chat-meta` · 14px `fg-tertiary` 글리프와 이름 사이 6px · hover
+ * `fill-soft`, 고른 행은 `selected-row`에 굵기 500이다. 파일 행은 본문 글자색이고 폴더 행은 머리 `spec/`처럼 한 단 흐린 `fg-secondary`다
+ * (DS `.at-tree-row.folder` — 문서 트리 `SpecTree`와 같다, codex-ds 티켓 23). 고른 행은 폴더도 `selected-row`의 본문색이다 — 앱의 고른
+ * 행은 모두 그 한 유틸리티의 글자색이다(DS의 고른 행 `.is-on`은 글자색을 말하지 않는다).
  */
 function TreeRow({
   entry,
@@ -978,12 +981,12 @@ function TreeRow({
       }}
       style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "relative flex h-7 w-full shrink-0 items-center gap-[7px] rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-ring",
+        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-lg pr-2 text-left text-chat-meta outline-none transition-colors focus-ring",
         drop === "inside"
           ? "bg-accent-soft text-fg ring-1 ring-inset ring-accent"
           : selected
             ? "selected-row font-medium"
-            : "text-fg hover:bg-fill-soft",
+            : cn("hover:bg-fill-soft", folder ? "text-fg-secondary" : "text-fg"),
         hasError && "text-danger",
         dragged && "opacity-40",
       )}
@@ -1015,7 +1018,7 @@ function TreeRow({
 /**
  * 제목 아래 줄(오류 · 모르는 아이콘 경고)의 왼쪽 여백 — 아이콘 상자(44)와 그 뒤 틈(6)이다. 줄이 이름 틀 칸의 왼쪽 끝에서 시작한다.
  */
-const UNDER_TITLE = "pl-[50px]";
+const UNDER_TITLE = "pl-12.5";
 
 /**
  * 검증 오류의 붉은 줄들 — 엔진이 준 글 그대로다. `id`를 주면 줄마다 그 뒤에 번호를 붙인 id가 선다 — 칸이 그 줄들을
@@ -1309,7 +1312,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
           <PopoverTrigger
             aria-label="아이콘 바꾸기"
             // 큰 제목 앞의 아이콘 상자다(판 06 티켓 07, 프로토타입 `Settings-editor`) — 44px · 옅은 면 · 테두리 없음. 모서리는
-            // DS에 12가 없어 컨트롤의 10(`rounded-lg`)이다.
+            // 누르는 것이라 버튼의 `radius-lg`(10)다 — DS는 반경을 쓰임으로 정한다(DS README 「간격 · 반경 · 크기」).
             // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-surface-under`가 `toggle-on`과 겹치면 코어
             // 유틸리티가 뒤에 서서 열린 바탕을 덮고, `quiet-hover`는 꺼진 가지에만 선다(`index.css`의 그 유틸리티).
             className={cn(
@@ -1375,7 +1378,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
 /**
  * 읽지 못하는 레이아웃(티켓 11) — **편집 UI를 세우지 않는다.** 까닭(엔진이 준 오류 전부)과 설정으로
  * 돌아가는 길만 보인다. 고치는 길은 설정의 레이아웃 행에 있다: 에이전트에게 부탁, 손으로 고치기, 되돌리기.
- * 어느 쪽이든 감시가 따라온다. 자리(카드 안 여백 · 글 폭)는 부르는 쪽의 폼 몸(`FormBody`)이 든다 — 트리 카드는 서지 않는다.
+ * 어느 쪽이든 감시가 따라온다. 자리(글 거터 · 글 폭)는 부르는 쪽의 폼 몸(`FormBody`)이 든다 — 트리 카드는 서지 않는다.
  */
 export function UnreadableLayout({
   read,
@@ -1389,7 +1392,7 @@ export function UnreadableLayout({
       <div className="flex items-start gap-2">
         <TriangleAlert
           aria-hidden
-          className="mt-[3px] size-3.5 shrink-0 text-warning"
+          className="mt-0.5 size-3.5 shrink-0 text-warning"
         />
         <div className="flex min-w-0 flex-col gap-0.5 text-chat-meta">
           <span className="font-medium text-warning">

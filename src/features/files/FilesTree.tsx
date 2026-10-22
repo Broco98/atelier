@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { FolderGit2, RotateCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
@@ -175,7 +174,7 @@ function ProjectSection({
       tree,
       rows,
       (items) => (
-        <div ref={rowsBox} className="flex shrink-0 flex-col gap-(--row-gap)">
+        <div ref={rowsBox} className="flex shrink-0 flex-col gap-px">
           <TreeRows items={items} depth={0} {...rowsProps} />
         </div>
       ),
@@ -300,7 +299,7 @@ function scrollToRow(row: HTMLElement): void {
 
 /**
  * 새로고침 버튼(스토리 16) — files 칸 머리에 선다. 무언가 낡아 보이면 손으로 그 work의 워크트리를 다시 읽는다. 머리 컨트롤의
- * 규격(DS `.at-icon-btn.outline`)은 문서 카드 머리의 경로 복사와 같다.
+ * 규격(DS `.at-ib` 28 · `fg-secondary`)은 `spec` 칸 머리의 spec 폴더 열기와 같다(`WorkPanel`).
  */
 export function FilesRefresh({ slug }: { slug: string }) {
   const queryClient = useQueryClient();
@@ -308,7 +307,9 @@ export function FilesRefresh({ slug }: { slug: string }) {
     <Hint
       text="새로고침"
       announce="name"
-      render={<Button variant="outline" size="icon" onClick={() => void refreshWorktrees(queryClient, slug)} />}
+      type="button"
+      onClick={() => void refreshWorktrees(queryClient, slug)}
+      className="icon-button-quiet text-fg-secondary focus-ring"
     >
       <RotateCw className="size-4" />
     </Hint>

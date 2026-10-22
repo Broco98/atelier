@@ -16,6 +16,7 @@ import SettingsPage, {
   TerminalSection,
 } from "./SettingsPage";
 import { notificationChoice, patchNotifications } from "./notifications";
+import type { SettingsItemKey } from "./pages";
 import { terminalSettings } from "./settings-fixture";
 import { textareaLook } from "@/components/ui/textarea-look";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
@@ -587,11 +588,11 @@ describe("구획은 제 제목을 들지 않는다", () => {
 
 // ── 본문 머리(UI개선 결정 22 · spec 레이아웃 티켓 08)
 //
-// 머리(`Settings › …` — 카드 머리의 `Crumbs`, ui-refresh 결정 5)와 제목 역할의 줄은 설정 nav와 **같은 표**(`SETTINGS_ITEMS`)를 읽는다 — 넷째 항목을
+// 머리(`Settings` · 항목 — 머리 카드의 이름과 그 뒤 옅은 위치, codex-ds 티켓 14)와 제목 역할의 줄은 설정 nav와 **같은 표**(`SETTINGS_ITEMS`)를 읽는다 — 넷째 항목을
 // 표에 더한 것만으로 머리가 선다. 사이드바의 설정 nav가 그 표를 도는 것은 `Sidebar.test.tsx`의 소스
 // 검사가, 눌러서 그 페이지에 서는 것은 L3(`spec-layout-page.spec.ts`)가 잰다.
 describe("본문 머리", () => {
-  function renderPage(item: "spec-layout"): string {
+  function renderPage(item: SettingsItemKey): string {
     return renderToStaticMarkup(
       <QueryClientProvider client={new QueryClient()}>
         <SettingsPage sidebarOpen item={item} />
@@ -599,15 +600,30 @@ describe("본문 머리", () => {
     );
   }
 
-  it("「spec 레이아웃」 페이지의 머리는 `Settings › spec 레이아웃`이고, 본문의 큰 제목이 같은 낱말이다", () => {
+  it("「spec 레이아웃」 페이지의 머리 카드는 `Settings` · `spec 레이아웃`이고, 본문의 큰 제목이 같은 낱말이다", () => {
     const html = renderPage("spec-layout");
-    // 카드 머리의 위치 캡슐이다 — 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라 조각만 센다.
-    const head = /<div data-slot="card-head"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
-    expect(head).toContain('aria-label="위치"');
-    expect([...head.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1])).toEqual(["Settings", "spec 레이아웃"]);
+    // 머리 카드의 이름과 그 뒤 옅은 위치다 — 캡슐이 아니다(캡슐은 경로 줄에만 선다). 카드 안에 고를 것이 없어 카드 머리는 없다.
+    const head = /<header[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
+    expect(head).toContain('data-slot="head-card"');
+    expect([...head.matchAll(/<span[^>]*>([^<]+)<\/span>/g)].map((m) => m[1])).toEqual(["Settings", "spec 레이아웃"]);
+    expect(html).not.toContain('data-slot="card-head"');
     // 제목 역할의 줄이 보이는 큰 제목이다(판 06 티켓 06) — 같은 요소 · 같은 레벨이고, 감춰 두지 않는다.
     const title = /<h2\b([^>]*)>([^<]*)<\/h2>/.exec(html);
     expect(title?.[2]).toBe("spec 레이아웃");
     expect(title?.[1], "제목이 감춰져 있다").not.toContain("sr-only");
+  });
+
+  // 머리 카드의 할 일 묶음(`data-head-actions`)은 할 일이 있는 화면에만 선다(`Frame`의 `HeadCard`). 설정의 할 일은 그 쪽의 저장
+  // 하나라, 저장이 없는 쪽에 빈 묶음이 서면 「할 일이 있다」는 표식이 거짓말을 한다. 저장 버튼이 그 자리에 서는 것은 L3
+  // (`settings-save.spec.ts`)가 잰다 — 여기 첫 화면에는 설정 파일을 읽기 전이라 버튼이 아직 없다.
+  it.each([
+    ["terminal", true],
+    ["notifications", true],
+    ["hooks", false],
+    ["spec-layout", false],
+  ] as const)("%s 쪽의 머리 카드에 저장 자리(할 일 묶음)가 서는가 — %s", (item, saves) => {
+    const head = /<header[\s\S]*?<\/header>/.exec(renderPage(item))?.[0] ?? "";
+    expect(head).toContain('data-slot="head-card"');
+    expect(head.includes("data-head-actions")).toBe(saves);
   });
 });

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { CircleAlert, Folder, GitFork, GitMerge, ChevronRight } from "lucide-react";
+import { CircleAlert, GitFork, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
@@ -26,72 +26,88 @@ interface ProjectDetailProps {
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
-    // 상세 카드의 몸(DS `.at-card-body` · `.at-read`) — 좌우 · 아래는 카드 안 여백(`--card-pad`)이고, 글은 그 안에서 읽는 폭
-    // (`--measure-read`) 가운데에 선다(ui-refresh 결정 12). 여백을 폭 상자 밖에 두어 글 폭이 여백을 뺀 값으로 줄지 않는다.
-    <div className="px-(--card-pad) pb-(--card-pad)">
-      <div className="mx-auto flex w-full max-w-(--measure-read) flex-col">
-        {/* 경로를 못 찾은 프로젝트의 빨간 띠 — 경고 부품(Alert)의 모양이다. 글자는 그대로다. */}
-        {project.missing && (
-          <Alert variant="destructive" className="mt-[18px]">
-            <CircleAlert />
-            <AlertTitle>경로를 찾을 수 없어요.</AlertTitle>
-            <AlertDescription>
-              폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나
-              직접 제거하세요.
-            </AlertDescription>
-          </Alert>
+    // 상세 칸의 몸(DS `.at-thread` · `SettingsGroup`의 틀) — 글 폭(`size-thread` 48rem) 가운데에 서고 위 24 · 아래 40이다. 옆의 글
+    // 거터 20은 이 상자 밖(구르는 쪽 — `ProjectsPage`의 상세 칸)이 든다 — 글자가 서는 폭이 48rem 그대로라 설정 틀(`SettingsBody`) ·
+    // 문서 글(`SpecViewer`의 `bodyColumn`)과 같은 나눔이다(DS `size-thread` 「문서 · 설정 글 폭 상한」). 구획 사이는 28이다(DS
+    // `.at-set`). 칸이 글 폭 + 거터 둘보다 좁으면 칸 끝에서 20 들어와 선다.
+    <div className="mx-auto flex w-full max-w-(--size-thread) flex-col gap-7 pt-6 pb-10">
+      {/* 경로를 못 찾은 프로젝트의 빨간 띠 — 경고 부품(Alert)의 모양이다. 글자는 그대로다. */}
+      {project.missing && (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>경로를 찾을 수 없어요.</AlertTitle>
+          <AlertDescription>
+            폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나
+            직접 제거하세요.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <h1>
+        <TitleEditor key={project.slug} project={project} />
+      </h1>
+      {/* 속성 — DS `List`(흰 묶음 · 0.5px 고리 · 행 44 · 행 사이 0.5px 선). 이름 열 96이고 값은 고정폭 `text-code`다. */}
+      <dl className={LIST}>
+        <PropertyRow label="경로">
+          <span className={cn("truncate", project.missing && "text-danger line-through")}>
+            {project.path}
+          </span>
+        </PropertyRow>
+        {project.git?.remoteSlug && (
+          <PropertyRow label="원격">
+            <span className="truncate">{project.git.remoteSlug}</span>
+          </PropertyRow>
         )}
+        <PropertyRow label="baseBranch">
+          {/* 칩(셀렉트 칩 · 인라인 편집기)의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
+              칩의 모양은 부품 그대로이고, 이것은 그 칩을 이 열에 앉히는 자리 맞춤이다. */}
+          <div className="-ml-1.75 flex min-w-0">
+            <BaseBranchControl key={project.slug} project={project} />
+          </div>
+        </PropertyRow>
+      </dl>
 
-        <h1 className="mb-5 mt-[18px]">
-          <TitleEditor key={project.slug} project={project} />
-        </h1>
-        {/* 속성(DS `.at-props`) — 이름 열 112 · 줄 28 · 줄 사이 4. 값은 고정폭 `text-code`다. */}
-        <dl className="flex flex-col gap-1">
-          <PropertyRow icon={<Folder className="size-3.5 text-fg-tertiary" />} label="경로">
-            <span className={cn("truncate", project.missing && "text-danger line-through")}>
-              {project.path}
-            </span>
-          </PropertyRow>
-          {project.git?.remoteSlug && (
-            <PropertyRow icon={<GitMerge className="size-3.5 text-fg-tertiary" />} label="원격">
-              <span className="truncate">{project.git.remoteSlug}</span>
-            </PropertyRow>
-          )}
-          <PropertyRow icon={<GitFork className="size-3.5 text-fg-tertiary" />} label="baseBranch">
-            {/* 칩(셀렉트 칩 · 인라인 편집기)의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
-                칩의 모양은 부품 그대로이고, 이것은 그 칩을 이 열에 앉히는 자리 맞춤이다. */}
-            <div className="-ml-[7px] flex min-w-0">
-              <BaseBranchControl key={project.slug} project={project} />
-            </div>
-          </PropertyRow>
-        </dl>
+      <DescriptionEditor key={project.slug} project={project} />
 
-        <DescriptionEditor key={project.slug} project={project} />
-
-        <WorksSection projectSlug={project.slug} onOpenWork={onOpenWork} />
-      </div>
+      <WorksSection projectSlug={project.slug} onOpenWork={onOpenWork} />
     </div>
   );
 }
 
 /**
- * 카드 안 소제목(DS `.at-subhead`) — 이름(`text-chat-meta` · 600) 뒤에 곁글(`text-xs` · `fg-secondary`)이 한 줄에 선다.
- * 위 28 · 아래 10이 구획 사이의 리듬이다. `end`는 오른쪽 끝의 조작이다.
+ * 구획 제목(DS `.at-set-sec > h2`) — 이름(`text-sm` · 600, 왼쪽 2) 뒤에 곁글(`text-xs` · `fg-secondary`)이 한 줄에 선다. 묶음과는
+ * 10 떨어진다(`Section`). `end`는 오른쪽 끝의 조작이다.
  */
 function Subhead({ title, note, end }: { title: string; note: string; end?: React.ReactNode }) {
   return (
-    <div className="mb-2.5 mt-7 flex items-baseline gap-2">
-      <h2 className="text-chat-meta font-semibold">{title}</h2>
+    <div className="flex items-baseline gap-2 pl-0.5">
+      <h2 className="text-sm font-semibold">{title}</h2>
       <span className="text-xs text-fg-secondary">{note}</span>
       {end}
     </div>
   );
 }
 
-/** 카드 안 묶음(ui-refresh 결정 16) — 옅은 면 · 큰 반경 · 테두리 없음. 행 사이에도 선이 없다. */
-const GROUP = "rounded-2xl bg-surface-under";
+/** 구획(DS `.at-set-sec`) — 구획 제목과 그 묶음이 10 사이로 선다. 구획 사이(28)는 상세 칸의 몸이 든다. */
+function Section({ children }: { children: React.ReactNode }) {
+  return <section className="flex flex-col gap-2.5">{children}</section>;
+}
 
-// 이 프로젝트에서 시작된 작업 목록 (목업 S2의 Works 란)
+/**
+ * 흰 목록 묶음(DS `List` · `.at-list` — `SettingsGroup`의 묶음과 같은 얼굴) — 흰 면 · `radius-xl` · 0.5px `border-heavy` 고리. 넘침을
+ * 숨기지 않는다 — 행의 포커스 링(테두리 바깥 4px)이 묶음 끝에서 잘린다. 그래서 행의 hover 면은 첫 행 · 끝 행이 묶음의 모서리를 제
+ * 모서리로 든다(`LIST_ROW`).
+ */
+const LIST = "flex flex-col rounded-xl bg-surface ring-[0.5px] ring-border-heavy";
+
+/**
+ * 묶음의 행(DS `.at-li`) — 44 이상 · 안쪽 8 14 · 사이 10 · `text-sm`. 둘째 행부터 윗변에 0.5px `border-heavy` 선이 선다 — 테두리가
+ * 아니라 면으로 칠한다(0.5px 테두리는 엔진마다 굵기가 갈린다).
+ */
+const LIST_ROW =
+  "relative flex min-h-11 min-w-0 items-center gap-2.5 px-3.5 py-2 text-sm first:rounded-t-xl last:rounded-b-xl not-first:before:absolute not-first:before:inset-x-0 not-first:before:top-0 not-first:before:h-[0.5px] not-first:before:bg-border-heavy";
+
+// 이 프로젝트에서 시작된 작업 목록 (목업 S2의 Works 란) — 작업 전부에서 이 프로젝트에 걸친 것만 거른다.
 function WorksSection({
   projectSlug,
   onOpenWork,
@@ -103,7 +119,7 @@ function WorksSection({
   const related = works.filter((w) => w.projects.includes(projectSlug));
 
   return (
-    <div className="flex flex-col">
+    <Section>
       <Subhead
         title="Works"
         note="이 프로젝트에서 시작된 작업"
@@ -118,12 +134,10 @@ function WorksSection({
           </button>
         }
       />
-      {/* 묶음 안쪽 6 · 행 40 · 모서리 10(DS `.at-group` · `.at-group-row`). 빈 묶음도 같은 면 안에서 행 하나 높이의 글이다. */}
-      <div className={cn(GROUP, "flex flex-col p-1.5")}>
+      {/* 흰 목록 묶음(DS `List`). 빈 묶음도 같은 면 안에서 행 하나 높이의 글이다. */}
+      <div className={LIST}>
         {related.length === 0 ? (
-          <div className="flex min-h-10 items-center px-3 text-chat-meta text-fg-tertiary">
-            이 프로젝트로 시작된 작업이 아직 없어요.
-          </div>
+          <div className={cn(LIST_ROW, "text-chat-meta text-fg-tertiary")}>이 프로젝트로 시작된 작업이 아직 없어요.</div>
         ) : (
           related.map((work) => {
             const worktree = work.worktrees.find((t) => t.project === projectSlug);
@@ -132,14 +146,13 @@ function WorksSection({
                 key={work.slug}
                 type="button"
                 onClick={() => onOpenWork(work.slug)}
-                // 옅은 면 위의 행이라 hover는 `fill-hover`다(ui-refresh 결정 16, DS `.at-group-row:hover`) — 흰 카드 위 목록
-                // 행의 `fill-soft`보다 한 단 위이고, info 맨 위 묶음 행과 같은 값이다.
-                className="flex min-h-10 min-w-0 items-center gap-2.5 rounded-lg px-3 text-left transition-colors hover:bg-fill-hover focus-ring"
+                // 흰 묶음 위의 행이라 hover는 `fill-soft`다(DS `.at-li:hover`).
+                className={cn(LIST_ROW, "w-full text-left transition-colors hover:bg-fill-soft focus-ring")}
               >
                 <StatusIcon status={work.status} />
                 <span
                   className={cn(
-                    "min-w-0 truncate text-sm",
+                    "min-w-0 truncate",
                     work.status === "done" && "text-fg-secondary",
                   )}
                 >
@@ -147,7 +160,7 @@ function WorksSection({
                 </span>
                 <span className="ml-auto flex shrink-0 items-center gap-3">
                   {worktree?.exists && (
-                    <span className="flex items-center gap-[5px] font-mono text-xs text-fg-secondary">
+                    <span className="flex items-center gap-1.25 font-mono text-xs text-fg-secondary">
                       <GitFork className="size-3" />
                       {work.branch}
                     </span>
@@ -160,7 +173,7 @@ function WorksSection({
           })
         )}
       </div>
-    </div>
+    </Section>
   );
 }
 
@@ -218,21 +231,11 @@ function TitleEditor({ project }: { project: ProjectView }) {
   );
 }
 
-function PropertyRow({
-  icon,
-  label,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  children: React.ReactNode;
-}) {
+/** 속성 한 줄 — 흰 묶음의 행(`LIST_ROW` · DS `.at-li`)에 이름(96 · `chat-meta`)과 값이 선다. */
+function PropertyRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-h-7 items-center">
-      <dt className="flex w-28 shrink-0 items-center gap-2 text-chat-meta text-fg-secondary">
-        {icon}
-        {label}
-      </dt>
+    <div className={LIST_ROW}>
+      <dt className="w-24 shrink-0 text-chat-meta text-fg-secondary">{label}</dt>
       {/* 값의 색은 `fg-secondary`다 — 기준 브랜치 줄의 셀렉트 칩(부품의 글자색)과 한 열에서 갈리지 않게. */}
       <dd className="flex min-w-0 flex-1 items-center font-mono text-code text-fg-secondary">{children}</dd>
     </div>
@@ -329,7 +332,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         }}
         // 목록이 서는 프로젝트의 셀렉트 칩(`SelectTrigger`)과 같은 모양이다 — 28px · 모서리 10 · 좌우 7 · 조용한 hover. 값은
         // 옆 줄들과 같은 고정폭 `text-code`다.
-        className="flex h-7 items-center rounded-lg px-[7px] font-mono text-code text-fg-secondary transition-colors quiet-hover focus-ring"
+        className="flex h-7 items-center rounded-lg px-1.75 font-mono text-code text-fg-secondary transition-colors quiet-hover focus-ring"
       >
         {project.baseBranch}
       </Hint>
@@ -379,12 +382,12 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
   };
 
   return (
-    <div className="flex flex-col">
+    <Section>
       {/* 「클릭해서 편집」은 지금 글 그대로다(판 06 문구 표 P1). */}
       <Subhead title="설명" note="클릭해서 편집" />
       {editing ? (
-        // 고치는 동안의 칸 — 설명 상자와 같은 자리 · 같은 반경(16) · 같은 글자다. 테두리 1px만큼 안쪽을 덜어 글자가
-        // 상자일 때의 자리에 그대로 선다. 포커스는 앱의 한 링(`focus-ring`)이다.
+        // 고치는 동안의 칸 — 설명 상자와 같은 자리 · 같은 반경(12) · 같은 글자다. 상자의 고리는 폭을 안 먹는 0.5px이고 이 칸의
+        // 테두리는 1px이라, 그만큼 안쪽을 덜어 글자가 상자일 때의 자리에 그대로 선다. 포커스는 앱의 한 링(`focus-ring`)이다.
         <textarea
           autoFocus
           value={draft}
@@ -396,23 +399,24 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           }}
           rows={3}
           placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
-          className="min-h-12 resize-y rounded-2xl border border-border-heavy bg-surface px-[15px] py-[13px] text-sm outline-none placeholder:text-fg-tertiary focus-ring"
+          className="min-h-12 resize-y rounded-xl border border-border-heavy bg-surface px-3.75 py-2.75 text-sm outline-none placeholder:text-fg-tertiary focus-ring"
         />
       ) : (
-        // 설명 상자 — 옅은 면 묶음(ui-refresh 결정 16, DS `.at-group.pad`)에 안쪽 14 · 16이다. 누르면 그 자리가 칸이 된다.
+        // 설명 상자 — 흰 묶음(DS `SettingsGroup`의 `.at-set-group` — 흰 면 · `radius-xl` · 0.5px 고리)에 안쪽 12 · 16이다. 흰 면 위라
+        // hover는 `fill-soft`다. 누르면 그 자리가 칸이 된다.
         <button
           type="button"
           onClick={startEditing}
           className={cn(
-            GROUP,
-            "px-4 py-3.5 text-left text-sm transition-colors hover:bg-fill-hover focus-ring",
+            LIST,
+            "px-4 py-3 text-left text-sm transition-colors hover:bg-fill-soft focus-ring",
             !project.description && "italic text-fg-tertiary",
           )}
         >
           {project.description || "아직 설명이 없어요. 이 프로젝트가 무엇인지 적어 주세요."}
         </button>
       )}
-    </div>
+    </Section>
   );
 }
 

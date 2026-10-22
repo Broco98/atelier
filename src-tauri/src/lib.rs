@@ -49,8 +49,8 @@ const HOTKEY_PREFIX: &str = "hotkey:";
 /// 문자열이 한 줄에 나란히 서서 눈으로는 잘 맞아 보이는데, 어긋나는 순간 사람이 누른 키와
 /// 앱이 도는 동작이 **다른 키가 된다.**
 ///
-/// 이름은 `CONTEXT.md`의 말이다. ⌘1~9가 옮기는 것은 **탭**이다 — 「work·터미널 화면 머리행의
-/// 한 칸. `spec`과 셸들이 거기 선다」가 그 문서의 정의이고 ⌘1이 spec, ⌘2~9가 셸이라
+/// 이름은 `CONTEXT.md`의 말이다. ⌘1~9가 옮기는 것은 **탭**이다 — 「work·터미널 화면 본문 카드
+/// 머리의 한 칸. `spec`과 셸들이 거기 선다」가 그 문서의 정의이고 ⌘1이 spec, ⌘2~9가 셸이라
 /// 정확히 겹친다. **「열」이 아니다**: 열은 분할했을 때만 생기고 늘 둘이라 아홉이 될 수 없고,
 /// 그 문서가 열을 「칸·패널·페인」으로 부르지 말라고 못 박고 있다.
 ///
@@ -357,6 +357,8 @@ pub fn run() {
             commands::list_archive,
             commands::list_archived_docs,
             commands::read_archived_file,
+            commands::open_work_folder,
+            commands::open_archived_spec_folder,
             commands::read_worktree_file,
             commands::search,
             commands::touch_recent_work,

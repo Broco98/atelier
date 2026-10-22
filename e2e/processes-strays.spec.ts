@@ -248,6 +248,81 @@ test("구획이 ui-refresh 결정 28의 표대로 열리고 머리를 눌러 여
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **구획의 몸은 접히는 변형(`Collapsible` fold)이다**(ui-refresh 결정 28 · `tree-rows.tsx`의 `Section`). 그 변형의 짜임은 이 자리가 잰다 —
+// 앱에서 그 변형을 쓰는 것이 이 구획뿐이다(한때 Archive 목록 항목도 썼다).
+// - **접힘은 패널 자신의 전이다.** Base UI는 패널 자기 위의 전이만 기다렸다가 패널을 내린다 — 전이가 바깥 상자에 있으면 닫을 때 곧바로
+//   사라진다. 그래서 닫을 때 행 전이(180ms)가 끝까지 돈다.
+// - **열 때도 돈다.** 닫혀 내려간 패널은 새로 서므로, 시작 상태(`data-starting-style`)에 접힌 트랙이 없으면 전이가 돌지 않는다.
+// - **닫히는 동안 몸은 `inert`다.** 전이가 도는 동안 줄은 아직 보이지만 포커스와 포인터가 닿으면 안 된다 — 열리면 곧바로 풀린다. 전이가
+//   서는 순간(`transitionrun`)에 패널이 `inert`인지를 함께 적는다.
+// - 움직임을 끄면 전역 규칙(`index.css`)이 그 전이를 끈다 — 여닫혀도 전이가 하나도 안 돈다.
+//
+// **끝은 `transitionend`가 아니라 그 전이의 `finished`로 잰다.** 이 구획의 패널은 닫힘이 끝나면 내려간다(`keepMounted`가 없다) — Base
+// UI가 `finished`를 받자마자 패널을 걷어 `transitionend`는 문서에 닿지 못한다. `finished`는 끝까지 돌았을 때만 풀리고, 중간에 걷히면
+// 전이가 취소되어 「cancel」로 적힌다. 기록은 페이지가 뜨기 전에 건다. 처음 뜰 때의 움직임이 가라앉은 뒤에 비우고 잰다.
+test("구획은 열 때도 닫을 때도 180ms로 접히고 펼쳐지며 닫히는 동안 몸이 inert다 — 움직임을 끄면 전이 없이 여닫힌다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await page.addInitScript(() => {
+    const folds: string[] = [];
+    Object.assign(window, { __folds: folds });
+    document.addEventListener(
+      "transitionrun",
+      (event) => {
+        const target = event.target as Element;
+        if (event.propertyName !== "grid-template-rows") return;
+        if (target.getAttribute("data-slot") !== "collapsible-content") return;
+        folds.push(target.hasAttribute("inert") ? "run inert" : "run");
+        const transition = target
+          .getAnimations()
+          .find((one) => one instanceof CSSTransition && one.transitionProperty === "grid-template-rows");
+        transition?.finished.then(
+          () => folds.push(`end ${transition.effect?.getComputedTiming().duration}`),
+          () => folds.push("cancel"),
+        );
+      },
+      true,
+    );
+  });
+  const 접힘기록 = () => page.evaluate(() => (window as unknown as { __folds: string[] }).__folds);
+  const 기록을비운다 = () =>
+    page.evaluate(() => {
+      (window as unknown as { __folds: string[] }).__folds.length = 0;
+    });
+  await page.goto("/processes");
+  const 패널 = 묶음(page, "확정 고아").locator('[data-slot="collapsible-content"]');
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await expect(패널).not.toHaveAttribute("inert");
+  await expect.poll(() => 패널.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await 기록을비운다();
+
+  // 닫기 — inert로 접히기 시작하고, 전이가 끝까지 돈 뒤에 내려간다.
+  await 머리(page, "확정 고아").click();
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(0);
+  await expect.poll(접힘기록).toEqual(["run inert", "end 180"]);
+
+  // 열기 — 내려갔던 패널이 새로 서도 전이가 돌고, inert가 아니다.
+  await 기록을비운다();
+  await 머리(page, "확정 고아").click();
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await expect.poll(접힘기록).toEqual(["run", "end 180"]);
+  await expect(패널).not.toHaveAttribute("inert");
+
+  // 움직임을 끈다. 닫힘의 앵커는 「줄이 내려갔다」다 — 전이가 돌았다면 그 끝에야 내려가므로, 내려간 뒤의 빈 기록이 헛돌지 않는다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await 기록을비운다();
+  await 머리(page, "확정 고아").click();
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(0);
+  expect(await 접힘기록()).toEqual([]);
+  // 열림은 전이가 있어도 곧바로 보이므로, 두 프레임을 흘려 전이가 시작될 자리를 준 뒤에 센다.
+  await 머리(page, "확정 고아").click();
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await 접힘기록()).toEqual([]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("고아 · 다른 인스턴스 · 예외 행에도 28의 표기 함수로 메모리 칸이 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
   await page.goto("/processes");

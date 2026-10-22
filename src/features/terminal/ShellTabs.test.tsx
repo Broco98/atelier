@@ -27,8 +27,8 @@ import {
 import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import type { Attention } from "./shell-attention";
 
-// work 화면의 머리행 — **탭 줄이다**(결정 7). `[spec][셸…][+]`가 서고 오른쪽 끝에 조작이
-// 고정된다(결정 10). 셸을 고르는 자리가 사이드바에서 화면 안으로 돌아온 것이라, 여기서
+// work 화면 본문 카드의 머리 — **탭 줄이다**(결정 7 · codex-ds 스펙 §4). `[spec][셸…][+]`가 서고, 조작이 있으면
+// 오른쪽 끝에 고정된다(결정 10). 셸을 고르는 자리가 사이드바에서 화면 안으로 돌아온 것이라, 여기서
 // 보는 것은 「무엇이 어느 순서로 서고 각 칸이 무엇을 적는가」다.
 //
 // **칸 안에서 본다.** 마크업 전체에서 `toContain`으로 판정하면 「어딘가 적혀 있다」와
@@ -36,9 +36,9 @@ import type { Attention } from "./shell-attention";
 // 앞 판의 셸 목록 검사가 실물로 한 번 잃고 적어 둔 사고다.
 //
 // **이 줄은 지워졌던 그 컴포넌트가 아니다.** 옛것은 「탭 줄이 타이틀바를 겸하는가」를
-// prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 바탕 줄에 선다** — 창 드래그
-// 영역·신호등 회피·트랜지션 곡선은 그 줄(`Frame`의 `TitleBar`)의 성질이라 화면의 seam이 재고,
-// 여기서는 줄 안의 끄는 자리만 본다(아래 「줄 안의 끄는 자리」).
+// prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 본문 카드의 머리다** — 창 드래그
+// 영역·신호등 회피·트랜지션 곡선은 머리 줄(`Frame`의 `HeadRow`)의 성질이라 화면의 seam이 재고,
+// 여기서는 머리 상자와 그 안에 창 끄는 자리가 없는 것만 본다(아래 「카드의 머리」).
 
 // **소유자는 `ownerOf`가 짓는다**(결정 10) — 이 줄이 받는 값과 셸에 앉는 값이 같은 함수에서
 // 나와야 「이 화면의 셸만 그린다」가 실제로 그 화면을 재는 것이 된다.
@@ -405,17 +405,17 @@ describe("칸이 `memo` 경계다", () => {
 
   // 틈 알림(UI개선 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
   // 알림을 따로 화살표로 만들면 묶음이 두 자리가 되고 다음 콜백이 어느 쪽에 붙을지가 갈린다.
-  // 바탕 줄 `<header>`가 이 줄의 것이 아니게 되어(`Frame`의 `TitleBar`) 그 상자에 손으로 단다 — 다는 것도
-  // 떼는 것도 같은 묶음의 함수여야 뗄 때 남는 듣기가 없다.
+  // 듣는 자리는 이 줄의 뿌리(카드 머리 상자)다 — 줄이 제 상자를 그리게 되어 React 속성으로 단다. 손으로 단 듣기
+  // (`addEventListener`)가 남으면 한 움직임에 알림이 두 번 간다.
   it("틈 알림이 같은 묶음에서 나온다", () => {
     const src = source();
-    for (const [event, handler] of [
-      ["pointermove", "onSlotMove"],
-      ["pointerleave", "onSlotLeave"],
-      ["pointerup", "onSlotDrop"],
+    for (const [prop, handler] of [
+      ["onPointerMove", "onSlotMove"],
+      ["onPointerLeave", "onSlotLeave"],
+      ["onPointerUp", "onSlotDrop"],
     ] as const) {
-      expect(countOf(src, `row.addEventListener("${event}", tabHandlers.${handler});`), event).toBe(1);
-      expect(countOf(src, `row.removeEventListener("${event}", tabHandlers.${handler});`), event).toBe(1);
+      expect(countOf(src, `${prop}={tabHandlers.${handler}}`), prop).toBe(1);
+      expect(countOf(src, `tabHandlers.${handler}`), handler).toBe(1);
     }
   });
 });
@@ -453,10 +453,9 @@ describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
     expect(render(opened(2).state, { spec: null })).not.toContain("data-tab-rule");
   });
 
-  it("세로선이 창 끄는 자리를 뺏지 않는다", () => {
-    // 이 줄은 타이틀바를 겸하므로 속성 없는 자식은 그만큼 죽은 자리가 된다.
+  it("세로선은 읽히지 않는다", () => {
+    // 묶음을 가르는 그림일 뿐이라 화면 읽기에 이름 없는 요소 하나로 끼면 안 된다.
     const tag = render(opened(2).state).match(/<span[^>]*data-tab-rule[^>]*>/)![0];
-    expect(tag).toContain("data-tauri-drag-region");
     expect(tag).toContain("aria-hidden");
   });
 });
@@ -535,7 +534,7 @@ describe("켜짐을 말하는 법", () => {
     const markup = render(opened(3).state);
     const cells = cellsOf(markup);
     expect(cells.filter((cell) => cell.markup.includes('aria-pressed="true"'))).toHaveLength(1);
-    // 켜짐 면은 바탕 줄의 흰 탭이다(ui-refresh 결정 18) — 회색 `toggle-on`이 아니다.
+    // 켜짐 면은 DS `.at-tab.on`의 옅은 면(`tab-on` — `fill-hover`)이다(codex-ds 스펙 §4) — 회색 `toggle-on`이 아니다.
     expect(cells.filter((cell) => cell.markup.includes("tab-on"))).toHaveLength(1);
     expect(cells.filter((cell) => cell.markup.includes("toggle-on"))).toHaveLength(0);
   });
@@ -556,7 +555,7 @@ describe("켜짐을 말하는 법", () => {
   });
 
   it("한 요소에 hover 규칙이 두 벌 얹히지 않는다", () => {
-    // 켜진 칸의 흰 면(`tab-on`)은 hover에 안 바뀐다. 꺼진 칸의 hover가 같은 요소에 함께 오면 어느 쪽이
+    // 켜진 칸의 옅은 면(`tab-on`)은 hover에 안 바뀐다. 꺼진 칸의 hover가 같은 요소에 함께 오면 어느 쪽이
     // 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고) — 지면 켜진 칸이 가리킬 때마다 회색이 된다.
     const classes = [...render(opened(3).state).matchAll(/class="([^"]*)"/g)].map((m) => m[1]);
     expect(classes.filter((one) => /tab-on/.test(one) && /hover:/.test(one))).toEqual([]);
@@ -725,7 +724,7 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   });
 
   it("가로로만 스크롤하고, 막대는 저장소 공통의 것을 쓴다", () => {
-    // 세로로도 스크롤하면 44px 줄 안에서 칸이 위아래로 흔들린다.
+    // 세로로도 스크롤하면 46px 줄 안에서 칸이 위아래로 흔들린다.
     // 막대는 `scroll-quiet` 하나다(결정 32) — 한때 이 줄만 손으로 숨겼는데, 그때의
     // `scroll-quiet`은 11px을 세워 타이틀바에서 칸을 눌렀기 때문이다. 이제 막대가 위로
     // 떠서 폭을 안 먹으므로 이 줄만 다른 규칙을 쓸 이유가 없다.
@@ -737,7 +736,7 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   });
 
   it("줄어드는 몫을 이 상자 하나가 받는다 — 형제는 안 줄어든다", () => {
-    // **머리행이 안 넘치는 근거다.** 형제가 모두 `shrink-0`이라 flex가 깎을 곳이 이 상자뿐이다.
+    // **탭 줄이 안 넘치는 근거다.** 형제가 모두 `shrink-0`이라 flex가 깎을 곳이 이 상자뿐이다.
     // 형제 중 하나라도 줄면 그만큼 조작이 오른쪽으로 밀린다 — 그것이 이 티켓이 고치려던 바로
     // 그 그림이었다(조작이 창 밖으로 379px 밀려나 있었다).
     const markup = render(opened(2).state, { actions: "조작" });
@@ -760,7 +759,7 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
     if (!floor || !cellMin) throw new Error("상자나 칸의 최소 폭 클래스를 못 찾았다");
     expect(stripTagOf(markup)).toContain("focus-ring-room");
     expect(Number(floor[1])).toBe(Number(cellMin[1]) + 2 * 4);
-    // 바닥은 폭으로도 적는다 — 열이 버틸 폭(min-content)이 이 수를 세야 한다(`TAB_ROW_COLUMN`).
+    // 바닥은 폭으로도 적는다 — 줄을 이는 카드가 버틸 폭(min-content)이 이 수를 세야 한다(`TAB_ROW_CARD`).
     expect(stripTagOf(markup)).toContain(`w-[${floor[1]}px]`);
     expect(stripTagOf(markup)).not.toContain("w-max");
 
@@ -798,29 +797,39 @@ describe("칸을 본문 위로 끄는 자리", () => {
   });
 });
 
-// 바탕 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `TitleBar`가 들고, 그
-// 줄을 실제로 세우는 화면의 seam(`TerminalPage.test.tsx`)이 잰다. 이 줄이 지는 것은 **제 자식 중** 끄는 자리다.
-describe("줄 안의 끄는 자리", () => {
-  it("빈 자리도 끄는 자리다", () => {
-    // 탭과 조작 사이의 남는 자리가 이 줄에서 가장 넓다. 거기가 안 끌리면 「창이 가끔만
-    // 끌린다」가 되는데, 화면으로는 어느 자리가 죽었는지가 안 보인다.
-    const gap = render(opened(1).state).split('data-tab="new"')[1];
-    expect(gap).toContain("data-tauri-drag-region");
+// 머리 줄 자체(`<header>` · 창 끌기 · 신호등 회피 여백 · 곡선)는 이 줄의 것이 아니다 — `Frame`의 `HeadRow`가 들고, 그
+// 줄을 실제로 세우는 화면의 seam(`TerminalPage.test.tsx`)이 잰다. 이 줄이 지는 것은 **본문 카드의 머리 상자**다(codex-ds
+// 스펙 §4 「탭 줄」 · DS `.at-toolbar`). 높이 · 선 · 칸 규격의 실물은 e2e `terminal-tabs.spec.ts`가 화면마다 칠해진 값으로 잰다
+// (높이 46 = `size-toolbar` · 아래 0.5px `border-heavy` 선) — 여기서는 그 클래스 글자를 재지 않는다(구현-스펙 「클래스 문자열은 재지 않는다」).
+describe("카드의 머리", () => {
+  const rootOf = (markup: string) => markup.match(/^<div[^>]*>/)![0];
+
+  it("뿌리가 머리 상자다 — `data-tab-row` 표식을 단다", () => {
+    // 줄을 이는 카드의 바닥(`TAB_ROW_CARD`)과 e2e(`tab-row.ts`)가 이 표식으로 줄을 가른다.
+    const root = rootOf(render(opened(2).state));
+    expect(root).toMatch(/\sdata-tab-row="/);
   });
 
-  it("칸 상자도 끄는 자리다 — 링이 설 자리가 칸 위아래와 양옆 틈을 덮는다", () => {
-    // 상자가 포커스 링이 설 자리(`focus-ring-room`)만큼 사방으로 나와 바탕 줄의 끄는 자리(칸 위아래 · 양옆 gap) 위에 선다.
-    // 그 상자가 끄는 자리가 아니면 그만큼 창이 안 끌린다 — Tauri는 누른 요소 자신의 속성만 본다. 칸 안의 버튼은 속성이
-    // 없어 그대로 눌린다.
+  it("뿌리에 `<header>`가 없다 — 창 맨 위 머리 줄과 둘이 되지 않는다", () => {
+    expect(render(opened(2).state)).not.toContain("<header");
+  });
+
+  it("창을 끄는 자리가 없다 — 카드 안이다", () => {
+    // 끄는 자리는 회색이 보이는 상자다(머리 줄 · 카드 둘레의 틈 — codex-ds 스펙 §4 「드래그 영역」). 카드의 흰 머리가 창을 끌면 칸 사이를
+    // 잘못 누른 손이 창을 옮긴다.
+    expect(render(opened(2).state, { actions: "조작" })).not.toContain("data-tauri-drag-region");
+  });
+
+  it("칸 상자는 링이 설 자리를 둔다 — 칸 위아래와 양옆 틈을 덮는다", () => {
+    // 상자가 포커스 링이 설 자리(`focus-ring-room`)만큼 사방으로 나온다 — 구르는 상자가 넘침을 자르므로 없으면 링이 잘린다.
     const strip = render(opened(1).state).match(/<div[^>]*data-tab-strip[^>]*>/)?.[0] ?? "";
     expect(strip).toContain("focus-ring-room");
-    expect(strip).toContain("data-tauri-drag-region");
   });
 
-  it("뿌리에 `<header>`가 없다 — 칸들이 바탕 줄의 자식으로 선다", () => {
-    // 이 줄이 제 `<header>`를 그리면 바탕 줄 안에 머리가 둘이 되고, 조작 묶음이 바탕 줄의 마지막 자식이 아니게 된다
-    // (e2e `tab-row.ts`가 그 자리로 조작을 잰다).
-    expect(render(opened(2).state)).not.toContain("<header");
+  it("조작이 없으면 오른쪽 묶음도 없다", () => {
+    // 상태 · ⋯ · 분할은 머리 카드에 선다(`WorksPage`) — 이 줄에 조작이 서는 것은 분할의 터미널 열(그 열을 닫는 `×`)뿐이다.
+    expect(render(opened(2).state)).not.toContain("data-tab-actions");
+    expect(render(opened(2).state, { actions: "조작" })).toContain("data-tab-actions");
   });
 });
 
@@ -960,10 +969,10 @@ describe("칸이 물든다", () => {
     expect(이름span(물든칸통째("done"))).toBe(이름span(물든칸통째(null)));
   });
 
-  it("켜진 칸이 기다리면 기다림의 채움이 흰 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
+  it("켜진 칸이 기다리면 기다림의 채움이 켜짐의 면(`tab-on`)을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
     // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 켜짐 면(`tab-on`)이 물러난다 — 안 물러나면
     // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
-    // 흰 면이 하던 말을 테두리가 받는다.
+    // 켜짐의 면이 하던 말을 테두리가 받는다.
     const 켜진기다림 = 물든칸("waiting", { active: true });
     expect(켜진기다림).toContain("bg-wait-soft");
     expect(켜진기다림).not.toContain("tab-on");
@@ -1012,9 +1021,13 @@ describe("칸이 물든다", () => {
     // 여기 없으므로 테두리로 갈아타는 날 이 검사가 잡는다.
     // **잉크 이름(`text-warning` · `text-accent-solid`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
     // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
-    // 받는다」가 그 자리를 따로 지킨다).
+    // 받는다」가 그 자리를 따로 지킨다). 칸의 글자색(`text-fg` · `text-fg-secondary` · `hover:text-fg` — DS `.at-tab`의 켜짐 ·
+    // 꺼짐 · 가리킴)은 여기 든다 — 켜짐과 hover를 따라 갈리는 무채색이지 잉크가 아니다.
     const 색어휘 = new Set([
       "hover:bg-fill-soft",
+      "text-fg",
+      "text-fg-secondary",
+      "hover:text-fg",
       "tab-on",
       "font-medium",
       "bg-wait-soft",
@@ -1088,8 +1101,8 @@ describe("칸이 물든다", () => {
     // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 상태색(기다림이면 `warning`)이 되는 것이다.
     // 그래서 **잉크는 이름 글자에만** 붙는다.
     // 잉크는 상태색의 글자색이다 — 기다림 `text-warning`, 안 본 완료는 이름에 잉크가 없다(DS `.at-tab` — 무채색). 「상자 · 마크에
-    // 없다」는 두 부름의 잉크(`warning` · 띠 경과의 `accent-solid`)를 함께 센다: 한 갈래의 잉크만 보면 다른 갈래의 잉크가 상자에
-    // 붙어도 초록이다.
+    // 없다」는 두 부름의 잉크(`warning` · 안 본 완료의 `accent-solid` — `TONE`의 잉크 칸)를 함께 센다: 한 갈래의 잉크만 보면 다른
+    // 갈래의 잉크가 상자에 붙어도 초록이다.
     const 잉크 = /(?<![\w-])text-(?:warning|accent-solid)(?![\w-])/;
     for (const [kind, ink] of [
       ["waiting", "text-warning"],

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { archiveRef, layoutDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
+import { archiveRef, archiveSpecDirRef, layoutDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
 // 그래서 아래 기대값은 `refs.ts`의 뿌리 상수를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
@@ -29,6 +29,7 @@ describe("참조 생성기", () => {
   });
 
   it("아카이브 참조는 `~/.atelier/archive/` 아래다", () => {
+    expect(archiveSpecDirRef("shipped-work")).toBe(`${ARCHIVE_ROOT}shipped-work/spec/`);
     expect(archiveRef("shipped-work", "record.md")).toBe(`${ARCHIVE_ROOT}shipped-work/record.md`);
     expect(archiveRef("shipped-work", "spec/overview.md", 19, 27)).toBe(
       `${ARCHIVE_ROOT}shipped-work/spec/overview.md:L19-27`,

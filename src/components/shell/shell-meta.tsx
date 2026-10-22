@@ -14,7 +14,7 @@ import { SquareTerminal } from "lucide-react";
  * 이 저장소의 규칙은 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」이고, 세는 규칙과
  * 색이 여기 하나에 있어야 그 둘이 앞으로도 안 갈린다. 규격(글꼴·간격·오른쪽 여백)은 index.css의
  * `row-meta` 하나다 — work 행에서 같은 칸에 번갈아 서는 신호의 경과(`shell-signal.tsx`의
- * `SignalMeta`)가 같은 정의를 부른다. 오른쪽 여백(`pr-[5px]`)은 두 자리 다 구획 헤더의 개수와
+ * `SignalMeta`)가 같은 정의를 부른다. 오른쪽 여백(`pr-1`)은 두 자리 다 구획 헤더의 개수와
  * 같은 x에 오른쪽 끝을 세우는 값이다.
  *
  * **터미널 feature를 import하지 않는다.** props만 받는 순수 컴포넌트라 이 저장소의 유일한

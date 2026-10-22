@@ -10,6 +10,10 @@ import {
   typeIntoShell,
   unknownIpcCalls,
   띠,
+  머리카드,
+  칠한값,
+  토큰값,
+  토큰색,
 } from "./harness";
 
 // 설정에 들어가면 사이드바가 **설정 nav**로 바뀐다(#226 · UI개선 결정 21·22·27 · S17~S19).
@@ -32,9 +36,8 @@ const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "터미널" |
  */
 const 켜짐 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =>
   설정항목(page, name).locator("xpath=..");
-// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
-// 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
-const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
+// 위치는 머리 카드가 말한다(codex-ds 스펙 §7 — 「Settings」 · 항목 이름 | 그 쪽의 저장). 글자로 읽으면 이름 · 위치 · 버튼 글자가
+// 바로 잇닿는다(아래 정규식의 `\s*`).
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);
 
 /** 사이드바 바닥의 `Settings`로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것. */
@@ -70,7 +73,34 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
-  await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
+  await expect(머리카드(page)).toHaveText(/^Settings\s*터미널\s*저장$/);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// codex-ds 티켓 19 — **설정 nav 행은 main nav와 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 32 · `radius-lg` · `nav-row`(14/20
+// 500), 켜진 항목은 바탕에 붙은 사이드바의 고른 면 `fill-hover`, 지나는 항목은 `fill-soft`다. 같은 사이드바 자리에 갈아 서는 nav라
+// 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서 읽어 맞댄다.
+test("설정 nav 행은 32 · radius-lg · 500이고, 켜진 항목은 fill-hover · 지나는 항목은 fill-soft다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/terminal");
+
+  const [고른면, 지나는면] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fill-soft")];
+  const 행높이 = await 토큰값(page, "height", "--size-row-nav");
+  const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
+  const 면 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "background-color"))[0];
+
+  await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
+  await expect.poll(() => 면("터미널")).toBe(고른면);
+  for (const name of ["터미널", "알림"] as const) {
+    expect(await 칠한값(켜짐(page, name), "height", "border-top-left-radius"), `${name} 행`).toEqual([행높이, 반경]);
+    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "500"]);
+  }
+
+  await 설정항목(page, "알림").hover();
+  await expect.poll(() => 면("알림")).toBe(지나는면);
+  // 켜진 항목은 옆을 지나도 그 면이다.
+  expect(await 면("터미널")).toBe(고른면);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -80,7 +110,7 @@ test("`/settings`로 곧장 오면 `/settings/terminal`로 치환된다", async 
   await installFixtureBackend(page);
   await page.goto("/settings");
   await expect(page).toHaveURL("/settings/terminal");
-  await expect(머리(page)).toHaveText(/^Settings\s*터미널$/);
+  await expect(머리카드(page)).toHaveText(/^Settings\s*터미널\s*저장$/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -93,7 +123,7 @@ test("항목을 누르면 주소와 본문이 그 항목으로 바뀌고, 뒤로
 
   await 설정항목(page, "알림").click();
   await expect(page).toHaveURL("/settings/notifications");
-  await expect(머리(page)).toHaveText(/^Settings\s*알림$/);
+  await expect(머리카드(page)).toHaveText(/^Settings\s*알림\s*저장$/);
   // 본문은 **그 항목 하나**다 — 앞 항목의 구획이 함께 서 있으면 한 화면 그대로다.
   await expect(page.getByRole("group", { name: "알림 설정", exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toHaveCount(0);

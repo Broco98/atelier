@@ -3,7 +3,7 @@ import {
   calloutKind,
   docBody,
   expandHome,
-  ignoresSourceToggle,
+  ignoresViewSwitch,
   resolveHref,
   resolveImageSrc,
 } from "./doc-refs";
@@ -283,6 +283,6 @@ describe("파일 종류 표", () => {
     ["notes.txt", true],
     ["diagram.puml", true],
   ])("%s의 토글 무시 = %s", (file, ignores) => {
-    expect(ignoresSourceToggle(file)).toBe(ignores);
+    expect(ignoresViewSwitch(file)).toBe(ignores);
   });
 });

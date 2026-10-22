@@ -86,10 +86,10 @@ const emptySpecTree = (): SpecTree => ({
 // 초록이 된다.
 //
 // **넘치는 쪽은 어느 글꼴에서도 넉넉히 넘쳐야 하고, 짧은 쪽은 어느 글꼴에서도 안 넘쳐야 한다.** 글자가 시스템
-// 글꼴이라 같은 제목도 OS마다 폭이 다르다(codex-ds 결정 3). 사이드바 280px · 셸이 없는 행에서 제목에 남는 폭이
-// 228px이고, 첫 제목은 macOS(SF Pro · Apple SD Gothic Neo)에서 296.7px이라 넘침이 약 69px이다. Playwright 리눅스
-// 이미지(`v1.62.1-noble` — sans-serif가 WenQuanYi Zen Hei)에서는 341.6px · 넘침 약 114px이다(둘 다 L3 WebKit 실측
-// 2026-10-11). 이 여유가 마퀴 속도를 재는 그물의 폭이다: 흐르는 시간이 「(넘침 + 페이드 12) ÷ 50px/s」인데 두 점을
+// 글꼴이라 같은 제목도 OS마다 폭이 다르다(codex-ds 결정 3). 사이드바 290px(DS `size-sidebar` — codex-ds 스펙 S4) · 셸이 없는
+// 행에서 제목에 남는 폭이 238px이고, 첫 제목은 macOS(SF Pro · Apple SD Gothic Neo)에서 296.7px이라 넘침이 약 59px이다. Playwright
+// 리눅스 이미지(`v1.62.1-noble` — sans-serif가 WenQuanYi Zen Hei)에서는 341.6px · 넘침 약 104px이다(제목 폭은 L3 WebKit 실측
+// 2026-10-11, 넘침은 그 폭에서 셈). 이 여유가 마퀴 속도를 재는 그물의 폭이다: 흐르는 시간이 「(넘침 + 페이드 12) ÷ 50px/s」인데 두 점을
 // 0.4초 사이에 두고 찍으므로, 넘침이 25px 아래로 내려가면 두 점이 **도착한 뒤**로 밀려 기울기가
 // 0이 된다. 한때 2열의 28px 예약을 걷어 제목 상자가 넓어졌을 때 실제로 그렇게 됐고, 그래서 제목을 늘려
 // 여유를 되돌렸다. 둘째 제목(「그냥 일」)은 네 글자라 어느 글꼴에서도 상자의 몇 분의 일이다.
@@ -994,6 +994,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 핀을 누르면 나가는 쓰기. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는 것이 화면을 고치는
   // 자리다(`useSetWorkPinned`).
   set_work_pinned: null,
+  // work 메뉴의 「Finder에서 열기」가 나간다(codex-ds 티켓 16 — `works-floating.spec.ts`의 work 메뉴 절). 값은 안 쓰인다 — 탐색기를
+  // 여는 것이 일의 전부다. 검사가 보는 것은 나갔는가와 그 인자(slug · 프로젝트)이고, 못 여는 길은 `ipcFailure`로 덮어 잰다.
+  open_work_folder: null,
+  // Archive의 「Finder에서 열기」(머리 카드 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
+  // `archive-docs.spec.ts`). 위 줄과 한 가족이고 같은 까닭으로 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
+  open_archived_spec_folder: null,
   // 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와 무관하다(`WORKS_MOVED`
   // 머리말) — 화면이 이 답으로 캐시를 갈아 끼우는지를 `work-row-drag.spec.ts`가 그 순서로 잰다.
   move_work: WORKS_MOVED,

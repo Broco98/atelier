@@ -9,6 +9,7 @@ import {
   recordClipboard,
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
+  머리카드,
 } from "./harness";
 
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 티켓 08 · 결정 20·23·25).
@@ -19,9 +20,8 @@ import {
 // 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절).
 
 const aside = (page: Page) => page.locator("aside");
-// 본문 카드의 머리(ui-refresh 결정 5 — `CardHead`). 위치는 `Crumbs` 캡슐이고 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라,
-// 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
-const 머리 = (page: Page) => page.locator('main [data-slot="card-head"]').first();
+// 위치는 머리 카드가 말한다(codex-ds 스펙 §7 — 「Settings」 · 항목 이름). 이 쪽에는 저장이 없어 머리 카드에 할 일이 없다. 글자로
+// 읽으면 이름과 위치가 바로 잇닿는다(아래 정규식의 `\s*`).
 const 행 = (page: Page) => page.locator("main li").filter({ has: page.getByText("Atelier", { exact: true }) });
 const 부탁 = (page: Page) =>
   page.getByRole("button", { name: "Atelier 레이아웃을 에이전트에게 부탁", exact: true });
@@ -42,7 +42,7 @@ test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가
   const 항목 = aside(page).getByRole("button", { name: "spec 레이아웃", exact: true });
   await 항목.click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(머리(page)).toHaveText(/^Settings\s*spec 레이아웃$/);
+  await expect(머리카드(page)).toHaveText(/^Settings\s*spec 레이아웃$/);
   await expect(항목.locator("xpath=..")).toHaveClass(/selected-row/);
   await expect.poll(() => callCount(page, "spec_layout_state")).toBeGreaterThan(0);
 

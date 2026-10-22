@@ -47,9 +47,9 @@ interface SpecViewerProps {
   // 화면(WorksPage)이 이미 풀어서 내려준다 — 트리의 "지금 이 문서" 표시와 본문이 같은
   // 값을 봐야 하고, 그 트리가 이제 형제 컬럼에 살기 때문이다.
   file: string | null;
-  // `[소스]`가 켜져 있는가 — **사람이 정한 값 그대로**다. 파일 종류를 얹는 일은 표
+  // 원문 보기가 켜져 있는가 — **사람이 정한 값 그대로**다. 파일 종류를 얹는 일은 표
   // (`docBody`)가 하므로 화면은 식을 안 든다. 상태의 주인이 화면인 것은 그대로다:
-  // 켜짐은 패널 버튼이, 본문은 여기가 쓰는데 둘의 공통 조상이 화면뿐이다.
+  // 켜짐은 경로 줄의 보기 묶음이, 본문은 여기가 쓰는데 둘의 공통 조상이 화면뿐이다.
   showSource: boolean;
   // 문서 안 링크를 따라갈 때. 히스토리를 **만든다** — 따라 들어갔으면 돌아올 수 있어야 한다.
   // (히스토리를 만들지 않는 트리 훑기는 패널 쪽 길이라 여기를 지나지 않는다.)
@@ -125,11 +125,12 @@ function SpecViewer({
   };
 
   return (
-    // 문서 카드의 몸(ui-refresh 결정 4 · 5) — 카드와 그 머리(캡슐 · 원문 전환 · 경로 복사)는 화면(`WorksPage`)이 세우고, 이 컴포넌트는
-    // 카드 안에서 도는 스크롤 상자 하나를 낸다. 스크롤 경계는 여기까지다 — 카드 머리는 카드에 고정되고 글만 구른다. 이 상자가
+    // 문서 카드의 몸(ui-refresh 결정 4 · 5) — 카드와 그 위 경로 줄(캡슐 · 보기 묶음 · 경로 복사 — `PathBar`)은 화면(`WorksPage`)이
+    // 세우고, 이 컴포넌트는 카드 안에서 도는 스크롤 상자 하나를 낸다. 스크롤 경계는 여기까지다 — 경로 줄은 카드에 고정되고 글만 구른다. 이 상자가
     // **카드의 직계 flex 자식**이어야 남는 높이를 차지한다(한 겹 감싸면 `flex-1`이 그 껍데기를 기준으로 잡힌다).
     //
-    // 탭 줄의 바닥(`TAB_ROW_COLUMN`)은 이제 공용 틀의 본문 열이 든다 — 넓은 표 · 코드가 그 바닥에 안 섞이는 것도 그쪽 일이다.
+    // 탭 줄의 바닥은 그 줄을 머리에 인 문서 카드가 든다(`TAB_ROW_CARD`) — 이 상자는 그 카드의 줄 아닌 자식이라 격리되어 넓은
+    // 표 · 코드가 그 바닥에 안 섞인다.
     // 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다.
     <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
       <div className="flex min-h-full min-w-0 flex-col">
@@ -399,20 +400,20 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
 export function SourceView({ content, wide = false }: { content: string; wide?: boolean }) {
   const lines = content.split("\n");
   return (
-    // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
-    <div className={cn(bodyColumn(wide), "py-4")}>
+    // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다. 첫 줄이 예쁜 보기의 첫 블록과 같은 y(경로 줄
+    // 아래 24)에 서서 보기 묶음을 오가도 본문이 위아래로 튀지 않는다.
+    <div className={cn(bodyColumn(wide), "py-6")}>
       {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
-          -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
-          소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
-          예쁜 보기 본문과 같은 x에서 시작한다 (규격의 폭·최대폭·우측 여백은 그대로다) */}
-      <div className="-ml-12 overflow-x-auto font-mono text-code [tab-size:4] scroll-quiet">
+          **줄번호 열은 글 거터 20 안쪽, 글이 서는 줄에서 시작한다**(codex-ds 결정 27) — 거터가 20이라 48 열이 들어설 자리가
+          그 밖에 없다. 그래서 원문의 코드 첫 글자는 예쁜 보기 글보다 줄번호 열만큼 안쪽이다: 원문은 「글」이 아니라 「코드」라
+          줄번호와 한 덩어리로 읽는다(경로 캡슐과 한 세로줄인 것은 예쁜 보기의 글이다). */}
+      <div className="overflow-x-auto font-mono text-code [tab-size:4] scroll-quiet">
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
             <div key={i} className="flex">
               {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
-                  폭 48px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터 버튼의
-                  오른쪽 끝과 같은 자리에 온다. 남는 32px이 네 자리 줄번호(31.2px)의 자리다 */}
+                  폭 48px · 우측 여백 16px — 남는 32px이 네 자리 줄번호(`text-code` 13px에서 31.2px)의 자리다 */}
               <span className="sticky left-0 z-10 w-12 shrink-0 select-none bg-surface pr-4 text-right text-fg-tertiary">
                 {i + 1}
               </span>
@@ -428,14 +429,12 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
 // ─── 예쁜 보기 ───
 
 // 본문 열 레이아웃 규격 — 예쁜 보기와 소스 보기가 공유하는 단일 출처.
-// w-full: 부모가 column-flex인데 mx-auto가 붙으면 stretch가 꺼져 폭이 fit-content로
-//   잡힌다. 짧은 문서에서 열이 쪼그라들어 두 보기의 좌우 위치가 어긋나는 걸 막는다.
-// 48px 대칭인 이유: 좌측은 여백이면서 동시에 거터의 자리다. 거터에서 줄범위 숫자가
-//   사라진 뒤로 그 자리를 정하는 건 소스 보기의 줄번호 열이다 —
-//   네 자리 "1024"는 `text-code`(13px · 0.6em/자)에서 31.2px, 코드와 16px 떨어져야 하므로
-//   47.2px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
-// **글 폭은 토큰이다**(ui-refresh 결정 12) — 글자가 서는 폭이 좁을 때 `--measure-read`(760), 넓을 때
-//   `--measure-wide`(1120)이고, 거터(좌우 48px)는 그 **밖**이다. 그래서 열의 최대 폭은 글 폭 + 96px이다.
+// **글 거터 20**(`px-5` — DS `space-5`, codex-ds 결정 27 · DS `Card` · `Prose` 「글은 거터 20 · 위 24」): 글이 카드 + 20에서
+//   시작해 경로 줄의 캡슐 안 글자(카드 + 20 — `PathBar`)와 한 세로줄에 선다. **열은 카드 왼쪽에 붙는다** — 가운데로 모으면
+//   카드가 글 폭보다 넓어질 때 글이 캡슐 글자에서 떨어져 나간다(DS `.at-thread`는 가운데지만 캔버스의 문서 카드는 글 폭보다
+//   좁아 그 차이가 안 보였다). `w-full`은 짧은 문서에서도 두 보기의 열이 같은 폭이게 한다.
+// **글 폭은 토큰이다** — 글자가 서는 폭이 좁을 때 `--size-thread`(48rem — DS 「글 폭」), 넓을 때 `--measure-wide`(1120)이고,
+//   거터(좌우 20)는 그 **밖**이다. 그래서 열의 최대 폭은 글 폭 + 거터 둘(`2 × space-5`)이다.
 //   `box-content`로 패딩을 폭 밖에 두는 길은 안 된다 — `w-full`이 부모 폭에 패딩을 더해 좁은 카드에서 넘친다.
 // 화면을 비웠는데 본문이 안 넓어지던 것을 없앤다 — 접을 수 있는 것을 **둘 다** 접었을
 // 때만 넓어진다(결정 5·13). 원래 짝은 사이드바 + 목록 패널이었는데 nav 개편이 목록
@@ -443,8 +442,8 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
 // (판 06 「정한 것」 — 빼면 기능을 빼는 것이다).
 export const bodyColumn = (wide: boolean) =>
   cn(
-    "mx-auto w-full px-12",
-    wide ? "max-w-[calc(var(--measure-wide)+96px)]" : "max-w-[calc(var(--measure-read)+96px)]",
+    "w-full px-5",
+    wide ? "max-w-[calc(var(--measure-wide)+2*var(--space-5))]" : "max-w-[calc(var(--size-thread)+2*var(--space-5))]",
   );
 
 // 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
@@ -453,8 +452,8 @@ export const bodyColumn = (wide: boolean) =>
 // 우측 여백 5.21px의 근거: 거터 22 - 체크박스 13 - 체크박스 뒤에 오는 공백 한 칸 3.79 = 5.21.
 // 3.79px은 본문 글꼴(macOS 시스템 글꼴 SF Pro, `chat-body` 14px)에서 실측한 값이다(L3 WebKit 2026-10-11) — 글꼴이나 본문 크기가
 // 바뀌면 다시 재야 한다. 시스템 글꼴이라 다른 OS에서는 공백 폭이 달라 첫 글자가 1px 안쪽으로 어긋날 수 있다.
-const listIndent = "pl-[22px]";
-const checkboxGutter = "-ml-[22px] mr-[5.21px]";
+const listIndent = "pl-5.5";
+const checkboxGutter = "-ml-5.5 mr-[5.21px]";
 
 interface PrettyViewProps {
   // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데 쓰고,
@@ -493,25 +492,31 @@ function BlockWrapper({
 }) {
   const range = end !== start ? `${start}–${end}` : `${start}`;
   return (
-    <div className={cn("group relative py-1", spacing)}>
-      {/* 거터는 본문 좌측 여백(bodyColumn의 px) 안쪽에 오른쪽 정렬로 얹힌다 —
-          버튼의 오른쪽 끝이 본문과 16px 떨어져, 소스 보기 줄번호의 오른쪽 끝과 같은 자리에 온다.
-          top-1은 버튼 중심(4+12=16px)을 숫자가 있던 자리의 중심에 그대로 둔다.
+    // 첫 블록은 제 위 간격(`spacing`)을 안 든다 — 글이 경로 줄 아래 24(본문 열의 위 20 + 이 상자의 위 4)에서 시작한다(DS `Prose`
+    // 「글은 거터 20 · 위 24」).
+    <div className={cn("group relative py-1 first:mt-0", spacing)}>
+      {/* 거터는 본문 좌측 여백(bodyColumn의 px — 글 거터 20)이다 — 버튼(16)이 그 안에 오른쪽 정렬로 얹혀 오른쪽 끝이 글의 첫
+          x에 닿고, 왼쪽에 4가 남는다. 그 4는 포커스 링(바깥 4 — `focus-halo`)의 자리다: 카드 · 스크롤 상자가 넘침을 잘라
+          거터를 꽉 채우면 왼쪽 링이 카드 끝에서 잘린다(`e2e/primitives.spec.ts`). 거터가 20이라 한때의 24 버튼 · 글과 16
+          띄우기가 안 들어간다(codex-ds 결정 27). 모양은 아이콘 버튼 규격의 가장 작은 단(`icon-button-2xs` — 16 · `radius-md`)이다.
+          가리키면 바탕을 안 켜고 글리프 색만 짙어진다(`icon-button-tint`) — 버튼이 글의 첫 x에 맞닿아 있어 면을 켜면 글자에
+          붙는다. 글 안쪽 위에 겹쳐 띄우지 않는 것은 표의 전체화면 · 다이어그램 머리의 버튼이 블록 오른쪽 위에 이미 서 있어서다.
+          top-2는 버튼 중심(8+8=16px)을 블록 첫 줄(블록의 위 4 + 본문 줄 높이 22.75의 가운데)의 가운데쯤에 둔다.
           키보드로 도달했을 때도 보여야 하므로 focus-visible에서도 나타난다.
 
           이 버튼이 페이드로 뜨지 않는 것은 실수가 아니다 — 숨은 버튼은 즉시 나타나고 즉시
-          사라진다(그 규칙은 icon-button-quiet이 갖는다: transition에 opacity가 없다).
+          사라진다(그 규칙은 `icon-button-tint`가 갖는다: transition에 opacity가 없다).
           블록마다 버튼이 하나씩이고 거터라 x가 모두 같아서, 페이드를 걸면 블록을 옮겨 갈 때
           앞 버튼이 사라지는 페이드와 뒤 버튼이 나타나는 페이드가 겹친다. 같은 아이콘이 같은
           x에서 40px 아래로 크로스페이드하면 눈에는 버튼이 미끄러진 것으로 보인다
-          (제보: "스르륵 뜨면서 움직이는 것처럼 보인다"). 배경·글자색은 계속 전환한다 —
+          (제보: "스르륵 뜨면서 움직이는 것처럼 보인다"). 글자색은 계속 전환한다 —
           그건 한 버튼 안에서 일어나는 일이라 겹칠 상대가 없다 */}
       <Hint
         text={`${range}줄 참조 복사`}
         announce="name"
         type="button"
         onClick={() => onCopy(start, end)}
-        className="icon-button-quiet icon-button-xs absolute right-full top-1 mr-4 cursor-copy text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="icon-button-tint icon-button-2xs absolute top-2 right-full cursor-copy text-fg-tertiary opacity-0 outline-none focus-ring focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <Copy className="size-3" aria-hidden />
       </Hint>
@@ -656,7 +661,9 @@ export const PrettyView = memo(function PrettyView({
         );
       },
       // 표의 칸 — 옅은 면(`SpecTable`) 위의 행이다(ui-refresh 결정 16). 줄 사이 선이 없고, 줄은 hover에 `fill-hover`로
-      // 갈린다(DS `.at-doc-table`). 칠하는 것은 칸이다 — 표 줄(`tr`)에는 모서리가 안 서서, 첫 · 끝 칸이 줄의 둥근
+      // 갈린다 — ui-refresh 때 DS(판 1)의 `.at-doc-table`을 이은 모양이고, DS 2판에는 그 부품이 없어 표는 `Prose`의 선 그은
+      // 표뿐이다. 칸의 위아래 8은 그 2판 표의 칸(`.at-prose td` — 위아래 8)이고, 옆 12는 줄의 둥근 면 안쪽이다(판 1의 12 —
+      // 2판 표는 면이 없어 옆이 0 · 16이다). 칠하는 것은 칸이다 — 표 줄(`tr`)에는 모서리가 안 서서, 첫 · 끝 칸이 줄의 둥근
       // 끝(`rounded-lg`, 10)을 든다. 그래서 표가 `border-separate`다(`collapse`면 칸의 모서리가 무시된다).
       // 머리 줄은 hover하지 않는다 — 고를 줄이 아니라 열의 이름이다.
       tr: ({ children }) => <tr className="group/row">{children}</tr>,
@@ -671,7 +678,7 @@ export const PrettyView = memo(function PrettyView({
         </th>
       ),
       td: ({ children }) => (
-        <td className="px-3 py-[9px] first:rounded-l-lg last:rounded-r-lg group-hover/row:bg-fill-hover">{children}</td>
+        <td className="px-3 py-2 first:rounded-l-lg last:rounded-r-lg group-hover/row:bg-fill-hover">{children}</td>
       ),
       // 링크는 두 가지만 산다 — 문서 간 이동과 외부 URL (결정 3).
       // target="_blank"는 **Tauri 웹뷰에서 아무 일도 하지 않는다.** 그래서 여기가 직접 연다.
@@ -796,7 +803,7 @@ export const PrettyView = memo(function PrettyView({
         ) : (
           // 인라인 코드 — DS `Prose`의 인라인 코드(`.at-prose code`): 옅은 면 `fill-soft` · `radius-xs`(4) · 테두리 없음 · 안쪽 1 · 5. 글자는
           // 13 — `text-code`(13/20) 단계다. 단계라 제목 안에서도 13이다(제목을 따라 커지지 않는다).
-          <code className="rounded-xs bg-fill-soft px-[5px] py-px font-mono text-code wrap-anywhere">
+          <code className="rounded-xs bg-fill-soft px-1.25 py-px font-mono text-code wrap-anywhere">
             {children}
           </code>
         ),
@@ -805,12 +812,12 @@ export const PrettyView = memo(function PrettyView({
   }, [onCopyBlock]);
 
   return (
-    // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
-    // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 같은 열(`bodyColumn`)에서 맞춘 것과 같은 계약을
-    // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다.
+    // pt-5: 블록 래퍼의 py-1(4px)을 더하면 첫 블록이 경로 줄 아래 24px에 온다(DS `Prose` 「글은 거터 20 · 위 24」) —
+    // 소스 보기의 첫 줄(py-6)과 같은 y다. 좌우를 같은 열(`bodyColumn`)에서 맞춘 것과 같은 계약을
+    // 세로에도 건다. 보기 묶음을 오갈 때 본문이 위아래로 튀지 않는다.
     // 글자는 문서 본문 단계(`text-chat-body` 14/22.75)와 `fg`다(DS `Prose`) — 문단 · 목록 · 콜아웃이 물려받는다(표는
     // 글자색만 물려받고 크기는 `SpecTable`의 `text-sm`이다).
-    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-chat-body text-fg")}>
+    <article className={cn(bodyColumn(wide), "pt-5 pb-16 text-chat-body text-fg")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>

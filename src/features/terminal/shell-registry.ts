@@ -710,7 +710,7 @@ export function shellsEmptied(before: ShellTally, now: ShellTally): boolean {
  * 그 화면에서 **켜진 셸** 자체. 없으면 `null`이다.
  *
  * `activeIdOf` → `shellsOf(...).find(...)` 2단 체인이 화면 셋에 그대로 베껴져 있었다
- * (터미널 본문·최상위 머리행·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
+ * (터미널 본문·최상위 탭 줄·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
  * 한 곳만 고쳐도 화면마다 다른 셸을 켜진 것으로 부른다.
  */
 export function activeShellOf(state: ShellsState, owner: ShellOwner): Shell | null {
@@ -1264,7 +1264,7 @@ export function shellRewrite(event: KeyPress): string | null {
  * 그래서 여기서 보는 것은 여전히 `"new"` 하나다.
  *
  * **입력 중에는 안 듣는다 — 그런데 xterm의 입력 자리도 숨은 `<textarea>`다**
- * (`togglesWorkPanel`이 적어 둔 함정과 같은 자리). 셸 안에서는 xterm 핸들러가 이미
+ * (`togglesPanel`이 적어 둔 함정과 같은 자리). 셸 안에서는 xterm 핸들러가 이미
  * 열어 주므로 여기서 또 들으면 한 번 눌러 둘이 열린다. 그쪽이 `stopPropagation`으로도
  * 막지만 그 한 겹에만 기대지 않는다 — 두 겹이 같은 사실을 말하는 것이 아니라, 하나는
  * 「셸이 처리했다」이고 하나는 「입력 중에는 안 먹는다」로 근거가 다르다.
@@ -1300,8 +1300,8 @@ export function closesShellFromWindow(event: KeyFromWindow): boolean {
  * 그 자리가 **글을 치는 자리인가**. 요소가 스스로 들고 있는 값 둘(`tagName`·
  * `isContentEditable`)만 보므로 DOM 생성자가 없는 환경에서도 그대로 돈다.
  *
- * **`togglesWorkPanel`(WorksPage.tsx)은 같은 판정을 `instanceof`로 한다.** 흉내 내지 않는
- * 이유는 그 파일에는 이 모듈의 계약이 없어서다 — 저쪽은 화면이라 DOM이 늘 있다.
+ * **`togglesPanel`(PanelToggle.tsx)은 같은 판정을 `instanceof`로 한다.** 흉내 내지 않는
+ * 이유는 그 파일에는 이 모듈의 계약이 없어서다 — 저쪽은 화면의 리스너가 부르는 부품 곁이라 DOM이 늘 있다.
  *
  * **`as`로 좁히지 않는다.** `event.target as HTMLElement`는 `null`도 요소라고 말해 놓고
  * `isContentEditable`을 읽어 터진다(`null instanceof X`는 false라 앞 가드를 그냥 통과한다).
