@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { worksQuery } from "@/features/works/hooks";
 import { settleOwners } from "@/features/terminal/terminal-store";
+import { forgetVanishedViews } from "@/routes/-work-search";
 
 /**
  * **주인 확인을 거는 자리**(프로세스 결정 4 · 프로세스 스펙 S13 · 티켓 12). 그리는 것은 없다.
@@ -13,6 +14,10 @@ import { settleOwners } from "@/features/terminal/terminal-store";
  *
  * **목록은 여기서 관찰한다** — 무효화는 관찰자가 있는 쿼리만 다시 부른다. 사이드바도 같은 목록을 보지만, 이 판정이 화면
  * 하나의 배치에 기대지 않게 루트가 직접 든다(같은 키라 조회는 늘지 않는다).
+ *
+ * **사라진 work의 화면 기억도 여기서 걷는다**(git-integration 판 01 — `forgetVanishedViews`). 묶음에서 그 work의 파일 탭이
+ * 빠지는 것(`settleOwners`)과 같은 사실에서 나온 짝이다: 둘 중 하나만 남아도 같은 slug로 선 새 work에 옛 파일 탭이 선다. UI
+ * 아카이브 · 삭제도 목록을 다시 앉히므로 이 길 하나가 두 길을 다 덮는다.
  *
  * **앱 셸 안에 두지 않고 제 파일에 선다** — `ShellReclaim`과 같은 까닭이다(앱 셸의 구독 수를 못박아 두었다).
  */
@@ -26,7 +31,10 @@ function ShellOwners() {
     const list = worksQuery().queryKey;
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.action.type !== "success") return;
-      if (hashKey(list) === event.query.queryHash) void settleOwners(queryClient.getQueryState(list));
+      if (hashKey(list) !== event.query.queryHash) return;
+      const result = queryClient.getQueryState(list);
+      void settleOwners(result);
+      if (result?.data) forgetVanishedViews(result.data.map((work) => work.slug));
     });
   }, [queryClient]);
 

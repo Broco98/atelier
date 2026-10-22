@@ -17,6 +17,8 @@ import {
   토큰색,
   unknownIpcCalls,
   writeShell,
+  파일탭주소,
+  주소로간다,
 } from "./harness";
 
 // 판 03 — `/terminal`의 머리행도 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
@@ -68,7 +70,7 @@ test("⌘1이 탭 줄에 보이는 첫 칸을 고른다", async ({ page }) => {
 // 가장 붐비는 모습을 못 만든다 — 줄 자체는 두 화면이 같은 것을 쓰므로(결정 8) 붐비는 쪽에서
 // 재는 것이 둘 다를 잰다.
 
-const [, plainWork] = WORKS;
+const [fileWork, plainWork] = WORKS;
 
 /** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
 const SHELL_NAME = FIXTURE_SHELL_NAME;
@@ -233,6 +235,64 @@ for (const at of ["900px", "칸 하나 폭 상자"] as const) {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
+
+// git-integration 판 01 티켓 06 — **파일 탭도 같은 줄의 칸이다**(결정 31). 셸과 파일 탭이 섞여 넘친 줄에서 ⌘숫자 · ⌃Tab이 고른
+// 칸이 파일 탭이어도 보이는 자리로 온다(스토리 45). 켜진 칸을 집는 말(`aria-pressed`)이 종류를 안 가려서 같은 줄이 돈다 —
+// 이 검사는 그 말이 파일 탭에도 서는지, 파일 탭으로 가는 길(주소)을 지나서도 줄이 따라오는지를 본다.
+test("셸과 파일 탭이 섞여 넘친 줄에서도 ⌘숫자 · ⌃Tab으로 고른 끝쪽 파일 탭이 보이는 자리로 온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto(`/works/${fileWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await openShell(page);
+  // 파일 탭 여섯 — 묶음이 여덟 칸이 되어 900px 창에서 줄이 넘친다(위 셸 여덟과 같은 붐빔). 픽스처에 없는 경로라 본문은
+  // 「지워진 파일」이지만 칸은 선다.
+  const bundle = page.locator("[data-tab-strip] > [data-tab]");
+  const files = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"];
+  for (const [at, name] of files.entries()) {
+    await 주소로간다(page, 파일탭주소(`billing/${name}`));
+    await expect(bundle).toHaveCount(2 + at + 1);
+  }
+  await settleStrip(page);
+
+  const strip = page.locator("[data-tab-strip]");
+  const first = bundle.first();
+  const last = bundle.last();
+  await expect(last).toHaveAttribute("data-code", "billing/f.ts");
+  // **줄이 정말 넘쳤다** — 안 넘치면 아래 「안」이 늘 참이라 뜻이 없다.
+  const row = await rowOf(page);
+  expect(row.strip.scrollWidth, JSON.stringify(row.strip)).toBeGreaterThan(row.strip.clientWidth);
+
+  const inside = (cell: typeof first) => async () => {
+    const own = (await cell.boundingBox())!;
+    const box = (await strip.boundingBox())!;
+    return own.x >= box.x - 1 && own.x + own.width <= box.x + box.width + 1;
+  };
+
+  // ⌘2가 첫 셸이다 — 줄이 맨 앞으로 가고 마지막 파일 탭은 밖이다. 이것이 없으면 아래가 「원래 보이고 있어서」 초록이다.
+  await page.keyboard.press("Meta+2");
+  await expect.poll(inside(first)).toBe(true);
+  await expect.poll(inside(last)).toBe(false);
+
+  // ⌘9가 여덟째 칸 — 끝쪽 파일 탭이다. 그 칸이 상자 안으로 오고 켜지며, 본문이 그 파일이다.
+  await page.keyboard.press("Meta+9");
+  await expect.poll(inside(last)).toBe(true);
+  await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("main", { name: "billing/f.ts", exact: true })).toBeVisible();
+  await expect.poll(inside(first)).toBe(false);
+
+  // 끝쪽 칸에서 ⌃Tab은 돌아 첫 셸이다 — 줄이 다시 맨 앞으로 온다.
+  await page.keyboard.press("Control+Tab");
+  await expect.poll(inside(first)).toBe(true);
+  await expect(first.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(inside(last)).toBe(false);
+  // 거꾸로 돌면 다시 끝쪽 파일 탭으로 — 줄이 따라간다.
+  await page.keyboard.press("Control+Shift+Tab");
+  await expect.poll(inside(last)).toBe(true);
+  await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
 // 위 두 검사는 「줄이 안 넘친다」와 「고른 칸이 상자 안으로 온다」를 들지만 **상자에 칸 하나가
 // 들어갈 폭이 남는가**는 안 든다 — 상자가 0px이면 넘침도 없다. 900px 창에서 작업 패널이 열린
