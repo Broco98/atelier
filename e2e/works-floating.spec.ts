@@ -264,6 +264,8 @@ test("폴더가 사라진 worktree는 Finder에서 열기 ▸에 흐리게 서�
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowRight");
   await expect(sub).toBeVisible();
+  // 앵커: 포커스가 하위 메뉴의 첫 줄에 들었다. 카드가 선 뒤에야 포커스가 옮겨 가는 WebKit이 있다(리눅스) — 그 전의 ↓는 부모 메뉴가 받는다.
+  await expect(sub.getByRole("menuitem").first()).toBeFocused();
   // 해당은 하니 숨기지 않고, 지금 못 하니 흐리다(codex-ds 결정 10) — 옆의 살아 있는 worktree는 그대로다.
   await expect(gone).toHaveAttribute("aria-disabled", "true");
   await expect(alive).not.toHaveAttribute("aria-disabled", "true");
