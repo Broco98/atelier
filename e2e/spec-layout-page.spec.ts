@@ -312,6 +312,8 @@ test("행 안 버튼에 포커스를 두고 ⇧F10 · 메뉴 키를 누르면 �
 
   await 숨은메뉴버튼(page).focus();
   await page.keyboard.press("Shift+F10");
+  // 카드가 포커스를 쥔 뒤에 누른다(위 차례와 같다) — 카드가 선 뒤에야 포커스를 옮기는 WebKit이 있다(리눅스). 그 전의 ↓ · Enter는 카드에 닿지 않는다.
+  await expect(menu).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   const dialog = 확인창(page);
