@@ -1,6 +1,6 @@
 [package]
 name = "atelier-app"
-version = "0.18.0"
+version = "0.20.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -38,6 +38,12 @@ atelier-core = { path = "../crates/atelier-core" }
 # 그 크레이트가 감춘다.
 atelier-acp = { path = "../crates/atelier-acp" }
 tauri-plugin-dialog = "2"
+# 클립보드 읽기(codex-ds 스펙 S9). 입력칸 · 터미널 메뉴의 붙여넣기가 이것으로 읽는다 — 웹뷰의
+# `navigator.clipboard.readText`는 WKWebView에서 시스템 붙여넣기 확인을 띄운다. 쓰기(복사 · 잘라내기)는
+# 지금처럼 웹 클립보드다. **2.3에 묶는다**: 2.4부터는 tauri 2.12를 요구해 tauri 자체가 함께 올라간다.
+# 프런트 패키지(`@tauri-apps/plugin-clipboard-manager` ~2.3)와 판이 같아야 한다 — tauri CLI가 둘의
+# major · minor가 갈리면 빌드를 거부한다.
+tauri-plugin-clipboard-manager = "~2.3.3"
 notify-debouncer-mini = "0.7"
 # PTY는 데스크톱 앱만 쓴다 — MCP·CLI가 쓸 일이 없어 워크스페이스 공용으로 올리지 않는다.
 # libc는 회수 경로의 killpg 하나 때문에 직접 든다.

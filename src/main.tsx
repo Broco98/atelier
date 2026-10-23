@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import { LucideProvider } from "lucide-react";
+import { ICON_STROKE } from "@/components/ui/icon-stroke";
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { router } from "./router";
@@ -26,13 +28,17 @@ void loadNotifySettings();
 // 화면은 있다(앱 셸의 토스트). 그래도 이펙트에 두지 않는 것은 StrictMode가 이펙트를 두 번 돌려 묻는 것도
 // 두 번이 되기 때문이다 — 답은 스토어에 두고 셸이 서서 읽는다(`startup-report.ts`).
 void loadStartupReport();
+// 목록 칸은 접지 않는다(codex-ds 결정 32). 접던 때 Projects · Archive가 화면마다 적어 둔 접힘 값은 읽는 곳이 없어 **앱이 뜰 때
+// 지운다** — 남겨 두면 걷은 기능의 값이 사람의 저장소에 영영 남는다. 지울 것이 없으면 아무 일도 안 한다.
+for (const key of ["projects-panel-open", "archive-panel-open"]) localStorage.removeItem(key);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       {/* 툴팁의 지연을 앱 전체가 **한 Provider**에서 나눠 쓴다(S3) — 한 번 뜬 뒤 옆 트리거로
           옮기면 바로 뜨는 것이 이 묶음 덕이다. registry의 `Tooltip`은 제 Provider를 싸지 않으므로
-          이것이 없으면 지연이 트리거마다 따로 돈다. 600ms는 부품 파일의 기본값이다. */}
+          이것이 없으면 지연이 트리거마다 따로 돈다. 길이(`duration-tip` · 닫힌 직후 잠깐)는 부품 파일의
+          기본값이다 — 호버 카드와 한 무리로 맞춘 값이라(codex-ds 결정 20) 여기서 따로 주지 않는다. */}
       <TooltipProvider>
         {/* 토스트도 Provider는 **여기 하나**다(S14). 자리(Viewport)는 화면마다 지금 토스트 자리에 두고 —
             작업 화면과 아카이브 화면 — 한 번에 한 화면만 서므로 늘 하나다. Tooltip과 달리 Viewport는
@@ -45,7 +51,11 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
             아래 화면들의 토스트를 가로채지 않는다. 그래서 작업 · 아카이브 화면에는 두 영역(「메시지」 · 「앱
             메시지」)이 함께 설 수 있다. S14 · S26을 넘는 이 예외는 사람 결정으로 남았다(develop 머지). */}
         <ToastProvider>
-          <RouterProvider router={router} />
+          {/* lucide 아이콘의 선 굵기도 **여기 하나**에서 준다(codex-ds 스펙 S3) — 값과 까닭은 `icon-stroke.ts`가 든다.
+              호출부는 굵기를 고르지 않으므로, 이것이 빠지면 모든 아이콘이 lucide 기본(24칸 2 — 16px에서 1.33px)으로 그려진다. */}
+          <LucideProvider strokeWidth={ICON_STROKE}>
+            <RouterProvider router={router} />
+          </LucideProvider>
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>

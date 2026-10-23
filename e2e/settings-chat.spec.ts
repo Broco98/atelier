@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { answerByArg, WORKS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, 머리카드 } from "./harness";
 import { conversationRow } from "./chat-records";
 import { 대화탭줄 } from "./chat-screen";
 import { terminalSettings } from "@/features/settings/settings-fixture";
@@ -39,7 +39,8 @@ const 값 = (page: Page, name: string) => 고르기(page, name).locator('[data-s
 const 목록 = (page: Page) => page.getByRole("listbox");
 const 에이전트칩 = (page: Page, name: "Claude Code" | "Codex") =>
   대화설정(page).getByRole("group", { name: "기본 에이전트", exact: true }).getByRole("button", { name, exact: true });
-const 저장 = (page: Page) => 대화설정(page).getByRole("button", { name: "저장", exact: true });
+/** 이 쪽의 저장 — 머리 카드의 할 일이다(codex-ds 스펙 §7 · `settings-save.spec.ts`). 한 화면에 쪽이 하나라 그 저장이 곧 대화 설정의 것이다. */
+const 저장 = (page: Page) => 머리카드(page).getByRole("button", { name: "저장", exact: true });
 
 /** 나간 `write_settings`들의 설정. */
 async function writtenSettings(page: Page): Promise<Settings[]> {

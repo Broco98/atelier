@@ -71,9 +71,9 @@ function SlashMenu({
       id={id}
       role="listbox"
       aria-label="명령"
-      className="absolute inset-x-0 bottom-full z-10 mb-2 flex max-h-[min(320px,50vh)] flex-col gap-0.5 overflow-y-auto rounded-card bg-popover p-1.5 shadow-(--chat-shadow-menu) scroll-quiet"
+      className="absolute inset-x-0 bottom-full z-10 mb-2 flex max-h-[min(320px,50vh)] flex-col gap-0.5 overflow-y-auto rounded-2xl bg-surface-elevated p-1.5 shadow-prominent scroll-quiet"
     >
-      <div aria-hidden className="shrink-0 px-2 pt-1.5 pb-0.5 text-caption text-tertiary">
+      <div aria-hidden className="shrink-0 px-2 pt-1.5 pb-0.5 text-xs text-fg-tertiary">
         명령
       </div>
       {items.map((command, at) => (
@@ -90,10 +90,10 @@ function SlashMenu({
             if (at !== active) onPoint(at);
           }}
           onClick={() => onPick(command)}
-          className="flex h-[30px] shrink-0 cursor-default items-center gap-2.5 rounded-lg px-2 text-ui leading-[18px] whitespace-nowrap aria-selected:bg-state-2"
+          className="flex h-[30px] shrink-0 cursor-default items-center gap-2.5 rounded-lg px-2 text-chat-meta leading-[18px] whitespace-nowrap aria-selected:bg-fill-hover"
         >
-          <span className="shrink-0 font-mono text-mono leading-[18px]">{commandText(command)}</span>
-          <span className="min-w-0 truncate text-tertiary">{command.description}</span>
+          <span className="shrink-0 font-mono text-code leading-[18px]">{commandText(command)}</span>
+          <span className="min-w-0 truncate text-fg-tertiary">{command.description}</span>
         </div>
       ))}
     </div>

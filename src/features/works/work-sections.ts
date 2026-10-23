@@ -40,6 +40,23 @@ export function splitWorkSections(
   return { pinned, main, visible };
 }
 
+/** 구획 머리의 목록 키(`data-roving`) — slug에는 `:`가 없어 행의 키와 겹치지 않는다. */
+export function sectionKey(section: keyof SectionsOpen): string {
+  return `section:${section}`;
+}
+
+// 목록의 Tab 정류장이 고를 수 있는 키 — **화면 차례**다(roving, codex-ds 스펙 S10). 구획 머리도 행처럼 ↑↓로 지나는 자리라 함께
+// 들고(Enter가 그 구획을 접는다), 접힌 구획의 행은 뺀다(`inert`라 포커스를 못 받는다). `고정` 머리는 고정된 것이 있을 때만 선다.
+export function rovingKeys(sections: WorkSections, open: SectionsOpen): string[] {
+  const slugs = (works: WorkView[]) => works.map((work) => work.slug);
+  return [
+    ...(sections.pinned.length > 0 ? [sectionKey("pinned")] : []),
+    ...(open.pinned ? slugs(sections.pinned) : []),
+    sectionKey("works"),
+    ...(open.works ? slugs(sections.main) : []),
+  ];
+}
+
 /** 고른 것이 없을 때 본문 한가운데가 하는 말 — 제목·설명·붙여 넣을 한 줄. */
 interface EmptyScreen {
   title: string;
@@ -57,8 +74,8 @@ interface EmptyScreen {
 export const WORKS_COPY = {
   // 상주 목록의 머리(US 17). 결정 6은 여기가 아니라 nav 배열의 것이다.
   label: "작업",
-  // 이 화면이 **머리에 이는 자기 이름**. 고른 항목이 없을 때만 보인다 — 하나라도 골라 있으면
-  // 그 자리는 탭 줄이다(`WorksPage`).
+  // 이 화면이 **머리 카드에 이는 자기 이름**. 고른 항목이 없을 때만 보인다 — 하나라도 골라 있으면
+  // 그 자리는 그 work의 이름이다(`WorksPage`의 `head`).
   //
   // **`label`과 다른 값이다.** 사이드바 머리는 구획 라벨이라 한국어 `작업`인데(US 17), 이쪽은
   // `Archive`·`Projects`와 나란히 서는 **화면 이름**이라 대문자 영어다(CONTEXT.md 「고르는 것의

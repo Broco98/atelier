@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { panelMotionMs } from "./panel-layout";
 import { setResizing } from "./useResizableWidth";
 
 /**
@@ -48,9 +49,6 @@ export function nextRatio({
   const raw = startRatio + (clientX - startX) / hostWidth;
   return Math.min(1 - min, Math.max(min, raw));
 }
-
-/** 더블클릭으로 되돌아가는 데 걸리는 시간. 패널이 접히는 것과 **같은 값**이다. */
-const SNAP_MS = 220;
 
 export interface SplitRatio {
   /** 왼쪽 열이 갖는 몫. 오른쪽은 나머지를 먹는다. */
@@ -133,13 +131,14 @@ function useSplitRatio(key: string, sharedWidth: () => number): SplitRatio {
       // 기본값은 **반**이다 — 두 열이 같은 본문을 나눠 갖는다는 것이 이 뷰의 전부다.
       //
       // 여기서만 애니메이션한다. 끄는 동안은 손을 그대로 따라와야 하고 창을 끄는 동안도
-      // 마찬가지라(위 `snapping` 주석), 훌쩍 뛰는 자리는 이 한 번뿐이다.
+      // 마찬가지라(위 `snapping` 주석), 훌쩍 뛰는 자리는 이 한 번뿐이다. 되돌아가는 데 걸리는 시간은 패널이 접히는 것과
+      // **같은 토큰**(`--duration-panel`)이다 — 두 열이 그 박자로 움직이므로(`Frame`의 분할) 끝내는 타이머도 그것을 읽는다.
       onDoubleClick: () => {
         setSnapping(true);
         setRatio(0.5);
         localStorage.setItem(key, "0.5");
         window.clearTimeout(snapTimer.current);
-        snapTimer.current = window.setTimeout(() => setSnapping(false), SNAP_MS + 20);
+        snapTimer.current = window.setTimeout(() => setSnapping(false), panelMotionMs() + 20);
       },
     },
   };

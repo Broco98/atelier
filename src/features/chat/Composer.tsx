@@ -116,9 +116,10 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
       {card ?? (
         <form
           className={cn(
-            "relative flex flex-col gap-1.5 rounded-(--chat-radius-composer) bg-card pb-2 pl-[18px] pr-3 shadow-(--chat-shadow-composer)",
+            // DS `.at-composer` — 안쪽 15 12 8 18 · `radius-composer` · 컴포저 면과 그림자.
+            "relative flex flex-col gap-1.5 rounded-composer bg-surface-composer pb-2 pl-4.5 pr-3 shadow-composer",
             // 메뉴가 서면 입력창 위 안쪽이 줄어든다(보드 14 「슬래시 명령 메뉴」).
-            menuOpen ? "pt-3" : "pt-[15px]",
+            menuOpen ? "pt-3" : "pt-3.75",
           )}
           onSubmit={(event) => {
             event.preventDefault();
@@ -174,7 +175,7 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
               event.preventDefault();
               send();
             }}
-            className="min-h-[23px] resize-none overflow-y-auto bg-transparent text-row leading-(--chat-leading-prose) tracking-(--chat-tracking-field) text-foreground outline-none placeholder:text-tertiary scroll-quiet"
+            className="min-h-[23px] resize-none overflow-y-auto bg-transparent text-chat-body tracking-[-0.15px] text-fg outline-none placeholder:text-fg-tertiary scroll-quiet"
           />
           <div className="flex flex-wrap items-center gap-0.5">
             <ComposerChips
@@ -191,10 +192,11 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
                       disabled={empty}
                       className={cn(
                         "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
-                        empty ? "bg-state-3 text-tertiary" : "bg-(--chat-send) text-white",
+                        // 빈 입력은 꺼진 보내기(DS `.at-send.off`), 그 밖은 Codex 파랑 면 위 흰 글리프(`.at-send`).
+                        empty ? "bg-fill-hover text-fg-tertiary" : "bg-accent-solid text-fg-on-solid",
                       )}
                     >
-                      <ArrowUp className="size-4" strokeWidth={1.8} aria-hidden />
+                      <ArrowUp className="size-4" aria-hidden />
                     </button>
                   )}
                   {running && (
@@ -202,7 +204,7 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
                       type="button"
                       aria-label="멈추기"
                       onClick={stop}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--chat-send) text-white"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-solid text-fg-on-solid"
                     >
                       <span className="size-2.5 rounded-xs bg-current" aria-hidden />
                     </button>
@@ -214,7 +216,7 @@ function Composer({ work, conversation, draftKey, lists, above, quote, running, 
         </form>
       )}
       {problem && (
-        <p role="alert" className="px-2 text-caption text-destructive">
+        <p role="alert" className="px-2 text-xs text-danger">
           {problem}
         </p>
       )}

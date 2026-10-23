@@ -97,7 +97,7 @@ function gapAt(sections: SectionGeometry[], y: number): RowGap | null {
   for (const section of sections) {
     const top: RowGap = { pinned: section.pinned, before: section.slugs[0] ?? null };
     const { head, emptySlot } = section;
-    // 첫 머리 위의 여백(`mt-3`)은 위에 사각형이 없다 — 표가 비워 둔 자리라 그 구획 첫 사각형의 판정을
+    // 첫 머리 위의 여백(구획 머리의 `mt-1.5`)은 위에 사각형이 없다 — 표가 비워 둔 자리라 그 구획 첫 사각형의 판정을
     // 준다. 머리가 없는 구획(빈 `고정`)은 받침이 그 첫 사각형이고, 빈 구획의 「맨 위」와 받침의 답은 같다.
     if (y < (head ?? emptySlot).top) return above ?? top;
     if (head) {

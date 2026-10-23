@@ -1,8 +1,10 @@
 import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import { useCanGoBack, useRouter } from "@tanstack/react-router";
+import { PANEL_MOTION } from "./panel-layout";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
 import { Hint } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface HistoryButtonProps {
   label: string;
@@ -20,7 +22,8 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="icon-button-quiet text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
+      tabIndex={0}
+      className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -41,6 +44,9 @@ interface ShellControlsProps {
 // 신호등 오른쪽에 붙는 셸 컨트롤 행 — 사이드바 토글 → 뒤로 → 앞으로 → 검색.
 // 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
 //
+// **창의 첫 Tab 영역이다** — 그림은 `absolute`로 사이드바 위에 뜨지만 DOM은 사이드바 앞이다(`AppShell`). 칸마다 `tabIndex`를
+// 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 흐려진 뒤로 · 앞으로는 `disabled`라 지난다.
+//
 // 폭을 --titlebar-controls-width에 딱 맞추고 세로도 컨트롤 높이만큼만 차지한다.
 // **칸이 늘면 그 값의 칸 수도 함께 고쳐야 한다**(index.css) — 안 고치면 넘친다.
 //
@@ -57,28 +63,32 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
   return (
     <div
       data-tauri-drag-region
-      className="absolute left-(--titlebar-controls-left) top-[calc((var(--titlebar-height)-var(--titlebar-control-size))/2)] z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left] duration-[220ms] ease-panel"
+      // 전체화면에 들고 날 때 왼쪽 끝(`--titlebar-controls-left`)이 옮겨 간다 — 같은 값에서 나오는 머리 줄의 왼쪽 여백(`Frame`의
+      // `HeadRow`)과 같은 박자(`PANEL_MOTION`)로 움직여야 둘 사이가 도는 동안 벌어지지 않는다.
+      className={cn(
+        "absolute left-(--titlebar-controls-left) top-(--titlebar-controls-top) z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left]",
+        PANEL_MOTION,
+      )}
     >
       <SidebarToggle open={sidebarOpen} onToggle={onToggleSidebar} />
       {/* 마우스 사이드 버튼이 부르는 window.history.back()과 같은 길로 보낸다 */}
       <HistoryButton label="뒤로" disabled={!canGoBack} onClick={() => router.history.back()}>
-        <ArrowLeft className="size-4" strokeWidth={1.7} />
+        <ArrowLeft className="size-3.75" />
       </HistoryButton>
       <HistoryButton
         label="앞으로"
         disabled={!canGoForward}
         onClick={() => router.history.forward()}
       >
-        <ArrowRight className="size-4" strokeWidth={1.7} />
+        <ArrowRight className="size-3.75" />
       </HistoryButton>
       {/* **뒤로·앞으로와 같은 간격으로 이어 붙는다 — 무리를 가르지 않는다.** 「지나온 길」과
           검색이 다른 성질인 것은 맞지만, 그것으로 간격을 가르는 규칙은 이 행에 없다: 첫 칸의
           사이드바 토글이 이미 히스토리가 아닌데 같은 --titlebar-control-gap으로 서 있다.
-          **가르면 이 행의 오른쪽 끝에서 값을 치른다.** 탭 줄의 첫 칸이 바로 그
-          --titlebar-control-gap 거리에서 이어 붙으므로(결정 24 — --tab-lead), 검색 앞만
-          그보다 넓히면 검색이 셸 컨트롤의 마지막 칸이 아니라 **오른쪽 줄의 첫 칸으로**
-          읽힌다. 24px 넷뿐인 줄에서 무리를 가르는 틈은
-          「묶였다」가 아니라 「하나가 떨어졌다」로 보인다.
+          **가르면 검색 하나가 떨어져 보인다.** 24px 넷뿐인 줄에서 무리를 가르는 틈은
+          「묶였다」가 아니라 「하나가 떨어졌다」로 보인다. (한때 탭 줄의 첫 칸이 이 행 바로 뒤
+          같은 거리에서 이어 붙어, 검색 앞만 넓히면 검색이 그 줄의 첫 칸으로 읽혔다 — 탭 줄은
+          지금 본문 카드 머리다.)
 
           **HistoryButton을 빌려 쓰지 않는 것은 disabled 때문이다.** 그 조각이 드는 것은
           「갈 수 없으면 흐려진다」 하나인데(위 주석), 검색은 갈 곳이 늘 있어 그 가지가 영영
@@ -90,28 +100,28 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           규칙). 그래서 토글로 만들 것이 없다 — 여는 갈래 하나면 된다. 여는 함수 자체도
           같은 setter라 두 번 열려도 한 번 연 것과 같다.
 
-          **이 행에서 유일하게 도움말을 든다 — 알릴 것이 글리프 밖에 있기 때문이다.** 이웃
-          셋은 그림이 곧 이름이지만(패널·화살표), 이 버튼의 값은 「누를 수 있다」보다 **⌘K라는
-          키가 있다는 것을 알리는 것**에 가깝다. 사이드바 목록의 핀이 도움말을 피한 이유(행에
-          머물면 호버 카드가 떠서 툴팁이 그 위로 겹친다 — S29)는 여기 없다 — 타이틀바에는 뜨는
-          카드가 없다. 도움말은 앱 툴팁이고 키는 옆에 Kbd로 뗀다(스토리 112). 사이드바에서
-          `title`을 들던 버튼이 이것 하나라 툴팁도 이것 하나다 — 도움말이 없던 이웃 셋에는 새로
-          달지 않는다(P9 · P13).
+          **이 행에서 도움말을 드는 것은 키가 있는 둘이다 — 이것과 사이드바 토글(⌘B).** 알릴 것이
+          글리프 밖에 있기 때문이다: 그림이 곧 이름이어도(패널 · 돋보기) 그 버튼의 값은 「누를 수
+          있다」보다 **키가 있다는 것을 알리는 것**에 가깝다(codex-ds 스토리 98 — 있는 단축키를 버튼에서
+          배운다). 사이드바 목록의 핀이 도움말을 피한 이유(행에 머물면 호버 카드가 떠서 툴팁이 그 위로
+          겹친다 — S29)는 여기 없다 — 타이틀바에는 뜨는 카드가 없다. 도움말은 앱 툴팁이고 키는 옆에
+          Kbd로 뗀다(스토리 112). 키가 없는 뒤로 · 앞으로에는 달지 않는다(P9 · P13).
           **키를 aria-keyshortcuts로도 적는다 — ⇧⇧ 때는 못 적었다**(결정 21). 그 값은
           **대안들의** 공백 구분 목록이라 「⇧ 다음 ⇧」가 「⇧ 또는 ⇧」로 읽혔는데, 화음인
-          ⌘K는 `Meta+K` 하나로 정확히 적힌다. aria-label은 여전히 이름만 든다 — 읽어 주는
+          ⌘K는 `Meta+K` 하나로 정확히 적힌다. 글자와 그 값은 단축키 표의 `search` 한 줄에서
+          나온다(`Hint`의 `shortcut`). aria-label은 여전히 이름만 든다 — 읽어 주는
           이름에 키가 섞이면 소음이 된다. 툴팁은 스크린리더에 아무것도 주지 않으므로, 옛 `title`이
           이름 다음에 읽어 주던 키는 설명(`aria-description`)으로 남긴다(S28 — `Hint`의 `shortcut`). */}
       <Hint
         text="검색"
-        shortcut="⌘K"
+        shortcut="search"
         announce="name"
         type="button"
         onClick={onOpenSearch}
-        aria-keyshortcuts="Meta+K"
-        className="icon-button-quiet text-muted-foreground"
+        tabIndex={0}
+        className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
       >
-        <Search className="size-4" strokeWidth={1.7} />
+        <Search className="size-3.75" />
       </Hint>
     </div>
   );

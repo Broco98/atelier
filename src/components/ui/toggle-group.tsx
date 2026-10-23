@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 크기 chip(설정 칩 — 테마·글꼴 프리셋)의 줄은 칩 사이 6px(spacing 기본 1.5)이고 넘치면 다음 줄로 흐른다(flex-wrap). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹에 deselectable을 더했다(거짓이면 서 있는 칸을 다시 눌러 값을 비우지 못한다 — S16, 기본은 Base UI대로 비운다). 그룹·칸의 className이 state 함수여도 받는다(registry는 문자열로만 합친다). 두 칸 토글(문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿)은 이 부품의 변형이 아니라 따로 된 부품이다(segment-group.tsx).
+// 앱 규격으로 고친 자리: 크기 chip(설정 칩 — 테마·글꼴 프리셋)의 줄은 칩 사이 6px(spacing 기본 1.5)이고 넘치면 다음 줄로 흐른다(flex-wrap). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹에 deselectable을 더했다(거짓이면 서 있는 칸을 다시 눌러 값을 비우지 못한다 — S16, 기본은 Base UI대로 비운다). 그룹·칸의 className이 state 함수여도 받는다(registry는 문자열로만 합친다). 칸 사이 수를 싣는 변수 이름을 registry의 `--gap`에서 `--toggle-gap`으로 바꿨다 — 값은 길이가 아니라 눈금의 칸 수이고(`--spacing`에 곱한다), `--gap`은 걷은 앱 틈 변수의 이름이다(`spacing-guard.test.ts`). 그 수(`spacing`)의 타입을 `number`에서 눈금 위의 칸 수(`ToggleGap` — 0 · 0.5 · 1 · 1.5 · 2)로 좁혔다. 두 칸 토글(문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿)은 이 부품의 변형이 아니라 따로 된 부품이다(segment-group.tsx).
 "use client"
 
 import * as React from "react"
@@ -30,9 +30,16 @@ function keepOnePressed<Value extends string>(
   }
 }
 
+/**
+ * 칸 사이 — 길이가 아니라 눈금(`--spacing` 4px)의 칸 수다. 정수 · 반 칸만 받아 칸 사이가 늘 눈금 위에 선다 — 그룹의
+ * `gap-[--spacing(var(--toggle-gap))]`가 이 수를 눈금에 곱하고, 여백 지킴(`spacing-guard.test.ts`)이 그 임의 값을 받는 까닭이
+ * 이 타입이다. 0은 칸을 붙여 한 덩어리로 세운다(registry의 붙은 그룹 — 아래 `data-[spacing=0]`).
+ */
+type ToggleGap = 0 | 0.5 | 1 | 1.5 | 2
+
 const ToggleGroupContext = React.createContext<
   VariantProps<typeof toggleVariants> & {
-    spacing?: number
+    spacing?: ToggleGap
     orientation?: "horizontal" | "vertical"
   }
 >({
@@ -54,7 +61,7 @@ function ToggleGroup<Value extends string>({
   ...props
 }: ToggleGroupPrimitive.Props<Value> &
   VariantProps<typeof toggleVariants> & {
-    spacing?: number
+    spacing?: ToggleGap
     orientation?: "horizontal" | "vertical"
     /** 거짓이면 서 있는 칸을 다시 눌러 값을 비우지 못한다(위 `keepOnePressed`). */
     deselectable?: boolean
@@ -69,11 +76,11 @@ function ToggleGroup<Value extends string>({
       data-size={size}
       data-spacing={spacing}
       data-orientation={orientation}
-      style={{ "--gap": spacing } as React.CSSProperties}
+      style={{ "--toggle-gap": spacing } as React.CSSProperties}
       onValueChange={keepOnePressed(onValueChange, deselectable)}
       className={(state) =>
         cn(
-          "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=chip]:flex-wrap data-vertical:flex-col data-vertical:items-stretch",
+          "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--toggle-gap))] rounded-lg data-[size=chip]:flex-wrap data-vertical:flex-col data-vertical:items-stretch",
           resolveClassName(className, state)
         )
       }

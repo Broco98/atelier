@@ -122,7 +122,7 @@ function EngineSelect({
 }) {
   return (
     <>
-      <span className="text-ui text-muted-foreground" aria-hidden>
+      <span className="text-chat-meta text-fg-secondary" aria-hidden>
         {AGENT_LABEL[engine]}
       </span>
       <Select items={choices} value={value} onValueChange={(picked) => onChange(picked ?? null)}>

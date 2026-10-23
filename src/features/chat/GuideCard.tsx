@@ -2,10 +2,9 @@ import { useId, useState } from "react";
 import { Copy, Link as LinkIcon, LogIn, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
 import { chatApi } from "./api";
 import { AGENT_LABEL } from "./agents";
-import ChatCard, { CARD_PRIMARY } from "./ChatCard";
+import ChatCard from "./ChatCard";
 import { checkEngine, type EngineView, type GuideKind } from "./engine-store";
 import type { Agent } from "./types";
 
@@ -76,9 +75,9 @@ function GuideCard({ agent, kind, view }: GuideCardProps) {
               setStarting(true);
               void run(() => chatApi.startLogin(agent)).finally(() => setStarting(false));
             }}
-            className={cn(CARD_PRIMARY, "px-3")}
+            className="px-3"
           >
-            <LogIn strokeWidth={1.8} aria-hidden />
+            <LogIn aria-hidden />
             로그인
           </Button>
         )}
@@ -89,13 +88,13 @@ function GuideCard({ agent, kind, view }: GuideCardProps) {
         )}
         {url && (
           <Button variant="ghost" className="px-3" onClick={() => copy(url, "링크를 복사했어요")}>
-            <LinkIcon strokeWidth={1.8} aria-hidden />
+            <LinkIcon aria-hidden />
             링크 복사
           </Button>
         )}
         {copyable && (
           <Button variant="ghost" className="px-3" onClick={() => copy(copyable, "명령을 복사했어요")}>
-            <Copy strokeWidth={1.8} aria-hidden />
+            <Copy aria-hidden />
             명령 복사
           </Button>
         )}
@@ -107,7 +106,7 @@ function GuideCard({ agent, kind, view }: GuideCardProps) {
             disabled={view?.checking === true}
             onClick={() => void run(() => checkEngine(agent, true))}
           >
-            <RefreshCw strokeWidth={1.8} aria-hidden />
+            <RefreshCw aria-hidden />
             다시 확인
           </Button>
         )}

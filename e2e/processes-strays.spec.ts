@@ -9,7 +9,12 @@ import {
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
+  끌어놓는다,
+  다떴다,
   스냅샷두박자,
+  줄차례,
+  테두리,
+  토큰색,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import { envReadRow, metricsOf, poolShell, snapshotFixture } from "@/features/processes/process-fixture";
@@ -248,6 +253,81 @@ test("구획이 ui-refresh 결정 28의 표대로 열리고 머리를 눌러 여
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **구획의 몸은 접히는 변형(`Collapsible` fold)이다**(ui-refresh 결정 28 · `tree-rows.tsx`의 `Section`). 그 변형의 짜임은 이 자리가 잰다 —
+// 앱에서 그 변형을 쓰는 것이 이 구획뿐이다(한때 Archive 목록 항목도 썼다).
+// - **접힘은 패널 자신의 전이다.** Base UI는 패널 자기 위의 전이만 기다렸다가 패널을 내린다 — 전이가 바깥 상자에 있으면 닫을 때 곧바로
+//   사라진다. 그래서 닫을 때 행 전이(180ms)가 끝까지 돈다.
+// - **열 때도 돈다.** 닫혀 내려간 패널은 새로 서므로, 시작 상태(`data-starting-style`)에 접힌 트랙이 없으면 전이가 돌지 않는다.
+// - **닫히는 동안 몸은 `inert`다.** 전이가 도는 동안 줄은 아직 보이지만 포커스와 포인터가 닿으면 안 된다 — 열리면 곧바로 풀린다. 전이가
+//   서는 순간(`transitionrun`)에 패널이 `inert`인지를 함께 적는다.
+// - 움직임을 끄면 전역 규칙(`index.css`)이 그 전이를 끈다 — 여닫혀도 전이가 하나도 안 돈다.
+//
+// **끝은 `transitionend`가 아니라 그 전이의 `finished`로 잰다.** 이 구획의 패널은 닫힘이 끝나면 내려간다(`keepMounted`가 없다) — Base
+// UI가 `finished`를 받자마자 패널을 걷어 `transitionend`는 문서에 닿지 못한다. `finished`는 끝까지 돌았을 때만 풀리고, 중간에 걷히면
+// 전이가 취소되어 「cancel」로 적힌다. 기록은 페이지가 뜨기 전에 건다. 처음 뜰 때의 움직임이 가라앉은 뒤에 비우고 잰다.
+test("구획은 열 때도 닫을 때도 180ms로 접히고 펼쳐지며 닫히는 동안 몸이 inert다 — 움직임을 끄면 전이 없이 여닫힌다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await page.addInitScript(() => {
+    const folds: string[] = [];
+    Object.assign(window, { __folds: folds });
+    document.addEventListener(
+      "transitionrun",
+      (event) => {
+        const target = event.target as Element;
+        if (event.propertyName !== "grid-template-rows") return;
+        if (target.getAttribute("data-slot") !== "collapsible-content") return;
+        folds.push(target.hasAttribute("inert") ? "run inert" : "run");
+        const transition = target
+          .getAnimations()
+          .find((one) => one instanceof CSSTransition && one.transitionProperty === "grid-template-rows");
+        transition?.finished.then(
+          () => folds.push(`end ${transition.effect?.getComputedTiming().duration}`),
+          () => folds.push("cancel"),
+        );
+      },
+      true,
+    );
+  });
+  const 접힘기록 = () => page.evaluate(() => (window as unknown as { __folds: string[] }).__folds);
+  const 기록을비운다 = () =>
+    page.evaluate(() => {
+      (window as unknown as { __folds: string[] }).__folds.length = 0;
+    });
+  await page.goto("/processes");
+  const 패널 = 묶음(page, "확정 고아").locator('[data-slot="collapsible-content"]');
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await expect(패널).not.toHaveAttribute("inert");
+  await expect.poll(() => 패널.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await 기록을비운다();
+
+  // 닫기 — inert로 접히기 시작하고, 전이가 끝까지 돈 뒤에 내려간다.
+  await 머리(page, "확정 고아").click();
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(0);
+  await expect.poll(접힘기록).toEqual(["run inert", "end 180"]);
+
+  // 열기 — 내려갔던 패널이 새로 서도 전이가 돌고, inert가 아니다.
+  await 기록을비운다();
+  await 머리(page, "확정 고아").click();
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await expect.poll(접힘기록).toEqual(["run", "end 180"]);
+  await expect(패널).not.toHaveAttribute("inert");
+
+  // 움직임을 끈다. 닫힘의 앵커는 「줄이 내려갔다」다 — 전이가 돌았다면 그 끝에야 내려가므로, 내려간 뒤의 빈 기록이 헛돌지 않는다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await 기록을비운다();
+  await 머리(page, "확정 고아").click();
+  await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "false");
+  await expect(그린줄(page, "확정 고아")).toHaveCount(0);
+  expect(await 접힘기록()).toEqual([]);
+  // 열림은 전이가 있어도 곧바로 보이므로, 두 프레임을 흘려 전이가 시작될 자리를 준 뒤에 센다.
+  await 머리(page, "확정 고아").click();
+  await expect(그린줄(page, "확정 고아")).toHaveCount(3);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await 접힘기록()).toEqual([]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("고아 · 다른 인스턴스 · 예외 행에도 28의 표기 함수로 메모리 칸이 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
   await page.goto("/processes");
@@ -358,5 +438,120 @@ test("고아 행의 「예외로 두기」는 고친 목록이 있으면 그 목
   await 줄(묶음(page, "확정 고아"), 이름(고아python)).getByRole("button", { name: "프로세스 메뉴", exact: true }).click();
   await page.getByRole("menu").getByRole("menuitem", { name: "예외로 두기", exact: true }).click();
   await expect.poll(() => 저장된예외(page)).toEqual([["tmux", "python3"]]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **행을 우클릭해도 ⋯과 같은 메뉴가 선다**(codex-ds 티켓 30 · 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 11). 메뉴가 있는 행(셸 자손 · 확정 고아 ·
+// 출처 불명)만이고, 다른 인스턴스 · 예외 행에는 ⋯이 없듯 우클릭 메뉴도 없다. 카드는 커서 자리에 서고, 열린 동안 그 행에 대상 테두리가
+// 서며, 닫히면 포커스가 그 행의 ⋯로 간다 — 행 자신은 포커스를 받지 않는다. 행 안 버튼(⋯ · [끝내기])에 포커스를 두고 ⇧F10을 누르면 같은
+// 메뉴가 그 행의 왼쪽 아래에 선다. 메뉴가 열린 동안은 부품이 바깥을 보조 기술에서 숨겨 역할로 집을 때 숨은 것까지 집는다.
+
+const 숨은트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true, includeHidden: true });
+const 숨은줄 = (scope: Locator, name: string) => scope.getByRole("treeitem", { name, exact: true, includeHidden: true });
+const 숨은메뉴버튼 = (row: Locator) => row.getByRole("button", { name: "프로세스 메뉴", exact: true, includeHidden: true });
+
+test("메뉴가 있는 행을 우클릭하면 ⋯과 같은 메뉴가 커서 자리에 서고, 열린 동안 그 행에 대상 테두리가 서며 Esc면 포커스가 ⋯로 간다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await 셸을띄우고연다(page);
+  const row = 숨은줄(숨은트리(page), 이름(esbuild));
+  const more = 숨은메뉴버튼(row);
+  const menu = page.getByRole("menu");
+  const 링 = `1px solid ${await 토큰색(page, "--accent")}`;
+
+  // ⋯의 목록을 먼저 읽는다 — 우클릭 메뉴가 그것과 같아야 한다(결정 6).
+  await more.click();
+  const 점점점 = await 줄차례(menu);
+  expect(점점점).toEqual(["예외로 두기"]);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  expect(await 테두리(row)).toBeNull();
+
+  await row.click({ button: "right", position: { x: 6, y: 6 } });
+  await expect(menu).toBeVisible();
+  expect(await 줄차례(menu)).toEqual(점점점);
+  await 다떴다(menu);
+  const spot = (await row.boundingBox())!;
+  const card = (await menu.boundingBox())!;
+  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x + 6), Math.round(spot.y + 6)]);
+  await expect.poll(() => 테두리(row)).toBe(링);
+  await expect(page).toHaveURL("/processes");
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(more).toBeFocused();
+  await expect.poll(() => 테두리(row)).toBeNull();
+
+  // ⇧F10 · 메뉴 키 — 행 안 버튼(⋯)에 포커스를 두고 누르면 같은 메뉴가 그 행의 왼쪽 아래에 선다. ↓가 첫 항목이다.
+  for (const key of ["Shift+F10", "ContextMenu"]) {
+    await page.keyboard.press(key);
+    await expect(menu).toBeVisible();
+    expect(await 줄차례(menu)).toEqual(점점점);
+    await 다떴다(menu);
+    const below = (await row.boundingBox())!;
+    const keyed = (await menu.boundingBox())!;
+    expect([Math.round(keyed.x), Math.round(keyed.y)]).toEqual([Math.round(below.x), Math.round(below.y + below.height)]);
+    await expect.poll(() => 테두리(row)).toBe(링);
+    await expect(menu).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem", { name: "예외로 두기", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(more).toBeFocused();
+  }
+  expect(await callCount(page, "write_settings")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 행 메뉴의 뿌리는 행 · 몸을 감싸지 않는다(`TargetMenu`) — 감싸면 그 밑의 ⋯이 「우클릭 메뉴의 줄」로 쳐져, 누른 채 끌어 놓는 고름이 안
+// 돈다. 이 몸짓이 그 자리를 잠근다(`끌어놓는다` — Works 머리 카드의 ⋯과 같은 잣대).
+test("행의 ⋯을 누른 채 끌어 「예외로 두기」 위에서 놓으면 그 줄이 돈다 — 행 메뉴가 ⋯을 감싸지 않는다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await 셸을띄우고연다(page);
+
+  await 끌어놓는다(page, 줄(셸트리(page), 이름(esbuild)).getByRole("button", { name: "프로세스 메뉴", exact: true }), (menu) =>
+    menu.getByRole("menuitem", { name: "예외로 두기", exact: true }),
+  );
+  await expect.poll(() => 저장된예외(page)).toEqual([["tmux", "docker*", "esbuild"]]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("셸 자손 행 · 고아 행을 우클릭해 「예외로 두기」를 고르면 ⋯과 같이 그 이름을 설정 저장에 싣는다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await 셸을띄우고연다(page);
+
+  await 숨은줄(셸트리(page), 이름(esbuild)).click({ button: "right" });
+  await page.getByRole("menu").getByRole("menuitem", { name: "예외로 두기", exact: true }).click();
+  await expect.poll(() => 저장된예외(page)).toEqual([["tmux", "docker*", "esbuild"]]);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await 숨은줄(묶음(page, "확정 고아"), 이름(고아python)).click({ button: "right" });
+  await page.getByRole("menu").getByRole("menuitem", { name: "예외로 두기", exact: true }).click();
+  await expect.poll(async () => (await 저장된예외(page)).length).toBe(2);
+  expect((await 저장된예외(page))[1]).toContain("python3");
+  expect(await callCount(page, "processes_end")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("메뉴가 없는 행(다른 인스턴스 · 예외 · 작업 줄)을 우클릭하면 웹뷰 메뉴가 막히고 아무 메뉴도 서지 않는다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
+  await 셸을띄우고연다(page);
+  await 펼친다(page, "다른 인스턴스", "예외");
+  await page.evaluate(() => {
+    const seen: boolean[] = [];
+    (window as unknown as { 막힘: boolean[] }).막힘 = seen;
+    window.addEventListener("contextmenu", (event) => setTimeout(() => seen.push(event.defaultPrevented)), true);
+  });
+  const rows = [
+    줄(묶음(page, "다른 인스턴스"), 이름(남의zsh)),
+    줄(묶음(page, "예외"), 이름(tmux)),
+    셸트리(page).getByRole("treeitem").first(),
+  ];
+  for (const row of rows) await row.click({ button: "right", position: { x: 6, y: 6 } });
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { 막힘: boolean[] }).막힘))
+    .toEqual(rows.map(() => true));
+  await expect(page.getByRole("menu")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

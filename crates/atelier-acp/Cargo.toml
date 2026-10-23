@@ -2,7 +2,7 @@
 name = "atelier-acp"
 # 판은 워크스페이스와 같은 값을 글자로 적는다 — 판 하나 검사(`src/release-version.test.ts`)가
 # `[package]`의 `version = "…"` 리터럴만 읽는다. `version.workspace = true`로 쓰면 빨개진다.
-version = "0.18.0"
+version = "0.20.0"
 edition = "2021"
 
 # ACP 런타임 · Claude 변환기 · 에이전트 찾기 · 대화 호스트(three-axes 결정 12). 앱 실행 파일 안으로

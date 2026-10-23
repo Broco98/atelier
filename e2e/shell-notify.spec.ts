@@ -6,6 +6,7 @@ import {
   fireAttention,
   installFixtureBackend,
   markAttention,
+  머리카드,
   sentNotifications,
   setWindowFocused,
   stubNotifications,
@@ -224,7 +225,6 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
   // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
   await aside.getByRole("button", { name: "알림", exact: true }).click();
   await expect(page).toHaveURL("/settings/notifications");
-  // 저장 버튼이 구획마다 있다(#225) — **알림 설정 안에서** 집어야 누른 것이 이 구획의 저장이다.
   const 알림 = page.getByRole("group", { name: "알림 설정", exact: true });
   // 소리는 스위치 하나다(결정 12). 안 고른 값이 켬이라 한 번 누르면 꺼진다.
   const 소리 = 알림.getByRole("switch", { name: "알림에 소리", exact: true });
@@ -232,7 +232,8 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
   await 소리.click();
   await expect(소리, "스위치가 안 꺼졌다").toHaveAttribute("aria-checked", "false");
 
-  const 저장 = 알림.getByRole("button", { name: "저장", exact: true });
+  // 저장 버튼은 쪽마다 하나이고(#225) 머리 카드에 선다(codex-ds 티켓 14) — 이 쪽에서 누르는 것이 알림 설정의 저장이다.
+  const 저장 = 머리카드(page).getByRole("button", { name: "저장", exact: true });
   await expect(저장, "고친 것이 없다고 읽혔다").toBeEnabled();
   await 저장.click();
   // **쓰기가 실제로 돌아온 순간을 기다린다.** 저장이 끝나면 고칠 것이 없어져 버튼이 잠긴다 —

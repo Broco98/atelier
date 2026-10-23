@@ -59,6 +59,7 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   id,
   status: { kind: "running" },
   title: null,
+  label: null,
   shellName: "zsh",
   shellKey,
   owner: ownerOf("signal"),

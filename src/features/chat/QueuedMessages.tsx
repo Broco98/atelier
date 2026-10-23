@@ -50,10 +50,10 @@ function QueuedMessages({ work, conversation, queue }: QueuedMessagesProps) {
           <li
             key={message.id}
             data-queued={message.id}
-            className="flex items-center gap-2 rounded-(--chat-radius-block) bg-(--chat-surface-under) py-2 pr-2 pl-3.5 text-ui shadow-(--chat-shadow-under)"
+            className="flex items-center gap-2 rounded-xl bg-surface-under py-2 pr-2 pl-3.5 text-chat-meta inset-ring-[0.5px] inset-ring-border"
           >
-            <Clock className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.8} aria-hidden />
-            <span className="shrink-0 text-muted-foreground">{message.sendNow ? "멈추고 보내는 중" : "대기 중"}</span>
+            <Clock className="size-3.5 shrink-0 text-fg-secondary" aria-hidden />
+            <span className="shrink-0 text-fg-secondary">{message.sendNow ? "멈추고 보내는 중" : "대기 중"}</span>
             {editing?.id === message.id ? (
               <input
                 aria-label="고칠 말"
@@ -75,7 +75,7 @@ function QueuedMessages({ work, conversation, queue }: QueuedMessagesProps) {
                     setEditing(null);
                   }
                 }}
-                className="min-w-0 flex-1 bg-transparent text-foreground outline-none"
+                className="min-w-0 flex-1 bg-transparent text-fg outline-none"
               />
             ) : (
               <span className="min-w-0 flex-1 truncate" title={message.text}>
@@ -96,23 +96,23 @@ function QueuedMessages({ work, conversation, queue }: QueuedMessagesProps) {
               type="button"
               aria-label="대기 중인 말 고치기"
               onClick={() => setEditing({ id: message.id, text: message.text })}
-              className="flex size-6 shrink-0 items-center justify-center rounded-inner text-tertiary quiet-hover"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-fg-tertiary quiet-hover"
             >
-              <Pencil className="size-3.5" strokeWidth={1.8} aria-hidden />
+              <Pencil className="size-3.5" aria-hidden />
             </button>
             <button
               type="button"
               aria-label="대기 중인 말 지우기"
               onClick={() => run(chatApi.deleteQueued(work, conversation, message.id))}
-              className="flex size-6 shrink-0 items-center justify-center rounded-inner text-tertiary quiet-hover"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-fg-tertiary quiet-hover"
             >
-              <X className="size-[13px]" strokeWidth={1.8} aria-hidden />
+              <X className="size-[13px]" aria-hidden />
             </button>
           </li>
         ))}
       </ul>
       {problem && (
-        <p role="alert" className="px-2 text-caption text-destructive">
+        <p role="alert" className="px-2 text-xs text-danger">
           {problem}
         </p>
       )}

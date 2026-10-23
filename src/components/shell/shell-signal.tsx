@@ -76,61 +76,91 @@ export function subagentLabel(count: number): string | null {
 }
 
 /**
- * 상태색의 유틸리티. 토큰 넷은 `index.css`가 들고 라이트·다크가 거기서 갈린다.
+ * 상태색의 유틸리티 — **알림 표**. 부름의 색은 Atelier 낱말이다(codex-ds 스펙 2절 · DS `AttentionBand`): 기다림은 점 `dot-wait` ·
+ * 무리 `wait-soft`, 안 본 완료는 점 `dot-new`(Codex 「새 답변」 점) · 무리 `new-soft`다. 토큰은 `index.css`가 들고 라이트·다크가
+ * 거기서 갈린다.
  *
  * **이름을 조각내 짓지 않는다**(`bg-${tone}`). Tailwind는 소스에 **글자 그대로 있는** 클래스만
  * 만들므로 이어 붙인 이름은 규칙이 아예 안 생기고, 화면에서는 「색이 투명하다」로만 나타난다 —
  * 실제로 그렇게 났고 L3의 대비 검사가 그것을 잡았다(2026-09-10).
  *
- * **점과 글자가 다른 토큰을 읽는다**(`-ink`). 결정 3의 표가 못박은 것은 점의 색인데
- * (`amber-600`) 라이트 사이드바에서 그 색의 대비는 2.90이라, 같은 색을 **글자**에 쓰면
- * 두 줄 행을 연 판이 고치려던 3.0짜리 글자를 다시 만든다(그 판의 스토리 24). 점은 3px 후광이
- * 면적을 벌지만 글자에는 그런 것이 없어서, 라이트의 글자만 한 단 어둡게 갈랐다 — 지금 그
- * 잉크를 읽는 글자는 탭 이름, 호버 카드 말 칸의 라벨, 행 오른쪽 메타와 띠 줄의 경과다
- * (`SignalElapsed` — DS `.at-row-meta.wait`). 점까지 어둡게 하는 안은
- * ui-refresh 결정 29가 기각했다(`index.css`의 상태색 주석).
+ * | 칸 | 쓰는 자리 | 기다림 | 안 본 완료 |
+ * |---|---|---|---|
+ * | 점(`dot`) | 행 레인 · 띠 줄의 8px 점과 그 3px 무리 | `dot-wait` + `wait-soft` | `dot-new` + `new-soft` |
+ * | 채움(`fill`) | 셸 탭의 칸 | `wait-soft` | `new-soft` |
+ * | 테(`edge`) | 켜진 셸 탭의 1px 안쪽 테두리 | `dot-wait` | `dot-new` |
+ * | 잉크(`text`) | 호버 카드 말 칸의 라벨 | `warning` | `accent-solid` |
+ * | 탭 이름(`tab`) | 셸 탭의 이름 글자 | `warning` | 없음(칸의 글자색 — DS `.at-tab`) |
+ *
+ * **잉크만 점과 다른 이름이다.** 점의 파랑(`accent` #339cff)은 흰 면 위 2.9:1이라 글자에 쓰지 않는다(DS README 「대비」) —
+ * 안 본 완료의 글자는 한 단 짙은 `accent-solid`다. 기다림은 점과 잉크가 같은 `warning`이다(`dot-wait`가 그 별칭).
+ *
+ * **경과(`3m`)는 이 표를 읽지 않는다**(`SignalElapsed` — `fg-secondary`, codex-ds 스펙 S17). DS는 행 메타 · 띠 줄의 경과에 상태색
+ * 잉크를 두었지만(`.end.wait` · `.end.new`) 12px 글자의 대비 바닥 4.5에 못 미쳐(아래 표에 남긴 값 — 흰 면 위 3.8 · 3.6, 회색 바탕 위
+ * 3.5 · 3.4) 사이드바 e2e가 4.5로 재는 자리가 되었고, DS README 「대비」대로 경과만 낮췄다. 그 자리에서 부름의 색은 레인의 점이 든다.
+ *
+ * **탭 이름은 제 칸(`tab`)을 읽는다.** DS `.at-tab`대로 무채색이고 색 글자는 기다림(`.at-tab.wait` — `warning`)뿐이다 — 물든 칸 위의
+ * 파란 이름은 2.7:1(다크 2.5:1)로 글자 바닥 아래였다. 탭에서 안 본 완료를 말하는 색은 칸의 채움(`new-soft`)이고 그것이 점과 같은
+ * 가족이라, 이름이 무채색이어도 같은 셸이 자리마다 다른 부름을 말하지 않는다(스토리 79 — `signal-agreement.test.tsx`가 자리마다
+ * 색 가족을 센다).
+ *
+ * 상태색 잉크가 칠해지는 면 위의 대비(라이트 / 다크) — 글자 바닥(4.5) 아래인 자리가 남는다. 경과 두 줄은 DS가 둔 잉크의 값이고,
+ * 지금 그 자리는 `fg-secondary`다(흰 면 위 6.3 · 회색 바탕 위 6.1).
+ *
+ * | 자리 | 면 | 기다림 `warning` | 안 본 완료 `accent-solid` |
+ * |---|---|---|---|
+ * | 호버 카드 라벨 | `surface-elevated` | 3.8 / 5.1 | 3.6 / 4.1 |
+ * | 셸 탭 이름 | `surface`(본문 카드 머리) 위 물든 칸(채움) | 3.0 / 4.7 | — (꺼진 칸의 `fg-secondary` 5.7 / 7.0) |
+ * | (DS) 띠 줄 경과 | `surface` | 3.8 / 6.1 | 3.6 / 4.9 |
+ * | (DS) 행 오른쪽 메타의 경과 | `surface-shell` | 3.5 / 4.3 | 3.4 / 3.4 |
+ *
+ * 가장 낮은 것은 라이트의 기다리는 탭 이름이다(DS `.at-tab.wait`가 고른 색). 호버 카드 라벨(「나를 기다림」)은 스펙 S17이 `warning`을
+ * 잇게 한 자리라 그대로 둔다.
  */
 const TONE: Readonly<
-  Record<CallingKind, { dot: string; text: string; fill: string; edge: string }>
+  Record<CallingKind, { dot: string; text: string; tab: string | null; fill: string; edge: string }>
 > = {
   waiting: {
-    dot: "bg-wait ring-wait-soft",
-    text: "text-wait-ink",
+    dot: "bg-dot-wait ring-wait-soft",
+    text: "text-warning",
+    tab: "text-warning",
     fill: "bg-wait-soft",
-    edge: "ring-wait",
+    edge: "ring-dot-wait",
   },
   done: {
-    dot: "bg-done ring-done-soft",
-    text: "text-done-ink",
-    fill: "bg-done-soft",
-    edge: "ring-done",
+    dot: "bg-dot-new ring-new-soft",
+    text: "text-accent-solid",
+    tab: null,
+    fill: "bg-new-soft",
+    edge: "ring-dot-new",
   },
 };
 
 /**
- * 셸 탭의 **물들임**(#205, 결정 6 — 안 J3). 칸 배경을 통째로 칠하고 이름 글자를 같은 가족의
- * 잉크로 바꾼다. 도는 중과 아무 말 없는 칸은 `null`이다 — 탭에는 스피너를 안 세운다(스토리 52).
+ * 셸 탭의 **물들임**(#205, 결정 6 — 안 J3). 칸 배경을 통째로 칠하고, 기다리는 칸은 이름 글자도 그 잉크로 바꾼다(안 본 완료의
+ * 이름은 무채색 — 위 `TONE`의 `tab`). 도는 중과 아무 말 없는 칸은 `null`이다 — 탭에는 스피너를 안 세운다(스토리 52).
  */
 export interface SignalTint {
   /** **칸 상자**에 붙는 것 — 채움과, 켜졌으면 1px 안쪽 테두리. 색은 배경뿐이다. */
   cell: string;
-  /** **이름 글자에만** 붙는 잉크. 상자에 두면 안쪽이 통째로 물든다(아래 머리말). */
-  ink: string;
+  /** **이름 글자에만** 붙는 잉크. 상자에 두면 안쪽이 통째로 물든다(아래 머리말). 없으면(`null`) 이름은 칸의 글자색이다. */
+  ink: string | null;
 }
 
 /**
  * **이 함수가 여기 사는 것이 스토리 79다.** 탭은 채움이고 행은 점이라 **어휘가 둘인데**
  * (결정 6: 「표면이 다르면 문법이 달라도 된다」) 색은 하나여야 한다 — 자리마다 토큰을 새로
- * 고르면 같은 셸이 사이드바에서 앰버, 탭에서 초록이 되는 날이 오고 그것을 잡는 검사가
- * 없다. 같은 표(`TONE`)를 딛으면 그 어긋남이 **생길 자리가 없다**.
+ * 고르면 같은 셸이 사이드바에서는 기다림의 색, 탭에서는 안 본 완료의 색이 되는 날이 오고 그것을 잡는
+ * 검사가 없다. 같은 표(`TONE`)를 딛으면 그 어긋남이 **생길 자리가 없다**.
  *
  * **채움과 잉크가 갈려 나가는 것은 마크 때문이다**(판 04 결정 15 · 스토리 32). 마크는 늘
  * 「누구」이고 색은 늘 「어떤 상태」다 — 정체엔 색을 안 쓴다(사이드바에는 마크가 없다 — ui-refresh
  * 결정 13). 탭에서는 마크가 칸 상자 **안**에 서므로 잉크를 이름에만 줘야 한다: 잉크를 상자에 얹으면 이름이 숨는
  * 폭에서만 서는 글리프가 `currentColor`로 물들어, 하필 스토리 53이 「거기서도 신호가 살아야
- * 한다」고 적은 그 폭에서 claude 로고가 앰버가 된다. 그래서 **잉크를 이름 글자에만** 준다.
+ * 한다」고 적은 그 폭에서 claude 로고가 상태색이 된다. 그래서 **잉크를 이름 글자에만** 준다(잉크가 있는 것은 기다리는
+ * 칸이다 — 안 본 완료의 이름은 무채색이라 `ink`가 `null`이다).
  *
- * **켜진 칸에서 앰버가 흰 면(`tab-on`)을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
+ * **켜진 칸에서 부름의 채움이 옅은 면(`tab-on`)을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
  * `tab-on` 대신 이 채움이 서고, 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다.
  * 테두리를 `ring`(그림자)으로 그리는 것은 **폭을 안 먹기 때문이다**(스토리 54) — `border`로
  * 그리면 안쪽 폭이 2px 줄어 상태가 바뀔 때마다 이름과 닫기가 옆으로 뛴다.
@@ -147,14 +177,14 @@ export function signalTint(kind: ShellSignal, active: boolean): SignalTint | nul
     // 이어 붙인 이름을 만들지 않는다 — 여기 서는 글자는 전부 `TONE`에 **그대로 있는** 것이라
     // Tailwind가 규칙을 만든다(위 `TONE` 머리말의 그 사고).
     cell: cn(tone.fill, active && "ring-1 ring-inset", active && tone.edge),
-    ink: tone.text,
+    ink: tone.tab,
   };
 }
 
 /**
  * 이 화면값이 행의 오른쪽 메타에 **경과를 다는가**(결정 13 · `sidebar-active-band` S4). 도는
  * 중은 안 단다 — 레인의 스피너가 「지금 돈다」를 이미 말하고, 경과를 붙이면 「3분째 기다린다」로
- * 읽히는데 그 셸은 일하는 중이다. 단다면 그 값은 부르는 갈래(`CallingKind`)다 — 경과가 그 잉크를 읽는다.
+ * 읽히는데 그 셸은 일하는 중이다. 단다면 그 값은 부르는 갈래(`CallingKind`)다 — 경과는 두 갈래가 같은 글자다(`SignalElapsed`).
  *
  * **함수 하나인 이유는 짝이 둘이기 때문이다.** 그리는 쪽(`SignalMeta`)과 시계를 켜는 쪽
  * (`Sidebar.tsx`의 `useNow`)이 같은 사실의 두 표현인데, 각자 조건을 적어 두면 규칙이 바뀌는
@@ -218,15 +248,18 @@ export function formatElapsed(ms: number): string {
  * 부른다. 두 자리가 같은 어휘라(띠 줄은 행의 축소판이다) 규격과 색이 갈리면 같은 셸의 같은 경과가
  * 두 무게로 읽힌다.
  *
- * **상태색의 잉크로 칠한다**(DS `.at-row-meta.wait` · `.done` — 굵기 500). 사이드바에서 마크가
- * 빠지면서(ui-refresh 결정 13) 부르는 행의 오른쪽 칸에 남은 것이 이것 하나라, 부차 정보의
- * `tertiary`(바탕 위 2.95:1)로 두면 그 칸이 통째로 흐려진다. 잉크는 바탕 위 4.5를 넘는다(`TONE` 머리말).
+ * **글자는 `fg-secondary` 500이다**(codex-ds 스펙 S17). DS는 이 자리에 상태색 잉크(행 메타 `.end.wait`의 `warning` · 띠 줄
+ * `.end.new`의 `accent-solid`)를 두었지만, 12px 500 글자의 대비 바닥 4.5에 못 미친다(흰 면 위 3.8 · 3.6, 회색 바탕 위 3.5 · 3.4).
+ * DS README 「대비」가 「대비 검사 대상이면 경과만 `fg-secondary`(6.3:1)로 낮춘다」고 정해 둔 자리이고, 사이드바 e2e(`works-sidebar`)가
+ * 띠 줄 · 행 메타의 경과를 4.5로 잰다. 부름의 색은 레인의 점(`SignalLane`)이 들고, 「몇 분 기다렸나」는 읽어야 하는 글이다.
+ * 부차 정보의 `fg-tertiary`(바탕 위 3.2:1)로 두지 않는 것도 같은 까닭이다 — 사이드바에서 마크가 빠지면서(ui-refresh 결정 13)
+ * 부르는 행의 오른쪽 칸에 남은 것이 이것 하나다. 그래서 이 조각은 부름의 갈래를 받지 않는다 — 두 갈래가 같은 글자다.
  *
  * **표식(`data-elapsed`)은 검사가 이 조각을 집는 이름이다** — `tabular-nums`는 띠 머리의 수도 든다.
  */
-export function SignalElapsed({ kind, ms }: { kind: CallingKind; ms: number }) {
+export function SignalElapsed({ ms }: { ms: number }) {
   return (
-    <span data-elapsed="" className={cn("shrink-0 text-meta font-medium tabular-nums", TONE[kind].text)}>
+    <span data-elapsed="" className="shrink-0 text-xs font-medium tabular-nums text-fg-secondary">
       {formatElapsed(ms)}
     </span>
   );
@@ -265,7 +298,7 @@ export function SignalMeta({
   if (!showsElapsed(kind)) return null;
   return (
     <span className="row-meta">
-      <SignalElapsed kind={kind} ms={now - since} />
+      <SignalElapsed ms={now - since} />
     </span>
   );
 }
@@ -276,8 +309,8 @@ export function SignalMeta({
  * (`CallingNote`), 그 가름은 값을 고르는 쪽 한 자리에 있다. 여기서 다시 묻지 않는다.
  *
  * **색이 드는 것은 라벨이다.** 라벨은 상태 말이고 상태색 잉크를 받는다 — 행 이름·띠 줄과 같은
- * 표(`SIGNAL_LABEL`)이고 색은 `TONE` 하나라, 같은 셸이 레인에서는 앰버인데 카드에서는 초록인
- * 날이 안 온다(스토리 79). 말 자체는 카드의 글자색 그대로다: 부르는 이유를 말하는 글이지
+ * 표(`SIGNAL_LABEL`)이고 색은 `TONE` 하나라, 같은 셸이 레인에서는 기다림인데 카드에서는 안 본 완료의
+ * 색인 날이 안 온다(스토리 79). 말 자체는 카드의 글자색 그대로다: 부르는 이유를 말하는 글이지
  * 상태가 아니다.
  *
  * **최대 두 줄에서 줄임표로 자른다(S7).** 카드는 폭이 정해져 있어 한 줄이면 대부분 잘린다.
@@ -288,7 +321,7 @@ export function SignalMeta({
  */
 export function SignalNote({ kind, message }: CallingNote) {
   return (
-    <div data-last-message="" className="flex flex-col gap-1 text-caption leading-snug">
+    <div data-last-message="" className="flex flex-col gap-1 text-xs">
       <span className={cn("font-medium", TONE[kind].text)}>{SIGNAL_LABEL[kind]}</span>
       <p className="line-clamp-2 wrap-break-word">{message}</p>
     </div>

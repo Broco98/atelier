@@ -2,19 +2,20 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
-import { BELOW_APP_MIN, rowOf, settle } from "./tab-row";
+import { rowOf, settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
 
 // 탭 줄의 **바닥** — 어느 창 폭·어느 패널 폭에서도 셸 칸 하나는 온전히 보인다(`panel-layout`의
-// `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
-// 화면에 없었다. 그 바닥은 **사이드바가 자리를 내줘서** 선다. 작업 패널은 이제 탭 줄 **아래** 카드 줄에
-// 서서(ui-refresh 결정 4 · 27) 줄과 폭을 다투지 않고, 대신 문서 카드에 자리를 내준다(문서 카드는 패널의
-// 최소 폭만큼은 남는다 — `Frame`의 패널 칸). 그래서 이 파일이 보는 것은 줄보다 그 둘이다: 각자의 최소 폭
+// `TAB_ROW_CARD` · `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
+// 화면에 없었다. 탭 줄은 본문 카드의 머리라(codex-ds 스펙 §4) 작업 패널과 같은 카드 줄에 서고, 그 바닥은 **작업 패널이 제
+// 최소 폭까지, 그다음 사이드바가 자리를 내줘서** 선다. 패널은 문서 카드에 자리를 내주되 문서 카드에 제 최소 폭만큼은
+// 남긴다(`Frame`의 패널 칸). 그래서 이 파일이 보는 것은 줄보다 그 둘이다: 각자의 최소 폭
 // 아래로는 안 줄고, 창 밖으로 밀리지 않고, 사람이 끌어 고른 폭(저장값)은 창이 좁아진다고 안 지워지고,
 // 좁게 선 채로 끌어도 손잡이가 안 튄다.
 //
-// **사이드바가 좁게 서는 것은 이제 앱 창의 최소 폭(900, `tauri.conf.json`) 아래에서만이다** — 탭 줄의 바닥이 약
-// 415px이라(`spec` · `chat` 고정 칸 · 셸 칸 하나 · 조작) 넓힌 사이드바(400)와 더해도 900에 못 미친다. 그 장치(열의
-// `min-w-min`)는 그대로 있으므로, 사이드바를 좁게 세워야 하는 검사는 일부러 그 아래 폭(`BELOW_APP_MIN`, `tab-row.ts`)에서 잰다.
+// **사이드바가 좁게 서는 것은 이제 앱 창의 최소 폭(900, `tauri.conf.json`) 아래에서만이다** — 탭 줄의 바닥과 넓힌
+// 사이드바(400)를 더해도 900에 못 미친다(OS마다 잰 바닥은 `tab-row.ts` 머리말). 그 장치(열의 `min-w-min`)는 그대로 있으므로,
+// 사이드바를 좁게 세워야 하는 검사는 일부러 그 아래 폭에서 잰다. 그 폭은 수가 아니라 **지금 줄의 바닥을 재서** 낸다
+// (`squeezedWidth`, `tab-row.ts`) — 바닥에는 줄의 글자가 들고, 글자가 시스템 글꼴이라 OS마다 폭이 다르다(codex-ds 결정 3).
 //
 // 칸이 보이는지 · 눌리는지 · `+`가 줄 안인지는 `terminal-tabs.spec.ts`가 세 화면 × 두 폭 × 세
 // 배치로 든다. 여기는 **기본 폭이 아닌 배치**와 **움직이는 동안**이다.
@@ -54,7 +55,7 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    // 패널 토글은 레일 열(패널 카드 오른쪽, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    // 패널 토글은 머리 줄 오른쪽 끝(레일이 서는 지금은 머리 카드 밖 레일 열 위, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
       .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
       ?.getBoundingClientRect();
@@ -65,7 +66,7 @@ async function layoutOf(page: Page) {
       sidebar: Math.round(sidebar.width),
       panel: panel ? { left: panel.left, width: Math.round(panel.width), right: panel.right } : null,
       // 패널 칸(두 번째 `aside`)의 오른쪽 끝 — 패널이 창 안에 있어도 안쪽 열이 잘리면 카드 오른쪽이 이 끝을 넘는다. 한때는
-      // 패널 머리 오른쪽 끝의 `×`로 쟀는데, 그 버튼이 레일의 패널 토글로 합쳐져 패널 밖으로 나갔다.
+      // 패널 머리 오른쪽 끝의 `×`로 쟀는데, 그 버튼이 패널 토글로 합쳐져 패널 밖으로 나갔다.
       panelBoxRight: panelAside ? panelAside.getBoundingClientRect().right : null,
       toggleRight: toggle ? toggle.right : null,
       // 패널이 **제 안에서 가로로 밀려 있지 않다** — 넘침을 감춘 상자라도 `scrollLeft`가 서면(Playwright가 잘린
@@ -92,7 +93,7 @@ function expectFits(layout: Layout, at: string) {
   if (layout.panel) {
     expect(layout.panel.right, says).toBeLessThanOrEqual(layout.viewport + 0.5);
     expect(layout.panel.right, says).toBeLessThanOrEqual(layout.panelBoxRight! + 0.5);
-    // 패널을 여닫는 토글도 창 안이다 — 레일 열은 늘 그 자리이고 자리를 내주는 것은 패널 · 사이드바다(판 04 「지키는 것」).
+    // 패널을 여닫는 토글도 창 안이다 — 토글은 머리 줄 오른쪽 끝에 늘 그대로이고 자리를 내주는 것은 패널 · 사이드바다(판 04 「지키는 것」).
     expect(layout.toggleRight!, says).toBeLessThanOrEqual(layout.viewport + 0.5);
     expect(layout.panelScroll!.scrollLeft, says).toBe(0);
     expect(Math.abs(layout.panelScroll!.innerShift), says).toBeLessThanOrEqual(0.5);
@@ -100,8 +101,8 @@ function expectFits(layout: Layout, at: string) {
 }
 
 // 넓힌 사이드바(최대 400)와 넓힌 작업 패널(최대 560)은 기본 폭보다 훨씬 큰 창에서도 본문을 민다 — 한때
-// 1280px 창에서 둘을 빼면 줄에 320px이 남았다. 이제 패널은 줄 아래라 줄을 밀지 않지만, 900px에서는 문서 카드에
-// 자리를 내주며 좁게 선다. 기본 폭만 재는 검사로는 안 보인다.
+// 1280px 창에서 둘을 빼면 줄에 320px이 남았다. 지금은 줄이 본문 카드의 머리라 패널과 같은 카드 줄에 서고, 900px에서는
+// 패널이 본문 카드에 자리를 내주며 좁게 선다. 기본 폭만 재는 검사로는 안 보인다.
 for (const width of [900, 1280]) {
   for (const screen of [
     { name: "work", url: `/works/${plainWork.slug}?tab=terminal` },
@@ -185,10 +186,12 @@ test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라
   await page.mouse.up();
   expect(during.panel!.left - before.panel!.left, JSON.stringify({ before, during })).toBeLessThanOrEqual(41);
 
-  // 사이드바 — 앱 창의 최소 폭 아래에서 400을 고른 사이드바가 좁게 선다(머리말). 왼쪽으로 20px 끌면 그만큼 좁아진다.
-  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
+  // 사이드바 — 탭 줄이 바닥에 닿는 창(머리말)에서 400을 고른 사이드바가 좁게 선다. 왼쪽으로 20px 끌면 그만큼 좁아진다.
+  await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
-  expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400);
+  // 창 폭을 지금 줄의 바닥에서 냈으므로 사이드바는 정해 둔 폭에 선다 — 저장값(400)보다 좁고, 20px을 끌 자리가 최소 폭(240) 위에 있다.
+  expect(narrow.sidebar, JSON.stringify(narrow)).toBeGreaterThanOrEqual(SQUEEZED_SIDEBAR);
+  expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThanOrEqual(SQUEEZED_SIDEBAR + 1);
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
   const sy = sideHandle.y + sideHandle.height / 2;
   await page.mouse.move(narrow.sidebar - 2, sy);
@@ -238,8 +241,8 @@ test("좁게 선 패널·사이드바를 바깥으로 끌어도 고른 폭이 �
   await page.mouse.up();
   expect(await page.evaluate(() => localStorage.getItem("work-panel-width"))).toBe("560");
 
-  // 사이드바 — 앱 창의 최소 폭 아래에서 좁게 선다(머리말). 손잡이가 오른쪽 가장자리라 바깥은 오른쪽이다.
-  await page.setViewportSize({ width: BELOW_APP_MIN, height: 800 });
+  // 사이드바 — 탭 줄이 바닥에 닿는 창에서 좁게 선다(머리말). 손잡이가 오른쪽 가장자리라 바깥은 오른쪽이다.
+  await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400 - 40);
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
@@ -319,7 +322,9 @@ test("분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 �
   expectFits(layout, "분할 900px");
   const row = await rowOf(page);
   expect(row.spill).toBeLessThanOrEqual(0);
-  expect(row.actions.over).toBeLessThanOrEqual(0);
+  // 터미널 열의 줄 끝에는 그 열을 닫는 `×`가 선다(codex-ds 스펙 S14) — 줄 밖으로 안 밀린다.
+  expect(row.actions).not.toBeNull();
+  expect(row.actions!.over).toBeLessThanOrEqual(0);
   const columnsRight = await page.evaluate(() =>
     Math.max(...[...document.querySelectorAll("[data-column]")].map((column) => column.getBoundingClientRect().right)),
   );
@@ -328,7 +333,7 @@ test("분할을 켠 채 900px에서 패널을 펴도 칸이 남고 두 열이 �
 
 test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는다 — 패널이 제자리다", async ({ page }) => {
   // 본문 열에는 끊을 자리 없는 코드 줄·넓은 표도 산다. 그 폭이 열의 바닥에 섞이면 소스 보기를
-  // 켤 때마다 패널이 창 밖으로 밀리고 폭이 저 혼자 바뀐 것처럼 보인다(`TAB_ROW_COLUMN` 머리말).
+  // 켤 때마다 패널이 창 밖으로 밀리고 폭이 저 혼자 바뀐 것처럼 보인다(`TAB_ROW_CARD` 머리말).
   await openWith(page, `/works/${pinnedWork.slug}?file=${encodeURIComponent("overview.md")}`, 900, {
     sidebar: 280,
     panel: 330,
@@ -350,14 +355,77 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
   expect(source.panel).toEqual(plain.panel);
 });
 
-test("목록 패널이 있는 화면은 그대로다 — 사이드바가 저장한 폭으로 선다", async ({ page }) => {
-  // 사이드바가 줄어들 수 있게 됐지만, 자리를 요구하는 것은 탭 줄을 이는 열뿐이다. 다른 화면의
-  // 본문은 바닥이 없어(`min-w-0`) 사이드바가 900px 창에서도 고른 폭을 든다.
-  //
-  // (창 전체의 가로 넘침은 여기서 안 든다 — 이 배치에서는 이 수정 전부터 41px이 넘친다. 목록
-  // 화면의 몫이라 이 검사가 그 사실을 초록이나 빨강으로 삼키지 않게 둔다.)
-  await openWith(page, "/projects", 900, { sidebar: 400, panel: 330 });
-  await expect(page.getByRole("button", { name: "프로젝트 등록" })).toBeVisible();
-  const layout = await settled(page);
-  expect(layout.sidebar).toBe(400);
-});
+// 목록 칸이 있는 화면(codex-ds 결정 28 — 내용 | 목록 한 카드)은 탭 줄이 없는 카드 줄이라 통째로 격리되어(`TAB_ROW_COLUMN`) 바닥을
+// 알리지 않는다. 그래서 목록 칸을 범위(240–560, codex-ds 스펙 S4)의 끝까지 넓혀 둬도 사이드바를 밀지 않는다.
+//
+// 그 대신 자리가 모자라면 **목록 칸이 내준다** — 작업 패널 칸처럼 제 최소 폭까지 좁게 서고, 내용 칸에는 그 최소 폭만큼은 남긴다
+// (`Frame`의 `ListCard`). 앱 창의 최소 폭(900)에 사이드바를 400으로 넓혀 두면 카드가 492라 560 목록 칸이 들지 않는다. 그 칸이
+// 제 폭을 고집하면 카드가 넘침을 잘라 내용 칸이 0으로 눌리고, 세로 선과 그 위의 손잡이도 카드 밖으로 잘려 끌어 되돌릴 길이 없다
+// — 목록 칸은 접지 않아(codex-ds 결정 32) 접어서 치울 길도 없다.
+//
+// Archive는 그 카드 곁에 고른 아카이브의 spec 목록 패널이 열린 채 선다(codex-ds 티켓 21). 그 패널은 카드에 두 칸의 최소를 남기고,
+// 모자라면 제 최소 폭 아래로도 내준다(`Frame`의 `PanelBox` — 걷을 수 있는 칸이 진다). 그래서 두 화면의 셈이 같다.
+const LIST_RANGE = { min: 240, max: 560 };
+
+for (const screen of [
+  { url: "/projects", list: "프로젝트 목록", key: "panel-width" },
+  { url: "/archive", list: "아카이브 목록", key: "archive-panel-width" },
+] as const) {
+  test(`목록 칸이 있는 화면(${screen.url})은 목록 칸을 560까지 넓혀 둬도 사이드바가 저장한 폭으로 서고, 내용 칸에 240을 남긴다`, async ({
+    page,
+  }) => {
+    await page.addInitScript((key) => localStorage.setItem(key, "560"), screen.key);
+    await openWith(page, screen.url, 900, { sidebar: 400, panel: 330 });
+    const list = page.getByRole("region", { name: screen.list, exact: true });
+    await expect(list).toBeVisible();
+    // 사이드바가 줄어들 수 있게 됐지만, 자리를 요구하는 것은 탭 줄을 이는 열과 편집기의 두 카드 머리(`Frame`의 `BesideBox`)뿐이다.
+    // 다른 화면의 본문은 바닥이 없어(`min-w-0`) 사이드바가 900px 창에서도 고른 폭을 든다.
+    const layout = await settled(page);
+    expect(layout.sidebar).toBe(400);
+    expect(layout.pageSpill).toBeLessThanOrEqual(0);
+
+    /** 내용 | 목록 카드와 두 칸, 그리고 세로 선 위 손잡이 — 손잡이는 그 가운데를 누르면 정말 그것이 눌리는지까지 잰다. */
+    const joined = () =>
+      page.evaluate(
+        ([name, handleSelector]) => {
+          const column = document.querySelector(`section[aria-label="${name}"]`)!;
+          const box = (el: Element) => {
+            const rect = el.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width };
+          };
+          const handle = column.querySelector(handleSelector)!;
+          const grip = handle.getBoundingClientRect();
+          const hit = document.elementFromPoint(grip.left + grip.width / 2, grip.top + grip.height / 2);
+          return {
+            card: box(column.closest('[data-slot="card"]')!),
+            list: box(column),
+            main: box(document.querySelector("main")!),
+            handleAt: grip.left + grip.width / 2,
+            handleHit: hit?.closest(handleSelector) === handle,
+          };
+        },
+        [screen.list, HANDLE] as const,
+      );
+    const narrow = await settle(page, joined);
+    const says = JSON.stringify(narrow);
+    // 앵커: 이 창에서는 정말 모자랐다 — 넉넉했으면 아래 셈은 아무것도 안 잰다.
+    expect(narrow.card.width, says).toBeLessThan(LIST_RANGE.max + LIST_RANGE.min);
+    // 카드는 두 칸의 최소만큼은 선다 — 곁의 패널(Archive)이 그 자리를 먹지 않는다.
+    expect(narrow.card.width, says).toBeGreaterThanOrEqual(LIST_RANGE.min * 2);
+    // 내용 칸이 카드 왼쪽 끝에서 서고 최소 폭을 지킨다. 목록 칸은 그 나머지라 카드 오른쪽 끝까지 서고 저장한 폭보다 좁다.
+    expect(narrow.main.left, says).toBe(narrow.card.left);
+    expect(narrow.main.width, says).toBe(LIST_RANGE.min);
+    expect(narrow.list.right, says).toBe(narrow.card.right);
+    expect(narrow.list.width, says).toBe(narrow.card.width - LIST_RANGE.min);
+    // 세로 선 위의 손잡이가 카드 안에 서고, 누르면 그것이 눌린다.
+    expect(narrow.handleAt, says).toBe(narrow.list.left);
+    expect(narrow.handleHit, says).toBe(true);
+
+    // 줄어든 것은 그려진 폭뿐이다 — 저장한 폭은 그대로라 창을 넓히면 돌아온다. 넓힌 창은 곁의 패널이 제 폭으로 서고도 560 목록
+    // 칸과 내용 칸의 최소가 드는 폭이다(Archive — 1280이면 패널을 빼고 카드가 534라 560이 안 든다).
+    expect(await page.evaluate((key) => localStorage.getItem(key), screen.key)).toBe(String(LIST_RANGE.max));
+    await page.setViewportSize({ width: 1920, height: 800 });
+    await expect.poll(async () => (await joined()).list.width).toBe(LIST_RANGE.max);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}

@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ChevronDown, ChevronRight, Info, TriangleAlert } from "lucide-react";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { chatUiStore, toggleTurn, turnKey } from "./chat-store";
-import ChatMarkdown from "./ChatMarkdown";
+import ChatMarkdown, { RULE } from "./ChatMarkdown";
 import { Checklist, PlanCard } from "./PlanCard";
 import { SentQuoteChip } from "./QuoteChip";
 import ToolRow from "./ToolRow";
@@ -38,7 +39,7 @@ function ChatThread({ conversationKey, model }: ChatThreadProps) {
   const noticesAfter = (count: number) =>
     model.notices.filter((notice) => notice.after === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />);
   return (
-    <div className="flex flex-col gap-4 text-row leading-(--chat-leading-prose)">
+    <div className="flex flex-col gap-4 text-chat-body">
       {noticesAfter(0)}
       {model.turns.map((turn, at) => {
         const key = turnKey(conversationKey, turn.key);
@@ -60,8 +61,8 @@ function ChatThread({ conversationKey, model }: ChatThreadProps) {
 function NoticeLine({ notice }: { notice: Notice }) {
   const Icon = notice.kind === "fresh" ? Info : TriangleAlert;
   return (
-    <p data-notice={notice.kind} className="flex items-start gap-1.5 text-ui text-tertiary">
-      <Icon className="mt-[3px] size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+    <p data-notice={notice.kind} className="flex items-start gap-1.5 text-chat-meta text-fg-tertiary">
+      <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <span className="min-w-0 wrap-anywhere">{notice.text}</span>
     </p>
   );
@@ -95,13 +96,13 @@ function TurnView({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggl
             type="button"
             aria-expanded={open}
             onClick={onToggle}
-            className="flex w-fit items-center gap-1 text-ui text-tertiary transition-colors hover:text-muted-foreground"
+            className="flex w-fit items-center gap-1 text-chat-meta text-fg-tertiary transition-colors hover:text-fg-secondary"
           >
             {headline(turn.end)}
             {open ? (
-              <ChevronDown className="size-3" strokeWidth={1.8} aria-hidden />
+              <ChevronDown className="size-3" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
             ) : (
-              <ChevronRight className="size-3" strokeWidth={1.8} aria-hidden />
+              <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
             )}
           </button>
           {turn.selfContinued && <SelfContinued />}
@@ -110,7 +111,7 @@ function TurnView({ turn, open, onToggle }: { turn: Turn; open: boolean; onToggl
         // 보낸 직후(줄이 아직 없다)는 「생각 중」 하나, 일하는 동안은 걸린 시간 머리줄 + 선 아래로 줄이 쌓인다(보드 14 ① · ②).
         turn.entries.length > 0 && <RunningHead turn={turn} />
       )}
-      {turn.end && open && <hr className="border-0 border-t-[0.5px] border-(--chat-border-heavy)" />}
+      {turn.end && open && <hr className={RULE} />}
       {runs(shown).map((run) =>
         run[0].kind === "tool" ? (
           // 잇따른 도구 줄은 한 묶음이다 — 줄 사이가 흐름의 틈(16)이 아니라 4다(캔버스 `.cx-tools`).
@@ -149,17 +150,17 @@ function RunningHead({ turn }: { turn: Turn }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <span className="text-ui text-tertiary">{runningHeadline(turn, now)}</span>
+        <span className="text-chat-meta text-fg-tertiary">{runningHeadline(turn, now)}</span>
         {turn.selfContinued && <SelfContinued />}
       </div>
-      <hr className="border-0 border-t-[0.5px] border-(--chat-border-heavy)" />
+      <hr className={RULE} />
     </div>
   );
 }
 
 /** 「스스로 이어 감」 표지 — 보낸 말 없이 에이전트가 백그라운드 작업 알림으로 이어 간 턴이다(S4). 앱 꼬리표(`tag`)의 모양이다. */
 function SelfContinued() {
-  return <span className="tag text-caption">스스로 이어 감</span>;
+  return <span className="tag text-xs">스스로 이어 감</span>;
 }
 
 function Thinking() {
@@ -174,7 +175,7 @@ function UserMessage({ text, quote }: { text: string; quote: Quote | null }) {
   return (
     <div className="flex flex-col items-end gap-1.5">
       {quote && <SentQuoteChip quote={quote} />}
-      <p className="max-w-[min(85%,560px)] whitespace-pre-wrap rounded-(--chat-radius-bubble) bg-(--chat-bubble) px-4 py-2.5 wrap-anywhere">
+      <p className="max-w-[min(85%,560px)] whitespace-pre-wrap rounded-bubble bg-bubble-user px-4 py-2.5 wrap-anywhere">
         {text}
       </p>
     </div>
@@ -187,7 +188,7 @@ function EntryView({ entry, end, thinking }: { entry: Entry; end: Turn["end"]; t
       return <ChatMarkdown text={entry.text} />;
     case "thought":
       // 지금 생각하는 중이면 「생각 중」이 반짝이고, 지나간 생각은 펼친 턴에서 옅은 글로 읽힌다.
-      return thinking ? <Thinking /> : <ChatMarkdown text={entry.text} className="text-tertiary" />;
+      return thinking ? <Thinking /> : <ChatMarkdown text={entry.text} className="text-fg-tertiary" />;
     case "tool":
       // 도구 줄 — 진행형 → 완료형 문구 · 명령 출력 · diff · MCP(티켓 18), 멈춘 턴의 줄(티켓 20).
       return <ToolRow tool={entry} end={end} />;

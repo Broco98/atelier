@@ -19,6 +19,12 @@ export const worksApi = {
     invoke<string>("read_spec_file", { slug, path }),
   archive: (slug: string) => invoke<void>("archive_work", { slug }),
   /**
+   * Finder에서 연다(codex-ds 스펙 S6) — `project`가 `null`이면 그 work의 spec 폴더, 프로젝트 이름이면 그 worktree다.
+   * **경로를 넘기지 않는다** — 백엔드가 slug와 프로젝트로 푼다(`work_folder`). 폴더가 없으면 어느 폴더인지 말하며 거절한다.
+   */
+  openFolder: (slug: string, project: string | null) =>
+    invoke<void>("open_work_folder", { slug, project }),
+  /**
    * 그 work 화면이 **떠 있게 됐다**고 알린다(팔레트 결정 12·14) — 이력 맨 앞으로 간다.
    *
    * 답이 없는 부름이다. 화면이 이 값을 도로 읽지 않으므로(순서를 세우는 것은 코어의 검색이다)

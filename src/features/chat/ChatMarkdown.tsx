@@ -7,31 +7,34 @@ import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
 
 // 대화창의 마크다운 답(three-axes 티켓 17) — `agent_message_chunk`를 이어 붙인 글을 본문과 코드 블록으로 그린다. 값은 캔버스의
-// `.cx-prose`(14/22.75 · 블록 사이 12 · 목록 pl 22 gap 4 · 인라인 코드 mono 13 pad 1 5)와 `.cx-code`다(three-axes 결정 31).
+// `.cx-prose`(14/22.75 · 블록 사이 12 · 목록 pl 22 gap 4 · 인라인 코드 mono 13 pad 1 5)와 `.cx-code`다 — DS 토큰으로 적는다(three-axes
+// 결정 31 · codex-ds 스펙 S2).
 //
-// **문서 보기(`SpecViewer`)의 표를 빌리지 않는다.** 그쪽은 15/26 문서용이고 원문 줄 위치를 모으는 플러그인이 딸려 있다. 답 안의
-// 제목은 캔버스가 16 · 18 · 24이지만 앱 글자 단계에 없어 `body`(15) 하나로 모은다(구현 노트 「화면 부품과 설정」 §3).
+// **문서 보기(`SpecViewer`)의 표를 빌리지 않는다.** 그쪽은 문서용이고 원문 줄 위치를 모으는 플러그인이 딸려 있다. 답 안의 제목은
+// 캔버스대로 24 · 18 · 16이다(DS `heading-lg` · `heading-sm` · `heading-xs`) — 한때 앱 글자 단계에 그 크기가 없어 15 하나로 모았다(구현
+// 노트 「화면 부품과 설정」 §3).
 //
 // 링크는 바깥 URL만 연다 — Tauri 웹뷰에서 `<a>`가 그대로 주소를 바꾸면 앱이 그 페이지로 간다. 답 본문 안의 문서 링크(spec 파일의
 // 상대 경로 · `file:`)는 열지 않는다 — 누르면 아무 일도 없다. 스펙 창으로 여는 문서 링크는 도구 줄의 파일 링크(티켓 18)와 알약
 // 목록의 파일 링크(티켓 26)에만 있고(`chat` 탭(티켓 24)에서 눌러도 같다), 답 본문의 링크를 스펙 창에 잇는 일은 남아 있다.
 
-const heading = "text-body font-semibold";
+/** 0.5px 가름선 — 턴의 머리줄 아래 · 답 안의 `---`(DS `.at-hr` — `border-heavy`). 0.5px 테두리는 엔진마다 굵기가 갈려 면으로 칠한다. */
+export const RULE = "h-[0.5px] shrink-0 border-0 bg-border-heavy";
 
 const components: Components = {
-  h1: ({ children }) => <h3 className={heading}>{children}</h3>,
-  h2: ({ children }) => <h3 className={heading}>{children}</h3>,
-  h3: ({ children }) => <h3 className={heading}>{children}</h3>,
-  h4: ({ children }) => <h4 className={heading}>{children}</h4>,
-  h5: ({ children }) => <h5 className={heading}>{children}</h5>,
-  h6: ({ children }) => <h6 className={heading}>{children}</h6>,
-  ul: ({ children }) => <ul className="flex list-disc flex-col gap-1 pl-[22px] marker:text-tertiary">{children}</ul>,
-  ol: ({ children }) => <ol className="flex list-decimal flex-col gap-1 pl-[22px] marker:text-tertiary">{children}</ol>,
+  h1: ({ children }) => <h3 className="text-heading-lg">{children}</h3>,
+  h2: ({ children }) => <h3 className="text-heading-sm">{children}</h3>,
+  h3: ({ children }) => <h3 className="text-heading-xs">{children}</h3>,
+  h4: ({ children }) => <h4 className="text-heading-xs">{children}</h4>,
+  h5: ({ children }) => <h5 className="text-heading-xs">{children}</h5>,
+  h6: ({ children }) => <h6 className="text-heading-xs">{children}</h6>,
+  ul: ({ children }) => <ul className="flex list-disc flex-col gap-1 pl-5.5 marker:text-fg-tertiary">{children}</ul>,
+  ol: ({ children }) => <ol className="flex list-decimal flex-col gap-1 pl-5.5 marker:text-fg-tertiary">{children}</ol>,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   blockquote: ({ children }) => (
-    <blockquote className="border-l-[3px] border-(--chat-rule) pl-4 text-muted-foreground">{children}</blockquote>
+    <blockquote className="border-l-[3px] border-rule pl-4 text-fg-secondary">{children}</blockquote>
   ),
-  hr: () => <hr className="border-0 border-t-[0.5px] border-(--chat-border-heavy)" />,
+  hr: () => <hr className={RULE} />,
   a: ({ children, href }) => (
     <a
       href={href}
@@ -39,20 +42,24 @@ const components: Components = {
         event.preventDefault();
         if (href && /^https?:\/\//.test(href)) void openUrl(href);
       }}
-      className="text-(--chat-link)"
+      className="text-link"
     >
       {children}
     </a>
   ),
   table: ({ children }) => (
     <div className="overflow-x-auto scroll-quiet">
-      <table className="w-full border-collapse text-ui">{children}</table>
+      <table className="w-full border-collapse text-chat-meta">{children}</table>
     </div>
   ),
   th: ({ children }) => (
-    <th className="py-2 pr-4 text-left font-semibold shadow-(--chat-rule-below)">{children}</th>
+    <th className="border-b border-rule py-2 pr-4 text-left font-semibold">{children}</th>
   ),
-  td: ({ children }) => <td className="py-2 pr-4 align-top shadow-(--chat-hairline-below)">{children}</td>,
+  td: ({ children }) => (
+    <td className="relative py-2 pr-4 align-top after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border">
+      {children}
+    </td>
+  ),
   // 코드 블록 — 안쪽 `<code>`를 여기서 직접 쓴다. `children`을 그리면 언어를 안 적은 블록이 아래 인라인 갈래로 빠진다
   // (`SpecViewer`의 같은 자리에 적힌 사고).
   pre: ({ node }) => {
@@ -60,7 +67,7 @@ const components: Components = {
     return <CodeBlock lang={codeLang(code)} code={hastText(code).replace(/\n$/, "")} />;
   },
   code: ({ children }) => (
-    <code className="rounded-(--chat-radius-inline) bg-state-2 px-[5px] py-px font-mono text-mono wrap-anywhere">
+    <code className="rounded-xs bg-fill-soft px-1.25 py-px font-mono text-code wrap-anywhere">
       {children}
     </code>
   ),
@@ -70,8 +77,8 @@ const components: Components = {
 function CodeBlock({ lang, code }: { lang: string | undefined; code: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <figure className="rounded-(--chat-radius-block) bg-(--chat-surface-code) shadow-(--chat-shadow-code)">
-      <div className="flex items-center gap-2 pb-1 pl-4 pr-3 pt-3 text-caption text-muted-foreground">
+    <figure className="rounded-xl bg-surface-code inset-ring inset-ring-border-light">
+      <div className="flex items-center gap-2 pb-1 pl-4 pr-3 pt-3 text-xs text-fg-secondary">
         <span className="min-w-0 flex-1 truncate">{lang ?? "코드"}</span>
         <button
           type="button"
@@ -79,12 +86,12 @@ function CodeBlock({ lang, code }: { lang: string | undefined; code: string }) {
           onClick={() => {
             void navigator.clipboard?.writeText(code).then(() => setCopied(true));
           }}
-          className="flex size-6 items-center justify-center rounded-inner text-tertiary quiet-hover"
+          className="icon-button-quiet icon-button-xs text-fg-tertiary focus-ring"
         >
-          {copied ? <Check className="size-3.5" strokeWidth={1.8} aria-hidden /> : <Copy className="size-3.5" strokeWidth={1.8} aria-hidden />}
+          {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
         </button>
       </div>
-      <pre className="overflow-x-auto px-4 pb-4 pt-1.5 font-mono text-mono scroll-quiet">
+      <pre className="overflow-x-auto px-4 pb-4 pt-1.5 font-mono text-code scroll-quiet">
         <code className={lang ? `language-${lang}` : undefined}>{code}</code>
       </pre>
     </figure>

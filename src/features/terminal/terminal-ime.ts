@@ -40,6 +40,8 @@
  * 영문은 붙들지 않으므로 `hello`는 예전 그대로 한 타에 한 자씩 나간다(실측).
  */
 
+import { IME_KEYCODE } from "@/lib/ime";
+
 /** xterm이 숨은 입력칸에 다는 클래스. 자리를 베끼는 대상이자, 그 움직임을 보는 대상이다. */
 const TEXTAREA = "xterm-helper-textarea";
 
@@ -52,9 +54,6 @@ export interface ImeLook {
   /** 표시 칸의 글자색 — 터미널 바탕색을 쓴다. */
   foreground: string;
 }
-
-/** IME가 아직 그 키를 물고 있다는 신호. xterm도 같은 값을 같은 뜻으로 쓴다. */
-export const IME_KEYCODE = 229;
 
 /**
  * 조합을 **안 끝내는** 키. 누르는 것만으로는 아무 데이터도 안 만드는 키들이다.

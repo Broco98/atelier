@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { FolderGit2, RotateCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
@@ -22,7 +21,7 @@ const IGNORED_NOTE = "gitignore에 걸림";
 const SUBMODULE_NOTE = "하위 모듈";
 
 // 몸 안의 안내 한 줄 — spec 몸의 「아직 spec 파일이 없어요」와 같은 규격이다.
-const NOTE = "px-2 py-1.5 text-ui text-tertiary";
+const NOTE = "px-2 py-1.5 text-chat-meta text-fg-tertiary";
 
 /**
  * files 몸 — 이 work의 워크트리 트리(git-integration 판 01, 결정 37). 프로젝트마다 구획이 하나다.
@@ -175,7 +174,7 @@ function ProjectSection({
       tree,
       rows,
       (items) => (
-        <div ref={rowsBox} className="flex shrink-0 flex-col gap-(--row-gap)">
+        <div ref={rowsBox} className="flex shrink-0 flex-col gap-px">
           <TreeRows items={items} depth={0} {...rowsProps} />
         </div>
       ),
@@ -189,7 +188,7 @@ function ProjectSection({
   if (title === null) return body;
   return (
     <div role="group" aria-labelledby={headingId} className="flex shrink-0 flex-col">
-      <h3 id={headingId} className="truncate px-2 pb-1 pt-2 text-ui font-semibold">
+      <h3 id={headingId} className="truncate px-2 pb-1 pt-2 text-chat-meta font-semibold">
         {title}
       </h3>
       {body}
@@ -273,7 +272,7 @@ const sectionNote = (text: string) => <span className={NOTE}>{text}</span>;
  */
 function FolderNote({ depth, text }: { depth: number; text: string }) {
   return (
-    <div className="flex h-7 items-center pr-2 text-ui text-tertiary" style={treeIndent(depth)} title={text}>
+    <div className="flex h-7 items-center pr-2 text-chat-meta text-fg-tertiary" style={treeIndent(depth)} title={text}>
       <span className="min-w-0 truncate">{text}</span>
     </div>
   );
@@ -300,7 +299,8 @@ function scrollToRow(row: HTMLElement): void {
 
 /**
  * 새로고침 버튼(스토리 16) — files 칸 머리에 선다. 무언가 낡아 보이면 손으로 그 work의 워크트리를 다시 읽는다. 머리 컨트롤의
- * 규격(DS `.at-icon-btn.outline`)은 문서 카드 머리의 경로 복사와 같다.
+ * 규격(DS `.at-ib` 28 · `fg-secondary`)은 `spec` 칸 머리의 spec 폴더 열기와 같다(`WorkPanel`). Tab 정류장임을 `tabIndex`로
+ * 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
  */
 export function FilesRefresh({ slug }: { slug: string }) {
   const queryClient = useQueryClient();
@@ -308,9 +308,12 @@ export function FilesRefresh({ slug }: { slug: string }) {
     <Hint
       text="새로고침"
       announce="name"
-      render={<Button variant="outline" size="icon-round" onClick={() => void refreshWorktrees(queryClient, slug)} />}
+      type="button"
+      tabIndex={0}
+      onClick={() => void refreshWorktrees(queryClient, slug)}
+      className="icon-button-quiet text-fg-secondary focus-ring"
     >
-      <RotateCw className="size-4" strokeWidth={1.8} />
+      <RotateCw className="size-4" />
     </Hint>
   );
 }

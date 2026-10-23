@@ -5,9 +5,10 @@ import { createCSSVariablesTheme, registerCustomTheme, type ThemeRegistration } 
  * 이 이름으로 부른다.
  *
  * 색은 값이 아니라 **변수**다 — 라이브러리의 CSS 변수 테마(shiki `css-variables`)가 토큰마다 `var(--diffs-token-…, 기본값)`을
- * 칠하고, 기본값이 코드 보기 범위 토큰(`--code-syntax-*`, `index.css`의 `[data-code-view]`)을 가리킨다. 그 변수들은 강조 결과가
- * 서는 shadow DOM 안으로 상속돼 들어간다. 바탕과 글자는 앱 전역 토큰(`--background` · `--foreground`)을 그대로 읽는다 —
- * 전역 토큰은 고치지 않는다(결정 38).
+ * 칠하고, 기본값이 앱 전역의 Codex 구문색(`--syntax-*`, `index.css` — 라이트 · 다크 값을 함께 든다)을 가리킨다. 그 변수들은
+ * 강조 결과가 서는 shadow DOM 안으로 상속돼 들어간다. 바탕과 글자도 앱 전역 토큰(`--surface` · `--fg`)을 그대로 읽는다. 한때
+ * 구문색은 이 보기 범위의 토큰(`--code-syntax-*`)이었다 — 전역 토큰을 고치지 않으려던 자리(결정 38)이고, codex-ds가 같은 값을
+ * 전역에 세워 그쪽으로 옮겼다.
  *
  * Codex `syntax-*` 일곱 ↔ shiki `css-variables` 토큰:
  *
@@ -29,17 +30,17 @@ import { createCSSVariablesTheme, registerCustomTheme, type ThemeRegistration } 
  */
 export const CODE_THEME = "atelier-code";
 
-/** shiki `css-variables` 토큰 → 코드 보기 범위 토큰(`--code-syntax-*`). */
+/** shiki `css-variables` 토큰 → 앱 전역 토큰(구문색 `--syntax-*`). */
 const TOKEN_DEFAULTS: Record<string, string> = {
-  foreground: "var(--foreground)",
-  background: "var(--background)",
-  "token-keyword": "var(--code-syntax-keyword)",
-  "token-constant": "var(--code-syntax-literal)",
-  "token-string": "var(--code-syntax-string)",
-  "token-string-expression": "var(--code-syntax-string)",
-  "token-parameter": "var(--code-syntax-variable)",
-  "token-function": "var(--code-syntax-name)",
-  "token-comment": "var(--code-syntax-comment)",
+  foreground: "var(--fg)",
+  background: "var(--surface)",
+  "token-keyword": "var(--syntax-keyword)",
+  "token-constant": "var(--syntax-literal)",
+  "token-string": "var(--syntax-string)",
+  "token-string-expression": "var(--syntax-string)",
+  "token-parameter": "var(--syntax-variable)",
+  "token-function": "var(--syntax-name)",
+  "token-comment": "var(--syntax-comment)",
 };
 
 function codeTheme(): ThemeRegistration {
@@ -55,7 +56,7 @@ function codeTheme(): ThemeRegistration {
     tokenColors: [
       ...(base.tokenColors ?? []),
       // 같은 범위의 뒤 규칙이 앞 규칙의 색을 덮는다(TextMate) — 속성 이름을 `token-function` 무리에서 뗀다.
-      { scope: ["entity.other.attribute-name"], settings: { foreground: "var(--code-syntax-attribute)" } },
+      { scope: ["entity.other.attribute-name"], settings: { foreground: "var(--syntax-attribute)" } },
       // 색은 그대로 두고 기울임만 더한다 — 앞 규칙(`token-comment`)의 색과 합쳐진다.
       { scope: ["comment", "punctuation.definition.comment"], settings: { fontStyle: "italic" } },
     ],

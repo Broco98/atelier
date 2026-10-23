@@ -78,7 +78,7 @@ function ToolLine({ tool }: { tool: ToolEntry }) {
   const fileLink = !running && !view.removed && view.phrase.file ? link(view.phrase.file, lineOf(tool, view.phrase.file)) : null;
 
   const phrase = running ? (
-    <span className="min-w-0 truncate chat-shimmer [--chat-shimmer-dim:var(--chat-fg-tool-running)]">{view.label}</span>
+    <span className="min-w-0 truncate chat-shimmer [--chat-shimmer-dim:var(--fg-tool-running)]">{view.label}</span>
   ) : (
     <span className="min-w-0 truncate">
       {view.phrase.before}
@@ -87,35 +87,35 @@ function ToolLine({ tool }: { tool: ToolEntry }) {
           <button
             type="button"
             onClick={fileLink}
-            className="text-(--chat-fg-tool-running) underline-offset-2 hover:text-foreground hover:underline"
+            className="text-fg-tool-running underline-offset-2 hover:text-fg hover:underline"
           >
             {view.phrase.subject}
           </button>
         ) : (
-          <span className={view.phrase.file ? "text-(--chat-fg-tool-running)" : undefined}>{view.phrase.subject}</span>
+          <span className={view.phrase.file ? "text-fg-tool-running" : undefined}>{view.phrase.subject}</span>
         ))}
       {view.phrase.after}
     </span>
   );
   const line = (
     <>
-      <Icon className="size-4 shrink-0" strokeWidth={1.8} aria-hidden />
+      <Icon className="size-4 shrink-0" aria-hidden />
       {phrase}
       {view.diffs.length > 0 && !running && (
         <span className="shrink-0">
-          <span className="text-(--chat-diff-added)">+{added}</span> <span className="text-(--chat-diff-deleted)">-{deleted}</span>
+          <span className="text-diff-added">+{added}</span> <span className="text-diff-deleted">-{deleted}</span>
         </span>
       )}
       {(view.removed || (view.diffs.length > 0 && view.diffs.every((piece) => piece.written))) && !running && (
         <span
           aria-hidden
-          className={cn("size-[5px] shrink-0 rounded-full", view.removed ? "bg-(--chat-dot-deleted)" : "bg-(--chat-dot-created)")}
+          className={cn("size-[5px] shrink-0 rounded-full", view.removed ? "bg-dot-deleted" : "bg-dot-created")}
         />
       )}
     </>
   );
   const rowClass =
-    "flex w-fit max-w-full min-h-[21px] items-center gap-1.5 text-left text-row leading-(--chat-leading-tool) text-(--chat-fg-tool)";
+    "flex w-fit max-w-full min-h-[21px] items-center gap-1.5 text-left text-sm leading-5.25 text-fg-tool";
   return (
     // 펼친 줄은 아래로 한 틈(4)을 더 둔다 — 상자 바로 밑에 다음 줄이 붙지 않게(묶음의 줄 사이는 4다).
     <div role="group" aria-label={view.label} className={cn("flex min-w-0 flex-col gap-2", expandable && open && "pb-1")}>
@@ -124,15 +124,15 @@ function ToolLine({ tool }: { tool: ToolEntry }) {
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((was) => !was)}
-          className={cn(rowClass, "group transition-colors hover:text-foreground")}
+          className={cn(rowClass, "group transition-colors hover:text-fg")}
         >
           {line}
           {open ? (
-            <ChevronDown className="size-3 shrink-0" strokeWidth={1.8} aria-hidden />
+            <ChevronDown className="size-3 shrink-0" aria-hidden />
           ) : (
             <ChevronRight
               className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              strokeWidth={1.8}
+             
               aria-hidden
             />
           )}
@@ -186,10 +186,10 @@ function Inside({
     return (
       <figure
         aria-label={`${view.mcp.tool} 출력`}
-        className="rounded-(--chat-radius-block) bg-(--chat-surface-code) shadow-(--chat-shadow-code)"
+        className="rounded-xl bg-surface-code inset-ring inset-ring-border-light"
       >
-        <figcaption className="px-4 pt-2.5 pb-1 text-caption text-muted-foreground">{view.mcp.tool}</figcaption>
-        <pre className="overflow-x-auto px-4 pt-1.5 pb-3 font-mono text-mono scroll-quiet">{view.mcp.output}</pre>
+        <figcaption className="px-4 pt-2.5 pb-1 text-xs text-fg-secondary">{view.mcp.tool}</figcaption>
+        <pre className="overflow-x-auto px-4 pt-1.5 pb-3 font-mono text-code scroll-quiet">{view.mcp.output}</pre>
       </figure>
     );
   }
@@ -217,16 +217,16 @@ function ShellOutput({
   return (
     <figure
       aria-label={name}
-      className="flex flex-col gap-2.5 rounded-(--chat-radius-block) bg-(--chat-surface-tool) py-[9px] pr-3 pl-[9px] shadow-(--chat-shadow-tool)"
+      className="flex flex-col gap-2.5 rounded-xl bg-surface-tool py-2.25 pr-3 pl-2.25 inset-ring inset-ring-border-tool"
     >
-      <figcaption className="flex items-center gap-1.5 text-caption text-(--chat-fg-tool)">{label}</figcaption>
+      <figcaption className="flex items-center gap-1.5 text-xs text-fg-tool">{label}</figcaption>
       {command !== null && (
-        <span className="font-mono text-mono break-all whitespace-pre-wrap">
-          <span className="text-tertiary">$</span> {command}
+        <span className="font-mono text-code break-all whitespace-pre-wrap">
+          <span className="text-fg-tertiary">$</span> {command}
         </span>
       )}
       {output !== "" && (
-        <span className="font-mono text-mono break-all whitespace-pre-wrap text-muted-foreground">{output}</span>
+        <span className="font-mono text-code break-all whitespace-pre-wrap text-fg-secondary">{output}</span>
       )}
       {status}
     </figure>
@@ -235,8 +235,8 @@ function ShellOutput({
 
 function StatusText({ ok, children }: { ok: boolean; children: ReactNode }) {
   return (
-    <span className="flex items-center gap-1 self-end text-ui text-(--chat-fg-tool-status)">
-      {ok && <Check className="size-3" strokeWidth={1.8} aria-hidden />}
+    <span className="flex items-center gap-1 self-end text-chat-meta text-fg-tool-status">
+      {ok && <Check className="size-3" aria-hidden />}
       {children}
     </span>
   );
@@ -251,29 +251,29 @@ function DiffView({ piece, name, open }: { piece: DiffPiece; name: string; open:
   return (
     <figure
       aria-label={`${baseName(piece.path)} diff`}
-      className="flex flex-col overflow-hidden rounded-(--chat-radius-block) shadow-(--chat-shadow-diff)"
+      className="flex flex-col overflow-hidden rounded-xl inset-ring inset-ring-diff-border"
     >
-      <figcaption className="flex h-[30px] items-center gap-2 bg-(--chat-diff-header) pr-1.5 pl-2.5 text-ui shadow-(--chat-diff-rule)">
+      <figcaption className="flex h-[30px] items-center gap-2 border-b border-diff-border bg-diff-header pr-1.5 pl-2.5 text-chat-meta">
         {open ? (
           <button
             type="button"
             onClick={open}
-            className="min-w-0 truncate text-left text-(--chat-fg-tool) underline-offset-2 hover:text-foreground hover:underline"
+            className="min-w-0 truncate text-left text-fg-tool underline-offset-2 hover:text-fg hover:underline"
           >
             {name}
           </button>
         ) : (
-          <span className="min-w-0 truncate text-(--chat-fg-tool)">{name}</span>
+          <span className="min-w-0 truncate text-fg-tool">{name}</span>
         )}
-        <span className="shrink-0 text-(--chat-diff-added)">+{piece.added}</span>
-        <span className="shrink-0 text-(--chat-diff-deleted)">-{piece.deleted}</span>
+        <span className="shrink-0 text-diff-added">+{piece.added}</span>
+        <span className="shrink-0 text-diff-deleted">-{piece.deleted}</span>
       </figcaption>
-      <div className="overflow-x-auto font-mono text-mono-sm leading-(--chat-leading-diff) scroll-quiet">
+      <div className="overflow-x-auto font-mono text-xs leading-[21.6px] scroll-quiet">
         {piece.lines.map((line, at) => {
           const key = `${at}`;
           if (line.type === "gap") {
             return (
-              <div key={key} className="pl-[16px] text-tertiary">
+              <div key={key} className="pl-4 text-fg-tertiary">
                 ⋯ {line.count}줄
               </div>
             );
@@ -281,16 +281,16 @@ function DiffView({ piece, name, open }: { piece: DiffPiece; name: string; open:
           const text = <span className="pr-3 pl-3 whitespace-pre">{line.text === "" ? " " : line.text}</span>;
           if (line.type === "add") {
             return (
-              <ins key={key} className="grid grid-cols-[4px_minmax(0,1fr)] bg-(--chat-diff-added-line) no-underline">
-                <span className="bg-(--chat-diff-added)" />
+              <ins key={key} className="grid grid-cols-[4px_minmax(0,1fr)] bg-diff-added-line no-underline">
+                <span className="bg-diff-added" />
                 {text}
               </ins>
             );
           }
           if (line.type === "del") {
             return (
-              <del key={key} className="grid grid-cols-[4px_minmax(0,1fr)] bg-(--chat-diff-deleted-line) no-underline">
-                <span className="bg-[repeating-linear-gradient(135deg,var(--chat-diff-deleted)_0_1px,transparent_1px_2.8px)]" />
+              <del key={key} className="grid grid-cols-[4px_minmax(0,1fr)] bg-diff-deleted-line no-underline">
+                <span className="bg-[repeating-linear-gradient(135deg,var(--diff-deleted)_0_1px,transparent_1px_2.8px)]" />
                 {text}
               </del>
             );
@@ -341,7 +341,7 @@ function Stopped({ tool }: { tool: ToolEntry }) {
       role="group"
       aria-label={title}
       data-tool-stop="stopped"
-      className="flex w-fit max-w-full items-center gap-1.5 text-row leading-(--chat-leading-tool) text-(--chat-fg-tool)"
+      className="flex w-fit max-w-full items-center gap-1.5 text-sm leading-5.25 text-fg-tool"
     >
       <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
         <span className="size-[9px] rounded-xs bg-current" />

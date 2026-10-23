@@ -33,9 +33,19 @@ test("그림 파일은 워크트리 절대 경로의 asset URL로 그림이 선�
     `asset://localhost/${encodeURIComponent("/Users/tester/.atelier/works/pinned-work/trees/billing/shots/home.png")}` +
       "?v=48213-1760000000000",
   );
-  // 몸은 그림 하나다 — 글로 읽은 깨진 원문(줄 번호 붙은 보기)이 함께 서지 않는다.
+  // 몸은 그림 하나다 — 글로 읽은 깨진 원문(줄 번호 붙은 보기)이 함께 서지 않는다. 카드 머리의 탭 줄(`spec` · 파일 탭 — codex-ds
+  // 스펙 §4)은 빼고 읽는다 — 남는 글자는 경로 줄뿐이다.
   await expect(card.locator("img")).toHaveCount(1);
-  await expect(card).toHaveText("billingshotshome.png");
+  await expect
+    .poll(() =>
+      card.evaluate((el) =>
+        [...el.children]
+          .filter((child) => !child.matches("[data-tab-row]"))
+          .map((child) => child.textContent)
+          .join(""),
+      ),
+    )
+    .toBe("billingshotshome.png");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

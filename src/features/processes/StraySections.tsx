@@ -13,7 +13,7 @@ import {
   type ProcessNode,
   type ShownNode,
 } from "./process-tree";
-import { BLOCK, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
+import { Section, SectionButton, TreeRow } from "./tree-rows";
 
 /**
  * **셸 묶음 밑의 네 묶음** — 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31).
@@ -44,10 +44,10 @@ function StraySections({ strays, folds }: { strays: Strays; folds: Folds }) {
           title="확정 고아"
           note={processCount(confirmed.length)}
           // 묻지 않는다(프로세스 결정 6) — 누른 순간 화면에 보인 신원 전부다.
-          action={<RowButton onClick={() => void endProcesses(identitiesOf(confirmed))}>정리</RowButton>}
+          action={<SectionButton onClick={() => void endProcesses(identitiesOf(confirmed))}>정리</SectionButton>}
           fold={folds.section("confirmed")}
         >
-          <div role="tree" aria-label="확정 고아" className={BLOCK}>
+          <div role="tree" aria-label="확정 고아" className="flex flex-col">
             {shownNodes(confirmed, folds.closed).map((shown) => (
               <StrayRow key={keyOf(shown)} shown={shown} level={shown.depth} folds={folds} menu />
             ))}
@@ -60,11 +60,13 @@ function StraySections({ strays, folds }: { strays: Strays; folds: Folds }) {
           title="출처 불명"
           note={processCount(unknown.length)}
           action={
-            <RowButton onClick={() => void askThenEnd(tidyUnknownAsk(unknown.length), identitiesOf(unknown))}>정리</RowButton>
+            <SectionButton onClick={() => void askThenEnd(tidyUnknownAsk(unknown.length), identitiesOf(unknown))}>
+              정리
+            </SectionButton>
           }
           fold={folds.section("unknown")}
         >
-          <div role="tree" aria-label="출처 불명" className={BLOCK}>
+          <div role="tree" aria-label="출처 불명" className="flex flex-col">
             {shownNodes(unknown, folds.closed).map((shown) => (
               <StrayRow key={keyOf(shown)} shown={shown} level={shown.depth} folds={folds} menu />
             ))}
@@ -79,7 +81,7 @@ function StraySections({ strays, folds }: { strays: Strays; folds: Folds }) {
           action={<ViewOnly />}
           fold={folds.section("instances")}
         >
-          <div role="tree" aria-label="다른 인스턴스" className={BLOCK}>
+          <div role="tree" aria-label="다른 인스턴스" className="flex flex-col">
             {instances.map((group) => (
               <InstanceRows key={group.generation ?? ""} group={group} folds={folds} />
             ))}
@@ -94,7 +96,7 @@ function StraySections({ strays, folds }: { strays: Strays; folds: Folds }) {
           action={<ViewOnly />}
           fold={folds.section("exceptions")}
         >
-          <div role="tree" aria-label="예외" className={BLOCK}>
+          <div role="tree" aria-label="예외" className="flex flex-col">
             {shownNodes(exceptions, folds.closed).map((shown) => (
               <StrayRow key={keyOf(shown)} shown={shown} level={shown.depth} folds={folds} />
             ))}
@@ -109,7 +111,7 @@ const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 
 /** 프로세스 결정 10 그림의 「보기 전용」 — 구획 머리의 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {
-  return <span className="shrink-0 px-2 text-caption text-tertiary">보기 전용</span>;
+  return <span className="shrink-0 px-2 text-xs text-fg-tertiary">보기 전용</span>;
 }
 
 /**
@@ -134,7 +136,7 @@ function StrayRow({
       kind="process"
       metrics={row.metrics}
       fold={parent ? folds.row(foldKey.process(row.id), processLabel(row)) : undefined}
-      actions={menu && <RowMenu name={exceptionName(row)} />}
+      menu={menu ? exceptionName(row) : undefined}
     >
       <span title={row.command ?? undefined} className="min-w-0 truncate">
         {processLabel(row)}

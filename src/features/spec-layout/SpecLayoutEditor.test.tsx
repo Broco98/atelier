@@ -195,15 +195,15 @@ describe("트리 카드의 머리 한 줄", () => {
   });
 
   // 휴지통은 붉고, 가리키면 붉은 면이 한 겹 서서 더 짙게 읽힌다. 잠기면 흐린 붉은색이다(구현 스펙 5절 · 프로토타입 뒤 사용자
-  // 선택). 붉은색은 판 03의 `destructive` 토큰이다 — Tailwind 팔레트를 직접 부르지 않는다(판 06 티켓 07).
-  it("휴지통은 destructive 글자이고 가리키면 붉은 면이 서며, 잠기면 흐린 붉은색이다", () => {
+  // 선택). 붉은색은 Codex 뜻의 색 `danger`다 — Tailwind 팔레트를 직접 부르지 않는다(판 06 티켓 07 · codex-ds 스펙 2절).
+  it("휴지통은 danger 글자이고 가리키면 붉은 면이 서며, 잠기면 흐린 붉은색이다", () => {
     const trash = (html: string) => toolsOf(html).find((tool) => tool.name === "고른 항목 지우기")!.className;
     const live = trash(render([1]));
-    expect(live).toMatch(/(^| )text-destructive( |$)/);
-    expect(live).toMatch(/(^| )hover:bg-destructive\/10( |$)/);
+    expect(live).toMatch(/(^| )text-danger( |$)/);
+    expect(live).toMatch(/(^| )hover:bg-danger\/10( |$)/);
     expect(live).not.toMatch(/red-\d/);
     const locked = trash(render([]));
-    expect(locked).toMatch(/(^| )text-destructive\/35( |$)/);
+    expect(locked).toMatch(/(^| )text-danger\/35( |$)/);
     expect(locked).not.toContain("hover:");
   });
 });
@@ -328,7 +328,7 @@ describe("검증 오류", () => {
 
   it("오류 위치의 항목 제목 아래에 붉은 줄이 서고, 다른 자리의 오류는 서지 않는다", () => {
     const detail = detailOf(render([2, 0], errors));
-    const line = /<p\b[^>]*class="[^"]*text-red-600[^"]*"[^>]*>pattern must not be empty<\/p>/.exec(detail);
+    const line = /<p\b[^>]*class="[^"]*text-danger[^"]*"[^>]*>pattern must not be empty<\/p>/.exec(detail);
     expect(line).not.toBeNull();
     // 제목(이름 틀 칸) 아래, 설명 칸 위다
     expect(detail.indexOf('aria-label="이름 틀"')).toBeLessThan(line!.index);
@@ -345,7 +345,7 @@ describe("검증 오류", () => {
 
   it("맨 위 항목의 오류는 spec 폴더 안내 칸 위에 선다", () => {
     const detail = detailOf(render([], errors));
-    const line = /<p\b[^>]*text-red-600[^>]*>`root` has a `kind`<\/p>/.exec(detail);
+    const line = /<p\b[^>]*text-danger[^>]*>`root` has a `kind`<\/p>/.exec(detail);
     expect(line).not.toBeNull();
     expect(line!.index).toBeLessThan(detail.indexOf("<textarea"));
   });
@@ -389,7 +389,7 @@ describe("읽지 못하는 레이아웃", () => {
   });
 });
 
-// 밖 변경 배너(티켓 15 · 결정 22). 초안이 있는데 레이아웃이 밖에서 바뀌면 편집기 머리 아래에 한 줄로 서서 한쪽을
+// 밖 변경 배너(티켓 15 · 결정 22). 초안이 있는데 레이아웃이 밖에서 바뀌면 폼 카드 맨 위에 한 줄로 서서 한쪽을
 // 고르게 한다 — 합치지는 않는다. 언제 서는지는 판정 함수가 잰다(`outside.test.ts`). 여기서는 뜻 셋의 글과 버튼 둘을 잰다.
 describe("밖 변경 배너", () => {
   it.each([

@@ -10,9 +10,9 @@
  * **Tauri의 `onFocusChanged`를 안 쓴다.** 값은 더 정확하겠지만 IPC 구독이 하나 더 늘어 픽스처 백엔드가 모르는 호출이 되고(L3의
  * `unknownIpcCalls`), 얻는 것은 이 DOM 이벤트가 이미 주는 사실 하나다.
  *
- * **이 줄에 그물이 걸려 있다.** 여기가 참을 늘 돌려주면 아무도 안 보는 곳에서 「봤다」가 서는데 그 fail-open은 초록이 안 뜨는 것으로만
+ * **이 줄에 그물이 걸려 있다.** 여기가 참을 늘 돌려주면 아무도 안 보는 곳에서 「봤다」가 서는데 그 fail-open은 안 본 완료가 안 뜨는 것으로만
  * 나타나 화면에서 안 보인다 — 헤드리스 WebKit은 `document.hasFocus()`가 늘 참이라 브라우저에 맡길 수 없어서, L3가 그 함수를 손으로
- * 잡고 「창이 뒤에 있으면 초록 · `●`가 선다」를 잰다(`e2e/terminal-tabs.spec.ts` · `e2e/processes-nav-meta.spec.ts`).
+ * 잡고 「창이 뒤에 있으면 안 본 완료 · `●`가 선다」를 잰다(`e2e/terminal-tabs.spec.ts` · `e2e/processes-nav-meta.spec.ts`).
  */
 export function windowFocused(): boolean {
   // 문서가 없는 자리(웹뷰 밖)에서는 **거짓**이다.

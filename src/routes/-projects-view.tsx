@@ -44,16 +44,13 @@ function ProjectsView({ slug }: { slug: string | null }) {
       // 씨앗으로 삼는다(결정 77·97, `recallSearch`). 오래 `search` 없이 이동해서, 이 문으로
       // 연 work은 spec 기본 문서로 떨어졌을 뿐 아니라 도착한 주소를 적어 두는
       // effect(-works-view.tsx)가 그 기본값으로 **그 work의 기억을 덮어썼다** — 다음에
-      // 사이드바나 팔레트로 돌아와도 마지막 화면이 안 섰다. 목록의 「Works에서 모두 보기」
-      // (work === null)는 work을 여는 것이 아니라 목록으로 가는 것이라 씨앗이 없다.
+      // 사이드바나 팔레트로 돌아와도 마지막 화면이 안 섰다.
       onOpenWork={(work) =>
-        void (work
-          ? navigate({
-              to: "/works/$slug",
-              params: { slug: work },
-              search: recallSearch(work),
-            })
-          : navigate({ to: "/works" }))
+        void navigate({
+          to: "/works/$slug",
+          params: { slug: work },
+          search: recallSearch(work),
+        })
       }
     />
   );

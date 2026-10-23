@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { SquareTerminal } from "lucide-react";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
+import { HOTKEYS } from "@/lib/hotkeys";
 import {
   activeShellOf,
   ownerOf,
@@ -17,9 +18,9 @@ import { attachShell, detachShell, ensureShell, showShell, terminalStore } from 
 import type { WorkView } from "@/features/works/types";
 
 /**
- * 터미널 본문 — 셸이 들어앉는 자리. **머리행은 여기 없다**: 두 화면이 각자 이고 있다.
- * 두 화면 다 같은 줄이다 — Work의 터미널도 `/terminal`도 `ShellTabs`가 머리행이다
- * (결정 7·8). 한때 최상위만 브레드크럼 머리였는데 #142가 그것도 이 줄로 옮겼다.
+ * 터미널 본문 — 셸이 들어앉는 자리. **탭 줄은 여기 없다**: 두 화면이 각자 카드의 머리로 인다.
+ * 두 화면 다 같은 줄이다 — Work의 터미널도 `/terminal`도 `ShellTabs`가 터미널 카드의 머리다
+ * (결정 7·8 · codex-ds 스펙 §4). 한때 최상위만 브레드크럼 머리였는데 #142가 그것도 이 줄로 옮겼다.
  *
  * 이 컴포넌트가 소유하는 것은 **자리 하나뿐이다.** 셸도 xterm도 terminal-store가 들고 있어
  * 이 화면이 사라져도 그대로 산다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
@@ -92,10 +93,11 @@ function TerminalPane({ work }: { work: WorkView | null }) {
     // 상자는 여백을 갖지 않는다 — 여백은 아래 셸의 집 하나가 든다(그래야 그 띠가 셸 색으로 칠해진다).
     // `relative`는 셸이 0개일 때 덮는 안내와 죽은 셸의 안내를 이 영역 안에 세우기 위한
     // 것이다. **위에 형제가 없다**(결정 1) — 종료 줄이 흐름에서 빠지면서 프래그먼트도
-    // 함께 걷혔고, 이 상자가 머리행 바로 아래에서 시작한다.
+    // 함께 걷혔고, 이 상자가 카드 머리(탭 줄) 바로 아래에서 시작한다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {/* 셸이 들어앉는 자리. **안쪽 여백이 `--term-inset`(12)이다**(ui-refresh 판 04 기본값 — 터미널 카드의 안쪽 여백).
-          셸이 둥근 카드에 앉으면서 글자가 모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
+      {/* 셸이 들어앉는 자리. **안쪽 여백이 16(`p-4`)이다**(DS `Terminal` 「안쪽 16」 — 행 글자 16의 세로줄이라 셸 화면이 탭 줄의
+          아이콘과 한 x에 선다, codex-ds 스펙 §4 「여백」). 셸이 둥근 카드에 앉으면서(ui-refresh 판 04 — 그때는 12였다) 글자가
+          모서리에 닿지 않게 됐다. 한때 이 여백이 0이었다(결정 94 — 셸 화면에서 여백은
           빈 배경이라 `cols`가 준다). 여백은 **집의 것**이다 — 셸(xterm 래퍼)은 집의 내용 상자를 100%로 받아 `fit()`이
           여백을 뺀 자리로 격자를 재고, 여백 띠는 아래 칠을 함께 받아 셸 색이다. 카드에 여백을 주면 그 띠가 카드 색이 된다.
 
@@ -109,12 +111,12 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           띠가 된다. 창 높이가 바뀌면 잉여도 0~19px에서 함께 바뀌므로 「16px」을 값으로 어디에도
           적어 두지 않는다. 셀 높이를 억지로 늘려 잉여를 없애는 안은 글꼴을 흔들어서 안 쓴다.
           **셸이 있을 때만 칠한다** — 0개인 화면까지 칠하면 결정 102의 안내가 커다란 어두운
-          판 위에 서고, 그 화면에는 덮을 잉여도 없다. 터미널 카드는 늘 셸 색이므로 그 화면은 아래 덮개가 카드 색(`bg-card`)으로
+          판 위에 서고, 그 화면에는 덮을 잉여도 없다. 터미널 카드는 늘 셸 색이므로 그 화면은 아래 덮개가 카드 색(`bg-surface`)으로
           덮는다. */}
       <div
         ref={hostRef}
         data-shell-host=""
-        className="min-h-0 min-w-0 flex-1 p-(--term-inset)"
+        className="min-h-0 min-w-0 flex-1 p-4"
         style={activeId === null ? undefined : { backgroundColor: shellBackground }}
       />
       {/* 죽은 셸의 한 문장(결정 22·45). **흐름에 끼지 않고 셸 위에 겹쳐 뜬다**(결정 1).
@@ -126,14 +128,14 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           죽은 셸 화면의 첫 행이 가려지는 것이고, 그 행은 스크롤로 되찾을 수 있다.
 
           바탕을 앱 배경으로 두는 것은 지금 모습을 그대로 두려는 것이다: 이 줄은 예전에도
-          앱 배경 위의 `text-muted-foreground`였다. 바탕 없이 셸 위에 얹으면 `#565759`가
-          다크 셸 바탕 `#1e1e1e` 위 2.3:1로 묻힌다.
+          앱 배경 위의 보조 글자였다. 바탕 없이 셸 위에 얹으면 그 글자(어두운 글자의
+          70% — `fg-secondary`)가 다크 셸 바탕 `#181818` 위 1.03:1로 묻힌다.
 
           `pointer-events-none` — 겹친 만큼 xterm이 포인터를 잃으면 안 된다. */}
       {notice !== null && (
         <div
           data-shell-notice=""
-          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-background text-caption text-muted-foreground"
+          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-surface text-xs text-fg-secondary"
         >
           {notice}
         </div>
@@ -147,7 +149,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           일을 하는 버튼이 둘이 되고, 그것을 이 저장소는 두지 않는다(결정 89가 `</>`를
           패널이 열렸을 때 열 머리에서 뺀 것과 같은 규칙).
 
-          **그렇다고 빈 채로 두지 않는다.** 여는 법이 화면 밖(머리행)에 있으므로 아무 말도
+          **그렇다고 빈 채로 두지 않는다.** 여는 법이 본문 밖(탭 줄)에 있으므로 아무 말도
           없는 빈 판은 「아직 없다」가 아니라 **고장**으로 읽힌다. 그래서 남는 것은 조작이
           아니라 **비었다는 표시와 여는 법** — Works의 「아직 작업이 없어요」와 같은 관용구다.
 
@@ -161,25 +163,25 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유).
           빈 화면 부품(Empty)은 그 덮개 **안에** 선다 — 덮개를 부품으로 갈아 끼우지 않는다.
 
-          **덮개가 카드 색으로 칠한다**(`bg-card`). 터미널 카드는 설정의 테마로 칠해져(판 04 기본값) 어둡게면 어두운 판인데,
+          **덮개가 카드 색으로 칠한다**(`bg-surface`). 터미널 카드는 설정의 테마로 칠해져(판 04 기본값) 어둡게면 어두운 판인데,
           그 위에 이 안내가 서면 글자가 묻힌다 — 위 집이 셸이 있을 때만 칠하는 것과 같은 까닭이다. */}
       {shells.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-card p-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface p-10">
           <Empty>
             <EmptyHeader>
               {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를
                   한 번에 잡게 한다. 칸 모양은 다른 빈 화면과 같은 부품의 것이다. */}
               <EmptyMedia variant="icon">
-                <SquareTerminal strokeWidth={1.6} />
+                <SquareTerminal />
               </EmptyMedia>
               <EmptyTitle>아직 셸이 없어요</EmptyTitle>
               <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>
             </EmptyHeader>
-            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 한때 이 키를 「상한에 닿았으면
+            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 글자는 단축키 표의 `newShell`이다. 한때 이 키를 「상한에 닿았으면
                 안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는 것이 되어서인데, 위 주석대로
                 그 조건이 여기서는 늘 거짓이다. */}
             <EmptyContent>
-              <Kbd>⌘T</Kbd>
+              <Kbd>{HOTKEYS.newShell.glyph}</Kbd>
             </EmptyContent>
           </Empty>
         </div>

@@ -38,6 +38,20 @@ export function layoutDirRef(folder: string): string {
   return asDir(folder);
 }
 
+/** 셸이 뜬 폴더: 코어가 내려준 `~` 축약 경로(셸의 `cwd`)에 트레일링 `/`만 보장한다. 셸 탭 메뉴의 「작업 폴더 경로 복사」가
+ *  복사하는 한 줄이다(codex-ds 스펙 §9). 레이아웃 참조와 같은 까닭으로 **뿌리를 여기서 짓지 않는다** — 워크트리 경로는 코어가
+ *  완성해 내려준다. */
+export function cwdRef(cwd: string): string {
+  return asDir(cwd);
+}
+
+/** 프로젝트 폴더: 프로젝트의 `path`(코어가 `~` 축약으로 내려준 등록 경로)에 끝의 `/`만 보장한다. 프로젝트 메뉴의 「경로 복사」가
+ *  복사하는 한 줄이고, 같은 메뉴의 「Finder에서 열기」가 여는 폴더다(codex-ds 티켓 30). 레이아웃 참조와 같은 까닭에 앞머리를 여기서
+ *  다시 짓지 않는다 — 프로젝트는 어디에든 등록되는 저장소라 뿌리가 없다. */
+export function projectDirRef(path: string): string {
+  return asDir(path);
+}
+
 /** 코어가 완성해 내려준 폴더 경로를 폴더 참조로 — 끝의 `/` 하나만 보장한다. */
 function asDir(path: string): string {
   return path.endsWith("/") ? path : `${path}/`;
@@ -60,10 +74,20 @@ export function specRef(slug: string, path: string, start?: number, end?: number
   return withLines(base, start, end);
 }
 
+/** 아카이브 폴더: 아카이브 루트 + `<slug>/` — 기록(`record.md`)과 spec(`spec/`)이 이 아래다. */
+function archiveDirRef(slug: string): string {
+  return `${ARCHIVE_ROOT}${slug}/`;
+}
+
+/** 아카이브된 spec 폴더: 아카이브 폴더 + `spec/` — Archive 메뉴의 「경로 복사」다(「Finder에서 열기」가 여는 폴더와 같다). */
+export function archiveSpecDirRef(slug: string): string {
+  return `${archiveDirRef(slug)}spec/`;
+}
+
 /** 아카이브 문서(+줄범위): `<아카이브 루트><slug>/<path>[:L<n>[-<m>]]`.
  *  path는 **work 루트 기준**이라 기록(`record.md`)과 spec(`spec/…`)이 한 형식으로 나온다 —
  *  아카이브에서 복사한 참조를 에이전트에게 그대로 넘길 수 있어야 한다. */
 export function archiveRef(slug: string, path: string, start?: number, end?: number): string {
-  const base = `${ARCHIVE_ROOT}${slug}/${path}`;
+  const base = `${archiveDirRef(slug)}${path}`;
   return withLines(base, start, end);
 }

@@ -23,7 +23,7 @@ function quoteTitle(quote: Quote): string {
 }
 
 const CHIP =
-  "inline-flex h-[22px] max-w-full min-w-0 items-center gap-1 rounded-full bg-(--chat-accent-soft) text-caption font-medium text-(--chat-link)";
+  "inline-flex h-[22px] max-w-full min-w-0 items-center gap-1 rounded-full bg-accent-soft text-xs font-medium text-link";
 
 /** 입력창에 붙은 인용 — 끝의 ×로 뺀다. */
 export function DraftQuoteChip({ quote, onDrop }: { quote: Quote; onDrop: () => void }) {
@@ -38,7 +38,7 @@ export function DraftQuoteChip({ quote, onDrop }: { quote: Quote; onDrop: () => 
         onClick={onDrop}
         className="flex size-4 shrink-0 items-center justify-center rounded-full tint-hover"
       >
-        <X className="size-3" strokeWidth={1.8} aria-hidden />
+        <X className="size-3" aria-hidden />
       </button>
     </span>
   );

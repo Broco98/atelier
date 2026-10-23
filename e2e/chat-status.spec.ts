@@ -80,8 +80,8 @@ test("상태 점: 대화 탭에 일하는 중 · 나를 기다림 · 끝남 · �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** 탭 줄의 `chat` 탭 — 레일 칸과 이름이 같아 탭 줄의 칸 표식으로 집는다. */
-const chat탭 = (page: Page) => page.locator('header [data-tab="chat"]');
+/** 탭 줄의 `chat` 탭 — 레일 칸과 이름이 같아 탭 줄의 칸 표식으로 집는다. 탭 줄은 본문 카드의 머리다(codex-ds 스펙 §4). */
+const chat탭 = (page: Page) => page.locator('[data-tab="chat"]');
 const 레일기다림 = "나를 기다리는 대화가 있어요";
 const 레일끝남 = "끝났는데 아직 보지 않은 대화가 있어요";
 

@@ -240,6 +240,44 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
         .map_err(|e| e.to_string())
 }
 
+/// Finder 열기 둘(아래 `open_work_folder` · `open_archived_spec_folder`)의 거절 문장. **사라진 폴더는 화면 말로 어느 폴더인지
+/// 말한다**(codex-ds 스펙 §6 「지금처럼 오류 문장」 · §11 「화면 말: 해요체」) — 화면이 이 문장을 「Finder에서 열지 못했어요: 」
+/// 뒤에 그대로 붙여 토스트로 세운다. 손으로 지운 worktree가 이 길이다. 코어의 문장(`folder does not exist: …`)은 CLI · MCP도
+/// 쓰는 영어라 여기서 갈아 끼운다(`open_project_folder`가 제 문장을 여기서 짓는 것과 같은 자리). 그 밖의 거절(모르는 work ·
+/// work에 없는 프로젝트)은 메뉴가 내지 않는 길이라 코어의 문장 그대로다.
+fn folder_err(e: atelier_core::Error) -> String {
+    match e {
+        atelier_core::Error::FolderMissing(folder) => format!("{folder} 폴더가 없어요"),
+        other => err(other),
+    }
+}
+
+/// work 메뉴의 「Finder에서 열기」(codex-ds 스펙 S6) — `project`가 없으면 spec 폴더, 있으면 그 프로젝트의 worktree다.
+/// `open_project_folder`와 같은 모양이다: 화면은 slug(와 프로젝트)만 넘기고 경로는 코어가 푼다(`work_folder`). 폴더가
+/// 없으면 어느 폴더인지 말하는 문장으로 거절한다(`folder_err`).
+#[tauri::command]
+pub async fn open_work_folder(
+    app: tauri::AppHandle,
+    slug: String,
+    project: Option<String>,
+) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let folder = atelier_core::work_folder(&works_dir(), &slug, project.as_deref()).map_err(folder_err)?;
+    app.opener()
+        .open_path(folder.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// 아카이브된 work의 spec 폴더를 연다 — `open_work_folder`와 한 가족이고 뿌리만 보존소다(`archived_spec_folder`).
+#[tauri::command]
+pub async fn open_archived_spec_folder(app: tauri::AppHandle, slug: String) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let folder = atelier_core::archived_spec_folder(&archive_dir(), &slug).map_err(folder_err)?;
+    app.opener()
+        .open_path(folder.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 // PTY 명령 일곱. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 
@@ -973,6 +1011,21 @@ mod tests {
     fn sorted(mut names: Vec<&str>) -> Vec<&str> {
         names.sort_unstable();
         names
+    }
+
+    /// **Finder 열기의 사라진 폴더는 화면 말로 거절한다**(codex-ds 스펙 §6 「지금처럼 오류 문장」 · §11 「화면 말: 해요체」). 화면은 이
+    /// 문장을 「Finder에서 열지 못했어요: 」 뒤에 그대로 붙이므로, 코어의 영어 문장(`folder does not exist: …`)이 건너가면 토스트가 반쯤
+    /// 영어가 된다. 어느 폴더인지는 남는다 — 손으로 지운 worktree가 이 길이다. 두 명령(work · 아카이브)이 같은 거절을 탄다.
+    #[test]
+    fn a_missing_folder_is_refused_in_screen_words() {
+        let missing = atelier_core::Error::FolderMissing("~/.atelier/works/카트/trees/fe".into());
+        assert_eq!(super::folder_err(missing), "~/.atelier/works/카트/trees/fe 폴더가 없어요");
+        // 메뉴가 내지 않는 거절(모르는 work · work에 없는 프로젝트)은 코어의 문장 그대로다.
+        let unknown = atelier_core::Error::WorkNotFound("없는작업".into());
+        assert_eq!(super::folder_err(unknown), "work not found: 없는작업");
+        for command in ["open_work_folder", "open_archived_spec_folder"] {
+            assert!(command_body(command).contains(".map_err(folder_err)?"), "{command}: Finder 열기의 거절 문장을 안 탄다");
+        }
     }
 
     /// **추이 IPC는 배경 표본의 고리를 돌려줄 뿐이다**(티켓 30). 요약이 올 때마다 부르므로, 여기서 표를 찍거나 요약을 새로 모으면

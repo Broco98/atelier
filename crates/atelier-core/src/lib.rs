@@ -73,9 +73,9 @@ pub use store::{
 };
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
-    archive_work, attach_project, get_work, list_archive, list_archived_docs, list_works,
+    archive_work, archived_spec_folder, attach_project, get_work, list_archive, list_archived_docs, list_works,
     move_work, read_spec_file, read_work_file, remove_work, render_record, start_work, update_work_pinned,
-    update_work_status, update_work_title, ArchiveEntry, WorkReport, WorktreeError,
+    update_work_status, update_work_title, work_folder, ArchiveEntry, WorkReport, WorktreeError,
 };
 // 대화 호스트(`atelier-acp`)가 데이터 루트를 받아 work의 제목 · 프로젝트와 자리를 읽는다. `get_work`는 워크트리마다
 // `git status`를 돌고 `~` 축약 문자열을 주므로 그 자리에 맞지 않는다.

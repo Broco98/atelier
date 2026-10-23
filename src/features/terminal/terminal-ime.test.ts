@@ -1,7 +1,8 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { IME_KEYCODE, imeBlur, imeDraws, imeInput, imeKeyDown } from "./terminal-ime";
+import { IME_KEYCODE } from "@/lib/ime";
+import { imeBlur, imeDraws, imeInput, imeKeyDown } from "./terminal-ime";
 
 // 이 판에서 유일하게 **웹뷰가 준 실제 이벤트**로 세운 검사다. 아래 대본은 지어낸 것이 아니라
 // 2026-08-23에 진짜 WKWebView에 두벌식을 프로그램으로 쳐 넣어 받은 로그를 그대로 옮긴 것이다

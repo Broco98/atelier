@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { chatApi, stopTurn } from "./api";
 import { approvalChoices, describeApproval, type ApprovalChoice } from "./approval";
 import { AGENT_LABEL } from "./agents";
-import ChatCard, { CARD_PRIMARY } from "./ChatCard";
+import ChatCard from "./ChatCard";
 import type { PendingPermission } from "./fold";
 import { TOOL_ICONS } from "./tool-icons";
 import type { Agent } from "./types";
@@ -25,6 +25,8 @@ import type { Agent } from "./types";
  * 바꾸며, 줄보다 넓어지지 않는다(앱 단추는 한 줄 · 줄지 않음이 기본이다).
  */
 const WRAPPING = "h-auto min-h-8 max-w-full shrink whitespace-normal py-1 wrap-anywhere";
+/** 칩 · 선택지 단추의 알약 — 32 · `radius-full`(DS `.at-split`). 앱 단추의 알약 크기는 걷혔다(codex-ds 결정 3) — 카드 안 단추 단에 모서리만 덮는다. */
+const PILL = "rounded-full";
 
 interface ApprovalCardProps {
   work: string;
@@ -80,10 +82,9 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
             <Button
               key={choice.option.optionId}
               variant="outline"
-              size="pill-sm"
               disabled={chosen !== null}
               onClick={() => answer(choice)}
-              className={cn(WRAPPING, "min-h-7 text-left")}
+              className={cn(WRAPPING, PILL, "min-h-7 text-left")}
             >
               {choice.label}
             </Button>
@@ -97,7 +98,7 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
             type="button"
             aria-label="멈추기"
             onClick={stop}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-state-3 text-foreground transition-colors hover:bg-state-4"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-fill-hover text-fg transition-colors hover:bg-fill-active"
           >
             <span className="size-2.5 rounded-xs bg-current" aria-hidden />
           </button>
@@ -108,21 +109,19 @@ function ApprovalCard({ work, conversation, agent, request, running }: ApprovalC
               <Button
                 key={choice.option.optionId}
                 variant="outline"
-                size="pill"
                 disabled={chosen !== null}
                 onClick={() => answer(choice)}
-                className={WRAPPING}
+                className={cn(WRAPPING, PILL)}
               >
                 {choice.label}
               </Button>
             ) : (
-              // 주 동작 — 검정 면(캔버스 `.cx-split` · 계획 승인의 「구현」은 `.cx-btn.primary`). 앱의 주 버튼은 파랑이라 여기서 덮는다.
+              // 주 동작 — 검정 면(캔버스 `.cx-split` · 계획 승인의 「구현」은 `.cx-btn.primary`). 앱의 주 버튼이 그 면이다(`ChatCard` 머리말).
               <Button
                 key={choice.option.optionId}
-                size={request.planReview ? "default" : "pill"}
                 disabled={chosen !== null}
                 onClick={() => answer(choice)}
-                className={cn(WRAPPING, CARD_PRIMARY, "font-medium")}
+                className={cn(WRAPPING, !request.planReview && PILL)}
               >
                 {choice.label}
               </Button>

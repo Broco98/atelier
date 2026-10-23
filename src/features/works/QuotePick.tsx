@@ -85,7 +85,7 @@ export function QuotePick({ box, layer, file, mode, onQuote }: QuotePickProps) {
         setPicked(null);
       }}
       style={{ top: picked.top, left: picked.left }}
-      className="absolute z-20 inline-flex h-7 items-center whitespace-nowrap rounded-full bg-foreground px-3 text-caption font-medium text-background shadow-float outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      className="absolute z-20 inline-flex h-7 items-center whitespace-nowrap rounded-full bg-fg px-3 text-xs font-medium text-fg-inverse shadow-prominent outline-none focus-ring"
     >
       ❝ 이 자리를 두고 말하기
     </button>

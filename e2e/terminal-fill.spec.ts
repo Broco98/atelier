@@ -4,7 +4,7 @@ import { WORKS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 — 셸 화면이 위아래로도 꽉 찬다(결정 1). 판 04(ui-refresh)부터 셸은 둥근 터미널 카드에 앉고, 셸의 집이 안쪽
-// 여백 `--term-inset`을 갖는다 — 「꽉 찬다」는 이제 **그 여백 안을** 꽉 채운다는 뜻이고, 여백 띠도 셸 색이다(판 04 기본값).
+// 여백(DS `Terminal`의 안쪽 16 — `--space-4`)을 갖는다 — 「꽉 찬다」는 이제 **그 여백 안을** 꽉 채운다는 뜻이고, 여백 띠도 셸 색이다(판 04 기본값).
 // **이 층에서만 보이는 것 셋이다**: 실제 상자
 // (정적 마크업 seam에는 높이가 없다), 그 상자를 실제로 칠하는 색, 그리고 xterm이 `rows`를
 // 내림으로 재고 남기는 잉여 — 셋 다 진짜 xterm이 떠야 잰다.
@@ -18,9 +18,9 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 const [, plainWork] = WORKS;
 
 interface Fill {
-  /** 셸의 집이 바탕 줄 아래로 밀린 폭. 0이어야 한다 — 집 위에 형제가 하나 더 서면 여기 잡힌다. */
+  /** 셸의 집이 탭 줄 아래로 밀린 폭. 0이어야 한다 — 집 위에 형제가 하나 더 서면 여기 잡힌다. */
   hostAbove: number;
-  /** 셸의 집의 안쪽 여백 토큰(`--term-inset`). 셸 화면은 집 안쪽 이만큼에서 시작한다. */
+  /** 셸의 집의 안쪽 여백 토큰(`--space-4` — DS `Terminal` 16). 셸 화면은 집 안쪽 이만큼에서 시작한다. */
   inset: number;
   /** 셸의 집 위에서 xterm이 그리기 시작하는 데까지. `inset`과 같아야 한다. */
   above: number;
@@ -88,17 +88,18 @@ async function fillOf(page: Page): Promise<Fill> {
 
     const host = document.querySelector("[data-shell-host]")!.getBoundingClientRect();
     const xterm = document.querySelector(".xterm")!.getBoundingClientRect();
-    const header = document.querySelector("header")!.getBoundingClientRect();
+    // 탭 줄 — 셸 칸 상자를 든 카드 머리다(codex-ds 스펙 §11). 셸의 집은 그 바로 아래 터미널 카드의 몸이다.
+    const row = document.querySelector("[data-tab-strip]")!.parentElement!.getBoundingClientRect();
     // 기준은 **셸의 집**이다 — 터미널 카드를 채우는 상자이고 안쪽 여백을 든다. 여백은 토큰에서 읽는다(숫자를 적지 않는다).
-    const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--term-inset"));
+    const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-4"));
     const middle = host.left + host.width / 2;
     // **가로는 `.xterm`이 아니라 `.xterm-screen`으로 잰다.** `.xterm`은 집의 폭을 그대로
     // 받으므로 잉여가 있어도 늘 0이 나온다 — 실제로 글자가 그려지는 상자가 screen이다.
     const screen = document.querySelector(".xterm-screen")!.getBoundingClientRect();
     return {
-      // 바탕 줄 바로 아래부터 재야 「집이 아래로 밀렸다」도 띠로 잡힌다 — 집만 보면
+      // 탭 줄 바로 아래부터 재야 「집이 아래로 밀렸다」도 띠로 잡힌다 — 집만 보면
       // 그 위에 형제가 하나 더 서도 above가 여백 그대로 나온다.
-      hostAbove: host.top - header.bottom,
+      hostAbove: host.top - row.bottom,
       inset,
       left: screen.left - host.left,
       right: host.right - inset - screen.right,
@@ -114,15 +115,15 @@ async function fillOf(page: Page): Promise<Fill> {
 }
 
 /**
- * 띠가 없다 — 셸의 집이 바탕 줄 바로 아래에서 시작하고, 셸 화면은 그 안쪽 `--term-inset`에서 시작하며, 아래는
+ * 띠가 없다 — 셸의 집이 탭 줄 바로 아래에서 시작하고, 셸 화면은 그 안쪽 `--space-4`에서 시작하며, 아래는
  * xterm의 잉여이고 그 자리와 여백 띠가 셸 배경으로 칠해져 있다.
  * 돌려주는 것은 셀 높이다: 창 크기를 바꾸는 검사가 「셸이 따라왔는가」를 그것으로 기다린다.
  */
 async function expectFilled(page: Page, where: string): Promise<number> {
   const fill = await fillOf(page);
   // 앵커: 여백 토큰을 읽었다 — 못 읽으면(NaN) 아래 「여백만큼」이 아무것도 안 잰다.
-  expect(fill.inset, `${where}: --term-inset을 못 읽었다`).toBeGreaterThan(0);
-  expect(fill.hostAbove, `${where}: 셸의 집이 바탕 줄 아래로 ${fill.hostAbove}px 밀렸다`).toBe(0);
+  expect(fill.inset, `${where}: --space-4를 못 읽었다`).toBeGreaterThan(0);
+  expect(fill.hostAbove, `${where}: 셸의 집이 탭 줄 아래로 ${fill.hostAbove}px 밀렸다`).toBe(0);
   expect(fill.above, `${where}: 셸 화면 위에 여백(${fill.inset}px) 아닌 ${fill.above}px 띠가 남았다`).toBe(fill.inset);
   expect(fill.belowColor, `${where}: 셸 화면 아래 ${fill.below}px가 셸 배경이 아니다`).toBe(
     fill.shellColor,

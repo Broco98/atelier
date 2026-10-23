@@ -28,6 +28,9 @@ const MOCKS_SOURCE = readFileSync(
   "utf8",
 );
 
+/** 클립보드 읽기의 와이어 이름 — `@tauri-apps/plugin-clipboard-manager`의 `readText`가 이것으로 나간다. 글자를 심는 도구도 이 줄을 간다. */
+const CLIPBOARD_READ = "plugin:clipboard-manager|read_text";
+
 /**
  * 와이어 층의 `plugin:*` 커맨드. 대응하는 코어 함수가 없어 L3·L4 모두 하네스가 직접 답한다.
  * 이 문자열은 `src/` 트리에 없다 — 전부 의존성 래퍼 안에 있어 소스에서 긁어낼 수 없고,
@@ -53,6 +56,9 @@ const PLUGINS: Record<string, unknown> = {
   // 독 배지(#206 · 스토리 65). 값은 안 쓰이지만 **답이 있어야 화이트리스트를 안 넘는다** —
   // 실제로 무엇이 실려 나갔는지는 IPC 기록에서 읽는다(`e2e/shell-notify.spec.ts`).
   "plugin:window|set_badge_count": null,
+  // 입력칸 · 터미널 메뉴의 붙여넣기가 클립보드를 읽는 길(codex-ds 스펙 S9 · 티켓 31). 기본 답은 글자 한 줄이고, 붙여넣기를 재는
+  // 시나리오는 제 글자를 심는다(`클립보드를심는다`). L4도 이 답을 받는다 — 진짜 클립보드는 검사가 도는 기계의 것이라 읽지 않는다.
+  [CLIPBOARD_READ]: "클립보드의 글자",
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
@@ -397,6 +403,25 @@ export async function replaceAnswer(page: Page, command: string, answer: unknown
       tables.byName[command] = entry;
     },
     { tablesKey: TABLES_KEY, command, entry },
+  );
+}
+
+/**
+ * **클립보드에 글자를 심는다** — 앱이 다음에 클립보드를 읽을 때(`readText` — 입력칸 · 터미널 메뉴의 붙여넣기, 티켓 31) 받을 답을 간다.
+ * 거절(`ipcFailure`)을 주면 빈 클립보드 · 글자가 아닌 것이다 — 플러그인이 그때 거절한다. 페이지가 뜬 뒤에 부르고, 바꾼 답은 위
+ * `replaceAnswer`처럼 같은 표를 지나 처음 답과 같은 문(거절 · 기록)으로 나간다.
+ *
+ * **따로 선 이유**: `replaceAnswer`는 우리 커맨드(`FIXTURE_COMMANDS`)만 받는다 — 그 이름 검사가 개명된 커맨드를 잡는 그물이라 플러그인
+ * 이름까지 넓히지 않는다. 플러그인 답 가운데 시나리오마다 갈아야 하는 것은 이것 하나다.
+ */
+export async function 클립보드를심는다(page: Page, answer: string | ReturnType<typeof ipcFailure>): Promise<void> {
+  await page.evaluate(
+    ({ tablesKey, command, entry }) => {
+      const tables = (window as unknown as Record<string, FixtureTables | undefined>)[tablesKey];
+      if (!tables) throw new Error("installFixtureBackend를 먼저 깔아야 한다");
+      tables.byName[command] = entry;
+    },
+    { tablesKey: TABLES_KEY, command: CLIPBOARD_READ, entry: entryOf(answer) },
   );
 }
 
@@ -880,6 +905,232 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**
+ * 머리 카드 — 창 맨 위 머리 줄(문서의 `header`)에 뜬 흰 카드(codex-ds 스펙 §4). 지금 보는 것의 아이콘 · 이름과 그 화면의 할
+ * 일을 든다. 카드 자신은 역할이 없어(이름은 글자이고 할 일은 저마다 버튼이다) 표식(`data-slot`)으로 집는다. 모든 화면에 하나씩
+ * 선다(codex-ds 스펙 §7) — 할 일이 없는 화면(Terminal · 작업을 고르지 않은 Works)에서는 이름만 든다.
+ *
+ * **여기 사는 이유는 머리 카드를 집는 길을 하나로 두려는 것이다.** 화면마다 머리 카드가 서면 여러 spec이 이 자리를 집는다 —
+ * 선택자를 옮겨 적으면 표식이 바뀌는 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)` · `closest(…) === null`)가 헛돈다. 진열대처럼
+ * 쪽 안의 한 상자에서 집을 때는 그 상자를 건넨다. 페이지 안(`evaluate`)에서 집을 때는 선택자 `HEAD_CARD`를 인자로 넘긴다.
+ */
+export const HEAD_CARD = 'header [data-slot="head-card"]';
+export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
+
+/**
+ * 그 점을 누르면 **창이 끌리는가** — 그 점의 맨 위 요소에서 조상으로 올라가며 Tauri의 판정(`tauri` 2.11 `window/scripts/drag.js`의
+ * `isDragRegion`)을 그대로 따른다. 점 아래에 요소가 없으면 `null`이다(창 밖).
+ * - 속성 `data-tauri-drag-region`이 맨값이면 **누른 요소 자신**일 때만 끈다 — 조상의 맨값은 자식을 누른 것을 끌지 않는다. 회색 틈을
+ *   드러내는 상자마다 이것을 단다(`Frame` 머리말).
+ * - `deep`이면 그 아래 어디를 눌러도 끈다(머리 카드), `false`면 그 아래를 막는다(고치는 동안의 이름 상자).
+ * - 속성 없이 누를 수 있는 요소(버튼 · 링크 · 입력칸 · `tabindex` · 누르는 역할)를 먼저 만나면 끌지 않는다 — 머리 카드의 버튼 · 포커스
+ *   받는 이름이 `deep` 아래에서도 눌리는 까닭이다.
+ * - HTML 요소가 아닌 것(svg 글리프)은 건너뛴다 — 글리프를 누르면 그것을 품은 상자가 판정한다.
+ *
+ * **여기 사는 이유는 끄는 자리를 재는 spec(`frame` · `rail`)이 한 판정을 쓰려는 것이다** — Tauri가 판정을 바꾸는 날 이 한 곳을 고친다.
+ */
+export const 끄는자리 = (page: Page, x: number, y: number) =>
+  page.evaluate(
+    ([px, py]) => {
+      const target = document.elementFromPoint(px, py);
+      if (!target) return null;
+      const tags = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "LABEL", "SUMMARY"]);
+      const roles = new Set(["button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option"]);
+      const clickable = (el: HTMLElement) =>
+        tags.has(el.tagName) ||
+        (el.hasAttribute("contenteditable") && el.getAttribute("contenteditable") !== "false") ||
+        (el.hasAttribute("tabindex") && el.getAttribute("tabindex") !== "-1") ||
+        roles.has(el.getAttribute("role") ?? "");
+      for (let el: Element | null = target; el; el = el.parentElement) {
+        if (!(el instanceof HTMLElement)) continue;
+        const attr = el.getAttribute("data-tauri-drag-region");
+        if (clickable(el) && attr === null) return false;
+        if (attr === null) continue;
+        if (attr === "false") return false;
+        if (attr === "deep") return true;
+        if (attr === "" || attr === "true") return el === target;
+      }
+      return false;
+    },
+    [x, y],
+  );
+
+/**
+ * 메뉴 카드의 **줄 차례** — 카드에 바로 선 줄을 위에서부터, 항목은 제 글자로 구분선은 「—」로 읽는다. 묶음은 구분선이 가르므로
+ * 항목 순서와 구분선 수를 따로 세면 구분선이 다른 틈으로 옮겨 가도 그대로 통과한다 — 한 목록으로 읽어야 묶음이 재진다. 하위 메뉴
+ * 카드는 제 포털에 서서 부모 카드의 줄에 안 섞인다.
+ *
+ * **여기 사는 이유는 ⋯ 메뉴와 우클릭 메뉴를 같은 잣대로 읽으려는 것이다**(codex-ds 결정 6) — 두 메뉴의 차례를 재는 spec이 둘이다
+ * (`works-floating.spec.ts` · `work-context-menu.spec.ts`).
+ */
+export const 줄차례 = (menu: Locator) =>
+  menu.evaluate((card) =>
+    [...card.children].flatMap((row) => {
+      const role = row.getAttribute("role");
+      if (role === "separator") return ["—"];
+      return role === "menuitem" ? [row.textContent ?? ""] : [];
+    }),
+  );
+
+/**
+ * 메뉴 카드가 **다 떴을 때까지** 기다린다 — 뜨는 동안은 카드가 작게 시작해 커지므로(열림 애니메이션) 그 사이의 상자는 자리가 어긋난다.
+ *
+ * **여기 사는 이유는 카드의 자리를 재는 spec들이 한 기다림을 쓰려는 것이다** — ⋯ · 우클릭 · ⇧F10 메뉴가 선 자리를 재는 spec이 여럿이다
+ * (`edit-menu` · `work-context-menu` · `shell-tab-menu` · `target-menus` · `processes-strays` · `spec-layout-page`).
+ */
+export const 다떴다 = (menu: Locator) =>
+  menu.evaluate((el) => Promise.all(el.getAnimations().map((one) => one.finished.catch(() => undefined))));
+
+/**
+ * 주소를 바꾸는 부름(`pushState` · `replaceState`)을 그 차례로 적기 시작한다 — 적힌 것은 `적힌주소`가 읽고, `표를꽂는다`가 그 줄에
+ * 「표」를 끼운다. ⌃클릭이 **아무 데도 안 갔다**를 기다려서 보지 않고(언제까지 기다리나가 없다) 재는 길이다: ⌃클릭 뒤에 표를 꽂고
+ * ⌃ 없는 클릭으로 가게 하면, 적힌 줄의 첫 칸이 그 표일 때 ⌃클릭은 주소를 안 바꿨다.
+ *
+ * **여기 사는 이유는 누르면 가는 대상마다 ⌃클릭의 거름을 같은 길로 재려는 것이다**(codex-ds 결정 7) — work 행 · 띠 줄
+ * (`work-context-menu`)과 프로젝트 · Archive 목록 행 · spec 트리 파일 행(`target-menus`).
+ */
+export const 주소적기 = (page: Page) =>
+  page.evaluate(() => {
+    const log: string[] = [];
+    (window as unknown as { 주소들: string[] }).주소들 = log;
+    for (const method of ["pushState", "replaceState"] as const) {
+      const original = history[method].bind(history);
+      history[method] = (...args: Parameters<History["pushState"]>) => {
+        log.push(String(args[2]));
+        original(...args);
+      };
+    }
+  });
+export const 표를꽂는다 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들.push("표"));
+export const 적힌주소 = (page: Page) => page.evaluate(() => (window as unknown as { 주소들: string[] }).주소들);
+
+/**
+ * 검색 팔레트의 「검색어」 칸. 창 안을 집으려면 그 창을 넘긴다(`검색어칸(dialog)`).
+ *
+ * **여기 사는 이유는 그 칸을 집는 길을 하나로 두려는 것이다** — 팔레트를 여는 spec마다 이 칸을 집는다(`search-palette` ·
+ * `settings-nav` · `shell-focus` · `edit-menu` · `quit-confirm`, 아래 `검색팔레트를연다`).
+ */
+export const 검색어칸 = (scope: Page | Locator) => scope.getByRole("textbox", { name: "검색어", exact: true });
+
+/**
+ * ⌘K로 검색 팔레트를 열고 「검색어」 칸이 포커스를 받기까지 기다린다. **연 뒤에 그 칸의 포커스를 딛고 이어 가는 검사(키를 누른다 ·
+ * 글자를 넣는다 · 그 포커스가 남는지 본다)는 이것으로 연다** — 창은 첫 포커스를 다음 프레임에 옮기고(Base UI), 그 전의 글자 아닌
+ * 키(방향키 · Enter · Esc · ⇧F10)는 첫 프레임 가드가 삼킨다(S24). 줄이 다 섰어도 포커스는 아직일 수 있어서, 부하가 있으면 그 키가
+ * 삼켜져 팔레트가 남는다.
+ *
+ * 이것으로 열지 않는 검사가 있다. ⌘K 바로 뒤의 틈을 재는 검사(`search-palette`의 「셸에서 ⌘K로 연 바로 뒤에 친 글자는 …」)는
+ * 기다리면 그 틈이 지나간다. 연 뒤에 칸을 안 쓰는 검사(마우스로 고르기 · 종료 요청 · 안 열림)는 기다릴 까닭이 없다. 메뉴가 열린
+ * 채 ⌘K를 누르는 검사(`edit-menu`)는 칸에 온 포커스가 재는 것 자체라 제 단언으로 잰다.
+ *
+ * **여기 사는 이유는 ⌘K 뒤의 기다림을 한 벌로 두려는 것이다** — 연 뒤에 칸이 포커스를 쥐어야 하는 spec이 여럿이다
+ * (`search-palette` · `works-recent` · `settings-nav` · `shell-focus` · `edit-menu` · `quit-confirm`, L4 `works-recent.l4`).
+ */
+export async function 검색팔레트를연다(page: Page): Promise<void> {
+  await page.keyboard.press("Meta+k");
+  await expect(검색어칸(page)).toBeFocused();
+}
+
+/**
+ * 버튼 메뉴(⋯ · 상태 메뉴)를 **누른 채 끌어 그 줄 위에서 놓는다** — 놓은 줄이 돌고 카드가 닫혀야 한다. 우클릭 메뉴의 뿌리가 그 버튼
+ * 메뉴의 조상이면 Base UI가 그 밑의 줄을 모두 「우클릭 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음만 받는다 — 왼쪽 버튼으로 끌어 놓으면 메뉴가
+ * 열린 채 아무것도 안 돈다. 이 몸짓이 그 함정(편집 메뉴 · 대상 메뉴가 버튼 메뉴를 감싸는 것)을 잰다.
+ *
+ * **여기 사는 이유는 버튼 메뉴를 품은 자리마다 같은 몸짓으로 재려는 것이다** — Works 머리 카드(`edit-menu`) · Processes 행
+ * (`processes-strays`) · spec 레이아웃 행(`spec-layout-page`).
+ */
+export async function 끌어놓는다(page: Page, button: Locator, row: (menu: Locator) => Locator): Promise<void> {
+  const box = (await button.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await 다떴다(menu);
+  // 누른 뒤 200ms 안의 놓음은 고름으로 치지 않는다(Base UI — 누르고 바로 떼면 메뉴가 열린 채 남는다). 그 뒤에 놓는다.
+  await page.waitForTimeout(250);
+  const at = (await row(menu).boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(menu).toHaveCount(0);
+}
+
+/**
+ * Tab을 눌러 `target`에 포커스가 올 때까지 간다. `최대` 번 안에 못 닿으면 던진다 — 그 자리가 Tab 정류장이 아니다.
+ *
+ * **여기 사는 이유는 「Tab이 닿는가」를 한 몸짓으로 재려는 것이다** — 링을 Tab이 온 길로 재는 `primitives`와 창의 Tab 차례를 재는
+ * `keyboard`가 이것을 쓴다. `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
+ */
+export async function 탭으로(page: Page, target: Locator, 최대 = 120): Promise<void> {
+  await expect(target).toBeVisible();
+  for (let n = 0; n < 최대; n += 1) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  throw new Error(`Tab ${최대}번 안에 닿지 않았다 — ${target}`);
+}
+
+/** 포커스가 선 자리 하나 — 창의 어느 영역인가 · 그 요소의 이름(접근성 이름 · 글자) · 목록의 행이면 그 키(`data-roving`). */
+export interface 포커스자리 {
+  영역: "창 컨트롤" | "사이드바" | "머리 카드" | "머리 줄" | "본문" | "패널" | "레일" | "그 밖";
+  이름: string;
+  행: string | null;
+}
+
+/**
+ * 지금 포커스가 선 자리(`포커스자리`) — 포커스가 없으면(`body`) `null`. 영역은 창의 Tab 차례를 이루는 상자들이다(codex-ds 스펙 §9):
+ * 창 컨트롤(사이드바 토글이 선 줄) · 사이드바(`#app-sidebar`) · 머리 카드 · 머리 줄(카드 밖 — 레일이 설 때의 패널 토글) · 레일 ·
+ * 패널(사이드바가 아닌 `aside`) · 본문(카드).
+ */
+export const 포커스자리 = (page: Page): Promise<포커스자리 | null> =>
+  page.evaluate((headCard) => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || el === document.body) return null;
+    const controls = document.querySelector('[aria-label="사이드바 토글"]')?.parentElement;
+    const 영역 = controls?.contains(el)
+      ? "창 컨트롤"
+      : el.closest("#app-sidebar")
+        ? "사이드바"
+        : el.closest(headCard)
+          ? "머리 카드"
+          : el.closest("header")
+            ? "머리 줄"
+            : el.closest('[role="group"][aria-label="레일"]')
+              ? "레일"
+              : el.closest("aside")
+                ? "패널"
+                : el.closest('[data-slot="card"], main')
+                  ? "본문"
+                  : "그 밖";
+    const 이름 = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
+    return { 영역, 이름, 행: el.getAttribute("data-roving") } as const;
+  }, HEAD_CARD);
+
+/**
+ * 포커스를 내려놓고 Tab을 누르며 선 자리를 차례로 적는다 — 첫 자리로 돌아오거나 포커스가 창 밖(`body`)으로 나가면 멈춘다. `최대`
+ * 번 안에 안 끝나면 던진다. `범위`(선택자)를 주면 그 안에 선 자리만 적는다 — 앱 화면 위에 세운 진열대가 그렇다. 창의 Tab 차례
+ * (영역 순서 · 목록마다 정류장 하나)를 재는 `keyboard` spec이 쓴다.
+ */
+export async function 탭차례(page: Page, { 범위, 최대 = 80 }: { 범위?: string; 최대?: number } = {}): Promise<포커스자리[]> {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const 자리들: 포커스자리[] = [];
+  let 첫: string | null = null;
+  for (let n = 0; n < 최대; n += 1) {
+    await page.keyboard.press("Tab");
+    const 지금 = await 포커스자리(page);
+    if (지금 === null) return 자리들;
+    const 표 = await page.evaluate((scope) => {
+      const el = document.activeElement as HTMLElement & { __탭표?: string };
+      if (scope !== null && el.closest(scope) === null) return null;
+      el.__탭표 ??= Math.random().toString(36).slice(2);
+      return el.__탭표;
+    }, 범위 ?? null);
+    if (표 === null) continue;
+    if (표 === 첫) return 자리들;
+    첫 ??= 표;
+    자리들.push(지금);
+  }
+  throw new Error(`Tab ${최대}번 안에 한 바퀴를 못 돌았다`);
+}
+
+/**
  * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
  * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
  *
@@ -889,16 +1140,34 @@ export const 띠 = (page: Page) => page.locator("[data-band]");
 export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /**
+ * 떠 있는 호버 카드 — 사이드바 작업 행의 카드(`SidebarWorkList`)다. 한 번에 하나만 선다.
+ *
+ * **카드만 드는 필드 표(`[data-card-fields]`)를 품은 상자로 좁힌다.** 카드의 상자 표식(`[data-popover]`)은 메뉴 · Select · Popover
+ * 카드도 단다 — 상자 표식으로 세면 「메뉴가 열린 동안 카드가 없다」가 열린 메뉴 카드를 세어 빨개지고, 「카드가 섰다」는 메뉴만 떠도
+ * 초록이 된다. 여기 사는 이유는 `툴팁`과 같다 — 카드의 시간을 재는 spec(`hover-timing` · `works-floating`)이 한 길로 집는다.
+ */
+export const 호버카드 = (page: Page) =>
+  page.locator("[data-popover]").filter({ has: page.locator("[data-card-fields]") });
+
+/**
  * 대비를 재는 **페이지 안** 계산(WCAG 대비비 — 1에서 21). 직렬화되어 페이지로 가므로 모듈의 이름을 못 읽는다.
  *
- * 바탕은 `backs`에서 처음 만나는 **불투명한** 색이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에
- * 달려 잴 수 없다). 글자색(`ink`)은 제 알파에 `opacity`를 곱해 그 바탕 위에 섞은 색으로 잰다 — 눈에 닿는 색이다.
+ * `layers`는 글자에서 바깥으로 올라가는 겹이다 — 겹 하나는 요소 하나의 배경색과 불투명도다. 바탕은 그 가운데 처음 만나는
+ * **불투명한** 배경이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에 달려 잴 수 없다). 바탕과 글자 사이의
+ * **반투명한 면은 바탕 위에 차례로 섞는다** — 사이드바의 고른 행(`fill-hover`)처럼 글자 바로 밑에 깔린 면이다.
+ * 건너뛰면 그 면의 알파가 커져 대비가 바닥 아래로 내려가도 맨 바탕 위의 값으로 초록이 된다. 글자색(`ink`)은 그렇게 섞은 면 위에
+ * 섞는다 — 눈에 닿는 색이다.
  *
- * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는 대비를 못 잰다.
- * 그리고 브라우저는 `oklch`를 그대로 돌려준다(WebKit 실측: `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한
- * 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다 짧고 새지 않는다.
+ * **불투명도는 그 요소가 그리는 것 전부(제 배경 · 자손 · 글자)에 걸린다.** 그래서 겹 하나의 알파는 제 알파에 그 요소부터 바탕 바로
+ * 안쪽까지의 불투명도를 곱한 값이고, 글자의 알파는 글자 요소부터 거기까지의 곱이다. 바탕과 그 바깥의 불투명도는 바탕과 글자를
+ * 함께 옅게 하므로 셈에 넣지 않는다.
+ *
+ * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 hex · 알파(`rgba`) · `color-mix(…)`로 갈려 있어 「무슨 색을 골랐나」로는
+ * 대비를 못 잰다. 그리고 브라우저는 `oklch` · `color(…)` 같은 표기를 그대로 돌려준다(WebKit 실측:
+ * `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다
+ * 짧고 새지 않는다.
  */
-const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[]; opacity: number }): number => {
+const contrastInPage = ({ ink, layers }: { ink: string; layers: { back: string; opacity: number }[] }): number => {
   const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
   if (!pen) throw new Error("캔버스를 못 열었다 — 색을 읽을 수 없다");
   const rgba = (color: string): [number, number, number, number] => {
@@ -909,11 +1178,21 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
     const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
     return [r, g, b, a / 255];
   };
-  const back = backs.map(rgba).find(([, , , a]) => a === 1);
-  if (!back) throw new Error(`대비를 잴 수 없다 — 불투명한 바탕이 없다: ${backs.join(" · ")}`);
+  const painted = layers.map(({ back, opacity }) => ({ color: rgba(back), opacity }));
+  const base = painted.findIndex(({ color: [, , , a] }) => a === 1);
+  if (base < 0) throw new Error(`대비를 잴 수 없다 — 불투명한 바탕이 없다: ${layers.map(({ back }) => back).join(" · ")}`);
+  const over = (under: number[], [r, g, b]: number[], alpha: number) =>
+    [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * under[at]);
+  // 바탕에서 글자 쪽으로 겹을 올린다 — `fade`는 지금 겹부터 바탕 바로 안쪽까지의 불투명도 곱이다.
+  let back = painted[base].color.slice(0, 3);
+  let fade = 1;
+  for (let at = base - 1; at >= 0; at -= 1) {
+    const { color, opacity } = painted[at];
+    fade *= opacity;
+    back = over(back, color, color[3] * fade);
+  }
   const [r, g, b, a] = rgba(ink);
-  const alpha = a * opacity;
-  const mixed = [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * back[at]);
+  const mixed = over(back, [r, g, b], a * fade);
   const luminance = (channels: number[]) => {
     const [lr, lg, lb] = channels.map((channel) => {
       const c = channel / 255;
@@ -921,7 +1200,7 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
     });
     return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
   };
-  const [light, dark] = [luminance(mixed), luminance(back.slice(0, 3))].sort((x, y) => y - x);
+  const [light, dark] = [luminance(mixed), luminance(back)].sort((x, y) => y - x);
   return (light + 0.05) / (dark + 0.05);
 };
 
@@ -933,23 +1212,172 @@ const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[];
  * 손잡이가 생겨 색 읽기를 바로잡는 날) 같은 「대비 바닥」을 두 spec이 다른 값으로 잰다.
  */
 export const 색대비 = (page: Page, 앞: string, 뒤: string): Promise<number> =>
-  page.evaluate(contrastInPage, { ink: 앞, backs: [뒤], opacity: 1 });
+  page.evaluate(contrastInPage, { ink: 앞, layers: [{ back: 뒤, opacity: 1 }] });
 
 /**
- * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는
- * 길이 색 토큰(`text-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
- * 없으면 흰 바탕이다(문서의 바탕).
+ * 토큰 하나를 브라우저가 쓰는 색 문자열로 바꾼다 — 빈 상자에 `background-color: var(--name)`을 칠해 읽는다.
+ * **값을 검사에 손으로 적지 않기 위해서다** — 색을 박아 두면 팔레트를 손보는 날 그 줄이 정본과 갈리고, 무엇보다
+ * 「화면이 그 토큰을 그대로 읽는가」를 못 재게 된다. `getPropertyValue("--surface")`는 적힌 글자(`#ffffff`)를 돌려줘
+ * `getComputedStyle(el).backgroundColor`(`rgb(…)`)와 바로 못 맞대므로 칠해서 읽는다.
+ *
+ * `다크`면 상자를 `.dark` 상자 안에 둔다 — 앱이 `.dark`를 켜지 않은 채로 DS 다크 값을 읽는 길이다(터미널의 어둡게
+ * 테마는 앱 팔레트와 따로 켜진다). 별칭이 `.dark`에서도 다시 풀리는 것은 `index.css`의 별칭 묶음(`:root, .dark`)이 든다.
+ *
+ * **여기 사는 이유는 토큰을 색으로 바꾸는 길을 한 벌로 두려는 것이다** — 아래 「안 풀렸다」의 판정이 spec마다 갈리면
+ * 한쪽만 fail-open이 된다.
+ */
+export const 토큰색 = async (page: Page, name: string, { 다크 = false }: { 다크?: boolean } = {}) => {
+  const 색 = await page.evaluate(
+    ([one, dark]) => {
+      const probe = document.createElement("div");
+      probe.style.backgroundColor = `var(${one})`;
+      const holder = dark ? document.createElement("div") : null;
+      holder?.classList.add("dark");
+      holder?.appendChild(probe);
+      document.body.appendChild(holder ?? probe);
+      const 값 = getComputedStyle(probe).backgroundColor;
+      (holder ?? probe).remove();
+      return 값;
+    },
+    [name, 다크] as const,
+  );
+  // **fail-closed.** 없는 `var()`는 computed 시점에 그 선언을 통째로 무효로 만들고 프로퍼티가 초기값(투명,
+  // `rgba(0, 0, 0, 0)` — WebKit 실측)으로 떨어진다. 그대로 돌려주면 팔레트가 지워지는 날 견줌이 **양쪽 다 투명**이라
+  // 전부 초록이 된다 — 토큰이 죽으면 그 토큰을 읽는 유틸리티 규칙도 함께 죽어 칠해질 자리도 투명해지기 때문이다.
+  // 여기서 끊으면 그날 검사가 색이 아니라 **원인**을 말한다.
+  if (색 === "rgba(0, 0, 0, 0)" || 색 === "") throw new Error(`토큰 ${name}이 안 풀렸다 — ${색 || "빈 값"}`);
+  return 색;
+};
+
+/**
+ * 다크 · 라이트 팔레트를 손으로 갈아 끼운다 — `.dark`를 켜거나 끈다(codex-ds 결정 17 — 앱에 아직 켜는 손잡이가 없고, `index.css`의
+ * `.dark` 블록이 곧 그 팔레트의 정본이다).
+ *
+ * **갈아 끼운 뒤 색의 전환이 끝날 때까지 기다린다.** `transition-colors`를 단 것은 팔레트가 바뀐 직후 150ms 동안 **라이트와
+ * 다크 사이의 중간값**이다 — 그 순간을 재면 다크 배경 위의 라이트 글자색을 재게 된다(실측 1.17 — 사이드바 행의 글자색을
+ * 물려받던 신호의 마크에서 났다). 끝이 있는 애니메이션만 기다린다 — 도는 스피너 · 흐르는 마퀴는 끝나지 않아, 다 기다리면
+ * 영영 안 돌아온다. 도중에 걷힌 것(`finished`가 거절된다)은 끝난 것으로 본다.
+ *
+ * **팔레트가 정말 바뀌었는지를 여기서 먼저 센다**(fail-closed). 테마마다 값이 갈리는 토큰(`--surface`)이 켜고 끈 뒤 다른 색이어야
+ * 한다 — `.dark`가 안 먹으면(클래스 이름이 바뀌거나 선택자가 `[data-theme]`로 옮겨 가면) 뒤의 견줌이 라이트를 다시 재고, 두
+ * 테마에서 같은 값인 자리(위험 버튼의 흰 글자 · 스위치 손잡이)는 조용히 초록이 된다. 이미 그 테마면 바뀔 것이 없어 세지 않는다.
+ *
+ * **여기 사는 이유는 갈아 끼우는 길을 한 벌로 두려는 것이다** — spec마다 적으면 기다림 · 확인이 갈린다(세 벌이 있던 동안
+ * 한 벌은 끝없는 애니메이션까지 기다려 스피너가 도는 화면에서는 돌아오지 않는 꼴이었고, 팔레트가 바뀌었는지는 두 벌만 셌다).
+ */
+export async function 팔레트(page: Page, 다크: boolean): Promise<void> {
+  const 켜져있다 = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+  const 전 = await 토큰색(page, "--surface");
+  await page.evaluate(async (on) => {
+    document.documentElement.classList.toggle("dark", on);
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
+        .map((one) => one.finished.catch(() => undefined)),
+    );
+  }, 다크);
+  if (켜져있다 === 다크) return;
+  expect(await 토큰색(page, "--surface"), `.dark를 ${다크 ? "켰는데" : "껐는데"} 팔레트가 그대로다 — surface`).not.toBe(전);
+}
+
+/**
+ * 토큰 하나를 그 속성에 칠한 computed 값 — 빈 상자에 `속성: var(--이름)`을 주고 읽는다(위 `토큰색`과 같은 길이고, 색이 아닌
+ * 속성이다). 칠해진 자리와 같은 꼴(`16px` · `0.22s` · `rgba(…) 0px 0px 0px 0.5px`)로 나와 바로 맞댄다. `앞말`은 토큰 앞에 붙여 칠하는
+ * 낱말이다 — 카드의 링은 같은 토큰을 안쪽(`inset`)에 칠한다(`Frame`의 `Card`).
+ * **fail-closed** — 안 풀린 `var()`는 그 선언을 무효로 만들어 속성이 초기값으로 떨어진다. 그 값이면 던진다: 토큰이 지워진 날 칠해진
+ * 자리도 같은 초기값이라, 견줌이 양쪽 다 초기값으로 초록이 된다.
+ *
+ * **여기 사는 이유는 `토큰색`과 같다** — 반경 · 그림자 · 크기 · 시간을 재는 spec(`frame` · `primitives`)이 한 판정을 쓴다.
+ */
+export const 토큰값 = (page: Page, property: string, name: string, 앞말 = "") =>
+  page.evaluate(
+    ([prop, one, lead]) => {
+      const probe = document.createElement("div");
+      document.body.appendChild(probe);
+      const initial = getComputedStyle(probe).getPropertyValue(prop);
+      probe.style.setProperty(prop, `${lead} var(${one})`.trim());
+      const value = getComputedStyle(probe).getPropertyValue(prop);
+      probe.remove();
+      if (value === initial) throw new Error(`토큰 ${one}이 ${prop}에 안 풀렸다 — ${value}`);
+      return value;
+    },
+    [property, name, 앞말] as const,
+  );
+
+/**
+ * 시간 토큰 하나를 ms 수로 — 칠해진 값은 `0.15s` 꼴로 나온다(위 `토큰값`). 시계로 지연을 재는 spec(`hover-timing` · `works-floating`)이
+ * 리터럴 대신 이것을 쓴다 — 리터럴로 적으면 토큰을 고친 날 검사만 옛 길이를 잰다.
+ */
+export async function 토큰시간(page: Page, name: string): Promise<number> {
+  const value = await 토큰값(page, "transition-duration", name);
+  const time = parseFloat(value);
+  return value.endsWith("ms") ? time : time * 1000;
+}
+
+/**
+ * 그 안 첫 글자가 선 자리(왼쪽 x · 위 y · 오른쪽 끝) — 비지 않은 첫 글자 마디를 `Range`로 잰다. 요소의 상자는 안쪽 여백을 품어
+ * 글자 자리가 아니다. 거터 · 행 글자의 세로줄을 재는 spec(`path-bar` · `spacing`)이 한 판정을 쓴다.
+ */
+export const 첫글자 = (scope: Locator) =>
+  scope.evaluate((root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => (node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    const text = walker.nextNode();
+    if (!text) throw new Error("글자 마디가 없다");
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const box = range.getBoundingClientRect();
+    return { x: box.left, y: box.top, right: box.right };
+  });
+
+/** 그 요소에 칠해진 속성 값들(computed style) — 부른 차례대로다. */
+export const 칠한값 = (target: Locator, ...properties: string[]) =>
+  target.evaluate((el, props) => props.map((one) => getComputedStyle(el).getPropertyValue(one)), properties);
+
+/**
+ * **대상 테두리** — 포커스 링과 같은 accent 1px 실선이다(`focus-ring`의 `[data-menu-target]`, codex-ds 결정 11). 없으면 `null`. 메뉴가
+ * 열린 동안은 포커스가 카드에 있어 대상은 포커스 링을 안 입는다 — 이 테두리가 곧 「어느 것의 메뉴인가」의 표식이다.
+ *
+ * **여기 사는 이유는 대상 메뉴를 재는 spec들이 한 잣대로 읽으려는 것이다** — 테두리의 모양(결정 11)이 바뀌는 날 이 한 곳을 고친다.
+ */
+export const 테두리 = async (target: Locator) => {
+  const [굵기, 모양, 색] = await 칠한값(target, "outline-width", "outline-style", "outline-color");
+  return 모양 === "none" ? null : `${굵기} ${모양} ${색}`;
+};
+
+/**
+ * 칠해진 `box-shadow`에서 Tailwind가 앞에 까는 **빈 층**을 걷는다 — 그림자 유틸리티는 링 · 안쪽 그림자 자리(`--tw-ring-shadow` …)를
+ * 투명한 0 그림자로 먼저 깔고 제 그림자를 맨 뒤에 둔다. 걷고 남은 것이 토큰의 그림자다.
+ */
+export const 그림자 = (painted: string) => painted.replace(/^(?:rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, )+/, "");
+
+/**
+ * 그 요소에 칠해진 `box-shadow`를 층으로 갈라 투명한 빈 층을 걷은 나머지 — 링 유틸리티(`inset-ring-*`)만 두른 자리면 그 링 하나가
+ * 남는다. `그림자`와 같은 빈 층을 걷되 층의 자리를 가리지 않고, 층마다 따로 맞대도록 목록으로 돌려준다. 층 사이의 쉼표만 가르고
+ * 색 함수(`rgb(…)`) 안의 쉼표는 둔다.
+ */
+export const 칠한링 = async (target: Locator) =>
+  (await 칠한값(target, "box-shadow"))[0]
+    .split(/,(?![^(]*\))/)
+    .map((one) => one.trim())
+    .filter((one) => !one.startsWith("rgba(0, 0, 0, 0)"));
+
+/**
+ * 그 요소 글자의 **바탕과의 대비**. 글자에서 위로 올라가며 요소마다 배경색과 불투명도를 모아, 처음 만나는 불투명한 배경 위에 그
+ * 사이의 반투명한 면과 글자색을 차례로 섞어 잰다(`contrastInPage`) — 옅게 하는 길이 색 토큰(`text-fg-tertiary`)이든 불투명도든 같은
+ * 값으로 읽히고, 고른 행처럼 글자 밑에 반투명한 면이 깔린 자리는 그 면까지 얹은 바탕 위에서 잰다. 끝까지 불투명한 배경이 없으면
+ * 흰 바탕이다(문서의 바탕).
  */
 export async function 글자대비(element: Locator): Promise<number> {
   const arg = await element.evaluate((node) => {
-    const backs: string[] = [];
-    let opacity = 1;
+    const layers: { back: string; opacity: number }[] = [];
     for (let at: Element | null = node; at !== null; at = at.parentElement) {
       const style = getComputedStyle(at);
-      opacity *= Number(style.opacity);
-      backs.push(style.backgroundColor);
+      layers.push({ back: style.backgroundColor, opacity: Number(style.opacity) });
     }
-    return { ink: getComputedStyle(node).color, backs: [...backs, "rgb(255, 255, 255)"], opacity };
+    return { ink: getComputedStyle(node).color, layers: [...layers, { back: "rgb(255, 255, 255)", opacity: 1 }] };
   });
   return element.page().evaluate(contrastInPage, arg);
 }
@@ -966,7 +1394,7 @@ export const navButtons = (page: Page) => page.locator("aside nav").getByRole("b
 export const navButton = (page: Page, label: string) =>
   page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
-/** `Processes` 화면의 제목 — 카드 머리의 캡슐(`Crumbs`)은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** `Processes` 화면의 제목 — 머리 카드의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
@@ -1361,7 +1789,7 @@ export async function fireAttention(
  * 길이 없다 — 실측(2026-09-10): 한 컨텍스트에 페이지 둘을 띄우고 `bringToFront`로 번갈아
  * 앞세워도 양쪽 다 `document.hasFocus()`가 참이다. 그래서 **브라우저가 답하는 그 한 줄만**
  * 갈아 끼우고, 앱이 그것을 실제로 딛는지를 잰다: 여기서 거짓을 돌려주는데도 「봤다」가 서면
- * 앱은 포커스를 안 보고 있는 것이다(그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서
+ * 앱은 포커스를 안 보고 있는 것이다(그 fail-open은 안 본 완료가 안 뜨는 것으로만 나타나 화면에서
  * 안 보인다 — `src/lib/window-focus.ts`의 `windowFocused` 머리말).
  *
  * **값과 이벤트를 갈라 둔다.** `hasFocus`가 바뀌는 것과 `focus`/`blur`가 도착하는 것은 다른
@@ -1441,7 +1869,7 @@ export async function sentNotifications(
 
 /**
  * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
- * (info 맨 위의 복사 줄 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
+ * (work 메뉴의 복사 ▸ · spec 트리 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
  * 받아 적는다. 앱의 입구 하나를 갈아 끼우는 커맨드 붙잡기(`holdCommand`)와 알림 손잡이(`stubNotifications`)와 같은
  * 모양이다 — 새 층이 아니다.
  *

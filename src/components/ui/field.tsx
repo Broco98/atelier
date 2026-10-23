@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 설명(FieldDescription) 글자 text-sm·muted→13px·tertiary(설정 행의 안내 「px · 8–32」의 지금 값). 나머지(뿌리 — data-invalid면 안의 글자가 다 빨갛다 —, 라벨·제목·오류·묶음·구분선)는 registry 그대로다. registry의 Field는 Base UI Field가 아니라 맨 div라 설명이 칸에 저절로 이어지지 않는다 — 쓰는 자리가 설명에 id를 주고 칸의 aria-describedby로 잇는다.
+// 앱 규격으로 고친 자리: 글자는 DS 단계다(codex-ds 티켓 03) — 설명(FieldDescription) text-sm·muted→chat-meta(13/18)·fg-tertiary, 오류 · 구분선 text-sm→chat-meta, 묶음 이름(FieldLegend)은 두 변형(label text-sm · legend text-base) 모두 text-sm이다. 줄 높이는 단계가 든다 — 설명의 leading-normal과 라벨(FieldLabel)의 leading-snug를 걷었다(라벨이 부르는 Label의 text-sm 14/20 위에 서서 줄을 19.25로 덮었다). 단계가 없는 칸(FieldContent)의 leading-snug만 registry 그대로 남는다. 나머지(뿌리 — data-invalid면 안의 글자가 다 빨갛다 —, 라벨·제목·묶음)는 registry 그대로이고 색만 Codex 이름이다(codex-ds 결정 27 — 빨강 destructive→danger, 보조 글자 muted-foreground→fg-secondary, 구분선 글자 뒤 면 background→surface, 고른 라벨의 파랑 primary→Codex 파랑 `accent`(고르는 카드 라벨이 안의 칸에 포커스가 오면 두르던 테두리 · 링은 걷었다 — 칸이 앱의 한 링 `focus-ring`을 스스로 입는다, codex-ds 결정 11) — 고른 라벨의 면만 상태 뒤의 파랑 면이라 변수를 바로 읽는다(`bg-(--accent)/5`, `state-scale.test.ts`), hover 면 muted→fill-soft). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. registry의 Field는 Base UI Field가 아니라 맨 div라 설명이 칸에 저절로 이어지지 않는다 — 쓰는 자리가 설명에 id를 주고 칸의 aria-describedby로 잇는다.
 "use client"
 
 import { useMemo } from "react"
@@ -31,7 +31,7 @@ function FieldLegend({
       data-slot="field-legend"
       data-variant={variant}
       className={cn(
-        "mb-1.5 font-medium data-[variant=label]:text-ui data-[variant=legend]:text-body",
+        "mb-1.5 text-sm font-medium",
         className
       )}
       {...props}
@@ -53,7 +53,7 @@ function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const fieldVariants = cva(
-  "group/field flex w-full gap-2 data-[invalid=true]:text-destructive",
+  "group/field flex w-full gap-2 data-[invalid=true]:text-danger",
   {
     variants: {
       orientation: {
@@ -107,7 +107,7 @@ function FieldLabel({
     <Label
       data-slot="field-label"
       className={cn(
-        "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-muted/50 has-[>[data-slot=field]]:has-[:focus-visible]:border-ring has-[>[data-slot=field]]:has-[:focus-visible]:ring-3 has-[>[data-slot=field]]:has-[:focus-visible]:ring-ring/50 *:data-[slot=field]:p-2.5 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
+        "group/field-label peer/field-label flex w-fit gap-2 group-data-[disabled=true]/field:opacity-50 has-data-checked:border-accent/30 has-data-checked:bg-(--accent)/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-fill-soft/50 *:data-[slot=field]:p-2.5",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
         className
       )}
@@ -121,7 +121,7 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="field-label"
       className={cn(
-        "flex w-fit items-center gap-2 text-ui font-medium group-data-[disabled=true]/field:opacity-50",
+        "flex w-fit items-center gap-2 text-sm font-medium group-data-[disabled=true]/field:opacity-50",
         className
       )}
       {...props}
@@ -134,7 +134,7 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
     <p
       data-slot="field-description"
       className={cn(
-        "text-left text-ui leading-normal font-normal text-tertiary group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
+        "text-left text-chat-meta font-normal text-fg-tertiary group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
         "last:mt-0 nth-last-2:-mt-1",
         "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-link",
         className
@@ -156,7 +156,7 @@ function FieldSeparator({
       data-slot="field-separator"
       data-content={!!children}
       className={cn(
-        "relative -my-2 h-5 text-ui group-data-[variant=outline]/field-group:-mb-2",
+        "relative -my-2 h-5 text-chat-meta group-data-[variant=outline]/field-group:-mb-2",
         className
       )}
       {...props}
@@ -164,7 +164,7 @@ function FieldSeparator({
       <Separator className="absolute inset-0 top-1/2" />
       {children && (
         <span
-          className="relative mx-auto block w-fit bg-background px-2 text-muted-foreground"
+          className="relative mx-auto block w-fit bg-surface px-2 text-fg-secondary"
           data-slot="field-separator-content"
         >
           {children}
@@ -217,7 +217,7 @@ function FieldError({
     <div
       role="alert"
       data-slot="field-error"
-      className={cn("text-ui font-normal text-destructive", className)}
+      className={cn("text-chat-meta font-normal text-danger", className)}
       {...props}
     >
       {content}

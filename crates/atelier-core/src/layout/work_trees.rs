@@ -55,8 +55,9 @@ const SPEC_PREFIX: &str = "spec/";
 
 /// 앱 쪽 아카이브 문서 응답 — 커널의 문서 목록과, 그중 `spec/` 아래를 가른 spec 트리.
 ///
-/// **한 응답이다.** 목록과 트리가 따로 오면 아카이브 행을 펼치는 애니메이션 도중 트리만 늦게
-/// 도착해 높이가 튄다(구현 스펙 4절 「아카이브 트리」).
+/// **한 응답이다**(spec-structure-settings 구현 스펙 4절 「아카이브 트리」). 앱의 spec 목록 패널이 둘을
+/// 한 트리로 잇는다 — 기록 행 곁에 `spec/` 행을 세우고 그 아래에 트리를 얹는다. 따로 오면 트리가 기록
+/// 행만으로 먼저 섰다가 `spec/` 행이 늦게 끼어들며 튄다.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchivedDocs {

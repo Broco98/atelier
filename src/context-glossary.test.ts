@@ -85,8 +85,11 @@ describe("말의 사전", () => {
         "조용한 셸",
         "화면 밖 셸",
         "정리 기록",
+        "머리 카드",
+        "탭",
         "열",
         "분할",
+        "경로 줄",
         "레일",
         "패널 토글",
         "터미널",
@@ -99,6 +102,23 @@ describe("말의 사전", () => {
     // 결정 16. 탭은 **화면 위의 자리**이고 셸은 **프로세스**다 — 세는 말은 「셸 8개」이지
     // 「탭 8개」가 아니라, 그 구분이 사전에 있어야 새 문구가 그것을 딛는다.
     expect(names).toContain("탭");
+  });
+
+  it("「탭」이 서는 자리가 본문 카드의 머리다", () => {
+    // codex-ds 스펙 §4 「탭 줄」. 탭 줄이 창 맨 위 줄(옛 「머리행」 — 지금의 머리 줄)에서 그 탭이 보여 줄 카드 안 맨 위로 내려왔다 —
+    // 사전이 옛 자리를 말하면 다음 문구가 「머리행」을 딛는다. 「열」 항목도 탭을 같은 말로 부른다.
+    expect(bodyOf("탭")).toContain("본문 카드 머리의 한 칸");
+    expect(bodyOf("탭")).not.toContain("머리행");
+    expect(bodyOf("열")).not.toContain("머리행");
+  });
+
+  it("「경로 줄」이 등재돼 있고, 선 것 셋과 닫기 ×의 자리를 말한다", () => {
+    // codex-ds 스펙 §10 · 결정 12 · 13. 문서 위의 줄이 경로 캡슐 · 보기 묶음 · 동그란 버튼을 든다. 닫기 ×가 미리보기에만 선다는
+    // 것이 사전에 없으면 다음 문구가 spec 탭의 문서에 ×를 되돌리거나, 분할 열의 ×(열 닫기)를 미리보기 ×로 부른다.
+    expect(names).toContain("경로 줄");
+    for (const piece of ["경로 캡슐", "보기 묶음", "동그란 버튼", "미리보기에만"]) {
+      expect(bodyOf("경로 줄")).toContain(piece);
+    }
   });
 
   // git-integration 결정 31 · S10. 셸 레지스트리가 「셸 목록」이 아니라 **탭의 한 줄**을 들게 됐다 — ⌘2~9 · ⌃Tab ·
@@ -123,15 +143,15 @@ describe("말의 사전", () => {
     }
   });
 
-  // ui-refresh 결정 9 · 10. 작업 패널을 고르는 `spec` · `info`가 패널 머리의 탭에서 바탕 오른쪽 끝의 레일로 나갔다. 사전이
-  // 그 자리를 모르면 다음 사람이 옛 말 「패널 탭」으로 부르는데, 레일 칸은 켜진 것이 0개일 수 있어(켜진 칸을 다시 누르면
-  // 닫힌다) 탭이 아니다. 거부어에 들어야 접근성 이름 검사(위)가 레일 묶음 · 칸 · 토글의 이름에서 그 낱말을 문다.
+  // ui-refresh 결정 9 · 10. 작업 패널을 고르는 칸이 패널 머리의 탭에서 바탕 오른쪽 끝의 레일로 나갔다. 사전이 그 자리를 모르면
+  // 다음 사람이 옛 말 「패널 탭」으로 부르는데, 레일 칸은 켜진 것이 0개일 수 있어(켜진 칸을 다시 누르면 닫힌다) 탭이 아니다.
+  // 거부어에 들어야 접근성 이름 검사(위)가 레일 묶음 · 칸 · 토글의 이름에서 그 낱말을 문다.
   it("「레일」 · 「패널 토글」이 등재돼 있고, 「레일」이 「패널 탭」을 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["레일", "패널 토글"]));
     expect(bodyOf("레일")).toContain("_피할 말_: 패널 탭");
     expect(refused).toContain("패널 탭");
     // 레일이 패널을 닫아도 남는다는 것, 토글이 ⌘Enter와 같다는 것이 본문에 있어야 다음 사람이 둘을 패널 머리에 되돌리지 않는다.
-    expect(bodyOf("레일")).toContain("패널이 닫혀도 남고");
+    expect(bodyOf("레일")).toContain("패널이 닫혀도 남는다");
     expect(bodyOf("패널 토글")).toContain("⌘Enter");
   });
 
@@ -148,8 +168,8 @@ describe("말의 사전", () => {
     // 「세션」은 제 항목이 있어 거부어가 아니다 — 그 항목이 앱이 세션을 어디에 쓰는지 말한다.
     expect(refused).not.toContain("세션");
     expect(bodyOf("세션")).toContain("되살리기에만 쓴다");
-    // git-integration이 `chat` 뒤에 `files`를 더했다(그쪽 결정 29).
-    expect(bodyOf("레일")).toContain("`spec` · `chat` · `files` · `info`");
+    // git-integration이 `chat` 뒤에 `files`를 더했다(그쪽 결정 29). `info`는 codex-ds가 걷었다(그쪽 결정 25).
+    expect(bodyOf("레일")).toContain("`spec` · `chat` · `files`");
     expect(bodyOf("탭")).toContain("세는 말은 「대화 3개」");
     expect(ariaLabels).toContain("대화 탭");
   });
@@ -163,6 +183,32 @@ describe("말의 사전", () => {
     expect(refused).toContain("바뀐 곳");
     expect(bodyOf("고친 곳")).toContain("사람이 다음 말을 보내면 지워진다");
     expect(bodyOf("고친 곳")).toContain("그 파일을 열면 지워진다");
+  });
+
+  // codex-ds 결정 25 · 스펙 §10. info 칸을 걷어 레일 칸이 `spec` 하나가 됐다가 `chat`(three-axes)과 `files`(git-integration 결정 29)가
+  // 더해져 셋이 됐고, 레일은 칸이 둘 이상일 때만 선다. 사전이 옛 칸(`info`)을 들거나 「늘 선다」고 말하면 다음 사람이 칸 하나짜리 레일을 되세우거나
+  // info를 되살린다. 토글이 레일 위가 아니라 머리 줄에 선다는 것도 레일 항목이 말한다 — 레일이 서는지에 따라 토글이 어디 있는지를
+  // 레일을 찾아온 사람이 안다.
+  it("「레일」이 칸이 둘 이상일 때만 서고 레일 칸이 `spec` · `chat` · `files`라 말하며, `info`를 어디서도 들지 않는다", () => {
+    expect(bodyOf("레일")).toContain("**칸이 둘 이상일 때만");
+    expect(bodyOf("레일")).toContain("레일 칸(`spec` · `chat` · `files`)");
+    expect(bodyOf("레일")).toContain("`files`가 더해져 다시 선다");
+    expect(bodyOf("레일")).toContain("패널 토글은 레일 위가 아니라 머리 줄에 선다");
+    expect(doc).not.toContain("`info`");
+  });
+
+  // codex-ds 스펙 §4 · §10. 창 맨 위 48 줄에 머리 카드가 서고, 패널 토글은 레일 위 그 줄로 올라왔다. 사전이 「카드 머리」(카드 안
+  // 맨 위 줄)와 그것을 가르지 않으면 두 말이 한 자리를 부르고, 토글을 옛 자리(레일 맨 위)로 부르면 다음 사람이 레일 안에 되돌린다.
+  // 토글이 레일을 따라 카드 안팎을 오가는 것(DS `.at-winctl-r` · `.at-railtop`)도 두 항목이 함께 말한다 — 한쪽만 「밖」이라 하면
+  // 머리 카드가 본문 열보다 좁게 토글 자리를 비우던 때로 되돌아간다.
+  it("「머리 카드」가 등재돼 있고 카드 머리와 갈리며, 패널 토글이 머리 줄에 선다", () => {
+    expect(bodyOf("머리 카드")).toContain("_카드 머리와 가른다._");
+    expect(bodyOf("머리 카드")).toContain("폭은 아래 본문 열과 같다.");
+    expect(bodyOf("머리 카드")).toContain("패널 토글은 레일이 서지 않는 동안만 머리 카드 안이고");
+    expect(bodyOf("패널 토글")).toContain("머리 줄 오른쪽 끝");
+    expect(bodyOf("패널 토글")).toContain("머리 카드 밖 레일 바로 위");
+    expect(bodyOf("패널 토글")).not.toContain("레일 맨 위");
+    expect(bodyOf("레일")).not.toContain("맨 위에 패널 토글");
   });
 
   it("문서 어디에도 「패널 탭」이 _피할 말_ 줄 밖에 남지 않는다", () => {
@@ -345,9 +391,9 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
   });
 
   it("소문자 가족이 레일 칸 `chat`을 든다", () => {
-    // three-axes 티켓 17 — 레일 칸에 `chat`이 섰다(git-integration이 그 뒤에 `files`를 더해 넷이다). 예시가 칸을 함께 들어야
-    // `chat`도 소문자 가족으로 읽힌다.
-    expect(uppercase).toContain("`spec` · `chat` · `files` · `info`");
+    // three-axes 티켓 17 — 레일 칸에 `chat`이 섰다(git-integration이 그 뒤에 `files`를 더하고 codex-ds가 `info`를 걷어 셋이다).
+    // 예시가 칸을 함께 들어야 `chat`도 소문자 가족으로 읽힌다.
+    expect(uppercase).toContain("`spec` · `chat` · `files`");
   });
 
   it("대문자 층이 main nav를 든다", () => {
@@ -380,7 +426,7 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
 
   it("소문자 `terminal`을 고르는 것으로 들지 않는다", () => {
     // 그 라벨은 사이드바 가지의 머리행이었고 그 행이 사라졌다. 남은 소문자 가족은
-    // 탭 줄의 `spec`과 레일 칸의 `spec`·`info`다 — 예시가 늙으면 「대소문자가 층을
+    // 탭 줄의 `spec`과 레일 칸의 `spec`이다 — 예시가 늙으면 「대소문자가 층을
     // 가른다」는 규칙 자체가 화면에서 확인되지 않는다.
     expect(notation).not.toContain("`terminal`");
   });

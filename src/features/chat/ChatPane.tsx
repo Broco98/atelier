@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { Plus, X } from "lucide-react";
 import { askDialog } from "@/components/ui/confirm-store";
 import { Spinner } from "@/components/ui/spinner";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import ApprovalCard from "./ApprovalCard";
@@ -22,7 +23,8 @@ import { closeNotice, goneThrough, STATUS_LABEL, useConversationStatus, type Con
 import type { Agent, Conversation, Quote } from "./types";
 
 // 대화창(three-axes 티켓 17) — 대화 탭 줄 · 흐름 · 입력창. 작업 패널의 `chat` 보기가 이것을 그리고, `chat` 탭(24)도 같은 것을
-// 가운데에 띄운다. 모양은 캔버스 보드 04(대화 패널) · 14(말과 입력)이고 값은 대화창 범위 토큰(`[data-chat]`, three-axes 결정 31)이다.
+// 가운데에 띄운다. 모양은 캔버스 보드 04(대화 패널) · 14(말과 입력)이고 값은 DS의 대화 · 도구 토큰이다(three-axes 결정 31 · codex-ds
+// 스펙 S2). 뿌리의 표식(`data-chat`)은 대화창을 집는 고리다.
 //
 // **대화는 호스트에서 돈다.** 그 work의 대화 목록과 그 수명(목록 읽기 · 첫 대화 · 새 대화 · 닫기 · 기록 읽기 · 여는 중 · 거절 글)은
 // 이 화면이 아니라 work마다 하나인 주인이 쥔다(`conversation-list.ts`) — 이 화면은 그 상태를 읽고 동작을 부른다. 그래서 두 자리에
@@ -31,11 +33,11 @@ import type { Agent, Conversation, Quote } from "./types";
 // 않는다(스토리 14 · 15 · 16).
 
 /**
- * 흐름 · 입력창 · 안내 카드를 모으는 열(three-axes 티켓 24) — 읽기 좋은 폭(`--chat-thread-width`, 캔버스 `.cx-thread`)에 가운데로
+ * 흐름 · 입력창 · 안내 카드를 모으는 열(three-axes 티켓 24) — 읽기 좋은 폭(DS `size-thread`, 캔버스 `.cx-thread`)에 가운데로
  * 모인다. `chat` 탭은 가운데 카드 전체가 대화창이라 긴 답의 줄이 끝없이 늘지 않게 이 폭에서 멈추고, 작업 패널은 이보다 좁아 꽉
  * 찬다 — 두 자리가 같은 대화창이다(스토리 18). 대화 탭 줄은 모으지 않는다: 머리는 카드 폭 그대로다.
  */
-const COLUMN = "mx-auto flex w-full max-w-(--chat-thread-width) flex-col";
+const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
 
 interface ChatPaneProps {
   /** 그 work의 slug. 작업 패널에 key가 없어 work를 옮기면 이 값만 바뀐다. */
@@ -82,7 +84,7 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
         <div
           role="group"
           aria-label="대화 탭"
-          className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto px-2 shadow-(--chat-hairline-below) scroll-quiet"
+          className="relative flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto px-2 scroll-quiet after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-border"
         >
           {conversations.map((conversation) => (
             <ConversationTab
@@ -104,22 +106,22 @@ function ChatPane({ work, visible, specDir, onOpenDoc }: ChatPaneProps) {
                 type="button"
                 disabled={opening}
                 onClick={() => void openConversation(work)}
-                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground quiet-hover disabled:opacity-40"
+                className="icon-button-quiet shrink-0 text-fg-secondary focus-ring disabled:opacity-40"
               />
             }
           >
-            <Plus className="size-4" strokeWidth={1.8} aria-hidden />
+            <Plus className="size-4" aria-hidden />
           </Hint>
         </div>
         {problem && (
-          <p role="alert" className="px-4 pt-3 text-caption text-destructive">
+          <p role="alert" className="px-4 pt-3 text-xs text-danger">
             {problem}
           </p>
         )}
         {wanted && wantedKind ? (
           <GuidePlace agent={wanted} kind={wantedKind} />
         ) : conversations.length === 0 ? (
-          <p className="px-4 pt-4 text-ui text-tertiary">
+          <p className="px-4 pt-4 text-chat-meta text-fg-tertiary">
             {opening || reading
               ? "대화를 여는 중이에요"
               : "열린 대화가 없어요 — +로 새 대화를 열어요"}
@@ -168,8 +170,9 @@ function ConversationTab({
     <div
       data-conversation={conversation.id}
       className={cn(
-        "flex h-7 min-w-0 max-w-[180px] shrink-0 items-center gap-1.5 rounded-lg text-ui transition-colors",
-        on ? "bg-state-3 text-foreground" : "text-muted-foreground quiet-hover",
+        "flex h-7 min-w-0 max-w-[180px] shrink-0 items-center gap-1.5 rounded-lg text-chat-meta transition-colors",
+        // 탭 줄의 칸과 같은 단이다 — 켜진 탭 `fill-hover`(`tab-on`), 꺼진 탭의 hover `fill-soft`(index.css의 상태 농도).
+        on ? "tab-on" : "text-fg-secondary hover:bg-fill-soft hover:text-fg",
       )}
     >
       <button
@@ -177,37 +180,37 @@ function ConversationTab({
         aria-pressed={on}
         aria-label={status ? `${conversation.name} — ${STATUS_LABEL[status]}` : undefined}
         onClick={onChoose}
-        className="flex h-full min-w-0 items-center gap-1.5 pl-2"
+        className="flex h-full min-w-0 items-center gap-1.5 rounded-lg pl-2 focus-ring"
       >
         {status && <StatusDot status={status} />}
-        <span className={cn("truncate", status === "waiting" && "text-wait-ink")}>{conversation.name}</span>
+        <span className={cn("truncate", status === "waiting" && "text-warning")}>{conversation.name}</span>
       </button>
       <button
         type="button"
         aria-label={`${conversation.name} 닫기`}
         onClick={onClose}
-        className="mr-1.5 flex size-[18px] shrink-0 items-center justify-center rounded-(--chat-radius-inline) text-tertiary tint-hover"
+        className="mr-1.5 flex size-4.5 shrink-0 items-center justify-center rounded-xs text-fg-tertiary tint-hover focus-ring"
       >
-        <X className="size-3" strokeWidth={1.8} aria-hidden />
+        <X className="size-3" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
       </button>
     </div>
   );
 }
 
 /**
- * 대화 탭의 상태 점(S23 · 캔버스 `.cx-tab` · `.cx-dot` · `.cx-spin`) — 일하는 중은 앱의 스피너(12px), 나를 기다림 · 끝남은 앱 상태색의
- * 7px 점(사이드바 · 알림 띠의 「나를 기다림」 · 「확인할 것」과 같은 색 — `SignalLane`), 이어 붙이는 중은 옅은 점이다. 그림일 뿐이라
+ * 대화 탭의 상태 점(S23 · 캔버스 `.cx-tab` · `.cx-dot` · `.cx-spin`) — 일하는 중은 앱의 스피너(12px), 나를 기다림 · 끝남은 부름의
+ * 7px 점(사이드바 · 알림 띠의 「나를 기다림」 · 「확인할 것」과 같은 색 — DS `dot-wait` · `dot-new`), 이어 붙이는 중은 옅은 점이다. 그림일 뿐이라
  * 숨는다 — 상태는 탭 이름이 말한다. 갈래는 표식(`data-status`)이 든다.
  */
 function StatusDot({ status }: { status: ConversationStatus }) {
-  if (status === "working") return <Spinner aria-hidden data-status={status} className="size-3 text-tertiary" />;
+  if (status === "working") return <Spinner aria-hidden data-status={status} className="size-3 text-fg-tertiary" />;
   return (
     <span
       aria-hidden
       data-status={status}
       className={cn(
-        "size-[7px] shrink-0 rounded-full",
-        status === "waiting" ? "bg-wait" : status === "done" ? "bg-done" : "bg-tertiary",
+        "size-1.75 shrink-0 rounded-full",
+        status === "waiting" ? "bg-dot-wait" : status === "done" ? "bg-dot-new" : "bg-fg-tertiary",
       )}
     />
   );

@@ -26,8 +26,8 @@ import { 레일칸, 작업패널 } from "./chat-screen";
 
 const [specWork] = WORKS;
 
-/** 탭 줄의 칸 — 레일의 `chat` 칸과 이름이 같아서 칸 id(`data-tab`)로 집는다. */
-const 탭 = (page: Page, id: "spec" | "chat") => page.locator(`header [data-tab="${id}"]`);
+/** 탭 줄의 칸 — 레일의 `chat` 칸과 이름이 같아서 칸 id(`data-tab`)로 집는다. 탭 줄은 본문 카드의 머리다(codex-ds 스펙 §4). */
+const 탭 = (page: Page, id: "spec" | "chat") => page.locator(`[data-tab="${id}"]`);
 /** 가운데 카드 — 본문은 `main` 하나다. 대화창이면 「대화」, 문서면 「문서」다. */
 const 가운데대화 = (page: Page) => page.getByRole("main", { name: "대화", exact: true });
 const 문서 = (page: Page) => page.getByRole("main", { name: "문서", exact: true });
@@ -51,7 +51,7 @@ test("자리: `chat` 탭이 `spec` 바로 뒤에 서고, 누르면 가운데에 
 }) => {
   await openWork(page);
   // 탭 줄의 고정 칸 순서 — `spec` 다음이 `chat`이고 그 뒤에 셸 칸이 선다.
-  const order = await page.locator("header [data-tab]").evaluateAll((all) => all.map((el) => el.getAttribute("data-tab")));
+  const order = await page.locator("[data-tab]").evaluateAll((all) => all.map((el) => el.getAttribute("data-tab")));
   expect(order.indexOf("spec")).toBeGreaterThan(-1);
   expect(order.indexOf("chat")).toBe(order.indexOf("spec") + 1);
   await expect(탭(page, "chat")).toHaveAttribute("aria-pressed", "false");
@@ -151,7 +151,8 @@ test("문서 링크: `chat` 탭에서 도구 줄의 파일을 누르면 `spec` �
   await expect(page).toHaveURL(/[?&]file=%EB%A9%94%ED%83%80\.json/);
   await expect(page).not.toHaveURL(/[?&]tab=/);
   await expect(문서(page)).toBeVisible();
-  await expect(문서(page).locator('[data-slot="card-head"]')).toContainText("메타.json");
+  // 연 파일은 문서 카드의 경로 줄이 말한다 — 카드 머리는 탭 줄이다(codex-ds 스펙 §4 · `path-bar.spec.ts`).
+  await expect(문서(page).locator('[data-slot="path-bar"]')).toContainText("메타.json");
   await expect(탭(page, "spec")).toHaveAttribute("aria-pressed", "true");
   await expect(가운데대화(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -215,7 +216,7 @@ test("묶음 밖: `chat` 탭이 떠 있는 동안 파일 탭을 닫아 이웃이
   // 주소로 곧장 파일 탭에 들어온다 — 터미널 본문이 한 번도 안 서서 셸이 저절로 뜨지 않는다. 묶음은 파일 탭 둘이다.
   await openWork(page, `?tab=code&code=${encodeURIComponent("billing/src/main.ts")}`);
   await 주소로간다(page, 파일탭주소("billing/README.md", specWork.slug));
-  const 파일탭 = (ref: string) => page.locator(`header [data-tab="code"][data-code="${ref}"]`);
+  const 파일탭 = (ref: string) => page.locator(`[data-tab="code"][data-code="${ref}"]`);
   await expect(파일탭("billing/README.md")).toHaveCount(1);
   await expect(파일탭("billing/src/main.ts")).toHaveCount(1);
 
@@ -233,7 +234,7 @@ test("묶음 밖: `chat` 탭이 떠 있는 동안 파일 탭을 닫아 이웃이
 
   // 마지막 칸을 닫아 묶음이 빈다 — 본문에 묶음이 없었으니 `spec`으로 걷지 않는다.
   await 파일탭("billing/src/main.ts").locator('button[aria-label$=" 닫기"]').click();
-  await expect(page.locator('header [data-tab="code"]')).toHaveCount(0);
+  await expect(page.locator('[data-tab="code"]')).toHaveCount(0);
   await expect(page).toHaveURL(/[?&]tab=chat\b/);
   await expect(입력칸(가운데대화(page))).toBeVisible();
   await expect(문서(page)).toHaveCount(0);

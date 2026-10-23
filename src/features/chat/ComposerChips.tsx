@@ -18,14 +18,14 @@ import { useChangeChoice, useSwitchAgent, type ChoiceChange } from "./hooks";
 import type { Agent, Conversation } from "./types";
 
 // 입력창의 칩(three-axes 티켓 19 · 스토리 23 ~ 32) — 에이전트 · 모드 · Codex 「계획」은 왼쪽에, 모델은 보내기 원 앞에 선다(캔버스 보드
-// 14 「입력창 — 상태」의 `.cx-cbar`). 칩은 28 알약 · 좌우 8 · 13/18이고, hover와 메뉴가 열린 동안은 켜짐 면(state-3)이다. 목록과
+// 14 「입력창 — 상태」의 `.cx-cbar`). 칩은 28 알약 · 좌우 8 · 13/18이고, hover와 메뉴가 열린 동안은 켜짐 면(`fill-hover`)이다(DS
+// `.at-ctl`). 목록과
 // 지금 값의 원천은 기록이다(`chips.ts`, S15).
 //
 // **바꾸면 호스트의 명령으로 간다** — 에이전트는 에이전트 바꾸기, 나머지는 모델 · 모드 · 계획 바꾸기다. 값은 그 대화의 것이고 설정의
 // 기본값은 그대로다(스토리 31 · 32). 거절은 입력창 아래 글로 선다(`onProblem`).
 //
-// 메뉴는 포털로 `body`에 선다 — 대화창 범위 토큰(`[data-chat]`)이 닿지 않으므로 메뉴 안은 앱 부품 모양 그대로다(`floating-card` ·
-// `menu-row`).
+// 메뉴는 앱의 고르기 메뉴 그대로다(`floating-card` · `menu-row`) — 대화창과 앱이 같은 DS 토큰을 읽는다.
 
 /** 첫 말 뒤 잠긴 에이전트 칩의 까닭 — 툴팁과 설명이 같은 글이다(구현 스펙 「입력창」). */
 const AGENT_LOCKED = "첫 말 뒤에는 바꿀 수 없어요. 다른 에이전트는 +로 열어요";
@@ -33,11 +33,11 @@ const AGENT_LOCKED = "첫 말 뒤에는 바꿀 수 없어요. 다른 에이전�
 /** Claude 모델 목록 끝의 한 줄 — 모델을 바꾼 뒤 첫 턴은 캐시를 다시 쓴다(실측 함정 37). */
 const CLAUDE_MODEL_NOTE = "바꾼 첫 턴은 캐시를 다시 써서 더 들어요";
 
-/** 칩 하나의 모양(캔버스 `.cx-ctl`). 글자색은 부르는 자리가 준다 — 모드는 한 단 옅다(`.sec`). */
+/** 칩 하나의 모양(DS `.at-ctl`). 글자색은 부르는 자리가 준다 — 모드는 한 단 옅다(`.sec`). */
 const CHIP =
-  "flex h-7 min-w-7 shrink-0 items-center justify-center gap-[5px] rounded-full px-2 text-ui leading-[18px] whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
-/** 누르면 메뉴가 뜨는 칩 — hover와 열린 동안 켜짐 면이다. */
-const MENU_CHIP = `${CHIP} hover:bg-state-3 data-[popup-open]:bg-state-3`;
+  "flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.25 rounded-full px-2 text-chat-meta whitespace-nowrap transition-colors outline-none focus-ring";
+/** 누르면 메뉴가 뜨는 칩 — hover와 열린 동안 켜짐 면이다(`.at-ctl:hover` · `.is-on`). */
+const MENU_CHIP = `${CHIP} hover:bg-fill-hover data-[popup-open]:bg-fill-hover`;
 
 interface ComposerChipsProps {
   work: string;
@@ -91,7 +91,7 @@ function ComposerChips({ work, conversation, lists, onProblem, end }: ComposerCh
           options={lists.modes}
           value={mode}
           icon={<ModeIcon mode={mode} />}
-          className="text-muted-foreground"
+          className="text-fg-secondary"
           onPick={(value) => change({ field: "mode", value })}
         />
       )}
@@ -102,10 +102,10 @@ function ComposerChips({ work, conversation, lists, onProblem, end }: ComposerCh
           onClick={() => change({ field: "plan", value: plan !== true })}
           className={cn(
             CHIP,
-            plan === true ? "bg-(--chat-accent-soft) text-(--chat-link)" : "text-foreground hover:bg-state-3",
+            plan === true ? "bg-accent-soft text-link" : "text-fg hover:bg-fill-hover",
           )}
         >
-          <MapIcon className="size-3.5" strokeWidth={1.8} aria-hidden />
+          <MapIcon className="size-3.5" aria-hidden />
           계획
         </button>
       )}
@@ -116,7 +116,7 @@ function ComposerChips({ work, conversation, lists, onProblem, end }: ComposerCh
             options={lists.models}
             value={model}
             note={conversation.agent === "claude" ? CLAUDE_MODEL_NOTE : null}
-            className="text-foreground"
+            className="text-fg"
             onPick={(value) => change({ field: "model", value })}
           />
         )}
@@ -151,19 +151,19 @@ function AgentChip({
         type="button"
         aria-label={name}
         aria-disabled
-        className={cn(CHIP, "cursor-default text-muted-foreground")}
+        className={cn(CHIP, "cursor-default text-fg-secondary")}
       >
-        <Bot className="size-3.5" strokeWidth={1.8} aria-hidden />
+        <Bot className="size-3.5" aria-hidden />
         {label}
       </Hint>
     );
   }
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger aria-label={name} disabled={pending} className={cn(MENU_CHIP, "text-foreground disabled:opacity-40")}>
-        <Bot className="size-3.5" strokeWidth={1.8} aria-hidden />
+      <DropdownMenuTrigger aria-label={name} disabled={pending} className={cn(MENU_CHIP, "text-fg disabled:opacity-40")}>
+        <Bot className="size-3.5" aria-hidden />
         {label}
-        <ChevronDown className="size-3 text-muted-foreground" strokeWidth={1.8} aria-hidden />
+        <ChevronDown className="size-3 text-fg-secondary" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top">
         <DropdownMenuRadioGroup
@@ -213,9 +213,9 @@ function ChoiceChip({
       >
         {icon}
         <span className="min-w-0 truncate">{shown ?? kind}</span>
-        <ChevronDown className="size-3 text-muted-foreground" strokeWidth={1.8} aria-hidden />
+        <ChevronDown className="size-3 text-fg-secondary" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align={kind === "모델" ? "end" : "start"} width="layout">
+      <DropdownMenuContent side="top" align={kind === "모델" ? "end" : "start"}>
         <DropdownMenuRadioGroup
           value={value ?? ""}
           onValueChange={(next: string) => {
@@ -229,11 +229,11 @@ function ChoiceChip({
               label={option.name}
               aria-label={option.name}
               aria-description={option.description ?? undefined}
-              className={option.description ? "h-auto items-start py-[7px]" : undefined}
+              size={option.description ? "note" : "default"}
             >
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{option.name}</span>
-                {option.description && <span className="truncate text-meta text-tertiary">{option.description}</span>}
+                {option.description && <span className="truncate text-xs text-fg-tertiary">{option.description}</span>}
               </span>
             </DropdownMenuRadioItem>
           ))}
@@ -241,7 +241,7 @@ function ChoiceChip({
         {note && (
           <>
             <DropdownMenuSeparator />
-            <p className="px-2.5 py-1.5 text-caption text-tertiary">{note}</p>
+            <p className="px-2.5 py-1.5 text-xs text-fg-tertiary">{note}</p>
           </>
         )}
       </DropdownMenuContent>
@@ -262,7 +262,7 @@ function ModeIcon({ mode }: { mode: string | null }) {
         : mode === "auto" || mode === "agent" || mode === "agent-full-access" || mode === "dontAsk"
           ? Shield
           : ShieldCheck;
-  return <Icon className="size-3.5" strokeWidth={1.8} aria-hidden />;
+  return <Icon className="size-3.5" aria-hidden />;
 }
 
 export default ComposerChips;
