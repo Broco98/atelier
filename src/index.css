@@ -1350,39 +1350,6 @@ body.dragging-row * {
     transition: transform var(--marquee-ms, 0ms) linear 200ms;
 }
 
-/* 모션을 줄여 둔 사람에게는 **안 흐른다. 페이드는 남는다**(결정 11). 그때 전체 제목을 보는
-   길은 호버 카드 하나이고, 카드는 줄바꿈해 한눈에 보여준다 — 마퀴는 제목 자리에서 한 번에 일부만
-   흘려 보이고 **카드가 완전한 답**이라(결정 11) 카드의 제목은 이 판에서 그대로 둔다. */
-@media (prefers-reduced-motion: reduce) {
-    [data-title][data-marquee] > span {
-        transform: none;
-        transition: none;
-    }
-
-    /* **shadcn 부품의 움직임도 여기 한 곳에서 끈다**(결정 7) — 부품 파일마다 적으면 부품이 늘
-       때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 모두 `data-open`·
-       `data-closed`에서 `animate-in`·`animate-out`(메뉴 카드는 `animate-menu-*`) 키프레임으로 움직이고, 그 요소에는 늘
-       `data-slot`이 있다. 이 규칙은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
-       상관없이 이긴다. 애니메이션이 없으면 Base UI는 곧바로 언마운트한다 — 닫힘이 멈추지 않는다.
-       Spinner의 호(`animate-spin`)도 걸리지만 동작 줄이기면 호가 숨으므로 해가 없다. */
-    [data-slot][class*="animate-"] {
-        animation: none;
-    }
-
-    /* 키프레임이 아니라 `transition`으로 움직이는 둘 — 토스트(들고남)와 Collapsible 패널
-       (접힘) — 은 전이도 끈다. */
-    [data-slot^="toast"],
-    [data-slot="collapsible-content"] {
-        transition: none;
-    }
-
-    /* Processes의 접는 셰브론(ui-refresh 결정 28 — `tree-rows.tsx`의 `FoldChevron`)은 돌지 않고 바로 바뀐다 —
-       그 패널이 움직임 없이 접히는 것과 같은 한 동작이다. */
-    [data-fold-chevron] {
-        transition: none;
-    }
-}
-
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
    패널이 좌우 다른 규칙으로 움직이지 않도록, 그때 접히던 좌측 사이드바·목록 패널과 같은 폭 접기로
    바꾸면서 쓸 곳이 없어졌다. 그때 확인된 사실은 남겨 둔다: **translateX는 안 된다.**
@@ -1621,7 +1588,7 @@ body[data-palette-open] [data-scrollbar] {
    - **흐림(`blur`)은 쓰지 않는다.** 보드의 단어 도착은 흐림 3px에서 또렷해지지만 그 길은 리눅스 WebKit의 웹 프로세스를 죽인다(위
      `menu-enter` 머리말). 불투명도 · 자리 · 크기만 움직인다.
    - **동작 줄이기에서는 모두 멈춘 모양이다** — 들고 서는 것은 곧바로 서고, 반짝임은 흐린 글자, 세 점은 멎은 옅은 점, 회전은 원이다(보드
-     「모션 토큰」 머리말). 위의 동작 줄이기 블록은 `data-slot` 부품만 끄므로 유틸리티마다 제 갈래를 둔다.
+     「모션 토큰」 머리말). 그 갈래는 유틸리티마다 파일 맨 끝의 동작 줄이기 블록 한 곳에 적는다.
    - Work 카드의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — 기다리는 동안의 반복인 세 점의 박자를 쓴다.
    - 넓힌 카드(v1 티켓 35)의 보기는 모션 보드가 아니라 패널 박자다(`view-in` — `duration-panel` · `ease-panel`). 카드가 넓어지는 그
      때 사이드바가 같은 박자로 접힌다. */
@@ -1654,11 +1621,6 @@ body[data-palette-open] [data-scrollbar] {
     background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: chat-shimmer var(--duration-shimmer) linear infinite;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-        background: none;
-        -webkit-text-fill-color: var(--chat-shimmer-dim, var(--fg-tertiary));
-    }
 }
 
 /* **단어 도착**(보드 「단어 도착」 500ms · 감속 · 단어 사이 70ms, v1 티켓 05 · 캔버스 Messages 보드 「스트리밍」). 도착한 낱말은 옅었다가
@@ -1671,9 +1633,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility word-in {
     animation: word-in var(--duration-word) var(--ease-settle) var(--word-delay, 0s) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **「답하는 중」의 세 점**(보드 「세 점」 1.25s · 가감속 · 점마다 150ms · 반복, v1 티켓 14 · 캔버스 Messages 보드). 4 점 셋이 3 사이로 서고,
@@ -1710,11 +1669,6 @@ body[data-palette-open] [data-scrollbar] {
     & > i:nth-child(3) {
         animation-delay: calc(var(--stagger-dot) * 2);
     }
-    @media (prefers-reduced-motion: reduce) {
-        & > i {
-            animation: none;
-        }
-    }
 }
 
 /* **칩 나타남**(보드 「칩 나타남」 280ms · 감속 · 0.92배에서 — 「멘션, 기다리는 말, 첨부처럼 컴포저에 붙는 것은 모두 같은 움직임」). 왼쪽
@@ -1729,9 +1683,6 @@ body[data-palette-open] [data-scrollbar] {
 @utility chip-in {
     transform-origin: left center;
     animation: chip-in var(--duration-chip) var(--ease-settle) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **승인 카드 올라옴**(보드 「승인 카드 올라옴」 320ms · 감속 · 아래에서 12px) — 입력창 자리를 잠시 빌리는 카드가 아래에서 올라온다.
@@ -1744,9 +1695,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility card-rise {
     animation: card-rise var(--duration-card) var(--ease-settle) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **Agent 참여**(보드 「Agent 참여」 360ms · 감속 · 1.1배까지 튐) — 새 얼굴이 0.4배에서 1.1배까지 커졌다 제자리다. 목록 줄의 내 차례 점도
@@ -1767,9 +1715,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility pop-in {
     animation: pop-in var(--duration-join) var(--ease-settle) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **로그 펼침**(보드 「작업 로그 펼침」 240ms · 가감속 · 줄마다 40ms) — 펼친 줄들이 위 4에서 내려앉으며 위에서부터 차례로 선다. 줄을
@@ -1790,12 +1735,6 @@ body[data-palette-open] [data-scrollbar] {
         animation: log-row-in var(--duration-log) var(--ease-default) both;
         animation-delay: calc(min(var(--log-at, 0), 5) * var(--stagger-log));
     }
-    @media (prefers-reduced-motion: reduce) {
-        & > :not([data-log-run]),
-        & > [data-log-run] > * {
-            animation: none;
-        }
-    }
 }
 
 /* **줄 바뀜**(보드 「도구 줄 바뀜」 200ms · 감속 · 위아래 4px) — 그 자리의 줄이 다른 줄로 바뀌면 새 줄이 아래 4에서 떠올라 선명해진다. 줄
@@ -1810,9 +1749,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility row-in {
     animation: row-in var(--duration-swap) var(--ease-settle) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **버튼 바뀜**(보드 「보내기 버튼 바뀜」 160ms · 감속 · 0.5배에서, 아이콘 겹쳐 바뀜) — 보내기 원과 멈추기 원이 갈아 설 때 새 아이콘이
@@ -1826,9 +1762,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility button-in {
     animation: button-in var(--duration-button) var(--ease-settle) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **아래로 버튼**(보드 「아래로 버튼」 180ms · 감속 · 아래에서 6px) — 위로 올려 읽는 중이면 입력창 위에 「맨 아래로」가 아래 6에서 떠오른다.
@@ -1842,9 +1775,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility jump-in {
     animation: jump-in var(--duration-jump) var(--ease-settle) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **문서 강조**(보드 「문서 실시간 편집」 1.6s · 가감속 · 30%까지 유지 — 「Host가 문서를 고치면 바뀐 줄만 잠깐 칠해집니다」). 옅은
@@ -1866,15 +1796,9 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility row-flash {
     animation: doc-flash var(--duration-flash) var(--ease-default);
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 [data-doc-flash] {
     animation: doc-flash var(--duration-flash) var(--ease-default);
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **Work 카드의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 세 점의
@@ -1886,9 +1810,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility writing-pulse {
     animation: writing-pulse var(--duration-pulse) var(--ease-default) infinite;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **넓힌 카드의 보기**(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.viewer`) — 카드가 넓어지거나 다른 파일을 열면 보기가 옅음에서 선다. 박자는
@@ -1900,9 +1821,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility view-in {
     animation: view-in var(--duration-panel) var(--ease-panel) both;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
 }
 
 /* **회전**(보드 「회전」 0.9s · 일정 · 반복) — Thread 줄의 「작업 중」 스피너(DS `Spinner`의 호)가 모션 보드의 박자로 돈다. `Spinner`를 감싼
@@ -1912,11 +1830,6 @@ body[data-palette-open] [data-scrollbar] {
 @utility spin-thread {
     & [data-slot="spinner-arc"] {
         animation: spin var(--duration-spin) linear infinite;
-    }
-    @media (prefers-reduced-motion: reduce) {
-        & [data-slot="spinner-arc"] {
-            animation: none;
-        }
     }
 }
 
@@ -1949,4 +1862,66 @@ body[data-palette-open] [data-scrollbar] {
     --diffs-fg-number-addition-override: var(--fg-tertiary);
     --diffs-fg-number-deletion-override: var(--fg-tertiary);
     --diffs-bg-separator-override: var(--fill-soft);
+}
+
+/* **동작 줄이기 — 한 곳**(코드-지도 §7.1). 모션을 줄여 둔 사람에게 앱의 움직임은 여기서 멎는다 — 움직임마다 제 자리에 갈래를 두면
+   새 움직임이 그 갈래를 빠뜨려도 한눈에 보이지 않는다(`tokens.test.ts`가 이 블록이 하나인지 잰다). **파일 맨 끝에 선다** — 레이어 밖
+   규칙(`[data-doc-flash]`)은 특이도가 같으면 뒤에 선 것이 이긴다. `@layer utilities`의 유틸리티는 레이어 밖인 이 블록이 특이도와
+   상관없이 이긴다. */
+@media (prefers-reduced-motion: reduce) {
+    /* 마퀴는 **안 흐른다. 페이드는 남는다**(결정 11). 그때 전체 제목을 보는 길은 호버 카드 하나이고, 카드는 줄바꿈해 한눈에
+       보여준다 — 마퀴는 제목 자리에서 한 번에 일부만 흘려 보이고 **카드가 완전한 답**이라(결정 11) 카드의 제목은 이 판에서 그대로 둔다. */
+    [data-title][data-marquee] > span {
+        transform: none;
+        transition: none;
+    }
+
+    /* **shadcn 부품의 움직임도 여기 한 곳에서 끈다**(결정 7) — 부품 파일마다 적으면 부품이 늘
+       때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 모두 `data-open`·
+       `data-closed`에서 `animate-in`·`animate-out`(메뉴 카드는 `animate-menu-*`) 키프레임으로 움직이고, 그 요소에는 늘
+       `data-slot`이 있다. 이 블록은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
+       상관없이 이긴다. 애니메이션이 없으면 Base UI는 곧바로 언마운트한다 — 닫힘이 멈추지 않는다.
+       Spinner의 호(`animate-spin`)도 걸리지만 동작 줄이기면 호가 숨으므로 해가 없다. */
+    [data-slot][class*="animate-"] {
+        animation: none;
+    }
+
+    /* 키프레임이 아니라 `transition`으로 움직이는 둘 — 토스트(들고남)와 Collapsible 패널
+       (접힘) — 은 전이도 끈다. */
+    [data-slot^="toast"],
+    [data-slot="collapsible-content"] {
+        transition: none;
+    }
+
+    /* Processes의 접는 셰브론(ui-refresh 결정 28 — `tree-rows.tsx`의 `FoldChevron`)은 돌지 않고 바로 바뀐다 —
+       그 패널이 움직임 없이 접히는 것과 같은 한 동작이다. */
+    [data-fold-chevron] {
+        transition: none;
+    }
+
+    /* **Thread의 움직임**(v1 티켓 43 — 위 「Thread의 움직임」 머리말)은 모두 멈춘 모양이다. 들고 서는 것은 곧바로 서고, 반짝임은 띠 없는
+       흐린 글자다 — 애니메이션만 끄면 띠가 글자 한 자리에 굳어 진한 얼룩으로 남는다. 세 점은 멎은 옅은 점, 쓰는 중 점은 멎은 점이고,
+       문서 강조는 칠하지 않는다. 회전은 `Spinner`가 호 대신 원을 세운다(`components/ui/spinner.tsx`). */
+    .chat-shimmer {
+        animation: none;
+        background: none;
+        -webkit-text-fill-color: var(--chat-shimmer-dim, var(--fg-tertiary));
+    }
+    .word-in,
+    .chip-in,
+    .card-rise,
+    .pop-in,
+    .row-in,
+    .button-in,
+    .jump-in,
+    .row-flash,
+    [data-doc-flash],
+    .writing-pulse,
+    .view-in,
+    .typing-dots > i,
+    .log-open > :not([data-log-run]),
+    .log-open > [data-log-run] > *,
+    .spin-thread [data-slot="spinner-arc"] {
+        animation: none;
+    }
 }

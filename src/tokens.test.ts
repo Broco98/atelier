@@ -81,15 +81,13 @@ function blocksOf(built: string, selector: string): string[] {
 /** 그 유틸리티가 낸 CSS — 없으면 `null`이다(이름을 Tailwind가 모른다). */
 const utilityCss = (built: string, candidate: string) => blocksOf(built, `.${candidate}`).join("\n") || null;
 
-/** 그 유틸리티의 동작 줄이기 갈래 — 몸 안에 겹친 `@media`이거나, Tailwind가 펼쳐 낸 `@media` 안의 그 유틸리티 규칙이다. */
-function reducedOf(built: string, candidate: string): string | null {
-  const QUERY = "@media (prefers-reduced-motion: reduce)";
-  const inside = nestedRuleOf(nestedRuleOf(built, `.${candidate}`) ?? "", QUERY);
-  if (inside !== null) return inside;
-  const outside = blocksOf(built, QUERY)
-    .map((block) => block.slice(block.indexOf("{") + 1, -1))
-    .filter((body) => blocksOf(body, `.${candidate}`).length > 0);
-  return outside.length > 0 ? outside.join("\n") : null;
+/** 동작 줄이기의 미디어 질의 — `index.css`에 이 블록은 하나다(아래 「동작 줄이기는 한 곳」). */
+const REDUCED = "@media (prefers-reduced-motion: reduce)";
+
+/** 그 셀렉터(`.word-in` · `[data-doc-flash]` …)의 동작 줄이기 규칙 — 동작 줄이기 블록 안에서 그 셀렉터로 시작하는 규칙들이다. 없으면 `null`이다. */
+function reducedOf(built: string, selector: string): string | null {
+  const rules = blocksOf(built, REDUCED).flatMap((block) => blocksOf(block.slice(block.indexOf("{") + 1, -1), selector));
+  return rules.length > 0 ? rules.join("\n") : null;
 }
 
 /** `@theme`에 적힌 그 이름의 값 — 테마 이름은 `:root` 상자가 아니라 `@theme` 상자에 선다(`declared`는 `:root`만 본다). */
@@ -275,7 +273,7 @@ describe("모션 토큰", () => {
   it("동작 줄이기에서는 Thread의 움직임 유틸리티가 모두 멎는다", async () => {
     const built = await utilities(Object.keys(MOTIONS));
     for (const candidate of Object.keys(MOTIONS)) {
-      const reduced = reducedOf(built, candidate);
+      const reduced = reducedOf(built, `.${candidate}`);
       expect(reduced, `${candidate}에 동작 줄이기 갈래가 없다`).not.toBeNull();
       expect(reduced, candidate).toMatch(/animation: none|transition: none/);
     }
@@ -291,7 +289,7 @@ describe("모션 토큰", () => {
 
   // 반짝임은 멎으면 흐린 글자다 — 띠(그라디언트)가 글자 한 자리에 굳어 진한 얼룩으로 남지 않는다.
   it("동작 줄이기의 반짝임은 띠 없는 흐린 글자다", async () => {
-    const reduced = reducedOf(await utilities(["chat-shimmer"]), "chat-shimmer") ?? "";
+    const reduced = reducedOf(await utilities(["chat-shimmer"]), ".chat-shimmer") ?? "";
     expect(reduced).toContain("background: none");
     expect(reduced).toContain("-webkit-text-fill-color: var(--chat-shimmer-dim, var(--fg-tertiary))");
   });
@@ -308,8 +306,19 @@ describe("모션 토큰", () => {
 
   // 넓힌 카드 문서의 바뀐 줄(v1 티켓 35)은 클래스가 아니라 표식으로 칠한다 — 문서 강조와 같은 박자다.
   it("문서 칠함 표식이 문서 강조 토큰을 읽고 동작 줄이기에서 멎는다", async () => {
-    const rule = nestedRuleOf(await utilities([]), "[data-doc-flash]") ?? "";
-    expect(rule).toContain("var(--duration-flash) var(--ease-default)");
-    expect(nestedRuleOf(rule, "@media (prefers-reduced-motion: reduce)")).toContain("animation: none");
+    const built = await utilities([]);
+    expect(nestedRuleOf(built, "[data-doc-flash]")).toContain("var(--duration-flash) var(--ease-default)");
+    expect(reducedOf(built, "[data-doc-flash]")).toContain("animation: none");
+  });
+
+  // **동작 줄이기는 한 곳이다**(코드-지도 §7.1 · 코드 리뷰 1차 B11) — 움직임마다 제 몸 안에 `@media`를 겹쳐 두면 새 움직임이 그 갈래를
+  // 빠뜨려도 한눈에 보이지 않는다. 그 블록은 파일 맨 끝에 선다 — 레이어 밖 규칙(`[data-doc-flash]`)은 특이도가 같으면 뒤에 선 것이 이겨,
+  // 앞에 선 블록은 그 움직임을 끄지 못한다.
+  it("동작 줄이기 블록은 index.css 맨 끝의 하나다", () => {
+    const queries = [...css.matchAll(/@media\s*\(\s*prefers-reduced-motion/g)];
+    expect(queries, "동작 줄이기 블록의 수").toHaveLength(1);
+    const open = css.indexOf("{", queries[0].index);
+    const body = bodyAt(css, open) ?? "";
+    expect(css.slice(open + body.length + 2).trim(), "동작 줄이기 블록 뒤의 CSS").toBe("");
   });
 });
