@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { ArrowDown, MessageSquare } from "lucide-react";
-import { Card, Frame } from "@/components/shell/Frame";
+import { ArrowDown } from "lucide-react";
+import { PlainFrame } from "@/components/shell/PlainFrame";
 import { FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { threadApi } from "./api";
@@ -25,15 +25,15 @@ import type { Attachment, ThreadView } from "./types";
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
 //
-// - **틀은 앱의 공용 틀이다**(`Frame`) — 머리 카드에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새 Thread는 「새 Thread」다.
-//   사이드바 · 머리 줄의 시안 모양은 07이 맞춘다.
+// - **틀은 카드 없는 흰 면이다**(`PlainFrame` — v1 티켓 07) — 머리 줄에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새
+//   Thread의 머리 줄은 비어 있다(Screen-Home 보드).
 // - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 부제 · 입력창 · 아래 줄 · 도움 줄. 첫 말을 보내면
 //   엔진이 Thread를 세우고 Host의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다.
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
-// - **여럿이 한 Thread에**(v1 티켓 14) — 머리 카드 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
+// - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
 //   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
 //   Session 값이다(§14 「입력창 아래 줄」) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다.
 
@@ -88,50 +88,48 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
     />
   );
   return (
-    <Frame sidebarOpen={sidebarOpen} head={{ icon: MessageSquare, name: "새 Thread" }}>
-      <Card as="main" label="새 Thread" className="flex-1">
-        {guide ? (
-          <GuidePlace>
-            <GuideCard kind={guide} view={engine} />
-          </GuidePlace>
-        ) : starting !== null ? (
-          // 첫 말을 보냈다 — Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 선다.
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-              <div className={`${COLUMN} gap-6 text-chat-body`}>
-                <UserMessage text={starting.text} attachments={starting.attachments} />
-                <p className="chat-shimmer text-sm">생각 중</p>
-              </div>
-            </div>
-            <div className="px-5 pb-4">
-              <div className={COLUMN}>{composer}</div>
+    <PlainFrame sidebarOpen={sidebarOpen} label="새 Thread">
+      {guide ? (
+        <GuidePlace>
+          <GuideCard kind={guide} view={engine} />
+        </GuidePlace>
+      ) : starting !== null ? (
+        // 첫 말을 보냈다 — Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 선다.
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
+            <div className={`${COLUMN} gap-6 text-chat-body`}>
+              <UserMessage text={starting.text} attachments={starting.attachments} />
+              <p className="chat-shimmer text-sm">생각 중</p>
             </div>
           </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-30 scroll-quiet">
-            <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
-              <div className="flex flex-col items-center gap-3.5 text-center">
-                <HostFace className="size-11" />
-                <h1 className="text-heading-lg">무엇을 만들까요?</h1>
-                <p className="text-sm text-fg-tertiary">Host가 답합니다. Work는 필요할 때 Host가 만들어요.</p>
-              </div>
-              {composer}
-              <p className="flex flex-wrap justify-center gap-4.5 text-xs text-fg-tertiary">
-                <span>
-                  <b className="font-semibold text-fg-secondary">@</b> Agent 부르기
-                </span>
-                <span>
-                  <b className="font-semibold text-fg-secondary">/</b> 명령
-                </span>
-                <span>
-                  <b className="font-semibold text-fg-secondary">+</b> 파일 · 이미지
-                </span>
-              </p>
-            </div>
+          <div className="px-5 pb-4">
+            <div className={COLUMN}>{composer}</div>
           </div>
-        )}
-      </Card>
-    </Frame>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-30 scroll-quiet">
+          <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
+            <div className="flex flex-col items-center gap-3.5 text-center">
+              <HostFace className="size-11" />
+              <h1 className="text-heading-lg">무엇을 만들까요?</h1>
+              <p className="text-sm text-fg-tertiary">Host가 답합니다. Work는 필요할 때 Host가 만들어요.</p>
+            </div>
+            {composer}
+            <p className="flex flex-wrap justify-center gap-4.5 text-xs text-fg-tertiary">
+              <span>
+                <b className="font-semibold text-fg-secondary">@</b> Agent 부르기
+              </span>
+              <span>
+                <b className="font-semibold text-fg-secondary">/</b> 명령
+              </span>
+              <span>
+                <b className="font-semibold text-fg-secondary">+</b> 파일 · 이미지
+              </span>
+            </p>
+          </div>
+        </div>
+      )}
+    </PlainFrame>
   );
 }
 
@@ -144,10 +142,10 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
   useEffect(() => checkEngineOnce(), []);
   const name = view?.title || "Thread";
   return (
-    <Frame
+    <PlainFrame
       sidebarOpen={sidebarOpen}
-      head={{
-        icon: MessageSquare,
+      label={name}
+      title={{
         name,
         rename: view
           ? {
@@ -161,21 +159,19 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
               label: "Thread 이름",
             }
           : undefined,
-        actions: view && view.participants.length > 0 ? <ThreadParticipants view={view} /> : undefined,
       }}
+      end={view && view.participants.length > 0 ? <ThreadParticipants view={view} /> : undefined}
     >
-      <Card as="main" label={name} className="flex-1">
-        {view ? (
-          <ThreadBody key={thread} view={view} problem={problem} />
-        ) : (
-          <GuidePlace>
-            <p className="text-chat-meta text-fg-tertiary">
-              {isPending ? "Thread를 여는 중이에요" : `Thread를 열지 못했어요 — ${String(error)}`}
-            </p>
-          </GuidePlace>
-        )}
-      </Card>
-    </Frame>
+      {view ? (
+        <ThreadBody key={thread} view={view} problem={problem} />
+      ) : (
+        <GuidePlace>
+          <p className="text-chat-meta text-fg-tertiary">
+            {isPending ? "Thread를 여는 중이에요" : `Thread를 열지 못했어요 — ${String(error)}`}
+          </p>
+        </GuidePlace>
+      )}
+    </PlainFrame>
   );
 }
 
@@ -198,7 +194,7 @@ function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
   }));
 }
 
-/** 머리 카드의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. */
+/** 머리 줄의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. */
 function ThreadParticipants({ view }: { view: ThreadView }) {
   const lines = useStore(threadRecordStore, (state) => linesOf(state, view.id));
   const model = foldOf(lines, view.live ? null : view.lastSeq);

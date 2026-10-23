@@ -536,6 +536,35 @@ pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()
     crate::settings::write(&data_root(), &settings)
 }
 
+/// 사람 메뉴에 서는 이름(v1 구현 스펙 S27 · 티켓 07) — 이 컴퓨터 계정의 전체 이름(macOS 「사용자 및 그룹」의 이름 — passwd의 GECOS
+/// 첫 칸)이고, 비었으면 로그인 이름이다. 둘 다 없으면 `None`이고 화면이 「나」로 선다. 앱이 이름을 따로 묻거나 적어 두지 않는다 —
+/// 이 컴퓨터를 쓰는 사람이 곧 그 계정이다.
+#[tauri::command]
+pub async fn person_name() -> CmdResult<Option<String>> {
+    Ok(display_name(account_full_name().as_deref(), std::env::var("USER").ok().as_deref()))
+}
+
+/// 이름을 고르는 규칙 — GECOS는 쉼표로 칸을 가른다(전체 이름 · 방 · 전화 …). 첫 칸이 비면 로그인 이름이다.
+fn display_name(gecos: Option<&str>, login: Option<&str>) -> Option<String> {
+    let full = gecos.and_then(|gecos| gecos.split(',').next()).map(str::trim).filter(|name| !name.is_empty());
+    full.or_else(|| login.map(str::trim).filter(|name| !name.is_empty())).map(str::to_owned)
+}
+
+/// 지금 계정의 GECOS 칸. `getpwuid_r`은 부른 쪽의 버퍼에 쓰므로 다른 스레드의 조회와 엇갈리지 않는다.
+fn account_full_name() -> Option<String> {
+    let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buffer = vec![0 as libc::c_char; 4096];
+    let mut found: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: 버퍼와 그 길이를 함께 넘기고, 돌아온 포인터는 그 버퍼 안을 가리킨다 — 이 함수 안에서만 읽는다.
+    let status =
+        unsafe { libc::getpwuid_r(libc::getuid(), &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) };
+    if status != 0 || found.is_null() || entry.pw_gecos.is_null() {
+        return None;
+    }
+    // SAFETY: 위에서 널이 아님을 봤고, 글자는 위 버퍼 안의 NUL로 끝나는 C 문자열이다.
+    Some(unsafe { std::ffi::CStr::from_ptr(entry.pw_gecos) }.to_string_lossy().into_owned())
+}
+
 /// 예외 목록의 기본값(프로세스 결정 5 · 프로세스 스펙 S7). 설정의 `terminal.processExceptions`가 `null`일 때 판정이
 /// 쓰는 목록이고, 설정 › 터미널이 그 칸에 보여 준다. **값을 정하는 자리는 Rust 상수 하나다** — 판정이 화면 없이
 /// 쓰기 때문이다. 화면이 따로 적으면 한쪽이 조용히 낡는다.
@@ -1088,6 +1117,17 @@ pub async fn thread_rename(
 
 #[cfg(test)]
 mod tests {
+    /// 사람 메뉴의 이름(v1 티켓 07) — 계정의 전체 이름(GECOS의 첫 칸)이 먼저고, 비었으면 로그인 이름이다. 둘 다 비면 없다.
+    #[test]
+    fn 사람의_이름은_계정의_전체_이름이고_없으면_로그인_이름이다() {
+        use super::display_name;
+        assert_eq!(display_name(Some("김효연,,,"), Some("gimhyoyeon")).as_deref(), Some("김효연"));
+        assert_eq!(display_name(Some("  "), Some("gimhyoyeon")).as_deref(), Some("gimhyoyeon"));
+        assert_eq!(display_name(None, Some("gimhyoyeon")).as_deref(), Some("gimhyoyeon"));
+        assert_eq!(display_name(Some(""), Some("")), None);
+        assert_eq!(display_name(None, None), None);
+    }
+
     use std::convert::Infallible;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, RwLock};

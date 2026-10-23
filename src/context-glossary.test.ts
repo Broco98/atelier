@@ -411,19 +411,19 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`spec` · `chat` · `files`");
   });
 
-  it("대문자 층이 main nav를 든다", () => {
-    // main nav 항목은 사이드바에서 **가는 곳**의 이름이라 대문자다(US 59). 예시가 그것을 들지
-    // 않으면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다 — 한 화면에 대문자
+  it("대문자 층이 사람 메뉴를 든다", () => {
+    // 사람 메뉴 항목은 **가는 곳**의 이름이라 대문자다(US 59 — 한때 사이드바 위 main nav였고 v1 티켓 07이 사람 메뉴로 옮겼다).
+    // 예시가 그것을 들지 않으면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다 — 한 화면에 대문자
     // `Terminal`과 소문자 `spec`이 함께 서는 자리가 그 층의 갈림이다.
     expect(uppercase).toContain("`Projects`");
     expect(uppercase).toContain("`Archive`");
   });
 
-  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). **한 문장에서 넷을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가
-  // 빠지거나 다른 것이 끼어도) 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
-  it("대문자 층이 main nav 넷을 한 문장으로 든다", () => {
+  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔다. **한 문장에서 넷을 함께 본다**:
+  // 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 사람 메뉴 넷을 한 문장으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(
-      "main nav는 `Projects`·`Terminal`·`Processes`·`Archive` 넷이다",
+      "사람 메뉴의 가는 곳은 `Projects`·`Terminal`·`Processes`·`Archive` 넷이다",
     );
   });
 

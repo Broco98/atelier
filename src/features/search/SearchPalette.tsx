@@ -40,7 +40,7 @@ import type { SearchHit } from "./types";
  * 같은 이유로 셸 개수를 슬롯으로 받는 그 자리와 같다.
  *
  * 치면 좁혀진다. **맞추는 규칙은 코어에 있다**(결정 15) — 여기는 친 것을 그대로 넘기고 받은
- * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → 프로젝트 → 문서 → 본문으로
+ * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → Thread → 프로젝트 → 문서 → 본문으로
  * 와서 갈래가 안 흩어지므로, 구획 머리는 갈래가 바뀌는 자리에서 한 줄 내면 된다.
  *
  * **프리뷰 패널은 없다**(결정 6). 노션의 오른쪽 프리뷰는 **제목**을 찾는 검색이라 「이 페이지가
@@ -60,6 +60,8 @@ import type { SearchHit } from "./types";
 const GROUP_NAMES: Record<SearchHit["kind"], string> = {
   destination: "가는 곳",
   work: "작업",
+  // 사이드바의 Thread 묶음 머리와 같은 말이다 — Thread는 화면에서도 영어로 쓰는 도메인 낱말이다(v1 구현 스펙 S2).
+  thread: "Thread",
   project: "프로젝트",
   doc: "문서",
   text: "본문",
@@ -74,6 +76,8 @@ function rowText(hit: SearchHit): { name: string; detail?: string; snippet?: str
     case "destination":
       return { name: destinationLabel(hit.key) };
     case "work":
+      return { name: hit.title };
+    case "thread":
       return { name: hit.title };
     case "project":
       return { name: hit.name };
@@ -99,6 +103,8 @@ function rowKey(hit: SearchHit): string {
       return `destination/${hit.key}`;
     case "work":
       return `work/${hit.archived}/${hit.slug}`;
+    case "thread":
+      return `thread/${hit.id}`;
     case "project":
       return `project/${hit.slug}`;
     case "doc":

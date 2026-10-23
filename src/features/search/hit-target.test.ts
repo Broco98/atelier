@@ -125,6 +125,16 @@ describe("work 줄이 가는 곳", () => {
   });
 });
 
+describe("Thread 줄이 가는 곳", () => {
+  // v1 구현 스펙 S29 · 티켓 07. **그 Thread로 간다** — 사이드바의 Thread 줄을 누른 것과 같은 주소다(`SidebarThreads`).
+  it("Thread 줄은 그 Thread 화면으로 간다", () => {
+    expect(hitTarget({ kind: "thread", id: "20261023-100000", title: "환불 API 버그 고쳐줘" })).toEqual({
+      to: "/threads/$id",
+      params: { id: "20261023-100000" },
+    });
+  });
+});
+
 describe("프로젝트 줄과 목적지 줄이 가는 곳", () => {
   it("프로젝트 줄은 그 프로젝트 화면으로 간다", () => {
     expect(hitTarget({ kind: "project", slug: "billing", name: "빌링" })).toEqual({

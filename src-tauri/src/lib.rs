@@ -506,6 +506,7 @@ pub fn run() {
             commands::processes_cleanup_log,
             commands::processes_end,
             commands::read_settings,
+            commands::person_name,
             commands::write_settings,
             commands::default_process_exceptions,
             commands::agent_hooks,

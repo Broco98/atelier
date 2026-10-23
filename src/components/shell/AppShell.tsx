@@ -328,6 +328,8 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
+          // 사이드바 맨 위 검색 칸 — 위 ⌘K와 셸 컨트롤의 검색 버튼이 부르는 **같은 함수**다(여는 길이 하나다).
+          onOpenSearch={openSearch}
           // 이미 새 Thread면 아무것도 하지 않는다 — 같은 주소가 히스토리에 한 칸 더 쌓이지 않게(아래 nav와 같은 가드). 주소는 **누를 때**
           // 읽는다 — 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
           onNewThread={() => {

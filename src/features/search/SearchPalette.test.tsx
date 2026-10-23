@@ -41,6 +41,8 @@ const text = (slug: string, path: string, snippet: string, archived = false): Se
 
 const project = (slug: string, name: string): SearchHit => ({ kind: "project", slug, name });
 
+const thread = (id: string, title: string): SearchHit => ({ kind: "thread", id, title });
+
 const destination = (key: string): SearchHit => ({ kind: "destination", key });
 
 const render = (
@@ -260,21 +262,35 @@ describe("모든 줄이 같은 거터를 예약한다", () => {
   });
 });
 
+describe("Thread 줄", () => {
+  // v1 구현 스펙 S29 · 티켓 07. 줄에 서는 것은 **제목**이다 — 코어가 맞춘 재료가 그것이라 왜 떴는지가 줄 안에서 읽힌다.
+  it("제목이 서고 글리프 칸은 빈 슬롯이다", () => {
+    const rows = rowsOf(render([thread("20261023-100000", "환불 API 버그 고쳐줘")]));
+    expect(rows).toHaveLength(1);
+    const row = rows[0] ?? "";
+    expect(row).toContain("환불 API 버그 고쳐줘");
+    expect(row).not.toContain("20261023-100000");
+    expect(row).not.toContain("아카이브");
+    expect(row.split('data-gutter=""')).toHaveLength(2);
+  });
+});
+
 describe("구획 머리", () => {
   // 결정 17. 「가는 곳」·「작업」·「프로젝트」·「문서」·「본문」 — **사이드바 목록과 같은
-  // 계통의 한국어다.** 순서는 코어가 정한 층 순서 그대로다.
+  // 계통의 한국어다.** 「Thread」만은 사이드바의 Thread 묶음 머리 그대로 영어다(v1 구현 스펙 S2 · S29). 순서는 코어가 정한 층 순서 그대로다.
   it("층마다 한 번씩 그 순서로 선다", () => {
     const markup = render([
       destination("projects"),
       workHit("가"),
       workHit("옛일", true),
+      thread("20261023-100000", "환불 API 버그 고쳐줘"),
       project("billing", "빌링"),
       doc("가", "overview.md"),
       doc("옛일", "record.md", true),
       text("가", "decisions.md", "맞은 대목"),
       text("옛일", "record.md", "옛 대목", true),
     ]);
-    expect(headsOf(markup)).toEqual(["가는 곳", "작업", "프로젝트", "문서", "본문"]);
+    expect(headsOf(markup)).toEqual(["가는 곳", "작업", "Thread", "프로젝트", "문서", "본문"]);
   });
 
   // **결과가 없는 그룹은 머리도 안 선다** — 비어 있는 머리는 「여기 뭔가 있었는데」로 읽힌다.

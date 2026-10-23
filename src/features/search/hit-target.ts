@@ -17,6 +17,7 @@ import type { SearchHit } from "./types";
 export type HitTarget =
   | { to: "/works/$slug"; params: { slug: string }; search: WorkSearch }
   | { to: "/archive/$slug"; params: { slug: string }; search: FileSearch }
+  | { to: "/threads/$id"; params: { id: string } }
   | { to: "/projects/$slug"; params: { slug: string } }
   | { to: NonNullable<ReturnType<typeof destinationTo>> };
 
@@ -54,6 +55,9 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
             params: { slug: hit.slug },
             search: recallSearch(hit.slug),
           };
+    // Thread 줄은 그 Thread로 간다 — 사이드바의 Thread 줄과 같은 주소다(v1 구현 스펙 S29).
+    case "thread":
+      return { to: "/threads/$id", params: { id: hit.id } };
     case "project":
       return { to: "/projects/$slug", params: { slug: hit.slug } };
     // **본문 줄은 문서 줄과 같은 곳으로 간다.** 갈래가 갈리는 것은 「왜 떴는가」이지 「어디로

@@ -392,8 +392,9 @@ function SidebarWorkList({
 
   return (
     <>
-      {/* 두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
-      <div className="relative flex min-h-0 flex-1 flex-col px-2">
+      {/* 두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. 영역은 제 높이로 서고(남는 자리를 채우지 않는다) 창이
+          낮으면 줄어 구른다 — 바로 아래에 Thread 묶음이 붙는다(v1 티켓 07 · 구현 스펙 §13). */}
+      <div className="relative flex min-h-0 flex-col px-2">
         {/* **목록이 스크롤됐을 때만 윗 가장자리에 선이 선다**(UI개선 결정 24). 선은 굴러가는 상자
             **밖**, 스크롤하지 않는 이 부모에 절대 위치로 선다 — 상자 안에서 그리는 길 셋이 다 막혔다:
             - 상자에 `border-top`: 오버레이 막대가 `clientTop`만큼 밀리고(`lib/scroll-quiet.ts`의
@@ -402,7 +403,7 @@ function SidebarWorkList({
             - inset 그림자: 행의 배경(선택·hover)이 그 위를 덮는다.
             - 상자 안 `::before`: 내용과 함께 굴러 올라가 버린다.
             부모의 윗변이 곧 상자의 윗변이라 띠가 있으면 띠 아래, 없으면 nav 아래가 저절로 된다.
-            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 Settings 칸의 윗선과
+            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 사람 줄의 윗선과
             같은 폭이고 같은 선이다(0.5px `border-heavy` 면 — DS의 선, codex-ds 티켓 19). 누를 것이 아니라
             `pointer-events-none`이다: 첫 행 윗변을 가리면 안 된다. */}
         {scrolled && (
