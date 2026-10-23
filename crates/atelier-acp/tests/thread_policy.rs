@@ -122,7 +122,7 @@ fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_
     assert_eq!(decided["payload"]["optionId"], "reject", "알아서여도 Work 밖은 거절한다");
     assert!(reason.starts_with("Work 밖의 파일이라 고칠 수 없어요: "), "{reason}");
     assert!(reason.contains("gate/ws/g1/outside/allowed.txt"), "{reason}");
-    assert!(reason.ends_with("— `gate` Project를 고치려면 먼저 「Project 고치기 시작」 도구를 부르세요"), "{reason}");
+    assert!(reason.ends_with("— `gate` Project를 고치려면 먼저 Thread 도구 `start_editing`(Project 고치기 시작)을 부르세요"), "{reason}");
     let session = sandbox.thread_session_id(&thread, "host");
     assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
 

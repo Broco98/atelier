@@ -17,6 +17,8 @@ import { isObject, nonEmpty, type Json } from "./json";
 //   전해지면 호출 줄이 이 줄의 자리를 대신하고(`fold.ts`), 그 전(들이는 중 · Session을 여는 중)과 거절된 부르기만 이 줄로 선다.
 //   거절 까닭은 MCP 상자의 받은 값이다.
 // - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「Work 읽음」 · 「Work 만들기를 묻는 중」.
+//   「Project 고치기 시작」(v1 티켓 32)은 「api-server 고치기 시작함」이다 — Work 밖 Project 카드가 서면 그동안 「web-app 고치기 시작하는
+//   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다.
 
 /** 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김(끝을 받기 전에 그 Session이 사라졌다). */
 export type ToolState = "running" | "done" | "failed" | "cut";
@@ -120,6 +122,14 @@ const CALL_AGENT = "atelier-thread.call_agent";
 const LIST_PROJECTS = "atelier-thread.list_projects";
 const GET_WORK = "atelier-thread.get_work";
 const PROPOSE_WORK = "atelier-thread.propose_work";
+/** 「Project 고치기 시작」 Thread 도구(v1 티켓 32)의 `서버.도구` 이름. */
+const START_EDITING = "atelier-thread.start_editing";
+const START: Verbs = {
+  running: "고치기 시작하는 중",
+  done: "고치기 시작함",
+  failed: "고치기 시작하지 못함",
+  refused: "고치기 시작하지 않음",
+};
 const CHECK: Verbs = { running: "확인하는 중", done: "확인함", failed: "확인하지 못함", refused: "확인하지 않음" };
 const ASK: Verbs = { running: "묻는 중", done: "물음", failed: "묻지 못함", refused: "묻지 않음" };
 
@@ -165,6 +175,7 @@ export function describeTool(tool: ToolEntry): ToolView {
     if (name === GET_WORK) return { ...base, phrase: say(READ, "Work", false), mcp: box };
     // 카드가 선 동안 서는 줄이다 — 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다(`fold.ts`). 거절된 제안만 이 줄로 남는다.
     if (name === PROPOSE_WORK) return { ...base, phrase: say(ASK, "Work 만들기를", false), mcp: box };
+    if (name === START_EDITING) return { ...base, phrase: say(START, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
     return { ...base, phrase: say(MCP, name, true), mcp: box };
   }
 

@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, Info, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
@@ -17,6 +17,7 @@ import {
   type DecisionEntry,
   type Entry,
   type Notice,
+  type ProjectChoiceEntry,
   type QuestionEntry,
   type SystemLine,
   type ThreadModel,
@@ -27,6 +28,7 @@ import {
 import { SentAttachments } from "./ComposerAttachments";
 import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
+import { projectChoiceText } from "./project-card";
 import { answeredText, saidOf } from "./question";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Attachment } from "./types";
@@ -85,7 +87,7 @@ function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCall
   const between = (count: number) => [
     ...flow.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
     ...flow.system
-      .filter((line) => line.turnsBefore === count)
+      .filter((line) => line.turn === undefined && line.turnsBefore === count)
       .map((line) => <SystemRow key={line.key} line={line} cast={model.cast} />),
     ...flow.calls.filter((one) => one.turnsBefore === count).map((one) => <CallRow key={one.entry.key} call={one.entry} />),
   ];
@@ -118,6 +120,11 @@ function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCall
               waiting={turn.end === null ? waitingFor(model, turn.who ?? "host") : null}
               last={turn === last}
               onRetry={onRetry}
+              lead={flow.system
+                .filter((line) => line.turn === turn.key)
+                .map((line) => (
+                  <SystemRow key={line.key} line={line} cast={model.cast} />
+                ))}
             />
             {between(at + 1)}
           </Fragment>
@@ -174,12 +181,14 @@ function waitingFor(model: ThreadModel, who: string): string | null {
   const ask = model.asks.find((one) => one.who === who);
   if (!ask) return null;
   if (ask.card === "work") return "Work 만들기 답을 기다립니다";
+  if (ask.card === "project") return "Work 밖 Project 답을 기다립니다";
   return ask.card === "question" ? "답을 기다립니다" : "승인을 기다립니다";
 }
 
 /**
  * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄 · Library에 저장한 줄은 이름 앞에 그 얼굴이 선다 —
- * 저장한 Agent는 참여자가 아니라 줄이 실은 얼굴이다. Work를 만든 줄은 앞에 폴더 14가 선다(Cards 보드 「결정한 뒤」, 사이 6).
+ * 저장한 Agent는 참여자가 아니라 줄이 실은 얼굴이다. Work를 만든 줄은 앞에 폴더 14가, worktree를 만든 줄은 앞에 브랜치 14가 선다(화면 2
+ * 보드, 사이 6). 끝의 고정폭 조각(브랜치)은 빈칸 하나를 앞에 실어 글로 읽어도 「만듦 · fix/refund-api」다.
  */
 function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<string, CastMember>> }) {
   return (
@@ -188,6 +197,7 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
       className="flex flex-wrap items-center justify-center self-center text-center text-chat-meta leading-5 text-fg-tertiary"
     >
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
+      {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 「Library에」와 얼굴이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
       {line.handle && (
@@ -199,6 +209,7 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
       )}
       <b className="font-medium text-fg">{line.name}</b>
       {line.after}
+      {line.code && <span className="whitespace-pre font-mono text-xs">{` ${line.code}`}</span>}
     </p>
   );
 }
@@ -213,6 +224,7 @@ function TurnView({
   waiting,
   last,
   onRetry,
+  lead,
 }: {
   turn: Turn;
   member: CastMember | null;
@@ -225,18 +237,19 @@ function TurnView({
   waiting: string | null;
   last: boolean;
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
+  /** 이 턴의 머리에 서는 시스템 줄(worktree를 만듦) — 사람 말 뒤, Agent의 줄 앞이다(화면 2 보드). */
+  lead: ReactNode[];
 }) {
   const from = finalFrom(turn);
   const lastEntry = turn.entries[turn.entries.length - 1];
   // 글이 빈 생각은 그리지 않는다 — Claude Code는 생각의 글을 빈 문자열로 준다. 지금 생각하는 중이면 「생각 중」으로만 선다.
   const said = (entry: Entry) => entry.kind !== "thought" || entry.text.trim() !== "";
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(said);
-  // 턴 끝의 답 사이에 선 Work 만들기 결정 줄은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
-  const final = turn.end
-    ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || entry.kind === "work-choice")
-    : [];
-  // 계획 카드 · 체크리스트 · 호출 줄 · Work 만들기 결정 줄 · 질문에 답한 줄은 접힌 턴에도 남는다 — 계획과 누가 무엇을 맡았는지 · Work를
-  // 만들었는지 · 무엇으로 답했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
+  // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
+  const choice = (entry: Entry) => entry.kind === "work-choice" || entry.kind === "project-choice";
+  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || choice(entry)) : [];
+  // 계획 카드 · 체크리스트 · 호출 줄 · 카드의 결정 줄 · 질문에 답한 줄은 접힌 턴에도 남는다 — 계획과 누가 무엇을 맡았는지 · Work를
+  // 만들었는지 · 어느 Project를 붙였는지 · 무엇으로 답했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   const kept =
     turn.end && !open
       ? turn.entries.filter(
@@ -245,7 +258,7 @@ function TurnView({
             entry.kind === "checklist" ||
             entry.kind === "call" ||
             entry.kind === "question" ||
-            (entry.kind === "work-choice" && at < from),
+            (choice(entry) && at < from),
         )
       : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
@@ -262,6 +275,7 @@ function TurnView({
         </div>
       )}
       {task && turn.assigned && <AssignedTask call={turn.assigned} cast={cast} turn={turn.key} />}
+      {lead}
       {!waitingFirst && (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
           {turn.namesWho && turn.who && member && (
@@ -403,7 +417,26 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <WorkChoiceRow entry={entry} />;
     case "question":
       return <AnsweredRow entry={entry} />;
+    case "project-choice":
+      return <ProjectChoiceRow entry={entry} />;
   }
+}
+
+/**
+ * Work 밖 Project 결정 줄(v1 티켓 32 · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양에 폴더 글리프, Project 이름은
+ * `fg-secondary`(보드 `.o`)다. 「web-app을 이 Work에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을 고치지 않기로 함」.
+ */
+function ProjectChoiceRow({ entry }: { entry: ProjectChoiceEntry }) {
+  const { name, after } = projectChoiceText(entry.choice, entry.project);
+  return (
+    <p data-decision={`project-${entry.choice}`} className="flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary">
+      <Folder className="size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 wrap-anywhere">
+        <span className="text-fg-secondary">{name}</span>
+        {after}
+      </span>
+    </p>
+  );
 }
 
 /**

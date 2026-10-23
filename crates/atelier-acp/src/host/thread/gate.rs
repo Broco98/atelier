@@ -2,8 +2,12 @@
 //! · 구현 스펙 §9).
 //!
 //! - **요청을 받은 그때 읽는다** — 물어보는 정도와 「다시 묻지 않기」 허락(S18: Work에 이은 Thread면 Work 폴더의 점 파일, 아니면
-//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더), 등록된 Project,
-//!   쓰기 자리 주인(§10). 칩이 바꾼 정도 · 카드가 준 허락이 다음 요청부터 든다. 자리 · Project는 편집일 때만 읽는다.
+//!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 선 worktree · spec 폴더 · Thread 폴더), 등록된 Project,
+//!   쓰기 자리 주인(§10). 칩이 바꾼 정도 · 카드가 준 허락 · 「Project 고치기 시작」이 세운 worktree(v1 티켓 32)가 다음 요청부터 든다.
+//!   자리 · Project는 편집일 때만 읽는다.
+//! - **아직 서지 않은 worktree의 자리는 고칠 수 있는 자리가 아니다**(S21 · v1 티켓 32) — 그 자리에 먼저 쓰면 git worktree가 아닌 폴더가
+//!   서고, 뒤의 「Project 고치기 시작」이 그것을 worktree로 알고 짓지 않는다. 그 자리는 그 Project의 자리로 쳐서 거절 글이 도구를
+//!   가리킨다.
 //! - **Session을 열 때 읽는다** — 그 Agent의 Policy · `tools.cli`(정의 스냅숏, §19)와 작업 폴더(상대 경로를 푸는 자리).
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
@@ -57,7 +61,9 @@ impl Gate {
         let (level, grants) = asking(&self.data_root, &self.thread, work.as_deref());
         let roots = if editing { self.roots(work.as_deref()) } else { Vec::new() };
         let projects: Vec<(String, PathBuf)> = if editing {
-            atelier_core::project_folders(&self.data_root).into_iter().map(|(slug, folder)| (slug, resolve(&folder, &self.cwd))).collect()
+            let mut folders = atelier_core::project_folders(&self.data_root);
+            folders.extend(self.unplanted(work.as_deref()));
+            folders.into_iter().map(|(slug, folder)| (slug, resolve(&folder, &self.cwd))).collect()
         } else {
             Vec::new()
         };
@@ -106,8 +112,7 @@ impl Gate {
         Judgement::Ask(asking)
     }
 
-    /// 고칠 수 있는 자리 — Thread 폴더, 그리고 이은 Work의 spec 폴더와 worktree들(아직 서지 않은 worktree의 자리도). Work를 읽지
-    /// 못하면(사라졌다) Thread 폴더뿐이다.
+    /// 고칠 수 있는 자리 — Thread 폴더, 그리고 이은 Work의 spec 폴더와 선 worktree들. Work를 읽지 못하면(사라졌다) Thread 폴더뿐이다.
     fn roots(&self, work: Option<&str>) -> Vec<PathBuf> {
         let mut roots: Vec<PathBuf> = atelier_core::thread_dir(&self.data_root, &self.thread).into_iter().collect();
         if let Some(slug) = work {
@@ -115,10 +120,19 @@ impl Gate {
             if let Ok(meta) = atelier_core::read_work(&works, slug) {
                 let places = atelier_core::work_places(&works, &meta);
                 roots.push(places.spec);
-                roots.extend(places.worktrees);
+                roots.extend(places.worktrees.into_iter().filter(|tree| tree.is_dir()));
             }
         }
         roots.iter().map(|root| resolve(root, &self.cwd)).collect()
+    }
+
+    /// 이은 Work의 아직 서지 않은 worktree 자리 — (Project slug, 자리). 그 자리의 편집은 그 Project를 고치는 것이라 거절 글이 「Project
+    /// 고치기 시작」을 가리킨다.
+    fn unplanted(&self, work: Option<&str>) -> Vec<(String, PathBuf)> {
+        let works = atelier_core::works_in(&self.data_root);
+        let Some(meta) = work.and_then(|slug| atelier_core::read_work(&works, slug).ok()) else { return Vec::new() };
+        let places = atelier_core::work_places(&works, &meta);
+        meta.projects.into_iter().zip(places.worktrees).filter(|(_, tree)| !tree.is_dir()).collect()
     }
 }
 

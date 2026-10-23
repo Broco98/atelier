@@ -35,6 +35,7 @@ import {
 } from "./hooks";
 import { changedFiles } from "./log";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
+import ProjectCard from "./ProjectCard";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { readMark } from "./status";
@@ -560,6 +561,16 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
                     name={model.cast[asking.who]?.name ?? asking.who}
                     avatar={model.cast[asking.who]?.avatar ?? null}
                     request={asking}
+                    count={turn?.count}
+                    next={askNext}
+                  />
+                ) : asking.card === "project" ? (
+                  <ProjectCard
+                    key={`${asking.who}\u0000${asking.requestId}`}
+                    thread={thread}
+                    name={model.cast[asking.who]?.name ?? asking.who}
+                    avatar={model.cast[asking.who]?.avatar ?? null}
+                    card={asking}
                     count={turn?.count}
                     next={askNext}
                   />

@@ -166,6 +166,9 @@ export interface StartPicks {
   effort: string | null;
 }
 
+/** Work 밖 Project 카드의 답(v1 티켓 32 · S22) — 붙이고 고치기 · 읽기만 하기 · 아니요. */
+export type ProjectAnswer = "attach" | "read" | "decline";
+
 /**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·
  * `title` · `mode` · `call` · `pr` · `library`). Thread Session에는 `changes`가 서지 않는다.

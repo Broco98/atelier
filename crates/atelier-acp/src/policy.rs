@@ -7,7 +7,7 @@
 //! **판정 순서**(§9) — 처음 걸린 칸이 답한다.
 //! 1. `forbid`에 걸리면 거절한다.
 //! 2. 고치는 경로가 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더) 밖이면 거절한다. 그 경로가 등록된 Project 안이면
-//!    「Project 고치기 시작」 도구(v1 티켓 32)를 먼저 부르라고 글로 알린다.
+//!    Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터 만들라고.
 //! 3. 쓰기 자리를 다른 Session이 쥐고 있으면 거절한다(§10 · v1 티켓 18).
 //! 4. `ask_before`에 걸리면 묻는다.
 //! 5. 「다시 묻지 않기」 허락에 걸리면 허용한다.
@@ -227,12 +227,20 @@ fn by_level(case: &Case) -> Verdict {
     }
 }
 
-/// 밖 편집의 글 — 등록된 Project 안이면 그 Project를 이 Work에 붙이는 도구를 가리킨다.
+/// 밖 편집의 글 — 등록된 Project 안이면 그 Project의 worktree를 세우는(Work에 없으면 붙일지 묻는) Thread 도구를 가리킨다. Work가
+/// 없는 Thread면 붙일 Work가 없으므로 Work 만들기 제안부터다.
 fn outside_message(path: &Path, case: &Case) -> String {
     let place = if case.in_work { "Work" } else { "Thread 폴더" };
     let head = format!("{place} 밖의 파일이라 고칠 수 없어요: {}", path.display());
+    let start = crate::thread_tools::START_EDITING;
     match case.projects.iter().find(|(_, folder)| path.starts_with(folder)) {
-        Some((project, _)) => format!("{head} — `{project}` Project를 고치려면 먼저 「Project 고치기 시작」 도구를 부르세요"),
+        Some((project, _)) if case.in_work => {
+            format!("{head} — `{project}` Project를 고치려면 먼저 Thread 도구 `{start}`(Project 고치기 시작)을 부르세요")
+        }
+        Some((project, _)) => format!(
+            "{head} — `{project}` Project를 고치려면 먼저 Thread 도구 `{}`로 그 Project를 넣은 Work를 만든 뒤 `{start}`을 부르세요",
+            crate::thread_tools::PROPOSE_WORK
+        ),
         None if case.in_work => format!("{head} — 이 Work의 worktree · spec 폴더 안에서만 고쳐요"),
         None => format!("{head} — Work가 없는 Thread는 이 Thread 폴더 안에서만 고쳐요"),
     }
@@ -547,8 +555,8 @@ mod tests {
         assert_eq!(
             given.judged(),
             refuse(
-                "Work 밖의 파일이라 고칠 수 없어요: /repos/fe/src/cart.ts — `fe` Project를 고치려면 먼저 「Project 고치기 시작」 \
-                 도구를 부르세요"
+                "Work 밖의 파일이라 고칠 수 없어요: /repos/fe/src/cart.ts — `fe` Project를 고치려면 먼저 Thread 도구 \
+                 `start_editing`(Project 고치기 시작)을 부르세요"
             ),
             "2. 밖 편집"
         );
@@ -746,8 +754,8 @@ mod tests {
         assert_eq!(
             judged("/repos/fe/a.ts", false),
             refuse(
-                "Thread 폴더 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 「Project 고치기 시작」 도구를 \
-                 부르세요"
+                "Thread 폴더 밖의 파일이라 고칠 수 없어요: /repos/fe/a.ts — `fe` Project를 고치려면 먼저 Thread 도구 `propose_work`로 \
+                 그 Project를 넣은 Work를 만든 뒤 `start_editing`을 부르세요"
             )
         );
     }

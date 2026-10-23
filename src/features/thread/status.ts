@@ -4,6 +4,7 @@ import { awaitingLogin } from "./engine-store";
 import {
   finalMessages,
   foldOf,
+  isCardAsk,
   type CallEntry,
   type CastMember,
   type PendingAsk,
@@ -71,7 +72,9 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
         ? `Work 만들기 · ${waiting.title}`
         : waiting.card === "question"
           ? `질문 · ${waiting.questions[0]?.question ?? ""}`
-          : `승인 · ${waitingFor(waiting)}`;
+          : waiting.card === "project"
+            ? `Work 밖 Project · ${waiting.name}`
+            : `승인 · ${waitingFor(waiting)}`;
     return { kind: "mine", since: askedAt(lines, waiting), text };
   }
   const login = loginLine(lines);
@@ -144,10 +147,10 @@ function waitingFor(request: PendingPermission): string {
 
 /**
  * 그 물음이 선 때 — 기록의 물음 줄 시각이다. 요청 id는 Session마다 0부터 세므로 물은 참여자와 함께 찾는다(v1 티켓 25). Work 만들기
- * 카드(v1 티켓 30) · Agent의 질문(v1 티켓 26)은 `question` 줄이다.
+ * 카드(v1 티켓 30) · Agent의 질문(v1 티켓 26) · Work 밖 Project 카드(v1 티켓 32)는 `question` 줄이다.
  */
 function askedAt(lines: readonly RecordLine[], request: PendingAsk): string {
-  const kind = request.card === "work" || request.card === "question" ? "question" : "permission";
+  const kind = isCardAsk(request) ? "question" : "permission";
   for (let at = lines.length - 1; at >= 0; at -= 1) {
     const line = lines[at];
     const payload = isObject(line.payload) ? line.payload : {};

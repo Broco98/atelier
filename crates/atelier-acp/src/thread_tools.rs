@@ -62,6 +62,9 @@ pub(crate) const GET_WORK: &str = "get_work";
 /// 「Work 만들기 제안」(S13 · §11, v1 티켓 30).
 pub(crate) const PROPOSE_WORK: &str = "propose_work";
 
+/// 「Project 고치기 시작」(S13 · §11 S21 · S22, v1 티켓 32). 판정의 Work 밖 편집 거절 글이 이 이름을 가리킨다(`policy.rs`).
+pub(crate) const START_EDITING: &str = "start_editing";
+
 /// 「Work 만들기 제안」의 쓰는 법 — 언제 부르고, 카드에서 사람이 무엇을 고치고, 답이 무엇인지(S42). 사람이 설치한 `atelier` MCP로 Work를
 /// 만들면 Thread가 이어지지 않으므로 그 길을 막는 말도 여기 둔다(§7).
 const PROPOSE_WORK_GUIDE: &str = "이 Thread의 일을 Work로 묶자고 사람에게 묻는다. 일이 커지면 부른다 — 여러 파일을 고치거나 \
@@ -73,6 +76,17 @@ const PROPOSE_WORK_GUIDE: &str = "이 Thread의 일을 Work로 묶자고 사람�
 - 「Work 없이 계속」이면 Work 없이 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.\n\n\
 Work는 사람이 설치한 atelier MCP의 atelier_start_work가 아니라 이 도구로 만든다 — 그래야 이 Thread가 그 Work에 이어진다. 이미 \
 Work에 이어진 Thread에서는 부를 수 없다(get_work로 그 Work를 읽는다).";
+
+/// 「Project 고치기 시작」의 쓰는 법 — 언제 부르고, Work에 없는 Project면 사람이 무엇을 고르고, 작업 폴더가 언제 바뀌는지(S42).
+const START_EDITING_GUIDE: &str = "Work의 Project를 고치기 시작한다 — 그 Project의 파일을 처음 고치기 전에 부른다. Work의 Project는 \
+처음 고칠 때까지 읽기만이라 worktree가 없다. 이 도구가 그 Project에만 worktree를 Work의 브랜치로 만들고 그 경로를 돌려준다(이미 \
+있으면 그 경로).\n\n\
+- 이번 턴에는 돌려받은 worktree 안을 절대 경로로 고친다. 다음 턴부터는 작업 폴더가 Work의 자리(worktree)로 바뀐다.\n\
+- 이 Work에 없는 Project면 사람에게 카드로 묻고 고를 때까지 기다린다 — 「붙이고 고치기」면 그 Project를 Work에 붙이고 worktree를 \
+만든다. 「읽기만 하기」면 다음 턴부터 그 Project 폴더를 읽을 수 있지만 고치지 않는다. 「아니요」면 고치지 않고 이 Work의 \
+Project에서만 고친다. 같은 턴에 곧바로 다시 묻지 않는다.\n\
+- Work에 이어지지 않은 Thread에서는 부를 수 없다 — 먼저 propose_work로 Work를 만든다.\n\n\
+Project의 원래 폴더(list_projects의 path)는 고치지 않는다 — 판정이 거절한다.";
 
 /// 「Agent 저장」의 쓰는 법 — Agent 파일의 꼴과, 이 도구가 하지 않는 일(「이 Project에 둬」). 파일의 꼴은 Agent가 이 설명만 보고
 /// 깨지지 않은 파일을 짓도록 적는다(S42 — 쓰는 법은 도구의 설명이 맡는다). 깨지면 도구가 그 까닭을 돌려준다.
@@ -295,6 +309,8 @@ pub(crate) enum Call {
     GetWork,
     /// Work 만들기 제안 — Host가 골라 둔 것(v1 티켓 30). 사람이 카드에서 고친다.
     ProposeWork(Proposal),
+    /// Project 고치기 시작 — 고칠 Project의 slug와, Work 밖 Project 카드에 설 까닭(v1 티켓 32).
+    StartEditing { project: String, reason: Option<String> },
 }
 
 /// Work 만들기 제안(S13) — Host가 골라 둔 제목 · slug · 까닭 · 브랜치 · Project들. 카드가 이것으로 서고, 사람이 Project와 브랜치를
@@ -434,6 +450,24 @@ pub(crate) fn list() -> Value {
                 "additionalProperties": false,
             },
         },
+        {
+            "name": START_EDITING,
+            "title": "Project 고치기 시작",
+            "description": START_EDITING_GUIDE,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string", "description": "고칠 Project의 slug(list_projects · get_work의 slug)"},
+                    "reason": {
+                        "type": "string",
+                        "description": "왜 이 Project를 고치는지 한 줄 — Work에 없는 Project면 사람에게 묻는 카드에 선다(예: 환불 버튼이 \
+                                        두 번 눌리는 문제는 web-app에 있어요)",
+                    },
+                },
+                "required": ["project"],
+                "additionalProperties": false,
+            },
+        },
     ]})
 }
 
@@ -462,6 +496,13 @@ pub(crate) fn read_call(params: &Value) -> Result<Call, Unread> {
         LIST_PROJECTS => Ok(Call::ListProjects),
         GET_WORK => Ok(Call::GetWork),
         PROPOSE_WORK => read_proposal(arguments).map(Call::ProposeWork).map_err(Unread::Bad),
+        START_EDITING => {
+            let text = |field: &str| arguments[field].as_str().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
+            match text("project") {
+                Some(project) => Ok(Call::StartEditing { project, reason: text("reason") }),
+                None => Err(Unread::Bad("project(고칠 Project의 slug)를 글로 주세요".to_owned())),
+            }
+        }
         _ => Err(Unread::Unknown(Fault::new(-32602, format!("모르는 도구입니다: {name}")))),
     }
 }
@@ -561,7 +602,8 @@ mod tests {
                 json!("save_agent"),
                 json!("list_projects"),
                 json!("get_work"),
-                json!("propose_work")
+                json!("propose_work"),
+                json!("start_editing")
             ],
             "목록과 읽는 도구가 같다"
         );
@@ -618,5 +660,17 @@ mod tests {
         assert!(matches!(call(json!({"title": "t", "slug": "a", "reason": "r", "projects": [{"reason": "x"}]})), Err(Unread::Bad(_))));
         assert_eq!(read_call(&json!({"name": "list_projects", "arguments": {}})), Ok(Call::ListProjects));
         assert_eq!(read_call(&json!({"name": "get_work"})), Ok(Call::GetWork));
+    }
+
+    #[test]
+    fn project_고치기_시작은_project_slug와_까닭을_받고_slug가_없으면_도구의_실패다() {
+        let call = |arguments: Value| read_call(&json!({"name": "start_editing", "arguments": arguments}));
+        assert_eq!(
+            call(json!({"project": " web-app ", "reason": "환불 버튼은 web-app에 있어요"})),
+            Ok(Call::StartEditing { project: "web-app".into(), reason: Some("환불 버튼은 web-app에 있어요".into()) })
+        );
+        assert_eq!(call(json!({"project": "api-server", "reason": " "})), Ok(Call::StartEditing { project: "api-server".into(), reason: None }));
+        assert!(matches!(call(json!({"reason": "r"})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"project": ""})), Err(Unread::Bad(_))));
     }
 }

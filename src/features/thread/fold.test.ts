@@ -2,9 +2,21 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { answeringLine, finalMessages, flowOf, foldThread, headline, type CallEntry, type PendingWork, type ThreadModel } from "./fold";
+import {
+  answeringLine,
+  finalMessages,
+  flowOf,
+  foldThread,
+  headline,
+  particle,
+  type CallEntry,
+  type PendingProject,
+  type PendingWork,
+  type ThreadModel,
+} from "./fold";
 import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
+import { decisionsDue } from "./work-proposal";
 
 // Thread 접기(v1 티켓 05) — 기록 줄 → 턴 · 말한 이 · 도구 줄 · 시스템 줄. seam은 순수 함수 `foldThread` 하나다: 처음 읽은 기록도
 // 흐르는 기록 줄 이벤트도 같은 줄이라, 여기서 기록을 넣고 나온 화면 모델만 본다.
@@ -813,5 +825,89 @@ describe("질문 카드(v1 티켓 26)", () => {
       ["command", "tester"],
     ]);
     expect(answeringLine(model)).toBe(null);
+  });
+});
+
+describe("Work 밖 Project 카드(v1 티켓 32)", () => {
+  /** Host가 Work 밖 web-app을 고치려 하고, 사람이 「붙이고 고치기」를 고른 축복 기록 — 8 카드 · 9 답 · 10 붙임 · 11 worktree · 12 도구 끝. */
+  const attaching = record("thread-project");
+  const cards = (model: ThreadModel) => model.asks.filter((one): one is PendingProject => one.card === "project");
+  const answered = (payload: Record<string, unknown>): RecordLine => ({
+    seq: 9,
+    at: at(9),
+    kind: "question",
+    who: "host",
+    payload: { requestId: "fake-request", card: "project", project: "web-app", ...payload },
+  });
+
+  it("카드 줄이 오면 권한 요청과 같은 물음 차례에 카드가 서고 — 고칠 Project · 까닭 · 이 Work의 Project — 그 도구 줄은 「web-app 고치기 시작하는 중」이다", () => {
+    const model = foldThread(through(attaching, 8));
+    expect(cards(model)).toEqual([
+      {
+        card: "project",
+        requestId: "fake-request",
+        who: "host",
+        project: "web-app",
+        name: "web-app",
+        reason: "환불 버튼이 두 번 눌리는 문제는 web-app에 있어요",
+        work: "refund-api",
+        workProjects: ["api-server"],
+      },
+    ]);
+    expect(model.pending).toEqual([]);
+    const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
+    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("web-app 고치기 시작하는 중");
+  });
+
+  it("붙이면 카드가 걷히고, 그 도구 줄 자리에 「web-app을 이 Work에 붙임」 결정 줄이, 턴 안에 「web-app에 worktree를 만듦 · 브랜치」 시스템 줄이 선다", () => {
+    const model = foldThread(attaching);
+    expect(cards(model)).toEqual([]);
+    const entries = model.turns[0].entries;
+    expect(entries.map((entry) => entry.kind)).toEqual(["project-choice", "message"]);
+    expect(entries[0]).toMatchObject({ choice: "attach", project: "web-app" });
+    expect(model.system.map((line) => [line.kind, line.before, line.name, line.after, line.code, line.turnsBefore])).toEqual([
+      ["worktree", "", "web-app", "에 worktree를 만듦 ·", "fix/refund-api", 1],
+    ]);
+    // 턴 사이가 아니라 그 Project를 고치기 시작한 턴의 머리(사람 말 뒤 · Agent 앞)에 선다 — 화면 2 보드.
+    expect(model.system[0].turn).toBe(model.turns[0].key);
+  });
+
+  it("읽기만 · 아니요도 결정 줄만 서고 시스템 줄은 없다. 멈춤으로 거둔 카드는 결정 줄 없이 걷힌다", () => {
+    for (const choice of ["read", "decline"]) {
+      const model = foldThread([...through(attaching, 8), answered({ state: "answered", choice })]);
+      expect(cards(model)).toEqual([]);
+      expect(model.system).toEqual([]);
+      expect(model.turns[0].entries.map((entry) => entry.kind === "project-choice" && entry.choice)).toEqual([choice]);
+    }
+    const withdrawn = foldThread([...through(attaching, 8), answered({ state: "withdrawn", reason: "stopped" })]);
+    expect(cards(withdrawn)).toEqual([]);
+    expect(withdrawn.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool"]);
+  });
+
+  it("Work에 있는 Project를 처음 고치면 카드 없이 「api-server에 worktree를 만듦」 시스템 줄만 선다 — 붙임 줄은 시스템 줄이 아니고, Work를 만든 줄도 아니다", () => {
+    const model = foldThread([
+      { seq: 1, at: at(1), kind: "sent", payload: { text: "고쳐 줘", to: "host" } },
+      { seq: 2, at: at(2), kind: "work", payload: { state: "attached", project: "web-app" } },
+      { seq: 3, at: at(3), kind: "work", payload: { state: "worktree", project: "api-server", branch: "fix/refund-api", path: "/w" } },
+      { seq: 4, at: at(4), kind: "work", payload: { state: "worktree", project: "docs", branch: null, path: "/d" } },
+    ]);
+    expect(model.system.map((line) => [line.name, line.after, line.code])).toEqual([
+      ["api-server", "에 worktree를 만듦 ·", "fix/refund-api"],
+      ["docs", "에 worktree를 만듦", null],
+    ]);
+    expect(model.system.map((line) => line.turn)).toEqual([model.turns[0].key, model.turns[0].key]);
+    // 「결정은 내가 합니다」는 Work를 만든 Thread에서만 선다 — worktree가 생긴 것으로는 서지 않는다.
+    expect(decisionsDue(model, false)).toBe(false);
+  });
+
+  it("영어 이름의 조사는 끝소리로 고른다 — web-app을 · api-server를 · Host가 · 숫자도 읽는 소리대로", () => {
+    expect(particle("web-app", "을", "를")).toBe("을");
+    expect(particle("api-server", "을", "를")).toBe("를");
+    expect(particle("Host", "이", "가")).toBe("가");
+    expect(particle("helm", "으로", "로")).toBe("으로");
+    expect(particle("tool", "으로", "로")).toBe("로");
+    expect(particle("v1", "을", "를")).toBe("을");
+    expect(particle("v2", "을", "를")).toBe("를");
+    expect(particle("환불 API 버그 수정", "을", "를")).toBe("을");
   });
 });

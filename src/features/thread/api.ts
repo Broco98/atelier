@@ -8,6 +8,7 @@ import type {
   EngineCheck,
   EngineState,
   Participant,
+  ProjectAnswer,
   QuestionAnswer,
   QuitCounts,
   RecordLine,
@@ -82,6 +83,12 @@ export const threadApi = {
    */
   answerQuestion: (thread: string, who: string, request: string, answers: readonly QuestionAnswer[], later = false) =>
     invoke<void>("thread_answer_question", { thread, who, request, answers, later }),
+  /**
+   * Work 밖 Project 카드의 답(v1 티켓 32 · S22) — 「붙이고 고치기」(`attach`) · 「읽기만 하기」(`read`) · 「아니요」(`decline`). 붙이지
+   * 못하면 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 온다.
+   */
+  answerProject: (thread: string, request: string, choice: ProjectAnswer) =>
+    invoke<void>("thread_answer_project", { thread, request, choice }),
   /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
   setModel: (thread: string, who: string, model: string) =>
     invoke<Participant>("thread_set_model", { thread, who, model }),

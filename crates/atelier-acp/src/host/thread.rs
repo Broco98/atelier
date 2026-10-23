@@ -28,15 +28,20 @@
 //!   worktree 없이 Work를 만들고 이 Thread의 `work`를 적는다.
 //! - **이은 Work가 보관되거나 지워지면 읽기만이다(v1 티켓 38 · §4 · §5, [`read_only`]).** 그 Thread의 Session은 지금 턴 뒤에 꺼지고,
 //!   말은 거절된다.
+//! - **worktree는 처음 고칠 때 선다(v1 티켓 32 · S21 · S22, [`project`]).** Agent가 Thread 도구 「Project 고치기 시작」을 부르면 그
+//!   Project에만 worktree가 서고, Work에 없는 Project면 Work 밖 Project 카드로 묻는다. 작업 폴더가 바뀐 Session은 다음 말을 보낼 때
+//!   새 작업 폴더에서 이어 연다(S11 「바꿔 이어 열기」).
 
 mod call;
 mod gate;
+mod project;
 mod read_only;
 mod seat;
 mod work;
 mod writing;
 
 pub(super) use call::Assignment;
+pub use project::ProjectChoice;
 pub(super) use read_only::VanishWatch;
 pub use work::WorkChoice;
 pub use writing::DocWriting;
@@ -173,10 +178,12 @@ pub(super) struct Threads {
     halts: Mutex<HashMap<String, u64>>,
     /// Work마다의 쓰기 자리(v1 티켓 18) — Session들의 쓰기 자리 손이 함께 쥔다.
     seats: Arc<seat::WriteSeats>,
-    /// 서 있는 Work 만들기 카드(v1 티켓 30) — 사람의 답을 기다리는 도구 호출들.
+    /// 서 있는 카드(Work 만들기 — v1 티켓 30, Work 밖 Project — v1 티켓 32) — 사람의 답을 기다리는 도구 호출들.
     proposals: work::Proposals,
     /// Work마다 지금 쓰는 중인 문서(v1 티켓 34) — Session들의 쓰기 자리 손이 편집 도구의 갱신을 적는다.
     docs: Arc<writing::DocDesk>,
+    /// worktree 짓기를 하나씩 세운다(v1 티켓 32) — 같은 Project를 둘이 함께 시작해도 git worktree를 두 번 짓지 않는다.
+    trees: Mutex<()>,
 }
 
 /// Session의 열쇠 — (Thread, 참여자 handle).
@@ -300,6 +307,10 @@ impl Threads {
 
     fn lock_files(&self) -> MutexGuard<'_, ()> {
         self.files.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_trees(&self) -> MutexGuard<'_, ()> {
+        self.trees.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn lock_halts(&self) -> MutexGuard<'_, HashMap<String, u64>> {
@@ -839,6 +850,7 @@ impl ConversationHost {
             Ok(Call::ListProjects) => self.list_projects_tool(),
             Ok(Call::GetWork) => self.get_work_tool(key),
             Ok(Call::ProposeWork(proposal)) => self.propose_work(key, proposal),
+            Ok(Call::StartEditing { project, reason }) => self.start_editing(key, &project, reason.as_deref()),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -939,6 +951,8 @@ impl ConversationHost {
     ) -> Result<(), HostError> {
         if !self.session_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive_session(key, Revive::IfNotRunning)?;
+        } else {
+            self.move_if_needed(key)?;
         }
         let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote: None, attachments, call };
         let found = self.threads.find(key);
@@ -951,6 +965,28 @@ impl ConversationHost {
         conv.seat(&mut state).say(draft, ()).map_err(|refused| refused.into_host(&key.thread))
     }
 
+    /// 작업 폴더가 바뀐 Session을 새 작업 폴더에서 이어 연다(S11 「바꿔 이어 열기」 · v1 티켓 32) — Work가 나중에 붙었거나, worktree가
+    /// 새로 섰거나, 읽기만 폴더를 더했다. 같은 Session id로 이어 열므로(`--resume`) 앞 맥락이 이어지고 새 턴은 새 폴더에서 일한다
+    /// (실측-작업폴더.md). 옮겨 연 Session의 첫 말에는 머리말이 다시 붙어 새 자리를 알린다([`Self::open_session`]).
+    ///
+    /// **쉬는 Session만 옮긴다** — 턴이 도는 동안의 말은 대기 줄에 들어 그 프로세스(옛 폴더)에 간다. 그 Session은 다음에 쉬는 때 받는
+    /// 말에서 옮긴다. 바뀐 것이 없으면 아무것도 하지 않는다. 막히는 호출일 수 있다(Session이 열릴 때까지).
+    fn move_if_needed(&self, key: &SessionKey) -> Result<(), HostError> {
+        if !self.place_moved(key) {
+            return Ok(());
+        }
+        self.revive_session(key, Revive::IfMoved)
+    }
+
+    /// 그 Session이 연 작업 폴더 · 함께 여는 폴더(`thread.json`의 참여자 줄)가 지금 S11 표의 자리와 다른가. 처음 열기 전이거나 자리를
+    /// 셀 수 없으면(사라진 Work) 다르지 않다고 본다 — 옮기지 못하는 일로 말을 막지 않는다.
+    fn place_moved(&self, key: &SessionKey) -> bool {
+        let Ok(file) = self.read_thread_file(&key.thread) else { return false };
+        let Ok(participant) = participant_of(&file, &key.thread, &key.handle) else { return false };
+        let Ok(place) = self.thread_place(&key.thread, &file) else { return false };
+        moved(&participant, &place)
+    }
+
     /// 떠 있지 않거나 죽은 Session을 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 Session과 죽은 Session은 말을 보낼 때 띄운다
     /// (three-axes 결정 19). `thread.json`의 Session id로 resume → load → 새로 순이고, 떠 있던(죽은) Session은 쓰는 손과 대기 줄을
     /// 그대로 이어 쓴다. 다시 뜨지 못하면 대기 줄은 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
@@ -960,6 +996,10 @@ impl ConversationHost {
         let gate = self.revival_gate(&key.gate());
         let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if when == Revive::IfNotRunning && self.session_running(key) {
+            return Ok(());
+        }
+        // 앞선 것이 옮겼거나, 그사이 턴이 섰다 — 도는 턴을 끊지 않는다(v1 티켓 32).
+        if when == Revive::IfMoved && !(self.session_idle(key) && self.place_moved(key)) {
             return Ok(());
         }
         let file = self.read_thread_file(&key.thread)?;
@@ -995,7 +1035,7 @@ impl ConversationHost {
         env: &AgentEnv,
         programs: &[FoundProgram],
     ) -> Result<(), HostError> {
-        let place = self.thread_place(&key.thread, file.work.as_deref())?;
+        let place = self.thread_place(&key.thread, file)?;
         let (definition, instructions) = self.read_snapshot(key)?;
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
@@ -1051,9 +1091,11 @@ impl ConversationHost {
                 return Err(HostError::Open { thread: key.thread.clone(), reason });
             }
         };
-        // 그 Session의 첫 말이면 머리말을 붙인다(S10) — 새로 섰거나, 되살린 Session이 아직 말을 받은 적이 없다.
+        // 그 Session의 첫 말이면 머리말을 붙인다(S10) — 새로 섰거나, 되살린 Session이 아직 말을 받은 적이 없다. 작업 폴더가 바뀌어
+        // 옮겨 연 Session에도 붙인다(v1 티켓 32) — 이은 Work · 새 worktree · 읽기만 폴더를 그 Agent가 알게.
         let heard = self.read_thread_record(&key.thread, 0)?;
-        let needs_preamble = opened.how.starts_session() || !heard_since_session_start(&heard, &key.handle);
+        let needs_preamble =
+            opened.how.starts_session() || !heard_since_session_start(&heard, &key.handle) || moved(participant, &place);
         {
             let mut state = conv.lock_state();
             state.order.opened(needs_preamble);
@@ -1074,6 +1116,11 @@ impl ConversationHost {
     /// 그 Session이 떠 있고 살아 있나 — 아니면 보내기가 먼저 되살린다.
     fn session_running(&self, key: &SessionKey) -> bool {
         self.threads.find(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up()))
+    }
+
+    /// 그 Session이 떠 있고 살아 있고 턴이 돌지 않나 — 작업 폴더를 옮겨도 끊길 턴이 없다.
+    fn session_idle(&self, key: &SessionKey) -> bool {
+        self.threads.find(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up() && !state.order.turning()))
     }
 
     /// 떠 있을 Session의 대화 — 그 Thread의 기록에 그 handle로 적고, 턴 도중의 로그인 요구를 창구에 쥐게 하고, 턴 끝에 그 Thread가
@@ -1223,19 +1270,33 @@ impl ConversationHost {
     /// | worktree가 선 Project가 없는 Work | spec 폴더 | — |
     /// | worktree 하나 | 그 worktree | spec 폴더 |
     /// | worktree 여럿 | `trees/` | spec 폴더 |
-    fn thread_place(&self, thread: &str, work: Option<&str>) -> Result<SessionPlace, HostError> {
-        let Some(slug) = work else {
-            let cwd = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
-            return Ok(SessionPlace { cwd, additional_directories: Vec::new() });
+    ///
+    /// Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project 폴더(`readOnlyProjects`)는 함께 여는 폴더 끝에 더한다(S22 · v1 티켓 32) — 읽을 수
+    /// 있게만 한다. 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs`).
+    fn thread_place(&self, thread: &str, file: &ThreadFile) -> Result<SessionPlace, HostError> {
+        let mut place = match &file.work {
+            None => {
+                let cwd = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
+                SessionPlace { cwd, additional_directories: Vec::new() }
+            }
+            Some(slug) => {
+                let work_at = self.open_work(slug)?;
+                let trees: Vec<&PathBuf> = work_at.places.worktrees.iter().filter(|tree| tree.is_dir()).collect();
+                match trees.as_slice() {
+                    [] => SessionPlace { cwd: work_at.places.spec.clone(), additional_directories: Vec::new() },
+                    [tree] => SessionPlace { cwd: (*tree).clone(), additional_directories: vec![work_at.places.spec.clone()] },
+                    _ => SessionPlace { cwd: work_at.places.trees.clone(), additional_directories: vec![work_at.places.spec.clone()] },
+                }
+            }
         };
-        let work_at = self.open_work(slug)?;
-        let trees: Vec<&PathBuf> = work_at.places.worktrees.iter().filter(|tree| tree.is_dir()).collect();
-        let cwd = match trees.as_slice() {
-            [] => return Ok(SessionPlace { cwd: work_at.places.spec.clone(), additional_directories: Vec::new() }),
-            [tree] => (*tree).clone(),
-            _ => work_at.places.trees.clone(),
-        };
-        Ok(SessionPlace { cwd, additional_directories: vec![work_at.places.spec.clone()] })
+        if !file.read_only_projects.is_empty() {
+            for (slug, folder) in atelier_core::project_folders(&self.data_root) {
+                if file.read_only_projects.contains(&slug) && !place.additional_directories.contains(&folder) {
+                    place.additional_directories.push(folder);
+                }
+            }
+        }
+        Ok(place)
     }
 
     /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이 Agent의 handle, 참여자, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
@@ -1274,13 +1335,16 @@ impl ConversationHost {
                  - `{}`() — 이 Thread의 Work(spec 폴더 · 브랜치 · Project마다 worktree 또는 읽기만).\n  \
                  - `{}`(title, slug, reason, branch, projects) — 일이 커지면 Work로 묶자고 사람에게 카드로 묻고, 사람이 고를 \
                  때까지 기다린다. Work는 사람의 `atelier` MCP(`atelier_start_work`)가 아니라 이 도구로 만든다 — 그래야 이 Thread가 \
-                 그 Work에 이어진다.\n",
+                 그 Work에 이어진다.\n  \
+                 - `{}`(project, reason) — Work의 Project를 처음 고치기 전에 부른다. 그 Project에만 worktree를 만들어 경로를 \
+                 돌려준다. Work에 없는 Project면 사람에게 카드로 묻는다.\n",
                 thread_tools::SERVER_NAME,
                 thread_tools::CALL_AGENT,
                 thread_tools::SAVE_AGENT,
                 thread_tools::LIST_PROJECTS,
                 thread_tools::GET_WORK,
-                thread_tools::PROPOSE_WORK
+                thread_tools::PROPOSE_WORK,
+                thread_tools::START_EDITING
             ));
         }
         if let Some(note) = note {
@@ -1433,6 +1497,15 @@ fn title_of(text: &str) -> String {
 /// 사람이 고친 이름 — 줄마다 앞뒤 빈칸을 걷고 빈 줄을 버린 뒤 빈칸 하나로 잇는다.
 fn one_line(text: &str) -> String {
     text.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+/// 그 참여자의 Session이 연 자리(`thread.json`의 참여자 줄)가 지금 자리와 다른가(v1 티켓 32) — 처음 열기 전(작업 폴더가 없다)이면
+/// 다르지 않다.
+fn moved(participant: &Participant, place: &SessionPlace) -> bool {
+    participant
+        .cwd
+        .as_ref()
+        .is_some_and(|cwd| cwd != &place.cwd || participant.additional_directories != place.additional_directories)
 }
 
 fn participant_of(file: &ThreadFile, thread: &str, handle: &str) -> Result<Participant, HostError> {

@@ -282,6 +282,14 @@ Thread를 잇는다(흐름에 「Work … 을 만들고 이 Thread에 연결함�
 「결정은 내가 합니다」 카드가 Host가 먼저 묻는 일을 알린다.
 _피할 말_: Work 생성 모달, Work 마법사
 
+**Work 밖 Project 카드**:
+Agent가 이은 Work에 없는 Project를 고치려 할 때 입력창 자리 · 물음 차례에 서는 카드 — 고치려는 Project와 까닭, 「이 Work에 붙어 있지
+않음」을 보이고 「web-app을 이 Work에 붙이고 고치기」 · 「읽기만 하기」 · 「아니요, api-server에서만 고쳐 주세요」를 숫자 · Enter · Esc로
+고른다. 붙이면 그 Project에 worktree가 생기고, 읽기만 하기는 Work에 붙이지 않고 다음 턴부터 그 폴더를 읽게만 한다. 고르면 흐름에
+「web-app을 이 Work에 붙임」 같은 결정 줄이 남는다. Work에 있는 Project는 묻지 않는다 — Agent가 처음 고치기 전에 그 Project에만
+worktree가 생기고 흐름에 「api-server에 worktree를 만듦 · fix/refund-api」 한 줄이 남는다.
+_피할 말_: Project 추가 팝업
+
 **Work 카드**:
 Work에 이은 Thread 화면의 오른쪽 위, 위 막대의 카드 버튼 바로 아래에 작게 떠 있는 카드 — Thread가 아니라 Work의 자리다. 머리(Work 이름 ·
 브랜치 · Thread 수) 아래로 문서 · 변경 · Project · PR 칸이 서고, 비어 있는 칸은 그리지 않는다. 누가 문서를 쓰는 중이면 그 문서 옆에 파란 점과

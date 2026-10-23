@@ -223,7 +223,7 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place, count 
 
 /**
  * 번호 줄 끝의 글쇠(보드 `.kbd`) — 높이 20 · 반경 6 · 머리카락 선, 고정폭 `fg-tertiary`. 그림이라 숨는다(줄의 이름은 선택지 글이다).
- * 질문 카드의 번호도 이것이다.
+ * 질문 카드 · Work 밖 Project 카드(v1 티켓 32)의 번호도 이것이다.
  */
 export function KeyCap({ children }: { children: string }) {
   return (

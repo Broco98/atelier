@@ -27,7 +27,7 @@ use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms,
 mod thread;
 mod turn_order;
 
-pub use thread::{DocWriting, QuestionReply, Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
+pub use thread::{DocWriting, ProjectChoice, QuestionReply, Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
 use thread::VanishWatch;
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
@@ -587,6 +587,9 @@ pub enum HostError {
     WorkNotCreated(String),
     /// 읽기만 된 Thread — 이은 Work가 보관됐거나 지워졌다(v1 티켓 38). 아무것도 적지 않았다.
     ReadOnly { thread: String, gone: atelier_core::WorkGone },
+    /// 「붙이고 고치기」로 Project를 Work에 붙이지 못했다(v1 티켓 32) — 까닭은 core의 글(등록 · git · baseBranch)이다. 아무것도 적지
+    /// 않았고 Work 밖 Project 카드는 그대로 서 있다.
+    ProjectNotAttached(String),
 }
 
 impl fmt::Display for HostError {
@@ -639,6 +642,7 @@ impl fmt::Display for HostError {
             HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
             HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 Work의 Thread는 읽기만 돼요"),
             HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 Work의 Thread는 읽기만 돼요"),
+            HostError::ProjectNotAttached(reason) => write!(f, "Project를 붙이지 못했어요 — {reason}"),
         }
     }
 }
@@ -934,6 +938,9 @@ enum Revive {
     IfNotRunning,
     /// 떠 있어도 끄고 다시 — 로그인이 「됨」으로 바뀐 뒤(three-axes 티켓 12) · 생각 깊이를 바꾼 뒤(v1 티켓 05).
     EvenIfRunning,
+    /// 쉬는 Session의 작업 폴더가 바뀌었을 때만 끄고 새 자리에서 이어 연다(v1 티켓 32 · S11) — 그사이 턴이 섰거나 앞선 것이 옮겼으면
+    /// 아무것도 하지 않는다.
+    IfMoved,
 }
 
 /// 사람이 바꾸는 Session의 설정 하나 — Runtime에 넣는 요청과 `config` 줄이 짝을 이룬다. Runtime이 떠 있는 Session에 곧바로 넣는

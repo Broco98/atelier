@@ -536,6 +536,7 @@ pub fn run() {
             commands::thread_answer_permission,
             commands::thread_answer_work,
             commands::thread_answer_question,
+            commands::thread_answer_project,
             commands::thread_set_model,
             commands::thread_set_effort,
             commands::thread_set_mode,

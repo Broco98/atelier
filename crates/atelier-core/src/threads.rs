@@ -40,6 +40,10 @@ pub struct ThreadFile {
     /// 사람이 마지막으로 본 줄의 seq. 0이면 아무것도 보지 않았다(S38).
     #[serde(default)]
     pub last_read: u64,
+    /// Work 밖 Project 카드에서 사람이 「읽기만 하기」를 고른 Project의 slug들(v1 구현 스펙 S22 · v1 티켓 32) — 그 폴더를 Session의
+    /// 함께 여는 폴더로 더한다. 고치기는 판정이 계속 거절한다. 비었으면 칸째 빠진다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub read_only_projects: Vec<String>,
     /// 모르는 칸은 다시 써도 남는다 — 다른 판의 앱이 더한 칸을 지우지 않게(`work.json` · `agents.json`과 같은 규약).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
