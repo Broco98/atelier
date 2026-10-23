@@ -14,8 +14,14 @@ import type { Attachment, RecordLine } from "./types";
 //   함께 돈다. 줄은 그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 참여자의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은
 //   모두의 끝이다. 참여자의 이름 · 얼굴은 들어옴 줄(`joined`)이 정본이다(`cast`) — 처음 불린 정의 그대로다(S4).
 // - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 참여자가 들고 남(`joined` ·
-//   `left`). 모든 Thread가 Host의 `joined`로 시작하므로 Host가 들어온 줄은 세우지 않는다. Work · 물어보는 정도 · 호출 · PR 줄은 그
-//   장(23 · 30 · 31 · 15 · 40)이 더한다.
+//   `left`). 모든 Thread가 Host의 `joined`로 시작하므로 Host가 들어온 줄은 세우지 않는다. Work · 물어보는 정도 · PR 줄은 그
+//   장(23 · 30 · 31 · 40)이 더한다.
+// - **Agent 부르기는 호출 줄이다**(v1 티켓 17 · 구현 스펙 §8 · 캔버스 WorkLog 보드 「Agent 호출 줄」) — `call` 시작 · 끝 줄 둘을
+//   `payload.id`로 이어 부른 Agent(`who`)의 열린 턴에 한 줄로 세운다. 그 부르기를 낸 Thread 도구 줄(`atelier-thread.call_agent`)은
+//   호출 줄이 그 자리를 대신한다 — 같은 일이 두 줄로 서지 않게. 부른 Agent의 턴이 돌지 않을 때 선 부르기(사람의 「다시 맡기기」)는 턴
+//   사이에 선다. 시작 줄은 불린 Agent에게 맡긴 일이 실제로 간 자리라 그 Agent의 **맡은 턴**을 연다(사람의 말 대신 맡긴 말) — 그 Agent의
+//   줄은 그 턴에 들고, 호출 줄은 그 턴의 줄들을 들고 「지금 도구」 · 펼침의 도구 줄을 보인다. 전해지기 전에 막힌 부르기는 끝 줄
+//   하나로 서고 맡은 턴이 없다.
 // - **도구 줄은 시작과 끝의 시각을 든다** — 작업 로그가 마우스를 올린 줄에 걸린 시간을 말한다(캔버스 WorkLog 보드). 사람이 거절한
 //   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`).
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
@@ -32,6 +38,8 @@ export interface TurnEnd {
   cancelledByUs: boolean;
   /** 말을 받지 않은 오류나 사라진 까닭. */
   error: string | null;
+  /** 끝난 때 — 턴 끝 줄(또는 Session이 사라진 줄)의 시각. 함께 돈 턴들의 말한 차례를 가른다(사이드바의 마지막 말). */
+  at: string;
 }
 
 /** 턴 안의 한 줄. 같은 메시지의 조각들은 한 줄로 이어 붙는다. */
@@ -39,8 +47,42 @@ export type Entry =
   | { kind: "message"; key: string; messageId: string | null; text: string }
   | { kind: "thought"; key: string; messageId: string | null; text: string }
   | ToolEntry
+  | CallEntry
   | PlanEntry
   | ChecklistEntry;
+
+/** 부르기가 끝난 꼴(`call` 끝 줄) — 받은 말이거나, 답하지 못한 까닭이거나, 사람이 멈췄다. */
+export interface CallEnd {
+  outcome: "answered" | "failed" | "stopped";
+  /** 받은 말 — 불린 Agent가 맡은 턴을 끝낸 마지막 메시지. 받지 못했으면 null이다. */
+  answer: string | null;
+  /** 답하지 못한 까닭(멈춤이면 「사람이 멈춤」). 받았으면 null이다. */
+  reason: string | null;
+  /** 도구가 불린 때부터 끝날 때까지(대기 줄에서 기다린 시간 포함). */
+  durationMs: number;
+}
+
+/** 호출 줄(v1 티켓 17) — Agent가 Thread 도구로 다른 Agent에게 일을 맡긴 부르기 하나. 시작 · 끝 줄 둘이 `id`로 이어진다. */
+export interface CallEntry {
+  kind: "call";
+  key: string;
+  id: string;
+  /** 부른 Agent · 불린 Agent의 handle. */
+  from: string;
+  to: string;
+  /** 맡긴 말. */
+  text: string;
+  /** 처음 온 `call` 줄의 시각 — 하는 중의 경과가 여기서 센다. */
+  startedAt: string;
+  /** 불린 Agent의 맡은 턴의 줄들 — 그 턴의 `entries` 그대로다. 맡긴 일이 전해지기 전에 막혔으면 null이다. */
+  work: Entry[] | null;
+  /** 끝났으면 그 꼴, 아직이면 null. */
+  end: CallEnd | null;
+  /** 끝 줄을 받기 전에 앱이 꺼졌다 — 더 올 줄이 없다. 하는 중으로 보이지 않는다. */
+  cut: boolean;
+  /** 이 부르기를 낸 Thread 도구 줄의 id — 호출 줄이 그 자리를 대신한다. 아직 짝을 찾지 못했으면 null이다. */
+  toolCallId: string | null;
+}
 
 /** 계획 카드 — Runtime의 마크다운 계획, 또는 계획 승인 요청의 계획 본문. Thread에 하나라 다음 계획이 오면 같은 카드가 바뀐다. */
 export interface PlanEntry {
@@ -107,6 +149,8 @@ export interface Turn {
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
   end: TurnEnd | null;
+  /** 다른 Agent가 맡긴 일을 받은 턴이면 그 부르기(v1 티켓 17) — 사람의 말 대신 맡긴 말로 선 턴이다. */
+  assigned: CallEntry | null;
 }
 
 /**
@@ -116,6 +160,8 @@ export interface Notice {
   key: string;
   kind: "fresh" | "died" | "version";
   text: string;
+  /** 그 Session의 참여자 handle — Session 보기(S37)가 그 참여자의 상태 줄만 남긴다. */
+  handle: string;
   /** 이 줄보다 먼저 선 턴의 수 — 흐름에서 그 턴들 뒤, 다음 턴 앞에 선다. */
   turnsBefore: number;
 }
@@ -140,6 +186,12 @@ export interface SystemLine {
   turnsBefore: number;
 }
 
+/** 턴 밖의 호출 줄 하나 — 이 줄보다 먼저 선 턴의 수(`turnsBefore`) 뒤에 선다. */
+export interface LooseCall {
+  entry: CallEntry;
+  turnsBefore: number;
+}
+
 /** 참여자 한 사람의 이름 · 얼굴 — 들어옴 줄(`joined`)의 `name` · `avatar`. */
 export interface CastMember {
   name: string;
@@ -158,6 +210,8 @@ export interface ThreadModel {
   cast: Record<string, CastMember>;
   notices: Notice[];
   system: SystemLine[];
+  /** 부른 Agent의 턴 밖에서 선 호출 줄(사람의 「다시 맡기기」) — 시스템 줄처럼 턴 사이에 선다. */
+  calls: LooseCall[];
   /** 답하지 않은 권한 요청 — 물은 차례다. 맨 앞의 것이 입력창 자리에 승인 카드로 선다. */
   pending: PendingPermission[];
 }
@@ -191,6 +245,9 @@ const TURN_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "too
 /** Thread를 만드는 Agent — 모든 Thread가 이 참여자의 `joined`로 시작한다. */
 const HOST = "host";
 
+/** Agent 부르기 Thread 도구의 이름(v1 티켓 16) — 이 도구 줄은 호출 줄이 대신한다. */
+const CALL_TOOL = "mcp__atelier-thread__call_agent";
+
 /**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 Thread가 「떠 있는 Session이 없다」고 말할 때의 마지막 seq다 — 그 seq까지의 줄을
  * 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
@@ -210,7 +267,14 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
   const cast: Record<string, CastMember> = { [HOST]: { name: "Host", avatar: null } };
-  const start = (key: string, sent: string | null, at: string, who: string | null, attachments: Attachment[] = []): Turn => {
+  const start = (
+    key: string,
+    sent: string | null,
+    at: string,
+    who: string | null,
+    attachments: Attachment[] = [],
+    assigned: CallEntry | null = null,
+  ): Turn => {
     const previous = turns[turns.length - 1];
     const turn: Turn = {
       key,
@@ -218,14 +282,15 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       namesWho: true,
       sent,
       attachments,
-      selfContinued: sent === null,
+      selfContinued: sent === null && assigned === null,
       startedAt: at,
       answeredAt: null,
       entries: [],
       end: null,
+      assigned,
     };
-    // 사람 말 없이 이어진 턴 — 앞 턴과 같은 이면 이름 줄을 다시 쓰지 않는다.
-    if (sent === null && previous && previous.who === who) turn.namesWho = false;
+    // 사람 말 없이 이어진 턴 — 앞 턴과 같은 이면 이름 줄을 다시 쓰지 않는다. 맡은 턴은 맡긴 말로 선 턴이다.
+    if (turn.selfContinued && previous && previous.who === who) turn.namesWho = false;
     turns.push(turn);
     open.set(who ?? "", turn);
     return turn;
@@ -252,8 +317,12 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const connecting = new Set<string>();
   const notices: Notice[] = [];
   const system: SystemLine[] = [];
-  const notice = (seq: number, kind: Notice["kind"], words: string) =>
-    notices.push({ key: `n${seq}`, kind, text: words, turnsBefore: turns.length });
+  // 부르기 id → 호출 줄, 호출 줄이 대신한 Thread 도구 줄 id들, 턴 밖의 호출 줄.
+  const calls = new Map<string, CallEntry>();
+  const absorbed = new Set<string>();
+  const loose: LooseCall[] = [];
+  const notice = (seq: number, kind: Notice["kind"], words: string, who: string | null) =>
+    notices.push({ key: `n${seq}`, kind, text: words, handle: who ?? HOST, turnsBefore: turns.length });
   const say = (
     seq: number,
     kind: SystemLine["kind"],
@@ -284,6 +353,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       if (!mine(turn.who ?? HOST)) continue;
       for (const entry of turn.entries) if (entry.kind === "tool" && !toolDone(entry)) entry.cut = true;
     }
+    // 앱이 꺼지면 부르기를 기다리던 엔진도 함께 꺼졌다 — 끝 줄이 오지 않는다.
+    if (who === undefined) for (const call of calls.values()) if (call.end === null) call.cut = true;
     const ending = who === undefined ? [...open.values()] : [openFor(who ?? HOST)].filter((turn) => turn !== null);
     for (const turn of ending) {
       turn.end = {
@@ -291,6 +362,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         durationMs: Math.max(0, Date.parse(at) - Date.parse(turn.startedAt)) || 0,
         cancelledByUs: false,
         error,
+        at,
       };
       close(turn);
     }
@@ -317,7 +389,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (kind === "tool_call_update") {
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다 — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
-          if (id && planReviews.has(id)) break;
+          if (id && (planReviews.has(id) || absorbed.has(id))) break;
           const mine = openFor(line.who ?? null);
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
@@ -364,6 +436,13 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (kind === "tool_call") {
           const tool = newTool(`c${line.seq}`, text(update.toolCallId) ?? `seq-${line.seq}`, update, line.at);
           if (toolDone(tool)) tool.endedAt = line.at;
+          // 이 도구 줄의 부르기가 먼저 섰다(두 줄이 엇갈려 적혔다) — 호출 줄이 이미 그 자리다.
+          const call = isCallTool(tool) ? unpaired(turn, tool) : null;
+          if (call) {
+            call.toolCallId = tool.toolCallId;
+            absorbed.add(tool.toolCallId);
+            break;
+          }
           turn.entries.push(tool);
           break;
         }
@@ -383,6 +462,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
           cancelledByUs: payload.cancelledByUs === true,
           error,
+          at: line.at,
         };
         if (turn.end.stopReason === "cancelled" && turn.end.cancelledByUs) {
           markStopped(turn, closedLast.get(turn) ?? [], withdrawnByStop);
@@ -438,21 +518,62 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             break;
           case "opened":
             connecting.delete(line.who ?? HOST);
-            if (payload.how === "fresh") notice(line.seq, "fresh", FRESH_NOTICE);
+            if (payload.how === "fresh") notice(line.seq, "fresh", FRESH_NOTICE, line.who ?? null);
             break;
           case "login-required":
             connecting.delete(line.who ?? HOST);
             break;
           case "version-warning":
-            notice(line.seq, "version", versionNotice(text(payload.agentVersion), payload.supportedMajor));
+            notice(line.seq, "version", versionNotice(text(payload.agentVersion), payload.supportedMajor), line.who ?? null);
             break;
           case "died":
           case "closed":
             vanish(line.at, payload.state === "closed" ? "Session이 닫혔어요" : "Claude Code가 끝났어요", line.who ?? null);
-            if (payload.state === "died") notice(line.seq, "died", diedNotice(text(payload.reason)));
+            if (payload.state === "died") notice(line.seq, "died", diedNotice(text(payload.reason)), line.who ?? null);
             break;
           default:
             break;
+        }
+        break;
+      }
+      case "call": {
+        const id = text(payload.id);
+        const to = text(payload.to);
+        if (!id || !to) break;
+        const from = text(payload.from) ?? line.who ?? HOST;
+        let call = calls.get(id);
+        if (!call) {
+          call = {
+            kind: "call",
+            key: `a${line.seq}`,
+            id,
+            from,
+            to,
+            text: text(payload.text) ?? "",
+            startedAt: line.at,
+            work: null,
+            end: null,
+            cut: false,
+            toolCallId: null,
+          };
+          calls.set(id, call);
+          const turn = openFor(from);
+          if (turn) {
+            answer(turn, line);
+            closedLast.delete(turn);
+            place(turn, call, absorbed);
+          } else loose.push({ entry: call, turnsBefore: turns.length });
+        }
+        if (payload.state === "started" && call.work === null) {
+          call.work = start(`a${line.seq}`, null, line.at, to, [], call).entries;
+        } else if (payload.state === "ended") {
+          const outcome = payload.outcome === "answered" || payload.outcome === "stopped" ? payload.outcome : "failed";
+          call.end = {
+            outcome,
+            answer: outcome === "answered" ? (text(payload.answer) ?? "") : null,
+            reason: outcome === "answered" ? null : (text(payload.reason) ?? null),
+            durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
+          };
         }
         break;
       }
@@ -497,6 +618,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     cast,
     notices,
     system,
+    calls: loose,
     pending: [...pending.values()].map((one) => {
       const id = text(one.toolCall.toolCallId);
       return { ...one, tool: id ? findTool(turns, id) : null };
@@ -505,16 +627,50 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
 }
 
 /**
- * 「답하는 중」 줄(캔버스 Messages 보드 「답하는 중」 · Motion 보드 「Agent 참여」)에 설 참여자 — 도는 턴 가운데 **흐름 끝에서 답이
- * 보이지 않는** 이들이다: 아직 아무 줄도 오지 않은 턴(보낸 말 · 참여 줄 바로 뒤)과 흐름 끝이 아닌 자리에서 도는 턴. 흐름 끝의 턴이
- * 답 · 생각 · 도구 줄을 흘리고 있으면 그 턴의 이름 줄 · 머리줄이 이미 말하므로 뺀다. 아무도 없으면 `null`이다. 여럿이면 턴이 선
- * 차례로 모두 든다(「리뷰어와 테스터가 답하는 중」).
+ * 흐름에 서는 것 — 그리는 쪽(`ThreadFlow`)이 이것만 읽는다. `turnsBefore`는 서는 턴의 수로 다시 센다.
+ *
+ * - **온 흐름**(`only`가 null) — 불린 Agent의 맡은 턴은 **답을 받은 뒤에만** 그 Agent의 말로 선다(캔버스 화면 3 「리뷰어」). 일하는
+ *   동안은 부른 턴의 호출 줄이 그 일(지금 도구 · 경과)을 말하고, 답하지 못했으면 호출 줄이 까닭을 말한다 — 같은 일이 두 자리에서
+ *   돌거나 같은 실패가 두 번 서지 않게.
+ * - **Session 보기**(`only`가 handle — 구현 스펙 §8 · S37 「Session 열기」) — 같은 화면에서 그 참여자의 줄만 거른다: 그의 턴(맡은 턴은
+ *   일하는 동안에도), 그가 들고 난 시스템 줄, 그 Session의 상태 줄, 그가 턴 밖에서 낸 부르기. 이름 바꾸기는 Thread의 일이라 빠진다.
+ * - **「답하는 중」**(캔버스 Messages 보드 「답하는 중」 · Motion 보드 「Agent 참여」) — 서는 턴 가운데 **흐름 끝에서 답이 보이지 않는**
+ *   도는 턴의 참여자다: 아직 아무 줄도 오지 않은 턴(보낸 말 · 참여 줄 바로 뒤)과 흐름 끝이 아닌 자리에서 도는 턴. 흐름 끝의 턴이
+ *   답 · 생각 · 도구 줄을 흘리고 있으면 그 턴의 이름 줄 · 머리줄이 이미 말하므로 뺀다. 서지 않는 턴(일하는 맡은 턴)도 뺀다 — 호출
+ *   줄이 말한다. 아무도 없으면 `null`이다. 여럿이면 턴이 선 차례로 모두 든다(「리뷰어와 테스터가 답하는 중」).
  */
-export function answeringLine(model: ThreadModel): string[] | null {
-  const last = model.turns[model.turns.length - 1];
+export interface Flow {
+  turns: Turn[];
+  notices: Notice[];
+  system: SystemLine[];
+  calls: LooseCall[];
+  answering: string[] | null;
+}
+
+export function flowOf(model: ThreadModel, only: string | null = null): Flow {
+  const shows = (turn: Turn) =>
+    only === null ? turn.assigned === null || turn.assigned.end?.outcome === "answered" : (turn.who ?? HOST) === only;
+  // 앞 턴 n개 가운데 서는 턴의 수.
+  const shownBefore: number[] = [0];
+  for (const turn of model.turns) shownBefore.push(shownBefore[shownBefore.length - 1] + (shows(turn) ? 1 : 0));
+  const recount = <T extends { turnsBefore: number }>(one: T): T => ({ ...one, turnsBefore: shownBefore[one.turnsBefore] });
+  const turns = model.turns.filter(shows);
+  const last = turns[turns.length - 1];
   const speaking = last && last.end === null && last.entries.length > 0 ? (last.who ?? HOST) : null;
-  const shown = model.answering.filter((who) => who !== speaking);
-  return shown.length > 0 ? shown : null;
+  const running = new Set(turns.filter((turn) => turn.end === null).map((turn) => turn.who ?? HOST));
+  const answering = model.answering.filter((who) => who !== speaking && running.has(who));
+  return {
+    turns,
+    notices: model.notices.filter((one) => only === null || one.handle === only).map(recount),
+    system: model.system.filter((line) => only === null || line.handle === only).map(recount),
+    calls: model.calls.filter((one) => only === null || one.entry.from === only).map(recount),
+    answering: answering.length > 0 ? answering : null,
+  };
+}
+
+/** 온 흐름의 「답하는 중」 줄에 설 참여자(`flowOf`의 `answering`). */
+export function answeringLine(model: ThreadModel): string[] | null {
+  return flowOf(model).answering;
 }
 
 /** 들어옴 줄의 `avatar` — 모양 · 색 글자만 좁힌다(푸는 일은 `faces.ts`). */
@@ -524,7 +680,7 @@ function avatarOf(value: unknown): Avatar | null {
 }
 
 /** 앱을 다시 켜기 전에 끊긴 턴의 끝 까닭 — 앱이 꺼지면 Session도 함께 꺼진다. */
-const GONE_WITH_APP = "앱이 꺼지며 끊겼어요";
+export const GONE_WITH_APP = "앱이 꺼지며 끊겼어요";
 
 /** 「새로 시작함」 상태 줄. */
 const FRESH_NOTICE = "새로 시작함 — 앞의 맥락을 잇지 못해 새 Session으로 열었어요";
@@ -573,6 +729,43 @@ function attachmentsOf(value: unknown): Attachment[] {
     if (path === null) return [];
     return [{ path, size: typeof item.size === "number" ? item.size : null, folder: item.folder === true }];
   });
+}
+
+/** Agent 부르기 Thread 도구의 줄인가 — Claude Code의 MCP 도구 이름(`_meta.claudeCode.toolName`, 없으면 제목)으로 가린다. */
+function isCallTool(tool: ToolEntry): boolean {
+  const meta = isObject(tool.call._meta) ? tool.call._meta : {};
+  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
+  return (text(claudeCode.toolName) ?? text(tool.call.title)) === CALL_TOOL;
+}
+
+/** 그 도구 줄이 낸 부르기인가 — 맡긴 말이 도구의 `task`와 같다(엔진이 받은 그대로 적는다). */
+function sameTask(tool: ToolEntry, call: CallEntry): boolean {
+  const input = isObject(tool.call.rawInput) ? tool.call.rawInput : {};
+  return text(input.task) === call.text;
+}
+
+/**
+ * 호출 줄을 부른 Agent의 턴에 세운다 — 그 부르기를 낸 Thread 도구 줄이 있으면 그 자리를 대신하고(맡긴 말이 같은 것 가운데 먼저 선
+ * 것), 없으면 끝에 선다.
+ */
+function place(turn: Turn, call: CallEntry, absorbed: Set<string>): void {
+  const at = turn.entries.findIndex(
+    (entry) => entry.kind === "tool" && !absorbed.has(entry.toolCallId) && isCallTool(entry) && sameTask(entry, call),
+  );
+  if (at < 0) {
+    turn.entries.push(call);
+    return;
+  }
+  const tool = turn.entries[at] as ToolEntry;
+  call.toolCallId = tool.toolCallId;
+  absorbed.add(tool.toolCallId);
+  turn.entries.splice(at, 1, call);
+}
+
+/** 그 턴에서 아직 도구 줄의 짝을 찾지 못한, 그 도구 줄과 맡긴 말이 같은 호출 줄. */
+function unpaired(turn: Turn, tool: ToolEntry): CallEntry | null {
+  const found = turn.entries.find((entry) => entry.kind === "call" && entry.toolCallId === null && sameTask(tool, entry));
+  return found?.kind === "call" ? found : null;
 }
 
 function newTool(key: string, toolCallId: string, call: Json, at: string): ToolEntry {
@@ -691,11 +884,11 @@ function appendChunk(turn: Turn, kind: "message" | "thought", messageId: string 
   turn.entries.push({ kind, key: `${kind === "message" ? "m" : "r"}${seq}`, messageId, text: chunk });
 }
 
-/** 턴 끝 메시지가 시작하는 자리 — 마지막 도구 호출 뒤의 답이다. 접힌 턴은 이 자리부터의 메시지만 펼쳐 둔다. */
+/** 턴 끝 메시지가 시작하는 자리 — 마지막 도구 호출(호출 줄 포함) 뒤의 답이다. 접힌 턴은 이 자리부터의 메시지만 펼쳐 둔다. */
 export function finalFrom(turn: Turn): number {
   let lastTool = -1;
   turn.entries.forEach((entry, index) => {
-    if (entry.kind === "tool") lastTool = index;
+    if (entry.kind === "tool" || entry.kind === "call") lastTool = index;
   });
   return lastTool + 1;
 }

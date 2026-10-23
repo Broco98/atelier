@@ -13,6 +13,9 @@ import { isObject, nonEmpty, type Json } from "./json";
 //   내가 거절함」.
 // - **명령 출력의 끝 줄은 종료 코드와 걸린 시간이다**(「코드 종료 0 · 4.2초」). Claude Code는 종료 코드를 주지 않아 그때는 「끝남」 ·
 //   「실패」다.
+// - **Agent 부르기 Thread 도구(`atelier-thread.call_agent`)는 「@reviewer에게 맡기는 중」이다**(v1 티켓 17) — 맡긴 일이 그 Agent에게
+//   전해지면 호출 줄이 이 줄의 자리를 대신하고(`fold.ts`), 그 전(들이는 중 · Session을 여는 중)과 거절된 부르기만 이 줄로 선다.
+//   거절 까닭은 MCP 상자의 받은 값이다.
 
 /** 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김(끝을 받기 전에 그 Session이 사라졌다). */
 export type ToolState = "running" | "done" | "failed" | "cut";
@@ -52,8 +55,11 @@ export interface ToolView {
   shell: { command: string | null; output: string; status: string | null; bad: boolean } | null;
   /** 편집 도구의 diff들. */
   diffs: DiffPiece[];
-  /** MCP 호출 — 이름(`서버.도구`) · 보낸 값 · 받은 값. MCP가 아니면 null. */
-  mcp: { name: string; sent: string; received: string } | null;
+  /**
+   * MCP 호출 — 이름(`서버.도구`) · 보낸 값 · 받은 값. 받은 값이 JSON이면 고정폭으로 선다(`receivedCode`) — 글이면 본문 글꼴이다(보드
+   * 「MCP 호출」). MCP가 아니면 null.
+   */
+  mcp: { name: string; sent: string; received: string; receivedCode: boolean } | null;
   /** 그 밖의 글 출력 — 실패한 도구의 오류 글 · 서브에이전트가 돌려준 글. 펼쳐야 보인다. */
   text: string | null;
 }
@@ -104,6 +110,9 @@ const THINK: Verbs = { running: "생각하는 중", done: "생각함", failed: "
 const MODE: Verbs = { running: "모드 바꾸는 중", done: "모드 바꿈", failed: "모드 바꾸지 못함", refused: "모드 바꾸지 않음" };
 const OTHER: Verbs = { running: "쓰는 중", done: "씀", failed: "쓰지 못함", refused: "쓰지 않음" };
 
+/** Agent 부르기 Thread 도구(v1 티켓 16)의 `서버.도구` 이름. */
+const CALL_AGENT = "atelier-thread.call_agent";
+
 export function describeTool(tool: ToolEntry): ToolView {
   const call = tool.call;
   const state: ToolState =
@@ -132,7 +141,13 @@ export function describeTool(tool: ToolEntry): ToolView {
   if (mcp) {
     const name = `${mcp.server}.${mcp.tool}`;
     const sent = Object.keys(rawInput).length > 0 ? pretty(rawInput) : "";
-    return { ...base, phrase: say(MCP, name, true), mcp: { name, sent, received: mcpOutput(call, contentText) } };
+    const received = mcpOutput(call, contentText);
+    const box = { name, sent, received, receivedCode: /^[[{]/.test(received.trim()) };
+    if (name === CALL_AGENT) {
+      const handle = nonEmpty(rawInput.handle)?.replace(/^@/, "");
+      return { ...base, phrase: say(SUBAGENT, handle ? `@${handle}` : "Agent", false), mcp: box };
+    }
+    return { ...base, phrase: say(MCP, name, true), mcp: box };
   }
 
   const fallbackText = state === "failed" && contentText !== "" ? contentText : null;

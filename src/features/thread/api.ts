@@ -64,6 +64,12 @@ export const threadApi = {
   /** 생각 깊이 바꾸기(스토리 33) — 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터 든다. 턴이 도는 동안은 거절된다. */
   setEffort: (thread: string, who: string, effort: string) =>
     invoke<Participant>("thread_set_effort", { thread, who, effort }),
+  /**
+   * 다시 맡기기(v1 티켓 17) — 호출 줄에서 `from`의 부르기를 같은 글로 `to`에게 다시 한다. 기다리지 않는다: 부르기와 그 결과(부른
+   * Agent의 다음 말)는 기록 줄 이벤트로 온다. 부를 수 없으면 그 까닭으로 거절된다.
+   */
+  callAgain: (thread: string, from: string, to: string, text: string) =>
+    invoke<void>("thread_call_again", { thread, from, to, text }),
   /** 이름 바꾸기 — 위 막대에서 고친 이름. 같거나 빈 이름이면 아무것도 적지 않는다. 답은 바뀐 목록 요약이다. */
   rename: (thread: string, title: string) => invoke<ThreadSummary>("thread_rename", { thread, title }),
   /**

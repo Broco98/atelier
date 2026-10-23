@@ -556,6 +556,7 @@ pub fn run() {
             commands::thread_set_model,
             commands::thread_set_effort,
             commands::thread_rename,
+            commands::thread_call_again,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

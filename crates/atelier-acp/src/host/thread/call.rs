@@ -13,6 +13,8 @@
 //! - **멈춤은 고리 전체다.** 사람이 Thread를 멈추면 그 Thread의 도는 턴이 모두 멈추고(불린 턴 포함) 대기 줄에 든 맡긴 일은 거둔다.
 //!   그때 결과는 「사람이 멈춤」이다.
 //! - 맡긴 일이 턴 끝 없이 사라지면(Session의 죽음 · 닫힘 · 대기 줄에서 지움) 쥔 손이 놓이며 기다림이 풀린다 — 「답하지 못함」이다.
+//! - **「다시 맡기기」는 사람이 같은 부르기를 다시 하는 것이다**(§8, v1 티켓 17) — 부른 Agent의 이름으로 같은 맡긴 글을 같은 길로
+//!   보내고, 그 결과를 부른 Agent의 다음 말로 넣는다. 사람이 누른 일이라 그 말은 사람의 말(`sent`)이다.
 
 use std::sync::mpsc;
 use std::time::Instant;
@@ -92,6 +94,9 @@ enum Outcome {
 /// 「사람이 멈춤」의 글.
 const STOPPED: &str = "사람이 멈춤";
 
+/// 다시 맡긴 부르기의 기다림 스레드 이름.
+const AGAIN_THREAD: &str = "atelier-call-again";
+
 impl ConversationHost {
     /// 「Agent 부르기」(§8) — `key`의 Agent가 `call`(handle 또는 `project/handle`)을 불러 `task`를 맡긴다. **막히는 호출이다** — 불린
     /// Agent의 턴이 끝날 때까지 기다린다(연결마다의 스레드에서 불린다). 거절이면 아무것도 적지 않고, 맡긴 뒤에는 `call` 끝 줄을
@@ -104,6 +109,55 @@ impl ConversationHost {
             Ok(callable) => callable,
             Err(refusal) => return thread_tools::said(&refusal, true),
         };
+        self.run_call(key, callee, chain, task, halts, begun).1
+    }
+
+    /// 「다시 맡기기」(§8 · v1 티켓 17) — 사람이 호출 줄에서 `from`의 부르기를 같은 글(`task`)로 다시 한다. 부를 수 있는지는
+    /// [`Self::call_agent`]와 같은 셋을 곧바로 보고, 거절이면 아무것도 적지 않고 그 까닭으로 실패한다. **기다리지 않는다** — 맡기고
+    /// 불린 턴을 기다리는 일은 따로 선 스레드가 하고, 결과는 부른 Agent에게 다음 말로 간다(받은 답은 그 Agent가 아직 보지 못한 불린
+    /// Agent의 마지막 메시지라 지난 말에 든다 — 본문은 그것을 가리킨다). 사람이 그사이 Thread를 멈췄거나 호스트를 끄는 중이면 보내지
+    /// 않는다 — 멈춘 고리를 다시 돌리지 않는다.
+    pub fn call_again(&self, thread: &str, from: &str, to: &str, task: &str) -> Result<(), HostError> {
+        let begun = Instant::now();
+        let halts = self.threads.halts(thread);
+        let file = self.read_thread_file(thread)?;
+        if !file.participants.iter().any(|participant| participant.handle == from) {
+            return Err(HostError::ParticipantNotFound { thread: thread.to_owned(), handle: from.to_owned() });
+        }
+        let key = SessionKey::new(thread, from);
+        let (callee, chain) = self.callable(&key, to).map_err(HostError::CallRefused)?;
+        let host = ConversationHost(std::sync::Arc::clone(&self.0));
+        let task = task.to_owned();
+        std::thread::Builder::new()
+            .name(AGAIN_THREAD.to_owned())
+            .spawn(move || {
+                let to = callee.handle().to_owned();
+                let relay = match host.run_call(&key, callee, chain, &task, halts, begun).0 {
+                    Outcome::Answered(_) => format!("같은 일을 @{to}에게 다시 맡겼어요. 받은 답으로 이어 가 주세요."),
+                    Outcome::Failed(reason) => format!("같은 일을 @{to}에게 다시 맡겼지만 답하지 못했어요 — {reason}"),
+                    Outcome::Stopped => return,
+                };
+                if host.logins.closed() || host.threads.halts(&key.thread) != halts {
+                    return;
+                }
+                if let Err(error) = host.say_in_thread(&key, &relay, Vec::new(), None) {
+                    eprintln!("{error}");
+                }
+            })
+            .map(drop)
+            .map_err(|error| HostError::Send(format!("다시 맡기지 못했습니다: {error}")))
+    }
+
+    /// 맡기고 `call` 끝 줄을 적는다 — 끝난 꼴과, 부른 Agent에게 갈 도구의 결과.
+    fn run_call(
+        &self,
+        key: &SessionKey,
+        callee: Recipient,
+        chain: Vec<String>,
+        task: &str,
+        halts: u64,
+        begun: Instant,
+    ) -> (Outcome, Value) {
         let to = callee.handle().to_owned();
         let id = uuid::Uuid::new_v4().to_string();
         let outcome = self.hand_over(key, &id, callee, chain, task, halts);
@@ -135,7 +189,7 @@ impl ConversationHost {
         if let Err(error) = written {
             eprintln!("{error}");
         }
-        result
+        (outcome, result)
     }
 
     /// 부를 수 있나(§8 「부를 수 있나」) — 불린 쪽과, 그 일을 받을 턴의 호출 고리. 거절이면 그 까닭(Agent가 읽을 글)이다.

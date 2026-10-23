@@ -89,6 +89,39 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
     expect(describeTool(done[0]).diffs.map((piece) => [piece.added, piece.deleted])).toEqual([[2, 1]]);
   });
 
+  it("Agent 부르기 Thread 도구는 맡긴 일이 전해지기 전에도 「@reviewer에게 맡기는 중」이다 — 거절되면 그 까닭이 받은 값이다(v1 티켓 17)", () => {
+    const call = (status: string, extra: Record<string, unknown> = {}) =>
+      tool({
+        title: "mcp__atelier-thread__call_agent",
+        kind: "other",
+        status,
+        rawInput: { handle: "@reviewer", task: "봐 줘" },
+        _meta: claude("mcp__atelier-thread__call_agent"),
+        ...extra,
+      });
+    expect(phraseText(describeTool(call("in_progress")).phrase)).toBe("@reviewer에게 맡기는 중");
+    const refused = describeTool(
+      call("failed", { content: [{ type: "content", content: { type: "text", text: "@reviewer — 지금 호출 고리 안에 있어 다시 부를 수 없어요" } }] }),
+    );
+    expect(phraseText(refused.phrase)).toBe("@reviewer에게 맡기지 못함");
+    expect(refused.mcp).toMatchObject({ received: "@reviewer — 지금 호출 고리 안에 있어 다시 부를 수 없어요", receivedCode: false });
+  });
+
+  it("MCP 상자의 받은 값은 글이면 본문 글꼴, JSON이면 고정폭이다(보드 「MCP 호출」)", () => {
+    const got = (text: string) =>
+      describeTool(
+        tool({
+          title: "atelier_get_work",
+          kind: "other",
+          status: "completed",
+          content: [{ type: "content", content: { type: "text", text } }],
+          _meta: claude("mcp__atelier__get_work"),
+        }),
+      ).mcp;
+    expect(got("Work 1개 · Project api-server · worktree 아직 없음")).toMatchObject({ receivedCode: false });
+    expect(got('{"slug":"refund-api"}')).toMatchObject({ received: '{\n  "slug": "refund-api"\n}', receivedCode: true });
+  });
+
   it("변경 상자의 경로는 그 Session의 작업 폴더에서 본 자리다 — 밖이면 그대로다", () => {
     expect(shownPath("/Users/me/api/src/refunds/refund.service.ts", "/Users/me/api")).toBe("src/refunds/refund.service.ts");
     expect(shownPath("/Users/me/api/notes.txt", "/Users/me/api/")).toBe("notes.txt");

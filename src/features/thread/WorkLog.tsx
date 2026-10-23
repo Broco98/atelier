@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Plug } from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import type { ToolEntry } from "./fold";
@@ -15,7 +15,8 @@ import { elapsed, phraseText, shownPath, type DiffPiece, type ToolView } from ".
 // - **묶음 줄** — 이어진 읽기 · 찾기는 「파일 4개 살펴봄 · 검색 2번 ›」 한 줄이고(셰브런은 늘 선다 — 보드 「접힘」), 펼치면 왼쪽 선
 //   안에 그 줄들이 선다(`.nest`).
 // - **펼친 안**은 처음에 접혀 있다(「펼쳐야 보이고」 — 보드 머리말). 명령 출력은 20 반경의 회색 블록 하나에 `$ 명령` · 출력 · 끝 줄
-//   (「코드 종료 0 · 4.2초」), 변경은 경로 · `+N −N` 머리와 바뀐 줄 둘레, MCP는 「보낸 값」 · 「받은 값」 두 줄이다.
+//   (「코드 종료 0 · 4.2초」), 변경은 경로 · `+N −N` 머리와 바뀐 줄 둘레, MCP는 플러그 · 이름 머리 아래 「보낸 값」 · 「받은 값」 두
+//   줄이다(받은 값은 글이면 본문 글꼴, JSON이면 고정폭 — v1 티켓 17).
 //
 // 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 머리의 「Work 패널에서 열기」는 Work 패널(31)이 서는 날 단다.
 
@@ -171,6 +172,7 @@ function Inside({ tool, view, took }: { tool: ToolEntry; view: ToolView; took: s
     return (
       <figure aria-label={`${view.mcp.name} 호출`} className="overflow-hidden rounded-3xl bg-surface shadow-hairline">
         <figcaption className="flex h-9 items-center gap-2 border-b-[0.5px] border-border bg-surface-under px-3.5">
+          <Plug className="size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0 truncate font-mono text-xs">{view.mcp.name}</span>
           {took && <span className="ml-auto shrink-0 text-xs text-fg-tertiary">{took}</span>}
         </figcaption>
@@ -180,7 +182,12 @@ function Inside({ tool, view, took }: { tool: ToolEntry; view: ToolView; took: s
             {view.mcp.sent || "없음"}
           </dd>
           <dt className="pt-1 text-xs text-fg-tertiary">받은 값</dt>
-          <dd className="max-h-60 overflow-auto font-mono text-xs whitespace-pre-wrap text-fg-secondary scroll-quiet">
+          <dd
+            className={cn(
+              "max-h-60 overflow-auto whitespace-pre-wrap scroll-quiet",
+              view.mcp.receivedCode ? "font-mono text-xs text-fg-secondary" : "pt-0.5 wrap-anywhere",
+            )}
+          >
             {view.mcp.received || (tool.call.status === "completed" ? "없음" : "아직 없음")}
           </dd>
         </dl>

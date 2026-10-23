@@ -231,6 +231,11 @@ worktree에 쓰는 보통 편집이다.
 Atelier가 Thread 안의 Agent에게 주는 도구 — Thread 이름 바꾸기처럼 그 Thread와 Work를 다루는 일이다. Agent는 어느 Thread인지 말하지
 않는다 — 부른 Session의 Thread다. 사람이 설치한 `atelier mcp`와는 따로다.
 
+**호출 줄**:
+Agent가 다른 Agent에게 일을 맡겼을 때 부른 Agent의 흐름에 남는 한 줄 — 불린 Agent의 얼굴과 하는 중 · 맡김 · 답하지 못함이 보인다.
+펼치면 맡긴 것 · 받은 것 · 그 Agent의 도구 줄이 서고, 「Session 열기」는 같은 화면에서 그 Agent의 줄만 거른다. 답하지 못했으면
+「다시 맡기기」가 같은 글로 다시 부른다.
+
 ## 대화창
 
 **대화창**:

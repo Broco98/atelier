@@ -685,6 +685,9 @@ pub enum HostError {
     HandleTaken { call: String, handle: String },
     /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
     BadTitle,
+    /// 「다시 맡기기」로 부를 수 없다(v1 티켓 17) — `tools.agents`에 없음 · 범위 밖 · 호출 고리 안(§8 「부를 수 있나」). 까닭은
+    /// Agent 부르기 도구가 돌려주는 글 그대로다.
+    CallRefused(String),
 }
 
 impl fmt::Display for HostError {
@@ -731,6 +734,7 @@ impl fmt::Display for HostError {
                 write!(f, "@{call} — 이 Thread에는 이미 다른 @{handle} Agent가 들어와 있어요")
             }
             HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
+            HostError::CallRefused(reason) => write!(f, "{reason}"),
         }
     }
 }

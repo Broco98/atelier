@@ -326,6 +326,12 @@ impl LoginDesk {
         }
     }
 
+    /// 호스트를 끄기 시작했나 — 끄는 길(`shut_down`)이 가장 먼저 세운다. 끈 뒤에 깨어난 기다림(다시 맡긴 부르기, v1 티켓 17)이
+    /// Session을 다시 띄우지 않게 묻는다.
+    pub(crate) fn closed(&self) -> bool {
+        self.closing.load(Ordering::SeqCst)
+    }
+
     /// 호스트 끄기의 끝 — 아직 끝나지 않은 로그인 명령은 그룹째 SIGKILL이다.
     pub(crate) fn finish_close(&self) {
         for run in self.lock_runs().values() {

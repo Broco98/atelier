@@ -418,3 +418,65 @@ fn 목록에_없는_agent_범위_밖의_agent_호출_고리_안의_agent는_부�
 
     host.shut_down();
 }
+
+#[test]
+fn 사람이_다시_맡기면_같은_글로_부르기가_다시_돌고_그_결과가_부른_agent의_다음_말로_간다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    sandbox.library_agent("reviewer", REVIEWER_MD);
+    // Host의 claude는 스스로 부르지 않는다 — 사람이 호출 줄의 「다시 맡기기」로 부른다(§8).
+    let host = sandbox.host(calling(&sandbox, &[], "2.1.296/edit-subagent"));
+    let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    wait_turns_of(&sandbox, &thread, "host", 1);
+
+    host.call_again(&thread, "host", "reviewer", "방금 고친 장바구니를 봐 줘").expect("다시 맡긴다");
+    let record = wait_turns_of(&sandbox, &thread, "host", 2);
+    let text = common::lines_text(&record);
+
+    let calls = of_kind(&record, "call");
+    assert_eq!(calls.len(), 2, "부르기 하나의 시작 · 끝:\n{text}");
+    let (started, ended) = (calls[0], calls[1]);
+    assert_eq!(started["who"], "host", "받는 쪽은 부른 Agent다 — 부른 Agent의 줄이다");
+    assert_eq!(
+        (started["payload"]["from"].clone(), started["payload"]["to"].clone(), started["payload"]["text"].clone()),
+        (json!("host"), json!("reviewer"), json!("방금 고친 장바구니를 봐 줘")),
+        "같은 맡긴 글로 부른다"
+    );
+    assert_eq!((ended["payload"]["outcome"].clone(), ended["payload"]["answer"].clone()), (json!("answered"), json!("edited")));
+
+    // 결과는 부른 Agent의 다음 말이다 — 사람이 다시 맡겼으니 사람의 말(`sent`)로 선다.
+    let sent = of_kind(&record, "sent");
+    assert_eq!(sent.len(), 2, "{text}");
+    let relay = sent[1];
+    assert_eq!(relay["payload"]["to"], "host");
+    assert_eq!(relay["payload"]["text"], "같은 일을 @reviewer에게 다시 맡겼어요. 받은 답으로 이어 가 주세요.");
+    assert!(seq(ended) < seq(relay), "부르기가 끝난 뒤에 간다:\n{text}");
+    // 받은 답은 Host가 아직 보지 못한 리뷰어의 마지막 메시지로 지난 말에 든다.
+    let host_session = sandbox.thread_session_id(&thread, "host");
+    let second = texts_of(heard(&sandbox, &host_session).last().expect("Host가 받은 둘째 말"));
+    assert_eq!(second.len(), 2, "지난 말 + 본문: {second:?}");
+    assert!(second[0].contains("[@reviewer]\nedited"), "받은 답: {}", second[0]);
+    assert_eq!(second[1], "같은 일을 @reviewer에게 다시 맡겼어요. 받은 답으로 이어 가 주세요.");
+
+    host.shut_down();
+}
+
+#[test]
+fn 다시_맡기기가_부를_수_없으면_까닭으로_거절되고_기록에는_아무것도_서지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    sandbox.library_agent("reviewer", REVIEWER_MD);
+    let host = sandbox.host(calling(&sandbox, &[], "2.1.296/edit-subagent"));
+    let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let before = wait_turns_of(&sandbox, &thread, "host", 1).len();
+
+    let refused = host.call_again(&thread, "host", "ghost", "봐 줘").expect_err("범위 밖");
+    assert_eq!(refused.to_string(), "@ghost — 이 Thread에서 부를 수 없는 Agent예요. Work 없는 Thread에서는 Library의 Agent만 불러요");
+    let stranger = host.call_again(&thread, "reviewer", "host", "봐 줘").expect_err("참여자가 아닌 부른 쪽");
+    assert_eq!(stranger.to_string(), format!("Thread {thread}에 @reviewer이 없습니다"));
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let record = sandbox.thread_record(&thread);
+    assert_eq!(record.len(), before, "{}", common::lines_text(&record));
+    host.shut_down();
+}

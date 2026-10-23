@@ -89,3 +89,18 @@ describe("Thread의 마지막 말", () => {
     expect(lastSaid([])).toBeNull();
   });
 });
+
+describe("Agent를 부른 Thread(v1 티켓 17)", () => {
+  // 불린 Agent의 맡은 턴은 부른 턴이 도는 사이에 서고 먼저 끝난다 — 마지막 말은 턴이 선 차례가 아니라 말한 때로 고른다.
+  const calling: RecordLine[] = readFileSync(
+    fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-call.jsonl", import.meta.url)),
+    "utf8",
+  )
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+
+  it("부른 Agent가 결과를 받아 마지막에 한 답이 마지막 말이다 — 먼저 끝난 불린 Agent의 답이 아니다", () => {
+    expect(lastSaid(calling)).toMatchObject({ who: "host", name: "Host", text: "Hello from turn" });
+  });
+});
