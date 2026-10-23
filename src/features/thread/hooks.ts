@@ -4,13 +4,16 @@ import { useStore } from "@tanstack/react-store";
 import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
+import type { ProjectPr } from "@/features/works/types";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { isObject } from "./json";
+import { prLineOf } from "./pr";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
+import { workPrsKey } from "./work-card";
 import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
@@ -146,6 +149,8 @@ export function useThreadFeeds(): void {
  *   이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
  * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
  *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획만에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
+ * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — Work 카드가 읽어 둔 PR의 그 Project 칸을 줄의 PR로 갈아 끼운다.
+ *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
   if (line.kind === "library") {
@@ -155,6 +160,13 @@ export function followRecordLine(queryClient: QueryClient, thread: string, line:
   if (line.kind === "mode" && isObject(line.payload)) {
     const level = askLevelOf(line.payload.mode);
     if (level) putAskLevel(queryClient, thread, level.value);
+  }
+  const pr = line.kind === "pr" ? prLineOf(line.payload) : null;
+  if (pr) {
+    const { work, first: _, ...found } = pr;
+    queryClient.setQueryData<ProjectPr[]>(workPrsKey(work), (prs) =>
+      prs?.map((one) => (one.project === found.project ? { ...found, kind: "found" } : one)),
+    );
   }
 }
 

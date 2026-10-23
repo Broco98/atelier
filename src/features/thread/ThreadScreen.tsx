@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown, ArrowLeft, Folder } from "lucide-react";
 import { PANEL_MOTION } from "@/components/shell/panel-layout";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
+import { workChangesKey } from "@/features/files/hooks";
+import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
@@ -45,11 +48,13 @@ import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
 import ProjectCard from "./ProjectCard";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
+import { changesOf, fixAsk, type PrLine } from "./pr";
+import { PrPlace, type PrActions } from "./PrCard";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
-import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
+import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
 import { ArchivedWorkCard, WorkCard, WorkCardToggle, useArchivedWork, useCardOpen } from "./WorkCard";
 import { workHome } from "./work-chip";
@@ -251,6 +256,20 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
           },
     [specRoot, setCardOpen, setOpened],
   );
+  // PR 카드의 「변경 사항 보기」(v1 티켓 36) — 카드를 열고, 그 PR의 Project에서 바뀐 첫 파일을 넓힌 카드에 연다. 변경은 카드의 변경 칸과
+  // 같은 쿼리에서 읽는다(읽은 답이 있으면 다시 읽지 않는다). 보관된 Work는 카드가 넓어지지 않아 카드만 열린다.
+  const queryClient = useQueryClient();
+  const showChanges = useCallback(
+    (pr: PrLine) => {
+      setCardOpen(true);
+      if (cardWork === null) return;
+      void queryClient
+        .ensureQueryData({ queryKey: workChangesKey(cardWork), queryFn: () => worksApi.changes(cardWork) })
+        .catch(() => undefined)
+        .then((changes) => setOpened(changesOf(pr.project, changes)));
+    },
+    [cardWork, queryClient, setCardOpen],
+  );
   return (
     <PlainFrame
       sidebarOpen={sidebarOpen}
@@ -298,7 +317,7 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
             style={{ width: expanded ? THREAD_BESIDE : cardWork && cardOpen ? `calc(100% - ${CARD_ROOM})` : "100%" }}
           >
             <DocPlace.Provider value={docPlace}>
-              <ThreadBody key={thread} view={view} problem={problem} />
+              <ThreadBody key={thread} view={view} problem={problem} onShowChanges={showChanges} />
             </DocPlace.Provider>
           </div>
           {/* 카드 자리는 왼쪽 끝으로 넓어진다 — 넓어질 때는 카드가 왼쪽으로 자라고, 접힐 때는 작은 카드가 오른쪽에 붙은 채 자리가
@@ -429,7 +448,18 @@ function ThreadParticipants({ view }: { view: ThreadView }) {
   );
 }
 
-function ThreadBody({ view, problem }: { view: ThreadView; problem: string | null }) {
+/**
+ * Thread 본문 — 흐름과 입력창. `onShowChanges`는 PR 카드의 「변경 사항 보기」다(v1 티켓 36) — 넓힌 카드(v1 티켓 35)의 변경으로 간다.
+ */
+function ThreadBody({
+  view,
+  problem,
+  onShowChanges,
+}: {
+  view: ThreadView;
+  problem: string | null;
+  onShowChanges: (pr: PrLine) => void;
+}) {
   const navigate = useNavigate();
   const thread = view.id;
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread));
@@ -535,6 +565,12 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
       threadApi.callAgain(thread, call.from, call.to, call.text).catch((failure: unknown) => setChipProblem(String(failure))),
     [thread],
   );
+  // PR 카드의 동작(v1 티켓 36) — 「Host에게 고쳐 달라고 하기」는 이 Thread의 입력창에 맡기는 말을 채운다. 보내는 것은 사람이다.
+  const prActions = useMemo<PrActions>(
+    // 읽기만인 Thread(v1 티켓 38)에는 채울 입력창이 없다 — 고쳐 달라는 버튼이 서지 않는다.
+    () => ({ showChanges: onShowChanges, askFix: view.readOnly ? undefined : (pr) => fillDraft(thread, fixAsk(pr)) }),
+    [onShowChanges, thread, view.readOnly],
+  );
 
   // 카드 맨 아래 「다음 · …」 줄 — 다음 차례가 없으면 비운다(승인 카드 · Work 만들기 카드가 같은 줄을 쓴다).
   const askNext = turn?.next && (
@@ -593,16 +629,18 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
               />
             )}
             <LogPlace.Provider value={host?.cwd ?? null}>
-              <ThreadFlow
-                thread={thread}
-                model={model}
-                only={session?.handle ?? null}
-                onRetry={(text, attachments) =>
-                  void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
-                }
-                onOpenSession={openSession}
-                onCallAgain={callAgain}
-              />
+              <PrPlace.Provider value={prActions}>
+                <ThreadFlow
+                  thread={thread}
+                  model={model}
+                  only={session?.handle ?? null}
+                  onRetry={(text, attachments) =>
+                    void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+                  }
+                  onOpenSession={openSession}
+                  onCallAgain={callAgain}
+                />
+              </PrPlace.Provider>
             </LogPlace.Provider>
           </div>
         </div>

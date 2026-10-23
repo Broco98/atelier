@@ -157,19 +157,39 @@ describe("PR 줄", () => {
     ...over,
   });
 
+  const now = new Date(2026, 9, 23, 16, 30).getTime();
+
   it("찾은 PR마다 한 줄이고, 없거나 못 읽은 Project는 줄이 없다", () => {
     expect(
-      prRows([found(), { project: "web", kind: "absent" }, { project: "cli", kind: "unreadable", reason: "network" }]),
-    ).toEqual([{ project: "api-server", number: 142, url: "https://github.com/acme/api/pull/142", status: "CI 확인 중", checking: true }]);
+      prRows([found(), { project: "web", kind: "absent" }, { project: "cli", kind: "unreadable", reason: "network" }], now),
+    ).toEqual([
+      {
+        project: "api-server",
+        number: 142,
+        url: "https://github.com/acme/api/pull/142",
+        icon: "open",
+        status: "CI 확인 중",
+        checking: true,
+        note: null,
+      },
+    ]);
   });
 
-  it("상태는 색 없이 문장이다 — 확인 중 · 통과 · 실패 · 병합됨 · 닫힘 · 검사 없는 열림", () => {
-    const status = (pr: ProjectPr) => prRows([pr]).map((row) => [row.status, row.checking]);
-    expect(status(found({ ci: { kind: "passing" } }))).toEqual([["CI 통과", false]]);
-    expect(status(found({ ci: { kind: "failing", failed: ["e2e"] } }))).toEqual([["CI 실패", false]]);
-    expect(status(found({ state: "merged", ci: { kind: "passing" } }))).toEqual([["병합됨", false]]);
-    expect(status(found({ state: "closed" }))).toEqual([["닫힘", false]]);
-    expect(status(found({ ci: { kind: "noChecks" } }))).toEqual([["열림", false]]);
+  it("상태는 색 없이 문장이다 — 확인 중(빛남) · 통과와 승인 수 · 실패 · 병합됨과 그 때 · 닫힘 · 검사 없는 열림(보드 「PR」)", () => {
+    const status = (pr: ProjectPr) => prRows([pr], now).map((row) => [row.icon, row.status, row.checking]);
+    expect(status(found({ ci: { kind: "passing" }, approvals: 1 }))).toEqual([["open", "CI 통과 · 승인 1개", false]]);
+    expect(status(found({ ci: { kind: "passing" } }))).toEqual([["open", "CI 통과", false]]);
+    expect(status(found({ ci: { kind: "failing", failed: ["e2e"] } }))).toEqual([["failed", "CI 실패", false]]);
+    const mergedAt = new Date(2026, 9, 23, 15, 2).toISOString();
+    expect(status(found({ state: "merged", ci: { kind: "passing" }, mergedAt }))).toEqual([["merged", "병합됨 · 오후 3:02", false]]);
+    expect(status(found({ state: "merged", mergedAt: null }))).toEqual([["merged", "병합됨", false]]);
+    expect(status(found({ state: "closed" }))).toEqual([["closed", "닫힘", false]]);
+    expect(status(found({ ci: { kind: "noChecks" }, approvals: 2 }))).toEqual([["open", "열림 · 승인 2개", false]]);
+  });
+
+  it("CI가 실패하면 무엇이 실패했는지 한 문장이 줄 아래에 붙는다(보드 「빨간색 대신 문장으로」)", () => {
+    expect(prRows([found({ ci: { kind: "failing", failed: ["e2e"] } })], now)[0].note).toBe("e2e 검사가 실패했어요.");
+    expect(prRows([found({ state: "merged", ci: { kind: "failing", failed: ["e2e"] } })], now)[0].note).toBeNull();
   });
 });
 

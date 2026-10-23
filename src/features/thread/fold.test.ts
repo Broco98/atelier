@@ -980,3 +980,54 @@ describe("Work 밖 Project 카드(v1 티켓 32)", () => {
     expect(particle("환불 API 버그 수정", "을", "를")).toBe("을");
   });
 });
+
+describe("PR 카드(v1 티켓 36)", () => {
+  const pr = (seq: number, second: number, over: Record<string, unknown> = {}): RecordLine => ({
+    seq,
+    at: at(second),
+    kind: "pr",
+    payload: {
+      work: "refund-api",
+      project: "api-server",
+      first: true,
+      number: 142,
+      title: "부분 환불 이중 차감 수정",
+      url: "https://github.com/acme/api/pull/142",
+      state: "open",
+      headBranch: "fix/refund-api",
+      baseBranch: "main",
+      additions: 48,
+      deletions: 12,
+      changedFiles: 3,
+      ci: { kind: "pending" },
+      approvals: 1,
+      changesRequested: 0,
+      mergedAt: null,
+      ...over,
+    },
+  });
+
+  it("엔진의 `pr` 줄은 그 자리(앞 턴들 뒤)에 PR 카드로 서고, 같은 PR의 마지막 줄만 지금의 카드다", () => {
+    const model = foldThread([
+      ...through(blessed, 9),
+      pr(30, 5),
+      ...blessed.slice(9),
+      pr(31, 50, { first: false, ci: { kind: "failing", failed: ["e2e"] } }),
+      pr(32, 51, { project: "web", number: 7, title: "환불 버튼" }),
+    ]);
+    expect(model.prs.map((card) => [card.key, card.pr.number, card.pr.ci.kind, card.latest, card.turnsBefore])).toEqual([
+      ["p30", 142, "pending", false, 1],
+      ["p31", 142, "failing", true, 2],
+      ["p32", 7, "pending", true, 2],
+    ]);
+    expect(model.turns).toHaveLength(2);
+    expect(model.system).toEqual([]);
+  });
+
+  it("그릴 수 없는 `pr` 줄은 서지 않고, Session 보기(그 Agent의 줄만)에는 PR 카드가 없다", () => {
+    const model = foldThread([...blessed, pr(30, 50), pr(31, 51, { url: null })]);
+    expect(model.prs.map((card) => card.key)).toEqual(["p30"]);
+    expect(flowOf(model).prs.map((card) => card.key)).toEqual(["p30"]);
+    expect(flowOf(model, "host").prs).toEqual([]);
+  });
+});

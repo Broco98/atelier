@@ -37,8 +37,9 @@ pub enum PrLookup {
     Unreadable { reason: String },
 }
 
-/// PR 하나 — PR 카드(제목 · 번호 · 브랜치 · +/− · 파일 수 · 리뷰 · CI, 스토리 124)와 Work 카드의 PR 줄이 그리는 만큼만 좁혔다.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// PR 하나 — PR 카드(제목 · 번호 · 브랜치 · +/− · 파일 수 · 리뷰 · CI, 스토리 124)와 Work 카드의 PR 줄이 그리는 만큼만 좁혔다. Thread의
+/// `pr` 줄이 이 꼴을 그대로 싣고, 엔진이 다시 켤 때 그 줄에서 읽어 「이미 본 상태」를 되찾는다(v1 티켓 36).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequest {
     pub number: u64,
@@ -71,7 +72,7 @@ pub enum PrState {
 }
 
 /// CI 상태 — 화면이 색 없이 문장으로 말하는 넷이다(스토리 125: 「CI 확인 중」 · 「CI 통과」 · 「CI 실패」).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Ci {
     /// 검사가 없다 — CI 문장을 그리지 않는다.

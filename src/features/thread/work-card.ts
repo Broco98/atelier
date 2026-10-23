@@ -1,6 +1,7 @@
 import { readStored, writeStored } from "@/lib/stored";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import { particle } from "./fold";
+import { failNote, mergedWhen } from "./pr";
 import type { DocWriting } from "./types";
 
 // **Work 카드의 칸을 짓는 순수 함수**(v1 티켓 34 · 구현 스펙 §15 · 캔버스 WorkPanel · Screen-Review 보드). 카드(`WorkCard.tsx`)는 이것이
@@ -120,36 +121,47 @@ export interface PrRow {
   project: string;
   number: number;
   url: string;
+  /**
+   * 줄 앞 글리프 — 열린 PR · CI가 실패한 PR(진한 ⓘ — 빨강이 아니다, 보드 `.i.strong`) · 병합됨 · 닫힘. 빨강은 사이드바 목록의 「실패」만
+   * 쓴다(v1 티켓 41).
+   */
+  icon: "open" | "failed" | "merged" | "closed";
   status: string;
   checking: boolean;
+  /** CI가 실패한 열린 PR이면 무엇이 실패했는지 한 문장 — 줄 아래에 붙는다(보드 `.wnote`). */
+  note: string | null;
 }
 
 /**
- * PR 줄(보드 「PR」 · 스토리 125) — 찾은 PR마다 한 줄이다. 없거나(`absent` — PR이 없다 · `gh`가 없다) 못 읽은(`unreadable`) Project는
- * 줄이 없다(S24). 상태는 **색 없이 문장**이다. 승인 수 · 실패한 검사의 문장 · 병합 시각 · 60초마다 다시 읽기는 v1 티켓 36이 더한다.
+ * PR 줄(보드 「PR」 · 스토리 125 · 127) — 찾은 PR마다 한 줄이다. 없거나(`absent` — PR이 없다 · `gh`가 없다) 못 읽은(`unreadable`) Project는
+ * 줄이 없다(S24). 상태는 **색 없이 문장**이다 — 「CI 확인 중」(빛남) · 「CI 통과 · 승인 1개」 · 「CI 실패」와 그 아래 실패 문장 ·
+ * 「병합됨 · 오후 3:02」 · 「닫힘」, 검사가 없는 열린 PR은 「열림」이다. 병합 시각은 `now`와 견준다.
  */
-export function prRows(prs: readonly ProjectPr[]): PrRow[] {
-  return prs.flatMap((pr) => {
+export function prRows(prs: readonly ProjectPr[], now: number): PrRow[] {
+  return prs.flatMap((pr): PrRow[] => {
     if (pr.kind !== "found") return [];
-    const checking = pr.state === "open" && pr.ci.kind === "pending";
-    return [{ project: pr.project, number: pr.number, url: pr.url, status: prStatus(pr), checking }];
+    const row = { project: pr.project, number: pr.number, url: pr.url, checking: false, note: null };
+    if (pr.state === "merged") {
+      const when = pr.mergedAt ? mergedWhen(pr.mergedAt, now) : "";
+      return [{ ...row, icon: "merged", status: when ? `병합됨 · ${when}` : "병합됨" }];
+    }
+    if (pr.state === "closed") return [{ ...row, icon: "closed", status: "닫힘" }];
+    const approved = pr.approvals > 0 ? ` · 승인 ${pr.approvals}개` : "";
+    switch (pr.ci.kind) {
+      case "pending":
+        return [{ ...row, icon: "open", status: "CI 확인 중", checking: true }];
+      case "passing":
+        return [{ ...row, icon: "open", status: `CI 통과${approved}` }];
+      case "failing":
+        return [{ ...row, icon: "failed", status: "CI 실패", note: failNote(pr.ci.failed) }];
+      case "noChecks":
+        return [{ ...row, icon: "open", status: `열림${approved}` }];
+    }
   });
 }
 
-function prStatus(pr: Extract<ProjectPr, { kind: "found" }>): string {
-  if (pr.state === "merged") return "병합됨";
-  if (pr.state === "closed") return "닫힘";
-  switch (pr.ci.kind) {
-    case "pending":
-      return "CI 확인 중";
-    case "passing":
-      return "CI 통과";
-    case "failing":
-      return "CI 실패";
-    case "noChecks":
-      return "열림";
-  }
-}
+/** Work 카드의 PR 쿼리 열쇠 — 카드가 열릴 때 · 열린 동안 60초마다 읽고, 엔진의 `pr` 줄이 그 Project의 칸을 고친다(v1 티켓 36). */
+export const workPrsKey = (slug: string) => ["work-card", slug, "prs"] as const;
 
 /** 카드 열림을 적는 열쇠 — Work마다 하나다(S32). */
 const openKey = (slug: string) => `work-card-open:${slug}`;

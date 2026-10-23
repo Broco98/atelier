@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { fileKey, type ChangeSummary } from "./work-card";
+import { fileKey, type ChangeSummary, type PrRow } from "./work-card";
 import { ArchivedCard, WorkCardSections } from "./WorkCard";
 
 // Work 카드의 칸(v1 티켓 34 · §15 · 캔버스 WorkPanel 보드) — 칸을 그리는 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 칸의
@@ -44,6 +44,16 @@ const refund: ChangeSummary = {
   ],
 };
 
+const row: PrRow = {
+  project: "api-server",
+  number: 142,
+  url: "https://github.com/acme/api/pull/142",
+  icon: "open",
+  status: "CI 통과 · 승인 1개",
+  checking: false,
+  note: null,
+};
+
 describe("Work 카드의 칸", () => {
   it("문서 · 변경 · Project · PR 차례로 서고, 쓰는 중인 문서에 파란 점과 「Host가 쓰는 중」이 붙는다(화면 3)", () => {
     const markup = sections({
@@ -53,7 +63,7 @@ describe("Work 카드의 칸", () => {
       ],
       changes: refund,
       projects: [{ project: "api-server", editing: true }],
-      prs: [{ project: "api-server", number: 142, url: "https://github.com/acme/api/pull/142", status: "CI 확인 중", checking: true }],
+      prs: [{ ...row, status: "CI 확인 중", checking: true }],
     });
     expect(names(markup)).toEqual(["문서", "변경", "Project"]);
     expect(markup.indexOf("PR #142")).toBeGreaterThan(markup.indexOf("api-server"));
@@ -110,6 +120,22 @@ describe("Work 카드의 칸", () => {
       ],
     });
     expect(markup).toMatch(/data-project="web-client".*고치는 중.*data-project="admin-console".*읽기만/);
+  });
+
+  it("PR 줄은 칸 맨 아래 한 줄이고 상태를 문장으로 말한다 — CI가 실패하면 진한 ⓘ(빨강이 아님)와 그 아래 실패 문장(보드 「PR」)", () => {
+    const passing = sections({ prs: [row] });
+    expect(passing).toMatch(/PR #142.*CI 통과 · 승인 1개/);
+    expect(passing).toContain('data-pr-icon="open"');
+    expect(passing).not.toContain("chat-shimmer");
+
+    const failing = sections({ prs: [{ ...row, icon: "failed", status: "CI 실패", note: "e2e 검사가 실패했어요." }] });
+    expect(failing).toMatch(/<svg[^>]*text-fg[" ][^>]*data-pr-icon="failed"/);
+    expect(failing).toMatch(/CI 실패.*<p[^>]*>e2e 검사가 실패했어요.<\/p>/);
+    expect(failing).not.toMatch(/danger|diff-deleted/);
+
+    const merged = sections({ prs: [{ ...row, icon: "merged", status: "병합됨 · 오후 3:02" }] });
+    expect(merged).toContain('data-pr-icon="merged"');
+    expect(merged).toContain("병합됨 · 오후 3:02");
   });
 });
 

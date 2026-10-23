@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
@@ -7,11 +7,14 @@ import {
   Archive,
   Check,
   ChevronRight,
+  CircleAlert,
   ExternalLink,
   File,
   FileText,
   Folder,
+  GitMerge,
   GitPullRequest,
+  GitPullRequestClosed,
   MoreHorizontal,
   PanelRight,
   Plus,
@@ -49,6 +52,7 @@ import {
   projectRows,
   readCardOpen,
   writeCardOpen,
+  workPrsKey,
   writerLine,
   type ChangeSummary,
   type DocRow,
@@ -64,12 +68,13 @@ import { ExpandedViewer } from "./ExpandedViewer";
 //
 //   머리(폴더 · 이름 · 브랜치 · Thread 수 · ⋯) — 누르면 이 Work의 Thread들과 「이 Work에서 새 Thread」
 //   문서(spec 트리의 파일 · 쓰는 중이면 파란 점과 그 Agent) · 변경(Project마다 +/− · 새로 바뀐 파일이 잠깐 빛남) · Project(고치는 중 ·
-//   읽기만) · PR(번호 · 상태 문장) — **비어 있는 칸은 그리지 않는다.**
+//   읽기만) · PR(번호 · 상태 문장, CI가 실패하면 그 아래 실패 문장) — **비어 있는 칸은 그리지 않는다.**
 //
 // - 칸을 짓는 것은 순수 함수(`work-card.ts`)이고, 칸을 그리는 조각(`WorkCardSections`)은 훅을 부르지 않는다 — 정적 마크업으로 그
 //   모양을 잰다(`WorkCard.test.tsx`).
 // - **변경은 카드가 열릴 때와 `worktree:changed`마다 읽는다**(v1 티켓 33) — 앱 루트의 감시 배선(`useFollowWorktreeChanges`)이 그 Work의
-//   변경 쿼리를 낡았다고 표시한다. PR은 카드가 열릴 때 읽는다(§12 — 턴 끝 · 60초마다는 v1 티켓 36).
+//   변경 쿼리를 낡았다고 표시한다. **PR은 카드가 열릴 때와 열린 동안 60초마다 읽고**, 엔진이 턴 끝에 읽어 남긴 `pr` 줄이 그 칸을
+//   고친다(v1 티켓 36).
 // - 쓰는 중은 엔진의 `work:writing`이다(`workWritingStore` — 앱 루트가 쌓는다).
 // - **줄을 누르면 카드가 넓어진다**(v1 티켓 35 · §15 배치 1 · 캔버스 Layout-Expand 보드) — 문서 · 변경 · Project 줄이 그 파일을 연다. 넓힌
 //   카드는 왼쪽에 이 칸들(목록 — `size-list` 264 · 오른쪽 0.5 선), 오른쪽에 그 파일의 보기(`ExpandedViewer`)다. 연 줄은 고른 면이고,
@@ -83,6 +88,9 @@ import { ExpandedViewer } from "./ExpandedViewer";
 export const ADD_DOC_ASK = "이 Work의 spec 폴더에 새 문서를 써 줘: ";
 /** 「Project 붙이기」가 입력창에 채우는 말. */
 export const ATTACH_PROJECT_ASK = "이 Work에 Project를 붙여 줘: ";
+
+/** 카드가 열린 동안 PR을 다시 읽는 간격(§12 「카드가 열려 있는 동안 60초마다」). */
+const PR_EVERY = 60_000;
 
 interface WorkCardProps {
   /** 지금 Thread — 머리 메뉴가 그 줄에 ✓를 달고, 더하기 둘이 그 입력창을 채운다. 넓힌 카드의 인용도 이 입력창으로 간다. */
@@ -126,11 +134,14 @@ export function WorkCard({ thread, slug, onNewThread, opened, onOpen, onClose }:
   const { data: threads } = useThreads();
   const own = threads?.filter((one) => one.work === slug) ?? [];
   const changes = useChanges(slug);
-  // PR은 카드가 열릴 때(마운트) 읽는다 — 창 포커스마다 `gh`를 부르지 않는다. 턴 끝 · 60초마다는 v1 티켓 36이다.
+  // PR은 카드가 열릴 때(마운트)와 열린 동안 60초마다 읽는다(§12) — 창 포커스마다 `gh`를 부르지 않는다. 엔진이 읽는다: 처음 보인 PR ·
+  // 상태 변화는 그 Work의 Thread에 `pr` 줄로 남고, 턴 끝의 읽기는 엔진이 스스로 한다 — 그 줄이 이 쿼리의 칸을 고친다
+  // (`followRecordLine`). react-query는 앞 읽기가 돌면 다음을 띄우지 않는다(`gh`에는 시간 한도가 없다 — v1 티켓 33).
   const { data: prs } = useQuery({
-    queryKey: ["work-card", slug, "prs"],
+    queryKey: workPrsKey(slug),
     queryFn: () => worksApi.prs(slug),
     refetchOnWindowFocus: false,
+    refetchInterval: PR_EVERY,
   });
   const writing = useStore(workWritingStore, (state) => writingOf(state, slug));
   if (!work) return null;
@@ -143,7 +154,7 @@ export function WorkCard({ thread, slug, onNewThread, opened, onOpen, onClose }:
         fresh={changes.fresh}
         flash={changes.flash}
         projects={projectRows(work)}
-        prs={prRows(prs ?? [])}
+        prs={prRows(prs ?? [], Date.now())}
         onAddDoc={() => fillDraft(thread, ADD_DOC_ASK)}
         onAttachProject={() => fillDraft(thread, ATTACH_PROJECT_ASK)}
         onOpenPr={(row) => void openUrl(row.url)}
@@ -496,24 +507,37 @@ export function WorkCardSections({
       )}
       {prs.length > 0 && (
         <div className="flex flex-col border-t-[0.5px] border-border pt-1.5">
-          {prs.map((pr) => (
-            <button
-              key={`${pr.project}\u0000${pr.number}`}
-              type="button"
-              onClick={() => onOpenPr(pr)}
-              className="flex h-7.5 w-full items-center gap-2 rounded-md px-2.5 text-left text-chat-meta transition-colors hover:bg-fill-hover focus-ring"
-            >
-              <GitPullRequest className="size-4 shrink-0 text-fg-tertiary" aria-hidden />
-              <span className="min-w-0 flex-1 truncate">PR #{pr.number}</span>
-              <span className={cn("shrink-0 text-xs text-fg-tertiary", pr.checking && "chat-shimmer")}>{pr.status}</span>
-              <ExternalLink className="size-3 shrink-0 text-fg-tertiary" aria-hidden />
-            </button>
-          ))}
+          {prs.map((pr) => {
+            const Icon = PR_ICONS[pr.icon];
+            return (
+              <Fragment key={`${pr.project}\u0000${pr.number}`}>
+                <button
+                  type="button"
+                  onClick={() => onOpenPr(pr)}
+                  className="flex h-7.5 w-full items-center gap-2 rounded-md px-2.5 text-left text-chat-meta transition-colors hover:bg-fill-hover focus-ring"
+                >
+                  <Icon
+                    data-pr-icon={pr.icon}
+                    className={cn("size-4 shrink-0", pr.icon === "failed" ? "text-fg" : "text-fg-tertiary")}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">PR #{pr.number}</span>
+                  <span className={cn("shrink-0 text-xs text-fg-tertiary", pr.checking && "chat-shimmer")}>{pr.status}</span>
+                  <ExternalLink className="size-3 shrink-0 text-fg-tertiary" aria-hidden />
+                </button>
+                {/* 무엇이 실패했는지(보드 `.wnote` — 이름 칸에 맞춰 34 들이고 12/18 `fg-secondary`). */}
+                {pr.note && <p className="mr-2.5 mb-1.5 ml-8.5 text-xs text-pretty text-fg-secondary">{pr.note}</p>}
+              </Fragment>
+            );
+          })}
         </div>
       )}
     </>
   );
 }
+
+/** PR 줄의 글리프 — 열린 PR · CI 실패(진한 ⓘ) · 병합됨 · 닫힘. */
+const PR_ICONS = { open: GitPullRequest, failed: CircleAlert, merged: GitMerge, closed: GitPullRequestClosed } as const;
 
 /** 칸 하나 — 머리 줄(12/18 옅은 글자 · 오른쪽 끝에 더하기나 합계)과 줄들(보드 `.ws` · `.ws-h`). */
 function Section({ name, end, children }: { name: string; end?: ReactNode; children: ReactNode }) {

@@ -122,7 +122,8 @@ const HANDLERS: &[(&str, Handler)] = &[
         ok(atelier_core::read_work_diff(&works_dir(), &projects_dir(), &slug, &project, &path))
     }),
     // PR은 이 다리의 PATH에서 `gh`를 찾는다 — 앱처럼 Thread 엔진이 쥔 로그인 셸 PATH가 없다. L4는 가짜 `gh`를 PATH 앞에 두어
-    // 진짜 GitHub으로 나가지 않는다(없으면 「없음」이다).
+    // 진짜 GitHub으로 나가지 않는다(없으면 「없음」이다). 앱에서는 엔진이 읽고 `pr` 줄을 남기지만(v1 티켓 36) 다리에는 엔진이 없어
+    // 읽기만 한다 — 줄을 남기는 셈은 L1(`atelier-acp` `thread_pr`)이 잰다.
     ("read_work_prs", |a| ok(atelier_core::read_work_prs(&works_dir(), &text(a, "slug")?, None))),
     ("search", |a| {
         ok(atelier_core::search(

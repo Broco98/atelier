@@ -317,7 +317,7 @@ fn of_kind(options: &[(String, String)], wanted: &str) -> Option<String> {
 }
 
 /// 그 Session의 턴이 끝났나 — 우리 턴의 끝 · 스스로 이어 간 턴의 끝 · 죽음.
-fn ends_turn(event: &RuntimeEvent) -> bool {
+pub(super) fn ends_turn(event: &RuntimeEvent) -> bool {
     match event {
         RuntimeEvent::TurnEnd(_) | RuntimeEvent::Died(_) => true,
         RuntimeEvent::Update(raw) => matches!(OutOfTurn::of(raw), Some(OutOfTurn::Ended(_))),

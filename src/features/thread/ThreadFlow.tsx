@@ -31,6 +31,7 @@ import { DocCard } from "./DocCard";
 import { createdDocs } from "./expanded";
 import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
+import { PrCard } from "./PrCard";
 import { projectChoiceText } from "./project-card";
 import { answeredText, saidOf } from "./question";
 import { SentQuoteChip } from "./QuoteChip";
@@ -62,6 +63,8 @@ import { LogHead, ToolRows } from "./WorkLog";
 // - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 들고 난 줄은 이름 앞에 그 얼굴이 선다(「● 리뷰어가
 //   참여함」). 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴 사이의 옅은 줄이다.
 // - 마지막 답 아래에는 동작 버튼(복사)이 늘 선다. 「다시 답하기」 · 「여기서 새 Thread」는 그 일을 하는 장이 단다.
+// - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
+//   서고, 온 흐름에만 선다(그 Agent의 일이 아니라 Work의 일이다).
 // - **호출 줄**(v1 티켓 17 · `CallRow`) — Agent가 다른 Agent에게 맡긴 부르기는 부른 턴 안의 카드 한 줄이고, 접힌 턴에도 남는다(계획
 //   카드처럼 — 누가 무엇을 맡았는지는 다시 보는 것이다). 불린 Agent의 맡은 턴은 답을 받은 뒤에만 그 Agent의 말로 선다(`flowOf`).
 // - **Session 보기**(S37 「Session 열기」, `only`) — 같은 흐름 부품으로 그 Agent의 줄만 그린다. 맡은 턴은 말풍선 자리에 「Host가 맡긴
@@ -105,12 +108,15 @@ const memberOf = (cast: Readonly<Record<string, CastMember>>, handle: string): C
 function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCallAgain }: ThreadFlowProps) {
   const expanded = useStore(threadUiStore, (state) => state.expanded);
   const flow = flowOf(model, only);
+  // PR 카드의 병합한 때(「어제 오후 6:12」)를 견줄 지금 — 흐름을 다시 그릴 때마다 읽는다.
+  const now = Date.now();
   const between = (count: number) => [
     ...flow.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
     ...flow.system
       .filter((line) => line.turn === undefined && line.turnsBefore === count)
       .map((line) => <SystemRow key={line.key} line={line} cast={model.cast} />),
     ...flow.calls.filter((one) => one.turnsBefore === count).map((one) => <CallRow key={one.entry.key} call={one.entry} />),
+    ...flow.prs.filter((card) => card.turnsBefore === count).map((card) => <PrCard key={card.key} card={card} now={now} />),
   ];
   const last = flow.turns[flow.turns.length - 1];
   const actions = useMemo<CallActions>(

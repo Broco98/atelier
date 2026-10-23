@@ -31,9 +31,12 @@
 //! - **worktree는 처음 고칠 때 선다(v1 티켓 32 · S21 · S22, [`project`]).** Agent가 Thread 도구 「Project 고치기 시작」을 부르면 그
 //!   Project에만 worktree가 서고, Work에 없는 Project면 Work 밖 Project 카드로 묻는다. 작업 폴더가 바뀐 Session은 다음 말을 보낼 때
 //!   새 작업 폴더에서 이어 연다(S11 「바꿔 이어 열기」).
+//! - **Work의 PR을 지켜본다(v1 티켓 36 · §12 S24, [`pr`]).** 이은 Thread의 턴이 끝날 때마다 · Work 카드가 부를 때 PR을 `gh`로 읽고, 처음
+//!   보인 PR과 상태 변화를 그 Work에서 가장 최근에 말한 Thread에 `pr` 줄로 남긴다.
 
 mod call;
 mod gate;
+mod pr;
 mod project;
 mod read_only;
 mod seat;
@@ -185,6 +188,8 @@ pub(super) struct Threads {
     docs: Arc<writing::DocDesk>,
     /// worktree 짓기를 하나씩 세운다(v1 티켓 32) — 같은 Project를 둘이 함께 시작해도 git worktree를 두 번 짓지 않는다.
     trees: Mutex<()>,
+    /// Work마다 본 PR 상태와 읽기의 문(v1 티켓 36).
+    prs: pr::PrWatch,
 }
 
 /// Session의 열쇠 — (Thread, 참여자 handle).
@@ -1085,7 +1090,8 @@ impl ConversationHost {
         let (tools, server) = self.open_tools(key, &conv).unzip();
         terms.mcp_servers.extend(server);
         // 판정(v1 티켓 22) — 받은 권한 요청은 모두 판정을 지난다. 쓰기 자리(v1 티켓 18)는 판정의 입력이고, 턴이 끝나면 쥔 자리를 놓는다.
-        // 쓰는 문서(v1 티켓 34)는 그 Agent의 이름으로 낸다 — Host는 정의 이름과 상관없이 「Host」다(머리줄 · 흐름과 같다).
+        // 쓰는 문서(v1 티켓 34)는 그 Agent의 이름으로 낸다 — Host는 정의 이름과 상관없이 「Host」다(머리줄 · 흐름과 같다). 턴이 끝나면 이은
+        // Work의 PR을 읽는다(v1 티켓 36).
         let docs = Docs {
             desk: Arc::clone(&self.threads.docs),
             emit: Arc::clone(&self.emit),
@@ -1104,7 +1110,8 @@ impl ConversationHost {
         terms.judge = Some(gate.judge());
         let limit = self.open_limit.unwrap_or(CLAUDE_OPEN_LIMIT);
         let at = SessionPlace { cwd: place.cwd.clone(), additional_directories: place.additional_directories.clone() };
-        let opened = runtime::open(launch, at, terms, limit, writer.watching(conv.sink()), record_opened(&conv));
+        let sink = self.reading_prs(writer.watching(conv.sink()), &writer);
+        let opened = runtime::open(launch, at, terms, limit, sink, record_opened(&conv));
         let (agent, opened) = match opened {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {

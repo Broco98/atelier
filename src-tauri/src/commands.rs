@@ -222,21 +222,16 @@ pub async fn read_work_diff(slug: String, project: String, path: String) -> CmdR
     .map_err(|e| format!("diff를 읽지 못했습니다: {e}"))?
 }
 
-/// Work의 PR(S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. `gh`는 **Thread 엔진이 쥔 로그인 셸의 PATH**로 찾는다 —
-/// Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보여, 깔려 있는데도 PR 줄이 「없음」이 된다. 로그인 셸을 읽지 못하면 앱의
-/// PATH로 물러선다. 다리는 엔진이 없어 자기 PATH로 부른다.
+/// Work의 PR(S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. Work 카드가 열릴 때와 열린 동안 60초마다 부른다. **Thread 엔진이
+/// 읽는다**(v1 티켓 36) — 처음 보인 PR과 상태 변화를 그 Work의 Thread에 `pr` 줄로 남기는 것이 엔진이라, 카드의 읽기도 그 셈에 든다.
+/// `gh`는 엔진이 쥔 로그인 셸의 PATH로 찾는다 — Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보인다. 다리는 엔진이 없어 core를
+/// 자기 PATH로 부르고 줄을 남기지 않는다.
 #[tauri::command]
 pub async fn read_work_prs(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     slug: String,
 ) -> CmdResult<Vec<atelier_core::ProjectPr>> {
-    let host = Arc::clone(&engine);
-    tauri::async_runtime::spawn_blocking(move || {
-        let path = host.login_path();
-        atelier_core::read_work_prs(&works_dir(), &slug, path.as_deref()).map_err(err)
-    })
-    .await
-    .map_err(|e| format!("PR을 읽지 못했습니다: {e}"))?
+    to_host(&engine, "PR을 읽지 못했습니다", move |host| host.read_work_prs(&slug)).await
 }
 
 /// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 맞추는 규칙도 순위도 층 규칙도
@@ -1145,12 +1140,11 @@ mod tests {
     /// - `list_work_changes`(v1 티켓 33): Project마다 git을 세 번 기다린다(갈라진 커밋 · 증감 · 아직 모르는 파일). Work 카드가
     ///   worktree가 바뀔 때마다 부른다.
     /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
-    /// - `read_work_prs`(v1 티켓 33): Project마다 `gh`가 GitHub에 묻는 것을 기다린다(네트워크). 그 앞의 로그인 셸 PATH 읽기도
-    ///   기다린다 — 엔진이 아직 쥐지 않았으면 셸을 띄운다(한도 10초). 그래서 두 부름이 모두 blocking 풀 안이다.
     ///
-    /// Thread 명령은 여기 없다 — 어느 엔진 부름이 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을
-    /// blocking 풀에서 기다린다. 길은 `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은
-    /// `every_thread_command_goes_to_the_engine_by_the_one_path`가 잰다.
+    /// Thread 명령과 `read_work_prs`(v1 티켓 36 — `gh`를 기다리고 `pr` 줄을 남기는 것이 엔진이다)는 여기 없다 — 어느 엔진 부름이
+    /// 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을 blocking 풀에서 기다린다. 길은
+    /// `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은 `every_thread_command_goes_to_the_engine_by_the_one_path`
+    /// 가 잰다.
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -1168,8 +1162,6 @@ mod tests {
             ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
             ("list_work_changes", "atelier_core::list_work_changes(", "list_work_changes("),
             ("read_work_diff", "atelier_core::read_work_diff(", "read_work_diff("),
-            ("read_work_prs", "atelier_core::read_work_prs(", "read_work_prs("),
-            ("read_work_prs", ".login_path()", ".login_path("),
         ] {
             let body = command_body(command);
             let blocking = body

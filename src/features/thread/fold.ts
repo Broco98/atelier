@@ -2,6 +2,7 @@ import { askLevelOf } from "./chips";
 import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
 import type { Quote } from "@/features/works/QuotePick";
+import { prLineOf, type PrLine } from "./pr";
 import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05 · 구현 스펙 §14) — Thread 기록 줄을 받아 화면 모델(턴 · 말한 이 · 메시지 · 생각 · 도구 줄 · 시스템 줄 ·
@@ -293,6 +294,17 @@ export interface SystemLine {
   turn?: string;
 }
 
+/**
+ * PR 카드 하나(v1 티켓 36 · 스토리 124) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
+ * 선다. 같은 PR(Project · 번호)의 마지막 카드만 `latest`다 — 지금의 상태라 「Host에게 고쳐 달라고 하기」가 그 카드에만 선다.
+ */
+export interface PrCardEntry {
+  key: string;
+  pr: PrLine;
+  latest: boolean;
+  turnsBefore: number;
+}
+
 /** 턴 밖의 호출 줄 하나 — 이 줄보다 먼저 선 턴의 수(`turnsBefore`) 뒤에 선다. */
 export interface LooseCall {
   entry: CallEntry;
@@ -319,6 +331,8 @@ export interface ThreadModel {
   system: SystemLine[];
   /** 부른 Agent의 턴 밖에서 선 호출 줄(사람의 「다시 맡기기」) — 시스템 줄처럼 턴 사이에 선다. */
   calls: LooseCall[];
+  /** PR 카드(v1 티켓 36) — 줄이 온 차례다. */
+  prs: PrCardEntry[];
   /** 답하지 않은 권한 요청 — 물은 차례다. 입력창 자리의 차례는 Work 만들기 카드까지 든 `asks`가 정한다(`asks.ts`). */
   pending: PendingPermission[];
   /**
@@ -551,6 +565,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const connecting = new Set<string>();
   const notices: Notice[] = [];
   const system: SystemLine[] = [];
+  const prs: PrCardEntry[] = [];
   // 부르기 id → 호출 줄, 호출 줄이 대신한 Thread 도구 줄 id들, 턴 밖의 호출 줄.
   const calls = new Map<string, CallEntry>();
   const absorbed = new Set<string>();
@@ -988,6 +1003,12 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         say(line.seq, "mode", null, "Policy를 ", level.name, `${particle(level.name, "으로", "로")} 바꿈${scope}`);
         break;
       }
+      // 그 Work의 PR이 처음 보였거나 상태가 바뀜(v1 티켓 36) — 엔진이 그 Work에서 가장 최근에 말한 Thread에 남긴 줄이 PR 카드다.
+      case "pr": {
+        const pr = prLineOf(payload);
+        if (pr) prs.push({ key: `p${line.seq}`, pr, latest: false, turnsBefore: turns.length });
+        break;
+      }
       // Agent가 Thread 도구 「Agent 저장」으로 Library에 Agent를 둠(v1 티켓 19) — 그 Agent는 들어오지 않았다. 부르면 그때 들어온다.
       case "library": {
         const handle = nonEmpty(payload.handle);
@@ -1001,6 +1022,10 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     }
   }
   if (!gone) vanish(lastAt, GONE_WITH_APP);
+  for (const [at, card] of prs.entries()) {
+    const same = (one: PrCardEntry) => one.pr.project === card.pr.project && one.pr.number === card.pr.number;
+    card.latest = !prs.slice(at + 1).some(same);
+  }
   const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   const asks = [...pending.values()].map((one): PendingAsk => {
     if (one.card === "work" || one.card === "question" || one.card === "project") return one;
@@ -1018,6 +1043,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     notices,
     system,
     calls: loose,
+    prs,
     pending: asks.filter((one): one is PendingPermission => !isCardAsk(one)),
     asks,
     settled,
@@ -1044,6 +1070,8 @@ export interface Flow {
   notices: Notice[];
   system: SystemLine[];
   calls: LooseCall[];
+  /** PR 카드 — 온 흐름에만 선다(그 Agent의 줄이 아니라 Work의 일이다). */
+  prs: PrCardEntry[];
   answering: string[] | null;
 }
 
@@ -1065,6 +1093,7 @@ export function flowOf(model: ThreadModel, only: string | null = null): Flow {
     notices: model.notices.filter((one) => only === null || one.handle === only).map(recount),
     system: model.system.filter((line) => only === null || line.handle === only).map(recount),
     calls: model.calls.filter((one) => only === null || one.entry.from === only).map(recount),
+    prs: only === null ? model.prs.map(recount) : [],
     answering: answering.length > 0 ? answering : null,
   };
 }
