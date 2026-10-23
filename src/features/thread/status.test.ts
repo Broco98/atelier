@@ -114,9 +114,9 @@ describe("내 차례", () => {
   // Agent의 질문(v1 티켓 26)도 같은 물음 차례다 — 미리보기는 첫 물음이다(Sidebar 보드 「질문 · 수수료는 어떻게 할까요?」).
   it("질문이 서 있으면 내 차례이고, 미리보기는 「질문 · 」 뒤의 첫 물음이다", () => {
     const asked = record("thread-question");
-    expect(statusOf(through(asked, 9), live(0))).toEqual({
+    expect(statusOf(through(asked, 8), live(0))).toEqual({
       kind: "mine",
-      since: "2026-10-10T10:00:09.000+09:00",
+      since: "2026-10-10T10:00:08.000+09:00",
       text: "질문 · 부분 환불 수수료는 어떻게 할까요?",
     });
   });

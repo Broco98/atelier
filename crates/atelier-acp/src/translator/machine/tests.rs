@@ -1339,7 +1339,8 @@ fn 계획_승인은_계획_본문이_든_switch_mode_권한_요청이고_다시_
 // ── 질문(v1 티켓 26) ──────────────────────────────────────────────────────────────────
 
 /// 사람에게 묻는 claude의 `AskUserQuestion` 입력 — 2.1.309 도구 스키마(`questions[]`: `question` · `header` · `options[]{label,
-/// description}` · `multiSelect`)의 꼴이다. 녹음이 없어 되감는 `can_use_tool`을 이 입력으로 바꿔 낸다(`Claude::question`).
+/// description}` · `multiSelect`)의 꼴이다. 진짜 녹음(`thread-question-host`)의 선택지는 늘 설명이 있어, 빈 설명 · 설명 없는 선택지를
+/// 재려고 되감는 `can_use_tool`을 이 입력으로 바꿔 낸다(`Claude::question`).
 fn refund_questions() -> Value {
     json!({"questions": [
         {"question": "부분 환불 수수료는 어떻게 할까요?", "header": "수수료", "multiSelect": false,

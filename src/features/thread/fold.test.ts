@@ -14,6 +14,7 @@ import {
   type PendingWork,
   type ThreadModel,
 } from "./fold";
+import { changedFiles } from "./log";
 import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
 import { decisionsDue } from "./work-proposal";
@@ -673,6 +674,34 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     const tool = foldThread(swapped).turns[0].entries.find((entry) => entry.kind === "tool");
     expect(tool?.kind === "tool" && tool.allowed).toBe("편집은 허용");
   });
+
+  it("계획 모드의 claude가 제 계획 파일(~/.claude/plans/…md)에 쓴 줄은 작업 로그 · 바뀐 파일에 서지 않는다(v1 티켓 27)", () => {
+    // 진짜 claude 2.1.309는 계획 모드에서 계획을 그 파일에 묻지 않고 쓴 뒤 ExitPlanMode로 묻는다 — 계획은 계획 넘어가기 카드가 보인다.
+    const write = (seq: number, id: string, path: string) =>
+      update(seq, seq, {
+        sessionUpdate: "tool_call",
+        toolCallId: id,
+        title: `Write ${path}`,
+        kind: "edit",
+        status: "in_progress",
+        rawInput: { file_path: path, content: "hi\n" },
+        content: [{ type: "diff", path, oldText: null, newText: "hi\n" }],
+        locations: [{ path }],
+        _meta: { claudeCode: { toolName: "Write" } },
+      });
+    const done = (seq: number, id: string) => update(seq, seq, { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed" });
+    const real = "/tmp/gate/home/threads/20261024-003416/e.txt";
+    const lines: RecordLine[] = [
+      { seq: 1, at: at(1), kind: "sent", payload: { text: "d.txt에 hi를 쓰는 계획을 세워" } },
+      write(2, "plan", "/Users/USER/.claude/plans/d-txt-hi-playful-sketch.md"),
+      done(3, "plan"),
+      write(4, "real", real),
+      done(5, "real"),
+    ];
+    const [turn] = foldThread(lines).turns;
+    expect(turn.entries.filter((entry) => entry.kind === "tool").map((tool) => tool.kind === "tool" && tool.call.title)).toEqual([`Write ${real}`]);
+    expect(changedFiles(turn)?.files.map((file) => file.path)).toEqual([real]);
+  });
 });
 
 describe("Work 만들기 카드(v1 티켓 30)", () => {
@@ -774,20 +803,20 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
 
 describe("질문 카드(v1 티켓 26)", () => {
   /**
-   * Host가 물음 둘을 내고 사람이 답한 축복 기록 — 8 도구 줄 · 9 질문 · 10 답 · 11 그 도구 끝 · 12 답 · 14 턴 끝. 사람에게 묻는 claude의
-   * 녹음이 없어 가짜 claude가 녹화의 `Write` 물음을 질문으로 바꿔 냈다 — 그래서 도구 줄은 `Write`다.
+   * Host가 물음 둘을 내고 사람이 답한 축복 기록 — 7 도구 줄(`AskUserQuestion`) · 8 질문 · 9 답 · 10 그 도구 끝 · 11 답 · 13 턴 끝.
+   * 진짜 claude가 사람에게 물은 녹음(v1 티켓 27 끝 점검)을 되감았다.
    */
   const asked = record("thread-question");
   const answer = (payload: Record<string, unknown>): RecordLine => ({
-    seq: 10,
-    at: at(10),
+    seq: 9,
+    at: at(9),
     kind: "question",
     who: "host",
     payload: { requestId: "0", card: "question", ...payload },
   });
 
   it("질문 줄이 오면 물음 차례에 질문으로 서고, 그 도구 줄은 질문 줄이 대신한다", () => {
-    const model = foldThread(through(asked, 9));
+    const model = foldThread(through(asked, 8));
     expect(model.asks.map((one) => [one.card, one.who, one.requestId])).toEqual([["question", "host", "0"]]);
     const question = model.asks[0];
     expect(question.card === "question" && question.questions.map((one) => [one.question, one.multiSelect, one.options.length])).toEqual([
@@ -796,7 +825,7 @@ describe("질문 카드(v1 티켓 26)", () => {
     ]);
     expect(question.card === "question" && question.questions[0].options[0]).toEqual({
       label: "비율대로 돌려준다",
-      description: "환불한 금액만큼 나눠 돌려줘요",
+      description: "부분 환불 금액의 비율만큼 수수료도 함께 돌려준다.",
     });
     const entries = model.turns[0].entries;
     expect(entries.filter((entry) => entry.kind === "tool")).toEqual([]);
@@ -821,33 +850,33 @@ describe("질문 카드(v1 티켓 26)", () => {
   });
 
   it("나중에는 답 없이 그 자리에 남고, 거둬진 질문은 아무것도 남지 않는다", () => {
-    const later = foldThread([...through(asked, 9), answer({ state: "answered", choice: "later" })]);
+    const later = foldThread([...through(asked, 8), answer({ state: "answered", choice: "later" })]);
     expect(later.asks).toEqual([]);
     const entry = later.turns[0].entries.find((one) => one.kind === "question");
     expect(entry?.kind === "question" && [entry.choice, entry.answers]).toEqual(["later", []]);
 
-    const withdrawn = foldThread([...through(asked, 9), answer({ state: "withdrawn", reason: "stopped" })]);
+    const withdrawn = foldThread([...through(asked, 8), answer({ state: "withdrawn", reason: "stopped" })]);
     expect(withdrawn.asks).toEqual([]);
     expect(withdrawn.turns[0].entries.filter((one) => one.kind === "question" || one.kind === "tool")).toEqual([]);
   });
 
   it("다른 갈래의 질문 줄(Work 만들기 카드 — v1 티켓 30)은 질문 카드가 아니다", () => {
     const work: RecordLine = {
-      seq: 9,
-      at: at(9),
+      seq: 8,
+      at: at(8),
       kind: "question",
       who: "host",
       payload: { state: "asked", requestId: "w", card: "work", title: "환불 API 버그 수정" },
     };
-    const model = foldThread([...through(asked, 8), work]);
+    const model = foldThread([...through(asked, 7), work]);
     expect(model.asks.map((one) => one.card)).toEqual(["work"]);
     expect(model.turns[0].entries.filter((entry) => entry.kind === "question")).toEqual([]);
   });
 
   it("승인과 질문이 함께 걸리면 온 차례로 서고, 질문을 기다리는 참여자도 「답하는 중」에 서지 않는다", () => {
     const permission: RecordLine = {
-      seq: 10,
-      at: at(10),
+      seq: 9,
+      at: at(9),
       kind: "permission",
       who: "tester",
       payload: {
@@ -859,7 +888,7 @@ describe("질문 카드(v1 티켓 26)", () => {
         policy: "매번 묻기",
       },
     };
-    const model = foldThread([...through(asked, 9), permission]);
+    const model = foldThread([...through(asked, 8), permission]);
     expect(model.asks.map((one) => [one.card, one.who])).toEqual([
       ["question", "host"],
       ["command", "tester"],

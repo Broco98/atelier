@@ -460,6 +460,13 @@ const CARD_TOOLS: Readonly<Record<"work" | "project", string>> = {
 const TOOL_SEARCH = "ToolSearch";
 
 /**
+ * Claude Code가 계획 모드에서 제 계획을 적는 파일(`~/.claude/plans/<이름>.md`, v1 티켓 27) — 진짜 claude 2.1.309는 계획을 이 파일에
+ * 묻지 않고 쓴 뒤 `ExitPlanMode`로 묻는다. 계획은 계획 넘어가기 카드가 보이므로 작업 로그 · 바뀐 파일에 세우지 않는다 — 「계획만」인데
+ * 「파일 1개 바꿈」이 서지 않게.
+ */
+const PLAN_FILE = /\/\.claude\/plans\/[^/]+\.md$/;
+
+/**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 Thread가 「떠 있는 Session이 없다」고 말할 때의 마지막 seq다 — 그 seq까지의 줄을
  * 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
  */
@@ -651,7 +658,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (!TURN_UPDATES.has(kind)) break;
         const called = text(update.toolCallId) ?? "";
         if (kind === "tool_call" && (planReviews.has(called) || questionTools.has(called))) break;
-        if (kind === "tool_call" && toolNameOf(update) === TOOL_SEARCH) {
+        if (kind === "tool_call" && (toolNameOf(update) === TOOL_SEARCH || writesPlanFile(update))) {
           absorbed.add(called);
           break;
         }
@@ -1152,6 +1159,15 @@ function toolNameOf(call: Json): string | null {
   const meta = isObject(call._meta) ? call._meta : {};
   const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
   return text(claudeCode.toolName) ?? text(call.title);
+}
+
+/** Claude Code의 계획 파일에 쓰는 도구 줄인가 — 편집 도구이고, 다루는 파일(`locations` · 입력의 `file_path`)이 모두 계획 파일이다. */
+function writesPlanFile(call: Json): boolean {
+  if (call.kind !== "edit") return false;
+  const input = isObject(call.rawInput) ? call.rawInput : {};
+  const located = Array.isArray(call.locations) ? call.locations.filter(isObject).map((location) => text(location.path)) : [];
+  const paths = [...located, text(input.file_path)].filter((path): path is string => path !== null);
+  return paths.length > 0 && paths.every((path) => PLAN_FILE.test(path));
 }
 
 /** Agent 부르기 Thread 도구의 줄인가 — Claude Code의 MCP 도구 이름(`_meta.claudeCode.toolName`, 없으면 제목)으로 가린다. */

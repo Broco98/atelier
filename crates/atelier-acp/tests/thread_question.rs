@@ -5,8 +5,9 @@
 //! - **계획 넘어가기** — 「계획만」에서 「계획대로 구현」을 고르면 물어보는 정도가 「매번 묻기」로 나간다 — 구현의 첫 편집부터 그
 //!   정도로 묻는다. 「계획 다시 쓰기」에 쓴 말은 고정 문구와 함께 claude에게 가고 정도는 그대로다.
 //!
-//! 사람에게 묻는 claude의 녹음이 없어, 가짜 claude가 되감는 `can_use_tool`을 `AskUserQuestion`으로 바꿔 낸다(`FAKE_CLAUDE_QUESTION`).
-//! 시험은 호스트의 Thread 명령과 Thread 기록(`events.jsonl`) · `thread.json` · 가짜 claude의 stdin만 본다.
+//! 질문은 진짜 claude가 사람에게 물은 녹음(`thread-question-host`, v1 티켓 27 끝 점검)을 되감는다 — 첫 턴은 물음 둘을 묻고 답을
+//! 받으며, 둘째 턴은 물음 하나를 나중으로 닫힌다. 시험은 호스트의 Thread 명령과 Thread 기록(`events.jsonl`) · `thread.json` · 가짜
+//! claude의 stdin만 본다.
 
 mod common;
 
@@ -19,25 +20,25 @@ const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\
 const FEE: &str = "부분 환불 수수료는 어떻게 할까요?";
 const SCREEN: &str = "어느 화면에 보일까요?";
 
-/// claude 2.1.309 `AskUserQuestion`의 입력 꼴(도구 스키마) — 물음 둘, 둘째는 여럿 고르기.
+/// 녹음의 첫 `AskUserQuestion` 입력 — claude 2.1.309가 지은 꼴 그대로다(물음 둘, 둘째는 여럿 고르기, 선택지마다 설명).
 fn refund_questions() -> Value {
     json!({"questions": [
         {"question": FEE, "header": "수수료", "multiSelect": false,
-         "options": [{"label": "비율대로 돌려준다", "description": "환불한 금액만큼 나눠 돌려줘요"},
-                     {"label": "돌려주지 않는다"}, {"label": "마지막 환불 때 한 번에 돌려준다"}]},
-        {"question": SCREEN, "header": "화면", "multiSelect": true, "options": [{"label": "주문 상세"}, {"label": "환불 내역"}]},
+         "options": [{"label": "비율대로 돌려준다", "description": "부분 환불 금액의 비율만큼 수수료도 함께 돌려준다."},
+                     {"label": "돌려주지 않는다", "description": "부분 환불 때 수수료는 돌려주지 않는다."},
+                     {"label": "마지막 환불 때 한 번에 돌려준다",
+                      "description": "부분 환불 때는 그대로 두고, 마지막 환불 때 수수료를 한꺼번에 돌려준다."}]},
+        {"question": SCREEN, "header": "화면", "multiSelect": true,
+         "options": [{"label": "주문 상세", "description": "주문 상세 화면에 보인다."},
+                     {"label": "환불 내역", "description": "환불 내역 화면에 보인다."}]},
     ]})
 }
 
-/// Host의 턴 둘이 각각 사람에게 묻는다(녹화 `permission-stdio`의 두 `can_use_tool`을 질문으로 바꾼 것).
+/// Host의 턴 둘이 각각 사람에게 묻는다(녹음 `thread-question-host`).
 fn asking_sandbox() -> (Sandbox, atelier_acp::ConversationHost) {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
-    let question = refund_questions().to_string();
-    let host = sandbox.host(sandbox.claude_login_shell(
-        "normal",
-        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_QUESTION", &question)],
-    ));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-question-host")]));
     (sandbox, host)
 }
 

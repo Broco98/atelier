@@ -57,6 +57,10 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   `call_agent`를 부르고 받은 답을 옮긴다. 리뷰어는 `Read`로 `thread.json`을 읽고 답한다. 녹음의 Thread 폴더는
 ///   `/tmp/gate/home/threads/20261023-234318`이다.
 /// - `2.1.309/thread-rename-host` — Host가 `ToolSearch`로 들인 `rename_thread`로 Thread 이름을 바꾼 한 턴(v1 티켓 20 끝 점검).
+/// - `2.1.309/thread-question-host` — Host가 `AskUserQuestion`으로 사람에게 묻는 두 턴(v1 티켓 27 끝 점검). 첫 턴은 물음 둘(둘째는
+///   여럿 고르기)을 한 번에 묻고 답(allow의 `updatedInput.answers`)을 받아 「done」, 둘째 턴은 물음 하나를 「나중에」(deny)로
+///   닫혀 「later」다. 질문은 권한 도구의 `can_use_tool`(`requires_user_interaction: true`)로 온다. 녹음의 Thread 폴더는
+///   `/tmp/gate/home/threads/20261024-004101`이다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -75,6 +79,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/thread-call-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-host.jsonl")),
     ("2.1.309/thread-call-reviewer", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-reviewer.jsonl")),
     ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
+    ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
@@ -133,8 +138,9 @@ pub struct Setup {
     pub session_id: String,
     /// 있으면 내는 `can_use_tool`마다 `permission_suggestions`를 이 값으로 바꾼다.
     pub suggestions: Option<Value>,
-    /// 있으면 내는 `can_use_tool`마다 그 요청을 이 입력의 `AskUserQuestion`으로 바꾼다(v1 티켓 26) — 사람에게 묻는 claude의 녹음이
-    /// 없다. 도구 이름과 입력만 바꾸고 요청 id · 도구 id는 녹화 그대로라, 답한 뒤에는 녹화의 그 도구가 이어진다.
+    /// 있으면 내는 `can_use_tool`마다 그 요청을 이 입력의 `AskUserQuestion`으로 바꾼다(v1 티켓 26) — 질문의 꼴을 마음대로 지을 때
+    /// 쓴다(진짜 질문의 녹음은 `thread-question-host`다). 도구 이름과 입력만 바꾸고 요청 id · 도구 id는 녹화 그대로라, 답한 뒤에는
+    /// 녹화의 그 도구가 이어진다.
     pub question: Option<Value>,
     pub hold: Option<Hold>,
     /// 있으면 `initialize` 응답의 계정 칸(`account.email` · `organization`)에 싣는다 — 실측 원문은 이미 가려져 있어, 가리기를
