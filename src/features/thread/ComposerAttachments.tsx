@@ -3,6 +3,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import { File, Folder, Image, X, type LucideIcon } from "lucide-react";
 import { threadApi } from "./api";
+import { Arriving } from "./arrival";
 import { addAttachments, attachmentKind, attachmentName, attachmentSize, removeAttachment, type AttachmentKind } from "./attachments";
 import type { Attachment } from "./types";
 
@@ -77,7 +78,7 @@ export function DropZone() {
   );
 }
 
-/** 입력창 안의 칩 줄(보드 `.achip` — 30 높이 · 10 반경 · 옅은 면 · 이름 · 크기 · 빼기). */
+/** 입력창 안의 칩 줄(보드 `.achip` — 30 높이 · 10 반경 · 옅은 면 · 이름 · 크기 · 빼기). 붙인 칩은 칩으로 나타난다(v1 티켓 43 · Motion 보드 「칩 나타남」). */
 export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: string; attachments: readonly Attachment[] }) {
   return (
     <ul aria-label="첨부" className="flex flex-wrap gap-1.5 pr-2.5">
@@ -86,7 +87,10 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
         const size = attachmentSize(attached);
         const Icon = ICONS[attachmentKind(attached)];
         return (
-          <li
+          <Arriving
+            as="li"
+            motion="chip-in"
+            arrival={`attach:${attached.path}`}
             key={attached.path}
             title={attached.path}
             className="inline-flex h-7.5 max-w-full items-center gap-1.5 rounded-lg bg-fill-soft pr-1 pl-2.5 text-chat-meta"
@@ -102,7 +106,7 @@ export function ComposerAttachmentChips({ draftKey, attachments }: { draftKey: s
             >
               <X className="size-3.5" aria-hidden />
             </button>
-          </li>
+          </Arriving>
         );
       })}
     </ul>

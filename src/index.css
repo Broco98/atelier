@@ -313,6 +313,15 @@
     --transition-duration-tip: var(--duration-tip);
     --transition-duration-peek-close: var(--duration-peek-close);
     --transition-duration-panel: var(--duration-panel);
+    --transition-duration-card: var(--duration-card);
+    --transition-duration-join: var(--duration-join);
+    --transition-duration-log: var(--duration-log);
+    --transition-duration-swap: var(--duration-swap);
+    --transition-duration-button: var(--duration-button);
+    --transition-duration-jump: var(--duration-jump);
+    --transition-duration-flash: var(--duration-flash);
+    --transition-duration-shimmer: var(--duration-shimmer);
+    --transition-duration-spin: var(--duration-spin);
     /* **메뉴 카드의 들고남**(`animate-menu-enter` · `animate-menu-exit`, DS 「움직임」의 메뉴 값). tw-animate의 `animate-in` ·
        `animate-out`을 쓰지 않는다 — 그 키프레임(`enter` · `exit`)은 늘 `filter: blur(…)`도 움직이고, 그것이 `ease-enter-snappy`
        곡선과 만나면 리눅스 WebKit(CI의 L3 WebKitGTK)의 웹 프로세스가 죽는다. 그래서 불투명도 · 크기만 움직이는 키프레임을 따로
@@ -487,7 +496,14 @@
      `ease-out`은 Tailwind 기본과 같은 값이다.
    - **크기 `--size-*`** — 역시 Tailwind 이름공간이라 `size-control`(28 정사각)처럼 너비 · 높이를 함께 정하는 유틸리티가 된다.
      한 축만 정하는 자리는 `h-(--size-head)` · `w-(--size-menu)`로 읽는다. `head`부터 아래는 Atelier가 더한 것이다(DS 「간격 ·
-     반경 · 크기」). */
+     반경 · 크기」).
+   - **모션 보드의 토큰**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 「모션 토큰」 표). 표의 열두 줄이 시간 하나 ·
+     곡선 하나로 선다. DS에 같은 이름 · 같은 값이 이미 있는 셋(단어 도착 `word` · 칩 나타남 `chip` · 세 점 `pulse`)은 그 토큰이고,
+     보드의 가감속(.4,0,.2,1)은 DS `ease-default`와 같은 값이다. 나머지는 보드가 더한 것이다 — 시간 아홉(`card` 승인 카드 ·
+     `join` Agent 참여 · `log` 로그 펼침 · `swap` 줄 바뀜 · `button` 버튼 바뀜 · `jump` 아래로 버튼 · `flash` 문서 강조 ·
+     `shimmer` 반짝임 · `spin` 회전)과 보드의 감속 곡선 `ease-settle`(.2,.8,.2,1 — 제자리에 내려앉는다), 표의 「사이」 셋
+     (`--stagger-*` — 단어 사이 70 · 로그 줄마다 40 · 점마다 150). 이 이름들을 읽는 움직임은 파일 끝 「Thread의 움직임」에 모여
+     있다. */
 @theme static {
     --duration-basic: 150ms;
     --duration-relaxed: 300ms;
@@ -498,7 +514,21 @@
     --duration-tip: 150ms;
     --duration-peek-close: 200ms;
     --duration-panel: 220ms;
+    --duration-card: 320ms;
+    --duration-join: 360ms;
+    --duration-log: 240ms;
+    --duration-swap: 200ms;
+    --duration-button: 160ms;
+    --duration-jump: 180ms;
+    --duration-flash: 1600ms;
+    --duration-shimmer: 2000ms;
+    --duration-spin: 900ms;
 
+    --stagger-word: 70ms;
+    --stagger-log: 40ms;
+    --stagger-dot: 150ms;
+
+    --ease-settle: cubic-bezier(0.2, 0.8, 0.2, 1);
     --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
     --ease-enter-snappy: cubic-bezier(0.23, 1, 0.32, 1);
@@ -1568,9 +1598,37 @@ body[data-palette-open] [data-scrollbar] {
    색 · 반경 `bubble` · `composer` · 그림자 `composer` · 크기 `size-thread`) 그 범위를 걷고 같은 값의 전역 이름으로 옮겼다 — 다크도
    따라온다.
 
-   「생각 중」의 반짝임(캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 2초마다 지나간다. WebKit은 `-webkit-background-clip`과
-   `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 멎은 옅은 글자다 — 위 동작 줄이기
-   블록은 `data-slot` 부품만 끄므로 제 규칙을 둔다. */
+   **Thread의 움직임**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드). 보드의 열두 움직임이 여기 모인다. 시간 · 곡선은 위
+   `@theme static`의 모션 보드 토큰이고, 유틸리티마다 그 이름을 읽는다 — 글자로 적은 시간이 없다(`tokens.test.ts`가 잰다).
+
+     보드 이름     유틸리티                       토큰 · 모양                    거는 자리
+     단어 도착     word-in                        word · settle · 사이 70        흐르는 답의 새 낱말(`ThreadMarkdown`)
+     칩 나타남     chip-in                        chip · settle · 0.92배에서     입력창의 멘션 칠 · 첨부 · 인용 · 기다리는 말, 흐름의 결정 줄
+     승인 카드     card-rise                      card · settle · 아래 12에서    입력창 자리의 카드(승인 · 질문 · Work 만들기 · Project · 결정은 내가)
+     Agent 참여    pop-in                         join · settle · 1.1배까지 튐   머리 줄의 새 참여자 얼굴, 목록 줄의 내 차례 점
+     로그 펼침     log-open                       log · default · 줄마다 40      작업 머리줄을 펼친 줄들
+     줄 바뀜       row-in                         swap · settle · 아래 4에서     끝난 도구 줄 · 작업 머리줄 · 시스템 줄 · 답하는 중 · 돌아온 입력창 ·
+                                                                                 목록 줄의 상태 칸
+     버튼 바뀜     button-in                      button · settle · 0.5배에서    보내기 · 멈추기 원의 아이콘(면 색은 `duration-button ease-settle`)
+     아래로 버튼   jump-in                        jump · settle · 아래 6에서     「맨 아래로」
+     문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    Work 카드의 새로 바뀐 줄 · 넓힌 카드 문서의 바뀐 줄
+     반짝임        chat-shimmer                   shimmer · 일정                 「생각 중」 · 도는 도구 줄 · 「N초 동안 작업 중입니다」
+     세 점         typing-dots                    pulse · default · 점마다 150   「답하는 중」
+     회전          spin-thread                    spin · 일정                    Thread 줄의 「작업 중」 `Spinner`
+
+   - **움직임은 상태가 바뀐 그 자리에서만 일어난다**(보드 머리말). 들고 서는 움직임은 화면이 선 뒤에 새로 선 것에만 단다 — Thread를 열
+     때 이미 있던 줄 · 카드는 움직이지 않는다(`features/thread/arrival.tsx`). 들 때만 움직이고 날 때는 곧바로 걷힌다.
+   - **흐림(`blur`)은 쓰지 않는다.** 보드의 단어 도착은 흐림 3px에서 또렷해지지만 그 길은 리눅스 WebKit의 웹 프로세스를 죽인다(위
+     `menu-enter` 머리말). 불투명도 · 자리 · 크기만 움직인다.
+   - **동작 줄이기에서는 모두 멈춘 모양이다** — 들고 서는 것은 곧바로 서고, 반짝임은 흐린 글자, 세 점은 멎은 옅은 점, 회전은 원이다(보드
+     「모션 토큰」 머리말). 위의 동작 줄이기 블록은 `data-slot` 부품만 끄므로 유틸리티마다 제 갈래를 둔다.
+   - Work 카드의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — 기다리는 동안의 반복인 세 점의 박자를 쓴다.
+   - 넓힌 카드(v1 티켓 35)의 보기는 모션 보드가 아니라 패널 박자다(`view-in` — `duration-panel` · `ease-panel`). 카드가 넓어지는 그
+     때 사이드바가 같은 박자로 접힌다. */
+
+/* **반짝임**(보드 「반짝임」 2s · 일정 · 반복 — 캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 지나간다. WebKit은 `-webkit-background-clip`과
+   `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 띠 없는 옅은 글자다 — 애니메이션만 끄면 띠가
+   글자 한 자리에 굳어 진한 얼룩으로 남는다. */
 @keyframes chat-shimmer {
     0% {
         background-position: -100% 0;
@@ -1595,30 +1653,32 @@ body[data-palette-open] [data-scrollbar] {
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: chat-shimmer 2s linear infinite;
+    animation: chat-shimmer var(--duration-shimmer) linear infinite;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
+        background: none;
+        -webkit-text-fill-color: var(--chat-shimmer-dim, var(--fg-tertiary));
     }
 }
 
-/* **Thread의 흐르는 답**(v1 티켓 05 · 캔버스 Messages 보드 「스트리밍」). 도착한 낱말은 `duration-word` 동안 옅었다가 선명해진다 —
-   보드는 흐림(`blur`)도 함께 움직이지만 그것은 리눅스 WebKit의 웹 프로세스를 죽이는 길이라(위 `menu-enter` 머리말) 불투명도만
-   움직인다. 동작을 줄여 둔 사람에게는 곧바로 선명하다. 「답하는 중」의 세 점은 아래 `typing-dots`다. */
+/* **단어 도착**(보드 「단어 도착」 500ms · 감속 · 단어 사이 70ms, v1 티켓 05 · 캔버스 Messages 보드 「스트리밍」). 도착한 낱말은 옅었다가
+   선명해진다(흐림은 쓰지 않는다 — 섹션 머리말). 한 번에 온 낱말들은 앞 낱말보다 `stagger-word`씩 늦게 선다 — 그 늦음은 낱말마다
+   `--word-delay`로 받는다(`ThreadMarkdown`이 `motion.ts`의 `wordClock`으로 센다). 「답하는 중」의 세 점은 아래 `typing-dots`다. */
 @keyframes word-in {
     from {
         opacity: 0;
     }
 }
 @utility word-in {
-    animation: word-in var(--duration-word) var(--ease-out) both;
+    animation: word-in var(--duration-word) var(--ease-settle) var(--word-delay, 0s) both;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
     }
 }
 
-/* **「답하는 중」의 세 점**(v1 티켓 14 · 캔버스 Messages 보드 · Motion 보드 「세 점」). 4 점 셋이 3 사이로 서고, `duration-pulse`마다
-   차례로(그 12% · 24% 늦게) 옅은 자리(35%)에서 떠올라 2 올라섰다 내려온다. 흐림은 쓰지 않는다(위 `menu-enter` 머리말). 동작을 줄여
-   둔 사람에게는 멎은 옅은 점 셋이다. 점은 `<i>` 셋이다 — 그림이라 숨고, 곁의 문장이 말한다. */
+/* **「답하는 중」의 세 점**(보드 「세 점」 1.25s · 가감속 · 점마다 150ms · 반복, v1 티켓 14 · 캔버스 Messages 보드). 4 점 셋이 3 사이로 서고,
+   차례로 옅은 자리(35%)에서 떠올라 2 올라섰다 내려온다. 동작을 줄여 둔 사람에게는 멎은 옅은 점 셋이다. 점은 `<i>` 셋이다 — 그림이라
+   숨고, 곁의 문장이 말한다. */
 @keyframes typing-dot {
     0%,
     60%,
@@ -1642,13 +1702,13 @@ body[data-palette-open] [data-scrollbar] {
         border-radius: 2px;
         background: var(--fg-tertiary);
         opacity: 0.35;
-        animation: typing-dot var(--duration-pulse) ease-in-out infinite;
+        animation: typing-dot var(--duration-pulse) var(--ease-default) infinite;
     }
     & > i:nth-child(2) {
-        animation-delay: calc(var(--duration-pulse) * 0.12);
+        animation-delay: var(--stagger-dot);
     }
     & > i:nth-child(3) {
-        animation-delay: calc(var(--duration-pulse) * 0.24);
+        animation-delay: calc(var(--stagger-dot) * 2);
     }
     @media (prefers-reduced-motion: reduce) {
         & > i {
@@ -1657,25 +1717,41 @@ body[data-palette-open] [data-scrollbar] {
     }
 }
 
-/* **Thread 줄의 상태 칸**(v1 티켓 41 · 캔버스 Motion 보드 「목록 상태 바뀜」 — 200ms · 점 360ms). 줄은 자리를 지키고, 상태가 바뀐 칸(시각
-   자리 · 미리보기)만 아래 3에서 떠올라 선명해진다(`slot-in`, 보드 `.fadein`). 내 차례가 되면 파란 점이 한 번 튄다 — 0.4배에서 1.1배까지
-   커졌다 제자리다(`dot-pop`, 보드 `.pop`). 곡선은 보드의 감속 `cubic-bezier(.2,.8,.2,1)`이다 — DS 움직임 토큰에 이 시간 · 곡선이 아직
-   없어 보드 값을 그대로 적는다(모션 보드의 이름 · 시간 · 곡선을 토큰으로 세우는 일은 v1 티켓 43). 처음 그린 상태는 움직이지 않는다 —
-   부르는 쪽(`SidebarThreads`)이 상태가 바뀐 뒤에만 단다. 흐림은 쓰지 않는다(위 `menu-enter` 머리말). 동작을 줄여 둔 사람에게는 곧바로
-   선 글 · 멎은 점이다. */
-@keyframes slot-in {
+/* **칩 나타남**(보드 「칩 나타남」 280ms · 감속 · 0.92배에서 — 「멘션, 기다리는 말, 첨부처럼 컴포저에 붙는 것은 모두 같은 움직임」). 왼쪽
+   가운데에서 커지며 선명해진다. 승인 카드에 답한 뒤의 결정 줄도 이것이다(보드 「승인 카드 올라옴」의 `.res.chipin`). 글 안의 칠(멘션)처럼
+   줄 상자가 아닌 자리는 크기가 걸리지 않아 옅음만 움직인다. */
+@keyframes chip-in {
     from {
         opacity: 0;
-        transform: translateY(3px);
+        transform: scale(0.92);
     }
 }
-@utility slot-in {
-    animation: slot-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+@utility chip-in {
+    transform-origin: left center;
+    animation: chip-in var(--duration-chip) var(--ease-settle) both;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
     }
 }
-@keyframes dot-pop {
+
+/* **승인 카드 올라옴**(보드 「승인 카드 올라옴」 320ms · 감속 · 아래에서 12px) — 입력창 자리를 잠시 빌리는 카드가 아래에서 올라온다.
+   여럿이 물어 다음 카드로 갈아 설 때도 새 카드가 올라온다(카드의 열쇠가 요청이다 — v1 티켓 25). */
+@keyframes card-rise {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+}
+@utility card-rise {
+    animation: card-rise var(--duration-card) var(--ease-settle) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **Agent 참여**(보드 「Agent 참여」 360ms · 감속 · 1.1배까지 튐) — 새 얼굴이 0.4배에서 1.1배까지 커졌다 제자리다. 목록 줄의 내 차례 점도
+   같은 튐이다(보드 「목록 상태 바뀜」 · 점 360ms, v1 티켓 41). */
+@keyframes pop-in {
     0% {
         opacity: 0;
         transform: scale(0.4);
@@ -1689,50 +1765,96 @@ body[data-palette-open] [data-scrollbar] {
         transform: none;
     }
 }
-@utility dot-pop {
-    animation: dot-pop 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+@utility pop-in {
+    animation: pop-in var(--duration-join) var(--ease-settle) both;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
     }
 }
 
-/* **Work 카드의 움직임**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse` · `.flashrow` — 「움직임은 바뀐 줄 하나에만 둡니다」). 쓰는 중인 문서
-   옆의 파란 점은 1.6초마다 옅어졌다 돌아온다(`writing-pulse`). 새로 바뀐 파일 줄은 옅은 파랑(`accent-soft`)에서 2.4초에 걸쳐 걷힌다
-   (`row-flash`) — 보드는 그 순간을 보이려고 되풀이로 그렸지만 줄은 **한 번만** 빛난다(스토리 109 「잠깐 빛나기를」). 끝난 뒤 남는 값이
-   없어(채움 없음) 줄의 hover 면을 덮지 않는다. 시간 · 곡선은 보드 값을 그대로 적는다 — 모션 토큰은 v1 티켓 43. 동작을 줄여 둔 사람에게는
-   멎은 점 · 빛나지 않는 줄이다. */
-@keyframes writing-pulse {
-    50% {
-        opacity: 0.3;
-    }
-}
-@utility writing-pulse {
-    animation: writing-pulse 1.6s ease-in-out infinite;
-    @media (prefers-reduced-motion: reduce) {
-        animation: none;
-    }
-}
-@keyframes row-flash {
+/* **로그 펼침**(보드 「작업 로그 펼침」 240ms · 가감속 · 줄마다 40ms) — 펼친 줄들이 위 4에서 내려앉으며 위에서부터 차례로 선다. 줄을
+   감싼 상자는 자리를 차지하지 않는다(`display: contents`) — 줄들은 그대로 턴의 줄 사이(8)에 선다. 줄은 화면의 줄이다 — 잇따른 도구 줄은
+   한 묶음 상자(`data-log-run`)에 들어 있으니 그 안의 줄을 하나씩 센다. 차례(`--log-at`, 0부터)는 펼친 로그가 줄마다 적는다(`ThreadFlow`의
+   `OpenedLog`). 여섯째부터는 함께 선다(긴 로그가 펼침을 오래 끌지 않게). 높이는 곧바로 선다 — 보드의 높이 펼침(`grid-template-rows`)은
+   줄을 잘라 담는 상자가 있어야 해서 짓지 않았다. */
+@keyframes log-row-in {
     from {
-        background: var(--accent-soft);
-    }
-    60%,
-    to {
-        background: transparent;
+        opacity: 0;
+        transform: translateY(-4px);
     }
 }
-@utility row-flash {
-    animation: row-flash 2.4s ease-out;
+@utility log-open {
+    display: contents;
+    & > :not([data-log-run]),
+    & > [data-log-run] > * {
+        animation: log-row-in var(--duration-log) var(--ease-default) both;
+        animation-delay: calc(min(var(--log-at, 0), 5) * var(--stagger-log));
+    }
+    @media (prefers-reduced-motion: reduce) {
+        & > :not([data-log-run]),
+        & > [data-log-run] > * {
+            animation: none;
+        }
+    }
+}
+
+/* **줄 바뀜**(보드 「도구 줄 바뀜」 200ms · 감속 · 위아래 4px) — 그 자리의 줄이 다른 줄로 바뀌면 새 줄이 아래 4에서 떠올라 선명해진다. 줄
+   높이는 그대로라 아래가 밀리지 않는다. 도구 줄이 끝나 완료형이 될 때, 도는 머리줄이 「N초 동안 작업함」이 될 때, 시스템 줄 · 「답하는
+   중」이 설 때, 카드가 걷히고 입력창이 돌아올 때, 목록 줄의 상태 칸이 바뀔 때(보드 「목록 상태 바뀜」 200ms, v1 티켓 41)가 이것이다.
+   보드는 옛 줄이 위로 4 걷히며 겹쳐 바뀌지만, 옛 줄은 곧바로 걷힌다(섹션 머리말 — 날 때는 움직이지 않는다). */
+@keyframes row-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+@utility row-in {
+    animation: row-in var(--duration-swap) var(--ease-settle) both;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
     }
 }
 
-/* **넓힌 카드 문서의 바뀐 줄**(v1 티켓 35 · 스토리 118 · 캔버스 Motion 보드 「문서 실시간 편집」 `.ln.live` — 「Host가 문서를 고치면 바뀐 줄만
-   잠깐 칠해집니다」). 옅은 파랑(`accent-soft`)이 처음 30%를 머물다 1.6초에 걸쳐 걷힌다 — 곡선은 보드의 `--ease-io`다. 칠할 블록 · 줄은
-   넓힌 카드의 보기가 고른다(`ExpandedViewer`의 `flashLines` — 다시 읽은 글에서 더하거나 고친 줄이 걸친 렌더 블록 · 원문 줄). 그
-   상자는 문서 보기의 것이라 클래스가 아니라 표식(`data-doc-flash`)을 단다. 보드의 줄이 들어오는 움직임(`lnin` — 아래에서 올라옴)은
-   모션 티켓(v1 티켓 43)의 몫이다. 동작을 줄여 둔 사람에게는 칠하지 않는다. */
+/* **버튼 바뀜**(보드 「보내기 버튼 바뀜」 160ms · 감속 · 0.5배에서, 아이콘 겹쳐 바뀜) — 보내기 원과 멈추기 원이 갈아 설 때 새 아이콘이
+   0.5배에서 커지며 선다. 원의 면 색(꺼짐 ↔ 보내기)은 같은 토큰의 전환(`transition-colors duration-button ease-settle`)이다. 자리와 크기는
+   그대로다. */
+@keyframes button-in {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+}
+@utility button-in {
+    animation: button-in var(--duration-button) var(--ease-settle) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **아래로 버튼**(보드 「아래로 버튼」 180ms · 감속 · 아래에서 6px) — 위로 올려 읽는 중이면 입력창 위에 「맨 아래로」가 아래 6에서 떠오른다.
+   보드의 「목록 320ms」(누르면 흐름이 내려가는 길이)는 브라우저의 부드러운 굴림이 정한다 — 동작 줄이기면 곧바로 내려간다
+   (`ThreadScreen`의 `toBottom`). */
+@keyframes jump-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+@utility jump-in {
+    animation: jump-in var(--duration-jump) var(--ease-settle) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **문서 강조**(보드 「문서 실시간 편집」 1.6s · 가감속 · 30%까지 유지 — 「Host가 문서를 고치면 바뀐 줄만 잠깐 칠해집니다」). 옅은
+   파랑(`accent-soft`)이 처음 30%를 머물다 걷힌다. 두 자리가 같은 박자다.
+   - Work 카드의 새로 바뀐 파일 줄(`row-flash`, v1 티켓 34 · 스토리 109 「잠깐 빛나기를」) — 줄은 **한 번만** 빛난다. WorkPanel 보드는
+     그 순간을 보이려고 2.4초 되풀이로 그렸다.
+   - 넓힌 카드 문서의 바뀐 줄(`[data-doc-flash]`, v1 티켓 35 · 스토리 118). 칠할 블록 · 줄은 넓힌 카드의 보기가 고른다
+     (`ExpandedViewer`의 `flashLines` — 다시 읽은 글에서 더하거나 고친 줄이 걸친 렌더 블록 · 원문 줄). 그 상자는 문서 보기의 것이라
+     클래스가 아니라 표식을 단다.
+   끝난 뒤 남는 값이 없어(채움 없음) 줄의 hover 면을 덮지 않는다. 동작을 줄여 둔 사람에게는 칠하지 않는다. */
 @keyframes doc-flash {
     0%,
     30% {
@@ -1742,10 +1864,59 @@ body[data-palette-open] [data-scrollbar] {
         background: transparent;
     }
 }
-[data-doc-flash] {
-    animation: doc-flash 1.6s cubic-bezier(0.4, 0, 0.2, 1);
+@utility row-flash {
+    animation: doc-flash var(--duration-flash) var(--ease-default);
     @media (prefers-reduced-motion: reduce) {
         animation: none;
+    }
+}
+[data-doc-flash] {
+    animation: doc-flash var(--duration-flash) var(--ease-default);
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **Work 카드의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 세 점의
+   것이다(섹션 머리말). 동작을 줄여 둔 사람에게는 멎은 점이다. */
+@keyframes writing-pulse {
+    50% {
+        opacity: 0.3;
+    }
+}
+@utility writing-pulse {
+    animation: writing-pulse var(--duration-pulse) var(--ease-default) infinite;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **넓힌 카드의 보기**(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.viewer`) — 카드가 넓어지거나 다른 파일을 열면 보기가 옅음에서 선다. 박자는
+   카드 폭과 같은 패널 박자다(섹션 머리말). */
+@keyframes view-in {
+    from {
+        opacity: 0;
+    }
+}
+@utility view-in {
+    animation: view-in var(--duration-panel) var(--ease-panel) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **회전**(보드 「회전」 0.9s · 일정 · 반복) — Thread 줄의 「작업 중」 스피너(DS `Spinner`의 호)가 모션 보드의 박자로 돈다. `Spinner`를 감싼
+   상자에 단다. 앱의 다른 스피너(터미널 레인 · 불러오는 중)는 Tailwind `animate-spin`의 1초 그대로다 — 「1초에 한 바퀴」는 그 자리의
+   결정이다(sidebar-active-band 결정 4). 동작 줄이기에서는 `Spinner`가 호 대신 원을 세운다(`components/ui/spinner.tsx`). 키프레임 `spin`은
+   Tailwind의 것이다. */
+@utility spin-thread {
+    & [data-slot="spinner-arc"] {
+        animation: spin var(--duration-spin) linear infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        & [data-slot="spinner-arc"] {
+            animation: none;
+        }
     }
 }
 

@@ -257,8 +257,12 @@ describe("cn이 DS 단계를 안다", () => {
     const [durations, eases] = [/--transition-duration-([a-z0-9-]+):/g, /--ease-([a-z0-9-]+):/g].map((name) =>
       [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) => [...block[1].matchAll(name)].map((m) => m[1])),
     );
-    expect(durations).toEqual(["basic", "relaxed", "chip", "dropdown", "word", "pulse", "tip", "peek-close", "panel"]);
-    expect(eases).toEqual(["default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"]);
+    // 뒤의 아홉 · `settle`은 모션 보드의 토큰이다(v1 티켓 43).
+    expect(durations).toEqual([
+      ...["basic", "relaxed", "chip", "dropdown", "word", "pulse", "tip", "peek-close", "panel"],
+      ...["card", "join", "log", "swap", "button", "jump", "flash", "shimmer", "spin"],
+    ]);
+    expect(eases).toEqual(["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"]);
     expect(durations.filter((name) => cn(`duration-${name}`, "duration-0") !== "duration-0")).toEqual([]);
     expect(eases.filter((name) => cn(`ease-${name}`, "ease-linear") !== "ease-linear")).toEqual([]);
   });

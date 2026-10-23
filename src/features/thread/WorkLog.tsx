@@ -2,6 +2,7 @@ import { createContext, Fragment, useContext, useState, type ReactNode } from "r
 import { Check, ChevronDown, ChevronRight, Copy, Plug, ShieldCheck } from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
+import { useArrival, useChanged } from "./arrival";
 import type { ToolEntry } from "./fold";
 import { logRows, type LogGroup } from "./log";
 import { elapsed, phraseText, shownPath, type DiffPiece, type ToolView } from "./tool-view";
@@ -95,6 +96,8 @@ function Phrase({ view }: { view: ToolView }) {
 
 function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
   const [open, setOpen] = useState(false);
+  // 하던 줄이 끝나 완료형이 되면 그 자리에서 떠오른다(v1 티켓 43 · Motion 보드 「도구 줄 바뀜」). 처음 그린 줄 · 끝난 채 선 줄은 그대로다.
+  const swapped = useChanged(view.state);
   const label = phraseText(view.phrase);
   const received = view.mcp && (view.mcp.received !== "" || view.mcp.sent !== "");
   const expandable = view.shell !== null || view.diffs.length > 0 || Boolean(received) || view.text !== null;
@@ -138,12 +141,12 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((was) => !was)}
-          className={cn(ROW, "group rounded-md transition-colors hover:text-fg-secondary focus-ring")}
+          className={cn(ROW, "group rounded-md transition-colors hover:text-fg-secondary focus-ring", swapped && "row-in")}
         >
           {line}
         </button>
       ) : (
-        <div className={cn(ROW, "group")}>{line}</div>
+        <div className={cn(ROW, "group", swapped && "row-in")}>{line}</div>
       )}
       {expandable && open && (
         <div className="flex flex-col gap-2 pt-1 pb-2">
@@ -343,14 +346,20 @@ function DiffView({ piece }: { piece: DiffPiece }) {
   );
 }
 
-/** 작업 머리줄의 버튼 · 줄 모양(보드 `.lhead`) — 14/20 `fg-tertiary`, 접히면 아래 0.5px 선. */
+/**
+ * 작업 머리줄의 버튼 · 줄 모양(보드 `.lhead`) — 14/20 `fg-tertiary`, 접히면 아래 0.5px 선. 턴이 끝나 도는 머리줄(「N초 동안 작업 중입니다」)이
+ * 이 줄로 바뀌면 같은 자리에서 떠오르고(v1 티켓 43 · Motion 보드 「도구 줄 바뀜」 — `arrival`은 그 턴의 열쇠다), 셰브런은 펼치면 아래로
+ * 돈다(보드 `.chev` — 줄 바뀜의 박자).
+ */
 export function LogHead({
   open,
   onToggle,
+  arrival,
   children,
 }: {
   open: boolean;
   onToggle: () => void;
+  arrival?: string;
   children: ReactNode;
 }) {
   return (
@@ -361,10 +370,17 @@ export function LogHead({
       className={cn(
         "flex w-full items-center gap-1 pt-0.5 text-left text-sm text-fg-tertiary transition-colors hover:text-fg-secondary",
         open ? "pb-0.5" : "border-b-[0.5px] border-border-heavy pb-2",
+        useArrival("row-in", arrival),
       )}
     >
       {children}
-      {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
+      <ChevronRight
+        className={cn(
+          "size-3.5 transition-transform duration-swap ease-settle motion-reduce:transition-none",
+          open && "rotate-90",
+        )}
+        aria-hidden
+      />
     </button>
   );
 }

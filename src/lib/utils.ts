@@ -16,7 +16,8 @@ import { createCn } from "cn/config";
 //
 // **시간 · 곡선 이름도 같다**(codex-ds 결정 27). Codex 시간(`duration-basic` … `duration-panel`)과 곡선(`ease-default` …
 // `ease-panel`)은 `ease-out` 말고는 Tailwind 이름이 아니다. 모르면 합치기가 부품의 `PANEL_MOTION`과 부르는 자리의 `duration-0`을 둘 다
-// 남겨, 어느 길이가 서는지를 CSS의 순서가 정한다. 시간은 합치기의 이름표(theme)가 없어 갈래(`duration`)에 직접 더한다.
+// 남겨, 어느 길이가 서는지를 CSS의 순서가 정한다. 시간은 합치기의 이름표(theme)가 없어 갈래(`duration`)에 직접 더한다. 모션 보드의
+// 시간 아홉(`duration-card` … `duration-spin`)과 감속 곡선(`ease-settle`)도 같은 목록이다(v1 티켓 43).
 //
 // **색 이름은 알려 주지 않는다**(codex-ds 결정 27). 합치기는 모르는 이름(`text-fg-tertiary` · `bg-fill-hover` ·
 // `border-border-heavy` …)을 색으로 읽는다 — 위의 글자 단계와 그림자를 알려야 하는 까닭이 그것이고, 같은 까닭으로
@@ -51,10 +52,33 @@ export const cn = createCn({
       ],
       radius: ["bubble", "composer"],
       shadow: ["hairline", "100", "200", "300", "400", "card", "composer", "prominent", "modal", "raised", "lifted"],
-      ease: ["default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "panel"],
+      ease: ["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "panel"],
     },
     classGroups: {
-      duration: [{ duration: ["basic", "relaxed", "chip", "dropdown", "word", "pulse", "tip", "peek-close", "panel"] }],
+      duration: [
+        {
+          duration: [
+            "basic",
+            "relaxed",
+            "chip",
+            "dropdown",
+            "word",
+            "pulse",
+            "tip",
+            "peek-close",
+            "panel",
+            "card",
+            "join",
+            "log",
+            "swap",
+            "button",
+            "jump",
+            "flash",
+            "shimmer",
+            "spin",
+          ],
+        },
+      ],
     },
   },
 });

@@ -63,8 +63,9 @@ export function ExpandedViewer({
     </Hint>
   );
   return (
-    // 경로 복사의 「… 복사됨」은 이 보기 아래 가운데에 선다(`Toaster` — 자리를 받는 상자가 이 칸이다).
-    <div data-viewer={opened.kind} className="relative flex min-w-0 flex-1 flex-col">
+    // 경로 복사의 「… 복사됨」은 이 보기 아래 가운데에 선다(`Toaster` — 자리를 받는 상자가 이 칸이다). 카드가 넓어지면 보기가 옅음에서 선다
+    // (v1 티켓 43 · Layout-Expand 보드 `.viewer` — 카드 폭과 같은 패널 박자).
+    <div data-viewer={opened.kind} className="relative flex min-w-0 flex-1 flex-col view-in">
       <PathBar
         path={viewerPath(opened)}
         view={view}

@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { ArrowUp, AtSign, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AgentMenu, { pickable } from "./AgentMenu";
+import { useArrival, useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
@@ -32,6 +33,10 @@ import type { AskLevel, Attachment } from "./types";
 //   전에만, v1 티켓 31), `/agent`는 Agent 부르기 메뉴를 열고, `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는
 //   정도 메뉴를 연다(v1 티켓 23). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
+//
+// - **움직임**(v1 티켓 43 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜), 보내기 ·
+//   멈추기 원이 갈아 서면 새 아이콘이 0.5배에서 커지며 선다(버튼 바뀜 — 원의 면 색은 같은 박자로 바뀐다). 멘션 칠 · 첨부 · 인용 칩은
+//   붙을 때 칩으로 나타난다(칩 나타남). 화면이 처음 설 때 이미 있던 것은 움직이지 않는다(`arrival.tsx`).
 //
 // 입력 중인 글 · 쌓인 첨부 · 붙은 인용은 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore` · `threadUiStore.quotes`). 보낸 말은 여기서 그리지
 // 않는다 — 엔진이 기록에 적은 `sent` 줄이 말풍선으로 선다.
@@ -229,6 +234,10 @@ function ThreadComposer({
       .catch((error: unknown) => setProblem(String(error)));
   };
   const dragging = useAttachmentDrop(!busy && !carded, attach);
+  // 입력창이 카드 · 놓는 자리에 자리를 내준 적이 있나 — 있으면 다시 설 때 떠오른다(처음 그린 입력창은 그대로 선다).
+  const returned = useChanged(carded || dragging);
+  // 턴이 돌기 시작하거나 끝난 적이 있나 — 있으면 보내기 · 멈추기 원이 갈아 설 때 새 아이콘이 커지며 선다.
+  const swapped = useChanged(running);
   // 카드가 걷히면(고른 뒤) 입력칸이 포커스를 되받는다 — 키보드로 고른 손이 그대로 이어 쓴다(스토리 76). 다른 칸에 간 포커스는 두다.
   const wasCarded = useRef(carded);
   useEffect(() => {
@@ -303,6 +312,7 @@ function ThreadComposer({
           className={cn(
             "relative flex flex-col rounded-composer bg-surface-composer pb-2.5 pl-5 shadow-composer",
             roomy ? "gap-3.5 pt-4 pr-3" : "gap-2.5 pt-3.5 pr-2.5",
+            returned && "row-in",
           )}
           onSubmit={(event) => {
             event.preventDefault();
@@ -439,11 +449,11 @@ function ThreadComposer({
                 aria-label="보내기"
                 disabled={empty || busy}
                 className={cn(
-                  "ml-1 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-ring",
+                  "ml-1 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-button ease-settle focus-ring",
                   empty || busy ? "bg-fill-active text-fg-tertiary" : "bg-fg text-fg-inverse",
                 )}
               >
-                <ArrowUp className="size-4" aria-hidden />
+                <ArrowUp className={cn("size-4", swapped && "button-in")} aria-hidden />
               </button>
             )}
             {running && onStop && (
@@ -453,7 +463,7 @@ function ThreadComposer({
                 onClick={stop}
                 className="ml-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-fg text-fg-inverse focus-ring"
               >
-                <span className="size-2.5 rounded-xs bg-current" aria-hidden />
+                <span className={cn("size-2.5 rounded-xs bg-current", swapped && "button-in")} aria-hidden />
               </button>
             )}
           </div>
@@ -471,10 +481,12 @@ function ThreadComposer({
 /**
  * 받는 이 멘션의 칩 면(Composer 보드 `.mchip`) — 입력칸 바로 뒤에 같은 글자 · 같은 줄바꿈으로 투명한 글을 깔고, 받는 이로 고른 `@이름`
  * 자리에만 옅은 파랑 면(`accent-soft`)을 깐다. 글자 폭을 바꾸지 않으려고 면의 여백은 고리(`ring`)로 준다 — 안쪽 여백을 주면 뒤의 글이
- * 입력칸의 글자와 어긋난다. 입력칸이 구르면 같이 구른다(`scrollTop`).
+ * 입력칸의 글자와 어긋난다. 입력칸이 구르면 같이 구른다(`scrollTop`). 받는 이가 서면 면이 칩으로 나타난다(칩 나타남 — 글 안의 면이라
+ * 옅음만 움직인다).
  */
 const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: number; end: number }; roomy: boolean }>(
   function MentionPaint({ text, at, roomy }, ref) {
+    const motion = useArrival("chip-in");
     return (
       <div
         ref={ref}
@@ -485,7 +497,9 @@ const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: num
         )}
       >
         {text.slice(0, at.start)}
-        <mark className="rounded-sm bg-accent-soft text-transparent ring-2 ring-accent-soft">{text.slice(at.start, at.end)}</mark>
+        <mark className={cn("rounded-sm bg-accent-soft text-transparent ring-2 ring-accent-soft", motion)}>
+          {text.slice(at.start, at.end)}
+        </mark>
         {text.slice(at.end)}
       </div>
     );

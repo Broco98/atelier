@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Arriving } from "./arrival";
 import { faceOf, type Avatar, type FaceColor, type FaceShape } from "./faces";
 import HostFace from "./HostFace";
 
@@ -87,7 +88,8 @@ export interface FacePerson {
 
 /**
  * 겹친 얼굴(캔버스 「둘이 함께」 · 「셋 넘으면 숫자」 · Messages 「답하는 중 · 여럿」) — 얼굴마다 바탕색 고리 2를 둘러 앞 얼굴에 겹친다.
- * `max`를 넘으면 앞의 `max`명 뒤에 「+n」 알약이 선다. 묶음 하나가 그림 하나라 이름은 참여자 이름들을 잇는다(`label`).
+ * `max`를 넘으면 앞의 `max`명 뒤에 「+n」 알약이 선다. 묶음 하나가 그림 하나라 이름은 참여자 이름들을 잇는다(`label`). `joining`이면 화면이
+ * 선 뒤에 새로 앉은 얼굴이 튀어 들어온다(머리 줄의 참여자 — v1 티켓 43 · Motion 보드 「Agent 참여」).
  */
 export function FaceStack({
   people,
@@ -96,6 +98,7 @@ export function FaceStack({
   faceClass,
   moreClass = "h-5 min-w-5",
   ringClass = "ring-surface",
+  joining = false,
   className,
 }: {
   people: readonly FacePerson[];
@@ -108,17 +111,25 @@ export function FaceStack({
   moreClass?: string;
   /** 고리 색 — 얼굴이 선 바탕(`ring-surface` · `ring-surface-sidebar`). */
   ringClass?: string;
+  /** 새로 앉은 얼굴이 튀어 들어오나 — 「답하는 중」처럼 줄과 함께 서는 얼굴은 줄이 움직인다. */
+  joining?: boolean;
   className?: string;
 }) {
   const shown = people.slice(0, max);
   const more = people.length - shown.length;
   return (
     <span role="img" aria-label={`${label} ${people.map((one) => one.name).join(", ")}`} className={cn("flex shrink-0 items-center", className)}>
-      {shown.map((one) => (
-        <span key={one.handle} className={cn("flex rounded-full ring-2", ringClass)}>
-          <AgentFace handle={one.handle} avatar={one.avatar} className={faceClass} />
-        </span>
-      ))}
+      {shown.map((one) =>
+        joining ? (
+          <Arriving as="span" key={one.handle} motion="pop-in" className={cn("flex rounded-full ring-2", ringClass)}>
+            <AgentFace handle={one.handle} avatar={one.avatar} className={faceClass} />
+          </Arriving>
+        ) : (
+          <span key={one.handle} className={cn("flex rounded-full ring-2", ringClass)}>
+            <AgentFace handle={one.handle} avatar={one.avatar} className={faceClass} />
+          </span>
+        ),
+      )}
       {more > 0 && (
         <span
           className={cn(

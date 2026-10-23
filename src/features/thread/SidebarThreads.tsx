@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -8,6 +8,7 @@ import { threadIdOf } from "@/lib/path-prefix";
 import { cn } from "@/lib/utils";
 import { threadRowKey } from "@/features/works/work-sections";
 import { ThreadFaces } from "./AgentFace";
+import { useChanged } from "./arrival";
 import type { Avatar } from "./faces";
 import HostFace from "./HostFace";
 import { threadQuery, useAgentRoster, useThreads, useWaiting } from "./hooks";
@@ -265,7 +266,10 @@ export function ThreadRow({
   roving?: { key: string; stop: boolean };
 }) {
   const { said, status, ready } = useRowState(thread);
-  const moved = useMoved(status?.kind ?? null, ready);
+  // 상태가 바뀌었나 — 처음 그린 상태(앱을 켜고 줄을 그릴 때)는 움직이지 않고, 읽기가 끝난 뒤 상태가 바뀐 줄부터 움직인다(Motion 보드
+  // 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 칸이 상태를 열쇠로 새로 서므로. `ready`는
+  // 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
+  const moved = useChanged(status?.kind ?? null, ready);
   const title = thread.broken ? "열 수 없는 Thread" : thread.title || "새 Thread";
   // 다른 Agent의 말은 이름을 앞에 단다(보드 「리뷰어 · 수정 요청 2건」). Host와 사람의 말은 그대로다.
   const lastWords = said ? (said.name && said.who !== "host" ? `${said.name} · ${said.text}` : said.text) : "";
@@ -301,7 +305,7 @@ export function ThreadRow({
               aria-label="내 차례"
               className={cn(
                 "absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent-solid ring-2 ring-surface-shell",
-                moved && "dot-pop",
+                moved && "pop-in",
               )}
             />
           )}
@@ -319,9 +323,9 @@ export function ThreadRow({
             {title}
             {status?.kind === "new" && <span className="sr-only"> · 새 결과</span>}
           </span>
-          <span key={slot} className={cn("flex h-4.5 shrink-0 items-center text-xs text-fg-tertiary", moved && "slot-in")}>
+          <span key={slot} className={cn("flex h-4.5 shrink-0 items-center text-xs text-fg-tertiary", moved && "row-in")}>
             {status?.kind === "working" ? (
-              <Spinner role="img" aria-label="작업 중" className="size-3 text-fg-secondary" />
+              <Spinner role="img" aria-label="작업 중" className="size-3 text-fg-secondary spin-thread" />
             ) : (
               since(at, now)
             )}
@@ -333,7 +337,7 @@ export function ThreadRow({
           className={cn(
             "h-4.5 truncate text-chat-meta",
             status?.kind === "mine" ? "text-fg" : "text-fg-tertiary",
-            moved && "slot-in",
+            moved && "row-in",
           )}
         >
           {status?.kind === "failed" && (
@@ -363,21 +367,6 @@ function useRowState(thread: ThreadSummary): { said: ReturnType<typeof lastSaid>
     [lines, view, thread.lastRead],
   );
   return { said, status, ready: view !== undefined };
-}
-
-/**
- * 상태가 바뀌었나 — 처음 그린 상태(앱을 켜고 줄을 그릴 때)는 움직이지 않고, 읽기가 끝난 뒤 상태가 바뀐 줄부터 움직인다(Motion 보드
- * 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 칸이 상태를 열쇠로 새로 서므로.
- */
-function useMoved(kind: string | null, ready: boolean): boolean {
-  const seen = useRef<{ kind: string | null } | null>(null);
-  const [moved, setMoved] = useState(false);
-  useEffect(() => {
-    if (!ready) return;
-    if (seen.current !== null && seen.current.kind !== kind) setMoved(true);
-    seen.current = { kind };
-  }, [kind, ready]);
-  return moved;
 }
 
 export default SidebarThreads;

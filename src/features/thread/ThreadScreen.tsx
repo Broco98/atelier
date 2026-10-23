@@ -2,12 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown, ArrowLeft, Folder } from "lucide-react";
+import { PANEL_MOTION } from "@/components/shell/panel-layout";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
 import { expandHome } from "@/features/works/doc-refs";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
+import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
+import { ArrivalScope, Arriving } from "./arrival";
 import QuestionCard from "./QuestionCard";
 import { threadApi } from "./api";
 import { placeOf } from "./approval";
@@ -37,6 +40,7 @@ import {
   type ChipChange,
 } from "./hooks";
 import { changedFiles } from "./log";
+import { reducedMotion } from "./motion";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
 import ProjectCard from "./ProjectCard";
 import QueuedMessages from "./QueuedMessages";
@@ -90,6 +94,9 @@ import WorkProposalCard from "./WorkProposalCard";
 //   480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그 오른쪽을 틈 12까지 채운다(보드 `.p-open
 //   .wpane`). 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면 되돌린다. 넓힌 것은 이 화면의 상태라
 //   다른 Thread로 옮기면 작은 카드다. 카드를 닫으면 넓힌 것도 걷힌다.
+// - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 들어서며 움직인다(`ArrivalScope` — Thread를 열 때 이미 있던 줄은
+//   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오르며, 머리 줄의 새 참여자 얼굴은 튄다.
+//   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리는 사이드바와 같은 패널 박자로 옮겨 간다(`duration-panel` · `ease-panel`).
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
 //   결과」(굵은 제목)가 그것으로 걷힌다.
@@ -172,35 +179,37 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
   );
   return (
     <PlainFrame sidebarOpen={sidebarOpen} label="새 Thread">
-      {guide ? (
-        <GuidePlace>
-          <GuideCard kind={guide} view={engine} />
-        </GuidePlace>
-      ) : starting !== null ? (
-        // 첫 말을 보냈다 — Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 선다.
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-            <div className={`${COLUMN} gap-6 text-chat-body`}>
-              <UserMessage text={starting.text} attachments={starting.attachments} />
-              <p className="chat-shimmer text-sm">생각 중</p>
+      <ArrivalScope>
+        {guide ? (
+          <GuidePlace>
+            <GuideCard kind={guide} view={engine} />
+          </GuidePlace>
+        ) : starting !== null ? (
+          // 첫 말을 보냈다 — Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 선다.
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
+              <div className={`${COLUMN} gap-6 text-chat-body`}>
+                <UserMessage text={starting.text} attachments={starting.attachments} />
+                <p className="chat-shimmer text-sm">생각 중</p>
+              </div>
+            </div>
+            <div className="px-5 pb-4">
+              <div className={COLUMN}>{composer}</div>
             </div>
           </div>
-          <div className="px-5 pb-4">
-            <div className={COLUMN}>{composer}</div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-30 scroll-quiet">
-          <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
-            <div className="flex flex-col items-center gap-3.5 text-center">
-              <HostFace className="size-11" />
-              <h1 className="text-heading-lg">무엇을 만들까요?</h1>
-              <p className="text-sm text-fg-tertiary">{home.subtitle}</p>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-30 scroll-quiet">
+            <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
+              <div className="flex flex-col items-center gap-3.5 text-center">
+                <HostFace className="size-11" />
+                <h1 className="text-heading-lg">무엇을 만들까요?</h1>
+                <p className="text-sm text-fg-tertiary">{home.subtitle}</p>
+              </div>
+              {composer}
             </div>
-            {composer}
           </div>
-        </div>
-      )}
+        )}
+      </ArrivalScope>
     </PlainFrame>
   );
 }
@@ -283,17 +292,26 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
       {view ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {/* 대화는 카드가 열린 동안 카드 폭 + 틈 12만큼 비켜 준다 — 흐름 · 입력창이 그 남은 폭의 가운데에 모인다. 카드가 넓으면 왼쪽
-              480에 남는다. */}
+              480에 남는다. 폭은 세 갈래 모두 적어 둔다 — 폭이 늘 길이라야 비켜 주고 넓어지는 동안 패널 박자로 옮겨 간다. */}
           <div
-            className="flex min-h-0 flex-1 flex-col"
-            style={expanded ? { width: THREAD_BESIDE } : cardWork && cardOpen ? { marginRight: CARD_ROOM } : undefined}
+            className={cn("flex min-h-0 flex-1 flex-col", PANEL_MOTION, "transition-[width] motion-reduce:transition-none")}
+            style={{ width: expanded ? THREAD_BESIDE : cardWork && cardOpen ? `calc(100% - ${CARD_ROOM})` : "100%" }}
           >
             <DocPlace.Provider value={docPlace}>
               <ThreadBody key={thread} view={view} problem={problem} />
             </DocPlace.Provider>
           </div>
+          {/* 카드 자리는 왼쪽 끝으로 넓어진다 — 넓어질 때는 카드가 왼쪽으로 자라고, 접힐 때는 작은 카드가 오른쪽에 붙은 채 자리가
+              줄어든다(`items-end`). 쉴 때 자리는 카드 폭 그대로다. */}
           {cardWork && cardOpen && (
-            <div className="absolute top-3 right-3 bottom-3 flex flex-col" style={expanded ? { left: THREAD_BESIDE } : undefined}>
+            <div
+              className={cn(
+                "absolute top-3 right-3 bottom-3 flex flex-col items-end",
+                PANEL_MOTION,
+                "transition-[left] motion-reduce:transition-none",
+              )}
+              style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
+            >
               {gone === "archived" ? (
                 <ArchivedWorkCard slug={cardWork} />
               ) : (
@@ -388,19 +406,26 @@ function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
   }));
 }
 
-/** 머리 줄의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. */
+/**
+ * 머리 줄의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. Thread를 연 뒤에
+ * 새로 앉은 얼굴은 튀어 들어온다(v1 티켓 43 · Motion 보드 「Agent 참여」) — 자리는 Thread마다 새로 선다(다른 Thread로 옮겨 온 얼굴은 튀지
+ * 않는다).
+ */
 function ThreadParticipants({ view }: { view: ThreadView }) {
   const lines = useStore(threadRecordStore, (state) => linesOf(state, view.id));
   const model = foldOf(lines, view.live ? null : view.lastSeq);
   return (
-    <FaceStack
-      people={seatedOf(view, model)}
-      max={3}
-      label="참여자"
-      faceClass="size-6"
-      moreClass="h-6 min-w-6"
-      className="-space-x-2 pr-1"
-    />
+    <ArrivalScope key={view.id}>
+      <FaceStack
+        people={seatedOf(view, model)}
+        max={3}
+        label="참여자"
+        faceClass="size-6"
+        moreClass="h-6 min-w-6"
+        className="-space-x-2 pr-1"
+        joining
+      />
+    </ArrivalScope>
   );
 }
 
@@ -469,12 +494,13 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   }, [guide, lines, lastRead, markRead, thread]);
   useEffect(read, [read]);
 
+  // 흐름이 부드럽게 내려간다 — 동작 줄이기면 곧바로다(부드러운 굴림은 CSS의 동작 줄이기 갈래가 끄지 못한다).
   const toBottom = () => {
     const el = scroller.current;
     if (!el) return;
     stuck.current = true;
     setAway(false);
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
   };
 
   // Session 보기 — 누구의 줄만 그리나, 열 때 굴러 갈 맡은 턴. 돌아갈 자리는 열기 전의 굴림 값이다.
@@ -542,165 +568,171 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
       </GuidePlace>
     );
   }
+  // 화면이 선 뒤에 새로 선 줄 · 칩 · 카드만 들어서며 움직인다(v1 티켓 43 — `ArrivalScope`). 이 본문은 Thread마다 새로 선다(`key`).
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        ref={scroller}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-          stuck.current = atBottom;
-          setAway(!atBottom);
-          if (atBottom) read();
-        }}
-        className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-4 scroll-quiet"
-      >
-        <div className={COLUMN}>
-          {session && (
-            <SessionHead
-              handle={session.handle}
-              name={model.cast[session.handle]?.name ?? session.handle}
-              avatar={model.cast[session.handle]?.avatar ?? null}
-              onBack={closeSession}
-            />
-          )}
-          <LogPlace.Provider value={host?.cwd ?? null}>
-            <ThreadFlow
-              thread={thread}
-              model={model}
-              only={session?.handle ?? null}
-              onRetry={(text, attachments) =>
-                void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+    <ArrivalScope>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scroller}
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+            stuck.current = atBottom;
+            setAway(!atBottom);
+            if (atBottom) read();
+          }}
+          className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-4 scroll-quiet"
+        >
+          <div className={COLUMN}>
+            {session && (
+              <SessionHead
+                handle={session.handle}
+                name={model.cast[session.handle]?.name ?? session.handle}
+                avatar={model.cast[session.handle]?.avatar ?? null}
+                onBack={closeSession}
+              />
+            )}
+            <LogPlace.Provider value={host?.cwd ?? null}>
+              <ThreadFlow
+                thread={thread}
+                model={model}
+                only={session?.handle ?? null}
+                onRetry={(text, attachments) =>
+                  void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+                }
+                onOpenSession={openSession}
+                onCallAgain={callAgain}
+              />
+            </LogPlace.Provider>
+          </div>
+        </div>
+        <div className="px-5 pb-4">
+          <div className={COLUMN}>
+            <ThreadComposer
+              draftKey={thread}
+              // Session을 연 적 없는 참여자(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
+              models={participant ? (lists.models ?? CLAUDE_MODELS) : null}
+              model={participant ? currentModel(lists, participant) : (preference?.prefer ?? null)}
+              effort={participant ? participant.effort : (preference?.effort ?? null)}
+              onModel={(value) => chip({ field: "model", value })}
+              onEffort={(value) => chip({ field: "effort", value })}
+              commands={lists.commands}
+              running={model.running}
+              stopped={stopped}
+              onSend={(text, attachments, quote) => {
+                stuck.current = true;
+                return threadApi.send(thread, text, attachments, quote);
+              }}
+              onStop={() => threadApi.stop(thread)}
+              onNewThread={() => void navigate({ to: "/" })}
+              problem={problem ?? chipProblem}
+              agents={agents}
+              recipient={recipient}
+              recipientRunning={participant !== null && model.answering.includes(participant.handle)}
+              onCreateAgent={createAgent}
+              level={view.askLevel}
+              onLevel={pickLevel}
+              onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
+              work={{ label: view.work ? linked?.title || view.work : "Work 없음" }}
+              card={
+                // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
+                // 새 카드가 올라온다 — 자리의 열쇠가 그 물음이다.
+                asking ? (
+                  <Arriving key={`${asking.who}\u0000${asking.requestId}`} motion="card-rise">
+                    {asking.card === "work" ? (
+                      <WorkProposalCard
+                        thread={thread}
+                        card={asking}
+                        count={turn?.count}
+                        next={askNext}
+                      />
+                    ) : asking.card === "question" ? (
+                      <QuestionCard
+                        thread={thread}
+                        name={model.cast[asking.who]?.name ?? asking.who}
+                        avatar={model.cast[asking.who]?.avatar ?? null}
+                        request={asking}
+                        count={turn?.count}
+                        next={askNext}
+                      />
+                    ) : asking.card === "project" ? (
+                      <ProjectCard
+                        thread={thread}
+                        name={model.cast[asking.who]?.name ?? asking.who}
+                        avatar={model.cast[asking.who]?.avatar ?? null}
+                        card={asking}
+                        count={turn?.count}
+                        next={askNext}
+                      />
+                    ) : (
+                      <ApprovalCard
+                        thread={thread}
+                        name={model.cast[asking.who]?.name ?? asking.who}
+                        avatar={model.cast[asking.who]?.avatar ?? null}
+                        request={asking}
+                        scope={view.work ? "work" : "thread"}
+                        cwd={askingCwd}
+                        place={placeOf(askingCwd, linked)}
+                        count={turn?.count}
+                        next={askNext}
+                      />
+                    )}
+                  </Arriving>
+                ) : view.readOnly ? (
+                  <ReadOnlyNotice
+                    gone={view.readOnly}
+                    running={model.running}
+                    onStop={() => void threadApi.stop(thread).catch((error: unknown) => setChipProblem(String(error)))}
+                  />
+                ) : decisions ? (
+                  <Arriving motion="card-rise">
+                    <DecisionsCard
+                      onDone={() => markSeen.mutate()}
+                      onPolicy={() => {
+                        markSeen.mutate();
+                        void navigate(policyPlace("host", view.work));
+                      }}
+                    />
+                  </Arriving>
+                ) : null
               }
-              onOpenSession={openSession}
-              onCallAgain={callAgain}
-            />
-          </LogPlace.Provider>
-        </div>
-      </div>
-      <div className="px-5 pb-4">
-        <div className={COLUMN}>
-          <ThreadComposer
-            draftKey={thread}
-            // Session을 연 적 없는 참여자(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
-            models={participant ? (lists.models ?? CLAUDE_MODELS) : null}
-            model={participant ? currentModel(lists, participant) : (preference?.prefer ?? null)}
-            effort={participant ? participant.effort : (preference?.effort ?? null)}
-            onModel={(value) => chip({ field: "model", value })}
-            onEffort={(value) => chip({ field: "effort", value })}
-            commands={lists.commands}
-            running={model.running}
-            stopped={stopped}
-            onSend={(text, attachments, quote) => {
-              stuck.current = true;
-              return threadApi.send(thread, text, attachments, quote);
-            }}
-            onStop={() => threadApi.stop(thread)}
-            onNewThread={() => void navigate({ to: "/" })}
-            problem={problem ?? chipProblem}
-            agents={agents}
-            recipient={recipient}
-            recipientRunning={participant !== null && model.answering.includes(participant.handle)}
-            onCreateAgent={createAgent}
-            level={view.askLevel}
-            onLevel={pickLevel}
-            onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
-            work={{ label: view.work ? linked?.title || view.work : "Work 없음" }}
-            card={
-              asking ? (
-                asking.card === "work" ? (
-                  <WorkProposalCard
-                    key={`${asking.who}\u0000${asking.requestId}`}
-                    thread={thread}
-                    card={asking}
-                    count={turn?.count}
-                    next={askNext}
-                  />
-                ) : asking.card === "question" ? (
-                  <QuestionCard
-                    key={`${asking.who}\u0000${asking.requestId}`}
-                    thread={thread}
-                    name={model.cast[asking.who]?.name ?? asking.who}
-                    avatar={model.cast[asking.who]?.avatar ?? null}
-                    request={asking}
-                    count={turn?.count}
-                    next={askNext}
-                  />
-                ) : asking.card === "project" ? (
-                  <ProjectCard
-                    key={`${asking.who}\u0000${asking.requestId}`}
-                    thread={thread}
-                    name={model.cast[asking.who]?.name ?? asking.who}
-                    avatar={model.cast[asking.who]?.avatar ?? null}
-                    card={asking}
-                    count={turn?.count}
-                    next={askNext}
-                  />
-                ) : (
-                  <ApprovalCard
-                    key={`${asking.who}\u0000${asking.requestId}`}
-                    thread={thread}
-                    name={model.cast[asking.who]?.name ?? asking.who}
-                    avatar={model.cast[asking.who]?.avatar ?? null}
-                    request={asking}
-                    scope={view.work ? "work" : "thread"}
-                    cwd={askingCwd}
-                    place={placeOf(askingCwd, linked)}
-                    count={turn?.count}
-                    next={askNext}
-                  />
+              above={
+                (changes || away || queue.length > 0) && (
+                  <>
+                    {(changes || away) && (
+                      <div className="flex items-center gap-2">
+                        {changes && last && (
+                          <ChangesPill
+                            changes={changes}
+                            onReview={() => {
+                              toggleTurn(turnKey(thread, last.key), true);
+                              stuck.current = false;
+                            }}
+                          />
+                        )}
+                        <span className="flex-1" />
+                        {away && (
+                          // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼).
+                          <button
+                            type="button"
+                            aria-label="맨 아래로"
+                            onClick={toBottom}
+                            className="flex size-8.5 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary shadow-lifted transition-colors jump-in hover:text-fg focus-ring"
+                          >
+                            <ArrowDown className="size-4" aria-hidden />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <QueuedMessages thread={thread} queue={queue} />
+                  </>
                 )
-              ) : view.readOnly ? (
-                <ReadOnlyNotice
-                  gone={view.readOnly}
-                  running={model.running}
-                  onStop={() => void threadApi.stop(thread).catch((error: unknown) => setChipProblem(String(error)))}
-                />
-              ) : decisions ? (
-                <DecisionsCard
-                  onDone={() => markSeen.mutate()}
-                  onPolicy={() => {
-                    markSeen.mutate();
-                    void navigate(policyPlace("host", view.work));
-                  }}
-                />
-              ) : null
-            }
-            above={
-              (changes || away || queue.length > 0) && (
-                <>
-                  {(changes || away) && (
-                    <div className="flex items-center gap-2">
-                      {changes && last && (
-                        <ChangesPill
-                          changes={changes}
-                          onReview={() => {
-                            toggleTurn(turnKey(thread, last.key), true);
-                            stuck.current = false;
-                          }}
-                        />
-                      )}
-                      <span className="flex-1" />
-                      {away && (
-                        <button
-                          type="button"
-                          aria-label="맨 아래로"
-                          onClick={toBottom}
-                          className="flex size-8.5 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary shadow-lifted transition-colors hover:text-fg focus-ring"
-                        >
-                          <ArrowDown className="size-4" aria-hidden />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <QueuedMessages thread={thread} queue={queue} />
-                </>
-              )
-            }
-          />
+              }
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </ArrivalScope>
   );
 }
 

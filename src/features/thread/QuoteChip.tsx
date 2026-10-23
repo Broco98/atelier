@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useArrival } from "./arrival";
 import type { Quote } from "@/features/works/QuotePick";
 
 // 인용 칩(v1 티켓 35 · S41 — three-axes 티켓 27의 칩을 Thread 입력창으로 옮겼다) — 넓힌 카드의 문서에서 고른 자리를 「❝앞부분…❞ · 파일」로
@@ -24,10 +25,14 @@ function quoteTitle(quote: Quote): string {
 
 const CHIP = "inline-flex h-5.5 max-w-full min-w-0 items-center gap-1 rounded-full bg-accent-soft text-xs font-medium text-link";
 
-/** 입력창에 붙은 인용 — 끝의 ×로 뺀다. */
+/**
+ * 입력창에 붙은 인용 — 끝의 ×로 뺀다. 붙으면 칩으로 나타난다(v1 티켓 43 · Motion 보드 「칩 나타남」) — 카드가 걷혀 입력창이 다시 설 때
+ * 같은 인용은 다시 움직이지 않는다.
+ */
 export function DraftQuoteChip({ quote, onDrop }: { quote: Quote; onDrop: () => void }) {
+  const motion = useArrival("chip-in", `quote:${quote.file}:${quote.start}-${quote.end}`);
   return (
-    <span data-quote className={cn(CHIP, "self-start pr-1 pl-2")} title={quoteTitle(quote)}>
+    <span data-quote className={cn(CHIP, "self-start pr-1 pl-2", motion)} title={quoteTitle(quote)}>
       <span className="min-w-0 truncate">
         ❝{quoteHead(quote.text)}❞ · {quote.file}
       </span>

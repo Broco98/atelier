@@ -1,10 +1,11 @@
-import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
 import { decisionText } from "./approval";
+import { useArrival } from "./arrival";
 import { CallPlace, CallRow, type CallActions } from "./CallRow";
 import {
   finalFrom,
@@ -69,6 +70,12 @@ import { LogHead, ToolRows } from "./WorkLog";
 // - **대화 속 문서 카드**(v1 티켓 35 · Messages 보드 「Agent가 만든 파일」) — 끝난 턴에서 Agent가 이은 Work의 spec 폴더에 새로 쓴 문서는 답
 //   아래에 카드로 놓이고(`createdDocs`), 누르면 Work 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글을 붙인 말은 말풍선 위에 인용 칩이 선다(`SentQuoteChip`).
+//
+// - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 움직인다(`arrival.tsx`). 결정 줄은 칩으로 나타나고(칩 나타남 — 보드
+//   「승인 카드 올라옴」의 답한 뒤 줄), 시스템 줄 · 「답하는 중」은 아래 4에서 떠오르며(줄 바뀜 — 보드 「Agent 참여」의 「시스템 줄과 답하는
+//   중이 차례로 따라옵니다」), 턴이 끝나면 「N초 동안 작업함」이 같은 자리에서 떠오르고(줄 바뀜), 머리줄을 눌러 펼치면 줄들이 위에서부터
+//   차례로 선다(로그 펼침). 흐르는 낱말은 `ThreadMarkdown`이 움직인다. 자리를 옮겨 다시 서는 줄(턴이 끝나 접힌 턴으로 옮겨 선 결정 줄 ·
+//   Session 보기)은 기록 줄의 열쇠로 알아보고 다시 움직이지 않는다.
 //
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
 
@@ -163,7 +170,7 @@ function AnsweringRow({ people }: { people: readonly { handle: string; name: str
       ? `${lastName}${particle(lastName, "이", "가")}`
       : `${names.slice(0, -1).join(", ")}${particle(names[names.length - 2], "과", "와")} ${lastName}${particle(lastName, "이", "가")}`;
   return (
-    <p data-answering className="flex items-center gap-2 text-chat-meta leading-5 text-fg-tertiary">
+    <p data-answering className={cn("flex items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("row-in"))}>
       {people.length === 1 ? (
         <AgentFace handle={people[0].handle} avatar={people[0].avatar} className="size-5" />
       ) : (
@@ -208,7 +215,10 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
   return (
     <p
       data-system={line.kind}
-      className="flex flex-wrap items-center justify-center self-center text-center text-chat-meta leading-5 text-fg-tertiary"
+      className={cn(
+        "flex flex-wrap items-center justify-center self-center text-center text-chat-meta leading-5 text-fg-tertiary",
+        useArrival("row-in", line.key),
+      )}
     >
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
@@ -281,6 +291,12 @@ function TurnView({
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
   const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
+  // 사람이 머리줄을 눌러 펼쳤나 — 펼친 줄들은 그때만 차례로 선다(Session 보기가 처음부터 펼쳐 둔 턴 · 다시 연 Thread는 그대로 선다).
+  const [clicked, setClicked] = useState(false);
+  const toggle = () => {
+    setClicked(true);
+    onToggle();
+  };
   return (
     <>
       {turn.sent !== null && (
@@ -304,20 +320,20 @@ function TurnView({
             ) : stopped ? (
               // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
               <>
-                {open && <Entries entries={before} streaming={false} />}
+                {open && <OpenedLog entries={before} moving={clicked} />}
                 {final.map((entry) => (
                   <div key={entry.key} className="w-full text-fg-secondary">
                     <EntryView entry={entry} streaming={false} />
                   </div>
                 ))}
-                <StopLine text={headline(turn.end)} open={open} onToggle={onToggle} />
+                <StopLine text={headline(turn.end)} open={open} onToggle={toggle} />
               </>
             ) : (
               <>
-                <LogHead open={open} onToggle={onToggle}>
+                <LogHead open={open} onToggle={toggle} arrival={turn.key}>
                   {headline(turn.end)}
                 </LogHead>
-                {open && <Entries entries={before} streaming={false} />}
+                {open && <OpenedLog entries={before} moving={clicked} />}
               </>
             )
           ) : (
@@ -393,7 +409,7 @@ function Entries({ entries, streaming }: { entries: readonly Entry[]; streaming:
     <>
       {runs.map((run) =>
         run[0].kind === "tool" ? (
-          <div key={run[0].key} className="flex w-full flex-col">
+          <div key={run[0].key} data-log-run className="flex w-full flex-col">
             <ToolRows tools={run as ToolEntry[]} />
           </div>
         ) : (
@@ -401,6 +417,26 @@ function Entries({ entries, streaming }: { entries: readonly Entry[]; streaming:
         ),
       )}
     </>
+  );
+}
+
+/**
+ * 펼친 작업 로그(보드 「작업 로그 펼침」) — 사람이 머리줄을 눌러 펼치면 줄들이 위에서부터 차례로 선다(`log-open`, `moving`). 줄을 감싼
+ * 상자는 자리를 차지하지 않아(`contents`) 줄들이 그대로 턴의 줄 사이에 선다. 차례는 화면의 줄마다다 — 잇따른 도구 줄은 한 묶음
+ * 상자(`data-log-run`)에 들어 있어 그 안의 줄까지 위에서부터 세어 줄마다 적는다(`--log-at`). 그리기 전에 적어(`useLayoutEffect`) 첫
+ * 장면부터 제 차례의 늦음으로 선다.
+ */
+function OpenedLog({ entries, moving }: { entries: readonly Entry[]; moving: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!moving || !box.current) return;
+    const rows = box.current.querySelectorAll<HTMLElement>(":scope > :not([data-log-run]), :scope > [data-log-run] > *");
+    rows.forEach((row, at) => row.style.setProperty("--log-at", String(at)));
+  }, [moving]);
+  return (
+    <div ref={box} className={cn("contents", moving && "log-open")}>
+      <Entries entries={entries} streaming={false} />
+    </div>
   );
 }
 
@@ -444,7 +480,10 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
 function ProjectChoiceRow({ entry }: { entry: ProjectChoiceEntry }) {
   const { name, after } = projectChoiceText(entry.choice, entry.project);
   return (
-    <p data-decision={`project-${entry.choice}`} className="flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary">
+    <p
+      data-decision={`project-${entry.choice}`}
+      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
+    >
       <Folder className="size-4 shrink-0" aria-hidden />
       <span className="min-w-0 wrap-anywhere">
         <span className="text-fg-secondary">{name}</span>
@@ -466,7 +505,7 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
   return (
     <p
       data-decision={entry.created ? "work-created" : "work-skipped"}
-      className="flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary"
+      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
     >
       <Icon className="size-4 shrink-0" aria-hidden />
       <span className="min-w-0 wrap-anywhere">{text}</span>
@@ -479,12 +518,16 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
  * 기다리는 동안은 서지 않는다 — 입력창 자리의 질문 카드가 말한다.
  */
 function AnsweredRow({ entry }: { entry: QuestionEntry }) {
+  const motion = useArrival("chip-in", entry.key);
   if (entry.choice === null) return null;
   const said = saidOf(entry);
   // 나중에로 닫은 질문은 답하지 않았다 — 답한 표지(✓) 대신 미룬 표지다.
   const Icon = said === null ? Clock : Check;
   return (
-    <p data-answered={entry.choice} className="flex min-h-7 flex-wrap items-center gap-1.5 text-chat-meta leading-5 text-fg-tertiary">
+    <p
+      data-answered={entry.choice}
+      className={cn("flex min-h-7 flex-wrap items-center gap-1.5 text-chat-meta leading-5 text-fg-tertiary", motion)}
+    >
       <Icon className="size-3.5 shrink-0" aria-hidden />
       <span className="min-w-0 wrap-anywhere">
         {said === null ? answeredText(entry) : <>답함: <span className="text-fg-secondary">{said}</span></>}
@@ -497,7 +540,10 @@ function AnsweredRow({ entry }: { entry: QuestionEntry }) {
 function DecisionRow({ entry }: { entry: DecisionEntry }) {
   const Icon = entry.allowed ? Check : X;
   return (
-    <p data-decision={entry.allowed ? "allowed" : "refused"} className="flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary">
+    <p
+      data-decision={entry.allowed ? "allowed" : "refused"}
+      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
+    >
       <Icon className="size-4 shrink-0" aria-hidden />
       <span>{decisionText(entry)}</span>
       {entry.words && <span className="min-w-0 text-fg-secondary wrap-anywhere">「{entry.words}」</span>}

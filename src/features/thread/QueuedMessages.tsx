@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { CornerDownRight, Pencil, Trash2 } from "lucide-react";
 import { threadApi } from "./api";
+import { Arriving } from "./arrival";
 import type { QueuedMessage } from "./types";
 
 // 기다리는 메시지(v1 티켓 05 · 캔버스 Messages 보드 「기다리는 메시지」) — Agent가 일하는 동안 보낸 말이 입력창 위 상자에 쌓였다가 차례로
@@ -9,6 +10,7 @@ import type { QueuedMessage } from "./types";
 //
 // 모양은 보드의 `.queue`(20 반경 · `surface-under` · 0.5px 선 · 안쪽 6)와 줄 `.qrow`(36 · 14 반경 · 14/20, 지나면 켜짐 면)다. 「지금 전하기」 ·
 // 고치기 · 지우기는 그 줄에 마우스를 올리거나 포커스가 들어갈 때만 선다(보드는 지난 줄에만 그렸다).
+// 새로 쌓인 줄은 칩으로 나타난다(v1 티켓 43 · Motion 보드 「칩 나타남」 — 「기다리는 말 … 컴포저에 붙는 것은 모두 같은 움직임」).
 
 interface QueuedMessagesProps {
   thread: string;
@@ -43,7 +45,10 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
         className="flex flex-col gap-0.5 rounded-3xl bg-surface-under p-1.5 shadow-hairline"
       >
         {queue.map((message) => (
-          <li
+          <Arriving
+            as="li"
+            motion="chip-in"
+            arrival={`queued:${message.id}`}
             key={message.id}
             data-queued={message.id}
             className="group flex min-h-9 items-center gap-2.5 rounded-2xl pr-1 pl-2.5 text-sm hover:bg-fill-hover"
@@ -105,7 +110,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
                 <Trash2 className="size-3.5" aria-hidden />
               </button>
             </span>
-          </li>
+          </Arriving>
         ))}
       </ul>
       {problem && (
