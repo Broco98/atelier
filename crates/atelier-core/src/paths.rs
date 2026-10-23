@@ -44,6 +44,11 @@ pub fn layouts_dir() -> PathBuf {
     layouts_in(&data_root())
 }
 
+/// Thread들의 자리. 앱의 감시자가 이 폴더를 한 겹 본다 — Thread 폴더가 사라지면 그 Thread의 Session을 끈다(v1 구현 스펙 §5).
+pub fn threads_dir() -> PathBuf {
+    threads_in(&data_root())
+}
+
 // 아래 넷이 **배치의 정본이다** — 루트 아래 어느 폴더가 무엇인지를 아는 자리가 여기
 // 하나다. 위의 넷은 `data_root()`를 먹인 것뿐이고, 루트를 인자로 받는 코어 함수들
 // (`search`)은 이쪽을 먹인다. **가르면 두 벌이 생긴다**: 한쪽만 고친 날 앱이 보는 폴더와

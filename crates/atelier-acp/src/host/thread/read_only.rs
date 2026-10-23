@@ -5,6 +5,8 @@
 //! - **Session은 지금 턴 뒤에 끈다**(§5). 앱은 Work 목록이 바뀔 때마다(`works:changed`) [`ConversationHost::check_vanished_works`]를
 //!   부른다 — 쉬던 Session은 곧바로 끄고, 도는 턴은 끊지 않는다(보관을 시킨 Agent가 바로 그 턴 안에 있을 수 있다). 턴 끝에는 Session이
 //!   스스로 Work를 보고 끄러 보낸다([`VanishWatch`]) — 소식이 턴 도중에 와도 그 턴 끝에 꺼진다. 대기 줄의 말은 가지 않는다.
+//! - **Thread의 기록 폴더가 사라져도 같은 차례로 끈다**(§5 「끄는 때」, 코드 리뷰 1차 B9) — 앱은 `threads/`가 바뀔 때마다
+//!   [`ConversationHost::check_vanished_threads`]를 부르고, 턴 끝에는 [`VanishWatch`]가 폴더도 본다.
 //! - **말은 받지 않는다** — 사람의 말 · 지금 전하기 · 다시 맡기기 · Agent 부르기 · 이름 바꾸기를 거절하고 아무것도 적지 않는다
 //!   ([`ConversationHost::writable`]). 멈추기 · 물음의 답은 받는다 — 보관된 때 돌던 턴을 사람이 끝낼 수 있게.
 //! - **목록 요약도 읽기만인 까닭을 싣는다**(`readOnly`) — 색인이 Work 목록이 바뀔 때 다시 보고, 바뀐 요약을 알린다(S7). 열린 화면은 그
@@ -32,11 +34,14 @@ impl VanishWatch {
         Self { data_root, key, host }
     }
 
-    /// 그 Thread가 읽기만 됐으면 그 Session을 끄러 보내고 true다 — 턴 차례는 대기 줄을 보내지 않는다. 이 자리에서 끄지 않는다: 끄기는
-    /// 연결을 놓고 1초를 기다리는데, 이 자리가 바로 그 연결의 수신 루프다. `thread.json`을 못 읽으면 지켜볼 것이 없다.
+    /// 그 Thread가 읽기만 됐거나 기록 폴더가 사라졌으면(코드 리뷰 1차 B9) 그 Session을 끄러 보내고 true다 — 턴 차례는 대기 줄을
+    /// 보내지 않는다. 이 자리에서 끄지 않는다: 끄기는 연결을 놓고 1초를 기다리는데, 이 자리가 바로 그 연결의 수신 루프다. 폴더는 있는데
+    /// `thread.json`을 못 읽으면(쓰는 중 · 깨짐) 지켜볼 것이 없다.
     pub(in crate::host) fn retire_if_vanished(&self) -> bool {
-        let Ok(file) = atelier_core::read_thread(&self.data_root, &self.key.thread) else { return false };
-        if gone_of(&self.data_root, &file).is_none() {
+        let vanished = !folder_stands(&self.data_root, &self.key.thread)
+            || atelier_core::read_thread(&self.data_root, &self.key.thread)
+                .is_ok_and(|file| gone_of(&self.data_root, &file).is_some());
+        if !vanished {
             return false;
         }
         let host = self.host.clone();
@@ -79,6 +84,14 @@ impl ConversationHost {
         }
     }
 
+    /// 기록 폴더가 사라진 Thread의 Session을 끈다(구현 스펙 §5 「끄는 때」, 코드 리뷰 1차 B9) — 앱은 Thread 폴더들의 뿌리(`threads/`)가
+    /// 바뀌었다는 감시 소식마다 부른다. 쉬던 Session은 지금 끄고, 턴이 도는 Session은 그 턴이 끝나는 대로 끈다([`VanishWatch`]) — 보관된
+    /// Work의 Thread와 같은 차례다. 막히는 호출이다 — 끌 Session이 있으면 끄기가 1초 남짓 걸린다.
+    pub fn check_vanished_threads(&self) {
+        let data_root = self.data_root.clone();
+        self.retire(|key, conv| !folder_stands(&data_root, &key.thread) && !conv.lock_state().order.turning());
+    }
+
     /// 말을 받는 Thread인가 — 이은 Work가 보관됐거나 지워졌으면 [`HostError::ReadOnly`]다. 받으면 그 Thread 파일이다. 무엇을 적기 전에
     /// 부른다.
     pub(super) fn writable(&self, thread: &str) -> Result<ThreadFile, HostError> {
@@ -108,6 +121,11 @@ impl ConversationHost {
             }
         }
     }
+}
+
+/// 그 Thread의 기록 폴더가 서 있나 — 없거나 id가 경로를 품었으면 아니다.
+fn folder_stands(data_root: &Path, thread: &str) -> bool {
+    atelier_core::thread_dir(data_root, thread).is_ok_and(|dir| dir.is_dir())
 }
 
 /// 그 Thread가 읽기만인 까닭 — 이은 Work가 진행 중이 아니면 보관됨 · 지워짐이다. Work 없는 Thread는 늘 말을 받는다.

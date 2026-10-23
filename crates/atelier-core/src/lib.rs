@@ -57,7 +57,7 @@ pub use atomic::write_json_atomically;
 pub use atomic::write_json_into_existing_dir;
 pub use paths::{
     archive_dir, archive_in, collapse_home, data_root, default_data_root, expand_home, layouts_dir, library_agents_in,
-    projects_dir, projects_in, works_dir, works_in,
+    projects_dir, projects_in, threads_dir, works_dir, works_in,
 };
 // Agent 정의(v1 구현 스펙 §6) — 앱이 뜰 때 Library의 기본 파일을 세우고, Thread 엔진(`atelier-acp`)이 Host를 읽는다.
 // 범위 찾기 · 고르기(v1 티켓 11)는 @ 메뉴 · Library 화면(Tauri 명령)과 엔진의 참여가 같이 쓴다. Library에 저장하기(v1 티켓 19)는
