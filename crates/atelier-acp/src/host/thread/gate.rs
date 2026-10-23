@@ -24,8 +24,6 @@ use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 pub(super) struct Gate {
     pub(super) data_root: PathBuf,
     pub(super) thread: String,
-    /// 이 Session의 Thread가 이은 Work — Session을 열 때 읽는다(이은 Work가 바뀌면 Session을 다시 연다, S11).
-    pub(super) work: Option<String>,
     /// 이 Session의 작업 폴더 — 상대 경로를 여기서 푼다.
     pub(super) cwd: PathBuf,
     /// 그 Agent의 Policy(정의 스냅숏).
@@ -48,8 +46,10 @@ impl Gate {
             act => act,
         };
         let editing = matches!(act, Act::Edit(_));
-        let (level, grants) = asking(&self.data_root, &self.thread, self.work.as_deref());
-        let roots = if editing { self.roots() } else { Vec::new() };
+        // 이은 Work는 쓰기 자리 손이 든다 — Work 만들기 카드로 턴 가운데 이어져도 다음 요청부터 그 Work다(v1 티켓 30).
+        let work = self.writer.work();
+        let (level, grants) = asking(&self.data_root, &self.thread, work.as_deref());
+        let roots = if editing { self.roots(work.as_deref()) } else { Vec::new() };
         let projects: Vec<(String, PathBuf)> = if editing {
             atelier_core::project_folders(&self.data_root).into_iter().map(|(slug, folder)| (slug, resolve(&folder, &self.cwd))).collect()
         } else {
@@ -62,7 +62,7 @@ impl Gate {
             cli: &self.cli,
             level,
             grants: &grants,
-            in_work: self.work.is_some(),
+            in_work: work.is_some(),
             roots: &roots,
             projects: &projects,
             seat: seat.as_deref(),
@@ -102,9 +102,9 @@ impl Gate {
 
     /// 고칠 수 있는 자리 — Thread 폴더, 그리고 이은 Work의 spec 폴더와 worktree들(아직 서지 않은 worktree의 자리도). Work를 읽지
     /// 못하면(사라졌다) Thread 폴더뿐이다.
-    fn roots(&self) -> Vec<PathBuf> {
+    fn roots(&self, work: Option<&str>) -> Vec<PathBuf> {
         let mut roots: Vec<PathBuf> = atelier_core::thread_dir(&self.data_root, &self.thread).into_iter().collect();
-        if let Some(slug) = &self.work {
+        if let Some(slug) = work {
             let works = atelier_core::works_in(&self.data_root);
             if let Ok(meta) = atelier_core::read_work(&works, slug) {
                 let places = atelier_core::work_places(&works, &meta);

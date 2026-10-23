@@ -24,12 +24,16 @@
 //! - **승인은 판정 하나를 거친다(v1 티켓 22 · §9, [`gate`]).** Session에 온 권한 요청은 모두 판정을 지나 허용 · 거절 · 물음 가운데
 //!   하나가 된다. `claude`는 기본 모드로만(「계획만」이면 계획 모드로) 뜬다(S17). 물어보는 정도는 Work에 이은 Thread면 Work의 것,
 //!   아니면 Thread의 것이다(S18).
+//! - **Work와 이어진다(v1 티켓 30 · §11, [`work`]).** Host가 Thread 도구로 Work 만들기를 제안하면 카드가 서고, 사람이 만들면 core가
+//!   worktree 없이 Work를 만들고 이 Thread의 `work`를 적는다.
 
 mod call;
 mod gate;
 mod seat;
+mod work;
 
 pub(super) use call::Assignment;
+pub use work::WorkChoice;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -136,6 +140,8 @@ pub(super) struct Threads {
     halts: Mutex<HashMap<String, u64>>,
     /// Work마다의 쓰기 자리(v1 티켓 18) — Session들의 쓰기 자리 손이 함께 쥔다.
     seats: Arc<seat::WriteSeats>,
+    /// 서 있는 Work 만들기 카드(v1 티켓 30) — 사람의 답을 기다리는 도구 호출들.
+    proposals: work::Proposals,
 }
 
 /// Session의 열쇠 — (Thread, 참여자 handle).
@@ -181,9 +187,19 @@ impl Threads {
         self.lock_sessions().values().map(|session| Arc::clone(&session.conv)).collect()
     }
 
-    /// 떠 있는 Session을 모두 꺼낸다 — 호스트 끄기.
+    /// 떠 있는 Session을 모두 꺼낸다 — 호스트 끄기. 서 있는 Work 만들기 카드도 닫는다 — 기다리던 도구 호출이 풀린다.
     pub(super) fn drain_sessions(&self) -> Vec<Session> {
+        self.proposals.close_all();
         self.lock_sessions().drain().map(|(_, session)| session).collect()
+    }
+
+    /// 그 Thread가 Work에 이어졌다 — 떠 있는 Session들의 판정 · 쓰기 자리가 곧바로 그 Work를 쓴다(v1 티켓 30).
+    fn link_sessions(&self, thread: &str, work: &str) {
+        for (key, session) in self.lock_sessions().iter() {
+            if key.thread == thread {
+                session.writer.link(work);
+            }
+        }
     }
 
     /// 그 Session이 떠 있으면 그 대화 — 표의 잠금은 곧바로 놓는다(S2). 부른 쪽은 그 대화의 잠금만 쥐고 일하고, 그 잠금은
@@ -206,7 +222,11 @@ impl Threads {
 
     /// 그 Work에 이어 열린 떠 있는 Session들 — Work의 물어보는 정도를 함께 쓴다(S18 · v1 티켓 23).
     fn of_work(&self, work: &str) -> Vec<SessionKey> {
-        self.lock_sessions().iter().filter(|(_, session)| session.writer.work() == Some(work)).map(|(key, _)| key.clone()).collect()
+        self.lock_sessions()
+            .iter()
+            .filter(|(_, session)| session.writer.work().as_deref() == Some(work))
+            .map(|(key, _)| key.clone())
+            .collect()
     }
 
     /// 그 Session이 떠 있으면 그 대화와 쓰기 자리 손.
@@ -215,12 +235,14 @@ impl Threads {
     }
 
     /// 그 Session을 표에서 꺼낸다 — 꺼낸 대화라고 적는다([`mark_taken`]). 꺼낸 뒤로는 어느 명령도 이 Session에
-    /// 닿지 않는다. 꺼낸 Session의 턴은 끝 없이 사라지므로 그 쓰기 자리를 놓는다(v1 티켓 18).
+    /// 닿지 않는다. 꺼낸 Session의 턴은 끝 없이 사라지므로 그 쓰기 자리를 놓고(v1 티켓 18) 그 Session이 세운 Work 만들기 카드를
+    /// 닫는다(v1 티켓 30).
     fn take(&self, key: &SessionKey) -> Option<Session> {
         let taken = self.lock_sessions().remove(key);
         mark_taken(taken.iter().map(|session| &*session.conv));
         if let Some(session) = &taken {
             session.writer.release();
+            self.proposals.close_for(key);
         }
         taken
     }
@@ -379,9 +401,10 @@ impl ConversationHost {
     /// 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다. 사람의 대기 줄은 거두지 않는다.
     ///
     /// 호출 고리도 함께 멈춘다(§8 「멈춤」, v1 티켓 16) — 부른 턴과 불린 턴이 모두 이 Thread의 턴이라 함께 멈추고, 대기 줄에 든 맡긴
-    /// 일은 거둔다. 그 부르기들의 결과는 「사람이 멈춤」이다.
+    /// 일은 거둔다. 그 부르기들의 결과는 「사람이 멈춤」이다. 서 있는 Work 만들기 카드도 거둔다(v1 티켓 30).
     pub fn stop_thread(&self, thread: &str) -> Result<(), HostError> {
         self.threads.halt(thread);
+        self.stop_work_cards(thread);
         for (_, conv) in self.threads.of_thread(thread) {
             let Some(mut state) = conv.lock_found() else { continue };
             conv.seat(&mut state).withdraw_calls();
@@ -445,7 +468,7 @@ impl ConversationHost {
             let rules = writer
                 .remembered(request, &reply.option)
                 .ok_or_else(|| HostError::PermissionNoGrant { request: request.to_owned() })?;
-            let work = writer.work().map(str::to_owned);
+            let work = writer.work();
             let place = match &work {
                 Some(slug) => atelier_core::PolicyPlace::Work(slug),
                 None => atelier_core::PolicyPlace::Thread(thread),
@@ -681,6 +704,9 @@ impl ConversationHost {
                 ),
                 Err(why) => thread_tools::said(&why, true),
             },
+            Ok(Call::ListProjects) => self.list_projects_tool(),
+            Ok(Call::GetWork) => self.get_work_tool(key),
+            Ok(Call::ProposeWork(proposal)) => self.propose_work(key, proposal),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -849,7 +875,6 @@ impl ConversationHost {
         let gate = Gate {
             data_root: self.data_root.clone(),
             thread: key.thread.clone(),
-            work: file.work.clone(),
             cwd: place.cwd.clone(),
             policy: definition.policy,
             cli: definition.tools.cli,
@@ -1079,20 +1104,7 @@ impl ConversationHost {
                 text.push_str(&format!("- Work: 없음 — 이 Thread 폴더에서 일한다: `{}`\n", dir.display()));
             }
             Some(slug) => match self.open_work(slug) {
-                Ok(work_at) => {
-                    text.push_str(&format!(
-                        "- Work: `{slug}` — {}\n  - spec 폴더(specDir): `{}`\n",
-                        work_at.meta.title,
-                        work_at.places.spec.display()
-                    ));
-                    for (project, tree) in work_at.meta.projects.iter().zip(&work_at.places.worktrees) {
-                        if tree.is_dir() {
-                            text.push_str(&format!("  - Project `{project}`: worktree `{}`\n", tree.display()));
-                        } else {
-                            text.push_str(&format!("  - Project `{project}`: 읽기만 — worktree가 아직 없다\n"));
-                        }
-                    }
-                }
+                Ok(work_at) => text.push_str(&work::work_lines(slug, &work_at)),
                 Err(_) => text.push_str(&format!("- Work: `{slug}` — 찾을 수 없다\n")),
             },
         }
@@ -1103,10 +1115,18 @@ impl ConversationHost {
                  - `{}`(handle, task) — 다른 Agent에게 일을 맡기고, 그 Agent가 턴을 끝낼 때의 마지막 메시지를 결과로 받는다. \
                  그때까지 기다린다.\n  \
                  - `{}`(handle, content) — 사람이 Agent를 만들어 달라면 Library에 Agent 파일로 저장한다. 「이 Project에 \
-                 둬」라면 이 도구가 아니라 그 Project worktree의 `.atelier/agents/<handle>.md`에 보통 편집으로 쓴다.\n",
+                 둬」라면 이 도구가 아니라 그 Project worktree의 `.atelier/agents/<handle>.md`에 보통 편집으로 쓴다.\n  \
+                 - `{}`() — 등록된 Project와 그 저장소의 브랜치들. Work를 제안하기 전에 본다.\n  \
+                 - `{}`() — 이 Thread의 Work(spec 폴더 · 브랜치 · Project마다 worktree 또는 읽기만).\n  \
+                 - `{}`(title, slug, reason, branch, projects) — 일이 커지면 Work로 묶자고 사람에게 카드로 묻고, 사람이 고를 \
+                 때까지 기다린다. Work는 사람의 `atelier` MCP(`atelier_start_work`)가 아니라 이 도구로 만든다 — 그래야 이 Thread가 \
+                 그 Work에 이어진다.\n",
                 thread_tools::SERVER_NAME,
                 thread_tools::CALL_AGENT,
-                thread_tools::SAVE_AGENT
+                thread_tools::SAVE_AGENT,
+                thread_tools::LIST_PROJECTS,
+                thread_tools::GET_WORK,
+                thread_tools::PROPOSE_WORK
             ));
         }
         Ok(json!({"type": "text", "text": text}))

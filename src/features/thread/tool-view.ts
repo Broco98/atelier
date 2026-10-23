@@ -16,6 +16,7 @@ import { isObject, nonEmpty, type Json } from "./json";
 // - **Agent 부르기 Thread 도구(`atelier-thread.call_agent`)는 「@reviewer에게 맡기는 중」이다**(v1 티켓 17) — 맡긴 일이 그 Agent에게
 //   전해지면 호출 줄이 이 줄의 자리를 대신하고(`fold.ts`), 그 전(들이는 중 · Session을 여는 중)과 거절된 부르기만 이 줄로 선다.
 //   거절 까닭은 MCP 상자의 받은 값이다.
+// - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「Work 읽음」 · 「Work 만들기를 묻는 중」.
 
 /** 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김(끝을 받기 전에 그 Session이 사라졌다). */
 export type ToolState = "running" | "done" | "failed" | "cut";
@@ -115,6 +116,13 @@ const OTHER: Verbs = { running: "쓰는 중", done: "씀", failed: "쓰지 못�
 /** Agent 부르기 Thread 도구(v1 티켓 16)의 `서버.도구` 이름. */
 const CALL_AGENT = "atelier-thread.call_agent";
 
+/** Work와 이어지는 Thread 도구 셋(v1 티켓 30)의 `서버.도구` 이름 — 사람의 말로 선다(캔버스 화면 2 「Project 3개 목록 확인함」). */
+const LIST_PROJECTS = "atelier-thread.list_projects";
+const GET_WORK = "atelier-thread.get_work";
+const PROPOSE_WORK = "atelier-thread.propose_work";
+const CHECK: Verbs = { running: "확인하는 중", done: "확인함", failed: "확인하지 못함", refused: "확인하지 않음" };
+const ASK: Verbs = { running: "묻는 중", done: "물음", failed: "묻지 못함", refused: "묻지 않음" };
+
 export function describeTool(tool: ToolEntry): ToolView {
   const call = tool.call;
   const state: ToolState =
@@ -150,6 +158,13 @@ export function describeTool(tool: ToolEntry): ToolView {
       const handle = nonEmpty(rawInput.handle)?.replace(/^@/, "");
       return { ...base, phrase: say(SUBAGENT, handle ? `@${handle}` : "Agent", false), mcp: box };
     }
+    if (name === LIST_PROJECTS) {
+      const count = state === "done" ? listedCount(received) : null;
+      return { ...base, phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, false), mcp: box };
+    }
+    if (name === GET_WORK) return { ...base, phrase: say(READ, "Work", false), mcp: box };
+    // 카드가 선 동안 서는 줄이다 — 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다(`fold.ts`). 거절된 제안만 이 줄로 남는다.
+    if (name === PROPOSE_WORK) return { ...base, phrase: say(ASK, "Work 만들기를", false), mcp: box };
     return { ...base, phrase: say(MCP, name, true), mcp: box };
   }
 
@@ -231,6 +246,16 @@ export function elapsed(tool: ToolEntry): string | null {
 export function phraseText(phrase: ToolPhrase): string {
   const gap = phrase.subject !== null && !phrase.verb.startsWith("에게") ? " " : "";
   return `${phrase.before}${phrase.subject ?? ""}${gap}${phrase.verb}${phrase.tail}`;
+}
+
+/** 받은 값이 JSON 목록이면 그 수 — 「Project 3개 목록 확인함」. 목록이 아니면(등록된 Project가 없다는 글) null이다. */
+function listedCount(received: string): number | null {
+  try {
+    const parsed: unknown = JSON.parse(received);
+    return Array.isArray(parsed) ? parsed.length : null;
+  } catch {
+    return null;
+  }
 }
 
 /** MCP 호출의 서버 · 도구 — Claude `mcp__<서버>__<도구>`, codex-acp `rawInput{server, tool}`. MCP가 아니면 null. */

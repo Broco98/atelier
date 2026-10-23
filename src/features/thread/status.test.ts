@@ -111,6 +111,17 @@ describe("내 차례", () => {
     expect(statusOf(through(asking, 10), live(0))?.kind).toBe("working");
   });
 
+  // Work 만들기 카드(v1 티켓 30)도 사람의 답을 기다리는 물음이다 — 같은 물음 차례에 선다(`ThreadModel.asks`).
+  it("Work 만들기 카드가 서 있으면 내 차례이고, 미리보기는 만들 Work의 제목이다", () => {
+    const working = record("thread-work");
+    expect(statusOf(through(working, 8), live(0))).toEqual({
+      kind: "mine",
+      since: "2026-10-10T10:00:08.000+09:00",
+      text: "Work 만들기 · 환불 API 버그 수정",
+    });
+    expect(statusOf(through(working, 9), live(0))?.kind).toBe("working");
+  });
+
   // 앱을 다시 켜면 물은 프로세스가 없다 — 답할 곳이 없는 물음은 기다리는 것이 아니다(`goneThrough`).
   it("앱을 다시 켠 뒤 남은 물음은 내 차례가 아니다", () => {
     expect(statusOf(through(asking, 9), { goneThrough: 9, lastRead: 0 })?.kind).not.toBe("mine");

@@ -25,7 +25,7 @@ import type { AskLevel } from "./types";
 //   동안 바꿀 수 없다(엔진이 거절한다 — 그래서 그동안 잠근다).
 // - **아래 줄**은 받는 이 · Work · 물어보는 정도다. **받는 이**는 말의 첫 멘션이 고른 Agent, 없으면 Host다(S9 · v1 티켓 14) — 누르면
 //   부를 수 있는 Agent가 서고, 고르면 말 앞의 멘션을 갈아 끼운다(`withRecipient`). Work 칩(31)은 아직 **보이기만 한다** — 누를 것이
-//   없으니 단추가 아니고 셰브런도 없다.
+//   없으니 단추가 아니고 셰브런도 없다. 이은 Work가 있으면 그 제목이 선다(v1 티켓 30 — Work 만들기 카드로 이어진 뒤).
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84 · 보드 「아래 줄 메뉴 · 물어보는 정도」)는 방패 · 지금 정도 이름의 칩이다. 누르면 「언제
 //   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 끝의 「Policy 열기」는 다음 말을 받을 Agent의 파일을
 //   Library에서 연다 — 정도보다 먼저 드는 그 Agent의 `ask_before` · `forbid`가 거기 있다. 입력창의 `/policy`도 이 메뉴를 연다.
@@ -131,6 +131,7 @@ export function ComposerTray({
   agents,
   onRecipient,
   ask,
+  work = null,
 }: {
   recipient: ShownRecipient;
   /** 받는 이로 고를 수 있는 Agent — 깨진 것은 빠진다. */
@@ -138,6 +139,8 @@ export function ComposerTray({
   /** 받는 이를 골랐다 — 부르는 이름, Host면 `null`. */
   onRecipient: (call: string | null) => void;
   ask: AskChoice;
+  /** 이은 Work의 제목 — 없으면 「Work 없음」이다. */
+  work?: string | null;
 }) {
   const callable = agents.filter((agent) => agent.broken === null && agent.call !== "host");
   const value = recipient === null ? HOST_VALUE : "agent" in recipient ? recipient.agent.call : "";
@@ -191,9 +194,9 @@ export function ComposerTray({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <span className={TRAY_CHIP} aria-label="Work 없음">
+      <span className={TRAY_CHIP} aria-label={work === null ? "Work 없음" : `Work ${work}`}>
         <Folder className="size-3.5" aria-hidden />
-        Work 없음
+        {work ?? "Work 없음"}
       </span>
       <AskChip {...ask} />
     </div>

@@ -44,6 +44,13 @@ export interface Settings {
   // `is_empty`) 백엔드는 읽은 그대로 실어 보낸다 — 「있다」고 적으면 지금까지 쓰던 설정
   // 파일 전부에서 이 타입이 거짓말이 된다.
   notifications?: NotificationSettings;
+  /** 한 번만 보이는 안내를 봤다는 표(v1 티켓 30 · S31) — 본 것이 없으면 구획이 통째로 없다(`settings.rs`의 `SeenSettings`). */
+  seen?: SeenSettings;
+}
+
+/** 본 표 — 「결정은 내가 합니다」 카드(`decisions`). 화면 없는 구획이다(Thread 화면이 카드를 닫을 때 적는다). */
+export interface SeenSettings {
+  decisions?: boolean;
 }
 
 // 에이전트 훅이 지금 어디에 어떻게 깔려 있나 (#207 · 구현 결정 8). **정본은

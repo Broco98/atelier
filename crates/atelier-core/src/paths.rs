@@ -49,7 +49,9 @@ pub fn layouts_dir() -> PathBuf {
 // (`search`)은 이쪽을 먹인다. **가르면 두 벌이 생긴다**: 한쪽만 고친 날 앱이 보는 폴더와
 // 검색이 보는 폴더가 갈리는데, 화면에는 「왜 안 뜨지」로만 나타난다.
 
-pub(crate) fn projects_in(root: &Path) -> PathBuf {
+/// 등록한 Project의 루트를 **받은 데이터 루트에서** 짓는다 — 대화 호스트(`atelier-acp`)의 Thread 도구 「Project 목록」 · 「Work 만들기
+/// 제안」이 부른다(v1 티켓 30).
+pub fn projects_in(root: &Path) -> PathBuf {
     root.join("projects")
 }
 
@@ -59,7 +61,8 @@ pub fn works_in(root: &Path) -> PathBuf {
     root.join("works")
 }
 
-pub(crate) fn archive_in(root: &Path) -> PathBuf {
+/// 보관한 work의 루트를 **받은 데이터 루트에서** 짓는다 — Thread 도구 「Work 만들기 제안」이 core의 Work 만들기에 넘긴다(v1 티켓 30).
+pub fn archive_in(root: &Path) -> PathBuf {
     root.join("archive")
 }
 

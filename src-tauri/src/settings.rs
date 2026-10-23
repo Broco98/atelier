@@ -93,7 +93,26 @@ impl NotificationSettings {
     }
 }
 
-/// 파일 전체. 구획이 `terminal`·`notifications` 둘이다 — 다른 구획이 생기면 여기 한 줄이다.
+/// 한 번만 보이는 안내를 사람이 본 것(v1 구현 스펙 S31 · v1 티켓 30). **본 것만 적는다** — 보지 않았으면 칸이 없고, 아무것도 보지 않았으면
+/// 구획째 안 적힌다(알림 구획과 같은 규칙: 「안 봄」을 `false` 줄로 적으면 손으로 여는 파일에 뜻 없는 줄이 는다).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeenSettings {
+    /// 「결정은 내가 합니다」 카드 — 처음 Work를 만들 때 한 번 뜬다. 「알겠어요」를 누르면 참이 되고 그 뒤로 뜨지 않는다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub decisions: bool,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl SeenSettings {
+    /// 본 것이 하나도 없나 — 모르는 칸까지 센다(알림 구획의 `is_empty`와 같은 까닭).
+    fn is_empty(&self) -> bool {
+        !self.decisions && self.extra.is_empty()
+    }
+}
+
+/// 파일 전체. 구획이 `terminal`·`notifications`·`seen` 셋이다 — 다른 구획이 생기면 여기 한 줄이다.
 ///
 /// three-axes의 대화 구획(`chat` — 새 대화의 기본 에이전트 · 모델 · 모드)은 설정의 「대화」 묶음과 함께 걷혔다(v1 티켓 08 ·
 /// S3). 앞서 쓰던 파일에 남은 그 구획은 앱이 읽지 않는 구획이라 `extra`로 글자 그대로 왕복한다 — 사람이 손으로 지운다.
@@ -107,6 +126,9 @@ pub struct Settings {
     /// 자리가 그대로 남는 편이 낫다.
     #[serde(default, skip_serializing_if = "NotificationSettings::is_empty")]
     pub notifications: NotificationSettings,
+    /// 한 번만 보이는 안내를 본 것(v1 티켓 30). 설정 화면에 칸이 없다 — Thread 화면이 「알겠어요」에서 적는다.
+    #[serde(default, skip_serializing_if = "SeenSettings::is_empty")]
+    pub seen: SeenSettings,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -247,6 +269,7 @@ mod tests {
                 sound: Some(true),
                 extra: Default::default(),
             },
+            seen: SeenSettings { decisions: true, extra: Default::default() },
             extra: Default::default(),
         };
         write(&root, &s).unwrap();
@@ -405,6 +428,25 @@ mod tests {
         assert!(out.contains("\"sound\": false"), "고른 값이 안 적혔다: {out}");
         assert!(!out.contains("\"enabled\""), "안 고른 켬/끔이 함께 적혔다: {out}");
         assert_eq!(read(&root).unwrap(), s);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **「결정은 내가 합니다」 카드를 본 것은 설정 파일에 남는다**(v1 티켓 30 · S31) — 한 번 보면 다음 Work를 만들 때도, 앱을 다시 켜도
+    /// 뜨지 않는다. 보지 않았으면 구획째 안 적힌다(알림 구획과 같은 규칙). 구획 안의 모르는 칸은 왕복한다.
+    #[test]
+    fn the_seen_decisions_card_is_kept_and_an_unseen_one_is_not_written() {
+        let root = temp_root("seen");
+        write(&root, &Settings::default()).unwrap();
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(!out.contains("\"seen\""), "아직 아무것도 보지 않았는데 구획이 적혔다: {out}");
+        assert!(!read(&root).unwrap().seen.decisions, "처음에는 보지 않았다 — 카드가 뜬다");
+
+        std::fs::write(settings_path(&root), r#"{"seen":{"decisions":true,"later":1}}"#).unwrap();
+        let s = read(&root).unwrap();
+        assert!(s.seen.decisions, "본 것을 읽는다 — 카드가 다시 뜨지 않는다");
+        write(&root, &s).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(back["seen"], serde_json::json!({"decisions": true, "later": 1}), "구획 안의 모르는 칸도 남는다");
         let _ = std::fs::remove_dir_all(&root);
     }
 

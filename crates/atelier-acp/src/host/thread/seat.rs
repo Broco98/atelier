@@ -83,9 +83,9 @@ pub(super) struct Writer {
     seats: Arc<WriteSeats>,
     data_root: PathBuf,
     key: SessionKey,
-    /// 이 Session의 Thread가 이은 Work — 없으면 쓰기 자리가 없다. 이은 Work가 바뀌면 Session을 새 작업 폴더로 다시 연다(S11) — 이
-    /// 손도 그때 새로 선다.
-    work: Option<String>,
+    /// 이 Session의 Thread가 이은 Work — 없으면 쓰기 자리가 없다. Work 없이 열린 Session의 Thread가 Work에 이어지면 곧바로 그 Work다
+    /// ([`Writer::link`], v1 티켓 30) — 작업 폴더는 다음에 열 때부터 바뀌지만(S11) 판정 · 쓰기 자리는 그 턴부터 Work의 것이다.
+    work: Mutex<Option<String>>,
     /// 이 Session의 대화 — 지금 턴의 호출 고리를 읽는다. 약하게 쥔다: 런타임이 판정을 쥐고, 대화가 런타임의 손잡이를 쥔다.
     conv: Weak<Conv>,
     /// 사람에게 물은 요청 — 요청 id → 적어 둔 것. 턴이 끝나면 비운다(그 턴의 요청은 거둬졌다).
@@ -108,7 +108,7 @@ impl Writer {
             seats: Arc::clone(seats),
             data_root,
             key,
-            work,
+            work: Mutex::new(work),
             conv: Arc::downgrade(conv),
             asked: Mutex::new(HashMap::new()),
         })
@@ -120,23 +120,29 @@ impl Writer {
 
     /// 이 Session이 열릴 때 이은 Work — 물어보는 정도를 함께 쓰는 Session들을 찾고(v1 티켓 23), 「다시 묻지 않기」 허락을 둘 자리다
     /// (없으면 그 Thread 폴더, v1 티켓 24). 판정이 허락을 읽는 자리와 같다.
-    pub(super) fn work(&self) -> Option<&str> {
-        self.work.as_deref()
+    pub(super) fn work(&self) -> Option<String> {
+        self.work.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+    }
+
+    /// 이 Session의 Thread가 Work에 이어졌다(v1 티켓 30 — Work 만들기 카드) — 다음 요청부터 판정이 그 Work의 자리 · 물어보는 정도를 읽고,
+    /// 편집은 그 Work의 쓰기 자리를 쥔다.
+    pub(super) fn link(&self, slug: &str) {
+        *self.work.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(slug.to_owned());
     }
 
     /// 이 Session의 편집을 막는 주인의 글(§10) — 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 그 거절 글, 아무도 쥐지 않았거나 이
     /// Session이 쓸 수 있는 자리면 없다. 판정의 입력(「쓰기 자리 주인」)이다.
     pub(super) fn blocker(&self) -> Option<String> {
-        let work = self.work.as_deref()?;
-        let owner = self.seats.owner_against(work, &self.key, &self.chain())?;
+        let work = self.work()?;
+        let owner = self.seats.owner_against(&work, &self.key, &self.chain())?;
         Some(self.busy(&owner))
     }
 
     /// 판정이 편집을 묻지 않고 허용하는 순간 쓰기 자리를 쥔다. 그사이 다른 Session이 쥐었으면 그 주인의 거절 글이다. Work 없는 Thread는
     /// 쥘 자리가 없다.
     pub(super) fn take(&self) -> Result<(), String> {
-        let Some(work) = self.work.as_deref() else { return Ok(()) };
-        self.seats.take(work, &self.key, &self.chain()).map(drop).map_err(|owner| self.busy(&owner))
+        let Some(work) = self.work() else { return Ok(()) };
+        self.seats.take(&work, &self.key, &self.chain()).map(drop).map_err(|owner| self.busy(&owner))
     }
 
     /// 사람에게 묻는 요청을 적어 둔다 — 편집을 허락하는 답이면 쥐고([`Writer::grant`]), 「다시 묻지 않기」면 그 허락을 읽는다
@@ -155,14 +161,14 @@ impl Writer {
 
     /// 사람의 권한 답 — 물은 편집을 허락하는 답이면 쓰기 자리를 쥔다. 물은 사이에 다른 Session이 쥐었으면 그 답 대신 주인의 글로 거부한다.
     pub(super) fn grant(&self, request: &str, option: &str) -> Grant {
-        let Some(work) = self.work.as_deref() else { return Grant::Unchanged };
+        let Some(work) = self.work() else { return Grant::Unchanged };
         let Some(options) = self.lock_asked().get(request).filter(|noted| noted.edit).map(|noted| noted.options.clone()) else {
             return Grant::Unchanged;
         };
         if !options.iter().any(|(id, kind)| id == option && kind.starts_with("allow")) {
             return Grant::Unchanged;
         }
-        match self.seats.take(work, &self.key, &self.chain()) {
+        match self.seats.take(&work, &self.key, &self.chain()) {
             Ok(true) => Grant::Took,
             Ok(false) => Grant::Unchanged,
             Err(owner) => match rejecting(&options) {

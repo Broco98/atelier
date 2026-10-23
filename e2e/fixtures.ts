@@ -1105,6 +1105,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   thread_delete_queued: null,
   thread_send_now: null,
   thread_answer_permission: null,
+  // Work 만들기 카드의 답(v1 티켓 30) — 값은 안 쓰인다. 고른 것과 만든 Work는 기록의 `question` · `work` 줄로 온다.
+  thread_answer_work: null,
   // 다시 맡기기(v1 티켓 17) — 값은 안 쓰인다. 부르기와 그 결과는 기록 줄 이벤트로 온다.
   thread_call_again: null,
   // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.

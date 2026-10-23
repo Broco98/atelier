@@ -81,6 +81,8 @@ export interface ThreadComposerProps {
   onLevel: (level: AskLevel) => void;
   /** 물어보는 정도 메뉴 끝의 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. */
   onOpenPolicy?: () => void;
+  /** 이은 Work의 제목 — 아래 줄 Work 칩이 보인다(v1 티켓 30). 없으면 「Work 없음」이다. */
+  work?: string | null;
 }
 
 function ThreadComposer({
@@ -108,6 +110,7 @@ function ThreadComposer({
   level,
   onLevel,
   onOpenPolicy,
+  work = null,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
   // 바깥이 이 입력창을 채웠다(「새 Agent 만들기」 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
@@ -445,6 +448,7 @@ function ThreadComposer({
             placeCaret(next, next.length);
           }}
           ask={{ level, onLevel, onOpenPolicy, open: asking, onOpenChange: setAsking }}
+          work={work}
         />
       )}
       {shown && (

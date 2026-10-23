@@ -117,6 +117,62 @@ describe("물음 차례", () => {
   });
 });
 
+describe("Work 만들기 카드도 같은 차례다(v1 티켓 30 · §9 「같은 자리, 같은 차례」)", () => {
+  /** Host의 Work 만들기 제안 줄 — 요청 id는 엔진이 지은 uuid다. */
+  const proposed = (seq: number, requestId = "w-1"): RecordLine => ({
+    seq,
+    at: at(seq),
+    kind: "question",
+    who: "host",
+    payload: {
+      state: "asked",
+      requestId,
+      card: "work",
+      title: "환불 API 버그 수정",
+      slug: "refund-api",
+      reason: "고칠 Project와 브랜치를 골라 두었어요",
+      branch: "fix/refund-api",
+      projects: [{ slug: "api-server", name: "api-server", description: null, recommended: true, reason: null, branches: ["main"] }],
+    },
+  });
+  const testerAsks: RecordLine[] = [
+    joined(1, "host", "Host"),
+    joined(2, "tester", "테스터"),
+    sent(3, "tester", "@tester e2e 돌려 줘"),
+    toolCall(4, "tester", playwright),
+    asked(5, "tester", playwright),
+    sent(6, "host", "환불 API 버그 고쳐줘"),
+    proposed(7),
+  ];
+
+  it("먼저 온 승인 카드 뒤에 Work 만들기 카드가 「다음 · Host가 Work 만들기 답을 기다려요」로 선다", () => {
+    const turn = askTurn(foldThread(testerAsks));
+    expect(who(turn)).toEqual(["tester", { at: 1, total: 2 }, "host"]);
+    expect(turn?.next && nextOf(turn.next, "Host")).toEqual({
+      name: "Host",
+      particle: "가",
+      subject: "Work 만들기",
+      mono: false,
+      what: "답을 기다려요",
+    });
+  });
+
+  it("앞의 것에 답하면 Work 만들기 카드가 「2 / 2」로 서고, 그 카드에 답하면 차례가 걷힌다", () => {
+    const first = [...testerAsks, answered(8, "tester", "allow_once")];
+    const turn = askTurn(foldThread(first));
+    expect(who(turn)).toEqual(["host", { at: 2, total: 2 }, null]);
+    expect(turn?.current.card).toBe("work");
+    const done: RecordLine = {
+      seq: 9,
+      at: at(9),
+      kind: "question",
+      who: "host",
+      payload: { state: "answered", requestId: "w-1", card: "work", choice: "continue" },
+    };
+    expect(askTurn(foldThread([...first, done]))).toBeNull();
+  });
+});
+
 describe("카드 아래 다음 줄", () => {
   const pendingOf = (toolCall: Record<string, unknown>): PendingPermission => ({
     requestId: "0",

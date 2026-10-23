@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { ArrowDown, ArrowLeft } from "lucide-react";
+import { ArrowDown, ArrowLeft, Folder } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { useWorks } from "@/features/works/hooks";
 import { AgentFace, FaceStack } from "./AgentFace";
@@ -13,6 +13,7 @@ import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
 import { chipLists, currentModel } from "./chips";
 import { useCreateAgent } from "./create-agent";
+import DecisionsCard from "./DecisionsCard";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
 import GuideCard from "./GuideCard";
@@ -20,6 +21,8 @@ import HostFace from "./HostFace";
 import {
   useAgentRoster,
   useChangeChip,
+  useDecisionsSeen,
+  useMarkDecisionsSeen,
   useMarkRead,
   useQueue,
   useRenameThread,
@@ -37,6 +40,8 @@ import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, ThreadView } from "./types";
+import { decisionsDue } from "./work-proposal";
+import WorkProposalCard from "./WorkProposalCard";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -50,6 +55,9 @@ import type { AskLevel, Attachment, ThreadView } from "./types";
 //   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다
 //   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것
 //   하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
+// - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
+//   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 그 Work 화면)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
+//   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
 //   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
@@ -199,6 +207,7 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
             }
           : undefined,
       }}
+      after={view?.work ? <WorkPill slug={view.work} /> : undefined}
       end={view && view.participants.length > 0 ? <ThreadParticipants view={view} /> : undefined}
     >
       {view ? (
@@ -220,6 +229,36 @@ function GuidePlace({ children }: { children: ReactNode }) {
     <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
       <div className={COLUMN}>{children}</div>
     </div>
+  );
+}
+
+/**
+ * 머리 줄의 Work 알약(화면 2 보드 `.wchip`) — 높이 26 · 알약 · `fill-soft` · 12/18 `fg-secondary`, 폴더 14 · 제목 · 「·」 · 고정폭 브랜치.
+ * 누르면 그 Work 화면으로 간다(Work 패널이 서면 그 패널을 연다 — v1 티켓 34). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다.
+ */
+function WorkPill({ slug }: { slug: string }) {
+  const navigate = useNavigate();
+  const { data: works } = useWorks();
+  const work = works?.find((one) => one.slug === slug) ?? null;
+  const title = work?.title || slug;
+  return (
+    <button
+      type="button"
+      aria-label={`Work 열기: ${title}`}
+      onClick={() => void navigate({ to: "/works/$slug", params: { slug }, search: {} })}
+      className="inline-flex h-6.5 min-w-0 items-center gap-1.5 rounded-full bg-fill-soft px-2.5 text-xs whitespace-nowrap text-fg-secondary transition-colors quiet-hover focus-ring"
+    >
+      <Folder className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 truncate">{title}</span>
+      {work?.branch && (
+        <>
+          <span aria-hidden className="text-fg-tertiary">
+            ·
+          </span>
+          <span className="shrink-0 font-mono text-2xs">{work.branch}</span>
+        </>
+      )}
+    </button>
   );
 }
 
@@ -285,6 +324,10 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   const turn = askTurn(model);
   const asking = turn?.current ?? null;
   const askingCwd = asking ? (view.participants.find((one) => one.handle === asking.who)?.cwd ?? null) : null;
+  const seen = useDecisionsSeen();
+  const markSeen = useMarkDecisionsSeen();
+  // 「결정은 내가 합니다」(S31) — 걸린 물음이 먼저다. 이 카드는 기다리는 이가 없는 안내다.
+  const decisions = asking === null && decisionsDue(model, seen);
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -349,6 +392,15 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
     (call: CallEntry) =>
       threadApi.callAgain(thread, call.from, call.to, call.text).catch((failure: unknown) => setChipProblem(String(failure))),
     [thread],
+  );
+
+  // 카드 맨 아래 「다음 · …」 줄 — 다음 차례가 없으면 비운다(승인 카드 · Work 만들기 카드가 같은 줄을 쓴다).
+  const askNext = turn?.next && (
+    <AskNext
+      handle={turn.next.who}
+      avatar={model.cast[turn.next.who]?.avatar ?? null}
+      line={nextOf(turn.next, model.cast[turn.next.who]?.name ?? turn.next.who)}
+    />
   );
 
   const pickLevel = (mode: AskLevel) => {
@@ -436,29 +488,40 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             level={view.askLevel}
             onLevel={pickLevel}
             onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
+            work={view.work ? (linked?.title || view.work) : null}
             card={
-              asking && (
-                <ApprovalCard
-                  key={`${asking.who}\u0000${asking.requestId}`}
-                  thread={thread}
-                  name={model.cast[asking.who]?.name ?? asking.who}
-                  avatar={model.cast[asking.who]?.avatar ?? null}
-                  request={asking}
-                  scope={view.work ? "work" : "thread"}
-                  cwd={askingCwd}
-                  place={placeOf(askingCwd, linked)}
-                  count={turn?.count}
-                  next={
-                    turn?.next && (
-                      <AskNext
-                        handle={turn.next.who}
-                        avatar={model.cast[turn.next.who]?.avatar ?? null}
-                        line={nextOf(turn.next, model.cast[turn.next.who]?.name ?? turn.next.who)}
-                      />
-                    )
-                  }
+              asking ? (
+                asking.card === "work" ? (
+                  <WorkProposalCard
+                    key={`${asking.who}\u0000${asking.requestId}`}
+                    thread={thread}
+                    card={asking}
+                    count={turn?.count}
+                    next={askNext}
+                  />
+                ) : (
+                  <ApprovalCard
+                    key={`${asking.who}\u0000${asking.requestId}`}
+                    thread={thread}
+                    name={model.cast[asking.who]?.name ?? asking.who}
+                    avatar={model.cast[asking.who]?.avatar ?? null}
+                    request={asking}
+                    scope={view.work ? "work" : "thread"}
+                    cwd={askingCwd}
+                    place={placeOf(askingCwd, linked)}
+                    count={turn?.count}
+                    next={askNext}
+                  />
+                )
+              ) : decisions ? (
+                <DecisionsCard
+                  onDone={() => markSeen.mutate()}
+                  onPolicy={() => {
+                    markSeen.mutate();
+                    void navigate(policyPlace("host", view.work));
+                  }}
                 />
-              )
+              ) : null
             }
             above={
               (changes || away || queue.length > 0) && (

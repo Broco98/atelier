@@ -53,6 +53,27 @@ pub(crate) const CALL_AGENT: &str = "call_agent";
 /// 「Agent 저장」(S13, v1 티켓 19).
 pub(crate) const SAVE_AGENT: &str = "save_agent";
 
+/// 「Project 목록」(S13, v1 티켓 30).
+pub(crate) const LIST_PROJECTS: &str = "list_projects";
+
+/// 「Work 읽기」(S13, v1 티켓 30).
+pub(crate) const GET_WORK: &str = "get_work";
+
+/// 「Work 만들기 제안」(S13 · §11, v1 티켓 30).
+pub(crate) const PROPOSE_WORK: &str = "propose_work";
+
+/// 「Work 만들기 제안」의 쓰는 법 — 언제 부르고, 카드에서 사람이 무엇을 고치고, 답이 무엇인지(S42). 사람이 설치한 `atelier` MCP로 Work를
+/// 만들면 Thread가 이어지지 않으므로 그 길을 막는 말도 여기 둔다(§7).
+const PROPOSE_WORK_GUIDE: &str = "이 Thread의 일을 Work로 묶자고 사람에게 묻는다. 일이 커지면 부른다 — 여러 파일을 고치거나 \
+며칠 이어질 일이다. 먼저 list_projects로 고칠 Project와 그 저장소의 브랜치 이름 규칙(localBranches)을 본다.\n\n\
+사람의 입력창 자리에 Work 만들기 카드가 서고, 사람이 고를 때까지 기다린다. 사람은 카드에서 Project를 넣고 빼고 브랜치 이름을 고친 \
+뒤 「Work 만들기」나 「Work 없이 계속」을 고른다.\n\
+- 만들면 이 Thread가 그 Work에 이어지고, 결과로 Work의 spec 폴더(설계 문서를 쓰는 곳) · 브랜치 · Project가 온다. 사람이 고친 \
+것이 정본이다. worktree는 아직 없다 — Project는 처음 고칠 때까지 읽기만이다.\n\
+- 「Work 없이 계속」이면 Work 없이 이 Thread에서 이어 간다. 같은 제안을 곧바로 다시 하지 않는다.\n\n\
+Work는 사람이 설치한 atelier MCP의 atelier_start_work가 아니라 이 도구로 만든다 — 그래야 이 Thread가 그 Work에 이어진다. 이미 \
+Work에 이어진 Thread에서는 부를 수 없다(get_work로 그 Work를 읽는다).";
+
 /// 「Agent 저장」의 쓰는 법 — Agent 파일의 꼴과, 이 도구가 하지 않는 일(「이 Project에 둬」). 파일의 꼴은 Agent가 이 설명만 보고
 /// 깨지지 않은 파일을 짓도록 적는다(S42 — 쓰는 법은 도구의 설명이 맡는다). 깨지면 도구가 그 까닭을 돌려준다.
 const SAVE_AGENT_GUIDE: &str = "새 Agent를 사람의 Library에 Agent 파일 하나로 저장한다. Library의 Agent는 어느 Thread에서든 \
@@ -268,6 +289,34 @@ pub(crate) enum Call {
     CallAgent { handle: String, task: String },
     /// Agent 저장 — handle과 Agent 파일의 글. Library에만 쓴다(v1 티켓 19).
     SaveAgent { handle: String, content: String },
+    /// Project 목록 — 등록된 Project와 그 저장소의 브랜치들(v1 티켓 30).
+    ListProjects,
+    /// Work 읽기 — 이 Thread가 이어진 Work(v1 티켓 30).
+    GetWork,
+    /// Work 만들기 제안 — Host가 골라 둔 것(v1 티켓 30). 사람이 카드에서 고친다.
+    ProposeWork(Proposal),
+}
+
+/// Work 만들기 제안(S13) — Host가 골라 둔 제목 · slug · 까닭 · 브랜치 · Project들. 카드가 이것으로 서고, 사람이 Project와 브랜치를
+/// 고친다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Proposal {
+    pub(crate) title: String,
+    /// Work 폴더 이름이자 브랜치 기본값 — 영어 kebab-case다(바뀌지 않는다).
+    pub(crate) slug: String,
+    /// 왜 Work로 묶는지 — 카드의 제목 옆에 선다.
+    pub(crate) reason: String,
+    /// Project들이 함께 쓸 브랜치 — Project가 없으면 없어도 된다.
+    pub(crate) branch: Option<String>,
+    /// Host가 추천하는 Project — 고른 차례 그대로, 겹치지 않는다.
+    pub(crate) projects: Vec<Pick>,
+}
+
+/// Host가 추천한 Project 하나 — slug와 고른 까닭(「refund.service.ts가 여기 있어요」).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Pick {
+    pub(crate) slug: String,
+    pub(crate) reason: Option<String>,
 }
 
 /// 도구 호출을 읽지 못한 까닭.
@@ -333,6 +382,58 @@ pub(crate) fn list() -> Value {
                 "additionalProperties": false,
             },
         },
+        {
+            "name": LIST_PROJECTS,
+            "title": "Project 목록",
+            "description": "사람이 Atelier에 등록한 Project(git 저장소)들 — slug · 이름 · 폴더 · baseBranch · 설명과, 그 저장소에 \
+                            이미 있는 브랜치들(git.localBranches). Work 만들기를 제안하기 전에 부른다: 고칠 Project의 slug와, 그 \
+                            저장소의 브랜치 이름 규칙(fix/… · feature/…)이 여기서 나온다. 읽기만 한다.",
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+        },
+        {
+            "name": GET_WORK,
+            "title": "Work 읽기",
+            "description": "이 Thread가 이어진 Work — slug · 제목 · 브랜치 · spec 폴더(설계 문서를 쓰는 곳)와 Project마다의 worktree(아직 \
+                            없으면 읽기만), 그리고 spec 폴더 안 문서의 배치. Work에 이어지지 않았으면 그렇다고 돌려준다. 읽기만 한다.",
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+        },
+        {
+            "name": PROPOSE_WORK,
+            "title": "Work 만들기 제안",
+            "description": PROPOSE_WORK_GUIDE,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Work 제목 — 사람의 말로 짧게(예: 환불 API 버그 수정)"},
+                    "slug": {
+                        "type": "string",
+                        "description": "영어 소문자 · 숫자를 `-`로 이은 이름(예: refund-api) — Work 폴더 이름이자 브랜치 기본값이고 \
+                                        바뀌지 않는다",
+                    },
+                    "reason": {"type": "string", "description": "왜 Work로 묶는지 한 줄 — 카드에 제목과 함께 선다"},
+                    "branch": {
+                        "type": "string",
+                        "description": "Project들이 함께 쓸 브랜치 이름 — 그 저장소의 규칙(list_projects의 localBranches)을 따른다. \
+                                        고칠 Project가 없으면 뺀다",
+                    },
+                    "projects": {
+                        "type": "array",
+                        "description": "고칠 Project — 카드에 「Host 추천」으로 선다. 기획만이면 빈 목록",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "slug": {"type": "string", "description": "list_projects의 slug"},
+                                "reason": {"type": "string", "description": "이 Project를 고른 까닭 한 줄(예: refund.service.ts가 여기 있어요)"},
+                            },
+                            "required": ["slug"],
+                            "additionalProperties": false,
+                        },
+                    },
+                },
+                "required": ["title", "slug", "reason"],
+                "additionalProperties": false,
+            },
+        },
     ]})
 }
 
@@ -358,8 +459,52 @@ pub(crate) fn read_call(params: &Value) -> Result<Call, Unread> {
             (Some(handle), Some(content)) => Ok(Call::SaveAgent { handle: handle.to_owned(), content: content.to_owned() }),
             _ => Err(Unread::Bad("handle과 content(Agent 파일의 글)를 글로 주세요".to_owned())),
         },
+        LIST_PROJECTS => Ok(Call::ListProjects),
+        GET_WORK => Ok(Call::GetWork),
+        PROPOSE_WORK => read_proposal(arguments).map(Call::ProposeWork).map_err(Unread::Bad),
         _ => Err(Unread::Unknown(Fault::new(-32602, format!("모르는 도구입니다: {name}")))),
     }
+}
+
+/// 「Work 만들기 제안」의 인자 — 틀리면 Agent가 고쳐 부를 까닭의 글이다. 글 칸은 앞뒤 빈칸을 걷는다. Project는 `{slug, reason}`
+/// 꼴이고, slug 글자 하나만 줘도 받는다. 같은 Project는 한 번만 든다.
+fn read_proposal(arguments: &Value) -> Result<Proposal, String> {
+    let text = |field: &str| arguments[field].as_str().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
+    let title = text("title").ok_or("title(Work 제목)을 글로 주세요")?;
+    let slug = text("slug").ok_or("slug(Work 폴더 이름)를 글로 주세요")?;
+    if !is_kebab(&slug) {
+        return Err(format!(
+            "slug `{slug}`은 쓸 수 없다 — 영어 소문자 · 숫자를 `-`로 이은 이름이다(예: refund-api). Work 폴더 이름이자 브랜치 \
+             기본값이 된다."
+        ));
+    }
+    let reason = text("reason").ok_or("reason(왜 Work로 묶는지)을 글로 주세요")?;
+    let mut projects: Vec<Pick> = Vec::new();
+    let listed = match &arguments["projects"] {
+        Value::Null => Vec::new(),
+        Value::Array(items) => items.clone(),
+        _ => return Err("projects는 [{slug, reason}] 목록으로 주세요".to_owned()),
+    };
+    for item in &listed {
+        let (slug, reason) = match item {
+            Value::String(slug) => (Some(slug.trim()), None),
+            Value::Object(_) => (item["slug"].as_str().map(str::trim), item["reason"].as_str().map(str::trim)),
+            _ => (None, None),
+        };
+        let Some(slug) = slug.filter(|slug| !slug.is_empty()) else {
+            return Err("projects의 칸마다 slug(list_projects의 slug)를 글로 주세요".to_owned());
+        };
+        if !projects.iter().any(|pick| pick.slug == slug) {
+            let reason = reason.filter(|reason| !reason.is_empty()).map(str::to_owned);
+            projects.push(Pick { slug: slug.to_owned(), reason });
+        }
+    }
+    Ok(Proposal { title, slug, reason, branch: text("branch"), projects })
+}
+
+/// 영어 kebab-case인가 — 소문자 · 숫자 조각을 `-` 하나로 잇는다.
+fn is_kebab(slug: &str) -> bool {
+    slug.split('-').all(|piece| !piece.is_empty() && piece.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
 }
 
 /// 도구의 결과 — 글 하나. `refused`면 도구의 실패(`isError`)다 — Agent가 그 까닭을 읽고 고쳐 부른다.
@@ -408,7 +553,18 @@ mod tests {
             Err(Unread::Unknown(Fault::new(-32602, "모르는 도구입니다: delete_thread")))
         );
         let listed: Vec<Value> = list()["tools"].as_array().unwrap().iter().map(|tool| tool["name"].clone()).collect();
-        assert_eq!(listed, [json!("rename_thread"), json!("call_agent"), json!("save_agent")], "목록과 읽는 도구가 같다");
+        assert_eq!(
+            listed,
+            [
+                json!("rename_thread"),
+                json!("call_agent"),
+                json!("save_agent"),
+                json!("list_projects"),
+                json!("get_work"),
+                json!("propose_work")
+            ],
+            "목록과 읽는 도구가 같다"
+        );
     }
 
     #[test]
@@ -421,5 +577,46 @@ mod tests {
         assert!(matches!(call(json!({"handle": " @ ", "task": "봐 줘"})), Err(Unread::Bad(_))));
         assert!(matches!(call(json!({"handle": "reviewer", "task": "  "})), Err(Unread::Bad(_))));
         assert!(matches!(call(json!({"task": "봐 줘"})), Err(Unread::Bad(_))));
+    }
+
+    #[test]
+    fn work_만들기_제안은_제목_slug_까닭을_받고_project는_겹치지_않게_차례대로_받으며_틀린_인자는_도구의_실패다() {
+        let call = |arguments: Value| read_call(&json!({"name": "propose_work", "arguments": arguments}));
+        assert_eq!(
+            call(json!({
+                "title": " 환불 API 버그 수정 ", "slug": "refund-api", "reason": "고칠 곳을 골라 두었어요", "branch": "fix/refund-api",
+                "projects": [{"slug": "api-server", "reason": "refund.service.ts가 여기 있어요"}, "web-app", {"slug": "api-server"}],
+            })),
+            Ok(Call::ProposeWork(Proposal {
+                title: "환불 API 버그 수정".into(),
+                slug: "refund-api".into(),
+                reason: "고칠 곳을 골라 두었어요".into(),
+                branch: Some("fix/refund-api".into()),
+                projects: vec![
+                    Pick { slug: "api-server".into(), reason: Some("refund.service.ts가 여기 있어요".into()) },
+                    Pick { slug: "web-app".into(), reason: None },
+                ],
+            }))
+        );
+        assert_eq!(
+            call(json!({"title": "기획", "slug": "plan-2", "reason": "문서부터", "branch": " "})),
+            Ok(Call::ProposeWork(Proposal {
+                title: "기획".into(),
+                slug: "plan-2".into(),
+                reason: "문서부터".into(),
+                branch: None,
+                projects: Vec::new(),
+            })),
+            "Project 없이 기획만으로도 제안한다(스토리 97)"
+        );
+        for slug in ["Refund", "refund_api", "refund--api", "-refund", "환불"] {
+            let refused = call(json!({"title": "t", "slug": slug, "reason": "r"}));
+            assert!(matches!(refused, Err(Unread::Bad(_))), "slug {slug}: {refused:?}");
+        }
+        assert!(matches!(call(json!({"slug": "a", "reason": "r"})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"title": "t", "slug": "a"})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"title": "t", "slug": "a", "reason": "r", "projects": [{"reason": "x"}]})), Err(Unread::Bad(_))));
+        assert_eq!(read_call(&json!({"name": "list_projects", "arguments": {}})), Ok(Call::ListProjects));
+        assert_eq!(read_call(&json!({"name": "get_work"})), Ok(Call::GetWork));
     }
 }

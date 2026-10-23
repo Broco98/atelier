@@ -26,7 +26,7 @@ use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms,
 mod thread;
 mod turn_order;
 
-pub use thread::{Reply, ThreadLink, ThreadView};
+pub use thread::{Reply, ThreadLink, ThreadView, WorkChoice};
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
@@ -549,6 +549,11 @@ pub enum HostError {
     /// 「다시 맡기기」로 부를 수 없다(v1 티켓 17) — `tools.agents`에 없음 · 범위 밖 · 호출 고리 안(§8 「부를 수 있나」). 까닭은
     /// Agent 부르기 도구가 돌려주는 글 그대로다.
     CallRefused(String),
+    /// 서 있지 않은 Work 만들기 카드(v1 티켓 30) — 이미 답했거나 거둬졌다(멈춤 · 그 Session이 끝남).
+    QuestionClosed { thread: String, request: String },
+    /// 「Work 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
+    /// 적지 않았고 카드는 그대로 서 있다.
+    WorkNotCreated(String),
 }
 
 impl fmt::Display for HostError {
@@ -595,6 +600,8 @@ impl fmt::Display for HostError {
             }
             HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
             HostError::CallRefused(reason) => write!(f, "{reason}"),
+            HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
+            HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
         }
     }
 }

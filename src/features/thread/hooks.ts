@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
+import { settingsApi } from "@/features/settings/api";
+import { saveSettingsSection } from "@/features/settings/save-section";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { mergeLines, threadQueueStore, setQueue } from "./thread-store";
@@ -40,7 +42,8 @@ export const useThreads = () => useQuery(threadsQuery());
 export const useThread = (thread: string) => useQuery(threadQuery(thread));
 
 /**
- * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름도 따라 바꾼다.
+ * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름 · 이은 Work도 따라
+ * 바꾼다(Work 만들기 카드로 Thread가 Work에 이어졌다 — v1 티켓 30).
  * **참여자가 바뀌었으면 연 Thread를 다시 읽는다**(v1 티켓 14) — 멘션으로 들어온 Agent의 참여자 줄(`thread.json` — 온 곳 · 모델 · 생각
  * 깊이)은 요약에 없다. 그것이 있어야 머리 카드의 얼굴 · @ 메뉴의 「이 Thread에 있음」 · 그 Agent의 모델 칩이 선다.
  */
@@ -54,7 +57,9 @@ function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
     return next;
   });
   queryClient.setQueryData<ThreadView>(threadKey(summary.id), (view) =>
-    view && view.title !== summary.title ? { ...view, title: summary.title } : view,
+    view && (view.title !== summary.title || view.work !== summary.work)
+      ? { ...view, title: summary.title, work: summary.work }
+      : view,
   );
   const view = queryClient.getQueryData<ThreadView>(threadKey(summary.id));
   if (view && view.participants.map((one) => one.handle).join("\n") !== summary.handles.join("\n")) {
@@ -174,4 +179,35 @@ export function useAgentRoster(work: string | null): AgentRoster | null {
     retry: false,
   });
   return data ?? null;
+}
+
+const DECISIONS_SEEN_KEY = ["settings", "seen", "decisions"] as const;
+
+/**
+ * 「결정은 내가 합니다」 카드를 봤나(v1 티켓 30 · S31) — 앱 설정의 본 표(`seen.decisions`)다. 아직 읽지 못했으면 null이다. 못 읽으면(깨진
+ * 설정 파일) 본 것으로 친다 — 고칠 자리는 설정 화면이 말하고, 이 카드가 그 파일을 덮어쓰지 않게.
+ */
+export function useDecisionsSeen(): boolean | null {
+  const { data } = useQuery({
+    queryKey: DECISIONS_SEEN_KEY,
+    queryFn: async () => {
+      try {
+        return (await settingsApi.read()).seen?.decisions === true;
+      } catch {
+        return true;
+      }
+    },
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+  return data ?? null;
+}
+
+/** 「결정은 내가 합니다」 카드를 봤다고 적는다 — 설정의 다른 구획 · 모르는 칸은 그대로다(`saveSettingsSection`). */
+export function useMarkDecisionsSeen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => saveSettingsSection("seen", (latest) => ({ ...latest, decisions: true })),
+    onMutate: () => queryClient.setQueryData(DECISIONS_SEEN_KEY, true),
+  });
 }

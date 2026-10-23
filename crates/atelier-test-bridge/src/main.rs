@@ -247,6 +247,7 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_delete_queued", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_send_now", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_permission", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_work", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),

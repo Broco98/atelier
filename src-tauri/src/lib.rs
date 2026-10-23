@@ -532,6 +532,7 @@ pub fn run() {
             commands::thread_delete_queued,
             commands::thread_send_now,
             commands::thread_answer_permission,
+            commands::thread_answer_work,
             commands::thread_set_model,
             commands::thread_set_effort,
             commands::thread_set_mode,

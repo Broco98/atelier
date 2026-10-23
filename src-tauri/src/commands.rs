@@ -873,6 +873,25 @@ pub async fn thread_answer_permission(
     .await
 }
 
+/// Work 만들기 카드의 답(v1 티켓 30) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「Work 만들기」(`create`, 카드에서 고친
+/// Project들 · 브랜치)나 「Work 없이 계속」으로 답한다. 만들지 못하면 그 까닭으로 실패하고 카드는 그대로 서 있다.
+#[tauri::command]
+pub async fn thread_answer_work(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    request: String,
+    create: bool,
+    projects: Vec<String>,
+    branch: Option<String>,
+) -> CmdResult<()> {
+    let choice = if create {
+        atelier_acp::WorkChoice::Create { projects, branch }
+    } else {
+        atelier_acp::WorkChoice::Continue
+    };
+    to_host(&engine, "Work 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
+}
+
 /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
 #[tauri::command]
 pub async fn thread_set_model(

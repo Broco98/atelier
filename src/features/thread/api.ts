@@ -66,6 +66,12 @@ export const threadApi = {
    */
   answerPermission: (thread: string, who: string, request: string, option: string, remember = false, words: string | null = null) =>
     invoke<void>("thread_answer_permission", { thread, who, request, option, remember, words }),
+  /**
+   * Work 만들기 카드의 답(v1 티켓 30) — 「Work 만들기」면 `create`와 고른 Project · 고친 브랜치(Project가 없으면 null), 「Work 없이 계속」이면
+   * `create: false`다. 만들지 못하면 실패로 오고 카드는 그대로 선다(다시 고를 수 있다). 고른 것은 기록의 답 줄로 온다.
+   */
+  answerWork: (thread: string, request: string, create: boolean, projects: string[] = [], branch: string | null = null) =>
+    invoke<void>("thread_answer_work", { thread, request, create, projects, branch }),
   /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
   setModel: (thread: string, who: string, model: string) =>
     invoke<Participant>("thread_set_model", { thread, who, model }),

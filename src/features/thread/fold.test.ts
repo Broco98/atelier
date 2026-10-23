@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { answeringLine, finalMessages, flowOf, foldThread, headline, type CallEntry } from "./fold";
+import { answeringLine, finalMessages, flowOf, foldThread, headline, type CallEntry, type PendingWork, type ThreadModel } from "./fold";
 import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
 
@@ -620,5 +620,102 @@ describe("물어보는 정도(v1 티켓 23)", () => {
     const swapped = auto.map((line) => (line === first ? { ...decided, seq: first.seq } : line === decided ? { ...first, seq: decided.seq } : line));
     const tool = foldThread(swapped).turns[0].entries.find((entry) => entry.kind === "tool");
     expect(tool?.kind === "tool" && tool.allowed).toBe("편집은 허용");
+  });
+});
+
+describe("Work 만들기 카드(v1 티켓 30)", () => {
+  /** Host가 Work 만들기를 제안하고, 사람이 web-app을 넣어 만든 축복 기록 — 8 제안 · 9 답 · 10 work 줄 · 11 도구 끝. */
+  const working = record("thread-work");
+  /** 걸린 Work 만들기 카드 — 권한 요청과 한 물음 차례(`asks`)에 선다. */
+  const cards = (model: ThreadModel) => model.asks.filter((one): one is PendingWork => one.card === "work");
+
+  it("제안 줄이 오면 카드가 서고 — 제목 · 까닭 · 브랜치와 등록된 Project(Host 추천이 먼저) — 그 도구 줄은 「Work 만들기를 묻는 중」이다", () => {
+    const model = foldThread(through(working, 8));
+    expect(cards(model).map((one) => [one.requestId, one.who, one.title, one.reason, one.slug, one.branch])).toEqual([
+      ["fake-request", "host", "환불 API 버그 수정", "고칠 Project와 브랜치를 골라 두었어요", "refund-api", "fix/refund-api"],
+    ]);
+    expect(cards(model)[0].projects).toEqual([
+      {
+        slug: "api-server",
+        name: "api-server",
+        description: "결제 · 환불 API",
+        recommended: true,
+        reason: "refund.service.ts가 여기 있어요",
+        branches: ["main"],
+      },
+      { slug: "web-app", name: "web-app", description: "환불 버튼 화면", recommended: false, reason: null, branches: ["main"] },
+    ]);
+    const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
+    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Work 만들기를 묻는 중");
+  });
+
+  it("만들면 카드가 걷히고, 그 도구 줄 자리에 「Work 만들기」 결정 줄이, 턴 뒤에 「Work … 을 만들고 이 Thread에 연결함」 시스템 줄이 선다", () => {
+    const model = foldThread(working);
+    expect(cards(model)).toEqual([]);
+    const entries = model.turns[0].entries;
+    expect(entries.map((entry) => entry.kind)).toEqual(["work-choice", "message"]);
+    expect(entries[0]).toMatchObject({ created: true, projects: ["api-server", "web-app"], branch: "fix/refund-api" });
+    expect(model.system.map((line) => [line.kind, line.before, line.name, line.after, line.turnsBefore])).toEqual([
+      ["work", "Work ", "환불 API 버그 수정", "을 만들고 이 Thread에 연결함", 1],
+    ]);
+    expect(finalMessages(model.turns[0]).map((entry) => entry.kind === "message" && entry.text)).toEqual(["hello from turn"]);
+  });
+
+  it("결정 줄은 턴 끝 메시지를 가르지 않는다 — 카드 앞에 물은 말과 결정 뒤의 답이 함께 접힌 턴에 남는다(화면 2 보드)", () => {
+    const asked = update(6, 6, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "m-ask",
+      content: { type: "text", text: "이 일을 Work로 만들어 둘까요?" },
+    });
+    const model = foldThread(working.map((line) => (line.seq === 6 ? asked : line)));
+    expect(finalMessages(model.turns[0]).map((entry) => entry.kind === "message" && entry.text)).toEqual([
+      "이 일을 Work로 만들어 둘까요?",
+      "hello from turn",
+    ]);
+  });
+
+  it("「Work 없이 계속」은 시스템 줄 없이 결정 줄만 서고, 멈춤으로 거둔 카드는 결정 줄 없이 걷힌다", () => {
+    const answered = (payload: Record<string, unknown>): RecordLine => ({
+      seq: 9,
+      at: at(9),
+      kind: "question",
+      who: "host",
+      payload: { requestId: "fake-request", card: "work", ...payload },
+    });
+    const continued = foldThread([...through(working, 8), answered({ state: "answered", choice: "continue" })]);
+    expect(cards(continued)).toEqual([]);
+    expect(continued.system).toEqual([]);
+    expect(continued.turns[0].entries.map((entry) => entry.kind === "work-choice" && entry.created)).toEqual([false]);
+
+    const withdrawn = foldThread([...through(working, 8), answered({ state: "withdrawn", reason: "stopped" })]);
+    expect(cards(withdrawn)).toEqual([]);
+    expect(withdrawn.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool"]);
+  });
+
+  it("Project 목록 · Work 읽기 도구 줄은 사람의 말로 선다 — 「Project 2개 목록 확인함」 · 「Work 읽음」", () => {
+    const tool = (seq: number, id: string, name: string, status: string, text?: string) =>
+      update(seq, seq, {
+        sessionUpdate: seq === 2 || seq === 4 ? "tool_call" : "tool_call_update",
+        toolCallId: id,
+        title: name,
+        kind: "other",
+        status,
+        _meta: { claudeCode: { toolName: name } },
+        ...(text !== undefined && { content: [{ type: "content", content: { type: "text", text } }] }),
+      });
+    const model = foldThread([
+      { seq: 1, at: at(1), kind: "sent", payload: { text: "환불 API 버그 고쳐줘", to: "host" } },
+      tool(2, "p", "mcp__atelier-thread__list_projects", "in_progress"),
+      tool(3, "p", "mcp__atelier-thread__list_projects", "completed", '[{"slug":"api-server"},{"slug":"web-app"}]'),
+      tool(4, "w", "mcp__atelier-thread__get_work", "in_progress"),
+    ]);
+    const phrases = model.turns[0].entries.map((entry) => entry.kind === "tool" && phraseText(describeTool(entry).phrase));
+    expect(phrases).toEqual(["Project 2개 목록 확인함", "Work 읽는 중"]);
+  });
+
+  it("제안한 Session이 끝나면 카드도 걷힌다 — 답할 곳이 없다", () => {
+    const died: RecordLine = { seq: 9, at: at(9), kind: "session", who: "host", payload: { state: "died", reason: "끝남" } };
+    expect(foldThread([...through(working, 8), died]).asks).toEqual([]);
+    expect(foldThread(through(working, 8), 8).asks).toEqual([]);
   });
 });

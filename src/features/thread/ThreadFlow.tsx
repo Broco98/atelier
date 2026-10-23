@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useStore } from "@tanstack/react-store";
-import { Check, CircleAlert, Copy, Info, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Copy, Folder, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
@@ -21,6 +21,7 @@ import {
   type ThreadModel,
   type ToolEntry,
   type Turn,
+  type WorkChoiceEntry,
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
 import { mentionOf } from "./mentions";
@@ -43,7 +44,9 @@ import { LogHead, ToolRows } from "./WorkLog";
 // - **작업 로그** — 일하는 동안은 「N초 동안 작업 중입니다」가 반짝이고 그 아래로 도구 줄이 쌓인다. 승인을 기다리면 「· 승인을
 //   기다립니다」가 링크 색으로 붙는다. 끝나면 「N초 동안 작업함」 한 줄로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다.
 //   머리줄을 누르면 생각 · 도구 줄 · 앞선 답이 펼쳐진다. 승인 카드에서 고른 것은 그 도구 줄 뒤의 결정 줄이다(v1 티켓 24 — 「✓ 명령
-//   실행을 승인함 · 이 Work에서는 다시 묻지 않음」, 거부는 ✕와 남긴 말).
+//   실행을 승인함 · 이 Work에서는 다시 묻지 않음」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
+//   「✓ Work 만들기 · api-server · fix/refund-api」 · 「→ Work 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
+//   시스템 줄 「📁 Work … 을 만들고 이 Thread에 연결함」이다.
 // - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming`). 답을 기다리는 동안은 「생각 중」이 반짝인다.
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
@@ -88,11 +91,11 @@ function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCall
   const actions = useMemo<CallActions>(
     () => ({
       cast: model.cast,
-      asking: new Set(model.pending.map((request) => request.who)),
+      asking: new Set(model.asks.map((request) => request.who)),
       openSession: onOpenSession,
       callAgain: onCallAgain,
     }),
-    [model.cast, model.pending, onOpenSession, onCallAgain],
+    [model.cast, model.asks, onOpenSession, onCallAgain],
   );
   // Session 보기의 끝난 턴은 처음부터 펼쳐 둔다 — 그 열쇠에는 접은 턴이 든다(온 흐름의 펼침과 따로다).
   const keyOf = (turn: Turn) => turnKey(thread, only === null ? turn.key : `${only}\u0000${turn.key}`);
@@ -110,7 +113,7 @@ function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCall
               task={only !== null}
               open={isOpen(turn)}
               onToggle={() => toggleTurn(keyOf(turn))}
-              waiting={turn.end === null && model.pending.some((request) => request.who === (turn.who ?? "host"))}
+              waiting={turn.end === null ? waitingFor(model, turn.who ?? "host") : null}
               last={turn === last}
               onRetry={onRetry}
             />
@@ -164,9 +167,16 @@ function NoticeLine({ notice }: { notice: Notice }) {
   );
 }
 
+/** 도는 턴의 머리줄 끝에 붙는 기다림 — 그 참여자가 물은 것이 있으면 무엇을 기다리는지다. */
+function waitingFor(model: ThreadModel, who: string): string | null {
+  const ask = model.asks.find((one) => one.who === who);
+  if (!ask) return null;
+  return ask.card === "work" ? "Work 만들기 답을 기다립니다" : "승인을 기다립니다";
+}
+
 /**
  * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄 · Library에 저장한 줄은 이름 앞에 그 얼굴이 선다 —
- * 저장한 Agent는 참여자가 아니라 줄이 실은 얼굴이다.
+ * 저장한 Agent는 참여자가 아니라 줄이 실은 얼굴이다. Work를 만든 줄은 앞에 폴더 14가 선다(Cards 보드 「결정한 뒤」, 사이 6).
  */
 function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<string, CastMember>> }) {
   return (
@@ -174,6 +184,7 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
       data-system={line.kind}
       className="flex flex-wrap items-center justify-center self-center text-center text-chat-meta leading-5 text-fg-tertiary"
     >
+      {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 「Library에」와 얼굴이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
       {line.handle && (
@@ -207,7 +218,8 @@ function TurnView({
   task: boolean;
   open: boolean;
   onToggle: () => void;
-  waiting: boolean;
+  /** 사람의 답을 기다리면 그 말(「승인을 기다립니다」) — 머리줄 끝에 링크 색으로 붙는다. */
+  waiting: string | null;
   last: boolean;
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
 }) {
@@ -216,18 +228,28 @@ function TurnView({
   // 글이 빈 생각은 그리지 않는다 — Claude Code는 생각의 글을 빈 문자열로 준다. 지금 생각하는 중이면 「생각 중」으로만 선다.
   const said = (entry: Entry) => entry.kind !== "thought" || entry.text.trim() !== "";
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(said);
-  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message") : [];
-  // 계획 카드 · 체크리스트 · 호출 줄은 접힌 턴에도 남는다 — 계획과 누가 무엇을 맡았는지는 다시 보는 것이다.
+  // 턴 끝의 답 사이에 선 Work 만들기 결정 줄은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
+  const final = turn.end
+    ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || entry.kind === "work-choice")
+    : [];
+  // 계획 카드 · 체크리스트 · 호출 줄 · Work 만들기 결정 줄은 접힌 턴에도 남는다 — 계획과 누가 무엇을 맡았는지 · Work를 만들었는지는
+  // 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   const kept =
     turn.end && !open
-      ? turn.entries.filter((entry) => entry.kind === "plan" || entry.kind === "checklist" || entry.kind === "call")
+      ? turn.entries.filter(
+          (entry, at) =>
+            entry.kind === "plan" ||
+            entry.kind === "checklist" ||
+            entry.kind === "call" ||
+            (entry.kind === "work-choice" && at < from),
+        )
       : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
   const waitingFirst = !turn.end && turn.entries.length === 0;
   const thinking = !turn.end && lastEntry?.kind === "thought";
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
-  const finalText = final.map((entry) => (entry.kind === "message" ? entry.text : "")).join("\n\n");
+  const finalText = final.flatMap((entry) => (entry.kind === "message" ? [entry.text] : [])).join("\n\n");
   return (
     <>
       {turn.sent !== null && (
@@ -306,8 +328,8 @@ function clock(at: string): string {
   return date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
 }
 
-/** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 승인을 기다리면 그 말이 링크 색으로 붙는다. */
-function RunningHead({ turn, waiting }: { turn: Turn; waiting: boolean }) {
+/** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 사람의 답을 기다리면 그 말이 링크 색으로 붙는다. */
+function RunningHead({ turn, waiting }: { turn: Turn; waiting: string | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -318,7 +340,7 @@ function RunningHead({ turn, waiting }: { turn: Turn; waiting: boolean }) {
     <p className="flex flex-wrap items-center gap-1.5 text-sm text-fg-tertiary">
       <span>{text}</span>
       <span aria-hidden>·</span>
-      <span className="text-link">승인을 기다립니다</span>
+      <span className="text-link">{waiting}</span>
     </p>
   ) : (
     <p className="chat-shimmer text-sm">{text}</p>
@@ -373,7 +395,29 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       );
     case "decision":
       return <DecisionRow entry={entry} />;
+    case "work-choice":
+      return <WorkChoiceRow entry={entry} />;
   }
+}
+
+/**
+ * Work 만들기 결정 줄(화면 2 보드 `.done-line` · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양이다. 만들었으면 ✓와 「Work
+ * 만들기 · api-server · fix/refund-api」, 아니면 →와 「Work 없이 계속함」.
+ */
+function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
+  const Icon = entry.created ? Check : ArrowRight;
+  const text = entry.created
+    ? ["Work 만들기", ...entry.projects, ...(entry.branch ? [entry.branch] : [])].join(" · ")
+    : "Work 없이 계속함";
+  return (
+    <p
+      data-decision={entry.created ? "work-created" : "work-skipped"}
+      className="flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary"
+    >
+      <Icon className="size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 wrap-anywhere">{text}</span>
+    </p>
+  );
 }
 
 /** 결정 줄(Screen-Thread · Approval 보드 `.done-line`) — 아이콘 16과 13/20 `fg-tertiary` 한 줄. 남긴 말은 뒤에 따옴표로 진하게 선다. */
