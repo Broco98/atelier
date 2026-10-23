@@ -31,7 +31,7 @@ import type { AskLevel, Attachment } from "./types";
 //   말과 함께 가고, 엔진이 그 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 둔다.
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/work`는 Work 칩 메뉴를 열고(첫 말
 //   전에만, v1 티켓 31), `/agent`는 Agent 부르기 메뉴를 열고, `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는
-//   정도 메뉴를 연다(v1 티켓 23). Runtime 명령은 입력칸이 `/이름 `이 된다.
+//   정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
 // - **움직임**(v1 티켓 43 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜), 보내기 ·
@@ -192,9 +192,10 @@ function ThreadComposer({
     onCreateAgent?.();
   };
 
-  // 물어보는 정도 · Work 메뉴의 열림 — 칩을 누르거나 `/policy` · `/work`가 연다.
+  // 물어보는 정도 · Work · 모델 메뉴의 열림 — 칩을 누르거나 `/policy` · `/work` · `/model`이 연다.
   const [asking, setAsking] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [choosingModel, setChoosingModel] = useState(false);
   const pickCommand = (command: CommandOption) => {
     if (command.thread && command.name === "new") {
       setDraft(draftKey, "");
@@ -215,6 +216,13 @@ function ThreadComposer({
     if (command.thread && command.name === "policy") {
       setDraft(draftKey, "");
       setAsking(true);
+      return;
+    }
+    if (command.thread && command.name === "model") {
+      setDraft(draftKey, "");
+      // 칩이 보이기만 할 때(고를 목록이 없다)는 열 메뉴가 없다 — 입력칸으로 돌아간다.
+      if (models && models.length > 0) setChoosingModel(true);
+      else field.current?.focus();
       return;
     }
     if (command.thread && command.name === "agent") {
@@ -442,6 +450,8 @@ function ThreadComposer({
               running={recipientRunning}
               onModel={onModel}
               onEffort={onEffort}
+              open={choosingModel}
+              onOpenChange={setChoosingModel}
             />
             {(!running || !empty) && (
               <button

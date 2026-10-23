@@ -68,14 +68,17 @@ describe("입력창 칩", () => {
 
 describe("「/」 명령(v1 티켓 23)", () => {
   it("화면 명령이 보드의 차례로 Runtime 명령 앞에 서고, 같은 이름의 Runtime 명령은 가린다 — `/plan`은 늘 계획만이다", () => {
+    // `/model`은 모델 칩 메뉴를 연다(구현 스펙 §14, 코드 리뷰 1차 B8) — Runtime의 `/model`은 가린다.
     const runtime = [
       { name: "plan", description: "Runtime의 plan", aliases: [] },
+      { name: "model", description: "Runtime의 model", aliases: [] },
       { name: "compact", description: "맥락 줄이기", aliases: [] },
     ];
     expect(slashCommands(runtime).map((command) => [command.name, command.description])).toEqual([
       ["new", "새 Thread"],
       ["agent", "Agent 부르기"],
       ["plan", "계획만 세우고 멈추기"],
+      ["model", "모델과 생각 깊이"],
       ["policy", "언제 물어볼지"],
       ["compact", "맥락 줄이기"],
     ]);
@@ -87,6 +90,7 @@ describe("「/」 명령(v1 티켓 23)", () => {
       ["work", "Work 만들기 · 붙이기"],
       ["agent", "Agent 부르기"],
       ["plan", "계획만 세우고 멈추기"],
+      ["model", "모델과 생각 깊이"],
       ["policy", "언제 물어볼지"],
     ]);
     expect(slashCommands([{ name: "work", description: "Runtime의 work", aliases: [] }]).map((command) => command.name)).not.toContain(

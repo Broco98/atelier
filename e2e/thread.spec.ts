@@ -119,6 +119,14 @@ test("다시 켜면 앱은 새 Thread로 열리고, 사이드바의 그 Thread�
   }
   await expect(흐름(page).getByText(/동안 작업 중입니다$/)).toHaveCount(0);
 
+  // `/model`은 모델 칩 메뉴를 연다(구현 스펙 §14 · 코드 리뷰 1차 B8) — 입력칸은 비고, 메뉴는 기록이 연 Session의 모델들이다.
+  await 입력칸(page).fill("/model");
+  await 입력칸(page).press("Enter");
+  await expect(page.getByRole("menuitemradio").first()).toBeVisible();
+  await expect(입력칸(page)).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+
   // 이어 말하면 같은 Thread로 간다 — 엔진이 같은 Session으로 되살린다(L1 `thread_host.rs`).
   await 입력칸(page).fill("고마워");
   await 입력칸(page).press("Enter");

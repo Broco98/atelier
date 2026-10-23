@@ -52,9 +52,12 @@ interface ModelChipProps {
   running: boolean;
   onModel: (value: string) => void;
   onEffort: (value: string) => void;
+  /** 메뉴의 열림 — 칩을 누르거나 `/model`이 연다. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function ModelChip({ models, model, effort, running, onModel, onEffort }: ModelChipProps) {
+export function ModelChip({ models, model, effort, running, onModel, onEffort, open, onOpenChange }: ModelChipProps) {
   const label = chipLabel(models, model, effort);
   const mark = ClaudeMark && <ClaudeMark className="size-3.5 shrink-0" />;
   if (!models || models.length === 0) {
@@ -67,7 +70,7 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort }:
     );
   }
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger aria-label={`모델과 생각 깊이 ${label}`} className={cn(MENU_CHIP, "max-w-56 min-w-0")}>
         {mark}
         <span className="min-w-0 truncate">{label}</span>
