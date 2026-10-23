@@ -1,5 +1,5 @@
 import { isObject, nonEmpty, text, type Json } from "./json";
-import type { RecordLine } from "./types";
+import type { Attachment, RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05 · 구현 스펙 §14) — Thread 기록 줄을 받아 화면 모델(턴 · 말한 이 · 메시지 · 생각 · 도구 줄 · 시스템 줄 ·
 // 도는가)로 접는 **순수 함수**다. Thread 화면은 Thread를 이것 하나로 그린다: 처음 그릴 때 읽은 기록도, 흐르는 기록 줄 이벤트도 같은
@@ -92,6 +92,8 @@ export interface Turn {
   namesWho: boolean;
   /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말은 기록의 `prompt`에만 있다. 스스로 이어 간 턴은 null이다. */
   sent: string | null;
+  /** 그 말에 붙인 파일 · 폴더(`sent`의 `attachments`, v1 티켓 06) — 말풍선 위 칩이다. 없으면 빈 목록이다. */
+  attachments: Attachment[];
   /** Agent가 스스로 이어 간 턴인가 — 보낸 말 없이 시작했거나 턴 밖 끝만 온 턴이다. */
   selfContinued: boolean;
   /** 턴이 선 시각(보낸 말 · 처음 온 줄). */
@@ -185,13 +187,14 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
-  const start = (key: string, sent: string | null, at: string, who: string | null): Turn => {
+  const start = (key: string, sent: string | null, at: string, who: string | null, attachments: Attachment[] = []): Turn => {
     const previous = turns[turns.length - 1];
     const turn: Turn = {
       key,
       who,
       namesWho: true,
       sent,
+      attachments,
       selfContinued: sent === null,
       startedAt: at,
       answeredAt: null,
@@ -245,7 +248,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
       case "sent":
-        open = start(`t${line.seq}`, text(payload.text) ?? "", line.at, text(payload.to));
+        open = start(`t${line.seq}`, text(payload.text) ?? "", line.at, text(payload.to), attachmentsOf(payload.attachments));
         break;
       case "update": {
         const update = isObject(payload.update) ? payload.update : null;
@@ -461,6 +464,17 @@ export function foldOf(lines: readonly RecordLine[], goneThrough: number | null)
   const model = foldThread(lines, goneThrough);
   folded.set(lines, { goneThrough, model });
   return model;
+}
+
+/** `sent`의 `attachments` 칸 → 첨부들. 경로가 글이 아닌 칸은 버린다 — 칩이 그릴 수 없다. */
+function attachmentsOf(value: unknown): Attachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): Attachment[] => {
+    if (!isObject(item)) return [];
+    const path = text(item.path);
+    if (path === null) return [];
+    return [{ path, size: typeof item.size === "number" ? item.size : null, folder: item.folder === true }];
+  });
 }
 
 function newTool(key: string, toolCallId: string, call: Json, at: string): ToolEntry {

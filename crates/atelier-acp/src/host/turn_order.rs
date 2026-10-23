@@ -20,9 +20,11 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
+use atelier_core::Attachment;
 use serde_json::{json, Value};
 
 use super::{HostError, QueuedMessage};
+use crate::attachments;
 use crate::discovery::Agent;
 use crate::login;
 use crate::quote::{Attached, Quote};
@@ -73,19 +75,22 @@ struct SelfTurn<S> {
 }
 
 /// 대기 줄에 든 말과, 보낼 때 그것이 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 그리고 붙었으면 인용과 그 인용
-/// 블록(three-axes 티켓 27). 머리말과 인용 블록은 넣을 때 work를 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는 work를 읽지 않는다.
+/// 블록(three-axes 티켓 27) · 첨부(v1 티켓 06). 머리말과 인용 블록은 넣을 때 work를 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는
+/// work를 읽지 않는다. 첨부도 넣을 때 잰 그대로 간다.
 struct Queued {
     message: QueuedMessage,
     preamble: Value,
     quote: Option<Attached>,
+    attachments: Vec<Attachment>,
 }
 
-/// 보낼 말 — 사람의 글, 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 붙었으면 인용(S12). 대기 줄에 들면 그대로 들고
-/// 간다.
+/// 보낼 말 — 사람의 글, 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 붙었으면 인용(S12) · 첨부(v1 구현 스펙 S30).
+/// 대기 줄에 들면 그대로 들고 간다.
 pub(super) struct Draft {
     pub(super) text: String,
     pub(super) preamble: Value,
     pub(super) quote: Option<Attached>,
+    pub(super) attachments: Vec<Attachment>,
 }
 
 /// 대기 줄이 왜 가지 않나 — 먼저 걸린 것 하나다. 이 차례로 보고, 앞에서 걸리면 뒤는 읽지 않는다.
@@ -243,12 +248,12 @@ impl<H: TurnHands> Seat<'_, H> {
         if !self.order.alive() || !self.hands.plugged() {
             return Err(Refused::NotRunning);
         }
-        let Draft { text, preamble, quote } = draft;
+        let Draft { text, preamble, quote, attachments } = draft;
         if self.hold().is_none() && self.order.queue.is_empty() {
-            return self.open(&text, quote.as_ref(), preamble, false, before);
+            return self.open(&text, quote.as_ref(), &attachments, preamble, false, before);
         }
         let message = QueuedMessage { id: uuid::Uuid::new_v4().to_string(), text, send_now: false };
-        self.order.queue.push_back(Queued { message, preamble, quote });
+        self.order.queue.push_back(Queued { message, preamble, quote, attachments });
         if self.hold().is_none() {
             self.release(Some(before));
         } else {
@@ -460,9 +465,9 @@ impl<H: TurnHands> Seat<'_, H> {
         if self.hold().is_some() {
             return;
         }
-        let Some(Queued { message, preamble, quote }) = self.order.queue.pop_front() else { return };
+        let Some(Queued { message, preamble, quote, attachments }) = self.order.queue.pop_front() else { return };
         let before = before.unwrap_or_else(|| self.hands.shoot());
-        let sent = self.open(&message.text, quote.as_ref(), preamble, message.send_now, before);
+        let sent = self.open(&message.text, quote.as_ref(), &attachments, preamble, message.send_now, before);
         self.announce();
         if let Err(Refused::Record(reason) | Refused::Send(reason)) = sent {
             eprintln!("{reason}");
@@ -471,7 +476,8 @@ impl<H: TurnHands> Seat<'_, H> {
 
     /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에 보낸다.
     /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 그 뒤에 지난 말(Thread의 Session, v1 구현 스펙 S10)을, 인용이
-    /// 붙은 말이면 사람의 글 바로 앞에 인용 블록을 둔다(S12). 걸림이 없을 때만 부른다.
+    /// 붙은 말이면 인용 블록을(S12), 첨부가 붙은 말이면 첨부 경로 목록을(v1 구현 스펙 S30) 사람의 글 바로 앞에 둔다. 걸림이 없을
+    /// 때만 부른다.
     ///
     /// `sent`를 적지 못하면 아무것도 바꾸지 않는다(대기 줄에서 꺼낸 말이면 그 말을 잃는다). 보내지 못하면 턴을 연 채로 두지
     /// 않는다 — 화면이 「일하는 중」에 갇히지 않게 턴 끝 줄(오류)까지 적는다. 머리말은 붙인 것으로 남고, 그 끝은 대기 줄을 보내지
@@ -480,6 +486,7 @@ impl<H: TurnHands> Seat<'_, H> {
         &mut self,
         text: &str,
         quote: Option<&Attached>,
+        attachments: &[Attachment],
         preamble: Value,
         send_now: bool,
         before: H::Shot,
@@ -492,8 +499,10 @@ impl<H: TurnHands> Seat<'_, H> {
         if let Some(attached) = quote {
             prompt.push(attached.block.clone());
         }
+        prompt.extend(attachments::block(attachments));
         prompt.push(json!({"type": "text", "text": text}));
-        self.hands.sent(text, quote.map(|attached| &attached.quote), &prompt, send_now).map_err(Refused::Record)?;
+        let quote = quote.map(|attached| &attached.quote);
+        self.hands.sent(text, quote, attachments, &prompt, send_now).map_err(Refused::Record)?;
         let started = Instant::now();
         self.order.needs_preamble = false;
         if let Err(reason) = self.hands.prompt(prompt) {
@@ -557,7 +566,14 @@ pub(super) trait TurnHands {
     /// 턴 끝 줄.
     fn turn_end(&mut self, line: TurnEndLine) -> Result<(), RecordError>;
     /// 보낸 말 — `prompt`는 에이전트에게 실제로 갈 블록 그대로다.
-    fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError>;
+    fn sent(
+        &mut self,
+        text: &str,
+        quote: Option<&Quote>,
+        attachments: &[Attachment],
+        prompt: &[Value],
+        send_now: bool,
+    ) -> Result<(), RecordError>;
     /// 로그인 필요 줄을 적고, 적었을 때만 로그인 창구에 그 대화를 쥐게 한다(three-axes 티켓 12).
     fn login_lost(&mut self) -> Result<(), RecordError>;
     /// 대기 줄 바뀜 — 대기 줄 전체를 싣는다.
@@ -600,8 +616,15 @@ impl<H: TurnHands + ?Sized> TurnHands for &mut H {
     fn turn_end(&mut self, line: TurnEndLine) -> Result<(), RecordError> {
         (**self).turn_end(line)
     }
-    fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
-        (**self).sent(text, quote, prompt, send_now)
+    fn sent(
+        &mut self,
+        text: &str,
+        quote: Option<&Quote>,
+        attachments: &[Attachment],
+        prompt: &[Value],
+        send_now: bool,
+    ) -> Result<(), RecordError> {
+        (**self).sent(text, quote, attachments, prompt, send_now)
     }
     fn login_lost(&mut self) -> Result<(), RecordError> {
         (**self).login_lost()
@@ -739,7 +762,14 @@ mod tests {
             };
             self.write(Line::TurnEnd, did)
         }
-        fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
+        fn sent(
+            &mut self,
+            text: &str,
+            quote: Option<&Quote>,
+            _: &[Attachment],
+            prompt: &[Value],
+            send_now: bool,
+        ) -> Result<(), RecordError> {
             let carries = |block: &str| prompt.iter().any(|sent| sent["text"] == block);
             let did = Did::Sent {
                 text: text.to_owned(),
@@ -794,7 +824,7 @@ mod tests {
     }
 
     fn draft(text: &str) -> Draft {
-        Draft { text: text.to_owned(), preamble: json!({"type": "text", "text": PREAMBLE}), quote: None }
+        Draft { text: text.to_owned(), preamble: json!({"type": "text", "text": PREAMBLE}), quote: None, attachments: Vec::new() }
     }
 
     fn ended(stop_reason: &str) -> TurnEnd {

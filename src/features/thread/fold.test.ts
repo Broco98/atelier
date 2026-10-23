@@ -159,3 +159,29 @@ describe("도구 줄의 끝", () => {
     expect(turn.entries.map((entry) => entry.kind === "tool" && entry.cut)).toEqual([true]);
   });
 });
+
+describe("첨부(v1 티켓 06)", () => {
+  it("보낸 말에 붙인 파일 · 폴더는 그 턴의 첨부로 들고, 첨부 없는 말은 빈 목록이다", () => {
+    const attachments = [
+      { path: "/Users/me/logs/error.log", size: 12_288, folder: false },
+      { path: "/Users/me/재현 화면", size: null, folder: true },
+    ];
+    const lines: RecordLine[] = [
+      ...blessed,
+      { seq: 25, at: at(5), kind: "sent", payload: { text: "이 로그 봐 줘", attachments, prompt: [], sendNow: false, to: "host" } },
+    ];
+    const model = foldThread(lines);
+    expect(model.turns.map((turn) => [turn.sent, turn.attachments])).toEqual([
+      ["세 낱말로 답해 줘: hello from turn", []],
+      ["notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘", []],
+      ["이 로그 봐 줘", attachments],
+    ]);
+  });
+
+  it("꼴이 틀린 첨부 칸은 걸러 낸다 — 경로가 글이 아닌 것", () => {
+    const lines: RecordLine[] = [
+      { seq: 1, at: at(1), kind: "sent", payload: { text: "봐 줘", attachments: [{ path: 3 }, { path: "/a.txt", size: 2, folder: false }, "x"], to: "host" } },
+    ];
+    expect(foldThread(lines).turns[0].attachments).toEqual([{ path: "/a.txt", size: 2, folder: false }]);
+  });
+});

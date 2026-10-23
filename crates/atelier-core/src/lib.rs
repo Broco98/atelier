@@ -43,6 +43,7 @@ mod worktree_file;
 mod worktree_watch;
 mod records;
 mod threads;
+mod attachments;
 
 // 원자 쓰기 둘을 낸다 — 폴더를 만드는 쪽 · 만들지 않는 쪽. 읽기(`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록
 // 없음」이라 기본값으로 눕는 그 읽기와 뜻이 다르다.
@@ -99,6 +100,8 @@ pub use threads::{
     create_thread, is_archived_work, open_thread_log, read_thread, read_thread_records, thread_dir, update_thread,
     CreatedThread, DefinitionSource, NewThread, Participant, ThreadFile, ThreadIndex, ThreadSummary,
 };
+// 첨부(v1 티켓 06 · S30) — 입력창의 칩(Tauri 명령)과 Thread 엔진의 `sent` 줄이 같은 판정을 지난다.
+pub use attachments::{describe_attachments, Attachment};
 pub use worktree::{list_worktree_folder, list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};
 pub use worktree_file::{read_worktree_file, WorktreeFile};
 pub use worktree_watch::{worktree_changes, WorktreeChange};

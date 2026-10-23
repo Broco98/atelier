@@ -18,7 +18,7 @@ import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
-import type { RecordLine, ThreadView } from "./types";
+import type { Attachment, RecordLine, ThreadView } from "./types";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -43,15 +43,15 @@ interface ThreadScreenProps {
 export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const navigate = useNavigate();
   const host = useHostPreference();
-  const [starting, setStarting] = useState<string | null>(null);
+  const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
   const guide = guideKind(engine, false);
 
-  const start = async (text: string) => {
-    setStarting(text);
+  const start = async (text: string, attachments: readonly Attachment[]) => {
+    setStarting({ text, attachments });
     try {
-      const id = await threadApi.start(text);
+      const id = await threadApi.start(text, attachments);
       void navigate({ to: "/threads/$id", params: { id }, replace: true });
     } catch (error) {
       setStarting(null);
@@ -87,7 +87,7 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
               <div className={`${COLUMN} gap-6 text-chat-body`}>
-                <UserMessage text={starting} />
+                <UserMessage text={starting.text} attachments={starting.attachments} />
                 <p className="chat-shimmer text-sm">생각 중</p>
               </div>
             </div>
@@ -110,6 +110,9 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
                 </span>
                 <span>
                   <b className="font-semibold text-fg-secondary">/</b> 명령
+                </span>
+                <span>
+                  <b className="font-semibold text-fg-secondary">+</b> 파일 · 이미지
                 </span>
               </p>
             </div>
@@ -249,7 +252,9 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
               thread={thread}
               model={model}
               names={names}
-              onRetry={(text) => void threadApi.send(thread, text).catch((failure: unknown) => setChipProblem(String(failure)))}
+              onRetry={(text, attachments) =>
+                void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+              }
             />
           </LogPlace.Provider>
         </div>
@@ -266,9 +271,9 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             commands={lists.commands}
             running={model.running}
             stopped={stopped}
-            onSend={(text) => {
+            onSend={(text, attachments) => {
               stuck.current = true;
-              return threadApi.send(thread, text);
+              return threadApi.send(thread, text, attachments);
             }}
             onStop={() => threadApi.stop(thread)}
             onNewThread={() => void navigate({ to: "/" })}

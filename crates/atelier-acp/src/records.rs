@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use atelier_core::RecordLog;
+use atelier_core::{Attachment, RecordLog};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -312,18 +312,23 @@ impl Recorder {
         self.write(RecordKind::Session, serde_json::to_value(state).expect("session 줄은 JSON이다"))
     }
 
-    /// 보낸 말. `prompt`는 에이전트에게 실제로 간 내용 블록 그대로다. 인용은 화면이 보낸 말 위에 세운다(스토리 81).
+    /// 보낸 말. `prompt`는 에이전트에게 실제로 간 내용 블록 그대로다. 인용은 화면이 보낸 말 위에 세운다(스토리 81). 첨부는 화면이
+    /// 말풍선 위 칩으로 세운다(v1 티켓 06).
     pub(crate) fn sent(
         &self,
         text: &str,
         quote: Option<&Quote>,
+        attachments: &[Attachment],
         prompt: &[Value],
         send_now: bool,
     ) -> Result<(), RecordError> {
         let mut payload = json!({"text": text});
-        // 인용은 붙은 말에만 칸이 선다(three-axes 티켓 27) — 인용 없는 말은 앞 장의 꼴 그대로다.
+        // 인용 · 첨부는 붙은 말에만 칸이 선다(three-axes 티켓 27 · v1 티켓 06) — 없는 말은 앞 장의 꼴 그대로다.
         if let Some(quote) = quote {
             payload["quote"] = serde_json::to_value(quote).expect("인용은 JSON이다");
+        }
+        if !attachments.is_empty() {
+            payload["attachments"] = serde_json::to_value(attachments).expect("첨부는 JSON이다");
         }
         payload["prompt"] = json!(prompt);
         payload["sendNow"] = json!(send_now);
@@ -492,7 +497,7 @@ mod tests {
     }
 
     fn send(recorder: &Recorder, text: &str) {
-        recorder.sent(text, None, &[json!({"type": "text", "text": text})], false).unwrap();
+        recorder.sent(text, None, &[], &[json!({"type": "text", "text": text})], false).unwrap();
     }
 
     #[test]

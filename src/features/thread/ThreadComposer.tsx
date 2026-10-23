@@ -1,22 +1,27 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ArrowUp, AtSign } from "lucide-react";
+import { ArrowUp, AtSign, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { THREAD_COMMANDS, type ChoiceOption, type CommandOption } from "./chips";
+import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
 import { ComposerTray, ModelChip } from "./ComposerChips";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { setDraft, threadUiStore } from "./thread-store";
+import type { Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나에 아래 줄(받는 이 · Work · 물어보는 정도)이 붙는다.
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 보내기 · 멈추기 · 꺼짐을 맡는다** — 비면 꺼진 면(`fill-active` · `fg-tertiary`), 쓰면 검정 면(`fg` 위
 //   `fg-inverse`), 턴이 도는 동안 비어 있으면 멈추기(■)다. 도는 동안 쓴 말도 보낸다 — 엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다.
-// - **@ 단추**는 입력칸에 `@`를 넣는다(Agent 부르기 메뉴는 14). 파일 첨부 `+`는 06이 단다.
+// - **@ 단추**는 입력칸에 `@`를 넣는다(Agent 부르기 메뉴는 14).
+// - **`+`와 끌어다 놓기는 첨부다**(v1 티켓 06 · S30) — 받은 파일 · 폴더가 입력칸 위에 칩(이름 · 크기)으로 쌓이고, 끌어다 놓는 동안은
+//   입력창 자리에 「놓으면 첨부합니다」가 선다. 보내면 경로만 간다(`ComposerAttachments.tsx`).
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
-// 입력 중인 글은 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts`). 보낸 말은 여기서 그리지 않는다 — 엔진이 기록에 적은 `sent` 줄이
-// 말풍선으로 선다.
+// 입력 중인 글 · 쌓인 첨부는 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore`). 보낸 말은 여기서 그리지
+// 않는다 — 엔진이 기록에 적은 `sent` 줄이 말풍선으로 선다.
 
 /** 입력칸이 자라는 끝 — 넘으면 칸 안에서 구른다. */
 const FIELD_MAX = 200;
@@ -49,8 +54,8 @@ export interface ThreadComposerProps {
   card?: ReactNode;
   /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
   above?: ReactNode;
-  /** 말을 보낸다. 거절되면 쓴 글을 돌려놓고 그 글을 보인다. */
-  onSend: (text: string) => Promise<void>;
+  /** 말을 보낸다(붙인 첨부와 함께). 거절되면 쓴 글 · 첨부를 돌려놓고 그 글을 보인다. */
+  onSend: (text: string, attachments: readonly Attachment[]) => Promise<void>;
   onStop?: () => Promise<void>;
   onNewThread: () => void;
   /** 화면이 바깥에서 보이는 거절 글(이름 바꾸기 · 칩) — 입력창 아래에 함께 선다. */
@@ -77,6 +82,7 @@ function ThreadComposer({
   problem: outside = null,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
+  const attachments = useStore(attachmentStore, (state) => attachmentsOf(state, draftKey));
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const empty = draft.trim() === "";
@@ -101,22 +107,38 @@ function ThreadComposer({
   };
 
   const carded = card != null;
+  // 붙인 뒤에는 입력칸으로 돌아간다 — 놓는 동안 입력창 자리를 「놓으면 첨부합니다」가 맡았다가 다시 선 칸이다.
+  const attach = (paths: readonly string[]) => {
+    setProblem(null);
+    attachPaths(draftKey, paths)
+      .then(() => field.current?.focus())
+      .catch((error: unknown) => setProblem(String(error)));
+  };
+  const dragging = useAttachmentDrop(!busy && !carded, attach);
   useLayoutEffect(() => {
     const el = field.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, FIELD_MAX)}px`;
-  }, [draft, carded]);
+  }, [draft, carded, dragging]);
 
   const send = () => {
     const text = draft.trim();
     if (text === "" || busy) return;
+    const attached = attachments;
     setDraft(draftKey, "");
+    setAttachments(draftKey, []);
     setProblem(null);
-    onSend(text).catch((error: unknown) => {
+    onSend(text, attached).catch((error: unknown) => {
       setDraft(draftKey, text);
+      setAttachments(draftKey, attached);
       setProblem(String(error));
     });
+  };
+  const pick = () => {
+    pickFiles()
+      .then(attach)
+      .catch((error: unknown) => setProblem(String(error)));
   };
   const stop = () => {
     setProblem(null);
@@ -138,7 +160,9 @@ function ThreadComposer({
   return (
     <div className="flex shrink-0 flex-col">
       {above && <div className="flex flex-col gap-2 pb-2.5">{above}</div>}
-      {card ?? (
+      {card ?? (dragging ? (
+        <DropZone />
+      ) : (
         <form
           className={cn(
             "relative flex flex-col rounded-composer bg-surface-composer pb-2.5 pl-5 shadow-composer",
@@ -150,6 +174,7 @@ function ThreadComposer({
           }}
         >
           {menuOpen && <SlashMenu id={menuId} items={items} active={active} onPick={pickCommand} onPoint={setActive} />}
+          {attachments.length > 0 && <ComposerAttachmentChips draftKey={draftKey} attachments={attachments} />}
           <textarea
             ref={field}
             aria-label="보낼 말"
@@ -199,6 +224,15 @@ function ThreadComposer({
           <div className="-ml-2.5 flex items-center gap-0.5">
             <button
               type="button"
+              aria-label="파일 첨부"
+              onClick={pick}
+              disabled={busy}
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-secondary transition-colors quiet-hover focus-ring"
+            >
+              <Plus className="size-4" aria-hidden />
+            </button>
+            <button
+              type="button"
               aria-label="Agent 부르기"
               onClick={mention}
               className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-secondary transition-colors quiet-hover focus-ring"
@@ -232,7 +266,7 @@ function ThreadComposer({
             )}
           </div>
         </form>
-      )}
+      ))}
       <ComposerTray />
       {shown && (
         <p role="alert" className="px-3 pt-1.5 text-xs text-danger">

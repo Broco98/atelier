@@ -4,6 +4,7 @@ import type { ChatEngineEvent } from "@/features/chat/types";
 import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT } from "./events";
 import type {
   AgentRoster,
+  Attachment,
   EngineCheck,
   Participant,
   RecordLine,
@@ -33,14 +34,20 @@ export const threadApi = {
   readRecord: (thread: string, after: number) => invoke<RecordLine[]>("thread_read_record", { thread, after }),
   /**
    * 새 Thread — 첫 말과 함께 세운다. Host의 Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
-   * 이어 갈 곳은 Work 칩(31)이 고르기 전까지 늘 「Work 없음」이다.
+   * 이어 갈 곳은 Work 칩(31)이 고르기 전까지 늘 「Work 없음」이다. 첨부는 경로만 간다(v1 티켓 06 · S30).
    */
-  start: (text: string) => {
+  start: (text: string, attached: readonly Attachment[]) => {
     const link: ThreadLink = { kind: "no-work" };
-    return invoke<string>("thread_start", { text, link });
+    const attachments = pathsOf(attached);
+    return invoke<string>("thread_start", { text, attachments, link });
   },
-  /** 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). */
-  send: (thread: string, text: string) => invoke<void>("thread_send", { thread, text }),
+  /** 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. */
+  send: (thread: string, text: string, attached: readonly Attachment[] = []) => {
+    const attachments = pathsOf(attached);
+    return invoke<void>("thread_send", { thread, text, attachments });
+  },
+  /** 고르거나 끌어다 놓은 경로를 첨부로 잰다(크기 · 폴더인가) — 입력창의 칩. 없는 경로가 있으면 그 까닭으로 거절된다. */
+  describeAttachments: (paths: string[]) => invoke<Attachment[]>("describe_attachments", { paths }),
   /** 도는 턴을 멈춘다 — 멈춘 턴의 끝은 `turn-end` 줄(`cancelledByUs: true`)로 온다. */
   stop: (thread: string) => invoke<void>("thread_stop", { thread }),
   editQueued: (thread: string, queued: string, text: string) =>
@@ -62,6 +69,9 @@ export const threadApi = {
   /** 부를 수 있는 Agent — 빈 Thread의 칩이 Host 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33). */
   agents: () => invoke<AgentRoster>("list_agents", { work: null }),
 };
+
+/** 엔진에 가는 첨부 — 절대 경로만. 크기는 엔진이 보낼 때 다시 잰다. */
+const pathsOf = (attached: readonly Attachment[]) => attached.map((one) => one.path);
 
 /** 기록 줄이 적힐 때마다 온다 — 어느 Thread든. 앱 층(`useThreadFeeds`) 하나가 듣는다. */
 export function onThreadRecord(listener: (event: ThreadRecordEvent) => void): Promise<UnlistenFn> {

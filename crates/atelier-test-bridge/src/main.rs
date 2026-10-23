@@ -136,6 +136,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_agent_file", |a| {
         ok(atelier_core::read_agent_file(&data_root(), maybe_text(a, "work").as_deref(), &text(a, "call")?))
     }),
+    // 입력창의 첨부 칩(v1 티켓 06)은 코어만 거친다 — 같은 입구가 다리의 파일 시스템에서 경로를 **진짜로** 잰다.
+    ("describe_attachments", |a| ok(atelier_core::describe_attachments(&texts(a, "paths")?))),
     // 셸 일곱은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
     ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
@@ -302,6 +304,12 @@ fn destinations(args: &Args) -> Result<Vec<atelier_core::Destination>, String> {
     let value = args
         .get("destinations")
         .ok_or_else(|| "인자 'destinations'(배열)가 필요합니다".to_string())?;
+    serde_json::from_value(value.clone()).map_err(err)
+}
+
+/// 문자열 배열 인자 — 첨부의 경로들처럼 모양이 단순한 목록.
+fn texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
+    let value = args.get(key).ok_or_else(|| format!("인자 '{key}'(문자열 배열)가 필요합니다"))?;
     serde_json::from_value(value.clone()).map_err(err)
 }
 

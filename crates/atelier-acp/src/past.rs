@@ -3,7 +3,7 @@
 //! - **Session은 Agent마다 따로라서 다른 이의 말을 모른다.** 그래서 그 Agent에게 말을 보낼 때마다, 이 Session이 마지막으로 본
 //!   줄(그에게 간 마지막 `sent`) 뒤의 말을 머리말과 본문 사이에 한 블록으로 넣는다. 새로 선 Session(처음 들어옴 · 되살리지
 //!   못해 새로)은 아무것도 보지 못했으니 Thread 처음부터다.
-//! - 담는 것은 **사람의 말**(`sent`의 글과 받는 이)과 **Agent 턴마다의 마지막 메시지**뿐이다. 도구 기록 · 생각은 넘기지
+//! - 담는 것은 **사람의 말**(`sent`의 글 · 첨부 경로와 받는 이)과 **Agent 턴마다의 마지막 메시지**뿐이다. 도구 기록 · 생각은 넘기지
 //!   않는다 — 그 Agent는 같은 Work의 파일을 직접 읽는다(plan 「v1의 Contract는 텍스트다」).
 //! - 이 Session이 스스로 한 말은 넣지 않는다 — 이미 안다. 새로 선 Session이면 앞 Session의 제 말도 모르므로 넣는다.
 //! - 상한([`PAST_LIMIT`]글자)을 넘으면 오래된 말부터 빼고 뺐다고 머리에 적는다. 남은 가장 새 말 하나도 넘으면 그 앞을 자르고
@@ -13,9 +13,11 @@
 
 use std::collections::HashMap;
 
-use atelier_core::{RecordKind, RecordLine};
+use atelier_core::{Attachment, RecordKind, RecordLine};
+use serde::Deserialize;
 use serde_json::Value;
 
+use crate::attachments;
 use crate::records::starts_session;
 
 /// 지난 말의 상한(글자 수). 긴 Thread에 새로 들어온 Agent도 맥락 창의 작은 몫만 쓰게 한다 — claude의 맥락 창(20만 토큰)에서
@@ -104,7 +106,13 @@ fn said(lines: &[RecordLine]) -> Vec<Said> {
         match (line.kind, line.who.as_deref()) {
             (RecordKind::Sent, _) => {
                 if let (Some(text), Some(to)) = (line.payload["text"].as_str(), line.payload["to"].as_str()) {
-                    said.push(Said { seq: line.seq, by: Speaker::Human { to: to.to_owned() }, text: text.to_owned() });
+                    // 붙인 경로도 함께 — 그 말을 받지 않은 Agent도 사람이 보인 파일을 읽을 수 있게(v1 티켓 06).
+                    let attached = Vec::<Attachment>::deserialize(&line.payload["attachments"]).unwrap_or_default();
+                    let text = match attachments::listing(&attached) {
+                        Some(listing) => format!("{listing}\n{text}"),
+                        None => text.to_owned(),
+                    };
+                    said.push(Said { seq: line.seq, by: Speaker::Human { to: to.to_owned() }, text });
                 }
             }
             (RecordKind::Update, Some(who)) => {

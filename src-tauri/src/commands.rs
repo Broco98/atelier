@@ -250,6 +250,15 @@ pub async fn read_agent_file(work: Option<String>, call: String) -> CmdResult<St
     .map_err(|e| format!("Agent 파일을 읽지 못했습니다: {e}"))?
 }
 
+/// 입력창의 첨부 칩(v1 티켓 06 · 구현 스펙 S30) — `+`로 고르거나 끌어다 놓은 경로를 첨부로 잰다(크기 · 폴더인가). 내용은 읽지
+/// 않는다. 보낼 때 엔진이 같은 입구로 다시 재서 `sent` 줄에 남긴다. 디스크를 보므로 blocking 풀에서 돈다.
+#[tauri::command]
+pub async fn describe_attachments(paths: Vec<String>) -> CmdResult<Vec<atelier_core::Attachment>> {
+    tauri::async_runtime::spawn_blocking(move || atelier_core::describe_attachments(&paths).map_err(err))
+        .await
+        .map_err(|e| format!("첨부를 읽지 못했습니다: {e}"))?
+}
+
 #[tauri::command]
 pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
@@ -926,25 +935,28 @@ pub async fn thread_read_record(
 
 /// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
 /// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
-/// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다.
+/// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 #[tauri::command]
 pub async fn thread_start(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     text: String,
+    attachments: Vec<String>,
     link: atelier_acp::ThreadLink,
 ) -> CmdResult<String> {
-    to_host(&chats, "Thread를 시작하지 못했습니다", move |host| host.start_thread(&text, link)).await
+    to_host(&chats, "Thread를 시작하지 못했습니다", move |host| host.start_thread_with(&text, &attachments, link)).await
 }
 
 /// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
-/// 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 멘션이 범위 밖 · 깨진 파일이면 아무것도 적지 않고 그 까닭이 오류 글이다.
+/// 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 멘션이 범위 밖 · 깨진 파일 · 없는 첨부면 아무것도 적지 않고 그 까닭이 오류
+/// 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 #[tauri::command]
 pub async fn thread_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     text: String,
+    attachments: Vec<String>,
 ) -> CmdResult<()> {
-    to_host(&chats, "말을 보내지 못했습니다", move |host| host.send_to_thread(&thread, &text)).await
+    to_host(&chats, "말을 보내지 못했습니다", move |host| host.send_to_thread_with(&thread, &text, &attachments)).await
 }
 
 /// 그 Thread의 도는 턴을 모두 멈춘다. 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다.
@@ -1164,6 +1176,7 @@ mod tests {
             ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
             ("list_agents", "atelier_core::find_agents(", "find_agents("),
             ("read_agent_file", "atelier_core::read_agent_file(", "read_agent_file("),
+            ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
         ] {
             let body = command_body(command);
             let blocking = body

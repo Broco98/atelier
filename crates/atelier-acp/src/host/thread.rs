@@ -20,8 +20,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use atelier_core::{
-    AgentDefinition, AgentProblem, AgentRoster, DefinitionSource, FoundAgent, NewThread, Participant, RecordKind, RecordLine,
-    ThreadFile, ThreadIndex, ThreadSummary, Unresolved,
+    AgentDefinition, AgentProblem, AgentRoster, Attachment, DefinitionSource, FoundAgent, NewThread, Participant, RecordKind,
+    RecordLine, ThreadFile, ThreadIndex, ThreadSummary, Unresolved,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -227,6 +227,13 @@ impl ConversationHost {
     /// 막히는 호출이다 — Session이 열릴 때까지 기다린다. 세운 뒤에 Session을 열지 못하면 Thread는 남고(기록에 까닭이 선다) 그
     /// 오류를 돌려준다 — 다음 말에서 다시 띄운다.
     pub fn start_thread(&self, text: &str, link: ThreadLink) -> Result<String, HostError> {
+        self.start_thread_with(text, &[], link)
+    }
+
+    /// 첨부한 첫 말로 새 Thread — [`Self::start_thread`]와 같고, 첨부(`attachments` — 절대 경로들)가 본문 앞에 경로 목록으로
+    /// 간다(v1 티켓 06 · S30). 첨부가 절대 경로가 아니거나 없으면 아무것도 세우지 않고 거절한다.
+    pub fn start_thread_with(&self, text: &str, attachments: &[String], link: ThreadLink) -> Result<String, HostError> {
+        let attachments = attachments_of(attachments)?;
         let work = match link {
             ThreadLink::Work { slug } => {
                 self.open_work(&slug)?;
@@ -247,7 +254,7 @@ impl ConversationHost {
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
         log.written(created.first.clone());
         self.seat(&created.id, &found, &created.first.at)?;
-        self.say_in_thread(&SessionKey::new(&created.id, &handle), text)?;
+        self.say_in_thread(&SessionKey::new(&created.id, &handle), text, attachments)?;
         drop(log);
         Ok(created.id)
     }
@@ -262,12 +269,19 @@ impl ConversationHost {
     ///   간다(S10).
     /// - 턴이 도는 동안의 말은 그 Session의 대기 줄에 든다(S13). 로그인을 기다리는 Session에는 보내지 않는다.
     pub fn send_to_thread(&self, thread: &str, text: &str) -> Result<(), HostError> {
+        self.send_to_thread_with(thread, text, &[])
+    }
+
+    /// 첨부한 말 — [`Self::send_to_thread`]와 같고, 첨부(`attachments` — 절대 경로들)가 본문 앞에 경로 목록으로 간다(v1 티켓
+    /// 06 · S30). 대기 줄에 들면 잰 첨부를 들고 간다. 첨부가 절대 경로가 아니거나 없으면 아무것도 적지 않고 거절한다.
+    pub fn send_to_thread_with(&self, thread: &str, text: &str, attachments: &[String]) -> Result<(), HostError> {
+        let attachments = attachments_of(attachments)?;
         let file = self.read_thread_file(thread)?;
         let handle = match self.recipient(&file.participants, file.work.as_deref(), text)? {
             Recipient::Seated(handle) => handle,
             Recipient::Newcomer(found) => self.join(thread, &found)?,
         };
-        self.say_in_thread(&SessionKey::new(thread, &handle), text)
+        self.say_in_thread(&SessionKey::new(thread, &handle), text, attachments)
     }
 
     /// 멈추기 — Thread 전체에 건다(§5): 그 Thread의 도는 턴마다 멈춤을 보낸다. 기다리지 않는다 — 멈춘 턴의 끝(`cancelled`)은
@@ -440,12 +454,12 @@ impl ConversationHost {
     }
 
     /// 받는 이의 Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
-    /// 머리말을 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다).
-    fn say_in_thread(&self, key: &SessionKey, text: &str) -> Result<(), HostError> {
+    /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다).
+    fn say_in_thread(&self, key: &SessionKey, text: &str, attachments: Vec<Attachment>) -> Result<(), HostError> {
         if !self.session_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive_session(key, Revive::IfNotRunning)?;
         }
-        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key)?, quote: None };
+        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key)?, quote: None, attachments };
         let found = self.threads.find(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(&key.waiter()) {
@@ -899,6 +913,11 @@ fn problem_text(problem: AgentProblem) -> String {
         // 범위 찾기(v1 티켓 11)에서만 나는 까닭이다 — Project 안의 `host.md`를 `@project/host`로 멘션했다.
         AgentProblem::HostOutsideLibrary => "host는 Library에만 둘 수 있습니다".to_owned(),
     }
+}
+
+/// 사람이 말에 붙인 경로 → 첨부(v1 티켓 06). 하나라도 첨부가 될 수 없으면 그 까닭이 화면의 거절 글이다 — 무엇을 적기 전에 부른다.
+fn attachments_of(paths: &[String]) -> Result<Vec<Attachment>, HostError> {
+    atelier_core::describe_attachments(paths).map_err(|error| HostError::BadAttachment(error.to_string()))
 }
 
 /// 코어의 Thread 오류 → 화면의 오류. id의 꼴이 아니거나 폴더 · 파일이 없으면 그 Thread는 없다.

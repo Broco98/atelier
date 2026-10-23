@@ -11,6 +11,7 @@ import type { CloseCheck } from "@/features/terminal/types";
 import type { ChatQuitCounts, Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
 import type {
   AgentRoster,
+  Attachment,
   Participant,
   RecordLine as ThreadRecordLine,
   ThreadSummary,
@@ -1184,6 +1185,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   } satisfies ThreadSummary,
   // 부를 수 있는 Agent(v1 티켓 03 · 11) — 새 Thread의 칩이 Host 정의의 모델 · 생각 깊이를 읽는다. 기본은 비었다(칩은 「기본 모델」).
   list_agents: { agents: [] } satisfies AgentRoster,
+  // 입력창의 첨부 칩(v1 티켓 06) — 고르거나 끌어다 놓은 경로를 잰 답. 기본은 빈 목록이다(첨부를 재는 검사가 그 경로의 답으로 덮어쓴다).
+  describe_attachments: [] satisfies Attachment[],
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

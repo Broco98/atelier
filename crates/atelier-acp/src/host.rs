@@ -390,10 +390,11 @@ impl TurnHands for ConvHands<'_> {
         &mut self,
         text: &str,
         quote: Option<&Quote>,
+        attachments: &[atelier_core::Attachment],
         prompt: &[Value],
         send_now: bool,
     ) -> Result<(), records::RecordError> {
-        self.conv.recorder.sent(text, quote, prompt, send_now)
+        self.conv.recorder.sent(text, quote, attachments, prompt, send_now)
     }
 
     /// 엔진을 가리지 않는다 — 턴 도중의 `-32000`(풀린 Codex 로그인, Claude는 S3)도 `session/new`의 것과 같은 로그인 필요
@@ -610,6 +611,8 @@ pub enum HostError {
     Setting(String),
     /// 보낸 말의 인용이 올바르지 않다 — spec 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었다(three-axes 티켓 27).
     BadQuote(String),
+    /// 보낸 말의 첨부가 올바르지 않다 — 절대 경로가 아니거나 없는 파일이다(v1 티켓 06). 아무것도 적지 않았다.
+    BadAttachment(String),
     /// `agents/`를 읽거나 쓰지 못했다.
     Record(String),
     /// 로그인 명령을 띄우지 못했다.
@@ -654,7 +657,7 @@ impl fmt::Display for HostError {
             }
             HostError::Send(reason) => write!(f, "{reason}"),
             HostError::Setting(reason) => write!(f, "에이전트가 바꾸기를 받지 않았습니다: {reason}"),
-            HostError::BadQuote(reason) => write!(f, "{reason}"),
+            HostError::BadQuote(reason) | HostError::BadAttachment(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
             HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없습니다: {thread}"),
@@ -1203,7 +1206,7 @@ impl ConversationHost {
         };
         // 턴 도중에 로그인이 풀렸으면 거절한다 — 대화의 잠금 안에서 본다(턴 끝이 같은 잠금 안에서 쥐게 한다). S13 — 턴이 도는
         // 동안의 말은 대기 줄 끝에 들고, 턴이 끝나면 맨 앞부터 차례로 간다.
-        let draft = Draft { text: text.to_owned(), preamble: work_at.preamble(), quote };
+        let draft = Draft { text: text.to_owned(), preamble: work_at.preamble(), quote, attachments: Vec::new() };
         conv.seat(&mut state).say(draft, before).map_err(|refused| refused.into_host(conversation))
     }
 

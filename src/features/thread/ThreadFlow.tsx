@@ -15,8 +15,10 @@ import {
   type ToolEntry,
   type Turn,
 } from "./fold";
+import { SentAttachments } from "./ComposerAttachments";
 import HostFace from "./HostFace";
 import ThreadMarkdown from "./ThreadMarkdown";
+import type { Attachment } from "./types";
 import { threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import { LogHead, ToolRows } from "./WorkLog";
 
@@ -41,8 +43,8 @@ interface ThreadFlowProps {
   model: ThreadModel;
   /** 참여자 handle → 화면 이름. 모르는 handle은 handle 그대로다. */
   names: Readonly<Record<string, string>>;
-  /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 다시 보낸다. */
-  onRetry: (text: string) => void;
+  /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 붙인 첨부와 함께 다시 보낸다. */
+  onRetry: (text: string, attachments: readonly Attachment[]) => void;
 }
 
 function ThreadFlow({ thread, model, names, onRetry }: ThreadFlowProps) {
@@ -113,7 +115,7 @@ function TurnView({
   onToggle: () => void;
   waiting: boolean;
   last: boolean;
-  onRetry: (text: string) => void;
+  onRetry: (text: string, attachments: readonly Attachment[]) => void;
 }) {
   const from = finalFrom(turn);
   const lastEntry = turn.entries[turn.entries.length - 1];
@@ -129,12 +131,15 @@ function TurnView({
   const finalText = final.map((entry) => (entry.kind === "message" ? entry.text : "")).join("\n\n");
   return (
     <>
-      {turn.sent !== null && <UserMessage text={turn.sent} />}
+      {turn.sent !== null && <UserMessage text={turn.sent} attachments={turn.attachments} />}
       <div className="flex flex-col items-start gap-2">
         {turn.namesWho && name && <WhoRow name={name} at={turn.answeredAt ?? turn.startedAt} />}
         {turn.end ? (
           failed ? (
-            <ErrorLine error={turn.end.error} retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "")} />
+            <ErrorLine
+              error={turn.end.error}
+              retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "", turn.attachments)}
+            />
           ) : stopped ? (
             // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
             <>
@@ -258,10 +263,18 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
   }
 }
 
-/** 사람이 보낸 말(보드 `.ubub`) — 오른쪽 정렬, 22 반경, 옅은 파랑, 줄 폭의 78%까지. 머리말은 기록에만 있다. */
-export function UserMessage({ text }: { text: string }) {
-  return (
+/** 사람이 보낸 말(보드 `.ubub`) — 오른쪽 정렬, 22 반경, 옅은 파랑, 줄 폭의 78%까지. 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로 선다. */
+export function UserMessage({ text, attachments = [] }: { text: string; attachments?: readonly Attachment[] }) {
+  const bubble = (
     <p className="max-w-[78%] self-end rounded-bubble bg-bubble-user px-4 py-2.25 whitespace-pre-wrap wrap-anywhere">{text}</p>
+  );
+  if (attachments.length === 0) return bubble;
+  // 붙인 것은 말풍선 바로 위에 칩으로 선다(Messages 보드 「첨부」 — 칩과 말풍선 사이 8).
+  return (
+    <div className="flex flex-col gap-2">
+      <SentAttachments attachments={attachments} />
+      {bubble}
+    </div>
   );
 }
 

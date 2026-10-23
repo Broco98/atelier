@@ -56,6 +56,18 @@ export interface ThreadSummary {
   broken: string | null;
 }
 
+/**
+ * 보낸 말에 붙인 파일 · 폴더 하나(`atelier_core::Attachment`, v1 티켓 06 · S30) — 입력창의 칩과 `sent` 줄의 `attachments`가 같은 꼴이다.
+ * Agent에게는 `path`만 간다(내용은 넘기지 않는다).
+ */
+export interface Attachment {
+  /** 절대 경로. */
+  path: string;
+  /** 파일의 크기(바이트) — 잰 그때의 값. 폴더면 `null`이다. */
+  size: number | null;
+  folder: boolean;
+}
+
 /** 새 Thread를 어디에 잇나(`atelier_acp::ThreadLink`) — 첫 말과 함께 간다. Work 칩(31)이 고르기 전까지는 늘 `no-work`다. */
 export type ThreadLink = { kind: "no-work" } | { kind: "new-work" } | { kind: "work"; slug: string };
 
