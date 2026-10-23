@@ -12,6 +12,7 @@ mod settings;
 mod shells;
 mod startup;
 mod terminate;
+mod thread;
 mod watcher;
 mod webview;
 
@@ -532,6 +533,21 @@ pub fn run() {
             commands::chat_quit_counts,
             commands::chat_start_login,
             commands::chat_cancel_login,
+            commands::thread_check_engine,
+            commands::thread_start_login,
+            commands::thread_cancel_login,
+            commands::thread_quit_counts,
+            commands::thread_list,
+            commands::thread_get,
+            commands::thread_read_record,
+            commands::thread_start,
+            commands::thread_send,
+            commands::thread_stop,
+            commands::thread_edit_queued,
+            commands::thread_delete_queued,
+            commands::thread_send_now,
+            commands::thread_answer_permission,
+            commands::thread_set_model,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -899,7 +915,8 @@ mod tests {
     }
 
     /// **화면 새로고침은 대화를 끄지 않는다**(three-axes 구현 스펙 S9). 셸은 새로고침에 거두지만 대화는 기록에서 다시 그린다
-    /// — 새로고침 정리가 호스트를 부르면 ⌘R 한 번에 돌던 턴이 끊긴다. 자리로 잰다.
+    /// — 새로고침 정리가 호스트를 부르면 ⌘R 한 번에 돌던 턴이 끊긴다. Thread의 Session도 같은 호스트에 살아 함께 남는다(v1 티켓 04
+    /// — ⌘R에 Agent가 죽지 않는다). 자리로 잰다.
     #[test]
     fn a_page_reload_leaves_the_chat_host_alone() {
         let reload = builder_source()
@@ -912,7 +929,7 @@ mod tests {
             .to_string();
         assert!(reload.contains("pty::end_for_reload("), "새로고침 정리를 못 읽었다 — 자른 자리가 샜다");
         assert!(
-            !reload.contains("chat") && !reload.contains("ConversationHost"),
+            !reload.contains("chat") && !reload.contains("thread") && !reload.contains("ConversationHost"),
             "새로고침 정리가 대화 호스트를 부른다 — ⌘R 한 번에 돌던 대화가 끊긴다"
         );
     }

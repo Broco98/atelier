@@ -8,6 +8,9 @@
 //!
 //! 대화 하나 = 에이전트 프로세스 하나 · 에이전트 쪽 세션 하나 · 기록 파일 하나다. 동시 개수 상한은 없다
 //! (three-axes 결정 19).
+//!
+//! v1은 같은 호스트에 Thread를 자리로 더한다(v1 티켓 04, [`thread`]) — 열쇠가 (Thread, 참여자)인 Session들이 턴 차례 · 런타임 ·
+//! 로그인 창구를 work 대화와 함께 쓴다. work 대화는 Work 안 대화창을 걷는 날(v1 티켓 08)까지 그대로 산다.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
@@ -22,15 +25,17 @@ use serde_json::{json, Value};
 use crate::chat_settings;
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::engines::{self, EngineLists};
-use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiting};
+use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiter, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::quote::Quote;
 use crate::records::{self, CloseCause, ConversationRow, PermissionLine, RecordLine, Recorder, SessionState, TurnEndLine};
 use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenError, OpenTerms, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
 
+mod thread;
 mod turn_order;
 
+pub use thread::{ThreadLink, ThreadView};
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// 판 02가 잰 codex-acp의 메이저 판(S6). 다르면 판 경고 줄을 남기고 계속한다.
@@ -57,8 +62,14 @@ pub enum HostEvent {
     /// 대기 줄 바뀜 — 그 대화의 대기 줄 전체. 대기 줄은 기록에 없으므로(S13) 화면은 이것과 대화 목록으로 그린다.
     Queue { work: String, conversation: String, queue: Vec<QueuedMessage> },
     /// 엔진 상태 — 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). 엔진을 확인할 때, 에이전트가 로그인을 요구할 때,
-    /// 로그인 명령이 돌고 끝날 때 나간다(three-axes 티켓 12).
+    /// 로그인 명령이 돌고 끝날 때 나간다(three-axes 티켓 12). work 대화와 Thread가 함께 듣는다.
     Engine(EngineState),
+    /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이다(v1 티켓 04). 화면은 Thread를 이것 하나로 그린다.
+    ThreadRecord { thread: String, line: RecordLine },
+    /// Thread 참여자 하나의 Session의 대기 줄 바뀜 — 그 대기 줄 전체.
+    ThreadQueue { thread: String, who: String, queue: Vec<QueuedMessage> },
+    /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 참여자가 늘었다(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
+    ThreadList(atelier_core::ThreadSummary),
 }
 
 /// 대기 줄의 말 하나(S13) — 턴이 도는 동안 받은 말이다. 화면이 입력창 위 「대기 중」에 그린다.
@@ -129,6 +140,7 @@ impl HostBuilder {
             revivals: Mutex::new(HashMap::new()),
             agents_file: Mutex::new(()),
             engines_file: Mutex::new(()),
+            threads: thread::Threads::default(),
         }
     }
 }
@@ -159,6 +171,8 @@ pub struct ConversationHost {
     engines_file: Mutex<()>,
     /// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 대화와 도는 로그인 명령을 쥔다(three-axes 티켓 12).
     logins: Arc<LoginDesk>,
+    /// Thread들 — 떠 있는 Session · 연 기록 · 색인(v1 티켓 04).
+    threads: thread::Threads,
 }
 
 /// 에이전트가 떠 있는 대화들의 표.
@@ -177,8 +191,8 @@ struct Live {
 /// 다음 말의 `sent` 줄이 턴 끝 줄보다 앞에 서지 않고, 그 사이에 온 보내기가 대기 줄을 앞지르지 못한다.
 struct Conv {
     recorder: Recorder,
-    /// 턴 앞뒤로 찍는 spec 폴더(three-axes 결정 22).
-    spec: SpecPlace,
+    /// 턴 앞뒤로 찍는 spec 폴더(three-axes 결정 22). Thread의 Session에는 없다 — 찍지 않고 `changes` 줄도 적지 않는다(v1 티켓 04).
+    spec: Option<SpecPlace>,
     state: Mutex<ConvState>,
     /// 턴 끝에 work가 사라졌는지 본다(S10). 떠 있지 않은 대화(닫힘 줄만 적으려고 연 기록)에는 없다.
     vanish: Option<VanishWatch>,
@@ -240,7 +254,7 @@ impl ConvState {
 }
 
 impl Conv {
-    fn new(recorder: Recorder, spec: SpecPlace, vanish: Option<VanishWatch>, login: Option<LoginWatch>) -> Arc<Self> {
+    fn new(recorder: Recorder, spec: Option<SpecPlace>, vanish: Option<VanishWatch>, login: Option<LoginWatch>) -> Arc<Self> {
         Arc::new(Self { recorder, spec, state: Mutex::new(ConvState::fresh()), vanish, login, setting: Mutex::new(()) })
     }
 
@@ -326,7 +340,7 @@ struct ConvHands<'a> {
 impl ConvHands<'_> {
     /// 걸림 없이 부르는 자리라 손잡이는 늘 있다 — 없으면 떠 있지 않은 대화다.
     fn turns(&self) -> Result<&Turns, String> {
-        self.turns.ok_or_else(|| format!("에이전트가 떠 있지 않은 대화입니다: {}", self.conv.recorder.conversation()))
+        self.turns.ok_or_else(|| format!("에이전트가 떠 있지 않은 대화입니다: {}", self.conv.recorder.name()))
     }
 }
 
@@ -346,11 +360,12 @@ impl TurnHands for ConvHands<'_> {
     }
 
     fn vanished(&self) -> bool {
-        work_vanished(&self.conv.spec.works_root, &self.conv.spec.work)
+        self.conv.spec.as_ref().is_some_and(|spec| work_vanished(&spec.works_root, &spec.work))
     }
 
+    /// 찍을 spec 폴더가 없으면(Thread의 Session) 빈 것이다 — 견주어도 바뀐 것이 없다.
     fn shoot(&mut self) -> Snapshot {
-        Snapshot::take(&self.conv.spec)
+        self.conv.spec.as_ref().map_or_else(Snapshot::empty, Snapshot::take)
     }
 
     /// 바뀐 것이 없으면 `changes` 줄이 없다 — 화면의 알약이 0개로 서지 않는다.
@@ -388,12 +403,7 @@ impl TurnHands for ConvHands<'_> {
     }
 
     fn queue_changed(&mut self, queue: Vec<QueuedMessage>) {
-        let recorder = &self.conv.recorder;
-        recorder.announce(HostEvent::Queue {
-            work: recorder.work().to_owned(),
-            conversation: recorder.conversation().to_owned(),
-            queue,
-        });
+        self.conv.recorder.queue_changed(queue);
     }
 
     fn prompt(&mut self, blocks: Vec<Value>) -> Result<(), String> {
@@ -445,15 +455,15 @@ impl VanishWatch {
 struct LoginWatch {
     /// 대화의 에이전트 — 첫 말 전의 에이전트 바꾸기(three-axes 티켓 13)가 떠 있던 대화를 그대로 쓰며 바꾼다.
     agent: Mutex<Agent>,
-    work: String,
-    conversation: String,
+    /// 다시 띄울 자리 — work 대화이거나 Thread 참여자의 Session이다.
+    waiter: Waiter,
     desk: Arc<LoginDesk>,
 }
 
 impl LoginWatch {
     fn required(&self) {
         let agent = *self.agent.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        self.desk.login_required(agent, &self.work, &self.conversation);
+        self.desk.login_required(agent, self.waiter.clone());
     }
 
     fn switch_to(&self, agent: Agent) {
@@ -462,7 +472,7 @@ impl LoginWatch {
 
     /// 그 대화가 로그인을 기다리면 그 에이전트 — 그동안은 대기 줄이 가지 않는다(S13의 걸림).
     fn waiting(&self) -> Option<Agent> {
-        self.desk.waiting_for(&self.conversation)
+        self.desk.waiting_for(&self.waiter)
     }
 }
 
@@ -486,7 +496,7 @@ fn retire_vanished(live: &LiveTable, pick: impl Fn(&str, &Live) -> bool) {
             table.iter().filter(|(id, conversation)| pick(id, conversation)).map(|(id, _)| id.clone()).collect();
         ids.iter().filter_map(|id| table.remove(id)).collect()
     };
-    mark_taken(&retiring);
+    mark_taken(retiring.iter().map(|live| &*live.conv));
     shut_down_together(&mut retiring);
     for conversation in &retiring {
         let closed = SessionState::Closed { cause: Some(CloseCause::WorkVanished) };
@@ -499,23 +509,28 @@ fn retire_vanished(live: &LiveTable, pick: impl Fn(&str, &Live) -> bool) {
 /// 떠 있는 표에서 꺼낸 대화들에 꺼냈다고 적는다(`ConvState::taken`) — 표의 잠금을 놓은 뒤에 부른다. 대화의 잠금이 턴 끝의 spec
 /// 폴더 견주기에 쥐여 있어도 다른 대화의 명령이 표에서 막히지 않게(S2). 꺼낸 뒤에 표에서 찾는 명령은 대화를 못 찾고, 그 전에
 /// 찾아 둔 명령은 이 표시를 보고 물러난다 — 이미 그 잠금을 쥔 명령이면 그것이 끝난 뒤에 적힌다.
-fn mark_taken(taken: &[Live]) {
-    for live in taken {
-        live.conv.lock_state().taken = true;
+fn mark_taken<'a>(taken: impl IntoIterator<Item = &'a Conv>) {
+    for conv in taken {
+        conv.lock_state().taken = true;
     }
 }
 
-/// 대화 여럿의 프로세스 그룹을 끈다 — 모두의 stdin을 **한꺼번에** 닫고 1초를 **한 번만** 기다린 뒤 그룹들을
-/// SIGKILL한다. 대화마다 1초씩 줄을 세우면 N초가 된다.
+/// 대화 여럿의 프로세스 그룹을 끈다 — [`end_together`].
 fn shut_down_together(live: &mut [Live]) {
+    end_together(live.iter_mut().map(|live| (&mut live.agent, &*live.conv)).collect());
+}
+
+/// 에이전트 여럿(work 대화 · Thread의 Session)의 프로세스 그룹을 끈다 — 모두의 stdin을 **한꺼번에** 닫고 1초를 **한 번만**
+/// 기다린 뒤 그룹들을 SIGKILL한다. 하나마다 1초씩 줄을 세우면 N초가 된다.
+fn end_together(mut agents: Vec<(&mut AgentProcess, &Conv)>) {
     let deadline = Instant::now() + runtime::SHUTDOWN_GRACE;
-    for conversation in live.iter_mut() {
-        conversation.agent.begin_shutdown();
+    for (agent, _) in agents.iter_mut() {
+        agent.begin_shutdown();
     }
-    for conversation in live.iter_mut() {
-        conversation.agent.finish_shutdown(deadline);
+    for (agent, conv) in agents {
+        agent.finish_shutdown(deadline);
         // 끈 대화는 연결을 쥐지 않는다 — 대화가 든 턴 손잡이의 복제도 놓는다.
-        conversation.conv.lock_state().turns = None;
+        conv.lock_state().turns = None;
     }
 }
 
@@ -594,6 +609,12 @@ pub enum HostError {
     Record(String),
     /// 로그인 명령을 띄우지 못했다.
     Login(String),
+    /// 그 id의 Thread가 없다(v1 티켓 04) — 폴더가 없거나 id의 꼴이 아니다.
+    ThreadNotFound(String),
+    /// 그 Agent의 정의 파일이 깨졌다(v1 구현 스펙 §6 「깨진 파일」) — 부를 수 없다. 까닭은 사람이 읽을 글이다.
+    AgentBroken { handle: String, reason: String },
+    /// 그 Thread에 그 handle의 참여자가 없다.
+    ParticipantNotFound { thread: String, handle: String },
 }
 
 impl fmt::Display for HostError {
@@ -622,6 +643,9 @@ impl fmt::Display for HostError {
             HostError::BadQuote(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
+            HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없습니다: {thread}"),
+            HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했습니다: {reason}"),
+            HostError::ParticipantNotFound { thread, handle } => write!(f, "Thread {thread}에 @{handle}이 없습니다"),
         }
     }
 }
@@ -733,8 +757,12 @@ impl ConversationHost {
     /// - work가 사라졌거나 대화가 닫혔으면 아무것도 하지 않는다.
     /// - 대기 줄은 다시 뜬 대화가 그대로 이어 쥐고, 로그인이라는 걸림이 풀린 이 자리에서 맨 앞부터 간다(S13, 티켓 07).
     fn relaunch(&self, waiting: &Waiting) -> Result<(), HostError> {
+        let (work, conversation) = match &waiting.waiter {
+            Waiter::Conversation { work, conversation } => (work, conversation),
+            Waiter::Thread { thread, handle } => return self.relaunch_session(thread, handle),
+        };
         // 호스트가 쥐었던 대화라 id를 다시 검사하지 않는다.
-        let key = ConversationKey { work: &waiting.work, id: &waiting.conversation };
+        let key = ConversationKey { work, id: conversation };
         let Ok(work_at) = self.open_work(key.work) else { return Ok(()) };
         match work_at.open_row(key.id) {
             Ok(_) => {}
@@ -967,7 +995,7 @@ impl ConversationHost {
         };
         // 옛 엔진의 로그인을 기다리던 대화였어도(12) 더는 그 엔진을 쓰지 않는다 — 그 로그인이 「됨」이 돼도 다시 띄우지 않고,
         // 보내기가 옛 엔진의 로그인 필요로 거절되지 않는다. 새 엔진이 로그인을 요구하면 열기가 새 엔진으로 다시 쥔다.
-        self.logins.forget(conversation);
+        self.logins.forget(&key.waiter());
         let conv = match live {
             Some(mut live) => {
                 shut_down_together(std::slice::from_mut(&mut live));
@@ -1019,7 +1047,7 @@ impl ConversationHost {
         let place = SessionPlace { cwd: row.cwd.clone(), additional_directories: row.additional_directories.clone() };
         let (launch, mut terms) = match row.agent {
             Agent::Codex => (codex_launch(programs, env, &place), OpenTerms::default()),
-            Agent::Claude => claude_launch(&self.translator, programs, env, &place, row),
+            Agent::Claude => claude_launch(&self.translator, programs, env, &place, &ClaudeChoice::of_row(row)),
         };
         // 에이전트 쪽 세션 id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤(티켓 10). 새 대화와 에이전트 바꾸기는 id가
         // 비어 곧바로 새 세션이다.
@@ -1033,7 +1061,7 @@ impl ConversationHost {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {
                 recorder.session(SessionState::LoginRequired).map_err(HostError::Record)?;
-                self.logins.login_required(row.agent, work, &row.id);
+                self.logins.login_required(row.agent, Waiter::Conversation { work: work.to_owned(), conversation: row.id.clone() });
                 return Ok(summary(row, recorder.last_seq(), Vec::new(), false));
             }
             Err(error) => {
@@ -1087,13 +1115,8 @@ impl ConversationHost {
         }
     }
 
-    fn login_watch(&self, agent: Agent, work: &str, conversation: &str) -> LoginWatch {
-        LoginWatch {
-            agent: Mutex::new(agent),
-            work: work.to_owned(),
-            conversation: conversation.to_owned(),
-            desk: Arc::clone(&self.logins),
-        }
+    fn login_watch(&self, agent: Agent, waiter: Waiter) -> LoginWatch {
+        LoginWatch { agent: Mutex::new(agent), waiter, desk: Arc::clone(&self.logins) }
     }
 
     /// 보내기 — 턴이 쉬면 말을 보낸다. 기다리지 않는다: 답은 기록 줄 이벤트로 흐르고, 턴 끝도 `turn-end` 줄로
@@ -1136,7 +1159,7 @@ impl ConversationHost {
 
         // 떠 있지 않거나 죽은 대화는 먼저 띄워 되살린다(티켓 10). 로그인을 기다리는 대화는 띄우지 않는다 — 로그인이 「됨」이
         // 되면 호스트가 다시 띄운다(12).
-        if !self.is_running(key) && self.logins.waiting_for(conversation).is_none() {
+        if !self.is_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive(key, Revive::IfNotRunning)?;
         }
 
@@ -1144,7 +1167,7 @@ impl ConversationHost {
         // 확인한 뒤 옛 엔진을 끄는데, 그 사이에 이 말이 옛 엔진에 가면 첫 말 전에만 바꾼다(three-axes 결정 15)가 깨진다.
         let found = self.find_live(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
-            return Err(match self.logins.waiting_for(conversation) {
+            return Err(match self.logins.waiting_for(&key.waiter()) {
                 Some(agent) => HostError::LoginRequired { agent, conversation: conversation.to_owned() },
                 None => HostError::NotRunning(conversation.to_owned()),
             });
@@ -1220,7 +1243,7 @@ impl ConversationHost {
         let dead_with_it = self.find_live(key).is_some_and(|conv| {
             conv.lock_found().is_some_and(|state| !state.is_up() && state.order.contains(queued))
         });
-        if dead_with_it && self.logins.waiting_for(conversation).is_none() {
+        if dead_with_it && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive(key, Revive::IfNotRunning)?;
         }
         // 대화의 잠금을 쥔 채 고른다 — 턴 끝이 맨 앞을 꺼내 보내는 것과 엇갈리지 않는다. 표의 잠금은 쥐지 않는다 — 맨 앞을 곧바로
@@ -1312,7 +1335,7 @@ impl ConversationHost {
             shut_down_together(std::slice::from_mut(live));
         }
         // 닫은 대화는 로그인이 「됨」이 돼도 다시 띄우지 않는다.
-        self.logins.forget(conversation);
+        self.logins.forget(&key.waiter());
 
         let Ok(work_at) = self.open_work(work) else {
             // work 폴더가 사라졌다(아카이브 · 삭제). 끈 것으로 끝낸다 — 열어 둔 기록 파일은 옮겨진 자리를 따라가지만,
@@ -1335,7 +1358,7 @@ impl ConversationHost {
             None => Conv::new(
                 Recorder::open(&work_at.places.agents, work, conversation, Arc::clone(&self.emit))
                     .map_err(HostError::Record)?,
-                work_at.spec_place(),
+                Some(work_at.spec_place()),
                 None,
                 None,
             ),
@@ -1372,14 +1395,21 @@ impl ConversationHost {
     /// 대화도 함께 꺼지기 때문이다. 떠 있지 않은 대화(다시 켠 뒤 · 닫은 대화)는 셀 것이 없다. 기다리지 않는다.
     ///
     /// 에이전트가 스스로 이어 간 턴(three-axes 티켓 16 · S4)도 「턴이 도는 대화」다 — 끄면 그 턴도 잃는다.
+    ///
+    /// Thread의 Session도 센다(v1 구현 스펙 S40) — 앱을 끄면 함께 꺼진다.
     pub fn quit_counts(&self) -> QuitCounts {
-        let live = self.lock_live();
         let mut counts = QuitCounts::default();
-        for conversation in live.values() {
-            let state = conversation.conv.lock_state();
+        let mut count = |conv: &Conv| {
+            let state = conv.lock_state();
             counts.running += usize::from(state.order.turning());
             counts.queued += state.order.queued();
             counts.approvals += state.turns.as_ref().map_or(0, Turns::pending_permissions);
+        };
+        for conversation in self.lock_live().values() {
+            count(&conversation.conv);
+        }
+        for conv in self.threads.live_convs() {
+            count(&conv);
         }
         counts
     }
@@ -1389,12 +1419,20 @@ impl ConversationHost {
     ///
     /// 모든 대화의 stdin을 **한꺼번에** 닫고 1초를 **한 번만** 기다린 뒤 그룹들을 SIGKILL한다 — 대화마다 1초씩
     /// 줄을 세우면 N초가 된다.
+    ///
+    /// Thread의 Session도 같은 1초 안에 함께 끈다(v1 티켓 04).
     pub fn shut_down(&self) {
         // 로그인 명령도 끈다 — SIGTERM을 먼저 보내 두고, 대화들을 끄는 1초 뒤에 남은 것을 SIGKILL한다.
         self.logins.begin_close();
         let mut live: Vec<Live> = self.lock_live().drain().map(|(_, live)| live).collect();
-        mark_taken(&live);
-        shut_down_together(&mut live);
+        let mut sessions = self.threads.drain_sessions();
+        mark_taken(live.iter().map(|live| &*live.conv).chain(sessions.iter().map(|session| &*session.conv)));
+        end_together(
+            live.iter_mut()
+                .map(|live| (&mut live.agent, &*live.conv))
+                .chain(sessions.iter_mut().map(|session| (&mut session.agent, &*session.conv)))
+                .collect(),
+        );
         self.logins.finish_close();
     }
 
@@ -1427,9 +1465,9 @@ impl ConversationHost {
     fn live_conv(&self, work_at: &WorkAt, key: ConversationKey, agent: Agent) -> Result<Arc<Conv>, HostError> {
         Ok(Conv::new(
             Recorder::open(&work_at.places.agents, key.work, key.id, Arc::clone(&self.emit)).map_err(HostError::Record)?,
-            work_at.spec_place(),
+            Some(work_at.spec_place()),
             Some(self.vanish_watch(&work_at.works, key.work, key.id)),
-            Some(self.login_watch(agent, key.work, key.id)),
+            Some(self.login_watch(agent, key.waiter())),
         ))
     }
 
@@ -1450,7 +1488,7 @@ impl ConversationHost {
                 _ => None,
             }
         };
-        mark_taken(taken.as_slice());
+        mark_taken(taken.iter().map(|live| &*live.conv));
         taken
     }
 
@@ -1551,6 +1589,11 @@ impl<'a> ConversationKey<'a> {
         }
         Ok(Self { work, id })
     }
+
+    /// 로그인 창구에서 이 대화의 자리.
+    fn waiter(self) -> Waiter {
+        Waiter::Conversation { work: self.work.to_owned(), conversation: self.id.to_owned() }
+    }
 }
 
 /// 세션이 열린 순간 적는 줄 — 판 경고(S6)와 열림. 런타임의 순서 장벽 안에서 돌아, 답 뒤에 온 update보다 앞에 선다.
@@ -1595,9 +1638,27 @@ fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &Se
     Launch { program: found("codex-acp"), args: Vec::new(), env: vars, cwd: place.cwd.clone() }
 }
 
+/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이 · 지시문 파일. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
+#[derive(Debug, Clone, Default)]
+struct ClaudeChoice {
+    mode: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
+    /// 지시문 파일 — Thread 참여자의 정의 스냅숏 본문(v1 구현 스펙 S4). work 대화에는 없다.
+    instructions: Option<PathBuf>,
+}
+
+impl ClaudeChoice {
+    /// work 대화의 것 — `agents.json`의 모드 · 모델.
+    fn of_row(row: &ConversationRow) -> Self {
+        Self { mode: row.mode.clone(), model: row.model.clone(), ..Self::default() }
+    }
+}
+
 /// Claude를 띄우는 것 — 변환기(앱에서는 이 실행 파일의 하위 모드 `acp-claude`)를 로그인 env 그대로 띄운다. 변환기가
-/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 대화의 모드 · 모델)은 `session/new`의
-/// `_meta.atelier`에 싣는다. 「엔진 기본값」인 모드 · 모델은 싣지 않는다 — 변환기가 플래그를 주지 않는다(three-axes 결정 16).
+/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이 · 지시문 파일)은
+/// `session/new`의 `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지 않는다(three-axes 결정 16).
+/// 되살릴 때(`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다(v1 티켓 03).
 ///
 /// 변환기는 앱과 같은 판이어야 연다 — 다르면 「판 어긋남」으로 열기 실패다(워크플로 S4).
 fn claude_launch(
@@ -1605,16 +1666,22 @@ fn claude_launch(
     programs: &[discovery::FoundProgram],
     env: &AgentEnv,
     place: &SessionPlace,
-    row: &ConversationRow,
+    choice: &ClaudeChoice,
 ) -> (Launch, OpenTerms) {
     let claude = programs.iter().find(|program| program.name == "claude").expect("찾은 것에 claude가 있다");
     let mut atelier = serde_json::Map::new();
     atelier.insert("claudePath".into(), json!(claude.path));
-    if let Some(mode) = &row.mode {
+    if let Some(mode) = &choice.mode {
         atelier.insert("permissionMode".into(), json!(mode));
     }
-    if let Some(model) = &row.model {
+    if let Some(model) = &choice.model {
         atelier.insert("model".into(), json!(model));
+    }
+    if let Some(effort) = &choice.effort {
+        atelier.insert("effort".into(), json!(effort));
+    }
+    if let Some(instructions) = &choice.instructions {
+        atelier.insert("instructionsFile".into(), json!(instructions));
     }
     let launch = Launch {
         program: translator.program.clone(),

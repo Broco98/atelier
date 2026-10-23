@@ -22,7 +22,7 @@ pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use engines::EngineLists;
 pub use host::{
     Conversation, ConversationDefaults, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, QuitCounts,
-    TranslatorCommand,
+    ThreadLink, ThreadView, TranslatorCommand,
 };
 pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};

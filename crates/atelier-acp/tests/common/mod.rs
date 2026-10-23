@@ -497,6 +497,63 @@ impl Sandbox {
         pids.extend(receipt["descendants"].as_array().unwrap().iter().map(|pid| pid.as_u64().unwrap() as u32));
         (session_id, pids)
     }
+
+    // ── Thread(v1 티켓 04) ──────────────────────────────────────────────────────
+
+    /// Library에 Agent 정의 파일 하나를 둔다 — `library/agents/<handle>.md`. 있으면 덮는다(사람이 고친 꼴).
+    pub fn library_agent(&self, handle: &str, text: &str) -> PathBuf {
+        let dir = atelier_core::library_agents_in(&self.data_root());
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{handle}.md"));
+        fs::write(&path, text).unwrap();
+        path
+    }
+
+    /// Thread 폴더 `threads/<id>`.
+    pub fn thread_dir(&self, thread: &str) -> PathBuf {
+        self.data_root().join("threads").join(thread)
+    }
+
+    /// 그 Thread의 `thread.json`.
+    pub fn thread_json(&self, thread: &str) -> Value {
+        let path = self.thread_dir(thread).join("thread.json");
+        serde_json::from_str(&fs::read_to_string(&path).unwrap_or_else(|_| panic!("없다: {}", path.display()))).unwrap()
+    }
+
+    /// `thread.json`의 그 참여자.
+    pub fn participant(&self, thread: &str, handle: &str) -> Value {
+        self.thread_json(thread)["participants"]
+            .as_array()
+            .expect("participants 배열")
+            .iter()
+            .find(|participant| participant["handle"] == handle)
+            .unwrap_or_else(|| panic!("thread.json에 @{handle} 참여자가 없다"))
+            .clone()
+    }
+
+    /// 그 Thread 참여자의 Session id(`thread.json`).
+    pub fn thread_session_id(&self, thread: &str, handle: &str) -> String {
+        self.participant(thread, handle)["sessionId"].as_str().expect("Session id").to_owned()
+    }
+
+    /// 그 Thread의 기록 줄들(`events.jsonl`).
+    pub fn thread_record(&self, thread: &str) -> Vec<Value> {
+        record_at(&self.thread_record_path(thread))
+    }
+
+    pub fn thread_record_path(&self, thread: &str) -> PathBuf {
+        self.thread_dir(thread).join("events.jsonl")
+    }
+
+    /// Thread의 기록이 `done`을 채울 때까지 기다린다.
+    pub fn wait_thread_record(&self, thread: &str, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+        wait_record_at(&self.thread_record_path(thread), done)
+    }
+
+    /// Thread의 기록에 그 kind의 줄이 `n`개 적힐 때까지 기다린다.
+    pub fn wait_thread_kind(&self, thread: &str, kind: &str, n: usize) -> Vec<Value> {
+        self.wait_thread_record(thread, |record| record.iter().filter(|line| line["kind"] == kind).count() >= n)
+    }
 }
 
 /// 변환기 시험 bin — 앱 진입점의 `acp-claude` 갈래와 같은 진입 함수를 부른다.
@@ -739,14 +796,6 @@ pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&s
     fn at(seq: u64) -> String {
         format!("2026-10-10T10:{:02}:{:02}.000+09:00", seq / 60, seq % 60)
     }
-    fn replace(value: &mut Value, from: &str, to: &str) {
-        match value {
-            Value::String(text) => *text = text.replace(from, to),
-            Value::Array(items) => items.iter_mut().for_each(|item| replace(item, from, to)),
-            Value::Object(fields) => fields.values_mut().for_each(|field| replace(field, from, to)),
-            _ => {}
-        }
-    }
     let root = data_root.display().to_string();
     let mut last_sent = 0;
     record
@@ -770,6 +819,24 @@ pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&s
             line
         })
         .collect()
+}
+
+/// Thread의 기록을 고정값으로 바꾼다 — [`fix_record_sessions`]에 더해 Thread id(지금 시각)를 `20261010-100000`으로 바꾼다. id는
+/// 줄의 경로(Thread 폴더)와 머리말에 실린다.
+pub fn fix_thread_record(record: &[Value], data_root: &Path, thread: &str, session_ids: &[&str]) -> Vec<Value> {
+    let mut fixed = fix_record_sessions(record, data_root, session_ids);
+    fixed.iter_mut().for_each(|line| replace(line, thread, "20261010-100000"));
+    fixed
+}
+
+/// JSON 안의 글마다 `from`을 `to`로 바꾼다.
+fn replace(value: &mut Value, from: &str, to: &str) {
+    match value {
+        Value::String(text) => *text = text.replace(from, to),
+        Value::Array(items) => items.iter_mut().for_each(|item| replace(item, from, to)),
+        Value::Object(fields) => fields.values_mut().for_each(|field| replace(field, from, to)),
+        _ => {}
+    }
 }
 
 /// 다시 지은 기록이 검사 자료 `tests/records/<name>.jsonl`과 같은지 잰다. 줄마다 JSON으로 견준다 — 키 순서에
@@ -1038,6 +1105,28 @@ impl Events {
     pub fn queue_texts(&self, slug: &str, id: &str) -> Vec<Vec<String>> {
         self.queues(slug, id).into_iter().map(|queue| queue.into_iter().map(|queued| queued.text).collect()).collect()
     }
+
+    /// 그 Thread의 대기 줄 바뀜 이벤트들 — 이벤트마다 그 참여자와 그때의 대기 줄 전체.
+    pub fn thread_queues(&self, id: &str) -> Vec<(String, Vec<QueuedMessage>)> {
+        self.all()
+            .into_iter()
+            .filter_map(|event| match event {
+                HostEvent::ThreadQueue { thread, who, queue } if thread == id => Some((who, queue)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Thread 목록 요약이 바뀐 이벤트들 — 온 차례대로.
+    pub fn thread_lists(&self) -> Vec<atelier_core::ThreadSummary> {
+        self.all()
+            .into_iter()
+            .filter_map(|event| match event {
+                HostEvent::ThreadList(summary) => Some(summary),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 /// 그 대화의 기록 줄 이벤트들을 파일 줄과 같은 꼴(JSON)로.
@@ -1049,6 +1138,18 @@ pub fn emitted(events: &Events, slug: &str, id: &str) -> Vec<Value> {
             HostEvent::Record { work, conversation, line } if work == slug && conversation == id => {
                 Some(serde_json::to_value(line).unwrap())
             }
+            _ => None,
+        })
+        .collect()
+}
+
+/// 그 Thread의 기록 줄 이벤트들을 파일 줄과 같은 꼴(JSON)로.
+pub fn thread_emitted(events: &Events, id: &str) -> Vec<Value> {
+    events
+        .all()
+        .into_iter()
+        .filter_map(|event| match event {
+            HostEvent::ThreadRecord { thread, line } if thread == id => Some(serde_json::to_value(line).unwrap()),
             _ => None,
         })
         .collect()

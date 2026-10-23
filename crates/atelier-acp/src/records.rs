@@ -7,6 +7,9 @@
 //!
 //! **줄 모양 · 줄 종류 · 반쪽 줄 규칙 · 덧붙이는 쓰기는 코어(`atelier_core`의 기록 줄)가 정본이다** — Thread의 `events.jsonl`과 한
 //! 벌이다(v1 티켓 02). 여기는 대화 목록과, 줄마다의 payload 모양과, 적은 줄을 이벤트로 내보내는 일만 갖는다.
+//!
+//! Thread의 Session(v1 티켓 04)도 같은 `Recorder`로 적는다 — 줄은 Thread 하나의 `events.jsonl`(`ThreadLog`, 참여자가 함께 쓴다)로
+//! 가고, 참여자의 줄에는 `who`가 붙는다(S8). 사람이 보낸 줄에는 `who`가 없고 받는 이를 payload의 `to`에 적는다.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -17,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::discovery::Agent;
-use crate::host::{Emit, HostEvent};
+use crate::host::{Emit, HostEvent, QueuedMessage};
 use crate::quote::Quote;
 use crate::runtime::{How, Withdrawal};
 use crate::spec_changes::FileChange;
@@ -239,13 +242,20 @@ pub(crate) struct TurnEndLine {
     pub error: Option<Value>,
 }
 
-/// 대화 하나의 기록 파일. 대화가 열려 있는 동안 파일을 연 채로 둔다 — work 폴더가 아카이브로 옮겨져도
-/// (같은 볼륨 안의 rename) 같은 파일에 이어 적힌다(S10).
+/// 기록 하나의 쓰는 손 — 대화 하나 또는 Thread 참여자 하나(v1 티켓 04). 런타임이 넘긴 것과 턴 차례의 줄은 모두 이것으로
+/// 적는다.
 pub(crate) struct Recorder {
-    work: String,
-    conversation: String,
-    emit: Arc<Emit>,
-    log: Mutex<RecordLog>,
+    lines: Lines,
+}
+
+/// 줄이 가는 곳.
+enum Lines {
+    /// three-axes 대화 기록 — 대화마다 파일 하나다. 대화가 열려 있는 동안 파일을 연 채로 둔다 — work 폴더가 아카이브로
+    /// 옮겨져도(같은 볼륨 안의 rename) 같은 파일에 이어 적힌다(S10).
+    Conversation { work: String, conversation: String, emit: Arc<Emit>, log: Mutex<RecordLog> },
+    /// Thread 참여자 하나의 Session — 같은 Thread의 참여자들이 기록 하나를 함께 쓰고, 줄마다 그 참여자의 handle(`who`)이
+    /// 선다(v1 구현 스펙 S8).
+    Thread { log: Arc<ThreadLog>, who: String },
 }
 
 impl Recorder {
@@ -254,27 +264,47 @@ impl Recorder {
         let path = record_path(agents_dir, conversation);
         let log = RecordLog::open(&path)
             .map_err(|error| format!("기록 파일을 열지 못했습니다: {} — {error}", path.display()))?;
-        Ok(Self { work: work.to_owned(), conversation: conversation.to_owned(), emit, log: Mutex::new(log) })
+        Ok(Self {
+            lines: Lines::Conversation {
+                work: work.to_owned(),
+                conversation: conversation.to_owned(),
+                emit,
+                log: Mutex::new(log),
+            },
+        })
     }
 
-    /// 이 기록의 work.
-    pub(crate) fn work(&self) -> &str {
-        &self.work
+    /// Thread 참여자 하나의 쓰는 손 — 그 Thread의 기록에 그 handle로 적는다.
+    pub(crate) fn of_thread(log: Arc<ThreadLog>, who: &str) -> Self {
+        Self { lines: Lines::Thread { log, who: who.to_owned() } }
     }
 
-    /// 이 기록의 대화 id.
-    pub(crate) fn conversation(&self) -> &str {
-        &self.conversation
+    /// 이 기록의 대화 id 또는 Thread id — 사람이 읽을 오류에 싣는다.
+    pub(crate) fn name(&self) -> &str {
+        match &self.lines {
+            Lines::Conversation { conversation, .. } => conversation,
+            Lines::Thread { log, .. } => log.thread(),
+        }
     }
 
-    /// 기록 밖의 소식(대기 줄 바뀜)을 기록 줄과 같은 길로 내보낸다. 받는 closure는 호스트를 다시 부르면 안 된다.
-    pub(crate) fn announce(&self, event: HostEvent) {
-        (self.emit)(event);
+    /// 대기 줄 바뀜(기록 밖의 소식)을 기록 줄과 같은 길로 내보낸다. 받는 closure는 호스트를 다시 부르면 안 된다.
+    pub(crate) fn queue_changed(&self, queue: Vec<QueuedMessage>) {
+        match &self.lines {
+            Lines::Conversation { work, conversation, emit, .. } => {
+                emit(HostEvent::Queue { work: work.clone(), conversation: conversation.clone(), queue })
+            }
+            Lines::Thread { log, who } => {
+                log.announce(HostEvent::ThreadQueue { thread: log.thread().to_owned(), who: who.clone(), queue })
+            }
+        }
     }
 
     /// 마지막으로 적은 줄의 seq.
     pub(crate) fn last_seq(&self) -> u64 {
-        self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq()
+        match &self.lines {
+            Lines::Conversation { log, .. } => log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq(),
+            Lines::Thread { log, .. } => log.last_seq(),
+        }
     }
 
     pub(crate) fn session(&self, state: SessionState) -> Result<(), RecordError> {
@@ -296,7 +326,14 @@ impl Recorder {
         }
         payload["prompt"] = json!(prompt);
         payload["sendNow"] = json!(send_now);
-        self.write(RecordKind::Sent, payload)
+        match &self.lines {
+            Lines::Conversation { .. } => self.write(RecordKind::Sent, payload),
+            // Thread에서는 사람의 줄이다 — `who` 없이 받는 참여자(`to`)를 싣는다(v1 구현 스펙 §4 · S8 · S9).
+            Lines::Thread { log, who } => {
+                payload["to"] = json!(who);
+                log.write(RecordKind::Sent, None, payload).map(drop)
+            }
+        }
     }
 
     /// `session/update` 원문.
@@ -329,15 +366,80 @@ impl Recorder {
     /// 한 줄을 적고, 같은 줄을 기록 줄 이벤트로 내보낸다. 잠금을 쥔 채 내보낸다 — 이벤트의 순서가 seq의
     /// 순서다. **그래서 이벤트를 받는 closure는 호스트를 다시 부르면 안 된다.**
     ///
-    /// 대화 기록의 줄에는 `who`가 없다 — 대화마다 에이전트가 하나다(v1 구현 스펙 S8은 Thread의 줄에 더한다).
+    /// 대화 기록의 줄에는 `who`가 없다 — 대화마다 에이전트가 하나다. Thread의 줄에는 그 참여자의 handle이 선다(v1 구현 스펙 S8).
     fn write(&self, kind: RecordKind, payload: Value) -> Result<(), RecordError> {
+        match &self.lines {
+            Lines::Conversation { work, conversation, emit, log } => {
+                let mut log = log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let line = log
+                    .append(kind, None, payload)
+                    .map_err(|error| format!("기록을 쓰지 못했습니다: {conversation} — {error}"))?;
+                emit(HostEvent::Record { work: work.clone(), conversation: conversation.clone(), line });
+                Ok(())
+            }
+            Lines::Thread { log, who } => log.write(kind, Some(who), payload).map(drop),
+        }
+    }
+}
+
+/// Thread 하나의 기록 `events.jsonl` — 그 Thread의 참여자들([`Recorder::of_thread`])과 엔진(참여 줄)이 함께 쓴다(v1 티켓 04).
+/// 열려 있는 동안 파일을 연 채로 둔다. 한 Thread에 하나만 연다 — 둘이면 seq를 따로 센다(호스트가 Thread마다 하나를 쥔다).
+pub(crate) struct ThreadLog {
+    thread: String,
+    emit: Arc<Emit>,
+    log: Mutex<RecordLog>,
+}
+
+impl ThreadLog {
+    /// 연 기록을 쥔다 — 새 Thread의 것(`create_thread`)이거나 이어 연 것(`open_thread_log`)이다.
+    pub(crate) fn new(thread: &str, log: RecordLog, emit: Arc<Emit>) -> Self {
+        Self { thread: thread.to_owned(), emit, log: Mutex::new(log) }
+    }
+
+    pub(crate) fn thread(&self) -> &str {
+        &self.thread
+    }
+
+    pub(crate) fn last_seq(&self) -> u64 {
+        self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq()
+    }
+
+    /// 한 줄을 적고 같은 줄을 기록 줄 이벤트로 내보낸다 — 잠금을 쥔 채 내보내므로 이벤트의 순서가 seq의 순서다. 적은 줄을
+    /// 돌려준다(참여 줄의 시각이 참여자의 들어온 시각이다).
+    pub(crate) fn write(&self, kind: RecordKind, who: Option<&str>, payload: Value) -> Result<RecordLine, RecordError> {
         let mut log = self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let line = log
-            .append(kind, None, payload)
-            .map_err(|error| format!("기록을 쓰지 못했습니다: {} — {error}", self.conversation))?;
-        (self.emit)(HostEvent::Record { work: self.work.clone(), conversation: self.conversation.clone(), line });
-        Ok(())
+            .append(kind, who, payload)
+            .map_err(|error| format!("Thread 기록을 쓰지 못했습니다: {} — {error}", self.thread))?;
+        (self.emit)(HostEvent::ThreadRecord { thread: self.thread.clone(), line: line.clone() });
+        Ok(line)
     }
+
+    /// 이미 적힌 줄(새 Thread의 첫 줄)을 기록 줄 이벤트로 내보낸다. 이어 적기 전에 부른다 — 그래야 이벤트의 순서가 seq의 순서다.
+    pub(crate) fn written(&self, line: RecordLine) {
+        let _held = self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        (self.emit)(HostEvent::ThreadRecord { thread: self.thread.clone(), line });
+    }
+
+    /// 기록 밖의 소식(대기 줄 바뀜 · 목록 요약)을 같은 길로 내보낸다.
+    pub(crate) fn announce(&self, event: HostEvent) {
+        (self.emit)(event);
+    }
+}
+
+/// Thread의 그 참여자가 지금 Session에서 말을 받은 적이 있나 — 그 참여자의 Session이 새로 선 마지막 열림 줄(`new` · `fresh`)
+/// 뒤에 그에게 간 `sent`가 있나. [`RecordFacts::sent_since_session_start`]의 Thread 판이다 — 되살린 Session이 아직 첫 말을 받지
+/// 않았으면 그 첫 말에 머리말이 붙는다(v1 구현 스펙 S10).
+pub(crate) fn heard_since_session_start(lines: &[RecordLine], who: &str) -> bool {
+    lines
+        .iter()
+        .rev()
+        .find_map(|line| match line.kind {
+            RecordKind::Sent if line.payload["to"] == who => Some(true),
+            RecordKind::Session if line.who.as_deref() == Some(who) && starts_session(&line.payload) => Some(false),
+            _ => None,
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

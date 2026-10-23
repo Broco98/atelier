@@ -40,19 +40,22 @@ pub fn host(exe: PathBuf, events: Sender<HostEvent>) -> ConversationHost {
 
 /// 호스트가 내보낸 것을 화면으로 쏘는 스레드를 건다. 스레드 하나라 기록 줄의 차례가 그대로 간다. 셋업 전에 쌓인 것도
 /// 채널에 남아 있다가 여기서 나간다 — 듣는 화면이 아직 없으면 사라지지만, 화면은 기록을 seq로 다시 읽는다.
+///
+/// Thread의 것(v1 티켓 04)도 이 스레드가 쏜다 — 이름과 꼴은 `thread.rs`가 정한다. 엔진 상태는 두 화면이 함께 듣는다.
 pub fn announce(app: AppHandle, events: Receiver<HostEvent>) {
     std::thread::spawn(move || {
         for event in events {
-            let (name, payload) = wire(&event);
-            let _ = app.emit(name, payload);
+            for (name, payload) in wire(&event).into_iter().chain(crate::thread::wire(&event)) {
+                let _ = app.emit(name, payload);
+            }
         }
     });
 }
 
 /// 호스트의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ChatRecordEvent` · `ChatQueueEvent` ·
-/// `ChatEngineEvent`와 같은 말이다.
-fn wire(event: &HostEvent) -> (&'static str, Value) {
-    match event {
+/// `ChatEngineEvent`와 같은 말이다. Thread의 것이면 없다.
+fn wire(event: &HostEvent) -> Option<(&'static str, Value)> {
+    Some(match event {
         HostEvent::Record { work, conversation, line } => (
             RECORD_EVENT,
             json!({"work": work, "conversation": conversation, "seq": line.seq, "line": line}),
@@ -61,7 +64,8 @@ fn wire(event: &HostEvent) -> (&'static str, Value) {
             (QUEUE_EVENT, json!({"work": work, "conversation": conversation, "queue": queue}))
         }
         HostEvent::Engine(state) => (ENGINE_EVENT, serde_json::to_value(state).expect("엔진 상태는 JSON이다")),
-    }
+        HostEvent::ThreadRecord { .. } | HostEvent::ThreadQueue { .. } | HostEvent::ThreadList(_) => return None,
+    })
 }
 
 #[cfg(test)]
@@ -80,7 +84,7 @@ mod tests {
             "payload": {"stopReason": "end_turn"},
         }))
         .expect("기록 줄");
-        let (name, payload) = wire(&HostEvent::Record { work: "cart".into(), conversation: "c1".into(), line });
+        let (name, payload) = wire(&HostEvent::Record { work: "cart".into(), conversation: "c1".into(), line }).expect("대화의 것");
         assert_eq!(name, "chat:record");
         assert_eq!(
             payload,
@@ -107,7 +111,7 @@ mod tests {
             atelier_acp::QueuedMessage { id: "q2".into(), text: "지금 보낼 말".into(), send_now: true },
             atelier_acp::QueuedMessage { id: "q1".into(), text: "기다리는 말".into(), send_now: false },
         ];
-        let (name, payload) = wire(&HostEvent::Queue { work: "cart".into(), conversation: "c1".into(), queue });
+        let (name, payload) = wire(&HostEvent::Queue { work: "cart".into(), conversation: "c1".into(), queue }).expect("대화의 것");
         assert_eq!(name, "chat:queue");
         assert_eq!(
             payload,
@@ -136,7 +140,7 @@ mod tests {
             login: Some(LoginProgress::Running { url: Some("https://claude.com/cai/oauth/authorize?x".into()) }),
         });
         assert_eq!(
-            wire(&running),
+            wire(&running).expect("대화의 것"),
             (
                 "chat:engine",
                 json!({
@@ -152,11 +156,11 @@ mod tests {
             login: Some(LoginProgress::Ended { cancelled: false, exit_code: Some(0) }),
         });
         assert_eq!(
-            wire(&ended).1,
+            wire(&ended).expect("대화의 것").1,
             json!({"agent": "codex", "found": true, "loggedIn": true,
                    "login": {"state": "ended", "cancelled": false, "exitCode": 0}}),
         );
         let missing = HostEvent::Engine(EngineState { agent: Agent::Codex, found: false, logged_in: None, login: None });
-        assert_eq!(wire(&missing).1, json!({"agent": "codex", "found": false, "loggedIn": null, "login": null}));
+        assert_eq!(wire(&missing).expect("대화의 것").1, json!({"agent": "codex", "found": false, "loggedIn": null, "login": null}));
     }
 }

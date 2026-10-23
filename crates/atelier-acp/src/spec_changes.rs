@@ -74,6 +74,11 @@ pub(crate) struct LineRange {
 }
 
 impl Snapshot {
+    /// 아무 파일도 없는 찍음 — 찍을 spec 폴더가 없는 자리(Thread의 Session, v1 티켓 04)의 것. 두 빈 찍음은 견주어도 바뀐 것이 없다.
+    pub(crate) fn empty() -> Self {
+        Self { files: BTreeMap::new() }
+    }
+
     /// 지금의 spec 폴더를 찍는다. 목록과 읽기 사이에 사라진 파일 · 읽을 수 없는 파일은 없는 것으로 친다.
     pub(crate) fn take(place: &SpecPlace) -> Self {
         let files = atelier_core::spec_files(&place.work_dir)

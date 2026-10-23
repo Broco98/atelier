@@ -148,12 +148,18 @@ fn run_to_end(program: &Path, args: &[&str], env: &AgentEnv, cwd: &Path) -> Ran 
     Ran { exit, stdout }
 }
 
-/// 로그인을 기다리는 대화 하나.
+/// 로그인을 기다리는 것 하나 — 그 엔진과 다시 띄울 자리.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Waiting {
     pub agent: Agent,
-    pub work: String,
-    pub conversation: String,
+    pub waiter: Waiter,
+}
+
+/// 로그인을 기다리는 자리 — three-axes의 work 대화이거나, Thread의 참여자 하나의 Session이다(v1 티켓 04).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Waiter {
+    Conversation { work: String, conversation: String },
+    Thread { thread: String, handle: String },
 }
 
 /// 도는 로그인 명령 하나.
@@ -361,26 +367,26 @@ impl LoginDesk {
         self.announce(EngineState { agent, found, logged_in, login: self.progress(agent) });
     }
 
-    /// 그 대화가 로그인을 기다린다 — 에이전트가 `-32000`으로 답했다. 쥐고, 엔진 상태(찾음 · 안 됨)를 알린다.
-    pub(crate) fn login_required(&self, agent: Agent, work: &str, conversation: &str) {
+    /// 그 자리가 로그인을 기다린다 — 에이전트가 `-32000`으로 답했다. 쥐고, 엔진 상태(찾음 · 안 됨)를 알린다.
+    pub(crate) fn login_required(&self, agent: Agent, waiter: Waiter) {
         let login = self.progress(agent);
         {
             let mut waiting = self.lock_waiting();
-            if !waiting.iter().any(|held| held.conversation == conversation) {
-                waiting.push(Waiting { agent, work: work.to_owned(), conversation: conversation.to_owned() });
+            if !waiting.iter().any(|held| held.waiter == waiter) {
+                waiting.push(Waiting { agent, waiter });
             }
         }
         self.announce(EngineState { agent, found: true, logged_in: Some(false), login });
     }
 
-    /// 그 대화가 로그인을 기다리면 그 엔진.
-    pub(crate) fn waiting_for(&self, conversation: &str) -> Option<Agent> {
-        self.lock_waiting().iter().find(|held| held.conversation == conversation).map(|held| held.agent)
+    /// 그 자리가 로그인을 기다리면 그 엔진.
+    pub(crate) fn waiting_for(&self, waiter: &Waiter) -> Option<Agent> {
+        self.lock_waiting().iter().find(|held| held.waiter == *waiter).map(|held| held.agent)
     }
 
-    /// 그 대화를 더는 쥐지 않는다 — 닫혔거나, 첫 말 전에 에이전트를 바꿨다(three-axes 티켓 13).
-    pub(crate) fn forget(&self, conversation: &str) {
-        self.lock_waiting().retain(|held| held.conversation != conversation);
+    /// 그 자리를 더는 쥐지 않는다 — 닫혔거나, 첫 말 전에 에이전트를 바꿨다(three-axes 티켓 13).
+    pub(crate) fn forget(&self, waiter: &Waiter) {
+        self.lock_waiting().retain(|held| held.waiter != *waiter);
     }
 
     /// 그 엔진의 로그인을 기다리던 대화들을 꺼낸다 — 다시 띄울 차례다. 꺼낸 것은 다시 쥐지 않는다(두 길이 함께
