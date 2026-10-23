@@ -1,19 +1,22 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { AtSign, ChevronDown, Folder, Shield } from "lucide-react";
+import { AtSign, ChevronDown, ChevronRight, Folder, Shield } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
-import { chipLabel, EFFORTS, type ChoiceOption } from "./chips";
+import { ASK_LEVELS, askLevelOf, chipLabel, EFFORTS, type ChoiceOption } from "./chips";
 import HostFace from "./HostFace";
 import type { AgentChoice } from "./mentions";
+import type { AskLevel } from "./types";
 
 // 입력창의 칩(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 캔버스 Composer 보드). three-axes 칩(`chat/ComposerChips.tsx`)을 옮겨 보드의
 // 자리로 나눴다.
@@ -21,8 +24,11 @@ import type { AgentChoice } from "./mentions";
 //   「생각 깊이」 칸 줄이 선다. 값은 다음 말을 받을 참여자 Session의 것이다(스토리 33) — 바꾸면 다음 턴부터 든다. 생각 깊이는 턴이 도는
 //   동안 바꿀 수 없다(엔진이 거절한다 — 그래서 그동안 잠근다).
 // - **아래 줄**은 받는 이 · Work · 물어보는 정도다. **받는 이**는 말의 첫 멘션이 고른 Agent, 없으면 Host다(S9 · v1 티켓 14) — 누르면
-//   부를 수 있는 Agent가 서고, 고르면 말 앞의 멘션을 갈아 끼운다(`withRecipient`). Work 칩(31) · 물어보는 정도(23)는 아직 **보이기만
-//   한다** — 누를 것이 없으니 단추가 아니고 셰브런도 없다.
+//   부를 수 있는 Agent가 서고, 고르면 말 앞의 멘션을 갈아 끼운다(`withRecipient`). Work 칩(31)은 아직 **보이기만 한다** — 누를 것이
+//   없으니 단추가 아니고 셰브런도 없다.
+// - **물어보는 정도**(v1 티켓 23 · 스토리 84 · 보드 「아래 줄 메뉴 · 물어보는 정도」)는 방패 · 지금 정도 이름의 칩이다. 누르면 「언제
+//   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 끝의 「Policy 열기」는 다음 말을 받을 Agent의 파일을
+//   Library에서 연다 — 정도보다 먼저 드는 그 Agent의 `ask_before` · `forbid`가 거기 있다. 입력창의 `/policy`도 이 메뉴를 연다.
 
 /** 입력창 안 칩 — 30 · 좌우 9 · 10 반경 · 13/18 `fg-secondary`, hover와 열린 동안 켜짐 면(보드 `.chip`). */
 const CHIP =
@@ -109,17 +115,29 @@ const TRAY_CHIP = "flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text
 /** 받는 이 칩이 보이는 것 — 고른 Agent, 아는 이름이 아닌 멘션, 또는 Host(`null`). */
 export type ShownRecipient = { agent: AgentChoice } | { unknown: string } | null;
 
+/** 물어보는 정도 칩이 받는 것 — 지금 정도 · 바꾸기 · 「Policy 열기」, 그리고 `/policy`가 메뉴를 여는 열림 상태. */
+export interface AskChoice {
+  level: AskLevel;
+  onLevel: (level: AskLevel) => void;
+  /** 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. 없으면 그 줄이 서지 않는다. */
+  onOpenPolicy?: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
 /** 입력창 아래 줄 — 받는 이 · Work · 물어보는 정도(머리말). */
 export function ComposerTray({
   recipient,
   agents,
   onRecipient,
+  ask,
 }: {
   recipient: ShownRecipient;
   /** 받는 이로 고를 수 있는 Agent — 깨진 것은 빠진다. */
   agents: readonly AgentChoice[];
   /** 받는 이를 골랐다 — 부르는 이름, Host면 `null`. */
   onRecipient: (call: string | null) => void;
+  ask: AskChoice;
 }) {
   const callable = agents.filter((agent) => agent.broken === null && agent.call !== "host");
   const value = recipient === null ? HOST_VALUE : "agent" in recipient ? recipient.agent.call : "";
@@ -177,11 +195,61 @@ export function ComposerTray({
         <Folder className="size-3.5" aria-hidden />
         Work 없음
       </span>
-      <span className={TRAY_CHIP} aria-label="물어보는 정도 매번 묻기">
-        <Shield className="size-3.5" aria-hidden />
-        매번 묻기
-      </span>
+      <AskChip {...ask} />
     </div>
+  );
+}
+
+/** 물어보는 정도 칩과 메뉴(보드 「아래 줄 메뉴 · 물어보는 정도」 — 16 반경 메뉴, 고른 것에만 체크, 설명은 한 줄로 끝난다). */
+function AskChip({ level, onLevel, onOpenPolicy, open, onOpenChange }: AskChoice) {
+  const name = askLevelOf(level)?.name ?? level;
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger
+        aria-label={`물어보는 정도 ${name}`}
+        className={cn(TRAY_CHIP, "quiet-hover data-[popup-open]:bg-fill-hover data-[popup-open]:text-fg focus-ring")}
+      >
+        <Shield className="size-3.5" aria-hidden />
+        {name}
+        <ChevronDown className="size-3 shrink-0" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>언제 물어볼까요</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={level}
+            onValueChange={(next: AskLevel) => {
+              if (next !== level) onLevel(next);
+            }}
+          >
+            {ASK_LEVELS.map((one) => (
+              <DropdownMenuRadioItem
+                key={one.value}
+                value={one.value}
+                label={one.name}
+                aria-label={one.name}
+                aria-description={one.description}
+                size="note"
+              >
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{one.name}</span>
+                  <span className="truncate text-xs text-fg-tertiary">{one.description}</span>
+                </span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        {onOpenPolicy && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onOpenPolicy} className="text-fg-secondary">
+              Policy 열기
+              <ChevronRight className="ml-auto size-3.5" aria-hidden />
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { chipLabel, chipLists, currentModel } from "./chips";
+import { chipLabel, chipLists, currentModel, slashCommands } from "./chips";
 import type { Participant, RecordLine } from "./types";
 
 // 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 참여자 줄에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
@@ -53,5 +53,21 @@ describe("입력창 칩", () => {
   it("목록이 서기 전의 별칭은 이름처럼 머리를 대문자로 쓴다(Screen-Home 보드 「Opus · 높음」)", () => {
     expect(chipLabel(null, "opus", "high")).toBe("Opus · 높음");
     expect(chipLabel(null, "sonnet", null)).toBe("Sonnet");
+  });
+});
+
+describe("「/」 명령(v1 티켓 23)", () => {
+  it("화면 명령이 보드의 차례로 Runtime 명령 앞에 서고, 같은 이름의 Runtime 명령은 가린다 — `/plan`은 늘 계획만이다", () => {
+    const runtime = [
+      { name: "plan", description: "Runtime의 plan", aliases: [] },
+      { name: "compact", description: "맥락 줄이기", aliases: [] },
+    ];
+    expect(slashCommands(runtime).map((command) => [command.name, command.description])).toEqual([
+      ["new", "새 Thread"],
+      ["agent", "Agent 부르기"],
+      ["plan", "계획만 세우고 멈추기"],
+      ["policy", "언제 물어볼지"],
+      ["compact", "맥락 줄이기"],
+    ]);
   });
 });

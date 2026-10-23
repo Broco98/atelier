@@ -7,7 +7,8 @@ export { elapsed } from "./tool-view";
 // 그릴 줄로 옮기는 **순수 함수**다.
 //
 // - **읽기와 찾기가 이어지면 한 줄로 묶는다**(「파일 4개 살펴봄 · 검색 2번」). 고치기와 명령은 묶지 않는다 — 결과가 바뀌는 일이라 줄마다
-//   보여야 한다. 도는 줄은 묶지 않는다(하는 중인 일은 제 줄에서 반짝인다). 하나뿐인 읽기 · 찾기도 제 줄이다.
+//   보여야 한다. 도는 줄은 묶지 않는다(하는 중인 일은 제 줄에서 반짝인다). 하나뿐인 읽기 · 찾기도 제 줄이다. 판정이 묻지 않고 허용한
+//   줄도 묶지 않는다 — 그 앞에 방패 줄(「자동으로 허용함」)이 서야 한다(v1 티켓 23).
 // - **바뀐 파일은 마지막 턴의 편집 도구가 낸 diff에서 센다.** Thread Session에는 three-axes의 고친 곳(`changes`) 줄이 없다 — 엔진이 턴
 //   앞뒤로 폴더를 견주지 않는다. 끝난(`completed`) 편집만 센다: 실패한 편집은 파일을 바꾸지 않았다.
 
@@ -33,7 +34,7 @@ export function logRows(tools: readonly ToolEntry[]): LogRow[] {
   };
   for (const tool of tools) {
     const view = describeTool(tool);
-    const groupable = view.group !== null && view.state === "done" && tool.stop === null && !tool.denied;
+    const groupable = view.group !== null && view.state === "done" && tool.stop === null && !tool.denied && tool.allowed === null;
     if (groupable) {
       run.push({ tool, view });
       continue;

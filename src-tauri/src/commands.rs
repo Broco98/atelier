@@ -793,14 +793,16 @@ pub async fn thread_read_record(
 /// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
 /// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
 /// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
+/// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 아래 칩에서 고른 값이다(v1 티켓 23).
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     text: String,
     attachments: Vec<String>,
     link: atelier_acp::ThreadLink,
+    mode: Option<atelier_acp::AskLevel>,
 ) -> CmdResult<String> {
-    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_with(&text, &attachments, link)).await
+    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_asking(&text, &attachments, link, mode)).await
 }
 
 /// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
@@ -889,6 +891,17 @@ pub async fn thread_set_effort(
     effort: String,
 ) -> CmdResult<atelier_core::Participant> {
     to_host(&engine, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &who, &effort)).await
+}
+
+/// 물어보는 정도 바꾸기(v1 티켓 23 · S18) — 입력창 아래 칩 · `/plan` · `/policy`. Work에 이은 Thread면 그 Work의 정도다. 판정은 다음
+/// 요청부터 따르고, 「계획만」으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄로 남는다.
+#[tauri::command]
+pub async fn thread_set_mode(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    mode: atelier_acp::AskLevel,
+) -> CmdResult<()> {
+    to_host(&engine, "물어보는 정도를 바꾸지 못했습니다", move |host| host.set_thread_mode(&thread, mode)).await
 }
 
 /// 다시 맡기기(v1 티켓 17 · 구현 스펙 §8) — 호출 줄에서 사람이 `from`의 부르기를 같은 글(`text`)로 `to`에게 다시 한다. 기다리지

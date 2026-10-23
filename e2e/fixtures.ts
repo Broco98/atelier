@@ -862,6 +862,7 @@ const FIXTURE_THREAD: ThreadView = {
   participants: [FIXTURE_HOST],
   lastRead: 0,
   lastSeq: 24,
+  askLevel: "always",
   live: false,
   queues: {},
 };
@@ -1109,6 +1110,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.
   thread_set_model: FIXTURE_HOST,
   thread_set_effort: FIXTURE_HOST,
+  // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
+  thread_set_mode: null,
   // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
   thread_rename: {
     id: FIXTURE_THREAD.id,

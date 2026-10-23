@@ -84,13 +84,15 @@ export interface ThreadView {
   createdAt: string;
   /** 이어진 Work의 slug. 없으면 `null`이다. */
   work: string | null;
-  /** 물어보는 정도. Work가 없을 때만 쓴다(v1 티켓 23). */
+  /** `thread.json`에 적힌 물어보는 정도 — Work가 없을 때만 쓴다(S18). 화면은 지금 정도(`askLevel`)를 읽는다. */
   mode: string | null;
   participants: Participant[];
   /** 사람이 마지막으로 본 줄의 seq. */
   lastRead: number;
   /** 기록에 마지막으로 적힌 줄의 seq. 화면은 이 다음부터 기록 줄 이벤트로 잇는다. */
   lastSeq: number;
+  /** 지금 물어보는 정도(v1 티켓 23) — Work에 이은 Thread면 그 Work의 것, 아니면 이 Thread의 것이다. 입력창 아래 칩이 그린다. */
+  askLevel: AskLevel;
   /**
    * 참여자의 Session 가운데 하나라도 지금 이 앱에 떠 있고 살아 있나. 거짓이면 기록이 `lastSeq`까지 그린 열린 턴 · 물음은 끝난
    * 프로세스의 것이다(`fold.ts`의 `goneThrough`).
@@ -99,6 +101,12 @@ export interface ThreadView {
   /** 참여자마다의 대기 줄(handle → 그 Session의 대기 줄, 대기 말이 있는 참여자만) — 메모리에만 있어 다시 켠 뒤에는 비어 있다. */
   queues: Record<string, QueuedMessage[]>;
 }
+
+/**
+ * 물어보는 정도(`atelier_acp::AskLevel`, 스토리 84 · S18) — 매번 묻기 · 편집은 허용 · 계획만 · 알아서. 저장 글자 그대로다. 이름 · 설명은
+ * `chips.ts`의 `ASK_LEVELS`다.
+ */
+export type AskLevel = "always" | "edits" | "plan" | "auto";
 
 /** Thread 목록의 한 줄(`atelier_core::ThreadSummary`) — 새것이 먼저다. 깨진 Thread는 `broken`에 까닭만 있다. */
 export interface ThreadSummary {

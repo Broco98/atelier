@@ -256,6 +256,119 @@ fn 물어보는_정도는_work에_이은_thread면_work_점_파일에_아니면_
 }
 
 #[test]
+fn thread를_열면_지금_물어보는_정도가_함께_온다_work에_이은_thread는_work의_것이다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    sandbox.work("cart", &["fe"]);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+
+    let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
+    wait_turns_of(&sandbox, &plain, "host", 1);
+    assert_eq!(host.thread(&plain).expect("Thread").ask_level, AskLevel::Always, "처음은 매번 묻기다");
+    host.set_thread_mode(&plain, AskLevel::Auto).expect("물어보는 정도 바꾸기");
+    assert_eq!(host.thread(&plain).expect("Thread").ask_level, AskLevel::Auto);
+
+    let linked = host.start_thread("장바구니를 봐 줘", in_cart()).expect("Work에 이은 Thread");
+    wait_turns_of(&sandbox, &linked, "host", 1);
+    // 같은 Work의 다른 Thread가 바꾼 것 — 점 파일 하나를 함께 읽는다(S18).
+    cart_mode(&sandbox, "edits");
+    let view = host.thread(&linked).expect("Thread");
+    assert_eq!((view.ask_level, view.file.mode.clone()), (AskLevel::Edits, None), "Work의 정도다 — thread.json의 mode가 아니다");
+    let shown = serde_json::to_value(&view).expect("화면이 읽는 꼴");
+    assert_eq!(shown["askLevel"], "edits", "화면은 askLevel 칸을 읽는다");
+
+    host.shut_down();
+}
+
+/// 그 Session의 claude가 받은 권한 모드 바꾸기(`set_permission_mode`)의 모드들.
+fn modes_sent(sandbox: &Sandbox, session: &str) -> Vec<String> {
+    sandbox
+        .claude_stdin(session)
+        .into_iter()
+        .filter(|line| line["type"] == "control_request" && line["request"]["subtype"] == "set_permission_mode")
+        .map(|line| line["request"]["mode"].as_str().unwrap_or_default().to_owned())
+        .collect()
+}
+
+#[test]
+fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같은_work의_다른_thread도_함께_바뀐다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    sandbox.work("cart", &["fe"]);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+
+    let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
+    wait_turns_of(&sandbox, &plain, "host", 1);
+    let session = sandbox.thread_session_id(&plain, "host");
+    host.set_thread_mode(&plain, AskLevel::Plan).expect("계획만으로");
+    assert_eq!(modes_sent(&sandbox, &session), ["plan"], "떠 있는 Session을 다시 띄우지 않고 모드만 바꾼다");
+    host.set_thread_mode(&plain, AskLevel::Edits).expect("계획만에서 나감");
+    host.set_thread_mode(&plain, AskLevel::Auto).expect("계획만 밖에서 바꿈");
+    assert_eq!(modes_sent(&sandbox, &session), ["plan", "default"], "계획만 밖끼리는 claude의 모드가 같다 — 판정만 바뀐다");
+
+    // 같은 Work에 이은 두 Thread — 정도는 Work의 것이라 한쪽에서 바꾸면 다른 쪽의 Session도 따른다.
+    let one = host.start_thread("장바구니를 봐 줘", in_cart()).expect("Work의 Thread 하나");
+    wait_turns_of(&sandbox, &one, "host", 1);
+    let two = host.start_thread("결제를 봐 줘", in_cart()).expect("같은 Work의 다른 Thread");
+    wait_turns_of(&sandbox, &two, "host", 1);
+    host.set_thread_mode(&one, AskLevel::Plan).expect("Work를 계획만으로");
+    assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&one, "host")), ["plan"]);
+    assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&two, "host")), ["plan"], "다른 Thread의 Session도 계획 모드다");
+    assert_eq!(modes_sent(&sandbox, &session), ["plan", "default"], "다른 Work의 Session은 그대로다");
+
+    host.shut_down();
+}
+
+#[test]
+fn 새_thread는_첫_말과_함께_고른_정도로_서고_계획만이면_claude가_계획_모드로_뜬다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+
+    let thread = host
+        .start_thread_asking("계획만 세워 줘", &[], ThreadLink::NoWork, Some(AskLevel::Plan))
+        .expect("계획만으로 새 Thread");
+    let record = wait_turns_of(&sandbox, &thread, "host", 1);
+    assert_eq!(sandbox.thread_json(&thread)["mode"], "plan", "Work 없는 Thread의 정도는 thread.json에 선다");
+    assert_eq!(host.thread(&thread).expect("Thread").ask_level, AskLevel::Plan);
+    let args = args_of(&sandbox, &sandbox.thread_session_id(&thread, "host"));
+    assert_eq!(permission_mode(&args), Some("plan"), "첫 Session부터 계획 모드다: {args:?}");
+    assert!(of_kind(&record, "mode").is_empty(), "고른 채로 섰다 — 바꾼 줄이 아니다");
+
+    host.shut_down();
+}
+
+#[test]
+fn 편집은_허용으로_세운_thread의_첫_편집은_묻지_않고_허용되며_그_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    // Host의 첫 턴이 편집(`Write`)을 묻는다 — 경로는 Thread 폴더로 옮긴다(Thread 폴더 밖이면 판정이 거절한다).
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
+    ));
+
+    let thread = host
+        .start_thread_asking("outside/allowed.txt를 Write로 만들어", &[], ThreadLink::NoWork, Some(AskLevel::Edits))
+        .expect("편집은 허용으로 새 Thread");
+    let record = wait_turns_of(&sandbox, &thread, "host", 1);
+    let lines = permissions(&record, "host");
+    assert_eq!(lines.len(), 1, "물음 줄이 없다:\n{}", common::lines_text(&record));
+    let payload = &lines[0]["payload"];
+    assert_eq!(
+        (payload["state"].clone(), payload["optionId"].clone(), payload["reason"].clone()),
+        (json!("decided"), json!("allow_once"), json!("편집은 허용"))
+    );
+    let session = sandbox.thread_session_id(&thread, "host");
+    assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow");
+
+    host.shut_down();
+    // 화면의 방패 줄(v1 티켓 23 — `fold.test.ts`)과 Thread 화면의 L3(v1 티켓 28)가 자동 허용 줄을 이것으로 잰다.
+    let settled = common::fix_thread_record(&common::commands_after_opened(&record), &sandbox.data_root(), &thread, &[&session]);
+    common::assert_record("thread-auto-allow", &settled);
+}
+
+#[test]
 fn claude는_기본_모드로만_뜨고_계획만일_때만_계획_모드로_뜬다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));

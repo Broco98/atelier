@@ -534,6 +534,7 @@ pub fn run() {
             commands::thread_answer_permission,
             commands::thread_set_model,
             commands::thread_set_effort,
+            commands::thread_set_mode,
             commands::thread_rename,
             commands::thread_call_again,
         ])

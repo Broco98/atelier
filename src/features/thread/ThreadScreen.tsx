@@ -13,7 +13,7 @@ import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
 import GuideCard from "./GuideCard";
 import HostFace from "./HostFace";
-import { useAgentRoster, useChangeChip, useQueue, useRenameThread, useThread, type ChipChange } from "./hooks";
+import { useAgentRoster, useChangeChip, useQueue, useRenameThread, useSetMode, useThread, type ChipChange } from "./hooks";
 import { changedFiles } from "./log";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
 import QueuedMessages from "./QueuedMessages";
@@ -21,7 +21,7 @@ import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
-import type { Attachment, ThreadView } from "./types";
+import type { AskLevel, Attachment, ThreadView } from "./types";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -38,6 +38,9 @@ import type { Attachment, ThreadView } from "./types";
 //   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
 //   Session 값이다(§14 「입력창 아래 줄」) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
 //   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
+// - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 아래 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
+//   첫 Session이 뜬다), 선 Thread에서는 곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다. 칩 메뉴의 「Policy
+//   열기」는 다음 말을 받을 Agent의 파일을 Library에서 연다.
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
@@ -48,6 +51,10 @@ const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
 interface ThreadScreenProps {
   sidebarOpen: boolean;
 }
+
+/** 「Policy 열기」의 자리 — Library 화면의 그 Agent 파일. Work에 이었으면 그 Work의 Project 안 Agent도 서는 범위다. */
+const policyPlace = (call: string, work: string | null) =>
+  ({ to: "/library", search: { agent: call, ...(work !== null && { work }) } }) as const;
 
 /** 새 Thread(`/`). */
 export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
@@ -60,6 +67,8 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   // 첫 말을 받을 이 — 멘션한 Agent, 없으면 Host. 칩은 그 정의 파일의 모델 · 생각 깊이를 보이기만 한다(스토리 33).
   const first = recipient?.agent ?? agents.find((one) => one.call === "host") ?? null;
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
+  // 아직 Thread가 없다 — 고른 정도는 첫 말과 함께 간다.
+  const [level, setLevel] = useState<AskLevel>("always");
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
   const guide = guideKind(engine, false);
@@ -67,7 +76,7 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const start = async (text: string, attachments: readonly Attachment[]) => {
     setStarting({ text, attachments });
     try {
-      const id = await threadApi.start(text, attachments);
+      const id = await threadApi.start(text, attachments, level);
       void navigate({ to: "/threads/$id", params: { id }, replace: true });
     } catch (error) {
       setStarting(null);
@@ -92,6 +101,9 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
       agents={agents}
       recipient={recipient}
       onCreateAgent={createAgent}
+      level={level}
+      onLevel={setLevel}
+      onOpenPolicy={() => void navigate(policyPlace(first?.call ?? "host", null))}
     />
   );
   return (
@@ -237,6 +249,7 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   const preference = (target ?? agents.find((one) => one.call === "host"))?.model ?? null;
   const host = view.participants.find((one) => one.handle === "host") ?? null;
   const change = useChangeChip();
+  const setMode = useSetMode();
   const [chipProblem, setChipProblem] = useState<string | null>(null);
   const queue = useQueue(view);
   const engine = useStore(threadEngineStore, (state) => state);
@@ -297,6 +310,13 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
       threadApi.callAgain(thread, call.from, call.to, call.text).catch((failure: unknown) => setChipProblem(String(failure))),
     [thread],
   );
+
+  const pickLevel = (mode: AskLevel) => {
+    setChipProblem(null);
+    setMode.mutate({ thread, mode }, { onError: (failure) => setChipProblem(String(failure)) });
+  };
+  // 「Policy 열기」 — 다음 말을 받을 Agent(멘션이 없으면 Host)의 파일.
+  const policyOwner = target?.call ?? "host";
 
   const chip = (next: ChipChange) => {
     if (!participant) return;
@@ -372,6 +392,9 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             recipient={recipient}
             recipientRunning={participant !== null && model.answering.includes(participant.handle)}
             onCreateAgent={createAgent}
+            level={view.askLevel}
+            onLevel={pickLevel}
+            onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
             card={
               asking && (
                 <ApprovalCard

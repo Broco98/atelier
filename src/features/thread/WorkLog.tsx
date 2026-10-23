@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Copy, Plug } from "lucide-react";
+import { createContext, Fragment, useContext, useState, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronRight, Copy, Plug, ShieldCheck } from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import type { ToolEntry } from "./fold";
@@ -18,19 +18,48 @@ import { elapsed, phraseText, shownPath, type DiffPiece, type ToolView } from ".
 //   (「코드 종료 0 · 4.2초」), 변경은 경로 · `+N −N` 머리와 바뀐 줄 둘레, MCP는 플러그 · 이름 머리 아래 「보낸 값」 · 「받은 값」 두
 //   줄이다(받은 값은 글이면 본문 글꼴, JSON이면 고정폭 — v1 티켓 17).
 //
+// - **방패 줄**(보드 「자동 허용 줄」, v1 티켓 23 · 구현 스펙 §9) — 판정이 묻지 않고 허용한 도구 줄 앞에 방패 · 「자동으로 허용함」 ·
+//   대상(고정폭 12) · 까닭 알약(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …)이 한 줄로 선다. 나중에 왜 묻지 않았는지 알 수
+//   있게다. 그 도구 줄은 제 줄 그대로 뒤에 선다(결과 · 펼친 안은 도구 줄의 것이다).
+//
 // 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 머리의 「Work 패널에서 열기」는 Work 패널(31)이 서는 날 단다.
 
 /** 그 Thread의 작업 폴더(Host Session의 `cwd`) — 변경 상자 머리가 경로를 이 폴더에서 본 자리로 줄인다(`shownPath`). */
 export const LogPlace = createContext<string | null>(null);
 
-/** 도구 줄들 — 이어진 읽기 · 찾기는 묶음 줄로 선다. */
+/** 도구 줄들 — 이어진 읽기 · 찾기는 묶음 줄로 선다. 판정이 묻지 않고 허용한 줄은 그 앞에 방패 줄이 선다. */
 export function ToolRows({ tools }: { tools: readonly ToolEntry[] }) {
   return (
     <>
       {logRows(tools).map((row) =>
-        row.kind === "group" ? <GroupLine key={row.key} group={row} /> : <ToolLine key={row.key} tool={row.tool} view={row.view} />,
+        row.kind === "group" ? (
+          <GroupLine key={row.key} group={row} />
+        ) : (
+          <Fragment key={row.key}>
+            {row.tool.allowed !== null && <AutoLine view={row.view} reason={row.tool.allowed} />}
+            <ToolLine tool={row.tool} view={row.view} />
+          </Fragment>
+        ),
       )}
     </>
+  );
+}
+
+/**
+ * 방패 줄(보드 `.auto`) — 방패 체크 14 · 「자동으로 허용함」 13/20 `fg-tertiary` · 대상(고정폭 12 `fg-secondary`) · 까닭 알약(20 높이 · 6
+ * 반경 · `fill-soft` · `fg-secondary`). 좁으면 알약이 다음 줄로 접힌다.
+ */
+function AutoLine({ view, reason }: { view: ToolView; reason: string }) {
+  const { subject, mono } = view.phrase;
+  return (
+    <p data-auto-allowed className="flex min-h-7 flex-wrap items-center gap-1.5 text-chat-meta leading-5 text-fg-tertiary">
+      <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+      <span>자동으로 허용함</span>
+      {subject !== null && (
+        <span className={cn("min-w-0 truncate text-fg-secondary", mono && "font-mono text-xs")}>{subject}</span>
+      )}
+      <span className="inline-flex h-5 shrink-0 items-center rounded-sm bg-fill-soft px-1.5 text-2xs text-fg-secondary">{reason}</span>
+    </p>
   );
 }
 

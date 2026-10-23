@@ -882,9 +882,12 @@ enum Revive {
 }
 
 /// 사람이 바꾸는 Session의 설정 하나 — Runtime에 넣는 요청과 `config` 줄이 짝을 이룬다. Runtime이 떠 있는 Session에 곧바로 넣는
-/// 것은 모델 하나다(three-axes 티켓 09 · 스토리 33). 생각 깊이는 띄울 때의 플래그로만 받는다(v1 티켓 05).
+/// 것은 모델(three-axes 티켓 09 · 스토리 33)과 권한 모드(「계획만」을 들고 날 때, v1 티켓 23)다. 생각 깊이는 띄울 때의 플래그로만
+/// 받는다(v1 티켓 05).
 enum Setting {
     Model(String),
+    /// claude의 권한 모드 — `default` · `plan`(S17, `AskLevel::claude_mode`).
+    Mode(&'static str),
 }
 
 impl Setting {
@@ -892,6 +895,7 @@ impl Setting {
     fn request(&self) -> (&'static str, Value) {
         match self {
             Setting::Model(model) => ("session/set_config_option", json!({"configId": "model", "value": model})),
+            Setting::Mode(mode) => ("session/set_mode", json!({"modeId": mode})),
         }
     }
 
@@ -899,6 +903,7 @@ impl Setting {
     fn changed(&self) -> Value {
         match self {
             Setting::Model(model) => json!({"model": model}),
+            Setting::Mode(mode) => json!({"mode": mode}),
         }
     }
 }

@@ -4,7 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { mergeLines, threadQueueStore, setQueue } from "./thread-store";
-import type { AgentRoster, Participant, QueuedMessage, ThreadSummary, ThreadView } from "./types";
+import type { AgentRoster, AskLevel, Participant, QueuedMessage, ThreadSummary, ThreadView } from "./types";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
@@ -126,6 +126,25 @@ export function useChangeChip() {
             }
           : view,
       );
+    },
+  });
+}
+
+/**
+ * 물어보는 정도 바꾸기(v1 티켓 23) — 연 Thread의 지금 정도를 고친다. Work에 이은 Thread면 정도가 그 Work의 것이라, 같은 Work에 이은
+ * 다른 Thread의 연 캐시도 함께 고친다(엔진은 바꾼 Thread에만 `mode` 줄을 적는다).
+ */
+export function useSetMode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ thread, mode }: { thread: string; mode: AskLevel }) => threadApi.setMode(thread, mode),
+    onSuccess: (_, { thread, mode }) => {
+      const work = queryClient.getQueryData<ThreadView>(threadKey(thread))?.work ?? null;
+      for (const [key, view] of queryClient.getQueriesData<ThreadView>({ queryKey: ["thread"] })) {
+        if (view && (view.id === thread || (work !== null && view.work === work))) {
+          queryClient.setQueryData<ThreadView>(key, { ...view, askLevel: mode });
+        }
+      }
     },
   });
 }

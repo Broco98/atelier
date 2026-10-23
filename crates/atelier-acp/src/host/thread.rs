@@ -89,6 +89,9 @@ pub struct ThreadView {
     pub file: ThreadFile,
     /// 기록에 마지막으로 적힌 줄의 seq.
     pub last_seq: u64,
+    /// 지금 물어보는 정도(S18 · v1 티켓 23) — Work에 이은 Thread면 Work 폴더의 점 파일, 아니면 `thread.json`의 `mode`다. 입력창 아래 칩이
+    /// 이것을 그린다. 판정이 요청마다 읽는 값과 같은 길로 읽는다([`gate::asking`]).
+    pub ask_level: AskLevel,
     /// 참여자의 Session 가운데 하나라도 지금 이 앱에 떠 있고 살아 있나 — 아니면 기록 끝에 열린 채 남은 턴은 끝난 프로세스의 것이다
     /// (three-axes 티켓 23의 `live`와 같은 뜻).
     pub live: bool,
@@ -183,6 +186,11 @@ impl Threads {
         found
     }
 
+    /// 그 Work에 이어 열린 떠 있는 Session들 — Work의 물어보는 정도를 함께 쓴다(S18 · v1 티켓 23).
+    fn of_work(&self, work: &str) -> Vec<SessionKey> {
+        self.lock_sessions().iter().filter(|(_, session)| session.writer.work() == Some(work)).map(|(key, _)| key.clone()).collect()
+    }
+
     /// 그 Session이 떠 있으면 그 대화와 쓰기 자리 손.
     fn find_writer(&self, key: &SessionKey) -> Option<(Arc<Conv>, Arc<Writer>)> {
         self.lock_sessions().get(key).map(|session| (Arc::clone(&session.conv), Arc::clone(&session.writer)))
@@ -257,7 +265,8 @@ impl ConversationHost {
             Some(log) => log.last_seq(),
             None => self.read_thread_record(thread, 0)?.last().map_or(0, |line| line.seq),
         };
-        Ok(ThreadView { id: thread.to_owned(), file, last_seq, live, queues })
+        let (ask_level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
+        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queues })
     }
 
     /// 기록 읽기 — 그 Thread의 기록에서 `after` 다음 seq의 줄들. 화면은 이것으로 그리고 그 뒤는 기록 줄 이벤트로 잇는다.
@@ -284,6 +293,19 @@ impl ConversationHost {
     /// 첨부한 첫 말로 새 Thread — [`Self::start_thread`]와 같고, 첨부(`attachments` — 절대 경로들)가 본문 앞에 경로 목록으로
     /// 간다(v1 티켓 06 · S30). 첨부가 절대 경로가 아니거나 없으면 아무것도 세우지 않고 거절한다.
     pub fn start_thread_with(&self, text: &str, attachments: &[String], link: ThreadLink) -> Result<String, HostError> {
+        self.start_thread_asking(text, attachments, link, None)
+    }
+
+    /// 물어보는 정도를 고른 첫 말로 새 Thread — [`Self::start_thread_with`]와 같고, 입력창 아래 칩에서 고른 정도(`mode`)가
+    /// `thread.json`의 `mode`로 선다(v1 티켓 23 · S18). 그래서 첫 Session부터 그 정도로 판정하고, 「계획만」이면 `claude`가 계획 모드로
+    /// 뜬다. 고른 채로 선 것이라 `mode` 줄은 남기지 않는다. Work에 이은 Thread는 Work의 정도를 따르므로 이 값을 읽지 않는다.
+    pub fn start_thread_asking(
+        &self,
+        text: &str,
+        attachments: &[String],
+        link: ThreadLink,
+        mode: Option<AskLevel>,
+    ) -> Result<String, HostError> {
         let attachments = attachments_of(attachments)?;
         let work = match link {
             ThreadLink::Work { slug } => {
@@ -298,7 +320,7 @@ impl ConversationHost {
             unreachable!("새 Thread에는 참여자가 없다")
         };
         let handle = found.definition.handle.clone();
-        let new = NewThread { title: title_of(text), work, mode: None };
+        let new = NewThread { title: title_of(text), work, mode: mode.map(|mode| mode.as_str().to_owned()) };
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Joined, Some(&handle), joined(&found))
             .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));
@@ -414,10 +436,11 @@ impl ConversationHost {
     /// 물어보는 정도 바꾸기(S18 · 스토리 84) — Work에 이은 Thread면 그 Work 폴더의 점 파일에(같은 Work의 Thread들이 함께 쓴다),
     /// 아니면 `thread.json`의 `mode`에 둔다. 바꾼 것은 `mode` 줄(`{mode, work}`, 사람의 줄)로 남는다(§4).
     ///
-    /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정한다 — 「계획만」
-    /// 으로 들고 날 때 떠 있는 Session의 모드를 바꾸는 일은 칩(v1 티켓 23)이 한다.
+    /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정하고, 「계획만」
+    /// 으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 모드도 곧바로 바꾼다(v1 티켓 23 — [`Self::retune_sessions`]).
     pub fn set_thread_mode(&self, thread: &str, mode: AskLevel) -> Result<(), HostError> {
         let file = self.read_thread_file(thread)?;
+        let (before, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
         let stored = Some(mode.as_str().to_owned());
         match &file.work {
             Some(slug) => {
@@ -431,7 +454,49 @@ impl ConversationHost {
             }
         }
         let line = json!({"mode": mode.as_str(), "work": file.work});
-        self.thread_log(thread)?.write(RecordKind::Mode, None, line).map_err(HostError::Record).map(drop)
+        self.thread_log(thread)?.write(RecordKind::Mode, None, line).map_err(HostError::Record)?;
+        if before.claude_mode() == mode.claude_mode() {
+            return Ok(());
+        }
+        self.retune_sessions(thread, &file, mode)
+    }
+
+    /// 그 정도를 쓰는 떠 있는 Session의 `claude` 권한 모드를 맞춘다(S17 · v1 티켓 23) — 그 Thread의 참여자들과, Work에 이었으면 그 Work에
+    /// 이어 열린 다른 Thread의 Session들. 다시 띄우지 않고 `session/set_mode`를 넣는다 — 턴이 돌고 있으면 그 턴의 다음 도구부터 든다.
+    /// 넣은 바꾸기는 그 Session의 `config` 줄로 남는다. 떠 있지 않은 Session은 다음에 열 때 이 정도로 뜬다.
+    ///
+    /// 되살리는 중인 Session은 그 끝을 기다린다 — 옛 정도로 열리는 중일 수 있다. 한 Session이 거절해도 나머지는 바꾸고, 처음 거절의
+    /// 까닭으로 실패한다(정도는 이미 바뀌었다 — 판정은 요청마다 그것을 읽는다).
+    fn retune_sessions(&self, thread: &str, file: &ThreadFile, mode: AskLevel) -> Result<(), HostError> {
+        let mut keys: Vec<SessionKey> = file.participants.iter().map(|one| SessionKey::new(thread, &one.handle)).collect();
+        if let Some(slug) = &file.work {
+            for key in self.threads.of_work(slug) {
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+            }
+        }
+        let setting = Setting::Mode(mode.claude_mode());
+        let mut refused = None;
+        for key in keys {
+            let gate = self.revival_gate(&key.gate());
+            let _not_while_reviving = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let Some(conv) = self.threads.find(&key) else { continue };
+            let turns = {
+                let Some(state) = conv.lock_found() else { continue };
+                state.turns.clone().filter(|_| state.order.alive())
+            };
+            let Some(turns) = turns else { continue };
+            let _one_at_a_time = conv.setting.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let (method, fields) = setting.request();
+            match turns.change(method, fields, SETTING_LIMIT) {
+                Ok(()) => conv.recorder.config(setting.changed()).map_err(HostError::Record)?,
+                Err(why) => {
+                    refused.get_or_insert(why);
+                }
+            }
+        }
+        refused.map_or(Ok(()), |why| Err(HostError::Setting(why)))
     }
 
     /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다(스토리 33 · three-axes 티켓 09).

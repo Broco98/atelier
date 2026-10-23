@@ -475,3 +475,62 @@ describe("호출 줄(v1 티켓 17)", () => {
     expect(flowOf(model).calls.map((one) => [one.entry.id, one.turnsBefore])).toEqual([["again", 2]]);
   });
 });
+
+describe("물어보는 정도(v1 티켓 23)", () => {
+  /** 「편집은 허용」으로 세운 Thread의 첫 편집을 판정이 묻지 않고 허용한 축복 기록 — 물음 줄 없이 판정 줄(`decided`) 하나다. */
+  const auto = record("thread-auto-allow");
+
+  it("바꾼 정도는 「Policy를 X로 바꿈」 시스템 줄이고, Work에 이은 Thread면 「· 이 Work에만」이 붙는다", () => {
+    const lines: RecordLine[] = [
+      ...blessed,
+      { seq: 25, at: at(5), kind: "mode", payload: { mode: "edits", work: "cart" } },
+      { seq: 26, at: at(6), kind: "mode", payload: { mode: "always", work: null } },
+      { seq: 27, at: at(7), kind: "mode", payload: { mode: "plan", work: null } },
+      { seq: 28, at: at(8), kind: "mode", payload: { mode: "bogus", work: null } },
+    ];
+    const { system } = foldThread(lines);
+    expect(system.map((line) => [line.kind, line.handle, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
+      ["mode", null, "Policy를 편집은 허용으로 바꿈 · 이 Work에만", 2],
+      ["mode", null, "Policy를 매번 묻기로 바꿈", 2],
+      ["mode", null, "Policy를 계획만으로 바꿈", 2],
+    ]);
+    expect(system.map((line) => line.name)).toEqual(["편집은 허용", "매번 묻기", "계획만"]);
+  });
+
+  it("판정이 묻지 않고 허용한 도구 줄은 그 까닭을 들고, 승인 카드는 서지 않는다", () => {
+    const model = foldThread(auto);
+    expect(model.pending).toEqual([]);
+    const tools = model.turns[0].entries.filter((entry) => entry.kind === "tool");
+    expect(tools.map((tool) => [phraseText(describeTool(tool).phrase), tool.allowed, tool.denied])).toEqual([
+      ["allowed.txt 작성함", "편집은 허용", false],
+    ]);
+  });
+
+  it("판정이 거절한 줄과 사람이 허락한 줄은 자동 허용이 아니다", () => {
+    const decided = auto.find((line) => line.kind === "permission");
+    if (!decided) throw new Error("판정 줄이 있다");
+    const payload = decided.payload as Record<string, unknown>;
+    const refused = foldThread(
+      auto.map((line) => (line === decided ? { ...line, payload: { ...payload, optionId: "reject", reason: "이 Agent의 Policy가 금지한 일이에요" } } : line)),
+    );
+    const asked = foldThread([
+      ...auto.filter((line) => line.seq < decided.seq),
+      { ...decided, payload: { ...payload, state: "asked", optionId: undefined, reason: undefined } },
+      { seq: decided.seq, at: decided.at, kind: "permission", who: "host", payload: { state: "answered", requestId: "0", optionId: "allow_once" } },
+      ...auto.filter((line) => line.seq > decided.seq),
+    ]);
+    for (const model of [refused, asked]) {
+      const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
+      expect(tool?.kind === "tool" && tool.allowed).toBe(null);
+    }
+  });
+
+  it("허용 줄이 도구 줄보다 먼저 와도 그 도구 줄이 까닭을 든다", () => {
+    const decided = auto.find((line) => line.kind === "permission");
+    const first = auto.find((line) => line.kind === "update" && (line.payload as { update: { sessionUpdate: string } }).update.sessionUpdate === "tool_call");
+    if (!decided || !first) throw new Error("판정 줄과 도구 줄이 있다");
+    const swapped = auto.map((line) => (line === first ? { ...decided, seq: first.seq } : line === decided ? { ...first, seq: decided.seq } : line));
+    const tool = foldThread(swapped).turns[0].entries.find((entry) => entry.kind === "tool");
+    expect(tool?.kind === "tool" && tool.allowed).toBe("편집은 허용");
+  });
+});

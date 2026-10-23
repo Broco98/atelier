@@ -28,6 +28,7 @@ const tool = (call: Record<string, unknown>, extra: Partial<ToolEntry> = {}): To
   stop: null,
   cut: false,
   denied: false,
+  allowed: null,
   startedAt: "2026-10-10T10:00:00.000+09:00",
   endedAt: null,
   ...extra,
@@ -205,6 +206,12 @@ describe("묶음 줄 — 이어진 읽기와 찾기만 묶는다", () => {
   it("찾기만 이어지면 「검색 N번 함」이다", () => {
     const rows = logRows([search("a"), search("b")]);
     expect(rows.map((row) => row.kind === "group" && row.label)).toEqual(["검색 2번 함"]);
+  });
+
+  it("판정이 묻지 않고 허용한 줄은 묶지 않는다 — 제 방패 줄과 함께 서야 한다(v1 티켓 23)", () => {
+    const allowed = { ...read("b.ts"), allowed: "알아서" };
+    const rows = logRows([read("a.ts"), allowed, read("c.ts")]);
+    expect(rows.map((row) => (row.kind === "tool" ? row.tool.allowed : row.kind))).toEqual([null, "알아서", null]);
   });
 });
 

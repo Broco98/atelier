@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT } from "./events";
 import type {
   AgentRoster,
+  AskLevel,
   Attachment,
   EngineCheck,
   EngineState,
@@ -37,12 +38,13 @@ export const threadApi = {
   readRecord: (thread: string, after: number) => invoke<RecordLine[]>("thread_read_record", { thread, after }),
   /**
    * 새 Thread — 첫 말과 함께 세운다. Host의 Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
-   * 이어 갈 곳은 Work 칩(31)이 고르기 전까지 늘 「Work 없음」이다. 첨부는 경로만 간다(v1 티켓 06 · S30).
+   * 이어 갈 곳은 Work 칩(31)이 고르기 전까지 늘 「Work 없음」이다. 첨부는 경로만 간다(v1 티켓 06 · S30). 물어보는 정도는 아래 줄
+   * 칩에서 고른 값이다(v1 티켓 23) — 첫 Session부터 그 정도로 뜬다.
    */
-  start: (text: string, attached: readonly Attachment[]) => {
+  start: (text: string, attached: readonly Attachment[], mode: AskLevel) => {
     const link: ThreadLink = { kind: "no-work" };
     const attachments = pathsOf(attached);
-    return invoke<string>("thread_start", { text, attachments, link });
+    return invoke<string>("thread_start", { text, attachments, link, mode });
   },
   /** 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. */
   send: (thread: string, text: string, attached: readonly Attachment[] = []) => {
@@ -67,6 +69,11 @@ export const threadApi = {
   /** 생각 깊이 바꾸기(스토리 33) — 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터 든다. 턴이 도는 동안은 거절된다. */
   setEffort: (thread: string, who: string, effort: string) =>
     invoke<Participant>("thread_set_effort", { thread, who, effort }),
+  /**
+   * 물어보는 정도 바꾸기(v1 티켓 23 · S18) — Work에 이은 Thread면 그 Work의 정도다. 다음 권한 요청부터 들고, 「계획만」으로 들고 나면
+   * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
+   */
+  setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),
   /**
    * 다시 맡기기(v1 티켓 17) — 호출 줄에서 `from`의 부르기를 같은 글로 `to`에게 다시 한다. 기다리지 않는다: 부르기와 그 결과(부른
    * Agent의 다음 말)는 기록 줄 이벤트로 온다. 부를 수 없으면 그 까닭으로 거절된다.

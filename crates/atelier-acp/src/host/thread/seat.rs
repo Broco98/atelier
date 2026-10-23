@@ -107,6 +107,11 @@ impl Writer {
         self.edits.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// 이 Session이 열릴 때 이은 Work — 물어보는 정도를 함께 쓰는 Session들을 찾는다(v1 티켓 23).
+    pub(super) fn work(&self) -> Option<&str> {
+        self.work.as_deref()
+    }
+
     /// 이 Session의 편집을 막는 주인의 글(§10) — 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 그 거절 글, 아무도 쥐지 않았거나 이
     /// Session이 쓸 수 있는 자리면 없다. 판정의 입력(「쓰기 자리 주인」)이다.
     pub(super) fn blocker(&self) -> Option<String> {

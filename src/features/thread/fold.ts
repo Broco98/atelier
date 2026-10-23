@@ -1,3 +1,4 @@
+import { askLevelOf } from "./chips";
 import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
 import type { Attachment, RecordLine } from "./types";
@@ -14,8 +15,8 @@ import type { Attachment, RecordLine } from "./types";
 //   함께 돈다. 줄은 그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 참여자의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은
 //   모두의 끝이다. 참여자의 이름 · 얼굴은 들어옴 줄(`joined`)이 정본이다(`cast`) — 처음 불린 정의 그대로다(S4).
 // - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 참여자가 들고 남(`joined` ·
-//   `left`). 모든 Thread가 Host의 `joined`로 시작하므로 Host가 들어온 줄은 세우지 않는다. Work · 물어보는 정도 · PR 줄은 그
-//   장(23 · 30 · 31 · 40)이 더한다.
+//   `left`), 물어보는 정도 바꿈(`mode` — 「Policy를 편집은 허용으로 바꿈 · 이 Work에만」, v1 티켓 23). 모든 Thread가 Host의 `joined`로
+//   시작하므로 Host가 들어온 줄은 세우지 않는다. Work · PR 줄은 그 장(30 · 31 · 40)이 더한다.
 // - **Agent 부르기는 호출 줄이다**(v1 티켓 17 · 구현 스펙 §8 · 캔버스 WorkLog 보드 「Agent 호출 줄」) — `call` 시작 · 끝 줄 둘을
 //   `payload.id`로 이어 부른 Agent(`who`)의 열린 턴에 한 줄로 세운다. 그 부르기를 낸 Thread 도구 줄(`atelier-thread.call_agent`)은
 //   호출 줄이 그 자리를 대신한다 — 같은 일이 두 줄로 서지 않게. 부른 Agent의 턴이 돌지 않을 때 선 부르기(사람의 「다시 맡기기」)는 턴
@@ -23,7 +24,9 @@ import type { Attachment, RecordLine } from "./types";
 //   줄은 그 턴에 들고, 호출 줄은 그 턴의 줄들을 들고 「지금 도구」 · 펼침의 도구 줄을 보인다. 전해지기 전에 막힌 부르기는 끝 줄
 //   하나로 서고 맡은 턴이 없다.
 // - **도구 줄은 시작과 끝의 시각을 든다** — 작업 로그가 마우스를 올린 줄에 걸린 시간을 말한다(캔버스 WorkLog 보드). 사람이 거절한
-//   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`).
+//   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`). 판정이 묻지 않고 허용한 도구 줄은 그 까닭을 든다
+//   (`allowed` — 방패 줄 「자동으로 허용함」, v1 티켓 23 · 구현 스펙 §9). 판정 줄(`decided`)의 고른 선택지가 허용 갈래일 때다 — 엔진의
+//   거절도 같은 줄로 온다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -120,6 +123,8 @@ export interface ToolEntry {
   cut: boolean;
   /** 이 도구가 물은 권한을 사람이 거절했나(거절 갈래의 선택지로 답했다). */
   denied: boolean;
+  /** 판정이 묻지 않고 허용했으면 그 까닭(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …), 아니면 null이다. */
+  allowed: string | null;
   /** `tool_call` 줄의 시각. */
   startedAt: string;
   /** 끝(`completed` · `failed`)을 알린 줄의 시각. 끝나지 않았으면 null이다. */
@@ -172,8 +177,8 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "joined" | "left" | "library";
-  /** 들고 난 참여자 · Library에 저장한 Agent의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기)은 `null`이다. */
+  kind: "title" | "joined" | "left" | "library" | "mode";
+  /** 들고 난 참여자 · Library에 저장한 Agent의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기 · 정도 바꿈)은 `null`이다. */
   handle: string | null;
   /**
    * Library에 저장한 Agent의 얼굴 — 저장한 정의의 것이다(그 Agent는 이 Thread의 참여자가 아니라 `cast`에 없다). 들고 난 줄은 적지
@@ -262,6 +267,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const askedFor = new Map<string, { tool: string | null; options: PermissionOption[] }>();
   const withdrawnByStop = new Set<string>();
   const deniedTools = new Set<string>();
+  // 판정이 묻지 않고 허용한 도구 줄 id → 까닭 — 도구 줄이 판정 줄보다 늦게 와도 든다.
+  const allowedTools = new Map<string, string>();
   const pending = new Map<string, Omit<PendingPermission, "tool">>();
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
@@ -401,6 +408,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           tool.output += outputOf(update);
           if (tool.endedAt === null && toolDone(tool)) tool.endedAt = line.at;
           if (deniedTools.has(tool.toolCallId)) tool.denied = true;
+          tool.allowed = allowedTools.get(tool.toolCallId) ?? tool.allowed;
           if (mine && update.status === "failed" && mine.entries.includes(tool)) {
             closedLast.set(mine, [...(closedLast.get(mine) ?? []), tool]);
           }
@@ -436,6 +444,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (kind === "tool_call") {
           const tool = newTool(`c${line.seq}`, text(update.toolCallId) ?? `seq-${line.seq}`, update, line.at);
           if (toolDone(tool)) tool.endedAt = line.at;
+          tool.allowed = allowedTools.get(tool.toolCallId) ?? null;
           // 이 도구 줄의 부르기가 먼저 섰다(두 줄이 엇갈려 적혔다) — 호출 줄이 이미 그 자리다.
           const call = isCallTool(tool) ? unpaired(turn, tool) : null;
           if (call) {
@@ -501,6 +510,18 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
             deniedTools.add(asked.tool);
             const tool = findTool(turns, asked.tool);
             if (tool) tool.denied = true;
+          }
+        }
+        if (payload.state === "decided") {
+          // 판정이 닫았다 — 받은 자리의 판정이면 요청이 같은 줄에, 걸린 물음을 닫았으면 물음 줄에 있다(v1 티켓 18 · 22).
+          const options = isObject(payload.request) ? askedOf(requestId, line.who ?? HOST, payload).options : (asked?.options ?? []);
+          const chosen = options.find((option) => option.optionId === payload.optionId);
+          const id = askedToolId(payload) ?? asked?.tool ?? null;
+          const reason = text(payload.reason);
+          if (id && reason !== null && chosen?.kind.startsWith("allow")) {
+            allowedTools.set(id, reason);
+            const tool = findTool(turns, id);
+            if (tool) tool.allowed = reason;
           }
         }
         if (payload.state === "withdrawn" && payload.reason === "stopped" && asked?.tool) {
@@ -594,6 +615,15 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (!name) break;
         const verb = line.kind === "joined" ? "참여함" : "나감";
         say(line.seq, line.kind, handle, "", name, `${particle(name, "이", "가")} ${verb}`);
+        break;
+      }
+      // 사람이 물어보는 정도를 바꿈(v1 티켓 23) — 「Policy를 편집은 허용으로 바꿈 · 이 Work에만」. Work에 이은 Thread의 정도는 그 Work의
+      // 것이라 같은 Work의 다른 Thread에도 든다는 것을 꼬리가 말한다.
+      case "mode": {
+        const level = askLevelOf(payload.mode);
+        if (!level) break;
+        const scope = nonEmpty(payload.work) ? " · 이 Work에만" : "";
+        say(line.seq, "mode", null, "Policy를 ", level.name, `${particle(level.name, "으로", "로")} 바꿈${scope}`);
         break;
       }
       // Agent가 Thread 도구 「Agent 저장」으로 Library에 Agent를 둠(v1 티켓 19) — 그 Agent는 들어오지 않았다. 부르면 그때 들어온다.
@@ -778,6 +808,7 @@ function newTool(key: string, toolCallId: string, call: Json, at: string): ToolE
     stop: null,
     cut: false,
     denied: false,
+    allowed: null,
     startedAt: at,
     endedAt: null,
   };

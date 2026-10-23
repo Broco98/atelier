@@ -1,5 +1,5 @@
 import { isObject, text } from "./json";
-import type { Participant, RecordLine } from "./types";
+import type { AskLevel, Participant, RecordLine } from "./types";
 
 // 입력창 칩과 「/」 메뉴의 원천(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 스토리 33) — 기록 줄에서 그 참여자 Session의 모델 목록 ·
 // 명령을, 참여자 줄(`thread.json`)에서 고른 모델 · 생각 깊이를 읽는 **순수 함수**다. three-axes 칩(`chat/chips.ts`)을 옮겨 왔고, Thread
@@ -7,7 +7,8 @@ import type { Participant, RecordLine } from "./types";
 // - **목록은 그 참여자의 줄에서만 읽는다**(`who`) — Thread에는 여러 참여자의 Session이 함께 적힌다(14).
 // - **지금 값은 참여자 줄이 이긴다.** 모델 · 생각 깊이 바꾸기는 참여자 줄을 먼저 고치고(Session이 떠 있으면 다음 턴부터 든다), 떠
 //   있지 않으면 다음에 띄울 때 그 값으로 연다. 그래서 고른 값이 있으면 그것이고, 없으면(정의 파일에도 없다) Session이 연 값이다.
-// 모드 칩은 없다 — 물어보는 정도(23)가 그 자리를 맡는다.
+// 모드 칩은 없다 — 물어보는 정도(v1 티켓 23)가 그 자리를 맡는다. 정도는 Session이 아니라 Thread(Work에 이었으면 Work)의 값이라 기록이
+// 아니라 Thread의 지금(`ThreadView.askLevel`)에서 읽는다.
 
 /** 칩 목록의 한 줄 — 모델의 선택지. 값 · 이름 · 설명은 Runtime이 준 글자 그대로다. */
 export interface ChoiceOption {
@@ -43,12 +44,36 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
 
 /**
  * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/agent`는 Agent 부르기 메뉴를 연다
- * (v1 티켓 14). 나머지(`/work` · `/plan` · `/policy` …)는 그 장이 더한다.
+ * (v1 티켓 14). `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). 나머지(`/work` ·
+ * `/model`)는 그 장이 더한다.
  */
 export const THREAD_COMMANDS: readonly CommandOption[] = [
   { name: "new", description: "새 Thread", aliases: [], thread: true },
   { name: "agent", description: "Agent 부르기", aliases: [], thread: true },
+  { name: "plan", description: "계획만 세우고 멈추기", aliases: [], thread: true },
+  { name: "policy", description: "언제 물어볼지", aliases: [], thread: true },
 ];
+
+/** 「/」 메뉴의 명령 — 화면 명령 뒤에 Runtime 명령이다. 화면 명령과 이름이 같은 Runtime 명령은 가린다 — 같은 글이 다른 일을 하지 않게. */
+export function slashCommands(runtime: readonly CommandOption[]): CommandOption[] {
+  const taken = new Set(THREAD_COMMANDS.map((command) => command.name));
+  return [...THREAD_COMMANDS, ...runtime.filter((command) => !taken.has(command.name))];
+}
+
+/**
+ * 물어보는 정도 넷(캔버스 Composer 보드 「아래 줄 메뉴 · 물어보는 정도」) — 보드의 차례 · 이름 · 설명 한 줄 그대로다. 이름은 엔진의
+ * Policy 이름 · 자동 허용 까닭과 같은 글이다(`atelier_acp::AskLevel::name`).
+ */
+export const ASK_LEVELS: readonly { value: AskLevel; name: string; description: string }[] = [
+  { value: "always", name: "매번 묻기", description: "고치거나 실행하기 전에 묻습니다" },
+  { value: "edits", name: "편집은 허용", description: "파일은 알아서, 명령은 묻습니다" },
+  { value: "plan", name: "계획만", description: "읽기만 하고 계획을 세웁니다" },
+  { value: "auto", name: "알아서", description: "Policy에 적힌 것만 묻습니다" },
+];
+
+/** 저장 글자 → 물어보는 정도. 모르는 글자면 `null`이다. */
+export const askLevelOf = (value: unknown): (typeof ASK_LEVELS)[number] | null =>
+  ASK_LEVELS.find((level) => level.value === value) ?? null;
 
 export function chipLists(lines: readonly RecordLine[], who: string): ChipLists {
   const lists: ChipLists = { models: null, model: null, commands: [] };

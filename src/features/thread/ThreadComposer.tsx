@@ -4,13 +4,13 @@ import { ArrowUp, AtSign, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AgentMenu, { pickable } from "./AgentMenu";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
-import { THREAD_COMMANDS, type ChoiceOption, type CommandOption } from "./chips";
+import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
 import { ComposerTray, ModelChip, type ShownRecipient } from "./ComposerChips";
 import { insertMention, matchAgents, mentionAt, withRecipient, type AgentChoice, type Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { setDraft, takeFill, threadUiStore } from "./thread-store";
-import type { Attachment } from "./types";
+import type { AskLevel, Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나에 아래 줄(받는 이 · Work · 물어보는 정도)이 붙는다.
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
@@ -24,7 +24,8 @@ import type { Attachment } from "./types";
 // - **`+`와 끌어다 놓기는 첨부다**(v1 티켓 06 · S30) — 받은 파일 · 폴더가 입력칸 위에 칩(이름 · 크기)으로 쌓이고, 끌어다 놓는 동안은
 //   입력창 자리에 「놓으면 첨부합니다」가 선다. 보내면 경로만 간다(`ComposerAttachments.tsx`).
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/agent`는 Agent 부르기 메뉴를 열고,
-//   Runtime 명령은 입력칸이 `/이름 `이 된다.
+//   `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 아래 줄의 물어보는 정도 메뉴를 연다(v1 티켓 23). Runtime 명령은
+//   입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
 // 입력 중인 글 · 쌓인 첨부는 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore`). 보낸 말은 여기서 그리지
@@ -75,6 +76,11 @@ export interface ThreadComposerProps {
   recipientRunning?: boolean;
   /** @ 메뉴 끝의 「새 Agent 만들기」(v1 티켓 19 — `useCreateAgent`). 없으면 그 줄은 자리만 선다. */
   onCreateAgent?: () => void;
+  /** 지금 물어보는 정도(v1 티켓 23) — 아래 줄 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
+  level: AskLevel;
+  onLevel: (level: AskLevel) => void;
+  /** 물어보는 정도 메뉴 끝의 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. */
+  onOpenPolicy?: () => void;
 }
 
 function ThreadComposer({
@@ -99,6 +105,9 @@ function ThreadComposer({
   recipient,
   recipientRunning = running,
   onCreateAgent,
+  level,
+  onLevel,
+  onOpenPolicy,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
   // 바깥이 이 입력창을 채웠다(「새 Agent 만들기」 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
@@ -111,7 +120,7 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const all = useMemo(() => [...THREAD_COMMANDS, ...commands], [commands]);
+  const all = useMemo(() => slashCommands(commands), [commands]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
   const active = pointer.query === query ? Math.min(pointer.at, Math.max(items.length - 1, 0)) : 0;
@@ -165,10 +174,23 @@ function ThreadComposer({
     onCreateAgent?.();
   };
 
+  // 물어보는 정도 메뉴의 열림 — 칩을 누르거나 `/policy`가 연다.
+  const [asking, setAsking] = useState(false);
   const pickCommand = (command: CommandOption) => {
     if (command.thread && command.name === "new") {
       setDraft(draftKey, "");
       onNewThread();
+      return;
+    }
+    if (command.thread && command.name === "plan") {
+      setDraft(draftKey, "");
+      if (level !== "plan") onLevel("plan");
+      field.current?.focus();
+      return;
+    }
+    if (command.thread && command.name === "policy") {
+      setDraft(draftKey, "");
+      setAsking(true);
       return;
     }
     if (command.thread && command.name === "agent") {
@@ -413,6 +435,7 @@ function ThreadComposer({
           const next = withRecipient(draft, call);
           placeCaret(next, next.length);
         }}
+        ask={{ level, onLevel, onOpenPolicy, open: asking, onOpenChange: setAsking }}
       />
       {shown && (
         <p role="alert" className="px-3 pt-1.5 text-xs text-danger">
