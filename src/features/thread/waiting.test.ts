@@ -51,6 +51,7 @@ const summary = (id: string, over: Partial<ThreadSummary> = {}): ThreadSummary =
   work: null,
   handles: ["host"],
   lastRead: 0,
+  readOnly: null,
   broken: null,
   ...over,
 });
@@ -94,6 +95,18 @@ describe("내 차례만 — 기다린 순서", () => {
       "다시 켠": { lines: asking(at, "pnpm test"), view: { live: false, lastSeq: 17 } },
     };
     expect(waitingOrder(threads, (thread) => readings[thread] ?? null).map((one) => one.thread.id)).toEqual(["Work 안"]);
+  });
+
+  // v1 티켓 38 · S43 — 보관된(지워진) Work의 Thread는 사이드바에서 빠진다. 보관된 때 돌던 턴이 물음을 남겼어도 그 Thread는 ⌘K로 연다.
+  it("보관되거나 지워진 Work의 Thread는 들지 않는다", () => {
+    const at = "2026-10-10T10:00:30.000+09:00";
+    const threads = [
+      summary("보관됨", { work: "webhook", readOnly: "archived" }),
+      summary("지워짐", { work: "gone", readOnly: "removed" }),
+      summary("지금 일", { work: "refund-bug" }),
+    ];
+    const readings = live({ 보관됨: asking(at, "rm -rf dist"), 지워짐: asking(at, "pnpm test"), "지금 일": asking(at, "pnpm prisma migrate dev") });
+    expect(waitingOrder(threads, readings).map((one) => one.thread.id)).toEqual(["지금 일"]);
   });
 });
 

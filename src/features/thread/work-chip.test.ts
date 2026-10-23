@@ -13,6 +13,7 @@ const summary = (id: string, work: string | null): ThreadSummary => ({
   work,
   handles: ["host"],
   lastRead: 0,
+  readOnly: null,
   broken: null,
 });
 
@@ -44,7 +45,7 @@ describe("최근 Work", () => {
   const hits: SearchHit[] = [
     { kind: "destination", key: "settings" },
     { kind: "work", slug: "refund-api", title: "환불 API 버그 수정", archived: false },
-    { kind: "thread", id: "t1", title: "환불 API 버그 고쳐줘" },
+    { kind: "thread", id: "t1", title: "환불 API 버그 고쳐줘", archived: false },
     { kind: "work", slug: "checkout", title: "결제 페이지 리디자인", archived: false },
     { kind: "work", slug: "old", title: "치운 일", archived: true },
     { kind: "work", slug: "notes", title: "릴리스 노트 0.9", archived: false },

@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { followRecordLine, threadQuery } from "./hooks";
-import type { RecordLine, ThreadView } from "./types";
+import { followRecordLine, putSummary, threadQuery } from "./hooks";
+import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 
 // 기록 줄 하나가 연 Thread의 캐시를 고치는 것 — 훅을 렌더하지 않는다(이 저장소의 L2에는 DOM이 없다). 키는 쿼리가 짓는 것을 그대로 쓴다.
 
@@ -17,6 +17,7 @@ const view = (id: string, work: string | null): ThreadView => ({
   askLevel: "plan",
   live: true,
   queues: {},
+  readOnly: null,
 });
 
 function seeded(): QueryClient {
@@ -50,5 +51,30 @@ describe("엔진이 바꾼 물어보는 정도(v1 티켓 26)", () => {
     followRecordLine(client, "가", modeLine({ mode: "sometimes", work: "refund-api" }));
     followRecordLine(client, "가", { seq: 10, at: "2026-10-23T15:00:10.000+09:00", kind: "title", payload: { mode: "always" } });
     expect(levels(client)).toEqual({ 가: "plan", 나: "plan", 다: "plan", 라: "plan" });
+  });
+});
+
+describe("목록 요약이 연 Thread를 고친다", () => {
+  const summary = (id: string, over: Partial<ThreadSummary>): ThreadSummary => ({
+    id,
+    title: id,
+    createdAt: "2026-10-23T15:00:00.000+09:00",
+    work: "refund-api",
+    handles: [],
+    lastRead: 0,
+    readOnly: null,
+    broken: null,
+    ...over,
+  });
+  const readOnly = (client: QueryClient, id: string) => client.getQueryData(threadQuery(id).queryKey)?.readOnly;
+
+  // v1 티켓 38 — Work를 보관하면 엔진이 그 Work에 이은 Thread의 요약을 다시 알린다. 열린 화면은 그것으로 입력창 자리를 읽기만으로 바꾼다.
+  it("이은 Work가 보관되면 연 Thread가 읽기만이 되고, 다른 Thread는 그대로다", () => {
+    const client = seeded();
+    putSummary(client, summary("가", { readOnly: "archived" }));
+    expect(readOnly(client, "가")).toBe("archived");
+    expect(readOnly(client, "나")).toBeNull();
+    putSummary(client, summary("나", { readOnly: "removed" }));
+    expect(readOnly(client, "나")).toBe("removed");
   });
 });

@@ -41,7 +41,7 @@ const text = (slug: string, path: string, snippet: string, archived = false): Se
 
 const project = (slug: string, name: string): SearchHit => ({ kind: "project", slug, name });
 
-const thread = (id: string, title: string): SearchHit => ({ kind: "thread", id, title });
+const thread = (id: string, title: string, archived = false): SearchHit => ({ kind: "thread", id, title, archived });
 
 const destination = (key: string): SearchHit => ({ kind: "destination", key });
 
@@ -271,7 +271,18 @@ describe("Thread 줄", () => {
     expect(row).toContain("환불 API 버그 고쳐줘");
     expect(row).not.toContain("20261023-100000");
     expect(row).not.toContain("아카이브");
+    expect(row).not.toContain("보관됨");
     expect(row.split('data-gutter=""')).toHaveLength(2);
+  });
+
+  // v1 티켓 38 · S43. 보관된 Work의 Thread는 사이드바에서 빠지고 ⌘K로만 찾는다 — 그 줄은 오른쪽 끝 칸(Work의 「아카이브」 자리)에
+  // 「보관됨」을 단다. 가는 화면은 같고(그 Thread), 열면 읽기만이라 「아카이브」(다른 화면으로 간다)와 말이 다르다.
+  it("보관된 Work의 Thread 줄만 보관됨이라고 말한다", () => {
+    const rows = rowsOf(render([thread("20261023-100000", "환불 API 버그 고쳐줘"), thread("20261020-090000", "웹훅 재시도 조사", true)]));
+    expect(rows[0]).not.toContain("보관됨");
+    expect(rows[1]).toContain("웹훅 재시도 조사");
+    expect(rows[1]).toContain("보관됨");
+    expect(rows[1]).not.toContain("아카이브");
   });
 });
 

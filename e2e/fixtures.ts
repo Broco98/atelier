@@ -866,6 +866,7 @@ export const FIXTURE_THREAD: ThreadView = {
   askLevel: "always",
   live: false,
   queues: {},
+  readOnly: null,
 };
 
 /**
@@ -1130,6 +1131,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     work: null,
     handles: ["host"],
     lastRead: 0,
+    readOnly: null,
     broken: null,
   } satisfies ThreadSummary,
   // 읽은 자리(v1 티켓 41 · S38) — 맨 아래가 보이면 Thread 화면이 부른다. 답은 바뀐 목록 요약이다(기본은 처음 Thread의 요약에 그 자리).
@@ -1140,6 +1142,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     work: null,
     handles: ["host"],
     lastRead: FIXTURE_THREAD.lastSeq,
+    readOnly: null,
     broken: null,
   } satisfies ThreadSummary,
   // 부를 수 있는 Agent(v1 티켓 03 · 11 · 14) — 새 Thread의 칩이 Host 정의의 모델 · 생각 깊이를, @ 메뉴 · 받는 이 칩 · 사이드바 얼굴이

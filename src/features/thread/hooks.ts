@@ -90,11 +90,11 @@ function readingOf(
 
 /**
  * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름 · 이은 Work도 따라
- * 바꾼다(Work 만들기 카드로 Thread가 Work에 이어졌다 — v1 티켓 30).
+ * 바꾼다(Work 만들기 카드로 Thread가 Work에 이어졌다 — v1 티켓 30). 읽기만인 까닭도 따라 바꾼다(이은 Work가 보관됐다 — v1 티켓 38).
  * **참여자가 바뀌었으면 연 Thread를 다시 읽는다**(v1 티켓 14) — 멘션으로 들어온 Agent의 참여자 줄(`thread.json` — 온 곳 · 모델 · 생각
  * 깊이)은 요약에 없다. 그것이 있어야 머리 카드의 얼굴 · @ 메뉴의 「이 Thread에 있음」 · 그 Agent의 모델 칩이 선다.
  */
-function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
+export function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
   queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
     if (!list) return list;
     const at = list.findIndex((one) => one.id === summary.id);
@@ -104,8 +104,8 @@ function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
     return next;
   });
   queryClient.setQueryData<ThreadView>(threadKey(summary.id), (view) =>
-    view && (view.title !== summary.title || view.work !== summary.work)
-      ? { ...view, title: summary.title, work: summary.work }
+    view && (view.title !== summary.title || view.work !== summary.work || view.readOnly !== summary.readOnly)
+      ? { ...view, title: summary.title, work: summary.work, readOnly: summary.readOnly }
       : view,
   );
   const view = queryClient.getQueryData<ThreadView>(threadKey(summary.id));

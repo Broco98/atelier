@@ -36,13 +36,14 @@ import {
 import { changedFiles } from "./log";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
 import QueuedMessages from "./QueuedMessages";
+import ReadOnlyNotice from "./ReadOnlyNotice";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
-import { WorkCard, WorkCardToggle, useCardOpen } from "./WorkCard";
+import { ArchivedWorkCard, WorkCard, WorkCardToggle, useArchivedWork, useCardOpen } from "./WorkCard";
 import { workHome } from "./work-chip";
 import { decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
@@ -206,32 +207,36 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
   useEffect(() => checkEngineOnce(), []);
   const name = view?.title || "Thread";
   const work = view?.work ?? null;
-  const [cardOpen, setCardOpen] = useCardOpen(work);
+  // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 보관됨 모양이며, 지워진 Work에는 카드가 없다.
+  const gone = view?.readOnly ?? null;
+  const cardWork = gone === "removed" ? null : work;
+  const [cardOpen, setCardOpen] = useCardOpen(cardWork);
   return (
     <PlainFrame
       sidebarOpen={sidebarOpen}
       label={name}
       title={{
         name,
-        rename: view
-          ? {
-              editing: renaming,
-              onStart: () => setRenaming(true),
-              onEnd: () => setRenaming(false),
-              onCommit: (title) => {
-                setProblem(null);
-                rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
-              },
-              label: "Thread 이름",
-            }
-          : undefined,
+        rename:
+          view && !gone
+            ? {
+                editing: renaming,
+                onStart: () => setRenaming(true),
+                onEnd: () => setRenaming(false),
+                onCommit: (title) => {
+                  setProblem(null);
+                  rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
+                },
+                label: "Thread 이름",
+              }
+            : undefined,
       }}
-      after={work ? <WorkPill slug={work} onOpen={() => setCardOpen(true)} /> : undefined}
+      after={cardWork ? <WorkPill slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} /> : undefined}
       end={
-        view && (view.participants.length > 0 || work) ? (
+        view && (view.participants.length > 0 || cardWork) ? (
           <>
             {view.participants.length > 0 && <ThreadParticipants view={view} />}
-            {work && <WorkCardToggle open={cardOpen} onToggle={() => setCardOpen(!cardOpen)} />}
+            {cardWork && <WorkCardToggle open={cardOpen} onToggle={() => setCardOpen(!cardOpen)} />}
           </>
         ) : undefined
       }
@@ -239,16 +244,20 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
       {view ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {/* 대화는 카드가 열린 동안 카드 폭 + 틈 12만큼 비켜 준다 — 흐름 · 입력창이 그 남은 폭의 가운데에 모인다. */}
-          <div className="flex min-h-0 flex-1 flex-col" style={work && cardOpen ? { marginRight: CARD_ROOM } : undefined}>
+          <div className="flex min-h-0 flex-1 flex-col" style={cardWork && cardOpen ? { marginRight: CARD_ROOM } : undefined}>
             <ThreadBody key={thread} view={view} problem={problem} />
           </div>
-          {work && cardOpen && (
+          {cardWork && cardOpen && (
             <div className="absolute top-3 right-3 bottom-3 flex flex-col">
-              <WorkCard
-                thread={thread}
-                slug={work}
-                onNewThread={() => void navigate({ to: "/", search: { work } })}
-              />
+              {gone === "archived" ? (
+                <ArchivedWorkCard slug={cardWork} />
+              ) : (
+                <WorkCard
+                  thread={thread}
+                  slug={cardWork}
+                  onNewThread={() => void navigate({ to: "/", search: { work: cardWork } })}
+                />
+              )}
             </div>
           )}
         </div>
@@ -277,12 +286,14 @@ const CARD_ROOM = "calc(var(--size-work-card) + 12px)";
 
 /**
  * 머리 줄의 Work 알약(화면 2 보드 `.wchip`) — 높이 26 · 알약 · `fill-soft` · 12/18 `fg-secondary`, 폴더 14 · 제목 · 「·」 · 고정폭 브랜치.
- * 누르면 Work 카드를 연다(v1 티켓 34 — 보드의 뜻). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다.
+ * 누르면 Work 카드를 연다(v1 티켓 34 — 보드의 뜻). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다. 보관된 Work는 보관
+ * 목록의 제목이다(v1 티켓 38).
  */
-function WorkPill({ slug, onOpen }: { slug: string; onOpen: () => void }) {
+function WorkPill({ slug, archived, onOpen }: { slug: string; archived: boolean; onOpen: () => void }) {
   const { data: works } = useWorks();
   const work = works?.find((one) => one.slug === slug) ?? null;
-  const title = work?.title || slug;
+  const shelved = useArchivedWork(archived ? slug : null);
+  const title = work?.title || shelved?.title || slug;
   return (
     <button
       type="button"
@@ -566,6 +577,12 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
                     next={askNext}
                   />
                 )
+              ) : view.readOnly ? (
+                <ReadOnlyNotice
+                  gone={view.readOnly}
+                  running={model.running}
+                  onStop={() => void threadApi.stop(thread).catch((error: unknown) => setChipProblem(String(error)))}
+                />
               ) : decisions ? (
                 <DecisionsCard
                   onDone={() => markSeen.mutate()}

@@ -114,9 +114,10 @@ mod tests {
             id: "20261023-100000".into(),
             title: "장바구니".into(),
             created_at: "2026-10-23T10:00:00.000+09:00".into(),
-            work: None,
+            work: Some("cart".into()),
             handles: vec!["host".into()],
             last_read: 7,
+            read_only: Some(atelier_core::WorkGone::Archived),
             broken: None,
         };
         assert_eq!(
@@ -124,7 +125,7 @@ mod tests {
             (
                 "thread:list",
                 json!({"id": "20261023-100000", "title": "장바구니", "createdAt": "2026-10-23T10:00:00.000+09:00",
-                       "work": null, "handles": ["host"], "lastRead": 7, "broken": null})
+                       "work": "cart", "handles": ["host"], "lastRead": 7, "readOnly": "archived", "broken": null})
             )
         );
         let engine = HostEvent::Engine(atelier_acp::EngineState {

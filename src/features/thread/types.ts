@@ -100,7 +100,15 @@ export interface ThreadView {
   live: boolean;
   /** 참여자마다의 대기 줄(handle → 그 Session의 대기 줄, 대기 말이 있는 참여자만) — 메모리에만 있어 다시 켠 뒤에는 비어 있다. */
   queues: Record<string, QueuedMessage[]>;
+  /** 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 읽기만 된 Thread다(v1 티켓 38). 열린 화면은 목록 요약 이벤트가 고친다(`putSummary`). */
+  readOnly: WorkGone | null;
 }
+
+/**
+ * Thread가 이은 Work가 진행 중이 아닌 까닭(`atelier_core::WorkGone`, v1 티켓 38) — 보관됨 · 지워짐. 그 Thread는 읽기만이다: 엔진은 말을
+ * 거절하고 Session을 지금 턴 뒤에 끄며, 화면은 입력창 자리에 그 까닭을 보이고 사이드바에서 뺀다(S43).
+ */
+export type WorkGone = "archived" | "removed";
 
 /**
  * 물어보는 정도(`atelier_acp::AskLevel`, 스토리 84 · S18) — 매번 묻기 · 편집은 허용 · 계획만 · 알아서. 저장 글자 그대로다. 이름 · 설명은
@@ -117,6 +125,8 @@ export interface ThreadSummary {
   handles: string[];
   /** 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」를 가른다(v1 티켓 41). 깨진 Thread는 0이다. */
   lastRead: number;
+  /** 이은 Work가 보관됐거나 지워졌으면 그 까닭(v1 티켓 38) — 사이드바에서 빠지고 ⌘K로 찾는다(S43). */
+  readOnly: WorkGone | null;
   broken: string | null;
 }
 

@@ -64,6 +64,7 @@ export const summaryOf = (view: ThreadView): ThreadSummary => ({
   work: view.work,
   handles: view.participants.map((one) => one.handle),
   lastRead: view.lastRead,
+  readOnly: view.readOnly,
   broken: null,
 });
 

@@ -3,7 +3,7 @@
 //! - **Thread 폴더는 Thread 엔진만 쓴다**(S7). 감시를 두지 않으므로 목록이 바뀐 것은 엔진이 직접 알린다 — 엔진은 시작할 때
 //!   [`ThreadIndex`]를 한 번 읽고, 쓸 때마다 [`ThreadIndex::put`]으로 고친다.
 //! - **Work와의 연결은 `thread.json`의 `work`에만 적는다.** Work 쪽에는 Thread 목록이 없고, 보관이 Work 폴더를 옮겨도 Thread
-//!   폴더는 그대로다 — 보관된 Work의 Thread는 [`is_archived_work`]로 읽기만이 된다.
+//!   폴더는 그대로다 — 보관 · 지운 Work의 Thread는 [`work_gone`]으로 읽기만이 된다(v1 티켓 38).
 //! - 기록 줄은 코어의 기록 줄(`records.rs`) 한 벌이다 — three-axes 대화 기록과 같은 모양에 `who`만 더했다(S8).
 //! - three-axes가 `works/<slug>/agents/`에 남긴 대화 기록은 옮기지 않는다(v1 구현 스펙 §4 끝).
 
@@ -236,14 +236,31 @@ pub fn read_thread_records(data_root: &Path, id: &str, after: u64) -> Result<Vec
     Ok(crate::records::read_records(&thread_dir(data_root, id)?.join(RECORD_FILE), after)?)
 }
 
-/// 그 Work가 보관됐나 — **works에 없고 archive에 있음**(v1 구현 스펙 §4). 「있음」은 그 자리에 `work.json`이 파일로 있는가다
-/// (`works.rs`의 `read_work`와 같은 판정 — 파일이 깨졌어도 있는 Work다). 지워진 Work는 어디에도 없어 보관된 것이 아니다.
+/// Thread가 이은 Work가 진행 중이 아닌 까닭(v1 구현 스펙 §4 · §5 · v1 티켓 38) — 그 Thread는 읽기만 된다. 엔진은 그 Thread의 Session을
+/// 지금 턴 뒤에 끄고 보내기를 거절하며, 화면은 입력창 자리에 그 까닭을 보인다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkGone {
+    /// 보관됐다 — **works에 없고 archive에 있다**(§4).
+    Archived,
+    /// 지워졌다 — 어디에도 없다.
+    Removed,
+}
+
+/// 그 Work가 진행 중이 아니면 그 까닭 — 진행 중이면 없다. 「있음」은 그 자리에 `work.json`이 파일로 있는가다(`works.rs`의 `read_work`와
+/// 같은 판정 — 파일이 깨졌어도 있는 Work다. 사람이 손보는 중일 수 있는데 그때 Thread를 읽기만으로 두면 하던 일을 잃는다).
 ///
 /// 보관은 Work 폴더를 통째로 옮기고 Thread 폴더는 그대로 두므로(Thread는 `work`에 slug만 적는다), 연결된 Thread가 읽기만 되는지를
 /// 이 판정 하나가 정한다.
-pub fn is_archived_work(data_root: &Path, slug: &str) -> bool {
+pub fn work_gone(data_root: &Path, slug: &str) -> Option<WorkGone> {
     let holds = |root: PathBuf| crate::works::work_dir(&root, slug).is_ok_and(|dir| dir.join("work.json").is_file());
-    !holds(crate::paths::works_in(data_root)) && holds(crate::paths::archive_in(data_root))
+    if holds(crate::paths::works_in(data_root)) {
+        None
+    } else if holds(crate::paths::archive_in(data_root)) {
+        Some(WorkGone::Archived)
+    } else {
+        Some(WorkGone::Removed)
+    }
 }
 
 /// 색인의 한 줄 — Thread 하나의 요약(제목 · 시각 · work · 참여자 handle · 읽은 자리). 깨진 Thread도 줄이 선다 — 그때는 `broken`에
@@ -258,11 +275,16 @@ pub struct ThreadSummary {
     pub handles: Vec<String>,
     /// 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」(끝난 턴이 이 뒤에 있다)를 가른다(v1 티켓 41).
     pub last_read: u64,
+    /// 이은 Work가 보관됐거나 지워졌으면 그 까닭(v1 티켓 38) — 그 Thread는 읽기만이고 사이드바에서 빠지며, ⌘K는 보관됨을 단다(S43).
+    /// Work가 없거나 진행 중이면 없다.
+    pub read_only: Option<WorkGone>,
     pub broken: Option<String>,
 }
 
 /// 모든 Thread의 색인 — 엔진이 메모리에 쥐는 것(v1 구현 스펙 §4 「Work의 Thread 목록」). 새것이 먼저다.
 pub struct ThreadIndex {
+    /// 데이터 루트 — 요약이 이은 Work가 어디 있는지 본다([`work_gone`]).
+    root: PathBuf,
     threads: Vec<ThreadSummary>,
 }
 
@@ -271,7 +293,9 @@ impl ThreadIndex {
     pub fn load(data_root: &Path) -> Result<Self> {
         let entries = match std::fs::read_dir(crate::paths::threads_in(data_root)) {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self { threads: Vec::new() }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self { root: data_root.to_path_buf(), threads: Vec::new() })
+            }
             Err(e) => return Err(e.into()),
         };
         let mut threads = Vec::new();
@@ -282,13 +306,13 @@ impl ThreadIndex {
                 continue;
             }
             threads.push(match load_thread(&entry.path()) {
-                Ok(Loaded::Fine(thread)) => summarize(&id, &thread),
+                Ok(Loaded::Fine(thread)) => summarize(data_root, &id, &thread),
                 Ok(Loaded::Missing) => broken(id, format!("{THREAD_FILE}이 없습니다")),
                 Ok(Loaded::Broken { reason, .. }) => broken(id, reason),
                 Err(e) => broken(id, format!("{THREAD_FILE}을 읽지 못했습니다: {e}")),
             });
         }
-        let mut index = Self { threads };
+        let mut index = Self { root: data_root.to_path_buf(), threads };
         index.sort();
         Ok(index)
     }
@@ -305,7 +329,7 @@ impl ThreadIndex {
 
     /// 방금 쓴 `thread.json`으로 그 Thread의 줄을 고친다(없으면 더한다).
     pub fn put(&mut self, id: &str, thread: &ThreadFile) {
-        let summary = summarize(id, thread);
+        let summary = summarize(&self.root, id, thread);
         match self.threads.iter_mut().find(|existing| existing.id == id) {
             Some(existing) => *existing = summary,
             None => self.threads.push(summary),
@@ -313,12 +337,27 @@ impl ThreadIndex {
         self.sort();
     }
 
+    /// 이은 Work가 보관됐거나 지워졌는지 다시 본다(v1 티켓 38) — 보관은 Work 폴더를 옮기고 Thread 폴더는 그대로라(§4) 색인이 스스로
+    /// 알지 못한다. 엔진이 Work 목록이 바뀔 때마다 부른다. 바뀐 요약들을 새것부터 돌려준다 — 엔진이 그것을 알린다(S7).
+    pub fn recheck_works(&mut self) -> Vec<ThreadSummary> {
+        let mut changed = Vec::new();
+        for summary in &mut self.threads {
+            let Some(slug) = &summary.work else { continue };
+            let now = work_gone(&self.root, slug);
+            if summary.read_only != now {
+                summary.read_only = now;
+                changed.push(summary.clone());
+            }
+        }
+        changed
+    }
+
     fn sort(&mut self) {
         self.threads.sort_by(|a, b| order_key(&b.id).cmp(&order_key(&a.id)));
     }
 }
 
-fn summarize(id: &str, thread: &ThreadFile) -> ThreadSummary {
+fn summarize(data_root: &Path, id: &str, thread: &ThreadFile) -> ThreadSummary {
     ThreadSummary {
         id: id.to_owned(),
         title: thread.title.clone(),
@@ -326,6 +365,7 @@ fn summarize(id: &str, thread: &ThreadFile) -> ThreadSummary {
         work: thread.work.clone(),
         handles: thread.participants.iter().map(|participant| participant.handle.clone()).collect(),
         last_read: thread.last_read,
+        read_only: thread.work.as_deref().and_then(|slug| work_gone(data_root, slug)),
         broken: None,
     }
 }
@@ -339,6 +379,7 @@ fn broken(id: String, reason: String) -> ThreadSummary {
         work: None,
         handles: Vec::new(),
         last_read: 0,
+        read_only: None,
         broken: Some(reason),
     }
 }
@@ -600,21 +641,63 @@ mod tests {
         std::fs::write(dir.join("work.json"), format!("{{\"slug\": \"{slug}\", \"title\": \"{slug}\"}}")).unwrap();
     }
 
-    /// 「보관된 Work인가」 — **works에 없고 archive에 있음**(v1 구현 스펙 §4). Thread 폴더는 옮기지 않으므로 이 판정이 Thread를
-    /// 읽기만으로 둔다. 지워진 Work(어디에도 없음)는 보관된 것이 아니다.
+    /// 「이은 Work가 진행 중이 아니면 그 까닭」(v1 구현 스펙 §4 · v1 티켓 38) — **보관됨은 works에 없고 archive에 있음, 지워짐은 어디에도
+    /// 없음**이다. Thread 폴더는 옮기지 않으므로 이 판정이 Thread를 읽기만으로 둔다. 깨진 `work.json`도 진행 중인 Work다.
     #[test]
-    fn 보관된_work는_works에_없고_archive에_있는_것이다() {
+    fn 진행_중이_아닌_work는_보관됐거나_지워진_것이다() {
         let root = tempfile::tempdir().unwrap();
         seed_work(root.path(), "works", "live");
         seed_work(root.path(), "archive", "done");
         std::fs::create_dir_all(root.path().join("works/stale")).unwrap();
         seed_work(root.path(), "archive", "stale");
+        std::fs::create_dir_all(root.path().join("works/torn")).unwrap();
+        std::fs::write(root.path().join("works/torn/work.json"), "{\"title\": ").unwrap();
 
-        assert!(!is_archived_work(root.path(), "live"));
-        assert!(is_archived_work(root.path(), "done"));
-        assert!(is_archived_work(root.path(), "stale"), "work.json 없는 빈 폴더는 진행 중인 Work가 아니다");
-        assert!(!is_archived_work(root.path(), "gone"), "지워진 Work");
-        assert!(!is_archived_work(root.path(), "../archive/done"), "경로를 품은 slug는 어디에도 없다");
+        assert_eq!(work_gone(root.path(), "live"), None);
+        assert_eq!(work_gone(root.path(), "torn"), None, "깨진 work.json은 사람이 손보는 중일 수 있다 — 있는 Work다");
+        assert_eq!(work_gone(root.path(), "done"), Some(WorkGone::Archived));
+        assert_eq!(work_gone(root.path(), "stale"), Some(WorkGone::Archived), "work.json 없는 빈 폴더는 진행 중인 Work가 아니다");
+        assert_eq!(work_gone(root.path(), "gone"), Some(WorkGone::Removed), "지워진 Work");
+        assert_eq!(work_gone(root.path(), "../archive/done"), Some(WorkGone::Removed), "경로를 품은 slug는 어디에도 없다");
+    }
+
+    /// 요약은 **이은 Work가 보관됐거나 지워졌는지를 싣는다**(v1 티켓 38) — 읽기만 된 Thread는 사이드바에서 빠지고 ⌘K가 「보관됨」을 단다
+    /// (S43). 보관이 Work 폴더를 옮겨도 `thread.json`은 그대로라 색인이 스스로 알지 못한다 — 엔진이 Work 목록이 바뀔 때 다시 보게 하고,
+    /// 다시 보기는 바뀐 요약만 돌려준다.
+    #[test]
+    fn 요약은_이은_work가_보관되거나_지워졌는지를_싣고_다시_보면_바뀐_요약만_돌려준다() {
+        let root = tempfile::tempdir().unwrap();
+        seed_work(root.path(), "works", "cart");
+        seed_work(root.path(), "works", "billing");
+        let alone = create(root.path(), "2026-10-23T09:00:00.000+09:00", new_thread("혼자 묻기"), "이거 뭐야").id;
+        let cart = create(root.path(), "2026-10-23T09:10:00.000+09:00", linked("카트 고치기", "cart"), "카트를 고쳐 줘").id;
+        let billing = create(root.path(), "2026-10-23T09:20:00.000+09:00", linked("청구 정리", "billing"), "청구서").id;
+        let mut index = ThreadIndex::load(root.path()).unwrap();
+        let read_only = |index: &ThreadIndex| -> Vec<(String, Option<WorkGone>)> {
+            index.all().iter().map(|summary| (summary.id.clone(), summary.read_only)).collect()
+        };
+        assert_eq!(read_only(&index), [(billing.clone(), None), (cart.clone(), None), (alone.clone(), None)]);
+        assert!(index.recheck_works().is_empty(), "바뀐 Work가 없다");
+
+        std::fs::create_dir_all(root.path().join("archive")).unwrap();
+        std::fs::rename(root.path().join("works/cart"), root.path().join("archive/cart")).unwrap();
+        std::fs::remove_dir_all(root.path().join("works/billing")).unwrap();
+        let changed: Vec<(String, Option<WorkGone>)> =
+            index.recheck_works().into_iter().map(|summary| (summary.id, summary.read_only)).collect();
+
+        let now = [
+            (billing.clone(), Some(WorkGone::Removed)),
+            (cart.clone(), Some(WorkGone::Archived)),
+            (alone.clone(), None),
+        ];
+        assert_eq!(changed, now[..2], "바뀐 요약만 새것부터");
+        assert_eq!(read_only(&index), now);
+        assert!(index.recheck_works().is_empty(), "한 번 본 것은 다시 내지 않는다");
+        assert_eq!(read_only(&ThreadIndex::load(root.path()).unwrap()), now, "다시 읽은 색인도 같다");
+
+        let linked_late = update_thread(root.path(), &alone, |thread| thread.work = Some("cart".to_owned())).unwrap();
+        index.put(&alone, &linked_late);
+        assert_eq!(read_only(&index)[2], (alone, Some(WorkGone::Archived)), "고쳐 쓴 줄도 그때 본다");
     }
 
     /// **경로를 품은 id는 `threads/` 밖을 가리키지 못한다** — id는 화면에서 명령 인자로 온다.

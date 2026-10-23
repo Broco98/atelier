@@ -24,6 +24,7 @@ const summary = (id: string, title: string): ThreadSummary => ({
   work: null,
   handles: ["host"],
   lastRead: 0,
+  readOnly: null,
   broken: null,
 });
 

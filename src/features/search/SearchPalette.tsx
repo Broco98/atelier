@@ -295,6 +295,12 @@ export function SearchList({
                     아카이브
                   </span>
                 )}
+                {/* 보관된 Work의 Thread(v1 티켓 38 · S43)도 같은 칸이다 — 가는 화면은 같고 열면 읽기만이라 「보관됨」이다. */}
+                {hit.kind === "thread" && hit.archived && (
+                  <span className="ml-auto shrink-0 text-xs text-fg-tertiary">
+                    보관됨
+                  </span>
+                )}
               </div>
             </Fragment>
           );

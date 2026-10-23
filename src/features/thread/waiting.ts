@@ -9,6 +9,7 @@ import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 // - **Work에 이은 Thread도 든다** — 보드 「내 차례만」의 「환불 API 버그 고쳐줘」는 Work 아래 Thread다. 「전체」에서는 Work 아래에 서고
 //   (v1 티켓 37), 「내 차례」에서는 한 줄에 섞여 기다린 순서로 선다.
 // - 깨진 Thread와 아직 읽지 않은 Thread(기록 · 살아 있음을 모른다)는 들지 않는다 — 모르는 것을 기다린다고 하지 않는다.
+// - 보관되거나 지워진 Work의 Thread(읽기만, v1 티켓 38)도 들지 않는다 — 그 Thread는 사이드바에서 빠지고 ⌘K로 연다(S43).
 
 /** Thread 하나를 읽은 것 — 기록 줄과 엔진이 준 살아 있음 · 기록 끝(`thread_get`). */
 export interface ThreadReading {
@@ -30,7 +31,7 @@ export function waitingOrder(
 ): Waiting[] {
   const waiting: Waiting[] = [];
   for (const thread of threads) {
-    if (thread.broken !== null) continue;
+    if (thread.broken !== null || thread.readOnly !== null) continue;
     const reading = readingOf(thread.id);
     if (reading === null) continue;
     const status = statusFor(reading.lines, seenOf(reading.view, thread.lastRead));

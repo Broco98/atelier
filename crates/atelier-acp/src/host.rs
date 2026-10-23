@@ -28,6 +28,7 @@ mod thread;
 mod turn_order;
 
 pub use thread::{DocWriting, QuestionReply, Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
+use thread::VanishWatch;
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
@@ -199,6 +200,8 @@ struct Conv {
     /// 설정 바꾸기를 하나씩 세운다 — 엔진에 넣은 차례와 `thread.json`에 남는 차례가 엇갈리지 않게(three-axes 티켓 09). `state`와
     /// 따로 둔다: 바꾸기는 엔진의 답을 기다리는데, 그동안 `state`를 쥐면 턴 끝이 막혀 답이 오지 않는다.
     setting: Mutex<()>,
+    /// 턴 끝에 그 Thread가 읽기만 됐으면(이은 Work가 보관 · 지워짐) 이 Session을 끄러 보낸다(구현 스펙 §5 · v1 티켓 38).
+    vanish: VanishWatch,
 }
 
 struct ConvState {
@@ -250,8 +253,8 @@ impl ConvState {
 }
 
 impl Conv {
-    fn new(recorder: Recorder, login: LoginWatch) -> Arc<Self> {
-        Arc::new(Self { recorder, state: Mutex::new(ConvState::fresh()), login, setting: Mutex::new(()) })
+    fn new(recorder: Recorder, login: LoginWatch, vanish: VanishWatch) -> Arc<Self> {
+        Arc::new(Self { recorder, state: Mutex::new(ConvState::fresh()), login, setting: Mutex::new(()), vanish })
     }
 
     fn lock_state(&self) -> MutexGuard<'_, ConvState> {
@@ -393,7 +396,7 @@ impl TurnHands for ConvHands<'_> {
         self.conv.login.waiting()
     }
 
-    /// 사라진 Work를 지켜보지 않는다 — 보관된 Work의 Thread를 읽기만으로 두는 일은 v1 티켓 38이 이 자리에 건다(구현 스펙 §5).
+    /// 턴 앞뒤로 찍는 것이 없어 견줄 일도 없다 — 보관된 Work의 Thread를 끄는 일은 턴 끝의 [`TurnHands::retire_if_vanished`]가 한다.
     fn vanished(&self) -> bool {
         false
     }
@@ -455,8 +458,9 @@ impl TurnHands for ConvHands<'_> {
         self.turns.map_or(Err(AnswerError::Closed), |turns| turns.rule(request, ruling))
     }
 
+    /// 이은 Work가 보관되거나 지워진 Thread면 이 Session을 끄러 보낸다 — 대기 줄은 가지 않는다(구현 스펙 §5 · v1 티켓 38).
     fn retire_if_vanished(&mut self) -> bool {
-        false
+        self.conv.vanish.retire_if_vanished()
     }
 }
 
@@ -581,6 +585,8 @@ pub enum HostError {
     /// 「Work 만들기」로 Work를 만들지 못했다(v1 티켓 30) — 까닭은 core의 글(브랜치가 저장소에 이미 있다 · 사라진 Project …)이다. 아무것도
     /// 적지 않았고 카드는 그대로 서 있다.
     WorkNotCreated(String),
+    /// 읽기만 된 Thread — 이은 Work가 보관됐거나 지워졌다(v1 티켓 38). 아무것도 적지 않았다.
+    ReadOnly { thread: String, gone: atelier_core::WorkGone },
 }
 
 impl fmt::Display for HostError {
@@ -631,6 +637,8 @@ impl fmt::Display for HostError {
             HostError::CallRefused(reason) => write!(f, "{reason}"),
             HostError::QuestionClosed { .. } => write!(f, "이미 닫힌 카드예요. 답했거나 거둬진 카드에는 답할 수 없어요"),
             HostError::WorkNotCreated(reason) => write!(f, "Work를 만들지 못했어요 — {reason}"),
+            HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 Work의 Thread는 읽기만 돼요"),
+            HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 Work의 Thread는 읽기만 돼요"),
         }
     }
 }

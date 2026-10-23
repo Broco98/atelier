@@ -364,7 +364,8 @@ pub fn run() {
             // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
             // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
             terminate::install(app.handle());
-            watcher::start(app.handle().clone());
+            // 감시는 Work를 보관 · 지운 소식을 Thread 엔진에게도 건넨다(v1 티켓 38) — 빌더 앞의 그 엔진이다.
+            watcher::start(app.handle().clone(), Arc::clone(&engine));
             // Thread 엔진이 내보낸 것(기록 줄)을 화면으로 쏜다 — 위 감시와 같은 길이다: 스레드 하나가 emit하고 프런트가
             // `listen`으로 받는다. 빌더 앞에서 받아 둔 채널을 건넨다.
             thread::announce(app.handle().clone(), thread_inbox);
@@ -832,6 +833,19 @@ mod tests {
             "엔진이 내보낸 것을 화면으로 쏠 스레드를 안 건다 — 답이 흘러도 화면이 조용하다"
         );
         assert!(!setup.contains("ConversationHost>>()"), "셋업이 앱에서 Thread 엔진을 다시 찾는다 — 빌더 앞의 값을 건네라");
+    }
+
+    /// **감시가 앱이 쥔 그 Thread 엔진에게 사라진 Work를 알린다**(v1 티켓 38 · 구현 스펙 §5). Work를 보관하거나 지운 소식은 진행 중
+    /// 루트의 감시로만 온다 — 엔진이 그것을 모르면 그 Work에 이은 Thread의 쉬던 Session이 앱을 끌 때까지 남고, 열린 Thread가 읽기만으로
+    /// 바뀌지 않는다. 빌더 앞의 그 엔진을 건넨다. 셋업은 헤드리스로 못 돌리니 자리로 잰다. 감시가 엔진을 부르는 길은 `watcher.rs`의
+    /// 검사가 잰다.
+    #[test]
+    fn the_watcher_hands_vanished_works_to_the_thread_engine_the_app_holds() {
+        let setup = setup_source();
+        assert!(
+            setup.contains("watcher::start(app.handle().clone(), Arc::clone(&engine));"),
+            "감시가 Thread 엔진을 받지 않는다 — 보관한 Work의 쉬던 Session이 앱을 끌 때까지 남는다"
+        );
     }
 
     /// **앱이 닫히면 Thread의 Agent도 남김없이 꺼진다**(three-axes 결정 19 · 티켓 05). 셸 정리(`pty::end_for_exit`)는 셸 표식을

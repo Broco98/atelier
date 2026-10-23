@@ -105,6 +105,10 @@ impl ConversationHost {
         let begun = Instant::now();
         // 멈춤의 차례 — 이 부르기 동안 사람이 Thread를 멈추면 바뀐다.
         let halts = self.threads.halts(&key.thread);
+        // 읽기만 된 Thread(v1 티켓 38)에서는 새 턴을 열지 않는다 — 지금 턴이 끝나면 Session이 꺼진다.
+        if let Err(error) = self.writable(&key.thread) {
+            return thread_tools::said(&error.to_string(), true);
+        }
         let (callee, chain) = match self.callable(key, call) {
             Ok(callable) => callable,
             Err(refusal) => return thread_tools::said(&refusal, true),
@@ -120,7 +124,7 @@ impl ConversationHost {
     pub fn call_again(&self, thread: &str, from: &str, to: &str, task: &str) -> Result<(), HostError> {
         let begun = Instant::now();
         let halts = self.threads.halts(thread);
-        let file = self.read_thread_file(thread)?;
+        let file = self.writable(thread)?;
         if !file.participants.iter().any(|participant| participant.handle == from) {
             return Err(HostError::ParticipantNotFound { thread: thread.to_owned(), handle: from.to_owned() });
         }

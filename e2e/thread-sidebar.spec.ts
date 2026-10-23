@@ -13,7 +13,7 @@ import type { SearchResults } from "@/features/search/types";
 
 const thread = FIXTURE_THREAD;
 const QUERY = "hello";
-const THREAD_HIT: SearchResults = { hits: [{ kind: "thread", id: thread.id, title: thread.title }] };
+const THREAD_HIT: SearchResults = { hits: [{ kind: "thread", id: thread.id, title: thread.title, archived: false }] };
 
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 const 위 = async (target: Locator) => (await target.boundingBox())!.y;

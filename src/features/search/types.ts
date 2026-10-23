@@ -31,6 +31,11 @@ export type SearchHit =
       id: string;
       /** 맞춘 재료이자 줄에 서는 말이다. */
       title: string;
+      /**
+       * 보관된 Work의 Thread인가(v1 티켓 38 · S43) — 사이드바에서 빠진 그 Thread를 찾는 길이 여기다. **가는 화면은 같다** — 열면 읽기만이라
+       * 줄은 「보관됨」을 단다(아카이브 work처럼 다른 화면으로 가지 않는다).
+       */
+      archived: boolean;
     }
   | { kind: "project"; slug: string; name: string }
   | {

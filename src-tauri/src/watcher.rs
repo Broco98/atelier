@@ -3,17 +3,20 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 
+use atelier_acp::ConversationHost;
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
 use tauri::{AppHandle, Emitter};
 
 /// `~/.atelier/projects/` 감시 → 관련 변경 시 `projects:changed` emit.
-/// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit.
+/// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit, 그리고 Thread 엔진에게 사라진 Work를 묻는다.
 /// 워크트리 안의 변경은 판정을 거쳐 쌍마다 `worktree:changed { slug, project }` emit(git-integration 티켓 10).
 /// `~/.atelier/layouts/` 감시 → 관련 변경 시 `layouts:changed` emit.
 /// dotfile(자기 쓰기의 `.tmp` 단계 포함)은 무시한다 — 워크트리 갈래는 빼고(점 파일도 트리에 선다).
-pub fn start(app: AppHandle) {
+///
+/// `engine`은 앱이 쥔 그 Thread 엔진이다(셋업이 빌더 앞의 값을 건넨다).
+pub fn start(app: AppHandle, engine: Arc<ConversationHost>) {
     for watch in watches() {
-        spawn_watch(app.clone(), watch);
+        spawn_watch(app.clone(), watch, Arc::clone(&engine));
     }
 }
 
@@ -29,6 +32,9 @@ struct Watch {
     debounce: Duration,
     event: &'static str,
     relevant: fn(&Path) -> bool,
+    /// 종을 친 회차마다 Thread 엔진에게 사라진 Work를 묻나(v1 티켓 38 · 구현 스펙 §5). Work가 사라지는 소식은 진행 중 루트의 감시로만
+    /// 온다 — Work 카드 · 사이드바의 보관 · 지우기도, 앱 밖 MCP의 보관도.
+    tells_engine: bool,
     /// 둘째 갈래 — 진행 중 루트만 갖는다(git-integration S7). 위 규칙이 버리는 워크트리(`trees/`) 안의 변경을 판정에 넘긴다.
     worktrees: Option<WorktreeBranch>,
 }
@@ -53,6 +59,7 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(500),
         event: "projects:changed",
         relevant: project_change_is_relevant,
+        tells_engine: false,
         worktrees: None,
     }];
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
@@ -67,6 +74,7 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(300),
         event: "works:changed",
         relevant: works_change_is_relevant,
+        tells_engine: true,
         worktrees: Some(WorktreeBranch { event: "worktree:changed", judge: worktree_changes_in_works }),
     });
     // spec 레이아웃 폴더(spec 레이아웃 결정 22) — 에이전트가 저장하거나 손으로 고친 레이아웃을 설정의
@@ -82,6 +90,7 @@ fn watches() -> Vec<Watch> {
         debounce: Duration::from_millis(300),
         event: "layouts:changed",
         relevant: layout_change_is_relevant,
+        tells_engine: false,
         worktrees: None,
     });
     all
@@ -130,7 +139,7 @@ fn is_dotfile(path: &Path) -> bool {
 /// 쌓인 묶음을 합치고 판정을 따로 된 스레드에 넘긴다(`ring`).
 /// 그쪽이 따로 선 근거는 **나가는 것**이지(바뀐 셸을 페이로드로 싣는다) 이 배선이 아니므로,
 /// notify의 API가 바뀌거나 오류 처리를 고칠 때는 두 자리를 함께 고쳐야 한다.
-fn spawn_watch(app: AppHandle, watch: Watch) {
+fn spawn_watch(app: AppHandle, watch: Watch, engine: Arc<ConversationHost>) {
     std::thread::spawn(move || {
         let _ = std::fs::create_dir_all(&watch.dir);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -145,7 +154,7 @@ fn spawn_watch(app: AppHandle, watch: Watch) {
             eprintln!("atelier: failed to watch {}: {e}", watch.dir.display());
             return;
         }
-        ring(rx, watch, move |event, change| {
+        ring(rx, watch, engine, move |event, change| {
             let _ = match change {
                 Some(change) => app.emit(event, change),
                 None => app.emit(event, ()),
@@ -167,11 +176,12 @@ type Bell = dyn Fn(&'static str, Option<atelier_core::WorktreeChange>) + Send + 
 /// **밀리면 쌓인 묶음과 합친다.** 이 고리도 판정 스레드도 받을 때마다 쌓인 것을 다 꺼내 한 번에 본다 — 판정이 밀린 동안 온 묶음을
 /// 하나씩 따로 판정하면 판정이 판정을 쫓는다.
 ///
-/// 회차마다 바뀐 경로 가운데 화면을 다시 그릴 만한 것이 있으면 종을 친다 — 거를 것만 바뀐 회차는 울리지 않는다. 판정 스레드에
-/// 넘기는 것은 그 뒤다.
-fn ring(
+/// 회차마다 종을 치고 Thread 엔진에게 사라진 Work를 묻는 것은 `on_news`다(v1 티켓 38) — 묻기도 띄운 스레드가 해서 이 고리를 붙잡지
+/// 않는다. 판정 스레드에 넘기는 것은 그 뒤다.
+fn ring<E: VanishedWorks>(
     rx: Receiver<DebounceEventResult>,
     mut watch: Watch,
+    engine: Arc<E>,
     emit: impl Fn(&'static str, Option<atelier_core::WorktreeChange>) + Send + Sync + 'static,
 ) {
     let emit: Arc<Bell> = Arc::new(emit);
@@ -183,9 +193,8 @@ fn ring(
             .flatten()
             .map(|e| e.path)
             .collect();
-        if paths.iter().any(|path| (watch.relevant)(path)) {
-            emit(watch.event, None);
-        }
+        // 묻는 스레드는 기다리지 않고 놓는다
+        let _ = on_news(&watch, paths.iter().map(PathBuf::as_path), |event| emit(event, None), &engine);
         if let Some(judging) = &judging {
             // 판정 스레드가 없으면(죽었다) 그 갈래만 멎는다 — `works:changed`는 계속 운다
             let _ = judging.send(paths);
@@ -206,6 +215,41 @@ fn spawn_judge(branch: WorktreeBranch, emit: Arc<Bell>) -> Sender<Vec<PathBuf>> 
         }
     });
     tx
+}
+
+/// 감시가 사라진 Work를 알리는 곳 — 앱에서는 앱이 쥔 Thread 엔진이다(v1 티켓 38). 감시의 회차가 엔진에 닿는 길을 검사가 가짜
+/// 엔진으로 그대로 타려고 둔 자리다.
+trait VanishedWorks: Send + Sync + 'static {
+    /// 보관 · 지운 Work의 Thread를 읽기만으로 두고 쉬던 Session을 끈다 — 끌 Session이 있으면 1초 남짓 막힌다.
+    fn check_vanished_works(&self);
+}
+
+impl VanishedWorks for ConversationHost {
+    fn check_vanished_works(&self) {
+        ConversationHost::check_vanished_works(self);
+    }
+}
+
+/// 감시 한 회차 — 바뀐 경로 가운데 화면을 다시 그릴 만한 것이 있으면 종을 치고(`bell`), 엔진에게 알리는 감시면 사라진 Work를
+/// 묻는다(`engine`). 거를 것만 바뀐 회차는 아무것도 하지 않는다. 워크트리 갈래의 판정은 이 밖이다(`ring`이 넘긴다).
+///
+/// 묻기는 따로 띄운 스레드가 한다 — 끌 Session이 있으면 끄기가 1초 남짓 막히는데, 감시의 회차를 붙잡지 않게. 띄운 스레드를
+/// 돌려준다(물을 일이 없었으면 `None`). 감시는 기다리지 않고 놓는다.
+fn on_news<'a, E: VanishedWorks>(
+    watch: &Watch,
+    paths: impl IntoIterator<Item = &'a Path>,
+    bell: impl FnOnce(&'static str),
+    engine: &Arc<E>,
+) -> Option<std::thread::JoinHandle<()>> {
+    if !paths.into_iter().any(|path| (watch.relevant)(path)) {
+        return None;
+    }
+    bell(watch.event);
+    if !watch.tells_engine {
+        return None;
+    }
+    let engine = Arc::clone(engine);
+    Some(std::thread::spawn(move || engine.check_vanished_works()))
 }
 
 #[cfg(test)]
@@ -294,7 +338,7 @@ mod tests {
         let (batches, rx) = std::sync::mpsc::channel();
         let (rang, rings) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            ring(rx, watch, move |event, change| {
+            ring(rx, watch, Arc::new(Engine::default()), move |event, change| {
                 let _ = rang.send((event, change));
             })
         });
@@ -417,6 +461,50 @@ mod tests {
         for backup in [".order.json.bak", ".order.json.1.bak"] {
             assert!(!relevant(&works.join(backup)), "순서 파일의 벌 {backup}이 새어 들어온다");
         }
+    }
+
+    /// Thread 엔진 자리에 서는 가짜 — 사라진 Work를 물은 스레드를 적는다.
+    #[derive(Default)]
+    struct Engine {
+        asked_on: std::sync::Mutex<Vec<std::thread::ThreadId>>,
+    }
+
+    impl VanishedWorks for Engine {
+        fn check_vanished_works(&self) {
+            self.asked_on.lock().unwrap().push(std::thread::current().id());
+        }
+    }
+
+    /// **진행 중 루트의 소식은 Thread 엔진에게도 간다**(v1 티켓 38 · 구현 스펙 §5 · three-axes 티켓 11). 사람이 Work 카드 · 사이드바에서
+    /// Work를 보관하거나 지우면 그 소식이 이 감시로만 온다 — 엔진이 그것을 모르면 그 Work에 이은 Thread의 쉬던 Session이 앱을 끌 때까지
+    /// 남고, 열린 Thread가 읽기만으로 바뀌지 않는다. 종을 친 회차마다 엔진에게 사라진 Work를 묻는다. 다른 감시의 소식은 묻지 않는다.
+    /// 계획에 실린 그대로 잰다.
+    ///
+    /// **묻는 것은 감시의 회차 밖이다** — 끌 Session이 있으면 끄기가 1초 남짓 막히는데, 그동안 회차를 붙잡으면 다음 소식이 밀린다.
+    /// 엔진에 닿는 길(회차 → 띄운 스레드 → 엔진)을 그대로 탄다: 그 스레드가 엔진을 안 부르거나 회차 안에서 부르면 빨갛다.
+    #[test]
+    fn works_news_asks_the_thread_engine_for_vanished_works_off_the_watch_round_but_other_news_does_not() {
+        let news = |dir: &Path, path: PathBuf| {
+            let engine = Arc::new(Engine::default());
+            let mut rung = Vec::new();
+            if let Some(asking) = on_news(&watch_on(dir), [path.as_path()], |event| rung.push(event), &engine) {
+                asking.join().expect("엔진에 묻던 스레드가 죽었다");
+            }
+            let asked_on = std::mem::take(&mut *engine.asked_on.lock().unwrap());
+            assert!(
+                !asked_on.contains(&std::thread::current().id()),
+                "감시의 회차 안에서 엔진을 부른다 — 끌 Session이 있으면 회차가 1초 남짓 막힌다"
+            );
+            (rung, asked_on.len())
+        };
+        let works = atelier_core::works_dir();
+        assert_eq!(news(&works, works.join("cart")), (vec!["works:changed"], 1), "사라진 Work 폴더가 엔진에 안 간다");
+        assert_eq!(news(&works, works.join("cart/spec/overview.md")), (vec!["works:changed"], 1));
+        assert_eq!(news(&works, works.join("cart/.order.json")), (vec![], 0), "거를 것만 바뀐 회차는 묻지 않는다");
+        let projects = atelier_core::projects_dir();
+        assert_eq!(news(&projects, projects.join("atelier.md")), (vec!["projects:changed"], 0), "프로젝트 소식이 엔진에 간다");
+        let layouts = atelier_core::layouts_dir();
+        assert_eq!(news(&layouts, layouts.join("atelier/layout.json")), (vec!["layouts:changed"], 0), "레이아웃 소식이 엔진에 간다");
     }
 
     /// 프로젝트 쪽 규칙은 그대로다 — `.md` 하나가 프로젝트 하나이므로 그 밖은 소식이 아니다.

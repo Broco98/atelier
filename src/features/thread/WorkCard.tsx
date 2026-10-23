@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { archivedDayText } from "@/features/archive/archive-days";
+import { archiveQuery, useArchivedDocs } from "@/features/archive/hooks";
+import type { ArchiveEntry } from "@/features/archive/types";
 import { workChangesKey } from "@/features/files/hooks";
 import { worksApi } from "@/features/works/api";
 import { useWorks } from "@/features/works/hooks";
@@ -69,6 +72,8 @@ import {
 // - 줄을 누르면 카드가 넓어지는 일(문서 · diff · 트리)은 v1 티켓 35다 — 이 판의 줄은 보이기만 한다.
 // - 더하기 둘(문서 추가 · Project 붙이기)은 이 Thread의 입력창에 Host에게 맡기는 말을 채운다 — 문서를 쓰고 Project를 붙이는 것은 Host다
 //   (보드 「고칠 곳이 정해지면 Host가 Project를 붙입니다」, 결정.md 34). 보내는 것은 사람이다.
+// - **보관된 Work는 보관됨 모양이다**(v1 티켓 38 · 보드 「보관된 Work」 — `ArchivedWorkCard`) — 보관 글리프 · 「보관됨 · 날짜」, 더하기 ·
+//   ⋯ · 머리 메뉴가 없다. 「다시 열기」는 짓지 않는다(S25).
 
 /** 「문서 추가」가 입력창에 채우는 말. */
 export const ADD_DOC_ASK = "이 Work의 spec 폴더에 새 문서를 써 줘: ";
@@ -119,7 +124,7 @@ export function WorkCard({ thread, slug, onNewThread }: WorkCardProps) {
   return (
     <section
       aria-label={`Work 카드: ${work.title || slug}`}
-      className="flex max-h-full w-(--size-work-card) flex-col gap-1.5 overflow-y-auto rounded-2xl bg-surface-elevated p-1.5 shadow-card scroll-quiet"
+      className={CARD}
     >
       <CardHead work={work} thread={thread} threads={own} onNewThread={onNewThread} />
       <WorkCardSections
@@ -136,6 +141,50 @@ export function WorkCard({ thread, slug, onNewThread }: WorkCardProps) {
     </section>
   );
 }
+
+/** 카드의 면 — 진행 중이든 보관됐든 같다. */
+const CARD =
+  "flex max-h-full w-(--size-work-card) flex-col gap-1.5 overflow-y-auto rounded-2xl bg-surface-elevated p-1.5 shadow-card scroll-quiet";
+
+/** 보관된 Work — 보관 목록에서 찾는다. 찾을 slug가 없으면(`null`) 목록을 읽지 않는다. */
+export function useArchivedWork(slug: string | null): ArchiveEntry | null {
+  const { data } = useQuery({ ...archiveQuery(), enabled: slug !== null });
+  return data?.find((one) => one.slug === slug) ?? null;
+}
+
+/**
+ * 보관된 Work의 카드(v1 티켓 38) — 보관 목록의 그 Work와 보관된 spec 트리로 선다. 보관은 worktree를 거두므로(core `archive_work`) 변경 ·
+ * PR은 읽을 것이 없고, 쓰는 중도 없다. 보관 목록에서 찾지 못하면 서지 않는다.
+ */
+export function ArchivedWorkCard({ slug }: { slug: string }) {
+  const entry = useArchivedWork(slug);
+  const { data: docs } = useArchivedDocs(entry ? slug : null);
+  if (!entry) return null;
+  return <ArchivedCard entry={entry} docs={docs ? docRows(docs.specTree, []) : []} />;
+}
+
+/**
+ * 보관된 카드의 몸(보드 「보관된 Work」) — 머리는 보관 글리프 · 이름 · 「보관됨 · 날짜」이고 누르는 자리가 아니다(⋯도 없다). 칸은 더하기
+ * 없이 선다. **훅을 부르지 않는다** — 정적 마크업으로 잰다. 보관한 날을 모르면(손으로 옮긴 폴더) 「보관됨」만이다.
+ */
+export function ArchivedCard({ entry, docs }: { entry: ArchiveEntry; docs: DocRow[] }) {
+  const title = entry.title || entry.slug;
+  const day = archivedDayText(entry.archivedAt);
+  return (
+    <section aria-label={`Work 카드: ${title}`} className={CARD}>
+      <div className="flex min-h-11.5 items-center gap-2.5 py-1 pr-0.5 pl-2.5">
+        <Archive className="size-4 shrink-0 text-fg-secondary" aria-hidden />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-semibold">{title}</span>
+          <span className="truncate text-xs text-fg-tertiary">{day ? `보관됨 · ${day}` : "보관됨"}</span>
+        </span>
+      </div>
+      <WorkCardSections docs={docs} changes={null} fresh={NOTHING_FRESH} flash={0} projects={[]} prs={[]} onOpenPr={() => {}} />
+    </section>
+  );
+}
+
+const NOTHING_FRESH: ReadonlySet<string> = new Set();
 
 /**
  * 변경 칸의 자료 — 읽은 답과, 앞 답과 견준 새로 바뀐 파일(`freshFiles`). 빛남은 답이 바뀔 때마다 한 번이다 — 그 답의 회차(`flash`)를
@@ -284,22 +333,23 @@ interface SectionsProps {
   flash: number;
   projects: ProjectRow[];
   prs: PrRow[];
-  onAddDoc: () => void;
-  onAttachProject: () => void;
+  /** 더하기 둘 — 받지 않으면 그 더하기가 서지 않는다(보관된 Work, v1 티켓 38). */
+  onAddDoc?: () => void;
+  onAttachProject?: () => void;
   onOpenPr: (row: PrRow) => void;
 }
 
 /**
  * 카드의 칸들 — 문서 · 변경 · Project · PR 차례다(§15). **훅을 부르지 않는다** — 정적 마크업으로 칸의 모양을 잰다. 비어 있는 칸은
  * 없다: 문서가 없으면 문서 칸이, 바뀐 파일이 없으면 변경 칸이, PR이 없으면 PR 줄이 서지 않는다. Project 칸만은 Project가 없어도
- * 「Project 붙이기」 한 줄로 선다(보드 「막 만든 Work」 — 고칠 곳이 정해지면 붙인다).
+ * 「Project 붙이기」 한 줄로 선다(보드 「막 만든 Work」 — 고칠 곳이 정해지면 붙인다). 붙일 수 없으면(보관됨) 그 칸도 서지 않는다.
  */
 export function WorkCardSections({ docs, changes, fresh, flash, projects, prs, onAddDoc, onAttachProject, onOpenPr }: SectionsProps) {
   const many = (changes?.groups.length ?? 0) > 1;
   return (
     <>
       {docs.length > 0 && (
-        <Section name="문서" end={<AddButton label="문서 추가" onClick={onAddDoc} />}>
+        <Section name="문서" end={onAddDoc && <AddButton label="문서 추가" onClick={onAddDoc} />}>
           {docs.map((doc) => (
             <Row key={doc.path} data-doc={doc.path} icon={<FileText />} name={doc.path}>
               {doc.writer && (
@@ -344,25 +394,30 @@ export function WorkCardSections({ docs, changes, fresh, flash, projects, prs, o
           ))}
         </Section>
       )}
-      <Section name="Project" end={projects.length > 0 && <AddButton label="Project 붙이기" onClick={onAttachProject} />}>
-        {projects.length === 0 ? (
-          <button
-            type="button"
-            onClick={onAttachProject}
-            className="flex h-7.5 w-full items-center gap-2 rounded-md px-2.5 text-left text-chat-meta text-fg-tertiary transition-colors quiet-hover focus-ring"
-          >
-            <Plus className="size-3.5 shrink-0" aria-hidden />
-            <span className="min-w-0 flex-1 truncate">Project 붙이기</span>
-          </button>
-        ) : (
-          projects.map((project) => (
-            <Row key={project.project} data-project={project.project} icon={<Folder />} name={project.project}>
-              {project.editing ? "고치는 중" : "읽기만"}
-              <ChevronRight aria-hidden className="-mr-0.5 size-3 text-fg-tertiary" />
-            </Row>
-          ))
-        )}
-      </Section>
+      {(projects.length > 0 || onAttachProject) && (
+        <Section
+          name="Project"
+          end={projects.length > 0 && onAttachProject && <AddButton label="Project 붙이기" onClick={onAttachProject} />}
+        >
+          {projects.length === 0 ? (
+            <button
+              type="button"
+              onClick={onAttachProject}
+              className="flex h-7.5 w-full items-center gap-2 rounded-md px-2.5 text-left text-chat-meta text-fg-tertiary transition-colors quiet-hover focus-ring"
+            >
+              <Plus className="size-3.5 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1 truncate">Project 붙이기</span>
+            </button>
+          ) : (
+            projects.map((project) => (
+              <Row key={project.project} data-project={project.project} icon={<Folder />} name={project.project}>
+                {project.editing ? "고치는 중" : "읽기만"}
+                <ChevronRight aria-hidden className="-mr-0.5 size-3 text-fg-tertiary" />
+              </Row>
+            ))
+          )}
+        </Section>
+      )}
       {prs.length > 0 && (
         <div className="flex flex-col border-t-[0.5px] border-border pt-1.5">
           {prs.map((pr) => (

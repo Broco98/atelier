@@ -26,14 +26,18 @@
 //!   아니면 Thread의 것이다(S18).
 //! - **Work와 이어진다(v1 티켓 30 · §11, [`work`]).** Host가 Thread 도구로 Work 만들기를 제안하면 카드가 서고, 사람이 만들면 core가
 //!   worktree 없이 Work를 만들고 이 Thread의 `work`를 적는다.
+//! - **이은 Work가 보관되거나 지워지면 읽기만이다(v1 티켓 38 · §4 · §5, [`read_only`]).** 그 Thread의 Session은 지금 턴 뒤에 꺼지고,
+//!   말은 거절된다.
 
 mod call;
 mod gate;
+mod read_only;
 mod seat;
 mod work;
 mod writing;
 
 pub(super) use call::Assignment;
+pub(super) use read_only::VanishWatch;
 pub use work::WorkChoice;
 pub use writing::DocWriting;
 
@@ -43,7 +47,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use atelier_core::{
     AgentDefinition, AgentProblem, AgentRoster, AgentSaveRefusal, Attachment, DefinitionSource, FoundAgent, NewThread, Participant, RecordKind,
-    RecordLine, ThreadFile, ThreadIndex, ThreadSummary, Unresolved,
+    RecordLine, ThreadFile, ThreadIndex, ThreadSummary, Unresolved, WorkGone,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -147,6 +151,8 @@ pub struct ThreadView {
     /// 참여자마다의 대기 줄 — handle → 그 Session의 대기 줄(대기 줄 바뀜 이벤트의 `who` · `queue`와 같은 열쇠 · 값). 대기 말이
     /// 있는 참여자만 칸이 선다. 메모리에만 있으므로 다시 켠 뒤에는 비어 있다.
     pub queues: BTreeMap<String, Vec<QueuedMessage>>,
+    /// 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 그 Thread는 읽기만이다(v1 티켓 38). 화면이 입력창 자리에 그 까닭을 보인다.
+    pub read_only: Option<WorkGone>,
 }
 
 /// 호스트가 쥔 Thread들 — 떠 있는 Session, 연 기록, 색인.
@@ -336,7 +342,8 @@ impl ConversationHost {
             None => self.read_thread_record(thread, 0)?.last().map_or(0, |line| line.seq),
         };
         let (ask_level, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
-        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queues })
+        let read_only = read_only::gone_of(&self.data_root, &file);
+        Ok(ThreadView { id: thread.to_owned(), file, last_seq, ask_level, live, queues, read_only })
     }
 
     /// 기록 읽기 — 그 Thread의 기록에서 `after` 다음 seq의 줄들. 화면은 이것으로 그리고 그 뒤는 기록 줄 이벤트로 잇는다.
@@ -436,6 +443,7 @@ impl ConversationHost {
     ///   새로 순이다. 그래서 막히는 호출일 수 있다. 새로 선 Session의 첫 말에는 머리말이 다시 붙고, 지난 말은 Thread 처음부터
     ///   간다(S10).
     /// - 턴이 도는 동안의 말은 그 Session의 대기 줄에 든다(S13). 로그인을 기다리는 Session에는 보내지 않는다.
+    /// - 이은 Work가 보관됐거나 지워진 Thread는 읽기만이다 — 아무것도 적지 않고 거절한다(v1 티켓 38).
     pub fn send_to_thread(&self, thread: &str, text: &str) -> Result<(), HostError> {
         self.send_to_thread_with(thread, text, &[])
     }
@@ -444,7 +452,7 @@ impl ConversationHost {
     /// 06 · S30). 대기 줄에 들면 잰 첨부를 들고 간다. 첨부가 절대 경로가 아니거나 없으면 아무것도 적지 않고 거절한다.
     pub fn send_to_thread_with(&self, thread: &str, text: &str, attachments: &[String]) -> Result<(), HostError> {
         let attachments = attachments_of(attachments)?;
-        let file = self.read_thread_file(thread)?;
+        let file = self.writable(thread)?;
         let handle = match self.recipient(&file.participants, file.work.as_deref(), text)? {
             Recipient::Seated(handle) => handle,
             Recipient::Newcomer(found) => self.join(thread, &found)?,
@@ -485,8 +493,9 @@ impl ConversationHost {
     }
 
     /// 지금 전하기 — 그 말을 맨 앞에 세우고 그 Session의 도는 턴을 멈춘다. 턴이 `cancelled`로 끝나면 그 말이 먼저 간다(`sent`의
-    /// `sendNow`가 true). 죽은 Session이면 먼저 되살려 곧바로 보낸다 — 막히는 호출일 수 있다.
+    /// `sendNow`가 true). 죽은 Session이면 먼저 되살려 곧바로 보낸다 — 막히는 호출일 수 있다. 읽기만 된 Thread에는 보내지 않는다.
     pub fn send_thread_now(&self, thread: &str, queued: &str) -> Result<(), HostError> {
+        self.writable(thread)?;
         if let Some((key, conv)) = self.holding(thread, queued) {
             let dead = conv.lock_found().is_some_and(|state| !state.is_up());
             if dead && self.logins.waiting_for(&key.waiter()).is_none() {
@@ -790,12 +799,13 @@ impl ConversationHost {
     /// - 줄바꿈 · 앞뒤 빈칸은 걷어 한 줄로 둔다. 빈 이름은 거절하고 아무것도 바꾸지 않는다.
     /// - 같은 이름이면 아무것도 쓰지 않는다 — 고치는 칸을 그대로 닫아도 줄이 쌓이지 않는다.
     /// - Session을 띄우지 않는다. 머리말의 제목은 다음에 여는 Session부터 바뀐다(S10).
+    /// - 읽기만 된 Thread의 이름은 바꾸지 않는다(v1 티켓 38) — 끝난 일의 기록이다.
     fn rename(&self, thread: &str, title: &str, who: Option<&str>) -> Result<ThreadSummary, HostError> {
         let title = one_line(title);
         if title.is_empty() {
             return Err(HostError::BadTitle);
         }
-        if self.read_thread_file(thread)?.title != title {
+        if self.writable(thread)?.title != title {
             let log = self.thread_log(thread)?;
             let mut before = String::new();
             self.change_thread(thread, |file| before = std::mem::replace(&mut file.title, title.clone()))?;
@@ -1066,11 +1076,12 @@ impl ConversationHost {
         self.threads.find(key).is_some_and(|conv| conv.lock_found().is_some_and(|state| state.is_up()))
     }
 
-    /// 떠 있을 Session의 대화 — 그 Thread의 기록에 그 handle로 적고, 턴 도중의 로그인 요구를 창구에 쥐게 한다. spec 폴더를
-    /// 찍지 않고, 사라진 Work를 지켜보지 않는다(보관된 Work의 Thread는 v1 티켓 38).
+    /// 떠 있을 Session의 대화 — 그 Thread의 기록에 그 handle로 적고, 턴 도중의 로그인 요구를 창구에 쥐게 하고, 턴 끝에 그 Thread가
+    /// 읽기만 됐으면 끄러 보낸다(v1 티켓 38). spec 폴더를 찍지 않는다.
     fn session_conv(&self, key: &SessionKey) -> Result<Arc<Conv>, HostError> {
         let recorder = Recorder::of_thread(self.thread_log(&key.thread)?, &key.handle);
-        Ok(Conv::new(recorder, self.login_watch(Agent::Claude, key.waiter())))
+        let vanish = VanishWatch::new(self.data_root.clone(), key.clone(), self.weak());
+        Ok(Conv::new(recorder, self.login_watch(Agent::Claude, key.waiter()), vanish))
     }
 
     /// 그 Thread의 기록 — 연 것이 있으면 그것, 없으면 이어 열어 쥔다. Thread 폴더를 만들지 않는다.

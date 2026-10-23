@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { fileKey, type ChangeSummary } from "./work-card";
-import { WorkCardSections } from "./WorkCard";
+import { ArchivedCard, WorkCardSections } from "./WorkCard";
 
 // Work 카드의 칸(v1 티켓 34 · §15 · 캔버스 WorkPanel 보드) — 칸을 그리는 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 칸의
 // 차례 · 빈 칸이 서지 않음 · 줄의 메타(쓰는 중 · +/− · 고치는 중 · PR 문장)다.
@@ -107,5 +107,39 @@ describe("Work 카드의 칸", () => {
       ],
     });
     expect(markup).toMatch(/data-project="web-client".*고치는 중.*data-project="admin-console".*읽기만/);
+  });
+});
+
+describe("보관된 Work의 카드(v1 티켓 38 · 보드 「보관된 Work」)", () => {
+  const entry = { slug: "webhook-retry", title: "결제 웹훅 재시도", status: "done" as const, archivedAt: "2026-10-20", projects: ["api-server"] };
+  const docs = [
+    { path: "overview.md", writer: null },
+    { path: "design.md", writer: null },
+  ];
+
+  it("더하기를 받지 않은 칸들은 더하기 버튼이 없고, Project가 없으면 Project 칸도 서지 않는다", () => {
+    const markup = renderToStaticMarkup(
+      <WorkCardSections docs={docs} changes={refund} fresh={new Set()} flash={0} projects={[]} prs={[]} onOpenPr={none} />,
+    );
+    expect(names(markup)).toEqual(["문서", "변경"]);
+    expect(markup).not.toContain("문서 추가");
+    expect(markup).not.toContain("Project 붙이기");
+  });
+
+  it("머리는 보관 글리프 · 이름 · 「보관됨 · 10월 20일」이고, 문서는 더하기 없이 서며, 누를 자리도 ⋯도 「다시 열기」도 없다(S25)", () => {
+    const markup = renderToStaticMarkup(<ArchivedCard entry={entry} docs={docs} />);
+    expect(markup).toContain('aria-label="Work 카드: 결제 웹훅 재시도"');
+    expect(markup).toMatch(/lucide-archive.*결제 웹훅 재시도.*보관됨 · 10월 20일/);
+    expect(names(markup)).toEqual(["Work 카드: 결제 웹훅 재시도", "문서"]);
+    expect(markup).toMatch(/data-doc="overview.md".*data-doc="design.md"/);
+    expect(markup).not.toContain("<button");
+    expect(markup).not.toContain("Work 메뉴");
+    expect(markup).not.toContain("다시 열기");
+  });
+
+  it("보관한 날을 모르는 Work(손으로 옮긴 폴더)는 「보관됨」만이다 — 없는 날을 지어내지 않는다", () => {
+    const markup = renderToStaticMarkup(<ArchivedCard entry={{ ...entry, archivedAt: null }} docs={[]} />);
+    expect(markup).toMatch(/>보관됨</);
+    expect(names(markup)).toEqual(["Work 카드: 결제 웹훅 재시도"]);
   });
 });
