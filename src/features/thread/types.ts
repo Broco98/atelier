@@ -236,6 +236,8 @@ export interface FoundAgent {
     /** 얼굴(S36) — 적은 글자 그대로다. 푸는 일은 `faces.ts`가 한다. */
     avatar: Avatar | null;
     model: { prefer: string | null; effort: string | null };
+    /** 묻는 일 · 막는 일(S19 규칙 이름) — 「결정은 내가 합니다」 카드가 Host의 `askBefore`를 읽는다. */
+    policy: { askBefore: string[]; forbid: string[] };
   };
 }
 

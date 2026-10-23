@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { chipLabel, chipLists, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
+import { ASK_LEVELS, chipLabel, chipLists, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
 import type { Participant, RecordLine } from "./types";
 
 // 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 참여자 줄에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
@@ -92,5 +92,24 @@ describe("「/」 명령(v1 티켓 23)", () => {
     expect(slashCommands([{ name: "work", description: "Runtime의 work", aliases: [] }]).map((command) => command.name)).not.toContain(
       "work",
     );
+  });
+});
+
+// 물어보는 정도의 저장 글자 · 이름도 **두 언어가 문자열로만** 잇는다(코드 리뷰 1차 C) — 칩이 고른 글자를 엔진이 모르면 매번 묻기로
+// 눕고, 이름이 다르면 칩과 물음 줄(Policy 이름) · 자동 허용 까닭이 다른 말을 한다. 표를 못 찾으면 던진다(fail-closed).
+describe("물어보는 정도 — 칩과 판정", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/src/policy.rs", import.meta.url)), "utf8");
+  const table = (fn: string): Record<string, string> => {
+    const body = new RegExp(`fn ${fn}\\(self\\) -> &'static str \\{\\s*match self \\{([^}]*)\\}`).exec(source)?.[1];
+    if (!body) throw new Error(`policy.rs에서 AskLevel::${fn}을 못 찾았다`);
+    return Object.fromEntries([...body.matchAll(/AskLevel::(\w+) => "([^"]+)"/g)].map(([, variant, text]) => [variant, text]));
+  };
+
+  it("칩의 차례 · 저장 글자 · 이름이 엔진의 `AskLevel`과 같다", () => {
+    const stored = table("as_str");
+    const names = table("name");
+    expect(Object.keys(stored)).toEqual(["Always", "Edits", "Plan", "Auto"]);
+    expect(ASK_LEVELS.map((level) => level.value)).toEqual(Object.values(stored));
+    expect(ASK_LEVELS.map((level) => level.name)).toEqual(Object.keys(stored).map((variant) => names[variant]));
   });
 });

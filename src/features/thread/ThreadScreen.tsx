@@ -58,7 +58,7 @@ import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggl
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
 import { ArchivedWorkCard, WorkCard, WorkCardToggle, useArchivedWork, useCardOpen } from "./WorkCard";
 import { workHome } from "./work-chip";
-import { decisionsDue } from "./work-proposal";
+import { decisionItems, decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
@@ -497,8 +497,10 @@ function ThreadBody({
   const askingCwd = asking ? (view.participants.find((one) => one.handle === asking.who)?.cwd ?? null) : null;
   const seen = useDecisionsSeen();
   const markSeen = useMarkDecisionsSeen();
-  // 「결정은 내가 합니다」(S31) — 걸린 물음이 먼저다. 이 카드는 기다리는 이가 없는 안내다.
+  // 「결정은 내가 합니다」(S31) — 걸린 물음이 먼저다. 이 카드는 기다리는 이가 없는 안내다. 줄은 Library Host 정의에서 선다 — Host는
+  // Library에만 있고, Library 목록은 사이드바가 이미 읽어 둔다.
   const decisions = asking === null && decisionsDue(model, seen);
+  const library = useAgentRoster(null);
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -725,6 +727,7 @@ function ThreadBody({
                 ) : decisions ? (
                   <Arriving motion="card-rise">
                     <DecisionsCard
+                      items={decisionItems(library)}
                       onDone={() => markSeen.mutate()}
                       onPolicy={() => {
                         markSeen.mutate();

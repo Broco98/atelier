@@ -47,6 +47,7 @@ const ROSTER: AgentRoster = {
         description: "다른 Agent를 부르지 않았을 때 답한다.",
         avatar: null,
         model: { prefer: null, effort: null },
+        policy: { askBefore: [], forbid: [] },
       },
     },
     {
@@ -59,6 +60,7 @@ const ROSTER: AgentRoster = {
         description: "바뀐 코드를 읽고 리뷰한다.",
         avatar: { shape: "circle", color: "green" },
         model: { prefer: null, effort: null },
+        policy: { askBefore: [], forbid: [] },
       },
     },
   ],

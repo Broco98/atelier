@@ -27,6 +27,7 @@ const agent = (call: string, name: string, description: string, from: FoundAgent
     description,
     avatar: call === "reviewer" ? { shape: "circle", color: "green" } : null,
     model: { prefer: null, effort: null },
+    policy: { askBefore: [], forbid: [] },
   },
 });
 

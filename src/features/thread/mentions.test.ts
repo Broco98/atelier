@@ -21,6 +21,7 @@ const definition = (handle: string, name: string, description = "") => ({
   description,
   avatar: null,
   model: { prefer: null, effort: null },
+  policy: { askBefore: [], forbid: [] },
 });
 
 const roster: AgentRoster = {

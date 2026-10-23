@@ -17,7 +17,7 @@ import {
   workTitleOf,
   workView,
 } from "./thread-records";
-import type { RecordLine, ThreadView } from "@/features/thread/types";
+import type { AgentRoster, RecordLine, ThreadView } from "@/features/thread/types";
 import type { WorkView } from "@/features/works/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **Host가 Work 만들기를 카드로 물어 사람이 만들면 Thread가 그 Work에 이어지고, Work 카드가 선다**
@@ -34,10 +34,34 @@ const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말"
 const 흐름 = (page: Page) => page.getByRole("main");
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 
+/**
+ * Library의 Host — 기본 파일(`atelier-core` `agents/host.md`)의 먼저 묻는 일이다. 「결정은 내가 합니다」 카드가 이것으로 줄을 세운다(코드 리뷰
+ * 1차 B7). 스키마 명령 패턴 여럿은 한 줄이다.
+ */
+const LIBRARY: AgentRoster = {
+  agents: [
+    {
+      call: "host",
+      from: "library",
+      path: "/Users/tester/.atelier/library/agents/host.md",
+      definition: {
+        handle: "host",
+        name: "Host",
+        description: "다른 Agent를 부르지 않았을 때 답한다.",
+        avatar: null,
+        model: { prefer: null, effort: null },
+        policy: { askBefore: ["push", "Bash(*prisma migrate *)", "Bash(*alembic upgrade *)"], forbid: [] },
+      },
+    },
+  ],
+  broken: [],
+};
+
 /** 그 Thread를 그 seq까지 연다 — 목록 · 읽기 · 읽은 자리를 그 Thread로 답한다. Work 목록에는 이은 Work를 더한다. */
 async function openThread(page: Page, view: ThreadView, lines: readonly RecordLine[], works: WorkView[] = WORKS) {
   await installFixtureBackend(page, {
     list_works: works,
+    list_agents: LIBRARY,
     thread_list: [summaryOf(view)],
     thread_get: answerByArg("thread", { [view.id]: view }),
     thread_read_record: answerByArg("thread", { [view.id]: linesThrough(lines, view.lastSeq) }),
@@ -134,6 +158,12 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   // Work 칩은 이제 보이기만 하는 이은 Work의 이름이다.
   const decisions = page.getByRole("region", { name: "결정은 내가 합니다", exact: true });
   await expect(decisions).toBeVisible();
+  // 줄은 Library Host 정의의 먼저 묻는 일과 Work 밖 Project다(코드 리뷰 1차 B7) — 기본 파일이면 보드의 셋이다.
+  await expect(decisions.getByRole("listitem")).toHaveText([
+    "데이터베이스 스키마 바꾸기",
+    "원격 저장소에 push",
+    "이 Work 밖의 Project 건드리기",
+  ]);
   await decisions.getByRole("button", { name: "알겠어요", exact: true }).click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "write_settings", "settings")).map(({ args }) => args.settings))

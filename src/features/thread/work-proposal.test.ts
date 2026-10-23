@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkProjectChoice } from "./fold";
-import { branchHint, decisionsDue, firstPicked } from "./work-proposal";
+import type { AgentRoster, FoundAgent } from "./types";
+import { branchHint, decisionItems, decisionsDue, firstPicked } from "./work-proposal";
 
 // Work 만들기 카드의 값(v1 티켓 30 · 구현 스펙 §11 · 캔버스 Cards 보드 「Work 만들기」) — 브랜치 칸 오른쪽의 규칙 설명 · 처음 골라 둘
 // Project · 「결정은 내가 합니다」 카드가 설 때. seam은 순수 함수 셋이다 — 카드는 이 값을 그리기만 한다.
@@ -76,5 +77,48 @@ describe("「결정은 내가 합니다」 카드", () => {
 
   it("설정을 아직 읽지 못했으면 서지 않는다 — 본 사람에게 잠깐 번쩍이지 않게", () => {
     expect(decisionsDue(made, null)).toBe(false);
+  });
+});
+
+describe("「결정은 내가 합니다」 카드의 줄", () => {
+  // 코드 리뷰 1차 B7 — 카드는 고정 셋이 아니라 Library Host 정의의 `ask_before`에서 선다. 판정이 걸지 않는 이름(`schema` · 모르는 이름)은
+  // 서지 않고, 끝에는 늘 Work 밖 Project(S22)가 선다.
+  const host = (askBefore: string[], from: FoundAgent["from"] = "library"): FoundAgent => ({
+    call: from === "library" ? "host" : "api/host",
+    from,
+    path: "/Users/tester/.atelier/library/agents/host.md",
+    definition: {
+      handle: "host",
+      name: "Host",
+      description: "",
+      avatar: null,
+      model: { prefer: null, effort: null },
+      policy: { askBefore, forbid: [] },
+    },
+  });
+  const roster = (...agents: FoundAgent[]): AgentRoster => ({ agents, broken: [] });
+  const texts = (value: AgentRoster | null) => decisionItems(value).map((item) => item.text);
+
+  it("Host 기본 파일이면 보드의 셋이 보드 차례로 선다 — 스키마 명령 패턴 여럿은 한 줄이다", () => {
+    const defaults = ["push", "Bash(*prisma migrate *)", "Bash(*rails db:migrate*)", "Bash(*supabase db push*)"];
+    expect(texts(roster(host(defaults)))).toEqual(["데이터베이스 스키마 바꾸기", "원격 저장소에 push", "이 Work 밖의 Project 건드리기"]);
+  });
+
+  it("사람이 고친 파일의 이름 · 명령 패턴이 그대로 서고, 판정이 걸지 않는 이름은 서지 않는다", () => {
+    const edited = ["Bash(pnpm deploy:*)", "merge", "schema", "edit", "shell", "push"];
+    expect(decisionItems(roster(host(edited))).map(({ kind, text }) => [kind, text])).toEqual([
+      ["push", "원격 저장소에 push"],
+      ["merge", "브랜치 · PR merge"],
+      ["edit", "파일 고치기"],
+      ["shell", "명령 실행"],
+      ["command", "「pnpm deploy」 실행"],
+      ["project", "이 Work 밖의 Project 건드리기"],
+    ]);
+  });
+
+  it("Host를 읽지 못했거나 묻는 일을 다 지웠으면 Work 밖 Project 한 줄이다 — Project 안의 host는 Host가 아니다", () => {
+    expect(texts(null)).toEqual(["이 Work 밖의 Project 건드리기"]);
+    expect(texts(roster(host([])))).toEqual(["이 Work 밖의 Project 건드리기"]);
+    expect(texts(roster(host(["push"], { project: "api" })))).toEqual(["이 Work 밖의 Project 건드리기"]);
   });
 });

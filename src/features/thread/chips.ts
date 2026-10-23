@@ -80,13 +80,14 @@ export const CLAUDE_MODELS: readonly ChoiceOption[] = [
 
 /**
  * 물어보는 정도 넷(캔버스 Composer 보드 「아래 줄 메뉴 · 물어보는 정도」) — 보드의 차례 · 이름 · 설명 한 줄 그대로다. 이름은 엔진의
- * Policy 이름 · 자동 허용 까닭과 같은 글이다(`atelier_acp::AskLevel::name`).
+ * Policy 이름 · 자동 허용 까닭과 같은 글이다(`atelier_acp::AskLevel::name`). 「알아서」의 설명만 보드(「Policy에 적힌 것만 묻습니다」)와
+ * 다르다 — 판정은 그때도 웹 · MCP 도구와 계획 넘어가기를 묻는다(v1 티켓 22). 거짓 약속을 걷고 보드의 말투를 따랐다(코드 리뷰 1차 B7).
  */
 export const ASK_LEVELS: readonly { value: AskLevel; name: string; description: string }[] = [
   { value: "always", name: "매번 묻기", description: "고치거나 실행하기 전에 묻습니다" },
   { value: "edits", name: "편집은 허용", description: "파일은 알아서, 명령은 묻습니다" },
   { value: "plan", name: "계획만", description: "읽기만 하고 계획을 세웁니다" },
-  { value: "auto", name: "알아서", description: "Policy에 적힌 것만 묻습니다" },
+  { value: "auto", name: "알아서", description: "파일 · 명령도 알아서, Policy에 적힌 것은 묻습니다" },
 ];
 
 /** 저장 글자 → 물어보는 정도. 모르는 글자면 `null`이다. */
