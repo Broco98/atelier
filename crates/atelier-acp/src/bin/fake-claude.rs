@@ -39,6 +39,8 @@
 //!   내는 줄마다 녹음의 루트를 그 폴더로 바꾼다(v1 티켓 39). 녹음이 작업 폴더 밖(Work의 spec 폴더 · 등록한 저장소)을 가리킬 때 그
 //!   자리를 시험의 임시 폴더로 옮긴다 — 판정이 녹음의 편집을 그 시험이 만든 Work 안의 것으로 본다. 내는 줄의 글 바꾸기라 녹음의
 //!   명령 글을 바꾸는 데도 쓴다(코드 리뷰 1차 A1 — `python3 -c` 앞에 `git -C … push`를 붙인다).
+//! - `FAKE_CLAUDE_STDOUT_LAG` — 있으면(밀리초) 내는 줄마다 그만큼 늦게 stdout에 쓴다. MCP 부르기는 늦추지 않는다 — stdout(변환기 →
+//!   엔진) 길이 부하로 늦어 Thread 도구 호출(중계 서버 → 소켓)이 먼저 닿는 꼴을 늘 일으킨다(코드 리뷰 1차 A3).
 //! - **녹음 속 MCP 부르기**(v1 티켓 20) — 되감는 원문의 `assistant`가 받은 `--mcp-config`의 서버 도구(`mcp__<서버>__<도구>`)를
 //!   부르면, 그 줄을 낸 뒤 그 서버를 띄워 같은 입력으로 정말 부르고, 뒤따르는 원문의 그 `tool_result`를 받은 답으로 바꿔 낸다.
 //!   진짜 claude가 Thread 도구를 부른 녹음(`thread-call-host` · `thread-rename-host`)이 엔진의 중계 서버 → 소켓 길을 끝까지 탄다.
@@ -61,7 +63,9 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -148,6 +152,7 @@ fn main() {
             fake.emit_all(replay.release());
         }
     }
+    drain_stdout();
     fake.append("events", "stdin-eof");
     if let Some(child) = child.as_mut() {
         let _ = child.kill();
@@ -196,10 +201,60 @@ fn spawn_mcp_child() -> Child {
 }
 
 fn emit(line: &Value) {
+    let text = rebased(line);
+    match lagged() {
+        Some(lagged) => lagged.send(text),
+        None => write_line(&text),
+    }
+}
+
+fn write_line(text: &str) {
     let mut out = std::io::stdout().lock();
     // 상대가 떠났으면 쓰기가 실패한다. 가짜는 그 자리에서 할 일이 없다.
-    let _ = writeln!(out, "{}", rebased(line));
+    let _ = writeln!(out, "{text}");
     let _ = out.flush();
+}
+
+/// 늦게 쓰는 stdout(`FAKE_CLAUDE_STDOUT_LAG`) — 줄마다 낸 때에서 그만큼 지나 차례대로 쓴다. MCP 부르기는 늦추지 않는다.
+struct Lagged {
+    lag: Duration,
+    lines: mpsc::Sender<(Instant, String)>,
+    /// 아직 쓰지 않은 줄 수 — 끝나기 전에 다 쓰고 끝난다.
+    pending: Arc<AtomicUsize>,
+}
+
+impl Lagged {
+    fn send(&self, text: String) {
+        self.pending.fetch_add(1, Ordering::SeqCst);
+        let _ = self.lines.send((Instant::now() + self.lag, text));
+    }
+}
+
+fn lagged() -> Option<&'static Lagged> {
+    static LAGGED: OnceLock<Option<Lagged>> = OnceLock::new();
+    LAGGED
+        .get_or_init(|| {
+            let ms: u64 = std::env::var("FAKE_CLAUDE_STDOUT_LAG").ok()?.parse().expect("FAKE_CLAUDE_STDOUT_LAG는 밀리초다");
+            let (lines, due) = mpsc::channel::<(Instant, String)>();
+            let pending = Arc::new(AtomicUsize::new(0));
+            let left = Arc::clone(&pending);
+            std::thread::spawn(move || {
+                for (at, text) in due {
+                    std::thread::sleep(at.saturating_duration_since(Instant::now()));
+                    write_line(&text);
+                    left.fetch_sub(1, Ordering::SeqCst);
+                }
+            });
+            Some(Lagged { lag: Duration::from_millis(ms), lines, pending })
+        })
+        .as_ref()
+}
+
+/// 늦게 쓰는 줄이 남았으면 다 쓸 때까지 기다린다.
+fn drain_stdout() {
+    while lagged().is_some_and(|lagged| lagged.pending.load(Ordering::SeqCst) > 0) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 /// 낼 줄의 글 — `FAKE_CLAUDE_REBASE`가 있으면 녹음의 그 폴더를 이 claude의 작업 폴더로, 이어 `FAKE_CLAUDE_REROOT`가 있으면 녹음의

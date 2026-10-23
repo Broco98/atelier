@@ -40,12 +40,12 @@ fn calling(sandbox: &Sandbox, calls: &[Value], reviewer_fixture: &str) -> atelie
 
 /// 진짜 claude가 Host로 리뷰어를 부른 녹음 한 쌍을 되감는 가짜 claude의 로그인 셸(v1 티켓 20 끝 점검) — Host는 `ToolSearch`로 들인
 /// `call_agent`를 녹음의 입력 그대로 정말 부르고, 리뷰어는 `thread.json`을 읽고 답한다. 녹음의 Thread 폴더는 각자의 작업 폴더로 옮긴다.
-fn recorded_call(sandbox: &Sandbox) -> atelier_acp::ShellSource {
+/// `extra`는 더 줄 가짜 claude의 env다.
+fn recorded_call(sandbox: &Sandbox, extra: &[(&str, &str)]) -> atelier_acp::ShellSource {
     let fixtures = json!({"host": "2.1.309/thread-call-host", "reviewer": "2.1.309/thread-call-reviewer"}).to_string();
-    sandbox.claude_login_shell(
-        "normal",
-        &[("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures), ("FAKE_CLAUDE_REBASE", RECORDED_THREAD)],
-    )
+    let mut env = vec![("FAKE_CLAUDE_AGENT_FIXTURES", fixtures.as_str()), ("FAKE_CLAUDE_REBASE", RECORDED_THREAD)];
+    env.extend_from_slice(extra);
+    sandbox.claude_login_shell("normal", &env)
 }
 
 /// 녹음 `thread-call-host`의 Thread 폴더와 첫 말.
@@ -249,7 +249,26 @@ fn host가_리뷰어를_불러_결과를_받은_기록이_검사_자료와_같�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
-    let host = sandbox.host(recorded_call(&sandbox));
+    let host = sandbox.host(recorded_call(&sandbox, &[]));
+
+    let thread = host.start_thread(RECORDED_ASK, ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let record = wait_turns_of(&sandbox, &thread, "host", 1);
+    host.shut_down();
+
+    let sessions = [sandbox.thread_session_id(&thread, "host"), sandbox.thread_session_id(&thread, "reviewer")];
+    let sessions: Vec<&str> = sessions.iter().map(String::as_str).collect();
+    common::assert_record("thread-call", &common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &sessions));
+}
+
+/// 코드 리뷰 1차 A3 — CI(Linux)에서 Host claude의 stdout 줄(변환기 → 엔진)이 「Agent 부르기」(중계 서버 → 소켓)보다 늦게 닿아,
+/// 리뷰어의 참여 줄이 Host의 세션 정보 · 생각 줄 앞에 섰다. 가짜 claude가 stdout만 늦게 쓰면 그 엇갈림이 늘 난다 — 엔진은 그
+/// 도구 줄이 적힌 뒤에 부르기를 받으므로 기록은 같다.
+#[test]
+fn host의_stdout이_agent_부르기보다_늦게_닿아도_기록의_차례가_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    sandbox.library_agent("reviewer", REVIEWER_MD);
+    let host = sandbox.host(recorded_call(&sandbox, &[("FAKE_CLAUDE_STDOUT_LAG", "500")]));
 
     let thread = host.start_thread(RECORDED_ASK, ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let record = wait_turns_of(&sandbox, &thread, "host", 1);
@@ -263,8 +282,9 @@ fn host가_리뷰어를_불러_결과를_받은_기록이_검사_자료와_같�
 /// 축복 자료의 차례와 값을 하나로 둔다 — 매번 갈리는 것을 앞 줄 뒤로 옮기고 seq를 다시 센 뒤, 부르기의 id를 `fake-call`로, 걸린
 /// 시간을 seq로 고친다.
 /// - 명령 목록 줄(`available_commands_update`)은 Session을 연 답 뒤에 따로 와 다음 줄과 엇갈린다 → 그 참여자의 열림 줄 바로 뒤.
-/// - 부른 쪽의 「Agent 부르기」 도구 줄은 claude의 stdout(변환기 → ACP)이 적고, 불린 Agent의 참여는 도구 호출(중계 서버 → 소켓)이
-///   적어 둘이 엇갈린다 → 그 도구 줄을 불린 Agent의 `joined` 바로 앞으로.
+///
+/// 부른 쪽의 「Agent 부르기」 도구 줄(claude의 stdout)과 불린 Agent의 참여(도구 호출 — 중계 서버 → 소켓)는 옮기지 않는다 — 엔진이
+/// 그 도구 줄이 적힌 뒤에 부르기를 받는다(코드 리뷰 1차 A3).
 fn settled(record: &[Value]) -> Vec<Value> {
     let mut lines = record.to_vec();
     for who in ["host", "reviewer"] {
@@ -274,15 +294,6 @@ fn settled(record: &[Value]) -> Vec<Value> {
         let opened = lines.iter().position(|line| line["who"] == who && line["payload"]["state"] == "opened").expect("열림 줄");
         lines.insert(opened + 1, line);
     }
-    let tool = |line: &Value| {
-        line["who"] == "host"
-            && line["payload"]["update"]["sessionUpdate"] == "tool_call"
-            && line["payload"]["update"]["_meta"]["claudeCode"]["toolName"] == "mcp__atelier-thread__call_agent"
-    };
-    let at = lines.iter().position(tool).expect("Host의 「Agent 부르기」 도구 줄");
-    let line = lines.remove(at);
-    let joined = lines.iter().position(|line| line["kind"] == "joined" && line["who"] == "reviewer").expect("리뷰어의 참여 줄");
-    lines.insert(joined, line);
     for (n, line) in lines.iter_mut().enumerate() {
         line["seq"] = json!(n + 1);
     }

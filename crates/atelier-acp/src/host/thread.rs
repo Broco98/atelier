@@ -40,6 +40,7 @@ mod pr;
 mod project;
 mod read_only;
 mod seat;
+mod tool_lines;
 mod work;
 mod writing;
 
@@ -74,6 +75,7 @@ use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, QuestionAns
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use gate::Gate;
 use seat::{Docs, Grant, Writer};
+use tool_lines::ToolLines;
 
 /// 받는 이를 고르지 않은 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S9 · S14).
 const HOST: &str = "host";
@@ -221,6 +223,8 @@ pub(super) struct Session {
     writer: Arc<Writer>,
     /// 그 Session의 Thread 도구 소켓 — 쥐고만 있다: 프로세스와 함께 놓여 치워진다. 중계 서버 명령이 없거나 열지 못했으면 없다.
     _tools: Option<Bridge>,
+    /// 그 Session이 기록에 적은 Thread 도구 줄 — 소켓으로 온 부르기가 제 도구 줄을 기다린다(코드 리뷰 1차 A3).
+    tool_lines: Arc<ToolLines>,
 }
 
 impl Threads {
@@ -273,6 +277,11 @@ impl Threads {
             .filter(|(_, session)| session.writer.work().as_deref() == Some(work))
             .map(|(key, _)| key.clone())
             .collect()
+    }
+
+    /// 그 Session이 떠 있으면 그 Session이 적은 Thread 도구 줄.
+    fn find_tool_lines(&self, key: &SessionKey) -> Option<Arc<ToolLines>> {
+        self.lock_sessions().get(key).map(|session| Arc::clone(&session.tool_lines))
     }
 
     /// 그 Session이 떠 있으면 그 대화와 쓰기 자리 손.
@@ -865,6 +874,10 @@ impl ConversationHost {
             "tools/call" => thread_tools::read_call(params),
             _ => return Err(Fault::unknown_method(method)),
         };
+        // 부르기는 그 도구 줄이 기록에 선 뒤에 받는다 — 결과의 줄이 그 앞에 서지 않게(`tool_lines.rs`).
+        if let Some(lines) = self.threads.find_tool_lines(key) {
+            lines.wait(params["name"].as_str().unwrap_or_default());
+        }
         Ok(match call {
             Ok(Call::RenameThread { title }) => match self.rename(&key.thread, &title, Some(&key.handle)) {
                 Ok(summary) => thread_tools::said(&format!("Thread 이름을 바꿨다 — {}", summary.title), false),
@@ -1108,7 +1121,8 @@ impl ConversationHost {
         terms.judge = Some(gate.judge());
         let limit = self.open_limit.unwrap_or(CLAUDE_OPEN_LIMIT);
         let at = SessionPlace { cwd: place.cwd.clone(), additional_directories: place.additional_directories.clone() };
-        let sink = self.reading_prs(writer.watching(conv.sink()), &writer);
+        let tool_lines = Arc::new(ToolLines::default());
+        let sink = self.reading_prs(tool_lines.watching(writer.watching(conv.sink())), &writer);
         let opened = runtime::open(launch, at, terms, limit, sink, record_opened(&conv));
         let (agent, opened) = match opened {
             Ok(opened) => opened,
@@ -1143,7 +1157,7 @@ impl ConversationHost {
                 slot.additional_directories = place.additional_directories.clone();
             }
         })?;
-        self.threads.put(key.clone(), Session { agent, conv, writer, _tools: tools });
+        self.threads.put(key.clone(), Session { agent, conv, writer, _tools: tools, tool_lines });
         Ok(())
     }
 

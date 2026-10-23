@@ -422,10 +422,11 @@ fn work_밖_project를_붙이고_고친_턴의_기록이_검사_자료와_같다
     common::assert_record("thread-project", &fixed);
 }
 
-/// 축복 자료의 차례를 하나로 둔다 — 매번 갈리는 두 차례를 앞 줄 뒤로 옮기고 seq를 다시 센다(`thread_work.rs`의 `settled`와 같다).
+/// 축복 자료의 차례를 하나로 둔다 — 매번 갈리는 차례를 앞 줄 뒤로 옮기고 seq를 다시 센다(`thread_work.rs`의 `settled`와 같다).
 /// - 명령 목록 줄(`available_commands_update`)은 Session을 연 답 뒤에 따로 와 첫 말의 `sent`와 엇갈린다 → 열림 줄 바로 뒤.
-/// - 카드 줄(`question` `asked`)은 도구 호출(중계 서버 → 소켓)이 적고 도구 줄은 claude의 stdout(변환기 → ACP)이 적어 둘이 엇갈린다 →
-///   그 도구 줄 바로 뒤.
+///
+/// 카드 줄(`question` `asked`)은 도구 호출(중계 서버 → 소켓)이 적고 도구 줄은 claude의 stdout(변환기 → ACP)이 적지만 옮기지 않는다
+/// — 엔진이 그 도구 줄이 적힌 뒤에 부르기를 받는다(코드 리뷰 1차 A3).
 fn settled(record: &[Value]) -> Vec<Value> {
     let mut lines = record.to_vec();
     let mut after = |moved: &dyn Fn(&Value) -> bool, anchor: &dyn Fn(&Value) -> bool| {
@@ -436,9 +437,6 @@ fn settled(record: &[Value]) -> Vec<Value> {
     };
     after(&|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update", &|line| {
         line["payload"]["state"] == "opened"
-    });
-    after(&|line| line["kind"] == "question" && line["payload"]["state"] == "asked", &|line| {
-        line["payload"]["update"]["sessionUpdate"] == "tool_call"
     });
     for (n, line) in lines.iter_mut().enumerate() {
         line["seq"] = json!(n + 1);
