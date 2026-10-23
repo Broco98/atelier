@@ -222,15 +222,15 @@ pub async fn read_work_diff(slug: String, project: String, path: String) -> CmdR
     .map_err(|e| format!("diff를 읽지 못했습니다: {e}"))?
 }
 
-/// Work의 PR(S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. `gh`는 **대화 호스트가 쥔 로그인 셸의 PATH**로 찾는다 —
+/// Work의 PR(S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. `gh`는 **Thread 엔진이 쥔 로그인 셸의 PATH**로 찾는다 —
 /// Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보여, 깔려 있는데도 PR 줄이 「없음」이 된다. 로그인 셸을 읽지 못하면 앱의
-/// PATH로 물러선다. 다리는 호스트가 없어 자기 PATH로 부른다.
+/// PATH로 물러선다. 다리는 엔진이 없어 자기 PATH로 부른다.
 #[tauri::command]
 pub async fn read_work_prs(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     slug: String,
 ) -> CmdResult<Vec<atelier_core::ProjectPr>> {
-    let host = Arc::clone(&chats);
+    let host = Arc::clone(&engine);
     tauri::async_runtime::spawn_blocking(move || {
         let path = host.login_path();
         atelier_core::read_work_prs(&works_dir(), &slug, path.as_deref()).map_err(err)
@@ -695,24 +695,26 @@ pub async fn startup_report(
         .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
-// 대화 명령(three-axes 티켓 05 · 07~13 · 23 · 25 · 27) — 본체는 대화 호스트(`atelier_acp::ConversationHost`)에 있고 여기는 위임만
-// 한다. 앱이 빌더 앞에서 세워 건 호스트 하나를 `State`로 찾는다(`lib.rs`). 명령의 목록과 뜻은 명령마다의 `///`와
-// `generate_handler!`가 정본이다 — 여기는 규칙만 적는다.
+// ── Thread 명령(v1 티켓 04 · 구현 스펙 §18) ──────────────────────────────────────────────────────────────────────
 //
-// - 명령은 이름 · 인자 · 위임 한 줄이다. 호스트에는 `to_host` 한 길로만 간다 — 어느 부름이 막히는지 명령이 고르지 않는다.
-// - 턴은 기다리지 않는다 — 보내기 · 멈추기 · 지금 보내기 · 권한 답은 말이나 `session/cancel`이나 답을 보내고 돌아온다. 이어 가는
-//   턴과 그 끝은 기록 줄 이벤트(`chat::RECORD_EVENT`)로, 대기 줄의 바뀜은 `chat::QUEUE_EVENT`로 온다.
-// - 호스트의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
-// - 다리로 탈 수 없다(`in_app_only`) — 호스트는 오래 사는 에이전트를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
+// 본체는 Thread 엔진(`atelier_acp::ConversationHost`)에 있고 여기는 위임만 한다. 앱이 빌더 앞에서 세워 건 엔진 하나를 `State`로
+// 찾는다(`lib.rs`). 명령의 목록과 뜻은 명령마다의 `///`와 `generate_handler!`가 정본이다 — 여기는 규칙만 적는다.
+//
+// - 명령은 이름 · 인자 · 위임 한 줄이다. 엔진에는 `to_host` 한 길로만 간다 — 어느 부름이 막히는지 명령이 고르지 않는다.
+// - 턴은 기다리지 않는다 — 보내기 · 멈추기 · 지금 전하기 · 권한 답은 말이나 멈춤이나 답을 보내고 돌아온다. 열쇠는 Thread id이고,
+//   답과 턴 끝은 `thread::RECORD_EVENT`로, 대기 줄은 `thread::QUEUE_EVENT`로, 목록 요약은 `thread::LIST_EVENT`로 온다.
+// - 엔진의 오류는 화면에 그대로 보일 글이다(`HostError`의 Display).
+// - 다리로 탈 수 없다(`in_app_only`) — 엔진은 오래 사는 Agent를 쥐는데 다리는 부를 때마다 뜨고 끝나는 CLI다.
+// - v1은 Claude Code만 띄우므로(S3) 엔진을 고르는 인자가 없다. three-axes의 Work 안 대화창(`chat_*`)은 v1 티켓 08이 걷었다.
 
-/// 대화 호스트로 가는 한 길 — `chat_` 명령은 모두 이것으로 호스트를 부른다.
+/// Thread 엔진으로 가는 한 길 — `thread_` 명령은 모두 이것으로 엔진을 부른다.
 ///
-/// - 부름은 늘 blocking 풀에서 기다린다. 어느 호스트 부름이 막히는지(로그인 셸 · 세션 열기 · 끄기 · 대화 잠금 · spec 폴더
-///   걷기 · 되살리기)는 호스트 안의 일이라 명령마다 고르지 않는다 — 호스트가 막힘을 바꿔도 여기는 그대로다.
-/// - 오류는 화면에 그대로 보일 글 한 갈래다. 호스트의 오류는 그 Display 그대로이고, 답만 있는 부름은 `Ok::<_, Infallible>`로
+/// - 부름은 늘 blocking 풀에서 기다린다. 어느 엔진 부름이 막히는지(로그인 셸 · Session 열기 · 끄기 · Session 잠금 ·
+///   되살리기)는 엔진 안의 일이라 명령마다 고르지 않는다 — 엔진이 막힘을 바꿔도 여기는 그대로다.
+/// - 오류는 화면에 그대로 보일 글 한 갈래다. 엔진의 오류는 그 Display 그대로이고, 답만 있는 부름은 `Ok::<_, Infallible>`로
 ///   싸서 든다. 부름이 쓰러져(패닉) 답이 없으면 `failed`(무엇을 못 했나)가 앞에 선다.
 async fn to_host<T, E>(
-    chats: &Arc<atelier_acp::ConversationHost>,
+    engine: &Arc<atelier_acp::ConversationHost>,
     failed: &'static str,
     call: impl FnOnce(Arc<atelier_acp::ConversationHost>) -> Result<T, E> + Send + 'static,
 ) -> CmdResult<T>
@@ -720,301 +722,72 @@ where
     T: Send + 'static,
     E: std::fmt::Display + Send + 'static,
 {
-    let host = Arc::clone(chats);
+    let host = Arc::clone(engine);
     tauri::async_runtime::spawn_blocking(move || call(host))
         .await
         .map_err(|e| format!("{failed}: {e}"))?
         .map_err(|e| e.to_string())
 }
 
-/// 그 에이전트를 띄우는 데 드는 실행 파일을 로그인 셸의 PATH에서 찾는다. `reread`는 안내 카드의 「다시 확인」이다.
-#[tauri::command]
-pub async fn chat_check_engine(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    agent: atelier_acp::Agent,
-    reread: bool,
-) -> CmdResult<atelier_acp::EngineCheck> {
-    to_host(&chats, "엔진을 확인하지 못했습니다", move |host| host.check_engine(agent, reread)).await
-}
-
-/// 그 work의 열린 대화들. 읽기만 한다 — 에이전트를 띄우지 않고 `agents/`도 만들지 않는다.
-#[tauri::command]
-pub async fn chat_list(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-) -> CmdResult<Vec<atelier_acp::Conversation>> {
-    to_host(&chats, "대화 목록을 읽지 못했습니다", move |host| host.list_conversations(&work)).await
-}
-
-/// 그 대화의 기록에서 `after` 다음 seq의 줄들 — 화면은 이것으로 그리고, 그 뒤는 기록 줄 이벤트로 잇는다.
-#[tauri::command]
-pub async fn chat_read_record(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    after: u64,
-) -> CmdResult<Vec<atelier_acp::RecordLine>> {
-    to_host(&chats, "기록을 읽지 못했습니다", move |host| host.read_record(&work, &conversation, after)).await
-}
-
-/// 새 대화 — 설정 「대화」의 그 엔진 기본값(모델 · 모드)으로 만들고 곧바로 띄워 세션을 연다(S8 · three-axes 티켓 25). 에이전트는
-/// 화면이 고른다(`+`는 설정의 기본 에이전트). 세션이 열릴 때까지 기다린다.
-#[tauri::command]
-pub async fn chat_new(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    agent: atelier_acp::Agent,
-) -> CmdResult<atelier_acp::Conversation> {
-    to_host(&chats, "대화를 열지 못했습니다", move |host| host.new_conversation(&work, agent)).await
-}
-
-/// 에이전트 바꾸기 — 첫 말 전에만 된다. 지금 에이전트를 끄고 같은 대화를 새 엔진으로 띄워 세션이 열릴 때까지 기다린다(13).
-/// 첫 말 뒤에는 거절한다 — 그 글이 잠긴 에이전트 칩의 까닭이다.
-#[tauri::command]
-pub async fn chat_switch_agent(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    agent: atelier_acp::Agent,
-) -> CmdResult<atelier_acp::Conversation> {
-    to_host(&chats, "에이전트를 바꾸지 못했습니다", move |host| host.switch_agent(&work, &conversation, agent)).await
-}
-
-/// 말을 보낸다. 턴을 기다리지 않는다 — 답과 턴 끝은 기록 줄로 온다. 턴이 도는 동안의 말은 대기 줄에 들고(대기 줄 바뀜), 턴이
-/// 끝나면 차례로 간다. `quote`는 스펙 창에서 고른 자리다(three-axes 티켓 27) — 호스트가 사람의 글 앞에 인용 블록으로 둔다.
-/// 앱을 다시 켠 뒤이거나 에이전트가 죽은 대화면 먼저 띄워 되살린다(three-axes 티켓 10) — 그 세션이 열릴 때까지 기다린다.
-#[tauri::command]
-pub async fn chat_send(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    text: String,
-    quote: Option<atelier_acp::Quote>,
-) -> CmdResult<()> {
-    to_host(&chats, "말을 보내지 못했습니다", move |host| {
-        host.send_message(&work, &conversation, &text, quote.as_ref())
-    })
-    .await
-}
-
-/// 도는 턴을 멈춘다(`session/cancel`). 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다.
-#[tauri::command]
-pub async fn chat_stop(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-) -> CmdResult<()> {
-    to_host(&chats, "턴을 멈추지 못했습니다", move |host| host.stop(&work, &conversation)).await
-}
-
-/// 대기 줄의 그 말(`queued` — 대기 id)의 글을 고친다. 대기 줄 바뀜 이벤트가 난다.
-#[tauri::command]
-pub async fn chat_edit_queued(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    queued: String,
-    text: String,
-) -> CmdResult<()> {
-    to_host(&chats, "대기 중인 말을 고치지 못했습니다", move |host| {
-        host.edit_queued(&work, &conversation, &queued, &text)
-    })
-    .await
-}
-
-/// 대기 줄에서 그 말(`queued` — 대기 id)을 지운다. 대기 줄 바뀜 이벤트가 난다.
-#[tauri::command]
-pub async fn chat_delete_queued(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    queued: String,
-) -> CmdResult<()> {
-    to_host(&chats, "대기 중인 말을 지우지 못했습니다", move |host| host.delete_queued(&work, &conversation, &queued)).await
-}
-
-/// 지금 보내기 — 대기 줄의 그 말(`queued` — 대기 id)을 맨 앞에 세우고 도는 턴을 멈춘다. 턴이 `cancelled`로 끝나면 그 말이 먼저
-/// 간다. 멈춤은 기다리지 않는다. 에이전트가 죽은 대화면 보내기처럼 먼저 되살린다(three-axes 티켓 10).
-#[tauri::command]
-pub async fn chat_send_now(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    queued: String,
-) -> CmdResult<()> {
-    to_host(&chats, "지금 보내지 못했습니다", move |host| host.send_now(&work, &conversation, &queued)).await
-}
-
-/// 권한 답 — 걸린 권한 요청(`request` — 기록의 `permission` 줄의 `requestId`)에 고른 선택지(`option` — 그 요청의 optionId)로
-/// 답한다. 기다리지 않는다 — 고른 답은 `permission` 줄로, 이어 가는 턴은 기록 줄로 온다. 준 선택지에 없는 optionId와 이미 닫힌
-/// 요청은 읽히는 오류이고, 요청은 그대로 걸려 있다.
-#[tauri::command]
-pub async fn chat_answer_permission(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    request: String,
-    option: String,
-) -> CmdResult<()> {
-    to_host(&chats, "권한 요청에 답하지 못했습니다", move |host| {
-        host.answer_permission(&work, &conversation, &request, &option)
-    })
-    .await
-}
-
-/// 모델 바꾸기(three-axes 티켓 09) — 그 대화의 모델을 엔진이 낸 목록의 값(configOptions `model`의 선택지)으로 바꾼다. 값은 그
-/// 대화의 것이고 설정의 기본값은 그대로다. 에이전트가 떠 있으면 곧바로 넣고 답을 기다린다 — 다음 턴부터 든다. 띄우지 않은
-/// 대화는 `agents.json`에만 남는다. 답은 바뀐 대화다.
-#[tauri::command]
-pub async fn chat_set_model(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    model: String,
-) -> CmdResult<atelier_acp::Conversation> {
-    to_host(&chats, "모델을 바꾸지 못했습니다", move |host| host.set_model(&work, &conversation, &model)).await
-}
-
-/// 모드 바꾸기(three-axes 티켓 09) — 그 대화의 모드를 엔진이 낸 목록의 id로 바꾼다. 규칙은 모델 바꾸기와 같다.
-#[tauri::command]
-pub async fn chat_set_mode(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    mode: String,
-) -> CmdResult<atelier_acp::Conversation> {
-    to_host(&chats, "모드를 바꾸지 못했습니다", move |host| host.set_mode(&work, &conversation, &mode)).await
-}
-
-/// 계획 켜고 끄기(three-axes 티켓 09 · 결정 29) — Codex의 「계획」 토글(`collaboration_mode`)이다. 규칙은 모델 바꾸기와 같다.
-#[tauri::command]
-pub async fn chat_set_plan(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-    plan: bool,
-) -> CmdResult<atelier_acp::Conversation> {
-    to_host(&chats, "계획을 바꾸지 못했습니다", move |host| host.set_plan(&work, &conversation, plan)).await
-}
-
-/// 엔진 목록(three-axes 티켓 09 · S16) — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록. 설정 「대화」 쪽이 새 대화의
-/// 기본값 목록으로 쓴다. 연 적 없는 엔진은 빈 목록이다. 파일만 읽는다 — 에이전트를 띄우지 않는다.
-#[tauri::command]
-pub async fn chat_engine_lists(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    agent: atelier_acp::Agent,
-) -> CmdResult<atelier_acp::EngineLists> {
-    to_host(&chats, "엔진 목록을 읽지 못했습니다", move |host| Ok::<_, Infallible>(host.engine_lists(agent))).await
-}
-
-/// 앱 종료 확인 창의 대화 셈(three-axes 티켓 23 · S13) — 앱 전체에서 턴이 도는 대화 · 대기 중인 말 · 답하지 않은 승인. 대기 줄은
-/// 호스트 메모리에만 있고 지금 열지 않은 work의 대화도 함께 꺼지므로 호스트가 센다. 메모리만 읽는다.
-#[tauri::command]
-pub async fn chat_quit_counts(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-) -> CmdResult<atelier_acp::QuitCounts> {
-    to_host(&chats, "대화를 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
-}
-
-/// 대화 닫기 — 에이전트를 남김없이 끈다. 기록과 `agents.json`의 줄은 남는다(S14).
-#[tauri::command]
-pub async fn chat_close(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    work: String,
-    conversation: String,
-) -> CmdResult<()> {
-    to_host(&chats, "대화를 닫지 못했습니다", move |host| host.close_conversation(&work, &conversation)).await
-}
-
-/// 로그인 시작(three-axes 티켓 12) — 그 엔진의 로그인 명령(`claude auth login` · `codex login`)을 띄운다. 명령이 브라우저를
-/// 연다. 진행(링크 · 끝남)과 끝난 뒤 다시 돈 확인의 답은 엔진 상태 이벤트로 온다(`chat::ENGINE_EVENT`). 이미 돌면 새로
-/// 띄우지 않는다.
-#[tauri::command]
-pub async fn chat_start_login(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    agent: atelier_acp::Agent,
-) -> CmdResult<()> {
-    to_host(&chats, "로그인을 시작하지 못했습니다", move |host| host.start_login(agent)).await
-}
-
-/// 로그인 취소 — 도는 로그인 명령의 프로세스 그룹에 SIGTERM을 보내고, 1초 안에 안 끝나면 SIGKILL한다. 「끝남(취소)」은 엔진
-/// 상태 이벤트로 온다.
-#[tauri::command]
-pub async fn chat_cancel_login(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
-    agent: atelier_acp::Agent,
-) -> CmdResult<()> {
-    to_host(&chats, "로그인을 취소하지 못했습니다", move |host| {
-        host.cancel_login(agent);
-        Ok::<_, Infallible>(())
-    })
-    .await
-}
-
-// ── Thread 명령(v1 티켓 04 · 구현 스펙 §18) ──────────────────────────────────────────────────────────────────────
-//
-// 대화 명령과 같은 규칙이다 — 엔진은 대화 호스트에 함께 살고, 명령은 이름 · 인자 · `to_host` 한 길의 위임 한 줄이다. 다리로 탈
-// 수 없다(`in_app_only`). 열쇠는 Thread id이고, 답과 턴 끝은 `thread::RECORD_EVENT`로, 대기 줄은 `thread::QUEUE_EVENT`로, 목록
-// 요약은 `thread::LIST_EVENT`로 온다. v1은 Claude Code만 띄우므로(S3) 엔진을 고르는 인자가 없다.
-
 /// Claude Code를 로그인 셸의 PATH에서 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 확인」이다.
 #[tauri::command]
 pub async fn thread_check_engine(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     reread: bool,
 ) -> CmdResult<atelier_acp::EngineCheck> {
-    to_host(&chats, "엔진을 확인하지 못했습니다", move |host| host.check_engine(atelier_acp::Agent::Claude, reread)).await
+    to_host(&engine, "엔진을 확인하지 못했습니다", move |host| host.check_engine(atelier_acp::Agent::Claude, reread)).await
 }
 
 /// Claude Code의 로그인 명령을 띄운다. 진행과 끝은 엔진 상태 이벤트(`thread::ENGINE_EVENT`)로 온다.
 #[tauri::command]
-pub async fn thread_start_login(chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
-    to_host(&chats, "로그인을 시작하지 못했습니다", |host| host.start_login(atelier_acp::Agent::Claude)).await
+pub async fn thread_start_login(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
+    to_host(&engine, "로그인을 시작하지 못했습니다", |host| host.start_login(atelier_acp::Agent::Claude)).await
 }
 
 /// 도는 로그인 명령을 거둔다.
 #[tauri::command]
-pub async fn thread_cancel_login(chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
-    to_host(&chats, "로그인을 취소하지 못했습니다", |host| {
+pub async fn thread_cancel_login(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>) -> CmdResult<()> {
+    to_host(&engine, "로그인을 취소하지 못했습니다", |host| {
         host.cancel_login(atelier_acp::Agent::Claude);
         Ok::<_, Infallible>(())
     })
     .await
 }
 
-/// 앱 종료 확인 창의 셈(S40) — work 대화와 Thread의 Session을 함께 센다. 메모리만 읽는다.
+/// 앱 종료 확인 창의 셈(S40 · three-axes 티켓 23) — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 대기 줄은
+/// 엔진 메모리에만 있으므로 엔진이 센다. 메모리만 읽는다.
 #[tauri::command]
 pub async fn thread_quit_counts(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
 ) -> CmdResult<atelier_acp::QuitCounts> {
-    to_host(&chats, "Thread를 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
+    to_host(&engine, "Thread를 세지 못했습니다", |host| Ok::<_, Infallible>(host.quit_counts())).await
 }
 
 /// Thread 목록 — 모든 Thread의 요약, 새것부터. 엔진의 색인을 읽는다.
 #[tauri::command]
 pub async fn thread_list(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
 ) -> CmdResult<Vec<atelier_core::ThreadSummary>> {
-    to_host(&chats, "Thread 목록을 읽지 못했습니다", |host| host.list_threads()).await
+    to_host(&engine, "Thread 목록을 읽지 못했습니다", |host| host.list_threads()).await
 }
 
 /// Thread 하나의 지금 — `thread.json` · 기록의 끝 · 떠 있나 · 대기 줄. 다시 켠 뒤 · ⌘R 뒤 화면이 Thread를 열 때 읽는다.
 #[tauri::command]
 pub async fn thread_get(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
 ) -> CmdResult<atelier_acp::ThreadView> {
-    to_host(&chats, "Thread를 읽지 못했습니다", move |host| host.thread(&thread)).await
+    to_host(&engine, "Thread를 읽지 못했습니다", move |host| host.thread(&thread)).await
 }
 
 /// 그 Thread의 기록에서 `after` 다음 seq의 줄들 — 화면은 이것으로 그리고, 그 뒤는 기록 줄 이벤트로 잇는다.
 #[tauri::command]
 pub async fn thread_read_record(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     after: u64,
 ) -> CmdResult<Vec<atelier_acp::RecordLine>> {
-    to_host(&chats, "Thread 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
+    to_host(&engine, "Thread 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
 }
 
 /// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
@@ -1022,12 +795,12 @@ pub async fn thread_read_record(
 /// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 #[tauri::command]
 pub async fn thread_start(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     text: String,
     attachments: Vec<String>,
     link: atelier_acp::ThreadLink,
 ) -> CmdResult<String> {
-    to_host(&chats, "Thread를 시작하지 못했습니다", move |host| host.start_thread_with(&text, &attachments, link)).await
+    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_with(&text, &attachments, link)).await
 }
 
 /// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
@@ -1035,61 +808,61 @@ pub async fn thread_start(
 /// 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 #[tauri::command]
 pub async fn thread_send(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     text: String,
     attachments: Vec<String>,
 ) -> CmdResult<()> {
-    to_host(&chats, "말을 보내지 못했습니다", move |host| host.send_to_thread_with(&thread, &text, &attachments)).await
+    to_host(&engine, "말을 보내지 못했습니다", move |host| host.send_to_thread_with(&thread, &text, &attachments)).await
 }
 
 /// 그 Thread의 도는 턴을 모두 멈춘다. 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다.
 #[tauri::command]
-pub async fn thread_stop(chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>, thread: String) -> CmdResult<()> {
-    to_host(&chats, "턴을 멈추지 못했습니다", move |host| host.stop_thread(&thread)).await
+pub async fn thread_stop(engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>, thread: String) -> CmdResult<()> {
+    to_host(&engine, "턴을 멈추지 못했습니다", move |host| host.stop_thread(&thread)).await
 }
 
 /// 대기 줄의 그 말(`queued` — 대기 id)의 글을 고친다.
 #[tauri::command]
 pub async fn thread_edit_queued(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     queued: String,
     text: String,
 ) -> CmdResult<()> {
-    to_host(&chats, "대기 중인 말을 고치지 못했습니다", move |host| host.edit_thread_queued(&thread, &queued, &text)).await
+    to_host(&engine, "대기 중인 말을 고치지 못했습니다", move |host| host.edit_thread_queued(&thread, &queued, &text)).await
 }
 
 /// 대기 줄에서 그 말을 지운다.
 #[tauri::command]
 pub async fn thread_delete_queued(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     queued: String,
 ) -> CmdResult<()> {
-    to_host(&chats, "대기 중인 말을 지우지 못했습니다", move |host| host.delete_thread_queued(&thread, &queued)).await
+    to_host(&engine, "대기 중인 말을 지우지 못했습니다", move |host| host.delete_thread_queued(&thread, &queued)).await
 }
 
 /// 지금 전하기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. 턴이 `cancelled`로 끝나면 그 말이 먼저 간다.
 #[tauri::command]
 pub async fn thread_send_now(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     queued: String,
 ) -> CmdResult<()> {
-    to_host(&chats, "지금 전하지 못했습니다", move |host| host.send_thread_now(&thread, &queued)).await
+    to_host(&engine, "지금 전하지 못했습니다", move |host| host.send_thread_now(&thread, &queued)).await
 }
 
 /// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다.
 #[tauri::command]
 pub async fn thread_answer_permission(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     who: String,
     request: String,
     option: String,
 ) -> CmdResult<()> {
-    to_host(&chats, "권한 요청에 답하지 못했습니다", move |host| {
+    to_host(&engine, "권한 요청에 답하지 못했습니다", move |host| {
         host.answer_thread_permission(&thread, &who, &request, &option)
     })
     .await
@@ -1098,24 +871,24 @@ pub async fn thread_answer_permission(
 /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
 #[tauri::command]
 pub async fn thread_set_model(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     who: String,
     model: String,
 ) -> CmdResult<atelier_core::Participant> {
-    to_host(&chats, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &who, &model)).await
+    to_host(&engine, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &who, &model)).await
 }
 
 /// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — claude `--effort`의 값 하나. 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터
 /// 들고, 떠 있지 않으면 띄울 때 든다. 턴이 도는 동안은 거절된다. 답은 바뀐 참여자 줄이다.
 #[tauri::command]
 pub async fn thread_set_effort(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     who: String,
     effort: String,
 ) -> CmdResult<atelier_core::Participant> {
-    to_host(&chats, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &who, &effort)).await
+    to_host(&engine, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &who, &effort)).await
 }
 
 /// 다시 맡기기(v1 티켓 17 · 구현 스펙 §8) — 호출 줄에서 사람이 `from`의 부르기를 같은 글(`text`)로 `to`에게 다시 한다. 기다리지
@@ -1135,11 +908,11 @@ pub async fn thread_call_again(
 /// 요약이다. 빈 이름은 거절된다.
 #[tauri::command]
 pub async fn thread_rename(
-    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     title: String,
 ) -> CmdResult<atelier_core::ThreadSummary> {
-    to_host(&chats, "이름을 바꾸지 못했습니다", move |host| host.rename_thread(&thread, &title)).await
+    to_host(&engine, "이름을 바꾸지 못했습니다", move |host| host.rename_thread(&thread, &title)).await
 }
 
 #[cfg(test)]
@@ -1162,7 +935,7 @@ mod tests {
 
     use super::to_host;
 
-    /// 대화 호스트 하나 — 데이터 루트만 제 것이고, 셸 · 변환기는 띄울 일이 없다(이 시험들은 호스트 몸통을 타지 않는다).
+    /// Thread 엔진 하나 — 데이터 루트만 제 것이고, 셸 · 변환기는 띄울 일이 없다(이 시험들은 엔진 몸통을 타지 않는다).
     fn host(name: &str) -> Arc<atelier_acp::ConversationHost> {
         let root = std::env::temp_dir().join(format!("atelier-commands-{}-{name}", std::process::id()));
         let translator = atelier_acp::TranslatorCommand::new("", Vec::<String>::new());
@@ -1170,8 +943,8 @@ mod tests {
         Arc::new(atelier_acp::ConversationHost::builder(root, translator, shell, |_| {}).build())
     }
 
-    /// **대화 호스트로 가는 길은 기다리는 동안 async 워커를 쥐지 않는다**(프로세스 스펙 「가로지르는 규칙 › IPC」). 어느 호스트
-    /// 부름이 막히는지(로그인 셸 · 세션 열기 · 대화 잠금 · spec 폴더 걷기)는 호스트가 안다 — 명령이 고르지 않으므로 길이 모든
+    /// **엔진으로 가는 길은 기다리는 동안 async 워커를 쥐지 않는다**(프로세스 스펙 「가로지르는 규칙 › IPC」). 어느 엔진
+    /// 부름이 막히는지(로그인 셸 · Session 열기 · Session 잠금 · 되살리기)는 엔진이 안다 — 명령이 고르지 않으므로 길이 모든
     /// 부름을 워커 밖에서 기다린다. 워커보다 많은 부름이 함께 기다려도 모두 돌고, 그동안 나란히 오는 async 일이 곧바로 돈다.
     #[test]
     fn host_calls_wait_without_holding_the_async_workers() {
@@ -1224,8 +997,8 @@ mod tests {
 
         assert_eq!(ask("세지 못했습니다", |_| Ok(3)), Ok(3));
         assert_eq!(
-            ask("말을 보내지 못했습니다", |_| Err("그 대화는 이 work에 없습니다")),
-            Err("그 대화는 이 work에 없습니다".to_owned()),
+            ask("말을 보내지 못했습니다", |_| Err("그 Thread가 없습니다")),
+            Err("그 Thread가 없습니다".to_owned()),
         );
         let fallen = ask("엔진을 확인하지 못했습니다", |_| panic!("호스트 부름이 쓰러졌다")).expect_err("쓰러진 부름은 오류다");
         assert!(fallen.starts_with("엔진을 확인하지 못했습니다: "), "무엇을 못 했는지가 앞에 서지 않는다: {fallen}");
@@ -1271,11 +1044,11 @@ mod tests {
     ///   worktree가 바뀔 때마다 부른다.
     /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
     /// - `read_work_prs`(v1 티켓 33): Project마다 `gh`가 GitHub에 묻는 것을 기다린다(네트워크). 그 앞의 로그인 셸 PATH 읽기도
-    ///   기다린다 — 대화 호스트가 아직 쥐지 않았으면 셸을 띄운다(한도 10초). 그래서 두 부름이 모두 blocking 풀 안이다.
+    ///   기다린다 — 엔진이 아직 쥐지 않았으면 셸을 띄운다(한도 10초). 그래서 두 부름이 모두 blocking 풀 안이다.
     ///
-    /// 대화 명령은 여기 없다 — 어느 호스트 부름이 막히는지는 호스트가 알고, 대화 호스트로 가는 한 길(`to_host`)이 모든 부름을
+    /// Thread 명령은 여기 없다 — 어느 엔진 부름이 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을
     /// blocking 풀에서 기다린다. 길은 `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은
-    /// `every_chat_command_goes_to_the_host_by_the_one_path`가 잰다.
+    /// `every_thread_command_goes_to_the_engine_by_the_one_path`가 잰다.
     #[test]
     fn the_waiting_commands_wait_off_the_async_workers() {
         for (command, call, once) in [
@@ -1310,19 +1083,23 @@ mod tests {
         );
     }
 
-    /// **대화 · Thread 명령은 대화 호스트로 가는 한 길만 탄다**(three-axes 티켓 05 · 10 · v1 티켓 04). 어느 호스트 부름이 막히는지는
-    /// 호스트 안의 일이라 명령이 고르지 않는다 — 등록된 `chat_` · `thread_` 명령마다 몸통이 `to_host(`를 한 번 부르고, 호스트
-    /// (`chats`)를 곧바로 부르거나 blocking 풀을 따로 고르지 않는다. 길이 워커 밖에서 기다리는 것은 길의 시험이 잰다.
+    /// **Thread 명령은 엔진으로 가는 한 길만 탄다**(three-axes 티켓 05 · 10 · v1 티켓 04). 어느 엔진 부름이 막히는지는 엔진 안의
+    /// 일이라 명령이 고르지 않는다 — 등록된 `thread_` 명령마다 몸통이 `to_host(`를 한 번 부르고, 엔진(`engine`)을 곧바로 부르거나
+    /// blocking 풀을 따로 고르지 않는다. 길이 워커 밖에서 기다리는 것은 길의 시험이 잰다.
     ///
-    /// `thread_`를 하나도 못 찾아도 빨갛다 — Work 안 대화창을 걷어 `chat_`이 사라진 날(v1 티켓 08)에도 이 검사가 헛돌지 않게.
+    /// three-axes의 `chat_` 명령은 v1 티켓 08이 걷었다 — 다시 등록되면 빨갛다.
     #[test]
-    fn every_chat_command_goes_to_the_host_by_the_one_path() {
-        let engine = |name: &&str| name.starts_with("chat_") || name.starts_with("thread_");
-        let registered: Vec<&str> = include_str!("lib.rs")
+    fn every_thread_command_goes_to_the_engine_by_the_one_path() {
+        let registered_all: Vec<&str> = include_str!("lib.rs")
             .lines()
             .filter_map(|line| line.trim().strip_prefix("commands::")?.strip_suffix(','))
-            .filter(engine)
             .collect();
+        assert!(
+            !registered_all.iter().any(|name| name.starts_with("chat_")),
+            "Work 안 대화창의 명령이 다시 등록됐다(v1 티켓 08)"
+        );
+        let engine = |name: &&str| name.starts_with("thread_");
+        let registered: Vec<&str> = registered_all.into_iter().filter(engine).collect();
         let (commands, _) = include_str!("commands.rs").split_once("#[cfg(test)]\nmod tests").expect("시험 모듈이 있다");
         let defined: Vec<&str> = commands
             .split("pub async fn ")
@@ -1330,17 +1107,12 @@ mod tests {
             .filter_map(|rest| rest.split_once('(').map(|(name, _)| name))
             .filter(engine)
             .collect();
-        assert!(!defined.is_empty(), "대화 명령을 하나도 못 찾았다 — 검사가 헛돈다");
-        assert!(defined.iter().any(|name| name.starts_with("thread_")), "Thread 명령을 하나도 못 찾았다 — 검사가 헛돈다");
-        assert_eq!(
-            sorted(defined.clone()),
-            sorted(registered),
-            "commands.rs의 대화 명령과 등록된 대화 명령이 다르다"
-        );
+        assert!(!defined.is_empty(), "Thread 명령을 하나도 못 찾았다 — 검사가 헛돈다");
+        assert_eq!(sorted(defined.clone()), sorted(registered), "commands.rs의 Thread 명령과 등록된 Thread 명령이 다르다");
         for command in defined {
             let body = command_body(command);
-            assert_eq!(body.matches("to_host(").count(), 1, "{command}: 대화 호스트로 가는 길을 한 번 부르지 않는다");
-            assert!(!body.contains("chats."), "{command}: 길을 거치지 않고 호스트를 곧바로 부른다");
+            assert_eq!(body.matches("to_host(").count(), 1, "{command}: 엔진으로 가는 길을 한 번 부르지 않는다");
+            assert!(!body.contains("engine."), "{command}: 길을 거치지 않고 엔진을 곧바로 부른다");
             assert!(!body.contains("spawn_blocking("), "{command}: blocking 풀을 명령이 따로 고른다");
         }
     }

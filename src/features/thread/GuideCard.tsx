@@ -2,15 +2,15 @@ import { useId, useState } from "react";
 import { Copy, Link as LinkIcon, LogIn, RefreshCw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { showToast } from "@/components/ui/toast";
-import ChatCard from "@/features/chat/ChatCard";
 import { threadApi } from "./api";
 import { checkEngine, type EngineView, type GuideKind } from "./engine-store";
+import NoticeCard from "./NoticeCard";
 
 // v1 티켓 05가 three-axes 안내 카드를 Thread 엔진으로 옮겼다 — Runtime이 Claude Code 하나라 엔진을 고르지 않는다. 카드는 Thread 본문
 // 자리(흐름과 입력창 대신)에 선다(구현 스펙 §14 「입력창 자리에 뜨는 것」).
 //
 // 안내 카드(three-axes 티켓 22, three-axes 결정 24 · 30) — 로그인이 안 됐거나 에이전트를 못 찾으면 대화창 자리(기록과 입력창 대신)에 서서
-// 까닭과 할 일을 보인다. 모양은 캔버스 보드 「로그인 · 설치 안내 카드」(`Chat.dc.html`)다: 승인 카드와 같은 틀(`ChatCard` — r28 ·
+// 까닭과 할 일을 보인다. 모양은 캔버스 보드 「로그인 · 설치 안내 카드」(`Chat.dc.html`)다: 승인 카드와 같은 틀(`NoticeCard` — r28 ·
 // 입력창 그림자) · 위에 엔진 · 제목 · 명령 · 까닭, 아래 단추 줄은 왼쪽 정렬이고 「다시 확인」만 오른쪽 끝이다.
 //
 // 이 카드는 명령을 부르기만 한다. 로그인이 끝나 엔진이 「됨」이 되면 카드가 걷히고, 그 대화를 다시 띄우는 것은 호스트다(12).
@@ -57,7 +57,7 @@ function GuideCard({ kind, view }: GuideCardProps) {
   const copyable = kind === "missing" ? install : LOGIN_COMMAND;
 
   return (
-    <ChatCard
+    <NoticeCard
       as="section"
       titleId={titleId}
       icon={kind === "missing" ? Terminal : LogIn}
@@ -111,7 +111,7 @@ function GuideCard({ kind, view }: GuideCardProps) {
           </Button>
         )}
       </div>
-    </ChatCard>
+    </NoticeCard>
   );
 }
 

@@ -32,8 +32,9 @@ use crate::quote::{Attached, Quote};
 use crate::records::{RecordError, TurnEndLine};
 use crate::runtime::{AnswerError, Ruling, TurnEnd};
 
-/// 대화 하나의 턴 차례 — 살아 있나 · 도는 턴 · 대기 줄 · 다음 말에 머리말을 붙이나. `S`는 spec 폴더를 찍은 것이다(운영에서는
-/// [`crate::spec_changes::Snapshot`]).
+/// 대화 하나의 턴 차례 — 살아 있나 · 도는 턴 · 대기 줄 · 다음 말에 머리말을 붙이나. `S`는 턴을 쏠 때 찍어 두었다가 턴이
+/// 끝나면 [`Hands::changes`]에 넘기는 것이다 — three-axes에서는 spec 폴더의 찍음이었고, Thread는 아무것도 찍지 않는다(`()`,
+/// v1 티켓 08).
 pub(super) struct TurnOrder<S> {
     phase: Phase<S>,
     /// 대기 줄(S13) — 턴이 도는 동안 받은 말. 메모리에만 둔다: 앱을 다시 켜면 비어 있다(재시작 뒤 저절로 보내는 놀람을
@@ -139,14 +140,14 @@ pub(super) enum Refused {
 }
 
 impl Refused {
-    /// 화면의 오류로 — 대화 id를 싣는 것은 싣는다.
-    pub(super) fn into_host(self, conversation: &str) -> HostError {
-        let conversation = conversation.to_owned();
+    /// 화면의 오류로 — Thread id를 싣는 것은 싣는다.
+    pub(super) fn into_host(self, thread: &str) -> HostError {
+        let thread = thread.to_owned();
         match self {
             Refused::NotQueued(queued) => HostError::QueuedNotFound(queued),
-            Refused::Login(agent) => HostError::LoginRequired { agent, conversation },
-            Refused::NotRunning => HostError::NotRunning(conversation),
-            Refused::PermissionClosed { request } => HostError::PermissionClosed { conversation, request },
+            Refused::Login(agent) => HostError::LoginRequired { agent, thread },
+            Refused::NotRunning => HostError::NotRunning(thread),
+            Refused::PermissionClosed { request } => HostError::PermissionClosed { thread, request },
             Refused::PermissionOption { request, option } => HostError::PermissionOption { request, option },
             Refused::Send(reason) => HostError::Send(reason),
             Refused::Record(reason) => HostError::Record(reason),
@@ -1739,19 +1740,19 @@ mod tests {
     }
 
     #[test]
-    fn 거절은_대화_id를_실어_화면의_오류로_옮겨진다() {
-        let conversation = "c1".to_owned();
+    fn 거절은_thread_id를_실어_화면의_오류로_옮겨진다() {
+        let thread = "20261023-100000".to_owned();
         let request = "0".to_owned();
         let cases = [
             (Refused::NotQueued("q1".into()), HostError::QueuedNotFound("q1".into())),
             (
                 Refused::Login(Agent::Claude),
-                HostError::LoginRequired { agent: Agent::Claude, conversation: conversation.clone() },
+                HostError::LoginRequired { agent: Agent::Claude, thread: thread.clone() },
             ),
-            (Refused::NotRunning, HostError::NotRunning(conversation.clone())),
+            (Refused::NotRunning, HostError::NotRunning(thread.clone())),
             (
                 Refused::PermissionClosed { request: request.clone() },
-                HostError::PermissionClosed { conversation: conversation.clone(), request: request.clone() },
+                HostError::PermissionClosed { thread: thread.clone(), request: request.clone() },
             ),
             (
                 Refused::PermissionOption { request: request.clone(), option: "nope".into() },
@@ -1761,7 +1762,7 @@ mod tests {
             (Refused::Record("막혔다".into()), HostError::Record("막혔다".into())),
         ];
         for (refused, host) in cases {
-            assert_eq!(refused.into_host(&conversation), host);
+            assert_eq!(refused.into_host(&thread), host);
         }
     }
 

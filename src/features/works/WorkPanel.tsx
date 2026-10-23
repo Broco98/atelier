@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, FolderOpen, FolderTree, MessageSquare } from "lucide-react";
+import { FileText, FolderOpen, FolderTree } from "lucide-react";
 import { CardHead } from "@/components/shell/Frame";
 import { PanelBody, type RailItem } from "@/components/shell/Rail";
 import { Hint } from "@/components/ui/tooltip";
-import ChatPane from "@/features/chat/ChatPane";
 import FilesTree, { FilesRefresh } from "@/features/files/FilesTree";
 import type { CodeTarget } from "@/features/terminal/shell-registry";
 import { specRef } from "./refs";
@@ -11,20 +10,18 @@ import SpecTree from "./SpecTree";
 import type { SpecTreeItem, WorkView } from "./types";
 
 /** 레일에서 고르는 작업 패널의 칸 — 이 패널이 그리는 몸 하나씩이다. */
-export type PanelView = "spec" | "chat" | "files";
+export type PanelView = "spec" | "files";
 
 /**
  * 레일의 칸 목록(ui-refresh 결정 10) — 순서가 레일의 위에서 아래다. 몸을 그리는 이 파일이 칸도 함께 든다: 칸이 하나 늘면
  * 몸도 하나 는다(DS `PanelRail` — 대화 · files · changes가 한 줄씩 더해진다). 라벨은 소문자 영어다(결정 41 — 탭 줄의 `spec`과 한
  * 가족). `info` 칸은 걷었다(codex-ds 결정 25: 보기는 사이드바 행의 호버 카드가, 복사 · Finder 열기는 work 메뉴가 든다).
  *
- * `chat`은 스펙 축의 두 주인공(트리 · 대화)을 앞에 두려고 `spec` 바로 뒤에 선다(three-axes 구현 스펙 S20).
- * `files`는 스펙 축(`spec` · `chat`) 뒤다(git-integration 결정 29 — spec · chat은 스펙 축, files · changes · git은 코드 축이라 붙여
- * 둔다). 칸이 둘 이상이라 레일이 선다(`railStands`).
+ * `files`는 `spec` 뒤다(git-integration 결정 29 — spec · chat은 스펙 축, files · changes · git은 코드 축이라 붙여 둔다). 칸이 둘이라
+ * 레일이 선다(`railStands`).
  */
 export const PANEL_VIEWS: readonly RailItem<PanelView>[] = [
   { id: "spec", label: "spec", icon: FileText },
-  { id: "chat", label: "chat", icon: MessageSquare },
   { id: "files", label: "files", icon: FolderTree },
 ];
 
@@ -46,17 +43,10 @@ interface WorkPanelProps {
   onOpenFolder: () => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라(공용 틀의 패널 칸) 패널은 언제나 마운트된 채다.
   open: boolean;
-  // 대화창이 가운데(`chat` 탭)에 서 있는가 — 그동안 이 패널은 `chat` 몸을 보이지 않는다(three-axes S22 · 한 대화창은 한 곳에).
-  // 같은 대화창이 두 곳에 서면 입력칸 · 대화 탭이 두 벌이 된다. 몸은 숨은 채 마운트돼 있다가 대화가 패널로 돌아오면 다시 선다.
-  chatElsewhere: boolean;
-  // 아직 열지 않은 고친 파일(three-axes 티켓 26) — 트리의 그 행에 점이 선다. 표시의 주인은 화면이다(열었는지를 아는 것이 그쪽이다).
-  unseen: readonly string[];
-  // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 그 줄에서 연다(three-axes 티켓 26). 줄을 모르면 `null`이다.
-  onOpenDoc: (path: string, line: number | null) => void;
 }
 
-// 작업 패널 — `spec` · `chat` · `files` 세 몸. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가 **사이드바 가지로 갔다**(결정 71).
-// 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가 화면마다 갈린다. `info` 몸도 있었다 — 같은 정보를 두 자리에서 보지 않게
+// 작업 패널 — `spec` · `files` 두 몸. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가 **사이드바 가지로 갔다**(결정 71). 같은 것을
+// 두 자리에서 고르게 두면 어느 쪽이 지금인지가 화면마다 갈린다. `info` 몸도 있었다 — 같은 정보를 두 자리에서 보지 않게
 // 걷었다(codex-ds 결정 25). PR 연동 카드는 v2.
 //
 // **카드 안만 그린다**(ui-refresh 결정 4 · 27). 바깥 상자(두 번째 `aside`) · 카드 · 왼쪽 틈 · 폭 손잡이 · 접힘은 공용 틀(`Frame`)의
@@ -72,9 +62,6 @@ function WorkPanel({
   onCopy,
   onOpenFolder,
   open,
-  chatElsewhere,
-  unseen,
-  onOpenDoc,
 }: WorkPanelProps) {
   // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
   // 넘어 살지 않는다"** 는 계약이 그 언마운트에 기대고 있었으므로, 접힐 때 안쪽만 새로
@@ -121,13 +108,12 @@ function WorkPanel({
           `spec`의 할 일은 spec 폴더 열기 하나다 — DS 아이콘 버튼(`.at-ib` 28 · `fg-secondary`, hover `fill-hover`)이 머리 오른쪽
           끝에 선다. 문서/원문 전환은 여기 없다 — 그 컨트롤이 바꾸는 것은 왼쪽 문서라 문서 위 경로 줄로 갔다(ui-refresh 판 04).
 
-          `files`의 할 일은 새로고침 하나다(git-integration 스토리 16) — 그 칸의 몸을 다시 읽는 것이라 몸의 머리에 선다. `chat`은 머리에
-          할 일이 없다 — 대화의 할 일은 대화창이 제 머리(대화 탭 줄)에 든다. */}
+          `files`의 할 일은 새로고침 하나다(git-integration 스토리 16) — 그 칸의 몸을 다시 읽는 것이라 몸의 머리에 선다. */}
       <CardHead
         end={
           view === "files" ? (
             <FilesRefresh slug={work.slug} />
-          ) : view === "chat" ? undefined : (
+          ) : (
             <Hint
               text="spec 폴더 열기"
               announce="name"
@@ -150,20 +136,8 @@ function WorkPanel({
           key={treeGeneration}
           items={work.specTree.items}
           current={currentFile}
-          unseen={unseen}
           onSelect={onSelectFile}
           onCopy={(path) => onCopy(specRef(work.slug, path))}
-        />
-      </PanelBody>
-      {/* 대화창(three-axes 티켓 17) — 트리와 함께 숨은 채 마운트돼 있어 `spec`과 오가도 입력 중인 글과 스크롤이 남는다(스토리 12).
-          **`treeGeneration` key를 걸지 않는다** — 패널을 접는 것은 대화를 끝내는 일이 아니다(에이전트도 꺼지지 않는다, 스토리 16).
-          호스트는 처음 보일 때 부른다(`visible`). */}
-      <PanelBody view="chat" shown={view === "chat" && !chatElsewhere}>
-        <ChatPane
-          work={work.slug}
-          visible={open && view === "chat" && !chatElsewhere}
-          specDir={work.specDir}
-          onOpenDoc={onOpenDoc}
         />
       </PanelBody>
       {/* files 트리는 「트리 세대」를 타지 않는다(git-integration S14) — 접힘은 work · 프로젝트별 기억에 있고 패널 접기에
@@ -189,13 +163,11 @@ function WorkPanel({
 function SpecTab({
   items,
   current,
-  unseen,
   onSelect,
   onCopy,
 }: {
   items: SpecTreeItem[];
   current: string | null;
-  unseen: readonly string[];
   onSelect: (path: string) => void;
   // spec 폴더 기준 상대 경로를 받는다 — 참조 문자열 조립은 호출부가 한다.
   onCopy: (path: string) => void;
@@ -206,7 +178,7 @@ function SpecTab({
       {items.length === 0 ? (
         <span className="px-2 py-1.5 text-chat-meta text-fg-tertiary">아직 spec 파일이 없어요</span>
       ) : (
-        <SpecTree items={items} current={current} unseen={unseen} onSelect={onSelect} onCopy={onCopy} />
+        <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
       )}
     </div>
   );

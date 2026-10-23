@@ -197,8 +197,8 @@ fn long_turn(fake: &mut Fake) {
 /// update는 따로 없다(실측 `codex-acp-2.2.2-cancel-late-updates.jsonl` — 18초 뒤).
 ///
 /// 첫 턴은 답 조각과 명령 도구 줄(진행)을 보내고 `long-turn`처럼 cancel을 기다린다. cancel이 오면 `cancelled`로 답하고,
-/// 잠깐 뒤 그 도구의 출력과 완료를 보낸다. 그 뒤의 턴은 `normal`이다. **이 순서가 곧 검사 자료(S26)다** — 바꾸면
-/// `tests/records/late-after-cancel.jsonl`을 다시 지어야 한다.
+/// 잠깐 뒤 그 도구의 출력과 완료를 보낸다. 그 뒤의 턴은 `normal`이다. 이 순서로 지은 검사 자료(`late-after-cancel.jsonl`)는 Work
+/// 안 대화와 함께 걷혔다(v1 티켓 08) — Codex 길을 다시 여는 날(S3) 다시 짓는다.
 fn late_update_after_cancel(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| {
         if fake.prompts > 1 {
@@ -235,8 +235,8 @@ fn late_update_after_cancel(fake: &mut Fake) {
 }
 
 /// 「Codex 한 턴」 — 생각 · 답 · 도구 줄(진행 → 완료, 명령 출력) · 모르는 kind · 마지막 답 · 사용량. 모양은
-/// codex-acp 2.2.2 실측(`codex-acp-2.2.2-turns.jsonl`)을 줄였다. **이 순서가 곧 검사 자료(S26)다** — 바꾸면
-/// `tests/records/codex-one-turn.jsonl`을 다시 지어야 한다.
+/// codex-acp 2.2.2 실측(`codex-acp-2.2.2-turns.jsonl`)을 줄였다. 이 순서로 지은 검사 자료(`codex-one-turn.jsonl`)는 Work 안
+/// 대화와 함께 걷혔다(v1 티켓 08) — Codex 길을 다시 여는 날(S3) 다시 짓는다.
 fn codex_one_turn(fake: &mut Fake, id: &Value, session_id: &str) {
     for update in [
         json!({"sessionUpdate": "agent_thought_chunk", "messageId": "rs_fake_1",
@@ -305,7 +305,7 @@ fn writes_spec(fake: &mut Fake) {
 /// `writes-spec`이 사람의 글에 단계가 없을 때 밟는 「고친 곳」 — 새 문서 · 고침 · 지움, 그리고 도구 update 없이
 /// 고친 텍스트 파일. 검사가 먼저 깐 spec(`plan.md` · `old.md` · `notes.txt`)을 고친다.
 ///
-/// **이 단계들이 곧 검사 자료(S26)다** — 바꾸면 `tests/records/changes.jsonl`과 `changes.spec/`을 다시 지어야 한다.
+/// 이 단계들로 지은 검사 자료(`changes.jsonl` · `changes.spec/`)는 턴 앞뒤 spec 비교와 함께 걷혔다(v1 티켓 08).
 const SPEC_PLAN: &str = r##"[
     {"op": "write", "path": "drafts/idea.md", "text": "# 아이디어\n\n새로 쓴 문서다.\n"},
     {"op": "replace", "path": "plan.md", "from": "첫 문단이다.\n", "to": "요약 한 줄.\n첫 문단을 고쳤다.\n"},
@@ -404,15 +404,15 @@ fn needs_auth(fake: &mut Fake) {
 ///
 /// 모양은 codex-acp 2.2.2 실측 G2(`workspace-write` 모드에서 워크트리 밖에 쓰는 명령)를 줄였다 — 선택지 셋 · 요청 id 0.
 /// 요청을 보낸 뒤 답을 기다리는 동안에도 update 둘을 보낸다. 진짜에는 없는 줄이지만, 호스트의 수신 루프가 요청에 막히지
-/// 않는지를 이것으로 잰다. **이 순서가 곧 검사 자료(S26)다** — 바꾸면 `tests/records/permission.jsonl`을 다시 지어야 한다.
+/// 않는지를 이것으로 잰다. 이 순서로 지은 검사 자료(`permission.jsonl`)는 Work 안 대화와 함께 걷혔다(v1 티켓 08).
 fn asks_permission(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| ask_permission(fake, id, session_id, false);
     fake.converse();
 }
 
 /// 권한 거부가 턴을 끝내는 에이전트 — codex-acp 2.2.2는 거부 선택지(`cancel`)를 받으면 그 도구를 `failed`로 닫고 턴을
-/// `stopReason: cancelled`로 끝낸다. 우리가 cancel을 보내지 않았는데도 그렇다(실측 G2 · 워크플로 함정 14). **이 순서가 곧
-/// 검사 자료(S26)다** — 바꾸면 `tests/records/permission-deny.jsonl`을 다시 지어야 한다.
+/// `stopReason: cancelled`로 끝낸다. 우리가 cancel을 보내지 않았는데도 그렇다(실측 G2 · 워크플로 함정 14). 이 순서로 지은
+/// 검사 자료(`permission-deny.jsonl`)는 Work 안 대화와 함께 걷혔다(v1 티켓 08).
 fn deny_cancels(fake: &mut Fake) {
     fake.on_prompt = |fake, id, session_id| ask_permission(fake, id, session_id, true);
     fake.converse();
@@ -560,7 +560,7 @@ fn commands(fake: &mut Fake) {
 /// - 구현(`implement_plan`)은 재지 않았다 — 그 도구 줄을 닫고 턴을 끝낼 뿐이다.
 /// - 멈추면(`session/cancel`) 걸린 요청의 답을 기다리지 않고 `cancelled`로 끝낸다(`asks-permission`과 같다).
 ///
-/// **이 순서가 곧 검사 자료(S26)다** — 바꾸면 `tests/records/codex-plan.jsonl`을 다시 지어야 한다.
+/// 이 순서로 지은 검사 자료(`codex-plan.jsonl`)는 Work 안 대화와 함께 걷혔다(v1 티켓 08) — Codex 길을 다시 여는 날(S3) 다시 짓는다.
 fn plan_mode(fake: &mut Fake) {
     fake.codex_lists = true;
     fake.commands = true;
@@ -1057,8 +1057,8 @@ fn session_opened(session_id: &str) -> Value {
 }
 
 /// `session/new`의 답 — codex-acp 2.2.2 모양(실측 `codex-acp-2.2.2-session-new-codex0.160.1.json`). 모드 넷은 그대로이고,
-/// 모델 목록과 생각 깊이는 앞의 몇 개로 줄였다. **이 모양이 곧 검사 자료(S26)의 열림 줄이다** — 바꾸면
-/// `tests/records/codex-plan.jsonl`을 다시 지어야 한다.
+/// 모델 목록과 생각 깊이는 앞의 몇 개로 줄였다. 이 모양을 열림 줄로 든 검사 자료(`codex-plan.jsonl`)는 Work 안 대화와 함께
+/// 걷혔다(v1 티켓 08).
 fn codex_session_opened(session_id: &str) -> Value {
     json!({
         "sessionId": session_id,

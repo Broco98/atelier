@@ -122,26 +122,8 @@ fn 새_thread_두_턴의_기록이_검사_자료와_같다() {
         [2, 1],
         "머리말은 Session의 첫 말에만 붙는다(S10)"
     );
-    let settled = commands_after_opened(&record);
+    let settled = common::commands_after_opened(&record);
     common::assert_record("thread-two-turns", &common::fix_thread_record(&settled, &sandbox.data_root(), &thread, &[&session]));
-}
-
-/// 명령 목록 줄(`available_commands_update`)을 열림 줄 바로 뒤로 옮기고 seq를 다시 센다. 명령 목록은 Session을 연 답 뒤에 따로
-/// 오는데 새 Thread는 열자마자 첫 말을 보내므로, 그 줄과 `sent`의 차례가 매번 다르다(work 대화의 시험은 그 줄을 기다린 뒤에
-/// 보내 같은 것을 피한다). 축복 자료는 하나의 차례로 둔다.
-fn commands_after_opened(record: &[Value]) -> Vec<Value> {
-    let mut lines = record.to_vec();
-    let at = lines
-        .iter()
-        .position(|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update")
-        .expect("명령 목록 줄");
-    let commands = lines.remove(at);
-    let opened = lines.iter().position(|line| line["payload"]["state"] == "opened").expect("열림 줄");
-    lines.insert(opened + 1, commands);
-    for (n, line) in lines.iter_mut().enumerate() {
-        line["seq"] = json!(n + 1);
-    }
-    lines
 }
 
 /// 어제의 Thread — 한 턴을 돌리고 호스트를 끈다(앱 종료).
@@ -441,11 +423,11 @@ fn 로그인이_풀린_claude는_thread에_로그인_필요_줄을_남기고_로
     assert_eq!(
         events.engine_states().last(),
         Some(&atelier_acp::EngineState { agent: atelier_acp::Agent::Claude, found: true, logged_in: Some(false), login: None }),
-        "work 대화와 같은 엔진 상태가 나간다"
+        "설정 화면이 읽는 엔진 상태가 나간다"
     );
     assert_eq!(
         host.send_to_thread(&thread, "한 번 더."),
-        Err(atelier_acp::HostError::LoginRequired { agent: atelier_acp::Agent::Claude, conversation: thread.clone() }),
+        Err(atelier_acp::HostError::LoginRequired { agent: atelier_acp::Agent::Claude, thread: thread.clone() }),
         "로그인을 기다리는 동안의 말은 로그인 필요로 거절된다"
     );
 

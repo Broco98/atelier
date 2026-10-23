@@ -4,9 +4,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { columnOf } from "@/features/works/split-view";
 import {
-  bundleSearch,
   forgetVanishedViews,
   recallSearch,
   recallView,
@@ -24,10 +22,8 @@ import {
 // 드러나지 않는다. 그 판정이 여기 두 함수에 있고 그래서 여기서 본다.
 
 describe("주소에 적히는 것", () => {
-  it("터미널과 대화가 적힌다", () => {
+  it("터미널만 적힌다", () => {
     expect(validateWorkSearch({ tab: "terminal" })).toEqual({ tab: "terminal" });
-    // three-axes S21 — `chat` 탭의 주소 값은 `tab=chat`이다(three-axes 결정 9).
-    expect(validateWorkSearch({ tab: "chat" })).toEqual({ tab: "chat" });
   });
 
   // 값이 없으면 spec이라는 규칙이 이미 있다. `tab=spec`은 같은 것을 두 번 적는 것이다.
@@ -64,13 +60,9 @@ describe("주소를 화면 탭으로 읽는 것", () => {
     expect(viewTab({ tab: "terminal" })).toBe("terminal");
   });
 
-  it("chat이면 대화다", () => {
-    expect(viewTab({ tab: "chat" })).toBe("chat");
-  });
-
   // 라우터가 모르는 키를 그대로 흘려보내므로 이 값들이 **실제로 온다.**
   it("없거나 모르는 값이면 spec이다", () => {
-    for (const tab of [undefined, "", "spec", "zzz", "Terminal", "terminal ", "Chat", "chat "]) {
+    for (const tab of [undefined, "", "spec", "zzz", "Terminal", "terminal "]) {
       expect(viewTab({ tab }), JSON.stringify(tab)).toBe("spec");
     }
   });
@@ -99,91 +91,6 @@ describe("주소를 고치는 짝", () => {
       split: "rl",
       tab: "terminal",
     });
-  });
-
-  // 대화 탭도 주소에 적히고 보던 문서를 지우지 않는다.
-  it("대화 탭으로 가도 문서가 남고, spec으로 돌아오면 지운다", () => {
-    expect(tabSearch({ file: "a.md" }, "chat")).toEqual({ file: "a.md", tab: "chat" });
-    expect(tabSearch({ file: "a.md", tab: "chat" as const }, "spec")).toEqual({ file: "a.md", tab: undefined });
-  });
-
-  // three-axes S21 — 대화 탭은 분할에 들지 않는다. 분할 중에 대화 탭으로 가면 분할이 꺼진다: 남겨 두면 주소가 `tab=chat&split=lr`이
-  // 되어 분할이 이기고(화면은 `spec ▏ 묶음의 지금 탭` 그대로), 눌러도 아무 일이 없는 칸이 된다.
-  it("분할 중에 대화 탭으로 가면 분할이 꺼진다", () => {
-    expect(tabSearch({ file: "a.md", split: "rl" as const }, "chat")).toEqual({
-      file: "a.md",
-      tab: "chat",
-      split: undefined,
-    });
-  });
-
-  // 대화 탭이 분할을 끄면 남는 것은 단일 뷰다 — 단일 뷰의 `code`는 `tab=code`와만 산다(git-integration S12). 분할의 묶음 열에
-  // 섰던 파일 탭의 `code`가 `tab=chat` 옆에 남지 않는다. 파일 탭은 묶음(메모리)에 그대로 있다.
-  it("분할의 묶음 열에 파일 탭이 선 채 대화 탭으로 가면 분할과 `code`가 함께 빠진다", () => {
-    expect(
-      tabSearch({ file: "a.md", split: "rl" as const, tab: "code" as const, code: "billing/src/a.ts" }, "chat"),
-    ).toEqual({ file: "a.md", tab: "chat", code: undefined, split: undefined });
-  });
-
-  // 대화 탭은 묶음 밖의 고정 칸이다(three-axes S21). 가운데에 대화창이 선 동안 묶음의 지금 탭이 묶음 쪽에서 바뀌어도(닫기의
-  // 이웃 · 셸의 끝) 본문은 대화창 그대로다 — 문서를 보던 단일 뷰와 같다.
-  it("대화창을 보는 동안 묶음의 지금 탭이 바뀌어도 대화창이 남는다", () => {
-    expect(bundleSearch({ file: "a.md", tab: "chat" as const }, "billing/src/a.ts")).toEqual({
-      file: "a.md",
-      tab: "chat",
-      code: undefined,
-    });
-    expect(bundleSearch({ file: "a.md", tab: "chat" as const }, null)).toEqual({
-      file: "a.md",
-      tab: "chat",
-      code: undefined,
-    });
-  });
-
-  // 분할에서 묶음 쪽의 변화는 **묶음 열만** 바꾼다 — 문서 열을 가리키던 `tab`은 그대로다(git-integration 티켓 07). 셸이 서면 `code`가
-  // 빠지고, 파일 탭이 서면 `code`가 그 파일이다.
-  it("분할에서 문서 열에 포커스가 있으면 묶음의 지금 탭이 바뀌어도 포커스가 문서 열에 남는다", () => {
-    expect(bundleSearch({ file: "a.md", split: "lr" as const }, "billing/src/a.ts")).toEqual({
-      file: "a.md",
-      split: "lr",
-      tab: undefined,
-      code: "billing/src/a.ts",
-    });
-    expect(bundleSearch({ file: "a.md", split: "rl" as const, code: "billing/src/a.ts" }, null)).toEqual({
-      file: "a.md",
-      split: "rl",
-      tab: undefined,
-      code: undefined,
-    });
-  });
-
-  // three-axes 병합 검토 — 대화 탭은 분할에서 **문서 열**이다(`columnOf`, three-axes S21). `tab=chat&split=lr`은 앱 안의 이동으로는
-  // 안 생기지만(대화 탭으로 가는 `tabSearch`가 분할을 끈다) 손으로 친 주소와 그것을 적어 둔 work 기억으로 닿는다. 그 화면에서
-  // 묶음 쪽이 바뀌었다고 포커스를 묶음 열로 옮기면(`tab=code` · `tab=terminal`), 분할을 켜고 끄는 자리가 읽는 포커스와 갈린다.
-  it("`tab=chat`에 분할이 겹친 주소에서 묶음의 지금 탭이 바뀌어도 `tab`은 그대로다", () => {
-    expect(bundleSearch({ file: "a.md", tab: "chat" as const, split: "lr" as const }, "billing/src/a.ts")).toEqual({
-      file: "a.md",
-      tab: "chat",
-      split: "lr",
-      code: "billing/src/a.ts",
-    });
-    expect(
-      bundleSearch({ file: "a.md", tab: "chat" as const, split: "rl" as const, code: "billing/src/a.ts" }, null),
-    ).toEqual({ file: "a.md", tab: "chat", split: "rl", code: undefined });
-  });
-
-  // 위 둘의 바탕 — 분할에서 묶음의 변화가 포커스가 든 **열**을 옮기지 않는다. 그 열을 읽는 자리가 `columnOf` 하나라 여기서 그것으로
-  // 잰다: 탭마다 따로 적으면 열 규칙이 바뀌는 날(새 화면 탭) 이 함수만 옛 규칙으로 남는다.
-  it("분할에서 묶음의 지금 탭이 바뀌어도 포커스가 든 열은 그대로다", () => {
-    const tabs = [undefined, "terminal", "chat", "code"] as const;
-    for (const tab of tabs) {
-      for (const bundle of [null, "billing/src/b.ts"]) {
-        const prev = { split: "lr" as const, tab, code: "billing/src/a.ts" };
-        const next = bundleSearch(prev, bundle);
-        expect(columnOf(viewTab(next)), `tab=${tab} → ${bundle}`).toBe(columnOf(viewTab(prev)));
-        expect(next.code, `tab=${tab} → ${bundle}`).toBe(bundle ?? undefined);
-      }
-    }
   });
 
   it("분할을 꺼도 탭이 남는다", () => {

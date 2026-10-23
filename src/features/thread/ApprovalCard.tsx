@@ -1,11 +1,11 @@
 import { useId, useState } from "react";
+import { BookOpen, Command, Globe, Map as MapIcon, Pencil, Search, Terminal, Wrench, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import ChatCard from "@/features/chat/ChatCard";
-import { TOOL_ICONS } from "@/features/chat/tool-icons";
 import { threadApi } from "./api";
-import { approvalChoices, describeApproval, type ApprovalChoice } from "./approval";
+import { approvalChoices, describeApproval, type ApprovalChoice, type ApprovalIcon } from "./approval";
 import type { PendingPermission } from "./fold";
+import NoticeCard from "./NoticeCard";
 
 // v1 티켓 05가 three-axes 승인 카드를 Thread 열쇠(Thread id · 물은 참여자)로 옮겼다 — 모양과 규칙은 그대로이고, 카드 시안(Approval
 // 보드)은 그 장(22)이 맞춘다.
@@ -20,6 +20,18 @@ import type { PendingPermission } from "./fold";
 //
 // **멈추기가 카드 안에 있다.** 입력창(그 멈추기 단추)이 카드에 자리를 내주므로, 카드가 서 있는 동안 멈추는 길(스토리 62)을 카드가
 // 든다 — 입력창의 멈추기와 같은 단추다. 멈추면 호스트가 그 요청을 거두고 `cancelled`로 답한다(티켓 08).
+
+/** 카드 머리의 아이콘(캔버스 Tools 보드) — 도구마다 하나이고, 계획 승인만 따로다(three-axes 도구 줄의 아이콘 지도에서 옮겼다). */
+const ICONS: Readonly<Record<ApprovalIcon, LucideIcon>> = {
+  execute: Terminal,
+  read: BookOpen,
+  edit: Pencil,
+  search: Search,
+  fetch: Globe,
+  mcp: Command,
+  plan: MapIcon,
+  other: Wrench,
+};
 
 /**
  * 선택지 단추가 엔진의 긴 이름(「Yes, and don't ask again for commands that start with …」)을 담는 꼴 — 높이를 풀고 단추 안에서 줄을
@@ -66,10 +78,10 @@ function ApprovalCard({ thread, name, request, running }: ApprovalCardProps) {
     ...choices.filter((choice) => choice.place === "primary"),
   ];
   return (
-    <ChatCard
+    <NoticeCard
       as="group"
       titleId={titleId}
-      icon={TOOL_ICONS[view.icon]}
+      icon={ICONS[view.icon]}
       // 계획 승인은 「Codex · 계획 모드」, 그 밖은 「터미널 · Codex」 — 보드의 두 카드 그대로다.
       head={request.planReview ? `${name} · ${view.tool}` : `${view.tool} · ${name}`}
       title={view.title}
@@ -119,7 +131,7 @@ function ApprovalCard({ thread, name, request, running }: ApprovalCardProps) {
                 {choice.label}
               </Button>
             ) : (
-              // 주 동작 — 검정 면(캔버스 `.cx-split` · 계획 승인의 「구현」은 `.cx-btn.primary`). 앱의 주 버튼이 그 면이다(`ChatCard` 머리말).
+              // 주 동작 — 검정 면(캔버스 `.cx-split` · 계획 승인의 「구현」은 `.cx-btn.primary`). 앱의 주 버튼이 그 면이다(`NoticeCard` 머리말).
               <Button
                 key={choice.option.optionId}
                 disabled={chosen !== null}
@@ -132,7 +144,7 @@ function ApprovalCard({ thread, name, request, running }: ApprovalCardProps) {
           )}
         </div>
       </div>
-    </ChatCard>
+    </NoticeCard>
   );
 }
 

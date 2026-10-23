@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { columnOf, dropSplit, otherTab, tabOfDrag } from "./split-view";
+import { dropSplit, otherTab, tabOfDrag } from "./split-view";
 
 // 분할 뷰의 순수 판정. 화면 seam(정적 마크업)에서는 **이것들이 안 보인다** — 포인터도
 // 이펙트도 돌지 않아, 떨군 자리가 어느 쪽을 spec으로 만드는지가 마크업에 드러나지 않는다.
@@ -51,19 +51,5 @@ describe("반대쪽 열", () => {
 
   it("두 번 뒤집으면 제자리다", () => {
     expect(otherTab(otherTab("spec"))).toBe("spec");
-  });
-});
-
-// 분할에서 `tab`은 포커스가 든 열이다(결정 97). 묶음의 탭(셸 · 파일 탭)은 묶음 열이고(git-integration 결정 32), 대화 탭은 분할에
-// 들지 않는 고정 칸이라 문서 열로 친다(three-axes S21) — `chat` 탭에서 분할을 켜도 포커스가 묶음 열로 가지 않는다.
-describe("화면 탭이 가리키는 열", () => {
-  it("묶음의 탭이면 묶음 열이다", () => {
-    expect(columnOf("terminal")).toBe("terminal");
-    expect(columnOf("code")).toBe("terminal");
-  });
-
-  it("문서와 대화 탭은 문서 열이다", () => {
-    expect(columnOf("spec")).toBe("spec");
-    expect(columnOf("chat")).toBe("spec");
   });
 });

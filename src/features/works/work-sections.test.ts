@@ -123,8 +123,10 @@ describe("빈 작업 구획이 하는 말", () => {
 describe("상주 목록이 자기 어휘로 말한다", () => {
   const notice = (...args: Array<string>) => emptyMainNotice(splitWorkSections(works(...args), ALL));
 
-  it("머리는 `작업`이다", () => {
-    expect(WORKS_COPY.label).toBe("작업");
+  // v1 구현 스펙 S2 — Work는 화면에서도 영어로 쓰는 도메인 낱말이고, 사이드바 Work 묶음의 머리가 그 말이다(캔버스
+  // 「Thread 목록과 아바타」 보드). 07이 사이드바를 보드 모양으로 바꾸며 낱말 정리를 08에 넘겼다.
+  it("머리는 `Work`다", () => {
+    expect(WORKS_COPY.label).toBe("Work");
   });
 
   it("문구 둘은 한 글자도 안 바뀐다", () => {

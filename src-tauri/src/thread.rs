@@ -1,31 +1,70 @@
-//! Thread 엔진의 이벤트를 화면에 잇는 자리(v1 티켓 04 · 구현 스펙 §18). **얇게 둔다** — 엔진은 대화 호스트(`chat::host`)에 함께
-//! 살고, 여기는 그것이 내보내는 Thread의 것을 화면의 이벤트 이름과 싣는 꼴로 옮길 뿐이다. 쏘는 스레드는 `chat::announce` 하나다
-//! — 한 스레드라 기록 줄의 차례가 그대로 간다.
+//! Thread 엔진을 앱에 잇는 자리(v1 티켓 04 · 구현 스펙 §18). **얇게 둔다** — 엔진(`atelier_acp::ConversationHost`)을 짓고, 그것이
+//! 내보내는 것을 화면의 이벤트 이름과 싣는 꼴로 옮길 뿐이다. Thread의 몸통은 엔진에 있고, 명령은 `commands.rs`가 위임만 한다.
+//!
+//! 엔진은 앱 프로세스에 하나 산다 — 다른 화면으로 가거나 새로고침해도 Agent가 계속 돈다(three-axes S9). 끄는 것은 앱 종료
+//! (`lib.rs`의 종료 훅)다. Processes 화면과 메모리 합계에는 넣지 않는다. three-axes의 Work 안 대화창(`chat_*` 명령 · `chat:*`
+//! 이벤트)은 v1 티켓 08이 걷었다.
 
-use atelier_acp::HostEvent;
+use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, Sender};
+
+use atelier_acp::{ConversationHost, HostEvent, ShellSource, TranslatorCommand};
 use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter};
 
 /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이 Thread id · seq와 함께 온다. 화면은 Thread를 이것 하나로 그린다.
 ///
 /// 이벤트 이름 넷은 프런트(`src/features/thread/events.ts`)와 **문자열로만** 이어진다 — `events.test.ts`가 이 선언을 읽어 견준다.
-/// Channel이 아니라 이벤트인 것은 work 대화와 같은 까닭이다: Thread는 새로고침을 넘어야 한다(⌘R에 Agent가 죽지 않는다).
+/// Channel이 아니라 이벤트인 것은 Thread가 새로고침을 넘어야 해서다(⌘R에 Agent가 죽지 않는다): Channel은 페이지와 함께 죽는다.
 pub const RECORD_EVENT: &str = "thread:record";
-/// 참여자 하나의 Session의 대기 줄 바뀜 — Thread id · 참여자 handle · 대기 줄 전체. 대기 줄은 엔진 메모리에만 있다.
+/// 참여자 하나의 Session의 대기 줄 바뀜 — Thread id · 참여자 handle · 대기 줄 전체. 대기 줄은 엔진 메모리에만 있다(S13).
 pub const QUEUE_EVENT: &str = "thread:queue";
 /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 참여자가 늘었다. Thread 폴더는 감시하지 않으므로 엔진이 알린다(S7).
 pub const LIST_EVENT: &str = "thread:list";
-/// 엔진 상태 — work 대화의 `chat:engine`과 같은 것을 Thread 화면도 듣는다. 화면이 하나로 모이면(v1 티켓 08) 이것만 남는다.
+/// 엔진 상태 — Runtime 엔진 · 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). Thread의 안내 카드가 이것으로 「로그인 안 됨 ·
+/// 로그인 중 · 끝남」을 그린다(three-axes 티켓 12).
 pub const ENGINE_EVENT: &str = "thread:engine";
 
-/// 엔진의 것 하나 → Thread 화면이 듣는 이름과 싣는 것. Thread의 것이 아니면(work 대화의 기록 · 대기 줄) 없다.
-pub(crate) fn wire(event: &HostEvent) -> Option<(&'static str, Value)> {
-    Some(match event {
+/// 앱의 Thread 엔진을 짓는다. 데이터 루트는 코어가 정하고(`ATELIER_HOME`), 로그인 셸은 사용자의 것이다.
+///
+/// - Session이 띄우는 Claude 변환기는 **이 실행 파일 자신**의 하위 모드 `acp-claude`다(갈래는 `main.rs`, three-axes 티켓 13). 그
+///   이름은 진입점과 함께 쓰는 상수 [`atelier_acp::CLAUDE_TRANSLATOR_MODE`]다.
+///   `exe`는 진입점이 한 번 읽어 넘긴다(워크플로 §1). 읽지 못했으면 빈 경로라 Session 열기만 그 자리에서 읽히는 오류로 실패한다.
+/// - Session마다 claude가 띄우는 Thread 도구 중계 서버도 **이 실행 파일 자신**의 하위 모드 `thread-tools`다(v1 티켓 15 · S12,
+///   상수 [`atelier_acp::THREAD_TOOLS_MODE`]). 엔진이 Session의 소켓 경로를 마지막 인자로 붙인다.
+/// - 엔진이 내보내는 것은 `events`로 보낸다 — 앱 핸들이 서기 전(빌더 앞)에 지어지므로, 셋업이 건 [`announce`]가 받아 쏜다.
+///   보내기는 막히지 않는다: 엔진은 기록의 잠금을 쥔 채 내보내므로 여기서 기다리면 Session이 멎는다.
+pub fn host(exe: PathBuf, events: Sender<HostEvent>) -> ConversationHost {
+    let relay = TranslatorCommand::new(exe.clone(), [atelier_acp::THREAD_TOOLS_MODE]);
+    let translator = TranslatorCommand::new(exe, [atelier_acp::CLAUDE_TRANSLATOR_MODE]);
+    ConversationHost::builder(atelier_core::data_root(), translator, ShellSource::User, move |event| {
+        // 받는 스레드는 앱이 사는 동안 산다. 끊겼다면 앱이 끝나는 중이라 버린다.
+        let _ = events.send(event);
+    })
+    .thread_tools(relay)
+    .build()
+}
+
+/// 엔진이 내보낸 것을 화면으로 쏘는 스레드를 건다. 스레드 하나라 기록 줄의 차례가 그대로 간다. 셋업 전에 쌓인 것도 채널에
+/// 남아 있다가 여기서 나간다 — 듣는 화면이 아직 없으면 사라지지만, 화면은 기록을 seq로 다시 읽는다.
+pub fn announce(app: AppHandle, events: Receiver<HostEvent>) {
+    std::thread::spawn(move || {
+        for event in events {
+            let (name, payload) = wire(&event);
+            let _ = app.emit(name, payload);
+        }
+    });
+}
+
+/// 엔진의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ThreadRecordEvent` · `ThreadQueueEvent` · `ThreadList` ·
+/// `EngineState`와 같은 말이다.
+fn wire(event: &HostEvent) -> (&'static str, Value) {
+    match event {
         HostEvent::ThreadRecord { thread, line } => (RECORD_EVENT, json!({"thread": thread, "seq": line.seq, "line": line})),
         HostEvent::ThreadQueue { thread, who, queue } => (QUEUE_EVENT, json!({"thread": thread, "who": who, "queue": queue})),
         HostEvent::ThreadList(summary) => (LIST_EVENT, serde_json::to_value(summary).expect("Thread 요약은 JSON이다")),
         HostEvent::Engine(state) => (ENGINE_EVENT, serde_json::to_value(state).expect("엔진 상태는 JSON이다")),
-        HostEvent::Record { .. } | HostEvent::Queue { .. } => return None,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -41,7 +80,7 @@ mod tests {
             "payload": {"stopReason": "end_turn"},
         }))
         .expect("기록 줄");
-        let (name, payload) = wire(&HostEvent::ThreadRecord { thread: "20261023-100000".into(), line }).expect("Thread의 것");
+        let (name, payload) = wire(&HostEvent::ThreadRecord { thread: "20261023-100000".into(), line });
         assert_eq!(name, "thread:record");
         assert_eq!(
             payload,
@@ -54,17 +93,18 @@ mod tests {
         );
     }
 
-    /// **대기 줄 바뀜은 Thread · 참여자 · 대기 줄 전체를, 목록 요약은 요약 한 줄을 싣는다.** 엔진 상태는 work 대화와 같은 꼴이다.
+    /// **대기 줄 바뀜은 Thread · 참여자 · 대기 줄 전체를, 목록 요약은 요약 한 줄을, 엔진 상태는 엔진 · 찾음 · 로그인 여부 ·
+    /// 로그인 진행을 싣는다.** 안내 카드가 진행의 `state`로 「로그인 중(링크)」과 「끝남」을 가르고, 「링크 복사」는 `url`을 쓴다.
     #[test]
     fn the_queue_list_and_engine_events_carry_their_whole_value() {
         let queue = vec![atelier_acp::QueuedMessage { id: "q1".into(), text: "기다리는 말".into(), send_now: false }];
         let queued = HostEvent::ThreadQueue { thread: "20261023-100000".into(), who: "host".into(), queue };
         assert_eq!(
             wire(&queued),
-            Some((
+            (
                 "thread:queue",
                 json!({"thread": "20261023-100000", "who": "host", "queue": [{"id": "q1", "text": "기다리는 말", "sendNow": false}]})
-            ))
+            )
         );
         let summary = atelier_core::ThreadSummary {
             id: "20261023-100000".into(),
@@ -76,11 +116,11 @@ mod tests {
         };
         assert_eq!(
             wire(&HostEvent::ThreadList(summary)),
-            Some((
+            (
                 "thread:list",
                 json!({"id": "20261023-100000", "title": "장바구니", "createdAt": "2026-10-23T10:00:00.000+09:00",
                        "work": null, "handles": ["host"], "broken": null})
-            ))
+            )
         );
         let engine = HostEvent::Engine(atelier_acp::EngineState {
             agent: atelier_acp::Agent::Claude,
@@ -88,18 +128,28 @@ mod tests {
             logged_in: Some(false),
             login: None,
         });
+        assert_eq!(wire(&engine), ("thread:engine", json!({"agent": "claude", "found": true, "loggedIn": false, "login": null})));
+        let running = HostEvent::Engine(atelier_acp::EngineState {
+            agent: atelier_acp::Agent::Claude,
+            found: true,
+            logged_in: None,
+            login: Some(atelier_acp::LoginProgress::Running { url: Some("https://claude.com/cai/oauth/authorize?x".into()) }),
+        });
         assert_eq!(
-            wire(&engine),
-            Some(("thread:engine", json!({"agent": "claude", "found": true, "loggedIn": false, "login": null})))
+            wire(&running).1,
+            json!({"agent": "claude", "found": true, "loggedIn": null,
+                   "login": {"state": "running", "url": "https://claude.com/cai/oauth/authorize?x"}}),
         );
-    }
-
-    /// **work 대화의 기록 · 대기 줄은 Thread 화면에 가지 않는다** — 두 화면이 한 앱에 함께 사는 동안(v1 티켓 08까지) 서로의 줄을
-    /// 그리지 않게.
-    #[test]
-    fn work_conversation_lines_do_not_reach_the_thread_screen() {
-        let line = serde_json::from_value(json!({"seq": 1, "at": "x", "kind": "sent", "payload": {}})).expect("기록 줄");
-        assert_eq!(wire(&HostEvent::Record { work: "cart".into(), conversation: "c1".into(), line }), None);
-        assert_eq!(wire(&HostEvent::Queue { work: "cart".into(), conversation: "c1".into(), queue: Vec::new() }), None);
+        let ended = HostEvent::Engine(atelier_acp::EngineState {
+            agent: atelier_acp::Agent::Claude,
+            found: true,
+            logged_in: Some(true),
+            login: Some(atelier_acp::LoginProgress::Ended { cancelled: false, exit_code: Some(0) }),
+        });
+        assert_eq!(
+            wire(&ended).1,
+            json!({"agent": "claude", "found": true, "loggedIn": true,
+                   "login": {"state": "ended", "cancelled": false, "exitCode": 0}}),
+        );
     }
 }

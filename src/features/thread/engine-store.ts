@@ -1,10 +1,9 @@
 import { Store } from "@tanstack/react-store";
-import type { ChatEngineEvent } from "@/features/chat/types";
 import { threadApi } from "./api";
-import type { EngineCheck, LoginProgress, MissingProgram, RecordLine } from "./types";
+import type { EngineCheck, EngineState, LoginProgress, MissingProgram, RecordLine } from "./types";
 
 // Thread 엔진의 Runtime 상태(v1 티켓 05) — 안내 카드(`GuideCard`)가 「못 찾음 · 로그인 안 됨 · 로그인 중」을 그리는 바탕이다. three-axes
-// 엔진 스토어(`chat/engine-store.ts`)를 옮겨 왔고, v1의 Runtime은 Claude Code 하나라 엔진마다 나누지 않는다. 값은 두 길로 온다 — 화면이
+// 엔진 스토어를 옮겨 왔고, v1의 Runtime은 Claude Code 하나라 엔진마다 나누지 않는다. 값은 두 길로 온다 — 화면이
 // 부른 확인의 답(빠진 것과 설치 명령이 여기에만 실린다)과 엔진 상태 이벤트(`thread:engine`, 앱 층 하나가 받는다).
 
 export interface EngineView {
@@ -36,7 +35,7 @@ function applyCheck(check: EngineCheck): void {
 }
 
 /** 엔진 상태 이벤트를 앉힌다 — 빠진 것 목록은 이벤트에 없어 마지막 확인의 것을 둔다. */
-export function applyEngineEvent(event: ChatEngineEvent): void {
+export function applyEngineEvent(event: EngineState): void {
   patch((view) => ({
     found: event.found,
     missing: event.found ? [] : view.missing,

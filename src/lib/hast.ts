@@ -1,4 +1,4 @@
-// 마크다운 hast(react-markdown이 렌더러에 넘기는 `node`)를 읽는 작은 손들 — 문서 보기(`SpecViewer`)와 대화창의 답(`ChatMarkdown`)이
+// 마크다운 hast(react-markdown이 렌더러에 넘기는 `node`)를 읽는 작은 손들 — 문서 보기(`SpecViewer`)와 Thread의 답(`ThreadMarkdown`)이
 // 함께 쓴다. 렌더러의 표(components)는 둘이 따로 갖는다 — 글자 단계와 딸린 플러그인이 다르다.
 
 /** hast 노드 아래의 글만 이어 붙인다 — 코드 블록 본문 · mermaid 원문 · 문단의 글. */

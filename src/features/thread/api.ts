@@ -1,12 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ChatEngineEvent } from "@/features/chat/types";
 import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT } from "./events";
 import type {
   AgentRoster,
   Attachment,
   EngineCheck,
+  EngineState,
   Participant,
+  QuitCounts,
   RecordLine,
   ThreadLink,
   ThreadQueueEvent,
@@ -19,13 +20,15 @@ import type {
 // 계속 돈다 — 그래서 Thread는 기록에서 다시 그린다: 먼저 기록 줄 이벤트를 받는 자리가 앱 층에 있고(`useThreadFeeds`), Thread를 열 때
 // `get` → `readRecord(0)` 순서로 읽어 같은 자리에 seq로 합친다(`thread-store.ts`).
 //
-// **인자 객체가 평평해야 한다**(`chat/api.ts`가 같은 이유를 적어 뒀다) — 이어 갈 곳(`link`)처럼 객체를 싣는 날에는 먼저 짓고 이름으로
+// **인자 객체가 평평해야 한다** — 객체 인자는 IPC 검사가 칸을 못 잰다. 이어 갈 곳(`link`)처럼 객체를 싣는 날에는 먼저 짓고 이름으로
 // 넘긴다. 이 명령들은 L4 다리로 탈 수 없다(엔진이 앱 프로세스의 상태다) — 다리는 거절한다.
 export const threadApi = {
   /** Claude Code를 찾고 로그인돼 있는지 묻는다. `reread`는 안내 카드의 「다시 확인」이다(로그인 환경을 새로 읽는다). */
   checkEngine: (reread: boolean) => invoke<EngineCheck>("thread_check_engine", { reread }),
   startLogin: () => invoke<void>("thread_start_login"),
   cancelLogin: () => invoke<void>("thread_cancel_login"),
+  /** 앱 종료 확인 창의 셈 — 앱 전체에서 턴이 도는 Session · 대기 중인 말 · 답하지 않은 승인. 메모리만 읽는다. */
+  quitCounts: () => invoke<QuitCounts>("thread_quit_counts"),
   /** 모든 Thread의 요약 — 새것이 먼저다. 깨진 Thread도 줄이 선다. */
   list: () => invoke<ThreadSummary[]>("thread_list"),
   /** Thread 하나의 지금 — `thread.json`과 기록의 끝 · 살아 있음 · 대기 줄. 없는 Thread는 읽히는 오류다. */
@@ -97,7 +100,7 @@ export function onThreadList(listener: (summary: ThreadSummary) => void): Promis
   return listen<ThreadSummary>(THREAD_LIST_EVENT, (event) => listener(event.payload));
 }
 
-/** 엔진 상태가 바뀔 때마다 온다 — work 대화의 `chat:engine`과 같은 꼴이다. */
-export function onThreadEngine(listener: (event: ChatEngineEvent) => void): Promise<UnlistenFn> {
-  return listen<ChatEngineEvent>(THREAD_ENGINE_EVENT, (event) => listener(event.payload));
+/** 엔진 상태가 바뀔 때마다 온다 — 로그인 진행 · 끝난 뒤 다시 돈 확인의 답. 앱 층(`useThreadFeeds`) 하나가 듣는다. */
+export function onThreadEngine(listener: (event: EngineState) => void): Promise<UnlistenFn> {
+  return listen<EngineState>(THREAD_ENGINE_EVENT, (event) => listener(event.payload));
 }

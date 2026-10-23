@@ -25,6 +25,7 @@ pub struct Quote {
 }
 
 /// 인용이 올바르지 않다 — 화면에 그대로 보일 글이다.
+#[cfg_attr(not(test), allow(dead_code))] // Work 안 대화창과 함께 부르는 곳이 걷혔다 — v1 티켓 35가 Thread 입력창으로 다시 잇는다(S41).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BadQuote(&'static str);
 
@@ -42,6 +43,7 @@ pub(crate) struct Attached {
     pub(crate) block: Value,
 }
 
+#[cfg_attr(not(test), allow(dead_code))] // Work 안 대화창과 함께 부르는 곳이 걷혔다 — v1 티켓 35가 Thread 입력창으로 다시 잇는다(S41).
 impl Quote {
     /// 이 인용을 `spec` 폴더의 것으로 붙인다 — 인용 블록을 짓는다.
     pub(crate) fn attach(&self, spec: &Path) -> Result<Attached, BadQuote> {
@@ -68,5 +70,50 @@ impl Quote {
             self.text.lines().map(|line| if line.is_empty() { ">\n".to_owned() } else { format!("> {line}\n") }).collect();
         let text = format!("{}:{lines}\n\n{quoted}", spec.join(&self.file).display());
         Ok(json!({"type": "text", "text": text}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 렌더 보기에서 고른 자리 — `plan.md`의 문단 한 블록(3–4줄)이다. 글은 화면이 고른 그대로(두 줄)다.
+    fn paragraph() -> Quote {
+        Quote { file: "plan.md".into(), start: 3, end: 4, text: "요약 한 줄.\n첫 문단을 고쳤다.".into() }
+    }
+
+    #[test]
+    fn 인용_블록은_실제_경로와_줄_범위_한_줄_빈_줄_마크다운_인용_글이다() {
+        let spec = Path::new("/works/cart/spec");
+        let attached = paragraph().attach(spec).expect("올바른 인용");
+        assert_eq!(attached.quote, paragraph());
+        assert_eq!(
+            attached.block,
+            json!({"type": "text", "text": "/works/cart/spec/plan.md:L3-4\n\n> 요약 한 줄.\n> 첫 문단을 고쳤다.\n"})
+        );
+
+        let one_line = Quote { file: "drafts/idea.md".into(), start: 2, end: 2, text: "  들여 쓴 줄\n\n끝".into() };
+        assert_eq!(
+            one_line.attach(spec).expect("한 줄 인용").block,
+            json!({"type": "text", "text": "/works/cart/spec/drafts/idea.md:L2\n\n>   들여 쓴 줄\n>\n> 끝\n"}),
+            "한 줄이면 `:L<n>`이고, 빈 줄도 인용 안에 남는다"
+        );
+    }
+
+    #[test]
+    fn spec_폴더_밖을_가리키거나_줄_범위가_뒤집히거나_글이_빈_인용은_읽히는_오류다() {
+        let spec = Path::new("/works/cart/spec");
+        let bad = [
+            Quote { file: "../work.json".into(), ..paragraph() },
+            Quote { file: "/etc/hosts".into(), ..paragraph() },
+            Quote { file: String::new(), ..paragraph() },
+            Quote { start: 0, end: 0, ..paragraph() },
+            Quote { start: 5, end: 4, ..paragraph() },
+            Quote { text: " \n ".into(), ..paragraph() },
+        ];
+        for quote in &bad {
+            let error = quote.attach(spec).expect_err("거절");
+            assert!(error.to_string().starts_with("인용"), "화면에 보일 글이다: {quote:?} → {error}");
+        }
     }
 }

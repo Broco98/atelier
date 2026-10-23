@@ -12,7 +12,7 @@ import type { WorkView } from "./types";
 
 // 사이드바 목록이 **그리는 것**을 본다. 어느 구역에 무엇이 놓이는지는 work-sections.test.ts가
 // 이미 보므로 여기서 보는 것은 그 결과가 화면으로 나오는 자리뿐이다 — 구획이 서는 조건
-// (결정 82), 빈 `작업` 구획이 하는 말(결정 108), 핀의 생김새(결정 85), 접힘과 개수.
+// (결정 82), 빈 `Work` 구획이 하는 말(결정 108), 핀의 생김새(결정 85), 접힘과 개수.
 //
 // 훅을 부르지 않는 `WorkSectionList`를 렌더한다. 구독하는 자리(useWorks·라우터·localStorage)는
 // 위에 남아 있고, 여기로는 상태와 콜백만 들어온다 — `ShellTabs`와 같은 모양이다.
@@ -196,34 +196,34 @@ const lanesOf = (markup: string) =>
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
   // 결정 82. 아무것도 없는 구획의 헤더는 자리만 먹는다.
   it("고정된 것이 없으면 헤더가 아예 없다", () => {
-    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual(["작업"]);
+    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual(["Work"]);
   });
 
-  it("고정된 것이 있으면 `작업` 위에 선다", () => {
+  it("고정된 것이 있으면 `Work` 위에 선다", () => {
     expect(headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label)).toEqual([
       "고정",
-      "작업",
+      "Work",
     ]);
   });
 
-  it("개수는 그 구획의 것을 적는다 — 초안도 `작업`의 수에 든다", () => {
+  it("개수는 그 구획의 것을 적는다 — 초안도 `Work`의 수에 든다", () => {
     const headers = headersOf(render(works("pin:가", "pin:draft:나", "다", "draft:라")));
-    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "작업 2"]);
+    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "Work 2"]);
   });
 });
 
 // UI개선 결정 5. 초안은 따로 접힌 구역이 아니라 **다른 항목들 사이에** 서고, 상태 아이콘으로만 갈린다.
-describe("초안은 `작업` 구획 안에 선다", () => {
-  it("`초안` 머리가 없고 초안 행이 받은 자리 그대로 `작업`에 선다", () => {
+describe("초안은 `Work` 구획 안에 선다", () => {
+  it("`초안` 머리가 없고 초안 행이 받은 자리 그대로 `Work`에 선다", () => {
     const markup = render(works("draft:가", "나", "draft:다"));
-    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나", "다"] }]);
+    expect(rowsBySection(markup)).toEqual([{ label: "Work", rows: ["가", "나", "다"] }]);
     // 머리 목록만 보면 초안 머리가 **표식 없이** 되살아나도 초록이다 — 글자로도 센다.
     expect(markup).not.toMatch(/>초안</);
   });
 
   it("모든 항목이 초안이어도 빈 문구가 아니라 그 초안들이 보인다", () => {
     const markup = render(works("draft:가", "draft:나"));
-    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나"] }]);
+    expect(rowsBySection(markup)).toEqual([{ label: "Work", rows: ["가", "나"] }]);
     // 빈 구획이 낼 수 있는 두 말을 **판정 함수에서** 받아 댄다 — 글자 조각으로 대면 문구가
     // 바뀌는 날 이 두 줄이 아무것도 안 재는 채 초록으로 남는다.
     const notices = [
@@ -238,23 +238,23 @@ describe("초안은 `작업` 구획 안에 선다", () => {
 describe("고정된 work은 한 구획에만 있다", () => {
   // 결정 82. 고정하면 원래 구획에서 **빠진다**. 양쪽에 다 보이면 같은 작업이
   // 두 줄로 서고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
-  it("고정된 작업은 `작업`에서 빠진다", () => {
+  it("고정된 작업은 `Work`에서 빠진다", () => {
     expect(rowsBySection(render(works("pin:가", "나")))).toEqual([
       { label: "고정", rows: ["가"] },
-      { label: "작업", rows: ["나"] },
+      { label: "Work", rows: ["나"] },
     ]);
   });
 
-  it("고정된 초안은 `작업`에서 빠진다", () => {
+  it("고정된 초안은 `Work`에서 빠진다", () => {
     // 결정 83 — 초안도 고정할 수 있고, 고정되면 `고정`에 선다.
     expect(rowsBySection(render(works("pin:draft:가", "draft:나")))).toEqual([
       { label: "고정", rows: ["가"] },
-      { label: "작업", rows: ["나"] },
+      { label: "Work", rows: ["나"] },
     ]);
   });
 });
 
-describe("빈 `작업` 구획이 하는 말", () => {
+describe("빈 `Work` 구획이 하는 말", () => {
   // 결정 108. 화면에 작업이 버젓이 서 있는데 「Claude Code에서 시작돼요」라고 하면 거짓말이다.
   // emptyMainNotice 자체는 work-sections.test.ts가 보고, 여기서는 **호출부**를 본다 —
   // 화면이 그 함수를 실제로 부르는지.
@@ -280,9 +280,9 @@ describe("빈 `작업` 구획이 하는 말", () => {
 // 목록의 이름. 문구 자체는 어휘 표라 `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서
 // 보는 것은 호출부다** — 화면이 그 표를 실제로 부르는가.
 describe("상주 목록의 이름", () => {
-  it("머리가 `작업`이고 형제 머리는 `고정`이다", () => {
+  it("머리가 `Work`이고 형제 머리는 `고정`이다", () => {
     const labels = headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label);
-    expect(labels).toEqual(["고정", "작업"]);
+    expect(labels).toEqual(["고정", "Work"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
@@ -362,12 +362,12 @@ describe("핀 버튼", () => {
 });
 
 describe("구획 접기", () => {
-  // 결정 108의 마지막 줄 — `고정` 구획도 `작업`과 같은 규칙으로 접힌다.
+  // 결정 108의 마지막 줄 — `고정` 구획도 `Work`과 같은 규칙으로 접힌다.
   it("접힌 구획은 헤더가 그렇다고 말하고 높이만 0이 된다", () => {
     const markup = render(works("pin:가", "나", "draft:다"), { ...ALL, pinned: false });
     expect(headersOf(markup).map((one) => `${one.label} ${one.open}`)).toEqual([
       "고정 false",
-      "작업 true",
+      "Work true",
     ]);
     const [pinnedBody, mainBody] = bodiesOf(markup);
     // 접혀도 항목은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 inert다.
@@ -749,15 +749,15 @@ describe("이름을 고치는 행", () => {
 });
 
 // **빈 받침**(UI개선 티켓 06 · 스펙 S7). 행이 하나도 없는 구획에 **끄는 동안만** 선다 — 첫 고정도(`고정` 0개),
-// 마지막 고정 해제도(모두 고정이라 `작업` 0개) 같은 손짓이게. 「모두 고정」은 L3 fixture로 못 지어
+// 마지막 고정 해제도(모두 고정이라 `Work` 0개) 같은 손짓이게. 「모두 고정」은 L3 fixture로 못 지어
 // (`list_works`를 테스트마다 못 덮는다) 여기가 그 갈래를 재는 유일한 자리다.
 describe("빈 받침", () => {
   const slotsOf = (markup: string) => [...markup.matchAll(/data-empty-slot="([^"]*)"/g)].map((m) => m[1]);
 
-  it("끄는 중이고 `작업`이 비었으면(모두 고정) `작업`에 받침이 선다", () => {
+  it("끄는 중이고 `Work`이 비었으면(모두 고정) `Work`에 받침이 선다", () => {
     const markup = render(works("pin:가", "pin:나"), ALL, { draggedSlug: "가" });
     expect(slotsOf(markup)).toEqual(["works"]);
-    // `작업` 머리 **아래**다 — 머리보다 앞에 서면 `고정` 구획에 붙은 것으로 읽힌다.
+    // `Work` 머리 **아래**다 — 머리보다 앞에 서면 `고정` 구획에 붙은 것으로 읽힌다.
     expect(markup.indexOf('data-empty-slot="works"')).toBeGreaterThan(markup.indexOf('data-drop-head="works"'));
   });
 
@@ -765,12 +765,12 @@ describe("빈 받침", () => {
     expect(slotsOf(render(works("pin:가", "pin:나")))).toEqual([]);
   });
 
-  it("끄는 중이고 `고정`이 비었으면 `고정` 받침이 `작업` 머리 위에 선다", () => {
+  it("끄는 중이고 `고정`이 비었으면 `고정` 받침이 `Work` 머리 위에 선다", () => {
     const markup = render(works("가", "나"), ALL, { draggedSlug: "가" });
     expect(slotsOf(markup)).toEqual(["pinned"]);
     expect(markup.indexOf('data-empty-slot="pinned"')).toBeLessThan(markup.indexOf('data-drop-head="works"'));
     // 받침은 머리를 되살리지 않는다 — 결정 82의 「빈 `고정`엔 머리가 없다」는 끄는 동안에도 그대로다.
-    expect(headersOf(markup).map((one) => one.label)).toEqual(["작업"]);
+    expect(headersOf(markup).map((one) => one.label)).toEqual(["Work"]);
   });
 
   it("끄는 중이 아니면 `고정`이 비어도 받침이 없다", () => {

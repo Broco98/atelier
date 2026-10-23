@@ -51,7 +51,7 @@ import type { SearchHit } from "./types";
  */
 
 /**
- * 구획 머리. **사이드바 목록과 같은 계통의 한국어다**(결정 17) — 이 팔레트가 나열하는 것이
+ * 구획 머리. **사이드바 목록과 같은 말이다**(결정 17) — 이 팔레트가 나열하는 것이
  * 사이드바가 나열하는 것과 같은 것들이라, spec 트리에 있던 대문자 영어 구획 머리
  * (`Iterations`·`Documents` — spec 레이아웃 결정 24로 사라졌다)를 따르지 않았다. 부수 효과가
  * 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
@@ -59,8 +59,8 @@ import type { SearchHit } from "./types";
  */
 const GROUP_NAMES: Record<SearchHit["kind"], string> = {
   destination: "가는 곳",
-  work: "작업",
-  // 사이드바의 Thread 묶음 머리와 같은 말이다 — Thread는 화면에서도 영어로 쓰는 도메인 낱말이다(v1 구현 스펙 S2).
+  // 둘은 사이드바의 Work · Thread 묶음 머리와 같은 말이다 — 화면에서도 영어로 쓰는 도메인 낱말이다(v1 구현 스펙 S2).
+  work: "Work",
   thread: "Thread",
   project: "프로젝트",
   doc: "문서",

@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import { Check, CircleAlert, Copy, Info, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checklist, PlanCard } from "@/features/chat/PlanCard";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
 import { CallPlace, CallRow, type CallActions } from "./CallRow";
@@ -23,6 +22,7 @@ import {
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
 import { mentionOf } from "./mentions";
+import { Checklist, PlanCard } from "./PlanCard";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Attachment } from "./types";
 import { threadUiStore, toggleTurn, turnKey } from "./thread-store";

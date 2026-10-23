@@ -5,8 +5,8 @@
 //! - **로그인 명령.** `claude auth login` · `codex login`을 TTY 없이 새 세션에 띄운다. 둘 다 브라우저를 스스로 열고
 //!   localhost 콜백을 기다린다(실측 A3 · A8). stdout · stderr에 처음 찍힌 `https://` URL이 「링크 복사」의 값이다.
 //!   끝나면 호스트가 확인을 저절로 다시 돈다. 취소는 프로세스 그룹 SIGTERM이다(SIGINT가 아니다). 엔진마다 한 번에 하나다.
-//! - **로그인 필요.** 에이전트가 `-32000 Authentication required`로 답한 대화(Codex `session/new`, 엔진을 가리지 않고 턴
-//!   도중)를 쥐고 있다가, 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다. 기록은 그대로다.
+//! - **로그인 필요.** Runtime이 `-32000 Authentication required`로 답한 Session(Codex `session/new`, 엔진을 가리지 않고 턴
+//!   도중)을 쥐고 있다가, 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다. 기록은 그대로다.
 
 use std::collections::HashMap;
 use std::io::{BufReader, Read};
@@ -155,11 +155,11 @@ pub(crate) struct Waiting {
     pub waiter: Waiter,
 }
 
-/// 로그인을 기다리는 자리 — three-axes의 work 대화이거나, Thread의 참여자 하나의 Session이다(v1 티켓 04).
+/// 로그인을 기다리는 자리 — Thread의 참여자 하나의 Session이다(v1 티켓 04). three-axes의 work 대화 자리는 v1 티켓 08이 걷었다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Waiter {
-    Conversation { work: String, conversation: String },
-    Thread { thread: String, handle: String },
+pub(crate) struct Waiter {
+    pub thread: String,
+    pub handle: String,
 }
 
 /// 도는 로그인 명령 하나.
@@ -176,10 +176,10 @@ struct Run {
     _stdin: Option<ChildStdin>,
 }
 
-/// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 대화들과 도는 로그인 명령을 쥔다. 호스트와 대화들(턴 도중의
+/// 로그인 창구 — 엔진 상태를 알리고, 로그인을 기다리는 Session들과 도는 로그인 명령을 쥔다. 호스트와 Session들(턴 도중의
 /// `-32000`)이 함께 쥔다.
 ///
-/// 잠금은 이 창구 안에서 끝난다 — 이벤트를 내보내는 closure 말고는 아무것도 부르지 않는다. 그래서 대화의 잠금을 쥔 채
+/// 잠금은 이 창구 안에서 끝난다 — 이벤트를 내보내는 closure 말고는 아무것도 부르지 않는다. 그래서 Session의 잠금을 쥔 채
 /// 불러도 된다. 잠금 순서는 `waiting` → `runs`다.
 pub(crate) struct LoginDesk {
     emit: Arc<Emit>,
@@ -390,12 +390,7 @@ impl LoginDesk {
         self.lock_waiting().iter().find(|held| held.waiter == *waiter).map(|held| held.agent)
     }
 
-    /// 그 자리를 더는 쥐지 않는다 — 닫혔거나, 첫 말 전에 에이전트를 바꿨다(three-axes 티켓 13).
-    pub(crate) fn forget(&self, waiter: &Waiter) {
-        self.lock_waiting().retain(|held| held.waiter != *waiter);
-    }
-
-    /// 그 엔진의 로그인을 기다리던 대화들을 꺼낸다 — 다시 띄울 차례다. 꺼낸 것은 다시 쥐지 않는다(두 길이 함께
+    /// 그 엔진의 로그인을 기다리던 Session들을 꺼낸다 — 다시 띄울 차례다. 꺼낸 것은 다시 쥐지 않는다(두 길이 함께
     /// 「됨」을 봐도 한 번만 띄운다).
     pub(crate) fn take_waiting(&self, agent: Agent) -> Vec<Waiting> {
         let mut waiting = self.lock_waiting();

@@ -301,30 +301,11 @@ fn 멘션으로_리뷰어가_들어와_답한_기록이_검사_자료와_같다(
     host.shut_down();
 
     let sessions = [sandbox.thread_session_id(&thread, "host"), sandbox.thread_session_id(&thread, "reviewer")];
-    let settled = commands_after_opened(&record);
+    let settled = common::commands_after_opened(&record);
     common::assert_record(
         "thread-mention",
         &common::fix_thread_record(&settled, &sandbox.data_root(), &thread, &[&sessions[0], &sessions[1]]),
     );
-}
-
-/// 명령 목록 줄(`available_commands_update`)마다 그 참여자의 열림 줄 바로 뒤로 옮기고 seq를 다시 센다. 명령 목록은 Session을 연
-/// 답 뒤에 따로 오므로 `sent`와의 차례가 매번 다르다(`thread_host.rs`의 같은 손질). 축복 자료는 하나의 차례로 둔다.
-fn commands_after_opened(record: &[Value]) -> Vec<Value> {
-    let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
-    let commands: Vec<Value> = record.iter().filter(|line| is_commands(line)).cloned().collect();
-    let mut lines: Vec<Value> = record.iter().filter(|line| !is_commands(line)).cloned().collect();
-    for command in commands {
-        let opened = lines
-            .iter()
-            .position(|line| line["payload"]["state"] == "opened" && line["who"] == command["who"])
-            .expect("그 참여자의 열림 줄");
-        lines.insert(opened + 1, command);
-    }
-    for (n, line) in lines.iter_mut().enumerate() {
-        line["seq"] = json!(n + 1);
-    }
-    lines
 }
 
 /// 지난 말 블록의 머리 — 이 Session이 아직 보지 못한 말이라는 것과 무엇을 담았는지.

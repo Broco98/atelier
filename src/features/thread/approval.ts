@@ -1,4 +1,3 @@
-import type { ToolIcon } from "@/features/chat/tool-view";
 import type { PendingPermission, PermissionOption } from "./fold";
 import { nonEmpty, type Json } from "./json";
 import { commandOf, diffPathsOf, locationsOf, mcpOf, toolFields } from "./tool-view";
@@ -19,8 +18,8 @@ import { commandOf, diffPathsOf, locationsOf, mcpOf, toolFields } from "./tool-v
 // `switch_mode`)만 엔진의 두 선택지를 「구현」 · 「다시 짜기」로 부른다(three-axes 결정 29) — 그 요청의 이름은 엔진의 영어 문장
 // 이고(「Yes, implement this plan」), 카드가 묻는 말(「이 계획대로 할까요?」)의 답으로 읽혀야 해서다.
 
-/** 카드 머리의 아이콘 갈래 — 도구 줄과 같은 아이콘 지도(`tool-icons.ts`)를 쓰고, 계획 승인만 따로다. */
-export type ApprovalIcon = Exclude<ToolIcon, "skill" | "subagent"> | "plan";
+/** 카드 머리의 아이콘 갈래 — 도구의 갈래 하나(명령 · 읽기 · 편집 · 검색 · 가져오기 · MCP · 그 밖)이고, 계획 승인만 따로다. */
+export type ApprovalIcon = "execute" | "read" | "edit" | "search" | "fetch" | "mcp" | "other" | "plan";
 
 export interface ApprovalView {
   icon: ApprovalIcon;

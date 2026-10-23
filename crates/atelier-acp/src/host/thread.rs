@@ -12,8 +12,8 @@
 //! - Agent에게 가는 말은 머리말(Session의 첫 말) + 지난 말 + 본문이다(S10). 지난 말은 보내는 그때 기록에서 짓는다(`past`).
 //! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다).
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
-//! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 work 대화의
-//!   길 그대로다.
+//! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 three-axes
+//!   대화 호스트의 길 그대로다.
 //! - **Session마다 Thread 도구의 소켓을 연다(v1 티켓 15 · S12).** Session을 열 때 소켓을 열어 ACP `mcpServers`로 중계 서버를 넘기고,
 //!   그 소켓으로 온 도구 호출은 그 Session의 Thread와 Agent의 것으로 받는다([`ConversationHost::answer_tool`]). 소켓은 Session의
 //!   프로세스와 함께 산다 — 끄거나 되살릴 때 놓여 치워진다.
@@ -47,7 +47,6 @@ use crate::login::Waiter;
 use crate::login_env::AgentEnv;
 use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
 use crate::runtime::{self, AgentProcess, OpenError, SessionPlace};
-use crate::spec_changes::Snapshot;
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use seat::{Grant, Writer};
 
@@ -94,7 +93,7 @@ pub struct ThreadView {
 
 /// 호스트가 쥔 Thread들 — 떠 있는 Session, 연 기록, 색인.
 ///
-/// 잠금 차례는 work 대화와 같다 — 띄우기 문(`revivals`) → Session 표 → Session의 대화(`state`) → 기록. 기록 표 · 색인 ·
+/// 잠금 차례는 호스트의 것이다 — 띄우기 문(`revivals`) → Session 표 → Session의 대화(`state`) → 기록. 기록 표 · 색인 ·
 /// `thread.json` 잠금은 그 밖에서 잠깐씩만 쥔다.
 #[derive(Default)]
 pub(super) struct Threads {
@@ -126,10 +125,10 @@ impl SessionKey {
 
     /// 로그인 창구에서 이 Session의 자리.
     fn waiter(&self) -> Waiter {
-        Waiter::Thread { thread: self.thread.clone(), handle: self.handle.clone() }
+        Waiter { thread: self.thread.clone(), handle: self.handle.clone() }
     }
 
-    /// 띄우기 문의 이름 — work 대화의 id(uuid)와 겹치지 않는다.
+    /// 띄우기 문의 이름.
     fn gate(&self) -> String {
         format!("thread {}/{}", self.thread, self.handle)
     }
@@ -160,7 +159,8 @@ impl Threads {
         self.lock_sessions().drain().map(|(_, session)| session).collect()
     }
 
-    /// 그 Session이 떠 있으면 그 대화 — 표의 잠금은 곧바로 놓는다(work 대화의 `find_live`와 같다).
+    /// 그 Session이 떠 있으면 그 대화 — 표의 잠금은 곧바로 놓는다(S2). 부른 쪽은 그 대화의 잠금만 쥐고 일하고, 그 잠금은
+    /// [`Conv::lock_found`]로 쥔다 — 찾은 뒤 다른 명령이 꺼냈으면 거기서 물러난다.
     fn find(&self, key: &SessionKey) -> Option<Arc<Conv>> {
         self.lock_sessions().get(key).map(|session| Arc::clone(&session.conv))
     }
@@ -182,8 +182,8 @@ impl Threads {
         self.lock_sessions().get(key).map(|session| (Arc::clone(&session.conv), Arc::clone(&session.writer)))
     }
 
-    /// 그 Session을 표에서 꺼낸다 — 꺼낸 대화라고 적는다(work 대화의 `take_live`와 같다). 꺼낸 Session의 턴은 끝 없이 사라지므로
-    /// 그 쓰기 자리를 놓는다(v1 티켓 18).
+    /// 그 Session을 표에서 꺼낸다 — 꺼낸 대화라고 적는다([`mark_taken`]). 꺼낸 뒤로는 어느 명령도 이 Session에
+    /// 닿지 않는다. 꺼낸 Session의 턴은 끝 없이 사라지므로 그 쓰기 자리를 놓는다(v1 티켓 18).
     fn take(&self, key: &SessionKey) -> Option<Session> {
         let taken = self.lock_sessions().remove(key);
         mark_taken(taken.iter().map(|session| &*session.conv));
@@ -387,7 +387,7 @@ impl ConversationHost {
         request: &str,
         option: &str,
     ) -> Result<(), HostError> {
-        let closed = || HostError::PermissionClosed { conversation: thread.to_owned(), request: request.to_owned() };
+        let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
         let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
         let grant = writer.grant(request, option);
         let took = matches!(grant, Grant::Took);
@@ -405,7 +405,7 @@ impl ConversationHost {
         answered
     }
 
-    /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다(스토리 33). 규칙은 work 대화의 모델 바꾸기와 같다.
+    /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다(스토리 33 · three-axes 티켓 09).
     ///
     /// - Session이 떠 있으면 곧바로 넣고 답을 기다린다 — 다음 턴부터 든다. 넣은 바꾸기는 `config` 줄로 남는다.
     /// - 떠 있지 않으면 `thread.json`의 참여자 줄에만 남고, 띄울 때 플래그로 준다.
@@ -619,16 +619,18 @@ impl ConversationHost {
         let found = self.threads.find(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(&key.waiter()) {
-                Some(agent) => HostError::LoginRequired { agent, conversation: key.thread.clone() },
+                Some(agent) => HostError::LoginRequired { agent, thread: key.thread.clone() },
                 None => HostError::NotRunning(key.thread.clone()),
             });
         };
-        conv.seat(&mut state).say(draft, Snapshot::empty()).map_err(|refused| refused.into_host(&key.thread))
+        conv.seat(&mut state).say(draft, ()).map_err(|refused| refused.into_host(&key.thread))
     }
 
-    /// 떠 있지 않거나 죽은 Session을 띄워 되살린다 — work 대화의 [`ConversationHost::revive`]와 같은 길이다. `thread.json`의
-    /// Session id로 resume → load → 새로 순이고, 떠 있던(죽은) Session은 쓰는 손과 대기 줄을 그대로 이어 쓴다. 다시 뜨지 못하면
-    /// 대기 줄은 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
+    /// 떠 있지 않거나 죽은 Session을 띄워 되살린다(three-axes 티켓 10) — 다시 켠 뒤의 Session과 죽은 Session은 말을 보낼 때 띄운다
+    /// (three-axes 결정 19). `thread.json`의 Session id로 resume → load → 새로 순이고, 떠 있던(죽은) Session은 쓰는 손과 대기 줄을
+    /// 그대로 이어 쓴다. 다시 뜨지 못하면 대기 줄은 사라지고, 화면이 옛 줄을 붙들지 않게 빈 대기 줄을 알린다.
+    ///
+    /// 막히는 호출이다 — 세션이 열릴 때까지 기다린다. Session마다 하나씩 돈다 — 앞선 것이 되살렸으면 아무것도 하지 않는다.
     fn revive_session(&self, key: &SessionKey, when: Revive) -> Result<(), HostError> {
         let gate = self.revival_gate(&key.gate());
         let _one_at_a_time = gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -691,7 +693,7 @@ impl ConversationHost {
         terms.judge = Some(writer.judge());
         let limit = self.open_limit.unwrap_or(CLAUDE_OPEN_LIMIT);
         let at = SessionPlace { cwd: place.cwd.clone(), additional_directories: place.additional_directories.clone() };
-        let opened = runtime::open(launch, at, terms, limit, writer.watching(conv.sink()), record_opened(&conv, Agent::Claude));
+        let opened = runtime::open(launch, at, terms, limit, writer.watching(conv.sink()), record_opened(&conv));
         let (agent, opened) = match opened {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {
@@ -704,7 +706,7 @@ impl ConversationHost {
                 recorder
                     .session(SessionState::Died { reason: reason.clone(), stderr_tail: Vec::new() })
                     .map_err(HostError::Record)?;
-                return Err(HostError::Open { conversation: key.thread.clone(), reason });
+                return Err(HostError::Open { thread: key.thread.clone(), reason });
             }
         };
         // 그 Session의 첫 말이면 머리말을 붙인다(S10) — 새로 섰거나, 되살린 Session이 아직 말을 받은 적이 없다.
@@ -736,7 +738,7 @@ impl ConversationHost {
     /// 찍지 않고, 사라진 Work를 지켜보지 않는다(보관된 Work의 Thread는 v1 티켓 38).
     fn session_conv(&self, key: &SessionKey) -> Result<Arc<Conv>, HostError> {
         let recorder = Recorder::of_thread(self.thread_log(&key.thread)?, &key.handle);
-        Ok(Conv::new(recorder, None, None, Some(self.login_watch(Agent::Claude, key.waiter()))))
+        Ok(Conv::new(recorder, self.login_watch(Agent::Claude, key.waiter())))
     }
 
     /// 그 Thread의 기록 — 연 것이 있으면 그것, 없으면 이어 열어 쥔다. Thread 폴더를 만들지 않는다.

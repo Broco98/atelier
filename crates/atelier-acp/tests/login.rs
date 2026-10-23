@@ -1,17 +1,17 @@
-//! L1 — 대화 호스트 ↔ 가짜 `claude` · 가짜 `codex` · 가짜 ACP 에이전트: 로그인을 확인하고, 앱에서 로그인 명령을 띄우고,
-//! 로그인이 필요하면 기록에 남기고, 「됨」으로 바뀌면 그 대화를 다시 띄운다(three-axes 티켓 12 · 스토리 93 · 94 · 95 · 96 ·
-//! 97 · 99 · 100).
+//! L1 — 호스트 ↔ 가짜 `claude` · 가짜 `codex`: 로그인을 확인하고, 앱에서 로그인 명령을 띄우고, 끝나면 저절로 다시
+//! 확인한다(three-axes 티켓 12 · 스토리 93 · 94 · 95 · 96 · 97 · 99 · 100). 로그인을 기다리던 Session이 「됨」으로 다시 뜨는
+//! 것은 `thread_host.rs`가 잰다.
 //!
 //! 검사 중 진짜 브라우저는 열리지 않는다 — 로그인 env의 `BROWSER=/usr/bin/true`가 막고, PATH 앞의 `open`은 기록용
-//! 가짜다(실측 함정 40). 시험은 호스트에 명령을 넣고, 나오는 이벤트 · `agents/` 파일 · 가짜의 영수증만 본다.
+//! 가짜다(실측 함정 40). 시험은 호스트에 명령을 넣고, 나오는 이벤트 · 가짜의 영수증만 본다.
 
 mod common;
 
 use std::sync::Arc;
 
-use atelier_acp::{Agent, EngineCheck, EngineState, FoundProgram, HostError, LoginProgress};
+use atelier_acp::{Agent, EngineCheck, EngineState, FoundProgram, LoginProgress};
 use common::{assert_all_gone, login_pids, Sandbox, NO_BROWSER};
-use serde_json::{json, Value};
+use serde_json::json;
 
 #[test]
 fn claude_auth_status가_loggedin_false로_exit_1이면_엔진_확인이_로그인_안_됨이고_로그인_파일이_서면_됨이다() {
@@ -67,42 +67,6 @@ fn 못_찾은_엔진은_로그인을_묻지_않고_엔진_상태가_못_찾음�
     assert_eq!(events.engine_states(), [EngineState { agent: Agent::Claude, found: false, logged_in: None, login: None }]);
 }
 
-#[test]
-fn needs_auth면_대화는_서고_로그인_필요_줄과_엔진_상태가_오고_말은_로그인_필요로_거절된다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let (host, events) = sandbox.host_with_events(sandbox.login_shell_for_login("needs-auth", NO_BROWSER, &[]));
-
-    let conversation = host.new_conversation("cart", Agent::Codex).expect("로그인이 필요해도 대화는 선다");
-
-    let record = sandbox.record("cart", &conversation.id);
-    let sessions: Vec<Value> = record.iter().filter(|line| line["kind"] == "session").map(|line| line["payload"].clone()).collect();
-    assert_eq!(
-        sessions,
-        [
-            json!({"state": "spawning"}),
-            json!({"state": "auth-status", "params": {"authStatus": {"kind": "none", "label": "Not logged in"}}}),
-            json!({"state": "login-required"}),
-        ],
-        "initialize는 되고 session/new가 -32000이다(실측 A3) — 죽음이 아니라 로그인 필요다"
-    );
-    assert_eq!(conversation.last_seq, record.last().unwrap()["seq"].as_u64().unwrap());
-    assert!(sandbox.agents_row("cart", &conversation.id)["agentSessionId"].is_null(), "에이전트 쪽 세션은 아직 없다");
-    assert_eq!(
-        events.engine_states(),
-        [EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), login: None }],
-    );
-    assert_eq!(
-        host.send("cart", &conversation.id, "안녕"),
-        Err(HostError::LoginRequired { agent: Agent::Codex, conversation: conversation.id.clone() }),
-    );
-    assert_eq!(sandbox.opened(), Vec::<String>::new(), "로그인 필요만으로 브라우저를 열지 않는다");
-
-    host.shut_down();
-    // S26 — 대화창의 L3(티켓 22)가 이 기록으로 「로그인 안 됨」 안내 카드를 잰다. 에이전트 쪽 세션은 없다.
-    common::assert_record("login-required", &common::fix_record_sessions(&record, &sandbox.data_root(), &[]));
-}
-
 const CODEX_URL: &str = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=fake-client&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=fake-state";
 const CLAUDE_URL: &str = "https://claude.com/cai/oauth/authorize?code=true&client_id=fake-client&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=fake-state";
 
@@ -123,13 +87,11 @@ fn has_link(states: &[EngineState]) -> bool {
 }
 
 #[test]
-fn 로그인을_시작하면_링크가_오고_끝나면_저절로_다시_확인해_됨이면_로그인_필요였던_대화가_다시_뜬다() {
+fn codex_로그인은_codex_login이고_처음_찍힌_https_링크를_내고_끝나면_저절로_다시_확인해_됨이다() {
     let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let shell = sandbox.login_shell_for_login("needs-auth", NO_BROWSER, &[("FAKE_ACP_ACCOUNT_EMAIL", "someone@example.com")]);
+    let shell = sandbox.login_shell_for_login("needs-auth", NO_BROWSER, &[]);
     let (host, events) = sandbox.host_with_events(shell);
     let host = Arc::new(host);
-    let conversation = host.new_conversation("cart", Agent::Codex).expect("로그인이 필요해도 대화는 선다");
 
     Arc::clone(&host).start_login(Agent::Codex).expect("로그인 시작");
     events.wait_engine(has_link);
@@ -144,38 +106,10 @@ fn 로그인을_시작하면_링크가_오고_끝나면_저절로_다시_확인�
     let states = events.wait_engine(has_ended);
     assert_eq!(
         states,
-        [
-            EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), login: None },
-            running(Agent::Codex, None),
-            running(Agent::Codex, Some(CODEX_URL)),
-            ended(Agent::Codex, true, false, Some(0)),
-        ],
+        [running(Agent::Codex, None), running(Agent::Codex, Some(CODEX_URL)), ended(Agent::Codex, true, false, Some(0))],
         "링크는 stdout · stderr에 처음 찍힌 https:// URL이고(앞의 http://localhost는 아니다), 끝은 다시 돈 확인의 답을 싣는다"
     );
     assert_eq!(sandbox.status_calls(Agent::Codex), ["status"], "끝나면 확인을 저절로 다시 돈다");
-
-    let record =
-        sandbox.wait_record("cart", &conversation.id, |record| record.iter().any(|line| line["payload"]["state"] == "opened"));
-    let sessions: Vec<&str> = record
-        .iter()
-        .filter(|line| line["kind"] == "session")
-        .map(|line| line["payload"]["state"].as_str().unwrap())
-        .collect();
-    assert_eq!(
-        sessions,
-        ["spawning", "auth-status", "login-required", "spawning", "auth-status", "opened"],
-        "같은 기록에 이어 다시 띄운다 — 기록은 그대로다"
-    );
-    let text = std::fs::read_to_string(sandbox.record_path("cart", &conversation.id)).unwrap();
-    assert!(!text.contains("someone@example.com"), "기록의 이메일은 가려진다");
-    assert!(text.contains("<email>"));
-    // 호스트는 열림 줄을 적은 뒤에 agents.json에 세션 id를 쓴다 — 다시 띄우기는 로그인 감시 스레드에서 돌므로 기다린다.
-    common::wait_for("다시 띄운 세션의 id가 적힌다", || {
-        !sandbox.agents_row("cart", &conversation.id)["agentSessionId"].is_null()
-    });
-
-    host.send("cart", &conversation.id, "안녕").expect("다시 뜬 대화에는 말이 간다");
-    sandbox.wait_kind("cart", &conversation.id, "turn-end", 1);
     assert_all_gone(&login_pids(&runs[0]));
     assert_eq!(sandbox.opened(), Vec::<String>::new(), "검사 중 브라우저를 여는 쪽이 불리지 않았다");
 
@@ -279,75 +213,3 @@ fn browser가_없어도_엔진이_부르는_open은_기록용_가짜이고_진�
     host.shut_down();
 }
 
-#[test]
-fn 턴_도중의_32000도_로그인_필요_줄이고_다시_확인이_됨이면_에이전트를_새로_띄워_말이_간다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    sandbox.log_in(Agent::Codex);
-    let (host, events) = sandbox.host_with_events(sandbox.login_shell_for_login("needs-auth", NO_BROWSER, &[]));
-    let conversation = host.new_conversation("cart", Agent::Codex).expect("로그인돼 있으면 세션이 열린다");
-    let (first_session, first_pid) = {
-        let session = sandbox.agent_session_id("cart", &conversation.id);
-        let pid = sandbox.acp_receipt(&session)["pid"].as_u64().unwrap() as u32;
-        (session, pid)
-    };
-
-    // 대화 도중에 로그인이 풀렸다.
-    sandbox.log_out(Agent::Codex);
-    host.send("cart", &conversation.id, "첫 말").expect("보내기");
-    let record = sandbox.wait_record("cart", &conversation.id, |record| {
-        record.iter().any(|line| line["payload"]["state"] == "login-required")
-    });
-    let tail: Vec<(Value, Value)> =
-        record.iter().rev().take(2).rev().map(|line| (line["kind"].clone(), line["payload"].clone())).collect();
-    assert_eq!(tail[0].0, json!("turn-end"));
-    assert_eq!(tail[0].1["error"]["code"], json!(-32000), "턴 끝 줄에 에이전트의 오류가 그대로 실린다");
-    assert_eq!(tail[1], (json!("session"), json!({"state": "login-required"})), "턴 끝 바로 뒤에 로그인 필요 줄이 선다");
-    assert_eq!(
-        events.engine_states().last(),
-        Some(&EngineState { agent: Agent::Codex, found: true, logged_in: Some(false), login: None }),
-        "엔진을 가리지 않고 같은 엔진 상태가 나간다"
-    );
-    assert_eq!(
-        host.send("cart", &conversation.id, "둘째 말"),
-        Err(HostError::LoginRequired { agent: Agent::Codex, conversation: conversation.id.clone() }),
-    );
-
-    // 터미널에서 로그인하고 안내 카드의 「다시 확인」을 눌렀다.
-    sandbox.log_in(Agent::Codex);
-    assert!(matches!(host.check_engine(Agent::Codex, true), Ok(EngineCheck::Found { logged_in: true, .. })));
-
-    let second_session = sandbox.agent_session_id("cart", &conversation.id);
-    assert_ne!(second_session, first_session, "떠 있던 에이전트를 끄고 새로 띄웠다 — 새 로그인을 읽는다는 보장이 없다");
-    assert_all_gone(&[first_pid]);
-    assert_eq!(sandbox.acp_events(&first_session), ["stdin-eof"], "끌 때는 먼저 stdin을 닫는다");
-    host.send("cart", &conversation.id, "셋째 말").expect("다시 뜬 대화에는 말이 간다");
-    let record = sandbox.wait_kind("cart", &conversation.id, "turn-end", 2);
-    assert_eq!(record.last().unwrap()["payload"]["stopReason"], json!("end_turn"));
-    let prompts = sandbox.acp_prompts(&second_session);
-    assert_eq!(prompts.len(), 1);
-    assert_eq!(prompts[0]["prompt"].as_array().unwrap().len(), 2, "새 세션의 첫 말에는 머리말이 다시 붙는다(S11)");
-
-    host.shut_down();
-}
-
-#[test]
-fn 로그인을_기다리던_대화를_닫으면_됨이_돼도_다시_띄우지_않는다() {
-    let sandbox = Sandbox::new();
-    sandbox.work("cart", &[]);
-    let host = sandbox.host(sandbox.login_shell_for_login("needs-auth", NO_BROWSER, &[]));
-    let closed = host.new_conversation("cart", Agent::Codex).expect("닫을 대화");
-    let kept = host.new_conversation("cart", Agent::Codex).expect("남길 대화");
-    host.close_conversation("cart", &closed.id).expect("닫기");
-
-    sandbox.log_in(Agent::Codex);
-    host.check_engine(Agent::Codex, true).expect("다시 확인");
-
-    let spawned = |id: &str| {
-        sandbox.record("cart", id).iter().filter(|line| line["payload"]["state"] == "spawning").count()
-    };
-    assert_eq!(spawned(&closed.id), 1, "닫은 대화는 다시 띄우지 않는다");
-    assert_eq!(spawned(&kept.id), 2, "남은 대화는 다시 띄운다");
-    assert!(sandbox.agents_row("cart", &closed.id)["agentSessionId"].is_null());
-    host.shut_down();
-}

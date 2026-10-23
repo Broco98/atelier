@@ -1,11 +1,64 @@
 // Thread 화면이 Thread 엔진과 주고받는 값(v1 티켓 05 · 구현 스펙 §4 · §18). 모양의 정본은 크레이트 `atelier-core`(`threads.rs`의
-// `ThreadFile` · `Participant` · `ThreadSummary`)와 `atelier-acp`(`host/thread.rs`의 `ThreadView` · `ThreadLink`)의 serde이고, 여기는
-// 그 말을 옮겨 적는다. three-axes 대화의 `chat/types.ts`와 같은 자리다 — 옛 대화가 걷히면(08) 이 파일만 남는다.
+// `ThreadFile` · `Participant` · `ThreadSummary`)와 `atelier-acp`(`host/thread.rs`의 `ThreadView` · `ThreadLink`, `login.rs`의
+// `EngineState`)의 serde이고, 여기는 그 말을 옮겨 적는다 — 칸 이름이 어긋나면 tsc도 IPC 검사도 못 보므로, Rust 쪽 검사가 그 꼴을
+// 글자로 못박는다(`engine_check.rs`의 「화면이 읽는 꼴」 · `thread.rs`의 이벤트 꼴). three-axes 대화의 값(`chat/types.ts`)은 v1
+// 티켓 08이 걷으며 Thread가 쓰는 것만 여기로 옮겼다.
 
-import type { QueuedMessage } from "@/features/chat/types";
 import type { Avatar } from "./faces";
 
-export type { EngineCheck, LoginProgress, MissingProgram, QueuedMessage } from "@/features/chat/types";
+/** 대기 줄의 말 하나 — 턴이 도는 동안 보낸 말이다(`atelier_acp::QueuedMessage`). 입력창 위 「대기 중」에 선다. */
+export interface QueuedMessage {
+  /** 대기 id — 고치기 · 지우기 · 지금 전하기가 이것으로 고른다. */
+  id: string;
+  text: string;
+  /** 「지금 전하기」를 눌러 도는 턴의 멈춤을 기다리는 말이다. 그런 말은 늘 맨 앞에 하나뿐이다. */
+  sendNow: boolean;
+}
+
+/**
+ * 엔진 확인의 답. 못 찾았으면 빠진 것마다 이름과 설치 명령이 실리고, 찾았으면 로그인돼 있는지가 실린다(안내 카드,
+ * three-axes 티켓 12).
+ */
+export type EngineCheck =
+  | { state: "found"; programs: { name: string; path: string }[]; loggedIn: boolean }
+  | { state: "missing"; missing: MissingProgram[] };
+
+/** 로그인 셸의 PATH에서 못 찾은 실행 파일 하나 — 이름과 설치 명령(안내 카드의 「명령 복사」가 이것을 넣는다). */
+export interface MissingProgram {
+  name: string;
+  install: string;
+}
+
+/**
+ * 로그인 명령의 진행(`atelier_acp::LoginProgress`). 도는 중이면 명령이 찍은 첫 `https://` URL(「링크 복사」의 값 — 찍기 전에는
+ * `null`), 끝났으면 사람이 취소했는지와 exit code(시그널로 끝났으면 `null`)다.
+ */
+export type LoginProgress =
+  | { state: "running"; url: string | null }
+  | { state: "ended"; cancelled: boolean; exitCode: number | null };
+
+/**
+ * 엔진 상태 이벤트가 싣는 것(`atelier_acp::EngineState`). `loggedIn`이 `null`이면 모른다 — 못 찾았거나 로그인 명령이 도는
+ * 중이다. 「끝남」과 함께 온 `loggedIn`이 끝난 뒤 저절로 다시 돈 확인의 답이다. 엔진은 Claude Code뿐이다(S3).
+ */
+export interface EngineState {
+  agent: "claude" | "codex";
+  found: boolean;
+  loggedIn: boolean | null;
+  login: LoginProgress | null;
+}
+
+/**
+ * 앱 종료 확인 창의 셈(three-axes 티켓 23 · S40, `atelier_acp::QuitCounts`) — 앱 전체에서, 끄면 잃는 것들이다.
+ */
+export interface QuitCounts {
+  /** 턴이 도는 Session 수. */
+  running: number;
+  /** 대기 중인 말 수 — 대기 줄은 엔진 메모리에만 있어 앱을 끄면 사라진다. */
+  queued: number;
+  /** 답하지 않은 권한 요청 수. */
+  approvals: number;
+}
 
 /** Thread의 참여자 하나(`atelier_core::Participant`). handle 밖의 칸은 Session이 열리며 채워진다. */
 export interface Participant {

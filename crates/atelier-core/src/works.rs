@@ -453,14 +453,9 @@ pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
-/// 앱이 대화를 기록하는 폴더(three-axes 결정 18). spec 밖이라 스펙 트리 · 검색 · 아카이브 문서에 뜨지 않고,
-/// 아카이브가 work 폴더째 옮기므로 기록도 함께 간다.
-fn agents_dir(work_dir: &Path) -> PathBuf {
-    work_dir.join("agents")
-}
-
-/// work 하나의 자리들 — 절대 경로다. 대화 호스트가 에이전트의 작업 자리(three-axes 결정 17)와 기록 자리
-/// (three-axes 결정 18)를 여기서 짓는다. 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다.
+/// work 하나의 자리들 — 절대 경로다. 호스트가 Work에 이은 Thread의 Session 자리(three-axes 결정 17)를 여기서 짓는다.
+/// 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다. three-axes의 work 대화 기록 폴더
+/// `agents/`는 v1 티켓 08이 걷었다 — 디스크에 남은 것은 읽지도 옮기지도 않는다(v1 구현 스펙 §4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkPlaces {
     /// `works/<slug>`.
@@ -471,8 +466,6 @@ pub struct WorkPlaces {
     pub trees: PathBuf,
     /// 프로젝트마다의 워크트리 `trees/<project>` — `projects`에 적힌 순서다.
     pub worktrees: Vec<PathBuf>,
-    /// 대화 기록 폴더 `agents/`. 있다고 보증하지 않는다 — 만드는 쪽이 `work.json`을 보고 만든다.
-    pub agents: PathBuf,
 }
 
 /// 읽은 work의 자리들. 파일을 읽거나 폴더를 만들지 않는다.
@@ -482,7 +475,6 @@ pub fn work_places(works_root: &Path, work: &Work) -> WorkPlaces {
         spec: spec_dir(&dir),
         trees: worktrees_dir(&dir),
         worktrees: worktree_paths(works_root, work),
-        agents: agents_dir(&dir),
         dir,
     }
 }
@@ -1332,8 +1324,8 @@ mod tests {
         }
     }
 
-    /// **work의 자리가 시작이 만든 폴더와 같다** — 대화 호스트가 에이전트의 작업 자리를 여기서 짓는다(three-axes
-    /// 결정 17 · 18). 자리를 옮기는 날 이것이 빨개진다.
+    /// **work의 자리가 시작이 만든 폴더와 같다** — 호스트가 Session의 작업 자리를 여기서 짓는다(three-axes 결정 17).
+    /// 자리를 옮기는 날 이것이 빨개진다.
     #[test]
     fn work_places_are_the_folders_start_made() {
         let (_tmp, works, projects) = setup();
@@ -1350,11 +1342,9 @@ mod tests {
                 spec: dir.join("spec"),
                 trees: dir.join("trees"),
                 worktrees: vec![dir.join("trees/fe"), dir.join("trees/be")],
-                agents: dir.join("agents"),
             }
         );
         assert!(places.spec.is_dir() && places.worktrees.iter().all(|tree| tree.is_dir()));
-        assert!(!places.agents.exists(), "자리를 짓기만 하고 폴더를 만들지 않는다");
     }
 
     #[test]

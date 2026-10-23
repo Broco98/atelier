@@ -298,7 +298,7 @@
          modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`), 「LLM이 받는
                                         텍스트」 창(같은 DS `Dialog`)과 검색 팔레트(DS `.at-palette`)
          raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`)와 사이드바의 알림 띠(DS `.at-band`)
-         lifted   hairline + card       글 위에 떠 있는 알약 — 지금은 대화창 입력창 위의 「N개 파일 변경됨」(DS `.at-floatpill`) */
+         lifted   hairline + card       글 위에 떠 있는 알약 — 지금은 Thread 입력창 위의 「N개 파일 변경됨」(DS `.at-floatpill`)과 「맨 아래로」 */
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
     --shadow-lifted: var(--shadow-hairline), var(--shadow-card);
@@ -1555,10 +1555,10 @@ body[data-palette-open] [data-scrollbar] {
     min-height: 1px;
 }
 
-/* **대화창의 값은 DS 토큰이다**(three-axes 결정 31 · codex-ds 스펙 S2). 한때 대화창은 캔버스 값을 제 범위(`[data-chat]`)의 토큰으로
+/* **Thread 화면의 값은 DS 토큰이다**(three-axes 결정 31 · codex-ds 스펙 S2). 한때 three-axes 대화창은 캔버스 값을 제 범위(`[data-chat]`)의 토큰으로
    들었다 — 앱의 전역 토큰이 아직 Codex 값이 아니었다. codex-ds가 대화 · 도구 · diff · 컴포저 토큰을 전역에 세워(위 `@theme`의 Codex
    색 · 반경 `bubble` · `composer` · 그림자 `composer` · 크기 `size-thread`) 그 범위를 걷고 같은 값의 전역 이름으로 옮겼다 — 다크도
-   따라온다. 고친 곳의 면 · 점(스펙 창 · 트리 · 레일)도 전역의 `accent-soft` · `dot-new`다.
+   따라온다.
 
    「생각 중」의 반짝임(캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 2초마다 지나간다. WebKit은 `-webkit-background-clip`과
    `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 멎은 옅은 글자다 — 위 동작 줄이기

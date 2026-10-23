@@ -1,5 +1,4 @@
 import { useEffect, useState, type RefObject } from "react";
-import type { Quote } from "@/features/chat/types";
 
 // 「❝ 이 자리를 두고 말하기」(three-axes 티켓 27 · 스토리 78 · 79 · 83) — 스펙 창에서 글을 고르면 그 자리 곁에 뜨고, 누르면 고른 자리를
 // 인용으로 넘긴다. 렌더 보기와 원문 보기 모두에서 된다.
@@ -10,7 +9,24 @@ import type { Quote } from "@/features/chat/types";
 // 않는다.
 //
 // 모양은 프로토타입 D의 `#qfloat`(28 · 좌우 12 · 알약 · 어두운 면 · 흰 12/16 500 · 떠 있는 그림자)이고, 고른 글의 첫 줄 바로 위에
-// 선다(위에 자리가 없으면 아래). 스크롤 상자 안의 내용 층에 놓여 글과 함께 구른다. 스펙 창은 대화창 밖이라 DS 토큰을 쓴다.
+// 선다(위에 자리가 없으면 아래). 스크롤 상자 안의 내용 층에 놓여 글과 함께 구른다.
+//
+// 받는 쪽이 있을 때만 선다(`SpecViewer`의 `onQuote`). three-axes는 고른 자리를 Work 안 대화창의 입력창에 붙였고, 그 연결은 대화창과
+// 함께 v1 티켓 08이 걷었다 — 넓힌 카드의 문서에서 지금 Thread의 입력창으로 다시 잇는 것은 v1 티켓 35다(S41).
+
+/**
+ * 인용(three-axes 티켓 27, `atelier_acp::Quote`) — 스펙 창에서 고른 자리. 보내기 명령에 실려 가면 엔진이 사람의 글 앞에 인용
+ * 블록(실제 경로 + 줄 범위 참조와 마크다운 인용 글, S12)을 두고, `sent` 줄에 이 값이 그대로 남아 보낸 말 위에 선다.
+ */
+export interface Quote {
+  /** spec 폴더 기준 경로(`drafts/idea.md`). */
+  file: string;
+  /** 원문 줄 범위(1부터, 끝 포함) — 렌더 보기면 고른 글이 걸친 첫 블록의 시작 줄부터 마지막 블록의 끝 줄까지, 원문 보기면 고른 줄 그대로다. */
+  start: number;
+  end: number;
+  /** 고른 글. */
+  text: string;
+}
 
 /** 단추가 서는 높이와 고른 글과의 틈. */
 const HEIGHT = 28;

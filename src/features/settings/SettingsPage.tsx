@@ -13,15 +13,10 @@ import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
-import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import SpecLayoutPage from "@/features/spec-layout/SpecLayoutPage";
-import { chatApi } from "@/features/chat/api";
-import { AGENTS } from "@/features/chat/agents";
-import type { Agent, EngineLists } from "@/features/chat/types";
 import { hooksApi, settingsApi } from "./api";
-import { chooseDefaultAgent, chooseEngineDefault, type EngineField } from "./chat-settings";
-import { ChatSection } from "./ChatSection";
 import { notificationChoice, patchNotifications } from "./notifications";
 import { settingsItem, type SettingsItemKey } from "./pages";
 import { exceptionsFromText, exceptionsText } from "./process-exceptions";
@@ -215,10 +210,6 @@ const ITEM_PAGES: Record<SettingsItemKey, { body: () => ReactNode; saves: boolea
   // **이 항목도 게이트가 없다** — 레이아웃은 `settings.json`에 살지 않고(spec 레이아웃 결정 25) 설정
   // 초안의 저장 버튼도 지나지 않는다. 우리 파일이 깨져 있다고 레이아웃을 못 볼 이유가 없다. 저장은 편집기의 것이다.
   "spec-layout": { body: () => <SpecLayoutPage />, saves: false },
-  chat: {
-    body: () => <SettingsFileGate>{(settings) => <ChatSettingsPage initial={settings} />}</SettingsFileGate>,
-    saves: true,
-  },
 };
 
 /**
@@ -550,54 +541,6 @@ function NotificationSettingsPage({ initial }: { initial: Settings }) {
     <div role="group" aria-label="알림 설정">
       <SaveButton {...section.button(enabled)} />
       <NotificationSection settings={view} granted={granted} onChange={change} />
-    </div>
-  );
-}
-
-/**
- * 엔진 목록(three-axes 티켓 09 · S16) — 그 엔진의 세션이 마지막으로 열릴 때 본 모델 · 모드 목록이다. 설정 「대화」가 열릴 때 엔진마다
- * 묻는다. 파일만 읽는 로컬 IPC라 예외 목록의 기본값 조회와 같은 규칙으로 둔다(다시 시도 없음 · 네트워크 상관없음). **열 때마다
- * 새로 묻는다**(`gcTime: 0`) — 그사이 연 대화가 목록을 고쳐 썼을 수 있다.
- */
-const engineListsQuery = (agent: Agent) =>
-  queryOptions({
-    queryKey: ["settings", "engineLists", agent],
-    queryFn: () => chatApi.engineLists(agent),
-    retry: false,
-    staleTime: "static",
-    gcTime: 0,
-    networkMode: "always",
-  });
-
-/** 엔진마다의 목록. 아직 안 왔거나 못 받은 엔진은 `null`이다 — 고르기는 엔진 기본값 하나만 보인다. */
-function useEngineLists(): Record<Agent, EngineLists | null> {
-  const results = useQueries({ queries: AGENTS.map(engineListsQuery) });
-  return Object.fromEntries(AGENTS.map((agent, at) => [agent, results[at]?.data ?? null])) as Record<Agent, EngineLists | null>;
-}
-
-/**
- * 「대화 설정」 페이지 조각(three-axes 결정 16 · 티켓 25) — 구획 + 제 저장 버튼. 초안을 제가 드는 이유는 `TerminalSettingsPage`와
- * 같다. 저장 조건은 알림 설정처럼 「고친 것이 있고 쓰는 중이 아니다」가 전부다 — 자유 입력 칸이 없다.
- *
- * **셸에 먹일 것이 없다.** 이 값을 쓰는 것은 대화 호스트(새 대화 때 파일을 읽는다)와 `+`(누를 때 파일을 읽는다)라, 저장이 곧 적용이다.
- * 이미 열린 대화는 그대로다(스토리 113).
- */
-function ChatSettingsPage({ initial }: { initial: Settings }) {
-  const section = useSectionSave("chat", initial.chat, () => {});
-  const lists = useEngineLists();
-  const enabled = section.dirty && !section.saving;
-
-  return (
-    <div role="group" aria-label="대화 설정">
-      <ChatSection
-        chat={section.draft}
-        lists={lists}
-        onChooseAgent={(agent) => section.edit((current) => chooseDefaultAgent(current, agent))}
-        onChooseEngine={(agent: Agent, field: EngineField, value: string | null) =>
-          section.edit((current) => chooseEngineDefault(current, agent, field, value))
-        }
-      />
-      <SaveButton {...section.button(enabled)} />
     </div>
   );
 }

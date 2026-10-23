@@ -121,7 +121,7 @@ const HANDLERS: &[(&str, Handler)] = &[
         let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
         ok(atelier_core::read_work_diff(&works_dir(), &projects_dir(), &slug, &project, &path))
     }),
-    // PR은 이 다리의 PATH에서 `gh`를 찾는다 — 앱처럼 대화 호스트가 쥔 로그인 셸 PATH가 없다. L4는 가짜 `gh`를 PATH 앞에 두어
+    // PR은 이 다리의 PATH에서 `gh`를 찾는다 — 앱처럼 Thread 엔진이 쥔 로그인 셸 PATH가 없다. L4는 가짜 `gh`를 PATH 앞에 두어
     // 진짜 GitHub으로 나가지 않는다(없으면 「없음」이다).
     ("read_work_prs", |a| ok(atelier_core::read_work_prs(&works_dir(), &text(a, "slug")?, None))),
     ("search", |a| {
@@ -228,39 +228,11 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 시작 보고(프로세스 스펙 S11)는 **이 실행이 뜰 때 한 일**이다 — 앱 프로세스가 붙잡아 둔 값이라, 호출마다
     // 새로 뜨는 다리에는 붙잡을 실행이 없다. 거절되면 프런트는 토스트 없이 넘어간다(부팅 때의 설정 읽기와 같다).
     ("startup_report", |_| in_app_only("시작 보고는 앱 프로세스가 붙잡아 둔 값입니다")),
-    // 대화 명령(three-axes 티켓 05)은 **앱 프로세스가 쥔 대화 호스트**를 부른다 — 호스트는 오래 사는 에이전트 프로세스와
-    // 그 연결을 쥔다. 호출마다 새로 뜨고 끝나는 다리는 에이전트를 쥘 수 없고, 띄운다 해도 다리가 끝나는 순간 함께 끊긴다.
-    // 기록 읽기 · 목록처럼 파일만 읽는 것도 같이 둔다 — 떠 있는 대화의 마지막 seq는 호스트 메모리에 있다. 대화 기능은 L4로
-    // 재지 않는다(구현 스펙). 거절되면 대화창은 무너지지 않고 그 거절을 견딘다.
-    ("chat_check_engine", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_list", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_read_record", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_new", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_switch_agent", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_send", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_close", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 멈추기 · 대기 줄(three-axes 티켓 07) — 대기 줄은 호스트 메모리에만 있다(S13).
-    ("chat_stop", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_edit_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_delete_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_send_now", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 권한 답(three-axes 티켓 08) — 걸린 권한 요청의 답할 자리는 호스트가 쥔 연결 안에 있다.
-    ("chat_answer_permission", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 모델 · 모드 · 계획 바꾸기와 엔진 목록(three-axes 티켓 09) — 바꾸기는 떠 있는 에이전트에 곧바로 넣는다. 엔진 목록은 파일만
-    // 읽지만 대화 명령의 한 가족이라 같이 둔다(설정 쪽은 거절되면 「엔진 기본값」만 보인다).
-    ("chat_set_model", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_set_mode", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_set_plan", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_engine_lists", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 종료 확인의 대화 셈(three-axes 티켓 23) — 대기 줄과 걸린 물음은 호스트 메모리에만 있다(S13).
-    ("chat_quit_counts", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 로그인 시작 · 취소(three-axes 티켓 12)는 호스트가 쥔 로그인 명령 프로세스를 띄우고 거둔다 — 끝나면 확인을 다시 돌고
-    // 기다리던 대화를 다시 띄우는 것까지 호스트의 일이라, 뜨고 끝나는 다리가 쥘 수 없다.
-    ("chat_start_login", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_cancel_login", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // Thread 명령(v1 티켓 04 · 구현 스펙 §18)은 대화 명령과 같은 까닭이다 — Thread 엔진은 앱 프로세스가 쥔 대화 호스트에 산다.
-    // 목록 · 기록 읽기도 같이 둔다 — 색인과 떠 있는 Session의 기록 끝은 엔진 메모리에 있다. Thread 엔진은 L4로 재지 않는다(구현
-    // 스펙 「L4는 더하지 않는다」).
+    // Thread 명령(v1 티켓 04 · 구현 스펙 §18)은 **앱 프로세스가 쥔 Thread 엔진**을 부른다 — 엔진은 오래 사는 Agent 프로세스와 그
+    // 연결을 쥔다. 호출마다 새로 뜨고 끝나는 다리는 Agent를 쥘 수 없고, 띄운다 해도 다리가 끝나는 순간 함께 끊긴다. 목록 · 기록
+    // 읽기도 같이 둔다 — 색인과 떠 있는 Session의 기록 끝은 엔진 메모리에 있다. 로그인 시작 · 취소도 엔진이 쥔 로그인 명령
+    // 프로세스를 띄우고 거둔다. Thread 엔진은 L4로 재지 않는다(구현 스펙 「L4는 더하지 않는다」). three-axes의 `chat_` 명령은 v1
+    // 티켓 08이 걷었다.
     ("thread_check_engine", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_start_login", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_cancel_login", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
@@ -440,7 +412,7 @@ mod tests {
         for (name, manifest) in [
             ("atelier-app", include_str!("../../../src-tauri/Cargo.toml")),
             ("atelier-cli", include_str!("../../atelier-cli/Cargo.toml")),
-            // 대화 호스트가 사는 크레이트 — 앱 실행 파일 안으로 들어간다(three-axes 결정 12).
+            // Thread 엔진이 사는 크레이트 — 앱 실행 파일 안으로 들어간다(three-axes 결정 12).
             ("atelier-acp", include_str!("../../atelier-acp/Cargo.toml")),
         ] {
             assert!(
@@ -463,8 +435,7 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 30] = [
-        ("chat.rs", include_str!("../../../src-tauri/src/chat.rs")),
+    const APP_SOURCES: [(&str, &str); 29] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -620,23 +591,15 @@ mod tests {
         assert!(confirm < exit, "`quit_app`이 끈 뒤에 「확인됨」을 세운다 — 끄는 사이의 `terminate:`가 다시 막는다");
     }
 
-    /// **대화 명령(`chat_`)과 Thread 명령(`thread_`)은 전부 앱 안에서만 돈다**(three-axes 구현 스펙 「앱 잇기」 · v1 구현 스펙
-    /// §18). 대화 호스트는 오래 사는 에이전트 프로세스를 쥐는데, 다리는 부를 때마다 뜨고 끝나는 CLI라 쥘 수 없다 — 성공으로
-    /// 때우는 스텁을 두면 L4가 대화 화면을 관통한 것처럼 보인다. 등록부에서 이름을 읽어 표의 처리기를 **실제로 불러** 거절의 말을
-    /// 본다(인자 없이 — 인자를 요구하는 진짜 처리기라면 다른 말로 거절한다). 대화 명령이나 Thread 명령을 하나도 못 읽으면 읽기가 샌
-    /// 것이다 — Thread 명령을 따로 보는 것은 Work 안 대화창을 걷어 `chat_`이 사라진 날(v1 티켓 08)에도 이 검사가 헛돌지 않게다.
+    /// **Thread 명령(`thread_`)은 전부 앱 안에서만 돈다**(three-axes 구현 스펙 「앱 잇기」 · v1 구현 스펙 §18). Thread 엔진은 오래 사는
+    /// Agent 프로세스를 쥐는데, 다리는 부를 때마다 뜨고 끝나는 CLI라 쥘 수 없다 — 성공으로 때우는 스텁을 두면 L4가 Thread 화면을
+    /// 관통한 것처럼 보인다. 등록부에서 이름을 읽어 표의 처리기를 **실제로 불러** 거절의 말을 본다(인자 없이 — 인자를 요구하는 진짜
+    /// 처리기라면 다른 말로 거절한다). Thread 명령을 하나도 못 읽으면 읽기가 샌 것이다.
     #[test]
-    fn 대화_명령은_모두_다리로_탈_수_없다() {
-        let chat: Vec<String> = registered()
-            .into_iter()
-            .filter(|name| name.starts_with("chat_") || name.starts_with("thread_"))
-            .collect();
-        assert!(!chat.is_empty(), "등록부에서 대화 명령을 하나도 못 읽었다 — 앱이 대화 호스트를 안 잇거나 읽기가 샜다");
-        assert!(
-            chat.iter().any(|name| name.starts_with("thread_")),
-            "등록부에서 Thread 명령을 하나도 못 읽었다 — 앱이 Thread 엔진을 안 잇거나 읽기가 샜다"
-        );
-        for name in chat {
+    fn thread_명령은_모두_다리로_탈_수_없다() {
+        let thread: Vec<String> = registered().into_iter().filter(|name| name.starts_with("thread_")).collect();
+        assert!(!thread.is_empty(), "등록부에서 Thread 명령을 하나도 못 읽었다 — 앱이 Thread 엔진을 안 잇거나 읽기가 샜다");
+        for name in thread {
             let (_, handler) = HANDLERS
                 .iter()
                 .find(|(handled, _)| *handled == name)

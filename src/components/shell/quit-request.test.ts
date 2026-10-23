@@ -25,14 +25,14 @@ afterEach(async () => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("묻는 중 표시", () => {
-  // 셈은 셸과 대화 둘이다(three-axes 티켓 23). 여기서 재는 것은 표시가 내려가는 길이라 대화는 늘 잃을 것이 없다.
+  // 셈은 셸과 Thread 둘이다(S40). 여기서 재는 것은 표시가 내려가는 길이라 Thread는 늘 잃을 것이 없다.
   const counter = (shells: QuitCounts = { live: 1, running: 0, spawned: 0 }) => {
     let calls = 0;
     return {
       calls: () => calls,
       fn: async (): Promise<QuitTally> => {
         calls += 1;
-        return { shells, chats: { running: 0, queued: 0, approvals: 0 } };
+        return { shells, threads: { running: 0, queued: 0, approvals: 0 } };
       },
     };
   };

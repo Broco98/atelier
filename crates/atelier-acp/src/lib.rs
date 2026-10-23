@@ -1,12 +1,10 @@
-//! 아틀리에의 ACP 코어 — 대화창(판 02)이 짓고, 구현 축의 엔진이 나중에 같은 코어를 쓴다
-//! (three-axes 결정 12).
+//! 아틀리에의 ACP 코어 — Thread의 참여자(Agent)마다 Session 하나를 세운다(v1 구현 스펙 §3). three-axes의 Work 안
+//! 대화창이 지은 코어를 Thread가 이어 쓴다(three-axes 결정 12 · v1 티켓 08).
 //!
 //! 앱 명령은 [`ConversationHost`] 하나만 부른다. 그 아래의 런타임 · 변환기 · 찾기는 호스트가 감춘다.
 
 mod attachments;
-mod chat_settings;
 mod discovery;
-mod engines;
 mod host;
 mod life;
 mod login;
@@ -17,15 +15,13 @@ mod quote;
 mod records;
 mod redact;
 mod runtime;
-mod spec_changes;
 mod thread_tools;
 mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
-pub use engines::EngineLists;
 pub use host::{
-    Conversation, ConversationDefaults, ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, QuitCounts,
-    ThreadLink, ThreadView, TranslatorCommand,
+    ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, QuitCounts, ThreadLink, ThreadView,
+    TranslatorCommand,
 };
 pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};

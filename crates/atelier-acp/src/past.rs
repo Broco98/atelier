@@ -181,7 +181,7 @@ fn said(lines: &[RecordLine]) -> Vec<Said> {
 
 /// 참여자마다 짓는 중인 답 글.
 ///
-/// 「메시지」는 화면이 한 덩이로 그리는 답 글과 같다(`features/chat/fold.ts`의 `appendChunk`): 같은 메시지 id의 답 조각이 다른
+/// 「메시지」는 화면이 한 덩이로 그리는 답 글과 같다(`features/thread/fold.ts`의 `appendChunk`): 같은 메시지 id의 답 조각이 다른
 /// 것(생각 · 도구 · 계획) 없이 이어지면 한 메시지다.
 #[derive(Default)]
 struct Messages<'a> {

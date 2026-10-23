@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT } from "./events";
 
 // Thread 엔진의 이벤트 이름도 **두 언어가 문자열로만** 잇는다(v1 티켓 04 · 구현 스펙 §18). 어긋나면 Host가 답해도 화면은
-// 아무 말이 없다. 선례는 대화 호스트 이벤트(`chat/api.test.ts`)다. 상수를 못 찾으면 던진다(fail-closed).
+// 아무 말이 없다. 상수를 못 찾으면 던진다(fail-closed).
 describe("Thread 엔진 이벤트", () => {
   const source = readFileSync(fileURLToPath(new URL("../../../src-tauri/src/thread.rs", import.meta.url)), "utf8");
   const declared = (name: string): string => {

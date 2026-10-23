@@ -1,7 +1,7 @@
 import { Store } from "@tanstack/react-store";
 import type { QueuedMessage, RecordLine } from "./types";
 
-// Thread 화면의 모듈 스토어(v1 티켓 05) — three-axes 대화 스토어(`chat/chat-store.ts`)와 같은 까닭으로 화면 컴포넌트 밖에 산다.
+// Thread 화면의 모듈 스토어(v1 티켓 05) — 화면 컴포넌트 밖에 산다.
 //
 // - **기록 줄은 앱 층이 받는다.** Thread는 엔진에서 돌고(다른 화면에 가 있어도), 돌아오면 그사이 흐른 줄이 다 보여야 한다. 구독은
 //   `AppShell` 하나(`useThreadFeeds`)이고 그 줄이 여기 쌓인다. Thread를 열 때 읽은 기록도 같은 자리에 합친다 — 두 길이 겹치므로

@@ -95,10 +95,8 @@ impl NotificationSettings {
 
 /// 파일 전체. 구획이 `terminal`·`notifications` 둘이다 — 다른 구획이 생기면 여기 한 줄이다.
 ///
-/// **대화 구획(`chat`)은 여기 칸이 없다**(three-axes 결정 16 · 티켓 25) — 새 대화의 기본 에이전트 · 엔진별 기본 모델 · 시작 모드다.
-/// 화면이 고르고(`src/features/settings/chat-settings.ts`) 대화 호스트가 새 대화 때 읽기만 한다(`atelier-acp`의
-/// `chat_settings.rs` — 깨진 값은 엔진 기본값으로 눕는다). 이 파일에서는 `extra`로 글자 그대로 왕복한다 — 칸을 세우면 손으로
-/// 잘못 적은 에이전트 이름 하나가 설정 화면 전체의 읽기를 막는다.
+/// three-axes의 대화 구획(`chat` — 새 대화의 기본 에이전트 · 모델 · 모드)은 설정의 「대화」 묶음과 함께 걷혔다(v1 티켓 08 ·
+/// S3). 앞서 쓰던 파일에 남은 그 구획은 앱이 읽지 않는 구획이라 `extra`로 글자 그대로 왕복한다 — 사람이 손으로 지운다.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -339,9 +337,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// 대화 구획(three-axes 티켓 25)은 칸 없이 `extra`로 산다 — 그 안의 모르는 키까지 글자 그대로 돌아간다.
+    /// 걷힌 구획(three-axes의 대화 구획, v1 티켓 08)이 남은 파일도 그 구획을 글자 그대로 돌려준다 — 앱은 읽지 않을 뿐 지우지 않는다.
     #[test]
-    fn the_chat_section_survives_a_roundtrip_with_its_unknown_keys() {
+    fn a_section_the_app_no_longer_reads_survives_a_roundtrip() {
         let root = temp_root("chat");
         let chat = serde_json::json!({
             "defaultAgent": "codex",
@@ -356,7 +354,7 @@ mod tests {
 
         let out: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
-        assert_eq!(out["chat"], chat, "대화 구획이 글자 그대로가 아니다");
+        assert_eq!(out["chat"], chat, "걷힌 구획이 글자 그대로가 아니다");
         let _ = std::fs::remove_dir_all(&root);
     }
 

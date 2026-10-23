@@ -239,7 +239,7 @@ function DropdownMenuRadioItem({
   ...props
 }: MenuPrimitive.RadioItem.Props & {
   inset?: boolean
-  /** 보통 항목과 같은 크기 — `note`는 이름 아래 설명 한 줄을 이는 두 줄 줄이다(대화창 모델 · 모드 칩의 메뉴). */
+  /** 보통 항목과 같은 크기 — `note`는 이름 아래 설명 한 줄을 이는 두 줄 줄이다. */
   size?: keyof typeof ITEM_SIZE
 }) {
   return (

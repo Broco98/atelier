@@ -1,13 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useMutationState } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
-import { ChevronDown, Columns2, MessageSquare, MoreHorizontal, X, Zap } from "lucide-react";
+import { ChevronDown, Columns2, MoreHorizontal, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { togglesPanel } from "@/components/shell/PanelToggle";
-import { pickRail, type RailMark } from "@/components/shell/Rail";
+import { pickRail } from "@/components/shell/Rail";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -18,11 +18,6 @@ import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
-import { changeMarksStore, markOpened, marksOf } from "@/features/chat/changes";
-import ChatPane from "@/features/chat/ChatPane";
-import { setQuote } from "@/features/chat/chat-store";
-import { useWorkChatSignal, type WorkChatSignal } from "@/features/chat/status";
-import type { Quote } from "@/features/chat/types";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
@@ -63,7 +58,6 @@ import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { columnOf, dropSplit, otherTab } from "./split-view";
 import { ignoresViewSwitch } from "./doc-refs";
-import { requestReveal } from "./doc-reveal";
 import { cwdRef, specDirRef, specRef, worktreeDirRef } from "./refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel, { PANEL_VIEWS, type PanelView } from "./WorkPanel";
@@ -109,17 +103,6 @@ interface WorksPageProps {
   // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다. `bundle`은 묶음 열에 설 파일 탭이다(위 `onSelectSplit`).
   onDropInto: (source: DragSource, split: SplitSide, bundle: string | null) => void;
 }
-
-/** 레일 `spec` 점의 뜻(three-axes 티켓 26) — 칸의 설명으로 남는다. 트리 행의 점은 `SpecTree`의 `UNSEEN_CHANGE`가 말한다. */
-const UNSEEN_IN_SPEC: RailMark = { label: "고쳐졌는데 아직 열지 않은 파일이 있어요", tone: "new" };
-/**
- * 레일 `chat`의 점(three-axes 티켓 23 · 결정 10) — 그 work의 어느 대화가 나를 기다리거나 끝났고, 대화창이 지금 보이지 않을 때 선다.
- * 기다림이 이긴다(`useWorkChatSignal`).
- */
-const CHAT_RAIL_MARKS: Readonly<Record<WorkChatSignal, RailMark>> = {
-  waiting: { label: "나를 기다리는 대화가 있어요", tone: "wait" },
-  done: { label: "끝났는데 아직 보지 않은 대화가 있어요", tone: "done" },
-};
 
 /**
  * ⌘W가 겨누는 칸 — **켜진 탭**이다(결정 13). 닫을 것이 없으면 `null`이다.
@@ -230,15 +213,22 @@ function WorksPage({
   // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
   // `claude` TUI가 깨진다」가 그대로 재현된다.
   const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
-  // 레일에서 고른 칸(`spec` · `chat` · `files`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는
+  // 레일에서 고른 칸(`spec` · `files`) — 열림 옆에 산다(ui-refresh 판 04). 레일이 패널 **밖**에 서서(ui-refresh 결정 10) 고르는
   // 자리와 그리는 자리가 갈렸고, 둘을 함께 아는 것이 이 화면이라 WorkPanel에서 올라왔다. 저장하지 않는다 — 열림도 저장하지
-  // 않는다. info 칸은 걷었다(codex-ds 결정 25).
+  // 않는다. info 칸은 걷었다(codex-ds 결정 25) — 칸이 둘이라 레일이 선다.
   //
   // **작업을 옮겨도 유지된다**(결정 49). 한때 「작업을 옮기면 spec으로 돌아온다」(앞 판 결정 4)가 공짜로 따라왔다 — 패널이
   // key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워졌기 때문이다. 그것은 코드가 아니라 **구조에서 나온
   // 성질**이었고 되살리지 않는다. 이 화면은 작업을 옮겨도 같은 인스턴스라 이 값도 그대로 따라온다. 패널 접기는 언마운트가
   // 아니라 폭 트랜지션이라 접었다 펴도, 본문 왕복(spec ↔ terminal)에도 유지된다.
   const [panelView, setPanelView] = useState<PanelView>("spec");
+  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). 켜진 칸을 다시 누르면 닫히고, 그 밖에는 그 칸으로 연다 — 규칙은 레일의 것이다
+  // (`pickRail`). 토글 · ⌘Enter는 열림만 뒤집고 고른 칸은 그대로다.
+  const pickPanelView = (next: PanelView) => {
+    const after = pickRail({ open: workPanelOpen, active: panelView }, next);
+    setPanelView(after.active);
+    setWorkPanelOpen(after.open);
+  };
   // 작업 패널 카드의 폭. 칸(바깥 상자 · 틈 · 손잡이 · 접힘)은 공용 틀이 그리고 폭은 여기서 건넨다(ui-refresh 결정 27 — 목록 칸과
   // 같은 나눔). 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 서고 왼쪽으로 끌면 넓어진다. 저장 키는 이 패널 전용이다: 목록
   // 칸과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다. 저장하는 폭은 **카드의 폭**이다(틈은 더하지 않는다).
@@ -256,14 +246,11 @@ function WorksPage({
   // 한 벌이다), 그 판단은 탭이 아니라 **포커스**로 갈린다. `tab`을 안 보므로 의존성도 비었다.
   //
   // (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가 주석까지 읽는다.)
-  //
-  // **뒤집는 몸은 레일의 패널 토글과 같은 함수다**(`togglePanel` — 아래). 대화창이 가운데에 선 동안(three-axes S22) 「뒤집기」가
-  // 열림 하나로 끝나지 않아서 그 판단이 그 함수 하나에 산다. 이 이펙트는 그것을 그때의 것으로 부른다(참조) — 의존성은 비어 있다.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!togglesPanel(e)) return;
       e.preventDefault();
-      togglePanelRef.current();
+      setWorkPanelOpen((open) => !open);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -346,44 +333,6 @@ function WorksPage({
   const specStands = split !== null || tab === "spec";
   const terminalStands = (split !== null && codeTarget === null) || tab === "terminal";
   const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
-  // **`chat` 탭 — 대화창이 가운데에 넓게 선다**(three-axes S21 · 결정 9). 분할에는 들지 않는다: 분할은 늘 `spec ▏ 묶음의 지금 탭`이라
-  // `tab=chat`에 분할이 겹치면(손으로 친 주소 · 그것을 적어 둔 기억) 분할이 이기고 포커스는 문서 열이다(`columnOf`). 대화 탭으로
-  // 가는 갱신은 분할을 함께 끈다(`tabSearch`).
-  const chatStands = split === null && tab === "chat";
-
-  // **한 대화창은 한 곳에**(three-axes S22). `chat` 탭이 떠 있으면 작업 패널은 `chat`을 보이지 않는다 — 패널이 `chat`을 고른 채였으면
-  // 그동안 패널이 비켜서 가운데가 넓어진다(프로토타입 D). 고른 칸과 열림은 그대로 기억한다: `spec`으로 돌아오면 대화가 패널로 돌아온다.
-  const chatAway = chatStands && panelView === "chat";
-  const panelShown = workPanelOpen && !chatAway;
-  // 레일 칸을 눌렀다(ui-refresh 결정 9 · 10). 켜진 칸을 다시 누르면 닫히고, 그 밖에는 그 칸으로 연다 — 규칙은 레일의 것이다
-  // (`pickRail`). 켜짐은 「보이는 패널이 그 칸을 골랐다」라 열림 대신 `panelShown`을 건넨다. 토글 · ⌘Enter는 열림만 뒤집고 고른
-  // 칸은 그대로다.
-  //
-  // **`chat` 탭이 떠 있을 때의 `chat`은 예외다**(S22 · 프로토타입 D) — 그 칸은 켜진 것으로 읽히지만 다시 눌러 닫는 칸이 아니라,
-  // 대화를 패널로 데려오는 칸이다: 가운데는 `spec`으로, 작업 패널은 `chat`으로 간다.
-  const pickPanelView = (next: PanelView) => {
-    if (chatStands && next === "chat") {
-      onSelectTab("spec");
-      setPanelView("chat");
-      setWorkPanelOpen(true);
-      return;
-    }
-    const after = pickRail({ open: panelShown, active: panelView }, next);
-    setPanelView(after.active);
-    setWorkPanelOpen(after.open);
-  };
-  // 패널 토글 · ⌘Enter. 열림만 뒤집는다 — 다만 대화창이 가운데로 가 패널이 비켜선 동안(`chatAway`)은 열림을 뒤집어도 보이는 것이
-  // 없다(그 패널은 `chat`을 못 보인다). 그때 펼치기는 `spec`으로 편다 — 눌러도 아무 일이 없는 버튼이 되지 않게(결정 11·21).
-  const togglePanel = () => {
-    if (chatAway) {
-      setPanelView("spec");
-      setWorkPanelOpen(true);
-      return;
-    }
-    setWorkPanelOpen((open) => !open);
-  };
-  const togglePanelRef = useRef(togglePanel);
-  togglePanelRef.current = togglePanel;
 
   // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
   // (결정 49). 터미널 탭에서 `terminalWork`가 붙들어 둔 작업을 쓰는 것도 그대로 따라온다 —
@@ -562,8 +511,7 @@ function WorksPage({
    * `tab=terminal`), 파일 탭이면 `code`가 그 파일이다(git-integration 티켓 07 — 분할이면 묶음 열이 따라간다). 이 갈림을 닫는
    * 길마다 적지 않고 여기 하나에 둔다 — 셸을 닫는 길은 확인 창 뒤(`requestCloseShell`)와 셸 스스로의 끝까지 여럿이다.
    *
-   * 단일 뷰에서 문서나 대화창을 보는 중(`spec` · `chat` — 대화 탭은 묶음 밖이다, three-axes S21)이면 따라가지 않는다 — 탭 줄에서
-   * 뒤에 있는 칸을 닫은 것은 본문을 안 바꾼다. 묶음이 빈
+   * 단일 뷰에서 문서를 보는 중(`spec`)이면 따라가지 않는다 — 탭 줄에서 뒤에 있는 칸을 닫은 것은 본문을 안 바꾼다. 묶음이 빈
    * 것은 따로다(아래 「묶음이 비면 spec」). **work을 옮긴 순간은 세지 않는다** — 그때의 지금 탭은 다른 work의 것이다.
    *
    * 지금 탭은 한 글자로 접어 구독한다 — 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 다시 그려지지 않게. **의존성이 그 값과
@@ -577,7 +525,7 @@ function WorksPage({
     const before = shown.current;
     shown.current = { owner: tabOwner, key: shownKey };
     if (before.owner !== tabOwner || before.key === shownKey || shownKey === null) return;
-    if ((tab === "spec" || tab === "chat") && split === null) return;
+    if (tab === "spec" && split === null) return;
     const bundle = shownKey === SHELL_SHOWN ? null : shownKey;
     // 주소가 이미 그 탭을 말한다 — 주소를 따라 켜진 탭이다(위 「주소 → 묶음」).
     if (bundle === code) return;
@@ -604,46 +552,6 @@ function WorksPage({
   // 것이지 "누를 것이 있다"는 뜻이 아니다** — 본문은 "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다(결정 11·21).
   // 그래서 `!currentSpec`이 따로 얹힌다.
   const sourceLocked = !currentSpec || ignoresViewSwitch(currentSpec);
-
-  // 고친 곳(three-axes 티켓 26) — 그 work의 표시. 트리의 점과 레일 `spec`의 점이 「아직 열지 않은 고친 파일」(`unseen`)을 읽는다.
-  // **열었다 = 본문에 문서가 서 있고 그 파일이 지금 문서다.** 고친 파일을 보던 중에 턴이 끝났어도 점이 서지 않고(프로토타입 D),
-  // 터미널 탭에서 지금 문서가 고쳐졌으면 spec으로 돌아올 때 지운다. 문단의 표시는 스펙 창이 스스로 읽는다(`SpecViewer`).
-  // 이 화면은 점(`unseen`)만 구독한다 — 문단의 표시가 서고 지워질 때마다 화면 전체가 다시 그려지지 않게.
-  const unseen = useStore(changeMarksStore, (state) => marksOf(state, panelWork?.slug ?? "").unseen);
-  const openedSpec = panelWork && specStands ? currentSpec : null;
-  useEffect(() => {
-    if (panelWork && openedSpec && unseen.includes(openedSpec)) markOpened(panelWork.slug, openedSpec);
-  }, [panelWork, openedSpec, unseen]);
-  // 레일 `spec`의 점 — 아직 열지 않은 고친 파일이 있고 트리가 지금 안 보일 때(프로토타입 D). 트리가 보이면 그 행들의 점이 말한다.
-  // 레일 `chat`의 점 — 그 work의 대화가 나를 기다리거나 끝났고 대화창이 지금 안 보일 때(three-axes 결정 10). 대화창이 보이면(가운데 `chat` 탭
-  // 이거나 작업 패널이 `chat`을 보인다) 대화 탭의 점이 말한다.
-  const chatSignal = useWorkChatSignal(panelWork?.slug ?? null);
-  const chatVisible = chatStands || (panelShown && panelView === "chat");
-  const railMarks: Partial<Record<PanelView, RailMark>> = {};
-  if (unseen.length > 0 && !(workPanelOpen && panelView === "spec")) railMarks.spec = UNSEEN_IN_SPEC;
-  if (chatSignal && !chatVisible) railMarks.chat = CHAT_RAIL_MARKS[chatSignal];
-  // 문서에서 고른 자리(three-axes 티켓 27) — 그 work의 지금 대화의 입력창에 인용 칩으로 붙인다. 대화창이 가려져 있으면(작업 패널이
-  // 닫혔거나 다른 칸을 보이면) 작업 패널을 `chat`으로 연다 — 켜진 칸을 다시 누른 것이 아니라서 레일 토글 규칙(`pickPanelView`)은
-  // 쓰지 않는다: 이미 보이는 대화창을 닫으면 안 된다.
-  const quoteWork = selected?.slug ?? null;
-  const quoteDoc = useCallback(
-    (quote: Quote) => {
-      if (!quoteWork) return;
-      setQuote(quoteWork, quote);
-      setPanelView("chat");
-      setWorkPanelOpen(true);
-    },
-    [quoteWork],
-  );
-  // 대화창의 문서 링크(알약 목록의 파일) — 그 파일을 첫 고친 자리로 연다(스토리 72). 문서 링크와 같은 길이라 히스토리를 만들고
-  // 탭을 spec으로 돌린다(`fileSearch`). 줄은 스펙 창이 그 파일을 그린 뒤 찾아간다(`doc-reveal`).
-  const openDoc = useCallback(
-    (path: string, line: number | null) => {
-      if (panelWork) requestReveal(panelWork.slug, path, line);
-      onSelectFile(path, true);
-    },
-    [panelWork, onSelectFile],
-  );
 
   /**
    * files 트리에서 파일 행을 눌렀다 — 「파일 탭 열기」다(스토리 23 — replace: 트리 훑기는 뒤로가기 기록을 안 쌓는다, 스토리 59).
@@ -739,8 +647,8 @@ function WorksPage({
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
     // 본문에 묶음의 탭(셸 · 파일 탭)이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
-    // 화면에서 아무것도 안 바뀌어야 한다. 가운데의 대화창(`chat` 탭 — 묶음 밖, three-axes S21)도 그대로다.
-    if (emptied && ((tab !== "spec" && tab !== "chat") || split !== null)) changeSplit(null, "spec");
+    // 화면에서 아무것도 안 바뀌어야 한다.
+    if (emptied && (tab !== "spec" || split !== null)) changeSplit(null, "spec");
   }, [tabCount, tabOwner, tab, split, changeSplit]);
 
   // 떨궜다. **묶음의 칸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
@@ -825,7 +733,6 @@ function WorksPage({
       onNavigate={followLink}
       onCopy={copyText}
       docMenu={{ view: docView, onCopyPath: copyDocPath }}
-      onQuote={quoteDoc}
     />
   );
   // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는 자리만 새로 잡힌다(in-app-terminal
@@ -882,9 +789,6 @@ function WorksPage({
         onOpenFolder: () => openWorkFolder(panelWork.slug, null),
         onCopyPath: () => copyText(specDirRef(panelWork.slug)),
       }}
-      // `spec` 바로 뒤의 `chat`(three-axes S21 · 결정 9) — 대화창을 가운데에 띄운다. 묶음 밖의 고정 칸이라 숫자 키를 받지 않고(⌘1은
-      // spec, ⌘2~9는 묶음 그대로 — git-integration 결정 31) 분할에 들지 않는다. 켜짐은 `spec`과 같은 뜻이다 — 「본문이 대화창인가」.
-      fixed={[{ id: "chat", label: "chat", icon: MessageSquare, on: chatStands, onSelect: () => onSelectTab("chat") }]}
       // 본문이 묶음을 보여줄 때 — 셸이든 파일 탭이든 — 켜진 칸이 선다. 주소가 셸을 말해도 **켜진 셸이 없으면** 본문은 「아직
       // 셸이 없어요」다(git-integration 판 01): 묶음에 켤 셸이 없어 지금 탭이 파일 탭으로 남았고(`withShellActive`), 자동 셸도
       // 안 뜨는 work(프로젝트 둘 이상)이다. 그 파일 탭을 켜면 본문과 켜진 칸이 다른 것을 말한다.
@@ -1108,20 +1012,11 @@ function WorksPage({
   // 있다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든 패널은 틀의 패널 칸에 딱 한 번 그려진다. 그래서 뷰 탭을
   // 오가도 패널 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
   //
-  // **문서 · 대화 · 터미널 · 코드 카드가 같은 자리 · 같은 머리다** — 넷 다 탭 줄을 머리(`head`)로 이고 그 줄의 바닥을 든다
-  // (`TAB_ROW_CARD`). 오가도 카드와 탭 줄이 새로 서지 않는다(`Frame`의 `Card`) — 방금 누른 칸의 포커스와 줄의 스크롤이 그대로다.
-  // 그래서 문서 · 코드 카드의 경로 줄(`PathBar`)은 머리가 아니라 몸의 첫 줄로 건넨다 — 탭 줄 아래다: 머리 자리에 묶음이 서면 탭
-  // 줄이 그 자리에서 다른 것이 된다.
-  const body = splitView ? undefined : chatStands && selected ? (
-    // 대화창 — 작업 패널의 `chat` 보기와 **같은 대화창**이 가운데에 넓게 선다(three-axes S21 · 스토리 17 · 18). 카드 머리는 다른
-    // 본문과 같은 탭 줄이고, 대화창이 그 아래 제 머리(대화 탭 줄)를 든다. 흐름과 입력창은 대화창이 읽기 좋은 폭에 가운데로
-    // 모은다(`ChatPane`).
-    //
-    // 문서 링크(도구 줄의 파일 · 알약 목록)는 패널과 같은 길이다 — 문서를 고르면 탭이 `spec`으로 돌아간다(`fileSearch`, 스토리 19).
-    <Card as="main" label="대화" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
-      <ChatPane work={selected.slug} visible specDir={selected.specDir} onOpenDoc={openDoc} />
-    </Card>
-  ) : terminalWork ? (
+  // **문서 · 터미널 · 코드 카드가 같은 자리 · 같은 머리다** — 셋 다 탭 줄을 머리(`head`)로 이고 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
+  // 오가도 카드와 탭 줄이 새로 서지 않는다(`Frame`의 `Card`) — 방금 누른 칸의 포커스와 줄의 스크롤이 그대로다. 그래서 문서 · 코드
+  // 카드의 경로 줄(`PathBar`)은 머리가 아니라 몸의 첫 줄로 건넨다 — 탭 줄 아래다: 머리 자리에 묶음이 서면 탭 줄이 그 자리에서
+  // 다른 것이 된다.
+  const body = splitView ? undefined : terminalWork ? (
     // 터미널 — 탭 줄 아래가 곧 셸이다(Terminal 화면과 같은 카드). 바탕은 터미널 테마를 따른다.
     <Card as="main" label="터미널" tone="terminal" className={cn("flex-1", TAB_ROW_CARD)} head={tabRow}>
       {terminalBody}
@@ -1174,7 +1069,7 @@ function WorksPage({
     <Frame
       sidebarOpen={sidebarOpen}
       head={head}
-      // 레일(ui-refresh 결정 9 · 10)의 칸 — `spec` · `chat` · `files`. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도
+      // 레일(ui-refresh 결정 9 · 10)의 칸 — `spec` · `files`. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도
       // 머리 줄의 패널 토글(틀이 패널 칸에서 짓는다)도 없다. 칸이 둘이라 레일 열이 서고(codex-ds 결정 25 — `railStands`) 토글은 그
       // 위 머리 줄에 선다. **두 본문 모두에** 선다 — 한때 터미널 본문에서 여는 버튼을 뺐던 까닭(결정 11 — 그때 패널이 거기
       // 없었다)은 사라졌고, 지금은 양쪽 다 패널을 이고 있다.
@@ -1184,9 +1079,6 @@ function WorksPage({
               items: PANEL_VIEWS,
               active: panelView,
               onPick: pickPanelView,
-              marks: railMarks,
-              // 대화창이 가운데에 선 동안 레일 `chat`은 켜진 것으로 읽힌다(three-axes S22).
-              outside: chatStands ? ["chat"] : [],
             }
           : undefined
       }
@@ -1209,9 +1101,8 @@ function WorksPage({
         // 두 navigate가 한 틱에 겹친다.
         panelWork
           ? {
-              // 열림은 보이는가다 — 대화창이 가운데로 가 패널이 비켜선 동안(`chatAway`)은 닫힌 것으로 읽힌다(three-axes S22).
-              open: panelShown,
-              onToggle: togglePanel,
+              open: workPanelOpen,
+              onToggle: () => setWorkPanelOpen((open) => !open),
               size: panelSize,
               label: "작업 패널",
               children: (
@@ -1225,9 +1116,6 @@ function WorksPage({
                   onCopy={copyText}
                   onOpenFolder={() => openWorkFolder(panelWork.slug, null)}
                   open={workPanelOpen}
-                  chatElsewhere={chatStands}
-                  unseen={unseen}
-                  onOpenDoc={openDoc}
                 />
               ),
             }

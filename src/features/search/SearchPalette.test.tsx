@@ -276,8 +276,8 @@ describe("Thread 줄", () => {
 });
 
 describe("구획 머리", () => {
-  // 결정 17. 「가는 곳」·「작업」·「프로젝트」·「문서」·「본문」 — **사이드바 목록과 같은
-  // 계통의 한국어다.** 「Thread」만은 사이드바의 Thread 묶음 머리 그대로 영어다(v1 구현 스펙 S2 · S29). 순서는 코어가 정한 층 순서 그대로다.
+  // 결정 17. 「가는 곳」·「Work」·「Thread」·「프로젝트」·「문서」·「본문」 — **사이드바 목록과 같은 말이다.** 「Work」 ·
+  // 「Thread」는 사이드바의 두 묶음 머리 그대로 영어다(v1 구현 스펙 S2 · S29 — 「작업 → Work」는 v1 티켓 08). 순서는 코어가 정한 층 순서 그대로다.
   it("층마다 한 번씩 그 순서로 선다", () => {
     const markup = render([
       destination("projects"),
@@ -290,7 +290,7 @@ describe("구획 머리", () => {
       text("가", "decisions.md", "맞은 대목"),
       text("옛일", "record.md", "옛 대목", true),
     ]);
-    expect(headsOf(markup)).toEqual(["가는 곳", "작업", "Thread", "프로젝트", "문서", "본문"]);
+    expect(headsOf(markup)).toEqual(["가는 곳", "Work", "Thread", "프로젝트", "문서", "본문"]);
   });
 
   // **결과가 없는 그룹은 머리도 안 선다** — 비어 있는 머리는 「여기 뭔가 있었는데」로 읽힌다.
@@ -300,14 +300,14 @@ describe("구획 머리", () => {
   });
 
   // 항목 갈래의 머리는 목록의 어휘 표(`work-sections.ts`)에서 온다 — 사이드바와 같은 말이다.
-  it("구획 머리는 가는 곳 · 작업 · 문서 · 본문이다", () => {
+  it("구획 머리는 가는 곳 · Work · 문서 · 본문이다", () => {
     const hits = [
       destination("terminal"),
       workHit("가"),
       doc("가", "overview.md"),
       text("가", "decisions.md", "맞은 대목"),
     ];
-    expect(headsOf(render(hits))).toEqual(["가는 곳", "작업", "문서", "본문"]);
+    expect(headsOf(render(hits))).toEqual(["가는 곳", "Work", "문서", "본문"]);
   });
 
   // 머리는 **고를 수 있는 것이 아니다.** 방향키가 여기 서면 Enter가 갈 곳이 없는 자리가
