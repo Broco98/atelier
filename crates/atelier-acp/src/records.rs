@@ -17,6 +17,7 @@ use serde_json::{json, Value};
 
 use crate::host::{Emit, HostEvent, QueuedMessage};
 use crate::past;
+use crate::policy::Card;
 use crate::quote::Quote;
 use crate::runtime::{How, Withdrawal};
 
@@ -36,14 +37,24 @@ pub use atelier_core::{RecordKind, RecordLine};
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub(crate) enum PermissionLine {
-    /// 물음 — 요청 params 원문(선택지는 에이전트가 준 그대로)과 도구 요지(빈 칸을 앞선 `tool_call`로 채운 `toolCall`).
-    Asked { request_id: String, request: Value, tool_call: Value },
+    /// 물음 — 요청 params 원문(선택지는 에이전트가 준 그대로)과 도구 요지(빈 칸을 앞선 `tool_call`로 채운 `toolCall`). 판정이
+    /// 물었으면(v1 티켓 22) 세울 카드의 종류(`card`: `command` · `edit` · `plan`)와 왜 묻는지(`policy`: Policy 이름)를 함께 싣는다.
+    Asked {
+        request_id: String,
+        request: Value,
+        tool_call: Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        card: Option<Card>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        policy: Option<String>,
+    },
     /// 답 — 사람이 고른 선택지.
     Answered { request_id: String, option_id: String },
     /// 거둬짐 — 우리가 턴을 끊었거나(`stopped`, 그 요청에 `cancelled`로 답했다), 에이전트가 답을 기다리지 않고 턴을
     /// 끝냈거나(`agent`), 에이전트 프로세스가 죽었다(`died` — 죽음 줄 앞에 선다, three-axes 티켓 10).
     Withdrawn { request_id: String, reason: Withdrawal },
-    /// 판정 — 엔진이 사람에게 묻지 않고 고른 선택지와 그 까닭(v1 티켓 18: 다른 Session이 쥔 쓰기 자리). 받은 자리에서 판정했으면
+    /// 판정 — 엔진이 사람에게 묻지 않고 고른 선택지와 그 까닭(v1 티켓 18 · 22). 허용이면 까닭이 「자동으로 허용함」 줄의 글이고,
+    /// 거절이면 Agent에게 돌려준 글이다 — 어느 쪽인지는 고른 선택지의 `kind`(요청의 `options`)가 가른다. 받은 자리에서 판정했으면
     /// 물음 줄이 없으므로 요청 원문과 도구 요지를 함께 싣는다. 걸린 물음에 엔진이 답했으면(사람의 허락이 쓰기 자리에 막힘) 그 둘은
     /// 물음 줄에 있다.
     Decided {

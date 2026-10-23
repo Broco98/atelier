@@ -37,8 +37,9 @@ fn sandbox() -> Sandbox {
     sandbox
 }
 
-/// Host는 `host` 원문을 되감고 그 턴 끝머리에서 리뷰어를 부른다. 리뷰어 · 러너는 제 원문을, 나머지(테스터)는 작업 자리 밖
-/// `Write`를 묻는 턴 둘(`2.1.282/permission-stdio`)을 되감는다.
+/// Host는 `host` 원문을 되감고 그 턴 끝머리에서 리뷰어를 부른다. 리뷰어 · 러너는 제 원문을, 나머지(테스터)는 `Write`를 묻는 턴
+/// 둘(`2.1.282/permission-stdio`)을 되감는다. 그 `Write`의 경로는 각자의 작업 폴더(Work `cart`의 worktree)로 옮긴다 — 원문의 경로는
+/// Work 밖이라 판정이 묻지 않고 거절한다(v1 티켓 22).
 fn shell(sandbox: &Sandbox, host: &str, reviewer: &str) -> atelier_acp::ShellSource {
     let fixtures = json!({"host": host, "reviewer": reviewer, "runner": "2.1.296/g4-background"}).to_string();
     let call = json!([{"by": "host", "at": "result", "tool": "call_agent",
@@ -50,6 +51,7 @@ fn shell(sandbox: &Sandbox, host: &str, reviewer: &str) -> atelier_acp::ShellSou
             ("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio"),
             ("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures),
             ("FAKE_CLAUDE_MCP_CALL", &call),
+            ("FAKE_CLAUDE_REBASE", common::RECORDED_PLACE),
         ],
     )
 }
@@ -155,7 +157,7 @@ fn 편집을_허락받은_session이_쓰기_자리를_쥐면_같은_work의_다�
 #[test]
 fn 쓰기_자리를_쥔_agent가_부른_agent는_그_자리를_이어_써서_사람에게_묻고_그동안에도_다른_thread의_편집은_거절된다() {
     let sandbox = sandbox();
-    // 리뷰어도 편집을 묻는다 — 작업 자리 밖 `Write`.
+    // 리뷰어도 편집을 묻는다 — 작업 자리 안으로 옮긴 `Write`.
     let host = sandbox.host(shell(&sandbox, "2.1.282/permission-stdio", "2.1.282/permission-stdio"));
     let writing = host_writes(&sandbox, &host);
 

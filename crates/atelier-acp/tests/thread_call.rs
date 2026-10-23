@@ -33,6 +33,7 @@ fn calling(sandbox: &Sandbox, calls: &[Value], reviewer_fixture: &str) -> atelie
             ("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools"),
             ("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures),
             ("FAKE_CLAUDE_MCP_CALL", &calls),
+            ("FAKE_CLAUDE_REBASE", common::RECORDED_PLACE),
         ],
     )
 }
@@ -189,7 +190,8 @@ fn 불린_agent가_사람에게_물으면_카드는_불린_agent의_것이고_�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
-    // 리뷰어의 턴은 작업 자리 밖 `Write`를 묻는다(can_use_tool) — 허락하면 「완료되었습니다.」로 끝난다.
+    // 리뷰어의 턴은 `Write`를 묻는다(can_use_tool) — 경로는 Thread 폴더로 옮겼다(Work 밖이면 판정이 거절한다). 허락하면
+    // 「완료되었습니다.」로 끝난다.
     let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "파일 하나 써 줘")], "2.1.282/permission-stdio"));
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
 

@@ -293,11 +293,16 @@ impl Conv {
             RuntimeEvent::AuthStatus(params) => self.recorder.session(SessionState::AuthStatus { params }),
             // 권한 줄은 Session의 잠금을 쥐지 않고 적는다 — 답 · 멈추기는 Session의 잠금을 쥔 채 런타임을 부르고, 런타임은 그
             // 안에서 이것을 넘긴다.
-            RuntimeEvent::PermissionAsked(asked) => self.recorder.permission(PermissionLine::Asked {
-                request_id: asked.request_id,
-                request: asked.request,
-                tool_call: asked.tool_call,
-            }),
+            RuntimeEvent::PermissionAsked(asked) => {
+                let (card, policy) = asked.asking.map(|asking| (asking.card, asking.policy)).unzip();
+                self.recorder.permission(PermissionLine::Asked {
+                    request_id: asked.request_id,
+                    request: asked.request,
+                    tool_call: asked.tool_call,
+                    card,
+                    policy,
+                })
+            }
             RuntimeEvent::PermissionAnswered { request_id, option_id } => {
                 self.recorder.permission(PermissionLine::Answered { request_id, option_id })
             }
@@ -799,6 +804,7 @@ fn record_opened(conv: &Arc<Conv>) -> runtime::OnOpened {
 /// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이 · 지시문 파일 · 내장 도구 · 금지. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
 #[derive(Debug, Clone, Default)]
 struct ClaudeChoice {
+    /// 권한 모드 — Thread의 Session은 늘 싣는다: `default`, 「계획만」이면 `plan`(v1 구현 스펙 S17 · v1 티켓 22).
     mode: Option<String>,
     model: Option<String>,
     effort: Option<String>,

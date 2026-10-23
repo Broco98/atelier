@@ -43,6 +43,7 @@ mod worktree_file;
 mod worktree_watch;
 mod records;
 mod threads;
+mod policy_file;
 mod attachments;
 mod changes;
 mod pr;
@@ -83,7 +84,7 @@ pub use layout::{
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
 pub use store::{
-    create_project, delete_project, get_project, list_projects, update_project, ProjectPatch,
+    create_project, delete_project, get_project, list_projects, project_folders, update_project, ProjectPatch,
 };
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
@@ -104,6 +105,8 @@ pub use threads::{
     create_thread, is_archived_work, open_thread_log, read_thread, read_thread_records, thread_dir, update_thread,
     CreatedThread, DefinitionSource, NewThread, Participant, ThreadFile, ThreadIndex, ThreadSummary,
 };
+// 물어보는 정도와 「다시 묻지 않기」 허락의 점 파일(v1 구현 스펙 S18 · v1 티켓 22) — Thread 엔진의 판정이 받은 요청마다 읽는다.
+pub use policy_file::{read_policy, update_policy, PolicyFile, PolicyPlace};
 // 첨부(v1 티켓 06 · S30) — 입력창의 칩(Tauri 명령)과 Thread 엔진의 `sent` 줄이 같은 판정을 지난다.
 pub use attachments::{describe_attachments, Attachment};
 pub use worktree::{list_worktree_folder, list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};

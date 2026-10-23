@@ -84,13 +84,20 @@ fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록
 #[test]
 fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받고_턴이_이어진다() {
     let sandbox = Sandbox::new();
-    let (host, thread, session) = thread_on(&sandbox, "2.1.282/permission-stdio", &[], "outside/allowed.txt를 Write로 만들어");
+    // 녹음의 `Write`는 잰 날의 임시 폴더를 고친다 — Thread 폴더 밖이면 판정이 묻지 않고 거절하므로(v1 티켓 22) Thread 폴더로 옮긴다.
+    let rebase = [("FAKE_CLAUDE_REBASE", common::RECORDED_PLACE)];
+    let (host, thread, session) = thread_on(&sandbox, "2.1.282/permission-stdio", &rebase, "outside/allowed.txt를 Write로 만들어");
 
     let record = sandbox.wait_thread_kind(&thread, "permission", 1);
     let line = of_kind(&record, "permission")[0];
     assert_eq!(line["who"], "host", "권한 줄은 물은 참여자의 것이다(S8)");
     let asked = &line["payload"];
     assert_eq!((asked["state"].clone(), asked["requestId"].clone()), (json!("asked"), json!("0")));
+    assert_eq!(
+        (asked["card"].clone(), asked["policy"].clone()),
+        (json!("edit"), json!("매번 묻기")),
+        "판정이 물었다 — 카드 종류와 왜 묻는지(Policy 이름)가 함께 선다(v1 티켓 22)"
+    );
     assert_eq!(asked["request"]["sessionId"], json!(session));
     let options: Vec<&str> =
         asked["request"]["options"].as_array().unwrap().iter().map(|option| option["optionId"].as_str().unwrap()).collect();

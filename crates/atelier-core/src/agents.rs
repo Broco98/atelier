@@ -493,6 +493,16 @@ runtimes:
         assert_eq!(host.handle, "host");
         assert_eq!(host.tools.agents, AgentCalls::AnyInScope, "Host는 범위 안 아무 Agent나 부른다(S15)");
         assert_eq!(host.tools.builtin, None, "Host는 기본 도구 전부를 쓴다");
+        // 「결정은 내가 합니다」(S31) — Host는 push와 스키마 바꾸기를 하기 전에 묻는다. 스키마(마이그레이션 명령)는 고정 목록이 없어
+        // 이 파일에 명령 패턴으로 적는다(S19).
+        assert!(host.policy.ask_before.contains(&"push".to_owned()), "{:?}", host.policy.ask_before);
+        assert!(host.policy.ask_before.contains(&"Bash(*prisma migrate *)".to_owned()), "{:?}", host.policy.ask_before);
+        assert!(
+            host.policy.ask_before.iter().all(|name| name == "push" || (name.starts_with("Bash(") && name.ends_with(')'))),
+            "추상 이름은 push 하나, 나머지는 명령 패턴이다: {:?}",
+            host.policy.ask_before
+        );
+        assert!(host.policy.forbid.is_empty());
         let reviewer = read_agent(&library(root.path()).join("reviewer.md")).expect("reviewer.md");
         assert_eq!(
             reviewer.tools.builtin,

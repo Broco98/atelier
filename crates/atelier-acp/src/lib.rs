@@ -10,6 +10,7 @@ mod life;
 mod login;
 mod login_env;
 mod past;
+mod policy;
 mod process;
 mod quote;
 mod records;
@@ -24,6 +25,7 @@ pub use host::{
     TranslatorCommand,
 };
 pub use login::{EngineState, LoginProgress};
+pub use policy::AskLevel;
 pub use login_env::{LoginShellError, ShellSource};
 pub use quote::Quote;
 pub use records::{RecordKind, RecordLine};

@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::life::{Death, Life};
+use crate::policy::Card;
 use crate::login::AUTH_REQUIRED;
 use crate::process;
 use crate::redact;
@@ -62,7 +63,7 @@ pub(crate) struct OpenTerms {
     /// 세션에 넣는 MCP 서버(ACP `mcpServers`의 칸들) — Thread의 Session이면 Thread 도구 서버 하나다(v1 티켓 15 · S12). 새로 열 때도
     /// 되살릴 때도 같이 싣는다.
     pub mcp_servers: Vec<Value>,
-    /// 권한 요청을 사람에게 묻기 전에 보는 것(v1 티켓 18) — Thread의 Session이면 그 Work의 쓰기 자리다. 없으면 모두 묻는다.
+    /// 권한 요청을 사람에게 묻기 전에 보는 것(v1 티켓 18 · 22) — Thread의 Session이면 판정이다. 없으면 모두 묻는다.
     pub judge: Option<Judge>,
 }
 
@@ -81,13 +82,30 @@ impl Ruling {
     }
 }
 
-/// 권한 요청을 받은 자리에서 사람에게 묻기 전에 보는 것(v1 티켓 18 · 판정 22가 이 자리를 넓힌다). 답을 내면 그 요청은 묻지 않고
-/// 그 답으로 닫힌다 — 대기 요청 표에 들지 않으므로 승인 카드도, 대기 줄의 걸림도 없다. 그 요청이 준 선택지에 없는 답은 버리고 묻는다.
+/// 권한 요청을 받은 자리에서 사람에게 묻기 전에 보는 것 — 판정(v1 티켓 18 · 22, `policy.rs`). 답을 내면([`Judgement::Decide`]) 그
+/// 요청은 묻지 않고 그 답으로 닫힌다 — 대기 요청 표에 들지 않으므로 승인 카드도, 대기 줄의 걸림도 없다. 그 요청이 준 선택지에 없는
+/// 답은 버리고 묻는다. 묻기로 하면([`Judgement::Ask`]) 그 까닭이 물음 줄에 함께 선다.
 ///
 /// 수신 루프 안에서 불린다 — sink처럼 **런타임이나 호스트를 다시 부르지 않는다**. 대기 요청 표를 쥐기 전에 부르므로 대화의 잠금은
-/// 잠깐 쥐어도 된다(턴 끝을 넘기는 자리와 같다).
+/// 잠깐 쥐어도 된다(턴 끝을 넘기는 자리와 같다). 파일을 읽는 것은 괜찮다.
 #[derive(Clone)]
-pub(crate) struct Judge(pub Arc<dyn Fn(&PermissionAsked) -> Option<Ruling> + Send + Sync>);
+pub(crate) struct Judge(pub Arc<dyn Fn(&PermissionAsked) -> Judgement + Send + Sync>);
+
+/// 판정이 받은 요청에 내린 것.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Judgement {
+    /// 묻지 않고 이 답으로 닫는다.
+    Decide(Ruling),
+    /// 사람에게 묻는다 — 물음 줄에 이것을 단다.
+    Ask(Asking),
+}
+
+/// 판정이 묻기로 한 까닭 — 세울 카드의 종류와 왜 묻는지(Policy 이름, v1 구현 스펙 §9). 물음 줄의 `card` · `policy`가 된다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Asking {
+    pub card: Card,
+    pub policy: String,
+}
 
 impl fmt::Debug for Judge {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -155,6 +173,8 @@ pub(crate) struct PermissionAsked {
     /// 도구 요지 — 요청의 `toolCall`에서 빈 칸(제목 · 종류 · 입력)을 같은 id의 앞선 `tool_call`로 채운 것. Codex의 MCP
     /// 승인은 id · 종류 · 상태만 싣는다(워크플로 S21). 이을 것이 없으면 받은 그대로다.
     pub tool_call: Value,
+    /// 판정이 묻기로 한 까닭(v1 티켓 22) — 판정이 없는 Session(work 대화)이면 없다. 판정에 넘길 때는 아직 비어 있다.
+    pub asking: Option<Asking>,
 }
 
 /// 권한 요청이 거둬진 까닭.
@@ -460,21 +480,24 @@ pub(crate) fn open(
                         .map(|options| options.iter().filter_map(|option| option["optionId"].as_str()).map(str::to_owned).collect())
                         .unwrap_or_default();
                     let tool_call = tabled.fill(&request["toolCall"]);
-                    let asked_now = PermissionAsked { request_id, request, tool_call };
-                    let ruled = judge.as_ref().and_then(|Judge(judge)| judge(&asked_now));
-                    if let Some(ruling) = ruled.filter(|ruling| option_ids.contains(&ruling.option_id)) {
-                        let response = ruling.response();
-                        let request_id = asked_now.request_id.clone();
-                        asked(RuntimeEvent::PermissionDecided { request_id, ruling, asked: Some(asked_now) });
-                        // 연결이 끊겼으면 갈 곳이 없다 — 죽음이 그 자리를 맡는다.
-                        let _ = responder.respond(response);
-                        return Ok(());
+                    let mut asked_now = PermissionAsked { request_id, request, tool_call, asking: None };
+                    match judge.as_ref().map(|Judge(judge)| judge(&asked_now)) {
+                        Some(Judgement::Decide(ruling)) if option_ids.contains(&ruling.option_id) => {
+                            let response = ruling.response();
+                            let request_id = asked_now.request_id.clone();
+                            asked(RuntimeEvent::PermissionDecided { request_id, ruling, asked: Some(asked_now) });
+                            // 연결이 끊겼으면 갈 곳이 없다 — 죽음이 그 자리를 맡는다.
+                            let _ = responder.respond(response);
+                            return Ok(());
+                        }
+                        Some(Judgement::Ask(asking)) => asked_now.asking = Some(asking),
+                        Some(Judgement::Decide(_)) | None => {}
                     }
-                    let PermissionAsked { request_id, request, tool_call } = asked_now;
+                    let request_id = asked_now.request_id.clone();
                     let mut pending = tabled.lock();
                     let orphan = tabled.closed.load(Ordering::SeqCst);
-                    pending.push(Pending { request_id: request_id.clone(), option_ids, responder });
-                    asked(RuntimeEvent::PermissionAsked(PermissionAsked { request_id, request, tool_call }));
+                    pending.push(Pending { request_id, option_ids, responder });
+                    asked(RuntimeEvent::PermissionAsked(asked_now));
                     if orphan {
                         // 죽은 에이전트의 늦은 줄이다 — 넘긴 자리에서 곧바로 거둔다.
                         Permissions::withdraw_all(&mut pending, Withdrawal::Died, &asked);

@@ -32,6 +32,9 @@
 //!     18 — 파일을 고친 Agent가 이어 다른 Agent를 부르는 꼴). 스스로 이어 간 턴의 `result` 앞에서는 부르지 않는다.
 //! - `FAKE_CLAUDE_AGENT_FIXTURES` — `{handle: 원문}` JSON. 이 claude가 그 Agent의 것이면 `FAKE_CLAUDE_FIXTURE` 대신 그 원문을
 //!   되감는다(v1 티켓 16 — 부른 Agent와 불린 Agent가 다른 턴을 돈다).
+//! - `FAKE_CLAUDE_REBASE` — 녹음의 폴더 하나(예 `/tmp/gate/ws/g1/outside`). 있으면 내는 줄마다 그 글을 이 claude의 작업 폴더로 바꿔
+//!   낸다(v1 티켓 22). 원문의 경로는 잰 날의 임시 폴더라 판정에는 늘 「Work 밖 편집」이다 — 작업 자리 안의 편집을 재려면 가짜가
+//!   제 자리의 경로를 물어야 한다. 그 폴더는 진짜 claude처럼 심볼릭 링크를 푼 경로(`getcwd`)다.
 //!
 //! 녹화를 되감는 규칙(턴 · 권한 · 멈추기 · 바꾸기 · 스스로 이어 간 턴)은 입출력 없는 몸 `src/fakes/claude_replay.rs`에 있다 —
 //! 변환기 상태 기계의 시험이 프로세스 없이 같은 몸을 상대한다. 이 bin은 그 몸에 stdin · stdout · 영수증 · 문을 두른다.
@@ -185,8 +188,23 @@ fn spawn_mcp_child() -> Child {
 fn emit(line: &Value) {
     let mut out = std::io::stdout().lock();
     // 상대가 떠났으면 쓰기가 실패한다. 가짜는 그 자리에서 할 일이 없다.
-    let _ = writeln!(out, "{line}");
+    let _ = writeln!(out, "{}", rebased(line));
     let _ = out.flush();
+}
+
+/// 낼 줄의 글 — `FAKE_CLAUDE_REBASE`가 있으면 녹음의 그 폴더를 이 claude의 작업 폴더로 바꾼다.
+fn rebased(line: &Value) -> String {
+    static REBASE: std::sync::OnceLock<Option<(String, String)>> = std::sync::OnceLock::new();
+    let rebase = REBASE.get_or_init(|| {
+        let from = std::env::var("FAKE_CLAUDE_REBASE").ok()?;
+        let to = std::env::current_dir().ok()?.to_string_lossy().into_owned();
+        Some((from, to))
+    });
+    let text = line.to_string();
+    match rebase {
+        Some((from, to)) => text.replace(from.as_str(), to),
+        None => text,
+    }
 }
 
 struct Fake {

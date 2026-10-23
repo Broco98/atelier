@@ -597,6 +597,9 @@ pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&s
         format!("2026-10-10T10:{:02}:{:02}.000+09:00", seq / 60, seq % 60)
     }
     let root = data_root.display().to_string();
+    // 링크를 푼 루트(macOS의 `/private/var/…`)도 같은 자리다 — 가짜 claude가 작업 폴더로 옮긴 경로(`FAKE_CLAUDE_REBASE`)는 그 꼴이다.
+    // 긴 쪽을 먼저 바꾼다.
+    let real = data_root.canonicalize().map(|real| real.display().to_string()).unwrap_or_else(|_| root.clone());
     let mut last_sent = 0;
     record
         .iter()
@@ -609,6 +612,7 @@ pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&s
                 Some("turn-end") => line["payload"]["durationMs"] = Value::from((seq - last_sent) * 1000),
                 _ => {}
             }
+            replace(&mut line, &real, "~/.atelier");
             replace(&mut line, &root, "~/.atelier");
             let mut sessions: Vec<(usize, &str)> = session_ids.iter().copied().enumerate().collect();
             sessions.sort_by_key(|(_, id)| std::cmp::Reverse(id.len()));
@@ -723,6 +727,11 @@ pub fn wait_record_at(path: &Path, done: impl Fn(&[Value]) -> bool) -> Vec<Value
 
 /// 턴 · 죽음 같은 비동기 일을 기다리는 마감.
 pub const PATIENCE: Duration = Duration::from_secs(10);
+
+/// 녹음 `2.1.282/permission-stdio`의 `Write`가 쓰는 폴더 — 잰 날의 임시 폴더다. 가짜 claude에 `FAKE_CLAUDE_REBASE`로 주면 그 경로를
+/// claude의 작업 폴더로 옮겨 낸다(v1 티켓 22 — 판정은 작업 자리 밖 편집을 묻지 않고 거절한다).
+#[allow(dead_code)] // 시험 파일마다 따로 엮이는 모듈이라 쓰지 않는 파일도 있다.
+pub const RECORDED_PLACE: &str = "/tmp/gate/ws/g1/outside";
 
 /// `poll`이 값을 낼 때까지 20ms마다 다시 본다 — 턴 · 죽음 · 영수증은 다른 프로세스와 스레드에서 적힌다. 마감(`PATIENCE`)을
 /// 넘기면 `what`과, `poll`이 마지막에 `Err`로 준 그때의 꼴을 싣고 터진다.

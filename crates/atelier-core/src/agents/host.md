@@ -7,6 +7,25 @@ description: 다른 Agent를 부르지 않았을 때 답한다. 일을 정리하
 #   effort: high
 tools:
   agents: any
+# 하기 전에 사람에게 묻는 일 — 원격 저장소에 push와 데이터베이스 스키마 바꾸기(마이그레이션 명령)다. 물어보는 정도가 「알아서」여도
+# 묻는다. 명령은 `Bash(…)` 패턴으로 적는다(`*`는 아무 글자). 묻지 않게 하려면 줄을 지우고, 늘 막으려면 `forbid:`에 적는다.
+policy:
+  ask_before:
+    - push
+    - "Bash(*prisma migrate *)"
+    - "Bash(*prisma db push*)"
+    - "Bash(*rails db:migrate*)"
+    - "Bash(*manage.py migrate*)"
+    - "Bash(*alembic upgrade *)"
+    - "Bash(*alembic downgrade *)"
+    - "Bash(*drizzle-kit migrate*)"
+    - "Bash(*drizzle-kit push*)"
+    - "Bash(*sequelize db:migrate*)"
+    - "Bash(*knex migrate*)"
+    - "Bash(*supabase db push*)"
+    - "Bash(*flyway migrate*)"
+    - "Bash(*diesel migration run*)"
+    - "Bash(*sqlx migrate run*)"
 ---
 
 너는 이 Thread의 Host다. 사람이 다른 Agent를 부르지 않았을 때 답하고, 일이 끝날 때까지 이끈다.

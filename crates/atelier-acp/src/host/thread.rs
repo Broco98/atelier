@@ -21,8 +21,12 @@
 //!   Session에 가고, 그 턴의 마지막 메시지가 부른 Agent에게 돌아간다. 멈추기는 그 Thread의 호출 고리 전체에 걸린다.
 //! - **Work 하나에서 고치는 Session은 하나다(v1 티켓 18 · §10, [`seat`]).** 편집을 허락받은 Session이 그 Work의 쓰기 자리를 쥐고 턴이
 //!   끝나면 놓는다. 그동안 다른 Session의 편집 요청은 묻지 않고 거절한다 — 고리 안에서 불린 쪽은 이어 쓴다.
+//! - **승인은 판정 하나를 거친다(v1 티켓 22 · §9, [`gate`]).** Session에 온 권한 요청은 모두 판정을 지나 허용 · 거절 · 물음 가운데
+//!   하나가 된다. `claude`는 기본 모드로만(「계획만」이면 계획 모드로) 뜬다(S17). 물어보는 정도는 Work에 이은 Thread면 Work의 것,
+//!   아니면 Thread의 것이다(S18).
 
 mod call;
+mod gate;
 mod seat;
 
 pub(super) use call::Assignment;
@@ -45,9 +49,11 @@ use super::{
 use crate::discovery::{Agent, FoundProgram};
 use crate::login::Waiter;
 use crate::login_env::AgentEnv;
+use crate::policy::AskLevel;
 use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
 use crate::runtime::{self, AgentProcess, OpenError, SessionPlace};
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
+use gate::Gate;
 use seat::{Grant, Writer};
 
 /// 받는 이를 고르지 않은 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S9 · S14).
@@ -405,6 +411,29 @@ impl ConversationHost {
         answered
     }
 
+    /// 물어보는 정도 바꾸기(S18 · 스토리 84) — Work에 이은 Thread면 그 Work 폴더의 점 파일에(같은 Work의 Thread들이 함께 쓴다),
+    /// 아니면 `thread.json`의 `mode`에 둔다. 바꾼 것은 `mode` 줄(`{mode, work}`, 사람의 줄)로 남는다(§4).
+    ///
+    /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정한다 — 「계획만」
+    /// 으로 들고 날 때 떠 있는 Session의 모드를 바꾸는 일은 칩(v1 티켓 23)이 한다.
+    pub fn set_thread_mode(&self, thread: &str, mode: AskLevel) -> Result<(), HostError> {
+        let file = self.read_thread_file(thread)?;
+        let stored = Some(mode.as_str().to_owned());
+        match &file.work {
+            Some(slug) => {
+                // 사라진 Work의 폴더를 점 파일 쓰기가 되살리지 않는다 — 먼저 Work를 읽는다.
+                self.open_work(slug)?;
+                atelier_core::update_policy(&self.data_root, atelier_core::PolicyPlace::Work(slug), |policy| policy.mode = stored)
+                    .map_err(|error| HostError::Record(format!("물어보는 정도를 적지 못했습니다: {error}")))?;
+            }
+            None => {
+                self.change_thread(thread, |file| file.mode = stored)?;
+            }
+        }
+        let line = json!({"mode": mode.as_str(), "work": file.work});
+        self.thread_log(thread)?.write(RecordKind::Mode, None, line).map_err(HostError::Record).map(drop)
+    }
+
     /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다(스토리 33 · three-axes 티켓 09).
     ///
     /// - Session이 떠 있으면 곧바로 넣고 답을 기다린다 — 다음 턴부터 든다. 넣은 바꾸기는 `config` 줄로 남는다.
@@ -674,13 +703,15 @@ impl ConversationHost {
         let (definition, instructions) = self.read_snapshot(key)?;
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
+        // 기본 모드로만 띄운다 — 「계획만」이면 계획 모드다(S17). 사용자의 `defaultMode`를 물려받지 않는다.
+        let (level, _) = gate::asking(&self.data_root, &key.thread, file.work.as_deref());
         let choice = ClaudeChoice {
-            mode: None,
+            mode: Some(level.claude_mode().to_owned()),
             model: participant.model.clone(),
             effort: participant.effort.clone(),
             instructions: Some(instructions),
             tools: definition.tools.builtin,
-            forbid: definition.policy.forbid,
+            forbid: definition.policy.forbid.clone(),
         };
         let (launch, mut terms) = claude_launch(&self.translator, programs, env, &place, &choice);
         // 참여자의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
@@ -688,9 +719,18 @@ impl ConversationHost {
         // 열 때마다 새 소켓이다 — 되살린 Session도 앞 프로세스의 소켓은 이미 치웠다. 열지 못하면 여기서 놓여 치워진다.
         let (tools, server) = self.open_tools(key, &conv).unzip();
         terms.mcp_servers.extend(server);
-        // 쓰기 자리(v1 티켓 18) — 다른 Session이 쥔 Work의 편집 요청은 묻지 않고 거부하고, 턴이 끝나면 쥔 자리를 놓는다.
+        // 판정(v1 티켓 22) — 받은 권한 요청은 모두 판정을 지난다. 쓰기 자리(v1 티켓 18)는 판정의 입력이고, 턴이 끝나면 쥔 자리를 놓는다.
         let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), &conv);
-        terms.judge = Some(writer.judge());
+        let gate = Gate {
+            data_root: self.data_root.clone(),
+            thread: key.thread.clone(),
+            work: file.work.clone(),
+            cwd: place.cwd.clone(),
+            policy: definition.policy,
+            cli: definition.tools.cli,
+            writer: Arc::clone(&writer),
+        };
+        terms.judge = Some(gate.judge());
         let limit = self.open_limit.unwrap_or(CLAUDE_OPEN_LIMIT);
         let at = SessionPlace { cwd: place.cwd.clone(), additional_directories: place.additional_directories.clone() };
         let opened = runtime::open(launch, at, terms, limit, writer.watching(conv.sink()), record_opened(&conv));
