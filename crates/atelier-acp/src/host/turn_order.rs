@@ -470,8 +470,8 @@ impl<H: TurnHands> Seat<'_, H> {
     }
 
     /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에 보낸다.
-    /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 인용이 붙은 말이면 사람의 글 바로 앞에 인용 블록을 둔다(S12).
-    /// 걸림이 없을 때만 부른다.
+    /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 그 뒤에 지난 말(Thread의 Session, v1 구현 스펙 S10)을, 인용이
+    /// 붙은 말이면 사람의 글 바로 앞에 인용 블록을 둔다(S12). 걸림이 없을 때만 부른다.
     ///
     /// `sent`를 적지 못하면 아무것도 바꾸지 않는다(대기 줄에서 꺼낸 말이면 그 말을 잃는다). 보내지 못하면 턴을 연 채로 두지
     /// 않는다 — 화면이 「일하는 중」에 갇히지 않게 턴 끝 줄(오류)까지 적는다. 머리말은 붙인 것으로 남고, 그 끝은 대기 줄을 보내지
@@ -488,6 +488,7 @@ impl<H: TurnHands> Seat<'_, H> {
         if self.order.needs_preamble {
             prompt.push(preamble);
         }
+        prompt.extend(self.hands.past());
         if let Some(attached) = quote {
             prompt.push(attached.block.clone());
         }
@@ -548,6 +549,8 @@ pub(super) trait TurnHands {
     fn vanished(&self) -> bool;
     /// spec 폴더를 찍는다 — 폴더를 걷는다(느리다).
     fn shoot(&mut self) -> Self::Shot;
+    /// 보낼 말에 붙일 지난 말 블록(v1 구현 스펙 S10) — 보내는 그때 기록에서 짓는다(기록을 읽는다). 넘길 말이 없으면 없다.
+    fn past(&mut self) -> Option<Value>;
 
     /// 고친 곳 — 견주어 바뀐 것이 있을 때만 줄을 적는다. 기록은 부르는 차례가 곧 seq 차례다 — 아래 넷도 같다.
     fn changes(&mut self, before: &Self::Shot, now: &Self::Shot) -> Result<(), RecordError>;
@@ -587,6 +590,9 @@ impl<H: TurnHands + ?Sized> TurnHands for &mut H {
     }
     fn shoot(&mut self) -> Self::Shot {
         (**self).shoot()
+    }
+    fn past(&mut self) -> Option<Value> {
+        (**self).past()
     }
     fn changes(&mut self, before: &Self::Shot, now: &Self::Shot) -> Result<(), RecordError> {
         (**self).changes(before, now)
@@ -663,6 +669,8 @@ mod tests {
         answer: Result<(), AnswerError>,
         fails: Option<Line>,
         shots: u32,
+        /// 보낼 때 짓는 지난 말 블록의 글.
+        past: Option<&'static str>,
         prompts: Vec<Vec<Value>>,
         log: Vec<Did>,
     }
@@ -680,6 +688,7 @@ mod tests {
                 answer: Ok(()),
                 fails: None,
                 shots: 0,
+                past: None,
                 prompts: Vec::new(),
                 log: Vec::new(),
             }
@@ -714,6 +723,9 @@ mod tests {
         fn shoot(&mut self) -> u32 {
             self.shots += 1;
             self.shots
+        }
+        fn past(&mut self) -> Option<Value> {
+            self.past.map(|text| json!({"type": "text", "text": text}))
         }
         fn changes(&mut self, before: &u32, now: &u32) -> Result<(), RecordError> {
             self.write(Line::Changes, Did::Changes(*before, *now))
@@ -1214,6 +1226,23 @@ mod tests {
             "다시 열린 세션이 새 세션이면 대기 줄의 말에도 머리말이 다시 붙는다(S11)"
         );
         assert!(rig.since(0).contains(&Did::Sent { text: "대기".into(), send_now: false, preamble: true, quote: true }));
+    }
+
+    #[test]
+    fn 지난_말은_머리말_뒤에_서고_대기_줄의_말은_넣을_때가_아니라_보내는_그때의_지난_말을_든다() {
+        let mut rig = Rig::new();
+        rig.hands.past = Some("지난 말 하나");
+        rig.say("첫 말").unwrap();
+        rig.say("대기").unwrap();
+        // 대기 줄에 든 사이 다른 참여자가 말했다(v1 구현 스펙 S10).
+        rig.hands.past = Some("지난 말 둘");
+        rig.seat().turn_ended(ended("end_turn")).unwrap();
+
+        let text = |text: &str| json!({"type": "text", "text": text});
+        assert_eq!(
+            rig.hands.prompts,
+            [vec![text(PREAMBLE), text("지난 말 하나"), text("첫 말")], vec![text("지난 말 둘"), text("대기")]]
+        );
     }
 
     #[test]

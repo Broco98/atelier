@@ -43,7 +43,7 @@ fn 새_thread의_첫_말에_host가_답하고_thread_폴더에_thread_json과_�
     assert_eq!(file["title"], "세 낱말로 답해 줘: hello from turn", "이름은 첫 말에서 정한다");
     assert_eq!(file["work"], Value::Null, "Work 없음");
     let participants = file["participants"].as_array().expect("participants");
-    assert_eq!(participants.len(), 1, "받는 이는 Host 하나다(S9)");
+    assert_eq!(participants.len(), 1, "멘션 없는 말은 Host 하나가 받는다(S9)");
     let me = &participants[0];
     assert_eq!(
         (me["handle"].clone(), me["from"].clone(), me["runtime"].clone(), me["model"].clone(), me["effort"].clone()),
@@ -194,7 +194,7 @@ fn 앱을_다시_켠_뒤_같은_thread에_말하면_같은_session으로_이어_
 }
 
 #[test]
-fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_줄이_fresh이고_머리말이_다시_붙는다() {
+fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_줄이_fresh이고_머리말과_thread_처음부터의_지난_말이_붙는다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     let thread = yesterday(&sandbox);
@@ -215,9 +215,14 @@ fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_�
     assert_eq!(common::opened_hows(&record), ["new", "fresh"], "맥락을 잇지 못했다고 열림 줄이 말한다");
     let user = sandbox.claude_stdin(&second).into_iter().find(|line| line["type"] == "user").expect("새 Session이 받은 말");
     let content = user["message"]["content"].as_array().expect("블록들").clone();
-    assert_eq!(content.len(), 2, "새 Session의 첫 말에 머리말이 다시 붙는다(S10): {content:?}");
+    assert_eq!(content.len(), 3, "새 Session의 첫 말에 머리말 · 지난 말이 다시 붙는다(S10): {content:?}");
     assert!(content[0]["text"].as_str().unwrap().starts_with("Atelier Thread 안에서 열린 Session이다."));
-    assert_eq!(content[1]["text"], "오늘의 말");
+    let past = content[1]["text"].as_str().unwrap();
+    assert!(
+        past.starts_with("지난 말 — ") && past.ends_with("[사람 → @host]\n어제의 말\n\n[@host]\nPROBE-SKILL-OK"),
+        "새 Session은 앞 Session을 모르므로 Thread 처음부터 — 어제의 말과 Host 제 답까지 받는다(v1 티켓 13):\n{past}"
+    );
+    assert_eq!(content[2]["text"], "오늘의 말");
 
     host.shut_down();
 }
@@ -350,7 +355,7 @@ fn 도는_동안의_말은_대기_줄에_들고_고치고_지울_수_있고_멈�
 
     host.send_to_thread(&thread, "지울 말").expect("도는 동안의 말");
     host.send_to_thread(&thread, "고칠 말").expect("도는 동안의 말");
-    let queued = host.thread(&thread).expect("Thread의 지금").queue;
+    let queued = host.thread(&thread).expect("Thread의 지금").queues["host"].clone();
     assert_eq!(queued.iter().map(|message| message.text.as_str()).collect::<Vec<_>>(), ["지울 말", "고칠 말"], "대기 줄에 든다");
     host.delete_thread_queued(&thread, &queued[0].id).expect("대기 지우기");
     host.edit_thread_queued(&thread, &queued[1].id, "방금 무엇을 돌리려 했고 끝났는지 한 문장으로").expect("대기 고치기");
@@ -379,7 +384,7 @@ fn 도는_동안의_말은_대기_줄에_들고_고치고_지울_수_있고_멈�
         .map(|line| line["request"]["subtype"].as_str().unwrap_or_else(|| line["type"].as_str().unwrap()).to_owned())
         .collect();
     assert_eq!(shapes, ["initialize", "user", "interrupt", "user"], "멈추기는 stdin의 interrupt 하나다");
-    assert!(host.thread(&thread).unwrap().queue.is_empty());
+    assert!(host.thread(&thread).unwrap().queues.is_empty());
 
     host.shut_down();
 }
@@ -390,7 +395,7 @@ fn 지금_전하기는_도는_턴을_멈추고_그_말을_먼저_보낸다() {
     let (host, _events, thread) = running_thread(&sandbox);
 
     host.send_to_thread(&thread, "방금 무엇을 돌리려 했고 끝났는지 한 문장으로").expect("도는 동안의 말");
-    let queued = host.thread(&thread).unwrap().queue;
+    let queued = host.thread(&thread).unwrap().queues["host"].clone();
     host.send_thread_now(&thread, &queued[0].id).expect("지금 전하기");
 
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);

@@ -10,6 +10,7 @@ mod host;
 mod life;
 mod login;
 mod login_env;
+mod past;
 mod process;
 mod quote;
 mod records;

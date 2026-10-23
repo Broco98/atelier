@@ -924,8 +924,9 @@ pub async fn thread_read_record(
     to_host(&chats, "Thread 기록을 읽지 못했습니다", move |host| host.read_thread_record(&thread, after)).await
 }
 
-/// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 Host가 들어와
-/// 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다.
+/// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
+/// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
+/// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다.
 #[tauri::command]
 pub async fn thread_start(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -935,7 +936,8 @@ pub async fn thread_start(
     to_host(&chats, "Thread를 시작하지 못했습니다", move |host| host.start_thread(&text, link)).await
 }
 
-/// 있는 Thread에 말한다 — 받는 이는 Host다. 턴을 기다리지 않는다. 다시 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다.
+/// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
+/// 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 멘션이 범위 밖 · 깨진 파일이면 아무것도 적지 않고 그 까닭이 오류 글이다.
 #[tauri::command]
 pub async fn thread_send(
     chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,

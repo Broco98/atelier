@@ -21,6 +21,7 @@ use serde_json::{json, Map, Value};
 
 use crate::discovery::Agent;
 use crate::host::{Emit, HostEvent, QueuedMessage};
+use crate::past;
 use crate::quote::Quote;
 use crate::runtime::{How, Withdrawal};
 use crate::spec_changes::FileChange;
@@ -150,7 +151,7 @@ impl RecordFacts {
 }
 
 /// 에이전트 쪽 세션이 새로 선 열림 줄의 payload인가 — 길이 `new` · `fresh`인 열림.
-fn starts_session(payload: &Value) -> bool {
+pub(crate) fn starts_session(payload: &Value) -> bool {
     matches!(SessionState::deserialize(payload), Ok(SessionState::Opened { how, .. }) if how.starts_session())
 }
 
@@ -363,6 +364,19 @@ impl Recorder {
         self.write(RecordKind::TurnEnd, serde_json::to_value(end).expect("turn-end 줄은 JSON이다"))
     }
 
+    /// 지난 말 블록(v1 구현 스펙 S10) — 이 참여자의 Session이 아직 보지 못한 Thread의 말. 보낼 말 바로 앞에 짓는다. 대화 기록에는
+    /// 없다 — 대화마다 에이전트가 하나다. 넘길 말이 없거나 기록을 읽지 못하면 블록이 없다 — 지난 말이 막혀도 말은 간다.
+    pub(crate) fn past(&self) -> Option<Value> {
+        let Lines::Thread { log, who } = &self.lines else { return None };
+        match log.lines() {
+            Ok(lines) => past::past(&lines, who, past::PAST_LIMIT).map(|text| json!({"type": "text", "text": text})),
+            Err(error) => {
+                eprintln!("{error}");
+                None
+            }
+        }
+    }
+
     /// 한 줄을 적고, 같은 줄을 기록 줄 이벤트로 내보낸다. 잠금을 쥔 채 내보낸다 — 이벤트의 순서가 seq의
     /// 순서다. **그래서 이벤트를 받는 closure는 호스트를 다시 부르면 안 된다.**
     ///
@@ -386,18 +400,26 @@ impl Recorder {
 /// 열려 있는 동안 파일을 연 채로 둔다. 한 Thread에 하나만 연다 — 둘이면 seq를 따로 센다(호스트가 Thread마다 하나를 쥔다).
 pub(crate) struct ThreadLog {
     thread: String,
+    /// 데이터 루트 — 적힌 줄을 다시 읽을 때(지난 말) 쓴다.
+    root: PathBuf,
     emit: Arc<Emit>,
     log: Mutex<RecordLog>,
 }
 
 impl ThreadLog {
     /// 연 기록을 쥔다 — 새 Thread의 것(`create_thread`)이거나 이어 연 것(`open_thread_log`)이다.
-    pub(crate) fn new(thread: &str, log: RecordLog, emit: Arc<Emit>) -> Self {
-        Self { thread: thread.to_owned(), emit, log: Mutex::new(log) }
+    pub(crate) fn new(root: &Path, thread: &str, log: RecordLog, emit: Arc<Emit>) -> Self {
+        Self { thread: thread.to_owned(), root: root.to_owned(), emit, log: Mutex::new(log) }
     }
 
     pub(crate) fn thread(&self) -> &str {
         &self.thread
+    }
+
+    /// 적힌 줄 전부 — 파일에서 다시 읽는다(쓰는 잠금을 쥐지 않는다). 쓰는 중인 끝 줄은 읽지 않는다.
+    pub(crate) fn lines(&self) -> Result<Vec<RecordLine>, RecordError> {
+        atelier_core::read_thread_records(&self.root, &self.thread, 0)
+            .map_err(|error| format!("Thread 기록을 읽지 못했습니다: {} — {error}", self.thread))
     }
 
     pub(crate) fn last_seq(&self) -> u64 {
