@@ -111,7 +111,7 @@ export type FileDiff =
   | { kind: "unreadable"; reason: string };
 
 /**
- * Project 하나의 PR(v1 티켓 33 · S24 — 코어 `ProjectPr`, `read_work_prs`의 한 칸). `absent`는 PR이 없거나 `gh`가 없거나 로그인이 안 된
+ * Project 하나의 PR(v1 티켓 33 · S24 — 코어 `ProjectPr`, `thread_work_prs`의 한 칸). `absent`는 PR이 없거나 `gh`가 없거나 로그인이 안 된
  * 것이고, `unreadable`은 네트워크 등으로 못 읽은 것이다 — 둘 다 PR 줄을 그리지 않는다.
  */
 export type ProjectPr = { project: string } & (

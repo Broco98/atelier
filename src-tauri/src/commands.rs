@@ -224,10 +224,10 @@ pub async fn read_work_diff(slug: String, project: String, path: String) -> CmdR
 
 /// Work의 PR(S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. Work 카드가 열릴 때와 열린 동안 60초마다 부른다. **Thread 엔진이
 /// 읽는다**(v1 티켓 36) — 처음 보인 PR과 상태 변화를 그 Work의 Thread에 `pr` 줄로 남기는 것이 엔진이라, 카드의 읽기도 그 셈에 든다.
-/// `gh`는 엔진이 쥔 로그인 셸의 PATH로 찾는다 — Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보인다. 다리는 엔진이 없어 core를
-/// 자기 PATH로 부르고 줄을 남기지 않는다.
+/// `gh`는 엔진이 쥔 로그인 셸의 PATH로 찾는다 — Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보인다. 엔진으로 가는 명령이라
+/// 이름이 `thread_`로 시작하고 다리는 거절한다(코드-지도 §2, 코드 리뷰 1차 B10).
 #[tauri::command]
-pub async fn read_work_prs(
+pub async fn thread_work_prs(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     slug: String,
 ) -> CmdResult<Vec<atelier_core::ProjectPr>> {
@@ -1141,7 +1141,7 @@ mod tests {
     ///   worktree가 바뀔 때마다 부른다.
     /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
     ///
-    /// Thread 명령과 `read_work_prs`(v1 티켓 36 — `gh`를 기다리고 `pr` 줄을 남기는 것이 엔진이다)는 여기 없다 — 어느 엔진 부름이
+    /// Thread 명령(`thread_work_prs`도 — v1 티켓 36, `gh`를 기다리고 `pr` 줄을 남기는 것이 엔진이다)은 여기 없다 — 어느 엔진 부름이
     /// 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을 blocking 풀에서 기다린다. 길은
     /// `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은 `every_thread_command_goes_to_the_engine_by_the_one_path`
     /// 가 잰다.

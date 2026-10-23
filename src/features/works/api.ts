@@ -42,5 +42,5 @@ export const worksApi = {
    */
   diff: (slug: string, project: string, path: string) => invoke<FileDiff>("read_work_diff", { slug, project, path }),
   /** Work의 PR(v1 티켓 33 · S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. Work 카드가 열릴 때 읽는다(v1 티켓 34). */
-  prs: (slug: string) => invoke<ProjectPr[]>("read_work_prs", { slug }),
+  prs: (slug: string) => invoke<ProjectPr[]>("thread_work_prs", { slug }),
 };

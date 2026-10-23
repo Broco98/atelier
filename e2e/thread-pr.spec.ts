@@ -12,14 +12,14 @@ import type { ProjectChanges, ProjectPr } from "@/features/works/types";
 // 문장과 「Host에게 고쳐 달라고 하기」가, 병합되면 「병합됨」이 선다. 카드가 열린 동안 PR은 60초마다 다시 읽는다.
 //
 // 줄은 L1이 축복한 기록을 그대로 쏜다 — Work에 이은 Thread의 턴이 끝난 뒤 처음 보인 PR · 카드의 읽기가 본 CI 실패 · 병합됨(`thread-pr`,
-// `thread_pr.rs`). 카드 · 줄의 글과 Work 카드가 받는 PR(`read_work_prs`)은 그 줄에서 읽는다(스토리 137).
+// `thread_pr.rs`). 카드 · 줄의 글과 Work 카드가 받는 PR(`thread_work_prs`)은 그 줄에서 읽는다(스토리 137).
 
 const lines = record("thread-pr");
 const TURN_END = seqOf(lines, "turn-end");
 const prs = lines.filter((line) => line.kind === "pr");
 const [OPENED, FAILED, MERGED] = prs.map((line) => line.payload as PrLine);
 
-/** 엔진이 그때 읽은 PR — Work 카드의 PR 쿼리(`read_work_prs`)가 받는 꼴이다(`pr` 줄은 이것에 Work · 처음인지를 더한 것). */
+/** 엔진이 그때 읽은 PR — Work 카드의 PR 쿼리(`thread_work_prs`)가 받는 꼴이다(`pr` 줄은 이것에 Work · 처음인지를 더한 것). */
 const found = ({ work: _work, first: _first, ...pr }: PrLine): ProjectPr => ({ kind: "found", ...pr });
 
 const WORK = { slug: OPENED.work, title: workTitleOf(lines, OPENED.work), branch: OPENED.headBranch, projects: [OPENED.project] };
@@ -47,7 +47,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
     thread_get: answerByArg("thread", { [view.id]: view }),
     thread_read_record: answerByArg("thread", { [view.id]: linesThrough(lines, TURN_END) }),
     thread_mark_read: answerByArg("thread", { [view.id]: { ...summaryOf(view), lastRead: TURN_END } }),
-    read_work_prs: [found(OPENED)],
+    thread_work_prs: [found(OPENED)],
     list_work_changes: CHANGES,
   });
   await page.goto(`/threads/${view.id}`);
@@ -58,7 +58,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   await expect(PR줄(page)).toHaveText(/CI 확인 중/);
   await expect(PR줄(page).locator('[data-pr-icon="open"]')).toHaveCount(1);
   await expect(PR줄(page).getByText("CI 확인 중", { exact: true })).toHaveClass(/chat-shimmer/);
-  expect(await steadyCount(page, "read_work_prs")).toBe(1);
+  expect(await steadyCount(page, "thread_work_prs")).toBe(1);
 
   // 엔진이 처음 보인 PR을 남겼다 — 흐름에 PR 카드가 선다. 브랜치 → base · +/− · 파일 수 · 리뷰 · CI 문장이 메타 줄이다.
   await streamLines(page, view.id, [prs[0]]);
@@ -78,7 +78,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
 
   // CI가 실패했다 — 카드가 하나 더 서고, 마지막 카드에 실패한 검사와 고쳐 달라는 버튼이 선다. Work 카드의 PR 줄은 엔진의 줄로 바뀌고
   // (`gh`를 다시 부르지 않는다) 그 아래 실패 문장이 선다.
-  await replaceAnswer(page, "read_work_prs", [found(FAILED)]);
+  await replaceAnswer(page, "thread_work_prs", [found(FAILED)]);
   await streamLines(page, view.id, [prs[1]]);
   await expect(PR카드(page)).toHaveCount(2);
   const failed = PR카드(page).last();
@@ -88,7 +88,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
   await expect(PR줄(page)).toHaveText(/CI 실패/);
   await expect(PR줄(page).locator('[data-pr-icon="failed"]')).toHaveCount(1);
   await expect(카드(page)).toContainText(`${failedNames.join(", ")} 검사가 실패했어요.`);
-  expect(await callCount(page, "read_work_prs")).toBe(1);
+  expect(await callCount(page, "thread_work_prs")).toBe(1);
 
   // 「Host에게 고쳐 달라고 하기」는 입력창을 채울 뿐이다 — 보내는 것은 사람이다.
   await failed.getByRole("button", { name: "Host에게 고쳐 달라고 하기", exact: true }).click();
@@ -110,7 +110,7 @@ test("턴 끝 뒤 처음 보인 PR이 흐름에 「CI 확인 중」 카드로 �
 
   // 카드가 열린 동안 60초마다 다시 읽는다.
   await page.clock.runFor(61_000);
-  await expect.poll(() => callCount(page, "read_work_prs")).toBe(2);
+  await expect.poll(() => callCount(page, "thread_work_prs")).toBe(2);
   await expect(PR줄(page)).toHaveText(/CI 실패/);
 
   // 병합됐다 — 마지막 카드가 「병합됨」과 병합한 때를 보이고 버튼이 없다. 앞 카드의 고쳐 달라는 버튼은 걷힌다. PR 줄도 「병합됨 · 때」다.
