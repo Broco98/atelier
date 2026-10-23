@@ -7,8 +7,9 @@
 //! - **Session을 열 때 읽는다** — 그 Agent의 Policy · `tools.cli`(정의 스냅숏, §19)와 작업 폴더(상대 경로를 푸는 자리).
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
-//!   **거절**은 거부 선택지로 닫고 글을 Agent에게 준다. **물음**은 카드 종류와 Policy 이름을 물음 줄에 달고, 편집이면 선택지를 적어
-//!   둔다(사람이 허락하면 쥔다). 고를 선택지가 없는 요청은 사람에게 묻는다.
+//!   **거절**은 거부 선택지로 닫고 글을 Agent에게 준다. **물음**은 카드 종류 · Policy 이름 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
+//!   달고, 선택지와 함께 적어 둔다(사람이 편집을 허락하면 쥐고, 다시 묻지 않기를 고르면 그 허락을 적는다 — v1 티켓 24). 고를 선택지가
+//!   없는 요청은 사람에게 묻는다.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -67,7 +68,8 @@ impl Gate {
             seat: seat.as_deref(),
         });
         let options = options_of(&asked.request);
-        let unsure = Asking { card: act.card(), policy: level.name().to_owned() };
+        // 판정의 답으로 닫지 못해 묻는 것(고를 선택지가 없다) — 판정이 넘기지 않을 일이라 「다시 묻지 않기」를 주지 않는다.
+        let unsure = Asking { card: act.card(), policy: level.name().to_owned(), grant: Vec::new() };
         match verdict {
             Verdict::Allow { reason } => {
                 let Some(option_id) = allowing(&options) else { return self.ask(asked, &act, options, unsure) };
@@ -79,7 +81,7 @@ impl Gate {
                 Judgement::Decide(Ruling { option_id, reason })
             }
             Verdict::Refuse { message } => self.refuse(asked, &act, options, message, unsure),
-            Verdict::Ask { card, policy } => self.ask(asked, &act, options, Asking { card, policy }),
+            Verdict::Ask { card, policy, grant } => self.ask(asked, &act, options, Asking { card, policy, grant }),
         }
     }
 
@@ -91,11 +93,10 @@ impl Gate {
         }
     }
 
-    /// 사람에게 묻는다 — 편집이면 선택지를 적어 두어, 사람이 허락하면 쓰기 자리를 쥔다.
+    /// 사람에게 묻는다 — 선택지 · 편집인가 · 「다시 묻지 않기」로 줄 허락을 적어 둔다. 사람이 편집을 허락하면 쓰기 자리를 쥐고,
+    /// 다시 묻지 않기를 고르면 그 허락을 점 파일에 적는다([`super::seat::Writer::note`]).
     fn ask(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, asking: Asking) -> Judgement {
-        if matches!(act, Act::Edit(_)) {
-            self.writer.note_edit(&asked.request_id, options);
-        }
+        self.writer.note(&asked.request_id, options, matches!(act, Act::Edit(_)), asking.grant.clone());
         Judgement::Ask(asking)
     }
 

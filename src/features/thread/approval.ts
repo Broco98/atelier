@@ -1,85 +1,79 @@
-import type { PendingPermission, PermissionOption } from "./fold";
+import { particle, type DecisionEntry, type PendingPermission, type PermissionOption } from "./fold";
 import { nonEmpty, type Json } from "./json";
-import { commandOf, diffPathsOf, locationsOf, mcpOf, toolFields } from "./tool-view";
+import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFields, type DiffPiece } from "./tool-view";
 
-// v1 티켓 05가 three-axes 승인 카드의 순수 함수를 Thread 접기 위로 옮겼다 — 규칙은 그대로다. 카드의 모양(질문 카드 · 「결정은 내가」)은
-// 뒤 장(22)이 고친다.
+// 승인 카드의 화면 값(v1 티켓 24 · 구현 스펙 §9 · 캔버스 Cards · Approval 보드 A안) — 답하지 않은 권한 요청(`PendingPermission`)을 카드의
+// 값(얼굴 옆의 물음 · Policy 이름 · 명령이나 diff · 실행할 자리), 선택지 셋, 키 하나의 고르기로 옮기고, 사람이 고른 것(`DecisionEntry`)을
+// 결정 줄의 글로 옮기는 **순수 함수**다. 그리는 것은 `ApprovalCard` · `ThreadFlow`다.
 //
-// 승인 카드의 화면 값(three-axes 티켓 21) — 답하지 않은 권한 요청(`PendingPermission`)을 무엇을 하려는지(도구 · 제목 · 명령이나
-// 경로 · 까닭)와 선택지 자리로 옮기는 **순수 함수**다. 그리는 것은 `ApprovalCard`이고, 승인 카드가 설 때의 알림(스토리 120)도 같은
-// 제목을 말한다.
-//
-// **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16) — 갈래는 요청 `toolCall`의 kind다. 명령 · 경로는 흐름의 그 도구
-// 줄(물음보다 먼저 온 `tool_call`)의 원문이 이긴다: codex-acp는 요청의 제목을 「Run command」로, 명령을 따옴표로 한 번 더 싸서
-// 주지만(실측 G2) 도구 줄에는 명령 그대로가 있다. 도구 줄이 없으면 요청의 것을 쓴다.
-//
-// **선택지는 엔진이 준 그대로다**(스토리 59) — 이름 · 차례 · 수를 고치지 않고 자리만 가른다: 「늘 허용」 갈래(`allow_always`)는
-// 카드 가운데 칩 줄에, 거부 갈래는 흰 알약, 한 번 허용은 주 동작이다(캔버스 Tools 보드 「승인 카드」). 계획 승인(kind
-// `switch_mode`)만 엔진의 두 선택지를 「구현」 · 「다시 짜기」로 부른다(three-axes 결정 29) — 그 요청의 이름은 엔진의 영어 문장
-// 이고(「Yes, implement this plan」), 카드가 묻는 말(「이 계획대로 할까요?」)의 답으로 읽혀야 해서다.
+// - **왜 묻는지는 Policy 이름이다** — 판정이 물음 줄에 단 `policy`(「매번 묻기」 · 「「prisma migrate」 실행 전에 묻기」, v1 티켓 22).
+//   Runtime이 준 까닭(Claude `decision_reason` — 「This command requires approval」)은 쓰지 않는다: Atelier가 하나뿐인 판정자다(S17).
+// - **엔진 이름이 아니라 ACP 모양으로 가른다**(three-axes 결정 16) — 갈래는 요청 `toolCall`의 kind다. 명령 · 경로는 흐름의 그 도구
+//   줄(물음보다 먼저 온 `tool_call`)의 원문이 이긴다. 도구 줄이 없으면 요청의 것을 쓴다.
+// - **선택지는 셋으로 고정이다**(보드) — 예 · 예, 이 Work에서는 다시 묻지 않기 · 아니요, 다르게 해 주세요. Runtime의 선택지 이름이 아니라
+//   `kind`로 고른다: 「예」 둘은 이번만 허락(`allow_once`), 「아니요」는 이번만 거부(`reject_once`)다 — 「이 대화에서 허락」(Claude
+//   `allow_always`)은 Runtime이 기억해 판정에 오지 않게 하므로 고르지 않는다(v1 티켓 22와 같은 까닭). 기억은 Atelier가 한다: 둘째는
+//   판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(`ask_before`가 물었다 · 계획 · 그 밖의 도구)에는 둘째가
+//   서지 않는다(허락은 `ask_before`를 넘기지 못한다). 셋째는 카드 안에 입력칸을 열고, 보내면 거부와 그 말이 Agent에게 간다.
+//   계획 승인(kind `switch_mode`)만 엔진의 두 선택지를 「구현」 · 「다시 짜기」로 부른다(three-axes 결정 29 — 질문 · 계획 카드는 v1 티켓
+//   26). 허락 · 거부 갈래를 고를 수 없는 요청이면 엔진의 선택지를 그대로 보인다.
 
-/** 카드 머리의 아이콘 갈래 — 도구의 갈래 하나(명령 · 읽기 · 편집 · 검색 · 가져오기 · MCP · 그 밖)이고, 계획 승인만 따로다. */
-export type ApprovalIcon = "execute" | "read" | "edit" | "search" | "fetch" | "mcp" | "other" | "plan";
+/** 카드의 갈래 — 명령 카드 · 파일 카드 · 계획 · 그 밖의 도구(웹 · MCP · 읽기 …). */
+export type CardKind = "command" | "edit" | "plan" | "other";
 
 export interface ApprovalView {
-  icon: ApprovalIcon;
-  /** 무엇을 다루는 도구인가 — 엔진 줄의 앞(「터미널」 · 「파일」 …). 계획 승인이면 「계획 모드」다. */
-  tool: string;
-  /** 카드가 묻는 말 — 카드의 이름이기도 하다. */
+  kind: CardKind;
+  /** 얼굴 옆의 물음 — 카드의 이름이기도 하다(「Host가 이 명령을 실행해도 될까요?」). */
   title: string;
-  /** 명령 · 경로 · 주소 · MCP 도구 — 모르면 null. */
+  /** 왜 묻는지 — Policy 이름. 판정 없이 물은 옛 기록이면 null이다. */
+  policy: string | null;
+  /** 명령 카드의 명령. */
+  command: string | null;
+  /** 파일 카드의 바뀐 내용 — 첫 파일 하나. 편집 내용을 싣지 않은 요청이면 null이다. */
+  diff: DiffPiece | null;
+  /** 그 밖의 대상 — 경로 · 주소 · MCP 도구. diff가 없는 파일 카드도 경로를 여기 든다. */
   subject: string | null;
-  /** 엔진이 준 까닭 — Claude 변환기가 `can_use_tool`의 `decision_reason`을 싣는다. 없으면 null. */
-  reason: string | null;
+  /** 명령 카드의 실행할 자리와 영향 한 줄(「api-server · fix/refund-api worktree에서 실행 · DB 스키마가 바뀝니다」). */
+  where: string | null;
 }
 
-/** 선택지 하나가 카드의 어디에 무엇으로 서나. */
-export interface ApprovalChoice {
-  option: PermissionOption;
-  /** 단추의 글 — 계획 승인이 아니면 엔진의 이름 그대로다. */
-  label: string;
-  /** `chip` 칩 줄 · `reject` 흰 알약 · `primary` 주 동작. */
-  place: "chip" | "reject" | "primary";
-}
-
-export function describeApproval(request: PendingPermission): ApprovalView {
+/**
+ * 카드의 값. `name`은 물은 참여자의 화면 이름, `place`는 그 Session이 일하는 자리(`placeOf`)다. 영향은 Runtime이 명령에 단 설명
+ * (Claude Bash의 `description`)이다.
+ */
+export function describeApproval(request: PendingPermission, name: string, place: string | null): ApprovalView {
   // 흐름의 도구 줄이 이긴다(머리말) — 호스트가 채운 요지는 빈 칸만 채운 것이라, 겹치는 칸은 도구 줄의 원문이 더 정확하다.
   const call: Json = { ...request.toolCall, ...(request.tool?.call ?? {}) };
   const fields = toolFields(call);
-  const { claudeCode, toolName, rawInput, title, kind } = fields;
-  const requestClaude = toolFields(request.toolCall).claudeCode;
-  const reason = nonEmpty(requestClaude.decisionReason) ?? nonEmpty(claudeCode.decisionReason);
+  const { rawInput, title, kind, toolName } = fields;
+  const ask = (what: string) => `${name}${particle(name, "이", "가")} ${what}`;
+  const base = { policy: request.policy, command: null, diff: null, subject: null, where: null };
 
-  if (request.planReview) return { icon: "plan", tool: "계획 모드", title: "이 계획대로 할까요?", subject: null, reason };
-
+  if (request.planReview) return { ...base, kind: "plan", title: "이 계획대로 할까요?" };
   const mcp = mcpOf(fields);
-  if (mcp) {
-    return { icon: "mcp", tool: "MCP", title: "이 MCP 도구를 쓰도록 허용할까요?", subject: `${mcp.server} · ${mcp.tool}`, reason };
-  }
+  if (mcp) return { ...base, kind: "other", title: ask("이 MCP 도구를 써도 될까요?"), subject: `${mcp.server} · ${mcp.tool}` };
   const path = pathOf(call, rawInput);
   switch (kind) {
-    case "execute":
-      return {
-        icon: "execute",
-        tool: "터미널",
-        title: "이 명령을 실행하도록 허용할까요?",
-        subject: commandOf(rawInput.command) ?? title,
-        reason,
-      };
+    case "execute": {
+      const effect = nonEmpty(rawInput.description);
+      const where = [place, effect].filter((one): one is string => one !== null).join(" · ") || null;
+      return { ...base, kind: "command", title: ask("이 명령을 실행해도 될까요?"), command: commandOf(rawInput.command) ?? title, where };
+    }
     case "edit":
-      return { icon: "edit", tool: "파일", title: "이 파일을 고치도록 허용할까요?", subject: path ?? title, reason };
     case "delete":
-      return { icon: "edit", tool: "파일", title: "이 파일을 지우도록 허용할까요?", subject: path ?? title, reason };
-    case "move":
-      return { icon: "edit", tool: "파일", title: "이 파일을 옮기도록 허용할까요?", subject: path ?? title, reason };
+    case "move": {
+      const verb = kind === "edit" ? "고쳐도" : kind === "delete" ? "지워도" : "옮겨도";
+      const diff = diffsOf(call)[0] ?? null;
+      return { ...base, kind: "edit", title: ask(`이 파일을 ${verb} 될까요?`), diff, subject: diff ? null : (path ?? title) };
+    }
     case "read":
-      return { icon: "read", tool: "파일", title: "이 파일을 읽도록 허용할까요?", subject: path ?? title, reason };
+      return { ...base, kind: "other", title: ask("이 파일을 읽어도 될까요?"), subject: path ?? title };
     case "fetch":
-      return { icon: "fetch", tool: "웹", title: "이 주소를 가져오도록 허용할까요?", subject: nonEmpty(rawInput.url) ?? title, reason };
+      return { ...base, kind: "other", title: ask("이 주소를 가져와도 될까요?"), subject: nonEmpty(rawInput.url) ?? title };
     case "search":
-      return { icon: "search", tool: "검색", title: "이 검색을 하도록 허용할까요?", subject: title, reason };
+      return { ...base, kind: "other", title: ask("이렇게 찾아봐도 될까요?"), subject: title };
     default:
-      return { icon: "other", tool: "도구", title: "이 도구를 쓰도록 허용할까요?", subject: title ?? toolName, reason };
+      return { ...base, kind: "other", title: ask("이 도구를 써도 될까요?"), subject: title ?? toolName };
   }
 }
 
@@ -89,16 +83,129 @@ function pathOf(call: Json, rawInput: Json): string | null {
   return paths.find((one) => one !== null) ?? null;
 }
 
-/** 선택지마다 카드의 자리와 글 — 차례는 엔진이 준 그대로다. */
-export function approvalChoices(request: PendingPermission): ApprovalChoice[] {
-  const choices = request.options.map((option): ApprovalChoice => {
-    const allow = option.kind.startsWith("allow");
-    const label = request.planReview ? (allow ? "구현" : option.kind.startsWith("reject") ? "다시 짜기" : option.name) : option.name;
-    const place = !allow ? "reject" : option.kind === "allow_always" && !request.planReview ? "chip" : "primary";
-    return { option, label, place };
+/** 실행할 자리를 읽는 데 드는 Work의 자리들 — `WorkView`의 칸 그대로다. */
+export interface WorkPlaces {
+  branch: string | null;
+  specDir: string;
+  worktrees: readonly { project: string; path: string }[];
+}
+
+/**
+ * 명령을 실행할 자리 — 물은 참여자의 Session 작업 폴더(`cwd`)를 이은 Work의 자리들과 견준다(v1 구현 스펙 §11 · three-axes 결정 17).
+ * worktree면 「Project · 브랜치 worktree」, worktree들을 품은 폴더(Project 여럿)면 「Work의 worktree 폴더」, spec 폴더면 그 이름, 그 밖은
+ * 폴더 이름이다. Work 없는 Thread의 Session은 Thread 폴더에서 일한다(S11). **폴더 이름으로 가르지 않는다** — 프런트는 Work 폴더의
+ * 짜임을 모른다(`shell-registry.test.ts`의 경로 조각 지킴). 모르면 null이다.
+ */
+export function placeOf(cwd: string | null, work: WorkPlaces | null): string | null {
+  if (!cwd) return null;
+  if (!work) return "Thread 폴더에서 실행";
+  const bare = (path: string) => path.replace(/\/+$/, "");
+  const here = bare(cwd);
+  const tree = work.worktrees.find((one) => bare(one.path) === here);
+  if (tree) return `${[tree.project, work.branch].filter(Boolean).join(" · ")} worktree에서 실행`;
+  if (here === bare(work.specDir)) return "spec 폴더에서 실행";
+  if (work.worktrees.length > 0 && work.worktrees.every((one) => bare(one.path).startsWith(`${here}/`))) {
+    return "Work의 worktree 폴더에서 실행";
+  }
+  return `${baseName(here)} 폴더에서 실행`;
+}
+
+/** 선택지 하나 — 카드의 번호 줄. */
+export interface CardChoice {
+  /** 고를 선택지(`optionId`). */
+  option: string;
+  label: string;
+  /** 「다시 묻지 않기」 — 판정이 낸 허락을 점 파일에 적고 답한다. */
+  remember: boolean;
+  /** 고르면 카드 안에 입력칸이 열린다(「아니요, 다르게 해 주세요」) — 보내야 답이 간다. */
+  opensField: boolean;
+}
+
+/** 선택지들 — 차례가 곧 번호다. `scope`는 「다시 묻지 않기」를 둘 자리(이은 Work, 없으면 이 Thread)다. */
+export function cardChoices(request: PendingPermission, scope: "work" | "thread"): CardChoice[] {
+  const pick = (option: PermissionOption, label: string, more: Partial<CardChoice> = {}): CardChoice => ({
+    option: option.optionId,
+    label,
+    remember: false,
+    opensField: false,
+    ...more,
   });
-  // 계획 승인의 두 이름이 겹치면(엔진이 허용 갈래를 둘 주면) 엔진의 이름으로 돌아간다 — 같은 글의 단추 둘은 고를 수 없다.
-  const seen = new Map<string, number>();
-  for (const choice of choices) seen.set(choice.label, (seen.get(choice.label) ?? 0) + 1);
-  return choices.map((choice) => ((seen.get(choice.label) ?? 0) > 1 ? { ...choice, label: choice.option.name } : choice));
+  const of = (...kinds: string[]) =>
+    kinds.map((kind) => request.options.find((option) => option.kind === kind)).find((option) => option !== undefined);
+  if (request.planReview) {
+    return request.options.map((option) =>
+      pick(option, option.kind.startsWith("allow") ? "구현" : option.kind.startsWith("reject") ? "다시 짜기" : option.name),
+    );
+  }
+  const allow = of("allow_once", "allow_always");
+  const reject = of("reject_once", "reject_always");
+  if (!allow || !reject) return request.options.map((option) => pick(option, option.name));
+  const where = scope === "work" ? "이 Work에서는" : "이 Thread에서는";
+  const what = request.grant.includes("edit") ? "편집을 " : "";
+  return [
+    pick(allow, "예"),
+    ...(request.grant.length > 0 ? [pick(allow, `예, ${where} ${what}다시 묻지 않기`, { remember: true })] : []),
+    pick(reject, "아니요, 다르게 해 주세요", { opensField: true }),
+  ];
+}
+
+/** 카드가 받은 키 — 물리 키(`code`)와 수식키 넷(`hotkeys.ts`의 `KeyChord`와 같은 까닭으로 `KeyboardEvent`를 이름으로 받지 않는다). */
+export interface CardPress {
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
+/**
+ * 키 하나의 고르기(스토리 76) — 숫자는 그 번호의 선택지, Enter는 켜진 줄(처음엔 첫째), Esc는 마지막, ↑↓는 켜진 줄 옮기기(끝에서 돈다)다.
+ * 카드 안 키라 단축키 표 밖이다(`hotkeys.ts` 머리말 「목록 안 움직임」) — 그래서 `key`가 아니라 `code`로 본다(한글 입력기). 수식키가 붙으면
+ * 고르지 않는다 — ⌘1 · ⌘Enter는 앱의 단축키다.
+ */
+export function cardKey(press: CardPress, count: number, active: number): { pick: number } | { point: number } | null {
+  if (press.metaKey || press.ctrlKey || press.altKey || press.shiftKey || count === 0) return null;
+  const digit = /^(?:Digit|Numpad)([1-9])$/.exec(press.code);
+  if (digit) {
+    const at = Number(digit[1]) - 1;
+    return at < count ? { pick: at } : null;
+  }
+  switch (press.code) {
+    case "Enter":
+    case "NumpadEnter":
+      return { pick: Math.min(active, count - 1) };
+    case "Escape":
+      return { pick: count - 1 };
+    case "ArrowDown":
+      return { point: (active + 1) % count };
+    case "ArrowUp":
+      return { point: (active - 1 + count) % count };
+    default:
+      return null;
+  }
+}
+
+/** 결정 줄의 무엇 — 도구 요지의 kind로 고른다(목적격 조사까지). */
+const DECIDED: Readonly<Record<string, string>> = {
+  execute: "명령 실행을",
+  edit: "파일 고치기를",
+  delete: "파일 지우기를",
+  move: "파일 옮기기를",
+  read: "파일 읽기를",
+  fetch: "주소 가져오기를",
+  search: "검색을",
+};
+
+/**
+ * 결정 줄의 글(캔버스 Screen-Thread · Approval 보드 「결정한 뒤」) — 「명령 실행을 승인함」 · 「명령 실행을 승인함 · 이 Work에서는 다시 묻지
+ * 않음」 · 「명령 실행을 거부함」. 남긴 말은 그리는 쪽이 글 뒤에 따로 든다.
+ */
+export function decisionText(entry: DecisionEntry): string {
+  const fields = toolFields(entry.toolCall);
+  const what = entry.planReview ? "계획을" : mcpOf(fields) ? "MCP 도구 쓰기를" : (DECIDED[fields.kind] ?? "도구 쓰기를");
+  const decided = `${what} ${entry.allowed ? "승인함" : "거부함"}`;
+  if (!entry.granted) return decided;
+  const where = entry.granted.work ? "이 Work에서는" : "이 Thread에서는";
+  const edits = entry.granted.rules.includes("edit") ? "편집을 " : "";
+  return `${decided} · ${where} ${edits}다시 묻지 않음`;
 }

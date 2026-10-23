@@ -855,7 +855,8 @@ pub async fn thread_send_now(
     to_host(&engine, "지금 전하지 못했습니다", move |host| host.send_thread_now(&thread, &queued)).await
 }
 
-/// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다.
+/// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청(`request`)에 고른 선택지(`option`)로 답한다. 승인
+/// 카드(v1 티켓 24)의 「다시 묻지 않기」면 `remember`, 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
 #[tauri::command]
 pub async fn thread_answer_permission(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -863,9 +864,11 @@ pub async fn thread_answer_permission(
     who: String,
     request: String,
     option: String,
+    remember: bool,
+    words: Option<String>,
 ) -> CmdResult<()> {
     to_host(&engine, "권한 요청에 답하지 못했습니다", move |host| {
-        host.answer_thread_permission(&thread, &who, &request, &option)
+        host.reply_thread_permission(&thread, &who, &request, &atelier_acp::Reply { option, remember, words })
     })
     .await
 }

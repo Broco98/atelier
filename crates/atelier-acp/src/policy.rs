@@ -20,6 +20,11 @@
 //!
 //! 명령은 `&&` · `||` · `;` · `|` · 줄바꿈으로 조각낸다. **막는 쪽(`forbid` · `ask_before`)은 조각 하나만 걸려도, 넘기는 쪽(허락 ·
 //! `tools.cli`)은 모든 조각이 맞아야** 걸린다 — `gh pr view && git push`는 `push`에 걸리고, `tools.cli: [gh]`로 넘어가지 않는다.
+//! 허락은 조각마다 준 허락 가운데 하나에 맞으면 된다 — 「다시 묻지 않기」가 `cd fe && pnpm test`에 `cd` · `pnpm test` 둘을 주기
+//! 때문이다([`remembered`], v1 티켓 24).
+//!
+//! **「다시 묻지 않기」는 물어보는 정도가 물은 것에만 선다**(6번 칸) — 물음([`Verdict::Ask`])이 그때 줄 허락을 함께 낸다. `ask_before`가
+//! 물은 것에는 없다: 허락은 5번 칸이라 4번(`ask_before`)을 넘기지 못한다 — 주어도 다음에 또 묻는다.
 
 use std::path::{Path, PathBuf};
 
@@ -165,8 +170,9 @@ pub(crate) enum Verdict {
     Allow { reason: String },
     /// 묻지 않고 거절한다 — Agent에게 돌려줄 글과 함께.
     Refuse { message: String },
-    /// 사람에게 묻는다 — 카드 종류와 왜 묻는지(Policy 이름)와 함께.
-    Ask { card: Card, policy: String },
+    /// 사람에게 묻는다 — 카드 종류와 왜 묻는지(Policy 이름)와 함께. `grant`는 사람이 「다시 묻지 않기」를 고르면 줄 허락(규칙 이름들)이고,
+    /// 비었으면 그 선택지가 서지 않는다(머리말).
+    Ask { card: Card, policy: String, grant: Vec<String> },
 }
 
 /// 권한 요청 하나를 판정한다 — 머리말의 차례대로 처음 걸린 칸이 답한다.
@@ -184,9 +190,9 @@ pub(crate) fn judge(case: &Case) -> Verdict {
         }
     }
     if let Some(name) = case.policy.ask_before.iter().find(|name| hits(name, act)) {
-        return Verdict::Ask { card: act.card(), policy: ask_name(name) };
+        return Verdict::Ask { card: act.card(), policy: ask_name(name), grant: Vec::new() };
     }
-    if case.grants.iter().any(|name| covers(name, act)) {
+    if granted(case.grants, act) {
         let reason = if case.in_work { "이 Work에서는 다시 묻지 않기" } else { "이 Thread에서는 다시 묻지 않기" };
         return Verdict::Allow { reason: reason.to_owned() };
     }
@@ -209,7 +215,7 @@ fn by_level(case: &Case) -> Verdict {
     if let Some(entry) = case.cli.iter().find(|entry| cli_covers(entry, case.act)) {
         return Verdict::Allow { reason: format!("「{}」 명령은 묻지 않기", shown(entry)) };
     }
-    let asked = Verdict::Ask { card: case.act.card(), policy: level.name().to_owned() };
+    let asked = Verdict::Ask { card: case.act.card(), policy: level.name().to_owned(), grant: remembered(case.act) };
     let allowed = Verdict::Allow { reason: level.name().to_owned() };
     match case.act {
         Act::Edit(paths) if paths.is_empty() => asked,
@@ -268,14 +274,59 @@ fn hits(name: &str, act: &Act) -> bool {
     }
 }
 
-/// 넘기는 쪽(허락)의 걸림 — 명령은 모든 조각이 맞아야 걸린다.
-fn covers(name: &str, act: &Act) -> bool {
-    match (rule(name), act) {
-        (Rule::Edits, Act::Edit(_)) | (Rule::Commands, Act::Command(_)) => true,
-        (Rule::Named(commands), Act::Command(text)) => every_piece(text, |piece| commands.iter().any(|command| starts(piece, command))),
-        (Rule::Pattern(pattern), Act::Command(text)) => every_piece(text, |piece| pattern_matches(pattern, piece)),
-        _ => false,
+/// 「다시 묻지 않기」 허락의 걸림(5번 칸) — 편집은 편집 허락 하나로, 명령은 모든 조각이 저마다 허락 하나에 맞아야 넘어간다.
+fn granted(grants: &[String], act: &Act) -> bool {
+    match act {
+        Act::Command(text) => every_piece(text, |piece| grants.iter().any(|name| covers_piece(name, piece))),
+        Act::Edit(_) => grants.iter().any(|name| matches!(rule(name), Rule::Edits)),
+        Act::Plan | Act::Other => false,
     }
+}
+
+/// 넘기는 쪽의 걸림 — 명령 조각 하나가 그 규칙에 맞나.
+fn covers_piece(name: &str, piece: &str) -> bool {
+    match rule(name) {
+        Rule::Commands => true,
+        Rule::Named(commands) => commands.iter().any(|command| starts(piece, command)),
+        Rule::Pattern(pattern) => pattern_matches(pattern, piece),
+        Rule::Edits | Rule::Nothing => false,
+    }
+}
+
+/// 「다시 묻지 않기」로 줄 허락(S18 · v1 티켓 24) — 같은 종류의 다음 요청을 5번 칸에서 넘기는 규칙 이름들. 편집이면 `edit`(편집
+/// 전부 — 고칠 수 있는 자리 · 쓰기 자리는 그 앞 칸이 여전히 본다), 명령이면 조각마다 그 머리의 패턴 `Bash(<머리> *)`다. 계획
+/// 넘어가기 · 그 밖의 도구는 S19에 이름이 없어 비었다.
+///
+/// **머리는 명령과 하위 명령, 두 낱말까지다**(`pnpm prisma migrate dev` → `pnpm prisma`, `git push origin` → `git push`, `python3 -c …`
+/// → `python3`). 둘째 낱말은 하위 명령처럼 생겼을 때만 든다 — 영문자로 시작하고 영문자 · 숫자 · `-` · `_` · `:`뿐이다(`-c` ·
+/// `script.py` · `../fe`는 인자다). 글자로만 가르므로 그렇게 생긴 인자는 하위 명령으로 읽힌다(`cd fe` → `cd fe`) — 허락이 좁아질
+/// 뿐 넓어지지 않는다. 셋째 낱말부터는 하위 명령인지 인자인지 글자로 가를 수 없어 들지 않는다(`pnpm test refunds`).
+pub(crate) fn remembered(act: &Act) -> Vec<String> {
+    match act {
+        Act::Edit(_) => vec!["edit".to_owned()],
+        Act::Command(text) => {
+            let mut rules: Vec<String> = Vec::new();
+            for piece in pieces(text) {
+                let mut words = piece.split_whitespace();
+                let Some(first) = words.next() else { continue };
+                let head = match words.next().filter(|word| subcommand(word)) {
+                    Some(second) => format!("{first} {second}"),
+                    None => first.to_owned(),
+                };
+                let rule = format!("Bash({head} *)");
+                if !rules.contains(&rule) {
+                    rules.push(rule);
+                }
+            }
+            rules
+        }
+        Act::Plan | Act::Other => Vec::new(),
+    }
+}
+
+/// 하위 명령처럼 생긴 낱말인가(`test` · `prisma` · `pr` · `run:dev`).
+fn subcommand(word: &str) -> bool {
+    word.starts_with(|c: char| c.is_ascii_alphabetic()) && word.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':'))
 }
 
 /// `tools.cli` 한 줄의 걸림 — 명령 이름(`gh` · `pnpm test`)이면 그것으로 시작하는 명령, `Bash(…)`면 그 패턴이다. 모든 조각이 맞아야
@@ -305,9 +356,32 @@ fn shown(name: &str) -> &str {
     inner.trim_end_matches(":*").trim_matches(|c: char| c == '*' || c.is_whitespace())
 }
 
-/// 명령의 조각들 — `&&` · `||` · `;` · `|` · `&` · 줄바꿈으로 자르고, 앞의 환경 변수 놓기(`FOO=1 git push`)를 뗀다.
+/// 명령의 조각들 — `&&` · `||` · `;` · `|` · `&` · 줄바꿈으로 자르고, 앞의 환경 변수 놓기(`FOO=1 git push`)를 뗀다. **따옴표 안의
+/// 구분자로는 자르지 않는다**(v1 티켓 24) — `python3 -c "import a; a.b()"`는 조각 하나다. 셸이 그 글을 한 인자로 넘기기 때문이고,
+/// 거기서 자르면 「다시 묻지 않기」가 `Bash(a.b() *)` 같은 허락을 짓는다. 백슬래시 뒤의 한 글자는 따옴표 밖에서 글자 그대로다.
 fn pieces(text: &str) -> impl Iterator<Item = &str> {
-    text.split(|c: char| matches!(c, ';' | '|' | '&' | '\n')).map(str::trim).filter(|piece| !piece.is_empty()).map(|piece| {
+    let mut cut: Vec<&str> = Vec::new();
+    let (mut start, mut quote, mut escaped) = (0, None::<char>, false);
+    for (at, c) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match (quote, c) {
+            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
+            (Some('\''), _) => {}
+            (_, '\\') => escaped = true,
+            (Some(_), _) => {}
+            (None, '\'' | '"') => quote = Some(c),
+            (None, ';' | '|' | '&' | '\n') => {
+                cut.push(&text[start..at]);
+                start = at + c.len_utf8();
+            }
+            (None, _) => {}
+        }
+    }
+    cut.push(&text[start..]);
+    cut.into_iter().map(str::trim).filter(|piece| !piece.is_empty()).map(|piece| {
         let mut rest = piece;
         while let Some((word, after)) = rest.split_once(char::is_whitespace) {
             if !assigns(word) {
@@ -445,8 +519,14 @@ mod tests {
         Verdict::Refuse { message: message.to_owned() }
     }
 
+    /// `ask_before` · 계획 넘어가기 · 그 밖의 도구의 물음 — 「다시 묻지 않기」가 없다.
     fn ask(card: Card, policy: &str) -> Verdict {
-        Verdict::Ask { card, policy: policy.to_owned() }
+        Verdict::Ask { card, policy: policy.to_owned(), grant: Vec::new() }
+    }
+
+    /// 물어보는 정도가 물은 것 — 「다시 묻지 않기」로 줄 허락과 함께.
+    fn asked_with(card: Card, policy: &str, grant: &[&str]) -> Verdict {
+        Verdict::Ask { card, policy: policy.to_owned(), grant: names(grant) }
     }
 
     const BUSY: &str = "@host가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
@@ -490,11 +570,14 @@ mod tests {
         let inside = || edit("/w/cart/trees/fe/src/cart.ts");
         let test = || command("gh pr view 12");
         let cli = "「gh」 명령은 묻지 않기";
-        // (정도, 파일 고치기, 명령, `tools.cli`에 맞는 명령, 계획 넘어가기, 그 밖의 도구) — §9 표 그대로다.
+        // (정도, 파일 고치기, 명령, `tools.cli`에 맞는 명령, 계획 넘어가기, 그 밖의 도구) — §9 표 그대로다. 물어보는 정도가 물은 편집 ·
+        // 명령에는 「다시 묻지 않기」 허락이 함께 선다(v1 티켓 24).
+        let edit_asked = |level: &str| asked_with(Card::Edit, level, &["edit"]);
+        let command_asked = |level: &str| asked_with(Card::Command, level, &["Bash(gh pr *)"]);
         let table = [
-            (Always, ask(Card::Edit, "매번 묻기"), ask(Card::Command, "매번 묻기"), allow(cli), ask(Card::Plan, "매번 묻기")),
-            (Edits, allow("편집은 허용"), ask(Card::Command, "편집은 허용"), allow(cli), ask(Card::Plan, "편집은 허용")),
-            (Plan, ask(Card::Edit, "계획만"), ask(Card::Command, "계획만"), allow(cli), ask(Card::Plan, "계획만")),
+            (Always, edit_asked("매번 묻기"), command_asked("매번 묻기"), allow(cli), ask(Card::Plan, "매번 묻기")),
+            (Edits, allow("편집은 허용"), command_asked("편집은 허용"), allow(cli), ask(Card::Plan, "편집은 허용")),
+            (Plan, edit_asked("계획만"), command_asked("계획만"), allow(cli), ask(Card::Plan, "계획만")),
             (Auto, allow("알아서"), allow("알아서"), allow(cli), ask(Card::Plan, "알아서")),
         ];
         for (level, edits, commands, listed, plan) in table {
@@ -509,7 +592,7 @@ mod tests {
             assert_eq!(judged(test(), &["gh"]), listed, "{level:?} tools.cli에 맞는 명령");
             assert_eq!(judged(Act::Plan, &["gh"]), plan, "{level:?} 계획 넘어가기");
             assert_eq!(judged(Act::Other, &["gh"]), ask(Card::Command, level.name()), "{level:?} 그 밖의 도구");
-            assert_eq!(judged(Act::Edit(Vec::new()), &[]), ask(Card::Edit, level.name()), "{level:?} 경로를 모르는 편집");
+            assert_eq!(judged(Act::Edit(Vec::new()), &[]), edit_asked(level.name()), "{level:?} 경로를 모르는 편집");
         }
     }
 
@@ -527,7 +610,13 @@ mod tests {
             (
                 "push",
                 vec![command("git push"), command("git push origin main"), command("cd fe && git push"), command("FOO=1 git push -f")],
-                vec![command("git pushy"), command("git status"), command("echo git push"), edit("/w/cart/spec/a.md")],
+                vec![
+                    command("git pushy"),
+                    command("git status"),
+                    command("echo git push"),
+                    command("git commit -m \"wip; git push later\""),
+                    edit("/w/cart/spec/a.md"),
+                ],
             ),
             (
                 "merge",
@@ -562,11 +651,15 @@ mod tests {
         };
         let granted = allow("이 Work에서는 다시 묻지 않기");
         assert_eq!(judged(command("pnpm test refunds"), &["Bash(pnpm test *)"], &[]), granted);
-        assert_eq!(judged(command("pnpm test && git push"), &["Bash(pnpm test *)"], &[]), ask(Card::Command, "매번 묻기"));
+        let both = asked_with(Card::Command, "매번 묻기", &["Bash(pnpm test *)", "Bash(git push *)"]);
+        assert_eq!(judged(command("pnpm test && git push"), &["Bash(pnpm test *)"], &[]), both);
         assert_eq!(judged(edit("/w/cart/spec/a.md"), &["edit"], &[]), granted);
-        assert_eq!(judged(edit("/w/cart/spec/a.md"), &["shell"], &[]), ask(Card::Edit, "매번 묻기"), "명령 허락은 편집을 넘기지 않는다");
-        assert_eq!(judged(command("gh pr view && rm -rf /"), &[], &["gh"]), ask(Card::Command, "매번 묻기"));
-        assert_eq!(judged(command("ghost"), &[], &["gh"]), ask(Card::Command, "매번 묻기"), "이름은 낱말로 맞춘다");
+        let edit_asked = asked_with(Card::Edit, "매번 묻기", &["edit"]);
+        assert_eq!(judged(edit("/w/cart/spec/a.md"), &["shell"], &[]), edit_asked, "명령 허락은 편집을 넘기지 않는다");
+        let gh_rm = asked_with(Card::Command, "매번 묻기", &["Bash(gh pr *)", "Bash(rm *)"]);
+        assert_eq!(judged(command("gh pr view && rm -rf /"), &[], &["gh"]), gh_rm);
+        let ghost = asked_with(Card::Command, "매번 묻기", &["Bash(ghost *)"]);
+        assert_eq!(judged(command("ghost"), &[], &["gh"]), ghost, "이름은 낱말로 맞춘다");
         assert_eq!(judged(command("pnpm test x"), &[], &["Bash(pnpm test *)"]), allow("「pnpm test」 명령은 묻지 않기"));
 
         let mut given = Given::act(command("pnpm prisma migrate dev"));
@@ -588,6 +681,45 @@ mod tests {
             given.act = command(if name == "push" { "git push" } else { "gh pr merge 1" });
             assert_eq!(given.judged(), ask(Card::Command, policy));
         }
+    }
+
+    #[test]
+    fn 다시_묻지_않기는_물어보는_정도가_물은_편집_명령에만_서고_그_허락이_같은_종류의_다음_요청을_넘긴다() {
+        let asked = |act: Act| Given::act(act).judged();
+        // 물어보는 정도가 물은 것 — 편집은 편집 전부, 명령은 조각마다 머리(명령과 하위 명령, 두 낱말까지)의 패턴이다.
+        let table: [(Act, &[&str]); 6] = [
+            (edit("/w/cart/trees/fe/src/cart.ts"), &["edit"]),
+            (Act::Edit(Vec::new()), &["edit"]),
+            (command("pnpm prisma migrate dev --name partial_refund"), &["Bash(pnpm prisma *)"]),
+            (command("python3 -c \"import time; print(1)\" && echo 'a | b'"), &["Bash(python3 *)", "Bash(echo *)"]),
+            (command("cd ../fe && pnpm test refunds; cd .."), &["Bash(cd *)", "Bash(pnpm test *)"]),
+            (command("FOO=1 ./scripts/run.sh --fast"), &["Bash(./scripts/run.sh *)"]),
+        ];
+        for (act, rules) in table {
+            let Verdict::Ask { grant, .. } = asked(act.clone()) else { panic!("{act:?}는 묻는다") };
+            assert_eq!(grant, names(rules), "{act:?}");
+            // 그 허락을 주면 같은 요청이 5번 칸에서 넘어간다.
+            let mut given = Given::act(act.clone());
+            given.grants = grant;
+            assert_eq!(given.judged(), allow("이 Work에서는 다시 묻지 않기"), "{act:?}");
+            given.in_work = false;
+            assert_eq!(given.judged(), allow("이 Thread에서는 다시 묻지 않기"), "{act:?} — Work 없는 Thread");
+        }
+
+        // 같은 종류 — 머리가 같으면 인자가 달라도 넘어가고, 조각 하나라도 허락 밖이면 묻는다.
+        let mut given = Given::act(command("cd api && pnpm test cart --watch=false"));
+        given.grants = names(&["Bash(cd *)", "Bash(pnpm test *)"]);
+        assert_eq!(given.judged(), allow("이 Work에서는 다시 묻지 않기"));
+        given.act = command("cd api && pnpm build");
+        assert!(matches!(given.judged(), Verdict::Ask { .. }), "pnpm build는 pnpm test의 허락으로 넘어가지 않는다");
+
+        // ask_before가 물은 것 · 계획 넘어가기 · 그 밖의 도구에는 없다 — 허락은 ask_before보다 뒤 칸이라 넘기지 못하고, 뒤의 둘은
+        // S19에 이름이 없다.
+        let mut given = Given::act(command("pnpm prisma migrate dev"));
+        given.policy.ask_before = names(&["Bash(*prisma migrate *)"]);
+        assert_eq!(given.judged(), ask(Card::Command, "「prisma migrate」 실행 전에 묻기"));
+        assert_eq!(asked(Act::Plan), ask(Card::Plan, "매번 묻기"));
+        assert_eq!(asked(Act::Other), ask(Card::Command, "매번 묻기"));
     }
 
     #[test]

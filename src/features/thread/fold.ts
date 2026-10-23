@@ -26,7 +26,10 @@ import type { Attachment, RecordLine } from "./types";
 // - **도구 줄은 시작과 끝의 시각을 든다** — 작업 로그가 마우스를 올린 줄에 걸린 시간을 말한다(캔버스 WorkLog 보드). 사람이 거절한
 //   물음의 도구 줄은 「실행하지 않음 · 내가 거절함」이라 거절을 든다(`denied`). 판정이 묻지 않고 허용한 도구 줄은 그 까닭을 든다
 //   (`allowed` — 방패 줄 「자동으로 허용함」, v1 티켓 23 · 구현 스펙 §9). 판정 줄(`decided`)의 고른 선택지가 허용 갈래일 때다 — 엔진의
-//   거절도 같은 줄로 온다.
+//   거절도 같은 줄로 온다. 답하지 않은 물음의 도구 줄은 「승인을 기다리는 중」이다(`asking`, v1 티켓 24).
+// - **사람이 승인 카드에서 고른 것은 결정 줄이다**(v1 티켓 24 · 캔버스 Cards · Approval 보드 「결정한 뒤」) — 답 줄(`answered`)이 오면
+//   카드가 걷히고 물은 참여자의 열린 턴에 결정 줄이 선다(허락인지 · 다시 묻지 않기로 준 허락 · 거절하며 남긴 말). 판정이 묻지 않고
+//   닫은 요청(`decided`)은 결정 줄이 아니다 — 그쪽은 위의 방패 줄이다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -52,7 +55,27 @@ export type Entry =
   | ToolEntry
   | CallEntry
   | PlanEntry
-  | ChecklistEntry;
+  | ChecklistEntry
+  | DecisionEntry;
+
+/**
+ * 결정 줄(v1 티켓 24) — 사람이 승인 카드에서 고른 것. 문구는 `approval.ts`의 `decisionText`가 짓는다(「명령 실행을 승인함 · 이 Work에서는
+ * 다시 묻지 않음」).
+ */
+export interface DecisionEntry {
+  kind: "decision";
+  key: string;
+  /** 허락했나(고른 선택지의 `kind`가 `allow…`). */
+  allowed: boolean;
+  /** 「다시 묻지 않기」로 준 허락과 둔 자리 — 없으면 null이다. */
+  granted: { rules: string[]; work: string | null } | null;
+  /** 거절하며 남긴 말 — 없으면 null이다. */
+  words: string | null;
+  /** 물음의 도구 요지 — 무엇을 결정했는지(명령 · 파일 · 계획)가 여기서 나온다. */
+  toolCall: Json;
+  /** 계획 승인이었나. */
+  planReview: boolean;
+}
 
 /** 부르기가 끝난 꼴(`call` 끝 줄) — 받은 말이거나, 답하지 못한 까닭이거나, 사람이 멈췄다. */
 export interface CallEnd {
@@ -125,6 +148,8 @@ export interface ToolEntry {
   denied: boolean;
   /** 판정이 묻지 않고 허용했으면 그 까닭(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …), 아니면 null이다. */
   allowed: string | null;
+  /** 이 도구가 물은 권한이 아직 답을 기다리나 — 「승인을 기다리는 중」(v1 티켓 24). */
+  asking: boolean;
   /** `tool_call` 줄의 시각. */
   startedAt: string;
   /** 끝(`completed` · `failed`)을 알린 줄의 시각. 끝나지 않았으면 null이다. */
@@ -242,6 +267,12 @@ export interface PendingPermission {
   tool: ToolEntry | null;
   /** 계획 승인 요청인가 — ACP 도구 kind `switch_mode`. */
   planReview: boolean;
+  /** 판정이 세운 카드 종류(v1 티켓 22) — 판정 없이 물은 옛 기록이면 null이다. */
+  card: "command" | "edit" | "plan" | null;
+  /** 왜 묻는지 — Policy 이름(「매번 묻기」 · 「「prisma migrate」 실행 전에 묻기」). 없으면 null이다. */
+  policy: string | null;
+  /** 「다시 묻지 않기」를 고르면 줄 허락(규칙 이름들) — 비었으면 카드에 그 선택지가 없다(`ask_before`가 물었다 · 계획 · 그 밖의 도구). */
+  grant: string[];
 }
 
 /** 턴 안의 줄이 되는 `session/update` 갈래. */
@@ -263,8 +294,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const open = new Map<string, Turn>();
   // 도는 턴에서 `failed`로 닫힌 뒤 아무 일도 이어지지 않은 도구 줄들(턴마다) — 그 턴이 우리의 멈춤으로 끝나면 멈춤이다.
   const closedLast = new Map<Turn, ToolEntry[]>();
-  // 권한 요청 id → 그 요청의 도구 줄 id · 선택지 갈래, 그리고 멈추기로 요청이 거둬진 도구 줄 id들.
-  const askedFor = new Map<string, { tool: string | null; options: PermissionOption[] }>();
+  // 권한 요청 id → 그 요청의 도구 줄 id · 물음, 그리고 멈추기로 요청이 거둬진 도구 줄 id들.
+  const askedFor = new Map<string, { tool: string | null; request: Omit<PendingPermission, "tool"> }>();
   const withdrawnByStop = new Set<string>();
   const deniedTools = new Set<string>();
   // 판정이 묻지 않고 허용한 도구 줄 id → 까닭 — 도구 줄이 판정 줄보다 늦게 와도 든다.
@@ -486,7 +517,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (payload.state === "asked") {
           const id = askedToolId(payload);
           const request = askedOf(requestId, line.who ?? HOST, payload);
-          askedFor.set(requestId, { tool: id, options: request.options });
+          askedFor.set(requestId, { tool: id, request });
           pending.set(requestId, request);
           if (request.planReview && id) {
             planReviews.add(id);
@@ -503,9 +534,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         }
         pending.delete(requestId);
         const asked = askedFor.get(requestId);
+        const chosen = asked?.request.options.find((option) => option.optionId === payload.optionId);
         if (payload.state === "answered" && asked?.tool) {
           // 거절 갈래로 답했다 — 그 도구는 돌지 않는다(「실행하지 않음 · 내가 거절함」).
-          const chosen = asked.options.find((option) => option.optionId === payload.optionId);
           if (chosen?.kind.startsWith("reject")) {
             deniedTools.add(asked.tool);
             const tool = findTool(turns, asked.tool);
@@ -514,15 +545,30 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         }
         if (payload.state === "decided") {
           // 판정이 닫았다 — 받은 자리의 판정이면 요청이 같은 줄에, 걸린 물음을 닫았으면 물음 줄에 있다(v1 티켓 18 · 22).
-          const options = isObject(payload.request) ? askedOf(requestId, line.who ?? HOST, payload).options : (asked?.options ?? []);
-          const chosen = options.find((option) => option.optionId === payload.optionId);
+          const options = isObject(payload.request)
+            ? askedOf(requestId, line.who ?? HOST, payload).options
+            : (asked?.request.options ?? []);
+          const picked = options.find((option) => option.optionId === payload.optionId);
           const id = askedToolId(payload) ?? asked?.tool ?? null;
           const reason = text(payload.reason);
-          if (id && reason !== null && chosen?.kind.startsWith("allow")) {
+          if (id && reason !== null && picked?.kind.startsWith("allow")) {
             allowedTools.set(id, reason);
             const tool = findTool(turns, id);
             if (tool) tool.allowed = reason;
           }
+        }
+        // 사람이 고른 것은 물은 참여자의 열린 턴에 결정 줄로 남는다.
+        const home = payload.state === "answered" && asked ? openFor(line.who ?? null) : null;
+        if (home && asked) {
+          home.entries.push({
+            kind: "decision",
+            key: `d${line.seq}`,
+            allowed: chosen?.kind.startsWith("allow") ?? false,
+            granted: grantedOf(payload.granted),
+            words: nonEmpty(payload.words),
+            toolCall: asked.request.toolCall,
+            planReview: asked.request.planReview,
+          });
         }
         if (payload.state === "withdrawn" && payload.reason === "stopped" && asked?.tool) {
           withdrawnByStop.add(asked.tool);
@@ -651,7 +697,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     calls: loose,
     pending: [...pending.values()].map((one) => {
       const id = text(one.toolCall.toolCallId);
-      return { ...one, tool: id ? findTool(turns, id) : null };
+      const tool = id ? findTool(turns, id) : null;
+      if (tool) tool.asking = true;
+      return { ...one, tool };
     }),
   };
 }
@@ -809,6 +857,7 @@ function newTool(key: string, toolCallId: string, call: Json, at: string): ToolE
     cut: false,
     denied: false,
     allowed: null,
+    asking: false,
     startedAt: at,
     endedAt: null,
   };
@@ -829,7 +878,16 @@ function askedOf(requestId: string, who: string, payload: Json): Omit<PendingPer
     const optionId = text(option.optionId);
     return optionId === null ? [] : [{ optionId, name: text(option.name) ?? optionId, kind: text(option.kind) ?? "" }];
   });
-  return { requestId, who, options, toolCall, planReview: toolCall.kind === "switch_mode" };
+  const card = payload.card === "command" || payload.card === "edit" || payload.card === "plan" ? payload.card : null;
+  const grant = Array.isArray(payload.grant) ? payload.grant.filter((rule): rule is string => typeof rule === "string") : [];
+  return { requestId, who, options, toolCall, planReview: toolCall.kind === "switch_mode", card, policy: nonEmpty(payload.policy), grant };
+}
+
+/** 답 줄의 「다시 묻지 않기」 허락(`{rules, work}`) — 없거나 꼴이 아니면 null이다. */
+function grantedOf(value: unknown): DecisionEntry["granted"] {
+  if (!isObject(value) || !Array.isArray(value.rules)) return null;
+  const rules = value.rules.filter((rule): rule is string => typeof rule === "string");
+  return rules.length === 0 ? null : { rules, work: text(value.work) };
 }
 
 /** 도구 줄이 끝났나 — ACP 도구 상태 넷 가운데 `completed` · `failed`가 끝이다. */

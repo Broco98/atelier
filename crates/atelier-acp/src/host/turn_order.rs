@@ -30,7 +30,7 @@ use crate::discovery::Agent;
 use crate::login;
 use crate::quote::{Attached, Quote};
 use crate::records::{RecordError, TurnEndLine};
-use crate::runtime::{AnswerError, Ruling, TurnEnd};
+use crate::runtime::{Answer, AnswerError, Ruling, TurnEnd};
 
 /// 대화 하나의 턴 차례 — 살아 있나 · 도는 턴 · 대기 줄 · 다음 말에 머리말을 붙이나. `S`는 턴을 쏠 때 찍어 두었다가 턴이
 /// 끝나면 [`Hands::changes`]에 넘기는 것이다 — three-axes에서는 spec 폴더의 찍음이었고, Thread는 아무것도 찍지 않는다(`()`,
@@ -308,14 +308,15 @@ impl<H: TurnHands> Seat<'_, H> {
         self.stop()
     }
 
-    /// 권한 답 — 걸린 요청에 고른 선택지로 답한다. 답이 가면 걸림이 풀린 자리라 맨 앞을 보낸다(S13) — 턴 앞은 새로 찍는다.
+    /// 권한 답 — 걸린 요청에 사람의 답(고른 선택지 · 남긴 말 · 준 허락)으로 답한다. 답이 가면 걸림이 풀린 자리라 맨 앞을 보낸다(S13)
+    /// — 턴 앞은 새로 찍는다.
     /// 턴 도중의 답이면 우리 턴이 걸림이라 턴 끝이 보낸다.
     ///
     /// 거절: 걸려 있지 않은 요청(손잡이가 없음 포함) [`Refused::PermissionClosed`], 준 선택지에 없는 optionId
     /// [`Refused::PermissionOption`], 보내지 못함 [`Refused::Send`]. 거절이면 대기 줄을 보내지 않는다.
-    pub(super) fn answer(mut self, request: &str, option: &str) -> Result<(), Refused> {
-        let answered = self.hands.answer(request, option);
-        self.answered(answered, request, option)
+    pub(super) fn answer(mut self, request: &str, answer: &Answer) -> Result<(), Refused> {
+        let answered = self.hands.answer(request, answer);
+        self.answered(answered, request, &answer.option_id)
     }
 
     /// 엔진의 답 — 걸린 요청에 사람이 아니라 엔진이 까닭과 함께 답한다(v1 티켓 18: 사람의 허락이 쓰기 자리에 막혀 거부로 바뀐다).
@@ -658,8 +659,8 @@ pub(super) trait TurnHands {
     fn prompt(&mut self, blocks: Vec<Value>) -> Result<(), String>;
     /// 도는 턴을 멈춘다. 기다리지 않는다.
     fn cancel(&mut self) -> Result<(), String>;
-    /// 걸린 권한 요청에 답한다. 손잡이가 없으면 닫힌 요청이다.
-    fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError>;
+    /// 걸린 권한 요청에 사람의 답으로 답한다. 손잡이가 없으면 닫힌 요청이다.
+    fn answer(&mut self, request: &str, answer: &Answer) -> Result<(), AnswerError>;
     /// 걸린 권한 요청에 엔진이 까닭과 함께 답한다(v1 티켓 18). 손잡이가 없으면 닫힌 요청이다.
     fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError>;
     /// work가 사라졌으면 그 대화를 끄러 보내고 true(S10). 지켜볼 것이 없으면 false다.
@@ -718,8 +719,8 @@ impl<H: TurnHands + ?Sized> TurnHands for &mut H {
     fn cancel(&mut self) -> Result<(), String> {
         (**self).cancel()
     }
-    fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError> {
-        (**self).answer(request, option)
+    fn answer(&mut self, request: &str, answer: &Answer) -> Result<(), AnswerError> {
+        (**self).answer(request, answer)
     }
     fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
         (**self).rule(request, ruling)
@@ -891,7 +892,7 @@ mod tests {
             self.log.push(Did::Cancel);
             Ok(())
         }
-        fn answer(&mut self, _request: &str, _option: &str) -> Result<(), AnswerError> {
+        fn answer(&mut self, _request: &str, _answer: &Answer) -> Result<(), AnswerError> {
             if !self.plugged {
                 return Err(AnswerError::Closed);
             }
@@ -901,7 +902,7 @@ mod tests {
             Ok(())
         }
         fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
-            self.answer(request, &ruling.option_id)
+            self.answer(request, &Answer::pick(&ruling.option_id))
         }
         fn retire_if_vanished(&mut self) -> bool {
             self.retire
@@ -1107,7 +1108,7 @@ mod tests {
                 refused(seat.say(draft("새 말"), rig.said))
             }
             Event::SendNow => refused(seat.send_now(&id)),
-            Event::Answer => refused(seat.answer("0", "allow_once")),
+            Event::Answer => refused(seat.answer("0", &Answer::pick("allow_once"))),
             Event::Resume => {
                 seat.resume();
                 Ok(())
@@ -1482,7 +1483,7 @@ mod tests {
         assert_eq!(rig.hold(), Some(Hold::Permission));
 
         let mark = rig.mark();
-        rig.seat().answer("0", "allow_once").unwrap();
+        rig.seat().answer("0", &Answer::pick("allow_once")).unwrap();
         assert_eq!(
             rig.since(mark),
             [
@@ -1529,7 +1530,7 @@ mod tests {
         assert_eq!(rig.since(mark), [queue(&["나", "가"])], "멈출 턴이 없다");
 
         let mark = rig.mark();
-        rig.seat().answer("0", "allow_once").unwrap();
+        rig.seat().answer("0", &Answer::pick("allow_once")).unwrap();
         assert_eq!(
             rig.since(mark),
             [
@@ -1550,7 +1551,7 @@ mod tests {
         assert_eq!(rig.since(2), [queue(&["둘째 말"])], "걸린 동안의 말은 대기 줄에 든다");
 
         let mark = rig.mark();
-        rig.seat().answer("0", "allow_once").unwrap();
+        rig.seat().answer("0", &Answer::pick("allow_once")).unwrap();
         assert_eq!(rig.since(mark), [Did::Answer], "답해도 우리 턴이 돈다");
 
         let mark = rig.mark();
@@ -1745,7 +1746,7 @@ mod tests {
             rig.hands.answer = Err(error);
             let mark = rig.mark();
 
-            let refused = rig.seat().answer("0", "allow_once").unwrap_err();
+            let refused = rig.seat().answer("0", &Answer::pick("allow_once")).unwrap_err();
 
             assert_eq!(refused_name(&refused), name);
             assert_eq!(rig.since(mark), []);
@@ -1879,7 +1880,7 @@ mod tests {
                         let id = if queue.is_empty() { "없는 말".to_owned() } else { queue[dice.roll(queue.len())].id.clone() };
                         rig.seat().send_now(&id).map_err(|refused| format!("{refused:?}"))
                     }
-                    3 => rig.seat().answer("0", "allow_once").map_err(|refused| format!("{refused:?}")),
+                    3 => rig.seat().answer("0", &Answer::pick("allow_once")).map_err(|refused| format!("{refused:?}")),
                     4 => {
                         rig.seat().resume();
                         Ok(())

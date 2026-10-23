@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useStore } from "@tanstack/react-store";
-import { Check, CircleAlert, Copy, Info, TriangleAlert } from "lucide-react";
+import { Check, CircleAlert, Copy, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
+import { decisionText } from "./approval";
 import { CallPlace, CallRow, type CallActions } from "./CallRow";
 import {
   finalFrom,
@@ -13,6 +14,7 @@ import {
   runningHeadline,
   type CallEntry,
   type CastMember,
+  type DecisionEntry,
   type Entry,
   type Notice,
   type SystemLine,
@@ -40,7 +42,8 @@ import { LogHead, ToolRows } from "./WorkLog";
 //   이름 줄과 「생각 중」 · 답이 선다.
 // - **작업 로그** — 일하는 동안은 「N초 동안 작업 중입니다」가 반짝이고 그 아래로 도구 줄이 쌓인다. 승인을 기다리면 「· 승인을
 //   기다립니다」가 링크 색으로 붙는다. 끝나면 「N초 동안 작업함」 한 줄로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다.
-//   머리줄을 누르면 생각 · 도구 줄 · 앞선 답이 펼쳐진다.
+//   머리줄을 누르면 생각 · 도구 줄 · 앞선 답이 펼쳐진다. 승인 카드에서 고른 것은 그 도구 줄 뒤의 결정 줄이다(v1 티켓 24 — 「✓ 명령
+//   실행을 승인함 · 이 Work에서는 다시 묻지 않음」, 거부는 ✕와 남긴 말).
 // - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming`). 답을 기다리는 동안은 「생각 중」이 반짝인다.
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
@@ -368,7 +371,21 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
           <Checklist items={entry.items} />
         </div>
       );
+    case "decision":
+      return <DecisionRow entry={entry} />;
   }
+}
+
+/** 결정 줄(Screen-Thread · Approval 보드 `.done-line`) — 아이콘 16과 13/20 `fg-tertiary` 한 줄. 남긴 말은 뒤에 따옴표로 진하게 선다. */
+function DecisionRow({ entry }: { entry: DecisionEntry }) {
+  const Icon = entry.allowed ? Check : X;
+  return (
+    <p data-decision={entry.allowed ? "allowed" : "refused"} className="flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary">
+      <Icon className="size-4 shrink-0" aria-hidden />
+      <span>{decisionText(entry)}</span>
+      {entry.words && <span className="min-w-0 text-fg-secondary wrap-anywhere">「{entry.words}」</span>}
+    </p>
+  );
 }
 
 /**

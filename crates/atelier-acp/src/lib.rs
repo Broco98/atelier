@@ -21,7 +21,7 @@ mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{
-    ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, QuitCounts, ThreadLink, ThreadView,
+    ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, QuitCounts, Reply, ThreadLink, ThreadView,
     TranslatorCommand,
 };
 pub use login::{EngineState, LoginProgress};

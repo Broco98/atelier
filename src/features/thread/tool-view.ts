@@ -48,6 +48,8 @@ export interface DiffPiece {
 
 export interface ToolView {
   state: ToolState;
+  /** 물은 권한이 답을 기다리나 — 문구가 「승인을 기다리는 중」이고 반짝이지 않는다(v1 티켓 24 · 캔버스 Approval 보드). */
+  waiting: boolean;
   /** 묶음 줄에 드는 갈래 — 읽기 · 찾기만 이어지면 묶인다(`log.ts`). */
   group: "read" | "search" | null;
   phrase: ToolPhrase;
@@ -130,12 +132,13 @@ export function describeTool(tool: ToolEntry): ToolView {
   const say = (verbs: Verbs, subject: string | null, mono: boolean, before = ""): ToolPhrase => {
     const phrase = (verb: string, tail = "", failed = false): ToolPhrase => ({ before, subject, mono, verb, tail, failed });
     if (tool.denied) return phrase(verbs.refused, " · 내가 거절함");
+    if (tool.asking) return phrase("승인을 기다리는 중");
     if (tool.stop === "stopped") return phrase("중단함", took ? ` · ${took}` : "");
     if (state === "running") return phrase(verbs.running);
     if (state === "done") return phrase(verbs.done);
     return phrase(verbs.failed, exitCode !== null && exitCode !== 0 ? ` · 코드 종료 ${exitCode}` : "", true);
   };
-  const base = { state, group: null, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null };
+  const base = { state, waiting: tool.asking, group: null, diffs: [] as DiffPiece[], shell: null, mcp: null, text: null };
 
   const mcp = mcpOf(fields);
   if (mcp) {
@@ -167,7 +170,7 @@ export function describeTool(tool: ToolEntry): ToolView {
     return { ...base, phrase: say(WEB, query, false, "웹에서 "), text: fallbackText };
   }
 
-  const diffs = content.filter((item) => item.type === "diff" && typeof item.path === "string").map(diffPiece);
+  const diffs = diffsOf(call);
   const output = tool.output !== "" ? tool.output : contentText;
   const terminal = content.some((item) => item.type === "terminal");
   if (kind === "execute" || terminal || tool.output !== "") {
@@ -314,6 +317,12 @@ export function diffPathsOf(call: Json): string[] {
     .filter((item) => item.type === "diff")
     .map((item) => nonEmpty(item.path))
     .filter((path): path is string => path !== null);
+}
+
+/** 편집 도구의 diff 내용들(ACP `{type: "diff", path, oldText, newText}`)을 줄 단위로 견준 값 — 변경 상자와 승인 카드의 파일 카드가 쓴다. */
+export function diffsOf(call: Json): DiffPiece[] {
+  const content = Array.isArray(call.content) ? call.content.filter(isObject) : [];
+  return content.filter((item) => item.type === "diff" && typeof item.path === "string").map(diffPiece);
 }
 
 /** 경로의 마지막 이름 — 도구 줄에는 이름만, 전체 경로는 diff 머리에 선다. */

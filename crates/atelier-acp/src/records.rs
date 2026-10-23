@@ -19,7 +19,7 @@ use crate::host::{Emit, HostEvent, QueuedMessage};
 use crate::past;
 use crate::policy::Card;
 use crate::quote::Quote;
-use crate::runtime::{How, Withdrawal};
+use crate::runtime::{Granted, How, Withdrawal};
 
 /// 기록을 읽거나 쓰지 못한 까닭 — 사람이 읽을 글이다.
 pub(crate) type RecordError = String;
@@ -39,6 +39,7 @@ pub use atelier_core::{RecordKind, RecordLine};
 pub(crate) enum PermissionLine {
     /// 물음 — 요청 params 원문(선택지는 에이전트가 준 그대로)과 도구 요지(빈 칸을 앞선 `tool_call`로 채운 `toolCall`). 판정이
     /// 물었으면(v1 티켓 22) 세울 카드의 종류(`card`: `command` · `edit` · `plan`)와 왜 묻는지(`policy`: Policy 이름)를 함께 싣는다.
+    /// 「다시 묻지 않기」를 고르면 줄 허락(`grant`: 규칙 이름들, v1 티켓 24)이 있으면 그것도 싣는다 — 없으면 카드에 그 선택지가 없다.
     Asked {
         request_id: String,
         request: Value,
@@ -47,9 +48,19 @@ pub(crate) enum PermissionLine {
         card: Option<Card>,
         #[serde(skip_serializing_if = "Option::is_none")]
         policy: Option<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        grant: Vec<String>,
     },
-    /// 답 — 사람이 고른 선택지.
-    Answered { request_id: String, option_id: String },
+    /// 답 — 사람이 고른 선택지. 거절하며 남긴 말(`words`)과 「다시 묻지 않기」로 준 허락(`granted`: `{rules, work}`)이 있으면 함께
+    /// 싣는다(v1 티켓 24) — 화면의 결정 줄이 이것을 읽는다.
+    Answered {
+        request_id: String,
+        option_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        words: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        granted: Option<Granted>,
+    },
     /// 거둬짐 — 우리가 턴을 끊었거나(`stopped`, 그 요청에 `cancelled`로 답했다), 에이전트가 답을 기다리지 않고 턴을
     /// 끝냈거나(`agent`), 에이전트 프로세스가 죽었다(`died` — 죽음 줄 앞에 선다, three-axes 티켓 10).
     Withdrawn { request_id: String, reason: Withdrawal },

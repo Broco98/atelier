@@ -235,6 +235,94 @@ describe("도구 줄의 끝", () => {
   });
 });
 
+describe("승인 카드의 물음과 결정 줄(v1 티켓 24)", () => {
+  const options = [
+    { optionId: "allow_once", name: "Yes", kind: "allow_once" },
+    { optionId: "reject", name: "No, and tell Claude what to do differently", kind: "reject_once" },
+  ];
+  // Host가 마이그레이션 명령을 물었다 — 판정이 카드 종류 · Policy 이름 · 「다시 묻지 않기」 허락을 함께 달았다(v1 티켓 22 · 24).
+  const asking: RecordLine[] = [
+    ...blessed,
+    { seq: 25, at: at(1), kind: "sent", payload: { text: "환불 API 버그 고쳐줘", to: "host" } },
+    update(26, 2, {
+      sessionUpdate: "tool_call",
+      toolCallId: "t1",
+      title: "pnpm prisma migrate dev --name partial_refund",
+      kind: "execute",
+      status: "pending",
+      rawInput: { command: "pnpm prisma migrate dev --name partial_refund", description: "DB 스키마가 바뀝니다" },
+    }),
+    {
+      seq: 27,
+      at: at(3),
+      kind: "permission",
+      who: "host",
+      payload: {
+        state: "asked",
+        requestId: "r1",
+        request: { toolCall: { toolCallId: "t1" }, options },
+        toolCall: { toolCallId: "t1", kind: "execute", rawInput: { command: "pnpm prisma migrate dev --name partial_refund" } },
+        card: "command",
+        policy: "매번 묻기",
+        grant: ["Bash(pnpm prisma *)"],
+      },
+    },
+  ];
+  const answered = (payload: Record<string, unknown>): RecordLine => ({
+    seq: 28,
+    at: at(4),
+    kind: "permission",
+    who: "host",
+    payload: { state: "answered", requestId: "r1", ...payload },
+  });
+
+  it("물음은 카드 종류 · Policy 이름 · 다시 묻지 않기 허락을 들고, 그 도구 줄은 「승인을 기다리는 중」이다", () => {
+    const model = foldThread(asking);
+    expect(model.pending.map((request) => [request.card, request.policy, request.grant])).toEqual([
+      ["command", "매번 묻기", ["Bash(pnpm prisma *)"]],
+    ]);
+    const tool = model.pending[0].tool;
+    expect(tool && phraseText(describeTool(tool).phrase)).toBe("pnpm prisma migrate dev --name partial_refund 승인을 기다리는 중");
+  });
+
+  it("사람이 답하면 카드가 걷히고, 그 턴의 도구 줄 뒤에 고른 것이 결정 줄로 선다", () => {
+    const model = foldThread([
+      ...asking,
+      answered({ optionId: "allow_once", granted: { rules: ["Bash(pnpm prisma *)"], work: "refund-api" } }),
+      update(29, 5, { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "in_progress" }),
+    ]);
+    expect(model.pending).toEqual([]);
+    const entries = model.turns[2].entries;
+    expect(entries.map((entry) => entry.kind)).toEqual(["tool", "decision"]);
+    const decision = entries[1];
+    expect(decision.kind === "decision" && [decision.allowed, decision.granted, decision.words, decision.toolCall.kind]).toEqual([
+      true,
+      { rules: ["Bash(pnpm prisma *)"], work: "refund-api" },
+      null,
+      "execute",
+    ]);
+    const tool = entries[0];
+    expect(tool.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("pnpm prisma migrate dev --name partial_refund 실행 중");
+  });
+
+  it("거절하며 남긴 말은 결정 줄이 든다 — 판정이 닫은 요청에는 결정 줄이 서지 않는다", () => {
+    const refused = foldThread([...asking, answered({ optionId: "reject", words: "마이그레이션 없이 할 수는 없어?" })]);
+    const decision = refused.turns[2].entries.find((entry) => entry.kind === "decision");
+    expect(decision?.kind === "decision" && [decision.allowed, decision.granted, decision.words]).toEqual([
+      false,
+      null,
+      "마이그레이션 없이 할 수는 없어?",
+    ]);
+
+    const decided = foldThread([
+      ...asking,
+      { seq: 28, at: at(4), kind: "permission", who: "host", payload: { state: "decided", requestId: "r1", optionId: "reject", reason: "…" } },
+    ]);
+    expect(decided.pending).toEqual([]);
+    expect(decided.turns[2].entries.map((entry) => entry.kind)).toEqual(["tool"]);
+  });
+});
+
 describe("첨부(v1 티켓 06)", () => {
   it("보낸 말에 붙인 파일 · 폴더는 그 턴의 첨부로 들고, 첨부 없는 말은 빈 목록이다", () => {
     const attachments = [

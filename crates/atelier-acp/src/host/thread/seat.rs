@@ -77,7 +77,8 @@ pub(super) enum Grant {
 }
 
 /// Session 하나의 쓰기 자리 손 — Session을 열 때마다 짓는다. 판정([`super::gate::Gate`]) · 턴 끝을 보는 sink([`Writer::watching`]) ·
-/// 사람의 권한 답([`Writer::grant`])이 이것을 쓴다.
+/// 사람의 권한 답([`Writer::grant`] · [`Writer::remembered`])이 이것을 쓴다. 판정이 사람에게 물은 요청을 적어 두는 자리도 이것이다 —
+/// 사람의 답이 그 요청의 선택지와 「다시 묻지 않기」로 줄 허락을 여기서 읽는다(v1 티켓 24).
 pub(super) struct Writer {
     seats: Arc<WriteSeats>,
     data_root: PathBuf,
@@ -87,8 +88,18 @@ pub(super) struct Writer {
     work: Option<String>,
     /// 이 Session의 대화 — 지금 턴의 호출 고리를 읽는다. 약하게 쥔다: 런타임이 판정을 쥐고, 대화가 런타임의 손잡이를 쥔다.
     conv: Weak<Conv>,
-    /// 물은 편집 요청 — 요청 id → 그 요청의 선택지(`optionId`, `kind`). 사람이 허락하는 선택지로 답하면 쥔다. 턴이 끝나면 비운다.
-    edits: Mutex<HashMap<String, Vec<(String, String)>>>,
+    /// 사람에게 물은 요청 — 요청 id → 적어 둔 것. 턴이 끝나면 비운다(그 턴의 요청은 거둬졌다).
+    asked: Mutex<HashMap<String, Noted>>,
+}
+
+/// 사람에게 물은 요청 하나에 적어 둔 것.
+struct Noted {
+    /// 그 요청의 선택지(`optionId`, `kind`).
+    options: Vec<(String, String)>,
+    /// 편집인가 — 사람이 허락하면 쓰기 자리를 쥔다.
+    edit: bool,
+    /// 「다시 묻지 않기」로 줄 허락 — 판정이 물음과 함께 낸 규칙 이름들. 비었으면 줄 수 없다.
+    grant: Vec<String>,
 }
 
 impl Writer {
@@ -99,15 +110,16 @@ impl Writer {
             key,
             work,
             conv: Arc::downgrade(conv),
-            edits: Mutex::new(HashMap::new()),
+            asked: Mutex::new(HashMap::new()),
         })
     }
 
-    fn lock_edits(&self) -> MutexGuard<'_, HashMap<String, Vec<(String, String)>>> {
-        self.edits.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    fn lock_asked(&self) -> MutexGuard<'_, HashMap<String, Noted>> {
+        self.asked.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// 이 Session이 열릴 때 이은 Work — 물어보는 정도를 함께 쓰는 Session들을 찾는다(v1 티켓 23).
+    /// 이 Session이 열릴 때 이은 Work — 물어보는 정도를 함께 쓰는 Session들을 찾고(v1 티켓 23), 「다시 묻지 않기」 허락을 둘 자리다
+    /// (없으면 그 Thread 폴더, v1 티켓 24). 판정이 허락을 읽는 자리와 같다.
     pub(super) fn work(&self) -> Option<&str> {
         self.work.as_deref()
     }
@@ -127,17 +139,26 @@ impl Writer {
         self.seats.take(work, &self.key, &self.chain()).map(drop).map_err(|owner| self.busy(&owner))
     }
 
-    /// 사람에게 묻는 편집 요청의 선택지를 적어 둔다 — 사람이 허락하는 선택지로 답하면 쥔다([`Writer::grant`]).
-    pub(super) fn note_edit(&self, request_id: &str, options: Vec<(String, String)>) {
-        if self.work.is_some() {
-            self.lock_edits().insert(request_id.to_owned(), options);
-        }
+    /// 사람에게 묻는 요청을 적어 둔다 — 편집을 허락하는 답이면 쥐고([`Writer::grant`]), 「다시 묻지 않기」면 그 허락을 읽는다
+    /// ([`Writer::remembered`]).
+    pub(super) fn note(&self, request_id: &str, options: Vec<(String, String)>, edit: bool, grant: Vec<String>) {
+        self.lock_asked().insert(request_id.to_owned(), Noted { options, edit, grant });
+    }
+
+    /// 사람이 「다시 묻지 않기」로 그 선택지를 고르면 줄 허락 — 물은 요청이고, 허락하는 선택지이고, 판정이 허락을 냈을 때만 있다.
+    pub(super) fn remembered(&self, request: &str, option: &str) -> Option<Vec<String>> {
+        let asked = self.lock_asked();
+        let noted = asked.get(request)?;
+        let allows = noted.options.iter().any(|(id, kind)| id == option && kind.starts_with("allow"));
+        (allows && !noted.grant.is_empty()).then(|| noted.grant.clone())
     }
 
     /// 사람의 권한 답 — 물은 편집을 허락하는 답이면 쓰기 자리를 쥔다. 물은 사이에 다른 Session이 쥐었으면 그 답 대신 주인의 글로 거부한다.
     pub(super) fn grant(&self, request: &str, option: &str) -> Grant {
         let Some(work) = self.work.as_deref() else { return Grant::Unchanged };
-        let Some(options) = self.lock_edits().get(request).cloned() else { return Grant::Unchanged };
+        let Some(options) = self.lock_asked().get(request).filter(|noted| noted.edit).map(|noted| noted.options.clone()) else {
+            return Grant::Unchanged;
+        };
         if !options.iter().any(|(id, kind)| id == option && kind.starts_with("allow")) {
             return Grant::Unchanged;
         }
@@ -151,10 +172,10 @@ impl Writer {
         }
     }
 
-    /// 이 Session이 쥔 쓰기 자리를 놓는다 — 쥐지 않았으면 아무 일도 하지 않는다. 물은 편집도 잊는다(그 턴의 요청은 거둬졌다).
+    /// 이 Session이 쥔 쓰기 자리를 놓는다 — 쥐지 않았으면 아무 일도 하지 않는다. 물은 요청도 잊는다(그 턴의 요청은 거둬졌다).
     pub(super) fn release(&self) {
         self.seats.release(&self.key);
-        self.lock_edits().clear();
+        self.lock_asked().clear();
     }
 
     /// 턴이 끝나면 쓰기 자리를 놓는 sink — 받은 것을 `sink`에 넘기기 **전에** 놓는다. 그래서 턴 끝 줄이 기록에 설 때는 이미 놓였다.

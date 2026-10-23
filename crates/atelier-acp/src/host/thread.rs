@@ -51,7 +51,7 @@ use crate::login::Waiter;
 use crate::login_env::AgentEnv;
 use crate::policy::AskLevel;
 use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
-use crate::runtime::{self, AgentProcess, OpenError, SessionPlace};
+use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, SessionPlace};
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use gate::Gate;
 use seat::{Grant, Writer};
@@ -77,6 +77,24 @@ pub enum ThreadLink {
     NewWork,
     /// 이 Work — 그 Work의 자리에서 일한다. `thread.json`의 `work`에 적는다.
     Work { slug: String },
+}
+
+/// 승인 카드에서 사람이 고른 것(v1 티켓 24 · 구현 스펙 §9) — 그 요청의 선택지 하나에, 함께 드는 것 둘이다.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Reply {
+    /// 고른 선택지(`optionId`) — 카드는 선택지의 `kind`로 고른다(예 → 이번만 허락, 아니요 → 이번만 거부).
+    pub option: String,
+    /// 「예, 이 Work에서는 다시 묻지 않기」 — 판정이 그 물음과 함께 낸 허락을 점 파일에 적고 답한다. 허락하는 선택지에만 뜻이 있다.
+    pub remember: bool,
+    /// 「아니요, 다르게 해 주세요」의 입력칸에 쓴 말 — 거부와 함께 Agent에게 간다. 비었으면 없다.
+    pub words: Option<String>,
+}
+
+impl Reply {
+    /// 고른 선택지 하나 — 다시 묻지 않기도 남긴 말도 없다.
+    pub fn pick(option: &str) -> Self {
+        Self { option: option.to_owned(), ..Self::default() }
+    }
 }
 
 /// Thread 하나의 지금 — `thread.json`에 기록의 끝 · 엔진의 살아 있는 상태를 더한 것. 화면이 Thread를 열 때(다시 켠 뒤 · ⌘R 뒤)
@@ -404,25 +422,54 @@ impl ConversationHost {
     }
 
     /// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청에 고른 선택지로 답한다. 요청 id는 Session마다
-    /// 따로 센다. 기다리지 않는다.
+    /// 따로 센다. 기다리지 않는다. 승인 카드의 셋째 · 넷째 것(다시 묻지 않기 · 남긴 말)은 [`Self::reply_thread_permission`]이다.
+    pub fn answer_thread_permission(&self, thread: &str, who: &str, request: &str, option: &str) -> Result<(), HostError> {
+        self.reply_thread_permission(thread, who, request, &Reply::pick(option))
+    }
+
+    /// 승인 카드의 답(v1 티켓 24) — 걸린 요청에 사람이 고른 것으로 답한다. 기다리지 않는다.
+    ///
+    /// - **다시 묻지 않기**(`remember`)면 판정이 그 물음과 함께 낸 허락을 먼저 점 파일에 적는다(S18 — 이은 Work의 폴더, 없으면 그 Thread
+    ///   폴더). 같은 종류의 다음 요청은 판정의 5번 칸에서 넘어간다. 줄 허락이 없는 물음(`ask_before`가 물었다 · 계획 넘어가기 · 그 밖의
+    ///   도구)이거나 허락하는 선택지가 아니면 아무것도 하지 않고 [`HostError::PermissionNoGrant`]다 — 요청은 그대로 걸려 있다. 적은
+    ///   뒤에 답이 가지 못해도(그사이 요청이 닫혔다) 허락은 남는다 — 사람이 그렇게 고른 것이다.
+    /// - **남긴 말**(`words`)은 답과 함께 Agent에게 간다 — 거부의 글이다(Claude는 그 편집 · 명령의 실패 결과로 받는다).
+    /// - 둘 다 답 줄(`answered`)의 `granted` · `words`로 남는다 — 화면의 결정 줄이 읽는다.
     ///
     /// 편집을 허락하는 답이면 그 Session이 Work의 쓰기 자리를 쥔다(v1 티켓 18 · S20). 물은 사이에 다른 Session이 쥐었으면 그 허락 대신
     /// 엔진이 주인의 글로 거부한다 — 사람의 답은 받은 것이라 오류가 아니다. 답이 가지 못하면 새로 쥔 자리를 놓는다.
-    pub fn answer_thread_permission(
-        &self,
-        thread: &str,
-        who: &str,
-        request: &str,
-        option: &str,
-    ) -> Result<(), HostError> {
+    pub fn reply_thread_permission(&self, thread: &str, who: &str, request: &str, reply: &Reply) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
         let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
-        let grant = writer.grant(request, option);
+        let granted = if reply.remember {
+            let rules = writer
+                .remembered(request, &reply.option)
+                .ok_or_else(|| HostError::PermissionNoGrant { request: request.to_owned() })?;
+            let work = writer.work().map(str::to_owned);
+            let place = match &work {
+                Some(slug) => atelier_core::PolicyPlace::Work(slug),
+                None => atelier_core::PolicyPlace::Thread(thread),
+            };
+            atelier_core::update_policy(&self.data_root, place, |file| {
+                for rule in &rules {
+                    if !file.grants.contains(rule) {
+                        file.grants.push(rule.clone());
+                    }
+                }
+            })
+            .map_err(|error| HostError::Record(format!("다시 묻지 않기를 적지 못했습니다: {error}")))?;
+            Some(Granted { rules, work })
+        } else {
+            None
+        };
+        let words = reply.words.as_deref().map(str::trim).filter(|words| !words.is_empty()).map(str::to_owned);
+        let answer = Answer { option_id: reply.option.clone(), words, granted };
+        let grant = writer.grant(request, &reply.option);
         let took = matches!(grant, Grant::Took);
         let answered = match conv.lock_found() {
             Some(mut state) => match grant {
                 Grant::Refused(ruling) => conv.seat(&mut state).rule(request, ruling),
-                Grant::Unchanged | Grant::Took => conv.seat(&mut state).answer(request, option),
+                Grant::Unchanged | Grant::Took => conv.seat(&mut state).answer(request, &answer),
             }
             .map_err(|refused| refused.into_host(thread)),
             None => Err(closed()),

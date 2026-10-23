@@ -29,6 +29,7 @@ const tool = (call: Record<string, unknown>, extra: Partial<ToolEntry> = {}): To
   cut: false,
   denied: false,
   allowed: null,
+  asking: false,
   startedAt: "2026-10-10T10:00:00.000+09:00",
   endedAt: null,
   ...extra,

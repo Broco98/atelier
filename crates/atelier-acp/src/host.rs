@@ -21,12 +21,12 @@ use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiter, Waiting}
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::quote::Quote;
 use crate::records::{self, PermissionLine, RecordLine, Recorder, SessionState, TurnEndLine};
-use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenTerms, Ruling, RuntimeEvent, SessionPlace, Sink, Turns};
+use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms, Ruling, RuntimeEvent, SessionPlace, Sink, Turns};
 
 mod thread;
 mod turn_order;
 
-pub use thread::{ThreadLink, ThreadView};
+pub use thread::{Reply, ThreadLink, ThreadView};
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
@@ -294,18 +294,25 @@ impl Conv {
             // 권한 줄은 Session의 잠금을 쥐지 않고 적는다 — 답 · 멈추기는 Session의 잠금을 쥔 채 런타임을 부르고, 런타임은 그
             // 안에서 이것을 넘긴다.
             RuntimeEvent::PermissionAsked(asked) => {
-                let (card, policy) = asked.asking.map(|asking| (asking.card, asking.policy)).unzip();
+                let (card, policy, grant) = match asked.asking {
+                    Some(asking) => (Some(asking.card), Some(asking.policy), asking.grant),
+                    None => (None, None, Vec::new()),
+                };
                 self.recorder.permission(PermissionLine::Asked {
                     request_id: asked.request_id,
                     request: asked.request,
                     tool_call: asked.tool_call,
                     card,
                     policy,
+                    grant,
                 })
             }
-            RuntimeEvent::PermissionAnswered { request_id, option_id } => {
-                self.recorder.permission(PermissionLine::Answered { request_id, option_id })
-            }
+            RuntimeEvent::PermissionAnswered { request_id, answer } => self.recorder.permission(PermissionLine::Answered {
+                request_id,
+                option_id: answer.option_id,
+                words: answer.words,
+                granted: answer.granted,
+            }),
             RuntimeEvent::PermissionWithdrawn { request_id, reason } => {
                 self.recorder.permission(PermissionLine::Withdrawn { request_id, reason })
             }
@@ -417,8 +424,8 @@ impl TurnHands for ConvHands<'_> {
         self.turns()?.cancel()
     }
 
-    fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError> {
-        self.turns.map_or(Err(AnswerError::Closed), |turns| turns.answer(request, option))
+    fn answer(&mut self, request: &str, answer: &Answer) -> Result<(), AnswerError> {
+        self.turns.map_or(Err(AnswerError::Closed), |turns| turns.answer(request, answer))
     }
 
     fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
@@ -505,6 +512,9 @@ pub enum HostError {
     PermissionClosed { thread: String, request: String },
     /// 그 권한 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
     PermissionOption { request: String, option: String },
+    /// 「다시 묻지 않기」를 줄 수 없는 답(v1 티켓 24) — 판정이 그 물음에 허락을 내지 않았거나(`ask_before`가 물었다 · 계획 넘어가기 ·
+    /// 그 밖의 도구) 허락하는 선택지가 아니다. 아무것도 적지 않았고 요청은 그대로 걸려 있다.
+    PermissionNoGrant { request: String },
     /// 로그인을 기다리는 Session — Runtime이 `-32000`으로 답했다. 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다
     /// (three-axes 티켓 12).
     LoginRequired { agent: Agent, thread: String },
@@ -557,6 +567,7 @@ impl fmt::Display for HostError {
                 write!(f, "이미 닫힌 권한 요청입니다. 답했거나 거둬진 요청에는 답할 수 없습니다")
             }
             HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
+            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「다시 묻지 않기」로 허락할 수 없어요 — Policy가 매번 묻게 한 일이에요"),
             HostError::LoginRequired { agent, .. } => {
                 write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
             }

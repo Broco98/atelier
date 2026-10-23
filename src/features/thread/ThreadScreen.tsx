@@ -3,9 +3,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown, ArrowLeft } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
+import { useWorks } from "@/features/works/hooks";
 import { AgentFace, FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { threadApi } from "./api";
+import { placeOf } from "./approval";
 import ChangesPill from "./ChangesPill";
 import { chipLists, currentModel } from "./chips";
 import { useCreateAgent } from "./create-agent";
@@ -32,7 +34,8 @@ import type { AskLevel, Attachment, ThreadView } from "./types";
 //   엔진이 Thread를 세우고 Host의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
-//   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다.
+//   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다
+//   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
 //   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
@@ -254,6 +257,8 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   const queue = useQueue(view);
   const engine = useStore(threadEngineStore, (state) => state);
   const guide = guideKind(engine, awaitingLogin(lines));
+  const { data: works } = useWorks();
+  const linked = view.work ? (works?.find((one) => one.slug === view.work) ?? null) : null;
 
   // 흐름에 선 마지막 턴 — 일하는 맡은 턴은 아직 흐름에 서지 않았다(`flowOf`).
   const shown = flowOf(model).turns;
@@ -261,6 +266,7 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」).
   const changes = last ? changedFiles(last) : null;
   const asking = model.pending[0] ?? null;
+  const askingCwd = asking ? (view.participants.find((one) => one.handle === asking.who)?.cwd ?? null) : null;
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -398,11 +404,14 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             card={
               asking && (
                 <ApprovalCard
-                  key={asking.requestId}
+                  key={`${asking.who}\u0000${asking.requestId}`}
                   thread={thread}
                   name={model.cast[asking.who]?.name ?? asking.who}
+                  avatar={model.cast[asking.who]?.avatar ?? null}
                   request={asking}
-                  running={model.running}
+                  scope={view.work ? "work" : "thread"}
+                  cwd={askingCwd}
+                  place={placeOf(askingCwd, linked)}
                 />
               )
             }

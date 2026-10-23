@@ -82,6 +82,44 @@ impl Ruling {
     }
 }
 
+/// 사람의 권한 답(v1 티켓 24) — 고른 선택지에, 함께 남긴 말과 「다시 묻지 않기」로 준 허락이 든다. 말은 Agent에게 간다(거절과
+/// 함께 다르게 할 방법 — [`Answer::response`]). 둘 다 답 줄(`answered`)에 선다.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Answer {
+    pub option_id: String,
+    pub words: Option<String>,
+    pub granted: Option<Granted>,
+}
+
+/// 「다시 묻지 않기」로 준 허락 — 규칙 이름들과 그것을 둔 자리(이은 Work, 없으면 그 Thread). 답 줄의 `granted`다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Granted {
+    pub rules: Vec<String>,
+    pub work: Option<String>,
+}
+
+impl Answer {
+    /// 고른 선택지 하나 — 남긴 말도 허락도 없다.
+    #[cfg(test)]
+    pub(crate) fn pick(option_id: &str) -> Self {
+        Self { option_id: option_id.to_owned(), ..Self::default() }
+    }
+
+    /// 권한 요청의 답 — 남긴 말이 있으면 Agent에게 줄 글로 싣는다(Claude 변환기는 거부의 `message`로 넘긴다, 티켓 18과 같은 칸).
+    fn response(&self) -> Value {
+        let outcome = json!({"outcome": "selected", "optionId": self.option_id});
+        match &self.words {
+            Some(words) => json!({"outcome": outcome, "_meta": {"atelier": {"message": told(words)}}}),
+            None => json!({"outcome": outcome}),
+        }
+    }
+}
+
+/// 사람이 거절하며 남긴 말을 Agent에게 줄 글 — 거절된 일을 그대로 다시 하지 않고 그 말을 따르게 한다.
+fn told(words: &str) -> String {
+    format!("사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n{words}")
+}
+
 /// 권한 요청을 받은 자리에서 사람에게 묻기 전에 보는 것 — 판정(v1 티켓 18 · 22, `policy.rs`). 답을 내면([`Judgement::Decide`]) 그
 /// 요청은 묻지 않고 그 답으로 닫힌다 — 대기 요청 표에 들지 않으므로 승인 카드도, 대기 줄의 걸림도 없다. 그 요청이 준 선택지에 없는
 /// 답은 버리고 묻는다. 묻기로 하면([`Judgement::Ask`]) 그 까닭이 물음 줄에 함께 선다.
@@ -100,11 +138,13 @@ pub(crate) enum Judgement {
     Ask(Asking),
 }
 
-/// 판정이 묻기로 한 까닭 — 세울 카드의 종류와 왜 묻는지(Policy 이름, v1 구현 스펙 §9). 물음 줄의 `card` · `policy`가 된다.
+/// 판정이 묻기로 한 까닭 — 세울 카드의 종류와 왜 묻는지(Policy 이름, v1 구현 스펙 §9), 그리고 사람이 「다시 묻지 않기」를 고르면 줄
+/// 허락(v1 티켓 24 — 비었으면 그 선택지가 서지 않는다). 물음 줄의 `card` · `policy` · `grant`가 된다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Asking {
     pub card: Card,
     pub policy: String,
+    pub grant: Vec<String>,
 }
 
 impl fmt::Debug for Judge {
@@ -152,9 +192,9 @@ pub(crate) enum RuntimeEvent {
     Died(Death),
     /// 권한 요청이 왔다. 대기 요청 표에 넣은 뒤에 넘긴다 — 이것을 받은 쪽은 곧바로 답할 수 있다.
     PermissionAsked(PermissionAsked),
-    /// 걸린 권한 요청에 고른 선택지로 답한다. 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은 에이전트가 이어 보내는
-    /// update보다 앞에 선다.
-    PermissionAnswered { request_id: String, option_id: String },
+    /// 걸린 권한 요청에 사람이 답했다 — 고른 선택지와 함께 남긴 것(v1 티켓 24). 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은
+    /// 에이전트가 이어 보내는 update보다 앞에 선다.
+    PermissionAnswered { request_id: String, answer: Answer },
     /// 걸린 권한 요청이 거둬졌다 — 우리가 턴을 끊었거나, 에이전트가 답을 기다리지 않고 턴을 끝냈거나, 에이전트가 죽었다. 그
     /// 턴의 끝(죽음이면 죽음)보다 앞에 넘긴다.
     PermissionWithdrawn { request_id: String, reason: Withdrawal },
@@ -899,19 +939,20 @@ impl Turns {
         Ok(())
     }
 
-    /// 걸린 권한 요청에 고른 선택지로 답한다. 기다리지 않는다 — 답을 받은 에이전트가 이어 가는 턴은 sink로 온다.
+    /// 걸린 권한 요청에 사람의 답으로 답한다. 기다리지 않는다 — 답을 받은 에이전트가 이어 가는 턴은 sink로 온다.
     ///
     /// 걸려 있지 않은 요청(이미 답했거나 거둬졌다)이나 준 선택지에 없는 optionId는 읽히는 오류이고, 요청은 그대로 걸려
     /// 있다 — 맞는 답을 다시 줄 수 있다. 답은 넘긴 뒤에 보낸다 — 기록에서 답이 그 뒤의 update보다 앞에 선다.
-    pub(crate) fn answer(&self, request_id: &str, option_id: &str) -> Result<(), AnswerError> {
+    pub(crate) fn answer(&self, request_id: &str, answer: &Answer) -> Result<(), AnswerError> {
         let mut pending = self.permissions.lock();
-        let asked = Self::take_pending(&mut pending, request_id, option_id)?;
+        let asked = Self::take_pending(&mut pending, request_id, &answer.option_id)?;
+        let response = answer.response();
         if let Some(sink) = self.sink.upgrade() {
-            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, option_id: option_id.to_owned() });
+            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, answer: answer.clone() });
         }
         asked
             .responder
-            .respond(json!({"outcome": {"outcome": "selected", "optionId": option_id}}))
+            .respond(response)
             .map_err(|error| AnswerError::Send(format!("에이전트에 권한 답을 보내지 못했습니다: {error}")))
     }
 

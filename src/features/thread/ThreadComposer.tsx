@@ -1,4 +1,4 @@
-import { forwardRef, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp, AtSign, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,7 +58,7 @@ export interface ThreadComposerProps {
   roomy?: boolean;
   /** 보내는 중이라 입력을 받지 않는다(새 Thread의 첫 말 — Session이 열릴 때까지). */
   busy?: boolean;
-  /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창 대신 선다(위의 것은 그대로). */
+  /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창과 아래 줄 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
   card?: ReactNode;
   /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
   above?: ReactNode;
@@ -210,6 +210,14 @@ function ThreadComposer({
       .catch((error: unknown) => setProblem(String(error)));
   };
   const dragging = useAttachmentDrop(!busy && !carded, attach);
+  // 카드가 걷히면(고른 뒤) 입력칸이 포커스를 되받는다 — 키보드로 고른 손이 그대로 이어 쓴다(스토리 76). 다른 칸에 간 포커스는 두다.
+  const wasCarded = useRef(carded);
+  useEffect(() => {
+    const back = wasCarded.current && !carded;
+    wasCarded.current = carded;
+    const holder = document.activeElement;
+    if (back && (holder === null || holder === document.body)) field.current?.focus();
+  }, [carded]);
   useLayoutEffect(() => {
     const el = field.current;
     if (!el) return;
@@ -428,15 +436,17 @@ function ThreadComposer({
           </div>
         </form>
       ))}
-      <ComposerTray
-        recipient={shownRecipient}
-        agents={agents}
-        onRecipient={(call) => {
-          const next = withRecipient(draft, call);
-          placeCaret(next, next.length);
-        }}
-        ask={{ level, onLevel, onOpenPolicy, open: asking, onOpenChange: setAsking }}
-      />
+      {!carded && (
+        <ComposerTray
+          recipient={shownRecipient}
+          agents={agents}
+          onRecipient={(call) => {
+            const next = withRecipient(draft, call);
+            placeCaret(next, next.length);
+          }}
+          ask={{ level, onLevel, onOpenPolicy, open: asking, onOpenChange: setAsking }}
+        />
+      )}
       {shown && (
         <p role="alert" className="px-3 pt-1.5 text-xs text-danger">
           {shown}

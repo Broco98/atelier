@@ -72,7 +72,7 @@ function Phrase({ view }: { view: ToolView }) {
     <span className={cn("min-w-0 truncate text-fg-secondary", phrase.mono && "font-mono text-code")}>{phrase.subject}</span>
   );
   const glued = phrase.verb.startsWith("에게");
-  if (view.state === "running" && phrase.verb.endsWith("중")) {
+  if (view.state === "running" && !view.waiting && phrase.verb.endsWith("중")) {
     return (
       <span className="flex min-w-0 items-center gap-1.5 chat-shimmer">
         {phrase.before && <span className="shrink-0">{phrase.before.trim()}</span>}
