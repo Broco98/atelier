@@ -15,6 +15,8 @@ import {
   띠,
   머리카드,
   행버튼,
+  작업화면으로,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 28 — **work · 프로젝트 이름을 그 자리에서 바꾼다**(codex-ds 스펙 §9 · 결정 18 · S12). 이름이 쓰인 자리가 그대로
@@ -312,8 +314,7 @@ test("머리 카드 이름을 고치는 중에 ⌘J로 다른 work에 가면 친
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await markAttention(page, { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "어느 쪽으로 할까요?" } });
-  await 행버튼(page, pinnedWork.title).click();
-  await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
+  await 작업화면으로(page, pinnedWork);
 
   await 머리이름(page, pinnedWork.title).dblclick();
   const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
@@ -324,8 +325,7 @@ test("머리 카드 이름을 고치는 중에 ⌘J로 다른 work에 가면 친
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
   await expect.poll(() => 작업이름저장(page)).toEqual([{ slug: pinnedWork.slug, title: "옮기기 전에 친 이름" }]);
 
-  await 행버튼(page, pinnedWork.title).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await 작업화면으로(page, pinnedWork);
   await expect(머리이름(page, pinnedWork.title)).toBeVisible();
   await expect(page.getByRole("textbox", { name: "작업 이름" })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -443,7 +443,7 @@ test("사이드바 행을 고치다 다른 행을 누르면 고치던 행의 wor
 
   await expect(input).toHaveCount(0);
   await expect.poll(() => 작업이름저장(page)).toEqual([{ slug: pinnedWork.slug, title: "다른 행을 눌러 바꾼 이름" }]);
-  await expect(page).toHaveURL(`/works/${thirdWork.slug}`);
+  await expect(page).toHaveURL(Work줄이가는곳(thirdWork.slug));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -501,7 +501,7 @@ test("사이드바 행을 두 번 누르면 그 work가 열리고 이름은 입�
 
   await 행버튼(page, pinnedWork.title).dblclick();
 
-  await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
+  await expect(page).toHaveURL(Work줄이가는곳(pinnedWork.slug));
   await expect(page.getByRole("textbox", { name: "작업 이름" })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -513,8 +513,7 @@ test("알림 띠 줄의 메뉴 「이름 바꾸기」는 그 work의 사이드�
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await markAttention(page, { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "어느 쪽으로 할까요?" } });
-  await 행버튼(page, pinnedWork.title).click();
-  await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
+  await 작업화면으로(page, pinnedWork);
 
   await 띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
@@ -539,8 +538,7 @@ test("알림 띠에서 「이름 바꾸기」를 고른 work의 행이 접힌 �
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await markAttention(page, { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "어느 쪽으로 할까요?" } });
-  await 행버튼(page, plainWork.title).click();
-  await expect(page).toHaveURL(`/works/${plainWork.slug}`);
+  await 작업화면으로(page, plainWork);
   const header = page.getByRole("button", { name: PINNED_HEADER, exact: true });
   await header.click();
   await expect(header).toHaveAttribute("aria-expanded", "false");

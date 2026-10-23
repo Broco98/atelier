@@ -16,6 +16,7 @@ import {
   포커스자리,
   행버튼,
   type 포커스자리 as 자리,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 32 — **목록은 ↑↓, 영역은 Tab으로 다닌다**(codex-ds 스펙 §9 「키보드」 · S10). 창의 Tab은 영역 차례로 간다 — 창
@@ -279,8 +280,9 @@ test("사이드바 work 목록은 ↑↓로 구획 머리와 행을 지나고, �
   await 간다(page, "ArrowDown", pinnedWork.slug);
   await 간다(page, "ArrowDown", 작업머리);
   await 간다(page, "ArrowDown", plainWork.slug);
+  // 행의 Enter는 그 Work의 Thread로 간다 — 이은 Thread가 없으면 그 Work를 고른 새 Thread다(v1 티켓 37).
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}(\\?|$)`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

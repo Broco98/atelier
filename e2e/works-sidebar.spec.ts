@@ -30,6 +30,8 @@ import {
   사람메뉴항목,
   사람줄,
   행버튼,
+  작업화면으로,
+  Work줄이가는곳,
 } from "./harness";
 
 // 사이드바 작업 목록은 어느 화면에나 있으므로 목록 화면에서 본다 — Works 화면으로 들어가면
@@ -183,32 +185,31 @@ test("고른 work의 행 아래에 아무것도 서지 않는다", async ({ page
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **행을 누르면 그 work로 가고, 마지막에 보던 자리가 열린다**(결정 5·77 — `recallView`).
+// **남의 work로 갔다 돌아오면 마지막에 보던 자리가 열린다**(결정 5·77 — `recallView`).
 // 남의 work 셸을 눌러 그리로 가던 길(결정 101)이 이 하나로 줄었다: 로고가 종류만 말해
-// (결정 4) 어느 셸로 갈지가 정해지지 않으므로, 행이 가는 곳은 「그 work의 마지막 자리」다.
+// (결정 4) 어느 셸로 갈지가 정해지지 않으므로, work을 여는 문이 가는 곳은 「그 work의 마지막 자리」다.
+// 한때 사이드바 행이 그 문이었다 — 이제 행은 그 Work의 Thread로 가고(v1 티켓 37), 작업 화면을 여는 앱 안의 문은 ⌘K의 Work 줄이다.
 //
 // 기억이 사는 곳이 sessionStorage라 이 층에서만 왕복이 진짜다.
-test("남의 work 행을 누르면 그 work의 마지막 자리가 열린다", async ({ page }) => {
+test("⌘K의 Work 줄로 남의 work에 갔다 돌아오면 그 work의 마지막 자리가 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="shell"]')).toBeVisible();
 
   // 옆 work을 들여다본다 — 그쪽은 본 적이 없어 문서에서 시작한다.
-  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await 작업화면으로(page, pinnedWork);
   await expect(page).not.toHaveURL(/tab=terminal/);
 
-  // 돌아오면 **터미널을 보던 자리 그대로**다. 이 줄이 없으면 「행을 누르면 간다」까지만
+  // 돌아오면 **터미널을 보던 자리 그대로**다. 이 줄이 없으면 「문을 지나면 간다」까지만
   // 참이고, 터미널을 보다 옆을 잠깐 들여다본 사람이 문서로 떨어지는 것(결정 77이
   // 없애려는 것)이 그대로 지나간다.
-  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await 작업화면으로(page, plainWork);
   await expect(page).toHaveURL(/tab=terminal/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 자리도**(`sidebar-active-band` 스토리 34).
+// **행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 자리도**(`sidebar-active-band` 스토리 34). 가는 곳은 그 Work의 Thread다(v1 티켓 37).
 // 한 줄 행은 이름 버튼이 행 높이 32px을 다 덮지만, 2열의 오른쪽 메타는 이름 버튼 **밖의 형제**다
 // — 그 칸이 클릭을 받으면 셸 수나 경과가 선 자리가 「배경은 덮이는데 눌러도 아무 일이 없는 죽은
 // 자리」가 된다(`WorkSectionList.tsx`가 금지 사유로 드는 그 모양이다). 메타는 **늘** 포인터를 안
@@ -228,10 +229,9 @@ test("행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 중 핀
   // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 남는 셸은 사람이 친 셸이다.
   await typeIntoShell(page);
 
-  // 옆 work으로 옮긴다 — 셸은 앱 메모리에 살아 그 행의 메타가 그대로 남는다. **그 행을 눌러
-  // 돌아오는 것이** 재는 것이다.
-  await 행버튼(page, pinnedWork.title).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  // 옆 work으로 옮긴다 — 셸은 앱 메모리에 살아 그 행의 메타가 그대로 남는다. **그 행을 누르는
+  // 것이** 재는 것이다.
+  await 작업화면으로(page, pinnedWork);
 
   const 메타 = 오른쪽메타(page, plainWork.slug);
   await expect(page.locator(`[data-shells="${plainWork.slug}"]`)).toHaveText("1");
@@ -248,7 +248,7 @@ test("행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 중 핀
   expect(핀.x - 칸.x).toBeGreaterThanOrEqual(4);
   await page.mouse.click((칸.x + 핀.x) / 2, 칸.y + 칸.height / 2);
 
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   // 핀을 누른 것이 아니다 — 고정은 안 나갔다.
   const calls = (await readIpcRecord(page))?.calls ?? [];
   expect(calls.filter((call) => call.startsWith("set_work_pinned"))).toEqual([]);
@@ -1223,14 +1223,13 @@ test("다른 work의 띠 줄을 누르면 그 화면으로 건너뛰고, 보던 
   await expect(page).toHaveURL(/file=/);
 
   // **그냥 일**에 셸을 하나 세워 부르게 한다.
-  await page.locator("[data-worklist]").getByRole("button", { name: plainWork.title, exact: true }).click();
+  await 작업화면으로(page, plainWork);
   await page.locator('[data-tab="new"]').click();
   await awaitSpawned(page, 1);
   await 기다리게한다(page, "커밋할까요?");
 
   // 다시 **고정된 일**의 문서로 돌아온다 — 이 화면이 「떠나는 주소」다.
-  await page.locator("[data-worklist]").getByRole("button", { name: pinnedWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await 작업화면으로(page, pinnedWork);
   await expect(page).toHaveURL(/file=/);
 
   await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
@@ -1269,8 +1268,7 @@ test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 �
   await expect(띠줄(page, "Terminal — 나를 기다림")).toHaveCount(1);
 
   // work 화면으로 옮겨도 그 줄이 남는다 — 띠는 **전 화면**의 부르는 셸을 모은다.
-  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await 작업화면으로(page, plainWork);
   await expect(띠줄(page, "Terminal — 나를 기다림")).toHaveCount(1);
 
   await 띠줄(page, "Terminal — 나를 기다림").click();
@@ -2070,8 +2068,7 @@ test("nav 행은 32 · radius-lg · 500 · 아이콘 17이고, 고른 행은 fil
   await 면이된다(지나는nav, 지나는면);
 
   // work 행 — 그 work로 들어가면 그 행이 고른 행이다. 높이는 nav 행과 같은 토큰이다. spec이 있는 work로 들어간다(아래 트리).
-  await 행버튼(page, pinnedWork.title).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await 작업화면으로(page, pinnedWork);
   const 고른work = workRow(page, pinnedWork.slug);
   await expect(고른work).toHaveClass(/selected-row/);
   await 면이된다(고른work, 고른면);

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { PROJECTS, WORKS } from "./fixtures";
+import { FIXTURE_THREAD, PROJECTS, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
@@ -7,7 +7,6 @@ import {
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
   workRow,
-  레인,
   띠,
   사람줄,
   첫글자,
@@ -44,7 +43,21 @@ const 아이콘 = (scope: Locator) => 상자(scope.locator("svg").first());
 test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 사람 줄의 행 글자가 창 끝에서 16이고, 수의 오른쪽 끝은 행 끝에서 8이다", async ({
   page,
 }) => {
-  await installFixtureBackend(page);
+  // work 행의 맨 앞은 그 Work의 Thread를 펴는 ▸다(v1 티켓 37) — 이은 Thread가 있어야 선다. 고정된 일에 Thread 하나를 잇는다.
+  await installFixtureBackend(page, {
+    thread_list: [
+      {
+        id: FIXTURE_THREAD.id,
+        title: FIXTURE_THREAD.title,
+        createdAt: FIXTURE_THREAD.createdAt,
+        work: pinnedWork.slug,
+        handles: ["host"],
+        lastRead: 0,
+        readOnly: null,
+        broken: null,
+      },
+    ],
+  });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   // 알림 띠는 부를 때만 선다 — 기다림 하나로 세운다.
@@ -64,7 +77,8 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
     ["알림 띠 머리 글자", 첫글자(띠(page)).then((box) => box.x)],
     ["알림 띠 줄의 점 레인", 상자(띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림` }).locator("span").first()).then((box) => box.x)],
     ["구획 소제목 글자", 첫글자(page.locator("aside [data-section]").first()).then((box) => box.x)],
-    ["work 행의 레인", 상자(레인(page, pinnedWork.slug)).then((box) => box.x)],
+    // 레인(상태 아이콘 · 셸 신호)은 ▸ 뒤에 선다 — 보드에 없는 칸이라 ▸와 이름 사이에 남겼다(시안-비교/37/차이.md).
+    ["work 행의 ▸", 아이콘(workRow(page, pinnedWork.slug).locator("[data-expander]")).then((box) => box.x)],
     // 바닥은 사람 줄이다(옛 Settings 줄의 자리) — 얼굴 글자 원이 행 글자 자리에 선다.
     ["바닥 사람 줄의 얼굴", 상자(사람줄(page).locator("span").first()).then((box) => box.x)],
   ];

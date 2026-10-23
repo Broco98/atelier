@@ -11,6 +11,7 @@ import {
   행버튼,
   호버카드,
   창검색버튼,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 33 — **툴팁과 호버 카드가 멈추면 바로 뜬다**(codex-ds 스펙 §8 「뜨는 시간」 · 결정 20 · 스토리 99–103).
@@ -321,7 +322,7 @@ test("포인터로 누른 행은 떠날 때까지 카드가 안 서고, 키로 �
   await page.clock.runFor(tip);
   await expect(card).toBeVisible();
   await 행버튼(page, plainWork.title).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   await expect(card).toHaveCount(0);
   const spot = await 가운데(row);
   for (const dx of [4, 8]) {
@@ -335,7 +336,7 @@ test("포인터로 누른 행은 떠날 때까지 카드가 안 서고, 키로 �
   await page.clock.runFor(1000);
   await 행버튼(page, multiWork.title).focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(new RegExp(`/works/${multiWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(multiWork.slug));
   await workRow(page, multiWork.slug).hover();
   await page.clock.runFor(tip);
   await expect(card).toContainText(multiWork.title);

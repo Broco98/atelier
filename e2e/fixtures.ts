@@ -365,6 +365,15 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
 };
 
 /**
+ * **work 제목 그대로의 질의에는 그 Work 줄 하나를 답한다**(v1 티켓 21). 사이드바 Work 줄이 그 Work의 Thread로 가게 된 뒤(v1 티켓 37)
+ * 작업 화면으로 가는 앱 안의 길은 ⌘K의 Work 줄이다 — 하네스의 `작업화면으로`가 제목을 넣고 이 줄을 고른다. 위 머리말과 같은
+ * 까닭으로 좁혀지는 규칙은 흉내내지 않고 제목 그대로의 질의만 심는다(앞 검사들이 치는 「고정」 · 「Set」은 그대로 떨어진다).
+ */
+export const WORK_TITLE_RESULTS: Readonly<Record<string, SearchResults>> = Object.fromEntries(
+  WORKS.map((work) => [work.title, { hits: [{ kind: "work", slug: work.slug, title: work.title, archived: false }] }]),
+);
+
+/**
  * 레이아웃 상태(spec 레이아웃 티켓 08) — 고친 폴더(템플릿 1개)다. 모양은 엔진의 `layout_state`가 내는
  * 그대로이고(다리로 실물과 맞춰 봤다), 폴더는 기본 데이터 루트에서 홈을 `~`로 줄인 경로다 — 설정 페이지는
  * 이것에 `/`만 붙여 참조로 복사한다.
@@ -1076,11 +1085,11 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
   //
-  // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` 머리말이
-  // 들고, 나머지 질의는 전부 기본 답으로 떨어진다 — 좁혀지는 규칙은 여기서 흉내내지 않는다.
+  // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` · `WORK_TITLE_RESULTS`
+  // 머리말이 들고, 나머지 질의는 전부 기본 답으로 떨어진다 — 좁혀지는 규칙은 여기서 흉내내지 않는다.
   search: answerByArg(
     "query",
-    { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
+    { ...WORK_TITLE_RESULTS, [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
     { otherwise: SEARCH_RESULTS },
   ),
   // ── Thread(v1 티켓 05) ── 앱은 새 Thread(`/`)로 열린다. 새 Thread 화면은 설 때 엔진을 한 번 확인하고(`thread_check_engine`) Host 정의의

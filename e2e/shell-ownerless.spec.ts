@@ -27,6 +27,7 @@ import {
   workRow,
   띠,
   셸입력,
+  작업화면으로,
 } from "./harness";
 
 // 티켓 12 — **MCP로 아카이브 · 삭제된 work의 셸을 앱이 알아서 닫거나 남긴다**(프로세스 결정 4 · 프로세스 스펙 S13 ·
@@ -200,7 +201,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await page.locator("[data-worklist]").getByRole("button", { name: plainWork.title, exact: true }).click();
+  await 작업화면으로(page, plainWork);
   await page.locator('[data-tab="new"]').click();
   await awaitSpawned(page, 1);
 

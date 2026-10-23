@@ -72,6 +72,8 @@ function LibraryScreen({ sidebarOpen, work, agent, onPick }: LibraryScreenProps)
   const picked = pickedAgent(rows, agent);
   const { data: works } = useWorks();
   const workTitle = works?.find((one) => one.slug === work)?.title ?? work;
+  // 원문 보기는 화면이 쥔다 — 파일 칸은 Agent마다 새로 서지만(`key`) 골라 둔 보기는 다른 Agent로 가도 그대로다.
+  const [source, setSource] = useState(false);
 
   return (
     <PlainFrame
@@ -102,7 +104,16 @@ function LibraryScreen({ sidebarOpen, work, agent, onPick }: LibraryScreenProps)
           ))}
         </section>
         <section aria-label="Agent 파일" className="flex min-w-0 flex-1 flex-col">
-          {picked && <AgentFile key={`${scope}\u0000${picked.call}`} row={picked} scope={scope} roster={roster} />}
+          {picked && (
+            <AgentFile
+              key={`${scope}\u0000${picked.call}`}
+              row={picked}
+              scope={scope}
+              roster={roster}
+              source={source}
+              onSource={setSource}
+            />
+          )}
         </section>
         <Toaster />
       </div>
@@ -168,9 +179,20 @@ function AgentRow({ row, on, onPick }: { row: AgentChoice; on: boolean; onPick: 
   );
 }
 
-/** 고른 Agent의 파일 — 경로 줄과 문서 보기 · 원문. 원문 보기를 골라 두면 다른 Agent로 가도 원문이다(화면이 떠 있는 동안). */
-function AgentFile({ row, scope, roster }: { row: AgentChoice; scope: string | null; roster: AgentRoster | undefined }) {
-  const [source, setSource] = useState(false);
+/** 고른 Agent의 파일 — 경로 줄과 문서 보기 · 원문. 원문 보기를 골라 두면 다른 Agent로 가도 원문이다(화면이 떠 있는 동안 — `source`). */
+function AgentFile({
+  row,
+  scope,
+  roster,
+  source,
+  onSource,
+}: {
+  row: AgentChoice;
+  scope: string | null;
+  roster: AgentRoster | undefined;
+  source: boolean;
+  onSource: (source: boolean) => void;
+}) {
   const file = useQuery({
     queryKey: [...AGENT_FILE_KEY, scope, row.call],
     queryFn: () => libraryApi.readFile(scope, row.call),
@@ -183,7 +205,7 @@ function AgentFile({ row, scope, roster }: { row: AgentChoice; scope: string | n
     <>
       <PathBar
         path={agentPathPieces(row)}
-        view={{ source, locked: file.data === undefined, onChange: setSource }}
+        view={{ source, locked: file.data === undefined, onChange: onSource }}
         onCopy={path ? () => copyText(path) : undefined}
         end={
           <Hint

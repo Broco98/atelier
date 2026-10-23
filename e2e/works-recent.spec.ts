@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { SEARCH_HITS, WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 검색팔레트를연다 } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 검색팔레트를연다, 작업화면으로 } from "./harness";
 
 // 결정 12·14. **work 화면이 떠 있게 되면 그 work을 「열었다」로 센다.**
 //
@@ -73,9 +73,9 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
   // 재진다. 늘어난 것이 둘이면 마운트가 일어났다는 뜻이라 이 셈 자체가 무너지므로,
   // 그때도 이 줄이 빨개지는 것이 맞다.
   // **앱 안에서 옮긴다 — `goto`가 아니다.** 새로 실으면 IPC 기록이 통째로 비워져서 위에서
-  // 모아 둔 `afterOpen`과 견줄 수가 없다(그러면 이 단이 재는 것이 아무것도 아니게 된다).
-  await page.getByRole("button", { name: otherWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${otherWork.slug}`));
+  // 모아 둔 `afterOpen`과 견줄 수가 없다(그러면 이 단이 재는 것이 아무것도 아니게 된다). 길은 ⌘K의 Work 줄이다 — 사이드바 Work
+  // 줄은 이제 그 Work의 Thread로 간다(v1 티켓 37).
+  await 작업화면으로(page, otherWork);
   await expect
     .poll(() => touched(page).then((all) => all.length))
     .toBeGreaterThan(afterOpen.length);

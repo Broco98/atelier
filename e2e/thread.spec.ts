@@ -71,7 +71,7 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await 입력칸(page).fill(second.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_send", "text")).map(({ args }) => args)).toEqual([
-    { thread: started.id, text: second.text, attachments: [] },
+    { thread: started.id, text: second.text, attachments: [], quote: null },
   ]);
   await streamLines(page, started.id, linesThrough(linesAfter(twoTurns, FIRST_END), WRITE_STARTED));
   await expect(흐름(page).getByText(second.text, { exact: true })).toBeVisible();
@@ -123,7 +123,7 @@ test("다시 켜면 앱은 새 Thread로 열리고, 사이드바의 그 Thread�
   await 입력칸(page).fill("고마워");
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_send", "text")).map(({ args }) => args)).toEqual([
-    { thread: reopened.id, text: "고마워", attachments: [] },
+    { thread: reopened.id, text: "고마워", attachments: [], quote: null },
   ]);
   expect(await ipcCallArgs(page, "thread_start", "text")).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);

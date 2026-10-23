@@ -18,6 +18,7 @@ import {
   workRow,
   띠,
   레인,
+  Work줄이가는곳,
 } from "./harness";
 
 // 사이드바 작업 행을 끌어 **순서·고정**을 바꾼다(UI개선 티켓 05 · 스펙 §4·§5). 틈의 경계 규칙은
@@ -99,7 +100,7 @@ test("5px 안쪽의 눌림은 그대로 클릭이다 — 그 작업으로 간다
   await expect(line(page)).toHaveCount(0);
   await page.mouse.up();
 
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   expect(await moves(page)).toEqual([]);
 });
 

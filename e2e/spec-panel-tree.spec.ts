@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls, 주소로간다 } from "./harness";
 
 const [pinnedWork, , multiWork] = WORKS;
 
@@ -30,11 +30,12 @@ test("work를 옮겨 다니는 동안 spec 트리를 따로 묻지 않는다 —
   await expect(page.getByRole("button", { name: "overview.md", exact: true })).toBeVisible();
   const settled = (await readIpcRecord(page))?.calls.length ?? 0;
 
-  const sidebar = page.locator("aside");
-  await sidebar.getByRole("button", { name: multiWork.title, exact: true }).click();
+  // 앱 안에서 주소로 옮긴다 — 사이드바 Work 줄은 이제 그 Work의 Thread로 가고(v1 티켓 37), ⌘K로 옮기면 팔레트의 `search`가 아래
+  // 기록에 섞인다.
+  await 주소로간다(page, `/works/${multiWork.slug}`);
   await expect(page.getByRole("button", { name: "MD 넓은.md", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "overview.md", exact: true })).toHaveCount(0);
-  await sidebar.getByRole("button", { name: pinnedWork.title, exact: true }).click();
+  await 주소로간다(page, `/works/${pinnedWork.slug}`);
   await expect(page.getByRole("button", { name: "overview.md", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "MD 넓은.md", exact: true })).toHaveCount(0);
 

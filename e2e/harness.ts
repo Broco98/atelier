@@ -1687,6 +1687,33 @@ export async function 주소로간다(page: Page, url: string): Promise<void> {
 }
 
 /**
+ * 사이드바 Work 줄이 가는 주소(v1 티켓 37) — 그 Work의 가장 최근 Thread, 이은 Thread가 없으면 그 Work를 고른 새 Thread(`/?work=<slug>`)다.
+ * 고정 답의 Thread 목록은 비어 있어(`thread_list: []`) 늘 뒤쪽이다. 작업 화면(spec 트리 · 터미널 탭)으로는 가지 않는다 — 그 길은
+ * 아래 `작업화면으로`다.
+ */
+export const Work줄이가는곳 = (slug: string) => `/?work=${slug}`;
+
+/**
+ * 그 work의 작업 화면을 **앱 안에서** 연다 — ⌘K에 제목을 넣고 Work 줄을 고른다(v1 티켓 21).
+ *
+ * 사이드바 Work 줄은 이제 그 Work의 Thread로 간다(`Work줄이가는곳`). 작업 화면으로 가는 앱 안의 길은 ⌘K의 Work 줄이고, 그 줄은 옛
+ * 사이드바 행처럼 **그 work의 마지막 화면을 씨앗으로 삼는다**(`recallSearch` — 결정 77). 그래서 「사이드바로 옆 work에 갔다 온다」던
+ * 검사가 이 길로 같은 것을 잰다. 앱 안의 이동이라 메모리에 사는 묶음 · 셸이 산다(`page.goto`는 지운다). 팔레트의 답은 고정 답의
+ * `WORK_TITLE_RESULTS`다 — 그 work 줄 하나가 켜진 뒤에 Enter를 누른다. 팔레트의 `search`가 IPC 기록에 남으므로, 옮길 때 나간
+ * 호출을 세는 검사는 `주소로간다`로 옮긴다.
+ */
+export async function 작업화면으로(page: Page, work: Pick<WorkView, "slug" | "title">): Promise<void> {
+  // 앵커 — 앱이 섰다(사이드바에 그 work의 줄이 있다). 막 띄운 페이지에서 단축키가 붙기 전에 ⌘K를 누르면 팔레트가 안 뜬다. 접힌
+  // 구획의 줄도 센다(보이지 않아도 선 것이다).
+  await expect(workRow(page, work.slug)).toHaveCount(1);
+  await 검색팔레트를연다(page);
+  await 검색어칸(page).fill(work.title);
+  await expect(page.getByRole("option", { name: work.title, exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
+}
+
+/**
  * `그냥 일`(`WORKS[1]`)의 터미널 탭에 칸 둘을 세우고 **첫째를 켠다** — 말하는 것은 둘째(pty 2, `openShell` 머리말)다. 켠 칸에 온
  * 확인할 것은 그 순간 「봤다」가 되어(terminal-activity-signal 결정 7) 띠에 안 서므로, 보는 셸과 부르는 셸을 가른다. 픽스처
  * 백엔드는 덮어쓰기 없이 여기서 깐다 — 시계를 쓰는 검사는 그 전에 `page.clock.install()`을 건다.

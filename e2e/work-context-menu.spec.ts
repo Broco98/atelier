@@ -23,6 +23,8 @@ import {
   토큰색,
   표를꽂는다,
   행버튼,
+  작업화면으로,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 27 — **웹뷰 메뉴가 막히고 work를 우클릭하면 work 메뉴가 뜬다**(codex-ds 스펙 §9 · 결정 6 · 7 · 8 · 11 · 15).
@@ -72,6 +74,8 @@ const 고른행 = (page: Page) =>
 const 대상들: Array<{
   name: string;
   setUp: (page: Page) => Promise<{ target: Locator; work: (typeof WORKS)[number]; selected: string }>;
+  /** 누르면 가는 곳 — 누르면 옮겨 가는 대상(행 · 띠 줄)만 든다. */
+  went?: (work: (typeof WORKS)[number]) => string | RegExp;
 }> = [
   {
     name: "사이드바 work 행",
@@ -79,6 +83,8 @@ const 대상들: Array<{
       await page.goto(`/works/${plainWork.slug}`);
       return { target: 버튼(page.locator("[data-worklist]"), pinnedWork.title), work: pinnedWork, selected: plainWork.slug };
     },
+    // 그 Work의 Thread다 — 이은 Thread가 없으면 그 Work를 고른 새 Thread(v1 티켓 37).
+    went: (work) => Work줄이가는곳(work.slug),
   },
   {
     name: "알림 띠 줄",
@@ -93,7 +99,7 @@ const 대상들: Array<{
         at: Date.now(),
         payload: { message: "어느 쪽으로 할까요?" },
       });
-      await 행버튼(page, pinnedWork.title).click();
+      await 작업화면으로(page, pinnedWork);
       await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
       return {
         target: 버튼(띠(page), `${plainWork.title} — 나를 기다림`),
@@ -101,6 +107,8 @@ const 대상들: Array<{
         selected: pinnedWork.slug,
       };
     },
+    // 그 work의 셸 화면이다.
+    went: (work) => new RegExp(`/works/${work.slug}(\\?|$)`),
   },
   {
     name: "머리 카드 이름",
@@ -261,7 +269,7 @@ for (const { name, setUp } of 대상들) {
 // 「안 갔다」는 기다려서 보지 않는다(언제까지 기다리나가 없다). 주소를 바꾸는 부름을 차례로 적고(`주소적기`), ⌃클릭 뒤에 표를 꽂은
 // 다음 ⌃ 없는 클릭으로 가게 한다 — 적힌 줄의 첫 칸이 그 표면 ⌃클릭은 아무 데도 안 갔다.
 
-for (const { name, setUp } of 대상들.filter((one) => one.name !== "머리 카드 이름")) {
+for (const { name, setUp, went } of 대상들.filter((one) => one.went !== undefined)) {
   test(`${name}을 ⌃클릭하면 그 work로 가지 않는다 — ⌃ 없는 클릭은 간다`, async ({ page }) => {
     await installFixtureBackend(page);
     const { target, work, selected } = await setUp(page);
@@ -273,7 +281,7 @@ for (const { name, setUp } of 대상들.filter((one) => one.name !== "머리 카
     await 표를꽂는다(page);
     await target.dispatchEvent("click");
     // 앵커: ⌃ 없는 클릭은 그 work로 갔고, 적기가 그 부름을 봤다.
-    await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
+    await expect(page).toHaveURL(went!(work));
     const 주소들 = await 적힌주소(page);
     expect(주소들.length).toBeGreaterThan(1);
     expect(주소들[0], `⌃클릭이 ${selected}에서 옮겼다`).toBe("표");
