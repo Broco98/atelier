@@ -35,6 +35,9 @@
 //! - `FAKE_CLAUDE_REBASE` — 녹음의 폴더 하나(예 `/tmp/gate/ws/g1/outside`). 있으면 내는 줄마다 그 글을 이 claude의 작업 폴더로 바꿔
 //!   낸다(v1 티켓 22). 원문의 경로는 잰 날의 임시 폴더라 판정에는 늘 「Work 밖 편집」이다 — 작업 자리 안의 편집을 재려면 가짜가
 //!   제 자리의 경로를 물어야 한다. 그 폴더는 진짜 claude처럼 심볼릭 링크를 푼 경로(`getcwd`)다.
+//! - `FAKE_CLAUDE_REROOT` — `<녹음의 루트>=<옮길 폴더>`(예 `/tmp/gate=/private/var/…/T/.tmpX`). 있으면 `FAKE_CLAUDE_REBASE` 다음에
+//!   내는 줄마다 녹음의 루트를 그 폴더로 바꾼다(v1 티켓 39). 녹음이 작업 폴더 밖(Work의 spec 폴더 · 등록한 저장소)을 가리킬 때 그
+//!   자리를 시험의 임시 폴더로 옮긴다 — 판정이 녹음의 편집을 그 시험이 만든 Work 안의 것으로 본다.
 //! - **녹음 속 MCP 부르기**(v1 티켓 20) — 되감는 원문의 `assistant`가 받은 `--mcp-config`의 서버 도구(`mcp__<서버>__<도구>`)를
 //!   부르면, 그 줄을 낸 뒤 그 서버를 띄워 같은 입력으로 정말 부르고, 뒤따르는 원문의 그 `tool_result`를 받은 답으로 바꿔 낸다.
 //!   진짜 claude가 Thread 도구를 부른 녹음(`thread-call-host` · `thread-rename-host`)이 엔진의 중계 서버 → 소켓 길을 끝까지 탄다.
@@ -198,19 +201,20 @@ fn emit(line: &Value) {
     let _ = out.flush();
 }
 
-/// 낼 줄의 글 — `FAKE_CLAUDE_REBASE`가 있으면 녹음의 그 폴더를 이 claude의 작업 폴더로 바꾼다.
+/// 낼 줄의 글 — `FAKE_CLAUDE_REBASE`가 있으면 녹음의 그 폴더를 이 claude의 작업 폴더로, 이어 `FAKE_CLAUDE_REROOT`가 있으면 녹음의
+/// 임시 루트를 받은 폴더로 바꾼다.
 fn rebased(line: &Value) -> String {
-    static REBASE: std::sync::OnceLock<Option<(String, String)>> = std::sync::OnceLock::new();
+    static REBASE: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
     let rebase = REBASE.get_or_init(|| {
-        let from = std::env::var("FAKE_CLAUDE_REBASE").ok()?;
-        let to = std::env::current_dir().ok()?.to_string_lossy().into_owned();
-        Some((from, to))
+        let cwd = std::env::var("FAKE_CLAUDE_REBASE")
+            .ok()
+            .and_then(|from| Some((from, std::env::current_dir().ok()?.to_string_lossy().into_owned())));
+        let root = std::env::var("FAKE_CLAUDE_REROOT")
+            .ok()
+            .map(|pair| pair.split_once('=').map(|(from, to)| (from.to_owned(), to.to_owned())).expect("FAKE_CLAUDE_REROOT는 <녹음>=<옮길 곳>"));
+        cwd.into_iter().chain(root).collect()
     });
-    let text = line.to_string();
-    match rebase {
-        Some((from, to)) => text.replace(from.as_str(), to),
-        None => text,
-    }
+    rebase.iter().fold(line.to_string(), |text, (from, to)| text.replace(from.as_str(), to))
 }
 
 struct Fake {

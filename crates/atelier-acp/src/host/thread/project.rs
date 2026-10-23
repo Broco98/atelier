@@ -85,6 +85,7 @@ impl ConversationHost {
             ProjectChoice::Attach => match self.plant(&outside.work, &outside.project) {
                 Ok(planted) => {
                     self.note(thread, Some(&asked.key.handle), answered)?;
+                    self.stop_reading_only(thread, &outside.project)?;
                     self.note_planted(thread, &outside.project, &planted)?;
                     self.planted_text(thread, &outside.project, &planted)
                 }
@@ -154,7 +155,10 @@ impl ConversationHost {
         };
         if work_at.meta.projects.iter().any(|one| one == project) {
             return match self.plant(&slug, project) {
-                Ok(planted) => match self.note_planted(&key.thread, project, &planted) {
+                Ok(planted) => match self
+                    .stop_reading_only(&key.thread, project)
+                    .and_then(|()| self.note_planted(&key.thread, project, &planted))
+                {
                     Ok(()) => {
                         let (text, refused) = self.planted_text(&key.thread, project, &planted);
                         thread_tools::said(&text, refused)
@@ -191,6 +195,15 @@ impl ConversationHost {
         let failed = report.errors.into_iter().map(|error| error.message).next();
         let branch = self.open_work(slug).ok().and_then(|after| after.meta.branch);
         Ok(Planted { path, branch, attached, made: failed.is_none(), failed })
+    }
+
+    /// 그 Project를 이 Thread의 읽기만 Project에서 걷는다 — Work에 붙어 worktree에서 고치게 됐으니(끝 점검 ④, v1 티켓 39). 남겨 두면
+    /// 다음 턴에 원본 폴더(main 체크아웃)를 worktree와 함께 열어 같은 Project가 두 자리에 선다. 읽기만이 아니었으면 아무것도 하지 않는다.
+    fn stop_reading_only(&self, thread: &str, project: &str) -> Result<(), HostError> {
+        if !self.read_thread_file(thread)?.read_only_projects.iter().any(|one| one == project) {
+            return Ok(());
+        }
+        self.change_thread(thread, |file| file.read_only_projects.retain(|one| one != project)).map(drop)
     }
 
     /// 세운 것을 `work` 줄로 남긴다 — 붙임(`attached`)과 worktree(`worktree`). 사람이나 시스템의 일이라 `who`가 없다(S8).

@@ -124,12 +124,12 @@ describe("내 차례", () => {
   // Work 만들기 카드(v1 티켓 30)도 사람의 답을 기다리는 물음이다 — 같은 물음 차례에 선다(`ThreadModel.asks`).
   it("Work 만들기 카드가 서 있으면 내 차례이고, 미리보기는 만들 Work의 제목이다", () => {
     const working = record("thread-work");
-    expect(statusOf(through(working, 8), live(0))).toEqual({
+    expect(statusOf(through(working, 56), live(0))).toEqual({
       kind: "mine",
-      since: "2026-10-10T10:00:08.000+09:00",
-      text: "Work 만들기 · 환불 API 버그 수정",
+      since: "2026-10-10T10:00:56.000+09:00",
+      text: "Work 만들기 · 환불 API 부분 환불 버그 수정 (#31)",
     });
-    expect(statusOf(through(working, 9), live(0))?.kind).toBe("working");
+    expect(statusOf(through(working, 57), live(0))?.kind).toBe("working");
   });
 
   // 앱을 다시 켜면 물은 프로세스가 없다 — 답할 곳이 없는 물음은 기다리는 것이 아니다(`goneThrough`).

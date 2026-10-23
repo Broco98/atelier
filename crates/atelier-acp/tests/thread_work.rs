@@ -356,34 +356,100 @@ fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안
     host.shut_down();
 }
 
-/// 기록 축복(S26 꼴) — Host가 첫 턴에서 Work 만들기를 제안하고, 사람이 web-app을 넣어 만든 기록이 검사 자료로 선다. 화면 L2(`fold.test.ts`)와
-/// PR ④의 L3(v1 티켓 40)가 이 파일을 `thread:record`로 흘려 카드 · 결정 줄 · 시스템 줄 「Work … 을 만들고 이 Thread에 연결함」을 그린다.
+/// 기록 축복(S26 꼴) — 진짜 claude가 Host로 「백엔드 환불 API 버그 고쳐줘」를 받은 첫 턴(v1 티켓 39 끝 점검의 녹음)이 검사 자료로
+/// 선다. Host는 Project 목록 · Work 읽기를 보고, 저장소를 읽고(명령 셋 · 읽기 다섯을 묻는다), Thread 이름을 바꾸고, Work 만들기를
+/// 제안한다. 사람이 api-server만으로 만들면 같은 턴에 spec 폴더에 설계 문서 둘(`overview.md` · `01-fix/plan.md`)을 쓰고(묻는다) 답한다.
+/// 화면 L2(`fold.test.ts` · `status.test.ts`)와 PR ④의 L3(v1 티켓 40)가 이 파일을 `thread:record`로 흘려 카드 · 결정 줄 · 시스템 줄
+/// 「Work … 을 만들고 이 Thread에 연결함」 · 대화 속 문서 카드를 그린다.
 #[test]
 fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
-    register(&sandbox, "api-server", "결제 · 환불 API");
-    register(&sandbox, "web-app", "환불 버튼 화면");
-    let (host, thread) = started(&sandbox, &[refund_proposal()]);
+    register(&sandbox, "api-server", "백엔드 — 결제 · 환불 API");
+    register(&sandbox, "web-app", "프런트엔드 — 주문 상세의 환불 버튼 화면");
+    let host = sandbox.host(recorded_work(&sandbox));
+    let thread = host.start_thread("백엔드 환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
 
-    let asked = wait_card(&sandbox, &thread, "asked");
-    host.answer_work(&thread, &request_of(&asked), create(&["api-server", "web-app"], "fix/refund-api")).expect("Work 만들기");
-    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    // 녹음의 물음에 온 차례대로 답한다 — 명령 · 읽기 · 문서 쓰기는 이번만 허락, Work 만들기 카드는 녹음대로 api-server만.
+    let mut card = None;
+    let record = loop {
+        let record = sandbox.wait_thread_record(&thread, |record| {
+            !of_kind(record, "turn-end").is_empty() || unanswered(record).is_some()
+        });
+        let Some(asked) = unanswered(&record) else { break record };
+        let request = request_of(&asked);
+        if asked["kind"] == "question" {
+            host.answer_work(&thread, &request, create(&["api-server"], "fix/refund-partial-amount")).expect("Work 만들기");
+            card = Some(request.clone());
+        } else {
+            host.answer_thread_permission(&thread, "host", &request, "allow_once").expect("이번만 허락");
+        }
+        sandbox.wait_thread_record(&thread, |record| unanswered(record).is_none_or(|next| request_of(&next) != request));
+    };
     host.shut_down();
+    let card = card.expect("Work 만들기 카드가 섰다");
+    assert_eq!(sandbox.thread_json(&thread)["work"], "refund-partial-amount", "Thread가 녹음의 Work에 이어진다");
+    let decided: Vec<&Value> = of_kind(&record, "permission").into_iter().filter(|line| line["payload"]["state"] == "decided").collect();
+    assert!(decided.is_empty(), "녹음의 물음은 모두 사람에게 온다 — 판정이 막은 것이 없다: {decided:?}");
 
     let session = sandbox.thread_session_id(&thread, "host");
     let fixed = common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]);
+    let root = sandbox.data_root().parent().unwrap().to_path_buf();
+    let real_root = root.canonicalize().unwrap();
     let fixed: Vec<Value> = fixed
         .iter()
-        .map(|line| serde_json::from_str(&line.to_string().replace(&request_of(&asked), "fake-request")).unwrap())
+        .map(|line| {
+            let text = line
+                .to_string()
+                .replace(&card, "fake-request")
+                .replace(&real_root.display().to_string(), RECORDED_ROOT)
+                .replace(&root.display().to_string(), RECORDED_ROOT);
+            serde_json::from_str(&text).unwrap()
+        })
         .collect();
     common::assert_record("thread-work", &fixed);
 }
 
+/// 녹음의 Thread 폴더(v1 티켓 39 끝 점검 — 가린 사본).
+const RECORDED_THREAD: &str = "/tmp/gate/home/threads/20261024-013421";
+/// 녹음의 임시 루트 — 자료 자리 `home`과 등록한 저장소 `repos`가 그 아래에 있다. 이 시험의 임시 폴더도 같은 꼴이다(`register`).
+const RECORDED_ROOT: &str = "/tmp/gate";
+
+/// 진짜 claude가 Host로 Work 만들기를 제안한 첫 턴의 녹음을 되감는 가짜 claude의 로그인 셸 — 녹음의 Thread 폴더는 이 claude의 작업
+/// 폴더로, 녹음의 임시 루트는 이 시험의 임시 폴더로 옮긴다. 그래야 녹음의 spec 문서 쓰기가 이 시험이 만든 Work의 spec 폴더를 가리킨다.
+fn recorded_work(sandbox: &Sandbox) -> atelier_acp::ShellSource {
+    let root = sandbox.data_root().parent().unwrap().canonicalize().unwrap();
+    let reroot = format!("{RECORDED_ROOT}={}", root.display());
+    sandbox.claude_login_shell(
+        "normal",
+        &[
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-work-host"),
+            ("FAKE_CLAUDE_REBASE", RECORDED_THREAD),
+            ("FAKE_CLAUDE_REROOT", &reroot),
+        ],
+    )
+}
+
+/// 아직 답하지 않은 첫 물음 — 권한 요청이나 Work 만들기 카드.
+fn unanswered(record: &[Value]) -> Option<Value> {
+    let asks = record.iter().filter(|line| {
+        (line["kind"] == "permission" || line["kind"] == "question") && line["payload"]["state"] == "asked"
+    });
+    asks.into_iter()
+        .find(|asked| {
+            !record.iter().any(|line| {
+                line["kind"] == asked["kind"]
+                    && line["seq"].as_u64() > asked["seq"].as_u64()
+                    && line["payload"]["requestId"] == asked["payload"]["requestId"]
+            })
+        })
+        .cloned()
+}
+
 /// 축복 자료의 차례를 하나로 둔다 — 매번 갈리는 두 차례를 앞 줄 뒤로 옮기고 seq를 다시 센다.
 /// - 명령 목록 줄(`available_commands_update`)은 Session을 연 답 뒤에 따로 와 첫 말의 `sent`와 엇갈린다 → 열림 줄 바로 뒤.
-/// - 카드 줄(`question` `asked`)은 도구 호출(중계 서버 → 소켓)이 적고 도구 줄은 claude의 stdout(변환기 → ACP)이 적어 둘이 엇갈린다 →
-///   그 도구 줄 바로 뒤.
+/// - 카드 줄(`question` `asked`)과 이름 줄(`title`)은 도구 호출(중계 서버 → 소켓)이 적고 도구 줄은 claude의 stdout(변환기 → ACP)이
+///   적어 둘이 엇갈린다 → 그 도구 줄 바로 뒤.
 fn settled(record: &[Value]) -> Vec<Value> {
     let mut lines = record.to_vec();
     let mut after = |moved: &dyn Fn(&Value) -> bool, anchor: &dyn Fn(&Value) -> bool| {
@@ -396,10 +462,17 @@ fn settled(record: &[Value]) -> Vec<Value> {
         line["payload"]["state"] == "opened"
     });
     after(&|line| line["kind"] == "question" && line["payload"]["state"] == "asked", &|line| {
-        line["payload"]["update"]["sessionUpdate"] == "tool_call"
+        line["payload"]["update"]["sessionUpdate"] == "tool_call" && tool_name(line) == "mcp__atelier-thread__propose_work"
+    });
+    after(&|line| line["kind"] == "title", &|line| {
+        line["payload"]["update"]["sessionUpdate"] == "tool_call" && tool_name(line) == "mcp__atelier-thread__rename_thread"
     });
     for (n, line) in lines.iter_mut().enumerate() {
         line["seq"] = json!(n + 1);
     }
     lines
+}
+
+fn tool_name(line: &Value) -> &str {
+    line["payload"]["update"]["_meta"]["claudeCode"]["toolName"].as_str().unwrap_or_default()
 }

@@ -256,6 +256,40 @@ fn 읽기만_하기면_work에_붙이지_않고_worktree도_만들지_않으며_
     host.shut_down();
 }
 
+/// 끝 점검 ④(v1 티켓 39) — 읽기만 하기로 둔 Project를 같은 Thread에서 다시 물어 붙이면 그 Project는 더 이상 이 Thread의 읽기만 Project가
+/// 아니다. 남아 있으면 다음 턴에 원본 폴더(main 체크아웃)를 worktree와 함께 열어, 같은 Project가 두 자리에 선다.
+#[test]
+fn 읽기만_하기_뒤_다시_물어_붙이고_고치기면_읽기만_목록에서_빠지고_다음_턴에는_원본_폴더를_함께_열지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    register(&sandbox, "api-server");
+    let web = register(&sandbox, "web-app");
+    deferred_work(&sandbox, &["api-server"]);
+    let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[edit_web_app()]));
+    let thread = host.start_thread("환불 버튼이 두 번 눌려요", in_refund()).expect("Work에 이은 Thread");
+    let asked = wait_card(&sandbox, &thread, "asked");
+    host.answer_project(&thread, &request_of(&asked), ProjectChoice::ReadOnly).expect("읽기만 하기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    host.send_to_thread(&thread, "그래도 web-app을 고쳐 줘").expect("다음 말");
+    let record = sandbox.wait_thread_record(&thread, |record| {
+        of_kind(record, "question").iter().filter(|line| line["payload"]["state"] == "asked").count() == 2
+    });
+    let again = of_kind(&record, "question").into_iter().rfind(|line| line["payload"]["state"] == "asked").unwrap().clone();
+    host.answer_project(&thread, &request_of(&again), ProjectChoice::Attach).expect("붙이고 고치기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    assert_eq!(sandbox.thread_json(&thread).get("readOnlyProjects"), None, "붙인 Project는 읽기만이 아니다");
+    let view = serde_json::to_value(host.thread(&thread).expect("Thread 보기")).expect("JSON");
+    assert_eq!(view["readOnlyProjects"], Value::Null, "{view}");
+
+    host.send_to_thread(&thread, "이어서 해 줘").expect("셋째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    let (args, cwd) = last_launch(&sandbox, &thread);
+    assert_eq!(cwd, real(&tree(&sandbox, "web-app")), "worktree에서 이어 연다");
+    assert!(!has_pair(&args, "--add-dir", &web.display().to_string()), "원본 폴더는 함께 열지 않는다: {args:?}");
+    host.shut_down();
+}
+
 #[test]
 fn 아니요면_아무것도_바꾸지_않고_도구가_이_work의_project에서만_고치라는_거절_글을_돌려준다() {
     let sandbox = Sandbox::new();

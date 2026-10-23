@@ -61,6 +61,11 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   여럿 고르기)을 한 번에 묻고 답(allow의 `updatedInput.answers`)을 받아 「done」, 둘째 턴은 물음 하나를 「나중에」(deny)로
 ///   닫혀 「later」다. 질문은 권한 도구의 `can_use_tool`(`requires_user_interaction: true`)로 온다. 녹음의 Thread 폴더는
 ///   `/tmp/gate/home/threads/20261024-004101`이다.
+/// - `2.1.309/thread-work-host` — Work 없는 Thread의 Host가 「백엔드 환불 API 버그 고쳐줘」를 받은 한 턴(v1 티켓 39 끝 점검). Thread
+///   도구 다섯을 `ToolSearch`로 들여 `list_projects` · `get_work`를 보고, 등록한 저장소를 명령 셋(`can_use_tool`) · `Read` 다섯
+///   (`can_use_tool`)으로 읽고, `rename_thread`로 이름을 바꾸고, `propose_work`로 Work(`refund-partial-amount`, api-server)를
+///   제안한다. 만든 뒤 같은 턴에 spec 폴더에 `overview.md` · `01-fix/plan.md`를 `Write`(`can_use_tool`)하고 답한다. 녹음의 임시
+///   루트는 `/tmp/gate`(자료 자리 `home` · 저장소 `repos`), Thread 폴더는 `/tmp/gate/home/threads/20261024-013421`이다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -80,6 +85,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/thread-call-reviewer", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-reviewer.jsonl")),
     ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
     ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
+    ("2.1.309/thread-work-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-work-host.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
