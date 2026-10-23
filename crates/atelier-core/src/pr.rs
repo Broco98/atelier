@@ -7,8 +7,11 @@
 //! 읽는 때(턴 끝 · 카드가 열릴 때 · 열린 동안 60초마다)는 부르는 쪽이 정한다 — 여기는 한 번 읽기만 한다.
 
 use std::ffi::OsStr;
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -103,7 +106,7 @@ pub fn read_work_prs(works_root: &Path, slug: &str, search_path: Option<&OsStr>)
             let worktree = worktree_dir(works_root, slug, project)?;
             let pr = match &work.branch {
                 // worktree가 없으면 이 Work의 브랜치를 고친 적이 없다(S21) — PR이 있을 까닭이 없어 부르지 않는다.
-                Some(branch) if worktree.is_dir() => gh_pr(&worktree, branch, search_path),
+                Some(branch) if worktree.is_dir() => gh_pr(&worktree, branch, search_path, GH_LIMIT),
                 _ => PrLookup::Absent,
             };
             Ok(ProjectPr { project: project.clone(), pr })
@@ -119,15 +122,20 @@ const GH_FIELDS: &str =
 /// 가른다 — 글은 판마다 바뀐다.
 const GH_AUTH_REQUIRED: i32 = 4;
 
-fn gh_pr(worktree: &Path, branch: &str, search_path: Option<&OsStr>) -> PrLookup {
+/// `gh`를 기다리는 한도(코드 리뷰 1차 B14) — 넘으면 끊고 읽지 못함이다. 네트워크가 멎으면 `gh`는 오래 답하지 않고, 그동안 부른
+/// 쪽(턴 끝의 PR 확인 · 카드의 읽기)이 함께 멎는다. 보통은 몇 초 안에 답한다.
+const GH_LIMIT: Duration = Duration::from_secs(20);
+
+fn gh_pr(worktree: &Path, branch: &str, search_path: Option<&OsStr>, limit: Duration) -> PrLookup {
     let mut gh = Command::new("gh");
     gh.current_dir(worktree)
         .args(["pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", GH_FIELDS]);
     if let Some(path) = search_path {
         gh.env("PATH", path);
     }
-    let out = match gh.output() {
-        Ok(out) => out,
+    let out = match output_within(&mut gh, limit) {
+        Ok(Some(out)) => out,
+        Ok(None) => return PrLookup::Unreadable { reason: format!("gh가 {}초 안에 답하지 않았어요", limit.as_secs_f32()) },
         // `gh`가 없다 — 위에서 worktree가 있음을 보았으므로 없는 것은 실행 파일이다.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return PrLookup::Absent,
         Err(e) => return PrLookup::Unreadable { reason: e.to_string() },
@@ -142,6 +150,37 @@ fn gh_pr(worktree: &Path, branch: &str, search_path: Option<&OsStr>) -> PrLookup
         Ok(found) => found.into_iter().next().map_or(PrLookup::Absent, |pr| PrLookup::Found(pr.into())),
         Err(e) => PrLookup::Unreadable { reason: e.to_string() },
     }
+}
+
+/// `Command::output`과 같되 `limit` 안에 끝나지 않으면 끄고 `None`이다. 출력은 곁의 스레드가 읽는다 — 끝나기를 기다리는 동안 파이프가
+/// 차서 자식이 멎지 않게. 끊은 자식이 남긴 손주가 파이프를 쥐고 있어도 그 스레드는 기다리지 않는다.
+fn output_within(command: &mut Command, limit: Duration) -> std::io::Result<Option<Output>> {
+    let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let (stdout, stderr) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let deadline = Instant::now() + limit;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let read = |pipe: JoinHandle<Vec<u8>>| pipe.join().unwrap_or_default();
+            return Ok(Some(Output { status, stdout: read(stdout), stderr: read(stderr) }));
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// 파이프 하나를 끝까지 읽는 스레드.
+fn drain(pipe: Option<impl Read + Send + 'static>) -> JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut read = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = pipe.read_to_end(&mut read);
+        }
+        read
+    })
 }
 
 /// `gh`가 내는 PR 하나 — GitHub의 필드 이름 그대로다. 화면에는 좁힌 `PullRequest`로 간다. 목록 필드는 `null`로도 온다.
@@ -440,6 +479,18 @@ mod tests {
         let place = setup();
         place.plant_failing_gh("error connecting to api.github.com", 1);
         assert_eq!(place.read(), PrLookup::Unreadable { reason: "error connecting to api.github.com".to_string() });
+    }
+
+    /// `gh`가 멎으면(네트워크가 끊긴 채 기다리면) 한도에서 끊고 읽지 못함이다 — 턴 끝의 PR 확인과 카드의 읽기가 `gh`를 따라 멎지
+    /// 않는다(코드 리뷰 1차 B14).
+    #[test]
+    fn gh가_한도_안에_답하지_않으면_끊고_읽지_못함이다() {
+        let place = setup();
+        place.install_gh("#!/bin/sh\nexec /bin/sleep 30\n");
+        let started = std::time::Instant::now();
+        let read = gh_pr(&place.worktree, "feat/x", Some(place.bin.as_os_str()), Duration::from_millis(300));
+        assert!(started.elapsed() < Duration::from_secs(10), "한도에서 끊지 않았다: {:?}", started.elapsed());
+        assert!(matches!(read, PrLookup::Unreadable { .. }), "{read:?}");
     }
 
     /// 검사 목록 하나로 PR 하나를 지은 `gh`의 답.
