@@ -253,8 +253,13 @@ pub(crate) enum AnswerError {
     Closed,
     /// 그 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
     UnknownOption,
-    /// 에이전트에 답을 보내지 못했다(연결이 끊겼다).
+    /// Runtime에 답을 보내지 못했다(연결이 끊겼다).
     Send(String),
+}
+
+/// 권한 답을 보내지 못한 까닭 — 입력창의 알림으로 사람에게 보인다(`HostError::Send`).
+fn unsent(error: impl std::fmt::Display) -> AnswerError {
+    AnswerError::Send(format!("Runtime에 권한 답을 보내지 못했어요: {error}"))
 }
 
 /// 턴 하나의 끝.
@@ -970,10 +975,7 @@ impl Turns {
         if let Some(sink) = self.sink.upgrade() {
             sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, answer: answer.clone(), question: asked.question });
         }
-        asked
-            .responder
-            .respond(response)
-            .map_err(|error| AnswerError::Send(format!("에이전트에 권한 답을 보내지 못했습니다: {error}")))
+        asked.responder.respond(response).map_err(unsent)
     }
 
     /// 걸린 권한 요청에 엔진이 답한다(v1 티켓 18) — 사람이 고른 답이 아니라 엔진의 판정이다. 사람이 편집을 허락했는데 그사이 다른
@@ -985,10 +987,7 @@ impl Turns {
         if let Some(sink) = self.sink.upgrade() {
             sink(RuntimeEvent::PermissionDecided { request_id: asked.request_id, ruling, asked: None });
         }
-        asked
-            .responder
-            .respond(response)
-            .map_err(|error| AnswerError::Send(format!("에이전트에 권한 답을 보내지 못했습니다: {error}")))
+        asked.responder.respond(response).map_err(unsent)
     }
 
     /// 그 요청을 대기 요청 표에서 꺼낸다 — 걸려 있지 않거나 그 선택지가 없으면 꺼내지 않는다.

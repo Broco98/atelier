@@ -505,7 +505,7 @@ fn 다시_맡기기가_부를_수_없으면_까닭으로_거절되고_기록에�
     let refused = host.call_again(&thread, "host", "ghost", "봐 줘").expect_err("범위 밖");
     assert_eq!(refused.to_string(), "@ghost — 이 Thread에서 부를 수 없는 Agent예요. Work 없는 Thread에서는 Library의 Agent만 불러요");
     let stranger = host.call_again(&thread, "reviewer", "host", "봐 줘").expect_err("참여자가 아닌 부른 쪽");
-    assert_eq!(stranger.to_string(), format!("Thread {thread}에 @reviewer이 없습니다"));
+    assert_eq!(stranger.to_string(), format!("Thread {thread}에 @reviewer Agent가 없어요"));
 
     std::thread::sleep(std::time::Duration::from_millis(300));
     let record = sandbox.thread_record(&thread);

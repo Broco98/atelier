@@ -44,8 +44,8 @@ test("사이드바가 검색 · 새 Thread · Work · Thread · 사람 줄 차�
     await expect(사이드바(page).getByRole("button", { name: gone, exact: true })).toHaveCount(0);
   }
 
-  // 사람 메뉴 — 이름(「김효연」)의 줄을 누르면 지금 화면 넷과 구분선 뒤 Settings가 위로 뜬다. 고르면 그 화면이고, 다시 열면 그 항목이 「지금」이다.
-  await expect(사람줄(page)).toHaveAccessibleName("김효연 — 사람 메뉴");
+  // 사람 메뉴 — 이름(「홍길동」)의 줄을 누르면 지금 화면 넷과 구분선 뒤 Settings가 위로 뜬다. 고르면 그 화면이고, 다시 열면 그 항목이 「지금」이다.
+  await expect(사람줄(page)).toHaveAccessibleName("홍길동 — 사람 메뉴");
   await 사람줄(page).click();
   await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes/, /^Archive/, /^Settings/]);
   await 사람메뉴항목(page).filter({ hasText: /^Processes/ }).click();

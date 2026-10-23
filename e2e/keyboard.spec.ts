@@ -95,7 +95,7 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
     ["전체", null],
     ["새 Thread", "new-thread"],
     [pinnedWork.title, pinnedWork.slug],
-    ["김효연 — 사람 메뉴", null],
+    ["홍길동 — 사람 메뉴", null],
   ]);
   // 패널은 머리의 버튼 하나와 트리 하나다 — 트리의 정류장은 연 문서의 행이다.
   expect(자리들.filter(({ 영역 }) => 영역 === "패널").map(({ 이름, 행 }) => [이름, 행])).toEqual([

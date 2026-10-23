@@ -906,7 +906,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 보이고, 고친 것을 저장에 싣는다」라 짧은 합성으로 족하다 — 진짜처럼 적어 두면 그쪽이 바뀔 때 조용히 낡는다.
   default_process_exceptions: ["tmux", "docker*"],
   // 사람 메뉴의 이름(v1 티켓 07) — 사이드바 맨 아래 줄이 앱이 뜰 때 한 번 읽는다. 캔버스 보드의 사람과 같은 이름이다.
-  person_name: "김효연" as string | null,
+  person_name: "홍길동" as string | null,
   // 시작 보고(프로세스 스펙 S11). 위 설정 읽기처럼 **앱이 뜰 때 한 번** 부른다(`main.tsx` →
   // `loadStartupReport`) — 그래서 이 줄이 없으면 모든 spec이 화이트리스트 탐지기에 물린다.
   //

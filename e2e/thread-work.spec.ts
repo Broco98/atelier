@@ -191,7 +191,7 @@ test("이은 Thread에서 Host가 Work 밖 Project를 고치려 하면 카드가
   const names = [`${ASK.project}을 이 Work에 붙이고 고치기`, "읽기만 하기", `아니요, ${ASK.workProjects.join(" · ")}에서만 고쳐 주세요`];
   await expect(선택지).toHaveCount(names.length);
   for (const [at, name] of names.entries()) await expect(선택지.nth(at)).toHaveAccessibleName(name);
-  await expect(흐름(page).getByText("Work 밖 Project 답을 기다립니다", { exact: true })).toBeVisible();
+  await expect(흐름(page).getByText("Work 밖 Project 답을 기다려요", { exact: true })).toBeVisible();
   await expect(card).toBeFocused();
   await page.waitForTimeout(ARMING_MS);
 

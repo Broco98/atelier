@@ -66,7 +66,7 @@ test("사람 줄 오른쪽에 앱 전체 메모리 합계가 선다", async ({ p
   const total = formatMemory(summary.total);
   await expect(메타줄(page)).toContainText(total);
   // 메타는 사람 메뉴 버튼 밖이다 — 사람 줄의 이름이 그대로다. 메뉴의 항목에는 안 선다. 손볼 것이 없으니 점도 없다.
-  await expect(사람줄(page)).toHaveAccessibleName("김효연 — 사람 메뉴");
+  await expect(사람줄(page)).toHaveAccessibleName("홍길동 — 사람 메뉴");
   await 사람줄(page).click();
   await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes$/, /^Archive$/, /^Settings/]);
   await page.keyboard.press("Escape");

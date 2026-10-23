@@ -615,13 +615,13 @@ impl fmt::Display for HostError {
                 write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
             }
             HostError::Send(reason) => write!(f, "{reason}"),
-            HostError::Setting(reason) => write!(f, "Runtime이 바꾸기를 받지 않았습니다: {reason}"),
+            HostError::Setting(reason) => write!(f, "Runtime이 바꾸기를 받지 않았어요: {reason}"),
             HostError::BadQuote(reason) | HostError::BadAttachment(reason) => write!(f, "{reason}"),
             HostError::Record(reason) => write!(f, "{reason}"),
             HostError::Login(reason) => write!(f, "{reason}"),
-            HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없습니다: {thread}"),
-            HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했습니다: {reason}"),
-            HostError::ParticipantNotFound { thread, handle } => write!(f, "Thread {thread}에 @{handle}이 없습니다"),
+            HostError::ThreadNotFound(thread) => write!(f, "Thread를 찾을 수 없어요: {thread}"),
+            HostError::AgentBroken { handle, reason } => write!(f, "@{handle}의 정의 파일을 읽지 못했어요: {reason}"),
+            HostError::ParticipantNotFound { thread, handle } => write!(f, "Thread {thread}에 @{handle} Agent가 없어요"),
             HostError::AgentNotFound { call, work: None } => {
                 write!(f, "@{call} — 이 Thread에서 부를 수 없는 Agent예요. Work 없는 Thread에서는 Library의 Agent만 불러요")
             }

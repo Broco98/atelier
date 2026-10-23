@@ -203,13 +203,16 @@ function NoticeLine({ notice }: { notice: Notice }) {
   );
 }
 
-/** 도는 턴의 머리줄 끝에 붙는 기다림 — 그 참여자가 물은 것이 있으면 무엇을 기다리는지다. */
+/**
+ * 도는 턴의 머리줄 끝에 붙는 기다림 — 그 참여자가 물은 것이 있으면 무엇을 기다리는지다. 승인은 시안 문장 그대로(「승인을 기다립니다」),
+ * 시안에 없는 셋은 해요체다(코드 리뷰 1차 A4).
+ */
 function waitingFor(model: ThreadModel, who: string): string | null {
   const ask = model.asks.find((one) => one.who === who);
   if (!ask) return null;
-  if (ask.card === "work") return "Work 만들기 답을 기다립니다";
-  if (ask.card === "project") return "Work 밖 Project 답을 기다립니다";
-  return ask.card === "question" ? "답을 기다립니다" : "승인을 기다립니다";
+  if (ask.card === "work") return "Work 만들기 답을 기다려요";
+  if (ask.card === "project") return "Work 밖 Project 답을 기다려요";
+  return ask.card === "question" ? "질문의 답을 기다려요" : "승인을 기다립니다";
 }
 
 /**

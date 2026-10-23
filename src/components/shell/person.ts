@@ -23,7 +23,7 @@ export function usePersonName(): string {
 const KOREAN_NAME = /^[가-힣]{3}$/;
 
 /**
- * 얼굴에 서는 글자 하나(캔버스 보드 「사람은 글자」). 세 음절 한글 이름은 성을 뺀 이름의 첫 글자다 — 보드가 「김효연」을 「효」로 그렸고,
+ * 얼굴에 서는 글자 하나(캔버스 보드 「사람은 글자」). 세 음절 한글 이름은 성을 뺀 이름의 첫 글자다 — 보드가 세 음절 이름을 둘째 글자로 그렸고,
  * 한국에서 사람을 부르는 쪽이 이름이다. 그 밖은 첫 글자를 대문자로 쓴다.
  */
 export function initialOf(name: string): string {

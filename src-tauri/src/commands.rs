@@ -730,7 +730,7 @@ pub async fn thread_check_engine(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     reread: bool,
 ) -> CmdResult<atelier_acp::EngineCheck> {
-    to_host(&engine, "엔진을 확인하지 못했습니다", move |host| host.check_engine(atelier_acp::Agent::Claude, reread)).await
+    to_host(&engine, "Claude Code를 확인하지 못했습니다", move |host| host.check_engine(atelier_acp::Agent::Claude, reread)).await
 }
 
 /// Claude Code의 로그인 명령을 띄운다. 진행과 끝은 엔진 상태 이벤트(`thread::ENGINE_EVENT`)로 온다.
@@ -1018,9 +1018,9 @@ mod tests {
     #[test]
     fn 사람의_이름은_계정의_전체_이름이고_없으면_로그인_이름이다() {
         use super::display_name;
-        assert_eq!(display_name(Some("김효연,,,"), Some("gimhyoyeon")).as_deref(), Some("김효연"));
-        assert_eq!(display_name(Some("  "), Some("gimhyoyeon")).as_deref(), Some("gimhyoyeon"));
-        assert_eq!(display_name(None, Some("gimhyoyeon")).as_deref(), Some("gimhyoyeon"));
+        assert_eq!(display_name(Some("홍길동,,,"), Some("gildong")).as_deref(), Some("홍길동"));
+        assert_eq!(display_name(Some("  "), Some("gildong")).as_deref(), Some("gildong"));
+        assert_eq!(display_name(None, Some("gildong")).as_deref(), Some("gildong"));
         assert_eq!(display_name(Some(""), Some("")), None);
         assert_eq!(display_name(None, None), None);
     }
@@ -1097,8 +1097,8 @@ mod tests {
             ask("말을 보내지 못했습니다", |_| Err("그 Thread가 없습니다")),
             Err("그 Thread가 없습니다".to_owned()),
         );
-        let fallen = ask("엔진을 확인하지 못했습니다", |_| panic!("호스트 부름이 쓰러졌다")).expect_err("쓰러진 부름은 오류다");
-        assert!(fallen.starts_with("엔진을 확인하지 못했습니다: "), "무엇을 못 했는지가 앞에 서지 않는다: {fallen}");
+        let fallen = ask("Claude Code를 확인하지 못했습니다", |_| panic!("호스트 부름이 쓰러졌다")).expect_err("쓰러진 부름은 오류다");
+        assert!(fallen.starts_with("Claude Code를 확인하지 못했습니다: "), "무엇을 못 했는지가 앞에 서지 않는다: {fallen}");
     }
 
     /// 명령 하나의 몸통 — 서명 뒤에서 열 0의 `}`까지. 잘라 낸 자리가 테스트 모듈을 삼키면 소스 스캔이 제 문자열을

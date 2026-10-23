@@ -422,7 +422,7 @@ impl ConversationHost {
         picks: StartPicks,
     ) -> Result<String, HostError> {
         if let Some(effort) = picks.effort.as_deref().filter(|effort| !EFFORTS.contains(effort)) {
-            return Err(HostError::Setting(format!("모르는 생각 깊이입니다: {effort}")));
+            return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
         let attachments = attachments_of(attachments)?;
         let note = (link == ThreadLink::NewWork).then_some(NEW_WORK_NOTE);
@@ -796,7 +796,7 @@ impl ConversationHost {
     /// 답은 바뀐 참여자 줄이다. 다시 띄우면 막히는 호출이다(Session이 열릴 때까지).
     pub fn set_thread_effort(&self, thread: &str, who: &str, effort: &str) -> Result<Participant, HostError> {
         if !EFFORTS.contains(&effort) {
-            return Err(HostError::Setting(format!("모르는 생각 깊이입니다: {effort}")));
+            return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
         self.participant(thread, who)?;
         let key = SessionKey::new(thread, who);

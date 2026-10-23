@@ -557,7 +557,7 @@ fn 생각_깊이를_바꾸면_쉬는_session은_같은_session으로_다시_뜨�
     assert_eq!(sandbox.thread_session_id(&thread, "host"), session, "Session id는 그대로다");
     assert_eq!(
         host.set_thread_effort(&thread, "host", "extreme").map(|_| ()),
-        Err(atelier_acp::HostError::Setting("모르는 생각 깊이입니다: extreme".into())),
+        Err(atelier_acp::HostError::Setting("모르는 생각 깊이예요: extreme".into())),
         "claude가 받지 않는 값은 거절한다"
     );
     assert_eq!(sandbox.participant(&thread, "host")["effort"], "low", "거절하면 아무것도 바뀌지 않는다");
@@ -612,7 +612,7 @@ fn 첫_말_전에_고른_모델과_생각_깊이로_첫_session이_서고_고르
     let unknown = StartPicks { effort: Some("extreme".into()), ..StartPicks::default() };
     assert_eq!(
         host.start_thread_picking("안녕", &[], ThreadLink::NoWork, unknown).map(|_| ()),
-        Err(atelier_acp::HostError::Setting("모르는 생각 깊이입니다: extreme".into()))
+        Err(atelier_acp::HostError::Setting("모르는 생각 깊이예요: extreme".into()))
     );
     assert_eq!(host.list_threads().unwrap().len(), before, "거절된 첫 말은 Thread를 세우지 않는다");
     host.shut_down();

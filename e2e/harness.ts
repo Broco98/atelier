@@ -1393,7 +1393,7 @@ export async function 글자대비(element: Locator): Promise<number> {
 }
 
 /**
- * 사이드바 맨 아래의 사람 줄(v1 티켓 07 · 구현 스펙 S27) — 이름은 fixture의 `person_name`(「김효연」)이다. 누르면 지금 화면들로 가는
+ * 사이드바 맨 아래의 사람 줄(v1 티켓 07 · 구현 스펙 S27) — 이름은 fixture의 `person_name`(「홍길동」)이다. 누르면 지금 화면들로 가는
  * 메뉴가 위로 뜬다. 옛 사이드바 nav의 네 항목(Projects · Terminal · Processes · Archive)과 바닥 Settings 줄이 이 메뉴로 왔다.
  *
  * **여기 사는 이유는 지금 화면들로 가는 길을 하나로 두려는 것이다.** `Processes`를 여는 spec마다 같은 선택자를 적었다 — 사이드바의
