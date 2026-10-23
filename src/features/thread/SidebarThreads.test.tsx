@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { FilterSegment, WaitingList } from "./SidebarThreads";
+import { FilterSegment, WaitingList, WorkThreadList } from "./SidebarThreads";
 import type { ThreadSummary } from "./types";
 import type { Waiting } from "./waiting";
 
@@ -61,5 +61,47 @@ describe("내 차례만", () => {
 
   it("비었으면 「지금은 나를 기다리는 Thread가 없어요」 한 줄이다", () => {
     expect(textOf(list([]))).toBe("지금은 나를 기다리는 Thread가 없어요");
+  });
+});
+
+// v1 티켓 37 · 캔버스 Sidebar 보드 `.nest` — 펼친 Work 아래 Thread 줄. 줄은 Thread 묶음과 같은 `ThreadRow`라 상태 칸이 따라오고, 얼굴만 28로
+// 작다(보드). Work 목록 상자의 Tab 정류장 하나에 든다(roving — 정류장인 줄만 `tabindex="0"`).
+describe("Work 아래 Thread 줄", () => {
+  const threads = [summary("a", "환불 API 버그 고쳐줘"), summary("b", "PR #142 리뷰")];
+  const people = () => [{ handle: "host", avatar: null }];
+  const list = (current: string | null, stop: string | null) =>
+    render(
+      <WorkThreadList
+        threads={threads}
+        peopleOf={people}
+        current={current}
+        now={0}
+        stop={stop}
+        onOpen={() => {}}
+      />,
+    );
+  const rowsOf = (html: string) => html.match(/<button[^>]*>[\s\S]*?<\/button>/g) ?? [];
+
+  it("받은 차례 그대로 두 줄로 서고, 얼굴은 28이다", () => {
+    const html = list(null, null);
+    const text = textOf(html);
+    expect(text.indexOf("환불 API 버그 고쳐줘")).toBeLessThan(text.indexOf("PR #142 리뷰"));
+    expect(rowsOf(html)).toHaveLength(2);
+    expect(html).toContain("size-7");
+    expect(html).not.toContain("size-8");
+  });
+
+  it("지금 보는 Thread의 줄이 켜진다", () => {
+    const [a, b] = rowsOf(list("b", null));
+    expect(a).not.toContain("aria-current");
+    expect(b).toContain('aria-current="page"');
+  });
+
+  it("목록의 정류장인 줄만 Tab이 앉고, 줄마다 목록 키를 단다", () => {
+    const [a, b] = rowsOf(list(null, "thread:b"));
+    expect(a).toContain('tabindex="-1"');
+    expect(a).toContain('data-roving="thread:a"');
+    expect(b).toContain('tabindex="0"');
+    expect(b).toContain('data-roving="thread:b"');
   });
 });

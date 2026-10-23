@@ -45,16 +45,46 @@ export function sectionKey(section: keyof SectionsOpen): string {
   return `section:${section}`;
 }
 
+/** 펼친 Work 아래 Thread 줄의 목록 키(v1 티켓 37) — slug에는 `:`가 없어 Work 줄 · 구획 머리의 키와 겹치지 않는다. */
+export function threadRowKey(thread: string): string {
+  return `thread:${thread}`;
+}
+
 // 목록의 Tab 정류장이 고를 수 있는 키 — **화면 차례**다(roving, codex-ds 스펙 S10). 구획 머리도 행처럼 ↑↓로 지나는 자리라 함께
 // 들고(Enter가 그 구획을 접는다), 접힌 구획의 행은 뺀다(`inert`라 포커스를 못 받는다). `고정` 머리는 고정된 것이 있을 때만 선다.
-export function rovingKeys(sections: WorkSections, open: SectionsOpen): string[] {
-  const slugs = (works: WorkView[]) => works.map((work) => work.slug);
+// 펼친 Work 아래 Thread 줄(v1 티켓 37)은 그 Work 줄 바로 뒤에 든다 — `nested`는 Work마다 지금 서 있는 Thread id다(접힌 Work는 빈 배열).
+export function rovingKeys(
+  sections: WorkSections,
+  open: SectionsOpen,
+  nested: (slug: string) => readonly string[] = () => [],
+): string[] {
+  const rows = (works: WorkView[]) => works.flatMap((work) => [work.slug, ...nested(work.slug).map(threadRowKey)]);
   return [
     ...(sections.pinned.length > 0 ? [sectionKey("pinned")] : []),
-    ...(open.pinned ? slugs(sections.pinned) : []),
+    ...(open.pinned ? rows(sections.pinned) : []),
     sectionKey("works"),
-    ...(open.works ? slugs(sections.main) : []),
+    ...(open.works ? rows(sections.main) : []),
   ];
+}
+
+// **Work 줄의 펼침**(v1 티켓 37 · 구현 스펙 §13) — ▸로 펼친 Work의 slug 목록이고, 구획 접기와 같은 「설정」이라 앱을 껐다 켜도 남는다
+// (localStorage — 적고 읽는 문은 `@/lib/stored`). 처음에는 아무것도 펴지 않는다: Work가 많아도 목록이 Work 줄 높이로 시작한다.
+// 지워지거나 보관된 Work의 slug는 남아도 펼 줄이 없어 아무 일도 하지 않는다 — 그 Work가 같은 slug로 다시 서면 펴진 채다.
+
+/** 적어 둔 펼침 — 문자열 배열만 믿는다. 적은 적이 없거나 모양이 틀리면 아무것도 펴지 않는다. */
+export function readExpanded(raw: string | null): string[] {
+  if (raw === null) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter((slug): slug is string => typeof slug === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 그 Work의 펼침을 뒤집는다 — 다른 Work의 것은 그대로다. */
+export function toggleExpanded(expanded: readonly string[], slug: string): string[] {
+  return expanded.includes(slug) ? expanded.filter((one) => one !== slug) : [...expanded, slug];
 }
 
 /** 고른 것이 없을 때 본문 한가운데가 하는 말 — 제목·설명·붙여 넣을 한 줄. */

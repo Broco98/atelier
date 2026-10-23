@@ -1,13 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { durationMs, hoverGroup, instantNow, menuOpen, useInHoverGroup } from "@/components/ui/hover-group";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
-import { recallSearch } from "@/routes/-work-search";
-import { workSlugOf } from "@/lib/path-prefix";
+import { readStored, writeStored } from "@/lib/stored";
+import { threadIdOf, workSlugOf } from "@/lib/path-prefix";
 import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
+import { useThreads } from "@/features/thread/hooks";
+import { lastSaid } from "@/features/thread/preview";
+import { WorkThreads } from "@/features/thread/SidebarThreads";
+import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
+import { landingOf, threadCounts, threadsOf } from "@/features/thread/work-threads";
 import { useMoveWork, useSetWorkPinned, useSetWorkTitle, useWorks } from "./hooks";
 import { projectLines, WorkPeek } from "./WorkPeek";
 import { WorkContextMenu, type MenuTarget } from "./WorkContextMenu";
@@ -23,7 +28,7 @@ import {
   type SectionGeometry,
 } from "./row-drop";
 import { useRoving } from "@/lib/roving";
-import { rovingKeys, splitWorkSections } from "./work-sections";
+import { readExpanded, rovingKeys, splitWorkSections, threadRowKey, toggleExpanded } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
@@ -32,12 +37,19 @@ import type { WorkView } from "./types";
 // 걷었다. 남은 값은 읽지 않고 버려 둔다: 지울 이유가 없고, 지우는 코드는 영영 남는다.
 const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
+// **Work 줄의 펼침도 설정이다**(v1 티켓 37 — 「펼침을 기억한다」) — 펼친 Work의 slug 목록(`readExpanded`).
+const WORKS_EXPANDED_KEY = "sidebar-works-expanded";
 
 // 사이드바에 상주하는 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 그 항목의 화면으로
 // 간다.
 //
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
+//
+// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드). 줄 오른쪽에 이은 Thread 수가
+// 서고, ▸로 펴면 그 Thread들이 줄 아래에 두 줄로 선다(펼침은 기억한다). 줄을 누르면 그 Work에서 가장 최근의 Thread로 가고, 없으면 그
+// Work를 고른 새 Thread로 간다 — 옛 작업 화면(`/works/<slug>`)은 ⌘K에서 연다. 지금 보는 Thread가 접힌 Work 안에 있으면 그 Work 줄이
+// 켜진다 — 어느 Work 안에 있는지가 접혀 있어도 보인다.
 function SidebarWorkList({
   open,
   shells,
@@ -69,6 +81,7 @@ function SidebarWorkList({
   onRenameEnd: () => void;
 }) {
   const { data: works = [] } = useWorks();
+  const { data: threads = [] } = useThreads();
   const navigate = useNavigate();
   const setPinned = useSetWorkPinned();
   const setTitle = useSetWorkTitle();
@@ -85,6 +98,15 @@ function SidebarWorkList({
   useEffect(() => {
     localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
   }, [worksOpen]);
+  const [expanded, setExpanded] = useState(() => readExpanded(readStored(WORKS_EXPANDED_KEY)));
+  const toggleThreads = (slug: string) => {
+    const next = toggleExpanded(expanded, slug);
+    setExpanded(next);
+    writeStored(WORKS_EXPANDED_KEY, JSON.stringify(next));
+  };
+  const counts = useMemo(() => threadCounts(threads), [threads]);
+  // 펼친 Work 아래에 지금 선 Thread — 그 Work에 이은 것이 없으면 펼친 것으로 적혀 있어도 비어 있다(`WorkSectionList`의 같은 가름).
+  const nestedOf = (slug: string) => (expanded.includes(slug) ? threadsOf(threads, slug) : []);
   // **고칠 행이 접힌 구획에 있으면 그 구획을 편다** — 알림 띠에서 들어오면 그 work의 행이 접혀 있을 수 있다. 접힌 구획의 속은
   // `inert`라 그 안에 선 입력칸은 포커스를 못 받고, 포커스가 없으면 blur도 없어 「다른 곳 = 저장」으로 닫히지 않는다. 그래서 펼침은
   // 두 겹이다 — 고치는 동안은 그린 순간부터 펴 있고(아래 `sectionsOpen`, 입력칸이 마운트되며 포커스를 받는다), 이 효과가 그 펼침을
@@ -107,6 +129,11 @@ function SidebarWorkList({
   const openSlug = useRouterState({
     select: (state) => workSlugOf(state.location.pathname),
   });
+  // 지금 보는 Thread(v1 티켓 37) — 펼친 Work 아래 그 줄이 켜지고(줄이 스스로 단다), 접힌 Work 안이면 그 Work 줄이 켜진다.
+  const openThread = useRouterState({
+    select: (state) => threadIdOf(state.location.pathname),
+  });
+  const threadWork = openThread === null ? null : (threads.find((thread) => thread.id === openThread)?.work ?? null);
 
   const sectionsOpen: SectionsOpen = {
     pinned: pinnedOpen || renamingWork?.pinned === true,
@@ -119,10 +146,15 @@ function SidebarWorkList({
     ({ pinned: setPinnedOpen, works: setWorksOpen })[section]((v) => !v);
   };
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
-  const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
-  // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행, 고른 것이 없거나 접힌 구획에 있으면 첫 머리다. ↑↓는 목록
-  // 상자가 받는다(아래 `data-worklist`).
-  const roving = useRoving(rovingKeys(sections, sectionsOpen), selectedSlug);
+  const listed = (slug: string | null) => slug !== null && works.some((work) => work.slug === slug);
+  const threadShown = threadWork !== null && nestedOf(threadWork).length > 0;
+  const selectedSlug = listed(openSlug) ? openSlug : listed(threadWork) && !threadShown ? threadWork : null;
+  // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행(펼친 Work 아래 지금 보는 Thread의 줄도), 고른 것이 없거나 접힌
+  // 구획에 있으면 첫 머리다. ↑↓는 목록 상자가 받는다(아래 `data-worklist`).
+  const roving = useRoving(
+    rovingKeys(sections, sectionsOpen, (slug) => nestedOf(slug).map((thread) => thread.id)),
+    selectedSlug ?? (threadShown && openThread !== null ? threadRowKey(openThread) : null),
+  );
 
   // 호버 정보 카드 — 한 줄로 줄이며 행에서 빠진 것(프로젝트·생성일)을 돌려주고,
   // 지금은 작업을 선택해야만 보이던 브랜치와 spec 파일 수까지 마우스만 올리면 보인다.
@@ -214,18 +246,16 @@ function SidebarWorkList({
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
-  // 작업을 옮긴다. **보던 화면을 기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
-  // 터미널을 보다 옆 작업을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이
-  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `recallSearch`가 빈 객체 위에 얹으므로
-  // 실리는 것은 **이 작업의 기억**뿐이고, 그 `file`도 이 작업 안의 문서다.
+  // 그 Work의 대화로 간다(v1 티켓 37 · 구현 스펙 §13) — 가장 최근의 Thread, 없으면 그 Work를 고른 새 Thread(`/?work=` — v1 티켓 34의
+  // 씨앗)다. 최근은 마지막 말의 때이고(`landingOf`), 그 말은 사이드바가 이미 읽어 둔 기록에서 **누른 순간에** 센다(`useWaiting`이 모든
+  // Thread를 읽는다) — 목록이 기록 줄마다 다시 그려지지 않게 구독하지 않는다. 아직 못 읽은 Thread는 선 때로 견준다.
   const goTo = (slug: string, pointer: boolean) => {
     closeCard();
     if (pointer) quiet.current = slug;
-    void navigate({
-      to: "/works/$slug",
-      params: { slug },
-      search: recallSearch(slug),
-    });
+    const records = threadRecordStore.state;
+    const landing = landingOf(threads, slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    if (landing.kind === "thread") void navigate({ to: "/threads/$id", params: { id: landing.id } });
+    else void navigate({ to: "/", search: { work: landing.work } });
   };
 
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
@@ -299,10 +329,13 @@ function SidebarWorkList({
       // 빈 `고정`의 받침은 몸통 밖이라 접힘과 무관하다.
       const reachable = sectionsOpen[key] || head === null;
       const emptySlot = slotEl && reachable ? span(slotEl) : undefined;
+      // 펼친 Work는 그 아래 Thread 줄까지가 한 행이다(v1 티켓 37) — 틈은 Work 줄과 그 Thread들을 한 덩이로 가른다. 줄만 재면 아래 행과의
+      // 틈 선이 Thread 줄들 한가운데에 선다.
       const rows = sectionsOpen[key]
         ? list.flatMap((work) => {
             const el = rowEls.get(work.slug);
-            return el ? [{ slug: work.slug, ...span(el) }] : [];
+            const nest = box.querySelector(`[data-work-threads="${CSS.escape(work.slug)}"]`);
+            return el ? [{ slug: work.slug, top: span(el).top, bottom: span(nest ?? el).bottom }] : [];
           })
         : [];
       const rest = { pinned: key === "pinned", rows, slugs: list.map((work) => work.slug) };
@@ -462,6 +495,12 @@ function SidebarWorkList({
                 selectedSlug={selectedSlug}
                 stop={roving.stop}
                 shells={shells}
+                threads={{
+                  counts,
+                  expanded,
+                  onToggle: toggleThreads,
+                  renderThreads: (work) => <WorkThreads threads={nestedOf(work.slug)} stop={roving.stop} />,
+                }}
                 onToggleSection={toggleSection}
                 onOpen={goTo}
                 onHover={aimCard}

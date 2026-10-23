@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { pickSlug } from "@/components/shell/shell-store";
-import { emptyMainNotice, splitWorkSections, WORKS_COPY } from "./work-sections";
+import {
+  emptyMainNotice,
+  readExpanded,
+  rovingKeys,
+  sectionKey,
+  splitWorkSections,
+  threadRowKey,
+  toggleExpanded,
+  WORKS_COPY,
+} from "./work-sections";
 import type { WorkView } from "./types";
 
 // 목록 순서·구역 분리 seam. 순수 함수 하나가 대상이라 렌더도 DOM도 없이 기본 환경(node)에서 돈다.
@@ -209,5 +218,50 @@ describe("보이는 첫 항목과 기본 선택은 같은 것을 가리킨다", 
     const list = works("pin:오래된-고정", "새-것");
     expect(firstVisible(list)).toBe(normalized(list));
     expect(firstVisible(list)).toBe("오래된-고정");
+  });
+});
+
+// v1 티켓 37 — Work 줄을 펼치면 그 Work의 Thread가 Work 아래에 선다. 펼침은 Work마다 기억하고(앱을 껐다 켜도), 목록의 Tab 정류장 · ↑↓는
+// 펼친 Work 아래 Thread 줄까지 화면 차례로 지난다.
+describe("Work 펼침 기억", () => {
+  it("적어 둔 펼침을 읽는다 — 적은 적이 없거나 모양이 틀리면 아무것도 펴지 않는다", () => {
+    expect(readExpanded('["fix-refund","checkout"]')).toEqual(["fix-refund", "checkout"]);
+    expect(readExpanded(null)).toEqual([]);
+    expect(readExpanded("{not json")).toEqual([]);
+    expect(readExpanded('{"fix-refund":true}')).toEqual([]);
+    expect(readExpanded('["fix-refund",3,null]')).toEqual(["fix-refund"]);
+  });
+
+  it("뒤집으면 펴고, 다시 뒤집으면 접는다 — 다른 Work의 펼침은 그대로다", () => {
+    const one = toggleExpanded(["checkout"], "fix-refund");
+    expect(one).toEqual(["checkout", "fix-refund"]);
+    expect(toggleExpanded(one, "fix-refund")).toEqual(["checkout"]);
+  });
+});
+
+describe("목록의 Tab 정류장이 고르는 차례", () => {
+  it("펼친 Work 아래 Thread 줄이 그 Work 줄 바로 뒤에 화면 차례로 든다", () => {
+    const list = works("pin:고정", "가", "나");
+    const nested = (slug: string) => (slug === "가" ? ["t1", "t2"] : []);
+    expect(rovingKeys(splitWorkSections(list, ALL), ALL, nested)).toEqual([
+      sectionKey("pinned"),
+      "고정",
+      sectionKey("works"),
+      "가",
+      threadRowKey("t1"),
+      threadRowKey("t2"),
+      "나",
+    ]);
+  });
+
+  it("접힌 구획의 Work는 그 아래 Thread 줄도 빠진다", () => {
+    const list = works("가");
+    const shut = { pinned: true, works: false };
+    expect(rovingKeys(splitWorkSections(list, shut), shut, () => ["t1"])).toEqual([sectionKey("works")]);
+  });
+
+  it("Thread 줄의 키는 Work 줄 · 구획 머리의 키와 겹치지 않는다", () => {
+    expect(threadRowKey("가")).not.toBe("가");
+    expect(threadRowKey("works")).not.toBe(sectionKey("works"));
   });
 });

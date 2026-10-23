@@ -6,6 +6,7 @@ import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
 import { Spinner } from "@/components/ui/spinner";
 import { threadIdOf } from "@/lib/path-prefix";
 import { cn } from "@/lib/utils";
+import { threadRowKey } from "@/features/works/work-sections";
 import { ThreadFaces } from "./AgentFace";
 import type { Avatar } from "./faces";
 import HostFace from "./HostFace";
@@ -35,6 +36,8 @@ import type { Waiting } from "./waiting";
 // - **「전체 | 내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」) — 「내 차례」를 고르면 Work 묶음과 이 묶음
 //   대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가 세고, 마디는 검색 칸
 //   아래(`ThreadFilter`), 고른 칸은 사이드바가 쥔다.
+// - **Work에 이은 Thread는 Work 묶음이 품는다**(v1 티켓 37 · 구현 스펙 §13) — 그 Work 줄을 펴면 그 아래에 같은 `ThreadRow`가 얼굴 28로
+//   선다(`WorkThreads`). 이 묶음에는 Work 없는 Thread만 남아 두 묶음이 겹치지 않는다.
 
 /** 시각을 다시 세는 간격 — 「방금 · N분」이 한 자리에 멎지 않게 1분마다다. */
 const TICK = 60_000;
@@ -49,18 +52,7 @@ type PeopleOf = (thread: ThreadSummary) => { handle: string; avatar: Avatar | nu
 
 function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const { data: threads = [] } = useThreads();
-  const roster = useAgentRoster(null);
-  const avatarOf = (handle: string) =>
-    roster?.agents.find((agent) => agent.from === "library" && agent.definition.handle === handle)?.definition.avatar ?? null;
-  const peopleOf: PeopleOf = (thread) => thread.handles.map((handle) => ({ handle, avatar: avatarOf(handle) }));
-  const navigate = useNavigate();
-  const current = useRouterState({ select: (state) => threadIdOf(state.location.pathname) });
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), TICK);
-    return () => window.clearInterval(timer);
-  }, []);
-  const open = (thread: ThreadSummary) => void navigate({ to: "/threads/$id", params: { id: thread.id } });
+  const { peopleOf, current, now, open } = useRowKit();
   if (filter === "mine") return <WaitingThreads peopleOf={peopleOf} current={current} now={now} onOpen={open} />;
   const loose = threads.filter((thread) => thread.work === null);
   if (loose.length === 0) return null;
@@ -76,6 +68,71 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
       </ul>
     </section>
   );
+}
+
+/**
+ * Thread 줄들이 함께 읽는 것 — 얼굴(Library 정의의 `avatar`), 지금 보는 Thread(주소), 시각을 다시 셀 지금(1분마다), 누르면 그 Thread로
+ * 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
+ */
+function useRowKit(): { peopleOf: PeopleOf; current: string | null; now: number; open: (thread: ThreadSummary) => void } {
+  const roster = useAgentRoster(null);
+  const avatarOf = (handle: string) =>
+    roster?.agents.find((agent) => agent.from === "library" && agent.definition.handle === handle)?.definition.avatar ?? null;
+  const peopleOf: PeopleOf = (thread) => thread.handles.map((handle) => ({ handle, avatar: avatarOf(handle) }));
+  const navigate = useNavigate();
+  const current = useRouterState({ select: (state) => threadIdOf(state.location.pathname) });
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), TICK);
+    return () => window.clearInterval(timer);
+  }, []);
+  const open = (thread: ThreadSummary) => void navigate({ to: "/threads/$id", params: { id: thread.id } });
+  return { peopleOf, current, now, open };
+}
+
+/**
+ * 펼친 Work 아래 Thread 줄(v1 티켓 37) — 그 Work에 이은 Thread를 받은 차례로 그린다. Work 목록(`SidebarWorkList`)이 펼친 Work마다 부른다.
+ * `stop`은 Work 목록 상자의 Tab 정류장 키다 — 이 줄들도 그 목록의 ↑↓ 안에 든다.
+ */
+export function WorkThreads({ threads, stop }: { threads: readonly ThreadSummary[]; stop: string | null }) {
+  const { peopleOf, current, now, open } = useRowKit();
+  return <WorkThreadList threads={threads} peopleOf={peopleOf} current={current} now={now} stop={stop} onOpen={open} />;
+}
+
+/**
+ * Work 아래 Thread 줄의 그림(보드 `.nest .r2`) — 훅을 부르지 않는다. 줄은 Thread 묶음과 같은 `ThreadRow`라 상태 칸(내 차례 점 · 스피너 ·
+ * 굵은 제목 · 「실패」)이 따라오고, 얼굴만 28로 작다. 들여쓰기는 부르는 쪽(Work 목록)이 든다.
+ */
+export function WorkThreadList({
+  threads,
+  peopleOf,
+  current,
+  now,
+  stop,
+  onOpen,
+}: {
+  threads: readonly ThreadSummary[];
+  peopleOf: PeopleOf;
+  current: string | null;
+  now: number;
+  stop: string | null;
+  onOpen: (thread: ThreadSummary) => void;
+}) {
+  return threads.map((thread) => {
+    const key = threadRowKey(thread.id);
+    return (
+      <ThreadRow
+        key={thread.id}
+        thread={thread}
+        people={peopleOf(thread)}
+        on={thread.id === current}
+        now={now}
+        onOpen={() => onOpen(thread)}
+        compact
+        roving={{ key, stop: key === stop }}
+      />
+    );
+  });
 }
 
 /**
@@ -191,12 +248,21 @@ export function ThreadRow({
   on,
   now,
   onOpen,
+  compact = false,
+  roving,
 }: {
   thread: ThreadSummary;
   people: readonly { handle: string; avatar: Avatar | null }[];
   on: boolean;
   now: number;
   onOpen: () => void;
+  /** Work 아래 줄이다 — 얼굴이 32가 아니라 28이다(보드 `.nest` · 겹친 얼굴은 그대로 20 둘). */
+  compact?: boolean;
+  /**
+   * 목록 상자의 Tab 정류장 안의 줄이면 그 키와 정류장인가(roving — `@/lib/roving`). Work 아래 줄이 Work 목록의 ↑↓에 든다. 없으면 줄마다
+   * Tab이 앉는다(Thread 묶음).
+   */
+  roving?: { key: string; stop: boolean };
 }) {
   const { said, status, ready } = useRowState(thread);
   const moved = useMoved(status?.kind ?? null, ready);
@@ -207,10 +273,13 @@ export function ThreadRow({
   const at = status?.kind === "mine" ? status.since : status && "at" in status ? status.at : (said?.at ?? thread.createdAt);
   // 바뀐 상태 칸만 떠오른다 — 열쇠가 상태라 바뀔 때마다 그 칸이 새로 선다.
   const slot = status?.kind ?? "quiet";
+  const face = compact ? "size-7" : "size-8";
   return (
     <button
       type="button"
       aria-current={on ? "page" : undefined}
+      tabIndex={roving === undefined ? undefined : roving.stop ? 0 : -1}
+      data-roving={roving?.key}
       data-status={status?.kind}
       onClick={() => {
         if (!on) onOpen();
@@ -222,10 +291,10 @@ export function ThreadRow({
     >
       {thread.broken || people.length === 0 ? (
         // 깨진 Thread는 참여자를 모른다 — 같은 자리에 옅은 Host 얼굴이 서서 제목이 줄마다 같은 x에서 시작한다.
-        <HostFace className={cn("size-8", thread.broken && "opacity-40")} />
+        <HostFace className={cn(face, thread.broken && "opacity-40")} />
       ) : (
         <span className="relative flex shrink-0">
-          <ThreadFaces people={people} faceClass="size-8" pairClass="size-8" pairFaceClass="size-5" ringClass="ring-surface-shell" />
+          <ThreadFaces people={people} faceClass={face} pairClass={face} pairFaceClass="size-5" ringClass="ring-surface-shell" />
           {status?.kind === "mine" && (
             <span
               role="img"
