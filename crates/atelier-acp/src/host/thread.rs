@@ -4,7 +4,8 @@
 //!   창구를 쓰고, 기록은 Thread의 `events.jsonl` 하나에 참여자의 handle(`who`)을 달아 함께 적는다(S8).
 //! - 받는 이는 Host 하나다(S9의 PR ① 몫). @멘션과 지난 말은 v1 티켓 13이 더한다.
 //! - Host는 Library의 `host.md`를 Thread 폴더에 스냅숏하고 들어온다(S4). 그 Session은 스냅숏만 읽는다 — 지시문은 스냅숏의
-//!   본문, 모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때 스냅숏에서 옮겨 적고, 입력창 칩이 바꾼다)이다.
+//!   본문, 내장 도구 · 금지는 스냅숏의 frontmatter(v1 티켓 12), 모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때
+//!   스냅숏에서 옮겨 적고, 입력창 칩이 바꾼다)이다.
 //! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다).
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
 //! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 work 대화의
@@ -404,8 +405,8 @@ impl ConversationHost {
         opened
     }
 
-    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, 스냅숏의 지시문과 참여자 줄의 모델 · 생각 깊이로. 열리면 Session
-    /// id · 작업 폴더를 참여자 줄에 적고 떠 있는 표에 넣는다.
+    /// Session의 Runtime을 띄워 연다 — S11의 작업 폴더에서, 스냅숏의 지시문 · 내장 도구 · 금지(v1 티켓 12)와 참여자 줄의 모델 ·
+    /// 생각 깊이로. 열리면 Session id · 작업 폴더를 참여자 줄에 적고 떠 있는 표에 넣는다.
     ///
     /// - Runtime이 로그인을 요구하면 로그인 필요 줄을 적고 로그인 창구가 그 Session을 쥔다 — 실패가 아니다.
     /// - 그 밖의 까닭으로 못 열면 죽음 줄에 까닭을 적고 실패한다.
@@ -419,7 +420,7 @@ impl ConversationHost {
         programs: &[FoundProgram],
     ) -> Result<(), HostError> {
         let place = self.thread_place(&key.thread, file.work.as_deref())?;
-        let instructions = self.instructions_file(key)?;
+        let (definition, instructions) = self.read_snapshot(key)?;
         let recorder = &conv.recorder;
         recorder.session(SessionState::Spawning).map_err(HostError::Record)?;
         let choice = ClaudeChoice {
@@ -427,6 +428,8 @@ impl ConversationHost {
             model: participant.model.clone(),
             effort: participant.effort.clone(),
             instructions: Some(instructions),
+            tools: definition.tools.builtin,
+            forbid: definition.policy.forbid,
         };
         let (launch, mut terms) = claude_launch(&self.translator, programs, env, &place, &choice);
         // 참여자의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
@@ -536,16 +539,19 @@ impl ConversationHost {
         Ok((definition, path))
     }
 
-    /// 그 참여자의 지시문 파일 — 정의 스냅숏의 본문만 담는다(v1 티켓 03: frontmatter가 시스템 프롬프트에 들지 않게). Session을
-    /// 열 때마다 스냅숏에서 다시 짓는다 — 정의는 스냅숏에서만 읽고(§19), 지운 지시문 파일도 다음 열기에 다시 선다.
-    fn instructions_file(&self, key: &SessionKey) -> Result<PathBuf, HostError> {
+    /// 그 참여자의 정의 스냅숏과 지시문 파일 — Session을 열 때마다 스냅숏을 읽어 지시문 파일을 다시 짓는다. 정의는 스냅숏에서만
+    /// 읽고(§19), 지운 지시문 파일도 다음 열기에 다시 선다. 내장 도구 · 금지도 여기서 읽는다(v1 티켓 12) — 이어 열 때마다 다시
+    /// 싣는다.
+    ///
+    /// 지시문 파일은 본문만 담는다(v1 티켓 03: frontmatter가 시스템 프롬프트에 들지 않게).
+    fn read_snapshot(&self, key: &SessionKey) -> Result<(AgentDefinition, PathBuf), HostError> {
         let snapshots = self.snapshots(&key.thread)?;
         let definition = atelier_core::read_agent(&snapshots.join(format!("{}.md", key.handle)))
             .map_err(|problem| HostError::AgentBroken { handle: key.handle.clone(), reason: problem_text(problem) })?;
         let path = snapshots.join(format!("{}.instructions.md", key.handle));
-        std::fs::write(&path, definition.instructions)
+        std::fs::write(&path, &definition.instructions)
             .map_err(|error| HostError::Record(format!("지시문 파일을 쓰지 못했습니다: {} — {error}", path.display())))?;
-        Ok(path)
+        Ok((definition, path))
     }
 
     fn snapshots(&self, thread: &str) -> Result<PathBuf, HostError> {

@@ -1638,7 +1638,7 @@ fn codex_launch(programs: &[discovery::FoundProgram], env: &AgentEnv, place: &Se
     Launch { program: found("codex-acp"), args: Vec::new(), env: vars, cwd: place.cwd.clone() }
 }
 
-/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이 · 지시문 파일. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
+/// Claude에 넘길 고른 값 — 모드 · 모델 · 생각 깊이 · 지시문 파일 · 내장 도구 · 금지. 빈 칸은 엔진 기본값이다(three-axes 결정 16).
 #[derive(Debug, Clone, Default)]
 struct ClaudeChoice {
     mode: Option<String>,
@@ -1646,6 +1646,10 @@ struct ClaudeChoice {
     effort: Option<String>,
     /// 지시문 파일 — Thread 참여자의 정의 스냅숏 본문(v1 구현 스펙 S4). work 대화에는 없다.
     instructions: Option<PathBuf>,
+    /// 정의 스냅숏의 `tools.builtin` — 추상 이름 그대로다. `None`이면 기본 도구 전부다(§3). work 대화에는 없다.
+    tools: Option<Vec<atelier_core::BuiltinTool>>,
+    /// 정의 스냅숏의 `policy.forbid` — 추상 이름 · 명령 패턴 그대로다(S19). work 대화에는 없다.
+    forbid: Vec<String>,
 }
 
 impl ClaudeChoice {
@@ -1656,9 +1660,10 @@ impl ClaudeChoice {
 }
 
 /// Claude를 띄우는 것 — 변환기(앱에서는 이 실행 파일의 하위 모드 `acp-claude`)를 로그인 env 그대로 띄운다. 변환기가
-/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이 · 지시문 파일)은
-/// `session/new`의 `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지 않는다(three-axes 결정 16).
-/// 되살릴 때(`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다(v1 티켓 03).
+/// `session/new`를 받아 `claude -p`를 띄우므로, claude가 받을 것(찾은 claude의 자리 · 모드 · 모델 · 생각 깊이 · 지시문 파일 ·
+/// 내장 도구 · 금지)은 `session/new`의 `_meta.atelier`에 싣는다. 「엔진 기본값」인 칸은 싣지 않는다 — 변환기가 플래그를 주지
+/// 않는다(three-axes 결정 16). 되살릴 때(`session/resume` · `load`)도 같이 싣는다 — `-p --resume`은 이것들을 되살리지 않는다
+/// (v1 티켓 03 · 12). 도구 · 금지는 추상 이름 그대로 싣고, Claude Code의 이름으로 옮기는 일은 변환기가 한다(v1 티켓 12).
 ///
 /// 변환기는 앱과 같은 판이어야 연다 — 다르면 「판 어긋남」으로 열기 실패다(워크플로 S4).
 fn claude_launch(
@@ -1682,6 +1687,12 @@ fn claude_launch(
     }
     if let Some(instructions) = &choice.instructions {
         atelier.insert("instructionsFile".into(), json!(instructions));
+    }
+    if let Some(tools) = &choice.tools {
+        atelier.insert("builtinTools".into(), json!(tools));
+    }
+    if !choice.forbid.is_empty() {
+        atelier.insert("forbid".into(), json!(choice.forbid));
     }
     let launch = Launch {
         program: translator.program.clone(),

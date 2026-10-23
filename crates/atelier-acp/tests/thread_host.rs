@@ -222,6 +222,54 @@ fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_�
     host.shut_down();
 }
 
+/// 리뷰어처럼 좁힌 Library `host.md` — 읽기 · 찾기 · 명령만 쓰고 push를 막는다(기본 `reviewer.md`의 도구에 금지 하나).
+const NARROW_HOST_MD: &str =
+    "---\nname: Host\ntools:\n  builtin: [read, search, shell]\npolicy:\n  forbid: [push]\n---\n\n너는 좁은 Host다.\n";
+
+#[test]
+fn 정의_스냅숏의_도구와_금지는_새로_열기와_이어_열기_모두_claude의_인자에_들고_정의마다_도구_목록이_다르다() {
+    // v1 티켓 12 · 구현 스펙 §3 — 도구를 적지 않은 정의는 기본 도구 전부, 적은 정의는 그 도구만이다.
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let wide = yesterday(&sandbox);
+    sandbox.library_agent("host", NARROW_HOST_MD);
+    let narrow = yesterday(&sandbox);
+
+    let launches = sandbox.claude_launch_args();
+    assert_eq!(launches.len(), 2);
+    let (wide_args, narrow_args) = (&launches[0], &launches[1]);
+    assert!(has_pair(wide_args, "--session-id", &sandbox.thread_session_id(&wide, "host")), "{wide_args:?}");
+    for name in ["--tools", "--disallowedTools"] {
+        assert!(!wide_args.iter().any(|arg| arg == name), "적지 않은 정의는 {name}가 없다: {wide_args:?}");
+    }
+    let tools = "Read,Glob,Grep,LS,Bash,AskUserQuestion,ExitPlanMode,ToolSearch";
+    let forbid = "Bash(git push),Bash(git push *)";
+    assert!(has_pair(narrow_args, "--session-id", &sandbox.thread_session_id(&narrow, "host")), "{narrow_args:?}");
+    assert!(
+        has_pair(narrow_args, "--tools", tools) && has_pair(narrow_args, "--disallowedTools", forbid),
+        "적은 정의는 그 도구만 쓰고 금지를 막는다: {narrow_args:?}"
+    );
+    assert!(
+        launches.iter().flatten().all(|arg| arg != "--mcp-config" && arg != "--strict-mcp-config"),
+        "엔진이 넣는 MCP 서버는 아직 없고(Thread 도구는 v1 티켓 15) 사용자 MCP는 그대로 붙는다: {launches:?}"
+    );
+
+    // 그사이 Library를 되돌려도 이미 들어온 Host는 스냅숏을 읽는다(S4) — 되살릴 때도 같은 도구 · 금지를 다시 싣는다.
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
+    host.send_to_thread(&narrow, "오늘의 말").expect("말을 보내면 띄워 되살린다");
+    sandbox.wait_thread_kind(&narrow, "turn-end", 2);
+    let revived = &sandbox.claude_launch_args()[2];
+    assert!(
+        has_pair(revived, "--resume", &sandbox.thread_session_id(&narrow, "host"))
+            && has_pair(revived, "--tools", tools)
+            && has_pair(revived, "--disallowedTools", forbid),
+        "`-p --resume`은 도구 · 금지를 되살리지 않으므로 열 때마다 다시 싣는다: {revived:?}"
+    );
+
+    host.shut_down();
+}
+
 #[test]
 fn 이_work에_이은_thread는_thread_json에_work를_적고_worktree에서_spec_폴더를_함께_열고_머리말이_work를_싣는다() {
     let sandbox = Sandbox::new();

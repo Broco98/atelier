@@ -535,7 +535,8 @@ async fn open_session(
         }
     }
 
-    // three-axes 결정 23 — MCP는 사용자 설정 그대로다. 앱이 세션에 따로 넣는 것은 없다.
+    // three-axes 결정 23 — MCP는 사용자 설정 그대로다. 앱이 세션에 따로 넣는 것은 아직 없다(Thread 도구 서버는 v1 티켓 15가
+    // 여기로 넣고, Claude 변환기가 `--mcp-config`로 옮긴다 — v1 티켓 12).
     let mut params = serde_json::Map::new();
     params.insert("cwd".into(), json!(place.cwd));
     if !place.additional_directories.is_empty() {

@@ -28,6 +28,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use super::agent_flags;
 use super::stream::{self, Stream};
 use crate::login::AUTH_REQUIRED;
 use crate::redact;
@@ -267,18 +268,22 @@ impl Machine {
     /// `session/new` · `session/resume` · `session/load` — claude를 띄우고 stdin `initialize`를 보낸다(S1, three-axes 결정 27).
     /// 답은 claude의 `initialize` 답에서 한다([`Machine::opened`]).
     ///
-    /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) ·
-    /// `_meta.atelier{claudePath, permissionMode, model, effort, instructionsFile}`.
-    /// `mcpServers`는 보지 않는다 — 사용자 MCP와 커넥터는 `claude -p`가 스스로 붙인다(three-axes 결정 23).
+    /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) · `mcpServers` ·
+    /// `_meta.atelier{claudePath, permissionMode, model, effort, instructionsFile, builtinTools, forbid}`.
     ///
-    /// Agent 정의에서 오는 셋(v1 구현 스펙 §3 · S4) — 지시문은 Thread 폴더에 둔 정의 스냅숏 파일의 경로로 받아
+    /// Agent 정의에서 오는 것(v1 구현 스펙 §3 · S4) — 지시문은 Thread 폴더에 둔 정의 스냅숏 파일의 경로로 받아
     /// `--append-system-prompt-file`로 claude의 기본 시스템 프롬프트 **뒤에** 붙인다(바꾸면 Claude Code의 도구 · 환경 안내가
     /// 사라진다). 모델 · 생각 깊이는 `--model` · `--effort`다. 변환기는 그 파일을 읽지 않고 값을 고르지도 않는다 — 비우면 플래그를
     /// 주지 않아 claude의 기본값을 쓴다.
     ///
-    /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문은
-    /// 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고, Codex처럼 열린 뒤에
-    /// 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
+    /// 내장 도구 · 금지(v1 티켓 12)는 추상 이름으로 받아 Claude Code의 이름으로 옮긴다([`agent_flags`]) — `--tools` ·
+    /// `--disallowedTools`다. ACP `mcpServers`는 claude의 MCP 설정으로 옮겨 `--mcp-config`로 넘긴다 — 사용자 MCP와 커넥터는 그와
+    /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로
+    /// 답한다.
+    ///
+    /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
+    /// 도구 · 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
+    /// Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
     /// 호스트는 다음 단계로 넘어간다.
     fn open_session(&mut self, id: &Value, method: &str, params: &Value) {
@@ -305,6 +310,13 @@ impl Machine {
         let model = atelier["model"].as_str();
         let effort = atelier["effort"].as_str();
         let instructions = atelier["instructionsFile"].as_str();
+        let tools = agent_flags::tools(&atelier["builtinTools"]);
+        let mcp_config = agent_flags::mcp_config(&params["mcpServers"]);
+        let (tools, mcp_config) = match (tools, mcp_config) {
+            (Ok(tools), Ok(mcp_config)) => (tools, mcp_config),
+            (Err(reason), _) | (_, Err(reason)) => return self.send(error(id, -32602, &reason)),
+        };
+        let disallowed = agent_flags::disallowed(&atelier["forbid"]);
         let reviving = revive.is_some();
         let session_id = revive.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
@@ -335,6 +347,15 @@ impl Machine {
         }
         if let Some(instructions) = instructions {
             args.extend(["--append-system-prompt-file", instructions]);
+        }
+        if let Some(tools) = &tools {
+            args.extend(["--tools", tools]);
+        }
+        if let Some(disallowed) = &disallowed {
+            args.extend(["--disallowedTools", disallowed]);
+        }
+        if let Some(mcp_config) = &mcp_config {
+            args.extend(["--mcp-config", mcp_config]);
         }
         let launch = Launch { program: claude.clone(), args: args.into_iter().map(str::to_owned).collect(), cwd: cwd.to_owned() };
 

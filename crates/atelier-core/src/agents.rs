@@ -108,7 +108,8 @@ impl Serialize for AgentCalls {
     }
 }
 
-/// frontmatter `policy` — 추상 이름 그대로다. 규칙 표로 옮기는 일은 판정이 한다(S19, 티켓 22).
+/// frontmatter `policy` — 추상 이름 그대로다. 규칙 표(S19)로 옮기는 일은 변환기(`forbid` → claude의 금지 규칙, 티켓 12)와
+/// 판정(티켓 22)이 한다.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all(serialize = "camelCase"))]
 pub struct Policy {

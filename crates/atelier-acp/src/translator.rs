@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+mod agent_flags;
 mod machine;
 mod stream;
 
