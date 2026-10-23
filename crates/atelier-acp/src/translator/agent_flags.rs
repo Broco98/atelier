@@ -116,3 +116,19 @@ pub(super) fn mcp_config(servers: &Value) -> Result<Option<String>, String> {
     }
     Ok((!config.is_empty()).then(|| json!({"mcpServers": config}).to_string()))
 }
+
+/// ACP `mcpServers` → `--allowedTools`의 값 — 넘겨받은 서버마다 `mcp__<이름>`(그 서버의 도구 전부). 넘길 서버가 없으면 `None`이다.
+///
+/// **호스트가 넘긴 서버의 도구는 claude가 묻지 않는다**(결정.md 15). 그 서버는 엔진의 Thread 도구(S12)이고, 도구마다 스스로 가린다 —
+/// 부를 수 있는 Agent인지(§8), 사람에게 카드로 물을지(Work 만들기 · Project 고치기). claude가 또 물으면 Thread의 일마다 승인 카드가
+/// 서고, 판정(§9)이 아닌 곳에서 허락이 갈린다. 사용자 MCP는 여기 들지 않는다 — 사용자 설정 그대로 묻는다.
+pub(super) fn allowed(servers: &Value) -> Option<String> {
+    let rules: Vec<String> = servers
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|server| server["name"].as_str())
+        .map(|name| format!("mcp__{name}"))
+        .collect();
+    (!rules.is_empty()).then(|| rules.join(","))
+}

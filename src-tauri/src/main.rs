@@ -8,5 +8,10 @@ fn main() {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(atelier_acp::CLAUDE_TRANSLATOR_MODE)) {
         std::process::exit(atelier_acp::run_claude_translator());
     }
+    // 하위 모드 — 정확히 `thread-tools`면 Thread 도구 중계 서버가 되어 stdin/stdout으로 MCP를 말한다(v1 티켓 15 · S12). claude가
+    // `--mcp-config`의 서버로 띄우고, 둘째 인자는 엔진이 그 Session에 연 소켓이다. stdout이 곧 MCP 선이다.
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(atelier_acp::THREAD_TOOLS_MODE)) {
+        std::process::exit(atelier_acp::run_thread_tools(std::env::args_os().nth(2)));
+    }
     atelier_lib::run()
 }

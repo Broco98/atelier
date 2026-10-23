@@ -103,7 +103,7 @@ impl TranslatorCommand {
 pub(crate) type Emit = dyn Fn(HostEvent) + Send + Sync;
 
 /// 대화 호스트를 짓는다. 넷은 꼭 받고(데이터 루트 · 변환기 명령 · 셸 경로의 원천 · 이벤트를 내보내는
-/// closure), 시간 한도는 검사가 줄일 수 있다.
+/// closure), 시간 한도는 검사가 줄일 수 있다. Thread 도구 중계 서버 명령은 주면 Thread의 Session에 Thread 도구가 실린다.
 pub struct HostBuilder {
     data_root: PathBuf,
     translator: TranslatorCommand,
@@ -111,9 +111,18 @@ pub struct HostBuilder {
     emit: Arc<Emit>,
     login_shell_limit: Duration,
     open_limit: Option<Duration>,
+    thread_tools: Option<TranslatorCommand>,
 }
 
 impl HostBuilder {
+    /// Thread 도구 중계 서버 명령(v1 티켓 15 · S12) — 앱에서는 `current_exe` + `thread-tools`, 검사에서는 중계 서버 시험 bin이다.
+    /// 엔진은 Thread의 Session마다 소켓을 열고, 이 명령에 그 소켓을 마지막 인자로 붙여 ACP `mcpServers`로 넘긴다. 주지 않으면
+    /// Session에 Thread 도구가 없다.
+    pub fn thread_tools(mut self, relay: TranslatorCommand) -> Self {
+        self.thread_tools = Some(relay);
+        self
+    }
+
     /// 로그인 셸 읽기의 한도. 기본은 10초다(워크플로 §10) — 검사에서는 줄여도 된다.
     pub fn login_shell_limit(mut self, limit: Duration) -> Self {
         self.login_shell_limit = limit;
@@ -127,7 +136,7 @@ impl HostBuilder {
     }
 
     pub fn build(self) -> ConversationHost {
-        ConversationHost {
+        ConversationHost(Arc::new(HostCore {
             logins: LoginDesk::new(Arc::clone(&self.emit)),
             data_root: self.data_root,
             translator: self.translator,
@@ -141,11 +150,39 @@ impl HostBuilder {
             agents_file: Mutex::new(()),
             engines_file: Mutex::new(()),
             threads: thread::Threads::default(),
-        }
+            thread_tools: self.thread_tools,
+        }))
     }
 }
 
-pub struct ConversationHost {
+/// 대화 호스트 — 앱이 managed state로 쥐는 손잡이. 몸([`HostCore`])을 `Arc`로 쥔다: Thread 도구의 소켓(v1 티켓 15)은 연결마다 다른
+/// 스레드에서 호스트를 불러야 하는데, 호스트를 쥐면 Session → 소켓 → 호스트의 고리가 생겨 끄지 못한다. 그래서 소켓은 몸을 **약하게**
+/// 쥐고 부를 때만 손잡이를 다시 세운다([`ConversationHost::upgrade`]). 메서드는 그대로 손잡이에 있고, 칸은 `Deref`로 몸의 것을
+/// 읽는다.
+pub struct ConversationHost(Arc<HostCore>);
+
+impl std::ops::Deref for ConversationHost {
+    type Target = HostCore;
+
+    fn deref(&self) -> &HostCore {
+        &self.0
+    }
+}
+
+impl ConversationHost {
+    /// 몸을 약하게 쥔 것 — 호스트가 꺼지면(손잡이가 다 놓이면) 되살지 않는다.
+    fn weak(&self) -> Weak<HostCore> {
+        Arc::downgrade(&self.0)
+    }
+
+    /// 약하게 쥔 몸에서 손잡이를 다시 세운다 — 아직 살아 있으면.
+    fn upgrade(core: &Weak<HostCore>) -> Option<ConversationHost> {
+        core.upgrade().map(ConversationHost)
+    }
+}
+
+/// 대화 호스트의 몸 — 칸들. 크레이트 밖에서는 이름을 부를 수 없다.
+pub struct HostCore {
     data_root: PathBuf,
     translator: TranslatorCommand,
     shell: ShellSource,
@@ -173,6 +210,8 @@ pub struct ConversationHost {
     logins: Arc<LoginDesk>,
     /// Thread들 — 떠 있는 Session · 연 기록 · 색인(v1 티켓 04).
     threads: thread::Threads,
+    /// Thread 도구 중계 서버 명령(v1 티켓 15) — 없으면 Thread의 Session에 Thread 도구를 싣지 않는다.
+    thread_tools: Option<TranslatorCommand>,
 }
 
 /// 에이전트가 떠 있는 대화들의 표.
@@ -704,6 +743,7 @@ impl ConversationHost {
             emit: Arc::new(emit),
             login_shell_limit: login_env::DEFAULT_LIMIT,
             open_limit: None,
+            thread_tools: None,
         }
     }
 
@@ -1736,6 +1776,7 @@ fn claude_launch(
         meta: Some(json!({"atelier": atelier})),
         required_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
         revive: None,
+        mcp_servers: Vec::new(),
     };
     (launch, terms)
 }

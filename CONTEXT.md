@@ -195,7 +195,7 @@ xterm.js가 들고 있는 지나간 줄들.
 
 **Thread**:
 사람과 Agent들이 함께하는 말의 흐름 하나. 앱을 열면 새 Thread가 뜬다. 어디에도 속하지 않은 채 시작하고, 나중에 Work에 이어질 수
-있다. 안에서 Agent마다 Session 하나를 이어서 쓴다. 이름은 첫 말에서 저절로 붙고 사람이 바꿀 수 있다. 세는 말은 「Thread 3개」다.
+있다. 안에서 Agent마다 Session 하나를 이어서 쓴다. 이름은 첫 말에서 저절로 붙고 사람이나 Host가 바꿀 수 있다. 세는 말은 「Thread 3개」다.
 _피할 말_: 채팅, 채널, 스레드
 
 **Host**:
@@ -214,6 +214,10 @@ _피할 말_: 하네스, 엔진
 **Library**:
 어디서나 쓰는 Agent 정의를 두는 곳. Host의 정의도 여기 산다. Project 안에 둔 정의는 Library가 아니라 그 Project의 것이다.
 _피할 말_: 레지스트리, 카탈로그, 마켓플레이스
+
+**Thread 도구**:
+Atelier가 Thread 안의 Agent에게 주는 도구 — Thread 이름 바꾸기처럼 그 Thread와 Work를 다루는 일이다. Agent는 어느 Thread인지 말하지
+않는다 — 부른 Session의 Thread다. 사람이 설치한 `atelier mcp`와는 따로다.
 
 ## 대화창
 

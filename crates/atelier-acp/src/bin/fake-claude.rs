@@ -21,6 +21,10 @@
 //! - `FAKE_CLAUDE_PERFORMS_WRITES` — 있으면 되감는 `Write` 도구 호출마다 그 글을 cwd에 같은 파일 이름으로 정말 쓴다. 원문의
 //!   경로는 잰 날의 임시 폴더라, 고친 곳(spec 폴더 비교)을 재려면 가짜가 대화의 자리에 써야 한다.
 //! - `FAKE_CLAUDE_FORGETS` — 있으면 `--resume`한 세션을 모른다(세션 저장소가 빈 꼴).
+//! - `FAKE_CLAUDE_MCP_CALL` — 있으면 user 줄을 받아 낼 턴의 `system/init` 바로 뒤에서 MCP 도구 하나를 정말 부른다(v1 티켓 15).
+//!   값은 `{"tool": 이름, "arguments": {…}}`다. 받은 `--mcp-config`의 stdio 서버마다 띄워 `initialize` → `tools/list`를 하고, 그
+//!   도구를 가진 서버에 `tools/call`한다. 진짜 claude처럼 `assistant`의 `tool_use`(`mcp__<서버>__<도구>`)를 낸 뒤에 부르고, 받은
+//!   답을 `user`의 `tool_result`로 낸다. 주고받은 것은 `<세션 id>.mcp`에 `{server, tools, call}` 한 줄로 남는다.
 //!
 //! 녹화를 되감는 규칙(턴 · 권한 · 멈추기 · 바꾸기 · 스스로 이어 간 턴)은 입출력 없는 몸 `src/fakes/claude_replay.rs`에 있다 —
 //! 변환기 상태 기계의 시험이 프로세스 없이 같은 몸을 상대한다. 이 bin은 그 몸에 stdin · stdout · 영수증 · 문을 두른다.
@@ -34,9 +38,9 @@
 //! 한 줄씩 더한다. 세션 id는 받은 `--session-id` · `--resume`(없으면 `claude-<pid>`)이다. `-p`로 뜰 때마다 `launches`에
 //! `{pid, args}` 한 줄을 더한다 — 되살리기가 실패해 곧바로 끝난 claude도 남는다.
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc;
 
 use serde_json::{json, Value};
@@ -88,6 +92,11 @@ fn main() {
         .unwrap_or_else(|| format!("claude-{}", std::process::id()));
     let receipts = std::env::var_os("FAKE_CLAUDE_RECEIPTS").map(PathBuf::from);
     let writes = std::env::var_os("FAKE_CLAUDE_PERFORMS_WRITES").is_some();
+    let mcp_call = std::env::var("FAKE_CLAUDE_MCP_CALL")
+        .ok()
+        .map(|text| serde_json::from_str::<Value>(&text).expect("FAKE_CLAUDE_MCP_CALL은 JSON이다"));
+    let mcp_config = flag_value(&args, "--mcp-config")
+        .map(|text| serde_json::from_str::<Value>(&text).expect("--mcp-config는 JSON 글이다"));
     let fake = Fake { receipts, session_id: session_id.clone(), writes };
     fake.log_launch(&args);
     if resume.is_some() && !fake.knows_session() {
@@ -110,7 +119,11 @@ fn main() {
         if scenario == "silent-initialize" {
             continue;
         }
-        fake.emit_all(replay.receive(&message));
+        let lines = replay.receive(&message);
+        match &mcp_call {
+            Some(call) if message["type"] == "user" => fake.emit_calling(lines, call, mcp_config.as_ref()),
+            _ => fake.emit_all(lines),
+        }
         // 문에서 멈췄다 — 놓일 때까지 기다린다. 그동안 온 stdin 줄은 읽는 스레드가 영수증에 적고 쌓아 둔다.
         while replay.paused() {
             fake.wait_gate();
@@ -163,6 +176,48 @@ impl Fake {
             }
             emit(&line);
         }
+    }
+
+    /// 턴의 줄들을 내되, `system/init` 바로 뒤(없으면 맨 앞)에서 MCP 도구 하나를 부른다(`FAKE_CLAUDE_MCP_CALL`). 도구를 가진
+    /// 서버가 없으면 부르지 않고 줄만 낸다.
+    fn emit_calling(&self, lines: Vec<Value>, call: &Value, config: Option<&Value>) {
+        let at = lines.iter().position(|line| line["type"] == "system" && line["subtype"] == "init").map_or(0, |at| at + 1);
+        let mut lines = lines.into_iter();
+        self.emit_all(lines.by_ref().take(at).collect());
+        let tool = call["tool"].as_str().expect("FAKE_CLAUDE_MCP_CALL의 tool");
+        for (name, spec) in config.and_then(|config| config["mcpServers"].as_object()).into_iter().flatten() {
+            let mut server = McpServer::start(spec);
+            server.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {},
+                                                "clientInfo": {"name": "fake-claude", "version": "0"}}));
+            server.notify("notifications/initialized");
+            let tools = server.request("tools/list", json!({}))["result"]["tools"].clone();
+            let listed = tools.as_array().into_iter().flatten().any(|listed| listed["name"] == tool);
+            if listed {
+                let id = "toolu_fake_mcp";
+                emit(&json!({
+                    "type": "assistant",
+                    "message": {"id": "msg_fake_mcp", "type": "message", "role": "assistant",
+                                "content": [{"type": "tool_use", "id": id, "name": format!("mcp__{name}__{tool}"),
+                                             "input": call["arguments"]}]},
+                    "parent_tool_use_id": null, "session_id": self.session_id,
+                }));
+                let answer = server.request("tools/call", json!({"name": tool, "arguments": call["arguments"]}));
+                let result = answer.get("result").cloned().unwrap_or_else(|| json!({"isError": true, "content": [
+                    {"type": "text", "text": answer["error"]["message"]}]}));
+                let block = json!({"type": "tool_result", "tool_use_id": id, "content": result["content"],
+                                   "is_error": result["isError"] == true});
+                emit(&json!({
+                    "type": "user",
+                    "message": {"role": "user", "content": [block]},
+                    "parent_tool_use_id": null, "session_id": self.session_id,
+                }));
+                if let Some(path) = self.path("mcp") {
+                    receipts::append_line(&path, &json!({"server": name, "tools": tools, "call": result}).to_string());
+                }
+            }
+            server.close();
+        }
+        self.emit_all(lines.collect());
     }
 
     fn path(&self, what: &str) -> Option<PathBuf> {
@@ -272,5 +327,65 @@ impl Fake {
         ];
         let Some(path) = self.path("events") else { return };
         receipts::record_signals(Some(&path), LINES);
+    }
+}
+
+/// `--mcp-config`의 stdio 서버 하나를 띄워 줄 단위 JSON-RPC로 말하는 MCP 클라이언트 — 진짜 claude가 서버를 띄우는 꼴이다
+/// (`command` · `args` · `env`, env는 이 가짜의 env에 더한다).
+struct McpServer {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    stdout: BufReader<ChildStdout>,
+    next: u64,
+}
+
+impl McpServer {
+    fn start(spec: &Value) -> Self {
+        let program = spec["command"].as_str().expect("MCP 서버의 command");
+        let args = spec["args"].as_array().into_iter().flatten().filter_map(Value::as_str);
+        let env = spec["env"].as_object().into_iter().flatten().filter_map(|(name, value)| Some((name, value.as_str()?)));
+        let mut child = Command::new(program)
+            .args(args)
+            .envs(env)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap_or_else(|error| panic!("MCP 서버를 띄우지 못했다: {program} — {error}"));
+        let stdin = child.stdin.take();
+        let stdout = BufReader::new(child.stdout.take().expect("stdout을 파이프로 띄웠다"));
+        Self { child, stdin, stdout, next: 0 }
+    }
+
+    fn send(&mut self, message: &Value) {
+        let stdin = self.stdin.as_mut().expect("닫지 않은 stdin");
+        writeln!(stdin, "{message}").and_then(|()| stdin.flush()).expect("MCP 서버에 쓰지 못했다");
+    }
+
+    /// 요청 하나를 보내고 그 id의 답을 받는다 — 그 사이에 온 알림은 버린다.
+    fn request(&mut self, method: &str, params: Value) -> Value {
+        self.next += 1;
+        let id = self.next;
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
+        loop {
+            let mut line = String::new();
+            if self.stdout.read_line(&mut line).expect("MCP 서버의 답을 읽지 못했다") == 0 {
+                panic!("MCP 서버가 {method}에 답하지 않고 끝났다");
+            }
+            let Ok(answer) = serde_json::from_str::<Value>(&line) else { continue };
+            if answer["id"] == id {
+                return answer;
+            }
+        }
+    }
+
+    fn notify(&mut self, method: &str) {
+        self.send(&json!({"jsonrpc": "2.0", "method": method}));
+    }
+
+    /// stdin을 닫고 끝나기를 기다린다 — stdio MCP 서버는 stdin EOF에 끝난다.
+    fn close(mut self) {
+        drop(self.stdin.take());
+        let _ = self.child.wait();
     }
 }

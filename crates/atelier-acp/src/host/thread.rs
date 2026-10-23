@@ -14,6 +14,9 @@
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
 //! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 work 대화의
 //!   길 그대로다.
+//! - **Session마다 Thread 도구의 소켓을 연다(v1 티켓 15 · S12).** Session을 열 때 소켓을 열어 ACP `mcpServers`로 중계 서버를 넘기고,
+//!   그 소켓으로 온 도구 호출은 그 Session의 Thread와 Agent의 것으로 받는다([`ConversationHost::answer_tool`]). 소켓은 Session의
+//!   프로세스와 함께 산다 — 끄거나 되살릴 때 놓여 치워진다.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -36,6 +39,7 @@ use crate::login_env::AgentEnv;
 use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
 use crate::runtime::{self, AgentProcess, OpenError, SessionPlace};
 use crate::spec_changes::Snapshot;
+use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 
 /// 받는 이를 고르지 않은 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S9 · S14).
 const HOST: &str = "host";
@@ -121,6 +125,8 @@ impl SessionKey {
 pub(super) struct Session {
     pub(super) agent: AgentProcess,
     pub(super) conv: Arc<Conv>,
+    /// 그 Session의 Thread 도구 소켓 — 쥐고만 있다: 프로세스와 함께 놓여 치워진다. 중계 서버 명령이 없거나 열지 못했으면 없다.
+    _tools: Option<Bridge>,
 }
 
 impl Threads {
@@ -413,16 +419,20 @@ impl ConversationHost {
         participant_of(&file, thread, who)
     }
 
-    /// 이름 바꾸기 — 사람이 위 막대에서 고친 이름(v1 티켓 05 · 구현 스펙 §14 · §18). `thread.json`의 `title`을 고치고 목록 요약을
-    /// 알리고, `title` 줄을 남긴다 — 사람의 줄이라 `who`가 없다(S8). payload는 `{title, before}`다(흐름의 시스템 줄 「Thread 이름을
-    /// … 로 바꿈」이 이것을 읽는다).
+    /// 이름 바꾸기 — 사람이 위 막대에서 고친 이름(v1 티켓 05 · 구현 스펙 §14 · §18). 사람의 줄이라 `title` 줄에 `who`가 없다(S8).
+    /// 규칙은 [`ConversationHost::rename`]이다. 답은 바뀐 목록 요약이다.
+    pub fn rename_thread(&self, thread: &str, title: &str) -> Result<ThreadSummary, HostError> {
+        self.rename(thread, title, None)
+    }
+
+    /// 이름 바꾸기의 몸 — 사람(위 막대)과 Agent(Thread 도구 「Thread 이름 바꾸기」, v1 티켓 15)가 함께 쓴다. `thread.json`의 `title`을
+    /// 고치고 목록 요약을 알리고(사이드바 · 위 막대), `title` 줄을 남긴다 — `who`는 바꾼 Agent의 handle이고 사람이면 없다(S8).
+    /// payload는 `{title, before}`다(흐름의 시스템 줄 「Thread 이름을 … 로 바꿈」이 이것을 읽는다).
     ///
     /// - 줄바꿈 · 앞뒤 빈칸은 걷어 한 줄로 둔다. 빈 이름은 거절하고 아무것도 바꾸지 않는다.
     /// - 같은 이름이면 아무것도 쓰지 않는다 — 고치는 칸을 그대로 닫아도 줄이 쌓이지 않는다.
     /// - Session을 띄우지 않는다. 머리말의 제목은 다음에 여는 Session부터 바뀐다(S10).
-    ///
-    /// 답은 바뀐 목록 요약이다.
-    pub fn rename_thread(&self, thread: &str, title: &str) -> Result<ThreadSummary, HostError> {
+    fn rename(&self, thread: &str, title: &str, who: Option<&str>) -> Result<ThreadSummary, HostError> {
         let title = one_line(title);
         if title.is_empty() {
             return Err(HostError::BadTitle);
@@ -431,10 +441,52 @@ impl ConversationHost {
             let log = self.thread_log(thread)?;
             let mut before = String::new();
             self.change_thread(thread, |file| before = std::mem::replace(&mut file.title, title.clone()))?;
-            log.write(RecordKind::Title, None, json!({"title": title, "before": before})).map_err(HostError::Record)?;
+            log.write(RecordKind::Title, who, json!({"title": title, "before": before})).map_err(HostError::Record)?;
         }
         self.with_index(|index| index.all().iter().find(|summary| summary.id == thread).cloned())?
             .ok_or_else(|| HostError::ThreadNotFound(thread.to_owned()))
+    }
+
+    /// Thread 도구 호출 하나에 답한다(v1 티켓 15 · S12 · S13) — 그 Session의 소켓으로 왔으므로 부른 Thread와 Agent는 `key`다. 도구의
+    /// 거절(빈 이름 · 사라진 Thread)은 도구의 실패로 돌려준다 — Agent가 그 글을 읽는다. 연결마다의 스레드에서 불린다.
+    fn answer_tool(&self, key: &SessionKey, method: &str, params: &Value) -> Result<Value, Fault> {
+        let call = match method {
+            "tools/list" => return Ok(thread_tools::list()),
+            "tools/call" => thread_tools::read_call(params),
+            _ => return Err(Fault::unknown_method(method)),
+        };
+        Ok(match call {
+            Ok(Call::RenameThread { title }) => match self.rename(&key.thread, &title, Some(&key.handle)) {
+                Ok(summary) => thread_tools::said(&format!("Thread 이름을 바꿨다 — {}", summary.title), false),
+                Err(error) => thread_tools::said(&error.to_string(), true),
+            },
+            Err(Unread::Bad(why)) => thread_tools::said(&why, true),
+            Err(Unread::Unknown(fault)) => return Err(fault),
+        })
+    }
+
+    /// 그 Session의 Thread 도구 소켓을 연다 — 중계 서버 명령이 없으면 없다. 열지 못하면 Thread 도구 없이 Session을 연다: 까닭은
+    /// 기록의 `stderr` 줄로 남긴다(Agent는 일하되 Thread를 다루지 못한다).
+    fn open_tools(&self, key: &SessionKey, conv: &Conv) -> Option<(Bridge, Value)> {
+        let relay = self.thread_tools.as_ref()?;
+        let host = self.weak();
+        let at = key.clone();
+        let answer: thread_tools::Answer = Arc::new(move |method, params| match ConversationHost::upgrade(&host) {
+            Some(host) => host.answer_tool(&at, method, params),
+            None => Err(Fault::gone()),
+        });
+        match Bridge::open(answer) {
+            Ok(bridge) => {
+                let server = bridge.server(relay);
+                Some((bridge, server))
+            }
+            Err(error) => {
+                if let Err(error) = conv.recorder.stderr(format!("Thread 도구의 소켓을 열지 못했습니다: {error}")) {
+                    eprintln!("{error}");
+                }
+                None
+            }
+        }
     }
 
     /// 로그인을 기다리던 Session을 다시 띄운다(three-axes 티켓 12의 길) — 떠 있으면 끄고 새로, 같은 Session id로 이어 연다. 대기
@@ -527,6 +579,9 @@ impl ConversationHost {
         let (launch, mut terms) = claude_launch(&self.translator, programs, env, &place, &choice);
         // 참여자의 Session id가 있으면 되살린다 — 다시 켠 뒤 · 죽은 뒤 · 로그인 뒤. 처음 여는 Session은 곧바로 새로다.
         terms.revive = participant.session_id.clone();
+        // 열 때마다 새 소켓이다 — 되살린 Session도 앞 프로세스의 소켓은 이미 치웠다. 열지 못하면 여기서 놓여 치워진다.
+        let (tools, server) = self.open_tools(key, &conv).unzip();
+        terms.mcp_servers.extend(server);
         let limit = self.open_limit.unwrap_or(CLAUDE_OPEN_LIMIT);
         let at = SessionPlace { cwd: place.cwd.clone(), additional_directories: place.additional_directories.clone() };
         let opened = runtime::open(launch, at, terms, limit, conv.sink(), record_opened(&conv, Agent::Claude));
@@ -561,7 +616,7 @@ impl ConversationHost {
                 slot.additional_directories = place.additional_directories.clone();
             }
         })?;
-        self.threads.put(key.clone(), Session { agent, conv });
+        self.threads.put(key.clone(), Session { agent, conv, _tools: tools });
         Ok(())
     }
 
@@ -727,8 +782,8 @@ impl ConversationHost {
     }
 
     /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이 Agent의 handle, 참여자, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
-    /// worktree 또는 「읽기만」). Session의 첫 말과 새로 연 뒤의 첫 말에 따로 된 텍스트 블록으로 붙는다. 화면은 그리지 않고
-    /// `sent` 줄의 `prompt`에만 남는다. 도구를 쓰는 법은 Thread 도구가 서면(v1 티켓 15) 여기 더한다(S42).
+    /// worktree 또는 「읽기만」), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로 연 뒤의 첫 말에 따로 된 텍스트
+    /// 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의 `prompt`에만 남는다.
     fn thread_preamble(&self, key: &SessionKey) -> Result<Value, HostError> {
         let file = self.read_thread_file(&key.thread)?;
         let participants: Vec<String> =
@@ -762,6 +817,13 @@ impl ConversationHost {
                 }
                 Err(_) => text.push_str(&format!("- Work: `{slug}` — 찾을 수 없다\n")),
             },
+        }
+        if self.thread_tools.is_some() {
+            text.push_str(&format!(
+                "- Thread 도구: MCP 서버 `{}`의 도구로 이 Thread를 다룬다. Thread id는 넘기지 않는다 — 이 Session의 Thread다.\n  \
+                 - `rename_thread`(title) — Thread 이름을 바꾼다. 일이 무엇인지 드러나는 짧은 이름으로.\n",
+                thread_tools::SERVER_NAME
+            ));
         }
         Ok(json!({"type": "text", "text": text}))
     }

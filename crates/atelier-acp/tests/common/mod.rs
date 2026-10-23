@@ -175,14 +175,15 @@ impl Sandbox {
         self.host_builder_with_translator(shell, translator(), emit)
     }
 
-    /// 변환기 명령을 고른 호스트 — 판이 다른 변환기처럼 시험 bin이 아닌 것을 변환기로 줄 때.
+    /// 변환기 명령을 고른 호스트 — 판이 다른 변환기처럼 시험 bin이 아닌 것을 변환기로 줄 때. Thread 도구 중계 서버는 앱처럼 늘
+    /// 싣는다(v1 티켓 15).
     pub fn host_builder_with_translator(
         &self,
         shell: ShellSource,
         translator: TranslatorCommand,
         emit: impl Fn(HostEvent) + Send + Sync + 'static,
     ) -> atelier_acp::HostBuilder {
-        ConversationHost::builder(self.data_root(), translator, shell, emit)
+        ConversationHost::builder(self.data_root(), translator, shell, emit).thread_tools(thread_tools())
     }
 
     // ── work와 Codex 대화 ──────────────────────────────────────────────────────
@@ -351,6 +352,12 @@ impl Sandbox {
     /// 가짜 claude가 stdin으로 받은 줄들.
     pub fn claude_stdin(&self, session_id: &str) -> Vec<Value> {
         json_lines(&self.claude_receipts().join(format!("{session_id}.stdin")))
+    }
+
+    /// 가짜 claude가 `FAKE_CLAUDE_MCP_CALL`로 MCP 서버를 띄워 도구를 부를 때마다 남긴 줄 — `{server, tools, call}`(서버 이름 ·
+    /// `tools/list`의 도구들 · `tools/call`의 답), 부른 차례대로(v1 티켓 15).
+    pub fn claude_mcp(&self, session_id: &str) -> Vec<Value> {
+        json_lines(&self.claude_receipts().join(format!("{session_id}.mcp")))
     }
 
     /// 가짜 claude가 `-p`로 뜰 때마다 남긴 줄 — `{pid, args}`, 뜬 차례대로. 되살리기가 실패해 곧바로 끝난 claude도 선다
@@ -559,6 +566,11 @@ impl Sandbox {
 /// 변환기 시험 bin — 앱 진입점의 `acp-claude` 갈래와 같은 진입 함수를 부른다.
 pub fn translator() -> TranslatorCommand {
     TranslatorCommand::new(env!("CARGO_BIN_EXE_claude-translator"), Vec::<String>::new())
+}
+
+/// Thread 도구 중계 서버 시험 bin — 앱 진입점의 `thread-tools` 갈래와 같은 진입 함수를 부른다(v1 티켓 15).
+pub fn thread_tools() -> TranslatorCommand {
+    TranslatorCommand::new(env!("CARGO_BIN_EXE_thread-tools"), Vec::<String>::new())
 }
 
 // ── 변환기를 ACP로 직접 몰기 ─────────────────────────────────────────────────────

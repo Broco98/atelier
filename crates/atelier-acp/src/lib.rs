@@ -18,6 +18,7 @@ mod records;
 mod redact;
 mod runtime;
 mod spec_changes;
+mod thread_tools;
 mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
@@ -30,4 +31,5 @@ pub use login::{EngineState, LoginProgress};
 pub use login_env::{LoginShellError, ShellSource};
 pub use quote::Quote;
 pub use records::{RecordKind, RecordLine};
+pub use thread_tools::{run_thread_tools, THREAD_TOOLS_MODE};
 pub use translator::{run_claude_translator, CLAUDE_TRANSLATOR_MODE};

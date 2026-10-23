@@ -254,9 +254,17 @@ fn 정의_스냅숏의_도구와_금지는_새로_열기와_이어_열기_모두
         has_pair(narrow_args, "--tools", tools) && has_pair(narrow_args, "--disallowedTools", forbid),
         "적은 정의는 그 도구만 쓰고 금지를 막는다: {narrow_args:?}"
     );
+    for args in &launches {
+        let config = args.iter().position(|arg| arg == "--mcp-config").and_then(|at| args.get(at + 1)).expect("--mcp-config");
+        let servers: Vec<String> = serde_json::from_str::<Value>(config).unwrap()["mcpServers"]
+            .as_object()
+            .map(|servers| servers.keys().cloned().collect())
+            .unwrap_or_default();
+        assert_eq!(servers, ["atelier-thread"], "엔진이 넣는 MCP 서버는 Thread 도구 하나다(v1 티켓 15)");
+    }
     assert!(
-        launches.iter().flatten().all(|arg| arg != "--mcp-config" && arg != "--strict-mcp-config"),
-        "엔진이 넣는 MCP 서버는 아직 없고(Thread 도구는 v1 티켓 15) 사용자 MCP는 그대로 붙는다: {launches:?}"
+        launches.iter().flatten().all(|arg| arg != "--strict-mcp-config"),
+        "도구를 좁힌 정의도 사용자 MCP는 그대로 붙는다: {launches:?}"
     );
 
     // 그사이 Library를 되돌려도 이미 들어온 Host는 스냅숏을 읽는다(S4) — 되살릴 때도 같은 도구 · 금지를 다시 싣는다.

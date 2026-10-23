@@ -553,6 +553,7 @@ fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는
             ),
             "{method}: {args:?}"
         );
+        assert_eq!(flag(&args, "--allowedTools").as_deref(), Some("mcp__thread"), "{method}: {args:?}");
         if method != "session/new" {
             assert_eq!(flag(&args, "--resume").as_deref(), Some("yesterday"), "{method}");
         }
@@ -652,10 +653,14 @@ fn acp_mcp_서버는_claude의_mcp_설정으로_옮겨_mcp_config로_들고_사�
     );
     // 사용자의 MCP 설정과 claude.ai 커넥터는 지금처럼 붙는다(S39 · three-axes 결정 23) — 넘긴 것만 쓰라고 하지 않는다.
     assert!(!args.iter().any(|arg| arg == "--strict-mcp-config"), "{args:?}");
+    // 호스트가 넘긴 서버(Thread 도구)는 claude가 묻지 않는다 — 도구가 스스로 가리고 판정은 하나다(결정.md 15).
+    assert_eq!(flag(&args, "--allowedTools").as_deref(), Some("mcp__atelier-thread,mcp__plain"), "{args:?}");
 
     // 넘길 서버가 없으면 플래그도 없다.
     let args = launched_with(json!({}));
-    assert!(!args.iter().any(|arg| arg == "--mcp-config"), "{args:?}");
+    for name in ["--mcp-config", "--allowedTools"] {
+        assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
+    }
 }
 
 #[test]

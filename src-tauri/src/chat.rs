@@ -27,14 +27,18 @@ pub const ENGINE_EVENT: &str = "chat:engine";
 /// - Claude 대화가 띄우는 변환기는 **이 실행 파일 자신**의 하위 모드 `acp-claude`다(갈래는 `main.rs`, three-axes 티켓 13). 그
 ///   이름은 진입점과 함께 쓰는 상수 [`atelier_acp::CLAUDE_TRANSLATOR_MODE`]다.
 ///   `exe`는 진입점이 한 번 읽어 넘긴다(워크플로 §1). 읽지 못했으면 빈 경로라 Claude 열기만 그 자리에서 읽히는 오류로 실패한다.
+/// - Thread의 Session마다 claude가 띄우는 Thread 도구 중계 서버도 **이 실행 파일 자신**의 하위 모드 `thread-tools`다(v1 티켓 15 ·
+///   S12, 상수 [`atelier_acp::THREAD_TOOLS_MODE`]). 엔진이 Session의 소켓 경로를 마지막 인자로 붙인다.
 /// - 호스트가 내보내는 것은 `events`로 보낸다 — 앱 핸들이 서기 전(빌더 앞)에 지어지므로, 셋업이 건 [`announce`]가 받아
 ///   쏜다. 보내기는 막히지 않는다: 호스트는 기록의 잠금을 쥔 채 내보내므로 여기서 기다리면 대화가 멎는다.
 pub fn host(exe: PathBuf, events: Sender<HostEvent>) -> ConversationHost {
+    let relay = TranslatorCommand::new(exe.clone(), [atelier_acp::THREAD_TOOLS_MODE]);
     let translator = TranslatorCommand::new(exe, [atelier_acp::CLAUDE_TRANSLATOR_MODE]);
     ConversationHost::builder(atelier_core::data_root(), translator, ShellSource::User, move |event| {
         // 받는 스레드는 앱이 사는 동안 산다. 끊겼다면 앱이 끝나는 중이라 버린다.
         let _ = events.send(event);
     })
+    .thread_tools(relay)
     .build()
 }
 

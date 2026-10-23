@@ -917,6 +917,37 @@ mod tests {
         );
     }
 
+    /// **진입점은 Tauri를 짓기 전에 첫 인자로 갈라, 정확히 `thread-tools`면 Thread 도구 중계 서버가 된다**(v1 티켓 15 · 구현 스펙
+    /// S12). 엔진이 Thread의 Session마다 이 실행 파일 자신을 `thread-tools <소켓>`으로 claude의 MCP 설정에 넣는다(`chat::host`가
+    /// 같은 상수로 짓는 명령) — 띄우는 쪽과 가르는 쪽이 어긋나면 Agent가 Thread 도구를 하나도 못 쓴다. 갈래는 소켓 경로(둘째 인자)를
+    /// 넘겨 L1이 쓰는 중계 서버 시험 bin과 **같은 함수**를 부른다. `main`은 헤드리스로 못 돌리니 자리로 잰다. 중계 서버 → 소켓 →
+    /// 엔진의 길은 크레이트 `atelier-acp`의 L1(`tests/thread_tools.rs`)이 잰다.
+    #[test]
+    fn the_entry_point_becomes_the_thread_tools_relay_before_tauri_on_thread_tools() {
+        let main = without_comment_lines(include_str!("main.rs"));
+        let branch = main
+            .find("if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(atelier_acp::THREAD_TOOLS_MODE)) {")
+            .expect("진입점이 첫 인자가 정확히 Thread 도구 하위 모드 상수인지로 가르지 않는다");
+        assert_eq!(atelier_acp::THREAD_TOOLS_MODE, "thread-tools", "하위 모드의 이름은 `thread-tools`다");
+        let chat = without_comment_lines(include_str!("chat.rs"));
+        assert!(
+            chat.contains("let relay = TranslatorCommand::new(exe.clone(), [atelier_acp::THREAD_TOOLS_MODE]);")
+                && chat.contains(".thread_tools(relay)"),
+            "대화 호스트가 진입점이 가르는 상수와 다른 인자로 중계 서버를 넘긴다 — Agent가 Thread 도구를 못 쓴다"
+        );
+        let relay = main
+            .find("std::process::exit(atelier_acp::run_thread_tools(std::env::args_os().nth(2)));")
+            .expect("`thread-tools` 갈래가 소켓 경로를 넘겨 중계 서버의 진입 함수를 부르고 그 종료 코드로 끝나지 않는다");
+        let tauri = main.find("atelier_lib::run()").expect("Tauri로 가는 길이 있다");
+        assert!(branch < relay && relay < tauri, "갈래({branch}) → 중계 서버({relay}) → Tauri({tauri}) 차례가 아니다");
+        assert!(!main[..branch].contains("print"), "갈래 앞에서 stdout에 쓴다 — `thread-tools`의 stdout은 곧 MCP 선이다");
+        let test_bin = without_comment_lines(include_str!("../../crates/atelier-acp/src/bin/thread-tools.rs"));
+        assert!(
+            test_bin.contains("std::process::exit(atelier_acp::run_thread_tools(std::env::args_os().nth(1)))"),
+            "중계 서버 시험 bin이 진입점과 다른 함수를 부른다 — L1이 잰 중계 서버가 앱이 띄우는 중계 서버가 아니다"
+        );
+    }
+
     /// **화면 새로고침은 대화를 끄지 않는다**(three-axes 구현 스펙 S9). 셸은 새로고침에 거두지만 대화는 기록에서 다시 그린다
     /// — 새로고침 정리가 호스트를 부르면 ⌘R 한 번에 돌던 턴이 끊긴다. Thread의 Session도 같은 호스트에 살아 함께 남는다(v1 티켓 04
     /// — ⌘R에 Agent가 죽지 않는다). 자리로 잰다.

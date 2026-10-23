@@ -59,6 +59,9 @@ pub(crate) struct OpenTerms {
     pub required_version: Option<String>,
     /// 되살릴 에이전트 쪽 세션 id(three-axes 티켓 10). 있으면 resume → load → 새 세션 순으로 열고, 없으면 곧바로 새 세션이다.
     pub revive: Option<String>,
+    /// 세션에 넣는 MCP 서버(ACP `mcpServers`의 칸들) — Thread의 Session이면 Thread 도구 서버 하나다(v1 티켓 15 · S12). 새로 열 때도
+    /// 되살릴 때도 같이 싣는다.
+    pub mcp_servers: Vec<Value>,
 }
 
 /// 세션이 열린 길 — 열림 줄의 `how`다(three-axes 티켓 10). 기록에는 케밥 글자(`new` · `resumed` · `loaded` · `fresh`)로
@@ -535,14 +538,14 @@ async fn open_session(
         }
     }
 
-    // three-axes 결정 23 — MCP는 사용자 설정 그대로다. 앱이 세션에 따로 넣는 것은 아직 없다(Thread 도구 서버는 v1 티켓 15가
-    // 여기로 넣고, Claude 변환기가 `--mcp-config`로 옮긴다 — v1 티켓 12).
+    // three-axes 결정 23 — 사용자의 MCP는 에이전트가 스스로 붙인다. 앱이 세션에 넣는 것은 Thread 도구 서버뿐이다(v1 티켓 15) —
+    // Claude 변환기가 `--mcp-config`로 옮긴다(v1 티켓 12).
     let mut params = serde_json::Map::new();
     params.insert("cwd".into(), json!(place.cwd));
     if !place.additional_directories.is_empty() {
         params.insert("additionalDirectories".into(), json!(place.additional_directories));
     }
-    params.insert("mcpServers".into(), json!([]));
+    params.insert("mcpServers".into(), json!(terms.mcp_servers));
     if let Some(meta) = &terms.meta {
         params.insert("_meta".into(), meta.clone());
     }

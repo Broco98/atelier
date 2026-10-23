@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { finalMessages, foldThread, headline } from "./fold";
+import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05) — 기록 줄 → 턴 · 말한 이 · 도구 줄 · 시스템 줄. seam은 순수 함수 `foldThread` 하나다: 처음 읽은 기록도
@@ -10,13 +11,12 @@ import type { RecordLine } from "./types";
 //
 // 바탕 기록은 엔진 검사(L1)가 가짜 claude로 지어 **축복한** 두 턴짜리 Thread 기록이다(`thread-two-turns.jsonl`) — 엔진이 실제로 쓰는
 // 줄의 꼴이 바뀌면 그 축복을 다시 받는 날 이 검사도 함께 깨진다. 기록에 없는 갈래(이름 바꾸기 · 거절 · 끊김)는 손으로 지은 줄을 덧붙인다.
-const blessed: RecordLine[] = readFileSync(
-  fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-two-turns.jsonl", import.meta.url)),
-  "utf8",
-)
-  .split("\n")
-  .filter((line) => line.trim() !== "")
-  .map((line) => JSON.parse(line) as RecordLine);
+const record = (name: string): RecordLine[] =>
+  readFileSync(fileURLToPath(new URL(`../../../crates/atelier-acp/tests/records/${name}.jsonl`, import.meta.url)), "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as RecordLine);
+const blessed = record("thread-two-turns");
 
 const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
 const update = (seq: number, second: number, body: Record<string, unknown>): RecordLine => ({
@@ -85,6 +85,20 @@ describe("시스템 줄", () => {
       ["Thread 이름을 ", "환불 API 버그", "로 바꿈", 1],
       ["Thread 이름을 ", "결제 흐름", "으로 바꿈", 2],
     ]);
+  });
+
+  it("Agent가 턴 안에서 Thread 도구로 이름을 바꾸면 그 턴 뒤에 같은 시스템 줄이 서고 턴은 이어진다(v1 티켓 15)", () => {
+    // 엔진 검사가 축복한 기록 — Host가 첫 턴에서 `rename_thread`를 불렀다. `title` 줄은 도구 줄과 그 끝 사이에 `who: host`로 있다.
+    const model = foldThread(record("thread-rename"));
+    expect(model.system.map((line) => [`${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
+      ["Thread 이름을 환불 API 버그로 바꿈", 1],
+    ]);
+    expect(model.turns).toHaveLength(1);
+    const [turn] = model.turns;
+    expect(turn.end && headline(turn.end)).toBe("8초 동안 작업함");
+    const tools = turn.entries.filter((entry) => entry.kind === "tool");
+    expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["atelier-thread.rename_thread 불러옴"]);
+    expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual(["Hello from turn"]);
   });
 
   it("Host 밖의 참여자가 들고 나면 이름을 굵게 한 줄이 선다", () => {

@@ -278,8 +278,8 @@ impl Machine {
     ///
     /// 내장 도구 · 금지(v1 티켓 12)는 추상 이름으로 받아 Claude Code의 이름으로 옮긴다([`agent_flags`]) — `--tools` ·
     /// `--disallowedTools`다. ACP `mcpServers`는 claude의 MCP 설정으로 옮겨 `--mcp-config`로 넘긴다 — 사용자 MCP와 커넥터는 그와
-    /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로
-    /// 답한다.
+    /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 넘겨받은 서버(Thread 도구, v1 티켓 15)의 도구는 `--allowedTools`로 묻지
+    /// 않게 한다. 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로 답한다.
     ///
     /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
     /// 도구 · 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
@@ -317,6 +317,7 @@ impl Machine {
             (Err(reason), _) | (_, Err(reason)) => return self.send(error(id, -32602, &reason)),
         };
         let disallowed = agent_flags::disallowed(&atelier["forbid"]);
+        let allowed = agent_flags::allowed(&params["mcpServers"]);
         let reviving = revive.is_some();
         let session_id = revive.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
@@ -356,6 +357,9 @@ impl Machine {
         }
         if let Some(mcp_config) = &mcp_config {
             args.extend(["--mcp-config", mcp_config]);
+        }
+        if let Some(allowed) = &allowed {
+            args.extend(["--allowedTools", allowed]);
         }
         let launch = Launch { program: claude.clone(), args: args.into_iter().map(str::to_owned).collect(), cwd: cwd.to_owned() };
 
