@@ -9,6 +9,13 @@ import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
 import type { ChatQuitCounts, Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
+import type {
+  AgentRoster,
+  Participant,
+  RecordLine as ThreadRecordLine,
+  ThreadSummary,
+  ThreadView,
+} from "@/features/thread/types";
 import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
@@ -848,6 +855,31 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   },
 };
 
+// Thread 기본 자료(v1 티켓 05) — L1이 축복한 두 턴짜리 Thread(`thread-two-turns.jsonl`)의 Thread 줄. Host 하나가 참여했고 앱에 떠 있지 않다.
+const FIXTURE_HOST: Participant = {
+  handle: "host",
+  from: "library",
+  joinedAt: "2026-10-10T10:00:01.000+09:00",
+  runtime: "claude-code",
+  sessionId: "fake-session",
+  cwd: "~/.atelier/threads/20261010-100000",
+  additionalDirectories: [],
+  model: null,
+  effort: null,
+};
+const FIXTURE_THREAD: ThreadView = {
+  id: "20261010-100000",
+  title: "세 낱말로 답해 줘: hello from turn",
+  createdAt: "2026-10-10T10:00:00.000+09:00",
+  work: null,
+  mode: null,
+  participants: [FIXTURE_HOST],
+  lastRead: 0,
+  lastSeq: 24,
+  live: false,
+  queues: {},
+};
+
 /**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
@@ -1114,6 +1146,44 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 한 번도 연 적 없는 첫 실행이고, 그때 모델 · 모드 고르기는 「엔진 기본값」 하나뿐이다. 목록을 재는 검사(`settings-chat.spec.ts`)가
   // 엔진마다 덮어쓴다.
   chat_engine_lists: { models: [], modes: [] } satisfies EngineLists,
+  // ── Thread(v1 티켓 05) ── 앱은 새 Thread(`/`)로 열린다. 새 Thread 화면은 설 때 엔진을 한 번 확인하고(`thread_check_engine`) Host 정의의
+  // 모델 · 생각 깊이를 읽으며(`list_agents`), 사이드바는 Thread 목록을 읽는다(`thread_list`). **기본은 Thread가 없고 엔진은 「찾음 ·
+  // 로그인 됨」이다** — 안내 카드가 서지 않는 길이라 `/`로 여는 다른 spec들이 그대로 돈다. Thread를 여는 검사는 `thread_get` ·
+  // `thread_read_record`를 그 시나리오의 Thread와 기록으로 덮어쓴다(기록 줄은 `thread:record` 이벤트로 흘린다).
+  thread_list: [] satisfies ThreadSummary[],
+  thread_get: FIXTURE_THREAD,
+  thread_read_record: [] satisfies ThreadRecordLine[],
+  thread_check_engine: {
+    state: "found",
+    programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }],
+    loggedIn: true,
+  } satisfies EngineCheck,
+  thread_start_login: null,
+  thread_cancel_login: null,
+  thread_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ChatQuitCounts,
+  // 새 Thread — 첫 말과 함께 세운 Thread의 id. 답(첫 턴)은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
+  thread_start: FIXTURE_THREAD.id,
+  // 보내기 · 멈추기 · 대기 줄 · 권한 답 — 값은 안 쓰인다. 결과는 기록 줄 · 대기 줄 이벤트로 온다.
+  thread_send: null,
+  thread_stop: null,
+  thread_edit_queued: null,
+  thread_delete_queued: null,
+  thread_send_now: null,
+  thread_answer_permission: null,
+  // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.
+  thread_set_model: FIXTURE_HOST,
+  thread_set_effort: FIXTURE_HOST,
+  // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
+  thread_rename: {
+    id: FIXTURE_THREAD.id,
+    title: FIXTURE_THREAD.title,
+    createdAt: FIXTURE_THREAD.createdAt,
+    work: null,
+    handles: ["host"],
+    broken: null,
+  } satisfies ThreadSummary,
+  // 부를 수 있는 Agent(v1 티켓 03 · 11) — 새 Thread의 칩이 Host 정의의 모델 · 생각 깊이를 읽는다. 기본은 비었다(칩은 「기본 모델」).
+  list_agents: { agents: [] } satisfies AgentRoster,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

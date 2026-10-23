@@ -53,12 +53,12 @@ export function toggleSidebar() {
 /**
  * 이 주소에 도착했다고 적어 둔다 — **세션 동안만**이다(`lastPlace` 머리말). 저장소에는 아무것도 안 적는다.
  *
- * `/`와 설정은 **안 적는다.** `/`는 어디로 갈지 정하기만 하고 머물지 않는 자리이고, 설정을 적으면 설정을
- * 열었다는 이유로 「앱으로 돌아가기」가 설정으로 돌아간다. 설정은 그 아래 항목 페이지(UI개선 결정 22)와
- * 「spec 레이아웃」 편집기까지 접두사로 본다(`inSettings`) — 문의 가드가 묻는 경계와 같은 것이다.
+ * 설정은 **안 적는다** — 설정을 적으면 설정을 열었다는 이유로 「앱으로 돌아가기」가 설정으로 돌아간다. 설정은 그 아래 항목
+ * 페이지(UI개선 결정 22)와 「spec 레이아웃」 편집기까지 접두사로 본다(`inSettings`) — 문의 가드가 묻는 경계와 같은 것이다.
+ * `/`는 적는다 — 한때 어디로 갈지 정하기만 하던 주소였지만 이제 새 Thread라는 머무는 자리다(v1 티켓 05).
  */
 export function rememberVisit(pathname: string): void {
-  if (pathname === "/" || inSettings(pathname)) return;
+  if (inSettings(pathname)) return;
   shellStore.setState((state) =>
     state.lastPlace === pathname ? state : { ...state, lastPlace: pathname },
   );
@@ -69,10 +69,9 @@ export function rememberVisit(pathname: string): void {
  * 앱 셸은 이 함수를 부르기만 한다: 셸이 `lastPlace`를 읽고 목적지를 스스로 지으면 이 함수를 재는
  * 검사들이 초록인 채로 화면의 규칙만 갈린다(`router.test.ts`).
  *
- * 마지막 주소가 없으면 **작업 목록 주소**다(앱을 켜자마자 ⌘, 등). 무선택 주소라 도착하자마자
- * 정규화 리다이렉트를 한 번 더 타지만 그 리다이렉트가 replace라 히스토리는 그래도 한 칸이다
- * (`router.test.ts`). 마지막 자리 기억은 설정과 `/` 밖의 **모든 주소**를 적으므로(`rememberVisit`)
- * `/projects`·`/terminal`·`/archive`에서 들어온 설정도 그 주소로 돌아간다.
+ * 마지막 주소가 없으면 **새 Thread**(`/`)다(앱을 켜자마자 ⌘, 등) — 앱이 늘 열리는 자리와 같다(v1 티켓 05 · S26).
+ * 마지막 자리 기억은 설정 밖의 **모든 주소**를 적으므로(`rememberVisit`) `/projects`·`/terminal`·`/archive`·
+ * `/threads/<id>`에서 들어온 설정도 그 주소로 돌아간다.
  *
  * **항목 주소면 그 항목의 마지막 화면을 씨앗으로 얹는다**(결정 77·97). `lastPlace`가 드는 것은
  * pathname뿐이라(`rememberVisit`) 그냥 두면 빈 `search`로 도착하고, 도착한 주소를 적어 두는
@@ -82,9 +81,9 @@ export function rememberVisit(pathname: string): void {
  * 돌아간 work이 보던 탭으로 서는 것도 이 씨앗이다.
  */
 export function appReturnTarget(): { to: string; search?: WorkSearch } {
-  const to = shellStore.state.lastPlace ?? "/works";
-  // 목록·터미널·아카이브 주소에는 씨앗이 없다 — `workSlugOf`가 `null`을 주는 것이 그 사실이고,
-  // 그 화면들은 `search`를 안 쓴다. 첫 화면(무선택 주소)도 여기로 떨어져 정규화가 씨앗을 얹는다.
+  const to = shellStore.state.lastPlace ?? "/";
+  // 목록·터미널·아카이브·Thread 주소에는 씨앗이 없다 — `workSlugOf`가 `null`을 주는 것이 그 사실이고,
+  // 그 화면들은 `search`를 안 쓴다. 무선택 주소(`/works`)도 여기로 떨어져 정규화가 씨앗을 얹는다.
   const slug = workSlugOf(to);
   return slug === null ? { to } : { to, search: recallSearch(slug) };
 }

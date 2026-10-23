@@ -45,6 +45,8 @@ const RUNTIME: &str = "claude-code";
 const SNAPSHOTS: &str = "agents";
 /// 첫 말에서 정하는 이름의 길이 한도(글자 수).
 const TITLE_LIMIT: usize = 40;
+/// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
+const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 /// 새 Thread를 어디에 잇나(v1 구현 스펙 §5 「말 보내기」) — 새 Thread의 첫 말과 함께 받는다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -357,6 +359,68 @@ impl ConversationHost {
             conv.recorder.config(setting.changed()).map_err(HostError::Record)?;
         }
         participant_of(&file, thread, who)
+    }
+
+    /// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — 그 참여자의 생각 깊이(claude `--effort`의 값 하나)를 바꾼다. claude는 떠 있는
+    /// Session의 생각 깊이를 바꾸는 요청이 없어 플래그로만 받는다. 그래서 모델 바꾸기와 길이 갈린다.
+    ///
+    /// - 떠 있지 않으면 `thread.json`의 참여자 줄에만 남고, 띄울 때 플래그로 준다.
+    /// - 떠 있고 쉬면 같은 Session으로 다시 띄운다(`--resume` + 새 `--effort`) — 다음 턴부터 든다. 넣은 바꾸기는 `config` 줄로 남는다.
+    /// - 턴이 도는 동안은 거절한다 — 다시 띄우면 그 턴이 끊긴다. 입력창 칩도 그동안 잠긴다.
+    ///
+    /// 답은 바뀐 참여자 줄이다. 다시 띄우면 막히는 호출이다(Session이 열릴 때까지).
+    pub fn set_thread_effort(&self, thread: &str, who: &str, effort: &str) -> Result<Participant, HostError> {
+        if !EFFORTS.contains(&effort) {
+            return Err(HostError::Setting(format!("모르는 생각 깊이입니다: {effort}")));
+        }
+        self.participant(thread, who)?;
+        let key = SessionKey::new(thread, who);
+        let up = match self.threads.find(&key) {
+            Some(conv) => {
+                let state = conv.lock_found();
+                if state.as_ref().is_some_and(|state| state.order.turning()) {
+                    return Err(HostError::Setting("턴이 도는 동안에는 생각 깊이를 바꿀 수 없습니다".into()));
+                }
+                state.is_some_and(|state| state.is_up())
+            }
+            None => false,
+        };
+        let file = self.change_thread(thread, |file| {
+            if let Some(participant) = file.participants.iter_mut().find(|participant| participant.handle == who) {
+                participant.effort = Some(effort.to_owned());
+            }
+        })?;
+        if up {
+            self.relaunch_session(thread, who)?;
+            if let Some(conv) = self.threads.find(&key) {
+                conv.recorder.config(json!({"effort": effort})).map_err(HostError::Record)?;
+            }
+        }
+        participant_of(&file, thread, who)
+    }
+
+    /// 이름 바꾸기 — 사람이 위 막대에서 고친 이름(v1 티켓 05 · 구현 스펙 §14 · §18). `thread.json`의 `title`을 고치고 목록 요약을
+    /// 알리고, `title` 줄을 남긴다 — 사람의 줄이라 `who`가 없다(S8). payload는 `{title, before}`다(흐름의 시스템 줄 「Thread 이름을
+    /// … 로 바꿈」이 이것을 읽는다).
+    ///
+    /// - 줄바꿈 · 앞뒤 빈칸은 걷어 한 줄로 둔다. 빈 이름은 거절하고 아무것도 바꾸지 않는다.
+    /// - 같은 이름이면 아무것도 쓰지 않는다 — 고치는 칸을 그대로 닫아도 줄이 쌓이지 않는다.
+    /// - Session을 띄우지 않는다. 머리말의 제목은 다음에 여는 Session부터 바뀐다(S10).
+    ///
+    /// 답은 바뀐 목록 요약이다.
+    pub fn rename_thread(&self, thread: &str, title: &str) -> Result<ThreadSummary, HostError> {
+        let title = one_line(title);
+        if title.is_empty() {
+            return Err(HostError::BadTitle);
+        }
+        if self.read_thread_file(thread)?.title != title {
+            let log = self.thread_log(thread)?;
+            let mut before = String::new();
+            self.change_thread(thread, |file| before = std::mem::replace(&mut file.title, title.clone()))?;
+            log.write(RecordKind::Title, None, json!({"title": title, "before": before})).map_err(HostError::Record)?;
+        }
+        self.with_index(|index| index.all().iter().find(|summary| summary.id == thread).cloned())?
+            .ok_or_else(|| HostError::ThreadNotFound(thread.to_owned()))
     }
 
     /// 로그인을 기다리던 Session을 다시 띄운다(three-axes 티켓 12의 길) — 떠 있으면 끄고 새로, 같은 Session id로 이어 연다. 대기
@@ -811,6 +875,11 @@ fn title_of(text: &str) -> String {
         return line.to_owned();
     }
     format!("{}…", line.chars().take(TITLE_LIMIT).collect::<String>())
+}
+
+/// 사람이 고친 이름 — 줄마다 앞뒤 빈칸을 걷고 빈 줄을 버린 뒤 빈칸 하나로 잇는다.
+fn one_line(text: &str) -> String {
+    text.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 fn participant_of(file: &ThreadFile, thread: &str, handle: &str) -> Result<Participant, HostError> {

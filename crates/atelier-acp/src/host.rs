@@ -627,6 +627,8 @@ pub enum HostError {
     AgentAmbiguous { call: String, calls: Vec<String> },
     /// 멘션한 Agent와 같은 handle의 다른 Agent가 이미 이 Thread에 있다 — Session은 (Thread, handle)마다 하나다.
     HandleTaken { call: String, handle: String },
+    /// 바꾸려는 Thread 이름이 비었다(v1 티켓 05).
+    BadTitle,
 }
 
 impl fmt::Display for HostError {
@@ -672,6 +674,7 @@ impl fmt::Display for HostError {
             HostError::HandleTaken { call, handle } => {
                 write!(f, "@{call} — 이 Thread에는 이미 다른 @{handle} Agent가 들어와 있어요")
             }
+            HostError::BadTitle => write!(f, "Thread 이름이 비었어요"),
         }
     }
 }

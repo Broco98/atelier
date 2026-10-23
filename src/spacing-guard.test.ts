@@ -390,6 +390,11 @@ describe("눈금의 사분 단", () => {
       className: "gap-1.25",
       why: "입력창의 칩 — 글리프와 글자 사이 5(DS `.at-ctl`)",
     },
+    {
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "gap-1.25",
+      why: "Thread 입력창의 모델 칩 — 글자와 셰브런 사이 5(캔버스 Composer 보드 `.chip`)",
+    },
     // 안쪽 9 · 7 — DS 부품의 안쪽
     {
       file: "src/components/ui/button.tsx",
@@ -445,6 +450,31 @@ describe("눈금의 사분 단", () => {
       file: "src/features/chat/Composer.tsx",
       className: "pt-3.75",
       why: "입력창 — 위 안쪽 15(DS `.at-composer`의 `15px 12px 8px 18px`). 슬래시 메뉴가 서면 12로 준다",
+    },
+    {
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "px-2.25",
+      why: "Thread 입력창의 모델 칩 — 좌우 안쪽 9(캔버스 Composer 보드 `.chip`의 `0 9px`)",
+    },
+    {
+      file: "src/features/thread/QueuedMessages.tsx",
+      className: "px-2.25",
+      why: "기다리는 말의 「지금 전하기」 — 좌우 안쪽 9(캔버스 Messages 보드 `.qrow .gbtn`)",
+    },
+    {
+      file: "src/features/thread/ThreadFlow.tsx",
+      className: "py-2.25",
+      why: "내 말풍선 — 위아래 안쪽 9(캔버스 Messages 보드 `.ubub`의 `9px 16px`)",
+    },
+    {
+      file: "src/features/thread/ThreadMarkdown.tsx",
+      className: "py-px",
+      why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(캔버스 Messages 보드 `.code`의 `1px 5px`)",
+    },
+    {
+      file: "src/features/thread/SlashMenu.tsx",
+      className: "gap-y-px",
+      why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
     },
     {
       file: "src/features/chat/ToolRow.tsx",

@@ -540,6 +540,102 @@ fn 모델을_바꾸면_떠_있는_claude가_set_model을_받고_참여자_줄과
     host.shut_down();
 }
 
+/// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — claude는 떠 있는 Session의 생각 깊이를 바꾸는 요청이 없어 `--effort`로만 받는다. 쉬는
+/// Session은 같은 Session으로 다시 띄워 다음 턴부터 들고, 떠 있지 않으면 참여자 줄에만 남아 띄울 때 든다. 도는 턴은 끊지 않는다.
+#[test]
+fn 생각_깊이를_바꾸면_쉬는_session은_같은_session으로_다시_뜨고_떠_있지_않으면_다음에_띄울_때_들고_도는_턴에는_거절한다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(two_turns(&sandbox));
+    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let session = sandbox.thread_session_id(&thread, "host");
+
+    let changed = host.set_thread_effort(&thread, "host", "low").expect("생각 깊이 바꾸기");
+    assert_eq!(changed.effort.as_deref(), Some("low"), "답은 바뀐 참여자 줄이다");
+    assert_eq!(sandbox.participant(&thread, "host")["effort"], "low");
+    let launches = sandbox.claude_launch_args();
+    assert_eq!(launches.len(), 2, "쉬는 Session은 다시 띄운다");
+    assert!(
+        has_pair(&launches[1], "--resume", &session) && has_pair(&launches[1], "--effort", "low"),
+        "같은 Session을 새 생각 깊이로 잇는다: {:?}",
+        launches[1]
+    );
+    let record = sandbox.wait_thread_kind(&thread, "config", 1);
+    let config = of_kind(&record, "config")[0];
+    assert_eq!((config["who"].clone(), config["payload"].clone()), (json!("host"), json!({"effort": "low"})));
+    assert_eq!(sandbox.thread_session_id(&thread, "host"), session, "Session id는 그대로다");
+    assert_eq!(
+        host.set_thread_effort(&thread, "host", "extreme").map(|_| ()),
+        Err(atelier_acp::HostError::Setting("모르는 생각 깊이입니다: extreme".into())),
+        "claude가 받지 않는 값은 거절한다"
+    );
+    assert_eq!(sandbox.participant(&thread, "host")["effort"], "low", "거절하면 아무것도 바뀌지 않는다");
+
+    // 앱을 다시 켠 뒤 — 떠 있지 않은 Session은 띄우지 않고, 다음에 띄울 때 플래그로 준다.
+    host.shut_down();
+    let host = sandbox.host(two_turns(&sandbox));
+    host.set_thread_effort(&thread, "host", "max").expect("떠 있지 않은 Session의 생각 깊이 바꾸기");
+    assert_eq!(sandbox.claude_launches().len(), 2, "떠 있지 않은 Session은 띄우지 않는다");
+    host.send_to_thread(&thread, "notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘").expect("보내기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    assert!(has_pair(&sandbox.claude_launch_args()[2], "--effort", "max"), "{:?}", sandbox.claude_launch_args()[2]);
+    host.shut_down();
+
+    // 도는 턴 — 다시 띄우면 그 턴이 끊기므로 거절한다.
+    let sandbox = Sandbox::new();
+    let (host, _events, thread) = running_thread(&sandbox);
+    assert_eq!(
+        host.set_thread_effort(&thread, "host", "low").map(|_| ()),
+        Err(atelier_acp::HostError::Setting("턴이 도는 동안에는 생각 깊이를 바꿀 수 없습니다".into()))
+    );
+    assert_eq!(sandbox.participant(&thread, "host")["effort"], "high", "거절하면 참여자 줄도 그대로다");
+    host.shut_down();
+}
+
+/// 위 막대의 이름 고치기(v1 티켓 05 · 구현 스펙 §14 · §18) — 사람이 바꾼 이름은 `thread.json` · `title` 줄 · 목록 요약에 함께 선다.
+/// 줄에는 `who`가 없다(사람의 줄, S8). Session을 띄우지 않고, 다시 켠 뒤(기록을 쥐지 않은 엔진)에도 된다.
+#[test]
+fn 이름을_바꾸면_thread_json과_title_줄과_목록_요약이_바뀌고_같거나_빈_이름은_줄을_더하지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let (host, events) = sandbox.host_with_events(two_turns(&sandbox));
+    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+
+    let summary = host.rename_thread(&thread, "  환불 API 버그\n").expect("이름 바꾸기");
+    assert_eq!(summary.title, "환불 API 버그", "앞뒤 빈칸과 줄바꿈은 걷는다");
+    assert_eq!(sandbox.thread_json(&thread)["title"], "환불 API 버그");
+    let record = sandbox.wait_thread_kind(&thread, "title", 1);
+    let line = of_kind(&record, "title")[0];
+    assert_eq!(line.get("who"), None, "사람이 바꾼 이름의 줄에는 who가 없다(S8)");
+    assert_eq!(line["payload"], json!({"title": "환불 API 버그", "before": "세 낱말로 답해 줘: hello from turn"}));
+    assert_eq!(events.thread_lists().last().map(|summary| summary.title.clone()).as_deref(), Some("환불 API 버그"));
+    assert_eq!(host.list_threads().expect("목록")[0].title, "환불 API 버그");
+
+    host.rename_thread(&thread, "환불 API 버그").expect("같은 이름");
+    assert_eq!(
+        host.rename_thread(&thread, "  \n "),
+        Err(atelier_acp::HostError::BadTitle),
+        "빈 이름은 거절하고 아무것도 바꾸지 않는다"
+    );
+    assert_eq!(of_kind(&sandbox.thread_record(&thread), "title").len(), 1, "같은 이름 · 빈 이름은 줄을 더하지 않는다");
+
+    // 다시 켠 뒤 — 엔진이 기록을 쥐지 않았어도 이어 적는다. Session은 띄우지 않는다.
+    host.shut_down();
+    let host = sandbox.host(two_turns(&sandbox));
+    host.rename_thread(&thread, "환불 버그").expect("다시 켠 뒤의 이름 바꾸기");
+    assert_eq!(sandbox.claude_launches().len(), 1, "이름 바꾸기는 Session을 띄우지 않는다");
+    let titles: Vec<Value> =
+        of_kind(&sandbox.thread_record(&thread), "title").into_iter().map(|line| line["payload"].clone()).collect();
+    assert_eq!(titles.last(), Some(&json!({"title": "환불 버그", "before": "환불 API 버그"})));
+    assert_eq!(
+        host.rename_thread("20261010-100000", "이름").map(|_| ()),
+        Err(atelier_acp::HostError::ThreadNotFound("20261010-100000".into()))
+    );
+    host.shut_down();
+}
+
 #[test]
 fn thread_id의_꼴이_아니거나_없는_thread는_찾을_수_없다() {
     let sandbox = Sandbox::new();

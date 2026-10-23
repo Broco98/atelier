@@ -1010,6 +1010,29 @@ pub async fn thread_set_model(
     to_host(&chats, "모델을 바꾸지 못했습니다", move |host| host.set_thread_model(&thread, &who, &model)).await
 }
 
+/// 생각 깊이 바꾸기(v1 티켓 05 · 스토리 33) — claude `--effort`의 값 하나. 쉬는 Session은 같은 Session으로 다시 띄워 다음 턴부터
+/// 들고, 떠 있지 않으면 띄울 때 든다. 턴이 도는 동안은 거절된다. 답은 바뀐 참여자 줄이다.
+#[tauri::command]
+pub async fn thread_set_effort(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    who: String,
+    effort: String,
+) -> CmdResult<atelier_core::Participant> {
+    to_host(&chats, "생각 깊이를 바꾸지 못했습니다", move |host| host.set_thread_effort(&thread, &who, &effort)).await
+}
+
+/// 이름 바꾸기 — 위 막대에서 사람이 고친 이름(v1 티켓 05). `thread.json` · `title` 줄 · 목록 요약이 함께 바뀐다. 답은 바뀐 목록
+/// 요약이다. 빈 이름은 거절된다.
+#[tauri::command]
+pub async fn thread_rename(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    title: String,
+) -> CmdResult<atelier_core::ThreadSummary> {
+    to_host(&chats, "이름을 바꾸지 못했습니다", move |host| host.rename_thread(&thread, &title)).await
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::Infallible;

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Settings, SquarePen, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
+import { useRouterState } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useRoving, type RovingBox } from "@/lib/roving";
+import SidebarThreads from "@/features/thread/SidebarThreads";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
@@ -36,6 +38,8 @@ import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResiz
 
 interface SidebarProps {
   open: boolean;
+  /** 「새 Thread」(v1 티켓 05) — 앱 셸이 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
+  onNewThread: () => void;
   // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
   activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
@@ -63,6 +67,7 @@ const GUTTER = "pl-2 pr-2";
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
   open,
+  onNewThread,
   activeKey,
   onSelect,
   currentSettingsItem,
@@ -124,8 +129,9 @@ function Sidebar({
   const [renaming, setRenaming] = useState<string | null>(null);
   // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
   // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
+  // 「새 Thread」가 nav의 첫 정류장이다(v1 티켓 05) — 켜진 nav 항목이 없으면(새 Thread · Thread · Works 화면) 정류장이 여기 선다.
   const navRoving = useRoving(
-    navItems.map((item) => item.key),
+    [NEW_THREAD_KEY, ...navItems.map((item) => item.key)],
     activeKey,
   );
   const settingsRoving = useRoving(
@@ -169,6 +175,9 @@ function Sidebar({
     <SidebarFrame open={open} size={size}>
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
       <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...navRoving.box}>
+        {/* **「새 Thread」가 맨 위다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 앱이 늘 열리는 자리다. 검색 · Library와 함께 선
+            블록의 모양은 07이 맞춘다. */}
+        <NewThreadItem stop={navRoving.stop === NEW_THREAD_KEY} onClick={onNewThread} />
         {/* **`navItems`를 돈다**(#183) — 활성 판정(AppShell)과 팔레트의 「가는 곳」(`destinations.ts`)도 같은
             배열을 본다. */}
         {navItems.map((item) => (
@@ -248,6 +257,9 @@ function Sidebar({
         onRename={setRenaming}
         onRenameEnd={() => setRenaming(null)}
       />
+
+      {/* **Work 묶음 아래 Thread 묶음**(v1 구현 스펙 §13) — Work 없는 Thread들. 지금은 한 줄(제목 · 시각)이고 시안 모양은 07이다. */}
+      <SidebarThreads />
 
       {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
           `navItems` 배열에 한 줄 넣는 안은 기각됐다: 그 배열의 주석이 「앞으로 늘어날
@@ -603,6 +615,21 @@ function useNow(ticking: boolean): number {
 // 메타가 행 전체를 누르는 데 걸리적거리지 않게 이름 버튼 **안**에 두지 않는다: 그러면 셸
 // 수가 이 항목의 접근성 이름에 섞여 「이름으로 nav를 집는다」가 깨진다(WorkRow의 메타와
 // 같은 함정이다).
+/** nav 정류장 목록에서 「새 Thread」의 열쇠 — nav 항목의 key와 겹치지 않는다. */
+const NEW_THREAD_KEY = "new-thread";
+
+/**
+ * 「새 Thread」 항목(v1 티켓 05) — `/`에 서 있으면 켜진다. **켜짐을 이 항목이 스스로 구독한다**: 셸이 구독하면 라우터 구독이 늘고
+ * (`AppShell.test.ts`), 사이드바 몸이 구독하면 Thread를 오갈 때마다 목록 전체가 다시 그려진다. 값이 원시값 하나라 `/`를 드나들 때만
+ * 이 항목이 다시 그려진다.
+ */
+function NewThreadItem({ stop, onClick }: { stop: boolean; onClick: () => void }) {
+  const active = useRouterState({ select: (state) => state.location.pathname === "/" });
+  return (
+    <SidebarItem icon={SquarePen} label="새 Thread" active={active} roving={{ key: NEW_THREAD_KEY, stop }} onClick={onClick} />
+  );
+}
+
 function SidebarItem({
   icon: Icon,
   label,

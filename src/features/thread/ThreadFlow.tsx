@@ -1,0 +1,319 @@
+import { Fragment, useEffect, useState } from "react";
+import { useStore } from "@tanstack/react-store";
+import { Check, CircleAlert, Copy, Info, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checklist, PlanCard } from "@/features/chat/PlanCard";
+import { cn } from "@/lib/utils";
+import {
+  finalFrom,
+  headline,
+  runningHeadline,
+  type Entry,
+  type Notice,
+  type SystemLine,
+  type ThreadModel,
+  type ToolEntry,
+  type Turn,
+} from "./fold";
+import HostFace from "./HostFace";
+import ThreadMarkdown from "./ThreadMarkdown";
+import { threadUiStore, toggleTurn, turnKey } from "./thread-store";
+import { LogHead, ToolRows } from "./WorkLog";
+
+// Thread의 흐름(v1 티켓 05 · 캔버스 Messages · WorkLog 보드) — 기록 줄을 접은 모델(`fold.ts`)을 그린다. three-axes 흐름
+// (`chat/ChatThread.tsx`)을 옮겨 보드의 모양으로 고쳤다.
+//
+// - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 22 반경 · 옅은 파랑(`bubble-user`), 폭은 줄의 78%까지다. Agent의 답은 얼굴 · 이름 · 시각
+//   아래에 본문 그대로 선다. 같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시 쓰지 않는다(`Turn.namesWho`).
+// - **작업 로그** — 일하는 동안은 「N초 동안 작업 중입니다」가 반짝이고 그 아래로 도구 줄이 쌓인다. 승인을 기다리면 「· 승인을
+//   기다립니다」가 링크 색으로 붙는다. 끝나면 「N초 동안 작업함」 한 줄로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다.
+//   머리줄을 누르면 생각 · 도구 줄 · 앞선 답이 펼쳐진다.
+// - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming`). 답을 기다리는 동안은 「생각 중」이 반짝인다.
+// - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
+//   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
+// - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴 사이의 옅은 줄이다.
+// - 마지막 답 아래에는 동작 버튼(복사)이 늘 선다. 「다시 답하기」 · 「여기서 새 Thread」는 그 일을 하는 장이 단다.
+//
+// **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
+
+interface ThreadFlowProps {
+  thread: string;
+  model: ThreadModel;
+  /** 참여자 handle → 화면 이름. 모르는 handle은 handle 그대로다. */
+  names: Readonly<Record<string, string>>;
+  /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 다시 보낸다. */
+  onRetry: (text: string) => void;
+}
+
+function ThreadFlow({ thread, model, names, onRetry }: ThreadFlowProps) {
+  const expanded = useStore(threadUiStore, (state) => state.expanded);
+  const between = (count: number) => [
+    ...model.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
+    ...model.system.filter((line) => line.turnsBefore === count).map((line) => <SystemRow key={line.key} line={line} />),
+  ];
+  const last = model.turns[model.turns.length - 1];
+  return (
+    <div className="flex flex-col gap-6 text-chat-body">
+      {between(0)}
+      {model.turns.map((turn, at) => {
+        const key = turnKey(thread, turn.key);
+        return (
+          <Fragment key={turn.key}>
+            <TurnView
+              turn={turn}
+              name={turn.who ? (names[turn.who] ?? turn.who) : null}
+              open={expanded[key] === true}
+              onToggle={() => toggleTurn(key)}
+              waiting={turn === last && model.pending.length > 0}
+              last={turn === last}
+              onRetry={onRetry}
+            />
+            {between(at + 1)}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 상태 줄 — 옅은 글자의 한 줄. 그림은 숨고 글이 말한다. */
+function NoticeLine({ notice }: { notice: Notice }) {
+  const Icon = notice.kind === "fresh" ? Info : TriangleAlert;
+  return (
+    <p data-notice={notice.kind} className="flex items-start gap-1.5 text-chat-meta text-fg-tertiary">
+      <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 wrap-anywhere">{notice.text}</span>
+    </p>
+  );
+}
+
+/** 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. */
+function SystemRow({ line }: { line: SystemLine }) {
+  return (
+    <p data-system={line.kind} className="self-center text-center text-chat-meta leading-5 text-fg-tertiary">
+      {line.before}
+      <b className="font-medium text-fg">{line.name}</b>
+      {line.after}
+    </p>
+  );
+}
+
+function TurnView({
+  turn,
+  name,
+  open,
+  onToggle,
+  waiting,
+  last,
+  onRetry,
+}: {
+  turn: Turn;
+  name: string | null;
+  open: boolean;
+  onToggle: () => void;
+  waiting: boolean;
+  last: boolean;
+  onRetry: (text: string) => void;
+}) {
+  const from = finalFrom(turn);
+  const lastEntry = turn.entries[turn.entries.length - 1];
+  // 글이 빈 생각은 그리지 않는다 — Claude Code는 생각의 글을 빈 문자열로 준다. 지금 생각하는 중이면 「생각 중」으로만 선다.
+  const said = (entry: Entry) => entry.kind !== "thought" || entry.text.trim() !== "";
+  const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(said);
+  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message") : [];
+  // 계획 카드와 체크리스트는 접힌 턴에도 남는다 — 계획은 다시 읽는 것이다.
+  const plans = turn.end && !open ? turn.entries.filter((entry) => entry.kind === "plan" || entry.kind === "checklist") : [];
+  const thinking = !turn.end && (turn.entries.length === 0 || lastEntry?.kind === "thought");
+  const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
+  const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
+  const finalText = final.map((entry) => (entry.kind === "message" ? entry.text : "")).join("\n\n");
+  return (
+    <>
+      {turn.sent !== null && <UserMessage text={turn.sent} />}
+      <div className="flex flex-col items-start gap-2">
+        {turn.namesWho && name && <WhoRow name={name} at={turn.answeredAt ?? turn.startedAt} />}
+        {turn.end ? (
+          failed ? (
+            <ErrorLine error={turn.end.error} retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "")} />
+          ) : stopped ? (
+            // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
+            <>
+              {open && <Entries entries={before} streaming={false} />}
+              {final.map((entry) => (
+                <div key={entry.key} className="w-full text-fg-secondary">
+                  <EntryView entry={entry} streaming={false} />
+                </div>
+              ))}
+              <StopLine text={headline(turn.end)} open={open} onToggle={onToggle} />
+            </>
+          ) : (
+            <>
+              <LogHead open={open} onToggle={onToggle}>
+                {headline(turn.end)}
+              </LogHead>
+              {open && <Entries entries={before} streaming={false} />}
+            </>
+          )
+        ) : (
+          <>
+            {turn.entries.length > 0 && <RunningHead turn={turn} waiting={waiting} />}
+            <Entries entries={before} streaming />
+            {thinking && <p className="chat-shimmer text-sm">생각 중</p>}
+          </>
+        )}
+        {plans.map((entry) => (
+          <EntryView key={entry.key} entry={entry} streaming={false} />
+        ))}
+        {!stopped &&
+          final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
+        {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} />}
+      </div>
+    </>
+  );
+}
+
+/** 이름 줄(보드 `.who`) — 얼굴 20 · 이름 600 13/20 · 시각 12 `fg-tertiary`. 얼굴은 지금 Host의 것뿐이다(다른 Agent는 14). */
+function WhoRow({ name, at }: { name: string; at: string }) {
+  return (
+    <div className="flex items-center gap-2 text-chat-meta leading-5">
+      <HostFace className="size-5" />
+      <b className="font-semibold">{name}</b>
+      <time dateTime={at} className="text-xs text-fg-tertiary">
+        {clock(at)}
+      </time>
+    </div>
+  );
+}
+
+/** 「오후 2:31」 — 이름 줄의 시각. */
+function clock(at: string): string {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
+}
+
+/** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 승인을 기다리면 그 말이 링크 색으로 붙는다. */
+function RunningHead({ turn, waiting }: { turn: Turn; waiting: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const text = runningHeadline(turn, now);
+  return waiting ? (
+    <p className="flex flex-wrap items-center gap-1.5 text-sm text-fg-tertiary">
+      <span>{text}</span>
+      <span aria-hidden>·</span>
+      <span className="text-link">승인을 기다립니다</span>
+    </p>
+  ) : (
+    <p className="chat-shimmer text-sm">{text}</p>
+  );
+}
+
+/** 턴의 줄들 — 잇따른 도구 줄은 작업 로그의 한 묶음이다(줄 사이 틈 없이, 묶음 줄 포함). */
+function Entries({ entries, streaming }: { entries: readonly Entry[]; streaming: boolean }) {
+  const runs: Entry[][] = [];
+  for (const entry of entries) {
+    const tail = runs[runs.length - 1];
+    if (entry.kind === "tool" && tail && tail[0].kind === "tool") tail.push(entry);
+    else runs.push([entry]);
+  }
+  const lastEntry = entries[entries.length - 1];
+  return (
+    <>
+      {runs.map((run) =>
+        run[0].kind === "tool" ? (
+          <div key={run[0].key} className="flex w-full flex-col">
+            <ToolRows tools={run as ToolEntry[]} />
+          </div>
+        ) : (
+          <EntryView key={run[0].key} entry={run[0]} streaming={streaming && run[0] === lastEntry} />
+        ),
+      )}
+    </>
+  );
+}
+
+function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
+  switch (entry.kind) {
+    case "message":
+      return <ThreadMarkdown text={entry.text} streaming={streaming} className="w-full" />;
+    case "thought":
+      return <ThreadMarkdown text={entry.text} className="w-full text-fg-tertiary" />;
+    case "tool":
+      return <ToolRows tools={[entry]} />;
+    case "plan":
+      return (
+        <div className="w-full">
+          <PlanCard text={entry.text} />
+        </div>
+      );
+    case "checklist":
+      return (
+        <div className="w-full">
+          <Checklist items={entry.items} />
+        </div>
+      );
+  }
+}
+
+/** 사람이 보낸 말(보드 `.ubub`) — 오른쪽 정렬, 22 반경, 옅은 파랑, 줄 폭의 78%까지. 머리말은 기록에만 있다. */
+export function UserMessage({ text }: { text: string }) {
+  return (
+    <p className="max-w-[78%] self-end rounded-bubble bg-bubble-user px-4 py-2.25 whitespace-pre-wrap wrap-anywhere">{text}</p>
+  );
+}
+
+/** 오류 줄(보드 `.errl`) — 원 안의 느낌표 · 문장 · 테두리 버튼 「다시 시도」(그림 없이 28 · 10 반경). 끊긴 까닭은 문장 뒤에 붙는다. */
+function ErrorLine({ error, retry }: { error: string | null; retry: (() => void) | null }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-fg-secondary">
+      <CircleAlert className="size-4 shrink-0 text-fg" aria-hidden />
+      <span>답하지 못했습니다. {error ? `${error}.` : "Claude Code와 연결이 끊겼어요."}</span>
+      {retry && (
+        <Button variant="outline" className="h-7" onClick={retry}>
+          다시 시도
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** 중단 줄(보드 「중단」) — ■ 「N초 후에 중단했습니다」. 누르면 멈추기 전까지 한 일이 펼쳐진다. */
+function StopLine({ text, open, onToggle }: { text: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      className="flex items-center gap-1.5 text-chat-meta leading-5 text-fg-tertiary transition-colors hover:text-fg-secondary"
+    >
+      <span className="flex size-4 items-center justify-center" aria-hidden>
+        <span className="size-2 rounded-2xs bg-current" />
+      </span>
+      {text}
+    </button>
+  );
+}
+
+/** 마지막 답 아래의 동작 버튼(보드 `.aact`) — 지금은 복사 하나다. */
+function AnswerActions({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="-ml-1.5 flex gap-0.5">
+      <button
+        type="button"
+        aria-label="답 복사"
+        onClick={() => {
+          void navigator.clipboard?.writeText(text).then(() => setCopied(true));
+        }}
+        className={cn("icon-button-quiet text-fg-secondary focus-ring")}
+      >
+        {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
+      </button>
+    </div>
+  );
+}
+
+export default ThreadFlow;

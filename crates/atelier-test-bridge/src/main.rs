@@ -261,6 +261,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_send_now", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_permission", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_rename", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가

@@ -7,6 +7,7 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
 import { useChatEngineFeed, useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
+import { useThreadFeeds } from "@/features/thread/hooks";
 import { countChatsForQuit } from "@/features/chat/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
@@ -113,6 +114,9 @@ function AppShell() {
   useChatEngineFeed();
   // 대기 줄 바뀜도 같은 까닭으로 여기 하나다(three-axes 티켓 20) — 다른 work에 가 있는 동안 대기 말이 가도 돌아오면 맞는 대기 줄이다.
   useChatQueueFeed();
+  // **Thread 엔진의 이벤트(기록 줄 · 대기 줄 · 목록 요약 · 엔진 상태)도 여기 하나로 듣는다**(v1 티켓 05) — 같은 까닭이다: 다른 화면에
+  // 가 있어도 Thread는 돌고, 돌아오면 그사이 흐른 줄이 보여야 한다. 사이드바의 Thread 묶음도 요약 이벤트로 고친다.
+  useThreadFeeds();
 
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open`(위)과 같은 뿌리에서 듣는 것은 그쪽도
@@ -324,6 +328,11 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
+          // 이미 새 Thread면 아무것도 하지 않는다 — 같은 주소가 히스토리에 한 칸 더 쌓이지 않게(아래 nav와 같은 가드). 주소는 **누를 때**
+          // 읽는다 — 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
+          onNewThread={() => {
+            if (router.state.location.pathname !== "/") void navigate({ to: "/" });
+          }}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
