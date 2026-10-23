@@ -54,7 +54,7 @@ fn settled(sandbox: &Sandbox, record: &[Value], thread: &str, session: &str) -> 
 fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
     let (host, thread, session) =
-        thread_on(&sandbox, "2.1.282/interrupt-sigint", &[], "40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
+        thread_on(&sandbox, "2.1.309/interrupt-sigint", &[], "40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
     // 원문은 그 명령이 도는 동안 interrupt를 보냈다 — 도구 줄이 선 뒤에 멈춘다.
     sandbox.wait_thread_record(&thread, |record| {
         of_kind(record, "update").iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "tool_call")
@@ -86,7 +86,7 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
     let sandbox = Sandbox::new();
     // 녹음의 `Write`는 잰 날의 임시 폴더를 고친다 — Thread 폴더 밖이면 판정이 묻지 않고 거절하므로(v1 티켓 22) Thread 폴더로 옮긴다.
     let rebase = [("FAKE_CLAUDE_REBASE", common::RECORDED_PLACE)];
-    let (host, thread, session) = thread_on(&sandbox, "2.1.282/permission-stdio", &rebase, "outside/allowed.txt를 Write로 만들어");
+    let (host, thread, session) = thread_on(&sandbox, "2.1.309/permission-stdio", &rebase, "outside/allowed.txt를 Write로 만들어");
 
     let record = sandbox.wait_thread_kind(&thread, "permission", 1);
     let line = of_kind(&record, "permission")[0];
@@ -118,7 +118,7 @@ fn 권한_요청이_permission_줄에_서고_답하면_claude가_그_답을_받�
     let answers: Vec<Value> =
         sandbox.claude_stdin(&session).into_iter().filter(|line| line["type"] == "control_response").collect();
     assert_eq!(answers.len(), 1, "호스트의 답이 claude의 stdin에 닿았다: {answers:?}");
-    assert_eq!(answers[0]["response"]["request_id"], "93884787-809c-4c0a-82cd-a8ed96112508", "claude가 물은 그 요청의 답이다");
+    assert_eq!(answers[0]["response"]["request_id"], "45001ea8-89cb-4f55-b62e-03bd27dbd536", "claude가 물은 그 요청의 답이다");
     assert_eq!(answers[0]["response"]["response"]["behavior"], "allow");
     assert_eq!(
         host.answer_thread_permission(&thread, "host", "0", "allow_once"),
@@ -151,12 +151,12 @@ fn user_lines(sandbox: &Sandbox, session: &str) -> usize {
 }
 
 /// 원문(워크플로 관문 G7 · G8)의 둘째 턴이 끝난 뒤 백그라운드 작업이 끝나 claude가 스스로 낸 답.
-const SELF_ANSWER: &str = "백그라운드 명령어가 완료되었습니다. 20초 대기 후 \"BG-done\"이 출력되었습니다.";
+const SELF_ANSWER: &str = "백그라운드 명령이 완료되었고, 출력은 `BG-done`, 종료 코드는 0입니다.";
 
 /// 원문 `steer-background-subagent`를 되감는 Thread에 백그라운드를 거는 둘째 말까지 보낸다 — 첫 턴이 끝난 뒤에 보낸다.
 fn background_thread(sandbox: &Sandbox, extra: &[(&str, &str)], second: &str) -> (ConversationHost, String, String) {
     let (host, thread, session) =
-        thread_on(sandbox, "2.1.282/steer-background-subagent", extra, "15초 명령을 앞에서 돌리고 TURN-A-END라고 해");
+        thread_on(sandbox, "2.1.309/steer-background-subagent", extra, "15초 명령을 앞에서 돌리고 TURN-A-END라고 해");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.send_to_thread(&thread, second).expect("둘째 말");
     (host, thread, session)

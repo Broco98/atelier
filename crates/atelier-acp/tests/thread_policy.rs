@@ -82,7 +82,7 @@ fn forbid에_걸린_요청은_사람에게_묻지_않고_policy의_글로_거절
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md("policy:\n  forbid: [shell]\n"));
     // Host의 첫 턴은 명령(`Bash`)을 묻는다.
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.296/g4-background")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background")]));
     let thread = host.start_thread("테스트를 돌려 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
 
     let decided = wait_permission(&sandbox, &thread, "host", "decided");
@@ -114,7 +114,7 @@ fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_
     .unwrap();
     // 경로를 옮기지 않는다 — Host의 `Write`는 잰 날의 임시 폴더를 고친다.
     cart_mode(&sandbox, "auto");
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio")]));
     let thread = host.start_thread("장바구니 수량을 고쳐 줘", in_cart()).expect("Work에 이은 Thread의 첫 말");
 
     let decided = wait_permission(&sandbox, &thread, "host", "decided");
@@ -137,7 +137,7 @@ fn 알아서에서_명령은_묻지_않고_허용_줄로_남고_ask_before에_�
     sandbox.work("cart", &["fe"]);
     cart_mode(&sandbox, "auto");
     // 둘 다 첫 턴에 명령(`python3 -c …`)을 묻는다.
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.296/g4-background")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background")]));
 
     let asking = host.start_thread("배경 작업을 돌려 줘", in_cart()).expect("Host의 Thread");
     let asked = wait_permission(&sandbox, &asking, "host", "asked");
@@ -173,14 +173,14 @@ fn 편집은_허용에서_묻지_않고_허용한_편집도_쓰기_자리를_쥐
     cart_mode(&sandbox, "edits");
     // Host는 편집(`Write`)을 묻고 그 턴 끝머리에서 리뷰어를 불러 기다린다 — 리뷰어는 멈춤을 기다리는 긴 명령을 되감는다. 테스터는
     // 편집을 묻는다. 편집의 경로는 각자의 작업 폴더(worktree)로 옮긴다.
-    let fixtures = json!({"reviewer": "2.1.282/interrupt-sigint"}).to_string();
+    let fixtures = json!({"reviewer": "2.1.309/interrupt-sigint"}).to_string();
     let call = json!([{"by": "host", "at": "result", "tool": "call_agent",
                        "arguments": {"handle": "reviewer", "task": "고친 것을 확인해 줘"}}])
     .to_string();
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
         &[
-            ("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio"),
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
             ("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures),
             ("FAKE_CLAUDE_MCP_CALL", &call),
             ("FAKE_CLAUDE_REBASE", RECORDED_PLACE),
@@ -218,7 +218,7 @@ fn 물어보는_정도는_work에_이은_thread면_work_점_파일에_아니면_
     // Host의 턴 둘이 각각 편집(`Write`)을 묻는다 — 경로는 작업 폴더로 옮긴다.
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
-        &[("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
     ));
 
     // Work 없는 Thread — 처음은 매번 묻기다.
@@ -260,7 +260,7 @@ fn thread를_열면_지금_물어보는_정도가_함께_온다_work에_이은_t
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
     let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
     wait_turns_of(&sandbox, &plain, "host", 1);
@@ -295,7 +295,7 @@ fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
     let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
     wait_turns_of(&sandbox, &plain, "host", 1);
@@ -323,7 +323,7 @@ fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같�
 fn 새_thread는_첫_말과_함께_고른_정도로_서고_계획만이면_claude가_계획_모드로_뜬다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
     let thread = host
         .start_thread_asking("계획만 세워 줘", &[], ThreadLink::NoWork, Some(AskLevel::Plan))
@@ -345,7 +345,7 @@ fn 편집은_허용으로_세운_thread의_첫_편집은_묻지_않고_허용되
     // Host의 첫 턴이 편집(`Write`)을 묻는다 — 경로는 Thread 폴더로 옮긴다(Thread 폴더 밖이면 판정이 거절한다).
     let host = sandbox.host(sandbox.claude_login_shell(
         "normal",
-        &[("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
     ));
 
     let thread = host
@@ -373,7 +373,7 @@ fn claude는_기본_모드로만_뜨고_계획만일_때만_계획_모드로_뜬
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));
     sandbox.work("cart", &["fe"]);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
 
     let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없는 Thread");
     wait_turns_of(&sandbox, &plain, "host", 1);

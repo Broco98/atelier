@@ -728,7 +728,7 @@ pub fn wait_record_at(path: &Path, done: impl Fn(&[Value]) -> bool) -> Vec<Value
 /// 턴 · 죽음 같은 비동기 일을 기다리는 마감.
 pub const PATIENCE: Duration = Duration::from_secs(10);
 
-/// 녹음 `2.1.282/permission-stdio`의 `Write`가 쓰는 폴더 — 잰 날의 임시 폴더다. 가짜 claude에 `FAKE_CLAUDE_REBASE`로 주면 그 경로를
+/// 녹음 `2.1.309/permission-stdio`의 `Write`가 쓰는 폴더 — 잰 날의 임시 폴더다. 가짜 claude에 `FAKE_CLAUDE_REBASE`로 주면 그 경로를
 /// claude의 작업 폴더로 옮겨 낸다(v1 티켓 22 — 판정은 작업 자리 밖 편집을 묻지 않고 거절한다).
 #[allow(dead_code)] // 시험 파일마다 따로 엮이는 모듈이라 쓰지 않는 파일도 있다.
 pub const RECORDED_PLACE: &str = "/tmp/gate/ws/g1/outside";

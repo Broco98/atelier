@@ -41,10 +41,10 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
     expect(tools.map((one) => phraseText(describeTool(one).phrase))).toEqual([
       "notes.txt 작성함",
       "notes.txt 읽음",
-      "wc -c /tmp/gate/ws/g3/wt/notes.txt 실행함",
+      "wc -c notes.txt 실행함",
     ]);
     expect(describeTool(tools[0]).diffs.map((piece) => [piece.added, piece.deleted])).toEqual([[1, 0]]);
-    expect(describeTool(tools[2]).shell?.output).toBe("       4 /tmp/gate/ws/g3/wt/notes.txt");
+    expect(describeTool(tools[2]).shell?.output).toBe("       5 notes.txt");
   });
 
   it("하는 중에는 현재형이다", () => {

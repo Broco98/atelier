@@ -2,7 +2,7 @@
 //!
 //! - `auth status` · `auth login` — 로그인 확인과 로그인 명령의 흉내(three-axes 티켓 12). 몸은 `src/fakes/login.rs`이고
 //!   가짜 `codex`와 함께 쓴다 — 로그인 상태 파일 · 문 · 영수증의 약속은 그 파일 머리에 있다.
-//! - `-p …` — 판 02가 잰 **2.1.296**의 stream-json 원문을 되감는다(three-axes 티켓 13). 셸 스크립트로는 제어 메시지에
+//! - `-p …` — 진짜 claude **2.1.309**의 stream-json 원문(v1 티켓 09가 다시 녹음)을 되감는다(three-axes 티켓 13). 셸 스크립트로는 제어 메시지에
 //!   답하기 버거워 Rust bin으로 짰다(워크플로 티켓 07). 아래는 이 갈래의 약속이다.
 //!
 //! 변환기가 `claude -p …`로 띄우고, env는 변환기가 받은 것(호스트가 준 로그인 env) 그대로라 시나리오와 영수증 자리는 가짜
@@ -12,7 +12,7 @@
 //! - `FAKE_CLAUDE_RECEIPTS` — 영수증 폴더. 세션 cwd에 떨어뜨리지 않는다 — cwd는 spec 폴더이거나 워크트리다.
 //! - `FAKE_CLAUDE_ACCOUNT_EMAIL` — 있으면 `initialize` 응답의 `account.email`에 이 이메일을 싣는다. 실측 원문은 이미
 //!   가려져 있어(`<redacted>`), 가리기를 재려면 진짜 같은 이메일이 실려 와야 한다.
-//! - `FAKE_CLAUDE_FIXTURE` — 턴을 되감을 원문(`<CLI 판>/<이름>`, 없으면 `2.1.296/slash-skill-noreplay`). 고를 수 있는 것은
+//! - `FAKE_CLAUDE_FIXTURE` — 턴을 되감을 원문(`<CLI 판>/<이름>`, 없으면 `2.1.309/slash-skill-noreplay`). 고를 수 있는 것은
 //!   `claude_replay`의 원문 표다.
 //! - `FAKE_CLAUDE_SUGGESTIONS` — 있으면 내는 `can_use_tool`마다 `permission_suggestions`를 이 JSON으로 바꾼다. 세션 제안이 없는
 //!   요청 · 설정 파일에 쓰는 제안(`localSettings` · `userSettings`, 워크플로 관문 G1의 모양)이 섞인 요청을 만든다.
@@ -86,7 +86,7 @@ fn main() {
     let agent = agent_of(&args);
     let fixture = agent_fixture(agent.as_deref())
         .or_else(|| std::env::var("FAKE_CLAUDE_FIXTURE").ok())
-        .unwrap_or_else(|| "2.1.296/slash-skill-noreplay".to_string());
+        .unwrap_or_else(|| "2.1.309/slash-skill-noreplay".to_string());
     let Some(recorded) = claude_replay::fixture(&fixture) else {
         eprintln!("모르는 원문: {fixture} (있는 것: {})", claude_replay::fixture_names().join(", "));
         std::process::exit(2);
@@ -309,7 +309,7 @@ impl Fake {
         std::env::var_os("FAKE_CLAUDE_FORGETS").is_none() && self.path("json").is_some_and(|path| path.exists())
     }
 
-    /// 없는 세션을 되살리라고 받았다 — 진짜 claude 2.1.296처럼(판 02 관문 G4) initialize에 답하지 않고, stderr에 까닭을,
+    /// 없는 세션을 되살리라고 받았다 — 진짜 claude 2.1.296 · 2.1.309처럼(판 02 관문 G4) initialize에 답하지 않고, stderr에 까닭을,
     /// stdout에 `result/error_during_execution`을 내고 exit 1로 끝난다.
     fn forgotten_session(&self) -> ! {
         eprintln!("No conversation found with session ID: {}", self.session_id);

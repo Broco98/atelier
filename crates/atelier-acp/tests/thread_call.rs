@@ -30,7 +30,7 @@ fn calling(sandbox: &Sandbox, calls: &[Value], reviewer_fixture: &str) -> atelie
     sandbox.claude_login_shell(
         "normal",
         &[
-            ("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools"),
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools"),
             ("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures),
             ("FAKE_CLAUDE_MCP_CALL", &calls),
             ("FAKE_CLAUDE_REBASE", common::RECORDED_PLACE),
@@ -65,7 +65,7 @@ fn host가_부른_agent가_들어와_맡긴_일을_받고_그_턴의_마지막_�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
-    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "방금 고친 장바구니를 봐 줘")], "2.1.296/edit-subagent"));
+    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "방금 고친 장바구니를 봐 줘")], "2.1.309/edit-subagent"));
 
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let record = wait_turns_of(&sandbox, &thread, "host", 1);
@@ -144,7 +144,7 @@ fn 같은_thread에서_다시_부르면_불린_agent의_session이_이어지고_
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
     // Host의 claude는 사람의 말마다 턴 앞머리에서 리뷰어를 부른다.
-    let shell = || calling(&sandbox, &[call_by("host", "reviewer", "다시 봐 줘")], "2.1.296/edit-subagent");
+    let shell = || calling(&sandbox, &[call_by("host", "reviewer", "다시 봐 줘")], "2.1.309/edit-subagent");
     let host = sandbox.host(shell());
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     wait_turns_of(&sandbox, &thread, "host", 1);
@@ -191,8 +191,8 @@ fn 불린_agent가_사람에게_물으면_카드는_불린_agent의_것이고_�
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
     // 리뷰어의 턴은 `Write`를 묻는다(can_use_tool) — 경로는 Thread 폴더로 옮겼다(Work 밖이면 판정이 거절한다). 허락하면
-    // 「완료되었습니다.」로 끝난다.
-    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "파일 하나 써 줘")], "2.1.282/permission-stdio"));
+    // 「done」으로 끝난다.
+    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "파일 하나 써 줘")], "2.1.309/permission-stdio"));
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
 
     let asked = |record: &[Value]| {
@@ -221,8 +221,8 @@ fn 불린_agent가_사람에게_물으면_카드는_불린_agent의_것이고_�
     let ended = of_kind(&record, "call")[1];
     let host_end = record.iter().find(|line| line["kind"] == "turn-end" && line["who"] == "host").expect("Host의 턴 끝");
     assert!(seq(answered) < seq(ended) && seq(ended) < seq(host_end), "답 → 결과 → 부른 턴의 끝:\n{text}");
-    assert_eq!(ended["payload"]["answer"], "완료되었습니다.", "{text}");
-    assert_eq!(answers(&sandbox, &host_session), [("reviewer".to_owned(), false, "완료되었습니다.".to_owned())]);
+    assert_eq!(ended["payload"]["answer"], "done", "{text}");
+    assert_eq!(answers(&sandbox, &host_session), [("reviewer".to_owned(), false, "done".to_owned())]);
 
     host.shut_down();
 }
@@ -234,7 +234,7 @@ fn host가_리뷰어를_불러_결과를_받은_기록이_검사_자료와_같�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
-    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "방금 고친 장바구니를 봐 줘")], "2.1.296/edit-subagent"));
+    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "방금 고친 장바구니를 봐 줘")], "2.1.309/edit-subagent"));
 
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let record = wait_turns_of(&sandbox, &thread, "host", 1);
@@ -290,7 +290,7 @@ fn 사람이_thread를_멈추면_부른_턴과_불린_턴이_함께_멈추고_�
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
     // 리뷰어의 턴은 오래 도는 `Bash`에서 멈춤을 기다린다.
-    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "테스트를 돌려 줘")], "2.1.282/interrupt-sigint"));
+    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "테스트를 돌려 줘")], "2.1.309/interrupt-sigint"));
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     sandbox.wait_thread_record(&thread, |record| {
         record.iter().any(|line| line["who"] == "reviewer" && line["payload"]["update"]["sessionUpdate"] == "tool_call")
@@ -318,7 +318,7 @@ fn 불린_agent가_다른_일을_하는_동안_맡긴_일은_그_대기_줄에�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
-    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "이것도 봐 줘")], "2.1.282/interrupt-sigint"));
+    let host = sandbox.host(calling(&sandbox, &[call_by("host", "reviewer", "이것도 봐 줘")], "2.1.309/interrupt-sigint"));
     // 사람이 먼저 리뷰어에게 오래 도는 일을 맡겼다.
     let thread = host.start_thread("@reviewer 테스트를 돌려 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     sandbox.wait_thread_record(&thread, |record| {
@@ -376,7 +376,7 @@ fn 목록에_없는_agent_범위_밖의_agent_호출_고리_안의_agent는_부�
         call_by("reviewer", "host", "되돌아 묻는다"),
         call_by("reviewer", "tester", "돌려 줘"),
     ];
-    let host = sandbox.host(calling(&sandbox, &calls, "2.1.296/edit-subagent"));
+    let host = sandbox.host(calling(&sandbox, &calls, "2.1.309/edit-subagent"));
 
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let record = wait_turns_of(&sandbox, &thread, "host", 1);
@@ -427,7 +427,7 @@ fn 사람이_다시_맡기면_같은_글로_부르기가_다시_돌고_그_결�
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
     // Host의 claude는 스스로 부르지 않는다 — 사람이 호출 줄의 「다시 맡기기」로 부른다(§8).
-    let host = sandbox.host(calling(&sandbox, &[], "2.1.296/edit-subagent"));
+    let host = sandbox.host(calling(&sandbox, &[], "2.1.309/edit-subagent"));
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     wait_turns_of(&sandbox, &thread, "host", 1);
 
@@ -468,7 +468,7 @@ fn 다시_맡기기가_부를_수_없으면_까닭으로_거절되고_기록에�
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
-    let host = sandbox.host(calling(&sandbox, &[], "2.1.296/edit-subagent"));
+    let host = sandbox.host(calling(&sandbox, &[], "2.1.309/edit-subagent"));
     let thread = host.start_thread("장바구니 수량이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
     let before = wait_turns_of(&sandbox, &thread, "host", 1).len();
 

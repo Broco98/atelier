@@ -23,7 +23,7 @@ fn rename_call(title: &str) -> String {
 
 /// 답만 하는 턴을 되감되, 턴 앞머리에서 그 도구를 부르는 가짜 claude의 로그인 셸.
 fn calling(sandbox: &Sandbox, call: &str) -> atelier_acp::ShellSource {
-    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools"), ("FAKE_CLAUDE_MCP_CALL", call)])
+    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools"), ("FAKE_CLAUDE_MCP_CALL", call)])
 }
 
 /// claude가 받은 `--mcp-config`의 Thread 도구 서버 — `{type, command, args, env}`.

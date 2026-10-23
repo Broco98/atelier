@@ -38,17 +38,17 @@ fn sandbox() -> Sandbox {
 }
 
 /// Host는 `host` 원문을 되감고 그 턴 끝머리에서 리뷰어를 부른다. 리뷰어 · 러너는 제 원문을, 나머지(테스터)는 `Write`를 묻는 턴
-/// 둘(`2.1.282/permission-stdio`)을 되감는다. 그 `Write`의 경로는 각자의 작업 폴더(Work `cart`의 worktree)로 옮긴다 — 원문의 경로는
+/// 둘(`2.1.309/permission-stdio`)을 되감는다. 그 `Write`의 경로는 각자의 작업 폴더(Work `cart`의 worktree)로 옮긴다 — 원문의 경로는
 /// Work 밖이라 판정이 묻지 않고 거절한다(v1 티켓 22).
 fn shell(sandbox: &Sandbox, host: &str, reviewer: &str) -> atelier_acp::ShellSource {
-    let fixtures = json!({"host": host, "reviewer": reviewer, "runner": "2.1.296/g4-background"}).to_string();
+    let fixtures = json!({"host": host, "reviewer": reviewer, "runner": "2.1.309/g4-background"}).to_string();
     let call = json!([{"by": "host", "at": "result", "tool": "call_agent",
                        "arguments": {"handle": "reviewer", "task": "고친 것을 확인해 줘"}}])
     .to_string();
     sandbox.claude_login_shell(
         "normal",
         &[
-            ("FAKE_CLAUDE_FIXTURE", "2.1.282/permission-stdio"),
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
             ("FAKE_CLAUDE_AGENT_FIXTURES", &fixtures),
             ("FAKE_CLAUDE_MCP_CALL", &call),
             ("FAKE_CLAUDE_REBASE", common::RECORDED_PLACE),
@@ -113,7 +113,7 @@ fn host_writes(sandbox: &Sandbox, host: &ConversationHost) -> String {
 #[test]
 fn 편집을_허락받은_session이_쓰기_자리를_쥐면_같은_work의_다른_thread의_편집은_묻지_않고_주인의_글로_거절되고_턴이_끝나면_놓인다() {
     let sandbox = sandbox();
-    let host = sandbox.host(shell(&sandbox, "2.1.282/permission-stdio", "2.1.282/interrupt-sigint"));
+    let host = sandbox.host(shell(&sandbox, "2.1.309/permission-stdio", "2.1.309/interrupt-sigint"));
     let writing = host_writes(&sandbox, &host);
 
     // 같은 Work에 이은 다른 Thread에서 테스터가 편집을 묻는다 — 사람에게 묻지 않고 거절된다.
@@ -158,7 +158,7 @@ fn 편집을_허락받은_session이_쓰기_자리를_쥐면_같은_work의_다�
 fn 쓰기_자리를_쥔_agent가_부른_agent는_그_자리를_이어_써서_사람에게_묻고_그동안에도_다른_thread의_편집은_거절된다() {
     let sandbox = sandbox();
     // 리뷰어도 편집을 묻는다 — 작업 자리 안으로 옮긴 `Write`.
-    let host = sandbox.host(shell(&sandbox, "2.1.282/permission-stdio", "2.1.282/permission-stdio"));
+    let host = sandbox.host(shell(&sandbox, "2.1.309/permission-stdio", "2.1.309/permission-stdio"));
     let writing = host_writes(&sandbox, &host);
 
     // Host가 쥔 채 부른 리뷰어의 편집 — 고리 안이라 거절하지 않고 사람에게 묻는다(§10 「이어 쓴다」).
@@ -181,7 +181,7 @@ fn 쓰기_자리를_쥔_agent가_부른_agent는_그_자리를_이어_써서_사
     let reviewer_session = sandbox.thread_session_id(&writing, "reviewer");
     assert_eq!(decisions(&sandbox, &reviewer_session)[0]["behavior"], "allow", "리뷰어의 claude는 허락을 받는다");
     let ended = &of_kind(&record, "call")[1]["payload"];
-    assert_eq!((ended["outcome"].clone(), ended["answer"].clone()), (json!("answered"), json!("완료되었습니다.")), "{text}");
+    assert_eq!((ended["outcome"].clone(), ended["answer"].clone()), (json!("answered"), json!("done")), "{text}");
 
     host.shut_down();
 }
@@ -190,7 +190,7 @@ fn 쓰기_자리를_쥔_agent가_부른_agent는_그_자리를_이어_써서_사
 fn 명령을_허락받은_session은_쓰기_자리를_쥐지_않아_그_턴이_도는_동안에도_다른_thread의_편집은_사람에게_묻는다() {
     let sandbox = sandbox();
     // Host는 명령(`Bash`)을 묻는 턴을 되감고, 그 턴 끝머리에서 부른 리뷰어는 오래 도는 명령에서 멈춤을 기다린다.
-    let host = sandbox.host(shell(&sandbox, "2.1.296/g4-background", "2.1.282/interrupt-sigint"));
+    let host = sandbox.host(shell(&sandbox, "2.1.309/g4-background", "2.1.309/interrupt-sigint"));
     let running = host.start_thread(FIXING, in_cart()).expect("Work에 이은 Thread의 첫 말");
     let asked = wait_permission(&sandbox, &running, "host", "asked");
     assert_eq!(asked["payload"]["toolCall"]["kind"], "execute", "Host가 묻는 것은 명령이다");
@@ -214,7 +214,7 @@ fn 명령을_허락받은_session은_쓰기_자리를_쥐지_않아_그_턴이_�
 #[test]
 fn 쓰기_자리를_쥔_session이_있어도_같은_work의_다른_session의_명령은_막지_않는다() {
     let sandbox = sandbox();
-    let host = sandbox.host(shell(&sandbox, "2.1.282/permission-stdio", "2.1.282/interrupt-sigint"));
+    let host = sandbox.host(shell(&sandbox, "2.1.309/permission-stdio", "2.1.309/interrupt-sigint"));
     let writing = host_writes(&sandbox, &host);
 
     // 러너는 명령(`Bash`)을 묻는다 — Host가 쓰기 자리를 쥐었어도 사람에게 묻는다. 테스트를 돌리는 리뷰어가 막히지 않는다(S20).
@@ -238,7 +238,7 @@ fn 쓰기_자리를_쥔_session이_있어도_같은_work의_다른_session의_�
 #[test]
 fn 물은_사이에_다른_session이_쓰기_자리를_쥐었으면_사람이_허락해도_그_편집은_주인의_글로_거절된다() {
     let sandbox = sandbox();
-    let host = sandbox.host(shell(&sandbox, "2.1.282/permission-stdio", "2.1.282/interrupt-sigint"));
+    let host = sandbox.host(shell(&sandbox, "2.1.309/permission-stdio", "2.1.309/interrupt-sigint"));
     // 두 Thread가 함께 편집을 묻는다 — 아직 아무도 쥐지 않아 둘 다 승인 카드다.
     let writing = host.start_thread(FIXING, in_cart()).expect("Work에 이은 Thread의 첫 말");
     let first = wait_permission(&sandbox, &writing, "host", "asked");

@@ -43,11 +43,11 @@ describe("Thread 기록을 턴으로 접는다", () => {
       "notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘",
     ]);
     expect(model.turns.map((turn) => turn.who)).toEqual(["host", "host"]);
-    expect(model.turns.map((turn) => turn.end && headline(turn.end))).toEqual(["5초 동안 작업함", "13초 동안 작업함"]);
+    expect(model.turns.map((turn) => turn.end && headline(turn.end))).toEqual(["4초 동안 작업함", "10초 동안 작업함"]);
     // 턴 끝 메시지(마지막 도구 뒤의 답)만 접힌 턴에 남는다.
     expect(model.turns.map((turn) => finalMessages(turn).map((entry) => entry.kind === "message" && entry.text))).toEqual([
-      ["Hello from turn"],
-      ["4"],
+      ["hello from turn"],
+      ["5"],
     ]);
   });
 
@@ -58,9 +58,9 @@ describe("Thread 기록을 턴으로 접는다", () => {
   it("도구 줄은 시작한 줄과 끝난 줄의 시각을 든다 — 걸린 시간을 말하려고", () => {
     const tools = foldThread(blessed).turns[1].entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => [tool.call.title, tool.startedAt, tool.endedAt])).toEqual([
-      ["Write /tmp/gate/ws/g3/wt/notes.txt", "2026-10-10T10:00:13.000+09:00", "2026-10-10T10:00:14.000+09:00"],
-      ["Read /tmp/gate/ws/g3/wt/notes.txt", "2026-10-10T10:00:16.000+09:00", "2026-10-10T10:00:17.000+09:00"],
-      ["wc -c /tmp/gate/ws/g3/wt/notes.txt", "2026-10-10T10:00:19.000+09:00", "2026-10-10T10:00:20.000+09:00"],
+      ["Write /tmp/gate/ws/g3/wt/notes.txt", "2026-10-10T10:00:12.000+09:00", "2026-10-10T10:00:13.000+09:00"],
+      ["Read /tmp/gate/ws/g3/wt/notes.txt", "2026-10-10T10:00:14.000+09:00", "2026-10-10T10:00:15.000+09:00"],
+      ["wc -c notes.txt", "2026-10-10T10:00:16.000+09:00", "2026-10-10T10:00:17.000+09:00"],
     ]);
   });
 
@@ -82,9 +82,9 @@ describe("Thread 기록을 턴으로 접는다", () => {
 describe("시스템 줄", () => {
   it("이름 바꾸기는 그 자리에 「Thread 이름을 X로 바꿈」으로 선다 — 조사는 이름의 받침을 따른다", () => {
     const lines: RecordLine[] = [
-      ...blessed.slice(0, 10),
+      ...blessed.slice(0, 9),
       { seq: 30, at: at(3), kind: "title", payload: { title: "환불 API 버그", before: "세 낱말로" } },
-      ...blessed.slice(10),
+      ...blessed.slice(9),
       { seq: 31, at: at(4), kind: "title", payload: { title: "결제 흐름", before: "환불 API 버그" } },
     ];
     const { system } = foldThread(lines);
@@ -102,10 +102,10 @@ describe("시스템 줄", () => {
     ]);
     expect(model.turns).toHaveLength(1);
     const [turn] = model.turns;
-    expect(turn.end && headline(turn.end)).toBe("8초 동안 작업함");
+    expect(turn.end && headline(turn.end)).toBe("7초 동안 작업함");
     const tools = turn.entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["atelier-thread.rename_thread 불러옴"]);
-    expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual(["Hello from turn"]);
+    expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual(["hello from turn"]);
   });
 
   it("Host 밖의 참여자가 들고 나면 이름을 굵게 한 줄이 선다", () => {
@@ -374,12 +374,12 @@ describe("호출 줄(v1 티켓 17)", () => {
     const model = foldThread(calling);
     const [host, reviewer] = model.turns;
     expect(model.turns.map((turn) => turn.who)).toEqual(["host", "reviewer"]);
-    expect(host.entries.map((entry) => entry.kind)).toEqual(["call", "thought", "message"]);
+    expect(host.entries.map((entry) => entry.kind)).toEqual(["call", "message"]);
     const call = host.entries[0] as CallEntry;
     expect([call.id, call.from, call.to, call.text]).toEqual(["fake-call", "host", "reviewer", "방금 고친 장바구니를 봐 줘"]);
     expect(call.end).toEqual({ outcome: "answered", answer: "edited", reason: null, durationMs: 10000 });
     // 도구의 끝(seq 23)이 와도 도구 줄은 다시 서지 않는다 — 접힌 턴에는 호출 줄 뒤의 답만 펼쳐 둔다.
-    expect(finalMessages(host).map((entry) => entry.kind === "message" && entry.text)).toEqual(["Hello from turn"]);
+    expect(finalMessages(host).map((entry) => entry.kind === "message" && entry.text)).toEqual(["hello from turn"]);
     expect(reviewer.entries.some((entry) => entry.kind === "call")).toBe(false);
   });
 

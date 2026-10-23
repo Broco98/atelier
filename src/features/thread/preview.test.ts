@@ -41,8 +41,8 @@ const turnEnd = (seq: number, durationMs: number): RecordLine => ({
 describe("Thread의 마지막 말", () => {
   it("끝난 턴이면 Agent의 턴 끝 답이고, 시각은 그 턴이 끝난 때다", () => {
     const said = lastSaid(blessed);
-    expect(said && { who: said.who, name: said.name, text: said.text }).toEqual({ who: "host", name: "Host", text: "4" });
-    expect(said && Date.parse(said.at)).toBe(Date.parse("2026-10-10T10:00:24.000+09:00"));
+    expect(said && { who: said.who, name: said.name, text: said.text }).toEqual({ who: "host", name: "Host", text: "5" });
+    expect(said && Date.parse(said.at)).toBe(Date.parse("2026-10-10T10:00:20.000+09:00"));
   });
 
   it("보내고 아직 답이 없으면 사람의 말이다", () => {
@@ -101,6 +101,6 @@ describe("Agent를 부른 Thread(v1 티켓 17)", () => {
     .map((line) => JSON.parse(line) as RecordLine);
 
   it("부른 Agent가 결과를 받아 마지막에 한 답이 마지막 말이다 — 먼저 끝난 불린 Agent의 답이 아니다", () => {
-    expect(lastSaid(calling)).toMatchObject({ who: "host", name: "Host", text: "Hello from turn" });
+    expect(lastSaid(calling)).toMatchObject({ who: "host", name: "Host", text: "hello from turn" });
   });
 });

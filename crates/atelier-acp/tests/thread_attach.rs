@@ -27,7 +27,7 @@ const PAST_HEAD: &str =
      함께 담았다.";
 
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
-    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")])
+    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")])
 }
 
 /// 그 Session의 claude가 받은 말(stdin의 user 줄)의 블록들.
@@ -76,15 +76,15 @@ fn 첨부한_말은_절대_경로_목록이_본문_바로_앞에_가고_sent_줄
     assert_eq!(
         &first[1..],
         [
-            json!({"type": "text", "text": format!("{ATTACHED_HEAD}\n- {}", log.display())}),
+            json!({"type": "text", "text": format!("{ATTACHED_HEAD}\n- {}\n\n", log.display())}),
             json!({"type": "text", "text": "이 로그 봐 줘"}),
         ],
-        "첨부는 본문 바로 앞에 경로 목록으로 간다 — 내용은 싣지 않는다(S30)"
+        "첨부는 본문 바로 앞에 경로 목록으로 간다 — 내용은 싣지 않는다(S30). claude가 본문과 이어 읽지 않게 빈 줄로 끝난다(v1 티켓 09)"
     );
     assert_eq!(
         got[1],
         json!([
-            {"type": "text", "text": format!("{ATTACHED_HEAD}\n- {}\n- {}/", log.display(), shots.display())},
+            {"type": "text", "text": format!("{ATTACHED_HEAD}\n- {}\n- {}/\n\n", log.display(), shots.display())},
             {"type": "text", "text": "이 폴더도"}
         ]),
         "폴더는 끝에 `/`를 붙여 가른다"
@@ -154,7 +154,7 @@ fn 나중에_들어온_agent의_지난_말에도_사람이_첨부한_경로가_�
     assert_eq!(
         first[1]["text"],
         format!(
-            "{PAST_HEAD}\n\n[사람 → @host]\n{ATTACHED_HEAD}\n- {}\n이 로그 봐 줘\n\n[@host]\nHello from turn",
+            "{PAST_HEAD}\n\n[사람 → @host]\n{ATTACHED_HEAD}\n- {}\n이 로그 봐 줘\n\n[@host]\nhello from turn\n\n",
             log.display()
         ),
         "사람의 말에 붙은 경로도 지난 말에 함께 간다 — 리뷰어도 그 파일을 읽을 수 있다"

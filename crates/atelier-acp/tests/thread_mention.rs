@@ -22,7 +22,7 @@ const REVIEWER_MD: &str = concat!(
 
 /// 두 턴(답만 하는 턴 · 도구를 쓰는 턴)을 되감는 가짜 claude의 로그인 셸 — 참여자마다 제 claude가 같은 원문을 처음부터 되감는다.
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
-    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")])
+    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")])
 }
 
 /// 그 Session의 claude가 받은 말(stdin의 user 줄)의 블록들.
@@ -243,7 +243,7 @@ fn 참여자마다_대기_줄이_따로이고_thread의_지금은_handle별로_�
     sandbox.library_agent("host", HOST_MD);
     sandbox.library_agent("reviewer", REVIEWER_MD);
     // 원문은 40초 자는 명령을 돌리다 interrupt로 멈춘 턴이다 — 참여자마다 제 claude가 같은 턴을 돈다.
-    let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/interrupt-sigint")]);
+    let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")]);
     let (host, events) = sandbox.host_with_events(shell);
     let running = |who: &'static str| {
         move |record: &[Value]| {
@@ -329,8 +329,8 @@ fn 새로_들어온_agent는_머리말_뒤에_지난_말을_받고_그_뒤로는
     assert_eq!(
         first[1]["text"],
         format!(
-            "{PAST_HEAD}\n\n[사람 → @host]\n세 낱말로 답해 줘: hello from turn\n\n[@host]\nHello from turn\n\n\
-             [사람 → @host]\nnotes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘\n\n[@host]\n4"
+            "{PAST_HEAD}\n\n[사람 → @host]\n세 낱말로 답해 줘: hello from turn\n\n[@host]\nhello from turn\n\n\
+             [사람 → @host]\nnotes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘\n\n[@host]\n5\n\n"
         ),
         "사람의 말과 Host의 턴마다 마지막 메시지를 차례로 — 도구 기록 · 생각은 넘기지 않는다"
     );
@@ -354,8 +354,8 @@ fn 새로_들어온_agent는_머리말_뒤에_지난_말을_받고_그_뒤로는
         host_heard[2],
         json!([
             {"type": "text", "text": format!(
-                "{PAST_HEAD}\n\n[사람 → @reviewer]\n@reviewer 지금까지 한 일을 봐 줘\n\n[@reviewer]\nHello from turn\n\n\
-                 [사람 → @reviewer]\n@reviewer 하나만 더\n\n[@reviewer]\n4"
+                "{PAST_HEAD}\n\n[사람 → @reviewer]\n@reviewer 지금까지 한 일을 봐 줘\n\n[@reviewer]\nhello from turn\n\n\
+                 [사람 → @reviewer]\n@reviewer 하나만 더\n\n[@reviewer]\n5\n\n"
             )},
             {"type": "text", "text": "리뷰를 반영해 줘"}
         ]),

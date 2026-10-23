@@ -553,6 +553,9 @@ impl<H: TurnHands> Seat<'_, H> {
             prompt.push(attached.block.clone());
         }
         prompt.extend(attachments::block(attachments));
+        for block in &mut prompt {
+            set_apart(block);
+        }
         let body = call.as_ref().map_or_else(|| text.to_owned(), |call| call.body(text));
         prompt.push(json!({"type": "text", "text": body}));
         match &call {
@@ -581,6 +584,14 @@ impl<H: TurnHands> Seat<'_, H> {
     fn announce(&mut self) {
         let queue = self.order.queue();
         self.hands.queue_changed(queue);
+    }
+}
+
+/// 본문 앞 블록(머리말 · 지난 말 · 인용 · 첨부)이 줄바꿈으로 끝나지 않으면 빈 줄을 붙인다. claude는 한 말의 글 블록을 사이 없이
+/// 이어 읽는다(v1 티켓 09 실측 — 첨부 블록의 마지막 경로 뒤에 본문이 붙어, 모델이 본문을 경로의 끝으로 읽었다).
+fn set_apart(block: &mut Value) {
+    if let Some(text) = block["text"].as_str().filter(|text| !text.ends_with('\n')) {
+        block["text"] = json!(format!("{text}\n\n"));
     }
 }
 
@@ -751,8 +762,9 @@ mod tests {
         LoginLost,
     }
 
-    const PREAMBLE: &str = "머리말";
-    const QUOTE_BLOCK: &str = "인용 블록";
+    // 진짜 머리말 · 인용 블록처럼 줄바꿈으로 끝난다 — 그런 블록은 그대로 간다.
+    const PREAMBLE: &str = "머리말\n";
+    const QUOTE_BLOCK: &str = "인용 블록\n";
 
     /// 시험의 adapter — 찍은 것은 찍은 차례의 수다(1부터). 스위치로 밖의 상태와 실패를 정하고, 한 일을 `log`에 남긴다.
     struct FakeHands {
@@ -1346,6 +1358,8 @@ mod tests {
 
     #[test]
     fn 지난_말은_머리말_뒤에_서고_대기_줄의_말은_넣을_때가_아니라_보내는_그때의_지난_말을_든다() {
+        // 지난 말처럼 줄바꿈으로 끝나지 않은 블록은 빈 줄을 붙여 본문과 가른다 — claude는 이웃한 글 블록을 사이 없이 이어 읽는다
+        // (v1 티켓 09 실측).
         let mut rig = Rig::new();
         rig.hands.past = Some("지난 말 하나");
         rig.say("첫 말").unwrap();
@@ -1357,7 +1371,7 @@ mod tests {
         let text = |text: &str| json!({"type": "text", "text": text});
         assert_eq!(
             rig.hands.prompts,
-            [vec![text(PREAMBLE), text("지난 말 하나"), text("첫 말")], vec![text("지난 말 둘"), text("대기")]]
+            [vec![text(PREAMBLE), text("지난 말 하나\n\n"), text("첫 말")], vec![text("지난 말 둘\n\n"), text("대기")]]
         );
     }
 

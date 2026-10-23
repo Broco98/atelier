@@ -2,7 +2,7 @@
  "type": "control_response",
  "response": {
   "subtype": "success",
-  "request_id": "req_0820c4cd",
+  "request_id": "req_bb3ee8fc",
   "response": {
    "commands": [
     {
@@ -242,12 +242,12 @@
     },
     {
      "name": "probe-skill",
-     "description": "02-a 실측용 탐침 스킬. 부르면 정해진 한 줄만 답한다. (project)",
+     "description": "Probe skill for the Atelier recording. Use only when asked for probe-skill. (project)",
      "argumentHint": ""
     },
     {
      "name": "probe-cmd",
-     "description": "02-a 실측용 탐침 명령 (project)",
+     "description": "Probe command for the Atelier recording. (project)",
      "argumentHint": ""
     },
     {
@@ -543,7 +543,7 @@
     },
     {
      "name": "plugin-authoring",
-     "description": "Make a mod: a change to Claude's own interface or behaviour, such as a live pane or panel, a band above the prompt, a status line, a toast, a slash command, or a hook on tool calls or prompts. Use to make, change or debug a mod or its hooks module.",
+     "description": "Make a mod: a change to Claude's own interface or behaviour, such as a panel or pane that stays beside the chat and updates, a band, status line, toast, slash command, or hook on tool calls. Use to make, change or debug a mod or its hooks module.",
      "argumentHint": "",
      "builtin": true
     },
@@ -947,7 +947,8 @@
      ],
      "supportsAdaptiveThinking": true,
      "supportsFastMode": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": false
     },
     {
      "value": "opus",
@@ -964,7 +965,8 @@
      ],
      "supportsAdaptiveThinking": true,
      "supportsFastMode": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": false
     },
     {
      "value": "fable",
@@ -980,7 +982,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": false
     },
     {
      "value": "sonnet",
@@ -996,7 +999,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": false
     },
     {
      "value": "haiku",
@@ -1012,13 +1016,15 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": false
     },
     {
      "value": "claude-haiku-4-5-20251001",
      "resolvedModel": "claude-haiku-4-5-20251001",
      "displayName": "Haiku 4.5",
-     "description": "Fastest for quick answers"
+     "description": "Fastest for quick answers",
+     "supportsThinkingOff": true
     },
     {
      "value": "claude-sonnet-5",
@@ -1034,7 +1040,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": true
     },
     {
      "value": "claude-opus-5",
@@ -1051,7 +1058,8 @@
      ],
      "supportsAdaptiveThinking": true,
      "supportsFastMode": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": true
     },
     {
      "value": "claude-fable-5",
@@ -1067,7 +1075,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": false
     },
     {
      "value": "claude-opus-4-8",
@@ -1084,7 +1093,8 @@
      ],
      "supportsAdaptiveThinking": true,
      "supportsFastMode": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": true
     },
     {
      "value": "claude-opus-4-7",
@@ -1100,7 +1110,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": true
     },
     {
      "value": "claude-opus-4-6",
@@ -1115,7 +1126,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": true
     },
     {
      "value": "claude-sonnet-4-6",
@@ -1130,7 +1142,8 @@
       "max"
      ],
      "supportsAdaptiveThinking": true,
-     "supportsAutoMode": true
+     "supportsAutoMode": true,
+     "supportsThinkingOff": true
     }
    ],
    "account": {
@@ -1139,8 +1152,8 @@
     "subscriptionType": "Claude Max",
     "apiProvider": "firstParty"
    },
-   "pid": 82788,
-   "claude_code_version": "2.1.296",
+   "pid": 34337,
+   "claude_code_version": "2.1.309",
    "current_permission_mode": "auto",
    "feedback_mode": {
     "kind": "post"
@@ -1155,11 +1168,12 @@
    "fast_mode_disabled_reason": "sdk_opt_in_required",
    "session_state": "idle",
    "capabilities": [
-    "ui_surface_v1"
+    "ui_surface_v1",
+    "mcp_call_result_not_for_model_v1"
    ]
   },
   "pending_permission_requests": [],
   "pending_user_dialog_requests": []
  },
- "_t": 0.683
+ "_t": 0.692
 }

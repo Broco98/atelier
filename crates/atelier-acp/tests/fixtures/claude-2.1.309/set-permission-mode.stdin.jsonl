@@ -1,0 +1,12 @@
+{"type": "control_request", "request_id": "req_3e5b72d8", "request": {"subtype": "initialize"}}
+{"type": "control_request", "request_id": "req_4b4a29e5", "request": {"subtype": "set_permission_mode", "mode": "acceptEdits"}}
+{"type": "control_request", "request_id": "req_e8f9a3e0", "request": {"subtype": "set_permission_mode", "mode": "default"}}
+{"type": "control_request", "request_id": "req_9f4e5733", "request": {"subtype": "set_permission_mode", "mode": "plan"}}
+{"type": "control_request", "request_id": "req_addb75cc", "request": {"subtype": "set_permission_mode", "mode": "dontAsk"}}
+{"type": "control_request", "request_id": "req_1d0c8158", "request": {"subtype": "set_permission_mode", "mode": "manual"}}
+{"type": "control_request", "request_id": "req_89c6d112", "request": {"subtype": "set_permission_mode", "mode": "bypassPermissions"}}
+{"type": "control_request", "request_id": "req_0582209c", "request": {"subtype": "set_permission_mode", "mode": "auto"}}
+{"type": "control_request", "request_id": "req_2f59fa4a", "request": {"subtype": "set_permission_mode", "mode": "bogus"}}
+{"type": "control_request", "request_id": "req_0d6d1997", "request": {"subtype": "set_permission_mode", "mode": "acceptEdits"}}
+{"type": "control_request", "request_id": "req_023d5d59", "request": {"subtype": "initialize"}}
+{"type": "user", "message": {"role": "user", "content": "/cost"}, "parent_tool_use_id": null, "session_id": ""}

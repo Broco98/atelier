@@ -17,7 +17,7 @@ const HOST_MD: &str = "---\nname: Host\ndescription: 시험의 Host\nmodel:\n  p
 
 /// 두 턴(답만 하는 턴 · 도구를 쓰는 턴)을 되감는 가짜 claude의 로그인 셸.
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
-    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")])
+    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")])
 }
 
 /// 두 경로가 같은 폴더인가 — macOS의 임시 폴더는 `/var`와 `/private/var` 두 이름이 있다.
@@ -201,7 +201,7 @@ fn 되살릴_session을_claude가_모르면_새_session으로_열리고_열림_�
     assert!(content[0]["text"].as_str().unwrap().starts_with("Atelier Thread 안에서 열린 Session이다."));
     let past = content[1]["text"].as_str().unwrap();
     assert!(
-        past.starts_with("지난 말 — ") && past.ends_with("[사람 → @host]\n어제의 말\n\n[@host]\nPROBE-SKILL-OK"),
+        past.starts_with("지난 말 — ") && past.ends_with("[사람 → @host]\n어제의 말\n\n[@host]\nPROBE-SKILL-OK\n\n"),
         "새 Session은 앞 Session을 모르므로 Thread 처음부터 — 어제의 말과 Host 제 답까지 받는다(v1 티켓 13):\n{past}"
     );
     assert_eq!(content[2]["text"], "오늘의 말");
@@ -329,7 +329,7 @@ fn worktree가_없는_work의_thread는_spec_폴더에서_일하고_새_work로_
 /// 첫 턴이 멈출 때까지 도는 Thread — 원문은 40초 자는 명령을 돌리다 interrupt로 멈춘 턴이다. 도구 줄이 선 뒤에 돌려준다.
 fn running_thread(sandbox: &Sandbox) -> (atelier_acp::ConversationHost, common::Events, String) {
     sandbox.library_agent("host", HOST_MD);
-    let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/interrupt-sigint")]);
+    let shell = sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/interrupt-sigint")]);
     let (host, events) = sandbox.host_with_events(shell);
     let thread = host.start_thread("40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해", ThreadLink::NoWork).expect("첫 말");
     sandbox.wait_thread_record(&thread, |record| {
@@ -407,7 +407,7 @@ fn 로그인이_풀린_claude는_thread에_로그인_필요_줄을_남기고_로
     sandbox.library_agent("host", HOST_MD);
     sandbox.log_in(atelier_acp::Agent::Claude);
     let receipts = sandbox.claude_receipts();
-    let extra = [("FAKE_CLAUDE_FIXTURE", "2.1.296/noauth"), ("FAKE_CLAUDE_RECEIPTS", receipts.to_str().unwrap())];
+    let extra = [("FAKE_CLAUDE_FIXTURE", "2.1.309/noauth"), ("FAKE_CLAUDE_RECEIPTS", receipts.to_str().unwrap())];
     let (host, events) = sandbox.host_with_events(sandbox.login_shell_for_login("normal", common::NO_BROWSER, &extra));
 
     // 진짜 claude 2.1.296은 로그인이 안 돼도 세션 열기는 된다 — 첫 턴에서야 드러난다(three-axes 실측 A8).
@@ -494,7 +494,7 @@ fn 끌_때_셈에_thread의_도는_턴과_대기_줄이_들고_호스트를_끄�
 fn 모델을_바꾸면_떠_있는_claude가_set_model을_받고_참여자_줄과_config_줄에_남고_떠_있지_않으면_다음에_띄울_때_든다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
     let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
     let session = sandbox.thread_session_id(&thread, "host");
@@ -515,7 +515,7 @@ fn 모델을_바꾸면_떠_있는_claude가_set_model을_받고_참여자_줄과
 
     // 앱을 다시 켠 뒤 — 떠 있지 않은 Session의 바꾸기는 참여자 줄에만 남고 띄울 때 플래그로 준다.
     host.shut_down();
-    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")]));
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
     host.set_thread_model(&thread, "host", "haiku").expect("떠 있지 않은 Session의 모델 바꾸기");
     assert_eq!(sandbox.claude_launches().len(), 1, "바꾸기는 띄우지 않는다");
     host.send_to_thread(&thread, "notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘").expect("보내기");
