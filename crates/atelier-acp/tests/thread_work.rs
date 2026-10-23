@@ -45,6 +45,9 @@ fn refund_proposal() -> Value {
 }
 
 /// 커밋 하나가 있는 git 저장소를 세워 Project로 등록한다 — 등록한 Project의 slug는 폴더 이름이다.
+///
+/// **등록한 날은 녹음한 날로 못 박는다.** core는 등록한 날(`createdAt`)을 그 자리의 오늘로 적고, Project 목록 도구의 답이 그 날을
+/// 그대로 싣는다. 그 답이 축복 기록 `thread-work`에 드니, 오늘을 따르면 녹음 다음 날부터(또 UTC로 도는 CI에서는 그날 밤부터) 빨개진다.
 fn register(sandbox: &Sandbox, name: &str, description: &str) -> PathBuf {
     let folder = sandbox.data_root().parent().unwrap().join("repos").join(name);
     std::fs::create_dir_all(&folder).unwrap();
@@ -52,9 +55,11 @@ fn register(sandbox: &Sandbox, name: &str, description: &str) -> PathBuf {
     git(&folder, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]);
     let projects = atelier_core::projects_in(&sandbox.data_root());
     let view = atelier_core::create_project(&projects, &folder).expect("Project 등록");
+    let project = atelier_core::Project { created_at: RECORDED_DAY.to_owned(), ..view.project };
+    std::fs::write(projects.join(format!("{}.md", project.slug)), atelier_core::render_project(&project)).unwrap();
     if !description.is_empty() {
         let patch = atelier_core::ProjectPatch { name: None, description: Some(description.to_owned()), base_branch: None };
-        atelier_core::update_project(&projects, &view.project.slug, patch).expect("설명");
+        atelier_core::update_project(&projects, &project.slug, patch).expect("설명");
     }
     folder
 }
@@ -414,6 +419,8 @@ fn work_만들기를_제안하고_만든_턴의_기록이_검사_자료와_같�
 const RECORDED_THREAD: &str = "/tmp/gate/home/threads/20261024-013421";
 /// 녹음의 임시 루트 — 자료 자리 `home`과 등록한 저장소 `repos`가 그 아래에 있다. 이 시험의 임시 폴더도 같은 꼴이다(`register`).
 const RECORDED_ROOT: &str = "/tmp/gate";
+/// 녹음한 날 — 녹음 속 Project 목록의 `createdAt`. 이 시험이 등록하는 Project도 이 날에 등록한 것으로 둔다(`register`).
+const RECORDED_DAY: &str = "2026-10-24";
 
 /// 진짜 claude가 Host로 Work 만들기를 제안한 첫 턴의 녹음을 되감는 가짜 claude의 로그인 셸 — 녹음의 Thread 폴더는 이 claude의 작업
 /// 폴더로, 녹음의 임시 루트는 이 시험의 임시 폴더로 옮긴다. 그래야 녹음의 spec 문서 쓰기가 이 시험이 만든 Work의 spec 폴더를 가리킨다.
