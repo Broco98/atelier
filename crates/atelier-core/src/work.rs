@@ -90,6 +90,8 @@ struct FileWork {
 pub struct WorktreeView {
     pub project: String,
     pub path: String,
+    /// 거짓이면 그 프로젝트는 **읽기만**이다 — 워크트리를 나중으로 미룬 Work(`start_work_deferred`, v1 구현 스펙
+    /// §11 · S21)이거나 폴더가 사라졌다. 처음 고칠 때 `attach_project`가 만든다.
     pub exists: bool,
     pub dirty: bool,
 }
