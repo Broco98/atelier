@@ -183,6 +183,39 @@ describe("도구 줄의 끝", () => {
     expect(tool?.kind === "tool" && tool.denied).toBe(true);
   });
 
+  it("엔진이 판정으로 답한 편집은 승인 카드가 서지 않고, 그 도구 줄은 「내가 거절함」이 아니다", () => {
+    const options = [
+      { optionId: "allow_once", name: "Yes", kind: "allow_once" },
+      { optionId: "reject", name: "No", kind: "reject_once" },
+    ];
+    const reason = "「장바구니 수량을 고쳐 줘」 Thread의 @host가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+    // v1 티켓 18 — 다른 Session이 쓰기 자리를 쥐었다: 물음 줄 없이 판정 줄 하나다.
+    const model = foldThread([
+      ...blessed,
+      { seq: 25, at: at(1), kind: "sent", payload: { text: "장바구니 문서를 고쳐 줘", to: "host" } },
+      update(26, 2, { sessionUpdate: "tool_call", toolCallId: "t1", title: "Edit src/cart.ts", kind: "edit", status: "pending" }),
+      {
+        seq: 27,
+        at: at(3),
+        kind: "permission",
+        who: "host",
+        payload: {
+          state: "decided",
+          requestId: "r1",
+          optionId: "reject",
+          reason,
+          request: { toolCall: { toolCallId: "t1" }, options },
+          toolCall: { toolCallId: "t1", kind: "edit" },
+        },
+      },
+      update(28, 4, { sessionUpdate: "tool_call_update", toolCallId: "t1", status: "failed" }),
+    ]);
+    expect(model.pending).toEqual([]);
+    const tool = model.turns[2].entries.find((entry) => entry.kind === "tool");
+    expect(tool?.kind === "tool" && tool.toolCallId).toBe("t1");
+    expect(tool?.kind === "tool" && tool.denied).toBe(false);
+  });
+
   it("앱을 다시 켜기 전에 열린 채 남은 턴은 끝난 것으로 접히고, 끝을 받지 못한 도구 줄은 끊긴다", () => {
     const lines: RecordLine[] = [
       ...blessed,

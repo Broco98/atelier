@@ -28,6 +28,8 @@
 //!   부르기마다 `{server, tools, tool, arguments, call}` 한 줄로 남는다.
 //!   - 부르기에 `"by": handle`이 있으면 그 Agent의 claude만 부른다(v1 티켓 16 — Thread에는 참여자마다 claude가 뜨고 env는 모두
 //!     같다). 이 claude가 누구의 것인지는 받은 `--append-system-prompt-file`의 이름(`<handle>.instructions.md`)이다.
+//!   - 부르기에 `"at": "result"`가 있으면 턴의 앞머리가 아니라 그 턴의 `result` 바로 앞(턴의 도구를 다 쓴 뒤)에서 부른다(v1 티켓
+//!     18 — 파일을 고친 Agent가 이어 다른 Agent를 부르는 꼴). 스스로 이어 간 턴의 `result` 앞에서는 부르지 않는다.
 //! - `FAKE_CLAUDE_AGENT_FIXTURES` — `{handle: 원문}` JSON. 이 claude가 그 Agent의 것이면 `FAKE_CLAUDE_FIXTURE` 대신 그 원문을
 //!   되감는다(v1 티켓 16 — 부른 Agent와 불린 Agent가 다른 턴을 돈다).
 //!
@@ -126,11 +128,7 @@ fn main() {
             continue;
         }
         let lines = replay.receive(&message);
-        if !mcp_calls.is_empty() && message["type"] == "user" {
-            fake.emit_calling(lines, &mcp_calls, mcp_config.as_ref());
-        } else {
-            fake.emit_all(lines);
-        }
+        fake.emit_calling(lines, &mcp_calls, mcp_config.as_ref(), message["type"] == "user");
         // 문에서 멈췄다 — 놓일 때까지 기다린다. 그동안 온 stdin 줄은 읽는 스레드가 영수증에 적고 쌓아 둔다.
         while replay.paused() {
             fake.wait_gate();
@@ -209,13 +207,32 @@ impl Fake {
         }
     }
 
-    /// 턴의 줄들을 내되, `system/init` 바로 뒤(없으면 맨 앞)에서 MCP 도구들을 차례로 부른다(`FAKE_CLAUDE_MCP_CALL`). 도구를 가진
-    /// 서버가 없으면 부르지 않고 줄만 낸다.
-    fn emit_calling(&self, lines: Vec<Value>, calls: &[Value], config: Option<&Value>) {
-        let at = lines.iter().position(|line| line["type"] == "system" && line["subtype"] == "init").map_or(0, |at| at + 1);
+    /// 되감기가 낸 줄들을 내며 MCP 도구들을 부른다(`FAKE_CLAUDE_MCP_CALL`). 앞머리의 부르기는 user 줄로 시작한 턴(`starting`)의
+    /// `system/init` 바로 뒤(없으면 맨 앞)에서, `"at": "result"`인 부르기는 스스로 이어 간 턴이 아닌 턴의 `result` 바로 앞에서다.
+    /// 부를 것이 없으면 줄만 낸다.
+    fn emit_calling(&self, lines: Vec<Value>, calls: &[Value], config: Option<&Value>, starting: bool) {
+        let (at_result, at_start): (Vec<&Value>, Vec<&Value>) = calls.iter().partition(|call| call["at"] == "result");
+        let start = (starting && !at_start.is_empty())
+            .then(|| lines.iter().position(|line| line["type"] == "system" && line["subtype"] == "init").map_or(0, |at| at + 1));
+        let end = lines
+            .iter()
+            .position(|line| line["type"] == "result" && line["origin"]["kind"] != "task-notification")
+            .filter(|_| !at_result.is_empty());
         let mut lines = lines.into_iter();
-        self.emit_all(lines.by_ref().take(at).collect());
+        let mut emitted = 0;
         let mut made = 0;
+        for (at, calls) in [(start, at_start), (end, at_result)] {
+            let Some(at) = at else { continue };
+            self.emit_all(lines.by_ref().take(at - emitted).collect());
+            emitted = at;
+            made = self.call_tools(&calls, config, made);
+        }
+        self.emit_all(lines.collect());
+    }
+
+    /// MCP 도구들을 차례로 부른다 — 받은 `--mcp-config`의 서버마다 띄워 그 도구를 가진 서버에 부른다. 도구를 가진 서버가 없으면
+    /// 부르지 않는다. `made`는 이 턴에 앞서 부른 수다(도구 호출 id를 가른다) — 부른 뒤의 수를 돌려준다.
+    fn call_tools(&self, calls: &[&Value], config: Option<&Value>, mut made: usize) -> usize {
         for (name, spec) in config.and_then(|config| config["mcpServers"].as_object()).into_iter().flatten() {
             let mut server = McpServer::start(spec);
             server.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {},
@@ -256,7 +273,7 @@ impl Fake {
             }
             server.close();
         }
-        self.emit_all(lines.collect());
+        made
     }
 
     fn path(&self, what: &str) -> Option<PathBuf> {

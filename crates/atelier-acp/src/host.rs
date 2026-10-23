@@ -29,7 +29,7 @@ use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiter, Waiting}
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
 use crate::quote::Quote;
 use crate::records::{self, CloseCause, ConversationRow, PermissionLine, RecordLine, Recorder, SessionState, TurnEndLine};
-use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenError, OpenTerms, RuntimeEvent, SessionPlace, Sink, Turns};
+use crate::runtime::{self, AgentProcess, AnswerError, Launch, OpenError, OpenTerms, Ruling, RuntimeEvent, SessionPlace, Sink, Turns};
 use crate::spec_changes::{Snapshot, SpecPlace};
 
 mod thread;
@@ -351,6 +351,12 @@ impl Conv {
             RuntimeEvent::PermissionWithdrawn { request_id, reason } => {
                 self.recorder.permission(PermissionLine::Withdrawn { request_id, reason })
             }
+            RuntimeEvent::PermissionDecided { request_id, ruling, asked } => {
+                let (request, tool_call) = asked.map(|asked| (asked.request, asked.tool_call)).unzip();
+                let line =
+                    PermissionLine::Decided { request_id, option_id: ruling.option_id, reason: ruling.reason, request, tool_call };
+                self.recorder.permission(line)
+            }
             RuntimeEvent::Died(death) => {
                 // 답 없이 사라진 턴에는 턴 끝이 없다 — 죽음 줄이 그 자리를 맡는다.
                 let mut state = self.lock_state();
@@ -465,6 +471,10 @@ impl TurnHands for ConvHands<'_> {
 
     fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError> {
         self.turns.map_or(Err(AnswerError::Closed), |turns| turns.answer(request, option))
+    }
+
+    fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
+        self.turns.map_or(Err(AnswerError::Closed), |turns| turns.rule(request, ruling))
     }
 
     fn retire_if_vanished(&mut self) -> bool {
@@ -1790,6 +1800,7 @@ fn claude_launch(
         required_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
         revive: None,
         mcp_servers: Vec::new(),
+        judge: None,
     };
     (launch, terms)
 }

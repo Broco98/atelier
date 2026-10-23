@@ -297,7 +297,7 @@ impl Scope<'_> {
 }
 
 /// `@handle` 뒤에 주격 조사를 붙인 것 — 끝 글자가 받침 있는 한글이면 「이」, 아니면 「가」(영문 handle은 대개 모음으로 읽힌다).
-fn subject(handle: &str) -> String {
+pub(super) fn subject(handle: &str) -> String {
     let batchim = handle.chars().last().is_some_and(|last| {
         ('\u{AC00}'..='\u{D7A3}').contains(&last) && (u32::from(last) - 0xAC00) % 28 != 0
     });

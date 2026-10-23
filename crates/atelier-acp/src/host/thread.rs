@@ -19,8 +19,11 @@
 //!   프로세스와 함께 산다 — 끄거나 되살릴 때 놓여 치워진다.
 //! - **Agent가 Agent를 부른다(v1 티켓 16 · §8, [`call`]).** 맡긴 일은 사람의 말과 같은 길(턴 차례 · 머리말 · 지난 말)로 불린 Agent의
 //!   Session에 가고, 그 턴의 마지막 메시지가 부른 Agent에게 돌아간다. 멈추기는 그 Thread의 호출 고리 전체에 걸린다.
+//! - **Work 하나에서 고치는 Session은 하나다(v1 티켓 18 · §10, [`seat`]).** 편집을 허락받은 Session이 그 Work의 쓰기 자리를 쥐고 턴이
+//!   끝나면 놓는다. 그동안 다른 Session의 편집 요청은 묻지 않고 거절한다 — 고리 안에서 불린 쪽은 이어 쓴다.
 
 mod call;
+mod seat;
 
 pub(super) use call::Assignment;
 
@@ -46,6 +49,7 @@ use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLo
 use crate::runtime::{self, AgentProcess, OpenError, SessionPlace};
 use crate::spec_changes::Snapshot;
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
+use seat::{Grant, Writer};
 
 /// 받는 이를 고르지 않은 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S9 · S14).
 const HOST: &str = "host";
@@ -104,6 +108,8 @@ pub(super) struct Threads {
     files: Mutex<()>,
     /// Thread마다 사람이 멈춘 횟수(v1 티켓 16) — Agent 부르기가 맡길 때 읽어 두고, 끝날 때 바뀌었으면 「사람이 멈춤」이다.
     halts: Mutex<HashMap<String, u64>>,
+    /// Work마다의 쓰기 자리(v1 티켓 18) — Session들의 쓰기 자리 손이 함께 쥔다.
+    seats: Arc<seat::WriteSeats>,
 }
 
 /// Session의 열쇠 — (Thread, 참여자 handle).
@@ -133,6 +139,8 @@ impl SessionKey {
 pub(super) struct Session {
     pub(super) agent: AgentProcess,
     pub(super) conv: Arc<Conv>,
+    /// 그 Session의 쓰기 자리 손(v1 티켓 18) — 런타임의 판정과 턴 끝을 보는 sink가 함께 쥔다. 사람의 권한 답이 이것으로 자리를 쥔다.
+    writer: Arc<Writer>,
     /// 그 Session의 Thread 도구 소켓 — 쥐고만 있다: 프로세스와 함께 놓여 치워진다. 중계 서버 명령이 없거나 열지 못했으면 없다.
     _tools: Option<Bridge>,
 }
@@ -169,10 +177,19 @@ impl Threads {
         found
     }
 
-    /// 그 Session을 표에서 꺼낸다 — 꺼낸 대화라고 적는다(work 대화의 `take_live`와 같다).
+    /// 그 Session이 떠 있으면 그 대화와 쓰기 자리 손.
+    fn find_writer(&self, key: &SessionKey) -> Option<(Arc<Conv>, Arc<Writer>)> {
+        self.lock_sessions().get(key).map(|session| (Arc::clone(&session.conv), Arc::clone(&session.writer)))
+    }
+
+    /// 그 Session을 표에서 꺼낸다 — 꺼낸 대화라고 적는다(work 대화의 `take_live`와 같다). 꺼낸 Session의 턴은 끝 없이 사라지므로
+    /// 그 쓰기 자리를 놓는다(v1 티켓 18).
     fn take(&self, key: &SessionKey) -> Option<Session> {
         let taken = self.lock_sessions().remove(key);
         mark_taken(taken.iter().map(|session| &*session.conv));
+        if let Some(session) = &taken {
+            session.writer.release();
+        }
         taken
     }
 
@@ -360,6 +377,9 @@ impl ConversationHost {
 
     /// 권한 답 — 그 참여자(`who` — `permission` 줄의 `who`)의 Session에 걸린 요청에 고른 선택지로 답한다. 요청 id는 Session마다
     /// 따로 센다. 기다리지 않는다.
+    ///
+    /// 편집을 허락하는 답이면 그 Session이 Work의 쓰기 자리를 쥔다(v1 티켓 18 · S20). 물은 사이에 다른 Session이 쥐었으면 그 허락 대신
+    /// 엔진이 주인의 글로 거부한다 — 사람의 답은 받은 것이라 오류가 아니다. 답이 가지 못하면 새로 쥔 자리를 놓는다.
     pub fn answer_thread_permission(
         &self,
         thread: &str,
@@ -368,9 +388,21 @@ impl ConversationHost {
         option: &str,
     ) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { conversation: thread.to_owned(), request: request.to_owned() };
-        let conv = self.threads.find(&SessionKey::new(thread, who)).ok_or_else(closed)?;
-        let mut state = conv.lock_found().ok_or_else(closed)?;
-        conv.seat(&mut state).answer(request, option).map_err(|refused| refused.into_host(thread))
+        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
+        let grant = writer.grant(request, option);
+        let took = matches!(grant, Grant::Took);
+        let answered = match conv.lock_found() {
+            Some(mut state) => match grant {
+                Grant::Refused(ruling) => conv.seat(&mut state).rule(request, ruling),
+                Grant::Unchanged | Grant::Took => conv.seat(&mut state).answer(request, option),
+            }
+            .map_err(|refused| refused.into_host(thread)),
+            None => Err(closed()),
+        };
+        if took && answered.is_err() {
+            writer.release();
+        }
+        answered
     }
 
     /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다(스토리 33). 규칙은 work 대화의 모델 바꾸기와 같다.
@@ -654,9 +686,12 @@ impl ConversationHost {
         // 열 때마다 새 소켓이다 — 되살린 Session도 앞 프로세스의 소켓은 이미 치웠다. 열지 못하면 여기서 놓여 치워진다.
         let (tools, server) = self.open_tools(key, &conv).unzip();
         terms.mcp_servers.extend(server);
+        // 쓰기 자리(v1 티켓 18) — 다른 Session이 쥔 Work의 편집 요청은 묻지 않고 거부하고, 턴이 끝나면 쥔 자리를 놓는다.
+        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), &conv);
+        terms.judge = Some(writer.judge());
         let limit = self.open_limit.unwrap_or(CLAUDE_OPEN_LIMIT);
         let at = SessionPlace { cwd: place.cwd.clone(), additional_directories: place.additional_directories.clone() };
-        let opened = runtime::open(launch, at, terms, limit, conv.sink(), record_opened(&conv, Agent::Claude));
+        let opened = runtime::open(launch, at, terms, limit, writer.watching(conv.sink()), record_opened(&conv, Agent::Claude));
         let (agent, opened) = match opened {
             Ok(opened) => opened,
             Err(OpenError::AuthRequired { .. }) => {
@@ -688,7 +723,7 @@ impl ConversationHost {
                 slot.additional_directories = place.additional_directories.clone();
             }
         })?;
-        self.threads.put(key.clone(), Session { agent, conv, _tools: tools });
+        self.threads.put(key.clone(), Session { agent, conv, writer, _tools: tools });
         Ok(())
     }
 

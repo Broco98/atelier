@@ -428,13 +428,15 @@ impl Machine {
     /// - 한 번 허락 · 구현 → allow와 claude가 물은 입력 그대로.
     /// - 이 대화에서 허락 → 거기에 `destination:"session"`인 제안만 `updatedPermissions`로(워크플로 함정 3) — 설정 파일에 쓰는
     ///   제안(`localSettings` · `userSettings`)은 돌려주지 않는다(스토리 63).
-    /// - 거부 → deny와 [`REJECTED`], 다시 짜기 → deny와 [`REVISE`].
+    /// - 거부 → deny와 [`REJECTED`], 다시 짜기 → deny와 [`REVISE`]. 엔진이 사람에게 묻지 않고 거부하며 Agent에게 돌려줄 글을
+    ///   답의 `_meta.atelier.message`에 실었으면(쓰기 자리, v1 티켓 18) [`REJECTED`] 대신 그 글이다.
     /// - 거둬짐(`cancelled`) — 우리가 interrupt를 보낸 턴이면 claude가 스스로 그 요청을 거둔다(`control_cancel_request`, 워크플로
     ///   관문 G2 (c)) — 답하지 않는다. 아니면 claude가 붙잡혀 있지 않게 deny로 답한다.
     /// - claude가 이미 거둔 요청(`control_cancel_request`)의 답은 버린다.
     fn answer(&mut self, id: &Value, message: &Value) {
         let Some(asked) = id.as_u64().and_then(|id| self.asked.remove(&id)) else { return };
         let outcome = &message["result"]["outcome"];
+        let rejected = message["result"]["_meta"]["atelier"]["message"].as_str().unwrap_or(REJECTED);
         let allow = || json!({"behavior": "allow", "updatedInput": asked.input});
         let deny = |text: &str| json!({"behavior": "deny", "message": text});
         let decision = match (outcome["outcome"].as_str(), outcome["optionId"].as_str()) {
@@ -445,7 +447,7 @@ impl Machine {
                 decision
             }
             (Some("selected"), Some(REVISE_PLAN)) => deny(REVISE),
-            (Some("selected"), _) => deny(REJECTED),
+            (Some("selected"), _) => deny(rejected),
             _ if self.interrupted() => return,
             _ => deny(WITHDRAWN),
         };

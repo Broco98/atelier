@@ -1122,6 +1122,26 @@ fn 거부하면_claude는_deny와_거부의_글을_받고_그_도구_호출만_�
 }
 
 #[test]
+fn 엔진이_거부의_답에_글을_실으면_claude는_고정_문구_대신_그_글을_deny로_받는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.282/permission-stdio"));
+    let first = bench.prompt("outside/allowed.txt를 Write로 만들어");
+    let busy = "「장바구니」 Thread의 @host가 이 Work를 고치는 중이에요 — 끝난 뒤 다시 하세요";
+
+    // 쓰기 자리(v1 티켓 18) — 엔진이 사람에게 묻지 않고 거부하며 Agent에게 돌려줄 글을 `_meta.atelier.message`에 싣는다.
+    bench.send(json!({"jsonrpc": "2.0", "id": 0, "result": {
+        "outcome": {"outcome": "selected", "optionId": "reject"},
+        "_meta": {"atelier": {"message": busy}},
+    }}));
+
+    assert_eq!(
+        bench.answers()[0]["response"]["response"],
+        json!({"behavior": "deny", "message": busy}),
+        "claude는 그 글을 그 도구의 실패 결과로 받는다 — 무엇이 막았는지 읽고 다른 길을 찾는다"
+    );
+    assert_eq!(bench.result(first)["stopReason"], "end_turn", "턴은 이어진다");
+}
+
+#[test]
 fn 권한이_걸린_채_멈추면_걸린_요청에도_claude가_거둔_요청의_늦은_답에도_답하지_않고_턴이_cancelled로_끝나고_다음_말이_이어진다() {
     let mut bench = Bench::open(Claude::replaying("2.1.282/permission-stdio"));
     let first = bench.prompt("outside/allowed.txt를 Write로 만들어");

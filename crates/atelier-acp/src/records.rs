@@ -171,6 +171,18 @@ pub(crate) enum PermissionLine {
     /// 거둬짐 — 우리가 턴을 끊었거나(`stopped`, 그 요청에 `cancelled`로 답했다), 에이전트가 답을 기다리지 않고 턴을
     /// 끝냈거나(`agent`), 에이전트 프로세스가 죽었다(`died` — 죽음 줄 앞에 선다, three-axes 티켓 10).
     Withdrawn { request_id: String, reason: Withdrawal },
+    /// 판정 — 엔진이 사람에게 묻지 않고 고른 선택지와 그 까닭(v1 티켓 18: 다른 Session이 쥔 쓰기 자리). 받은 자리에서 판정했으면
+    /// 물음 줄이 없으므로 요청 원문과 도구 요지를 함께 싣는다. 걸린 물음에 엔진이 답했으면(사람의 허락이 쓰기 자리에 막힘) 그 둘은
+    /// 물음 줄에 있다.
+    Decided {
+        request_id: String,
+        option_id: String,
+        reason: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_call: Option<Value>,
+    },
 }
 
 /// `session` 줄의 payload. `state`로 가른다. 적는 쪽과 기록을 다시 읽는 쪽([`facts`])이 이 타입 하나를 쓴다 — 적을 때

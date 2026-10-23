@@ -8,7 +8,7 @@
 //! 「턴이 돈다」([`TurnOrder::turning`])와 「대기 줄이 왜 가지 않나」([`Seat::hold`])는 여기 하나에서만 정한다.
 //!
 //! **불변식**
-//! 1. 놓는 동사(`say` · `send_now` · `answer` · `resume` · `turn_ended` · `self_ended`)가 `Ok`로 돌아오면 대기 줄이 남았을
+//! 1. 놓는 동사(`say` · `send_now` · `answer` · `rule` · `resume` · `turn_ended` · `self_ended`)가 `Ok`로 돌아오면 대기 줄이 남았을
 //!    때 늘 걸림이 있다. 예외는 둘이다 — 그 안에서 맨 앞을 보내지 못했을 때(`sent`를 못 적었거나 `prompt`가 실패)와,
 //!    턴 끝에 사라진 work의 대화를 끄러 보냈을 때. 한 동사가 보내는 말은 많아야 하나다.
 //! 2. 놓지 않는 동사(`opened` · `died` · `edit` · `delete` · `stop` · `self_started`)는 대기 줄을 보내지 않는다. 「다시 뜬
@@ -30,7 +30,7 @@ use crate::discovery::Agent;
 use crate::login;
 use crate::quote::{Attached, Quote};
 use crate::records::{RecordError, TurnEndLine};
-use crate::runtime::{AnswerError, TurnEnd};
+use crate::runtime::{AnswerError, Ruling, TurnEnd};
 
 /// 대화 하나의 턴 차례 — 살아 있나 · 도는 턴 · 대기 줄 · 다음 말에 머리말을 붙이나. `S`는 spec 폴더를 찍은 것이다(운영에서는
 /// [`crate::spec_changes::Snapshot`]).
@@ -225,7 +225,7 @@ impl<S> TurnOrder<S> {
 
 /// 손을 붙인 턴 차례. 그 대화의 `state` 잠금 한 구간 동안만 빌린다. 동사는 `self`를 먹는다 — 한 잠금에 동사 하나다.
 ///
-/// 놓는 동사(`say` · `send_now` · `answer` · `resume` · `turn_ended` · `self_ended`)는 걸림이 없으면 대기 줄의 맨 앞을
+/// 놓는 동사(`say` · `send_now` · `answer` · `rule` · `resume` · `turn_ended` · `self_ended`)는 걸림이 없으면 대기 줄의 맨 앞을
 /// 보낸다. 놓지 않는 동사(`edit` · `delete` · `stop` · `self_started`)는 보내지 않는다.
 pub(super) struct Seat<'a, H: TurnHands> {
     order: &'a mut TurnOrder<H::Shot>,
@@ -313,7 +313,21 @@ impl<H: TurnHands> Seat<'_, H> {
     /// 거절: 걸려 있지 않은 요청(손잡이가 없음 포함) [`Refused::PermissionClosed`], 준 선택지에 없는 optionId
     /// [`Refused::PermissionOption`], 보내지 못함 [`Refused::Send`]. 거절이면 대기 줄을 보내지 않는다.
     pub(super) fn answer(mut self, request: &str, option: &str) -> Result<(), Refused> {
-        self.hands.answer(request, option).map_err(|error| match error {
+        let answered = self.hands.answer(request, option);
+        self.answered(answered, request, option)
+    }
+
+    /// 엔진의 답 — 걸린 요청에 사람이 아니라 엔진이 까닭과 함께 답한다(v1 티켓 18: 사람의 허락이 쓰기 자리에 막혀 거부로 바뀐다).
+    /// 그 밖은 [`Seat::answer`]와 같다.
+    pub(super) fn rule(mut self, request: &str, ruling: Ruling) -> Result<(), Refused> {
+        let option = ruling.option_id.clone();
+        let answered = self.hands.rule(request, ruling);
+        self.answered(answered, request, &option)
+    }
+
+    /// 답이 갔으면 걸림이 풀린 자리라 맨 앞을 보낸다. 가지 못했으면 그 까닭이다 — 대기 줄을 보내지 않는다.
+    fn answered(mut self, answered: Result<(), AnswerError>, request: &str, option: &str) -> Result<(), Refused> {
+        answered.map_err(|error| match error {
             AnswerError::Closed => Refused::PermissionClosed { request: request.to_owned() },
             AnswerError::UnknownOption => Refused::PermissionOption { request: request.to_owned(), option: option.to_owned() },
             AnswerError::Send(reason) => Refused::Send(reason),
@@ -634,6 +648,8 @@ pub(super) trait TurnHands {
     fn cancel(&mut self) -> Result<(), String>;
     /// 걸린 권한 요청에 답한다. 손잡이가 없으면 닫힌 요청이다.
     fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError>;
+    /// 걸린 권한 요청에 엔진이 까닭과 함께 답한다(v1 티켓 18). 손잡이가 없으면 닫힌 요청이다.
+    fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError>;
     /// work가 사라졌으면 그 대화를 끄러 보내고 true(S10). 지켜볼 것이 없으면 false다.
     fn retire_if_vanished(&mut self) -> bool;
 }
@@ -692,6 +708,9 @@ impl<H: TurnHands + ?Sized> TurnHands for &mut H {
     }
     fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError> {
         (**self).answer(request, option)
+    }
+    fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
+        (**self).rule(request, ruling)
     }
     fn retire_if_vanished(&mut self) -> bool {
         (**self).retire_if_vanished()
@@ -867,6 +886,9 @@ mod tests {
             self.log.push(Did::Answer);
             self.permission = false;
             Ok(())
+        }
+        fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
+            self.answer(request, &ruling.option_id)
         }
         fn retire_if_vanished(&mut self) -> bool {
             self.retire
