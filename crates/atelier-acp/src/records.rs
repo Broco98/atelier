@@ -4,11 +4,14 @@
 //!   사라진 work 폴더를 되살리지 않는다(S10).
 //! - `<id>.jsonl` — 대화 하나의 기록. 한 줄이 `{seq, at, kind, payload}`이고 seq는 대화마다 1부터 는다. 적은 줄은
 //!   같은 모양의 「기록 줄」 이벤트로도 나간다 — 화면은 대화를 이것 하나로 그린다.
+//!
+//! **줄 모양 · 줄 종류 · 반쪽 줄 규칙 · 덧붙이는 쓰기는 코어(`atelier_core`의 기록 줄)가 정본이다** — Thread의 `events.jsonl`과 한
+//! 벌이다(v1 티켓 02). 여기는 대화 목록과, 줄마다의 payload 모양과, 적은 줄을 이벤트로 내보내는 일만 갖는다.
 
-use std::fs::{File, OpenOptions};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+use atelier_core::RecordLog;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -107,8 +110,8 @@ pub(crate) fn facts(agents_dir: &Path, conversation: &str) -> RecordFacts {
 
 /// 한 번 읽은 기록 — 사실마다 그 사실에 드는 줄만 읽는다. 마지막 seq는 끝 줄 하나로 답한다.
 ///
-/// 줄을 읽는 규칙은 [`read_lines`]와 같다 — 끝에 줄바꿈이 없는 꼬리(쓰는 중이거나 쓰다 끊긴 줄)는 세지 않고, 읽을 수 없는
-/// 줄은 건너뛴다.
+/// 줄을 읽는 규칙은 [`read_lines`]와 같다(코어의 한 벌) — 끝에 줄바꿈이 없는 꼬리(쓰는 중이거나 쓰다 끊긴 줄)는 세지 않고,
+/// 읽을 수 없는 줄은 건너뛴다.
 pub(crate) struct RecordFacts {
     text: String,
 }
@@ -116,10 +119,7 @@ pub(crate) struct RecordFacts {
 impl RecordFacts {
     /// 마지막으로 적힌 줄의 seq. 없으면 0이다. 이 판이 모르는 kind의 줄도 센다 — 이어 적는 줄이 그 seq를 다시 쓰지 않게.
     pub(crate) fn last_seq(&self) -> u64 {
-        complete_lines(&self.text)
-            .rev()
-            .find_map(|line| serde_json::from_str::<Value>(line).ok()?["seq"].as_u64())
-            .unwrap_or(0)
+        atelier_core::last_record_seq(&self.text)
     }
 
     /// 보낸 말(`sent`)이 있나 — 에이전트 바꾸기는 첫 말 전에만 된다(three-axes 결정 15).
@@ -142,7 +142,7 @@ impl RecordFacts {
     }
 
     fn lines(&self) -> impl DoubleEndedIterator<Item = RecordLine> + '_ {
-        complete_lines(&self.text).filter_map(|line| serde_json::from_str(line).ok())
+        atelier_core::parse_records(&self.text)
     }
 }
 
@@ -151,75 +151,9 @@ fn starts_session(payload: &Value) -> bool {
     matches!(SessionState::deserialize(payload), Ok(SessionState::Opened { how, .. }) if how.starts_session())
 }
 
-/// 기록 파일에서 `after` 다음 seq의 줄들. 파일이 없으면 `NotFound`다.
-///
-/// - 끝에 줄바꿈이 없는 꼬리는 버린다 — 쓰는 중인 줄이거나 쓰다 끊긴 줄이다. 한 줄은 쓰기 한 번에 붙으므로
-///   반쪽 줄은 끝에만 생긴다.
-/// - 읽을 수 없는 줄(이 판이 모르는 kind 등)은 건너뛴다 — 한 줄 때문에 대화 전체가 그려지지 않으면 안 된다.
-pub(crate) fn read_lines(path: &Path, after: u64) -> std::io::Result<Vec<RecordLine>> {
-    let text = std::fs::read_to_string(path)?;
-    Ok(complete_lines(&text)
-        .filter(|line| !line.trim().is_empty())
-        .filter_map(|line| match serde_json::from_str::<RecordLine>(line) {
-            Ok(record) => Some(record),
-            Err(error) => {
-                eprintln!("기록 줄을 읽지 못해 건너뜁니다: {} — {error}", path.display());
-                None
-            }
-        })
-        .filter(|record| record.seq > after)
-        .collect())
-}
-
-/// 기록 파일이 반쪽 줄로 끝나나 — 비어 있지 않은데 끝 바이트가 줄바꿈이 아니다. 없거나 읽지 못하면 아니다.
-fn ends_mid_line(path: &Path) -> bool {
-    use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut file) = File::open(path) else { return false };
-    let mut last = [0u8; 1];
-    file.seek(SeekFrom::End(-1)).is_ok() && file.read_exact(&mut last).is_ok() && last[0] != b'\n'
-}
-
-/// 줄바꿈으로 끝난 줄들 — 끝의 반쪽 줄은 뺀다.
-fn complete_lines(text: &str) -> std::str::Lines<'_> {
-    match text.rfind('\n') {
-        Some(end) => text[..end].lines(),
-        None => "".lines(),
-    }
-}
-
-/// 기록 줄 하나 — 파일에 적은 것과 이벤트로 나가는 것이 같은 값이다.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RecordLine {
-    pub seq: u64,
-    pub at: String,
-    pub kind: RecordKind,
-    pub payload: Value,
-}
-
-/// 기록 줄의 종류.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RecordKind {
-    /// 보낸 말 — 화면에 보일 글 · 인용(붙었으면) · 실제로 보낸 내용 블록(머리말 · 인용 블록 포함) · 지금 보내기였는지.
-    Sent,
-    /// `session/update` 원문(턴 밖 것 포함).
-    Update,
-    /// 턴 끝 — stopReason · 걸린 시간 · 우리가 멈췄는지 · 턴 밖 턴인지.
-    TurnEnd,
-    /// 대화의 수명 — 띄우는 중 · 열림 · 계정 상태 · 로그인 필요 · 판 경고 · 죽음 · 닫힘.
-    Session,
-    /// 에이전트의 stderr 한 줄 — 화면에 그리지 않는다.
-    Stderr,
-    /// 고친 곳 — 턴 앞뒤로 spec 폴더를 견준 바뀐 파일들(three-axes 결정 22). 턴 끝 줄 바로 앞에 서고, 바뀐 것이
-    /// 없는 턴에는 없다.
-    Changes,
-    /// 권한 — 요청 원문(물음), 그 뒤에 같은 요청 id로 답(고른 optionId)이나 거둬짐(까닭)이 한 줄 더 선다(three-axes 티켓 08).
-    Permission,
-    /// 사람이 바꾼 것 — 바꾼 칸과 새 값. 에이전트(`{"agent": …}`, 13)와 모델 · 모드 · 계획(`{"model": …}` · `{"mode": …}` ·
-    /// `{"plan": true}`, three-axes 티켓 09). 모델 · 모드 · 계획은 떠 있는 에이전트에 넣은 바꾸기만 적힌다 — 띄우지 않은 대화에서
-    /// 바꾼 값은 `agents.json`에만 남고, 띄울 때 들어간다(10).
-    Config,
-}
+// 기록 줄과 그 종류 · 읽기 · 시각은 코어의 것을 그대로 쓴다 — 앱(`chat:record` 이벤트)과 시험이 이 크레이트의 이름으로 부른다.
+pub use atelier_core::{RecordKind, RecordLine};
+pub(crate) use atelier_core::{read_records as read_lines, record_time as now};
 
 /// `permission` 줄의 payload. `state`로 가르고, 같은 요청의 줄들은 `requestId`로 잇는다 — 기록은 덧붙이기만 하므로 답은
 /// 물음 줄을 고치지 않고 뒤에 선다. 답하지 않은 물음(뒤에 답도 거둬짐도 없는 물음)이 화면의 승인 카드다(21).
@@ -311,33 +245,16 @@ pub(crate) struct Recorder {
     work: String,
     conversation: String,
     emit: Arc<Emit>,
-    file: Mutex<RecordFile>,
-}
-
-struct RecordFile {
-    file: File,
-    last_seq: u64,
+    log: Mutex<RecordLog>,
 }
 
 impl Recorder {
-    /// 기록 파일을 이어 쓰도록 연다. 파일은 만들어도 폴더는 만들지 않는다.
-    ///
-    /// 끝에 반쪽 줄(쓰다 끊긴 줄)이 남아 있으면 줄바꿈 하나로 먼저 끊는다 — 그러지 않으면 이어 적는 첫 줄이 그 꼬리에 붙어
-    /// 읽히지 않는 줄이 된다. 끊긴 꼬리는 원문 그대로 남고, 읽기가 JSON이 아닌 줄로 건너뛴다.
+    /// 기록 파일을 이어 쓰도록 연다. 파일은 만들어도 폴더는 만들지 않는다. 끝에 남은 반쪽 줄은 코어의 쓰기가 먼저 끊는다.
     pub(crate) fn open(agents_dir: &Path, work: &str, conversation: &str, emit: Arc<Emit>) -> Result<Self, RecordError> {
         let path = record_path(agents_dir, conversation);
-        let last_seq = facts(agents_dir, conversation).last_seq();
-        let cannot_open = |error: std::io::Error| format!("기록 파일을 열지 못했습니다: {} — {error}", path.display());
-        let mut file = OpenOptions::new().create(true).append(true).open(&path).map_err(cannot_open)?;
-        if ends_mid_line(&path) {
-            file.write_all(b"\n").map_err(cannot_open)?;
-        }
-        Ok(Self {
-            work: work.to_owned(),
-            conversation: conversation.to_owned(),
-            emit,
-            file: Mutex::new(RecordFile { file, last_seq }),
-        })
+        let log = RecordLog::open(&path)
+            .map_err(|error| format!("기록 파일을 열지 못했습니다: {} — {error}", path.display()))?;
+        Ok(Self { work: work.to_owned(), conversation: conversation.to_owned(), emit, log: Mutex::new(log) })
     }
 
     /// 이 기록의 work.
@@ -357,7 +274,7 @@ impl Recorder {
 
     /// 마지막으로 적은 줄의 seq.
     pub(crate) fn last_seq(&self) -> u64 {
-        self.file.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq
+        self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).last_seq()
     }
 
     pub(crate) fn session(&self, state: SessionState) -> Result<(), RecordError> {
@@ -411,25 +328,16 @@ impl Recorder {
 
     /// 한 줄을 적고, 같은 줄을 기록 줄 이벤트로 내보낸다. 잠금을 쥔 채 내보낸다 — 이벤트의 순서가 seq의
     /// 순서다. **그래서 이벤트를 받는 closure는 호스트를 다시 부르면 안 된다.**
+    ///
+    /// 대화 기록의 줄에는 `who`가 없다 — 대화마다 에이전트가 하나다(v1 구현 스펙 S8은 Thread의 줄에 더한다).
     fn write(&self, kind: RecordKind, payload: Value) -> Result<(), RecordError> {
-        let mut record = self.file.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let line = RecordLine { seq: record.last_seq + 1, at: now(), kind, payload };
-        let mut text = serde_json::to_string(&line).expect("기록 줄은 JSON이다");
-        text.push('\n');
-        // 한 번의 쓰기로 줄 전체를 붙인다 — 반쪽 줄은 끝에만 생길 수 있고, 읽기가 그것을 버린다.
-        record
-            .file
-            .write_all(text.as_bytes())
+        let mut log = self.log.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let line = log
+            .append(kind, None, payload)
             .map_err(|error| format!("기록을 쓰지 못했습니다: {} — {error}", self.conversation))?;
-        record.last_seq = line.seq;
         (self.emit)(HostEvent::Record { work: self.work.clone(), conversation: self.conversation.clone(), line });
         Ok(())
     }
-}
-
-/// 기록의 시각 — 로컬 시각대의 RFC 3339, 밀리초까지.
-pub(crate) fn now() -> String {
-    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false)
 }
 
 #[cfg(test)]

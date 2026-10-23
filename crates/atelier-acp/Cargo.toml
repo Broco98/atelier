@@ -22,8 +22,6 @@ libc = "0.2"
 atelier-core = { path = "../atelier-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# 기록 줄의 시각 `at`. 코어와 같은 판 · 같은 기능이라 잠금에 새로 드는 것이 없다.
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 대화 id. `v4`는 ACP 크레이트를 거쳐 이미 켜져 있다.
 uuid = { version = "1", features = ["v4"] }
 

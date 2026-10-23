@@ -75,6 +75,12 @@ pub fn library_agents_in(root: &Path) -> PathBuf {
     root.join("library").join("agents")
 }
 
+/// Thread들의 자리(v1 구현 스펙 §4). Thread 하나가 이 아래 `<id>/` 폴더 하나다. Work 폴더 밖이라 Work가 보관되어도
+/// 옮겨지지 않는다 — 보관된 Work의 Thread는 제자리에서 읽기만 된다.
+pub(crate) fn threads_in(root: &Path) -> PathBuf {
+    root.join("threads")
+}
+
 pub fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
