@@ -1710,7 +1710,7 @@ mod tests {
         args: &[&str],
         stdin: &str,
     ) -> (std::io::Result<()>, std::process::Output) {
-        feed(hook_command(&script_path(root), root, shell, args).spawn().expect("스크립트가 돈다"), stdin)
+        feed(hook_command(&script_path(root), root, shell, args).into_spawned(), stdin)
     }
 
     fn files_in(dir: &Path) -> Vec<String> {
