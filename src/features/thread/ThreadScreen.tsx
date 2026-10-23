@@ -42,6 +42,7 @@ import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
+import { WorkCard, WorkCardToggle, useCardOpen } from "./WorkCard";
 import { workHome } from "./work-chip";
 import { decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
@@ -62,7 +63,7 @@ import WorkProposalCard from "./WorkProposalCard";
 //   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것
 //   하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
-//   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 그 Work 화면)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
+//   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 Work 카드가 열린다, v1 티켓 34)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
@@ -77,6 +78,9 @@ import WorkProposalCard from "./WorkProposalCard";
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
+// - **Work 카드**(v1 티켓 34 · §15) — Work에 이은 Thread의 오른쪽 위, 위 막대의 카드 버튼 바로 아래에 Work 카드가 떠 있고 대화는 카드
+//   폭 + 틈만큼 왼쪽으로 비켜 준다(보드 `.chat{margin-right:312px}`). 버튼 · 머리 줄 Work 알약이 여닫고, 열림은 Work마다 기억한다(S32).
+//   Work 없는 Thread에는 카드도 버튼도 없다(스토리 114). 카드 머리의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
 //   결과」(굵은 제목)가 그것으로 걷힌다.
@@ -92,13 +96,18 @@ interface ThreadScreenProps {
 const policyPlace = (call: string, work: string | null) =>
   ({ to: "/library", search: { agent: call, ...(work !== null && { work }) } }) as const;
 
-/** 새 Thread(`/`). */
-export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
+/** 새 Thread(`/`). `work`는 처음 고른 Work다 — Work 카드의 「이 Work에서 새 Thread」(v1 티켓 34 · `/?work=`). */
+export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreenProps & { work?: string | null }) {
   const navigate = useNavigate();
   // 어디서 일할지(v1 티켓 31) — Work 칩이 고른다. 최근 Work면 그 제목도 쥔다(부제 · 입력창 안내 · 칩 글자).
-  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>({ link: { kind: "no-work" }, title: null });
+  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({
+    link: seed === null ? { kind: "no-work" } : { kind: "work", slug: seed },
+    title: null,
+  }));
   const work = place.link.kind === "work" ? place.link.slug : null;
-  const home = workHome(place.link, place.title);
+  // 주소로 받은 Work는 제목을 쥐지 않고 왔다 — 목록에서 읽는다(없으면 slug).
+  const { data: works } = useWorks();
+  const home = workHome(place.link, place.title ?? works?.find((one) => one.slug === work)?.title ?? null);
   // @ 메뉴의 범위는 고른 Work를 따른다 — 그 Work의 Project 안 Agent도 부른다(v1 티켓 11).
   const roster = useAgentRoster(work);
   const agents = useMemo(() => agentChoices(roster, []), [roster]);
@@ -189,12 +198,15 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
 
 /** Thread 하나(`/threads/<id>`). */
 export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thread: string }) {
+  const navigate = useNavigate();
   const { data: view, error, isPending } = useThread(thread);
   const rename = useRenameThread();
   const [renaming, setRenaming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => checkEngineOnce(), []);
   const name = view?.title || "Thread";
+  const work = view?.work ?? null;
+  const [cardOpen, setCardOpen] = useCardOpen(work);
   return (
     <PlainFrame
       sidebarOpen={sidebarOpen}
@@ -214,11 +226,32 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
             }
           : undefined,
       }}
-      after={view?.work ? <WorkPill slug={view.work} /> : undefined}
-      end={view && view.participants.length > 0 ? <ThreadParticipants view={view} /> : undefined}
+      after={work ? <WorkPill slug={work} onOpen={() => setCardOpen(true)} /> : undefined}
+      end={
+        view && (view.participants.length > 0 || work) ? (
+          <>
+            {view.participants.length > 0 && <ThreadParticipants view={view} />}
+            {work && <WorkCardToggle open={cardOpen} onToggle={() => setCardOpen(!cardOpen)} />}
+          </>
+        ) : undefined
+      }
     >
       {view ? (
-        <ThreadBody key={thread} view={view} problem={problem} />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {/* 대화는 카드가 열린 동안 카드 폭 + 틈 12만큼 비켜 준다 — 흐름 · 입력창이 그 남은 폭의 가운데에 모인다. */}
+          <div className="flex min-h-0 flex-1 flex-col" style={work && cardOpen ? { marginRight: CARD_ROOM } : undefined}>
+            <ThreadBody key={thread} view={view} problem={problem} />
+          </div>
+          {work && cardOpen && (
+            <div className="absolute top-3 right-3 bottom-3 flex flex-col">
+              <WorkCard
+                thread={thread}
+                slug={work}
+                onNewThread={() => void navigate({ to: "/", search: { work } })}
+              />
+            </div>
+          )}
+        </div>
       ) : (
         <GuidePlace>
           <p className="text-chat-meta text-fg-tertiary">
@@ -239,12 +272,14 @@ function GuidePlace({ children }: { children: ReactNode }) {
   );
 }
 
+/** 카드가 열린 동안 대화가 비켜 주는 폭 — 카드 폭 + 오른쪽 틈 12(보드 `.chat{margin-right:312px}` · `.wpos{right:12px}`). */
+const CARD_ROOM = "calc(var(--size-work-card) + 12px)";
+
 /**
  * 머리 줄의 Work 알약(화면 2 보드 `.wchip`) — 높이 26 · 알약 · `fill-soft` · 12/18 `fg-secondary`, 폴더 14 · 제목 · 「·」 · 고정폭 브랜치.
- * 누르면 그 Work 화면으로 간다(Work 패널이 서면 그 패널을 연다 — v1 티켓 34). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다.
+ * 누르면 Work 카드를 연다(v1 티켓 34 — 보드의 뜻). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다.
  */
-function WorkPill({ slug }: { slug: string }) {
-  const navigate = useNavigate();
+function WorkPill({ slug, onOpen }: { slug: string; onOpen: () => void }) {
   const { data: works } = useWorks();
   const work = works?.find((one) => one.slug === slug) ?? null;
   const title = work?.title || slug;
@@ -252,7 +287,7 @@ function WorkPill({ slug }: { slug: string }) {
     <button
       type="button"
       aria-label={`Work 열기: ${title}`}
-      onClick={() => void navigate({ to: "/works/$slug", params: { slug }, search: {} })}
+      onClick={onOpen}
       className="inline-flex h-6.5 min-w-0 items-center gap-1.5 rounded-full bg-fill-soft px-2.5 text-xs whitespace-nowrap text-fg-secondary transition-colors quiet-hover focus-ring"
     >
       <Folder className="size-3.5 shrink-0" aria-hidden />

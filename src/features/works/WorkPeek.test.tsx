@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { projectLines, WorkCard } from "./WorkCard";
+import { projectLines, WorkPeek } from "./WorkPeek";
 import type { WorkView } from "./types";
 import { specDocs, workFixture } from "./work-fixture";
 
@@ -25,7 +25,7 @@ const work: WorkView = workFixture({
 
 // 셸의 말 칸(결정 14)은 이 파일이 재는 것과 무관하다 — 칸이 서는지는 L3가 잰다. 프로젝트 줄은
 // 아직 안 읽은 판(`null`)이 기본이다.
-const card = () => renderToStaticMarkup(<WorkCard work={work} note={null} projects={null} />);
+const card = () => renderToStaticMarkup(<WorkPeek work={work} note={null} projects={null} />);
 
 const project = (slug: string, baseBranch: string): ProjectView => ({
   slug,
@@ -52,7 +52,7 @@ describe("hover 카드", () => {
   // 이 둘은 여기서만 잡힌다.
   it("「프로젝트」 이름은 첫 줄에만 서고, base가 없는 줄에는 화살표가 없다", () => {
     const markup = renderToStaticMarkup(
-      <WorkCard
+      <WorkPeek
         work={work}
         note={null}
         projects={[

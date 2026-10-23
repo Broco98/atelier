@@ -24,8 +24,10 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use serde_json::Value;
 
 use super::call::subject;
+use super::gate::resolve;
+use super::writing::{Changed, DocDesk, ToolStep};
 use super::SessionKey;
-use crate::host::{Conv, OutOfTurn};
+use crate::host::{Conv, Emit, HostEvent, OutOfTurn};
 use crate::policy::Card;
 use crate::runtime::{Ruling, RuntimeEvent, Sink};
 
@@ -91,6 +93,17 @@ pub(super) struct Writer {
     conv: Weak<Conv>,
     /// 사람에게 물은 요청 — 요청 id → 적어 둔 것. 턴이 끝나면 비운다(그 턴의 요청은 거둬졌다).
     asked: Mutex<HashMap<String, Noted>>,
+    /// 이 Session이 쓰는 문서를 적는 자리(v1 티켓 34) — 호스트에 하나다. 턴 끝을 보는 sink가 편집 도구의 갱신을 여기 적는다.
+    docs: Docs,
+}
+
+/// 문서 쓰는 중을 적고 내는 손(v1 티켓 34) — 호스트의 [`DocDesk`] · 이벤트를 내보내는 closure와, 상대 경로를 풀 이 Session의 작업
+/// 폴더 · 화면에 보일 이 Agent의 이름.
+pub(super) struct Docs {
+    pub(super) desk: Arc<DocDesk>,
+    pub(super) emit: Arc<Emit>,
+    pub(super) cwd: PathBuf,
+    pub(super) name: String,
 }
 
 /// 사람에게 물은 요청 하나에 적어 둔 것.
@@ -106,7 +119,14 @@ struct Noted {
 }
 
 impl Writer {
-    pub(super) fn new(seats: &Arc<WriteSeats>, data_root: PathBuf, key: SessionKey, work: Option<String>, conv: &Arc<Conv>) -> Arc<Self> {
+    pub(super) fn new(
+        seats: &Arc<WriteSeats>,
+        data_root: PathBuf,
+        key: SessionKey,
+        work: Option<String>,
+        conv: &Arc<Conv>,
+        docs: Docs,
+    ) -> Arc<Self> {
         Arc::new(Self {
             seats: Arc::clone(seats),
             data_root,
@@ -114,6 +134,7 @@ impl Writer {
             work: Mutex::new(work),
             conv: Arc::downgrade(conv),
             asked: Mutex::new(HashMap::new()),
+            docs,
         })
     }
 
@@ -193,13 +214,57 @@ impl Writer {
     }
 
     /// 턴이 끝나면 쓰기 자리를 놓는 sink — 받은 것을 `sink`에 넘기기 **전에** 놓는다. 그래서 턴 끝 줄이 기록에 설 때는 이미 놓였다.
+    /// 편집 도구의 갱신은 「문서 쓰는 중」으로 적고, 턴이 끝나면 그 Session의 것을 걷는다(v1 티켓 34).
     pub(super) fn watching(self: &Arc<Self>, sink: Sink) -> Sink {
         let writer = Arc::clone(self);
         Arc::new(move |event| {
             if ends_turn(&event) {
                 writer.release();
+                writer.put_pens_down();
+            } else if let RuntimeEvent::Update(raw) = &event {
+                writer.see_tool(raw);
             }
             sink(event);
+        })
+    }
+
+    /// 편집 도구의 갱신 하나 — 이은 Work의 spec 폴더 안 문서를 쓰기 시작했으면 적고, 그 도구가 끝났으면 걷는다. 바뀐 Work의 목록을
+    /// 낸다(`work:writing`).
+    fn see_tool(&self, raw: &Value) {
+        match ToolStep::of(raw) {
+            ToolStep::Began { tool, paths } => {
+                let Some(work) = self.work() else { return };
+                let Some(path) = self.spec_doc(&work, &paths) else { return };
+                if let Some(writing) = self.docs.desk.began(&work, &self.key, &self.docs.name, &tool, &path) {
+                    (self.docs.emit)(HostEvent::WorkWriting { work, writing });
+                }
+            }
+            ToolStep::Ended { tool } => self.announce(self.docs.desk.ended(&self.key, &tool)),
+            ToolStep::Other => {}
+        }
+    }
+
+    /// 이 Session이 쓰던 문서를 모두 걷는다 — 턴이 끝났거나 Session이 표에서 꺼졌다.
+    pub(super) fn put_pens_down(&self) {
+        self.announce(self.docs.desk.cleared(&self.key));
+    }
+
+    fn announce(&self, changed: Changed) {
+        for (work, writing) in changed {
+            (self.docs.emit)(HostEvent::WorkWriting { work, writing });
+        }
+    }
+
+    /// 고칠 경로들 가운데 그 Work의 spec 폴더 안 첫 파일 — spec 기준 경로(`/`로 잇는다). 경로는 판정과 같은 꼴로 풀어 견준다
+    /// (상대 경로는 이 Session의 작업 폴더에서, 링크는 푼다). Work를 읽지 못하면 없다.
+    fn spec_doc(&self, work: &str, paths: &[PathBuf]) -> Option<String> {
+        let works = atelier_core::works_in(&self.data_root);
+        let meta = atelier_core::read_work(&works, work).ok()?;
+        let spec = resolve(&atelier_core::work_places(&works, &meta).spec, &self.docs.cwd);
+        paths.iter().find_map(|path| {
+            let inside = resolve(path, &self.docs.cwd).strip_prefix(&spec).ok()?.to_path_buf();
+            let parts: Vec<String> = inside.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect();
+            (!parts.is_empty()).then(|| parts.join("/"))
         })
     }
 

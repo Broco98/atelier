@@ -27,7 +27,7 @@ use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms,
 mod thread;
 mod turn_order;
 
-pub use thread::{QuestionReply, Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
+pub use thread::{DocWriting, QuestionReply, Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
@@ -51,6 +51,9 @@ pub enum HostEvent {
     ThreadQueue { thread: String, who: String, queue: Vec<QueuedMessage> },
     /// Thread 하나의 목록 요약이 바뀜 — 새 Thread · 참여자가 늘었다(S7: Thread 폴더는 감시하지 않으므로 엔진이 알린다).
     ThreadList(atelier_core::ThreadSummary),
+    /// Work 하나에서 지금 쓰는 중인 문서들이 바뀜 — 그 Work의 목록 전체(v1 티켓 34 · §12). spec 폴더 안 파일에 편집 도구가 도는
+    /// 동안이다. Work 카드의 문서 줄이 파란 점과 쓰는 Agent의 이름을 세운다.
+    WorkWriting { work: String, writing: Vec<DocWriting> },
 }
 
 /// 대기 줄의 말 하나(S13) — 턴이 도는 동안 받은 말이다. 화면이 입력창 위 「대기 중」에 그린다.

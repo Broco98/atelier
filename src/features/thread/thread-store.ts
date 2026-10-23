@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { QueuedMessage, RecordLine } from "./types";
+import type { DocWriting, QueuedMessage, RecordLine } from "./types";
 
 // Thread 화면의 모듈 스토어(v1 티켓 05) — 화면 컴포넌트 밖에 산다.
 //
@@ -57,6 +57,21 @@ export const threadQueueStore = new Store<Readonly<Record<string, Readonly<Recor
 export function setQueue(thread: string, who: string, queue: readonly QueuedMessage[]): void {
   threadQueueStore.setState((state) => ({ ...state, [thread]: { ...state[thread], [who]: queue } }));
 }
+
+/**
+ * Work마다 지금 쓰는 중인 문서(v1 티켓 34) — `work:writing` 이벤트가 실어 온 그 Work의 목록 전체. 마지막 것이 이긴다. 엔진의 메모리에만
+ * 있어 읽는 명령이 없다 — 화면을 새로 그리면(⌘R) 다음 이벤트까지 비어 있다(쓰는 중은 몇 초다).
+ */
+export const workWritingStore = new Store<Readonly<Record<string, readonly DocWriting[]>>>({});
+
+export function setWriting(work: string, writing: readonly DocWriting[]): void {
+  workWritingStore.setState((state) => ({ ...state, [work]: writing }));
+}
+
+/** 그 Work의 지금 쓰는 중 목록 — 없으면 빈 목록(같은 값)이다. */
+export const writingOf = (state: Readonly<Record<string, readonly DocWriting[]>>, work: string): readonly DocWriting[] =>
+  state[work] ?? NO_WRITING;
+const NO_WRITING: readonly DocWriting[] = [];
 
 interface UiState {
   /** Thread마다 입력 중인 글. */

@@ -142,6 +142,13 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
+  it("`/?work=<slug>`도 새 Thread다 — Work 카드의 「이 Work에서 새 Thread」가 그 Work를 고른 채 연다(v1 티켓 34)", async () => {
+    const { router } = setup(["/?work=refund-api"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ work: "refund-api" });
+  });
+
   it("시작 직후 뒤로갈 곳이 없다", async () => {
     const { router, history } = setup(["/"]);
     await router.load();

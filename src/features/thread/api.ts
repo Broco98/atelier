@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT } from "./events";
+import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT, WORK_WRITING_EVENT } from "./events";
 import type {
   AgentRoster,
   AskLevel,
@@ -17,6 +17,7 @@ import type {
   ThreadRecordEvent,
   ThreadSummary,
   ThreadView,
+  WorkWritingEvent,
 } from "./types";
 
 // Thread 엔진을 부르는 명령(v1 티켓 04 · 05 · 구현 스펙 §18). 엔진은 앱 프로세스에 하나 살고, 다른 화면으로 가거나 새로고침해도 Session이
@@ -135,4 +136,9 @@ export function onThreadList(listener: (summary: ThreadSummary) => void): Promis
 /** 엔진 상태가 바뀔 때마다 온다 — 로그인 진행 · 끝난 뒤 다시 돈 확인의 답. 앱 층(`useThreadFeeds`) 하나가 듣는다. */
 export function onThreadEngine(listener: (event: EngineState) => void): Promise<UnlistenFn> {
   return listen<EngineState>(THREAD_ENGINE_EVENT, (event) => listener(event.payload));
+}
+
+/** Work 하나에서 쓰는 중인 문서들이 바뀔 때마다 온다 — 그 Work의 목록 전체(v1 티켓 34). 앱 층(`useThreadFeeds`) 하나가 듣는다. */
+export function onWorkWriting(listener: (event: WorkWritingEvent) => void): Promise<UnlistenFn> {
+  return listen<WorkWritingEvent>(WORK_WRITING_EVENT, (event) => listener(event.payload));
 }

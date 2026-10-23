@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter};
 
 /// Thread의 기록 줄 — `events.jsonl`에 적은 것과 같은 줄이 Thread id · seq와 함께 온다. 화면은 Thread를 이것 하나로 그린다.
 ///
-/// 이벤트 이름 넷은 프런트(`src/features/thread/events.ts`)와 **문자열로만** 이어진다 — `events.test.ts`가 이 선언을 읽어 견준다.
+/// 이벤트 이름들은 프런트(`src/features/thread/events.ts`)와 **문자열로만** 이어진다 — `events.test.ts`가 이 선언을 읽어 견준다.
 /// Channel이 아니라 이벤트인 것은 Thread가 새로고침을 넘어야 해서다(⌘R에 Agent가 죽지 않는다): Channel은 페이지와 함께 죽는다.
 pub const RECORD_EVENT: &str = "thread:record";
 /// 참여자 하나의 Session의 대기 줄 바뀜 — Thread id · 참여자 handle · 대기 줄 전체. 대기 줄은 엔진 메모리에만 있다(S13).
@@ -24,6 +24,9 @@ pub const LIST_EVENT: &str = "thread:list";
 /// 엔진 상태 — Runtime 엔진 · 찾음 여부 · 로그인 여부 · 로그인 진행(링크 · 끝남). Thread의 안내 카드가 이것으로 「로그인 안 됨 ·
 /// 로그인 중 · 끝남」을 그린다(three-axes 티켓 12).
 pub const ENGINE_EVENT: &str = "thread:engine";
+/// Work 하나에서 지금 쓰는 중인 문서들 — Work slug · 그 Work의 목록 전체(문서 · 쓰는 Agent의 handle · 이름 · Thread). Work 카드의
+/// 문서 줄이 파란 점과 「Host가 쓰는 중」을 세운다(v1 티켓 34 · 구현 스펙 §12 · §18).
+pub const WRITING_EVENT: &str = "work:writing";
 
 /// 앱의 Thread 엔진을 짓는다. 데이터 루트는 코어가 정하고(`ATELIER_HOME`), 로그인 셸은 사용자의 것이다.
 ///
@@ -57,13 +60,14 @@ pub fn announce(app: AppHandle, events: Receiver<HostEvent>) {
 }
 
 /// 엔진의 것 하나 → 화면이 듣는 이름과 싣는 것. 싣는 꼴은 프런트의 `ThreadRecordEvent` · `ThreadQueueEvent` · `ThreadList` ·
-/// `EngineState`와 같은 말이다.
+/// `EngineState` · `WorkWritingEvent`와 같은 말이다.
 fn wire(event: &HostEvent) -> (&'static str, Value) {
     match event {
         HostEvent::ThreadRecord { thread, line } => (RECORD_EVENT, json!({"thread": thread, "seq": line.seq, "line": line})),
         HostEvent::ThreadQueue { thread, who, queue } => (QUEUE_EVENT, json!({"thread": thread, "who": who, "queue": queue})),
         HostEvent::ThreadList(summary) => (LIST_EVENT, serde_json::to_value(summary).expect("Thread 요약은 JSON이다")),
         HostEvent::Engine(state) => (ENGINE_EVENT, serde_json::to_value(state).expect("엔진 상태는 JSON이다")),
+        HostEvent::WorkWriting { work, writing } => (WRITING_EVENT, json!({"work": work, "writing": writing})),
     }
 }
 
@@ -151,6 +155,29 @@ mod tests {
             wire(&ended).1,
             json!({"agent": "claude", "found": true, "loggedIn": true,
                    "login": {"state": "ended", "cancelled": false, "exitCode": 0}}),
+        );
+    }
+
+    /// **문서 쓰는 중은 Work와 그 Work의 목록 전체를 싣는다**(v1 티켓 34). 화면은 마지막 것 하나를 쥐므로 빈 목록도 그대로 간다.
+    #[test]
+    fn the_writing_event_carries_the_work_and_its_whole_list() {
+        let writing = vec![atelier_acp::DocWriting {
+            path: "design.md".into(),
+            who: "host".into(),
+            name: "Host".into(),
+            thread: "20261023-100000".into(),
+        }];
+        assert_eq!(
+            wire(&HostEvent::WorkWriting { work: "refund-api".into(), writing }),
+            (
+                "work:writing",
+                json!({"work": "refund-api",
+                       "writing": [{"path": "design.md", "who": "host", "name": "Host", "thread": "20261023-100000"}]})
+            )
+        );
+        assert_eq!(
+            wire(&HostEvent::WorkWriting { work: "refund-api".into(), writing: Vec::new() }).1,
+            json!({"work": "refund-api", "writing": []})
         );
     }
 }

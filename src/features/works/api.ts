@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { KernelWorkView, WorkStatus, WorkView } from "./types";
+import type { KernelWorkView, ProjectChanges, ProjectPr, WorkStatus, WorkView } from "./types";
 
 // 아래 인자 객체가 평평한 것은 `tauri-commands.test.ts`의 인자 대조 때문이다 — 중첩
 // `{}`를 만나면 그 호출을 통째로 못 보고 넘어간다.
@@ -32,4 +32,11 @@ export const worksApi = {
    */
   touchRecent: (slug: string) => invoke<void>("touch_recent_work", { slug }),
   remove: (slug: string) => invoke<void>("remove_work", { slug }),
+  /**
+   * Work의 변경(v1 티켓 33 · S23) — Project마다 base 대비 바뀐 파일과 +/−, `projects` 순서다. Work 카드의 변경 칸이 열릴 때와
+   * `worktree:changed`마다 읽는다(v1 티켓 34).
+   */
+  changes: (slug: string) => invoke<ProjectChanges[]>("list_work_changes", { slug }),
+  /** Work의 PR(v1 티켓 33 · S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. Work 카드가 열릴 때 읽는다(v1 티켓 34). */
+  prs: (slug: string) => invoke<ProjectPr[]>("read_work_prs", { slug }),
 };

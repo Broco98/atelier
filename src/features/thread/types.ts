@@ -247,3 +247,24 @@ export interface AgentRoster {
   agents: FoundAgent[];
   broken: BrokenAgent[];
 }
+
+/**
+ * 문서 하나를 쓰는 중(`atelier_acp::DocWriting`, v1 티켓 34) — Work의 spec 폴더 안 파일에 편집 도구가 도는 동안이다. Work 카드의 문서 줄이
+ * 파란 점과 「Host가 쓰는 중」을 세운다.
+ */
+export interface DocWriting {
+  /** spec 폴더 기준 경로 — spec 트리의 `path`와 같은 꼴. */
+  path: string;
+  /** 쓰는 Agent의 handle. */
+  who: string;
+  /** 쓰는 Agent의 이름(Host는 「Host」). */
+  name: string;
+  /** 그 Agent가 앉은 Thread. */
+  thread: string;
+}
+
+/** `work:writing` 이벤트 — Work 하나의 지금 쓰는 중 목록 전체. 빈 목록이면 아무도 쓰지 않는다. */
+export interface WorkWritingEvent {
+  work: string;
+  writing: DocWriting[];
+}

@@ -31,7 +31,7 @@ export function projectLines(work: WorkView, projects: ProjectView[]): ProjectLi
 // 사이드바 행에 마우스를 올리면 뜨는 정보 카드. **제 파일로 선 조각이다** — 이 카드는 hover로만
 // 마운트돼서 목록을 그려서는 닿을 수 없다. 조각으로 서 있으면 정적 마크업으로 직접 그릴 수 있다 —
 // **그래서 훅을 부르지 않는다**(목록이 `WorkSectionList`를 따로 내보낸 것과 같은 계약이다).
-// 프로바이더 없이 그려지는 이 자리가 카드의 그물이다(WorkCard.test.tsx).
+// 프로바이더 없이 그려지는 이 자리가 카드의 그물이다(WorkPeek.test.tsx).
 
 // 정보 전용이다 — 누를 수 있는 것을 넣지 않는다. 클릭 대상이 생기면 마우스가 행에서 카드로
 // 건너가는 경로(safe triangle)를 살려둬야 하고, 열림 상태의 소유가 행에서 카드로 넘어간다.
@@ -39,7 +39,7 @@ export function projectLines(work: WorkView, projects: ProjectView[]): ProjectLi
 // 알려진 한계: 키보드로는 이 카드에 닿을 수 없다. 키보드로 작업을 고르는 경로(팔레트)에서는
 // 이 정보가 보이지 않는다. 감수한다. 그 가운데 **셸의 마지막 말**만은 키보드에도 닿는다 — 같은
 // 값이 행 버튼의 접근성 설명으로도 붙는다(`sidebar-active-band` 결정 14, `WorkSectionList`의 행).
-export function WorkCard({
+export function WorkPeek({
   work,
   note,
   projects,

@@ -31,9 +31,11 @@ mod call;
 mod gate;
 mod seat;
 mod work;
+mod writing;
 
 pub(super) use call::Assignment;
 pub use work::WorkChoice;
+pub use writing::DocWriting;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -58,7 +60,7 @@ use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLo
 use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, QuestionAnswer, SessionPlace};
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use gate::Gate;
-use seat::{Grant, Writer};
+use seat::{Docs, Grant, Writer};
 
 /// 받는 이를 고르지 않은 말을 받는 참여자 — Library의 `host.md`다(v1 구현 스펙 S9 · S14).
 const HOST: &str = "host";
@@ -167,6 +169,8 @@ pub(super) struct Threads {
     seats: Arc<seat::WriteSeats>,
     /// 서 있는 Work 만들기 카드(v1 티켓 30) — 사람의 답을 기다리는 도구 호출들.
     proposals: work::Proposals,
+    /// Work마다 지금 쓰는 중인 문서(v1 티켓 34) — Session들의 쓰기 자리 손이 편집 도구의 갱신을 적는다.
+    docs: Arc<writing::DocDesk>,
 }
 
 /// Session의 열쇠 — (Thread, 참여자 handle).
@@ -267,6 +271,7 @@ impl Threads {
         mark_taken(taken.iter().map(|session| &*session.conv));
         if let Some(session) = &taken {
             session.writer.release();
+            session.writer.put_pens_down();
             self.proposals.close_for(key);
         }
         taken
@@ -1001,7 +1006,14 @@ impl ConversationHost {
         let (tools, server) = self.open_tools(key, &conv).unzip();
         terms.mcp_servers.extend(server);
         // 판정(v1 티켓 22) — 받은 권한 요청은 모두 판정을 지난다. 쓰기 자리(v1 티켓 18)는 판정의 입력이고, 턴이 끝나면 쥔 자리를 놓는다.
-        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), &conv);
+        // 쓰는 문서(v1 티켓 34)는 그 Agent의 이름으로 낸다 — Host는 정의 이름과 상관없이 「Host」다(머리줄 · 흐름과 같다).
+        let docs = Docs {
+            desk: Arc::clone(&self.threads.docs),
+            emit: Arc::clone(&self.emit),
+            cwd: place.cwd.clone(),
+            name: if key.handle == HOST { "Host".to_owned() } else { definition.name.clone() },
+        };
+        let writer = Writer::new(&self.threads.seats, self.data_root.clone(), key.clone(), file.work.clone(), &conv, docs);
         let gate = Gate {
             data_root: self.data_root.clone(),
             thread: key.thread.clone(),

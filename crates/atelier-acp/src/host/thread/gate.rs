@@ -141,8 +141,8 @@ pub(super) fn work_asking(data_root: &Path, slug: &str) -> (AskLevel, Vec<String
 }
 
 /// 견줄 꼴의 경로 — 상대 경로는 `base`에서 풀고, `.` · `..`를 접고, 있는 데까지 심볼릭 링크를 푼다. 아직 없는 파일(새로 쓸 파일)은
-/// 있는 가장 가까운 위 폴더를 풀고 나머지를 붙인다.
-fn resolve(path: &Path, base: &Path) -> PathBuf {
+/// 있는 가장 가까운 위 폴더를 풀고 나머지를 붙인다. 문서 쓰는 중(v1 티켓 34)도 spec 폴더를 이 꼴로 견준다.
+pub(super) fn resolve(path: &Path, base: &Path) -> PathBuf {
     let joined = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
     let mut normal = PathBuf::new();
     for component in joined.components() {

@@ -4,11 +4,11 @@ import { useStore } from "@tanstack/react-store";
 import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
-import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
+import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { isObject } from "./json";
-import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue } from "./thread-store";
+import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { recentWorks, type RecentWork } from "./work-chip";
@@ -116,7 +116,8 @@ function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
 
 /**
  * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
- * 가 있어도 돌아오면 그사이 흐른 줄이 보인다), 요약은 사이드바의 목록을 고치고, 엔진 상태는 안내 카드의 바탕이 된다.
+ * 가 있어도 돌아오면 그사이 흐른 줄이 보인다), 요약은 사이드바의 목록을 고치고, 엔진 상태는 안내 카드의 바탕이 된다. 문서 쓰는 중은
+ * Work마다 쌓는다 — Work 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
  */
 export function useThreadFeeds(): void {
   const queryClient = useQueryClient();
@@ -130,6 +131,7 @@ export function useThreadFeeds(): void {
       onThreadQueue(({ thread, who, queue }) => setQueue(thread, who, queue)),
       onThreadList((summary) => putSummary(queryClient, summary)),
       onThreadEngine(applyEngineEvent),
+      onWorkWriting(({ work, writing }) => setWriting(work, writing)),
     ];
     return () => {
       for (const one of unlisten) void one.then((fn) => fn());

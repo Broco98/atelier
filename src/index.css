@@ -534,7 +534,10 @@
        (`--size-row-nav` — `SidebarItem` · work 행), 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)와 레일의 줄 폭
        (`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
        폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
-       `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다. */
+       `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다.
+
+       Work 카드 폭(`--size-work-card` 300)은 v1이 더했다(v1 티켓 34 · 캔버스 WorkPanel · Screen-Review 보드 `.wc`) — Thread 화면 오른쪽
+       위에 뜨는 카드의 폭이고, 카드가 열린 동안 대화가 이 폭 + 틈 12만큼 왼쪽으로 비켜 준다(`ThreadScreen`). DS에 이 폭이 없다. */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -552,6 +555,7 @@
     --size-peek: 288px;
     --size-menu: 260px;
     --size-menu-ctx: 248px;
+    --size-work-card: 300px;
 }
 
 /* **Codex 색 · 그림자 — 라이트**(codex-ds 결정 27 · 스펙 S1 · S2). 이름과 값은 DS 「Atelier」 2판 `tokens.json` 그대로다 —
@@ -1683,6 +1687,38 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility dot-pop {
     animation: dot-pop 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
+/* **Work 카드의 움직임**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse` · `.flashrow` — 「움직임은 바뀐 줄 하나에만 둡니다」). 쓰는 중인 문서
+   옆의 파란 점은 1.6초마다 옅어졌다 돌아온다(`writing-pulse`). 새로 바뀐 파일 줄은 옅은 파랑(`accent-soft`)에서 2.4초에 걸쳐 걷힌다
+   (`row-flash`) — 보드는 그 순간을 보이려고 되풀이로 그렸지만 줄은 **한 번만** 빛난다(스토리 109 「잠깐 빛나기를」). 끝난 뒤 남는 값이
+   없어(채움 없음) 줄의 hover 면을 덮지 않는다. 시간 · 곡선은 보드 값을 그대로 적는다 — 모션 토큰은 v1 티켓 43. 동작을 줄여 둔 사람에게는
+   멎은 점 · 빛나지 않는 줄이다. */
+@keyframes writing-pulse {
+    50% {
+        opacity: 0.3;
+    }
+}
+@utility writing-pulse {
+    animation: writing-pulse 1.6s ease-in-out infinite;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+@keyframes row-flash {
+    from {
+        background: var(--accent-soft);
+    }
+    60%,
+    to {
+        background: transparent;
+    }
+}
+@utility row-flash {
+    animation: row-flash 2.4s ease-out;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
     }

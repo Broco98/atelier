@@ -60,62 +60,16 @@ export interface WorkMenuFlows {
  * 가리키는지 말한다(DS `.at-mi .d` — `fg-tertiary`).
  */
 export function WorkMenuItems({ work, actions }: { work: WorkView; actions: WorkMenuActions }) {
-  const branch = work.branch;
   return (
     <>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <FolderOpen />
-          <span className="min-w-0 flex-1 truncate">Finder에서 열기</span>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuItem onClick={() => actions.openFolder(null)}>
-            <Folder />
-            <span className="min-w-0 flex-1 truncate">spec 폴더</span>
-          </DropdownMenuItem>
-          {/* worktree는 프로젝트마다 하나이고 `projects`에 적힌 순서다(코어가 1:1로 만든다). */}
-          {work.worktrees.length > 0 && <DropdownMenuSeparator />}
-          {work.worktrees.map((worktree) => (
-            <DropdownMenuItem
-              key={worktree.project}
-              disabled={!worktree.exists}
-              onClick={() => actions.openFolder(worktree.project)}
-            >
-              <Folder />
-              <Named name={worktree.project} note="worktree" />
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
+      <FinderSubmenu work={work} actions={actions} />
       <DropdownMenuSeparator />
       {/* 「이름 바꾸기」는 그 work의 이름을 그 자리에서 입력칸으로 바꾼다(codex-ds 스펙 §9). 창이 뜨지 않는다. */}
       <DropdownMenuItem onClick={actions.rename} shortcut="rename">
         <Pencil />
         <span className="min-w-0 flex-1 truncate">이름 바꾸기</span>
       </DropdownMenuItem>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <Copy />
-          <span className="min-w-0 flex-1 truncate">복사</span>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuItem onClick={() => actions.copy(work.slug)}>
-            <Copy />
-            <Named name="slug" note={work.slug} />
-          </DropdownMenuItem>
-          {branch !== null && (
-            <DropdownMenuItem onClick={() => actions.copy(branch)}>
-              <Copy />
-              <Named name="브랜치 이름" note={branch} />
-            </DropdownMenuItem>
-          )}
-          {/* 참조 표기다(`refs.ts` — 끝에 `/`). 경로가 길어 줄에는 이름만 선다. */}
-          <DropdownMenuItem onClick={() => actions.copy(specDirRef(work.slug))}>
-            <Copy />
-            <span className="min-w-0 flex-1 truncate">spec 경로</span>
-          </DropdownMenuItem>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
+      <CopySubmenu work={work} actions={actions} />
       <DropdownMenuSeparator />
       {/* 머리 카드의 상태 배지와 같은 라디오다 — 줄 글리프는 지금 상태의 아이콘이다(DS `ContextMenu` 보드). */}
       <DropdownMenuSub>
@@ -144,6 +98,69 @@ export function WorkMenuItems({ work, actions }: { work: WorkView; actions: Work
         <span className="min-w-0 flex-1 truncate">삭제</span>
       </DropdownMenuItem>
     </>
+  );
+}
+
+/**
+ * **「Finder에서 열기 ▸」 하위 메뉴** — spec 폴더와 Project마다의 worktree. work 메뉴와 Work 카드의 ⋯ 메뉴(v1 티켓 34 · 구현 스펙 §15
+ * 「뒤의 둘은 지금 Work 메뉴의 것이다」)가 같은 조각을 편다.
+ */
+export function FinderSubmenu({ work, actions }: { work: WorkView; actions: Pick<WorkMenuActions, "openFolder"> }) {
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <FolderOpen />
+        <span className="min-w-0 flex-1 truncate">Finder에서 열기</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuItem onClick={() => actions.openFolder(null)}>
+          <Folder />
+          <span className="min-w-0 flex-1 truncate">spec 폴더</span>
+        </DropdownMenuItem>
+        {/* worktree는 프로젝트마다 하나이고 `projects`에 적힌 순서다(코어가 1:1로 만든다). */}
+        {work.worktrees.length > 0 && <DropdownMenuSeparator />}
+        {work.worktrees.map((worktree) => (
+          <DropdownMenuItem
+            key={worktree.project}
+            disabled={!worktree.exists}
+            onClick={() => actions.openFolder(worktree.project)}
+          >
+            <Folder />
+            <Named name={worktree.project} note="worktree" />
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
+/** **「복사 ▸」 하위 메뉴** — slug · 브랜치 이름(정해졌으면) · spec 경로. work 메뉴와 Work 카드의 ⋯ 메뉴가 같은 조각을 편다. */
+export function CopySubmenu({ work, actions }: { work: WorkView; actions: Pick<WorkMenuActions, "copy"> }) {
+  const branch = work.branch;
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <Copy />
+        <span className="min-w-0 flex-1 truncate">복사</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuItem onClick={() => actions.copy(work.slug)}>
+          <Copy />
+          <Named name="slug" note={work.slug} />
+        </DropdownMenuItem>
+        {branch !== null && (
+          <DropdownMenuItem onClick={() => actions.copy(branch)}>
+            <Copy />
+            <Named name="브랜치 이름" note={branch} />
+          </DropdownMenuItem>
+        )}
+        {/* 참조 표기다(`refs.ts` — 끝에 `/`). 경로가 길어 줄에는 이름만 선다. */}
+        <DropdownMenuItem onClick={() => actions.copy(specDirRef(work.slug))}>
+          <Copy />
+          <span className="min-w-0 flex-1 truncate">spec 경로</span>
+        </DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }
 

@@ -9,7 +9,7 @@ import { workSlugOf } from "@/lib/path-prefix";
 import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
 import { useMoveWork, useSetWorkPinned, useSetWorkTitle, useWorks } from "./hooks";
-import { projectLines, WorkCard } from "./WorkCard";
+import { projectLines, WorkPeek } from "./WorkPeek";
 import { WorkContextMenu, type MenuTarget } from "./WorkContextMenu";
 import type { WorkMenuFlows } from "./WorkMenuItems";
 import { WorkSectionList, type WorkRowShells } from "./WorkSectionList";
@@ -529,12 +529,12 @@ function rowTarget(from: Element): MenuTarget | null {
  * 호버 카드의 몸 — **카드가 열릴 때 프로젝트 목록을 읽는다**(codex-ds 스펙 S15). 프로젝트마다 base는 work 목록에 없고 프로젝트
  * 목록에 있다. 작업 화면이 쓰는 질의(`useProjects`)와 같은 것이라 캐시를 함께 쓴다 — 다시 열면 읽어 둔 것이 곧바로 선다.
  *
- * 질의를 여기서 부르는 것은 카드(`WorkCard`)가 훅을 안 부르는 조각이라서다. 카드가 떠 있을 때만 마운트되므로, 프로젝트 목록을
+ * 질의를 여기서 부르는 것은 카드(`WorkPeek`)가 훅을 안 부르는 조각이라서다. 카드가 떠 있을 때만 마운트되므로, 프로젝트 목록을
  * 아직 안 읽은 화면에서는 카드가 처음 열리는 순간이 읽는 때다. 읽는 동안은 `null`을 넘겨 work 목록에서 아는 것만 선다.
  */
 function PeekCard({ work, note }: { work: WorkView; note: CallingNote | null }) {
   const { data: projects } = useProjects();
-  return <WorkCard work={work} note={note} projects={projects ? projectLines(work, projects) : null} />;
+  return <WorkPeek work={work} note={note} projects={projects ? projectLines(work, projects) : null} />;
 }
 
 export default SidebarWorkList;

@@ -376,7 +376,7 @@ describe("눈금의 사분 단", () => {
       why: "머리 줄 버튼(`top`) — 아이콘과 글자 사이 5(DS `.at-btn.top`)",
     },
     {
-      file: "src/features/works/WorkCard.tsx",
+      file: "src/features/works/WorkPeek.tsx",
       className: "gap-1.25",
       why: "호버 카드의 고친 표시 — 점과 글자 사이 5(DS `.at-peek .chg`)",
     },
