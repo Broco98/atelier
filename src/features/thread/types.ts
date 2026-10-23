@@ -132,8 +132,20 @@ export interface Attachment {
   folder: boolean;
 }
 
-/** 새 Thread를 어디에 잇나(`atelier_acp::ThreadLink`) — 첫 말과 함께 간다. Work 칩(31)이 고르기 전까지는 늘 `no-work`다. */
+/**
+ * 새 Thread를 어디에 잇나(`atelier_acp::ThreadLink`) — 첫 말과 함께 간다. 입력창 Work 칩이 고른다(v1 티켓 31): Work 없이 · 새 Work로
+ * 시작(첫 머리말이 Work 만들기 제안을 먼저 하라고 한다) · 이 Work(Thread가 처음부터 그 Work에 이어진다).
+ */
 export type ThreadLink = { kind: "no-work" } | { kind: "new-work" } | { kind: "work"; slug: string };
+
+/** 새 Thread의 첫 말 전에 입력창 칩에서 고른 것(`atelier_acp::StartPicks`) — 고르지 않은 칸은 `null`이다. */
+export interface StartPicks {
+  mode: AskLevel | null;
+  /** 첫 Session의 모델 — claude `--model`이 받는 값. */
+  model: string | null;
+  /** 첫 Session의 생각 깊이 — claude `--effort`가 받는 값. */
+  effort: string | null;
+}
 
 /**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·

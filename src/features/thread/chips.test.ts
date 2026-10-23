@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { chipLabel, chipLists, currentModel, slashCommands } from "./chips";
+import { chipLabel, chipLists, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
 import type { Participant, RecordLine } from "./types";
 
 // 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 참여자 줄에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
@@ -54,6 +54,16 @@ describe("입력창 칩", () => {
     expect(chipLabel(null, "opus", "high")).toBe("Opus · 높음");
     expect(chipLabel(null, "sonnet", null)).toBe("Sonnet");
   });
+
+  // v1 티켓 31 · 사용자 결정 — Session이 열리기 전(새 Thread)에도 모델을 고른다. 그때의 목록은 claude `--model`이 받는 별칭이고, 고른
+  // 값은 Session이 연 목록에도 그대로 있어 첫 말 뒤에도 같은 줄에 체크가 선다.
+  it("Session이 열리기 전의 모델 목록은 claude가 받는 별칭이고, 열린 뒤의 목록에도 같은 값으로 있다", () => {
+    expect(CLAUDE_MODELS.map((option) => option.value)).toEqual(["default", "opus", "fable", "sonnet", "haiku"]);
+    const opened = new Set(chipLists(blessed, "host").models?.map((option) => option.value));
+    for (const option of CLAUDE_MODELS) expect(opened.has(option.value), option.value).toBe(true);
+    expect(chipLabel(CLAUDE_MODELS, "default", null)).toBe("Default");
+    expect(chipLabel(CLAUDE_MODELS, "sonnet", "low")).toBe("Sonnet · 낮음");
+  });
 });
 
 describe("「/」 명령(v1 티켓 23)", () => {
@@ -69,5 +79,18 @@ describe("「/」 명령(v1 티켓 23)", () => {
       ["policy", "언제 물어볼지"],
       ["compact", "맥락 줄이기"],
     ]);
+  });
+
+  it("Work 칩을 고를 수 있으면(첫 말 전) `/work`가 `/new` 뒤에 선다 — 보드의 차례다(v1 티켓 31)", () => {
+    expect(slashCommands([], { work: true }).map((command) => [command.name, command.description])).toEqual([
+      ["new", "새 Thread"],
+      ["work", "Work 만들기 · 붙이기"],
+      ["agent", "Agent 부르기"],
+      ["plan", "계획만 세우고 멈추기"],
+      ["policy", "언제 물어볼지"],
+    ]);
+    expect(slashCommands([{ name: "work", description: "Runtime의 work", aliases: [] }]).map((command) => command.name)).not.toContain(
+      "work",
+    );
   });
 });

@@ -793,7 +793,9 @@ pub async fn thread_read_record(
 /// 새 Thread의 첫 말 — 어디에 이을지(`link` — Work 없음 · 새 Work로 시작 · 이 Work)와 함께 받는다. Thread를 세우고 받는 Agent(첫
 /// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
 /// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
-/// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 아래 칩에서 고른 값이다(v1 티켓 23).
+/// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 칩에서 고른 값이다(v1 티켓 23) — 이은 Work면 그 Work의 정도가
+/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 고르지 않은 칸은
+/// `null`이다.
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -801,8 +803,11 @@ pub async fn thread_start(
     attachments: Vec<String>,
     link: atelier_acp::ThreadLink,
     mode: Option<atelier_acp::AskLevel>,
+    model: Option<String>,
+    effort: Option<String>,
 ) -> CmdResult<String> {
-    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_asking(&text, &attachments, link, mode)).await
+    let picks = atelier_acp::StartPicks { mode, model, effort };
+    to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
 }
 
 /// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
@@ -924,6 +929,16 @@ pub async fn thread_set_mode(
     mode: atelier_acp::AskLevel,
 ) -> CmdResult<()> {
     to_host(&engine, "물어보는 정도를 바꾸지 못했습니다", move |host| host.set_thread_mode(&thread, mode)).await
+}
+
+/// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 「최근 Work」를 고르면 물어보는 정도 칩이 이것을 보인다.
+/// 읽기만 한다. 없는 Work는 그 까닭이 오류 글이다.
+#[tauri::command]
+pub async fn thread_work_mode(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+) -> CmdResult<atelier_acp::AskLevel> {
+    to_host(&engine, "Work의 물어보는 정도를 읽지 못했습니다", move |host| host.work_ask_level(&work)).await
 }
 
 /// 다시 맡기기(v1 티켓 17 · 구현 스펙 §8) — 호출 줄에서 사람이 `from`의 부르기를 같은 글(`text`)로 `to`에게 다시 한다. 기다리지

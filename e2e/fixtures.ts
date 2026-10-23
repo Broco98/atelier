@@ -1114,6 +1114,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   thread_set_effort: FIXTURE_HOST,
   // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
   thread_set_mode: null,
+  // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
+  thread_work_mode: "always",
   // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
   thread_rename: {
     id: FIXTURE_THREAD.id,

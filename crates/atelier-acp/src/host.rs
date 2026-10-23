@@ -26,7 +26,7 @@ use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms,
 mod thread;
 mod turn_order;
 
-pub use thread::{Reply, ThreadLink, ThreadView, WorkChoice};
+pub use thread::{Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로

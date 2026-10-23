@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
+import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
@@ -8,6 +9,7 @@ import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-s
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
+import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
@@ -222,6 +224,36 @@ export function useAgentRoster(work: string | null): AgentRoster | null {
     retry: false,
   });
   return data ?? null;
+}
+
+/**
+ * Work 칩 메뉴의 최근 Work(v1 티켓 31) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)에 이은 Thread 수를 단다. 새 Thread
+ * 화면에 설 때마다 다시 읽는다. Thread 수는 사이드바와 같은 목록 캐시에서 센다. 못 읽으면 최근 Work 없이 두 줄만 선다.
+ */
+export function useRecentWorks(): RecentWork[] {
+  const { data: threads } = useThreads();
+  const { data } = useQuery({
+    queryKey: ["recent-works"],
+    queryFn: () => searchApi.run("", []),
+    staleTime: 0,
+    retry: false,
+  });
+  return data ? recentWorks(data.hits, threads ?? []) : [];
+}
+
+/**
+ * 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. Work를 고르지
+ * 않았으면 읽지 않는다(`null`). 읽기 전 · 못 읽으면 `null`이다.
+ */
+export function useWorkMode(work: string | null): AskLevel | null {
+  const { data } = useQuery({
+    queryKey: ["work-mode", work],
+    queryFn: () => threadApi.workMode(work ?? ""),
+    enabled: work !== null,
+    staleTime: 0,
+    retry: false,
+  });
+  return work === null ? null : (data ?? null);
 }
 
 const DECISIONS_SEEN_KEY = ["settings", "seen", "decisions"] as const;

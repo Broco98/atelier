@@ -70,6 +70,9 @@ const SNAPSHOTS: &str = "agents";
 const TITLE_LIMIT: usize = 40;
 /// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// 입력창 Work 칩에서 「새 Work로 시작」을 고른 Thread의 첫 머리말 끝 줄(v1 티켓 31 · §11) — 받은 Agent가 Work부터 만든다.
+const NEW_WORK_NOTE: &str = "- 사람이 「새 Work로 시작」을 골랐다 — 먼저 `propose_work`로 Work 만들기를 제안하라. 고칠 Project가 \
+                             보이지 않으면 `list_projects`로 보고 고르고, 기획만이면 Project 없이 제안한다.\n";
 
 /// 새 Thread를 어디에 잇나(v1 구현 스펙 §5 「말 보내기」) — 새 Thread의 첫 말과 함께 받는다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,10 +80,23 @@ const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub enum ThreadLink {
     /// Work 없음 — Thread 폴더에서 일한다(S11).
     NoWork,
-    /// 새 Work로 시작 — 아직 Work가 없으므로 Work 없음처럼 선다. 머리말의 표시와 Work 만들기는 v1 티켓 30 · 31이 한다.
+    /// 새 Work로 시작 — 아직 Work가 없으므로 Work 없음처럼 선다. 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서고(v1 티켓
+    /// 31 · §11), Work는 Host의 제안 카드로 만든다(v1 티켓 30).
     NewWork,
     /// 이 Work — 그 Work의 자리에서 일한다. `thread.json`의 `work`에 적는다.
     Work { slug: String },
+}
+
+/// 새 Thread의 첫 말과 함께 입력창 칩에서 고른 것(v1 티켓 23 · 31) — 고르지 않은 칸은 `None`이다.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StartPicks {
+    /// 물어보는 정도 — Work 없는 Thread면 `thread.json`의 `mode`로 서고, 이은 Work면 다를 때 그 Work의 정도가 된다(S18).
+    pub mode: Option<AskLevel>,
+    /// 첫 Session의 모델 — 받는 Agent 정의의 `model.prefer` 대신 참여자 줄에 선다(스토리 33). claude `--model`이 받는 값(별칭 ·
+    /// 모델 이름)이다.
+    pub model: Option<String>,
+    /// 첫 Session의 생각 깊이 — 정의의 `model.effort` 대신 선다. claude `--effort`가 받는 값만 받는다.
+    pub effort: Option<String>,
 }
 
 /// 승인 카드에서 사람이 고른 것(v1 티켓 24 · 구현 스펙 §9) — 그 요청의 선택지 하나에, 함께 드는 것 둘이다.
@@ -336,9 +352,10 @@ impl ConversationHost {
         self.start_thread_asking(text, attachments, link, None)
     }
 
-    /// 물어보는 정도를 고른 첫 말로 새 Thread — [`Self::start_thread_with`]와 같고, 입력창 아래 칩에서 고른 정도(`mode`)가
-    /// `thread.json`의 `mode`로 선다(v1 티켓 23 · S18). 그래서 첫 Session부터 그 정도로 판정하고, 「계획만」이면 `claude`가 계획 모드로
-    /// 뜬다. 고른 채로 선 것이라 `mode` 줄은 남기지 않는다. Work에 이은 Thread는 Work의 정도를 따르므로 이 값을 읽지 않는다.
+    /// 물어보는 정도를 고른 첫 말로 새 Thread — [`Self::start_thread_with`]와 같고, 입력창 칩에서 고른 정도(`mode`)가 `thread.json`의
+    /// `mode`로 선다(v1 티켓 23 · S18). 그래서 첫 Session부터 그 정도로 판정하고, 「계획만」이면 `claude`가 계획 모드로 뜬다. 고른 채로
+    /// 선 것이라 `mode` 줄은 남기지 않는다. Work에 이은 Thread는 정도가 Work의 것이다 — 다르게 골랐으면 그 Work의 정도를 바꾸고
+    /// `mode` 줄을 남긴다(이은 Thread의 칩에서 바꾼 것과 같다, v1 티켓 31).
     pub fn start_thread_asking(
         &self,
         text: &str,
@@ -346,7 +363,24 @@ impl ConversationHost {
         link: ThreadLink,
         mode: Option<AskLevel>,
     ) -> Result<String, HostError> {
+        self.start_thread_picking(text, attachments, link, StartPicks { mode, ..StartPicks::default() })
+    }
+
+    /// 입력창 칩에서 고른 것과 함께 새 Thread — [`Self::start_thread_asking`]과 같고, 첫 말 전에 고른 모델 · 생각 깊이(v1 티켓 31 ·
+    /// 스토리 33)가 받는 Agent 정의의 선호 대신 참여자 줄에 서서 첫 Session이 그 값(`--model` · `--effort`)으로 뜬다. claude가 받지
+    /// 않는 생각 깊이면 아무것도 세우지 않고 거절한다.
+    pub fn start_thread_picking(
+        &self,
+        text: &str,
+        attachments: &[String],
+        link: ThreadLink,
+        picks: StartPicks,
+    ) -> Result<String, HostError> {
+        if let Some(effort) = picks.effort.as_deref().filter(|effort| !EFFORTS.contains(effort)) {
+            return Err(HostError::Setting(format!("모르는 생각 깊이입니다: {effort}")));
+        }
         let attachments = attachments_of(attachments)?;
+        let note = (link == ThreadLink::NewWork).then_some(NEW_WORK_NOTE);
         let work = match link {
             ThreadLink::Work { slug } => {
                 self.open_work(&slug)?;
@@ -360,14 +394,21 @@ impl ConversationHost {
             unreachable!("새 Thread에는 참여자가 없다")
         };
         let handle = found.definition.handle.clone();
-        let new = NewThread { title: title_of(text), work, mode: mode.map(|mode| mode.as_str().to_owned()) };
+        // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
+        let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
+        let new = NewThread { title: title_of(text), work: work.clone(), mode };
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Joined, Some(&handle), joined(&found))
             .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
         log.written(created.first.clone());
-        self.seat(&created.id, &found, &created.first.at)?;
-        self.say_in_thread(&SessionKey::new(&created.id, &handle), text, attachments, None)?;
+        self.seat(&created.id, &found, &created.first.at, &picks)?;
+        if let (Some(slug), Some(mode)) = (&work, picks.mode) {
+            if gate::work_asking(&self.data_root, slug).0 != mode {
+                self.set_thread_mode(&created.id, mode)?;
+            }
+        }
+        self.say_noting(&SessionKey::new(&created.id, &handle), text, attachments, None, note)?;
         drop(log);
         Ok(created.id)
     }
@@ -501,6 +542,13 @@ impl ConversationHost {
             writer.release();
         }
         answered
+    }
+
+    /// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 입력창 칩이 「최근 Work」를 고르면 이것을 보인다. 그 Work에 이은
+    /// Thread들의 판정이 읽는 것과 같은 점 파일이다. 읽기만 한다. 없는 Work는 [`HostError::WorkNotFound`]다.
+    pub fn work_ask_level(&self, work: &str) -> Result<AskLevel, HostError> {
+        self.open_work(work)?;
+        Ok(gate::work_asking(&self.data_root, work).0)
     }
 
     /// 물어보는 정도 바꾸기(S18 · 스토리 84) — Work에 이은 Thread면 그 Work 폴더의 점 파일에(같은 Work의 Thread들이 함께 쓴다),
@@ -792,10 +840,23 @@ impl ConversationHost {
         attachments: Vec<Attachment>,
         call: Option<Assignment>,
     ) -> Result<(), HostError> {
+        self.say_noting(key, text, attachments, call, None)
+    }
+
+    /// [`Self::say_in_thread`]에 머리말 끝의 한 줄(`note`)을 더한 것 — 새 Thread의 첫 말이 「새 Work로 시작」의 표시를 싣는다(v1 티켓
+    /// 31). 머리말은 Session의 첫 말에만 붙으므로 그 줄도 그때만 간다.
+    fn say_noting(
+        &self,
+        key: &SessionKey,
+        text: &str,
+        attachments: Vec<Attachment>,
+        call: Option<Assignment>,
+        note: Option<&str>,
+    ) -> Result<(), HostError> {
         if !self.session_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive_session(key, Revive::IfNotRunning)?;
         }
-        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key)?, quote: None, attachments, call };
+        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote: None, attachments, call };
         let found = self.threads.find(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(&key.waiter()) {
@@ -1011,13 +1072,14 @@ impl ConversationHost {
             return Ok(handle);
         }
         let line = self.thread_log(thread)?.write(RecordKind::Joined, Some(&handle), joined(found)).map_err(HostError::Record)?;
-        self.seat(thread, found, &line.at)?;
+        self.seat(thread, found, &line.at, &StartPicks::default())?;
         Ok(handle)
     }
 
     /// Agent를 Thread에 앉힌다 — 정의 파일을 Thread 폴더에 스냅숏하고(S4) `thread.json`에 참여자로 적는다. 정의가 온 곳은 범위가
-    /// 준 그대로(Library · Project)이고, 모델 · 생각 깊이는 스냅숏의 것을 옮겨 적는다. `joined` 줄은 부르는 쪽이 먼저 적었다.
-    fn seat(&self, thread: &str, found: &FoundAgent, joined_at: &str) -> Result<(), HostError> {
+    /// 준 그대로(Library · Project)이고, 모델 · 생각 깊이는 스냅숏의 것을 옮겨 적는다 — 새 Thread의 칩에서 고른 칸(`picks`)이
+    /// 있으면 그것이다(v1 티켓 31). `joined` 줄은 부르는 쪽이 먼저 적었다.
+    fn seat(&self, thread: &str, found: &FoundAgent, joined_at: &str, picks: &StartPicks) -> Result<(), HostError> {
         let definition = &found.definition;
         let snapshots = self.snapshots(thread)?;
         std::fs::create_dir_all(&snapshots)
@@ -1031,8 +1093,8 @@ impl ConversationHost {
             session_id: None,
             cwd: None,
             additional_directories: Vec::new(),
-            model: definition.model.prefer.clone(),
-            effort: definition.model.effort.clone(),
+            model: picks.model.clone().or_else(|| definition.model.prefer.clone()),
+            effort: picks.effort.clone().or_else(|| definition.model.effort.clone()),
             extra: Default::default(),
         };
         self.change_thread(thread, |file| file.participants.push(participant)).map(drop)
@@ -1086,8 +1148,8 @@ impl ConversationHost {
 
     /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이 Agent의 handle, 참여자, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
     /// worktree 또는 「읽기만」), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로 연 뒤의 첫 말에 따로 된 텍스트
-    /// 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의 `prompt`에만 남는다.
-    fn thread_preamble(&self, key: &SessionKey) -> Result<Value, HostError> {
+    /// 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의 `prompt`에만 남는다. `note`는 끝에 붙는 한 줄이다(「새 Work로 시작」).
+    fn thread_preamble(&self, key: &SessionKey, note: Option<&str>) -> Result<Value, HostError> {
         let file = self.read_thread_file(&key.thread)?;
         let participants: Vec<String> =
             file.participants.iter().map(|participant| format!("`@{}`", participant.handle)).collect();
@@ -1128,6 +1190,9 @@ impl ConversationHost {
                 thread_tools::GET_WORK,
                 thread_tools::PROPOSE_WORK
             ));
+        }
+        if let Some(note) = note {
+            text.push_str(note);
         }
         Ok(json!({"type": "text", "text": text}))
     }

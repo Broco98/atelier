@@ -8,7 +8,7 @@ mod common;
 
 use std::path::Path;
 
-use atelier_acp::ThreadLink;
+use atelier_acp::{StartPicks, ThreadLink};
 use common::{has_pair, of_kind, Sandbox};
 use serde_json::{json, Value};
 
@@ -580,6 +580,41 @@ fn 생각_깊이를_바꾸면_쉬는_session은_같은_session으로_다시_뜨�
         Err(atelier_acp::HostError::Setting("턴이 도는 동안에는 생각 깊이를 바꿀 수 없습니다".into()))
     );
     assert_eq!(sandbox.participant(&thread, "host")["effort"], "high", "거절하면 참여자 줄도 그대로다");
+    host.shut_down();
+}
+
+/// 첫 말 전의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33) — 새 Thread의 입력창 칩에서 고른 값이 정의 파일의 선호 대신 첫 Session의
+/// `--model` · `--effort`가 되고 참여자 줄에 남는다. 고르지 않은 칸은 정의의 값이다. claude가 받지 않는 생각 깊이는 아무것도 세우지
+/// 않고 거절한다.
+#[test]
+fn 첫_말_전에_고른_모델과_생각_깊이로_첫_session이_서고_고르지_않은_칸은_정의의_값이다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
+    let args_of = |thread: &str| {
+        sandbox.wait_thread_kind(thread, "turn-end", 1);
+        common::receipt_args(&sandbox.claude_receipt(&sandbox.thread_session_id(thread, "host")))
+    };
+
+    let picks = StartPicks { model: Some("haiku".into()), effort: Some("low".into()), ..StartPicks::default() };
+    let thread = host.start_thread_picking("안녕", &[], ThreadLink::NoWork, picks).expect("고른 모델로 새 Thread");
+    let args = args_of(&thread);
+    assert!(has_pair(&args, "--model", "haiku") && has_pair(&args, "--effort", "low"), "고른 값으로 첫 Session이 선다: {args:?}");
+    let me = sandbox.participant(&thread, "host");
+    assert_eq!((me["model"].clone(), me["effort"].clone()), (json!("haiku"), json!("low")), "참여자 줄에 남는다");
+
+    let model_only = StartPicks { model: Some("opus".into()), ..StartPicks::default() };
+    let other = host.start_thread_picking("안녕", &[], ThreadLink::NoWork, model_only).expect("모델만 고른 새 Thread");
+    let args = args_of(&other);
+    assert!(has_pair(&args, "--model", "opus") && has_pair(&args, "--effort", "high"), "고르지 않은 생각 깊이는 정의의 값이다: {args:?}");
+
+    let before = host.list_threads().unwrap().len();
+    let unknown = StartPicks { effort: Some("extreme".into()), ..StartPicks::default() };
+    assert_eq!(
+        host.start_thread_picking("안녕", &[], ThreadLink::NoWork, unknown).map(|_| ()),
+        Err(atelier_acp::HostError::Setting("모르는 생각 깊이입니다: extreme".into()))
+    );
+    assert_eq!(host.list_threads().unwrap().len(), before, "거절된 첫 말은 Thread를 세우지 않는다");
     host.shut_down();
 }
 

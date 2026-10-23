@@ -43,22 +43,40 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
 ];
 
 /**
- * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/agent`는 Agent 부르기 메뉴를 연다
- * (v1 티켓 14). `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). 나머지(`/work` ·
- * `/model`)는 그 장이 더한다.
+ * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/work`는 Work 칩 메뉴를 연다(v1 티켓
+ * 31 — 고를 수 있는 첫 말 전에만 선다). `/agent`는 Agent 부르기 메뉴를 연다(v1 티켓 14). `/plan`은 물어보는 정도를 「계획만」으로
+ * 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 그 장이 더한다.
  */
 export const THREAD_COMMANDS: readonly CommandOption[] = [
   { name: "new", description: "새 Thread", aliases: [], thread: true },
+  { name: "work", description: "Work 만들기 · 붙이기", aliases: [], thread: true },
   { name: "agent", description: "Agent 부르기", aliases: [], thread: true },
   { name: "plan", description: "계획만 세우고 멈추기", aliases: [], thread: true },
   { name: "policy", description: "언제 물어볼지", aliases: [], thread: true },
 ];
 
-/** 「/」 메뉴의 명령 — 화면 명령 뒤에 Runtime 명령이다. 화면 명령과 이름이 같은 Runtime 명령은 가린다 — 같은 글이 다른 일을 하지 않게. */
-export function slashCommands(runtime: readonly CommandOption[]): CommandOption[] {
+/**
+ * 「/」 메뉴의 명령 — 화면 명령 뒤에 Runtime 명령이다. 화면 명령과 이름이 같은 Runtime 명령은 가린다 — 같은 글이 다른 일을 하지 않게.
+ * `/work`는 Work 칩을 고를 수 있을 때(`work` — 첫 말 전)만 선다. 첫 말 뒤의 칩은 이은 Work를 보이기만 한다.
+ */
+export function slashCommands(runtime: readonly CommandOption[], { work = false }: { work?: boolean } = {}): CommandOption[] {
   const taken = new Set(THREAD_COMMANDS.map((command) => command.name));
-  return [...THREAD_COMMANDS, ...runtime.filter((command) => !taken.has(command.name))];
+  const shown = THREAD_COMMANDS.filter((command) => work || command.name !== "work");
+  return [...shown, ...runtime.filter((command) => !taken.has(command.name))];
 }
+
+/**
+ * Session이 열리기 전의 모델 목록(v1 티켓 31 · 스토리 33) — claude `--model`이 받는 별칭이다. 모델 목록은 Runtime이 Session을 열 때 알려
+ * 주므로 새 Thread에는 아직 없다. 별칭은 판이 올라도 그 판의 모델로 풀리고, 2.1.309가 연 목록에도 같은 값으로 있어 첫 말 뒤의 목록에서도
+ * 같은 줄이 체크된다. 이름에 판을 적지 않는다 — 무엇으로 풀릴지는 그 claude가 정한다.
+ */
+export const CLAUDE_MODELS: readonly ChoiceOption[] = [
+  { value: "default", name: "Default", description: null },
+  { value: "opus", name: "Opus", description: null },
+  { value: "fable", name: "Fable", description: null },
+  { value: "sonnet", name: "Sonnet", description: null },
+  { value: "haiku", name: "Haiku", description: null },
+];
 
 /**
  * 물어보는 정도 넷(캔버스 Composer 보드 「아래 줄 메뉴 · 물어보는 정도」) — 보드의 차례 · 이름 · 설명 한 줄 그대로다. 이름은 엔진의

@@ -7,7 +7,7 @@
 
 mod common;
 
-use atelier_acp::{AskLevel, ConversationHost, ThreadLink};
+use atelier_acp::{AskLevel, ConversationHost, HostError, StartPicks, ThreadLink};
 use common::{of_kind, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
@@ -316,6 +316,35 @@ fn 계획만으로_들고_나면_떠_있는_session의_모드가_바뀌고_같�
     assert_eq!(modes_sent(&sandbox, &sandbox.thread_session_id(&two, "host")), ["plan"], "다른 Thread의 Session도 계획 모드다");
     assert_eq!(modes_sent(&sandbox, &session), ["plan", "default"], "다른 Work의 Session은 그대로다");
 
+    host.shut_down();
+}
+
+/// 최근 Work에 이은 새 Thread(v1 티켓 31 · S18) — 입력창 칩은 그 Work의 지금 정도를 읽고(`work_ask_level`), 첫 말 전에 다른 정도를
+/// 고르면 그 Work의 정도가 바뀌며 흐름에 「Policy를 … 바꿈」 줄이 선다 — 이은 Thread의 칩에서 바꾼 것과 같다. 같은 정도면 아무것도
+/// 바뀌지 않는다.
+#[test]
+fn 이은_work로_시작한_thread에서_고른_정도는_그_work의_정도가_되고_칩은_work의_지금_정도를_읽는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    sandbox.work("cart", &[]);
+    cart_mode(&sandbox, "auto");
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools")]));
+    assert_eq!(host.work_ask_level("cart"), Ok(AskLevel::Auto), "칩이 읽는 그 Work의 지금 정도");
+    assert_eq!(host.work_ask_level("nope"), Err(HostError::WorkNotFound("nope".into())));
+    let asking = |mode| StartPicks { mode: Some(mode), ..StartPicks::default() };
+
+    let same = host.start_thread_picking("장바구니를 봐 줘", &[], in_cart(), asking(AskLevel::Auto)).expect("같은 정도");
+    let record = wait_turns_of(&sandbox, &same, "host", 1);
+    assert!(of_kind(&record, "mode").is_empty(), "같은 정도면 바꾼 것이 아니다");
+    assert_eq!(sandbox.thread_json(&same)["mode"], Value::Null, "이은 Thread의 정도는 thread.json에 서지 않는다");
+
+    let picked = host.start_thread_picking("계획만 세워 줘", &[], in_cart(), asking(AskLevel::Plan)).expect("계획만으로");
+    let record = wait_turns_of(&sandbox, &picked, "host", 1);
+    assert_eq!(host.work_ask_level("cart"), Ok(AskLevel::Plan), "고른 정도가 그 Work의 정도가 된다(S18)");
+    let changed: Vec<Value> = of_kind(&record, "mode").into_iter().map(|line| line["payload"].clone()).collect();
+    assert_eq!(changed, [json!({"mode": "plan", "work": "cart"})], "바꾼 것이 흐름에 남는다");
+    let args = args_of(&sandbox, &sandbox.thread_session_id(&picked, "host"));
+    assert_eq!(permission_mode(&args), Some("plan"), "첫 Session부터 그 정도로 뜬다: {args:?}");
     host.shut_down();
 }
 

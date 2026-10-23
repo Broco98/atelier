@@ -331,6 +331,31 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     assert!(work.get("branch").is_none_or(Value::is_null), "Project가 없으면 브랜치를 정하지 않는다");
 }
 
+/// 입력창 Work 칩의 「새 Work로 시작」(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
+/// Work부터 만든다. 「Work 없이」는 아무것도 하지 않는다.
+#[test]
+fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안을_먼저_하라고_하고_work_없이는_그_줄이_없다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[]));
+    let preamble = |thread: &str| {
+        let record = sandbox.wait_thread_kind(thread, "turn-end", 1);
+        of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned()
+    };
+
+    let new_work = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NewWork).expect("새 Work로 시작");
+    let marked = preamble(&new_work);
+    assert!(
+        marked.contains("사람이 「새 Work로 시작」을 골랐다 — 먼저 `propose_work`로 Work 만들기를 제안하라"),
+        "새 Work로 시작은 머리말에 표시가 선다:\n{marked}"
+    );
+    assert_eq!(sandbox.thread_json(&new_work)["work"], Value::Null, "Work는 Host의 제안 카드로 만든다 — 아직 없다");
+
+    let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없이");
+    assert!(!preamble(&plain).contains("새 Work로 시작"), "Work 없이는 아무것도 하지 않는다");
+    host.shut_down();
+}
+
 /// 기록 축복(S26 꼴) — Host가 첫 턴에서 Work 만들기를 제안하고, 사람이 web-app을 넣어 만든 기록이 검사 자료로 선다. 화면 L2(`fold.test.ts`)와
 /// PR ④의 L3(v1 티켓 40)가 이 파일을 `thread:record`로 흘려 카드 · 결정 줄 · 시스템 줄 「Work … 을 만들고 이 Thread에 연결함」을 그린다.
 #[test]

@@ -120,15 +120,18 @@ impl Gate {
 /// `mode`와 Thread 폴더의 점 파일이다. 못 읽으면 매번 묻기 · 허락 없음이다.
 pub(super) fn asking(data_root: &Path, thread: &str, work: Option<&str>) -> (AskLevel, Vec<String>) {
     match work {
-        Some(slug) => {
-            let file = atelier_core::read_policy(data_root, PolicyPlace::Work(slug));
-            (AskLevel::read(file.mode.as_deref()), file.grants)
-        }
+        Some(slug) => work_asking(data_root, slug),
         None => {
             let mode = atelier_core::read_thread(data_root, thread).ok().and_then(|file| file.mode);
             (AskLevel::read(mode.as_deref()), atelier_core::read_policy(data_root, PolicyPlace::Thread(thread)).grants)
         }
     }
+}
+
+/// 그 Work의 물어보는 정도와 허락 — Work 폴더의 점 파일이다(S18). 그 Work에 이은 Thread들이 함께 쓴다.
+pub(super) fn work_asking(data_root: &Path, slug: &str) -> (AskLevel, Vec<String>) {
+    let file = atelier_core::read_policy(data_root, PolicyPlace::Work(slug));
+    (AskLevel::read(file.mode.as_deref()), file.grants)
 }
 
 /// 견줄 꼴의 경로 — 상대 경로는 `base`에서 풀고, `.` · `..`를 접고, 있는 데까지 심볼릭 링크를 푼다. 아직 없는 파일(새로 쓸 파일)은

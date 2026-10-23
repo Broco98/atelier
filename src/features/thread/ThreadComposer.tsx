@@ -6,13 +6,14 @@ import AgentMenu, { pickable } from "./AgentMenu";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
-import { ComposerTray, ModelChip, type ShownRecipient } from "./ComposerChips";
-import { insertMention, matchAgents, mentionAt, withRecipient, type AgentChoice, type Recipient } from "./mentions";
+import { AskChip, ModelChip, WorkChip, type WorkChoice } from "./ComposerChips";
+import { insertMention, matchAgents, mentionAt, type AgentChoice, type Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { setDraft, takeFill, threadUiStore } from "./thread-store";
 import type { AskLevel, Attachment } from "./types";
 
-// 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나에 아래 줄(받는 이 · Work · 물어보는 정도)이 붙는다.
+// 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나다. 칩 셋(Work · 물어보는 정도 · 모델과 생각 깊이)은
+// 상자 안 아래 줄에 선다(v1 티켓 31 · 사용자 결정 — 캔버스의 상자 밖 아래 줄 · 받는 이 칩은 걷었다, `ComposerChips.tsx`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 보내기 · 멈추기 · 꺼짐을 맡는다** — 비면 꺼진 면(`fill-active` · `fg-tertiary`), 쓰면 검정 면(`fg` 위
 //   `fg-inverse`), 턴이 도는 동안 비어 있으면 멈추기(■)다. 도는 동안 쓴 말도 보낸다 — 엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다.
@@ -20,12 +21,12 @@ import type { AskLevel, Attachment } from "./types";
 //   고르면 그 자리가 `@<call> `이 된다.
 // - **받는 이의 멘션은 칩으로 칠한다**(Composer 보드 「입력 중 · 멘션 칩」) — 입력칸 뒤에 같은 글을 투명하게 깐 층(`MentionPaint`)이
 //   받는 이로 고른 `@이름` 자리에만 옅은 파랑 면을 깐다. 글자는 입력칸의 것 그대로라 커서 · 고르기 · 붙여 넣기가 여느 입력칸과 같다.
-//   받는 이는 아래 줄 칩이 얼굴 · 이름으로 말한다(`ComposerTray`).
+//   받는 이를 고르는 칩은 따로 없다 — 이 칠이 받는 이를 말한다.
 // - **`+`와 끌어다 놓기는 첨부다**(v1 티켓 06 · S30) — 받은 파일 · 폴더가 입력칸 위에 칩(이름 · 크기)으로 쌓이고, 끌어다 놓는 동안은
 //   입력창 자리에 「놓으면 첨부합니다」가 선다. 보내면 경로만 간다(`ComposerAttachments.tsx`).
-// - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/agent`는 Agent 부르기 메뉴를 열고,
-//   `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 아래 줄의 물어보는 정도 메뉴를 연다(v1 티켓 23). Runtime 명령은
-//   입력칸이 `/이름 `이 된다.
+// - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/work`는 Work 칩 메뉴를 열고(첫 말
+//   전에만, v1 티켓 31), `/agent`는 Agent 부르기 메뉴를 열고, `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는
+//   정도 메뉴를 연다(v1 티켓 23). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
 // 입력 중인 글 · 쌓인 첨부는 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore`). 보낸 말은 여기서 그리지
@@ -58,7 +59,7 @@ export interface ThreadComposerProps {
   roomy?: boolean;
   /** 보내는 중이라 입력을 받지 않는다(새 Thread의 첫 말 — Session이 열릴 때까지). */
   busy?: boolean;
-  /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창과 아래 줄 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
+  /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창(과 그 안의 칩) 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
   card?: ReactNode;
   /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
   above?: ReactNode;
@@ -68,7 +69,7 @@ export interface ThreadComposerProps {
   onNewThread: () => void;
   /** 화면이 바깥에서 보이는 거절 글(이름 바꾸기 · 칩) — 입력창 아래에 함께 선다. */
   problem?: string | null;
-  /** @ 메뉴 · 받는 이 칩의 Agent — 앉은 참여자 → Library → Project(`agentChoices`). */
+  /** @ 메뉴의 Agent — 앉은 참여자 → Library → Project(`agentChoices`). */
   agents: readonly AgentChoice[];
   /** 지금 쓴 말의 받는 이(`recipientOf`) — `null`이면 Host다. 화면이 모델 칩도 이 참여자의 값으로 세우므로 바깥에서 읽어 준다. */
   recipient: Recipient | null;
@@ -76,13 +77,15 @@ export interface ThreadComposerProps {
   recipientRunning?: boolean;
   /** @ 메뉴 끝의 「새 Agent 만들기」(v1 티켓 19 — `useCreateAgent`). 없으면 그 줄은 자리만 선다. */
   onCreateAgent?: () => void;
-  /** 지금 물어보는 정도(v1 티켓 23) — 아래 줄 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
+  /** 지금 물어보는 정도(v1 티켓 23) — 칩이 그리고 `/plan` · `/policy`가 바꾼다. */
   level: AskLevel;
   onLevel: (level: AskLevel) => void;
   /** 물어보는 정도 메뉴 끝의 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. */
   onOpenPolicy?: () => void;
-  /** 이은 Work의 제목 — 아래 줄 Work 칩이 보인다(v1 티켓 30). 없으면 「Work 없음」이다. */
-  work?: string | null;
+  /** Work 칩(v1 티켓 30 · 31) — 칩 글자, 첫 말 전이면 고르기. 고르기가 있을 때만 `/work`가 선다. */
+  work: WorkChoice;
+  /** 비어 있을 때의 말 — Work 칩이 고른 것을 따른다(빈 Thread, v1 티켓 31). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
+  placeholder?: string;
 }
 
 function ThreadComposer({
@@ -110,7 +113,8 @@ function ThreadComposer({
   level,
   onLevel,
   onOpenPolicy,
-  work = null,
+  work,
+  placeholder,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
   // 바깥이 이 입력창을 채웠다(「새 Agent 만들기」 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
@@ -123,7 +127,8 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const all = useMemo(() => slashCommands(commands), [commands]);
+  const picking = work.picking !== undefined;
+  const all = useMemo(() => slashCommands(commands, { work: picking }), [commands, picking]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
   const active = pointer.query === query ? Math.min(pointer.at, Math.max(items.length - 1, 0)) : 0;
@@ -177,12 +182,18 @@ function ThreadComposer({
     onCreateAgent?.();
   };
 
-  // 물어보는 정도 메뉴의 열림 — 칩을 누르거나 `/policy`가 연다.
+  // 물어보는 정도 · Work 메뉴의 열림 — 칩을 누르거나 `/policy` · `/work`가 연다.
   const [asking, setAsking] = useState(false);
+  const [placing, setPlacing] = useState(false);
   const pickCommand = (command: CommandOption) => {
     if (command.thread && command.name === "new") {
       setDraft(draftKey, "");
       onNewThread();
+      return;
+    }
+    if (command.thread && command.name === "work") {
+      setDraft(draftKey, "");
+      setPlacing(true);
       return;
     }
     if (command.thread && command.name === "plan") {
@@ -272,8 +283,6 @@ function ThreadComposer({
     placeCaret(`${draft.slice(0, at)}${lead}${draft.slice(end)}`, at + lead.length);
   };
   const paint = useRef<HTMLDivElement>(null);
-  const shownRecipient: ShownRecipient =
-    recipient === null ? null : recipient.agent ? { agent: recipient.agent } : { unknown: recipient.mention };
 
   const shown = outside ?? problem;
   return (
@@ -313,7 +322,7 @@ function ThreadComposer({
               rows={1}
               value={draft}
               readOnly={busy}
-              placeholder={running ? PLACEHOLDER.running : stopped ? PLACEHOLDER.stopped : PLACEHOLDER.idle}
+              placeholder={running ? PLACEHOLDER.running : stopped ? PLACEHOLDER.stopped : (placeholder ?? PLACEHOLDER.idle)}
               onChange={(event) => {
                 setDraft(draftKey, event.target.value);
                 setCaret(event.target.selectionStart);
@@ -386,7 +395,7 @@ function ThreadComposer({
               )}
             />
           </div>
-          <div className="-ml-2.5 flex items-center gap-0.5">
+          <div className="-ml-2.5 flex min-w-0 items-center gap-0.5">
             <button
               type="button"
               aria-label="파일 첨부"
@@ -404,7 +413,9 @@ function ThreadComposer({
             >
               <AtSign className="size-4" aria-hidden />
             </button>
-            <span className="flex-1" />
+            <WorkChip {...work} open={placing} onOpenChange={setPlacing} />
+            <AskChip level={level} onLevel={onLevel} onOpenPolicy={onOpenPolicy} open={asking} onOpenChange={setAsking} />
+            <span className="min-w-0 flex-1" />
             <ModelChip
               models={models}
               model={model}
@@ -439,18 +450,6 @@ function ThreadComposer({
           </div>
         </form>
       ))}
-      {!carded && (
-        <ComposerTray
-          recipient={shownRecipient}
-          agents={agents}
-          onRecipient={(call) => {
-            const next = withRecipient(draft, call);
-            placeCaret(next, next.length);
-          }}
-          ask={{ level, onLevel, onOpenPolicy, open: asking, onOpenChange: setAsking }}
-          work={work}
-        />
-      )}
       {shown && (
         <p role="alert" className="px-3 pt-1.5 text-xs text-fg-secondary">
           {shown}

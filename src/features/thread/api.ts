@@ -10,6 +10,7 @@ import type {
   Participant,
   QuitCounts,
   RecordLine,
+  StartPicks,
   ThreadLink,
   ThreadQueueEvent,
   ThreadRecordEvent,
@@ -38,13 +39,14 @@ export const threadApi = {
   readRecord: (thread: string, after: number) => invoke<RecordLine[]>("thread_read_record", { thread, after }),
   /**
    * 새 Thread — 첫 말과 함께 세운다. Host의 Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
-   * 이어 갈 곳은 Work 칩(31)이 고르기 전까지 늘 「Work 없음」이다. 첨부는 경로만 간다(v1 티켓 06 · S30). 물어보는 정도는 아래 줄
-   * 칩에서 고른 값이다(v1 티켓 23) — 첫 Session부터 그 정도로 뜬다.
+   * 이어 갈 곳(`link`)은 Work 칩에서 고른 것이다(v1 티켓 31 — Work 없이 · 새 Work로 시작 · 최근 Work). 첨부는 경로만 간다(v1 티켓
+   * 06 · S30). 나머지는 입력창 칩에서 첫 말 전에 고른 것이고 고르지 않은 칸은 `null`이다 — 물어보는 정도(v1 티켓 23 — 이은 Work면
+   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 받는 Agent 정의의 값).
    */
-  start: (text: string, attached: readonly Attachment[], mode: AskLevel) => {
-    const link: ThreadLink = { kind: "no-work" };
+  start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks) => {
     const attachments = pathsOf(attached);
-    return invoke<string>("thread_start", { text, attachments, link, mode });
+    const { mode, model, effort } = picks;
+    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort });
   },
   /** 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. */
   send: (thread: string, text: string, attached: readonly Attachment[] = []) => {
@@ -83,6 +85,8 @@ export const threadApi = {
    * 떠 있는 Session의 계획 모드도 바뀐다. 바꾼 것은 `mode` 줄(「Policy를 … 바꿈」)로 온다.
    */
   setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),
+  /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. */
+  workMode: (work: string) => invoke<AskLevel>("thread_work_mode", { work }),
   /**
    * 다시 맡기기(v1 티켓 17) — 호출 줄에서 `from`의 부르기를 같은 글로 `to`에게 다시 한다. 기다리지 않는다: 부르기와 그 결과(부른
    * Agent의 다음 말)는 기록 줄 이벤트로 온다. 부를 수 없으면 그 까닭으로 거절된다.
@@ -97,8 +101,8 @@ export const threadApi = {
    */
   markRead: (thread: string, seq: number) => invoke<ThreadSummary>("thread_mark_read", { thread, seq }),
   /**
-   * 부를 수 있는 Agent와 깨진 파일 — `work`가 없으면 Library만, 있으면 그 Work의 Project 안까지다(v1 티켓 11). @ 메뉴 · 받는 이 칩 ·
-   * 얼굴이 읽고(14), 빈 Thread의 칩이 Host 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33).
+   * 부를 수 있는 Agent와 깨진 파일 — `work`가 없으면 Library만, 있으면 그 Work의 Project 안까지다(v1 티켓 11). @ 메뉴 · 얼굴이
+   * 읽고(14), 빈 Thread의 칩이 받는 Agent 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33).
    */
   agents: (work: string | null) => invoke<AgentRoster>("list_agents", { work }),
 };

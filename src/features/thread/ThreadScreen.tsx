@@ -11,7 +11,7 @@ import { placeOf } from "./approval";
 import { askTurn, nextOf } from "./asks";
 import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
-import { chipLists, currentModel } from "./chips";
+import { chipLists, CLAUDE_MODELS, currentModel } from "./chips";
 import { useCreateAgent } from "./create-agent";
 import DecisionsCard from "./DecisionsCard";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
@@ -29,6 +29,7 @@ import {
   useSetMode,
   useThread,
   useThreads,
+  useWorkMode,
   type ChipChange,
 } from "./hooks";
 import { changedFiles } from "./log";
@@ -39,7 +40,8 @@ import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
-import type { AskLevel, Attachment, ThreadView } from "./types";
+import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
+import { workHome } from "./work-chip";
 import { decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
 
@@ -48,9 +50,12 @@ import WorkProposalCard from "./WorkProposalCard";
 //
 // - **틀은 카드 없는 흰 면이다**(`PlainFrame` — v1 티켓 07) — 머리 줄에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새
 //   Thread의 머리 줄은 비어 있다(Screen-Home 보드).
-// - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 부제 · 입력창 · 아래 줄 · 도움 줄. 첫 말을 보내면
-//   엔진이 Thread를 세우고 Host의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
-//   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
+// - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 부제 · 입력창. 보드의 상자 밖 아래 줄과 도움 줄
+//   (「@ Agent 부르기 · / 명령 · + 파일 · 이미지」)은 걷었다 — 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 Work ·
+//   물어보는 정도 · 모델과 생각 깊이를 고른다. Work 칩이 고른 것(Work 없이 · 새 Work로 시작 · 최근 Work)을 부제와 입력창 안내가
+//   따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로 Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`)
+//   — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이 반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧
+//   그 Thread가 됐다).
 // - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다
 //   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것
@@ -60,12 +65,13 @@ import WorkProposalCard from "./WorkProposalCard";
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
-//   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
-//   Session 값이다(§14 「입력창 아래 줄」) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
+//   입력창의 @ 메뉴는 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의 Session
+//   값이다(§14) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
 //   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
-// - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 아래 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
-//   첫 Session이 뜬다), 선 Thread에서는 곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다. 칩 메뉴의 「Policy
-//   열기」는 다음 말을 받을 Agent의 파일을 Library에서 연다.
+// - **물어보는 정도**(v1 티켓 23 · S18) — 입력창 칩 · `/plan` · `/policy`가 고른다. 새 Thread에서는 첫 말과 함께 가고(그 정도로
+//   첫 Session이 뜬다 — 최근 Work를 골랐으면 칩은 그 Work의 지금 정도를 보이고, 다르게 고르면 그 Work의 정도가 바뀐다), 선 Thread에서는
+//   곧바로 바꾼다 — 바꾼 것은 흐름의 시스템 줄(「Policy를 … 바꿈」)로 남는다. 칩 메뉴의 「Policy 열기」는 다음 말을 받을 Agent의 파일을
+//   Library에서 연다.
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
@@ -87,16 +93,24 @@ const policyPlace = (call: string, work: string | null) =>
 /** 새 Thread(`/`). */
 export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const navigate = useNavigate();
-  const roster = useAgentRoster(null);
+  // 어디서 일할지(v1 티켓 31) — Work 칩이 고른다. 최근 Work면 그 제목도 쥔다(부제 · 입력창 안내 · 칩 글자).
+  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>({ link: { kind: "no-work" }, title: null });
+  const work = place.link.kind === "work" ? place.link.slug : null;
+  const home = workHome(place.link, place.title);
+  // @ 메뉴의 범위는 고른 Work를 따른다 — 그 Work의 Project 안 Agent도 부른다(v1 티켓 11).
+  const roster = useAgentRoster(work);
   const agents = useMemo(() => agentChoices(roster, []), [roster]);
   const createAgent = useCreateAgent();
   const draft = useStore(threadUiStore, (state) => state.drafts[NEW_THREAD] ?? "");
   const recipient = recipientOf(draft, agents);
-  // 첫 말을 받을 이 — 멘션한 Agent, 없으면 Host. 칩은 그 정의 파일의 모델 · 생각 깊이를 보이기만 한다(스토리 33).
+  // 첫 말을 받을 이 — 멘션한 Agent, 없으면 Host. 칩은 그 정의 파일의 모델 · 생각 깊이에서 시작한다(스토리 33).
   const first = recipient?.agent ?? agents.find((one) => one.call === "host") ?? null;
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
-  // 아직 Thread가 없다 — 고른 정도는 첫 말과 함께 간다.
-  const [level, setLevel] = useState<AskLevel>("always");
+  // 아직 Thread가 없다 — 칩에서 고른 것은 첫 말과 함께 간다. 고르지 않은 칸은 null이다: 정도는 Work 없으면 「매번 묻기」, 최근 Work면
+  // 그 Work의 지금 정도이고, 모델 · 생각 깊이는 받는 Agent 정의의 값이다.
+  const [picks, setPicks] = useState<StartPicks>({ mode: null, model: null, effort: null });
+  const workLevel = useWorkMode(work);
+  const level: AskLevel = picks.mode ?? workLevel ?? "always";
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
   const guide = guideKind(engine, false);
@@ -104,7 +118,7 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const start = async (text: string, attachments: readonly Attachment[]) => {
     setStarting({ text, attachments });
     try {
-      const id = await threadApi.start(text, attachments, level);
+      const id = await threadApi.start(text, attachments, place.link, picks);
       void navigate({ to: "/threads/$id", params: { id }, replace: true });
     } catch (error) {
       setStarting(null);
@@ -115,11 +129,11 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const composer = (
     <ThreadComposer
       draftKey={NEW_THREAD}
-      models={null}
-      model={first?.model?.prefer ?? null}
-      effort={first?.model?.effort ?? null}
-      onModel={() => {}}
-      onEffort={() => {}}
+      models={CLAUDE_MODELS}
+      model={picks.model ?? first?.model?.prefer ?? "default"}
+      effort={picks.effort ?? first?.model?.effort ?? null}
+      onModel={(model) => setPicks((now) => ({ ...now, model }))}
+      onEffort={(effort) => setPicks((now) => ({ ...now, effort }))}
       commands={[]}
       running={false}
       roomy={starting === null}
@@ -130,8 +144,10 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
       recipient={recipient}
       onCreateAgent={createAgent}
       level={level}
-      onLevel={setLevel}
-      onOpenPolicy={() => void navigate(policyPlace(first?.call ?? "host", null))}
+      onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
+      onOpenPolicy={() => void navigate(policyPlace(first?.call ?? "host", work))}
+      work={{ label: home.chip, picking: { link: place.link, onPick: (link, title) => setPlace({ link, title }) } }}
+      placeholder={home.placeholder}
     />
   );
   return (
@@ -159,20 +175,9 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
             <div className="flex flex-col items-center gap-3.5 text-center">
               <HostFace className="size-11" />
               <h1 className="text-heading-lg">무엇을 만들까요?</h1>
-              <p className="text-sm text-fg-tertiary">Host가 답합니다. Work는 필요할 때 Host가 만들어요.</p>
+              <p className="text-sm text-fg-tertiary">{home.subtitle}</p>
             </div>
             {composer}
-            <p className="flex flex-wrap justify-center gap-4.5 text-xs text-fg-tertiary">
-              <span>
-                <b className="font-semibold text-fg-secondary">@</b> Agent 부르기
-              </span>
-              <span>
-                <b className="font-semibold text-fg-secondary">/</b> 명령
-              </span>
-              <span>
-                <b className="font-semibold text-fg-secondary">+</b> 파일 · 이미지
-              </span>
-            </p>
           </div>
         </div>
       )}
@@ -466,7 +471,8 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
         <div className={COLUMN}>
           <ThreadComposer
             draftKey={thread}
-            models={participant ? lists.models : null}
+            // Session을 연 적 없는 참여자(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
+            models={participant ? (lists.models ?? CLAUDE_MODELS) : null}
             model={participant ? currentModel(lists, participant) : (preference?.prefer ?? null)}
             effort={participant ? participant.effort : (preference?.effort ?? null)}
             onModel={(value) => chip({ field: "model", value })}
@@ -488,7 +494,7 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             level={view.askLevel}
             onLevel={pickLevel}
             onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
-            work={view.work ? (linked?.title || view.work) : null}
+            work={{ label: view.work ? linked?.title || view.work : "Work 없음" }}
             card={
               asking ? (
                 asking.card === "work" ? (

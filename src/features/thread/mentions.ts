@@ -2,7 +2,8 @@ import type { Avatar } from "./faces";
 import type { AgentProblem, AgentRoster, DefinitionSource } from "./types";
 
 // @ 메뉴 · 멘션 · 받는 이(v1 티켓 14 · 구현 스펙 §14 · S9 · 캔버스 Composer 보드 「@ · Agent 부르기」)의 **순수 함수**다. 화면은 엔진과
-// 같은 규칙으로 받는 이를 읽는다(v1 티켓 13 노트) — 보내기 전에 칩이 말하는 받는 이와 엔진이 실제로 고르는 받는 이가 갈리면 안 된다.
+// 같은 규칙으로 받는 이를 읽는다(v1 티켓 13 노트) — 보내기 전에 입력칸의 멘션 칠 · 모델 칩이 말하는 받는 이와 엔진이 실제로 고르는
+// 받는 이가 갈리면 안 된다. 받는 이를 고르는 칩은 없다(v1 티켓 31 · 사용자 결정) — Agent는 @ 메뉴 하나로 부른다.
 //
 // - **멘션 문법은 엔진의 `first_mention`과 같다**(`crates/atelier-acp/src/host/thread.rs`): `@`가 말의 처음이거나 이름 글자가 아닌
 //   것 뒤에 설 때만, 백틱 밖에서만 멘션이다. 이름 글자는 글자 · 숫자와 `_` `-` `.` `/`이고, 끝의 `.` `-` `/`는 문장 부호로 뗀다.
@@ -18,7 +19,7 @@ const isNameChar = (char: string | undefined): boolean => char !== undefined && 
 
 const HOST = "host";
 
-/** @ 메뉴 · 받는 이 칩의 Agent 하나 — 앉은 참여자이거나 범위에서 찾은(깨진 것도) Agent다. */
+/** @ 메뉴의 Agent 하나 — 앉은 참여자이거나 범위에서 찾은(깨진 것도) Agent다. */
 export interface AgentChoice {
   /** 부르는 이름 — 메뉴가 `@<call> `으로 넣는다. 앉은 참여자는 handle이다. */
   call: string;
@@ -229,14 +230,4 @@ export function mentionOf(text: string, who: string): { start: number; end: numb
     }
   }
   return null;
-}
-
-/**
- * 받는 이 칩에서 고른 받는 이로 말을 고친다 — 말 앞의 멘션(앞 빈칸 뒤 첫 낱말)을 걷고, Host가 아니면 `@<call> `을 앞에 세운다. 말
- * 가운데의 멘션은 사람의 글이라 그대로 둔다 — 앞에 세운 멘션이 첫 멘션이 되어 받는 이가 된다(S9).
- */
-export function withRecipient(text: string, call: string | null): string {
-  const lead = /^\s*@[\p{L}\p{N}_\-./]+\s*/u.exec(text);
-  const body = lead ? text.slice(lead[0].length) : text;
-  return call === null ? body : `@${call} ${body}`;
 }

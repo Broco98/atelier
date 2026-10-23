@@ -7,13 +7,12 @@ import {
   mentionAt,
   mentionOf,
   recipientOf,
-  withRecipient,
   type AgentChoice,
 } from "./mentions";
 import type { AgentRoster } from "./types";
 
 // @ 메뉴 · 멘션 · 받는 이(v1 티켓 14 · 구현 스펙 §14 · S9) — 화면이 엔진과 같은 규칙으로 받는 이를 읽는다. seam은 순수 함수들이다:
-// 멘션 문법(`firstMention` · `mentionAt`), 메뉴 목록(`agentChoices` · `matchAgents`), 받는 이(`recipientOf` · `withRecipient`) ·
+// 멘션 문법(`firstMention` · `mentionAt`), 메뉴 목록(`agentChoices` · `matchAgents`), 받는 이(`recipientOf`) ·
 // 고른 이름 넣기(`insertMention`). 멘션 문법의 기대는 엔진 단위 시험(`host/thread.rs` `first_mention`)과 같은 예다.
 
 const definition = (handle: string, name: string, description = "") => ({
@@ -134,15 +133,6 @@ describe("받는 이", () => {
 
   it("아는 이름이 없으면 멘션 그대로다 — 보내면 엔진이 거절 글을 준다", () => {
     expect(recipientOf("@nobody 봐", choices)).toEqual({ mention: "nobody", agent: null, at: { start: 0, end: 7 } });
-  });
-
-  it("받는 이를 고르면 말 앞의 멘션을 갈아 끼우고, Host면 걷는다", () => {
-    expect(withRecipient("금액만 다시 봐줘", "reviewer")).toBe("@reviewer 금액만 다시 봐줘");
-    expect(withRecipient("@reviewer 금액만 다시 봐줘", "api/tester")).toBe("@api/tester 금액만 다시 봐줘");
-    expect(withRecipient("  @reviewer가 금액만", null)).toBe("금액만");
-    expect(withRecipient("", "reviewer")).toBe("@reviewer ");
-    // 말 가운데의 멘션은 그대로 두고 앞에 세운다 — 첫 멘션이 받는 이다(S9).
-    expect(withRecipient("끝나면 @tester한테", "reviewer")).toBe("@reviewer 끝나면 @tester한테");
   });
 });
 
