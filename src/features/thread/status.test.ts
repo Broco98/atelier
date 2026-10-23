@@ -40,7 +40,7 @@ describe("작업 중", () => {
 
   // 맡은 턴이 도는 동안 부른 Host의 턴도 돈다(v1 티켓 17) — 지금 일하는 것은 불린 Agent의 도구다. 다른 Agent의 일은 이름이 앞에 선다.
   it("Agent를 부른 동안에는 불린 Agent의 도구가 그 이름과 함께 선다", () => {
-    expect(statusOf(through(record("thread-call"), 15), live(0))).toEqual({ kind: "working", text: "리뷰어 · note.md 읽는 중" });
+    expect(statusOf(through(record("thread-call"), 17), live(0))).toEqual({ kind: "working", text: "리뷰어 · thread.json 읽는 중" });
   });
 });
 

@@ -26,6 +26,12 @@ fn calling(sandbox: &Sandbox, call: &str) -> atelier_acp::ShellSource {
     sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/twoturn-tools"), ("FAKE_CLAUDE_MCP_CALL", call)])
 }
 
+/// 진짜 claude가 Host로 Thread 이름을 바꾼 녹음(v1 티켓 20 끝 점검)을 되감는 가짜 claude의 로그인 셸 — `ToolSearch`로 들인
+/// `rename_thread`를 녹음의 입력(「환불 API 버그」) 그대로 정말 부른다.
+fn recorded_rename(sandbox: &Sandbox) -> atelier_acp::ShellSource {
+    sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-rename-host")])
+}
+
 /// claude가 받은 `--mcp-config`의 Thread 도구 서버 — `{type, command, args, env}`.
 fn thread_server(args: &[String]) -> Value {
     let at = args.iter().position(|arg| arg == "--mcp-config").unwrap_or_else(|| panic!("--mcp-config가 없다: {args:?}"));
@@ -230,14 +236,17 @@ fn 있는_handle이나_깨진_내용이면_도구가_거절_까닭을_돌려주�
 }
 
 /// 기록 축복(S26 꼴) — Host가 첫 턴에서 Thread 도구로 이름을 바꾼 기록이 검사 자료로 선다. PR ②의 L3(v1 티켓 21)가 이 파일을
-/// `thread:record`로 흘려 MCP 도구 줄과 시스템 줄 「Thread 이름을 … 로 바꿈」을 그린다.
+/// `thread:record`로 흘려 MCP 도구 줄과 시스템 줄 「Thread 이름을 … 로 바꿈」을 그린다. 턴은 진짜 claude의 녹음이다(v1 티켓 20) —
+/// 작업 로그에는 Thread 도구를 들이는 `ToolSearch` 줄이 먼저 선다.
 #[test]
 fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
-    let host = sandbox.host(calling(&sandbox, &rename_call("환불 API 버그")));
+    let host = sandbox.host(recorded_rename(&sandbox));
 
-    let thread = host.start_thread("환불이 두 번 빠져요", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let thread = host
+        .start_thread("이 Thread 이름을 「환불 API 버그」로 바꿔 줘. 이름만 바꾸고 한 줄로 답해.", ThreadLink::NoWork)
+        .expect("새 Thread의 첫 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.shut_down();
 
@@ -247,7 +256,8 @@ fn thread_도구로_이름을_바꾼_턴의_기록이_검사_자료와_같다() 
 
 /// 축복 자료의 차례를 하나로 둔다 — 매번 갈리는 두 차례를 앞 줄 뒤로 옮기고 seq를 다시 센다.
 /// - 명령 목록 줄(`available_commands_update`)은 Session을 연 답 뒤에 따로 와 첫 말의 `sent`와 엇갈린다 → 열림 줄 바로 뒤.
-/// - `title` 줄은 도구 호출(중계 서버 → 소켓)이 적고 도구 줄은 claude의 stdout(변환기 → ACP)이 적어 둘이 엇갈린다 → 그 도구 줄 바로 뒤.
+/// - `title` 줄은 도구 호출(중계 서버 → 소켓)이 적고 도구 줄은 claude의 stdout(변환기 → ACP)이 적어 둘이 엇갈린다 → 이름 바꾸기
+///   도구 줄 바로 뒤.
 fn settled(record: &[Value]) -> Vec<Value> {
     let mut lines = record.to_vec();
     let mut after = |moved: &dyn Fn(&Value) -> bool, anchor: &dyn Fn(&Value) -> bool| {
@@ -259,7 +269,10 @@ fn settled(record: &[Value]) -> Vec<Value> {
     after(&|line| line["payload"]["update"]["sessionUpdate"] == "available_commands_update", &|line| {
         line["payload"]["state"] == "opened"
     });
-    after(&|line| line["kind"] == "title", &|line| line["payload"]["update"]["sessionUpdate"] == "tool_call");
+    after(&|line| line["kind"] == "title", &|line| {
+        line["payload"]["update"]["sessionUpdate"] == "tool_call"
+            && line["payload"]["update"]["_meta"]["claudeCode"]["toolName"] == "mcp__atelier-thread__rename_thread"
+    });
     for (n, line) in lines.iter_mut().enumerate() {
         line["seq"] = json!(n + 1);
     }

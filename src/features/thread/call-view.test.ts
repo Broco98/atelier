@@ -7,8 +7,8 @@ import { foldThread, type CallEntry } from "./fold";
 import type { RecordLine } from "./types";
 
 // 호출 줄의 문구(v1 티켓 17 · 캔버스 WorkLog 보드 「Agent 호출 줄」) — 접은 부르기(`CallEntry`) → 넷 상태의 글. seam은 순수 함수
-// `describeCall` 하나다. 바탕 기록은 엔진 검사(L1)가 가짜 claude로 지어 축복한 「Host가 리뷰어를 불러 결과를 받은」 기록이다
-// (`thread-call.jsonl`) — 기록에 없는 갈래(실패 · 멈춤)는 그 끝 줄만 손으로 바꾼다.
+// `describeCall` 하나다. 바탕 기록은 엔진 검사(L1)가 진짜 claude의 녹음(v1 티켓 20)을 되감아 축복한 「Host가 리뷰어를 불러 결과를
+// 받은」 기록이다(`thread-call.jsonl`) — 기록에 없는 갈래(실패 · 멈춤)는 그 끝 줄만 손으로 바꾼다.
 const calling: RecordLine[] = readFileSync(
   fileURLToPath(new URL("../../../crates/atelier-acp/tests/records/thread-call.jsonl", import.meta.url)),
   "utf8",
@@ -18,6 +18,10 @@ const calling: RecordLine[] = readFileSync(
   .map((line) => JSON.parse(line) as RecordLine);
 
 const through = (seq: number) => calling.filter((line) => line.seq <= seq);
+
+/** 축복 기록에서 Host가 맡긴 말과 리뷰어가 돌려준 답. */
+const TASK = "이 Thread 폴더(~/.atelier/threads/20261010-100000)의 thread.json을 읽고, 이 Thread의 제목이 무엇인지 한 줄로만 답해 줘.";
+const ANSWER = "thread.json에 적힌 제목은 「리뷰어에게 이 Thread 폴더의 thread.json을 읽고 제목이 무…」입니다. 끝의 「…」까지 파일에 그대로 들어 있습니다.";
 
 /** 그 기록의 첫 호출 줄과 불린 Agent의 이름. */
 function firstCall(lines: readonly RecordLine[], goneThrough: number | null = null): { call: CallEntry; name: string } {
@@ -38,14 +42,14 @@ const endedWith = (payload: Record<string, unknown>): RecordLine[] =>
 
 describe("호출 줄의 넷 상태", () => {
   it("하는 중 — 「리뷰어가 맡은 일을 하는 중」 아래에 지금 도구 한 줄, 도구가 아직 없으면 맡긴 말이다", () => {
-    expect(view(through(12))).toMatchObject({
+    expect(view(through(15))).toMatchObject({
       state: "running",
       title: "리뷰어가 맡은 일을 하는 중",
-      meta: "“방금 고친 장바구니를 봐 줘”",
+      meta: `“${TASK}”`,
       received: null,
     });
-    expect(view(through(15))).toMatchObject({ state: "running", meta: "note.md 읽는 중" });
-    expect(view(through(18)).meta).toBe("note.md 수정함");
+    expect(view(through(17))).toMatchObject({ state: "running", meta: "thread.json 읽는 중" });
+    expect(view(through(18)).meta).toBe("thread.json 읽음");
   });
 
   it("끝 — 「리뷰어에게 맡김」 아래에 맡긴 말과 걸린 시간, 펼치면 받은 말과 그 Agent의 도구 줄이다", () => {
@@ -53,11 +57,11 @@ describe("호출 줄의 넷 상태", () => {
     expect(done).toMatchObject({
       state: "answered",
       title: "리뷰어에게 맡김",
-      meta: "“방금 고친 장바구니를 봐 줘” · 10초 걸림",
-      received: "edited",
+      meta: `“${TASK}” · 7초 걸림`,
+      received: ANSWER,
       session: true,
     });
-    expect(done.tools.map((tool) => tool.call.title)).toEqual(["Read /tmp/gate/ws/proj/note.md", "Edit /tmp/gate/ws/proj/note.md"]);
+    expect(done.tools.map((tool) => tool.call.title)).toEqual(["Read ~/.atelier/threads/20261010-100000/thread.json"]);
   });
 
   it("실패 — 「리뷰어가 답하지 못함」 아래에 그 까닭이다", () => {
@@ -75,10 +79,10 @@ describe("호출 줄의 넷 상태", () => {
 
   it("전해지기 전에 막힌 부르기는 맡은 턴이 없어 Session을 열 곳이 없다", () => {
     const blocked: RecordLine[] = [
-      ...through(7),
+      ...through(10),
       {
-        seq: 8,
-        at: "2026-10-10T10:00:08.000+09:00",
+        seq: 11,
+        at: "2026-10-10T10:00:11.000+09:00",
         kind: "call",
         who: "host",
         payload: { state: "ended", id: "c2", from: "host", to: "reviewer", text: "봐 줘", durationMs: 3000, outcome: "stopped", reason: "사람이 멈춤" },

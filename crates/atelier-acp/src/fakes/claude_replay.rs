@@ -52,6 +52,11 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   스스로 이어 간 턴 — 그 턴이 `Read` · `Write`로 결과를 `bg.md`에 쓴다(판 02 관문 G4).
 /// - `2.1.309/noauth` — 로그인이 안 된 claude의 두 턴: `assistant{error:"authentication_failed"}` → `result{is_error:true}`
 ///   (판 02 실측 A8).
+/// - `2.1.309/thread-call-host` · `2.1.309/thread-call-reviewer` — Thread의 Host가 리뷰어를 부른 한 턴과 불린 리뷰어의 한 턴(v1
+///   티켓 20 끝 점검). Host는 미뤄 실린 Thread 도구를 `ToolSearch`(`select:mcp__atelier-thread__call_agent`)로 들인 뒤
+///   `call_agent`를 부르고 받은 답을 옮긴다. 리뷰어는 `Read`로 `thread.json`을 읽고 답한다. 녹음의 Thread 폴더는
+///   `/tmp/gate/home/threads/20261023-234318`이다.
+/// - `2.1.309/thread-rename-host` — Host가 `ToolSearch`로 들인 `rename_thread`로 Thread 이름을 바꾼 한 턴(v1 티켓 20 끝 점검).
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -67,6 +72,9 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     ("2.1.309/g4-background", include_str!("../../tests/fixtures/claude-2.1.309/g4-background.jsonl")),
     ("2.1.309/noauth", include_str!("../../tests/fixtures/claude-2.1.309/noauth.jsonl")),
+    ("2.1.309/thread-call-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-host.jsonl")),
+    ("2.1.309/thread-call-reviewer", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-reviewer.jsonl")),
+    ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");

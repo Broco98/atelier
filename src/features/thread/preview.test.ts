@@ -101,6 +101,10 @@ describe("Agent를 부른 Thread(v1 티켓 17)", () => {
     .map((line) => JSON.parse(line) as RecordLine);
 
   it("부른 Agent가 결과를 받아 마지막에 한 답이 마지막 말이다 — 먼저 끝난 불린 Agent의 답이 아니다", () => {
-    expect(lastSaid(calling)).toMatchObject({ who: "host", name: "Host", text: "hello from turn" });
+    expect(lastSaid(calling)).toMatchObject({
+      who: "host",
+      name: "Host",
+      text: "@reviewer가 보낸 답을 그대로 옮깁니다. thread.json에 적힌 제목은 「리뷰어에게 이 Thread 폴더의 thread.json을 읽고 제목이 무…」입니다. 끝의 「…」까지 파일에 그대로 들어 있습니다.",
+    });
   });
 });

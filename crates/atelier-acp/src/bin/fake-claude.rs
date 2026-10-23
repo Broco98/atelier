@@ -37,6 +37,10 @@
 //! - `FAKE_CLAUDE_REBASE` — 녹음의 폴더 하나(예 `/tmp/gate/ws/g1/outside`). 있으면 내는 줄마다 그 글을 이 claude의 작업 폴더로 바꿔
 //!   낸다(v1 티켓 22). 원문의 경로는 잰 날의 임시 폴더라 판정에는 늘 「Work 밖 편집」이다 — 작업 자리 안의 편집을 재려면 가짜가
 //!   제 자리의 경로를 물어야 한다. 그 폴더는 진짜 claude처럼 심볼릭 링크를 푼 경로(`getcwd`)다.
+//! - **녹음 속 MCP 부르기**(v1 티켓 20) — 되감는 원문의 `assistant`가 받은 `--mcp-config`의 서버 도구(`mcp__<서버>__<도구>`)를
+//!   부르면, 그 줄을 낸 뒤 그 서버를 띄워 같은 입력으로 정말 부르고, 뒤따르는 원문의 그 `tool_result`를 받은 답으로 바꿔 낸다.
+//!   진짜 claude가 Thread 도구를 부른 녹음(`thread-call-host` · `thread-rename-host`)이 엔진의 중계 서버 → 소켓 길을 끝까지 탄다.
+//!   입력은 `FAKE_CLAUDE_REBASE`로 옮긴 뒤의 것이고, 영수증 `<세션 id>.mcp`에 `FAKE_CLAUDE_MCP_CALL`과 같은 꼴로 남는다.
 //!
 //! 녹화를 되감는 규칙(턴 · 권한 · 멈추기 · 바꾸기 · 스스로 이어 간 턴)은 입출력 없는 몸 `src/fakes/claude_replay.rs`에 있다 —
 //! 변환기 상태 기계의 시험이 프로세스 없이 같은 몸을 상대한다. 이 bin은 그 몸에 stdin · stdout · 영수증 · 문을 두른다.
@@ -50,6 +54,8 @@
 //! 한 줄씩 더한다. 세션 id는 받은 `--session-id` · `--resume`(없으면 `claude-<pid>`)이다. `-p`로 뜰 때마다 `launches`에
 //! `{pid, args}` 한 줄을 더한다 — 되살리기가 실패해 곧바로 끝난 claude도 남는다.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -113,7 +119,7 @@ fn main() {
     let mcp_calls = mcp_calls_of(agent.as_deref());
     let mcp_config = flag_value(&args, "--mcp-config")
         .map(|text| serde_json::from_str::<Value>(&text).expect("--mcp-config는 JSON 글이다"));
-    let fake = Fake { receipts, session_id: session_id.clone(), writes };
+    let fake = Fake { receipts, session_id: session_id.clone(), writes, servers: mcp_config, answered: RefCell::default() };
     fake.log_launch(&args);
     if resume.is_some() && !fake.knows_session() {
         fake.forgotten_session();
@@ -136,7 +142,7 @@ fn main() {
             continue;
         }
         let lines = replay.receive(&message);
-        fake.emit_calling(lines, &mcp_calls, mcp_config.as_ref(), message["type"] == "user");
+        fake.emit_calling(lines, &mcp_calls, message["type"] == "user");
         // 문에서 멈췄다 — 놓일 때까지 기다린다. 그동안 온 stdin 줄은 읽는 스레드가 영수증에 적고 쌓아 둔다.
         while replay.paused() {
             fake.wait_gate();
@@ -217,23 +223,82 @@ struct Fake {
     session_id: String,
     /// 되감는 `Write`를 cwd에 정말 쓰나(`FAKE_CLAUDE_PERFORMS_WRITES`).
     writes: bool,
+    /// 받은 `--mcp-config` — 원문의 MCP 부르기를 정말 부를 서버들.
+    servers: Option<Value>,
+    /// 원문의 MCP 부르기를 정말 불러 받은 답 — 도구 id → `tools/call`의 `result`. 뒤따르는 그 `tool_result`를 이것으로 바꾼다.
+    answered: RefCell<HashMap<String, Value>>,
 }
 
 impl Fake {
-    /// 되감기가 낸 줄들을 차례로 낸다. 정말 쓰기로 했으면 `Write` 도구 호출의 글을 그 줄을 내기 전에 쓴다.
+    /// 되감기가 낸 줄들을 차례로 낸다. 정말 쓰기로 했으면 `Write` 도구 호출의 글을 그 줄을 내기 전에 쓴다. 원문의 MCP 부르기는 그
+    /// 줄을 낸 뒤 정말 부르고, 그 `tool_result`는 받은 답으로 바꿔 낸다.
     fn emit_all(&self, lines: Vec<Value>) {
         for line in lines {
             if self.writes {
                 self.perform_writes(&line);
             }
+            let line = self.with_answers(line);
             emit(&line);
+            self.call_recorded(&line);
+        }
+    }
+
+    /// 원문의 `assistant`가 받은 서버의 도구(`mcp__<서버>__<도구>`)를 부르면 그 서버를 띄워 같은 입력으로 부른다. 입력은
+    /// `FAKE_CLAUDE_REBASE`로 옮긴 뒤의 것이다 — 낸 줄과 같다.
+    fn call_recorded(&self, line: &Value) {
+        if line["type"] != "assistant" {
+            return;
+        }
+        let shown: Value = serde_json::from_str(&rebased(line)).expect("낸 줄은 JSON이다");
+        for block in shown["message"]["content"].as_array().into_iter().flatten().filter(|block| block["type"] == "tool_use") {
+            let Some((name, tool)) = block["name"].as_str().and_then(|name| name.strip_prefix("mcp__")?.split_once("__")) else {
+                continue;
+            };
+            let Some(spec) = self.servers.as_ref().and_then(|config| config["mcpServers"].get(name)) else { continue };
+            let mut server = McpServer::start(spec);
+            server.handshake();
+            let tools = server.request("tools/list", json!({}))["result"]["tools"].clone();
+            let answer = server.request("tools/call", json!({"name": tool, "arguments": block["input"]}));
+            server.close();
+            let result = answer.get("result").cloned().unwrap_or_else(|| json!({"isError": true, "content": [
+                {"type": "text", "text": answer["error"]["message"]}]}));
+            self.leave_mcp_receipt(name, &tools, tool, &block["input"], &result);
+            self.answered.borrow_mut().insert(block["id"].as_str().unwrap_or_default().to_owned(), result);
+        }
+    }
+
+    /// 원문의 `user` 줄 속 `tool_result`가 정말 부른 MCP 도구의 것이면 받은 답으로 바꾼다 — `content` · `is_error`와, 진짜 claude가
+    /// 함께 싣는 `tool_use_result`.
+    fn with_answers(&self, mut line: Value) -> Value {
+        if line["type"] != "user" || self.answered.borrow().is_empty() {
+            return line;
+        }
+        let mut answered = self.answered.borrow_mut();
+        let mut received = None;
+        for block in line["message"]["content"].as_array_mut().into_iter().flatten() {
+            let Some(result) = block["tool_use_id"].as_str().and_then(|id| answered.remove(id)) else { continue };
+            block["content"] = result["content"].clone();
+            block["is_error"] = json!(result["isError"] == true);
+            received = Some(result["content"].clone());
+        }
+        if let Some(content) = received.filter(|_| line.get("tool_use_result").is_some()) {
+            line["tool_use_result"] = content;
+        }
+        line
+    }
+
+    /// 부른 MCP 도구 하나를 영수증 `<세션 id>.mcp`에 한 줄로 남긴다.
+    fn leave_mcp_receipt(&self, server: &str, tools: &Value, tool: &str, arguments: &Value, result: &Value) {
+        if let Some(path) = self.path("mcp") {
+            let receipt = json!({"server": server, "tools": tools, "tool": tool, "arguments": arguments, "call": result});
+            receipts::append_line(&path, &receipt.to_string());
         }
     }
 
     /// 되감기가 낸 줄들을 내며 MCP 도구들을 부른다(`FAKE_CLAUDE_MCP_CALL`). 앞머리의 부르기는 user 줄로 시작한 턴(`starting`)의
     /// `system/init` 바로 뒤(없으면 맨 앞)에서, `"at": "result"`인 부르기는 스스로 이어 간 턴이 아닌 턴의 `result` 바로 앞에서다.
     /// 부를 것이 없으면 줄만 낸다.
-    fn emit_calling(&self, lines: Vec<Value>, calls: &[Value], config: Option<&Value>, starting: bool) {
+    fn emit_calling(&self, lines: Vec<Value>, calls: &[Value], starting: bool) {
         let (at_result, at_start): (Vec<&Value>, Vec<&Value>) = calls.iter().partition(|call| call["at"] == "result");
         let start = (starting && !at_start.is_empty())
             .then(|| lines.iter().position(|line| line["type"] == "system" && line["subtype"] == "init").map_or(0, |at| at + 1));
@@ -248,19 +313,17 @@ impl Fake {
             let Some(at) = at else { continue };
             self.emit_all(lines.by_ref().take(at - emitted).collect());
             emitted = at;
-            made = self.call_tools(&calls, config, made);
+            made = self.call_tools(&calls, made);
         }
         self.emit_all(lines.collect());
     }
 
     /// MCP 도구들을 차례로 부른다 — 받은 `--mcp-config`의 서버마다 띄워 그 도구를 가진 서버에 부른다. 도구를 가진 서버가 없으면
     /// 부르지 않는다. `made`는 이 턴에 앞서 부른 수다(도구 호출 id를 가른다) — 부른 뒤의 수를 돌려준다.
-    fn call_tools(&self, calls: &[&Value], config: Option<&Value>, mut made: usize) -> usize {
-        for (name, spec) in config.and_then(|config| config["mcpServers"].as_object()).into_iter().flatten() {
+    fn call_tools(&self, calls: &[&Value], mut made: usize) -> usize {
+        for (name, spec) in self.servers.as_ref().and_then(|config| config["mcpServers"].as_object()).into_iter().flatten() {
             let mut server = McpServer::start(spec);
-            server.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {},
-                                                "clientInfo": {"name": "fake-claude", "version": "0"}}));
-            server.notify("notifications/initialized");
+            server.handshake();
             let tools = server.request("tools/list", json!({}))["result"]["tools"].clone();
             for call in calls {
                 let tool = call["tool"].as_str().expect("FAKE_CLAUDE_MCP_CALL의 tool");
@@ -288,11 +351,7 @@ impl Fake {
                     "message": {"role": "user", "content": [block]},
                     "parent_tool_use_id": null, "session_id": self.session_id,
                 }));
-                if let Some(path) = self.path("mcp") {
-                    let receipt = json!({"server": name, "tools": tools, "tool": tool, "arguments": call["arguments"],
-                                         "call": result});
-                    receipts::append_line(&path, &receipt.to_string());
-                }
+                self.leave_mcp_receipt(name, &tools, tool, &call["arguments"], &result);
             }
             server.close();
         }
@@ -460,6 +519,13 @@ impl McpServer {
 
     fn notify(&mut self, method: &str) {
         self.send(&json!({"jsonrpc": "2.0", "method": method}));
+    }
+
+    /// `initialize` → `notifications/initialized` — 진짜 claude가 서버를 띄운 뒤 하는 맞이.
+    fn handshake(&mut self) {
+        self.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {},
+                                          "clientInfo": {"name": "fake-claude", "version": "0"}}));
+        self.notify("notifications/initialized");
     }
 
     /// stdin을 닫고 끝나기를 기다린다 — stdio MCP 서버는 stdin EOF에 끝난다.

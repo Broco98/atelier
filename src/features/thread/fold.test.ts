@@ -33,9 +33,22 @@ const blessed = record("thread-two-turns");
 /** Host 한 턴 뒤 `@reviewer`가 들어와 지난 말을 받고 답한 축복 기록(v1 티켓 13). */
 const mention = record("thread-mention");
 
-/** Host가 Thread 도구로 리뷰어를 불러 맡기고 「edited」를 받은 축복 기록(v1 티켓 16). */
+/**
+ * Host가 Thread 도구로 리뷰어를 불러 맡기고 답을 받은 축복 기록(v1 티켓 16) — 두 턴 모두 진짜 claude의 녹음이다(v1 티켓 20). 리뷰어는
+ * `thread.json`을 읽고 제목을 답한다.
+ */
 const calling = record("thread-call");
 const through = (lines: readonly RecordLine[], seq: number) => lines.filter((line) => line.seq <= seq);
+const TASK = "이 Thread 폴더(~/.atelier/threads/20261010-100000)의 thread.json을 읽고, 이 Thread의 제목이 무엇인지 한 줄로만 답해 줘.";
+const ANSWER =
+  "thread.json에 적힌 제목은 「리뷰어에게 이 Thread 폴더의 thread.json을 읽고 제목이 무…」입니다. 끝의 「…」까지 파일에 그대로 들어 있습니다.";
+
+/** 그 턴의 호출 줄. */
+function callIn(turn: ThreadModel["turns"][number]): CallEntry {
+  const found = turn.entries.find((entry): entry is CallEntry => entry.kind === "call");
+  if (!found) throw new Error("호출 줄이 없다");
+  return found;
+}
 
 const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
 const update = (seq: number, second: number, body: Record<string, unknown>): RecordLine => ({
@@ -114,10 +127,13 @@ describe("시스템 줄", () => {
     ]);
     expect(model.turns).toHaveLength(1);
     const [turn] = model.turns;
-    expect(turn.end && headline(turn.end)).toBe("7초 동안 작업함");
+    expect(turn.end && headline(turn.end)).toBe("9초 동안 작업함");
+    // 그 앞의 `ToolSearch`(도구 들이기)는 서지 않는다.
     const tools = turn.entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["atelier-thread.rename_thread 불러옴"]);
-    expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual(["hello from turn"]);
+    expect(finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)).toEqual([
+      "Thread 이름을 「환불 API 버그」로 바꿨습니다.",
+    ]);
   });
 
   it("Host 밖의 참여자가 들고 나면 이름을 굵게 한 줄이 선다", () => {
@@ -486,13 +502,25 @@ describe("호출 줄(v1 티켓 17)", () => {
     const model = foldThread(calling);
     const [host, reviewer] = model.turns;
     expect(model.turns.map((turn) => turn.who)).toEqual(["host", "reviewer"]);
-    expect(host.entries.map((entry) => entry.kind)).toEqual(["call", "message"]);
-    const call = host.entries[0] as CallEntry;
-    expect([call.id, call.from, call.to, call.text]).toEqual(["fake-call", "host", "reviewer", "방금 고친 장바구니를 봐 줘"]);
-    expect(call.end).toEqual({ outcome: "answered", answer: "edited", reason: null, durationMs: 10000 });
+    expect(host.entries.map((entry) => entry.kind)).toEqual(["thought", "call", "message"]);
+    const call = callIn(host);
+    expect([call.id, call.from, call.to, call.text]).toEqual(["fake-call", "host", "reviewer", TASK]);
+    expect(call.end).toEqual({ outcome: "answered", answer: ANSWER, reason: null, durationMs: 7000 });
     // 도구의 끝(seq 23)이 와도 도구 줄은 다시 서지 않는다 — 접힌 턴에는 호출 줄 뒤의 답만 펼쳐 둔다.
-    expect(finalMessages(host).map((entry) => entry.kind === "message" && entry.text)).toEqual(["hello from turn"]);
+    expect(finalMessages(host).map((entry) => entry.kind === "message" && entry.text)).toEqual([
+      `@reviewer가 보낸 답을 그대로 옮깁니다.\n\n> ${ANSWER}`,
+    ]);
     expect(reviewer.entries.some((entry) => entry.kind === "call")).toBe(false);
+  });
+
+  it("Thread 도구를 들이는 ToolSearch는 도구 줄로 서지 않고, 그 끝도 붙지 않는다(v1 티켓 20)", () => {
+    // 진짜 claude는 `call_agent`를 부르기 전에 `ToolSearch`(seq 8)로 그 도구를 들이고 곧 끝낸다(seq 9).
+    expect(calling.filter((line) => line.seq === 8).map((line) => JSON.stringify(line.payload))).toEqual([
+      expect.stringContaining('"title":"ToolSearch"'),
+    ]);
+    const [host] = foldThread(through(calling, 9)).turns;
+    expect(host.entries.map((entry) => entry.kind)).toEqual(["thought"]);
+    expect(host.answeredAt).toBe(calling.find((line) => line.seq === 7)?.at);
   });
 
   it("불린 Agent의 맡은 턴은 사람의 말 없이 맡긴 일로 서고, 그 Agent의 줄은 그 턴에 든다", () => {
@@ -504,19 +532,19 @@ describe("호출 줄(v1 티켓 17)", () => {
       "fake-call",
     ]);
     const tools = reviewer.entries.filter((entry) => entry.kind === "tool");
-    expect(tools.map((tool) => tool.call.title)).toEqual(["Read /tmp/gate/ws/proj/note.md", "Edit /tmp/gate/ws/proj/note.md"]);
-    expect(finalMessages(reviewer).map((entry) => entry.kind === "message" && entry.text)).toEqual(["edited"]);
+    expect(tools.map((tool) => tool.call.title)).toEqual(["Read ~/.atelier/threads/20261010-100000/thread.json"]);
+    expect(finalMessages(reviewer).map((entry) => entry.kind === "message" && entry.text)).toEqual([ANSWER]);
     // 호출 줄은 그 맡은 턴의 줄들을 들고 있다 — 하는 중의 지금 도구 · 펼침의 도구 줄.
-    const call = host.entries[0] as CallEntry;
+    const call = callIn(host);
     expect(call.work?.map((entry) => entry.key)).toEqual(reviewer.entries.map((entry) => entry.key));
   });
 
   it("맡긴 일이 전해지기 전에 막힌 부르기는 끝 줄 하나로 서고 맡은 턴이 없다", () => {
     const lines: RecordLine[] = [
-      ...through(calling, 7),
+      ...through(calling, 10),
       {
-        seq: 8,
-        at: at(8),
+        seq: 11,
+        at: at(11),
         kind: "call",
         who: "host",
         payload: { state: "ended", id: "c2", from: "host", to: "reviewer", text: "방금 고친 장바구니를 봐 줘", durationMs: 3000, outcome: "stopped", reason: "사람이 멈춤" },
@@ -556,7 +584,7 @@ describe("호출 줄(v1 티켓 17)", () => {
 
   it("Session 보기(S37)는 그 Agent의 턴과 들고 남만 남기고, 맡은 턴은 일하는 동안에도 선다", () => {
     const reviewer = flowOf(foldThread(through(calling, 17)), "reviewer");
-    expect(reviewer.turns.map((turn) => [turn.who, turn.assigned?.text])).toEqual([["reviewer", "방금 고친 장바구니를 봐 줘"]]);
+    expect(reviewer.turns.map((turn) => [turn.who, turn.assigned?.text])).toEqual([["reviewer", TASK]]);
     expect(reviewer.system.map((line) => [line.handle, line.turnsBefore])).toEqual([["reviewer", 0]]);
     expect(reviewer.answering).toBeNull();
     const host = flowOf(foldThread(calling), "host");

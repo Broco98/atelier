@@ -454,6 +454,12 @@ const CARD_TOOLS: Readonly<Record<"work" | "project", string>> = {
 };
 
 /**
+ * 미뤄 실린 도구(Thread 도구 · 사용자 MCP)를 들이는 Claude Code 도구(v1 티켓 20) — 일이 아니라 도구 싣기라 작업 로그에 세우지 않는다.
+ * 진짜 claude 2.1.309는 Thread 도구를 부르기 전에 늘 이것(`select:mcp__atelier-thread__…`)을 먼저 부른다.
+ */
+const TOOL_SEARCH = "ToolSearch";
+
+/**
  * 기록 줄을 화면 모델로 접는다. `goneThrough`는 Thread가 「떠 있는 Session이 없다」고 말할 때의 마지막 seq다 — 그 seq까지의 줄을
  * 적던 프로세스는 이미 없다(앱을 다시 켬). 그 뒤의 줄(되살린 뒤)은 여느 때처럼 접는다. 떠 있으면 `null`이다.
  */
@@ -645,6 +651,10 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (!TURN_UPDATES.has(kind)) break;
         const called = text(update.toolCallId) ?? "";
         if (kind === "tool_call" && (planReviews.has(called) || questionTools.has(called))) break;
+        if (kind === "tool_call" && toolNameOf(update) === TOOL_SEARCH) {
+          absorbed.add(called);
+          break;
+        }
         const turn: Turn = openFor(line.who ?? null) ?? start(`o${line.seq}`, null, line.at, line.who ?? null);
         answer(turn, line);
         closedLast.delete(turn);
@@ -1137,18 +1147,21 @@ function quoteOf(value: unknown): Quote | null {
   return { file, start, end, text: quoted };
 }
 
+/** 도구 호출의 Claude Code 도구 이름 — `_meta.claudeCode.toolName`, 없으면 제목. */
+function toolNameOf(call: Json): string | null {
+  const meta = isObject(call._meta) ? call._meta : {};
+  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
+  return text(claudeCode.toolName) ?? text(call.title);
+}
+
 /** Agent 부르기 Thread 도구의 줄인가 — Claude Code의 MCP 도구 이름(`_meta.claudeCode.toolName`, 없으면 제목)으로 가린다. */
 function isCallTool(tool: ToolEntry): boolean {
-  const meta = isObject(tool.call._meta) ? tool.call._meta : {};
-  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
-  return (text(claudeCode.toolName) ?? text(tool.call.title)) === CALL_TOOL;
+  return toolNameOf(tool.call) === CALL_TOOL;
 }
 
 /** 사람에게 카드로 묻는 Thread 도구의 줄이면 그 카드 종류(v1 티켓 30 · 32) — 부르기 도구 줄과 같은 규칙으로 가린다. */
 function cardOfTool(tool: ToolEntry): "work" | "project" | null {
-  const meta = isObject(tool.call._meta) ? tool.call._meta : {};
-  const claudeCode = isObject(meta.claudeCode) ? meta.claudeCode : {};
-  const name = text(claudeCode.toolName) ?? text(tool.call.title);
+  const name = toolNameOf(tool.call);
   if (name === CARD_TOOLS.work) return "work";
   if (name === CARD_TOOLS.project) return "project";
   return null;
