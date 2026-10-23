@@ -436,6 +436,10 @@ impl TurnHands for ConvHands<'_> {
         self.conv.recorder.sent(text, quote, attachments, prompt, send_now)
     }
 
+    fn called(&mut self, call: &thread::Assignment, text: &str, prompt: &[Value]) -> Result<(), records::RecordError> {
+        self.conv.recorder.call(call.from(), call.started(text, prompt))
+    }
+
     /// 엔진을 가리지 않는다 — 턴 도중의 `-32000`(풀린 Codex 로그인, Claude는 S3)도 `session/new`의 것과 같은 로그인 필요
     /// 줄이다(three-axes 티켓 12). 대화의 잠금을 쥔 채 적고 쥐어 둔다 — 그 사이에 보내기가 끼지 않고, 대기 줄도 로그인을
     /// 기다린다.
@@ -1255,7 +1259,7 @@ impl ConversationHost {
         };
         // 턴 도중에 로그인이 풀렸으면 거절한다 — 대화의 잠금 안에서 본다(턴 끝이 같은 잠금 안에서 쥐게 한다). S13 — 턴이 도는
         // 동안의 말은 대기 줄 끝에 들고, 턴이 끝나면 맨 앞부터 차례로 간다.
-        let draft = Draft { text: text.to_owned(), preamble: work_at.preamble(), quote, attachments: Vec::new() };
+        let draft = Draft { text: text.to_owned(), preamble: work_at.preamble(), quote, attachments: Vec::new(), call: None };
         conv.seat(&mut state).say(draft, before).map_err(|refused| refused.into_host(conversation))
     }
 

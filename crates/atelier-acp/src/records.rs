@@ -342,6 +342,17 @@ impl Recorder {
         }
     }
 
+    /// Agent 호출 줄(v1 티켓 16) — 줄의 참여자(`who`)는 이 기록의 참여자가 아니라 부른 Agent(`from`)다(S8: 그 줄의 참여자). 불린
+    /// Agent의 Session이 맡긴 일을 받는 자리(시작 줄)에서 적는다. work 대화에는 부르기가 없다.
+    pub(crate) fn call(&self, from: &str, payload: Value) -> Result<(), RecordError> {
+        match &self.lines {
+            Lines::Conversation { conversation, .. } => {
+                Err(format!("work 대화에는 Agent 부르기가 없습니다: {conversation}"))
+            }
+            Lines::Thread { log, .. } => log.write(RecordKind::Call, Some(from), payload).map(drop),
+        }
+    }
+
     /// `session/update` 원문.
     pub(crate) fn update(&self, raw: Value) -> Result<(), RecordError> {
         self.write(RecordKind::Update, raw)
@@ -455,16 +466,18 @@ impl ThreadLog {
 }
 
 /// Thread의 그 참여자가 지금 Session에서 말을 받은 적이 있나 — 그 참여자의 Session이 새로 선 마지막 열림 줄(`new` · `fresh`)
-/// 뒤에 그에게 간 `sent`가 있나. [`RecordFacts::sent_since_session_start`]의 Thread 판이다 — 되살린 Session이 아직 첫 말을 받지
-/// 않았으면 그 첫 말에 머리말이 붙는다(v1 구현 스펙 S10).
+/// 뒤에 그에게 간 말(사람의 말 · 맡긴 일, [`past::addressed_to`])이 있나. [`RecordFacts::sent_since_session_start`]의 Thread 판이다
+/// — 되살린 Session이 아직 첫 말을 받지 않았으면 그 첫 말에 머리말이 붙는다(v1 구현 스펙 S10).
 pub(crate) fn heard_since_session_start(lines: &[RecordLine], who: &str) -> bool {
     lines
         .iter()
         .rev()
-        .find_map(|line| match line.kind {
-            RecordKind::Sent if line.payload["to"] == who => Some(true),
-            RecordKind::Session if line.who.as_deref() == Some(who) && starts_session(&line.payload) => Some(false),
-            _ => None,
+        .find_map(|line| {
+            if past::addressed_to(line, who) {
+                return Some(true);
+            }
+            (line.kind == RecordKind::Session && line.who.as_deref() == Some(who) && starts_session(&line.payload))
+                .then_some(false)
         })
         .unwrap_or(false)
 }

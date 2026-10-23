@@ -23,7 +23,8 @@ const ATTACHED_HEAD: &str = "첨부 — 사람이 이 말에 붙인 파일 · �
 
 /// 지난 말 블록의 머리(`past.rs`).
 const PAST_HEAD: &str =
-    "지난 말 — 이 Thread에서 네가 아직 보지 못한 말이다. 사람의 말과 다른 Agent의 마지막 메시지만, 누가 했는지와 함께 담았다.";
+    "지난 말 — 이 Thread에서 네가 아직 보지 못한 말이다. 사람의 말, Agent끼리 맡긴 일, 다른 Agent의 마지막 메시지만 누가 했는지와 \
+     함께 담았다.";
 
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
     sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.282/twoturn-tools")])

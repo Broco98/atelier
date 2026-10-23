@@ -17,6 +17,12 @@
 //! - **Session마다 Thread 도구의 소켓을 연다(v1 티켓 15 · S12).** Session을 열 때 소켓을 열어 ACP `mcpServers`로 중계 서버를 넘기고,
 //!   그 소켓으로 온 도구 호출은 그 Session의 Thread와 Agent의 것으로 받는다([`ConversationHost::answer_tool`]). 소켓은 Session의
 //!   프로세스와 함께 산다 — 끄거나 되살릴 때 놓여 치워진다.
+//! - **Agent가 Agent를 부른다(v1 티켓 16 · §8, [`call`]).** 맡긴 일은 사람의 말과 같은 길(턴 차례 · 머리말 · 지난 말)로 불린 Agent의
+//!   Session에 가고, 그 턴의 마지막 메시지가 부른 Agent에게 돌아간다. 멈추기는 그 Thread의 호출 고리 전체에 걸린다.
+
+mod call;
+
+pub(super) use call::Assignment;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -96,6 +102,8 @@ pub(super) struct Threads {
     index: Mutex<Option<ThreadIndex>>,
     /// `thread.json`을 읽고 고쳐 쓰는 사이를 잠근다.
     files: Mutex<()>,
+    /// Thread마다 사람이 멈춘 횟수(v1 티켓 16) — Agent 부르기가 맡길 때 읽어 두고, 끝날 때 바뀌었으면 「사람이 멈춤」이다.
+    halts: Mutex<HashMap<String, u64>>,
 }
 
 /// Session의 열쇠 — (Thread, 참여자 handle).
@@ -186,6 +194,20 @@ impl Threads {
     fn lock_files(&self) -> MutexGuard<'_, ()> {
         self.files.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+
+    fn lock_halts(&self) -> MutexGuard<'_, HashMap<String, u64>> {
+        self.halts.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// 그 Thread를 사람이 멈춘 횟수.
+    fn halts(&self, thread: &str) -> u64 {
+        self.lock_halts().get(thread).copied().unwrap_or(0)
+    }
+
+    /// 사람이 그 Thread를 멈췄다.
+    fn halt(&self, thread: &str) {
+        *self.lock_halts().entry(thread.to_owned()).or_default() += 1;
+    }
 }
 
 impl ConversationHost {
@@ -260,7 +282,7 @@ impl ConversationHost {
         self.threads.lock_logs().insert(created.id.clone(), Arc::downgrade(&log));
         log.written(created.first.clone());
         self.seat(&created.id, &found, &created.first.at)?;
-        self.say_in_thread(&SessionKey::new(&created.id, &handle), text, attachments)?;
+        self.say_in_thread(&SessionKey::new(&created.id, &handle), text, attachments, None)?;
         drop(log);
         Ok(created.id)
     }
@@ -287,14 +309,19 @@ impl ConversationHost {
             Recipient::Seated(handle) => handle,
             Recipient::Newcomer(found) => self.join(thread, &found)?,
         };
-        self.say_in_thread(&SessionKey::new(thread, &handle), text, attachments)
+        self.say_in_thread(&SessionKey::new(thread, &handle), text, attachments, None)
     }
 
     /// 멈추기 — Thread 전체에 건다(§5): 그 Thread의 도는 턴마다 멈춤을 보낸다. 기다리지 않는다 — 멈춘 턴의 끝(`cancelled`)은
-    /// 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다. 대기 줄은 거두지 않는다.
+    /// 기록 줄로 온다. 도는 턴이 없으면 아무 일도 하지 않는다. 사람의 대기 줄은 거두지 않는다.
+    ///
+    /// 호출 고리도 함께 멈춘다(§8 「멈춤」, v1 티켓 16) — 부른 턴과 불린 턴이 모두 이 Thread의 턴이라 함께 멈추고, 대기 줄에 든 맡긴
+    /// 일은 거둔다. 그 부르기들의 결과는 「사람이 멈춤」이다.
     pub fn stop_thread(&self, thread: &str) -> Result<(), HostError> {
+        self.threads.halt(thread);
         for (_, conv) in self.threads.of_thread(thread) {
             let Some(mut state) = conv.lock_found() else { continue };
+            conv.seat(&mut state).withdraw_calls();
             conv.seat(&mut state).stop().map_err(|refused| refused.into_host(thread))?;
         }
         Ok(())
@@ -460,6 +487,7 @@ impl ConversationHost {
                 Ok(summary) => thread_tools::said(&format!("Thread 이름을 바꿨다 — {}", summary.title), false),
                 Err(error) => thread_tools::said(&error.to_string(), true),
             },
+            Ok(Call::CallAgent { handle, task }) => self.call_agent(key, &handle, &task),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -506,12 +534,19 @@ impl ConversationHost {
     }
 
     /// 받는 이의 Session에 말을 보낸다 — 떠 있지 않으면 먼저 띄운다. 머리말은 지금 짓는다: 대기 줄에 들어 턴 끝에 가는 말도 그
-    /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다).
-    fn say_in_thread(&self, key: &SessionKey, text: &str, attachments: Vec<Attachment>) -> Result<(), HostError> {
+    /// 머리말과 첨부를 들고 간다(턴 끝에서는 `thread.json`을 읽지 않는다). `call`이 있으면 사람의 말이 아니라 다른 Agent가 맡긴
+    /// 일이다(v1 티켓 16) — 막히면 그 맡긴 일도 놓인다.
+    fn say_in_thread(
+        &self,
+        key: &SessionKey,
+        text: &str,
+        attachments: Vec<Attachment>,
+        call: Option<Assignment>,
+    ) -> Result<(), HostError> {
         if !self.session_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive_session(key, Revive::IfNotRunning)?;
         }
-        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key)?, quote: None, attachments };
+        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key)?, quote: None, attachments, call };
         let found = self.threads.find(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(&key.waiter()) {
@@ -745,13 +780,17 @@ impl ConversationHost {
     ///
     /// 지시문 파일은 본문만 담는다(v1 티켓 03: frontmatter가 시스템 프롬프트에 들지 않게).
     fn read_snapshot(&self, key: &SessionKey) -> Result<(AgentDefinition, PathBuf), HostError> {
-        let snapshots = self.snapshots(&key.thread)?;
-        let definition = atelier_core::read_agent(&snapshots.join(format!("{}.md", key.handle)))
-            .map_err(|problem| HostError::AgentBroken { handle: key.handle.clone(), reason: problem_text(problem) })?;
-        let path = snapshots.join(format!("{}.instructions.md", key.handle));
+        let definition = self.snapshot_definition(key)?;
+        let path = self.snapshots(&key.thread)?.join(format!("{}.instructions.md", key.handle));
         std::fs::write(&path, &definition.instructions)
             .map_err(|error| HostError::Record(format!("지시문 파일을 쓰지 못했습니다: {} — {error}", path.display())))?;
         Ok((definition, path))
+    }
+
+    /// 그 참여자의 정의 — Thread 폴더의 스냅숏에서만 읽는다(§19). Agent 부르기의 `tools.agents` 검사도 이것을 본다(v1 티켓 16).
+    fn snapshot_definition(&self, key: &SessionKey) -> Result<AgentDefinition, HostError> {
+        atelier_core::read_agent(&self.snapshots(&key.thread)?.join(format!("{}.md", key.handle)))
+            .map_err(|problem| HostError::AgentBroken { handle: key.handle.clone(), reason: problem_text(problem) })
     }
 
     fn snapshots(&self, thread: &str) -> Result<PathBuf, HostError> {
@@ -821,8 +860,11 @@ impl ConversationHost {
         if self.thread_tools.is_some() {
             text.push_str(&format!(
                 "- Thread 도구: MCP 서버 `{}`의 도구로 이 Thread를 다룬다. Thread id는 넘기지 않는다 — 이 Session의 Thread다.\n  \
-                 - `rename_thread`(title) — Thread 이름을 바꾼다. 일이 무엇인지 드러나는 짧은 이름으로.\n",
-                thread_tools::SERVER_NAME
+                 - `rename_thread`(title) — Thread 이름을 바꾼다. 일이 무엇인지 드러나는 짧은 이름으로.\n  \
+                 - `{}`(handle, task) — 다른 Agent에게 일을 맡기고, 그 Agent가 턴을 끝낼 때의 마지막 메시지를 결과로 받는다. \
+                 그때까지 기다린다.\n",
+                thread_tools::SERVER_NAME,
+                thread_tools::CALL_AGENT
             ));
         }
         Ok(json!({"type": "text", "text": text}))
@@ -868,12 +910,22 @@ impl ConversationHost {
     }
 }
 
-/// 말을 받는 이(S9).
+/// 말을 받는 이(S9) — 사람이 멘션한 Agent이거나 다른 Agent가 부른 Agent(v1 티켓 16).
 enum Recipient {
     /// 이미 참여자인 Agent — 그 handle.
     Seated(String),
     /// 아직 참여자가 아닌 범위 안의 Agent — 들인 뒤에 받는다.
     Newcomer(FoundAgent),
+}
+
+impl Recipient {
+    /// 받는 Agent의 handle — 이 Thread에서 그 Session의 열쇠다.
+    fn handle(&self) -> &str {
+        match self {
+            Recipient::Seated(handle) => handle,
+            Recipient::Newcomer(found) => &found.definition.handle,
+        }
+    }
 }
 
 /// 범위에서 그 이름의 Agent — 범위에 없으면 `None`이다. 겹친 맨 이름 · 깨진 파일은 거절이고, 이미 앉은 다른 Agent와 handle이

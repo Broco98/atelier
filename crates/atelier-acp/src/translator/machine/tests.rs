@@ -549,7 +549,7 @@ fn agent_정의의_지시문_모델_생각_깊이_도구_금지와_mcp_서버는
                 Some("high"),
                 Some(format!("Read,Glob,Grep,LS,Bash,{RUNTIME_TOOLS}")),
                 Some("Bash(git push),Bash(git push *)"),
-                Some(r#"{"mcpServers":{"thread":{"type":"stdio","command":"atelier","args":[],"env":{}}}}"#),
+                Some(r#"{"mcpServers":{"thread":{"type":"stdio","command":"atelier","args":[],"env":{},"timeout":2147483647}}}"#),
             ),
             "{method}: {args:?}"
         );
@@ -627,7 +627,8 @@ fn 금지는_s19_규칙으로_옮겨_disallowed_tools로_들고_명령_패턴은
 
 #[test]
 fn acp_mcp_서버는_claude의_mcp_설정으로_옮겨_mcp_config로_들고_사용자_mcp는_그대로_붙는다() {
-    // ACP의 stdio 서버(`type`이 없다) — Thread 도구 서버(S12)가 이 길로 온다.
+    // ACP의 stdio 서버(`type`이 없다) — Thread 도구 서버(S12)가 이 길로 온다. 서버마다 claude의 도구 시간 제한을 가장 길게 준다
+    // — Agent 부르기(v1 티켓 16)는 불린 Agent의 턴과 사람의 승인을 기다리며 몇 분을 넘긴다(§8 「시간」).
     let servers = json!([
         {
             "name": "atelier-thread",
@@ -646,9 +647,10 @@ fn acp_mcp_서버는_claude의_mcp_설정으로_옮겨_mcp_config로_들고_사�
                 "type": "stdio",
                 "command": "/Applications/Atelier.app/Contents/MacOS/atelier",
                 "args": ["thread-tools", "--socket", "/tmp/gate/thread.sock"],
-                "env": {"ATELIER_THREAD": "20261023-090000"}
+                "env": {"ATELIER_THREAD": "20261023-090000"},
+                "timeout": 2_147_483_647
             },
-            "plain": {"type": "stdio", "command": "plain-server", "args": [], "env": {}}
+            "plain": {"type": "stdio", "command": "plain-server", "args": [], "env": {}, "timeout": 2_147_483_647}
         }})
     );
     // 사용자의 MCP 설정과 claude.ai 커넥터는 지금처럼 붙는다(S39 · three-axes 결정 23) — 넘긴 것만 쓰라고 하지 않는다.

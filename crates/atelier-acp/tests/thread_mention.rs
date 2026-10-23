@@ -329,7 +329,8 @@ fn commands_after_opened(record: &[Value]) -> Vec<Value> {
 
 /// 지난 말 블록의 머리 — 이 Session이 아직 보지 못한 말이라는 것과 무엇을 담았는지.
 const PAST_HEAD: &str =
-    "지난 말 — 이 Thread에서 네가 아직 보지 못한 말이다. 사람의 말과 다른 Agent의 마지막 메시지만, 누가 했는지와 함께 담았다.";
+    "지난 말 — 이 Thread에서 네가 아직 보지 못한 말이다. 사람의 말, Agent끼리 맡긴 일, 다른 Agent의 마지막 메시지만 누가 했는지와 \
+     함께 담았다.";
 
 #[test]
 fn 새로_들어온_agent는_머리말_뒤에_지난_말을_받고_그_뒤로는_못_본_말만_받는다() {

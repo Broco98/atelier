@@ -47,6 +47,9 @@ const INSTRUCTIONS: &str = "이 서버의 도구는 지금 이 Atelier Thread를
 /// 「Thread 이름 바꾸기」(S13).
 const RENAME_THREAD: &str = "rename_thread";
 
+/// 「Agent 부르기」(S13 · §8, v1 티켓 16).
+pub(crate) const CALL_AGENT: &str = "call_agent";
+
 /// 받기에 실패한 뒤 다시 받기까지 쉬는 틈 — 파일 기술자가 바닥난 때처럼 곧바로 다시 실패하는 오류에 헛돌지 않게.
 const ACCEPT_RETRY: Duration = Duration::from_millis(10);
 
@@ -239,11 +242,13 @@ fn serve(stream: &UnixStream, answer: &(dyn Fn(&str, &Value) -> Result<Value, Fa
 
 // ── 도구 ──────────────────────────────────────────────────────────────────────
 
-/// 읽은 도구 호출 하나(S13). PR ②의 나머지(Agent 부르기 · Agent 저장)와 PR ④의 넷이 여기 갈래를 더한다.
+/// 읽은 도구 호출 하나(S13). PR ②의 나머지(Agent 저장)와 PR ④의 넷이 여기 갈래를 더한다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Call {
     /// Thread 이름 바꾸기 — 새 이름.
     RenameThread { title: String },
+    /// Agent 부르기 — 부를 Agent의 이름(`handle` 또는 `project/handle`, 앞의 `@`는 뗀다)과 맡길 일(글).
+    CallAgent { handle: String, task: String },
 }
 
 /// 도구 호출을 읽지 못한 까닭.
@@ -257,18 +262,41 @@ pub(crate) enum Unread {
 
 /// `tools/list`의 답 — 도구들과 그 인자 꼴. 설명은 Agent가 읽는 쓰는 법이다(S42).
 pub(crate) fn list() -> Value {
-    json!({"tools": [{
-        "name": RENAME_THREAD,
-        "title": "Thread 이름 바꾸기",
-        "description": "이 Thread의 이름을 바꾼다. 사람이 사이드바와 Thread 위에서 보는 이름이다. 일이 무엇인지 드러나게 \
-                        짧게 짓는다 — 한 줄이고, 줄바꿈은 빈칸 하나가 된다.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {"title": {"type": "string", "description": "새 이름"}},
-            "required": ["title"],
-            "additionalProperties": false,
+    json!({"tools": [
+        {
+            "name": RENAME_THREAD,
+            "title": "Thread 이름 바꾸기",
+            "description": "이 Thread의 이름을 바꾼다. 사람이 사이드바와 Thread 위에서 보는 이름이다. 일이 무엇인지 드러나게 \
+                            짧게 짓는다 — 한 줄이고, 줄바꿈은 빈칸 하나가 된다.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"title": {"type": "string", "description": "새 이름"}},
+                "required": ["title"],
+                "additionalProperties": false,
+            },
         },
-    }]})
+        {
+            "name": CALL_AGENT,
+            "title": "Agent 부르기",
+            "description": "이 Thread의 다른 Agent에게 일을 맡기고, 그 Agent가 턴을 끝내면 그 마지막 메시지를 결과로 받는다. \
+                            그때까지 기다린다 — 불린 Agent가 사람에게 물으면 그 답까지. 불린 Agent는 이 Thread에 들어와 지난 말을 \
+                            받으므로, 맡길 일과 기대하는 결과만 글로 분명히 준다. 부를 수 있는 Agent는 네 정의의 tools.agents에 \
+                            적힌 Agent다(Host는 이 Thread의 범위 안 아무 Agent). 지금 호출 고리에 든 Agent — 너와 너에게 일을 맡긴 \
+                            Agent들 — 는 부를 수 없다.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "handle": {
+                        "type": "string",
+                        "description": "부를 Agent의 handle(@ 없이). 같은 handle이 Project 여럿에 있으면 project/handle",
+                    },
+                    "task": {"type": "string", "description": "맡길 일 — 불린 Agent에게 본문으로 간다"},
+                },
+                "required": ["handle", "task"],
+                "additionalProperties": false,
+            },
+        },
+    ]})
 }
 
 /// `tools/call`의 params(`name` · `arguments`)를 읽는다.
@@ -280,6 +308,15 @@ pub(crate) fn read_call(params: &Value) -> Result<Call, Unread> {
             Some(title) => Ok(Call::RenameThread { title: title.to_owned() }),
             None => Err(Unread::Bad("title(새 이름)을 글로 주세요".to_owned())),
         },
+        CALL_AGENT => {
+            let handle = arguments["handle"].as_str().map(|handle| handle.trim().trim_start_matches('@'));
+            let task = arguments["task"].as_str().filter(|task| !task.trim().is_empty());
+            match (handle.filter(|handle| !handle.is_empty()), task) {
+                (Some(handle), Some(task)) => Ok(Call::CallAgent { handle: handle.to_owned(), task: task.to_owned() }),
+                (None, _) => Err(Unread::Bad("handle(부를 Agent)을 글로 주세요".to_owned())),
+                (_, None) => Err(Unread::Bad("task(맡길 일)를 글로 주세요".to_owned())),
+            }
+        }
         _ => Err(Unread::Unknown(Fault::new(-32602, format!("모르는 도구입니다: {name}")))),
     }
 }
@@ -319,6 +356,18 @@ mod tests {
             Err(Unread::Unknown(Fault::new(-32602, "모르는 도구입니다: delete_thread")))
         );
         let listed: Vec<Value> = list()["tools"].as_array().unwrap().iter().map(|tool| tool["name"].clone()).collect();
-        assert_eq!(listed, [json!("rename_thread")], "목록과 읽는 도구가 같다");
+        assert_eq!(listed, [json!("rename_thread"), json!("call_agent")], "목록과 읽는 도구가 같다");
+    }
+
+    #[test]
+    fn agent_부르기는_handle과_맡길_일을_글로_받고_앞의_at은_떼며_빈_것은_도구의_실패다() {
+        let call = |arguments: Value| read_call(&json!({"name": "call_agent", "arguments": arguments}));
+        assert_eq!(
+            call(json!({"handle": "@api-server/reviewer", "task": "diff를 봐 줘"})),
+            Ok(Call::CallAgent { handle: "api-server/reviewer".into(), task: "diff를 봐 줘".into() })
+        );
+        assert!(matches!(call(json!({"handle": " @ ", "task": "봐 줘"})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"handle": "reviewer", "task": "  "})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"task": "봐 줘"})), Err(Unread::Bad(_))));
     }
 }

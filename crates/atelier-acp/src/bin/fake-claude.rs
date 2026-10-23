@@ -21,10 +21,15 @@
 //! - `FAKE_CLAUDE_PERFORMS_WRITES` — 있으면 되감는 `Write` 도구 호출마다 그 글을 cwd에 같은 파일 이름으로 정말 쓴다. 원문의
 //!   경로는 잰 날의 임시 폴더라, 고친 곳(spec 폴더 비교)을 재려면 가짜가 대화의 자리에 써야 한다.
 //! - `FAKE_CLAUDE_FORGETS` — 있으면 `--resume`한 세션을 모른다(세션 저장소가 빈 꼴).
-//! - `FAKE_CLAUDE_MCP_CALL` — 있으면 user 줄을 받아 낼 턴의 `system/init` 바로 뒤에서 MCP 도구 하나를 정말 부른다(v1 티켓 15).
-//!   값은 `{"tool": 이름, "arguments": {…}}`다. 받은 `--mcp-config`의 stdio 서버마다 띄워 `initialize` → `tools/list`를 하고, 그
-//!   도구를 가진 서버에 `tools/call`한다. 진짜 claude처럼 `assistant`의 `tool_use`(`mcp__<서버>__<도구>`)를 낸 뒤에 부르고, 받은
-//!   답을 `user`의 `tool_result`로 낸다. 주고받은 것은 `<세션 id>.mcp`에 `{server, tools, call}` 한 줄로 남는다.
+//! - `FAKE_CLAUDE_MCP_CALL` — 있으면 user 줄을 받아 낼 턴의 `system/init` 바로 뒤에서 MCP 도구를 정말 부른다(v1 티켓 15).
+//!   값은 `{"tool": 이름, "arguments": {…}}` 하나 또는 그 배열이다 — 배열이면 차례로 부른다. 받은 `--mcp-config`의 stdio 서버마다
+//!   띄워 `initialize` → `tools/list`를 하고, 그 도구를 가진 서버에 `tools/call`한다. 진짜 claude처럼 `assistant`의
+//!   `tool_use`(`mcp__<서버>__<도구>`)를 낸 뒤에 부르고, 받은 답을 `user`의 `tool_result`로 낸다. 주고받은 것은 `<세션 id>.mcp`에
+//!   부르기마다 `{server, tools, tool, arguments, call}` 한 줄로 남는다.
+//!   - 부르기에 `"by": handle`이 있으면 그 Agent의 claude만 부른다(v1 티켓 16 — Thread에는 참여자마다 claude가 뜨고 env는 모두
+//!     같다). 이 claude가 누구의 것인지는 받은 `--append-system-prompt-file`의 이름(`<handle>.instructions.md`)이다.
+//! - `FAKE_CLAUDE_AGENT_FIXTURES` — `{handle: 원문}` JSON. 이 claude가 그 Agent의 것이면 `FAKE_CLAUDE_FIXTURE` 대신 그 원문을
+//!   되감는다(v1 티켓 16 — 부른 Agent와 불린 Agent가 다른 턴을 돈다).
 //!
 //! 녹화를 되감는 규칙(턴 · 권한 · 멈추기 · 바꾸기 · 스스로 이어 간 턴)은 입출력 없는 몸 `src/fakes/claude_replay.rs`에 있다 —
 //! 변환기 상태 기계의 시험이 프로세스 없이 같은 몸을 상대한다. 이 bin은 그 몸에 stdin · stdout · 영수증 · 문을 두른다.
@@ -73,7 +78,10 @@ fn main() {
         eprintln!("모르는 시나리오: {scenario} (있는 것: {})", SCENARIOS.join(", "));
         std::process::exit(2);
     }
-    let fixture = std::env::var("FAKE_CLAUDE_FIXTURE").unwrap_or_else(|_| "2.1.296/slash-skill-noreplay".to_string());
+    let agent = agent_of(&args);
+    let fixture = agent_fixture(agent.as_deref())
+        .or_else(|| std::env::var("FAKE_CLAUDE_FIXTURE").ok())
+        .unwrap_or_else(|| "2.1.296/slash-skill-noreplay".to_string());
     let Some(recorded) = claude_replay::fixture(&fixture) else {
         eprintln!("모르는 원문: {fixture} (있는 것: {})", claude_replay::fixture_names().join(", "));
         std::process::exit(2);
@@ -92,9 +100,7 @@ fn main() {
         .unwrap_or_else(|| format!("claude-{}", std::process::id()));
     let receipts = std::env::var_os("FAKE_CLAUDE_RECEIPTS").map(PathBuf::from);
     let writes = std::env::var_os("FAKE_CLAUDE_PERFORMS_WRITES").is_some();
-    let mcp_call = std::env::var("FAKE_CLAUDE_MCP_CALL")
-        .ok()
-        .map(|text| serde_json::from_str::<Value>(&text).expect("FAKE_CLAUDE_MCP_CALL은 JSON이다"));
+    let mcp_calls = mcp_calls_of(agent.as_deref());
     let mcp_config = flag_value(&args, "--mcp-config")
         .map(|text| serde_json::from_str::<Value>(&text).expect("--mcp-config는 JSON 글이다"));
     let fake = Fake { receipts, session_id: session_id.clone(), writes };
@@ -120,9 +126,10 @@ fn main() {
             continue;
         }
         let lines = replay.receive(&message);
-        match &mcp_call {
-            Some(call) if message["type"] == "user" => fake.emit_calling(lines, call, mcp_config.as_ref()),
-            _ => fake.emit_all(lines),
+        if !mcp_calls.is_empty() && message["type"] == "user" {
+            fake.emit_calling(lines, &mcp_calls, mcp_config.as_ref());
+        } else {
+            fake.emit_all(lines);
         }
         // 문에서 멈췄다 — 놓일 때까지 기다린다. 그동안 온 stdin 줄은 읽는 스레드가 영수증에 적고 쌓아 둔다.
         while replay.paused() {
@@ -140,6 +147,30 @@ fn main() {
 /// `--flag 값`의 값.
 fn flag_value(args: &[String], flag: &str) -> Option<String> {
     args.iter().position(|arg| arg == flag).and_then(|at| args.get(at + 1)).cloned()
+}
+
+/// 이 claude가 어느 Agent의 것인가 — 받은 지시문 파일 `<handle>.instructions.md`의 handle. Thread의 Session이 아니면 없다.
+fn agent_of(args: &[String]) -> Option<String> {
+    let path = flag_value(args, "--append-system-prompt-file")?;
+    let name = std::path::Path::new(&path).file_name()?.to_str()?;
+    name.strip_suffix(".instructions.md").map(str::to_owned)
+}
+
+/// 그 Agent가 되감을 원문(`FAKE_CLAUDE_AGENT_FIXTURES`) — 없으면 `FAKE_CLAUDE_FIXTURE`를 따른다.
+fn agent_fixture(agent: Option<&str>) -> Option<String> {
+    let table = std::env::var("FAKE_CLAUDE_AGENT_FIXTURES").ok()?;
+    let table: Value = serde_json::from_str(&table).expect("FAKE_CLAUDE_AGENT_FIXTURES는 JSON이다");
+    table[agent?].as_str().map(str::to_owned)
+}
+
+/// 이 claude가 부를 MCP 도구들(`FAKE_CLAUDE_MCP_CALL`) — `by`가 없거나 이 Agent인 것만.
+fn mcp_calls_of(agent: Option<&str>) -> Vec<Value> {
+    let Ok(text) = std::env::var("FAKE_CLAUDE_MCP_CALL") else { return Vec::new() };
+    let calls = match serde_json::from_str::<Value>(&text).expect("FAKE_CLAUDE_MCP_CALL은 JSON이다") {
+        Value::Array(calls) => calls,
+        call => vec![call],
+    };
+    calls.into_iter().filter(|call| call["by"].as_str().is_none_or(|by| Some(by) == agent)).collect()
 }
 
 /// stdio MCP 서버 자리의 오래 사는 자식. stdout을 따로 문다 — stream-json 선에 섞이면 안 된다.
@@ -178,25 +209,31 @@ impl Fake {
         }
     }
 
-    /// 턴의 줄들을 내되, `system/init` 바로 뒤(없으면 맨 앞)에서 MCP 도구 하나를 부른다(`FAKE_CLAUDE_MCP_CALL`). 도구를 가진
+    /// 턴의 줄들을 내되, `system/init` 바로 뒤(없으면 맨 앞)에서 MCP 도구들을 차례로 부른다(`FAKE_CLAUDE_MCP_CALL`). 도구를 가진
     /// 서버가 없으면 부르지 않고 줄만 낸다.
-    fn emit_calling(&self, lines: Vec<Value>, call: &Value, config: Option<&Value>) {
+    fn emit_calling(&self, lines: Vec<Value>, calls: &[Value], config: Option<&Value>) {
         let at = lines.iter().position(|line| line["type"] == "system" && line["subtype"] == "init").map_or(0, |at| at + 1);
         let mut lines = lines.into_iter();
         self.emit_all(lines.by_ref().take(at).collect());
-        let tool = call["tool"].as_str().expect("FAKE_CLAUDE_MCP_CALL의 tool");
+        let mut made = 0;
         for (name, spec) in config.and_then(|config| config["mcpServers"].as_object()).into_iter().flatten() {
             let mut server = McpServer::start(spec);
             server.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {},
                                                 "clientInfo": {"name": "fake-claude", "version": "0"}}));
             server.notify("notifications/initialized");
             let tools = server.request("tools/list", json!({}))["result"]["tools"].clone();
-            let listed = tools.as_array().into_iter().flatten().any(|listed| listed["name"] == tool);
-            if listed {
-                let id = "toolu_fake_mcp";
+            for call in calls {
+                let tool = call["tool"].as_str().expect("FAKE_CLAUDE_MCP_CALL의 tool");
+                if !tools.as_array().into_iter().flatten().any(|listed| listed["name"] == tool) {
+                    continue;
+                }
+                // 첫 부르기의 id는 앞 판 그대로다 — 축복 기록(thread-rename)이 이 id를 싣는다.
+                let nth = if made == 0 { String::new() } else { format!("_{made}") };
+                made += 1;
+                let id = format!("toolu_fake_mcp{nth}");
                 emit(&json!({
                     "type": "assistant",
-                    "message": {"id": "msg_fake_mcp", "type": "message", "role": "assistant",
+                    "message": {"id": format!("msg_fake_mcp{nth}"), "type": "message", "role": "assistant",
                                 "content": [{"type": "tool_use", "id": id, "name": format!("mcp__{name}__{tool}"),
                                              "input": call["arguments"]}]},
                     "parent_tool_use_id": null, "session_id": self.session_id,
@@ -212,7 +249,9 @@ impl Fake {
                     "parent_tool_use_id": null, "session_id": self.session_id,
                 }));
                 if let Some(path) = self.path("mcp") {
-                    receipts::append_line(&path, &json!({"server": name, "tools": tools, "call": result}).to_string());
+                    let receipt = json!({"server": name, "tools": tools, "tool": tool, "arguments": call["arguments"],
+                                         "call": result});
+                    receipts::append_line(&path, &receipt.to_string());
                 }
             }
             server.close();
