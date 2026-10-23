@@ -106,6 +106,18 @@ export function useRenameThread() {
   });
 }
 
+/**
+ * 읽은 자리 적기(v1 티켓 41 · S38) — 답(바뀐 요약)으로 목록을 고친다. 사이드바의 「새 결과」가 걷힌다. 바뀌었으면 요약 이벤트도 같은
+ * 값을 싣는다. 적지 못해도 화면은 그대로다 — 부르는 쪽(Thread 화면)이 다음에 맨 아래를 볼 때 다시 적는다.
+ */
+export function useMarkRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ thread, seq }: { thread: string; seq: number }) => threadApi.markRead(thread, seq),
+    onSuccess: (summary) => putSummary(queryClient, summary),
+  });
+}
+
 /** 칩의 바꾸기 하나 — 모델 또는 생각 깊이. */
 export type ChipChange = { field: "model"; value: string } | { field: "effort"; value: string };
 

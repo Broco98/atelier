@@ -115,6 +115,8 @@ export interface ThreadSummary {
   createdAt: string;
   work: string | null;
   handles: string[];
+  /** 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」를 가른다(v1 티켓 41). 깨진 Thread는 0이다. */
+  lastRead: number;
   broken: string | null;
 }
 

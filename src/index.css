@@ -1649,6 +1649,45 @@ body[data-palette-open] [data-scrollbar] {
     }
 }
 
+/* **Thread 줄의 상태 칸**(v1 티켓 41 · 캔버스 Motion 보드 「목록 상태 바뀜」 — 200ms · 점 360ms). 줄은 자리를 지키고, 상태가 바뀐 칸(시각
+   자리 · 미리보기)만 아래 3에서 떠올라 선명해진다(`slot-in`, 보드 `.fadein`). 내 차례가 되면 파란 점이 한 번 튄다 — 0.4배에서 1.1배까지
+   커졌다 제자리다(`dot-pop`, 보드 `.pop`). 곡선은 보드의 감속 `cubic-bezier(.2,.8,.2,1)`이다 — DS 움직임 토큰에 이 시간 · 곡선이 아직
+   없어 보드 값을 그대로 적는다(모션 보드의 이름 · 시간 · 곡선을 토큰으로 세우는 일은 v1 티켓 43). 처음 그린 상태는 움직이지 않는다 —
+   부르는 쪽(`SidebarThreads`)이 상태가 바뀐 뒤에만 단다. 흐림은 쓰지 않는다(위 `menu-enter` 머리말). 동작을 줄여 둔 사람에게는 곧바로
+   선 글 · 멎은 점이다. */
+@keyframes slot-in {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+}
+@utility slot-in {
+    animation: slot-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+@keyframes dot-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0.4);
+    }
+    60% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+@utility dot-pop {
+    animation: dot-pop 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
 /* **코드 보기 범위 토큰**(git-integration 판 01 S16 · 결정 35 · 38) — 파일 탭의 강조된 코드(`HighlightedCode`)가 읽는다.
 
    구문색은 여기 없다 — 앱 전역의 Codex `--syntax-*`(위 `:root` · `.dark`)를 테마가 바로 읽는다. 한때 이 범위에 같은 라이트

@@ -931,6 +931,17 @@ pub async fn thread_rename(
     to_host(&engine, "이름을 바꾸지 못했습니다", move |host| host.rename_thread(&thread, &title)).await
 }
 
+/// 읽은 자리 적기(v1 티켓 41 · S38) — Thread를 열고 맨 아래가 보일 때 화면이 끝 줄의 seq를 적는다. `thread.json`의 `lastRead`와 목록
+/// 요약이 바뀐다(사이드바의 「새 결과」가 걷힌다). 뒤로 가지 않는다. 답은 목록 요약이다.
+#[tauri::command]
+pub async fn thread_mark_read(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    seq: u64,
+) -> CmdResult<atelier_core::ThreadSummary> {
+    to_host(&engine, "읽은 자리를 적지 못했습니다", move |host| host.mark_thread_read(&thread, seq)).await
+}
+
 #[cfg(test)]
 mod tests {
     /// 사람 메뉴의 이름(v1 티켓 07) — 계정의 전체 이름(GECOS의 첫 칸)이 먼저고, 비었으면 로그인 이름이다. 둘 다 비면 없다.

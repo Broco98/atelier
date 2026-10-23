@@ -536,6 +536,7 @@ pub fn run() {
             commands::thread_set_effort,
             commands::thread_set_mode,
             commands::thread_rename,
+            commands::thread_mark_read,
             commands::thread_call_again,
         ])
         .build(tauri::generate_context!())

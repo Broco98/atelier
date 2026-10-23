@@ -17,10 +17,21 @@ import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
 import GuideCard from "./GuideCard";
 import HostFace from "./HostFace";
-import { useAgentRoster, useChangeChip, useQueue, useRenameThread, useSetMode, useThread, type ChipChange } from "./hooks";
+import {
+  useAgentRoster,
+  useChangeChip,
+  useMarkRead,
+  useQueue,
+  useRenameThread,
+  useSetMode,
+  useThread,
+  useThreads,
+  type ChipChange,
+} from "./hooks";
 import { changedFiles } from "./log";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
 import QueuedMessages from "./QueuedMessages";
+import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
@@ -50,6 +61,9 @@ import type { AskLevel, Attachment, ThreadView } from "./types";
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
+// - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
+//   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
+//   결과」(굵은 제목)가 그것으로 걷힌다.
 
 /** 흐름 · 입력창을 모으는 열 — 읽기 좋은 폭(DS `size-thread` 48rem)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은 폭이다. */
 const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
@@ -280,6 +294,22 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
     const el = scroller.current;
     if (el && stuck.current) el.scrollTop = el.scrollHeight;
   }, [lines]);
+
+  // 읽은 자리(S38) — 요약이 정본이고(Thread 화면 밖에서도 요약 이벤트가 고친다), 방금 적으러 보낸 자리는 답이 오기 전에도 다시 보내지
+  // 않는다. 안내 카드가 본문을 대신하면 흐름이 보이지 않는다.
+  const { data: threads } = useThreads();
+  const lastRead = Math.max(view.lastRead, threads?.find((one) => one.id === thread)?.lastRead ?? 0);
+  const { mutate: markRead } = useMarkRead();
+  const marked = useRef(0);
+  const read = useCallback(() => {
+    const seq = guide || !stuck.current ? null : readMark(lines, Math.max(lastRead, marked.current));
+    if (seq === null) return;
+    marked.current = seq;
+    // 적지 못했으면 다음 기회(새 줄 · 바닥까지 굴림)에 다시 적는다 — 곧바로 다시 보내지 않는다.
+    markRead({ thread, seq }, { onError: () => (marked.current = 0) });
+  }, [guide, lines, lastRead, markRead, thread]);
+  useEffect(read, [read]);
+
   const toBottom = () => {
     const el = scroller.current;
     if (!el) return;
@@ -353,6 +383,7 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
           stuck.current = atBottom;
           setAway(!atBottom);
+          if (atBottom) read();
         }}
         className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-4 scroll-quiet"
       >

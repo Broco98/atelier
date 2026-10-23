@@ -211,7 +211,7 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place, count 
         )}
       </div>
       {problem && (
-        <p role="alert" className="px-3 text-xs text-danger">
+        <p role="alert" className="px-3 text-xs text-fg-secondary">
           {problem}
         </p>
       )}

@@ -626,6 +626,44 @@ fn 이름을_바꾸면_thread_json과_title_줄과_목록_요약이_바뀌고_�
     host.shut_down();
 }
 
+/// 읽은 자리(v1 티켓 41 · 구현 스펙 §17 · S38) — 화면은 Thread를 열고 맨 아래가 보일 때 끝 줄의 seq를 적는다. `thread.json`의 `lastRead`와
+/// 목록 요약이 함께 바뀌어 사이드바의 「새 결과」(굵은 제목)가 걷힌다. 읽은 자리는 뒤로 가지 않는다 — 늦게 온 옛 seq가 읽은 결과를 다시
+/// 새 결과로 만들지 않게.
+#[test]
+fn 읽은_자리를_적으면_thread_json과_목록_요약이_바뀌고_뒤로_가지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let (host, events) = sandbox.host_with_events(two_turns(&sandbox));
+    let thread = host.start_thread("세 낱말로 답해 줘: hello from turn", ThreadLink::NoWork).expect("새 Thread");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let end = record.last().expect("기록")["seq"].as_u64().expect("seq");
+    assert_eq!(host.list_threads().expect("목록")[0].last_read, 0, "열어 보기 전에는 0이다");
+    let written = sandbox.thread_record(&thread).len();
+
+    let summary = host.mark_thread_read(&thread, end).expect("읽은 자리");
+    assert_eq!(summary.last_read, end);
+    assert_eq!(sandbox.thread_json(&thread)["lastRead"], end);
+    assert_eq!(events.thread_lists().last().map(|summary| summary.last_read), Some(end), "사이드바는 요약 이벤트로 안다");
+
+    let told = events.thread_lists().len();
+    assert_eq!(host.mark_thread_read(&thread, end - 1).expect("옛 자리").last_read, end, "뒤로 가지 않는다");
+    host.mark_thread_read(&thread, end).expect("같은 자리");
+    assert_eq!(sandbox.thread_json(&thread)["lastRead"], end);
+    assert_eq!(events.thread_lists().len(), told, "바뀐 것이 없으면 알리지 않는다");
+    assert_eq!(sandbox.thread_record(&thread).len(), written, "읽은 자리는 기록에 줄을 남기지 않는다");
+
+    // 다시 켠 뒤 — 색인을 처음 읽는 엔진도 읽은 자리를 안다. Session은 띄우지 않는다.
+    host.shut_down();
+    let host = sandbox.host(two_turns(&sandbox));
+    assert_eq!(host.list_threads().expect("목록")[0].last_read, end);
+    assert_eq!(sandbox.claude_launches().len(), 1, "읽은 자리 적기는 Session을 띄우지 않는다");
+    assert_eq!(
+        host.mark_thread_read("20261010-100000", 1).map(|_| ()),
+        Err(atelier_acp::HostError::ThreadNotFound("20261010-100000".into()))
+    );
+    host.shut_down();
+}
+
 #[test]
 fn thread_id의_꼴이_아니거나_없는_thread는_찾을_수_없다() {
     let sandbox = Sandbox::new();

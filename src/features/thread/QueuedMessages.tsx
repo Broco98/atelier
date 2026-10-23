@@ -109,7 +109,7 @@ function QueuedMessages({ thread, queue }: QueuedMessagesProps) {
         ))}
       </ul>
       {problem && (
-        <p role="alert" className="px-2 text-xs text-danger">
+        <p role="alert" className="px-2 text-xs text-fg-secondary">
           {problem}
         </p>
       )}

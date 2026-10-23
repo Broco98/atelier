@@ -246,8 +246,8 @@ pub fn is_archived_work(data_root: &Path, slug: &str) -> bool {
     !holds(crate::paths::works_in(data_root)) && holds(crate::paths::archive_in(data_root))
 }
 
-/// 색인의 한 줄 — Thread 하나의 요약(제목 · 시각 · work · 참여자 handle). 깨진 Thread도 줄이 선다 — 그때는 `broken`에 까닭만
-/// 있고 나머지 칸은 비었다. 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
+/// 색인의 한 줄 — Thread 하나의 요약(제목 · 시각 · work · 참여자 handle · 읽은 자리). 깨진 Thread도 줄이 선다 — 그때는 `broken`에
+/// 까닭만 있고 나머지 칸은 비었다. 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadSummary {
@@ -256,6 +256,8 @@ pub struct ThreadSummary {
     pub created_at: String,
     pub work: Option<String>,
     pub handles: Vec<String>,
+    /// 사람이 마지막으로 본 줄의 seq(S38) — 사이드바가 「새 결과」(끝난 턴이 이 뒤에 있다)를 가른다(v1 티켓 41).
+    pub last_read: u64,
     pub broken: Option<String>,
 }
 
@@ -323,6 +325,7 @@ fn summarize(id: &str, thread: &ThreadFile) -> ThreadSummary {
         created_at: thread.created_at.clone(),
         work: thread.work.clone(),
         handles: thread.participants.iter().map(|participant| participant.handle.clone()).collect(),
+        last_read: thread.last_read,
         broken: None,
     }
 }
@@ -335,6 +338,7 @@ fn broken(id: String, reason: String) -> ThreadSummary {
         created_at: String::new(),
         work: None,
         handles: Vec::new(),
+        last_read: 0,
         broken: Some(reason),
     }
 }

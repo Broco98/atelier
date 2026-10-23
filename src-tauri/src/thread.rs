@@ -112,6 +112,7 @@ mod tests {
             created_at: "2026-10-23T10:00:00.000+09:00".into(),
             work: None,
             handles: vec!["host".into()],
+            last_read: 7,
             broken: None,
         };
         assert_eq!(
@@ -119,7 +120,7 @@ mod tests {
             (
                 "thread:list",
                 json!({"id": "20261023-100000", "title": "장바구니", "createdAt": "2026-10-23T10:00:00.000+09:00",
-                       "work": null, "handles": ["host"], "broken": null})
+                       "work": null, "handles": ["host"], "lastRead": 7, "broken": null})
             )
         );
         let engine = HostEvent::Engine(atelier_acp::EngineState {

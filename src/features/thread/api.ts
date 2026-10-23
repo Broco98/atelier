@@ -86,6 +86,11 @@ export const threadApi = {
   /** 이름 바꾸기 — 위 막대에서 고친 이름. 같거나 빈 이름이면 아무것도 적지 않는다. 답은 바뀐 목록 요약이다. */
   rename: (thread: string, title: string) => invoke<ThreadSummary>("thread_rename", { thread, title }),
   /**
+   * 읽은 자리 적기(v1 티켓 41 · S38) — Thread를 열고 맨 아래가 보일 때 끝 줄의 seq를 적는다. 뒤로 가지 않는다. 답은 바뀐 목록 요약이고,
+   * 바뀌었으면 요약 이벤트도 온다.
+   */
+  markRead: (thread: string, seq: number) => invoke<ThreadSummary>("thread_mark_read", { thread, seq }),
+  /**
    * 부를 수 있는 Agent와 깨진 파일 — `work`가 없으면 Library만, 있으면 그 Work의 Project 안까지다(v1 티켓 11). @ 메뉴 · 받는 이 칩 ·
    * 얼굴이 읽고(14), 빈 Thread의 칩이 Host 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33).
    */

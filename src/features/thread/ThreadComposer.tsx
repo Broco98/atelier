@@ -448,7 +448,7 @@ function ThreadComposer({
         />
       )}
       {shown && (
-        <p role="alert" className="px-3 pt-1.5 text-xs text-danger">
+        <p role="alert" className="px-3 pt-1.5 text-xs text-fg-secondary">
           {shown}
         </p>
       )}

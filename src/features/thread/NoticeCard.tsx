@@ -48,7 +48,7 @@ function NoticeCard({ titleId, icon: Icon, head, title, subject, reason, problem
         )}
         {reason && <p className="break-keep text-xs text-fg-tool">{reason}</p>}
         {problem && (
-          <p role="alert" className="text-xs text-danger">
+          <p role="alert" className="text-xs text-fg-secondary">
             {problem}
           </p>
         )}

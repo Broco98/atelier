@@ -80,6 +80,7 @@ describe("사이드바의 Library 줄이 여는 Work", () => {
     createdAt: "2026-10-23T10:00:00+09:00",
     work,
     handles: ["host"],
+    lastRead: 0,
     broken: null,
   });
   const threads = [summary("20261023-100000", "refund-api"), summary("20261023-110000", null)];

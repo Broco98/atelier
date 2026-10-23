@@ -252,3 +252,31 @@ describe("색 지킴", () => {
     expect(unused).toEqual([]);
   });
 });
+
+describe("빨강", () => {
+  // **Thread 화면의 빨강은 목록의 「실패」와 diff뿐이다**(v1 구현 스펙 스토리 130 · v1 티켓 41 · 캔버스 Sidebar 보드 「상태는 다섯 가지」) —
+  // 빨강을 보면 정말 실패한 것이다. Thread 화면의 오류 · 끊김은 색 대신 문장이다(캔버스 Messages 보드 「오류와 중단」의 `fg2` 글).
+  // 빨강 토큰은 `danger` · `danger-solid`(오류 글 · 지우는 버튼)와 diff 토큰(`diff-deleted*` · `dot-deleted`)이다. diff 토큰은 이름이 diff를
+  // 그리는 자리만 부르므로 두고, `danger` 계열을 Thread 화면(`src/features/thread/`)에서 막는다 — 자리는 목록 줄의 「실패」 하나다. 앱의
+  // 다른 화면(확인 창 · 설정의 오류 글)은 이 판에서 그대로다.
+  const RED = [utilities(["danger", "danger-solid"]), variables(["danger", "danger-solid", "color-danger", "color-danger-solid"])];
+  const reds = (sources: Source[]) => RED.flatMap((pattern) => offenders(pattern, sources));
+  /** Thread 화면에서 빨강이 서는 자리 — 파일과 그 글자. 쓰이지 않는 자리는 다음 빨강의 뒷문이 되므로 함께 센다. */
+  const RED_PLACES: { file: string; literal: string; why: string }[] = [
+    { file: "src/features/thread/SidebarThreads.tsx", literal: "text-danger", why: "목록 줄의 「실패」 — 빨강을 쓰는 단 하나의 상태" },
+  ];
+  const placed = (place: string) => RED_PLACES.some((one) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`));
+
+  it("Thread 화면은 목록의 「실패」 말고는 danger 빨강을 쓰지 않는다", () => {
+    // 앵커: 변형 · 알파 · 변수 꼴을 잡고, diff 토큰은 잡지 않는다.
+    expect(
+      reds([{ file: "예", text: "text-danger hover:bg-danger-solid/90 text-diff-deleted bg-diff-deleted-line var(--danger) bg-(--color-danger)" }]),
+    ).toEqual(["예:1: text-danger", "예:1: hover:bg-danger-solid/90", "예:1: --danger", "예:1: --color-danger"]);
+    const thread = scripts.filter(({ file }) => file.startsWith("src/features/thread/"));
+    expect(thread.length).toBeGreaterThan(20);
+    const found = reds(thread);
+    // 실패하면 그 오류를 색 대신 문장으로 둔다 — 글은 `text-fg-secondary`다(Messages 보드 `.errl`).
+    expect(found.filter((place) => !placed(place))).toEqual([]);
+    expect(RED_PLACES.filter((one) => !found.some((place) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`)))).toEqual([]);
+  });
+});

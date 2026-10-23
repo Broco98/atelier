@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ThreadFaces } from "./AgentFace";
-import { threadApi } from "./api";
 import type { Avatar } from "./faces";
 import HostFace from "./HostFace";
-import { useAgentRoster, useThreads } from "./hooks";
+import { threadQuery, useAgentRoster, useThreads } from "./hooks";
 import { lastSaid } from "./preview";
 import { since } from "./since";
-import { linesOf, mergeLines, threadRecordStore } from "./thread-store";
+import { statusOf, type ThreadStatus } from "./status";
+import { linesOf, threadRecordStore } from "./thread-store";
 import type { ThreadSummary } from "./types";
 
 // 사이드바의 Thread 묶음(v1 티켓 05 · 07 · 캔버스 「Thread 목록과 아바타」 보드) — Work 없는 Thread들이 새것부터 두 줄씩 선다: 얼굴 ·
@@ -19,7 +20,14 @@ import type { ThreadSummary } from "./types";
 // - **마지막 말은 기록에서 센다.** 줄마다 그 Thread의 기록을 한 번 읽어 기록 줄 스토어에 합치고(Thread를 열 때와 같은 자리 — seq로
 //   합치니 겹쳐도 한 줄이다), 그 뒤는 앱 층이 받는 기록 줄 이벤트가 잇는다. 엔진이 요약에 말을 싣지 않는 까닭은 결정.md 07에 있다.
 // - 얼굴(v1 티켓 14)은 참여자의 것이다(`ThreadFaces` — 32, 둘 이상이면 처음 · 마지막에 들어온 이를 겹친다). 요약에는 handle만 있어
-//   `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다. 상태 칸(내 차례 점 · 스피너 · 실패 …)은 41이 이 줄에 얹는다.
+//   `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다.
+// - **상태는 하나만 보인다**(v1 티켓 41 · 구현 스펙 §17 · 캔버스 Sidebar 보드 「상태는 다섯 가지」, 계산은 `status.ts`의 `statusOf`) — 내
+//   차례는 얼굴에 파란 점 · 진한 미리보기(기다리는 것), 작업 중은 시각 자리의 스피너, 새 결과는 굵은 제목, 실패는 미리보기 앞의 빨간
+//   「실패」, 중단은 「중단했습니다」다. 색은 내 차례의 파랑과 「실패」의 빨강 두 곳뿐이고(빨강은 여기와 diff만 — `color-guard`) 나머지는
+//   모양과 굵기다. **줄은 자리를 지키고 상태 칸만 바뀐다**(Motion 보드 「목록 상태 바뀜」) — 둘째 줄은 비어도 자리를 지키고, 바뀐 칸만
+//   떠오르고, 내 차례가 되면 점이 한 번 튄다.
+// - 상태의 바탕은 Thread를 열 때와 같은 읽기다(`threadQuery` — `get`의 살아 있음 · 기록 끝, 그리고 기록) — 열린 캐시를 Thread 화면과
+//   함께 쓴다. 읽은 자리(`lastRead`)는 요약의 것이다: Thread 화면이 맨 아래를 보면 적고(S38), 요약 이벤트가 이 줄을 고친다.
 // - 깨진 Thread도 줄이 선다(무엇이 깨졌는지는 둘째 줄이 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
 
 /** 시각을 다시 세는 간격 — 「방금 · N분」이 한 자리에 멎지 않게 1분마다다. */
@@ -61,8 +69,11 @@ function SidebarThreads() {
   );
 }
 
-/** Thread 줄 하나 — 얼굴 · 제목 · 시각, 그 아래 마지막 말. 시각은 마지막 말의 때이고, 말이 아직 없으면 Thread가 선 때다. */
-function ThreadRow({
+/**
+ * Thread 줄 하나 — 얼굴 · 제목 · 시각, 그 아래 마지막 말. 시각은 마지막 말의 때이고, 말이 아직 없으면 Thread가 선 때다. 상태가 있으면
+ * 그 상태의 때(기다리기 시작한 때 · 끝난 때)다.
+ */
+export function ThreadRow({
   thread,
   people,
   on,
@@ -75,14 +86,20 @@ function ThreadRow({
   now: number;
   onOpen: () => void;
 }) {
-  const said = useLastSaid(thread);
+  const { said, status, ready } = useRowState(thread);
+  const moved = useMoved(status?.kind ?? null, ready);
   const title = thread.broken ? "열 수 없는 Thread" : thread.title || "새 Thread";
   // 다른 Agent의 말은 이름을 앞에 단다(보드 「리뷰어 · 수정 요청 2건」). Host와 사람의 말은 그대로다.
-  const preview = thread.broken ?? (said ? (said.name && said.who !== "host" ? `${said.name} · ${said.text}` : said.text) : "");
+  const lastWords = said ? (said.name && said.who !== "host" ? `${said.name} · ${said.text}` : said.text) : "";
+  const preview = thread.broken ?? (status && "text" in status && status.text !== null ? status.text : lastWords);
+  const at = status?.kind === "mine" ? status.since : status && "at" in status ? status.at : (said?.at ?? thread.createdAt);
+  // 바뀐 상태 칸만 떠오른다 — 열쇠가 상태라 바뀔 때마다 그 칸이 새로 선다.
+  const slot = status?.kind ?? "quiet";
   return (
     <button
       type="button"
       aria-current={on ? "page" : undefined}
+      data-status={status?.kind}
       onClick={() => {
         if (!on) onOpen();
       }}
@@ -95,37 +112,91 @@ function ThreadRow({
         // 깨진 Thread는 참여자를 모른다 — 같은 자리에 옅은 Host 얼굴이 서서 제목이 줄마다 같은 x에서 시작한다.
         <HostFace className={cn("size-8", thread.broken && "opacity-40")} />
       ) : (
-        <ThreadFaces people={people} faceClass="size-8" pairClass="size-8" pairFaceClass="size-5" ringClass="ring-surface-shell" />
+        <span className="relative flex shrink-0">
+          <ThreadFaces people={people} faceClass="size-8" pairClass="size-8" pairFaceClass="size-5" ringClass="ring-surface-shell" />
+          {status?.kind === "mine" && (
+            <span
+              role="img"
+              aria-label="내 차례"
+              className={cn(
+                "absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent-solid ring-2 ring-surface-shell",
+                moved && "dot-pop",
+              )}
+            />
+          )}
+        </span>
       )}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-nav-row", thread.broken && "text-fg-tertiary")}>{title}</span>
-          <span className="shrink-0 text-xs text-fg-tertiary">{since(said?.at ?? thread.createdAt, now)}</span>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-nav-row",
+              thread.broken && "text-fg-tertiary",
+              status?.kind === "new" && "font-semibold",
+            )}
+          >
+            {title}
+            {status?.kind === "new" && <span className="sr-only"> · 새 결과</span>}
+          </span>
+          <span key={slot} className={cn("flex h-4.5 shrink-0 items-center text-xs text-fg-tertiary", moved && "slot-in")}>
+            {status?.kind === "working" ? (
+              <Spinner role="img" aria-label="작업 중" className="size-3 text-fg-secondary" />
+            ) : (
+              since(at, now)
+            )}
+          </span>
         </span>
-        {preview !== "" && <span className="truncate text-chat-meta text-fg-tertiary">{preview}</span>}
+        {/* 둘째 줄은 비어도 자리를 지킨다 — 상태가 글을 더해도 아래 줄들이 움직이지 않는다. */}
+        <span
+          key={slot}
+          className={cn(
+            "h-4.5 truncate text-chat-meta",
+            status?.kind === "mine" ? "text-fg" : "text-fg-tertiary",
+            moved && "slot-in",
+          )}
+        >
+          {status?.kind === "failed" && (
+            <>
+              <span className="text-danger">실패</span>
+              {" · "}
+            </>
+          )}
+          {preview}
+        </span>
       </span>
     </button>
   );
 }
 
 /**
- * 그 Thread의 마지막 말 — 기록을 한 번 읽어 스토어에 합치고(깨진 Thread는 읽지 않는다), 스토어의 줄에서 센다. 읽기가 실패하면 말 없이
- * 제목과 시각만 선다 — 줄은 열어서 고칠 수 있다.
+ * 줄의 마지막 말과 상태 — Thread를 열 때와 같은 읽기(`threadQuery` — 살아 있음 · 기록 끝을 읽고 기록을 스토어에 합친다)로 서고, 그
+ * 뒤는 기록 줄 이벤트가 잇는다. 깨진 Thread는 읽지 않는다. 읽기가 실패하면 말도 상태도 없이 제목과 시각만 선다 — 줄은 열어서 고칠 수
+ * 있다. `ready`는 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
  */
-function useLastSaid(thread: ThreadSummary) {
-  useQuery({
-    queryKey: ["thread-record", thread.id],
-    queryFn: async () => {
-      mergeLines(thread.id, await threadApi.readRecord(thread.id, 0));
-      return null;
-    },
-    enabled: thread.broken === null,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
+function useRowState(thread: ThreadSummary): { said: ReturnType<typeof lastSaid>; status: ThreadStatus | null; ready: boolean } {
+  const { data: view } = useQuery({ ...threadQuery(thread.id), enabled: thread.broken === null });
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread.id));
-  return useMemo(() => lastSaid(lines), [lines]);
+  const said = useMemo(() => lastSaid(lines), [lines]);
+  const status = useMemo(
+    () => (view ? statusOf(lines, { goneThrough: view.live ? null : view.lastSeq, lastRead: thread.lastRead }) : null),
+    [lines, view, thread.lastRead],
+  );
+  return { said, status, ready: view !== undefined };
+}
+
+/**
+ * 상태가 바뀌었나 — 처음 그린 상태(앱을 켜고 줄을 그릴 때)는 움직이지 않고, 읽기가 끝난 뒤 상태가 바뀐 줄부터 움직인다(Motion 보드
+ * 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 칸이 상태를 열쇠로 새로 서므로.
+ */
+function useMoved(kind: string | null, ready: boolean): boolean {
+  const seen = useRef<{ kind: string | null } | null>(null);
+  const [moved, setMoved] = useState(false);
+  useEffect(() => {
+    if (!ready) return;
+    if (seen.current !== null && seen.current.kind !== kind) setMoved(true);
+    seen.current = { kind };
+  }, [kind, ready]);
+  return moved;
 }
 
 export default SidebarThreads;

@@ -625,6 +625,19 @@ impl ConversationHost {
         self.rename(thread, title, None)
     }
 
+    /// 읽은 자리 적기(v1 티켓 41 · 구현 스펙 §17 · S38) — 화면은 Thread를 열고 맨 아래가 보일 때 끝 줄의 seq를 적는다. `thread.json`의
+    /// `lastRead`를 고치고 목록 요약을 알린다(사이드바의 「새 결과」가 걷힌다). 답은 목록 요약이다.
+    ///
+    /// - **뒤로 가지 않는다** — 늦게 온 옛 seq는 아무것도 바꾸지 않는다. 같은 자리도 쓰지 않는다.
+    /// - 기록에 줄을 남기지 않고, Session을 띄우지 않는다 — 사람이 본 자리는 Agent가 알 일이 아니다.
+    pub fn mark_thread_read(&self, thread: &str, seq: u64) -> Result<ThreadSummary, HostError> {
+        if self.read_thread_file(thread)?.last_read < seq {
+            self.change_thread(thread, |file| file.last_read = file.last_read.max(seq))?;
+        }
+        self.with_index(|index| index.all().iter().find(|summary| summary.id == thread).cloned())?
+            .ok_or_else(|| HostError::ThreadNotFound(thread.to_owned()))
+    }
+
     /// 이름 바꾸기의 몸 — 사람(위 막대)과 Agent(Thread 도구 「Thread 이름 바꾸기」, v1 티켓 15)가 함께 쓴다. `thread.json`의 `title`을
     /// 고치고 목록 요약을 알리고(사이드바 · 위 막대), `title` 줄을 남긴다 — `who`는 바꾼 Agent의 handle이고 사람이면 없다(S8).
     /// payload는 `{title, before}`다(흐름의 시스템 줄 「Thread 이름을 … 로 바꿈」이 이것을 읽는다).
