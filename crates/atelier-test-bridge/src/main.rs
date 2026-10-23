@@ -487,6 +487,45 @@ mod tests {
         ("mcp/work_tools.rs", include_str!("../../atelier-cli/src/mcp/work_tools.rs")),
     ];
 
+    /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
+    /// core 쪽에 서면 이 표를 읽는다. Thread · Agent의 파일 모양(`threads.rs` · `agents.rs` …)이 여기 산다.
+    const CORE_SOURCES: [(&str, &str); 34] = [
+        ("agents.rs", include_str!("../../atelier-core/src/agents.rs")),
+        ("agents/scope.rs", include_str!("../../atelier-core/src/agents/scope.rs")),
+        ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
+        ("attachments.rs", include_str!("../../atelier-core/src/attachments.rs")),
+        ("changes.rs", include_str!("../../atelier-core/src/changes.rs")),
+        ("git.rs", include_str!("../../atelier-core/src/git.rs")),
+        ("layout/builtin.rs", include_str!("../../atelier-core/src/layout/builtin.rs")),
+        ("layout/classify.rs", include_str!("../../atelier-core/src/layout/classify.rs")),
+        ("layout/mod.rs", include_str!("../../atelier-core/src/layout/mod.rs")),
+        ("layout/model.rs", include_str!("../../atelier-core/src/layout/model.rs")),
+        ("layout/parse.rs", include_str!("../../atelier-core/src/layout/parse.rs")),
+        ("layout/pattern.rs", include_str!("../../atelier-core/src/layout/pattern.rs")),
+        ("layout/render.rs", include_str!("../../atelier-core/src/layout/render.rs")),
+        ("layout/resolve.rs", include_str!("../../atelier-core/src/layout/resolve.rs")),
+        ("layout/states.rs", include_str!("../../atelier-core/src/layout/states.rs")),
+        ("layout/store.rs", include_str!("../../atelier-core/src/layout/store.rs")),
+        ("layout/work_trees.rs", include_str!("../../atelier-core/src/layout/work_trees.rs")),
+        ("lib.rs", include_str!("../../atelier-core/src/lib.rs")),
+        ("order.rs", include_str!("../../atelier-core/src/order.rs")),
+        ("paths.rs", include_str!("../../atelier-core/src/paths.rs")),
+        ("policy_file.rs", include_str!("../../atelier-core/src/policy_file.rs")),
+        ("pr.rs", include_str!("../../atelier-core/src/pr.rs")),
+        ("project.rs", include_str!("../../atelier-core/src/project.rs")),
+        ("recent.rs", include_str!("../../atelier-core/src/recent.rs")),
+        ("records.rs", include_str!("../../atelier-core/src/records.rs")),
+        ("search.rs", include_str!("../../atelier-core/src/search.rs")),
+        ("slug.rs", include_str!("../../atelier-core/src/slug.rs")),
+        ("store.rs", include_str!("../../atelier-core/src/store.rs")),
+        ("threads.rs", include_str!("../../atelier-core/src/threads.rs")),
+        ("work.rs", include_str!("../../atelier-core/src/work.rs")),
+        ("works.rs", include_str!("../../atelier-core/src/works.rs")),
+        ("worktree.rs", include_str!("../../atelier-core/src/worktree.rs")),
+        ("worktree_file.rs", include_str!("../../atelier-core/src/worktree_file.rs")),
+        ("worktree_watch.rs", include_str!("../../atelier-core/src/worktree_watch.rs")),
+    ];
+
     /// `dir` 아래의 `.rs`를 **재귀로** 모아 `dir` 기준 상대 경로로 돌려준다.
     ///
     /// **재귀가 요점이다.** 한 겹만 읽으면 디렉터리 항목은 `.rs`로 안 끝나 필터에서 조용히
@@ -532,6 +571,11 @@ mod tests {
     #[test]
     fn cli_소스_표가_폴더_전체를_덮는다() {
         표가_폴더를_덮는다("../atelier-cli/src", &CLI_SOURCES);
+    }
+
+    #[test]
+    fn core_소스_표가_폴더_전체를_덮는다() {
+        표가_폴더를_덮는다("../atelier-core/src", &CORE_SOURCES);
     }
 
     /// **「확인됨」을 세우는 것은 `quit_app` 하나이고, 끄기 전에 세운다**(결정 14 · #223).
