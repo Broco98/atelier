@@ -765,6 +765,15 @@ impl ConversationHost {
         Ok(check)
     }
 
+    /// 로그인 셸의 PATH — 에이전트 밖의 도구(Work의 PR을 읽는 `gh`, v1 티켓 33)도 에이전트처럼 내 터미널과 같은 자리에서
+    /// 찾게 한다. Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보인다. 쥔 로그인 env를 쓰고, 셸을 다시 띄우지 않는다.
+    /// 읽지 못하면 없다 — 부르는 쪽이 앱의 PATH로 물러선다.
+    ///
+    /// 막히는 호출이다 — 로그인 env를 아직 쥐지 않았으면 셸을 띄워 기다린다(한도 10초).
+    pub fn login_path(&self) -> Option<OsString> {
+        self.login_env(false).ok()?.path().map(OsString::from)
+    }
+
     /// 로그인 시작 — 그 엔진의 로그인 명령(`claude auth login` · `codex login`)을 TTY 없이 새 세션에 띄운다(three-axes
     /// 결정 30). 명령이 브라우저를 스스로 연다. 기다리지 않는다 — 진행은 엔진 상태 이벤트로 온다:
     ///

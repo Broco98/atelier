@@ -115,6 +115,15 @@ const HANDLERS: &[(&str, Handler)] = &[
         let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
         ok(atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path))
     }),
+    // Work 카드의 자료(v1 티켓 33)도 코어를 진짜로 탄다 — 진짜 git이 변경과 diff를 판정한다.
+    ("list_work_changes", |a| ok(atelier_core::list_work_changes(&works_dir(), &projects_dir(), &text(a, "slug")?))),
+    ("read_work_diff", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::read_work_diff(&works_dir(), &projects_dir(), &slug, &project, &path))
+    }),
+    // PR은 이 다리의 PATH에서 `gh`를 찾는다 — 앱처럼 대화 호스트가 쥔 로그인 셸 PATH가 없다. L4는 가짜 `gh`를 PATH 앞에 두어
+    // 진짜 GitHub으로 나가지 않는다(없으면 「없음」이다).
+    ("read_work_prs", |a| ok(atelier_core::read_work_prs(&works_dir(), &text(a, "slug")?, None))),
     ("search", |a| {
         ok(atelier_core::search(
             // **반드시 코어의 데이터 루트다.** 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 봐서,

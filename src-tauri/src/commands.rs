@@ -198,6 +198,47 @@ pub async fn read_worktree_file(
     .map_err(|e| format!("워크트리 파일을 읽지 못했습니다: {e}"))?
 }
 
+// Work 카드의 자료(v1 구현 스펙 §12 · 티켓 33) — 변경 · 한 파일 diff · PR. 본체는 코어에 있고 여기는 위임만 한다. 모두 git이나
+// `gh`를 기다리므로 blocking 풀에서 돈다. worktree가 없거나 · base를 모르거나 · `gh`가 없는 것은 답의 갈래다(코어 머리말).
+
+/// Work의 변경(S23) — Project마다 base 대비 바뀐 파일과 +/−, 커밋한 것과 작업 중인 것을 합친다. Work 카드가 열릴 때와
+/// `worktree:changed`마다 다시 읽는다.
+#[tauri::command]
+pub async fn list_work_changes(slug: String) -> CmdResult<Vec<atelier_core::ProjectChanges>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::list_work_changes(&works_dir(), &projects_dir(), &slug).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Work의 변경을 읽지 못했습니다: {e}"))?
+}
+
+/// 변경 하나의 diff(S23) — 넓힌 카드의 diff 보기가 받는 unified patch다. `..` · 절대 경로는 명령 실패다.
+#[tauri::command]
+pub async fn read_work_diff(slug: String, project: String, path: String) -> CmdResult<atelier_core::FileDiff> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::read_work_diff(&works_dir(), &projects_dir(), &slug, &project, &path).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("diff를 읽지 못했습니다: {e}"))?
+}
+
+/// Work의 PR(S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. `gh`는 **대화 호스트가 쥔 로그인 셸의 PATH**로 찾는다 —
+/// Finder에서 띄운 앱의 PATH로는 Homebrew의 `gh`가 안 보여, 깔려 있는데도 PR 줄이 「없음」이 된다. 로그인 셸을 읽지 못하면 앱의
+/// PATH로 물러선다. 다리는 호스트가 없어 자기 PATH로 부른다.
+#[tauri::command]
+pub async fn read_work_prs(
+    chats: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    slug: String,
+) -> CmdResult<Vec<atelier_core::ProjectPr>> {
+    let host = Arc::clone(&chats);
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = host.login_path();
+        atelier_core::read_work_prs(&works_dir(), &slug, path.as_deref()).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("PR을 읽지 못했습니다: {e}"))?
+}
+
 /// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 맞추는 규칙도 순위도 층 규칙도
 /// 프런트와 갈리면 어긋나도 화면에 티가 안 난다. 여기는 루트 셋과 질의, 그리고 프런트가
 /// 들고 온 목적지 목록을 건네는 위임뿐이다.
@@ -1159,6 +1200,11 @@ mod tests {
     ///   큰 파일이면 그 읽기가 ms 단위다.
     /// - `list_agents` · `read_agent_file`(v1 티켓 11): Library와 Work의 Project마다 Agent 폴더를 읽고 파일을 하나씩 읽는다 — @ 메뉴가
     ///   열릴 때마다 온다.
+    /// - `list_work_changes`(v1 티켓 33): Project마다 git을 세 번 기다린다(갈라진 커밋 · 증감 · 아직 모르는 파일). Work 카드가
+    ///   worktree가 바뀔 때마다 부른다.
+    /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
+    /// - `read_work_prs`(v1 티켓 33): Project마다 `gh`가 GitHub에 묻는 것을 기다린다(네트워크). 그 앞의 로그인 셸 PATH 읽기도
+    ///   기다린다 — 대화 호스트가 아직 쥐지 않았으면 셸을 띄운다(한도 10초). 그래서 두 부름이 모두 blocking 풀 안이다.
     ///
     /// 대화 명령은 여기 없다 — 어느 호스트 부름이 막히는지는 호스트가 알고, 대화 호스트로 가는 한 길(`to_host`)이 모든 부름을
     /// blocking 풀에서 기다린다. 길은 `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은
@@ -1177,6 +1223,10 @@ mod tests {
             ("list_agents", "atelier_core::find_agents(", "find_agents("),
             ("read_agent_file", "atelier_core::read_agent_file(", "read_agent_file("),
             ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
+            ("list_work_changes", "atelier_core::list_work_changes(", "list_work_changes("),
+            ("read_work_diff", "atelier_core::read_work_diff(", "read_work_diff("),
+            ("read_work_prs", "atelier_core::read_work_prs(", "read_work_prs("),
+            ("read_work_prs", ".login_path()", ".login_path("),
         ] {
             let body = command_body(command);
             let blocking = body

@@ -44,6 +44,8 @@ mod worktree_watch;
 mod records;
 mod threads;
 mod attachments;
+mod changes;
+mod pr;
 
 // 원자 쓰기 둘을 낸다 — 폴더를 만드는 쪽 · 만들지 않는 쪽. 읽기(`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록
 // 없음」이라 기본값으로 눕는 그 읽기와 뜻이 다르다.
@@ -105,3 +107,6 @@ pub use attachments::{describe_attachments, Attachment};
 pub use worktree::{list_worktree_folder, list_worktree_tree, WorktreeEntry, WorktreeEntryKind, WorktreeTree};
 pub use worktree_file::{read_worktree_file, WorktreeFile};
 pub use worktree_watch::{worktree_changes, WorktreeChange};
+// Work 카드의 자료(v1 구현 스펙 §12) — 변경 · 한 파일 diff(S23)와 PR(S24). 앱 명령과 L4 다리가 같은 입구를 부른다.
+pub use changes::{list_work_changes, read_work_diff, ChangedFile, Changes, FileDiff, ProjectChanges};
+pub use pr::{read_work_prs, Ci, PrLookup, PrState, ProjectPr, PullRequest};
