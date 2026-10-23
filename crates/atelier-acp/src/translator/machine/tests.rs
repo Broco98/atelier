@@ -504,6 +504,50 @@ fn claude의_계정_이메일_플랜과_플러그인_경로는_가린_채로_나
     }
 }
 
+/// Agent 정의 스냅숏 파일의 자리 — 상태 기계는 그 경로를 claude에 넘기기만 하고 읽지 않는다.
+const INSTRUCTIONS: &str = "/tmp/gate/threads/20261023-090000/agents/host.md";
+
+/// 그 열기 요청 하나로 연 변환기가 claude를 띄운 인자.
+fn launched_by(method: &str, params: Value) -> Vec<String> {
+    let mut bench = Bench::new(Claude::replaying("2.1.282/twoturn-tools"));
+    bench.request("initialize", json!({"protocolVersion": 1}));
+    let opened = bench.request(method, params);
+    assert!(bench.result(opened).is_object(), "{method}가 열렸다");
+    let launches = bench.launches();
+    assert_eq!(launches.len(), 1, "{method}");
+    launches[0].args.clone()
+}
+
+#[test]
+fn agent_정의의_지시문_파일_모델_생각_깊이는_새로_열기와_이어_열기_모두_claude를_띄우는_인자에_든다() {
+    // v1 구현 스펙 §3 — `claude -p --resume`은 이 값들을 되살리지 않으므로 열 때마다 다시 받는다.
+    let meta = json!({"atelier": {"instructionsFile": INSTRUCTIONS, "model": "opus", "effort": "high"}});
+    let fresh = json!({"cwd": CWD, "mcpServers": [], "_meta": meta});
+    let revive = json!({"sessionId": "yesterday", "cwd": CWD, "mcpServers": [], "_meta": meta});
+
+    for (method, params) in [("session/new", fresh), ("session/resume", revive.clone()), ("session/load", revive)] {
+        let args = launched_by(method, params);
+        assert_eq!(
+            (
+                flag(&args, "--append-system-prompt-file").as_deref(),
+                flag(&args, "--model").as_deref(),
+                flag(&args, "--effort").as_deref(),
+            ),
+            (Some(INSTRUCTIONS), Some("opus"), Some("high")),
+            "{method}: {args:?}"
+        );
+        if method != "session/new" {
+            assert_eq!(flag(&args, "--resume").as_deref(), Some("yesterday"), "{method}");
+        }
+    }
+
+    // 정의가 셋을 비우면 플래그도 없다 — claude의 기본 시스템 프롬프트 · 사용자의 모델 설정을 그대로 쓴다.
+    let args = launched_by("session/new", json!({"cwd": CWD, "mcpServers": [], "_meta": {"atelier": {}}}));
+    for name in ["--append-system-prompt-file", "--model", "--effort"] {
+        assert!(!args.iter().any(|arg| arg == name), "{name}: {args:?}");
+    }
+}
+
 // ── 턴 ──────────────────────────────────────────────────────────────────────────────
 
 #[test]

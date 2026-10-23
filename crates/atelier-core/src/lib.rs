@@ -26,6 +26,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 mod paths;
+mod agents;
 mod slug;
 mod project;
 mod git;
@@ -49,8 +50,13 @@ pub use atomic::write_json_atomically;
 // 목록 파일이 데이터 루트를 새로 세우지 않게(three-axes 구현 스펙 S16).
 pub use atomic::write_json_into_existing_dir;
 pub use paths::{
-    archive_dir, collapse_home, data_root, default_data_root, expand_home, layouts_dir, projects_dir,
+    archive_dir, collapse_home, data_root, default_data_root, expand_home, layouts_dir, library_agents_in, projects_dir,
     works_dir, works_in,
+};
+// Agent 정의(v1 구현 스펙 §6) — 앱이 뜰 때 Library의 기본 파일을 세우고, Thread 엔진(`atelier-acp`)이 Host를 읽는다.
+pub use agents::{
+    ensure_default_agents, read_agent, AgentCalls, AgentDefinition, AgentProblem, Avatar, BuiltinTool, ModelPreference,
+    Policy, Tools,
 };
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
 // (`search.rs`가 `crate::recent::read_recent`로 직접 부른다) 나머지를 내면 아무도 안 읽는

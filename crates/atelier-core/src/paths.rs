@@ -69,6 +69,12 @@ pub(crate) fn layouts_in(root: &Path) -> PathBuf {
     root.join("layouts")
 }
 
+/// Library의 Agent 자리 — 어디서나 쓰는 내 Agent 정의(v1 구현 스펙 §6 · agent-definition.md 「파일 위치」). Project 안의 Agent는
+/// 여기가 아니라 그 Project의 `.atelier/agents/`다. Thread 엔진(`atelier-acp`)이 Host를 여기서 읽는다.
+pub fn library_agents_in(root: &Path) -> PathBuf {
+    root.join("library").join("agents")
+}
+
 pub fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {

@@ -267,11 +267,18 @@ impl Machine {
     /// `session/new` · `session/resume` · `session/load` — claude를 띄우고 stdin `initialize`를 보낸다(S1, three-axes 결정 27).
     /// 답은 claude의 `initialize` 답에서 한다([`Machine::opened`]).
     ///
-    /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) · `_meta.atelier{claudePath, permissionMode, model}`.
+    /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) ·
+    /// `_meta.atelier{claudePath, permissionMode, model, effort, instructionsFile}`.
     /// `mcpServers`는 보지 않는다 — 사용자 MCP와 커넥터는 `claude -p`가 스스로 붙인다(three-axes 결정 23).
     ///
-    /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델은 새 대화와 같이
-    /// 받은 값을 플래그로 준다 — Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
+    /// Agent 정의에서 오는 셋(v1 구현 스펙 §3 · S4) — 지시문은 Thread 폴더에 둔 정의 스냅숏 파일의 경로로 받아
+    /// `--append-system-prompt-file`로 claude의 기본 시스템 프롬프트 **뒤에** 붙인다(바꾸면 Claude Code의 도구 · 환경 안내가
+    /// 사라진다). 모델 · 생각 깊이는 `--model` · `--effort`다. 변환기는 그 파일을 읽지 않고 값을 고르지도 않는다 — 비우면 플래그를
+    /// 주지 않아 claude의 기본값을 쓴다.
+    ///
+    /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문은
+    /// 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고, Codex처럼 열린 뒤에
+    /// 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
     /// 호스트는 다음 단계로 넘어간다.
     fn open_session(&mut self, id: &Value, method: &str, params: &Value) {
@@ -296,6 +303,8 @@ impl Machine {
         let claude = atelier["claudePath"].as_str().unwrap_or("claude").to_owned();
         let mode = atelier["permissionMode"].as_str();
         let model = atelier["model"].as_str();
+        let effort = atelier["effort"].as_str();
+        let instructions = atelier["instructionsFile"].as_str();
         let reviving = revive.is_some();
         let session_id = revive.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
@@ -320,6 +329,12 @@ impl Machine {
         }
         if let Some(model) = model {
             args.extend(["--model", model]);
+        }
+        if let Some(effort) = effort {
+            args.extend(["--effort", effort]);
+        }
+        if let Some(instructions) = instructions {
+            args.extend(["--append-system-prompt-file", instructions]);
         }
         let launch = Launch { program: claude.clone(), args: args.into_iter().map(str::to_owned).collect(), cwd: cwd.to_owned() };
 

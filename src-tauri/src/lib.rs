@@ -415,6 +415,12 @@ pub fn run() {
             // 앱이 둘 뜬 동안에는 남의 인스턴스가 놓고 간 파일이 그대로 실려 나간다.
             shells::watch(app.handle().clone(), shells::shells_dir(&root), processes::shell_key::generation());
 
+            // Library의 기본 Agent 파일(`host.md` · `reviewer.md`)을 없을 때만 세운다(v1 구현 스펙 S14). 있으면 사람이 고친 것이라
+            // 건드리지 않는다. 못 세우면 적고 지나간다 — 다음 실행이 다시 세운다.
+            if let Err(e) = atelier_core::ensure_default_agents(&root) {
+                eprintln!("atelier: {e}");
+            }
+
             // 인스턴스 기록을 연다(프로세스 결정 6 · 프로세스 스펙 S52). 이 실행의 셸 키가 디스크에 서야 함께 뜬 다른
             // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리는 이 줄 **뒤에** 선다 — 기록이 먼저다.
             // 셸은 프런트가 뜬 뒤에야 불리지만, 그보다 먼저 올린 키가 있어도 여는 쓰기가 함께 적는다(`Record::open`).
@@ -1200,6 +1206,19 @@ mod tests {
             .expect("처리기를 세운 갈래에서 위에서 센 몫으로 훅 맞춤을 안 부른다 — 이미 깐 훅이 옛 처리기에 남거나 보고가 그것을 안 기다린다");
         assert!(written < synced, "훅 맞춤({synced})이 처리기 세우기({written})보다 앞에 있다");
         assert_eq!(setup.matches("startup::sync_hooks(").count(), 1, "훅 맞춤을 두 번 부른다");
+    }
+
+    /// **앱이 뜰 때마다 Library의 기본 Agent 파일을 세운다**(v1 구현 스펙 S14 · v1 티켓 03). 이 줄이 빠지면 처음 실행한 사람의
+    /// Library에 `host.md`가 없어 Host가 서지 않는데, 그것은 첫 말을 보낼 때에야 드러난다. 세우는 규칙(없을 때만 · 있는 파일은
+    /// 덮지 않음)은 core `agents.rs`의 시험이 임시 폴더에서 잰다. 셋업은 헤드리스로 못 돌리니 자리로 잰다.
+    #[test]
+    fn the_default_agents_stand_in_the_library_on_every_launch() {
+        let setup = setup_source();
+        assert_eq!(
+            setup.matches("atelier_core::ensure_default_agents(&root)").count(),
+            1,
+            "셋업이 이 실행의 데이터 루트로 기본 Agent 파일을 한 번 세우지 않는다"
+        );
     }
 
     /// **시작 정리는 인스턴스 기록을 연 뒤에 돈다**(프로세스 스펙 「시작 시 확정 고아 자동 정리」 · 티켓 10). 먼저 돌면 남의
