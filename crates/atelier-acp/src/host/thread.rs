@@ -79,8 +79,6 @@ use seat::{Docs, Grant, Writer};
 const HOST: &str = "host";
 /// v1이 띄우는 Runtime 하나(S3).
 const RUNTIME: &str = "claude-code";
-/// Thread 폴더 안에서 참여자의 정의 스냅숏(`<handle>.md`)과 지시문 파일(`<handle>.instructions.md`)이 사는 폴더(S4).
-const SNAPSHOTS: &str = "agents";
 /// 첫 말에서 정하는 이름의 길이 한도(글자 수).
 const TITLE_LIMIT: usize = 40;
 /// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
@@ -1295,7 +1293,7 @@ impl ConversationHost {
     }
 
     fn snapshots(&self, thread: &str) -> Result<PathBuf, HostError> {
-        Ok(atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?.join(SNAPSHOTS))
+        Ok(atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?.join(atelier_core::THREAD_SNAPSHOTS))
     }
 
     /// Thread의 작업 폴더(v1 구현 스펙 S11).

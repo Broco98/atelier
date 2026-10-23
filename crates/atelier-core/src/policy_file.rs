@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 
 use crate::Result;
 
-const POLICY_FILE: &str = ".policy.json";
+pub(crate) const POLICY_FILE: &str = ".policy.json";
 
 /// 점 파일이 사는 곳 — Work(slug) 폴더 또는 Thread(id) 폴더.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

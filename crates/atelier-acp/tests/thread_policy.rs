@@ -129,6 +129,38 @@ fn claude의_금지_규칙이_앞머리로_놓친_git_전역_옵션_뒤의_push�
 }
 
 #[test]
+fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어도_묻지_않고_거절된다() {
+    // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl` · `agents/`는
+    // Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을 넓힌다.
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    // 녹음의 `Write`(`outside/allowed.txt`)를 작업 폴더(Thread 폴더)의 `.policy.json`으로 옮긴다.
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
+            ("FAKE_CLAUDE_REBASE", RECORDED_PLACE),
+            ("FAKE_CLAUDE_REROOT", "allowed.txt=.policy.json"),
+        ],
+    ));
+    let thread = host
+        .start_thread_asking("점 파일을 고쳐 줘", &[], ThreadLink::NoWork, Some(AskLevel::Edits))
+        .expect("편집은 허용으로 새 Thread");
+
+    let decided = wait_permission(&sandbox, &thread, "host", "decided");
+    let record = sandbox.thread_record(&thread);
+    assert_eq!(permissions(&record, "host").len(), 1, "물음 줄 없이 판정 줄 하나다:\n{}", common::lines_text(&record));
+    let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
+    assert_eq!(decided["payload"]["optionId"], "reject");
+    assert!(reason.starts_with("Thread 기록이라 고칠 수 없어요: "), "{reason}");
+    assert!(reason.contains(&format!("{thread}/.policy.json")), "{reason}");
+    let session = sandbox.thread_session_id(&thread, "host");
+    assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": reason})]);
+
+    host.shut_down();
+}
+
+#[test]
 fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_고치기_시작_도구를_가리킨다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));

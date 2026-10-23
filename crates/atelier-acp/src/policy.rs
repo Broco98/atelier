@@ -11,6 +11,8 @@
 //! 1. `forbid`에 걸리면 거절한다.
 //! 2. 고치는 경로가 고칠 수 있는 자리(Work의 worktree · spec 폴더 · Thread 폴더) 밖이면 거절한다. 그 경로가 등록된 Project 안이면
 //!    Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터 만들라고.
+//!    Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json` · `agents/` 스냅숏)이면 거절한다(S7 ·
+//!    §19, 코드 리뷰 1차 A2) — 그대로면 Agent가 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓히거나 스냅숏의 Policy를 지운다.
 //! 3. 쓰기 자리를 다른 Session이 쥐고 있으면 거절한다(§10 · v1 티켓 18).
 //! 4. `ask_before`에 걸리면 묻는다.
 //! 5. 「다시 묻지 않기」 허락에 걸리면 허용한다.
@@ -163,6 +165,9 @@ pub(crate) struct Case<'a> {
     pub in_work: bool,
     /// 고칠 수 있는 자리 — Work의 worktree들 · spec 폴더, 그리고 Thread 폴더. 절대 경로다.
     pub roots: &'a [PathBuf],
+    /// 고칠 수 있는 자리 안이어도 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더다. 그 안이나 그것을 품은 폴더를
+    /// 고치면 거절한다.
+    pub kept: &'a [PathBuf],
     /// 등록된 Project — (slug, 폴더).
     pub projects: &'a [(String, PathBuf)],
     /// 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 돌려줄 글(§10).
@@ -190,6 +195,9 @@ pub(crate) fn judge(case: &Case) -> Verdict {
     if let Act::Edit(paths) = act {
         if let Some(outside) = paths.iter().find(|path| !case.roots.iter().any(|root| path.starts_with(root))) {
             return Verdict::Refuse { message: outside_message(outside, case) };
+        }
+        if let Some(kept) = paths.iter().find(|path| case.kept.iter().any(|kept| path.starts_with(kept) || kept.starts_with(path))) {
+            return Verdict::Refuse { message: kept_message(kept) };
         }
         if let Some(busy) = case.seat {
             return Verdict::Refuse { message: busy.to_owned() };
@@ -248,6 +256,14 @@ fn outside_message(path: &Path, case: &Case) -> String {
         None if case.in_work => format!("{head} — 이 Work의 worktree · spec 폴더 안에서만 고쳐요"),
         None => format!("{head} — Work가 없는 Thread는 이 Thread 폴더 안에서만 고쳐요"),
     }
+}
+
+/// Atelier만 쓰는 파일의 글 — Work 밖 거절과 같은 꼴이다.
+fn kept_message(path: &Path) -> String {
+    format!(
+        "Thread 기록이라 고칠 수 없어요: {} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json` · `agents/`는 Atelier만 써요",
+        path.display()
+    )
 }
 
 /// S19 규칙 이름 하나가 가리키는 것.
@@ -828,6 +844,7 @@ mod tests {
         grants: Vec<String>,
         in_work: bool,
         roots: Vec<PathBuf>,
+        kept: Vec<PathBuf>,
         projects: Vec<(String, PathBuf)>,
         seat: Option<String>,
     }
@@ -842,6 +859,7 @@ mod tests {
                 grants: Vec::new(),
                 in_work: true,
                 roots: vec!["/w/cart/trees/fe".into(), "/w/cart/spec".into(), "/t/20261023-101010".into()],
+                kept: ["thread.json", "events.jsonl", ".policy.json", "agents"].map(|name| Path::new("/t/20261023-101010").join(name)).to_vec(),
                 projects: vec![("fe".to_owned(), "/repos/fe".into())],
                 seat: None,
             }
@@ -856,6 +874,7 @@ mod tests {
                 grants: &self.grants,
                 in_work: self.in_work,
                 roots: &self.roots,
+                kept: &self.kept,
                 projects: &self.projects,
                 seat: self.seat.as_deref(),
             })
@@ -1199,6 +1218,36 @@ mod tests {
                  그 Project를 넣은 Work를 만든 뒤 `start_editing`을 부르세요"
             )
         );
+    }
+
+    #[test]
+    fn thread_폴더의_기록_파일과_정의_스냅숏은_고칠_수_있는_자리_안이어도_묻지_않고_거절한다() {
+        // 코드 리뷰 1차 A2 — Thread 폴더는 Atelier만 쓴다(S7 · §19). 알아서 · 편집 허락이 있어도 거절이다.
+        let judged = |path: &str| {
+            let mut given = Given::act(edit(path));
+            given.level = AskLevel::Auto;
+            given.grants = names(&["edit"]);
+            given.in_work = false;
+            given.judged()
+        };
+        let refused = |path: &str| {
+            refuse(&format!(
+                "Thread 기록이라 고칠 수 없어요: {path} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json` · `agents/`는 \
+                 Atelier만 써요"
+            ))
+        };
+        for path in [
+            "/t/20261023-101010/thread.json",
+            "/t/20261023-101010/events.jsonl",
+            "/t/20261023-101010/.policy.json",
+            "/t/20261023-101010/agents/host.md",
+            "/t/20261023-101010/agents",
+            "/t/20261023-101010",
+        ] {
+            assert_eq!(judged(path), refused(path), "{path}");
+        }
+        assert_eq!(judged("/t/20261023-101010/notes.md"), allow("이 Thread에서는 다시 묻지 않기"), "나머지 Thread 폴더는 그대로다");
+        assert_eq!(judged("/t/20261023-101010/agents-notes/a.md"), allow("이 Thread에서는 다시 묻지 않기"), "경로는 폴더 단위로 견준다");
     }
 
     #[test]

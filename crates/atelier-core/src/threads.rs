@@ -18,6 +18,8 @@ use crate::Result;
 
 const THREAD_FILE: &str = "thread.json";
 const RECORD_FILE: &str = "events.jsonl";
+/// Thread 폴더 안에서 참여자의 정의 스냅숏(`<handle>.md`)과 지시문 파일(`<handle>.instructions.md`)이 사는 폴더(S4).
+pub const THREAD_SNAPSHOTS: &str = "agents";
 
 /// `thread.json` 한 장(v1 구현 스펙 §4 표). 칸이 빠진 파일도 읽힌다 — 다른 판의 앱이 쓴 파일을 깨진 것으로 보지 않게.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -171,6 +173,12 @@ pub fn thread_dir(data_root: &Path, id: &str) -> Result<PathBuf> {
         return Err(crate::Error::Validation(format!("Thread id가 아닙니다: {id:?}")));
     }
     Ok(crate::paths::threads_in(data_root).join(id))
+}
+
+/// Thread 폴더 안에서 Atelier만 쓰는 자리(S7 · §19, 코드 리뷰 1차 A2) — `thread.json` · `events.jsonl` · 점 파일 `.policy.json` ·
+/// 정의 스냅숏 폴더. 판정이 이 자리의 편집을 거절한다. 나머지 Thread 폴더는 Work 없는 Thread의 작업 폴더라 Agent가 고친다(S11).
+pub fn thread_kept(dir: &Path) -> Vec<PathBuf> {
+    [THREAD_FILE, RECORD_FILE, crate::policy_file::POLICY_FILE, THREAD_SNAPSHOTS].iter().map(|name| dir.join(name)).collect()
 }
 
 /// `thread.json`을 읽는다. 없으면 `NotFound`, 깨졌으면 `InvalidData` — 까닭은 색인의 깨진 줄과 같은 말이다.

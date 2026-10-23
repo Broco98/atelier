@@ -102,8 +102,8 @@ pub use works::spec_files;
 pub use records::{last_record_seq, parse_records, read_records, record_time, RecordKind, RecordLine, RecordLog};
 // Thread 저장(v1 구현 스펙 §4) — Thread 엔진(`atelier-acp`)이 쓴다.
 pub use threads::{
-    create_thread, open_thread_log, read_thread, read_thread_records, thread_dir, update_thread, work_gone,
-    CreatedThread, DefinitionSource, NewThread, Participant, ThreadFile, ThreadIndex, ThreadSummary, WorkGone,
+    create_thread, open_thread_log, read_thread, read_thread_records, thread_dir, thread_kept, update_thread, work_gone,
+    CreatedThread, DefinitionSource, NewThread, Participant, ThreadFile, ThreadIndex, ThreadSummary, WorkGone, THREAD_SNAPSHOTS,
 };
 // 물어보는 정도와 「다시 묻지 않기」 허락의 점 파일(v1 구현 스펙 S18 · v1 티켓 22) — Thread 엔진의 판정이 받은 요청마다 읽는다.
 pub use policy_file::{read_policy, update_policy, PolicyFile, PolicyPlace};
