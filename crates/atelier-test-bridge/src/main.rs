@@ -130,6 +130,12 @@ const HANDLERS: &[(&str, Handler)] = &[
     //
     // **루트는 반드시 코어의 것을 넘긴다** — 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 본다.
     ("touch_recent_work", |a| ok(atelier_core::touch_recent_work(&data_root(), &text(a, "slug")?))),
+    // Agent 목록 · 파일 읽기(v1 티켓 11)는 코어만 거친다 — 같은 입구(`find_agents` · `read_agent_file`)가 다리의 데이터 루트에서
+    // Library와 Work의 Project 폴더를 **진짜로** 읽는다. `work`가 없으면(`null`) Library만이다.
+    ("list_agents", |a| ok(atelier_core::find_agents(&data_root(), maybe_text(a, "work").as_deref()))),
+    ("read_agent_file", |a| {
+        ok(atelier_core::read_agent_file(&data_root(), maybe_text(a, "work").as_deref(), &text(a, "call")?))
+    }),
     // 셸 일곱은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
     ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),

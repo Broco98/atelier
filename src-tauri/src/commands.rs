@@ -227,6 +227,29 @@ pub async fn touch_recent_work(slug: String) -> CmdResult<()> {
     atelier_core::touch_recent_work(&data_root(), &slug).map_err(err)
 }
 
+// Agent 정의(v1 구현 스펙 §6 · §18) — @ 메뉴와 Library 화면이 읽는다. 범위 · 고르기 규칙은 전부 코어에 있고 여기는 넘기기만 한다
+// (L4 다리도 같은 입구를 부른다). `work`가 없으면 Library만, 있으면 그 Work의 Project들까지가 범위다.
+
+/// 범위 안의 Agent — 부를 수 있는 것과 깨진 것(까닭과 함께). Library와 Project마다 폴더를 읽고 파일을 하나씩 읽으므로 work
+/// 목록처럼 blocking 풀에서 돈다.
+#[tauri::command]
+pub async fn list_agents(work: Option<String>) -> CmdResult<atelier_core::AgentRoster> {
+    tauri::async_runtime::spawn_blocking(move || atelier_core::find_agents(&data_root(), work.as_deref()).map_err(err))
+        .await
+        .map_err(|e| format!("Agent 목록을 읽지 못했습니다: {e}"))?
+}
+
+/// 범위 안 Agent 파일 하나의 원문 — 부르는 이름(`reviewer` · `api-server/reviewer`)으로 고른다. 깨진 파일도 준다(무엇이
+/// 틀렸는지 보게). 범위를 다시 찾아 고르므로 목록처럼 blocking 풀에서 돈다.
+#[tauri::command]
+pub async fn read_agent_file(work: Option<String>, call: String) -> CmdResult<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::read_agent_file(&data_root(), work.as_deref(), &call).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Agent 파일을 읽지 못했습니다: {e}"))?
+}
+
 #[tauri::command]
 pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
@@ -947,6 +970,8 @@ mod tests {
     ///   돈다(`pty::end_by_hand`).
     /// - `read_worktree_file`(git-integration 판 01): 디스크에서 파일 하나를 읽고 실제 경로를 두 번 푼다 — 파일 탭이 보일 때만 오지만
     ///   큰 파일이면 그 읽기가 ms 단위다.
+    /// - `list_agents` · `read_agent_file`(v1 티켓 11): Library와 Work의 Project마다 Agent 폴더를 읽고 파일을 하나씩 읽는다 — @ 메뉴가
+    ///   열릴 때마다 온다.
     ///
     /// 대화 명령은 여기 없다 — 어느 호스트 부름이 막히는지는 호스트가 알고, 대화 호스트로 가는 한 길(`to_host`)이 모든 부름을
     /// blocking 풀에서 기다린다. 길은 `host_calls_wait_without_holding_the_async_workers`가, 명령이 그 길만 타는 것은
@@ -962,6 +987,8 @@ mod tests {
             ("processes_summary", "processes.summary()", ".summary("),
             ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
             ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
+            ("list_agents", "atelier_core::find_agents(", "find_agents("),
+            ("read_agent_file", "atelier_core::read_agent_file(", "read_agent_file("),
         ] {
             let body = command_body(command);
             let blocking = body

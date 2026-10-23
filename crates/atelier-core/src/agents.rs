@@ -2,25 +2,31 @@
 //! 이름 · 설명 · 얼굴 · 모델 · 도구 · Policy · Runtime이고 본문이 지시문(Instructions)이다. **파일 이름이 handle이다** —
 //! `reviewer.md`는 `@reviewer`다.
 //!
-//! 이 모듈이 지금 하는 일은 둘이다(v1 티켓 03) — 파일 하나 읽기([`read_agent`])와 Library의 기본 파일 만들기
-//! ([`ensure_default_agents`]). 범위 찾기 · 고르기(티켓 11)와 Library에 저장하기(티켓 19)가 여기에 더해진다.
+//! 이 모듈이 지금 하는 일은 셋이다 — 파일 하나 읽기([`read_agent`])와 Library의 기본 파일 만들기([`ensure_default_agents`])
+//! (v1 티켓 03), 범위 찾기 · 고르기([`find_agents`] · [`AgentRoster::resolve`], v1 티켓 11 — `scope.rs`). Library에 저장하기
+//! (티켓 19)가 여기에 더해진다.
 //!
 //! **깨진 파일은 오류가 아니라 까닭이다**([`AgentProblem`]). @ 메뉴와 Library가 그 Agent를 흐리게, 까닭과 함께 보이고 부르지
-//! 못하게 한다(§6 「깨진 파일」) — 그래서 읽기는 까닭 셋 가운데 하나로 답하고 터지지 않는다.
+//! 못하게 한다(§6 「깨진 파일」) — 그래서 읽기는 까닭 셋 가운데 하나로 답하고 터지지 않는다. 화면에는 camelCase JSON으로
+//! 나간다(Tauri `list_agents`) — 파일의 낱말(`ask_before` · `agents: any` · `read`)은 그대로 읽고, 내보낼 때만 이름 꼴을 바꾼다.
 
 use std::io::{ErrorKind, Write};
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 
 use crate::paths::library_agents_in;
 use crate::project::split_frontmatter;
+
+mod scope;
+pub use scope::{find_agents, read_agent_file, AgentRoster, BrokenAgent, FoundAgent, Unresolved};
 
 /// 읽은 Agent 정의 하나.
 ///
 /// v1이 읽지 않는 칸 — `tools.mcp` · `knowledge` · `contract`(S39)와 모르는 칸 — 은 깨진 까닭이 아니라 그냥 지나친다. 남이 만든
 /// Agent 파일을 가져와도 v1에서 부를 수 있게.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentDefinition {
     /// 파일 이름(확장자 뺌). `@`로 부르는 이름이다.
     pub handle: String,
@@ -40,7 +46,7 @@ pub struct AgentDefinition {
 }
 
 /// frontmatter `avatar`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Avatar {
     pub shape: Option<String>,
@@ -49,7 +55,7 @@ pub struct Avatar {
 
 /// frontmatter `model` — 선호 모델과 생각 깊이(스토리 33 · 73). 비면 claude의 기본값(사용자 설정)이다 — 변환기가 플래그를
 /// 주지 않는다. 값은 고르지 않고 claude에 그대로 넘긴다.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ModelPreference {
     pub prefer: Option<String>,
@@ -57,7 +63,7 @@ pub struct ModelPreference {
 }
 
 /// frontmatter `tools`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Tools {
     /// 쓸 수 있는 내장 도구. **`None`이면 기본 도구 전부다**(§3) — 빈 목록(내장 도구 없음)과 다르다.
     pub builtin: Option<Vec<BuiltinTool>>,
@@ -68,7 +74,8 @@ pub struct Tools {
 }
 
 /// Runtime 중립의 추상 도구(agent-definition.md 「Runtime 추상화」). Runtime의 도구 이름으로 옮기는 일은 변환기 쪽이다(티켓 12).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BuiltinTool {
     Read,
     Search,
@@ -91,16 +98,27 @@ impl Default for AgentCalls {
     }
 }
 
+/// 파일에 적는 꼴 그대로 낸다 — handle 목록이거나 `"any"`.
+impl Serialize for AgentCalls {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            AgentCalls::Listed(handles) => handles.serialize(serializer),
+            AgentCalls::AnyInScope => serializer.serialize_str(ANY_AGENT),
+        }
+    }
+}
+
 /// frontmatter `policy` — 추상 이름 그대로다. 규칙 표로 옮기는 일은 판정이 한다(S19, 티켓 22).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, rename_all(serialize = "camelCase"))]
 pub struct Policy {
     pub ask_before: Vec<String>,
     pub forbid: Vec<String>,
 }
 
-/// 깨진 Agent 파일의 까닭(§6 「깨진 파일」) — 셋뿐이다.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 깨진 Agent 파일의 까닭(§6 「깨진 파일」). 파일 하나를 읽어 나는 셋([`read_agent`])과, 범위에서 나는 하나(`host` 자리)다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AgentProblem {
     /// 파일을 읽지 못했거나 frontmatter가 없거나 그 모양이 틀렸다 — 그 글.
     Unreadable { message: String },
@@ -108,6 +126,8 @@ pub enum AgentProblem {
     UnknownTool { tool: String },
     /// `runtimes`가 `claude-code`를 받지 않는다 — v1은 Claude Code만 띄운다(S3).
     RuntimeNotAccepted,
+    /// Project 안의 `host.md`다 — `host`는 Library에만 있다(§6 범위). 파일을 읽지 않고 이 까닭 하나로 선다.
+    HostOutsideLibrary,
 }
 
 /// Agent 파일 하나를 읽는다. 깨졌으면 그 까닭이다 — 까닭이 여럿이면 읽지 못함 → 모르는 도구 → Runtime 순으로 처음 것 하나다.

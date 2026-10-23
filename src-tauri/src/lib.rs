@@ -486,6 +486,8 @@ pub fn run() {
             commands::read_worktree_file,
             commands::search,
             commands::touch_recent_work,
+            commands::list_agents,
+            commands::read_agent_file,
             commands::pty_spawn,
             commands::pty_write,
             commands::pty_resize,

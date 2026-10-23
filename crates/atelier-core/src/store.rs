@@ -113,7 +113,8 @@ pub fn delete_project(root: &Path, slug: &str) -> Result<()> {
     Ok(())
 }
 
-fn read_project(root: &Path, slug: &str) -> Result<Project> {
+/// Project 파일 하나. `get_project`와 달리 git을 캐묻지 않는다 — Agent 범위(`agents::scope`)가 폴더 자리만 읽는다.
+pub(crate) fn read_project(root: &Path, slug: &str) -> Result<Project> {
     let path = project_path(root, slug)?;
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::NotFound(slug.to_string()))?;
