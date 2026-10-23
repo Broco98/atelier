@@ -100,6 +100,35 @@ fn forbid에_걸린_요청은_사람에게_묻지_않고_policy의_글로_거절
 }
 
 #[test]
+fn claude의_금지_규칙이_앞머리로_놓친_git_전역_옵션_뒤의_push는_판정이_둘째_줄로_거절한다() {
+    // 코드 리뷰 1차 A1 — 변환기가 넘기는 `--disallowedTools Bash(git push *)`는 claude 쪽 앞머리 일치라 `git -C <dir> push`가 그대로
+    // 샌다. 그 요청은 claude가 묻는 대로 판정에 오고, 판정이 하위 명령을 읽어 거절한다.
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md("policy:\n  forbid: [push]\n"));
+    // 녹음의 명령(`python3 -c …`) 앞에 `git -C … push`를 붙인다 — `FAKE_CLAUDE_REROOT`는 내는 줄의 글 바꾸기다.
+    let pushed = "git -C ../api push origin main && python3 -c";
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", &format!("python3 -c={pushed}"))],
+    ));
+    let thread = host.start_thread("배경 작업을 돌려 줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+
+    let decided = wait_permission(&sandbox, &thread, "host", "decided");
+    let session = sandbox.thread_session_id(&thread, "host");
+    let args = args_of(&sandbox, &session);
+    let first_line = args.iter().position(|arg| arg == "--disallowedTools").map(|at| args[at + 1].as_str());
+    assert_eq!(first_line, Some("Bash(git push),Bash(git push *)"), "claude가 먼저 막는 줄은 앞머리 규칙이다");
+    let command = decided["payload"]["toolCall"]["rawInput"]["command"].as_str().unwrap_or_default();
+    assert!(command.starts_with(pushed), "claude는 그 줄로 막지 못하고 묻는다: {command}");
+    let refused = "이 Agent의 Policy가 금지한 일이에요(forbid: push) — 하지 말고 다른 길을 찾으세요";
+    let payload = &decided["payload"];
+    assert_eq!((payload["optionId"].clone(), payload["reason"].clone()), (json!("reject"), json!(refused)));
+    assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": refused})]);
+
+    host.shut_down();
+}
+
+#[test]
 fn work_밖의_편집은_거절되고_그_경로가_등록된_project_안이면_고치기_시작_도구를_가리킨다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));

@@ -21,7 +21,8 @@
 //! 명령을 막는다 — 한쪽만 고치면 claude가 막는 것과 판정이 막는 것이 갈린다. `schema`(마이그레이션 명령)는 고정 목록이 없다 — Host
 //! 기본 파일이 명령 패턴으로 적는다(S19 · 결정.md 12).
 //!
-//! 명령은 `&&` · `||` · `;` · `|` · 줄바꿈으로 조각낸다. **막는 쪽(`forbid` · `ask_before`)은 조각 하나만 걸려도, 넘기는 쪽(허락 ·
+//! 명령은 셸이 실행하는 명령마다 조각낸다(`&&` · `;` · `|` · 괄호 · 명령 치환 · `sh -c '…'`, [`pieces`]). git은 전역 옵션을 건너
+//! 하위 명령을 읽는다 — `git -C fe push`도 `push`다. **막는 쪽(`forbid` · `ask_before`)은 조각 하나만 걸려도, 넘기는 쪽(허락 ·
 //! `tools.cli`)은 모든 조각이 맞아야** 걸린다 — `gh pr view && git push`는 `push`에 걸리고, `tools.cli: [gh]`로 넘어가지 않는다.
 //! 허락은 조각마다 준 허락 가운데 하나에 맞으면 된다 — 「다시 묻지 않기」가 `cd fe && pnpm test`에 `cd` · `pnpm test` 둘을 주기
 //! 때문이다([`remembered`], v1 티켓 24).
@@ -277,13 +278,18 @@ fn rule(name: &str) -> Rule<'_> {
     }
 }
 
-/// 막는 쪽(`forbid` · `ask_before`)의 걸림 — 명령은 조각 하나만 걸려도 걸린다.
+/// 막는 쪽(`forbid` · `ask_before`)의 걸림 — 명령은 조각 하나만 걸려도 걸린다. 조각은 쓰인 그대로와 푼 글(git 전역 옵션을 걷은
+/// 글) 가운데 하나만 맞아도 걸린다.
 fn hits(name: &str, act: &Act) -> bool {
-    match (rule(name), act) {
-        (Rule::Edits, Act::Edit(_)) | (Rule::Commands, Act::Command(_)) => true,
-        (Rule::Named(commands), Act::Command(text)) => pieces(text).any(|piece| commands.iter().any(|command| starts(piece, command))),
-        (Rule::Pattern(pattern), Act::Command(text)) => pieces(text).any(|piece| pattern_matches(pattern, piece)),
-        _ => false,
+    let Act::Command(text) = act else {
+        return matches!((rule(name), act), (Rule::Edits, Act::Edit(_)));
+    };
+    let fits = |piece: &Piece, fit: &dyn Fn(&str) -> bool| fit(&piece.said) || fit(&piece.run);
+    match rule(name) {
+        Rule::Commands => true,
+        Rule::Named(commands) => pieces(text).iter().any(|piece| fits(piece, &|form| commands.iter().any(|command| starts(form, command)))),
+        Rule::Pattern(pattern) => pieces(text).iter().any(|piece| fits(piece, &|form| pattern_matches(pattern, form))),
+        Rule::Edits | Rule::Nothing => false,
     }
 }
 
@@ -297,13 +303,19 @@ fn granted(grants: &[String], act: &Act) -> bool {
 }
 
 /// 넘기는 쪽의 걸림 — 명령 조각 하나가 그 규칙에 맞나.
-fn covers_piece(name: &str, piece: &str) -> bool {
+fn covers_piece(name: &str, piece: &Piece) -> bool {
     match rule(name) {
         Rule::Commands => true,
-        Rule::Named(commands) => commands.iter().any(|command| starts(piece, command)),
-        Rule::Pattern(pattern) => pattern_matches(pattern, piece),
+        Rule::Named(commands) => passes(piece, |form| commands.iter().any(|command| starts(form, command))),
+        Rule::Pattern(pattern) => passes(piece, |form| pattern_matches(pattern, form)),
         Rule::Edits | Rule::Nothing => false,
     }
+}
+
+/// 넘기는 쪽이 조각 하나를 보는 법 — 쓰인 그대로가 맞거나, git이 실행할 것을 바꾸는 전역 옵션이 없을 때 푼 글이 맞으면 넘긴다.
+/// `git -C ../api status`는 `Bash(git status *)`로 넘어가고 `git -c core.pager=… status`는 넘어가지 않는다.
+fn passes(piece: &Piece, fit: impl Fn(&str) -> bool) -> bool {
+    fit(&piece.said) || (!piece.reconfigured && fit(&piece.run))
 }
 
 /// 「다시 묻지 않기」로 줄 허락(S18 · v1 티켓 24) — 같은 종류의 다음 요청을 5번 칸에서 넘기는 규칙 이름들. 편집이면 `edit`(편집
@@ -311,17 +323,24 @@ fn covers_piece(name: &str, piece: &str) -> bool {
 /// 넘어가기 · 그 밖의 도구는 S19에 이름이 없어 비었다.
 ///
 /// **머리는 명령과 하위 명령, 두 낱말까지다**(`pnpm prisma migrate dev` → `pnpm prisma`, `git push origin` → `git push`, `python3 -c …`
-/// → `python3`). 둘째 낱말은 하위 명령처럼 생겼을 때만 든다 — 영문자로 시작하고 영문자 · 숫자 · `-` · `_` · `:`뿐이다(`-c` ·
-/// `script.py` · `../fe`는 인자다). 글자로만 가르므로 그렇게 생긴 인자는 하위 명령으로 읽힌다(`cd fe` → `cd fe`) — 허락이 좁아질
-/// 뿐 넓어지지 않는다. 셋째 낱말부터는 하위 명령인지 인자인지 글자로 가를 수 없어 들지 않는다(`pnpm test refunds`).
+/// → `python3`). 조각의 푼 글에서 읽는다 — git 전역 옵션을 건너 `git -C ../api status` → `git status`다(코드 리뷰 1차 A1).
+/// 둘째 낱말은 하위 명령처럼 생겼을 때만 든다 — 영문자로 시작하고 영문자 · 숫자 · `-` · `_` · `:`뿐이다(`-c` · `script.py` ·
+/// `../fe`는 인자다). 글자로만 가르므로 그렇게 생긴 인자는 하위 명령으로 읽힌다(`cd fe` → `cd fe`) — 허락이 좁아질 뿐 넓어지지
+/// 않는다. 셋째 낱말부터는 하위 명령인지 인자인지 글자로 가를 수 없어 들지 않는다(`pnpm test refunds`).
+///
+/// **넘길 허락을 지을 수 없는 명령이면 비운다** — 그 선택지가 서지 않는다. git이 실행할 것을 바꾸는 전역 옵션(`-c …`)이 든 조각과
+/// 명령 이름이 치환인 조각(`$X …`)이다. 앞의 것은 [`passes`]가 푼 글로 넘기지 않고, 뒤의 것은 `Bash($X *)`가 무엇이든 넘긴다.
 pub(crate) fn remembered(act: &Act) -> Vec<String> {
     match act {
         Act::Edit(_) => vec!["edit".to_owned()],
         Act::Command(text) => {
             let mut rules: Vec<String> = Vec::new();
             for piece in pieces(text) {
-                let mut words = piece.split_whitespace();
+                let mut words = piece.words.iter();
                 let Some(first) = words.next() else { continue };
+                if piece.reconfigured || first.contains(['$', '`']) {
+                    return Vec::new();
+                }
                 let head = match words.next().filter(|word| subcommand(word)) {
                     Some(second) => format!("{first} {second}"),
                     None => first.to_owned(),
@@ -347,8 +366,8 @@ fn subcommand(word: &str) -> bool {
 fn cli_covers(entry: &str, act: &Act) -> bool {
     let Act::Command(text) = act else { return false };
     match rule(entry) {
-        Rule::Pattern(pattern) => every_piece(text, |piece| pattern_matches(pattern, piece)),
-        _ => every_piece(text, |piece| starts(piece, entry)),
+        Rule::Pattern(pattern) => every_piece(text, |piece| passes(piece, |form| pattern_matches(pattern, form))),
+        _ => every_piece(text, |piece| passes(piece, |form| starts(form, entry))),
     }
 }
 
@@ -369,41 +388,378 @@ fn shown(name: &str) -> &str {
     inner.trim_end_matches(":*").trim_matches(|c: char| c == '*' || c.is_whitespace())
 }
 
-/// 명령의 조각들 — `&&` · `||` · `;` · `|` · `&` · 줄바꿈으로 자르고, 앞의 환경 변수 놓기(`FOO=1 git push`)를 뗀다. **따옴표 안의
-/// 구분자로는 자르지 않는다**(v1 티켓 24) — `python3 -c "import a; a.b()"`는 조각 하나다. 셸이 그 글을 한 인자로 넘기기 때문이고,
-/// 거기서 자르면 「다시 묻지 않기」가 `Bash(a.b() *)` 같은 허락을 짓는다. 백슬래시 뒤의 한 글자는 따옴표 밖에서 글자 그대로다.
-fn pieces(text: &str) -> impl Iterator<Item = &str> {
-    let mut cut: Vec<&str> = Vec::new();
-    let (mut start, mut quote, mut escaped) = (0, None::<char>, false);
-    for (at, c) in text.char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        match (quote, c) {
-            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
-            (Some('\''), _) => {}
-            (_, '\\') => escaped = true,
-            (Some(_), _) => {}
-            (None, '\'' | '"') => quote = Some(c),
-            (None, ';' | '|' | '&' | '\n') => {
-                cut.push(&text[start..at]);
-                start = at + c.len_utf8();
-            }
-            (None, _) => {}
+/// 명령 조각 하나 — 셸이 실행하는 명령 하나다. 걸림은 두 꼴을 함께 본다.
+struct Piece {
+    /// 쓰인 그대로의 낱말을 빈칸 하나로 이은 글 — 앞의 변수 놓기 · 셸 문법 낱말(`if` · `then` · `{` …) · 재지정은 뗐다.
+    said: String,
+    /// 셸이 푼 낱말(따옴표를 벗긴 글)들. git이면 전역 옵션(`-C <dir>` · `--no-pager` …)을 걷어 `git <하위 명령> …`이다.
+    words: Vec<String>,
+    /// `words`를 빈칸 하나로 이은 글.
+    run: String,
+    /// 걷은 git 전역 옵션이 git이 실행할 것을 바꾸나(`-c` · `--config-env` · `--exec-path` — `-c core.pager=…`는 아무 명령이나
+    /// 띄운다). 넘기는 쪽은 그때 `run`을 믿지 않는다.
+    reconfigured: bool,
+}
+
+/// 명령의 조각들(코드 리뷰 1차 A1 · 끝-점검-PR4 (d)) — 셸이 명령 하나로 실행하는 단위마다 하나다.
+///
+/// - `&&` · `||` · `;` · `|` · `&` · 줄바꿈 · 괄호(subshell)로 자른다. 재지정의 `&`(`2>&1` · `&>`)로는 자르지 않는다. **따옴표
+///   안의 구분자로도 자르지 않는다**(v1 티켓 24) — `python3 -c "import a; a.b()"`는 조각 하나다. 셸이 그 글을 한 인자로 넘기기
+///   때문이고, 거기서 자르면 「다시 묻지 않기」가 `Bash(a.b() *)` 같은 허락을 짓는다.
+/// - 실행되는 안쪽도 조각이다 — 명령 치환(`$(…)` · `` `…` ``, 큰따옴표 안에서도) · 프로세스 치환(`<(…)`), `sh -c '…'` ·
+///   `bash -lc "…"` · `eval '…'`의 글. 셸 · `eval` 조각은 제 자리를 안쪽 조각들에 내준다 — 그 셸이 실행하는 것이 안쪽이다.
+/// - heredoc 본문은 명령이 아니다 — 따옴표 친 끝말(`<<'EOF'`)이면 글 그대로, 아니면 그 안의 명령 치환만 조각이다. 주석(`# …`)도
+///   뺀다.
+/// - 앞의 변수 놓기(`FOO=1 git push`) · 셸 문법 낱말 · 재지정을 떼고, 그것만인 조각 · 닫는 낱말(`}` · `fi` …)만인 조각은 버린다.
+///
+/// 글자로 읽는 그물이다 — 별칭(`git config alias.ship push` 뒤 `git ship`) · 스크립트 파일 · `xargs` · `find -exec` 같은 길로
+/// 실행되는 명령은 보지 못한다(결정.md 「코드 리뷰 1차」).
+fn pieces(text: &str) -> Vec<Piece> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut lexed = Vec::new();
+    Lexer { chars: &chars, at: 0 }.lex(None, &mut lexed);
+    let mut pieces = Vec::new();
+    for words in lexed {
+        settle(&words, &mut pieces);
+    }
+    pieces
+}
+
+/// 셸 낱말 하나 — 쓰인 그대로와 셸이 푼 글(따옴표 · 백슬래시를 벗겼다. 치환은 쓰인 그대로 둔다).
+#[derive(Default)]
+struct Word {
+    raw: String,
+    text: String,
+}
+
+/// 떼는 셸 문법 낱말 — 명령이 아니라 그 앞에 붙는 말이다.
+const OPENERS: [&str; 9] = ["!", "{", "if", "then", "elif", "else", "while", "until", "do"];
+/// 닫는 셸 문법 낱말 — 이것만인 조각은 명령이 아니다.
+const CLOSERS: [&str; 4] = ["}", "fi", "done", "esac"];
+/// `-c`로 받은 글을 명령으로 실행하는 셸.
+const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "ksh"];
+
+/// 낱말 목록 하나를 조각으로 — 앞말(변수 놓기 · 셸 문법 낱말 · 재지정)을 떼고, 셸 · `eval`이면 안쪽 글을 다시 조각낸다.
+fn settle(words: &[Word], pieces: &mut Vec<Piece>) {
+    let mut skip = 0;
+    while let Some(word) = words.get(skip) {
+        skip += match redirection(&word.raw) {
+            Some(true) => 2,
+            Some(false) => 1,
+            None if assigns(&word.text) || OPENERS.contains(&word.raw.as_str()) => 1,
+            None => break,
+        };
+    }
+    let words = words.get(skip..).unwrap_or_default();
+    let Some(first) = words.first() else { return };
+    if words.iter().all(|word| CLOSERS.contains(&word.raw.as_str())) {
+        return;
+    }
+    if SHELLS.contains(&first.text.as_str()) {
+        let options = words[1..].iter().take_while(|word| word.text.starts_with('-')).count();
+        let commands = words[1..=options].iter().any(|word| !word.text.starts_with("--") && word.text[1..].contains('c'));
+        if let Some(code) = words.get(options + 1).filter(|_| commands) {
+            pieces.extend(self::pieces(&code.text));
+            return;
         }
     }
-    cut.push(&text[start..]);
-    cut.into_iter().map(str::trim).filter(|piece| !piece.is_empty()).map(|piece| {
-        let mut rest = piece;
-        while let Some((word, after)) = rest.split_once(char::is_whitespace) {
-            if !assigns(word) {
-                break;
-            }
-            rest = after.trim_start();
+    if first.text == "eval" && words.len() > 1 {
+        pieces.extend(self::pieces(&joined(&words[1..], |word| &word.text)));
+        return;
+    }
+    let said = joined(words, |word| &word.raw);
+    let (run, reconfigured) = match first.text.as_str() {
+        "git" => git_run(words),
+        _ => (words.iter().map(|word| word.text.clone()).collect::<Vec<_>>(), false),
+    };
+    pieces.push(Piece { said, run: run.join(" "), words: run, reconfigured });
+}
+
+fn joined<'w>(words: &'w [Word], part: impl Fn(&'w Word) -> &'w str) -> String {
+    words.iter().map(part).collect::<Vec<_>>().join(" ")
+}
+
+/// git의 전역 옵션(`git [옵션…] <하위 명령>`)을 걷은 낱말들 — 값을 따로 받는 옵션은 그 값까지 걷는다. 걷은 것 가운데 git이
+/// 실행할 것을 바꾸는 옵션이 있었는지와 함께.
+fn git_run(words: &[Word]) -> (Vec<String>, bool) {
+    const VALUED: [&str; 8] = ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source"];
+    const RECONFIGURING: [&str; 3] = ["-c", "--config-env", "--exec-path"];
+    let (mut at, mut reconfigured) = (1, false);
+    while let Some(word) = words.get(at).filter(|word| word.text.starts_with('-')) {
+        let name = word.text.split_once('=').map_or(word.text.as_str(), |(name, _)| name);
+        reconfigured |= RECONFIGURING.contains(&name);
+        at += if VALUED.contains(&word.text.as_str()) { 2 } else { 1 };
+    }
+    let rest = words.get(at..).unwrap_or_default();
+    (["git".to_owned()].into_iter().chain(rest.iter().map(|word| word.text.clone())).collect(), reconfigured)
+}
+
+/// 따옴표 · 치환 · heredoc을 아는 작은 셸 낱말 읽기 — 조각마다 낱말 목록을 낸다. 치환의 안쪽 조각은 그 바깥 조각 뒤에 선다.
+struct Lexer<'a> {
+    chars: &'a [char],
+    at: usize,
+}
+
+/// 읽는 중인 조각 — 낱말들 · 읽는 중인 낱말 · 이 조각 안에서 만난 치환의 조각들 · 줄이 끝나면 건너뛸 heredoc 본문들.
+#[derive(Default)]
+struct Open {
+    words: Vec<Word>,
+    word: Option<Word>,
+    nested: Vec<Vec<Word>>,
+    heredocs: Vec<Heredoc>,
+}
+
+struct Heredoc {
+    end: String,
+    /// 따옴표 없는 끝말이면 본문의 명령 치환이 실행된다.
+    expands: bool,
+    /// `<<-` — 끝말 줄 앞의 탭을 뗀다.
+    tabs: bool,
+}
+
+impl Open {
+    fn word(&mut self) -> &mut Word {
+        self.word.get_or_insert_with(Word::default)
+    }
+
+    fn push(&mut self, c: char) {
+        let word = self.word();
+        word.raw.push(c);
+        word.text.push(c);
+    }
+
+    fn end_word(&mut self) {
+        if let Some(word) = self.word.take() {
+            self.words.push(word);
         }
-        rest
-    })
+    }
+
+    fn end_piece(&mut self, out: &mut Vec<Vec<Word>>) {
+        self.end_word();
+        if !self.words.is_empty() {
+            out.push(std::mem::take(&mut self.words));
+        }
+        out.append(&mut self.nested);
+    }
+}
+
+impl Lexer<'_> {
+    fn peek(&self, ahead: usize) -> Option<char> {
+        self.chars.get(self.at + ahead).copied()
+    }
+
+    /// 글 끝까지, `close`가 있으면 짝이 맞는 그 글자(`)` · `` ` ``)까지 읽는다 — 치환의 안쪽이다.
+    fn lex(&mut self, close: Option<char>, out: &mut Vec<Vec<Word>>) {
+        let mut open = Open::default();
+        let mut depth = 0usize;
+        while let Some(c) = self.peek(0) {
+            match c {
+                ' ' | '\t' => {
+                    open.end_word();
+                    self.at += 1;
+                }
+                '\\' if self.peek(1) == Some('\n') => self.at += 2,
+                '\\' => {
+                    let word = open.word();
+                    word.raw.push('\\');
+                    if let Some(next) = self.peek(1) {
+                        word.raw.push(next);
+                        word.text.push(next);
+                    }
+                    self.skip(2);
+                }
+                '\'' => {
+                    let start = self.at;
+                    self.at += 1;
+                    while let Some(quoted) = self.peek(0).filter(|quoted| *quoted != '\'') {
+                        open.word().text.push(quoted);
+                        self.at += 1;
+                    }
+                    self.skip(1);
+                    self.raw(&mut open, start);
+                }
+                '"' => self.double(&mut open),
+                '`' if close == Some('`') => {
+                    self.at += 1;
+                    break;
+                }
+                '`' => self.substitution(&mut open, 1, '`'),
+                '$' | '<' | '>' if self.peek(1) == Some('(') && (c == '$' || open.word.is_none()) => self.substitution(&mut open, 2, ')'),
+                '<' if self.peek(1) == Some('<') && self.peek(2) != Some('<') => self.heredoc(&mut open),
+                '#' if open.word.is_none() => {
+                    while self.peek(0).is_some_and(|c| c != '\n') {
+                        self.at += 1;
+                    }
+                }
+                '(' => {
+                    open.end_piece(out);
+                    depth += 1;
+                    self.at += 1;
+                }
+                ')' => {
+                    open.end_piece(out);
+                    self.at += 1;
+                    if depth == 0 && close == Some(')') {
+                        return;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                '&' if self.peek(1) == Some('>') || open.word.as_ref().is_some_and(|word| word.raw.ends_with(['>', '<'])) => {
+                    open.push(c);
+                    self.at += 1;
+                }
+                ';' | '|' | '&' => {
+                    open.end_piece(out);
+                    self.at += 1;
+                }
+                '\n' => {
+                    open.end_piece(out);
+                    self.at += 1;
+                    self.bodies(&mut open);
+                    out.append(&mut open.nested);
+                }
+                _ => {
+                    open.push(c);
+                    self.at += 1;
+                }
+            }
+        }
+        open.end_piece(out);
+    }
+
+    /// 글 끝을 넘지 않게 건너뛴다 — 닫히지 않은 따옴표 · 끝의 백슬래시.
+    fn skip(&mut self, count: usize) {
+        self.at = (self.at + count).min(self.chars.len());
+    }
+
+    /// `start`부터 읽은 글.
+    fn taken(&self, start: usize) -> &[char] {
+        &self.chars[start..self.at]
+    }
+
+    /// `start`부터 읽은 글을 낱말의 쓰인 그대로에 더한다.
+    fn raw(&self, open: &mut Open, start: usize) {
+        open.word().raw.extend(self.taken(start));
+    }
+
+    /// 큰따옴표 — 백슬래시는 `"` · `\` · `$` · `` ` `` 앞에서만 푼다. 안의 명령 치환은 실행된다.
+    fn double(&mut self, open: &mut Open) {
+        let start = self.at;
+        self.at += 1;
+        while let Some(c) = self.peek(0) {
+            match c {
+                '"' => {
+                    self.at += 1;
+                    break;
+                }
+                '\\' if self.peek(1).is_some_and(|next| matches!(next, '"' | '\\' | '$' | '`' | '\n')) => {
+                    open.word().text.extend(self.peek(1));
+                    self.at += 2;
+                }
+                '$' if self.peek(1) == Some('(') => {
+                    let inner = self.at;
+                    self.at += 2;
+                    self.lex(Some(')'), &mut open.nested);
+                    open.word().text.extend(self.taken(inner));
+                }
+                '`' => {
+                    let inner = self.at;
+                    self.at += 1;
+                    self.lex(Some('`'), &mut open.nested);
+                    open.word().text.extend(self.taken(inner));
+                }
+                _ => {
+                    open.word().text.push(c);
+                    self.at += 1;
+                }
+            }
+        }
+        self.raw(open, start);
+    }
+
+    /// 치환(`$(` · `<(` · `` ` ``) — 안쪽을 조각으로 읽고, 낱말에는 쓰인 그대로 남긴다.
+    fn substitution(&mut self, open: &mut Open, head: usize, close: char) {
+        let start = self.at;
+        self.at += head;
+        self.lex(Some(close), &mut open.nested);
+        let raw: String = self.taken(start).iter().collect();
+        let word = open.word();
+        word.raw.push_str(&raw);
+        word.text.push_str(&raw);
+    }
+
+    /// heredoc 여는 말(`<<EOF` · `<<-'EOF'` · `<< "EOF"`) — 본문은 이 줄이 끝난 뒤에 건너뛴다.
+    fn heredoc(&mut self, open: &mut Open) {
+        open.end_word();
+        let start = self.at;
+        self.at += 2;
+        let tabs = self.peek(0) == Some('-');
+        if tabs {
+            self.at += 1;
+        }
+        while matches!(self.peek(0), Some(' ' | '\t')) {
+            self.at += 1;
+        }
+        let (mut end, mut quoted) = (String::new(), false);
+        while let Some(c) = self.peek(0).filter(|c| !c.is_whitespace() && !matches!(c, ';' | '|' | '&' | '<' | '>' | '(' | ')')) {
+            match c {
+                '\'' | '"' => {
+                    quoted = true;
+                    self.at += 1;
+                    while let Some(inner) = self.peek(0).filter(|inner| *inner != c) {
+                        end.push(inner);
+                        self.at += 1;
+                    }
+                }
+                '\\' => {
+                    quoted = true;
+                    end.extend(self.peek(1));
+                    self.at += 1;
+                }
+                _ => end.push(c),
+            }
+            self.skip(1);
+        }
+        self.raw(open, start);
+        open.end_word();
+        open.heredocs.push(Heredoc { end, expands: !quoted, tabs });
+    }
+
+    /// 줄이 끝난 뒤 — 그 줄에서 연 heredoc의 본문을 차례로 건너뛴다. 따옴표 없는 끝말의 본문에서는 명령 치환만 읽는다.
+    fn bodies(&mut self, open: &mut Open) {
+        let chars = self.chars;
+        for doc in std::mem::take(&mut open.heredocs) {
+            while self.at < chars.len() {
+                let start = self.at;
+                let end = chars[start..].iter().position(|c| *c == '\n').map_or(chars.len(), |at| start + at);
+                let line: String = chars[start..end].iter().collect();
+                self.at = (end + 1).min(chars.len());
+                let line = if doc.tabs { line.trim_start_matches('\t') } else { line.as_str() };
+                if line == doc.end {
+                    break;
+                }
+                if doc.expands {
+                    let mut inner = Lexer { chars: &chars[start..end], at: 0 };
+                    while let Some(c) = inner.peek(0) {
+                        match c {
+                            '\\' => inner.skip(2),
+                            '$' if inner.peek(1) == Some('(') => inner.substitution(open, 2, ')'),
+                            '`' => inner.substitution(open, 1, '`'),
+                            _ => inner.at += 1,
+                        }
+                    }
+                    open.word = None;
+                }
+            }
+        }
+    }
+}
+
+/// 재지정 낱말(`>out` · `2>&1` · `&>` · `<in`)인가 — 그렇다면 대상이 다음 낱말인지(연산자만인지)와 함께.
+fn redirection(raw: &str) -> Option<bool> {
+    let rest = raw.trim_start_matches(|c: char| c.is_ascii_digit());
+    let operator = ["&>>", "&>", ">>", ">&", "<&", ">|", "<>", "<<", ">", "<"].into_iter().find(|operator| rest.starts_with(operator))?;
+    Some(rest.len() == operator.len())
 }
 
 /// 환경 변수 놓기(`NAME=값`)인가.
@@ -414,15 +770,9 @@ fn assigns(word: &str) -> bool {
 }
 
 /// 조각이 하나라도 있고 모두가 맞나.
-fn every_piece(text: &str, fits: impl Fn(&str) -> bool) -> bool {
-    let mut any = false;
-    for piece in pieces(text) {
-        if !fits(piece) {
-            return false;
-        }
-        any = true;
-    }
-    any
+fn every_piece(text: &str, fits: impl Fn(&Piece) -> bool) -> bool {
+    let pieces = pieces(text);
+    !pieces.is_empty() && pieces.iter().all(fits)
 }
 
 /// 조각이 그 명령이거나, 그 명령 뒤에 인자가 붙었나 — `git push`는 `git push origin`에 걸리고 `git pushy`에는 걸리지 않는다.
@@ -655,6 +1005,52 @@ mod tests {
     }
 
     #[test]
+    fn 막는_쪽은_git_전역_옵션을_건너_하위_명령을_읽고_괄호_명령_치환_sh_c의_안쪽_명령도_본다() {
+        // 코드 리뷰 1차 A1 — 앞머리만 보면 `git -C <dir> push` · `(git push)` · `sh -c 'git push'`가 push 전에 묻기를 빠져나간다.
+        let judged = |rule: &str, text: &str| {
+            let mut given = Given::act(command(text));
+            given.level = AskLevel::Auto;
+            given.policy.ask_before = names(&[rule]);
+            given.judged()
+        };
+        let pushes = [
+            "git -C /w/cart/trees/fe push origin main",
+            "git --no-pager push",
+            "git -c http.extraHeader=x --git-dir=/w/.git --work-tree /w push -f",
+            "git -C fe -C . push",
+            "(git push)",
+            "(cd fe && git push)",
+            "{ git push; }",
+            "if true; then git push; fi",
+            "sh -c 'git push'",
+            "bash -lc \"cd fe && git -C . push\"",
+            "eval 'git push'",
+            "echo \"$(git push 2>&1)\"",
+            "echo `git push`",
+            "cat <(git push)",
+            "git status &&\\\n  git push",
+            "cat <<EOF\n$(git push)\nEOF",
+        ];
+        for text in pushes {
+            assert_eq!(judged("push", text), ask(Card::Command, "push하기 전에 묻기"), "{text:?}");
+            assert_eq!(judged("Bash(git push *)", text), ask(Card::Command, "「git push」 실행 전에 묻기"), "{text:?}");
+        }
+        assert_eq!(judged("merge", "git -C fe merge main"), ask(Card::Command, "merge하기 전에 묻기"));
+        let not_pushes = [
+            "git -C push status",
+            "git log --grep push",
+            "echo 'git push'",
+            "git commit -m \"wip; (git push) later\"",
+            "cat <<'EOF'\n$(git push)\nEOF",
+            "git commit -F - <<'EOF'\ngit push\nEOF",
+            "# git push\ngit status",
+        ];
+        for text in not_pushes {
+            assert_eq!(judged("push", text), allow("알아서"), "{text:?}");
+        }
+    }
+
+    #[test]
     fn 허락과_tools_cli는_명령의_모든_조각이_맞아야_넘기고_ask_before는_그_규칙의_이름으로_묻는다() {
         let judged = |act: Act, grants: &[&str], cli: &[&str]| {
             let mut given = Given::act(act);
@@ -733,6 +1129,48 @@ mod tests {
         assert_eq!(given.judged(), ask(Card::Command, "「prisma migrate」 실행 전에 묻기"));
         assert_eq!(asked(Act::Plan), ask(Card::Plan, "매번 묻기"));
         assert_eq!(asked(Act::Other), ask(Card::Command, "매번 묻기"));
+    }
+
+    #[test]
+    fn 다시_묻지_않기의_허락은_git_전역_옵션_heredoc_본문_재지정_괄호_변수_놓기를_명령_머리로_읽지_않는다() {
+        // 코드 리뷰 1차 A1 · 끝-점검-PR4 (d) — 옛 허락은 `Bash(git *)` · `Bash(EOF *)` · `Bash(1 *)` · `Bash((cd *)` · `Bash(SPEC=… *)`였다.
+        let table: [(&str, &[&str]); 9] = [
+            ("git -C /w/cart/trees/fe status --short", &["Bash(git status *)"]),
+            ("git --no-pager log -3", &["Bash(git log *)"]),
+            ("git commit -F - <<'EOF'\n부분 환불 (#31)\n\nKimHyoYeon\nEOF", &["Bash(git commit *)"]),
+            ("git commit -m \"$(cat <<'EOF'\n고친다 (#501) — don't\nEOF\n)\" && git log -1", &["Bash(git commit *)", "Bash(cat *)", "Bash(git log *)"]),
+            ("pnpm test 2>&1 | tail -3", &["Bash(pnpm test *)", "Bash(tail *)"]),
+            ("(cd ../fe && pnpm test) &> out.log", &["Bash(cd *)", "Bash(pnpm test *)"]),
+            ("SPEC=/a/b/pr.md; cat $SPEC", &["Bash(cat *)"]),
+            ("bash -c 'git status && git diff'", &["Bash(git status *)", "Bash(git diff *)"]),
+            ("if git diff --quiet; then echo same; fi", &["Bash(git diff *)", "Bash(echo same *)"]),
+        ];
+        for (text, rules) in table {
+            let Verdict::Ask { grant, .. } = Given::act(command(text)).judged() else { panic!("{text:?}는 묻는다") };
+            assert_eq!(grant, names(rules), "{text:?}");
+            let mut given = Given::act(command(text));
+            given.grants = grant;
+            assert_eq!(given.judged(), allow("이 Work에서는 다시 묻지 않기"), "{text:?} — 그 허락이 같은 요청을 넘긴다");
+        }
+
+        // 넘길 허락을 지을 수 없으면 그 선택지가 서지 않는다.
+        for text in ["git -c core.pager=less log", "cd fe && $RUN --fast"] {
+            let Verdict::Ask { grant, .. } = Given::act(command(text)).judged() else { panic!("{text:?}는 묻는다") };
+            assert_eq!(grant, Vec::<String>::new(), "{text:?}");
+        }
+
+        // `git status`의 허락은 다른 자리의 `git status`를 넘기고, push와 git이 실행할 것을 바꾼 status는 넘기지 않는다.
+        let judged = |text: &str| {
+            let mut given = Given::act(command(text));
+            given.grants = names(&["Bash(git status *)"]);
+            given.judged()
+        };
+        assert_eq!(judged("git -C ../api status"), allow("이 Work에서는 다시 묻지 않기"));
+        assert!(matches!(judged("git -C ../api push"), Verdict::Ask { .. }));
+        assert!(matches!(judged("git -c core.fsmonitor=./x status"), Verdict::Ask { .. }));
+        let mut given = Given::act(command("git -C ../api status"));
+        given.cli = names(&["git status"]);
+        assert_eq!(given.judged(), allow("「git status」 명령은 묻지 않기"), "tools.cli도 같은 글을 본다");
     }
 
     #[test]
