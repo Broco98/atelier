@@ -1,12 +1,13 @@
-import { useEffect } from "react";
-import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
+import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
-import { mergeLines, threadQueueStore, setQueue } from "./thread-store";
-import type { AgentRoster, AskLevel, Participant, QueuedMessage, ThreadSummary, ThreadView } from "./types";
+import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue } from "./thread-store";
+import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
+import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
@@ -40,6 +41,48 @@ export const threadQuery = (thread: string) =>
 
 export const useThreads = () => useQuery(threadsQuery());
 export const useThread = (thread: string) => useQuery(threadQuery(thread));
+
+/** 쿼리 결과마다 답만 — 모듈에 하나라 `useQueries`가 결과가 바뀔 때만 다시 묶는다. */
+const viewsOnly = (results: readonly { data?: ThreadView }[]) => results.map((result) => result.data);
+
+/**
+ * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 「전체 | 내 차례」 마디의 수와 「내 차례만」
+ * 목록이 읽는다.
+ *
+ * **모든 Thread를 Thread를 열 때와 같은 읽기로 읽는다**(`threadQuery` — 사이드바 줄 · Thread 화면과 같은 캐시) — Work에 이은 Thread도
+ * 기다리는 Thread이고(보드 「내 차례만」), 그 기록은 Work 묶음이 접혀 있어도 있어야 수가 맞는다. 기록 줄 스토어 전체를 구독하므로 어느
+ * Thread든 줄이 흐르면 다시 센다 — 바뀌지 않은 Thread는 다시 접지 않는다(`waitingOrder`).
+ */
+export function useWaiting(): Waiting[] {
+  const { data: threads = [] } = useThreads();
+  const views = useQueries({
+    queries: threads.map((thread) => ({ ...threadQuery(thread.id), enabled: thread.broken === null })),
+    combine: viewsOnly,
+  });
+  const records = useStore(threadRecordStore, (state) => state);
+  return useMemo(() => {
+    const viewOf = new Map(threads.map((thread, at) => [thread.id, views[at]]));
+    return waitingOrder(threads, (id) => readingOf(records, viewOf.get(id), id));
+  }, [threads, views, records]);
+}
+
+/**
+ * 지금 나를 기다리는 Thread들 — 누른 순간에 읽는다(⌘J, `AppShell`). 구독하지 않는다: 셸이 기록 줄마다 다시 그려지지 않게. 캐시에 든
+ * 것만 센다 — 읽기는 사이드바(`useWaiting`)가 건다.
+ */
+export function waitingNow(queryClient: QueryClient): Waiting[] {
+  const threads = queryClient.getQueryData<ThreadSummary[]>(THREADS_KEY) ?? [];
+  const records = threadRecordStore.state;
+  return waitingOrder(threads, (id) => readingOf(records, queryClient.getQueryData<ThreadView>(threadKey(id)), id));
+}
+
+function readingOf(
+  records: Readonly<Record<string, readonly RecordLine[]>>,
+  view: ThreadView | undefined,
+  thread: string,
+): ThreadReading | null {
+  return view ? { lines: linesOf(records, thread), view } : null;
+}
 
 /**
  * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름 · 이은 Work도 따라

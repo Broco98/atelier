@@ -14,7 +14,7 @@ import {
 } from "./fold";
 import { isObject, text } from "./json";
 import { baseName, describeTool, phraseText } from "./tool-view";
-import type { RecordLine } from "./types";
+import type { RecordLine, ThreadView } from "./types";
 
 // Thread 목록 상태(v1 티켓 41 · 구현 스펙 §17 · S38 · 캔버스 Sidebar 보드 「상태는 다섯 가지」) — Thread 하나의 기록 줄과 엔진이 준 두 값
 // (떠 있는 Session이 없을 때의 마지막 seq · 사람이 마지막으로 본 seq)에서 사이드바 줄의 상태 **하나**를 고르는 **순수 함수**다. 그리는
@@ -51,6 +51,11 @@ export type ThreadStatus =
 export interface Seen {
   goneThrough: number | null;
   lastRead: number;
+}
+
+/** 엔진이 준 Thread의 지금(`get`)과 목록 요약의 읽은 자리에서 `Seen`을 짓는다 — 떠 있는 Session이 있으면 기록 끝 너머로 턴이 열려 있다. */
+export function seenOf(view: Pick<ThreadView, "live" | "lastSeq">, lastRead: number): Seen {
+  return { goneThrough: view.live ? null : view.lastSeq, lastRead };
 }
 
 /**

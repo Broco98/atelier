@@ -2,17 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
 import { Spinner } from "@/components/ui/spinner";
+import { threadIdOf } from "@/lib/path-prefix";
 import { cn } from "@/lib/utils";
 import { ThreadFaces } from "./AgentFace";
 import type { Avatar } from "./faces";
 import HostFace from "./HostFace";
-import { threadQuery, useAgentRoster, useThreads } from "./hooks";
+import { threadQuery, useAgentRoster, useThreads, useWaiting } from "./hooks";
 import { lastSaid } from "./preview";
 import { since } from "./since";
-import { statusOf, type ThreadStatus } from "./status";
+import { seenOf, statusOf, type ThreadStatus } from "./status";
 import { linesOf, threadRecordStore } from "./thread-store";
 import type { ThreadSummary } from "./types";
+import type { Waiting } from "./waiting";
 
 // 사이드바의 Thread 묶음(v1 티켓 05 · 07 · 캔버스 「Thread 목록과 아바타」 보드) — Work 없는 Thread들이 새것부터 두 줄씩 선다: 얼굴 ·
 // 제목 · 시각, 그 아래 마지막 말(`lastSaid`). 받은편지함처럼 열지 않아도 누가 무엇을 말했는지 보인다. 목록은 엔진의 요약 이벤트가
@@ -29,24 +32,36 @@ import type { ThreadSummary } from "./types";
 // - 상태의 바탕은 Thread를 열 때와 같은 읽기다(`threadQuery` — `get`의 살아 있음 · 기록 끝, 그리고 기록) — 열린 캐시를 Thread 화면과
 //   함께 쓴다. 읽은 자리(`lastRead`)는 요약의 것이다: Thread 화면이 맨 아래를 보면 적고(S38), 요약 이벤트가 이 줄을 고친다.
 // - 깨진 Thread도 줄이 선다(무엇이 깨졌는지는 둘째 줄이 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
+// - **「전체 | 내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」) — 「내 차례」를 고르면 Work 묶음과 이 묶음
+//   대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가 세고, 마디는 검색 칸
+//   아래(`ThreadFilter`), 고른 칸은 사이드바가 쥔다.
 
 /** 시각을 다시 세는 간격 — 「방금 · N분」이 한 자리에 멎지 않게 1분마다다. */
 const TICK = 60_000;
 
-function SidebarThreads() {
+/** Thread 묶음이 무엇을 세우나 — 전체(Work 묶음 · Thread 묶음) 또는 나를 기다리는 Thread만. */
+export type ThreadListFilter = "all" | "mine";
+
+const FILTERS = ["all", "mine"] as const satisfies readonly ThreadListFilter[];
+
+/** 줄 하나의 얼굴들 — 요약에는 handle만 있어 `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다(`ThreadFaces`). */
+type PeopleOf = (thread: ThreadSummary) => { handle: string; avatar: Avatar | null }[];
+
+function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const { data: threads = [] } = useThreads();
   const roster = useAgentRoster(null);
   const avatarOf = (handle: string) =>
     roster?.agents.find((agent) => agent.from === "library" && agent.definition.handle === handle)?.definition.avatar ?? null;
+  const peopleOf: PeopleOf = (thread) => thread.handles.map((handle) => ({ handle, avatar: avatarOf(handle) }));
   const navigate = useNavigate();
-  const current = useRouterState({
-    select: (state) => (state.location.pathname.startsWith("/threads/") ? state.location.pathname.slice("/threads/".length) : null),
-  });
+  const current = useRouterState({ select: (state) => threadIdOf(state.location.pathname) });
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), TICK);
     return () => window.clearInterval(timer);
   }, []);
+  const open = (thread: ThreadSummary) => void navigate({ to: "/threads/$id", params: { id: thread.id } });
+  if (filter === "mine") return <WaitingThreads peopleOf={peopleOf} current={current} now={now} onOpen={open} />;
   const loose = threads.filter((thread) => thread.work === null);
   if (loose.length === 0) return null;
   return (
@@ -55,16 +70,113 @@ function SidebarThreads() {
       <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto scroll-quiet">
         {loose.map((thread) => (
           <li key={thread.id}>
-            <ThreadRow
-              thread={thread}
-              people={thread.handles.map((handle) => ({ handle, avatar: avatarOf(handle) }))}
-              on={thread.id === current}
-              now={now}
-              onOpen={() => void navigate({ to: "/threads/$id", params: { id: thread.id } })}
-            />
+            <ThreadRow thread={thread} people={peopleOf(thread)} on={thread.id === current} now={now} onOpen={() => open(thread)} />
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * 「전체 | 내 차례」 마디(보드 `.seg`) — 검색 칸 아래에 선다. 「내 차례」 칸에 기다리는 Thread 수가 파란 배지로 선다(보드 `.cnt` — DS `link`).
+ * 수는 고른 칸과 상관없이 늘 센다 — 「전체」를 보는 동안에도 몇이 기다리는지가 보여야 거르기를 누를 까닭이 생긴다.
+ */
+export function ThreadFilter({ filter, onChange }: { filter: ThreadListFilter; onChange: (filter: ThreadListFilter) => void }) {
+  const count = useWaiting().length;
+  return <FilterSegment filter={filter} count={count} onChange={onChange} />;
+}
+
+/**
+ * 마디의 그림 — 훅을 부르지 않는다. DS 두 칸 토글(`SegmentGroup` sm — Codex `.at-seg`)을 사이드바 폭으로 편다. 수가 있으면 칸의 이름에
+ * 수가 함께 든다(「내 차례 2」) — 배지는 글자가 붙어 읽혀 이름을 따로 적는다.
+ */
+export function FilterSegment({
+  filter,
+  count,
+  onChange,
+}: {
+  filter: ThreadListFilter;
+  count: number;
+  onChange: (filter: ThreadListFilter) => void;
+}) {
+  return (
+    <div className="shrink-0 px-2.5 pb-2">
+      <SegmentGroup
+        size="sm"
+        aria-label="Thread 거르기"
+        cells={FILTERS}
+        value={[filter]}
+        deselectable={false}
+        onValueChange={(value) => {
+          if (value[0]) onChange(value[0]);
+        }}
+        className="w-full"
+      >
+        <SegmentGroupItem value="all">전체</SegmentGroupItem>
+        <SegmentGroupItem
+          value="mine"
+          aria-label={count > 0 ? `내 차례 ${count}` : undefined}
+          className="inline-flex items-center justify-center gap-1.5"
+        >
+          내 차례
+          {count > 0 && (
+            <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-link px-1 text-caps-md text-fg-on-solid">
+              {count}
+            </span>
+          )}
+        </SegmentGroupItem>
+      </SegmentGroup>
+    </div>
+  );
+}
+
+/** 「내 차례만」 — 기다리는 Thread를 기다린 순서로 읽어 그린다. */
+function WaitingThreads(props: Omit<Parameters<typeof WaitingList>[0], "waiting">) {
+  return <WaitingList waiting={useWaiting()} {...props} />;
+}
+
+/**
+ * 「내 차례만」의 그림(보드 「내 차례만」 · 「내 차례만 · 비었을 때」) — 「기다리는 순서」 아래에 받은 차례 그대로 Thread 줄이 서고(줄은
+ * 「전체」와 같은 `ThreadRow`라 파란 점 · 「승인 · …」 · 기다리기 시작한 때가 따라온다), 비었으면 그렇다는 한 줄이다.
+ */
+export function WaitingList({
+  waiting,
+  peopleOf,
+  current,
+  now,
+  onOpen,
+}: {
+  waiting: readonly Waiting[];
+  peopleOf: PeopleOf;
+  current: string | null;
+  now: number;
+  onOpen: (thread: ThreadSummary) => void;
+}) {
+  return (
+    <section aria-label="내 차례" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
+      {waiting.length === 0 ? (
+        <p className="px-2.5 pt-5 pb-6 text-center text-chat-meta text-fg-tertiary">지금은 나를 기다리는 Thread가 없어요</p>
+      ) : (
+        <>
+          {/* 위 8은 Work 묶음의 첫 소제목과 같은 자리다(`SectionHeader` — 목록 위 2 · 머리 위 6): 「내 차례」에서는 Work 묶음이 없어 이
+              소제목이 nav 바로 아래에 선다. */}
+          <h2 className="mt-2 flex h-7.5 shrink-0 items-center px-2 text-chat-meta text-fg-tertiary">기다리는 순서</h2>
+          <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto scroll-quiet">
+            {waiting.map(({ thread }) => (
+              <li key={thread.id}>
+                <ThreadRow
+                  thread={thread}
+                  people={peopleOf(thread)}
+                  on={thread.id === current}
+                  now={now}
+                  onOpen={() => onOpen(thread)}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }
@@ -178,7 +290,7 @@ function useRowState(thread: ThreadSummary): { said: ReturnType<typeof lastSaid>
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread.id));
   const said = useMemo(() => lastSaid(lines), [lines]);
   const status = useMemo(
-    () => (view ? statusOf(lines, { goneThrough: view.live ? null : view.lastSeq, lastRead: thread.lastRead }) : null),
+    () => (view ? statusOf(lines, seenOf(view, thread.lastRead)) : null),
     [lines, view, thread.lastRead],
   );
   return { said, status, ready: view !== undefined };

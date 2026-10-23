@@ -266,17 +266,18 @@ describe("사이드바 최상단은 신호등 띠이고 그 아래가 검색 칸
   });
 });
 
-// v1 구현 스펙 §13 · S27 · 티켓 07 · 19. **사이드바의 차례가 캔버스 「Thread 목록과 아바타」 보드의 차례다** — 검색 · 새 Thread ·
-// Library · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람 메뉴로 갔다. 이 파일은 렌더로 못
+// v1 구현 스펙 §13 · S27 · 티켓 07 · 19 · 42. **사이드바의 차례가 캔버스 「Thread 목록과 아바타」 보드의 차례다** — 검색 · 「전체 | 내 차례」
+// 마디 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람 메뉴로 갔다. 이 파일은 렌더로 못
 // 들이므로(머리말) 앱 갈래 안의 자리를 소스로 잰다 — 무엇이 그려지는지는 시안 비교 캡처와 L3가 본다.
 describe("사이드바의 차례가 시안의 차례다", () => {
   const sidebar = read("Sidebar.tsx");
   const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
   const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
 
-  it("검색 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
+  it("검색 · 「전체 | 내 차례」 마디 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
     const order = [
       "<SearchField",
+      "<ThreadFilter",
       "<NewThreadItem",
       "<LibraryItem",
       "<AttentionBand",

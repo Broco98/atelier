@@ -5,7 +5,8 @@ import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
-import { threadsQuery, useThreadFeeds } from "@/features/thread/hooks";
+import { threadsQuery, useThreadFeeds, waitingNow } from "@/features/thread/hooks";
+import { jumpTarget } from "@/features/thread/waiting";
 import { workOfPlace } from "@/features/library/library";
 import { readLibrarySearch } from "@/routes/-library-search";
 import { countThreadsForQuit } from "@/features/thread/quit";
@@ -19,6 +20,7 @@ import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/feat
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
+import { threadIdOf } from "@/lib/path-prefix";
 import { pressed } from "@/lib/hotkeys";
 import EditMenu from "./EditMenu";
 import Sidebar from "./Sidebar";
@@ -265,12 +267,15 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openSearch]);
 
-  // ⌘J는 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23) — 가장 최근에 부르는 상태(기다림 · 확인할
-  // 것)에 들어선 셸이다. 무엇을 기억하는지는 스토어가(`recalledShell` — 규칙은 `shell-recall.ts`), 가는 길은 띠의 줄과 같은
-  // 함수가 든다(`useGoToShell`). 이 자리는 키와 게이트와 「닫혔다」 토스트뿐이다.
+  // ⌘J는 **다음 내 차례로** 간다(v1 구현 스펙 S28 · v1 티켓 42) — 나를 기다리는 Thread로 기다린 순서대로 건너뛰고, 기다리는 Thread가
+  // 없으면 그 전처럼 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23 — 가장 최근에 부르는 상태(기다림 ·
+  // 확인할 것)에 들어선 셸). 어디로 가는지는 순수 함수가(`jumpTarget` — 마지막 Thread 다음은 부른 셸, 없으면 처음 Thread로 돈다),
+  // 기다리는 차례는 사이드바가 읽어 둔 캐시가(`waitingNow` — 누른 순간에 읽는다: 셸이 기록 줄마다 다시 그려지지 않게), 무엇을 기억하는지는
+  // 스토어가(`recalledShell` — 규칙은 `shell-recall.ts`), 셸로 가는 길은 띠의 줄과 같은 함수가 든다(`useGoToShell`). 이 자리는 키와
+  // 게이트와 「닫혔다」 토스트뿐이다.
   //
   // **셸에 포커스가 있어도 먹는다.** xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라오고, 메뉴의
-  // `View ▸ Last Calling Shell`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
+  // `View ▸ Next Waiting`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
   //
   // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다).
   // 팔레트는 제 입력칸에 포커스를 빌렸다가 닫힐 때 돌려주는데(`SearchPalette`), 그 사이에 셸로 가면 두 자리가 포커스를 다툰다 —
@@ -290,7 +295,13 @@ function AppShell() {
       if (dialogStore.state !== null || searchOpen) return;
       e.preventDefault();
       const target = recalledShell();
-      if (target === null) return;
+      const order = waitingNow(queryClient).map((one) => one.thread.id);
+      const jump = jumpTarget(order, threadIdOf(router.state.location.pathname), target?.kind === "go");
+      if (jump?.kind === "thread") {
+        void navigate({ to: "/threads/$id", params: { id: jump.id } });
+        return;
+      }
+      if (jump === null || target === null) return;
       if (target.kind === "closed") {
         showAppToast({ id: CLOSED_SHELL_TOAST_ID, text: CLOSED_SHELL_NOTICE });
         return;
@@ -299,7 +310,7 @@ function AppShell() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goToShell, searchOpen]);
+  }, [goToShell, searchOpen, queryClient, router, navigate]);
 
   return (
     <div

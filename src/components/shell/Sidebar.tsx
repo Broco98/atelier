@@ -12,7 +12,7 @@ import {
 import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { useRoving, type RovingBox } from "@/lib/roving";
-import SidebarThreads from "@/features/thread/SidebarThreads";
+import SidebarThreads, { ThreadFilter, type ThreadListFilter } from "@/features/thread/SidebarThreads";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
@@ -76,8 +76,9 @@ interface SidebarProps {
 // **바닥의 사람 줄도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다(그때는 바닥의 설정이었다).
 const GUTTER = "pl-2 pr-2";
 
-// 사이드바는 캔버스 「Thread 목록과 아바타」 보드의 차례다(v1 구현 스펙 §13 · 티켓 07) — 검색 · 새 Thread · 알림 띠 · Work 묶음 ·
-// Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와 ⌘K로 간다(S27).
+// 사이드바는 캔버스 「Thread 목록과 아바타」 보드의 차례다(v1 구현 스펙 §13 · 티켓 07 · 42) — 검색 · 「전체 | 내 차례」 마디 · 새 Thread ·
+// 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와
+// ⌘K로 간다(S27).
 // 앱의 어느 화면에 있든 이 사이드바는 바뀌지 않고, 설정에서만 설정 nav로 갈아 선다(UI개선 결정 21).
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
@@ -144,6 +145,8 @@ function Sidebar({
   // 띠에서 들어가도 목록의 그 행이 고친다(접힌 구획이면 목록이 연다 — `SidebarWorkList`). 고치던 행이 바깥에서 사라져도(MCP 아카이브 ·
   // 지우기) 이 값은 비워진다 — 입력칸이 blur 없이 내려가도 끝을 알린다(`InlineRename`의 `onDone`).
   const [renaming, setRenaming] = useState<string | null>(null);
+  // **「전체 | 내 차례」에서 고른 칸**(v1 티켓 42) — 펼친 띠처럼 앱이 떠 있는 동안만 기억한다(위 `bandOpen`). 설정에 다녀와도 그대로다.
+  const [threadFilter, setThreadFilter] = useState<ThreadListFilter>("all");
   // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
   // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
   // nav에는 「새 Thread」 · 「Library」 둘이 선다(v1 티켓 07 · 19 — 지금 화면들은 사람 메뉴로 갔다).
@@ -189,6 +192,10 @@ function Sidebar({
     <SidebarFrame open={open} size={size}>
       {/* **검색이 맨 위다**(v1 구현 스펙 §13 · S29) — 칸처럼 생긴 버튼이고, 누르면 ⌘K와 같은 팔레트가 뜬다. */}
       <SearchField onOpen={onOpenSearch} />
+      {/* **「전체 | 내 차례」 마디가 검색 칸 바로 아래다**(v1 티켓 42 · 캔버스 Sidebar 보드 「내 차례만」). 「내 차례」면 Work 묶음과 Thread
+          묶음 대신 나를 기다리는 Thread만 기다린 순서로 선다 — 새 Thread · Library · 알림 띠는 그대로다(셸의 띠와 Thread 목록은 섞지
+          않는다 — 구현 스펙 §17). */}
+      <ThreadFilter filter={threadFilter} onChange={setThreadFilter} />
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
       <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...navRoving.box}>
         {/* **「새 Thread」가 검색 바로 아래, 그 아래 Library다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 새 Thread는 앱이 늘
@@ -218,7 +225,15 @@ function Sidebar({
       {/* **띠 줄의 우클릭은 그 work의 메뉴다**(codex-ds 결정 6 · 7) — 띠 하나에 메뉴 하나이고, 난 자리의 줄이 대상이다(`bandTarget`).
           누르면 셸로 가는 줄이지만 우클릭은 아무 데도 안 간다 — 고름도 주소도 그대로다. 「이름 바꾸기」는 아래 목록의 그 work 행을
           고친다(위 `renaming`). */}
-      <WorkContextMenu flows={menu} targetOf={bandTarget} onRename={setRenaming}>
+      {/* 띠에서 이름 바꾸기를 고르면 「전체」로 돌아간다 — 고치는 자리는 Work 묶음의 그 행이고, 「내 차례」에서는 그 묶음이 서지 않는다. */}
+      <WorkContextMenu
+        flows={menu}
+        targetOf={bandTarget}
+        onRename={(slug) => {
+          setThreadFilter("all");
+          setRenaming(slug);
+        }}
+      >
         {(menuTarget) => (
           <div className={cn("flex min-h-0 flex-col", GUTTER)}>
             <AttentionBand
@@ -233,20 +248,22 @@ function Sidebar({
         )}
       </WorkContextMenu>
 
-      <SidebarWorkList
-        open={open}
-        // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
-        // 나를 뿐 터미널을 한 번도 참조하지 않는다.
-        shells={{ shellCounts, signals, notes, renderRowMeta }}
-        menu={menu}
-        renaming={renaming}
-        onRename={setRenaming}
-        onRenameEnd={() => setRenaming(null)}
-      />
+      {threadFilter === "all" && (
+        <SidebarWorkList
+          open={open}
+          // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
+          // 나를 뿐 터미널을 한 번도 참조하지 않는다.
+          shells={{ shellCounts, signals, notes, renderRowMeta }}
+          menu={menu}
+          renaming={renaming}
+          onRename={setRenaming}
+          onRenameEnd={() => setRenaming(null)}
+        />
+      )}
 
       {/* **Work 묶음 바로 아래 Thread 묶음**(v1 구현 스펙 §13) — Work 없는 Thread들이 두 줄(얼굴 · 제목 · 시각 / 마지막 말)로 선다.
           두 묶음은 제 높이로 서고 넘치면 저마다 구른다 — 남는 자리는 사람 줄 위의 빈 자리다(캔버스 화면 1). */}
-      <SidebarThreads />
+      <SidebarThreads filter={threadFilter} />
 
       {/* **바닥 고정의 사람 메뉴**(v1 구현 스펙 S27) — 이름과 지금 화면들(Projects · Terminal · Processes · Archive · Settings). */}
       <PersonMenu
