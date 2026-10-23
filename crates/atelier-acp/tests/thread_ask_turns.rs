@@ -123,3 +123,50 @@ fn 카드에서_고르기_전에_쓴_말은_그_요청을_거부하며_그_agent
 
     host.shut_down();
 }
+
+/// 그 참여자의 `n`째(1부터) 물음 줄이 설 때까지 기다린다.
+fn nth_asked(sandbox: &Sandbox, thread: &str, who: &str, n: usize) -> Value {
+    let nth = |record: &[Value]| {
+        permissions(record, who).into_iter().filter(|line| line["payload"]["state"] == "asked").nth(n - 1).cloned()
+    };
+    nth(&sandbox.wait_thread_record(thread, |record| nth(record).is_some())).expect("기다린 줄")
+}
+
+/// 그 참여자의 턴 끝이 `n`개 적힐 때까지 기다린다 — 그때의 기록.
+fn turns_ended(sandbox: &Sandbox, thread: &str, who: &str, n: usize) -> Vec<Value> {
+    sandbox.wait_thread_record(thread, |record| {
+        of_kind(record, "turn-end").iter().filter(|line| line["who"] == who).count() >= n
+    })
+}
+
+#[test]
+fn 두_agent의_물음에_차례로_답한_thread의_기록이_검사_자료와_같다() {
+    let (sandbox, host) = sandbox_and_host();
+    // Host의 첫 턴은 편집을 묻고 허락받는다. 녹음의 둘째 턴이 거절을 받는 꼴이라(거절의 글이 도구 결과로 간다) 차례는 둘째 턴에서 잰다.
+    let thread = host.start_thread("outside/allowed.txt를 Write로 만들어", ThreadLink::NoWork).expect("Work 없는 Thread");
+    reply(&host, &thread, &nth_asked(&sandbox, &thread, "host", 1), &Reply::pick("allow_once"));
+    turns_ended(&sandbox, &thread, "host", 1);
+    host.send_to_thread(&thread, "outside/denied.txt를 Write로 만들어").expect("둘째 말");
+    let edit = nth_asked(&sandbox, &thread, "host", 2);
+    host.send_to_thread(&thread, "@tester 배경 작업을 돌려 줘").expect("테스터를 부른다");
+    let command = nth_asked(&sandbox, &thread, "tester", 1);
+
+    // 맨 앞(Host)의 카드에 말을 남겨 거부한다. 줄의 차례가 늘 같게 Host의 턴이 끝난 뒤에 테스터에게 답하고, 배경 작업이 끝나 테스터가
+    // 스스로 이어 간 턴까지 기다린다 — 그 뒤로 기록이 늘지 않는다.
+    let words = Reply { words: Some("파일 말고 이 Thread에 바로 적어 줘".to_owned()), ..Reply::pick("reject") };
+    reply(&host, &thread, &edit, &words);
+    turns_ended(&sandbox, &thread, "host", 2);
+    reply(&host, &thread, &command, &Reply::pick("allow_once"));
+    let record = turns_ended(&sandbox, &thread, "tester", 2);
+    let sessions = [sandbox.thread_session_id(&thread, "host"), sandbox.thread_session_id(&thread, "tester")];
+
+    host.shut_down();
+    // Thread 화면의 L3(v1 티켓 28)가 두 물음의 차례 · 카드 안에 남긴 말 · 결정 줄을 이것으로 잰다.
+    let settled = common::fix_thread_record(
+        &common::commands_after_opened(&record),
+        &sandbox.data_root(),
+        &thread,
+        &[&sessions[0], &sessions[1]],
+    );
+    common::assert_record("thread-ask-turns", &settled);
+}

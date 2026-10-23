@@ -398,6 +398,39 @@ fn 편집은_허용으로_세운_thread의_첫_편집은_묻지_않고_허용되
 }
 
 #[test]
+fn 편집은_허용으로_세운_thread를_매번_묻기로_바꾸면_다음_편집부터_다시_묻고_그_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    // 녹음의 첫 턴은 편집을 허락받고 둘째 턴은 거절당한다 — 경로는 Thread 폴더로 옮긴다.
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"), ("FAKE_CLAUDE_REBASE", RECORDED_PLACE)],
+    ));
+    let thread = host
+        .start_thread_asking("outside/allowed.txt를 Write로 만들어", &[], ThreadLink::NoWork, Some(AskLevel::Edits))
+        .expect("편집은 허용으로 새 Thread");
+    wait_turns_of(&sandbox, &thread, "host", 1);
+
+    host.set_thread_mode(&thread, AskLevel::Always).expect("매번 묻기로");
+    host.send_to_thread(&thread, "outside/denied.txt를 Write로 만들어").expect("둘째 말");
+    let asked = wait_permission(&sandbox, &thread, "host", "asked");
+    assert_eq!(
+        (asked["payload"]["card"].clone(), asked["payload"]["policy"].clone()),
+        (json!("edit"), json!("매번 묻기")),
+        "바꾼 정도가 다음 편집부터 든다"
+    );
+    answer(&host, &thread, &asked, "reject");
+    let record = wait_turns_of(&sandbox, &thread, "host", 2);
+    let session = sandbox.thread_session_id(&thread, "host");
+
+    host.shut_down();
+    // Thread 화면의 L3(v1 티켓 28)가 물어보는 정도 칩 · 방패 줄 · 「Policy를 … 바꿈」 줄을 이것으로 잰다 — 묻지 않고 허용한 첫 턴,
+    // 정도 바꿈, 다시 물은 둘째 턴.
+    let settled = common::fix_thread_record(&common::commands_after_opened(&record), &sandbox.data_root(), &thread, &[&session]);
+    common::assert_record("thread-ask-level", &settled);
+}
+
+#[test]
 fn claude는_기본_모드로만_뜨고_계획만일_때만_계획_모드로_뜬다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", &host_md(""));
