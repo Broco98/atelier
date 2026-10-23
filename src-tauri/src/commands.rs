@@ -291,6 +291,20 @@ pub async fn read_agent_file(work: Option<String>, call: String) -> CmdResult<St
     .map_err(|e| format!("Agent 파일을 읽지 못했습니다: {e}"))?
 }
 
+/// Library 화면의 「Finder에서 열기」(v1 티켓 19 · 구현 스펙 §16) — 그 Agent 파일을 Finder에서 골라 보인다. 고치는 길의 하나가 외부
+/// 편집기라서 폴더가 아니라 파일 자리다. 경로를 받지 않고 부르는 이름으로 범위 안에서 푼다(`read_agent_file`과 같은 까닭). 푸는 일은
+/// 범위를 다시 찾으므로 blocking 풀에서 돈다.
+#[tauri::command]
+pub async fn reveal_agent_file(app: tauri::AppHandle, work: Option<String>, call: String) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::agent_file_path(&data_root(), work.as_deref(), &call).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Agent 파일을 찾지 못했습니다: {e}"))??;
+    app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
 /// 입력창의 첨부 칩(v1 티켓 06 · 구현 스펙 S30) — `+`로 고르거나 끌어다 놓은 경로를 첨부로 잰다(크기 · 폴더인가). 내용은 읽지
 /// 않는다. 보낼 때 엔진이 같은 입구로 다시 재서 `sent` 줄에 남긴다. 디스크를 보므로 blocking 풀에서 돈다.
 #[tauri::command]
@@ -1262,6 +1276,7 @@ mod tests {
             ("read_worktree_file", "atelier_core::read_worktree_file(", "read_worktree_file("),
             ("list_agents", "atelier_core::find_agents(", "find_agents("),
             ("read_agent_file", "atelier_core::read_agent_file(", "read_agent_file("),
+            ("reveal_agent_file", "atelier_core::agent_file_path(", "agent_file_path("),
             ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
             ("list_work_changes", "atelier_core::list_work_changes(", "list_work_changes("),
             ("read_work_diff", "atelier_core::read_work_diff(", "read_work_diff("),

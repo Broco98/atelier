@@ -26,14 +26,14 @@ const definition = (handle: string, name: string, description = "") => ({
 
 const roster: AgentRoster = {
   agents: [
-    { call: "docs", from: "library", definition: definition("docs", "문서 작성자", "문서만 쓴다") },
-    { call: "host", from: "library", definition: definition("host", "Host", "다른 Agent를 부르지 않았을 때 답한다") },
-    { call: "reviewer", from: "library", definition: definition("reviewer", "리뷰어", "바뀐 코드를 읽고 리뷰한다") },
-    { call: "tester", from: { project: "api" }, definition: definition("tester", "테스터", "테스트를 돌린다") },
+    { call: "docs", from: "library", path: "/x/docs.md", definition: definition("docs", "문서 작성자", "문서만 쓴다") },
+    { call: "host", from: "library", path: "/x/host.md", definition: definition("host", "Host", "다른 Agent를 부르지 않았을 때 답한다") },
+    { call: "reviewer", from: "library", path: "/x/reviewer.md", definition: definition("reviewer", "리뷰어", "바뀐 코드를 읽고 리뷰한다") },
+    { call: "tester", from: { project: "api" }, path: "/x/tester.md", definition: definition("tester", "테스터", "테스트를 돌린다") },
   ],
   broken: [
-    { call: "api/host", handle: "host", from: { project: "api" }, problem: { kind: "hostOutsideLibrary" } },
-    { call: "ghost", handle: "ghost", from: "library", problem: { kind: "unknownTool", tool: "teleport" } },
+    { call: "api/host", handle: "host", from: { project: "api" }, path: "/x/api/host.md", problem: { kind: "hostOutsideLibrary" } },
+    { call: "ghost", handle: "ghost", from: "library", path: "/x/ghost.md", problem: { kind: "unknownTool", tool: "teleport" } },
   ],
 };
 

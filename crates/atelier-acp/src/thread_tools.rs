@@ -50,6 +50,23 @@ const RENAME_THREAD: &str = "rename_thread";
 /// 「Agent 부르기」(S13 · §8, v1 티켓 16).
 pub(crate) const CALL_AGENT: &str = "call_agent";
 
+/// 「Agent 저장」(S13, v1 티켓 19).
+pub(crate) const SAVE_AGENT: &str = "save_agent";
+
+/// 「Agent 저장」의 쓰는 법 — Agent 파일의 꼴과, 이 도구가 하지 않는 일(「이 Project에 둬」). 파일의 꼴은 Agent가 이 설명만 보고
+/// 깨지지 않은 파일을 짓도록 적는다(S42 — 쓰는 법은 도구의 설명이 맡는다). 깨지면 도구가 그 까닭을 돌려준다.
+const SAVE_AGENT_GUIDE: &str = "새 Agent를 사람의 Library에 Agent 파일 하나로 저장한다. Library의 Agent는 어느 Thread에서든 \
+`@handle`로 부른다. 있는 handle은 덮지 않고 거절한다 — 다른 handle로 다시 부른다. 사람이 「이 Project에 둬」라고 하면 이 도구를 \
+쓰지 않는다: 그 Project worktree의 `.atelier/agents/<handle>.md`에 보통 편집으로 쓴다.\n\n\
+content는 Markdown 파일 하나다 — `---` 사이의 YAML frontmatter와, 그 아래 본문(이 Agent의 지시문). frontmatter의 칸은 모두 \
+고를 수 있다:\n\
+- name: 화면에 보이는 이름(사람의 말로). description: 언제 부르는지 한 줄.\n\
+- avatar: {shape: circle|triangle|pill|drop, color: blue|green|yellow|pink|purple|slate|lime|cyan|magenta}\n\
+- model: {prefer: 모델 이름, effort: low|medium|high|xhigh|max} — 적지 않으면 사람의 기본값이다.\n\
+- tools: {builtin: [read, search, edit, shell, web] 가운데 쓸 것 — 적지 않으면 전부, cli: [묻지 않고 부를 명령], \
+agents: [부를 수 있는 handle]}\n\
+- policy: {ask_before: [edit, push …], forbid: [merge …]}";
+
 /// 받기에 실패한 뒤 다시 받기까지 쉬는 틈 — 파일 기술자가 바닥난 때처럼 곧바로 다시 실패하는 오류에 헛돌지 않게.
 const ACCEPT_RETRY: Duration = Duration::from_millis(10);
 
@@ -242,13 +259,15 @@ fn serve(stream: &UnixStream, answer: &(dyn Fn(&str, &Value) -> Result<Value, Fa
 
 // ── 도구 ──────────────────────────────────────────────────────────────────────
 
-/// 읽은 도구 호출 하나(S13). PR ②의 나머지(Agent 저장)와 PR ④의 넷이 여기 갈래를 더한다.
+/// 읽은 도구 호출 하나(S13). PR ④의 넷이 여기 갈래를 더한다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Call {
     /// Thread 이름 바꾸기 — 새 이름.
     RenameThread { title: String },
     /// Agent 부르기 — 부를 Agent의 이름(`handle` 또는 `project/handle`, 앞의 `@`는 뗀다)과 맡길 일(글).
     CallAgent { handle: String, task: String },
+    /// Agent 저장 — handle과 Agent 파일의 글. Library에만 쓴다(v1 티켓 19).
+    SaveAgent { handle: String, content: String },
 }
 
 /// 도구 호출을 읽지 못한 까닭.
@@ -296,6 +315,24 @@ pub(crate) fn list() -> Value {
                 "additionalProperties": false,
             },
         },
+        {
+            "name": SAVE_AGENT,
+            "title": "Agent 저장",
+            "description": SAVE_AGENT_GUIDE,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "handle": {
+                        "type": "string",
+                        "description": "파일 이름이자 @로 부르는 이름 — 영어 소문자 · 숫자로 시작하고 끝나며 사이에 `-` · `_`만 \
+                                        (예: security-reviewer)",
+                    },
+                    "content": {"type": "string", "description": "Agent 파일의 글 — frontmatter와 본문"},
+                },
+                "required": ["handle", "content"],
+                "additionalProperties": false,
+            },
+        },
     ]})
 }
 
@@ -317,6 +354,10 @@ pub(crate) fn read_call(params: &Value) -> Result<Call, Unread> {
                 (_, None) => Err(Unread::Bad("task(맡길 일)를 글로 주세요".to_owned())),
             }
         }
+        SAVE_AGENT => match (arguments["handle"].as_str(), arguments["content"].as_str()) {
+            (Some(handle), Some(content)) => Ok(Call::SaveAgent { handle: handle.to_owned(), content: content.to_owned() }),
+            _ => Err(Unread::Bad("handle과 content(Agent 파일의 글)를 글로 주세요".to_owned())),
+        },
         _ => Err(Unread::Unknown(Fault::new(-32602, format!("모르는 도구입니다: {name}")))),
     }
 }
@@ -343,6 +384,17 @@ mod tests {
     }
 
     #[test]
+    fn agent_저장은_handle과_글을_받고_하나라도_빠지면_도구의_실패다() {
+        let call = |params: Value| read_call(&params);
+        assert_eq!(
+            call(json!({"name": "save_agent", "arguments": {"handle": "qa", "content": "---\n---\n"}})),
+            Ok(Call::SaveAgent { handle: "qa".into(), content: "---\n---\n".into() })
+        );
+        assert!(matches!(call(json!({"name": "save_agent", "arguments": {"handle": "qa"}})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"name": "save_agent", "arguments": {"content": "x"}})), Err(Unread::Bad(_))));
+    }
+
+    #[test]
     fn 이름_바꾸기는_글_이름을_받고_모르는_도구는_요청_오류이고_틀린_인자는_도구의_실패다() {
         let call = |params: Value| read_call(&params);
         assert_eq!(
@@ -356,7 +408,7 @@ mod tests {
             Err(Unread::Unknown(Fault::new(-32602, "모르는 도구입니다: delete_thread")))
         );
         let listed: Vec<Value> = list()["tools"].as_array().unwrap().iter().map(|tool| tool["name"].clone()).collect();
-        assert_eq!(listed, [json!("rename_thread"), json!("call_agent")], "목록과 읽는 도구가 같다");
+        assert_eq!(listed, [json!("rename_thread"), json!("call_agent"), json!("save_agent")], "목록과 읽는 도구가 같다");
     }
 
     #[test]

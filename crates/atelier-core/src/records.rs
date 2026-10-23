@@ -29,7 +29,7 @@ pub struct RecordLine {
     pub payload: Value,
 }
 
-/// 기록 줄의 종류 — **여기 한 곳에서 정한다**(v1 구현 스펙 §4 표). three-axes의 여덟에 v1의 여덟을 더했다. 이 판이 모르는
+/// 기록 줄의 종류 — **여기 한 곳에서 정한다**(v1 구현 스펙 §4 표). three-axes의 여덟에 v1의 아홉을 더했다. 이 판이 모르는
 /// 종류의 줄은 읽기가 건너뛴다(다른 판의 앱이 적은 줄).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -69,6 +69,9 @@ pub enum RecordKind {
     Call,
     /// 이 Work의 PR이 처음 보였을 때와 상태가 바뀔 때.
     Pr,
+    /// Library에 Agent를 저장함 — Agent가 Thread 도구 「Agent 저장」으로 둔 정의의 handle · 이름 · 얼굴 · 자리(v1 티켓 19). 시스템 줄
+    /// 「Library에 리뷰어를 저장함」이 이것이다.
+    Library,
 }
 
 /// 기록 파일 하나를 덧붙이기로 연 것. 열려 있는 동안 파일을 쥐고 있다 — 폴더가 같은 볼륨 안에서 옮겨져도(아카이브의

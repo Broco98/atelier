@@ -2,16 +2,16 @@
 //! 이름 · 설명 · 얼굴 · 모델 · 도구 · Policy · Runtime이고 본문이 지시문(Instructions)이다. **파일 이름이 handle이다** —
 //! `reviewer.md`는 `@reviewer`다.
 //!
-//! 이 모듈이 지금 하는 일은 셋이다 — 파일 하나 읽기([`read_agent`])와 Library의 기본 파일 만들기([`ensure_default_agents`])
-//! (v1 티켓 03), 범위 찾기 · 고르기([`find_agents`] · [`AgentRoster::resolve`], v1 티켓 11 — `scope.rs`). Library에 저장하기
-//! (티켓 19)가 여기에 더해진다.
+//! 이 모듈이 하는 일은 넷이다 — 파일 하나 읽기([`read_agent`])와 Library의 기본 파일 만들기([`ensure_default_agents`])
+//! (v1 티켓 03), 범위 찾기 · 고르기([`find_agents`] · [`AgentRoster::resolve`], v1 티켓 11 — `scope.rs`), Library에 저장하기
+//! ([`save_agent`], v1 티켓 19 — Thread 도구 「Agent 저장」).
 //!
 //! **깨진 파일은 오류가 아니라 까닭이다**([`AgentProblem`]). @ 메뉴와 Library가 그 Agent를 흐리게, 까닭과 함께 보이고 부르지
 //! 못하게 한다(§6 「깨진 파일」) — 그래서 읽기는 까닭 셋 가운데 하나로 답하고 터지지 않는다. 화면에는 camelCase JSON으로
 //! 나간다(Tauri `list_agents`) — 파일의 낱말(`ask_before` · `agents: any` · `read`)은 그대로 읽고, 내보낼 때만 이름 꼴을 바꾼다.
 
 use std::io::{ErrorKind, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -19,7 +19,7 @@ use crate::paths::library_agents_in;
 use crate::project::split_frontmatter;
 
 mod scope;
-pub use scope::{find_agents, read_agent_file, AgentRoster, BrokenAgent, FoundAgent, Unresolved};
+pub use scope::{agent_file_path, find_agents, read_agent_file, AgentRoster, BrokenAgent, FoundAgent, Unresolved};
 
 /// 읽은 Agent 정의 하나.
 ///
@@ -136,7 +136,13 @@ pub fn read_agent(path: &Path) -> Result<AgentDefinition, AgentProblem> {
     let unreadable = |message: String| AgentProblem::Unreadable { message };
     let handle = path.file_stem().and_then(|stem| stem.to_str()).ok_or_else(|| unreadable("파일 이름이 handle이 아니다".into()))?;
     let text = std::fs::read_to_string(path).map_err(|e| unreadable(e.to_string()))?;
-    let (fm_str, body) = split_frontmatter(&text).map_err(|message| unreadable(message.into()))?;
+    parse_agent(handle, &text)
+}
+
+/// Agent 파일의 글 하나를 그 handle의 정의로 읽는다 — 파일 읽기와 저장 전 검사가 같은 규칙을 지난다.
+fn parse_agent(handle: &str, text: &str) -> Result<AgentDefinition, AgentProblem> {
+    let unreadable = |message: String| AgentProblem::Unreadable { message };
+    let (fm_str, body) = split_frontmatter(text).map_err(|message| unreadable(message.into()))?;
     let fm: Frontmatter = serde_yaml_ng::from_str(fm_str).map_err(|e| unreadable(e.to_string()))?;
 
     let raw = fm.tools.unwrap_or_default();
@@ -205,6 +211,70 @@ pub fn ensure_default_agents(root: &Path) -> crate::Result<()> {
     }
     Ok(())
 }
+
+/// Library에 저장한 Agent 하나 — 쓴 파일과, 그 글을 읽은 정의(시스템 줄의 이름 · 얼굴이 이것이다).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedAgent {
+    pub path: PathBuf,
+    pub definition: AgentDefinition,
+}
+
+/// Library에 저장하지 않은 까닭(Thread 도구 「Agent 저장」, v1 구현 스펙 §7 S13). 도구가 이것을 글로 돌려주면 Agent가 읽고 고쳐 부른다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentSaveRefusal {
+    /// handle이 파일 이름 · @멘션이 될 꼴이 아니다 — 영어 소문자 · 숫자로 시작하고 끝나며 사이에 `-` · `_`만 든다.
+    BadHandle,
+    /// 그 handle의 파일이 이미 있다 — 덮지 않는다. `host`는 파일이 지워져 있어도 늘 있는 것이다(기본 Host, S14).
+    Taken { path: PathBuf },
+    /// 내용이 깨진 Agent 파일이다 — 읽기([`read_agent`])와 같은 까닭이다.
+    Broken(AgentProblem),
+    /// 쓰지 못했다 — 그 글.
+    Unwritable { message: String },
+}
+
+/// 대화로 만든 Agent를 Library에 새 파일로 둔다(Thread 도구 「Agent 저장」 — v1 구현 스펙 §7 · 스토리 66, v1 티켓 19).
+///
+/// - **Library에만 쓴다.** 「이 Project에 둬」는 이 길이 아니다 — Host가 worktree의 `.atelier/agents/`에 보통 편집으로 쓰고 판정을
+///   지난다(§7). 그래서 받는 것은 handle과 글뿐이고 자리를 받지 않는다.
+/// - **쓰기 전에 읽는다.** 글을 읽기와 같은 규칙으로 읽어 깨졌으면 쓰지 않는다 — 깨진 파일을 두면 @ 메뉴에 흐린 줄이 하나 늘 뿐이고,
+///   Agent는 그 까닭을 다음 턴에야 안다.
+/// - **있는 파일은 덮지 않는다** — 사람이 고친 정의를 대화가 지우지 않게(스토리 65). 기본 파일 만들기와 같은 한 번의 열기
+///   (`create_new`)라, 있는지 보고 쓰는 사이에 선 파일도 덮지 않는다. 쓰다 실패한 반쪽 파일은 지운다.
+pub fn save_agent(root: &Path, handle: &str, text: &str) -> Result<SavedAgent, AgentSaveRefusal> {
+    if !is_handle(handle) {
+        return Err(AgentSaveRefusal::BadHandle);
+    }
+    let dir = library_agents_in(root);
+    let path = dir.join(format!("{handle}.md"));
+    if handle == HOST_HANDLE {
+        return Err(AgentSaveRefusal::Taken { path });
+    }
+    let definition = parse_agent(handle, text).map_err(AgentSaveRefusal::Broken)?;
+    let unwritable = |e: std::io::Error| AgentSaveRefusal::Unwritable { message: e.to_string() };
+    std::fs::create_dir_all(&dir).map_err(unwritable)?;
+    let mut file = match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => return Err(AgentSaveRefusal::Taken { path }),
+        Err(e) => return Err(unwritable(e)),
+    };
+    if let Err(e) = file.write_all(text.as_bytes()) {
+        drop(file);
+        let _ = std::fs::remove_file(&path);
+        return Err(unwritable(e));
+    }
+    Ok(SavedAgent { path, definition })
+}
+
+/// 저장할 수 있는 handle — 파일 이름이자 @멘션이다. 영어 소문자 · 숫자로 시작하고 끝나며 사이에 `-` · `_`만 든다. 대문자를 받지
+/// 않는 것은 대소문자를 가리지 않는 파일 시스템(macOS)에서 `Reviewer.md`와 `reviewer.md`가 한 파일이라서다. 멘션은 끝의 `-`를
+/// 문장 부호로 떼므로 끝 글자도 막는다.
+fn is_handle(handle: &str) -> bool {
+    let plain = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
+    handle.starts_with(plain) && handle.ends_with(plain) && handle.chars().all(|c| plain(c) || c == '-' || c == '_')
+}
+
+/// Library의 기본 Host — 저장으로 새로 두지 않는다.
+const HOST_HANDLE: &str = "host";
 
 /// `tools.agents`의 「범위 안 아무 Agent」 표시.
 const ANY_AGENT: &str = "any";
@@ -463,5 +533,98 @@ runtimes:
         ensure_default_agents(root.path()).unwrap();
         assert_eq!(std::fs::read_to_string(library(root.path()).join("host.md")).unwrap(), broken);
         assert_eq!(std::fs::read_to_string(library(root.path()).join("reviewer.md")).unwrap(), made);
+    }
+
+    const SECURITY: &str = "---
+name: 보안 리뷰어
+description: 보안 취약점만 본다.
+avatar:
+  shape: triangle
+  color: purple
+tools:
+  builtin: [read, search]
+---
+
+너는 보안 취약점만 보는 리뷰어다.
+";
+
+    #[test]
+    fn 저장은_library에_handle_파일을_받은_그대로_새로_쓰고_범위가_곧바로_그_agent를_본다() {
+        let root = tempfile::tempdir().unwrap();
+
+        let saved = save_agent(root.path(), "security-reviewer", SECURITY).expect("저장");
+
+        assert_eq!(saved.path, library(root.path()).join("security-reviewer.md"), "Library 폴더가 없어도 세우고 쓴다");
+        assert_eq!(std::fs::read_to_string(&saved.path).unwrap(), SECURITY, "받은 내용 그대로다");
+        assert_eq!((saved.definition.handle.as_str(), saved.definition.name.as_str()), ("security-reviewer", "보안 리뷰어"));
+        let roster = find_agents(root.path(), None).unwrap();
+        assert_eq!(
+            roster.resolve("security-reviewer").map(|found| found.path.clone()),
+            Ok(saved.path),
+            "@ 메뉴 · Library가 읽는 범위다"
+        );
+    }
+
+    #[test]
+    fn 있는_handle은_깨진_파일이어도_덮지_않고_거절하며_host는_늘_있는_것이다() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(library(root.path())).unwrap();
+        let mine = "---\ntools:\n  builtin: [Bash]\n---\n내가 깨뜨린 리뷰어.\n";
+        std::fs::write(library(root.path()).join("reviewer.md"), mine).unwrap();
+
+        assert_eq!(
+            save_agent(root.path(), "reviewer", SECURITY).map(|saved| saved.path),
+            Err(AgentSaveRefusal::Taken { path: library(root.path()).join("reviewer.md") })
+        );
+        assert_eq!(std::fs::read_to_string(library(root.path()).join("reviewer.md")).unwrap(), mine, "덮지 않는다(스토리 65)");
+
+        assert_eq!(
+            save_agent(root.path(), "host", SECURITY).map(|saved| saved.path),
+            Err(AgentSaveRefusal::Taken { path: library(root.path()).join("host.md") }),
+            "host.md가 지워져 있어도 Host는 Library의 기본 Host다 — 다음 실행이 다시 세운다(S14)"
+        );
+        assert!(!library(root.path()).join("host.md").exists());
+    }
+
+    #[test]
+    fn 깨진_내용은_쓰지_않고_그_까닭으로_거절한다() {
+        let root = tempfile::tempdir().unwrap();
+        let broken = [
+            ("frontmatter 없는 지시문", AgentProblem::Unreadable { message: "missing frontmatter".into() }),
+            ("---\ntools:\n  builtin: [read, Bash]\n---\n", AgentProblem::UnknownTool { tool: "Bash".into() }),
+            ("---\nruntimes: [codex]\n---\n", AgentProblem::RuntimeNotAccepted),
+        ];
+        for (text, problem) in broken {
+            assert_eq!(
+                save_agent(root.path(), "writer", text).map(|saved| saved.path),
+                Err(AgentSaveRefusal::Broken(problem)),
+                "{text}"
+            );
+            assert!(!library(root.path()).join("writer.md").exists(), "깨진 파일은 Library에 서지 않는다: {text}");
+        }
+        assert!(
+            matches!(
+                save_agent(root.path(), "writer", "---\nname: [닫히지 않은\n---\n"),
+                Err(AgentSaveRefusal::Broken(AgentProblem::Unreadable { .. }))
+            ),
+            "YAML이 틀렸다"
+        );
+    }
+
+    #[test]
+    fn handle은_영어_소문자_숫자로_시작하고_끝나며_사이에_줄표_밑줄만_든다() {
+        let root = tempfile::tempdir().unwrap();
+        let bad = ["", "../reviewer", "team/reviewer", "Reviewer", "reviewer.md", "@reviewer", ".hidden", "-x", "x-", "보안", "two words"];
+        for handle in bad {
+            assert_eq!(
+                save_agent(root.path(), handle, SECURITY).map(|saved| saved.path),
+                Err(AgentSaveRefusal::BadHandle),
+                "{handle:?}: 파일 이름이자 @멘션이 되지 못한다"
+            );
+        }
+        assert_eq!(std::fs::read_dir(library(root.path())).map(|dir| dir.count()).unwrap_or(0), 0, "아무것도 쓰지 않는다");
+        for handle in ["qa", "qa-bot_2", "x"] {
+            assert!(save_agent(root.path(), handle, SECURITY).is_ok(), "{handle}");
+        }
     }
 }

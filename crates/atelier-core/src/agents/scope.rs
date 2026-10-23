@@ -117,6 +117,12 @@ pub fn find_agents(root: &Path, work: Option<&str>) -> crate::Result<AgentRoster
 /// 범위 안 Agent 파일 하나의 원문 — 부르는 이름으로 고른다. **깨진 파일도 준다** — Library 화면에서 무엇이 틀렸는지 보고
 /// 고치게(스토리 71 · 72). 경로를 받지 않는 것은 화면이 범위 밖 파일을 읽을 길을 열지 않기 위해서다.
 pub fn read_agent_file(root: &Path, work: Option<&str>, call: &str) -> crate::Result<String> {
+    Ok(std::fs::read_to_string(agent_file_path(root, work, call)?)?)
+}
+
+/// 범위 안 Agent 파일 하나의 자리 — 부르는 이름으로 고른다(깨진 파일도). Library 화면의 「Finder에서 열기」가 쓴다(v1 티켓 19 ·
+/// §16 — 고치는 길의 하나는 외부 편집기다). 파일 읽기와 같은 까닭으로 경로를 받지 않는다.
+pub fn agent_file_path(root: &Path, work: Option<&str>, call: &str) -> crate::Result<PathBuf> {
     let roster = find_agents(root, work)?;
     let entry = roster.pick(call).map_err(|unresolved| {
         crate::Error::Validation(match unresolved {
@@ -126,7 +132,7 @@ pub fn read_agent_file(root: &Path, work: Option<&str>, call: &str) -> crate::Re
             _ => format!("이 범위에 `{call}` Agent가 없습니다"),
         })
     })?;
-    Ok(std::fs::read_to_string(entry.path)?)
+    Ok(entry.path.to_path_buf())
 }
 
 impl AgentRoster {
@@ -489,6 +495,26 @@ mod tests {
                 matches!(read_agent_file(root.path(), Some("w"), call), Err(crate::Error::Validation(_))),
                 "{call}: 범위 안의 한 파일로 풀리지 않는다"
             );
+        }
+    }
+
+    #[test]
+    fn 파일_자리도_부르는_이름으로_범위_안에서만_푼다() {
+        let root = tempfile::tempdir().unwrap();
+        agent(&library(root.path()), "reviewer", "Library 리뷰어");
+        let web = project(root.path(), "web");
+        work(root.path(), "w", &["web"]);
+        let broken = "---\nruntimes: [codex]\n---\nweb 리뷰어\n";
+        agent_text(&in_repo(&web), "reviewer", broken);
+
+        assert_eq!(agent_file_path(root.path(), None, "reviewer").unwrap(), library(root.path()).join("reviewer.md"));
+        assert_eq!(
+            agent_file_path(root.path(), Some("w"), "reviewer").unwrap(),
+            in_repo(&web).join("reviewer.md"),
+            "Project 것이 이기고, 깨진 파일도 자리는 있다 — Finder에서 열어 고친다"
+        );
+        for call in ["writer", "../reviewer"] {
+            assert!(matches!(agent_file_path(root.path(), Some("w"), call), Err(crate::Error::Validation(_))), "{call}");
         }
     }
 

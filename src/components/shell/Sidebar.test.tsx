@@ -266,26 +266,33 @@ describe("사이드바 최상단은 신호등 띠이고 그 아래가 검색 칸
   });
 });
 
-// v1 구현 스펙 §13 · S27 · 티켓 07. **사이드바의 차례가 캔버스 「Thread 목록과 아바타」 보드의 차례다** — 검색 · 새 Thread · 알림 띠 ·
-// Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람 메뉴로 갔다. 이 파일은 렌더로 못
+// v1 구현 스펙 §13 · S27 · 티켓 07 · 19. **사이드바의 차례가 캔버스 「Thread 목록과 아바타」 보드의 차례다** — 검색 · 새 Thread ·
+// Library · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람 메뉴로 갔다. 이 파일은 렌더로 못
 // 들이므로(머리말) 앱 갈래 안의 자리를 소스로 잰다 — 무엇이 그려지는지는 시안 비교 캡처와 L3가 본다.
 describe("사이드바의 차례가 시안의 차례다", () => {
   const sidebar = read("Sidebar.tsx");
   const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
   const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
 
-  it("검색 · 새 Thread · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
-    const order = ["<SearchField", "<NewThreadItem", "<AttentionBand", "<SidebarWorkList", "<SidebarThreads", "<PersonMenu"].map(
-      (tag) => app.indexOf(tag),
-    );
+  it("검색 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
+    const order = [
+      "<SearchField",
+      "<NewThreadItem",
+      "<LibraryItem",
+      "<AttentionBand",
+      "<SidebarWorkList",
+      "<SidebarThreads",
+      "<PersonMenu",
+    ].map((tag) => app.indexOf(tag));
     // **다 있는지부터 센다** — 하나가 없으면 -1이라 차례 비교가 엉뚱한 이유로 갈린다.
     expect(order.every((at) => at > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it("nav에는 「새 Thread」만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
+  it("nav에는 「새 Thread」 · 「Library」만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
     const nav = app.slice(app.indexOf("<nav"), app.indexOf("</nav>"));
     expect(nav).toContain("<NewThreadItem");
+    expect(nav).toContain("<LibraryItem");
     expect(nav).not.toContain("navItems");
     expect(countOf(sidebar, "navItems.map(")).toBe(1);
     const menuAt = sidebar.indexOf("function PersonMenu(");

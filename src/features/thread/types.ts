@@ -74,7 +74,7 @@ export type ThreadLink = { kind: "no-work" } | { kind: "new-work" } | { kind: "w
 
 /**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·
- * `title` · `mode` · `call` · `pr`). Thread Session에는 `changes`가 서지 않는다.
+ * `title` · `mode` · `call` · `pr` · `library`). Thread Session에는 `changes`가 서지 않는다.
  */
 export type RecordKind =
   | "sent"
@@ -92,7 +92,8 @@ export type RecordKind =
   | "title"
   | "mode"
   | "call"
-  | "pr";
+  | "pr"
+  | "library";
 
 /**
  * 기록 줄 하나 — `threads/<id>/events.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. `who`는 그 줄을 낸 참여자의 handle이고,
@@ -129,6 +130,8 @@ export interface FoundAgent {
   /** 부르는 이름 — `reviewer`, Project 둘이 같은 handle이면 `api/reviewer`. @ 메뉴가 `@<call> `으로 넣는다. */
   call: string;
   from: DefinitionSource;
+  /** 읽은 파일의 절대 경로 — Library 화면의 경로 복사 · 블록 복사가 쓴다(v1 티켓 19). */
+  path: string;
   definition: {
     handle: string;
     name: string;
@@ -151,6 +154,7 @@ export interface BrokenAgent {
   call: string;
   handle: string;
   from: DefinitionSource;
+  path: string;
   problem: AgentProblem;
 }
 

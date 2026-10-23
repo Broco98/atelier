@@ -9,6 +9,10 @@ import type { AgentRoster, Participant, QueuedMessage, ThreadSummary, ThreadView
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
 const THREADS_KEY = ["threads"] as const;
+/** Agent 목록(`list_agents`)의 열쇠 머리 — 뒤에 범위(`work`)가 붙는다. @ 메뉴와 Library 화면이 같은 캐시를 읽는다. */
+export const AGENTS_KEY = ["agents"] as const;
+/** Agent 파일 원문(`read_agent_file`)의 열쇠 머리 — 뒤에 범위와 부르는 이름이 붙는다(Library 화면). */
+export const AGENT_FILE_KEY = ["agent-file"] as const;
 const threadKey = (thread: string) => ["thread", thread] as const;
 
 /** 모든 Thread의 요약 — 사이드바의 Thread 묶음. 엔진이 요약 이벤트로 고쳐 주므로 다시 읽지 않는다(`useThreadFeeds`). */
@@ -69,6 +73,12 @@ export function useThreadFeeds(): void {
       onThreadRecord(({ thread, line }) => {
         mergeLines(thread, [line]);
         if (isLoginRequired(line)) markLoginRequired();
+        // Agent가 Library에 Agent를 저장했다(v1 티켓 19) — @ 메뉴 · Library 화면의 목록과 파일을 다시 읽는다. 엔진은 Library가
+        // 바뀌었다는 이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
+        if (line.kind === "library") {
+          void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
+          void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });
+        }
       }),
       onThreadQueue(({ thread, who, queue }) => setQueue(thread, who, queue)),
       onThreadList((summary) => putSummary(queryClient, summary)),
@@ -126,7 +136,7 @@ export function useChangeChip() {
  */
 export function useAgentRoster(work: string | null): AgentRoster | null {
   const { data } = useQuery({
-    queryKey: ["agents", work],
+    queryKey: [...AGENTS_KEY, work],
     queryFn: () => threadApi.agents(work),
     staleTime: 30_000,
     refetchOnWindowFocus: false,

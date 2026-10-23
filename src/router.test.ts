@@ -9,6 +9,7 @@ import { appReturnTarget, shellStore } from "./components/shell/shell-store";
 import { navigateGuardingSettings } from "./features/settings/navigate-guarding-settings";
 import { trackCanGoForward } from "./can-go-forward";
 import { rememberView, tabSearch } from "./routes/-work-search";
+import { readLibrarySearch } from "./routes/-library-search";
 import type { ViewTab } from "./routes/-work-search";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
@@ -345,6 +346,36 @@ describe("Processes의 주소", () => {
     expect(router.state.matches.map((match) => match.routeId)).toContain(path);
     expect(history.length).toBe(1);
     expect(shellStore.state.lastPlace).toBe(path);
+  });
+});
+
+// Library(v1 구현 스펙 §13 · §16 · 티켓 19). 목록 화면이지만 정규화가 없다 — 고른 Agent가 없으면 화면이 첫 줄을 읽는다(`pickedAgent`).
+// 지금 Work(`work`)와 고른 Agent(`agent`)는 주소의 search다 — 사이드바의 Library 줄이 지금 Work를 싣는다.
+describe("Library의 주소", () => {
+  it("`/library`는 그대로 서고 마지막 자리로 적히며, 지금 Work와 고른 Agent를 search로 읽는다", async () => {
+    const { router, history } = setup(["/library?work=refund-api&agent=api%2Freviewer"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/library");
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/library");
+    expect(router.state.location.search).toEqual({ work: "refund-api", agent: "api/reviewer" });
+    expect(history.length).toBe(1);
+    expect(shellStore.state.lastPlace).toBe("/library");
+  });
+
+  it("글이 아닌 값 · 빈 글은 없는 것으로 읽는다 — 지금 Work 없이 Library만, 고른 Agent 없이 첫 줄이다", async () => {
+    const { router } = setup(["/library?work=3&agent="]);
+    await router.load();
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/library");
+    expect(readLibrarySearch(router.state.location.search)).toEqual({ work: null, agent: undefined });
+  });
+
+  it("Library 안에서 다른 Agent를 고르면 칸이 하나 늘고, 뒤로가기가 앞 Agent로 간다", async () => {
+    const { router, history } = setup(["/library"]);
+    await router.load();
+    await router.navigate({ to: "/library", search: { agent: "reviewer" } });
+    expect(history.length).toBe(2);
+    await goBack(router, history);
+    expect(router.state.location.search).toEqual({});
   });
 });
 

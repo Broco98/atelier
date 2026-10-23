@@ -145,6 +145,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_agent_file", |a| {
         ok(atelier_core::read_agent_file(&data_root(), maybe_text(a, "work").as_deref(), &text(a, "call")?))
     }),
+    // 「Finder에서 열기」(v1 티켓 19)는 Finder 열기 둘과 같다 — 경로 풀기(`agent_file_path`)는 코어 단위 검사가 잰다.
+    ("reveal_agent_file", |_| in_app_only("탐색기를 여는 일입니다 — 경로 풀기는 코어 단위 검사가 잽니다")),
     // 입력창의 첨부 칩(v1 티켓 06)은 코어만 거친다 — 같은 입구가 다리의 파일 시스템에서 경로를 **진짜로** 잰다.
     ("describe_attachments", |a| ok(atelier_core::describe_attachments(&texts(a, "paths")?))),
     // 셸 일곱은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라

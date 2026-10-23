@@ -63,12 +63,27 @@ interface UiState {
   drafts: Readonly<Record<string, string>>;
   /** 펼친 작업 로그 — Thread 열쇠 + 턴 열쇠. 끝난 턴은 접혀 있고, 머리줄을 누르면 여기 든다. */
   expanded: Readonly<Record<string, true>>;
+  /** 바깥이 글을 채운 입력창(`fillDraft`) — 그 입력칸이 한 번 포커스를 받고(`takeFill`) 비운다. */
+  filled: string | null;
 }
 
-export const threadUiStore = new Store<UiState>({ drafts: {}, expanded: {} });
+export const threadUiStore = new Store<UiState>({ drafts: {}, expanded: {}, filled: null });
 
 export function setDraft(thread: string, text: string): void {
   threadUiStore.setState((state) => ({ ...state, drafts: { ...state.drafts, [thread]: text } }));
+}
+
+/**
+ * 바깥에서 입력창에 글을 채운다 — 「새 Agent 만들기」(v1 티켓 19)가 새 Thread의 입력창에 맡기는 말을 넣는다. 그 입력칸은 채운 글 끝에
+ * 커서를 두고 포커스를 받는다(`ThreadComposer`). 그 입력창이 아직 서지 않았으면(새 Thread로 가는 중) 선 뒤에 받는다.
+ */
+export function fillDraft(thread: string, text: string): void {
+  threadUiStore.setState((state) => ({ ...state, drafts: { ...state.drafts, [thread]: text }, filled: thread }));
+}
+
+/** 채운 입력창이 포커스를 받았다 — 다음 채우기까지 다시 받지 않는다. */
+export function takeFill(): void {
+  threadUiStore.setState((state) => (state.filled === null ? state : { ...state, filled: null }));
 }
 
 export const turnKey = (thread: string, turn: string) => `${thread}\u0000${turn}`;

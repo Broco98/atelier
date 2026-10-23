@@ -144,6 +144,91 @@ fn 다시_켠_뒤_이어_연_session에도_새_소켓의_thread_도구가_실린
     assert!(!today.exists());
 }
 
+/// 가짜 claude가 첫 턴에 부를 「Agent 저장」(v1 티켓 19).
+fn save_call(handle: &str, content: &str) -> String {
+    json!({"tool": "save_agent", "arguments": {"handle": handle, "content": content}}).to_string()
+}
+
+/// Host가 대화로 짓는 Agent 파일 — 「보안 위주로 보는 리뷰어 만들어줘」(스토리 66).
+const SECURITY_MD: &str = "---\nname: 보안 리뷰어\ndescription: 보안 취약점만 본다.\navatar:\n  shape: triangle\n  color: purple\n\
+                           tools:\n  builtin: [read, search]\n---\n\n너는 보안 취약점만 보는 리뷰어다.\n";
+
+#[test]
+fn host가_agent를_저장하면_library에_파일이_서고_library_줄이_남고_도구가_그_자리를_돌려준다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(calling(&sandbox, &save_call("security-reviewer", SECURITY_MD)));
+
+    let thread = host.start_thread("보안 위주로 보는 리뷰어 만들어줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let path = sandbox.data_root().join("library").join("agents").join("security-reviewer.md");
+    assert_eq!(std::fs::read_to_string(&path).expect("Library에 파일이 선다"), SECURITY_MD, "받은 내용 그대로다");
+    let saved = of_kind(&record, "library");
+    assert_eq!(saved.len(), 1, "{}", common::lines_text(&record));
+    assert_eq!(saved[0]["who"], "host", "저장한 Agent가 줄의 who다(S8)");
+    assert_eq!(
+        saved[0]["payload"],
+        json!({
+            "handle": "security-reviewer",
+            "name": "보안 리뷰어",
+            "avatar": {"shape": "triangle", "color": "purple"},
+            "path": path,
+        }),
+        "시스템 줄 「Library에 보안 리뷰어를 저장함」이 이름 · 얼굴을 읽는다"
+    );
+
+    let session = sandbox.thread_session_id(&thread, "host");
+    let mcp = sandbox.claude_mcp(&session);
+    let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
+    assert!(listed.contains(&"save_agent"), "도구 목록에 Agent 저장이 있다: {listed:?}");
+    let answer = &mcp[0]["call"];
+    assert_ne!(answer["isError"], true, "{answer}");
+    assert_eq!(
+        answer["content"][0]["text"],
+        format!("Library에 저장했다 — {}. 이제 `@security-reviewer`로 부를 수 있다.", path.display()),
+        "저장한 자리를 돌려준다(S13)"
+    );
+    let preamble = of_kind(&record, "sent")[0]["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
+    assert!(
+        preamble.contains("save_agent") && preamble.contains(".atelier/agents/"),
+        "머리말이 저장 도구와 「이 Project에 둬」의 자리를 싣는다(S42):\n{preamble}"
+    );
+}
+
+#[test]
+fn 있는_handle이나_깨진_내용이면_도구가_거절_까닭을_돌려주고_library와_기록은_그대로다() {
+    let mine = "---\nname: 내 리뷰어\n---\n내가 고친 리뷰어.\n";
+    let cases = [
+        ("reviewer", SECURITY_MD, "Library에 `@reviewer`가 이미 있다 — 덮지 않는다"),
+        ("writer", "---\ntools:\n  builtin: [read, Bash]\n---\n글을 쓴다.\n", "Agent 파일이 깨졌다 — 모르는 도구입니다: Bash"),
+        ("Writer", SECURITY_MD, "handle `Writer`은 쓸 수 없다"),
+    ];
+    for (handle, content, why) in cases {
+        let sandbox = Sandbox::new();
+        sandbox.library_agent("host", HOST_MD);
+        let reviewer = sandbox.library_agent("reviewer", mine);
+        let host = sandbox.host(calling(&sandbox, &save_call(handle, content)));
+
+        let thread = host.start_thread("리뷰어 만들어줘", ThreadLink::NoWork).expect("새 Thread의 첫 말");
+        let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+        host.shut_down();
+
+        let answer = &sandbox.claude_mcp(&sandbox.thread_session_id(&thread, "host"))[0]["call"];
+        assert_eq!(answer["isError"], true, "{handle}: {answer}");
+        let text = answer["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(text.starts_with(why), "{handle}: 거절 까닭을 글로 돌려준다 — {text}");
+        assert_eq!(std::fs::read_to_string(&reviewer).unwrap(), mine, "{handle}: 있는 파일은 덮지 않는다");
+        let files: Vec<String> = std::fs::read_dir(reviewer.parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(files.len(), 2, "{handle}: Library에 아무것도 서지 않는다 — {files:?}");
+        assert!(of_kind(&record, "library").is_empty(), "{handle}: {}", common::lines_text(&record));
+    }
+}
+
 /// 기록 축복(S26 꼴) — Host가 첫 턴에서 Thread 도구로 이름을 바꾼 기록이 검사 자료로 선다. PR ②의 L3(v1 티켓 21)가 이 파일을
 /// `thread:record`로 흘려 MCP 도구 줄과 시스템 줄 「Thread 이름을 … 로 바꿈」을 그린다.
 #[test]

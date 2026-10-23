@@ -33,9 +33,10 @@ const VIEWS = ["doc", "source"] as const;
 
 /**
  * 동그란 버튼(DS `.at-cib`) — 32 원 · 1px `border-heavy` 안쪽 링 · `fg-secondary` 글리프, 가리키면 `fill-soft` 면에 `fg`다. 원은 경로
- * 줄의 모양이라(결정 14) 아이콘 버튼 규격(`icon-button` — 각진 28 · 24 · 26 · 16)의 단으로 두지 않는다.
+ * 줄의 모양이라(결정 14) 아이콘 버튼 규격(`icon-button` — 각진 28 · 24 · 26 · 16)의 단으로 두지 않는다. 줄 끝 칸(`end`)에 서는 버튼도
+ * 이 모양이다(Library 화면의 「Finder에서 열기」 — v1 티켓 19).
  */
-const ROUND =
+export const ROUND =
   "flex size-8 shrink-0 items-center justify-center rounded-full text-fg-secondary inset-ring inset-ring-border-heavy transition-colors outline-none hover:bg-fill-soft hover:text-fg focus-ring";
 
 /**
@@ -104,7 +105,7 @@ export function PathBar({
   path: readonly string[];
   view?: PathView;
   onCopy?: () => void;
-  /** 줄 끝 칸 — 동그란 버튼 뒤에 사이 4로 선다. 분할의 spec 열을 닫는 ×다. */
+  /** 줄 끝 칸 — 동그란 버튼 뒤에 사이 4로 선다. 분할의 spec 열을 닫는 ×, Library 화면의 「Finder에서 열기」(같은 `ROUND`)다. */
   end?: ReactNode;
   [mark: `data-${string}`]: string | undefined;
 }) {

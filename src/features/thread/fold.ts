@@ -126,9 +126,14 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "joined" | "left";
-  /** 들고 난 참여자의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기)은 `null`이다. */
+  kind: "title" | "joined" | "left" | "library";
+  /** 들고 난 참여자 · Library에 저장한 Agent의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기)은 `null`이다. */
   handle: string | null;
+  /**
+   * Library에 저장한 Agent의 얼굴 — 저장한 정의의 것이다(그 Agent는 이 Thread의 참여자가 아니라 `cast`에 없다). 들고 난 줄은 적지
+   * 않는다 — 참여자의 얼굴(`cast`)을 쓴다.
+   */
+  avatar?: Avatar | null;
   before: string;
   name: string;
   after: string;
@@ -249,8 +254,25 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const system: SystemLine[] = [];
   const notice = (seq: number, kind: Notice["kind"], words: string) =>
     notices.push({ key: `n${seq}`, kind, text: words, turnsBefore: turns.length });
-  const say = (seq: number, kind: SystemLine["kind"], handle: string | null, before: string, name: string, after: string) =>
-    system.push({ key: `s${seq}`, kind, handle, before, name, after, turnsBefore: turns.length });
+  const say = (
+    seq: number,
+    kind: SystemLine["kind"],
+    handle: string | null,
+    before: string,
+    name: string,
+    after: string,
+    avatar?: Avatar | null,
+  ) =>
+    system.push({
+      key: `s${seq}`,
+      kind,
+      handle,
+      before,
+      name,
+      after,
+      ...(avatar !== undefined && { avatar }),
+      turnsBefore: turns.length,
+    });
   // 그 참여자의 프로세스가 사라졌다(`who`가 `undefined`면 모두 — 앱을 다시 켬) — 열린 턴은 끝났고, 걸린 권한 요청에는 답할 곳이 없고,
   // 끝을 받지 못한 도구 줄은 끊겼다.
   const vanish = (at: string, error: string, who?: string | null) => {
@@ -451,6 +473,14 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (!name) break;
         const verb = line.kind === "joined" ? "참여함" : "나감";
         say(line.seq, line.kind, handle, "", name, `${particle(name, "이", "가")} ${verb}`);
+        break;
+      }
+      // Agent가 Thread 도구 「Agent 저장」으로 Library에 Agent를 둠(v1 티켓 19) — 그 Agent는 들어오지 않았다. 부르면 그때 들어온다.
+      case "library": {
+        const handle = nonEmpty(payload.handle);
+        const name = nonEmpty(payload.name) ?? handle;
+        if (!handle || !name) break;
+        say(line.seq, "library", handle, "Library에 ", name, `${particle(name, "을", "를")} 저장함`, avatarOf(payload.avatar));
         break;
       }
       default:

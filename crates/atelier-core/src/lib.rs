@@ -59,10 +59,12 @@ pub use paths::{
     works_dir, works_in,
 };
 // Agent 정의(v1 구현 스펙 §6) — 앱이 뜰 때 Library의 기본 파일을 세우고, Thread 엔진(`atelier-acp`)이 Host를 읽는다.
-// 범위 찾기 · 고르기(v1 티켓 11)는 @ 메뉴 · Library 화면(Tauri 명령)과 엔진의 참여가 같이 쓴다.
+// 범위 찾기 · 고르기(v1 티켓 11)는 @ 메뉴 · Library 화면(Tauri 명령)과 엔진의 참여가 같이 쓴다. Library에 저장하기(v1 티켓 19)는
+// 엔진의 Thread 도구 「Agent 저장」이 쓴다.
 pub use agents::{
-    ensure_default_agents, find_agents, read_agent, read_agent_file, AgentCalls, AgentDefinition, AgentProblem,
-    AgentRoster, Avatar, BrokenAgent, BuiltinTool, FoundAgent, ModelPreference, Policy, Tools, Unresolved,
+    agent_file_path, ensure_default_agents, find_agents, read_agent, read_agent_file, save_agent, AgentCalls, AgentDefinition, AgentProblem,
+    AgentRoster, AgentSaveRefusal, Avatar, BrokenAgent, BuiltinTool, FoundAgent, ModelPreference, Policy, SavedAgent, Tools,
+    Unresolved,
 };
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
 // (`search.rs`가 `crate::recent::read_recent`로 직접 부른다) 나머지를 내면 아무도 안 읽는

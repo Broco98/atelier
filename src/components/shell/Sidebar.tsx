@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, Search, Settings, SquarePen, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Library, Search, Settings, SquarePen, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { useRouterState } from "@tanstack/react-router";
 import {
@@ -51,6 +51,8 @@ interface SidebarProps {
   onOpenSearch: () => void;
   /** 「새 Thread」(v1 티켓 05) — 앱 셸이 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
+  /** 「Library」(v1 티켓 19) — 앱 셸이 지금 선 자리의 Work를 실어 `/library`로 간다. 켜짐은 그 항목이 스스로 읽는다(`LibraryItem`). */
+  onOpenLibrary: () => void;
   /** 지금 선 화면이 사람 메뉴의 어느 곳인가 — 그 밖(Thread · Works)이면 `null`이다. */
   activeKey: NavKey | null;
   /** 사람 메뉴에서 고른 곳(v1 구현 스펙 S27 — 지금 main nav 넷이 이리로 왔다). */
@@ -82,6 +84,7 @@ function Sidebar({
   open,
   onOpenSearch,
   onNewThread,
+  onOpenLibrary,
   activeKey,
   onSelect,
   currentSettingsItem,
@@ -143,8 +146,8 @@ function Sidebar({
   const [renaming, setRenaming] = useState<string | null>(null);
   // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
   // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
-  // nav에는 「새 Thread」 하나가 선다(v1 티켓 07 — 지금 화면들은 사람 메뉴로 갔다). Library 줄은 19가 더한다.
-  const navRoving = useRoving([NEW_THREAD_KEY], null);
+  // nav에는 「새 Thread」 · 「Library」 둘이 선다(v1 티켓 07 · 19 — 지금 화면들은 사람 메뉴로 갔다).
+  const navRoving = useRoving([NEW_THREAD_KEY, LIBRARY_KEY], null);
   const settingsRoving = useRoving(
     SETTINGS_ITEMS.map((item) => item.key),
     currentSettingsItem,
@@ -188,9 +191,11 @@ function Sidebar({
       <SearchField onOpen={onOpenSearch} />
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
       <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...navRoving.box}>
-        {/* **「새 Thread」가 검색 바로 아래다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 앱이 늘 열리는 자리다. Library 줄은
-            19가 이 아래에 더한다. 지금 화면들로 가는 줄(옛 main nav 넷)은 사람 메뉴로 갔다(S27). */}
+        {/* **「새 Thread」가 검색 바로 아래, 그 아래 Library다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 새 Thread는 앱이 늘
+            열리는 자리이고, Library는 Agent 목록과 파일 읽기다(§16 · 티켓 19). 지금 화면들로 가는 줄(옛 main nav 넷)은 사람 메뉴로
+            갔다(S27). */}
         <NewThreadItem stop={navRoving.stop === NEW_THREAD_KEY} onClick={onNewThread} />
+        <LibraryItem stop={navRoving.stop === LIBRARY_KEY} onClick={onOpenLibrary} />
       </nav>
 
       {/* **목록 위, nav 아래**(결정 5). 부르는 셸이 없으면 이 자리에 아무것도 없다 —
@@ -585,6 +590,18 @@ function NewThreadItem({ stop, onClick }: { stop: boolean; onClick: () => void }
   return (
     <SidebarItem icon={SquarePen} label="새 Thread" active={active} roving={{ key: NEW_THREAD_KEY, stop }} onClick={onClick} />
   );
+}
+
+/** nav 정류장 목록에서 「Library」의 열쇠. */
+const LIBRARY_KEY = "library";
+
+/**
+ * 「Library」 항목(v1 티켓 19) — `/library`에 서 있으면 켜진다. 「새 Thread」와 같은 까닭으로 켜짐을 이 항목이 스스로 구독한다(원시값
+ * 하나 — `/library`를 드나들 때만 다시 그려진다).
+ */
+function LibraryItem({ stop, onClick }: { stop: boolean; onClick: () => void }) {
+  const active = useRouterState({ select: (state) => state.location.pathname === "/library" });
+  return <SidebarItem icon={Library} label="Library" active={active} roving={{ key: LIBRARY_KEY, stop }} onClick={onClick} />;
 }
 
 function SidebarItem({

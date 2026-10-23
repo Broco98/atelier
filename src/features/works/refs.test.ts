@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { archiveRef, archiveSpecDirRef, cwdRef, layoutDirRef, projectDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
+import { agentFileRef, archiveRef, archiveSpecDirRef, cwdRef, layoutDirRef, projectDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
 // 그래서 아래 기대값은 `refs.ts`의 뿌리 상수를 다시 부르지 않고 **완성된 글자를 그대로 적는다.**
@@ -85,6 +85,17 @@ describe("프로젝트 폴더 참조", () => {
     expect(projectDirRef("~/dev/billing")).toBe("~/dev/billing/");
     expect(projectDirRef("~/dev/billing/")).toBe("~/dev/billing/");
     expect(projectDirRef("/Volumes/work/ledger")).toBe("/Volumes/work/ledger/");
+  });
+});
+
+// Agent 파일 참조(v1 티켓 19)는 Library 화면의 블록 복사가 복사하는 한 줄이다. **코어가 준 파일 경로**(목록의 `path`)에 줄범위만
+// 단다 — Library는 데이터 뿌리 아래, Project의 Agent는 레포 안이라 앱이 지을 뿌리가 하나가 아니다.
+describe("Agent 파일 참조", () => {
+  it("받은 파일 경로에 줄범위를 꼬리로 단다", () => {
+    expect(agentFileRef("/Users/me/.atelier/library/agents/reviewer.md", 2, 4)).toBe(
+      "/Users/me/.atelier/library/agents/reviewer.md:L2-4",
+    );
+    expect(agentFileRef("/dev/api/.atelier/agents/qa.md", 7, 7)).toBe("/dev/api/.atelier/agents/qa.md:L7");
   });
 });
 

@@ -8,6 +8,7 @@ import ApprovalCard from "./ApprovalCard";
 import { threadApi } from "./api";
 import ChangesPill from "./ChangesPill";
 import { chipLists, currentModel } from "./chips";
+import { useCreateAgent } from "./create-agent";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
 import { foldOf, type ThreadModel } from "./fold";
 import GuideCard from "./GuideCard";
@@ -35,7 +36,8 @@ import type { Attachment, ThreadView } from "./types";
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
 //   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
-//   Session 값이다(§14 「입력창 아래 줄」) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다.
+//   Session 값이다(§14 「입력창 아래 줄」) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
+//   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
 
 /** 흐름 · 입력창을 모으는 열 — 읽기 좋은 폭(DS `size-thread` 48rem)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은 폭이다. */
 const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
@@ -49,6 +51,7 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const navigate = useNavigate();
   const roster = useAgentRoster(null);
   const agents = useMemo(() => agentChoices(roster, []), [roster]);
+  const createAgent = useCreateAgent();
   const draft = useStore(threadUiStore, (state) => state.drafts[NEW_THREAD] ?? "");
   const recipient = recipientOf(draft, agents);
   // 첫 말을 받을 이 — 멘션한 Agent, 없으면 Host. 칩은 그 정의 파일의 모델 · 생각 깊이를 보이기만 한다(스토리 33).
@@ -85,6 +88,7 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
       onNewThread={() => {}}
       agents={agents}
       recipient={recipient}
+      onCreateAgent={createAgent}
     />
   );
   return (
@@ -218,6 +222,7 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   const model: ThreadModel = foldOf(lines, view.live ? null : view.lastSeq);
   const roster = useAgentRoster(view.work);
   const agents = useMemo(() => agentChoices(roster, seatedOf(view, model)), [roster, view, model]);
+  const createAgent = useCreateAgent();
   const draft = useStore(threadUiStore, (state) => state.drafts[thread] ?? "");
   const recipient = recipientOf(draft, agents);
   // 다음 말을 받을 참여자 — 멘션이 없거나 모르는 이름이면 Host, 앉은 Agent를 멘션하면 그다. 아직 앉지 않은 Agent면 참여자가 없다.
@@ -317,6 +322,7 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             agents={agents}
             recipient={recipient}
             recipientRunning={participant !== null && model.answering.includes(participant.handle)}
+            onCreateAgent={createAgent}
             card={
               asking && (
                 <ApprovalCard

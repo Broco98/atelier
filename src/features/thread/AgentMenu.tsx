@@ -8,7 +8,8 @@ import { optionId } from "./SlashMenu";
 // @ 메뉴(v1 티켓 14 · 캔버스 Composer 보드 「@ · Agent 부르기」) — 입력칸의 커서가 멘션 이름 안에 서면 입력창 바로 위에 같은 폭으로
 // 선다. 이 Thread에 있는 Agent → Library → Project 묶음이고(`agentChoices`), 줄은 얼굴 20 · 이름 · `@handle` · 설명 한 줄이다(보드
 // `.mi` — 34 · 10 반경 · 설명은 12 `fg-tertiary`로 오른쪽 끝). 깨진 Agent는 흐리게, 설명 자리에 까닭이 서고 고를 수 없다(스토리 71).
-// 맨 끝은 「새 Agent 만들기」 자리다 — 동작은 19가 단다(`onCreate`). 그때까지는 흐린 줄로 자리만 둔다.
+// 맨 끝은 「새 Agent 만들기」다 — 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `onCreate`). 동작을 받지
+// 못한 입력창에서는 흐린 줄로 자리만 선다.
 //
 // 「/」 메뉴(`SlashMenu`)와 같은 규칙이다 — **포커스는 입력칸에 남고** 입력칸이 `aria-activedescendant`로 켜진 줄을 가리킨다.
 // ↑ · ↓ · Enter · Tab · Esc는 입력칸이 받는다(`ThreadComposer`). 줄의 차례 번호는 `items`의 차례이고, 「새 Agent 만들기」는 그 끝이다.
@@ -104,7 +105,8 @@ function AgentMenu({
           }}
           className={cn(
             "flex min-h-8.5 cursor-default items-center gap-2.5 rounded-lg px-2.5 text-sm aria-selected:bg-fill-hover",
-            !canCreate && "text-fg-tertiary",
+            // 보드의 끝 줄은 Agent 줄보다 한 단 옅은 글자다(`fg-secondary`). 동작이 없으면 한 단 더 옅다.
+            canCreate ? "text-fg-secondary" : "text-fg-tertiary",
           )}
         >
           <Plus className="size-4 text-fg-secondary" aria-hidden />새 Agent 만들기

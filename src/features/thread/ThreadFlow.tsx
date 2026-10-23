@@ -133,15 +133,25 @@ function NoticeLine({ notice }: { notice: Notice }) {
   );
 }
 
-/** 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄은 이름 앞에 그 얼굴이 선다. */
+/**
+ * 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄 · Library에 저장한 줄은 이름 앞에 그 얼굴이 선다 —
+ * 저장한 Agent는 참여자가 아니라 줄이 실은 얼굴이다.
+ */
 function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<string, CastMember>> }) {
   return (
     <p
       data-system={line.kind}
       className="flex flex-wrap items-center justify-center self-center text-center text-chat-meta leading-5 text-fg-tertiary"
     >
-      {line.before}
-      {line.handle && <AgentFace handle={line.handle} avatar={memberOf(cast, line.handle).avatar} className="mr-1.5 size-4" />}
+      {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 「Library에」와 얼굴이 붙는다. */}
+      {line.before && <span className="whitespace-pre">{line.before}</span>}
+      {line.handle && (
+        <AgentFace
+          handle={line.handle}
+          avatar={line.avatar !== undefined ? line.avatar : memberOf(cast, line.handle).avatar}
+          className="mr-1.5 size-4"
+        />
+      )}
       <b className="font-medium text-fg">{line.name}</b>
       {line.after}
     </p>

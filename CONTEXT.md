@@ -218,8 +218,14 @@ Agent를 실제로 실행하는 에이전트 프로그램 — Claude Code. 모�
 _피할 말_: 하네스, 엔진
 
 **Library**:
-어디서나 쓰는 Agent 정의를 두는 곳. Host의 정의도 여기 산다. Project 안에 둔 정의는 Library가 아니라 그 Project의 것이다.
+어디서나 쓰는 Agent 정의를 두는 곳. Host의 정의도 여기 산다. Project 안에 둔 정의는 Library가 아니라 그 Project의 것이다. 사이드바의
+Library 줄이 여는 화면도 Library다 — 정의의 목록과 파일을 읽기만 하고, 지금 Work의 Project 안 정의는 따로 묶어 보인다. 새 Agent는
+대화로 만든다 — Host가 Library에 저장한다.
 _피할 말_: 레지스트리, 카탈로그, 마켓플레이스
+
+**Agent 저장**:
+대화로 지은 Agent 정의를 Library에 새 파일로 두는 Thread 도구. 있는 이름은 덮지 않는다. 그 Project에 두는 것은 이 도구가 아니라
+worktree에 쓰는 보통 편집이다.
 
 **Thread 도구**:
 Atelier가 Thread 안의 Agent에게 주는 도구 — Thread 이름 바꾸기처럼 그 Thread와 Work를 다루는 일이다. Agent는 어느 Thread인지 말하지

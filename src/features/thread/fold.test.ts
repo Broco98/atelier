@@ -115,6 +115,27 @@ describe("시스템 줄", () => {
       "테스터가 나감",
     ]);
   });
+
+  it("Agent가 Library에 Agent를 저장하면 그 이름 · 얼굴로 「Library에 … 저장함」 한 줄이 서고, 그 Agent는 참여자가 아니다(v1 티켓 19)", () => {
+    const saved = (seq: number, handle: string, name: string, avatar?: unknown): RecordLine => ({
+      seq,
+      at: at(5),
+      kind: "library",
+      who: "host",
+      payload: { handle, name, path: `/x/library/agents/${handle}.md`, ...(avatar ? { avatar } : {}) },
+    });
+    const model = foldThread([
+      ...blessed,
+      saved(25, "security-reviewer", "보안 리뷰어", { shape: "triangle", color: "purple" }),
+      saved(26, "writer", "문서 작성자"),
+    ]);
+    expect(model.system.map((line) => [line.kind, line.handle, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
+      ["library", "security-reviewer", "Library에 보안 리뷰어를 저장함", 2],
+      ["library", "writer", "Library에 문서 작성자를 저장함", 2],
+    ]);
+    expect(model.system.map((line) => line.avatar)).toEqual([{ shape: "triangle", color: "purple" }, null]);
+    expect(Object.keys(model.cast)).toEqual(["host"]);
+  });
 });
 
 describe("도구 줄의 끝", () => {

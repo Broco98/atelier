@@ -7,7 +7,9 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
 import { useChatEngineFeed, useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
-import { useThreadFeeds } from "@/features/thread/hooks";
+import { threadsQuery, useThreadFeeds } from "@/features/thread/hooks";
+import { workOfPlace } from "@/features/library/library";
+import { readLibrarySearch } from "@/routes/-library-search";
 import { countChatsForQuit } from "@/features/chat/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
@@ -334,6 +336,15 @@ function AppShell() {
           // 읽는다 — 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
           onNewThread={() => {
             if (router.state.location.pathname !== "/") void navigate({ to: "/" });
+          }}
+          // Library(v1 티켓 19)는 **지금 선 자리의 Work**를 싣고 간다 — 그 Work의 Project 안 Agent가 따로 묶인다(S35, `workOfPlace`).
+          // 이미 같은 Work의 Library면 아무것도 하지 않는다(위와 같은 가드 — 고른 Agent도 그대로다). 주소 · Thread 목록은 누를 때 읽는다.
+          onOpenLibrary={() => {
+            const { pathname, search } = router.state.location;
+            const here = pathname === "/library" ? readLibrarySearch(search).work : null;
+            const work = workOfPlace(pathname, queryClient.getQueryData(threadsQuery().queryKey), here);
+            if (pathname === "/library" && work === here) return;
+            void navigate({ to: "/library", search: work === null ? {} : { work } });
           }}
           activeKey={activeKey}
           onSelect={(key) => {

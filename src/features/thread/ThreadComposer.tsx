@@ -9,7 +9,7 @@ import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmen
 import { ComposerTray, ModelChip, type ShownRecipient } from "./ComposerChips";
 import { insertMention, matchAgents, mentionAt, withRecipient, type AgentChoice, type Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
-import { setDraft, threadUiStore } from "./thread-store";
+import { setDraft, takeFill, threadUiStore } from "./thread-store";
 import type { Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나에 아래 줄(받는 이 · Work · 물어보는 정도)이 붙는다.
@@ -73,7 +73,7 @@ export interface ThreadComposerProps {
   recipient: Recipient | null;
   /** 받는 이의 턴이 도는가 — 모델 칩의 생각 깊이를 잠근다(엔진이 그 Session의 턴 동안 거절한다). 없으면 `running`이다. */
   recipientRunning?: boolean;
-  /** @ 메뉴 끝의 「새 Agent 만들기」(19가 단다). 없으면 그 줄은 자리만 선다. */
+  /** @ 메뉴 끝의 「새 Agent 만들기」(v1 티켓 19 — `useCreateAgent`). 없으면 그 줄은 자리만 선다. */
   onCreateAgent?: () => void;
 }
 
@@ -101,6 +101,8 @@ function ThreadComposer({
   onCreateAgent,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
+  // 바깥이 이 입력창을 채웠다(「새 Agent 만들기」 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
+  const filled = useStore(threadUiStore, (state) => state.filled === draftKey);
   const attachments = useStore(attachmentStore, (state) => attachmentsOf(state, draftKey));
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -197,6 +199,15 @@ function ThreadComposer({
     el.focus();
     el.setSelectionRange(at, at);
   }, [draft, carded, dragging]);
+  useLayoutEffect(() => {
+    if (!filled) return;
+    takeFill();
+    const el = field.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    setCaret(el.value.length);
+  }, [filled]);
 
   const send = () => {
     const text = draft.trim();
