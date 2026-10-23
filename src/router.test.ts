@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
@@ -73,6 +73,15 @@ function installStorage(broken?: Partial<Storage>) {
 beforeEach(() => {
   installStorage();
 });
+
+// 라우트 화면은 떼어 낸 청크다(autoCodeSplitting) — 처음 부를 때 그 화면이 끄는 모듈을 모두 변환한다. `/`의 새 Thread 화면은 Thread 화면
+// 전체를 끌어, 부하가 걸리면 그 한 번이 첫 시험의 5초를 넘겼다(코드 리뷰 1차 D). 파일 앞에서 모든 라우트의 청크를 한 번 불러 두어
+// 시험마다의 한도가 첫 변환을 떠안지 않게 한다.
+beforeAll(async () => {
+  installStorage();
+  const { router } = setup(["/"]);
+  await Promise.all(Object.values(router.routesById).map((route) => router.loadRouteChunk(route)));
+}, 120_000);
 
 function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   const queryClient = new QueryClient();

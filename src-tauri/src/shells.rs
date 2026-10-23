@@ -1196,17 +1196,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// **`at`이 같으면 뒤에 온 것이 이긴다**(프로세스 스펙 S27). 같은 ms의 두 사건(빠른 PostToolUse → Stop)에서 「더 새로울 때만」이면 뒤의 것을
-    /// 버린다.
+    /// 처리기의 시계 줄 — 불린 때의 ms다.
+    const CLOCK: &str = "integer at=$(( epochtime[1] * 1000 + epochtime[2] / 1000000 ))";
+
+    /// **`at`이 같으면 뒤에 온 것이 이긴다**(프로세스 스펙 S27). 같은 ms의 두 사건(빠른 PostToolUse → Stop)에서 「더 새로울 때만」이면 뒤의
+    /// 것을 버린다.
     ///
-    /// 처리기의 `at`은 진짜 시계라 손으로 못 맞춘다. 그래서 **처리기가 뜰 ms를 짐작해** 그 `at`으로 앞 사건을 미리 적어 두고
-    /// 처리기를 띄운다. 세 갈래가 난다:
-    /// - 처리기 `at` > 적은 `at` — 짐작이 일렀다. 처리기가 이긴다(순서대로). 다시 한다.
-    /// - 처리기 `at` < 적은 `at` — 짐작이 늦었다. 처리기가 막힌다. 다시 한다.
-    /// - 같다 — 뒤에 온 처리기가 이겨 사건 이름이 처리기의 것이고 `at`은 적은 값 그대로다. **이것을 한 번 보면 끝이다.**
-    ///
-    /// 「같으면 막힘」으로 무너지면 셋째 갈래가 영영 안 나서 빨갛다(적은 사건이 남은 판은 둘째 갈래와 못 가르므로 실패로 치지
-    /// 않는다). 짐작은 직전 판에서 잰 뜨는 데 걸린 ms로 고친다 — 같은 ms에 떨어지는 판이 흔해 대개 몇 판 안에 끝난다.
+    /// 처리기의 `at`은 진짜 시계다. 한때는 처리기가 뜰 ms를 짐작해 같은 ms에 떨어지는 판을 400판까지 찾았는데, 부하가 걸리면 뜨는 데
+    /// 걸리는 시간이 판마다 크게 흔들려 한 판도 맞지 않는 날이 있었다(코드 리뷰 1차 D). 그래서 **시계 줄만 고정 값으로 바꾼 사본**을
+    /// 부른다(위 zsh 5.8 사본과 같은 꼴) — 순서 가드는 본문 그대로다. 적어 둔 사건과 `at`이 같으면 뒤에 온 처리기가 이겨 사건 이름이
+    /// 처리기의 것이고, 한 ms 늦은 사건이 적혀 있으면 처리기가 막힌다. 어느 판이든 `at`은 둘 가운데 늦은 것이다.
     #[test]
     fn when_two_events_share_a_millisecond_the_one_that_comes_later_wins() {
         let root = temp_root("handler-tie");
@@ -1214,31 +1213,29 @@ mod tests {
         let shell = "1700-7";
         std::fs::create_dir_all(shells_dir(&root)).unwrap();
 
-        let mut guess = 3u64;
-        for _ in 0..400 {
-            let spawned = now_ms();
-            let planted = spawned + guess;
+        let at = 1_700_000_000_000u64;
+        assert_eq!(HANDLER.matches(CLOCK).count(), 1, "처리기에 시계 줄 `{CLOCK}`이 하나가 아니다 — 사본의 시계가 안 선다");
+        let handler = hooks_dir(&root).join("fixed-clock.zsh");
+        write_executable(&handler, &HANDLER.replacen(CLOCK, &format!("integer at={at}"), 1)).unwrap();
+        warm_up(&handler, &root);
+
+        for (planted, winner) in [(at, "Stop"), (at + 1, "PermissionRequest")] {
             std::fs::write(
                 state_path(&root, shell),
                 format!(r#"{{"agent":"claude","event":"PermissionRequest","at":{planted},"subagents":["k1"],"stopped":false,"payload":{{"tool_name":"Bash"}}}}"#),
             )
             .unwrap();
-            let state = call(&root, shell, "claude", "Stop", CLAUDE_STOP);
-            let at = state["at"].as_u64().expect("`at`은 ms 수다");
+            let (wrote, out) = feed(handler_command(&handler, &root, Some(shell), &["claude", "Stop"]).into_spawned(), CLAUDE_STOP);
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert_quiet_success(&out, "claude Stop");
+            let state = state_in(&root, shell);
+            assert_eq!(state["event"], winner, "적어 둔 `at` {planted}, 처리기 `at` {at}: {state}");
+            assert_eq!(state["at"], planted, "`at`이 둘 가운데 늦은 것이 아니다: {state}");
             // 막힌 판이든 이긴 판이든 접기는 늘 선다 — Stop은 집합을 안 건드리고 멈춤을 켠다.
             assert_eq!(subagent_ids(&state), vec!["k1"], "Stop이 집합을 건드렸다");
             assert_eq!(state["stopped"], true, "Stop이 멈춤을 안 켰다");
-            match (state["event"].as_str(), at.cmp(&planted)) {
-                (Some("Stop"), std::cmp::Ordering::Equal) => {
-                    let _ = std::fs::remove_dir_all(&root);
-                    return;
-                }
-                (Some("Stop"), std::cmp::Ordering::Greater) => guess = at - spawned,
-                (Some("PermissionRequest"), std::cmp::Ordering::Equal) => guess = guess.saturating_sub(1),
-                other => panic!("처리기가 이기지도 막히지도 않았다: {other:?} {state}"),
-            }
         }
-        panic!("같은 ms의 두 사건에서 뒤에 온 것이 이긴 판이 400판에 한 번도 없다 — 같으면 막는다");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// **서브에이전트는 id 집합으로 접힌다 — 늦게 온 SubagentStop, 빠진 SubagentStart에도 수가 맞다**(프로세스 스펙 S51).
