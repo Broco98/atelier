@@ -5,6 +5,7 @@
 //!   [`ConversationHost::read_work_prs`]).
 //! - 같은 상태는 다시 적지 않는다. 없음(`gh`가 없다 · 로그인이 풀렸다) · 읽지 못함(네트워크)은 상태 변화가 아니다. 앱을 다시 켜도 기록에
 //!   남은 상태는 다시 적지 않는다.
+//! - 축복 기록 `thread-pr` — 처음 · CI 실패 · 병합됨의 줄 셋. PR ④의 L3가 흘린다.
 //!
 //! **진짜 `gh` · GitHub는 부르지 않는다.** 가짜 `gh`는 로그인 셸의 PATH에만 있다 — 엔진이 그 PATH로 찾지 않으면 PR이 읽히지 않는다.
 //! 답은 시험이 파일로 바꿔 넣는다. 시험은 호스트의 답과 Thread 기록만 본다.
@@ -196,6 +197,28 @@ fn 앱을_다시_켜도_기록에_남은_상태는_다시_적지_않는다() {
     );
 
     host.shut_down();
+}
+
+/// 기록 축복(S26 꼴) — Work에 이은 Thread의 턴이 끝난 뒤 처음 보인 PR(CI 확인 중), 카드의 읽기가 본 CI 실패와 병합됨이 `pr` 줄
+/// 셋으로 선 기록이 검사 자료로 선다. PR ④의 L3(v1 티켓 40)가 이 파일을 `thread:record`로 흘려 흐름의 PR 카드와 Work 카드의 PR 줄을
+/// 그린다.
+#[test]
+fn pr이_처음_보이고_ci가_실패했다가_병합된_thread의_기록이_검사_자료와_같다() {
+    let (sandbox, gh, shell) = setup();
+    gh.pr("OPEN", "null", PENDING);
+    let host = sandbox.host(shell);
+    let thread = thread_in_work(&sandbox, &host, "PR까지 올려줘");
+    sandbox.wait_thread_kind(&thread, "pr", 1);
+    gh.pr("OPEN", "null", FAILING);
+    read(&host);
+    gh.pr("MERGED", r#""2026-10-23T06:02:00Z""#, PASSING);
+    read(&host);
+    let record = sandbox.wait_thread_kind(&thread, "pr", 3);
+    host.shut_down();
+
+    let session = sandbox.thread_session_id(&thread, "host");
+    let settled = common::commands_after_opened(&record);
+    common::assert_record("thread-pr", &common::fix_thread_record(&settled, &sandbox.data_root(), &thread, &[&session]));
 }
 
 /// §12 「그 Work에서 가장 최근에 말한 Thread에」 — 같은 Work에 Thread가 여럿이면 줄은 마지막에 말이 오간 Thread 하나에만 선다.

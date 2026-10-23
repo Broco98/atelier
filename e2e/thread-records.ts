@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { THREAD_LIST_EVENT, THREAD_RECORD_EVENT } from "@/features/thread/events";
 import type { Attachment, RecordKind, RecordLine, ThreadRecordEvent, ThreadSummary, ThreadView } from "@/features/thread/types";
+import type { SpecTreeItem, WorkView } from "@/features/works/types";
 import { REPO_ROOT } from "./dev-server";
 import type { Page } from "./evidence";
 import { fireEvent } from "./harness";
@@ -71,4 +72,105 @@ export const summaryOf = (view: ThreadView): ThreadSummary => ({
 /** 목록 요약 이벤트를 쏜다 — 엔진이 새 Thread를 세우거나 참여자가 늘 때 내보내는 것 그대로다. 사이드바가 이것으로 줄을 세운다. */
 export async function fireSummary(page: Page, view: ThreadView): Promise<void> {
   await fireEvent(page, THREAD_LIST_EVENT, summaryOf(view));
+}
+
+/** L3의 홈 — 하네스가 `plugin:path|resolve_directory`에 주는 답과 같다(`harness.ts` `PLUGINS`). */
+const FIXTURE_HOME = "/Users/tester";
+
+/**
+ * 기록의 자료 자리를 L3 홈의 절대 경로로 편다(v1 티켓 40). L1은 임시 데이터 루트를 `~/.atelier`로 고쳐 적어 두지만(`fix_record_sessions`),
+ * 진짜 엔진은 홈 아래 `.atelier`의 절대 경로를 적는다. 화면은 이은 Work의 spec 폴더(`~`를 편 것)와 견줘 새 spec 문서의 쓰기를 가린다 —
+ * 대화 속 문서 카드가 서려면 줄이 진짜 꼴이어야 한다(v1 티켓 35).
+ */
+export const atHome = (lines: readonly RecordLine[]): RecordLine[] =>
+  JSON.parse(JSON.stringify(lines).split("~/.atelier/").join(`${FIXTURE_HOME}/.atelier/`)) as RecordLine[];
+
+/** 기록 안 그 종류 · 상태의 첫 줄(`question` · `work` · `permission` 줄은 `payload.state`로 갈린다). */
+export function lineOf(lines: readonly RecordLine[], kind: RecordKind, state: string): RecordLine {
+  const found = lines.find((line) => line.kind === kind && (line.payload as { state?: string }).state === state);
+  if (!found) throw new Error(`기록에 ${kind} ${state} 줄이 없다`);
+  return found;
+}
+
+/** 그 seq까지 사람이 본 Thread 이름 — 첫 말이 이름이고, 그 뒤 `title` 줄이 바꾼다. */
+export function titleThrough(lines: readonly RecordLine[], seq: number): string {
+  const renamed = linesThrough(lines, seq).filter((line) => line.kind === "title");
+  const last = renamed[renamed.length - 1];
+  return last ? (last.payload as { title: string }).title : sentPayloads(lines)[0].text;
+}
+
+/**
+ * 턴이 그 Work의 spec 폴더에 새로 쓴 문서(`Write`의 `rawInput`) — spec 기준 경로 → 글, 쓴 차례다. 줄은 홈을 편 것(`atHome`)이어야 한다.
+ * 대화 속 문서 카드 · Work 카드의 문서 칸 · 문서 보기의 글이 이것이다.
+ */
+export function specWrites(lines: readonly RecordLine[], slug: string): Record<string, string> {
+  const root = `${FIXTURE_HOME}/.atelier/works/${slug}/spec/`;
+  return Object.fromEntries(
+    lines.flatMap((line) => {
+      const update = (line.payload as { update?: { sessionUpdate?: string; rawInput?: { file_path?: string; content?: string } } })
+        .update;
+      const path = update?.sessionUpdate === "tool_call" ? update.rawInput?.file_path : undefined;
+      const content = update?.rawInput?.content;
+      return path?.startsWith(root) && content !== undefined ? [[path.slice(root.length), content]] : [];
+    }),
+  );
+}
+
+/** 머리말이 Host에게 알린 이은 Work의 이름(「- Work: `slug` — 이름」) — L1이 그 Work를 그 이름으로 세웠다. */
+export function workTitleOf(lines: readonly RecordLine[], slug: string): string {
+  const sent = lines.find((line) => line.kind === "sent")?.payload as { prompt?: { text?: string }[] } | undefined;
+  const title = new RegExp(`- Work: \`${slug}\` — (.+)`).exec(sent?.prompt?.[0]?.text ?? "")?.[1];
+  if (!title) throw new Error(`머리말에 Work ${slug}의 이름이 없다`);
+  return title;
+}
+
+/** spec 기준 경로들의 트리(`specTree.items`) — 폴더는 이름 뒤에 선다. 레이아웃의 자리(아이콘 · 묶음)는 없다. */
+function specItems(paths: readonly string[], prefix = ""): SpecTreeItem[] {
+  const here = paths.filter((path) => !path.includes("/"));
+  const folders = [...new Set(paths.filter((path) => path.includes("/")).map((path) => path.slice(0, path.indexOf("/"))))];
+  const item = (name: string, kind: "file" | "folder", children: SpecTreeItem[] = []): SpecTreeItem => ({
+    name,
+    path: `${prefix}${name}`,
+    kind,
+    icon: null,
+    group: null,
+    children,
+  });
+  return [
+    ...here.map((name) => item(name, "file")),
+    ...folders.map((folder) =>
+      item(
+        folder,
+        "folder",
+        specItems(
+          paths.filter((path) => path.startsWith(`${folder}/`)).map((path) => path.slice(folder.length + 1)),
+          `${prefix}${folder}/`,
+        ),
+      ),
+    ),
+  ];
+}
+
+/**
+ * 기록이 세운 · 이은 Work의 목록 줄(`list_works`, v1 티켓 40) — 머리 줄 Work 알약 · Work 카드 · 사이드바 Work 줄이 이것으로 선다. 이름 ·
+ * 브랜치 · Project는 기록(`work` 줄 · Work 만들기 답 · `pr` 줄)에서 읽어 넘기고, spec 문서와 worktree가 선 Project는 그 장면의 것을 준다.
+ */
+export function workView(
+  work: { slug: string; title: string; branch: string | null; projects: readonly string[] },
+  { docs = [], trees = [] }: { docs?: readonly string[]; trees?: readonly string[] } = {},
+): WorkView {
+  const home = `~/.atelier/works/${work.slug}`;
+  return {
+    slug: work.slug,
+    title: work.title,
+    status: "active",
+    branch: work.branch,
+    createdAt: "2026-10-10",
+    projects: [...work.projects],
+    pinned: false,
+    worktrees: trees.map((project) => ({ project, path: `${home}/trees/${project}`, exists: true, dirty: true })),
+    specDir: `${home}/spec`,
+    specFiles: [...docs],
+    specTree: { fallback: null, defaultDoc: docs[0] ?? null, items: specItems(docs) },
+  };
 }
