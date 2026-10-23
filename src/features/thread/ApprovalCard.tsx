@@ -4,7 +4,7 @@ import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
 import { threadApi } from "./api";
-import { cardChoices, cardKey, describeApproval, skipHint, type CardChoice } from "./approval";
+import { cardChoices, cardKey, describeApproval, fieldLabel, skipHint, type CardChoice } from "./approval";
 import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
 import type { Avatar } from "./faces";
@@ -23,7 +23,8 @@ import { shownPath, type DiffPiece } from "./tool-view";
 //   내주며 풀린 포커스만 받고, 다른 칸에 있던 포커스는 빼앗지 않는다. **선 직후 잠깐(`ARMING_MS`)은 키를 받지 않는다** — 입력창에 말을
 //   쓰던 손의 다음 글쇠(Enter · 숫자)가 막 선 카드를 고르지 않게.
 // - **「아니요, 다르게 해 주세요」는 카드 안에 입력칸을 연다**(보드 「고르기 전에 할 말이 있을 때」 A) — 보내면 거부와 그 말이 Agent에게
-//   간다. 비워 보내면 거부만 간다. 입력칸의 Esc는 칸을 닫고 번호 줄로 돌아간다.
+//   간다. 비워 보내면 거부만 간다. 입력칸의 Esc는 칸을 닫고 번호 줄로 돌아간다. 계획 넘어가기(v1 티켓 26)는 「계획대로 구현」 ·
+//   「계획 다시 쓰기」이고, 다시 쓰기의 칸이 고칠 점을 받는다(`fieldLabel`).
 // - 이 카드는 권한 답 명령을 부르기만 한다. 고른 것은 기록의 답 줄(`answered`)로 오고, 그 줄이 오면 접기가 이 요청을 빼서 카드가 걷히고
 //   그 자리(물은 턴)에 결정 줄이 선다(스토리 79). 답이 오기 전에 두 번 고르지 않게, 고른 뒤로는 줄이 잠긴다.
 // - **고르기 전에 할 말**(v1 티켓 25 · 스토리 83) — 입력칸에 말을 쓰는 동안 그 아래에 「보내면 이 명령은 건너뛰고 Host에게 말을
@@ -32,8 +33,8 @@ import { shownPath, type DiffPiece } from "./tool-view";
 //   (`AskTurnMarks`). 차례는 부르는 쪽이 `askTurn`으로 읽어 준다.
 // - 카드에 멈추기가 없다(보드) — 서 있는 동안 멈추는 길은 거부다.
 
-/** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). */
-const ARMING_MS = 300;
+/** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). 질문 카드도 같다. */
+export const ARMING_MS = 300;
 /** 파일 카드의 diff 상자에 보일 줄 수 — 넘으면 「N줄 더」. */
 const PEEK = 8;
 
@@ -175,9 +176,9 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place, count 
               ref={field}
               value={words}
               disabled={sent}
-              aria-label={`${name}에게 다르게 할 방법 알려 주기`}
+              aria-label={fieldLabel(view.kind, name)}
               aria-describedby={hinted ? hintId : undefined}
-              placeholder={`${name}에게 다르게 할 방법 알려 주기`}
+              placeholder={fieldLabel(view.kind, name)}
               onChange={(event) => setWords(event.target.value)}
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing) return;
@@ -220,8 +221,11 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place, count 
   );
 }
 
-/** 번호 줄 끝의 글쇠(보드 `.kbd`) — 높이 20 · 반경 6 · 머리카락 선, 고정폭 `fg-tertiary`. 그림이라 숨는다(줄의 이름은 선택지 글이다). */
-function KeyCap({ children }: { children: string }) {
+/**
+ * 번호 줄 끝의 글쇠(보드 `.kbd`) — 높이 20 · 반경 6 · 머리카락 선, 고정폭 `fg-tertiary`. 그림이라 숨는다(줄의 이름은 선택지 글이다).
+ * 질문 카드의 번호도 이것이다.
+ */
+export function KeyCap({ children }: { children: string }) {
   return (
     <span
       aria-hidden

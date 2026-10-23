@@ -17,7 +17,7 @@ use std::sync::Arc;
 use atelier_core::{Policy, PolicyPlace};
 
 use super::seat::{allowing, options_of, rejecting, Writer};
-use crate::policy::{self, Act, AskLevel, Case, Verdict};
+use crate::policy::{self, Act, AskLevel, Card, Case, Verdict};
 use crate::runtime::{Asking, Judge, Judgement, PermissionAsked, Ruling};
 
 /// Session 하나의 판정 문 — Session을 열 때마다 짓는다.
@@ -41,6 +41,12 @@ impl Gate {
     }
 
     fn rule(&self, asked: &PermissionAsked) -> Judgement {
+        // Agent의 질문(v1 티켓 26) — 판정의 표가 가를 일이 아니라 사람이 답할 일이다. 판정을 지나지 않고 질문 카드로 묻는다(「알아서」
+        // 여도). Runtime이 물음들을 `_meta.atelier.questions`에 실었다(Claude 변환기 — `AskUserQuestion`).
+        if asked.request["_meta"]["atelier"]["questions"].is_array() {
+            let question = Asking { card: Card::Question, policy: String::new(), grant: Vec::new() };
+            return self.ask(asked, &Act::Other, options_of(&asked.request), question);
+        }
         let act = match Act::of(&asked.tool_call) {
             Act::Edit(paths) => Act::Edit(paths.iter().map(|path| resolve(path, &self.cwd)).collect()),
             act => act,
@@ -96,7 +102,7 @@ impl Gate {
     /// 사람에게 묻는다 — 선택지 · 편집인가 · 「다시 묻지 않기」로 줄 허락을 적어 둔다. 사람이 편집을 허락하면 쓰기 자리를 쥐고,
     /// 다시 묻지 않기를 고르면 그 허락을 점 파일에 적는다([`super::seat::Writer::note`]).
     fn ask(&self, asked: &PermissionAsked, act: &Act, options: Vec<(String, String)>, asking: Asking) -> Judgement {
-        self.writer.note(&asked.request_id, options, matches!(act, Act::Edit(_)), asking.grant.clone());
+        self.writer.note(&asked.request_id, options, asking.card, matches!(act, Act::Edit(_)), asking.grant.clone());
         Judgement::Ask(asking)
     }
 

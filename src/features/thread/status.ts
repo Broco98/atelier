@@ -22,7 +22,7 @@ import type { RecordLine, ThreadView } from "./types";
 //
 // | 우선 | 상태 | 언제 |
 // |---|---|---|
-// | 1 | 내 차례 | 답을 기다리는 물음이 있다 — 승인 · Work 만들기 카드(`model.asks` — 앱을 다시 켜 답할 곳이 없는 물음은 접기가 걷는다) |
+// | 1 | 내 차례 | 답을 기다리는 물음이 있다 — 승인 · Work 만들기 카드 · Agent의 질문(`model.asks` — 앱을 다시 켜 답할 곳이 없는 물음은 접기가 걷는다) |
 // | 2 | 작업 중 | 어느 참여자의 턴이든 돈다 — 로그인을 기다리며 멈춘 턴은 돌지 않는 것이다 |
 // | 3 | 실패 | 로그인 필요 · 마지막 턴이 답 없이 끝났다(오류 · 프로세스 죽음 · 앱이 꺼지며 끊김) · 마지막 부르기가 답하지 못했다 |
 // | 4 | 중단 | 마지막 턴을 사람이 멈췄다 |
@@ -33,7 +33,7 @@ import type { RecordLine, ThreadView } from "./types";
 // - **부르기의 실패는 사람이 다시 말할 때까지 남는다** — 불린 Agent가 답하지 못해도 부른 Host의 턴은 그 결과를 받고 끝나므로, 마지막
 //   턴만 보면 실패가 묻힌다. 사람이 보낸 말이 그 부르기 뒤에 서면 지난 일이다. 사람이 멈춘 부르기는 실패가 아니라 중단의 몫이다.
 // - **미리보기**는 상태가 정한다 — 내 차례면 기다리는 것(「승인 · pnpm prisma migrate dev」), 작업 중이면 지금 도는 도구의 문구(보드 「pnpm
-//   test auth 실행 중」 — 도구가 없으면 마지막 말이 남는다 · Work 만들기 카드면 「Work 만들기 · 제목」, v1 티켓 30), 실패면 그 까닭(「실패」는 그리는 쪽이 앞에 단다), 중단이면 「중단했습니다」다.
+//   test auth 실행 중」 — 도구가 없으면 마지막 말이 남는다 · Work 만들기 카드면 「Work 만들기 · 제목」, v1 티켓 30 · 질문이면 「질문 · 첫 물음」, v1 티켓 26), 실패면 그 까닭(「실패」는 그리는 쪽이 앞에 단다), 중단이면 「중단했습니다」다.
 // - 실패 · 중단은 읽어도 남는다 — 읽은 자리가 가르는 것은 새 결과뿐이다. 다음 턴이 끝나면 걷힌다.
 
 /** 사이드바 Thread 줄의 상태 하나. `text`는 둘째 줄을 대신하는 글이고, `null`이면 마지막 말이 그대로 선다. */
@@ -66,7 +66,12 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
   const model = foldOf(lines, seen.goneThrough);
   const waiting = model.asks[0];
   if (waiting) {
-    const text = waiting.card === "work" ? `Work 만들기 · ${waiting.title}` : `승인 · ${waitingFor(waiting)}`;
+    const text =
+      waiting.card === "work"
+        ? `Work 만들기 · ${waiting.title}`
+        : waiting.card === "question"
+          ? `질문 · ${waiting.questions[0]?.question ?? ""}`
+          : `승인 · ${waitingFor(waiting)}`;
     return { kind: "mine", since: askedAt(lines, waiting), text };
   }
   const login = loginLine(lines);
@@ -139,10 +144,10 @@ function waitingFor(request: PendingPermission): string {
 
 /**
  * 그 물음이 선 때 — 기록의 물음 줄 시각이다. 요청 id는 Session마다 0부터 세므로 물은 참여자와 함께 찾는다(v1 티켓 25). Work 만들기
- * 카드는 `question` 줄이다(v1 티켓 30).
+ * 카드(v1 티켓 30) · Agent의 질문(v1 티켓 26)은 `question` 줄이다.
  */
 function askedAt(lines: readonly RecordLine[], request: PendingAsk): string {
-  const kind = request.card === "work" ? "question" : "permission";
+  const kind = request.card === "work" || request.card === "question" ? "question" : "permission";
   for (let at = lines.length - 1; at >= 0; at -= 1) {
     const line = lines[at];
     const payload = isObject(line.payload) ? line.payload : {};

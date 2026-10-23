@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardChoices, cardKey, decisionText, describeApproval, placeOf, skipHint } from "./approval";
+import { cardChoices, cardKey, decisionText, describeApproval, fieldLabel, placeOf, skipHint } from "./approval";
 import type { DecisionEntry, PendingPermission } from "./fold";
 
 // 승인 카드(v1 티켓 24 · 캔버스 Cards · Approval 보드 A안) — 걸린 물음을 카드의 값(제목 · Policy · 명령이나 diff · 실행할 자리)과 선택지
@@ -56,6 +56,11 @@ describe("카드의 값", () => {
       where: "api-server · fix/refund-api worktree에서 실행 · DB 스키마가 바뀝니다",
       diff: null,
     });
+  });
+
+  it("계획 넘어가기 카드는 계획대로 구현해도 되는지 묻는다(v1 티켓 26) — 계획 본문은 흐름의 계획 카드가 든다", () => {
+    const view = describeApproval(request({ kind: "switch_mode", rawInput: { plan: "1. 고친다" } }, { card: "plan", policy: "계획만" }), "Host", null);
+    expect(view).toMatchObject({ kind: "plan", title: "Host가 이 계획대로 구현해도 될까요?", policy: "계획만", command: null, subject: null });
   });
 
   it("파일 카드는 파일 · +/− · 바뀐 줄 몇 줄이다", () => {
@@ -119,7 +124,7 @@ describe("선택지 셋", () => {
     expect(cardChoices(request(migrate), "work").map((choice) => choice.label)).toEqual(["예", "아니요, 다르게 해 주세요"]);
   });
 
-  it("계획 승인은 구현 · 다시 짜기이고, 허락 · 거부 갈래가 없으면 엔진의 선택지 그대로다", () => {
+  it("계획 넘어가기는 계획대로 구현 · 계획 다시 쓰기이고(v1 티켓 26) 다시 쓰기는 고칠 점 입력칸을 연다 — 허락 · 거부 갈래가 없으면 엔진의 선택지 그대로다", () => {
     const plan = request({ kind: "switch_mode" }, {
       card: "plan",
       options: [
@@ -127,9 +132,9 @@ describe("선택지 셋", () => {
         { optionId: "revise_plan", name: "No, keep planning", kind: "reject_once" },
       ],
     });
-    expect(cardChoices(plan, "work").map((choice) => [choice.label, choice.option, choice.opensField])).toEqual([
-      ["구현", "implement_plan", false],
-      ["다시 짜기", "revise_plan", false],
+    expect(cardChoices(plan, "work").map((choice) => [choice.label, choice.option, choice.remember, choice.opensField])).toEqual([
+      ["계획대로 구현", "implement_plan", false, false],
+      ["계획 다시 쓰기", "revise_plan", false, true],
     ]);
     const odd = request(migrate, { options: [{ optionId: "go", name: "Go ahead", kind: "allow_once" }] });
     expect(cardChoices(odd, "work").map((choice) => choice.label)).toEqual(["Go ahead"]);
@@ -141,6 +146,13 @@ describe("고르기 전에 할 말(v1 티켓 25)", () => {
     expect(skipHint("command", "Host")).toBe("보내면 이 명령은 건너뛰고 Host에게 말을 전해요");
     expect(skipHint("edit", "리뷰어")).toBe("보내면 이 편집은 건너뛰고 리뷰어에게 말을 전해요");
     expect(skipHint("other", "테스터")).toBe("보내면 이 요청은 건너뛰고 테스터에게 말을 전해요");
+  });
+
+  it("계획 다시 쓰기의 입력칸은 고칠 점을 받고, 보내면 그 말대로 계획을 다시 쓴다(v1 티켓 26)", () => {
+    expect(fieldLabel("plan", "Host")).toBe("Host에게 고칠 점 알려 주기");
+    expect(fieldLabel("command", "테스터")).toBe("테스터에게 다르게 할 방법 알려 주기");
+    expect(skipHint("plan", "Host")).toBe("보내면 Host가 이 말대로 계획을 다시 써요");
+    expect(skipHint("plan", "테스터 봇")).toBe("보내면 테스터 봇이 이 말대로 계획을 다시 써요");
   });
 });
 
@@ -197,6 +209,7 @@ describe("결정 줄", () => {
       "파일 고치기를 승인함 · 이 Thread에서는 편집을 다시 묻지 않음",
     );
     expect(decisionText(decision(migrate, { allowed: false, words: "마이그레이션 없이 할 수는 없어?" }))).toBe("명령 실행을 거부함");
-    expect(decisionText(decision({ kind: "switch_mode" }, { planReview: true }))).toBe("계획을 승인함");
+    expect(decisionText(decision({ kind: "switch_mode" }, { planReview: true }))).toBe("계획대로 구현하기로 함");
+    expect(decisionText(decision({ kind: "switch_mode" }, { planReview: true, allowed: false }))).toBe("계획을 다시 쓰기로 함");
   });
 });

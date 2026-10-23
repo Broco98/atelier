@@ -8,6 +8,7 @@ import type {
   EngineCheck,
   EngineState,
   Participant,
+  QuestionAnswer,
   QuitCounts,
   RecordLine,
   StartPicks,
@@ -74,6 +75,12 @@ export const threadApi = {
    */
   answerWork: (thread: string, request: string, create: boolean, projects: string[] = [], branch: string | null = null) =>
     invoke<void>("thread_answer_work", { thread, request, create, projects, branch }),
+  /**
+   * 질문 답(v1 티켓 26) — 그 참여자(`who`)가 낸 질문(`question` 줄의 요청 id)에 물음마다의 답으로 답한다. 질문 카드의 「나중에」면
+   * `answers`를 비우고 `later`다.
+   */
+  answerQuestion: (thread: string, who: string, request: string, answers: readonly QuestionAnswer[], later = false) =>
+    invoke<void>("thread_answer_question", { thread, who, request, answers, later }),
   /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
   setModel: (thread: string, who: string, model: string) =>
     invoke<Participant>("thread_set_model", { thread, who, model }),

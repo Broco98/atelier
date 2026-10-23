@@ -19,14 +19,15 @@ use serde_json::{json, Value};
 use crate::discovery::{self, Agent, EngineCheck, MissingProgram};
 use crate::login::{self, EngineState, LoginDesk, LoginProgress, Waiter, Waiting};
 use crate::login_env::{self, AgentEnv, LoginShellError, ShellSource};
+use crate::policy::Card;
 use crate::quote::Quote;
-use crate::records::{self, PermissionLine, RecordLine, Recorder, SessionState, TurnEndLine};
+use crate::records::{self, PermissionLine, QuestionLine, RecordLine, Recorder, SessionState, TurnEndLine, QUESTION_CARD};
 use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms, Ruling, RuntimeEvent, SessionPlace, Sink, Turns};
 
 mod thread;
 mod turn_order;
 
-pub use thread::{Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
+pub use thread::{QuestionReply, Reply, StartPicks, ThreadLink, ThreadView, WorkChoice};
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
@@ -293,6 +294,15 @@ impl Conv {
             RuntimeEvent::AuthStatus(params) => self.recorder.session(SessionState::AuthStatus { params }),
             // 권한 줄은 Session의 잠금을 쥐지 않고 적는다 — 답 · 멈추기는 Session의 잠금을 쥔 채 런타임을 부르고, 런타임은 그
             // 안에서 이것을 넘긴다.
+            // 판정이 질문 카드로 물은 요청은 `question` 줄이다(v1 티켓 26) — 물음 · 답 · 거둬짐이 모두 같은 갈래로 선다.
+            RuntimeEvent::PermissionAsked(asked) if asked.asking.as_ref().is_some_and(|asking| asking.card == Card::Question) => {
+                self.recorder.question(QuestionLine::Asked {
+                    request_id: asked.request_id,
+                    card: QUESTION_CARD,
+                    questions: asked.request["_meta"]["atelier"]["questions"].clone(),
+                    tool_call: asked.tool_call,
+                })
+            }
             RuntimeEvent::PermissionAsked(asked) => {
                 let (card, policy, grant) = match asked.asking {
                     Some(asking) => (Some(asking.card), Some(asking.policy), asking.grant),
@@ -307,13 +317,23 @@ impl Conv {
                     grant,
                 })
             }
-            RuntimeEvent::PermissionAnswered { request_id, answer } => self.recorder.permission(PermissionLine::Answered {
-                request_id,
-                option_id: answer.option_id,
-                words: answer.words,
-                granted: answer.granted,
-            }),
-            RuntimeEvent::PermissionWithdrawn { request_id, reason } => {
+            RuntimeEvent::PermissionAnswered { request_id, answer, question: true } => {
+                let choice = if answer.answers.is_some() { "answer" } else { "later" };
+                let answers = answer.answers;
+                self.recorder.question(QuestionLine::Answered { request_id, card: QUESTION_CARD, choice, answers })
+            }
+            RuntimeEvent::PermissionAnswered { request_id, answer, question: false } => {
+                self.recorder.permission(PermissionLine::Answered {
+                    request_id,
+                    option_id: answer.option_id,
+                    words: answer.words,
+                    granted: answer.granted,
+                })
+            }
+            RuntimeEvent::PermissionWithdrawn { request_id, reason, question: true } => {
+                self.recorder.question(QuestionLine::Withdrawn { request_id, card: QUESTION_CARD, reason })
+            }
+            RuntimeEvent::PermissionWithdrawn { request_id, reason, question: false } => {
                 self.recorder.permission(PermissionLine::Withdrawn { request_id, reason })
             }
             RuntimeEvent::PermissionDecided { request_id, ruling, asked } => {
@@ -515,6 +535,10 @@ pub enum HostError {
     /// 「다시 묻지 않기」를 줄 수 없는 답(v1 티켓 24) — 판정이 그 물음에 허락을 내지 않았거나(`ask_before`가 물었다 · 계획 넘어가기 ·
     /// 그 밖의 도구) 허락하는 선택지가 아니다. 아무것도 적지 않았고 요청은 그대로 걸려 있다.
     PermissionNoGrant { request: String },
+    /// 질문 카드의 요청에 권한 답을 주었다(v1 티켓 26) — 질문은 질문의 답(물음마다의 답 · 나중에)으로만 닫는다. 요청은 그대로 걸려 있다.
+    NotPermission { request: String },
+    /// 권한 요청에 질문의 답을 주었다(v1 티켓 26). 요청은 그대로 걸려 있다.
+    NotQuestion { request: String },
     /// 로그인을 기다리는 Session — Runtime이 `-32000`으로 답했다. 로그인이 「됨」으로 바뀌면 호스트가 다시 띄운다
     /// (three-axes 티켓 12).
     LoginRequired { agent: Agent, thread: String },
@@ -573,6 +597,8 @@ impl fmt::Display for HostError {
             }
             HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
             HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「다시 묻지 않기」로 허락할 수 없어요 — Policy가 매번 묻게 한 일이에요"),
+            HostError::NotPermission { .. } => write!(f, "질문에는 답이나 「나중에」로 답해 주세요"),
+            HostError::NotQuestion { .. } => write!(f, "질문이 아닌 요청이에요 — 승인 카드에서 골라 주세요"),
             HostError::LoginRequired { agent, .. } => {
                 write!(f, "{} 로그인이 필요합니다. 로그인한 뒤에 보내세요", agent.display_name())
             }

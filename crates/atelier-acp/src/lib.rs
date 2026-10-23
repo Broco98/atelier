@@ -21,13 +21,14 @@ mod translator;
 
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{
-    ConversationHost, HostBuilder, HostError, HostEvent, QueuedMessage, QuitCounts, Reply, StartPicks, ThreadLink,
-    ThreadView, TranslatorCommand, WorkChoice,
+    ConversationHost, HostBuilder, HostError, HostEvent, QuestionReply, QueuedMessage, QuitCounts, Reply, StartPicks,
+    ThreadLink, ThreadView, TranslatorCommand, WorkChoice,
 };
 pub use login::{EngineState, LoginProgress};
 pub use policy::AskLevel;
 pub use login_env::{LoginShellError, ShellSource};
 pub use quote::Quote;
+pub use runtime::QuestionAnswer;
 pub use records::{RecordKind, RecordLine};
 pub use thread_tools::{run_thread_tools, THREAD_TOOLS_MODE};
 pub use translator::{run_claude_translator, CLAUDE_TRANSLATOR_MODE};

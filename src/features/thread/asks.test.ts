@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { askTurn, nextOf } from "./asks";
-import { answeringLine, foldThread, type PendingPermission } from "./fold";
+import { answeringLine, foldThread, type PendingPermission, type PendingQuestion } from "./fold";
 import type { RecordLine } from "./types";
 
 // 물음 차례(v1 티켓 25 · 구현 스펙 §9 카드 · 캔버스 Approval 보드 A안 「두 Agent가 함께 물을 때」) — 한 Thread에 걸린 물음이 여럿이면
@@ -218,5 +218,10 @@ describe("카드 아래 다음 줄", () => {
     expect(nextOf(edit, "Host")).toMatchObject({ particle: "가", subject: "refund.ts", what: "수정을 기다려요" });
     const plan = pendingOf({ kind: "switch_mode", title: "Ready to code?", rawInput: { plan: "1. 고친다" } });
     expect(nextOf(plan, "Host")).toMatchObject({ subject: null, what: "계획 승인을 기다려요" });
+  });
+
+  it("질문은 대상 없이 답을 기다린다(v1 티켓 26)", () => {
+    const question: PendingQuestion = { card: "question", requestId: "0", who: "host", toolCall: {}, questions: [] };
+    expect(nextOf(question, "Host")).toEqual({ name: "Host", particle: "가", subject: null, mono: false, what: "질문의 답을 기다려요" });
   });
 });

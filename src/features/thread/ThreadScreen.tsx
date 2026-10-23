@@ -6,6 +6,7 @@ import { PlainFrame } from "@/components/shell/PlainFrame";
 import { useWorks } from "@/features/works/hooks";
 import { AgentFace, FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
+import QuestionCard from "./QuestionCard";
 import { threadApi } from "./api";
 import { placeOf } from "./approval";
 import { askTurn, nextOf } from "./asks";
@@ -63,6 +64,7 @@ import WorkProposalCard from "./WorkProposalCard";
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 그 Work 화면)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
+// - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
 //   입력창의 @ 메뉴는 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의 Session
@@ -502,6 +504,16 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
                     key={`${asking.who}\u0000${asking.requestId}`}
                     thread={thread}
                     card={asking}
+                    count={turn?.count}
+                    next={askNext}
+                  />
+                ) : asking.card === "question" ? (
+                  <QuestionCard
+                    key={`${asking.who}\u0000${asking.requestId}`}
+                    thread={thread}
+                    name={model.cast[asking.who]?.name ?? asking.who}
+                    avatar={model.cast[asking.who]?.avatar ?? null}
+                    request={asking}
                     count={turn?.count}
                     next={askNext}
                   />

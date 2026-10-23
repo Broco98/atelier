@@ -7,7 +7,7 @@
 mod common;
 
 use atelier_acp::{ConversationHost, Reply, ThreadLink};
-use common::{of_kind, Sandbox, RECORDED_PLACE};
+use common::{of_kind, wait_until, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
 const HOST_MD: &str = "---\nname: Host\n---\n\n너는 시험 Thread의 Host다.\n";
@@ -40,14 +40,22 @@ fn wait_permission(sandbox: &Sandbox, thread: &str, who: &str, state: &str) -> V
     first(&sandbox.wait_thread_record(thread, |record| first(record).is_some())).expect("기다린 줄")
 }
 
-/// 그 Session의 claude가 받은 권한 답들.
-fn decisions(sandbox: &Sandbox, session: &str) -> Vec<Value> {
-    sandbox
-        .claude_stdin(session)
-        .into_iter()
-        .filter(|line| line["type"] == "control_response")
-        .map(|line| line["response"]["response"].clone())
-        .collect()
+/// 그 Session의 claude가 받은 권한 답들 — `n`개가 닿을 때까지 기다린다. 답 줄은 답을 보내기 직전에 적히므로(`Turns::answer`) 답 줄을
+/// 본 바로 뒤에는 claude가 아직 받지 못했을 수 있다.
+fn decisions(sandbox: &Sandbox, session: &str, n: usize) -> Vec<Value> {
+    wait_until("claude가 권한 답을 다 받지 않았다", || {
+        let got: Vec<Value> = sandbox
+            .claude_stdin(session)
+            .into_iter()
+            .filter(|line| line["type"] == "control_response")
+            .map(|line| line["response"]["response"].clone())
+            .collect();
+        if got.len() >= n {
+            Ok(got)
+        } else {
+            Err(format!("{got:?}"))
+        }
+    })
 }
 
 fn reply(host: &ConversationHost, thread: &str, asked: &Value, reply: &Reply) {
@@ -98,9 +106,9 @@ fn 카드에서_고르기_전에_쓴_말은_그_요청을_거부하며_그_agent
     assert_eq!((answered["payload"]["optionId"].clone(), answered["payload"]["words"].clone()), (json!("reject"), json!(words)));
     let told = format!("사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n{words}");
     let host_session = sandbox.thread_session_id(&thread, "host");
-    assert_eq!(decisions(&sandbox, &host_session), [json!({"behavior": "deny", "message": told})], "말은 Host가 받는다");
+    assert_eq!(decisions(&sandbox, &host_session, 1), [json!({"behavior": "deny", "message": told})], "말은 Host가 받는다");
     let tester_session = sandbox.thread_session_id(&thread, "tester");
-    assert_eq!(decisions(&sandbox, &tester_session), Vec::<Value>::new(), "테스터는 아직 아무 답도 받지 않았다");
+    assert_eq!(decisions(&sandbox, &tester_session, 0), Vec::<Value>::new(), "테스터는 아직 아무 답도 받지 않았다");
     assert!(
         !permissions(&sandbox.thread_record(&thread), "tester").iter().any(|line| line["payload"]["state"] != "asked"),
         "테스터의 물음은 그대로 걸려 있다"
@@ -110,8 +118,8 @@ fn 카드에서_고르기_전에_쓴_말은_그_요청을_거부하며_그_agent
     reply(&host, &thread, &second, &Reply::pick("allow_once"));
     let answered = wait_permission(&sandbox, &thread, "tester", "answered");
     assert_eq!(answered["payload"]["optionId"], "allow_once");
-    assert_eq!(decisions(&sandbox, &tester_session)[0]["behavior"], "allow");
-    assert_eq!(decisions(&sandbox, &host_session).len(), 1, "Host는 제 답 하나만 받았다");
+    assert_eq!(decisions(&sandbox, &tester_session, 1)[0]["behavior"], "allow");
+    assert_eq!(decisions(&sandbox, &host_session, 1).len(), 1, "Host는 제 답 하나만 받았다");
 
     host.shut_down();
 }

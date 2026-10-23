@@ -83,12 +83,21 @@ impl Ruling {
 }
 
 /// 사람의 권한 답(v1 티켓 24) — 고른 선택지에, 함께 남긴 말과 「다시 묻지 않기」로 준 허락이 든다. 말은 Agent에게 간다(거절과
-/// 함께 다르게 할 방법 — [`Answer::response`]). 둘 다 답 줄(`answered`)에 선다.
+/// 함께 다르게 할 방법 — [`Answer::response`]). 둘 다 답 줄(`answered`)에 선다. 질문 카드의 답이면(v1 티켓 26) 물음마다의 답이
+/// 든다 — Agent에게 `_meta.atelier.answers`(물음 → 답)로 간다.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Answer {
     pub option_id: String,
     pub words: Option<String>,
     pub granted: Option<Granted>,
+    pub answers: Option<Vec<QuestionAnswer>>,
+}
+
+/// 질문 카드에서 물음 하나에 준 답(v1 티켓 26) — 고른 선택지의 이름, 여럿 고르면 쉼표로 이은 것, 또는 직접 쓴 말. 답 줄의 `answers`다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionAnswer {
+    pub question: String,
+    pub answer: String,
 }
 
 /// 「다시 묻지 않기」로 준 허락 — 규칙 이름들과 그것을 둔 자리(이은 Work, 없으면 그 Thread). 답 줄의 `granted`다.
@@ -108,9 +117,17 @@ impl Answer {
     /// 권한 요청의 답 — 남긴 말이 있으면 Agent에게 줄 글로 싣는다(Claude 변환기는 거부의 `message`로 넘긴다, 티켓 18과 같은 칸).
     fn response(&self) -> Value {
         let outcome = json!({"outcome": "selected", "optionId": self.option_id});
-        match &self.words {
-            Some(words) => json!({"outcome": outcome, "_meta": {"atelier": {"message": told(words)}}}),
-            None => json!({"outcome": outcome}),
+        let mut atelier = serde_json::Map::new();
+        if let Some(words) = &self.words {
+            atelier.insert("message".into(), json!(told(words)));
+        }
+        if let Some(answers) = &self.answers {
+            let asked = answers.iter().map(|one| (one.question.clone(), json!(one.answer))).collect();
+            atelier.insert("answers".into(), Value::Object(asked));
+        }
+        match atelier.is_empty() {
+            true => json!({"outcome": outcome}),
+            false => json!({"outcome": outcome, "_meta": {"atelier": atelier}}),
         }
     }
 }
@@ -193,11 +210,11 @@ pub(crate) enum RuntimeEvent {
     /// 권한 요청이 왔다. 대기 요청 표에 넣은 뒤에 넘긴다 — 이것을 받은 쪽은 곧바로 답할 수 있다.
     PermissionAsked(PermissionAsked),
     /// 걸린 권한 요청에 사람이 답했다 — 고른 선택지와 함께 남긴 것(v1 티켓 24). 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은
-    /// 에이전트가 이어 보내는 update보다 앞에 선다.
-    PermissionAnswered { request_id: String, answer: Answer },
+    /// 에이전트가 이어 보내는 update보다 앞에 선다. `question`은 판정이 질문 카드로 물은 요청이었나다(v1 티켓 26).
+    PermissionAnswered { request_id: String, answer: Answer, question: bool },
     /// 걸린 권한 요청이 거둬졌다 — 우리가 턴을 끊었거나, 에이전트가 답을 기다리지 않고 턴을 끝냈거나, 에이전트가 죽었다. 그
     /// 턴의 끝(죽음이면 죽음)보다 앞에 넘긴다.
-    PermissionWithdrawn { request_id: String, reason: Withdrawal },
+    PermissionWithdrawn { request_id: String, reason: Withdrawal, question: bool },
     /// 엔진이 사람에게 묻지 않고 답했다(v1 티켓 18). 에이전트에 답을 보내기 **전에** 넘긴다. 받은 자리에서 [`Judge`]가 답했으면 그
     /// 요청(`asked`)을 싣는다 — 그 요청에는 물음이 넘어가지 않았다. 걸린 요청에 엔진이 답했으면([`Turns::rule`]) 없다.
     PermissionDecided { request_id: String, ruling: Ruling, asked: Option<PermissionAsked> },
@@ -287,11 +304,13 @@ struct Permissions {
     tool_calls: Mutex<HashMap<String, serde_json::Map<String, Value>>>,
 }
 
-/// 답을 기다리는 권한 요청 하나 — 답할 자리와 에이전트가 준 선택지들.
+/// 답을 기다리는 권한 요청 하나 — 답할 자리와 에이전트가 준 선택지들. 판정이 질문 카드로 물었나(v1 티켓 26)를 함께 쥔다 — 답 ·
+/// 거둬짐이 같은 갈래의 줄로 남는다.
 struct Pending {
     request_id: String,
     option_ids: Vec<String>,
     responder: Responder<Value>,
+    question: bool,
 }
 
 /// 도구 요지로 채우는 칸 — 제목 · 종류 · 입력(워크플로 S21).
@@ -343,7 +362,7 @@ impl Permissions {
     /// 걸린 요청을 모두 거둔다 — 까닭을 넘기고 `cancelled`로 답한다. 표의 잠금을 쥔 채 부른다.
     fn withdraw_all(pending: &mut Vec<Pending>, reason: Withdrawal, sink: &Sink) {
         for asked in pending.drain(..) {
-            sink(RuntimeEvent::PermissionWithdrawn { request_id: asked.request_id, reason });
+            sink(RuntimeEvent::PermissionWithdrawn { request_id: asked.request_id, reason, question: asked.question });
             // 답을 기다리지 않는 에이전트에게도 답은 간다 — JSON-RPC의 요청은 모두 답을 받는다. 연결이 끊겼으면 갈 곳이 없다.
             let _ = asked.responder.respond(json!({"outcome": {"outcome": "cancelled"}}));
         }
@@ -534,9 +553,10 @@ pub(crate) fn open(
                         Some(Judgement::Decide(_)) | None => {}
                     }
                     let request_id = asked_now.request_id.clone();
+                    let question = asked_now.asking.as_ref().is_some_and(|asking| asking.card == Card::Question);
                     let mut pending = tabled.lock();
                     let orphan = tabled.closed.load(Ordering::SeqCst);
-                    pending.push(Pending { request_id, option_ids, responder });
+                    pending.push(Pending { request_id, option_ids, responder, question });
                     asked(RuntimeEvent::PermissionAsked(asked_now));
                     if orphan {
                         // 죽은 에이전트의 늦은 줄이다 — 넘긴 자리에서 곧바로 거둔다.
@@ -948,7 +968,7 @@ impl Turns {
         let asked = Self::take_pending(&mut pending, request_id, &answer.option_id)?;
         let response = answer.response();
         if let Some(sink) = self.sink.upgrade() {
-            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, answer: answer.clone() });
+            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, answer: answer.clone(), question: asked.question });
         }
         asked
             .responder

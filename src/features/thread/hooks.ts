@@ -5,7 +5,9 @@ import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
+import { askLevelOf } from "./chips";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
+import { isObject } from "./json";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
@@ -123,12 +125,7 @@ export function useThreadFeeds(): void {
       onThreadRecord(({ thread, line }) => {
         mergeLines(thread, [line]);
         if (isLoginRequired(line)) markLoginRequired();
-        // Agent가 Library에 Agent를 저장했다(v1 티켓 19) — @ 메뉴 · Library 화면의 목록과 파일을 다시 읽는다. 엔진은 Library가
-        // 바뀌었다는 이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
-        if (line.kind === "library") {
-          void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
-          void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });
-        }
+        followRecordLine(queryClient, thread, line);
       }),
       onThreadQueue(({ thread, who, queue }) => setQueue(thread, who, queue)),
       onThreadList((summary) => putSummary(queryClient, summary)),
@@ -138,6 +135,25 @@ export function useThreadFeeds(): void {
       for (const one of unlisten) void one.then((fn) => fn());
     };
   }, [queryClient]);
+}
+
+/**
+ * 기록 줄 하나가 쿼리 캐시에 미치는 것 — 줄을 스토어에 쌓는 것은 부르는 쪽(`useThreadFeeds`)이다.
+ *
+ * - Agent가 Library에 Agent를 저장했다(v1 티켓 19) — @ 메뉴 · Library 화면의 목록과 파일을 다시 읽는다. 엔진은 Library가 바뀌었다는
+ *   이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
+ * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
+ *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획만에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
+ */
+export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
+  if (line.kind === "library") {
+    void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
+    void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });
+  }
+  if (line.kind === "mode" && isObject(line.payload)) {
+    const level = askLevelOf(line.payload.mode);
+    if (level) putAskLevel(queryClient, thread, level.value);
+  }
 }
 
 /** 그 Thread의 대기 줄 — 참여자마다의 것을 차례로 잇는다. 이벤트가 온 Session은 그 값, 아니면 열 때 읽은 값이다. */
@@ -200,15 +216,18 @@ export function useSetMode() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ thread, mode }: { thread: string; mode: AskLevel }) => threadApi.setMode(thread, mode),
-    onSuccess: (_, { thread, mode }) => {
-      const work = queryClient.getQueryData<ThreadView>(threadKey(thread))?.work ?? null;
-      for (const [key, view] of queryClient.getQueriesData<ThreadView>({ queryKey: ["thread"] })) {
-        if (view && (view.id === thread || (work !== null && view.work === work))) {
-          queryClient.setQueryData<ThreadView>(key, { ...view, askLevel: mode });
-        }
-      }
-    },
+    onSuccess: (_, { thread, mode }) => putAskLevel(queryClient, thread, mode),
   });
+}
+
+/** 연 Thread의 지금 정도를 고친다 — Work에 이은 Thread면 정도가 그 Work의 것이라 같은 Work에 이은 다른 Thread의 연 캐시도 함께다. */
+function putAskLevel(queryClient: QueryClient, thread: string, mode: AskLevel): void {
+  const work = queryClient.getQueryData<ThreadView>(threadKey(thread))?.work ?? null;
+  for (const [key, view] of queryClient.getQueriesData<ThreadView>({ queryKey: ["thread"] })) {
+    if (view && (view.id === thread || (work !== null && view.work === work))) {
+      queryClient.setQueryData<ThreadView>(key, { ...view, askLevel: mode });
+    }
+  }
 }
 
 /**

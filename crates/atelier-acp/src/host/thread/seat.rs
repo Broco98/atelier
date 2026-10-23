@@ -26,6 +26,7 @@ use serde_json::Value;
 use super::call::subject;
 use super::SessionKey;
 use crate::host::{Conv, OutOfTurn};
+use crate::policy::Card;
 use crate::runtime::{Ruling, RuntimeEvent, Sink};
 
 /// 쓰기 자리의 표 — Work slug → 쥔 Session. 호스트에 하나다. 잠금은 짧게만 쥐고, 쥔 채 대화의 잠금을 쥐지 않는다(대화 → 표의 차례).
@@ -96,6 +97,8 @@ pub(super) struct Writer {
 struct Noted {
     /// 그 요청의 선택지(`optionId`, `kind`).
     options: Vec<(String, String)>,
+    /// 세운 카드 — 질문의 답과 권한 답이 엇갈리지 않게, 계획 넘어가기의 허락이 「계획만」을 나가게(v1 티켓 26).
+    card: Card,
     /// 편집인가 — 사람이 허락하면 쓰기 자리를 쥔다.
     edit: bool,
     /// 「다시 묻지 않기」로 줄 허락 — 판정이 물음과 함께 낸 규칙 이름들. 비었으면 줄 수 없다.
@@ -147,8 +150,13 @@ impl Writer {
 
     /// 사람에게 묻는 요청을 적어 둔다 — 편집을 허락하는 답이면 쥐고([`Writer::grant`]), 「다시 묻지 않기」면 그 허락을 읽는다
     /// ([`Writer::remembered`]).
-    pub(super) fn note(&self, request_id: &str, options: Vec<(String, String)>, edit: bool, grant: Vec<String>) {
-        self.lock_asked().insert(request_id.to_owned(), Noted { options, edit, grant });
+    pub(super) fn note(&self, request_id: &str, options: Vec<(String, String)>, card: Card, edit: bool, grant: Vec<String>) {
+        self.lock_asked().insert(request_id.to_owned(), Noted { options, card, edit, grant });
+    }
+
+    /// 물은 요청의 카드와 선택지 — 사람이 답하기 전에 그 요청이 아직 걸려 있는지 · 어느 카드인지 본다. 이미 닫혔으면 없다.
+    pub(super) fn asked(&self, request: &str) -> Option<(Card, Vec<(String, String)>)> {
+        self.lock_asked().get(request).map(|noted| (noted.card, noted.options.clone()))
     }
 
     /// 사람이 「다시 묻지 않기」로 그 선택지를 고르면 줄 허락 — 물은 요청이고, 허락하는 선택지이고, 판정이 허락을 냈을 때만 있다.

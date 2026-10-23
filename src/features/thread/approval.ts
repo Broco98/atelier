@@ -15,8 +15,9 @@ import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFiel
 //   `allow_always`)은 Runtime이 기억해 판정에 오지 않게 하므로 고르지 않는다(v1 티켓 22와 같은 까닭). 기억은 Atelier가 한다: 둘째는
 //   판정이 물음과 함께 낸 허락(`grant`)을 점 파일에 적는다 — 그 허락이 없는 물음(`ask_before`가 물었다 · 계획 · 그 밖의 도구)에는 둘째가
 //   서지 않는다(허락은 `ask_before`를 넘기지 못한다). 셋째는 카드 안에 입력칸을 열고, 보내면 거부와 그 말이 Agent에게 간다.
-//   계획 승인(kind `switch_mode`)만 엔진의 두 선택지를 「구현」 · 「다시 짜기」로 부른다(three-axes 결정 29 — 질문 · 계획 카드는 v1 티켓
-//   26). 허락 · 거부 갈래를 고를 수 없는 요청이면 엔진의 선택지를 그대로 보인다.
+//   **계획 넘어가기**(kind `switch_mode`, v1 티켓 26 · 스토리 88)는 엔진의 두 선택지를 「계획대로 구현」 · 「계획 다시 쓰기」로 부르고,
+//   다시 쓰기가 고칠 점 입력칸을 연다 — 보내면 그 말이 고정 문구와 함께 Agent에게 간다(Claude 변환기). 허락 · 거부 갈래를 고를 수 없는
+//   요청이면 엔진의 선택지를 그대로 보인다.
 
 /** 카드의 갈래 — 명령 카드 · 파일 카드 · 계획 · 그 밖의 도구(웹 · MCP · 읽기 …). */
 export type CardKind = "command" | "edit" | "plan" | "other";
@@ -49,7 +50,7 @@ export function describeApproval(request: PendingPermission, name: string, place
   const ask = (what: string) => `${name}${particle(name, "이", "가")} ${what}`;
   const base = { policy: request.policy, command: null, diff: null, subject: null, where: null };
 
-  if (request.planReview) return { ...base, kind: "plan", title: "이 계획대로 할까요?" };
+  if (request.planReview) return { ...base, kind: "plan", title: ask("이 계획대로 구현해도 될까요?") };
   const mcp = mcpOf(fields);
   if (mcp) return { ...base, kind: "other", title: ask("이 MCP 도구를 써도 될까요?"), subject: `${mcp.server} · ${mcp.tool}` };
   const path = pathOf(call, rawInput);
@@ -134,7 +135,11 @@ export function cardChoices(request: PendingPermission, scope: "work" | "thread"
     kinds.map((kind) => request.options.find((option) => option.kind === kind)).find((option) => option !== undefined);
   if (request.planReview) {
     return request.options.map((option) =>
-      pick(option, option.kind.startsWith("allow") ? "구현" : option.kind.startsWith("reject") ? "다시 짜기" : option.name),
+      option.kind.startsWith("allow")
+        ? pick(option, "계획대로 구현")
+        : option.kind.startsWith("reject")
+          ? pick(option, "계획 다시 쓰기", { opensField: true })
+          : pick(option, option.name),
     );
   }
   const allow = of("allow_once", "allow_always");
@@ -157,7 +162,14 @@ const SKIPPED: Readonly<Record<CardKind, string>> = { command: "이 명령은", 
  * 아래에 서는 한 줄이다. 승인을 기다리는 Agent는 그사이 다른 말에 답하지 못해서, 보내면 그 요청을 거부하고 말이 거부의 글로 간다.
  */
 export function skipHint(kind: CardKind, name: string): string {
+  // 계획 다시 쓰기의 말은 건너뛰기가 아니라 고칠 점이다(v1 티켓 26).
+  if (kind === "plan") return `보내면 ${name}${particle(name, "이", "가")} 이 말대로 계획을 다시 써요`;
   return `보내면 ${SKIPPED[kind]} 건너뛰고 ${name}에게 말을 전해요`;
+}
+
+/** 카드 안 입력칸의 이름 — 「아니요, 다르게 해 주세요」는 다르게 할 방법을, 「계획 다시 쓰기」는 고칠 점을 받는다(v1 티켓 26). */
+export function fieldLabel(kind: CardKind, name: string): string {
+  return kind === "plan" ? `${name}에게 고칠 점 알려 주기` : `${name}에게 다르게 할 방법 알려 주기`;
 }
 
 /** 카드가 받은 키 — 물리 키(`code`)와 수식키 넷(`hotkeys.ts`의 `KeyChord`와 같은 까닭으로 `KeyboardEvent`를 이름으로 받지 않는다). */
@@ -212,8 +224,10 @@ const DECIDED: Readonly<Record<string, string>> = {
  * 않음」 · 「명령 실행을 거부함」. 남긴 말은 그리는 쪽이 글 뒤에 따로 든다.
  */
 export function decisionText(entry: DecisionEntry): string {
+  // 계획 넘어가기는 고른 것 그대로다(v1 티켓 26) — 「계획을 승인함」은 무엇이 이어지는지 말하지 않는다.
+  if (entry.planReview) return entry.allowed ? "계획대로 구현하기로 함" : "계획을 다시 쓰기로 함";
   const fields = toolFields(entry.toolCall);
-  const what = entry.planReview ? "계획을" : mcpOf(fields) ? "MCP 도구 쓰기를" : (DECIDED[fields.kind] ?? "도구 쓰기를");
+  const what = mcpOf(fields) ? "MCP 도구 쓰기를" : (DECIDED[fields.kind] ?? "도구 쓰기를");
   const decided = `${what} ${entry.allowed ? "승인함" : "거부함"}`;
   if (!entry.granted) return decided;
   const where = entry.granted.work ? "이 Work에서는" : "이 Thread에서는";

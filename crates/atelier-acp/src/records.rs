@@ -19,7 +19,7 @@ use crate::host::{Emit, HostEvent, QueuedMessage};
 use crate::past;
 use crate::policy::Card;
 use crate::quote::Quote;
-use crate::runtime::{Granted, How, Withdrawal};
+use crate::runtime::{Granted, How, QuestionAnswer, Withdrawal};
 
 /// 기록을 읽거나 쓰지 못한 까닭 — 사람이 읽을 글이다.
 pub(crate) type RecordError = String;
@@ -78,6 +78,29 @@ pub(crate) enum PermissionLine {
         tool_call: Option<Value>,
     },
 }
+
+/// `question` 줄의 payload — Agent가 낸 질문과 답(v1 티켓 26 · 구현 스펙 §4). 권한 줄처럼 `state`로 가르고 같은 요청의 줄들을
+/// `requestId`로 잇는다 — 질문은 권한 요청과 같은 길(같은 대기 표 · 같은 요청 id)로 오고, 판정이 질문 카드로 물은 요청만 이 줄이 된다.
+/// `card`는 질문 카드의 갈래다 — 같은 종류의 줄을 Work 만들기 카드도 쓴다(v1 티켓 30, `card: work`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub(crate) enum QuestionLine {
+    /// 물음 — 물음들(`questions`: 물음 · 머리 · 선택지 · 여럿 고르기, Runtime을 가리지 않는 꼴)과 도구 요지(`toolCall`).
+    Asked { request_id: String, card: &'static str, questions: Value, tool_call: Value },
+    /// 답 — 답했으면 `choice: answer`와 물음마다의 답, 나중에 답하기로 했으면 `choice: later`.
+    Answered {
+        request_id: String,
+        card: &'static str,
+        choice: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        answers: Option<Vec<QuestionAnswer>>,
+    },
+    /// 거둬짐 — 권한 줄의 거둬짐과 같은 까닭이다.
+    Withdrawn { request_id: String, card: &'static str, reason: Withdrawal },
+}
+
+/// 질문 카드의 `card` — Agent의 질문(v1 티켓 26).
+pub(crate) const QUESTION_CARD: &str = "question";
 
 /// `session` 줄의 payload. `state`로 가른다. 적는 쪽과 기록을 다시 읽는 쪽([`heard_since_session_start`])이 이 타입 하나를
 /// 쓴다 — 적을 때 빼는 칸은 읽을 때 빈 값이다.
@@ -200,6 +223,10 @@ impl Recorder {
 
     pub(crate) fn permission(&self, line: PermissionLine) -> Result<(), RecordError> {
         self.write(RecordKind::Permission, serde_json::to_value(line).expect("permission 줄은 JSON이다"))
+    }
+
+    pub(crate) fn question(&self, line: QuestionLine) -> Result<(), RecordError> {
+        self.write(RecordKind::Question, serde_json::to_value(line).expect("question 줄은 JSON이다"))
     }
 
     /// 사람이 바꾼 것 — `{"model": "sonnet"}` · `{"effort": "high"}`처럼 바꾼 칸과 새 값.

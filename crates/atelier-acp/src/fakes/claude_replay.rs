@@ -125,6 +125,9 @@ pub struct Setup {
     pub session_id: String,
     /// 있으면 내는 `can_use_tool`마다 `permission_suggestions`를 이 값으로 바꾼다.
     pub suggestions: Option<Value>,
+    /// 있으면 내는 `can_use_tool`마다 그 요청을 이 입력의 `AskUserQuestion`으로 바꾼다(v1 티켓 26) — 사람에게 묻는 claude의 녹음이
+    /// 없다. 도구 이름과 입력만 바꾸고 요청 id · 도구 id는 녹화 그대로라, 답한 뒤에는 녹화의 그 도구가 이어진다.
+    pub question: Option<Value>,
     pub hold: Option<Hold>,
     /// 있으면 `initialize` 응답의 계정 칸(`account.email` · `organization`)에 싣는다 — 실측 원문은 이미 가려져 있어, 가리기를
     /// 재려면 진짜 같은 이메일이 실려 와야 한다.
@@ -185,6 +188,7 @@ fn fixture_turns(text: &str) -> (Vec<Step>, Vec<Turn>) {
 pub struct Replay {
     session_id: String,
     suggestions: Option<Value>,
+    question: Option<Value>,
     hold: Option<Hold>,
     email: Option<String>,
     turns: VecDeque<Turn>,
@@ -225,6 +229,7 @@ impl Replay {
         let mut replay = Self {
             session_id: setup.session_id,
             suggestions: setup.suggestions,
+            question: setup.question,
             hold: setup.hold,
             email: setup.email,
             turns: turns.into(),
@@ -352,6 +357,10 @@ impl Replay {
                     if line["type"] == "control_request" && line["request"]["subtype"] == "can_use_tool" {
                         if let Some(suggestions) = &self.suggestions {
                             line["request"]["permission_suggestions"] = suggestions.clone();
+                        }
+                        if let Some(question) = &self.question {
+                            line["request"]["tool_name"] = json!("AskUserQuestion");
+                            line["request"]["input"] = question.clone();
                         }
                         let request_id = line["request_id"].clone();
                         let tool_use_id = line["request"]["tool_use_id"].clone();

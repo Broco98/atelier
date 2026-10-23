@@ -719,3 +719,99 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     expect(foldThread(through(working, 8), 8).asks).toEqual([]);
   });
 });
+
+describe("질문 카드(v1 티켓 26)", () => {
+  /**
+   * Host가 물음 둘을 내고 사람이 답한 축복 기록 — 8 도구 줄 · 9 질문 · 10 답 · 11 그 도구 끝 · 12 답 · 14 턴 끝. 사람에게 묻는 claude의
+   * 녹음이 없어 가짜 claude가 녹화의 `Write` 물음을 질문으로 바꿔 냈다 — 그래서 도구 줄은 `Write`다.
+   */
+  const asked = record("thread-question");
+  const answer = (payload: Record<string, unknown>): RecordLine => ({
+    seq: 10,
+    at: at(10),
+    kind: "question",
+    who: "host",
+    payload: { requestId: "0", card: "question", ...payload },
+  });
+
+  it("질문 줄이 오면 물음 차례에 질문으로 서고, 그 도구 줄은 질문 줄이 대신한다", () => {
+    const model = foldThread(through(asked, 9));
+    expect(model.asks.map((one) => [one.card, one.who, one.requestId])).toEqual([["question", "host", "0"]]);
+    const question = model.asks[0];
+    expect(question.card === "question" && question.questions.map((one) => [one.question, one.multiSelect, one.options.length])).toEqual([
+      ["부분 환불 수수료는 어떻게 할까요?", false, 3],
+      ["어느 화면에 보일까요?", true, 2],
+    ]);
+    expect(question.card === "question" && question.questions[0].options[0]).toEqual({
+      label: "비율대로 돌려준다",
+      description: "환불한 금액만큼 나눠 돌려줘요",
+    });
+    const entries = model.turns[0].entries;
+    expect(entries.filter((entry) => entry.kind === "tool")).toEqual([]);
+    expect(entries.filter((entry) => entry.kind === "question").map((entry) => entry.kind === "question" && entry.choice)).toEqual([null]);
+  });
+
+  it("답하면 질문이 걷히고 그 자리에 답한 것이 서며, 그 도구의 늦은 줄은 도구 줄을 되살리지 않는다", () => {
+    const model = foldThread(asked);
+    expect(model.asks).toEqual([]);
+    const entries = model.turns[0].entries.filter((entry) => entry.kind !== "thought");
+    expect(entries.map((entry) => entry.kind)).toEqual(["question", "message"]);
+    const question = entries[0];
+    expect(question.kind === "question" && [question.choice, question.answers]).toEqual([
+      "answer",
+      [
+        { question: "부분 환불 수수료는 어떻게 할까요?", answer: "비율대로 돌려준다" },
+        { question: "어느 화면에 보일까요?", answer: "주문 상세, 환불 내역" },
+      ],
+    ]);
+    // 답한 줄은 도구 줄처럼 턴 끝 메시지의 앞을 가른다.
+    expect(finalMessages(model.turns[0]).map((entry) => entry.kind === "message" && entry.text)).toEqual(["done"]);
+  });
+
+  it("나중에는 답 없이 그 자리에 남고, 거둬진 질문은 아무것도 남지 않는다", () => {
+    const later = foldThread([...through(asked, 9), answer({ state: "answered", choice: "later" })]);
+    expect(later.asks).toEqual([]);
+    const entry = later.turns[0].entries.find((one) => one.kind === "question");
+    expect(entry?.kind === "question" && [entry.choice, entry.answers]).toEqual(["later", []]);
+
+    const withdrawn = foldThread([...through(asked, 9), answer({ state: "withdrawn", reason: "stopped" })]);
+    expect(withdrawn.asks).toEqual([]);
+    expect(withdrawn.turns[0].entries.filter((one) => one.kind === "question" || one.kind === "tool")).toEqual([]);
+  });
+
+  it("다른 갈래의 질문 줄(Work 만들기 카드 — v1 티켓 30)은 질문 카드가 아니다", () => {
+    const work: RecordLine = {
+      seq: 9,
+      at: at(9),
+      kind: "question",
+      who: "host",
+      payload: { state: "asked", requestId: "w", card: "work", title: "환불 API 버그 수정" },
+    };
+    const model = foldThread([...through(asked, 8), work]);
+    expect(model.asks.map((one) => one.card)).toEqual(["work"]);
+    expect(model.turns[0].entries.filter((entry) => entry.kind === "question")).toEqual([]);
+  });
+
+  it("승인과 질문이 함께 걸리면 온 차례로 서고, 질문을 기다리는 참여자도 「답하는 중」에 서지 않는다", () => {
+    const permission: RecordLine = {
+      seq: 10,
+      at: at(10),
+      kind: "permission",
+      who: "tester",
+      payload: {
+        state: "asked",
+        requestId: "0",
+        request: { options: [{ optionId: "allow_once", name: "Yes", kind: "allow_once" }] },
+        toolCall: { toolCallId: "x", kind: "execute", rawInput: { command: "pnpm test" } },
+        card: "command",
+        policy: "매번 묻기",
+      },
+    };
+    const model = foldThread([...through(asked, 9), permission]);
+    expect(model.asks.map((one) => [one.card, one.who])).toEqual([
+      ["question", "host"],
+      ["command", "tester"],
+    ]);
+    expect(answeringLine(model)).toBe(null);
+  });
+});

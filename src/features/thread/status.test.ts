@@ -111,6 +111,16 @@ describe("내 차례", () => {
     expect(statusOf(through(asking, 10), live(0))?.kind).toBe("working");
   });
 
+  // Agent의 질문(v1 티켓 26)도 같은 물음 차례다 — 미리보기는 첫 물음이다(Sidebar 보드 「질문 · 수수료는 어떻게 할까요?」).
+  it("질문이 서 있으면 내 차례이고, 미리보기는 「질문 · 」 뒤의 첫 물음이다", () => {
+    const asked = record("thread-question");
+    expect(statusOf(through(asked, 9), live(0))).toEqual({
+      kind: "mine",
+      since: "2026-10-10T10:00:09.000+09:00",
+      text: "질문 · 부분 환불 수수료는 어떻게 할까요?",
+    });
+  });
+
   // Work 만들기 카드(v1 티켓 30)도 사람의 답을 기다리는 물음이다 — 같은 물음 차례에 선다(`ThreadModel.asks`).
   it("Work 만들기 카드가 서 있으면 내 차례이고, 미리보기는 만들 Work의 제목이다", () => {
     const working = record("thread-work");

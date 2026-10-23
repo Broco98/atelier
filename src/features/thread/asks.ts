@@ -11,9 +11,10 @@ import { describeTool } from "./tool-view";
 //   (요청 id는 Session마다 따로 센다).
 // - **「1 / 2」는 묶음 안의 자리다** — 묶음은 걸린 물음이 하나라도 있는 동안 이어진다. 앞의 것에 답하면 다음 것이 「2 / 2」로 서고, 다
 //   닫히면 묶음이 끝난다. 묶음에 물음이 하나뿐이면 세지 않는다(보드 「기다리는 순간」).
-// - **카드 종류가 늘어도 같은 차례다**(§9 「Agent가 고를 답을 내미는 질문도 같은 자리, 같은 차례」) — 질문 카드(v1 티켓 26)는 그 물음을
-//   같은 `pending`(같은 열쇠 · 같은 닫힘)에 넣고, 이 함수와 다음 줄의 글(`nextOf`)에 갈래를 더한다. Work 만들기 카드(v1 티켓 30)가 그
-//   첫 갈래다 — 걸린 물음 모두(`ThreadModel.asks`)가 차례이고, 다음 줄은 「다음 · Host가 Work 만들기 답을 기다려요」다.
+// - **카드 종류가 늘어도 같은 차례다**(§9 「Agent가 고를 답을 내미는 질문도 같은 자리, 같은 차례」) — 새 카드는 그 물음을 같은
+//   `pending`(같은 열쇠 · 같은 닫힘)에 넣고, 이 함수와 다음 줄의 글(`nextOf`)에 갈래를 더한다. 걸린 물음 모두(`ThreadModel.asks`)가
+//   차례이고, 다음 줄은 Work 만들기 카드(v1 티켓 30)면 「다음 · Host가 Work 만들기 답을 기다려요」, Agent의 질문(v1 티켓 26)이면 대상
+//   없이 「다음 · Host가 질문의 답을 기다려요」다.
 
 /** 입력창 자리의 차례 — 지금 서는 물음, 묶음 안의 자리, 그다음 물음. */
 export interface AskTurn {
@@ -35,7 +36,7 @@ export function askTurn(model: Pick<ThreadModel, "asks" | "settled">): AskTurn |
 
 /**
  * 다음 줄의 글 조각 — 「다음 · **테스터**가 `pnpm playwright test` 실행을 기다려요」. 이름은 굵게, 대상은 작업 로그의 그 도구 줄과 같은
- * 글(「pnpm playwright test 승인을 기다리는 중」)이고, 파일 · 명령 · MCP 도구면 고정폭이다(`mono`). 계획 넘어가기는 대상이 없다.
+ * 글(「pnpm playwright test 승인을 기다리는 중」)이고, 파일 · 명령 · MCP 도구면 고정폭이다(`mono`). 계획 넘어가기 · 질문은 대상이 없다.
  */
 export interface NextLine {
   name: string;
@@ -60,6 +61,7 @@ const WAITING: Readonly<Record<string, string>> = {
 export function nextOf(request: PendingAsk, name: string): NextLine {
   const head = { name, particle: particle(name, "이", "가") };
   if (request.card === "work") return { ...head, subject: "Work 만들기", mono: false, what: "답을 기다려요" };
+  if (request.card === "question") return { ...head, subject: null, mono: false, what: "질문의 답을 기다려요" };
   // 흐름의 도구 줄이 이긴다(`describeApproval`과 같다) — 없으면 요청이 실은 요지로 같은 문구를 짓는다.
   const call = { ...request.toolCall, ...(request.tool?.call ?? {}) };
   const tool: ToolEntry = request.tool

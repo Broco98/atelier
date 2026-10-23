@@ -16,6 +16,8 @@
 //!   `claude_replay`의 원문 표다.
 //! - `FAKE_CLAUDE_SUGGESTIONS` — 있으면 내는 `can_use_tool`마다 `permission_suggestions`를 이 JSON으로 바꾼다. 세션 제안이 없는
 //!   요청 · 설정 파일에 쓰는 제안(`localSettings` · `userSettings`, 워크플로 관문 G1의 모양)이 섞인 요청을 만든다.
+//! - `FAKE_CLAUDE_QUESTION` — 있으면 내는 `can_use_tool`마다 그 요청을 이 JSON 입력의 `AskUserQuestion`으로 바꾼다(v1 티켓 26 —
+//!   사람에게 묻는 claude의 녹음이 없다).
 //! - `FAKE_CLAUDE_HOLD_BACKGROUND` — `result`면 스스로 이어 간 턴의 `result` 앞에서, `start`면 그 턴을 시작하기 전에(백그라운드
 //!   작업이 도는 꼴) 영수증 폴더의 `<세션 id>.go`가 생길 때까지 멈춘다 — 그동안에도 stdin은 읽어 영수증에 적는다.
 //! - `FAKE_CLAUDE_PERFORMS_WRITES` — 있으면 되감는 `Write` 도구 호출마다 그 글을 cwd에 같은 파일 이름으로 정말 쓴다. 원문의
@@ -94,6 +96,9 @@ fn main() {
     let suggestions = std::env::var("FAKE_CLAUDE_SUGGESTIONS")
         .ok()
         .map(|text| serde_json::from_str::<Value>(&text).expect("FAKE_CLAUDE_SUGGESTIONS는 JSON이다"));
+    let question = std::env::var("FAKE_CLAUDE_QUESTION")
+        .ok()
+        .map(|text| serde_json::from_str::<Value>(&text).expect("FAKE_CLAUDE_QUESTION은 JSON이다"));
     let hold = match std::env::var("FAKE_CLAUDE_HOLD_BACKGROUND").as_deref() {
         Ok("start") => Some(Hold::Start),
         Ok("result") => Some(Hold::Result),
@@ -119,7 +124,7 @@ fn main() {
     fake.leave_receipt(&args, child.as_ref().map(Child::id));
 
     let email = std::env::var("FAKE_CLAUDE_ACCOUNT_EMAIL").ok();
-    let (mut replay, startup) = Replay::new(recorded, Setup { session_id, suggestions, hold, email });
+    let (mut replay, startup) = Replay::new(recorded, Setup { session_id, suggestions, question, hold, email });
     fake.emit_all(startup);
     for message in fake.read_stdin() {
         let Some(message) = message else {

@@ -133,6 +133,15 @@ export interface Attachment {
 }
 
 /**
+ * 질문 카드에서 물음 하나에 준 답(`atelier_acp::QuestionAnswer`, v1 티켓 26) — 고른 선택지의 이름, 여럿 고르면 쉼표로 이은 것, 또는
+ * 직접 쓴 말. 질문 답 명령이 싣고, `question` 줄의 답(`answers`)이 같은 꼴로 온다.
+ */
+export interface QuestionAnswer {
+  question: string;
+  answer: string;
+}
+
+/**
  * 새 Thread를 어디에 잇나(`atelier_acp::ThreadLink`) — 첫 말과 함께 간다. 입력창 Work 칩이 고른다(v1 티켓 31): Work 없이 · 새 Work로
  * 시작(첫 머리말이 Work 만들기 제안을 먼저 하라고 한다) · 이 Work(Thread가 처음부터 그 Work에 이어진다).
  */

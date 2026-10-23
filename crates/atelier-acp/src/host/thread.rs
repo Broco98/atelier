@@ -53,9 +53,9 @@ use super::{
 use crate::discovery::{Agent, FoundProgram};
 use crate::login::Waiter;
 use crate::login_env::AgentEnv;
-use crate::policy::AskLevel;
+use crate::policy::{AskLevel, Card};
 use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
-use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, SessionPlace};
+use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, QuestionAnswer, SessionPlace};
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
 use gate::Gate;
 use seat::{Grant, Writer};
@@ -115,6 +115,15 @@ impl Reply {
     pub fn pick(option: &str) -> Self {
         Self { option: option.to_owned(), ..Self::default() }
     }
+}
+
+/// 질문 카드에서 사람이 고른 것(v1 티켓 26 · 구현 스펙 §9 · 스토리 81) — 물음마다의 답(고른 선택지 · 직접 쓴 말), 또는 나중에.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuestionReply {
+    /// 「답하기」 — 물음마다 하나. 여럿 고르기는 고른 이름들을 쉼표로 잇는다(claude가 읽는 꼴).
+    Answer(Vec<QuestionAnswer>),
+    /// 「나중에」 — 그 질문 하나만 답 없이 닫는다. Agent는 기다리지 않고 이어 간다.
+    Later,
 }
 
 /// Thread 하나의 지금 — `thread.json`에 기록의 끝 · 엔진의 살아 있는 상태를 더한 것. 화면이 Thread를 열 때(다시 켠 뒤 · ⌘R 뒤)
@@ -502,9 +511,22 @@ impl ConversationHost {
     ///
     /// 편집을 허락하는 답이면 그 Session이 Work의 쓰기 자리를 쥔다(v1 티켓 18 · S20). 물은 사이에 다른 Session이 쥐었으면 그 허락 대신
     /// 엔진이 주인의 글로 거부한다 — 사람의 답은 받은 것이라 오류가 아니다. 답이 가지 못하면 새로 쥔 자리를 놓는다.
+    ///
+    /// **「계획만」에서 계획 넘어가기를 허락하면 물어보는 정도가 「매번 묻기」로 나간다**(v1 티켓 26) — 계획만은 「계획을 세우고 멈추기」
+    /// 라 구현으로 넘어가면 끝난다. 답보다 먼저 적는다 — 구현의 첫 요청이 옛 정도로 판정되지 않게. 떠 있는 Session의 계획 모드는 답한
+    /// 뒤에 맞춘다(물은 claude는 허락을 받으며 스스로 계획 모드를 나간다).
+    ///
+    /// 질문 카드의 요청에는 답하지 않는다([`HostError::NotPermission`] — [`Self::answer_thread_question`]의 몫이다).
     pub fn reply_thread_permission(&self, thread: &str, who: &str, request: &str, reply: &Reply) -> Result<(), HostError> {
         let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
         let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
+        let asked = writer.asked(request);
+        if asked.as_ref().is_some_and(|(card, _)| *card == Card::Question) {
+            return Err(HostError::NotPermission { request: request.to_owned() });
+        }
+        let implements = asked.is_some_and(|(card, options)| {
+            card == Card::Plan && options.iter().any(|(id, kind)| *id == reply.option && kind.starts_with("allow"))
+        });
         let granted = if reply.remember {
             let rules = writer
                 .remembered(request, &reply.option)
@@ -527,7 +549,8 @@ impl ConversationHost {
             None
         };
         let words = reply.words.as_deref().map(str::trim).filter(|words| !words.is_empty()).map(str::to_owned);
-        let answer = Answer { option_id: reply.option.clone(), words, granted };
+        let answer = Answer { option_id: reply.option.clone(), words, granted, answers: None };
+        let left_plan = if implements { self.leave_plan_only(thread)? } else { None };
         let grant = writer.grant(request, &reply.option);
         let took = matches!(grant, Grant::Took);
         let answered = match conv.lock_found() {
@@ -541,6 +564,12 @@ impl ConversationHost {
         if took && answered.is_err() {
             writer.release();
         }
+        if let (Some(file), Ok(())) = (&left_plan, &answered) {
+            if let Err(error) = self.retune_sessions(thread, file, AskLevel::Always) {
+                // 정도는 이미 나갔다 — 판정은 요청마다 그것을 읽는다. 계획 모드에 남은 Session은 다음에 열 때 맞는다.
+                eprintln!("계획만을 나간 Session의 모드를 맞추지 못했습니다: {error}");
+            }
+        }
         answered
     }
 
@@ -551,12 +580,55 @@ impl ConversationHost {
         Ok(gate::work_asking(&self.data_root, work).0)
     }
 
+    /// 질문 카드의 답(v1 티켓 26 · 스토리 81) — 걸린 질문에 물음마다의 답이나 「나중에」로 답한다. 기다리지 않는다.
+    ///
+    /// - **답하기** — 허락하는 선택지에 답(물음 → 답)을 실어 보낸다. Agent는 물은 입력에 그 답이 더해진 채로 이어 간다.
+    /// - **나중에** — 거부하는 선택지로 그 질문 하나만 닫는다. Agent는 답 없이 할 수 있는 일을 이어 간다.
+    /// - 둘 다 `question` 줄의 답(`choice: answer | later`)으로 남는다 — 화면의 「답함: …」 줄이 읽는다.
+    ///
+    /// 걸려 있지 않은 질문이면 [`HostError::PermissionClosed`], 승인 카드의 요청이면 [`HostError::NotQuestion`]이다 — 요청은 그대로다.
+    pub fn answer_thread_question(&self, thread: &str, who: &str, request: &str, reply: &QuestionReply) -> Result<(), HostError> {
+        let closed = || HostError::PermissionClosed { thread: thread.to_owned(), request: request.to_owned() };
+        let (conv, writer) = self.threads.find_writer(&SessionKey::new(thread, who)).ok_or_else(closed)?;
+        let (card, options) = writer.asked(request).ok_or_else(closed)?;
+        if card != Card::Question {
+            return Err(HostError::NotQuestion { request: request.to_owned() });
+        }
+        let (option, answers) = match reply {
+            QuestionReply::Answer(answers) => (seat::allowing(&options), Some(answers.clone())),
+            QuestionReply::Later => (seat::rejecting(&options), None),
+        };
+        let option_id = option.ok_or_else(closed)?;
+        let answer = Answer { option_id, answers, ..Answer::default() };
+        let mut state = conv.lock_found().ok_or_else(closed)?;
+        conv.seat(&mut state).answer(request, &answer).map_err(|refused| refused.into_host(thread))
+    }
+
     /// 물어보는 정도 바꾸기(S18 · 스토리 84) — Work에 이은 Thread면 그 Work 폴더의 점 파일에(같은 Work의 Thread들이 함께 쓴다),
     /// 아니면 `thread.json`의 `mode`에 둔다. 바꾼 것은 `mode` 줄(`{mode, work}`, 사람의 줄)로 남는다(§4).
     ///
     /// 판정이 요청을 받을 때마다 읽으므로 다음 권한 요청부터 든다. `claude`의 계획 모드는 Session을 열 때 이 값으로 정하고, 「계획만」
     /// 으로 들고 나면 그 정도를 쓰는 떠 있는 Session의 모드도 곧바로 바꾼다(v1 티켓 23 — [`Self::retune_sessions`]).
     pub fn set_thread_mode(&self, thread: &str, mode: AskLevel) -> Result<(), HostError> {
+        let (file, before) = self.store_thread_mode(thread, mode)?;
+        if before.claude_mode() == mode.claude_mode() {
+            return Ok(());
+        }
+        self.retune_sessions(thread, &file, mode)
+    }
+
+    /// 「계획만」이면 「매번 묻기」로 나간다(v1 티켓 26 — 계획 넘어가기를 허락함) — 적고 `mode` 줄을 남긴다. 떠 있는 Session의 모드는
+    /// 맞추지 않는다 — 부르는 쪽이 답한 뒤에 맞춘다. 나갔으면 그 Thread 파일이다. 계획만이 아니면 아무것도 하지 않는다.
+    fn leave_plan_only(&self, thread: &str) -> Result<Option<ThreadFile>, HostError> {
+        let work = self.read_thread_file(thread)?.work;
+        if gate::asking(&self.data_root, thread, work.as_deref()).0 != AskLevel::Plan {
+            return Ok(None);
+        }
+        self.store_thread_mode(thread, AskLevel::Always).map(|(file, _)| Some(file))
+    }
+
+    /// 물어보는 정도를 적고 `mode` 줄을 남긴다 — 그 Thread 파일과 바꾸기 전의 정도.
+    fn store_thread_mode(&self, thread: &str, mode: AskLevel) -> Result<(ThreadFile, AskLevel), HostError> {
         let file = self.read_thread_file(thread)?;
         let (before, _) = gate::asking(&self.data_root, thread, file.work.as_deref());
         let stored = Some(mode.as_str().to_owned());
@@ -573,10 +645,7 @@ impl ConversationHost {
         }
         let line = json!({"mode": mode.as_str(), "work": file.work});
         self.thread_log(thread)?.write(RecordKind::Mode, None, line).map_err(HostError::Record)?;
-        if before.claude_mode() == mode.claude_mode() {
-            return Ok(());
-        }
-        self.retune_sessions(thread, &file, mode)
+        Ok((file, before))
     }
 
     /// 그 정도를 쓰는 떠 있는 Session의 `claude` 권한 모드를 맞춘다(S17 · v1 티켓 23) — 그 Thread의 참여자들과, Work에 이었으면 그 Work에

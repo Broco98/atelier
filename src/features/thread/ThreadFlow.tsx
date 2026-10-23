@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ArrowRight, Check, CircleAlert, Copy, Folder, Info, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
@@ -17,6 +17,7 @@ import {
   type DecisionEntry,
   type Entry,
   type Notice,
+  type QuestionEntry,
   type SystemLine,
   type ThreadModel,
   type ToolEntry,
@@ -26,6 +27,7 @@ import {
 import { SentAttachments } from "./ComposerAttachments";
 import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
+import { answeredText, saidOf } from "./question";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Attachment } from "./types";
 import { threadUiStore, toggleTurn, turnKey } from "./thread-store";
@@ -171,7 +173,8 @@ function NoticeLine({ notice }: { notice: Notice }) {
 function waitingFor(model: ThreadModel, who: string): string | null {
   const ask = model.asks.find((one) => one.who === who);
   if (!ask) return null;
-  return ask.card === "work" ? "Work 만들기 답을 기다립니다" : "승인을 기다립니다";
+  if (ask.card === "work") return "Work 만들기 답을 기다립니다";
+  return ask.card === "question" ? "답을 기다립니다" : "승인을 기다립니다";
 }
 
 /**
@@ -232,8 +235,8 @@ function TurnView({
   const final = turn.end
     ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || entry.kind === "work-choice")
     : [];
-  // 계획 카드 · 체크리스트 · 호출 줄 · Work 만들기 결정 줄은 접힌 턴에도 남는다 — 계획과 누가 무엇을 맡았는지 · Work를 만들었는지는
-  // 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
+  // 계획 카드 · 체크리스트 · 호출 줄 · Work 만들기 결정 줄 · 질문에 답한 줄은 접힌 턴에도 남는다 — 계획과 누가 무엇을 맡았는지 · Work를
+  // 만들었는지 · 무엇으로 답했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
   const kept =
     turn.end && !open
       ? turn.entries.filter(
@@ -241,6 +244,7 @@ function TurnView({
             entry.kind === "plan" ||
             entry.kind === "checklist" ||
             entry.kind === "call" ||
+            entry.kind === "question" ||
             (entry.kind === "work-choice" && at < from),
         )
       : [];
@@ -397,6 +401,8 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <DecisionRow entry={entry} />;
     case "work-choice":
       return <WorkChoiceRow entry={entry} />;
+    case "question":
+      return <AnsweredRow entry={entry} />;
   }
 }
 
@@ -416,6 +422,25 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
     >
       <Icon className="size-4 shrink-0" aria-hidden />
       <span className="min-w-0 wrap-anywhere">{text}</span>
+    </p>
+  );
+}
+
+/**
+ * 질문에 답한 줄(Cards 보드 「답한 뒤」 `.done`) — ✓ 14와 13/20 `fg-tertiary`, 답은 `fg-secondary`(「답함: **비율대로 돌려준다**」). 답을
+ * 기다리는 동안은 서지 않는다 — 입력창 자리의 질문 카드가 말한다.
+ */
+function AnsweredRow({ entry }: { entry: QuestionEntry }) {
+  if (entry.choice === null) return null;
+  const said = saidOf(entry);
+  // 나중에로 닫은 질문은 답하지 않았다 — 답한 표지(✓) 대신 미룬 표지다.
+  const Icon = said === null ? Clock : Check;
+  return (
+    <p data-answered={entry.choice} className="flex min-h-7 flex-wrap items-center gap-1.5 text-chat-meta leading-5 text-fg-tertiary">
+      <Icon className="size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 wrap-anywhere">
+        {said === null ? answeredText(entry) : <>답함: <span className="text-fg-secondary">{said}</span></>}
+      </span>
     </p>
   );
 }

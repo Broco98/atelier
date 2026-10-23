@@ -133,13 +133,15 @@ impl Act {
     }
 }
 
-/// 물을 때 세우는 카드의 종류(§9) — 명령 · 파일 고치기 · 계획 넘어가기. 물음 줄에 `card`로 남는다.
+/// 물을 때 세우는 카드의 종류(§9) — 명령 · 파일 고치기 · 계획 넘어가기, 그리고 Agent의 질문(v1 티켓 26). 물음 줄에 `card`로 남는다.
+/// 질문은 판정이 내지 않는다 — 판정의 문이 물음이 실린 요청을 판정 앞에서 곧바로 묻는다(`host::thread::gate`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Card {
     Command,
     Edit,
     Plan,
+    Question,
 }
 
 /// 판정이 받는 것(§9) — 엔진이 요청을 받은 그때 읽어 넘긴다.

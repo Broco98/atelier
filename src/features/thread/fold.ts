@@ -1,7 +1,7 @@
 import { askLevelOf } from "./chips";
 import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
-import type { Attachment, RecordLine } from "./types";
+import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05 · 구현 스펙 §14) — Thread 기록 줄을 받아 화면 모델(턴 · 말한 이 · 메시지 · 생각 · 도구 줄 · 시스템 줄 ·
 // 도는가)로 접는 **순수 함수**다. Thread 화면은 Thread를 이것 하나로 그린다: 처음 그릴 때 읽은 기록도, 흐르는 기록 줄 이벤트도 같은
@@ -35,6 +35,9 @@ import type { Attachment, RecordLine } from "./types";
 //   선다(「✓ Work 만들기 · api-server · fix/refund-api」 · 「→ Work 없이 계속함」 — 화면 2 보드). 만들었으면 `work` 줄이 시스템 줄
 //   「Work … 을 만들고 이 Thread에 연결함」이 된다. 두 줄(도구 줄 · 제안 줄)은 다른 길로 적혀 엇갈릴 수 있다 — 먼저 온 쪽이 나중 것을
 //   기다린다.
+// - **Agent의 질문은 질문 줄이다**(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — `question` 줄(`card: question`)이 오면 승인 ·
+//   Work 만들기 카드와 같은 물음 차례(`asks`)에 질문으로 서고, 그 질문을 낸 도구 줄 자리를 질문 줄이 대신한다. 답하면 그 자리에
+//   「답함: …」이 남고, 거둬지면 아무것도 남지 않는다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -62,7 +65,8 @@ export type Entry =
   | PlanEntry
   | ChecklistEntry
   | DecisionEntry
-  | WorkChoiceEntry;
+  | WorkChoiceEntry
+  | QuestionEntry;
 
 /**
  * Work 만들기 카드에서 사람이 고른 것(v1 티켓 30) — 「Work 만들기 · api-server · fix/refund-api」 또는 「Work 없이 계속함」. 그 제안을 낸
@@ -78,6 +82,30 @@ export interface WorkChoiceEntry {
   branch: string | null;
   /** 이 결정의 제안을 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
   toolCallId: string | null;
+}
+
+/**
+ * 질문 줄(v1 티켓 26) — Agent가 낸 질문 하나. 답을 기다리는 동안은 흐름에 그리지 않고(입력창 자리의 질문 카드가 말한다), 답하면
+ * 「답함: …」, 나중에 답하기로 하면 「나중에 답하기로 함」이다(`question.ts`의 `answeredText`).
+ */
+export interface QuestionEntry {
+  kind: "question";
+  key: string;
+  /** 고른 것 — 답했다 · 나중에. 아직 답을 기다리면 null이다. */
+  choice: "answer" | "later" | null;
+  /** 물음마다의 답 — 나중에 · 기다리는 중이면 빈 목록이다. */
+  answers: QuestionAnswer[];
+}
+
+/** 질문 카드의 물음 하나 — 엔진이 Runtime을 가리지 않는 꼴로 실은 것(`question` 줄의 `questions`). */
+export interface AskedQuestion {
+  question: string;
+  /** 물음 아래 한 줄. 없으면 null이다. */
+  description: string | null;
+  /** 여럿 고르기 — 고른 이름들을 쉼표로 이어 답한다. */
+  multiSelect: boolean;
+  /** 고를 답 — 비면 직접 쓰는 물음이다. */
+  options: { label: string; description: string | null }[];
 }
 
 /**
@@ -267,8 +295,8 @@ export interface ThreadModel {
   /** 답하지 않은 권한 요청 — 물은 차례다. 입력창 자리의 차례는 Work 만들기 카드까지 든 `asks`가 정한다(`asks.ts`). */
   pending: PendingPermission[];
   /**
-   * 걸린 물음 모두 — 권한 요청과 Work 만들기 카드(v1 티켓 30)가 온 차례로 선다(§9 「같은 자리, 같은 차례」). 맨 앞의 것이 입력창 자리에
-   * 선다(`askTurn`).
+   * 걸린 물음 모두 — 권한 요청과 Work 만들기 카드(v1 티켓 30) · Agent의 질문(v1 티켓 26)이 온 차례로 선다(§9 「같은 자리, 같은
+   * 차례」). 맨 앞의 것이 입력창 자리에 선다(`askTurn`).
    */
   asks: PendingAsk[];
   /**
@@ -310,8 +338,8 @@ export interface PendingWork {
   projects: WorkProjectChoice[];
 }
 
-/** 입력창 자리에 서는 물음 하나 — 권한 요청이거나 Work 만들기 카드다(`card`로 가른다). */
-export type PendingAsk = PendingPermission | PendingWork;
+/** 입력창 자리에 서는 물음 하나 — 권한 요청이거나 Work 만들기 카드 · Agent의 질문이다(`card`로 가른다). */
+export type PendingAsk = PendingPermission | PendingWork | PendingQuestion;
 
 /** 권한 요청의 선택지 하나 — Runtime이 준 그대로(ACP `PermissionOption`). */
 export interface PermissionOption {
@@ -319,6 +347,19 @@ export interface PermissionOption {
   name: string;
   /** `allow_once` · `allow_always` · `reject_once` · `reject_always`. */
   kind: string;
+}
+
+/** 답하지 않은 질문 하나(기록의 `question` `asked`, `card: question` — v1 티켓 26). */
+export interface PendingQuestion {
+  /** 물음 차례에서 권한 요청 · Work 만들기 카드와 가르는 표다. */
+  card: "question";
+  /** 질문 답 명령이 싣는 요청 id — 권한 요청과 같은 대기 표에서 나와 Session마다 따로 센다. */
+  requestId: string;
+  /** 물은 참여자의 handle. */
+  who: string;
+  /** 그 질문을 낸 도구 요지. */
+  toolCall: Json;
+  questions: AskedQuestion[];
 }
 
 /** 답하지 않은 권한 요청 하나(기록의 `permission` `asked`). */
@@ -371,8 +412,11 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   // 판정이 묻지 않고 허용한 도구 줄 id → 까닭 — 도구 줄이 판정 줄보다 늦게 와도 든다.
   const allowedTools = new Map<string, string>();
   // 답하지 않은 물음 — 온 차례다(`askKey`, v1 티켓 25). 닫히면 지금 묶음의 닫힌 수가 오르고, 다 닫히면 묶음이 끝난다. Work 만들기
-  // 카드(v1 티켓 30)도 같은 차례에 선다.
-  const pending = new Map<string, Omit<PendingPermission, "tool"> | PendingWork>();
+  // 카드(v1 티켓 30) · 질문(v1 티켓 26)도 같은 차례에 선다.
+  const pending = new Map<string, Omit<PendingPermission, "tool"> | PendingWork | PendingQuestion>();
+  // 질문(`askKey`) → 그 질문 줄, 그리고 질문 줄이 대신한 도구 줄 id들.
+  const questions = new Map<string, QuestionEntry>();
+  const questionTools = new Set<string>();
   let settled = 0;
   const dropAsk = (key: string) => {
     if (!pending.delete(key)) return;
@@ -506,7 +550,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         if (kind === "tool_call_update") {
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다 — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
-          if (id && (planReviews.has(id) || absorbed.has(id))) break;
+          if (id && (planReviews.has(id) || absorbed.has(id) || questionTools.has(id))) break;
           const mine = openFor(line.who ?? null);
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
@@ -529,7 +573,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           break;
         }
         if (!TURN_UPDATES.has(kind)) break;
-        if (kind === "tool_call" && planReviews.has(text(update.toolCallId) ?? "")) break;
+        const called = text(update.toolCallId) ?? "";
+        if (kind === "tool_call" && (planReviews.has(called) || questionTools.has(called))) break;
         const turn: Turn = openFor(line.who ?? null) ?? start(`o${line.seq}`, null, line.at, line.who ?? null);
         answer(turn, line);
         closedLast.delete(turn);
@@ -670,12 +715,40 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         }
         break;
       }
-      // Work 만들기 카드(v1 티켓 30) — 제안 · 답 · 거둠. 다른 질문 카드(v1 티켓 26)는 아직 없다.
+      // 질문 줄 — Agent의 질문(`card: question`, v1 티켓 26)과 Work 만들기 카드(`card: work`, v1 티켓 30)다.
       case "question": {
         const requestId = text(payload.requestId);
-        if (!requestId || payload.card !== "work") break;
+        if (!requestId) break;
         const who = line.who ?? HOST;
         const key = askKey(who, requestId);
+        if (payload.card === "question") {
+          if (payload.state === "asked") {
+            const toolCall = isObject(payload.toolCall) ? payload.toolCall : {};
+            pending.set(key, { card: "question", requestId, who, toolCall, questions: questionsOf(payload.questions) });
+            const entry: QuestionEntry = { kind: "question", key: `q${line.seq}`, choice: null, answers: [] };
+            questions.set(key, entry);
+            // 그 질문을 낸 도구 줄 자리에 선다 — 같은 일이 두 줄로 서지 않게. 도구 줄이 아직 없으면 물은 이의 턴 끝이다.
+            const id = text(toolCall.toolCallId);
+            if (id) questionTools.add(id);
+            const home = id ? toolHome(turns, id) : null;
+            if (home) home.turn.entries.splice(home.turn.entries.indexOf(home.tool), 1, entry);
+            else (openFor(who) ?? start(`o${line.seq}`, null, line.at, who)).entries.push(entry);
+            break;
+          }
+          dropAsk(key);
+          const entry = questions.get(key);
+          if (!entry) break;
+          if (payload.state === "answered") {
+            entry.choice = payload.choice === "later" ? "later" : "answer";
+            entry.answers = entry.choice === "answer" ? answersOf(payload.answers) : [];
+          } else {
+            // 거둬졌다 — 답하지 않은 질문은 흐름에 남지 않는다(그 턴의 끝이 멈춤 · 끊김을 말한다).
+            for (const turn of turns) drop(turn, entry);
+          }
+          break;
+        }
+        // Work 만들기 카드(v1 티켓 30) — 제안 · 답 · 거둠.
+        if (payload.card !== "work") break;
         if (payload.state === "asked") {
           pending.set(key, proposalOf(requestId, who, payload));
           const turn = openFor(who);
@@ -824,7 +897,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   if (!gone) vanish(lastAt, GONE_WITH_APP);
   const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   const asks = [...pending.values()].map((one): PendingAsk => {
-    if (one.card === "work") return one;
+    if (one.card === "work" || one.card === "question") return one;
     const id = text(one.toolCall.toolCallId);
     const tool = id ? findTool(turns, id) : null;
     if (tool) tool.asking = true;
@@ -839,7 +912,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     notices,
     system,
     calls: loose,
-    pending: asks.filter((one): one is PendingPermission => one.card !== "work"),
+    pending: asks.filter((one): one is PendingPermission => one.card !== "work" && one.card !== "question"),
     asks,
     settled,
   };
@@ -1066,7 +1139,38 @@ function askedOf(requestId: string, who: string, payload: Json): Omit<PendingPer
   });
   const card = payload.card === "command" || payload.card === "edit" || payload.card === "plan" ? payload.card : null;
   const grant = Array.isArray(payload.grant) ? payload.grant.filter((rule): rule is string => typeof rule === "string") : [];
-  return { requestId, who, options, toolCall, planReview: toolCall.kind === "switch_mode", card, policy: nonEmpty(payload.policy), grant };
+  return {
+    requestId,
+    who,
+    options,
+    toolCall,
+    planReview: toolCall.kind === "switch_mode",
+    card,
+    policy: nonEmpty(payload.policy),
+    grant,
+  };
+}
+
+/** 질문 줄의 `questions` → 물음들. 물음 글이 없는 물음 · 이름이 없는 선택지는 버린다 — 카드가 그릴 수 없다. */
+function questionsOf(value: unknown): AskedQuestion[] {
+  return (Array.isArray(value) ? value : []).filter(isObject).flatMap((one): AskedQuestion[] => {
+    const question = nonEmpty(one.question);
+    if (question === null) return [];
+    const options = (Array.isArray(one.options) ? one.options : []).filter(isObject).flatMap((option) => {
+      const label = nonEmpty(option.label);
+      return label === null ? [] : [{ label, description: nonEmpty(option.description) }];
+    });
+    return [{ question, description: nonEmpty(one.description), multiSelect: one.multiSelect === true, options }];
+  });
+}
+
+/** 질문 답 줄의 `answers` → 물음마다의 답. */
+function answersOf(value: unknown): QuestionAnswer[] {
+  return (Array.isArray(value) ? value : []).filter(isObject).flatMap((one) => {
+    const question = text(one.question);
+    const answer = text(one.answer);
+    return question === null || answer === null ? [] : [{ question, answer }];
+  });
 }
 
 /** 답 줄의 「다시 묻지 않기」 허락(`{rules, work}`) — 없거나 꼴이 아니면 null이다. */
@@ -1166,7 +1270,8 @@ function appendChunk(turn: Turn, kind: "message" | "thought", messageId: string 
 export function finalFrom(turn: Turn): number {
   let lastTool = -1;
   turn.entries.forEach((entry, index) => {
-    if (entry.kind === "tool" || entry.kind === "call") lastTool = index;
+    // 질문 줄은 그 질문을 낸 도구 줄 자리다(v1 티켓 26).
+    if (entry.kind === "tool" || entry.kind === "call" || entry.kind === "question") lastTool = index;
   });
   return lastTool + 1;
 }

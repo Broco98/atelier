@@ -897,6 +897,24 @@ pub async fn thread_answer_work(
     to_host(&engine, "Work 만들기 카드에 답하지 못했습니다", move |host| host.answer_work(&thread, &request, choice)).await
 }
 
+/// 질문 답(v1 티켓 26) — 그 참여자의 Session에 걸린 질문(`request` — `question` 줄의 요청 id)에 물음마다의 답(`answers`)으로
+/// 답한다. 질문 카드의 「나중에」면 `later`이고 답은 비운다.
+#[tauri::command]
+pub async fn thread_answer_question(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    who: String,
+    request: String,
+    answers: Vec<atelier_acp::QuestionAnswer>,
+    later: bool,
+) -> CmdResult<()> {
+    to_host(&engine, "질문에 답하지 못했습니다", move |host| {
+        let reply = if later { atelier_acp::QuestionReply::Later } else { atelier_acp::QuestionReply::Answer(answers) };
+        host.answer_thread_question(&thread, &who, &request, &reply)
+    })
+    .await
+}
+
 /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
 #[tauri::command]
 pub async fn thread_set_model(

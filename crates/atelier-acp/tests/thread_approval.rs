@@ -10,7 +10,7 @@
 mod common;
 
 use atelier_acp::{ConversationHost, HostError, Reply, ThreadLink};
-use common::{of_kind, Sandbox, RECORDED_PLACE};
+use common::{of_kind, wait_until, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
 fn host_md(policy: &str) -> String {
@@ -38,14 +38,22 @@ fn wait_permission(sandbox: &Sandbox, thread: &str, who: &str, state: &str, n: u
     of_state(&record)[n - 1].clone()
 }
 
-/// 그 Session의 claude가 받은 권한 답들.
-fn decisions(sandbox: &Sandbox, session: &str) -> Vec<Value> {
-    sandbox
-        .claude_stdin(session)
-        .into_iter()
-        .filter(|line| line["type"] == "control_response")
-        .map(|line| line["response"]["response"].clone())
-        .collect()
+/// 그 Session의 claude가 받은 권한 답들 — `n`개가 닿을 때까지 기다린다. 답 줄은 답을 보내기 직전에 적히므로(`Turns::answer`) 답 줄을
+/// 본 바로 뒤에는 claude가 아직 받지 못했을 수 있다.
+fn decisions(sandbox: &Sandbox, session: &str, n: usize) -> Vec<Value> {
+    wait_until("claude가 권한 답을 다 받지 않았다", || {
+        let got: Vec<Value> = sandbox
+            .claude_stdin(session)
+            .into_iter()
+            .filter(|line| line["type"] == "control_response")
+            .map(|line| line["response"]["response"].clone())
+            .collect();
+        if got.len() >= n {
+            Ok(got)
+        } else {
+            Err(format!("{got:?}"))
+        }
+    })
 }
 
 /// 사람이 카드에서 고른 것으로 답한다.
@@ -83,7 +91,7 @@ fn work_없는_thread에서_다시_묻지_않기를_고르면_thread_폴더에_�
     assert_eq!(answered["payload"]["granted"], json!({"rules": ["edit"], "work": null}));
     assert_eq!(policy_file(&sandbox.thread_dir(&thread))["grants"], json!(["edit"]), "Work가 없으면 Thread 폴더의 점 파일이다");
     let session = sandbox.thread_session_id(&thread, "host");
-    assert_eq!(decisions(&sandbox, &session)[0]["behavior"], "allow");
+    assert_eq!(decisions(&sandbox, &session, 1)[0]["behavior"], "allow");
 
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
     host.send_to_thread(&thread, "하나 더 써 줘").expect("두 번째 말");
@@ -149,7 +157,7 @@ fn 아니요를_고르며_쓴_말은_거절과_함께_agent에게_가고_답_줄
     assert!(answered["payload"].get("granted").is_none(), "{answered}");
     let session = sandbox.thread_session_id(&thread, "host");
     let told = format!("사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n{words}");
-    assert_eq!(decisions(&sandbox, &session), [json!({"behavior": "deny", "message": told})]);
+    assert_eq!(decisions(&sandbox, &session, 1), [json!({"behavior": "deny", "message": told})]);
 
     host.shut_down();
 }

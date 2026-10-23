@@ -26,6 +26,8 @@ struct Claude {
     fixture: &'static str,
     /// 내는 `can_use_tool`마다 바꿔 실을 `permission_suggestions`.
     suggestions: Option<Value>,
+    /// 내는 `can_use_tool`을 바꿀 `AskUserQuestion`의 입력.
+    question: Option<Value>,
     hold: Option<Hold>,
     /// `initialize` 답의 계정 칸에 실을 이메일.
     email: Option<&'static str>,
@@ -39,7 +41,16 @@ struct Claude {
 
 impl Claude {
     fn replaying(fixture: &'static str) -> Self {
-        Self { fixture, suggestions: None, hold: None, email: None, forgets: false, silent: false, unlaunchable: false }
+        Self {
+            fixture,
+            suggestions: None,
+            question: None,
+            hold: None,
+            email: None,
+            forgets: false,
+            silent: false,
+            unlaunchable: false,
+        }
     }
 }
 
@@ -235,6 +246,7 @@ impl Bench {
         let setup = Setup {
             session_id,
             suggestions: self.claude.suggestions.clone(),
+            question: self.claude.question.clone(),
             hold: self.claude.hold,
             email: self.claude.email.map(str::to_owned),
         };
@@ -1322,6 +1334,100 @@ fn 계획_승인은_계획_본문이_든_switch_mode_권한_요청이고_다시_
         ["current_mode_update", "tool_call_update"],
         "모드가 바뀐 것은 승인 바로 뒤, 승인된 ExitPlanMode가 끝나기 전에 선다"
     );
+}
+
+// ── 질문(v1 티켓 26) ──────────────────────────────────────────────────────────────────
+
+/// 사람에게 묻는 claude의 `AskUserQuestion` 입력 — 2.1.309 도구 스키마(`questions[]`: `question` · `header` · `options[]{label,
+/// description}` · `multiSelect`)의 꼴이다. 녹음이 없어 되감는 `can_use_tool`을 이 입력으로 바꿔 낸다(`Claude::question`).
+fn refund_questions() -> Value {
+    json!({"questions": [
+        {"question": "부분 환불 수수료는 어떻게 할까요?", "header": "수수료", "multiSelect": false,
+         "options": [{"label": "비율대로 돌려준다", "description": "환불한 금액만큼 나눠 돌려줘요"},
+                     {"label": "돌려주지 않는다", "description": ""},
+                     {"label": "마지막 환불 때 한 번에 돌려준다"}]},
+        {"question": "어느 화면에 보일까요?", "header": "화면", "multiSelect": true,
+         "options": [{"label": "주문 상세"}, {"label": "환불 내역"}]},
+    ]})
+}
+
+#[test]
+fn 질문은_물음이_실린_권한_요청으로_가고_답하면_claude는_답을_실은_allow를_나중에는_deny를_받고_턴이_이어진다() {
+    let mut claude = Claude::replaying("2.1.309/permission-stdio");
+    claude.question = Some(refund_questions());
+    let mut bench = Bench::open(claude);
+    let first = bench.prompt("환불 수수료를 정해 줘");
+
+    let asked = &bench.permission_requests()[0]["params"];
+    assert_eq!(
+        (asked["toolCall"]["kind"].clone(), asked["toolCall"]["_meta"]["claudeCode"]["toolName"].clone()),
+        (json!("other"), json!("AskUserQuestion")),
+        "도구 요지는 다른 요청과 같은 꼴이다"
+    );
+    assert_eq!(
+        asked["options"],
+        json!([
+            {"optionId": "answer", "name": "Answer", "kind": "allow_once"},
+            {"optionId": "answer_later", "name": "Answer later", "kind": "reject_once"}
+        ]),
+        "선택지는 답하기 · 나중에 둘이다"
+    );
+    assert_eq!(
+        asked["_meta"]["atelier"]["questions"],
+        json!([
+            {"question": "부분 환불 수수료는 어떻게 할까요?", "header": "수수료", "multiSelect": false,
+             "options": [{"label": "비율대로 돌려준다", "description": "환불한 금액만큼 나눠 돌려줘요"},
+                         {"label": "돌려주지 않는다"}, {"label": "마지막 환불 때 한 번에 돌려준다"}]},
+            {"question": "어느 화면에 보일까요?", "header": "화면", "multiSelect": true,
+             "options": [{"label": "주문 상세"}, {"label": "환불 내역"}]},
+        ]),
+        "물음은 Runtime을 가리지 않는 꼴로 `_meta.atelier.questions`에 실린다 — 엔진이 이것으로 질문 카드를 세운다"
+    );
+
+    let answers = json!({"부분 환불 수수료는 어떻게 할까요?": "비율대로 돌려준다", "어느 화면에 보일까요?": "주문 상세, 환불 내역"});
+    bench.send(json!({"jsonrpc": "2.0", "id": 0, "result": {
+        "outcome": {"outcome": "selected", "optionId": "answer"},
+        "_meta": {"atelier": {"answers": answers}},
+    }}));
+    let mut input = refund_questions();
+    input["answers"] = answers;
+    assert_eq!(
+        bench.answers()[0]["response"]["response"],
+        json!({"behavior": "allow", "updatedInput": input}),
+        "답은 claude가 물은 입력에 `answers`(물음 → 답, 여럿 고르면 쉼표로 이음)를 더한 allow다 — claude의 질문 도구가 읽는 칸이다"
+    );
+    assert_eq!(bench.result(first)["stopReason"], "end_turn");
+
+    let second = bench.prompt("다른 것도 물어봐");
+    bench.answer(1, "answer_later");
+    let later = &bench.answers()[1]["response"]["response"];
+    assert_eq!(later["behavior"], "deny", "나중에는 deny다 — 그 질문 하나만 답 없이 닫히고 claude는 이어 간다");
+    assert!(
+        later["message"].as_str().is_some_and(|text| text.contains("later") && text.contains("Do not ask")),
+        "나중에 답하겠다는 글이 간다 — 같은 질문을 곧바로 다시 묻지 않게: {later}"
+    );
+    assert_eq!(bench.result(second)["stopReason"], "end_turn");
+}
+
+#[test]
+fn 계획_다시_쓰기에_사람이_말을_실으면_claude는_고정_문구와_그_말을_함께_deny로_받는다() {
+    let mut bench = Bench::open(Claude::replaying("2.1.309/g1-plan-revise"));
+    bench.set_mode("plan");
+    let first = bench.prompt("hello.txt에 hi를 담는 계획을 두 단계로 짜고 ExitPlanMode로 물어");
+    let told = "사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n파일 이름을 greeting.txt로";
+
+    bench.send(json!({"jsonrpc": "2.0", "id": 0, "result": {
+        "outcome": {"outcome": "selected", "optionId": "revise_plan"},
+        "_meta": {"atelier": {"message": told}},
+    }}));
+
+    let message = bench.answers()[0]["response"]["response"]["message"].as_str().unwrap_or_default().to_owned();
+    assert!(
+        message.starts_with("The user chose to revise this plan instead of implementing it. Stay in plan mode, do not change any files"),
+        "계획 모드에 남아 파일을 고치지 말라는 고정 문구가 앞선다: {message}"
+    );
+    assert!(message.ends_with(told), "사람의 말이 뒤에 붙는다 — 무엇을 고칠지 함께 받는다: {message}");
+    assert_eq!(bench.result(first)["stopReason"], "end_turn");
 }
 
 // ── 스스로 이어 간 턴(S4) ─────────────────────────────────────────────────────────────
