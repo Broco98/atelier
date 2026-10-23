@@ -149,6 +149,17 @@ export function cardChoices(request: PendingPermission, scope: "work" | "thread"
   ];
 }
 
+/** 건너뛰는 것 — 카드의 갈래로 고른다. */
+const SKIPPED: Readonly<Record<CardKind, string>> = { command: "이 명령은", edit: "이 편집은", plan: "이 계획은", other: "이 요청은" };
+
+/**
+ * 고르기 전에 할 말(v1 티켓 25 · 스토리 83 · 캔버스 Approval 보드 「고르기 전에 할 말이 있을 때」) — 카드 안 입력칸에 말을 쓰는 동안 그
+ * 아래에 서는 한 줄이다. 승인을 기다리는 Agent는 그사이 다른 말에 답하지 못해서, 보내면 그 요청을 거부하고 말이 거부의 글로 간다.
+ */
+export function skipHint(kind: CardKind, name: string): string {
+  return `보내면 ${SKIPPED[kind]} 건너뛰고 ${name}에게 말을 전해요`;
+}
+
 /** 카드가 받은 키 — 물리 키(`code`)와 수식키 넷(`hotkeys.ts`의 `KeyChord`와 같은 까닭으로 `KeyboardEvent`를 이름으로 받지 않는다). */
 export interface CardPress {
   code: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardChoices, cardKey, decisionText, describeApproval, placeOf } from "./approval";
+import { cardChoices, cardKey, decisionText, describeApproval, placeOf, skipHint } from "./approval";
 import type { DecisionEntry, PendingPermission } from "./fold";
 
 // 승인 카드(v1 티켓 24 · 캔버스 Cards · Approval 보드 A안) — 걸린 물음을 카드의 값(제목 · Policy · 명령이나 diff · 실행할 자리)과 선택지
@@ -133,6 +133,14 @@ describe("선택지 셋", () => {
     ]);
     const odd = request(migrate, { options: [{ optionId: "go", name: "Go ahead", kind: "allow_once" }] });
     expect(cardChoices(odd, "work").map((choice) => choice.label)).toEqual(["Go ahead"]);
+  });
+});
+
+describe("고르기 전에 할 말(v1 티켓 25)", () => {
+  it("카드 안 입력칸에 말을 쓰면 보내면 무엇이 건너뛰어지고 누구에게 가는지 한 줄로 말한다(스토리 83)", () => {
+    expect(skipHint("command", "Host")).toBe("보내면 이 명령은 건너뛰고 Host에게 말을 전해요");
+    expect(skipHint("edit", "리뷰어")).toBe("보내면 이 편집은 건너뛰고 리뷰어에게 말을 전해요");
+    expect(skipHint("other", "테스터")).toBe("보내면 이 요청은 건너뛰고 테스터에게 말을 전해요");
   });
 });
 

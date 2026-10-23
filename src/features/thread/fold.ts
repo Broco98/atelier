@@ -242,8 +242,13 @@ export interface ThreadModel {
   system: SystemLine[];
   /** 부른 Agent의 턴 밖에서 선 호출 줄(사람의 「다시 맡기기」) — 시스템 줄처럼 턴 사이에 선다. */
   calls: LooseCall[];
-  /** 답하지 않은 권한 요청 — 물은 차례다. 맨 앞의 것이 입력창 자리에 승인 카드로 선다. */
+  /** 답하지 않은 권한 요청 — 물은 차례다. 맨 앞의 것이 입력창 자리에 승인 카드로 선다(물음 차례는 `asks.ts`). */
   pending: PendingPermission[];
+  /**
+   * 지금 물음 묶음에서 이미 닫힌 물음의 수(v1 티켓 25) — 「2 / 2」의 앞수를 짓는다. 묶음은 걸린 물음이 하나라도 있는 동안 이어지고, 다
+   * 닫히면 0으로 돌아간다. 사람이 답한 것도, 엔진이 닫은 것도, Session과 함께 사라진 것도 닫힌 것이다.
+   */
+  settled: number;
 }
 
 /** 권한 요청의 선택지 하나 — Runtime이 준 그대로(ACP `PermissionOption`). */
@@ -294,13 +299,19 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const open = new Map<string, Turn>();
   // 도는 턴에서 `failed`로 닫힌 뒤 아무 일도 이어지지 않은 도구 줄들(턴마다) — 그 턴이 우리의 멈춤으로 끝나면 멈춤이다.
   const closedLast = new Map<Turn, ToolEntry[]>();
-  // 권한 요청 id → 그 요청의 도구 줄 id · 물음, 그리고 멈추기로 요청이 거둬진 도구 줄 id들.
+  // 권한 요청(`askKey`) → 그 요청의 도구 줄 id · 물음, 그리고 멈추기로 요청이 거둬진 도구 줄 id들.
   const askedFor = new Map<string, { tool: string | null; request: Omit<PendingPermission, "tool"> }>();
   const withdrawnByStop = new Set<string>();
   const deniedTools = new Set<string>();
   // 판정이 묻지 않고 허용한 도구 줄 id → 까닭 — 도구 줄이 판정 줄보다 늦게 와도 든다.
   const allowedTools = new Map<string, string>();
+  // 답하지 않은 물음 — 온 차례다(`askKey`, v1 티켓 25). 닫히면 지금 묶음의 닫힌 수가 오르고, 다 닫히면 묶음이 끝난다.
   const pending = new Map<string, Omit<PendingPermission, "tool">>();
+  let settled = 0;
+  const dropAsk = (key: string) => {
+    if (!pending.delete(key)) return;
+    settled = pending.size === 0 ? 0 : settled + 1;
+  };
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
@@ -384,7 +395,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   // 끝을 받지 못한 도구 줄은 끊겼다.
   const vanish = (at: string, error: string, who?: string | null) => {
     const mine = (one: string | null) => who === undefined || one === (who ?? HOST);
-    for (const [id, request] of pending) if (mine(request.who)) pending.delete(id);
+    for (const [id, request] of pending) if (mine(request.who)) dropAsk(id);
     if (who === undefined) connecting.clear();
     else connecting.delete(who ?? HOST);
     for (const turn of turns) {
@@ -514,11 +525,12 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       case "permission": {
         const requestId = text(payload.requestId);
         if (!requestId) break;
+        const key = askKey(line.who ?? HOST, requestId);
         if (payload.state === "asked") {
           const id = askedToolId(payload);
           const request = askedOf(requestId, line.who ?? HOST, payload);
-          askedFor.set(requestId, { tool: id, request });
-          pending.set(requestId, request);
+          askedFor.set(key, { tool: id, request });
+          pending.set(key, request);
           if (request.planReview && id) {
             planReviews.add(id);
             const home = toolHome(turns, id);
@@ -532,8 +544,8 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           }
           break;
         }
-        pending.delete(requestId);
-        const asked = askedFor.get(requestId);
+        dropAsk(key);
+        const asked = askedFor.get(key);
         const chosen = asked?.request.options.find((option) => option.optionId === payload.optionId);
         if (payload.state === "answered" && asked?.tool) {
           // 거절 갈래로 답했다 — 그 도구는 돌지 않는다(「실행하지 않음 · 내가 거절함」).
@@ -701,6 +713,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       if (tool) tool.asking = true;
       return { ...one, tool };
     }),
+    settled,
   };
 }
 
@@ -715,7 +728,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
  * - **「답하는 중」**(캔버스 Messages 보드 「답하는 중」 · Motion 보드 「Agent 참여」) — 서는 턴 가운데 **흐름 끝에서 답이 보이지 않는**
  *   도는 턴의 참여자다: 아직 아무 줄도 오지 않은 턴(보낸 말 · 참여 줄 바로 뒤)과 흐름 끝이 아닌 자리에서 도는 턴. 흐름 끝의 턴이
  *   답 · 생각 · 도구 줄을 흘리고 있으면 그 턴의 이름 줄 · 머리줄이 이미 말하므로 뺀다. 서지 않는 턴(일하는 맡은 턴)도 뺀다 — 호출
- *   줄이 말한다. 아무도 없으면 `null`이다. 여럿이면 턴이 선 차례로 모두 든다(「리뷰어와 테스터가 답하는 중」).
+ *   줄이 말한다. 승인을 기다리는 참여자도 뺀다 — 답하는 것이 아니라 사람을 기다리고, 그 턴의 머리줄이 「승인을 기다립니다」를 말한다
+ *   (v1 티켓 25 — 두 Agent가 함께 물으면 앞의 턴이 흐름 끝이 아니다). 아무도 없으면 `null`이다. 여럿이면 턴이 선 차례로 모두 든다
+ *   (「리뷰어와 테스터가 답하는 중」).
  */
 export interface Flow {
   turns: Turn[];
@@ -736,7 +751,8 @@ export function flowOf(model: ThreadModel, only: string | null = null): Flow {
   const last = turns[turns.length - 1];
   const speaking = last && last.end === null && last.entries.length > 0 ? (last.who ?? HOST) : null;
   const running = new Set(turns.filter((turn) => turn.end === null).map((turn) => turn.who ?? HOST));
-  const answering = model.answering.filter((who) => who !== speaking && running.has(who));
+  const asking = new Set(model.pending.map((request) => request.who));
+  const answering = model.answering.filter((who) => who !== speaking && running.has(who) && !asking.has(who));
   return {
     turns,
     notices: model.notices.filter((one) => only === null || one.handle === only).map(recount),
@@ -870,6 +886,12 @@ function outOfTurnStarted(update: Json): boolean {
   const mark = atelier && isObject(atelier.outOfTurn) ? atelier.outOfTurn : null;
   return mark?.state === "started";
 }
+
+/**
+ * 물음 하나의 열쇠 — 물은 참여자와 요청 id다. 요청 id는 Session마다 따로 세므로(엔진 `answer_thread_permission`) 두 Agent의 첫 물음은 둘
+ * 다 「0」이다 — id만으로 걸면 뒤의 물음이 앞의 것을 덮어 한 Thread에 물음이 하나뿐인 듯 보인다(v1 티켓 25).
+ */
+const askKey = (who: string, requestId: string) => `${who}\u0000${requestId}`;
 
 function askedOf(requestId: string, who: string, payload: Json): Omit<PendingPermission, "tool"> {
   const request = isObject(payload.request) ? payload.request : {};

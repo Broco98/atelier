@@ -8,6 +8,8 @@ import { AgentFace, FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { threadApi } from "./api";
 import { placeOf } from "./approval";
+import { askTurn, nextOf } from "./asks";
+import { AskNext } from "./AskTurnMarks";
 import ChangesPill from "./ChangesPill";
 import { chipLists, currentModel } from "./chips";
 import { useCreateAgent } from "./create-agent";
@@ -35,7 +37,8 @@ import type { AskLevel, Attachment, ThreadView } from "./types";
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다
-//   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다).
+//   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것
+//   하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
 //   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
@@ -265,7 +268,8 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   const last = shown[shown.length - 1];
   // 알약이 세는 것 — 마지막 턴의 끝난 편집. 도는 동안에도 끝난 편집만큼 선다(Composer 보드 「작업 중 · … · 바뀐 파일」).
   const changes = last ? changedFiles(last) : null;
-  const asking = model.pending[0] ?? null;
+  const turn = askTurn(model);
+  const asking = turn?.current ?? null;
   const askingCwd = asking ? (view.participants.find((one) => one.handle === asking.who)?.cwd ?? null) : null;
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
@@ -412,6 +416,16 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
                   scope={view.work ? "work" : "thread"}
                   cwd={askingCwd}
                   place={placeOf(askingCwd, linked)}
+                  count={turn?.count}
+                  next={
+                    turn?.next && (
+                      <AskNext
+                        handle={turn.next.who}
+                        avatar={model.cast[turn.next.who]?.avatar ?? null}
+                        line={nextOf(turn.next, model.cast[turn.next.who]?.name ?? turn.next.who)}
+                      />
+                    )
+                  }
                 />
               )
             }

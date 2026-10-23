@@ -1,10 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowUp, Info } from "lucide-react";
 import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
 import { threadApi } from "./api";
-import { cardChoices, cardKey, describeApproval, type CardChoice } from "./approval";
+import { cardChoices, cardKey, describeApproval, skipHint, type CardChoice } from "./approval";
+import type { AskTurn } from "./asks";
+import { AskCount } from "./AskTurnMarks";
 import type { Avatar } from "./faces";
 import type { PendingPermission } from "./fold";
 import { shownPath, type DiffPiece } from "./tool-view";
@@ -24,7 +26,11 @@ import { shownPath, type DiffPiece } from "./tool-view";
 //   간다. 비워 보내면 거부만 간다. 입력칸의 Esc는 칸을 닫고 번호 줄로 돌아간다.
 // - 이 카드는 권한 답 명령을 부르기만 한다. 고른 것은 기록의 답 줄(`answered`)로 오고, 그 줄이 오면 접기가 이 요청을 빼서 카드가 걷히고
 //   그 자리(물은 턴)에 결정 줄이 선다(스토리 79). 답이 오기 전에 두 번 고르지 않게, 고른 뒤로는 줄이 잠긴다.
-// - 카드에 멈추기가 없다(보드) — 서 있는 동안 멈추는 길은 거부다. 두 Agent가 함께 물은 차례(「1 / 2」 · 다음 줄)는 v1 티켓 25가 단다.
+// - **고르기 전에 할 말**(v1 티켓 25 · 스토리 83) — 입력칸에 말을 쓰는 동안 그 아래에 「보내면 이 명령은 건너뛰고 Host에게 말을
+//   전해요」가 선다(`skipHint`, 보드 B의 `.hint` 모양). 입력창은 카드가 대신했으니 카드에 할 말은 이 칸이 받는다.
+// - **여럿이 물으면 차례를 말한다**(v1 티켓 25 · 보드 「두 Agent가 함께 물을 때」) — 머리 오른쪽에 「1 / 2」, 맨 아래에 「다음 · …」 줄
+//   (`AskTurnMarks`). 차례는 부르는 쪽이 `askTurn`으로 읽어 준다.
+// - 카드에 멈추기가 없다(보드) — 서 있는 동안 멈추는 길은 거부다.
 
 /** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). */
 const ARMING_MS = 300;
@@ -44,10 +50,15 @@ interface ApprovalCardProps {
   cwd: string | null;
   /** 명령을 실행할 자리(`placeOf`). */
   place: string | null;
+  /** 물음 차례의 「1 / 2」(`askTurn`) — 묶음에 물음이 하나뿐이면 null. */
+  count?: AskTurn["count"];
+  /** 카드 맨 아래 「다음 · …」 줄(`AskNext`) — 다음 차례가 없으면 비운다. */
+  next?: ReactNode;
 }
 
-function ApprovalCard({ thread, name, avatar, request, scope, cwd, place }: ApprovalCardProps) {
+function ApprovalCard({ thread, name, avatar, request, scope, cwd, place, count = null, next }: ApprovalCardProps) {
   const titleId = useId();
+  const hintId = useId();
   const card = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
   const shownAt = useRef(0);
@@ -58,6 +69,7 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place }: Appr
   const [words, setWords] = useState("");
   const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const hinted = writing && words.trim() !== "";
 
   useEffect(() => {
     shownAt.current = performance.now();
@@ -110,12 +122,13 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place }: Appr
     >
       <div className="flex items-start gap-2.5 px-2.5">
         <AgentFace handle={request.who} avatar={avatar} className="size-5.5 shrink-0" />
-        <div className="flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <p id={titleId} className="break-keep text-sm font-semibold text-fg">
             {view.title}
           </p>
           {view.policy && <p className="text-xs text-fg-tertiary">Policy · {view.policy}</p>}
         </div>
+        <AskCount count={count} />
       </div>
       {view.command !== null && (
         <div className="mx-2.5 flex flex-col gap-1.5">
@@ -163,6 +176,7 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place }: Appr
               value={words}
               disabled={sent}
               aria-label={`${name}에게 다르게 할 방법 알려 주기`}
+              aria-describedby={hinted ? hintId : undefined}
               placeholder={`${name}에게 다르게 할 방법 알려 주기`}
               onChange={(event) => setWords(event.target.value)}
               onKeyDown={(event) => {
@@ -189,12 +203,19 @@ function ApprovalCard({ thread, name, avatar, request, scope, cwd, place }: Appr
             </button>
           </div>
         )}
+        {hinted && (
+          <p id={hintId} className="mt-1 ml-8.5 flex items-center gap-1.5 px-1 text-xs text-fg-secondary">
+            <Info className="size-3.5 shrink-0" aria-hidden />
+            {skipHint(view.kind, name)}
+          </p>
+        )}
       </div>
       {problem && (
         <p role="alert" className="px-3 text-xs text-danger">
           {problem}
         </p>
       )}
+      {next}
     </div>
   );
 }
