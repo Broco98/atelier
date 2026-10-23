@@ -3,7 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown, ArrowLeft, Folder } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
-import { useWorks } from "@/features/works/hooks";
+import { shellStore, showSidebar } from "@/components/shell/shell-store";
+import { expandHome } from "@/features/works/doc-refs";
+import { useHomeDir, useWorks } from "@/features/works/hooks";
 import { AgentFace, FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import QuestionCard from "./QuestionCard";
@@ -17,6 +19,7 @@ import { useCreateAgent } from "./create-agent";
 import DecisionsCard from "./DecisionsCard";
 import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./engine-store";
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
+import type { Opened } from "./expanded";
 import GuideCard from "./GuideCard";
 import HostFace from "./HostFace";
 import {
@@ -40,7 +43,7 @@ import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { UserMessage } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
@@ -83,6 +86,10 @@ import WorkProposalCard from "./WorkProposalCard";
 // - **Work 카드**(v1 티켓 34 · §15) — Work에 이은 Thread의 오른쪽 위, 위 막대의 카드 버튼 바로 아래에 Work 카드가 떠 있고 대화는 카드
 //   폭 + 틈만큼 왼쪽으로 비켜 준다(보드 `.chat{margin-right:312px}`). 버튼 · 머리 줄 Work 알약이 여닫고, 열림은 Work마다 기억한다(S32).
 //   Work 없는 Thread에는 카드도 버튼도 없다(스토리 114). 카드 머리의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
+// - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드) — 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓어진다. 대화는 왼쪽
+//   480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그 오른쪽을 틈 12까지 채운다(보드 `.p-open
+//   .wpane`). 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면 되돌린다. 넓힌 것은 이 화면의 상태라
+//   다른 Thread로 옮기면 작은 카드다. 카드를 닫으면 넓힌 것도 걷힌다.
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
 //   결과」(굵은 제목)가 그것으로 걷힌다.
@@ -212,6 +219,29 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
   const gone = view?.readOnly ?? null;
   const cardWork = gone === "removed" ? null : work;
   const [cardOpen, setCardOpen] = useCardOpen(cardWork);
+  // 넓힌 카드가 연 것(v1 티켓 35) — 없으면 작은 카드다. 보관된 Work의 카드는 넓어지지 않는다.
+  const [opened, setOpened] = useState<Opened | null>(null);
+  const expanded = cardWork !== null && gone !== "archived" && cardOpen && opened !== null;
+  useFoldSidebar(expanded);
+  // 대화 속 문서 카드(스토리 102)가 여는 길 — 이은 Work의 spec 폴더(절대 경로)를 알아야 그 턴이 쓴 문서를 가린다. 보관된 Work는 목록에
+  // 없어 카드가 서지 않는다.
+  const { data: works } = useWorks();
+  const { data: home } = useHomeDir();
+  const specDir = works?.find((one) => one.slug === cardWork)?.specDir ?? null;
+  const specRoot = specDir !== null && home ? expandHome(specDir, home) : null;
+  const docPlace = useMemo(
+    () =>
+      specRoot === null
+        ? null
+        : {
+            specRoot,
+            open: (path: string) => {
+              setCardOpen(true);
+              setOpened({ kind: "doc", path });
+            },
+          },
+    [specRoot, setCardOpen, setOpened],
+  );
   return (
     <PlainFrame
       sidebarOpen={sidebarOpen}
@@ -237,19 +267,33 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
         view && (view.participants.length > 0 || cardWork) ? (
           <>
             {view.participants.length > 0 && <ThreadParticipants view={view} />}
-            {cardWork && <WorkCardToggle open={cardOpen} onToggle={() => setCardOpen(!cardOpen)} />}
+            {cardWork && (
+              <WorkCardToggle
+                open={cardOpen}
+                onToggle={() => {
+                  if (cardOpen) setOpened(null);
+                  setCardOpen(!cardOpen);
+                }}
+              />
+            )}
           </>
         ) : undefined
       }
     >
       {view ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          {/* 대화는 카드가 열린 동안 카드 폭 + 틈 12만큼 비켜 준다 — 흐름 · 입력창이 그 남은 폭의 가운데에 모인다. */}
-          <div className="flex min-h-0 flex-1 flex-col" style={cardWork && cardOpen ? { marginRight: CARD_ROOM } : undefined}>
-            <ThreadBody key={thread} view={view} problem={problem} />
+          {/* 대화는 카드가 열린 동안 카드 폭 + 틈 12만큼 비켜 준다 — 흐름 · 입력창이 그 남은 폭의 가운데에 모인다. 카드가 넓으면 왼쪽
+              480에 남는다. */}
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            style={expanded ? { width: THREAD_BESIDE } : cardWork && cardOpen ? { marginRight: CARD_ROOM } : undefined}
+          >
+            <DocPlace.Provider value={docPlace}>
+              <ThreadBody key={thread} view={view} problem={problem} />
+            </DocPlace.Provider>
           </div>
           {cardWork && cardOpen && (
-            <div className="absolute top-3 right-3 bottom-3 flex flex-col">
+            <div className="absolute top-3 right-3 bottom-3 flex flex-col" style={expanded ? { left: THREAD_BESIDE } : undefined}>
               {gone === "archived" ? (
                 <ArchivedWorkCard slug={cardWork} />
               ) : (
@@ -257,6 +301,9 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
                   thread={thread}
                   slug={cardWork}
                   onNewThread={() => void navigate({ to: "/", search: { work: cardWork } })}
+                  opened={expanded ? opened : null}
+                  onOpen={setOpened}
+                  onClose={() => setOpened(null)}
                 />
               )}
             </div>
@@ -284,6 +331,21 @@ function GuidePlace({ children }: { children: ReactNode }) {
 
 /** 카드가 열린 동안 대화가 비켜 주는 폭 — 카드 폭 + 오른쪽 틈 12(보드 `.chat{margin-right:312px}` · `.wpos{right:12px}`). */
 const CARD_ROOM = "calc(var(--size-work-card) + 12px)";
+
+/** 카드가 넓은 동안 대화의 폭이자 넓힌 카드의 왼쪽 끝(보드 `.p-open .chat{right:calc(100% - 480px)}` · `.p-open .wpane{width:calc(100% - 492px)}`). */
+const THREAD_BESIDE = "var(--size-thread-beside)";
+
+/**
+ * 카드가 넓은 동안 사이드바를 접는다(§15 배치 1) — 열려 있었을 때만 접고, 작은 카드로 돌아오거나 화면을 떠나면 되돌린다. 넓은 동안 사람이
+ * 사이드바를 다시 열었으면 그대로다.
+ */
+function useFoldSidebar(expanded: boolean) {
+  useEffect(() => {
+    if (!expanded || !shellStore.state.sidebarOpen) return;
+    showSidebar(false);
+    return () => showSidebar(true);
+  }, [expanded]);
+}
 
 /**
  * 머리 줄의 Work 알약(화면 2 보드 `.wchip`) — 높이 26 · 알약 · `fill-soft` · 12/18 `fg-secondary`, 폴더 14 · 제목 · 「·」 · 고정폭 브랜치.
@@ -529,9 +591,9 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             commands={lists.commands}
             running={model.running}
             stopped={stopped}
-            onSend={(text, attachments) => {
+            onSend={(text, attachments, quote) => {
               stuck.current = true;
-              return threadApi.send(thread, text, attachments);
+              return threadApi.send(thread, text, attachments, quote);
             }}
             onStop={() => threadApi.stop(thread)}
             onNewThread={() => void navigate({ to: "/" })}

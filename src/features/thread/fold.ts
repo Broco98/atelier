@@ -1,6 +1,7 @@
 import { askLevelOf } from "./chips";
 import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
+import type { Quote } from "@/features/works/QuotePick";
 import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 
 // Thread 접기(v1 티켓 05 · 구현 스펙 §14) — Thread 기록 줄을 받아 화면 모델(턴 · 말한 이 · 메시지 · 생각 · 도구 줄 · 시스템 줄 ·
@@ -236,6 +237,8 @@ export interface Turn {
   sent: string | null;
   /** 그 말에 붙인 파일 · 폴더(`sent`의 `attachments`, v1 티켓 06) — 말풍선 위 칩이다. 없으면 빈 목록이다. */
   attachments: Attachment[];
+  /** 그 말에 붙인 인용(`sent`의 `quote`, v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글이고 말풍선 위에 선다. 없으면 null이다. */
+  quote: Quote | null;
   /** Agent가 스스로 이어 간 턴인가 — 보낸 말 없이 시작했거나 턴 밖 끝만 온 턴이다. */
   selfContinued: boolean;
   /** 턴이 선 시각(보낸 말 · 처음 온 줄). */
@@ -490,6 +493,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     who: string | null,
     attachments: Attachment[] = [],
     assigned: CallEntry | null = null,
+    quote: Quote | null = null,
   ): Turn => {
     const previous = turns[turns.length - 1];
     const turn: Turn = {
@@ -498,6 +502,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       namesWho: true,
       sent,
       attachments,
+      quote,
       selfContinued: sent === null && assigned === null,
       startedAt: at,
       answeredAt: null,
@@ -598,7 +603,15 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
       case "sent":
-        start(`t${line.seq}`, text(payload.text) ?? "", line.at, text(payload.to), attachmentsOf(payload.attachments));
+        start(
+          `t${line.seq}`,
+          text(payload.text) ?? "",
+          line.at,
+          text(payload.to),
+          attachmentsOf(payload.attachments),
+          null,
+          quoteOf(payload.quote),
+        );
         break;
       case "update": {
         const update = isObject(payload.update) ? payload.update : null;
@@ -1112,6 +1125,16 @@ function attachmentsOf(value: unknown): Attachment[] {
     if (path === null) return [];
     return [{ path, size: typeof item.size === "number" ? item.size : null, folder: item.folder === true }];
   });
+}
+
+/** `sent`의 `quote` 칸 → 인용(엔진 `atelier_acp::Quote` 꼴). 칸이 하나라도 틀리면 없음이다 — 말풍선 위에 그릴 수 없다. */
+function quoteOf(value: unknown): Quote | null {
+  if (!isObject(value)) return null;
+  const file = text(value.file);
+  const quoted = text(value.text);
+  const { start, end } = value;
+  if (file === null || quoted === null || typeof start !== "number" || typeof end !== "number") return null;
+  return { file, start, end, text: quoted };
 }
 
 /** Agent 부르기 Thread 도구의 줄인가 — Claude Code의 MCP 도구 이름(`_meta.claudeCode.toolName`, 없으면 제목)으로 가린다. */

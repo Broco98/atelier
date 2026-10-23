@@ -1116,6 +1116,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_work_prs: [] as unknown[],
   // Work 밖 Project 카드의 답(v1 티켓 32) — 값은 안 쓰인다. 고른 것과 붙인 Project · 만든 worktree는 기록의 `question` · `work` 줄로 온다.
   thread_answer_project: null,
+  // 넓힌 카드의 diff(v1 티켓 35) — 변경 줄을 누르면 읽는다. 기본은 바뀐 것이 없다는 답이다.
+  read_work_diff: { kind: "unchanged" },
   // 다시 맡기기(v1 티켓 17) — 값은 안 쓰인다. 부르기와 그 결과는 기록 줄 이벤트로 온다.
   thread_call_again: null,
   // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.

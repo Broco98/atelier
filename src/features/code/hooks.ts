@@ -1,5 +1,6 @@
 import { hashKey, queryOptions, useQuery } from "@tanstack/react-query";
 import { worktreeKey } from "@/features/files/hooks";
+import { worksApi } from "@/features/works/api";
 import { codeApi } from "./api";
 
 /**
@@ -32,4 +33,25 @@ export const codeFileQuery = (slug: string, project: string, path: string) => {
 
 export function useCodeFile(slug: string, project: string, path: string) {
   return useQuery(codeFileQuery(slug, project, path));
+}
+
+/**
+ * 바뀐 파일 하나의 diff(v1 티켓 35 — 넓힌 카드의 변경 보기, `read_work_diff`). 키는 파일 내용과 같은 머리(`worktreeKey(slug)` · 프로젝트)
+ * 아래다 — 감시의 `worktree:changed` · 턴 끝 · 창 포커스가 그 파일 내용과 함께 다시 읽는다(`invalidateWorktree`). 다시 읽는 동안은 앞
+ * patch가 그대로 선다(같은 파일일 때만). 다시 시도하지 않는 까닭은 위 `codeFileQuery`와 같다.
+ */
+export const workDiffQuery = (slug: string, project: string, path: string) => {
+  const queryKey = [...worktreeKey(slug), project, "diff", path];
+  return queryOptions({
+    queryKey,
+    queryFn: () => worksApi.diff(slug, project, path),
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev, prevQuery) =>
+      prevQuery && hashKey(prevQuery.queryKey) === hashKey(queryKey) ? prev : undefined,
+  });
+};
+
+export function useWorkDiff(slug: string, project: string, path: string) {
+  return useQuery(workDiffQuery(slug, project, path));
 }

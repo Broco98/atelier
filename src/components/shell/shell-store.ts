@@ -51,6 +51,15 @@ export function toggleSidebar() {
 }
 
 /**
+ * 사이드바를 잠깐 여닫는다 — **적지 않는다**(v1 티켓 35). Thread 화면의 넓힌 카드가 넓어질 때 접고 작은 카드로 돌아올 때 되돌리는 길이다
+ * (§15 배치 1 「카드가 넓어지면 사이드바가 접히고」). 그 배치가 하는 일이지 사람이 정한 값(설정)이 아니라, 넓힌 채 앱을 껐다 켜도
+ * 사이드바는 사람이 정한 대로 선다.
+ */
+export function showSidebar(open: boolean) {
+  shellStore.setState((state) => (state.sidebarOpen === open ? state : { ...state, sidebarOpen: open }));
+}
+
+/**
  * 이 주소에 도착했다고 적어 둔다 — **세션 동안만**이다(`lastPlace` 머리말). 저장소에는 아무것도 안 적는다.
  *
  * 설정은 **안 적는다** — 설정을 적으면 설정을 열었다는 이유로 「앱으로 돌아가기」가 설정으로 돌아간다. 설정은 그 아래 항목

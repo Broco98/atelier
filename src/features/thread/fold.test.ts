@@ -361,6 +361,18 @@ describe("첨부(v1 티켓 06)", () => {
   });
 });
 
+describe("인용(v1 티켓 35 · S41)", () => {
+  it("넓힌 카드의 문서에서 고른 글을 붙인 말은 그 턴의 인용으로 들고, 인용 없는 말 · 꼴이 틀린 인용은 없음이다", () => {
+    const quote = { file: "design.md", start: 3, end: 4, text: "차감은 한 번만 한다." };
+    const lines: RecordLine[] = [
+      { seq: 1, at: at(1), kind: "sent", payload: { text: "이 부분 다시 봐 줘", quote, prompt: [], to: "host" } },
+      { seq: 2, at: at(2), kind: "sent", payload: { text: "고마워", prompt: [], to: "host" } },
+      { seq: 3, at: at(3), kind: "sent", payload: { text: "이것도", quote: { file: "design.md", start: "3" }, to: "host" } },
+    ];
+    expect(foldThread(lines).turns.map((turn) => turn.quote)).toEqual([quote, null, null]);
+  });
+});
+
 describe("여럿이 한 Thread에(v1 티켓 14)", () => {
   const said = (seq: number, second: number, who: string, words: string): RecordLine => ({
     seq,

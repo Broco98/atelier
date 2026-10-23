@@ -537,7 +537,10 @@
        `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다.
 
        Work 카드 폭(`--size-work-card` 300)은 v1이 더했다(v1 티켓 34 · 캔버스 WorkPanel · Screen-Review 보드 `.wc`) — Thread 화면 오른쪽
-       위에 뜨는 카드의 폭이고, 카드가 열린 동안 대화가 이 폭 + 틈 12만큼 왼쪽으로 비켜 준다(`ThreadScreen`). DS에 이 폭이 없다. */
+       위에 뜨는 카드의 폭이고, 카드가 열린 동안 대화가 이 폭 + 틈 12만큼 왼쪽으로 비켜 준다(`ThreadScreen`). DS에 이 폭이 없다.
+       넓힌 카드 곁의 대화 폭(`--size-thread-beside` 480)도 v1이 더했다(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.p-open .chat`) — 카드가
+       넓은 동안 대화가 왼쪽에 이 폭으로 남고 카드가 그 오른쪽을 채운다(`ThreadScreen`). 넓힌 카드의 목록 칸은 `--size-list`(264)를 읽는다
+       (보드 `.p-open .wlist` — `WorkCard`). */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -556,6 +559,7 @@
     --size-menu: 260px;
     --size-menu-ctx: 248px;
     --size-work-card: 300px;
+    --size-thread-beside: 480px;
 }
 
 /* **Codex 색 · 그림자 — 라이트**(codex-ds 결정 27 · 스펙 S1 · S2). 이름과 값은 DS 「Atelier」 2판 `tokens.json` 그대로다 —
@@ -1724,6 +1728,27 @@ body[data-palette-open] [data-scrollbar] {
     }
 }
 
+/* **넓힌 카드 문서의 바뀐 줄**(v1 티켓 35 · 스토리 118 · 캔버스 Motion 보드 「문서 실시간 편집」 `.ln.live` — 「Host가 문서를 고치면 바뀐 줄만
+   잠깐 칠해집니다」). 옅은 파랑(`accent-soft`)이 처음 30%를 머물다 1.6초에 걸쳐 걷힌다 — 곡선은 보드의 `--ease-io`다. 칠할 블록 · 줄은
+   넓힌 카드의 보기가 고른다(`ExpandedViewer`의 `flashLines` — 다시 읽은 글에서 더하거나 고친 줄이 걸친 렌더 블록 · 원문 줄). 그
+   상자는 문서 보기의 것이라 클래스가 아니라 표식(`data-doc-flash`)을 단다. 보드의 줄이 들어오는 움직임(`lnin` — 아래에서 올라옴)은
+   모션 티켓(v1 티켓 43)의 몫이다. 동작을 줄여 둔 사람에게는 칠하지 않는다. */
+@keyframes doc-flash {
+    0%,
+    30% {
+        background: var(--accent-soft);
+    }
+    to {
+        background: transparent;
+    }
+}
+[data-doc-flash] {
+    animation: doc-flash 1.6s cubic-bezier(0.4, 0, 0.2, 1);
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
+}
+
 /* **코드 보기 범위 토큰**(git-integration 판 01 S16 · 결정 35 · 38) — 파일 탭의 강조된 코드(`HighlightedCode`)가 읽는다.
 
    구문색은 여기 없다 — 앱 전역의 Codex `--syntax-*`(위 `:root` · `.dark`)를 테마가 바로 읽는다. 한때 이 범위에 같은 라이트
@@ -1733,7 +1758,13 @@ body[data-palette-open] [data-scrollbar] {
    아래 `--diffs-*`는 강조 라이브러리(`@pierre/diffs`)가 shadow DOM 안에서 읽는 변수다 — 커스텀 속성은 shadow 경계를 넘어
    상속되므로 여기서 건네면 그 안까지 간다(앱 CSS의 클래스는 못 들어간다). 줄 번호 · 글꼴 · 줄 높이는 **앱 전역 토큰**을
    그대로 가리킨다: 줄 번호는 원문 보기(`SourceView`)의 줄 번호와 같은 흐린 글자, 글자는 `text-code`(13 / 20)다. 라이브러리의
-   어림 줄 높이(가상화가 그리기 전에 쓰는 20px)도 이 값과 같다. 탭 폭 4는 원문 보기와 같다. */
+   어림 줄 높이(가상화가 그리기 전에 쓰는 20px)도 이 값과 같다. 탭 폭 4는 원문 보기와 같다.
+
+   diff 보기(v1 티켓 35 · 넓힌 카드의 변경 — 캔버스 Layout-Expand 보드 `.dl.a` · `.dl.d` · `.hk` · `.fold`)의 색도 여기서 건넨다. 앱의 테마는
+   diff 색을 싣지 않아 라이브러리의 색 셈이 비어 있었다. 건네는 것은 바탕색 둘(`diff-added` · `diff-deleted`)이다 — −/+ 표가 그 색이고,
+   줄 바탕(줄 번호 칸까지 한 줄로)은 라이브러리가 면에 그 색을 12% 섞어 짓는다(DS `diff-added-line` · `diff-deleted-line`과 거의 같은 값이 된다
+   — 그 토큰을 그대로 건네면 다시 88% 흰 면에 섞여 거의 흰 줄이 된다). 바뀐 낱말은 더함만 DS 토큰(`diff-added-word`)이 있고 지움은
+   라이브러리가 바탕색에서 섞는다. 덩어리 사이의 접힌 줄은 옅은 면(`fill-soft`)이다. 줄 번호는 더하고 지운 줄도 같은 흐린 글자다(보드 `.o`). */
 [data-code-view] {
     --diffs-font-family: var(--font-mono);
     --diffs-font-features: var(--font-mono--font-feature-settings);
@@ -1741,4 +1772,10 @@ body[data-palette-open] [data-scrollbar] {
     --diffs-line-height: var(--text-code--line-height);
     --diffs-tab-size: 4;
     --diffs-fg-number-override: var(--fg-tertiary);
+    --diffs-addition-color-override: var(--diff-added);
+    --diffs-deletion-color-override: var(--diff-deleted);
+    --diffs-bg-addition-emphasis-override: var(--diff-added-word);
+    --diffs-fg-number-addition-override: var(--fg-tertiary);
+    --diffs-fg-number-deletion-override: var(--fg-tertiary);
+    --diffs-bg-separator-override: var(--fill-soft);
 }

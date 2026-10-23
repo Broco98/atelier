@@ -812,15 +812,20 @@ pub async fn thread_start(
 
 /// 있는 Thread에 말한다 — 받는 이는 첫 @멘션의 Agent, 없으면 Host다(아직 참여자가 아니면 들어온다). 턴을 기다리지 않는다. 다시
 /// 켠 뒤 · 죽은 뒤면 먼저 같은 Session으로 되살린다. 멘션이 범위 밖 · 깨진 파일 · 없는 첨부면 아무것도 적지 않고 그 까닭이 오류
-/// 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
+/// 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30). 인용(`quote` — 넓힌 카드의 문서에서 고른 글, v1 티켓
+/// 35 · S41)은 이은 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 간다 — 올바르지 않으면 아무것도 적지 않는다.
 #[tauri::command]
 pub async fn thread_send(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
     thread: String,
     text: String,
     attachments: Vec<String>,
+    quote: Option<atelier_acp::Quote>,
 ) -> CmdResult<()> {
-    to_host(&engine, "말을 보내지 못했습니다", move |host| host.send_to_thread_with(&thread, &text, &attachments)).await
+    to_host(&engine, "말을 보내지 못했습니다", move |host| {
+        host.send_to_thread_quoting(&thread, &text, &attachments, quote.as_ref())
+    })
+    .await
 }
 
 /// 그 Thread의 도는 턴을 모두 멈춘다. 기다리지 않는다 — 멈춘 턴의 끝은 기록 줄로 온다.

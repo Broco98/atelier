@@ -25,7 +25,6 @@ pub struct Quote {
 }
 
 /// 인용이 올바르지 않다 — 화면에 그대로 보일 글이다.
-#[cfg_attr(not(test), allow(dead_code))] // Work 안 대화창과 함께 부르는 곳이 걷혔다 — v1 티켓 35가 Thread 입력창으로 다시 잇는다(S41).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BadQuote(&'static str);
 
@@ -43,15 +42,17 @@ pub(crate) struct Attached {
     pub(crate) block: Value,
 }
 
-#[cfg_attr(not(test), allow(dead_code))] // Work 안 대화창과 함께 부르는 곳이 걷혔다 — v1 티켓 35가 Thread 입력창으로 다시 잇는다(S41).
 impl Quote {
     /// 이 인용을 `spec` 폴더의 것으로 붙인다 — 인용 블록을 짓는다.
     pub(crate) fn attach(&self, spec: &Path) -> Result<Attached, BadQuote> {
         Ok(Attached { quote: self.clone(), block: self.block(spec)? })
     }
 
-    /// 인용 블록(S12) — `spec` 폴더 안의 그 파일을 실제 경로로 가리키는 참조 한 줄, 빈 줄, 고른 글의 마크다운 인용.
+    /// 인용 블록(S12) — `spec` 폴더 안의 그 파일을 실제 경로로 가리키는 참조 한 줄, 빈 줄, 고른 글의 마크다운 인용, 빈 줄.
     /// 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면 보내지 않는다.
+    ///
+    /// **빈 줄로 끝난다**(v1 티켓 35) — claude는 한 말의 글 블록을 사이 없이 이어 읽는다(v1 티켓 09). 인용 끝 줄 바로 뒤에 본문이 오면
+    /// 마크다운의 게으른 이어짐으로 본문 첫 줄까지 인용 안의 글이 된다.
     fn block(&self, spec: &Path) -> Result<Value, BadQuote> {
         let inside = !self.file.is_empty()
             && Path::new(&self.file).components().all(|part| matches!(part, Component::Normal(_)));
@@ -68,7 +69,7 @@ impl Quote {
             if self.end > self.start { format!("L{}-{}", self.start, self.end) } else { format!("L{}", self.start) };
         let quoted: String =
             self.text.lines().map(|line| if line.is_empty() { ">\n".to_owned() } else { format!("> {line}\n") }).collect();
-        let text = format!("{}:{lines}\n\n{quoted}", spec.join(&self.file).display());
+        let text = format!("{}:{lines}\n\n{quoted}\n", spec.join(&self.file).display());
         Ok(json!({"type": "text", "text": text}))
     }
 }
@@ -83,19 +84,19 @@ mod tests {
     }
 
     #[test]
-    fn 인용_블록은_실제_경로와_줄_범위_한_줄_빈_줄_마크다운_인용_글이다() {
+    fn 인용_블록은_실제_경로와_줄_범위_한_줄_빈_줄_마크다운_인용_글_빈_줄이다() {
         let spec = Path::new("/works/cart/spec");
         let attached = paragraph().attach(spec).expect("올바른 인용");
         assert_eq!(attached.quote, paragraph());
         assert_eq!(
             attached.block,
-            json!({"type": "text", "text": "/works/cart/spec/plan.md:L3-4\n\n> 요약 한 줄.\n> 첫 문단을 고쳤다.\n"})
+            json!({"type": "text", "text": "/works/cart/spec/plan.md:L3-4\n\n> 요약 한 줄.\n> 첫 문단을 고쳤다.\n\n"})
         );
 
         let one_line = Quote { file: "drafts/idea.md".into(), start: 2, end: 2, text: "  들여 쓴 줄\n\n끝".into() };
         assert_eq!(
             one_line.attach(spec).expect("한 줄 인용").block,
-            json!({"type": "text", "text": "/works/cart/spec/drafts/idea.md:L2\n\n>   들여 쓴 줄\n>\n> 끝\n"}),
+            json!({"type": "text", "text": "/works/cart/spec/drafts/idea.md:L2\n\n>   들여 쓴 줄\n>\n> 끝\n\n"}),
             "한 줄이면 `:L<n>`이고, 빈 줄도 인용 안에 남는다"
         );
     }

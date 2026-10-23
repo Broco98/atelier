@@ -394,17 +394,18 @@ function diffPiece(item: Json): DiffPiece {
   };
 }
 
-function splitLines(value: string): string[] {
+export function splitLines(value: string): string[] {
   if (value === "") return [];
   const lines = value.split("\n");
   if (lines[lines.length - 1] === "") lines.pop();
   return lines;
 }
 
-type Change = { type: "add" | "del" | "ctx"; text: string };
+export type Change = { type: "add" | "del" | "ctx"; text: string };
 
-/** 줄 단위 diff — 같은 머리 · 꼬리를 떼고, 가운데를 가장 긴 공통 줄(LCS)로 견준다. */
-function lineDiff(before: readonly string[], after: readonly string[]): Change[] {
+/** 줄 단위 diff — 같은 머리 · 꼬리를 떼고, 가운데를 가장 긴 공통 줄(LCS)로 견준다. 넓힌 카드의 문서가 다시 읽은 글에서 칠할 줄도
+ * 이것으로 고른다(v1 티켓 35 · `expanded.ts`의 `freshLines`). */
+export function lineDiff(before: readonly string[], after: readonly string[]): Change[] {
   let head = 0;
   while (head < before.length && head < after.length && before[head] === after[head]) head += 1;
   let tail = 0;

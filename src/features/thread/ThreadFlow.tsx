@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,15 @@ import {
   type WorkChoiceEntry,
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
+import { DocCard } from "./DocCard";
+import { createdDocs } from "./expanded";
 import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
 import { projectChoiceText } from "./project-card";
 import { answeredText, saidOf } from "./question";
+import { SentQuoteChip } from "./QuoteChip";
 import ThreadMarkdown from "./ThreadMarkdown";
+import type { Quote } from "@/features/works/QuotePick";
 import type { Attachment } from "./types";
 import { threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import { LogHead, ToolRows } from "./WorkLog";
@@ -62,7 +66,17 @@ import { LogHead, ToolRows } from "./WorkLog";
 // - **Session 보기**(S37 「Session 열기」, `only`) — 같은 흐름 부품으로 그 Agent의 줄만 그린다. 맡은 턴은 말풍선 자리에 「Host가 맡긴
 //   일」을 세우고, 끝난 턴의 작업 로그는 처음부터 펼쳐 둔다 — 그 Agent가 한 일을 보러 온 보기다.
 //
+// - **대화 속 문서 카드**(v1 티켓 35 · Messages 보드 「Agent가 만든 파일」) — 끝난 턴에서 Agent가 이은 Work의 spec 폴더에 새로 쓴 문서는 답
+//   아래에 카드로 놓이고(`createdDocs`), 누르면 Work 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
+// - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글을 붙인 말은 말풍선 위에 인용 칩이 선다(`SentQuoteChip`).
+//
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
+
+/**
+ * 대화 속 문서 카드의 자리(v1 티켓 35) — 이은 Work의 spec 폴더(절대 경로)와 그 문서를 넓힌 카드에서 여는 길. Work 없는 Thread · Session을
+ * 띄운 화면 밖에서는 `null`이고 카드가 서지 않는다. 흐름의 모든 턴이 같은 값을 쓰므로 Context로 건넨다(`LogPlace` · `CallPlace`와 같다).
+ */
+export const DocPlace = createContext<{ specRoot: string; open: (path: string) => void } | null>(null);
 
 interface ThreadFlowProps {
   thread: string;
@@ -271,7 +285,7 @@ function TurnView({
     <>
       {turn.sent !== null && (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col">
-          <UserMessage text={turn.sent} to={turn.who} attachments={turn.attachments} />
+          <UserMessage text={turn.sent} to={turn.who} attachments={turn.attachments} quote={turn.quote} />
         </div>
       )}
       {task && turn.assigned && <AssignedTask call={turn.assigned} cast={cast} turn={turn.key} />}
@@ -318,6 +332,7 @@ function TurnView({
           ))}
           {!stopped &&
             final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
+          {turn.end && <CreatedDocs turn={turn} name={member?.name ?? turn.who ?? "Host"} />}
           {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} />}
         </div>
       )}
@@ -498,10 +513,12 @@ export function UserMessage({
   text,
   to = null,
   attachments = [],
+  quote = null,
 }: {
   text: string;
   to?: string | null;
   attachments?: readonly Attachment[];
+  quote?: Quote | null;
 }) {
   const mention = to === null ? null : mentionOf(text, to);
   const bubble = (
@@ -517,11 +534,12 @@ export function UserMessage({
       )}
     </p>
   );
-  if (attachments.length === 0) return bubble;
-  // 붙인 것은 말풍선 바로 위에 칩으로 선다(Messages 보드 「첨부」 — 칩과 말풍선 사이 8).
+  if (attachments.length === 0 && quote === null) return bubble;
+  // 붙인 것은 말풍선 바로 위에 칩으로 선다(Messages 보드 「첨부」 — 칩과 말풍선 사이 8). 인용은 그 위다(v1 티켓 35).
   return (
     <div className="flex flex-col gap-2">
-      <SentAttachments attachments={attachments} />
+      {quote && <SentQuoteChip quote={quote} />}
+      {attachments.length > 0 && <SentAttachments attachments={attachments} />}
       {bubble}
     </div>
   );
@@ -597,3 +615,17 @@ function AnswerActions({ text }: { text: string }) {
 }
 
 export default ThreadFlow;
+
+/** 끝난 턴이 이은 Work의 spec 폴더에 새로 쓴 문서들의 카드(v1 티켓 35 · `DocCard`) — 자리를 모르면(Work 없음) 서지 않는다. */
+function CreatedDocs({ turn, name }: { turn: Turn; name: string }) {
+  const place = useContext(DocPlace);
+  const docs = createdDocs(turn, place?.specRoot ?? null);
+  if (!place || docs.length === 0) return null;
+  return (
+    <div className="flex w-full flex-col gap-2">
+      {docs.map((doc) => (
+        <DocCard key={doc.path} doc={doc} name={name} onOpen={() => place.open(doc.path)} />
+      ))}
+    </div>
+  );
+}

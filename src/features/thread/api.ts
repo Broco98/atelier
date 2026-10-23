@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { Quote } from "@/features/works/QuotePick";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { THREAD_ENGINE_EVENT, THREAD_LIST_EVENT, THREAD_QUEUE_EVENT, THREAD_RECORD_EVENT, WORK_WRITING_EVENT } from "./events";
 import type {
@@ -51,10 +52,13 @@ export const threadApi = {
     const { mode, model, effort } = picks;
     return invoke<string>("thread_start", { text, attachments, link, mode, model, effort });
   },
-  /** 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. */
-  send: (thread: string, text: string, attached: readonly Attachment[] = []) => {
+  /**
+   * 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. 인용(v1 티켓 35 ·
+   * S41 — 넓힌 카드의 문서에서 고른 글)은 엔진이 이은 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 둔다.
+   */
+  send: (thread: string, text: string, attached: readonly Attachment[] = [], quote: Quote | null = null) => {
     const attachments = pathsOf(attached);
-    return invoke<void>("thread_send", { thread, text, attachments });
+    return invoke<void>("thread_send", { thread, text, attachments, quote });
   },
   /** 고르거나 끌어다 놓은 경로를 첨부로 잰다(크기 · 폴더인가) — 입력창의 칩. 없는 경로가 있으면 그 까닭으로 거절된다. */
   describeAttachments: (paths: string[]) => invoke<Attachment[]>("describe_attachments", { paths }),

@@ -55,6 +55,8 @@ import {
   type PrRow,
   type ProjectRow,
 } from "./work-card";
+import { isOpened, type Opened, type RowTarget } from "./expanded";
+import { ExpandedViewer } from "./ExpandedViewer";
 
 // **Work 카드**(v1 티켓 34 · 구현 스펙 §15 · S32 · S33 · 캔버스 WorkPanel · Screen-Review 보드) — Work에 이은 Thread의 오른쪽 위, 위
 // 막대의 카드 버튼 바로 아래에 작게 떠 있다. 오른쪽은 Thread가 아니라 **Work의 자리**다 — 같은 Work의 어느 Thread에서나 같은 카드가
@@ -69,7 +71,9 @@ import {
 // - **변경은 카드가 열릴 때와 `worktree:changed`마다 읽는다**(v1 티켓 33) — 앱 루트의 감시 배선(`useFollowWorktreeChanges`)이 그 Work의
 //   변경 쿼리를 낡았다고 표시한다. PR은 카드가 열릴 때 읽는다(§12 — 턴 끝 · 60초마다는 v1 티켓 36).
 // - 쓰는 중은 엔진의 `work:writing`이다(`workWritingStore` — 앱 루트가 쌓는다).
-// - 줄을 누르면 카드가 넓어지는 일(문서 · diff · 트리)은 v1 티켓 35다 — 이 판의 줄은 보이기만 한다.
+// - **줄을 누르면 카드가 넓어진다**(v1 티켓 35 · §15 배치 1 · 캔버스 Layout-Expand 보드) — 문서 · 변경 · Project 줄이 그 파일을 연다. 넓힌
+//   카드는 왼쪽에 이 칸들(목록 — `size-list` 264 · 오른쪽 0.5 선), 오른쪽에 그 파일의 보기(`ExpandedViewer`)다. 연 줄은 고른 면이고,
+//   보기의 ×가 작은 카드로 돌린다. 넓어지고 접히는 자리(대화 폭 · 사이드바 접기)는 `ThreadScreen`이 든다.
 // - 더하기 둘(문서 추가 · Project 붙이기)은 이 Thread의 입력창에 Host에게 맡기는 말을 채운다 — 문서를 쓰고 Project를 붙이는 것은 Host다
 //   (보드 「고칠 곳이 정해지면 Host가 Project를 붙입니다」, 결정.md 34). 보내는 것은 사람이다.
 // - **보관된 Work는 보관됨 모양이다**(v1 티켓 38 · 보드 「보관된 Work」 — `ArchivedWorkCard`) — 보관 글리프 · 「보관됨 · 날짜」, 더하기 ·
@@ -81,11 +85,17 @@ export const ADD_DOC_ASK = "이 Work의 spec 폴더에 새 문서를 써 줘: ";
 export const ATTACH_PROJECT_ASK = "이 Work에 Project를 붙여 줘: ";
 
 interface WorkCardProps {
-  /** 지금 Thread — 머리 메뉴가 그 줄에 ✓를 달고, 더하기 둘이 그 입력창을 채운다. */
+  /** 지금 Thread — 머리 메뉴가 그 줄에 ✓를 달고, 더하기 둘이 그 입력창을 채운다. 넓힌 카드의 인용도 이 입력창으로 간다. */
   thread: string;
   slug: string;
   /** 「이 Work에서 새 Thread」. */
   onNewThread: () => void;
+  /** 넓힌 카드가 연 것(v1 티켓 35) — 없으면 작은 카드다. */
+  opened: Opened | null;
+  /** 줄 · 트리 · 문서 링크가 파일을 열었다 — 카드가 넓어져(이미 넓으면 그대로) 그것을 본다. */
+  onOpen: (next: Opened) => void;
+  /** 보기의 ×(「카드로 접기」) — 작은 카드로 돌아온다. */
+  onClose: () => void;
 }
 
 /**
@@ -106,8 +116,11 @@ export function useCardOpen(slug: string | null): [boolean, (open: boolean) => v
   return [open, set];
 }
 
-/** Work 카드 — 그 Work를 목록에서 찾지 못하면(보관 · 지움 · 아직 읽는 중) 서지 않는다. */
-export function WorkCard({ thread, slug, onNewThread }: WorkCardProps) {
+/**
+ * Work 카드 — 그 Work를 목록에서 찾지 못하면(보관 · 지움 · 아직 읽는 중) 서지 않는다. 넓으면(`opened`) 칸들이 왼쪽 목록이 되고 오른쪽에
+ * 그 파일의 보기가 선다(보드 `.wpane` · `.wlist` · `.viewer`). 칸들은 작을 때와 같은 조각이다 — 넓어져도 목록이 바뀌지 않는다.
+ */
+export function WorkCard({ thread, slug, onNewThread, opened, onOpen, onClose }: WorkCardProps) {
   const { data: works } = useWorks();
   const work = works?.find((one) => one.slug === slug) ?? null;
   const { data: threads } = useThreads();
@@ -121,11 +134,8 @@ export function WorkCard({ thread, slug, onNewThread }: WorkCardProps) {
   });
   const writing = useStore(workWritingStore, (state) => writingOf(state, slug));
   if (!work) return null;
-  return (
-    <section
-      aria-label={`Work 카드: ${work.title || slug}`}
-      className={CARD}
-    >
+  const list = (
+    <>
       <CardHead work={work} thread={thread} threads={own} onNewThread={onNewThread} />
       <WorkCardSections
         docs={docRows(work.specTree, writing)}
@@ -137,6 +147,40 @@ export function WorkCard({ thread, slug, onNewThread }: WorkCardProps) {
         onAddDoc={() => fillDraft(thread, ADD_DOC_ASK)}
         onAttachProject={() => fillDraft(thread, ATTACH_PROJECT_ASK)}
         onOpenPr={(row) => void openUrl(row.url)}
+        opened={opened}
+        // Project 줄은 그 트리를 연다 — 트리에서 연 파일이 있어도 줄을 다시 누르면 트리로 돌아온다.
+        onOpen={(row) => onOpen(row.kind === "project" ? { ...row, file: null } : row)}
+      />
+    </>
+  );
+  const label = `Work 카드: ${work.title || slug}`;
+  if (opened === null) {
+    return (
+      <section
+        aria-label={label}
+        className={CARD}
+      >
+        {list}
+      </section>
+    );
+  }
+  return (
+    <section
+      aria-label={label}
+      data-expanded=""
+      className="flex h-full w-full overflow-hidden rounded-2xl bg-surface-elevated shadow-card"
+    >
+      <div className="flex w-(--size-list) shrink-0 flex-col gap-1.5 overflow-y-auto border-r-[0.5px] border-border p-1.5 scroll-quiet">
+        {list}
+      </div>
+      <ExpandedViewer
+        thread={thread}
+        work={work}
+        opened={opened}
+        changes={changes.summary}
+        writing={writing}
+        onOpen={onOpen}
+        onClose={onClose}
       />
     </section>
   );
@@ -337,6 +381,10 @@ interface SectionsProps {
   onAddDoc?: () => void;
   onAttachProject?: () => void;
   onOpenPr: (row: PrRow) => void;
+  /** 넓힌 카드가 연 것(v1 티켓 35) — 그 줄이 고른 면으로 선다. 작은 카드면 `null`(없음)이다. */
+  opened?: Opened | null;
+  /** 줄을 눌렀다 — 카드가 넓어져 그 파일을 연다(스토리 115). 받지 않으면 줄은 보이기만 한다(보관된 Work, v1 티켓 38). */
+  onOpen?: (row: RowTarget) => void;
 }
 
 /**
@@ -344,14 +392,33 @@ interface SectionsProps {
  * 없다: 문서가 없으면 문서 칸이, 바뀐 파일이 없으면 변경 칸이, PR이 없으면 PR 줄이 서지 않는다. Project 칸만은 Project가 없어도
  * 「Project 붙이기」 한 줄로 선다(보드 「막 만든 Work」 — 고칠 곳이 정해지면 붙인다). 붙일 수 없으면(보관됨) 그 칸도 서지 않는다.
  */
-export function WorkCardSections({ docs, changes, fresh, flash, projects, prs, onAddDoc, onAttachProject, onOpenPr }: SectionsProps) {
+export function WorkCardSections({
+  docs,
+  changes,
+  fresh,
+  flash,
+  projects,
+  prs,
+  onAddDoc,
+  onAttachProject,
+  onOpenPr,
+  opened = null,
+  onOpen,
+}: SectionsProps) {
   const many = (changes?.groups.length ?? 0) > 1;
   return (
     <>
       {docs.length > 0 && (
         <Section name="문서" end={onAddDoc && <AddButton label="문서 추가" onClick={onAddDoc} />}>
           {docs.map((doc) => (
-            <Row key={doc.path} data-doc={doc.path} icon={<FileText />} name={doc.path}>
+            <Row
+              key={doc.path}
+              data-doc={doc.path}
+              icon={<FileText />}
+              name={doc.path}
+              on={isOpened(opened, { kind: "doc", path: doc.path })}
+              onOpen={onOpen && (() => onOpen({ kind: "doc", path: doc.path }))}
+            >
               {doc.writer && (
                 <>
                   <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-accent-solid writing-pulse" />
@@ -385,6 +452,8 @@ export function WorkCardSections({ docs, changes, fresh, flash, projects, prs, o
                     name={file.path.slice(file.path.lastIndexOf("/") + 1)}
                     title={file.path}
                     className={cn(lit && "row-flash")}
+                    on={isOpened(opened, { kind: "change", project: group.project, path: file.path })}
+                    onOpen={onOpen && (() => onOpen({ kind: "change", project: group.project, path: file.path }))}
                   >
                     <Counts additions={file.additions} deletions={file.deletions} />
                   </Row>
@@ -410,7 +479,14 @@ export function WorkCardSections({ docs, changes, fresh, flash, projects, prs, o
             </button>
           ) : (
             projects.map((project) => (
-              <Row key={project.project} data-project={project.project} icon={<Folder />} name={project.project}>
+              <Row
+                key={project.project}
+                data-project={project.project}
+                icon={<Folder />}
+                name={project.project}
+                on={isOpened(opened, { kind: "project", project: project.project })}
+                onOpen={onOpen && (() => onOpen({ kind: "project", project: project.project }))}
+              >
                 {project.editing ? "고치는 중" : "읽기만"}
                 <ChevronRight aria-hidden className="-mr-0.5 size-3 text-fg-tertiary" />
               </Row>
@@ -467,13 +543,19 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
-/** 칸의 줄 하나(보드 `.wr` — 30 · 13/18, 옅은 글리프 16 · 이름 · 오른쪽 끝의 옅은 메타 12/18). */
+/**
+ * 칸의 줄 하나(보드 `.wr` — 30 · 13/18, 옅은 글리프 16 · 이름 · 오른쪽 끝의 옅은 메타 12/18). 누르면 카드가 넓어져 그 파일을 연다(v1 티켓
+ * 35 · 스토리 115) — 이름은 줄의 글 그대로다(이름 · 쓰는 중 · +/−). 넓힌 카드가 연 줄은 고른 면이다(보드 `.wr.on` — 흰 카드 안의 행
+ * 선택 `selected-row`). 누를 곳이 없으면(보관된 Work) 보이기만 하는 줄이다.
+ */
 function Row({
   icon,
   name,
   title,
   className,
   children,
+  on,
+  onOpen,
   ...data
 }: {
   icon: ReactNode;
@@ -481,20 +563,36 @@ function Row({
   title?: string;
   className?: string;
   children?: ReactNode;
+  on: boolean;
+  onOpen?: () => void;
 } & Record<`data-${string}`, string | undefined>) {
-  return (
-    <div
-      {...data}
-      title={title}
-      className={cn(
-        "flex h-7.5 items-center gap-2 rounded-md px-2.5 text-chat-meta [&>svg:first-child]:size-4 [&>svg:first-child]:shrink-0 [&>svg:first-child]:text-fg-tertiary",
-        className,
-      )}
-    >
+  const look =
+    "flex h-7.5 w-full items-center gap-2 rounded-md px-2.5 text-left text-chat-meta [&>svg:first-child]:size-4 [&>svg:first-child]:shrink-0 [&>svg:first-child]:text-fg-tertiary";
+  const body = (
+    <>
       {icon}
       <span className="min-w-0 flex-1 truncate">{name}</span>
       {children && <span className="flex shrink-0 items-center gap-1.5 text-xs text-fg-tertiary">{children}</span>}
-    </div>
+    </>
+  );
+  if (!onOpen) {
+    return (
+      <div {...data} title={title} className={cn(look, className)}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      {...data}
+      title={title}
+      aria-current={on ? "true" : undefined}
+      onClick={onOpen}
+      className={cn(look, "transition-colors focus-ring", on ? "selected-row" : "hover:bg-fill-hover", className)}
+    >
+      {body}
+    </button>
   );
 }
 

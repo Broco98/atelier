@@ -137,9 +137,10 @@ export function WorkChip({
   open,
   onOpenChange,
 }: WorkChoice & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  // 칩 줄이 좁으면(넓힌 카드 곁의 대화 480 — v1 티켓 35) 이 칩만 줄어 제목이 말줄임으로 끊긴다 — 칩의 `shrink-0`을 푼다.
   if (!picking) {
     return (
-      <span aria-label={workName(label)} className={cn(CHIP, "min-w-0")}>
+      <span aria-label={workName(label)} className={cn(CHIP, "min-w-0 shrink")}>
         <Folder className="size-3.5 shrink-0" aria-hidden />
         <span className="max-w-44 min-w-0 truncate">{label}</span>
       </span>
@@ -165,7 +166,7 @@ function WorkPicker({
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         aria-label={workName(label)}
-        className={cn(MENU_CHIP, "min-w-0", link.kind !== "no-work" && PICKED)}
+        className={cn(MENU_CHIP, "min-w-0 shrink", link.kind !== "no-work" && PICKED)}
       >
         <Folder className="size-3.5 shrink-0" aria-hidden />
         <span className="max-w-44 min-w-0 truncate">{label}</span>

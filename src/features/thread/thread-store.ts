@@ -1,4 +1,5 @@
 import { Store } from "@tanstack/react-store";
+import type { Quote } from "@/features/works/QuotePick";
 import type { DocWriting, QueuedMessage, RecordLine } from "./types";
 
 // Thread 화면의 모듈 스토어(v1 티켓 05) — 화면 컴포넌트 밖에 산다.
@@ -80,9 +81,11 @@ interface UiState {
   expanded: Readonly<Record<string, true>>;
   /** 바깥이 글을 채운 입력창(`fillDraft`) — 그 입력칸이 한 번 포커스를 받고(`takeFill`) 비운다. */
   filled: string | null;
+  /** Thread마다 입력창에 붙은 인용(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글. 하나만 붙는다 — 새로 고르면 갈아 끼운다. */
+  quotes: Readonly<Record<string, Quote>>;
 }
 
-export const threadUiStore = new Store<UiState>({ drafts: {}, expanded: {}, filled: null });
+export const threadUiStore = new Store<UiState>({ drafts: {}, expanded: {}, filled: null, quotes: {} });
 
 export function setDraft(thread: string, text: string): void {
   threadUiStore.setState((state) => ({ ...state, drafts: { ...state.drafts, [thread]: text } }));
@@ -94,6 +97,17 @@ export function setDraft(thread: string, text: string): void {
  */
 export function fillDraft(thread: string, text: string): void {
   threadUiStore.setState((state) => ({ ...state, drafts: { ...state.drafts, [thread]: text }, filled: thread }));
+}
+
+/**
+ * 입력창에 인용을 붙인다(v1 티켓 35 · S41 — 넓힌 카드 문서의 「❝ 이 자리를 두고 말하기」). 앞의 인용은 갈아 끼우고, 그 입력칸이 한 번
+ * 포커스를 받는다(`fillDraft`와 같은 길) — 고른 손이 곧바로 이어 쓴다. `null`이면 뗀다.
+ */
+export function setQuote(thread: string, quote: Quote | null): void {
+  threadUiStore.setState((state) => {
+    const { [thread]: _was, ...rest } = state.quotes;
+    return quote === null ? { ...state, quotes: rest } : { ...state, quotes: { ...rest, [thread]: quote }, filled: thread };
+  });
 }
 
 /** 채운 입력창이 포커스를 받았다 — 다음 채우기까지 다시 받지 않는다. */

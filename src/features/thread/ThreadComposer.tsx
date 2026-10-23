@@ -9,7 +9,9 @@ import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmen
 import { AskChip, ModelChip, WorkChip, type WorkChoice } from "./ComposerChips";
 import { insertMention, matchAgents, mentionAt, type AgentChoice, type Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
-import { setDraft, takeFill, threadUiStore } from "./thread-store";
+import { DraftQuoteChip } from "./QuoteChip";
+import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
+import type { Quote } from "@/features/works/QuotePick";
 import type { AskLevel, Attachment } from "./types";
 
 // 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나다. 칩 셋(Work · 물어보는 정도 · 모델과 생각 깊이)은
@@ -24,12 +26,14 @@ import type { AskLevel, Attachment } from "./types";
 //   받는 이를 고르는 칩은 따로 없다 — 이 칠이 받는 이를 말한다.
 // - **`+`와 끌어다 놓기는 첨부다**(v1 티켓 06 · S30) — 받은 파일 · 폴더가 입력칸 위에 칩(이름 · 크기)으로 쌓이고, 끌어다 놓는 동안은
 //   입력창 자리에 「놓으면 첨부합니다」가 선다. 보내면 경로만 간다(`ComposerAttachments.tsx`).
+// - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글(「❝ 이 자리를 두고 말하기」)이 입력칸 위에 인용 칩으로 붙는다(×로 뗀다). 보내면
+//   말과 함께 가고, 엔진이 그 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 둔다.
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/work`는 Work 칩 메뉴를 열고(첫 말
 //   전에만, v1 티켓 31), `/agent`는 Agent 부르기 메뉴를 열고, `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는
 //   정도 메뉴를 연다(v1 티켓 23). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
-// 입력 중인 글 · 쌓인 첨부는 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore`). 보낸 말은 여기서 그리지
+// 입력 중인 글 · 쌓인 첨부 · 붙은 인용은 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore` · `threadUiStore.quotes`). 보낸 말은 여기서 그리지
 // 않는다 — 엔진이 기록에 적은 `sent` 줄이 말풍선으로 선다.
 
 /** 입력칸이 자라는 끝 — 넘으면 칸 안에서 구른다. */
@@ -63,8 +67,8 @@ export interface ThreadComposerProps {
   card?: ReactNode;
   /** 입력창 바로 위에 서는 것 — 바뀐 파일 알약 · 맨 아래로 · 기다리는 말. */
   above?: ReactNode;
-  /** 말을 보낸다(붙인 첨부와 함께). 거절되면 쓴 글 · 첨부를 돌려놓고 그 글을 보인다. */
-  onSend: (text: string, attachments: readonly Attachment[]) => Promise<void>;
+  /** 말을 보낸다(붙인 첨부 · 인용과 함께). 거절되면 쓴 글 · 첨부 · 인용을 돌려놓고 그 글을 보인다. */
+  onSend: (text: string, attachments: readonly Attachment[], quote: Quote | null) => Promise<void>;
   onStop?: () => Promise<void>;
   onNewThread: () => void;
   /** 화면이 바깥에서 보이는 거절 글(이름 바꾸기 · 칩) — 입력창 아래에 함께 선다. */
@@ -120,6 +124,7 @@ function ThreadComposer({
   // 바깥이 이 입력창을 채웠다(「새 Agent 만들기」 — `fillDraft`) — 채운 글 끝에서 포커스를 받는다.
   const filled = useStore(threadUiStore, (state) => state.filled === draftKey);
   const attachments = useStore(attachmentStore, (state) => attachmentsOf(state, draftKey));
+  const quote = useStore(threadUiStore, (state) => state.quotes[draftKey] ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const empty = draft.trim() === "";
@@ -257,12 +262,15 @@ function ThreadComposer({
     const text = draft.trim();
     if (text === "" || busy) return;
     const attached = attachments;
+    const quoted = quote;
     setDraft(draftKey, "");
     setAttachments(draftKey, []);
+    if (quoted) setQuote(draftKey, null);
     setProblem(null);
-    onSend(text, attached).catch((error: unknown) => {
+    onSend(text, attached, quoted).catch((error: unknown) => {
       setDraft(draftKey, text);
       setAttachments(draftKey, attached);
+      if (quoted) setQuote(draftKey, quoted);
       setProblem(String(error));
     });
   };
@@ -302,6 +310,7 @@ function ThreadComposer({
           }}
         >
           {menuOpen && <SlashMenu id={menuId} items={items} active={active} onPick={pickCommand} onPoint={setActive} />}
+          {quote && <DraftQuoteChip quote={quote} onDrop={() => setQuote(draftKey, null)} />}
           {attachments.length > 0 && <ComposerAttachmentChips draftKey={draftKey} attachments={attachments} />}
           {agentMenuOpen && (
             <AgentMenu

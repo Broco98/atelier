@@ -4,7 +4,8 @@ import { fileKey, type ChangeSummary } from "./work-card";
 import { ArchivedCard, WorkCardSections } from "./WorkCard";
 
 // Work 카드의 칸(v1 티켓 34 · §15 · 캔버스 WorkPanel 보드) — 칸을 그리는 조각은 훅을 부르지 않아 정적 마크업으로 잰다. 재는 것은 칸의
-// 차례 · 빈 칸이 서지 않음 · 줄의 메타(쓰는 중 · +/− · 고치는 중 · PR 문장)다.
+// 차례 · 빈 칸이 서지 않음 · 줄의 메타(쓰는 중 · +/− · 고치는 중 · PR 문장)와, 줄을 누르면 카드가 넓어지는 단추 · 넓힌 카드가 연 줄(v1
+// 티켓 35)이다.
 
 const none = () => {};
 const sections = (over: Partial<Parameters<typeof WorkCardSections>[0]> = {}) =>
@@ -19,6 +20,8 @@ const sections = (over: Partial<Parameters<typeof WorkCardSections>[0]> = {}) =>
       onAddDoc={none}
       onAttachProject={none}
       onOpenPr={none}
+      opened={null}
+      onOpen={none}
       {...over}
     />,
   );
@@ -141,5 +144,30 @@ describe("보관된 Work의 카드(v1 티켓 38 · 보드 「보관된 Work」)"
     const markup = renderToStaticMarkup(<ArchivedCard entry={{ ...entry, archivedAt: null }} docs={[]} />);
     expect(markup).toMatch(/>보관됨</);
     expect(names(markup)).toEqual(["Work 카드: 결제 웹훅 재시도"]);
+  });
+});
+
+describe("줄을 누르면 카드가 넓어진다(v1 티켓 35 · 스토리 115)", () => {
+  const card = {
+    docs: [{ path: "design.md", writer: null }],
+    changes: refund,
+    projects: [{ project: "api-server", editing: true }],
+  };
+
+  it("문서 · 변경 · Project 줄은 누르는 단추다 — 이름은 줄의 글 그대로(이름 · 쓰는 중 · +/− · 고치는 중)다", () => {
+    const markup = sections(card);
+    expect(markup).toMatch(/<button type="button" data-doc="design.md"/);
+    expect(markup).toMatch(/<button type="button" data-change="src\/refunds\/refund.service.ts"/);
+    expect(markup).toMatch(/<button type="button" data-project="api-server"/);
+    expect(markup).not.toContain("aria-current");
+  });
+
+  it("넓힌 카드가 연 줄 하나만 고른 면이다(보드 `.wr.on`)", () => {
+    const markup = sections({ ...card, opened: { kind: "change", project: "api-server", path: "prisma/schema.prisma" } });
+    expect(markup.match(/aria-current="true"/g) ?? []).toHaveLength(1);
+    expect(markup).toMatch(/data-change="prisma\/schema.prisma"[^>]*aria-current="true"[^>]*class="[^"]*selected-row/);
+    expect(sections({ ...card, opened: { kind: "project", project: "api-server", file: "package.json" } })).toMatch(
+      /data-project="api-server"[^>]*aria-current="true"/,
+    );
   });
 });

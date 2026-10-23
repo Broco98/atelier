@@ -553,8 +553,8 @@ pub enum HostError {
     Send(String),
     /// 떠 있는 Runtime이 설정 바꾸기를 받지 않았다(모르는 값 · 답 없음 · 연결이 끊김). 아무것도 남지 않았다(three-axes 티켓 09).
     Setting(String),
-    /// 보낸 말의 인용이 올바르지 않다 — spec 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었다(three-axes 티켓 27). 인용을
-    /// Thread 입력창에 잇는 일은 v1 티켓 35다(S41).
+    /// 보낸 말의 인용이 올바르지 않다 — spec 폴더 밖을 가리키거나 줄 범위가 뒤집혔거나 글이 비었다(three-axes 티켓 27), 또는 Work에
+    /// 이어지지 않은 Thread다(인용은 이은 Work의 spec 폴더를 가리킨다 — v1 티켓 35 · S41). 아무것도 적지 않았다.
     BadQuote(String),
     /// 보낸 말의 첨부가 올바르지 않다 — 절대 경로가 아니거나 없는 파일이다(v1 티켓 06). 아무것도 적지 않았다.
     BadAttachment(String),

@@ -65,6 +65,7 @@ use crate::discovery::{Agent, FoundProgram};
 use crate::login::Waiter;
 use crate::login_env::AgentEnv;
 use crate::policy::{AskLevel, Card};
+use crate::quote::{Attached, Quote};
 use crate::records::{heard_since_session_start, Recorder, SessionState, ThreadLog};
 use crate::runtime::{self, AgentProcess, Answer, Granted, OpenError, QuestionAnswer, SessionPlace};
 use crate::thread_tools::{self, Bridge, Call, Fault, Unread};
@@ -440,7 +441,7 @@ impl ConversationHost {
                 self.set_thread_mode(&created.id, mode)?;
             }
         }
-        self.say_noting(&SessionKey::new(&created.id, &handle), text, attachments, None, note)?;
+        self.say_noting(&SessionKey::new(&created.id, &handle), text, None, attachments, None, note)?;
         drop(log);
         Ok(created.id)
     }
@@ -462,13 +463,40 @@ impl ConversationHost {
     /// 첨부한 말 — [`Self::send_to_thread`]와 같고, 첨부(`attachments` — 절대 경로들)가 본문 앞에 경로 목록으로 간다(v1 티켓
     /// 06 · S30). 대기 줄에 들면 잰 첨부를 들고 간다. 첨부가 절대 경로가 아니거나 없으면 아무것도 적지 않고 거절한다.
     pub fn send_to_thread_with(&self, thread: &str, text: &str, attachments: &[String]) -> Result<(), HostError> {
+        self.send_to_thread_quoting(thread, text, attachments, None)
+    }
+
+    /// 인용한 말(v1 티켓 35 · S41) — [`Self::send_to_thread_with`]와 같고, 넓힌 카드의 문서에서 고른 글(`quote` — 이은 Work의 spec 폴더
+    /// 기준 파일 · 원문 줄 범위 · 글)이 인용 블록으로 본문 앞에 가고 `sent` 줄에 남는다(three-axes 티켓 27의 꼴). 인용이 spec 폴더 밖을
+    /// 가리키거나 줄 범위가 뒤집혔거나 글이 비었으면, 또 Work에 이어지지 않은 Thread면 아무것도 적지 않고 거절한다 — 받는 이를 들이기
+    /// 전에 잰다. 대기 줄에 들면 지은 인용 블록을 들고 간다.
+    pub fn send_to_thread_quoting(
+        &self,
+        thread: &str,
+        text: &str,
+        attachments: &[String],
+        quote: Option<&Quote>,
+    ) -> Result<(), HostError> {
         let attachments = attachments_of(attachments)?;
         let file = self.writable(thread)?;
+        let quote = match quote {
+            Some(quote) => Some(self.quote_in(file.work.as_deref(), quote)?),
+            None => None,
+        };
         let handle = match self.recipient(&file.participants, file.work.as_deref(), text)? {
             Recipient::Seated(handle) => handle,
             Recipient::Newcomer(found) => self.join(thread, &found)?,
         };
-        self.say_in_thread(&SessionKey::new(thread, &handle), text, attachments, None)
+        self.say_noting(&SessionKey::new(thread, &handle), text, quote, attachments, None, None)
+    }
+
+    /// 인용을 이은 Work의 spec 폴더 것으로 붙인다 — 인용 블록이 그 폴더 안의 실제 경로를 가리킨다.
+    fn quote_in(&self, work: Option<&str>, quote: &Quote) -> Result<Attached, HostError> {
+        let Some(slug) = work else {
+            return Err(HostError::BadQuote("Work에 이어지지 않은 Thread에는 인용을 붙일 수 없습니다".to_owned()));
+        };
+        let spec = self.open_work(slug)?.places.spec;
+        quote.attach(&spec).map_err(|bad| HostError::BadQuote(bad.to_string()))
     }
 
     /// 멈추기 — Thread 전체에 건다(§5): 그 Thread의 도는 턴마다 멈춤을 보낸다. 기다리지 않는다 — 멈춘 턴의 끝(`cancelled`)은
@@ -936,15 +964,16 @@ impl ConversationHost {
         attachments: Vec<Attachment>,
         call: Option<Assignment>,
     ) -> Result<(), HostError> {
-        self.say_noting(key, text, attachments, call, None)
+        self.say_noting(key, text, None, attachments, call, None)
     }
 
-    /// [`Self::say_in_thread`]에 머리말 끝의 한 줄(`note`)을 더한 것 — 새 Thread의 첫 말이 「새 Work로 시작」의 표시를 싣는다(v1 티켓
-    /// 31). 머리말은 Session의 첫 말에만 붙으므로 그 줄도 그때만 간다.
+    /// [`Self::say_in_thread`]에 인용(`quote` — 사람의 말에만, v1 티켓 35)과 머리말 끝의 한 줄(`note`)을 더한 것 — 새 Thread의 첫 말이
+    /// 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그 줄도 그때만 간다.
     fn say_noting(
         &self,
         key: &SessionKey,
         text: &str,
+        quote: Option<Attached>,
         attachments: Vec<Attachment>,
         call: Option<Assignment>,
         note: Option<&str>,
@@ -954,7 +983,7 @@ impl ConversationHost {
         } else {
             self.move_if_needed(key)?;
         }
-        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote: None, attachments, call };
+        let draft = Draft { text: text.to_owned(), preamble: self.thread_preamble(key, note)?, quote, attachments, call };
         let found = self.threads.find(key);
         let Some((conv, mut state)) = found.as_ref().and_then(|conv| conv.lock_found().map(|state| (conv, state))) else {
             return Err(match self.logins.waiting_for(&key.waiter()) {
