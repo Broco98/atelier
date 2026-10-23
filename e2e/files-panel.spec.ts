@@ -31,7 +31,7 @@ const COMMAND = "list_worktree_tree";
 const FOLDER = "list_worktree_folder";
 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "files") => 레일(page).getByRole("button", { name, exact: true });
+const 레일칸 = (page: Page, name: "spec" | "files") => 레일(page).getByRole("button", { name, exact: true });
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 const 패널머리 = (page: Page) => 작업패널(page).locator('[data-slot="card-head"]');
@@ -50,15 +50,14 @@ async function openFiles(page: Page): Promise<void> {
   await expect(레일칸(page, "files")).toHaveAttribute("aria-pressed", "true");
 }
 
-test("레일의 `files` 칸이 `spec` · `chat` 뒤에 서고, 켜짐을 `aria-pressed`로 말하며, `spec`과 한 번에 하나만 켜진다", async ({ page }) => {
+test("레일의 `files` 칸이 `spec` 뒤에 서고, 켜짐을 `aria-pressed`로 말하며, `spec`과 한 번에 하나만 켜진다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   // 앵커: 레일이 섰다 — 서기 전에 칸 목록을 읽으면 빈 목록이다
   await expect(레일칸(page, "spec")).toBeVisible();
-  // 결정 29 — `spec · chat · files`(`chat`은 three-axes의 칸이다 — `spec` 바로 뒤. info 칸은 codex-ds 결정 25로 걷혔다). 라벨은 소문자 영어다.
+  // 결정 29 — `spec · files`(info 칸은 codex-ds 결정 25로 걷혔다). 라벨은 소문자 영어다.
   expect(await 레일(page).getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
-    "chat",
     "files",
   ]);
   const spec = 레일칸(page, "spec");

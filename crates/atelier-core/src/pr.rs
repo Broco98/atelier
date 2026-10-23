@@ -317,7 +317,15 @@ mod tests {
 
         fn install_gh(&self, script: &str) {
             let gh = self.bin.join("gh");
-            std::fs::write(&gh, script).unwrap();
+            // 쓰기는 자식 `sh`가 한다 — 이 프로세스가 쓰기 fd를 연 동안 다른 시험 스레드가 fork하면 그 자식이 exec할 때까지 fd를
+            // 쥐어, 막 쓴 `gh`를 부르면 Linux가 「Text file busy」로 막는다(`atelier-acp` `tests/common`의 `write_script`).
+            let mut writer = Command::new("/bin/sh")
+                .args(["-c", "cat > \"$0\"", &gh.display().to_string()])
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            std::io::Write::write_all(&mut writer.stdin.take().unwrap(), script.as_bytes()).unwrap();
+            assert!(writer.wait().unwrap().success(), "가짜 gh를 쓰지 못했다");
             std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
 

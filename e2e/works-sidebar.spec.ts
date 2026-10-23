@@ -9,7 +9,6 @@ import {
   installFixtureBackend,
   markAttention,
   markRunning,
-  navButton,
   openShell,
   readIpcRecord,
   releaseCommand,
@@ -28,6 +27,8 @@ import {
   토큰색,
   툴팁,
   팔레트,
+  사람메뉴항목,
+  사람줄,
   행버튼,
 } from "./harness";
 
@@ -174,8 +175,9 @@ test("고른 work의 행 아래에 아무것도 서지 않는다", async ({ page
   // 셸을 여는 자리도 사이드바에 없다 — 탭 줄의 `+` 하나다(결정 19).
   await expect(aside.getByRole("button", { name: "셸 열기" })).toHaveCount(0);
 
-  // 접히는 것은 구획 헤더 셋뿐이다. work 행에도 nav `Terminal`에도 여닫이가 없다.
-  const expandable = aside.locator("[aria-expanded]");
+  // 접히는 것은 구획 헤더 셋뿐이다. work 행에도 nav에도 여닫이가 없다. 바닥 사람 줄은 메뉴를 띄우는 버튼이라(`aria-haspopup`) 셈에서
+  // 뺀다(v1 티켓 07).
+  const expandable = aside.locator("[aria-expanded]:not([aria-haspopup])");
   await expect(expandable).toHaveCount(await aside.locator("[data-section]").count());
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -1034,12 +1036,12 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 ⌄로 펼치고 
   await expect(더보기).toHaveCount(0);
   expect(await 저장된것()).toBe(펼치기전);
 
-  // **펼쳐도 바닥의 Settings가 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거).
+  // **펼쳐도 바닥의 사람 줄이 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거 — 옛 바닥 Settings 줄의 자리다, v1 티켓 07).
   // 낮은 창에서만 나는 일이라 여기서 창을 낮춘다: 띠 상자에 세로 한도와 자기 스크롤이
-  // 없으면, 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 목록이 0으로 무너진 뒤
-  // Settings가 `aside`의 `overflow-hidden` 밖으로 잘린다.
+  // 없으면, 형제가 전부 `shrink-0`이고 목록 묶음만 `flex-1 min-h-0`이라 목록이 0으로 무너진 뒤
+  // 사람 줄이 `aside`의 `overflow-hidden` 밖으로 잘린다.
   await page.setViewportSize({ width: 1100, height: 300 });
-  const settings = page.getByRole("button", { name: "Settings", exact: true });
+  const settings = 사람줄(page);
   await expect(settings).toBeVisible();
   const 바닥 = (await settings.boundingBox())!;
   expect(바닥.y + 바닥.height).toBeLessThanOrEqual(300);
@@ -1650,48 +1652,33 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 4 — **nav `Terminal`도 같은 어휘를 쓴다.** work 행처럼 셸 수(`⌨ 1`)만 서고, 최상위 셸에서
-// claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13 — 같은 `ShellMeta`라 함께 빠졌다).
-//
-// **그 숫자가 구획 헤더의 개수와 같은 x에 선다** — 이 저장소가 `SidebarItem` 주석에 **계약으로**
-// 적어 둔 「구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로 붙어 서는 둘이 다른 무게로 읽히지
-// 않는다」다. 두 줄 행을 연 판에서는 이 자리가 그 계약의 유일한 자리였고, work 행이 한 줄로
-// 돌아와 오른쪽 메타가 되살아나면서(`sidebar-active-band` 결정 14) 판 05의 「두 자리」로 돌아왔다
-// — work 행 쪽은 「오른쪽 메타의 다섯 갈래」 검사가 조용한 행에서 잰다.
+// 결정 4 — **최상위 셸의 `Terminal` 줄도 같은 어휘를 쓴다.** work 행처럼 셸 수(`⌨ 1`)만 서고, 최상위 셸에서
+// claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13 — 같은 `ShellMeta`라 함께 빠졌다). 그 줄은 한때 사이드바 nav에 섰고, 지금은
+// 사람 메뉴의 `Terminal` 항목이다(v1 티켓 07 · S27) — 메뉴는 목록과 한 컬럼이 아니라 구획 헤더의 개수와 x를 맞대던 자리는 없어졌다.
 //
 // **이 층에서만 보인다** — `Sidebar.tsx`는 `terminal-store`를 물어 정적 마크업 seam이 닿지
 // 않고(Sidebar.test.tsx 머리말), 최상위 셸은 이 화면의 진입 이펙트(`ensureShell`)를 태워야
 // 생긴다.
-test("최상위 셸에서 claude가 돌아도 nav `Terminal`에는 셸 수만 서고, 그 숫자가 구획 헤더와 같은 x에 선다", async ({
-  page,
-}) => {
+test("최상위 셸에서 claude가 돌아도 사람 메뉴의 `Terminal`에는 셸 수만 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
 
-  // 표식은 안 단다(결정 14) — nav는 **접근성 이름**으로 집는다. 배경 상자가 행이고 그 안에
-  // 이름 버튼과 메타가 형제로 선다.
-  const navRow = page
-    .locator("nav")
-    .getByRole("button", { name: "Terminal", exact: true })
-    .locator("xpath=..");
+  // 표식은 안 단다(결정 14) — 메뉴 항목은 **접근성 이름**으로 집는다. 이름 뒤에 셸 수 무리가 함께 선다.
+  const terminal = () => 사람메뉴항목(page).filter({ hasText: /^Terminal/ });
   // 셸 하나가 이미 떠 있으므로(`ensureShell`) 그 자리에는 셸 수 무리가 서 있다.
-  await expect(navRow).toContainText("1");
+  await 사람줄(page).click();
+  await expect(terminal()).toContainText("1");
+  await expect(terminal().locator('[role="img"]')).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await markRunning(page, "claude");
-
   // **로고가 안 선다.** 앵커는 셸 탭이다 — 같은 셸의 칸에는 마크가 섰다(`markRunning`이 그것을
-  // 기다려 돌아온다). 그 셸은 nav에서 그대로 한 번 세어진다.
+  // 기다려 돌아온다).
   await expect(page.locator('[data-tab="shell"] [role="img"]')).toHaveCount(1);
-  await expect(navRow.locator('[role="img"]')).toHaveCount(0);
-  await expect(navRow).toContainText("1");
 
-  // **nav `Terminal`은 이 판에서 안 바뀐다**(스펙의 Out of Scope — 「셸 메타 규격의 nav
-  // `Terminal` 변경」). 최상위 셸이 스스로 말해도 이 자리는 **셸 수 그대로**다: 그 셸이
-  // 부르는 것을 받는 자리는 알림 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
-  // 세우면 이 행이 work 행의 어휘를 반쯤 흉내 내는 자리가 된다.
-  //
-  // work 행과 **같은 구독 컴포넌트**를 쓰므로(`RowMetaFor`) 그 가름이 빠지기 쉽다 —
-  // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
+  // **이 줄은 셸 수 그대로다**(스펙의 Out of Scope — 「셸 메타 규격의 nav `Terminal` 변경」). 최상위 셸이 스스로 말해도 그 셸이
+  // 부르는 것을 받는 자리는 알림 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를 세우면 이 줄이 work 행의 어휘를 반쯤 흉내 내는
+  // 자리가 된다. work 행과 **같은 구독 컴포넌트**를 쓰므로(`RowMetaFor`) 그 가름이 빠지기 쉽다 — 실제로 한 번 빠졌다(2026-09-10).
   // 부르는 상태로 세운다 — 기다림은 보고 있어도 안 꺼지므로(terminal-activity-signal 결정 7) 이 셸이 그 사이 내내 말하는 중이다.
   await markAttention(page, {
     agent: "claude",
@@ -1700,21 +1687,12 @@ test("최상위 셸에서 claude가 돌아도 nav `Terminal`에는 셸 수만 �
     payload: { message: "커밋할까요?" },
   });
   await expect(띠(page)).toHaveCount(1);
-  await expect(navRow.locator('[role="img"]')).toHaveCount(0);
-  await expect(navRow).not.toContainText("커밋할까요?");
-
-  // **숫자로 집는다.** 재려는 것이 상자가 아니라 그 안의 옅은 숫자이고, 두 자리가 같은
-  // 규격(`text-xs` · tabular)을 쓰는 것이 지키려는 그 계약이다.
-  const 오른끝 = async (target: Locator) => {
-    const box = (await target.boundingBox())!;
-    return Math.round(box.x + box.width);
-  };
-  const 헤더개수 = page
-    .getByRole("button", { name: MAIN_HEADER, exact: true })
-    .locator("span.tabular-nums");
-  const 메타숫자 = navRow.locator("span.tabular-nums");
-  await expect(메타숫자).toHaveCount(1);
-  expect(await 오른끝(메타숫자)).toBe(await 오른끝(헤더개수));
+  await 사람줄(page).click();
+  await expect(terminal()).toContainText("1");
+  await expect(terminal().locator('[role="img"]')).toHaveCount(0);
+  await expect(terminal()).not.toContainText("커밋할까요?");
+  await expect(terminal().locator("span.tabular-nums")).toHaveCount(1);
+  await page.keyboard.press("Escape");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -2054,17 +2032,20 @@ const 면이된다 = (row: Locator, color: string) =>
 // **고른 행은 `fill-hover`, 지나는 행은 `fill-soft`다**(DS `.at-row.is-on` · `.at-row:hover`). 바탕 위라 흰 카드 안 목록의 고른
 // 면(불투명 `fill-selected`)이 아니다 — 그 면은 회색 바탕 위에서 지나는 면보다 옅어 고름과 지나감이 거꾸로 읽혔다. 고른 행은
 // 올려도 그 면 그대로다. work 행도 같은 두 면이다 — nav와 한 컬럼에 세로로 붙어 서는 행이라 고름이 같은 무게로 읽혀야 한다.
-test("main nav 행은 32 · radius-lg · 500 · 아이콘 17이고, 고른 행은 fill-hover · 지나는 행은 fill-soft다 — work 행도 같은 면이다", async ({
+test("nav 행은 32 · radius-lg · 500 · 아이콘 17이고, 고른 행은 fill-hover · 지나는 행은 fill-soft다 — work 행도 같은 면이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
-  await page.goto("/projects");
+  await page.goto("/");
 
   const [고른면, 지나는면] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fill-soft")];
   expect(고른면, "fill-hover와 fill-soft가 같은 색이다").not.toBe(지나는면);
 
-  // 배경은 이름 버튼이 아니라 바깥 상자(행)가 든다(`SidebarItem`). 지금 화면이 Projects라 그 행이 고른 행이다.
-  const 고른nav = navButton(page, "Projects").locator("xpath=..");
+  // 배경은 이름 버튼이 아니라 바깥 상자(행)가 든다(`SidebarItem`). 지금 화면이 새 Thread라 그 행이 고른 행이다 — nav는 「새 Thread」 ·
+  // 「Library」 둘이다(v1 티켓 07 · 19, 지금 화면들은 사람 메뉴로 갔다).
+  const navButton = (page: Page, label: "새 Thread" | "Library") =>
+    page.locator("aside nav").getByRole("button", { name: label, exact: true });
+  const 고른nav = navButton(page, "새 Thread").locator("xpath=..");
   await expect(고른nav).toHaveClass(/selected-row/);
   await 면이된다(고른nav, 고른면);
   expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — 토큰").toEqual([
@@ -2073,18 +2054,18 @@ test("main nav 행은 32 · radius-lg · 500 · 아이콘 17이고, 고른 행�
   ]);
   expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — DS 수").toEqual(["32px", "10px"]);
   // 글자는 `nav-row`(14/20 500)다 — work 행(`text-sm` 400)과 가는 곳이 갈려 보인다(스토리 36).
-  expect(await 칠한값(navButton(page, "Projects"), "font-size", "line-height", "font-weight"), "nav 글자").toEqual([
+  expect(await 칠한값(navButton(page, "새 Thread"), "font-size", "line-height", "font-weight"), "nav 글자").toEqual([
     "14px",
     "20px",
     "500",
   ]);
-  const 아이콘 = (await navButton(page, "Projects").locator("svg").boundingBox())!;
+  const 아이콘 = (await navButton(page, "새 Thread").locator("svg").boundingBox())!;
   expect([아이콘.width, 아이콘.height], "nav 아이콘").toEqual([17, 17]);
 
   // 고른 행은 올려도 그 면이다 — 지나는 면이 고른 면을 덮으면 고른 행 위에서 고름이 사라진다.
   await 고른nav.hover();
   await 면이된다(고른nav, 고른면);
-  const 지나는nav = navButton(page, "Archive").locator("xpath=..");
+  const 지나는nav = navButton(page, "Library").locator("xpath=..");
   await 지나는nav.hover();
   await 면이된다(지나는nav, 지나는면);
 
@@ -2108,7 +2089,10 @@ test("main nav 행은 32 · radius-lg · 500 · 아이콘 17이고, 고른 행�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** 사이드바 안에서 배경이 `surface`(흰 면)인 상자들 — 표식으로 이름을 붙여 돌려준다(띠는 `band`). */
+/**
+ * 사이드바 안에서 배경이 `surface`(흰 면)인 상자들 — 표식으로 이름을 붙여 돌려준다(띠는 `band`). 「전체 | 내 차례」 마디(v1 티켓 42)의
+ * 켜진 칸 칩은 세지 않는다 — DS 두 칸 토글의 켜짐이지 바탕 위에 뜬 상자가 아니다(그 값은 DS 세그먼트 부품의 몫이다).
+ */
 const 흰상자들 = async (page: Page) => {
   const 흰면 = await 토큰색(page, "--surface");
   return page
@@ -2116,6 +2100,7 @@ const 흰상자들 = async (page: Page) => {
     .evaluate(
       (aside, color) =>
         [...aside.querySelectorAll("*")]
+          .filter((el) => !el.matches('[data-slot="segment-group-chip"]'))
           .filter((el) => getComputedStyle(el).backgroundColor === color)
           .map((el) => (el.hasAttribute("data-band") ? "band" : el.outerHTML.slice(0, 80))),
       흰면,

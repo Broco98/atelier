@@ -6,13 +6,15 @@ import {
   fireWindowEvent,
   installFixtureBackend,
   kills,
-  navButton,
-  navButtons,
   processesTitle,
   replaceAnswer,
   setWindowFocused,
   stubWindowFocus,
   unknownIpcCalls,
+  사람메뉴로간다,
+  주소로간다,
+  사람메뉴항목,
+  사람줄,
   시계를세운다,
   칸들,
 } from "./harness";
@@ -20,12 +22,13 @@ import { formatMemory } from "@/features/processes/metrics";
 import { NEEDS_LOOK_LABEL, SEEN_CAP, SUMMARY_LAG_MS } from "@/features/processes/needs-look";
 import { identityOf as 신원, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 
-// 프로세스 티켓 29 — **nav에 메모리 합계가 늘 서고, 손볼 것이 생기면 `●`가 선다**(프로세스 결정 9 · 11 · 프로세스 스펙 S40 · S41 · S42,
+// 프로세스 티켓 29 — **사이드바에 메모리 합계가 늘 서고, 손볼 것이 생기면 `●`가 선다**(프로세스 결정 9 · 11 · 프로세스 스펙 S40 · S41 · S42,
 // 스토리 81 · 82).
 //
 // `●` 판정(본 집합 + 지금 집합)은 L2가 표로 잰다(`needs-look.test.ts`), 무엇이 `●`를 켜는 기록인지는 Rust L1이 잰다
 // (`cleanup_log::look_head`). 여기서 보는 것은 요약 픽스처가 **진짜 요약 폴러(10초) · 진짜 사이드바 · 진짜 화면 열기와 창 포커스**를
-// 지나 nav `Processes` 옆에 서고 꺼지는가다 — 합계 글자는 화면이 쓰는 그 표기 함수로 짓는다(모양은 L2의 몫).
+// 지나 사람 줄 오른쪽에 서고 꺼지는가다 — 합계 글자는 화면이 쓰는 그 표기 함수로 짓는다(모양은 L2의 몫). 그 메타는 한때 nav `Processes`
+// 옆에 섰고, nav가 사람 메뉴로 가면서(v1 티켓 07 · S27) 사람 줄 오른쪽에 남았다 — 메뉴 안에 두면 열 때만 보인다(프로세스 결정 11).
 //
 // **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts`의 1.6초 검사 머리말): `install()`은 페이지를 열기 **전에**
 // 부르고, 깐 뒤로 시간은 저절로 흐르므로 세기 전에 멈춘다(`시계를세운다`). 그 뒤로는 `runFor`만큼만 간다 — 10초 박자가 러너
@@ -33,10 +36,9 @@ import { identityOf as 신원, processRow, snapshotFixture } from "@/features/pr
 
 const [project] = PROJECTS;
 
-/** nav 항목 한 줄 — 버튼과 그 오른쪽 메타가 함께 선 상자(`SidebarItem`). 메타는 버튼 **밖**이다. */
-const navRow = (page: Page, label: string) =>
-  page.locator("aside nav > div").filter({ has: page.getByRole("button", { name: label, exact: true }) });
-const 점 = (page: Page) => navRow(page, "Processes").getByRole("img", { name: NEEDS_LOOK_LABEL, exact: true });
+/** 사이드바 바닥의 사람 줄 상자 — 사람 메뉴 버튼과 그 오른쪽 Processes 메타가 함께 선다(`PersonMenu`). 메타는 버튼 **밖**이다. */
+const 메타줄 = (page: Page) => page.locator("[data-sidebar-foot]");
+const 점 = (page: Page) => 메타줄(page).getByRole("img", { name: NEEDS_LOOK_LABEL, exact: true });
 
 /** 스냅샷 박자 하나를 넘긴다 — 멈춘 시계를 조금씩 흘려 화면이 스냅샷을 **실제로 다시 물을 때까지**(`processes-shells.spec.ts`의 `다음박자`). */
 async function 스냅샷박자(page: Page): Promise<void> {
@@ -54,7 +56,7 @@ async function 박자(page: Page): Promise<void> {
   await expect.poll(() => callCount(page, "processes_summary"), { message: "10초에 요약을 다시 안 물었다" }).toBeGreaterThan(before);
 }
 
-test("nav Processes 옆에 앱 전체 메모리 합계가 선다", async ({ page }) => {
+test("사람 줄 오른쪽에 앱 전체 메모리 합계가 선다", async ({ page }) => {
   const summary = 요약({ total: 1_234_567_890 });
   await installFixtureBackend(page, { processes_summary: summary });
   await page.goto("/projects");
@@ -62,10 +64,12 @@ test("nav Processes 옆에 앱 전체 메모리 합계가 선다", async ({ page
 
   // 표기 함수의 결과가 선다 — 프로세스 결정 10 그림의 「아틀리에 합계」다. 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다.
   const total = formatMemory(summary.total);
-  await expect(navRow(page, "Processes")).toContainText(total);
-  // 메타는 버튼 밖이다 — nav를 이름으로 집는 길이 그대로다. 다른 nav 행에는 안 선다. 손볼 것이 없으니 점도 없다.
-  await expect(navButtons(page)).toHaveText(["Projects", "Terminal", "Processes", "Archive"]);
-  await expect(navRow(page, "Archive")).not.toContainText(total);
+  await expect(메타줄(page)).toContainText(total);
+  // 메타는 사람 메뉴 버튼 밖이다 — 사람 줄의 이름이 그대로다. 메뉴의 항목에는 안 선다. 손볼 것이 없으니 점도 없다.
+  await expect(사람줄(page)).toHaveAccessibleName("김효연 — 사람 메뉴");
+  await 사람줄(page).click();
+  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes$/, /^Archive$/, /^Settings/]);
+  await page.keyboard.press("Escape");
   await expect(점(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -75,7 +79,7 @@ test("손볼 것이 새로 생기면 ●가 서고, 화면을 열면 꺼지며, 
   await page.clock.install();
   await installFixtureBackend(page);
   await page.goto("/projects");
-  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await expect(메타줄(page)).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await expect(점(page)).toHaveCount(0);
   await 시계를세운다(page);
 
@@ -85,12 +89,13 @@ test("손볼 것이 새로 생기면 ●가 서고, 화면을 열면 꺼지며, 
   await expect(점(page)).toBeVisible();
 
   // 화면을 연다(창 포커스 있음) — 그 순간 꺼진다.
-  await navButton(page, "Processes").click();
+  // 시계를 세운 동안은 사람 메뉴가 안 뜬다 — 메뉴가 하는 push를 주소로 한다(`사람메뉴로간다` 머리말).
+  await 주소로간다(page, "/processes");
   await expect(processesTitle(page)).toBeVisible();
   await expect(점(page)).toHaveCount(0);
 
   // 떠나도 다시 안 선다 — 그 출처 불명은 아직 남아 있지만 본 것이다.
-  await navButton(page, "Projects").click();
+  await 주소로간다(page, "/projects");
   await expect(processesTitle(page)).toHaveCount(0);
   await 박자(page);
   await expect(점(page)).toHaveCount(0);
@@ -111,7 +116,7 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
   await installFixtureBackend(page);
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await expect(메타줄(page)).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await 시계를세운다(page);
 
   await setWindowFocused(page, false);
@@ -136,7 +141,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
   await installFixtureBackend(page);
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await expect(메타줄(page)).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await 시계를세운다(page);
 
   // 스냅샷에만 선다 — 요약은 아직 옛 장(손볼 것 없음)이다.
@@ -150,7 +155,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
   await expect(점(page)).toHaveCount(0);
 
   // 떠난 뒤에야 요약이 그 둘을 싣는다.
-  await navButton(page, "Projects").click();
+  await 주소로간다(page, "/projects");
   await expect(processesTitle(page)).toHaveCount(0);
   await replaceAnswer(page, "processes_summary", 요약({ unknown: [불명.id], recordHead: 5 }));
   await 박자(page);
@@ -184,7 +189,7 @@ test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 �
   await installFixtureBackend(page);
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await expect(메타줄(page)).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await 시계를세운다(page);
 
   await replaceAnswer(
@@ -203,7 +208,7 @@ test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 �
   await 박자(page);
   await expect(점(page)).toHaveCount(0);
 
-  await navButton(page, "Projects").click();
+  await 주소로간다(page, "/projects");
   await expect(processesTitle(page)).toHaveCount(0);
   await replaceAnswer(page, "processes_summary", 요약({ unknown: 화면이본것 }));
   await 박자(page);
@@ -228,10 +233,10 @@ test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", a
   // 먼저 화면을 본다 — 그때 있던 자동 기록(머리 3)은 본 것이 된다.
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
-  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await expect(메타줄(page)).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await expect(점(page)).toHaveCount(0);
 
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await awaitSpawned(page, 1);
   await 시계를세운다(page);

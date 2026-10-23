@@ -5,7 +5,7 @@ import {
   callCount,
   installFixtureBackend,
   ipcCallArgs,
-  navButton,
+  사람메뉴로간다,
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
@@ -113,7 +113,7 @@ async function 셸을띄우고연다(page: Page): Promise<void> {
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(줄(page.getByRole("tree", { name: "셸", exact: true }), `node, ${formatMemory(vite.metrics.memory)}`)).toBeVisible();
 }
@@ -240,9 +240,9 @@ test("구획이 ui-refresh 결정 28의 표대로 열리고 머리를 눌러 여
   await expect(tmux줄).toHaveAttribute("aria-expanded", "false");
 
   // ── 화면을 떠났다 오면 표다 ── 줄의 접힘도 잊는다.
-  await navButton(page, "Projects").click();
+  await 사람메뉴로간다(page, "Projects");
   await expect(묶음(page, "예외")).toHaveCount(0);
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "true");
   for (const name of ["출처 불명", "다른 인스턴스", "예외"]) {
     await expect(머리(page, name)).toHaveAttribute("aria-expanded", "false");

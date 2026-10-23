@@ -6,7 +6,8 @@ import {
   callCount,
   fireAttention,
   installFixtureBackend,
-  navButton,
+  사람메뉴로간다,
+  주소로간다,
   openShell,
   processesTitle,
   replaceAnswer,
@@ -90,7 +91,7 @@ test("요약 카드에 합계 · 추이 · CPU · 셸 수 · 도는 중 · 주�
   await archiveByMcp(page, WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(processesTitle(page)).toBeVisible();
   // 합계 · CPU · 앱 본체는 요약(nav 메타와 같은 장)이다 — 표기 함수의 결과가 선다. 합계는 nav 옆 숫자와 같다. 타일의 큰 수는 단위를
   // 작게 그려도 글자가 이어 붙어 표기 함수의 결과 그대로다(ui-refresh 판 06 — 타일 넷).
@@ -163,7 +164,8 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   await 시계를세운다(page);
   await page.clock.runFor(4_000);
 
-  await navButton(page, "Processes").click();
+  // 시계를 세운 동안은 사람 메뉴가 안 뜬다 — 메뉴가 하는 push를 주소로 한다(`사람메뉴로간다` 머리말).
+  await 주소로간다(page, "/processes");
   await expect(processesTitle(page)).toBeVisible();
   // 셈은 nav 메타의 박자 **바로 뒤**에서 시작한다 — 그래야 아래 10초에 박자가 정확히 하나, 5초에는 없다.
   await 박자직후(page);
@@ -177,7 +179,7 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   await page.clock.runFor(5_000);
   expect(await callCount(page, "processes_trend")).toBe(trends + 1);
 
-  await navButton(page, "Terminal").click();
+  await 주소로간다(page, "/terminal");
   await expect(processesTitle(page)).toHaveCount(0);
   const left = await callCount(page, "processes_trend");
   const summariesLeft = await callCount(page, "processes_summary");

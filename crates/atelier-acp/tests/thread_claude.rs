@@ -15,7 +15,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
 
 use atelier_acp::{ConversationHost, HostError, QuitCounts, ThreadLink, TranslatorCommand};
-use common::{assert_all_gone, of_kind, payloads_of, sent_texts, Sandbox};
+use common::{assert_all_gone, of_kind, payloads_of, sent_texts, write_script, Sandbox};
 use serde_json::{json, Value};
 
 /// 시험의 Library `host.md` — 모델 · 생각 깊이를 적지 않았다(엔진 기본값).
@@ -273,11 +273,10 @@ fn 판이_다른_변환기면_session을_열지_않고_thread에_까닭이_남�
     // 판이 다른 변환기 — 가짜 ACP 에이전트가 `initialize`에 다른 판을 싣는다. 띄운 pid는 감싼 스크립트가 적는다.
     let pids = sandbox.claude_receipts().join("translator-pids");
     let wrapper = sandbox.bin("old-translator").join("acp-claude");
-    std::fs::write(
+    write_script(
         &wrapper,
-        format!("#!/bin/sh\necho $$ >> '{}'\nexec '{}'\n", pids.display(), env!("CARGO_BIN_EXE_fake-acp-agent")),
-    )
-    .unwrap();
+        &format!("#!/bin/sh\necho $$ >> '{}'\nexec '{}'\n", pids.display(), env!("CARGO_BIN_EXE_fake-acp-agent")),
+    );
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
     let shell = sandbox.claude_login_shell("normal", &[("FAKE_ACP_VERSION", "0.17.9")]);
     let host = sandbox

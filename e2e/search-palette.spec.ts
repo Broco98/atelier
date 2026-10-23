@@ -17,6 +17,7 @@ import {
   칠한값,
   토큰값,
   토큰색,
+  창검색버튼,
 } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
@@ -40,8 +41,8 @@ const [specWork] = WORKS;
 
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
-/** 셸 컨트롤 행 맨 오른쪽 칸. `exact`가 없으면 팔레트의 「검색어」·「검색 결과」까지 문다. */
-const searchButton = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
+/** 셸 컨트롤 행 맨 오른쪽 칸 — 사이드바의 검색 칸도 이름이 「검색」이라 하네스가 창 컨트롤 쪽만 집는다. */
+const searchButton = (page: Page) => 창검색버튼(page);
 
 /**
  * 검색 명령이 **어떤 질의로** 나갔는가. 같은 질의가 두 번 나가는 것은 세지 않는다 —

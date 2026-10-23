@@ -8,7 +8,6 @@ import {
   processesTitle,
   recordClipboard,
   unknownIpcCalls,
-  navButton,
   다떴다,
   띠,
   줄차례,
@@ -86,13 +85,16 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
   expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "머리 줄", "본문", "패널", "레일"]);
   // 머리 줄(머리 카드 밖)의 정류장은 패널 토글 하나이고, 레일은 칸마다 앉는다.
   expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual(["작업 패널 접기"]);
-  expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "chat", "files"]);
-  // 사이드바는 nav 하나 · work 목록 하나 · 바닥 Settings다 — nav의 정류장은 첫 항목(켜진 것이 없다), 목록의 정류장은 고른 행이다.
-  // 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
+  expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
+  // 사이드바는 검색 칸 · 「전체 | 내 차례」 마디 · nav 하나 · work 목록 하나 · 바닥 사람 줄이다(v1 티켓 07 · 42) — 마디의 정류장은 고른
+  // 칸(「전체」)이고 칸 사이는 ←→다. nav의 정류장은 첫 항목(켜진 것이 없다), 목록의 정류장은 고른 행이다. 구획 머리 · 다른 행 · nav의
+  // 나머지는 ↑↓로 간다(아래 검사들). 검색 칸은 이름표가 없어 글자(키 글자까지)로 선다.
   expect(자리들.filter(({ 영역 }) => 영역 === "사이드바").map(({ 이름, 행 }) => [이름, 행])).toEqual([
-    ["Projects", "projects"],
+    ["검색⌘K", null],
+    ["전체", null],
+    ["새 Thread", "new-thread"],
     [pinnedWork.title, pinnedWork.slug],
-    ["Settings", null],
+    ["김효연 — 사람 메뉴", null],
   ]);
   // 패널은 머리의 버튼 하나와 트리 하나다 — 트리의 정류장은 연 문서의 행이다.
   expect(자리들.filter(({ 영역 }) => 영역 === "패널").map(({ 이름, 행 }) => [이름, 행])).toEqual([
@@ -282,22 +284,21 @@ test("사이드바 work 목록은 ↑↓로 구획 머리와 행을 지나고, �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("main nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
+// nav는 「새 Thread」 · 「Library」 둘이다(v1 티켓 07 · 19) — 지금 화면들로 가는 옛 main nav 넷은 사람 메뉴로 갔다(S27).
+test("nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
-  await 탭으로(page, navButton(page, "Projects"));
-  await 간다(page, "ArrowUp", "projects");
-  await 간다(page, "ArrowDown", "terminal");
-  await 간다(page, "ArrowDown", "processes");
-  await 간다(page, "ArrowDown", "archive");
-  await 간다(page, "ArrowDown", "archive");
-  // Archive 화면은 들어서면 첫 아카이브를 고른다 — 주소가 그 아래로 간다.
+  await 탭으로(page, page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }));
+  await 간다(page, "ArrowUp", "new-thread");
+  await 간다(page, "ArrowDown", "library");
+  await 간다(page, "ArrowDown", "library");
+  await 간다(page, "ArrowUp", "new-thread");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/archive(\/|\?|$)/);
+  await expect(page).toHaveURL("/");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 설정 nav는 목록 다섯 밖이지만 main nav와 같은 `SidebarItem`이 같은 자리에 갈아 서서 같은 규칙이다(`Sidebar`의 `settingsRoving`).
+// 설정 nav는 목록 다섯 밖이지만 nav와 같은 `SidebarItem`이 같은 자리에 갈아 서서 같은 규칙이다(`Sidebar`의 `settingsRoving`).
 test("설정 nav도 Tab이 켜진 항목에 한 번 앉고, ↑↓로 항목을 지나며 Enter가 그 항목을 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/notifications");
@@ -316,11 +317,9 @@ test("설정 nav도 Tab이 켜진 항목에 한 번 앉고, ↑↓로 항목을 
   await 간다(page, "ArrowDown", "notifications");
   await 간다(page, "ArrowDown", "hooks");
   await 간다(page, "ArrowDown", "spec-layout");
-  // 끝 항목은 three-axes가 더한 「대화」다(`SETTINGS_ITEMS`) — 끝에서 ↓는 그 자리에 머문다.
-  await 간다(page, "ArrowDown", "chat");
-  await 간다(page, "ArrowDown", "chat");
+  await 간다(page, "ArrowDown", "spec-layout");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL("/settings/chat");
+  await expect(page).toHaveURL("/settings/spec-layout");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -4,12 +4,12 @@ import {
   awaitSpawned,
   installFixtureBackend,
   markAttention,
-  navButton,
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
   workRow,
   레인,
   띠,
+  사람줄,
   첫글자,
   토큰값,
 } from "./harness";
@@ -41,7 +41,7 @@ async function 상자(target: Locator) {
 /** 그 안 첫 아이콘(svg)의 상자. */
 const 아이콘 = (scope: Locator) => 상자(scope.locator("svg").first());
 
-test("사이드바: main nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 Settings의 행 글자가 창 끝에서 16이고, 수의 오른쪽 끝은 행 끝에서 8이다", async ({
+test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 사람 줄의 행 글자가 창 끝에서 16이고, 수의 오른쪽 끝은 행 끝에서 8이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -59,12 +59,14 @@ test("사이드바: main nav · 알림 띠 · 구획 소제목 · work 행 · �
   expect(sidebar.x, "사이드바가 창 끝에 붙는다").toBe(0);
 
   const 자리: [string, Promise<number>][] = [
-    ["main nav 아이콘", 아이콘(navButton(page, "Projects")).then((box) => box.x)],
+    // nav의 첫 항목은 「새 Thread」다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
+    ["nav 아이콘", 아이콘(page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true })).then((box) => box.x)],
     ["알림 띠 머리 글자", 첫글자(띠(page)).then((box) => box.x)],
     ["알림 띠 줄의 점 레인", 상자(띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림` }).locator("span").first()).then((box) => box.x)],
     ["구획 소제목 글자", 첫글자(page.locator("aside [data-section]").first()).then((box) => box.x)],
     ["work 행의 레인", 상자(레인(page, pinnedWork.slug)).then((box) => box.x)],
-    ["바닥 Settings 아이콘", 아이콘(page.locator("aside").getByRole("button", { name: "Settings", exact: true })).then((box) => box.x)],
+    // 바닥은 사람 줄이다(옛 Settings 줄의 자리) — 얼굴 글자 원이 행 글자 자리에 선다.
+    ["바닥 사람 줄의 얼굴", 상자(사람줄(page).locator("span").first()).then((box) => box.x)],
   ];
   for (const [이름, x] of 자리) expect((await x) - sidebar.x, `${이름} — 창 끝 + 16`).toBe(행글자);
 

@@ -248,22 +248,28 @@ function Sidebar({
         )}
       </WorkContextMenu>
 
-      {threadFilter === "all" && (
-        <SidebarWorkList
-          open={open}
-          // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
-          // 나를 뿐 터미널을 한 번도 참조하지 않는다.
-          shells={{ shellCounts, signals, notes, renderRowMeta }}
-          menu={menu}
-          renaming={renaming}
-          onRename={setRenaming}
-          onRenameEnd={() => setRenaming(null)}
-        />
-      )}
+      {/* **두 묶음은 남는 자리 하나를 나눠 쓴다**(`flex-1` · 바탕 0). 창이 낮으면 이 상자가 먼저 줄어 두 묶음이 구르고, 그래도
+          모자랄 때만 띠가 양보한다(위 띠 래퍼 주석 · 스토리 39). 두 묶음이 저마다 제 높이로 서면 넘침이 높이 비율로 갈려 목록이 아직
+          자리를 쥔 채 띠 래퍼가 함께 준다 — v1 티켓 07이 이 상자를 걷은 뒤 그렇게 줄어든 래퍼 밖으로 띠가 넘쳐 목록을 덮었다(v1 티켓
+          10 — `sidebar-quiet`의 띠 아래 선이 잡았다). 「내 차례」면 Work 묶음이 빠지고 기다리는 Thread 줄들이 이 자리를 쓴다. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {threadFilter === "all" && (
+          <SidebarWorkList
+            open={open}
+            // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
+            // 나를 뿐 터미널을 한 번도 참조하지 않는다.
+            shells={{ shellCounts, signals, notes, renderRowMeta }}
+            menu={menu}
+            renaming={renaming}
+            onRename={setRenaming}
+            onRenameEnd={() => setRenaming(null)}
+          />
+        )}
 
-      {/* **Work 묶음 바로 아래 Thread 묶음**(v1 구현 스펙 §13) — Work 없는 Thread들이 두 줄(얼굴 · 제목 · 시각 / 마지막 말)로 선다.
-          두 묶음은 제 높이로 서고 넘치면 저마다 구른다 — 남는 자리는 사람 줄 위의 빈 자리다(캔버스 화면 1). */}
-      <SidebarThreads filter={threadFilter} />
+        {/* **Work 묶음 바로 아래 Thread 묶음**(v1 구현 스펙 §13) — Work 없는 Thread들이 두 줄(얼굴 · 제목 · 시각 / 마지막 말)로 선다.
+            두 묶음은 제 높이로 서고 넘치면 저마다 구른다 — 남는 자리는 사람 줄 위의 빈 자리다(캔버스 화면 1). */}
+        <SidebarThreads filter={threadFilter} />
+      </div>
 
       {/* **바닥 고정의 사람 메뉴**(v1 구현 스펙 S27) — 이름과 지금 화면들(Projects · Terminal · Processes · Archive · Settings). */}
       <PersonMenu
@@ -669,12 +675,15 @@ function SidebarItem({
  *
  * 모양은 보드 그대로다 — 32 · `radius-md` · `fill-soft` 면 · 돋보기 16 · 「검색」 14 `fg-tertiary` · 오른쪽 끝 키 12. 칸의 양옆은 창 끝에서
  * 10이다(GUTTER 8 + 2 — 보드의 `margin: 2 10 10`). 아래 10은 nav와의 사이다. 키 글자는 단축키 표에서 온다(`HOTKEYS.search`).
+ *
+ * 사이드바의 첫 Tab 정류장이고 `tabIndex`를 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
  */
 function SearchField({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="shrink-0 px-2.5 pb-2.5">
       <button
         type="button"
+        tabIndex={0}
         onClick={onOpen}
         aria-keyshortcuts={HOTKEYS.search.aria}
         className="flex h-8 w-full items-center gap-2 rounded-md bg-fill-soft px-2.5 text-left text-sm text-fg-tertiary transition-colors hover:bg-fill-hover focus-ring"

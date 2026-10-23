@@ -7,7 +7,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  navButton,
+  사람메뉴로간다,
   openShell,
   unknownIpcCalls,
   writeShell,
@@ -49,7 +49,7 @@ async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
  */
 async function toTerminal(page: Page): Promise<void> {
   const spawned = await callCount(page, "pty_spawn");
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect
     .poll(() => callCount(page, "pty_spawn"), { message: "최상위 터미널에 셸이 저절로 안 떴다" })

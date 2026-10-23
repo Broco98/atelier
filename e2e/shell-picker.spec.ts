@@ -8,6 +8,7 @@ import {
   spawnedCwds,
   unknownIpcCalls,
   행버튼,
+  창검색버튼,
 } from "./harness";
 
 // 티켓 09(#222) — **`+` 메뉴에 「모든 프로젝트」와 키보드**(UI개선 결정 18·20, UI개선 스펙 §7 · S13).
@@ -205,7 +206,7 @@ for (const [what, target, pressed] of [
   ],
   [
     "셸 컨트롤 줄의 검색 버튼",
-    (page: Page) => page.getByRole("button", { name: "검색", exact: true }),
+    (page: Page) => 창검색버튼(page),
     (page: Page) => expect(page.getByRole("dialog", { name: "검색" })).toBeVisible(),
   ],
 ] as const) {

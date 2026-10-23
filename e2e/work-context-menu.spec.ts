@@ -8,7 +8,6 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   markAttention,
-  navButton,
   releaseCommand,
   typeIntoShell,
   unknownIpcCalls,
@@ -346,7 +345,7 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   const badge = (await head.getByRole("button", { name: pinnedWork.status, exact: true }).boundingBox())!;
   const list = (await page.locator("[data-worklist]").boundingBox())!;
   const lastRow = (await page.locator("[data-work-row]").last().boundingBox())!;
-  const nav = (await navButton(page, "Projects").boundingBox())!;
+  const nav = (await page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).boundingBox())!;
   const bar = (await page.locator("[data-slot=path-bar]").first().boundingBox())!;
   const viewport = page.viewportSize()!;
   const spots: Array<[string, number, number]> = [
@@ -355,11 +354,12 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
     // 문서 카드의 빈 곳은 경로 줄의 가운데다 — 카드의 몸은 문서가 서면 문서 글이라 제 메뉴가 선다(`target-menus.spec.ts`).
     ["문서 카드 경로 줄 빈 자리", bar.x + bar.width / 2, bar.y + bar.height / 2],
     ["사이드바 nav 항목", nav.x + nav.width / 2, nav.y + nav.height / 2],
-    // 목록 안이지만 행이 아닌 자리 — 목록이 대상을 찾지 못해 메뉴를 안 연다.
-    ["목록 빈 자리", list.x + list.width / 2, list.y + list.height - 6],
+    // 목록 안이지만 행이 아닌 자리 — 목록이 대상을 찾지 못해 메뉴를 안 연다. 목록은 제 높이로 서서(v1 티켓 07) 남는 자리가 없고,
+    // 마지막 행 아래의 바닥 안쪽 여백(4 — `pb-1`)이 그 자리다.
+    ["목록 빈 자리", list.x + list.width / 2, list.y + list.height - 2],
   ];
   // 앵커: 목록 빈 자리는 마지막 행 아래이고 목록 안이다 — 행에 떨어지거나 밖으로 새면 「목록이 대상을 못 찾는다」가 아무것도 안 잰다.
-  expect(list.y + list.height - 6).toBeGreaterThan(lastRow.y + lastRow.height);
+  expect(list.y + list.height - 2).toBeGreaterThan(lastRow.y + lastRow.height);
   // 앵커: 경로 줄의 가운데는 경로 칩 · 버튼 · 문서 글 어느 것도 아니다 — 거기 떨어지면 「빈 곳」을 안 잰다.
   expect(
     await page.evaluate(

@@ -106,7 +106,7 @@ test("셸 탭을 우클릭하면 셸 탭 메뉴가 커서 자리에 서고, 켜�
   await 다떴다(menu);
   const spot = (await target.boundingBox())!;
   const card = (await menu.boundingBox())!;
-  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 셸 칸은 앞 칸(`spec` · `chat`)의 글자 폭을 따라 반 픽셀에 설 수
+  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 셸 칸은 앞 칸(`spec`)의 글자 폭을 따라 반 픽셀에 설 수
   // 있어 카드는 그 아래 정수에 선다(`spec-layout-page.spec.ts`와 같은 잣대).
   expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
 

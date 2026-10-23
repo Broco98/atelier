@@ -8,9 +8,10 @@
 #![allow(dead_code)] // 시험 파일마다 쓰는 도우미가 달라, 안 쓰는 파일에서 경고가 난다.
 
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use std::collections::BTreeMap;
@@ -75,7 +76,7 @@ impl Sandbox {
 
     fn plant_with_mode(&self, dir: &Path, program: &str, mode: u32) {
         let path = dir.join(program);
-        fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        write_script(&path, "#!/bin/sh\nexit 0\n");
         fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
     }
 
@@ -118,7 +119,7 @@ impl Sandbox {
             home = self.data_root().display(),
         );
         let shell = self.root.join(format!("login-shell-{scenario:?}"));
-        fs::write(&shell, script).unwrap();
+        write_script(&shell, &script);
         fs::set_permissions(&shell, fs::Permissions::from_mode(0o755)).unwrap();
         shell
     }
@@ -356,6 +357,21 @@ impl Sandbox {
     }
 }
 
+/// 실행할 파일(가짜 셸 · 가짜 프로그램 · 감싼 스크립트)을 쓴다 — **쓰기는 자식 `sh`가 한다.** 실행 비트는 부르는 쪽이 단다.
+///
+/// 이 프로세스가 쓰기 fd를 연 동안 다른 시험 스레드가 fork하면, 그 자식은 exec할 때까지 같은 fd를 쥔다(`O_CLOEXEC`는 exec에서야
+/// 닫힌다). 그사이 이 파일을 실행하면 Linux는 「Text file busy」(os error 26)로 막는다 — 리눅스 CI에서 `thread_host`의
+/// `quit_counts`가 가끔 그렇게 빨갰다(v1 티켓 10). 쓰기 fd가 자식에만 있으면 이 프로세스의 fork가 물려받을 것이 없다.
+pub fn write_script(path: &Path, body: &str) {
+    let mut writer = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$0\"", &path.display().to_string()])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    writer.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+    assert!(writer.wait().unwrap().success(), "{}를 쓰지 못했다", path.display());
+}
+
 /// 변환기 시험 bin — 앱 진입점의 `acp-claude` 갈래와 같은 진입 함수를 부른다.
 pub fn translator() -> TranslatorCommand {
     TranslatorCommand::new(env!("CARGO_BIN_EXE_claude-translator"), Vec::<String>::new())
@@ -482,8 +498,8 @@ impl Sandbox {
             std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_fake-acp-agent"), bin.join("codex-acp")).unwrap();
             self.plant(&bin, "node");
             let open = bin.join("open");
-            fs::write(&open, format!("#!/bin/sh\necho \"$*\" >> '{}'\n", self.login_receipts().join("open").display()))
-                .unwrap();
+            let script = format!("#!/bin/sh\necho \"$*\" >> '{}'\n", self.login_receipts().join("open").display());
+            write_script(&open, &script);
             fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).unwrap();
         }
         bin

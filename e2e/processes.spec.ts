@@ -3,16 +3,18 @@ import { PROJECTS } from "./fixtures";
 import {
   callCount,
   installFixtureBackend,
-  navButton,
-  navButtons,
   processesTitle,
   unknownIpcCalls,
+  사람메뉴로간다,
+  주소로간다,
+  사람메뉴항목,
+  사람줄,
   시계를세운다,
 } from "./harness";
 import { poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
-// 프로세스 티켓 26 — **`Processes`가 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
+// 프로세스 티켓 26 — **`Processes`가 사람 메뉴에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
 // 80 · 95). nav 배열과 라우트 표의 자리는 L2가 값으로 잰다(`destinations.test.ts` · `router.test.ts`). 여기서 보는 것은 그 표가 **진짜 사이드바와
 // 진짜 라우터**를 지나 화면이 서는가, 스냅샷이 화면까지 오는가, 그리고 떠나면 묻기가 멈추는가다 — 마지막은 진짜 타이머와
 // 진짜 언마운트가 있어야 드러난다.
@@ -39,16 +41,18 @@ const shellCount = (page: Page, count: number) =>
 const withPool = (...keys: string[]): ProcessSnapshot =>
   snapshotFixture({ pool: keys.map((shellKey, at) => poolShell(at + 1, shellKey, 1_758_000_000_000)) });
 
-test("Processes가 nav에서 Terminal 다음, Archive 앞에 서고, 누르면 그 화면이 열린다", async ({
+test("Processes가 사람 메뉴에서 Terminal 다음, Archive 앞에 서고, 고르면 그 화면이 열린다", async ({
   page,
 }) => {
   await installFixtureBackend(page, { processes_snapshot: withPool("P-1", "P-2", "P-3") });
   await page.goto("/projects");
   await expect(page).toHaveURL(`/projects/${project.slug}`);
 
-  // **순서까지 본다**(프로세스 스펙 S43) — 「있다」만 재면 끝에 붙여도 초록이다.
-  await expect(navButtons(page)).toHaveText(["Projects", "Terminal", "Processes", "Archive"]);
-  await navButton(page, "Processes").click();
+  // **순서까지 본다**(프로세스 스펙 S43) — 「있다」만 재면 끝에 붙여도 초록이다. 옛 nav의 넷이 사람 메뉴로 왔다(v1 티켓 07 · S27).
+  await 사람줄(page).click();
+  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes$/, /^Archive$/, /^Settings/]);
+  await page.keyboard.press("Escape");
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(processesTitle(page)).toBeVisible();
   await expect(shellCount(page, 3)).toBeVisible();
@@ -80,7 +84,8 @@ test("화면에 있는 동안은 2초마다 스냅샷을 묻고, 화면을 떠�
   await page.clock.runFor(6_000);
   expect(await callCount(page, "processes_snapshot")).toBe(opened + 3);
 
-  await navButton(page, "Terminal").click();
+  // 시계를 세운 동안은 사람 메뉴가 안 뜬다 — 메뉴가 하는 push를 주소로 한다(`사람메뉴로간다` 머리말).
+  await 주소로간다(page, "/terminal");
   await expect(page).toHaveURL("/terminal");
   await expect(processesTitle(page)).toHaveCount(0);
   const left = await callCount(page, "processes_snapshot");
@@ -90,7 +95,7 @@ test("화면에 있는 동안은 2초마다 스냅샷을 묻고, 화면을 떠�
   // 앵커: 돌아오면 다시 묻는다 — 멈춘 것은 화면이 떠나서다. 돌아온 순간 곧바로 한 번 묻고, **박자를 다시 건다**
   // (`snapshotQuery` 머리말). 곧바로의 한 번만 세면 박자가 다시 안 서도 초록이라, 그 한 번을 먼저 기다린 뒤 2초를 넘겨
   // 한 번 더 오는 것을 센다.
-  await navButton(page, "Processes").click();
+  await 주소로간다(page, "/processes");
   await expect(processesTitle(page)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(left);
   const returned = await callCount(page, "processes_snapshot");

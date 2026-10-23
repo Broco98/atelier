@@ -13,6 +13,7 @@ import {
   steadyCount,
   unknownIpcCalls,
   workRow,
+  사람메뉴로간다,
 } from "./harness";
 
 // 티켓 14 — **spec이 바뀌면 work 목록 조회가 한 번만 돈다**(프로세스 결정 18 ① · 프로세스 스펙 판 02 ① · S20).
@@ -66,13 +67,13 @@ test("작업 화면 · 프로젝트 상세 · 아카이브에 차례로 서도 w
   // StrictMode가 붙였다 뗀 구독의 해제는 늦게 온다 — 수가 멎을 때까지 기다려 잰다(`liveSubscriptions`).
   expect(await liveSubscriptions(page, EVENT), "작업 화면").toBe(1);
 
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await 사람메뉴로간다(page, "Projects");
   await expect(page).toHaveURL(`/projects/${project.slug}`);
   // 앵커: 프로젝트 상세가 목록을 읽어 그렸다. 사이드바 행도 같은 제목이라 `main`으로 좁힌다.
   await expect(page.locator("main").getByRole("button", { name: projectWork.title })).toBeVisible();
   expect(await liveSubscriptions(page, EVENT), "프로젝트 상세").toBe(1);
 
-  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await 사람메뉴로간다(page, "Archive");
   await expect(page).toHaveURL(`/archive/${shipped.slug}`);
   await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
   expect(await liveSubscriptions(page, EVENT), "아카이브").toBe(1);

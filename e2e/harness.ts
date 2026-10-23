@@ -1012,6 +1012,13 @@ export const 적힌주소 = (page: Page) => page.evaluate(() => (window as unkno
 export const 검색어칸 = (scope: Page | Locator) => scope.getByRole("textbox", { name: "검색어", exact: true });
 
 /**
+ * 창 컨트롤 줄의 검색 버튼(돋보기 · ⌘K). 사이드바 맨 위의 검색 칸(v1 티켓 07)도 이름이 「검색」이고 같은 팔레트를 연다 — 그래서 이름만으로
+ * 집으면 둘이다. 창 컨트롤의 것은 앱 툴팁을 단 아이콘 버튼이다(`ShellControls`의 `Hint`).
+ */
+export const 창검색버튼 = (page: Page) =>
+  page.getByRole("button", { name: "검색", exact: true }).and(page.locator('[data-slot="tooltip-trigger"]'));
+
+/**
  * ⌘K로 검색 팔레트를 열고 「검색어」 칸이 포커스를 받기까지 기다린다. **연 뒤에 그 칸의 포커스를 딛고 이어 가는 검사(키를 누른다 ·
  * 글자를 넣는다 · 그 포커스가 남는지 본다)는 이것으로 연다** — 창은 첫 포커스를 다음 프레임에 옮기고(Base UI), 그 전의 글자 아닌
  * 키(방향키 · Enter · Esc · ⇧F10)는 첫 프레임 가드가 삼킨다(S24). 줄이 다 섰어도 포커스는 아직일 수 있어서, 부하가 있으면 그 키가
@@ -1383,16 +1390,32 @@ export async function 글자대비(element: Locator): Promise<number> {
 }
 
 /**
- * 사이드바 nav의 항목 버튼들, 위에서부터. 버튼 글자는 라벨뿐이다 — 메타(셸 수 · 메모리 합계)는 버튼 밖에 선다(`SidebarItem`).
+ * 사이드바 맨 아래의 사람 줄(v1 티켓 07 · 구현 스펙 S27) — 이름은 fixture의 `person_name`(「김효연」)이다. 누르면 지금 화면들로 가는
+ * 메뉴가 위로 뜬다. 옛 사이드바 nav의 네 항목(Projects · Terminal · Processes · Archive)과 바닥 Settings 줄이 이 메뉴로 왔다.
  *
- * **여기 사는 이유는 nav를 집는 길을 하나로 두려는 것이다.** `Processes`를 여는 spec마다 같은 선택자를 적었다 — 사이드바의
- * 마크업이 바뀌는 날 한 파일만 고쳐지면, 고쳐지지 않은 쪽의 「nav에 없다」(`toHaveCount(0)`)가 헛돈다.
+ * **여기 사는 이유는 지금 화면들로 가는 길을 하나로 두려는 것이다.** `Processes`를 여는 spec마다 같은 선택자를 적었다 — 사이드바의
+ * 마크업이 바뀌는 날 한 파일만 고쳐지면, 고쳐지지 않은 쪽이 헛돈다. 옛 nav를 집던 `navButton`이 이 길로 바뀌었다.
  */
-export const navButtons = (page: Page) => page.locator("aside nav").getByRole("button");
+export const 사람줄 = (page: Page) => page.getByRole("button", { name: /— 사람 메뉴$/ });
 
-/** 사이드바 nav의 그 항목 버튼(`Terminal` · `Processes` …). */
-export const navButton = (page: Page, label: string) =>
-  page.locator("aside nav").getByRole("button", { name: label, exact: true });
+/** 열린 사람 메뉴의 항목들, 위에서부터. 이름은 라벨로 시작한다 — `Terminal`에는 셸 수가, `Settings`에는 단축키가 뒤에 붙는다. */
+export const 사람메뉴항목 = (page: Page) => page.getByRole("menu").getByRole("menuitem");
+
+/** 지금 화면의 이름 — 사람 메뉴의 항목이자 ⌘K의 「가는 곳」이다. */
+export type 지금화면 = "Projects" | "Terminal" | "Processes" | "Archive" | "Settings";
+
+/**
+ * 사람 메뉴를 열고 그 항목을 고른다 — 옛 nav 항목을 누르던 길이다(`navButton(page, "Processes").click()`). 메뉴가 닫힐 때까지 기다리고,
+ * 고른 화면이 섰는지는 부르는 쪽이 제 앵커로 잰다. 항목이 없으면 그 자리에서 기다리다 빨개진다 — 조용히 지나가지 않는다.
+ *
+ * **시계를 세운 검사(`시계를세운다`)에서는 메뉴가 안 뜬다** — 메뉴는 열 때 타이머 · 프레임을 기다리는데 세운 시계가 그것을 붙든다.
+ * 그런 검사는 메뉴가 하는 push를 `주소로간다`로 한다(박자를 세는 검사라 시계를 흘려 열면 셈이 어긋난다).
+ */
+export async function 사람메뉴로간다(page: Page, label: 지금화면): Promise<void> {
+  await 사람줄(page).click();
+  await page.getByRole("menu").getByRole("menuitem", { name: new RegExp(`^${label}`) }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+}
 
 /** `Processes` 화면의 제목 — 머리 카드의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
@@ -1449,10 +1472,10 @@ export const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "spec 
 /**
  * **앱 안의 길로** spec 레이아웃 편집기에 들어가 저장하지 않은 초안을 하나 만든다 — `decisions.md`의 설명 한 칸이다
  * (`spec-layout-leave.spec.ts`의 `draftOne`과 같은 초안). 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 비므로, 사이드바 바닥의
- * `Settings`로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
+ * `Settings`(사람 메뉴 — v1 티켓 07)로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
  */
 export async function 편집기에초안(page: Page): Promise<void> {
-  await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   await 설정항목(page, "spec 레이아웃").click();
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
   await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
@@ -1648,7 +1671,7 @@ export const 파일탭주소 = (ref: string, slug = WORKS[0].slug) =>
   `/works/${slug}?tab=code&code=${encodeURIComponent(ref)}`;
 
 /**
- * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트 · 대화창이 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
+ * 앱 안에서 주소를 바꾼다 — 링크 · 팔레트가 하는 push와 같다. **다시 띄우지 않는다**: `page.goto`는 앱을 새로 세워
  * 메모리에만 사는 묶음(git-integration 결정 33)을 지운다. 라우터의 기록(`@tanstack/history`)이 `pushState`를 감싸 듣고 있어
  * 이 한 번으로 화면이 따라오고, 뒤로가기도 이 자리를 센다.
  *
@@ -1688,7 +1711,7 @@ export async function 셸셋을띄운다(page: Page): Promise<void> {
   await typeIntoShell(page);
   await openShell(page);
 
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);

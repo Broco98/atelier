@@ -392,8 +392,8 @@ test.describe("빈 `고정` 받침(고정이 하나도 없는 목록)", () => {
 });
 
 test("긴 목록의 아래 가장자리에 머물면 목록이 구르고, 구른 뒤 놓은 틈이 포인터 아래 행과 맞는다", async ({ page }) => {
-  // 창을 낮춰 목록을 넘치게 한다(`sidebar-quiet`와 같은 방법).
-  await page.setViewportSize({ width: 1280, height: 400 });
+  // 창을 낮춰 목록을 넘치게 한다(`sidebar-quiet`와 같은 방법 — 목록 상자는 창 높이 − 212px, 내용은 182px다).
+  await page.setViewportSize({ width: 1280, height: 360 });
   await openList(page);
   const box = page.locator("[data-worklist]");
   const overflow = await box.evaluate((el) => el.scrollHeight - el.clientHeight);

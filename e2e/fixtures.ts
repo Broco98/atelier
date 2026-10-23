@@ -275,7 +275,7 @@ export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
 // 손으로 고치지 않게, 그리고 이 이름을 드는 spec(`works-sidebar`·`sidebar-quiet`)이 따로 고치지
 // 않게 여기 한 벌만 둔다.
 export const PINNED_HEADER = `고정 ${WORKS.filter((work) => work.pinned).length}`;
-export const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
+export const MAIN_HEADER = `Work ${WORKS.filter((work) => !work.pinned).length}`;
 
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
@@ -842,7 +842,8 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
 };
 
 // Thread 기본 자료(v1 티켓 05) — L1이 축복한 두 턴짜리 Thread(`thread-two-turns.jsonl`)의 Thread 줄. Host 하나가 참여했고 앱에 떠 있지 않다.
-const FIXTURE_HOST: Participant = {
+// Thread spec(v1 티켓 10)이 이것을 바탕으로 제 Thread를 짓는다 — `lastSeq`는 그 기록의 마지막 줄이다.
+export const FIXTURE_HOST: Participant = {
   handle: "host",
   from: "library",
   joinedAt: "2026-10-10T10:00:01.000+09:00",
@@ -853,7 +854,7 @@ const FIXTURE_HOST: Participant = {
   model: null,
   effort: null,
 };
-const FIXTURE_THREAD: ThreadView = {
+export const FIXTURE_THREAD: ThreadView = {
   id: "20261010-100000",
   title: "세 낱말로 답해 줘: hello from turn",
   createdAt: "2026-10-10T10:00:00.000+09:00",
@@ -861,7 +862,7 @@ const FIXTURE_THREAD: ThreadView = {
   mode: null,
   participants: [FIXTURE_HOST],
   lastRead: 0,
-  lastSeq: 24,
+  lastSeq: 20,
   askLevel: "always",
   live: false,
   queues: {},

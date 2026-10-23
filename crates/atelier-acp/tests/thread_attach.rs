@@ -162,3 +162,31 @@ fn 나중에_들어온_agent의_지난_말에도_사람이_첨부한_경로가_�
 
     host.shut_down();
 }
+
+/// 축복 자료에서 사람의 책상 자리 — 끌어다 놓은 것이 있던 시험의 임시 폴더는 매번 다르다.
+const DESK: &str = "/Users/tester/Desktop";
+
+/// 기록 축복(S26 꼴) — 파일 하나 · 폴더 하나를 붙인 새 Thread의 첫 말과 Host의 답이 검사 자료로 선다. PR ①의 L3(v1 티켓 10)가 이 파일을
+/// `thread:record`로 흘려 말풍선 위 첨부 칩을 그리고, `sent` 줄의 첨부를 경로 재기(`describe_attachments`)의 답으로 쓴다.
+#[test]
+fn 첨부한_첫_말의_기록이_검사_자료와_같다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let (log, shots) = dropped(&sandbox);
+    let host = sandbox.host(two_turns(&sandbox));
+
+    let thread = host
+        .start_thread_with("이 로그 봐 줘", &[text(&log), text(&shots)], ThreadLink::NoWork)
+        .expect("첨부한 첫 말로 새 Thread");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let session = sandbox.thread_session_id(&thread, "host");
+    let fixed = common::fix_thread_record(&common::commands_after_opened(&record), &sandbox.data_root(), &thread, &[&session]);
+    let desk = text(log.parent().expect("책상 폴더"));
+    let fixed: Vec<Value> = fixed
+        .iter()
+        .map(|line| serde_json::from_str(&line.to_string().replace(&desk, DESK)).expect("고친 줄은 JSON"))
+        .collect();
+    common::assert_record("thread-attach", &fixed);
+}

@@ -10,6 +10,7 @@ import {
   툴팁,
   행버튼,
   호버카드,
+  창검색버튼,
 } from "./harness";
 
 // codex-ds 티켓 33 — **툴팁과 호버 카드가 멈추면 바로 뜬다**(codex-ds 스펙 §8 「뜨는 시간」 · 결정 20 · 스토리 99–103).
@@ -35,7 +36,7 @@ async function 길이들(page: Page): Promise<{ tip: number; peekClose: number }
 }
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼과 그 옆 사이드바 토글 — 둘 다 툴팁을 단 이웃이다. */
-const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
+const 검색 = (page: Page) => 창검색버튼(page);
 const 사이드바토글 = (page: Page) => page.getByRole("button", { name: "사이드바 토글", exact: true });
 
 /** 그 글자의 툴팁 — 닫히는 툴팁이 잠깐 남아도 섞이지 않게 글자로 좁힌다. */
