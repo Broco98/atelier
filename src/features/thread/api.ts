@@ -66,8 +66,11 @@ export const threadApi = {
     invoke<Participant>("thread_set_effort", { thread, who, effort }),
   /** 이름 바꾸기 — 위 막대에서 고친 이름. 같거나 빈 이름이면 아무것도 적지 않는다. 답은 바뀐 목록 요약이다. */
   rename: (thread: string, title: string) => invoke<ThreadSummary>("thread_rename", { thread, title }),
-  /** 부를 수 있는 Agent — 빈 Thread의 칩이 Host 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33). */
-  agents: () => invoke<AgentRoster>("list_agents", { work: null }),
+  /**
+   * 부를 수 있는 Agent와 깨진 파일 — `work`가 없으면 Library만, 있으면 그 Work의 Project 안까지다(v1 티켓 11). @ 메뉴 · 받는 이 칩 ·
+   * 얼굴이 읽고(14), 빈 Thread의 칩이 Host 정의 파일의 모델 · 생각 깊이를 읽는다(스토리 33).
+   */
+  agents: (work: string | null) => invoke<AgentRoster>("list_agents", { work }),
 };
 
 /** 엔진에 가는 첨부 — 절대 경로만. 크기는 엔진이 보낼 때 다시 잰다. */

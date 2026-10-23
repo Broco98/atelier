@@ -939,9 +939,15 @@ fn name_prefixes(name: &str) -> impl Iterator<Item = &str> {
     ends.into_iter().map(move |end| &name[..end])
 }
 
-/// `joined` 줄의 payload — 들어온 참여자와 정의가 온 곳(Library · Project).
+/// `joined` 줄의 payload — 들어온 참여자와 정의가 온 곳(Library · Project). 이름 · 얼굴(`avatar`)은 화면이 그 참여자를 그리는
+/// 정본이다(v1 티켓 14) — 들어올 때의 정의 그대로라(S4) Agent 파일을 고치거나 지워도 이 Thread의 얼굴은 바뀌지 않는다. 파일에
+/// `avatar`가 없으면 칸째 빠진다 — 화면이 handle에서 정한다(S36).
 fn joined(found: &FoundAgent) -> Value {
-    json!({"handle": found.definition.handle, "name": found.definition.name, "from": found.from})
+    let mut payload = json!({"handle": found.definition.handle, "name": found.definition.name, "from": found.from});
+    if let Some(avatar) = &found.definition.avatar {
+        payload["avatar"] = json!(avatar);
+    }
+    payload
 }
 
 /// 첫 말에서 정하는 이름 — 비지 않은 첫 줄, 길면 앞 [`TITLE_LIMIT`]글자에 말줄임표.

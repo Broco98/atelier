@@ -41,8 +41,14 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
   { value: "max", label: "최대" },
 ];
 
-/** 화면이 하는 명령 — Runtime 명령 앞에 선다(캔버스 Composer 보드 「/ · 명령」). 나머지(`/work` · `/agent` · …)는 그 장이 더한다. */
-export const THREAD_COMMANDS: readonly CommandOption[] = [{ name: "new", description: "새 Thread", aliases: [], thread: true }];
+/**
+ * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/agent`는 Agent 부르기 메뉴를 연다
+ * (v1 티켓 14). 나머지(`/work` · `/plan` · `/policy` …)는 그 장이 더한다.
+ */
+export const THREAD_COMMANDS: readonly CommandOption[] = [
+  { name: "new", description: "새 Thread", aliases: [], thread: true },
+  { name: "agent", description: "Agent 부르기", aliases: [], thread: true },
+];
 
 export function chipLists(lines: readonly RecordLine[], who: string): ChipLists {
   const lists: ChipLists = { models: null, model: null, commands: [] };

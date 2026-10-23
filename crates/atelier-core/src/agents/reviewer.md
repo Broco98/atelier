@@ -1,6 +1,11 @@
 ---
 name: 리뷰어
 description: 바뀐 코드를 읽고 리뷰한다. 구현이 끝난 뒤 부른다.
+# 얼굴 — 모양(circle · triangle · pill · drop · square)과 색(blue · green · yellow · pink · orange · purple · slate · lime · cyan ·
+# magenta)이다. 적지 않으면 handle에서 정한다.
+avatar:
+  shape: circle
+  color: green
 # 선호 모델과 생각 깊이를 적으면 리뷰어의 Session이 그 값으로 열린다. 적지 않으면 Claude Code의 기본값을 쓴다.
 # model:
 #   prefer: opus

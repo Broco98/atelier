@@ -1,3 +1,4 @@
+import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
 import type { Attachment, RecordLine } from "./types";
 
@@ -9,6 +10,9 @@ import type { Attachment, RecordLine } from "./types";
 // (그쪽 머리말이 근거를 든다), Thread에서 달라진 것은 셋이다.
 // - **줄의 `who`로 말한 이를 가른다.** 턴은 그 턴에 답한 참여자의 handle을 들고, 같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시
 //   쓰지 않는다(`namesWho`). 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다.
+//   **열린 턴은 참여자마다 하나다**(v1 티켓 14) — 참여자마다 Session이 따로라(§5) Host가 도는 동안 리뷰어에게 보낸 말은 리뷰어의 턴으로
+//   함께 돈다. 줄은 그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 참여자의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은
+//   모두의 끝이다. 참여자의 이름 · 얼굴은 들어옴 줄(`joined`)이 정본이다(`cast`) — 처음 불린 정의 그대로다(S4).
 // - **Thread의 일은 흐름 가운데의 시스템 줄이다**(캔버스 Messages 보드 「시스템 줄」) — 이름 바꾸기(`title`), 참여자가 들고 남(`joined` ·
 //   `left`). 모든 Thread가 Host의 `joined`로 시작하므로 Host가 들어온 줄은 세우지 않는다. Work · 물어보는 정도 · 호출 · PR 줄은 그
 //   장(23 · 30 · 31 · 15 · 40)이 더한다.
@@ -123,18 +127,30 @@ export interface Notice {
 export interface SystemLine {
   key: string;
   kind: "title" | "joined" | "left";
+  /** 들고 난 참여자의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기)은 `null`이다. */
+  handle: string | null;
   before: string;
   name: string;
   after: string;
   turnsBefore: number;
 }
 
+/** 참여자 한 사람의 이름 · 얼굴 — 들어옴 줄(`joined`)의 `name` · `avatar`. */
+export interface CastMember {
+  name: string;
+  avatar: Avatar | null;
+}
+
 export interface ThreadModel {
   turns: Turn[];
-  /** 마지막 턴이 도는 중인가. */
+  /** 도는 턴이 하나라도 있나 — 참여자마다 하나씩 돌 수 있다. */
   running: boolean;
+  /** 도는 턴의 참여자 handle — 턴이 선 차례다. */
+  answering: string[];
   /** Session을 띄우거나 되살리는 중인가 — 띄우는 중 줄 뒤로 열림 · 죽음 · 닫힘 · 로그인 필요가 아직 오지 않았다. */
   connecting: boolean;
+  /** 참여자 handle → 이름 · 얼굴(들어옴 줄). Host는 줄이 없어도 「Host」다. */
+  cast: Record<string, CastMember>;
   notices: Notice[];
   system: SystemLine[];
   /** 답하지 않은 권한 요청 — 물은 차례다. 맨 앞의 것이 입력창 자리에 승인 카드로 선다. */
@@ -176,9 +192,10 @@ const HOST = "host";
  */
 export function foldThread(lines: readonly RecordLine[], goneThrough: number | null = null): ThreadModel {
   const turns: Turn[] = [];
-  let open: Turn | null = null;
-  // 도는 턴에서 `failed`로 닫힌 뒤 아무 일도 이어지지 않은 도구 줄들 — 그 턴이 우리의 멈춤으로 끝나면 멈춤이다.
-  let closedLast: ToolEntry[] = [];
+  // 참여자마다 열린 턴 — 열쇠는 `who`(받는 이를 모르는 옛 `sent`는 빈 글자다, `openFor`).
+  const open = new Map<string, Turn>();
+  // 도는 턴에서 `failed`로 닫힌 뒤 아무 일도 이어지지 않은 도구 줄들(턴마다) — 그 턴이 우리의 멈춤으로 끝나면 멈춤이다.
+  const closedLast = new Map<Turn, ToolEntry[]>();
   // 권한 요청 id → 그 요청의 도구 줄 id · 선택지 갈래, 그리고 멈추기로 요청이 거둬진 도구 줄 id들.
   const askedFor = new Map<string, { tool: string | null; options: PermissionOption[] }>();
   const withdrawnByStop = new Set<string>();
@@ -187,6 +204,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   let planCard: Held<PlanEntry> | null = null;
   let checklist: Held<ChecklistEntry> | null = null;
   const planReviews = new Set<string>();
+  const cast: Record<string, CastMember> = { [HOST]: { name: "Host", avatar: null } };
   const start = (key: string, sent: string | null, at: string, who: string | null, attachments: Attachment[] = []): Turn => {
     const previous = turns[turns.length - 1];
     const turn: Turn = {
@@ -204,36 +222,56 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     // 사람 말 없이 이어진 턴 — 앞 턴과 같은 이면 이름 줄을 다시 쓰지 않는다.
     if (sent === null && previous && previous.who === who) turn.namesWho = false;
     turns.push(turn);
-    closedLast = [];
+    open.set(who ?? "", turn);
     return turn;
+  };
+  // 그 참여자의 열린 턴 — 없고 받는 이를 모르는 열린 턴이 있으면 그 턴이 이 참여자의 것이다(`to` 없는 옛 `sent`).
+  const openFor = (who: string | null): Turn | null => {
+    const own = open.get(who ?? "");
+    if (own || who === null) return own ?? null;
+    const anonymous = open.get("");
+    if (!anonymous) return null;
+    open.delete("");
+    open.set(who, anonymous);
+    return anonymous;
+  };
+  const close = (turn: Turn) => {
+    for (const [key, one] of open) if (one === turn) open.delete(key);
+    closedLast.delete(turn);
   };
   // 답한 이를 턴에 적는다 — 보낸 말의 받는 이보다 실제로 답한 줄이 이긴다.
   const answer = (turn: Turn, line: RecordLine) => {
     if (line.who) turn.who = line.who;
     if (turn.answeredAt === null) turn.answeredAt = line.at;
   };
-  let connecting = false;
+  const connecting = new Set<string>();
   const notices: Notice[] = [];
   const system: SystemLine[] = [];
   const notice = (seq: number, kind: Notice["kind"], words: string) =>
     notices.push({ key: `n${seq}`, kind, text: words, turnsBefore: turns.length });
-  const say = (seq: number, kind: SystemLine["kind"], before: string, name: string, after: string) =>
-    system.push({ key: `s${seq}`, kind, before, name, after, turnsBefore: turns.length });
-  // 그 프로세스가 사라졌다 — 열린 턴은 끝났고, 걸린 권한 요청에는 답할 곳이 없고, 끝을 받지 못한 도구 줄은 끊겼다.
-  const vanish = (at: string, error: string) => {
-    pending.clear();
-    connecting = false;
+  const say = (seq: number, kind: SystemLine["kind"], handle: string | null, before: string, name: string, after: string) =>
+    system.push({ key: `s${seq}`, kind, handle, before, name, after, turnsBefore: turns.length });
+  // 그 참여자의 프로세스가 사라졌다(`who`가 `undefined`면 모두 — 앱을 다시 켬) — 열린 턴은 끝났고, 걸린 권한 요청에는 답할 곳이 없고,
+  // 끝을 받지 못한 도구 줄은 끊겼다.
+  const vanish = (at: string, error: string, who?: string | null) => {
+    const mine = (one: string | null) => who === undefined || one === (who ?? HOST);
+    for (const [id, request] of pending) if (mine(request.who)) pending.delete(id);
+    if (who === undefined) connecting.clear();
+    else connecting.delete(who ?? HOST);
     for (const turn of turns) {
+      if (!mine(turn.who ?? HOST)) continue;
       for (const entry of turn.entries) if (entry.kind === "tool" && !toolDone(entry)) entry.cut = true;
     }
-    if (!open) return;
-    open.end = {
-      stopReason: null,
-      durationMs: Math.max(0, Date.parse(at) - Date.parse(open.startedAt)) || 0,
-      cancelledByUs: false,
-      error,
-    };
-    open = null;
+    const ending = who === undefined ? [...open.values()] : [openFor(who ?? HOST)].filter((turn) => turn !== null);
+    for (const turn of ending) {
+      turn.end = {
+        stopReason: null,
+        durationMs: Math.max(0, Date.parse(at) - Date.parse(turn.startedAt)) || 0,
+        cancelledByUs: false,
+        error,
+      };
+      close(turn);
+    }
   };
   let gone = goneThrough === null;
   let lastAt = "";
@@ -248,7 +286,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     const payload = isObject(line.payload) ? line.payload : {};
     switch (line.kind) {
       case "sent":
-        open = start(`t${line.seq}`, text(payload.text) ?? "", line.at, text(payload.to), attachmentsOf(payload.attachments));
+        start(`t${line.seq}`, text(payload.text) ?? "", line.at, text(payload.to), attachmentsOf(payload.attachments));
         break;
       case "update": {
         const update = isObject(payload.update) ? payload.update : null;
@@ -258,28 +296,31 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           // 늦게 온 update는 그 도구 줄을 찾아 붙는다 — 턴이 이미 끝났어도 같다.
           const id = text(update.toolCallId);
           if (id && planReviews.has(id)) break;
+          const mine = openFor(line.who ?? null);
           let tool = id ? findTool(turns, id) : null;
           if (tool) tool.call = mergeCall(tool.call, update);
-          else if (id && open) {
+          else if (id && mine) {
             tool = newTool(`u${line.seq}`, id, update, line.at);
-            open.entries.push(tool);
+            mine.entries.push(tool);
           }
           if (!tool) break;
           tool.output += outputOf(update);
           if (tool.endedAt === null && toolDone(tool)) tool.endedAt = line.at;
           if (deniedTools.has(tool.toolCallId)) tool.denied = true;
-          if (open && update.status === "failed" && open.entries.includes(tool)) closedLast.push(tool);
+          if (mine && update.status === "failed" && mine.entries.includes(tool)) {
+            closedLast.set(mine, [...(closedLast.get(mine) ?? []), tool]);
+          }
           break;
         }
         if (kind === "session_info_update" && outOfTurnStarted(update)) {
-          if (!open) open = start(`o${line.seq}`, null, line.at, line.who ?? null);
+          if (!openFor(line.who ?? null)) start(`o${line.seq}`, null, line.at, line.who ?? null);
           break;
         }
         if (!TURN_UPDATES.has(kind)) break;
         if (kind === "tool_call" && planReviews.has(text(update.toolCallId) ?? "")) break;
-        const turn: Turn = open ?? (open = start(`o${line.seq}`, null, line.at, line.who ?? null));
+        const turn: Turn = openFor(line.who ?? null) ?? start(`o${line.seq}`, null, line.at, line.who ?? null);
         answer(turn, line);
-        closedLast = [];
+        closedLast.delete(turn);
         if (kind === "plan_update") {
           const body = isObject(update.plan) && update.plan.type === "markdown" ? text(update.plan.content) : null;
           if (body === null) break;
@@ -311,19 +352,21 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         break;
       }
       case "turn-end": {
-        if (!open && payload.outOfTurn === true) open = start(`o${line.seq}`, null, line.at, line.who ?? null);
-        if (!open) break;
+        let turn = openFor(line.who ?? null);
+        if (!turn && payload.outOfTurn === true) turn = start(`o${line.seq}`, null, line.at, line.who ?? null);
+        if (!turn) break;
         const error = isObject(payload.error) ? text(payload.error.message) : null;
-        open.end = {
+        turn.end = {
           stopReason: text(payload.stopReason),
           durationMs: typeof payload.durationMs === "number" ? payload.durationMs : 0,
           cancelledByUs: payload.cancelledByUs === true,
           error,
         };
-        if (open.end.stopReason === "cancelled" && open.end.cancelledByUs) markStopped(open, closedLast, withdrawnByStop);
-        if (payload.outOfTurn === true) open.selfContinued = true;
-        open = null;
-        closedLast = [];
+        if (turn.end.stopReason === "cancelled" && turn.end.cancelledByUs) {
+          markStopped(turn, closedLast.get(turn) ?? [], withdrawnByStop);
+        }
+        if (payload.outOfTurn === true) turn.selfContinued = true;
+        close(turn);
         break;
       }
       case "permission": {
@@ -337,7 +380,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           if (request.planReview && id) {
             planReviews.add(id);
             const home = toolHome(turns, id);
-            const turn = home?.turn ?? open ?? turns[turns.length - 1];
+            const turn = home?.turn ?? openFor(line.who ?? null) ?? turns[turns.length - 1];
             const rawInput = isObject(request.toolCall.rawInput) ? request.toolCall.rawInput : {};
             const body = text(rawInput.plan);
             if (turn && body !== null) {
@@ -368,22 +411,22 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       case "session": {
         switch (payload.state) {
           case "spawning":
-            vanish(previousAt, GONE_WITH_APP);
-            connecting = true;
+            vanish(previousAt, GONE_WITH_APP, line.who ?? null);
+            connecting.add(line.who ?? HOST);
             break;
           case "opened":
-            connecting = false;
+            connecting.delete(line.who ?? HOST);
             if (payload.how === "fresh") notice(line.seq, "fresh", FRESH_NOTICE);
             break;
           case "login-required":
-            connecting = false;
+            connecting.delete(line.who ?? HOST);
             break;
           case "version-warning":
             notice(line.seq, "version", versionNotice(text(payload.agentVersion), payload.supportedMajor));
             break;
           case "died":
           case "closed":
-            vanish(line.at, payload.state === "closed" ? "Session이 닫혔어요" : "Claude Code가 끝났어요");
+            vanish(line.at, payload.state === "closed" ? "Session이 닫혔어요" : "Claude Code가 끝났어요", line.who ?? null);
             if (payload.state === "died") notice(line.seq, "died", diedNotice(text(payload.reason)));
             break;
           default:
@@ -393,18 +436,21 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       }
       case "title": {
         const title = nonEmpty(payload.title);
-        if (title) say(line.seq, "title", "Thread 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
+        if (title) say(line.seq, "title", null, "Thread 이름을 ", title, `${particle(title, "으로", "로")} 바꿈`);
         break;
       }
       case "joined":
       case "left": {
         const handle = text(payload.handle) ?? line.who ?? null;
+        if (line.kind === "joined" && handle && handle !== HOST) {
+          cast[handle] = { name: nonEmpty(payload.name) ?? handle, avatar: avatarOf(payload.avatar) };
+        }
         // 모든 Thread가 Host의 들어옴으로 시작한다 — 세우지 않는다(머리말).
         if (line.kind === "joined" && handle === HOST) break;
-        const name = nonEmpty(payload.name) ?? handle;
+        const name = nonEmpty(payload.name) ?? (handle ? cast[handle]?.name : null) ?? handle;
         if (!name) break;
         const verb = line.kind === "joined" ? "참여함" : "나감";
-        say(line.seq, line.kind, "", name, `${particle(name, "이", "가")} ${verb}`);
+        say(line.seq, line.kind, handle, "", name, `${particle(name, "이", "가")} ${verb}`);
         break;
       }
       default:
@@ -412,10 +458,13 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     }
   }
   if (!gone) vanish(lastAt, GONE_WITH_APP);
+  const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   return {
     turns,
-    running: open !== null,
-    connecting,
+    running: open.size > 0,
+    answering: [...new Set(answering)],
+    connecting: connecting.size > 0,
+    cast,
     notices,
     system,
     pending: [...pending.values()].map((one) => {
@@ -423,6 +472,25 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       return { ...one, tool: id ? findTool(turns, id) : null };
     }),
   };
+}
+
+/**
+ * 「답하는 중」 줄(캔버스 Messages 보드 「답하는 중」 · Motion 보드 「Agent 참여」)에 설 참여자 — 도는 턴 가운데 **흐름 끝에서 답이
+ * 보이지 않는** 이들이다: 아직 아무 줄도 오지 않은 턴(보낸 말 · 참여 줄 바로 뒤)과 흐름 끝이 아닌 자리에서 도는 턴. 흐름 끝의 턴이
+ * 답 · 생각 · 도구 줄을 흘리고 있으면 그 턴의 이름 줄 · 머리줄이 이미 말하므로 뺀다. 아무도 없으면 `null`이다. 여럿이면 턴이 선
+ * 차례로 모두 든다(「리뷰어와 테스터가 답하는 중」).
+ */
+export function answeringLine(model: ThreadModel): string[] | null {
+  const last = model.turns[model.turns.length - 1];
+  const speaking = last && last.end === null && last.entries.length > 0 ? (last.who ?? HOST) : null;
+  const shown = model.answering.filter((who) => who !== speaking);
+  return shown.length > 0 ? shown : null;
+}
+
+/** 들어옴 줄의 `avatar` — 모양 · 색 글자만 좁힌다(푸는 일은 `faces.ts`). */
+function avatarOf(value: unknown): Avatar | null {
+  if (!isObject(value)) return null;
+  return { shape: text(value.shape), color: text(value.color) };
 }
 
 /** 앱을 다시 켜기 전에 끊긴 턴의 끝 까닭 — 앱이 꺼지면 Session도 함께 꺼진다. */

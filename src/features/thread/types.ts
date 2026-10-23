@@ -3,6 +3,7 @@
 // 그 말을 옮겨 적는다. three-axes 대화의 `chat/types.ts`와 같은 자리다 — 옛 대화가 걷히면(08) 이 파일만 남는다.
 
 import type { QueuedMessage } from "@/features/chat/types";
+import type { Avatar } from "./faces";
 
 export type { EngineCheck, LoginProgress, MissingProgram, QueuedMessage } from "@/features/chat/types";
 
@@ -10,7 +11,7 @@ export type { EngineCheck, LoginProgress, MissingProgram, QueuedMessage } from "
 export interface Participant {
   handle: string;
   /** 정의가 온 곳 — `"library"` 또는 `{ project: slug }`. */
-  from: "library" | { project: string } | null;
+  from: DefinitionSource | null;
   joinedAt: string;
   /** Runtime 이름(`claude-code`). */
   runtime: string;
@@ -120,18 +121,41 @@ export interface ThreadQueueEvent {
   queue: QueuedMessage[];
 }
 
+/** 정의가 온 곳(`atelier_core::DefinitionSource`) — Library 또는 Work에 붙은 Project. */
+export type DefinitionSource = "library" | { project: string };
+
 /** Library와 Project에서 찾은 Agent 하나(`atelier_core::FoundAgent`) — 화면이 읽는 칸만 적는다. */
 export interface FoundAgent {
+  /** 부르는 이름 — `reviewer`, Project 둘이 같은 handle이면 `api/reviewer`. @ 메뉴가 `@<call> `으로 넣는다. */
   call: string;
+  from: DefinitionSource;
   definition: {
     handle: string;
     name: string;
     description: string;
+    /** 얼굴(S36) — 적은 글자 그대로다. 푸는 일은 `faces.ts`가 한다. */
+    avatar: Avatar | null;
     model: { prefer: string | null; effort: string | null };
   };
 }
 
-/** 부를 수 있는 Agent 목록(`atelier_core::AgentRoster`) — 깨진 파일은 화면이 아직 쓰지 않는다. */
+/** 깨진 Agent 파일의 까닭(`atelier_core::AgentProblem`, v1 티켓 03 · 11). */
+export type AgentProblem =
+  | { kind: "unreadable"; message: string }
+  | { kind: "unknownTool"; tool: string }
+  | { kind: "runtimeNotAccepted" }
+  | { kind: "hostOutsideLibrary" };
+
+/** 깨진 Agent 파일 하나(`atelier_core::BrokenAgent`) — @ 메뉴에 흐리게, 까닭과 함께 선다. */
+export interface BrokenAgent {
+  call: string;
+  handle: string;
+  from: DefinitionSource;
+  problem: AgentProblem;
+}
+
+/** 부를 수 있는 Agent 목록(`atelier_core::AgentRoster`) — 둘 다 부르는 이름 순이다. */
 export interface AgentRoster {
   agents: FoundAgent[];
+  broken: BrokenAgent[];
 }

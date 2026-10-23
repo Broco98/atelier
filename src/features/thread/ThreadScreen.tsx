@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown, MessageSquare } from "lucide-react";
 import { Card, Frame } from "@/components/shell/Frame";
+import { FaceStack } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { threadApi } from "./api";
 import ChangesPill from "./ChangesPill";
@@ -11,14 +12,15 @@ import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./
 import { foldOf, type ThreadModel } from "./fold";
 import GuideCard from "./GuideCard";
 import HostFace from "./HostFace";
-import { useChangeChip, useHostPreference, useQueue, useRenameThread, useThread, type ChipChange } from "./hooks";
+import { useAgentRoster, useChangeChip, useQueue, useRenameThread, useThread, type ChipChange } from "./hooks";
 import { changedFiles } from "./log";
+import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
 import QueuedMessages from "./QueuedMessages";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
-import { linesOf, NEW_THREAD, threadRecordStore, toggleTurn, turnKey } from "./thread-store";
-import type { Attachment, RecordLine, ThreadView } from "./types";
+import { linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
+import type { Attachment, ThreadView } from "./types";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -31,6 +33,9 @@ import type { Attachment, RecordLine, ThreadView } from "./types";
 // - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다.
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
+// - **여럿이 한 Thread에**(v1 티켓 14) — 머리 카드 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
+//   입력창의 @ 메뉴 · 받는 이 칩은 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의
+//   Session 값이다(§14 「입력창 아래 줄」) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다.
 
 /** 흐름 · 입력창을 모으는 열 — 읽기 좋은 폭(DS `size-thread` 48rem)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은 폭이다. */
 const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
@@ -42,7 +47,12 @@ interface ThreadScreenProps {
 /** 새 Thread(`/`). */
 export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
   const navigate = useNavigate();
-  const host = useHostPreference();
+  const roster = useAgentRoster(null);
+  const agents = useMemo(() => agentChoices(roster, []), [roster]);
+  const draft = useStore(threadUiStore, (state) => state.drafts[NEW_THREAD] ?? "");
+  const recipient = recipientOf(draft, agents);
+  // 첫 말을 받을 이 — 멘션한 Agent, 없으면 Host. 칩은 그 정의 파일의 모델 · 생각 깊이를 보이기만 한다(스토리 33).
+  const first = recipient?.agent ?? agents.find((one) => one.call === "host") ?? null;
   const [starting, setStarting] = useState<{ text: string; attachments: readonly Attachment[] } | null>(null);
   const engine = useStore(threadEngineStore, (state) => state);
   useEffect(() => checkEngineOnce(), []);
@@ -63,8 +73,8 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
     <ThreadComposer
       draftKey={NEW_THREAD}
       models={null}
-      model={host.model}
-      effort={host.effort}
+      model={first?.model?.prefer ?? null}
+      effort={first?.model?.effort ?? null}
       onModel={() => {}}
       onEffort={() => {}}
       commands={[]}
@@ -73,6 +83,8 @@ export function NewThreadScreen({ sidebarOpen }: ThreadScreenProps) {
       busy={starting !== null}
       onSend={start}
       onNewThread={() => {}}
+      agents={agents}
+      recipient={recipient}
     />
   );
   return (
@@ -149,6 +161,7 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
               label: "Thread 이름",
             }
           : undefined,
+        actions: view && view.participants.length > 0 ? <ThreadParticipants view={view} /> : undefined,
       }}
     >
       <Card as="main" label={name} className="flex-1">
@@ -175,15 +188,30 @@ function GuidePlace({ children }: { children: ReactNode }) {
   );
 }
 
-/** 참여자 handle → 화면 이름 — 기록의 들어옴 줄(`joined`)에서 읽는다. Host는 늘 「Host」다. */
-function namesOf(lines: readonly RecordLine[]): Record<string, string> {
-  const names: Record<string, string> = { host: "Host" };
-  for (const line of lines) {
-    if (line.kind !== "joined" || typeof line.payload !== "object" || line.payload === null) continue;
-    const { handle, name } = line.payload as { handle?: unknown; name?: unknown };
-    if (typeof handle === "string" && typeof name === "string" && name.trim() !== "") names[handle] = name;
-  }
-  return names;
+/** 참여자의 이름 · 얼굴은 기록의 들어옴 줄(`fold.ts`의 `cast`), 누가 앉았는지는 `thread.json`의 참여자 줄이 정본이다. */
+function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
+  return view.participants.map((one) => ({
+    handle: one.handle,
+    from: one.from,
+    name: model.cast[one.handle]?.name ?? one.handle,
+    avatar: model.cast[one.handle]?.avatar ?? null,
+  }));
+}
+
+/** 머리 카드의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. */
+function ThreadParticipants({ view }: { view: ThreadView }) {
+  const lines = useStore(threadRecordStore, (state) => linesOf(state, view.id));
+  const model = foldOf(lines, view.live ? null : view.lastSeq);
+  return (
+    <FaceStack
+      people={seatedOf(view, model)}
+      max={3}
+      label="참여자"
+      faceClass="size-6"
+      moreClass="h-6 min-w-6"
+      className="-space-x-2 pr-1"
+    />
+  );
 }
 
 function ThreadBody({ view, problem }: { view: ThreadView; problem: string | null }) {
@@ -192,8 +220,17 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread));
   // 다시 켠 뒤면 그 앞의 열린 턴 · 물음은 끝난 것으로 접힌다(`goneThrough`).
   const model: ThreadModel = foldOf(lines, view.live ? null : view.lastSeq);
-  const lists = useMemo(() => chipLists(lines, "host"), [lines]);
-  const names = useMemo(() => namesOf(lines), [lines]);
+  const roster = useAgentRoster(view.work);
+  const agents = useMemo(() => agentChoices(roster, seatedOf(view, model)), [roster, view, model]);
+  const draft = useStore(threadUiStore, (state) => state.drafts[thread] ?? "");
+  const recipient = recipientOf(draft, agents);
+  // 다음 말을 받을 참여자 — 멘션이 없거나 모르는 이름이면 Host, 앉은 Agent를 멘션하면 그다. 아직 앉지 않은 Agent면 참여자가 없다.
+  const target = recipient?.agent ?? null;
+  const who = target ? (target.seated ? target.handle : null) : "host";
+  const participant = view.participants.find((one) => one.handle === who) ?? null;
+  const lists = useMemo(() => chipLists(lines, participant?.handle ?? "host"), [lines, participant?.handle]);
+  // 앉지 않은 받는 이(새로 부를 Agent · 아직 들어오지 않은 Host)는 정의 파일의 값을 보이기만 한다.
+  const preference = (target ?? agents.find((one) => one.call === "host"))?.model ?? null;
   const host = view.participants.find((one) => one.handle === "host") ?? null;
   const change = useChangeChip();
   const [chipProblem, setChipProblem] = useState<string | null>(null);
@@ -223,8 +260,12 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
   };
 
   const chip = (next: ChipChange) => {
+    if (!participant) return;
     setChipProblem(null);
-    change.mutate({ thread, who: "host", change: next }, { onError: (failure) => setChipProblem(String(failure)) });
+    change.mutate(
+      { thread, who: participant.handle, change: next },
+      { onError: (failure) => setChipProblem(String(failure)) },
+    );
   };
 
   if (guide) {
@@ -251,7 +292,6 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             <ThreadFlow
               thread={thread}
               model={model}
-              names={names}
               onRetry={(text, attachments) =>
                 void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
               }
@@ -263,9 +303,9 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
         <div className={COLUMN}>
           <ThreadComposer
             draftKey={thread}
-            models={lists.models}
-            model={currentModel(lists, host)}
-            effort={host?.effort ?? null}
+            models={participant ? lists.models : null}
+            model={participant ? currentModel(lists, participant) : (preference?.prefer ?? null)}
+            effort={participant ? participant.effort : (preference?.effort ?? null)}
             onModel={(value) => chip({ field: "model", value })}
             onEffort={(value) => chip({ field: "effort", value })}
             commands={lists.commands}
@@ -278,12 +318,15 @@ function ThreadBody({ view, problem }: { view: ThreadView; problem: string | nul
             onStop={() => threadApi.stop(thread)}
             onNewThread={() => void navigate({ to: "/" })}
             problem={problem ?? chipProblem}
+            agents={agents}
+            recipient={recipient}
+            recipientRunning={participant !== null && model.answering.includes(participant.handle)}
             card={
               asking && (
                 <ApprovalCard
                   key={asking.requestId}
                   thread={thread}
-                  name={names[asking.who] ?? asking.who}
+                  name={model.cast[asking.who]?.name ?? asking.who}
                   request={asking}
                   running={model.running}
                 />

@@ -430,6 +430,12 @@ runtimes:
             "리뷰어는 읽기 · 찾기 · 명령만 쓴다(S14)"
         );
         assert_eq!(reviewer.tools.agents, AgentCalls::Listed(vec![]));
+        assert_eq!(
+            reviewer.avatar,
+            Some(Avatar { shape: Some("circle".into()), color: Some("green".into()) }),
+            "리뷰어는 캔버스의 얼굴(초록 원)로 선다(v1 티켓 14). Host는 늘 무채색이라 적지 않는다"
+        );
+        assert_eq!(host.avatar, None);
 
         for agent in [&host, &reviewer] {
             assert!(!agent.instructions.is_empty(), "{}: 지시문이 있다", agent.handle);

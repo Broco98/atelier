@@ -4,10 +4,14 @@ import { Check, CircleAlert, Copy, Info, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checklist, PlanCard } from "@/features/chat/PlanCard";
 import { cn } from "@/lib/utils";
+import { AgentFace, FaceStack } from "./AgentFace";
 import {
+  answeringLine,
   finalFrom,
   headline,
+  particle,
   runningHeadline,
+  type CastMember,
   type Entry,
   type Notice,
   type SystemLine,
@@ -16,7 +20,7 @@ import {
   type Turn,
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
-import HostFace from "./HostFace";
+import { mentionOf } from "./mentions";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Attachment } from "./types";
 import { threadUiStore, toggleTurn, turnKey } from "./thread-store";
@@ -25,15 +29,21 @@ import { LogHead, ToolRows } from "./WorkLog";
 // Thread의 흐름(v1 티켓 05 · 캔버스 Messages · WorkLog 보드) — 기록 줄을 접은 모델(`fold.ts`)을 그린다. three-axes 흐름
 // (`chat/ChatThread.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 //
-// - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 22 반경 · 옅은 파랑(`bubble-user`), 폭은 줄의 78%까지다. Agent의 답은 얼굴 · 이름 · 시각
-//   아래에 본문 그대로 선다. 같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시 쓰지 않는다(`Turn.namesWho`).
+// - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 22 반경 · 옅은 파랑(`bubble-user`), 폭은 줄의 78%까지다. Agent의 답은 얼굴 · 이름 ·
+//   `@handle` · 시각 아래에 본문 그대로 선다(Messages 보드 「다른 Agent의 말」 — Host는 handle 없이). 같은 Agent가 사람 말 없이 이어
+//   말하면 이름 줄을 다시 쓰지 않는다(`Turn.namesWho`). 얼굴 · 이름은 들어옴 줄이 정본이다(`ThreadModel.cast`, v1 티켓 14).
+// - **「답하는 중」**(Messages 보드 · Motion 보드 「Agent 참여」) — 답이 아직 안 보이는 도는 턴(보낸 말에 아직 아무 줄도 오지 않았거나,
+//   흐름 끝이 아닌 자리에서 돈다)이 있으면 흐름 맨 아래에 얼굴(여럿이면 겹친 얼굴)과 「리뷰어와 테스터가 답하는 중」, 차례로 떠오르는
+//   세 점이 한 줄로 선다(`answeringLine`). 그래서 아직 아무 줄도 오지 않은 턴은 이름 줄 없이 보낸 말만 서고, 첫 줄이 오면 그 자리에
+//   이름 줄과 「생각 중」 · 답이 선다.
 // - **작업 로그** — 일하는 동안은 「N초 동안 작업 중입니다」가 반짝이고 그 아래로 도구 줄이 쌓인다. 승인을 기다리면 「· 승인을
 //   기다립니다」가 링크 색으로 붙는다. 끝나면 「N초 동안 작업함」 한 줄로 접히고 **턴 끝 메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다.
 //   머리줄을 누르면 생각 · 도구 줄 · 앞선 답이 펼쳐진다.
 // - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming`). 답을 기다리는 동안은 「생각 중」이 반짝인다.
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
-// - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴 사이의 옅은 줄이다.
+// - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 들고 난 줄은 이름 앞에 그 얼굴이 선다(「● 리뷰어가
+//   참여함」). 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴 사이의 옅은 줄이다.
 // - 마지막 답 아래에는 동작 버튼(복사)이 늘 선다. 「다시 답하기」 · 「여기서 새 Thread」는 그 일을 하는 장이 단다.
 //
 // **알림 영역이 아니다.** 흐르는 답이 조각마다 읽히지 않도록 `aria-live`도 `role="log"`도 없다.
@@ -41,19 +51,24 @@ import { LogHead, ToolRows } from "./WorkLog";
 interface ThreadFlowProps {
   thread: string;
   model: ThreadModel;
-  /** 참여자 handle → 화면 이름. 모르는 handle은 handle 그대로다. */
-  names: Readonly<Record<string, string>>;
   /** 답 없이 끊긴 턴의 「다시 시도」 — 그 턴의 말을 붙인 첨부와 함께 다시 보낸다. */
   onRetry: (text: string, attachments: readonly Attachment[]) => void;
 }
 
-function ThreadFlow({ thread, model, names, onRetry }: ThreadFlowProps) {
+/** 참여자 한 사람 — 들어옴 줄에 없으면(옛 기록) handle이 이름이고 얼굴은 handle에서 정한다. */
+const memberOf = (cast: Readonly<Record<string, CastMember>>, handle: string): CastMember =>
+  cast[handle] ?? { name: handle, avatar: null };
+
+function ThreadFlow({ thread, model, onRetry }: ThreadFlowProps) {
   const expanded = useStore(threadUiStore, (state) => state.expanded);
   const between = (count: number) => [
     ...model.notices.filter((notice) => notice.turnsBefore === count).map((notice) => <NoticeLine key={notice.key} notice={notice} />),
-    ...model.system.filter((line) => line.turnsBefore === count).map((line) => <SystemRow key={line.key} line={line} />),
+    ...model.system
+      .filter((line) => line.turnsBefore === count)
+      .map((line) => <SystemRow key={line.key} line={line} cast={model.cast} />),
   ];
   const last = model.turns[model.turns.length - 1];
+  const answering = answeringLine(model);
   return (
     <div className="flex flex-col gap-6 text-chat-body">
       {between(0)}
@@ -63,10 +78,10 @@ function ThreadFlow({ thread, model, names, onRetry }: ThreadFlowProps) {
           <Fragment key={turn.key}>
             <TurnView
               turn={turn}
-              name={turn.who ? (names[turn.who] ?? turn.who) : null}
+              member={turn.who ? memberOf(model.cast, turn.who) : null}
               open={expanded[key] === true}
               onToggle={() => toggleTurn(key)}
-              waiting={turn === last && model.pending.length > 0}
+              waiting={turn.end === null && model.pending.some((request) => request.who === (turn.who ?? "host"))}
               last={turn === last}
               onRetry={onRetry}
             />
@@ -74,7 +89,36 @@ function ThreadFlow({ thread, model, names, onRetry }: ThreadFlowProps) {
           </Fragment>
         );
       })}
+      {answering && <AnsweringRow people={answering.map((handle) => ({ handle, ...memberOf(model.cast, handle) }))} />}
     </div>
+  );
+}
+
+/**
+ * 「답하는 중」(Messages 보드 `.typing`) — 얼굴 20을 겹치고(`-5` · 바탕 고리 2) 「리뷰어와 테스터가 답하는 중」 13/20 `fg-tertiary`,
+ * 그 뒤에 세 점이 차례로 떠오른다(`typing-dots` · `duration-pulse`). 점은 그림이라 숨고 문장이 말한다.
+ */
+function AnsweringRow({ people }: { people: readonly { handle: string; name: string; avatar: CastMember["avatar"] }[] }) {
+  const names = people.map((one) => one.name);
+  const lastName = names[names.length - 1];
+  const said =
+    names.length === 1
+      ? `${lastName}${particle(lastName, "이", "가")}`
+      : `${names.slice(0, -1).join(", ")}${particle(names[names.length - 2], "과", "와")} ${lastName}${particle(lastName, "이", "가")}`;
+  return (
+    <p data-answering className="flex items-center gap-2 text-chat-meta leading-5 text-fg-tertiary">
+      {people.length === 1 ? (
+        <AgentFace handle={people[0].handle} avatar={people[0].avatar} className="size-5" />
+      ) : (
+        <FaceStack people={people} label="답하는 이" faceClass="size-5" className="-space-x-1" />
+      )}
+      <span>{said} 답하는 중</span>
+      <span className="typing-dots" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </span>
+    </p>
   );
 }
 
@@ -89,11 +133,15 @@ function NoticeLine({ notice }: { notice: Notice }) {
   );
 }
 
-/** 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. */
-function SystemRow({ line }: { line: SystemLine }) {
+/** 시스템 줄(보드 `.sys`) — 가운데 13/20 `fg-tertiary`, 이름만 500 `fg`. 들고 난 줄은 이름 앞에 그 얼굴이 선다. */
+function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<string, CastMember>> }) {
   return (
-    <p data-system={line.kind} className="self-center text-center text-chat-meta leading-5 text-fg-tertiary">
+    <p
+      data-system={line.kind}
+      className="flex flex-wrap items-center justify-center self-center text-center text-chat-meta leading-5 text-fg-tertiary"
+    >
       {line.before}
+      {line.handle && <AgentFace handle={line.handle} avatar={memberOf(cast, line.handle).avatar} className="mr-1.5 size-4" />}
       <b className="font-medium text-fg">{line.name}</b>
       {line.after}
     </p>
@@ -102,7 +150,7 @@ function SystemRow({ line }: { line: SystemLine }) {
 
 function TurnView({
   turn,
-  name,
+  member,
   open,
   onToggle,
   waiting,
@@ -110,7 +158,7 @@ function TurnView({
   onRetry,
 }: {
   turn: Turn;
-  name: string | null;
+  member: CastMember | null;
   open: boolean;
   onToggle: () => void;
   waiting: boolean;
@@ -125,64 +173,71 @@ function TurnView({
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message") : [];
   // 계획 카드와 체크리스트는 접힌 턴에도 남는다 — 계획은 다시 읽는 것이다.
   const plans = turn.end && !open ? turn.entries.filter((entry) => entry.kind === "plan" || entry.kind === "checklist") : [];
-  const thinking = !turn.end && (turn.entries.length === 0 || lastEntry?.kind === "thought");
+  // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
+  const waitingFirst = !turn.end && turn.entries.length === 0;
+  const thinking = !turn.end && lastEntry?.kind === "thought";
   const stopped = turn.end?.stopReason === "cancelled" && turn.end.cancelledByUs;
   const failed = turn.end !== null && turn.end.stopReason === null && final.length === 0;
   const finalText = final.map((entry) => (entry.kind === "message" ? entry.text : "")).join("\n\n");
   return (
     <>
-      {turn.sent !== null && <UserMessage text={turn.sent} attachments={turn.attachments} />}
-      <div className="flex flex-col items-start gap-2">
-        {turn.namesWho && name && <WhoRow name={name} at={turn.answeredAt ?? turn.startedAt} />}
-        {turn.end ? (
-          failed ? (
-            <ErrorLine
-              error={turn.end.error}
-              retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "", turn.attachments)}
-            />
-          ) : stopped ? (
-            // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
-            <>
-              {open && <Entries entries={before} streaming={false} />}
-              {final.map((entry) => (
-                <div key={entry.key} className="w-full text-fg-secondary">
-                  <EntryView entry={entry} streaming={false} />
-                </div>
-              ))}
-              <StopLine text={headline(turn.end)} open={open} onToggle={onToggle} />
-            </>
+      {turn.sent !== null && <UserMessage text={turn.sent} to={turn.who} attachments={turn.attachments} />}
+      {!waitingFirst && (
+        <div className="flex flex-col items-start gap-2">
+          {turn.namesWho && turn.who && member && (
+            <WhoRow handle={turn.who} member={member} at={turn.answeredAt ?? turn.startedAt} />
+          )}
+          {turn.end ? (
+            failed ? (
+              <ErrorLine
+                error={turn.end.error}
+                retry={turn.sent === null ? null : () => onRetry(turn.sent ?? "", turn.attachments)}
+              />
+            ) : stopped ? (
+              // 멈추기 전까지 흐른 답은 중단 줄 **위에** 옅게 남는다(보드 「중단」) — 끝난 답이 아니라 동작 버튼도 없다.
+              <>
+                {open && <Entries entries={before} streaming={false} />}
+                {final.map((entry) => (
+                  <div key={entry.key} className="w-full text-fg-secondary">
+                    <EntryView entry={entry} streaming={false} />
+                  </div>
+                ))}
+                <StopLine text={headline(turn.end)} open={open} onToggle={onToggle} />
+              </>
+            ) : (
+              <>
+                <LogHead open={open} onToggle={onToggle}>
+                  {headline(turn.end)}
+                </LogHead>
+                {open && <Entries entries={before} streaming={false} />}
+              </>
+            )
           ) : (
             <>
-              <LogHead open={open} onToggle={onToggle}>
-                {headline(turn.end)}
-              </LogHead>
-              {open && <Entries entries={before} streaming={false} />}
+              {turn.entries.length > 0 && <RunningHead turn={turn} waiting={waiting} />}
+              <Entries entries={before} streaming />
+              {thinking && <p className="chat-shimmer text-sm">생각 중</p>}
             </>
-          )
-        ) : (
-          <>
-            {turn.entries.length > 0 && <RunningHead turn={turn} waiting={waiting} />}
-            <Entries entries={before} streaming />
-            {thinking && <p className="chat-shimmer text-sm">생각 중</p>}
-          </>
-        )}
-        {plans.map((entry) => (
-          <EntryView key={entry.key} entry={entry} streaming={false} />
-        ))}
-        {!stopped &&
-          final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
-        {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} />}
-      </div>
+          )}
+          {plans.map((entry) => (
+            <EntryView key={entry.key} entry={entry} streaming={false} />
+          ))}
+          {!stopped &&
+            final.map((entry) => <EntryView key={entry.key} entry={entry} streaming={false} />)}
+          {turn.end && last && !stopped && finalText !== "" && <AnswerActions text={finalText} />}
+        </div>
+      )}
     </>
   );
 }
 
-/** 이름 줄(보드 `.who`) — 얼굴 20 · 이름 600 13/20 · 시각 12 `fg-tertiary`. 얼굴은 지금 Host의 것뿐이다(다른 Agent는 14). */
-function WhoRow({ name, at }: { name: string; at: string }) {
+/** 이름 줄(보드 `.who`) — 얼굴 20 · 이름 600 13/20 · `@handle`(Host는 없다) · 시각 12 `fg-tertiary`. */
+function WhoRow({ handle, member, at }: { handle: string; member: CastMember; at: string }) {
   return (
     <div className="flex items-center gap-2 text-chat-meta leading-5">
-      <HostFace className="size-5" />
-      <b className="font-semibold">{name}</b>
+      <AgentFace handle={handle} avatar={member.avatar} className="size-5" />
+      <b className="font-semibold">{member.name}</b>
+      {handle !== "host" && <span className="text-xs text-fg-tertiary">@{handle}</span>}
       <time dateTime={at} className="text-xs text-fg-tertiary">
         {clock(at)}
       </time>
@@ -263,10 +318,32 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
   }
 }
 
-/** 사람이 보낸 말(보드 `.ubub`) — 오른쪽 정렬, 22 반경, 옅은 파랑, 줄 폭의 78%까지. 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로 선다. */
-export function UserMessage({ text, attachments = [] }: { text: string; attachments?: readonly Attachment[] }) {
+/**
+ * 사람이 보낸 말(보드 `.ubub`) — 오른쪽 정렬, 22 반경, 옅은 파랑, 줄 폭의 78%까지. 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로
+ * 선다. 받는 이를 고른 멘션은 링크 색 500이다(보드 「길게 · 멘션」, v1 티켓 14 — `mentionOf`).
+ */
+export function UserMessage({
+  text,
+  to = null,
+  attachments = [],
+}: {
+  text: string;
+  to?: string | null;
+  attachments?: readonly Attachment[];
+}) {
+  const mention = to === null ? null : mentionOf(text, to);
   const bubble = (
-    <p className="max-w-[78%] self-end rounded-bubble bg-bubble-user px-4 py-2.25 whitespace-pre-wrap wrap-anywhere">{text}</p>
+    <p className="max-w-[78%] self-end rounded-bubble bg-bubble-user px-4 py-2.25 whitespace-pre-wrap wrap-anywhere">
+      {mention ? (
+        <>
+          {text.slice(0, mention.start)}
+          <span className="font-medium text-link">{text.slice(mention.start, mention.end)}</span>
+          {text.slice(mention.end)}
+        </>
+      ) : (
+        text
+      )}
+    </p>
   );
   if (attachments.length === 0) return bubble;
   // 붙인 것은 말풍선 바로 위에 칩으로 선다(Messages 보드 「첨부」 — 칩과 말풍선 사이 8).

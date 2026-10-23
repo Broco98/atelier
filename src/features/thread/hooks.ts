@@ -4,7 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, threadApi } from "./api";
 import { applyEngineEvent, isLoginRequired, markLoginRequired } from "./engine-store";
 import { mergeLines, threadQueueStore, setQueue } from "./thread-store";
-import type { Participant, QueuedMessage, ThreadSummary, ThreadView } from "./types";
+import type { AgentRoster, Participant, QueuedMessage, ThreadSummary, ThreadView } from "./types";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
 
@@ -35,7 +35,11 @@ export const threadQuery = (thread: string) =>
 export const useThreads = () => useQuery(threadsQuery());
 export const useThread = (thread: string) => useQuery(threadQuery(thread));
 
-/** 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름도 따라 바꾼다. */
+/**
+ * 요약 하나를 목록 캐시에 앉힌다 — 있으면 바꾸고, 없으면 맨 앞(새것이 먼저)에 넣는다. 그 Thread를 연 캐시의 이름도 따라 바꾼다.
+ * **참여자가 바뀌었으면 연 Thread를 다시 읽는다**(v1 티켓 14) — 멘션으로 들어온 Agent의 참여자 줄(`thread.json` — 온 곳 · 모델 · 생각
+ * 깊이)은 요약에 없다. 그것이 있어야 머리 카드의 얼굴 · @ 메뉴의 「이 Thread에 있음」 · 그 Agent의 모델 칩이 선다.
+ */
 function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
   queryClient.setQueryData<ThreadSummary[]>(THREADS_KEY, (list) => {
     if (!list) return list;
@@ -48,6 +52,10 @@ function putSummary(queryClient: QueryClient, summary: ThreadSummary): void {
   queryClient.setQueryData<ThreadView>(threadKey(summary.id), (view) =>
     view && view.title !== summary.title ? { ...view, title: summary.title } : view,
   );
+  const view = queryClient.getQueryData<ThreadView>(threadKey(summary.id));
+  if (view && view.participants.map((one) => one.handle).join("\n") !== summary.handles.join("\n")) {
+    void queryClient.invalidateQueries({ queryKey: threadKey(summary.id) });
+  }
 }
 
 /**
@@ -112,15 +120,17 @@ export function useChangeChip() {
   });
 }
 
-/** Host 정의 파일의 모델 · 생각 깊이 — 빈 Thread의 칩이 보인다(스토리 33). 못 읽으면 기본값으로 선다. */
-export function useHostPreference(): { model: string | null; effort: string | null } {
+/**
+ * 부를 수 있는 Agent(v1 티켓 11 · 14) — 그 Thread의 범위(`work`가 없으면 Library만)다. 파일은 사람이 언제든 고치므로 30초가 지난 값은 다음에
+ * 쓸 때 다시 읽는다. 못 읽으면(사라진 Work) `null`이다 — @ 메뉴는 앉은 참여자만, 얼굴은 handle에서 정한 것으로 선다.
+ */
+export function useAgentRoster(work: string | null): AgentRoster | null {
   const { data } = useQuery({
-    queryKey: ["agents", null],
-    queryFn: threadApi.agents,
+    queryKey: ["agents", work],
+    queryFn: () => threadApi.agents(work),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const host = data?.agents.find((agent) => agent.call === "host")?.definition.model;
-  return { model: host?.prefer ?? null, effort: host?.effort ?? null };
+  return data ?? null;
 }

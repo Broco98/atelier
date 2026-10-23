@@ -14,9 +14,11 @@ use serde_json::{json, Value};
 /// 시험의 Library `host.md`.
 const HOST_MD: &str = "---\nname: Host\ntools:\n  agents: any\n---\n\n너는 시험 Thread의 Host다.\n";
 
-/// 시험의 Library `reviewer.md` — 읽기 · 찾기 · 명령만 쓰고 선호 모델을 적었다.
-const REVIEWER_MD: &str =
-    "---\nname: 리뷰어\nmodel:\n  prefer: haiku\ntools:\n  builtin: [read, search, shell]\n---\n\n너는 시험 Thread의 리뷰어다.\n";
+/// 시험의 Library `reviewer.md` — 읽기 · 찾기 · 명령만 쓰고 선호 모델과 얼굴을 적었다.
+const REVIEWER_MD: &str = concat!(
+    "---\nname: 리뷰어\navatar:\n  shape: circle\n  color: green\n",
+    "model:\n  prefer: haiku\ntools:\n  builtin: [read, search, shell]\n---\n\n너는 시험 Thread의 리뷰어다.\n",
+);
 
 /// 두 턴(답만 하는 턴 · 도구를 쓰는 턴)을 되감는 가짜 claude의 로그인 셸 — 참여자마다 제 claude가 같은 원문을 처음부터 되감는다.
 fn two_turns(sandbox: &Sandbox) -> atelier_acp::ShellSource {
@@ -56,8 +58,11 @@ fn 첫_멘션의_agent가_받고_처음_부르면_joined_줄과_스냅숏과_그
     assert_eq!(joined.len(), 2, "리뷰어가 들어온다:\n{}", common::lines_text(&record));
     assert_eq!(
         (joined[1]["who"].clone(), joined[1]["payload"].clone()),
-        (json!("reviewer"), json!({"handle": "reviewer", "name": "리뷰어", "from": "library"})),
-        "참여 줄은 들어온 Agent의 것이다"
+        (
+            json!("reviewer"),
+            json!({"handle": "reviewer", "name": "리뷰어", "avatar": {"shape": "circle", "color": "green"}, "from": "library"})
+        ),
+        "참여 줄은 들어온 Agent의 것이다 — 이름 · 얼굴은 들어올 때의 정의 그대로다(v1 티켓 14)"
     );
     let sent = of_kind(&record, "sent");
     assert_eq!(sent[1]["payload"]["to"], "reviewer", "첫 멘션의 Agent가 받는다(S9) — 뒤의 멘션은 글자로만 남는다");

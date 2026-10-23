@@ -477,6 +477,11 @@ describe("눈금의 사분 단", () => {
       why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
     },
     {
+      file: "src/features/thread/AgentMenu.tsx",
+      className: "gap-px",
+      why: "@ 메뉴 — 묶음 안 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`)",
+    },
+    {
       file: "src/features/chat/ToolRow.tsx",
       className: "py-2.25",
       why: "명령 출력 상자 — 위아래 안쪽 9(DS `.at-shell-out`의 `9px 12px 9px 9px`)",

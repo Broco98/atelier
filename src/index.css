@@ -1595,7 +1595,7 @@ body[data-palette-open] [data-scrollbar] {
 
 /* **Thread의 흐르는 답**(v1 티켓 05 · 캔버스 Messages 보드 「스트리밍」). 도착한 낱말은 `duration-word` 동안 옅었다가 선명해진다 —
    보드는 흐림(`blur`)도 함께 움직이지만 그것은 리눅스 WebKit의 웹 프로세스를 죽이는 길이라(위 `menu-enter` 머리말) 불투명도만
-   움직인다. 동작을 줄여 둔 사람에게는 곧바로 선명하다. 「답하는 중」의 세 점(`duration-pulse`)은 여러 Agent가 답하는 장(14)이 단다. */
+   움직인다. 동작을 줄여 둔 사람에게는 곧바로 선명하다. 「답하는 중」의 세 점은 아래 `typing-dots`다. */
 @keyframes word-in {
     from {
         opacity: 0;
@@ -1605,6 +1605,47 @@ body[data-palette-open] [data-scrollbar] {
     animation: word-in var(--duration-word) var(--ease-out) both;
     @media (prefers-reduced-motion: reduce) {
         animation: none;
+    }
+}
+
+/* **「답하는 중」의 세 점**(v1 티켓 14 · 캔버스 Messages 보드 · Motion 보드 「세 점」). 4 점 셋이 3 사이로 서고, `duration-pulse`마다
+   차례로(그 12% · 24% 늦게) 옅은 자리(35%)에서 떠올라 2 올라섰다 내려온다. 흐림은 쓰지 않는다(위 `menu-enter` 머리말). 동작을 줄여
+   둔 사람에게는 멎은 옅은 점 셋이다. 점은 `<i>` 셋이다 — 그림이라 숨고, 곁의 문장이 말한다. */
+@keyframes typing-dot {
+    0%,
+    60%,
+    to {
+        opacity: 0.35;
+        transform: none;
+    }
+    30% {
+        opacity: 1;
+        transform: translateY(-2px);
+    }
+}
+@utility typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+    & > i {
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--fg-tertiary);
+        opacity: 0.35;
+        animation: typing-dot var(--duration-pulse) ease-in-out infinite;
+    }
+    & > i:nth-child(2) {
+        animation-delay: calc(var(--duration-pulse) * 0.12);
+    }
+    & > i:nth-child(3) {
+        animation-delay: calc(var(--duration-pulse) * 0.24);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        & > i {
+            animation: none;
+        }
     }
 }
 

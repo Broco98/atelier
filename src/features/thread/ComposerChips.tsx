@@ -1,5 +1,5 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { ChevronDown, Folder, Shield } from "lucide-react";
+import { AtSign, ChevronDown, Folder, Shield } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,16 +10,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AgentFace } from "./AgentFace";
 import { chipLabel, EFFORTS, type ChoiceOption } from "./chips";
 import HostFace from "./HostFace";
+import type { AgentChoice } from "./mentions";
 
 // 입력창의 칩(v1 티켓 05 · 구현 스펙 §14 「입력창 아래 줄」 · 캔버스 Composer 보드). three-axes 칩(`chat/ComposerChips.tsx`)을 옮겨 보드의
 // 자리로 나눴다.
 // - **모델 · 생각 깊이**는 입력창 안, 보내기 원 앞의 칩 하나다(「Opus · 높음」). 누르면 16 반경 메뉴에 「Claude Code」 모델 목록과
 //   「생각 깊이」 칸 줄이 선다. 값은 다음 말을 받을 참여자 Session의 것이다(스토리 33) — 바꾸면 다음 턴부터 든다. 생각 깊이는 턴이 도는
 //   동안 바꿀 수 없다(엔진이 거절한다 — 그래서 그동안 잠근다).
-// - **아래 줄**은 받는 이(Host) · Work · 물어보는 정도다. 지금은 셋 다 **보이기만 한다** — 받는 이를 고르는 것은 14, Work 칩은 31,
-//   물어보는 정도는 23이 단다. 누를 것이 없으니 단추가 아니고 셰브런도 없다.
+// - **아래 줄**은 받는 이 · Work · 물어보는 정도다. **받는 이**는 말의 첫 멘션이 고른 Agent, 없으면 Host다(S9 · v1 티켓 14) — 누르면
+//   부를 수 있는 Agent가 서고, 고르면 말 앞의 멘션을 갈아 끼운다(`withRecipient`). Work 칩(31) · 물어보는 정도(23)는 아직 **보이기만
+//   한다** — 누를 것이 없으니 단추가 아니고 셰브런도 없다.
 
 /** 입력창 안 칩 — 30 · 좌우 9 · 10 반경 · 13/18 `fg-secondary`, hover와 열린 동안 켜짐 면(보드 `.chip`). */
 const CHIP =
@@ -100,17 +103,76 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort }:
   );
 }
 
-/** 아래 줄 칩 — 28 · 12.5 → `text-xs`(보드 `.tray .chip`). 보이기만 한다(머리말). */
+/** 아래 줄 칩 — 28 · 12.5 → `text-xs`(보드 `.tray .chip`). Work · 물어보는 정도는 보이기만 한다(머리말). */
 const TRAY_CHIP = "flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs whitespace-nowrap text-fg-secondary";
 
+/** 받는 이 칩이 보이는 것 — 고른 Agent, 아는 이름이 아닌 멘션, 또는 Host(`null`). */
+export type ShownRecipient = { agent: AgentChoice } | { unknown: string } | null;
+
 /** 입력창 아래 줄 — 받는 이 · Work · 물어보는 정도(머리말). */
-export function ComposerTray() {
+export function ComposerTray({
+  recipient,
+  agents,
+  onRecipient,
+}: {
+  recipient: ShownRecipient;
+  /** 받는 이로 고를 수 있는 Agent — 깨진 것은 빠진다. */
+  agents: readonly AgentChoice[];
+  /** 받는 이를 골랐다 — 부르는 이름, Host면 `null`. */
+  onRecipient: (call: string | null) => void;
+}) {
+  const callable = agents.filter((agent) => agent.broken === null && agent.call !== "host");
+  const value = recipient === null ? HOST_VALUE : "agent" in recipient ? recipient.agent.call : "";
+  const label =
+    recipient === null ? "Host" : "agent" in recipient ? recipient.agent.name : `@${recipient.unknown}`;
+  const sections = [...new Set(callable.map((agent) => agent.section))];
   return (
     <div role="group" aria-label="이 말을 어떻게 보낼지" className="flex flex-wrap items-center gap-0.5 px-2 pt-1.5">
-      <span className={TRAY_CHIP} aria-label="받는 이 Host">
-        <HostFace className="size-4" />
-        Host
-      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`받는 이 ${label}`}
+          className={cn(TRAY_CHIP, "max-w-56 min-w-0 quiet-hover data-[popup-open]:bg-fill-hover data-[popup-open]:text-fg focus-ring")}
+        >
+          {recipient === null ? (
+            <HostFace className="size-4" />
+          ) : "agent" in recipient ? (
+            <AgentFace handle={recipient.agent.handle} avatar={recipient.agent.avatar} className="size-4" />
+          ) : (
+            <AtSign className="size-3.5 shrink-0" aria-hidden />
+          )}
+          <span className="min-w-0 truncate">{label}</span>
+          <ChevronDown className="size-3 shrink-0" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start">
+          <DropdownMenuRadioGroup
+            value={value}
+            onValueChange={(next: string) => {
+              if (next !== value) onRecipient(next === HOST_VALUE ? null : next);
+            }}
+          >
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>받는 이</DropdownMenuLabel>
+              <DropdownMenuRadioItem value={HOST_VALUE} label="Host" aria-label="Host">
+                <HostFace className="size-5" />
+                <span className="min-w-0 flex-1 truncate">Host</span>
+              </DropdownMenuRadioItem>
+            </DropdownMenuGroup>
+            {sections.map((section) => (
+              <DropdownMenuGroup key={section}>
+                <DropdownMenuLabel>{section}</DropdownMenuLabel>
+                {callable
+                  .filter((agent) => agent.section === section)
+                  .map((agent) => (
+                    <DropdownMenuRadioItem key={agent.call} value={agent.call} label={agent.name} aria-label={agent.name}>
+                      <AgentFace handle={agent.handle} avatar={agent.avatar} className="size-5" />
+                      <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+              </DropdownMenuGroup>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <span className={TRAY_CHIP} aria-label="Work 없음">
         <Folder className="size-3.5" aria-hidden />
         Work 없음
@@ -122,3 +184,6 @@ export function ComposerTray() {
     </div>
   );
 }
+
+/** 받는 이 메뉴에서 Host의 값 — 멘션을 걷는다. 부르는 이름과 겹치지 않는 글자다. */
+const HOST_VALUE = "\u0000host";

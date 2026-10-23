@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { finalMessages, foldThread, headline } from "./fold";
+import { answeringLine, finalMessages, foldThread, headline } from "./fold";
 import { describeTool, phraseText } from "./tool-view";
 import type { RecordLine } from "./types";
 
@@ -17,6 +17,9 @@ const record = (name: string): RecordLine[] =>
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as RecordLine);
 const blessed = record("thread-two-turns");
+
+/** Host 한 턴 뒤 `@reviewer`가 들어와 지난 말을 받고 답한 축복 기록(v1 티켓 13). */
+const mention = record("thread-mention");
 
 const at = (second: number) => `2026-10-10T10:01:${String(second).padStart(2, "0")}.000+09:00`;
 const update = (seq: number, second: number, body: Record<string, unknown>): RecordLine => ({
@@ -197,5 +200,107 @@ describe("첨부(v1 티켓 06)", () => {
       { seq: 1, at: at(1), kind: "sent", payload: { text: "봐 줘", attachments: [{ path: 3 }, { path: "/a.txt", size: 2, folder: false }, "x"], to: "host" } },
     ];
     expect(foldThread(lines).turns[0].attachments).toEqual([{ path: "/a.txt", size: 2, folder: false }]);
+  });
+});
+
+describe("여럿이 한 Thread에(v1 티켓 14)", () => {
+  const said = (seq: number, second: number, who: string, words: string): RecordLine => ({
+    seq,
+    at: at(second),
+    kind: "update",
+    who,
+    payload: { sessionId: who, update: { sessionUpdate: "agent_message_chunk", messageId: `m-${who}`, content: { type: "text", text: words } } },
+  });
+  const sent = (seq: number, second: number, to: string, words: string): RecordLine => ({
+    seq,
+    at: at(second),
+    kind: "sent",
+    payload: { text: words, to },
+  });
+  const ended = (seq: number, second: number, who: string): RecordLine => ({
+    seq,
+    at: at(second),
+    kind: "turn-end",
+    who,
+    payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: false },
+  });
+  const joined = (seq: number, second: number, handle: string, name: string, avatar: unknown = null): RecordLine => ({
+    seq,
+    at: at(second),
+    kind: "joined",
+    who: handle,
+    payload: { handle, name, avatar, from: "library" },
+  });
+
+  it("멘션으로 들어온 리뷰어의 턴은 리뷰어가 답하고, 「리뷰어가 참여함」이 그 턴 앞에 선다", () => {
+    const model = foldThread(mention);
+    expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.sent])).toEqual([
+      ["host", true, "세 낱말로 답해 줘: hello from turn"],
+      ["reviewer", true, "@reviewer 방금 답을 봐 줘"],
+    ]);
+    expect(model.system.map((line) => [line.handle, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
+      ["reviewer", "리뷰어가 참여함", 1],
+    ]);
+    expect(model.cast.reviewer).toEqual({ name: "리뷰어", avatar: { shape: "circle", color: "green" } });
+  });
+
+  it("참여자의 이름 · 얼굴은 기록의 들어옴 줄이 정본이다 — Host는 늘 「Host」다", () => {
+    const { cast } = foldThread([joined(1, 1, "host", "Host"), joined(2, 2, "reviewer", "리뷰어", { shape: "circle", color: "green" })]);
+    expect(cast).toEqual({
+      host: { name: "Host", avatar: null },
+      reviewer: { name: "리뷰어", avatar: { shape: "circle", color: "green" } },
+    });
+  });
+
+  it("Host가 도는 동안 리뷰어에게 보낸 말은 리뷰어의 턴이 따로 서고, 각자의 줄은 각자의 턴에 든다", () => {
+    const lines: RecordLine[] = [
+      joined(1, 1, "host", "Host"),
+      sent(2, 2, "host", "고쳐 줘"),
+      said(3, 3, "host", "고치는 중"),
+      joined(4, 4, "reviewer", "리뷰어"),
+      sent(5, 5, "reviewer", "@reviewer 봐 줘"),
+      said(6, 6, "reviewer", "보는 중"),
+      said(7, 7, "host", " — 반쯤"),
+    ];
+    const both = foldThread(lines);
+    expect(both.running).toBe(true);
+    expect(both.answering).toEqual(["host", "reviewer"]);
+    expect(both.turns.map((turn) => [turn.who, finalMessages(turn).map((entry) => entry.kind === "message" && entry.text)])).toEqual([
+      ["host", ["고치는 중 — 반쯤"]],
+      ["reviewer", ["보는 중"]],
+    ]);
+
+    // Host가 먼저 끝나도 리뷰어의 턴은 돈다.
+    const one = foldThread([...lines, ended(8, 8, "host")]);
+    expect(one.turns.map((turn) => turn.end !== null)).toEqual([true, false]);
+    expect(one.answering).toEqual(["reviewer"]);
+  });
+
+  it("한 참여자의 Session이 죽으면 그의 턴만 끝난다", () => {
+    const model = foldThread([
+      sent(1, 1, "host", "고쳐 줘"),
+      said(2, 2, "host", "고치는 중"),
+      sent(3, 3, "reviewer", "@reviewer 봐 줘"),
+      { seq: 4, at: at(4), kind: "session", who: "reviewer", payload: { state: "died", reason: "끝났어요" } },
+    ]);
+    expect(model.turns.map((turn) => [turn.who, turn.end?.error ?? null])).toEqual([
+      ["host", null],
+      ["reviewer", "Claude Code가 끝났어요"],
+    ]);
+    expect(model.answering).toEqual(["host"]);
+  });
+
+  it("「답하는 중」 줄은 답이 아직 안 보이는 도는 턴의 참여자를 든다 — 흐름 끝에서 답이 흐르는 턴은 제 머리줄이 말한다", () => {
+    // 보낸 말에 아직 아무 줄도 오지 않았다 — 「Host가 답하는 중」.
+    expect(answeringLine(foldThread([sent(1, 1, "host", "고쳐 줘")]))).toEqual(["host"]);
+    const lines: RecordLine[] = [sent(1, 1, "host", "고쳐 줘"), said(2, 2, "host", "고치는 중")];
+    expect(answeringLine(foldThread(lines))).toBeNull();
+    const both = [...lines, sent(3, 3, "reviewer", "@reviewer 봐 줘")];
+    expect(answeringLine(foldThread(both))).toEqual(["host", "reviewer"]);
+    // 리뷰어의 답이 흐르기 시작하면 리뷰어는 제 턴이 말하고, 흐름 끝이 아닌 Host만 남는다.
+    expect(answeringLine(foldThread([...both, said(4, 4, "reviewer", "보는 중")]))).toEqual(["host"]);
+    // 리뷰어가 끝나도 Host의 턴은 흐름 끝이 아니다.
+    expect(answeringLine(foldThread([...both, ended(4, 4, "reviewer")]))).toEqual(["host"]);
+    expect(answeringLine(foldThread([...both, ended(4, 4, "reviewer"), ended(5, 5, "host")]))).toBeNull();
   });
 });

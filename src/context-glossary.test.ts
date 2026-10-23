@@ -177,7 +177,8 @@ describe("말의 사전", () => {
   // v1 티켓 05 · 구현 스펙 S2. 앱을 열면 새 Thread가 뜨고 Host가 답한다 — 화면의 도메인 낱말은 영어다(Thread · Host · Session · Runtime ·
   // Library). 사전이 그 말들을 모르면 다음 사람이 Thread를 「채팅」·「채널」로, Runtime을 「엔진」으로 부른다. 「대화」 · 「세션」 항목은
   // 08이 three-axes 대화창을 걷을 때 함께 걷는다 — 그때까지 두 사전이 나란히 서므로, Session 항목이 옛 「세션」과 갈라 적어야 한다.
-  // 마지막 줄은 위 접근성 이름 검사가 Thread 화면을 실제로 보는지다(입력창 아래 줄의 받는 이 칩).
+  // 마지막 줄은 위 접근성 이름 검사가 Thread 화면을 실제로 보는지다(입력창의 Agent 부르기 단추 — 받는 이 칩은 v1 티켓 14부터 받는
+  // 이마다 이름이 달라 글자 그대로의 이름이 아니다).
   it("「Thread」·「Host」·「Session」·「Runtime」·「Library」가 등재돼 있고, Thread가 「채팅」·「채널」을 거부한다", () => {
     expect(names).toEqual(expect.arrayContaining(["Thread", "Host", "Session", "Runtime", "Library"]));
     expect(bodyOf("Thread")).toContain("_피할 말_: 채팅, 채널, 스레드");
@@ -185,7 +186,7 @@ describe("말의 사전", () => {
     expect(refused).toEqual(expect.arrayContaining(["채팅", "채널", "스레드"]));
     expect(bodyOf("Session")).toContain("옛 「세션」");
     expect(bodyOf("Runtime")).toContain("_피할 말_: 하네스, 엔진");
-    expect(ariaLabels).toContain("받는 이 Host");
+    expect(ariaLabels).toContain("Agent 부르기");
   });
 
   // three-axes 티켓 26. 에이전트가 고친 spec이 스펙 창 · 트리 · 레일 · 알약에 표시로 선다. 사전이 그 말을 모르면 다음 사람이
