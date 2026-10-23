@@ -2,13 +2,13 @@
 //! claude stdin 줄 · 띄우기와 거두기 · 끝)을 돌려준다. 입출력은 하지 않는다 — stdio · claude 프로세스 · 스레드는 변환기의
 //! 몸통([`super::run_claude_translator`])이 쥔다.
 //!
-//! 세션 열기(티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
-//! 턴(티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
+//! 세션 열기(three-axes 티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
+//! 턴(three-axes 티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
 //! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답).
-//! 제어(티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
+//! 제어(three-axes 티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
 //! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
 //! 질문(`AskUserQuestion` → 물음을 실은 요청, v1 티켓 26), 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
-//! 되살리기(티켓 16) — `session/resume` · `session/load`를 둘 다 `claude … --resume <세션 id>`로 연다(워크플로 S19).
+//! 되살리기(three-axes 티켓 16) — `session/resume` · `session/load`를 둘 다 `claude … --resume <세션 id>`로 연다(워크플로 S19).
 //! 백그라운드(16, S4) · 미로그인(16, S3)은 턴의 갈래([`Turn`])에 있다.
 //!
 //! **세션 상태는 겹치지 않는 갈래 둘이다.**
@@ -293,7 +293,7 @@ impl Machine {
     /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 넘겨받은 서버(Thread 도구, v1 티켓 15)의 도구는 `--allowedTools`로 묻지
     /// 않게 한다. 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로 답한다.
     ///
-    /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
+    /// resume · load는 되살리기다(three-axes 티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
     /// 도구 · 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
     /// Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
@@ -705,10 +705,10 @@ impl Machine {
         self.send(session_update(&session_id, json!({"sessionUpdate": "current_mode_update", "currentModeId": mode})));
     }
 
-    /// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(티켓 08).
+    /// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(three-axes 티켓 08).
     ///
     /// - 도구 요지(`toolCall`)는 앞서 낸 `tool_call`과 같은 id(`tool_use_id`) · 제목 · 종류에, claude가 물은 입력이다. 그 `_meta.claudeCode`
-    ///   에는 도구 이름과 까닭(`decision_reason` → `decisionReason`)을 싣는다 — 승인 카드가 읽는 자리다(스토리 58, 티켓 21). claude가
+    ///   에는 도구 이름과 까닭(`decision_reason` → `decisionReason`)을 싣는다 — 승인 카드가 읽는 자리다(three-axes 스토리 58 · 티켓 21). claude가
     ///   물은 원문 전체(설명 · 막힌 경로 · 제안)는 요청의 `_meta.claudeCode.request`에 남긴다(평가의 재료, three-axes 결정 18).
     /// - 선택지는 변환기가 짓는다 — 한 번 허락 · 이 대화에서 허락 · 거부. 세션 제안이 없으면 「이 대화에서 허락」은 없다.
     /// - **계획 승인(S5)** — 계획 모드의 `ExitPlanMode`도 `can_use_tool`로 온다(판 02 관문 G1). codex-acp의 계획 승인과 같은

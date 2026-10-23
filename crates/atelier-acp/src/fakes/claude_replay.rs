@@ -15,15 +15,15 @@
 //!   판 02 G1)를 내면 그 요청 id의 stdin `control_response`가 올 때까지 턴을 멈춘다. 답이 deny면 뒤따르는 그 도구의 실패
 //!   `tool_result`에 받은 글을 싣는다 — 진짜 claude가 deny의 `message`를 도구 결과로 모델에게 준다. 모르는 요청 id의 답(거둔
 //!   요청에 늦게 온 답)은 버린다 — 진짜 claude도 무시한다(워크플로 관문 G1).
-//! - **멈추기**(티켓 15) — 녹화에서 interrupt의 답(`control_response{still_queued}`, 워크플로 관문 G2 `interrupt-sigint`)이
+//! - **멈추기**(three-axes 티켓 15) — 녹화에서 interrupt의 답(`control_response{still_queued}`, 워크플로 관문 G2 `interrupt-sigint`)이
 //!   있던 자리에서 턴을 멈추고 stdin `control_request{subtype:"interrupt"}`를 기다린다. 오면 그 요청 id로 답하고 녹화의 나머지
 //!   (`task_notification` · 실패 `tool_result` · `result/error_during_execution`)를 낸다. 권한 요청이 걸린 채 interrupt가 오면
 //!   `control_cancel_request`로 그 요청을 거두고 interrupt에 답한 뒤, 녹화된 interrupt의 실패 `tool_result` · `result`를 그 도구
 //!   id로 바꿔 낸다(워크플로 관문 G2 (c)의 모양 — 원문 파일은 없다).
-//! - **모델 · 모드 바꾸기**(티켓 15) — stdin `set_model` · `set_permission_mode`에는 판 02 실측 `set-model` ·
+//! - **모델 · 모드 바꾸기**(three-axes 티켓 15) — stdin `set_model` · `set_permission_mode`에는 판 02 실측 `set-model` ·
 //!   `set-permission-mode`에서 같은 값에 claude가 낸 답을 되감는다(모드는 뒤따른 `system/status`까지). 녹화에 없는 모델은
 //!   success, 녹화에 없는 모드는 녹화된 `invalid_mode` 오류다.
-//! - **스스로 이어 간 턴**(티켓 16, S4) — 원문에서 `result.origin.kind`가 `task-notification`인 턴은 user 줄 없이 낸다. 앞 턴이
+//! - **스스로 이어 간 턴**(three-axes 티켓 16, S4) — 원문에서 `result.origin.kind`가 `task-notification`인 턴은 user 줄 없이 낸다. 앞 턴이
 //!   다 끝나면 곧바로 이어 낸다(진짜 claude가 백그라운드 작업이 끝나 스스로 도는 턴). [`Hold`]가 있으면 그 자리에서 멈추고
 //!   [`Replay::release`]를 기다린다 — 멈춘 동안 받은 줄은 놓인 뒤 받은 차례대로 읽는다.
 //! - 되살리기가 실패한 claude(판 02 관문 G4 `g4-resume-missing`)는 initialize에 답하지 않고 [`forgotten_line`] 한 줄을 낸 뒤
@@ -38,7 +38,7 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 /// 턴을 되감을 원문들(가린 사본) — 이름 → 원문. 이름에 CLI 판을 적는다.
 /// - `2.1.309/slash-skill-noreplay` — 슬래시 명령 · 스킬 다섯 턴. 모델이 `Skill`을 부르면 `isSynthetic` user 글이 낀다(판 02 실측 A4).
 /// - `2.1.309/slash-skill-replay` — 같은 꼴을 `--replay-user-messages`로 잰 넷. 내장 `/context` · `/cost`의 `<synthetic>` 답이 든다.
-/// - `2.1.309/edit-subagent` — `Read` · `Edit`의 한 턴과 서브에이전트(`Agent`)의 한 턴(티켓 14가 잰 것).
+/// - `2.1.309/edit-subagent` — `Read` · `Edit`의 한 턴과 서브에이전트(`Agent`)의 한 턴(three-axes 티켓 14가 잰 것).
 /// - `2.1.309/g1-plan-implement` — 계획 모드의 한 턴: `ExitPlanMode`의 `can_use_tool` → 허락 → `system/status{default}` → 구현의
 ///   `Write`가 묻는 `can_use_tool` → 허락(판 02 관문 G1).
 /// - `2.1.309/g1-plan-revise` — 같은 물음을 거부(다시 짜기)한 턴과, 고칠 점을 받아 다시 물은 계획을 허락한 턴(판 02 관문 G1).

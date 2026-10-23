@@ -1,6 +1,6 @@
 import { describeApproval } from "./approval";
 import { describeCall } from "./call-view";
-import { awaitingLogin } from "./engine-store";
+import { awaitingLogin, isLoginRequired } from "./engine-store";
 import {
   finalMessages,
   foldOf,
@@ -112,7 +112,7 @@ function loginLine(lines: readonly RecordLine[]): RecordLine | null {
   if (!awaitingLogin(lines)) return null;
   for (let at = lines.length - 1; at >= 0; at -= 1) {
     const line = lines[at];
-    if (line.kind === "session" && isObject(line.payload) && line.payload.state === "login-required") return line;
+    if (isLoginRequired(line)) return line;
   }
   return null;
 }

@@ -73,7 +73,7 @@ pub struct Tools {
     pub agents: AgentCalls,
 }
 
-/// Runtime 중립의 추상 도구(agent-definition.md 「Runtime 추상화」). Runtime의 도구 이름으로 옮기는 일은 변환기 쪽이다(티켓 12).
+/// Runtime 중립의 추상 도구(agent-definition.md 「Runtime 추상화」). Runtime의 도구 이름으로 옮기는 일은 변환기 쪽이다(v1 티켓 12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BuiltinTool {
@@ -108,8 +108,8 @@ impl Serialize for AgentCalls {
     }
 }
 
-/// frontmatter `policy` — 추상 이름 그대로다. 규칙 표(S19)로 옮기는 일은 변환기(`forbid` → claude의 금지 규칙, 티켓 12)와
-/// 판정(티켓 22)이 한다.
+/// frontmatter `policy` — 추상 이름 그대로다. 규칙 표(S19)로 옮기는 일은 변환기(`forbid` → claude의 금지 규칙, v1 티켓 12)와
+/// 판정(v1 티켓 22)이 한다.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all(serialize = "camelCase"))]
 pub struct Policy {
