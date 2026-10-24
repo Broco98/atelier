@@ -7,6 +7,7 @@ import { ToggleGroup } from "@base-ui/react/toggle-group";
 import { keepOnePressed } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { threadIdOf } from "@/lib/path-prefix";
+import { SIDEBAR_AFTER_SECTION, SIDEBAR_HEADING, SIDEBAR_ROWS, sidebarRowTone } from "@/components/shell/sidebar-look";
 import { cn } from "@/lib/utils";
 import { threadRowKey } from "@/features/works/work-sections";
 import { ThreadFaces } from "./AgentFace";
@@ -53,10 +54,10 @@ const FILTERS = ["all", "mine"] as const satisfies readonly ThreadListFilter[];
 /** 줄 하나의 얼굴들 — 요약에는 handle만 있어 `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다(`ThreadFaces`). */
 type PeopleOf = (thread: ThreadSummary) => { handle: string; avatar: Avatar | null }[];
 
-// 소제목과 줄 목록의 꼴 — 「Thread」와 「기다리는 순서」가 한 벌이다. 소제목은 30 줄에 아래 3, 줄은 30에 줄 사이 1이다(Codex 사이드바의
-// 「최근」과 그 줄 — v1 티켓 46). 위 사이는 놓인 자리가 고른다.
-const HEADING = "mb-0.75 flex h-7.5 shrink-0 items-center px-2 text-sm text-fg-tertiary";
-const ROWS = "flex min-h-0 flex-col gap-px overflow-y-auto scroll-quiet";
+// 소제목과 줄 목록의 꼴 — 「Thread」와 「기다리는 순서」가 한 벌이고, 리듬은 사이드바 줄 한 벌(`sidebar-look` — Work 묶음과 같다)이다.
+// 위 사이는 놓인 자리가 고른다.
+const HEADING = cn(SIDEBAR_HEADING, "text-sm text-fg-tertiary");
+const ROWS = cn(SIDEBAR_ROWS, "min-h-0 overflow-y-auto scroll-quiet");
 
 function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const { data: threads = [] } = useThreads();
@@ -67,7 +68,7 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   return (
     <section aria-label="Thread" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
       {/* 소제목은 Work 묶음의 소제목과 같은 꼴 · 같은 사이다(`WorkSectionList`의 `SectionHeader` — Codex 「최근」). */}
-      <h2 className={cn("mt-5.75", HEADING)}>Thread</h2>
+      <h2 className={cn(SIDEBAR_AFTER_SECTION, HEADING)}>Thread</h2>
       <ul className={ROWS}>
         {loose.map((thread) => (
           <li key={thread.id}>
@@ -306,7 +307,7 @@ export function ThreadRow({
       className={cn(
         "flex w-full min-w-0 items-center gap-2.5 rounded-xl py-2 pr-2 text-left transition-colors focus-ring",
         compact ? "pl-8" : "pl-2",
-        on ? "selected-row" : "text-fg-sidebar hover:bg-fill-soft",
+        sidebarRowTone(on),
       )}
     >
       {thread.broken || people.length === 0 ? (

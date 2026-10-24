@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SIDEBAR_AFTER_SECTION, SIDEBAR_HEADING, SIDEBAR_ROWS, sidebarRowTone } from "@/components/shell/sidebar-look";
 import {
   SIGNAL_LABEL,
   SignalLane,
@@ -25,8 +26,6 @@ const MARQUEE_SPEED = 50; // px/s
 // 한 값이 두 언어에 걸치는 이유 전부다(결정 12). 그 「같은 수」는 주석이 아니라
 // `SidebarWorkList.test.tsx`의 소스 스캔이 지킨다 — 어긋나도 화면에는 속도 오차로만 나타난다.
 const TITLE_FADE = 12; // px
-// 줄 목록 — 줄 30 · 줄 사이 1이다(Codex 사이드바, v1 티켓 46). 구획의 줄들과 Work 아래 펼친 Thread 줄들이 한 벌이다.
-const ROWS = "flex flex-col gap-px";
 
 /**
  * 행이 **셸에서 받는 값 넷** — 사이드바(`Sidebar`)가 읽어 목록(`SidebarWorkList`)을 거쳐 여기까지
@@ -196,7 +195,7 @@ export function WorkSectionList({
       <Fragment key={work.slug}>
         {workRow(work, threadCount, expanded)}
         {expanded && (
-          <div data-work-threads={work.slug} className={ROWS}>
+          <div data-work-threads={work.slug} className={SIDEBAR_ROWS}>
             {threads.renderThreads(work)}
           </div>
         )}
@@ -265,7 +264,7 @@ export function WorkSectionList({
       <SectionHeader
         section="works"
         label={WORKS_COPY.label}
-        className={pinned.length > 0 ? "mt-5.75" : "mt-3"}
+        className={pinned.length > 0 ? SIDEBAR_AFTER_SECTION : "mt-3"}
         open={open.works}
         stop={stop === sectionKey("works")}
         count={main.length}
@@ -364,7 +363,7 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
           안쪽 8px로 남아 첫 행의 위 4px이 머리 아래에 비친다. 접힌 상자는 포커스를 못 받으니 링이 설 일도 없다 — 걷어도 행의
           자리는 그대로라(안쪽과 바깥이 같은 만큼이다) 접고 펼 때 행이 움직이지 않는다. */}
       <div className={cn("pointer-events-none overflow-hidden", open && "focus-ring-room")}>
-        <div className={cn("pointer-events-auto", ROWS)}>{children}</div>
+        <div className={cn("pointer-events-auto", SIDEBAR_ROWS)}>{children}</div>
       </div>
     </div>
   );
@@ -424,7 +423,8 @@ function SectionHeader({
         // 훑고 지나갈 때마다 칠해졌다 지워져 사이드바가 들썩였다. 누를 수 있다는 말은 글자가
         // 진해지는 것과 화살표가 뜨는 것(아래 둘)이 계속 한다. 행과 nav는 배경을 **남긴다** —
         // 그쪽은 누르면 가는 목적지라 긴 목록에서 지금 무엇을 가리키는지가 보여야 한다.
-        "group mb-0.75 flex h-7.5 w-full shrink-0 items-center gap-1 rounded-lg px-2 text-left focus-ring",
+        "group w-full gap-1 rounded-lg text-left focus-ring",
+        SIDEBAR_HEADING,
         className,
       )}
     >
@@ -659,9 +659,8 @@ function WorkRow({
         "group relative grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center rounded-lg pr-1 transition-colors",
         // **채움은 없다.** 평평한 행이고, 회색이 서는 것은 고른 행 하나뿐이다 — 카드 채움(목업의
         // F·G)은 열여덟 행에 전부 무게를 줘 목록이 게시판이 된다.
-        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11) — nav 항목(`SidebarItem`)과 같은 값이다. 고른 행의 면도 nav와 같은
-        // `fill-hover`다(사이드바 안의 `selected-row` — index.css).
-        active ? "selected-row" : "text-fg-sidebar hover:bg-fill-soft",
+        // 면 · 글자색은 사이드바 줄 한 벌이다(`sidebar-look` — nav 항목 `SidebarItem` · Thread 줄과 같다).
+        sidebarRowTone(active),
         // **끌리는 행은 흐려진다**(UI개선 스펙 §4) — 자리는 그대로 두고. 행을 빼면 아래 행들이 올라와
         // 재어 둔 기하가 그 순간 틀어지고, 「어디서 뽑았는지」도 사라진다.
         dragging && "opacity-40",

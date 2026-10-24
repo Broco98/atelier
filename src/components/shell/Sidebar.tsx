@@ -40,6 +40,7 @@ import { foldingInnerClass, PANEL_MOTION, SIDEBAR_ID, useFoldedFocus } from "./p
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { initialOf, usePersonName } from "./person";
 import { ShellMeta } from "./shell-meta";
+import { SIDEBAR_ROWS, sidebarRowTone } from "./sidebar-look";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useGoToShell from "./useGoToShell";
 import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
@@ -73,8 +74,8 @@ interface SidebarProps {
 // **바닥의 사람 줄도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다(그때는 바닥의 설정이었다).
 const GUTTER = "pl-2 pr-2";
 
-// nav 목록(앱 갈래의 새 Thread · Library, 설정 갈래의 항목) — 줄 30 · 줄 사이 1이다(Codex 사이드바, v1 티켓 46). 두 갈래가 한 벌이다.
-const NAV = cn("flex shrink-0 flex-col gap-px", GUTTER);
+// nav 목록(앱 갈래의 새 Thread · Library, 설정 갈래의 항목) — 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 두 갈래가 한 벌이다.
+const NAV = cn(SIDEBAR_ROWS, "shrink-0", GUTTER);
 
 // 사이드바는 캔버스 「Thread 목록과 아바타」 보드의 차례다(v1 구현 스펙 §13 · 티켓 07 · 42) — 「전체 | 내 차례」 · 새 Thread · 알림 띠 ·
 // Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와 ⌘K로 간다(S27).
@@ -650,9 +651,8 @@ function SidebarItem({
         // Codex 사이드바의 줄(v1 티켓 46 — 그림을 재었다) — 30(`size-row-nav`) · `radius-lg`, 글자 14/20 400(「새 채팅」은 보통 굵기다) · 아이콘
         // 16. 아이콘은 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이고, 글자는 아이콘 뒤 8에 서서 창 끝 + 40이다(Codex 「새 채팅」 · 폴더 줄).
         "flex h-(--size-row-nav) shrink-0 items-center rounded-lg pr-1 transition-colors",
-        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다. 글자색은 사이드바의
-        // `fg-sidebar`다(Codex 사이드바의 글자는 본문보다 옅다). 고른 행은 `fill-selected`(`selected-row`), 지나는 행은 `fill-soft`다.
-        active ? "selected-row" : "text-fg-sidebar hover:bg-fill-soft",
+        // 면 · 글자색은 사이드바 줄 한 벌이다(`sidebar-look` — Work 줄 · Thread 줄과 같다).
+        sidebarRowTone(active),
       )}
     >
       <button

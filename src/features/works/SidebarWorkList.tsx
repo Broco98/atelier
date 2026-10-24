@@ -3,9 +3,11 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { durationMs, hoverGroup, instantNow, menuOpen, useInHoverGroup } from "@/components/ui/hover-group";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { SIDEBAR_ROWS } from "@/components/shell/sidebar-look";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { readStored, writeStored } from "@/lib/stored";
 import { threadIdOf, workSlugOf } from "@/lib/path-prefix";
+import { cn } from "@/lib/utils";
 import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
 import { useThreads } from "@/features/thread/hooks";
@@ -486,9 +488,9 @@ function SidebarWorkList({
               {...roving.box}
               onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
               // `relative`는 틈 선의 기준이다 — 선이 내용 좌표로 서서 목록과 함께 구른다(구획 목록의 선 주석).
-              // 줄 사이는 1이다(Codex 사이드바 — 줄 30 · 줄 사이 1, v1 티켓 46). 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이는 머리가 든다
+              // 줄 사이는 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이는 머리가 든다
               // (`SectionHeader`의 `mt-3`).
-              className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-1 scroll-quiet"
+              className={cn(SIDEBAR_ROWS, "relative -mx-2 min-h-0 flex-1 overflow-y-auto px-2 pb-1 scroll-quiet")}
             >
               <WorkSectionList
                 sections={sections}
