@@ -320,7 +320,6 @@ version = "0.20.0"
 dependencies = [
  "agent-client-protocol",
  "atelier-core",
- "chrono",
  "futures",
  "libc",
  "serde",

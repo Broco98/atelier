@@ -5,9 +5,11 @@ import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
-import ChatAnnouncer from "@/features/chat/ChatAnnouncer";
-import { useChatEngineFeed, useChatQueueFeed, useChatRecordFeed } from "@/features/chat/hooks";
-import { countChatsForQuit } from "@/features/chat/quit";
+import { threadsQuery, useThreadFeeds, waitingNow } from "@/features/thread/hooks";
+import { jumpTarget } from "@/features/thread/waiting";
+import { workOfPlace } from "@/features/library/library";
+import { readLibrarySearch } from "@/routes/-library-search";
+import { countThreadsForQuit } from "@/features/thread/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
@@ -18,6 +20,7 @@ import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/feat
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navigateThen } from "@/lib/arrival";
+import { threadIdOf } from "@/lib/path-prefix";
 import { pressed } from "@/lib/hotkeys";
 import EditMenu from "./EditMenu";
 import Sidebar from "./Sidebar";
@@ -37,12 +40,12 @@ import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
 import { navItems, type NavKey } from "./nav-items";
 
 /**
- * 종료 확인이 적을 수를 함께 센다 — 셸(모든 화면의 목록)과 대화(three-axes 티켓 23 — 대화 호스트가 앱 전체를). 두 물음은 서로를
- * 기다리지 않고 함께 간다. 대화 셈은 거절돼도 0으로 서므로(`countChatsForQuit`) 이 약속이 셸 셈 밖의 까닭으로 던지지 않는다.
+ * 종료 확인이 적을 수를 함께 센다 — 셸(모든 화면의 목록)과 Thread(S40 — Thread 엔진이 앱 전체를). 두 물음은 서로를 기다리지
+ * 않고 함께 간다. Thread 셈은 거절돼도 0으로 서므로(`countThreadsForQuit`) 이 약속이 셸 셈 밖의 까닭으로 던지지 않는다.
  */
 async function countForQuit(): Promise<QuitTally> {
-  const [shells, chats] = await Promise.all([quitShellCounts(), countChatsForQuit()]);
-  return { shells, chats };
+  const [shells, threads] = await Promise.all([quitShellCounts(), countThreadsForQuit()]);
+  return { shells, threads };
 }
 
 function AppShell() {
@@ -105,14 +108,11 @@ function AppShell() {
     };
   }, [queryClient]);
 
-  // **대화의 기록 줄을 듣는 자리가 여기 하나다**(three-axes 티켓 17). 대화 호스트는 앱 프로세스에 살아 다른 work로 가도 대화가
-  // 돌고, 화면은 그 줄을 이 구독 하나로 받아 모듈 스토어에 쌓는다 — 대화창이 저마다 들으면 보이지 않는 work의 줄이 버려져
-  // 돌아왔을 때 그사이 흐른 답이 빈다(스토리 14 · 15). 턴 끝 알림도 여기서 한 번 낸다(스토리 121, 알림 자리는 `ChatAnnouncer`).
-  useChatRecordFeed();
-  // 엔진 상태(찾음 · 로그인 · 로그인 진행)도 여기 하나로 듣는다 — 대화창의 안내 카드가 그것으로 선다(three-axes 티켓 22).
-  useChatEngineFeed();
-  // 대기 줄 바뀜도 같은 까닭으로 여기 하나다(three-axes 티켓 20) — 다른 work에 가 있는 동안 대기 말이 가도 돌아오면 맞는 대기 줄이다.
-  useChatQueueFeed();
+  // **Thread 엔진의 이벤트(기록 줄 · 대기 줄 · 목록 요약 · 엔진 상태)를 듣는 자리가 여기 하나다**(v1 티켓 05 · three-axes 티켓 17).
+  // 엔진은 앱 프로세스에 살아 다른 화면에 가 있어도 Thread가 돌고, 화면은 그 줄을 이 구독 하나로 받아 모듈 스토어에 쌓는다 —
+  // Thread 화면이 저마다 들으면 보이지 않는 Thread의 줄이 버려져 돌아왔을 때 그사이 흐른 답이 빈다. 사이드바의 Thread 묶음도 요약
+  // 이벤트로 고친다.
+  useThreadFeeds();
 
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open`(위)과 같은 뿌리에서 듣는 것은 그쪽도
@@ -267,12 +267,15 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openSearch]);
 
-  // ⌘J는 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23) — 가장 최근에 부르는 상태(기다림 · 확인할
-  // 것)에 들어선 셸이다. 무엇을 기억하는지는 스토어가(`recalledShell` — 규칙은 `shell-recall.ts`), 가는 길은 띠의 줄과 같은
-  // 함수가 든다(`useGoToShell`). 이 자리는 키와 게이트와 「닫혔다」 토스트뿐이다.
+  // ⌘J는 **다음 내 차례로** 간다(v1 구현 스펙 S28 · v1 티켓 42) — 나를 기다리는 Thread로 기다린 순서대로 건너뛰고, 기다리는 Thread가
+  // 없으면 그 전처럼 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23 — 가장 최근에 부르는 상태(기다림 ·
+  // 확인할 것)에 들어선 셸). 어디로 가는지는 순수 함수가(`jumpTarget` — 마지막 Thread 다음은 부른 셸, 없으면 처음 Thread로 돈다),
+  // 기다리는 차례는 사이드바가 읽어 둔 캐시가(`waitingNow` — 누른 순간에 읽는다: 셸이 기록 줄마다 다시 그려지지 않게), 무엇을 기억하는지는
+  // 스토어가(`recalledShell` — 규칙은 `shell-recall.ts`), 셸로 가는 길은 띠의 줄과 같은 함수가 든다(`useGoToShell`). 이 자리는 키와
+  // 게이트와 「닫혔다」 토스트뿐이다.
   //
   // **셸에 포커스가 있어도 먹는다.** xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라오고, 메뉴의
-  // `View ▸ Last Calling Shell`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
+  // `View ▸ Next Waiting`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
   //
   // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다).
   // 팔레트는 제 입력칸에 포커스를 빌렸다가 닫힐 때 돌려주는데(`SearchPalette`), 그 사이에 셸로 가면 두 자리가 포커스를 다툰다 —
@@ -292,7 +295,13 @@ function AppShell() {
       if (dialogStore.state !== null || searchOpen) return;
       e.preventDefault();
       const target = recalledShell();
-      if (target === null) return;
+      const order = waitingNow(queryClient).map((one) => one.thread.id);
+      const jump = jumpTarget(order, threadIdOf(router.state.location.pathname), target?.kind === "go");
+      if (jump?.kind === "thread") {
+        void navigate({ to: "/threads/$id", params: { id: jump.id } });
+        return;
+      }
+      if (jump === null || target === null) return;
       if (target.kind === "closed") {
         showAppToast({ id: CLOSED_SHELL_TOAST_ID, text: CLOSED_SHELL_NOTICE });
         return;
@@ -301,7 +310,7 @@ function AppShell() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goToShell, searchOpen]);
+  }, [goToShell, searchOpen, queryClient, router, navigate]);
 
   return (
     <div
@@ -324,6 +333,20 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
+          // 이미 새 Thread면 아무것도 하지 않는다 — 같은 주소가 히스토리에 한 칸 더 쌓이지 않게(아래 nav와 같은 가드). 주소는 **누를 때**
+          // 읽는다 — 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
+          onNewThread={() => {
+            if (router.state.location.pathname !== "/") void navigate({ to: "/" });
+          }}
+          // Library(v1 티켓 19)는 **지금 선 자리의 Work**를 싣고 간다 — 그 Work의 Project 안 Agent가 따로 묶인다(S35, `workOfPlace`).
+          // 이미 같은 Work의 Library면 아무것도 하지 않는다(위와 같은 가드 — 고른 Agent도 그대로다). 주소 · Thread 목록은 누를 때 읽는다.
+          onOpenLibrary={() => {
+            const { pathname, search } = router.state.location;
+            const here = pathname === "/library" ? readLibrarySearch(search).work : null;
+            const work = workOfPlace(pathname, queryClient.getQueryData(threadsQuery().queryKey), here);
+            if (pathname === "/library" && work === here) return;
+            void navigate({ to: "/library", search: work === null ? {} : { work } });
+          }}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
@@ -368,8 +391,6 @@ function AppShell() {
       {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
           찾는다. 쿼리 구독은 제 파일에 있다. */}
       <ShellOwners />
-      {/* 대화의 턴 끝 알림(three-axes 티켓 17) — 스크린리더에만 읽히는 알림 자리 하나. 대화창이 둘이어도 알림은 여기서 한 번이다. */}
-      <ChatAnnouncer />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />

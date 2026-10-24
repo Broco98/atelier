@@ -1,7 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SpecLayoutState } from "@/features/spec-layout/types";
-import { askBackend, callCount, installRealBackend, unknownIpcCalls } from "./harness";
+import { askBackend, callCount, installRealBackend, unknownIpcCalls, 사람메뉴로간다 } from "./harness";
 import type { Page } from "./evidence";
 import { expect, seedLayout, seedWork, test } from "./l4";
 
@@ -106,7 +106,7 @@ test("되돌리면 다리가 레이아웃 폴더를 지우고, 무효화가 다�
 
   // 앱 안에서 설정으로 간다 — 새로 읽으면 캐시가 사라져 무효화를 잴 수 없다.
   const aside = page.locator("aside");
-  await aside.getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   await aside.getByRole("button", { name: "spec 레이아웃", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout");
   const 행 = page.locator("main li").filter({ has: page.getByText("Atelier", { exact: true }) });

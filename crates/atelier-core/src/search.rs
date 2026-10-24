@@ -38,7 +38,7 @@ pub struct Destination {
 /// 프런트가 필드 유무로 종류를 되짚어야 한다.
 ///
 /// **셸은 여기 없다**(결정 2). 셸을 고르는 자리는 이미 둘이고(탭 줄의 셸 탭·⌘1~9) 세 번째를
-/// 만들 이유가 없다. **실행되는 것도 없다**(결정 1): 갈래 다섯이 전부 「가는 곳」이라
+/// 만들 이유가 없다. **실행되는 것도 없다**(결정 1): 갈래 여섯이 전부 「가는 곳」이라
 /// Enter가 언제나 한 가지 뜻이다.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -53,6 +53,10 @@ pub enum SearchHit {
     /// 고르면 **그 work의 마지막 화면**으로 간다 — 문서 줄과 다른 일이다(그쪽은 spec으로
     /// 떨어진다). 어느 화면인지는 `archived`가 말한다.
     Work { slug: String, title: String, archived: bool },
+    /// Thread 하나(v1 구현 스펙 S29) — 고르면 그 Thread(`/threads/<id>`)로 간다. 맞추는 재료는 제목이고 줄에 서는 것도 그것이다.
+    /// 보관된 Work의 Thread도 여기 선다 — 사이드바에서는 빠지고 ⌘K로 찾는다(S43). 그 줄은 `archived`로 「보관됨」을 단다(v1 티켓
+    /// 38) — 가는 화면은 같고, 열면 읽기만이다.
+    Thread { id: String, title: String, archived: bool },
     Project { slug: String, name: String },
     Doc {
         slug: String,
@@ -133,7 +137,7 @@ pub struct SearchResults {
 /// 빌드). 인덱스가 없으면 무효화를 정할 필요가 없고, **세션이 밖에서 문서를 고쳐도 늘
 /// 최신**이라는 성질이 공짜로 따라온다 — 이 앱에서 spec은 늘 밖에서 바뀐다.
 ///
-/// **층 순서는 「가는 곳 → 작업 → 프로젝트 → 문서 → 본문」이다**(결정 13). **본문이 맨
+/// **층 순서는 「가는 곳 → 작업 → Thread → 프로젝트 → 문서 → 본문」이다**(결정 13 · v1 구현 스펙 S29). **본문이 맨
 /// 아래인 것은 「이름을 안다」가 「내용이 들었다」보다 항상 정확하기 때문이다.** 활성과
 /// 아카이브는 **각 층 안에서** 가르고 **층을 가로질러 앞서지 않는다** — 아카이브 work
 /// 이름을 정확히 쳤는데 그 문서들이 활성 work의 어설픈 매치보다 아래로 밀리면, 아카이브를
@@ -168,6 +172,7 @@ pub fn search(root: &Path, query: &str, destinations: &[Destination]) -> Result<
         destination_hits(destinations, &tokens),
         // 이력은 데이터 루트 **바로 아래** 한 장이라(`recent.rs`) 루트가 그대로 들어간다.
         work_hits(&works_root, &archive_root, root, &tokens)?,
+        thread_hits(root, &tokens)?,
         project_hits(&projects_root, &tokens)?,
         doc_hits(&works_root, &archive_root, &tokens)?,
         text_hits(&works_root, &archive_root, &tokens)?,
@@ -338,6 +343,36 @@ fn work_hits(
             }),
     );
     Ok(hits)
+}
+
+/// 「Thread」 층(v1 구현 스펙 S29 · 티켓 07). 순서는 색인(`ThreadIndex`)이 주는 새것부터다 — 사이드바의 Thread 묶음과 같은
+/// 차례다. 자리는 작업 바로 아래다: 둘 다 「하던 일」로 가는 줄이고, 프로젝트 · 문서는 그 일의 재료다.
+///
+/// **질의가 비면 안 선다** — 빈 팔레트는 「어디로 갈까」(가는 곳 · 작업)를 답하고, Thread는 사이드바의 Thread 묶음이 이미
+/// 늘어놓는다. Thread는 말마다 하나씩 쌓여 가장 빨리 느는 갈래라, 빈 화면에 세우면 상한 스무 줄을 늘 채운다.
+///
+/// **깨진 Thread는 건너뛴다** — 제목을 못 읽어 맞출 재료가 없다. 색인은 그 줄을 지키지만(사이드바가 까닭을 보인다) 찾기에는
+/// 걸릴 것이 없다. Work를 가리지 않는다 — 보관된 Work의 Thread도 여기서 찾는다(S43). 그 줄은 **이 층 안에서 지금 일 아래다**
+/// (v1 티켓 38) — 작업 층의 아카이브와 같은 규칙이고, 층을 가로지르지는 않는다.
+fn thread_hits(root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
+    if query_is_empty(tokens) {
+        return Ok(Vec::new());
+    }
+    let index = crate::ThreadIndex::load(root)?;
+    let (archived, open): (Vec<&crate::ThreadSummary>, Vec<&crate::ThreadSummary>) = index
+        .all()
+        .iter()
+        .filter(|summary| summary.broken.is_none() && matches(&summary.title, tokens))
+        .partition(|summary| summary.read_only == Some(crate::WorkGone::Archived));
+    Ok(open
+        .into_iter()
+        .chain(archived)
+        .map(|summary| SearchHit::Thread {
+            id: summary.id.clone(),
+            title: summary.title.clone(),
+            archived: summary.read_only == Some(crate::WorkGone::Archived),
+        })
+        .collect())
 }
 
 /// 「프로젝트」 층. 순서는 `read_projects`가 주는 이름 사전순 그대로다(결정 23).
@@ -622,6 +657,9 @@ mod tests {
                 SearchHit::Work { slug, archived, .. } => {
                     format!("작업 {slug}{}", if *archived { " (아카이브)" } else { "" })
                 }
+                SearchHit::Thread { id, archived, .. } => {
+                    format!("Thread {id}{}", if *archived { " (보관됨)" } else { "" })
+                }
                 SearchHit::Project { slug, .. } => format!("프로젝트 {slug}"),
                 SearchHit::Doc { slug, path, archived, .. } => {
                     format!("문서 {slug}/{path}{}", if *archived { " (아카이브)" } else { "" })
@@ -642,6 +680,20 @@ mod tests {
                 other => panic!("본문 줄이 아니다: {other:?}"),
             })
             .collect()
+    }
+
+    /// Thread 하나를 세운다 — 진짜 쓰기 함수(`create_thread_at`)를 탄다. id가 시각이라(v1 구현 스펙 S5) 새것의 차례를 `at`이 못 박는다.
+    fn thread(root: &Path, title: &str, at: &str) -> String {
+        thread_in(root, title, at, None)
+    }
+
+    /// Work에 이은 Thread 하나 — `thread.json`의 `work`에 그 slug를 적는다(v1 구현 스펙 §19).
+    fn thread_in(root: &Path, title: &str, at: &str, work: Option<&str>) -> String {
+        let at = chrono::DateTime::parse_from_rfc3339(at).unwrap();
+        let new = crate::NewThread { title: title.to_string(), work: work.map(str::to_owned), ..crate::NewThread::default() };
+        crate::threads::create_thread_at(root, at, new, crate::RecordKind::Sent, None, serde_json::json!({"text": title}))
+            .unwrap()
+            .id
     }
 
     fn dest(key: &str, label: &str) -> Destination {
@@ -1577,6 +1629,89 @@ mod tests {
                 "문서 옛것/record.md (아카이브)",
             ]
         );
+    }
+
+    /// v1 구현 스펙 S29 · 티켓 07. **Thread를 제목으로 찾는다** — 층은 작업 바로 아래, 프로젝트 위다. 줄은 id와 제목을 싣는다.
+    #[test]
+    fn thread를_제목으로_찾는다() {
+        let (_tmp, at) = roots();
+        work(&at.works, "refund", "환불 API 버그 수정");
+        project(&at.projects, "refund-api", "환불 서버");
+        let refund = thread(&at.root, "환불 API 버그 고쳐줘", "2026-10-23T10:00:00+09:00");
+        thread(&at.root, "로그인 세션 만료 조사", "2026-10-23T11:00:00+09:00");
+
+        let hits = search(&at.root, "환불", &nav()).unwrap().hits;
+        assert_eq!(
+            lines(&hits),
+            vec!["작업 refund".to_string(), format!("Thread {refund}"), "프로젝트 refund-api".to_string()]
+        );
+        assert_eq!(hits[1], SearchHit::Thread { id: refund, title: "환불 API 버그 고쳐줘".into(), archived: false });
+    }
+
+    /// v1 구현 스펙 S43 · 티켓 38. **보관된 Work의 Thread도 제목으로 찾고, 그 줄은 보관됐다고 싣는다** — 사이드바에서 빠진 Thread를
+    /// 찾는 길이 ⌘K다. 층 안에서는 **지금 일 아래에** 선다(작업 층의 아카이브와 같은 규칙). 지워진 Work의 Thread는 보관된 것이 아니다.
+    #[test]
+    fn 보관된_work의_thread도_찾고_보관됨을_실어_지금_일_아래에_선다() {
+        let (_tmp, at) = roots();
+        work(&at.works, "refund", "환불 API 버그 수정");
+        work(&at.archive, "webhook", "결제 웹훅 재시도");
+        let archived = thread_in(&at.root, "웹훅 재시도 조사", "2026-10-23T12:00:00+09:00", Some("webhook"));
+        let removed = thread_in(&at.root, "지운 일의 조사", "2026-10-23T11:00:00+09:00", Some("gone"));
+        let open = thread_in(&at.root, "환불 조사", "2026-10-23T10:00:00+09:00", Some("refund"));
+        let alone = thread(&at.root, "혼자 하는 조사", "2026-10-23T09:00:00+09:00");
+
+        let hits = search(&at.root, "조사", &[]).unwrap().hits;
+        assert_eq!(
+            lines(&hits),
+            vec![
+                format!("Thread {removed}"),
+                format!("Thread {open}"),
+                format!("Thread {alone}"),
+                format!("Thread {archived} (보관됨)"),
+            ],
+            "보관된 Work의 Thread는 새것이어도 층 끝이다"
+        );
+        assert_eq!(hits[3], SearchHit::Thread { id: archived, title: "웹훅 재시도 조사".into(), archived: true });
+    }
+
+    /// Thread 층 안은 **새것부터**다 — 사이드바의 Thread 묶음과 같은 차례(`ThreadIndex`)다.
+    #[test]
+    fn thread_층은_새것부터다() {
+        let (_tmp, at) = roots();
+        let old = thread(&at.root, "결제 조사", "2026-10-22T09:00:00+09:00");
+        let new = thread(&at.root, "로그인 조사", "2026-10-23T09:00:00+09:00");
+
+        assert_eq!(
+            lines(&search(&at.root, "조사", &[]).unwrap().hits),
+            vec![format!("Thread {new}"), format!("Thread {old}")]
+        );
+    }
+
+    /// **빈 질의에는 Thread 줄이 안 선다** — 빈 팔레트는 「어디로 갈까」(가는 곳 · 작업)를 답하고, Thread는 사이드바의 Thread
+    /// 묶음이 이미 늘어놓는다. Thread는 말마다 하나씩 쌓여 가장 빨리 느는 갈래다.
+    #[test]
+    fn 빈_질의에_thread_줄이_안_선다() {
+        let (_tmp, at) = roots();
+        let id = thread(&at.root, "환불 API 버그 고쳐줘", "2026-10-23T10:00:00+09:00");
+
+        let hits = search(&at.root, "", &nav()).unwrap().hits;
+        assert!(
+            !hits.iter().any(|hit| matches!(hit, SearchHit::Thread { .. })),
+            "빈 질의에 Thread 줄이 섰다: {hits:?}"
+        );
+        // **치면 나온다** — 「놓은 것이 없어서 안 섰다」로 초록이 되지 않게.
+        assert_eq!(lines(&search(&at.root, "환불", &[]).unwrap().hits), vec![format!("Thread {id}")]);
+    }
+
+    /// 깨진 Thread(`thread.json`을 못 읽음)는 제목이 없어 맞출 재료가 없다 — 줄이 안 서고, 검색도 멈추지 않는다.
+    #[test]
+    fn 깨진_thread는_건너뛴다() {
+        let (_tmp, at) = roots();
+        let fine = thread(&at.root, "환불 조사", "2026-10-23T10:00:00+09:00");
+        let broken = thread(&at.root, "환불 깨짐", "2026-10-23T11:00:00+09:00");
+        std::fs::write(at.root.join("threads").join(&broken).join("thread.json"), "{깨짐").unwrap();
+
+        assert_eq!(lines(&search(&at.root, "환불", &[]).unwrap().hits), vec![format!("Thread {fine}")]);
     }
 
     /// 결정 24. **상한은 층마다다** — 앞 층이 전체 상한을 먹으면 뒤 층이 영영 안 보인다.

@@ -1,5 +1,4 @@
 import type { CodeTarget } from "@/features/terminal/shell-registry";
-import { columnOf } from "@/features/works/split-view";
 import { validateFileSearch } from "./-file-search";
 import type { FileSearch } from "./-file-search";
 
@@ -18,7 +17,7 @@ import type { FileSearch } from "./-file-search";
  *
  * `code`는 **파일 탭**이다(git-integration 결정 33 · S12) — 어느 파일인지는 따로 `code` 키가 말한다(`WorkSearch.code`).
  */
-const ADDRESS_TABS = ["terminal", "chat", "code"] as const;
+const ADDRESS_TABS = ["terminal", "code"] as const;
 export type AddressTab = (typeof ADDRESS_TABS)[number];
 
 /** 주소에 적힐 수 있는 화면 탭이면 그 값, 아니면 `null`(`spec`도 `null`이다 — 주소에 안 쓴다). 대소문자 · 공백을 안 봐준다. */
@@ -128,26 +127,17 @@ export const viewTab = (search: { tab?: string; code?: string }): ViewTab => {
  * 형태가 보던 문서(`file`)를 조용히 떨어뜨린다(결정 15). 그 사고를 막는 모양을 부르는 쪽마다
  * 다시 적으면, 검사하는 쪽도 그것을 **베껴 적게 되어** 실제 이동이 퇴화해도 초록이 된다.
  */
-export function tabSearch<T extends object>(
-  prev: T,
-  next: ViewTab,
-): T & { tab?: AddressTab; code?: string; split?: SplitSide } {
-  // **대화 탭은 분할에 들지 않는다**(three-axes S21) — 분할은 늘 `spec ▏ 묶음의 지금 탭`이다. 그래서 대화 탭으로 가는 갱신은 분할을
-  // 함께 끈다: 남겨 두면 주소가 `tab=chat&split=lr`이 되어 분할이 이기고(화면이 그대로다) 대화 탭이 눌러도 아무 일이 없는 칸이 된다.
-  // 다른 탭은 분할을 건드리지 않는다 — 분할 중의 `tab`은 포커스가 든 열이다(결정 97).
-  //
-  // **`code`를 함께 지운다** — 지금 탭이 셸이거나 문서 · 대화창이면 주소에 파일이 없다(S12). 파일 탭으로 가는 길은 `code`를 다시
+export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?: AddressTab; code?: string } {
+  // **`code`를 함께 지운다** — 지금 탭이 셸이거나 문서면 주소에 파일이 없다(S12). 파일 탭으로 가는 길은 `code`를 다시
   // 얹는 `codeSearch` 하나다.
   //
   // **분할이면 셸로 갈 때만 지운다**(git-integration 티켓 07). 분할의 `code`는 **묶음 열**의 것이라 `tab`이 다른 열을 가리켜도
-  // (문서 열에 포커스 · ⌘1 · 문서 고르기) 그 열은 그대로 그 파일이다. 셸로 가는 것만 묶음 열을 셸로 바꾼다. 대화 탭은 분할을
-  // 끄므로 남은 단일 뷰에 `code`가 남지 않는다 — 단일 뷰의 `code`는 `tab=code`와만 산다.
-  const keepsCode = next !== "terminal" && next !== "chat" && splitOf(prev as { split?: string }) !== null;
+  // (문서 열에 포커스 · ⌘1 · 문서 고르기) 그 열은 그대로 그 파일이다. 셸로 가는 것만 묶음 열을 셸로 바꾼다.
+  const keepsCode = next !== "terminal" && splitOf(prev as { split?: string }) !== null;
   return {
     ...prev,
     tab: next === "spec" ? undefined : next,
     code: keepsCode ? (prev as { code?: string }).code : undefined,
-    ...(next === "chat" ? { split: undefined } : {}),
   };
 }
 
@@ -222,27 +212,18 @@ export function columnSearch<T extends object>(
  * 묶음의 지금 탭이 **묶음 쪽에서** 바뀌었을 때 주소를 어떻게 고치는가 — 지금 탭을 닫아 이웃이 켜졌거나(결정 30), 셸이 스스로
  * 끝나 빠졌거나, 끌어 놓은 칸이 켜졌다. 본문(단일 뷰)이나 묶음 열(분할)이 그 탭을 따라간다: 파일 탭이면 `code`가 그것이고
  * 셸이면 없다(`bundle`이 `null`). 분할에서 문서 열을 가리키던 `tab`은 그대로다 — 바뀐 것은 옆 열이다. 본문이 문서인 단일
- * 뷰는 아무것도 안 바뀐다 — 묶음이 화면에 없다. 대화창이 선 단일 뷰(`chat`)도 같다.
+ * 뷰는 아무것도 안 바뀐다 — 묶음이 화면에 없다.
  *
  * **고칠 것을 모두 `prev`에서 읽는다.** 묶음의 변화는 다른 이동과 한 틱에 겹친다 — 셸 탭을 끌어 본문 절반에 놓으면 그 셸을 켜는
  * 것과 분할을 켜는 주소가 함께 난다. 화면이 들고 있던 `tab` · `split`으로 지으면 한 틱 늦은 값이 방금 놓은 분할을 덮는다.
- *
- * **분할에서 포커스가 든 열은 `columnOf`가 읽는다** — 분할을 켜고 끄는 자리와 같은 판정이다. 그래서 대화 탭도 문서 열이다
- * (three-axes S21): 손으로 친 `tab=chat&split=lr`(또는 그것을 적어 둔 work 기억)에서 묶음 열이 바뀌어도 `tab`은 그대로다. 여기서
- * 탭 값을 따로 세면 두 자리가 포커스를 다르게 읽는다(three-axes develop 병합 검토).
  */
 export function bundleSearch<T extends object>(prev: T, bundle: string | null): T & { tab?: AddressTab; code?: string } {
   const search = prev as { tab?: string; code?: string; split?: string };
   const tab = viewTab(search);
-  if (splitOf(search) === null) {
-    if (tab === "spec") return { ...prev, tab: undefined, code: undefined };
-    // 가운데에 대화창이 선 단일 뷰도 묶음이 화면에 없다(three-axes S21 — 대화 탭은 묶음 밖의 고정 칸이다). 대화창은 그대로다.
-    if (tab === "chat") return { ...prev, code: undefined };
-  }
-  const onBundleColumn = columnOf(tab) === "terminal";
+  if (tab === "spec" && splitOf(search) === null) return { ...prev, tab: undefined, code: undefined };
   return {
     ...prev,
-    tab: onBundleColumn ? (bundle !== null ? "code" : "terminal") : tab === "spec" ? undefined : tab,
+    tab: tab === "spec" ? undefined : bundle !== null ? "code" : "terminal",
     code: bundle ?? undefined,
   };
 }
@@ -341,9 +322,10 @@ export function viewSearch<T extends object>(
  * **work을 여는 주소.** 그 work의 마지막 화면을 씨앗으로 삼는다(결정 77·97).
  *
  * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 여섯이기 때문이다** — 주소
- * 정규화(`-works-view`), 사이드바의 work 행, 셸로 가는 길(`useGoToShell` — 알림 띠의
+ * 정규화(`-works-view`), 「앱으로 돌아가기」(`appReturnTarget`), 셸로 가는 길(`useGoToShell` — 알림 띠의
  * 줄과 ⌘J 방금 부른 셸로), 팔레트의 work 줄과 문서·본문 줄(`hit-target`), 그리고 Projects의
- * 「이 프로젝트에서 시작된 작업」 행(`-projects-view`).
+ * 「이 프로젝트에서 시작된 작업」 행(`-projects-view`). 사이드바의 Work 행은 한때 여기 들었는데 이제 그 Work의 대화(가장 최근
+ * Thread)로 간다(v1 티켓 37).
  * 합성을 자리마다 손으로 다시 적으면 **빠뜨린 문 하나가 조용하다**: 그 문으로 들어온 work은
  * 기본 화면으로 열리고, 도착한 주소를 적어 두는 effect(`-works-view`의 `rememberView`)가
  * 그 기본값으로 **기억을 덮어써** 다음에 다른 문으로 돌아와도 마지막 화면이 안 선다.

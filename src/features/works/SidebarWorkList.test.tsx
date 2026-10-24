@@ -12,7 +12,7 @@ import type { WorkView } from "./types";
 
 // 사이드바 목록이 **그리는 것**을 본다. 어느 구역에 무엇이 놓이는지는 work-sections.test.ts가
 // 이미 보므로 여기서 보는 것은 그 결과가 화면으로 나오는 자리뿐이다 — 구획이 서는 조건
-// (결정 82), 빈 `작업` 구획이 하는 말(결정 108), 핀의 생김새(결정 85), 접힘과 개수.
+// (결정 82), 빈 `Work` 구획이 하는 말(결정 108), 핀의 생김새(결정 85), 접힘과 개수.
 //
 // 훅을 부르지 않는 `WorkSectionList`를 렌더한다. 구독하는 자리(useWorks·라우터·localStorage)는
 // 위에 남아 있고, 여기로는 상태와 콜백만 들어온다 — `ShellTabs`와 같은 모양이다.
@@ -60,6 +60,11 @@ function render(
     litEmptySlot = null,
     menuTarget = null,
     renaming = null,
+    // v1 티켓 37 — Work마다 이은 Thread 수 · 펼친 Work · 펼친 Work 아래에 설 Thread 줄(슬롯). 슬롯이 무엇을 그리는지는 이 파일의 관심
+    // 밖이다(Thread 줄은 `SidebarThreads.test.tsx`가 본다) — 여기서는 **어느 행 아래에 서는가**만 본다.
+    threadCounts = {},
+    expanded = [],
+    renderThreads = (work: WorkView) => <i data-threads-of={work.slug} />,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
@@ -70,6 +75,9 @@ function render(
     litEmptySlot?: keyof SectionsOpen | null;
     menuTarget?: string | null;
     renaming?: string | null;
+    threadCounts?: Record<string, number>;
+    expanded?: string[];
+    renderThreads?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -87,6 +95,7 @@ function render(
         notes: {},
         renderRowMeta,
       }}
+      threads={{ counts: threadCounts, expanded, onToggle: () => {}, renderThreads }}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
@@ -182,7 +191,7 @@ const laneOf = (markup: string) => /<span data-lane=""[^>]*>/.exec(markup)?.[0] 
 // `null`이고, 그때 이름은 안에 든 제목 글자다. 값이 없을 때까지 함께 세지 않으면
 // 「모든 행에 말이 붙는다」도 초록이 된다.
 const namesOf = (markup: string) =>
-  [...markup.matchAll(/<button type="button"(?: aria-label="([^"]*)")? class="col-start-1/g)].map(
+  [...markup.matchAll(/<button type="button"(?: aria-label="([^"]*)")? class="col-start-1 row-start-1/g)].map(
     (found) => found[1] ?? null,
   );
 
@@ -193,37 +202,53 @@ const lanesOf = (markup: string) =>
     (found) => found[1],
   );
 
+// v1 티켓 37 — Work 줄의 **펼침 단추**(표식 `data-expander`는 그 Work의 slug)와 **Thread 수**(표식 `data-thread-count`). 펼친 상태와
+// 이름을 함께 읽는다.
+const expandersOf = (markup: string) =>
+  [...markup.matchAll(/<button[^>]*data-expander="([^"]*)"[^>]*>/g)].map((m) => ({
+    slug: m[1],
+    open: /aria-expanded="true"/.test(m[0]),
+    label: /aria-label="([^"]*)"/.exec(m[0])?.[1] ?? null,
+  }));
+const countsOf = (markup: string) =>
+  [...markup.matchAll(/<span[^>]*data-thread-count="([^"]*)"[^>]*>([^<]*)<\/span>/g)].map((m) => ({ slug: m[1], text: m[2] }));
+/** 그 Work 줄부터 다음 Work 줄 앞까지 — 줄과 그 아래 딸린 것. */
+const chunkOf = (markup: string, slug: string) =>
+  markup
+    .split(/(?=<div data-work-row=")/)
+    .find((chunk) => chunk.startsWith(`<div data-work-row="${slug}"`)) ?? "";
+
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
   // 결정 82. 아무것도 없는 구획의 헤더는 자리만 먹는다.
   it("고정된 것이 없으면 헤더가 아예 없다", () => {
-    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual(["작업"]);
+    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual(["Work"]);
   });
 
-  it("고정된 것이 있으면 `작업` 위에 선다", () => {
+  it("고정된 것이 있으면 `Work` 위에 선다", () => {
     expect(headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label)).toEqual([
       "고정",
-      "작업",
+      "Work",
     ]);
   });
 
-  it("개수는 그 구획의 것을 적는다 — 초안도 `작업`의 수에 든다", () => {
+  it("개수는 그 구획의 것을 적는다 — 초안도 `Work`의 수에 든다", () => {
     const headers = headersOf(render(works("pin:가", "pin:draft:나", "다", "draft:라")));
-    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "작업 2"]);
+    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "Work 2"]);
   });
 });
 
 // UI개선 결정 5. 초안은 따로 접힌 구역이 아니라 **다른 항목들 사이에** 서고, 상태 아이콘으로만 갈린다.
-describe("초안은 `작업` 구획 안에 선다", () => {
-  it("`초안` 머리가 없고 초안 행이 받은 자리 그대로 `작업`에 선다", () => {
+describe("초안은 `Work` 구획 안에 선다", () => {
+  it("`초안` 머리가 없고 초안 행이 받은 자리 그대로 `Work`에 선다", () => {
     const markup = render(works("draft:가", "나", "draft:다"));
-    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나", "다"] }]);
+    expect(rowsBySection(markup)).toEqual([{ label: "Work", rows: ["가", "나", "다"] }]);
     // 머리 목록만 보면 초안 머리가 **표식 없이** 되살아나도 초록이다 — 글자로도 센다.
     expect(markup).not.toMatch(/>초안</);
   });
 
   it("모든 항목이 초안이어도 빈 문구가 아니라 그 초안들이 보인다", () => {
     const markup = render(works("draft:가", "draft:나"));
-    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나"] }]);
+    expect(rowsBySection(markup)).toEqual([{ label: "Work", rows: ["가", "나"] }]);
     // 빈 구획이 낼 수 있는 두 말을 **판정 함수에서** 받아 댄다 — 글자 조각으로 대면 문구가
     // 바뀌는 날 이 두 줄이 아무것도 안 재는 채 초록으로 남는다.
     const notices = [
@@ -238,23 +263,23 @@ describe("초안은 `작업` 구획 안에 선다", () => {
 describe("고정된 work은 한 구획에만 있다", () => {
   // 결정 82. 고정하면 원래 구획에서 **빠진다**. 양쪽에 다 보이면 같은 작업이
   // 두 줄로 서고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
-  it("고정된 작업은 `작업`에서 빠진다", () => {
+  it("고정된 작업은 `Work`에서 빠진다", () => {
     expect(rowsBySection(render(works("pin:가", "나")))).toEqual([
       { label: "고정", rows: ["가"] },
-      { label: "작업", rows: ["나"] },
+      { label: "Work", rows: ["나"] },
     ]);
   });
 
-  it("고정된 초안은 `작업`에서 빠진다", () => {
+  it("고정된 초안은 `Work`에서 빠진다", () => {
     // 결정 83 — 초안도 고정할 수 있고, 고정되면 `고정`에 선다.
     expect(rowsBySection(render(works("pin:draft:가", "draft:나")))).toEqual([
       { label: "고정", rows: ["가"] },
-      { label: "작업", rows: ["나"] },
+      { label: "Work", rows: ["나"] },
     ]);
   });
 });
 
-describe("빈 `작업` 구획이 하는 말", () => {
+describe("빈 `Work` 구획이 하는 말", () => {
   // 결정 108. 화면에 작업이 버젓이 서 있는데 「Claude Code에서 시작돼요」라고 하면 거짓말이다.
   // emptyMainNotice 자체는 work-sections.test.ts가 보고, 여기서는 **호출부**를 본다 —
   // 화면이 그 함수를 실제로 부르는지.
@@ -280,9 +305,9 @@ describe("빈 `작업` 구획이 하는 말", () => {
 // 목록의 이름. 문구 자체는 어휘 표라 `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서
 // 보는 것은 호출부다** — 화면이 그 표를 실제로 부르는가.
 describe("상주 목록의 이름", () => {
-  it("머리가 `작업`이고 형제 머리는 `고정`이다", () => {
+  it("머리가 `Work`이고 형제 머리는 `고정`이다", () => {
     const labels = headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label);
-    expect(labels).toEqual(["고정", "작업"]);
+    expect(labels).toEqual(["고정", "Work"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
@@ -328,7 +353,7 @@ describe("핀 버튼", () => {
     expect(pinsOf(render(works("pin:가", "나", "draft:다")))).toHaveLength(3);
   });
 
-  // 결정 1·2·5 — **핀은 2열에 메타와 겹쳐 서고, 폭은 hover에만 갖는다.**
+  // 결정 1·2·5 — **핀은 끝 칸에 메타와 겹쳐 서고, 폭은 hover에만 갖는다.**
   //
   // 사람이 실물 앱에서 고른 모양이다: 「호버하면, 자동으로 아이콘 위치만큼 text의 최대
   // 크기가 조정되지? 이런걸 원하는거임. (안겹치게)」 그러려면 칸이 핀의 폭을 **알아야**
@@ -341,10 +366,11 @@ describe("핀 버튼", () => {
   // **폭을 걷는 것이 `max-w-0`인 것은** `w-0`이 `icon-button`의 `width: 24px`과 같은 레이어라 승자가 Tailwind의 정렬
   // 순서에 걸려서다. (한때 핀이 포커스에도 떠서(결정 7) `display:none`도 막혔다 — 요소를 지우면 포커스가 안 들어간다.
   // 핀이 Tab에서 빠진 지금도 꼴은 그대로다.) 실제 폭과 겹침은 e2e가 실측으로 잰다.
-  it("2열에 서고, 폭은 hover에만 갖는다", () => {
+  it("끝 칸(메타 칸)에 서고, 폭은 hover에만 갖는다", () => {
     for (const pin of pinsOf(render(works("pin:가", "나", "draft:다")))) {
-      // 칸이 핀의 폭을 세려면 격자 안이어야 한다.
-      expect(pin).toContain("col-start-2");
+      // 칸이 핀의 폭을 세려면 격자 안이어야 한다. 끝 칸이 메타와 겹쳐 서는 칸이다 — 앞의 둘은 이름 · Thread 수다(v1 티켓 37).
+      // 펼침 단추는 칸이 아니라 레인 위에 겹쳐 선다(v1 티켓 46).
+      expect(pin).toContain("col-start-3");
       expect(pin).toContain("row-start-1");
       expect(pin).not.toContain("absolute");
       // 쉴 때 트랙 기여가 0 — 그리고 뜰 때 되돌아온다.
@@ -355,19 +381,19 @@ describe("핀 버튼", () => {
       // 칸이 핀보다 넓을 때(메타가 선 행) stretch되면 글리프가 가운데로 밀린다.
       expect(pin).toContain("justify-self-end");
     }
-    // 핀이 격자로 돌아왔으므로 행에 위치 기준이 필요 없다 — 남으면 죽은 클래스다.
-    expect(render(works("가"))).toContain("group grid");
-    expect(render(works("가"))).not.toContain("group relative grid");
+    // 핀은 격자 안이다(위 `absolute`가 없다). 행의 위치 기준(`relative`)은 핀이 아니라 레인 위에 겹쳐 서는 펼침 단추의
+    // 것이다(v1 티켓 46 — 아래 「Work 줄이 그 Work의 Thread를 품는다」).
+    expect(render(works("가"))).toContain("group relative grid");
   });
 });
 
 describe("구획 접기", () => {
-  // 결정 108의 마지막 줄 — `고정` 구획도 `작업`과 같은 규칙으로 접힌다.
+  // 결정 108의 마지막 줄 — `고정` 구획도 `Work`과 같은 규칙으로 접힌다.
   it("접힌 구획은 헤더가 그렇다고 말하고 높이만 0이 된다", () => {
     const markup = render(works("pin:가", "나", "draft:다"), { ...ALL, pinned: false });
     expect(headersOf(markup).map((one) => `${one.label} ${one.open}`)).toEqual([
       "고정 false",
-      "작업 true",
+      "Work true",
     ]);
     const [pinnedBody, mainBody] = bodiesOf(markup);
     // 접혀도 항목은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 inert다.
@@ -394,7 +420,7 @@ describe("구획 접기", () => {
 // 돌아오되 조건 하나가 다르다: 그때는 여기가 늘 종류·수였고, 지금은 **신호가 있으면 그 셸의
 // 경과**가 같은 칸에 선다(S4 · ui-refresh 결정 13). 높이와 자리는 e2e가 실측으로 재고, 여기서 보는 것은
 // **마크업이 무엇을 말하는가**다.
-describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 겹친다", () => {
+describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 끝 칸 하나에 겹친다", () => {
   it("**둘째 줄이 없다** — 그 표식이 어느 행에도 안 선다", () => {
     // 결정 14. 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이다. 셸이 있는 행 · 없는
     // 행 · 부르는 행을 함께 그린다 — 두 줄 행은 셋 모두에 줄을 세웠다. 둘째 트랙이 정말 없는지
@@ -476,12 +502,12 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     // 잰다. 핀과 메타는 이름 버튼의 **형제로** 서므로 그 계약이 안 깨진다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
     // 행 상자는 끌기 표식(`data-work-row`)을 클래스 앞에 든다 — 여는 태그를 통째로 넘긴다.
-    const row = /<div data-work-row="[^"]*" class="group grid[^"]*">(<button|<div)/.exec(markup);
+    const row = /<div data-work-row="[^"]*" class="group relative grid[^"]*">(<button|<div)/.exec(markup);
     expect(row?.[1]).toBe("<button");
   });
 
   it("**레인은 행 왼쪽에 서고 폭을 안 내준다**", () => {
-    // 결정 5 — 행 왼쪽 14px 한 칸. 화면값이 없는 행에는 work 상태 아이콘이 서고, 있으면
+    // 결정 5 — 행 왼쪽 16px 한 칸(Codex 사이드바의 아이콘 칸 — v1 티켓 46). 화면값이 없는 행에는 work 상태 아이콘이 서고, 있으면
     // 점·스피너가 그 자리를 가져간다(#203, 아래 묶음).
     //
     // **폭을 실제로 지키는 것은 제목 상자다** — 그쪽이 `min-width: 0`이라 좁아지는 값을
@@ -490,7 +516,7 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     // 것이 이 판에서 가장 나쁜 회귀라서다: 8px 점은 12px만 줄어도 사라진다. 그 화면이
     // 실제로 났을 때 빨개지는 그물은 L3의 폭 드래그 검사가 든다.
     const lane = laneOf(render(works("가")));
-    expect(lane).toContain("size-3.5");
+    expect(lane).toContain("size-4");
     expect(lane).toContain("shrink-0");
   });
 
@@ -519,7 +545,7 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     // 테두리도 배경도 고른 행의 `selected-row` 말고는 없다. 카드 채움은 Codex 이름(`bg-surface` · `bg-surface-under` …)과
     // shadcn 이름(`bg-background`) 둘 다로 센다 — 행은 Codex 이름으로 적히므로 shadcn 이름만 세면 이 지킴이 조용히 빈다.
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나" });
-    const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group grid[^"]*)">/g)].map(
+    const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group relative grid[^"]*)">/g)].map(
       (m) => m[1],
     );
     expect(rows).toHaveLength(2);
@@ -635,19 +661,25 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
   });
 });
 
-describe("행 아래에 아무것도 딸리지 않는다", () => {
+describe("행 아래에 셸이 딸리지 않는다", () => {
   // 결정 6. 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가 화면마다 갈린다 —
   // 셸을 고르는 자리가 탭 줄로 돌아갔으므로(결정 7·8) 사이드바에서 그 길을 걷는다.
-  // 여기서 보는 것은 **자리가 정말 없는가**다: 접히는 버튼도, 잎도, 가지의 속도.
+  // 여기서 보는 것은 **셸의 자리가 정말 없는가**다: 셸을 펴는 버튼도, 잎도, 가지의 속도. 행 아래에 서는 것은 그 Work의 Thread뿐이다(v1
+  // 티켓 37 — 아래 「Work 줄이 그 Work의 Thread를 품는다」).
   const shut = () => render(works("가", "나"), ALL, { selectedSlug: "가", shellCounts: { 가: 2 } });
 
-  it("접히는 것은 구획 헤더뿐이다", () => {
-    // 목록에서 `aria-expanded`를 가진 버튼이 구획 셋 말고 하나도 없어야 한다. 표식으로
-    // 좁혀 세지 않고 **전부 세서** 구획의 것과 대는 것은, 표식을 안 단 새 토글이 생기는
-    // 경우를 그 그물이 통째로 놓치기 때문이다.
+  it("접히는 것은 구획 헤더와 Thread가 있는 Work 줄의 펼침뿐이다", () => {
+    // 목록에서 `aria-expanded`를 가진 버튼이 구획 셋과 펼침 단추 말고 하나도 없어야 한다. 표식으로
+    // 좁혀 세지 않고 **전부 세서** 그 둘의 것과 대는 것은, 표식을 안 단 새 토글이 생기는
+    // 경우를 그 그물이 통째로 놓치기 때문이다. 셸만 있고 Thread가 없는 행에는 펼칠 것이 없다.
     const markup = shut();
     const all = (markup.match(/aria-expanded=/g) ?? []).length;
     expect(all).toBe(buttonsOf(markup, 'data-section=""').length);
+    const threaded = render(works("가", "나"), ALL, { shellCounts: { 가: 2 }, threadCounts: { 나: 1 } });
+    expect((threaded.match(/aria-expanded=/g) ?? []).length).toBe(
+      buttonsOf(threaded, 'data-section=""').length + expandersOf(threaded).length,
+    );
+    expect(expandersOf(threaded).map((one) => one.slug)).toEqual(["나"]);
   });
 
   it("잎도 가지도 없다", () => {
@@ -749,15 +781,15 @@ describe("이름을 고치는 행", () => {
 });
 
 // **빈 받침**(UI개선 티켓 06 · 스펙 S7). 행이 하나도 없는 구획에 **끄는 동안만** 선다 — 첫 고정도(`고정` 0개),
-// 마지막 고정 해제도(모두 고정이라 `작업` 0개) 같은 손짓이게. 「모두 고정」은 L3 fixture로 못 지어
+// 마지막 고정 해제도(모두 고정이라 `Work` 0개) 같은 손짓이게. 「모두 고정」은 L3 fixture로 못 지어
 // (`list_works`를 테스트마다 못 덮는다) 여기가 그 갈래를 재는 유일한 자리다.
 describe("빈 받침", () => {
   const slotsOf = (markup: string) => [...markup.matchAll(/data-empty-slot="([^"]*)"/g)].map((m) => m[1]);
 
-  it("끄는 중이고 `작업`이 비었으면(모두 고정) `작업`에 받침이 선다", () => {
+  it("끄는 중이고 `Work`이 비었으면(모두 고정) `Work`에 받침이 선다", () => {
     const markup = render(works("pin:가", "pin:나"), ALL, { draggedSlug: "가" });
     expect(slotsOf(markup)).toEqual(["works"]);
-    // `작업` 머리 **아래**다 — 머리보다 앞에 서면 `고정` 구획에 붙은 것으로 읽힌다.
+    // `Work` 머리 **아래**다 — 머리보다 앞에 서면 `고정` 구획에 붙은 것으로 읽힌다.
     expect(markup.indexOf('data-empty-slot="works"')).toBeGreaterThan(markup.indexOf('data-drop-head="works"'));
   });
 
@@ -765,12 +797,12 @@ describe("빈 받침", () => {
     expect(slotsOf(render(works("pin:가", "pin:나")))).toEqual([]);
   });
 
-  it("끄는 중이고 `고정`이 비었으면 `고정` 받침이 `작업` 머리 위에 선다", () => {
+  it("끄는 중이고 `고정`이 비었으면 `고정` 받침이 `Work` 머리 위에 선다", () => {
     const markup = render(works("가", "나"), ALL, { draggedSlug: "가" });
     expect(slotsOf(markup)).toEqual(["pinned"]);
     expect(markup.indexOf('data-empty-slot="pinned"')).toBeLessThan(markup.indexOf('data-drop-head="works"'));
     // 받침은 머리를 되살리지 않는다 — 결정 82의 「빈 `고정`엔 머리가 없다」는 끄는 동안에도 그대로다.
-    expect(headersOf(markup).map((one) => one.label)).toEqual(["작업"]);
+    expect(headersOf(markup).map((one) => one.label)).toEqual(["Work"]);
   });
 
   it("끄는 중이 아니면 `고정`이 비어도 받침이 없다", () => {
@@ -849,5 +881,62 @@ describe("사이드바 목록은 터미널을 모른다", () => {
     // 고른다). 사이드바가 계속 듣고 있으면 한 번 눌러 둘이 일어나고, 본문을 옮기려던
     // 사람이 다른 work으로 끌려간다. 지운 자리라 「없다」를 세는 것 말고 볼 방법이 없다.
     expect(countOf('window.addEventListener("keydown"')).toBe(0);
+  });
+});
+
+// v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드 — Work 줄 왼쪽에 ▸(펼치면 ⌄), 오른쪽에 그 Work에 이은 Thread 수가 서고,
+// 펼친 Work 아래에 그 Thread 줄들이 선다. 누르면 무엇이 일어나는지(최근 Thread로 가기 · 펼침 뒤집기)는 정적 렌더에 없다 — 갈 곳은
+// `work-threads.test.ts`, 펼침 기억은 `work-sections.test.ts`가 보고, 실제 누름은 시안 비교 캡처와 L3(40)가 본다.
+describe("Work 줄이 그 Work의 Thread를 품는다", () => {
+  it("Thread가 있는 줄에만 수와 펼침 단추가 서고, 없는 줄은 그 자리만 비워 둔다", () => {
+    const markup = render(works("pin:가", "나", "다"), ALL, { threadCounts: { 가: 2, 다: 1 } });
+    expect(expandersOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
+    expect(countsOf(markup)).toEqual([
+      { slug: "가", text: "2" },
+      { slug: "다", text: "1" },
+    ]);
+    // 펼침 단추는 레인 위에 겹쳐 서서 폭을 안 갖는다 — 그래서 단추가 없는 줄도 빈 자리 없이 제목이 줄마다 같은 x에서
+    // 시작한다(v1 티켓 46 · Codex 사이드바). 겹친 단추는 hover에 서고 그동안 레인이 비킨다.
+    const expander = /<button[^>]*data-expander="가"[^>]*>/.exec(chunkOf(markup, "가"))?.[0] ?? "";
+    expect(expander).toMatch(/class="absolute [^"]*opacity-0[^"]*group-hover:opacity-100/);
+    expect(chunkOf(markup, "나")).not.toContain("data-expander");
+  });
+
+  it("펼침 단추는 접혔으면 「펼치기」, 폈으면 「접기」이고 펼친 상태를 말한다", () => {
+    const markup = render(works("가", "나"), ALL, { threadCounts: { 가: 2, 나: 1 }, expanded: ["나"] });
+    expect(expandersOf(markup)).toEqual([
+      { slug: "가", open: false, label: "가의 Thread 펼치기" },
+      { slug: "나", open: true, label: "나의 Thread 접기" },
+    ]);
+  });
+
+  it("펼친 Work 아래에만 그 Work의 Thread 줄이 선다", () => {
+    const markup = render(works("pin:가", "나", "다"), ALL, { threadCounts: { 가: 1, 나: 1, 다: 1 }, expanded: ["가", "다"] });
+    expect([...markup.matchAll(/data-threads-of="([^"]*)"/g)].map((m) => m[1])).toEqual(["가", "다"]);
+    // 줄 바로 뒤, 그 Work의 자리에 선다 — 다음 Work 줄 앞이다.
+    expect(chunkOf(markup, "가")).toContain('data-threads-of="가"');
+    expect(chunkOf(markup, "다")).toContain('data-threads-of="다"');
+    expect(chunkOf(markup, "나")).not.toContain("data-threads-of");
+  });
+
+  it("Thread가 없는 Work는 펼친 것으로 적혀 있어도 아래에 아무것도 서지 않는다", () => {
+    const markup = render(works("가"), ALL, { expanded: ["가"] });
+    expect(markup).not.toContain("data-threads-of");
+    expect(expandersOf(markup)).toEqual([]);
+  });
+
+  it("펼침 단추는 Tab 정류장이 아니고, 행의 첫 요소는 그대로 이름 버튼이다", () => {
+    const markup = render(works("가"), ALL, { threadCounts: { 가: 1 }, selectedSlug: "가" });
+    // 행의 첫 버튼이 대상 메뉴 · 이름 고치기가 돌아올 자리다(`rowTarget` · `returnFocus`) — 펼침 단추가 앞에 끼면 그 자리가 갈린다.
+    expect(chunkOf(markup, "가")).toMatch(/^<div data-work-row="가"[^>]*><button type="button" class="[^"]*focus-ring" tabindex="0"/);
+    for (const expander of markup.match(/<button[^>]*data-expander="[^"]*"[^>]*>/g) ?? []) {
+      expect(expander).toContain('tabindex="-1"');
+    }
+  });
+
+  it("수는 셸 메타와 따로 선다 — 셸이 있어도 Thread 수는 Thread 수다", () => {
+    const markup = render(works("가"), ALL, { threadCounts: { 가: 3 }, shellCounts: { 가: 2 } });
+    expect(countsOf(markup)).toEqual([{ slug: "가", text: "3" }]);
+    expect(rowMetasOf(markup).map((one) => one.slug)).toEqual(["가"]);
   });
 });

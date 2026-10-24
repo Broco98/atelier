@@ -7,7 +7,7 @@ import type { WorkStatus } from "./types";
  * 글자는 12/500 `fg-secondary`이고, 앞에 6px 점이 그 상태의 색(`st-*`)으로 선다 — **색은 점 하나에만 쓴다**(DS 「회색 면 + 색 점
  * 하나 — 색은 상태에만」). 알약이 아니다: `radius-full`은 경로 줄 · 칩 · 36 버튼 · 컴포저 컨트롤에만 쓰고(codex-ds 스펙 §2) 머리
  * 컨트롤은 각지다(codex-ds 결정 3). 상단의 상태 메뉴 트리거(`WorksPage`의 `StatusMenu`) · 아카이브 상세 머리 · 사이드바 호버
- * 카드(`WorkCard`)가 이것을 부르고, 점의 색은 상태마다 `badgeClass`가 든다. 점은 배지의 `::before`라 부르는 자리가 마크업을
+ * 카드(`WorkPeek`)가 이것을 부르고, 점의 색은 상태마다 `badgeClass`가 든다. 점은 배지의 `::before`라 부르는 자리가 마크업을
  * 더하지 않는다. 꺾쇠(▾)를 품은 배지(상태 메뉴 트리거)도 안쪽은 같은 8이다 — 꺾쇠는 12 `fg-tertiary`다(DS `.at-badge .ic` ·
  * `HeadCard` 미리보기의 `s12`).
  */

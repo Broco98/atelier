@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAtOrUnder, workSlugOf } from "./path-prefix";
+import { isAtOrUnder, threadIdOf, workSlugOf } from "./path-prefix";
 
 describe("isAtOrUnder", () => {
   it("그 자리와 그 아래는 안이다", () => {
@@ -35,5 +35,15 @@ describe("workSlugOf — 주소에서 slug를 읽는다", () => {
   // slug는 경로의 **한 칸**이다. 뒤가 더 붙은 주소는 그 항목의 하위 화면이지 다른 slug가 아니다.
   it("첫 칸만 slug다", () => {
     expect(workSlugOf("/works/finance/spec")).toBe("finance");
+  });
+});
+
+// 지금 보는 Thread — 사이드바 줄의 켜짐과 ⌘J의 「다음 내 차례」(v1 티켓 42)가 같은 이것을 읽는다.
+describe("threadIdOf — 주소에서 Thread id를 읽는다", () => {
+  it("Thread 주소를 읽고, 그 밖의 화면에는 없다", () => {
+    expect(threadIdOf("/threads/20261010-100000")).toBe("20261010-100000");
+    expect(threadIdOf("/")).toBeNull();
+    expect(threadIdOf("/threads/")).toBeNull();
+    expect(threadIdOf("/works/finance")).toBeNull();
   });
 });

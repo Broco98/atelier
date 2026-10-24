@@ -16,6 +16,7 @@ import {
   탭으로,
   툴팁,
   호버카드,
+  창검색버튼,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
@@ -742,7 +743,7 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
 // 판을 가른다). 핀은 행 안에 있어 올려도 카드가 그대로다 — 티켓 33의 「고정 핀 위에는 카드가 없다(그대로)」가 이 검사다.
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
-const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
+const 검색 = (page: Page) => 창검색버튼(page);
 
 test("검색 버튼에 올려 멈추면 duration-tip 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
   page,

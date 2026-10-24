@@ -15,7 +15,7 @@ import {
   ipcFailure,
   kills,
   markAttention,
-  navButton,
+  사람메뉴로간다,
   openShell,
   ownerlessText,
   processesTitle,
@@ -27,6 +27,7 @@ import {
   workRow,
   띠,
   셸입력,
+  작업화면으로,
 } from "./harness";
 
 // 티켓 12 — **MCP로 아카이브 · 삭제된 work의 셸을 앱이 알아서 닫거나 남긴다**(프로세스 결정 4 · 프로세스 스펙 S13 ·
@@ -171,7 +172,7 @@ test("MCP 아카이브 뒤 그 work의 셸은 주인 잃은 셸로 서고, 최�
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await arrived(page, 2);
   await awaitSpawned(page, 1);
@@ -200,7 +201,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await page.locator("[data-worklist]").getByRole("button", { name: plainWork.title, exact: true }).click();
+  await 작업화면으로(page, plainWork);
   await page.locator('[data-tab="new"]').click();
   await awaitSpawned(page, 1);
 
@@ -280,7 +281,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
     at: Date.now(),
     payload: { message: "아카이브할까요?" },
   });
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   // 최상위 터미널의 첫 셸(pty 2)이 떴으면 떠나온 work 화면은 내려갔다.
   await arrived(page, 2);
@@ -303,7 +304,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   expect(await toastsNow(page)).toBe(0);
 
   // 터미널로 돌아가면 그 화면의 셸(pty 2)이 다시 붙으며 포커스를 받는다 — 주인 잃은 셸을 기다리는 것이 없다.
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect(셸입력(page), "주인 잃은 셸을 기다리는 포커스가 남아 터미널의 셸이 포커스를 못 받았다").toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);

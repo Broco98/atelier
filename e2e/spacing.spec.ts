@@ -1,15 +1,14 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { PROJECTS, WORKS } from "./fixtures";
+import { FIXTURE_THREAD, PROJECTS, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
   markAttention,
-  navButton,
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
   workRow,
-  레인,
   띠,
+  사람줄,
   첫글자,
   토큰값,
 } from "./harness";
@@ -41,10 +40,25 @@ async function 상자(target: Locator) {
 /** 그 안 첫 아이콘(svg)의 상자. */
 const 아이콘 = (scope: Locator) => 상자(scope.locator("svg").first());
 
-test("사이드바: main nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 Settings의 행 글자가 창 끝에서 16이고, 수의 오른쪽 끝은 행 끝에서 8이다", async ({
+test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 사람 줄의 행 글자가 창 끝에서 16이고, 수의 오른쪽 끝은 행 끝에서 8이다", async ({
   page,
 }) => {
-  await installFixtureBackend(page);
+  // work 행의 레인 위에 그 Work의 Thread를 펴는 ▸가 겹쳐 선다(v1 티켓 37 · 46) — 이은 Thread가 있어야 선다. 고정된 일에 Thread 하나를
+  // 잇는다. 그 Thread 수도 행 오른쪽에 선다.
+  await installFixtureBackend(page, {
+    thread_list: [
+      {
+        id: FIXTURE_THREAD.id,
+        title: FIXTURE_THREAD.title,
+        createdAt: FIXTURE_THREAD.createdAt,
+        work: pinnedWork.slug,
+        handles: ["host"],
+        lastRead: 0,
+        readOnly: null,
+        broken: null,
+      },
+    ],
+  });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   // 알림 띠는 부를 때만 선다 — 기다림 하나로 세운다.
@@ -59,48 +73,70 @@ test("사이드바: main nav · 알림 띠 · 구획 소제목 · work 행 · �
   expect(sidebar.x, "사이드바가 창 끝에 붙는다").toBe(0);
 
   const 자리: [string, Promise<number>][] = [
-    ["main nav 아이콘", 아이콘(navButton(page, "Projects")).then((box) => box.x)],
+    // nav의 첫 항목은 「새 Thread」다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
+    ["nav 아이콘", 아이콘(page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true })).then((box) => box.x)],
     ["알림 띠 머리 글자", 첫글자(띠(page)).then((box) => box.x)],
     ["알림 띠 줄의 점 레인", 상자(띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림` }).locator("span").first()).then((box) => box.x)],
     ["구획 소제목 글자", 첫글자(page.locator("aside [data-section]").first()).then((box) => box.x)],
-    ["work 행의 레인", 상자(레인(page, pinnedWork.slug)).then((box) => box.x)],
-    ["바닥 Settings 아이콘", 아이콘(page.locator("aside").getByRole("button", { name: "Settings", exact: true })).then((box) => box.x)],
+    // 레인(상태 아이콘 · 셸 신호)이 행 맨 앞이다 — Codex 사이드바의 폴더 아이콘 칸(16)이다(v1 티켓 46). 한때 그 앞에 ▸의 제 칸이 섰다.
+    ["work 행의 레인", 상자(workRow(page, pinnedWork.slug).locator("[data-lane]")).then((box) => box.x)],
+    // 바닥은 사람 줄이다(옛 Settings 줄의 자리) — 얼굴 글자 원이 행 글자 자리에 선다.
+    ["바닥 사람 줄의 얼굴", 상자(사람줄(page).locator("span").first()).then((box) => box.x)],
   ];
   for (const [이름, x] of 자리) expect((await x) - sidebar.x, `${이름} — 창 끝 + 16`).toBe(행글자);
+  // ▸는 레인 가운데에 겹쳐 선다 — 가리키면 레인이 비키고 그 자리에 ▸가 선다(v1 티켓 46). 쉴 때는 투명해도 자리는 그대로다.
+  const [레인, 펼침] = [
+    await 상자(workRow(page, pinnedWork.slug).locator("[data-lane]")),
+    await 아이콘(workRow(page, pinnedWork.slug).locator("[data-expander]")),
+  ];
+  expect(펼침.x + 펼침.width / 2, "▸ 가운데 = 레인 가운데").toBeCloseTo(레인.x + 레인.width / 2, 1);
 
-  // 오른쪽도 행 안쪽 8이다(DS `.at-row` · `.at-band-head`의 좌우 8) — 구획 머리 · 띠 머리의 수가 그 상자 끝에서 8에 선다.
-  const 구획머리 = page.locator("aside [data-section]").first();
+  // 오른쪽도 행 안쪽 8이다(DS `.at-row` · `.at-band-head`의 좌우 8) — 띠 머리의 수 · work 행의 이은 Thread 수가 그 상자 끝에서 8에
+  // 선다. 구획 머리의 수는 눈에서 걷혔다(v1 티켓 46 — 이름에만 남는다).
   const 띠머리 = 띠(page).locator("[data-band-count]");
-  expect((await 상자(구획머리)).right - (await 첫글자(구획머리.locator("span").last())).right, "구획 수 — 머리 끝에서 8").toBeCloseTo(틈, 0);
+  const 고정행 = workRow(page, pinnedWork.slug);
   expect((await 상자(띠(page))).right - (await 첫글자(띠머리)).right, "띠 수 — 띠 끝에서 8").toBeCloseTo(틈, 0);
+  expect(
+    (await 상자(고정행)).right - (await 첫글자(고정행.locator("[data-thread-count]"))).right,
+    "Thread 수 — 행 끝에서 8",
+  ).toBeCloseTo(틈, 0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소제목 글자는 앞 것 끝에서 14 · 그 구획 첫 행까지 8이다", async ({ page }) => {
-  // DS 사이드바의 세로 — 기둥(`.at-sidebar`)과 목록(`.at-side-list`)의 줄 사이 2, 띠(`.at-band`)의 위 바깥 6 · 아래 바깥 0, 소제목
-  // (`.at-label`)의 안쪽 위 12 · 아래 6이다. 그래서 띠는 nav 끝 + 8에 서고, 소제목 글자 줄은 앞 것(nav · 띠 · 앞 구획의 행) 끝 + 14에서
-  // 시작해 그 끝에서 첫 행까지 8이다. 소제목 글자 줄은 그 라벨 상자다(flex 칸이라 줄 높이 그대로 — `chat-meta` 18).
+test("사이드바: 알림 띠는 nav 끝에서 8 아래에 서고, 구획 소제목은 nav 끝 줄에서 42 · 첫 행까지 34 · 앞 구획의 끝 행에서 54다(가운데끼리)", async ({
+  page,
+}) => {
+  // 사이드바의 세로는 Codex 대화 사이드바를 잰 값이다(v1 티켓 46 · 시안-비교/46/차이.md — 줄 30 · 줄 사이 1). 소제목(구획 머리 30
+  // 가운데의 라벨)은 nav 끝 줄 가운데에서 42 아래에 서고, 그 가운데에서 첫 행 가운데까지 34, 앞 구획의 끝 행 가운데에서 다음 소제목
+  // 가운데까지 54다. 띠(`.at-band`)의 위 바깥 8은 DS 값 그대로라 띠가 서면 nav 끝 + 8에 서고, 소제목은 nav 끝 줄 대신 띠 끝에서 27
+  // (42 − 줄 절반 15) 아래다. 가운데끼리 재는 것은 Codex 그림을 그렇게 쟀기 때문이다 — 글자 줄 높이가 갈려도 눈에 보이는 사이가 같다.
+  // 한때 DS 기둥의 값(소제목 글자 줄이 앞 것 끝 + 14 · 첫 행까지 8)이었다.
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   const nav = page.locator("aside nav").first();
   const [고정머리, 작업머리] = [page.locator('aside [data-drop-head="pinned"]'), page.locator('aside [data-drop-head="works"]')];
-  const 소제목 = (head: Locator) => 상자(head.locator("span").first());
+  const 가운데 = async (target: Locator) => {
+    const box = await 상자(target);
+    return box.y + box.height / 2;
+  };
+  const 소제목 = (head: Locator) => 가운데(head.locator("span").first());
+  const nav끝줄 = nav.getByRole("button", { name: "Library", exact: true });
   const 고정행 = workRow(page, pinnedWork.slug);
   await expect(작업머리).toBeVisible();
   // 앵커: 고정 구획이 서 있다 — 그 머리가 목록의 첫 머리이고 그 아래 첫 행이 고정 work이다.
   await expect(고정머리).toBeVisible();
 
-  // 띠가 없으면 소제목은 nav 바로 다음이다.
-  expect((await 소제목(고정머리)).y - (await 상자(nav)).bottom, "고정 소제목 글자 — nav 끝 + 14").toBe(14);
+  // 띠가 없으면 소제목은 nav 바로 다음이다. nav의 끝 줄은 「Library」다(v1 티켓 19).
+  expect((await 소제목(고정머리)) - (await 가운데(nav끝줄)), "고정 소제목 — nav 끝 줄에서 42").toBe(42);
 
   await markAttention(page, { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "커밋할까요?" } });
   await expect(띠(page)).toHaveCount(1);
   const band = await 상자(띠(page));
   expect(band.y - (await 상자(nav)).bottom, "띠 — nav 끝 + 8").toBe(8);
-  expect((await 소제목(고정머리)).y - band.bottom, "고정 소제목 글자 — 띠 끝 + 14").toBe(14);
-  expect((await 상자(고정행)).y - (await 소제목(고정머리)).bottom, "고정 소제목 글자 끝 → 첫 행 8").toBe(8);
-  expect((await 소제목(작업머리)).y - (await 상자(고정행)).bottom, "작업 소제목 글자 — 앞 구획의 행 끝 + 14").toBe(14);
+  expect((await 소제목(고정머리)) - band.bottom, "고정 소제목 — 띠 끝에서 27").toBe(27);
+  expect((await 가운데(고정행)) - (await 소제목(고정머리)), "고정 소제목 → 첫 행 34").toBe(34);
+  expect((await 소제목(작업머리)) - (await 가운데(고정행)), "작업 소제목 — 앞 구획의 끝 행에서 54").toBe(54);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

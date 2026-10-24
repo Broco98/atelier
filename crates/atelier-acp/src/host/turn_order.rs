@@ -8,7 +8,7 @@
 //! 「턴이 돈다」([`TurnOrder::turning`])와 「대기 줄이 왜 가지 않나」([`Seat::hold`])는 여기 하나에서만 정한다.
 //!
 //! **불변식**
-//! 1. 놓는 동사(`say` · `send_now` · `answer` · `resume` · `turn_ended` · `self_ended`)가 `Ok`로 돌아오면 대기 줄이 남았을
+//! 1. 놓는 동사(`say` · `send_now` · `answer` · `rule` · `resume` · `turn_ended` · `self_ended`)가 `Ok`로 돌아오면 대기 줄이 남았을
 //!    때 늘 걸림이 있다. 예외는 둘이다 — 그 안에서 맨 앞을 보내지 못했을 때(`sent`를 못 적었거나 `prompt`가 실패)와,
 //!    턴 끝에 사라진 work의 대화를 끄러 보냈을 때. 한 동사가 보내는 말은 많아야 하나다.
 //! 2. 놓지 않는 동사(`opened` · `died` · `edit` · `delete` · `stop` · `self_started`)는 대기 줄을 보내지 않는다. 「다시 뜬
@@ -20,17 +20,21 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
+use atelier_core::Attachment;
 use serde_json::{json, Value};
 
+use super::thread::Assignment;
 use super::{HostError, QueuedMessage};
+use crate::attachments;
 use crate::discovery::Agent;
 use crate::login;
 use crate::quote::{Attached, Quote};
 use crate::records::{RecordError, TurnEndLine};
-use crate::runtime::{AnswerError, TurnEnd};
+use crate::runtime::{Answer, AnswerError, Ruling, TurnEnd};
 
-/// 대화 하나의 턴 차례 — 살아 있나 · 도는 턴 · 대기 줄 · 다음 말에 머리말을 붙이나. `S`는 spec 폴더를 찍은 것이다(운영에서는
-/// [`crate::spec_changes::Snapshot`]).
+/// 대화 하나의 턴 차례 — 살아 있나 · 도는 턴 · 대기 줄 · 다음 말에 머리말을 붙이나. `S`는 턴을 쏠 때 찍어 두었다가 턴이
+/// 끝나면 [`Hands::changes`]에 넘기는 것이다 — three-axes에서는 spec 폴더의 찍음이었고, Thread는 아무것도 찍지 않는다(`()`,
+/// v1 티켓 08).
 pub(super) struct TurnOrder<S> {
     phase: Phase<S>,
     /// 대기 줄(S13) — 턴이 도는 동안 받은 말. 메모리에만 둔다: 앱을 다시 켜면 비어 있다(재시작 뒤 저절로 보내는 놀람을
@@ -60,6 +64,9 @@ struct OurTurn<S> {
     started: Instant,
     /// 보내기 직전에 찍은 spec 폴더 — 턴 끝에 지금과 견준다(three-axes 결정 22).
     before: S,
+    /// 다른 Agent가 맡긴 일을 받은 턴이면 그 일(v1 티켓 16) — 턴이 끝나면 그 턴 끝 줄을 돌려준다. 턴 끝 없이 놓이면(죽음 · 다시
+    /// 열림) 기다리는 쪽이 풀린다.
+    call: Option<Assignment>,
 }
 
 /// 에이전트가 스스로 이어 간 턴 하나(S4).
@@ -73,19 +80,27 @@ struct SelfTurn<S> {
 }
 
 /// 대기 줄에 든 말과, 보낼 때 그것이 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 그리고 붙었으면 인용과 그 인용
-/// 블록(three-axes 티켓 27). 머리말과 인용 블록은 넣을 때 work를 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는 work를 읽지 않는다.
+/// 블록(three-axes 티켓 27) · 첨부(v1 티켓 06). 머리말과 인용 블록은 넣을 때 work를 읽어 지어 둔다 — 턴 끝(수신 루프 안)에서는
+/// work를 읽지 않는다. 첨부도 넣을 때 잰 그대로 간다.
 struct Queued {
     message: QueuedMessage,
     preamble: Value,
     quote: Option<Attached>,
+    attachments: Vec<Attachment>,
+    call: Option<Assignment>,
 }
 
-/// 보낼 말 — 사람의 글, 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 붙었으면 인용(S12). 대기 줄에 들면 그대로 들고
-/// 간다.
+/// 보낼 말 — 사람의 글, 에이전트 쪽 세션의 첫 말이면 앞에 붙일 머리말(S11), 붙었으면 인용(S12) · 첨부(v1 구현 스펙 S30).
+/// 대기 줄에 들면 그대로 들고 간다.
+///
+/// `call`이 있으면 사람의 말이 아니라 다른 Agent가 맡긴 일이다(v1 티켓 16) — 글(`text`)은 맡긴 말이고, 에이전트에게는 그 일의
+/// 본문(「<부른 쪽>이 맡긴 일」)으로 가며, 기록에는 `sent` 대신 `call` 시작 줄이 선다.
 pub(super) struct Draft {
     pub(super) text: String,
     pub(super) preamble: Value,
     pub(super) quote: Option<Attached>,
+    pub(super) attachments: Vec<Attachment>,
+    pub(super) call: Option<Assignment>,
 }
 
 /// 대기 줄이 왜 가지 않나 — 먼저 걸린 것 하나다. 이 차례로 보고, 앞에서 걸리면 뒤는 읽지 않는다.
@@ -125,14 +140,14 @@ pub(super) enum Refused {
 }
 
 impl Refused {
-    /// 화면의 오류로 — 대화 id를 싣는 것은 싣는다.
-    pub(super) fn into_host(self, conversation: &str) -> HostError {
-        let conversation = conversation.to_owned();
+    /// 화면의 오류로 — Thread id를 싣는 것은 싣는다.
+    pub(super) fn into_host(self, thread: &str) -> HostError {
+        let thread = thread.to_owned();
         match self {
             Refused::NotQueued(queued) => HostError::QueuedNotFound(queued),
-            Refused::Login(agent) => HostError::LoginRequired { agent, conversation },
-            Refused::NotRunning => HostError::NotRunning(conversation),
-            Refused::PermissionClosed { request } => HostError::PermissionClosed { conversation, request },
+            Refused::Login(agent) => HostError::LoginRequired { agent, thread },
+            Refused::NotRunning => HostError::NotRunning(thread),
+            Refused::PermissionClosed { request } => HostError::PermissionClosed { thread, request },
             Refused::PermissionOption { request, option } => HostError::PermissionOption { request, option },
             Refused::Send(reason) => HostError::Send(reason),
             Refused::Record(reason) => HostError::Record(reason),
@@ -191,6 +206,14 @@ impl<S> TurnOrder<S> {
         self.at(id).is_some()
     }
 
+    /// 도는 우리 턴이 다른 Agent가 맡긴 일을 받은 턴이면 그 일(v1 티켓 16) — 그 턴에 Agent가 또 부르면 이 일의 호출 고리가 잇는다.
+    pub(super) fn serving(&self) -> Option<&Assignment> {
+        match &self.phase {
+            Phase::Ours(turn) | Phase::Both(turn, _) => turn.call.as_ref(),
+            _ => None,
+        }
+    }
+
     fn at(&self, id: &str) -> Option<usize> {
         self.queue.iter().position(|queued| queued.message.id == id)
     }
@@ -203,7 +226,7 @@ impl<S> TurnOrder<S> {
 
 /// 손을 붙인 턴 차례. 그 대화의 `state` 잠금 한 구간 동안만 빌린다. 동사는 `self`를 먹는다 — 한 잠금에 동사 하나다.
 ///
-/// 놓는 동사(`say` · `send_now` · `answer` · `resume` · `turn_ended` · `self_ended`)는 걸림이 없으면 대기 줄의 맨 앞을
+/// 놓는 동사(`say` · `send_now` · `answer` · `rule` · `resume` · `turn_ended` · `self_ended`)는 걸림이 없으면 대기 줄의 맨 앞을
 /// 보낸다. 놓지 않는 동사(`edit` · `delete` · `stop` · `self_started`)는 보내지 않는다.
 pub(super) struct Seat<'a, H: TurnHands> {
     order: &'a mut TurnOrder<H::Shot>,
@@ -243,12 +266,12 @@ impl<H: TurnHands> Seat<'_, H> {
         if !self.order.alive() || !self.hands.plugged() {
             return Err(Refused::NotRunning);
         }
-        let Draft { text, preamble, quote } = draft;
+        let Draft { text, preamble, quote, attachments, call } = draft;
         if self.hold().is_none() && self.order.queue.is_empty() {
-            return self.open(&text, quote.as_ref(), preamble, false, before);
+            return self.open(&text, quote.as_ref(), &attachments, preamble, false, before, call);
         }
         let message = QueuedMessage { id: uuid::Uuid::new_v4().to_string(), text, send_now: false };
-        self.order.queue.push_back(Queued { message, preamble, quote });
+        self.order.queue.push_back(Queued { message, preamble, quote, attachments, call });
         if self.hold().is_none() {
             self.release(Some(before));
         } else {
@@ -285,13 +308,28 @@ impl<H: TurnHands> Seat<'_, H> {
         self.stop()
     }
 
-    /// 권한 답 — 걸린 요청에 고른 선택지로 답한다. 답이 가면 걸림이 풀린 자리라 맨 앞을 보낸다(S13) — 턴 앞은 새로 찍는다.
+    /// 권한 답 — 걸린 요청에 사람의 답(고른 선택지 · 남긴 말 · 준 허락)으로 답한다. 답이 가면 걸림이 풀린 자리라 맨 앞을 보낸다(S13)
+    /// — 턴 앞은 새로 찍는다.
     /// 턴 도중의 답이면 우리 턴이 걸림이라 턴 끝이 보낸다.
     ///
     /// 거절: 걸려 있지 않은 요청(손잡이가 없음 포함) [`Refused::PermissionClosed`], 준 선택지에 없는 optionId
     /// [`Refused::PermissionOption`], 보내지 못함 [`Refused::Send`]. 거절이면 대기 줄을 보내지 않는다.
-    pub(super) fn answer(mut self, request: &str, option: &str) -> Result<(), Refused> {
-        self.hands.answer(request, option).map_err(|error| match error {
+    pub(super) fn answer(mut self, request: &str, answer: &Answer) -> Result<(), Refused> {
+        let answered = self.hands.answer(request, answer);
+        self.answered(answered, request, &answer.option_id)
+    }
+
+    /// 엔진의 답 — 걸린 요청에 사람이 아니라 엔진이 까닭과 함께 답한다(v1 티켓 18: 사람의 허락이 쓰기 자리에 막혀 거부로 바뀐다).
+    /// 그 밖은 [`Seat::answer`]와 같다.
+    pub(super) fn rule(mut self, request: &str, ruling: Ruling) -> Result<(), Refused> {
+        let option = ruling.option_id.clone();
+        let answered = self.hands.rule(request, ruling);
+        self.answered(answered, request, &option)
+    }
+
+    /// 답이 갔으면 걸림이 풀린 자리라 맨 앞을 보낸다. 가지 못했으면 그 까닭이다 — 대기 줄을 보내지 않는다.
+    fn answered(mut self, answered: Result<(), AnswerError>, request: &str, option: &str) -> Result<(), Refused> {
+        answered.map_err(|error| match error {
             AnswerError::Closed => Refused::PermissionClosed { request: request.to_owned() },
             AnswerError::UnknownOption => Refused::PermissionOption { request: request.to_owned(), option: option.to_owned() },
             AnswerError::Send(reason) => Refused::Send(reason),
@@ -313,12 +351,23 @@ impl<H: TurnHands> Seat<'_, H> {
         Ok(())
     }
 
-    /// 대기 지우기 — 그 말을 빼고 대기 줄 바뀜을 낸다.
+    /// 대기 지우기 — 그 말을 빼고 대기 줄 바뀜을 낸다. 다른 Agent가 맡긴 일이면 그 일이 놓여 부른 쪽의 기다림이 풀린다.
     pub(super) fn delete(mut self, id: &str) -> Result<(), Refused> {
         let at = self.order.at(id).ok_or_else(|| Refused::NotQueued(id.to_owned()))?;
         self.order.queue.remove(at);
         self.announce();
         Ok(())
+    }
+
+    /// 맡긴 일 거두기(v1 티켓 16) — 대기 줄에서 다른 Agent가 맡긴 일을 모두 뺀다. 사람이 Thread를 멈추면 그 호출 고리들이 멈추므로,
+    /// 뒤에 그 일이 가도 결과를 받을 쪽이 없다. 놓인 일마다 부른 쪽의 기다림이 풀린다. 뺀 것이 있을 때만 대기 줄 바뀜을 낸다. 사람의
+    /// 말은 그대로 둔다.
+    pub(super) fn withdraw_calls(mut self) {
+        let before = self.order.queue.len();
+        self.order.queue.retain(|queued| queued.call.is_none());
+        if self.order.queue.len() != before {
+            self.announce();
+        }
     }
 
     /// 멈추기 — 도는 턴(우리 턴이든 스스로 이어 간 턴이든)에 멈춤 하나를 보낸다. 기다리지 않는다. 도는 턴이 없거나 손잡이가
@@ -357,18 +406,24 @@ impl<H: TurnHands> Seat<'_, H> {
                 None
             }
         };
-        let (started, before) = ours.map_or((None, None), |turn| (Some(turn.started), Some(turn.before)));
+        let (started, before, call) =
+            ours.map_or((None, None, None), |turn| (Some(turn.started), Some(turn.before), turn.call));
         let (response, error) = match end.result {
             Ok(response) => (Some(response), None),
             Err(error) => (None, Some(error)),
         };
         let line = finish(started, response, error, end.cancelled_by_us, false);
+        let answer = call.map(|call| (call, line.clone()));
         let closed = self.close(before, line).and_then(|now| {
             if lost_login {
                 self.hands.login_lost()?;
             }
             Ok(now)
         });
+        // 맡긴 일을 받은 턴이면 그 끝을 돌려준다 — 턴 끝 줄을 적은 뒤라 부른 쪽이 기록에서 그 턴의 마지막 메시지를 읽는다.
+        if let Some((call, line)) = answer {
+            call.ended(line);
+        }
         self.after_turn(closed)
     }
 
@@ -460,9 +515,9 @@ impl<H: TurnHands> Seat<'_, H> {
         if self.hold().is_some() {
             return;
         }
-        let Some(Queued { message, preamble, quote }) = self.order.queue.pop_front() else { return };
+        let Some(Queued { message, preamble, quote, attachments, call }) = self.order.queue.pop_front() else { return };
         let before = before.unwrap_or_else(|| self.hands.shoot());
-        let sent = self.open(&message.text, quote.as_ref(), preamble, message.send_now, before);
+        let sent = self.open(&message.text, quote.as_ref(), &attachments, preamble, message.send_now, before, call);
         self.announce();
         if let Err(Refused::Record(reason) | Refused::Send(reason)) = sent {
             eprintln!("{reason}");
@@ -470,38 +525,59 @@ impl<H: TurnHands> Seat<'_, H> {
     }
 
     /// 턴을 연다 — `sent`를 먼저 적고(보낸 뒤에 적으면 첫 update가 그보다 앞에 설 수 있다), 턴을 열고, 에이전트에 보낸다.
-    /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 인용이 붙은 말이면 사람의 글 바로 앞에 인용 블록을 둔다(S12).
-    /// 걸림이 없을 때만 부른다.
+    /// 에이전트 쪽 세션의 첫 말이면 머리말을 앞에 붙이고(S11), 그 뒤에 지난 말(Thread의 Session, v1 구현 스펙 S10)을, 인용이
+    /// 붙은 말이면 인용 블록을(S12), 첨부가 붙은 말이면 첨부 경로 목록을(v1 구현 스펙 S30) 사람의 글 바로 앞에 둔다. 걸림이 없을
+    /// 때만 부른다.
     ///
     /// `sent`를 적지 못하면 아무것도 바꾸지 않는다(대기 줄에서 꺼낸 말이면 그 말을 잃는다). 보내지 못하면 턴을 연 채로 두지
     /// 않는다 — 화면이 「일하는 중」에 갇히지 않게 턴 끝 줄(오류)까지 적는다. 머리말은 붙인 것으로 남고, 그 끝은 대기 줄을 보내지
     /// 않는다: 연결이 끊긴 것이라 다음 말도 가지 못한다.
+    ///
+    /// 다른 Agent가 맡긴 일(`call`, v1 티켓 16)이면 글 대신 그 일의 본문이 가고 `sent` 대신 `call` 시작 줄을 적는다. 그 턴의 끝(보내지
+    /// 못한 끝도)은 맡긴 일에 돌려준다.
     fn open(
         &mut self,
         text: &str,
         quote: Option<&Attached>,
+        attachments: &[Attachment],
         preamble: Value,
         send_now: bool,
         before: H::Shot,
+        call: Option<Assignment>,
     ) -> Result<(), Refused> {
         let mut prompt = Vec::new();
         if self.order.needs_preamble {
             prompt.push(preamble);
         }
+        prompt.extend(self.hands.past());
         if let Some(attached) = quote {
             prompt.push(attached.block.clone());
         }
-        prompt.push(json!({"type": "text", "text": text}));
-        self.hands.sent(text, quote.map(|attached| &attached.quote), &prompt, send_now).map_err(Refused::Record)?;
+        prompt.extend(attachments::block(attachments));
+        for block in &mut prompt {
+            set_apart(block);
+        }
+        let body = call.as_ref().map_or_else(|| text.to_owned(), |call| call.body(text));
+        prompt.push(json!({"type": "text", "text": body}));
+        match &call {
+            Some(call) => self.hands.called(call, text, &prompt),
+            None => self.hands.sent(text, quote.map(|attached| &attached.quote), attachments, &prompt, send_now),
+        }
+        .map_err(Refused::Record)?;
         let started = Instant::now();
         self.order.needs_preamble = false;
         if let Err(reason) = self.hands.prompt(prompt) {
             self.order.phase = Phase::Idle { after_last: None };
             let line = finish(Some(started), None, Some(json!({"message": reason})), false, false);
-            self.close(Some(before), line).map_err(Refused::Record)?;
+            let answer = call.map(|call| (call, line.clone()));
+            let closed = self.close(Some(before), line);
+            if let Some((call, line)) = answer {
+                call.ended(line);
+            }
+            closed.map_err(Refused::Record)?;
             return Err(Refused::Send(reason));
         }
-        self.order.phase = Phase::Ours(OurTurn { started, before });
+        self.order.phase = Phase::Ours(OurTurn { started, before, call });
         Ok(())
     }
 
@@ -509,6 +585,14 @@ impl<H: TurnHands> Seat<'_, H> {
     fn announce(&mut self) {
         let queue = self.order.queue();
         self.hands.queue_changed(queue);
+    }
+}
+
+/// 본문 앞 블록(머리말 · 지난 말 · 인용 · 첨부)이 줄바꿈으로 끝나지 않으면 빈 줄을 붙인다. claude는 한 말의 글 블록을 사이 없이
+/// 이어 읽는다(v1 티켓 09 실측 — 첨부 블록의 마지막 경로 뒤에 본문이 붙어, 모델이 본문을 경로의 끝으로 읽었다).
+fn set_apart(block: &mut Value) {
+    if let Some(text) = block["text"].as_str().filter(|text| !text.ends_with('\n')) {
+        block["text"] = json!(format!("{text}\n\n"));
     }
 }
 
@@ -548,13 +632,24 @@ pub(super) trait TurnHands {
     fn vanished(&self) -> bool;
     /// spec 폴더를 찍는다 — 폴더를 걷는다(느리다).
     fn shoot(&mut self) -> Self::Shot;
+    /// 보낼 말에 붙일 지난 말 블록(v1 구현 스펙 S10) — 보내는 그때 기록에서 짓는다(기록을 읽는다). 넘길 말이 없으면 없다.
+    fn past(&mut self) -> Option<Value>;
 
     /// 고친 곳 — 견주어 바뀐 것이 있을 때만 줄을 적는다. 기록은 부르는 차례가 곧 seq 차례다 — 아래 넷도 같다.
     fn changes(&mut self, before: &Self::Shot, now: &Self::Shot) -> Result<(), RecordError>;
     /// 턴 끝 줄.
     fn turn_end(&mut self, line: TurnEndLine) -> Result<(), RecordError>;
     /// 보낸 말 — `prompt`는 에이전트에게 실제로 갈 블록 그대로다.
-    fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError>;
+    fn sent(
+        &mut self,
+        text: &str,
+        quote: Option<&Quote>,
+        attachments: &[Attachment],
+        prompt: &[Value],
+        send_now: bool,
+    ) -> Result<(), RecordError>;
+    /// 맡긴 일(v1 티켓 16) — 사람의 말이 아니라 `call` 시작 줄이다. `text`는 맡긴 말, `prompt`는 에이전트에게 실제로 갈 블록 그대로다.
+    fn called(&mut self, call: &Assignment, text: &str, prompt: &[Value]) -> Result<(), RecordError>;
     /// 로그인 필요 줄을 적고, 적었을 때만 로그인 창구에 그 대화를 쥐게 한다(three-axes 티켓 12).
     fn login_lost(&mut self) -> Result<(), RecordError>;
     /// 대기 줄 바뀜 — 대기 줄 전체를 싣는다.
@@ -564,8 +659,10 @@ pub(super) trait TurnHands {
     fn prompt(&mut self, blocks: Vec<Value>) -> Result<(), String>;
     /// 도는 턴을 멈춘다. 기다리지 않는다.
     fn cancel(&mut self) -> Result<(), String>;
-    /// 걸린 권한 요청에 답한다. 손잡이가 없으면 닫힌 요청이다.
-    fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError>;
+    /// 걸린 권한 요청에 사람의 답으로 답한다. 손잡이가 없으면 닫힌 요청이다.
+    fn answer(&mut self, request: &str, answer: &Answer) -> Result<(), AnswerError>;
+    /// 걸린 권한 요청에 엔진이 까닭과 함께 답한다(v1 티켓 18). 손잡이가 없으면 닫힌 요청이다.
+    fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError>;
     /// work가 사라졌으면 그 대화를 끄러 보내고 true(S10). 지켜볼 것이 없으면 false다.
     fn retire_if_vanished(&mut self) -> bool;
 }
@@ -588,14 +685,27 @@ impl<H: TurnHands + ?Sized> TurnHands for &mut H {
     fn shoot(&mut self) -> Self::Shot {
         (**self).shoot()
     }
+    fn past(&mut self) -> Option<Value> {
+        (**self).past()
+    }
     fn changes(&mut self, before: &Self::Shot, now: &Self::Shot) -> Result<(), RecordError> {
         (**self).changes(before, now)
     }
     fn turn_end(&mut self, line: TurnEndLine) -> Result<(), RecordError> {
         (**self).turn_end(line)
     }
-    fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
-        (**self).sent(text, quote, prompt, send_now)
+    fn sent(
+        &mut self,
+        text: &str,
+        quote: Option<&Quote>,
+        attachments: &[Attachment],
+        prompt: &[Value],
+        send_now: bool,
+    ) -> Result<(), RecordError> {
+        (**self).sent(text, quote, attachments, prompt, send_now)
+    }
+    fn called(&mut self, call: &Assignment, text: &str, prompt: &[Value]) -> Result<(), RecordError> {
+        (**self).called(call, text, prompt)
     }
     fn login_lost(&mut self) -> Result<(), RecordError> {
         (**self).login_lost()
@@ -609,8 +719,11 @@ impl<H: TurnHands + ?Sized> TurnHands for &mut H {
     fn cancel(&mut self) -> Result<(), String> {
         (**self).cancel()
     }
-    fn answer(&mut self, request: &str, option: &str) -> Result<(), AnswerError> {
-        (**self).answer(request, option)
+    fn answer(&mut self, request: &str, answer: &Answer) -> Result<(), AnswerError> {
+        (**self).answer(request, answer)
+    }
+    fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
+        (**self).rule(request, ruling)
     }
     fn retire_if_vanished(&mut self) -> bool {
         (**self).retire_if_vanished()
@@ -631,6 +744,8 @@ mod tests {
         TurnEnd { out_of_turn: bool, by_us: bool, error: bool, zero: bool },
         /// `preamble` · `quote`는 그 블록이 실렸나다.
         Sent { text: String, send_now: bool, preamble: bool, quote: bool },
+        /// 맡긴 일의 `call` 시작 줄 — 맡긴 말(v1 티켓 16).
+        Called(String),
         Prompt,
         Cancel,
         Answer,
@@ -648,8 +763,9 @@ mod tests {
         LoginLost,
     }
 
-    const PREAMBLE: &str = "머리말";
-    const QUOTE_BLOCK: &str = "인용 블록";
+    // 진짜 머리말 · 인용 블록처럼 줄바꿈으로 끝난다 — 그런 블록은 그대로 간다.
+    const PREAMBLE: &str = "머리말\n";
+    const QUOTE_BLOCK: &str = "인용 블록\n";
 
     /// 시험의 adapter — 찍은 것은 찍은 차례의 수다(1부터). 스위치로 밖의 상태와 실패를 정하고, 한 일을 `log`에 남긴다.
     struct FakeHands {
@@ -663,6 +779,8 @@ mod tests {
         answer: Result<(), AnswerError>,
         fails: Option<Line>,
         shots: u32,
+        /// 보낼 때 짓는 지난 말 블록의 글.
+        past: Option<&'static str>,
         prompts: Vec<Vec<Value>>,
         log: Vec<Did>,
     }
@@ -680,6 +798,7 @@ mod tests {
                 answer: Ok(()),
                 fails: None,
                 shots: 0,
+                past: None,
                 prompts: Vec::new(),
                 log: Vec::new(),
             }
@@ -715,6 +834,9 @@ mod tests {
             self.shots += 1;
             self.shots
         }
+        fn past(&mut self) -> Option<Value> {
+            self.past.map(|text| json!({"type": "text", "text": text}))
+        }
         fn changes(&mut self, before: &u32, now: &u32) -> Result<(), RecordError> {
             self.write(Line::Changes, Did::Changes(*before, *now))
         }
@@ -727,7 +849,14 @@ mod tests {
             };
             self.write(Line::TurnEnd, did)
         }
-        fn sent(&mut self, text: &str, quote: Option<&Quote>, prompt: &[Value], send_now: bool) -> Result<(), RecordError> {
+        fn sent(
+            &mut self,
+            text: &str,
+            quote: Option<&Quote>,
+            _: &[Attachment],
+            prompt: &[Value],
+            send_now: bool,
+        ) -> Result<(), RecordError> {
             let carries = |block: &str| prompt.iter().any(|sent| sent["text"] == block);
             let did = Did::Sent {
                 text: text.to_owned(),
@@ -736,6 +865,9 @@ mod tests {
                 quote: quote.is_some() && carries(QUOTE_BLOCK),
             };
             self.write(Line::Sent, did)
+        }
+        fn called(&mut self, _: &Assignment, text: &str, _: &[Value]) -> Result<(), RecordError> {
+            self.write(Line::Sent, Did::Called(text.to_owned()))
         }
         fn login_lost(&mut self) -> Result<(), RecordError> {
             self.write(Line::LoginLost, Did::LoginLost)?;
@@ -760,7 +892,7 @@ mod tests {
             self.log.push(Did::Cancel);
             Ok(())
         }
-        fn answer(&mut self, _request: &str, _option: &str) -> Result<(), AnswerError> {
+        fn answer(&mut self, _request: &str, _answer: &Answer) -> Result<(), AnswerError> {
             if !self.plugged {
                 return Err(AnswerError::Closed);
             }
@@ -768,6 +900,9 @@ mod tests {
             self.log.push(Did::Answer);
             self.permission = false;
             Ok(())
+        }
+        fn rule(&mut self, request: &str, ruling: Ruling) -> Result<(), AnswerError> {
+            self.answer(request, &Answer::pick(&ruling.option_id))
         }
         fn retire_if_vanished(&mut self) -> bool {
             self.retire
@@ -782,7 +917,13 @@ mod tests {
     }
 
     fn draft(text: &str) -> Draft {
-        Draft { text: text.to_owned(), preamble: json!({"type": "text", "text": PREAMBLE}), quote: None }
+        Draft {
+            text: text.to_owned(),
+            preamble: json!({"type": "text", "text": PREAMBLE}),
+            quote: None,
+            attachments: Vec::new(),
+            call: None,
+        }
     }
 
     fn ended(stop_reason: &str) -> TurnEnd {
@@ -967,7 +1108,7 @@ mod tests {
                 refused(seat.say(draft("새 말"), rig.said))
             }
             Event::SendNow => refused(seat.send_now(&id)),
-            Event::Answer => refused(seat.answer("0", "allow_once")),
+            Event::Answer => refused(seat.answer("0", &Answer::pick("allow_once"))),
             Event::Resume => {
                 seat.resume();
                 Ok(())
@@ -1217,6 +1358,25 @@ mod tests {
     }
 
     #[test]
+    fn 지난_말은_머리말_뒤에_서고_대기_줄의_말은_넣을_때가_아니라_보내는_그때의_지난_말을_든다() {
+        // 지난 말처럼 줄바꿈으로 끝나지 않은 블록은 빈 줄을 붙여 본문과 가른다 — claude는 이웃한 글 블록을 사이 없이 이어 읽는다
+        // (v1 티켓 09 실측).
+        let mut rig = Rig::new();
+        rig.hands.past = Some("지난 말 하나");
+        rig.say("첫 말").unwrap();
+        rig.say("대기").unwrap();
+        // 대기 줄에 든 사이 다른 참여자가 말했다(v1 구현 스펙 S10).
+        rig.hands.past = Some("지난 말 둘");
+        rig.seat().turn_ended(ended("end_turn")).unwrap();
+
+        let text = |text: &str| json!({"type": "text", "text": text});
+        assert_eq!(
+            rig.hands.prompts,
+            [vec![text(PREAMBLE), text("지난 말 하나\n\n"), text("첫 말")], vec![text("지난 말 둘\n\n"), text("대기")]]
+        );
+    }
+
+    #[test]
     fn 시작을_못_본_끝은_걸린_시간이_0이고_시작한_턴은_그때부터_잰다() {
         let mut rig = Rig::new();
         rig.say("첫 말").unwrap();
@@ -1323,7 +1483,7 @@ mod tests {
         assert_eq!(rig.hold(), Some(Hold::Permission));
 
         let mark = rig.mark();
-        rig.seat().answer("0", "allow_once").unwrap();
+        rig.seat().answer("0", &Answer::pick("allow_once")).unwrap();
         assert_eq!(
             rig.since(mark),
             [
@@ -1370,7 +1530,7 @@ mod tests {
         assert_eq!(rig.since(mark), [queue(&["나", "가"])], "멈출 턴이 없다");
 
         let mark = rig.mark();
-        rig.seat().answer("0", "allow_once").unwrap();
+        rig.seat().answer("0", &Answer::pick("allow_once")).unwrap();
         assert_eq!(
             rig.since(mark),
             [
@@ -1391,7 +1551,7 @@ mod tests {
         assert_eq!(rig.since(2), [queue(&["둘째 말"])], "걸린 동안의 말은 대기 줄에 든다");
 
         let mark = rig.mark();
-        rig.seat().answer("0", "allow_once").unwrap();
+        rig.seat().answer("0", &Answer::pick("allow_once")).unwrap();
         assert_eq!(rig.since(mark), [Did::Answer], "답해도 우리 턴이 돈다");
 
         let mark = rig.mark();
@@ -1586,7 +1746,7 @@ mod tests {
             rig.hands.answer = Err(error);
             let mark = rig.mark();
 
-            let refused = rig.seat().answer("0", "allow_once").unwrap_err();
+            let refused = rig.seat().answer("0", &Answer::pick("allow_once")).unwrap_err();
 
             assert_eq!(refused_name(&refused), name);
             assert_eq!(rig.since(mark), []);
@@ -1595,19 +1755,19 @@ mod tests {
     }
 
     #[test]
-    fn 거절은_대화_id를_실어_화면의_오류로_옮겨진다() {
-        let conversation = "c1".to_owned();
+    fn 거절은_thread_id를_실어_화면의_오류로_옮겨진다() {
+        let thread = "20261023-100000".to_owned();
         let request = "0".to_owned();
         let cases = [
             (Refused::NotQueued("q1".into()), HostError::QueuedNotFound("q1".into())),
             (
                 Refused::Login(Agent::Claude),
-                HostError::LoginRequired { agent: Agent::Claude, conversation: conversation.clone() },
+                HostError::LoginRequired { agent: Agent::Claude, thread: thread.clone() },
             ),
-            (Refused::NotRunning, HostError::NotRunning(conversation.clone())),
+            (Refused::NotRunning, HostError::NotRunning(thread.clone())),
             (
                 Refused::PermissionClosed { request: request.clone() },
-                HostError::PermissionClosed { conversation: conversation.clone(), request: request.clone() },
+                HostError::PermissionClosed { thread: thread.clone(), request: request.clone() },
             ),
             (
                 Refused::PermissionOption { request: request.clone(), option: "nope".into() },
@@ -1617,7 +1777,7 @@ mod tests {
             (Refused::Record("막혔다".into()), HostError::Record("막혔다".into())),
         ];
         for (refused, host) in cases {
-            assert_eq!(refused.into_host(&conversation), host);
+            assert_eq!(refused.into_host(&thread), host);
         }
     }
 
@@ -1720,7 +1880,7 @@ mod tests {
                         let id = if queue.is_empty() { "없는 말".to_owned() } else { queue[dice.roll(queue.len())].id.clone() };
                         rig.seat().send_now(&id).map_err(|refused| format!("{refused:?}"))
                     }
-                    3 => rig.seat().answer("0", "allow_once").map_err(|refused| format!("{refused:?}")),
+                    3 => rig.seat().answer("0", &Answer::pick("allow_once")).map_err(|refused| format!("{refused:?}")),
                     4 => {
                         rig.seat().resume();
                         Ok(())
@@ -1782,5 +1942,59 @@ mod tests {
                 assert!(flags.is_empty() || flags == [0], "「지금 보내기」는 맨 앞 하나뿐이다 — {at}");
             }
         }
+    }
+
+    /// 맡긴 일(v1 티켓 16)을 실은 말 — 부른 쪽은 `host`다.
+    fn assigned(rig: &mut Rig, text: &str) -> std::sync::mpsc::Receiver<TurnEndLine> {
+        let (call, back) = Assignment::new("call-1", "host", "reviewer", vec!["host".into(), "reviewer".into()]);
+        rig.said += 1;
+        let before = rig.said;
+        rig.seat().say(Draft { call: Some(call), ..draft(text) }, before).expect("맡긴 일이 간다");
+        back
+    }
+
+    #[test]
+    fn 맡긴_일은_sent_대신_call_줄로_서고_본문으로_가며_그_턴의_끝이_맡긴_일에_돌아가고_턴_끝_없이_죽으면_놓인다() {
+        let mut rig = Rig::new();
+        let back = assigned(&mut rig, "봐 줘");
+        assert_eq!(rig.since(0)[..2], [Did::Called("봐 줘".to_owned()), Did::Prompt], "사람의 말(`sent`)이 아니다");
+        let body = rig.hands.prompts[0].last().expect("본문")["text"].as_str().expect("글").to_owned();
+        assert!(body.starts_with("@host가 맡긴 일") && body.ends_with("\n\n봐 줘"), "{body}");
+        let chain = rig.order.serving().map(|call| call.chain().to_vec());
+        assert_eq!(chain, Some(vec!["host".to_owned(), "reviewer".to_owned()]), "그 턴이 맡은 일의 호출 고리");
+        assert!(back.try_recv().is_err(), "턴이 끝나기 전에는 돌아가지 않는다");
+
+        rig.seat().turn_ended(ended("end_turn")).expect("턴 끝");
+        let line = back.try_recv().expect("턴 끝 줄이 맡긴 일에 돌아간다");
+        assert_eq!(line.stop_reason.as_deref(), Some("end_turn"));
+        assert!(rig.order.serving().is_none(), "쉬는 Session은 맡은 일이 없다");
+
+        // 사람의 말은 맡은 일이 없다 — 그 턴의 호출 고리는 그 Agent 하나다.
+        rig.say("사람의 말").expect("보낸다");
+        assert!(rig.order.serving().is_none());
+        rig.seat().turn_ended(ended("end_turn")).expect("턴 끝");
+
+        let back = assigned(&mut rig, "또 봐 줘");
+        rig.order.died();
+        assert_eq!(back.try_recv(), Err(std::sync::mpsc::TryRecvError::Disconnected), "턴 끝 없이 죽으면 기다림이 풀린다");
+    }
+
+    #[test]
+    fn 맡긴_일_거두기는_대기_줄의_맡긴_일만_빼고_놓으며_사람의_말은_남긴다() {
+        let mut rig = Rig::new();
+        rig.say("도는 말").expect("턴이 돈다");
+        rig.say("사람의 대기 말").expect("대기");
+        let back = assigned(&mut rig, "맡긴 대기 일");
+        assert_eq!(rig.texts(), ["사람의 대기 말", "맡긴 대기 일"], "맡긴 일도 대기 줄에 든다");
+        let mark = rig.mark();
+
+        rig.seat().withdraw_calls();
+        assert_eq!(rig.texts(), ["사람의 대기 말"]);
+        assert_eq!(rig.since(mark), [queue(&["사람의 대기 말"])], "대기 줄 바뀜을 낸다");
+        assert_eq!(back.try_recv(), Err(std::sync::mpsc::TryRecvError::Disconnected), "거둔 일의 기다림이 풀린다");
+
+        let mark = rig.mark();
+        rig.seat().withdraw_calls();
+        assert!(rig.since(mark).is_empty(), "뺄 것이 없으면 알리지 않는다");
     }
 }

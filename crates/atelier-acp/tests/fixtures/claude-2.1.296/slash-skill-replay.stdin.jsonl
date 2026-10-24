@@ -1,5 +1,0 @@
-{"type": "control_request", "request_id": "req_0820c4cd", "request": {"subtype": "initialize"}}
-{"type": "user", "message": {"role": "user", "content": "/probe-skill"}, "parent_tool_use_id": null, "session_id": ""}
-{"type": "user", "message": {"role": "user", "content": "/probe-cmd"}, "parent_tool_use_id": null, "session_id": ""}
-{"type": "user", "message": {"role": "user", "content": "/context"}, "parent_tool_use_id": null, "session_id": ""}
-{"type": "user", "message": {"role": "user", "content": "/cost"}, "parent_tool_use_id": null, "session_id": ""}

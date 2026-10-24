@@ -8,7 +8,16 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { ChatQuitCounts, Conversation, EngineCheck, EngineLists, RecordLine } from "@/features/chat/types";
+import type {
+  AgentRoster,
+  Attachment,
+  EngineCheck,
+  Participant,
+  QuitCounts as ThreadQuitCounts,
+  RecordLine as ThreadRecordLine,
+  ThreadSummary,
+  ThreadView,
+} from "@/features/thread/types";
 import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
@@ -266,7 +275,7 @@ export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
 // 손으로 고치지 않게, 그리고 이 이름을 드는 spec(`works-sidebar`·`sidebar-quiet`)이 따로 고치지
 // 않게 여기 한 벌만 둔다.
 export const PINNED_HEADER = `고정 ${WORKS.filter((work) => work.pinned).length}`;
-export const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
+export const MAIN_HEADER = `Work ${WORKS.filter((work) => !work.pinned).length}`;
 
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
@@ -354,6 +363,15 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
     },
   ],
 };
+
+/**
+ * **work 제목 그대로의 질의에는 그 Work 줄 하나를 답한다**(v1 티켓 21). 사이드바 Work 줄이 그 Work의 Thread로 가게 된 뒤(v1 티켓 37)
+ * 작업 화면으로 가는 앱 안의 길은 ⌘K의 Work 줄이다 — 하네스의 `작업화면으로`가 제목을 넣고 이 줄을 고른다. 위 머리말과 같은
+ * 까닭으로 좁혀지는 규칙은 흉내내지 않고 제목 그대로의 질의만 심는다(앞 검사들이 치는 「고정」 · 「Set」은 그대로 떨어진다).
+ */
+export const WORK_TITLE_RESULTS: Readonly<Record<string, SearchResults>> = Object.fromEntries(
+  WORKS.map((work) => [work.title, { hits: [{ kind: "work", slug: work.slug, title: work.title, archived: false }] }]),
+);
 
 /**
  * 레이아웃 상태(spec 레이아웃 티켓 08) — 고친 폴더(템플릿 1개)다. 모양은 엔진의 `layout_state`가 내는
@@ -789,22 +807,6 @@ export const answerByArg = (
 ): ArgAnswers => new ArgAnswers(arg, answers, options && { value: options.otherwise });
 
 /**
- * 고정 답의 대화 하나 — 설정의 기본 에이전트(처음은 Claude Code)로 연 새 대화. 새 대화 · 칩의 바꾸기(에이전트 · 모델 · 모드 · 계획)의
- * 기본 답이 이것을 함께 가리킨다 — `Conversation`에 칸이 늘면 여기 하나만 고친다.
- */
-const FIXTURE_CLAUDE = {
-  id: "c-fixture-claude",
-  agent: "claude",
-  name: "Claude",
-  model: null,
-  mode: null,
-  plan: null,
-  lastSeq: 0,
-  queue: [],
-  live: true,
-} satisfies Conversation;
-
-/**
  * 워크트리 파일 읽기의 **경로별** 답(git-integration 판 01 — 파일 탭의 본문). 표에 없는 경로는 「없음」이다 — 지운 파일 ·
  * 주소가 없는 경로를 가리킨 탭이 그 갈래다(스토리 61 · 82).
  *
@@ -848,6 +850,34 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   },
 };
 
+// Thread 기본 자료(v1 티켓 05) — L1이 축복한 두 턴짜리 Thread(`thread-two-turns.jsonl`)의 Thread 줄. Host 하나가 참여했고 앱에 떠 있지 않다.
+// Thread spec(v1 티켓 10)이 이것을 바탕으로 제 Thread를 짓는다 — `lastSeq`는 그 기록의 마지막 줄이다.
+export const FIXTURE_HOST: Participant = {
+  handle: "host",
+  from: "library",
+  joinedAt: "2026-10-10T10:00:01.000+09:00",
+  runtime: "claude-code",
+  sessionId: "fake-session",
+  cwd: "~/.atelier/threads/20261010-100000",
+  additionalDirectories: [],
+  model: null,
+  effort: null,
+};
+export const FIXTURE_THREAD: ThreadView = {
+  id: "20261010-100000",
+  title: "세 낱말로 답해 줘: hello from turn",
+  createdAt: "2026-10-10T10:00:00.000+09:00",
+  work: null,
+  mode: null,
+  participants: [FIXTURE_HOST],
+  lastRead: 0,
+  lastSeq: 20,
+  askLevel: "always",
+  live: false,
+  queues: {},
+  readOnly: null,
+};
+
 /**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
@@ -875,6 +905,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `DEFAULTS`), 그것이 프로세스 결정 5의 이름을 다 드는지는 그쪽 L1이 잰다. 이 층이 재는 것은 「백엔드가 준 목록을 칸에
   // 보이고, 고친 것을 저장에 싣는다」라 짧은 합성으로 족하다 — 진짜처럼 적어 두면 그쪽이 바뀔 때 조용히 낡는다.
   default_process_exceptions: ["tmux", "docker*"],
+  // 사람 메뉴의 이름(v1 티켓 07) — 사이드바 맨 아래 줄이 앱이 뜰 때 한 번 읽는다. 캔버스 보드의 사람과 같은 이름이다.
+  person_name: "홍길동" as string | null,
   // 시작 보고(프로세스 스펙 S11). 위 설정 읽기처럼 **앱이 뜰 때 한 번** 부른다(`main.tsx` →
   // `loadStartupReport`) — 그래서 이 줄이 없으면 모든 spec이 화이트리스트 탐지기에 물린다.
   //
@@ -1053,67 +1085,87 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
   //
-  // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` 머리말이
-  // 들고, 나머지 질의는 전부 기본 답으로 떨어진다 — 좁혀지는 규칙은 여기서 흉내내지 않는다.
+  // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` · `WORK_TITLE_RESULTS`
+  // 머리말이 들고, 나머지 질의는 전부 기본 답으로 떨어진다 — 좁혀지는 규칙은 여기서 흉내내지 않는다.
   search: answerByArg(
     "query",
-    { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
+    { ...WORK_TITLE_RESULTS, [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
     { otherwise: SEARCH_RESULTS },
   ),
-  // ── 대화창(three-axes 티켓 17) ── 태우는 시나리오는 `chat.spec.ts`다. 대화창은 **처음 보일 때** 목록을 읽으므로 작업 화면을
-  // 여는 것만으로는 이 명령들이 안 나간다 — 레일 `chat`을 누른 spec만 지난다.
-  //
-  // 대화 목록과 기록은 **빈 답이 기본이다** — 대화 없는 work이고, 기록도 없다. 자료(L1이 남긴 기록 · 대화 목록)는 대화 spec이
-  // `chat-records.ts`로 읽어 덮어쓴다(S26). 이 답들은 상태가 없다: 만든 대화를 목록이 기억하지 않으므로 화면이 만들기 · 닫기의
-  // 응답으로 제 대화 목록을 고친다(`conversation-list.ts`).
-  chat_list: [] satisfies Conversation[],
-  chat_read_record: [] satisfies RecordLine[],
-  // 새 대화 — 설정의 기본 에이전트(처음은 Claude Code)로 연 대화 하나. 이름은 호스트가 짓는다(`Claude` · `Claude 2`). 둘째
-  // 대화를 재는 검사가 `replaceAnswer`로 갈아 끼운다(이름의 수는 오르는 값 표로 못 짓는다 — 첫 이름이 `Claude 1`이 된다).
-  chat_new: FIXTURE_CLAUDE,
-  // 보내기 · 대화 닫기 — 값은 안 쓰인다. 답은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
-  chat_send: null,
-  chat_close: null,
-  // 엔진 확인(three-axes 티켓 22) — 대화창이 그 엔진의 대화를 처음 보일 때와 `+`를 누를 때 나간다. **기본은 「찾음 · 로그인
-  // 됨」이다** — 안내 카드가 서지 않는 길이라 대화창을 여는 다른 spec들이 그대로 돈다. 못 찾음 · 로그인 안 됨은
-  // `chat-guide.spec.ts`가 덮어쓴다. 경로는 화면이 읽지 않는다.
-  chat_check_engine: answerByArg("agent", {
-    claude: { state: "found", programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }], loggedIn: true },
-    codex: {
-      state: "found",
-      programs: [
-        { name: "codex-acp", path: "/opt/fixture/bin/codex-acp" },
-        { name: "codex", path: "/opt/fixture/bin/codex" },
-        { name: "node", path: "/opt/fixture/bin/node" },
-      ],
-      loggedIn: true,
-    },
-  } satisfies Record<string, EngineCheck>),
-  // 로그인 시작 · 취소 — 값은 안 쓰인다. 진행(링크 · 끝남)은 엔진 상태 이벤트로 오므로 검사가 인자를 본 뒤 그 이벤트를 쏜다.
-  chat_start_login: null,
-  chat_cancel_login: null,
-  // 멈추기 · 대기 줄의 고치기 · 지우기 · 지금 보내기(three-axes 티켓 20) — 값은 안 쓰인다. 멈춘 턴의 끝은 기록 줄로, 대기 줄은 대기 줄
-  // 바뀜 이벤트로 오므로 검사가 그 인자를 본 뒤 쏜다.
-  chat_stop: null,
-  chat_edit_queued: null,
-  chat_delete_queued: null,
-  chat_send_now: null,
-  // 칩(three-axes 티켓 19) — 에이전트 바꾸기와 모델 · 모드 · 계획 바꾸기. 답은 바뀐 대화이고 화면이 그것으로 대화 목록을 고친다.
-  // 기본 답은 새 대화의 그것과 같은 「Claude」다 — 바꾼 값을 재는 `chat-chips.spec.ts`가 그 시나리오의 대화로 갈아 끼운다.
-  chat_switch_agent: FIXTURE_CLAUDE,
-  chat_set_model: FIXTURE_CLAUDE,
-  chat_set_mode: FIXTURE_CLAUDE,
-  chat_set_plan: FIXTURE_CLAUDE,
-  // 권한 답(three-axes 티켓 21) — 승인 카드 · 「이 계획대로 할까요?」 카드에서 고른 선택지. 값은 안 쓰인다: 고른 답은 `permission`
-  // 줄(`answered`)로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다. 태우는 시나리오는 `chat-approval.spec.ts`다.
-  chat_answer_permission: null,
-  // 종료 확인의 대화 셈(three-axes 티켓 23) — 종료 요청마다 셸 셈 옆에서 나간다. **기본은 잃을 것이 없다**(셋 다 0) — 그러면 대화 줄이
-  // 서지 않아 셸만 재는 종료 확인 검사들이 그대로 돈다. 대화 줄은 `quit-confirm.spec.ts`의 대화 검사가 덮어쓴다.
-  chat_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ChatQuitCounts,
-  // 엔진 목록(three-axes 티켓 09 · 25, S16) — 설정 › 대화가 열릴 때 엔진마다 한 번 부른다. **기본은 두 엔진 다 빈 목록이다** — 세션을
-  // 한 번도 연 적 없는 첫 실행이고, 그때 모델 · 모드 고르기는 「엔진 기본값」 하나뿐이다. 목록을 재는 검사(`settings-chat.spec.ts`)가
-  // 엔진마다 덮어쓴다.
-  chat_engine_lists: { models: [], modes: [] } satisfies EngineLists,
+  // ── Thread(v1 티켓 05) ── 앱은 새 Thread(`/`)로 열린다. 새 Thread 화면은 설 때 엔진을 한 번 확인하고(`thread_check_engine`) Host 정의의
+  // 모델 · 생각 깊이를 읽으며(`list_agents`), 사이드바는 Thread 목록을 읽는다(`thread_list`). **기본은 Thread가 없고 엔진은 「찾음 ·
+  // 로그인 됨」이다** — 안내 카드가 서지 않는 길이라 `/`로 여는 다른 spec들이 그대로 돈다. Thread를 여는 검사는 `thread_get` ·
+  // `thread_read_record`를 그 시나리오의 Thread와 기록으로 덮어쓴다(기록 줄은 `thread:record` 이벤트로 흘린다).
+  thread_list: [] satisfies ThreadSummary[],
+  thread_get: FIXTURE_THREAD,
+  thread_read_record: [] satisfies ThreadRecordLine[],
+  thread_check_engine: {
+    state: "found",
+    programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }],
+    loggedIn: true,
+  } satisfies EngineCheck,
+  thread_start_login: null,
+  thread_cancel_login: null,
+  thread_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ThreadQuitCounts,
+  // 새 Thread — 첫 말과 함께 세운 Thread의 id. 답(첫 턴)은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
+  thread_start: FIXTURE_THREAD.id,
+  // 보내기 · 멈추기 · 대기 줄 · 권한 답 — 값은 안 쓰인다. 결과는 기록 줄 · 대기 줄 이벤트로 온다.
+  thread_send: null,
+  thread_stop: null,
+  thread_edit_queued: null,
+  thread_delete_queued: null,
+  thread_send_now: null,
+  thread_answer_permission: null,
+  // Work 만들기 카드의 답(v1 티켓 30) — 값은 안 쓰인다. 고른 것과 만든 Work는 기록의 `question` · `work` 줄로 온다.
+  thread_answer_work: null,
+  // 질문 카드의 답(v1 티켓 26) — 값은 안 쓰인다. 고른 답은 기록의 `question` 답 줄로 온다.
+  thread_answer_question: null,
+  // Work 카드의 변경 · PR(v1 티켓 33 · 34) — Work에 이은 Thread를 열면 카드가 읽는다. 기본은 바뀐 것도 PR도 없다(그 칸이 서지 않는다).
+  list_work_changes: [] as unknown[],
+  thread_work_prs: [] as unknown[],
+  // Work 밖 Project 카드의 답(v1 티켓 32) — 값은 안 쓰인다. 고른 것과 붙인 Project · 만든 worktree는 기록의 `question` · `work` 줄로 온다.
+  thread_answer_project: null,
+  // 넓힌 카드의 diff(v1 티켓 35) — 변경 줄을 누르면 읽는다. 기본은 바뀐 것이 없다는 답이다.
+  read_work_diff: { kind: "unchanged" },
+  // 다시 맡기기(v1 티켓 17) — 값은 안 쓰인다. 부르기와 그 결과는 기록 줄 이벤트로 온다.
+  thread_call_again: null,
+  // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.
+  thread_set_model: FIXTURE_HOST,
+  thread_set_effort: FIXTURE_HOST,
+  // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
+  thread_set_mode: null,
+  // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
+  thread_work_mode: "always",
+  // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
+  thread_rename: {
+    id: FIXTURE_THREAD.id,
+    title: FIXTURE_THREAD.title,
+    createdAt: FIXTURE_THREAD.createdAt,
+    work: null,
+    handles: ["host"],
+    lastRead: 0,
+    readOnly: null,
+    broken: null,
+  } satisfies ThreadSummary,
+  // 읽은 자리(v1 티켓 41 · S38) — 맨 아래가 보이면 Thread 화면이 부른다. 답은 바뀐 목록 요약이다(기본은 처음 Thread의 요약에 그 자리).
+  thread_mark_read: {
+    id: FIXTURE_THREAD.id,
+    title: FIXTURE_THREAD.title,
+    createdAt: FIXTURE_THREAD.createdAt,
+    work: null,
+    handles: ["host"],
+    lastRead: FIXTURE_THREAD.lastSeq,
+    readOnly: null,
+    broken: null,
+  } satisfies ThreadSummary,
+  // 부를 수 있는 Agent(v1 티켓 03 · 11 · 14) — 새 Thread의 칩이 Host 정의의 모델 · 생각 깊이를, @ 메뉴 · 받는 이 칩 · 사이드바 얼굴이
+  // 목록과 얼굴을 읽는다. 기본은 비었다(칩은 「기본 모델」, @ 메뉴는 앉은 참여자만).
+  list_agents: { agents: [], broken: [] } satisfies AgentRoster,
+  // Library 화면(v1 티켓 19) — 고른 Agent 파일의 원문과 「Finder에서 열기」. 기본은 빈 글이다(파일을 재는 검사가 그 Agent의 글로 덮어쓴다).
+  read_agent_file: "",
+  reveal_agent_file: null,
+  // 입력창의 첨부 칩(v1 티켓 06) — 고르거나 끌어다 놓은 경로를 잰 답. 기본은 빈 목록이다(첨부를 재는 검사가 그 경로의 답으로 덮어쓴다).
+  describe_attachments: [] satisfies Attachment[],
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

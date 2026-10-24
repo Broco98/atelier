@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::project::{parse_project, render_project, Project, ProjectView};
 use crate::{collapse_home, expand_home, git, slugify, Error, Result};
@@ -41,6 +41,16 @@ pub(crate) fn read_projects(root: &Path) -> Result<Vec<Project>> {
 pub fn list_projects(root: &Path) -> Result<Vec<ProjectView>> {
     std::fs::create_dir_all(root)?;
     Ok(read_projects(root)?.into_iter().map(to_view).collect())
+}
+
+/// 등록된 Project마다 (slug, 폴더) — 폴더는 `~`를 푼 경로다. **git을 묻지 않는다** — Thread 엔진의 판정이 받은 편집마다 「이 경로가
+/// 등록된 Project 안인가」를 본다(v1 티켓 22). 데이터 루트를 받는다. 못 읽으면 빈 목록이다.
+pub fn project_folders(data_root: &Path) -> Vec<(String, PathBuf)> {
+    read_projects(&crate::paths::projects_in(data_root))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|project| (project.slug, expand_home(&project.path)))
+        .collect()
 }
 
 pub fn get_project(root: &Path, slug: &str) -> Result<ProjectView> {
@@ -113,7 +123,8 @@ pub fn delete_project(root: &Path, slug: &str) -> Result<()> {
     Ok(())
 }
 
-fn read_project(root: &Path, slug: &str) -> Result<Project> {
+/// Project 파일 하나. `get_project`와 달리 git을 캐묻지 않는다 — Agent 범위(`agents::scope`)가 폴더 자리만 읽는다.
+pub(crate) fn read_project(root: &Path, slug: &str) -> Result<Project> {
     let path = project_path(root, slug)?;
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::NotFound(slug.to_string()))?;

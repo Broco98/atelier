@@ -1,3 +1,0 @@
-{"type": "control_request", "request_id": "req_0b9e10d7", "request": {"subtype": "initialize"}}
-{"type": "user", "message": {"role": "user", "content": "ok 라고만 답해."}, "parent_tool_use_id": null, "session_id": ""}
-{"type": "user", "message": {"role": "user", "content": "한 번 더."}, "parent_tool_use_id": null, "session_id": ""}

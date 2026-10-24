@@ -8,7 +8,6 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   markAttention,
-  navButton,
   releaseCommand,
   typeIntoShell,
   unknownIpcCalls,
@@ -24,6 +23,8 @@ import {
   토큰색,
   표를꽂는다,
   행버튼,
+  작업화면으로,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 27 — **웹뷰 메뉴가 막히고 work를 우클릭하면 work 메뉴가 뜬다**(codex-ds 스펙 §9 · 결정 6 · 7 · 8 · 11 · 15).
@@ -73,6 +74,8 @@ const 고른행 = (page: Page) =>
 const 대상들: Array<{
   name: string;
   setUp: (page: Page) => Promise<{ target: Locator; work: (typeof WORKS)[number]; selected: string }>;
+  /** 누르면 가는 곳 — 누르면 옮겨 가는 대상(행 · 띠 줄)만 든다. */
+  went?: (work: (typeof WORKS)[number]) => string | RegExp;
 }> = [
   {
     name: "사이드바 work 행",
@@ -80,6 +83,8 @@ const 대상들: Array<{
       await page.goto(`/works/${plainWork.slug}`);
       return { target: 버튼(page.locator("[data-worklist]"), pinnedWork.title), work: pinnedWork, selected: plainWork.slug };
     },
+    // 그 Work의 Thread다 — 이은 Thread가 없으면 그 Work를 고른 새 Thread(v1 티켓 37).
+    went: (work) => Work줄이가는곳(work.slug),
   },
   {
     name: "알림 띠 줄",
@@ -94,7 +99,7 @@ const 대상들: Array<{
         at: Date.now(),
         payload: { message: "어느 쪽으로 할까요?" },
       });
-      await 행버튼(page, pinnedWork.title).click();
+      await 작업화면으로(page, pinnedWork);
       await expect(page).toHaveURL(`/works/${pinnedWork.slug}`);
       return {
         target: 버튼(띠(page), `${plainWork.title} — 나를 기다림`),
@@ -102,6 +107,8 @@ const 대상들: Array<{
         selected: pinnedWork.slug,
       };
     },
+    // 그 work의 셸 화면이다.
+    went: (work) => new RegExp(`/works/${work.slug}(\\?|$)`),
   },
   {
     name: "머리 카드 이름",
@@ -262,7 +269,7 @@ for (const { name, setUp } of 대상들) {
 // 「안 갔다」는 기다려서 보지 않는다(언제까지 기다리나가 없다). 주소를 바꾸는 부름을 차례로 적고(`주소적기`), ⌃클릭 뒤에 표를 꽂은
 // 다음 ⌃ 없는 클릭으로 가게 한다 — 적힌 줄의 첫 칸이 그 표면 ⌃클릭은 아무 데도 안 갔다.
 
-for (const { name, setUp } of 대상들.filter((one) => one.name !== "머리 카드 이름")) {
+for (const { name, setUp, went } of 대상들.filter((one) => one.went !== undefined)) {
   test(`${name}을 ⌃클릭하면 그 work로 가지 않는다 — ⌃ 없는 클릭은 간다`, async ({ page }) => {
     await installFixtureBackend(page);
     const { target, work, selected } = await setUp(page);
@@ -274,7 +281,7 @@ for (const { name, setUp } of 대상들.filter((one) => one.name !== "머리 카
     await 표를꽂는다(page);
     await target.dispatchEvent("click");
     // 앵커: ⌃ 없는 클릭은 그 work로 갔고, 적기가 그 부름을 봤다.
-    await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
+    await expect(page).toHaveURL(went!(work));
     const 주소들 = await 적힌주소(page);
     expect(주소들.length).toBeGreaterThan(1);
     expect(주소들[0], `⌃클릭이 ${selected}에서 옮겼다`).toBe("표");
@@ -346,7 +353,7 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   const badge = (await head.getByRole("button", { name: pinnedWork.status, exact: true }).boundingBox())!;
   const list = (await page.locator("[data-worklist]").boundingBox())!;
   const lastRow = (await page.locator("[data-work-row]").last().boundingBox())!;
-  const nav = (await navButton(page, "Projects").boundingBox())!;
+  const nav = (await page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).boundingBox())!;
   const bar = (await page.locator("[data-slot=path-bar]").first().boundingBox())!;
   const viewport = page.viewportSize()!;
   const spots: Array<[string, number, number]> = [
@@ -355,11 +362,12 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
     // 문서 카드의 빈 곳은 경로 줄의 가운데다 — 카드의 몸은 문서가 서면 문서 글이라 제 메뉴가 선다(`target-menus.spec.ts`).
     ["문서 카드 경로 줄 빈 자리", bar.x + bar.width / 2, bar.y + bar.height / 2],
     ["사이드바 nav 항목", nav.x + nav.width / 2, nav.y + nav.height / 2],
-    // 목록 안이지만 행이 아닌 자리 — 목록이 대상을 찾지 못해 메뉴를 안 연다.
-    ["목록 빈 자리", list.x + list.width / 2, list.y + list.height - 6],
+    // 목록 안이지만 행이 아닌 자리 — 목록이 대상을 찾지 못해 메뉴를 안 연다. 목록은 제 높이로 서서(v1 티켓 07) 남는 자리가 없고,
+    // 마지막 행 아래의 바닥 안쪽 여백(4 — `pb-1`)이 그 자리다.
+    ["목록 빈 자리", list.x + list.width / 2, list.y + list.height - 2],
   ];
   // 앵커: 목록 빈 자리는 마지막 행 아래이고 목록 안이다 — 행에 떨어지거나 밖으로 새면 「목록이 대상을 못 찾는다」가 아무것도 안 잰다.
-  expect(list.y + list.height - 6).toBeGreaterThan(lastRow.y + lastRow.height);
+  expect(list.y + list.height - 2).toBeGreaterThan(lastRow.y + lastRow.height);
   // 앵커: 경로 줄의 가운데는 경로 칩 · 버튼 · 문서 글 어느 것도 아니다 — 거기 떨어지면 「빈 곳」을 안 잰다.
   expect(
     await page.evaluate(

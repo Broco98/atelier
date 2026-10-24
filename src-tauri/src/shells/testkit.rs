@@ -49,15 +49,38 @@ pub(crate) fn handler_command(program: &Path, root: &Path, shell: Option<&str>, 
     handler_call(command, root, shell)
 }
 
-/// 명령을 띄운다 — 못 뜨면 거기서 검사를 멈춘다(처리기 파일이 없거나 실행 권한이 없다).
+/// 명령을 띄운다 — 못 뜨면 거기서 검사를 멈춘다(처리기 파일이 없거나 실행 권한이 없다). 「Text file busy」만 짧게 몇 번 다시
+/// 띄운다(`spawn_past_busy_text`).
 pub(crate) trait Launch {
     fn into_spawned(self) -> Child;
 }
 
 impl Launch for Command {
     fn into_spawned(mut self) -> Child {
-        self.spawn().unwrap_or_else(|e| panic!("훅이 안 뜬다({e}): {self:?}"))
+        spawn_past_busy_text(|| self.spawn()).unwrap_or_else(|e| panic!("훅이 안 뜬다({e}): {self:?}"))
     }
+}
+
+/// 「Text file busy」에 다시 띄우기 전에 쉬는 틈(ms). 다 쉬면 한 번 더 띄우고, 그래도 바쁘면 그 오류를 돌려준다.
+const BUSY_TEXT_WAITS_MS: [u64; 5] = [10, 20, 40, 80, 160];
+
+/// 띄우기 `spawn`을 부르되 **ETXTBSY(os error 26)일 때만 짧게 몇 번 다시 부른다.** 다른 오류는 기다려도 안 풀리니 곧바로 돌려준다.
+///
+/// 처리기 파일은 앱 코드(`write_hook_scripts`)가 이 검사 프로세스 안에서 쓴다. 그 쓰기 fd가 열린 사이 다른 검사 스레드가 fork하면
+/// 그 자식이 exec할 때까지 fd를 쥐어, 막 세운 처리기를 띄우면 리눅스가 「Text file busy」로 막는다(macOS는 안 막는다). 검사가 쓰는
+/// 실행 파일은 자식 `sh`에 쓰기를 맡겨 피하지만(`atelier-acp` `tests/common`의 `write_script`) 앱 코드의 쓰기는 검사가 못 바꾼다.
+/// 쥔 자식은 곧 exec해 fd를 놓으니 기다리면 풀린다.
+///
+/// 한 번 뜨면 그 뒤로는 안 막힌다 — 쓰기가 끝난 뒤의 fork는 fd를 물려받지 않는다. 셸이 처리기를 띄우는 꼴(`/bin/sh -c`)은 이
+/// 길을 못 타므로(셸이 126으로 끝난다), 그런 검사는 그 앞에 처리기를 곧바로 한 번 띄운다(`ready_handler` 등).
+fn spawn_past_busy_text<T>(mut spawn: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    for wait in BUSY_TEXT_WAITS_MS {
+        match spawn() {
+            Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) => std::thread::sleep(std::time::Duration::from_millis(wait)),
+            done => return done,
+        }
+    }
+    spawn()
 }
 
 /// 뜬 훅에 페이로드를 다 쓰고 파이프를 닫은 뒤 끝을 기다린다.
@@ -85,4 +108,49 @@ pub(crate) fn assert_quiet_success(out: &Output, what: &str) {
 pub(crate) fn state_in(root: &Path, shell: &str) -> serde_json::Value {
     let written = std::fs::read_to_string(state_path(root, shell)).expect("그 셸의 상태 파일이 있다");
     serde_json::from_str(&written).unwrap_or_else(|e| panic!("상태 파일이 JSON이 아니다({e}): {written}"))
+}
+
+/// 띄우기를 흉내 낸다 — `answers`를 차례로 돌려주고 불린 수를 센다. 다 쓰면 마지막 답을 되풀이한다.
+fn scripted(answers: Vec<Option<i32>>) -> (impl FnMut() -> std::io::Result<()>, std::rc::Rc<std::cell::Cell<usize>>) {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let counted = calls.clone();
+    let spawn = move || {
+        let n = counted.get();
+        counted.set(n + 1);
+        match answers[n.min(answers.len() - 1)] {
+            None => Ok(()),
+            Some(code) => Err(std::io::Error::from_raw_os_error(code)),
+        }
+    };
+    (spawn, calls)
+}
+
+/// **ETXTBSY면 다시 띄운다** — 리눅스에서 다른 검사 스레드의 fork가 처리기의 쓰기 fd를 exec 전까지 쥔 사이다. 그 자식이 exec하면
+/// 풀리므로, 두 번 바빴다가 세 번째에 뜨면 뜬 것이다.
+#[test]
+fn a_busy_text_file_is_spawned_again() {
+    let (spawn, calls) = scripted(vec![Some(libc::ETXTBSY), Some(libc::ETXTBSY), None]);
+    assert!(spawn_past_busy_text(spawn).is_ok(), "바빴다가 풀린 처리기를 못 띄웠다");
+    assert_eq!(calls.get(), 3);
+}
+
+/// **다른 오류는 곧바로 돌려준다** — 처리기가 없거나 실행 권한이 없는 것은 기다려도 안 풀린다. 다시 띄우면 진짜 고장을 늦게 본다.
+#[test]
+fn any_other_spawn_error_is_returned_at_once() {
+    for code in [libc::ENOENT, libc::EACCES, libc::ENOEXEC] {
+        let (spawn, calls) = scripted(vec![Some(code), None]);
+        let failed = spawn_past_busy_text(spawn).expect_err("한 번에 실패해야 한다");
+        assert_eq!((failed.raw_os_error(), calls.get()), (Some(code), 1), "os error {code}를 다시 띄웠다");
+    }
+}
+
+/// **끝내 바쁘면 손을 떼고 그 오류를 돌려준다** — 쓰기 fd를 영영 쥔 것이 있으면 기다림이 검사를 붙잡지 않고 빨갛다.
+#[test]
+fn a_text_file_that_stays_busy_fails_after_a_few_tries() {
+    let (spawn, calls) = scripted(vec![Some(libc::ETXTBSY)]);
+    let started = std::time::Instant::now();
+    let failed = spawn_past_busy_text(spawn).expect_err("끝내 바쁘면 실패한다");
+    assert_eq!(failed.raw_os_error(), Some(libc::ETXTBSY));
+    assert!((2..=10).contains(&calls.get()), "{}번 띄웠다 — 몇 번만 다시 띄운다", calls.get());
+    assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}를 기다렸다", started.elapsed());
 }

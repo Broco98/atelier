@@ -15,7 +15,7 @@ const [pinnedWork, plainWork] = WORKS;
 const list = (page: Page) => page.locator("[data-worklist]");
 /** 목록 윗 가장자리의 구분선. 목록 **밖**(스크롤하지 않는 부모)에 산다. */
 const edge = (page: Page) => page.locator("[data-worklist-edge]");
-/** 사이드바 바닥의 Settings 칸. */
+/** 사이드바 바닥의 사람 줄 칸(v1 티켓 07 — 옛 Settings 칸의 자리). */
 const foot = (page: Page) => page.locator("[data-sidebar-foot]");
 
 /** 목록을 굴려 내리는 거리. 넘침을 기다리는 문턱도 이 값이다 — 덜 넘치면 이만큼 못 구른다. */
@@ -95,7 +95,7 @@ test("구획 머리에 hover해도 배경이 안 칠해지고 글자만 진해�
 
   for (const [name, word] of [
     [PINNED_HEADER, "고정"],
-    [MAIN_HEADER, "작업"],
+    [MAIN_HEADER, "Work"],
   ] as const) {
     const header = page.getByRole("button", { name, exact: true });
     const label = header.getByText(word, { exact: true });
@@ -113,8 +113,8 @@ test("구획 머리에 hover해도 배경이 안 칠해지고 글자만 진해�
   for (const work of [plainWork, pinnedWork]) {
     await hover배경이칠해진다(page.getByRole("button", { name: work.title, exact: true }).locator("xpath=.."));
   }
-  // **nav도 그대로다**(티켓 본문). 지금 화면(Projects)이 아닌 항목이라야 선택 배경과 안 섞인다.
-  await hover배경이칠해진다(page.locator("aside nav").getByRole("button", { name: "Archive", exact: true }).locator("xpath=.."));
+  // **nav도 그대로다**(티켓 본문). 지금 화면이 아닌 항목이라야 선택 배경과 안 섞인다 — Projects에서는 「새 Thread」가 그렇다.
+  await hover배경이칠해진다(page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).locator("xpath=.."));
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -148,9 +148,10 @@ test("목록이 스크롤됐을 때만 윗 가장자리에 선이 서고, 맨 �
 test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   // **창 높이가 좁은 창문 안에 있어야 한다** — 처음엔 `SCROLL`만큼 넘치고, `작업`을 접으면 안
-  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 182px → 접으면 116px).
-  // 목록 상자 = 창 높이 − 230px라(머리 줄 48 · 바닥 Settings 위 선은 자리를 안 먹는 0.5px 면) 창문은 346~372px다. 그 안의 값을 고른다.
-  await page.setViewportSize({ width: 1280, height: 362 });
+  // 넘쳐야 한다. 행이 한 줄이 되고(32px) 다시 Codex 사이드바의 줄 30 · 묶음 사이가 되면서(v1 티켓 46) 그 창문이 옮겨 갔다(목록
+  // 내용 199px → 접으면 138px). 목록 상자 = 창 높이 − 201px라(「전체 | 내 차례」 마디 · nav 둘 · 바닥 사람 줄 — v1 티켓 07 · 42 · 46,
+  // 사람 줄 위 선은 자리를 안 먹는 0.5px 면) 창문은 339~360px다. 그 안의 값을 고른다.
+  await page.setViewportSize({ width: 1280, height: 350 });
   await page.goto("/projects");
   await 넘칠때까지(page);
 

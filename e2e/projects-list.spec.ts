@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls, 툴팁 } from "./harness";
+import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls, 툴팁, 사람메뉴로간다 } from "./harness";
 
 // 이 프로젝트에서 시작된 work이 하나 있는 짝 — 픽스처가 그렇게 묶어 뒀다(`projects: ["billing"]`).
 const project = PROJECTS[0];
@@ -45,7 +45,7 @@ test("이 프로젝트의 work을 열면 그 work의 마지막 자리가 열린�
   await page.goto(`/works/${work.slug}?tab=terminal`);
   await expect(page.locator('[data-tab="shell"]')).toBeVisible();
 
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
+  await 사람메뉴로간다(page, "Projects");
   await expect(page).toHaveURL(`/projects/${project.slug}`);
 
   // 「이 프로젝트에서 시작된 작업」 행. 사이드바 행도 같은 제목을 들고 있어 `main`으로 좁힌다 —

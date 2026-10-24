@@ -1,25 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { SETTINGS_ITEMS, inSettings, settingsItemOf } from "./pages";
 
-// 설정 nav 항목 다섯(UI개선 결정 21·22 · spec 레이아웃 티켓 08 · three-axes 티켓 25). 사이드바의 켜진 항목과 본문 머리가
+// 설정 nav 항목 넷(UI개선 결정 21·22 · spec 레이아웃 티켓 08). three-axes의 `대화`(티켓 25)는 v1 티켓 08이 걷었다. 사이드바의 켜진 항목과 본문 머리가
 // **이 표 하나**에서 나온다 — 주소를 읽어 항목을 고르는 자리가 둘이면 켜진 항목과 머리가 갈린다.
 describe("설정 항목", () => {
   // 새 항목은 **뒤에** 붙는다 — `/settings`는 첫 항목으로 넘기므로, 앞에 서면 설정을 여는 기존 시나리오가 모두 다른 페이지에
-  // 선다. `대화`(three-axes 티켓 25)는 캔버스(Settings 보드)대로 맨 끝이다.
-  it("터미널 · 알림 · 에이전트 훅 · spec 레이아웃 · 대화 순서이고 라벨이 한국어다", () => {
+  // 선다.
+  it("터미널 · 알림 · 에이전트 훅 · spec 레이아웃 순서이고 라벨이 한국어다", () => {
     expect(SETTINGS_ITEMS.map((item) => item.label)).toEqual([
       "터미널",
       "알림",
       "에이전트 훅",
       "spec 레이아웃",
-      "대화",
     ]);
     expect(SETTINGS_ITEMS.map((item) => item.to)).toEqual([
       "/settings/terminal",
       "/settings/notifications",
       "/settings/hooks",
       "/settings/spec-layout",
-      "/settings/chat",
     ]);
   });
 
@@ -28,7 +26,6 @@ describe("설정 항목", () => {
     ["/settings/notifications", "notifications"],
     ["/settings/hooks", "hooks"],
     ["/settings/spec-layout", "spec-layout"],
-    ["/settings/chat", "chat"],
   ] as const)("%s는 %s 항목이다", (pathname, key) => {
     expect(settingsItemOf(pathname)).toBe(key);
   });

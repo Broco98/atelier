@@ -208,3 +208,24 @@ fn 엔진_확인의_답은_화면이_읽는_꼴로_나간다() {
         }),
     );
 }
+
+/// 에이전트 밖의 도구(Work의 PR을 읽는 `gh`, v1 티켓 33)도 내 터미널과 같은 PATH로 찾는다 — Finder에서 띄운 앱의 PATH로는
+/// Homebrew의 `gh`가 안 보여, 깔려 있는데도 PR 줄이 「없음」이 된다. 엔진 확인이 쥔 로그인 env를 같이 쓰고, 셸을 다시 띄우지
+/// 않는다. 로그인 셸을 읽지 못하면 없음이다 — 부르는 쪽이 앱의 PATH로 물러선다.
+#[test]
+fn 밖의_도구는_쥔_로그인_셸의_path로_찾는다() {
+    let sandbox = Sandbox::new();
+    let front = sandbox.bin("front");
+    let back = sandbox.bin("back");
+    let shell = sandbox.login_shell(LoginShell::Normal, &[&front, &back]);
+    let host = sandbox.host(ShellSource::Path(shell));
+
+    host.check_engine(Agent::Claude, false).expect("엔진 확인");
+    let expected = std::ffi::OsString::from(format!("{}:{}", front.display(), back.display()));
+    assert_eq!(host.login_path(), Some(expected));
+    assert_eq!(sandbox.shell_calls(), ["-l -i -c"], "쥔 로그인 env를 써야 한다");
+
+    let broken = Sandbox::new();
+    let host = broken.host(ShellSource::Path(broken.login_shell(LoginShell::NoMarker, &[])));
+    assert_eq!(host.login_path(), None);
+}

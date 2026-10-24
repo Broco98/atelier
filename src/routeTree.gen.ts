@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LibraryRouteImport } from './routes/library'
 import { Route as ProcessesRouteImport } from './routes/processes'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TerminalRouteImport } from './routes/terminal'
@@ -18,11 +19,11 @@ import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
-import { Route as SettingsChatRouteImport } from './routes/settings.chat'
 import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
 import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-layout'
 import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
+import { Route as ThreadsIdRouteImport } from './routes/threads.$id'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
 import { Route as SettingsSpecLayoutIndexRouteImport } from './routes/settings.spec-layout.index'
@@ -32,6 +33,11 @@ import { Route as SettingsSpecLayoutEditRouteImport } from './routes/settings.sp
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryRoute = LibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProcessesRoute = ProcessesRouteImport.update({
@@ -74,11 +80,6 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsChatRoute = SettingsChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
-  getParentRoute: () => SettingsRoute,
-} as any)
 const SettingsHooksRoute = SettingsHooksRouteImport.update({
   id: '/hooks',
   path: '/hooks',
@@ -98,6 +99,11 @@ const SettingsTerminalRoute = SettingsTerminalRouteImport.update({
   id: '/terminal',
   path: '/terminal',
   getParentRoute: () => SettingsRoute,
+} as any)
+const ThreadsIdRoute = ThreadsIdRouteImport.update({
+  id: '/threads/$id',
+  path: '/threads/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const WorksIndexRoute = WorksIndexRouteImport.update({
   id: '/works/',
@@ -127,16 +133,17 @@ const SettingsSpecLayoutEditRoute = SettingsSpecLayoutEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/library': typeof LibraryRoute
   '/processes': typeof ProcessesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
-  '/settings/chat': typeof SettingsChatRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
+  '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
@@ -148,14 +155,15 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/library': typeof LibraryRoute
   '/processes': typeof ProcessesRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
-  '/settings/chat': typeof SettingsChatRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/terminal': typeof SettingsTerminalRoute
+  '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive': typeof ArchiveIndexRoute
   '/projects': typeof ProjectsIndexRoute
@@ -168,16 +176,17 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/library': typeof LibraryRoute
   '/processes': typeof ProcessesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
-  '/settings/chat': typeof SettingsChatRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
+  '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
@@ -191,16 +200,17 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/library'
     | '/processes'
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
-    | '/settings/chat'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
     | '/settings/terminal'
+    | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
@@ -212,14 +222,15 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/library'
     | '/processes'
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
-    | '/settings/chat'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/terminal'
+    | '/threads/$id'
     | '/works/$slug'
     | '/archive'
     | '/projects'
@@ -231,16 +242,17 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/library'
     | '/processes'
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
-    | '/settings/chat'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
     | '/settings/terminal'
+    | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
@@ -253,11 +265,13 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LibraryRoute: typeof LibraryRoute
   ProcessesRoute: typeof ProcessesRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
+  ThreadsIdRoute: typeof ThreadsIdRoute
   WorksSlugRoute: typeof WorksSlugRoute
   ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
@@ -271,6 +285,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library': {
+      id: '/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/processes': {
@@ -329,13 +350,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/settings/chat': {
-      id: '/settings/chat'
-      path: '/chat'
-      fullPath: '/settings/chat'
-      preLoaderRoute: typeof SettingsChatRouteImport
-      parentRoute: typeof SettingsRoute
-    }
     '/settings/hooks': {
       id: '/settings/hooks'
       path: '/hooks'
@@ -363,6 +377,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/terminal'
       preLoaderRoute: typeof SettingsTerminalRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/threads/$id': {
+      id: '/threads/$id'
+      path: '/threads/$id'
+      fullPath: '/threads/$id'
+      preLoaderRoute: typeof ThreadsIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/works/': {
       id: '/works/'
@@ -418,7 +439,6 @@ const SettingsSpecLayoutRouteWithChildren =
   SettingsSpecLayoutRoute._addFileChildren(SettingsSpecLayoutRouteChildren)
 
 interface SettingsRouteChildren {
-  SettingsChatRoute: typeof SettingsChatRoute
   SettingsHooksRoute: typeof SettingsHooksRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   SettingsSpecLayoutRoute: typeof SettingsSpecLayoutRouteWithChildren
@@ -427,7 +447,6 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
-  SettingsChatRoute: SettingsChatRoute,
   SettingsHooksRoute: SettingsHooksRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   SettingsSpecLayoutRoute: SettingsSpecLayoutRouteWithChildren,
@@ -441,11 +460,13 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LibraryRoute: LibraryRoute,
   ProcessesRoute: ProcessesRoute,
   SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
+  ThreadsIdRoute: ThreadsIdRoute,
   WorksSlugRoute: WorksSlugRoute,
   ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,

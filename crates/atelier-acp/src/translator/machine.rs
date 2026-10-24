@@ -2,13 +2,13 @@
 //! claude stdin 줄 · 띄우기와 거두기 · 끝)을 돌려준다. 입출력은 하지 않는다 — stdio · claude 프로세스 · 스레드는 변환기의
 //! 몸통([`super::run_claude_translator`])이 쥔다.
 //!
-//! 세션 열기(티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
-//! 턴(티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
+//! 세션 열기(three-axes 티켓 13) — 띄우기 플래그 · 띄운 직후 stdin `initialize`(S1) · 판 · 가리기.
+//! 턴(three-axes 티켓 14) — `session/prompt` 하나가 stdin user 줄 하나이고, claude의 줄을 ACP `session/update`로 옮기며(몸은
 //! [`super::stream`]), `result` 하나가 턴 끝 하나다(`session/prompt`의 답).
-//! 제어(티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
+//! 제어(three-axes 티켓 15) — ACP 요청을 claude의 stdin 제어 요청으로, claude의 요청을 ACP 모양으로 옮긴다. 멈추기(`session/cancel` →
 //! `interrupt`), 권한(`can_use_tool` ↔ `session/request_permission`), 계획 승인(`ExitPlanMode` → `switch_mode` 요청, S5),
-//! 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
-//! 되살리기(티켓 16) — `session/resume` · `session/load`를 둘 다 `claude … --resume <세션 id>`로 연다(워크플로 S19).
+//! 질문(`AskUserQuestion` → 물음을 실은 요청, v1 티켓 26), 모드 · 모델 바꾸기(`set_permission_mode` · `set_model`)와 claude가 스스로 바꾼 모드(`system/status` → `current_mode_update`).
+//! 되살리기(three-axes 티켓 16) — `session/resume` · `session/load`를 둘 다 `claude … --resume <세션 id>`로 연다(워크플로 S19).
 //! 백그라운드(16, S4) · 미로그인(16, S3)은 턴의 갈래([`Turn`])에 있다.
 //!
 //! **세션 상태는 겹치지 않는 갈래 둘이다.**
@@ -28,6 +28,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
+use super::agent_flags;
 use super::stream::{self, Stream};
 use crate::login::AUTH_REQUIRED;
 use crate::redact;
@@ -48,6 +49,9 @@ const ALLOW_SESSION: &str = "allow_session";
 const REJECT: &str = "reject";
 const IMPLEMENT_PLAN: &str = "implement_plan";
 const REVISE_PLAN: &str = "revise_plan";
+/// 질문의 선택지 id — 답하기 · 나중에(v1 티켓 26).
+const ANSWER: &str = "answer";
+const ANSWER_LATER: &str = "answer_later";
 
 /// 「거부」에 싣는 글 — claude는 이것을 그 도구의 실패 결과로 받는다. 그 도구 호출 하나만 실패하고 턴은 이어진다(스토리 60) —
 /// interrupt 때 claude가 스스로 싣는 「STOP … wait for the user」와 달리 다른 길을 찾게 둔다.
@@ -57,6 +61,15 @@ const REJECTED: &str = "The user denied this tool call. Do not retry it as is; c
 /// 고치지 않은 채 턴을 끝냈고 계획 모드에 남았다(판 02 관문 G1).
 const REVISE: &str = "The user chose to revise this plan instead of implementing it. Stay in plan mode, do not change any files, \
 and wait for the user's next message describing what to change.";
+
+/// 「다시 짜기」에 사람이 고칠 점을 실었을 때(v1 티켓 26) — [`REVISE`]처럼 계획 모드에 남기고, 기다리지 않고 그 말대로 계획을 다시 짜게
+/// 한다. 사람의 말은 이 글 뒤에 붙는다.
+const REVISE_WITH: &str = "The user chose to revise this plan instead of implementing it. Stay in plan mode, do not change any files, \
+and revise the plan following what the user said below.";
+
+/// 질문의 「나중에」에 싣는 글(v1 티켓 26) — 그 질문 하나만 답 없이 닫는다. 같은 질문을 곧바로 다시 물어 사람을 붙잡지 않게 한다.
+const LATER: &str = "The user chose to answer these questions later. Do not ask them again now; continue with what you can do \
+without the answers, or end your turn and wait for the user.";
 
 /// 거둬진 요청이 아직 claude를 붙잡고 있을 때 싣는 글 — 우리가 멈추지 않았는데 호스트가 요청을 거뒀다(에이전트가 턴을 끝냄).
 const WITHDRAWN: &str = "The permission request was withdrawn.";
@@ -267,11 +280,22 @@ impl Machine {
     /// `session/new` · `session/resume` · `session/load` — claude를 띄우고 stdin `initialize`를 보낸다(S1, three-axes 결정 27).
     /// 답은 claude의 `initialize` 답에서 한다([`Machine::opened`]).
     ///
-    /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) · `_meta.atelier{claudePath, permissionMode, model}`.
-    /// `mcpServers`는 보지 않는다 — 사용자 MCP와 커넥터는 `claude -p`가 스스로 붙인다(three-axes 결정 23).
+    /// 받는 것(`params`): `cwd` · `additionalDirectories`(함께 여는 폴더) · `mcpServers` ·
+    /// `_meta.atelier{claudePath, permissionMode, model, effort, instructionsFile, builtinTools, forbid}`.
     ///
-    /// resume · load는 되살리기다(티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델은 새 대화와 같이
-    /// 받은 값을 플래그로 준다 — Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
+    /// Agent 정의에서 오는 것(v1 구현 스펙 §3 · S4) — 지시문은 Thread 폴더에 둔 정의 스냅숏 파일의 경로로 받아
+    /// `--append-system-prompt-file`로 claude의 기본 시스템 프롬프트 **뒤에** 붙인다(바꾸면 Claude Code의 도구 · 환경 안내가
+    /// 사라진다). 모델 · 생각 깊이는 `--model` · `--effort`다. 변환기는 그 파일을 읽지 않고 값을 고르지도 않는다 — 비우면 플래그를
+    /// 주지 않아 claude의 기본값을 쓴다.
+    ///
+    /// 내장 도구 · 금지(v1 티켓 12)는 추상 이름으로 받아 Claude Code의 이름으로 옮긴다([`agent_flags`]) — `--tools` ·
+    /// `--disallowedTools`다. ACP `mcpServers`는 claude의 MCP 설정으로 옮겨 `--mcp-config`로 넘긴다 — 사용자 MCP와 커넥터는 그와
+    /// 함께 `claude -p`가 스스로 붙인다(three-axes 결정 23). 넘겨받은 서버(Thread 도구, v1 티켓 15)의 도구는 `--allowedTools`로 묻지
+    /// 않게 한다. 모르는 추상 도구나 stdio가 아닌 MCP 서버면 띄우지 않고 그 까닭으로 답한다.
+    ///
+    /// resume · load는 되살리기다(three-axes 티켓 16) — `--session-id` 대신 `--resume <그 id>`로 띄운다. 모드 · 모델 · 생각 깊이 · 지시문 ·
+    /// 도구 · 금지 · MCP는 새 대화와 같이 받은 값을 플래그로 준다 — `-p --resume`은 이것들을 되살리지 않으므로 열 때마다 다시 받고,
+    /// Codex처럼 열린 뒤에 다시 넣지 않는다(three-axes 결정 27). claude는 같은 세션 id로 이어 가고 지난 대화를
     /// 다시 흘리지 않는다. 그런 세션이 없으면 claude가 initialize에 답하지 않고 끝나고(판 02 관문 G4), 그 요청은 오류로 답한다 —
     /// 호스트는 다음 단계로 넘어간다.
     fn open_session(&mut self, id: &Value, method: &str, params: &Value) {
@@ -296,6 +320,16 @@ impl Machine {
         let claude = atelier["claudePath"].as_str().unwrap_or("claude").to_owned();
         let mode = atelier["permissionMode"].as_str();
         let model = atelier["model"].as_str();
+        let effort = atelier["effort"].as_str();
+        let instructions = atelier["instructionsFile"].as_str();
+        let tools = agent_flags::tools(&atelier["builtinTools"]);
+        let mcp_config = agent_flags::mcp_config(&params["mcpServers"]);
+        let (tools, mcp_config) = match (tools, mcp_config) {
+            (Ok(tools), Ok(mcp_config)) => (tools, mcp_config),
+            (Err(reason), _) | (_, Err(reason)) => return self.send(error(id, -32602, &reason)),
+        };
+        let disallowed = agent_flags::disallowed(&atelier["forbid"]);
+        let allowed = agent_flags::allowed(&params["mcpServers"]);
         let reviving = revive.is_some();
         let session_id = revive.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
@@ -320,6 +354,24 @@ impl Machine {
         }
         if let Some(model) = model {
             args.extend(["--model", model]);
+        }
+        if let Some(effort) = effort {
+            args.extend(["--effort", effort]);
+        }
+        if let Some(instructions) = instructions {
+            args.extend(["--append-system-prompt-file", instructions]);
+        }
+        if let Some(tools) = &tools {
+            args.extend(["--tools", tools]);
+        }
+        if let Some(disallowed) = &disallowed {
+            args.extend(["--disallowedTools", disallowed]);
+        }
+        if let Some(mcp_config) = &mcp_config {
+            args.extend(["--mcp-config", mcp_config]);
+        }
+        if let Some(allowed) = &allowed {
+            args.extend(["--allowedTools", allowed]);
         }
         let launch = Launch { program: claude.clone(), args: args.into_iter().map(str::to_owned).collect(), cwd: cwd.to_owned() };
 
@@ -385,27 +437,43 @@ impl Machine {
 
     /// 호스트가 권한 요청에 답했다 — claude의 `can_use_tool`에 답한다(stdin `control_response`).
     ///
-    /// - 한 번 허락 · 구현 → allow와 claude가 물은 입력 그대로.
+    /// - 한 번 허락 · 구현 → allow와 claude가 물은 입력 그대로. 질문의 답하기 → 그 입력에 사람의 답(답의 `_meta.atelier.answers`,
+    ///   물음 → 답)을 `answers`로 더한 allow — claude의 질문 도구가 그 칸을 답으로 읽는다(v1 티켓 26).
     /// - 이 대화에서 허락 → 거기에 `destination:"session"`인 제안만 `updatedPermissions`로(워크플로 함정 3) — 설정 파일에 쓰는
     ///   제안(`localSettings` · `userSettings`)은 돌려주지 않는다(스토리 63).
-    /// - 거부 → deny와 [`REJECTED`], 다시 짜기 → deny와 [`REVISE`].
+    /// - 거부 → deny와 [`REJECTED`], 다시 짜기 → deny와 [`REVISE`], 질문의 나중에 → deny와 [`LATER`]. 엔진이 Agent에게 돌려줄
+    ///   글을 답의 `_meta.atelier.message`에 실었으면(쓰기 자리 · 사람이 남긴 말, v1 티켓 18 · 24) [`REJECTED`] 대신 그 글이고, 다시
+    ///   짜기면 [`REVISE_WITH`] 뒤에 그 글이 붙는다(v1 티켓 26).
     /// - 거둬짐(`cancelled`) — 우리가 interrupt를 보낸 턴이면 claude가 스스로 그 요청을 거둔다(`control_cancel_request`, 워크플로
     ///   관문 G2 (c)) — 답하지 않는다. 아니면 claude가 붙잡혀 있지 않게 deny로 답한다.
     /// - claude가 이미 거둔 요청(`control_cancel_request`)의 답은 버린다.
     fn answer(&mut self, id: &Value, message: &Value) {
         let Some(asked) = id.as_u64().and_then(|id| self.asked.remove(&id)) else { return };
         let outcome = &message["result"]["outcome"];
+        let atelier = &message["result"]["_meta"]["atelier"];
+        let told = atelier["message"].as_str();
         let allow = || json!({"behavior": "allow", "updatedInput": asked.input});
         let deny = |text: &str| json!({"behavior": "deny", "message": text});
         let decision = match (outcome["outcome"].as_str(), outcome["optionId"].as_str()) {
             (Some("selected"), Some(ALLOW_ONCE | IMPLEMENT_PLAN)) => allow(),
+            (Some("selected"), Some(ANSWER)) => {
+                let mut decision = allow();
+                if atelier["answers"].is_object() {
+                    decision["updatedInput"]["answers"] = atelier["answers"].clone();
+                }
+                decision
+            }
             (Some("selected"), Some(ALLOW_SESSION)) => {
                 let mut decision = allow();
                 decision["updatedPermissions"] = Value::Array(asked.session_suggestions.clone());
                 decision
             }
-            (Some("selected"), Some(REVISE_PLAN)) => deny(REVISE),
-            (Some("selected"), _) => deny(REJECTED),
+            (Some("selected"), Some(REVISE_PLAN)) => match told {
+                Some(told) => deny(&format!("{REVISE_WITH}\n{told}")),
+                None => deny(REVISE),
+            },
+            (Some("selected"), Some(ANSWER_LATER)) => deny(LATER),
+            (Some("selected"), _) => deny(told.unwrap_or(REJECTED)),
             _ if self.interrupted() => return,
             _ => deny(WITHDRAWN),
         };
@@ -637,20 +705,36 @@ impl Machine {
         self.send(session_update(&session_id, json!({"sessionUpdate": "current_mode_update", "currentModeId": mode})));
     }
 
-    /// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(티켓 08).
+    /// claude의 `can_use_tool` → 호스트에 `session/request_permission`. 호스트는 수신을 막지 않고 사람의 답을 기다린다(three-axes 티켓 08).
     ///
     /// - 도구 요지(`toolCall`)는 앞서 낸 `tool_call`과 같은 id(`tool_use_id`) · 제목 · 종류에, claude가 물은 입력이다. 그 `_meta.claudeCode`
-    ///   에는 도구 이름과 까닭(`decision_reason` → `decisionReason`)을 싣는다 — 승인 카드가 읽는 자리다(스토리 58, 티켓 21). claude가
+    ///   에는 도구 이름과 까닭(`decision_reason` → `decisionReason`)을 싣는다 — 승인 카드가 읽는 자리다(three-axes 스토리 58 · 티켓 21). claude가
     ///   물은 원문 전체(설명 · 막힌 경로 · 제안)는 요청의 `_meta.claudeCode.request`에 남긴다(평가의 재료, three-axes 결정 18).
     /// - 선택지는 변환기가 짓는다 — 한 번 허락 · 이 대화에서 허락 · 거부. 세션 제안이 없으면 「이 대화에서 허락」은 없다.
     /// - **계획 승인(S5)** — 계획 모드의 `ExitPlanMode`도 `can_use_tool`로 온다(판 02 관문 G1). codex-acp의 계획 승인과 같은
     ///   모양(`toolCall{kind:"switch_mode", rawInput:{plan}}`, 선택지 구현 · 다시 짜기)으로 옮긴다 — 화면은 엔진을 가리지 않고
     ///   「이 계획대로 할까요?」 카드를 세우고, 계획 본문(`input.plan`)이 계획 카드가 된다.
+    /// - **질문(v1 티켓 26)** — claude가 사람에게 묻는 `AskUserQuestion`도 `can_use_tool`로 온다. 물음들을 Runtime을 가리지 않는
+    ///   꼴([`questions_of`])로 요청의 `_meta.atelier.questions`에 싣고, 선택지는 답하기 · 나중에 둘이다 — 엔진이 그것으로 질문
+    ///   카드를 세우고, 답은 `_meta.atelier.answers`로 온다([`Self::answer`]).
     fn ask_permission(&mut self, line: &Value) {
         let request = &line["request"];
         let tool = request["tool_name"].as_str().unwrap_or_default();
         let input = &request["input"];
         let option = |id: &str, name: &str, kind: &str| json!({"optionId": id, "name": name, "kind": kind});
+        if tool == "AskUserQuestion" {
+            let tool_call = json!({
+                "toolCallId": request["tool_use_id"],
+                "title": stream::title(tool, input),
+                "kind": stream::kind(tool),
+                "status": "pending",
+                "rawInput": input,
+                "_meta": {"claudeCode": {"toolName": tool}},
+            });
+            let options = vec![option(ANSWER, "Answer", "allow_once"), option(ANSWER_LATER, "Answer later", "reject_once")];
+            let questions = questions_of(input);
+            return self.request_permission(line, tool_call, options, Vec::new(), Some(questions));
+        }
         if tool == "ExitPlanMode" {
             let tool_call = json!({
                 "toolCallId": request["tool_use_id"],
@@ -664,7 +748,7 @@ impl Machine {
                 option(IMPLEMENT_PLAN, "Yes, implement this plan", "allow_once"),
                 option(REVISE_PLAN, "No, and tell Claude what to do differently", "reject_once"),
             ];
-            return self.request_permission(line, tool_call, options, Vec::new());
+            return self.request_permission(line, tool_call, options, Vec::new(), None);
         }
         let session_suggestions: Vec<Value> = request["permission_suggestions"]
             .as_array()
@@ -690,23 +774,34 @@ impl Machine {
             "rawInput": input,
             "_meta": {"claudeCode": meta},
         });
-        self.request_permission(line, tool_call, options, session_suggestions);
+        self.request_permission(line, tool_call, options, session_suggestions, None);
     }
 
-    /// 호스트에 `session/request_permission`을 보내고, 답을 claude에 옮길 재료를 챙겨 둔다.
-    fn request_permission(&mut self, line: &Value, tool_call: Value, options: Vec<Value>, session_suggestions: Vec<Value>) {
+    /// 호스트에 `session/request_permission`을 보내고, 답을 claude에 옮길 재료를 챙겨 둔다. 질문이면 그 물음들을
+    /// `_meta.atelier.questions`에 싣는다.
+    fn request_permission(
+        &mut self,
+        line: &Value,
+        tool_call: Value,
+        options: Vec<Value>,
+        session_suggestions: Vec<Value>,
+        questions: Option<Value>,
+    ) {
         let request = &line["request"];
         let Some(session_id) = self.session_id() else { return };
         let id = self.next_request;
         self.next_request += 1;
         let input = request["input"].clone();
         self.asked.insert(id, Asked { request_id: line["request_id"].clone(), input, session_suggestions });
+        let mut meta = json!({"claudeCode": {"request": request}});
+        if let Some(questions) = questions {
+            meta["atelier"] = json!({"questions": questions});
+        }
         self.send(json!({
             "jsonrpc": "2.0",
             "id": id,
             "method": "session/request_permission",
-            "params": {"sessionId": session_id, "toolCall": tool_call, "options": options,
-                       "_meta": {"claudeCode": {"request": request}}},
+            "params": {"sessionId": session_id, "toolCall": tool_call, "options": options, "_meta": meta},
         }));
     }
 
@@ -897,6 +992,36 @@ fn command(command: &Value) -> Value {
 
 fn reply(id: &Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
+}
+
+/// claude `AskUserQuestion`의 물음들 → 엔진이 읽는 꼴(v1 티켓 26) — `{question, header?, description?, multiSelect, options[]{label,
+/// description?}}`. 빈 글 칸은 뺀다. 미리보기(`preview`)는 싣지 않는다 — 질문 카드는 글로만 고른다. 물음 글이 없는 물음 · 이름이 없는
+/// 선택지는 버린다.
+fn questions_of(input: &Value) -> Value {
+    let text = |value: &Value| value.as_str().filter(|text| !text.trim().is_empty()).map(str::to_owned);
+    let questions = input["questions"].as_array().into_iter().flatten().filter_map(|asked| {
+        let mut question = json!({"question": text(&asked["question"])?, "multiSelect": asked["multiSelect"] == true});
+        for key in ["header", "description"] {
+            if let Some(value) = text(&asked[key]) {
+                question[key] = json!(value);
+            }
+        }
+        let options: Vec<Value> = asked["options"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|option| {
+                let mut shown = json!({"label": text(&option["label"])?});
+                if let Some(description) = text(&option["description"]) {
+                    shown["description"] = json!(description);
+                }
+                Some(shown)
+            })
+            .collect();
+        question["options"] = Value::Array(options);
+        Some(question)
+    });
+    Value::Array(questions.collect())
 }
 
 fn error(id: &Value, code: i32, message: &str) -> Value {

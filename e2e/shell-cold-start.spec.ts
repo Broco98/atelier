@@ -23,6 +23,9 @@ import {
   stubWindowFocus,
   unknownIpcCalls,
   writeShell,
+  사람메뉴로간다,
+  사람메뉴항목,
+  사람줄,
 } from "./harness";
 
 // **글꼴이 오는 사이에 사람이 무엇을 해도, 연 셸은 전부 뜬다**(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는
@@ -213,7 +216,7 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
 
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect(tabs(page)).toHaveCount(1);
 
@@ -224,11 +227,11 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   const [workCwd, topCwd] = await spawnedCwds(page);
   expect(workCwd, "첫 spawn이 work 셸이 아니다").not.toEqual(topCwd);
 
-  // 두고 온 work 셸은 그 work 행이 센다 — 셸 수 `1`. 최상위 셸은 nav `Terminal`이 따로 센다(`1`).
+  // 두고 온 work 셸은 그 work 행이 센다 — 셸 수 `1`. 최상위 셸은 사람 메뉴의 `Terminal` 줄이 따로 센다(`1` — v1 티켓 07).
   await expect(page.locator(`[data-shells="${plainWork.slug}"]`)).toHaveText("1");
-  await expect(
-    page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).locator("xpath=.."),
-  ).toContainText("1");
+  await 사람줄(page).click();
+  await expect(사람메뉴항목(page).filter({ hasText: /^Terminal/ })).toContainText("1");
+  await page.keyboard.press("Escape");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -244,7 +247,7 @@ test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 �
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
 
-  await page.locator("nav").getByRole("button", { name: "Projects", exact: true }).click();
+  await 사람메뉴로간다(page, "Projects");
   await expect(page).not.toHaveURL("/terminal");
   await expect(tabs(page)).toHaveCount(0);
 
@@ -514,7 +517,7 @@ test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(3);
 
-  await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   await expect(page).toHaveURL("/settings/terminal");
   const terminal = page.getByRole("group", { name: "터미널 설정", exact: true });
   await terminal.getByRole("textbox", { name: "터미널 글꼴 크기", exact: true }).fill("22");

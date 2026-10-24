@@ -28,3 +28,13 @@ export function workSlugOf(pathname: string): string | null {
   const segment = pathname.slice(prefix.length).split("/")[0];
   return segment ? decodeURIComponent(segment) : null;
 }
+
+/**
+ * 주소가 가리키는 Thread의 id(v1 구현 스펙 §13 — `/threads/<id>`). 새 Thread(`/`)와 다른 화면에서는 `null`이다. 사이드바 줄의 켜짐과 ⌘J의
+ * 「다음 내 차례」(v1 티켓 42)가 같은 이것을 딛는다 — id는 시각 글자(`20261010-100000`)라 디코드할 것이 없다.
+ */
+export function threadIdOf(pathname: string): string | null {
+  const prefix = "/threads/";
+  if (!pathname.startsWith(prefix)) return null;
+  return pathname.slice(prefix.length).split("/")[0] || null;
+}

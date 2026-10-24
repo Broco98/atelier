@@ -4,25 +4,26 @@
 //! - 가짜 claude bin(`src/bin/fake-claude.rs`)은 stdin · stdout · 영수증 · 문(`<세션 id>.go`)을 두르고 L1에 선다.
 //! - 변환기 상태 기계의 시험(`src/translator/machine/tests.rs`)은 프로세스 없이 이것을 상대로 놓는다.
 //!
-//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다.
+//! 되감는 원문은 `tests/fixtures/claude-<판>/`의 것이다 — 진짜 claude가 그 순서로 냈다. 지금 판은 2.1.309다 — v1 티켓 09가 판 02 ·
+//! 워크플로 실측의 몰이를 같은 프롬프트 · 같은 폴더 모양으로 다시 돌려 녹음했다(몰이와 가리기는 v1 스펙 `구현-노트/녹음-2.1.309/`).
 //! - 띄우자마자: 첫 `system/init` 앞의 줄들(SessionStart 훅의 `hook_started` · `hook_response`). [`Replay::new`]가 돌려준다.
-//! - stdin `control_request{subtype:"initialize"}` → `initialize.json`(2.1.296)의 응답(요청 id만 바꿔 끼운다). 원문에 든
+//! - stdin `control_request{subtype:"initialize"}` → `initialize.json`의 응답(요청 id만 바꿔 끼운다). 원문에 든
 //!   `control_response`(잰 쪽이 보낸 제어 요청의 답)는 되감지 않는다 — 제어 요청에는 되감기가 스스로 답한다.
 //! - stdin user 줄 하나 → 원문의 다음 턴 하나(`system/init` … `result`). 줄의 `session_id`는 받은 세션 id로 바꿔 낸다 —
 //!   진짜 claude는 띄울 때 받은 세션 id를 싣는다.
-//! - **권한**(three-axes 티켓 15) — 턴의 `control_request{subtype:"can_use_tool"}`(워크플로 실측 2.1.282 `permission-stdio`,
+//! - **권한**(three-axes 티켓 15) — 턴의 `control_request{subtype:"can_use_tool"}`(워크플로 관문 G1 `permission-stdio`,
 //!   판 02 G1)를 내면 그 요청 id의 stdin `control_response`가 올 때까지 턴을 멈춘다. 답이 deny면 뒤따르는 그 도구의 실패
 //!   `tool_result`에 받은 글을 싣는다 — 진짜 claude가 deny의 `message`를 도구 결과로 모델에게 준다. 모르는 요청 id의 답(거둔
 //!   요청에 늦게 온 답)은 버린다 — 진짜 claude도 무시한다(워크플로 관문 G1).
-//! - **멈추기**(티켓 15) — 녹화에서 interrupt의 답(`control_response{still_queued}`, 워크플로 실측 2.1.282 `interrupt-sigint`)이
+//! - **멈추기**(three-axes 티켓 15) — 녹화에서 interrupt의 답(`control_response{still_queued}`, 워크플로 관문 G2 `interrupt-sigint`)이
 //!   있던 자리에서 턴을 멈추고 stdin `control_request{subtype:"interrupt"}`를 기다린다. 오면 그 요청 id로 답하고 녹화의 나머지
 //!   (`task_notification` · 실패 `tool_result` · `result/error_during_execution`)를 낸다. 권한 요청이 걸린 채 interrupt가 오면
 //!   `control_cancel_request`로 그 요청을 거두고 interrupt에 답한 뒤, 녹화된 interrupt의 실패 `tool_result` · `result`를 그 도구
 //!   id로 바꿔 낸다(워크플로 관문 G2 (c)의 모양 — 원문 파일은 없다).
-//! - **모델 · 모드 바꾸기**(티켓 15) — stdin `set_model` · `set_permission_mode`에는 판 02 실측 2.1.296 `set-model` ·
+//! - **모델 · 모드 바꾸기**(three-axes 티켓 15) — stdin `set_model` · `set_permission_mode`에는 판 02 실측 `set-model` ·
 //!   `set-permission-mode`에서 같은 값에 claude가 낸 답을 되감는다(모드는 뒤따른 `system/status`까지). 녹화에 없는 모델은
 //!   success, 녹화에 없는 모드는 녹화된 `invalid_mode` 오류다.
-//! - **스스로 이어 간 턴**(티켓 16, S4) — 원문에서 `result.origin.kind`가 `task-notification`인 턴은 user 줄 없이 낸다. 앞 턴이
+//! - **스스로 이어 간 턴**(three-axes 티켓 16, S4) — 원문에서 `result.origin.kind`가 `task-notification`인 턴은 user 줄 없이 낸다. 앞 턴이
 //!   다 끝나면 곧바로 이어 낸다(진짜 claude가 백그라운드 작업이 끝나 스스로 도는 턴). [`Hold`]가 있으면 그 자리에서 멈추고
 //!   [`Replay::release`]를 기다린다 — 멈춘 동안 받은 줄은 놓인 뒤 받은 차례대로 읽는다.
 //! - 되살리기가 실패한 claude(판 02 관문 G4 `g4-resume-missing`)는 initialize에 답하지 않고 [`forgotten_line`] 한 줄을 낸 뒤
@@ -32,55 +33,78 @@ use std::collections::VecDeque;
 
 use serde_json::{json, Value};
 
-/// 판 02 실측 2.1.296 — stdin `control_request initialize`의 응답 원문(가린 사본).
-const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.296/initialize.json");
+/// stdin `control_request initialize`의 응답 원문(가린 사본) — 판 02 실측 A4의 몰이를 2.1.309로 다시 돌린 것.
+const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initialize.json");
 /// 턴을 되감을 원문들(가린 사본) — 이름 → 원문. 이름에 CLI 판을 적는다.
-/// - `2.1.296/slash-skill-noreplay` — 슬래시 명령 · 스킬 다섯 턴. 모델이 `Skill`을 부르면 `isSynthetic` user 글이 낀다(판 02 실측 A4).
-/// - `2.1.296/slash-skill-replay` — 같은 꼴을 `--replay-user-messages`로 잰 넷. 내장 `/context` · `/cost`의 `<synthetic>` 답이 든다.
-/// - `2.1.296/edit-subagent` — `Read` · `Edit`의 한 턴과 서브에이전트(`Agent`)의 한 턴(티켓 14가 잰 것).
-/// - `2.1.296/g1-plan-implement` — 계획 모드의 한 턴: `ExitPlanMode`의 `can_use_tool` → 허락 → `system/status{default}` → 구현의
+/// - `2.1.309/slash-skill-noreplay` — 슬래시 명령 · 스킬 다섯 턴. 모델이 `Skill`을 부르면 `isSynthetic` user 글이 낀다(판 02 실측 A4).
+/// - `2.1.309/slash-skill-replay` — 같은 꼴을 `--replay-user-messages`로 잰 넷. 내장 `/context` · `/cost`의 `<synthetic>` 답이 든다.
+/// - `2.1.309/edit-subagent` — `Read` · `Edit`의 한 턴과 서브에이전트(`Agent`)의 한 턴(three-axes 티켓 14가 잰 것).
+/// - `2.1.309/g1-plan-implement` — 계획 모드의 한 턴: `ExitPlanMode`의 `can_use_tool` → 허락 → `system/status{default}` → 구현의
 ///   `Write`가 묻는 `can_use_tool` → 허락(판 02 관문 G1).
-/// - `2.1.296/g1-plan-revise` — 같은 물음을 거부(다시 짜기)한 턴과, 고칠 점을 받아 다시 물은 계획을 허락한 턴(판 02 관문 G1).
-/// - `2.1.282/twoturn-tools` — 답만 하는 한 턴과 `Write` · `Read` · `Bash`의 한 턴(워크플로 실측 G3).
-/// - `2.1.282/permission-stdio` — 작업 자리 밖 `Write`가 묻는 `can_use_tool`을 허락한 턴과 거부한 턴(워크플로 관문 G1).
-/// - `2.1.282/interrupt-sigint` — 오래 도는 `Bash`를 interrupt로 멈춘 턴 · 맥락을 이어 답한 턴 · SIGINT로 끝난 턴(워크플로
+/// - `2.1.309/g1-plan-revise` — 같은 물음을 거부(다시 짜기)한 턴과, 고칠 점을 받아 다시 물은 계획을 허락한 턴(판 02 관문 G1).
+/// - `2.1.309/twoturn-tools` — 답만 하는 한 턴과 `Write` · `Read` · `Bash`의 한 턴(워크플로 실측 G3).
+/// - `2.1.309/permission-stdio` — 작업 자리 밖 `Write`가 묻는 `can_use_tool`을 허락한 턴과 거부한 턴(워크플로 관문 G1).
+/// - `2.1.309/interrupt-sigint` — 오래 도는 `Bash`를 interrupt로 멈춘 턴 · 맥락을 이어 답한 턴 · SIGINT로 끝난 턴(워크플로
 ///   관문 G2).
-/// - `2.1.282/steer-background-subagent` — 턴 도중에 넣은 말이 합쳐진 턴 · 백그라운드 명령을 걸고 끝낸 턴 · 그 작업이 끝나
+/// - `2.1.309/steer-background-subagent` — 턴 도중에 넣은 말이 합쳐진 턴 · 백그라운드 명령을 걸고 끝낸 턴 · 그 작업이 끝나
 ///   claude가 스스로 이어 간 턴 · 서브에이전트를 interrupt로 멈춘 턴 · 맥락을 이어 답한 턴(워크플로 관문 G7 · G8 · G9).
-/// - `2.1.296/g4-background` — 백그라운드 명령을 걸고(그 `Bash`가 `can_use_tool`로 묻는다) 끝낸 턴과, 작업이 끝나 claude가
+/// - `2.1.309/g4-background` — 백그라운드 명령을 걸고(그 `Bash`가 `can_use_tool`로 묻는다) 끝낸 턴과, 작업이 끝나 claude가
 ///   스스로 이어 간 턴 — 그 턴이 `Read` · `Write`로 결과를 `bg.md`에 쓴다(판 02 관문 G4).
-/// - `2.1.296/noauth` — 로그인이 안 된 claude의 두 턴: `assistant{error:"authentication_failed"}` → `result{is_error:true}`
+/// - `2.1.309/noauth` — 로그인이 안 된 claude의 두 턴: `assistant{error:"authentication_failed"}` → `result{is_error:true}`
 ///   (판 02 실측 A8).
+/// - `2.1.309/thread-call-host` · `2.1.309/thread-call-reviewer` — Thread의 Host가 리뷰어를 부른 한 턴과 불린 리뷰어의 한 턴(v1
+///   티켓 20 끝 점검). Host는 미뤄 실린 Thread 도구를 `ToolSearch`(`select:mcp__atelier-thread__call_agent`)로 들인 뒤
+///   `call_agent`를 부르고 받은 답을 옮긴다. 리뷰어는 `Read`로 `thread.json`을 읽고 답한다. 녹음의 Thread 폴더는
+///   `/tmp/gate/home/threads/20261023-234318`이다.
+/// - `2.1.309/thread-rename-host` — Host가 `ToolSearch`로 들인 `rename_thread`로 Thread 이름을 바꾼 한 턴(v1 티켓 20 끝 점검).
+/// - `2.1.309/thread-question-host` — Host가 `AskUserQuestion`으로 사람에게 묻는 두 턴(v1 티켓 27 끝 점검). 첫 턴은 물음 둘(둘째는
+///   여럿 고르기)을 한 번에 묻고 답(allow의 `updatedInput.answers`)을 받아 「done」, 둘째 턴은 물음 하나를 「나중에」(deny)로
+///   닫혀 「later」다. 질문은 권한 도구의 `can_use_tool`(`requires_user_interaction: true`)로 온다. 녹음의 Thread 폴더는
+///   `/tmp/gate/home/threads/20261024-004101`이다.
+/// - `2.1.309/thread-work-host` — Work 없는 Thread의 Host가 「백엔드 환불 API 버그 고쳐줘」를 받은 한 턴(v1 티켓 39 끝 점검). Thread
+///   도구 다섯을 `ToolSearch`로 들여 `list_projects` · `get_work`를 보고, 등록한 저장소를 명령 셋(`can_use_tool`) · `Read` 다섯
+///   (`can_use_tool`)으로 읽고, `rename_thread`로 이름을 바꾸고, `propose_work`로 Work(`refund-partial-amount`, api-server)를
+///   제안한다. 만든 뒤 같은 턴에 spec 폴더에 `overview.md` · `01-fix/plan.md`를 `Write`(`can_use_tool`)하고 답한다. 녹음의 임시
+///   루트는 `/tmp/gate`(자료 자리 `home` · 저장소 `repos`), Thread 폴더는 `/tmp/gate/home/threads/20261024-013421`이다.
+/// - `2.1.309/thread-stop-host` — 「알아서」 Thread의 Host가 40초 도는 `python3` 명령을 앞에서 돌리는 동안 사람이 멈춘 한 턴(v1 티켓
+///   44 끝 점검). 그 `Bash`가 `can_use_tool`로 묻고 판정이 허락하면 `task_started`, 도는 동안 interrupt가 오면 `task_notification` →
+///   거부의 실패 `tool_result` → `result/error_during_execution`이다. 녹음의 Thread 폴더는 `/tmp/gate/home/threads/20261024-110553`이다.
 const FIXTURES: &[(&str, &str)] = &[
-    ("2.1.296/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.296/slash-skill-noreplay.jsonl")),
-    ("2.1.296/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.296/slash-skill-replay.jsonl")),
-    ("2.1.296/edit-subagent", include_str!("../../tests/fixtures/claude-2.1.296/edit-subagent.jsonl")),
-    ("2.1.296/g1-plan-implement", include_str!("../../tests/fixtures/claude-2.1.296/g1-plan-implement.jsonl")),
-    ("2.1.296/g1-plan-revise", include_str!("../../tests/fixtures/claude-2.1.296/g1-plan-revise.jsonl")),
-    ("2.1.282/twoturn-tools", include_str!("../../tests/fixtures/claude-2.1.282/twoturn-tools.jsonl")),
-    ("2.1.282/permission-stdio", include_str!("../../tests/fixtures/claude-2.1.282/permission-stdio.jsonl")),
-    ("2.1.282/interrupt-sigint", include_str!("../../tests/fixtures/claude-2.1.282/interrupt-sigint.jsonl")),
+    ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
+    ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
+    ("2.1.309/edit-subagent", include_str!("../../tests/fixtures/claude-2.1.309/edit-subagent.jsonl")),
+    ("2.1.309/g1-plan-implement", include_str!("../../tests/fixtures/claude-2.1.309/g1-plan-implement.jsonl")),
+    ("2.1.309/g1-plan-revise", include_str!("../../tests/fixtures/claude-2.1.309/g1-plan-revise.jsonl")),
+    ("2.1.309/twoturn-tools", include_str!("../../tests/fixtures/claude-2.1.309/twoturn-tools.jsonl")),
+    ("2.1.309/permission-stdio", include_str!("../../tests/fixtures/claude-2.1.309/permission-stdio.jsonl")),
+    ("2.1.309/interrupt-sigint", include_str!("../../tests/fixtures/claude-2.1.309/interrupt-sigint.jsonl")),
     (
-        "2.1.282/steer-background-subagent",
-        include_str!("../../tests/fixtures/claude-2.1.282/steer-background-subagent.jsonl"),
+        "2.1.309/steer-background-subagent",
+        include_str!("../../tests/fixtures/claude-2.1.309/steer-background-subagent.jsonl"),
     ),
-    ("2.1.296/g4-background", include_str!("../../tests/fixtures/claude-2.1.296/g4-background.jsonl")),
-    ("2.1.296/noauth", include_str!("../../tests/fixtures/claude-2.1.296/noauth.jsonl")),
+    ("2.1.309/g4-background", include_str!("../../tests/fixtures/claude-2.1.309/g4-background.jsonl")),
+    ("2.1.309/noauth", include_str!("../../tests/fixtures/claude-2.1.309/noauth.jsonl")),
+    ("2.1.309/thread-call-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-host.jsonl")),
+    ("2.1.309/thread-call-reviewer", include_str!("../../tests/fixtures/claude-2.1.309/thread-call-reviewer.jsonl")),
+    ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
+    ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
+    ("2.1.309/thread-work-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-work-host.jsonl")),
+    ("2.1.309/thread-stop-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-stop-host.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
-const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.296/g4-resume-missing.jsonl");
-/// 판 02 실측 2.1.296 — `set_model`(값 넷)과 그 답들. 넣은 줄과 낸 줄을 요청 id로 짝짓는다.
+const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
+/// 판 02 실측 A5(2.1.309로 다시) — `set_model`(값 넷)과 그 답들. 넣은 줄과 낸 줄을 요청 id로 짝짓는다.
 const SET_MODEL: (&str, &str) = (
-    include_str!("../../tests/fixtures/claude-2.1.296/set-model.stdin.jsonl"),
-    include_str!("../../tests/fixtures/claude-2.1.296/set-model.jsonl"),
+    include_str!("../../tests/fixtures/claude-2.1.309/set-model.stdin.jsonl"),
+    include_str!("../../tests/fixtures/claude-2.1.309/set-model.jsonl"),
 );
-/// 판 02 실측 2.1.296 — `set_permission_mode`(값 아홉)와 그 답 · 뒤따른 `system/status`.
+/// 판 02 실측 A7(2.1.309로 다시) — `set_permission_mode`(값 아홉)와 그 답 · 뒤따른 `system/status`.
 const SET_PERMISSION_MODE: (&str, &str) = (
-    include_str!("../../tests/fixtures/claude-2.1.296/set-permission-mode.stdin.jsonl"),
-    include_str!("../../tests/fixtures/claude-2.1.296/set-permission-mode.jsonl"),
+    include_str!("../../tests/fixtures/claude-2.1.309/set-permission-mode.stdin.jsonl"),
+    include_str!("../../tests/fixtures/claude-2.1.309/set-permission-mode.jsonl"),
 );
-/// 워크플로 실측 2.1.282 — interrupt로 멈춘 턴. 권한이 걸린 채 멈춘 턴의 실패 `tool_result` · `result`를 여기서 빌린다.
-const INTERRUPT: &str = include_str!("../../tests/fixtures/claude-2.1.282/interrupt-sigint.jsonl");
+/// 워크플로 관문 G2(2.1.309로 다시) — interrupt로 멈춘 턴. 권한이 걸린 채 멈춘 턴의 실패 `tool_result` · `result`를 여기서 빌린다.
+const INTERRUPT: &str = include_str!("../../tests/fixtures/claude-2.1.309/interrupt-sigint.jsonl");
 
 /// 그 이름(`<CLI 판>/<이름>`)의 원문.
 pub fn fixture(name: &str) -> Option<&'static str> {
@@ -124,6 +148,10 @@ pub struct Setup {
     pub session_id: String,
     /// 있으면 내는 `can_use_tool`마다 `permission_suggestions`를 이 값으로 바꾼다.
     pub suggestions: Option<Value>,
+    /// 있으면 내는 `can_use_tool`마다 그 요청을 이 입력의 `AskUserQuestion`으로 바꾼다(v1 티켓 26) — 질문의 꼴을 마음대로 지을 때
+    /// 쓴다(진짜 질문의 녹음은 `thread-question-host`다). 도구 이름과 입력만 바꾸고 요청 id · 도구 id는 녹화 그대로라, 답한 뒤에는
+    /// 녹화의 그 도구가 이어진다.
+    pub question: Option<Value>,
     pub hold: Option<Hold>,
     /// 있으면 `initialize` 응답의 계정 칸(`account.email` · `organization`)에 싣는다 — 실측 원문은 이미 가려져 있어, 가리기를
     /// 재려면 진짜 같은 이메일이 실려 와야 한다.
@@ -184,6 +212,7 @@ fn fixture_turns(text: &str) -> (Vec<Step>, Vec<Turn>) {
 pub struct Replay {
     session_id: String,
     suggestions: Option<Value>,
+    question: Option<Value>,
     hold: Option<Hold>,
     email: Option<String>,
     turns: VecDeque<Turn>,
@@ -224,6 +253,7 @@ impl Replay {
         let mut replay = Self {
             session_id: setup.session_id,
             suggestions: setup.suggestions,
+            question: setup.question,
             hold: setup.hold,
             email: setup.email,
             turns: turns.into(),
@@ -351,6 +381,10 @@ impl Replay {
                     if line["type"] == "control_request" && line["request"]["subtype"] == "can_use_tool" {
                         if let Some(suggestions) = &self.suggestions {
                             line["request"]["permission_suggestions"] = suggestions.clone();
+                        }
+                        if let Some(question) = &self.question {
+                            line["request"]["tool_name"] = json!("AskUserQuestion");
+                            line["request"]["input"] = question.clone();
                         }
                         let request_id = line["request_id"].clone();
                         let tool_use_id = line["request"]["tool_use_id"].clone();

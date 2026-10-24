@@ -128,6 +128,8 @@ function 행(state: ShellsState): string {
           );
         },
       }}
+      // 이 행의 Thread는 이 검사의 관심 밖이다(v1 티켓 37) — 셸 신호가 레인 · 메타 · 이름에서 같은 말을 하는가만 본다.
+      threads={{ counts: {}, expanded: [], onToggle: () => {}, renderThreads: () => null }}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}

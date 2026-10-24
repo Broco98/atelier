@@ -480,6 +480,9 @@ for (const { name, url, menu: 대상메뉴, slug, save, setUp, ring } of 이름�
       await expect(field).toHaveValue("abc def");
       await expect.poll(() => 테두리(ring(field))).toBe(링);
       expect(await callCount(page, save.command)).toBe(0);
+      // 카드가 포커스를 쥐었다 — 그래야 아래 Esc가 카드의 것이다. 칸에 포커스가 남은 채 누르면 Esc는 이름 고치기를 취소하는 칸의 키라
+      // 고치기만 접히고 메뉴가 남는다(리눅스 CI에서 한 번 본 모양 — 그 판의 스냅숏은 칸이 걷히고 행에 포커스가 선 채 메뉴가 떠 있었다).
+      await expect(menu).toBeFocused();
 
       // Esc는 메뉴만 닫는다 — 포커스가 그 칸으로 돌아오고 고름도 그대로다(들어설 때의 「전부 고름」이 다시 덮지 않는다).
       await page.keyboard.press("Escape");

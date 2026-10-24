@@ -11,8 +11,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   // 화면(컴포넌트)에서 적으면 렌더가 필요해 라우터 테스트가 못 보고, 라우트마다 적으면
   // 화면이 하나 느는 날 잊는다.
   //
-  // `/`와 설정은 `rememberVisit`이 걸러낸다 — 이 자리는 그 주소들도 지나므로, 거르지 않으면
-  // 「앱으로 돌아가기」가 설정이나 `/`로 돌아간다.
+  // 설정은 `rememberVisit`이 걸러낸다 — 이 자리는 그 주소들도 지나므로, 거르지 않으면
+  // 「앱으로 돌아가기」가 설정으로 돌아간다. `/`는 새 Thread라는 머무는 자리라 적힌다(v1 티켓 05).
   beforeLoad: ({ location }) => {
     rememberVisit(location.pathname);
   },

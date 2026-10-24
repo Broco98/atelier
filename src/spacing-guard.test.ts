@@ -356,16 +356,6 @@ describe("눈금의 사분 단", () => {
       why: "머리 카드의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
     },
     {
-      file: "src/components/shell/Sidebar.tsx",
-      className: "gap-2.25",
-      why: "사이드바 nav 행 — 아이콘과 이름 사이 9(DS `.at-row`)",
-    },
-    {
-      file: "src/features/works/WorkSectionList.tsx",
-      className: "gap-2.25",
-      why: "work 행 — 레인과 제목 사이 9(DS `.at-row`)",
-    },
-    {
       file: "src/features/works/WorkSectionList.tsx",
       className: "pl-2.25",
       why: "work 행의 메타 칸 — 제목과 메타 사이 9(DS `.at-row`의 칸 사이). 메타가 있을 때만 난다",
@@ -376,7 +366,7 @@ describe("눈금의 사분 단", () => {
       why: "머리 줄 버튼(`top`) — 아이콘과 글자 사이 5(DS `.at-btn.top`)",
     },
     {
-      file: "src/features/works/WorkCard.tsx",
+      file: "src/features/works/WorkPeek.tsx",
       className: "gap-1.25",
       why: "호버 카드의 고친 표시 — 점과 글자 사이 5(DS `.at-peek .chg`)",
     },
@@ -386,9 +376,9 @@ describe("눈금의 사분 단", () => {
       why: "상세 work 줄의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. DS에 그 부품이 없어 작은 글리프의 사이 5(DS `.at-btn.top` · `.at-peek .chg`)를 따른다",
     },
     {
-      file: "src/features/chat/ComposerChips.tsx",
+      file: "src/features/thread/ComposerChips.tsx",
       className: "gap-1.25",
-      why: "입력창의 칩 — 글리프와 글자 사이 5(DS `.at-ctl`)",
+      why: "Thread 입력창의 모델 칩 — 글자와 셰브런 사이 5(캔버스 Composer 보드 `.chip`)",
     },
     // 안쪽 9 · 7 — DS 부품의 안쪽
     {
@@ -432,29 +422,52 @@ describe("눈금의 사분 단", () => {
       why: "위와 같다 — 위아래 안쪽 1",
     },
     {
-      file: "src/features/chat/ChatMarkdown.tsx",
-      className: "px-1.25",
-      why: "대화 본문의 인라인 코드 — 문서의 인라인 코드와 같은 좌우 안쪽 5(DS `.at-prose code`)",
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "px-2.25",
+      why: "Thread 입력창의 모델 칩 — 좌우 안쪽 9(캔버스 Composer 보드 `.chip`의 `0 9px`)",
     },
     {
-      file: "src/features/chat/ChatMarkdown.tsx",
-      className: "py-px",
-      why: "위와 같다 — 위아래 안쪽 1",
+      file: "src/features/thread/QueuedMessages.tsx",
+      className: "px-2.25",
+      why: "기다리는 말의 「지금 전하기」 — 좌우 안쪽 9(캔버스 Messages 보드 `.qrow .gbtn`)",
     },
     {
-      file: "src/features/chat/Composer.tsx",
-      className: "pt-3.75",
-      why: "입력창 — 위 안쪽 15(DS `.at-composer`의 `15px 12px 8px 18px`). 슬래시 메뉴가 서면 12로 준다",
-    },
-    {
-      file: "src/features/chat/ToolRow.tsx",
+      file: "src/features/thread/ThreadFlow.tsx",
       className: "py-2.25",
-      why: "명령 출력 상자 — 위아래 안쪽 9(DS `.at-shell-out`의 `9px 12px 9px 9px`)",
+      why: "내 말풍선 — 위아래 안쪽 9(캔버스 Messages 보드 `.ubub`의 `9px 16px`)",
     },
     {
-      file: "src/features/chat/ToolRow.tsx",
-      className: "pl-2.25",
-      why: "위와 같다 — 왼쪽 안쪽 9",
+      file: "src/features/thread/ThreadMarkdown.tsx",
+      className: "py-px",
+      why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(캔버스 Messages 보드 `.code`의 `1px 5px`)",
+    },
+    {
+      file: "src/features/thread/SlashMenu.tsx",
+      className: "gap-y-px",
+      why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
+    },
+    {
+      file: "src/features/thread/AgentMenu.tsx",
+      className: "gap-px",
+      why: "@ 메뉴 — 묶음 안 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`)",
+    },
+    // 사이드바의 줄 사이 1 · 소제목 사이 — Codex 사이드바를 잰 값(v1 티켓 46 · 시안-비교/46 `참고/codex-사이드바.png`). 줄 30이 31마다
+    // 서고, 소제목(30) 가운데 → 첫 줄 가운데가 34, 마지막 줄 가운데 → 다음 소제목 가운데가 54다. nav 줄 · Work 줄 · Thread 줄이 한 벌이라
+    // 한 파일(`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C).
+    {
+      file: "src/components/shell/sidebar-look.ts",
+      className: "gap-px",
+      why: "사이드바 줄 목록(`SIDEBAR_ROWS` — nav · Work 구획 · 펼친 Thread · Thread 묶음) — 줄 사이 1(Codex 사이드바의 줄 30 · 간격 31)",
+    },
+    {
+      file: "src/components/shell/sidebar-look.ts",
+      className: "mb-0.75",
+      why: "묶음 소제목(`SIDEBAR_HEADING` — Work 구획 머리 · 「Thread」 · 「기다리는 순서」) — 아래 3. 소제목 가운데 → 첫 줄 가운데 34(15 + 3 + 1 + 15, Codex 「프로젝트」 · 「최근」)",
+    },
+    {
+      file: "src/components/shell/sidebar-look.ts",
+      className: "mt-5.75",
+      why: "앞 묶음 뒤의 소제목(`SIDEBAR_AFTER_SECTION` — `고정` 뒤 `Work` · Work 묶음 뒤 「Thread」) — 위 23. 마지막 줄 가운데 → 다음 소제목 가운데 54(15 + 1 + 23 + 15, Codex 「프로젝트」 → 「최근」)",
     },
     // 앱의 조용한 칩 — 좌우 7
     {

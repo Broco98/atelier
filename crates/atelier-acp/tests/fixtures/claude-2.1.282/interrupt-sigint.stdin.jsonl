@@ -1,4 +1,0 @@
-{"t": 0.002, "stdin": {"type": "user", "message": {"role": "user", "content": "Run this exact Bash command in the foreground (not in background): python3 -c \"import time; time.sleep(40); print('slept')\" . After it finishes say FINISHED."}, "parent_tool_use_id": null, "session_id": ""}}
-{"t": 6.07, "stdin": {"type": "control_request", "request_id": "req_f69b58e2", "request": {"subtype": "interrupt"}}}
-{"t": 7.116, "stdin": {"type": "user", "message": {"role": "user", "content": "In one short sentence: what command did you try to run just now, and did it complete?"}, "parent_tool_use_id": null, "session_id": ""}}
-{"t": 9.709, "stdin": {"type": "user", "message": {"role": "user", "content": "Run this exact Bash command in the foreground again: python3 -c \"import time; time.sleep(40); print('slept')\" . After it finishes say FINISHED2."}, "parent_tool_use_id": null, "session_id": ""}}

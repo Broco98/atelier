@@ -8,7 +8,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  navButton,
+  사람메뉴로간다,
   openShell,
   ownerlessText,
   processesTitle,
@@ -94,13 +94,13 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
   // 주인이 있는 셸 하나(`Terminal`, pty 3) — 셸 트리의 앵커다.
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(ownerless).toBeVisible();
@@ -176,7 +176,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
   const 토스트 = (n: number) => toastOf(page, ownerlessText(n));
   await expect(토스트(3)).toBeVisible();
 
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(셸줄(ownerless, 1)).toBeVisible();
@@ -305,14 +305,14 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await archiveByMcp(page, WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
   // `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
 
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(셸줄(셸트리(page), 3)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
@@ -505,7 +505,7 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   });
   await 셸셋을띄운다(page);
   await openShell(page);
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   const quietAll = 버튼(머리카드(page), "조용한 셸 모두 닫기");
 
@@ -545,7 +545,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
 
   await 버튼(머리카드(page), "조용한 셸 모두 닫기").click();

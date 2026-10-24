@@ -240,10 +240,10 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
 });
 
 // 사이드바 최상단의 짜임 — 자리는 렌더가 아니라 소스에서만 보인다.
-describe("사이드바 최상단은 신호등 띠이고 그 아래가 nav다", () => {
+describe("사이드바 최상단은 신호등 띠이고 그 아래가 「전체 | 내 차례」 마디다", () => {
   const sidebar = read("Sidebar.tsx");
 
-  it("신호등 띠 **아래**에 갈래의 몸통이 서고, 앱 갈래의 첫 것이 nav다", () => {
+  it("신호등 띠 **아래**에 갈래의 몸통이 서고, 앱 갈래의 첫 것이 「전체 | 내 차례」 마디다", () => {
     // 설정 nav가 생긴 뒤로 띠는 두 갈래가 함께 지나는 겉 상자(`SidebarFrame`)에 살고, 갈래의
     // 몸통은 그 띠 **뒤의 자리**(`{children}`)에 선다. 그래서 파일 전체의 첫 띠로 재지 않고 둘로
     // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 nav가 맨 앞. 띠가 파일에 **하나뿐**인
@@ -256,17 +256,57 @@ describe("사이드바 최상단은 신호등 띠이고 그 아래가 nav다", (
     // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
     const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
     const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
-    const nav = app.indexOf("<nav");
+    const filter = app.indexOf("<ThreadFilter");
     // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 줄이
     // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect([strip, slot, nav].every((at) => at > -1)).toBe(true);
+    expect([strip, slot, filter].every((at) => at > -1)).toBe(true);
     expect(slot).toBeGreaterThan(strip);
-    // 겉 상자를 연 줄 바로 뒤의 첫 요소가 nav다(그 사이에는 주석만 선다).
-    expect(app.slice(0, nav)).not.toMatch(/\n\s*<(?!SidebarFrame|nav)[A-Za-z]/);
+    // 겉 상자를 연 줄 바로 뒤의 첫 요소가 「전체 | 내 차례」 마디다(그 사이에는 주석만 선다). 한때 그 앞에 검색 칸이 섰다(v1 구현
+    // 스펙 §13 「검색 · 새 Thread · Library」) — 검색은 제목 줄의 🔍와 ⌘K가 들어 v1 티켓 46이 사이드바의 칸을 걷었다(결정.md 「46」).
+    expect(app.slice(0, filter)).not.toMatch(/\n\s*<(?!SidebarFrame|ThreadFilter)[A-Za-z]/);
+    expect(sidebar).not.toContain("<SearchField");
+  });
+});
+
+// v1 구현 스펙 §13 · S27 · 티켓 07 · 19 · 42. **사이드바의 차례가 캔버스 「Thread 목록과 아바타」 보드의 차례다** — 「전체 | 내 차례」
+// 마디 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴(보드 맨 위의 검색 칸은 제목 줄의 🔍 · ⌘K가 든다 — v1
+// 티켓 46). 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람 메뉴로 갔다. 이 파일은 렌더로 못
+// 들이므로(머리말) 앱 갈래 안의 자리를 소스로 잰다 — 무엇이 그려지는지는 시안 비교 캡처와 L3가 본다.
+describe("사이드바의 차례가 시안의 차례다", () => {
+  const sidebar = read("Sidebar.tsx");
+  const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
+  const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
+
+  it("「전체 | 내 차례」 마디 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
+    const order = [
+      "<ThreadFilter",
+      "<NewThreadItem",
+      "<LibraryItem",
+      "<AttentionBand",
+      "<SidebarWorkList",
+      "<SidebarThreads",
+      "<PersonMenu",
+    ].map((tag) => app.indexOf(tag));
+    // **다 있는지부터 센다** — 하나가 없으면 -1이라 차례 비교가 엉뚱한 이유로 갈린다.
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it("nav가 **`navItems` 배열**을 돈다", () => {
-    expect(sidebar).toContain("navItems.map(");
+  it("nav에는 「새 Thread」 · 「Library」만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
+    const nav = app.slice(app.indexOf("<nav"), app.indexOf("</nav>"));
+    expect(nav).toContain("<NewThreadItem");
+    expect(nav).toContain("<LibraryItem");
+    expect(nav).not.toContain("navItems");
+    expect(countOf(sidebar, "navItems.map(")).toBe(1);
+    const menuAt = sidebar.indexOf("function PersonMenu(");
+    expect(menuAt).toBeGreaterThan(-1);
+    expect(sidebar.slice(menuAt)).toContain("navItems.map(");
+  });
+
+  it("바닥에 따로 선 설정 줄이 없다 — 설정은 사람 메뉴의 끝이다", () => {
+    expect(app).not.toContain('label="Settings"');
+    const menu = sidebar.slice(sidebar.indexOf("function PersonMenu("));
+    expect(menu).toContain("onClick={onOpenSettings}");
   });
 });
 
@@ -299,7 +339,7 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
       "navItems.map(",
       "<AttentionBand",
       "<SidebarWorkList",
-      'label="Settings"',
+      "<PersonMenu",
     ]) {
       expect(branch, gone).not.toContain(gone);
     }

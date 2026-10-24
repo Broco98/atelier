@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "./evidence";
-import { MAIN_HEADER, PROJECTS, WORKS } from "./fixtures";
+import { FIXTURE_THREAD, PROJECTS, WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls, 툴팁 } from "./harness";
 
 // codex-ds 티켓 03 — **글자는 DS 단계에서만 나온다**(codex-ds 결정 27 · 스펙 「토큰」의 글자 단계). 단계가 크기와 함께
@@ -48,11 +48,25 @@ test("문서 h1 · h2 · 본문이 DS heading-lg · heading-sm · chat-body다",
 });
 
 test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
-  await installFixtureBackend(page);
+  // 사이드바 Work 줄의 이은 Thread 수 — DS 「글자」 표의 `text-xs`(행 메타)다. 한때 구획 머리의 옅은 수를 쟀는데 v1 티켓 46이 그 수를
+  // 눈에서 걷었다(이름에만). Thread 수는 그 수와 같은 글자이고, 이은 Thread가 있어야 선다 — 고정된 일에 Thread 하나를 잇는다.
+  await installFixtureBackend(page, {
+    thread_list: [
+      {
+        id: FIXTURE_THREAD.id,
+        title: FIXTURE_THREAD.title,
+        createdAt: FIXTURE_THREAD.createdAt,
+        work: pinnedWork.slug,
+        handles: ["host"],
+        lastRead: 0,
+        readOnly: null,
+        broken: null,
+      },
+    ],
+  });
   await page.goto("/projects");
-  // 사이드바 구획 머리의 옅은 수 — DS 「글자」 표의 `text-xs`(행 메타)다.
-  const 개수 = page.getByRole("button", { name: MAIN_HEADER, exact: true }).locator("span.tabular-nums");
-  await expect(개수).toBeVisible();
+  const 개수 = page.locator(`[data-thread-count="${pinnedWork.slug}"]`);
+  await expect(개수).toHaveText("1");
 
   expect(await 글자(개수)).toEqual({ size: "12px", line: "18px", weight: "400", tracking: "0.3px" });
 

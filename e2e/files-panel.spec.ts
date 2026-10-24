@@ -11,6 +11,7 @@ import {
   replaceAnswer,
   steadyCount,
   unknownIpcCalls,
+  작업화면으로,
 } from "./harness";
 
 // git-integration 판 01 티켓 01 — **files 칸에 워크트리 트리가 선다.**
@@ -31,7 +32,7 @@ const COMMAND = "list_worktree_tree";
 const FOLDER = "list_worktree_folder";
 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "files") => 레일(page).getByRole("button", { name, exact: true });
+const 레일칸 = (page: Page, name: "spec" | "files") => 레일(page).getByRole("button", { name, exact: true });
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });
 const 패널머리 = (page: Page) => 작업패널(page).locator('[data-slot="card-head"]');
@@ -42,7 +43,6 @@ const 패널행 = (page: Page, name: string) => 행(작업패널(page), name);
 const 구획 = (page: Page, name: string) => 작업패널(page).getByRole("group", { name, exact: true });
 /** 작업 패널 칸(두 번째 `aside`)의 그려진 폭 — 접히면 0이다. */
 const 패널폭 = (page: Page) => page.locator("aside").nth(1).evaluate((el) => Math.round(el.getBoundingClientRect().width));
-const 사이드바work = (page: Page, title: string) => page.locator("aside").getByRole("button", { name: title, exact: true });
 
 /** files 칸을 열고 트리가 선 것을 본다. */
 async function openFiles(page: Page): Promise<void> {
@@ -50,15 +50,14 @@ async function openFiles(page: Page): Promise<void> {
   await expect(레일칸(page, "files")).toHaveAttribute("aria-pressed", "true");
 }
 
-test("레일의 `files` 칸이 `spec` · `chat` 뒤에 서고, 켜짐을 `aria-pressed`로 말하며, `spec`과 한 번에 하나만 켜진다", async ({ page }) => {
+test("레일의 `files` 칸이 `spec` 뒤에 서고, 켜짐을 `aria-pressed`로 말하며, `spec`과 한 번에 하나만 켜진다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   // 앵커: 레일이 섰다 — 서기 전에 칸 목록을 읽으면 빈 목록이다
   await expect(레일칸(page, "spec")).toBeVisible();
-  // 결정 29 — `spec · chat · files`(`chat`은 three-axes의 칸이다 — `spec` 바로 뒤. info 칸은 codex-ds 결정 25로 걷혔다). 라벨은 소문자 영어다.
+  // 결정 29 — `spec · files`(info 칸은 codex-ds 결정 25로 걷혔다). 라벨은 소문자 영어다.
   expect(await 레일(page).getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
-    "chat",
     "files",
   ]);
   const spec = 레일칸(page, "spec");
@@ -356,10 +355,10 @@ test("펼친 폴더는 칸을 껐다 켜도, 패널을 접었다 펴도, 다른 
   await expect(토글(page)).toHaveAttribute("aria-expanded", "true");
   await expect(src).toHaveAttribute("aria-expanded", "true");
 
-  // 다른 work에 갔다 온다 — 기억은 work마다 따로다: 같은 프로젝트(빌링)라도 그 work에서는 접힌 채 선다
-  await 사이드바work(page, multiWork.title).click();
+  // 다른 work에 갔다 온다(⌘K의 Work 줄 — v1 티켓 37) — 기억은 work마다 따로다: 같은 프로젝트(빌링)라도 그 work에서는 접힌 채 선다
+  await 작업화면으로(page, multiWork);
   await expect(행(구획(page, "빌링"), "src")).toHaveAttribute("aria-expanded", "false");
-  await 사이드바work(page, pinnedWork.title).click();
+  await 작업화면으로(page, pinnedWork);
   await expect(작업패널(page).getByRole("heading")).toHaveCount(0);
   await expect(src).toHaveAttribute("aria-expanded", "true");
   await expect(패널행(page, "TS index.ts")).toBeVisible();

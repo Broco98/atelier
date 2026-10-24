@@ -79,7 +79,8 @@ export const CLOSED_SHELL_TOAST_ID = "recall:closed";
 
 /**
  * ⌘J인가(프로세스 스펙 P3). 메뉴가 쏜 합성 keydown(`menu-hotkey.ts`)과 직접 누른 키가 같은 판정을 지난다. 어느 키인가는 단축키 표의
- * `recall`이 정한다(`@/lib/hotkeys`).
+ * `recall`이 정한다(`@/lib/hotkeys`). **이 키는 이제 나를 기다리는 Thread가 먼저다**(v1 구현 스펙 S28 · v1 티켓 42) — 기다리는 Thread가
+ * 있으면 그리로 건너뛰고, 이 모듈의 셸(`recallTarget`)은 그다음이다(`AppShell` · `src/features/thread/waiting.ts`의 `jumpTarget`).
  *
  * **`code`로 본다** — 한글 입력기가 켜져 있으면 `key`가 자모로 온다(`searchHotkey`와 같은 까닭). 수식키가 하나라도 더 붙으면
  * 아니다. 셸 안에서 눌러도 셸이 먹지 않는다: xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라온다

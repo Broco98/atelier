@@ -267,7 +267,7 @@ test("셸이 여덟이어도 파일 탭은 열리고, ⌘T만 막힌다", async 
 
 // ── 작업 패널의 레일과 토글 (ui-refresh 결정 9 · 10 · codex-ds 결정 25) ──
 // 작업 패널을 고르고 여닫는 자리는 패널 **밖**이다 — 머리 줄의 패널 토글 하나와 ⌘Enter, 그리고 바탕 오른쪽 끝의 레일. 레일은
-// 칸이 둘 이상일 때만 서는데(codex-ds 결정 25) 칸이 `spec` · `chat` · `files` 셋이라 선다(three-axes · git-integration 결정 29). 칸은 `aria-pressed`
+// 칸이 둘 이상일 때만 서는데(codex-ds 결정 25) 칸이 `spec` · `files` 둘이라 선다(git-integration 결정 29). 칸은 `aria-pressed`
 // 버튼이다 — 켜진 칸을 다시 누르면 패널이 닫혀 켜진 칸이 0개일 수 있으므로 탭이 아니다(탭 줄이 `role="tab"`을 안 쓰는 것과 같은
 // 가족이다). 칸 사이 ←/→ 이동은 없다 — 칸은 Tab으로 옮겨 가는 버튼이다(판 04 티켓 04의 「잃는 것」). 두 몸은 함께 마운트된 채라
 // (안 보이는 쪽은 `hidden` · `inert`) `spec`에서 접어 둔 폴더가 `files`에 다녀와도 접혀 있다.
@@ -276,7 +276,7 @@ test("셸이 여덟이어도 파일 탭은 열리고, ⌘T만 막힌다", async 
 // files 몸은 그 work 워크트리의 트리다(첫 줄 폴더 「src」).
 
 const 레일 = (page: Page) => page.getByRole("group", { name: "레일", exact: true });
-const 레일칸 = (page: Page, name: "spec" | "chat" | "files") => 레일(page).getByRole("button", { name, exact: true });
+const 레일칸 = (page: Page, name: "spec" | "files") => 레일(page).getByRole("button", { name, exact: true });
 /** 패널 토글 — 이름이 상태를 탄다(열렸으면 「접기」, 닫혔으면 「펼치기」). */
 const 토글 = (page: Page) => page.getByRole("button", { name: /^작업 패널 (접기|펼치기)$/ });
 const 작업패널 = (page: Page) => page.getByRole("region", { name: "작업 패널", exact: true });

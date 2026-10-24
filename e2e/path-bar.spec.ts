@@ -4,7 +4,8 @@ import { clipboardWrites, installFixtureBackend, recordClipboard, unknownIpcCall
 
 // codex-ds 티켓 15 — **문서 위에 경로 줄이 선다**(스펙 §4 「카드 머리 · 경로 줄」 · DS `PathBar` · 결정 12 · 13 · 27). 줄은 48(틈 8 ·
 // 컨트롤 32 · 틈 8)이고 왼쪽에 경로 캡슐, 오른쪽에 보기 묶음(문서 | 원문)과 동그란 경로 복사가 선다. 캡슐 안 글자는 카드 + 20 —
-// 아래 문서 글의 거터(20)와 **한 세로줄**이다. 캡슐의 끝 칸(지금 보는 파일)만 `fg` 500이고 앞 칸은 `fg-secondary`다. 닫기 ×는
+// 아래 문서 글의 거터(20)와 **한 세로줄**이다. 캡슐의 끝 칸(지금 보는 파일)만 `fg` 500이고 앞 칸은 옅은 경로 `fg-tertiary`다(캔버스
+// `.vh .path` — v1 티켓 46이 캡슐의 링과 함께 `fg-secondary`에서 내렸다). 닫기 ×는
 // 미리보기에만 단다(결정 13) — spec 탭의 문서와 Archive 문서에는 없다. 분할의 spec 열 머리 끝에 서는 ×는 미리보기 ×가 아니라
 // 그 열을 닫는 것이다(스펙 S14 · `CONTEXT.md` 「열」).
 //
@@ -41,13 +42,13 @@ async function 경로줄을잰다(page: Page, card: Locator, 조각: string[]) {
   const barBox = await 상자(bar);
   expect(barBox.height, "경로 줄 높이").toBe(parseFloat(await 토큰값(page, "height", "--size-pathbar")));
 
-  // 끝 칸만 진하다 — 앞 칸은 `fg-secondary` 400, 끝 칸은 `fg` 500.
-  const [fg, secondary] = [await 토큰색(page, "--fg"), await 토큰색(page, "--fg-secondary")];
+  // 끝 칸만 진하다 — 앞 칸은 `fg-tertiary` 400, 끝 칸은 `fg` 500.
+  const [fg, tertiary] = [await 토큰색(page, "--fg"), await 토큰색(page, "--fg-tertiary")];
   const pieces = capsule.locator("span");
   const last = 조각.length - 1;
   for (let at = 0; at < 조각.length; at++) {
     expect(await 칠한값(pieces.nth(at), "color", "font-weight"), 조각[at]).toEqual(
-      at === last ? [fg, "500"] : [secondary, "400"],
+      at === last ? [fg, "500"] : [tertiary, "400"],
     );
   }
 

@@ -1,5 +1,3 @@
-import type { Agent } from "@/features/chat/types";
-
 // `~/.atelier/settings.json` 한 장의 모양 (결정 53). **정본은 `src-tauri/src/settings.rs`**이고
 // 여기는 그 응답의 타입이다 — 파일에 무엇이 들어가는지는 그쪽 주석이 말한다.
 
@@ -40,38 +38,19 @@ export interface NotificationSettings {
   sound?: boolean;
 }
 
-/**
- * 한 엔진의 새 대화 기본값(three-axes 결정 16). 값은 엔진이 낸 목록의 id 그대로다 — 모델은 `configOptions.model`의 `value`,
- * 모드는 `modes`의 `id`. **키가 없는 것이 「엔진 기본값」이다** — 그때 Claude는 `--model` · `--permission-mode`를 받지 않고
- * Codex는 `set_*`를 받지 않는다.
- */
-export interface ChatEngineDefaults {
-  model?: string;
-  mode?: string;
-}
-
-/**
- * 설정 「대화」 구획(three-axes 결정 16 · 티켓 25) — `+`가 여는 기본 에이전트와 엔진마다의 기본 모델 · 시작 모드. 알림 구획처럼
- * **고르지 않은 칸은 키째 없고, 비면 구획째 없다**(`chat-settings.ts`가 그렇게 짓는다).
- *
- * 백엔드(`settings.rs`)에는 칸이 없다 — 이 구획은 `extra`로 글자 그대로 왕복하고, 읽는 쪽은 대화 호스트(새 대화의 모델 · 모드)와
- * `+`(기본 에이전트)다. 그래서 손으로 적은 이상한 값도 그대로 올 수 있다 — 읽는 쪽이 모르는 값을 처음 값으로 읽는다.
- */
-export interface ChatSettings {
-  /** 고르지 않았으면 처음 값 Claude Code다(`chat-settings.ts`의 `DEFAULT_AGENT`). */
-  defaultAgent?: Agent;
-  claude?: ChatEngineDefaults;
-  codex?: ChatEngineDefaults;
-}
-
 export interface Settings {
   terminal: TerminalSettings;
   // **없을 수 있다.** 아무것도 안 고른 파일에는 이 구획이 통째로 없고(`settings.rs`의
   // `is_empty`) 백엔드는 읽은 그대로 실어 보낸다 — 「있다」고 적으면 지금까지 쓰던 설정
   // 파일 전부에서 이 타입이 거짓말이 된다.
   notifications?: NotificationSettings;
-  // 대화 구획(three-axes 티켓 25)도 **없을 수 있다** — 손대지 않은 파일에는 없다.
-  chat?: ChatSettings;
+  /** 한 번만 보이는 안내를 봤다는 표(v1 티켓 30 · S31) — 본 것이 없으면 구획이 통째로 없다(`settings.rs`의 `SeenSettings`). */
+  seen?: SeenSettings;
+}
+
+/** 본 표 — 「결정은 내가 합니다」 카드(`decisions`). 화면 없는 구획이다(Thread 화면이 카드를 닫을 때 적는다). */
+export interface SeenSettings {
+  decisions?: boolean;
 }
 
 // 에이전트 훅이 지금 어디에 어떻게 깔려 있나 (#207 · 구현 결정 8). **정본은

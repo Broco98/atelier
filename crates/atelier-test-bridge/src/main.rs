@@ -115,6 +115,12 @@ const HANDLERS: &[(&str, Handler)] = &[
         let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
         ok(atelier_core::read_worktree_file(&works_dir(), &slug, &project, &path))
     }),
+    // Work 카드의 자료(v1 티켓 33)도 코어를 진짜로 탄다 — 진짜 git이 변경과 diff를 판정한다.
+    ("list_work_changes", |a| ok(atelier_core::list_work_changes(&works_dir(), &projects_dir(), &text(a, "slug")?))),
+    ("read_work_diff", |a| {
+        let (slug, project, path) = (text(a, "slug")?, text(a, "project")?, text(a, "path")?);
+        ok(atelier_core::read_work_diff(&works_dir(), &projects_dir(), &slug, &project, &path))
+    }),
     ("search", |a| {
         ok(atelier_core::search(
             // **반드시 코어의 데이터 루트다.** 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 봐서,
@@ -130,6 +136,16 @@ const HANDLERS: &[(&str, Handler)] = &[
     //
     // **루트는 반드시 코어의 것을 넘긴다** — 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 본다.
     ("touch_recent_work", |a| ok(atelier_core::touch_recent_work(&data_root(), &text(a, "slug")?))),
+    // Agent 목록 · 파일 읽기(v1 티켓 11)는 코어만 거친다 — 같은 입구(`find_agents` · `read_agent_file`)가 다리의 데이터 루트에서
+    // Library와 Work의 Project 폴더를 **진짜로** 읽는다. `work`가 없으면(`null`) Library만이다.
+    ("list_agents", |a| ok(atelier_core::find_agents(&data_root(), maybe_text(a, "work").as_deref()))),
+    ("read_agent_file", |a| {
+        ok(atelier_core::read_agent_file(&data_root(), maybe_text(a, "work").as_deref(), &text(a, "call")?))
+    }),
+    // 「Finder에서 열기」(v1 티켓 19)는 Finder 열기 둘과 같다 — 경로 풀기(`agent_file_path`)는 코어 단위 검사가 잰다.
+    ("reveal_agent_file", |_| in_app_only("탐색기를 여는 일입니다 — 경로 풀기는 코어 단위 검사가 잽니다")),
+    // 입력창의 첨부 칩(v1 티켓 06)은 코어만 거친다 — 같은 입구가 다리의 파일 시스템에서 경로를 **진짜로** 잰다.
+    ("describe_attachments", |a| ok(atelier_core::describe_attachments(&texts(a, "paths")?))),
     // 셸 일곱은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
     ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
@@ -169,6 +185,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 예외 목록의 기본값(프로세스 스펙 S7)은 **판정이 쓰는 앱 크레이트의 상수**다. 코어가 모르는 값이라 여기서
     // 다시 적으면 이 층이 앱이 아니라 다리를 검증한다(위 설정 둘과 같은 이유).
     ("default_process_exceptions", |_| in_app_only("예외 목록의 기본값이 앱 크레이트의 상수입니다")),
+    // 사람 메뉴의 이름(v1 티켓 07)은 이 컴퓨터 계정에서 읽는다 — 다리는 L4 sandbox 안이라 그 사람이 없다. 거절되면 화면은 「나」로 선다.
+    ("person_name", |_| in_app_only("사람의 이름은 앱이 이 컴퓨터의 계정에서 읽습니다")),
     // 에이전트 훅 셋(#207)도 같은 이유다 — 병합 모듈이 앱 크레이트에 산다
     // (`src-tauri/src/hooks.rs`). 게다가 이쪽이 고치는 것은 `~/.atelier` 밖의 파일
     // (`~/.claude`·`~/.codex`)이라, 다리가 그것을 진짜로 태우면 검증 한 번이 이 기계를
@@ -207,36 +225,37 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 시작 보고(프로세스 스펙 S11)는 **이 실행이 뜰 때 한 일**이다 — 앱 프로세스가 붙잡아 둔 값이라, 호출마다
     // 새로 뜨는 다리에는 붙잡을 실행이 없다. 거절되면 프런트는 토스트 없이 넘어간다(부팅 때의 설정 읽기와 같다).
     ("startup_report", |_| in_app_only("시작 보고는 앱 프로세스가 붙잡아 둔 값입니다")),
-    // 대화 명령(three-axes 티켓 05)은 **앱 프로세스가 쥔 대화 호스트**를 부른다 — 호스트는 오래 사는 에이전트 프로세스와
-    // 그 연결을 쥔다. 호출마다 새로 뜨고 끝나는 다리는 에이전트를 쥘 수 없고, 띄운다 해도 다리가 끝나는 순간 함께 끊긴다.
-    // 기록 읽기 · 목록처럼 파일만 읽는 것도 같이 둔다 — 떠 있는 대화의 마지막 seq는 호스트 메모리에 있다. 대화 기능은 L4로
-    // 재지 않는다(구현 스펙). 거절되면 대화창은 무너지지 않고 그 거절을 견딘다.
-    ("chat_check_engine", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_list", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_read_record", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_new", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_switch_agent", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_send", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_close", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 멈추기 · 대기 줄(three-axes 티켓 07) — 대기 줄은 호스트 메모리에만 있다(S13).
-    ("chat_stop", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_edit_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_delete_queued", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_send_now", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 권한 답(three-axes 티켓 08) — 걸린 권한 요청의 답할 자리는 호스트가 쥔 연결 안에 있다.
-    ("chat_answer_permission", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 모델 · 모드 · 계획 바꾸기와 엔진 목록(three-axes 티켓 09) — 바꾸기는 떠 있는 에이전트에 곧바로 넣는다. 엔진 목록은 파일만
-    // 읽지만 대화 명령의 한 가족이라 같이 둔다(설정 쪽은 거절되면 「엔진 기본값」만 보인다).
-    ("chat_set_model", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_set_mode", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_set_plan", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_engine_lists", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 종료 확인의 대화 셈(three-axes 티켓 23) — 대기 줄과 걸린 물음은 호스트 메모리에만 있다(S13).
-    ("chat_quit_counts", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    // 로그인 시작 · 취소(three-axes 티켓 12)는 호스트가 쥔 로그인 명령 프로세스를 띄우고 거둔다 — 끝나면 확인을 다시 돌고
-    // 기다리던 대화를 다시 띄우는 것까지 호스트의 일이라, 뜨고 끝나는 다리가 쥘 수 없다.
-    ("chat_start_login", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
-    ("chat_cancel_login", |_| in_app_only("대화 호스트가 앱 프로세스의 상태입니다")),
+    // Thread 명령(v1 티켓 04 · 구현 스펙 §18)은 **앱 프로세스가 쥔 Thread 엔진**을 부른다 — 엔진은 오래 사는 Agent 프로세스와 그
+    // 연결을 쥔다. 호출마다 새로 뜨고 끝나는 다리는 Agent를 쥘 수 없고, 띄운다 해도 다리가 끝나는 순간 함께 끊긴다. 목록 · 기록
+    // 읽기도 같이 둔다 — 색인과 떠 있는 Session의 기록 끝은 엔진 메모리에 있다. 로그인 시작 · 취소도 엔진이 쥔 로그인 명령
+    // 프로세스를 띄우고 거둔다. Thread 엔진은 L4로 재지 않는다(구현 스펙 「L4는 더하지 않는다」). three-axes의 `chat_` 명령은 v1
+    // 티켓 08이 걷었다.
+    ("thread_check_engine", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_start_login", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_cancel_login", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_quit_counts", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_list", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_get", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_read_record", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_start", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_send", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_stop", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_edit_queued", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_delete_queued", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_send_now", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_permission", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_work", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_question", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_project", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_work_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    // Work의 PR(v1 티켓 36)은 엔진이 읽고 `pr` 줄을 남긴다 — 읽기 · 셈은 L1(`atelier-core` `pr` · `atelier-acp` `thread_pr`)이 잰다.
+    ("thread_work_prs", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_rename", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_mark_read", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_call_again", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가
@@ -276,6 +295,12 @@ fn destinations(args: &Args) -> Result<Vec<atelier_core::Destination>, String> {
     let value = args
         .get("destinations")
         .ok_or_else(|| "인자 'destinations'(배열)가 필요합니다".to_string())?;
+    serde_json::from_value(value.clone()).map_err(err)
+}
+
+/// 문자열 배열 인자 — 첨부의 경로들처럼 모양이 단순한 목록.
+fn texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
+    let value = args.get(key).ok_or_else(|| format!("인자 '{key}'(문자열 배열)가 필요합니다"))?;
     serde_json::from_value(value.clone()).map_err(err)
 }
 
@@ -392,7 +417,7 @@ mod tests {
         for (name, manifest) in [
             ("atelier-app", include_str!("../../../src-tauri/Cargo.toml")),
             ("atelier-cli", include_str!("../../atelier-cli/Cargo.toml")),
-            // 대화 호스트가 사는 크레이트 — 앱 실행 파일 안으로 들어간다(three-axes 결정 12).
+            // Thread 엔진이 사는 크레이트 — 앱 실행 파일 안으로 들어간다(three-axes 결정 12).
             ("atelier-acp", include_str!("../../atelier-acp/Cargo.toml")),
         ] {
             assert!(
@@ -416,7 +441,6 @@ mod tests {
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
     const APP_SOURCES: [(&str, &str); 29] = [
-        ("chat.rs", include_str!("../../../src-tauri/src/chat.rs")),
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -443,6 +467,7 @@ mod tests {
         ("shells/testkit.rs", include_str!("../../../src-tauri/src/shells/testkit.rs")),
         ("startup.rs", include_str!("../../../src-tauri/src/startup.rs")),
         ("terminate.rs", include_str!("../../../src-tauri/src/terminate.rs")),
+        ("thread.rs", include_str!("../../../src-tauri/src/thread.rs")),
         ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
         ("webview.rs", include_str!("../../../src-tauri/src/webview.rs")),
     ];
@@ -460,6 +485,45 @@ mod tests {
         ("mcp/skill_cleanup.rs", include_str!("../../atelier-cli/src/mcp/skill_cleanup.rs")),
         ("mcp/tool_error.rs", include_str!("../../atelier-cli/src/mcp/tool_error.rs")),
         ("mcp/work_tools.rs", include_str!("../../atelier-cli/src/mcp/work_tools.rs")),
+    ];
+
+    /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
+    /// core 쪽에 서면 이 표를 읽는다. Thread · Agent의 파일 모양(`threads.rs` · `agents.rs` …)이 여기 산다.
+    const CORE_SOURCES: [(&str, &str); 34] = [
+        ("agents.rs", include_str!("../../atelier-core/src/agents.rs")),
+        ("agents/scope.rs", include_str!("../../atelier-core/src/agents/scope.rs")),
+        ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
+        ("attachments.rs", include_str!("../../atelier-core/src/attachments.rs")),
+        ("changes.rs", include_str!("../../atelier-core/src/changes.rs")),
+        ("git.rs", include_str!("../../atelier-core/src/git.rs")),
+        ("layout/builtin.rs", include_str!("../../atelier-core/src/layout/builtin.rs")),
+        ("layout/classify.rs", include_str!("../../atelier-core/src/layout/classify.rs")),
+        ("layout/mod.rs", include_str!("../../atelier-core/src/layout/mod.rs")),
+        ("layout/model.rs", include_str!("../../atelier-core/src/layout/model.rs")),
+        ("layout/parse.rs", include_str!("../../atelier-core/src/layout/parse.rs")),
+        ("layout/pattern.rs", include_str!("../../atelier-core/src/layout/pattern.rs")),
+        ("layout/render.rs", include_str!("../../atelier-core/src/layout/render.rs")),
+        ("layout/resolve.rs", include_str!("../../atelier-core/src/layout/resolve.rs")),
+        ("layout/states.rs", include_str!("../../atelier-core/src/layout/states.rs")),
+        ("layout/store.rs", include_str!("../../atelier-core/src/layout/store.rs")),
+        ("layout/work_trees.rs", include_str!("../../atelier-core/src/layout/work_trees.rs")),
+        ("lib.rs", include_str!("../../atelier-core/src/lib.rs")),
+        ("order.rs", include_str!("../../atelier-core/src/order.rs")),
+        ("paths.rs", include_str!("../../atelier-core/src/paths.rs")),
+        ("policy_file.rs", include_str!("../../atelier-core/src/policy_file.rs")),
+        ("pr.rs", include_str!("../../atelier-core/src/pr.rs")),
+        ("project.rs", include_str!("../../atelier-core/src/project.rs")),
+        ("recent.rs", include_str!("../../atelier-core/src/recent.rs")),
+        ("records.rs", include_str!("../../atelier-core/src/records.rs")),
+        ("search.rs", include_str!("../../atelier-core/src/search.rs")),
+        ("slug.rs", include_str!("../../atelier-core/src/slug.rs")),
+        ("store.rs", include_str!("../../atelier-core/src/store.rs")),
+        ("threads.rs", include_str!("../../atelier-core/src/threads.rs")),
+        ("work.rs", include_str!("../../atelier-core/src/work.rs")),
+        ("works.rs", include_str!("../../atelier-core/src/works.rs")),
+        ("worktree.rs", include_str!("../../atelier-core/src/worktree.rs")),
+        ("worktree_file.rs", include_str!("../../atelier-core/src/worktree_file.rs")),
+        ("worktree_watch.rs", include_str!("../../atelier-core/src/worktree_watch.rs")),
     ];
 
     /// `dir` 아래의 `.rs`를 **재귀로** 모아 `dir` 기준 상대 경로로 돌려준다.
@@ -507,6 +571,11 @@ mod tests {
     #[test]
     fn cli_소스_표가_폴더_전체를_덮는다() {
         표가_폴더를_덮는다("../atelier-cli/src", &CLI_SOURCES);
+    }
+
+    #[test]
+    fn core_소스_표가_폴더_전체를_덮는다() {
+        표가_폴더를_덮는다("../atelier-core/src", &CORE_SOURCES);
     }
 
     /// **「확인됨」을 세우는 것은 `quit_app` 하나이고, 끄기 전에 세운다**(결정 14 · #223).
@@ -571,15 +640,15 @@ mod tests {
         assert!(confirm < exit, "`quit_app`이 끈 뒤에 「확인됨」을 세운다 — 끄는 사이의 `terminate:`가 다시 막는다");
     }
 
-    /// **대화 명령(`chat_`)은 전부 앱 안에서만 돈다**(three-axes 구현 스펙 「앱 잇기」). 대화 호스트는 오래 사는 에이전트
-    /// 프로세스를 쥐는데, 다리는 부를 때마다 뜨고 끝나는 CLI라 쥘 수 없다 — 성공으로 때우는 스텁을 두면 L4가 대화 화면을
-    /// 관통한 것처럼 보인다. 등록부에서 이름을 읽어 표의 처리기를 **실제로 불러** 거절의 말을 본다(인자 없이 — 인자를
-    /// 요구하는 진짜 처리기라면 다른 말로 거절한다). 대화 명령을 하나도 못 읽으면 읽기가 샌 것이다.
+    /// **Thread 명령(`thread_`)은 전부 앱 안에서만 돈다**(three-axes 구현 스펙 「앱 잇기」 · v1 구현 스펙 §18). Thread 엔진은 오래 사는
+    /// Agent 프로세스를 쥐는데, 다리는 부를 때마다 뜨고 끝나는 CLI라 쥘 수 없다 — 성공으로 때우는 스텁을 두면 L4가 Thread 화면을
+    /// 관통한 것처럼 보인다. 등록부에서 이름을 읽어 표의 처리기를 **실제로 불러** 거절의 말을 본다(인자 없이 — 인자를 요구하는 진짜
+    /// 처리기라면 다른 말로 거절한다). Thread 명령을 하나도 못 읽으면 읽기가 샌 것이다.
     #[test]
-    fn 대화_명령은_모두_다리로_탈_수_없다() {
-        let chat: Vec<String> = registered().into_iter().filter(|name| name.starts_with("chat_")).collect();
-        assert!(!chat.is_empty(), "등록부에서 대화 명령을 하나도 못 읽었다 — 앱이 대화 호스트를 안 잇거나 읽기가 샜다");
-        for name in chat {
+    fn thread_명령은_모두_다리로_탈_수_없다() {
+        let thread: Vec<String> = registered().into_iter().filter(|name| name.starts_with("thread_")).collect();
+        assert!(!thread.is_empty(), "등록부에서 Thread 명령을 하나도 못 읽었다 — 앱이 Thread 엔진을 안 잇거나 읽기가 샜다");
+        for name in thread {
             let (_, handler) = HANDLERS
                 .iter()
                 .find(|(handled, _)| *handled == name)

@@ -14,6 +14,7 @@ import {
   typeIntoShell,
   unknownIpcCalls,
   행버튼,
+  사람메뉴로간다,
 } from "./harness";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { NotificationSettings, Settings } from "@/features/settings/types";
@@ -221,7 +222,7 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
   // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 부를 셸은 사람이 친 셸이다.
   await typeIntoShell(page);
   const aside = page.locator("aside");
-  await aside.getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
   await aside.getByRole("button", { name: "알림", exact: true }).click();
   await expect(page).toHaveURL("/settings/notifications");
@@ -277,7 +278,7 @@ test("설정에 있는 동안 셸이 부르면 울린다", async ({ page }) => {
   await typeIntoShell(page);
   await setWindowFocused(page, true);
 
-  await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   await expect(page).toHaveURL("/settings/terminal");
   // **주소가 아니라 화면이 옮겨 온 뒤에 쏜다.** 주소는 본문보다 먼저 바뀌어서, URL만 보고 쏘면
   // 떠나는 터미널 칸이 아직 「보이는 셸」이라 억제가 맞게 문다 — 이 검사가 그 경쟁으로 빨개졌다.

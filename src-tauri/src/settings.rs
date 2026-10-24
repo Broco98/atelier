@@ -93,12 +93,29 @@ impl NotificationSettings {
     }
 }
 
-/// 파일 전체. 구획이 `terminal`·`notifications` 둘이다 — 다른 구획이 생기면 여기 한 줄이다.
+/// 한 번만 보이는 안내를 사람이 본 것(v1 구현 스펙 S31 · v1 티켓 30). **본 것만 적는다** — 보지 않았으면 칸이 없고, 아무것도 보지 않았으면
+/// 구획째 안 적힌다(알림 구획과 같은 규칙: 「안 봄」을 `false` 줄로 적으면 손으로 여는 파일에 뜻 없는 줄이 는다).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeenSettings {
+    /// 「결정은 내가 합니다」 카드 — 처음 Work를 만들 때 한 번 뜬다. 「알겠어요」를 누르면 참이 되고 그 뒤로 뜨지 않는다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub decisions: bool,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl SeenSettings {
+    /// 본 것이 하나도 없나 — 모르는 칸까지 센다(알림 구획의 `is_empty`와 같은 까닭).
+    fn is_empty(&self) -> bool {
+        !self.decisions && self.extra.is_empty()
+    }
+}
+
+/// 파일 전체. 구획이 `terminal`·`notifications`·`seen` 셋이다 — 다른 구획이 생기면 여기 한 줄이다.
 ///
-/// **대화 구획(`chat`)은 여기 칸이 없다**(three-axes 결정 16 · 티켓 25) — 새 대화의 기본 에이전트 · 엔진별 기본 모델 · 시작 모드다.
-/// 화면이 고르고(`src/features/settings/chat-settings.ts`) 대화 호스트가 새 대화 때 읽기만 한다(`atelier-acp`의
-/// `chat_settings.rs` — 깨진 값은 엔진 기본값으로 눕는다). 이 파일에서는 `extra`로 글자 그대로 왕복한다 — 칸을 세우면 손으로
-/// 잘못 적은 에이전트 이름 하나가 설정 화면 전체의 읽기를 막는다.
+/// three-axes의 대화 구획(`chat` — 새 대화의 기본 에이전트 · 모델 · 모드)은 설정의 「대화」 묶음과 함께 걷혔다(v1 티켓 08 ·
+/// S3). 앞서 쓰던 파일에 남은 그 구획은 앱이 읽지 않는 구획이라 `extra`로 글자 그대로 왕복한다 — 사람이 손으로 지운다.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -109,6 +126,9 @@ pub struct Settings {
     /// 자리가 그대로 남는 편이 낫다.
     #[serde(default, skip_serializing_if = "NotificationSettings::is_empty")]
     pub notifications: NotificationSettings,
+    /// 한 번만 보이는 안내를 본 것(v1 티켓 30). 설정 화면에 칸이 없다 — Thread 화면이 「알겠어요」에서 적는다.
+    #[serde(default, skip_serializing_if = "SeenSettings::is_empty")]
+    pub seen: SeenSettings,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -249,6 +269,7 @@ mod tests {
                 sound: Some(true),
                 extra: Default::default(),
             },
+            seen: SeenSettings { decisions: true, extra: Default::default() },
             extra: Default::default(),
         };
         write(&root, &s).unwrap();
@@ -339,9 +360,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// 대화 구획(three-axes 티켓 25)은 칸 없이 `extra`로 산다 — 그 안의 모르는 키까지 글자 그대로 돌아간다.
+    /// 걷힌 구획(three-axes의 대화 구획, v1 티켓 08)이 남은 파일도 그 구획을 글자 그대로 돌려준다 — 앱은 읽지 않을 뿐 지우지 않는다.
     #[test]
-    fn the_chat_section_survives_a_roundtrip_with_its_unknown_keys() {
+    fn a_section_the_app_no_longer_reads_survives_a_roundtrip() {
         let root = temp_root("chat");
         let chat = serde_json::json!({
             "defaultAgent": "codex",
@@ -356,7 +377,7 @@ mod tests {
 
         let out: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
-        assert_eq!(out["chat"], chat, "대화 구획이 글자 그대로가 아니다");
+        assert_eq!(out["chat"], chat, "걷힌 구획이 글자 그대로가 아니다");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -407,6 +428,25 @@ mod tests {
         assert!(out.contains("\"sound\": false"), "고른 값이 안 적혔다: {out}");
         assert!(!out.contains("\"enabled\""), "안 고른 켬/끔이 함께 적혔다: {out}");
         assert_eq!(read(&root).unwrap(), s);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **「결정은 내가 합니다」 카드를 본 것은 설정 파일에 남는다**(v1 티켓 30 · S31) — 한 번 보면 다음 Work를 만들 때도, 앱을 다시 켜도
+    /// 뜨지 않는다. 보지 않았으면 구획째 안 적힌다(알림 구획과 같은 규칙). 구획 안의 모르는 칸은 왕복한다.
+    #[test]
+    fn the_seen_decisions_card_is_kept_and_an_unseen_one_is_not_written() {
+        let root = temp_root("seen");
+        write(&root, &Settings::default()).unwrap();
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(!out.contains("\"seen\""), "아직 아무것도 보지 않았는데 구획이 적혔다: {out}");
+        assert!(!read(&root).unwrap().seen.decisions, "처음에는 보지 않았다 — 카드가 뜬다");
+
+        std::fs::write(settings_path(&root), r#"{"seen":{"decisions":true,"later":1}}"#).unwrap();
+        let s = read(&root).unwrap();
+        assert!(s.seen.decisions, "본 것을 읽는다 — 카드가 다시 뜨지 않는다");
+        write(&root, &s).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(back["seen"], serde_json::json!({"decisions": true, "later": 1}), "구획 안의 모르는 칸도 남는다");
         let _ = std::fs::remove_dir_all(&root);
     }
 

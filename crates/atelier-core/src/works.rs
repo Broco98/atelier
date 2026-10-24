@@ -34,6 +34,46 @@ pub fn start_work(
     project_slugs: &[String],
     branch: Option<&str>,
 ) -> Result<WorkReport> {
+    start(works_root, archive_root, projects_root, title, slug, project_slugs, branch, Worktrees::Now)
+}
+
+/// `start_work`와 같되 **워크트리는 나중이다**(v1 구현 스펙 §11 · S21). 프로젝트를 `work.json`에 적고 브랜치 이름도
+/// 정하지만, 워크트리도 저장소의 브랜치도 만들지 않는다. 보기의 `exists`가 거짓인 프로젝트가 「읽기만」이고, 처음
+/// 고칠 때 `attach_project`가 그 프로젝트의 워크트리를 만든다 — 이미 적힌 프로젝트라 목록은 그대로다.
+///
+/// **사전검증은 `start_work`와 같다.** 등록 · git 저장소 · baseBranch · 새 work의 브랜치 충돌을 지금 본다 — 나중에
+/// 붙일 때 처음 알면 Work는 이미 서 있고 그 프로젝트만 영영 못 고친다. 브랜치는 Work에 하나다(`decide_branch`).
+///
+/// MCP `atelier_start_work`는 이것을 부르지 않는다 — 그쪽의 기본 동작(워크트리를 지금 만든다)은 그대로다.
+pub fn start_work_deferred(
+    works_root: &Path,
+    archive_root: &Path,
+    projects_root: &Path,
+    title: &str,
+    slug: Option<&str>,
+    project_slugs: &[String],
+    branch: Option<&str>,
+) -> Result<WorkReport> {
+    start(works_root, archive_root, projects_root, title, slug, project_slugs, branch, Worktrees::Later)
+}
+
+/// Work를 시작할 때 워크트리를 언제 만드나 — `start_work` · `start_work_deferred`가 가르는 한 가지다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Worktrees {
+    Now,
+    Later,
+}
+
+fn start(
+    works_root: &Path,
+    archive_root: &Path,
+    projects_root: &Path,
+    title: &str,
+    slug: Option<&str>,
+    project_slugs: &[String],
+    branch: Option<&str>,
+    worktrees: Worktrees,
+) -> Result<WorkReport> {
     let title = title.trim();
     if title.is_empty() {
         return Err(Error::Validation("title must not be empty".into()));
@@ -128,6 +168,12 @@ pub fn start_work(
     if !reasons.is_empty() {
         return Err(Error::Validation(reasons.join("; ")));
     }
+
+    // 검증까지는 같고 여기서 갈린다 — 나중이면 지금 만들 워크트리가 없다. 프로젝트와 브랜치 이름만 적힌다.
+    let pending = match worktrees {
+        Worktrees::Now => pending,
+        Worktrees::Later => Vec::new(),
+    };
 
     std::fs::create_dir_all(spec_dir(&dir))?;
     // 빈 trees/는 "망가진 워크트리"로 읽힌다 — 만들 것이 있을 때만 만든다
@@ -407,14 +453,9 @@ pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
-/// 앱이 대화를 기록하는 폴더(three-axes 결정 18). spec 밖이라 스펙 트리 · 검색 · 아카이브 문서에 뜨지 않고,
-/// 아카이브가 work 폴더째 옮기므로 기록도 함께 간다.
-fn agents_dir(work_dir: &Path) -> PathBuf {
-    work_dir.join("agents")
-}
-
-/// work 하나의 자리들 — 절대 경로다. 대화 호스트가 에이전트의 작업 자리(three-axes 결정 17)와 기록 자리
-/// (three-axes 결정 18)를 여기서 짓는다. 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다.
+/// work 하나의 자리들 — 절대 경로다. 호스트가 Work에 이은 Thread의 Session 자리(three-axes 결정 17)를 여기서 짓는다.
+/// 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다. three-axes의 work 대화 기록 폴더
+/// `agents/`는 v1 티켓 08이 걷었다 — 디스크에 남은 것은 읽지도 옮기지도 않는다(v1 구현 스펙 §4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkPlaces {
     /// `works/<slug>`.
@@ -425,8 +466,6 @@ pub struct WorkPlaces {
     pub trees: PathBuf,
     /// 프로젝트마다의 워크트리 `trees/<project>` — `projects`에 적힌 순서다.
     pub worktrees: Vec<PathBuf>,
-    /// 대화 기록 폴더 `agents/`. 있다고 보증하지 않는다 — 만드는 쪽이 `work.json`을 보고 만든다.
-    pub agents: PathBuf,
 }
 
 /// 읽은 work의 자리들. 파일을 읽거나 폴더를 만들지 않는다.
@@ -436,7 +475,6 @@ pub fn work_places(works_root: &Path, work: &Work) -> WorkPlaces {
         spec: spec_dir(&dir),
         trees: worktrees_dir(&dir),
         worktrees: worktree_paths(works_root, work),
-        agents: agents_dir(&dir),
         dir,
     }
 }
@@ -1286,8 +1324,8 @@ mod tests {
         }
     }
 
-    /// **work의 자리가 시작이 만든 폴더와 같다** — 대화 호스트가 에이전트의 작업 자리를 여기서 짓는다(three-axes
-    /// 결정 17 · 18). 자리를 옮기는 날 이것이 빨개진다.
+    /// **work의 자리가 시작이 만든 폴더와 같다** — 호스트가 Session의 작업 자리를 여기서 짓는다(three-axes 결정 17).
+    /// 자리를 옮기는 날 이것이 빨개진다.
     #[test]
     fn work_places_are_the_folders_start_made() {
         let (_tmp, works, projects) = setup();
@@ -1304,11 +1342,9 @@ mod tests {
                 spec: dir.join("spec"),
                 trees: dir.join("trees"),
                 worktrees: vec![dir.join("trees/fe"), dir.join("trees/be")],
-                agents: dir.join("agents"),
             }
         );
         assert!(places.spec.is_dir() && places.worktrees.iter().all(|tree| tree.is_dir()));
-        assert!(!places.agents.exists(), "자리를 짓기만 하고 폴더를 만들지 않는다");
     }
 
     #[test]
@@ -2452,6 +2488,89 @@ mod tests {
             attach_project(&works, &projects, "draft-work", "fe", Some("feat/draft")).unwrap();
         assert_eq!(report.view.work.status, WorkStatus::Draft);
         assert_eq!(get_work(&works, "draft-work").unwrap().work.status, WorkStatus::Draft);
+    }
+
+    /// **worktree는 나중**(v1 구현 스펙 §11 · S21) — 프로젝트를 적고 브랜치 이름도 정하지만 워크트리는 만들지 않는다.
+    /// 보기의 `exists`가 거짓인 것이 「읽기만」이다. 저장소에도 브랜치가 생기지 않는다 — 브랜치는 워크트리가 설 때
+    /// `git worktree add -b`가 판다.
+    #[test]
+    fn a_deferred_start_records_the_projects_and_the_branch_but_makes_no_worktree() {
+        let (tmp, works, projects) = setup();
+        let report = start_work_deferred(&works, &archive_root(&works), &projects, "카트", Some("cart"), &slugs(&["fe", "be"]), Some("feat/cart"))
+            .unwrap();
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.view.work.projects, vec!["fe", "be"]);
+        assert_eq!(report.view.work.branch.as_deref(), Some("feat/cart"));
+        let trees: Vec<_> =
+            report.view.worktrees.iter().map(|tree| (tree.project.as_str(), tree.exists, tree.dirty)).collect();
+        assert_eq!(trees, [("fe", false, false), ("be", false, false)]);
+
+        let dir = works.join("cart");
+        assert!(dir.join("spec").is_dir());
+        assert!(!dir.join("trees").exists(), "an empty trees/ reads as a broken worktree");
+        for repo in ["fe", "be"] {
+            assert!(!git::branch_exists(&tmp.path().join(repo), "feat/cart"), "{repo}에 쓰지 않은 브랜치가 남았다");
+        }
+
+        // 파일에 적힌 것이다 — 다시 읽어도 같다
+        let view = get_work(&works, "cart").unwrap();
+        assert_eq!(view.work.projects, vec!["fe", "be"]);
+        assert_eq!(view.work.branch.as_deref(), Some("feat/cart"));
+        assert!(view.worktrees.iter().all(|tree| !tree.exists));
+    }
+
+    /// 처음 고칠 때 붙이면(S21 「Project 고치기 시작」 → `attach_project`) **그 프로젝트에만** 워크트리가 Work의 브랜치로
+    /// 선다. 이미 적힌 프로젝트라 목록은 늘지 않고, 나머지는 읽기만으로 남는다.
+    #[test]
+    fn attaching_a_deferred_project_later_makes_only_its_worktree_on_the_works_branch() {
+        let (tmp, works, projects) = setup();
+        start_work_deferred(&works, &archive_root(&works), &projects, "카트", Some("cart"), &slugs(&["fe", "be"]), Some("feat/cart"))
+            .unwrap();
+
+        let report = attach_project(&works, &projects, "cart", "be", None).unwrap();
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.view.work.projects, vec!["fe", "be"]);
+        let trees: Vec<_> = report.view.worktrees.iter().map(|tree| (tree.project.as_str(), tree.exists)).collect();
+        assert_eq!(trees, [("fe", false), ("be", true)]);
+        assert_eq!(run_git(&works.join("cart/trees/be"), &["branch", "--show-current"]), "feat/cart");
+        assert!(!works.join("cart/trees/fe").exists());
+        assert!(!git::branch_exists(&tmp.path().join("fe"), "feat/cart"), "읽기만인 저장소에는 브랜치도 없다");
+    }
+
+    /// 나중이어도 **브랜치는 Work에 하나다**(S21 「core 규칙 그대로」). 이름은 시작할 때 정해지고(안 주면 slug),
+    /// 나중에 붙이며 다른 이름을 넘기면 거부된다 — 프로젝트마다 다른 브랜치에 선 Work가 생기지 않는다.
+    #[test]
+    fn a_deferred_work_still_shares_one_branch() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work_deferred(&works, &archive_root(&works), &projects, "Cart Add", None, &slugs(&["fe", "be"]), None)
+            .unwrap();
+        assert_eq!(report.view.work.branch.as_deref(), Some("cart-add"));
+
+        assert!(matches!(
+            attach_project(&works, &projects, "cart-add", "fe", Some("feat/other")),
+            Err(Error::Validation(_))
+        ));
+        assert!(!works.join("cart-add/trees/fe").exists(), "a refused attach must make nothing");
+
+        attach_project(&works, &projects, "cart-add", "fe", None).unwrap();
+        attach_project(&works, &projects, "cart-add", "be", Some("cart-add")).unwrap();
+        for repo in ["fe", "be"] {
+            assert_eq!(run_git(&works.join("cart-add/trees").join(repo), &["branch", "--show-current"]), "cart-add");
+        }
+    }
+
+    /// 사전검증은 지금 만들 때와 같다 — 나중에 붙일 때 처음 알면 Work는 이미 서 있고 그 프로젝트만 영영 못 고친다.
+    #[test]
+    fn a_deferred_start_refuses_what_could_never_get_a_worktree() {
+        let (tmp, works, projects) = setup();
+        let unknown = start_work_deferred(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "nope"]), None);
+        assert!(matches!(unknown, Err(Error::Validation(_))), "{unknown:?}");
+
+        run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
+        let taken = start_work_deferred(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["be"]), Some("feat/cart"));
+        assert!(matches!(taken, Err(Error::Validation(_))), "{taken:?}");
+
+        assert!(!works.join("카트").exists(), "거부됐으면 아무것도 남지 않는다");
     }
 
     #[test]

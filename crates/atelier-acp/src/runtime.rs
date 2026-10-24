@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::life::{Death, Life};
+use crate::policy::Card;
 use crate::login::AUTH_REQUIRED;
 use crate::process;
 use crate::redact;
@@ -59,6 +60,114 @@ pub(crate) struct OpenTerms {
     pub required_version: Option<String>,
     /// 되살릴 에이전트 쪽 세션 id(three-axes 티켓 10). 있으면 resume → load → 새 세션 순으로 열고, 없으면 곧바로 새 세션이다.
     pub revive: Option<String>,
+    /// 세션에 넣는 MCP 서버(ACP `mcpServers`의 칸들) — Thread의 Session이면 Thread 도구 서버 하나다(v1 티켓 15 · S12). 새로 열 때도
+    /// 되살릴 때도 같이 싣는다.
+    pub mcp_servers: Vec<Value>,
+    /// 권한 요청을 사람에게 묻기 전에 보는 것(v1 티켓 18 · 22) — Thread의 Session이면 판정이다. 없으면 모두 묻는다.
+    pub judge: Option<Judge>,
+}
+
+/// 엔진이 사람에게 묻지 않고 내린 답(v1 티켓 18) — 고른 선택지와 그 까닭. 까닭은 기록에 남고, 에이전트에게도 답의
+/// `_meta.atelier.message`로 간다 — Claude 변환기는 거부의 글로 claude에게 준다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Ruling {
+    pub option_id: String,
+    pub reason: String,
+}
+
+impl Ruling {
+    /// 권한 요청의 답 — 고른 선택지와, 에이전트에게 돌려줄 까닭.
+    fn response(&self) -> Value {
+        json!({"outcome": {"outcome": "selected", "optionId": self.option_id}, "_meta": {"atelier": {"message": self.reason}}})
+    }
+}
+
+/// 사람의 권한 답(v1 티켓 24) — 고른 선택지에, 함께 남긴 말과 「다시 묻지 않기」로 준 허락이 든다. 말은 Agent에게 간다(거절과
+/// 함께 다르게 할 방법 — [`Answer::response`]). 둘 다 답 줄(`answered`)에 선다. 질문 카드의 답이면(v1 티켓 26) 물음마다의 답이
+/// 든다 — Agent에게 `_meta.atelier.answers`(물음 → 답)로 간다.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Answer {
+    pub option_id: String,
+    pub words: Option<String>,
+    pub granted: Option<Granted>,
+    pub answers: Option<Vec<QuestionAnswer>>,
+}
+
+/// 질문 카드에서 물음 하나에 준 답(v1 티켓 26) — 고른 선택지의 이름, 여럿 고르면 쉼표로 이은 것, 또는 직접 쓴 말. 답 줄의 `answers`다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuestionAnswer {
+    pub question: String,
+    pub answer: String,
+}
+
+/// 「다시 묻지 않기」로 준 허락 — 규칙 이름들과 그것을 둔 자리(이은 Work, 없으면 그 Thread). 답 줄의 `granted`다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Granted {
+    pub rules: Vec<String>,
+    pub work: Option<String>,
+}
+
+impl Answer {
+    /// 고른 선택지 하나 — 남긴 말도 허락도 없다.
+    #[cfg(test)]
+    pub(crate) fn pick(option_id: &str) -> Self {
+        Self { option_id: option_id.to_owned(), ..Self::default() }
+    }
+
+    /// 권한 요청의 답 — 남긴 말이 있으면 Agent에게 줄 글로 싣는다(Claude 변환기는 거부의 `message`로 넘긴다, 티켓 18과 같은 칸).
+    fn response(&self) -> Value {
+        let outcome = json!({"outcome": "selected", "optionId": self.option_id});
+        let mut atelier = serde_json::Map::new();
+        if let Some(words) = &self.words {
+            atelier.insert("message".into(), json!(told(words)));
+        }
+        if let Some(answers) = &self.answers {
+            let asked = answers.iter().map(|one| (one.question.clone(), json!(one.answer))).collect();
+            atelier.insert("answers".into(), Value::Object(asked));
+        }
+        match atelier.is_empty() {
+            true => json!({"outcome": outcome}),
+            false => json!({"outcome": outcome, "_meta": {"atelier": atelier}}),
+        }
+    }
+}
+
+/// 사람이 거절하며 남긴 말을 Agent에게 줄 글 — 거절된 일을 그대로 다시 하지 않고 그 말을 따르게 한다.
+fn told(words: &str) -> String {
+    format!("사람이 이 요청을 거절하고 이렇게 말했어요 — 그대로 다시 하지 말고 이 말을 따르세요:\n{words}")
+}
+
+/// 권한 요청을 받은 자리에서 사람에게 묻기 전에 보는 것 — 판정(v1 티켓 18 · 22, `policy.rs`). 답을 내면([`Judgement::Decide`]) 그
+/// 요청은 묻지 않고 그 답으로 닫힌다 — 대기 요청 표에 들지 않으므로 승인 카드도, 대기 줄의 걸림도 없다. 그 요청이 준 선택지에 없는
+/// 답은 버리고 묻는다. 묻기로 하면([`Judgement::Ask`]) 그 까닭이 물음 줄에 함께 선다.
+///
+/// 수신 루프 안에서 불린다 — sink처럼 **런타임이나 호스트를 다시 부르지 않는다**. 대기 요청 표를 쥐기 전에 부르므로 대화의 잠금은
+/// 잠깐 쥐어도 된다(턴 끝을 넘기는 자리와 같다). 파일을 읽는 것은 괜찮다.
+#[derive(Clone)]
+pub(crate) struct Judge(pub Arc<dyn Fn(&PermissionAsked) -> Judgement + Send + Sync>);
+
+/// 판정이 받은 요청에 내린 것.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Judgement {
+    /// 묻지 않고 이 답으로 닫는다.
+    Decide(Ruling),
+    /// 사람에게 묻는다 — 물음 줄에 이것을 단다.
+    Ask(Asking),
+}
+
+/// 판정이 묻기로 한 까닭 — 세울 카드의 종류와 왜 묻는지(Policy 이름, v1 구현 스펙 §9), 그리고 사람이 「다시 묻지 않기」를 고르면 줄
+/// 허락(v1 티켓 24 — 비었으면 그 선택지가 서지 않는다). 물음 줄의 `card` · `policy` · `grant`가 된다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Asking {
+    pub card: Card,
+    pub policy: String,
+    pub grant: Vec<String>,
+}
+
+impl fmt::Debug for Judge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Judge")
+    }
 }
 
 /// 세션이 열린 길 — 열림 줄의 `how`다(three-axes 티켓 10). 기록에는 케밥 글자(`new` · `resumed` · `loaded` · `fresh`)로
@@ -100,12 +209,15 @@ pub(crate) enum RuntimeEvent {
     Died(Death),
     /// 권한 요청이 왔다. 대기 요청 표에 넣은 뒤에 넘긴다 — 이것을 받은 쪽은 곧바로 답할 수 있다.
     PermissionAsked(PermissionAsked),
-    /// 걸린 권한 요청에 고른 선택지로 답한다. 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은 에이전트가 이어 보내는
-    /// update보다 앞에 선다.
-    PermissionAnswered { request_id: String, option_id: String },
+    /// 걸린 권한 요청에 사람이 답했다 — 고른 선택지와 함께 남긴 것(v1 티켓 24). 에이전트에 답을 보내기 **전에** 넘긴다 — 답을 받은
+    /// 에이전트가 이어 보내는 update보다 앞에 선다. `question`은 판정이 질문 카드로 물은 요청이었나다(v1 티켓 26).
+    PermissionAnswered { request_id: String, answer: Answer, question: bool },
     /// 걸린 권한 요청이 거둬졌다 — 우리가 턴을 끊었거나, 에이전트가 답을 기다리지 않고 턴을 끝냈거나, 에이전트가 죽었다. 그
     /// 턴의 끝(죽음이면 죽음)보다 앞에 넘긴다.
-    PermissionWithdrawn { request_id: String, reason: Withdrawal },
+    PermissionWithdrawn { request_id: String, reason: Withdrawal, question: bool },
+    /// 엔진이 사람에게 묻지 않고 답했다(v1 티켓 18). 에이전트에 답을 보내기 **전에** 넘긴다. 받은 자리에서 [`Judge`]가 답했으면 그
+    /// 요청(`asked`)을 싣는다 — 그 요청에는 물음이 넘어가지 않았다. 걸린 요청에 엔진이 답했으면([`Turns::rule`]) 없다.
+    PermissionDecided { request_id: String, ruling: Ruling, asked: Option<PermissionAsked> },
 }
 
 /// 권한 요청 하나(`session/request_permission`).
@@ -118,6 +230,8 @@ pub(crate) struct PermissionAsked {
     /// 도구 요지 — 요청의 `toolCall`에서 빈 칸(제목 · 종류 · 입력)을 같은 id의 앞선 `tool_call`로 채운 것. Codex의 MCP
     /// 승인은 id · 종류 · 상태만 싣는다(워크플로 S21). 이을 것이 없으면 받은 그대로다.
     pub tool_call: Value,
+    /// 판정이 묻기로 한 까닭(v1 티켓 22) — 판정이 없는 Session(work 대화)이면 없다. 판정에 넘길 때는 아직 비어 있다.
+    pub asking: Option<Asking>,
 }
 
 /// 권한 요청이 거둬진 까닭.
@@ -139,8 +253,13 @@ pub(crate) enum AnswerError {
     Closed,
     /// 그 요청이 준 선택지에 없는 optionId. 요청은 그대로 걸려 있다.
     UnknownOption,
-    /// 에이전트에 답을 보내지 못했다(연결이 끊겼다).
+    /// Runtime에 답을 보내지 못했다(연결이 끊겼다).
     Send(String),
+}
+
+/// 권한 답을 보내지 못한 까닭 — 입력창의 알림으로 사람에게 보인다(`HostError::Send`).
+fn unsent(error: impl std::fmt::Display) -> AnswerError {
+    AnswerError::Send(format!("Runtime에 권한 답을 보내지 못했어요: {error}"))
 }
 
 /// 턴 하나의 끝.
@@ -190,11 +309,13 @@ struct Permissions {
     tool_calls: Mutex<HashMap<String, serde_json::Map<String, Value>>>,
 }
 
-/// 답을 기다리는 권한 요청 하나 — 답할 자리와 에이전트가 준 선택지들.
+/// 답을 기다리는 권한 요청 하나 — 답할 자리와 에이전트가 준 선택지들. 판정이 질문 카드로 물었나(v1 티켓 26)를 함께 쥔다 — 답 ·
+/// 거둬짐이 같은 갈래의 줄로 남는다.
 struct Pending {
     request_id: String,
     option_ids: Vec<String>,
     responder: Responder<Value>,
+    question: bool,
 }
 
 /// 도구 요지로 채우는 칸 — 제목 · 종류 · 입력(워크플로 S21).
@@ -246,7 +367,7 @@ impl Permissions {
     /// 걸린 요청을 모두 거둔다 — 까닭을 넘기고 `cancelled`로 답한다. 표의 잠금을 쥔 채 부른다.
     fn withdraw_all(pending: &mut Vec<Pending>, reason: Withdrawal, sink: &Sink) {
         for asked in pending.drain(..) {
-            sink(RuntimeEvent::PermissionWithdrawn { request_id: asked.request_id, reason });
+            sink(RuntimeEvent::PermissionWithdrawn { request_id: asked.request_id, reason, question: asked.question });
             // 답을 기다리지 않는 에이전트에게도 답은 간다 — JSON-RPC의 요청은 모두 답을 받는다. 연결이 끊겼으면 갈 곳이 없다.
             let _ = asked.responder.respond(json!({"outcome": {"outcome": "cancelled"}}));
         }
@@ -380,6 +501,7 @@ pub(crate) fn open(
     let asked = Arc::clone(&sink);
     let noted = Arc::clone(&permissions);
     let tabled = Arc::clone(&permissions);
+    let judge = terms.judge.clone();
     // `session/load`의 답이 오기 전에 온 update(재생)를 버리는 동안 선다. load를 보내기 직전에 켜고, load 답의 순서 장벽 안에서
     // 끈다 — 그래서 답 앞의 update는 버려지고 답 뒤의 것은 산다.
     let replaying = Arc::new(AtomicBool::new(false));
@@ -411,18 +533,36 @@ pub(crate) fn open(
                 // 권한 요청. **여기서 사람을 기다리지 않는다** — 이 콜백도 수신 루프 안에서 돌아, 붙잡으면 답하는 동안 다른
                 // 메시지가 멎는다. 답할 자리를 표에 넣고 곧바로 놓는다. 표에 먼저 넣고 넘긴다 — 넘긴 것을 본 사람이 곧바로
                 // 눌러도 답할 자리가 있다.
+                //
+                // 그 전에 판정이 본다(v1 티켓 18) — 답을 내면 표에 넣지 않고 그 답으로 닫는다. 표를 쥐기 전이다(대화의 잠금 →
+                // 표의 차례를 지킨다).
                 async move |request: RawPermissionRequest, responder: Responder<Value>, _cx: ConnectionTo<AgentRole>| {
                     let request = request.0;
                     let request_id = responder.id().to_string();
-                    let option_ids = request["options"]
+                    let option_ids: Vec<String> = request["options"]
                         .as_array()
                         .map(|options| options.iter().filter_map(|option| option["optionId"].as_str()).map(str::to_owned).collect())
                         .unwrap_or_default();
                     let tool_call = tabled.fill(&request["toolCall"]);
+                    let mut asked_now = PermissionAsked { request_id, request, tool_call, asking: None };
+                    match judge.as_ref().map(|Judge(judge)| judge(&asked_now)) {
+                        Some(Judgement::Decide(ruling)) if option_ids.contains(&ruling.option_id) => {
+                            let response = ruling.response();
+                            let request_id = asked_now.request_id.clone();
+                            asked(RuntimeEvent::PermissionDecided { request_id, ruling, asked: Some(asked_now) });
+                            // 연결이 끊겼으면 갈 곳이 없다 — 죽음이 그 자리를 맡는다.
+                            let _ = responder.respond(response);
+                            return Ok(());
+                        }
+                        Some(Judgement::Ask(asking)) => asked_now.asking = Some(asking),
+                        Some(Judgement::Decide(_)) | None => {}
+                    }
+                    let request_id = asked_now.request_id.clone();
+                    let question = asked_now.asking.as_ref().is_some_and(|asking| asking.card == Card::Question);
                     let mut pending = tabled.lock();
                     let orphan = tabled.closed.load(Ordering::SeqCst);
-                    pending.push(Pending { request_id: request_id.clone(), option_ids, responder });
-                    asked(RuntimeEvent::PermissionAsked(PermissionAsked { request_id, request, tool_call }));
+                    pending.push(Pending { request_id, option_ids, responder, question });
+                    asked(RuntimeEvent::PermissionAsked(asked_now));
                     if orphan {
                         // 죽은 에이전트의 늦은 줄이다 — 넘긴 자리에서 곧바로 거둔다.
                         Permissions::withdraw_all(&mut pending, Withdrawal::Died, &asked);
@@ -535,13 +675,14 @@ async fn open_session(
         }
     }
 
-    // three-axes 결정 23 — MCP는 사용자 설정 그대로다. 앱이 세션에 따로 넣는 것은 없다.
+    // three-axes 결정 23 — 사용자의 MCP는 에이전트가 스스로 붙인다. 앱이 세션에 넣는 것은 Thread 도구 서버뿐이다(v1 티켓 15) —
+    // Claude 변환기가 `--mcp-config`로 옮긴다(v1 티켓 12).
     let mut params = serde_json::Map::new();
     params.insert("cwd".into(), json!(place.cwd));
     if !place.additional_directories.is_empty() {
         params.insert("additionalDirectories".into(), json!(place.additional_directories));
     }
-    params.insert("mcpServers".into(), json!([]));
+    params.insert("mcpServers".into(), json!(terms.mcp_servers));
     if let Some(meta) = &terms.meta {
         params.insert("_meta".into(), meta.clone());
     }
@@ -823,24 +964,39 @@ impl Turns {
         Ok(())
     }
 
-    /// 걸린 권한 요청에 고른 선택지로 답한다. 기다리지 않는다 — 답을 받은 에이전트가 이어 가는 턴은 sink로 온다.
+    /// 걸린 권한 요청에 사람의 답으로 답한다. 기다리지 않는다 — 답을 받은 에이전트가 이어 가는 턴은 sink로 온다.
     ///
     /// 걸려 있지 않은 요청(이미 답했거나 거둬졌다)이나 준 선택지에 없는 optionId는 읽히는 오류이고, 요청은 그대로 걸려
     /// 있다 — 맞는 답을 다시 줄 수 있다. 답은 넘긴 뒤에 보낸다 — 기록에서 답이 그 뒤의 update보다 앞에 선다.
-    pub(crate) fn answer(&self, request_id: &str, option_id: &str) -> Result<(), AnswerError> {
+    pub(crate) fn answer(&self, request_id: &str, answer: &Answer) -> Result<(), AnswerError> {
         let mut pending = self.permissions.lock();
+        let asked = Self::take_pending(&mut pending, request_id, &answer.option_id)?;
+        let response = answer.response();
+        if let Some(sink) = self.sink.upgrade() {
+            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, answer: answer.clone(), question: asked.question });
+        }
+        asked.responder.respond(response).map_err(unsent)
+    }
+
+    /// 걸린 권한 요청에 엔진이 답한다(v1 티켓 18) — 사람이 고른 답이 아니라 엔진의 판정이다. 사람이 편집을 허락했는데 그사이 다른
+    /// Session이 쓰기 자리를 쥐었으면, 엔진이 그 답을 까닭과 함께 거부로 바꾼다. 거절 · 닫힘은 [`Turns::answer`]와 같다.
+    pub(crate) fn rule(&self, request_id: &str, ruling: Ruling) -> Result<(), AnswerError> {
+        let mut pending = self.permissions.lock();
+        let asked = Self::take_pending(&mut pending, request_id, &ruling.option_id)?;
+        let response = ruling.response();
+        if let Some(sink) = self.sink.upgrade() {
+            sink(RuntimeEvent::PermissionDecided { request_id: asked.request_id, ruling, asked: None });
+        }
+        asked.responder.respond(response).map_err(unsent)
+    }
+
+    /// 그 요청을 대기 요청 표에서 꺼낸다 — 걸려 있지 않거나 그 선택지가 없으면 꺼내지 않는다.
+    fn take_pending(pending: &mut Vec<Pending>, request_id: &str, option_id: &str) -> Result<Pending, AnswerError> {
         let at = pending.iter().position(|asked| asked.request_id == request_id).ok_or(AnswerError::Closed)?;
         if !pending[at].option_ids.iter().any(|option| option == option_id) {
             return Err(AnswerError::UnknownOption);
         }
-        let asked = pending.remove(at);
-        if let Some(sink) = self.sink.upgrade() {
-            sink(RuntimeEvent::PermissionAnswered { request_id: asked.request_id, option_id: option_id.to_owned() });
-        }
-        asked
-            .responder
-            .respond(json!({"outcome": {"outcome": "selected", "optionId": option_id}}))
-            .map_err(|error| AnswerError::Send(format!("에이전트에 권한 답을 보내지 못했습니다: {error}")))
+        Ok(pending.remove(at))
     }
 
     /// 답을 기다리는 권한 요청이 있나 — 그동안은 대기 줄이 가지 않는다(S13).

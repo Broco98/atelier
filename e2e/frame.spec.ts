@@ -21,6 +21,7 @@ import {
   토큰값,
   토큰색,
   팔레트,
+  창검색버튼,
 } from "./harness";
 import { settle } from "./tab-row";
 
@@ -202,7 +203,7 @@ test("Terminal: 사이드바를 ⌘B로 접어도 탭 줄의 첫 칸이 카드 �
   await expect.poll(async () => (await boxOf(card)).x).toBe(gap);
   await expect.poll(offset).toEqual(before);
   // 셸 컨트롤의 마지막 칸(검색)은 머리 줄에 서고, 탭 줄은 그 아래 카드 안이다.
-  const search = await boxOf(page.getByRole("button", { name: "검색", exact: true }));
+  const search = await boxOf(창검색버튼(page));
   expect(search.bottom).toBeLessThanOrEqual((await boxOf(firstTab)).y);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -802,9 +803,10 @@ test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 �
   expect(card.right, "머리 카드 오른쪽 = 작업 패널 카드 오른쪽").toBe(side.right);
   expect(side.right, "작업 패널 카드 오른쪽 = 레일 열 앞").toBe(viewport.width - gap - prail - gap);
   expect(doc.y, "본문 카드 위").toBe(row);
-  // 사이드바 맨 위 빈 신호등 줄도 같은 48이다 — 사이드바 목록(nav)이 본문 카드와 한 줄에서 시작한다. 그 줄이 제 높이를 따로 들면
-  // 두 열의 위끝이 갈린다.
-  expect((await boxOf(page.locator("aside nav").first())).y, "사이드바 nav 위 = 머리 줄 아래").toBe(row);
+  // 사이드바 맨 위 빈 신호등 줄도 같은 48이다 — 사이드바의 첫 줄(「전체 | 내 차례」 — v1 티켓 42, 그 위의 검색 칸은 46이 걷었다)이
+  // 본문 카드와 한 줄에서 시작한다. 그 줄이 제 높이를 따로 들면 두 열의 위끝이 갈린다.
+  const 거르기 = page.locator("aside[data-sidebar]").getByRole("group", { name: "Thread 거르기", exact: true });
+  expect((await boxOf(거르기)).y, "사이드바 거르기 줄 위 = 머리 줄 아래").toBe(row);
   expect(await 칠한값(head, "border-top-left-radius", "background-color")).toEqual([
     await 토큰값(page, "border-top-left-radius", "--radius-xl"),
     await 토큰색(page, "--surface"),
@@ -856,7 +858,7 @@ test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 �
 
   // ⌘B로 사이드바를 접으면 머리 카드는 창 컨트롤 뒤 틈 하나부터 선다(DS 「머리 카드는 창 컨트롤 뒤부터」).
   await page.keyboard.press("Meta+b");
-  const search = await boxOf(page.getByRole("button", { name: "검색", exact: true }));
+  const search = await boxOf(창검색버튼(page));
   await expect.poll(async () => (await boxOf(head)).x).toBe(search.right + gap);
   expect((await boxOf(head)).right).toBe(card.right);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -982,11 +984,6 @@ test("Works: 좁은 창에서 머리 카드의 브랜치가 먼저 준다 — �
   const name = head.getByText(pinnedWork.title, { exact: true });
   const branch = head.getByText(pinnedWork.branch!, { exact: true });
   await expect(branch).toBeVisible();
-  // 작업 패널을 닫아 둔다 — 창을 좁히면 본문 열의 바닥(탭 줄 + 패널의 최소 폭 + 틈)이 머리 카드보다 먼저 틀의 바닥이 되어, 그
-  // 뒤로는 창이 준 만큼 사이드바가 준다(`tab-row.ts`의 `squeezedWidth`). 탭 줄에 `chat`이 서면서(three-axes S21) 그 바닥이 이
-  // 검사의 마지막 폭보다 넓어졌다. 패널을 닫아도 레일이 서 있어 머리 카드는 같은 자리에서 끝난다 — 재는 것은 머리 카드 안이다.
-  await page.getByRole("button", { name: "작업 패널 접기", exact: true }).click();
-  await expect(page.getByRole("button", { name: "작업 패널 펼치기", exact: true })).toBeVisible();
   const 넘친다 = (target: Locator) => target.evaluate((el) => el.scrollWidth > el.clientWidth);
   const [gap] = await 칠한값(head, "column-gap");
   // 브랜치가 받는 폭 — 이름의 면 끝에서 할 일 묶음 앞 사이까지.
@@ -1060,7 +1057,10 @@ test("Works: 창 컨트롤 넷과 패널 토글의 가운데가 머리 카드 �
   const middle = card.y + card.height / 2;
   expect(middle, "머리 카드 가운데 = 머리 줄 가운데").toBe((await token(page, "--titlebar-height")) / 2);
   const controls = await Promise.all(
-    ["사이드바 토글", "뒤로", "앞으로", "검색"].map((name) => boxOf(page.getByRole("button", { name, exact: true }))),
+    [
+      ...["사이드바 토글", "뒤로", "앞으로"].map((name) => page.getByRole("button", { name, exact: true })),
+      창검색버튼(page),
+    ].map(boxOf),
   );
   for (const [at, box] of controls.entries()) {
     expect([box.width, box.height, box.y + box.height / 2], `창 컨트롤 ${at}`).toEqual([24, 24, middle]);
@@ -1119,9 +1119,10 @@ for (const screen of HEAD_GLYPH_SCREENS) {
     await expect(head.getByRole("button", { name: screen.buttons[screen.buttons.length - 1], exact: true })).toBeVisible();
 
     // 창 컨트롤은 머리 카드 밖 왼쪽 위 묶음이다(`ShellControls`) — 화면마다 같은 것이 선다.
-    for (const name of ["사이드바 토글", "뒤로", "앞으로", "검색"]) {
+    for (const name of ["사이드바 토글", "뒤로", "앞으로"]) {
       expect(await glyphOf(page.getByRole("button", { name, exact: true })), `창 컨트롤 ${name}`).toEqual([15, 15]);
     }
+    expect(await glyphOf(창검색버튼(page)), "창 컨트롤 검색").toEqual([15, 15]);
     for (const name of screen.buttons) {
       expect(await glyphOf(head.getByRole("button", { name, exact: true })), `머리 카드 ${name}`).toEqual([15, 15]);
     }
@@ -1720,12 +1721,12 @@ test("Works: work 메뉴 Finder ▸에서 폴더가 사라진 worktree 줄은 55
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4). 작업 화면의 레일 칸은 `spec` · `chat` · `files`
-// 셋이라(three-axes 구현 스펙 S20 · git-integration 결정 29) 레일이 바탕 오른쪽 끝에 선다. 레일이 서면 패널 토글은 머리 카드 밖, 레일 열 바로 위로 나가고 머리 카드는
+// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4). 작업 화면의 레일 칸은 `spec` · `files` 둘이라
+// (git-integration 결정 29) 레일이 바탕 오른쪽 끝에 선다. 레일이 서면 패널 토글은 머리 카드 밖, 레일 열 바로 위로 나가고 머리 카드는
 // 레일 앞에서 끝난다(DS `.with-rail` · `.at-railtop`). 레일 열은 본문 열의 형제라 `aside`도 `nav`도 머리 줄 `<header>`의 자손도
 // 아니고(`aside` · `header` 수와 그것을 집는 검사가 그대로다), 패널을 닫아도 그 자리에 남는다. 레일의 DS 모양(홈 · 칸 · 켜짐)은
 // 진열대(`e2e/rail-fixture.tsx` · `rail.spec.ts`)가 잰다.
-test("Works: 레일(spec · chat · files)이 바탕 오른쪽 끝에 서고 — 패널 토글은 머리 카드 밖 레일 위, 머리 카드는 레일 앞에서 끝나며 — 패널을 닫아도 남는다", async ({
+test("Works: 레일(spec · files)이 바탕 오른쪽 끝에 서고 — 패널 토글은 머리 카드 밖 레일 위, 머리 카드는 레일 앞에서 끝나며 — 패널을 닫아도 남는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -1735,11 +1736,10 @@ test("Works: 레일(spec · chat · files)이 바탕 오른쪽 끝에 서고 —
   await expect(작업패널(page)).toBeVisible();
   await expect(toggle).toBeVisible();
 
-  // 칸은 목록 순서대로 `spec` · `chat` · `files`다(three-axes 구현 스펙 S20 · git-integration 결정 29 — files가 스펙 축 뒤에 선다).
-  // 이름이 `spec`인 버튼은 탭 줄의 칸과 레일의 칸 둘이다. `aside`는 둘, `header`는 하나 그대로다.
+  // 칸은 목록 순서대로 `spec` · `files`다(git-integration 결정 29 — files가 spec 뒤에 선다). 이름이 `spec`인 버튼은 탭 줄의 칸과
+  // 레일의 칸 둘이다. `aside`는 둘, `header`는 하나 그대로다.
   expect(await group.getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
-    "chat",
     "files",
   ]);
   await expect(page.locator("[data-tab-row]").getByRole("button", { name: "spec", exact: true })).toHaveCount(1);

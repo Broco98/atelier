@@ -18,6 +18,7 @@ import {
   workRow,
   띠,
   레인,
+  Work줄이가는곳,
 } from "./harness";
 
 // 사이드바 작업 행을 끌어 **순서·고정**을 바꾼다(UI개선 티켓 05 · 스펙 §4·§5). 틈의 경계 규칙은
@@ -99,7 +100,7 @@ test("5px 안쪽의 눌림은 그대로 클릭이다 — 그 작업으로 간다
   await expect(line(page)).toHaveCount(0);
   await page.mouse.up();
 
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   expect(await moves(page)).toEqual([]);
 });
 
@@ -392,8 +393,8 @@ test.describe("빈 `고정` 받침(고정이 하나도 없는 목록)", () => {
 });
 
 test("긴 목록의 아래 가장자리에 머물면 목록이 구르고, 구른 뒤 놓은 틈이 포인터 아래 행과 맞는다", async ({ page }) => {
-  // 창을 낮춰 목록을 넘치게 한다(`sidebar-quiet`와 같은 방법).
-  await page.setViewportSize({ width: 1280, height: 400 });
+  // 창을 낮춰 목록을 넘치게 한다(`sidebar-quiet`와 같은 방법 — 목록 상자는 창 높이 − 212px, 내용은 182px다).
+  await page.setViewportSize({ width: 1280, height: 360 });
   await openList(page);
   const box = page.locator("[data-worklist]");
   const overflow = await box.evaluate((el) => el.scrollHeight - el.clientHeight);
