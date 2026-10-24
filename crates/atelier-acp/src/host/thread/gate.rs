@@ -11,6 +11,7 @@
 //!   가리킨다.
 //! - **Session을 열 때 읽는다** — 그 Agent의 Policy · `tools.cli`(정의 스냅숏, §19)와 작업 폴더(상대 경로를 푸는 자리).
 //! - 경로는 심볼릭 링크를 풀어 견준다([`resolve`]) — Runtime은 제 작업 폴더를 링크를 푼 꼴로 쓴다(macOS의 `/tmp` → `/private/tmp`).
+//!   `..`는 링크를 푼 뒤에 접는다(코드 리뷰 2차 A2) — 링크 뒤의 `..`가 고칠 수 있는 자리 · Thread 기록 판정을 비켜 가지 않게.
 //! - **허용**은 허락 선택지로 닫고, 편집이면 그 순간 쓰기 자리를 쥔다(S20) — 그사이 다른 Session이 쥐었으면 그 주인의 글로 거절한다.
 //!   **거절**은 거부 선택지로 닫고 글을 Agent에게 준다. **물음**은 카드 종류 · Policy 이름 · 「다시 묻지 않기」로 줄 허락을 물음 줄에
 //!   달고, 선택지와 함께 적어 둔다(사람이 편집을 허락하면 쥐고, 다시 묻지 않기를 고르면 그 허락을 적는다 — v1 티켓 24). 고를 선택지가
@@ -163,34 +164,27 @@ pub(super) fn work_asking(data_root: &Path, slug: &str) -> (AskLevel, Vec<String
     (AskLevel::read(file.mode.as_deref()), file.grants)
 }
 
-/// 견줄 꼴의 경로 — 상대 경로는 `base`에서 풀고, `.` · `..`를 접고, 있는 데까지 심볼릭 링크를 푼다. 아직 없는 파일(새로 쓸 파일)은
-/// 있는 가장 가까운 위 폴더를 풀고 나머지를 붙인다. 문서 쓰는 중(v1 티켓 34)도 spec 폴더를 이 꼴로 견준다.
+/// 견줄 꼴의 경로 — 상대 경로는 `base`에서 풀고, 마디를 앞에서부터 하나씩 붙이며 있는 데까지 심볼릭 링크를 푼 **뒤에** `..`를
+/// 접는다(코드 리뷰 2차 A2 — 먼저 접으면 링크 `a/b → ../agents`의 `a/b/../thread.json`이 `a/thread.json`으로 보인다). 아직 없는
+/// 마디(새로 쓸 파일 · 폴더)부터는 글자로 붙이고 접는다. 문서 쓰는 중(v1 티켓 34)도 spec 폴더를 이 꼴로 견준다.
 pub(super) fn resolve(path: &Path, base: &Path) -> PathBuf {
     let joined = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
-    let mut normal = PathBuf::new();
+    let mut real = PathBuf::new();
     for component in joined.components() {
         match component {
             Component::ParentDir => {
-                normal.pop();
+                real.pop();
             }
             Component::CurDir => {}
-            other => normal.push(other),
-        }
-    }
-    let mut rest = Vec::new();
-    let mut existing = normal.as_path();
-    loop {
-        if let Ok(real) = existing.canonicalize() {
-            return rest.iter().rev().fold(real, |path, name| path.join(name));
-        }
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                rest.push(name.to_owned());
-                existing = parent;
+            other => {
+                real.push(other);
+                if let Ok(found) = real.canonicalize() {
+                    real = found;
+                }
             }
-            _ => return normal,
         }
     }
+    real
 }
 
 #[cfg(test)]
@@ -207,5 +201,24 @@ mod tests {
         assert_eq!(resolve(Path::new("spec/a.md"), &real.join("link")), real.join("work/spec/a.md"), "상대 경로 · 링크");
         assert_eq!(resolve(&real.join("link/spec/new/b.md"), Path::new("/")), real.join("work/spec/new/b.md"), "아직 없는 파일");
         assert_eq!(resolve(&real.join("work/spec/../../etc/x"), Path::new("/")), real.join("etc/x"), "`..`로 자리를 벗어나는 경로");
+    }
+
+    #[test]
+    fn 링크_뒤의_점점_마디는_링크를_푼_자리에서_접는다() {
+        // 코드 리뷰 2차 A2 — `..`를 링크보다 먼저 접으면 링크 `a/b → ../agents`의 `a/b/../thread.json`이 `a/thread.json`(고쳐도 되는
+        // 자리)으로 보이지만, 실제로 쓰이는 곳은 Thread 폴더의 `thread.json`이다. Work 밖 판정도 같은 길이다.
+        let root = tempfile::tempdir().unwrap();
+        let real = root.path().canonicalize().unwrap();
+        let thread = real.join("threads/20261023-101010");
+        std::fs::create_dir_all(thread.join("agents")).unwrap();
+        std::fs::create_dir_all(thread.join("a")).unwrap();
+        std::os::unix::fs::symlink("../agents", thread.join("a/b")).unwrap();
+        assert_eq!(resolve(&thread.join("a/b/../thread.json"), Path::new("/")), thread.join("thread.json"));
+        assert_eq!(resolve(Path::new("a/b/../events.jsonl"), &thread), thread.join("events.jsonl"), "상대 경로");
+
+        std::fs::create_dir_all(real.join("work/fe")).unwrap();
+        std::fs::create_dir_all(real.join("elsewhere/deep")).unwrap();
+        std::os::unix::fs::symlink(real.join("elsewhere/deep"), real.join("work/fe/lnk")).unwrap();
+        assert_eq!(resolve(&real.join("work/fe/lnk/../secret.txt"), Path::new("/")), real.join("elsewhere/secret.txt"), "worktree 밖");
     }
 }
