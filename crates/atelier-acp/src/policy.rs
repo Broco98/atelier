@@ -1085,6 +1085,23 @@ mod tests {
         assert_eq!(Act::of(&json!({})), Act::Other);
     }
 
+    /// 명령 패턴 규칙과 사람이 읽는 꼴 — 화면의 「결정은 내가 합니다」 카드(`work-proposal.ts` `decisionOf`)도 이 표로 견준다(L2
+    /// `work-proposal.test.ts`가 이 글을 읽는다, 코드 리뷰 2차 B6).
+    const SHOWN: [(&str, &str); 4] = [
+        ("Bash(git push *)", "git push"),
+        ("Bash(pnpm test:*)", "pnpm test"),
+        ("Bash( *docker compose up* )", "docker compose up"),
+        ("Bash(make deploy)", "make deploy"),
+    ];
+
+    #[test]
+    fn 명령_패턴의_보이는_꼴은_bash_괄호와_앞뒤의_별표_콜론_별표를_떼고_물음_이름이_그_꼴이다() {
+        for (rule, text) in SHOWN {
+            assert_eq!(shown(rule), text, "{rule}");
+            assert_eq!(ask_name(rule), format!("「{text}」 실행 전에 묻기"), "{rule}");
+        }
+    }
+
     #[test]
     fn 물어보는_정도는_저장_글자로_읽고_모르면_매번_묻기이며_계획만일_때만_claude를_계획_모드로_띄운다() {
         for level in [AskLevel::Always, AskLevel::Edits, AskLevel::Plan, AskLevel::Auto] {

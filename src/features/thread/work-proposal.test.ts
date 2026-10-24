@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import type { WorkProjectChoice } from "./fold";
 import type { AgentRoster, FoundAgent } from "./types";
@@ -120,5 +122,33 @@ describe("「결정은 내가 합니다」 카드의 줄", () => {
     expect(texts(null)).toEqual(["이 Work 밖의 Project 건드리기"]);
     expect(texts(roster(host([])))).toEqual(["이 Work 밖의 Project 건드리기"]);
     expect(texts(roster(host(["push"], { project: "api" })))).toEqual(["이 Work 밖의 Project 건드리기"]);
+  });
+
+  // 카드의 줄 이름과 명령 패턴의 보이는 꼴도 **두 언어가 문자열로만** 잇는다(코드 리뷰 2차 B6) — 판정(`policy.rs`의 `rule` · `NAMED` ·
+  // `shown`)이 거는 이름을 카드가 모르면 줄이 서지 않고, 보이는 꼴이 다르면 카드와 물음 줄(Policy 이름)이 다른 말을 한다. 표를 못
+  // 찾으면 던진다(fail-closed).
+  const policy = readFileSync(fileURLToPath(new URL("../../../crates/atelier-acp/src/policy.rs", import.meta.url)), "utf8");
+  const inPolicy = (pattern: RegExp, what: string): string => {
+    const found = pattern.exec(policy)?.[1];
+    if (!found) throw new Error(`policy.rs에서 ${what}을 못 찾았다`);
+    return found;
+  };
+
+  it("판정이 거는 이름마다 그 이름의 줄이 서고, 판정이 걸지 않는 `schema`는 서지 않는다", () => {
+    const named = [...inPolicy(/const NAMED: [^=]*= \[(.*?)\];/s, "NAMED").matchAll(/\("(\w+)",/g)].map(([, name]) => name);
+    const ruled = [...inPolicy(/fn rule\(name: &str\) -> Rule<'_> \{(.*?)\n\}/s, "rule").matchAll(/"(\w+)" => Rule::/g)].map(([, name]) => name);
+    expect([...named, ...ruled]).toEqual(["push", "merge", "edit", "shell"]);
+    for (const name of [...named, ...ruled]) {
+      expect(decisionItems(roster(host([name]))).map((item) => item.kind)).toEqual([name, "project"]);
+    }
+    expect(texts(roster(host(["schema"])))).toEqual(["이 Work 밖의 Project 건드리기"]);
+  });
+
+  it("명령 패턴의 줄은 판정의 물음 이름과 같은 꼴로 보인다", () => {
+    const shown = [...inPolicy(/const SHOWN: [^=]*= \[(.*?)\];/s, "SHOWN").matchAll(/\("([^"]+)", "([^"]+)"\)/g)];
+    expect(shown.length).toBeGreaterThan(0);
+    for (const [, rule, text] of shown) {
+      expect(texts(roster(host([rule])))).toEqual([`「${text}」 실행`, "이 Work 밖의 Project 건드리기"]);
+    }
   });
 });

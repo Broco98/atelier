@@ -83,7 +83,10 @@ const DECISION_ORDER: readonly DecisionItem["kind"][] = ["schema", "push", "merg
 /** 데이터베이스 스키마를 바꾸는 명령 패턴 — Host 기본 파일의 마이그레이션 명령들이다. */
 const SCHEMA = /migrat|db push|alembic|drizzle-kit/;
 
-/** `ask_before`의 규칙 이름 하나 → 카드 줄. 판정이 걸지 않는 이름(`schema` · 모르는 이름)은 줄이 없다(`policy.rs` `rule`). */
+/**
+ * `ask_before`의 규칙 이름 하나 → 카드 줄. 판정이 걸지 않는 이름(`schema` · 모르는 이름)은 줄이 없다(`policy.rs` `rule`). 이름과 명령
+ * 패턴의 보이는 꼴은 L2(`work-proposal.test.ts`)가 판정의 `rule` · `NAMED` · `shown` 표와 견준다.
+ */
 function decisionOf(rule: string): DecisionItem | null {
   if (rule === "push") return { kind: "push", text: "원격 저장소에 push" };
   if (rule === "merge") return { kind: "merge", text: "브랜치 · PR merge" };
