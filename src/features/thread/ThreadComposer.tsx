@@ -244,8 +244,6 @@ function ThreadComposer({
   const dragging = useAttachmentDrop(!busy && !carded, attach);
   // 입력창이 카드 · 놓는 자리에 자리를 내준 적이 있나 — 있으면 다시 설 때 떠오른다(처음 그린 입력창은 그대로 선다).
   const returned = useChanged(carded || dragging);
-  // 턴이 돌기 시작하거나 끝난 적이 있나 — 있으면 보내기 · 멈추기 원이 갈아 설 때 새 아이콘이 커지며 선다.
-  const swapped = useChanged(running);
   // 카드가 걷히면(고른 뒤) 입력칸이 포커스를 되받는다 — 키보드로 고른 손이 그대로 이어 쓴다(스토리 76). 다른 칸에 간 포커스는 두다.
   const wasCarded = useRef(carded);
   useEffect(() => {
@@ -453,29 +451,7 @@ function ThreadComposer({
               open={choosingModel}
               onOpenChange={setChoosingModel}
             />
-            {(!running || !empty) && (
-              <button
-                type="submit"
-                aria-label="보내기"
-                disabled={empty || busy}
-                className={cn(
-                  "ml-1 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-button ease-settle focus-ring",
-                  empty || busy ? "bg-fill-active text-fg-tertiary" : "bg-fg text-fg-inverse",
-                )}
-              >
-                <ArrowUp className={cn("size-4", swapped && "button-in")} aria-hidden />
-              </button>
-            )}
-            {running && onStop && (
-              <button
-                type="button"
-                aria-label="멈추기"
-                onClick={stop}
-                className="ml-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-fg text-fg-inverse focus-ring"
-              >
-                <span className={cn("size-2.5 rounded-xs bg-current", swapped && "button-in")} aria-hidden />
-              </button>
-            )}
+            <SendOrStop running={running} empty={empty} busy={busy} onStop={onStop && stop} />
           </div>
         </form>
       ))}
@@ -489,9 +465,57 @@ function ThreadComposer({
 }
 
 /**
+ * 보내기 · 멈추기 원 — 턴이 돌면 멈추기 네모가, 아니면(또는 도는 동안 글을 쓰면) 보내기 화살표가 선다. **갈아 선 아이콘만 커지며 선다**(Motion
+ * 보드 「버튼 바뀜」) — 이 부품이 선 뒤에 턴이 돌기 시작하거나 끝났을 때다. 입력창이 카드 자리를 내줬다가 다시 서면(결정 줄 뒤) 이 부품도
+ * 새로 서므로 아이콘이 다시 커지지 않는다(v1 티켓 46 — 43이 남긴 「결정 뒤 멈추기 네모가 다시 커진다」). 한때 이 물음을 입력창 몸이 쥐어
+ * 「한 번 바뀐 적이 있나」가 카드를 지나서도 남았다.
+ */
+function SendOrStop({
+  running,
+  empty,
+  busy,
+  onStop,
+}: {
+  running: boolean;
+  empty: boolean;
+  busy: boolean;
+  onStop?: () => void;
+}) {
+  const swapped = useChanged(running);
+  return (
+    <>
+      {(!running || !empty) && (
+        <button
+          type="submit"
+          aria-label="보내기"
+          disabled={empty || busy}
+          className={cn(
+            "ml-1 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-button ease-settle focus-ring",
+            empty || busy ? "bg-fill-active text-fg-tertiary" : "bg-fg text-fg-inverse",
+          )}
+        >
+          <ArrowUp className={cn("size-4", swapped && "button-in")} aria-hidden />
+        </button>
+      )}
+      {running && onStop && (
+        <button
+          type="button"
+          aria-label="멈추기"
+          onClick={onStop}
+          className="ml-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-fg text-fg-inverse focus-ring"
+        >
+          <span className={cn("size-2.5 rounded-xs bg-current", swapped && "button-in")} aria-hidden />
+        </button>
+      )}
+    </>
+  );
+}
+
+/**
  * 받는 이 멘션의 칩 면(Composer 보드 `.mchip`) — 입력칸 바로 뒤에 같은 글자 · 같은 줄바꿈으로 투명한 글을 깔고, 받는 이로 고른 `@이름`
- * 자리에만 옅은 파랑 면(`accent-soft`)을 깐다. 글자 폭을 바꾸지 않으려고 면의 여백은 고리(`ring`)로 준다 — 안쪽 여백을 주면 뒤의 글이
- * 입력칸의 글자와 어긋난다. 입력칸이 구르면 같이 구른다(`scrollTop`). 받는 이가 서면 면이 칩으로 나타난다(칩 나타남 — 글 안의 면이라
+ * 자리에만 옅은 회색 면(`fill-hover`)을 깐다. 한때 옅은 파랑(`accent-soft`)이었다 — 사용자가 「Grok bot스럽다」의 예로 든 그 알약이다(v1
+ * 티켓 46). 파랑은 「내 차례」 하나에 남기고, 멘션은 Codex의 입력칸 칩처럼 무채색 면 하나로 선다. 글자 폭을 바꾸지 않으려고 면의 여백은
+ * 고리(`ring`)로 준다 — 안쪽 여백을 주면 뒤의 글이 입력칸의 글자와 어긋난다. 입력칸이 구르면 같이 구른다(`scrollTop`). 받는 이가 서면 면이 칩으로 나타난다(칩 나타남 — 글 안의 면이라
  * 옅음만 움직인다).
  */
 const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: number; end: number }; roomy: boolean }>(
@@ -507,7 +531,7 @@ const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: num
         )}
       >
         {text.slice(0, at.start)}
-        <mark className={cn("rounded-sm bg-accent-soft text-transparent ring-2 ring-accent-soft", motion)}>
+        <mark className={cn("rounded-sm bg-fill-hover text-transparent ring-2 ring-fill-hover", motion)}>
           {text.slice(at.start, at.end)}
         </mark>
         {text.slice(at.end)}

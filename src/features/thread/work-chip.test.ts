@@ -3,8 +3,8 @@ import type { SearchHit } from "@/features/search/types";
 import type { ThreadSummary } from "./types";
 import { recentWorks, workHome } from "./work-chip";
 
-// 입력창 Work 칩(v1 티켓 31 · 구현 스펙 §11 · 스토리 94–96 · 캔버스 Screen-Home 보드 「Work 칩 메뉴」) — 고른 것이 칩 글자 · 빈 Thread의
-// 부제 · 입력창 안내를 바꾸고, 메뉴의 최근 Work는 마지막으로 연 차례(⌘K의 빈 화면과 같은 차례 — `recent.rs`)에 Thread 수를 단다.
+// 입력창 Work 칩(v1 티켓 31 · 구현 스펙 §11 · 스토리 94–96 · 캔버스 Screen-Home 보드 「Work 칩 메뉴」) — 고른 것이 칩 글자 · 입력창 안내를
+// 바꾸고(빈 Thread의 부제는 v1 티켓 46이 걷었다), 메뉴의 최근 Work는 마지막으로 연 차례(⌘K의 빈 화면과 같은 차례 — `recent.rs`)에 Thread 수를 단다.
 
 const summary = (id: string, work: string | null): ThreadSummary => ({
   id,
@@ -18,20 +18,11 @@ const summary = (id: string, work: string | null): ThreadSummary => ({
 });
 
 describe("Work 칩이 고른 것", () => {
-  it("칩 글자 · 부제 · 입력창 안내가 Screen-Home 보드의 세 갈래 그대로다", () => {
-    expect(workHome({ kind: "no-work" }, null)).toEqual({
-      chip: "Work 없음",
-      subtitle: "Host가 답합니다. Work는 필요할 때 Host가 만들어요.",
-      placeholder: "무엇이든 요청하세요",
-    });
-    expect(workHome({ kind: "new-work" }, null)).toEqual({
-      chip: "새 Work",
-      subtitle: "첫 메시지로 Host가 Work를 만들어요. 고칠 Project는 Host가 물어봐요.",
-      placeholder: "만들 기능이나 고칠 문제를 적어 주세요",
-    });
+  it("칩 글자 · 입력창 안내가 Screen-Home 보드의 세 갈래 그대로다", () => {
+    expect(workHome({ kind: "no-work" }, null)).toEqual({ chip: "Work 없음", placeholder: "무엇이든 요청하세요" });
+    expect(workHome({ kind: "new-work" }, null)).toEqual({ chip: "새 Work", placeholder: "만들 기능이나 고칠 문제를 적어 주세요" });
     expect(workHome({ kind: "work", slug: "refund-api" }, "환불 API 버그 수정")).toEqual({
       chip: "환불 API 버그 수정",
-      subtitle: "‘환불 API 버그 수정’에 새 Thread를 열어요.",
       placeholder: "환불 API 버그 수정에서 무엇을 할까요?",
     });
   });

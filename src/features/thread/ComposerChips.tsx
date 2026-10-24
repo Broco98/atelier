@@ -94,7 +94,8 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
         </DropdownMenuGroup>
         <DropdownMenuGroup>
           <DropdownMenuLabel>{running ? "생각 깊이 · 턴이 끝나면 바꿀 수 있어요" : "생각 깊이"}</DropdownMenuLabel>
-          {/* 칸 줄(보드 `.segm`) — 메뉴의 라디오 줄이라 ↑ · ↓로도 지난다. 고른 칸만 떠 있는 흰 면이다. */}
+          {/* 칸 줄(보드 `.segm`) — 메뉴의 라디오 줄이라 ↑ · ↓로도 지난다. 고른 칸만 떠 있는 흰 면이다. 칸 폭은 제 글자 폭에서 남는 폭을
+              나눠 갖는다(`flex-auto`) — 다섯을 같은 폭으로 나누면 「아주 높음」만 칸에 빠듯했다(v1 티켓 46). */}
           <MenuPrimitive.RadioGroup
             value={effort ?? ""}
             onValueChange={(next: string) => {
@@ -109,7 +110,7 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
                 label={one.label}
                 disabled={running}
                 closeOnClick
-                className="flex h-6.5 min-w-0 flex-1 cursor-default items-center justify-center rounded-md px-1 text-xs whitespace-nowrap text-fg-secondary outline-hidden select-none focus:bg-fill-hover data-checked:bg-surface data-checked:text-fg data-checked:shadow-hairline data-disabled:opacity-55"
+                className="flex h-6.5 flex-auto cursor-default items-center justify-center rounded-md px-1.5 text-xs whitespace-nowrap text-fg-secondary outline-hidden select-none focus:bg-fill-hover data-checked:bg-surface data-checked:text-fg data-checked:shadow-hairline data-disabled:opacity-55"
               >
                 {one.label}
               </MenuPrimitive.RadioItem>

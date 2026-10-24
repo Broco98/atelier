@@ -66,16 +66,16 @@ import WorkProposalCard from "./WorkProposalCard";
 //
 // - **틀은 카드 없는 흰 면이다**(`PlainFrame` — v1 티켓 07) — 머리 줄에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새
 //   Thread의 머리 줄은 비어 있다(Screen-Home 보드).
-// - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 부제 · 입력창. 보드의 상자 밖 아래 줄과 도움 줄
+// - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 입력창. 보드의 상자 밖 아래 줄과 도움 줄
 //   (「@ Agent 부르기 · / 명령 · + 파일 · 이미지」)은 걷었다 — 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 Work ·
-//   물어보는 정도 · 모델과 생각 깊이를 고른다. Work 칩이 고른 것(Work 없이 · 새 Work로 시작 · 최근 Work)을 부제와 입력창 안내가
-//   따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로 Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`)
-//   — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이 반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧
-//   그 Thread가 됐다).
+//   물어보는 정도 · 모델과 생각 깊이를 고른다. 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을 이미 말한다).
+//   Work 칩이 고른 것(Work 없이 · 새 Work로 시작 · 최근 Work)을 입력창 안내가 따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로
+//   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
+//   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
-//   선다(그때 「맨 아래로」가 입력창 위 오른쪽에 선다). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드가 선다
-//   (v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것
-//   하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
+//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이,
+//   입력창 자리에는 승인 카드가 선다(v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘
+//   읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 Work 카드가 열린다, v1 티켓 34)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
@@ -203,12 +203,13 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-30 scroll-quiet">
+          // 가운데 묶음은 아래 168을 비우고 가운데에 선다 — 1440×900 창에서 입력창 위끝이 Screen-Home 보드의 388에 온다(v1 티켓 46 — 31이
+          // 칩을 상자 안에 넣고 도움 줄을 걷어 묶음이 짧아진 뒤로 42 아래에 섰다, 시안-비교/31 · 46).
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-42 scroll-quiet">
             <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
               <div className="flex flex-col items-center gap-3.5 text-center">
                 <HostFace className="size-11" />
                 <h1 className="text-heading-lg">무엇을 만들까요?</h1>
-                <p className="text-sm text-fg-tertiary">{home.subtitle}</p>
               </div>
               {composer}
             </div>
@@ -741,8 +742,9 @@ function ThreadBody({
                 (changes || away || queue.length > 0) && (
                   <>
                     {(changes || away) && (
-                      <div className="flex items-center gap-2">
-                        {changes && last && (
+                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」는 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽 끝이었다).
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        {changes && last ? (
                           <ChangesPill
                             changes={changes}
                             onReview={() => {
@@ -750,15 +752,16 @@ function ThreadBody({
                               stuck.current = false;
                             }}
                           />
+                        ) : (
+                          <span />
                         )}
-                        <span className="flex-1" />
                         {away && (
                           // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼).
                           <button
                             type="button"
                             aria-label="맨 아래로"
                             onClick={toBottom}
-                            className="flex size-8.5 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary shadow-lifted transition-colors jump-in hover:text-fg focus-ring"
+                            className="col-start-2 flex size-8.5 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary shadow-lifted transition-colors jump-in hover:text-fg focus-ring"
                           >
                             <ArrowDown className="size-4" aria-hidden />
                           </button>

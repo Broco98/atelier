@@ -31,10 +31,13 @@ export function recentWorks(hits: readonly SearchHit[], threads: readonly Thread
     }));
 }
 
-/** 고른 것이 바꾸는 글 셋 — 칩 글자 · 빈 Thread의 부제 · 비어 있을 때의 입력창 안내(Screen-Home 보드의 세 갈래). */
+/**
+ * 고른 것이 바꾸는 글 둘 — 칩 글자 · 비어 있을 때의 입력창 안내(Screen-Home 보드의 세 갈래). 보드의 셋째 글인 빈 Thread의 부제(「Host가
+ * 답합니다. …」 · 「‘…’에 새 Thread를 열어요.」)는 걷었다(v1 티켓 46 — 칩이 이미 고른 것을 말하고, 사용자가 짚은 「아래에 설명은 필요
+ * 없을 것 같음」의 같은 갈래다).
+ */
 export interface WorkHome {
   chip: string;
-  subtitle: string;
   placeholder: string;
 }
 
@@ -42,20 +45,12 @@ export interface WorkHome {
 export function workHome(link: ThreadLink, title: string | null): WorkHome {
   switch (link.kind) {
     case "no-work":
-      return {
-        chip: "Work 없음",
-        subtitle: "Host가 답합니다. Work는 필요할 때 Host가 만들어요.",
-        placeholder: "무엇이든 요청하세요",
-      };
+      return { chip: "Work 없음", placeholder: "무엇이든 요청하세요" };
     case "new-work":
-      return {
-        chip: "새 Work",
-        subtitle: "첫 메시지로 Host가 Work를 만들어요. 고칠 Project는 Host가 물어봐요.",
-        placeholder: "만들 기능이나 고칠 문제를 적어 주세요",
-      };
+      return { chip: "새 Work", placeholder: "만들 기능이나 고칠 문제를 적어 주세요" };
     case "work": {
       const name = title || link.slug;
-      return { chip: name, subtitle: `‘${name}’에 새 Thread를 열어요.`, placeholder: `${name}에서 무엇을 할까요?` };
+      return { chip: name, placeholder: `${name}에서 무엇을 할까요?` };
     }
   }
 }
