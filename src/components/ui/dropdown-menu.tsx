@@ -234,10 +234,13 @@ function DropdownMenuRadioItem({
   className,
   children,
   inset,
+  size = "default",
   closeOnClick = true,
   ...props
 }: MenuPrimitive.RadioItem.Props & {
   inset?: boolean
+  /** 보통 항목과 같은 크기 — `note`는 이름 아래 설명 한 줄을 이는 두 줄 줄이다(대화창 모델 · 모드 칩의 메뉴). */
+  size?: keyof typeof ITEM_SIZE
 }) {
   return (
     <MenuPrimitive.RadioItem
@@ -246,7 +249,7 @@ function DropdownMenuRadioItem({
       // **고르면 닫힌다**(S33) — 부품의 기본은 안 닫힘이다(여러 번 바꿔 보는 메뉴를 위한 값). 앱의 라디오
       // 메뉴(상태 · 아카이브 거르개)는 한 번 고르면 끝이라 보통 항목처럼 닫는다.
       closeOnClick={closeOnClick}
-      className={cn(ROW, "menu-row items-center", className)}
+      className={cn(ROW, ITEM_SIZE[size], className)}
       {...props}
     >
       {children}

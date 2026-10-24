@@ -48,8 +48,13 @@ export interface RowLook {
   glyph: LucideIcon | null;
   /** 글자를 흐리게 그린다. 그 까닭은 `note`가 말한다. */
   dim?: boolean;
-  /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」). */
+  /** 행이 덧붙여 말하는 것 — 접근성 설명(`aria-description`)으로 읽힌다(files: 「gitignore에 걸림」, spec: 「고쳐졌는데 아직 열지 않았어요」). */
   note?: string;
+  /**
+   * 이름 끝에 고친 곳의 점을 세운다(three-axes 티켓 26 — spec 트리의 아직 열지 않은 고친 파일). 그 뜻은 `note`가 말한다. 파일 행만
+   * 읽는다 — 고친 곳은 파일에 선다.
+   */
+  changed?: boolean;
 }
 
 interface TreeProps {
@@ -63,6 +68,8 @@ interface TreeProps {
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼과, 그 행의 대상 메뉴(⇧F10 · 메뉴 키 · 우클릭)의 「경로 복사」 (생략 시 둘 다 미표시)
   onCopy?: (path: string) => void;
+  // 아직 열지 않은 고친 파일 — 그 행에 점이 선다(three-axes 티켓 26, 생략 시 없음). 아카이브 목록은 넘기지 않는다.
+  unseen?: readonly string[];
 }
 
 // **트리 하나가 Tab 정류장 하나다**(roving — codex-ds 스펙 §9 · S10, `@/lib/roving`). ↑↓는 보이는 행(펼친 폴더의 자식까지)을 화면
@@ -73,7 +80,7 @@ interface TreeProps {
 // 경로 복사 버튼은 **Tab 정류장이 아니다**(행 안 버튼은 빠진다) — 키보드의 길은 그 파일 행의 대상 메뉴(⇧F10 · 메뉴 키)의 「경로
 // 복사」이고 같은 동작이다(구현 노트 Q16). 메뉴는 `onCopy`가 있을 때만 선다 — 없으면 메뉴에 남는 항목이 없다.
 
-function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
+function SpecTree({ items, current, onSelect, onCopy, unseen = NOTHING_UNSEEN }: TreeProps) {
   // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트를 넘어 살지 않는다. **언제
   // 리마운트하는지는 트리를 세우는 패널이 정하고 두 패널이 다르다:**
   // - 작업 패널은 패널을 접을 때 트리를 새로 세운다(`WorkPanel`의 `treeGeneration`). 작업 전환은
@@ -113,7 +120,7 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
         onOpenChange={setOpen}
         onSelect={onSelect}
         onCopy={onCopy}
-        lookOf={specLook}
+        lookOf={(item) => specLook(item, unseen)}
       />
     </div>
   );
@@ -184,6 +191,14 @@ function walkTree(
   else if (parent) focusRow(event.currentTarget, parent.path);
 }
 
+const NOTHING_UNSEEN: readonly string[] = [];
+
+/**
+ * 고친 곳의 점이 하는 말(three-axes 티켓 26) — 이름 버튼의 설명으로 남는다. 점을 이름에 넣지 않는 것은 이름으로 행을 찾는 L3 · L4가
+ * 그 이름을 딛기 때문이다(아래 `FileGlyph` 머리말과 같은 까닭).
+ */
+const UNSEEN_CHANGE = "고쳐졌는데 아직 열지 않았어요";
+
 /**
  * 손대기 전의 펼침. 번호 묶음의 구성원은 **최신 표시가 붙은 것만** 펼친다 — 판이 쌓여도 지금
  * 판이 보이고 지난 판은 접힌 채 아래에 선다. 묶음 밖 폴더는 펼친 채 시작한다. 중첩된 묶음도
@@ -194,8 +209,12 @@ function openByDefault(item: SpecTreeItem): boolean {
   return item.group === null || item.group.latest;
 }
 
-// spec 행의 글리프는 레이아웃 항목이 준 아이콘이다. 흐린 행도 덧붙이는 말도 없다.
-const specLook = (item: SpecTreeItem): RowLook => ({ glyph: specIconOf(item.icon) });
+// spec 행의 글리프는 레이아웃 항목이 준 아이콘이다. 흐린 행은 없다. 아직 열지 않은 고친 파일이면 점이 서고 그 뜻을 덧붙여
+// 말한다(three-axes 티켓 26).
+const specLook = (item: SpecTreeItem, unseen: readonly string[]): RowLook => {
+  const glyph = specIconOf(item.icon);
+  return unseen.includes(item.path) ? { glyph, note: UNSEEN_CHANGE, changed: true } : { glyph };
+};
 
 /** 행 묶음의 입력. 접힘의 주인은 부르는 쪽이다 — spec 트리는 제 상태에, files 트리는 work · 프로젝트별 기억에 둔다. */
 export interface TreeRowsProps<T extends TreeRowItem<T>> {
@@ -354,6 +373,9 @@ export function TreeRows<T extends TreeRowItem<T>>({
               >
                 <FileGlyph name={item.name} glyph={look.glyph} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {/* 고친 곳의 점 — 이름 끝 6px(three-axes 프로토타입 D의 `.udot`, 값은 캔버스 `.cx-dot` — DS `dot-new`). 뜻은 버튼의
+                    설명(`note`)이 말한다. */}
+                {look.changed && <span data-change-dot aria-hidden className="size-1.5 shrink-0 rounded-full bg-dot-new" />}
               </button>
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라

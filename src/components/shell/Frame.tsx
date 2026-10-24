@@ -271,6 +271,8 @@ function Frame<Id extends string>({
             items={rail.items}
             active={rail.active}
             onPick={rail.onPick}
+            marks={rail.marks}
+            outside={rail.outside}
             controls={panel ? panelId : undefined}
           />
         )}

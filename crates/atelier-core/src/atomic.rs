@@ -55,19 +55,25 @@ pub(crate) fn read_json_or_default<T: DeserializeOwned + Default>(path: &Path, l
 /// 값을 보기 좋은 JSON(끝 줄바꿈 포함)으로 옮겨 `write_atomically`로 쓴다. `what`은 직렬화
 /// 실패 메시지의 목적어다(「순서를」·「이력을」).
 ///
-/// **이 함수 하나만 크레이트 밖으로 낸다**(`lib.rs`의 `pub use`). 앱의 인스턴스 기록(프로세스 결정 6)이 같은
-/// 규칙 — 같은 폴더 tmp → rename, 쓰기마다 다른 tmp 이름 — 으로 써야 해서다. 앱 쪽에 사본을 두면 「tmp 이름이
-/// 쓰기마다 다르다」가 두 벌로 갈라진다. 잠그지 않는 것은 그대로다: 겹친 쓰기를 가르는 뮤텍스는 부르는 쪽이 든다.
+/// **크레이트 밖으로 내는 원자 쓰기 둘 가운데 폴더를 만드는 쪽이다**(`lib.rs`의 `pub use`, 만들지 않는 쪽은
+/// [`write_json_into_existing_dir`]). 앱의 인스턴스 기록(프로세스 결정 6)이 같은 규칙 — 같은 폴더 tmp → rename,
+/// 쓰기마다 다른 tmp 이름 — 으로 써야 해서다. 앱 쪽에 사본을 두면 「tmp 이름이 쓰기마다 다르다」가 두 벌로 갈라진다.
+/// 잠그지 않는 것은 그대로다: 겹친 쓰기를 가르는 뮤텍스는 부르는 쪽이 든다.
 pub fn write_json_atomically<T: Serialize>(
     dir: &Path,
     file_name: &str,
     value: &T,
     what: &str,
 ) -> Result<()> {
+    write_atomically(dir, file_name, &pretty_json(value, what)?)
+}
+
+/// 원자 쓰기 둘이 쓰는 몸 — 보기 좋은 JSON에 끝 줄바꿈을 붙인다. `what`은 직렬화 실패 메시지의 목적어다.
+fn pretty_json<T: Serialize>(value: &T, what: &str) -> Result<String> {
     let mut json = serde_json::to_string_pretty(value)
         .map_err(|e| crate::Error::Validation(format!("{what} 옮겨 적지 못했습니다: {e}")))?;
     json.push('\n');
-    write_atomically(dir, file_name, &json)
+    Ok(json)
 }
 
 /// 같은 디렉터리 tmp 파일 → rename 원자적 쓰기 (`work.json`·projects·설정과 같은 규칙).
@@ -88,6 +94,28 @@ pub fn write_json_atomically<T: Serialize>(
 /// 읽기 쪽이다.
 pub(crate) fn write_atomically(dir: &Path, file_name: &str, contents: &str) -> Result<()> {
     std::fs::create_dir_all(dir)?;
+    replace_atomically(dir, file_name, contents)
+}
+
+/// 값을 보기 좋은 JSON으로 옮겨 **있는 폴더 안에서만** 갈아 끼운다 — [`write_json_atomically`]와 같되 폴더를
+/// 만들지 않는다. 폴더가 없으면 `NotFound` 오류 그대로 실패한다.
+///
+/// 쓰는 곳이 둘이다(대화 호스트, `atelier-acp`).
+/// - 대화 기록의 `agents.json`(three-axes 결정 18). work 폴더는 아카이브 · 삭제로 통째로 사라질 수 있는데, 그 뒤의 쓰기가
+///   폴더를 만들면 `work.json` 없는 유령 work 폴더가 선다 — 사라진 것을 되살리지 않는 쪽이 이 쓰기의 계약이다.
+/// - 데이터 루트의 엔진 목록 파일(three-axes 구현 스펙 S16). 데이터 루트는 앱이 이미 만들어 두었다 — 없는 루트를 이
+///   쓰기가 새로 세우지 않는다.
+pub fn write_json_into_existing_dir<T: Serialize>(
+    dir: &Path,
+    file_name: &str,
+    value: &T,
+    what: &str,
+) -> Result<()> {
+    replace_atomically(dir, file_name, &pretty_json(value, what)?)
+}
+
+/// 같은 폴더의 tmp에 쓰고 rename으로 갈아 끼운다. 폴더는 만들지 않는다.
+fn replace_atomically(dir: &Path, file_name: &str, contents: &str) -> Result<()> {
     let tmp = dir.join(tmp_name(file_name));
     std::fs::write(&tmp, contents)?;
     if let Err(e) = std::fs::rename(&tmp, dir.join(file_name)) {
@@ -180,5 +208,21 @@ mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, vec![".order.json"]);
+    }
+
+    /// **있는 폴더에 쓰기는 폴더를 만들지 않는다** — 사라진 work 폴더가 다음 쓰기로 되살아나지 않는다.
+    #[test]
+    fn 있는_폴더에_쓰기는_없는_폴더를_만들지_않고_실패한다() {
+        let tmp = tempfile::tempdir().unwrap();
+        let gone = tmp.path().join("works/gone/agents");
+
+        let error = write_json_into_existing_dir(&gone, "agents.json", &serde_json::json!({}), "목록을")
+            .expect_err("폴더가 없다");
+        assert!(matches!(error, crate::Error::Io(ref e) if e.kind() == std::io::ErrorKind::NotFound), "{error:?}");
+        assert!(!tmp.path().join("works").exists(), "어느 층의 폴더도 만들지 않는다");
+
+        std::fs::create_dir_all(&gone).unwrap();
+        write_json_into_existing_dir(&gone, "agents.json", &serde_json::json!({"a": 1}), "목록을").unwrap();
+        assert_eq!(std::fs::read_to_string(gone.join("agents.json")).unwrap(), "{\n  \"a\": 1\n}\n");
     }
 }

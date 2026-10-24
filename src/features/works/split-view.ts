@@ -51,9 +51,12 @@ export function otherTab(tab: ColumnTab): ColumnTab {
 }
 
 /**
- * 화면 탭이 가리키는 **열** — 분할에서 `tab`은 포커스가 든 열이다(결정 97). 문서가 아니면 묶음 열이다: 셸이든 파일 탭이든
+ * 화면 탭이 가리키는 **열** — 분할에서 `tab`은 포커스가 든 열이다(결정 97). 묶음의 탭이면 묶음 열이다: 셸이든 파일 탭이든
  * 묶음의 지금 탭이 그 열에 선다(git-integration 결정 32). 분할을 켜거나 끌 때 「남는 쪽」 · 「포커스가 이미 그 열인가」를 이것으로 잰다.
+ *
+ * **대화 탭은 문서 열로 친다**(three-axes S21) — 대화 탭은 묶음 밖의 고정 칸이라 분할에 들지 않는다. `chat` 탭에서 분할을 켜도
+ * 분할은 `spec ▏ 묶음의 지금 탭`이고 포커스는 문서 열이다.
  */
 export function columnOf(tab: ViewTab): ColumnTab {
-  return tab === "spec" ? "spec" : "terminal";
+  return tab === "terminal" || tab === "code" ? "terminal" : "spec";
 }

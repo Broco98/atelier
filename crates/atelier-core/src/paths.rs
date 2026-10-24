@@ -53,7 +53,9 @@ pub(crate) fn projects_in(root: &Path) -> PathBuf {
     root.join("projects")
 }
 
-pub(crate) fn works_in(root: &Path) -> PathBuf {
+/// 진행 중인 work의 루트를 **받은 데이터 루트에서** 짓는다. 데이터 루트를 인자로 받는 대화 호스트
+/// (`atelier-acp`)가 이것을 부른다 — 그쪽이 `root.join("works")`를 다시 적으면 배치가 두 벌이 된다.
+pub fn works_in(root: &Path) -> PathBuf {
     root.join("works")
 }
 

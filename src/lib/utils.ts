@@ -10,7 +10,7 @@ import { createCn } from "cn/config";
 // 이미 모서리로 알고, Codex만의 둘(`bubble` · `composer`)은 알려 줘야 한다. 모르면 합치기가 부품의 `rounded-lg`와 부르는 자리의
 // `rounded-bubble`을 둘 다 남겨, 어느 모서리가 서는지를 CSS의 순서가 정한다.
 //
-// **그림자 이름도 같다**(codex-ds 결정 27). Codex 그림자와 두 겹을 합친 이름(`modal` · `raised`)은 `shadow-2xl` 말고는
+// **그림자 이름도 같다**(codex-ds 결정 27). Codex 그림자와 두 겹을 합친 이름(`modal` · `raised` · `lifted`)은 `shadow-2xl` 말고는
 // Tailwind 이름이 아니다. 모르면 합치기가 그것을 그림자 **색**으로 읽어 `shadow-prominent shadow-none`에서 둘 다 남기고, 뒤에
 // 그림자 색(`shadow-black`)이 오면 그림자를 지운다.
 //
@@ -50,7 +50,7 @@ export const cn = createCn({
         "nav-row",
       ],
       radius: ["bubble", "composer"],
-      shadow: ["hairline", "100", "200", "300", "400", "card", "composer", "prominent", "modal", "raised"],
+      shadow: ["hairline", "100", "200", "300", "400", "card", "composer", "prominent", "modal", "raised", "lifted"],
       ease: ["default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "panel"],
     },
     classGroups: {

@@ -86,7 +86,7 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
   expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "머리 줄", "본문", "패널", "레일"]);
   // 머리 줄(머리 카드 밖)의 정류장은 패널 토글 하나이고, 레일은 칸마다 앉는다.
   expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual(["작업 패널 접기"]);
-  expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
+  expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "chat", "files"]);
   // 사이드바는 nav 하나 · work 목록 하나 · 바닥 Settings다 — nav의 정류장은 첫 항목(켜진 것이 없다), 목록의 정류장은 고른 행이다.
   // 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
   expect(자리들.filter(({ 영역 }) => 영역 === "사이드바").map(({ 이름, 행 }) => [이름, 행])).toEqual([
@@ -316,9 +316,11 @@ test("설정 nav도 Tab이 켜진 항목에 한 번 앉고, ↑↓로 항목을 
   await 간다(page, "ArrowDown", "notifications");
   await 간다(page, "ArrowDown", "hooks");
   await 간다(page, "ArrowDown", "spec-layout");
-  await 간다(page, "ArrowDown", "spec-layout");
+  // 끝 항목은 three-axes가 더한 「대화」다(`SETTINGS_ITEMS`) — 끝에서 ↓는 그 자리에 머문다.
+  await 간다(page, "ArrowDown", "chat");
+  await 간다(page, "ArrowDown", "chat");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL("/settings/spec-layout");
+  await expect(page).toHaveURL("/settings/chat");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

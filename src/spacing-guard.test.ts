@@ -385,6 +385,11 @@ describe("눈금의 사분 단", () => {
       className: "gap-1.25",
       why: "상세 work 줄의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. DS에 그 부품이 없어 작은 글리프의 사이 5(DS `.at-btn.top` · `.at-peek .chg`)를 따른다",
     },
+    {
+      file: "src/features/chat/ComposerChips.tsx",
+      className: "gap-1.25",
+      why: "입력창의 칩 — 글리프와 글자 사이 5(DS `.at-ctl`)",
+    },
     // 안쪽 9 · 7 — DS 부품의 안쪽
     {
       file: "src/components/ui/button.tsx",
@@ -425,6 +430,31 @@ describe("눈금의 사분 단", () => {
       file: "src/features/works/SpecViewer.tsx",
       className: "py-px",
       why: "위와 같다 — 위아래 안쪽 1",
+    },
+    {
+      file: "src/features/chat/ChatMarkdown.tsx",
+      className: "px-1.25",
+      why: "대화 본문의 인라인 코드 — 문서의 인라인 코드와 같은 좌우 안쪽 5(DS `.at-prose code`)",
+    },
+    {
+      file: "src/features/chat/ChatMarkdown.tsx",
+      className: "py-px",
+      why: "위와 같다 — 위아래 안쪽 1",
+    },
+    {
+      file: "src/features/chat/Composer.tsx",
+      className: "pt-3.75",
+      why: "입력창 — 위 안쪽 15(DS `.at-composer`의 `15px 12px 8px 18px`). 슬래시 메뉴가 서면 12로 준다",
+    },
+    {
+      file: "src/features/chat/ToolRow.tsx",
+      className: "py-2.25",
+      why: "명령 출력 상자 — 위아래 안쪽 9(DS `.at-shell-out`의 `9px 12px 9px 9px`)",
+    },
+    {
+      file: "src/features/chat/ToolRow.tsx",
+      className: "pl-2.25",
+      why: "위와 같다 — 왼쪽 안쪽 9",
     },
     // 앱의 조용한 칩 — 좌우 7
     {

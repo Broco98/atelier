@@ -982,6 +982,11 @@ test("Works: 좁은 창에서 머리 카드의 브랜치가 먼저 준다 — �
   const name = head.getByText(pinnedWork.title, { exact: true });
   const branch = head.getByText(pinnedWork.branch!, { exact: true });
   await expect(branch).toBeVisible();
+  // 작업 패널을 닫아 둔다 — 창을 좁히면 본문 열의 바닥(탭 줄 + 패널의 최소 폭 + 틈)이 머리 카드보다 먼저 틀의 바닥이 되어, 그
+  // 뒤로는 창이 준 만큼 사이드바가 준다(`tab-row.ts`의 `squeezedWidth`). 탭 줄에 `chat`이 서면서(three-axes S21) 그 바닥이 이
+  // 검사의 마지막 폭보다 넓어졌다. 패널을 닫아도 레일이 서 있어 머리 카드는 같은 자리에서 끝난다 — 재는 것은 머리 카드 안이다.
+  await page.getByRole("button", { name: "작업 패널 접기", exact: true }).click();
+  await expect(page.getByRole("button", { name: "작업 패널 펼치기", exact: true })).toBeVisible();
   const 넘친다 = (target: Locator) => target.evaluate((el) => el.scrollWidth > el.clientWidth);
   const [gap] = await 칠한값(head, "column-gap");
   // 브랜치가 받는 폭 — 이름의 면 끝에서 할 일 묶음 앞 사이까지.
@@ -1715,12 +1720,12 @@ test("Works: work 메뉴 Finder ▸에서 폴더가 사라진 worktree 줄은 55
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4). 작업 화면의 레일 칸은 `spec` · `files` 둘이라
-// (git-integration 결정 29) 레일이 바탕 오른쪽 끝에 선다. 레일이 서면 패널 토글은 머리 카드 밖, 레일 열 바로 위로 나가고 머리 카드는
+// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4). 작업 화면의 레일 칸은 `spec` · `chat` · `files`
+// 셋이라(three-axes 구현 스펙 S20 · git-integration 결정 29) 레일이 바탕 오른쪽 끝에 선다. 레일이 서면 패널 토글은 머리 카드 밖, 레일 열 바로 위로 나가고 머리 카드는
 // 레일 앞에서 끝난다(DS `.with-rail` · `.at-railtop`). 레일 열은 본문 열의 형제라 `aside`도 `nav`도 머리 줄 `<header>`의 자손도
 // 아니고(`aside` · `header` 수와 그것을 집는 검사가 그대로다), 패널을 닫아도 그 자리에 남는다. 레일의 DS 모양(홈 · 칸 · 켜짐)은
 // 진열대(`e2e/rail-fixture.tsx` · `rail.spec.ts`)가 잰다.
-test("Works: 레일(spec · files)이 바탕 오른쪽 끝에 서고 — 패널 토글은 머리 카드 밖 레일 위, 머리 카드는 레일 앞에서 끝나며 — 패널을 닫아도 남는다", async ({
+test("Works: 레일(spec · chat · files)이 바탕 오른쪽 끝에 서고 — 패널 토글은 머리 카드 밖 레일 위, 머리 카드는 레일 앞에서 끝나며 — 패널을 닫아도 남는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -1730,10 +1735,11 @@ test("Works: 레일(spec · files)이 바탕 오른쪽 끝에 서고 — 패널 
   await expect(작업패널(page)).toBeVisible();
   await expect(toggle).toBeVisible();
 
-  // 칸은 목록 순서대로 `spec` · `files`다(git-integration 결정 29 — files가 spec 뒤에 선다). 이름이 `spec`인 버튼은 탭 줄의 칸과
-  // 레일의 칸 둘이다. `aside`는 둘, `header`는 하나 그대로다.
+  // 칸은 목록 순서대로 `spec` · `chat` · `files`다(three-axes 구현 스펙 S20 · git-integration 결정 29 — files가 스펙 축 뒤에 선다).
+  // 이름이 `spec`인 버튼은 탭 줄의 칸과 레일의 칸 둘이다. `aside`는 둘, `header`는 하나 그대로다.
   expect(await group.getByRole("button").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")))).toEqual([
     "spec",
+    "chat",
     "files",
   ]);
   await expect(page.locator("[data-tab-row]").getByRole("button", { name: "spec", exact: true })).toHaveCount(1);

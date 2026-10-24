@@ -1,3 +1,4 @@
+mod chat;
 mod commands;
 mod hooks;
 mod processes;
@@ -308,6 +309,13 @@ pub fn run() {
     // 찾는다 — 끝내는 `processes_end`는 셸 명령처럼 풀을 찾는다(서비스는 아무것도 안 끝낸다). 셋업이 WebContent를 묻는 길과 배경
     // 표본을 건다.
     let process_service = Arc::new(ProcessService::new(Arc::clone(&pool)));
+    // 대화 호스트 — 대화창의 몸통(three-axes 티켓 05). 풀처럼 빌더 앞에서 한 번 세워 앱에 건다: 웹뷰는 셋업보다 먼저 서고
+    // 프런트는 뜨자마자 대화 목록을 묻는다 — 셋업 안에서 걸면 그 사이 대화 명령이 `state not managed`로 거절된다.
+    // 호스트가 내보내는 것은 채널에 받아 두었다가 셋업이 건 스레드 하나가 화면으로 쏜다(`chat::announce`) — 앱 핸들이 아직
+    // 없어도 버려지는 것이 없고, 한 스레드라 기록 줄의 차례가 지켜진다. Claude 대화의 변환기가 이 실행 파일 자신이라
+    // `current_exe`는 여기서, 이 한 번만 읽는다(워크플로 §1).
+    let (chat_events, chat_inbox) = std::sync::mpsc::channel();
+    let chats = Arc::new(chat::host(std::env::current_exe().unwrap_or_default(), chat_events));
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -349,11 +357,17 @@ pub fn run() {
         .manage(Arc::clone(&process_service))
         // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
         .manage(Arc::clone(&report))
+        // 대화 호스트 — 대화 명령이 `State`로 찾고, 종료 훅이 끈다. 위에서 세운 그 하나다.
+        .manage(Arc::clone(&chats))
         .setup(move |app| {
             // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
             // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
             terminate::install(app.handle());
-            watcher::start(app.handle().clone());
+            // 진행 중 루트의 감시는 work가 사라진 소식을 대화 호스트에게도 넘긴다(three-axes 티켓 11) — 빌더 앞에서 세운 그 하나다.
+            watcher::start(app.handle().clone(), Arc::clone(&chats));
+            // 대화 호스트가 내보낸 것(기록 줄)을 화면으로 쏜다 — 위 감시와 같은 길이다: 스레드 하나가 emit하고 프런트가
+            // `listen`으로 받는다. 빌더 앞에서 받아 둔 채널을 건넨다.
+            chat::announce(app.handle().clone(), chat_inbox);
             // 도는 명령을 1초마다 재서 **바뀐 셸만** 쏜다(adr-04). 배선은 바로 위 watcher와
             // 같은 길이다 — 스레드 하나가 emit하고 프런트가 `listen`으로 받는다.
             //
@@ -491,6 +505,25 @@ pub fn run() {
             commands::render_spec_layout,
             commands::quit_app,
             commands::startup_report,
+            commands::chat_check_engine,
+            commands::chat_list,
+            commands::chat_read_record,
+            commands::chat_new,
+            commands::chat_switch_agent,
+            commands::chat_send,
+            commands::chat_close,
+            commands::chat_stop,
+            commands::chat_edit_queued,
+            commands::chat_delete_queued,
+            commands::chat_send_now,
+            commands::chat_answer_permission,
+            commands::chat_set_model,
+            commands::chat_set_mode,
+            commands::chat_set_plan,
+            commands::chat_engine_lists,
+            commands::chat_quit_counts,
+            commands::chat_start_login,
+            commands::chat_cancel_login,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -506,8 +539,15 @@ pub fn run() {
             // 인스턴스 기록도 여기서 닫는다(`end_for_exit` 안) — 「못 끝냄」이 없으면 지우고, 있으면 다음 실행의 시작
             // 정리가 한 번 더 해 보게 남긴다. 정리 기록(「앱 종료」 사건)도 `end_for_exit` 안에서 적는다 — 그래서 돌려받는
             // 결과(못 끝냄 포함)는 여기서 안 읽는다. 그 결과로 재는 것은 풀 배선 장면이다.
+            //
+            // 대화 에이전트도 여기서 끈다(three-axes 결정 19 · 티켓 05) — 셸 표식이 없어 셸 정리가 끄지 않는다. 호스트는 모든
+            // 대화의 stdin을 한꺼번에 닫고 1초를 한 번만 기다린 뒤 그룹째 SIGKILL한다. 셸 정리와 겹쳐 기다리려고 스레드로
+            // 띄우고, **셸 정리 뒤에 반드시 기다린다** — 위의 「동기로」와 같은 까닭이다.
             if matches!(event, tauri::RunEvent::Exit) {
+                let chats = Arc::clone(&app.state::<Arc<atelier_acp::ConversationHost>>());
+                let chats_ended = std::thread::spawn(move || chats.shut_down());
                 let _ = pty::end_for_exit(&app.state::<Arc<pty::PtyPool>>());
+                let _ = chats_ended.join();
             }
         });
 }
@@ -746,6 +786,126 @@ mod tests {
         assert!(
             !setup.contains("PtyPool>>()") && !setup.contains("ProcessService>>()"),
             "셋업이 앱에서 풀이나 서비스를 다시 찾는다 — 빌더 앞의 값을 건네라"
+        );
+    }
+
+    /// **대화 호스트는 빌더 앞에서 한 번 서고, 앱에 걸리고, 셋업은 그것이 내보내는 것을 화면으로 쏠 스레드만 건다**
+    /// (three-axes 티켓 05). 웹뷰는 셋업보다 먼저 서고 프런트는 뜨자마자 대화 목록을 묻는다 — 셋업 안에서 걸면 그 사이 대화
+    /// 명령이 `state not managed`로 거절되고, L3는 고정 표가 답해 못 본다. 호스트가 둘이면 명령과 종료 훅이 다른 에이전트를
+    /// 본다. 변환기 명령이 이 실행 파일 자신이라 `current_exe`는 여기서 한 번만 읽는다(워크플로 §1). 셋업은 헤드리스로 못
+    /// 돌리니 자리로 잰다. 호스트 자체는 크레이트 `atelier-acp`의 L1이 잰다.
+    #[test]
+    fn the_chat_host_stands_once_before_the_builder_and_the_app_holds_it() {
+        let run = run_source();
+        let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
+        let made = run
+            .find("let chats = Arc::new(chat::host(std::env::current_exe().unwrap_or_default(), chat_events));")
+            .expect("대화 호스트를 이 실행 파일과 이벤트 채널로 세우지 않는다");
+        assert!(made < builder, "대화 호스트({made})를 빌더({builder}) 뒤에서 세운다");
+        assert_eq!(run.matches("chat::host(").count(), 1, "대화 호스트를 둘 세운다 — 명령과 종료 훅이 다른 에이전트를 본다");
+        assert_eq!(run.matches("current_exe()").count(), 1, "`current_exe`를 진입점 밖에서도 읽는다");
+        assert!(
+            run.contains(".manage(Arc::clone(&chats))"),
+            "대화 호스트를 앱에 안 건다 — 대화 명령이 부를 때마다 `state not managed`로 거절된다"
+        );
+        let setup = setup_source();
+        assert!(
+            setup.contains("chat::announce(app.handle().clone(), chat_inbox);"),
+            "호스트가 내보낸 것을 화면으로 쏠 스레드를 안 건다 — 답이 흘러도 화면이 조용하다"
+        );
+        assert!(!setup.contains("ConversationHost>>()"), "셋업이 앱에서 대화 호스트를 다시 찾는다 — 빌더 앞의 값을 건네라");
+    }
+
+    /// **감시는 앱이 쥔 그 대화 호스트에게 work가 사라진 소식을 넘긴다**(three-axes 티켓 11 · S10). 사이드바의 아카이브 · 삭제도,
+    /// 앱 밖 MCP의 아카이브도 앱이 아는 길은 진행 중 루트의 감시뿐이다 — 셋업이 호스트를 안 넘기면 쉬던 대화의 에이전트가 앱을 끌
+    /// 때까지 남는다. 넘기는 것은 빌더 앞에서 세운 그 하나다. 셋업은 헤드리스로 못 돌리니 자리로 잰다. 감시가 소식마다 호스트를 묻는
+    /// 규칙은 `watcher.rs`의 단위 검사가, 사라진 work의 대화를 끄는 것은 크레이트 `atelier-acp`의 L1이 잰다.
+    #[test]
+    fn the_watcher_hands_vanished_works_to_the_chat_host_the_app_holds() {
+        let setup = setup_source();
+        assert!(
+            setup.contains("watcher::start(app.handle().clone(), Arc::clone(&chats));"),
+            "감시가 대화 호스트를 받지 않는다 — 아카이브한 work의 쉬던 대화가 앱을 끌 때까지 남는다"
+        );
+    }
+
+    /// **앱이 닫히면 대화 에이전트도 남김없이 꺼진다**(three-axes 결정 19 · 티켓 05). 셸 정리(`pty::end_for_exit`)는 셸 표식을
+    /// 문 것만 끄는데 대화 에이전트는 표식이 없다 — 호스트 끄기가 빠지면 앱을 끈 뒤에도 에이전트가 산다. 둘을 겹쳐 기다리려고
+    /// 호스트 끄기를 스레드로 띄우고, **셸 정리 뒤에 반드시 기다린다** — 안 기다리면 프로세스가 끝나며 그 스레드도 사라져
+    /// SIGKILL을 아무도 못 보낸다(종료 훅 머리말의 「동기로」). `run()`은 헤드리스로 못 돌리니 자리로 잰다. 호스트 끄기 자체
+    /// (stdin 닫기 → 1초 → 그룹째 SIGKILL, 후손 0)는 크레이트 `atelier-acp`의 L1이 잰다.
+    #[test]
+    fn the_exit_hook_ends_the_chat_agents_beside_the_shells() {
+        let run = run_source();
+        let exit = run
+            .split_once(".run(|app, event| {")
+            .expect("앱의 이벤트 훅이 있다")
+            .1
+            .split_once("if matches!(event, tauri::RunEvent::Exit) {")
+            .expect("종료 갈래가 있다")
+            .1;
+        let held = exit
+            .find("let chats = Arc::clone(&app.state::<Arc<atelier_acp::ConversationHost>>());")
+            .expect("종료 갈래가 앱이 쥔 대화 호스트를 찾지 않는다 — 명령이 띄운 에이전트가 아닌 것을 끈다");
+        let ended = exit.find("std::thread::spawn(move || chats.shut_down());").expect("종료 갈래가 대화 호스트를 안 끈다");
+        let shells = exit.find("pty::end_for_exit(").expect("종료 갈래가 셸을 안 닫는다");
+        let joined = exit.find("chats_ended.join();").expect("종료 갈래가 호스트 끄기를 안 기다린다 — 스레드가 프로세스와 함께 사라진다");
+        assert!(
+            held < ended && ended < shells && shells < joined,
+            "호스트 찾기({held}) → 호스트 끄기({ended}) → 셸 정리({shells}) → 기다림({joined}) 차례가 아니다"
+        );
+    }
+
+    /// **진입점은 Tauri를 짓기 전에 첫 인자로 갈라, 정확히 `acp-claude`면 Claude 변환기가 된다**(three-axes 티켓 13, 워크플로
+    /// S4 · G17). 대화 호스트가 Claude 대화마다 이 실행 파일 자신을 `acp-claude`로 띄운다(`chat::host`) — 띄우는 쪽과 가르는 쪽이
+    /// 같은 상수(`atelier_acp::CLAUDE_TRANSLATOR_MODE`)를 쓰는지도 잰다. Tauri를 지은 뒤에 가르면
+    /// 대화마다 Dock 아이콘이 서고 기동이 무거워진다. 갈래가 부르는 함수는 L1이 호스트에 넘기는 변환기 시험 bin과 **같은 함수**다
+    /// — 그래야 L1이 잰 변환기가 앱이 띄우는 변환기다. `main`은 헤드리스로 못 돌리니 자리로 잰다. 변환기 자체(플래그 · stdin
+    /// `initialize` · 가리기 · stdin EOF)는 크레이트 `atelier-acp`의 L1이 잰다.
+    #[test]
+    fn the_entry_point_becomes_the_claude_translator_before_tauri_on_acp_claude() {
+        let main = without_comment_lines(include_str!("main.rs"));
+        let branch = main
+            .find("if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(atelier_acp::CLAUDE_TRANSLATOR_MODE)) {")
+            .expect("진입점이 첫 인자가 정확히 하위 모드 상수인지로 가르지 않는다");
+        assert_eq!(atelier_acp::CLAUDE_TRANSLATOR_MODE, "acp-claude", "하위 모드의 이름은 `acp-claude`다");
+        assert!(
+            without_comment_lines(include_str!("chat.rs"))
+                .contains("TranslatorCommand::new(exe, [atelier_acp::CLAUDE_TRANSLATOR_MODE])"),
+            "대화 호스트가 진입점이 가르는 상수와 다른 인자로 변환기를 띄운다 — 앱의 Claude 대화가 열리지 않는다"
+        );
+        let translator = main
+            .find("std::process::exit(atelier_acp::run_claude_translator());")
+            .expect("`acp-claude` 갈래가 변환기의 진입 함수를 부르고 그 종료 코드로 끝나지 않는다");
+        let tauri = main.find("atelier_lib::run()").expect("Tauri로 가는 길이 있다");
+        assert!(branch < translator && translator < tauri, "갈래({branch}) → 변환기({translator}) → Tauri({tauri}) 차례가 아니다");
+        assert!(
+            !main[..branch].contains("print"),
+            "갈래 앞에서 stdout에 쓴다 — `acp-claude`의 stdout은 곧 ACP 선이다"
+        );
+        let test_bin = without_comment_lines(include_str!("../../crates/atelier-acp/src/bin/claude-translator.rs"));
+        assert!(
+            test_bin.contains("std::process::exit(atelier_acp::run_claude_translator())"),
+            "변환기 시험 bin이 진입점과 다른 함수를 부른다 — L1이 잰 변환기가 앱이 띄우는 변환기가 아니다"
+        );
+    }
+
+    /// **화면 새로고침은 대화를 끄지 않는다**(three-axes 구현 스펙 S9). 셸은 새로고침에 거두지만 대화는 기록에서 다시 그린다
+    /// — 새로고침 정리가 호스트를 부르면 ⌘R 한 번에 돌던 턴이 끊긴다. 자리로 잰다.
+    #[test]
+    fn a_page_reload_leaves_the_chat_host_alone() {
+        let reload = builder_source()
+            .split_once(".on_page_load(")
+            .expect("새로고침 정리가 있다")
+            .1
+            .split_once(".invoke_handler(")
+            .expect("새로고침 정리의 끝이 있다")
+            .0
+            .to_string();
+        assert!(reload.contains("pty::end_for_reload("), "새로고침 정리를 못 읽었다 — 자른 자리가 샜다");
+        assert!(
+            !reload.contains("chat") && !reload.contains("ConversationHost"),
+            "새로고침 정리가 대화 호스트를 부른다 — ⌘R 한 번에 돌던 대화가 끊긴다"
         );
     }
 

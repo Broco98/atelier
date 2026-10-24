@@ -18,6 +18,7 @@ import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsChatRouteImport } from './routes/settings.chat'
 import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
 import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-layout'
@@ -73,6 +74,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsChatRoute = SettingsChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsHooksRoute = SettingsHooksRouteImport.update({
   id: '/hooks',
   path: '/hooks',
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/settings/chat': typeof SettingsChatRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
@@ -145,6 +152,7 @@ export interface FileRoutesByTo {
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/settings/chat': typeof SettingsChatRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/terminal': typeof SettingsTerminalRoute
@@ -165,6 +173,7 @@ export interface FileRoutesById {
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/settings/chat': typeof SettingsChatRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
+    | '/settings/chat'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
@@ -206,6 +216,7 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
+    | '/settings/chat'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/terminal'
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/archive/$slug'
     | '/projects/$slug'
+    | '/settings/chat'
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/spec-layout'
@@ -317,6 +329,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/chat': {
+      id: '/settings/chat'
+      path: '/chat'
+      fullPath: '/settings/chat'
+      preLoaderRoute: typeof SettingsChatRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/hooks': {
       id: '/settings/hooks'
       path: '/hooks'
@@ -399,6 +418,7 @@ const SettingsSpecLayoutRouteWithChildren =
   SettingsSpecLayoutRoute._addFileChildren(SettingsSpecLayoutRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsChatRoute: typeof SettingsChatRoute
   SettingsHooksRoute: typeof SettingsHooksRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   SettingsSpecLayoutRoute: typeof SettingsSpecLayoutRouteWithChildren
@@ -407,6 +427,7 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsChatRoute: SettingsChatRoute,
   SettingsHooksRoute: SettingsHooksRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   SettingsSpecLayoutRoute: SettingsSpecLayoutRouteWithChildren,

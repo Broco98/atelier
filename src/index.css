@@ -297,9 +297,11 @@
        하나다) 클래스 합치기(`cn`)도 앞의 것을 지운다. 이름은 Atelier가 붙였고 값은 DS의 두 토큰 그대로다 — 다크도 두 토큰이 든다.
          modal    prominent + 2xl       막(`scrim`) 위에 뜨는 창 — 지금은 가운데 창(확인 창 · 다이얼로그, DS `.at-dialog`), 「LLM이 받는
                                         텍스트」 창(같은 DS `Dialog`)과 검색 팔레트(DS `.at-palette`)
-         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`)와 사이드바의 알림 띠(DS `.at-band`) */
+         raised   hairline + 200        조금 떠오른 흰 조각 — 지금은 스위치 손잡이(DS `.at-switch`)와 사이드바의 알림 띠(DS `.at-band`)
+         lifted   hairline + card       글 위에 떠 있는 알약 — 지금은 대화창 입력창 위의 「N개 파일 변경됨」(DS `.at-floatpill`) */
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
+    --shadow-lifted: var(--shadow-hairline), var(--shadow-card);
     /* **Codex 시간의 유틸리티**(`duration-basic` · `duration-panel` …). 값은 아래 `@theme static`의 `--duration-*`이다 —
        Tailwind의 시간 이름공간은 `--transition-duration-*`라 `--duration-*`만 두면 `duration-panel`이 아무 CSS도 안 낸다. */
     --transition-duration-basic: var(--duration-basic);
@@ -1551,6 +1553,44 @@ body[data-palette-open] [data-scrollbar] {
 .xterm textarea.xterm-helper-textarea {
     min-width: 1px;
     min-height: 1px;
+}
+
+/* **대화창의 값은 DS 토큰이다**(three-axes 결정 31 · codex-ds 스펙 S2). 한때 대화창은 캔버스 값을 제 범위(`[data-chat]`)의 토큰으로
+   들었다 — 앱의 전역 토큰이 아직 Codex 값이 아니었다. codex-ds가 대화 · 도구 · diff · 컴포저 토큰을 전역에 세워(위 `@theme`의 Codex
+   색 · 반경 `bubble` · `composer` · 그림자 `composer` · 크기 `size-thread`) 그 범위를 걷고 같은 값의 전역 이름으로 옮겼다 — 다크도
+   따라온다. 고친 곳의 면 · 점(스펙 창 · 트리 · 레일)도 전역의 `accent-soft` · `dot-new`다.
+
+   「생각 중」의 반짝임(캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 2초마다 지나간다. WebKit은 `-webkit-background-clip`과
+   `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 멎은 옅은 글자다 — 위 동작 줄이기
+   블록은 `data-slot` 부품만 끄므로 제 규칙을 둔다. */
+@keyframes chat-shimmer {
+    0% {
+        background-position: -100% 0;
+    }
+    to {
+        background-position: 250% 0;
+    }
+}
+@utility chat-shimmer {
+    width: fit-content;
+    /* 바탕의 옅은 글자 — 「생각 중」은 `fg-tertiary`, 도는 도구 줄은 `fg-tool-running`(부르는 자리가 `--chat-shimmer-dim`으로 준다 —
+       DS `.at-shimmer` · `.at-shimmer.tool`) */
+    background: var(--chat-shimmer-dim, var(--fg-tertiary))
+        linear-gradient(
+            to left,
+            var(--chat-shimmer-dim, var(--fg-tertiary)),
+            var(--fg) 50%,
+            var(--chat-shimmer-dim, var(--fg-tertiary))
+        )
+        no-repeat;
+    background-size: 50% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: chat-shimmer 2s linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
+    }
 }
 
 /* **코드 보기 범위 토큰**(git-integration 판 01 S16 · 결정 35 · 38) — 파일 탭의 강조된 코드(`HighlightedCode`)가 읽는다.

@@ -9,7 +9,7 @@ import { specDocs, workFixture } from "./work-fixture";
 // 카드 · 틈 · 폭 손잡이 · 접힘은 공용 틀의 패널 칸이 들어(ui-refresh 결정 27) 그 단언은 화면을 통째로 그리는 `WorksPage.test.tsx`에
 // 있다. 칸을 고르고 여닫는 자리(레일 · 패널 토글)도 패널 밖이라 그쪽에 있다(ui-refresh 결정 9 · 10).
 //
-// 몸은 `spec` · `files` 둘이다 — `info` 몸을 걷었다(codex-ds 결정 25: 보기는 호버 카드가, 복사 · Finder 열기는 work 메뉴가 든다).
+// 몸은 `spec` · `chat` · `files` 셋이다 — `info` 몸을 걷었다(codex-ds 결정 25: 보기는 호버 카드가, 복사 · Finder 열기는 work 메뉴가 든다).
 // files 몸(git-integration 판 01)은 워크트리 트리를 스스로 조회하므로 프로바이더를 세운다 — 정적 렌더는 이펙트를 돌리지 않아
 // 요청은 나가지 않는다.
 
@@ -17,7 +17,7 @@ const work: WorkView = workFixture(specDocs(["overview.md"]));
 
 // `view`는 레일에서 고른 칸이다 — 그 값의 주인은 화면(`WorksPage`)이고 이 컴포넌트는 받은 대로 그린다. 맨 **뒤에** 두는 것은
 // 기본값이 있어 기존 호출이 바뀌지 않게 하려는 것이다.
-function render(open: boolean, override: Partial<WorkView> = {}, view: PanelView = "spec"): string {
+function render(open: boolean, override: Partial<WorkView> = {}, view: PanelView = "spec", chatElsewhere = false): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
       <WorkPanel
@@ -30,6 +30,9 @@ function render(open: boolean, override: Partial<WorkView> = {}, view: PanelView
         onCopy={() => {}}
         onOpenFolder={() => {}}
         open={open}
+        chatElsewhere={chatElsewhere}
+        unseen={[]}
+        onOpenDoc={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -92,14 +95,18 @@ describe("WorkPanel 머리와 몸", () => {
     expect(markup).not.toContain('aria-label="셸 열기"');
   });
 
-  it("몸은 `spec` · `files` 둘이다 — `info` 몸과 그 프로젝트 · 워크트리 칸이 없다", () => {
+  it("몸은 `spec` · `chat` · `files` 셋이다 — `info` 몸과 그 프로젝트 · 워크트리 칸이 없다", () => {
     // codex-ds 결정 25. info의 보기는 사이드바 행의 호버 카드가(프로젝트마다 base · 변경 있음), 복사 · Finder 열기는 work 메뉴가
-    // 든다 — 같은 정보를 두 자리에서 보지 않는다. files 몸은 spec 뒤에 선다(git-integration 결정 29).
+    // 든다 — 같은 정보를 두 자리에서 보지 않는다. chat 몸은 spec 바로 뒤(three-axes S20), files 몸은 그 뒤에 선다(git-integration 결정 29).
     const markup = render(true, {
       projects: ["atelier"],
       worktrees: [{ project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false }],
     });
-    expect(markup.match(/data-panel-view="([^"]+)"/g)).toEqual(['data-panel-view="spec"', 'data-panel-view="files"']);
+    expect(markup.match(/data-panel-view="([^"]+)"/g)).toEqual([
+      'data-panel-view="spec"',
+      'data-panel-view="chat"',
+      'data-panel-view="files"',
+    ]);
     expect(markup).not.toContain("trees/atelier");
     expect(markup).not.toContain("프로젝트 상세로 이동");
     expect(markup).toContain(">overview.md<");
@@ -119,6 +126,15 @@ describe("WorkPanel 머리와 몸", () => {
     expect(bodyTag(files, "spec")).toMatch(/\bhidden=""/);
     expect(bodyTag(files, "spec")).toMatch(/\binert=""/);
     expect(bodyTag(files, "files")).not.toMatch(/\b(hidden|inert)=/);
+  });
+
+  it("대화창이 가운데(`chat` 탭)에 서 있으면 `chat` 몸은 골라져 있어도 가려진다 — 한 대화창은 한 곳에", () => {
+    // three-axes S22. 같은 대화창이 두 곳에 서면 대화 탭 줄과 입력칸이 두 벌이 된다. 몸은 마운트된 채 숨는다 — 대화가 패널로
+    // 돌아오면 그대로 다시 선다.
+    expect(bodyTag(render(true, {}, "chat"), "chat")).not.toMatch(/\b(hidden|inert)=/);
+    const away = render(true, {}, "chat", true);
+    expect(bodyTag(away, "chat")).toMatch(/\bhidden=""/);
+    expect(bodyTag(away, "chat")).toMatch(/\binert=""/);
   });
 
   it("몸 안의 스크롤 영역이 패널 카드의 남는 높이를 차지한다", () => {

@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, type ReactNode, type Ref } from "react";
 import { CodeXml, Copy, Eye } from "lucide-react";
 import type { PathView } from "@/components/shell/PathBar";
 import { TargetMenu } from "@/components/shell/TargetMenu";
@@ -75,9 +75,19 @@ function copyPicked(text: string): void {
 
 /**
  * 문서 글의 상자 — 그 화면의 구르는 몸 자리에 그대로 선다(`className`이 그 자리의 모양이다). 안의 우클릭 · ⇧F10이 문서 글 메뉴를
- * 연다(머리말).
+ * 연다(머리말). `ref`는 그 상자다 — 스펙 창의 「이 자리를 두고 말하기」가 고른 글의 자리를 이 상자에서 잰다(`QuotePick`).
  */
-export function DocTextBox({ menu, className, children }: { menu: DocMenu; className: string; children: ReactNode }) {
+export function DocTextBox({
+  ref,
+  menu,
+  className,
+  children,
+}: {
+  ref?: Ref<HTMLDivElement>;
+  menu: DocMenu;
+  className: string;
+  children: ReactNode;
+}) {
   // 오른쪽 누름의 순간 고름 — 웹뷰가 우클릭한 낱말을 고르기 전의 것이다. 그 누름의 우클릭이 받아 간다.
   const pressed = useRef<Picked | null>(null);
   const { view, onCopyPath } = menu;
@@ -116,6 +126,7 @@ export function DocTextBox({ menu, className, children }: { menu: DocMenu; class
     >
       {(region) => (
         <div
+          ref={ref}
           tabIndex={0}
           data-doc-text=""
           data-ring-inset=""
