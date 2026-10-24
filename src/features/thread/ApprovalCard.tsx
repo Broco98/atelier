@@ -33,7 +33,7 @@ import { shownPath, type DiffPiece } from "./tool-view";
 //   (`AskTurnMarks`). 차례는 부르는 쪽이 `askTurn`으로 읽어 준다.
 // - 카드에 멈추기가 없다(보드) — 서 있는 동안 멈추는 길은 거부다.
 
-/** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). 질문 카드도 같다. */
+/** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). 질문 카드 · Work 밖 Project 카드도 이 값을 쓴다. */
 export const ARMING_MS = 300;
 /** 파일 카드의 diff 상자에 보일 줄 수 — 넘으면 「N줄 더」. */
 const PEEK = 8;

@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_THREAD, WORKS } from "./fixtures";
+import { answerByArg, WORKS } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
-import { lineOf, linesThrough, record, sentPayloads, streamLines, summaryOf, workTitleOf, workView } from "./thread-records";
-import type { RecordLine, ThreadView } from "@/features/thread/types";
+import { lineOf, linesThrough, record, streamLines, summaryOf, threadOf, workTitleOf, workView } from "./thread-records";
+import type { ThreadView } from "@/features/thread/types";
 
 // v1 티켓 45(PR ⑤ e2e) 흐름 하나 — **「전체 | 내 차례」의 「내 차례」가 나를 기다리는 Thread만 기다린 순서로 세우고(Work에 이은 Thread도
 // 섞인다), ⌘J가 그 차례로 건너뛰며, 답하면 수가 줄고 그 줄이 빠진다**(v1 티켓 42 · 구현 스펙 §13 S28 · §17 · 경계 ② 「사이드바」 · 스토리
@@ -22,14 +22,6 @@ const permission = record("thread-permission");
 const ASKED = lineOf(permission, "permission", "asked");
 const ANSWERED = lineOf(permission, "permission", "answered");
 const twoTurns = record("thread-two-turns");
-
-/** 기록 하나의 Thread — 제목은 첫 말이고 Host 하나다. */
-const threadOf = (id: string, lines: readonly RecordLine[], seen: Partial<ThreadView>): ThreadView => ({
-  ...FIXTURE_THREAD,
-  id,
-  title: sentPayloads(lines)[0].text,
-  ...seen,
-});
 
 /** Work에 이은 Thread — Host가 Work 밖 Project를 묻는 줄 바로 앞이다. */
 const inWork = threadOf("20261024-100100", project, { work: ASK.work, live: true, lastSeq: PROJECT_ASKED.seq - 1 });

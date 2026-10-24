@@ -4,6 +4,7 @@ import { THREAD_LIST_EVENT, THREAD_RECORD_EVENT } from "@/features/thread/events
 import type { Attachment, RecordKind, RecordLine, ThreadRecordEvent, ThreadSummary, ThreadView } from "@/features/thread/types";
 import type { SpecTreeItem, WorkView } from "@/features/works/types";
 import { REPO_ROOT } from "./dev-server";
+import { FIXTURE_THREAD } from "./fixtures";
 import type { Page } from "./evidence";
 import { fireEvent } from "./harness";
 
@@ -45,6 +46,17 @@ export function sentPayloads(lines: readonly RecordLine[]) {
     .filter((line) => line.kind === "sent")
     .map((line) => line.payload as { text: string; attachments?: Attachment[] });
 }
+
+/**
+ * 기록 하나의 Thread — 제목은 첫 말이고 Host 하나다. 따로 주지 않으면 아직 아무것도 읽지 않았고(`lastRead` 0) 떠 있는 Session이 없다.
+ * 떠 있는지 · 끝 줄 · 읽은 자리 · 이은 Work는 부르는 쪽이 준다.
+ */
+export const threadOf = (id: string, lines: readonly RecordLine[], seen: Partial<ThreadView>): ThreadView => ({
+  ...FIXTURE_THREAD,
+  id,
+  title: sentPayloads(lines)[0].text,
+  ...seen,
+});
 
 /**
  * 기록 줄을 차례로 쏜다 — 엔진이 줄을 적을 때마다 내보내는 기록 줄 이벤트 그대로다(`{thread, seq, line}`). 구독은 앱 층에

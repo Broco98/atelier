@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_THREAD } from "./fixtures";
+import { answerByArg } from "./fixtures";
 import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, 칠한값, 토큰색 } from "./harness";
-import { lineOf, linesAfter, linesThrough, record, sentPayloads, seqOf, streamLines, summaryOf } from "./thread-records";
+import { lineOf, linesAfter, linesThrough, record, seqOf, streamLines, summaryOf, threadOf } from "./thread-records";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
 // v1 티켓 45(PR ⑤ e2e) 흐름 하나 — **사이드바 Thread 줄이 다섯 상태(내 차례 · 작업 중 · 실패 · 중단 · 새 결과) 가운데 하나를 보이고,
@@ -26,15 +26,6 @@ const CUT =
       line.seq > seqOf(twoTurns, "sent", 2) &&
       (line.payload as { update?: { sessionUpdate?: string } }).update?.sessionUpdate === "agent_message_chunk",
   )!.seq - 1;
-
-/** 기록 하나의 Thread — 제목은 첫 말이고 Host 하나다. 아직 아무것도 읽지 않았다. */
-const threadOf = (id: string, lines: readonly RecordLine[], seen: Pick<ThreadView, "live" | "lastSeq">): ThreadView => ({
-  ...FIXTURE_THREAD,
-  id,
-  title: sentPayloads(lines)[0].text,
-  ...seen,
-  lastRead: 0,
-});
 
 /** 승인을 묻기 바로 앞의 Thread — Host의 Session이 이 앱에 떠 있고 첫 턴이 돈다. */
 const asking = threadOf("20261024-090100", permission, { live: true, lastSeq: ASKED.seq - 1 });

@@ -3,7 +3,7 @@ import { Folder } from "lucide-react";
 import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
-import { KeyCap } from "./ApprovalCard";
+import { ARMING_MS, KeyCap } from "./ApprovalCard";
 import { threadApi } from "./api";
 import { cardKey } from "./approval";
 import type { AskTurn } from "./asks";
@@ -27,9 +27,6 @@ import { describeProjectCard } from "./project-card";
 // - 이 카드는 답 명령을 부르기만 한다. 고른 것은 기록의 답 줄로 오고, 그 줄이 오면 접기가 이 카드를 빼서 카드가 걷히고 그 도구 줄 자리에
 //   결정 줄(「web-app을 이 Work에 붙임」)이 선다. 붙이지 못하면(core가 거절) 까닭을 보이고 다시 고를 수 있게 푼다 — 엔진도 카드를 그대로
 //   세워 둔다. 까닭은 빨강이 아니라 `fg-secondary` 글이다.
-
-/** 카드가 선 뒤 키를 받기 시작할 때까지 — 승인 카드(`ApprovalCard`)와 같은 값이다. */
-const ARMING_MS = 300;
 
 interface ProjectCardProps {
   thread: string;
