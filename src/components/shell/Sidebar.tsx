@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, Library, Search, Settings, SquarePen, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Library, Settings, SquarePen, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { useRouterState } from "@tanstack/react-router";
 import {
@@ -9,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { useRoving, type RovingBox } from "@/lib/roving";
 import SidebarThreads, { ThreadFilter, type ThreadListFilter } from "@/features/thread/SidebarThreads";
@@ -47,8 +46,6 @@ import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResiz
 
 interface SidebarProps {
   open: boolean;
-  /** 검색 칸 — ⌘K가 부르는 것과 같은 함수다(앱 셸이 그 하나를 내린다). 여는 길을 둘로 두면 「떠 있나」가 두 곳에 산다. */
-  onOpenSearch: () => void;
   /** 「새 Thread」(v1 티켓 05) — 앱 셸이 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
   /** 「Library」(v1 티켓 19) — 앱 셸이 지금 선 자리의 Work를 실어 `/library`로 간다. 켜짐은 그 항목이 스스로 읽는다(`LibraryItem`). */
@@ -76,14 +73,17 @@ interface SidebarProps {
 // **바닥의 사람 줄도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다(그때는 바닥의 설정이었다).
 const GUTTER = "pl-2 pr-2";
 
-// 사이드바는 캔버스 「Thread 목록과 아바타」 보드의 차례다(v1 구현 스펙 §13 · 티켓 07 · 42) — 검색 · 「전체 | 내 차례」 마디 · 새 Thread ·
-// 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와
-// ⌘K로 간다(S27).
+// nav 목록(앱 갈래의 새 Thread · Library, 설정 갈래의 항목) — 줄 30 · 줄 사이 1이다(Codex 사이드바, v1 티켓 46). 두 갈래가 한 벌이다.
+const NAV = cn("flex shrink-0 flex-col gap-px", GUTTER);
+
+// 사이드바는 캔버스 「Thread 목록과 아바타」 보드의 차례다(v1 구현 스펙 §13 · 티켓 07 · 42) — 「전체 | 내 차례」 · 새 Thread · 알림 띠 ·
+// Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와 ⌘K로 간다(S27).
+// **결은 Codex 사이드바다**(v1 티켓 46 · 결정.md 「46」) — 사용자가 준 Codex 그림을 재어 줄 30 · 줄 사이 1 · 글자 14/400 · 소제목 14
+// `fg-tertiary` · 고른 줄 `fill-selected`를 맞췄다. 맨 위의 검색 칸은 걷었다 — 검색은 창 위 줄의 돋보기(`ShellControls`)와 ⌘K가 연다.
 // 앱의 어느 화면에 있든 이 사이드바는 바뀌지 않고, 설정에서만 설정 nav로 갈아 선다(UI개선 결정 21).
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
   open,
-  onOpenSearch,
   onNewThread,
   onOpenLibrary,
   activeKey,
@@ -190,15 +190,13 @@ function Sidebar({
 
   return (
     <SidebarFrame open={open} size={size}>
-      {/* **검색이 맨 위다**(v1 구현 스펙 §13 · S29) — 칸처럼 생긴 버튼이고, 누르면 ⌘K와 같은 팔레트가 뜬다. */}
-      <SearchField onOpen={onOpenSearch} />
-      {/* **「전체 | 내 차례」 마디가 검색 칸 바로 아래다**(v1 티켓 42 · 캔버스 Sidebar 보드 「내 차례만」). 「내 차례」면 Work 묶음과 Thread
-          묶음 대신 나를 기다리는 Thread만 기다린 순서로 선다 — 새 Thread · Library · 알림 띠는 그대로다(셸의 띠와 Thread 목록은 섞지
-          않는다 — 구현 스펙 §17). */}
+      {/* **「전체 | 내 차례」가 맨 위다**(v1 티켓 42 · 캔버스 Sidebar 보드 「내 차례만」 — 보드는 검색 칸 바로 아래, 그 칸은 46이 걷었다). 「내
+          차례」면 Work 묶음과 Thread 묶음 대신 나를 기다리는 Thread만 기다린 순서로 선다 — 새 Thread · Library · 알림 띠는 그대로다(셸의
+          띠와 Thread 목록은 섞지 않는다 — 구현 스펙 §17). */}
       <ThreadFilter filter={threadFilter} onChange={setThreadFilter} />
       {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
-      <nav className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...navRoving.box}>
-        {/* **「새 Thread」가 검색 바로 아래, 그 아래 Library다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 새 Thread는 앱이 늘
+      <nav className={NAV} {...navRoving.box}>
+        {/* **「새 Thread」 아래 Library다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 새 Thread는 앱이 늘
             열리는 자리이고, Library는 Agent 목록과 파일 읽기다(§16 · 티켓 19). 지금 화면들로 가는 줄(옛 main nav 넷)은 사람 메뉴로
             갔다(S27). */}
         <NewThreadItem stop={navRoving.stop === NEW_THREAD_KEY} onClick={onNewThread} />
@@ -349,10 +347,12 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 요구하지 않는다.
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
-    // **오른쪽 경계선이 없다**(ui-refresh 결정 4) — 사이드바는 창 바탕에 붙고, 경계는 옆 카드의 모서리가 말한다.
-    // 바탕(`bg-surface-shell`)은 그래도 칠한다: 창 바탕과 같은 색이지만 투명이면 대비를 재는 e2e가 `aside`의 바탕을
-    // `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts` — 행 메타와 점의 대비를 그 바탕 위에서 잰다).
-    "relative overflow-hidden bg-surface-shell",
+    // **바탕은 Codex 대화 사이드바의 `surface-sidebar`이고, 오른쪽에 0.5px 선이 선다**(v1 티켓 46 — Codex 그림에서 #fbfbfb 바탕과
+    // 흰 본문 사이 한 픽셀 #e2e2e3을 재었다, `border-heavy`). 한때 사이드바는 창 바탕(`surface-shell`)에 붙어 선이 없었다(ui-refresh
+    // 결정 4) — 경계는 옆 카드의 모서리가 말했다. Thread 화면은 본문이 흰 면이라 옅은 바탕만으로는 경계가 서지 않는다. 선은 칸
+    // 위에 겹쳐 칠한 면(`::after`)이다 — 0.5px 테두리는 엔진마다 굵기가 갈린다(사람 줄의 윗선과 같다). 접히면 폭 0에 잘린다.
+    // 바탕을 칠하는 까닭은 하나 더 있다: 투명이면 대비를 재는 e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts`).
+    "relative overflow-hidden bg-surface-sidebar after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-[0.5px] after:bg-border-heavy",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 곡선은 --ease-panel — 폭이 움직이는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
     !dragging && PANEL_MOTION,
@@ -391,7 +391,7 @@ function SettingsNav({
       <div className={cn("shrink-0 pb-3", GUTTER)}>
         <SidebarItem icon={ArrowLeft} label="앱으로 돌아가기" active={false} onClick={onLeave} />
       </div>
-      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-0.5", GUTTER)} {...rovingBox}>
+      <nav aria-label="설정" className={NAV} {...rovingBox}>
         {SETTINGS_ITEMS.map((item) => (
           <SidebarItem
             key={item.key}
@@ -647,12 +647,12 @@ function SidebarItem({
   return (
     <div
       className={cn(
-        // DS `SidebarRow` — 32(`size-row-nav`) · `radius-lg`. 글자는 이름 버튼의 `nav-row`(14/20 500)이고 아이콘은 17이다. 아이콘은
-        // 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이다(DS 「행 글자 16」 · `.at-row`의 안쪽 8 · 아이콘과 글자 사이 9).
+        // Codex 사이드바의 줄(v1 티켓 46 — 그림을 재었다) — 30(`size-row-nav`) · `radius-lg`, 글자 14/20 400(「새 채팅」은 보통 굵기다) · 아이콘
+        // 16. 아이콘은 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이고, 글자는 아이콘 뒤 8에 서서 창 끝 + 40이다(Codex 「새 채팅」 · 폴더 줄).
         "flex h-(--size-row-nav) shrink-0 items-center rounded-lg pr-1 transition-colors",
-        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다.
-        // 고른 행은 `fill-hover`(사이드바 안의 `selected-row`), 지나는 행은 `fill-soft`다(DS `.at-row.is-on` · `.at-row:hover`).
-        active ? "selected-row" : "text-fg hover:bg-fill-soft",
+        // 안 고른 행도 행 글자색이다(ui-refresh 결정 11 — Codex 사이드바). 흐린 회색으로 두면 고른 행만 읽힌다. 글자색은 사이드바의
+        // `fg-sidebar`다(Codex 사이드바의 글자는 본문보다 옅다). 고른 행은 `fill-selected`(`selected-row`), 지나는 행은 `fill-soft`다.
+        active ? "selected-row" : "text-fg-sidebar hover:bg-fill-soft",
       )}
     >
       <button
@@ -660,39 +660,10 @@ function SidebarItem({
         onClick={onClick}
         tabIndex={roving === undefined || roving.stop ? 0 : -1}
         data-roving={roving?.key}
-        className="flex h-full min-w-0 flex-1 items-center gap-2.25 rounded-lg pl-2 pr-1.5 text-left text-nav-row focus-ring"
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1.5 text-left text-sm focus-ring"
       >
-        <Icon className="size-[17px] shrink-0" />
+        <Icon className="size-4 shrink-0" />
         <span className="min-w-0 truncate">{label}</span>
-      </button>
-    </div>
-  );
-}
-
-/**
- * 검색 칸(v1 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드) — 사이드바 맨 위, 칸처럼 생긴 버튼이다. 누르면 ⌘K와 **같은 함수**가
- * 팔레트를 연다(앱 셸이 내린다). 글자를 받는 칸이 아니다 — 치는 자리는 팔레트의 입력칸 하나다. 둘이면 같은 질의가 두 곳에 산다.
- *
- * 모양은 보드 그대로다 — 32 · `radius-md` · `fill-soft` 면 · 돋보기 16 · 「검색」 14 `fg-tertiary` · 오른쪽 끝 키 12. 칸의 양옆은 창 끝에서
- * 10이다(GUTTER 8 + 2 — 보드의 `margin: 2 10 10`). 아래 10은 nav와의 사이다. 키 글자는 단축키 표에서 온다(`HOTKEYS.search`).
- *
- * 사이드바의 첫 Tab 정류장이고 `tabIndex`를 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말).
- */
-function SearchField({ onOpen }: { onOpen: () => void }) {
-  return (
-    <div className="shrink-0 px-2.5 pb-2.5">
-      <button
-        type="button"
-        tabIndex={0}
-        onClick={onOpen}
-        aria-keyshortcuts={HOTKEYS.search.aria}
-        className="flex h-8 w-full items-center gap-2 rounded-md bg-fill-soft px-2.5 text-left text-sm text-fg-tertiary transition-colors hover:bg-fill-hover focus-ring"
-      >
-        <Search aria-hidden className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">검색</span>
-        <span aria-hidden className="shrink-0 text-xs">
-          {HOTKEYS.search.glyph}
-        </span>
       </button>
     </div>
   );
@@ -734,7 +705,7 @@ function PersonMenu({
             + 16에 선다(DS 「행 글자 16」). 높이 40은 얼굴 28에 위아래 6이다. */}
         <DropdownMenuTrigger
           aria-label={`${name} — 사람 메뉴`}
-          className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left text-sm text-fg transition-colors hover:bg-fill-soft focus-ring data-[popup-open]:bg-fill-hover"
+          className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left text-sm text-fg-sidebar transition-colors hover:bg-fill-soft focus-ring data-[popup-open]:bg-fill-hover"
         >
           <span
             aria-hidden

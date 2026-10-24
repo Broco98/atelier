@@ -356,16 +356,6 @@ describe("눈금의 사분 단", () => {
       why: "머리 카드의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
     },
     {
-      file: "src/components/shell/Sidebar.tsx",
-      className: "gap-2.25",
-      why: "사이드바 nav 행 — 아이콘과 이름 사이 9(DS `.at-row`)",
-    },
-    {
-      file: "src/features/works/WorkSectionList.tsx",
-      className: "gap-2.25",
-      why: "work 행 — 레인과 제목 사이 9(DS `.at-row`)",
-    },
-    {
       file: "src/features/works/WorkSectionList.tsx",
       className: "pl-2.25",
       why: "work 행의 메타 칸 — 제목과 메타 사이 9(DS `.at-row`의 칸 사이). 메타가 있을 때만 난다",
@@ -460,6 +450,48 @@ describe("눈금의 사분 단", () => {
       file: "src/features/thread/AgentMenu.tsx",
       className: "gap-px",
       why: "@ 메뉴 — 묶음 안 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`)",
+    },
+    // 사이드바의 줄 사이 1 · 소제목 사이 — Codex 사이드바를 잰 값(v1 티켓 46 · 시안-비교/46 `참고/codex-사이드바.png`). 줄 30이 31마다
+    // 서고, 소제목(30) 가운데 → 첫 줄 가운데가 34, 마지막 줄 가운데 → 다음 소제목 가운데가 54다.
+    {
+      file: "src/components/shell/Sidebar.tsx",
+      className: "gap-px",
+      why: "사이드바 nav 목록(`NAV` — 새 Thread · Library, 설정 항목) — 줄 사이 1(Codex 사이드바의 줄 30 · 간격 31)",
+    },
+    {
+      file: "src/features/works/SidebarWorkList.tsx",
+      className: "gap-px",
+      why: "Work 목록 상자 — 구획 머리 · 구획 몸 사이 1(Codex 사이드바의 줄 사이와 같은 1)",
+    },
+    {
+      file: "src/features/works/WorkSectionList.tsx",
+      className: "gap-px",
+      why: "Work 줄 목록(`ROWS` — 구획의 줄 · 펼친 Thread 줄) — 줄 사이 1(Codex 사이드바의 줄 30 · 간격 31)",
+    },
+    {
+      file: "src/features/works/WorkSectionList.tsx",
+      className: "mb-0.75",
+      why: "구획 머리(`SectionHeader`) — 아래 3. 소제목 가운데 → 첫 줄 가운데 34(15 + 3 + 1 + 15, Codex 「프로젝트」 · 「최근」)",
+    },
+    {
+      file: "src/features/works/WorkSectionList.tsx",
+      className: "mt-5.75",
+      why: "`Work` 구획 머리 — `고정` 아래일 때 위 23. 마지막 줄 가운데 → 다음 소제목 가운데 54(15 + 1 + 23 + 15, Codex 「프로젝트」 → 「최근」)",
+    },
+    {
+      file: "src/features/thread/SidebarThreads.tsx",
+      className: "mb-0.75",
+      why: "Thread 묶음 소제목(`HEADING` — 「Thread」 · 「기다리는 순서」) — 아래 3. 구획 머리와 같은 34",
+    },
+    {
+      file: "src/features/thread/SidebarThreads.tsx",
+      className: "mt-5.75",
+      why: "「Thread」 소제목 — 위 Work 묶음 마지막 줄과 사이 23. 구획 머리와 같은 54",
+    },
+    {
+      file: "src/features/thread/SidebarThreads.tsx",
+      className: "gap-px",
+      why: "Thread 줄 목록(`ROWS`) — 줄 사이 1(Codex 사이드바의 줄 30 · 간격 31)",
     },
     // 앱의 조용한 칩 — 좌우 7
     {

@@ -191,7 +191,7 @@ const laneOf = (markup: string) => /<span data-lane=""[^>]*>/.exec(markup)?.[0] 
 // `null`이고, 그때 이름은 안에 든 제목 글자다. 값이 없을 때까지 함께 세지 않으면
 // 「모든 행에 말이 붙는다」도 초록이 된다.
 const namesOf = (markup: string) =>
-  [...markup.matchAll(/<button type="button"(?: aria-label="([^"]*)")? class="col-start-2/g)].map(
+  [...markup.matchAll(/<button type="button"(?: aria-label="([^"]*)")? class="col-start-1 row-start-1/g)].map(
     (found) => found[1] ?? null,
   );
 
@@ -368,8 +368,9 @@ describe("핀 버튼", () => {
   // 핀이 Tab에서 빠진 지금도 꼴은 그대로다.) 실제 폭과 겹침은 e2e가 실측으로 잰다.
   it("끝 칸(메타 칸)에 서고, 폭은 hover에만 갖는다", () => {
     for (const pin of pinsOf(render(works("pin:가", "나", "draft:다")))) {
-      // 칸이 핀의 폭을 세려면 격자 안이어야 한다. 끝 칸이 메타와 겹쳐 서는 칸이다 — 앞의 셋은 펼침 단추 · 이름 · Thread 수다(v1 티켓 37).
-      expect(pin).toContain("col-start-4");
+      // 칸이 핀의 폭을 세려면 격자 안이어야 한다. 끝 칸이 메타와 겹쳐 서는 칸이다 — 앞의 둘은 이름 · Thread 수다(v1 티켓 37).
+      // 펼침 단추는 칸이 아니라 레인 위에 겹쳐 선다(v1 티켓 46).
+      expect(pin).toContain("col-start-3");
       expect(pin).toContain("row-start-1");
       expect(pin).not.toContain("absolute");
       // 쉴 때 트랙 기여가 0 — 그리고 뜰 때 되돌아온다.
@@ -380,9 +381,9 @@ describe("핀 버튼", () => {
       // 칸이 핀보다 넓을 때(메타가 선 행) stretch되면 글리프가 가운데로 밀린다.
       expect(pin).toContain("justify-self-end");
     }
-    // 핀이 격자로 돌아왔으므로 행에 위치 기준이 필요 없다 — 남으면 죽은 클래스다.
-    expect(render(works("가"))).toContain("group grid");
-    expect(render(works("가"))).not.toContain("group relative grid");
+    // 핀은 격자 안이다(위 `absolute`가 없다). 행의 위치 기준(`relative`)은 핀이 아니라 레인 위에 겹쳐 서는 펼침 단추의
+    // 것이다(v1 티켓 46 — 아래 「Work 줄이 그 Work의 Thread를 품는다」).
+    expect(render(works("가"))).toContain("group relative grid");
   });
 });
 
@@ -501,12 +502,12 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 끝 칸 하나�
     // 잰다. 핀과 메타는 이름 버튼의 **형제로** 서므로 그 계약이 안 깨진다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
     // 행 상자는 끌기 표식(`data-work-row`)을 클래스 앞에 든다 — 여는 태그를 통째로 넘긴다.
-    const row = /<div data-work-row="[^"]*" class="group grid[^"]*">(<button|<div)/.exec(markup);
+    const row = /<div data-work-row="[^"]*" class="group relative grid[^"]*">(<button|<div)/.exec(markup);
     expect(row?.[1]).toBe("<button");
   });
 
   it("**레인은 행 왼쪽에 서고 폭을 안 내준다**", () => {
-    // 결정 5 — 행 왼쪽 14px 한 칸. 화면값이 없는 행에는 work 상태 아이콘이 서고, 있으면
+    // 결정 5 — 행 왼쪽 16px 한 칸(Codex 사이드바의 아이콘 칸 — v1 티켓 46). 화면값이 없는 행에는 work 상태 아이콘이 서고, 있으면
     // 점·스피너가 그 자리를 가져간다(#203, 아래 묶음).
     //
     // **폭을 실제로 지키는 것은 제목 상자다** — 그쪽이 `min-width: 0`이라 좁아지는 값을
@@ -515,7 +516,7 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 끝 칸 하나�
     // 것이 이 판에서 가장 나쁜 회귀라서다: 8px 점은 12px만 줄어도 사라진다. 그 화면이
     // 실제로 났을 때 빨개지는 그물은 L3의 폭 드래그 검사가 든다.
     const lane = laneOf(render(works("가")));
-    expect(lane).toContain("size-3.5");
+    expect(lane).toContain("size-4");
     expect(lane).toContain("shrink-0");
   });
 
@@ -544,7 +545,7 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 끝 칸 하나�
     // 테두리도 배경도 고른 행의 `selected-row` 말고는 없다. 카드 채움은 Codex 이름(`bg-surface` · `bg-surface-under` …)과
     // shadcn 이름(`bg-background`) 둘 다로 센다 — 행은 Codex 이름으로 적히므로 shadcn 이름만 세면 이 지킴이 조용히 빈다.
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나" });
-    const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group grid[^"]*)">/g)].map(
+    const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group relative grid[^"]*)">/g)].map(
       (m) => m[1],
     );
     expect(rows).toHaveLength(2);
@@ -894,9 +895,11 @@ describe("Work 줄이 그 Work의 Thread를 품는다", () => {
       { slug: "가", text: "2" },
       { slug: "다", text: "1" },
     ]);
-    // 펼침 단추가 없는 줄도 같은 폭의 빈 자리를 둔다 — 제목이 줄마다 같은 x에서 시작한다.
-    const row = chunkOf(markup, "나");
-    expect(row).toMatch(/<span aria-hidden="true" class="[^"]*col-start-1[^"]*"><\/span>/);
+    // 펼침 단추는 레인 위에 겹쳐 서서 폭을 안 갖는다 — 그래서 단추가 없는 줄도 빈 자리 없이 제목이 줄마다 같은 x에서
+    // 시작한다(v1 티켓 46 · Codex 사이드바). 겹친 단추는 hover에 서고 그동안 레인이 비킨다.
+    const expander = /<button[^>]*data-expander="가"[^>]*>/.exec(chunkOf(markup, "가"))?.[0] ?? "";
+    expect(expander).toMatch(/class="absolute [^"]*opacity-0[^"]*group-hover:opacity-100/);
+    expect(chunkOf(markup, "나")).not.toContain("data-expander");
   });
 
   it("펼침 단추는 접혔으면 「펼치기」, 폈으면 「접기」이고 펼친 상태를 말한다", () => {

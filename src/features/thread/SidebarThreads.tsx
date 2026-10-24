@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
+import { keepOnePressed } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { threadIdOf } from "@/lib/path-prefix";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,11 @@ const FILTERS = ["all", "mine"] as const satisfies readonly ThreadListFilter[];
 /** 줄 하나의 얼굴들 — 요약에는 handle만 있어 `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다(`ThreadFaces`). */
 type PeopleOf = (thread: ThreadSummary) => { handle: string; avatar: Avatar | null }[];
 
+// 소제목과 줄 목록의 꼴 — 「Thread」와 「기다리는 순서」가 한 벌이다. 소제목은 30 줄에 아래 3, 줄은 30에 줄 사이 1이다(Codex 사이드바의
+// 「최근」과 그 줄 — v1 티켓 46). 위 사이는 놓인 자리가 고른다.
+const HEADING = "mb-0.75 flex h-7.5 shrink-0 items-center px-2 text-sm text-fg-tertiary";
+const ROWS = "flex min-h-0 flex-col gap-px overflow-y-auto scroll-quiet";
+
 function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const { data: threads = [] } = useThreads();
   const { peopleOf, current, now, open } = useRowKit();
@@ -59,8 +66,9 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   if (loose.length === 0) return null;
   return (
     <section aria-label="Thread" className="flex min-h-0 shrink flex-col pr-2 pb-1.5 pl-2">
-      <h2 className="flex h-7.5 shrink-0 items-center px-2 text-chat-meta text-fg-tertiary">Thread</h2>
-      <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto scroll-quiet">
+      {/* 소제목은 Work 묶음의 소제목과 같은 꼴 · 같은 사이다(`WorkSectionList`의 `SectionHeader` — Codex 「최근」). */}
+      <h2 className={cn("mt-5.75", HEADING)}>Thread</h2>
+      <ul className={ROWS}>
         {loose.map((thread) => (
           <li key={thread.id}>
             <ThreadRow thread={thread} people={peopleOf(thread)} on={thread.id === current} now={now} onOpen={() => open(thread)} />
@@ -137,7 +145,7 @@ export function WorkThreadList({
 }
 
 /**
- * 「전체 | 내 차례」 마디(보드 `.seg`) — 검색 칸 아래에 선다. 「내 차례」 칸에 기다리는 Thread 수가 파란 배지로 선다(보드 `.cnt` — DS `link`).
+ * 「전체 | 내 차례」 마디(보드 `.seg`) — 사이드바 맨 위에 선다. 「내 차례」 칸에 기다리는 Thread 수가 파란 글자로 선다(보드 `.cnt` — DS `link`).
  * 수는 고른 칸과 상관없이 늘 센다 — 「전체」를 보는 동안에도 몇이 기다리는지가 보여야 거르기를 누를 까닭이 생긴다.
  */
 export function ThreadFilter({ filter, onChange }: { filter: ThreadListFilter; onChange: (filter: ThreadListFilter) => void }) {
@@ -146,8 +154,11 @@ export function ThreadFilter({ filter, onChange }: { filter: ThreadListFilter; o
 }
 
 /**
- * 마디의 그림 — 훅을 부르지 않는다. DS 두 칸 토글(`SegmentGroup` sm — Codex `.at-seg`)을 사이드바 폭으로 편다. 수가 있으면 칸의 이름에
- * 수가 함께 든다(「내 차례 2」) — 배지는 글자가 붙어 읽혀 이름을 따로 적는다.
+ * 마디의 그림 — 훅을 부르지 않는다. **글자 칸 둘이다**(v1 티켓 46 — Codex 결). 한때 사이드바 폭의 두 칸 토글(DS `SegmentGroup` sm — 바닥
+ * 회색 · 떠 있는 흰 칩)이었고, 그 위의 검색 칸과 함께 맨 위를 두 겹의 회색 상자로 만들었다 — 사용자가 짚은 「겹이 많다」다. 이제 칸은 제
+ * 글자 폭이고, 고른 칸은 사이드바의 고른 줄과 같은 면(`selected-row`)이며 고르지 않은 칸은 옅은 글자다. 수는 채운 배지가 아니라 파란
+ * 글자다. 역할 · 이름은 그대로다(「Thread 거르기」 묶음의 누르는 칸 둘 — `aria-pressed`). 수가 있으면 칸의 이름에 수가 함께 든다(「내
+ * 차례 2」) — 수가 글자에 붙어 읽혀 이름을 따로 적는다.
  */
 export function FilterSegment({
   filter,
@@ -159,32 +170,33 @@ export function FilterSegment({
   onChange: (filter: ThreadListFilter) => void;
 }) {
   return (
-    <div className="shrink-0 px-2.5 pb-2">
-      <SegmentGroup
-        size="sm"
+    // 거터 8 · 칸 안쪽 10이라 「전체」 글자가 창 끝 + 18에 선다 — 아래 nav 글자(+ 40)보다 앞이고 아이콘(+ 16)과 거의 한 세로줄이다.
+    <div className="shrink-0 px-2 pb-2">
+      <ToggleGroup
         aria-label="Thread 거르기"
-        cells={FILTERS}
         value={[filter]}
-        deselectable={false}
-        onValueChange={(value) => {
+        onValueChange={keepOnePressed<ThreadListFilter>((value) => {
           if (value[0]) onChange(value[0]);
-        }}
-        className="w-full"
+        }, false)}
+        className="flex items-center gap-0.5"
       >
-        <SegmentGroupItem value="all">전체</SegmentGroupItem>
-        <SegmentGroupItem
-          value="mine"
-          aria-label={count > 0 ? `내 차례 ${count}` : undefined}
-          className="inline-flex items-center justify-center gap-1.5"
-        >
-          내 차례
-          {count > 0 && (
-            <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-link px-1 text-caps-md text-fg-on-solid">
-              {count}
-            </span>
-          )}
-        </SegmentGroupItem>
-      </SegmentGroup>
+        {FILTERS.map((value) => (
+          <Toggle
+            key={value}
+            value={value}
+            aria-label={value === "mine" && count > 0 ? `내 차례 ${count}` : undefined}
+            className={(state) =>
+              cn(
+                "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors outline-none focus-ring",
+                state.pressed ? "selected-row" : "text-fg-tertiary hover:bg-fill-soft",
+              )
+            }
+          >
+            {value === "all" ? "전체" : "내 차례"}
+            {value === "mine" && count > 0 && <span className="text-xs font-medium tabular-nums text-link">{count}</span>}
+          </Toggle>
+        ))}
+      </ToggleGroup>
     </div>
   );
 }
@@ -217,10 +229,10 @@ export function WaitingList({
         <p className="px-2.5 pt-5 pb-6 text-center text-chat-meta text-fg-tertiary">지금은 나를 기다리는 Thread가 없어요</p>
       ) : (
         <>
-          {/* 위 8은 Work 묶음의 첫 소제목과 같은 자리다(`SectionHeader` — 목록 위 2 · 머리 위 6): 「내 차례」에서는 Work 묶음이 없어 이
+          {/* 위 12는 Work 묶음의 첫 소제목과 같은 자리다(`WorkSectionList`의 `SectionHeader`): 「내 차례」에서는 Work 묶음이 없어 이
               소제목이 nav 바로 아래에 선다. */}
-          <h2 className="mt-2 flex h-7.5 shrink-0 items-center px-2 text-chat-meta text-fg-tertiary">기다리는 순서</h2>
-          <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto scroll-quiet">
+          <h2 className={cn("mt-3", HEADING)}>기다리는 순서</h2>
+          <ul className={ROWS}>
             {waiting.map(({ thread }) => (
               <li key={thread.id}>
                 <ThreadRow
@@ -257,7 +269,10 @@ export function ThreadRow({
   on: boolean;
   now: number;
   onOpen: () => void;
-  /** Work 아래 줄이다 — 얼굴이 32가 아니라 28이다(보드 `.nest` · 겹친 얼굴은 그대로 20 둘). */
+  /**
+   * Work 아래 줄이다 — 얼굴이 32가 아니라 28이고(보드 `.nest` · 겹친 얼굴은 그대로 20 둘), 면은 줄 폭 그대로 두고 속만 들어가 얼굴이 Work
+   * 제목과 한 세로줄(창 끝 + 40)에 선다(Codex 프로젝트 아래 줄 — v1 티켓 46).
+   */
   compact?: boolean;
   /**
    * 목록 상자의 Tab 정류장 안의 줄이면 그 키와 정류장인가(roving — `@/lib/roving`). Work 아래 줄이 Work 목록의 ↑↓에 든다. 없으면 줄마다
@@ -289,8 +304,9 @@ export function ThreadRow({
         if (!on) onOpen();
       }}
       className={cn(
-        "flex w-full min-w-0 items-center gap-2.5 rounded-xl p-2 text-left transition-colors focus-ring",
-        on ? "selected-row" : "text-fg hover:bg-fill-soft",
+        "flex w-full min-w-0 items-center gap-2.5 rounded-xl py-2 pr-2 text-left transition-colors focus-ring",
+        compact ? "pl-8" : "pl-2",
+        on ? "selected-row" : "text-fg-sidebar hover:bg-fill-soft",
       )}
     >
       {thread.broken || people.length === 0 ? (
@@ -298,13 +314,13 @@ export function ThreadRow({
         <HostFace className={cn(face, thread.broken && "opacity-40")} />
       ) : (
         <span className="relative flex shrink-0">
-          <ThreadFaces people={people} faceClass={face} pairClass={face} pairFaceClass="size-5" ringClass="ring-surface-shell" />
+          <ThreadFaces people={people} faceClass={face} pairClass={face} pairFaceClass="size-5" ringClass="ring-surface-sidebar" />
           {status?.kind === "mine" && (
             <span
               role="img"
               aria-label="내 차례"
               className={cn(
-                "absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent-solid ring-2 ring-surface-shell",
+                "absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent-solid ring-2 ring-surface-sidebar",
                 moved && "pop-in",
               )}
             />
@@ -315,7 +331,8 @@ export function ThreadRow({
         <span className="flex min-w-0 items-center gap-2">
           <span
             className={cn(
-              "min-w-0 flex-1 truncate text-nav-row",
+              // 제목은 14/20 400이다(Codex 사이드바의 줄 글자) — 새 결과만 굵어 굵기 하나가 상태를 말한다.
+              "min-w-0 flex-1 truncate text-sm",
               thread.broken && "text-fg-tertiary",
               status?.kind === "new" && "font-semibold",
             )}
@@ -336,7 +353,7 @@ export function ThreadRow({
           key={slot}
           className={cn(
             "h-4.5 truncate text-chat-meta",
-            status?.kind === "mine" ? "text-fg" : "text-fg-tertiary",
+            status?.kind === "mine" ? "text-fg-sidebar" : "text-fg-tertiary",
             moved && "row-in",
           )}
         >

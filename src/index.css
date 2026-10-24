@@ -180,6 +180,7 @@
     --color-fg: var(--fg);
     --color-fg-secondary: var(--fg-secondary);
     --color-fg-tertiary: var(--fg-tertiary);
+    --color-fg-sidebar: var(--fg-sidebar);
     --color-fg-inverse: var(--fg-inverse);
     --color-fg-on-solid: var(--fg-on-solid);
     --color-fill-soft: var(--fill-soft);
@@ -561,9 +562,9 @@
        높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`, 분할 끌기 겹판의 위끝), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄과
        목록 머리의 높이(`--size-pathbar` — `PathBar` · `ListHead`), 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn` ·
        `ProjectDetail` · 설정 틀의 `SettingsBody`와 그 열에 서는 편집기 배너 · spec 레이아웃 메시지), 사이드바 행의 높이
-       (`--size-row-nav` — `SidebarItem` · work 행), 알림 띠 줄의 높이(`--size-row-band` — `AttentionBand`)와 레일의 줄 폭
-       (`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고, 나머지는 선언만 있다(스펙 S2 — 통째로 선언한다).
-       폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
+       (`--size-row-nav` — `SidebarItem` · work 행 — Codex 사이드바의 고른 줄을 재어 30이다, v1 티켓 46), 알림 띠 줄의 높이
+       (`--size-row-band` — `AttentionBand`)와 레일의 줄 폭(`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고,
+       나머지는 선언만 있다(스펙 S2 — 통째로 선언한다). 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
        `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다.
 
        Work 카드 폭(`--size-work-card` 300)은 v1이 더했다(v1 티켓 34 · 캔버스 WorkPanel · Screen-Review 보드 `.wc`) — Thread 화면 오른쪽
@@ -579,7 +580,7 @@
     --size-send: 32px;
     --size-head: 32px;
     --size-pathbar: 48px;
-    --size-row-nav: 32px;
+    --size-row-nav: 30px;
     --size-row-band: 30px;
     --size-row-tree: 28px;
     --size-prail: 32px;
@@ -615,6 +616,10 @@
        같은 길) 다크에서도 같은 값이라 `.dark`에 다시 적지 않는다. 쓰는 자리는 위험 버튼(`Button` destructive)의 글자와 스위치
        손잡이다. */
     --fg-on-solid: #ffffff;
+    /* **DS 표 밖의 이름 하나 더 — 사이드바의 글자**(`fg-sidebar`, v1 티켓 46). Codex 사이드바의 줄 글자 · 아이콘은 본문의 `fg`보다 옅다 —
+       사용자가 준 Codex 그림(2배)에서 #fbfbfb 위 #3a3d3f, 고른 줄(#eeefef) 위 #3a3b3d로 재었고, 둘 다 `fg` 85%가 그 바탕에 앉은 값이다.
+       DS는 다크 값만 적었다(`surface-sidebar` 「Sidebar text in dark is #DDDDDD」). 소제목 · 시각 · 미리보기는 그대로 `fg-tertiary`다. */
+    --fg-sidebar: rgba(26, 28, 31, 0.85);
 
     /* 면 알파 · 선 — 전경색의 투명도라 어느 면 위에서도 같은 단계로 보인다(DS 원칙 2). `fill-selected`만 불투명이다.
 
@@ -623,13 +628,13 @@
        버튼의 hover가 켜짐과 같은 면이다.
        이 부등식은 깨지면 안 된다:
          행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록 · 트리
-         행 hover(`fill-soft`)    < 행 선택(`fill-hover`) = 선택된 행 hover      — 바탕에 붙은 사이드바
+         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 사이드바(`surface-sidebar` 위, v1 티켓 46)
          탭 hover(`fill-soft`)    < 켜진 탭(`fill-hover`, `tab-on`) = 켜진 탭 hover — 카드 머리의 탭 줄
          버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
-       **행 선택의 면은 행이 놓인 면이 고른다**(`selected-row`). 흰 카드 안 목록 · 트리에서는 면 알파 밖의 불투명한
-       `fill-selected`(#eff0f0, DS `.at-tree-row.is-on`)라 hover(흰 면 위 5% ≈ #f4f4f4) < 선택(#eff0f0)으로 갈리고, 바탕(`surface-shell`)에
-       붙은 사이드바에서는 `fill-hover`다(DS `.at-row.is-on` · codex-ds 스펙 §5) — 회색 위에서는 불투명한 `fill-selected`가 hover(회색
-       위 5% ≈ #ebebeb)보다 옅어 부등식이 뒤집힌다. 선택된 행은 어디서나 hover해도 그 면 그대로다.
+       **행 선택의 면은 면 알파 밖의 불투명한 `fill-selected`다**(`selected-row` — #eff0f0, DS `.at-tree-row.is-on`). 흰 카드 안 목록 ·
+       트리는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택으로 갈리고, 사이드바(`surface-sidebar` #fcfcfc 위 5% ≈ #f1f1f1)도 그렇다(v1 티켓
+       46). 한때 사이드바가 창 바탕(`surface-shell`) 회색에 붙어 `fill-hover`였다 — 회색 위에서는 불투명한 면이 hover보다 옅어
+       부등식이 뒤집혔다. 선택된 행은 어디서나 hover해도 그 면 그대로다.
        **유틸리티 `accent`로 상태 배경을 칠하지 않는다** — shadcn은 그 이름에 옅은 면을 걸었지만 Codex에서는 같은 이름이
        파랑이고(`@theme inline`의 Codex 색 머리말), 그 이름은 행 hover인지 버튼 hover인지도 말하지 않는다. 메뉴 · Select의 켜진
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
@@ -862,6 +867,7 @@
     --fg-secondary: rgba(255, 255, 255, 0.7);
     --fg-tertiary: rgba(255, 255, 255, 0.5);
     --fg-inverse: #0d0d0d;
+    --fg-sidebar: #dddddd;
     --fill-soft: rgba(255, 255, 255, 0.05);
     --fill-hover: rgba(255, 255, 255, 0.12);
     --fill-active: rgba(255, 255, 255, 0.16);
@@ -993,16 +999,16 @@
     --destructive: var(--danger);
     --input: var(--border-heavy);
     --ring: var(--accent);
-    /* 사이드바는 창 바탕에 붙는다(DS 원칙 6) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)가 아니라 `surface-shell`이다.
-       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-hover`다(아래 `selected-row`). 사이드바
+    /* 사이드바는 Codex 대화 사이드바의 바탕이다(v1 티켓 46) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)이고 글자는 `fg-sidebar`다.
+       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-selected`다(아래 `selected-row`). 사이드바
        자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) · work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라
        Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를 읽는 자리는 없다. */
-    --sidebar: var(--surface-shell);
-    --sidebar-foreground: var(--fg);
+    --sidebar: var(--surface-sidebar);
+    --sidebar-foreground: var(--fg-sidebar);
     --sidebar-primary: var(--accent);
     --sidebar-primary-foreground: var(--fg-inverse);
-    --sidebar-accent: var(--fill-hover);
-    --sidebar-accent-foreground: var(--fg);
+    --sidebar-accent: var(--fill-selected);
+    --sidebar-accent-foreground: var(--fg-sidebar);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
 }
@@ -1025,8 +1031,10 @@
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
    배경은 **행이 놓인 면이 고르고, 어디서나 hover해도 같은 색이다**(ui-refresh 결정 11 · 30):
      흰 카드 안 목록 · 트리   불투명한 `fill-selected`(#eff0f0, DS `.at-tree-row.is-on`)
-     사이드바(`data-sidebar`)  `fill-hover`(DS `.at-row.is-on` · codex-ds 스펙 §5) — 바탕에 붙어 있어 불투명한 면이 옆 행의
-                               hover(`fill-soft`)보다 옅게 읽힌다. 그 부등식은 `:root`의 상태 농도 주석에 있다.
+     사이드바(`data-sidebar`)  같은 `fill-selected`이고 글자만 `fg-sidebar`다(v1 티켓 46 — DS `fill-selected` 「Selected sidebar row」,
+                               Codex 그림에서 #fbfbfb 위 #eeefef로 재었다). 한때 사이드바가 창 바탕(`surface-shell`)에 붙어
+                               `fill-hover`였다 — 회색 위에서는 불투명한 면이 옆 행의 hover보다 옅게 읽혀서다. 바탕이 `surface-sidebar`가
+                               된 지금은 hover(흰 위 5% ≈ #f1f1f1) < 선택(#eff0f0)이 그대로 선다.
    갈래를 호출부 클래스로 덮지 않고 여기서 가르는 것은 배경 유틸리티 두 벌의 승자를 정렬 순서가 정하기 때문이다 — 사이드바 행
    셋(nav · 설정 nav · work 행)이 이 클래스 이름을 그대로 단다(e2e `settings-nav` · `works-sidebar`가 그 이름으로 집는다).
    선택되지 않은 행의 hover는 호출부가 hover:bg-fill-soft로 붙인다 (두 hover가 같은 자리에서
@@ -1051,7 +1059,7 @@
     }
   [data-sidebar] &,
   [data-sidebar] &:hover {
-    background: var(--fill-hover);
+    color: var(--fg-sidebar);
     }
 }
 
