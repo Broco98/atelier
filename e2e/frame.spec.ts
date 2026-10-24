@@ -803,10 +803,10 @@ test("Works: 머리 줄 48에 머리 카드가 본문 열 폭 · size-head로 �
   expect(card.right, "머리 카드 오른쪽 = 작업 패널 카드 오른쪽").toBe(side.right);
   expect(side.right, "작업 패널 카드 오른쪽 = 레일 열 앞").toBe(viewport.width - gap - prail - gap);
   expect(doc.y, "본문 카드 위").toBe(row);
-  // 사이드바 맨 위 빈 신호등 줄도 같은 48이다 — 사이드바의 첫 줄(검색 칸 — v1 티켓 07)이 본문 카드와 한 줄에서 시작한다. 그 줄이
-  // 제 높이를 따로 들면 두 열의 위끝이 갈린다.
-  const 검색칸 = page.locator("aside[data-sidebar]").getByRole("button", { name: "검색", exact: true });
-  expect((await boxOf(검색칸)).y, "사이드바 검색 칸 위 = 머리 줄 아래").toBe(row);
+  // 사이드바 맨 위 빈 신호등 줄도 같은 48이다 — 사이드바의 첫 줄(「전체 | 내 차례」 — v1 티켓 42, 그 위의 검색 칸은 46이 걷었다)이
+  // 본문 카드와 한 줄에서 시작한다. 그 줄이 제 높이를 따로 들면 두 열의 위끝이 갈린다.
+  const 거르기 = page.locator("aside[data-sidebar]").getByRole("group", { name: "Thread 거르기", exact: true });
+  expect((await boxOf(거르기)).y, "사이드바 거르기 줄 위 = 머리 줄 아래").toBe(row);
   expect(await 칠한값(head, "border-top-left-radius", "background-color")).toEqual([
     await 토큰값(page, "border-top-left-radius", "--radius-xl"),
     await 토큰색(page, "--surface"),

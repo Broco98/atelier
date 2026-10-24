@@ -7,8 +7,9 @@ import type { SearchResults } from "@/features/search/types";
 import type { ThreadView } from "@/features/thread/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **새 Thread의 입력창 Work 칩이 어디서 일할지 세 갈래(Work 없이 · 새 Work로 시작 · 최근 Work)를 고르고,
-// 고른 것이 부제 · 입력창 안내를 바꾸며 첫 말과 함께 간다**(v1 티켓 31 · 구현 스펙 §11 「Work 칩」 · §14 · 스토리 94–96). 최근 Work를 고르면
-// 물어보는 정도 칩이 그 Work의 지금 정도를 보인다(S18).
+// 고른 것이 칩 이름 · 입력창 안내를 바꾸며 첫 말과 함께 간다**(v1 티켓 31 · 구현 스펙 §11 「Work 칩」 · §14 · 스토리 94–96). 최근 Work를
+// 고르면 물어보는 정도 칩이 그 Work의 지금 정도를 보인다(S18). 첫 화면의 부제(「Host가 답합니다. …」 · 갈래마다의 부제)는 v1 티켓 46이
+// 걷었다 — 칩과 안내가 고른 것을 이미 말한다.
 //
 // 첫 말 뒤의 일(새 Work 제안 · 그 Work의 자리에서 뜨는 Session)은 엔진의 몫이다 — L1(`thread_work.rs` 머리말 · `thread_host.rs` ·
 // `thread_policy.rs`)이 잰다. 여기서는 고른 것이 그 인자로 나가는 데까지다.
@@ -26,9 +27,8 @@ const 첫화면 = (page: Page) => page.getByRole("heading", { name: "무엇을 �
 const 워크칩 = (page: Page, name: string) => page.getByRole("button", { name: `어디서 일할지 ${name}`, exact: true });
 const 갈래 = (page: Page, name: string) => page.getByRole("menuitemradio", { name, exact: true });
 
-/** 고른 것이 바꾸는 글 — 부제와 빈 입력창의 안내(Screen-Home 보드의 세 갈래). */
-async function shows(page: Page, subtitle: string, placeholder: string) {
-  await expect(page.getByText(subtitle, { exact: true })).toBeVisible();
+/** 고른 것이 바꾸는 글 — 빈 입력창의 안내(Screen-Home 보드의 세 갈래). */
+async function shows(page: Page, placeholder: string) {
   await expect(입력칸(page)).toHaveAttribute("placeholder", placeholder);
 }
 
@@ -41,7 +41,7 @@ async function sendAndReturn(page: Page, text: string) {
   await expect(첫화면(page)).toBeVisible();
 }
 
-test("새 Thread의 Work 칩이 Work 없이 · 새 Work로 시작 · 최근 Work를 고르고, 고른 것이 부제 · 안내 · 정도 칩을 바꾸며 첫 말과 함께 간다", async ({
+test("새 Thread의 Work 칩이 Work 없이 · 새 Work로 시작 · 최근 Work를 고르고, 고른 것이 칩 · 안내 · 정도 칩을 바꾸며 첫 말과 함께 간다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -55,7 +55,8 @@ test("새 Thread의 Work 칩이 Work 없이 · 새 Work로 시작 · 최근 Work
   await expect(첫화면(page)).toBeVisible({ timeout: 20_000 });
 
   // 처음은 Work 없이다. 메뉴는 두 갈래 뒤에 최근 Work를 그 차례로 세우고, Work마다 이은 Thread 수를 단다.
-  await shows(page, "Host가 답합니다. Work는 필요할 때 Host가 만들어요.", "무엇이든 요청하세요");
+  await shows(page, "무엇이든 요청하세요");
+  await expect(page.getByText("Host가 답합니다", { exact: false })).toHaveCount(0);
   await 워크칩(page, "Work 없음").click();
   await expect(page.getByRole("menuitemradio")).toHaveCount(2 + WORKS.length);
   await expect(page.getByRole("menuitemradio").first()).toHaveAccessibleName("Work 없이");
@@ -63,16 +64,17 @@ test("새 Thread의 Work 칩이 Work 없이 · 새 Work로 시작 · 최근 Work
   await expect(갈래(page, "새 Work로 시작")).toHaveAccessibleDescription("첫 메시지로 Host가 Work를 만들어요");
   await expect(갈래(page, picked.title)).toContainText("Thread 1개");
 
-  // 새 Work로 시작 — 칩 · 부제 · 안내가 바뀐다. 아직 아무 Work도 읽지 않는다.
+  // 새 Work로 시작 — 칩 · 안내가 바뀐다. 아직 아무 Work도 읽지 않는다.
   await 갈래(page, "새 Work로 시작").click();
-  await shows(page, "첫 메시지로 Host가 Work를 만들어요. 고칠 Project는 Host가 물어봐요.", "만들 기능이나 고칠 문제를 적어 주세요");
+  await expect(워크칩(page, "새 Work")).toBeVisible();
+  await shows(page, "만들 기능이나 고칠 문제를 적어 주세요");
   expect(await ipcCallArgs(page, "thread_work_mode", "work")).toEqual([]);
 
   // 최근 Work — 그 Work의 지금 물어보는 정도를 읽어 정도 칩이 그 값이 된다. 안내가 그 Work의 이름을 부른다.
   await 워크칩(page, "새 Work").click();
   await 갈래(page, picked.title).click();
   await expect(워크칩(page, picked.title)).toBeVisible();
-  await shows(page, `‘${picked.title}’에 새 Thread를 열어요.`, `${picked.title}에서 무엇을 할까요?`);
+  await shows(page, `${picked.title}에서 무엇을 할까요?`);
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_work_mode", "work")).map(({ args }) => args))
     .toEqual([{ work: picked.slug }]);

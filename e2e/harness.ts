@@ -1015,8 +1015,8 @@ export const 적힌주소 = (page: Page) => page.evaluate(() => (window as unkno
 export const 검색어칸 = (scope: Page | Locator) => scope.getByRole("textbox", { name: "검색어", exact: true });
 
 /**
- * 창 컨트롤 줄의 검색 버튼(돋보기 · ⌘K). 사이드바 맨 위의 검색 칸(v1 티켓 07)도 이름이 「검색」이고 같은 팔레트를 연다 — 그래서 이름만으로
- * 집으면 둘이다. 창 컨트롤의 것은 앱 툴팁을 단 아이콘 버튼이다(`ShellControls`의 `Hint`).
+ * 창 컨트롤 줄의 검색 버튼(돋보기 · ⌘K). 한때 사이드바 맨 위의 검색 칸(v1 티켓 07 — 46이 걷었다)도 이름이 「검색」이고 같은 팔레트를
+ * 열어, 이름만으로 집으면 둘이었다. 창 컨트롤의 것은 앱 툴팁을 단 아이콘 버튼이다(`ShellControls`의 `Hint`) — 그것으로 집는다.
  */
 export const 창검색버튼 = (page: Page) =>
   page.getByRole("button", { name: "검색", exact: true }).and(page.locator('[data-slot="tooltip-trigger"]'));

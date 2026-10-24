@@ -82,14 +82,15 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 19 — **설정 nav 행은 main nav와 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 32 · `radius-lg` · `nav-row`(14/20
-// 500), 켜진 항목은 바탕에 붙은 사이드바의 고른 면 `fill-hover`, 지나는 항목은 `fill-soft`다. 같은 사이드바 자리에 갈아 서는 nav라
-// 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서 읽어 맞댄다.
-test("설정 nav 행은 32 · radius-lg · 500이고, 켜진 항목은 fill-hover · 지나는 항목은 fill-soft다", async ({ page }) => {
+// codex-ds 티켓 19 — **설정 nav 행은 main nav와 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 30 · `radius-lg` · `text-sm`(14/20
+// 400), 켜진 항목은 사이드바의 고른 면 `fill-selected`, 지나는 항목은 `fill-soft`다(v1 티켓 46 — Codex 사이드바를 재어 줄 32 → 30,
+// 글자 500 → 400, 사이드바 바탕이 `surface-sidebar`가 되며 고른 면이 `fill-hover` → `fill-selected`). 같은 사이드바 자리에 갈아 서는
+// nav라 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서 읽어 맞댄다.
+test("설정 nav 행은 30 · radius-lg · 400이고, 켜진 항목은 fill-selected · 지나는 항목은 fill-soft다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
 
-  const [고른면, 지나는면] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fill-soft")];
+  const [고른면, 지나는면] = [await 토큰색(page, "--fill-selected"), await 토큰색(page, "--fill-soft")];
   const 행높이 = await 토큰값(page, "height", "--size-row-nav");
   const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   const 면 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "background-color"))[0];
@@ -98,7 +99,7 @@ test("설정 nav 행은 32 · radius-lg · 500이고, 켜진 항목은 fill-hove
   await expect.poll(() => 면("터미널")).toBe(고른면);
   for (const name of ["터미널", "알림"] as const) {
     expect(await 칠한값(켜짐(page, name), "height", "border-top-left-radius"), `${name} 행`).toEqual([행높이, 반경]);
-    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "500"]);
+    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "400"]);
   }
 
   await 설정항목(page, "알림").hover();

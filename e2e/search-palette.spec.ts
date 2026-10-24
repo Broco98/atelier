@@ -41,7 +41,7 @@ const [specWork] = WORKS;
 
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
-/** 셸 컨트롤 행 맨 오른쪽 칸 — 사이드바의 검색 칸도 이름이 「검색」이라 하네스가 창 컨트롤 쪽만 집는다. */
+/** 셸 컨트롤 행 맨 오른쪽 칸 — 하네스가 창 컨트롤 쪽(툴팁을 단 버튼)만 집는다(`창검색버튼`). */
 const searchButton = (page: Page) => 창검색버튼(page);
 
 /**

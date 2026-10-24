@@ -191,7 +191,8 @@ test("Work 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓�
   await expect(diff.getByText('raise RefundError("환불할 수 없는 금액이에요")')).toBeVisible();
   await expect(보기(page, "change")).toContainText("+6");
   expect(await callCount(page, "read_worktree_file")).toBe(0);
-  await diff.getByText(/9 unmodified lines/).first().click();
+  // 숨긴 줄의 글은 한국어다(「변경 없는 9줄」 — v1 티켓 46). 라이브러리가 영어로 그린 뒤 갈아 끼우므로 `getByText`의 기다림이 그 틈을 덮는다.
+  await diff.getByText(/변경 없는 9줄/).first().click();
   await expect(diff.getByText("환불 서비스 — 주문의 남은 금액 안에서 돌려준다.", { exact: false })).toBeVisible();
   expect((await ipcCallArgs(page, "read_worktree_file", "path")).map(({ args }) => args.path)).toEqual([SERVICE]);
 

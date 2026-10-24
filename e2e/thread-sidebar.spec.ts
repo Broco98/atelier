@@ -5,8 +5,9 @@ import { installFixtureBackend, unknownIpcCalls, 검색어칸, 검색팔레트�
 import { record, summaryOf } from "./thread-records";
 import type { SearchResults } from "@/features/search/types";
 
-// v1 티켓 10(PR ① e2e) 흐름 둘 — **사이드바가 검색 · 새 Thread · Work · Thread · 사람 줄 차례로 서고, 지금 화면들(Projects · Terminal ·
-// Processes · Archive · Settings)은 사람 메뉴로 가며, ⌘K가 Thread를 찾아 데려간다**(v1 티켓 07 · 구현 스펙 §13 · S27 · S29).
+// v1 티켓 10(PR ① e2e) 흐름 둘 — **사이드바가 「전체 | 내 차례」 · 새 Thread · Work · Thread · 사람 줄 차례로 서고, 지금 화면들(Projects ·
+// Terminal · Processes · Archive · Settings)은 사람 메뉴로 가며, ⌘K가 Thread를 찾아 데려간다**(v1 티켓 07 · 42 · 구현 스펙 §13 · S27 · S29).
+// 맨 위의 검색 칸은 v1 티켓 46이 걷었다 — 검색은 창 컨트롤의 🔍와 ⌘K다.
 //
 // Thread는 L1이 축복한 「새 Thread 두 턴」(`thread-two-turns.jsonl`)의 것이다 — 앱을 다시 켠 꼴이라 떠 있는 Session이 없다. 팔레트의 답은
 // 질의 하나에만 Thread 줄을 심는다 — 좁혀지는 규칙은 코어 단위(`search.rs`)의 몫이고, 이 층은 그 줄을 고르면 그 Thread로 가는지를 잰다.
@@ -18,7 +19,7 @@ const THREAD_HIT: SearchResults = { hits: [{ kind: "thread", id: thread.id, titl
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 const 위 = async (target: Locator) => (await target.boundingBox())!.y;
 
-test("사이드바가 검색 · 새 Thread · Work · Thread · 사람 줄 차례로 서고, 사람 메뉴가 지금 화면으로, ⌘K가 Thread로, 새 Thread가 첫 화면으로 데려간다", async ({
+test("사이드바가 「전체 | 내 차례」 · 새 Thread · Work · Thread · 사람 줄 차례로 서고, 사람 메뉴가 지금 화면으로, ⌘K가 Thread로, 새 Thread가 첫 화면으로 데려간다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -30,17 +31,17 @@ test("사이드바가 검색 · 새 Thread · Work · Thread · 사람 줄 차�
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
-  // 차례 — 검색 칸 · 새 Thread · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄. 지금 화면들로 가는 nav 줄은 없다.
-  const 검색 = 사이드바(page).getByRole("button", { name: "검색", exact: true });
+  // 차례 — 「전체 | 내 차례」 · 새 Thread · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄. 지금 화면들로 가는 nav 줄도, 검색 칸도 없다.
+  const 거르기 = 사이드바(page).getByRole("group", { name: "Thread 거르기", exact: true });
   const 새Thread = 사이드바(page).getByRole("button", { name: "새 Thread", exact: true });
   const Work묶음 = 사이드바(page).getByRole("button", { name: PINNED_HEADER, exact: true });
   const Thread묶음 = 사이드바(page).getByRole("region", { name: "Thread", exact: true });
   const 줄 = Thread묶음.getByRole("button").filter({ hasText: thread.title });
   await expect(줄).toBeVisible();
   const 차례 = [];
-  for (const one of [검색, 새Thread, Work묶음, Thread묶음, 사람줄(page)]) 차례.push(await 위(one));
-  expect(차례, "위에서 아래로 검색 · 새 Thread · Work · Thread · 사람 줄").toEqual([...차례].sort((a, b) => a - b));
-  for (const gone of ["Projects", "Terminal", "Processes", "Archive", "Settings"]) {
+  for (const one of [거르기, 새Thread, Work묶음, Thread묶음, 사람줄(page)]) 차례.push(await 위(one));
+  expect(차례, "위에서 아래로 「전체 | 내 차례」 · 새 Thread · Work · Thread · 사람 줄").toEqual([...차례].sort((a, b) => a - b));
+  for (const gone of ["검색", "Projects", "Terminal", "Processes", "Archive", "Settings"]) {
     await expect(사이드바(page).getByRole("button", { name: gone, exact: true })).toHaveCount(0);
   }
 
