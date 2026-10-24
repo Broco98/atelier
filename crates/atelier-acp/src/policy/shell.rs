@@ -17,7 +17,7 @@ pub(super) struct Piece {
     /// 띄운다). 넘기는 쪽은 그때 `run`을 믿지 않는다.
     pub(super) reconfigured: bool,
     /// 셸이 실행할 것을 글에서 읽을 수 없는 조각이다(코드 리뷰 2차 A1) — 글을 흘려 넣은 셸(`… | sh` · `bash <<'EOF'` · `sh < 파일`),
-    /// 명령 이름이나 git · gh의 하위 명령에 치환 · 변수 · 글롭이 든 조각(`$(echo git) push` · `$G push` · `git $(echo push)`). 막는
+    /// 명령 이름이나 git · gh의 하위 명령에 치환 · 변수 · 글롭 · 중괄호 펼침이 든 조각(`$(echo git) push` · `$G push` · `git $(echo push)`). 막는
     /// 쪽은 걸렸을 수 있다고 보고, 넘기는 쪽은 허락을 짓지 않는다.
     pub(super) opaque: bool,
 }
@@ -52,6 +52,21 @@ pub(super) fn pieces(text: &str) -> Vec<Piece> {
 struct Word {
     raw: String,
     text: String,
+    /// 따옴표 밖에 글롭 글자(`*` · `?` · `[`)가 있다.
+    globs: bool,
+    /// 따옴표 밖에 `{`가 있다.
+    braces: bool,
+}
+
+impl Word {
+    /// 셸이 펼쳐야 알 수 있는 낱말인가 — 치환 · 변수(`$` · `` ` ``), 따옴표 밖의 글롭 · 중괄호 펼침(`{a,b}` · `{1..3}`). 명령 `[` ·
+    /// `[[`는 이름이고, 따옴표 안의 글롭 글자와 쉼표 · `..` 없는 중괄호(`gh api repos/{owner}/{repo}`)는 글자 그대로다.
+    fn unreadable(&self) -> bool {
+        let text = self.text.as_str();
+        text.contains(['$', '`'])
+            || (self.globs && !matches!(text, "[" | "[["))
+            || (self.braces && (text.contains(',') || text.contains("..")))
+    }
 }
 
 /// 떼는 셸 문법 낱말 — 명령이 아니라 그 앞에 붙는 말이다.
@@ -78,7 +93,7 @@ fn read_command(words: &[Word], pieces: &mut Vec<Piece>) {
         return;
     }
     let name = base_name(&first.text);
-    let mut opaque = unreadable(&first.text);
+    let mut opaque = false;
     if SHELLS.contains(&name) {
         match shell_input(&words[1..]) {
             ShellInput::Code(code) => {
@@ -101,9 +116,10 @@ fn read_command(words: &[Word], pieces: &mut Vec<Piece>) {
             (run, reconfigured, 2)
         }
         "gh" => (gh_run(words), false, 3),
-        _ => (words.iter().map(|word| word.text.clone()).collect(), false, 1),
+        _ => (words.iter().collect(), false, 1),
     };
-    opaque |= run.iter().take(head).any(|word| unreadable(word));
+    opaque |= run.iter().take(head).any(|word| word.unreadable());
+    let run: Vec<String> = run.iter().map(|word| word.text.clone()).collect();
     let bare = [name.to_owned()].into_iter().chain(run[1..].iter().cloned()).collect::<Vec<_>>().join(" ");
     pieces.push(Piece { said, run: run.join(" "), words: run, bare, reconfigured, opaque });
 }
@@ -115,12 +131,6 @@ fn joined<'w>(words: &'w [Word], part: impl Fn(&'w Word) -> &'w str) -> String {
 /// 명령 이름에서 경로를 뗀 것(`/usr/bin/git` → `git`).
 fn base_name(name: &str) -> &str {
     name.rsplit('/').next().unwrap_or(name)
-}
-
-/// 셸이 펼쳐야 알 수 있는 낱말인가 — 치환 · 변수(`$` · `` ` ``) · 글롭(`*` · `?` · `[`) · 중괄호 펼침(`{a,b}`). 명령 `[` · `[[`는
-/// 이름이다.
-fn unreadable(word: &str) -> bool {
-    word.contains(['$', '`', '*', '?', '{']) || (word.contains('[') && !matches!(word, "[" | "[["))
 }
 
 /// 셸이 무엇을 실행하나.
@@ -166,14 +176,14 @@ fn shell_input(args: &[Word]) -> ShellInput<'_> {
     }
     match words.get(at) {
         Some(code) if commands => ShellInput::Code(code),
-        Some(script) if !stdin && !unreadable(&script.text) => ShellInput::Script,
+        Some(script) if !stdin && !script.unreadable() => ShellInput::Script,
         _ => ShellInput::Unseen,
     }
 }
 
 /// git의 전역 옵션(`git [옵션…] <하위 명령>`)을 걷은 낱말들 — 값을 따로 받는 옵션은 그 값까지 걷는다. 걷은 것 가운데 git이
 /// 실행할 것을 바꾸는 옵션이 있었는지와 함께.
-fn git_run(words: &[Word]) -> (Vec<String>, bool) {
+fn git_run(words: &[Word]) -> (Vec<&Word>, bool) {
     const VALUED: [&str; 8] = ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source"];
     const RECONFIGURING: [&str; 3] = ["-c", "--config-env", "--exec-path"];
     let (mut at, mut reconfigured) = (1, false);
@@ -183,23 +193,23 @@ fn git_run(words: &[Word]) -> (Vec<String>, bool) {
         at += if VALUED.contains(&word.text.as_str()) { 2 } else { 1 };
     }
     let rest = words.get(at..).unwrap_or_default();
-    (words[..1].iter().chain(rest).map(|word| word.text.clone()).collect(), reconfigured)
+    (words[..1].iter().chain(rest).collect(), reconfigured)
 }
 
 /// gh의 옵션을 걷은 낱말들 — 명령 · 하위 명령(`gh <명령> <하위 명령>`)의 앞과 사이에 선 옵션을 걷는다(`gh pr -R o/r merge 1` →
 /// `gh pr merge 1`). 값을 따로 받는 `-R` · `--repo`는 그 값까지다. 하위 명령 뒤는 그대로 둔다.
-fn gh_run(words: &[Word]) -> Vec<String> {
-    let mut run = vec![words[0].text.clone()];
+fn gh_run(words: &[Word]) -> Vec<&Word> {
+    let mut run = vec![&words[0]];
     let mut at = 1;
     while let Some(word) = words.get(at).filter(|_| run.len() < 3) {
         if word.text.starts_with('-') {
             at += if matches!(word.text.as_str(), "-R" | "--repo") { 2 } else { 1 };
         } else {
-            run.push(word.text.clone());
+            run.push(word);
             at += 1;
         }
     }
-    run.extend(words.get(at..).unwrap_or_default().iter().map(|word| word.text.clone()));
+    run.extend(words.get(at..).unwrap_or_default());
     run
 }
 
@@ -231,10 +241,13 @@ impl CommandSoFar {
         self.word.get_or_insert_with(Word::default)
     }
 
+    /// 따옴표 밖의 글자 하나.
     fn push(&mut self, c: char) {
         let word = self.word();
         word.raw.push(c);
         word.text.push(c);
+        word.globs |= matches!(c, '*' | '?' | '[');
+        word.braces |= c == '{';
     }
 
     fn end_word(&mut self) {

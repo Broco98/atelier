@@ -794,7 +794,9 @@ mod tests {
             "bash -c \"$RUN\"",
             "F=-c; bash $F 'git push'",
             "/usr/bin/gi? push",
+            "\"/usr/bin/gi\"? push",
             "{git,push}",
+            "gi{t,} push",
         ];
         for text in unseen {
             let mut given = Given::act(command(text));
@@ -814,8 +816,17 @@ mod tests {
         given.policy.forbid = names(&["push"]);
         assert!(matches!(given.judged(), Verdict::Refuse { .. }));
 
-        // 인자 자리의 치환 · 시험 명령 `[` · 스크립트 파일을 받은 셸은 읽을 수 있는 조각이다.
-        for text in ["cat $SPEC", "git commit -m \"$(date)\"", "[ -f a ] && git status", "bash ./scripts/test.sh", "gh pr view -R o/r 1"] {
+        // 인자 자리의 치환 · 시험 명령 `[` · 스크립트 파일을 받은 셸, 따옴표 안의 글롭 글자 · 쉼표 없는 중괄호(gh의 자리 표시)는 읽을 수
+        // 있는 조각이다.
+        for text in [
+            "cat $SPEC",
+            "git commit -m \"$(date)\"",
+            "[ -f a ] && git status",
+            "bash ./scripts/test.sh",
+            "gh pr view -R o/r 1",
+            "gh api repos/{owner}/{repo}/pulls",
+            "gh api 'repos/o/r/pulls?state=open&per_page=5'",
+        ] {
             let mut given = Given::act(command(text));
             given.level = AskLevel::Auto;
             given.policy.ask_before = names(&["push", "merge"]);
