@@ -10,7 +10,8 @@
 //!   frontmatter(v1 티켓 12), 모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때 스냅숏에서 옮겨 적고, 입력창 칩이
 //!   바꾼다)이다.
 //! - Agent에게 가는 말은 머리말(Session의 첫 말) + 지난 말 + 본문이다(S10). 지난 말은 보내는 그때 기록에서 짓는다(`past`).
-//! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다).
+//! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더(등록된 Project 폴더를 읽기로 함께 연다 — 끝 점검 39(a)), Work면 three-axes
+//!   결정 17 표(worktree가 선 Project만 센다).
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
 //! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 three-axes
 //!   대화 호스트의 길 그대로다.
@@ -93,7 +94,7 @@ const NEW_WORK_NOTE: &str = "- 사람이 「새 Work로 시작」을 골랐다 �
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ThreadLink {
-    /// Work 없음 — Thread 폴더에서 일한다(S11).
+    /// Work 없음 — Thread 폴더에서 일하고, 등록된 Project 폴더는 읽기로 함께 연다(S11 · 끝 점검 39(a)).
     NoWork,
     /// 새 Work로 시작 — 아직 Work가 없으므로 Work 없음처럼 선다. 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서고(v1 티켓
     /// 31 · §11), Work는 Host의 제안 카드로 만든다(v1 티켓 30).
@@ -1011,7 +1012,7 @@ impl ConversationHost {
     }
 
     /// 작업 폴더가 바뀐 Session을 새 작업 폴더에서 이어 연다(S11 「바꿔 이어 열기」 · v1 티켓 32) — Work가 나중에 붙었거나, worktree가
-    /// 새로 섰거나, 읽기만 폴더를 더했다. 같은 Session id로 이어 열므로(`--resume`) 앞 맥락이 이어지고 새 턴은 새 폴더에서 일한다
+    /// 새로 섰거나, 읽기만 폴더를 더했거나, Work 없는 Thread에서 등록된 Project가 바뀌었다(끝 점검 39(a)). 같은 Session id로 이어 열므로(`--resume`) 앞 맥락이 이어지고 새 턴은 새 폴더에서 일한다
     /// (실측-작업폴더.md). 옮겨 연 Session의 첫 말에는 머리말이 다시 붙어 새 자리를 알린다([`Self::open_session`]).
     ///
     /// **쉬는 Session만 옮긴다** — 턴이 도는 동안의 말은 대기 줄에 들어 그 프로세스(옛 폴더)에 간다. 그 Session은 다음에 쉬는 때 받는
@@ -1314,18 +1315,28 @@ impl ConversationHost {
     ///
     /// | 이어진 곳 | cwd | 함께 여는 폴더 |
     /// |---|---|---|
-    /// | Work 없음 | Thread 폴더 | — |
+    /// | Work 없음 | Thread 폴더 | 등록된 Project 폴더 모두 |
     /// | worktree가 선 Project가 없는 Work | spec 폴더 | — |
     /// | worktree 하나 | 그 worktree | spec 폴더 |
     /// | worktree 여럿 | `trees/` | spec 폴더 |
     ///
-    /// Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project 폴더(`readOnlyProjects`)는 함께 여는 폴더 끝에 더한다(S22 · v1 티켓 32) — 읽을 수
-    /// 있게만 한다. 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs`).
+    /// - **Work 없는 Thread는 등록된 Project 폴더를 모두 함께 연다**(끝 점검 39(a) 사용자 결정) — Host가 Work를 제안하기 전에 어느
+    ///   Project의 일인지 보려고 저장소를 읽는다. 열지 않으면 읽기마다 claude가 묻고, 그 물음이 Work 만들기 카드 앞에 줄줄이 선다. 읽을
+    ///   수 있게만 한다 — Work 없는 Thread가 고칠 수 있는 자리는 Thread 폴더뿐이고, 판정이 따로 센다(`gate.rs`). Work에 이어지면 이
+    ///   폴더들은 빠지고, Project를 등록하거나 지우면 함께 바뀐다 — 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]). 폴더가
+    ///   사라진 Project(등록 뒤 옮기거나 지운 저장소)는 넘기지 않는다.
+    /// - Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project 폴더(`readOnlyProjects`)는 함께 여는 폴더 끝에 더한다(S22 · v1 티켓 32) —
+    ///   읽을 수 있게만 한다.
     fn thread_place(&self, thread: &str, file: &ThreadFile) -> Result<SessionPlace, HostError> {
         let mut place = match &file.work {
             None => {
                 let cwd = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
-                SessionPlace { cwd, additional_directories: Vec::new() }
+                let projects = atelier_core::project_folders(&self.data_root)
+                    .into_iter()
+                    .map(|(_, folder)| folder)
+                    .filter(|folder| folder.is_dir())
+                    .collect();
+                SessionPlace { cwd, additional_directories: projects }
             }
             Some(slug) => {
                 let work_at = self.open_work(slug)?;
