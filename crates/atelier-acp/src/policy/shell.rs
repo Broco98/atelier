@@ -1,17 +1,25 @@
 //! 판정이 읽는 셸 낱말 — 명령 글을 셸이 실행하는 명령마다 조각낸다(코드 리뷰 1차 A1 · 끝-점검-PR4 (d)). 판정(`policy.rs`)은 조각만
 //! 보고, 따옴표 · 치환 · heredoc · `sh -c`는 이 파일이 안다.
 
-/// 명령 조각 하나 — 셸이 실행하는 명령 하나다. 걸림은 두 꼴을 함께 본다.
+/// 명령 조각 하나 — 셸이 실행하는 명령 하나다. 걸림은 여러 꼴을 함께 본다.
 pub(super) struct Piece {
     /// 쓰인 그대로의 낱말을 빈칸 하나로 이은 글 — 앞의 변수 놓기 · 셸 문법 낱말(`if` · `then` · `{` …) · 재지정은 뗐다.
     pub(super) said: String,
-    /// 셸이 푼 낱말(따옴표를 벗긴 글)들. git이면 전역 옵션(`-C <dir>` · `--no-pager` …)을 걷어 `git <하위 명령> …`이다.
+    /// 셸이 푼 낱말(따옴표를 벗긴 글)들. git이면 전역 옵션(`-C <dir>` · `--no-pager` …)을 걷어 `git <하위 명령> …`이고, gh면
+    /// 명령 · 하위 명령 앞뒤의 옵션(`-R o/r` …)을 걷어 `gh pr merge …`다. 명령 이름은 쓰인 그대로다(`/usr/bin/git`).
     pub(super) words: Vec<String>,
     /// `words`를 빈칸 하나로 이은 글.
     pub(super) run: String,
+    /// `run`의 명령 이름에서 경로를 뗀 글(`/usr/bin/git push` → `git push`) — 막는 쪽만 본다. 넘기는 쪽이 보면 `git status`의
+    /// 허락이 `./git status`(아무 실행 파일)를 넘긴다.
+    pub(super) bare: String,
     /// 걷은 git 전역 옵션이 git이 실행할 것을 바꾸나(`-c` · `--config-env` · `--exec-path` — `-c core.pager=…`는 아무 명령이나
     /// 띄운다). 넘기는 쪽은 그때 `run`을 믿지 않는다.
     pub(super) reconfigured: bool,
+    /// 셸이 실행할 것을 글에서 읽을 수 없는 조각이다(코드 리뷰 2차 A1) — 글을 흘려 넣은 셸(`… | sh` · `bash <<'EOF'` · `sh < 파일`),
+    /// 명령 이름이나 git · gh의 하위 명령에 치환 · 변수 · 글롭이 든 조각(`$(echo git) push` · `$G push` · `git $(echo push)`). 막는
+    /// 쪽은 걸렸을 수 있다고 보고, 넘기는 쪽은 허락을 짓지 않는다.
+    pub(super) opaque: bool,
 }
 
 /// 명령의 조각들(코드 리뷰 1차 A1 · 끝-점검-PR4 (d)) — 셸이 명령 하나로 실행하는 단위마다 하나다.
@@ -20,13 +28,14 @@ pub(super) struct Piece {
 ///   안의 구분자로도 자르지 않는다**(v1 티켓 24) — `python3 -c "import a; a.b()"`는 조각 하나다. 셸이 그 글을 한 인자로 넘기기
 ///   때문이고, 거기서 자르면 「다시 묻지 않기」가 `Bash(a.b() *)` 같은 허락을 짓는다.
 /// - 실행되는 안쪽도 조각이다 — 명령 치환(`$(…)` · `` `…` ``, 큰따옴표 안에서도) · 프로세스 치환(`<(…)`), `sh -c '…'` ·
-///   `bash -lc "…"` · `eval '…'`의 글. 셸 · `eval` 조각은 제 자리를 안쪽 조각들에 내준다 — 그 셸이 실행하는 것이 안쪽이다.
+///   `bash -o pipefail -lc "…"` · `/bin/sh -c '…'` · `eval '…'`의 글. 셸 · `eval` 조각은 제 자리를 안쪽 조각들에 내준다 — 그
+///   셸이 실행하는 것이 안쪽이다. `-c` 없이 글을 흘려 받는 셸은 볼 수 없는 조각이다([`Piece::opaque`]).
 /// - heredoc 본문은 명령이 아니다 — 따옴표 친 끝말(`<<'EOF'`)이면 글 그대로, 아니면 그 안의 명령 치환만 조각이다. 주석(`# …`)도
-///   뺀다.
+///   뺀다. 셸이 받는 heredoc은 위의 흘려 받는 셸이다.
 /// - 앞의 변수 놓기(`FOO=1 git push`) · 셸 문법 낱말 · 재지정을 떼고, 그것만인 조각 · 닫는 낱말(`}` · `fi` …)만인 조각은 버린다.
 ///
-/// 글자로 읽는 그물이다 — 별칭(`git config alias.ship push` 뒤 `git ship`) · 스크립트 파일 · `xargs` · `find -exec` 같은 길로
-/// 실행되는 명령은 보지 못한다(결정.md 「코드 리뷰 1차」).
+/// 글자로 읽는 그물이다 — 별칭(`git config alias.ship push` 뒤 `git ship`) · 스크립트 파일 · 감싸는 명령(`xargs` · `find -exec` ·
+/// `exec` · `env` · `timeout` · `nice` …) 같은 길로 실행되는 명령은 보지 못한다(결정.md 「코드 리뷰 1차」 · 「코드 리뷰 2차」).
 pub(super) fn pieces(text: &str) -> Vec<Piece> {
     let chars: Vec<char> = text.chars().collect();
     let mut lexed = Vec::new();
@@ -49,7 +58,7 @@ struct Word {
 const OPENERS: [&str; 9] = ["!", "{", "if", "then", "elif", "else", "while", "until", "do"];
 /// 닫는 셸 문법 낱말 — 이것만인 조각은 명령이 아니다.
 const CLOSERS: [&str; 4] = ["}", "fi", "done", "esac"];
-/// `-c`로 받은 글을 명령으로 실행하는 셸.
+/// 받은 글을 명령으로 실행하는 셸 — 이름은 경로를 떼고 견준다(`/bin/sh`).
 const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "ksh"];
 
 /// 셸의 명령 하나(낱말 목록)를 조각으로 — 앞말(변수 놓기 · 셸 문법 낱말 · 재지정)을 떼고, 셸 · `eval`이면 안쪽 글을 다시 조각낸다.
@@ -68,12 +77,16 @@ fn read_command(words: &[Word], pieces: &mut Vec<Piece>) {
     if words.iter().all(|word| CLOSERS.contains(&word.raw.as_str())) {
         return;
     }
-    if SHELLS.contains(&first.text.as_str()) {
-        let options = words[1..].iter().take_while(|word| word.text.starts_with('-')).count();
-        let commands = words[1..=options].iter().any(|word| !word.text.starts_with("--") && word.text[1..].contains('c'));
-        if let Some(code) = words.get(options + 1).filter(|_| commands) {
-            pieces.extend(self::pieces(&code.text));
-            return;
+    let name = base_name(&first.text);
+    let mut opaque = unreadable(&first.text);
+    if SHELLS.contains(&name) {
+        match shell_input(&words[1..]) {
+            ShellInput::Code(code) => {
+                pieces.extend(self::pieces(&code.text));
+                return;
+            }
+            ShellInput::Script => {}
+            ShellInput::Unseen => opaque = true,
         }
     }
     if first.text == "eval" && words.len() > 1 {
@@ -81,15 +94,81 @@ fn read_command(words: &[Word], pieces: &mut Vec<Piece>) {
         return;
     }
     let said = joined(words, |word| &word.raw);
-    let (run, reconfigured) = match first.text.as_str() {
-        "git" => git_run(words),
-        _ => (words.iter().map(|word| word.text.clone()).collect::<Vec<_>>(), false),
+    // 머리 — 막는 규칙(push · merge)이 읽는 낱말이다. 명령 이름과, git이면 하위 명령, gh면 명령 · 하위 명령까지다.
+    let (run, reconfigured, head) = match name {
+        "git" => {
+            let (run, reconfigured) = git_run(words);
+            (run, reconfigured, 2)
+        }
+        "gh" => (gh_run(words), false, 3),
+        _ => (words.iter().map(|word| word.text.clone()).collect(), false, 1),
     };
-    pieces.push(Piece { said, run: run.join(" "), words: run, reconfigured });
+    opaque |= run.iter().take(head).any(|word| unreadable(word));
+    let bare = [name.to_owned()].into_iter().chain(run[1..].iter().cloned()).collect::<Vec<_>>().join(" ");
+    pieces.push(Piece { said, run: run.join(" "), words: run, bare, reconfigured, opaque });
 }
 
 fn joined<'w>(words: &'w [Word], part: impl Fn(&'w Word) -> &'w str) -> String {
     words.iter().map(part).collect::<Vec<_>>().join(" ")
+}
+
+/// 명령 이름에서 경로를 뗀 것(`/usr/bin/git` → `git`).
+fn base_name(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
+}
+
+/// 셸이 펼쳐야 알 수 있는 낱말인가 — 치환 · 변수(`$` · `` ` ``) · 글롭(`*` · `?` · `[`) · 중괄호 펼침(`{a,b}`). 명령 `[` · `[[`는
+/// 이름이다.
+fn unreadable(word: &str) -> bool {
+    word.contains(['$', '`', '*', '?', '{']) || (word.contains('[') && !matches!(word, "[" | "[["))
+}
+
+/// 셸이 무엇을 실행하나.
+enum ShellInput<'w> {
+    /// `-c`로 받은 글.
+    Code(&'w Word),
+    /// 스크립트 파일 — 그 속은 읽지 않는다(머리말의 스크립트 파일).
+    Script,
+    /// 흘려 받은 글(표준 입력 · heredoc · 재지정)이거나, 옵션 · 스크립트 자리를 읽을 수 없다(`bash $F 'git push'`).
+    Unseen,
+}
+
+/// 셸(`bash [옵션…] [-c 글 | 스크립트] …`)의 낱말에서 실행할 것을 찾는다 — 재지정은 낱말이 아니고, 옵션을 건너며(값을 받는 `-o` ·
+/// `+o` · `-O` · `--rcfile` · `--init-file`은 그 값까지), `-c`가 있으면 첫 옵션 아닌 낱말이 글이다. `-c`도 스크립트도 없거나
+/// `-s`면 표준 입력을 읽는다.
+fn shell_input(args: &[Word]) -> ShellInput<'_> {
+    let mut words = Vec::new();
+    let mut at = 0;
+    while let Some(word) = args.get(at) {
+        at += match redirection(&word.raw) {
+            Some(true) => 2,
+            Some(false) => 1,
+            None => {
+                words.push(word);
+                1
+            }
+        };
+    }
+    let (mut at, mut commands, mut stdin) = (0, false, false);
+    while let Some(text) = words.get(at).map(|word| word.text.as_str()) {
+        if matches!(text, "-" | "--") {
+            at += 1;
+            break;
+        }
+        let Some(flags) = text.strip_prefix(['-', '+']).filter(|flags| !flags.is_empty()) else { break };
+        if let Some(long) = flags.strip_prefix('-') {
+            at += if matches!(long, "rcfile" | "init-file") { 2 } else { 1 };
+            continue;
+        }
+        commands |= text.starts_with('-') && flags.contains('c');
+        stdin |= text.starts_with('-') && flags.contains('s');
+        at += if flags.contains(['o', 'O']) { 2 } else { 1 };
+    }
+    match words.get(at) {
+        Some(code) if commands => ShellInput::Code(code),
+        Some(script) if !stdin && !unreadable(&script.text) => ShellInput::Script,
+        _ => ShellInput::Unseen,
+    }
 }
 
 /// git의 전역 옵션(`git [옵션…] <하위 명령>`)을 걷은 낱말들 — 값을 따로 받는 옵션은 그 값까지 걷는다. 걷은 것 가운데 git이
@@ -104,7 +183,24 @@ fn git_run(words: &[Word]) -> (Vec<String>, bool) {
         at += if VALUED.contains(&word.text.as_str()) { 2 } else { 1 };
     }
     let rest = words.get(at..).unwrap_or_default();
-    (["git".to_owned()].into_iter().chain(rest.iter().map(|word| word.text.clone())).collect(), reconfigured)
+    (words[..1].iter().chain(rest).map(|word| word.text.clone()).collect(), reconfigured)
+}
+
+/// gh의 옵션을 걷은 낱말들 — 명령 · 하위 명령(`gh <명령> <하위 명령>`)의 앞과 사이에 선 옵션을 걷는다(`gh pr -R o/r merge 1` →
+/// `gh pr merge 1`). 값을 따로 받는 `-R` · `--repo`는 그 값까지다. 하위 명령 뒤는 그대로 둔다.
+fn gh_run(words: &[Word]) -> Vec<String> {
+    let mut run = vec![words[0].text.clone()];
+    let mut at = 1;
+    while let Some(word) = words.get(at).filter(|_| run.len() < 3) {
+        if word.text.starts_with('-') {
+            at += if matches!(word.text.as_str(), "-R" | "--repo") { 2 } else { 1 };
+        } else {
+            run.push(word.text.clone());
+            at += 1;
+        }
+    }
+    run.extend(words.get(at..).unwrap_or_default().iter().map(|word| word.text.clone()));
+    run
 }
 
 /// 따옴표 · 치환 · heredoc을 아는 작은 셸 낱말 읽기 — 조각마다 낱말 목록을 낸다. 치환의 안쪽 조각은 그 바깥 조각 뒤에 선다.

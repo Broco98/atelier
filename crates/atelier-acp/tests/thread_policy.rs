@@ -129,6 +129,34 @@ fn claude의_금지_규칙이_앞머리로_놓친_git_전역_옵션_뒤의_push�
 }
 
 #[test]
+fn 알아서에서도_셸에_흘려_넣어_읽을_수_없는_명령은_push_전에_묻기로_묻는다() {
+    // 코드 리뷰 2차 A1 — `echo git push | sh`의 셸이 무엇을 실행할지 판정은 글에서 볼 수 없다. 막는 쪽은 모를 때 걸린 것으로 본다 —
+    // 「알아서」에서도 묻지 않고 넘어가지 않는다.
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md("policy:\n  ask_before: [push]\n"));
+    // 가짜 로그인 셸이 env 값을 작은따옴표로 싸 두므로 녹음에 붙이는 글에는 작은따옴표가 없다.
+    let piped = "echo git push | sh; python3 -c";
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", &format!("python3 -c={piped}"))],
+    ));
+    let thread = host
+        .start_thread_asking("배경 작업을 돌려 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto))
+        .expect("알아서로 새 Thread");
+
+    let asked = wait_permission(&sandbox, &thread, "host", "asked");
+    let command = asked["payload"]["toolCall"]["rawInput"]["command"].as_str().unwrap_or_default();
+    assert!(command.starts_with(piped), "{command}");
+    assert_eq!(
+        (asked["payload"]["card"].clone(), asked["payload"]["policy"].clone()),
+        (json!("command"), json!("push하기 전에 묻기 — 읽을 수 없는 명령")),
+        "{asked}"
+    );
+
+    host.shut_down();
+}
+
+#[test]
 fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어도_묻지_않고_거절된다() {
     // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl` · `agents/`는
     // Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을 넓힌다.
