@@ -16,6 +16,7 @@ import { bodyColumn } from "@/features/works/SpecViewer";
 import { codeApi } from "./api";
 import { CODE_THEME, registerCodeTheme } from "./code-theme";
 import { baseContentsOf } from "./diff-files";
+import { koreanSeparators } from "./diff-separators";
 
 /**
  * **강조 상한** — 이보다 줄이 많은 파일은 평문이다(결정 35 — 2만 줄). 라이브러리가 줄 수로 견준다(`tokenizeMaxLength`). 한 줄이
@@ -130,8 +131,8 @@ export function HighlightedCode({ path, content, wide }: { path: string; content
 
 /**
  * diff 보기의 옵션(v1 티켓 35 · 캔버스 Layout-Expand 보드) — 파일 보기와 같은 엔진 · 색 · 강조 상한이고, 한 열(unified)에 줄 번호 두 칸과
- * −/+ 표(`classic` — 보드 `.dl .sg`)다. 접힌 줄은 덩어리 사이의 「N unmodified lines」 줄이 펼친다(`line-info`) — 그 글은 라이브러리의
- * 영어 글자 그대로다(바꾸는 길이 걷힌 `custom`뿐이다 — 시안-비교/35 차이.md).
+ * −/+ 표(`classic` — 보드 `.dl .sg`)다. 접힌 줄은 덩어리 사이의 「변경 없는 N줄」 줄이 펼친다(`line-info`) — 라이브러리는 그 글을
+ * 영어로 그리고 바꾸는 길이 걷힌 `custom`뿐이라, 그린 뒤에 그 글자만 옮긴다(`onPostRender` · `diff-separators.ts` — v1 티켓 46).
  */
 const DIFF_OPTIONS: FileDiffOptions<undefined, undefined> = {
   theme: CODE_THEME,
@@ -144,6 +145,7 @@ const DIFF_OPTIONS: FileDiffOptions<undefined, undefined> = {
   diffStyle: "unified",
   diffIndicators: "classic",
   hunkSeparators: "line-info",
+  onPostRender: (node) => koreanSeparators(node),
 };
 
 /**

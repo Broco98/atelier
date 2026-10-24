@@ -11,17 +11,18 @@ import { cn } from "@/lib/utils";
 // 위치 캡슐 · 두 칸 원문 전환 · 사각 경로 복사가 따로 선 카드 머리였다(ui-refresh 결정 5 · 7의 B).
 //
 // - 줄은 48(`--size-pathbar`) = 틈 8 · 컨트롤 32 · 틈 8이다. 아래 선이 없다.
-// - 왼쪽은 **경로 캡슐** — 옅은 테두리(1px `border-heavy`) 알약 · 안쪽 12 · `chat-meta`. 앞 칸은 `fg-secondary`, 끝 칸(지금 보는 것)만
-//   `fg` 500이다. **캡슐 안 글자는 카드 + 20**(줄 안쪽 8 + 캡슐 안쪽 12) — 아래 문서 글의 거터 20과 한 세로줄이다(결정 27 ·
-//   `SpecViewer`의 `bodyColumn`). 보여 주기만 한다 — 조각은 누르는 칸이 아니다. 위치를 옮기는 길은 사이드바 · 트리 · 팔레트가 든다.
+// - 왼쪽은 **경로 캡슐** — 테두리 없는 알약 · 안쪽 12 · `chat-meta`. 앞 칸은 `fg-tertiary`, 끝 칸(지금 보는 것)만 `fg` 500이다(보드
+//   `.vh .path` — v1 티켓 46이 링을 걷고 앞 칸을 한 단 옅게 했다. 캡슐 · 원 · 동그라미의 자리와 크기는 그대로다). **캡슐 안
+//   글자는 카드 + 20**(줄 안쪽 8 + 캡슐 안쪽 12) — 아래 문서 글의 거터 20과 한 세로줄이다(결정 27 · `SpecViewer`의 `bodyColumn`).
+//   보여 주기만 한다 — 조각은 누르는 칸이 아니다. 위치를 옮기는 길은 사이드바 · 트리 · 팔레트가 든다.
 //   이름은 「위치」다 — 옛 문서 카드 머리의 위치 캡슐이 갖던 이름 그대로라 모양이 바뀌어도 스크린리더와 검사가 같은 이름으로
 //   찾는다(codex-ds 스펙 스토리 109).
 // - **경로가 다 안 들어가면 캡슐이 접힌다** — 32 원 안에 아이콘(`FolderTree` 16) 하나가 서고, 가리키면 경로 전체가 툴팁으로 뜬다
 //   (조각 사이는 캡슐의 꺾쇠와 같은 「›」). 말줄임으로 끊긴 경로(「slug › spec › (」)는 어디를 보는지 말하지 못해서다 — 좁은 창 ·
 //   가장 좁게 끈 분할 열이 그 폭이다. 접혀도 조각은 nav 안에 남아(칠하지만 않는다) 스크린리더는 같은 경로를 듣는다. 툴팁은 포인터의
 //   것이다 — 원은 누르는 칸이 아니라 Tab 정류장도 아니다.
-// - 오른쪽은 **보기 묶음**(문서 | 원문 — 알약 32 안에 원 28 둘, 고른 쪽 `fill-hover`)과 **동그란 버튼**(32 · 1px `border-heavy` 링,
-//   사이 4)이다. 동그란 버튼은 경로 복사 하나다. 보기 묶음은 문서에만 선다 — 코드 카드의 몸은 늘 코드라 고를 보기가 없다.
+// - 오른쪽은 **보기 묶음**(문서 | 원문 — 알약 32 안에 원 28 둘, 고른 쪽 `fill-hover`)과 **동그란 버튼**(32 · 링 없음, 사이 4)이다.
+//   동그란 버튼은 경로 복사 하나다. 보기 묶음은 문서에만 선다 — 코드 카드의 몸은 늘 코드라 고를 보기가 없다.
 // - **캡슐 · 원 · 동그라미는 경로 줄의 모양이다**(결정 14 · DS `PathBar` 「규칙」). 경로 캡슐과 동그란 버튼의 모양은 이 파일에,
 //   보기 묶음의 알약 · 원은 `SegmentGroup`의 `pill` 크기에 있다. 다른 화면의 위치는 머리 카드 이름 뒤의 옅은 글자다(`Frame`의
 //   `HeadSlot`의 `sub`).
@@ -32,12 +33,12 @@ import { cn } from "@/lib/utils";
 const VIEWS = ["doc", "source"] as const;
 
 /**
- * 동그란 버튼(DS `.at-cib`) — 32 원 · 1px `border-heavy` 안쪽 링 · `fg-secondary` 글리프, 가리키면 `fill-soft` 면에 `fg`다. 원은 경로
- * 줄의 모양이라(결정 14) 아이콘 버튼 규격(`icon-button` — 각진 28 · 24 · 26 · 16)의 단으로 두지 않는다. 줄 끝 칸(`end`)에 서는 버튼도
- * 이 모양이다(Library 화면의 「Finder에서 열기」 — v1 티켓 19).
+ * 동그란 버튼(DS `.at-cib`) — 32 원 · `fg-secondary` 글리프, 가리키면 `fill-hover` 면에 `fg`다(`quiet-hover` — 보드 `.ibtn`. 링은
+ * v1 티켓 46이 걷었다). 원은 경로 줄의 모양이라(결정 14) 아이콘 버튼 규격(`icon-button` — 각진 28 · 24 · 26 · 16)의 단으로 두지
+ * 않는다. 줄 끝 칸(`end`)에 서는 버튼도 이 모양이다(Library 화면의 「Finder에서 열기」 — v1 티켓 19).
  */
 export const ROUND =
-  "flex size-8 shrink-0 items-center justify-center rounded-full text-fg-secondary inset-ring inset-ring-border-heavy transition-colors outline-none hover:bg-fill-soft hover:text-fg focus-ring";
+  "flex size-8 shrink-0 items-center justify-center rounded-full text-fg-secondary transition-colors outline-none quiet-hover focus-ring";
 
 /**
  * 뿌리부터 지금 선 곳까지의 조각 — 사이에 셰브런(12 · `fg-tertiary`)이 서고, 끝 조각만 `fg` 500이다. 조각은 줄지 않는다 — 다 안
@@ -121,7 +122,7 @@ export function PathBar({
         <nav
           aria-label="위치"
           className={cn(
-            "relative flex h-8 min-w-0 items-center overflow-hidden rounded-full text-chat-meta whitespace-nowrap text-fg-secondary inset-ring inset-ring-border-heavy",
+            "relative flex h-8 min-w-0 items-center overflow-hidden rounded-full text-chat-meta whitespace-nowrap text-fg-tertiary",
             folded && "w-8 shrink-0",
           )}
         >
