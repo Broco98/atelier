@@ -14,7 +14,7 @@ mod common;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
 
-use atelier_acp::{ConversationHost, HostError, QuitCounts, ThreadLink, TranslatorCommand};
+use atelier_acp::{AskLevel, ConversationHost, HostError, QuitCounts, StartPicks, ThreadLink, TranslatorCommand};
 use common::{assert_all_gone, of_kind, payloads_of, sent_texts, write_script, Sandbox};
 use serde_json::{json, Value};
 
@@ -53,11 +53,16 @@ fn settled(sandbox: &Sandbox, record: &[Value], thread: &str, session: &str) -> 
 #[test]
 fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록이_검사_자료와_같다() {
     let sandbox = Sandbox::new();
-    let (host, thread, session) =
-        thread_on(&sandbox, "2.1.309/interrupt-sigint", &[], "40초 자는 명령을 앞에서 돌리고 끝나면 FINISHED라고 해");
-    // 원문은 그 명령이 도는 동안 interrupt를 보냈다 — 도구 줄이 선 뒤에 멈춘다.
+    sandbox.library_agent("host", HOST_MD);
+    let host = sandbox.host(sandbox.claude_login_shell("normal", &[("FAKE_CLAUDE_FIXTURE", "2.1.309/thread-stop-host")]));
+    // 녹음(v1 티켓 44 끝 점검)은 「알아서」 Thread다 — 판정이 묻지 않고 허락한 명령이 도는 동안 사람이 멈췄다.
+    let picks = StartPicks { mode: Some(AskLevel::Auto), ..StartPicks::default() };
+    let first = "멈춤 확인 — Bash로 `python3 -c 'import time; time.sleep(40)'`를 앞에서 돌리고 끝나면 FINISHED라고 해";
+    let thread = host.start_thread_picking(first, &[], ThreadLink::NoWork, picks).expect("새 Thread의 첫 말");
+    let session = sandbox.thread_session_id(&thread, "host");
+    // 원문은 판정이 허락한 그 명령이 도는 동안 interrupt를 보냈다 — 허락의 판정 줄이 선 뒤에 멈춘다.
     sandbox.wait_thread_record(&thread, |record| {
-        of_kind(record, "update").iter().any(|line| line["payload"]["update"]["sessionUpdate"] == "tool_call")
+        of_kind(record, "permission").iter().any(|line| line["payload"]["state"] == "decided")
     });
 
     host.stop_thread(&thread).expect("멈추기");
@@ -70,7 +75,11 @@ fn 멈추면_claude가_interrupt를_받고_sigint는_없고_멈춘_턴의_기록
         "우리가 interrupt를 보낸 턴은 cancelled이고 「우리가 멈춤」이다:\n{}",
         common::lines_text(&record)
     );
-    assert_eq!(stdin_shape(&sandbox.claude_stdin(&session)), ["initialize", "user", "interrupt"], "멈추기는 stdin의 interrupt 하나다");
+    assert_eq!(
+        stdin_shape(&sandbox.claude_stdin(&session)),
+        ["initialize", "user", "answer", "interrupt"],
+        "판정의 허락 뒤 멈추기는 stdin의 interrupt 하나다"
+    );
     assert!(
         !sandbox.claude_events(&session).iter().any(|event| event == "signal SIGINT"),
         "SIGINT는 보내지 않는다 — claude가 끝난다(워크플로 함정 5)"

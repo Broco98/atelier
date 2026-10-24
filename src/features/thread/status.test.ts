@@ -207,12 +207,11 @@ describe("실패", () => {
 });
 
 describe("중단", () => {
-  it("마지막 턴을 사람이 멈췄으면 읽었어도 「중단했습니다」다", () => {
-    expect(statusOf(record("thread-stopped"), live(12))).toEqual({
-      kind: "stopped",
-      at: "2026-10-10T10:00:12.000+09:00",
-      text: "중단했습니다",
-    });
+  it("마지막 턴을 사람이 멈췄으면 읽었어도 「중단했습니다」다 — 앱을 다시 켠 뒤에도", () => {
+    const stopped = { kind: "stopped", at: "2026-10-10T10:00:14.000+09:00", text: "중단했습니다" };
+    expect(statusOf(record("thread-stopped"), live(14))).toEqual(stopped);
+    // 끝 점검 ⑤(v1 티켓 44) — 다시 켠 앱은 떠 있는 Session이 없다고 말한다(기록 끝까지 지나감). 멈춘 턴이 「앱이 꺼지며 끊겼어요」가 되지 않는다.
+    expect(statusOf(record("thread-stopped"), { goneThrough: 14, lastRead: 14 })).toEqual(stopped);
   });
 });
 

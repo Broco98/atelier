@@ -66,6 +66,9 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   (`can_use_tool`)으로 읽고, `rename_thread`로 이름을 바꾸고, `propose_work`로 Work(`refund-partial-amount`, api-server)를
 ///   제안한다. 만든 뒤 같은 턴에 spec 폴더에 `overview.md` · `01-fix/plan.md`를 `Write`(`can_use_tool`)하고 답한다. 녹음의 임시
 ///   루트는 `/tmp/gate`(자료 자리 `home` · 저장소 `repos`), Thread 폴더는 `/tmp/gate/home/threads/20261024-013421`이다.
+/// - `2.1.309/thread-stop-host` — 「알아서」 Thread의 Host가 40초 도는 `python3` 명령을 앞에서 돌리는 동안 사람이 멈춘 한 턴(v1 티켓
+///   44 끝 점검). 그 `Bash`가 `can_use_tool`로 묻고 판정이 허락하면 `task_started`, 도는 동안 interrupt가 오면 `task_notification` →
+///   거부의 실패 `tool_result` → `result/error_during_execution`이다. 녹음의 Thread 폴더는 `/tmp/gate/home/threads/20261024-110553`이다.
 const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/slash-skill-noreplay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-noreplay.jsonl")),
     ("2.1.309/slash-skill-replay", include_str!("../../tests/fixtures/claude-2.1.309/slash-skill-replay.jsonl")),
@@ -86,6 +89,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ("2.1.309/thread-rename-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-rename-host.jsonl")),
     ("2.1.309/thread-question-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-question-host.jsonl")),
     ("2.1.309/thread-work-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-work-host.jsonl")),
+    ("2.1.309/thread-stop-host", include_str!("../../tests/fixtures/claude-2.1.309/thread-stop-host.jsonl")),
 ];
 /// 판 02 관문 G4 — 없는 세션 id로 `--resume`한 claude가 끝나기 전에 낸 한 줄(`result/error_during_execution{errors}`).
 const RESUME_MISSING: &str = include_str!("../../tests/fixtures/claude-2.1.309/g4-resume-missing.jsonl");
