@@ -13,6 +13,7 @@
 //!    Thread 도구 「Project 고치기 시작」(`start_editing`, v1 티켓 32)을 먼저 부르라고 글로 알린다 — Work가 없으면 Work부터 만들라고.
 //!    Thread 폴더 안이어도 Atelier만 쓰는 파일(`thread.json` · `events.jsonl` · `.policy.json` · `agents/` 스냅숏)이면 거절한다(S7 ·
 //!    §19, 코드 리뷰 1차 A2) — 그대로면 Agent가 묻지 않고 제 물어보는 정도를 올리거나 허락을 넓히거나 스냅숏의 Policy를 지운다.
+//!    명령 글에 그 파일이 나오면 「알아서」 · 허락이 있어도 묻는다(코드 리뷰 2차 A3 — 글자로만 본다, [`mentions_kept`]).
 //! 3. 쓰기 자리를 다른 Session이 쥐고 있으면 거절한다(§10 · v1 티켓 18).
 //! 4. `ask_before`에 걸리면(걸렸을 수 있으면) 묻는다.
 //! 5. 「다시 묻지 않기」 허락에 걸리면 허용한다.
@@ -175,8 +176,10 @@ pub(crate) struct Case<'a> {
     /// 고칠 수 있는 자리 — Work의 worktree들 · spec 폴더, 그리고 Thread 폴더. 절대 경로다.
     pub roots: &'a [PathBuf],
     /// 고칠 수 있는 자리 안이어도 고칠 수 없는 자리 — Atelier만 쓰는 Thread 폴더의 파일 · 폴더다. 그 안이나 그것을 품은 폴더를
-    /// 고치면 거절한다.
+    /// 고치면 거절하고, 명령 글에 나오면 묻는다.
     pub kept: &'a [PathBuf],
+    /// 이 Session의 작업 폴더(링크를 푼 꼴) — 명령 글의 맨 이름(`thread.json`)이 어느 폴더의 것인지 가른다.
+    pub cwd: &'a Path,
     /// 등록된 Project — (slug, 폴더).
     pub projects: &'a [(String, PathBuf)],
     /// 이 Work의 쓰기 자리를 다른 Session이 쥐었으면 돌려줄 글(§10).
@@ -213,6 +216,11 @@ pub(crate) fn judge(case: &Case) -> Verdict {
         }
         if let Some(busy) = case.seat {
             return Verdict::Refuse { message: busy.to_owned() };
+        }
+    }
+    if let Act::Command(text) = act {
+        if mentions_kept(text, case.kept, case.cwd) {
+            return Verdict::Ask { card: Card::Command, policy: "Thread 기록을 건드리기 전에 묻기".to_owned(), grant: Vec::new() };
         }
     }
     if let Some(name) = case.policy.ask_before.iter().find(|name| hits(name, act)) {
@@ -279,6 +287,26 @@ fn kept_message(path: &Path) -> String {
         "Thread 기록이라 고칠 수 없어요: {} — Thread 폴더의 `thread.json` · `events.jsonl` · `.policy.json` · `agents/`는 Atelier만 써요",
         path.display()
     )
+}
+
+/// 명령 글에 Atelier만 쓰는 Thread 파일이 나오나(코드 리뷰 2차 A3) — 글자로만 본다. 경로 낱말의 마디에 `<Thread 폴더>/<그 파일>`이
+/// 있거나(절대 경로 · `~/…` · `../threads/…`), 작업 폴더가 그 Thread 폴더이거나 글이 그 폴더를 가리키면(`cd …/<Thread> && …`) 그
+/// 파일 이름으로 시작하는 낱말(`thread.json` · `./agents/host.md` · `../events.jsonl`)이다. 변수 · 스크립트 속의 경로는 보지
+/// 못한다(결정.md 「코드 리뷰 2차」 A3의 남은 위험).
+fn mentions_kept(text: &str, kept: &[PathBuf], cwd: &Path) -> bool {
+    let words: Vec<Vec<&str>> = text
+        .split(|c: char| c.is_whitespace() || ";|&<>()'\"=`".contains(c))
+        .map(|word| word.split('/').filter(|part| !part.is_empty()).collect())
+        .collect();
+    kept.iter().any(|path| {
+        let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|name| name.to_str())) else { return false };
+        let Some(folder) = dir.file_name().and_then(|folder| folder.to_str()) else { return false };
+        let inside = dir == cwd || words.iter().flatten().any(|part| *part == folder);
+        words.iter().any(|parts| {
+            parts.windows(2).any(|pair| pair == [folder, name])
+                || (inside && parts.iter().find(|part| !matches!(**part, "." | "..")) == Some(&name))
+        })
+    })
 }
 
 /// S19 규칙 이름 하나가 가리키는 것.
@@ -495,6 +523,7 @@ mod tests {
         in_work: bool,
         roots: Vec<PathBuf>,
         kept: Vec<PathBuf>,
+        cwd: PathBuf,
         projects: Vec<(String, PathBuf)>,
         seat: Option<String>,
     }
@@ -510,6 +539,7 @@ mod tests {
                 in_work: true,
                 roots: vec!["/w/cart/trees/fe".into(), "/w/cart/spec".into(), "/t/20261023-101010".into()],
                 kept: ["thread.json", "events.jsonl", ".policy.json", "agents"].map(|name| Path::new("/t/20261023-101010").join(name)).to_vec(),
+                cwd: "/w/cart/trees/fe".into(),
                 projects: vec![("fe".to_owned(), "/repos/fe".into())],
                 seat: None,
             }
@@ -525,6 +555,7 @@ mod tests {
                 in_work: self.in_work,
                 roots: &self.roots,
                 kept: &self.kept,
+                cwd: &self.cwd,
                 projects: &self.projects,
                 seat: self.seat.as_deref(),
             })
@@ -995,6 +1026,42 @@ mod tests {
         }
         assert_eq!(judged("/t/20261023-101010/notes.md"), allow("이 Thread에서는 다시 묻지 않기"), "나머지 Thread 폴더는 그대로다");
         assert_eq!(judged("/t/20261023-101010/agents-notes/a.md"), allow("이 Thread에서는 다시 묻지 않기"), "경로는 폴더 단위로 견준다");
+    }
+
+    #[test]
+    fn 명령_글에_그_thread_기록이_나오면_알아서여도_허락이_있어도_묻는다() {
+        // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만(1차 A2) 명령은 그 자리를 보지 않았다. `echo > thread.json` ·
+        // `sed -i … agents/host.md`가 「알아서」에서 묻지 않고 지나 스냅숏의 Policy를 지웠다. 글자로만 본다.
+        let judged = |text: &str, cwd: &str| {
+            let mut given = Given::act(command(text));
+            given.level = AskLevel::Auto;
+            given.grants = names(&["shell"]);
+            given.cwd = cwd.into();
+            given.judged()
+        };
+        let (tree, thread) = ("/w/cart/trees/fe", "/t/20261023-101010");
+        for (text, cwd) in [
+            ("echo '{}' > /t/20261023-101010/thread.json", tree),
+            ("sed -i '' 's/push//' ~/.atelier/threads/20261023-101010/agents/host.md", tree),
+            ("rm ../../threads/20261023-101010/events.jsonl", tree),
+            ("cd ~/.atelier/threads/20261023-101010 && echo '{}' > .policy.json", tree),
+            ("echo '{}' > thread.json", thread),
+            ("rm -rf agents", thread),
+            ("cp x ./agents/host.md", thread),
+            ("python3 x.py --out=../events.jsonl", thread),
+        ] {
+            assert_eq!(judged(text, cwd), ask(Card::Command, "Thread 기록을 건드리기 전에 묻기"), "{text:?} ({cwd})");
+        }
+        // worktree의 같은 이름 · Thread 폴더의 다른 파일은 그대로다.
+        for (text, cwd) in [
+            ("cat src/agents/a.ts", tree),
+            ("echo x > thread.json", tree),
+            ("ls src/agents", thread),
+            ("echo x > notes.md", thread),
+            ("cat /t/20261023-101010/notes.md", tree),
+        ] {
+            assert_eq!(judged(text, cwd), allow("이 Work에서는 다시 묻지 않기"), "{text:?} ({cwd})");
+        }
     }
 
     #[test]

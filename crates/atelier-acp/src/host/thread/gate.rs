@@ -5,7 +5,7 @@
 //!   `thread.json`의 `mode`와 Thread 폴더의 점 파일), 고칠 수 있는 자리(Work의 선 worktree · spec 폴더 · Thread 폴더 — Atelier만 쓰는
 //!   Thread 파일은 빼고, 코드 리뷰 1차 A2), 등록된 Project,
 //!   쓰기 자리 주인(§10). 칩이 바꾼 정도 · 카드가 준 허락 · 「Project 고치기 시작」이 세운 worktree(v1 티켓 32)가 다음 요청부터 든다.
-//!   자리 · Project는 편집일 때만 읽는다.
+//!   자리 · Project는 편집일 때만 읽는다. Atelier만 쓰는 Thread 파일은 명령일 때도 읽는다 — 명령 글에 나오면 묻는다(코드 리뷰 2차 A3).
 //! - **아직 서지 않은 worktree의 자리는 고칠 수 있는 자리가 아니다**(S21 · v1 티켓 32) — 그 자리에 먼저 쓰면 git worktree가 아닌 폴더가
 //!   서고, 뒤의 「Project 고치기 시작」이 그것을 worktree로 알고 짓지 않는다. 그 자리는 그 Project의 자리로 쳐서 거절 글이 도구를
 //!   가리킨다.
@@ -62,7 +62,8 @@ impl Gate {
         let work = self.writer.work();
         let (level, grants) = asking(&self.data_root, &self.thread, work.as_deref());
         let roots = if editing { self.roots(work.as_deref()) } else { Vec::new() };
-        let kept = if editing { self.kept() } else { Vec::new() };
+        let kept = if matches!(act, Act::Edit(_) | Act::Command(_)) { self.kept() } else { Vec::new() };
+        let cwd = resolve(&self.cwd, &self.cwd);
         let projects: Vec<(String, PathBuf)> = if editing {
             let mut folders = atelier_core::project_folders(&self.data_root);
             folders.extend(self.unplanted(work.as_deref()));
@@ -80,6 +81,7 @@ impl Gate {
             in_work: work.is_some(),
             roots: &roots,
             kept: &kept,
+            cwd: &cwd,
             projects: &projects,
             seat: seat.as_deref(),
         });

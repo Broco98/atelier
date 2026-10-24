@@ -157,6 +157,30 @@ fn 알아서에서도_셸에_흘려_넣어_읽을_수_없는_명령은_push_전�
 }
 
 #[test]
+fn 알아서에서도_thread_폴더의_기록_파일이_나오는_명령은_묻는다() {
+    // 코드 리뷰 2차 A3 — 편집 도구는 Thread 기록을 거절하지만 명령으로는 쓸 수 있었다. Work 없는 Thread의 작업 폴더가 그 Thread
+    // 폴더라 맨 이름(`thread.json`)이 그 기록이다.
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", &host_md(""));
+    let touched = "echo x > thread.json; python3 -c";
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[("FAKE_CLAUDE_FIXTURE", "2.1.309/g4-background"), ("FAKE_CLAUDE_REROOT", &format!("python3 -c={touched}"))],
+    ));
+    let thread = host
+        .start_thread_asking("배경 작업을 돌려 줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto))
+        .expect("알아서로 새 Thread");
+
+    let asked = wait_permission(&sandbox, &thread, "host", "asked");
+    let command = asked["payload"]["toolCall"]["rawInput"]["command"].as_str().unwrap_or_default();
+    assert!(command.starts_with(touched), "{command}");
+    assert_eq!(asked["payload"]["policy"], "Thread 기록을 건드리기 전에 묻기", "{asked}");
+    assert!(asked["payload"].get("grant").is_none(), "줄 허락이 없다 — 「다시 묻지 않기」가 서지 않는다: {asked}");
+
+    host.shut_down();
+}
+
+#[test]
 fn thread_폴더의_점_파일을_고치려는_편집은_편집은_허용이어도_묻지_않고_거절된다() {
     // 코드 리뷰 1차 A2 — Thread 폴더는 Work 없는 Thread의 작업 폴더지만 `.policy.json` · `thread.json` · `events.jsonl` · `agents/`는
     // Atelier만 쓴다. 그대로면 Agent가 묻지 않고 제 허락을 넓힌다.
