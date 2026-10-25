@@ -290,6 +290,16 @@ describe("사이드바의 차례가 시안의 차례다", () => {
     expect(sidebar.slice(menuAt)).toContain("navItems.map(");
   });
 
+  // 02 코드 리뷰 S1 — 「새 Thread」 행의 고른 모양은 앱 셸의 가드와 **같은 물음**이다(`isBlankNewThread`): 고른 모양이면 눌러도 그 자리이고,
+  // 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서는 고른 모양이 아니라 누르면 씨앗 없는 첫 화면으로 간다. 경로만 보면 「+로 연 새 Work」에서
+  // 이 행이 고른 줄로 서서, 눌러도 아무 일이 없을 것처럼 보인다. 값은 `router.test.ts`가 진짜 라우터의 주소로 잰다.
+  it("「새 Thread」 행은 씨앗 없는 새 Thread에서만 고른 줄이다 — 앱 셸의 가드와 같은 물음이다", () => {
+    const at = sidebar.indexOf("function NewThreadItem(");
+    const item = sidebar.slice(at, sidebar.indexOf("\n}\n", at));
+    expect(item).toContain("useRouterState({ select: (state) => isBlankNewThread(state.location) })");
+    expect(item).not.toContain("pathname");
+  });
+
   it("바닥에 따로 선 설정 줄이 없다 — 설정은 사람 메뉴의 끝이다", () => {
     expect(app).not.toContain('label="Settings"');
     const menu = sidebar.slice(sidebar.indexOf("function PersonMenu("));
@@ -322,6 +332,16 @@ describe("바닥 사람 줄과 사람 메뉴", () => {
   it("사람 줄 위에 선이 없다", () => {
     // 한때 줄 윗변에 0.5 선이 섰다(UI개선 결정 25) — 02 스펙 §4가 걷었다. Codex 사이드바 바닥에는 선이 없다.
     expect(person).not.toContain("before:bg-border-heavy");
+  });
+
+  // 02 코드 리뷰 S2 — 사람 줄의 쉬는 글자 · 지나는 면은 사이드바 줄 한 벌(`sidebarRowTone(false)`)이다. 글자로 다시 적으면 그 한 벌을 고친 날
+  // 이 줄만 옛 색으로 남는다(05가 고른 줄의 글자를 바꾸려고 세 파일을 고쳤다 — `sidebar-look.ts` 머리말).
+  it("사람 줄의 글자 · 지나는 면은 사이드바 줄 한 벌을 쓴다", () => {
+    const at = person.indexOf("<DropdownMenuTrigger");
+    const trigger = person.slice(at, person.indexOf(">", person.indexOf("className=", at)));
+    expect(trigger).toContain("sidebarRowTone(false)");
+    expect(trigger).not.toContain("text-fg-sidebar");
+    expect(trigger).not.toMatch(/(?<!data-popup-open:)hover:bg-fill-nav-selected/);
   });
 });
 

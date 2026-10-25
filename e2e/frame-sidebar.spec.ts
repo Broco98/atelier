@@ -267,7 +267,14 @@ test("위 줄 세 행이 판 위끝 + 12부터 30 · 간격 31로 서고 — 새
 // **⌘N은 어느 화면에서나 새 Thread를 연다**(02 구현 스펙 §4 · 스토리 10) — 셸에 포커스가 있어도 먹는다(xterm이 ⌘ 글자 키를 앱으로 올린다).
 // **확인 창이나 팔레트가 떠 있으면 안 먹는다**(`AppShell`의 ⌘N — ⌘J와 같은 게이트): 답을 기다리는 동안 화면을 옮기지 않고, 팔레트가 빌린
 // 포커스와 다투지 않는다. 안 먹은 것은 「그 창이 그대로 서 있고 주소가 그대로다」로 잰다 — 대조로 같은 화면에서 창을 닫으면 먹는다.
-test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal에서 새 Thread를 열고, 확인 창 · 팔레트가 떠 있으면 안 연다", async ({ page }) => {
+//
+// **씨앗을 단 새 Thread에서도 먹는다**(02 코드 리뷰 S1) — +로 연 「새 Work」(`/?new=work`)와 그 Work를 고른 새 Thread(`/?work=<slug>`)도 `/`라,
+// 한때 가드가 거기서 키를 삼켜 Work 칩이 그대로 남았다. 거기서는 위 줄 「새 Thread」가 고른 줄이 아니고(눌러도 그 자리일 때만 고른 줄이다 —
+// 가드와 같은 물음 `isBlankNewThread`), ⌘N이 씨앗을 걷어 Work 칩이 「Work 없음」으로 돌아오며 그 행이 고른 줄이 된다. 같은 함수를 부르는
+// 행을 눌러도 같다.
+test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal · 씨앗을 단 새 Thread에서 새 Thread를 열고, 확인 창 · 팔레트가 떠 있으면 안 연다", async ({
+  page,
+}) => {
   await installFixtureBackend(page, THREAD_ANSWERS);
   const 새Thread로간다 = async (from: string) => {
     await page.keyboard.press("Meta+n");
@@ -287,6 +294,28 @@ test("⌘N이 Thread · Processes · 셸에 포커스가 선 Terminal에서 새 
   await awaitSpawned(page, 1);
   await expect(셸입력(page), "앵커: 셸에 포커스가 있다").toBeFocused();
   await 새Thread로간다("셸에 포커스가 선 Terminal");
+
+  // 씨앗을 단 새 Thread 둘 — 칩이 씨앗을 말하는 것이 앵커다(이미 첫 화면이다). 고른 줄은 행 버튼을 품은 상자의 `selected-row`다(`SidebarItem`).
+  const 워크칩 = (name: string) => page.getByRole("button", { name: `어디서 일할지 ${name}`, exact: true });
+  const 새Thread줄 = 위줄(page, "새 Thread").locator("..");
+  for (const [from, chip] of [
+    ["/?new=work", "새 Work"],
+    [`/?work=${plainWork.slug}`, plainWork.title],
+  ] as const) {
+    for (const how of ["⌘N", "「새 Thread」"] as const) {
+      await page.goto(from);
+      await expect(첫화면(page)).toBeVisible();
+      await expect(워크칩(chip), `${from} — 씨앗`).toBeVisible();
+      await expect(새Thread줄, `${from} — 고른 줄이 아니다`).not.toHaveClass(/\bselected-row\b/);
+      if (how === "⌘N") await 새Thread로간다(from);
+      else {
+        await 위줄(page, "새 Thread").click();
+        await expect(page, `${from}에서 ${how}`).toHaveURL("/");
+      }
+      await expect(워크칩("Work 없음"), `${from}에서 ${how} — 씨앗이 걷혔다`).toBeVisible();
+      await expect(새Thread줄, `${from}에서 ${how} — 고른 줄`).toHaveClass(/\bselected-row\b/);
+    }
+  }
 
   // 팔레트 — 떠 있는 동안 ⌘N은 화면을 옮기지 않고 팔레트도 그대로다.
   await page.goto("/processes");

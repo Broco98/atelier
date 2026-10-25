@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Bell, SquarePen, type LucideIcon } from "lucide-react";
 import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
-import { sidebarRowTone } from "./sidebar-look";
+import { SIDEBAR_ROW_SHAPE, sidebarRowTone } from "./sidebar-look";
 
 // 사이드바의 nav 줄 — **위 줄**(새 Thread · 내 차례 · Library, 02 구현 스펙 §4 · CONTEXT 「위 줄」)과 설정 nav의 항목이 같은 컴포넌트를 쓴다.
 // 둘은 같은 사이드바 자리에 갈아 서서 규격이 갈리면 들어가는 순간 행이 튄다(`Sidebar.tsx`의 GUTTER 주석과 같은 계약). 같은 문자열을 두 곳에
@@ -56,11 +56,13 @@ export function SidebarItem({
   return (
     <div
       className={cn(
-        // Codex 사이드바의 줄(v1 티켓 46 — 그림을 재었다 · 02 시안 `.row`) — 30(`size-row-nav`) · `radius-lg`, 글자 14/20 400(「새 채팅」은
-        // 보통 굵기다) · 아이콘 16. 아이콘은 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이고, 글자는 아이콘 뒤 8에 서서 창 끝 + 40이다(Codex
-        // 「새 채팅」 · 폴더 줄). 오른쪽 안쪽도 8이다 — 끝 글자가 거터와 합쳐 창 끝 − 16에 선다(시안 `.row .end`).
-        "flex h-(--size-row-nav) shrink-0 items-center rounded-lg transition-colors",
-        // 면 · 글자색은 사이드바 줄 한 벌이다(`sidebar-look` — Work 줄 · Thread 줄과 같다).
+        // Codex 사이드바의 줄(v1 티켓 46 — 그림을 재었다 · 02 시안 `.row`) — 30(`size-row-nav`), 글자 14/20 400(「새 채팅」은 보통 굵기다) ·
+        // 아이콘 16. 아이콘은 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이고, 글자는 아이콘 뒤 8에 서서 창 끝 + 40이다(Codex 「새 채팅」 ·
+        // 폴더 줄). 오른쪽 안쪽도 8이다 — 끝 글자가 거터와 합쳐 창 끝 − 16에 선다(시안 `.row .end`).
+        "flex h-(--size-row-nav) shrink-0 items-center transition-colors",
+        // 모양 · 면 · 글자색은 사이드바 줄 한 벌이다(`sidebar-look` — Work 줄 · Thread 줄과 같은 superellipse 12.5, `corner-shape`가 없으면
+        // 10 — 02 구현 스펙 §4 · 코드 리뷰 S2. 한때 `rounded-lg`라 그 창에서 둥글기가 갈렸다).
+        SIDEBAR_ROW_SHAPE,
         sidebarRowTone(active),
       )}
     >
@@ -72,7 +74,7 @@ export function SidebarItem({
         aria-pressed={pressed}
         aria-label={name}
         aria-keyshortcuts={keyshortcuts}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-sm focus-ring"
+        className={cn("flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-sm focus-ring", SIDEBAR_ROW_SHAPE)}
       >
         {/* 글리프는 줄 글자보다 한 단 옅은 `fg-icon`이다(시안 `.row .ico` #5d5f61) — 고른 줄에서도 그대로다. */}
         <Icon className="size-4 shrink-0 text-fg-icon" />

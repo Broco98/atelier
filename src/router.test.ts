@@ -10,6 +10,7 @@ import { navigateGuardingSettings } from "./features/settings/navigate-guarding-
 import { trackCanGoForward } from "./can-go-forward";
 import { rememberView, tabSearch } from "./routes/-work-search";
 import { readLibrarySearch } from "./routes/-library-search";
+import { isBlankNewThread } from "./routes/-new-thread-search";
 import type { ViewTab } from "./routes/-work-search";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
@@ -173,6 +174,42 @@ describe("진입은 새 Thread다", () => {
     await router.load();
     expect(history.length).toBe(1);
     expect(history.canGoBack()).toBe(false);
+  });
+});
+
+// 02 구현 스펙 §4 · 스토리 10 · 02 코드 리뷰 S1. **⌘N과 위 줄 「새 Thread」는 씨앗 없는 새 Thread로 간다** — 씨앗을 단 새 Thread(`/?work=<slug>` ·
+// `/?new=work`)도 `/`라, 한때 「`/`에 있으면 아무것도 하지 않는다」는 가드가 거기서 키를 삼켜 「새 Work」 칩이 그대로 남았다. 가드와 그 행의
+// 고른 모양이 같은 물음(`isBlankNewThread`)을 읽는다 — 고른 모양이면 눌러도 그 자리이고, 아니면 누르면 간다.
+describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
+  const blankAt = async (entry: string) => {
+    const { router } = setup([entry]);
+    await router.load();
+    return isBlankNewThread(router.state.location);
+  };
+
+  it("씨앗 없는 `/`만 이미 그 자리다", async () => {
+    expect(await blankAt("/")).toBe(true);
+    expect(await blankAt("/?work=refund-api")).toBe(false);
+    expect(await blankAt("/?new=work")).toBe(false);
+    expect(await blankAt("/threads/20261010-100000")).toBe(false);
+    expect(await blankAt("/library")).toBe(false);
+  });
+
+  it("모르는 모양의 씨앗은 없는 것과 같다 — 화면이 씨앗 없는 새 Thread라 그 자리다", async () => {
+    expect(await blankAt("/?work=")).toBe(true);
+    expect(await blankAt("/?new=project")).toBe(true);
+  });
+
+  it("씨앗을 단 새 Thread에서 `/`로 가면 씨앗이 걷히고 그 자리가 된다 — 히스토리는 한 칸 는다", async () => {
+    for (const entry of ["/?new=work", "/?work=refund-api"]) {
+      const { router, history } = setup([entry]);
+      await router.load();
+      await router.navigate({ to: "/" });
+      expect(router.state.location.pathname, entry).toBe("/");
+      expect(router.state.matches.find((match) => match.routeId === "/")?.search, entry).toEqual({});
+      expect(isBlankNewThread(router.state.location), entry).toBe(true);
+      expect(history.length, entry).toBe(2);
+    }
   });
 });
 

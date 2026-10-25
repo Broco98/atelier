@@ -36,12 +36,13 @@ import type { BandRow } from "@/features/terminal/shell-attention";
 import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import ProcessesNavMeta, { useProcessesNavMeta } from "@/features/processes/ProcessesNavMeta";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
+import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { foldingInnerClass, SIDEBAR_ID, SIDEBAR_MOTION, useFoldedFocus } from "./panel-layout";
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { initialOf, usePersonName } from "./person";
 import { ShellMeta } from "./shell-meta";
-import { SIDEBAR_ROWS } from "./sidebar-look";
+import { SIDEBAR_ROWS, sidebarRowTone } from "./sidebar-look";
 import { LIBRARY_KEY, MINE_KEY, MineRow, NEW_THREAD_KEY, NewThreadRow, SidebarItem } from "./sidebar-item";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useGoToShell from "./useGoToShell";
@@ -51,7 +52,7 @@ interface SidebarProps {
   open: boolean;
   /** 폭(끌어서 바꾸고 기억한다) — 앱 셸이 쥐고 뿌리에 싣는다(`--sidebar-width` · `--sidebar-min` — 머리 줄의 이름 자리도 같은 값을 읽는다). */
   size: ResizableWidth;
-  /** 「새 Thread」(v1 티켓 05) — 앱 셸이 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
+  /** 「새 Thread」(v1 티켓 05) — 앱 셸이 씨앗 없는 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
   /** 「Library」(v1 티켓 19) — 앱 셸이 지금 선 자리의 Work를 실어 `/library`로 간다. 켜짐은 그 항목이 스스로 읽는다(`LibraryItem`). */
   onOpenLibrary: () => void;
@@ -604,13 +605,16 @@ function useNow(ticking: boolean): number {
 // 메뉴의 `Terminal` 줄로, Processes 메타는 사람 줄 오른쪽으로 옮겼다가 메뉴의 `Processes` 줄 끝으로 갔다(02 스펙 S12 · `PersonMenu`).
 
 /**
- * 「새 Thread」 항목(v1 티켓 05) — `/`에 서 있으면 켜진다. **켜짐을 이 항목이 스스로 구독한다**: 셸이 구독하면 라우터 구독이 늘고
- * (`AppShell.test.ts`), 사이드바 몸이 구독하면 Thread를 오갈 때마다 목록 전체가 다시 그려진다. 값이 원시값 하나라 `/`를 드나들 때만
- * 이 항목이 다시 그려진다. 「내 차례」가 켜진 동안(`yielded`)은 고른 모양을 내려놓는다 — 고른 줄은 위 줄에 하나다. 끝의 ⌘N은 앱 셸의
- * 키와 같은 길로 간다(`AppShell`의 ⌘N — 단축키 표 `newThread`).
+ * 「새 Thread」 항목(v1 티켓 05) — **씨앗 없는 새 Thread**(`/`)에 서 있으면 켜진다. 앱 셸의 가드와 같은 물음이다(`isBlankNewThread`): 켜져
+ * 있으면 눌러도 그 자리이고, 씨앗을 단 새 Thread(+로 연 `/?new=work` · 이 Work에서 새 Thread `/?work=<slug>`)에서는 켜지지 않아 누르면
+ * 씨앗이 걷힌 첫 화면으로 간다(02 코드 리뷰 S1 — 한때 경로만 봐서 거기서도 켜진 채 눌러도 아무 일이 없었다).
+ *
+ * **켜짐을 이 항목이 스스로 구독한다**: 셸이 구독하면 라우터 구독이 늘고(`AppShell.test.ts`), 사이드바 몸이 구독하면 Thread를 오갈 때마다
+ * 목록 전체가 다시 그려진다. 값이 원시값 하나라 그 자리를 드나들 때만 이 항목이 다시 그려진다. 「내 차례」가 켜진 동안(`yielded`)은 고른
+ * 모양을 내려놓는다 — 고른 줄은 위 줄에 하나다. 끝의 ⌘N은 앱 셸의 키와 같은 길로 간다(`AppShell`의 ⌘N — 단축키 표 `newThread`).
  */
 function NewThreadItem({ stop, yielded, onClick }: { stop: boolean; yielded: boolean; onClick: () => void }) {
-  const here = useRouterState({ select: (state) => state.location.pathname === "/" });
+  const here = useRouterState({ select: (state) => isBlankNewThread(state.location) });
   return <NewThreadRow active={here && !yielded} stop={stop} onClick={onClick} />;
 }
 
@@ -678,7 +682,12 @@ function PersonMenu({
             16」). hover와 메뉴가 열린 동안은 사이드바 · 사람 메뉴의 고른 면이다(Codex — hover와 고른 면이 같은 .053, 시안 `.sb-foot.on`). */}
         <DropdownMenuTrigger
           aria-label={`${name} — 사람 메뉴`}
-          className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg pr-1 pl-2 text-left text-sm text-fg-sidebar transition-colors hover:bg-fill-nav-selected focus-ring data-popup-open:bg-fill-nav-selected"
+          className={cn(
+            "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg pr-1 pl-2 text-left text-sm transition-colors focus-ring",
+            // 쉬는 글자 · 지나는 면은 사이드바 줄 한 벌이다(`sidebar-look` — 02 코드 리뷰 S2). 메뉴가 열린 동안도 그 면이다.
+            sidebarRowTone(false),
+            "data-popup-open:bg-fill-nav-selected",
+          )}
         >
           {/* 얼굴은 글자다(캔버스 「사람은 글자」) — 24 · 짙은 면 `face-person`에 흰 글자(시안 `.ava`). 글자는 12다(시안 11 — 글자 단계에
               11이 없다). */}

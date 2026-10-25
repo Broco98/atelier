@@ -1942,7 +1942,7 @@ const 면이된다 = (row: Locator, color: string) =>
 // `fill-selected`, 지나는 행은 `fill-soft`로 갈렸다 — 사이드바가 흰 판 위에 서면서(02 티켓 02) Codex의 한 면이 됐다. 고른 행은 올려도
 // 그 면이다. work 행도 같은 면이다 — nav와 한 컬럼에 세로로 붙어 서는 행이라 고름이 같은 무게로 읽혀야 한다. 사이드바 밖(흰 판 안
 // 작업 패널)의 고른 행은 그대로 불투명한 `fill-selected`다.
-test("nav 행은 30 · radius-lg · 400 · 아이콘 16이고, 고른 행 · 지나는 행은 fill-nav-selected 면이며 고른 행만 글자가 fg다 — work 행도 같다", async ({
+test("nav 행은 30 · radius-row · 400 · 아이콘 16이고, 고른 행 · 지나는 행은 fill-nav-selected 면이며 고른 행만 글자가 fg다 — work 행도 같다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -1966,9 +1966,10 @@ test("nav 행은 30 · radius-lg · 400 · 아이콘 16이고, 고른 행 · 지
   await expect(고른nav).toHaveClass(/selected-row/);
   await 면이된다(고른nav, 면);
   await 글자가된다(고른nav, 진한글자);
+  // 둥글기는 Work · Thread 줄과 한 벌인 `radius-row`다(02 구현 스펙 §4 · 코드 리뷰 S2 — superellipse 12.5, WebKit에서는 10). 한때 `radius-lg`였다.
   expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — 토큰").toEqual([
     await 토큰값(page, "height", "--size-row-nav"),
-    await 토큰값(page, "border-top-left-radius", "--radius-lg"),
+    await 토큰값(page, "border-top-left-radius", "--radius-row"),
   ]);
   expect(await 칠한값(고른nav, "height", "border-top-left-radius"), "nav 행 — 못박은 수").toEqual(["30px", "10px"]);
   // 글자는 work 행과 같은 `text-sm`(14/20 400)이다 — Codex 사이드바는 줄마다 보통 굵기이고 고른 줄은 면으로만 드러난다(v1 티켓 46 —
@@ -1998,7 +1999,10 @@ test("nav 행은 30 · radius-lg · 400 · 아이콘 16이고, 고른 행 · 지
   await expect(고른work).toHaveClass(/selected-row/);
   await 면이된다(고른work, 면);
   await 글자가된다(고른work, 진한글자);
-  expect((await 칠한값(고른work, "height"))[0]).toBe(await 토큰값(page, "height", "--size-row-nav"));
+  expect(await 칠한값(고른work, "height", "border-top-left-radius"), "work 행 — nav 행과 같은 토큰").toEqual([
+    await 토큰값(page, "height", "--size-row-nav"),
+    await 토큰값(page, "border-top-left-radius", "--radius-row"),
+  ]);
   const 지나는work = workRow(page, plainWork.slug);
   await 지나는work.hover();
   await 면이된다(지나는work, 면);

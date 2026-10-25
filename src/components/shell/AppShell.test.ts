@@ -103,4 +103,13 @@ describe("⌘N", () => {
     expect(handler).toContain("dialogStore.state !== null || searchOpen");
     expect(handler).toContain("openNewThread()");
   });
+
+  // 02 코드 리뷰 S1 — 가드는 **씨앗 없는 새 Thread인가**를 묻는다(`isBlankNewThread` — 값은 `router.test.ts`가 진짜 라우터의 주소로 잰다).
+  // 경로(`/`)만 보면 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서 ⌘N과 「새 Thread」가 먹지 않는다 — 「새 Work」 칩이 그대로 남는다.
+  it("가드가 경로가 아니라 씨앗 없는 새 Thread인가를 묻는다", () => {
+    const at = source.indexOf("const openNewThread = useCallback(");
+    const body = source.slice(at, source.indexOf("}, [", at));
+    expect(body).toContain('if (!isBlankNewThread(router.state.location)) void navigate({ to: "/" });');
+    expect(body).not.toContain("pathname");
+  });
 });
