@@ -46,12 +46,12 @@ export function ShellHeadRow({ open, dragging, onSlot, children }: ShellHeadRowP
         {children}
       </div>
       {/* 세로선은 `separator`(#e5e5e5) 20 — 줄 가운데에 위아래 12씩 비운다(Codex). 이름이 그 뒤 14에서 시작한다(시안 `.tb-c`). 화면이
-          아무것도 보내지 않으면(새 Thread) 선도 서지 않는다. 오른쪽 끝 여백 10은 옛 Thread 머리 줄의 것을 이었다(06이 시안 값으로). */}
+          아무것도 보내지 않으면(새 Thread) 선도 서지 않는다. 오른쪽 끝 여백은 8이다(시안 `.tb-r` — 06). */}
       <div
         ref={onSlot}
         data-slot="screen-head"
         className={cn(
-          "relative flex h-full min-w-0 flex-1 items-center pr-2.5",
+          "relative flex h-full min-w-0 flex-1 items-center pr-2",
           open &&
             "pl-3.5 before:absolute before:inset-y-3 before:left-0 before:w-px before:bg-separator empty:before:hidden",
         )}

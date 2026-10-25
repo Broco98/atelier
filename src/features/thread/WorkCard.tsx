@@ -16,7 +16,6 @@ import {
   GitPullRequest,
   GitPullRequestClosed,
   MoreHorizontal,
-  PanelRight,
   Plus,
   SquareTerminal,
 } from "lucide-react";
@@ -639,27 +638,5 @@ function Counts({
       {!!additions && <span className="text-diff-added">+{additions}</span>}
       {!!deletions && <span className="text-diff-deleted">−{deletions}</span>}
     </span>
-  );
-}
-
-/**
- * 위 막대의 카드 버튼(보드 「열고 닫기」 — 막대 오른쪽 끝, 열리면 켜진 면). Work 없는 Thread에는 서지 않는다(스토리 114 — 부르는 쪽이
- * 가린다). 이름이 할 일을 말하고(「Work 카드 열기 · 닫기」) 눌림은 `aria-pressed`가 말한다.
- */
-export function WorkCardToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <Hint
-      text={open ? "Work 카드 닫기" : "Work 카드 열기"}
-      announce="name"
-      type="button"
-      aria-pressed={open}
-      onClick={onToggle}
-      className={cn(
-        "icon-button transition-colors focus-ring",
-        open ? "toggle-on" : "text-fg-secondary quiet-hover",
-      )}
-    >
-      <PanelRight className="size-4" />
-    </Hint>
   );
 }

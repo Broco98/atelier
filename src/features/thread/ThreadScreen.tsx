@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { ArrowDown, ArrowLeft, Folder } from "lucide-react";
+import { ArrowDown, ArrowLeft } from "lucide-react";
 import { PANEL_MOTION } from "@/components/shell/panel-layout";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
@@ -11,7 +11,7 @@ import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
-import { AgentFace, FaceStack } from "./AgentFace";
+import { AgentFace } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { ArrivalScope, Arriving } from "./arrival";
 import QuestionCard from "./QuestionCard";
@@ -55,7 +55,8 @@ import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
-import { ArchivedWorkCard, WorkCard, WorkCardToggle, useArchivedWork, useCardOpen } from "./WorkCard";
+import { ArchivedWorkCard, WorkCard, useCardOpen } from "./WorkCard";
+import { HeadWork, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { workHome } from "./work-chip";
 import { decisionItems, decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
@@ -63,8 +64,12 @@ import WorkProposalCard from "./WorkProposalCard";
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
 //
-// - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 흰 판 — 02 구현 스펙 §3) — 이 화면은 머리 줄에 놓을 것(Thread 이름 · Work 알약 ·
-//   참여자 · 카드 토글)과 판 안의 본문만 건넨다(`PlainFrame`). 이름은 그 자리에서 바꾼다(두 번 클릭 · F2). 새 Thread의 머리 줄은 비어 있다.
+// - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 흰 판 — 02 구현 스펙 §3) — 이 화면은 머리 줄에 놓을 것과 판 안의 본문만 건넨다
+//   (`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
+// - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
+//   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · Work 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). 오른쪽
+//   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다. 옛 Work 알약(브랜치)과 참여자 얼굴은 걷었다(S14 —
+//   참여자는 본문의 이름 줄과 @ 메뉴가 말한다). 시안의 머리 줄 Work 탭은 짓지 않는다 — Work 화면 몫이다.
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
 //   아래 28에 입력창과 트레이뿐이다. Host 얼굴은 걷었다(02 S26 — 시안과 Codex 첫 화면에 없다). 시안의 Space 제안 줄 · 「Space 없음」
 //   칩은 짓지 않는다 — 트레이에는 Work 칩이 선다. 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과
@@ -78,11 +83,11 @@ import WorkProposalCard from "./WorkProposalCard";
 //   자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
 //   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
-//   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 Work 카드가 열린다, v1 티켓 34)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
+//   머리 줄 이름 앞에 그 Work의 이름(누르면 Work 카드가 열린다 — 02 S13)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
-// - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
+// - **여럿이 한 Thread에**(v1 티켓 14) — 누가 있는지는 본문의 이름 줄과 @ 메뉴가 말한다(머리 줄 얼굴은 걷었다 — 02 S14).
 //   입력창의 @ 메뉴는 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의 Session
 //   값이다(§14) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
 //   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
@@ -93,15 +98,16 @@ import WorkProposalCard from "./WorkProposalCard";
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
-// - **Work 카드**(v1 티켓 34 · §15) — Work에 이은 Thread의 오른쪽 위, 위 막대의 카드 버튼 바로 아래에 Work 카드가 떠 있고 대화는 카드
-//   폭 + 틈만큼 왼쪽으로 비켜 준다(보드 `.chat{margin-right:312px}`). 버튼 · 머리 줄 Work 알약이 여닫고, 열림은 Work마다 기억한다(S32).
-//   Work 없는 Thread에는 카드도 버튼도 없다(스토리 114). 카드 머리의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
+// - **Work 카드**(v1 티켓 34 · §15) — Work에 이은 Thread의 오른쪽 위, 머리 줄 요약 고정 토글 바로 아래에 Work 카드가 떠 있고 대화는 카드
+//   폭 + 틈만큼 왼쪽으로 비켜 준다(보드 `.chat{margin-right:312px}`). 토글이 여닫고 머리 줄 Work 이름이 열며, 열림은 Work마다 기억한다(S32).
+//   Work 없는 Thread에는 카드도 토글도 없다(스토리 114). 카드 머리의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
+//   카드를 요약 카드로 바꾸고 Work 없는 Thread에도 토글을 세우는 것은 02 티켓 07이다.
 // - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드) — 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓어진다. 대화는 왼쪽
 //   480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그 오른쪽을 틈 12까지 채운다(보드 `.p-open
 //   .wpane`). 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면 되돌린다. 넓힌 것은 이 화면의 상태라
 //   다른 Thread로 옮기면 작은 카드다. 카드를 닫으면 넓힌 것도 걷힌다.
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 들어서며 움직인다(`ArrivalScope` — Thread를 열 때 이미 있던 줄은
-//   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오르며, 머리 줄의 새 참여자 얼굴은 튄다.
+//   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오른다.
 //   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리는 사이드바와 같은 패널 박자로 옮겨 간다(`duration-panel` · `ease-panel`).
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
@@ -273,32 +279,31 @@ export function ThreadScreen({ thread }: { thread: string }) {
     },
     [cardWork, queryClient, setCardOpen],
   );
+  // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
+  const renameName =
+    view && !gone
+      ? {
+          editing: renaming,
+          onStart: () => setRenaming(true),
+          onEnd: () => setRenaming(false),
+          onCommit: (title: string) => {
+            setProblem(null);
+            rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
+          },
+          label: "Thread 이름",
+        }
+      : undefined;
   return (
     <PlainFrame
       label={name}
-      title={{
-        name,
-        rename:
-          view && !gone
-            ? {
-                editing: renaming,
-                onStart: () => setRenaming(true),
-                onEnd: () => setRenaming(false),
-                onCommit: (title) => {
-                  setProblem(null);
-                  rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
-                },
-                label: "Thread 이름",
-              }
-            : undefined,
-      }}
-      after={cardWork ? <WorkPill slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} /> : undefined}
+      lead={cardWork ? <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} /> : undefined}
+      title={{ name, rename: renameName }}
       end={
-        view && (view.participants.length > 0 || cardWork) ? (
+        view ? (
           <>
-            {view.participants.length > 0 && <ThreadParticipants view={view} />}
+            <ThreadMenu key={thread} rename={renameName?.onStart ?? null} />
             {cardWork && (
-              <WorkCardToggle
+              <SummaryToggle
                 open={cardOpen}
                 onToggle={() => {
                   if (cardOpen) setOpened(null);
@@ -403,37 +408,6 @@ function useFoldSidebar(expanded: boolean) {
   }, [expanded]);
 }
 
-/**
- * 머리 줄의 Work 알약(화면 2 보드 `.wchip`) — 높이 26 · 알약 · `fill-soft` · 12/18 `fg-secondary`, 폴더 14 · 제목 · 「·」 · 고정폭 브랜치.
- * 누르면 Work 카드를 연다(v1 티켓 34 — 보드의 뜻). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다. 보관된 Work는 보관
- * 목록의 제목이다(v1 티켓 38).
- */
-function WorkPill({ slug, archived, onOpen }: { slug: string; archived: boolean; onOpen: () => void }) {
-  const { data: works } = useWorks();
-  const work = works?.find((one) => one.slug === slug) ?? null;
-  const shelved = useArchivedWork(archived ? slug : null);
-  const title = work?.title || shelved?.title || slug;
-  return (
-    <button
-      type="button"
-      aria-label={`Work 열기: ${title}`}
-      onClick={onOpen}
-      className="inline-flex h-6.5 min-w-0 items-center gap-1.5 rounded-full bg-fill-soft px-2.5 text-xs whitespace-nowrap text-fg-secondary transition-colors quiet-hover focus-ring"
-    >
-      <Folder className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{title}</span>
-      {work?.branch && (
-        <>
-          <span aria-hidden className="text-fg-tertiary">
-            ·
-          </span>
-          <span className="shrink-0 font-mono text-2xs">{work.branch}</span>
-        </>
-      )}
-    </button>
-  );
-}
-
 /** 참여자의 이름 · 얼굴은 기록의 들어옴 줄(`fold.ts`의 `cast`), 누가 앉았는지는 `thread.json`의 참여자 줄이 정본이다. */
 function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
   return view.participants.map((one) => ({
@@ -442,29 +416,6 @@ function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
     name: model.cast[one.handle]?.name ?? one.handle,
     avatar: model.cast[one.handle]?.avatar ?? null,
   }));
-}
-
-/**
- * 머리 줄의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. Thread를 연 뒤에
- * 새로 앉은 얼굴은 튀어 들어온다(v1 티켓 43 · Motion 보드 「Agent 참여」) — 자리는 Thread마다 새로 선다(다른 Thread로 옮겨 온 얼굴은 튀지
- * 않는다).
- */
-function ThreadParticipants({ view }: { view: ThreadView }) {
-  const lines = useStore(threadRecordStore, (state) => linesOf(state, view.id));
-  const model = foldOf(lines, view.live ? null : view.lastSeq);
-  return (
-    <ArrivalScope key={view.id}>
-      <FaceStack
-        people={seatedOf(view, model)}
-        max={3}
-        label="참여자"
-        faceClass="size-6"
-        moreClass="h-6 min-w-6"
-        className="-space-x-2 pr-1"
-        joining
-      />
-    </ArrivalScope>
-  );
 }
 
 /**

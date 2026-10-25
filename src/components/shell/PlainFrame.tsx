@@ -6,45 +6,62 @@ import type { HeadRename } from "./Frame";
 import { ScreenHead } from "./ShellHead";
 
 // **Thread · 첫 화면 · Library가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07) — 틀은 앱 셸 하나다: 크롬 맨 위 머리 줄(44)과 그 아래 흰 판
-// (`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 · 이름 뒤 · 오른쪽 끝)과 판 안에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의
+// (`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의
 // 화면들(Projects · Terminal · Processes · Archive · Settings · Work 화면)은 아직 제 머리 카드를 판 안에 그린다 — 머리 줄로 옮기는 것은 03이다.
 //
-//   머리 줄의 화면 자리(`ScreenHead`) ─ 이름(있으면 · 그 자리에서 바꾼다) · 이름 뒤(`after`) · 오른쪽 끝(`end`)
+//   머리 줄의 화면 자리(`ScreenHead`) ─ 이름 앞(`lead`) · 이름(있으면 · 그 자리에서 바꾼다) ··· 오른쪽 끝(`end`)
 //   판 안 ─ 본문 `<main>` — 화면이 건넨 것이 곧장 선다
 //
 // - **머리 줄의 자리 · 끌기 · 세로선은 셸의 것이다** — 이름이 사이드바 끝을 따라 옮겨 가는 것도 셸이 든다(`ShellHeadRow`). 바꿀 수 있는
 //   이름은 포커스를 받는 요소라 Tauri가 끌기에서 스스로 비켜 둔다 — 끄는 자리의 두 번 클릭은 창 키우기라, 두 번 클릭이 이름 바꾸기인
 //   이름은 끌면 안 된다. 이름이 없는 새 Thread는 머리 줄 가운데가 빈다(F1-Home 보드).
+// - **Codex 머리 줄 모양이다**(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽은 이름 앞 · 이름이 틈 8로 한 줄이고, 오른쪽 끝은 28 아이콘 버튼들이
+//   틈 2로 선다(왼쪽과 적어도 12 띄움). 오른쪽 끝 여백 8은 셸의 화면 자리가 든다.
 // - **머리 줄 아래 선은 없다** — 판의 위끝이 경계다. 본문은 제 카드 없이 흰 판에 곧장 선다.
 // - **이름은 그 자리에서 바꾼다**(두 번 클릭 · F2) — 공용 틀 머리 카드의 이름과 같은 길이다(`HeadRename` · `InlineRename`).
-// - 머리의 모양(이름 14/500 · Work 알약 · 참여자 얼굴 · 카드 토글)은 옛 Thread 머리 줄 그대로 옮겼다 — 06이 Codex 모양으로 바꾼다.
 
-interface PlainFrameProps {
+interface PlainHeadProps {
+  /** 이름 앞 — Thread가 이은 Work의 「폴더 · Work 이름 ›」(02 §6 · S13). */
+  lead?: ReactNode;
   /** 머리 줄의 이름 — 없으면 머리 줄 가운데가 빈다(새 Thread). */
   title?: { name: string; rename?: HeadRename };
-  /** 이름 바로 뒤 — 이은 Work의 알약(v1 티켓 30 · 화면 2 보드 `.wchip`, 이름과 틈 10). */
-  after?: ReactNode;
-  /** 머리 줄 오른쪽 끝 — 참여자 얼굴(v1 티켓 14). ⋯ · Work 패널 토글(31 · 34)도 여기 선다. */
+  /** 머리 줄 오른쪽 끝 — Thread의 「…」 · 요약 고정 토글(02 §6), Library의 「새 Agent 만들기」. */
   end?: ReactNode;
+}
+
+interface PlainFrameProps extends PlainHeadProps {
   /** 본문(`<main>`)의 이름(`aria-label`). */
   label: string;
   children: ReactNode;
 }
 
-export function PlainFrame({ title, after, end, label, children }: PlainFrameProps) {
+export function PlainFrame({ lead, title, end, label, children }: PlainFrameProps) {
   return (
     <>
-      {(title || after || end) && (
+      {(lead || title || end) && (
         <ScreenHead>
-          {title && <PlainTitle name={title.name} rename={title.rename} />}
-          {after && <div className="ml-2.5 flex min-w-0 items-center">{after}</div>}
-          {end && <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2.5">{end}</div>}
+          <PlainHead lead={lead} title={title} end={end} />
         </ScreenHead>
       )}
       {/* 판 안 사이드바 오른쪽의 남는 자리를 다 쓴다(판이 가로 줄이다). */}
       <main aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col">
         {children}
       </main>
+    </>
+  );
+}
+
+/** 머리 줄 화면 자리에 서는 것 — 셸의 화면 자리(가로 flex · 가운데 맞춤)의 직계로 선다. */
+export function PlainHead({ lead, title, end }: PlainHeadProps) {
+  return (
+    <>
+      {(lead || title) && (
+        <div className="flex min-w-0 items-center gap-2">
+          {lead}
+          {title && <PlainTitle name={title.name} rename={title.rename} />}
+        </div>
+      )}
+      {end && <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-3">{end}</div>}
     </>
   );
 }
