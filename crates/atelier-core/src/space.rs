@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::paths::spaces_in;
 use crate::{Error, Result};
@@ -499,6 +499,132 @@ pub fn list_spaces(data_root: &Path) -> Result<Vec<Space>> {
 pub fn get_space(data_root: &Path, slug: &str) -> Result<Space> {
     let text = std::fs::read_to_string(space_path(data_root, slug)?).map_err(|_| Error::SpaceNotFound(slug.to_string()))?;
     Ok(read_text(&text, &registered_projects(data_root)).into_space(slug))
+}
+
+/// 이 Space에 이은 곳 — `space`가 이 slug인 진행 중인 Work(`works/`)와 Work 없는 Thread(03 구현 스펙 §9). Work에 이은 Thread는 그 Work의
+/// 칸을 따르므로 들지 않는다. 지우기가 비운 곳 · 되돌리기가 다시 적은 곳이고, 지운 자리에 파일 곁에 적는 것(`.deleted/<slug>.json`)이다.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceLinks {
+    /// Work의 slug — Work 목록 차례.
+    pub works: Vec<String>,
+    /// Thread의 id — 새것부터.
+    pub threads: Vec<String>,
+}
+
+/// 쓰임(§8 「둘레 읽기」) — 지우기 확인 창의 「Thread 3개 · Work 1개가 이 Space에서 빠져 「Space 없음」이 돼요」.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SpaceUsage {
+    /// 이 Space에 이은 진행 중인 Work.
+    pub works: usize,
+    /// 이 Space로 읽는 Thread — Work 없는 Thread와 이은 Work의 Thread. 지우면 이 Thread마다 「지워짐」 줄이 선다.
+    pub threads: usize,
+}
+
+/// 지운 것 — 그 Space(줄이 이름을 말한다)와 비운 곳.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedSpace {
+    pub space: Space,
+    pub unlinked: SpaceLinks,
+}
+
+/// 되돌린 것 — 제자리에 선 Space와 다시 적은 곳.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoredSpace {
+    pub space: Space,
+    pub relinked: SpaceLinks,
+}
+
+/// 쓰임 읽기 — 지우기 확인 창이 부른다. 보관된 Work(`archive/`)는 읽기만이라 세지 않는다.
+pub fn space_usage(data_root: &Path, slug: &str) -> Result<SpaceUsage> {
+    get_space(data_root, slug)?;
+    let links = linked(data_root, slug)?;
+    let index = crate::threads::ThreadIndex::load(data_root)?;
+    let in_works: usize = links.works.iter().map(|work| index.of_work(work).len()).sum();
+    Ok(SpaceUsage { works: links.works.len(), threads: links.threads.len() + in_works })
+}
+
+/// **Space 지우기**(§9) — 파일을 지운 자리(`spaces/.deleted/`)로 옮기고, 그 slug를 적은 `work.json` · `thread.json`의 `space`를 비운다.
+/// Project · 대화 · 문서 · worktree는 건드리지 않는다. 흐름의 「지워짐」 줄은 엔진이 비운 곳마다 남긴다(기록은 엔진의 것 하나다).
+///
+/// - **비운 곳을 먼저 적고 → 파일을 옮기고 → 칸을 비운다.** 여러 파일을 고치는 사이 앱이 꺼지면 반쯤 비운 채 남는다 — 남은 칸은 없는
+///   Space를 가리켜 「Space 없음」으로 읽히고(§7 규칙 1) 그 Thread의 다음 말에서 닫힌다(손으로 지운 파일과 같은 길). 되돌리기는 적어 둔
+///   곳을 안다. 반대 차례면 칸만 빈 채 Space가 남아 연결이 몰래 사라진다.
+/// - 칸을 비우지 못한 곳은 답의 `unlinked`에서 빠진다 — 위의 길로 닫힌다.
+/// - 지운 자리는 slug마다 마지막 하나다(S10) — 같은 slug를 다시 지우면 앞의 파일 · 기록을 덮는다.
+pub fn delete_space(data_root: &Path, slug: &str) -> Result<DeletedSpace> {
+    let space = get_space(data_root, slug)?;
+    let links = linked(data_root, slug)?;
+    let deleted = spaces_in(data_root).join(DELETED);
+    crate::atomic::write_json_atomically(&deleted, &format!("{slug}.json"), &links, "지운 Space의 연결을")?;
+    std::fs::rename(space_path(data_root, slug)?, deleted.join(format!("{slug}.md")))?;
+    let unlinked = SpaceLinks {
+        works: links.works.into_iter().filter(|work| swap_work_space(data_root, work, Some(slug), None)).collect(),
+        threads: links.threads.into_iter().filter(|thread| swap_thread_space(data_root, thread, Some(slug), None)).collect(),
+    };
+    Ok(DeletedSpace { space, unlinked })
+}
+
+/// **Space 되돌리기**(§9 · S10) — 지운 뒤 토스트의 「되돌리기」만 부른다.
+///
+/// - 지운 자리의 파일을 제자리로 돌리고, 비웠던 곳 가운데 **아직 비어 있는 것에만** 다시 적는다 — 그사이 다른 Space를 고른 칸, Work가 된
+///   Thread(이제 Work의 칸을 따른다), 보관 · 지운 Work와 Thread는 건드리지 않는다.
+/// - 그사이 같은 slug가 다시 쓰였으면(`SlugReused`) 되돌리지 않는다 — 새로 선 Space를 덮지 않는다. 지운 것이 없으면 `SpaceNotFound`다.
+pub fn restore_space(data_root: &Path, slug: &str) -> Result<RestoredSpace> {
+    let file = space_path(data_root, slug)?;
+    let deleted = spaces_in(data_root).join(DELETED);
+    let kept = deleted.join(format!("{slug}.md"));
+    if !kept.is_file() {
+        return Err(Error::SpaceNotFound(slug.to_string()));
+    }
+    if file.exists() {
+        return Err(Error::SlugReused(slug.to_string()));
+    }
+    std::fs::rename(&kept, &file)?;
+    let record = deleted.join(format!("{slug}.json"));
+    let links: SpaceLinks = crate::atomic::read_json_or_default(&record, "지운 Space의 연결");
+    let relinked = SpaceLinks {
+        works: links.works.into_iter().filter(|work| swap_work_space(data_root, work, None, Some(slug))).collect(),
+        threads: links.threads.into_iter().filter(|thread| swap_thread_space(data_root, thread, None, Some(slug))).collect(),
+    };
+    let _ = std::fs::remove_file(record);
+    Ok(RestoredSpace { space: get_space(data_root, slug)?, relinked })
+}
+
+/// 지운 Space 파일이 머무는 자리(`spaces/.deleted/`) — 점 폴더라 목록 · 감시 · 새 slug 짓기가 보지 않는다.
+const DELETED: &str = ".deleted";
+
+/// 이 Space에 이은 곳을 훑는다 — Space 파일엔 Work · Thread를 적지 않으므로(§9) 앱이 모은다.
+fn linked(data_root: &Path, slug: &str) -> Result<SpaceLinks> {
+    let works = crate::works::read_works(&crate::paths::works_in(data_root))?
+        .into_iter()
+        .filter(|work| work.space.as_deref() == Some(slug))
+        .map(|work| work.slug)
+        .collect();
+    let threads = crate::threads::ThreadIndex::load(data_root)?
+        .all()
+        .iter()
+        .filter(|summary| {
+            crate::threads::read_thread(data_root, &summary.id).is_ok_and(|file| file.work.is_none() && file.space.as_deref() == Some(slug))
+        })
+        .map(|summary| summary.id.clone())
+        .collect();
+    Ok(SpaceLinks { works, threads })
+}
+
+/// 그 Work의 `space`가 아직 `from`이면 `to`로 바꾼다 — 바꿨으면 참. 읽지 못하는 Work(보관 · 지움)는 그대로다.
+fn swap_work_space(data_root: &Path, work: &str, from: Option<&str>, to: Option<&str>) -> bool {
+    let works = crate::paths::works_in(data_root);
+    crate::works::read_work(&works, work).is_ok_and(|read| read.space.as_deref() == from)
+        && crate::works::update_work_space(&works, work, to).is_ok()
+}
+
+/// 그 Work 없는 Thread의 `space`가 아직 `from`이면 `to`로 바꾼다 — 바꿨으면 참. 그사이 Work에 이었거나 지워진 Thread는 그대로다.
+fn swap_thread_space(data_root: &Path, thread: &str, from: Option<&str>, to: Option<&str>) -> bool {
+    crate::threads::read_thread(data_root, thread).is_ok_and(|file| file.work.is_none() && file.space.as_deref() == from)
+        && crate::threads::update_thread(data_root, thread, |file| file.space = to.map(str::to_owned)).is_ok()
 }
 
 fn shown_name(space: &Space) -> &str {

@@ -28,6 +28,8 @@ import { useWorks } from "@/features/works/hooks";
 import { workMark } from "@/features/works/work-mark";
 import { StatusMark } from "@/components/shell/status-mark";
 import { useSpace, useUpdateSpace } from "./hooks";
+import { SpaceActions } from "./SpaceActions";
+import { useSpaceDelete } from "./SpaceDeleteDialog";
 import { SpaceGraph } from "./SpaceGraph";
 import { addMenu, createdLine, spaceName, spaceWorks } from "./space-view";
 import type { SpaceDetail as Detail, SpacePatch } from "./types";
@@ -39,13 +41,16 @@ import type { SpaceDetail as Detail, SpacePatch } from "./types";
 // 관계 그래프의 「편집」과 문제 상자의 「관계 편집에서 고치기」는 그 Space 파일을 글 그대로 고치는 화면(`/spaces/$slug/edit` — 04)으로 간다.
 // 오른쪽 칸 「Work」 묶음은 이 Space에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
 //
-// 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06), ⋯ 「관계 편집 · 삭제…」(07).
+// 「← Space」 줄 오른쪽 ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인 창을 거쳐 목록으로 가고, 목록에 「… Space를 지웠어요 · 되돌리기」
+// 토스트가 선다. 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06 — 같은 줄 ⋯ 뒤, 시안 `.topbar`).
 
 export default function SpaceDetail({ slug }: { slug: string }) {
   const { data: space, isError, error } = useSpace(slug);
   const label = navItem("spaces").label;
   const navigate = useNavigate();
   const goList = () => void navigate({ to: "/spaces" });
+  // 상세에서 지우면 목록으로 간다(§14) — 되돌리기 토스트는 목록의 자리에 선다.
+  const removing = useSpaceDelete(goList);
   return (
     <PlainFrame
       label={`${label} 상세`}
@@ -62,6 +67,9 @@ export default function SpaceDetail({ slug }: { slug: string }) {
               <ArrowLeft aria-hidden className="size-3.5 text-fg-icon" />
               {label}
             </Link>
+            <span className="ml-auto flex items-center gap-1.5">
+              {space && <SpaceActions space={space} onDelete={(one) => void removing.ask(one)} />}
+            </span>
           </div>
           {space ? (
             <SpaceBody key={space.slug} space={space} onOpenSpace={(to) => void navigate({ to: "/spaces/$slug", params: { slug: to } })} />
@@ -71,6 +79,7 @@ export default function SpaceDetail({ slug }: { slug: string }) {
         </div>
         {/* 되돌리기 토스트의 자리 — 본문 왼쪽 아래(시안 `.toast` — 왼 40 · 아래 24). */}
         <Toaster className="bottom-6 left-10 translate-x-0" />
+        {removing.dialog}
       </div>
     </PlainFrame>
   );

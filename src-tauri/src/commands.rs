@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, AddProject, ArchiveEntry, ArchivedDocs, Destination,
-    FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView, SearchResults, Space, SpaceDetail,
-    SpaceDraft, SpacePatch, WorkView, WorkWithSpecTree, WorktreeTree,
+    DeletedSpace, FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView, RestoredSpace, SearchResults,
+    Space, SpaceDetail, SpaceDraft, SpacePatch, SpaceUsage, WorkView, WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -144,6 +144,14 @@ pub async fn check_space(slug: Option<String>, text: String) -> CmdResult<SpaceD
 #[tauri::command]
 pub async fn save_space_text(slug: Option<String>, text: String) -> CmdResult<Space> {
     atelier_core::save_space_text(&data_root(), slug.as_deref(), &text).map_err(err)
+}
+
+/// Space 지우기 확인 창이 읽는 것(03 구현 스펙 §8 「쓰임」 · §14) — 이 Space에 이은 진행 중인 Work 수와 이 Space로 읽는 Thread 수. 읽기만
+/// 하고 core를 부르기만 한다(L4 다리로도 탄다). 지우기 · 되돌리기는 줄을 남기므로 엔진을 지난다(`thread_delete_space` ·
+/// `thread_restore_space`).
+#[tauri::command]
+pub async fn space_usage(slug: String) -> CmdResult<SpaceUsage> {
+    atelier_core::space_usage(&data_root(), &slug).map_err(err)
 }
 
 /// 읽는 범위(03 구현 스펙 §7) — Space(slug · 이름 · 문제 있음) · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Space · 빈 Space · 등록
@@ -1090,6 +1098,26 @@ pub async fn thread_set_work_space(
     space: Option<String>,
 ) -> CmdResult<()> {
     to_host(&engine, "Work의 Space를 바꾸지 못했습니다", move |host| host.set_work_space(&work, space.as_deref())).await
+}
+
+/// Space 지우기(03 티켓 07 · §9 · §14) — 확인 창의 「삭제」. 파일을 지운 자리로 옮기고 그 Space에 이은 칸을 비우며, 그 Space로 읽던
+/// Thread마다 「지워짐」 줄(`space`)을 남긴다. Project · 대화 · 문서 · worktree는 그대로다. 없는 Space는 그 까닭으로 거절된다.
+#[tauri::command]
+pub async fn thread_delete_space(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    slug: String,
+) -> CmdResult<DeletedSpace> {
+    to_host(&engine, "Space를 지우지 못했습니다", move |host| host.delete_space(&slug)).await
+}
+
+/// Space 되돌리기 — 지운 뒤 토스트의 「되돌리기」만 부른다(S10). 비웠던 칸 가운데 아직 빈 것에 다시 적고 「되돌림」 줄을 남긴다. 그사이
+/// 같은 slug가 다시 쓰였으면 core의 글(「slug is in use again: …」)로 거절된다.
+#[tauri::command]
+pub async fn thread_restore_space(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    slug: String,
+) -> CmdResult<RestoredSpace> {
+    to_host(&engine, "Space를 되돌리지 못했습니다", move |host| host.restore_space(&slug)).await
 }
 
 /// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 「최근 Work」를 고르면 물어보는 정도 칩이 이것을 보인다.

@@ -83,6 +83,8 @@ const HANDLERS: &[(&str, Handler)] = &[
         ok(atelier_core::save_space_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
     }),
     // 읽는 범위(03 구현 스펙 §7) — 읽기만 하는 core 입구다(`commands.rs`와 같다).
+    // Space 지우기 확인 창의 쓰임(03 티켓 07) — 읽기만 하는 core 입구다.
+    ("space_usage", |a| ok(atelier_core::space_usage(&data_root(), &text(a, "slug")?))),
     ("reading_scope", |a| {
         ok(atelier_core::reading_scope_of(
             &data_root(),
@@ -303,6 +305,10 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_work_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    // Space 지우기 · 되돌리기(03 티켓 07)는 비운 곳마다 엔진이 「지워짐」 · 「되돌림」 줄을 남긴다 — 파일은 core L1(`space_delete`), 줄은
+    // 기록 테스트(`thread_space_delete`)가 잰다.
+    ("thread_delete_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_restore_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_work_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     // Work의 PR(v1 티켓 36)은 엔진이 읽고 `pr` 줄을 남긴다 — 읽기 · 셈은 L1(`atelier-core` `pr` · `atelier-acp` `thread_pr`)이 잰다.
     ("thread_work_prs", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),

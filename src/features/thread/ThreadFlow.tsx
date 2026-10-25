@@ -261,7 +261,8 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
       )}
       {/* 이름이 없는 줄도 있다 — 「Space를 뺐어요 — …」는 앞말만이다. */}
       {line.name && <b className="font-medium text-fg">{line.name}</b>}
-      {line.after}
+      {/* 뒷말의 앞 빈칸도 지킨다 — 「결제 서비스 Space를 되돌렸어요」처럼 이름 뒤에 빈칸으로 잇는 줄이 있다. */}
+      {line.after && <span className="whitespace-pre-wrap">{line.after}</span>}
       {line.code && <span className="whitespace-pre font-mono text-xs">{` ${line.code}`}</span>}
     </p>
   );

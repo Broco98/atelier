@@ -1026,7 +1026,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         say(line.seq, "library", handle, "Library에 ", name, `${particle(name, "을", "를")} 저장함`, avatarOf(payload.avatar));
         break;
       }
-      // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
+      // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) · 지움 · 되돌림(07) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
       // 그때 엔진이 센 것이 줄에 실려 온다(기록은 덧붙이기만 해 지금 다시 세면 그때와 다르다). Work의 Space가 바뀌면 그 Work의 Thread마다 선다.
       case "space": {
         const projects = Array.isArray(payload.projects) ? payload.projects.filter((one): one is string => typeof one === "string") : [];
@@ -1039,6 +1039,15 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           const registered = typeof payload.registered === "number" ? payload.registered : 0;
           const reads = registered > 0 ? `등록된 Project ${registered}개를 읽어요` : "등록된 Project가 없어요";
           say(line.seq, "space", null, `Space를 뺐어요 — 다음 차례부터 ${reads}`, "", "");
+        }
+        // 지움 · 되돌림(03 티켓 07) — 이은 Space가 지워진 대화는 굵은 것 없이 한 줄이다(시안 F4-KitChat 「Space가 지워짐」). 손으로 지운
+        // 파일은 이름을 읽을 수 없어 엔진이 slug를 싣는다.
+        if (payload.change === "deleted" && name) {
+          say(line.seq, "space", null, `${name} Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요`, "", "");
+        }
+        if (payload.change === "restored" && name) {
+          const reads = projects.length > 0 ? `다시 ${readingList(projects)}${particle(readingList(projects), "을", "를")} 읽어요` : "읽는 Project가 없어요";
+          say(line.seq, "space", null, "", name, ` Space를 되돌렸어요 — ${reads}`);
         }
         break;
       }

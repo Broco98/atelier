@@ -238,7 +238,7 @@ describe("말의 사전", () => {
     for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때"]) {
       expect(bodyOf("읽는 범위"), piece).toContain(piece);
     }
-    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
+    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Space 없이", "되돌렸어요"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
     for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「Host와 Space 만들기」", "메뉴 › Space"]) {
       expect(bodyOf("Space 메뉴"), piece).toContain(piece);
     }

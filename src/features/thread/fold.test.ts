@@ -222,6 +222,28 @@ describe("시스템 줄", () => {
     ]);
   });
 
+  // 바탕은 엔진이 축복한 기록이다(`thread-space-deleted.jsonl`) — Work 없는 Thread에 붙인 「결제 서비스」를 지우고, 한 턴 뒤 되돌렸다.
+  it("이은 Space를 지우면 Space 없이 이어간다는 한 줄이, 되돌리면 다시 읽는 Project를 말하는 한 줄이 선다(03 티켓 07)", () => {
+    const model = foldThread(record("thread-space-deleted"));
+    expect(model.system.map((line) => [line.kind, line.handle, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
+      ["space", null, "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
+      ["space", null, "", "결제 서비스 Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요"],
+      ["space", null, "결제 서비스", "결제 서비스 Space를 되돌렸어요 — 다시 web-app · api-server를 읽어요"],
+    ]);
+  });
+
+  it("되돌린 Space에 읽을 Project가 없으면 그렇다고 말하고, 이름을 모르는 줄은 서지 않는다", () => {
+    const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
+    const model = foldThread([
+      ...blessed,
+      space(25, { change: "restored", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
+      space(26, { change: "deleted", space: "사라진", name: null, projects: [], registered: 4 }),
+    ]);
+    expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
+      "빈 곳 Space를 되돌렸어요 — 읽는 Project가 없어요",
+    ]);
+  });
+
   it("Space 줄은 읽는 Project가 셋을 넘으면 둘과 「외 N개」, 빈 Space면 없다고, 등록된 Project가 없으면 그렇다고 말한다", () => {
     const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
     const model = foldThread([

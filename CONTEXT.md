@@ -309,7 +309,9 @@ _피할 말_: 스코프
 대화 흐름 가운데의 회색 한 줄 — 사람이 Space를 바꾸거나 빼면 그 뒤로 읽는 Project를 말한다(「Space를 사내 도구로 바꿨어요 — 다음 차례부터
 api-server · backoffice를 읽어요」 · 「Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요」). 굵은 것은 Space 이름뿐이다. Work의 Space가
 바뀌면 그 Work의 Thread마다 선다. 읽는 Project는 그때 센 것이 줄에 남는다 — 지금 다시 세지 않는다. 첫 말 전에 고른 Space는 줄을 남기지
-않는다 — 첫 말이 그 범위로 시작한다.
+않는다 — 첫 말이 그 범위로 시작한다. Space를 지우면 그 Space로 읽던 Thread마다 굵은 것 없이 「결제 서비스 Space가 지워져 Space 없이
+이어가요 — 대화는 그대로예요」가, 토스트로 되돌리면 「결제 서비스 Space를 되돌렸어요 — 다시 web-app · api-server를 읽어요」가 선다. 앱 밖에서
+Space 파일을 지웠으면 그 Thread의 다음 말을 보낼 때 같은 「지워짐」 줄이 선다(이름 자리에 파일 이름).
 
 **Space 메뉴**:
 Space를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Space / Work 이름」에서 흐린 Space(없으면 흐린 「Space 없음」)를 누르면 열린다. 맨 위는

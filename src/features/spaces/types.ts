@@ -79,3 +79,29 @@ export interface SpaceDraft {
   /** 새 Space에서 같은 이름의 Space가 있어 slug 끝에 붙인 것(`-2`). */
   suffix: string | null;
 }
+
+// ── 지우기(03 구현 스펙 §9 · §14 · 티켓 07) ────────────────────────────────────────────────────────────────────────────────
+
+/** 쓰임 — 지우기 확인 창의 「Thread 3개 · Work 1개가 이 Space에서 빠져 …」. Thread는 Work 없는 Thread와 이은 Work의 Thread다. */
+export interface SpaceUsage {
+  works: number;
+  threads: number;
+}
+
+/** 이 Space에 이은 곳 — `space`가 이 slug인 진행 중인 Work와 Work 없는 Thread. */
+export interface SpaceLinks {
+  works: string[];
+  threads: string[];
+}
+
+/** 지운 것 — 그 Space와 비운 곳(엔진이 그 Thread마다 「지워짐」 줄을 남겼다). */
+export interface DeletedSpace {
+  space: Space;
+  unlinked: SpaceLinks;
+}
+
+/** 되돌린 것 — 제자리에 선 Space와 다시 적은 곳. */
+export interface RestoredSpace {
+  space: Space;
+  relinked: SpaceLinks;
+}

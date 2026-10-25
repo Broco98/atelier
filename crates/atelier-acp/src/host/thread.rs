@@ -987,7 +987,8 @@ impl ConversationHost {
     }
 
     /// [`Self::say_in_thread`]에 인용(`quote` — 사람의 말에만, v1 티켓 35)과 머리말 끝의 한 줄(`note`)을 더한 것 — 새 Thread의 첫 말이
-    /// 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그 줄도 그때만 간다.
+    /// 「새 Work로 시작」의 표시를 싣는다(v1 티켓 31). 머리말은 Session의 첫 말에만 붙으므로 그 줄도 그때만 간다. 이은 Space의 파일이
+    /// 사라졌으면 먼저 그 연결을 닫는다(03 티켓 07 — [`Self::close_lost_space`]).
     fn say_noting(
         &self,
         key: &SessionKey,
@@ -997,6 +998,7 @@ impl ConversationHost {
         call: Option<Assignment>,
         note: Option<&str>,
     ) -> Result<(), HostError> {
+        self.close_lost_space(&key.thread)?;
         if !self.session_running(key) && self.logins.waiting_for(&key.waiter()).is_none() {
             self.revive_session(key, Revive::IfNotRunning)?;
         } else {

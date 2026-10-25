@@ -138,3 +138,30 @@ export function useSetSpace() {
     onError: (error) => void showProblem(`Space를 바꾸지 못했습니다: ${error}`),
   });
 }
+
+// ── 지우기 · 되돌리기(03 티켓 07) ──────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 지우기 · 되돌리기가 고친 것을 다시 읽는다 — Space 목록 · 상세, Work 목록(`space` 칸), 읽는 범위, 연 Thread들(머리 줄의 흐린 Space). 엔진이
+ * 칸을 고치고 줄을 남기므로 감시의 종보다 먼저 화면이 따라오게 한다.
+ */
+async function refreshLinks(queryClient: ReturnType<typeof useQueryClient>) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: SPACES_KEY }),
+    invalidateWorks(queryClient),
+    queryClient.invalidateQueries({ queryKey: SCOPE_KEY }),
+    queryClient.invalidateQueries({ queryKey: ["thread"] }),
+  ]);
+}
+
+/** Space 지우기 — 확인 창의 「삭제」. */
+export function useDeleteSpace() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (slug: string) => spacesApi.remove(slug), onSuccess: () => refreshLinks(queryClient) });
+}
+
+/** Space 되돌리기 — 지운 뒤 토스트의 「되돌리기」. */
+export function useRestoreSpace() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (slug: string) => spacesApi.restore(slug), onSuccess: () => refreshLinks(queryClient) });
+}

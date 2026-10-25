@@ -3,7 +3,7 @@ import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { ReadingScope } from "@/features/spaces/scope";
-import type { Space, SpaceDetail, SpaceDraft } from "@/features/spaces/types";
+import type { DeletedSpace, RestoredSpace, Space, SpaceDetail, SpaceDraft, SpaceUsage } from "@/features/spaces/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
@@ -969,6 +969,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   save_space_text: SPACES[0],
   // 읽는 범위(03 §7) — 요약 카드 「소스」가 Thread를 열 때마다 읽는다.
   reading_scope: SCOPE_ALL,
+  // Space 지우기 확인 창의 쓰임(03 티켓 07) — 쓰는 곳이 없는 갈래(「Project와 파일은 그대로예요.」)다. 수를 재는 시험은 이 답을 갈아 끼운다.
+  space_usage: { works: 0, threads: 0 } satisfies SpaceUsage,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //
@@ -1219,6 +1221,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // Space 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `space` 줄과 Work 목록 다시 읽기로 온다.
   thread_set_space: null,
   thread_set_work_space: null,
+  // Space 지우기 · 되돌리기(03 티켓 07) — 답은 지운 · 되돌린 Space와 고친 곳이다. 지운 것을 기억하지 않는다 — 지운 뒤의 목록을 재는 시험은
+  // `list_spaces`를 갈아 끼운다. 비운 곳마다의 「지워짐」 · 「되돌림」 줄은 기록(`thread-space-deleted`)으로 온다.
+  thread_delete_space: { space: SPACES[0], unlinked: { works: [], threads: [] } } satisfies DeletedSpace,
+  thread_restore_space: { space: SPACES[0], relinked: { works: [], threads: [] } } satisfies RestoredSpace,
   // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
   thread_work_mode: "always",
   // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
