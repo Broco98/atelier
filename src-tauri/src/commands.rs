@@ -901,8 +901,9 @@ pub async fn thread_read_record(
 /// @멘션, 없으면 Host)가 들어와 답한다. 세운 Thread의 id를 돌려준다. Session이 열릴 때까지 기다린다. 멘션이 범위 밖 · 깨진
 /// 파일이면 아무것도 세우지 않고 그 까닭이 오류 글이다. 첨부(`attachments` — 절대 경로들)는 본문 앞에 경로 목록으로 간다(S30).
 /// 물어보는 정도(`mode` — `always` · `edits` · `plan` · `auto`)는 입력창 칩에서 고른 값이다(v1 티켓 23) — 이은 Work면 그 Work의 정도가
-/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 고르지 않은 칸은
-/// `null`이다.
+/// 된다. 첫 Session의 모델 · 생각 깊이(`model` · `effort`)도 첫 말 전에 칩에서 고른 값이다(v1 티켓 31 · 스토리 33). 트레이 Space 칩에서
+/// 고른 Space(`space` — `{slug}`, 「Space 없음」이면 `{slug: null}`)는 첫 말의 범위다(03 §5 — 이은 Work면 그 Work의 Space가 된다, S4).
+/// 고르지 않은 칸은 `null`이다.
 #[tauri::command]
 pub async fn thread_start(
     engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
@@ -912,8 +913,9 @@ pub async fn thread_start(
     mode: Option<atelier_acp::AskLevel>,
     model: Option<String>,
     effort: Option<String>,
+    space: Option<atelier_acp::SpacePick>,
 ) -> CmdResult<String> {
-    let picks = atelier_acp::StartPicks { mode, model, effort };
+    let picks = atelier_acp::StartPicks { mode, model, effort, space };
     to_host(&engine, "Thread를 시작하지 못했습니다", move |host| host.start_thread_picking(&text, &attachments, link, picks)).await
 }
 

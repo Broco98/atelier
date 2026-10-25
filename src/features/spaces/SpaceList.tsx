@@ -1,24 +1,25 @@
 import { useMemo, useState, type MouseEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Book, ChevronRight, Layers, Plus, Search } from "lucide-react";
+import { Book, ChevronDown, ChevronRight, Layers, Plus, Search, SquareM, SquarePen } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useSpaces } from "./hooks";
 import { SpaceActions } from "./SpaceActions";
 import { useSpaceDelete } from "./SpaceDeleteDialog";
-import { spaceName } from "./space-view";
+import { HOST_MAKE, spaceName } from "./space-view";
 import type { Space } from "./types";
 
 // Space 목록(03 구현 스펙 §14 · 시안 F1-Space) — 사람 메뉴 「Space」가 여는 화면이다. 머리 줄 「Space」, 판 안에 제목 · 찾기 칸과 표(이름 ·
 // Project · 설명), 표 아래 한 줄 안내. 줄을 누르면 상세다. 문제가 있는 Space도 이름 뒤 「문제 있음」으로 선다(스토리 185). 파일은 바깥에서도
 // 고치므로 `spaces:changed`를 듣는다(`useSpaces`).
 //
-// 머리 줄 「새 Space」는 빈 틀의 Space 파일을 고치기 화면에 연다(직접 만들기 — `/spaces/new`, 04). 06이 이 단추를 「Host와 만들기 ·
-// 직접 만들기」 메뉴로 바꾼다. 줄 끝 ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인 창을 거쳐 「… Space를 지웠어요 · 되돌리기」 토스트가 본문
-// 아래 가운데 선다.
+// 머리 줄 「새 Space ⌄」는 두 길의 메뉴다(§14 · F4-SpaceNewMenu) — 「Host와 만들기」(기본 — Work 없는 새 대화에 맡기는 말을 넣어 연다, S16)와
+// 「직접 만들기」(빈 틀의 Space 파일을 고치기 화면에 연다 — `/spaces/new`, 04). 줄 끝 ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인 창을
+// 거쳐 「… Space를 지웠어요 · 되돌리기」 토스트가 본문 아래 가운데 선다.
 
 /** 표의 칸 — 이름 · Project · 설명 · 끝 칸(⋯ 자리). 머리 줄과 몸 줄이 같은 격자다(시안 `.th` · `.srow`). */
 const COLUMNS = "grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.5fr)_28px] items-center gap-4 pr-2.5 pl-3.5";
@@ -80,12 +81,45 @@ export default function SpaceList() {
   );
 }
 
-/** 「새 Space」 — 짙은 알약(시안 F1-Space `.btn.pri`). 직접 만들기 화면으로 간다. */
+/**
+ * 「새 Space ⌄」 — 짙은 알약(시안 F1-Space `.btn.pri`)이 메뉴를 연다(F4-SpaceNewMenu — 단추 오른쪽 끝에 맞춰 아래 6). 「Host와 만들기」(끝에
+ * 「기본」)는 첫 화면을 「Work 없이 대화」와 맡기는 말로 열고 보내기는 사람이 한다(S16), 「직접 만들기」는 빈 틀의 고치기 화면이다.
+ */
 function NewSpaceButton() {
+  const navigate = useNavigate();
   return (
-    <Link to="/spaces/new" className={buttonVariants({ size: "top", className: "shrink-0 rounded-full" })}>
-      <Plus aria-hidden />새 Space
-    </Link>
+    <DropdownMenu>
+      <DropdownMenuTrigger className={buttonVariants({ size: "top", className: "shrink-0 rounded-full" })}>
+        <Plus aria-hidden />새 Space
+        <ChevronDown aria-hidden className="size-3 opacity-70" />
+      </DropdownMenuTrigger>
+      {/* 폭은 시안 그대로 308이고 설명은 낱말 단위로 두 줄에 접힌다(F4-SpaceNewMenu `.pop{min-width:300px}` — 단추에 붙은 칸이라 내용 폭으로 넓어지지 않는다). */}
+      <DropdownMenuContent side="bottom" align="end" sideOffset={6} width="note" className="w-77">
+        <DropdownMenuItem
+          size="note"
+          aria-description="Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요"
+          onClick={() => void navigate({ to: "/", search: HOST_MAKE })}
+        >
+          <SquarePen className="mt-0.5" aria-hidden />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">Host와 만들기</span>
+            <span className="text-xs break-keep text-fg-tertiary">Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요</span>
+          </span>
+          <span className="shrink-0 pl-3 text-xs text-fg-tertiary">기본</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          size="note"
+          aria-description="Space 파일을 빈 틀로 열어요 — 이름과 Project를 적어요"
+          onClick={() => void navigate({ to: "/spaces/new" })}
+        >
+          <SquareM className="mt-0.5" aria-hidden />
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate">직접 만들기</span>
+            <span className="text-xs break-keep text-fg-tertiary">Space 파일을 빈 틀로 열어요 — 이름과 Project를 적어요</span>
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

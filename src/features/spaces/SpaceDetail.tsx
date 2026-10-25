@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { shallow, useStore } from "@tanstack/react-store";
-import { ArrowLeft, Book, Check, Folder, Layers, MoreHorizontal, Pencil, Plus, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, Book, Check, Folder, Layers, MoreHorizontal, Pencil, Plus, SquarePen, TriangleAlert, X } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import { useSpace, useUpdateSpace } from "./hooks";
 import { SpaceActions } from "./SpaceActions";
 import { useSpaceDelete } from "./SpaceDeleteDialog";
 import { SpaceGraph } from "./SpaceGraph";
-import { addMenu, createdLine, spaceName, spaceWorks } from "./space-view";
+import { addMenu, createdLine, spaceName, spaceStarts, spaceWorks } from "./space-view";
 import type { SpaceDetail as Detail, SpacePatch } from "./types";
 
 // Space 상세(03 구현 스펙 §14 · 시안 F1-SpaceDetail · F4-SpaceEmpty). 머리 줄 「Space / 결제 서비스」, 판 안에 「← Space」 단추 · 제목과
@@ -41,8 +41,10 @@ import type { SpaceDetail as Detail, SpacePatch } from "./types";
 // 관계 그래프의 「편집」과 문제 상자의 「관계 편집에서 고치기」는 그 Space 파일을 글 그대로 고치는 화면(`/spaces/$slug/edit` — 04)으로 간다.
 // 오른쪽 칸 「Work」 묶음은 이 Space에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
 //
-// 「← Space」 줄 오른쪽 ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인 창을 거쳐 목록으로 가고, 목록에 「… Space를 지웠어요 · 되돌리기」
-// 토스트가 선다. 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06 — 같은 줄 ⋯ 뒤, 시안 `.topbar`).
+// 판 안 맨 위 「← Space」 줄 오른쪽에 ⋯와 시작 단추 둘이 선다(시안 F1-SpaceDetail `.topbar`). ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인
+// 창을 거쳐 목록으로 가고, 목록에 「… Space를 지웠어요 · 되돌리기」 토스트가 선다. 시작 단추는 「Host와 고치기」(이 Space를 붙인 Work 없는
+// 새 대화에 고쳐 달라는 말, S17)와 「새 Work」(이 Space를 고른 「새 Work」 — 스토리 159)다(06) — 둘 다 첫 화면을 씨앗과 함께 열 뿐이고
+// 보내기는 사람이 한다.
 
 export default function SpaceDetail({ slug }: { slug: string }) {
   const { data: space, isError, error } = useSpace(slug);
@@ -69,6 +71,7 @@ export default function SpaceDetail({ slug }: { slug: string }) {
             </Link>
             <span className="ml-auto flex items-center gap-1.5">
               {space && <SpaceActions space={space} onDelete={(one) => void removing.ask(one)} />}
+              {space && <SpaceStarts space={space} />}
             </span>
           </div>
           {space ? (
@@ -82,6 +85,26 @@ export default function SpaceDetail({ slug }: { slug: string }) {
         {removing.dialog}
       </div>
     </PlainFrame>
+  );
+}
+
+/**
+ * 시작 단추 둘(§14 · 시안 F1-SpaceDetail — 맨 위 줄 오른쪽 끝 ⋯ 뒤, 사이 6) — 테두리 알약 「Host와 고치기」(S17)와 짙은 알약 「+ 새 Work」(스토리
+ * 159). 시안 `.btn.lg`의 34 · 좌우 14 · 14px다.
+ */
+function SpaceStarts({ space }: { space: Detail }) {
+  const navigate = useNavigate();
+  const starts = spaceStarts(space);
+  return (
+    <>
+      <Button variant="outline" size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.hostEdit })}>
+        <SquarePen aria-hidden className="size-3.5" />
+        Host와 고치기
+      </Button>
+      <Button size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.newWork })}>
+        <Plus aria-hidden className="size-3.5" />새 Work
+      </Button>
+    </>
   );
 }
 

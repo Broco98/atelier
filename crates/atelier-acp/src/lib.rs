@@ -22,7 +22,7 @@ mod translator;
 pub use discovery::{Agent, EngineCheck, FoundProgram, MissingProgram};
 pub use host::{
     ConversationHost, DocWriting, HostBuilder, HostError, HostEvent, ProjectChoice, QuestionReply, QueuedMessage, QuitCounts,
-    Reply, StartPicks, ThreadLink, ThreadView, TranslatorCommand, WorkChoice,
+    Reply, SpacePick, StartPicks, ThreadLink, ThreadView, TranslatorCommand, WorkChoice,
 };
 pub use login::{EngineState, LoginProgress};
 pub use policy::AskLevel;

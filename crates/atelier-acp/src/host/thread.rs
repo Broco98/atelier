@@ -114,6 +114,17 @@ pub struct StartPicks {
     pub model: Option<String>,
     /// 첫 Session의 생각 깊이 — 정의의 `model.effort` 대신 선다. claude `--effort`가 받는 값만 받는다.
     pub effort: Option<String>,
+    /// 트레이 Space 칩에서 고른 Space(03 §5 · 티켓 06) — 첫 말이 그 범위로 시작하고 Space 줄은 남기지 않는다. Work 없는 Thread면
+    /// `thread.json`의 `space`로 서고, 이은 Work면 다를 때 그 Work의 Space가 된다(S4 — 그 Work의 다른 Thread에는 Space 줄이 선다). 고르지
+    /// 않았으면 `None`이다 — 이은 Work의 Space를 건드리지 않는다.
+    pub space: Option<SpacePick>,
+}
+
+/// Space 칩에서 고른 것 — `slug`가 `None`이면 「Space 없음」을 고른 것이다. 「고르지 않음」(`StartPicks::space`의 `None`)과 갈라야 해서
+/// 칸 하나를 싼다 — IPC의 `null`과 빠진 칸은 둘 다 `None`으로 읽힌다.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct SpacePick {
+    pub slug: Option<String>,
 }
 
 /// 승인 카드에서 사람이 고른 것(v1 티켓 24 · 구현 스펙 §9) — 그 요청의 선택지 하나에, 함께 드는 것 둘이다.
@@ -415,7 +426,8 @@ impl ConversationHost {
 
     /// 입력창 칩에서 고른 것과 함께 새 Thread — [`Self::start_thread_asking`]과 같고, 첫 말 전에 고른 모델 · 생각 깊이(v1 티켓 31 ·
     /// 스토리 33)가 받는 Agent 정의의 선호 대신 참여자 줄에 서서 첫 Session이 그 값(`--model` · `--effort`)으로 뜬다. claude가 받지
-    /// 않는 생각 깊이면 아무것도 세우지 않고 거절한다.
+    /// 않는 생각 깊이면 아무것도 세우지 않고 거절한다. 트레이 Space 칩에서 고른 Space(03 §5)는 첫 말의 범위다 — 없는 Space면 아무것도
+    /// 세우지 않고 거절한다.
     pub fn start_thread_picking(
         &self,
         text: &str,
@@ -426,6 +438,8 @@ impl ConversationHost {
         if let Some(effort) = picks.effort.as_deref().filter(|effort| !EFFORTS.contains(effort)) {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
+        let space = picks.space.as_ref().map(|pick| pick.slug.as_deref());
+        self.check_space(space.flatten())?;
         let attachments = attachments_of(attachments)?;
         let new_work = link == ThreadLink::NewWork;
         let note = new_work.then_some(NEW_WORK_NOTE);
@@ -444,7 +458,13 @@ impl ConversationHost {
         let handle = found.definition.handle.clone();
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
-        let new = NewThread { title: title_of(text), work: work.clone(), mode, new_work };
+        // 고른 Space — Work 없는 Thread는 제 파일에, 이은 Work는 그 Work에 적는다(S4). Work의 것은 Thread를 세우기 전에 바꾼다 — 새 Thread는
+        // 그 범위로 시작하므로 Space 줄이 없고, 그 Work의 다른 Thread에만 선다(S9).
+        if let (Some(slug), Some(space)) = (&work, space) {
+            self.set_work_space(slug, space)?;
+        }
+        let space = space.flatten().filter(|_| work.is_none()).map(str::to_owned);
+        let new = NewThread { title: title_of(text), work: work.clone(), mode, new_work, space };
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Joined, Some(&handle), joined(&found))
             .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));

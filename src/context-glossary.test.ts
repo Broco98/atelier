@@ -228,6 +228,22 @@ describe("말의 사전", () => {
     }
   });
 
+  // 03 구현 스펙 §2 · §5 · 티켓 06. 트레이의 Work 칩 뒤에 「Space 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「Space 넣기」 ·
+  // ×로 빼기 · Work의 Space면 ▾)와 「고른 것이 가는 때」(첫 말 전에는 입력창이 쥐고 첫 말과 함께 · 첫 말 뒤엔 곧바로 · Work면 그 Work에)를
+  // 말하지 않으면 다음 사람이 첫 말 전의 고르기마다 Space 줄을 남기거나 Work 파일을 메뉴만 훑어도 바꾼다. 범위 줄이 범위의 넷을 말하지 않으면
+  // 화면이 범위를 따로 센다. 「워크스페이스」 · 「컨텍스트 칩」은 거부어다.
+  it("「Space 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Space 칩", "범위 줄"]));
+    for (const piece of ["Work 칩 바로 뒤", "「Space 넣기」", "×", "▾", "첫 말과 함께", "Space 줄이 남는다", "그 Work의 Space"]) {
+      expect(bodyOf("Space 칩"), piece).toContain(piece);
+    }
+    for (const piece of ["읽는 범위", "등록된 Project 3개를 읽어요", "외 2개", "읽는 Project가 없어요", "「Project 추가」"]) {
+      expect(bodyOf("범위 줄"), piece).toContain(piece);
+    }
+    expect(refused).toEqual(expect.arrayContaining(["워크스페이스", "컨텍스트 칩"]));
+    expect(bodyOf("트레이")).toContain("범위 줄");
+  });
+
   // 03 구현 스펙 §2 · §7 · §9 · 티켓 05. Thread가 읽는 Project는 함수 하나에서 나온다 — 사전이 그 하나를 모르면 다음 사람이 화면마다 범위를
   // 다시 센다(요약 카드가 Session이 연 폴더를 훑던 v1 #540의 길). 「스코프」는 거부어다. Space 줄은 그때 센 범위를 싣고, Space 메뉴는 Work 화면
   // 머리가 연다. 요약 카드의 소스와 Work 만들기 카드의 Space 줄도 이 판이 고쳤다.

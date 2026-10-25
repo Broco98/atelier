@@ -3,8 +3,9 @@ import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type Q
 import { useStore } from "@tanstack/react-store";
 import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
-import { SCOPE_KEY } from "@/features/spaces/hooks";
+import { SCOPE_KEY, useSpaces } from "@/features/spaces/hooks";
 import { saveSettingsSection } from "@/features/settings/save-section";
+import { useWorks } from "@/features/works/hooks";
 import type { ProjectPr } from "@/features/works/types";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
@@ -302,7 +303,8 @@ export function useAgentRoster(work: string | null): AgentRoster | null {
 
 /**
  * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
- * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다.
+ * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Space 이름은 Work
+ * 목록 · Space 목록에서 읽는다(아직 못 읽었으면 비어 선다).
  */
 export function useRecentWorks(): RecentWork[] | null {
   const { data } = useQuery({
@@ -311,7 +313,9 @@ export function useRecentWorks(): RecentWork[] | null {
     staleTime: 0,
     retry: false,
   });
-  return data ? recentWorks(data.hits) : null;
+  const { data: works } = useWorks();
+  const { data: spaces } = useSpaces();
+  return data ? recentWorks(data.hits, works, spaces) : null;
 }
 
 /**

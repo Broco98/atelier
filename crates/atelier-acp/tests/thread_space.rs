@@ -13,7 +13,7 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use atelier_acp::{HostError, ThreadLink};
+use atelier_acp::{HostError, SpacePick, StartPicks, ThreadLink};
 use common::{has_pair, of_kind, receipt_args, Sandbox};
 use serde_json::{json, Value};
 
@@ -288,6 +288,100 @@ fn 빈_space와_문제_있는_space는_읽을_수_있는_project만_함께_연�
         space_preamble(&record, 1),
         format!("- Space: 반쯤(`{}`) — 읽는 Project: api-server — 파일에 문제가 있어 읽을 수 있는 Project만 읽는다", file.display())
     );
+}
+
+/// 입력창 Space 칩에서 첫 말 전에 고른 것(03 티켓 06) — `None`이면 「Space 없음」을 고른 것이다.
+fn picked(space: Option<&str>) -> StartPicks {
+    StartPicks { space: Some(SpacePick { slug: space.map(str::to_owned) }), ..StartPicks::default() }
+}
+
+fn thread_count(sandbox: &Sandbox) -> usize {
+    std::fs::read_dir(sandbox.data_root().join("threads")).map_or(0, |dir| dir.count())
+}
+
+#[test]
+fn 첫_말_전에_고른_space는_thread_파일에_적혀_첫_session부터_그_space의_project만_읽고_space_줄을_남기지_않는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let web = register(&sandbox, "web-app");
+    let api = register(&sandbox, "api-server");
+    register(&sandbox, "backoffice");
+    space(&sandbox, "결제-서비스", PAYMENTS);
+    let host = sandbox.host(two_turns(&sandbox));
+
+    let thread = host
+        .start_thread_picking("환불 금액 확인해 줘", &[], ThreadLink::NoWork, picked(Some("결제-서비스")))
+        .expect("Space를 고른 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    assert_eq!(sandbox.thread_json(&thread)["space"], "결제-서비스", "입력창이 쥔 Space가 첫 말과 함께 Thread 파일에 선다");
+    assert_eq!(added_dirs(&last_launch(&sandbox, &thread).0), [web, api], "첫 Session부터 그 Space의 Project만 — 적힌 차례로");
+    let file = atelier_core::spaces_in(&sandbox.data_root()).join("결제-서비스.md");
+    assert_eq!(space_preamble(&record, 0), format!("- Space: 결제 서비스(`{}`) — 읽는 Project: web-app, api-server", file.display()));
+    assert!(space_lines(&sandbox, &thread).is_empty(), "첫 말 전에 고른 Space는 줄을 남기지 않는다 — 첫 말이 그 범위로 시작한다(§9)");
+
+    // 「새 Work」로 시작해도 Work가 서기 전까지는 그 Thread의 Space다 — Work 만들기 카드를 받아들이면 새 Work로 옮겨 간다(05).
+    let new_work = host
+        .start_thread_picking("환불 이중 차감 고치기", &[], ThreadLink::NewWork, picked(Some("결제-서비스")))
+        .expect("새 Work로 시작");
+    sandbox.wait_thread_kind(&new_work, "turn-end", 1);
+    assert_eq!(sandbox.thread_json(&new_work)["space"], "결제-서비스");
+    assert_eq!(sandbox.thread_json(&new_work)["newWork"], true);
+
+    // 고르지 않았거나 「Space 없음」을 골랐으면 칸째 없다.
+    let plain = host.start_thread_picking("그냥 물어볼게", &[], ThreadLink::NoWork, picked(None)).expect("Space 없음");
+    sandbox.wait_thread_kind(&plain, "turn-end", 1);
+    assert_eq!(sandbox.thread_json(&plain).get("space"), None);
+
+    let before = thread_count(&sandbox);
+    assert_eq!(
+        host.start_thread_picking("없는 데서", &[], ThreadLink::NoWork, picked(Some("없는-것"))),
+        Err(HostError::SpaceNotFound("없는-것".into())),
+        "없는 Space면 아무것도 세우지 않는다"
+    );
+    host.shut_down();
+    assert_eq!(thread_count(&sandbox), before, "거절하면 Thread 폴더도 서지 않는다");
+}
+
+#[test]
+fn 최근_work를_고르고_바꾼_space는_첫_말_때_그_work에_적히고_그_work의_다른_thread에만_space_줄이_선다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    register(&sandbox, "web-app");
+    let api = register(&sandbox, "api-server");
+    let back = register(&sandbox, "backoffice");
+    space(&sandbox, "결제-서비스", PAYMENTS);
+    space(&sandbox, "사내-도구", "---\nname: 사내 도구\nprojects:\n  - api-server\n  - backoffice\n---\n");
+    refund_work(&sandbox, &[], &[]);
+    atelier_core::update_work_space(&atelier_core::works_in(&sandbox.data_root()), "refund-api", Some("결제-서비스")).unwrap();
+    let host = sandbox.host(two_turns(&sandbox));
+    let first = host.start_thread("환불부터", in_refund()).expect("Work에 이은 Thread");
+    sandbox.wait_thread_kind(&first, "turn-end", 1);
+
+    // Space 칩을 건드리지 않았으면 그 Work의 Space 그대로다 — 메뉴를 훑다 버린 입력이 Work 파일을 바꾸지 않는다(S4).
+    let kept = host.start_thread_picking("설계 문서도", &[], in_refund(), StartPicks::default()).expect("고르지 않음");
+    sandbox.wait_thread_kind(&kept, "turn-end", 1);
+    assert_eq!(work_json(&sandbox)["space"], "결제-서비스");
+    assert!(space_lines(&sandbox, &first).is_empty());
+
+    let moved = host.start_thread_picking("사내 도구 쪽에서 볼게", &[], in_refund(), picked(Some("사내-도구"))).expect("바꾼 Space");
+    sandbox.wait_thread_kind(&moved, "turn-end", 1);
+    assert_eq!(work_json(&sandbox)["space"], "사내-도구", "첫 말을 보낼 때 그 Work의 Space가 바뀐다(S4)");
+    assert_eq!(sandbox.thread_json(&moved).get("space"), None, "Work에 이은 Thread의 칸은 쓰지 않는다");
+    assert_eq!(added_dirs(&last_launch(&sandbox, &moved).0), [api, back], "첫 Session부터 바뀐 Space를 읽는다");
+    assert!(space_lines(&sandbox, &moved).is_empty(), "새 Thread는 그 범위로 시작해 줄이 없다");
+    let changed = json!({"change": "changed", "space": "사내-도구", "name": "사내 도구", "before": "결제-서비스", "work": "refund-api",
+                         "projects": ["api-server", "backoffice"], "registered": 3});
+    for thread in [&first, &kept] {
+        assert_eq!(space_lines(&sandbox, thread), [changed.clone()], "그 Work의 다른 Thread는 범위가 바뀌어 줄이 선다(S9)");
+    }
+
+    // 「Space 없음」을 골랐으면 그 Work의 Space를 뺀다.
+    let cleared = host.start_thread_picking("다 볼게", &[], in_refund(), picked(None)).expect("Space 없음");
+    sandbox.wait_thread_kind(&cleared, "turn-end", 1);
+    host.shut_down();
+    assert_eq!(work_json(&sandbox).get("space"), None);
+    assert_eq!(space_lines(&sandbox, &first).last().unwrap()["change"], "removed");
+    assert!(space_lines(&sandbox, &cleared).is_empty());
 }
 
 /// 기록 축복(S26 꼴) — Work 없는 Thread에서 사람이 Space를 붙이고(다음 말이 같은 Session을 새 자리로 이어 연다) 다시 뺀 기록이 검사

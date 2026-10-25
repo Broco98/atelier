@@ -8,7 +8,7 @@ import { useArrival, useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
-import { AskChip, LockedWorkChip, ModelChip, WorkChip, type ComposerTray } from "./ComposerChips";
+import { AskChip, LockedWorkChip, ModelChip, ScopeLineText, SpaceChip, WorkChip, type ComposerTray } from "./ComposerChips";
 import { insertMention, matchAgents, mentionAt, type AgentChoice, type Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
@@ -19,7 +19,7 @@ import type { AskLevel, Attachment } from "./types";
 // 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · Screen-Live · v52 F4-KitComposer) — Codex
 // 입력창이다: 대화 열과 같은 737 폭에 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소
 // 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6 — 받는 이 칩은 걷었고, `@` 단추는 숨겼다).
-// Work 칩은 상자 **밖** 트레이에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
+// Work 칩 · Space 칩 · 범위 줄은 상자 **밖** 트레이에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
 //   꺼짐), 쓰면 ↑, 새 Thread의 첫 말을 보내는 중이면 옅은 파랑(`accent-solid-pending`)에 스피너, 턴이 도는 동안 비어 있으면 멈추기(■)다.
@@ -332,6 +332,12 @@ function ThreadComposer({
         <WorkChip {...tray.work} open={placing} onOpenChange={setPlacing} />
       ) : (
         <LockedWorkChip {...tray.work} />
+      )}
+      {tray.space && (
+        <>
+          <SpaceChip at={tray.at} {...tray.space} />
+          <ScopeLineText scope={tray.space.scope} />
+        </>
       )}
     </Tray>
   );

@@ -144,7 +144,7 @@ impl ConversationHost {
         atelier_core::reading_scope(&self.data_root, &ScopeOf::thread(file, work))
     }
 
-    fn check_space(&self, space: Option<&str>) -> Result<(), HostError> {
+    pub(super) fn check_space(&self, space: Option<&str>) -> Result<(), HostError> {
         match space {
             Some(slug) if space_gone(&self.data_root, slug) => Err(HostError::SpaceNotFound(slug.to_owned())),
             _ => Ok(()),

@@ -286,6 +286,7 @@
     --color-fg-tray-locked-icon: var(--fg-tray-locked-icon);
     --color-fg-tray-ghost: var(--fg-tray-ghost);
     --color-fg-tray-ghost-icon: var(--fg-tray-ghost-icon);
+    --color-border-tray-on: var(--border-tray-on);
     --color-link-on-solid: var(--link-on-solid);
     /* **03 시안 색 — 안내 상자**(03 구현 스펙 §16) — 쓰임은 아래 `:root`의 같은 머리말이 든다. */
     --color-notice-warn: var(--notice-warn);
@@ -896,7 +897,8 @@
        **03 시안 값**(캔버스 v52 F4-KitComposer — 괄호 안은 03 티켓). Codex를 잰 값이 아니라 03 시안이 트레이 칩에 적은 것이다.
          fg-tray-locked        첫 말 뒤 잠긴 Work 칩의 글자(02 — `.tray .tc.lock` 60%). 글리프는 `fg-tray-locked-icon`(40%)
          fg-tray-ghost         흐린 트레이 칩의 글자(02 — 아직 Work가 서지 않은 「새 Work」, 06 — 비어 있는 Space 칩 · `.tray .tc.ghost` 45%).
-                               글리프는 `fg-tray-ghost-icon`(35%) */
+                               글리프는 `fg-tray-ghost-icon`(35%)
+         border-tray-on        고른 Space 칩의 흰 면(`surface`)을 두르는 0.5 고리(06 — `.tray .tc.on` 14%) */
     --fg-bubble: #0c274a;
     --fg-placeholder: #c7c7c8;
     --fg-subtle: #8e8f90;
@@ -924,6 +926,7 @@
     --fg-tray-locked-icon: rgba(26, 28, 31, 0.4);
     --fg-tray-ghost: rgba(26, 28, 31, 0.45);
     --fg-tray-ghost-icon: rgba(26, 28, 31, 0.35);
+    --border-tray-on: rgba(26, 28, 31, 0.14);
     /* 03 시안의 「되돌리기」 토스트(F1-SpaceDetail `.toast .btn`) — 짙은 면(`fg`) 위의 글자 단추. 다크 값이 없다(위 묶음과 같다). */
     --link-on-solid: #8fb8fb;
     /* 03 시안의 Space 파일 고치기 화면(F1-SpaceEdit · F4-SpaceEditErr — 04). 다크 값이 없다(위 묶음과 같다).

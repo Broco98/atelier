@@ -10,6 +10,7 @@ import { useArchivedWork } from "./SummaryCard";
 // 화면 자리로 보낸다(`PlainFrame`의 `lead` · `end` — 포털, `ShellHead`). Codex 크롬 줄 그대로다.
 //
 //   [폴더 · Work 이름 ›](이은 Work만)  Thread 이름(14/500 · 그 자리에서 바꾼다) ············  […] [요약 고정]
+//   [흐린 Space /](Work 없는 Thread에 Space가 있으면 — 03 §10)
 //
 // - **걷은 것**: 옛 Work 알약(브랜치) · 참여자 얼굴(S14 — 참여자는 본문 이름 줄 · @ 메뉴가 말한다) · v1 카드 토글(요약 고정 토글이 그
 //   자리를 잇는다).
@@ -34,6 +35,29 @@ export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void
       </button>
       <span aria-hidden="true" className="shrink-0 text-sm text-fg-titlebar">
         ›
+      </span>
+    </>
+  );
+}
+
+/**
+ * Work 없는 Thread의 머리 줄 이름 앞 Space(03 §10 · F4-KitChat 「Work 없음 · Space 있음」) — 「흐린 Space / Thread 이름」. 흐린 Space를 누르면 그
+ * Space 상세로 간다. 글자 · 사이는 Work 화면 머리 줄의 Space(`WorkSpaceCrumb`)와 같다 — `fg-titlebar` · 사이 8 · 「/」는 그림이라 이름에 들지
+ * 않는다. Space가 없으면 서지 않는다(이름만 — `headSpace`).
+ */
+export function SpaceCrumb({ name, onOpen }: { name: string; onOpen: () => void }) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Space 열기: ${name}`}
+        onClick={onOpen}
+        className="min-w-0 truncate rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring"
+      >
+        {name}
+      </button>
+      <span aria-hidden="true" className="shrink-0 text-sm text-fg-titlebar">
+        /
       </span>
     </>
   );

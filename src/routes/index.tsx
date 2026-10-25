@@ -7,9 +7,9 @@ import { seedOf, validateNewThreadSearch } from "./-new-thread-search";
 // — 앞 판이 남긴 키(`last-mode`)가 있어도 그대로 둔다(ui-refresh 결정 23, `router.test.ts`). 화면이 읽는 것은 Work 칩의 스위치 기억 하나다
 // (03 S2 — `work-chip.ts`).
 //
-// search는 **처음 고를 곳**(Work 칩의 씨앗 — `?work=<slug>` · `?new=work` · `?new=thread`)과 **입력 글**(`?say=`)이다. 그 규칙은
-// `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 줄 「새 Thread」가 같은 규칙으로 「씨앗 없는 새 Thread인가」를 읽는다(02 코드
-// 리뷰 S1).
+// search는 **처음 고를 곳**(Work 칩의 씨앗 — `?work=<slug>` · `?new=work` · `?new=thread`, Space 칩의 씨앗 — `?space=<slug>`)과 **입력
+// 글**(`?say=`)이다. 그 규칙은 `-new-thread-search.ts` 한 곳이다 — 앱 셸의 ⌘N과 사이드바 위 줄 「새 Thread」가 같은 규칙으로 「씨앗 없는 새
+// Thread인가」를 읽는다(02 코드 리뷰 S1).
 export const Route = createFileRoute("/")({
   component: NewThreadRoute,
   validateSearch: validateNewThreadSearch,
@@ -18,7 +18,8 @@ export const Route = createFileRoute("/")({
 // 틀(머리 줄 · 흰 판)은 앱 셸이 그려 화면이 사이드바 상태를 읽지 않는다(02 구현 스펙 §3).
 function NewThreadRoute() {
   const seed = seedOf(Route.useSearch());
-  // 씨앗이 바뀌면 화면을 새로 세운다 — `/?work=a`에서 `/`나 `/?work=b` · `/?new=work`로 가도 고른 곳이 남지 않고, 다른 입력 글은 다시 넣는다.
+  // 씨앗이 바뀌면 화면을 새로 세운다 — `/?work=a`에서 `/`나 `/?work=b` · `/?new=work`로 가도 고른 곳이 남지 않고, 다른 입력 글 · Space는 다시
+  // 넣는다.
   const link = seed.link === null ? "" : seed.link.kind === "work" ? `work:${seed.link.slug}` : seed.link.kind;
-  return <NewThreadScreen key={`${link}\u0000${seed.say ?? ""}`} seed={seed} />;
+  return <NewThreadScreen key={`${link}\u0000${seed.say ?? ""}\u0000${seed.space ?? ""}`} seed={seed} />;
 }

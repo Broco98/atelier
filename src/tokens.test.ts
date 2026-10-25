@@ -231,6 +231,8 @@ describe("Codex 실측 색", () => {
     "fg-tray-locked-icon": "rgba(26, 28, 31, 0.4)",
     "fg-tray-ghost": "rgba(26, 28, 31, 0.45)",
     "fg-tray-ghost-icon": "rgba(26, 28, 31, 0.35)",
+    // 03 시안 v52의 고른 Space 칩(03 티켓 06) — 흰 면을 두르는 0.5 고리.
+    "border-tray-on": "rgba(26, 28, 31, 0.14)",
     // 03 시안의 「되돌리기」 토스트 — 짙은 면 위 글자 단추(F1-SpaceDetail `.toast .btn`).
     "link-on-solid": "#8fb8fb",
     // 03 시안의 Space 파일 고치기 화면(04) — 미리보기 칸 바탕 · 문제 글과 면 · 괜찮음 알약 · 커서 줄의 조각 면.

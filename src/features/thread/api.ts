@@ -45,12 +45,13 @@ export const threadApi = {
    * 새 Thread — 첫 말과 함께 세운다. Host의 Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
    * 이어 갈 곳(`link`)은 Work 칩에서 고른 것이다(v1 티켓 31 · 03 §5 — 새 Work · Work 없이 대화 · 최근 Work). 첨부는 경로만 간다(v1 티켓
    * 06 · S30). 나머지는 입력창 칩에서 첫 말 전에 고른 것이고 고르지 않은 칸은 `null`이다 — 물어보는 정도(v1 티켓 23 — 이은 Work면
-   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 받는 Agent 정의의 값).
+   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 받는 Agent 정의의 값), 트레이 Space 칩의
+   * Space(03 §5 — 이은 Work면 그 Work의 Space가 된다, S4).
    */
   start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks) => {
     const attachments = pathsOf(attached);
-    const { mode, model, effort } = picks;
-    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort });
+    const { mode, model, effort, space } = picks;
+    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort, space });
   },
   /**
    * 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. 인용(v1 티켓 35 ·

@@ -107,6 +107,8 @@ pub struct NewThread {
     pub mode: Option<String>,
     /// 「새 Work」로 시작했나 — [`ThreadFile::new_work`].
     pub new_work: bool,
+    /// 첫 말 전에 트레이 Space 칩에서 고른 Space — [`ThreadFile::space`]. Work에 이은 Thread는 쓰지 않는다.
+    pub space: Option<String>,
 }
 
 /// 첫 줄과 함께 선 Thread — 이어 적을 기록과, 방금 적은 첫 줄(엔진이 이벤트로 내보낸다).
@@ -147,6 +149,7 @@ pub(crate) fn create_thread_at(
         work: thread.work,
         mode: thread.mode,
         new_work: thread.new_work,
+        space: thread.space,
         ..ThreadFile::default()
     };
     crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "Thread를")?;
@@ -430,7 +433,7 @@ mod tests {
     }
 
     fn new_thread(title: &str) -> NewThread {
-        NewThread { title: title.to_owned(), work: None, mode: Some("ask".to_owned()), new_work: false }
+        NewThread { title: title.to_owned(), work: None, mode: Some("ask".to_owned()), ..NewThread::default() }
     }
 
     /// 사람이 보낸 첫 말로 Thread를 세운다.
@@ -572,7 +575,7 @@ mod tests {
     }
 
     fn linked(title: &str, work: &str) -> NewThread {
-        NewThread { title: title.to_owned(), work: Some(work.to_owned()), mode: None, new_work: false }
+        NewThread { title: title.to_owned(), work: Some(work.to_owned()), ..NewThread::default() }
     }
 
     fn ids<'a>(summaries: impl IntoIterator<Item = &'a ThreadSummary>) -> Vec<&'a str> {

@@ -180,6 +180,16 @@ describe("진입은 새 Thread다", () => {
     });
   });
 
+  // 03 구현 스펙 §5 · §14 · 티켓 06 — Space 씨앗(`?space=<slug>`)을 더했다. Space 상세의 「새 Work」(`?new=work&space=`)와 「Host와 고치기」
+  // (`?new=thread&space=&say=`)가 그 Space를 Space 칩에 고른 채 연다.
+  it("`/?new=work&space=…`도 새 Thread다 — Space 칩이 그 Space를 고른 채 선다", async () => {
+    const { router } = setup(["/spaces/결제-서비스"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "work", space: "결제-서비스" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", space: "결제-서비스" });
+  });
+
   it("시작 직후 뒤로갈 곳이 없다", async () => {
     const { router, history } = setup(["/"]);
     await router.load();
@@ -204,6 +214,7 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/?new=work")).toBe(false);
     expect(await blankAt("/?new=thread")).toBe(false);
     expect(await blankAt("/?say=%EC%95%88%EB%85%95")).toBe(false);
+    expect(await blankAt("/?space=pay")).toBe(false);
     expect(await blankAt("/threads/20261010-100000")).toBe(false);
     expect(await blankAt("/library")).toBe(false);
   });
@@ -212,10 +223,11 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/?work=")).toBe(true);
     expect(await blankAt("/?new=project")).toBe(true);
     expect(await blankAt("/?say=")).toBe(true);
+    expect(await blankAt("/?space=")).toBe(true);
   });
 
   it("씨앗을 단 새 Thread에서 `/`로 가면 씨앗이 걷히고 그 자리가 된다 — 히스토리는 한 칸 는다", async () => {
-    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95"]) {
+    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95", "/?space=pay"]) {
       const { router, history } = setup([entry]);
       await router.load();
       await router.navigate({ to: "/" });

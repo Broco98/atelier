@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { addMenu, CARD_GRAPH, createdLine, spaceGraph, spaceMenu, spaceWorks } from "./space-view";
+import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, spaceGraph, spaceMenu, spaceStarts, spaceWorks } from "./space-view";
 import type { SharedSpace, Space } from "./types";
 
 const space = (over: Partial<Space> = {}): Space => ({
@@ -163,6 +163,15 @@ describe("Space 메뉴(03 §5 · §10)", () => {
   it("빈 Space는 Project 자리에 없다고 말한다", () => {
     expect(spaceMenu([space({ projects: [] })], null, 2).rows?.[0].projects).toBe("Project 없음");
   });
+
+  // 트레이의 Space 칩이 여는 메뉴(06 · F4-KitComposer 「Space 칩 메뉴」) — 맨 위가 늘 「Space 없음」이고 곁말이 「… 읽기」다. 빼기는 칩의 ×가 한다.
+  it("Space 칩의 메뉴는 맨 위가 늘 「Space 없음 — 등록된 Project N개 읽기」이고 지금이면 ✓다", () => {
+    expect(spaceMenu(spaces, null, 3, "chip").top).toEqual({ label: "Space 없음", note: "등록된 Project 3개 읽기", current: true });
+    const picked = spaceMenu(spaces, "결제-서비스", 3, "chip");
+    expect(picked.top).toEqual({ label: "Space 없음", note: "등록된 Project 3개 읽기", current: false });
+    expect(picked.rows?.find((row) => row.current)?.slug).toBe("결제-서비스");
+    expect(spaceMenu([], null, 0, "chip").top).toEqual({ label: "Space 없음", note: "등록된 Project가 없어요", current: true });
+  });
 });
 
 describe("Space 상세의 Work 묶음", () => {
@@ -175,5 +184,24 @@ describe("Space 상세의 Work 묶음", () => {
     ];
     expect(spaceWorks(works, "결제-서비스").map((work) => work.slug)).toEqual(["a", "d"]);
     expect(spaceWorks(works, "없는-것")).toEqual([]);
+  });
+});
+
+// 03 구현 스펙 §14 · S16 · S17 · 티켓 06 — Space 화면의 시작 단추는 첫 화면(`/`)을 씨앗과 함께 연다. 보내기는 사람이 한다.
+describe("Space 화면의 시작 단추가 여는 첫 화면", () => {
+  it("「Host와 만들기」는 Work 없는 대화에 Space를 만들어 달라는 말을 넣는다(S16)", () => {
+    expect(HOST_MAKE).toEqual({
+      new: "thread",
+      say: "Space를 만들고 싶어요. 등록된 Project를 읽고 초안(이름 · Project · 설명)을 보여 주세요.",
+    });
+  });
+
+  it("상세의 「새 Work」는 그 Space를 고른 「새 Work」, 「Host와 고치기」는 그 Space를 붙인 Work 없는 대화와 고쳐 달라는 말이다(S17)", () => {
+    expect(spaceStarts(space())).toEqual({
+      newWork: { new: "work", space: "결제-서비스" },
+      hostEdit: { new: "thread", space: "결제-서비스", say: "결제 서비스 Space를 고치고 싶어요. " },
+    });
+    // 이름이 없는(읽을 수 없는) 파일은 slug로 부른다.
+    expect(spaceStarts(space({ name: "" })).hostEdit.say).toBe("결제-서비스 Space를 고치고 싶어요. ");
   });
 });

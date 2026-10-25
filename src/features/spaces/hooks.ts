@@ -108,13 +108,17 @@ export function useSaveSpaceText() {
   });
 }
 
-/** 읽는 범위(§7) — 연 Thread의 것, 또는 보내기 전의 새 Thread가 쥔 Work · Space의 것. 요약 카드 「소스」 · Space 메뉴가 읽는다. */
+/**
+ * 읽는 범위(§7) — 연 Thread의 것, 또는 보내기 전의 새 Thread가 쥔 Work · Space의 것. 요약 카드 「소스」 · 트레이의 범위 줄이 읽는다. 쥔 Space를
+ * 바꿔 열쇠가 바뀌어도 새 답이 오기까지 앞 답을 그대로 그린다 — 범위 줄이 한 번 비었다 서며 칩 줄이 들썩이지 않게.
+ */
 export function useReadingScope(of: ScopeOf, enabled = true) {
   useSpacesFeed();
   return useQuery({
     queryKey: [...SCOPE_KEY, of.thread ?? null, of.work ?? null, of.space ?? null],
     queryFn: () => spacesApi.scope(of),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
     enabled,
   });
 }

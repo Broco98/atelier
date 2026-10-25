@@ -1,8 +1,9 @@
 import type { ProjectView } from "@/features/projects/types";
+import type { NewThreadSearch } from "@/routes/-new-thread-search";
 import type { SharedSpace, Space } from "./types";
 
-// Space 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14) — 그래프 배치 · 넣기 메뉴 · 만든 이 줄 · Work 묶음, 그리고 Work 화면
-// 머리 · Space 칩이 여는 Space 메뉴(§5 · §10). 화면 부품은 이 값을 그리기만 한다(L2가 잰다).
+// Space 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14) — 그래프 배치 · 넣기 메뉴 · 만든 이 줄 · Work 묶음 · 시작 단추가 여는
+// 첫 화면, 그리고 Work 화면 머리 · Space 칩이 여는 Space 메뉴(§5 · §10). 화면 부품은 이 값을 그리기만 한다(L2가 잰다).
 
 /** 화면이 부르는 이름 — 읽을 수 없는 파일은 이름이 없어 slug다. */
 export function spaceName(space: Pick<Space, "slug" | "name">): string {
@@ -201,15 +202,24 @@ export interface SpaceMenu {
 }
 
 /**
- * Space 메뉴(시안 F4-WorkSpaced · F4-WorkNoSpace — Work 화면 머리 줄이 열고, 06의 Space 칩이 같은 부품을 쓴다). `current`는 지금 이은 Space의
- * slug다 — 그 파일이 없으면 Space가 없는 것이다(§7 규칙 1). 문제 있는 Space도 선다 — 고르면 읽을 수 있는 Project만 읽는다(§5). 적힌 Project는
- * 등록되지 않은 것도 적힌 그대로다(파일의 말).
+ * Space 메뉴(시안 F4-WorkSpaced · F4-WorkNoSpace — Work 화면 머리 줄이 열고, 트레이의 Space 칩이 같은 부품을 쓴다). `current`는 지금 이은
+ * Space의 slug다 — 그 파일이 없으면 Space가 없는 것이다(§7 규칙 1). 문제 있는 Space도 선다 — 고르면 읽을 수 있는 Project만 읽는다(§5). 적힌
+ * Project는 등록되지 않은 것도 적힌 그대로다(파일의 말).
+ *
+ * 맨 위 줄은 여는 자리(`place`)를 따른다 — Work 화면(`work`)은 Space가 있으면 「Space 빼기 · 등록된 Project 3개를 모두 읽어요」, Space 칩
+ * (`chip` — F4-KitComposer 「Space 칩 메뉴」)은 늘 고르는 줄 「Space 없음 · 등록된 Project 3개 읽기」다(빼기는 칩의 ×가 한다).
  */
-export function spaceMenu(spaces: readonly Space[], current: string | null, registered: number): SpaceMenu {
+export function spaceMenu(
+  spaces: readonly Space[],
+  current: string | null,
+  registered: number,
+  place: "work" | "chip" = "work",
+): SpaceMenu {
   const on = spaces.some((one) => one.slug === current) ? current : null;
-  const note = registered > 0 ? `등록된 Project ${registered}개를 모두 읽어요` : "등록된 Project가 없어요";
+  const reads = place === "chip" ? "개 읽기" : "개를 모두 읽어요";
+  const note = registered > 0 ? `등록된 Project ${registered}${reads}` : "등록된 Project가 없어요";
   return {
-    top: on ? { label: "Space 빼기", note, current: false } : { label: "Space 없음", note, current: true },
+    top: on && place === "work" ? { label: "Space 빼기", note, current: false } : { label: "Space 없음", note, current: on === null },
     rows:
       spaces.length === 0
         ? null
@@ -223,11 +233,30 @@ export function spaceMenu(spaces: readonly Space[], current: string | null, regi
   };
 }
 
+// ── 시작 단추 ───────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Space 화면의 시작 단추(§14)는 첫 화면(`/`)을 씨앗과 함께 연다 — Work 칩 · Space 칩 · 입력 글을 미리 넣을 뿐 보내지 않는다. 보내기는 사람이
+// 한다(S16 — 사람이 말을 더할 수 있다).
+
 /**
- * 「Host와 Space 만들기」(§14 S16 · Space 메뉴에 Space가 하나도 없을 때) — 첫 화면을 Work 칩 「Work 없이 대화」와 이 입력 글로 연다. 보내기는
- * 사람이 한다.
+ * 「Host와 만들기」(§14 S16 — 목록 「새 Space ⌄」의 기본 · Space 메뉴에 Space가 하나도 없을 때의 「Host와 Space 만들기」) — Work 칩 「Work 없이
+ * 대화」와 이 입력 글. Host는 등록된 Project를 읽고 초안을 말로 보인다(만드는 도구는 12).
  */
-export const HOST_MAKE_SAY = "Space를 만들고 싶어요. 등록된 Project를 읽고 초안(이름 · Project · 설명)을 보여 주세요.";
+export const HOST_MAKE: NewThreadSearch = {
+  new: "thread",
+  say: "Space를 만들고 싶어요. 등록된 Project를 읽고 초안(이름 · Project · 설명)을 보여 주세요.",
+};
+
+/**
+ * Space 상세 머리의 둘(§14) — 「새 Work」는 Work 칩 「새 Work」 · Space 칩 「◇ 결제 서비스 ×」(스토리 159), 「Host와 고치기」(S17)는 그 Space를
+ * 붙인 Work 없는 대화에 고쳐 달라는 말(끝에 빈칸 — 사람이 이어 쓴다)이다. Host는 그 Space의 Project를 읽은 채 시작한다.
+ */
+export function spaceStarts(space: Pick<Space, "slug" | "name">): { newWork: NewThreadSearch; hostEdit: NewThreadSearch } {
+  return {
+    newWork: { new: "work", space: space.slug },
+    hostEdit: { new: "thread", space: space.slug, say: `${spaceName(space)} Space를 고치고 싶어요. ` },
+  };
+}
 
 // ── Work 묶음 ────────────────────────────────────────────────────────────────────────────────────────────────────
 

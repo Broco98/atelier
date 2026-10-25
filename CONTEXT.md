@@ -284,17 +284,31 @@ Agent를 돌리는 Runtime의 권한 · 일하는 방식(계획 모드 같은 �
 계획 모드로 돌리고, 그 밖에는 기본 모드다. 묻고 넘기는 판단은 Runtime이 아니라 Atelier가 한다.
 
 **트레이**:
-입력창 상자에 붙은 회색 띠 — Work 칩이 서고, 그 곁에 Space 칩과 이 Thread가 읽는 Project를 말하는 한 줄이 선다. 자리는 입력창의 자리를
+입력창 상자에 붙은 회색 띠 — Work 칩이 서고, 그 곁에 Space 칩과 범위 줄이 선다. 자리는 입력창의 자리를
 따른다: 입력창이 가운데인 첫 화면은 상자 아래, 입력창이 화면 아래에 붙은 Thread 화면은 상자 위다(아래에 두면 창 끝에 눌려 칩이 입력창
 뒤로 숨는다). 띠 안의 칩 모양은 두 자리에서 같다. 입력창 자리에 카드가 서면 함께 걷힌다. 입력창 안은 `+` · 물어보는 정도 · 모델 칩뿐이다.
 
 **Work 칩**:
 트레이의 첫 칩 — 새 Thread가 어디서 시작하나를 고르는 스위치다. 칩 아래로 여는 메뉴의 위에 「새 Work」(첫 말로 Work를 만들고 그 안에서
 시작한다)와 「Work 없이 대화」(묻고 답하기 · 나중에 Host 제안으로 Work가 될 수 있다)가 설명 한 줄과 함께 서고 지금 것에 ✓가 붙는다. 그 아래
-최근 Work 다섯이 「그 Work에 새 Thread로」 선다. 앱은 마지막에 고른 스위치 쪽만 기억하고(처음 쓰는 사람에겐 「새 Work」), 최근 Work를 고른
-것은 기억하지 않는다. 주소의 씨앗(`?work=` · `?new=work` · `?new=thread`)은 기억보다 앞선다. 첫 말을 보내면 잠긴다 — 메뉴 없이 보이기만
+최근 Work 다섯이 「그 Work에 새 Thread로」 줄 끝에 그 Work의 Space 이름을 흐리게 달고 선다. 앱은 마지막에 고른 스위치 쪽만 기억하고(처음
+쓰는 사람에겐 「새 Work」), 최근 Work를 고른 것은 기억하지 않는다. 주소의 씨앗(`?work=` · `?new=work` · `?new=thread`)은 기억보다 앞선다. 첫 말을 보내면 잠긴다 — 메뉴 없이 보이기만
 하고, Work에 이은 Thread면 그 Work 이름(누르면 그 Work 화면), Work 없는 Thread면 「Work 없이 대화」, 「새 Work」로 시작해 아직 Work가 없으면
 흐린 「새 Work」다. 새 Work는 칩이 아니라 첫 말과 Host의 Work 만들기 카드로 생긴다.
+
+**Space 칩**:
+트레이에서 Work 칩 바로 뒤에 서는 칩 — 이 Thread가 읽을 Space를 고른다. 비어 있으면 흐린 「Space 넣기」, 고르면 흰 칩에 그 Space 이름과
+×(빼기)다. 바꾸는 것이 Work의 Space면(Work에 이은 Thread · 최근 Work를 고른 첫 화면) × 대신 ▾가 서고 빼기도 메뉴에서만 한다. 누르면
+Space 메뉴가 열린다. 첫 말 전에 고른 Space는 입력창이 쥐었다가 첫 말과 함께 간다 — 첫 말이 그 범위로 시작해 줄을 남기지 않는다. 최근
+Work를 고르고 바꿨으면 첫 말을 보낼 때 그 Work의 Space가 바뀐다(메뉴만 훑고 버린 것은 Work를 바꾸지 않는다). 첫 말 뒤에 바꾸면 곧바로
+적히고 흐름에 Space 줄이 남는다 — Work 없는 Thread면 그 Thread의, Work에 이은 Thread면 그 Work의 Space다. 주소의 씨앗 `?space=`가 처음 쥘
+Space를 정한다.
+_피할 말_: 컨텍스트 칩, 워크스페이스
+
+**범위 줄**:
+트레이에서 Space 칩 옆에 서는 한 줄 — 읽는 범위를 그대로 말한다. Space가 없으면 「등록된 Project 3개를 읽어요」, 있으면 「web-app ·
+api-server를 읽어요」(셋을 넘으면 「web-app · api-server 외 2개를 읽어요」)다. 빈 Space면 「읽는 Project가 없어요」, 등록된 Project가 없으면
+「등록된 Project가 없어요 · Project 추가」가 경고 색으로 서고 「Project 추가」는 Project 추가 창을 연다 — 어느 쪽이든 대화는 막지 않는다.
 
 **읽는 범위**:
 Thread가 읽는 Project들 — 함수 하나가 정하고, Session이 읽기로 함께 여는 폴더 · Host가 받는 머리말의 「- Space:」 줄 · 요약 카드
@@ -314,7 +328,8 @@ api-server · backoffice를 읽어요」 · 「Space를 뺐어요 — 다음 차
 Space 파일을 지웠으면 그 Thread의 다음 말을 보낼 때 같은 「지워짐」 줄이 선다(이름 자리에 파일 이름).
 
 **Space 메뉴**:
-Space를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Space / Work 이름」에서 흐린 Space(없으면 흐린 「Space 없음」)를 누르면 열린다. 맨 위는
+Space를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Space / Work 이름」에서 흐린 Space(없으면 흐린 「Space 없음」)를 누르면 열리고, 트레이의
+Space 칩도 같은 메뉴를 연다(칩에서는 맨 위가 늘 「Space 없음 — 등록된 Project 3개 읽기」다 — 빼기는 칩의 ×가 한다). Work 화면에서 맨 위는
 「Space 빼기」(Space가 없으면 ✓가 붙은 「Space 없음」)와 빼면 읽는 것(「등록된 Project 3개를 모두 읽어요」)이고, 그 아래 「Space — 고르면 그
 안의 Project만 읽어요」 묶음에 Space마다 이름과 적힌 Project가 서며 지금 것에 ✓가 붙는다. 파일에 문제가 있는 Space도 이름 뒤 「문제 있음」을
 달고 선다 — 고르면 읽을 수 있는 Project만 읽는다. 끝은 「Space 관리 · 메뉴 › Space」다. Space가 하나도 없으면 목록 자리에
