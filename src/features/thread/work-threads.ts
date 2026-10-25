@@ -23,16 +23,20 @@ export function threadCounts(threads: readonly ThreadSummary[]): Record<string, 
 }
 
 /**
- * Work마다 그 Work에 이은 Thread들의 상태 표시 — 목록의 차례 그대로다. 표시는 부르는 쪽이 Thread마다 지어 건넨다(`markOf` — 멈춤 · 조용함 ·
- * 아직 못 읽은 Thread는 `null`). 이은 Thread가 없는 Work는 칸이 없다. 가장 센 하나를 고르는 것은 `workMark`다.
+ * Work마다 그 Work에 이은 Thread들의 상태 표시(slug → 목록의 차례대로 Thread마다 하나) — Work 줄 끝 표시 하나가 이것에서 선다(`workMark`).
+ * 표시가 없는 Thread(멈춤 · 조용함 · 아직 못 읽음)는 `null` 칸이다. 이은 Thread가 없는 Work는 칸이 없다.
  */
-export function workMarks(
-  threads: readonly ThreadSummary[],
-  markOf: (thread: ThreadSummary) => StatusMarkKind | null,
-): Record<string, (StatusMarkKind | null)[]> {
-  const marks: Record<string, (StatusMarkKind | null)[]> = {};
+export type WorkMarks = Record<string, (StatusMarkKind | null)[]>;
+
+/**
+ * Work마다 그 Work에 이은 Thread들의 상태 표시 — 목록의 차례 그대로다. 표시는 부르는 쪽이 Thread마다 지어 건넨다(`markFor` — 멈춤 · 조용함 ·
+ * 아직 못 읽은 Thread는 `null`). 이은 Thread가 없는 Work는 칸이 없다. 가장 센 하나를 고르는 것은 `workMark`다. 건네는 함수는 Thread 하나를
+ * 받는다 — 상태 하나를 받는 `status.ts`의 `markOf`와 다른 꼴이다.
+ */
+export function workMarks(threads: readonly ThreadSummary[], markFor: (thread: ThreadSummary) => StatusMarkKind | null): WorkMarks {
+  const marks: WorkMarks = {};
   for (const thread of threads) {
-    if (nestable(thread)) (marks[thread.work] ??= []).push(markOf(thread));
+    if (nestable(thread)) (marks[thread.work] ??= []).push(markFor(thread));
   }
   return marks;
 }

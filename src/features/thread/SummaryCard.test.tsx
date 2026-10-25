@@ -47,10 +47,8 @@ const body = (input: SummaryInput, over: Partial<Parameters<typeof SummaryBody>[
       sections={summarySections(input)}
       menu={<button type="button" aria-label="Work 메뉴" />}
       changes={input.changes}
-      fresh={NOTHING}
-      flash={0}
-      written={NOTHING}
-      writtenFlash={0}
+      fresh={{ keys: NOTHING, flash: 0 }}
+      written={{ keys: NOTHING, flash: 0 }}
       expanded={false}
       opened={null}
       onChanges={none}
@@ -110,7 +108,7 @@ describe("요약 카드의 몸", () => {
     });
     expect(writing).toMatch(/data-doc="설계.md".*writing-pulse.*Host가 쓰는 중/);
     expect(writing).not.toMatch(/data-doc="overview.md"[^>]*>(?:(?!data-doc).)*쓰는 중/);
-    const written = body(live, { written: new Set(["설계.md"]), writtenFlash: 1 });
+    const written = body(live, { written: { keys: new Set(["설계.md"]), flash: 1 } });
     expect(written).toMatch(/data-doc="설계.md"[^>]*class="[^"]*row-flash/);
     expect(written.match(/row-flash/g) ?? []).toHaveLength(1);
   });
@@ -202,8 +200,8 @@ describe("넓힌 카드의 목록(v1 티켓 35 — 넓힌 카드는 그대로다
 
   it("새로 바뀐 파일이 있으면 「변경 사항」 줄이, 넓힌 카드에서는 그 파일 줄이 빛난다", () => {
     const fresh = new Set([fileKey("api-server", "prisma/schema.prisma")]);
-    expect(body(live, { fresh, flash: 1 })).toMatch(/data-changes=""[^>]*class="[^"]*row-flash/);
-    const wide = body(live, { fresh, flash: 1, expanded: true });
+    expect(body(live, { fresh: { keys: fresh, flash: 1 } })).toMatch(/data-changes=""[^>]*class="[^"]*row-flash/);
+    const wide = body(live, { fresh: { keys: fresh, flash: 1 }, expanded: true });
     expect(wide).toMatch(/data-change="prisma\/schema.prisma" data-fresh=""/);
     expect(wide.match(/row-flash/g) ?? []).toHaveLength(1);
   });

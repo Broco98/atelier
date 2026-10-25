@@ -128,14 +128,31 @@ export function panelMotionMs(): number {
  * 때 옅어진다 — 오른쪽 패널은 닫을 때 기본 전환(`duration-basic`)으로 먼저 걷힌다.
  */
 export function foldingInnerClass(open: boolean, beat: "panel" | "sidebar" = "panel"): string {
-  if (beat === "sidebar")
-    return open
-      ? "max-w-full transition-[opacity,max-width] opacity-100 delay-[0s,var(--duration-sidebar)] duration-[var(--duration-sidebar),0s] ease-spring motion-reduce:transition-none"
-      : "max-w-[100vw] opacity-0 transition-opacity duration-sidebar ease-spring motion-reduce:transition-none";
-  return open
-    ? "max-w-full transition-[opacity,max-width] opacity-100 delay-[0s,var(--duration-panel)] duration-[var(--duration-panel),0s]"
-    : "max-w-[100vw] opacity-0 transition-opacity duration-basic";
+  const { opening, closing, curve } = FOLD_BEATS[beat];
+  const fold = open ? `max-w-full transition-[opacity,max-width] opacity-100 ${opening}` : `max-w-[100vw] opacity-0 transition-opacity ${closing}`;
+  return curve === null ? fold : `${fold} ${curve}`;
 }
+
+/**
+ * 접히는 안쪽 열의 **박자 표** — 장치(위 `foldingInnerClass`)는 하나이고 박자만 갈린다(02 코드 리뷰 냄새 — 한때 사이드바 갈래가 패널 갈래를
+ * 토큰만 바꿔 통째로 다시 적었다).
+ * - `opening` — 펼 때: 옅음은 곧바로 그 길이로, 상한은 그 길이만큼 늦게(바깥 폭 트랜지션 길이와 같은 토큰).
+ * - `closing` — 접을 때 옅어지는 길이. 오른쪽 패널은 기본 전환으로 먼저 걷히고, 사이드바는 폭과 같은 박자로 옅어진다.
+ * - `curve` — 곡선과 동작 줄이기. 오른쪽 패널은 기본 곡선이다.
+ * 클래스는 글자 그대로 적는다 — Tailwind가 소스의 글자를 읽어 유틸리티를 짓는다(조각을 이어 붙이면 그 유틸리티가 서지 않는다).
+ */
+const FOLD_BEATS: Readonly<Record<"panel" | "sidebar", { opening: string; closing: string; curve: string | null }>> = {
+  panel: {
+    opening: "delay-[0s,var(--duration-panel)] duration-[var(--duration-panel),0s]",
+    closing: "duration-basic",
+    curve: null,
+  },
+  sidebar: {
+    opening: "delay-[0s,var(--duration-sidebar)] duration-[var(--duration-sidebar),0s]",
+    closing: "duration-sidebar",
+    curve: "ease-spring motion-reduce:transition-none",
+  },
+};
 
 /** 사이드바 상자의 id — 사이드바 토글이 가리키는 자리다(`aria-controls`, 셸 컨트롤의 `SidebarToggle`). 오른쪽 패널은 `Frame`이 id를 짓는다. */
 export const SIDEBAR_ID = "app-sidebar";

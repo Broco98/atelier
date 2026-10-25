@@ -83,3 +83,32 @@ describe("사이드바 열고 닫기", () => {
     expect(closed).not.toContain("max-w-full");
   });
 });
+
+// 접는 장치는 하나이고 박자만 둘이다(02 코드 리뷰 냄새 — 한때 사이드바 갈래가 패널 갈래를 토큰만 바꿔 다시 적었다). 박자 표 하나로 짓는 지금도
+// 네 갈래가 내는 클래스가 그대로인지 **글자 그대로** 잰다 — 클래스 하나가 빠지거나 더해지면 접고 펴는 움직임이 조용히 바뀐다. 빈 칸이 끼면
+// 위 검사들의 `split(" ")`이 빈 글자를 센다.
+describe("접는 장치 하나, 박자 둘", () => {
+  const classes = (open: boolean, beat?: "panel" | "sidebar") => foldingInnerClass(open, beat).split(" ").sort();
+  it("패널 — 펴면 지연된 상한 · 접으면 기본 전환으로 걷힌다", () => {
+    expect(classes(true)).toEqual(
+      ["max-w-full", "transition-[opacity,max-width]", "opacity-100", "delay-[0s,var(--duration-panel)]", "duration-[var(--duration-panel),0s]"].sort(),
+    );
+    expect(classes(false)).toEqual(["max-w-[100vw]", "opacity-0", "transition-opacity", "duration-basic"].sort());
+  });
+  it("사이드바 — 같은 장치에 spring 박자, 동작 줄이기면 곧바로다", () => {
+    expect(classes(true, "sidebar")).toEqual(
+      [
+        "max-w-full",
+        "transition-[opacity,max-width]",
+        "opacity-100",
+        "delay-[0s,var(--duration-sidebar)]",
+        "duration-[var(--duration-sidebar),0s]",
+        "ease-spring",
+        "motion-reduce:transition-none",
+      ].sort(),
+    );
+    expect(classes(false, "sidebar")).toEqual(
+      ["max-w-[100vw]", "opacity-0", "transition-opacity", "duration-sidebar", "ease-spring", "motion-reduce:transition-none"].sort(),
+    );
+  });
+});

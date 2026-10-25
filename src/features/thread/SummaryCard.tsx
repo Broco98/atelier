@@ -173,9 +173,7 @@ export function WorkSummaryCard({ thread, slug, onNewThread, opened, onOpen, onC
       menu={<WorkMenu work={work} onNewThread={onNewThread} />}
       changes={changes.summary}
       fresh={changes.fresh}
-      flash={changes.flash}
-      written={written.docs}
-      writtenFlash={written.flash}
+      written={written}
       expanded={expanded}
       unfolded={unfolded}
       onUnfold={() => setUnfolded(true)}
@@ -232,16 +230,9 @@ export function ArchivedSummaryCard({ slug }: { slug: string }) {
           docs: docs ? docRows(docs.specTree, []) : [],
           projects: entry.projects.map((project) => ({ project, editing: false })),
         })}
-        changes={null}
-        fresh={NOTHING}
-        flash={0}
-        written={NOTHING}
-        writtenFlash={0}
-        expanded={false}
+        {...STILL}
         unfolded={unfolded}
         onUnfold={() => setUnfolded(true)}
-        opened={null}
-        onOpenPr={() => {}}
       />
     </SmallCard>
   );
@@ -266,28 +257,45 @@ export function LooseSummaryCard({ participants }: { participants: readonly Part
           docs: [],
           projects: projects && home ? readingProjects(participants, projects, home) : [],
         })}
-        changes={null}
-        fresh={NOTHING}
-        flash={0}
-        written={NOTHING}
-        writtenFlash={0}
-        expanded={false}
+        {...STILL}
         unfolded={unfolded}
         onUnfold={() => setUnfolded(true)}
-        opened={null}
-        onOpenPr={() => {}}
       />
     </SmallCard>
   );
 }
 
-const NOTHING: ReadonlySet<string> = new Set();
+/**
+ * 잠깐 빛나는 것 — 빛날 열쇠들과 그 회차다. 회차는 바뀐 답마다 올라 줄의 열쇠에 든다 — 같은 것이 다시 바뀌면 다시 빛난다. 새로 바뀐 파일
+ * (`useChanges` — 열쇠는 `fileKey`)과 막 쓴 문서(`useWritten` — spec 기준 경로)가 같은 꼴이라 한 벌로 다닌다(02 코드 리뷰 냄새 — 한때
+ * 열쇠와 회차가 따로 넘어가 몸의 props가 넷이었다).
+ */
+interface Lit {
+  keys: ReadonlySet<string>;
+  flash: number;
+}
+
+/** 빛나는 것이 없다 — 처음 읽기 전 · 보이기만 하는 카드. */
+const UNLIT: Lit = { keys: new Set(), flash: 0 };
+
+/**
+ * 보이기만 하는 카드의 몸(보관된 Work · Work 없는 Thread) — 변경 · PR · 빛남 · 넓힌 카드가 없다. 두 카드가 같은 빈 값을 따로 적지 않게 한
+ * 벌이다(02 코드 리뷰 냄새). 「모두 보기」 펼침만 카드가 든다.
+ */
+const STILL = {
+  changes: null,
+  fresh: UNLIT,
+  written: UNLIT,
+  expanded: false,
+  opened: null,
+  onOpenPr: () => {},
+} as const satisfies Partial<BodyProps>;
 
 /**
  * 변경의 자료 — 읽은 답과, 앞 답과 견준 새로 바뀐 파일(`freshFiles`). 빛남은 답이 바뀔 때마다 한 번이다 — 그 답의 회차(`flash`)를 줄의
  * 열쇠에 넣어 같은 파일이 다시 바뀌면 다시 빛난다.
  */
-function useChanges(slug: string): { summary: ChangeSummary | null; fresh: ReadonlySet<string>; flash: number } {
+function useChanges(slug: string): { summary: ChangeSummary | null; fresh: Lit } {
   // 창 포커스는 앱 루트가 워크트리 데이터째 다시 읽게 한다(`refreshAllWorktrees`) — 쿼리 스스로는 읽지 않는다(두 번 읽지 않게).
   const { data } = useQuery({
     queryKey: workChangesKey(slug),
@@ -295,26 +303,26 @@ function useChanges(slug: string): { summary: ChangeSummary | null; fresh: Reado
     refetchOnWindowFocus: false,
   });
   const before = useRef<{ slug: string; data: ProjectChanges[] } | null>(null);
-  const [lit, setLit] = useState<{ fresh: ReadonlySet<string>; flash: number }>({ fresh: new Set(), flash: 0 });
+  const [fresh, setFresh] = useState<Lit>(UNLIT);
   useEffect(() => {
     if (!data) return;
     const was = before.current?.slug === slug ? before.current.data : undefined;
     before.current = { slug, data };
-    const fresh = freshFiles(was, data);
-    if (fresh.size > 0) setLit((now) => ({ fresh, flash: now.flash + 1 }));
+    const keys = freshFiles(was, data);
+    if (keys.size > 0) setFresh((now) => ({ keys, flash: now.flash + 1 }));
   }, [data, slug]);
-  return { summary: data ? changeSummary(data) : null, ...lit };
+  return { summary: data ? changeSummary(data) : null, fresh };
 }
 
 /** 막 쓴 문서(`finishedDocs`) — 쓰는 중 목록이 바뀔 때마다 앞 목록과 견준다. 빛남의 회차는 `useChanges`와 같은 규칙이다. */
-function useWritten(writing: readonly DocWriting[], slug: string): { docs: ReadonlySet<string>; flash: number } {
+function useWritten(writing: readonly DocWriting[], slug: string): Lit {
   const before = useRef<{ slug: string; writing: readonly DocWriting[] } | null>(null);
-  const [lit, setLit] = useState<{ docs: ReadonlySet<string>; flash: number }>({ docs: new Set(), flash: 0 });
+  const [lit, setLit] = useState<Lit>(UNLIT);
   useEffect(() => {
     const was = before.current?.slug === slug ? before.current.writing : undefined;
     before.current = { slug, writing };
-    const docs = finishedDocs(was, writing);
-    if (docs.size > 0) setLit((now) => ({ docs, flash: now.flash + 1 }));
+    const keys = finishedDocs(was, writing);
+    if (keys.size > 0) setLit((now) => ({ keys, flash: now.flash + 1 }));
   }, [writing, slug]);
   return lit;
 }
@@ -371,13 +379,10 @@ interface BodyProps {
   menu?: ReactNode;
   /** Work의 변경 — 넓힌 카드의 목록에서 「변경 사항」 아래 파일 줄이 된다. */
   changes: ChangeSummary | null;
-  /** 새로 바뀐 파일(`fileKey`) — 작은 카드에서는 「변경 사항」 줄이, 넓힌 카드에서는 그 파일 줄이 잠깐 빛난다. */
-  fresh: ReadonlySet<string>;
-  /** 빛남의 회차 — 바뀐 답마다 오른다. */
-  flash: number;
-  /** 막 쓴 문서(spec 기준 경로) — 소스의 그 문서 줄이 잠깐 빛난다. */
-  written: ReadonlySet<string>;
-  writtenFlash: number;
+  /** 새로 바뀐 파일(열쇠는 `fileKey`) — 작은 카드에서는 「변경 사항」 줄이, 넓힌 카드에서는 그 파일 줄이 잠깐 빛난다. */
+  fresh: Lit;
+  /** 막 쓴 문서(열쇠는 spec 기준 경로) — 소스의 그 문서 줄이 잠깐 빛난다. */
+  written: Lit;
   /** 넓힌 카드의 목록인가 — 「변경 사항」 아래에 파일 줄이 서고 소스가 모두 선다. */
   expanded: boolean;
   /** 「모두 보기」를 눌렀나 — 나머지 소스가 그 자리에 펴진다(S21). */
@@ -402,9 +407,7 @@ export function SummaryBody({
   menu,
   changes,
   fresh,
-  flash,
   written,
-  writtenFlash,
   expanded,
   unfolded = false,
   onUnfold,
@@ -417,8 +420,8 @@ export function SummaryBody({
     <SourceLine
       key={`${row.kind}\u0000${row.kind === "doc" ? row.path : row.project}`}
       row={row}
-      lit={row.kind === "doc" && written.has(row.path)}
-      flash={writtenFlash}
+      lit={row.kind === "doc" && written.keys.has(row.path)}
+      flash={written.flash}
       opened={opened}
       onOpen={onOpen}
     />
@@ -436,12 +439,12 @@ export function SummaryBody({
               </div>
             );
           case "changes": {
-            const lit = !expanded && fresh.size > 0;
+            const lit = !expanded && fresh.keys.size > 0;
             const many = (changes?.groups.length ?? 0) > 1;
             return (
               <div key="changes" className="flex shrink-0 flex-col">
                 <Line
-                  key={lit ? `changes\u0000${flash}` : "changes"}
+                  key={lit ? `changes\u0000${fresh.flash}` : "changes"}
                   data-changes=""
                   glyph={<ChangesGlyph />}
                   name="변경 사항"
@@ -463,11 +466,11 @@ export function SummaryBody({
                       )}
                       {group.files.map((file) => {
                         const key = fileKey(group.project, file.path);
-                        const fileLit = fresh.has(key);
+                        const fileLit = fresh.keys.has(key);
                         const target = { kind: "change", project: group.project, path: file.path } as const;
                         return (
                           <Line
-                            key={fileLit ? `${key}\u0000${flash}` : key}
+                            key={fileLit ? `${key}\u0000${fresh.flash}` : key}
                             data-change={file.path}
                             data-fresh={fileLit ? "" : undefined}
                             glyph={<File />}
@@ -517,7 +520,7 @@ export function SummaryBody({
                             type="button"
                             data-ring-inset=""
                             onClick={onUnfold}
-                            className="flex h-7.5 w-full shrink-0 items-center gap-2.5 px-4 text-left text-sm text-fg-faint transition-colors hover:text-fg-secondary focus-ring"
+                            className={cn(ROW, "text-fg-faint transition-colors hover:text-fg-secondary focus-ring")}
                           >
                             <span className="flex w-4 shrink-0 justify-center">
                               <MoreSourcesGlyph className="size-3.75" />
@@ -598,6 +601,9 @@ function SourceLine({
   );
 }
 
+/** 카드 줄의 겉(시안 `.si` — 30 · 14 · 사이 10 · 좌우 16) — 줄(`Line`, PR 줄도 그것이다)과 「모두 보기」가 한 벌이다. */
+const ROW = "flex h-7.5 w-full shrink-0 items-center gap-2.5 px-4 text-left text-sm";
+
 /**
  * 카드의 줄 하나(시안 `.si` — 30 · 14 · 글리프 15를 16 칸 가운데 #5d5f61 · 사이 10 · 좌우 16) — 오른쪽 끝에 옅은 메타(13 · 3단계 색).
  * 누르면 넓힌 카드가 그것을 연다 — 이름은 줄의 글 그대로다. 넓힌 카드가 연 줄은 고른 면이다(`selected-row`). 누를 곳이 없으면(보관 · Work
@@ -621,7 +627,7 @@ function Line({
   on: boolean;
   onPress?: () => void;
 } & Record<`data-${string}`, string | undefined>) {
-  const look = "flex h-7.5 w-full shrink-0 items-center gap-2.5 px-4 text-left text-sm whitespace-nowrap";
+  const look = cn(ROW, "whitespace-nowrap");
   const body = (
     <>
       <span className="flex w-4 shrink-0 justify-center text-fg-icon [&>svg]:size-3.75">{glyph}</span>
@@ -651,28 +657,30 @@ function Line({
   );
 }
 
-/** PR 줄 하나 — v1 Work 카드의 PR 줄 그대로다(S18): 글리프 · 「PR #번호」 · 상태 문장 · 바깥 열기, CI가 실패하면 그 아래 실패 문장. */
+/**
+ * PR 줄 하나 — v1 Work 카드의 PR 줄 그대로다(S18): 글리프 · 「PR #번호」 · 상태 문장 · 바깥 열기, CI가 실패하면 그 아래 실패 문장. 줄은 카드의
+ * 줄(`Line`)이고 글자만 13이다. 끝 메타(상태 12 · 바깥 열기 12)는 줄의 메타 칸에 서고, 둘 사이는 줄의 틈 10이다(메타 칸 틈 6 + 4).
+ */
 function PrLine({ pr, onOpen }: { pr: PrRow; onOpen: () => void }) {
   const Icon = PR_ICONS[pr.icon];
   return (
     <>
-      <button
-        type="button"
-        data-ring-inset=""
-        onClick={onOpen}
-        className="flex h-7.5 w-full shrink-0 items-center gap-2.5 px-4 text-left text-chat-meta transition-colors hover:bg-fill-hover focus-ring"
-      >
-        <span className="flex w-4 shrink-0 justify-center">
+      <Line
+        glyph={
           <Icon
             data-pr-icon={pr.icon}
             className={cn("size-3.75 shrink-0", pr.icon === "failed" ? "text-fg" : "text-fg-tertiary")}
             aria-hidden
           />
-        </span>
-        <span className="min-w-0 flex-1 truncate">PR #{pr.number}</span>
-        <span className={cn("shrink-0 text-xs text-fg-tertiary", pr.checking && "chat-shimmer")}>{pr.status}</span>
-        <ExternalLink className="size-3 shrink-0 text-fg-tertiary" aria-hidden />
-      </button>
+        }
+        name={`PR #${pr.number}`}
+        className="text-chat-meta"
+        on={false}
+        onPress={onOpen}
+      >
+        <span className={cn("shrink-0 text-xs", pr.checking && "chat-shimmer")}>{pr.status}</span>
+        <ExternalLink className="ml-1 size-3 shrink-0" aria-hidden />
+      </Line>
       {/* 무엇이 실패했는지(v1 보드 `.wnote` — 이름 칸에 맞춰 42 들이고 12/18 `fg-secondary`). */}
       {pr.note && <p className="mr-4 mb-1.5 ml-10.5 text-xs text-pretty text-fg-secondary">{pr.note}</p>}
     </>
