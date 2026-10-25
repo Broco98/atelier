@@ -48,12 +48,12 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page).toHaveURL("/");
 
-  // 첫 말 — 새 Thread가 연결 방식(Work 없음)과 함께 선다. 칩에서 고르지 않은 정도 · 모델 · 생각 깊이는 `null`이다(받는 Agent의 값).
-  // 새 id의 주소로 갈아 선다(히스토리를 늘리지 않는다).
+  // 첫 말 — 새 Thread가 연결 방식(기억이 없으면 「새 Work」 — 03 §5 S2)과 함께 선다. 칩에서 고르지 않은 정도 · 모델 · 생각 깊이 ·
+  // Space는 `null`이다(받는 Agent의 값 · 이은 Work의 Space를 건드리지 않음). 새 id의 주소로 갈아 선다(히스토리를 늘리지 않는다).
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, mode: null, model: null, effort: null },
+    { text: first.text, attachments: [], link: { kind: "new-work" }, mode: null, model: null, effort: null, space: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   await expect(흐름(page).getByText(first.text, { exact: true })).toBeVisible();

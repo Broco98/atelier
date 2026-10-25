@@ -17,6 +17,7 @@ import {
   workTitleOf,
   workView,
 } from "./thread-records";
+import type { ReadingScope } from "@/features/spaces/scope";
 import type { AgentRoster, RecordLine, ThreadView } from "@/features/thread/types";
 import type { WorkView } from "@/features/works/types";
 
@@ -35,6 +36,8 @@ const ARMING_MS = 300;
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
 const 흐름 = (page: Page) => page.getByRole("main");
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
+/** 트레이의 잠긴 Work 칩(03 §5) — 첫 말 뒤의 칩은 보이기만 하고, Work에 이은 칩만 그 Work로 가는 단추다. */
+const 잠긴칩 = (page: Page) => page.locator('[data-slot="composer-tray"] [data-slot="work-chip"]');
 
 /**
  * Library의 Host — 기본 파일(`atelier-core` `agents/host.md`)의 먼저 묻는 일이다. 「결정은 내가 합니다」 카드가 이것으로 줄을 세운다(코드 리뷰
@@ -59,11 +62,24 @@ const LIBRARY: AgentRoster = {
   broken: [],
 };
 
+/**
+ * 두 기록의 세계가 읽는 범위(03 §7 — core `reading_scope`가 짓는 모양) — L1이 등록한 Project 둘(api-server · web-app)을, Space가 없어 모두
+ * 읽는다. 요약 카드 「소스」의 「읽기만」이 이것이다 — worktree가 선 Project는 범위에서 빠지고 「고치는 중」으로 먼저 선다.
+ */
+const scopeOf = (...slugs: string[]): ReadingScope => ({
+  space: null,
+  projects: slugs.map((slug) => ({ slug, name: slug, why: "all" })),
+  kind: "all",
+  registered: 2,
+});
+const READS_BOTH = scopeOf("api-server", "web-app");
+
 /** 그 Thread를 그 seq까지 연다 — 목록 · 읽기 · 읽은 자리를 그 Thread로 답한다. Work 목록에는 이은 Work를 더한다. */
 async function openThread(page: Page, view: ThreadView, lines: readonly RecordLine[], works: WorkView[] = WORKS) {
   await installFixtureBackend(page, {
     list_works: works,
     list_agents: LIBRARY,
+    reading_scope: answerByArg("thread", { [view.id]: READS_BOTH }),
     thread_list: [summaryOf(view)],
     thread_get: answerByArg("thread", { [view.id]: view }),
     thread_read_record: answerByArg("thread", { [view.id]: linesThrough(lines, view.lastSeq) }),
@@ -113,9 +129,12 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   // Work 없는 Thread가 제안 바로 앞까지 와 있다 — Host가 저장소를 읽으며 물은 승인은 모두 답했고, 이름은 Host가 바꿨다.
   const view: ThreadView = { ...FIXTURE_THREAD, title: titleThrough(work, ASKED.seq), live: true, lastSeq: ASKED.seq - 1 };
   await openThread(page, view, work);
-  // Thread 안의 입력창에는 Work 칩이 없다 — 어디서 일할지는 첫 화면 트레이에서만 고른다.
+  // Thread 안의 입력창에는 고르는 Work 칩이 없다 — 어디서 일할지는 첫 화면 트레이에서만 고른다. 상자 위 트레이의 Work 칩은 잠겨 「Work 없이
+  // 대화」를 보이기만 한다(03 §5 S3 — 누를 것이 없다).
   await expect(입력칸(page)).toBeVisible();
   await expect(page.getByLabel(/^어디서 일할지 /)).toHaveCount(0);
+  await expect(잠긴칩(page)).toHaveText("Work 없이 대화");
+  await expect(잠긴칩(page).getByRole("button")).toHaveCount(0);
   const threadGroup = 사이드바(page).getByRole("region", { name: "Thread", exact: true });
   await expect(threadGroup.getByText(view.title, { exact: true })).toBeVisible();
 
@@ -131,6 +150,8 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   }
   await expect(card.getByRole("checkbox", { name: /^api-server/ })).toContainText("Host 추천");
   await expect(card.getByRole("textbox", { name: "브랜치", exact: true })).toHaveValue(PROPOSED.branch);
+  // Space 없이 한 대화라 카드에 Space 줄이 없다(그 줄은 흐름 「대화 속 Space와 설정」 — `thread-space-setting`이 잰다).
+  await expect(card.locator('[data-slot="proposal-space"]')).toHaveCount(0);
 
   // 「Work 만들기」 — 고른 Project와 브랜치가 그 제안의 요청 id로 간다. 기록의 답과 같다.
   await card.getByRole("button", { name: "Work 만들기", exact: true }).click();
@@ -147,7 +168,7 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   await linkTo(page, linked);
 
   // 카드가 걷히고 그 자리에 결정 줄이, 턴 뒤에 이음 줄이 선다. 머리 줄 이름 앞에 그 Work 이름(누르면 카드가 열린다)이, 오른쪽 위에
-  // 요약 카드가 서고 요약 고정 토글이 켜진다 — 아직 worktree가 없어 Project는 읽기만이다.
+  // 요약 카드가 서고 요약 고정 토글이 켜진다 — 아직 worktree가 없어 Project는 읽기만이다(읽는 범위의 차례).
   await expect(card).toHaveCount(0);
   await expect(흐름(page).locator('[data-decision="work-created"]')).toHaveText(
     ["Work 만들기", ...MADE.projects, MADE.branch].join(" · "),
@@ -157,10 +178,10 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   await expect(page.getByRole("button", { name: "요약 고정", exact: true })).toHaveAttribute("aria-pressed", "true");
   const workCard = page.getByRole("region", { name: "요약", exact: true });
   await expect(workCard).toContainText(MADE.title);
-  await expect(workCard.locator('[data-project="api-server"]')).toHaveText(/^api-server\s*읽기만/);
+  await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/, /^web-app\s*읽기만/]);
 
   // 처음 이은 Thread에는 「결정은 내가 합니다」가 한 번 선다(S31) — 「알겠어요」가 본 것을 앱 설정에 적고 입력창이 돌아온다. 돌아온
-  // 입력창에도 Work 칩이 없다 — 이은 Work는 머리 줄이 말한다.
+  // 입력창에도 고르는 Work 칩이 없다 — 트레이의 잠긴 칩이 받아들인 그 Work 이름이 되고, 누르면 그 Work 화면으로 간다(03 §5 S3).
   const decisions = page.getByRole("region", { name: "결정은 내가 합니다", exact: true });
   await expect(decisions).toBeVisible();
   // 줄은 Library Host 정의의 먼저 묻는 일과 Work 밖 Project다(코드 리뷰 1차 B7) — 기본 파일이면 보드의 셋이다.
@@ -176,6 +197,7 @@ test("Host의 Work 만들기 제안이 입력창 자리에 카드로 서고, 만
   await expect(decisions).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
   await expect(page.getByLabel(/^어디서 일할지 /)).toHaveCount(0);
+  await expect(잠긴칩(page)).toHaveAccessibleName(`Work로 가기: ${MADE.title}`);
 
   // 사이드바 — 그 Thread는 Thread 묶음에서 빠지고, 새 Work 줄이 접힌 채 켜져 선다(지금 보는 Thread가 그 안이다). 펴면 그 Thread가 있다.
   await expect(threadGroup.getByText(linked.title, { exact: true })).toHaveCount(0);
@@ -216,7 +238,7 @@ test("이은 Thread에서 Host가 Work 밖 Project를 고치려 하면 카드가
   await openThread(page, view, project, [...WORKS, workView(linked)]);
   const workCard = page.getByRole("region", { name: "요약", exact: true });
   await expect(workCard).toContainText(linked.title);
-  await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/]);
+  await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/, /^web-app\s*읽기만/]);
 
   // 물음 줄 — 입력창 자리에 카드가 선다. 물음 · 까닭과 선택지 셋(붙이고 고치기 · 읽기만 · 아니요)이다.
   await streamLines(page, view.id, [PROJECT_ASKED]);
@@ -237,14 +259,15 @@ test("이은 Thread에서 Host가 Work 밖 Project를 고치려 하면 카드가
     .poll(async () => (await ipcCallArgs(page, "thread_answer_project", "thread")).map(({ args }) => args))
     .toEqual([{ thread: view.id, request: ASK.requestId, choice: (PROJECT_ANSWERED.payload as { choice: string }).choice }]);
 
-  // 엔진이 Project를 붙이고 그 worktree를 짓는다 — 카드가 걷히고 결정 줄과 그 턴 머리의 worktree 줄이 선다. Work 목록이 바뀌면
-  // 요약 카드의 그 Project가 「고치는 중」이다.
+  // 엔진이 Project를 붙이고 그 worktree를 짓는다 — 카드가 걷히고 결정 줄과 그 턴 머리의 worktree 줄이 선다. Work 목록이 바뀌면(범위도
+  // 함께 다시 읽는다 — worktree에서 일하는 Project는 범위에서 빠진다) 요약 카드의 그 Project가 「고치는 중」으로 먼저 선다(03 §7).
   await streamLines(page, view.id, linesAfter(project, PROJECT_ASKED.seq));
+  await replaceAnswer(page, "reading_scope", answerByArg("thread", { [view.id]: scopeOf(...ASK.workProjects) }));
   await worksNow(page, [...WORKS, workView({ ...linked, projects: [...ASK.workProjects, ASK.project] }, { trees: [ASK.project] })]);
   await expect(card).toHaveCount(0);
   await expect(흐름(page).locator('[data-decision="project-attach"]')).toHaveText(`${ASK.project}을 이 Work에 붙임`);
   await expect(흐름(page).locator('[data-system="worktree"]')).toHaveText(`${TREE.project}에 worktree를 만듦 · ${TREE.branch}`);
-  await expect(workCard.locator("[data-project]")).toHaveText([/^api-server\s*읽기만/, new RegExp(`^${ASK.project}\\s*고치는 중`)]);
+  await expect(workCard.locator("[data-project]")).toHaveText([new RegExp(`^${ASK.project}\\s*고치는 중`), /^api-server\s*읽기만/]);
   await expect(입력칸(page)).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

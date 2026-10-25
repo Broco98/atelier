@@ -59,8 +59,15 @@ export function SpaceMenuItems({
         if (next !== value) onPick(next === NONE ? null : next);
       }}
     >
+      {/* 줄 이름은 머리 글자만이다 — 곁말은 설명으로 따로 읽힌다(아래 Space 줄 · Work 칩의 스위치와 같다). */}
       {menu.top.label === "Space 없음" ? (
-        <DropdownMenuRadioItem value={NONE} label={menu.top.label} aria-description={menu.top.note} size="note">
+        <DropdownMenuRadioItem
+          value={NONE}
+          label={menu.top.label}
+          aria-label={menu.top.label}
+          aria-description={menu.top.note}
+          size="note"
+        >
           <X className="mt-0.5" aria-hidden />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate">{menu.top.label}</span>
@@ -68,7 +75,12 @@ export function SpaceMenuItems({
           </span>
         </DropdownMenuRadioItem>
       ) : (
-        <DropdownMenuItem aria-description={menu.top.note} size="note" onClick={() => onPick(null)}>
+        <DropdownMenuItem
+          aria-label={menu.top.label}
+          aria-description={menu.top.note}
+          size="note"
+          onClick={() => onPick(null)}
+        >
           <X className="mt-0.5" aria-hidden />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate">{menu.top.label}</span>
@@ -113,6 +125,7 @@ export function SpaceMenuItems({
           <DropdownMenuLabel>아직 Space가 없어요</DropdownMenuLabel>
           <DropdownMenuItem
             size="note"
+            aria-label="Host와 Space 만들기"
             aria-description="Host가 Project를 읽고 초안을 내요"
             onClick={() => void navigate({ to: "/", search: HOST_MAKE })}
           >
