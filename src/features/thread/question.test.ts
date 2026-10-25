@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AskedQuestion, QuestionEntry } from "./fold";
-import { answeredText, answersOf, NO_PICK, pickOption, questionKey, typeAnswer } from "./question";
+import { answeredCards, answersOf, NO_PICK, pickOption, questionKey, typeAnswer } from "./question";
 
 // 질문 카드(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — 물음마다 고른 것 · 직접 쓴 말을 답으로, 키 하나를 고르기로, 답한 것을
-// 「답함: …」 줄의 글로 옮긴다. seam은 `question.ts`의 순수 함수들이고, 그리는 쪽(`QuestionCard.tsx`)은 여기 나온 값만 그린다. 문구의
+// 흐름의 답한 카드(02 §10)로 옮긴다. seam은 `question.ts`의 순수 함수들이고, 그리는 쪽(`QuestionCard.tsx`)은 여기 나온 값만 그린다. 문구의
 // 정본은 보드의 글자다.
 
 const FEE: AskedQuestion = {
@@ -81,13 +81,12 @@ describe("키보드로 고른다", () => {
   });
 });
 
-describe("답한 뒤의 줄", () => {
+describe("답한 뒤의 카드(02 §10 · Components 「답한 카드」)", () => {
   const entry = (extra: Partial<QuestionEntry>): QuestionEntry => ({ kind: "question", key: "q1", choice: "answer", answers: [], ...extra });
 
-  it("「답함: …」 — 물음이 여럿이면 답을 「 · 」로 잇고, 나중에는 「나중에 답하기로 함」이다(보드 「답한 뒤」)", () => {
-    expect(answeredText(entry({ answers: [{ question: FEE.question, answer: "비율대로 돌려준다" }] }))).toBe("답함: 비율대로 돌려준다");
+  it("물음마다 한 줄 카드 — 물은 제목과 고른 답(여럿 고른 답은 쉼표로 이은 그대로)이다", () => {
     expect(
-      answeredText(
+      answeredCards(
         entry({
           answers: [
             { question: FEE.question, answer: "비율대로 돌려준다" },
@@ -95,7 +94,14 @@ describe("답한 뒤의 줄", () => {
           ],
         }),
       ),
-    ).toBe("답함: 비율대로 돌려준다 · 주문 상세, 환불 내역");
-    expect(answeredText(entry({ choice: "later" }))).toBe("나중에 답하기로 함");
+    ).toEqual([
+      { asked: "부분 환불 수수료는 어떻게 할까요?", said: "비율대로 돌려준다" },
+      { asked: "어느 화면에 보일까요?", said: "주문 상세, 환불 내역" },
+    ]);
+  });
+
+  it("나중에로 닫은 질문은 답이 없다 — 「나중에 답하기로 함」 한 줄이고, 아직 기다리면 카드가 없다", () => {
+    expect(answeredCards(entry({ choice: "later" }))).toEqual([{ asked: "나중에 답하기로 함", said: null }]);
+    expect(answeredCards(entry({ choice: null }))).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useState, type
 import { useStore } from "@tanstack/react-store";
 import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
 import { decisionText } from "./approval";
@@ -36,7 +37,7 @@ import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
 import { projectChoiceText } from "./project-card";
-import { answeredText, saidOf } from "./question";
+import { answeredCards } from "./question";
 import { SentQuoteChip } from "./QuoteChip";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Quote } from "@/features/works/QuotePick";
@@ -62,7 +63,7 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   기다립니다」가 링크 색으로 붙는다. 끝나면 작업 구분선 「N초 동안 작업 ›」(그 아래 가는 선 — 02 구현 스펙 §8)으로 접히고 **턴 끝
 //   메시지**(마지막 도구 뒤의 답)만 펼쳐 둔다. 구분선을 누르면 생각 · 도구 줄 · 앞선 답이 높이와 함께 펼쳐진다(`Unfold`). **펼칠 것 없이
 //   끝난 턴(말만 한 턴)에는 구분선이 없다**(`workLine`). 승인 카드에서 고른 것은 그 도구 줄 뒤의 결정 줄이다(v1 티켓 24 — 「✓ 명령
-//   실행을 승인함 · 이 Work에서는 다시 묻지 않음」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
+//   실행을 승인함 · 이 Work에서 늘 허용」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
 //   「✓ Work 만들기 · api-server · fix/refund-api」 · 「→ Work 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 Work … 을 만들고 이 Thread에 연결함」이다.
 // - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming`). 답을 기다리는 동안은 「생각 중」이 반짝인다.
@@ -519,25 +520,31 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
 }
 
 /**
- * 질문에 답한 줄(Cards 보드 「답한 뒤」 `.done`) — ✓ 14와 13/20 `fg-tertiary`, 답은 `fg-secondary`(「답함: **비율대로 돌려준다**」). 답을
- * 기다리는 동안은 서지 않는다 — 입력창 자리의 질문 카드가 말한다.
+ * 답한 카드(02 §10 · 캔버스 v35 Components 「답한 카드」) — 물음마다 한 줄 카드다: 초록 ✓ · 물은 제목(13 2단계) · 오른쪽 끝 고른 답(13
+ * 1단계). 겉은 1px `separator-soft` · 둥글기 12 · 안쪽 8 / 12. 나중에로 닫은 질문은 답한 표지 대신 미룬 표지(시계 `fg-tertiary`)와 「나중에
+ * 답하기로 함」이다(`answeredCards`). 답을 기다리는 동안은 서지 않는다 — 입력창 자리의 질문 카드가 말한다.
  */
 function AnsweredRow({ entry }: { entry: QuestionEntry }) {
   const motion = useArrival("chip-in", entry.key);
-  if (entry.choice === null) return null;
-  const said = saidOf(entry);
-  // 나중에로 닫은 질문은 답하지 않았다 — 답한 표지(✓) 대신 미룬 표지다.
-  const Icon = said === null ? Clock : Check;
+  const cards = answeredCards(entry);
+  if (cards.length === 0) return null;
   return (
-    <p
-      data-answered={entry.choice}
-      className={cn("flex min-h-7 flex-wrap items-center gap-1.5 text-chat-meta leading-5 text-fg-tertiary", motion)}
-    >
-      <Icon className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 wrap-anywhere">
-        {said === null ? answeredText(entry) : <>답함: <span className="text-fg-secondary">{said}</span></>}
-      </span>
-    </p>
+    <div data-answered={entry.choice} className={cn("flex flex-col gap-1.5 self-stretch", motion)}>
+      {cards.map((card, at) => (
+        <p
+          key={`${at}-${card.asked}`}
+          className="flex items-center gap-2 rounded-xl border border-separator-soft px-3 py-2 text-chat-meta text-fg-secondary"
+        >
+          {card.said === null ? (
+            <Clock className="size-3 shrink-0 text-fg-tertiary" aria-hidden />
+          ) : (
+            <Check className="size-3 shrink-0 text-diff-added" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
+          )}
+          <span className="min-w-0 wrap-anywhere">{card.asked}</span>
+          {card.said !== null && <span className="ml-auto min-w-0 text-right text-fg wrap-anywhere">{card.said}</span>}
+        </p>
+      ))}
+    </div>
   );
 }
 

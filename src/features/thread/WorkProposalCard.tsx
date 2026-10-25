@@ -5,6 +5,7 @@ import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { threadApi } from "./api";
 import type { AskTurn } from "./asks";
+import { SLOT_CARD } from "./ApprovalCard";
 import { AskCount } from "./AskTurnMarks";
 import type { PendingWork } from "./fold";
 import { branchHint, firstPicked } from "./work-proposal";
@@ -14,8 +15,8 @@ import { branchHint, firstPicked } from "./work-proposal";
 // 등록된 Project(Host 추천과 그 까닭이 먼저 · 처음부터 골라 둠), 규칙 설명과 함께 고치는 브랜치, 「worktree는 처음 고칠 때 만듭니다」
 // 안내, 「Work 없이 계속」 · 「Work 만들기」다. 값은 순수 함수가 짓는다(`work-proposal.ts`).
 //
-// 모양은 보드의 `.wc`다 — r20 · 카드 그림자 · 흰 면 · 위 16 · 옆 16 · 아래 14, 칸 사이 12. 머리는 폴더 아이콘 상자(32 · r10 · `fill-soft`)와
-// 물음 · 「제목 · 까닭」(12/18 `fg-tertiary`). Project 줄은 높이 38 · r12에 체크(16)와 이름, 추천이면 「Host 추천」 꼬리표와 까닭, 아니면
+// 겉은 입력창 자리 카드의 한 겉이다(`SLOT_CARD` — 02 §10 · 스토리 68). 안은 v1 보드의 `.wc`다 — 위 16 · 옆 16 · 아래 14, 칸 사이 12.
+// 머리는 폴더 아이콘 상자(32 · r10 · `fill-soft`)와 물음 · 「제목 · 까닭」(12/18 `fg-tertiary`). Project 줄은 높이 38 · r12에 체크(16)와 이름, 추천이면 「Host 추천」 꼬리표와 까닭, 아니면
 // Project 설명이 오른쪽에 선다. 브랜치 칸은 높이 36 · r12 · 안쪽 링에 고정폭 13이고 오른쪽에 규칙 설명(12 `fg-tertiary`)이 선다.
 //
 // - 이 카드는 답 명령을 부르기만 한다. 고른 것은 기록의 답 줄로 오고, 그 줄이 오면 접기가 이 카드를 빼서 카드가 걷히고 제안 도구 줄
@@ -79,7 +80,7 @@ function WorkProposalCard({ thread, card, count = null, next }: WorkProposalCard
       role="group"
       aria-labelledby={titleId}
       tabIndex={-1}
-      className="flex shrink-0 flex-col gap-3 rounded-3xl bg-surface px-4 pt-4 pb-3.5 shadow-card outline-none"
+      className={cn("flex shrink-0 flex-col gap-3 px-4 pt-4 pb-3.5", SLOT_CARD)}
     >
       <div className="flex items-start gap-2.5">
         <span aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-fill-soft">

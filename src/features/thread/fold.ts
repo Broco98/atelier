@@ -39,7 +39,7 @@ import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 //   기다린다.
 // - **Agent의 질문은 질문 줄이다**(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — `question` 줄(`card: question`)이 오면 승인 ·
 //   Work 만들기 카드와 같은 물음 차례(`asks`)에 질문으로 서고, 그 질문을 낸 도구 줄 자리를 질문 줄이 대신한다. 답하면 그 자리에
-//   「답함: …」이 남고, 거둬지면 아무것도 남지 않는다.
+//   답한 카드가 남고, 거둬지면 아무것도 남지 않는다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -89,7 +89,7 @@ export interface WorkChoiceEntry {
 
 /**
  * 질문 줄(v1 티켓 26) — Agent가 낸 질문 하나. 답을 기다리는 동안은 흐름에 그리지 않고(입력창 자리의 질문 카드가 말한다), 답하면
- * 「답함: …」, 나중에 답하기로 하면 「나중에 답하기로 함」이다(`question.ts`의 `answeredText`).
+ * 답한 카드(물은 것 · 고른 답), 나중에 답하기로 하면 「나중에 답하기로 함」이다(`question.ts`의 `answeredCards`).
  */
 export interface QuestionEntry {
   kind: "question";

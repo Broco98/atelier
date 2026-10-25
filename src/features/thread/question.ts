@@ -3,7 +3,7 @@ import type { AskedQuestion, QuestionEntry } from "./fold";
 import type { QuestionAnswer } from "./types";
 
 // 질문 카드의 화면 값(v1 티켓 26 · 구현 스펙 §9 · 스토리 81 · 캔버스 Cards 보드 「Agent의 질문」) — 물음마다 사람이 고른 것 · 직접 쓴
-// 말을 엔진에 보낼 답으로, 키 하나를 고르기로, 답한 것(`QuestionEntry`)을 「답함: …」 줄의 글로 옮기는 **순수 함수**다. 그리는 것은
+// 말을 엔진에 보낼 답으로, 키 하나를 고르기로, 답한 것(`QuestionEntry`)을 흐름의 답한 카드로 옮기는 **순수 함수**다. 그리는 것은
 // `QuestionCard` · `ThreadFlow`다.
 //
 // - **한 물음에 답은 하나다** — 하나만 고르는 물음은 고른 선택지 하나이거나 직접 쓴 말이다(나중 것이 앞의 것을 지운다). 여럿 고르는
@@ -63,13 +63,18 @@ export function questionKey(press: CardPress, count: number): { pick: number } |
   return press.code === "Enter" || press.code === "NumpadEnter" ? { submit: true } : null;
 }
 
-/** 「답함: 비율대로 돌려준다」 줄의 글(보드 「답한 뒤」) — 물음이 여럿이면 답을 「 · 」로 잇는다. 나중에면 그렇게 말한다. */
-export function answeredText(entry: QuestionEntry): string {
-  const said = saidOf(entry);
-  return said === null ? "나중에 답하기로 함" : `답함: ${said}`;
+/** 답한 카드 하나 — 물은 제목과 고른 답. 나중에로 닫았으면 답이 없고 제목 자리에 그렇게 말한다. */
+export interface AnsweredCard {
+  asked: string;
+  said: string | null;
 }
 
-/** 답한 줄에서 진하게 서는 답 — 「답함: 」 뒤의 글. 나중에면 null이다. */
-export function saidOf(entry: QuestionEntry): string | null {
-  return entry.choice === "answer" ? entry.answers.map((one) => one.answer).join(" · ") : null;
+/**
+ * 흐름에 남는 답한 카드(02 §10 · 캔버스 v35 Components 「답한 카드」) — 물음마다 「✓ · 물은 제목 · 고른 답」 한 줄이다. 나중에로 닫은
+ * 질문은 「나중에 답하기로 함」 한 줄, 아직 답을 기다리면 없다(입력창 자리의 질문 카드가 말한다).
+ */
+export function answeredCards(entry: QuestionEntry): AnsweredCard[] {
+  if (entry.choice === "later") return [{ asked: "나중에 답하기로 함", said: null }];
+  if (entry.choice === null) return [];
+  return entry.answers.map((one) => ({ asked: one.question, said: one.answer }));
 }

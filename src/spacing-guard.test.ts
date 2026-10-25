@@ -424,11 +424,6 @@ describe("눈금의 사분 단", () => {
       why: "위와 같다 — 위아래 안쪽 1",
     },
     {
-      file: "src/features/thread/QueuedMessages.tsx",
-      className: "px-2.25",
-      why: "기다리는 말의 「지금 전하기」 — 좌우 안쪽 9(캔버스 Messages 보드 `.qrow .gbtn`)",
-    },
-    {
       file: "src/features/thread/ThreadMarkdown.tsx",
       className: "py-px",
       why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(02 구현 스펙 §8 · Diff-Chat 「인라인 코드」의 `1px 6px`, 높이 17)",

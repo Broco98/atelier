@@ -73,9 +73,10 @@ import WorkProposalCard from "./WorkProposalCard";
 //   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
 // - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
-//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이,
-//   입력창 자리에는 승인 카드가 선다(v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘
-//   읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
+//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
+//   §10). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
+//   자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
+//   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 Work 카드가 열린다, v1 티켓 34)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
@@ -367,6 +368,23 @@ function GuidePlace({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * 입력창 위 가운데의 원(02 §10 · Screen-Live · Motion 보드 `.cx-dots`) — 32 · 흰 면 · 1px `border-faint`. 「맨 아래로」와 작업 중 점이 같은
+ * 원이다.
+ */
+const SLOT_CIRCLE = "col-start-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border-faint bg-surface";
+
+/** 작업 중 점 셋 — 그림이라 숨고, 원이 말한다(「작업 중」 · 「맨 아래로」). 움직임은 `typing-dots`다(값은 02 티켓 12). */
+function WorkingDots({ className }: { className?: string }) {
+  return (
+    <span className={cn("typing-dots", className)} aria-hidden>
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
 /** 카드가 열린 동안 대화가 비켜 주는 폭 — 카드 폭 + 오른쪽 틈 12(보드 `.chat{margin-right:312px}` · `.wpos{right:12px}`). */
 const CARD_ROOM = "calc(var(--size-work-card) + 12px)";
 
@@ -501,6 +519,9 @@ function ThreadBody({
   // 「결정은 내가 합니다」(S31) — 걸린 물음이 먼저다. 이 카드는 기다리는 이가 없는 안내다. 줄은 Library Host 정의에서 선다 — Host는
   // Library에만 있고, Library 목록은 사이드바가 이미 읽어 둔다.
   const decisions = asking === null && decisionsDue(model, seen);
+  // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
+  // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
+  const working = model.running && asking === null;
   const library = useAgentRoster(null);
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
@@ -708,7 +729,6 @@ function ThreadBody({
                       <ApprovalCard
                         thread={thread}
                         name={model.cast[asking.who]?.name ?? asking.who}
-                        avatar={model.cast[asking.who]?.avatar ?? null}
                         request={asking}
                         scope={view.work ? "work" : "thread"}
                         cwd={askingCwd}
@@ -738,10 +758,11 @@ function ThreadBody({
                 ) : null
               }
               above={
-                (changes || away || queue.length > 0) && (
+                (changes || away || working || queue.length > 0) && (
                   <>
-                    {(changes || away) && (
-                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」는 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽 끝이었다).
+                    {(changes || away || working) && (
+                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」 · 작업 중 점은 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽
+                      // 끝이었다. 작업 중 점은 Codex처럼 그 원 안에 선다 — 02 §10).
                       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                         {changes && last ? (
                           <ChangesPill
@@ -754,16 +775,27 @@ function ThreadBody({
                         ) : (
                           <span />
                         )}
-                        {away && (
-                          // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼).
+                        {away ? (
+                          // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
+                          // 서고, 올려 두거나 포커스가 오면 ↓로 바뀐다(Motion 보드 「작업 중 점」 — Codex).
                           <button
                             type="button"
                             aria-label="맨 아래로"
                             onClick={toBottom}
-                            className="col-start-2 flex size-8.5 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary shadow-lifted transition-colors jump-in hover:text-fg focus-ring"
+                            className={cn(SLOT_CIRCLE, "group text-fg-secondary transition-colors jump-in hover:text-fg focus-ring")}
                           >
-                            <ArrowDown className="size-4" aria-hidden />
+                            {working && <WorkingDots className="group-hover:hidden group-focus-visible:hidden" />}
+                            <ArrowDown
+                              className={cn("size-4", working && "hidden group-hover:block group-focus-visible:block")}
+                              aria-hidden
+                            />
                           </button>
+                        ) : (
+                          working && (
+                            <span role="img" aria-label="작업 중" className={SLOT_CIRCLE}>
+                              <WorkingDots />
+                            </span>
+                          )
                         )}
                       </div>
                     )}

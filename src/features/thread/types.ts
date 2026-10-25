@@ -8,10 +8,10 @@ import type { Avatar } from "./faces";
 
 /** 대기 줄의 말 하나 — 턴이 도는 동안 보낸 말이다(`atelier_acp::QueuedMessage`). 입력창 위 「대기 중」에 선다. */
 export interface QueuedMessage {
-  /** 대기 id — 고치기 · 지우기 · 지금 전하기가 이것으로 고른다. */
+  /** 대기 id — 고치기 · 지우기 · 지금 보내기가 이것으로 고른다. */
   id: string;
   text: string;
-  /** 「지금 전하기」를 눌러 도는 턴의 멈춤을 기다리는 말이다. 그런 말은 늘 맨 앞에 하나뿐이다. */
+  /** 「지금 보내기」를 눌러 도는 턴의 멈춤을 기다리는 말이다. 그런 말은 늘 맨 앞에 하나뿐이다. */
   sendNow: boolean;
 }
 
