@@ -458,6 +458,35 @@ describe("Library의 주소", () => {
   });
 });
 
+// Space(03 구현 스펙 §14). 목록은 고른 것으로 넘기지 않는다 — Projects · Works와 달리 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
+describe("Space의 주소", () => {
+  it("`/spaces`는 목록 그대로 서고 마지막 자리로 적힌다", async () => {
+    const { router, history } = setup(["/spaces"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/spaces");
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/spaces/");
+    expect(history.length).toBe(1);
+    expect(shellStore.state.lastPlace).toBe("/spaces");
+  });
+
+  it("`/spaces/<slug>`는 그 Space의 상세다 — 한글 slug도 그대로다", async () => {
+    const { router } = setup(["/spaces/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4"]);
+    await router.load();
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/spaces/$slug");
+    const matches = router.state.matches;
+    expect(matches[matches.length - 1].params).toEqual({ slug: "결제-서비스" });
+  });
+
+  it("상세에서 점선 Space로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Space로 간다", async () => {
+    const { router, history } = setup(["/spaces/a"]);
+    await router.load();
+    await router.navigate({ to: "/spaces/$slug", params: { slug: "b" } });
+    expect(history.length).toBe(2);
+    await goBack(router, history);
+    expect(router.state.location.pathname).toBe("/spaces/a");
+  });
+});
+
 // 설정 nav의 「앱으로 돌아가기」(UI개선 결정 27). 마지막 자리, 없으면 목록 주소, work 주소면 기억한
 // 보기·탭을 되붙인다.
 //

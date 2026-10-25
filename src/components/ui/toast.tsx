@@ -26,15 +26,44 @@ const TOAST_ID = "app-toast"
  */
 const TOAST_TIMEOUT_MS = 1600
 
-/** 토스트의 두 말. 한 일(✓)과 못 한 일(⊘)이 같은 표면을 쓰고, 글리프가 둘을 가른다(결정 47). */
-type ToastKind = "success" | "rejected"
+/**
+ * 토스트의 말. 한 일(✓)과 못 한 일(⊘)이 같은 표면을 쓰고, 글리프가 둘을 가른다(결정 47). **되돌리기**(`undo`)는 짙은 면에 「되돌리기」
+ * 단추를 든 갈래다(03 시안 F1-SpaceDetail · F4-KitSpace `.toast`) — 방금 한 일을 잠깐 되돌릴 수 있게 한다(`showUndoToast`).
+ */
+type ToastKind = "success" | "rejected" | "undo"
 
 /**
  * 토스트를 낸다 — 작업 화면과 아카이브 화면이 같은 이 호출을 쓴다. 떠 있던 것이 있으면 이 글자로 갈아 끼운다.
  * Provider가 마운트된 **뒤에** 낸 것만 선다(관리자는 Provider가 구독한 뒤부터 듣는다).
  */
-function showToast(title: string, kind: ToastKind = "success") {
+function showToast(title: string, kind: Exclude<ToastKind, "undo"> = "success") {
   toast.add({ id: TOAST_ID, title, type: kind })
+}
+
+/**
+ * 되돌리기 토스트가 서 있는 시간 — 짧은 토스트(1.6초)로는 「되돌리기」를 누를 틈이 없고, 앱 셸의 동작 토스트처럼 남아 있으면 지나간 일을
+ * 되돌리는 단추가 오래 선다. 시안의 「잠깐」이다(03 결정 「03 — 되돌리기 토스트」).
+ */
+const UNDO_TOAST_MS = 6000
+
+/**
+ * 방금 한 일을 말하고 「되돌리기」를 단 토스트를 낸다(03 구현 스펙 §14 — Space에서 빼기 · 지우기, Project 제거). 같은 한 장이라 앞
+ * 토스트를 갈아 끼운다. 누르면 토스트를 내리고 `undo`를 부른다 — 되돌리기는 이 토스트에서만 한다(S10).
+ */
+function showUndoToast(title: string, undo: () => void) {
+  toast.add({
+    id: TOAST_ID,
+    title,
+    type: "undo",
+    timeout: UNDO_TOAST_MS,
+    actionProps: {
+      children: "되돌리기",
+      onClick: () => {
+        toast.close(TOAST_ID)
+        undo()
+      },
+    },
+  })
 }
 
 function ToastProvider({
@@ -104,6 +133,7 @@ const TOAST_ICONS: Record<ToastKind, ReactNode> = {
       className="size-3.5 shrink-0 text-fg-tertiary"
     />
   ),
+  undo: null,
 }
 
 function ToastIcon({ kind }: { kind: ToastKind }) {
@@ -113,14 +143,26 @@ function ToastIcon({ kind }: { kind: ToastKind }) {
 function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager()
 
-  return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
-      {/* Base UI는 `type`을 문자열로만 안다. 관리자는 이 파일 밖에 안 나가고 토스트를 내는 길이 `showToast`
-          하나라 그 값은 늘 ToastKind다. */}
-      <ToastIcon kind={toastItem.type as ToastKind} />
-      <ToastTitle />
-    </Toast>
-  ))
+  return toasts.map((toastItem) =>
+    toastItem.type === "undo" ? (
+      // 되돌리기 갈래 — 짙은 면(`fg`)에 흰 글자, 끝에 「되돌리기」 글자 단추(시안 `.toast` — 38 · 안쪽 왼 14 · 오른 5 · 틈 10 · 둥글기 10).
+      <Toast
+        key={toastItem.id}
+        toast={toastItem}
+        className="h-9.5 gap-2.5 rounded-lg bg-fg py-0 pr-1 pl-3.5 text-fg-inverse shadow-menu"
+      >
+        <ToastTitle className="whitespace-nowrap" />
+        <ToastPrimitive.Action className="h-7 rounded-md px-2 text-chat-meta text-link-on-solid hover:bg-fill-active focus-ring" />
+      </Toast>
+    ) : (
+      <Toast key={toastItem.id} toast={toastItem}>
+        {/* Base UI는 `type`을 문자열로만 안다. 관리자는 이 파일 밖에 안 나가고 토스트를 내는 길이 `showToast` ·
+            `showUndoToast` 둘이라 그 값은 늘 ToastKind다. */}
+        <ToastIcon kind={toastItem.type as ToastKind} />
+        <ToastTitle />
+      </Toast>
+    )
+  )
 }
 
 /**
@@ -143,5 +185,6 @@ export {
   ToastViewport,
   TOAST_TIMEOUT_MS,
   showToast,
+  showUndoToast,
 }
 export type { ToastKind }

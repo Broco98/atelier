@@ -2,6 +2,7 @@ import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
+import type { Space, SpaceDetail } from "@/features/spaces/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
@@ -57,6 +58,37 @@ export const PROJECTS: ProjectView[] = [
     missing: false,
   },
 ];
+
+/**
+ * Space(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(Host가 만들었다)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
+ * 「함께 쓰는 Space」 · 그래프의 점선 노드가 서는 갈래가 이 한 쌍이다.
+ */
+export const SPACES: Space[] = [
+  {
+    slug: "결제",
+    name: "결제",
+    projects: ["billing", "ledger"],
+    createdAt: "2026-10-24",
+    createdBy: "host",
+    description: "결제와 정산을 한 흐름으로 다뤄요.",
+    problems: [],
+  },
+  {
+    slug: "원장-도구",
+    name: "원장 도구",
+    projects: ["ledger"],
+    createdAt: "2026-10-20",
+    createdBy: null,
+    description: "",
+    problems: [],
+  },
+];
+
+/** Space 상세의 답 — 그 Space와 함께 쓰는 Space(core `space_detail`이 짓는 모양). */
+export const SPACE_DETAILS: Record<string, SpaceDetail> = {
+  결제: { ...SPACES[0], shared: [{ slug: "원장-도구", name: "원장 도구", overlap: ["ledger"], projects: ["ledger"] }] },
+  "원장-도구": { ...SPACES[1], shared: [{ slug: "결제", name: "결제", overlap: ["ledger"], projects: ["billing", "ledger"] }] },
+};
 
 /**
  * spec 트리를 **손으로 적는** 조각들(spec 레이아웃 구현 스펙 Testing 「앱」). 이 층의 백엔드는 이 표라
@@ -890,6 +922,11 @@ export const FIXTURE_THREAD: ThreadView = {
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
+  // Space 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Space이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
+  // (`useUpdateSpace`) — 이 답은 쓰기를 기억하지 않는다.
+  list_spaces: SPACES,
+  get_space: answerByArg("slug", SPACE_DETAILS),
+  update_space: SPACES[0],
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //

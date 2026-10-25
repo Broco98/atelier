@@ -40,6 +40,7 @@ import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { foldingInnerClass, SIDEBAR_ID, SIDEBAR_MOTION, useFoldedFocus } from "./panel-layout";
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
+import { PlaceCount } from "./place-count";
 import { initialOf, usePersonName } from "./person";
 import { ShellMeta } from "./shell-meta";
 import { SIDEBAR_ROWS, sidebarRowTone } from "./sidebar-look";
@@ -65,7 +66,7 @@ interface SidebarProps {
    * 「설정 nav인가」와 「어느 항목이 켜졌나」를 함께 답한다. 앱 셸이 원시값 select로 읽어 내린다.
    */
   currentSettingsItem: SettingsItemKey | null;
-  // 설정은 사람 메뉴의 끝에 산다 — 목적지 넷과 성질이 달라 구분선 뒤다(결정 51 · v1 구현 스펙 S27)
+  // 설정은 사람 메뉴의 끝에 산다 — 목적지 다섯과 성질이 달라 구분선 뒤다(결정 51 · v1 구현 스펙 S27)
   onOpenSettings: () => void;
   onPickSettingsItem: (key: SettingsItemKey) => void;
   /** 설정 nav 맨 위 「앱으로 돌아가기」. 어디로 가는지는 앱 셸이 안다(결정 27). */
@@ -644,14 +645,15 @@ function LibraryItem({ stop, yielded, onClick }: { stop: boolean; yielded: boole
 // `fg-sidebar`, 켜진 줄(포인터 · 키보드)은 사이드바 · 사람 메뉴의 고른 면 `fill-nav-selected`(.053)에 글자 `fg`다(시안 `.mi` · `.mi.on`).
 // 높이 · 좌우 8은 메뉴 줄 한 벌(`menu-row`)을 그대로 두고 나머지를 덮는다 — 덮는 코어 유틸리티는 `menu-row` 뒤에 선다(dropdown-menu.tsx
 // `ITEM_SIZE` 주석). 앱의 다른 메뉴(⋯ · 우클릭)는 그대로다 — 이 메뉴만 사이드바에서 열리는 사이드바의 일부다.
-const PERSON_ROW = "gap-2 rounded-md text-sm text-fg-sidebar focus:bg-fill-nav-selected focus:text-fg";
+const PERSON_ROW =
+  "gap-2 rounded-md text-sm text-fg-sidebar focus:bg-fill-nav-selected focus:text-fg aria-[current=page]:bg-fill-nav-selected aria-[current=page]:text-fg";
 // 줄 글리프 — 16 · `fg-icon`(시안 `.mi .ico` #5d5f61). 크기와 색을 그림에 바로 건다 — `menu-row`의 15 · `fg-secondary`를 이긴다(index.css).
 const PERSON_GLYPH = "size-4 text-fg-icon";
 
 /**
  * 사람 메뉴(v1 구현 스펙 S27 · 02 구현 스펙 §4 · §5) — 사이드바 맨 아래 **사람 줄**과 그것이 여는 메뉴. 줄은 얼굴 · 이름 · 위아래 꺾쇠뿐이고
- * (스토리 31 — 시안 F1-Home `.sb-foot`), 누르면 지금 화면들로 가는 메뉴가 위로 뜬다: `navItems`의 넷(옛 main nav)과, 구분선 뒤에 설정.
- * ⌘K의 행선지는 그대로다(`destinations.ts`가 같은 배열을 읽는다). Space 항목은 없다(02 경계 — Projects를 둔다).
+ * (스토리 31 — 시안 F1-Home `.sb-foot`), 누르면 지금 화면들로 가는 메뉴가 위로 뜬다: `navItems`의 다섯(옛 main nav 넷 + 03의 `Space`)과,
+ * 구분선 뒤에 설정. ⌘K의 행선지는 그대로다(`destinations.ts`가 같은 배열을 읽는다 — 그래서 Space도 행선지다).
  *
  * - **줄 위에 선이 없다**(02 스펙 §4) — 한때 윗변에 0.5 선이 섰다(UI개선 결정 25). Codex 사이드바 바닥에는 선이 없다. 표식
  *   (`data-sidebar-foot`)은 검사가 이 칸을 집는다.
@@ -659,8 +661,11 @@ const PERSON_GLYPH = "size-4 text-fg-icon";
  *   폴러와 「봤다」 앉히기는 **이 줄의 몸에서 돈다**(`useProcessesNavMeta`) — 줄은 늘 서고 메뉴는 열 때만 그려져, 메뉴 안에서 세면 닫힌 동안
  *   아무도 묻지 않는다(02 결정 「04 · 메모리 합계 폴러」). 메뉴의 줄은 받은 값을 그리기만 한다.
  * - 최상위 셸의 수는 메뉴의 `Terminal` 줄이 든다(옛 nav 줄의 메타 — 결정 13).
- * - 지금 선 화면의 줄은 `aria-current`로 말한다 — 메뉴의 켜짐(`fill-nav-selected`)은 포인터 · 키보드가 가리키는 줄의 것이라 겹치지 않게 면을
- *   칠하지 않는다.
+ * - **`Projects` · `Space` 끝에 그 수가 옅게 선다**(03 스펙 §4 · 스토리 8 — `PlaceCount`). 수는 메뉴를 열 때만 그 줄이 읽는다 — 사람 줄 몸에서
+ *   읽으면 앱이 떠 있는 내내 등록부 · Space 폴더의 종을 듣는 구독이 둘 더 선다. 목록은 이미 읽힌 캐시라 열자마자 선다.
+ * - **지금 선 화면의 줄은 골라져 보인다**(03 구현 스펙 §4 · 스토리 9 — Space 화면에 있으면 「Space」) — 고른 줄의 면(`fill-nav-selected`)과 `fg`
+ *   글자다(Components 보드 사람 메뉴의 `.mi.on`). 한때(02) `aria-current`로만 말하고 면을 칠하지 않았다 — 포인터 · 키보드가 가리키는 줄과 면이
+ *   같아 겹친다는 까닭이었는데, 03 시안과 스토리가 지금 자리를 보이게 했다(03 결정 「03 — 사람 메뉴의 지금 줄」).
  */
 function PersonMenu({
   activeKey,
@@ -722,6 +727,7 @@ function PersonMenu({
               {/* 끝 글자는 줄 안쪽 8에 선다(시안 `.mi .end`) — 메타 한 벌(`row-meta`)의 오른쪽 여백 4를 이 자리에서 되돌려, 아래 설정의 ⌘,와
                   같은 세로줄에 끝이 선다. */}
               <span className="-mr-1 flex shrink-0">
+                <PlaceCount place={item.key} />
                 {item.key === "terminal" && <RowMetaFor owner={ownerOf()} shellCount={topShells} />}
                 {item.key === "processes" && <ProcessesNavMeta meta={processes} />}
               </span>
@@ -729,7 +735,7 @@ function PersonMenu({
           ))}
           {/* 구분선 — .5 `separator` · 위아래 4 · 좌우 6(시안 `.msep`). */}
           <DropdownMenuSeparator className="mx-1.5 bg-separator" />
-          {/* 설정은 목적지 넷과 성질이 다르다(결정 51) — 구분선 뒤 끝에 서고, 키(⌘,)를 단다. */}
+          {/* 설정은 목적지 다섯과 성질이 다르다(결정 51) — 구분선 뒤 끝에 서고, 키(⌘,)를 단다. */}
           <DropdownMenuItem shortcut="settings" onClick={onOpenSettings} className={PERSON_ROW}>
             <Settings aria-hidden className={PERSON_GLYPH} />
             <span className="min-w-0 flex-1 truncate">Settings</span>

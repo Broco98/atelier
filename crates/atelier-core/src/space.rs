@@ -1,0 +1,923 @@
+use std::path::{Path, PathBuf};
+
+use serde::Serialize;
+
+use crate::paths::spaces_in;
+use crate::{Error, Result};
+
+/// Space 하나 — 파일을 읽은 값과 그 검사의 문제(03 구현 스펙 §8). 문제가 있어도 선다: 목록이 「문제 있음」으로 보이고 관계 편집에서
+/// 고친다(스토리 185). 읽을 수 없는 칸은 비어 있다 — 닫히지 않은 파일은 이름도 없어 화면이 slug로 부른다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Space {
+    /// 파일 이름 — 만든 뒤 바뀌지 않는다.
+    pub slug: String,
+    pub name: String,
+    /// 적힌 차례 그대로, 한 번씩. 등록되지 않은 Project도 적힌 대로 든다(그 일은 문제가 말한다).
+    pub projects: Vec<String>,
+    pub created_at: String,
+    /// 만든 이 — Host 도구로 만들면 `host`, 화면에서 만들면 없다(S6).
+    pub created_by: Option<String>,
+    /// 본문 — Agent가 이 Space에서 일할 때 처음 읽는 설명.
+    pub description: String,
+    pub problems: Vec<SpaceProblem>,
+}
+
+/// 검사가 돌려주는 것 — 문제와 조각 자리.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceCheck {
+    pub problems: Vec<SpaceProblem>,
+    pub pieces: SpacePieces,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceProblem {
+    pub line: usize,
+    pub kind: SpaceProblemKind,
+    /// 문제의 Project slug — 등록되지 않은 · 두 번 적은 Project에만 선다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// 화면이 그 줄 끝에 붙이는 말(「등록되지 않은 Project예요」). 말은 여기 하나다 — 화면 · 저장 실패 · Host 도구가 같은 말을 한다.
+    pub message: String,
+}
+
+impl SpaceProblem {
+    fn new(line: usize, kind: SpaceProblemKind, project: Option<String>) -> Self {
+        let message = match kind {
+            SpaceProblemKind::UnclosedFrontmatter => "frontmatter가 닫히지 않았어요",
+            SpaceProblemKind::BadYaml => "YAML로 읽을 수 없어요",
+            SpaceProblemKind::NoName => "이름(name)이 비어 있어요",
+            SpaceProblemKind::UnknownProject => "등록되지 않은 Project예요",
+            SpaceProblemKind::DuplicateProject => "같은 Project가 두 번 있어요",
+        };
+        SpaceProblem { line, kind, project, message: message.to_string() }
+    }
+}
+
+/// 문제들을 한 문장으로 — 저장이 거절될 때의 말(「Space 파일에 문제가 있어요 — 5행 등록되지 않은 Project예요(billing)」).
+pub(crate) fn describe_problems(problems: &[SpaceProblem]) -> String {
+    let each: Vec<String> = problems
+        .iter()
+        .map(|problem| match &problem.project {
+            Some(project) => format!("{}행 {}({project})", problem.line, problem.message),
+            None => format!("{}행 {}", problem.line, problem.message),
+        })
+        .collect();
+    format!("Space 파일에 문제가 있어요 — {}", each.join(" · "))
+}
+
+/// 문제의 갈래 다섯(03 구현 스펙 §8 「검사」).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SpaceProblemKind {
+    /// frontmatter가 `---`로 열리지 않았거나 닫히지 않았다.
+    UnclosedFrontmatter,
+    BadYaml,
+    /// `name`이 없거나 비었다.
+    NoName,
+    UnknownProject,
+    DuplicateProject,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpacePieces {
+    pub name: Option<usize>,
+    pub projects: Option<Lines>,
+    pub body: Option<Lines>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Lines {
+    pub first: usize,
+    pub last: usize,
+}
+
+pub fn check_space(text: &str, registered: &[String]) -> SpaceCheck {
+    read_text(text, registered).check
+}
+
+/// Space 파일을 고칠 것 — 상세 화면(설명 · 넣기 · 빼기)과 Host 도구가 쓴다. 비어 있는 칸은 그대로 둔다.
+#[derive(Debug, Clone, Default)]
+pub struct SpacePatch {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    /// 넣을 Project — 이미 든 것은 건너뛰고, 목록 끝에 차례로 선다. `before`가 있으면 그 Project 앞에 선다(빼기를 되돌려 제자리로).
+    pub add: Vec<String>,
+    pub before: Option<String>,
+    /// 뺄 Project — 같은 것을 두 번 적었으면 둘 다 뺀다.
+    pub remove: Vec<String>,
+}
+
+/// **글 단위 고치기** — 고친 칸만 그 자리에서 바꾸고 나머지 글자(주석 · 칸 차례 · 따옴표 · 모르는 칸 · 들여쓰기)는 그대로 둔 새 글을
+/// 돌려준다. 파일을 쓰지 않고 검사도 하지 않는다 — 검사는 [`update_space`]가 앞뒤로 한다.
+///
+/// serde로 읽고 다시 쓰면(`render_project`처럼) 사람이 적은 주석 · 차례 · 따옴표를 잃는다. 「Space는 파일이다」 — 사람이 손으로
+/// 고치는 파일이라 앱이 고친 자리만 바뀌어야 diff로 읽힌다(03 구현 스펙 §8 「고치기」 · 결정 「조정」).
+///
+/// - 이름: `name` 줄 하나를 바꾼다(없으면 frontmatter 첫 줄에 세운다).
+/// - 설명: 닫는 `---` 아래를 바꾼다. 비우면 본문 없이 끝난다.
+/// - Project: 줄마다 `- ` 항목 하나인 목록이면 그 항목 줄만 지우거나 끼운다 — 끼우는 줄은 이웃 항목의 들여쓰기를 따른다. 마지막을
+///   빼면 `projects: []`다. 한 줄 목록(`[a, b]`) · 빈 목록 · 칸이 없을 때는 `projects` 칸을 목록으로 다시 적는다(칸이 없으면 `name`
+///   아래에 세운다).
+///
+/// frontmatter가 닫히지 않았거나 YAML로 읽을 수 없으면 고칠 자리를 모른다 — 그 문제로 실패한다.
+pub fn edit_space_text(text: &str, patch: &SpacePatch) -> Result<String> {
+    let structural: Vec<SpaceProblem> = read_text(text, &[])
+        .check
+        .problems
+        .into_iter()
+        .filter(|problem| matches!(problem.kind, SpaceProblemKind::UnclosedFrontmatter | SpaceProblemKind::BadYaml))
+        .collect();
+    let Some(layout) = Layout::of(text).filter(|_| structural.is_empty()) else {
+        return Err(Error::SpaceProblems(structural));
+    };
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(layout.yaml).unwrap_or_default();
+    // 고칠 자리마다 (원래 글의 줄 범위, 새 줄들) — 모두 원래 글의 줄 번호로 짓고 아래 자리부터 바꾼다. 한 칸을 고쳐 줄 수가 바뀌어도 다른
+    // 칸의 자리가 밀리지 않는다.
+    let mut edits: Vec<(std::ops::Range<usize>, Vec<String>)> = Vec::new();
+    if let Some(description) = &patch.description {
+        let description = description.trim();
+        let body = if description.is_empty() { String::new() } else { format!("\n{description}\n") };
+        edits.push((layout.close + 1..layout.lines.len(), vec![body]));
+    }
+    if !patch.add.is_empty() || !patch.remove.is_empty() {
+        edits.extend(projects_edit(&layout, &yaml, patch));
+    }
+    if let Some(name) = &patch.name {
+        let line = format!("name: {}", yaml_scalar(&name.split_whitespace().collect::<Vec<_>>().join(" ")));
+        let at = layout.key("name").map_or(1..1, |key| key.first..key.last + 1);
+        edits.push((at, vec![line]));
+    }
+    // 같은 자리에 끼우는 둘(칸이 없는 name · projects)은 나중에 바꾼 것이 위에 선다 — name이 projects 위다.
+    edits.sort_by_key(|(at, _)| std::cmp::Reverse(at.start));
+    let mut lines: Vec<String> = layout.lines.iter().map(|line| line.to_string()).collect();
+    for (at, new_lines) in edits {
+        lines.splice(at, new_lines);
+    }
+    Ok(lines.join("\n"))
+}
+
+/// `projects` 칸에 넣고 빼는 자리와 새 줄 — [`edit_space_text`]의 Project 갈래. 바꿀 것이 없으면 없다.
+fn projects_edit(
+    layout: &Layout,
+    yaml: &serde_yaml_ng::Value,
+    patch: &SpacePatch,
+) -> Option<(std::ops::Range<usize>, Vec<String>)> {
+    let items = layout.projects(yaml);
+    let kept: Vec<&String> = items.iter().map(|(slug, _)| slug).filter(|slug| !patch.remove.contains(slug)).collect();
+    let mut adding: Vec<&String> = Vec::new();
+    for slug in &patch.add {
+        if !kept.contains(&slug) && !adding.contains(&slug) {
+            adding.push(slug);
+        }
+    }
+    let key = layout.key("projects");
+    let item_lines = key.map(|key| layout.item_lines(key)).unwrap_or_default();
+
+    if let Some(key) = key.filter(|_| !kept.is_empty() && !items.is_empty() && item_lines.len() == items.len()) {
+        // 줄마다 항목 하나 — 칸 안의 줄을 차례로 옮겨 적으며 뺄 항목 줄은 거르고 넣을 줄을 끼운다. 주석 · 빈 줄은 그대로다.
+        let removed = |at: usize| item_lines.iter().position(|&line| line == at).is_some_and(|index| patch.remove.contains(&items[index].0));
+        let anchor = patch
+            .before
+            .as_ref()
+            .filter(|before| kept.contains(before))
+            .and_then(|before| items.iter().position(|(slug, _)| slug == before))
+            .map(|index| item_lines[index]);
+        let neighbor = anchor.unwrap_or(*item_lines.last()?);
+        let prefix = item_prefix(layout.lines[neighbor]);
+        let added: Vec<String> = adding.iter().map(|slug| format!("{prefix}{}", yaml_scalar(slug))).collect();
+        let mut block = Vec::new();
+        for at in key.first..=key.last {
+            if Some(at) == anchor {
+                block.extend(added.iter().cloned());
+            }
+            if !removed(at) {
+                block.push(layout.lines[at].to_string());
+            }
+        }
+        if anchor.is_none() {
+            block.extend(added);
+        }
+        return Some((key.first..key.last + 1, block));
+    }
+
+    // 칸을 목록으로 다시 적는다 — 한 줄 목록 · 빈 목록 · 칸이 없을 때, 그리고 마지막 항목을 뺄 때.
+    let all: Vec<&String> = kept.into_iter().chain(adding).collect();
+    if key.is_none() && all.is_empty() {
+        return None;
+    }
+    let mut block = vec![if all.is_empty() { "projects: []".to_string() } else { "projects:".to_string() }];
+    block.extend(all.iter().map(|slug| format!("  - {}", yaml_scalar(slug))));
+    let at = match key {
+        Some(key) => key.first..key.last + 1,
+        None => {
+            let at = layout.key("name").map_or(1, |name| name.last + 1);
+            at..at
+        }
+    };
+    Some((at, block))
+}
+
+/// 항목 줄의 머리(`    - `) — 그 뒤가 값이다.
+fn item_prefix(line: &str) -> String {
+    let indent = line.len() - line.trim_start().len();
+    let after_dash = &line[indent + 1..];
+    let gap = after_dash.len() - after_dash.trim_start().len();
+    format!("{}-{}", &line[..indent], " ".repeat(gap.max(1)))
+}
+
+/// YAML 한 줄 값 — 그대로 적어 글로 읽히면 그대로, 수 · 참거짓 · 기호로 읽힐 글이면 따옴표를 단다(serde가 고른다).
+fn yaml_scalar(text: &str) -> String {
+    serde_yaml_ng::to_string(text).map(|out| out.trim_end().to_string()).unwrap_or_else(|_| format!("{text:?}"))
+}
+
+/// 새 Space — 화면의 「직접 만들기」와 Host 도구가 만든다.
+#[derive(Debug, Clone, Default)]
+pub struct NewSpace {
+    pub name: String,
+    pub projects: Vec<String>,
+    pub description: String,
+    /// 만든 이 — Host 도구면 `host`. 화면에서 만들면 없다(S6).
+    pub created_by: Option<String>,
+}
+
+/// 같은 Project를 적은 다른 Space — 상세의 「함께 쓰는 Space」와 관계 그래프의 점선 노드.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedSpace {
+    pub slug: String,
+    pub name: String,
+    /// 겹치는 Project — 이 Space에 적힌 차례다.
+    pub overlap: Vec<String>,
+    /// 그 Space의 Project 전부 — 그래프가 겹치지 않는 것을 그 곁에 옅게 그린다.
+    pub projects: Vec<String>,
+}
+
+/// Space 상세가 읽는 것 — Space와 함께 쓰는 Space.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceDetail {
+    #[serde(flatten)]
+    pub space: Space,
+    pub shared: Vec<SharedSpace>,
+}
+
+/// Space 하나와 그 둘레 — 상세 화면의 한 번 읽기(앱 명령 `get_space`).
+pub fn space_detail(data_root: &Path, slug: &str) -> Result<SpaceDetail> {
+    Ok(SpaceDetail { space: get_space(data_root, slug)?, shared: shared_spaces(data_root, slug)? })
+}
+
+/// Space를 만든다 — 이름에서 slug를 짓고(겹치면 `-2` · `-3`) 파일을 쓴다. 문제가 있으면 쓰지 않고 그 문제로 실패한다.
+pub fn create_space(data_root: &Path, new: NewSpace) -> Result<Space> {
+    let name = new.name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        return Err(Error::EmptyName);
+    }
+    let mut text = format!("---\nname: {}\n", yaml_scalar(&name));
+    if new.projects.is_empty() {
+        text.push_str("projects: []\n");
+    } else {
+        text.push_str("projects:\n");
+        for slug in &new.projects {
+            text.push_str(&format!("  - {}\n", yaml_scalar(slug)));
+        }
+    }
+    text.push_str(&format!("createdAt: {}\n", chrono::Local::now().format("%Y-%m-%d")));
+    if let Some(by) = &new.created_by {
+        text.push_str(&format!("createdBy: {}\n", yaml_scalar(by)));
+    }
+    text.push_str("---\n");
+    let description = new.description.trim();
+    if !description.is_empty() {
+        text.push_str(&format!("\n{description}\n"));
+    }
+    let registered = registered_projects(data_root);
+    let read = read_text(&text, &registered);
+    if !read.check.problems.is_empty() {
+        return Err(Error::SpaceProblems(read.check.problems));
+    }
+    let slug = new_space_slug(data_root, &name);
+    crate::atomic::write_atomically(&spaces_in(data_root), &format!("{slug}.md"), &text)?;
+    Ok(read.into_space(&slug))
+}
+
+/// 이 이름으로 만들 때의 slug — Project와 같은 `slugify`(한글 유지)이고 이미 있으면 `-2` · `-3`이다. 새 Space 화면의 파일 경로가 이것을
+/// 미리 보인다.
+pub fn new_space_slug(data_root: &Path, name: &str) -> String {
+    let dir = spaces_in(data_root);
+    let base = crate::slugify(name);
+    let mut slug = base.clone();
+    let mut n = 2;
+    while dir.join(format!("{slug}.md")).exists() {
+        slug = format!("{base}-{n}");
+        n += 1;
+    }
+    slug
+}
+
+/// Space를 고쳐 쓴다 — 고친 칸만 바꾼다([`edit_space_text`]). 고친 글이 **새 문제**를 만들면(등록되지 않은 Project를 넣었다 · 이름을
+/// 비웠다) 쓰지 않고 그 문제로 실패한다. 이미 있던 문제는 막지 않는다 — 손으로 깨뜨린 Project 한 줄이 있어도 설명을 고치고, 그 줄을
+/// 빼서 문제를 걷을 수 있다.
+pub fn update_space(data_root: &Path, slug: &str, patch: SpacePatch) -> Result<Space> {
+    if patch.name.as_ref().is_some_and(|name| name.trim().is_empty()) {
+        return Err(Error::EmptyName);
+    }
+    let path = space_path(data_root, slug)?;
+    let text = std::fs::read_to_string(&path).map_err(|_| Error::SpaceNotFound(slug.to_string()))?;
+    let registered = registered_projects(data_root);
+    let before = read_text(&text, &registered).check.problems;
+    let edited = edit_space_text(&text, &patch)?;
+    let after = read_text(&edited, &registered);
+    let mut old: Vec<(SpaceProblemKind, Option<&String>)> =
+        before.iter().map(|problem| (problem.kind, problem.project.as_ref())).collect();
+    let new: Vec<SpaceProblem> = after
+        .check
+        .problems
+        .iter()
+        .filter(|problem| match old.iter().position(|seen| *seen == (problem.kind, problem.project.as_ref())) {
+            Some(at) => {
+                old.remove(at);
+                false
+            }
+            None => true,
+        })
+        .cloned()
+        .collect();
+    if !new.is_empty() {
+        return Err(Error::SpaceProblems(new));
+    }
+    if edited != text {
+        crate::atomic::write_atomically(&spaces_in(data_root), &format!("{slug}.md"), &edited)?;
+    }
+    Ok(after.into_space(slug))
+}
+
+/// 이 Space와 같은 Project를 하나라도 적은 다른 Space — 목록 차례(이름)다.
+pub fn shared_spaces(data_root: &Path, slug: &str) -> Result<Vec<SharedSpace>> {
+    let spaces = list_spaces(data_root)?;
+    let Some(this) = spaces.iter().find(|space| space.slug == slug) else {
+        return Err(Error::SpaceNotFound(slug.to_string()));
+    };
+    Ok(spaces
+        .iter()
+        .filter(|other| other.slug != slug)
+        .filter_map(|other| {
+            let overlap: Vec<String> = this.projects.iter().filter(|project| other.projects.contains(project)).cloned().collect();
+            (!overlap.is_empty()).then(|| SharedSpace {
+                slug: other.slug.clone(),
+                name: shown_name(other).to_string(),
+                overlap,
+                projects: other.projects.clone(),
+            })
+        })
+        .collect())
+}
+
+/// 데이터 루트의 Space 전부 — 이름 차례(이름이 없으면 slug). 점 파일(쓰기의 tmp · 지운 자리)과 `.md`가 아닌 것은 건너뛴다.
+/// 폴더가 없으면 빈 목록이다 — 만들지 않는다(`read_projects`와 같은 규칙).
+pub fn list_spaces(data_root: &Path) -> Result<Vec<Space>> {
+    let dir = spaces_in(data_root);
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let registered = registered_projects(data_root);
+    let mut spaces = Vec::new();
+    for entry in entries {
+        let file_name = entry?.file_name().to_string_lossy().to_string();
+        let Some(slug) = file_name.strip_suffix(".md").filter(|_| !file_name.starts_with('.')) else {
+            continue;
+        };
+        let text = std::fs::read_to_string(dir.join(&file_name))?;
+        spaces.push(read_text(&text, &registered).into_space(slug));
+    }
+    spaces.sort_by_cached_key(|space| shown_name(space).to_lowercase());
+    Ok(spaces)
+}
+
+/// Space 하나.
+pub fn get_space(data_root: &Path, slug: &str) -> Result<Space> {
+    let text = std::fs::read_to_string(space_path(data_root, slug)?).map_err(|_| Error::SpaceNotFound(slug.to_string()))?;
+    Ok(read_text(&text, &registered_projects(data_root)).into_space(slug))
+}
+
+fn shown_name(space: &Space) -> &str {
+    if space.name.trim().is_empty() {
+        &space.slug
+    } else {
+        &space.name
+    }
+}
+
+/// 등록된 Project의 slug들 — 검사가 Space 파일의 `projects`와 맞댄다.
+fn registered_projects(data_root: &Path) -> Vec<String> {
+    crate::store::read_projects(&crate::paths::projects_in(data_root))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|project| project.slug)
+        .collect()
+}
+
+fn space_path(data_root: &Path, slug: &str) -> Result<PathBuf> {
+    if !crate::slug::is_safe_slug(slug) {
+        return Err(Error::SpaceNotFound(slug.to_string()));
+    }
+    Ok(spaces_in(data_root).join(format!("{slug}.md")))
+}
+
+/// 글 하나를 읽은 것 — 검사와 값. 값은 읽을 수 있는 데까지만 선다.
+struct Read {
+    check: SpaceCheck,
+    name: String,
+    projects: Vec<String>,
+    created_at: String,
+    created_by: Option<String>,
+    description: String,
+}
+
+impl Read {
+    fn into_space(self, slug: &str) -> Space {
+        Space {
+            slug: slug.to_string(),
+            name: self.name,
+            projects: self.projects,
+            created_at: self.created_at,
+            created_by: self.created_by,
+            description: self.description,
+            problems: self.check.problems,
+        }
+    }
+}
+
+fn read_text(text: &str, registered: &[String]) -> Read {
+    let mut read = Read {
+        check: SpaceCheck::default(),
+        name: String::new(),
+        projects: Vec::new(),
+        created_at: String::new(),
+        created_by: None,
+        description: String::new(),
+    };
+    let Some(layout) = Layout::of(text) else {
+        read.check.problems = vec![SpaceProblem::new(1, SpaceProblemKind::UnclosedFrontmatter, None)];
+        return read;
+    };
+    read.description = layout.body().trim().to_string();
+    let pieces = SpacePieces {
+        name: layout.key("name").map(|key| key.first + 1),
+        projects: layout.key("projects").map(|key| Lines { first: key.first + 1, last: key.last + 1 }),
+        body: layout.body_lines(),
+    };
+    let mut problems = Vec::new();
+    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(layout.yaml) {
+        Ok(yaml) => {
+            let name = yaml.get("name").and_then(scalar).unwrap_or_default();
+            read.name = name.trim().to_string();
+            read.created_at = yaml.get("createdAt").and_then(scalar).unwrap_or_default();
+            read.created_by = yaml.get("createdBy").and_then(scalar);
+            if name.trim().is_empty() {
+                let line = pieces.name.unwrap_or(2);
+                problems.push(SpaceProblem::new(line, SpaceProblemKind::NoName, None));
+            }
+            if !matches!(yaml.get("projects"), None | Some(serde_yaml_ng::Value::Null | serde_yaml_ng::Value::Sequence(_))) {
+                // `projects: web-app`처럼 목록이 아니다 — 읽을 수 없는 꼴이다.
+                let line = pieces.projects.map_or(2, |lines| lines.first);
+                problems.push(SpaceProblem::new(line, SpaceProblemKind::BadYaml, None));
+            }
+            let mut seen: Vec<String> = Vec::new();
+            for (slug, line) in layout.projects(&yaml) {
+                let kind = if seen.contains(&slug) {
+                    Some(SpaceProblemKind::DuplicateProject)
+                } else if !registered.contains(&slug) {
+                    Some(SpaceProblemKind::UnknownProject)
+                } else {
+                    None
+                };
+                if !seen.contains(&slug) {
+                    read.projects.push(slug.clone());
+                }
+                seen.push(slug.clone());
+                if let Some(kind) = kind {
+                    problems.push(SpaceProblem::new(line, kind, Some(slug)));
+                }
+            }
+        }
+        Err(error) => {
+            // 오류의 줄은 frontmatter 안에서 1부터다 — 파일에서는 여는 `---` 한 줄 아래다.
+            let line = 1 + error.location().map_or(1, |at| at.line());
+            problems.push(SpaceProblem::new(line, SpaceProblemKind::BadYaml, None));
+        }
+    }
+    problems.sort_by_key(|problem| problem.line);
+    read.check = SpaceCheck { problems, pieces };
+    read
+}
+
+/// 글자 · 수 · 참거짓 칸을 글로 — 사람이 `name: 2024`라고 적어도 이름이다. 목록 · 표는 글이 아니다.
+fn scalar(value: &serde_yaml_ng::Value) -> Option<String> {
+    use serde_yaml_ng::Value;
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+/// 파일 글을 줄로 본 것 — frontmatter의 자리와 그 안 맨 위 칸들의 줄. 줄 번호는 0부터다(밖으로 낼 때 1을 더한다).
+struct Layout<'a> {
+    lines: Vec<&'a str>,
+    /// frontmatter의 YAML 글.
+    yaml: &'a str,
+    /// frontmatter를 닫는 `---` 줄.
+    close: usize,
+    keys: Vec<Key>,
+}
+
+/// frontmatter 맨 위 칸 하나 — 이름 줄부터 마지막으로 이어지는 줄까지(뒤따르는 빈 줄 · 주석은 넣지 않는다).
+struct Key {
+    name: String,
+    first: usize,
+    last: usize,
+}
+
+impl<'a> Layout<'a> {
+    /// frontmatter를 가르는 규칙은 Project · Agent 파일과 같은 하나다(`split_frontmatter`). 닫히지 않았으면 `None`이다.
+    fn of(text: &'a str) -> Option<Self> {
+        let (yaml, _) = crate::project::split_frontmatter(text).ok()?;
+        let lines: Vec<&str> = text.split('\n').collect();
+        let close = 1 + yaml.split('\n').count();
+        let mut keys: Vec<Key> = Vec::new();
+        for (at, line) in lines.iter().enumerate().take(close).skip(1) {
+            if line.trim().is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with([' ', '\t', '-']) {
+                if let Some(key) = keys.last_mut() {
+                    key.last = at;
+                }
+                continue;
+            }
+            let name = line.split_once(':').map_or(*line, |(name, _)| name).trim().trim_matches(['"', '\'']);
+            keys.push(Key { name: name.to_string(), first: at, last: at });
+        }
+        Some(Layout { lines, yaml, close, keys })
+    }
+
+    /// `projects`의 항목마다 (slug, 1부터 센 줄). 줄마다 `- ` 항목 하나인 목록이면 그 항목 줄이고, 한 줄 목록(`[a, b]`)처럼 줄과 항목이
+    /// 맞지 않으면 모두 `projects` 줄이다. 목록이 아니거나 글이 아닌 항목은 건너뛴다.
+    fn projects(&self, yaml: &serde_yaml_ng::Value) -> Vec<(String, usize)> {
+        let Some(serde_yaml_ng::Value::Sequence(items)) = yaml.get("projects") else {
+            return Vec::new();
+        };
+        let Some(key) = self.key("projects") else {
+            return Vec::new();
+        };
+        let item_lines = self.item_lines(key);
+        let lines: Vec<usize> = if item_lines.len() == items.len() {
+            item_lines.iter().map(|at| at + 1).collect()
+        } else {
+            vec![key.first + 1; items.len()]
+        };
+        items.iter().zip(lines).filter_map(|(item, line)| Some((scalar(item)?, line))).collect()
+    }
+
+    /// 칸 안의 `- ` 항목 줄들(0부터).
+    fn item_lines(&self, key: &Key) -> Vec<usize> {
+        (key.first + 1..=key.last)
+            .filter(|&at| {
+                let line = self.lines[at].trim_start();
+                line == "-" || line.starts_with("- ")
+            })
+            .collect()
+    }
+
+    fn key(&self, name: &str) -> Option<&Key> {
+        self.keys.iter().find(|key| key.name == name)
+    }
+
+    /// 닫는 `---` 줄 아래 글 전부.
+    fn body(&self) -> String {
+        self.lines[self.close + 1..].join("\n")
+    }
+
+    /// 본문의 첫 줄 · 끝 줄(빈 줄을 뺀) — 1부터 센다. 본문이 비었으면 없다.
+    fn body_lines(&self) -> Option<Lines> {
+        let filled: Vec<usize> =
+            (self.close + 1..self.lines.len()).filter(|&at| !self.lines[at].trim().is_empty()).collect();
+        Some(Lines { first: filled.first()? + 1, last: filled.last()? + 1 })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PAYMENTS: &str = "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불을 한 흐름으로 다뤄요.\n";
+
+    fn registered() -> Vec<String> {
+        ["web-app", "api-server", "backoffice"].map(String::from).to_vec()
+    }
+
+    #[test]
+    fn 형식대로_적은_파일은_문제가_없고_조각_자리를_돌려준다() {
+        let check = check_space(PAYMENTS, &registered());
+        assert_eq!(check.problems, vec![]);
+        assert_eq!(
+            check.pieces,
+            SpacePieces {
+                name: Some(2),
+                projects: Some(Lines { first: 3, last: 5 }),
+                body: Some(Lines { first: 9, last: 9 }),
+            }
+        );
+    }
+
+    fn problems(text: &str) -> Vec<(usize, SpaceProblemKind)> {
+        check_space(text, &registered()).problems.into_iter().map(|problem| (problem.line, problem.kind)).collect()
+    }
+
+    #[test]
+    fn 닫히지_않은_frontmatter는_첫_줄의_문제다() {
+        assert_eq!(problems("---\nname: 결제\nprojects: []\n\n설명\n"), vec![(1, SpaceProblemKind::UnclosedFrontmatter)]);
+        assert_eq!(problems("name: 결제\n"), vec![(1, SpaceProblemKind::UnclosedFrontmatter)], "---로 열리지 않았다");
+    }
+
+    #[test]
+    fn 읽을_수_없는_yaml은_그_줄의_문제다() {
+        assert_eq!(
+            problems("---\nname: 결제\nprojects:\n  - web-app\n  bad: [\ncreatedAt: 2026-10-23\n---\n"),
+            vec![(5, SpaceProblemKind::BadYaml)]
+        );
+    }
+
+    #[test]
+    fn name이_없거나_비면_그_자리의_문제다() {
+        // 없으면 frontmatter의 첫 줄 — name이 설 자리다
+        assert_eq!(problems("---\nprojects: []\ncreatedAt: 2026-10-23\n---\n"), vec![(2, SpaceProblemKind::NoName)]);
+        assert_eq!(problems("---\nprojects: []\nname:\n---\n"), vec![(3, SpaceProblemKind::NoName)]);
+        assert_eq!(problems("---\nprojects: []\nname: \"  \"\n---\n"), vec![(3, SpaceProblemKind::NoName)]);
+    }
+
+    #[test]
+    fn 등록되지_않은_project와_두_번_적은_project는_그_항목_줄의_문제다() {
+        let text = "---\nname: 결제\nprojects:\n  - web-app\n  - billing\n  # 주석\n  - web-app\n---\n";
+        assert_eq!(
+            problems(text),
+            vec![(5, SpaceProblemKind::UnknownProject), (7, SpaceProblemKind::DuplicateProject)]
+        );
+        let check = check_space(text, &registered());
+        assert_eq!(check.problems[0].project.as_deref(), Some("billing"));
+        assert_eq!(check.problems[1].project.as_deref(), Some("web-app"));
+    }
+
+    #[test]
+    fn 한_줄_목록의_문제는_projects_줄에_선다() {
+        assert_eq!(
+            problems("---\nname: 결제\nprojects: [web-app, billing]\n---\n"),
+            vec![(3, SpaceProblemKind::UnknownProject)]
+        );
+    }
+
+    /// 데이터 루트 하나 — 등록된 Project 셋(파일만, git을 묻지 않는다)과 빈 `spaces/`.
+    fn home() -> tempfile::TempDir {
+        let home = tempfile::tempdir().unwrap();
+        let projects = crate::paths::projects_in(home.path());
+        std::fs::create_dir_all(&projects).unwrap();
+        for slug in registered() {
+            let file = format!("---\nname: {slug}\npath: ~/MyProjects/{slug}\nbaseBranch: main\ncreatedAt: 2026-10-01\n---\n");
+            std::fs::write(projects.join(format!("{slug}.md")), file).unwrap();
+        }
+        std::fs::create_dir_all(spaces_in(home.path())).unwrap();
+        home
+    }
+
+    fn put(home: &tempfile::TempDir, slug: &str, text: &str) {
+        std::fs::write(spaces_in(home.path()).join(format!("{slug}.md")), text).unwrap();
+    }
+
+    fn file(home: &tempfile::TempDir, slug: &str) -> String {
+        std::fs::read_to_string(spaces_in(home.path()).join(format!("{slug}.md"))).unwrap()
+    }
+
+    #[test]
+    fn 손으로_둔_파일이_목록에_서고_문제_있는_파일도_문제를_달고_선다() {
+        let home = home();
+        put(&home, "결제-서비스", PAYMENTS);
+        put(&home, "사내-도구", "---\nname: 사내 도구\nprojects:\n  - api-server\n  - billing\n---\n");
+        put(&home, "깨진", "---\nname: 깨진\n");
+        put(&home, ".결제-서비스.md.1.2.tmp", PAYMENTS);
+        std::fs::write(spaces_in(home.path()).join("메모.txt"), "x").unwrap();
+
+        let spaces = list_spaces(home.path()).unwrap();
+        let rows: Vec<(&str, &str, usize)> =
+            spaces.iter().map(|space| (space.slug.as_str(), space.name.as_str(), space.problems.len())).collect();
+        // 이름 차례다 — 읽을 수 없는 파일은 이름이 없어 slug로 선다
+        assert_eq!(rows, vec![("결제-서비스", "결제 서비스", 0), ("깨진", "", 1), ("사내-도구", "사내 도구", 1)]);
+
+        let payments = &spaces[0];
+        assert_eq!(payments.projects, vec!["web-app", "api-server"]);
+        assert_eq!(payments.created_at, "2026-10-23");
+        assert_eq!(payments.created_by, None);
+        assert_eq!(payments.description, "결제와 환불을 한 흐름으로 다뤄요.");
+        assert_eq!(spaces[2].projects, vec!["api-server", "billing"], "등록되지 않은 Project도 적힌 대로 읽는다");
+    }
+
+    #[test]
+    fn 빈_space는_문제가_아니다() {
+        let home = home();
+        put(&home, "정산", "---\nname: 정산\nprojects: []\ncreatedAt: 2026-10-26\ncreatedBy: host\n---\n");
+        put(&home, "운영", "---\nname: 운영\n---\n");
+        let settle = get_space(home.path(), "정산").unwrap();
+        assert_eq!((settle.projects.len(), settle.problems.len()), (0, 0));
+        assert_eq!(settle.created_by.as_deref(), Some("host"));
+        assert_eq!(settle.description, "");
+        assert_eq!(get_space(home.path(), "운영").unwrap().problems, vec![], "projects 칸이 없어도 빈 Space다");
+    }
+
+    #[test]
+    fn 없는_space와_뿌리_밖을_가리키는_slug는_찾지_못한다() {
+        let home = home();
+        assert!(matches!(get_space(home.path(), "없음"), Err(crate::Error::SpaceNotFound(_))));
+        assert!(matches!(get_space(home.path(), "../projects/web-app"), Err(crate::Error::SpaceNotFound(_))));
+    }
+
+    /// 사람이 손으로 적은 파일 — 주석 · 칸 차례 · 따옴표 · 모르는 칸 · 탭 들여쓰기가 고치기 뒤에도 그대로여야 한다.
+    const HAND: &str = "---\n# 결제팀이 관리\nname: \"결제 서비스\"\nowner: 결제팀\nprojects:\n    - web-app   # 화면\n    - api-server\ncreatedAt: 2026-10-23\n---\n\n결제와 환불.\n\n둘째 문단.\n";
+
+    fn edited(text: &str, patch: SpacePatch) -> String {
+        edit_space_text(text, &patch).unwrap()
+    }
+
+    #[test]
+    fn 설명을_고치면_본문만_바뀌고_frontmatter는_한_글자도_안_바뀐다() {
+        let out = edited(HAND, SpacePatch { description: Some("새 설명".into()), ..Default::default() });
+        let fm_end = HAND.find("---\n\n").unwrap() + 4;
+        assert_eq!(&out[..fm_end], &HAND[..fm_end]);
+        assert_eq!(&out[fm_end..], "\n새 설명\n");
+        let cleared = edited(HAND, SpacePatch { description: Some("  ".into()), ..Default::default() });
+        assert_eq!(&cleared[fm_end..], "", "비운 설명은 본문 없이 끝난다");
+    }
+
+    #[test]
+    fn 이름을_고치면_name_줄만_바뀐다() {
+        let out = edited(HAND, SpacePatch { name: Some("결제 · 환불".into()), ..Default::default() });
+        assert_eq!(out, HAND.replace("name: \"결제 서비스\"", "name: 결제 · 환불"));
+    }
+
+    #[test]
+    fn 넣으면_마지막_항목_뒤에_같은_들여쓰기로_한_줄이_선다() {
+        let out = edited(HAND, SpacePatch { add: vec!["backoffice".into(), "web-app".into()], ..Default::default() });
+        assert_eq!(out, HAND.replace("    - api-server\n", "    - api-server\n    - backoffice\n"), "이미 든 Project는 다시 넣지 않는다");
+    }
+
+    #[test]
+    fn 빼면_그_항목_줄만_사라지고_되돌리면_제자리에_선다() {
+        let out = edited(HAND, SpacePatch { remove: vec!["web-app".into()], ..Default::default() });
+        assert_eq!(out, HAND.replace("    - web-app   # 화면\n", ""));
+        let back = edited(&out, SpacePatch { add: vec!["web-app".into()], before: Some("api-server".into()), ..Default::default() });
+        assert_eq!(back, HAND.replace("    - web-app   # 화면\n", "    - web-app\n"));
+    }
+
+    #[test]
+    fn 마지막_project를_빼면_빈_목록이_되고_빈_목록에_넣으면_목록이_선다() {
+        let one = "---\nname: 결제\nprojects:\n  - web-app\ncreatedAt: 2026-10-23\n---\n";
+        let empty = edited(one, SpacePatch { remove: vec!["web-app".into()], ..Default::default() });
+        assert_eq!(empty, "---\nname: 결제\nprojects: []\ncreatedAt: 2026-10-23\n---\n");
+        assert_eq!(edited(&empty, SpacePatch { add: vec!["web-app".into()], ..Default::default() }), one);
+    }
+
+    #[test]
+    fn projects_칸이_없으면_name_아래에_세우고_한_줄_목록은_목록으로_다시_적는다() {
+        let bare = "---\nname: 운영\ncreatedAt: 2026-10-23\n---\n";
+        assert_eq!(
+            edited(bare, SpacePatch { add: vec!["api-server".into()], ..Default::default() }),
+            "---\nname: 운영\nprojects:\n  - api-server\ncreatedAt: 2026-10-23\n---\n"
+        );
+        let flow = "---\nname: 운영\nprojects: [web-app, api-server] # 둘\nowner: x\n---\n";
+        assert_eq!(
+            edited(flow, SpacePatch { remove: vec!["web-app".into()], ..Default::default() }),
+            "---\nname: 운영\nprojects:\n  - api-server\nowner: x\n---\n"
+        );
+    }
+
+    #[test]
+    fn yaml이_오해할_글은_따옴표로_적는다() {
+        let out = edited("---\nname: x\nprojects: []\n---\n", SpacePatch { name: Some("2024".into()), add: vec!["true".into()], ..Default::default() });
+        assert_eq!(out, "---\nname: '2024'\nprojects:\n  - 'true'\n---\n");
+    }
+
+    #[test]
+    fn 고치기는_그_칸만_바꿔_파일에_쓰고_파일_이름은_그대로다() {
+        let home = home();
+        put(&home, "결제-서비스", HAND);
+        let space = update_space(
+            home.path(),
+            "결제-서비스",
+            SpacePatch { name: Some("결제 · 환불".into()), remove: vec!["web-app".into()], ..Default::default() },
+        )
+        .unwrap();
+        assert_eq!((space.slug.as_str(), space.name.as_str()), ("결제-서비스", "결제 · 환불"), "이름을 고쳐도 slug는 그대로다");
+        assert_eq!(space.projects, vec!["api-server"]);
+        assert_eq!(
+            file(&home, "결제-서비스"),
+            HAND.replace("name: \"결제 서비스\"", "name: 결제 · 환불").replace("    - web-app   # 화면\n", ""),
+            "모르는 칸 · 주석 · 들여쓰기 · 본문이 남는다"
+        );
+        let names: Vec<String> = std::fs::read_dir(spaces_in(home.path()))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, vec!["결제-서비스.md"], "tmp가 남지 않고 새 파일이 서지 않는다");
+    }
+
+    #[test]
+    fn 고치기는_새_문제를_만들면_쓰지_않고_이미_있던_문제는_막지_않는다() {
+        let home = home();
+        put(&home, "결제-서비스", PAYMENTS);
+        let refused = update_space(home.path(), "결제-서비스", SpacePatch { add: vec!["billing".into()], ..Default::default() });
+        let Err(crate::Error::SpaceProblems(problems)) = refused else { panic!("등록되지 않은 Project를 넣었다: {refused:?}") };
+        assert_eq!((problems[0].kind, problems[0].project.as_deref()), (SpaceProblemKind::UnknownProject, Some("billing")));
+        assert_eq!(file(&home, "결제-서비스"), PAYMENTS, "거절하면 파일을 건드리지 않는다");
+        assert!(matches!(
+            update_space(home.path(), "결제-서비스", SpacePatch { name: Some(" ".into()), ..Default::default() }),
+            Err(crate::Error::EmptyName)
+        ));
+
+        // 손으로 깨뜨린 Project 한 줄이 있어도 설명은 고친다 — 그 문제를 빼는 것도 된다
+        let broken = PAYMENTS.replace("  - api-server\n", "  - api-server\n  - billing\n");
+        put(&home, "결제-서비스", &broken);
+        let space =
+            update_space(home.path(), "결제-서비스", SpacePatch { description: Some("새 설명".into()), ..Default::default() }).unwrap();
+        assert_eq!((space.description.as_str(), space.problems.len()), ("새 설명", 1));
+        let fixed = update_space(home.path(), "결제-서비스", SpacePatch { remove: vec!["billing".into()], ..Default::default() }).unwrap();
+        assert_eq!(fixed.problems, vec![]);
+
+        // 닫히지 않은 파일은 고칠 자리를 모른다
+        put(&home, "깨진", "---\nname: 깨진\n");
+        assert!(matches!(
+            update_space(home.path(), "깨진", SpacePatch { description: Some("x".into()), ..Default::default() }),
+            Err(crate::Error::SpaceProblems(_))
+        ));
+        assert!(matches!(update_space(home.path(), "없음", SpacePatch::default()), Err(crate::Error::SpaceNotFound(_))));
+    }
+
+    #[test]
+    fn 만들기는_이름에서_slug를_짓고_겹치면_뒤에_수를_붙인다() {
+        let home = home();
+        let made = create_space(
+            home.path(),
+            NewSpace {
+                name: " 결제 서비스 ".into(),
+                projects: vec!["web-app".into(), "api-server".into()],
+                description: "결제와 환불.".into(),
+                created_by: Some("host".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!((made.slug.as_str(), made.name.as_str()), ("결제-서비스", "결제 서비스"));
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert_eq!(
+            file(&home, "결제-서비스"),
+            format!("---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\ncreatedAt: {today}\ncreatedBy: host\n---\n\n결제와 환불.\n")
+        );
+
+        assert_eq!(new_space_slug(home.path(), "결제 서비스"), "결제-서비스-2");
+        let empty = create_space(home.path(), NewSpace { name: "결제 서비스".into(), ..Default::default() }).unwrap();
+        assert_eq!(empty.slug, "결제-서비스-2");
+        assert_eq!(file(&home, "결제-서비스-2"), format!("---\nname: 결제 서비스\nprojects: []\ncreatedAt: {today}\n---\n"), "빈 Space · 화면에서 만들면 만든 이를 적지 않는다");
+    }
+
+    #[test]
+    fn 만들기는_문제가_있으면_파일을_쓰지_않는다() {
+        let home = home();
+        assert!(matches!(create_space(home.path(), NewSpace { name: "  ".into(), ..Default::default() }), Err(crate::Error::EmptyName)));
+        let refused = create_space(home.path(), NewSpace { name: "결제".into(), projects: vec!["billing".into()], ..Default::default() });
+        assert!(matches!(refused, Err(crate::Error::SpaceProblems(_))));
+        assert_eq!(list_spaces(home.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn 함께_쓰는_space는_같은_project를_적은_다른_space와_겹치는_project다() {
+        let home = home();
+        put(&home, "결제-서비스", PAYMENTS);
+        put(&home, "사내-도구", "---\nname: 사내 도구\nprojects:\n  - backoffice\n  - api-server\n---\n");
+        put(&home, "정산", "---\nname: 정산\nprojects: []\n---\n");
+        put(&home, "화면", "---\nname: 화면\nprojects:\n  - web-app\n  - api-server\n---\n");
+        let shared = shared_spaces(home.path(), "결제-서비스").unwrap();
+        let rows: Vec<(&str, Vec<&str>)> =
+            shared.iter().map(|one| (one.slug.as_str(), one.overlap.iter().map(String::as_str).collect())).collect();
+        assert_eq!(rows, vec![("사내-도구", vec!["api-server"]), ("화면", vec!["web-app", "api-server"])]);
+        assert_eq!(shared[0].projects, vec!["backoffice", "api-server"], "그래프가 그 Space의 다른 Project도 옅게 그린다");
+        assert_eq!(shared_spaces(home.path(), "정산").unwrap(), vec![], "빈 Space는 겹칠 것이 없다");
+    }
+
+    #[test]
+    fn 목록이_아닌_projects는_읽을_수_없는_꼴이다() {
+        assert_eq!(problems("---\nname: 결제\nprojects: web-app\n---\n"), vec![(3, SpaceProblemKind::BadYaml)]);
+    }
+}

@@ -40,6 +40,22 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
+    // Space(03 구현 스펙 §8)는 파일이라 코어를 진짜로 탄다 — `commands.rs`와 같은 입구다.
+    ("list_spaces", |_| ok(atelier_core::list_spaces(&data_root()))),
+    ("get_space", |a| ok(atelier_core::space_detail(&data_root(), &text(a, "slug")?))),
+    ("update_space", |a| {
+        ok(atelier_core::update_space(
+            &data_root(),
+            &text(a, "slug")?,
+            atelier_core::SpacePatch {
+                name: maybe_text(a, "name"),
+                description: maybe_text(a, "description"),
+                add: maybe_texts(a, "add")?,
+                before: maybe_text(a, "before"),
+                remove: maybe_texts(a, "remove")?,
+            },
+        ))
+    }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
     // **진짜로** 탄다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
     ("list_works", |_| {
@@ -304,6 +320,14 @@ fn texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
     serde_json::from_value(value.clone()).map_err(err)
 }
 
+/// 없어도 되는 문자열 배열 인자 — 없거나 `null`이면 빈 목록이다.
+fn maybe_texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(value) => serde_json::from_value(value.clone()).map_err(err),
+    }
+}
+
 fn flag(args: &Args, key: &str) -> Result<bool, String> {
     args.get(key)
         .and_then(Value::as_bool)
@@ -489,7 +513,7 @@ mod tests {
 
     /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
     /// core 쪽에 서면 이 표를 읽는다. Thread · Agent의 파일 모양(`threads.rs` · `agents.rs` …)이 여기 산다.
-    const CORE_SOURCES: [(&str, &str); 34] = [
+    const CORE_SOURCES: [(&str, &str); 35] = [
         ("agents.rs", include_str!("../../atelier-core/src/agents.rs")),
         ("agents/scope.rs", include_str!("../../atelier-core/src/agents/scope.rs")),
         ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
@@ -517,6 +541,7 @@ mod tests {
         ("records.rs", include_str!("../../atelier-core/src/records.rs")),
         ("search.rs", include_str!("../../atelier-core/src/search.rs")),
         ("slug.rs", include_str!("../../atelier-core/src/slug.rs")),
+        ("space.rs", include_str!("../../atelier-core/src/space.rs")),
         ("store.rs", include_str!("../../atelier-core/src/store.rs")),
         ("threads.rs", include_str!("../../atelier-core/src/threads.rs")),
         ("work.rs", include_str!("../../atelier-core/src/work.rs")),

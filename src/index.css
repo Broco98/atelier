@@ -286,6 +286,7 @@
     --color-fg-tray-locked-icon: var(--fg-tray-locked-icon);
     --color-fg-tray-ghost: var(--fg-tray-ghost);
     --color-fg-tray-ghost-icon: var(--fg-tray-ghost-icon);
+    --color-link-on-solid: var(--link-on-solid);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -910,6 +911,8 @@
     --fg-tray-locked-icon: rgba(26, 28, 31, 0.4);
     --fg-tray-ghost: rgba(26, 28, 31, 0.45);
     --fg-tray-ghost-icon: rgba(26, 28, 31, 0.35);
+    /* 03 시안의 「되돌리기」 토스트(F1-SpaceDetail `.toast .btn`) — 짙은 면(`fg`) 위의 글자 단추. 다크 값이 없다(위 묶음과 같다). */
+    --link-on-solid: #8fb8fb;
 
     /* 그림자 — 외곽선은 실선 대신 0.5px 링 `shadow-hairline`이다(DS 원칙 4). 떠 있는 것은 `shadow-prominent` */
     --shadow-hairline: 0 0 0 0.5px #0000001a;
@@ -1655,6 +1658,13 @@ body.dragging-row * {
    `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
 @utility floating-card {
   @apply rounded-2xl bg-surface-elevated shadow-prominent;
+}
+
+/* **관계 그래프의 판**(03 시안 F1-SpaceDetail `.graph`) — 옅은 면 위 16 간격의 점. 점의 색은 면 알파 `fill-hover`다(시안 7%). */
+@utility graph-dots {
+  background-color: var(--surface-under);
+  background-image: radial-gradient(var(--fill-hover) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
 /* **메뉴의 목록과 줄** — 드롭다운 메뉴 · 우클릭 메뉴와 Select 목록이 함께 쓴다(DS `Menu`의 `.at-menu` · `.at-mi`, codex-ds 결정 10).

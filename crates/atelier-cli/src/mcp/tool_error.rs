@@ -16,6 +16,13 @@ pub fn kernel_error(err: Error) -> CallToolResult {
             "Call atelier_list_projects to see the registered project slugs and their folders."
         }
         Error::WorkNotFound(_) => "Call atelier_list_works to see the existing work slugs.",
+        // Space(03 구현 스펙 §8)는 바깥 MCP에 도구가 없다 — Space를 건드리는 커널 함수(Project 제거가 Space 파일에서 빼는 것 등)가 이
+        // 오류를 낼 때의 안내다.
+        Error::SpaceNotFound(_) => "That Space no longer exists. Spaces are managed in the Atelier app — tell the user.",
+        Error::SpaceProblems(_) => {
+            "The Space file has the problems listed above. Ask the user to fix those lines in the Atelier app, then call \
+             this tool again."
+        }
         // `git stash`만 시키면 **안 듣는 처방**이다: `-u` 없이는 추적 안 된 파일이 그대로
         // 남아 다시 거부당하고, 읽는 쪽은 왜 막혔는지 알 수 없다. 실제로 그렇게 막혔다.
         Error::DirtyWorktrees(_) => {

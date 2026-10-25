@@ -23,6 +23,8 @@ import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
 import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-layout'
 import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
+import { Route as SpacesIndexRouteImport } from './routes/spaces.index'
+import { Route as SpacesSlugRouteImport } from './routes/spaces.$slug'
 import { Route as ThreadsIdRouteImport } from './routes/threads.$id'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
@@ -100,6 +102,16 @@ const SettingsTerminalRoute = SettingsTerminalRouteImport.update({
   path: '/terminal',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SpacesIndexRoute = SpacesIndexRouteImport.update({
+  id: '/spaces/',
+  path: '/spaces/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpacesSlugRoute = SpacesSlugRouteImport.update({
+  id: '/spaces/$slug',
+  path: '/spaces/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ThreadsIdRoute = ThreadsIdRouteImport.update({
   id: '/threads/$id',
   path: '/threads/$id',
@@ -143,11 +155,13 @@ export interface FileRoutesByFullPath {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
+  '/spaces/$slug': typeof SpacesSlugRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/spaces/': typeof SpacesIndexRoute
   '/works/': typeof WorksIndexRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
@@ -163,11 +177,13 @@ export interface FileRoutesByTo {
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/terminal': typeof SettingsTerminalRoute
+  '/spaces/$slug': typeof SpacesSlugRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive': typeof ArchiveIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
+  '/spaces': typeof SpacesIndexRoute
   '/works': typeof WorksIndexRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
@@ -186,11 +202,13 @@ export interface FileRoutesById {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
+  '/spaces/$slug': typeof SpacesSlugRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/spaces/': typeof SpacesIndexRoute
   '/works/': typeof WorksIndexRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
@@ -210,11 +228,13 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/spec-layout'
     | '/settings/terminal'
+    | '/spaces/$slug'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
     | '/settings/'
+    | '/spaces/'
     | '/works/'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
@@ -230,11 +250,13 @@ export interface FileRouteTypes {
     | '/settings/hooks'
     | '/settings/notifications'
     | '/settings/terminal'
+    | '/spaces/$slug'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive'
     | '/projects'
     | '/settings'
+    | '/spaces'
     | '/works'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
@@ -252,11 +274,13 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/spec-layout'
     | '/settings/terminal'
+    | '/spaces/$slug'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
     | '/settings/'
+    | '/spaces/'
     | '/works/'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
@@ -271,10 +295,12 @@ export interface RootRouteChildren {
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
+  SpacesSlugRoute: typeof SpacesSlugRoute
   ThreadsIdRoute: typeof ThreadsIdRoute
   WorksSlugRoute: typeof WorksSlugRoute
   ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
+  SpacesIndexRoute: typeof SpacesIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
 }
 
@@ -378,6 +404,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsTerminalRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/spaces/': {
+      id: '/spaces/'
+      path: '/spaces'
+      fullPath: '/spaces/'
+      preLoaderRoute: typeof SpacesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/spaces/$slug': {
+      id: '/spaces/$slug'
+      path: '/spaces/$slug'
+      fullPath: '/spaces/$slug'
+      preLoaderRoute: typeof SpacesSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/threads/$id': {
       id: '/threads/$id'
       path: '/threads/$id'
@@ -466,10 +506,12 @@ const rootRouteChildren: RootRouteChildren = {
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
+  SpacesSlugRoute: SpacesSlugRoute,
   ThreadsIdRoute: ThreadsIdRoute,
   WorksSlugRoute: WorksSlugRoute,
   ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
+  SpacesIndexRoute: SpacesIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
 }
 export const routeTree = rootRouteImport

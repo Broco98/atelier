@@ -305,6 +305,8 @@ describe("말의 사전", () => {
     expect(bodyOf("위 줄")).toContain("거르기 머리는 없다");
     expect(bodyOf("사람 메뉴")).toContain("위로 열리는 메뉴");
     expect(bodyOf("사람 메뉴")).toContain("메모리 합계");
+    // 가는 곳에 `Space`가 `Projects` 다음으로 선다(03 구현 스펙 §2 · §4).
+    expect(bodyOf("사람 메뉴")).toContain("`Projects`·`Space`·`Terminal`·`Processes`·`Archive`");
     expect(bodyOf("알림 띠")).toContain("위 줄 아래");
   });
 
@@ -527,11 +529,12 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Archive`");
   });
 
-  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔다. **한 문장에서 넷을 함께 본다**:
-  // 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
-  it("대문자 층이 사람 메뉴 넷을 한 문장으로 든다", () => {
+  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Space`를 `Projects` 다음에 더해
+  // 다섯이다(03 구현 스펙 §4). **한 문장에서 다섯을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다.
+  // 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 사람 메뉴 다섯을 한 문장으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(
-      "사람 메뉴의 가는 곳은 `Projects`·`Terminal`·`Processes`·`Archive` 넷이다",
+      "사람 메뉴의 가는 곳은 `Projects`·`Space`·`Terminal`·`Processes`·`Archive` 다섯이다",
     );
   });
 

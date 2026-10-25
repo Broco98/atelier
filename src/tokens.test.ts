@@ -231,6 +231,8 @@ describe("Codex 실측 색", () => {
     "fg-tray-locked-icon": "rgba(26, 28, 31, 0.4)",
     "fg-tray-ghost": "rgba(26, 28, 31, 0.45)",
     "fg-tray-ghost-icon": "rgba(26, 28, 31, 0.35)",
+    // 03 시안의 「되돌리기」 토스트 — 짙은 면 위 글자 단추(F1-SpaceDetail `.toast .btn`).
+    "link-on-solid": "#8fb8fb",
   };
 
   it("스펙의 값이 라이트에 선다", () => {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, ArchiveEntry, ArchivedDocs, Destination,
-    ProjectPatch, ProjectView, SearchResults, WorkView, WorkWithSpecTree, WorktreeTree,
+    ProjectPatch, ProjectView, SearchResults, Space, SpaceDetail, SpacePatch, WorkView, WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -52,6 +52,34 @@ pub async fn update_project(
 #[tauri::command]
 pub async fn delete_project(slug: String) -> CmdResult<()> {
     atelier_core::delete_project(&projects_dir(), &slug).map_err(err)
+}
+
+// **Space는 파일이다**(03 구현 스펙 §8 · §17) — 셋 다 core를 부르기만 한다. 검사 · 글 단위 고치기는 core 하나이고(S7), 기록 줄을 남기지
+// 않으니 엔진을 지나지 않는다(`thread_` 접두가 아니라 L4 다리로도 탄다). 문제 있는 파일도 목록에 선다.
+#[tauri::command]
+pub async fn list_spaces() -> CmdResult<Vec<Space>> {
+    atelier_core::list_spaces(&data_root()).map_err(err)
+}
+
+/// Space 하나와 함께 쓰는 Space — 상세 화면이 한 번에 읽는다.
+#[tauri::command]
+pub async fn get_space(slug: String) -> CmdResult<SpaceDetail> {
+    atelier_core::space_detail(&data_root(), &slug).map_err(err)
+}
+
+/// 상세의 설명 · 넣기 · 빼기(되돌리기는 `before`로 제자리에 넣는다). 고친 칸만 바꾸고, 새 문제를 만들면 쓰지 않고 그 문제를 말한다.
+#[tauri::command]
+pub async fn update_space(
+    slug: String,
+    name: Option<String>,
+    description: Option<String>,
+    add: Option<Vec<String>>,
+    before: Option<String>,
+    remove: Option<Vec<String>>,
+) -> CmdResult<Space> {
+    let patch =
+        SpacePatch { name, description, add: add.unwrap_or_default(), before, remove: remove.unwrap_or_default() };
+    atelier_core::update_space(&data_root(), &slug, patch).map_err(err)
 }
 
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는

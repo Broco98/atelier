@@ -8,6 +8,11 @@ pub enum Error {
     FolderMissing(String),
     #[error("name must not be empty")]
     EmptyName,
+    #[error("Space를 찾지 못했어요: {0}")]
+    SpaceNotFound(String),
+    /// Space 파일에 문제가 있어 쓰지 않았다 — 검사가 낸 문제들(03 구현 스펙 §8).
+    #[error("{}", space::describe_problems(.0))]
+    SpaceProblems(Vec<space::SpaceProblem>),
     #[error("work not found: {0}")]
     WorkNotFound(String),
     #[error("{0}")]
@@ -47,6 +52,7 @@ mod policy_file;
 mod attachments;
 mod changes;
 mod pr;
+mod space;
 
 // 원자 쓰기 둘을 낸다 — 폴더를 만드는 쪽 · 만들지 않는 쪽. 읽기(`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록
 // 없음」이라 기본값으로 눕는 그 읽기와 뜻이 다르다.
@@ -57,7 +63,7 @@ pub use atomic::write_json_atomically;
 pub use atomic::write_json_into_existing_dir;
 pub use paths::{
     archive_dir, archive_in, collapse_home, data_root, default_data_root, expand_home, layouts_dir, library_agents_in,
-    projects_dir, projects_in, threads_dir, works_dir, works_in,
+    projects_dir, projects_in, spaces_dir, spaces_in, threads_dir, works_dir, works_in,
 };
 // Agent 정의(v1 구현 스펙 §6) — 앱이 뜰 때 Library의 기본 파일을 세우고, Thread 엔진(`atelier-acp`)이 Host를 읽는다.
 // 범위 찾기 · 고르기(v1 티켓 11)는 @ 메뉴 · Library 화면(Tauri 명령)과 엔진의 참여가 같이 쓴다. Library에 저장하기(v1 티켓 19)는
@@ -85,6 +91,12 @@ pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
 pub use store::{
     create_project, delete_project, get_project, list_projects, project_folders, update_project, ProjectPatch,
+};
+// Space(03 구현 스펙 §8) — 파일 하나가 Space 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
+// 읽는 범위가 모두 이것을 부른다(S7).
+pub use space::{
+    check_space, create_space, edit_space_text, get_space, list_spaces, new_space_slug, shared_spaces, space_detail, update_space,
+    Lines, NewSpace, SharedSpace, Space, SpaceCheck, SpaceDetail, SpacePatch, SpacePieces, SpaceProblem, SpaceProblemKind,
 };
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{

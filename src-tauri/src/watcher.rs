@@ -8,6 +8,7 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventR
 use tauri::{AppHandle, Emitter};
 
 /// `~/.atelier/projects/` 감시 → 관련 변경 시 `projects:changed` emit.
+/// `~/.atelier/spaces/` 감시 → 관련 변경 시 `spaces:changed` emit(03 구현 스펙 §8 — 바깥 편집기로 고친 Space 파일을 화면이 따라온다).
 /// 진행 중 루트(`~/.atelier/works/`) 감시 → 관련 변경 시 `works:changed` emit, 그리고 Thread 엔진에게 사라진 Work를 묻는다.
 /// 워크트리 안의 변경은 판정을 거쳐 쌍마다 `worktree:changed { slug, project }` emit(git-integration 티켓 10).
 /// `~/.atelier/layouts/` 감시 → 관련 변경 시 `layouts:changed` emit.
@@ -70,10 +71,21 @@ fn watches() -> Vec<Watch> {
         recursive: RecursiveMode::NonRecursive,
         debounce: Duration::from_millis(500),
         event: Some("projects:changed"),
-        relevant: project_change_is_relevant,
+        relevant: markdown_file_is_relevant,
         asks: Asks::Nothing,
         worktrees: None,
     }];
+    // Space 파일들(03 구현 스펙 §8) — 등록부와 같은 꼴이다: 파일 하나가 Space 하나라 한 겹이고, `.md`만 소식이다. 지운 자리
+    // (`spaces/.deleted/`)와 쓰기의 tmp는 점으로 시작해 걸러진다.
+    all.push(Watch {
+        dir: atelier_core::spaces_dir(),
+        recursive: RecursiveMode::NonRecursive,
+        debounce: Duration::from_millis(500),
+        event: Some("spaces:changed"),
+        relevant: markdown_file_is_relevant,
+        asks: Asks::Nothing,
+        worktrees: None,
+    });
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
     // 빌드 등으로 이벤트가 폭주하므로 `works:changed`로는 무시한다.
     // spec 라이브 리로드는 반응성이 중요해 더 짧게 디바운스한다 (스펙: 300ms)
@@ -123,8 +135,8 @@ fn worktree_changes_in_works(paths: &[PathBuf]) -> Vec<atelier_core::WorktreeCha
     atelier_core::worktree_changes(&atelier_core::works_dir(), paths)
 }
 
-/// 프로젝트 등록부는 파일 하나가 프로젝트 하나다 — 그 `.md`가 아니면 화면이 바뀔 일이 없다.
-fn project_change_is_relevant(path: &Path) -> bool {
+/// 프로젝트 등록부와 Space 폴더는 파일 하나가 하나다 — 그 `.md`가 아니면 화면이 바뀔 일이 없다.
+fn markdown_file_is_relevant(path: &Path) -> bool {
     path.file_name().is_some_and(|n| {
         let n = n.to_string_lossy();
         !n.starts_with('.') && n.ends_with(".md")
@@ -325,6 +337,19 @@ mod tests {
         assert_eq!(watch.event, Some("projects:changed"));
     }
 
+    /// **Space 파일을 바깥 편집기로 고치면 화면이 따라온다**(03 구현 스펙 §8 「지켜보기」 · 스토리 184). 등록부와 같은 꼴이다 — 한 겹,
+    /// `.md`만 소식이고, 쓰기의 tmp와 지운 자리(`.deleted/`)는 점이라 걸러진다.
+    #[test]
+    fn the_spaces_folder_is_watched_one_layer_deep_and_rings_spaces_changed() {
+        let spaces = atelier_core::spaces_dir();
+        let watch = watch_on(&spaces);
+        assert_eq!(watch.recursive, RecursiveMode::NonRecursive);
+        assert_eq!(watch.event, Some("spaces:changed"), "다른 이름을 쏜다 — 아무도 안 듣는다");
+        assert!((watch.relevant)(&spaces.join("결제-서비스.md")));
+        assert!(!(watch.relevant)(&spaces.join(".결제-서비스.md.1.2.tmp")));
+        assert!(!(watch.relevant)(&spaces.join(".deleted")));
+    }
+
     /// **진행 중 루트는 워크트리의 변경도 쏜다**(git-integration 티켓 10 · S7). 새 OS 감시를 걸지 않는다 — 진행 중 루트의 감시가
     /// 이미 `trees/` 아래 이벤트를 받고 있어(사실 13) 같은 감시가 갈래를 하나 더 갖는다. 그 갈래는 코어의 감시 경로 판정이고,
     /// 쌍마다 `worktree:changed`를 쏜다. 다른 감시에는 갈래가 없다.
@@ -340,7 +365,7 @@ mod tests {
             (branch.judge)(&[works.join("no-such-work-t10/trees/web/src/main.rs")]),
             vec![atelier_core::WorktreeChange { slug: "no-such-work-t10".into(), project: "web".into() }]
         );
-        for dir in [atelier_core::projects_dir(), atelier_core::layouts_dir()] {
+        for dir in [atelier_core::projects_dir(), atelier_core::spaces_dir(), atelier_core::layouts_dir()] {
             assert!(watch_on(&dir).worktrees.is_none(), "{}가 워크트리 갈래를 갖는다", dir.display());
         }
     }
@@ -403,15 +428,17 @@ mod tests {
         );
     }
 
-    /// **앱이 거는 감시는 넷이다** — 프로젝트 등록부 · 진행 중 루트 · 레이아웃 폴더 · Thread 폴더들의 뿌리(코드 리뷰 1차 B9). 감시는 걸
+    /// **앱이 거는 감시는 다섯이다** — 프로젝트 등록부 · Space 폴더(03 구현 스펙 §8) · 진행 중 루트 · 레이아웃 폴더 · Thread 폴더들의
+    /// 뿌리(코드 리뷰 1차 B9). 감시는 걸
     /// 때 그 폴더를 만들므로(`spawn_watch`), 이 목록에 없는 자리는 앱을 켜도 생기지 않는다(ui-refresh 결정 23).
     #[test]
-    fn the_app_watches_the_registry_the_work_root_the_layouts_folder_and_the_threads_root() {
+    fn the_app_watches_the_registry_the_spaces_the_work_root_the_layouts_folder_and_the_threads_root() {
         let watched: Vec<PathBuf> = watches().into_iter().map(|w| w.dir).collect();
         assert_eq!(
             watched,
             vec![
                 atelier_core::projects_dir(),
+                atelier_core::spaces_dir(),
                 atelier_core::works_dir(),
                 atelier_core::layouts_dir(),
                 atelier_core::threads_dir(),
