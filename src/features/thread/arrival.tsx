@@ -46,7 +46,7 @@ export function ArrivalScope({ children }: { children: ReactNode }) {
 }
 
 /** 들어서는 움직임의 유틸리티 이름(`index.css` 「Thread의 움직임」). */
-export type Motion = "word-in" | "chip-in" | "card-rise" | "pop-in" | "row-in" | "jump-in" | "log-open" | "view-in";
+export type Motion = "word-in" | "chip-in" | "card-rise" | "pop-in" | "row-in" | "jump-in" | "view-in";
 
 /**
  * 이 부품이 화면이 선 뒤에 새로 섰으면 그 움직임, 아니면 `undefined` — 처음 설 때의 답을 붙든다(다시 그려도 바뀌지 않는다). `id`를 주면

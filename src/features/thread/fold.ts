@@ -1504,15 +1504,45 @@ const STOPPED: Record<string, string> = {
 };
 
 /**
- * 작업 머리줄(캔버스 WorkLog 보드). `end_turn`이면 「N초 동안 작업함」, 우리가 멈춘 `cancelled`면 「N초 후에 중단했습니다」, 그 밖은
- * 까닭을 보인다.
+ * 작업 구분선의 글(02 구현 스펙 §8 · Diff-Chat 「작업 구분선」). `end_turn`이면 「N초 동안 작업」(Codex 결 — v1은 「작업함」), 우리가 멈춘
+ * `cancelled`면 「N초 후에 중단했습니다」, 그 밖은 까닭을 보인다.
  */
 export function headline(end: TurnEnd): string {
   const took = spoken(end.durationMs);
-  if (end.stopReason === "end_turn") return `${took} 동안 작업함`;
+  if (end.stopReason === "end_turn") return `${took} 동안 작업`;
   if (end.stopReason === "cancelled") return end.cancelledByUs ? `${took} 후에 중단했습니다` : "거부해서 멈췄어요";
   if (end.stopReason !== null) return STOPPED[end.stopReason] ?? `멈췄어요 — ${end.stopReason}`;
   return end.error ? `멈췄어요 — ${end.error}` : "멈췄어요";
+}
+
+/** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 호출 줄 · 질문에 답한 줄 · 카드의 결정 줄은 다시 보는 것이라 접어도 선다. */
+export function keptFolded(entry: Entry): boolean {
+  return (
+    entry.kind === "plan" ||
+    entry.kind === "checklist" ||
+    entry.kind === "call" ||
+    entry.kind === "question" ||
+    entry.kind === "work-choice" ||
+    entry.kind === "project-choice"
+  );
+}
+
+/** 그리는 줄인가 — 글이 빈 생각은 그리지 않는다(Claude Code는 생각의 글을 빈 문자열로 준다). */
+export const shownEntry = (entry: Entry): boolean => entry.kind !== "thought" || entry.text.trim() !== "";
+
+/**
+ * 끝난 턴의 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 글(`headline`)과 펼칠 것이 있나(`unfolds`). 펼칠 것은 턴 끝 메시지 앞의 줄
+ * 가운데 접으면 숨는 것(도구 줄 · 생각 · 앞선 답 · 승인 결정 줄)이다.
+ * - **펼칠 것 없이 끝난 턴(`end_turn`)에는 구분선이 없다** — 말만 한 턴에 빈 머리가 서지 않는다(Codex). 호출 줄 · 계획처럼 접힌 턴에도
+ *   남는 줄만 있는 턴도 그렇다.
+ * - 끝 까닭이 있는 턴(길이 한도 · 거절 …)은 펼칠 것이 없어도 그 까닭이 선다 — 오류와 중단은 문장으로 말한다.
+ * - 도는 턴은 null이다(「N초 동안 작업 중입니다」가 따로 선다 — `runningHeadline`).
+ */
+export function workLine(turn: Turn): { text: string; unfolds: boolean } | null {
+  if (turn.end === null) return null;
+  const unfolds = turn.entries.slice(0, finalFrom(turn)).some((entry) => shownEntry(entry) && !keptFolded(entry));
+  if (!unfolds && turn.end.stopReason === "end_turn") return null;
+  return { text: headline(turn.end), unfolds };
 }
 
 /** 도는 턴의 머리줄 — 보낸 때부터 지금까지. */

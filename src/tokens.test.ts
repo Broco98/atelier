@@ -449,7 +449,9 @@ describe("모션 토큰", () => {
     "chip-in": { 토큰: "chip", 곡선: "var(--ease-enter-snappy)" },
     "card-rise": byName["승인 카드"],
     "pop-in": byName["Agent 참여"],
-    "log-open": byName["로그 펼침"],
+    // 작업 구분선 · 도구 줄의 펼침은 v1의 로그 펼침(줄마다 떠오름) 대신 Codex 펼침이다 — 높이와 투명도를 함께 .3s
+    // cubic-bezier(.19,1,.22,1)(02 구현 스펙 §12 「펼침 · 접힘」).
+    unfold: { 토큰: "relaxed", 곡선: "var(--ease-enter)" },
     "row-in": byName["줄 바뀜"],
     // 보내기 원의 글리프는 v1의 버튼 바뀜(0.5배에서, 160ms) 대신 Codex 모핑이다(02 구현 스펙 §12 「보내기 아이콘」).
     "morph-in": { 토큰: "morph", 곡선: "var(--ease-default)" },
@@ -485,12 +487,15 @@ describe("모션 토큰", () => {
     }
   });
 
-  // 로그 펼침의 「줄마다 40」은 화면의 줄마다다 — 잇따른 도구 줄은 한 묶음 상자에 들어 있어(`ThreadFlow`의 `Entries`) 상자의 차례로 늦추면
-  // 도구 줄들이 한꺼번에 선다. 줄의 차례는 펼친 로그가 줄마다 적고(`--log-at`), 여섯째부터는 함께 선다.
-  it("로그 펼침은 줄의 차례마다 --stagger-log씩 늦게 서고 여섯째부터 함께 선다", async () => {
-    const rule = utilityCss(await utilities(["log-open"]), "log-open") ?? "";
-    expect(rule).toContain("[data-log-run] > *");
-    expect(rule).toContain("animation-delay: calc(min(var(--log-at, 0), 5) * var(--stagger-log))");
+  // 펼침은 높이 0 → auto다(Motion 보드 「작업 묶음 펼침」) — 줄 하나짜리 격자의 줄이 0fr에서 1fr로 자라고, 그 안 상자가 잘라 담는다.
+  // 높이(`height: auto`)는 전이가 걸리지 않아 격자의 줄로 옮긴다. 다 펼쳐 멎으면 자르지 않는다 — 안의 단추 초점 고리가 잘리지 않게.
+  it("펼침은 격자의 줄과 투명도가 함께 0에서 펼친 모양으로 움직인다", async () => {
+    const rule = utilityCss(await utilities(["unfold"]), "unfold") ?? "";
+    expect(rule).toContain("grid-template-rows: 0fr");
+    expect(rule).toContain("transition-property: grid-template-rows, opacity");
+    expect(rule).toMatch(/\[data-open\][^{]*\{[^}]*grid-template-rows: 1fr;[^}]*opacity: 1/);
+    expect(rule).toMatch(/> \*[^{]*\{[^}]*min-height: 0;[^}]*overflow: hidden/);
+    expect(rule).toMatch(/\[data-settled\][^{]*> \*[^{]*\{[^}]*overflow: visible/);
   });
 
   // 반짝임은 멎으면 흐린 글자다 — 띠(그라디언트)가 글자 한 자리에 굳어 진한 얼룩으로 남지 않는다.

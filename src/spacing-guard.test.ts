@@ -434,6 +434,11 @@ describe("눈금의 사분 단", () => {
       why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(02 구현 스펙 §8 · Diff-Chat 「인라인 코드」의 `1px 6px`, 높이 17)",
     },
     {
+      file: "src/features/thread/WorkLog.tsx",
+      className: "pb-2.25",
+      why: "작업 구분선 — 글자 아래 9에 1px 선(02 구현 스펙 §8 · Diff-Chat · Screen-Live 「작업 구분선」의 `gap: 9px`)",
+    },
+    {
       file: "src/features/thread/SlashMenu.tsx",
       className: "gap-y-px",
       why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",

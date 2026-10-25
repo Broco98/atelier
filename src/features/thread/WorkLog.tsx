@@ -1,20 +1,37 @@
-import { createContext, Fragment, useContext, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Copy, Plug, ShieldCheck } from "lucide-react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  BookOpen,
+  Check,
+  ChevronRight,
+  Copy,
+  Globe,
+  Pen,
+  Plug,
+  Search,
+  ShieldCheck,
+  SquareTerminal,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { useArrival, useChanged } from "./arrival";
 import type { ToolEntry } from "./fold";
 import { logRows, type LogGroup } from "./log";
-import { elapsed, phraseText, shownPath, type DiffPiece, type ToolView } from "./tool-view";
+import { motionMs, reducedMotion } from "./motion";
+import { elapsed, phraseText, shownPath, type DiffPiece, type ToolGlyph, type ToolView } from "./tool-view";
 
 // 작업 로그의 줄들(v1 티켓 05 · 캔버스 WorkLog 보드) — 도구 줄 · 묶음 줄 · 펼친 안(명령 출력 · 변경 · MCP 호출). three-axes 도구 줄
 // (`chat/ToolRow.tsx`)을 옮겨 보드의 모양으로 고쳤다. 문구와 묶기는 순수 함수가 짓고(`tool-view.ts` · `log.ts`), 여기는 그린다.
 //
-// - **도구 줄**(`.tool`) — 아이콘 없이 한 줄이다: 대상(고정폭 13 · `fg-secondary`)과 동사(14/20 · `fg-tertiary`), 최소 높이 28. 하는
-//   중이면 문구 전체가 반짝인다(`chat-shimmer`). 실패한 줄은 동사만 진하다. 펼칠 것이 있으면 줄이 단추이고, 마우스를 올리면 오른쪽에 걸린
-//   시간과 셰브런이 선다.
-// - **묶음 줄** — 이어진 읽기 · 찾기는 「파일 4개 살펴봄 · 검색 2번 ›」 한 줄이고(셰브런은 늘 선다 — 보드 「접힘」), 펼치면 왼쪽 선
-//   안에 그 줄들이 선다(`.nest`).
+// - **도구 줄**(`.tool`) — 앞에 종류 글리프 14(읽기 · 편집 · 명령 · 검색 · 웹 · MCP · 그 밖 — 02 구현 스펙 §8, `GLYPHS`)와 사이 6, 대상(고정폭
+//   13 · 2단계 색 `fg-secondary`)과 동사(14/20 · 60% `fg-tool`), 최소 높이 28. 하는 중이면 문구 전체가 반짝이고 글리프가 옅다
+//   (`fg-tool-running`). 실패한 줄은 동사만 진하다. 우리가 멈춘 줄은 글리프 자리에 ■이다. 펼칠 것이 있으면 줄이 단추이고, 마우스를
+//   올리면 오른쪽에 걸린 시간과 셰브런이 선다.
+// - **묶음 줄** — 이어진 읽기 · 찾기는 「파일 4개 살펴봄 · 검색 2번 ›」 한 줄이고(셰브런은 늘 선다 — 보드 「접힘」, 글리프는 읽기 · 찾기만이면
+//   검색), 펼치면 왼쪽 선 안에 그 줄들이 선다(`.nest`).
+// - **펼침 · 접힘**은 높이와 투명도가 함께 .3s로 움직이고 셰브런이 90° 돈다(02 구현 스펙 §12 — `Unfold` · `Chevron`). 작업 구분선 · 도구
+//   줄의 안 · 묶음 줄이 같다. 동작 줄이기에서는 곧바로다.
 // - **펼친 안**은 처음에 접혀 있다(「펼쳐야 보이고」 — 보드 머리말). 명령 출력은 20 반경의 회색 블록 하나에 `$ 명령` · 출력 · 끝 줄
 //   (「코드 종료 0 · 4.2초」), 변경은 경로 · `+N −N` 머리와 바뀐 줄 둘레, MCP는 플러그 · 이름 머리 아래 「보낸 값」 · 「받은 값」 두
 //   줄이다(받은 값은 글이면 본문 글꼴, JSON이면 고정폭 — v1 티켓 17).
@@ -64,7 +81,89 @@ function AutoLine({ view, reason }: { view: ToolView; reason: string }) {
   );
 }
 
-const ROW = "flex min-h-7 w-full min-w-0 items-center gap-1.5 text-left text-sm text-fg-tertiary";
+const ROW = "flex min-h-7 w-full min-w-0 items-center gap-1.5 text-left text-sm text-fg-tool";
+
+/** 도구 줄 앞의 종류 글리프(02 구현 스펙 §8) — 갈래는 `describeTool`이 정하고(`ToolGlyph`), 그림은 lucide다(16에서 1.5 선 — 14에 그린다). */
+const GLYPHS: Record<ToolGlyph, LucideIcon> = {
+  read: BookOpen,
+  edit: Pen,
+  execute: SquareTerminal,
+  search: Search,
+  web: Globe,
+  mcp: Plug,
+  other: Wrench,
+};
+
+/** 종류 글리프 14 — 그림이라 숨고 문구가 말한다. 도는 줄은 옅다(시안 Screen-Live 단계 3). */
+function Glyph({ glyph, running = false }: { glyph: ToolGlyph; running?: boolean }) {
+  const Icon = GLYPHS[glyph];
+  return <Icon className={cn("size-3.5 shrink-0", running && "text-fg-tool-running")} aria-hidden data-glyph={glyph} />;
+}
+
+/** 펼침 셰브런 — 접히면 ›, 펼치면 90° 돌아 ∨다(Motion 보드 「작업 묶음 펼침」 — .3s). 동작 줄이기에서는 곧바로 바뀐다. */
+function Chevron({ open, className }: { open: boolean; className?: string }) {
+  return (
+    <ChevronRight
+      className={cn(
+        "size-3 shrink-0 transition-transform duration-relaxed ease-default motion-reduce:transition-none",
+        open && "rotate-90",
+        className,
+      )}
+      strokeWidth={SMALL_GLYPH_STROKE}
+      aria-hidden
+    />
+  );
+}
+
+/**
+ * 펼침 · 접힘(02 구현 스펙 §12) — 높이 0 → auto와 투명도가 함께 .3s로 움직인다(`index.css`의 `unfold`). 펼칠 때 그 안을 그리고, 접으면 다
+ * 접힌 뒤에 걷는다 — 접힌 줄들이 DOM에 남지 않는다. 처음부터 펼친 채 선 것(다시 연 Thread · Session 보기)은 움직이지 않는다. 동작
+ * 줄이기에서는 곧바로 펴고 걷는다.
+ */
+export function Unfold({ open, className, children }: { open: boolean; className?: string; children: ReactNode }) {
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+  const [settled, setSettled] = useState(open);
+  const box = useRef<HTMLDivElement>(null);
+  if (open && !mounted) setMounted(true);
+  useLayoutEffect(() => {
+    if (open) {
+      // 접힌 모양(0fr)을 한 번 재 둔 뒤에 펼친다 — 재지 않고 바꾸면 처음 그림부터 펼친 모양이라 전이가 걸리지 않는다.
+      box.current?.getBoundingClientRect();
+      setShown(true);
+      return;
+    }
+    setShown(false);
+    setSettled(false);
+  }, [open]);
+  useEffect(() => {
+    if (open || !mounted) return;
+    const ms = reducedMotion() ? 0 : motionMs("--duration-relaxed");
+    if (ms === 0) {
+      setMounted(false);
+      return;
+    }
+    // 끝을 알리는 `transitionend`가 오지 않는 때(그 사이에 화면에서 빠짐)에도 걷히게 — 전이 길이 뒤에 한 번 더 본다.
+    const timer = window.setTimeout(() => setMounted(false), ms + 50);
+    return () => window.clearTimeout(timer);
+  }, [open, mounted]);
+  if (!mounted) return null;
+  return (
+    <div
+      ref={box}
+      data-open={shown || undefined}
+      data-settled={(shown && settled) || undefined}
+      onTransitionEnd={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (open) setSettled(true);
+        else setMounted(false);
+      }}
+      className={cn("unfold", className)}
+    >
+      <div>{children}</div>
+    </div>
+  );
+}
 
 /** 문구 — 대상(고정폭이면 13)과 동사 · 꼬리. 하는 중이면 문구 전체가 반짝인다. */
 function Phrase({ view }: { view: ToolView }) {
@@ -107,10 +206,12 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
   const stopped = tool.stop === "stopped";
   const line = (
     <>
-      {stopped && (
-        <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+      {stopped ? (
+        <span className="flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
           <span className="size-2 rounded-2xs bg-current" />
         </span>
+      ) : (
+        <Glyph glyph={view.glyph} running={view.state === "running" && !view.waiting} />
       )}
       <Phrase view={view} />
       {view.diffs.length > 0 && view.state === "done" && (
@@ -122,11 +223,7 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
       {expandable && (
         <span className="ml-auto flex shrink-0 items-center gap-1 pl-2 text-xs opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
           {took}
-          {open ? (
-            <ChevronDown className="size-3" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
-          ) : (
-            <ChevronRight className="size-3" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
-          )}
+          <Chevron open={open} />
         </span>
       )}
       {!expandable && took && view.state !== "running" && !stopped && (
@@ -148,10 +245,12 @@ function ToolLine({ tool, view }: { tool: ToolEntry; view: ToolView }) {
       ) : (
         <div className={cn(ROW, "group", swapped && "row-in")}>{line}</div>
       )}
-      {expandable && open && (
-        <div className="flex flex-col gap-2 pt-1 pb-2">
-          <Inside tool={tool} view={view} took={took} />
-        </div>
+      {expandable && (
+        <Unfold open={open}>
+          <div className="flex flex-col gap-2 pt-1 pb-2">
+            <Inside tool={tool} view={view} took={took} />
+          </div>
+        </Unfold>
       )}
     </div>
   );
@@ -168,20 +267,17 @@ function GroupLine({ group }: { group: LogGroup }) {
         onClick={() => setOpen((was) => !was)}
         className={cn(ROW, "rounded-md transition-colors hover:text-fg-secondary focus-ring", open && "text-fg-secondary")}
       >
+        <Glyph glyph={group.glyph} />
         <span className="min-w-0 truncate">{group.label}</span>
-        {open ? (
-          <ChevronDown className="size-3 shrink-0" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
-        ) : (
-          <ChevronRight className="size-3 shrink-0" strokeWidth={SMALL_GLYPH_STROKE} aria-hidden />
-        )}
+        <Chevron open={open} />
       </button>
-      {open && (
+      <Unfold open={open}>
         <div className="ml-2 flex flex-col border-l border-border-heavy pl-3.5">
           {group.tools.map(({ tool, view }) => (
             <ToolLine key={tool.key} tool={tool} view={view} />
           ))}
         </div>
-      )}
+      </Unfold>
     </div>
   );
 }
@@ -346,41 +442,45 @@ function DiffView({ piece }: { piece: DiffPiece }) {
   );
 }
 
+/** 작업 구분선의 줄 — 글자 14/20 `fg-subtle`, 그 아래 9에 1 `separator-soft` 선이 열 폭으로 그어지고, 다음 줄까지 14다(턴 안 줄 사이 8 + 6). */
+const DIVIDER = "flex w-full items-center gap-1 border-b border-separator-soft pt-0.5 pb-2.25 mb-1.5 text-left text-sm text-fg-subtle";
+
 /**
- * 작업 머리줄의 버튼 · 줄 모양(보드 `.lhead`) — 14/20 `fg-tertiary`, 접히면 아래 0.5px 선. 턴이 끝나 도는 머리줄(「N초 동안 작업 중입니다」)이
- * 이 줄로 바뀌면 같은 자리에서 떠오르고(v1 티켓 43 · Motion 보드 「도구 줄 바뀜」 — `arrival`은 그 턴의 열쇠다), 셰브런은 펼치면 아래로
- * 돈다(보드 `.chev` — 줄 바뀜의 박자).
+ * 작업 구분선(02 구현 스펙 §8 · Diff-Chat · Screen-Live — Codex 결) — 「N초 동안 작업 ›」과 그 아래 가는 선. 펼칠 것이 있으면(`onToggle`)
+ * 단추이고 셰브런이 펼치면 ∨로 돈다. 도는 동안은 「N초 동안 작업 중입니다」가 같은 줄에 선다(셰브런 없음). 펼칠 것 없이 끝 까닭만 있는
+ * 턴(길이 한도 …)도 셰브런 없는 같은 줄이다. 턴이 끝나 도는 줄이 이 줄로 바뀌면 같은 자리에서 떠오른다(v1 티켓 43 · 줄 바뀜 —
+ * `arrival`은 그 턴의 열쇠다). 위 2(`pt-0.5`)는 말풍선 → 첫 글자 잉크 51.5를 지킨다(`ThreadFlow`의 `TURN_GAP`).
  */
-export function LogHead({
-  open,
+export function WorkDivider({
+  open = false,
   onToggle,
   arrival,
   children,
 }: {
-  open: boolean;
-  onToggle: () => void;
+  open?: boolean;
+  onToggle?: () => void;
   arrival?: string;
   children: ReactNode;
 }) {
+  const moving = useArrival("row-in", arrival);
+  const rising = arrival === undefined ? undefined : moving;
+  if (!onToggle) {
+    return (
+      <div data-work-divider className={cn(DIVIDER, rising)}>
+        {children}
+      </div>
+    );
+  }
   return (
     <button
       type="button"
+      data-work-divider
       aria-expanded={open}
       onClick={onToggle}
-      className={cn(
-        "flex w-full items-center gap-1 pt-0.5 text-left text-sm text-fg-tertiary transition-colors hover:text-fg-secondary",
-        open ? "pb-0.5" : "border-b-[0.5px] border-border-heavy pb-2",
-        useArrival("row-in", arrival),
-      )}
+      className={cn(DIVIDER, "transition-colors hover:text-fg-secondary", rising)}
     >
       {children}
-      <ChevronRight
-        className={cn(
-          "size-3.5 transition-transform duration-swap ease-settle motion-reduce:transition-none",
-          open && "rotate-90",
-        )}
-        aria-hidden
-      />
+      <Chevron open={open} />
     </button>
   );
 }

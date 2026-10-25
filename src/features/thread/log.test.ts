@@ -178,6 +178,67 @@ describe("도구 줄의 문구 — 대상은 고정폭, 끝나면 과거형", ()
   });
 });
 
+// 도구 줄 앞의 종류 글리프(02 구현 스펙 §8 · 스토리 50) — 읽기 · 편집 · 명령 · 검색 · 웹 · MCP · 그 밖 일곱 갈래다. 문장을 다 읽지 않고도
+// 무슨 일인지 알게 하는 것이라 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말(「Work 읽음」)로 서니 MCP 플러그가 아니라
+// 그 말의 갈래다.
+describe("도구 줄의 종류 글리프", () => {
+  const glyphOf = (call: Record<string, unknown>) => describeTool(tool({ status: "completed", ...call })).glyph;
+
+  it("ACP kind의 갈래 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · 명령 · 검색 · 가져오기는 웹 · 그 밖", () => {
+    const sorts = [
+      { title: "Read a.ts", kind: "read", locations: [{ path: "/w/a.ts" }] },
+      { title: "Edit a.ts", kind: "edit", content: [{ type: "diff", path: "/w/a.ts", oldText: "a", newText: "b" }] },
+      { title: "Write b.ts", kind: "edit", content: [{ type: "diff", path: "/w/b.ts", newText: "b" }] },
+      { title: "rm c.ts", kind: "delete", locations: [{ path: "/w/c.ts" }] },
+      { title: "mv d.ts", kind: "move", locations: [{ path: "/w/d.ts" }] },
+      { title: "pnpm test", kind: "execute" },
+      { title: "Search RefundService", kind: "search", rawInput: { pattern: "RefundService" } },
+      { title: "https://example.com", kind: "fetch", rawInput: { url: "https://example.com" } },
+      { title: "생각", kind: "think" },
+      { title: "plan", kind: "switch_mode" },
+      { title: "TodoWrite", kind: "other" },
+    ];
+    expect(sorts.map(glyphOf)).toEqual(["read", "edit", "edit", "edit", "edit", "execute", "search", "web", "other", "other", "other"]);
+  });
+
+  it("터미널을 단 줄은 kind가 없어도 명령이다", () => {
+    expect(glyphOf({ title: "ls", kind: "other", content: [{ type: "terminal", terminalId: "t1" }] })).toBe("execute");
+  });
+
+  it("웹 검색은 웹 · 스킬은 읽기 · 서브에이전트는 그 밖이다", () => {
+    expect(glyphOf({ title: "prisma", kind: "fetch", rawInput: { query: "prisma" }, _meta: claude("WebSearch") })).toBe("web");
+    expect(glyphOf({ title: "Skill", kind: "other", rawInput: { skill: "tdd" }, _meta: claude("Skill") })).toBe("read");
+    expect(glyphOf({ title: "Task", kind: "other", _meta: { claudeCode: { toolName: "Task", subagent: { subagentType: "explorer" } } } })).toBe(
+      "other",
+    );
+  });
+
+  it("MCP는 플러그다 — Atelier의 Thread 도구는 그 말의 갈래다(읽음 · 확인함은 읽기, 고치기 시작은 편집, 맡김 · 물음은 그 밖)", () => {
+    const mcp = (name: string, rawInput: Record<string, unknown> = {}) =>
+      glyphOf({ title: name, kind: "other", rawInput, _meta: claude(`mcp__${name}`) });
+    expect(
+      [
+        mcp("github__create_issue"),
+        mcp("atelier-thread__get_work"),
+        mcp("atelier-thread__list_projects"),
+        mcp("atelier-thread__start_editing", { project: "api-server" }),
+        mcp("atelier-thread__propose_work"),
+        mcp("atelier-thread__call_agent", { handle: "@reviewer" }),
+        mcp("atelier-thread__rename_thread"),
+      ],
+    ).toEqual(["mcp", "read", "read", "edit", "other", "other", "mcp"]);
+  });
+
+  it("묶음 줄은 파일을 읽었으면 읽기, 찾기만이면 검색이다", () => {
+    const read = (name: string) =>
+      tool({ toolCallId: name, title: `Read ${name}`, kind: "read", status: "completed", locations: [{ path: `/w/${name}` }] });
+    const search = (name: string) => tool({ toolCallId: name, title: name, kind: "search", status: "completed" });
+    const glyphs = (rows: ReturnType<typeof logRows>) => rows.map((row) => (row.kind === "group" ? row.glyph : null));
+    expect(glyphs(logRows([search("a"), read("b.ts")]))).toEqual(["read"]);
+    expect(glyphs(logRows([search("a"), search("b")]))).toEqual(["search"]);
+  });
+});
+
 describe("묶음 줄 — 이어진 읽기와 찾기만 묶는다", () => {
   const read = (name: string) =>
     tool({ toolCallId: name, title: `Read ${name}`, kind: "read", status: "completed", locations: [{ path: `/w/${name}` }] });

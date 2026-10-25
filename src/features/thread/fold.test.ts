@@ -9,6 +9,7 @@ import {
   foldThread,
   headline,
   particle,
+  workLine,
   type CallEntry,
   type PendingProject,
   type PendingWork,
@@ -62,7 +63,7 @@ const update = (seq: number, second: number, body: Record<string, unknown>): Rec
 });
 
 describe("Thread 기록을 턴으로 접는다", () => {
-  it("보낸 말마다 턴이 서고, 답한 이는 Host이며, 끝난 턴은 「N초 동안 작업함」으로 접힌다", () => {
+  it("보낸 말마다 턴이 서고, 답한 이는 Host이며, 끝난 턴은 턴 끝 메시지만 남기고 접힌다", () => {
     const model = foldThread(blessed);
     expect(model.running).toBe(false);
     expect(model.turns.map((turn) => turn.sent)).toEqual([
@@ -70,7 +71,7 @@ describe("Thread 기록을 턴으로 접는다", () => {
       "notes.txt에 gate를 쓰고, 읽고, wc -c로 바이트를 세 줘",
     ]);
     expect(model.turns.map((turn) => turn.who)).toEqual(["host", "host"]);
-    expect(model.turns.map((turn) => turn.end && headline(turn.end))).toEqual(["4초 동안 작업함", "10초 동안 작업함"]);
+    expect(model.turns.map((turn) => turn.end && headline(turn.end))).toEqual(["4초 동안 작업", "10초 동안 작업"]);
     // 턴 끝 메시지(마지막 도구 뒤의 답)만 접힌 턴에 남는다.
     expect(model.turns.map((turn) => finalMessages(turn).map((entry) => entry.kind === "message" && entry.text))).toEqual([
       ["hello from turn"],
@@ -106,6 +107,47 @@ describe("Thread 기록을 턴으로 접는다", () => {
   });
 });
 
+// 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 끝난 턴의 「N초 동안 작업」은 펼쳐야 보이는 일(도구 줄 · 생각 · 앞선 답)이 있을 때만
+// 선다. 말만 한 턴에는 빈 머리가 서지 않는다. 접힌 턴에도 남는 줄(호출 줄 · 계획 · 질문 · 카드의 결정 줄)만 있는 턴도 펼칠 것이 없다.
+describe("작업 구분선", () => {
+  it("도구 없이 끝난 턴에는 구분선이 없고, 도구를 쓴 턴은 「N초 동안 작업」이다", () => {
+    const [first, second] = foldThread(blessed).turns;
+    expect(workLine(first)).toBeNull();
+    expect(workLine(second)).toEqual({ text: "10초 동안 작업", unfolds: true });
+  });
+
+  it("호출 줄만 있는 턴에도 구분선이 없다 — 호출 줄은 접힌 턴에도 남아 펼칠 것이 없다", () => {
+    const host = foldThread(calling).turns.find((turn) => turn.who === "host");
+    expect(host?.end && headline(host.end)).toBe("21초 동안 작업");
+    expect(host && workLine(host)).toBeNull();
+  });
+
+  it("호출 앞에 한 말은 접혀 숨으니 구분선이 선다", () => {
+    const lines: RecordLine[] = calling.flatMap((line) =>
+      line.seq === 8
+        ? [update(8, 1, { sessionUpdate: "agent_message_chunk", messageId: "m0", content: { type: "text", text: "리뷰어에게 물어볼게요" } }), line]
+        : [line],
+    );
+    const host = foldThread(lines).turns.find((turn) => turn.who === "host");
+    expect(host && workLine(host)).toEqual({ text: "21초 동안 작업", unfolds: true });
+  });
+
+  it("도는 턴은 구분선이 아니다 — 「N초 동안 작업 중입니다」가 따로 선다", () => {
+    const running = foldThread(blessed.filter((line) => line.kind !== "turn-end"));
+    expect(running.turns.map(workLine)).toEqual([null, null]);
+  });
+
+  it("끝 까닭이 있는 턴은 도구가 없어도 그 까닭이 선다 — 펼칠 것은 없다", () => {
+    const lines = blessed.map((line, index) =>
+      line.kind === "turn-end" && blessed.findIndex((one) => one.kind === "turn-end") === index
+        ? { ...line, payload: { ...(line.payload as Record<string, unknown>), stopReason: "max_tokens" } }
+        : line,
+    );
+    const [first] = foldThread(lines).turns;
+    expect(workLine(first)).toEqual({ text: "답이 길이 한도에 닿아 멈췄어요", unfolds: false });
+  });
+});
+
 describe("시스템 줄", () => {
   it("이름 바꾸기는 그 자리에 「Thread 이름을 X로 바꿈」으로 선다 — 조사는 이름의 받침을 따른다", () => {
     const lines: RecordLine[] = [
@@ -129,7 +171,7 @@ describe("시스템 줄", () => {
     ]);
     expect(model.turns).toHaveLength(1);
     const [turn] = model.turns;
-    expect(turn.end && headline(turn.end)).toBe("9초 동안 작업함");
+    expect(turn.end && headline(turn.end)).toBe("9초 동안 작업");
     // 그 앞의 `ToolSearch`(도구 들이기)는 서지 않는다.
     const tools = turn.entries.filter((entry) => entry.kind === "tool");
     expect(tools.map((tool) => phraseText(describeTool(tool).phrase))).toEqual(["atelier-thread.rename_thread 불러옴"]);

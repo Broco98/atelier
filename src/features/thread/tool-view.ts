@@ -8,7 +8,9 @@ import { isObject, nonEmpty, type Json } from "./json";
 // 줄)은 그대로다. 달라진 것은 보드의 말이다:
 // - **문구는 「대상 + 동사」다** — 대상(파일 이름 · 명령 · MCP 도구)이 앞에 고정폭으로 서고 동사가 뒤에 선다(「refund.service.ts 읽음」 ·
 //   「pnpm test refunds 실행함」). 하는 중에는 현재형(「읽는 중」 · 「고치는 중」 · 「실행 중」 · 「부르는 중」), 끝나면 과거형이다.
-// - **아이콘이 없다.** 보드의 작업 로그는 글자만이다(캔버스 Screen-Thread 보드의 아이콘 줄과 갈린다 — WorkLog 보드가 그 부품의 정본이다).
+// - **줄 앞에 종류 글리프가 선다**(02 구현 스펙 §8 · 스토리 50 — Codex 결). 갈래는 일곱이다(`ToolGlyph`): 읽기 · 편집 · 명령 · 검색 · 웹 ·
+//   MCP · 그 밖. 사람이 본 일로 가른다 — Atelier의 Thread 도구는 사람의 말로 서니(「Work 읽음」 · 「api-server 고치기 시작함」) MCP
+//   플러그가 아니라 그 말의 갈래다. 그 밖의 MCP 도구만 플러그다. 그림은 `WorkLog.tsx`가 고른다.
 // - **실패 · 중단 · 거절은 색이 아니라 문장이다** — 「실행하지 못함 · 코드 종료 1」(동사만 진하게), 「중단함 · 12초」, 「실행하지 않음 ·
 //   내가 거절함」.
 // - **명령 출력의 끝 줄은 종료 코드와 걸린 시간이다**(「코드 종료 0 · 4.2초」). Claude Code는 종료 코드를 주지 않아 그때는 「끝남」 ·
@@ -19,6 +21,9 @@ import { isObject, nonEmpty, type Json } from "./json";
 // - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「Work 읽음」 · 「Work 만들기를 묻는 중」.
 //   「Project 고치기 시작」(v1 티켓 32)은 「api-server 고치기 시작함」이다 — Work 밖 Project 카드가 서면 그동안 「web-app 고치기 시작하는
 //   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다.
+
+/** 도구 줄 앞의 종류 글리프 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · 명령 · 검색 · 웹(검색 · 가져오기) · MCP · 그 밖. */
+export type ToolGlyph = "read" | "edit" | "execute" | "search" | "web" | "mcp" | "other";
 
 /** 도구 줄의 때 — 도는 중 · 끝남 · 실패 · 끊김(끝을 받기 전에 그 Session이 사라졌다). */
 export type ToolState = "running" | "done" | "failed" | "cut";
@@ -55,6 +60,8 @@ export interface ToolView {
   waiting: boolean;
   /** 묶음 줄에 드는 갈래 — 읽기 · 찾기만 이어지면 묶인다(`log.ts`). */
   group: "read" | "search" | null;
+  /** 줄 앞의 종류 글리프(머리말). */
+  glyph: ToolGlyph;
   phrase: ToolPhrase;
   /** 명령 출력 상자 — 명령이 아니면 null. `status`는 끝 줄(「코드 종료 0 · 4.2초」)이고 도는 동안은 null이다. */
   shell: { command: string | null; output: string; status: string | null; bad: boolean } | null;
@@ -166,34 +173,36 @@ export function describeTool(tool: ToolEntry): ToolView {
     const box = { name, sent, received, receivedCode: /^[[{]/.test(received.trim()) };
     if (name === CALL_AGENT) {
       const handle = nonEmpty(rawInput.handle)?.replace(/^@/, "");
-      return { ...base, phrase: say(SUBAGENT, handle ? `@${handle}` : "Agent", false), mcp: box };
+      return { ...base, glyph: "other", phrase: say(SUBAGENT, handle ? `@${handle}` : "Agent", false), mcp: box };
     }
     if (name === LIST_PROJECTS) {
       const count = state === "done" ? listedCount(received) : null;
-      return { ...base, phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, false), mcp: box };
+      return { ...base, glyph: "read", phrase: say(CHECK, count === null ? "Project 목록" : `Project ${count}개 목록`, false), mcp: box };
     }
-    if (name === GET_WORK) return { ...base, phrase: say(READ, "Work", false), mcp: box };
+    if (name === GET_WORK) return { ...base, glyph: "read", phrase: say(READ, "Work", false), mcp: box };
     // 카드가 선 동안 서는 줄이다 — 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다(`fold.ts`). 거절된 제안만 이 줄로 남는다.
-    if (name === PROPOSE_WORK) return { ...base, phrase: say(ASK, "Work 만들기를", false), mcp: box };
-    if (name === START_EDITING) return { ...base, phrase: say(START, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
-    return { ...base, phrase: say(MCP, name, true), mcp: box };
+    if (name === PROPOSE_WORK) return { ...base, glyph: "other", phrase: say(ASK, "Work 만들기를", false), mcp: box };
+    if (name === START_EDITING) {
+      return { ...base, glyph: "edit", phrase: say(START, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
+    }
+    return { ...base, glyph: "mcp", phrase: say(MCP, name, true), mcp: box };
   }
 
   const fallbackText = state === "failed" && contentText !== "" ? contentText : null;
   const subagent = isObject(claudeCode.subagent) ? claudeCode.subagent : null;
   if (subagent) {
     const type = nonEmpty(subagent.subagentType);
-    return { ...base, phrase: say(SUBAGENT, type ?? "Agent", false), text: contentText || null };
+    return { ...base, glyph: "other", phrase: say(SUBAGENT, type ?? "Agent", false), text: contentText || null };
   }
   if (toolName === "Skill" && nonEmpty(rawInput.skill)) {
-    return { ...base, phrase: say(SKILL, nonEmpty(rawInput.skill), true), text: fallbackText };
+    return { ...base, glyph: "read", phrase: say(SKILL, nonEmpty(rawInput.skill), true), text: fallbackText };
   }
   if (toolName === "WebSearch") {
     const query = nonEmpty(rawInput.query) ?? title;
     if (state === "running" && !tool.denied && tool.stop === null) {
-      return { ...base, phrase: say(WEB, null, false, "웹에서 "), text: fallbackText };
+      return { ...base, glyph: "web", phrase: say(WEB, null, false, "웹에서 "), text: fallbackText };
     }
-    return { ...base, phrase: say(WEB, query, false, "웹에서 "), text: fallbackText };
+    return { ...base, glyph: "web", phrase: say(WEB, query, false, "웹에서 "), text: fallbackText };
   }
 
   const diffs = diffsOf(call);
@@ -203,6 +212,7 @@ export function describeTool(tool: ToolEntry): ToolView {
     const command = title ?? commandOf(rawInput.command);
     return {
       ...base,
+      glyph: "execute",
       phrase: say(EXECUTE, command ?? "명령", true),
       shell: shellOf(state, command, output, exitCode, took),
     };
@@ -213,7 +223,7 @@ export function describeTool(tool: ToolEntry): ToolView {
   const fileSubject = onlyFile ? baseName(onlyFile) : files.length > 1 ? `파일 ${files.length}개` : null;
   switch (kind) {
     case "read":
-      return { ...base, group: "read", phrase: say(READ, fileSubject ?? title ?? "파일", fileSubject !== null), text: fallbackText };
+      return { ...base, group: "read", glyph: "read", phrase: say(READ, fileSubject ?? title ?? "파일", fileSubject !== null), text: fallbackText };
     case "edit":
     case "delete": {
       const removed = kind === "delete";
@@ -221,24 +231,25 @@ export function describeTool(tool: ToolEntry): ToolView {
       const verbs = removed ? DELETE : written ? WRITE : EDIT;
       return {
         ...base,
+        glyph: "edit",
         phrase: say(verbs, fileSubject ?? title ?? "파일", fileSubject !== null),
         diffs,
         text: diffs.length > 0 ? null : fallbackText,
       };
     }
     case "move":
-      return { ...base, phrase: say(MOVE, fileSubject ?? title ?? "파일", fileSubject !== null), text: fallbackText };
+      return { ...base, glyph: "edit", phrase: say(MOVE, fileSubject ?? title ?? "파일", fileSubject !== null), text: fallbackText };
     case "search":
       // 변환기의 제목은 「Search <무늬>」 · 「Find <무늬>」다(`translator/stream.rs`) — 보드는 무늬만 든다(「RefundService 찾음」).
-      return { ...base, group: "search", phrase: say(SEARCH, nonEmpty(rawInput.pattern) ?? title, true), text: fallbackText };
+      return { ...base, group: "search", glyph: "search", phrase: say(SEARCH, nonEmpty(rawInput.pattern) ?? title, true), text: fallbackText };
     case "fetch":
-      return { ...base, phrase: say(FETCH, nonEmpty(rawInput.url) ?? title, true), text: fallbackText };
+      return { ...base, glyph: "web", phrase: say(FETCH, nonEmpty(rawInput.url) ?? title, true), text: fallbackText };
     case "think":
-      return { ...base, phrase: say(THINK, title, false), text: fallbackText };
+      return { ...base, glyph: "other", phrase: say(THINK, title, false), text: fallbackText };
     case "switch_mode":
-      return { ...base, phrase: say(MODE, null, false), text: fallbackText };
+      return { ...base, glyph: "other", phrase: say(MODE, null, false), text: fallbackText };
     default:
-      return { ...base, phrase: say(OTHER, title ?? toolName ?? "도구", true), text: fallbackText };
+      return { ...base, glyph: "other", phrase: say(OTHER, title ?? toolName ?? "도구", true), text: fallbackText };
   }
 }
 

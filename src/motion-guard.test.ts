@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { blankCssComments, blankedSources, placesOf, where } from "./blank-comments";
 
 // **Thread 화면의 움직임은 모션 보드의 토큰으로만 움직인다**(v1 티켓 43 · 구현 스펙 §14 「모션」). 시간 · 곡선은 `index.css`의 모션 보드
-// 토큰이고, 움직임은 그 파일 끝 「Thread의 움직임」의 유틸리티다(`word-in` · `chip-in` · `card-rise` · `pop-in` · `log-open` · `row-in` ·
+// 토큰이고, 움직임은 그 파일 끝 「Thread의 움직임」의 유틸리티다(`word-in` · `chip-in` · `card-rise` · `pop-in` · `unfold` · `row-in` ·
 // `morph-in` · `morph-out` · `jump-in` · `row-flash` · `chat-shimmer` · `typing-dots` · `writing-pulse` · `view-in`). 그 값이 토큰을 읽는지는
 // `tokens.test.ts`가 Tailwind를 돌려 잰다. 여기서는 Thread 화면(`src/features/thread`)이 그 길을 비켜 가는 자리를 막는다.
 //   - **손으로 고른 시간 · 곡선 · 늦음**(`duration-200` · `duration-[180ms]` · `ease-in-out` · `ease-[cubic-bezier(…)]` · `delay-75`).
