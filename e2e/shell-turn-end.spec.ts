@@ -4,17 +4,21 @@ import {
   fireAttention,
   markAttention,
   unknownIpcCalls,
+  workRow,
   둘째가말할자리,
   띠,
-  레인,
+  셸이앉은스냅샷,
   이름표,
+  줄표시,
+  typeIntoShell,
+  프로세스셸상태,
   툴팁,
   행버튼,
 } from "./harness";
 
 // 프로세스 티켓 20 — **턴을 마친 셸은 「확인할 것」이 되고, 훅이 도구 · 오류 · 서브에이전트를 말한다**(프로세스 결정
 // 13 · 14). 전이 하나하나는 L2의 표가 재고(`shell-attention.test.ts`), 여기서는 그 값이 **진짜 스토어 → 띠 · 행 · 탭**
-// 까지 가는 길 여섯을 본다: 턴의 끝이 띠에 확인할 것으로 서고 보면 꺼지는 것, 오류로 끝난 턴의 말, `/clear`가 아무것도
+// · Processes까지 가는 길 여섯을 본다: 턴의 끝이 띠에 확인할 것으로 서고 보면 꺼지는 것, 오류로 끝난 턴의 말, `/clear`가 아무것도
 // 안 세우는 것, 서브에이전트 수가 탭 툴팁에 서는 것, 그리고 리뷰 반영 둘 — `claude -p`의 멈춘 세션 끝 한 장이 확인할
 // 것을 세우는 것, 다른 에이전트의 도구가 승인 대기를 안 푸는 것.
 //
@@ -54,8 +58,9 @@ test("턴을 마친 셸은 띠에 확인할 것으로 서고, 그 셸 탭을 보
 // 말은 메시지 자리에 서고 색은 없다(terminal-activity-signal 결정 12의 「빨강 보류」).
 test("API 오류로 끝난 턴은 확인할 것과 「오류로 끝남」을 보인다", async ({ page }) => {
   await 둘째가말할자리(page);
-  // 셸의 말은 부르는 행 버튼의 설명이 든다(`sidebar-active-band` 결정 14 — 행이 한 줄이 되며 둘째 줄이 걷혔다).
-  const 행의말 = 행버튼(page, `${plainWork.title} — 확인할 것`);
+  // 셸의 말은 부르는 행 버튼의 설명이 든다(`sidebar-active-band` 결정 14 — 행이 한 줄이 되며 둘째 줄이 걷혔다). 끝났는데 안 본 셸의
+  // 줄 이름 꼬리는 「새 결과」다(02 티켓 05 — 한때 「확인할 것」).
+  const 행의말 = 행버튼(page, `${plainWork.title} — 새 결과`);
 
   await markAttention(
     page,
@@ -88,8 +93,10 @@ test("API 오류로 끝난 턴은 확인할 것과 「오류로 끝남」을 보
 // 그래서 먼저 턴을 멈춰 띠에 확인할 것을 세운다. `/clear`가 그 줄을 걷는 것이 사건이 닿았다는 앵커이고, `clear`를 끝으로
 // 읽는 코드면 그 줄이 남는다. 승인 대기로 세우면 두 사건 모두 지워 가르지 못한다.
 test("`/clear` 뒤에는 띠에 아무것도 없고 도는 중도 안 선다 — 세션 끝과 달리 멈춘 턴의 확인할 것까지 걷는다", async ({ page }) => {
-  await 둘째가말할자리(page);
-  const 레인점 = 레인(page, plainWork.slug).locator("[data-signal]");
+  await 둘째가말할자리(page, { processes_snapshot: 셸이앉은스냅샷(1, 2) });
+  // 아래에서 Processes에 들른다 — 들렀다 와도 보는 첫 칸이 남게 한 글자 친다(저절로 뜬 셸은 입력 없이 화면을 떠나면 닫힌다).
+  await typeIntoShell(page);
+  const 표시 = 줄표시(page, plainWork.slug);
 
   await markAttention(
     page,
@@ -97,28 +104,34 @@ test("`/clear` 뒤에는 띠에 아무것도 없고 도는 중도 안 선다 —
     2,
   );
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
-  await expect(레인점).toHaveCount(1);
+  await expect(표시).toHaveAttribute("data-mark", "new");
 
   await fireAttention(page, { agent: "claude", event: "SessionEnd", at: Date.now(), payload: { reason: "clear" } }, 2);
 
-  // 사건이 닿았다 — 확인할 것이 걷혔다. 끝이었다면 남는다.
+  // 사건이 닿았다 — 확인할 것이 걷혔다(띠와 줄의 「새 결과」). 끝이었다면 남는다.
   await expect(띠(page)).toHaveCount(0);
-  // 그리고 그 자리에 **도는 중이 안 선다** — 레인에 점도 스피너도 없다(work 상태 아이콘이 돌아온다).
-  await expect(레인점).toHaveCount(0);
+  await expect(workRow(page, plainWork.slug)).toBeVisible();
+  await expect(표시).toHaveCount(0);
+  // 그리고 그 자리에 **도는 중이 안 선다** — 도는 셸은 줄에 표시가 없어(02 티켓 05 · S8) Processes의 그 셸 줄로 잰다: 신호가 없다.
+  const 상태 = await 프로세스셸상태(page, 2);
+  expect(상태.신호, `/clear 뒤 둘째 셸이 ${상태.글}`).toBeNull();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // **`claude -p`의 끝**(티켓 20 리뷰 반영). `Stop` 뒤 17ms 만에 `SessionEnd`가 와서(판 03 선행 시험 r1) 감시의
 // 디바운스(100ms)가 두 장을 한 회차로 읽는다 — 화면에 닿는 것은 멈춘 `SessionEnd` 한 장뿐이다. 그 장만으로도 확인할
-// 것이 서야 프로세스 결정 13의 「안 본 완료를 남긴다」가 남길 것을 갖는다. 앵커는 **새 턴이 닿았다**는 것이다: 먼저 도는 중의
-// 스피너를 세운다(안 닿았으면 아래 확인할 것이 「아무것도 없던 셸」의 것이 된다).
+// 것이 서야 프로세스 결정 13의 「안 본 완료를 남긴다」가 남길 것을 갖는다. 앵커는 **새 턴이 닿았다**는 것이다: 먼저 도는 중을
+// 세운다(안 닿았으면 아래 확인할 것이 「아무것도 없던 셸」의 것이 된다) — 도는 중은 Processes의 셸 줄에서 읽는다(02 티켓 05가 Work 줄
+// 레인의 스피너를 걷었다).
 test("`claude -p`처럼 멈춘 세션 끝 한 장만 와도 띠에 확인할 것이 선다", async ({ page }) => {
-  await 둘째가말할자리(page);
-  const 스피너 = 레인(page, plainWork.slug).locator('[data-signal="working"]');
+  await 둘째가말할자리(page, { processes_snapshot: 셸이앉은스냅샷(1, 2) });
+  // 들렀다 와도 보는 첫 칸이 남게 한 글자 친다(위 검사와 같다).
+  await typeIntoShell(page);
 
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now(), payload: { prompt: "hi" } }, 2);
-  await expect(스피너).toHaveCount(1);
+  expect(await 프로세스셸상태(page, 2)).toEqual({ 신호: "working", 글: "도는 중" });
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
   await expect(띠(page)).toHaveCount(0);
 
   await fireAttention(
@@ -127,7 +140,8 @@ test("`claude -p`처럼 멈춘 세션 끝 한 장만 와도 띠에 확인할 것
     2,
   );
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
-  await expect(스피너).toHaveCount(0);
+  // 줄은 「새 결과」다 — 끝났는데 안 본 셸이지 도는 셸이 아니다(셸 신호는 하나다).
+  await expect(줄표시(page, plainWork.slug)).toHaveAttribute("data-mark", "new");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

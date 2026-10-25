@@ -9,6 +9,8 @@ import {
   workRow,
   띠,
   사람줄,
+  줄표시,
+  흰판안,
   첫글자,
   토큰값,
 } from "./harness";
@@ -40,11 +42,11 @@ async function 상자(target: Locator) {
 /** 그 안 첫 아이콘(svg)의 상자. */
 const 아이콘 = (scope: Locator) => 상자(scope.locator("svg").first());
 
-test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 사람 줄의 행 글자가 창 끝에서 16이고, 수의 오른쪽 끝은 행 끝에서 8이다", async ({
+test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 사람 줄의 행 글자가 사이드바 끝에서 16이고, 수 · 표시의 오른쪽 끝은 행 끝에서 8이다", async ({
   page,
 }) => {
   // work 행의 레인 위에 그 Work의 Thread를 펴는 ▸가 겹쳐 선다(v1 티켓 37 · 46) — 이은 Thread가 있어야 선다. 고정된 일에 Thread 하나를
-  // 잇는다. 그 Thread 수도 행 오른쪽에 선다.
+  // 잇는다.
   await installFixtureBackend(page, {
     thread_list: [
       {
@@ -69,8 +71,8 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
   // 앵커: 두 토큰을 실제로 읽었고 DS 값이다 — 틈 8 + 행 안쪽 8이 행 글자 16이다.
   expect([틈, 행글자]).toEqual([8, 16]);
   const sidebar = await 상자(page.locator("aside").first());
-  // 사이드바는 바탕에 붙는다(DS `AppShell`) — 창 끝이 곧 사이드바 끝이다.
-  expect(sidebar.x, "사이드바가 창 끝에 붙는다").toBe(0);
+  // 사이드바는 흰 판 안 왼끝에 붙는다(02 티켓 02 — 한때 바탕에 붙어 창 끝이 곧 사이드바 끝이었다). 행 글자 16은 그 끝에서 잰다.
+  expect(sidebar.x, "사이드바가 흰 판 안 왼끝에 붙는다").toBe((await 흰판안(page)).x);
 
   const 자리: [string, Promise<number>][] = [
     // nav의 첫 항목은 「새 Thread」다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
@@ -78,12 +80,12 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
     ["알림 띠 머리 글자", 첫글자(띠(page)).then((box) => box.x)],
     ["알림 띠 줄의 점 레인", 상자(띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림` }).locator("span").first()).then((box) => box.x)],
     ["구획 소제목 글자", 첫글자(page.locator("aside [data-section]").first()).then((box) => box.x)],
-    // 레인(상태 아이콘 · 셸 신호)이 행 맨 앞이다 — Codex 사이드바의 폴더 아이콘 칸(16)이다(v1 티켓 46). 한때 그 앞에 ▸의 제 칸이 섰다.
+    // 레인(늘 폴더 — 02 티켓 05)이 행 맨 앞이다 — Codex 사이드바의 폴더 아이콘 칸(16)이다(v1 티켓 46). 한때 그 앞에 ▸의 제 칸이 섰다.
     ["work 행의 레인", 상자(workRow(page, pinnedWork.slug).locator("[data-lane]")).then((box) => box.x)],
     // 바닥은 사람 줄이다(옛 Settings 줄의 자리) — 얼굴 글자 원이 행 글자 자리에 선다.
     ["바닥 사람 줄의 얼굴", 상자(사람줄(page).locator("span").first()).then((box) => box.x)],
   ];
-  for (const [이름, x] of 자리) expect((await x) - sidebar.x, `${이름} — 창 끝 + 16`).toBe(행글자);
+  for (const [이름, x] of 자리) expect((await x) - sidebar.x, `${이름} — 사이드바 끝 + 16`).toBe(행글자);
   // ▸는 레인 가운데에 겹쳐 선다 — 가리키면 레인이 비키고 그 자리에 ▸가 선다(v1 티켓 46). 쉴 때는 투명해도 자리는 그대로다.
   const [레인, 펼침] = [
     await 상자(workRow(page, pinnedWork.slug).locator("[data-lane]")),
@@ -91,15 +93,14 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
   ];
   expect(펼침.x + 펼침.width / 2, "▸ 가운데 = 레인 가운데").toBeCloseTo(레인.x + 레인.width / 2, 1);
 
-  // 오른쪽도 행 안쪽 8이다(DS `.at-row` · `.at-band-head`의 좌우 8) — 띠 머리의 수 · work 행의 이은 Thread 수가 그 상자 끝에서 8에
-  // 선다. 구획 머리의 수는 눈에서 걷혔다(v1 티켓 46 — 이름에만 남는다).
+  // 오른쪽도 행 안쪽 8이다(DS `.at-row` · `.at-band-head`의 좌우 8) — 띠 머리의 수 · work 행 끝의 상태 표시가 그 상자 끝에서 8에
+  // 선다. 구획 머리의 수는 눈에서 걷혔다(v1 티켓 46 — 이름에만 남는다). work 행의 이은 Thread 수는 호버 카드로 갔고(02 티켓 05) 그
+  // 자리에 표시 하나가 선다 — 기다리는 셸의 Work라 「내 차례」다(S8).
   const 띠머리 = 띠(page).locator("[data-band-count]");
-  const 고정행 = workRow(page, pinnedWork.slug);
+  const 표시 = 줄표시(page, plainWork.slug);
+  await expect(표시).toHaveAttribute("data-mark", "mine");
   expect((await 상자(띠(page))).right - (await 첫글자(띠머리)).right, "띠 수 — 띠 끝에서 8").toBeCloseTo(틈, 0);
-  expect(
-    (await 상자(고정행)).right - (await 첫글자(고정행.locator("[data-thread-count]"))).right,
-    "Thread 수 — 행 끝에서 8",
-  ).toBeCloseTo(틈, 0);
+  expect((await 상자(workRow(page, plainWork.slug))).right - (await 상자(표시)).right, "상태 표시 — 행 끝에서 8").toBeCloseTo(틈, 0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -207,7 +208,7 @@ test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프
   await installFixtureBackend(page);
   await page.goto(`/projects/${billing.slug}`);
   const content = page.getByRole("main", { name: "프로젝트", exact: true });
-  // 상세의 첫 글은 속성 묶음이다 — 상세 칸에는 제목이 없고 이름은 머리 카드가 든다(codex-ds 스펙 S12 · 티켓 28).
+  // 상세의 첫 글은 속성 묶음이다 — 상세 칸에는 제목이 없고 이름은 머리 줄이 든다(codex-ds 스펙 S12 · 티켓 28).
   const 속성 = content.locator("dl");
   await expect(속성).toContainText(billing.path);
   const [행글자, 거터, 위] = [await 간격(page, 4), await 간격(page, 5), await 간격(page, 6)];

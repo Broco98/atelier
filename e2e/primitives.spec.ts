@@ -10,7 +10,7 @@ import {
   탭으로,
   띠,
   그림자,
-  머리카드,
+  화면머리,
   색대비,
   이름표,
   칠한값,
@@ -79,8 +79,11 @@ const 링폭 = 4;
  *
  * 페이지 안에서 도는 함수다(`evaluateAll`) — 자르는 변을 `<상자> 변`으로 돌려준다. `굴러나간것은뺀다`면 자르는 상자 안에
  * 다 들어와 있지 않은 요소(굴러서 반쯤 · 통째로 나간 것, 접힌 구획 안의 것)는 세지 않는다 — 그 링이 안 보이는 것은 그 요소가
- * 안 보이기 때문이다. 크기가 없는 요소도 같다. **링을 안쪽에 입는 것**(`data-ring-inset` — 카드 끝까지 차는 문서 글)은 테두리
- * 바깥으로 차지하는 것이 없어 요소 상자 그대로 잰다.
+ * 안 보이기 때문이다. 크기가 없는 요소도 같다. 구르는 상자의 **보이는 끝에 맞닿은 것도 그 너머로 더 구를 자리가 남았으면** 세지 않는다
+ * — 굴러서 반쯤 나가기 직전의 자리일 뿐 배치가 링을 자르는 것이 아니다(창 높이가 바뀌면 다른 행이 그 끝에 걸린다 — 02 티켓 13에서
+ * 흰 판이 본문을 5.5 줄이자 설정의 마지막 글상자가 720 창의 보이는 끝에 0px로 맞닿았다). 더 구를 자리가 없는 끝(목록의 마지막 행이
+ * 상자 바닥에 붙은 것)은 그대로 센다 — 그것은 어디로 굴러도 잘린다. **링을 안쪽에 입는 것**(`data-ring-inset` — 카드 끝까지 차는 문서
+ * 글)은 테두리 바깥으로 차지하는 것이 없어 요소 상자 그대로 잰다.
  */
 function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }: { 폭: number; 굴러나간것은뺀다: boolean }): string[] {
   const cut: string[] = [];
@@ -90,6 +93,8 @@ function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }:
     if (굴러나간것은뺀다 && (box.width === 0 || box.height === 0)) continue;
     const 이름 = `<${el.tagName.toLowerCase()}> 「${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 24)}」`;
     const 변: string[] = [];
+    // 안쪽의 구르는 상자가 「굴러 나가는 중」이라 친 변 — 그 바깥의 자르는 상자(구르지 않는 칸 · 판)가 같은 끝에서 자르는 것도 세지 않는다.
+    const 구르는변 = new Set<string>();
     for (let at = el.parentElement; at; at = at.parentElement) {
       const style = getComputedStyle(at);
       const [가로, 세로] = [style.overflowX !== "visible", style.overflowY !== "visible"];
@@ -108,10 +113,21 @@ function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }:
         break;
       }
       const 상자 = `<${at.tagName.toLowerCase()} class="${at.getAttribute("class") ?? ""}">`;
-      if (가로 && box.left - 폭 < 안.left - 0.5) 변.push(`${상자} 왼쪽 ${(box.left - 안.left).toFixed(1)}px`);
-      if (가로 && box.right + 폭 > 안.right + 0.5) 변.push(`${상자} 오른쪽 ${(안.right - box.right).toFixed(1)}px`);
-      if (세로 && box.top - 폭 < 안.top - 0.5) 변.push(`${상자} 위 ${(box.top - 안.top).toFixed(1)}px`);
-      if (세로 && box.bottom + 폭 > 안.bottom + 0.5) 변.push(`${상자} 아래 ${(안.bottom - box.bottom).toFixed(1)}px`);
+      // 그 변 너머로 더 구를 자리가 남았나 — 남았으면 그 끝에 맞닿은 것은 굴러 나가는 중이다(위 머리말).
+      const 더구른다 = {
+        left: at.scrollLeft > 0.5,
+        right: at.scrollLeft + at.clientWidth < at.scrollWidth - 0.5,
+        top: at.scrollTop > 0.5,
+        bottom: at.scrollTop + at.clientHeight < at.scrollHeight - 0.5,
+      };
+      const 센다 = (변이름: keyof typeof 더구른다) => {
+        if (굴러나간것은뺀다 && 더구른다[변이름]) 구르는변.add(변이름);
+        return !구르는변.has(변이름);
+      };
+      if (가로 && box.left - 폭 < 안.left - 0.5 && 센다("left")) 변.push(`${상자} 왼쪽 ${(box.left - 안.left).toFixed(1)}px`);
+      if (가로 && box.right + 폭 > 안.right + 0.5 && 센다("right")) 변.push(`${상자} 오른쪽 ${(안.right - box.right).toFixed(1)}px`);
+      if (세로 && box.top - 폭 < 안.top - 0.5 && 센다("top")) 변.push(`${상자} 위 ${(box.top - 안.top).toFixed(1)}px`);
+      if (세로 && box.bottom + 폭 > 안.bottom + 0.5 && 센다("bottom")) 변.push(`${상자} 아래 ${(안.bottom - box.bottom).toFixed(1)}px`);
     }
     cut.push(...변.map((one) => `${이름} — ${one}`));
   }
@@ -249,18 +265,19 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
 
-  // 머리 카드의 글자 버튼 — DS `.at-btn.top`(24 · `radius-md`). 머리 줄에 서는 것은 모두 24다(창 컨트롤 · 작업 ⋯와 같다).
+  // 머리 줄의 글자 버튼 — `Button`의 `top`(28 · `radius-lg` — 머리 줄의 아이콘 단추와 같은 높이, 02 결정 「머리 줄은 한 결이다(03 뒤)」).
+  // 머리 줄에 서는 단추는 모두 28이다(창 컨트롤 · 작업 ⋯ · 분할과 같다). 한때 머리 카드의 24 · `radius-md`였다.
   const 버튼반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   expect(버튼반경, "radius-lg").toBe("10px");
   const 작은반경 = await 토큰값(page, "border-top-left-radius", "--radius-md");
   expect(작은반경, "radius-md").toBe("8px");
-  expect(
-    await 칠한값(머리카드(page).getByRole("button", { name: "폴더 열기", exact: true }), "height", "border-top-left-radius"),
-    "머리 카드의 글자 버튼",
-  ).toEqual(["24px", 작은반경]);
-  // 아이콘 버튼 — Codex `IconButton`(`size-control` 정사각 · `radius-lg`). 동그란 아이콘 버튼은 걷혔다.
   const 컨트롤 = await 토큰값(page, "width", "--size-control");
   expect(컨트롤, "size-control").toBe("28px");
+  expect(
+    await 칠한값(화면머리(page).getByRole("button", { name: "폴더 열기", exact: true }), "height", "border-top-left-radius"),
+    "머리 줄의 글자 버튼",
+  ).toEqual([컨트롤, 버튼반경]);
+  // 아이콘 버튼 — Codex `IconButton`(`size-control` 정사각 · `radius-lg`). 동그란 아이콘 버튼은 걷혔다.
   expect(
     await 칠한값(
       page.getByRole("button", { name: "프로젝트 등록", exact: true }),
@@ -290,14 +307,15 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
     "카드 안의 글자 버튼",
   ).toEqual(["32px", 버튼반경]);
 
-  // 작은 아이콘 버튼 — 머리 카드의 작업 ⋯와 분할(DS `.at-ib.xs` 24 · `radius-md`). 둘은 세로선을 사이에 두고 한 줄에 서고,
-  // 머리 줄에 서는 것은 모두 24다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
+  // 머리 줄의 아이콘 버튼 — 작업 ⋯와 분할도 아이콘 버튼 기본(`size-control` 28 · `radius-lg` — `ShellHead`의 `headButton`)이다. 둘은
+  // 세로선을 사이에 두고 한 줄에 서고, 머리 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다. 한때 머리
+  // 카드의 DS `.at-ib.xs`(24 · `radius-md`)였다.
   await page.goto(`/works/${plainWork.slug}`);
   for (const name of ["작업 메뉴", "분할"]) {
     expect(
-      await 칠한값(page.getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
+      await 칠한값(화면머리(page).getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
       name,
-    ).toEqual(["24px", "24px", 작은반경]);
+    ).toEqual([컨트롤, 컨트롤, 버튼반경]);
   }
 
   expect(await unknownIpcCalls(page)).toEqual([]);

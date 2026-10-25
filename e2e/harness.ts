@@ -15,7 +15,9 @@ import {
   type Incrementing,
   type AnswerEntry,
   WORKS,
+  shellKeyOf,
 } from "./fixtures";
+import { poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 import type { WorkView } from "@/features/works/types";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
@@ -762,25 +764,77 @@ export async function archiveByMcp(page: Page, list: WorkView[], ...slugs: strin
 export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
 
 /**
- * 그 work 행의 **레인** — 화면값이 있으면 점·스피너가, 없으면 work 상태 아이콘이 든다.
+ * 그 work 행의 **레인** — 행 왼쪽 16 칸, 늘 폴더 글리프다(02 구현 스펙 §4 · S7). 이은 Thread가 있으면 가리킬 때 그 자리에 펼침 꺾쇠가
+ * 겹쳐 선다. 한때 이 칸에 셸의 점 · 스피너나 work 상태 아이콘이 섰다 — 02 티켓 05가 줄의 상태를 오른쪽 끝 표시 하나로 모았다
+ * (`줄표시`).
  *
- * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 행(`workRow`) 안의
- * `[data-lane]`으로 집는다 — 행이 한 줄이 되어 둘째 줄(`data-subrow`)이 걷혀도 이 길은 그대로다
- * (`sidebar-active-band` 결정 14). 한때 둘째 줄에서 한 칸 올라가 집었는데, 그러면 둘째 줄을 걷는
- * 날 이것을 딛는 spec 셋이 함께 무너진다.
+ * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 행(`workRow`) 안의 `[data-lane]`으로 집는다 — 행 끌기 ·
+ * 여백 · 폭 줄이기를 재는 spec이 이 칸을 딛는다.
  */
 export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator("[data-lane]");
 
 /**
- * 그 work 행의 **오른쪽 메타** — 2열에 핀과 겹쳐 서는 칸(`sidebar-active-band` S4). 싣는 것이
- * 행의 화면값에 따라 갈린다: 부르면 경과, 돌면 비움, 조용하면 셸 수(ui-refresh 결정 13). **셸이 없는 행에는
- * 이 칸이 없다** — 그래서 「비어 있다」는 행(`workRow`)이 선 것을 앵커로 두고 이것이 0인가로 잰다.
+ * 그 work 행 오른쪽 끝의 **상태 표시**(02 구현 스펙 §4 · S8 — `StatusMark`) — 그 Work에 이은 Thread들 가운데 가장 센 상태, Thread가
+ * 조용하면 셸 신호다. 표식 `data-mark`가 그 갈래다: `mine`(내 차례 알약 — 답을 기다리는 셸도) · `working`(스피너 — 도는 Thread) ·
+ * `failed`(「실패」) · `new`(새 결과 점 — 끝났는데 안 본 셸도). **도는 셸과 조용한 행에는 표시가 없다** — 그때 이것은 0개다. 그래서
+ * 「없다」는 행(`workRow`)이 선 것과, 앞서 이것이 선 것을 앵커로 두고 잰다(그러지 않으면 선택자가 낡아도 초록이다).
+ *
+ * 표시는 이름 버튼 밖의 칸이라 숨어 있다(`aria-hidden`) — 같은 말은 이름 버튼의 꼬리(「제목 — 내 차례」)가 든다(`행버튼`).
  */
-export const 오른쪽메타 = (page: Page, slug: string) =>
-  workRow(page, slug).locator("[data-row-meta]");
+export const 줄표시 = (page: Page, slug: string) => workRow(page, slug).locator("[data-row-mark] [data-mark]");
 
 /**
- * 사이드바 **작업 목록 안의** 그 이름의 행 버튼. 부르는 행의 이름은 `<제목> — <상태>`다.
+ * **도는 셸을 보이는 자리는 Processes의 셸 줄이다**(02 결정 「05」). 02 티켓 05가 Work 줄 레인의 셸 신호를 걷었다 — 답을 기다리는 셸은
+ * 줄의 「내 차례」, 끝났는데 안 본 셸은 「새 결과」로 옮겨 갔고(`줄표시`), 도는 셸은 줄에도 탭에도 표시가 없다(S8 · 셸 탭은 도는 칸을
+ * 물들이지 않는다 — `signalTint`). 창에서 「도는 중」을 말하는 곳은 Processes 셸 트리의 그 셸 줄(신호 `SignalLane` · 상태 글)뿐이다.
+ * 화면이 셸을 그 줄에 세우려면 스냅샷 풀에 그 셸 키가 앉아 있어야 한다 — 이것을 `processes_snapshot` 답으로 준다. 마지막 출력은
+ * 지금이다(조용한 셸이면 「조용함 0s」꼴).
+ */
+export const 셸이앉은스냅샷 = (...ptys: number[]) =>
+  snapshotFixture({ pool: ptys.map((pty) => poolShell(pty, shellKeyOf(pty), Date.now())) });
+
+/** Processes 셸 트리에서 그 pty의 셸 줄. */
+export const 프로세스셸줄 = (page: Page, pty: number) =>
+  page.getByRole("tree", { name: "셸", exact: true }).locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
+
+/**
+ * Processes에 들러 그 셸 줄을 읽고 돌아온다 — 줄의 신호(`working` · `waiting` · `done`, 없으면 `null`)와 상태 글(「도는 중」 · 「조용함
+ * 0s」 등 — 줄 이름의 조각). 스냅샷 답은 `셸이앉은스냅샷`이어야 한다. 앱 안 주소 바꾸기(`주소로간다`)로 가고 뒤로가기로 돌아와 셸 · 칸 · 포커스가
+ * 그대로다(돌아온 주소를 잰다). **시계를 세운 검사는 `세운시계`를 준다** — 화면이 스냅샷 답을 그리는 0ms 타이머를 시간을 안 흘리고
+ * 푼다(`runFor(0)`). 들른 동안 시간은 안 간다.
+ *
+ * **들르기 전에 그 셸에 사람 입력이 있어야 한다**(`typeIntoShell` · 키 하나 — `pty_first_input`). 사람 입력이 없는 자동 셸은 주인 화면을
+ * 떠나면 거둬진다(프로세스 결정 7 — `reclaimOnLeave`). 그러면 Processes에서 그 셸이 「화면 밖 셸」로 서고, 돌아오면 새 셸이 떠 탭과
+ * 포커스가 바뀐다. `+`로 연 셸은 거둬지지 않는다.
+ */
+export async function 프로세스셸상태(
+  page: Page,
+  pty: number,
+  { 세운시계 = false }: { 세운시계?: boolean } = {},
+): Promise<{ 신호: string | null; 글: string }> {
+  const 전 = page.url();
+  await 주소로간다(page, "/processes");
+  const 줄 = 프로세스셸줄(page, pty);
+  await expect
+    .poll(async () => {
+      if (세운시계) await page.clock.runFor(0);
+      return 줄.count();
+    }, { message: `Processes에 pty ${pty}의 셸 줄이 안 선다` })
+    .toBe(1);
+  const 읽은것 = await 줄.evaluate((row) => ({
+    신호: row.querySelector("[data-signal]")?.getAttribute("data-signal") ?? null,
+    // 줄의 이름은 「셸 이름, 상태 글[, 메모리]」다(`shellRowLabel`) — 셸 이름 뒤의 조각이 상태 글이다(스냅샷 풀의 셸은 메모리를 안 싣는다).
+    글: (row.getAttribute("aria-label") ?? "").split(", ").slice(1).join(", "),
+  }));
+  await page.goBack();
+  await expect(page).toHaveURL(전);
+  return 읽은것;
+}
+
+/**
+ * 사이드바 **작업 목록 안의** 그 이름의 행 버튼. 표시가 선 행의 이름은 `<제목> — <표시>`다(「내 차례」 · 「새 결과」 · 「작업 중」 ·
+ * 「실패」 — 02 티켓 05, `STATUS_MARK_LABEL`. 한때 셸의 화면값 「나를 기다림」 · 「확인할 것」 · 「도는 중」이었다 — 알림 띠의 줄은 지금도
+ * 그 말이다).
  *
  * **목록 안으로 좁힌다.** 알림 띠의 줄이 같은 이름을 쓰므로(부르는 셸이 있으면 그 줄도 함께
  * 선다) 화면 전체에서 집으면 둘이 잡힌다. 행 버튼의 접근성 설명(셸의 마지막 말, 결정 14)을 재는
@@ -908,24 +962,47 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**
- * 머리 카드 — 창 맨 위 머리 줄(문서의 `header`)에 뜬 흰 카드(codex-ds 스펙 §4). 지금 보는 것의 아이콘 · 이름과 그 화면의 할
- * 일을 든다. 카드 자신은 역할이 없어(이름은 글자이고 할 일은 저마다 버튼이다) 표식(`data-slot`)으로 집는다. 모든 화면에 하나씩
- * 선다(codex-ds 스펙 §7) — 할 일이 없는 화면(Terminal · 작업을 고르지 않은 Works)에서는 이름만 든다.
+ * 머리 줄의 **화면 자리** — 창 맨 위 머리 줄(문서의 `header`)에서 셸 컨트롤 오른쪽, 지금 화면이 보낸 이름 · 할 일이 서는 칸(02 구현 스펙 §3 ·
+ * CONTEXT 「머리 줄」). 모든 화면이 여기에 제 이름과 할 일을 세운다 — Thread 화면은 Thread 이름 · 「…」 · 요약 고정을, 공용 틀(`Frame`)의
+ * 화면은 아이콘 · 이름 · 할 일 묶음(`[data-head-actions]`)을. 자리 자신은 역할이 없어 표식(`data-slot`)으로 집는다. 아무것도 보내지 않는
+ * 화면(새 Thread)에서는 비어 있다.
  *
- * **여기 사는 이유는 머리 카드를 집는 길을 하나로 두려는 것이다.** 화면마다 머리 카드가 서면 여러 spec이 이 자리를 집는다 —
- * 선택자를 옮겨 적으면 표식이 바뀌는 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)` · `closest(…) === null`)가 헛돈다. 진열대처럼
- * 쪽 안의 한 상자에서 집을 때는 그 상자를 건넨다. 페이지 안(`evaluate`)에서 집을 때는 선택자 `HEAD_CARD`를 인자로 넘긴다.
+ * 한때 이 자리에 흰 카드(머리 카드 — `data-slot="head-card"`)가 떴다. 02 티켓 03이 카드의 겉을 걷고 안을 머리 줄에 바로 세웠다.
+ *
+ * **여기 사는 이유는 화면 자리를 집는 길을 하나로 두려는 것이다.** 여러 spec이 이 자리를 집는다 — 선택자를 옮겨 적으면 표식이 바뀌는
+ * 날 고쳐지지 않은 쪽의 「없다」(`toHaveCount(0)` · `closest(…) === null`)가 헛돈다. 진열대처럼 쪽 안의 한 상자에서 집을 때는 그
+ * 상자를 건넨다. 페이지 안(`evaluate`)에서 집을 때는 선택자 `SCREEN_HEAD`를 인자로 넘긴다.
  */
-export const HEAD_CARD = 'header [data-slot="head-card"]';
-export const 머리카드 = (scope: Page | Locator) => scope.locator(HEAD_CARD);
+export const SCREEN_HEAD = 'header [data-slot="screen-head"]';
+export const 화면머리 = (scope: Page | Locator) => scope.locator(SCREEN_HEAD);
+
+/**
+ * **흰 판**의 안쪽 상자 — 머리 줄 아래 크롬 위에 뜬 흰 면 하나(02 구현 스펙 §3 · CONTEXT 「흰 판」)의 테두리(0.5) 안이다. 사이드바와 화면의
+ * 칸들이 그 안에 들어 판 끝까지 선다 — 칸의 끝을 재는 자리가 창 끝 대신 이것과 견준다. 판은 창 왼 · 오 · 아래 끝에서 5 띄워 서서,
+ * 안쪽 끝은 창 끝에서 5.5다.
+ *
+ * **여기 사는 이유는 판을 집는 길과 그 테두리를 덜어 내는 셈을 한 벌로 두려는 것이다** — 판 끝을 재는 spec이 여럿이다(`frame-sidebar` ·
+ * `archive-docs` · `frame`).
+ */
+export const 흰판안 = (page: Page) =>
+  page.locator('[data-slot="panel"]').evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return {
+      x: box.left + parseFloat(style.borderLeftWidth),
+      y: box.top + parseFloat(style.borderTopWidth),
+      right: box.right - parseFloat(style.borderRightWidth),
+      bottom: box.bottom - parseFloat(style.borderBottomWidth),
+    };
+  });
 
 /**
  * 그 점을 누르면 **창이 끌리는가** — 그 점의 맨 위 요소에서 조상으로 올라가며 Tauri의 판정(`tauri` 2.11 `window/scripts/drag.js`의
  * `isDragRegion`)을 그대로 따른다. 점 아래에 요소가 없으면 `null`이다(창 밖).
  * - 속성 `data-tauri-drag-region`이 맨값이면 **누른 요소 자신**일 때만 끈다 — 조상의 맨값은 자식을 누른 것을 끌지 않는다. 회색 틈을
- *   드러내는 상자마다 이것을 단다(`Frame` 머리말).
- * - `deep`이면 그 아래 어디를 눌러도 끈다(머리 카드), `false`면 그 아래를 막는다(고치는 동안의 이름 상자).
- * - 속성 없이 누를 수 있는 요소(버튼 · 링크 · 입력칸 · `tabindex` · 누르는 역할)를 먼저 만나면 끌지 않는다 — 머리 카드의 버튼 · 포커스
+ *   드러내는 상자마다 이것을 단다.
+ * - `deep`이면 그 아래 어디를 눌러도 끈다(머리 줄), `false`면 그 아래를 막는다(고치는 동안의 이름 상자).
+ * - 속성 없이 누를 수 있는 요소(버튼 · 링크 · 입력칸 · `tabindex` · 누르는 역할)를 먼저 만나면 끌지 않는다 — 머리 줄의 버튼 · 포커스
  *   받는 이름이 `deep` 아래에서도 눌리는 까닭이다.
  * - HTML 요소가 아닌 것(svg 글리프)은 건너뛴다 — 글리프를 누르면 그것을 품은 상자가 판정한다.
  *
@@ -1044,7 +1121,7 @@ export async function 검색팔레트를연다(page: Page): Promise<void> {
  * 메뉴의 조상이면 Base UI가 그 밑의 줄을 모두 「우클릭 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음만 받는다 — 왼쪽 버튼으로 끌어 놓으면 메뉴가
  * 열린 채 아무것도 안 돈다. 이 몸짓이 그 함정(편집 메뉴 · 대상 메뉴가 버튼 메뉴를 감싸는 것)을 잰다.
  *
- * **여기 사는 이유는 버튼 메뉴를 품은 자리마다 같은 몸짓으로 재려는 것이다** — Works 머리 카드(`edit-menu`) · Processes 행
+ * **여기 사는 이유는 버튼 메뉴를 품은 자리마다 같은 몸짓으로 재려는 것이다** — Works 머리 줄(`edit-menu`) · Processes 행
  * (`processes-strays`) · spec 레이아웃 행(`spec-layout-page`).
  */
 export async function 끌어놓는다(page: Page, button: Locator, row: (menu: Locator) => Locator): Promise<void> {
@@ -1079,39 +1156,41 @@ export async function 탭으로(page: Page, target: Locator, 최대 = 120): Prom
 
 /** 포커스가 선 자리 하나 — 창의 어느 영역인가 · 그 요소의 이름(접근성 이름 · 글자) · 목록의 행이면 그 키(`data-roving`). */
 export interface 포커스자리 {
-  영역: "창 컨트롤" | "사이드바" | "머리 카드" | "머리 줄" | "본문" | "패널" | "레일" | "그 밖";
+  영역: "창 컨트롤" | "머리 줄" | "사이드바" | "본문" | "패널" | "레일" | "그 밖";
   이름: string;
   행: string | null;
 }
 
 /**
- * 지금 포커스가 선 자리(`포커스자리`) — 포커스가 없으면(`body`) `null`. 영역은 창의 Tab 차례를 이루는 상자들이다(codex-ds 스펙 §9):
- * 창 컨트롤(사이드바 토글이 선 줄) · 사이드바(`#app-sidebar`) · 머리 카드 · 머리 줄(카드 밖 — 레일이 설 때의 패널 토글) · 레일 ·
- * 패널(사이드바가 아닌 `aside`) · 본문(카드).
+ * 지금 포커스가 선 자리(`포커스자리`) — 포커스가 없으면(`body`) `null`. 영역은 창의 Tab 차례를 이루는 상자들이다(codex-ds 스펙 §9 · 02
+ * 구현 스펙 §3): 창 컨트롤(사이드바 토글이 선 줄) · 머리 줄(그 밖의 `header` — 화면 자리의 이름 · 할 일 · 패널 토글) · 사이드바
+ * (`#app-sidebar`) · 레일 · 패널(사이드바가 아닌 `aside`) · 본문(칸). 한때 머리 줄 안에 머리 카드가 따로 한 영역이었다 — 02 티켓 03이
+ * 카드를 걷어 그 안의 것이 머리 줄에 바로 선다.
  */
 export const 포커스자리 = (page: Page): Promise<포커스자리 | null> =>
-  page.evaluate((headCard) => {
+  page.evaluate(() => {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || el === document.body) return null;
     const controls = document.querySelector('[aria-label="사이드바 토글"]')?.parentElement;
     const 영역 = controls?.contains(el)
       ? "창 컨트롤"
-      : el.closest("#app-sidebar")
-        ? "사이드바"
-        : el.closest(headCard)
-          ? "머리 카드"
-          : el.closest("header")
-            ? "머리 줄"
-            : el.closest('[role="group"][aria-label="레일"]')
-              ? "레일"
-              : el.closest("aside")
-                ? "패널"
-                : el.closest('[data-slot="card"], main')
-                  ? "본문"
-                  : "그 밖";
-    const 이름 = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
+      : el.closest("header")
+        ? "머리 줄"
+        : el.closest("#app-sidebar")
+          ? "사이드바"
+          : el.closest('[role="group"][aria-label="레일"]')
+            ? "레일"
+            : el.closest("aside")
+              ? "패널"
+              : el.closest('[data-slot="card"], main')
+                ? "본문"
+                : "그 밖";
+    // 글자는 보조 기술이 읽는 것만 — `aria-hidden` 글자(「새 Thread」 끝의 ⌘N 같은)는 뺀다.
+    const 글 = el.cloneNode(true) as HTMLElement;
+    for (const hidden of 글.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+    const 이름 = (el.getAttribute("aria-label") ?? 글.textContent ?? "").trim();
     return { 영역, 이름, 행: el.getAttribute("data-roving") } as const;
-  }, HEAD_CARD);
+  });
 
 /**
  * 포커스를 내려놓고 Tab을 누르며 선 자리를 차례로 적는다 — 첫 자리로 돌아오거나 포커스가 창 밖(`body`)으로 나가면 멈춘다. `최대`
@@ -1420,7 +1499,7 @@ export async function 사람메뉴로간다(page: Page, label: 지금화면): Pr
   await expect(page.getByRole("menu")).toHaveCount(0);
 }
 
-/** `Processes` 화면의 제목 — 머리 카드의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+/** `Processes` 화면의 제목 — 머리 줄의 이름은 제목 역할이 없어 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
@@ -1719,10 +1798,11 @@ export async function 작업화면으로(page: Page, work: Pick<WorkView, "slug"
 /**
  * `그냥 일`(`WORKS[1]`)의 터미널 탭에 칸 둘을 세우고 **첫째를 켠다** — 말하는 것은 둘째(pty 2, `openShell` 머리말)다. 켠 칸에 온
  * 확인할 것은 그 순간 「봤다」가 되어(terminal-activity-signal 결정 7) 띠에 안 서므로, 보는 셸과 부르는 셸을 가른다. 픽스처
- * 백엔드는 덮어쓰기 없이 여기서 깐다 — 시계를 쓰는 검사는 그 전에 `page.clock.install()`을 건다.
+ * 백엔드는 여기서 깐다(덮어쓸 답은 `answers` — 도는 셸을 Processes에서 읽는 검사는 `셸이앉은스냅샷(1, 2)`를 준다) — 시계를 쓰는
+ * 검사는 그 전에 `page.clock.install()`을 건다.
  */
-export async function 둘째가말할자리(page: Page): Promise<void> {
-  await installFixtureBackend(page);
+export async function 둘째가말할자리(page: Page, answers?: Parameters<typeof installFixtureBackend>[1]): Promise<void> {
+  await installFixtureBackend(page, answers);
   await page.goto(`/works/${WORKS[1].slug}?tab=terminal`);
   await expect(칸들(page)).toHaveCount(1);
   await openShell(page);

@@ -48,9 +48,10 @@ test("Processes가 사람 메뉴에서 Terminal 다음, Archive 앞에 서고, �
   await page.goto("/projects");
   await expect(page).toHaveURL(`/projects/${project.slug}`);
 
-  // **순서까지 본다**(프로세스 스펙 S43) — 「있다」만 재면 끝에 붙여도 초록이다. 옛 nav의 넷이 사람 메뉴로 왔다(v1 티켓 07 · S27).
+  // **순서까지 본다**(프로세스 스펙 S43) — 「있다」만 재면 끝에 붙여도 초록이다. 옛 nav의 넷이 사람 메뉴로 왔다(v1 티켓 07 · S27). 항목
+  // 이름은 라벨로 시작한다 — `Processes` 끝에는 앱 메모리 합계가 붙는다(02 티켓 04 — 그 글은 `frame-sidebar.spec`이 잰다).
   await 사람줄(page).click();
-  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes$/, /^Archive$/, /^Settings/]);
+  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes/, /^Archive$/, /^Settings/]);
   await page.keyboard.press("Escape");
   await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");

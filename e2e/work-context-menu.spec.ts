@@ -13,7 +13,7 @@ import {
   unknownIpcCalls,
   다떴다,
   띠,
-  머리카드,
+  화면머리,
   적힌주소,
   주소적기,
   줄차례,
@@ -29,7 +29,7 @@ import {
 
 // codex-ds 티켓 27 — **웹뷰 메뉴가 막히고 work를 우클릭하면 work 메뉴가 뜬다**(codex-ds 스펙 §9 · 결정 6 · 7 · 8 · 11 · 15).
 // 앱 어디서도 웹뷰의 기본 메뉴(새로고침 · 검사)가 서지 않고, 메뉴가 있는 대상만 제 메뉴를 연다. work 대상은 셋이다 — 사이드바
-// work 행 · 알림 띠 줄 · 머리 카드 이름. 셋 다 ⋯과 같은 work 메뉴를 커서 자리에 열고, 고른 행 · 주소는 그대로이며, 열린 동안만
+// work 행 · 알림 띠 줄 · 머리 줄 이름. 셋 다 ⋯과 같은 work 메뉴를 커서 자리에 열고, 고른 행 · 주소는 그대로이며, 열린 동안만
 // 대상에 대상 테두리(포커스 링)가 선다. ⇧F10 · 메뉴 키는 포커스된 대상의 같은 메뉴를 그 대상 곁에 연다.
 //
 // WebKit의 우클릭은 `click({ button: "right" })`(사건 `contextmenu`)로, 메뉴 키는 `ContextMenu` 키로 흉내 낸다. macOS WebKit은 그
@@ -111,10 +111,10 @@ const 대상들: Array<{
     went: (work) => new RegExp(`/works/${work.slug}(\\?|$)`),
   },
   {
-    name: "머리 카드 이름",
+    name: "머리 줄 이름",
     setUp: async (page) => {
       await page.goto(`/works/${pinnedWork.slug}`);
-      return { target: 머리카드(page).getByText(pinnedWork.title, { exact: true }), work: pinnedWork, selected: pinnedWork.slug };
+      return { target: 화면머리(page).getByText(pinnedWork.title, { exact: true }), work: pinnedWork, selected: pinnedWork.slug };
     },
   },
 ];
@@ -143,7 +143,9 @@ for (const { name, setUp } of 대상들) {
     await 다떴다(menu);
     const spot = (await target.boundingBox())!;
     const card = (await menu.boundingBox())!;
-    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x + 6), Math.round(spot.y + 6)]);
+    // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 흰 판의 테두리(0.5) 뒤로 대상이 반 픽셀에 서서 카드는 그 아래
+    // 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
 
     // 고름 · 주소는 그대로다(결정 7) — 우클릭은 그 work로 가지 않는다.
     expect(page.url()).toBe(url);
@@ -185,7 +187,9 @@ for (const { name, setUp } of 대상들) {
       await 다떴다(menu);
       const spot = (await target.boundingBox())!;
       const card = (await menu.boundingBox())!;
-      expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x), Math.round(spot.y + spot.height)]);
+      // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
+      // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+      expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x), Math.floor(spot.y + spot.height)]);
       await expect.poll(() => 테두리(target)).toBe(링);
 
       // 카드 자신이 포커스를 쥐고, 그 뒤의 ↓가 첫 항목이다 — ⋯를 눌러 연 것과 같다.
@@ -339,7 +343,7 @@ test("다른 work를 아카이브하는 동안 ⋯는 꺼지지만 바쁘다고 
 test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 우클릭하면 웹뷰 메뉴가 막히고 아무 메뉴도 서지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
-  const head = 머리카드(page);
+  const head = 화면머리(page);
   await expect(head).toBeVisible();
   await page.evaluate(() => {
     const seen: boolean[] = [];
@@ -358,7 +362,7 @@ test("빈 자리 · 카드 빈 곳 · 머리 줄 회색 · 목록 빈 자리를 
   const viewport = page.viewportSize()!;
   const spots: Array<[string, number, number]> = [
     ["머리 줄 오른쪽 회색", viewport.width - 4, card.y + card.height / 2],
-    ["머리 카드 안 빈 자리", (name.x + name.width + badge.x) / 2, card.y + card.height / 2],
+    ["머리 줄 안 빈 자리", (name.x + name.width + badge.x) / 2, card.y + card.height / 2],
     // 문서 카드의 빈 곳은 경로 줄의 가운데다 — 카드의 몸은 문서가 서면 문서 글이라 제 메뉴가 선다(`target-menus.spec.ts`).
     ["문서 카드 경로 줄 빈 자리", bar.x + bar.width / 2, bar.y + bar.height / 2],
     ["사이드바 nav 항목", nav.x + nav.width / 2, nav.y + nav.height / 2],

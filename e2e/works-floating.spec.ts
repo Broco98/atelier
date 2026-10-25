@@ -35,48 +35,46 @@ import { fillToCap, MAX_SHELLS } from "./tab-row";
 const [pinnedWork, plainWork, multiWork] = WORKS;
 
 /**
- * 그 요소에 걸린 애니메이션의 이름. **동작을 재는 값이다** — 열림 애니메이션(결정 7)은 `data-open`에서
- * 붙어 열려 있는 동안 그대로 남으므로, 뜬 뒤 언제 재도 같다. 동작 줄이기면 전역 규칙이 `none`으로 덮는다.
- */
-const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).animationName);
-
-/**
- * 머리 카드의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
+ * 머리 줄의 ⋯ — 작업 메뉴를 여는 버튼(「작업 메뉴」). 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
 
 /** 작업 화면의 토스트가 서는 라이브 영역(「메시지」) — work 메뉴 절과 토스트 절이 함께 쓴다. */
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
 
-// ── 떠 있는 것의 애니메이션 (결정 7) ──
-// 떠 있는 것은 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 박자는 부품마다 다르다 — 메뉴는 DS 「움직임」의
-// `duration-dropdown` · 30ms 지연 · 0.98 → 1이고(그 값은 `frame.spec.ts`의 「작업 ⋯ 메뉴」가 잰다), 툴팁 · 팝오버는 100ms다.
-// 끄는 규칙은 부품마다가 아니라 전역 CSS 한 곳이라(`index.css`의 `[data-slot][class*="animate-"]`) 메뉴 하나로 잰다 —
-// 메뉴는 판 3이 처음 들인 떠 있는 부품이고, 셸 열기 `+`가 그 첫 쓰는 자리다.
+// ── 떠 있는 것의 움직임 (결정 7 → 02 티켓 12) ──
+// 메뉴는 움직이지 않는다 — Codex 메뉴는 한 프레임에 서고 곧바로 걷힌다(02 구현 스펙 §12 · 티켓 12, `dropdown-menu.tsx` 머리말). 한때
+// 페이드와 확대(`duration-dropdown` · 30ms 지연 · 0.98 → 1)로 떴다. 열릴 때 움직이는 메뉴는 Thread 입력창의 모델 피커 하나이고 그것과
+// 동작 줄이기의 전역 규칙은 Thread 화면의 움직임 spec이 잰다. 대표는 셸 열기 `+`다 — 판 3이 처음 들인 떠 있는 부품이다.
 
-test("메뉴는 애니메이션으로 뜨고, 움직임을 끄면 애니메이션 없이 선다", async ({ page }) => {
+test("메뉴는 애니메이션 없이 한 프레임에 선다 — 움직임을 꺼도 같다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
   const plus = page.getByRole("button", { name: "셸 열기" });
   const menu = page.getByRole("menu", { name: "셸 열기" });
+  /** 메뉴 카드와 그 안에 걸린 움직임 — 키프레임도 전이도 없어야 한다. */
+  const 움직임 = () =>
+    menu.evaluate((el) => ({
+      name: getComputedStyle(el).animationName,
+      running: el.getAnimations({ subtree: true }).length,
+      opacity: getComputedStyle(el).opacity,
+    }));
 
-  await plus.click();
-  await expect(menu).toBeVisible();
-  await expect.poll(() => 애니메이션(menu)).not.toBe("none");
-
-  // 닫힌 것을 보고 다시 연다 — 닫히는 중인 카드에 잰 값이 섞이지 않게.
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await page.emulateMedia({ reducedMotion: "reduce" });
-
-  await plus.click();
-  await expect(menu).toBeVisible();
-  await expect.poll(() => 애니메이션(menu)).toBe("none");
+  for (const 줄임 of [false, true]) {
+    if (줄임) await page.emulateMedia({ reducedMotion: "reduce" });
+    await plus.click();
+    await expect(menu).toBeVisible();
+    expect(await 움직임(), `동작 줄이기 ${줄임}`).toEqual({ name: "none", running: 0, opacity: "1" });
+    // 앵커: 연 것이 그 메뉴다 — 첫 항목이 선다.
+    await expect(menu.getByRole("menuitem").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+  }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // ── 상태 메뉴 (스토리 46~48 · 51 · 52, S33) ──
-// 머리 카드의 상태 배지가 라디오 메뉴를 연다. 배지는 여는 버튼이라 「메뉴를 연다」와 「열렸다/닫혔다」를 말하고,
+// 머리 줄의 상태 배지가 라디오 메뉴를 연다. 배지는 여는 버튼이라 「메뉴를 연다」와 「열렸다/닫혔다」를 말하고,
 // 지금 상태는 `menuitemradio`의 `aria-checked`로 읽힌다(체크 아이콘은 보이는 쪽의 말일 뿐이다). 고르면 닫힌다 —
 // 라디오 항목의 부품 기본은 안 닫힘이라(S33) 그것을 여기서 잰다. 저장은 **값이 바뀔 때만**이다(지금 규칙).
 //
@@ -142,7 +140,7 @@ test("상태 메뉴에서 지금 상태를 다시 고르면 닫히기만 하고 
 });
 
 // ── 작업 ⋯ — work 메뉴 (스토리 46~48 · 56 · 57 · codex-ds 결정 10 · 16 · 스펙 §6 · §9) ──
-// 머리 카드의 ⋯가 work 메뉴를 연다. 묶음이 다섯이고 사이는 구분선이다: Finder에서 열기 ▸ — 이름 바꾸기 · 복사 ▸ — 상태 ▸ —
+// 머리 줄의 ⋯가 work 메뉴를 연다. 묶음이 다섯이고 사이는 구분선이다: Finder에서 열기 ▸ — 이름 바꾸기 · 복사 ▸ — 상태 ▸ —
 // 고정(고정 풀기) · 아카이브 — 삭제. 하위 메뉴 셋(▸)은 줄을 올리거나 →로 열린다(그 모양은 `submenu.spec.ts`가 진열대에서 잰다).
 // 해당 없는 칸은 숨긴다 — 프로젝트가 없으면 Finder ▸에 worktree가, 브랜치가 아직 없으면 복사 ▸에 브랜치 이름이 없다. 지금 못
 // 하는 칸은 흐리다(`aria-disabled`) — 폴더가 사라진 worktree가 그렇다.
@@ -731,21 +729,21 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
 });
 
 // ── 툴팁 (스토리 112 · 113, S28 · S29 · P13) ──
-// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 멈춘 지 `duration-tip`(150ms)에, 포커스면 곧바로 선다(codex-ds
-// 결정 20 — 무리의 나머지 시간은 `hover-timing` spec이 잰다). 단축키가 있으면 옆에 Kbd로
+// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 멈춘 지 `delay-tip`(200ms — 02 티켓 12, 한때 `duration-tip` 150)에,
+// 포커스면 곧바로 선다(codex-ds 결정 20 — 무리의 나머지 시간은 `hover-timing` spec이 잰다). 단축키가 있으면 옆에 Kbd로
 // 붙는다(「검색 ⌘K」). 툴팁은 역할도 설명도 주지 않으므로(S28) 글자는 표식(`data-slot`)으로 집고, 이름보다 더 말하던 것
 // (단축키)은 버튼의 접근성 설명으로 따로 잰다. 대표는 사이드바의 검색 버튼 하나다 — 사이드바에서 `title`을 들던 버튼이
 // 그것뿐이고(P13), 규칙이 부품 한 곳이라 나머지 자리는 같은 부품을 부른다.
 //
-// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 호버 카드와 툴팁은 같은 길이(`duration-tip`)에 서는 한
-// 무리라(codex-ds 결정 20), 카드가 선 순간에 「툴팁이 없다」를 재면 같은 틱에 설 툴팁을 앞질러 행에 툴팁을 잘못 달아도 초록이다
-// — 카드를 앵커로 본 뒤 시계를 넉넉히 돌리고 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인
+// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 호버 카드(`duration-tip` 150)와 툴팁(`delay-tip` 200)은 한
+// 무리라(codex-ds 결정 20), 카드가 선 순간에 「툴팁이 없다」를 재면 곧 설 툴팁을 앞질러 행에 툴팁을 잘못 달아도 초록이다 — 카드를
+// 앵커로 본 뒤 시계를 넉넉히 돌리고 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인
 // 판을 가른다). 핀은 행 안에 있어 올려도 카드가 그대로다 — 티켓 33의 「고정 핀 위에는 카드가 없다(그대로)」가 이 검사다.
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
 const 검색 = (page: Page) => 창검색버튼(page);
 
-test("검색 버튼에 올려 멈추면 duration-tip 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
+test("검색 버튼에 올려 멈추면 delay-tip 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -757,8 +755,9 @@ test("검색 버튼에 올려 멈추면 duration-tip 뒤 툴팁 「검색」과 
   // 이름은 그대로 「검색」이고, 이름보다 더 말하던 단축키는 설명이다(S28).
   await expect(search).toHaveAccessibleDescription("⌘K");
   await expect(tooltip).toHaveCount(0);
-  const tip = await 토큰시간(page, "--duration-tip");
-  expect(tip, "duration-tip").toBe(150);
+  // 툴팁은 멈춘 지 `delay-tip`(200)에 선다 — Codex 툴팁의 늦음이다(02 티켓 12. 한때 호버 카드와 같은 `duration-tip` 150).
+  const tip = await 토큰시간(page, "--delay-tip");
+  expect(tip, "delay-tip").toBe(200);
 
   await 시계를세운다(page);
   await search.hover();
@@ -800,7 +799,7 @@ test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁�
 
   await 시계를세운다(page);
   await row.hover();
-  // 앵커: 호버 카드가 멈춘 지 `duration-tip`에 섰다 — 툴팁과 같은 틱이라 여기서 「툴팁이 없다」를 재면 헛돈다.
+  // 앵커: 호버 카드가 멈춘 지 `duration-tip`에 섰다 — 툴팁은 그보다 늦게 서므로 여기서 「툴팁이 없다」를 재면 헛돈다.
   await page.clock.runFor(tip - 1);
   await expect(card).toHaveCount(0);
   await page.clock.runFor(1);

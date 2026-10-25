@@ -17,7 +17,7 @@ import {
   unknownIpcCalls,
   workRow,
   띠,
-  레인,
+  줄표시,
   Work줄이가는곳,
 } from "./harness";
 
@@ -253,22 +253,30 @@ test("끄는 동안 호버 카드가 안 뜨고, 떠 있던 카드는 문턱을 
   await page.mouse.up();
 });
 
-// 셸 신호가 뜬 행은 레인이 점·스피너를 그린다(#203). 그 행도 같은 손짓이다 — 레인 위를 눌러도 끌린다.
-test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", async ({ page }) => {
+// 셸 신호가 뜬 행은 끝에 표시를 그린다(02 티켓 05 · S8 — 기다리는 셸은 「내 차례」. 한때 레인의 점 · 스피너였다, #203). 그 행도 같은
+// 손짓이다 — 표시 위를 눌러도 끌린다: 표시는 누름을 안 받아(`pointer-events-none`) 그 자리도 행이다.
+test("셸 신호 표시가 선 행도 표시 자리를 눌러 끌어 놓으면 move_work가 나간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await markRunning(page, "claude");
-  // 보고 있는 셸이라 레인에 남는 것은 기다림이다 — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
+  // 보고 있는 셸이라 줄에 남는 것은 기다림이다 — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
   await markAttention(page, {
     agent: "claude",
     event: "Elicitation",
     at: Date.now(),
     payload: { message: "끌어도 될까요?" },
   });
-  await expect(레인(page, plainWork.slug).locator('[data-signal="waiting"]')).toHaveCount(1);
+  const 표시 = 줄표시(page, plainWork.slug);
+  await expect(표시).toHaveAttribute("data-mark", "mine");
 
-  await pickUpRow(page, plainWork.slug);
+  // 표시의 왼쪽 끝을 눌러 문턱을 넘긴다(`pickUpRow`와 같은 손짓 — 그것은 행 가운데를 누른다). 오른쪽 끝은 hover에 핀이 서는 자리다.
+  const mark = (await 표시.boundingBox())!;
+  const from = { x: mark.x + 4, y: mark.y + mark.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x, from.y + 12, { steps: 3 });
+  await expect(workRow(page, plainWork.slug)).toHaveCSS("opacity", "0.4");
   // work 화면 위에서 끌어도 **분할 겹판이 안 선다** — 작업 행 끌기는 본문이 안 받는다. 끄는
   // **동안** 센다: 놓은 뒤에는 원천이 비어 겹판이 어차피 없다.
   await expect(page.locator("[data-drop-half]")).toHaveCount(0);

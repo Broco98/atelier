@@ -51,8 +51,9 @@ function RailShowcase() {
   const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-surface">
+      {/* 앱 셸의 머리 줄(`ShellHeadRow`) 화면 자리와 같은 안쪽이다 — 이름 쪽 14 · 오른쪽 끝 8. 할 일 묶음(패널 토글이 맨 끝)이 그 끝에 붙는다. */}
       <header className="flex h-(--titlebar-height) shrink-0 items-center">
-        <div ref={setHeadSlot} data-slot="screen-head" className="flex h-full min-w-0 flex-1 items-center px-3.5" />
+        <div ref={setHeadSlot} data-slot="screen-head" className="flex h-full min-w-0 flex-1 items-center pr-2 pl-3.5" />
       </header>
       <ShellHeadSlot.Provider value={headSlot}>
         <Frame
