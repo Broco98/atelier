@@ -66,7 +66,8 @@
        이 줄의 가운데(22)에 선다(`ShellHead` · `ShellControls` · `tauri.conf.json`의 `trafficLightPosition`). 그 아래가 흰 판이다(`AppShell`).
        신호등은 y 24다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
        tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 식이다(2026-10-11 — 48 줄 때 y 26으로 가운데
-       24를 재었다). 진짜 앱에서 다시 재는 것은 끝 e2e 티켓(13)이다(02 결정 「02 · 신호등 자리」). 이 값을 고치면 y도 함께 고친다.
+       24를 재었다). 진짜 앱(macOS 27, 44 줄)에서 신호등 셋의 가운데가 y 22로 섰다(02 티켓 13c — 창 단추 상자 16 · 위 14). 이 값을
+       고치면 y도 함께 고친다.
        모든 화면의 이름 · 할 일이 이 줄 하나에 선다 — 공용 틀(`Frame`)의 화면들도 카드 없이 이 줄로 보낸다(02 구현 스펙 §3 S2).
        식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
        읽는다. 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
@@ -114,14 +115,15 @@
    서고, 그 칸의 폭이 지금 화면의 이름이 서는 자리의 시작이다 — 사이드바가 열렸으면 사이드바 오른쪽 끝(`--titlebar-inset-sidebar`),
    접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해
    --titlebar-controls-width만큼 이어진다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
-   83px는 신호등 끝에서 16을 띄운 자리다 — tauri.conf.json의 trafficLightPosition(x:13)에 버튼 셋(14 · 사이 20 — macOS 표준 창 단추)이
-   서서 신호등 끝이 67이다. 신호등 자리는 함께 고쳐야 하고, 진짜 앱에서 재어 맞추는 것은 13이다.
+   89px는 신호등 끝에서 16을 띄운 자리다 — tauri.conf.json의 trafficLightPosition(x:13)에 신호등 셋이 지름 14 · 간격 23으로 서서
+   셋째(초록) 원의 오른쪽 끝이 73이다(02 티켓 13c가 macOS 27 진짜 앱에서 잰 값 — 원 x 13–27 · 36–50 · 59–73, 창 단추 상자는 16).
+   한때 「14 · 사이 20」으로 셈해 끝 67 · 83이었다 — 진짜 앱에서 신호등과 셸 컨트롤 사이가 10으로 섰다. 신호등 자리는 함께 고친다.
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
    치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. 사이드바 폭(`--sidebar-width`)도
    같은 요소(AppShell 루트의 인라인)에 실려 --titlebar-inset-sidebar가 그 자리에서 풀린다. */
 [data-titlebar] {
-    --titlebar-controls-left: 83px;
+    --titlebar-controls-left: 89px;
     /* 셸 컨트롤 하나 — 아이콘 버튼의 기본 28(`--size-control` · Codex 머리 줄 버튼). 셸 컨트롤이 그 규격으로 그려지므로, 여기 값이
        어긋나면 이름 자리만 버튼보다 넓거나 좁아진다 */
     --titlebar-control-size: var(--size-control);

@@ -126,7 +126,7 @@ for (const address of ADDRESSES) {
     expect(await 칠한값(page.locator("header"), "border-bottom-width", "box-shadow"), "머리 줄 아래 선 · 그림자").toEqual(["0px", "none"]);
     // 셸 컨트롤은 어느 주소에서나 같은 자리다 — 신호등 끝 + 16, 머리 줄 가운데(그 크기 · 사이는 `frame.spec.ts`).
     const toggle = await boxOf(page.getByRole("button", { name: "사이드바 토글", exact: true }));
-    expect([toggle.x, toggle.y + toggle.height / 2], "사이드바 토글 자리").toEqual([83, row / 2]);
+    expect([toggle.x, toggle.y + toggle.height / 2], "사이드바 토글 자리").toEqual([89, row / 2]);
 
     // 흰 판 — 하나이고, 머리 줄 아래 크롬 왼 · 오 · 아래 끝에서 5다.
     const panel = page.locator('[data-slot="panel"]');

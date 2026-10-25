@@ -1050,11 +1050,11 @@ test("Works: 프로젝트가 없는 work의 머리 줄에는 브랜치가 안 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 창 컨트롤(사이드바 토글 · ← · → · 검색)은 머리 줄 왼쪽 칸 안에 28 · 사이 6으로, 신호등 끝에서 16 띄운 x 83에서 머리 줄 가운데에
+// 창 컨트롤(사이드바 토글 · ← · → · 검색)은 머리 줄 왼쪽 칸 안에 28 · 사이 6으로, 신호등 끝(73 — 02 티켓 13c가 macOS 진짜 앱에서 잰 값)에서 16 띄운 x 89에서 머리 줄 가운데에
 // 선다(02 구현 스펙 §3 「셸 컨트롤」 — Codex 값. 한때 24 · 사이 2로 사이드바 위에 겹쳐 떴다). 갈 수 없는 뒤 · 앞은 옅음이 아니라 색
 // #cbcbcb다. 신호등은 이 층이 그리지 않는다(`trafficLightPosition` — macOS 실기에서 본다). 오른쪽 끝 묶음은 단추 28 · 사이 2이고(`HeadEnd`
 // · `headButton` — Thread 머리 줄과 한 벌), 패널 토글이 그 맨 끝에서 머리 줄 오른쪽 끝 8 앞에 선다.
-test("Works: 창 컨트롤 넷이 머리 줄 가운데에 28 · 사이 6으로 x 83에서 서고, 오른쪽 끝 묶음은 28 단추 · 사이 2에 패널 토글이 맨 끝이다", async ({
+test("Works: 창 컨트롤 넷이 머리 줄 가운데에 28 · 사이 6으로 x 89에서 서고, 오른쪽 끝 묶음은 28 단추 · 사이 2에 패널 토글이 맨 끝이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -1068,7 +1068,7 @@ test("Works: 창 컨트롤 넷이 머리 줄 가운데에 28 · 사이 6으로 x
     await token(page, "--titlebar-control-gap"),
     await token(page, "--titlebar-controls-left"),
   ];
-  expect([size, gap, left], "컨트롤 28 · 사이 6 · 신호등 끝 + 16 — Codex 값").toEqual([28, 6, 83]);
+  expect([size, gap, left], "컨트롤 28 · 사이 6 · 신호등 끝 + 16 — Codex 값").toEqual([28, 6, 89]);
   const buttons = [
     ...["사이드바 토글", "뒤로", "앞으로"].map((name) => page.getByRole("button", { name, exact: true })),
     창검색버튼(page),

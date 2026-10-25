@@ -244,7 +244,7 @@ describe("임의 간격", () => {
   const VARIABLES: { name: string; why: string }[] = [
     {
       name: "--titlebar-controls-left",
-      why: "셸 컨트롤의 왼쪽 끝 — 신호등 끝(67)에서 16 띄운 83(전체화면이면 신호등이 숨어 16)이다. 머리 줄의 왼쪽 칸이 안쪽 여백으로 읽는다",
+      why: "셸 컨트롤의 왼쪽 끝 — 신호등 끝(73 — 진짜 앱에서 잰 값)에서 16 띄운 89(전체화면이면 신호등이 숨어 16)이다. 머리 줄의 왼쪽 칸이 안쪽 여백으로 읽는다",
     },
     {
       name: "--titlebar-control-gap",
