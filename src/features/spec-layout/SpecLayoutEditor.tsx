@@ -408,9 +408,10 @@ function EditorFrame({
       // (900)에 사이드바를 가장 넓혀(400) 두어도 머리 줄의 화면 자리가 그 둘보다 넓다.
       head={{
         // 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · `radius-lg` · 글리프 16, Thread 머리 줄의 「…」와 같다 — 02 결정 「머리 줄은 한
-        // 결이다(03 뒤)」).
+        // 결이다(03 뒤)」). 맨 버튼이라 Tab 정류장임을 `tabIndex`로 명시한다(02 코드 리뷰 C1 — macOS WebKit의 Tab은 `tabindex` 없는 맨
+        // 버튼에 서지 않는다, `@/lib/roving` 머리말). 한때의 `Button`(Base UI)은 0을 스스로 달았다.
         lead: (
-          <button type="button" className={headButton()} onClick={onBack} aria-label="설정으로 돌아가기">
+          <button type="button" tabIndex={0} className={headButton()} onClick={onBack} aria-label="설정으로 돌아가기">
             <ArrowLeft aria-hidden className={HEAD_GLYPH} />
           </button>
         ),

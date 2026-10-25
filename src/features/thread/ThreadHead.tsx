@@ -131,6 +131,9 @@ export const SummaryGlyph = createLucideIcon("summary", [
  *
  * 요약 카드(02 §7 · `SummaryCard`)를 여닫는다 — Work 없는 Thread에도 선다. 첫 말 전의 새 Thread와 지워진 Work의 Thread에는 카드가
  * 없어 서지 않는다(부르는 쪽이 가린다 — S23).
+ *
+ * 맨 버튼이라 Tab 정류장임을 `tabIndex`로 명시한다(02 코드 리뷰 C1) — macOS WebKit의 Tab은 `tabindex` 없는 맨 버튼에 서지 않는다
+ * (`@/lib/roving` 머리말). 「…」(메뉴 트리거)는 0을 스스로 단다.
  */
 export function SummaryToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
@@ -140,6 +143,7 @@ export function SummaryToggle({ open, onToggle }: { open: boolean; onToggle: () 
       type="button"
       aria-pressed={open}
       onClick={onToggle}
+      tabIndex={0}
       className={headButton(open ? "on" : "rest")}
     >
       <SummaryGlyph className={HEAD_GLYPH} />

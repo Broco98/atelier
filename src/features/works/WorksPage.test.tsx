@@ -419,6 +419,17 @@ describe("WorksPage 머리 줄 배치", () => {
     expect(markup).toContain('aria-label="분할"');
   });
 
+  // 02 코드 리뷰 C1 — **머리 줄의 단추는 모두 Tab 정류장이다.** macOS WebKit(앱의 WKWebView · L3 macOS)의 Tab은 `tabindex` 없는 맨 `<button>`에
+  // 서지 않는다(`@/lib/roving` 머리말) — 메뉴 트리거(Base UI)는 0을 스스로 달지만, 분할은 03b에서 `Toggle` 부품을 떠나 맨 버튼이 되며 그
+  // 0을 잃어 키보드로 닿지 않았다. 리눅스 WebKit은 맨 버튼에도 서서 L3가 그곳에서만 「분할」을 더 셌다(PR #563 CI). 차례는 L3
+  // (`keyboard.spec.ts`)가 진짜 Tab으로 잰다.
+  it("분할이 Tab 정류장임을 tabindex로 명시한다 — ⋯와 같다", () => {
+    const tags = header(render()).match(/<button[^>]*>/g) ?? [];
+    for (const label of ["작업 메뉴", "분할"]) {
+      expect(tags.find((tag) => tag.includes(`aria-label="${label}"`)), label).toMatch(/\btabindex="0"/);
+    }
+  });
+
   it("조작이 전부 머리 줄 오른쪽 한 묶음에 있다", () => {
     // 결정 10. 상태 배지 · ⋯ · 분할과 패널 토글이 한 자리에 모인다(위 「WorksPage 패널 토글과 레일」).
     //

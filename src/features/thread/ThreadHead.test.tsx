@@ -61,6 +61,12 @@ describe("요약 고정 토글", () => {
     expect(on).toMatch(/^<button[^>]*aria-label="요약 고정"[^>]*aria-pressed="true"/);
     expect(off).toMatch(/^<button[^>]*aria-label="요약 고정"[^>]*aria-pressed="false"/);
   });
+
+  // 02 코드 리뷰 C1 — 맨 버튼이라 Tab 정류장임을 `tabindex`로 명시한다. macOS WebKit(앱의 WKWebView)의 Tab은 `tabindex` 없는 맨 `<button>`에
+  // 서지 않는다(`@/lib/roving` 머리말) — 머리 줄의 다른 단추(「…」 · 패널 토글)와 같다.
+  it("Tab 정류장임을 tabindex로 명시한다", () => {
+    expect(renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />)).toMatch(/^<button[^>]*\btabindex="0"/);
+  });
 });
 
 describe("머리 줄의 Work 이름(S13)", () => {

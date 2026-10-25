@@ -938,6 +938,9 @@ function WorksPage({
         //
         // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이 날지를 틀리게 말한다. 설명(`aria-description`)은
         // 안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28).
+        //
+        // **Tab 정류장임을 `tabIndex`로 명시한다**(02 코드 리뷰 C1) — macOS WebKit의 Tab은 `tabindex` 없는 맨 버튼에 서지 않는다(`@/lib/roving`
+        // 머리말). `Toggle`을 떠나며 그 0을 잃어 앱에서 키보드로 닿지 않았고, 맨 버튼에도 서는 리눅스 WebKit의 L3만 그것을 셌다.
         end: (
           <Hint
             text={split !== null ? "분할 끄기" : "분할 켜기"}
@@ -945,6 +948,7 @@ function WorksPage({
             aria-label="분할"
             aria-pressed={split !== null}
             onClick={() => changeSplit(split === null ? "lr" : null, columnOf(tab))}
+            tabIndex={0}
             className={headButton(split !== null ? "on" : "rest")}
           >
             <Columns2 className={HEAD_GLYPH} />
