@@ -58,3 +58,32 @@ describe("설정의 문", () => {
     expect(source).not.toMatch(/["']\/settings["']/);
   });
 });
+
+// 틀이 하나다(02 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고, 그 아래 흰 판 하나에 사이드바와 화면
+// 본문(라우트가 그리는 것)이 든다. 화면마다 제 틀을 그리면 화면을 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를
+// 소스로 잰다 — 판의 띄움 · 높이 · 이름 자리는 L3(`frame.spec`)가 상자로 잰다.
+describe("틀 하나 — 머리 줄과 흰 판", () => {
+  const at = (literal: string) => source.indexOf(literal);
+
+  it("머리 줄이 크롬 맨 위에 서고 셸 컨트롤을 품는다", () => {
+    const [head, controls, headEnd, panel] = ["<ShellHeadRow", "<ShellControls", "</ShellHeadRow>", 'data-slot="panel"'].map(at);
+    expect([head, controls, headEnd, panel].every((one) => one > -1)).toBe(true);
+    expect(head).toBeLessThan(controls);
+    expect(controls).toBeLessThan(headEnd);
+    expect(headEnd).toBeLessThan(panel);
+    expect(source).toContain("bg-surface-shell");
+  });
+
+  it("흰 판 하나가 사이드바와 화면 본문을 품는다", () => {
+    const panel = at('data-slot="panel"');
+    const [sidebar, outlet] = ["<Sidebar", "<Outlet />"].map(at);
+    expect(countOf(source, 'data-slot="panel"')).toBe(1);
+    expect(sidebar).toBeGreaterThan(panel);
+    expect(outlet).toBeGreaterThan(sidebar);
+    // 판의 겉은 01이 넣은 토큰이다 — 손으로 적은 색 · 그림자가 아니다.
+    const tag = source.slice(source.lastIndexOf("<div", panel), source.indexOf(">", panel));
+    for (const token of ["rounded-xl", "border-border-panel", "shadow-panel", "bg-surface"]) expect(tag, token).toContain(token);
+    // 화면은 머리 줄의 자리를 셸에게서 받는다 — 본문(라우트)이 그 자리 안에 선다.
+    expect(source.slice(panel, outlet)).toContain("<ShellHeadSlot.Provider");
+  });
+});

@@ -234,33 +234,27 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
     expect(body).toContain('open ? "w-(--sidebar-width) min-w-(--sidebar-min)"');
     // 문자열 리터럴 안의 클래스만 센다 — 주석이 「`shrink-0`이 없다」고 적어 둔다.
     expect(body).not.toMatch(/"[^"\n]*\bshrink-0\b[^"\n]*"/);
-    // 그 변수는 폭 훅이 받은 최소 폭 하나에서 온다 — 수를 여기 적지 않는다.
-    expect(sidebar).toContain('"--sidebar-min": `${size.min}px`');
+    // 그 변수는 폭 훅이 받은 최소 폭 하나에서 온다 — 수를 여기 적지 않는다. 폭은 앱 셸이 쥐고 뿌리에 싣는다(머리 줄의 이름 자리도
+    // 사이드바 끝을 따라 같은 값을 읽는다 — 02 구현 스펙 §3).
+    expect(read("AppShell.tsx")).toContain('"--sidebar-min": `${sidebarSize.min}px`');
+    expect(sidebar).not.toContain("useResizableWidth(");
   });
 });
 
 // 사이드바 최상단의 짜임 — 자리는 렌더가 아니라 소스에서만 보인다.
-describe("사이드바 최상단은 신호등 띠이고 그 아래가 「전체 | 내 차례」 마디다", () => {
+describe("사이드바 최상단이 「전체 | 내 차례」 마디다", () => {
   const sidebar = read("Sidebar.tsx");
 
-  it("신호등 띠 **아래**에 갈래의 몸통이 서고, 앱 갈래의 첫 것이 「전체 | 내 차례」 마디다", () => {
-    // 설정 nav가 생긴 뒤로 띠는 두 갈래가 함께 지나는 겉 상자(`SidebarFrame`)에 살고, 갈래의
-    // 몸통은 그 띠 **뒤의 자리**(`{children}`)에 선다. 그래서 파일 전체의 첫 띠로 재지 않고 둘로
-    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 nav가 맨 앞. 띠가 파일에 **하나뿐**인
-    // 것도 센다 — 갈래가 제 띠를 따로 그리면 앞의 비교가 그 띠를 안 본다.
-    expect(countOf(sidebar, "data-tauri-drag-region")).toBe(1);
-    const frameAt = sidebar.indexOf("function SidebarFrame(");
-    const frame = frameAt > -1 ? sidebar.slice(frameAt, sidebar.indexOf("\n}\n", frameAt)) : "";
-    const strip = frame.indexOf("data-tauri-drag-region");
-    const slot = frame.indexOf("{children}");
+  it("신호등 띠가 없고, 앱 갈래의 첫 것이 「전체 | 내 차례」 마디다", () => {
+    // **신호등 · 셸 컨트롤은 머리 줄의 것이다**(02 구현 스펙 §3) — 사이드바는 흰 판 안에 들어, 머리 줄과 같은 높이의 빈 끌기 띠를
+    // 제 맨 위에 둘 까닭이 없다(한때 48 띠 가운데에 신호등과 셸 컨트롤이 겹쳐 떴다). 띠가 남으면 판 안에 빈 줄 하나가 선다.
+    expect(countOf(sidebar, "data-tauri-drag-region")).toBe(0);
     // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
     const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
     const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
     const filter = app.indexOf("<ThreadFilter");
-    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 줄이
-    // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect([strip, slot, filter].every((at) => at > -1)).toBe(true);
-    expect(slot).toBeGreaterThan(strip);
+    // **다 있는지부터 센다** — 없으면 indexOf가 -1이고, 그러면 아래 줄이 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
+    expect(filter).toBeGreaterThan(-1);
     // 겉 상자를 연 줄 바로 뒤의 첫 요소가 「전체 | 내 차례」 마디다(그 사이에는 주석만 선다). 한때 그 앞에 검색 칸이 섰다(v1 구현
     // 스펙 §13 「검색 · 새 Thread · Library」) — 검색은 제목 줄의 🔍와 ⌘K가 들어 v1 티켓 46이 사이드바의 칸을 걷었다(결정.md 「46」).
     expect(app.slice(0, filter)).not.toMatch(/\n\s*<(?!SidebarFrame|ThreadFilter)[A-Za-z]/);

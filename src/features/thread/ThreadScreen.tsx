@@ -63,8 +63,8 @@ import WorkProposalCard from "./WorkProposalCard";
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
 //
-// - **틀은 카드 없는 흰 면이다**(`PlainFrame` — v1 티켓 07) — 머리 줄에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새
-//   Thread의 머리 줄은 비어 있다(Screen-Home 보드).
+// - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 흰 판 — 02 구현 스펙 §3) — 이 화면은 머리 줄에 놓을 것(Thread 이름 · Work 알약 ·
+//   참여자 · 카드 토글)과 판 안의 본문만 건넨다(`PlainFrame`). 이름은 그 자리에서 바꾼다(두 번 클릭 · F2). 새 Thread의 머리 줄은 비어 있다.
 // - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
 //   아래 28에 입력창과 트레이뿐이다. Host 얼굴은 걷었다(02 S26 — 시안과 Codex 첫 화면에 없다). 시안의 Space 제안 줄 · 「Space 없음」
 //   칩은 짓지 않는다 — 트레이에는 Work 칩이 선다. 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과
@@ -112,16 +112,12 @@ import WorkProposalCard from "./WorkProposalCard";
  */
 const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
 
-interface ThreadScreenProps {
-  sidebarOpen: boolean;
-}
-
 /** 「Policy 열기」의 자리 — Library 화면의 그 Agent 파일. Work에 이었으면 그 Work의 Project 안 Agent도 서는 범위다. */
 const policyPlace = (call: string, work: string | null) =>
   ({ to: "/library", search: { agent: call, ...(work !== null && { work }) } }) as const;
 
 /** 새 Thread(`/`). `work`는 처음 고른 Work다 — Work 카드의 「이 Work에서 새 Thread」(v1 티켓 34 · `/?work=`). */
-export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreenProps & { work?: string | null }) {
+export function NewThreadScreen({ work: seed = null }: { work?: string | null }) {
   const navigate = useNavigate();
   // 어디서 일할지(v1 티켓 31) — Work 칩이 고른다. 최근 Work면 그 제목도 쥔다(부제 · 입력창 안내 · 칩 글자).
   const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({
@@ -186,7 +182,7 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
     />
   );
   return (
-    <PlainFrame sidebarOpen={sidebarOpen} label="새 Thread">
+    <PlainFrame label="새 Thread">
       <ArrivalScope>
         {guide ? (
           <GuidePlace>
@@ -226,7 +222,7 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
 }
 
 /** Thread 하나(`/threads/<id>`). */
-export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thread: string }) {
+export function ThreadScreen({ thread }: { thread: string }) {
   const navigate = useNavigate();
   const { data: view, error, isPending } = useThread(thread);
   const rename = useRenameThread();
@@ -278,7 +274,6 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
   );
   return (
     <PlainFrame
-      sidebarOpen={sidebarOpen}
       label={name}
       title={{
         name,

@@ -24,7 +24,8 @@ import { agentPathPieces, frontmatterAsCode, groupsOf, pickedAgent, type Library
 // Library 화면(v1 티켓 19 · 구현 스펙 §16 S35) — Agent 목록과 파일 읽기만 한다. 고치는 길은 둘이다: 대화(「새 Agent 만들기」 · Host에게
 // 맡김)와 외부 편집기(「Finder에서 열기」).
 //
-// - **틀은 Thread 화면과 같은 흰 면이다**(`PlainFrame` — v1 티켓 07). 머리 줄에 「Library」와 오른쪽 끝 「새 Agent 만들기」가 선다.
+// - **틀은 앱 셸 하나다**(머리 줄 · 흰 판 — 02 구현 스펙 §3). 이 화면은 머리 줄에 「Library」와 오른쪽 끝 「새 Agent 만들기」를, 판 안에
+//   목록과 파일을 건넨다(`PlainFrame`).
 // - **왼쪽은 목록이다** — 사이드바 Thread 줄과 같은 두 줄(캔버스 「Thread 목록과 아바타」 보드 — 얼굴 32 · 이름 14/500 · 둘째 줄 13/18
 //   `fg-tertiary` · 안쪽 8 · 반경 12)이고, 묶음 머리도 사이드바 묶음 머리(「Work」 · 「Thread」)의 꼴이다. 둘째 줄은 설명, 깨졌으면 그
 //   까닭이다(흐리게 — @ 메뉴의 깨진 줄과 같은 55%). 이름 뒤에 `@handle`이 선다(@ 메뉴 줄과 같다). Library 보드는 없다 — 시안 비교는
@@ -37,7 +38,6 @@ import { agentPathPieces, frontmatterAsCode, groupsOf, pickedAgent, type Library
 //   목록을 다시 읽게 한다(`useThreadFeeds`).
 
 interface LibraryScreenProps {
-  sidebarOpen: boolean;
   /** 지금 Work — 그 Work의 Project 안 Agent를 따로 묶는다. 없으면 Library만이다. */
   work: string | null;
   /** 주소가 고른 Agent(부르는 이름). 없으면 첫 줄이다. */
@@ -48,7 +48,7 @@ interface LibraryScreenProps {
 /** 목록의 열 — 사이드바와 같은 폭이라 줄의 말줄임이 사이드바 Thread 줄과 같은 자리에서 끊긴다. */
 const LIST = "w-(--size-sidebar)";
 
-function LibraryScreen({ sidebarOpen, work, agent, onPick }: LibraryScreenProps) {
+function LibraryScreen({ work, agent, onPick }: LibraryScreenProps) {
   const createAgent = useCreateAgent();
   const scoped = useQuery({
     queryKey: [...AGENTS_KEY, work],
@@ -77,7 +77,6 @@ function LibraryScreen({ sidebarOpen, work, agent, onPick }: LibraryScreenProps)
 
   return (
     <PlainFrame
-      sidebarOpen={sidebarOpen}
       label="Library"
       title={{ name: "Library" }}
       end={

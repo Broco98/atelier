@@ -254,19 +254,15 @@ describe("임의 간격", () => {
   const VARIABLES: { name: string; why: string }[] = [
     {
       name: "--titlebar-controls-left",
-      why: "셸 컨트롤의 왼쪽 끝 — 신호등이 차지한 폭 88(전체화면이면 신호등이 숨어 16)이다",
-    },
-    {
-      name: "--titlebar-controls-top",
-      why: "셸 컨트롤의 위 — 머리 줄(48)의 가운데에 컨트롤(24)을 세우는 셈이다. 두 길이가 바뀌어도 가운데다",
+      why: "셸 컨트롤의 왼쪽 끝 — 신호등 끝(67)에서 16 띄운 83(전체화면이면 신호등이 숨어 16)이다. 머리 줄의 왼쪽 칸이 안쪽 여백으로 읽는다",
     },
     {
       name: "--titlebar-control-gap",
-      why: "셸 컨트롤 사이 — Codex 2(DS `.at-winctl`). 컨트롤 묶음의 폭 셈(`--titlebar-controls-width`)이 같은 값을 읽는다",
+      why: "셸 컨트롤 사이 — Codex 머리 줄 6(02 구현 스펙 §3). 컨트롤 묶음의 폭 셈(`--titlebar-controls-width`)이 같은 값을 읽는다",
     },
     {
       name: "--titlebar-inset-head",
-      why: "사이드바를 접었을 때 머리 줄의 왼쪽 여백 — 셸 컨트롤 끝 + 틈 8. 머리 카드가 신호등 · 셸 컨트롤 밑으로 들어가지 않는 경계다",
+      why: "사이드바를 접었을 때 공용 틀 머리 카드 줄의 왼쪽 여백 — 셸 컨트롤 끝 + 틈 8. 머리 줄의 이름 자리도 그때 이 끝에서 시작한다(03이 머리 카드를 걷는다)",
     },
     {
       name: "--size-toolbar",
@@ -344,6 +340,17 @@ describe("눈금의 사분 단", () => {
    * 더 선 자리도 다음 사분 단의 뒷문이 되어 정확히 한 번인지 함께 센다(`notOnce`).
    */
   const QUARTERS: { file: string; className: string; why: string }[] = [
+    // 흰 판의 띄움 5 — Codex 판이 크롬 왼 · 오 · 아래 끝에서 띄운 값(02 구현 스펙 §3 · 시안 `.body`의 `0 5px 5px`)
+    {
+      file: "src/components/shell/AppShell.tsx",
+      className: "mx-1.25",
+      why: "흰 판 — 크롬 왼 · 오 끝에서 5. 머리 줄 이름 자리의 셈(`--titlebar-inset-sidebar`)이 같은 1.25 칸을 더한다",
+    },
+    {
+      file: "src/components/shell/AppShell.tsx",
+      className: "mb-1.25",
+      why: "흰 판 — 크롬 아래 끝에서 5",
+    },
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
     {
       file: "src/components/shell/Frame.tsx",

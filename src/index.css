@@ -62,14 +62,15 @@
    않는다** — 기본값을 그 DS 값으로 옮기는 것이 codex-ds 스펙 S4다. 셋 다 옮겨 같은 수(290 · 264 · 340)이고(e2e `works-sidebar`가
    사이드바를, `frame`이 목록 칸과 작업 패널을 이 토큰과 맞댄다), 화면에 서는 것은 인라인 값이다. */
 :root {
-    /* **머리 줄** — 창 맨 위 48 줄(codex-ds 스펙 §4 · DS `AppShell`). 틈 8 · 머리 카드 32(`--size-head`) · 틈 8이라 그 가운데
-       24가 창 컨트롤 · 패널 토글 · 신호등의 가운데 줄이다(`ShellControls` · `tauri.conf.json`의 `trafficLightPosition`).
-       신호등은 y 26이다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
-       tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 값이다(2026-10-11 — y 24면 가운데가
-       22다). 이 값을 고치면 y도 함께 고친다.
+    /* **머리 줄** — 크롬 맨 위 44 줄(02 구현 스펙 §3 · Codex 제목줄 · 시안 `.tb`). 신호등 · 셸 컨트롤 · 지금 화면의 이름과 할 일이
+       이 줄의 가운데(22)에 선다(`ShellHead` · `ShellControls` · `tauri.conf.json`의 `trafficLightPosition`). 그 아래가 흰 판이다(`AppShell`).
+       신호등은 y 24다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
+       tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 식이다(2026-10-11 — 48 줄 때 y 26으로 가운데
+       24를 재었다). 진짜 앱에서 다시 재는 것은 끝 e2e 티켓(13)이다(02 결정 「02 · 신호등 자리」). 이 값을 고치면 y도 함께 고친다.
+       공용 틀(`Frame`)의 머리 카드 줄도 아직 이 높이를 읽는다 — 머리 카드를 걷고 이 줄로 옮기는 것이 03이다.
        식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
-       읽는다. 사이드바 맨 위 빈 신호등 자리도 이 값이다(`Sidebar`). 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
-    --titlebar-height: 48px;
+       읽는다. 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
+    --titlebar-height: 44px;
 
     /* **간격** — DS 2판 `tokens.json`의 `space-*` 그대로다(4px 눈금 — Tailwind `--spacing`의 그 칸과 같은 값이다,
        `spacing-guard.test.ts`가 맞댄다). 화면은 세 줄에 맞춘다(codex-ds 스펙 §4 「여백」 · DS README 「간격 · 반경 · 크기」):
@@ -109,42 +110,41 @@
     --measure-wide: 1120px;
 }
 
-/* 머리 줄 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 머리 줄(`Frame`의 `HeadRow`) 하나가 사이드바가 접혔을 때
-   --titlebar-inset-head를 읽어 신호등·셸 컨트롤을 피한다. 카드 머리(탭 줄도)는 머리 줄 아래에 서서 피할 것이 없다.
-   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고, 사이드바가 접히면 그 뒤
-   틈(`--space-2`) 하나를 띄운 곳부터 머리 카드가 선다(DS 「머리 카드는 창 컨트롤 뒤부터」 · `.at-winhead.free`). 사이드바가
-   열렸으면 컨트롤은 사이드바 위에 서서 머리 줄이 피할 것이 없다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
-   88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
+/* 머리 줄 왼쪽 자리의 유일한 출처(02 구현 스펙 §3). AppShell 루트에 붙는다. 머리 줄(`ShellHead`)의 왼쪽 칸에 신호등과 셸 컨트롤이
+   서고, 그 칸의 폭이 지금 화면의 이름이 서는 자리의 시작이다 — 사이드바가 열렸으면 사이드바 오른쪽 끝(`--titlebar-inset-sidebar`),
+   접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해
+   --titlebar-controls-width만큼 이어진다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
+   83px는 신호등 끝에서 16을 띄운 자리다 — tauri.conf.json의 trafficLightPosition(x:13)에 버튼 셋(14 · 사이 20 — macOS 표준 창 단추)이
+   서서 신호등 끝이 67이다. 신호등 자리는 함께 고쳐야 하고, 진짜 앱에서 재어 맞추는 것은 13이다.
+   공용 틀(`Frame`)의 머리 카드 줄도 사이드바가 접혔을 때 아직 --titlebar-inset-head를 읽는다(03이 머리 카드를 걷는다).
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
-   치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. */
+   치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. 사이드바 폭(`--sidebar-width`)도
+   같은 요소(AppShell 루트의 인라인)에 실려 --titlebar-inset-sidebar가 그 자리에서 풀린다. */
 [data-titlebar] {
-    --titlebar-controls-left: 88px;
-    /* 작은 아이콘 버튼(`icon-button-xs` — 24) 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
-       여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
-    --titlebar-control-size: 24px;
-    /* 셸 컨트롤 사이 — Codex 값 2다(codex-ds 스펙 §4 · DS `.at-winctl`). 24px 상자에 15px 글리프(스펙 §3 · DS `AppShell`의
-       `s15`)라 좌우 4.5px씩이 이미 비어 있어, 글리프 사이는 11이다. 한때 6이었다(그때는 작업 화면의 조작 · 창 맨 위 줄 왼쪽
-       여백과 한 값이었다 — 조작은 이제 머리 카드의 할 일이고 그 사이는 DS `.at-winctl-r`의 6이다). */
-    --titlebar-control-gap: 2px;
-    /* 사이드바 토글 · 뒤로 · 앞으로 · 검색 네 칸. ShellControls가 이 폭을 그대로 쓰므로
-       칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다.
+    --titlebar-controls-left: 83px;
+    /* 셸 컨트롤 하나 — 아이콘 버튼의 기본 28(`--size-control` · Codex 머리 줄 버튼). 셸 컨트롤이 그 규격으로 그려지므로, 여기 값이
+       어긋나면 이름 자리만 버튼보다 넓거나 좁아진다 */
+    --titlebar-control-size: var(--size-control);
+    /* 셸 컨트롤 사이 — Codex 머리 줄 값 6이다(02 구현 스펙 §3 · 시안 `.tb-nav`). 한때 2였다(codex-ds의 24 버튼 때 DS `.at-winctl`). */
+    --titlebar-control-gap: 6px;
+    /* 사이드바 토글 · 뒤로 · 앞으로 · 검색 네 칸. 접힌 사이드바의 이름 자리가 이 끝을 읽으므로
+       칸 수가 어긋나면 이름이 컨트롤 밑으로 들거나 컨트롤과 벌어진다.
        **칸 사이는 한 값뿐이다** — 검색을 「지나온 길」과 무리로 가르려고 이 식에 넓은 틈을
-       하나 더 두지 않는다. 24px 넷뿐인 줄에서 무리를 가르는 틈은 「묶였다」가 아니라 「하나가
+       하나 더 두지 않는다. 28px 넷뿐인 줄에서 무리를 가르는 틈은 「묶였다」가 아니라 「하나가
        떨어졌다」로 보인다(ShellControls의 검색 버튼 주석) */
     --titlebar-controls-width: calc(
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
-    /* 셸 컨트롤의 위 — 머리 줄의 가운데에 컨트롤을 세운다((48 − 24) / 2 = 12). 머리 줄의 높이나 컨트롤의 크기가 바뀌어도 가운데다 —
-       같은 가운데 줄에 머리 카드 · 패널 토글 · 신호등이 선다(위 `--titlebar-height`). */
-    --titlebar-controls-top: calc((var(--titlebar-height) - var(--titlebar-control-size)) / 2);
-    /* **사이드바가 접혔을 때 머리 줄의 왼쪽 여백** — 셸 컨트롤 끝에서 틈 하나(`--space-2`)를 띄운다. 머리 카드가 신호등 ·
-       셸 컨트롤 밑으로 들어가지 않는 경계다(셸 컨트롤은 `absolute` · `z-20`이라 겹치면 머리 카드를 덮는다). 사이드바가
-       열렸으면 머리 줄의 왼쪽 여백은 0이다 — 머리 카드가 본문 카드와 한 세로줄(사이드바 뒤)에서 시작한다.
-       한때 이 자리에 `--tab-lead`(탭 줄이 이 줄에 서던 때의 첫 칸 거리)가 있었다 — 탭 줄은 본문 카드 머리로 내려갔다. */
+    /* **사이드바가 접혔을 때 이름 자리의 시작** — 셸 컨트롤 끝에서 틈 하나(`--space-2`)를 띄운다. 이름이 셸 컨트롤 바로 뒤에서
+       시작한다(02 구현 스펙 §3). 공용 틀의 머리 카드 줄은 사이드바가 접혔을 때 아직 이 값을 왼쪽 여백으로 읽는다(03까지). */
     --titlebar-inset-head: calc(
         var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--space-2)
     );
+    /* **사이드바가 열렸을 때 이름 자리의 시작** — 사이드바 오른쪽 끝(판 안 본문 왼쪽 끝)과 같은 x다(Codex). 흰 판이 창 왼쪽 끝에서
+       5(눈금 1.25 칸 — `AppShell`의 판 `mx-1.25`) 띄운 데다 판 테두리 0.5가 더해진 뒤에 사이드바가 선다. 사이드바가 탭 줄에 자리를
+       내줘 저장한 폭보다 좁게 서는 때(창 최소 폭 900 아래 — `Sidebar`의 `asideClass`)는 따르지 않는다. */
+    --titlebar-inset-sidebar: calc(var(--spacing) * 1.25 + 0.5px + var(--sidebar-width));
 }
 
 /* 전체화면에선 macOS가 신호등을 숨기므로 컨트롤이 창 여백까지 당겨진다 */
@@ -1337,11 +1337,11 @@
   inherits: false;
 }
 
-/* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 창 위
-   줄(셸 컨트롤 · 머리 카드의 작업 ⋯ · 분할 · 편집기의 「설정으로 돌아가기」)과 탭 줄의 `+`, 줄 **안**에
+/* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 머리
+   카드(머리 카드의 작업 ⋯ · 분할 · 편집기의 「설정으로 돌아가기」)와 탭 줄의 `+`, 줄 **안**에
    서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec
-   열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 창 위 줄의 셸 컨트롤
-   폭(`[data-titlebar]`의 `--titlebar-control-size`)이 이 값과 같아야 한다(그쪽 주석). */
+   열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 머리 줄의 셸 컨트롤은 이 단이 아니라
+   기본 28이다(Codex 머리 줄 — `[data-titlebar]`의 `--titlebar-control-size`). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
   --icon-button-radius: var(--radius-md);

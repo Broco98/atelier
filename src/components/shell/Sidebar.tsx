@@ -43,10 +43,12 @@ import { ShellMeta } from "./shell-meta";
 import { SIDEBAR_ROWS, sidebarRowTone } from "./sidebar-look";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useGoToShell from "./useGoToShell";
-import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
+import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
+  /** 폭(끌어서 바꾸고 기억한다) — 앱 셸이 쥐고 뿌리에 싣는다(`--sidebar-width` · `--sidebar-min` — 머리 줄의 이름 자리도 같은 값을 읽는다). */
+  size: ResizableWidth;
   /** 「새 Thread」(v1 티켓 05) — 앱 셸이 `/`로 간다. 켜짐은 그 항목이 스스로 읽는다(`NewThreadItem`). */
   onNewThread: () => void;
   /** 「Library」(v1 티켓 19) — 앱 셸이 지금 선 자리의 Work를 실어 `/library`로 간다. 켜짐은 그 항목이 스스로 읽는다(`LibraryItem`). */
@@ -85,6 +87,7 @@ const NAV = cn(SIDEBAR_ROWS, "shrink-0", GUTTER);
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
   open,
+  size,
   onNewThread,
   onOpenLibrary,
   activeKey,
@@ -94,9 +97,6 @@ function Sidebar({
   onPickSettingsItem,
   onLeaveSettings,
 }: SidebarProps) {
-  // 기본 폭은 DS `size-sidebar`(290)이고 범위(240–400)는 지금 것을 잇는다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면
-  // 그대로 선다(`useResizableWidth`가 저장값을 읽는 규칙) — 기본값이 바뀌어도 고른 폭을 버리지 않는다.
-  const size = useResizableWidth("sidebar-width", 290, 240, 400);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 `WorkRowShells`(`WorkSectionList.tsx`) 머리말에 있다.
@@ -282,7 +282,7 @@ function Sidebar({
 }
 
 /**
- * 사이드바의 겉 상자 — `aside` · 폭이 고정된 안쪽 열 · 신호등 띠 · 폭 손잡이. 두 갈래(앱·설정)가
+ * 사이드바의 겉 상자 — `aside` · 폭이 고정된 안쪽 열 · 폭 손잡이. 두 갈래(앱·설정)가
  * **이 컴포넌트 하나**를 지나서, 「같은 자리에 같은 요소」가 주석이 아니라 구조가 된다 — 한쪽만
  * 고치면 설정에 들어갈 때 폭이 튀거나 트랜지션이 새로 시작한다.
  */
@@ -299,18 +299,8 @@ function SidebarFrame({
   return (
     // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 바탕에 붙은 이 안에서는 `selected-row`가 `fill-hover`다(index.css의 그
     // 유틸리티 · codex-ds 스펙 §5). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
-    <aside
-      ref={box}
-      id={SIDEBAR_ID}
-      data-sidebar=""
-      style={
-        {
-          "--sidebar-width": `${size.width}px`,
-          "--sidebar-min": `${size.min}px`,
-        } as React.CSSProperties
-      }
-      className={asideClass(open, size.dragging)}
-    >
+    // 폭 변수(`--sidebar-width` · `--sidebar-min`)는 앱 셸 뿌리가 싣는다 — 머리 줄의 이름 자리가 같은 값으로 사이드바 끝을 따른다.
+    <aside ref={box} id={SIDEBAR_ID} data-sidebar="" className={asideClass(open, size.dragging)}>
       {/* fixed inner width so text doesn't reflow while the width animates.
 
           **선 뒤에는 바깥 폭을 넘지 않는다** — 작업 패널 안쪽 열과 같은 장치다(`panel-layout`의 `foldingInnerClass`).
@@ -321,15 +311,13 @@ function SidebarFrame({
           같은 장치). 접힐 때 안에 있던 포커스는 사이드바 토글로 간다(바깥 상자의 `useFoldedFocus`). */}
       <div
         inert={!open}
+        // 위 12는 시안 `.sb`의 위 안쪽이다 — 사이드바가 흰 판 안에 들어 판의 위끝에서 바로 시작한다(02 구현 스펙 §3). 한때 맨 위에 머리
+        // 줄과 같은 높이의 빈 끌기 띠가 있었다 — 신호등 · 셸 컨트롤이 그 띠 가운데에 겹쳐 떴고, 그것들은 이제 판 위 머리 줄에 선다.
         className={cn(
-          "flex h-full w-(--sidebar-width) flex-col pb-2.5",
+          "flex h-full w-(--sidebar-width) flex-col pt-3 pb-2.5",
           foldingInnerClass(open),
         )}
       >
-        {/* 신호등 자리 — 머리 줄과 같은 48(`--titlebar-height`)의 빈 끌기 줄이다(codex-ds 스펙 §4). 머리 줄에 아래 선이 없어
-            이 높이가 두 열의 위끝을 맞춘다 — 사이드바 목록과 본문 카드가 같은 줄에서 시작한다. 신호등 · 창 컨트롤이 이 줄 가운데에
-            뜨고(`ShellControls`), 아래 nav의 위 숨 자리도 이 줄이라 nav에는 제 위 여백이 없다. */}
-        <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
         {children}
       </div>
       {open && <ResizeHandle control={size} />}

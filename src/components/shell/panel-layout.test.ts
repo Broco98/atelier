@@ -36,14 +36,14 @@ describe("접히는 패널의 박자", () => {
     }
   });
 
-  // 패널과 함께 움직이는 자리 넷 — 사이드바 · 공용 틀(목록 · 작업 패널 · 분할 · 머리 줄 여백), 전체화면에 들고 날 때 옮겨 가는
-  // 셸 컨트롤 줄, 분할의 되돌림을 끝내는 타이머. 박자를 제 리터럴로 다시 적지 않는다 — 셸 컨트롤의 `duration-[220ms]`가 한때
-  // 이 검사 밖이라 지나갔다.
+  // 패널과 함께 움직이는 자리 넷 — 사이드바 · 공용 틀(목록 · 작업 패널 · 분할 · 머리 줄 여백), 사이드바 끝을 따르고 전체화면에 들고
+  // 날 때 옮겨 가는 머리 줄의 왼쪽 칸(셸 컨트롤 · 이름 자리의 시작 — `ShellHead`), 분할의 되돌림을 끝내는 타이머. 박자를 제 리터럴로
+  // 다시 적지 않는다 — 셸 컨트롤의 `duration-[220ms]`가 한때 이 검사 밖이라 지나갔다.
   it("패널과 함께 움직이는 자리가 박자를 제 리터럴로 다시 적지 않는다", () => {
     for (const path of [
       "src/components/shell/Sidebar.tsx",
       "src/components/shell/Frame.tsx",
-      "src/components/shell/ShellControls.tsx",
+      "src/components/shell/ShellHead.tsx",
       "src/components/shell/useSplitRatio.tsx",
     ]) {
       const source = readFileSync(path, "utf8");
@@ -51,7 +51,7 @@ describe("접히는 패널의 박자", () => {
       expect(source, path).not.toMatch(/\b220(?:ms)?\b/);
       expect(source, path).not.toMatch(/delay-\[0s,\d+m?s\]/);
     }
-    expect(readFileSync("src/components/shell/ShellControls.tsx", "utf8")).toContain("PANEL_MOTION");
+    expect(readFileSync("src/components/shell/ShellHead.tsx", "utf8")).toContain("PANEL_MOTION");
     expect(readFileSync("src/components/shell/useSplitRatio.tsx", "utf8")).toContain("panelMotionMs()");
   });
 });
