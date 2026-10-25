@@ -1777,13 +1777,13 @@ body[data-palette-open] [data-scrollbar] {
 
      보드 이름     유틸리티                       토큰 · 모양                    거는 자리
      단어 도착     word-in                        word · settle · 사이 70        흐르는 답의 새 낱말(`ThreadMarkdown`)
-     칩 나타남     chip-in                        chip · settle · 0.92배에서     입력창의 멘션 칠 · 첨부 · 인용 · 기다리는 말, 흐름의 결정 줄
+     칩 나타남     chip-in                        chip · enter-snappy · 튐       입력창의 멘션 칠 · 첨부 · 인용 · 기다리는 말, 흐름의 결정 줄
      승인 카드     card-rise                      card · settle · 아래 12에서    입력창 자리의 카드(승인 · 질문 · Work 만들기 · Project · 결정은 내가)
      Agent 참여    pop-in                         join · settle · 1.1배까지 튐   머리 줄의 새 참여자 얼굴, 목록 줄의 내 차례 점
      로그 펼침     log-open                       log · default · 줄마다 40      작업 머리줄을 펼친 줄들
      줄 바뀜       row-in                         swap · settle · 아래 4에서     끝난 도구 줄 · 작업 머리줄 · 시스템 줄 · 답하는 중 · 돌아온 입력창 ·
                                                                                  목록 줄의 상태 칸
-     버튼 바뀜     button-in                      button · settle · 0.5배에서    보내기 · 멈추기 원의 아이콘(면 색은 `duration-button ease-settle`)
+     보내기 모핑   morph-in · morph-out           morph · default · .6배         보내기 원의 글리프 ↑ · 스피너 · ■(면 색 · 옅음은 `duration-morph ease-default`)
      아래로 버튼   jump-in                        jump · settle · 아래 6에서     「맨 아래로」
      문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    Work 카드의 새로 바뀐 줄 · 넓힌 카드 문서의 바뀐 줄
      반짝임        chat-shimmer                   shimmer · 일정                 「생각 중」 · 도는 도구 줄 · 「N초 동안 작업 중입니다」
@@ -1878,18 +1878,26 @@ body[data-palette-open] [data-scrollbar] {
     }
 }
 
-/* **칩 나타남**(보드 「칩 나타남」 280ms · 감속 · 0.92배에서 — 「멘션, 기다리는 말, 첨부처럼 컴포저에 붙는 것은 모두 같은 움직임」). 왼쪽
-   가운데에서 커지며 선명해진다. 승인 카드에 답한 뒤의 결정 줄도 이것이다(보드 「승인 카드 올라옴」의 `.res.chipin`). 글 안의 칠(멘션)처럼
-   줄 상자가 아닌 자리는 크기가 걸리지 않아 옅음만 움직인다. */
+/* **칩 등장**(02 구현 스펙 §12 · Motion 보드 「칩 등장」 — Codex의 subagent 칩 .28s · cubic-bezier(.23,1,.32,1)). 왼쪽 아래 (−8, 4)에서
+   .92배로 들어와 1.02배까지 살짝 넘었다가 제자리에 선다. v1(보드 「칩 나타남」)에서처럼 입력창에 붙는 것 — 멘션 칠 · 첨부 · 인용 · 기다리는
+   말 — 과 승인 카드에 답한 뒤의 결정 줄이 모두 이 하나다(02 티켓 10이 Codex 값으로 바꿨다). 글 안의 칠(멘션)처럼 줄 상자가 아닌 자리는
+   자리 · 크기가 걸리지 않아 옅음만 움직인다. */
 @keyframes chip-in {
-    from {
+    0% {
         opacity: 0;
-        transform: scale(0.92);
+        transform: translate(-8px, 4px) scale(0.92);
+    }
+    70% {
+        transform: translate(1px, -1px) scale(1.02);
+    }
+    to {
+        opacity: 1;
+        transform: none;
     }
 }
 @utility chip-in {
     transform-origin: left center;
-    animation: chip-in var(--duration-chip) var(--ease-settle) both;
+    animation: chip-in var(--duration-chip) var(--ease-enter-snappy) both;
 }
 
 /* **승인 카드 올라옴**(보드 「승인 카드 올라옴」 320ms · 감속 · 아래에서 12px) — 입력창 자리를 잠시 빌리는 카드가 아래에서 올라온다.
@@ -1958,17 +1966,40 @@ body[data-palette-open] [data-scrollbar] {
     animation: row-in var(--duration-swap) var(--ease-settle) both;
 }
 
-/* **버튼 바뀜**(보드 「보내기 버튼 바뀜」 160ms · 감속 · 0.5배에서, 아이콘 겹쳐 바뀜) — 보내기 원과 멈추기 원이 갈아 설 때 새 아이콘이
-   0.5배에서 커지며 선다. 원의 면 색(꺼짐 ↔ 보내기)은 같은 토큰의 전환(`transition-colors duration-button ease-settle`)이다. 자리와 크기는
-   그대로다. */
-@keyframes button-in {
-    from {
+/* **보내기 모핑**(02 구현 스펙 §12 · Motion 보드 「보내기 버튼 바뀜」 — Codex .52s · cubic-bezier(.4,0,.2,1) · times 0 / .22 / .72 / 1).
+   보내기 원의 글리프(↑ · 스피너 · ■)가 바뀌면 옛 글리프는 첫 22%에 .6배로 줄며 사라지고, 새 글리프는 22%까지 숨었다가 72%에 제 크기로
+   선다 — 두 글리프가 같은 자리에 겹친다(`ThreadComposer`의 `SendFace`). 원의 면 색(파랑 ↔ 보내는 중의 옅은 파랑)과 옅음(빈 상태 40%)은 같은
+   토큰의 전이다(`duration-morph ease-default`). 사라진 글리프는 그 자리에 남아 있으니 늘 옅음 0이다 — 동작 줄이기에서 움직임이 꺼져도
+   옛 글리프가 겹쳐 서지 않는다. */
+@keyframes morph-in {
+    0%,
+    22% {
         opacity: 0;
-        transform: scale(0.5);
+        transform: scale(0.6);
+    }
+    72%,
+    to {
+        opacity: 1;
+        transform: none;
     }
 }
-@utility button-in {
-    animation: button-in var(--duration-button) var(--ease-settle) both;
+@keyframes morph-out {
+    0% {
+        opacity: 1;
+        transform: none;
+    }
+    22%,
+    to {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+}
+@utility morph-in {
+    animation: morph-in var(--duration-morph) var(--ease-default) both;
+}
+@utility morph-out {
+    opacity: 0;
+    animation: morph-out var(--duration-morph) var(--ease-default) both;
 }
 
 /* **아래로 버튼**(보드 「아래로 버튼」 180ms · 감속 · 아래에서 6px) — 위로 올려 읽는 중이면 입력창 위에 「맨 아래로」가 아래 6에서 떠오른다.
@@ -2119,7 +2150,8 @@ body[data-palette-open] [data-scrollbar] {
     .card-rise,
     .pop-in,
     .row-in,
-    .button-in,
+    .morph-in,
+    .morph-out,
     .jump-in,
     .row-flash,
     [data-doc-flash],

@@ -27,7 +27,6 @@ import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
 import GuideCard from "./GuideCard";
-import HostFace from "./HostFace";
 import {
   useAgentRoster,
   useChangeChip,
@@ -66,13 +65,14 @@ import WorkProposalCard from "./WorkProposalCard";
 //
 // - **틀은 카드 없는 흰 면이다**(`PlainFrame` — v1 티켓 07) — 머리 줄에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새
 //   Thread의 머리 줄은 비어 있다(Screen-Home 보드).
-// - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 입력창. 보드의 상자 밖 아래 줄과 도움 줄
-//   (「@ Agent 부르기 · / 명령 · + 파일 · 이미지」)은 걷었다 — 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 Work ·
-//   물어보는 정도 · 모델과 생각 깊이를 고른다. 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을 이미 말한다).
+// - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
+//   아래 28에 입력창과 트레이뿐이다. Host 얼굴은 걷었다(02 S26 — 시안과 Codex 첫 화면에 없다). 시안의 Space 제안 줄 · 「Space 없음」
+//   칩은 짓지 않는다 — 트레이에는 Work 칩이 선다. 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과
+//   생각 깊이를, 트레이에서 Work를 고른다. 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을 이미 말한다).
 //   Work 칩이 고른 것(Work 없이 · 새 Work로 시작 · 최근 Work)을 입력창 안내가 따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로
 //   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
-// - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
+// - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
 //   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이,
 //   입력창 자리에는 승인 카드가 선다(v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘
 //   읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
@@ -106,8 +106,11 @@ import WorkProposalCard from "./WorkProposalCard";
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
 //   결과」(굵은 제목)가 그것으로 걷힌다.
 
-/** 흐름 · 입력창을 모으는 열 — 읽기 좋은 폭(DS `size-thread` 48rem)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은 폭이다. */
-const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
+/**
+ * 흐름 · 입력창을 모으는 열 — Codex 대화 열 폭(`size-column` 737, 02 §9)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은
+ * 폭이다. 문서 · 설정이 읽는 `size-thread`(768)는 그대로다(02 결정 「01 · 공유 토큰은 새 이름으로」).
+ */
+const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
 
 interface ThreadScreenProps {
   sidebarOpen: boolean;
@@ -168,7 +171,6 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
       onEffort={(effort) => setPicks((now) => ({ ...now, effort }))}
       commands={[]}
       running={false}
-      roomy={starting === null}
       busy={starting !== null}
       onSend={start}
       onNewThread={() => {}}
@@ -178,7 +180,8 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
       onOpenPolicy={() => void navigate(policyPlace(first?.call ?? "host", work))}
-      work={{ label: home.chip, picking: { link: place.link, onPick: (link, title) => setPlace({ link, title }) } }}
+      // 트레이의 Work 칩은 첫 말 전에만 선다 — 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 칩이 없다.
+      work={starting === null ? { label: home.chip, link: place.link, onPick: (link, title) => setPlace({ link, title }) } : undefined}
       placeholder={home.placeholder}
     />
   );
@@ -189,29 +192,31 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
           <GuidePlace>
             <GuideCard kind={guide} view={engine} />
           </GuidePlace>
-        ) : starting !== null ? (
-          // 첫 말을 보냈다 — Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 선다.
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-              <div className={`${COLUMN} gap-6 text-chat-body`}>
-                <UserMessage text={starting.text} attachments={starting.attachments} />
-                <p className="chat-shimmer text-sm">생각 중</p>
-              </div>
-            </div>
-            <div className="px-5 pb-4">
-              <div className={COLUMN}>{composer}</div>
-            </div>
-          </div>
         ) : (
-          // 가운데 묶음은 아래 168을 비우고 가운데에 선다 — 1440×900 창에서 입력창 위끝이 Screen-Home 보드의 388에 온다(v1 티켓 46 — 31이
-          // 칩을 상자 안에 넣고 도움 줄을 걷어 묶음이 짧아진 뒤로 42 아래에 섰다, 시안-비교/31 · 46).
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-42 scroll-quiet">
-            <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
-              <div className="flex flex-col items-center gap-3.5 text-center">
-                <HostFace className="size-11" />
-                <h1 className="text-heading-lg">무엇을 만들까요?</h1>
+          // 첫 화면과 첫 말을 보낸 뒤가 한 틀이다 — 입력창은 같은 자리(둘째 칸)에 남아 갈아 서지 않는다. 그래야 보내기 원이 ↑에서 스피너로
+          // 모핑하고(02 §9 · Screen-Live 단계 1) 입력칸이 포커스를 지킨다. 첫 칸만 물음 ↔ 보낸 말로 바뀐다.
+          // - 첫 화면: 가운데 묶음 — 물음 아래 28에 입력창 · 트레이다. 아래 210을 비우고 가운데에 선다: F1-Home의 아래 88(`main{padding:0
+          //   16px 88px}`)에 짓지 않은 Space 제안 줄의 자리 122(위 22 + 줄 32 × 3 + 사이 2 × 2)를 더한 것이다 — 물음과 입력창이 시안의 그
+          //   자리에 선다.
+          // - 첫 말을 보낸 뒤: Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 서고, 입력창은 바닥으로 내려간다.
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col",
+              starting === null && "items-center justify-center overflow-y-auto px-4 pb-52.5 scroll-quiet",
+            )}
+          >
+            {starting === null ? (
+              <h1 className="mb-7 text-center text-home">무엇을 만들까요?</h1>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
+                <div className={`${COLUMN} gap-6 text-chat-body`}>
+                  <UserMessage text={starting.text} attachments={starting.attachments} />
+                  <p className="chat-shimmer text-sm">생각 중</p>
+                </div>
               </div>
-              {composer}
+            )}
+            <div className={starting === null ? "w-full" : "px-5 pb-4"}>
+              <div className={COLUMN}>{composer}</div>
             </div>
           </div>
         )}
@@ -674,7 +679,6 @@ function ThreadBody({
               level={view.askLevel}
               onLevel={pickLevel}
               onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
-              work={{ label: view.work ? linked?.title || view.work : "Work 없음" }}
               card={
                 // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
                 // 새 카드가 올라온다 — 자리의 열쇠가 그 물음이다.

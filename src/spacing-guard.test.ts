@@ -375,11 +375,6 @@ describe("눈금의 사분 단", () => {
       className: "gap-1.25",
       why: "상세 work 줄의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. DS에 그 부품이 없어 작은 글리프의 사이 5(DS `.at-btn.top` · `.at-peek .chg`)를 따른다",
     },
-    {
-      file: "src/features/thread/ComposerChips.tsx",
-      className: "gap-1.25",
-      why: "Thread 입력창의 모델 칩 — 글자와 셰브런 사이 5(캔버스 Composer 보드 `.chip`)",
-    },
     // 안쪽 9 · 7 — DS 부품의 안쪽
     {
       file: "src/components/ui/button.tsx",
@@ -420,11 +415,6 @@ describe("눈금의 사분 단", () => {
       file: "src/features/works/SpecViewer.tsx",
       className: "py-px",
       why: "위와 같다 — 위아래 안쪽 1",
-    },
-    {
-      file: "src/features/thread/ComposerChips.tsx",
-      className: "px-2.25",
-      why: "Thread 입력창의 모델 칩 — 좌우 안쪽 9(캔버스 Composer 보드 `.chip`의 `0 9px`)",
     },
     {
       file: "src/features/thread/QueuedMessages.tsx",

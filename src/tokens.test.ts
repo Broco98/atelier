@@ -445,12 +445,15 @@ describe("모션 토큰", () => {
   const byName = Object.fromEntries(BOARD.map(([보드이름, 토큰, , 곡선]) => [보드이름, { 토큰, 곡선: ease(곡선) }]));
   const MOTIONS: Record<string, { 토큰: string; 곡선: string }> = {
     "word-in": byName["단어 도착"],
-    "chip-in": byName["칩 나타남"],
+    // 칩 등장은 02가 Codex 값으로 바꿨다 — 시간은 보드 그대로, 곡선은 Codex의 cubic-bezier(.23,1,.32,1)(02 구현 스펙 §12).
+    "chip-in": { 토큰: "chip", 곡선: "var(--ease-enter-snappy)" },
     "card-rise": byName["승인 카드"],
     "pop-in": byName["Agent 참여"],
     "log-open": byName["로그 펼침"],
     "row-in": byName["줄 바뀜"],
-    "button-in": byName["버튼 바뀜"],
+    // 보내기 원의 글리프는 v1의 버튼 바뀜(0.5배에서, 160ms) 대신 Codex 모핑이다(02 구현 스펙 §12 「보내기 아이콘」).
+    "morph-in": { 토큰: "morph", 곡선: "var(--ease-default)" },
+    "morph-out": { 토큰: "morph", 곡선: "var(--ease-default)" },
     "jump-in": byName["아래로 버튼"],
     "row-flash": byName["문서 강조"],
     "chat-shimmer": byName["반짝임"],

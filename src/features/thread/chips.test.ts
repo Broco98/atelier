@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { ASK_LEVELS, chipLabel, chipLists, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
+import { ASK_LEVELS, chipLabel, chipLists, chipParts, CLAUDE_MODELS, currentModel, slashCommands } from "./chips";
 import type { Participant, RecordLine } from "./types";
 
 // 입력창 칩(v1 티켓 05 · 스토리 33) — 기록에서 모델 목록과 Session이 연 값을, 참여자 줄에서 고른 값을 읽는다. 바탕은 축복한 기록이다.
@@ -48,6 +48,15 @@ describe("입력창 칩", () => {
     expect(chipLabel(models, "default", null)).toBe("Default");
     expect(chipLabel(null, "claude-opus-9", "max")).toBe("claude-opus-9 · 최대");
     expect(chipLabel(null, null, null)).toBe("기본 모델");
+  });
+
+  // 02 티켓 10 — 칩은 모델 이름을 본문색으로, 생각 깊이를 옅은 글자로 가른다(캔버스 v35 Diff-Chat 「GPT-6.1 Sol High」 · F1-Home 「Claude
+  // Code Default」). 글자는 칩 글자 그대로다.
+  it("칩 글자를 모델과 생각 깊이 두 조각으로 가른다 — 생각 깊이를 모르면 모델만이다", () => {
+    const { models } = chipLists(blessed, "host");
+    expect(chipParts(models, "opus", "high")).toEqual({ model: "Opus 5.5", depth: "높음" });
+    expect(chipParts(CLAUDE_MODELS, "default", null)).toEqual({ model: "Default", depth: null });
+    expect(chipParts(null, null, null)).toEqual({ model: "기본 모델", depth: null });
   });
 
   it("목록이 서기 전의 별칭은 이름처럼 머리를 대문자로 쓴다(Screen-Home 보드 「Opus · 높음」)", () => {

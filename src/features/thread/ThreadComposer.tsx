@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
 import { ArrowUp, AtSign, Plus } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import AgentMenu, { pickable } from "./AgentMenu";
 import { useArrival, useChanged } from "./arrival";
@@ -15,11 +16,14 @@ import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
 import type { Quote } from "@/features/works/QuotePick";
 import type { AskLevel, Attachment } from "./types";
 
-// 입력창(v1 티켓 05 · 캔버스 Composer 보드 「컴포저 상태」) — 28 반경 입력창 하나다. 칩 셋(Work · 물어보는 정도 · 모델과 생각 깊이)은
-// 상자 안 아래 줄에 선다(v1 티켓 31 · 사용자 결정 — 캔버스의 상자 밖 아래 줄 · 받는 이 칩은 걷었다, `ComposerChips.tsx`).
+// 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 캔버스 v35 Diff-Chat · F1-Home · Screen-Live) — Codex 입력창이다: 대화 열과 같은 737 폭에
+// 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소 44 · 자리표시 `fg-placeholder`.
+// 칩(물어보는 정도 · 모델과 생각 깊이)은 상자 안 아래 줄에 선다(v1 티켓 31 · 사용자 결정 — 받는 이 칩은 걷었다, `ComposerChips.tsx`).
+// Work 칩은 새 Thread에서만 상자 **밖** 아래 트레이에 선다(02 티켓 10 — Thread 안에서는 머리 줄이 말한다).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
-// - **보내기 원 하나가 보내기 · 멈추기 · 꺼짐을 맡는다** — 비면 꺼진 면(`fill-active` · `fg-tertiary`), 쓰면 검정 면(`fg` 위
-//   `fg-inverse`), 턴이 도는 동안 비어 있으면 멈추기(■)다. 도는 동안 쓴 말도 보낸다 — 엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다.
+// - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
+//   꺼짐), 쓰면 ↑, 새 Thread의 첫 말을 보내는 중이면 옅은 파랑(`accent-solid-pending`)에 스피너, 턴이 도는 동안 비어 있으면 멈추기(■)다.
+//   도는 동안 쓰면 원은 ↑다 — 쓴 말도 보낸다(엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다). 그동안 멈추기는 Esc가 맡는다.
 // - **@ 단추 · `@` · `/agent`는 Agent 부르기 메뉴**를 연다(v1 티켓 14 · `AgentMenu`) — 커서가 멘션 이름 안에 서면 입력창 위에 서고,
 //   고르면 그 자리가 `@<call> `이 된다.
 // - **받는 이의 멘션은 칩으로 칠한다**(Composer 보드 「입력 중 · 멘션 칩」) — 입력칸 뒤에 같은 글을 투명하게 깐 층(`MentionPaint`)이
@@ -34,9 +38,10 @@ import type { AskLevel, Attachment } from "./types";
 //   정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
-// - **움직임**(v1 티켓 43 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜), 보내기 ·
-//   멈추기 원이 갈아 서면 새 아이콘이 0.5배에서 커지며 선다(버튼 바뀜 — 원의 면 색은 같은 박자로 바뀐다). 멘션 칠 · 첨부 · 인용 칩은
-//   붙을 때 칩으로 나타난다(칩 나타남). 화면이 처음 설 때 이미 있던 것은 움직이지 않는다(`arrival.tsx`).
+// - **움직임**(v1 티켓 43 · 02 §12 · Motion 보드) — 카드가 걷히거나 끌어다 놓기가 끝나 입력창이 돌아오면 아래 4에서 떠오르고(줄 바뀜),
+//   보내기 원의 글리프가 바뀌면 옛 글리프가 .6배로 줄며 사라지고 새 글리프가 .6배에서 커지며 선다(보내기 아이콘 모핑 .52s — 원의 면
+//   색 · 옅음도 같은 박자로 바뀐다). 글 칸이 줄 수만큼 자라고 줄 때 높이가 패널 박자로 옮겨 간다(입력창 바닥 줄 높이 .22s). 멘션 칠 ·
+//   첨부 · 인용 칩은 붙을 때 칩으로 나타난다(칩 등장). 화면이 처음 설 때 이미 있던 것은 움직이지 않는다(`arrival.tsx`).
 //
 // 입력 중인 글 · 쌓인 첨부 · 붙은 인용은 Thread마다 모듈 스토어에 산다(`threadUiStore.drafts` · `attachmentStore` · `threadUiStore.quotes`). 보낸 말은 여기서 그리지
 // 않는다 — 엔진이 기록에 적은 `sent` 줄이 말풍선으로 선다.
@@ -44,8 +49,9 @@ import type { AskLevel, Attachment } from "./types";
 /** 입력칸이 자라는 끝 — 넘으면 칸 안에서 구른다. */
 const FIELD_MAX = 200;
 
-/** 비어 있을 때의 말(보드) — 도는 동안 · 우리가 멈춘 뒤 · 그 밖. */
+/** 비어 있을 때의 말(보드) — 첫 말을 보내는 중(Screen-Live 단계 1 — 시안의 「채팅」은 이 앱의 Thread다) · 도는 동안 · 우리가 멈춘 뒤 · 그 밖. */
 const PLACEHOLDER = {
+  starting: "Thread를 시작하는 중…",
   idle: "무엇이든 요청하세요",
   running: "이어서 말하면 다음 차례에 전달합니다",
   stopped: "무엇을 다르게 할지 말해 주세요",
@@ -64,8 +70,6 @@ export interface ThreadComposerProps {
   running: boolean;
   /** 마지막 턴을 우리가 멈췄나 — 빈 칸의 말이 「무엇을 다르게 할지」가 된다. */
   stopped?: boolean;
-  /** 빈 Thread의 입력창 — 위아래가 한 단 넓고 칸이 두 줄 높이다(Screen-Home 보드). */
-  roomy?: boolean;
   /** 보내는 중이라 입력을 받지 않는다(새 Thread의 첫 말 — Session이 열릴 때까지). */
   busy?: boolean;
   /** 입력창 자리에 서는 카드 — 승인 카드. 있으면 입력창(과 그 안의 칩) 대신 선다(위의 것은 그대로, 캔버스 Approval 보드 A안). */
@@ -91,8 +95,11 @@ export interface ThreadComposerProps {
   onLevel: (level: AskLevel) => void;
   /** 물어보는 정도 메뉴 끝의 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. */
   onOpenPolicy?: () => void;
-  /** Work 칩(v1 티켓 30 · 31) — 칩 글자, 첫 말 전이면 고르기. 고르기가 있을 때만 `/work`가 선다. */
-  work: WorkChoice;
+  /**
+   * Work 칩(v1 티켓 30 · 31 · 02 티켓 10) — 새 Thread의 첫 말 전에만 준다. 주면 입력창 아래 트레이에 칩이 서고 `/work`가 선다. Thread
+   * 안에서는 주지 않는다 — 머리 줄이 이은 Work를 말한다.
+   */
+  work?: WorkChoice;
   /** 비어 있을 때의 말 — Work 칩이 고른 것을 따른다(빈 Thread, v1 티켓 31). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
   placeholder?: string;
 }
@@ -107,7 +114,6 @@ function ThreadComposer({
   commands,
   running,
   stopped = false,
-  roomy = false,
   busy = false,
   card,
   above,
@@ -137,7 +143,7 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const picking = work.picking !== undefined;
+  const picking = work !== undefined;
   const all = useMemo(() => slashCommands(commands, { work: picking }), [commands, picking]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
@@ -255,8 +261,16 @@ function ThreadComposer({
   useLayoutEffect(() => {
     const el = field.current;
     if (!el) return;
+    // 글 칸의 높이는 px에서 px로만 옮겨 간다(입력창 바닥 줄 높이 — 칸의 전이) — 재려고 거친 `auto`는 전이가 걸리지 않는 값이라, 잰 뒤
+    // 옛 높이로 한 번 세우고(그 사이 그리지 않는다) 새 높이로 보낸다.
+    const before = el.offsetHeight;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, FIELD_MAX)}px`;
+    const next = Math.min(el.scrollHeight, FIELD_MAX);
+    if (before > 0 && before !== next) {
+      el.style.height = `${before}px`;
+      void el.offsetHeight;
+    }
+    el.style.height = `${next}px`;
     const at = pendingCaret.current;
     if (at === null) return;
     pendingCaret.current = null;
@@ -315,9 +329,9 @@ function ThreadComposer({
         <DropZone />
       ) : (
         <form
+          // 위에 선다(`z-1`) — 새 Thread의 트레이가 입력창 밑에 2 겹쳐 들어간다(F1-Home `.composer{z-index:1}`).
           className={cn(
-            "relative flex flex-col rounded-composer bg-surface-composer pb-2.5 pl-5 shadow-composer",
-            roomy ? "gap-3.5 pt-4 pr-3" : "gap-2.5 pt-3.5 pr-2.5",
+            "relative z-1 flex flex-col gap-1.5 rounded-prompt bg-surface-composer px-2 pt-3.5 pb-2 shadow-prompt",
             returned && "row-in",
           )}
           onSubmit={(event) => {
@@ -340,14 +354,22 @@ function ThreadComposer({
             />
           )}
           <div className="relative flex">
-            {recipient?.agent && <MentionPaint ref={paint} text={draft} at={recipient.at} roomy={roomy} />}
+            {recipient?.agent && <MentionPaint ref={paint} text={draft} at={recipient.at} />}
             <textarea
               ref={field}
               aria-label="보낼 말"
               rows={1}
               value={draft}
               readOnly={busy}
-              placeholder={running ? PLACEHOLDER.running : stopped ? PLACEHOLDER.stopped : (placeholder ?? PLACEHOLDER.idle)}
+              placeholder={
+                busy
+                  ? PLACEHOLDER.starting
+                  : running
+                    ? PLACEHOLDER.running
+                    : stopped
+                      ? PLACEHOLDER.stopped
+                      : (placeholder ?? PLACEHOLDER.idle)
+              }
               onChange={(event) => {
                 setDraft(draftKey, event.target.value);
                 setCaret(event.target.selectionStart);
@@ -414,47 +436,42 @@ function ThreadComposer({
                 event.preventDefault();
                 send();
               }}
-              className={cn(
-                "relative w-full resize-none overflow-y-auto bg-transparent pr-2.5 text-sm leading-5.5 text-fg outline-none placeholder:text-fg-tertiary scroll-quiet",
-                roomy ? "min-h-11" : "min-h-5.5",
-              )}
+              // 글은 상자 끝에서 12(안쪽 8 + 4 — Diff-Chat 「입력 0 / 12」), 칸은 최소 44다. 줄 수가 바뀌면 높이가 패널 박자로 옮겨 간다.
+              className="relative min-h-11 w-full resize-none overflow-y-auto bg-transparent px-1 text-sm text-fg outline-none transition-[height] duration-panel ease-panel placeholder:text-fg-placeholder scroll-quiet motion-reduce:transition-none"
             />
           </div>
-          <div className="-ml-2.5 flex min-w-0 items-center gap-0.5">
-            <button
-              type="button"
-              aria-label="파일 첨부"
-              onClick={pick}
-              disabled={busy}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-secondary transition-colors quiet-hover focus-ring"
-            >
-              <Plus className="size-4" aria-hidden />
+          <div className="flex min-w-0 items-center gap-1">
+            <button type="button" aria-label="파일 첨부" onClick={pick} disabled={busy} className={ROUND_BUTTON}>
+              <Plus className="size-3.5" aria-hidden />
             </button>
-            <button
-              type="button"
-              aria-label="Agent 부르기"
-              onClick={callAgent}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-secondary transition-colors quiet-hover focus-ring"
-            >
-              <AtSign className="size-4" aria-hidden />
+            <button type="button" aria-label="Agent 부르기" onClick={callAgent} className={ROUND_BUTTON}>
+              <AtSign className="size-3.5" aria-hidden />
             </button>
-            <WorkChip {...work} open={placing} onOpenChange={setPlacing} />
-            <AskChip level={level} onLevel={onLevel} onOpenPolicy={onOpenPolicy} open={asking} onOpenChange={setAsking} />
-            <span className="min-w-0 flex-1" />
-            <ModelChip
-              models={models}
-              model={model}
-              effort={effort}
-              running={recipientRunning}
-              onModel={onModel}
-              onEffort={onEffort}
-              open={choosingModel}
-              onOpenChange={setChoosingModel}
-            />
-            <SendOrStop running={running} empty={empty} busy={busy} onStop={onStop && stop} />
+            {/* 첫 말을 보내는 중(Screen-Live 단계 1)에는 칩이 옅게 쉰다 — 고른 것은 이미 첫 말과 함께 떠났다. */}
+            <span className={cn("flex min-w-0 flex-1 items-center gap-1", busy && "pointer-events-none opacity-50")}>
+              <AskChip level={level} onLevel={onLevel} onOpenPolicy={onOpenPolicy} open={asking} onOpenChange={setAsking} />
+              <span className="min-w-0 flex-1" />
+              <ModelChip
+                models={models}
+                model={model}
+                effort={effort}
+                running={recipientRunning}
+                onModel={onModel}
+                onEffort={onEffort}
+                open={choosingModel}
+                onOpenChange={setChoosingModel}
+              />
+            </span>
+            <SendButton running={running} empty={empty} busy={busy} onStop={onStop && stop} />
           </div>
         </form>
       ))}
+      {work && !card && (
+        // 트레이(F1-Home `.tray`) — 입력창 밑에 2 겹쳐 들어가고 좌우 14 안으로 들어선 아래 둥근 줄이다. 입력창이 위에 서야 겹친 2를 덮는다.
+        <div data-slot="composer-tray" className="mx-3.5 -mt-0.5 flex items-center gap-1 rounded-b-tray bg-surface-tray px-2 pt-2.5 pb-1.5">
+          <WorkChip {...work} open={placing} onOpenChange={setPlacing} />
+        </div>
+      )}
       {shown && (
         <p role="alert" className="px-3 pt-1.5 text-xs text-fg-secondary">
           {shown}
@@ -464,13 +481,19 @@ function ThreadComposer({
   );
 }
 
+/** 입력창 아래 줄의 `+` · `@` — 28 원, 본문색 글리프 14(Diff-Chat 「+ · @ 버튼 28」). */
+const ROUND_BUTTON =
+  "flex size-7 shrink-0 items-center justify-center rounded-full text-fg transition-colors quiet-hover focus-ring";
+
+/** 보내기 원의 글리프 — ↑(빈 상태와 글이 있는 상태가 같은 ↑이고 원의 옅음만 다르다) · 스피너 · ■. */
+type SendGlyph = "send" | "sending" | "stop";
+
 /**
- * 보내기 · 멈추기 원 — 턴이 돌면 멈추기 네모가, 아니면(또는 도는 동안 글을 쓰면) 보내기 화살표가 선다. **갈아 선 아이콘만 커지며 선다**(Motion
- * 보드 「버튼 바뀜」) — 이 부품이 선 뒤에 턴이 돌기 시작하거나 끝났을 때다. 입력창이 카드 자리를 내줬다가 다시 서면(결정 줄 뒤) 이 부품도
- * 새로 서므로 아이콘이 다시 커지지 않는다(v1 티켓 46 — 43이 남긴 「결정 뒤 멈추기 네모가 다시 커진다」). 한때 이 물음을 입력창 몸이 쥐어
- * 「한 번 바뀐 적이 있나」가 카드를 지나서도 남았다.
+ * 보내기 원(02 §9 · Screen-Live 단계 1 · 3 · 6 · Motion 보드 「보내기 버튼 바뀜」) — 원 하나가 네 상태를 맡는다. 글리프가 바뀌면 **옛 글리프가
+ * 줄며 사라지고 새 글리프가 커지며 선다**(`morph-out` · `morph-in` — .52s, times 0 / .22 / .72 / 1). 원이 선 뒤에 바뀐 것만 움직인다 —
+ * 입력창이 카드 자리를 내줬다가 다시 서면(결정 줄 뒤) 원도 새로 서므로 글리프가 다시 커지지 않는다(v1 티켓 46).
  */
-function SendOrStop({
+function SendButton({
   running,
   empty,
   busy,
@@ -481,33 +504,42 @@ function SendOrStop({
   busy: boolean;
   onStop?: () => void;
 }) {
-  const swapped = useChanged(running);
+  const glyph: SendGlyph = busy ? "sending" : running && empty && onStop ? "stop" : "send";
+  // 지금 글리프와 그 앞의 것 — 바뀐 그 그림에서 곧바로 고친다(효과에서 고치면 새 글리프가 움직임 없이 한 장면 그려진다, `useChanged`).
+  const [held, setHeld] = useState<{ now: SendGlyph; before: SendGlyph | null }>({ now: glyph, before: null });
+  const shown = held.now === glyph ? held : { now: glyph, before: held.now };
+  if (shown !== held) setHeld(shown);
+  const stop = glyph === "stop";
   return (
-    <>
-      {(!running || !empty) && (
-        <button
-          type="submit"
-          aria-label="보내기"
-          disabled={empty || busy}
-          className={cn(
-            "ml-1 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-button ease-settle focus-ring",
-            empty || busy ? "bg-fill-active text-fg-tertiary" : "bg-fg text-fg-inverse",
-          )}
-        >
-          <ArrowUp className={cn("size-4", swapped && "button-in")} aria-hidden />
-        </button>
+    <button
+      type={stop ? "button" : "submit"}
+      aria-label={glyph === "sending" ? "보내는 중" : stop ? "멈추기" : "보내기"}
+      onClick={stop ? onStop : undefined}
+      disabled={glyph === "sending" || (glyph === "send" && empty)}
+      className={cn(
+        "relative flex size-7 shrink-0 items-center justify-center rounded-full text-fg-on-solid transition-[background-color,opacity] duration-morph ease-default focus-ring",
+        glyph === "sending" ? "bg-accent-solid-pending" : "bg-accent-solid",
+        glyph === "send" && empty && "opacity-40",
       )}
-      {running && onStop && (
-        <button
-          type="button"
-          aria-label="멈추기"
-          onClick={onStop}
-          className="ml-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-fg text-fg-inverse focus-ring"
-        >
-          <span className={cn("size-2.5 rounded-xs bg-current", swapped && "button-in")} aria-hidden />
-        </button>
+    >
+      {shown.before !== null && <SendFace key={`${shown.before}>${shown.now}`} glyph={shown.before} motion="morph-out" />}
+      <SendFace key={shown.now} glyph={shown.now} motion={shown.before !== null ? "morph-in" : undefined} />
+    </button>
+  );
+}
+
+/** 보내기 원 안의 글리프 하나 — 바뀌는 동안 옛것과 새것이 같은 자리에 겹친다. */
+function SendFace({ glyph, motion }: { glyph: SendGlyph; motion?: "morph-in" | "morph-out" }) {
+  return (
+    <span aria-hidden className={cn("absolute inset-0 flex items-center justify-center", motion)}>
+      {glyph === "send" ? (
+        <ArrowUp className="size-3.5" />
+      ) : glyph === "stop" ? (
+        <span className="size-1.5 rounded-2xs bg-current" />
+      ) : (
+        <Spinner className="size-3" />
       )}
-    </>
+    </span>
   );
 }
 
@@ -518,17 +550,14 @@ function SendOrStop({
  * 고리(`ring`)로 준다 — 안쪽 여백을 주면 뒤의 글이 입력칸의 글자와 어긋난다. 입력칸이 구르면 같이 구른다(`scrollTop`). 받는 이가 서면 면이 칩으로 나타난다(칩 나타남 — 글 안의 면이라
  * 옅음만 움직인다).
  */
-const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: number; end: number }; roomy: boolean }>(
-  function MentionPaint({ text, at, roomy }, ref) {
+const MentionPaint = forwardRef<HTMLDivElement, { text: string; at: { start: number; end: number } }>(
+  function MentionPaint({ text, at }, ref) {
     const motion = useArrival("chip-in");
     return (
       <div
         ref={ref}
         aria-hidden
-        className={cn(
-          "pointer-events-none absolute inset-0 overflow-hidden pr-2.5 text-sm leading-5.5 whitespace-pre-wrap wrap-break-word text-transparent",
-          roomy ? "min-h-11" : "min-h-5.5",
-        )}
+        className="pointer-events-none absolute inset-0 overflow-hidden px-1 text-sm whitespace-pre-wrap wrap-break-word text-transparent"
       >
         {text.slice(0, at.start)}
         <mark className={cn("rounded-sm bg-fill-hover text-transparent ring-2 ring-fill-hover", motion)}>
