@@ -59,6 +59,29 @@ describe("상태 농도 스케일", () => {
     expect(offenders(/[^\s"'`]*:!?bg-accent(?![\w-])[^\s"'`]*/g)).toEqual([]);
   });
 
+  // **상태 면의 이름은 `index.css`가 열거한 것뿐이다.** 면 알파 셋 · 흰 카드 안의 고른 면(`fill-selected`)에 02가 Codex 실측 둘을 더했다 —
+  // 사이드바 · 사람 메뉴의 투명한 고른 면(`fill-nav-selected` .053, 02 스펙 §4)과 요약 고정 토글의 켜진 면(`fill-toggle-on` #ebebec,
+  // 스펙 §6). 새 면을 들이면 이 목록과 `index.css`의 상태 농도 머리말을 함께 고친다 — 목록 밖의 면은 면 알파를 써야 한다.
+  const css = blankComments(readFileSync(join(root, "src", "index.css"), "utf8"));
+  const lightFills = [
+    ...new Set(
+      [...css.matchAll(/(?:^|\n):root\s*\{([^}]*)\}/g)].flatMap((block) =>
+        [...block[1].matchAll(/--fill-([a-z0-9-]+)\s*:/g)].map((m) => m[1]),
+      ),
+    ),
+  ];
+
+  it("index.css가 세운 상태 면은 면 알파 셋 · 고른 면 · Codex 실측 둘이다", () => {
+    expect(lightFills).toEqual(["soft", "hover", "active", "selected", "nav-selected", "toggle-on"]);
+  });
+
+  it("소스는 index.css가 세운 상태 면 이름만 쓴다", () => {
+    // 이름 한 글자가 틀린 `bg-fill-nav-select`는 CSS가 안 나와 면이 조용히 투명해진다 — 빌드도 타입 검사도 통과한다.
+    const used = offenders(/(?<![\w-])(?:[^\s"'`]*:)?!?bg-fill-([a-z0-9-]+)/g);
+    expect(used.length).toBeGreaterThan(20);
+    expect(used.filter((place) => !lightFills.includes(/bg-fill-([a-z0-9-]+)$/.exec(place)![1]))).toEqual([]);
+  });
+
   // 「켜지지 않는 것의 hover」는 quiet-hover 하나가 답한다. 손으로 다시 적으면 열 자리가
   // 같은 문자열을 갖게 되고, 농도를 한 번 조정할 때 열 곳을 다 고쳐야 한다 — 실제로
   // 그 상태였고 ui-refresh가 걷어냈다. 눈으로는 안 보이는 종류라 여기서 막는다.

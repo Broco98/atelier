@@ -578,4 +578,13 @@ describe("간격 토큰", () => {
     // e2e)가 수로 못 읽는다(`index.css`의 `--titlebar-height`와 같은 까닭).
     expect(tokens.filter((one) => one.value !== `${one.step * px}px`)).toEqual([]);
   });
+
+  // **턴 사이는 Codex가 잰 두 길이다**(02 구현 스펙 §8) — 말풍선 → 답 첫 글자 51.5, 답 끝 → 다음 말풍선 52. 글자 잉크에서 상자 끝까지 잰
+  // 거리라 상자 사이의 간격(눈금)이 아니다 — 화면(08)은 글줄의 위아래 여백을 빼서 눈금으로 적고, L3(13)가 이 이름을 읽어 잉크 사이를 맞댄다.
+  // 그래서 눈금의 칸 이름(`--space-<수>`)이 아니라 자리 이름이고, 값은 식이 아니라 수다(위와 같은 까닭).
+  it("턴 사이 두 길이가 Codex 값 그대로 수로 선다", () => {
+    const turn = (name: string) => new RegExp(`--space-${name}:\\s*([^;]+);`).exec(stylesheet.text)?.[1].trim();
+    expect(turn("reply")).toBe("51.5px");
+    expect(turn("turn")).toBe("52px");
+  });
 });

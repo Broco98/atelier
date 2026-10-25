@@ -81,7 +81,8 @@ describe("글자 단계", () => {
   // **먼저 읽었음을 센다.** 주석 지우기가 새서 원문을 통째로 지우면 아래 「0건」이 저절로 초록이 된다 —
   // 단계 클래스가 주석 밖에서 실제로 보이는지까지 본다.
   it("검사가 실제로 소스를 읽는다", () => {
-    // DS 「Atelier」 2판 `type.groups`의 차례 그대로다 — 제목 · 글 · 대화 · 라벨 · 코드 · Atelier.
+    // DS 「Atelier」 2판 `type.groups`의 차례 그대로다 — 제목 · 글 · 대화 · 라벨 · 코드 · Atelier. 끝의 둘은 02가 더한 Codex 실측이다 —
+    // 인라인 코드의 .92em(`codespan`, 스펙 §8)과 첫 화면 물음의 28(`home`, 스펙 §11).
     expect(steps).toEqual([
       "heading-5xl",
       "heading-4xl",
@@ -105,6 +106,8 @@ describe("글자 단계", () => {
       "caps-md",
       "code",
       "nav-row",
+      "codespan",
+      "home",
     ]);
     const uses = new RegExp(`(?<![\\w-])text-(?:${steps.join("|")})(?![\\w-])`, "g");
     expect(sources.length).toBeGreaterThan(100);
@@ -138,9 +141,68 @@ const radii = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =>
   [...block[1].matchAll(/--radius-([a-z0-9]+):/g)].map((m) => m[1]),
 );
 
+// **superellipse 단계**(02 구현 스펙 §4 · §7 · §8 · §10 · S24) — `corner-shape`를 쓸 수 있는 창에서 `index.css`의
+// `@supports (corner-shape: …)` 상자가 `:root`에서 다시 세우는 반경 이름이다. 그 밖의 창(WebKit — 앱 · L3)은 `@theme`의 둥근 네모 값을 쓴다.
+const superellipse = [
+  ...(/@supports\s*\(\s*corner-shape:[^{]*\{\s*:root\s*\{([^}]*)\}/.exec(css)?.[1] ?? "").matchAll(/--radius-([a-z0-9]+):/g),
+].map((m) => m[1]);
+
+/** superellipse 단계를 쓰는 반경 클래스 — 모서리 쪽 앞말 · 변형도 센다. */
+const superellipseUse = new RegExp(
+  `(?<![\\w-])(?:[^\\s"'\`]*:)?rounded(?:-(?:[trblxyse]|tl|tr|br|bl|ss|se|es|ee))?-(?:${superellipse.join("|")})(?![\\w-])`,
+);
+
+/** 반경을 적는 한 단위 — 소스의 한 줄짜리 문자열(`"…"` · `` `…` ``)과 `index.css`의 `@apply` 한 문장. */
+function classUnits({ file, text }: { file: string; text: string }): { file: string; text: string }[] {
+  const pattern = file.endsWith(".css") ? /@apply[^;]*;/g : /"[^"\n]*"|`[^`\n]*`/g;
+  return [...text.matchAll(pattern)].map((m) => ({ file, text: m[0] }));
+}
+
 describe("반경 단계", () => {
   it("Codex의 반경 이름이 `@theme`에 있다", () => {
-    expect(radii).toEqual(["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "bubble", "4xl", "composer", "full"]);
+    // 02가 Codex 실측 일곱을 더했다(크기 차례에 끼운다) — 인라인 코드 `codespan` · 사이드바 줄 `row` · 요약 카드 `summary` · 트레이 `tray` ·
+    // 사람 말풍선 `speech` · 입력창 자리 카드 `slot` · 입력창 `prompt`. 값과 쓰임은 `index.css`의 반경 머리말이 든다.
+    expect(radii).toEqual([
+      "2xs",
+      "xs",
+      "sm",
+      "codespan",
+      "md",
+      "lg",
+      "row",
+      "xl",
+      "summary",
+      "tray",
+      "2xl",
+      "speech",
+      "3xl",
+      "slot",
+      "bubble",
+      "prompt",
+      "4xl",
+      "composer",
+      "full",
+    ]);
+  });
+
+  it("superellipse 단계는 `@theme`의 반경 이름이다", () => {
+    expect(superellipse).toEqual(["codespan", "row", "summary", "slot", "speech"]);
+    expect(superellipse.filter((name) => !radii.includes(name))).toEqual([]);
+  });
+
+  // **superellipse 단계는 `corner-superellipse`와 함께 단다.** 단계가 다시 세우는 큰 값(12.5 · 15 · 22 · 25)은 모서리 모양이 superellipse일
+  // 때의 값이라, 모양 없이 그 값만 서면 `corner-shape`를 쓰는 창에서 둥근 네모가 25% 커진다. 앱(WebKit)에는 `corner-shape`가 없어 그 차이가
+  // 화면에 없다 — 눈으로는 안 지켜져 여기서 막는다.
+  it("superellipse 단계를 쓰는 클래스에는 corner-superellipse가 함께 선다", () => {
+    const unpaired = (units: { file: string; text: string }[]) =>
+      units.filter(({ text }) => superellipseUse.test(text) && !/(?<![\w-])corner-superellipse(?![\w-])/.test(text));
+    // 앵커: 꼴이 모서리 앞말 · 변형까지 잡고, superellipse 단계가 아닌 반경은 잡지 않는다.
+    const sample = classUnits({
+      file: "예.tsx",
+      text: '"rounded-row corner-superellipse" "rounded-b-summary" "hover:rounded-slot" "rounded-lg rounded-tray" `rounded-speech`',
+    });
+    expect(unpaired(sample).map(({ text }) => text)).toEqual(['"rounded-b-summary"', '"hover:rounded-slot"', "`rounded-speech`"]);
+    expect(unpaired(sources.flatMap(classUnits)).map(({ file, text }) => `${file}: ${text}`)).toEqual([]);
   });
 
   it("단계 밖 이름을 쓰지 않는다", () => {
@@ -174,7 +236,8 @@ const shadows = [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) =
 // 「조금 다른 그림자」로만 남아 눈으로는 안 지켜진다(스펙 레이아웃 화면의 메시지가 한 번 그렇게 남았다).
 describe("그림자 단계", () => {
   it("Codex의 그림자 이름이 `@theme`에 있다", () => {
-    // 끝의 셋은 두 겹을 합친 이름이다(`index.css`의 그 주석) — 한 요소에 `shadow-*` 둘을 달면 합치기가 앞의 것을 지운다.
+    // `modal` · `raised` · `lifted`는 두 겹을 합친 이름이다(`index.css`의 그 주석) — 한 요소에 `shadow-*` 둘을 달면 합치기가 앞의 것을
+    // 지운다. 끝의 넷은 02가 더한 Codex 실측이다 — 흰 판 `panel` · 사람 메뉴 `menu` · 요약 카드 `summary` · 입력창 `prompt`.
     expect(shadows).toEqual([
       "hairline",
       "100",
@@ -188,6 +251,10 @@ describe("그림자 단계", () => {
       "modal",
       "raised",
       "lifted",
+      "panel",
+      "menu",
+      "summary",
+      "prompt",
     ]);
   });
 
@@ -257,12 +324,16 @@ describe("cn이 DS 단계를 안다", () => {
     const [durations, eases] = [/--transition-duration-([a-z0-9-]+):/g, /--ease-([a-z0-9-]+):/g].map((name) =>
       [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) => [...block[1].matchAll(name)].map((m) => m[1])),
     );
-    // 뒤의 아홉 · `settle`은 모션 보드의 토큰이다(v1 티켓 43).
+    // 둘째 줄 아홉 · `settle`은 모션 보드의 토큰이다(v1 티켓 43). 끝의 다섯 · 넷은 02가 더한 Codex 움직임이다(02 구현 스펙 §12).
     expect(durations).toEqual([
       ...["basic", "relaxed", "chip", "dropdown", "word", "pulse", "tip", "peek-close", "panel"],
       ...["card", "join", "log", "swap", "button", "jump", "flash", "shimmer", "spin"],
+      ...["sidebar", "think", "arrive", "wave", "morph"],
     ]);
-    expect(eases).toEqual(["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"]);
+    expect(eases).toEqual([
+      ...["settle", "default", "enter", "enter-snappy", "exit", "exit-snappy", "move", "out", "panel"],
+      ...["spring", "shimmer", "arrive", "wave"],
+    ]);
     expect(durations.filter((name) => cn(`duration-${name}`, "duration-0") !== "duration-0")).toEqual([]);
     expect(eases.filter((name) => cn(`ease-${name}`, "ease-linear") !== "ease-linear")).toEqual([]);
   });

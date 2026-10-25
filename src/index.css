@@ -94,6 +94,12 @@
     --space-8: 32px;
     --space-11: 44px;
 
+    /* **턴 사이**(02 구현 스펙 §8 · 티켓 01) — Codex가 잰 대화 간격이다. 말풍선 → 답 첫 글자 51.5, 답 끝 → 다음 말풍선 52이고, **글자
+       잉크에서 상자 끝까지** 잰 거리다 — 상자 사이의 간격이 아니다. 화면(08)은 글줄의 위아래 여백을 빼 눈금으로 적고(51.5는 눈금 밖이다),
+       L3(13)가 이 이름을 읽어 잉크 사이를 맞댄다. 눈금의 칸 이름(`--space-<수>`)이 아니라 자리 이름이다(`spacing-guard.test.ts`가 잰다). */
+    --space-reply: 51.5px;
+    --space-turn: 52px;
+
     /* 카드 머리 높이 — DS 2판 `--size-toolbar`(46)를 읽는다. 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
        넓은 화면의 폭 상한 `--measure-wide`(1120 — Processes · 넓게 보는 문서)는 ui-refresh 때의 값을 잇는다(Codex가 말하지 않는다).
        읽는 글의 폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(`SpecViewer`의 `bodyColumn`) · 프로젝트 상세(`ProjectDetail`) · 설정
@@ -250,6 +256,29 @@
     --color-term-dim: var(--term-dim);
     --color-term-ok: var(--term-ok);
     --color-term-hi: var(--term-hi);
+    /* **Codex 실측 색**(02 구현 스펙 §3~§12 · 티켓 01) — DS 2판 표 밖의 값이다. 쓰임은 아래 `:root`의 같은 머리말이 든다. */
+    --color-fg-bubble: var(--fg-bubble);
+    --color-fg-placeholder: var(--fg-placeholder);
+    --color-fg-subtle: var(--fg-subtle);
+    --color-fg-faint: var(--fg-faint);
+    --color-fg-label: var(--fg-label);
+    --color-fg-icon: var(--fg-icon);
+    --color-fg-titlebar: var(--fg-titlebar);
+    --color-fg-titlebar-disabled: var(--fg-titlebar-disabled);
+    --color-fg-thinking: var(--fg-thinking);
+    --color-mine: var(--mine);
+    --color-mine-soft: var(--mine-soft);
+    --color-surface-codespan: var(--surface-codespan);
+    --color-surface-tray: var(--surface-tray);
+    --color-border-panel: var(--border-panel);
+    --color-border-summary: var(--border-summary);
+    --color-border-slot: var(--border-slot);
+    --color-border-faint: var(--border-faint);
+    --color-separator: var(--separator);
+    --color-separator-soft: var(--separator-soft);
+    --color-fill-nav-selected: var(--fill-nav-selected);
+    --color-fill-toggle-on: var(--fill-toggle-on);
+    --color-accent-solid-pending: var(--accent-solid-pending);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -303,6 +332,11 @@
     --shadow-modal: var(--shadow-prominent), var(--shadow-2xl);
     --shadow-raised: var(--shadow-hairline), var(--shadow-200);
     --shadow-lifted: var(--shadow-hairline), var(--shadow-card);
+    /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — DS 2판 표 밖의 값이다. 값은 아래 `:root`의 「Codex 실측 그림자」가 든다. */
+    --shadow-panel: var(--shadow-panel);
+    --shadow-menu: var(--shadow-menu);
+    --shadow-summary: var(--shadow-summary);
+    --shadow-prompt: var(--shadow-prompt);
     /* **Codex 시간의 유틸리티**(`duration-basic` · `duration-panel` …). 값은 아래 `@theme static`의 `--duration-*`이다 —
        Tailwind의 시간 이름공간은 `--transition-duration-*`라 `--duration-*`만 두면 `duration-panel`이 아무 CSS도 안 낸다. */
     --transition-duration-basic: var(--duration-basic);
@@ -323,6 +357,11 @@
     --transition-duration-flash: var(--duration-flash);
     --transition-duration-shimmer: var(--duration-shimmer);
     --transition-duration-spin: var(--duration-spin);
+    --transition-duration-sidebar: var(--duration-sidebar);
+    --transition-duration-think: var(--duration-think);
+    --transition-duration-arrive: var(--duration-arrive);
+    --transition-duration-wave: var(--duration-wave);
+    --transition-duration-morph: var(--duration-morph);
     /* **메뉴 카드의 들고남**(`animate-menu-enter` · `animate-menu-exit`, DS 「움직임」의 메뉴 값). tw-animate의 `animate-in` ·
        `animate-out`을 쓰지 않는다 — 그 키프레임(`enter` · `exit`)은 늘 `filter: blur(…)`도 움직이고, 그것이 `ease-enter-snappy`
        곡선과 만나면 리눅스 WebKit(CI의 L3 WebKitGTK)의 웹 프로세스가 죽는다. 그래서 불투명도 · 크기만 움직이는 키프레임을 따로
@@ -450,6 +489,14 @@
     --text-nav-row: 14px;
     --text-nav-row--line-height: 20px;
     --text-nav-row--font-weight: 500;
+    /* Codex 실측(02 구현 스펙 §8 · §11 · 티켓 01). DS 표 밖의 둘이다.
+         codespan  .92em          답 안 인라인 코드(08) — 둘레 글자의 .92(고정 13px가 아니다). 줄 높이를 정하지 않아 글줄의 줄 높이를
+                                  그대로 따른다(시안 `.ic`). 상자는 바탕 `surface-codespan` · 반경 `codespan` · 안쪽 1 / 6 — 높이 17이 된다
+         home      28 / 34        첫 화면의 「무엇을 만들까요?」(10, 시안 F1-Home) — 굵기 400(적지 않는다, 위 머리말) · 자간 −0.2 */
+    --text-codespan: 0.92em;
+    --text-home: 28px;
+    --text-home--line-height: 34px;
+    --text-home--letter-spacing: -0.2px;
 }
 
 /* **Codex 반경**(codex-ds 결정 27). 이름과 값은 DS 「Atelier」 2판 그대로이고 다크가 없다. DS 이름이 곧 Tailwind 반경
@@ -468,8 +515,28 @@
      3xl       20     코드 블록(문서 · mermaid · 에이전트 훅 설정의 미리보기)
      4xl       24     확인 창 · 「LLM이 받는 텍스트」 창(DS `Dialog`)
      full    9999     큰 버튼(`Button` lg — 36) · 점 · 칩 · 스위치 · 꼬리표 · 경로 줄
-   나머지(`bubble` 22 · `composer` 28)는 아직 쓰는 자리가 없다. 버튼 · 아이콘 버튼 · 입력 · 툴팁 · 확인 창은 DS 「간격 · 반경 ·
-   크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그 화면을 고치는 자리의 일이다.
+   나머지 DS 둘은 Thread 화면이 쓴다 — `bubble` 22는 사람 말풍선 · 호출 줄, `composer` 28은 입력창과 입력창 자리의 카드다. 버튼 · 아이콘
+   버튼 · 입력 · 툴팁 · 확인 창은 DS 「간격 · 반경 · 크기」의 쓰임 그대로다(codex-ds 티켓 09) — 나머지 화면을 그 쓰임에 맞추는 것은 그
+   화면을 고치는 자리의 일이다.
+
+   **Codex 실측 둥글기**(02 구현 스펙 §4 · §7 · §8 · §9 · §10 · S24 · 위험 · 티켓 01). Codex는 `corner-shape`를 쓸 수 있으면 DS 값의 1.25배에
+   superellipse(1.5) 모서리를 그리고, 못 쓰는 창에서는 DS 값의 둥근 네모로 떨어진다(시안 Diff-Tokens 「모서리」 · 시안의 `.r-*`). 앱(WKWebView)과
+   L3(WebKitGTK)에는 `corner-shape`가 없다 — 화면에 서는 것은 늘 아래의 둥근 네모 값이다. 그래서 두 값을 한 이름에 둔다.
+     이름       둥근 네모  superellipse  쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓)
+     codespan      6          7.5         답 안 인라인 코드(08)
+     row          10         12.5         사이드바 줄(05)
+     summary      12         15           요약 카드(07)
+     tray         15          —           첫 화면 입력창 밑 트레이의 아래 두 모서리(10) — 시안에서도 둥근 15 하나다
+     speech       16         22           사람 말풍선(08, S24 — 시안 「≈16 둥근 사각」. 22의 둥근 `bubble`과는 다른 단계다)
+     slot         20         25           입력창 자리 카드 — 승인 · 계획 · 질문 · Work 만들기 · Project 붙이기(11)
+     prompt       22          —           입력창(10) — 시안에서도 둥근 22 하나다(Diff-Tokens 「입력창 22는 round」). DS `composer`(28)는
+                                          입력창 자리 카드 · 알림 카드 · 읽기만 줄 · 끌어 놓기 자리도 읽어 그대로 둔다
+   - 둥근 네모 값은 아래 `@theme`에, superellipse 값은 그 뒤 `@supports (corner-shape: superellipse(1.5))`의 `:root`가 다시 세운다(층 밖
+     선언이 `@theme`의 층 안 선언을 이긴다). **superellipse 단계를 쓰는 자리는 `corner-superellipse`를 함께 단다** — 모서리 모양도 같은 창에서만
+     바뀐다. 짝이 빠지면 그 창에서 둥근 네모가 25% 커진다(`type-scale.test.ts`가 짝을 잰다).
+   - 흰 판(02)의 12는 DS `xl`, 사람 메뉴의 줄(04)과 내 차례 알약(05)의 8은 `md`, 답한 질문 · 대기 메시지(11)의 12는 `xl`이다 — 시안에서도
+     둥근 네모다.
+
    `rounded-[…]`(px · `min()` · `calc()`)와 이 목록 밖 이름은 `type-scale.test.ts`가 막고, 클래스 합치기(`lib/utils.ts`의 `cn`)가
    이 이름들을 모서리로 아는지도 같은 검사가 잰다. `components/ui` 부품 머리말 「앱 규격으로 고친 자리」에 적힌 모서리 px는 단계로
    옮기기 전의 기록이다 — 머리말에서도 단계 이름(`rounded-lg` …)으로 적힌 것이 지금 값이다. */
@@ -478,15 +545,41 @@
     --radius-2xs: 2px;
     --radius-xs: 4px;
     --radius-sm: 6px;
+    --radius-codespan: 6px;
     --radius-md: 8px;
     --radius-lg: 10px;
+    --radius-row: 10px;
     --radius-xl: 12px;
+    --radius-summary: 12px;
+    --radius-tray: 15px;
     --radius-2xl: 16px;
+    --radius-speech: 16px;
     --radius-3xl: 20px;
+    --radius-slot: 20px;
     --radius-bubble: 22px;
+    --radius-prompt: 22px;
     --radius-4xl: 24px;
     --radius-composer: 28px;
     --radius-full: 9999px;
+}
+
+/* Codex 실측 둥글기의 superellipse 값 — 위 반경 머리말의 표. `corner-shape`를 쓸 수 있는 창에서만 선다. */
+@supports (corner-shape: superellipse(1.5)) {
+    :root {
+        --radius-codespan: 7.5px;
+        --radius-row: 12.5px;
+        --radius-summary: 15px;
+        --radius-slot: 25px;
+        --radius-speech: 22px;
+    }
+}
+
+/* superellipse 단계의 모서리 모양(위 반경 머리말) — 큰 값이 서는 그 창에서만 모서리를 superellipse(1.5)로 바꾼다. superellipse 단계
+   (`rounded-codespan` · `rounded-row` · `rounded-summary` · `rounded-speech` · `rounded-slot`)와 늘 함께 단다. */
+@utility corner-superellipse {
+    @supports (corner-shape: superellipse(1.5)) {
+        corner-shape: superellipse(1.5);
+    }
 }
 
 /* **Codex 움직임 · 크기**(codex-ds 결정 27). 값은 DS 「Atelier」 2판 그대로이고 다크가 없다. `static`이라 쓰는 유틸리티가
@@ -504,7 +597,27 @@
      `join` Agent 참여 · `log` 로그 펼침 · `swap` 줄 바뀜 · `button` 버튼 바뀜 · `jump` 아래로 버튼 · `flash` 문서 강조 ·
      `shimmer` 반짝임 · `spin` 회전)과 보드의 감속 곡선 `ease-settle`(.2,.8,.2,1 — 제자리에 내려앉는다), 표의 「사이」 셋
      (`--stagger-*` — 단어 사이 70 · 로그 줄마다 40 · 점마다 150). 이 이름들을 읽는 움직임은 파일 끝 「Thread의 움직임」에 모여
-     있다. */
+     있다.
+   - **Codex 움직임**(02 구현 스펙 §12 · 캔버스 v35 Diff-Tokens 「움직임」 · Motion 보드 · 티켓 01). Codex 번들의 값이다. 스펙 §12의 줄과
+     토큰은 아래와 같고, 지금 토큰과 같은 값인 줄은 그 토큰을 쓴다(새 이름을 세우지 않는다). 움직임 자체 — 키프레임 · 유틸리티 · 파일 끝
+     동작 줄이기 블록의 갈래 — 는 그것을 그리는 티켓이 짓는다(괄호 안).
+       메뉴 · 팝오버          움직이지 않는다. 모델 피커만 `duration-dropdown` · `ease-enter-snappy` · 30ms · .98배에서(= 지금 `animate-menu-enter`)(12)
+       툴팁                    `delay-tip`(200) · 움직임 없음. 지금 툴팁이 읽는 `--duration-tip`(150)은 호버 카드(`hover-group.ts`)도 읽어
+                               그대로 둔다 — 툴팁이 새 이름으로 옮긴다(12)
+       사이드바 열고 닫기      `duration-sidebar`(.3s) · `ease-spring` — spring {duration .3, bounce .1}을 옮긴 `linear()`(Motion 보드 `--cx-spring`).
+                               지금 사이드바가 읽는 `PANEL_MOTION`(`duration-panel` · `ease-panel`)은 작업 패널 · 셸 컨트롤도 읽어 그대로 둔다(12)
+       요약 카드 비켜나기      `duration-panel` · `ease-panel`(07)
+       펼침 · 접힘             `duration-relaxed` · `ease-enter` — 높이 0 → auto + 투명도. 꺾쇠 회전도 .3s(09)
+       생각 중                 `duration-think`(4s 한 바퀴 — 띠는 첫 25%인 1s에 지나가고 쉰다) · `delay-think`(보인 뒤 600ms) · `ease-shimmer`
+                               (`steps(48)`). 띠는 `shimmer-band`, 글자는 `fg-thinking`(위 「Codex 실측 색」)(12)
+       작업 중                 `duration-shimmer`(2s) · `ease-shimmer` — 되풀이(12)
+       답 글자 도착            `duration-arrive`(.7s) · `ease-arrive` · 조각 사이 늦음 없음. 흐르는 끝 `--size-stream-fade`(240)가 옅다(12)
+       작업 중 점              `duration-wave`(1s) · `ease-wave`(`steps(3)`) · 점마다 `stagger-wave`(.1s) — 파도 +1.2 / −2px(12)
+       보내기 아이콘           `duration-morph`(.52s) · `ease-default` — times [0, .22, .72, 1](10)
+       칩 등장(subagent 칩)    `duration-chip` · `ease-enter-snappy` — translate(−8, 4) · .92 → 1.02 → 1(10)
+       입력창 바닥 줄 높이     `duration-panel` · `ease-panel`(10)
+     늦음(`--delay-*`)과 사이(`--stagger-*`)는 Tailwind 이름공간이 아니다 — 움직임 유틸리티가 변수로 읽는다(Thread 화면은 `delay-*`를 쓰지
+     않는다, `motion-guard.test.ts`). */
 @theme static {
     --duration-basic: 150ms;
     --duration-relaxed: 300ms;
@@ -524,10 +637,18 @@
     --duration-flash: 1600ms;
     --duration-shimmer: 2000ms;
     --duration-spin: 900ms;
+    --duration-sidebar: 300ms;
+    --duration-think: 4000ms;
+    --duration-arrive: 700ms;
+    --duration-wave: 1000ms;
+    --duration-morph: 520ms;
 
     --stagger-word: 70ms;
     --stagger-log: 40ms;
     --stagger-dot: 150ms;
+    --stagger-wave: 100ms;
+    --delay-think: 600ms;
+    --delay-tip: 200ms;
 
     --ease-settle: cubic-bezier(0.2, 0.8, 0.2, 1);
     --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
@@ -556,6 +677,12 @@
        튀었다(실측). "지금 안 보이니 괜찮다"가 성립하지 않는 종류라 곡선을 맞춰 두는 것이
        유일한 방어선이다 */
     --ease-panel: cubic-bezier(0.2, 0, 0, 1);
+    /* Codex 움직임의 곡선(위 머리말의 「Codex 움직임」 표). `spring`은 Motion 보드의 `--cx-spring` 그대로다 — 사이드바 폭을 이 곡선으로
+       옮기는 날(12), 폭과 함께 더해지는 머리 줄의 인셋도 같은 곡선이어야 한다(위 `ease-panel`의 머리말). */
+    --ease-spring: linear(0, 0.042, 0.14, 0.261, 0.386, 0.504, 0.608, 0.697, 0.771, 0.83, 0.876, 0.911, 0.938, 0.958, 0.973, 0.983, 0.99, 0.995, 0.998, 1, 1.001, 1.001, 1.001, 1.002, 1);
+    --ease-shimmer: steps(48, end);
+    --ease-arrive: cubic-bezier(0.37, 0.55, 0.86, 0.88);
+    --ease-wave: steps(3, end);
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
@@ -571,7 +698,13 @@
        위에 뜨는 카드의 폭이고, 카드가 열린 동안 대화가 이 폭 + 틈 12만큼 왼쪽으로 비켜 준다(`ThreadScreen`). DS에 이 폭이 없다.
        넓힌 카드 곁의 대화 폭(`--size-thread-beside` 480)도 v1이 더했다(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.p-open .chat`) — 카드가
        넓은 동안 대화가 왼쪽에 이 폭으로 남고 카드가 그 오른쪽을 채운다(`ThreadScreen`). 넓힌 카드의 목록 칸은 `--size-list`(264)를 읽는다
-       (보드 `.p-open .wlist` — `WorkCard`). */
+       (보드 `.p-open .wlist` — `WorkCard`).
+
+       **Codex 실측 크기**(02 구현 스펙 §9 · §12 · 티켓 01) — 둘은 아직 쓰는 자리가 없다.
+         column       737   Thread의 대화 열과 입력창의 폭(10 — Codex 열 x 402–1139). DS `size-thread`(48rem)는 문서 · 설정 글 폭으로 남는다
+         stream-fade  240   답이 흐르는 동안 끝을 옅게 지우는 그라데이션의 길이(12 「답 글자 도착」)
+       02의 다른 크기는 지금 토큰이다 — 셸 컨트롤 · 보내기 · 칩 · + · @ · 「…」 · 요약 고정 토글의 28은 `--size-control`, 요약 카드 폭 300은
+       `--size-work-card`, 사이드바 줄 30은 `--size-row-nav`, 입력창 글 칸 최소 44는 `--space-11`(눈금 11)이다. */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -591,6 +724,8 @@
     --size-menu-ctx: 248px;
     --size-work-card: 300px;
     --size-thread-beside: 480px;
+    --size-column: 737px;
+    --size-stream-fade: 240px;
 }
 
 /* **Codex 색 · 그림자 — 라이트**(codex-ds 결정 27 · 스펙 S1 · S2). 이름과 값은 DS 「Atelier」 2판 `tokens.json` 그대로다 —
@@ -642,8 +777,12 @@
        **면 알파 밖의 선택 면은 아래가 전부다** — 모두 일부러 고른 면이다.
          `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, codex-ds 결정 29)이 패널
                              트리의 고른 행과 같은 면이다
-       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널
-       토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
+         `fill-nav-selected` 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). 면 알파이지만
+                             셋과 단이 다르다 — Codex는 사이드바 줄의 hover와 고른 면이 같은 .053이라, 이 면을 쓰는 화면(04 · 05)이
+                             위 사이드바 부등식을 그 값에 맞춰 고친다
+         `fill-toggle-on`    Thread 머리 줄 요약 고정 토글의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
+       이 목록은 **열거**다(`state-scale.test.ts`가 `:root`의 `--fill-*` 이름을 맞댄다): 여기 없는 새 상태 배경은 유예된 것이 아니라
+       면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널 토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
     --fill-soft: rgba(26, 28, 31, 0.05);
     --fill-hover: rgba(26, 28, 31, 0.08);
     --fill-active: rgba(26, 28, 31, 0.12);
@@ -717,6 +856,54 @@
     --new-soft: rgba(51, 156, 255, 0.22);
     --focus-halo: rgba(51, 156, 255, 0.22);
 
+    /* **Codex 실측 색**(02 구현 스펙 §3~§12 · 티켓 01) — DS 2판 표 밖의 값이다. Codex 화면을 재어 시안(캔버스 v35 Diff-Frame · Diff-Chat ·
+       Components · Screen-Live)이 적은 값을 그대로 든다. 이름은 자리를 말한다. **다크 값은 없다** — 02는 라이트만이고(v1 S34) `.dark`에서는
+       이 값을 물려받는다. 쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓):
+         fg-bubble             사람 말풍선의 글자(08) — 바탕은 그대로 `bubble-user`
+         fg-placeholder        입력창 자리표시(10)
+         fg-subtle             입력창 칩의 글자(10) · 작업 구분선의 글자와 꺾쇠(09) · 응답 액션 글리프(08)
+         fg-faint              바닥 사람 줄의 꺾쇠(04) · 요약 카드 결과물의 자리표시(07)
+         fg-label              요약 카드의 라벨과 머리의 Work 이름(07)
+         fg-icon               사람 메뉴의 글리프(04) — 시안은 요약 카드 소스 줄의 글리프에도 쓴다
+         fg-titlebar           머리 줄의 셸 컨트롤 글리프(02) · Thread 머리 줄의 Work 이름과 「…」(06)
+         fg-titlebar-disabled  갈 수 없는 뒤 · 앞(02)
+         fg-thinking           「생각 중」의 바랜 글자(12) — 띠(`shimmer-band`)가 그 위를 밝게 지나간다
+         mine                  내 차례 알약의 글자(05) · 위 줄 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
+         surface-codespan      답 안 인라인 코드의 바탕(08)
+         surface-tray          첫 화면 입력창 밑 트레이(10) · 대기 메시지(11)
+         border-panel          흰 판의 0.5 테두리(02)
+         border-summary        요약 카드의 0.5 테두리(07)
+         border-slot           입력창 자리 카드의 1px 테두리(11)
+         border-faint          작업 중 점의 흰 원(32) 1px 테두리(11)
+         separator             머리 줄 가운데 앞 세로선(02) · 사람 메뉴의 구분선(04)
+         separator-soft        요약 카드의 칸 구분선(07) · 작업 구분선 아래 선(09) · 답한 질문 카드의 테두리(11)
+         fill-nav-selected     사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말)
+         fill-toggle-on        Thread 머리 줄 요약 고정 토글의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
+         accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
+         shimmer-band          「생각 중」 띠의 흰 75%(12) — 띠를 그리는 유틸리티만 읽어 유틸리티 이름을 잇지 않는다 */
+    --fg-bubble: #0c274a;
+    --fg-placeholder: #c7c7c8;
+    --fg-subtle: #8e8f90;
+    --fg-faint: #a4a4a5;
+    --fg-label: #6a6b6d;
+    --fg-icon: #5d5f61;
+    --fg-titlebar: #898a8b;
+    --fg-titlebar-disabled: #cbcbcb;
+    --fg-thinking: #aeaeae;
+    --mine: #2c67c5;
+    --surface-codespan: #e8e9e9;
+    --surface-tray: #f4f4f4;
+    --border-panel: #e8e8e8;
+    --border-summary: #dadadb;
+    --border-slot: rgba(26, 28, 31, 0.078);
+    --border-faint: rgba(0, 0, 0, 0.04);
+    --separator: #e5e5e5;
+    --separator-soft: #ededed;
+    --fill-nav-selected: rgba(26, 28, 31, 0.053);
+    --fill-toggle-on: #ebebec;
+    --accent-solid-pending: #a9c9fb;
+    --shimmer-band: rgba(255, 255, 255, 0.75);
+
     /* 그림자 — 외곽선은 실선 대신 0.5px 링 `shadow-hairline`이다(DS 원칙 4). 떠 있는 것은 `shadow-prominent` */
     --shadow-hairline: 0 0 0 0.5px #0000001a;
     --shadow-100: 0 1px 2px -1px #00000014;
@@ -727,6 +914,16 @@
     --shadow-composer: 0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 40px 8px #00000006;
     --shadow-prominent: 0 0 0 0.5px #1a1c1f1f, 0 3px 7.5px #0000000a, 0 0 20px #0000000d;
     --shadow-2xl: 0 16px 32px -8px #00000030;
+    /* **Codex 실측 그림자**(02 구현 스펙 §3 · §5 · §7 · 티켓 01) — 위 「Codex 실측 색」처럼 다크 값이 없다.
+         panel    흰 판의 위 그림자(02) — 테두리는 `border-panel` 0.5
+         menu     사람 메뉴(04) — 0.5 링이 그림자 첫 겹에 든다
+         summary  요약 카드(07) — 테두리는 `border-summary` 0.5
+         prompt   입력창(10) — DS `composer`의 바깥 흐림 40이 Codex에서 80이다(스펙 §9). `composer`는 입력창 자리 카드 · 알림 카드 ·
+                  읽기만 줄도 읽어 그대로 둔다 */
+    --shadow-panel: 0 -1px 8px rgba(0, 0, 0, 0.03);
+    --shadow-menu: 0 0 0 0.5px rgba(26, 28, 31, 0.117), 0 8px 24px rgba(0, 0, 0, 0.08);
+    --shadow-summary: 0 6px 20px rgba(0, 0, 0, 0.06);
+    --shadow-prompt: 0 0 0 1px #0000000a, 0 2px 8px #0000000a, 0 4px 80px 8px #00000006;
 
     /* 원시 팔레트 — 위 토큰들이 고른 단의 원본이다. 유틸리티로 잇지 않는다(`@theme inline`의 주석) */
     --gray-0: #ffffff;
@@ -972,6 +1169,8 @@
     --term-dim: var(--fg-tertiary);
     --term-ok: var(--success);
     --term-hi: var(--link);
+    /* 내 차례 알약의 바탕(02 스펙 §4 「#2c67c5 on #e8f3fe」) — 사람 말풍선과 같은 옅은 파랑이다. 글자는 `mine`(위 `:root`의 Codex 실측 색) */
+    --mine-soft: var(--bubble-user);
 
     /* **shadcn 이름** — Codex 토큰의 별칭으로만 남는다(codex-ds 스펙 S1). 지금 읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS —
        `background` · `foreground`) 하나이고, 나머지(`--ring` · `--sidebar-ring`을 포함해)는 registry에서 들이는 부품이 이 이름으로

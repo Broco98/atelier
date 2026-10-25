@@ -37,8 +37,9 @@ describe("Thread 화면의 움직임", () => {
     expect(thread.map((one) => one.file)).toEqual(
       expect.arrayContaining(["src/features/thread/ThreadScreen.tsx", "src/features/thread/ThreadComposer.tsx"]),
     );
-    expect([...durations]).toEqual(expect.arrayContaining(["basic", "panel", "button", "swap"]));
-    expect([...eases]).toEqual(expect.arrayContaining(["default", "panel", "settle"]));
+    // 02가 더한 Codex 움직임(02 구현 스펙 §12)도 토큰 이름이다 — 화면은 `duration-morph` · `ease-spring`처럼 그 이름으로 적는다.
+    expect([...durations]).toEqual(expect.arrayContaining(["basic", "panel", "button", "swap", "sidebar", "think", "arrive", "wave", "morph"]));
+    expect([...eases]).toEqual(expect.arrayContaining(["default", "panel", "settle", "spring", "shimmer", "arrive", "wave"]));
   });
 
   it("시간 · 곡선은 토큰 이름이고 늦음을 손으로 적지 않는다", () => {
