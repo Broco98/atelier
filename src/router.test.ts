@@ -48,7 +48,6 @@ interface SetupOptions {
   projects?: Array<ProjectView>;
   archives?: Array<ArchiveEntry>;
   lastWork?: string | null;
-  lastProject?: string | null;
   lastArchive?: string | null;
 }
 
@@ -102,7 +101,6 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   shellStore.setState((state) => ({
     ...state,
     workSlug: options.lastWork ?? null,
-    projectSlug: options.lastProject ?? null,
     archiveSlug: options.lastArchive ?? null,
     lastPlace: null,
   }));
@@ -325,10 +323,13 @@ describe("무선택 주소의 정규화", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("프로젝트에도 같은 규칙이 적용된다", async () => {
-    const { router } = setup(["/projects"], { lastProject: "proj-b" });
+  // **Projects는 이 규칙 밖이다**(03 구현 스펙 §16) — `/projects`가 목록 화면이고 상세는 그 자리를 번갈아 쓴다. 곁에 선 목록이 없으니
+  // 정규화하면 목록을 볼 길이 통째로 없어진다(아래 아카이브 머리말이 적은 옛 사정과 같다). Project가 있어도 목록에 머문다.
+  it("프로젝트는 목록 화면이라 정규화하지 않는다", async () => {
+    const { router, history } = setup(["/projects"]);
     await router.load();
-    expect(router.state.location.pathname).toBe("/projects/proj-b");
+    expect(router.state.location.pathname).toBe("/projects");
+    expect(history.length).toBe(1);
   });
 
   // 아카이브도 같은 규칙이다. **목록 칸이 곁에 상주하기 때문에** 그래도 된다 —
@@ -594,11 +595,11 @@ describe("선택한 항목의 히스토리 의미론", () => {
   // 탭 전환은 무선택 주소로 가고 거기서 정규화가 한 번 더 일어난다.
   // 정규화가 push였다면 여기서 뒤로가기를 두 번 눌러야 한다 — 그 회귀를 이 테스트가 잡는다.
   it("탭을 전환한 뒤 뒤로가기 한 번이면 이전 탭에서 보던 항목으로 간다", async () => {
-    const { router, history } = setup(["/works/work-a"], { lastProject: "proj-b" });
+    const { router, history } = setup(["/works/work-a"], { lastArchive: "치운-b" });
     await router.load();
 
-    await router.navigate({ to: "/projects" });
-    expect(router.state.location.pathname).toBe("/projects/proj-b");
+    await router.navigate({ to: "/archive" });
+    expect(router.state.location.pathname).toBe("/archive/치운-b");
     expect(history.length).toBe(2);
 
     await goBack(router, history);

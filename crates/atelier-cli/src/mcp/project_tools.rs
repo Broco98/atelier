@@ -35,7 +35,9 @@ pub struct EditProjectParams {
     /// New body (Markdown) describing what the project is. Replaces the whole
     /// existing description rather than appending to it.
     pub description: Option<String>,
-    /// Base branch that worktrees branch off from (for example `main`, `develop`).
+    /// Base branch that worktrees branch off from (for example `main`, `develop`). It must be
+    /// one of the project's branches as atelier_list_projects shows them: `git.localBranches`,
+    /// or a remote one from `git.remoteBranches` written as is (`origin/release/2.5`).
     pub base_branch: Option<String>,
 }
 
@@ -87,7 +89,9 @@ impl AtelierServer {
                        is and what lives in it — right after registering a project, and again \
                        whenever you learn it is more than its current description says. \
                        Partial update: fields you omit are left untouched. Omitting is not \
-                       clearing — pass an empty string to clear a field. `description` replaces \
+                       clearing — pass an empty string to clear `description`. `name` and \
+                       `base_branch` cannot be blank, and `base_branch` must be one of the \
+                       project's branches listed by atelier_list_projects. `description` replaces \
                        the whole body rather than appending, so include everything you want to \
                        keep. The slug never changes and the code folder is never modified. \
                        Local files only.",

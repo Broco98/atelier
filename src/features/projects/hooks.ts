@@ -94,6 +94,11 @@ export function useUpdateProject() {
   );
 }
 
+/** 재설정 — 고른 폴더로 경로만 바꾼다(03 구현 스펙 §15). 고르기는 부르는 쪽(`useRelocate`)이 한다. */
+export function useRelocateProject() {
+  return useInvalidatingMutation(({ slug, folder }: { slug: string; folder: string }) => projectsApi.relocate(slug, folder));
+}
+
 export function useDeleteProject() {
   return useInvalidatingMutation((slug: string) => projectsApi.remove(slug));
 }

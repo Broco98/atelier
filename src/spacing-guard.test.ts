@@ -347,7 +347,7 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/components/shell/Frame.tsx",
       className: "gap-1.25",
-      why: "머리 줄 화면 것의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
+      why: "머리 줄 화면 것의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5",
     },
     {
       file: "src/components/ui/button.tsx",
@@ -358,11 +358,6 @@ describe("눈금의 사분 단", () => {
       file: "src/features/works/WorkPeek.tsx",
       className: "gap-1.25",
       why: "호버 카드의 고친 표시 — 점과 글자 사이 5(DS `.at-peek .chg`)",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "gap-1.25",
-      why: "상세 work 줄의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. DS에 그 부품이 없어 작은 글리프의 사이 5(DS `.at-btn.top` · `.at-peek .chg`)를 따른다",
     },
     // 안쪽 9 · 7 — DS 부품의 안쪽
     {
@@ -378,22 +373,12 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/components/shell/Frame.tsx",
       className: "py-1.75",
-      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Projects · Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
+      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
     },
     {
       file: "src/components/ui/input.tsx",
       className: "px-2.25",
       why: "설정의 글자칸(`field`) — 글자까지 DS `.at-input`의 10. DS의 테두리는 폭을 안 먹는 안쪽 고리이고 이 칸의 테두리는 1px이라 그만큼 던다",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "px-3.75",
-      why: "설명을 고치는 칸 — 설명 상자의 옆 16에서 칸의 1px 테두리를 던다(상자의 고리는 폭을 안 먹는다). 글자가 상자일 때의 자리에 그대로 선다",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "py-2.75",
-      why: "위와 같다 — 설명 상자의 위아래 12에서 1px",
     },
     {
       file: "src/features/works/SpecViewer.tsx",
@@ -448,16 +433,6 @@ describe("눈금의 사분 단", () => {
       file: "src/components/ui/select.tsx",
       className: "px-1.75",
       why: "조용한 셀렉트 칩 — 좌우 7은 옛 기준 브랜치 버튼의 값을 잇는다(높이 · 모서리 · 글자는 DS `.at-chip`, 안쪽은 DS에 짝이 없다 — DS 칩은 고리를 두른 12)",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "px-1.75",
-      why: "기준 브랜치 버튼 — 위 셀렉트 칩과 같은 모양이다(목록이 서는 프로젝트는 셀렉트 칩, 없는 프로젝트는 이 버튼)",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "-ml-1.75",
-      why: "그 칩을 속성 열에 앉히는 자리 맞춤 — 칩의 안쪽 7만큼 당겨 칩의 글자가 위 줄의 값들과 한 세로선에 선다",
     },
     // 줄 사이 1 — DS 트리 · 팔레트 목록
     {

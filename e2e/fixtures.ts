@@ -40,10 +40,15 @@ export const PROJECTS: ProjectView[] = [
     baseBranch: "main",
     createdAt: "2026-01-02T03:04:05Z",
     description: "결제 도메인",
-    // **로컬 브랜치가 둘이다** — 기준 브랜치 목록(프로젝트 화면의 Select)에서 「지금 값이 아닌 가지를 고르면」을
-    // 재려면 고를 다른 가지가 있어야 한다(`projects-list.spec.ts`). 지금 값(`main`)이 목록에 들어 있어, 앞에
-    // 붙이는 규칙(지금 값이 목록에 없을 때)은 이 프로젝트에서 안 탄다.
-    git: { remoteSlug: "acme/billing", currentBranch: "main", localBranches: ["main", "release"] },
+    // **로컬 브랜치가 둘이다** — 기준 브랜치 목록(Project 상세의 Select)에서 「지금 값이 아닌 가지를 고르면」을
+    // 재려면 고를 다른 가지가 있어야 한다(`projects-list.spec.ts`). 원격 묶음(「원격 — origin」, 03 구현 스펙 §16)도
+    // 하나 선다 — 원격 브랜치는 원격 이름을 단 그대로다(S19).
+    git: {
+      remoteSlug: "acme/billing",
+      currentBranch: "main",
+      localBranches: ["main", "release"],
+      remoteBranches: [{ remote: "origin", branches: ["origin/main"] }],
+    },
     missing: false,
   },
   {

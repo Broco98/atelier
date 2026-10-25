@@ -1,57 +1,54 @@
-import { cloneElement, useState, type HTMLAttributes, type ReactElement } from "react";
-import { askDanger, showProblem } from "@/components/ui/confirm-store";
-import { Folder, FolderOpen, Trash2 } from "lucide-react";
+import { Fragment, useMemo, useState, type MouseEvent } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Book, ChevronRight, Copy, Download, Folder, GitBranch, MoreHorizontal, Plus, Search, TriangleAlert, X } from "lucide-react";
 import { copyText } from "@/components/shell/copy-text";
-import { Card, Frame } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
 import { openInFinder } from "@/components/shell/open-in-finder";
-import { TargetMenu } from "@/components/shell/TargetMenu";
-import useResizableWidth from "@/components/shell/useResizableWidth";
+import { PlainFrame } from "@/components/shell/PlainFrame";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { askDanger, showProblem } from "@/components/ui/confirm-store";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import { projectDirRef } from "@/features/works/refs";
-import ProjectList from "./ProjectList";
-import ProjectDetail from "./ProjectDetail";
-import { ProjectMenuItems } from "./ProjectMenuItems";
 import { addProject } from "./add-store";
 import { projectsApi } from "./api";
 import { useFolderDrop } from "./folder-drop";
-import { useDeleteProject, useProjects, useUpdateProject } from "./hooks";
+import { useDeleteProject, useProjects } from "./hooks";
 import { firstFolder } from "./project-add";
+import { rowMenu, shownProjects, type RowAct } from "./project-view";
+import { useRelocate } from "./relocate";
 import type { ProjectView } from "./types";
 
-interface ProjectsPageProps {
-  selectedSlug: string | null;
-  onSelect: (slug: string | null) => void;
-  onOpenWork: (slug: string) => void;
-}
+// Projects 목록(03 구현 스펙 §16 · 시안 F1-Projects · F4-ProjMissing · F4-KitProject 「목록 줄」) — 사람 메뉴 「Projects」가 여는 화면이다. 머리 줄
+// 「Projects」, 판 안에 제목 · 찾기 칸 · 「Project 추가」와 표(이름 · 경로 · 기준 브랜치), 표 아래 끌어 놓기 한 줄. 줄을 누르면 상세
+// (`/projects/$slug`)이고, 고치는 일(이름 · 설명 · 기준 브랜치)은 상세가 든다. 제거는 줄 ⋯ 안에만 있다(확인 창 — 세 갈래 창과 되돌리기는 11).
+//
+// 추가는 추가 창 하나다(09 — `addProject`). 폴더를 이 화면에 끌어다 놓으면 창이 그 폴더로 열린다(여럿이면 첫 폴더 — S20).
 
-function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
-  const { data: projects = [] } = useProjects();
-  // 목록 칸의 폭 — 이 목록만 쓰는 키다(사이드바는 `sidebar-width`, 아카이브 목록은 `archive-panel-width`를 따로 갖는다). 기본은 DS
-  // `size-list`(264)이고 범위는 240–560이다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면 그대로 선다(`useResizableWidth`가
-  // 저장값을 읽는 규칙). 목록 칸은 카드의 오른쪽 칸이라(`Frame`의 `ListCard`) 손잡이가 칸의 왼쪽 끝이다 — `"right"`가 끄는 방향을
-  // 뒤집는다. 목록 칸은 접지 않는다(codex-ds 결정 32) — 이 화면에는 오른쪽 패널이 없어 ⌘Enter를 듣는 자리도 없다.
-  const listSize = useResizableWidth("panel-width", 264, 240, 560, "right");
+/** 표의 칸 — 이름 · 경로 · 기준 브랜치 · ⋯. 머리 줄과 몸 줄이 같은 격자다(시안 `.th` · `.prow-h`). */
+const COLUMNS = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_156px_28px] items-center gap-4 pr-2.5 pl-3.5";
+
+export default function ProjectsPage() {
+  const { data: projects = [], isPending } = useProjects();
+  const navigate = useNavigate();
   const deleteProject = useDeleteProject();
-  const updateProject = useUpdateProject();
-  // **이름을 그 자리에서 고치는 중인 프로젝트**(codex-ds 스펙 §9) — 자리가 둘이라(머리 줄 이름 · 목록 행) 따로 든다. 값이 slug인
-  // 것은 고친 대상이 고른 것과 다를 수 있어서다(목록 행은 고르지 않은 행에서도 F2로 고친다). 머리 줄 쪽은 고른 프로젝트가 바뀌면
-  // 그 그림에서 곧바로 꺼진다(`editing`이 `selected.slug`와 견준다) — 입력칸이 blur 없이 내려가도 마지막 그림의 값으로 저장하고 끝을
-  // 알려 이 값을 비운다(`InlineRename`). 저장은 지금 프로젝트 고치기 명령의 이름만 실은 patch다.
-  const [renamingHead, setRenamingHead] = useState<string | null>(null);
-  const [renamingRow, setRenamingRow] = useState<string | null>(null);
-  const rename = (slug: string, name: string) => updateProject.mutate({ slug, patch: { name } });
+  const relocate = useRelocate();
+  const [query, setQuery] = useState("");
+  const shown = useMemo(() => shownProjects(projects, query), [projects, query]);
+  const label = navItem("projects").label;
+  const open = (slug: string) => void navigate({ to: "/projects/$slug", params: { slug } });
 
-  // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
-  const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
-
-  // **추가는 추가 창 하나다**(03 구현 스펙 §16) — 창이 폴더를 고르는 순간 git을 보고, 「새로 만들기」도 같은 창이다. 추가한 Project로
-  // 간다. 폴더를 이 화면에 끌어다 놓으면 창이 그 폴더로 열린다(여럿이면 첫 폴더 — S20).
+  // 추가한 Project의 상세로 간다 — 추가 창이 이름 · 폴더를 정했고, 설명 · 기준 브랜치는 상세가 고친다.
   const handleAdd = async (folder: string | null = null) => {
     const added = await addProject(folder);
-    if (added) onSelect(added.slug);
+    if (added) open(added.slug);
   };
   useFolderDrop((paths) => {
     void firstFolder(paths, projectsApi.inspect).then((folder) => {
@@ -59,175 +56,205 @@ function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps)
     });
   });
 
-  // **제거는 그 프로젝트의 것이다** — 머리 줄의 [제거]는 고른 프로젝트이고, 목록 행의 메뉴는 고르지 않은 행일 수 있다(codex-ds
-  // 결정 7). 확인 창을 거친 뒤에만 나가고, 고른 프로젝트를 뺐을 때만 고름을 비운다 — 다른 행을 빼도 보던 프로젝트는 그대로다.
+  // 제거는 확인 창을 거친다 — 폴더 · 파일은 그대로다. 막힘 · Space에서 빠짐 · 되돌리기는 11이 이 자리를 바꾼다.
   const handleRemove = async (project: ProjectView) => {
-    const ok = await askDanger(
-      `'${project.name}' 제거`,
-      "코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.",
-      "제거",
-    );
+    const ok = await askDanger(`'${project.name}' 제거`, "코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.", "제거");
     if (!ok) return;
     try {
       await deleteProject.mutateAsync(project.slug);
-      if (project.slug === selectedSlug) onSelect(null);
     } catch (e) {
       await showProblem(`제거하지 못했습니다: ${e}`);
     }
   };
-
-  // **프로젝트 메뉴**(codex-ds 스펙 §9 대상 메뉴 표 · 티켓 30) — 목록 행과 머리 줄 이름의 우클릭 · ⇧F10이 편다. 목록은 한 정의
-  // (`ProjectMenuItems`)이고 부르는 길도 한 벌이다 — 자리마다 다른 것은 「이름 바꾸기」가 입력칸을 세우는 자리뿐이다(`startRename`).
-  // 메뉴는 slug를 겨누고 펼 때마다 목록에서 찾는다 — 열어 둔 사이 그 프로젝트가 빠지면 항목도 사라진다.
-  // - Finder 열기는 머리 줄의 「폴더 열기」와 같은 명령이고, 못 열면 코어의 문장을 토스트로 알린다(`openInFinder`).
-  // - 경로 복사는 그 폴더의 참조(`projectDirRef` — 끝에 `/`)이고, Works · Archive의 복사와 한 길로 「… 복사됨」 토스트가 말한다
-  //   (`copyText` · 아래 `Toaster`).
-  const projectMenu = (slug: string, leaveFocus: () => void, startRename: (slug: string) => void) => {
-    const project = projects.find((one) => one.slug === slug);
-    if (!project) return null;
-    return (
-      <ProjectMenuItems
-        project={project}
-        actions={{
-          openFolder: () => openInFinder(() => projectsApi.openFolder(project.slug)),
-          copyPath: () => copyText(projectDirRef(project.path)),
-          rename: () => {
-            leaveFocus();
-            startRename(project.slug);
-          },
-          remove: () => void handleRemove(project),
-        }}
-      />
-    );
+  const act = (project: ProjectView, what: RowAct) => {
+    if (what === "open-folder") openInFinder(() => projectsApi.openFolder(project.slug));
+    else if (what === "copy-path") copyText(projectDirRef(project.path));
+    else void handleRemove(project);
   };
 
+  const empty = !isPending && projects.length === 0;
   return (
-    // 공용 틀 위의 상세 | 목록 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 프로젝트의 이름 · 할
-    // 일이 선다(codex-ds 스펙 §7).
-    <Frame
-      // 머리 줄 — 왼쪽은 폴더 아이콘과 고른 프로젝트의 이름(고른 것이 없으면 nav의 화면 이름)이다. 오른쪽은 그 프로젝트에 거는 할 일인
-      // 폴더 열기 | 제거다(스토리 52). 제거는 되돌릴 수 없는 할 일이라 세로선 너머에 떼어 둔다(DS 캔버스). 캔버스의 「LLM이 받는
-      // 텍스트」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 스펙 S13). **고른 프로젝트의 이름은 그 자리에서 바꾼다**(codex-ds 스펙
-      // §9 · S12 — 이름의 두 번 클릭 · F2, `rename`). 상세 칸에는 제목이 없다 — 이름은 머리 줄이 든다.
-      //
-      // **이름은 프로젝트 메뉴의 대상이다**(`nameMenu` — 위 `projectMenu`). 우클릭하거나 포커스해 ⇧F10 · 메뉴 키를 누르면 이름 곁에
-      // 선다(키는 틀의 이름이 우클릭 사건으로 바꿔 낸다 — `openMenuByKey`). `key`가 프로젝트를 갈아 끼우면 메뉴를 새로 세운다 — 열어 둔
-      // 채 다른 프로젝트로 옮기면 메뉴가 화면에 보이는 것과 다른 프로젝트를 겨눈다(작업 화면의 이름 메뉴와 같은 까닭). 열린 동안의 대상
-      // 테두리는 `TargetMenu`가 이름 요소에 직접 달고 걷는다(`ring`) — 틀이 그리는 표식(`renderName(true)`)은 쓰지 않는다.
-      head={{
-        icon: Folder,
-        name: selected?.name ?? navItem("projects").label,
-        nameMenu: selected
-          ? (renderName) => (
-              <TargetMenu
-                key={selected.slug}
-                targetOf={(_from, region) => ({ of: selected.slug, ring: region })}
-                items={(slug, menu) => projectMenu(slug, menu.leaveFocus, setRenamingHead)}
-              >
-                {(region) =>
-                  cloneElement(renderName(false) as ReactElement<HTMLAttributes<HTMLElement>>, {
-                    onContextMenu: region.onContextMenu,
-                  })
-                }
-              </TargetMenu>
-            )
-          : undefined,
-        rename: selected
-          ? {
-              editing: renamingHead === selected.slug,
-              onStart: () => setRenamingHead(selected.slug),
-              onEnd: () => setRenamingHead(null),
-              onCommit: (name) => rename(selected.slug, name),
-              label: "프로젝트 이름",
-            }
-          : undefined,
-        actions: selected && (
-          // 머리 줄의 글자 버튼(`Button` top — 28, 머리 줄의 단추는 모두 28이다). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
-          <Button
-            variant="ghost"
-            size="top"
-            disabled={selected.missing}
-            onClick={() => openInFinder(() => projectsApi.openFolder(selected.slug))}
-          >
-            <FolderOpen aria-hidden />
-            폴더 열기
-          </Button>
-        ),
-        // 빨간 글자의 머리 버튼(DS `.at-btn.top.danger-text`) — 지나가도 빨간 글자 그대로다(hover는 면만 선다).
-        end: selected && (
-          <Button
-            variant="ghost"
-            size="top"
-            className="text-danger hover:text-danger"
-            onClick={() => void handleRemove(selected)}
-          >
-            <Trash2 aria-hidden />
-            제거
-          </Button>
-        ),
-      }}
-      list={{
-        size: listSize,
-        label: "프로젝트 목록",
-        // 목록 행의 메뉴 — 행 목록 하나가 메뉴 하나를 맡는다(`TargetMenu`). 대상은 우클릭 · 키가 난 행이고, 고른 행이 아니어도 그 행의
-        // 프로젝트다(결정 7). 행 버튼이 테두리를 입고 포커스가 돌아갈 자리다.
-        children: (
-          <TargetMenu
-            targetOf={(from) => {
-              const row = from.closest<HTMLElement>("button[data-project-row]");
-              const slug = row?.dataset.projectRow;
-              return row && slug ? { of: slug, ring: row } : null;
-            }}
-            items={(slug, menu) => projectMenu(slug, menu.leaveFocus, setRenamingRow)}
-          >
-            {(region) => (
-              <ProjectList
-                projects={projects}
-                selectedSlug={selected?.slug ?? null}
-                onSelect={onSelect}
-                onAdd={() => void handleAdd()}
-                renaming={renamingRow}
-                onRename={setRenamingRow}
-                onRenameCommit={rename}
-                onRenameEnd={() => setRenamingRow(null)}
-                rowMenu={region}
-              />
+    <PlainFrame label={label} title={{ name: label }}>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-4.5 overflow-y-auto px-10 pt-7.5 pb-10 scroll-quiet">
+          <header className="flex min-h-8 items-center gap-2.5">
+            <h1 className="text-heading-md text-fg">{label}</h1>
+            {/* 찾기 · 추가는 목록이 있을 때만 — 빈 목록은 가운데 안내가 「Project 추가」를 든다(시안 `notEmpty`). */}
+            {!empty && (
+              <>
+                <label className="ml-auto flex h-7.5 w-60 items-center gap-1.5 rounded-full border border-border-heavy px-3 text-fg-tertiary focus-ring">
+                  <Search aria-hidden className="size-3.5 shrink-0" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Project 찾기"
+                    aria-label="Project 찾기"
+                    className="min-w-0 flex-1 bg-transparent text-chat-meta text-fg outline-none placeholder:text-fg-tertiary"
+                  />
+                </label>
+                <Button size="top" className="rounded-full" onClick={() => void handleAdd()}>
+                  <Plus aria-hidden />
+                  Project 추가
+                </Button>
+              </>
             )}
-          </TargetMenu>
-        ),
-      }}
-      // 토스트의 자리 — 카드 줄의 아래 가운데다(작업 화면 · Archive와 같은 부품 · 같은 상자). 프로젝트 메뉴의 「경로 복사」와 Finder를 못
-      // 연 문장이 여기 선다.
-      overlay={<Toaster />}
-    >
-      {/* 상세 칸 — 상세 | 목록 카드의 왼쪽 칸이다. 머리가 없다: 프로젝트의 이름과 할 일은 머리 줄이 들고, 칸 안에 고를 것이 없다. */}
-      <Card as="main" label="프로젝트" className="flex-1">
-        {/* 옆은 글 거터 20이다 — 설정 본문과 같은 나눔이다(위 24 · 글 폭은 상세의 몸이 든다, `ProjectDetail`). */}
-        <div className="flex-1 overflow-y-auto px-5 scroll-quiet">
-          {selected ? (
-            <ProjectDetail project={selected} onOpenWork={onOpenWork} />
+          </header>
+          {empty ? (
+            <EmptyProjects onAdd={() => void handleAdd()} />
           ) : (
-            <div className="flex h-full items-center justify-center p-10">
-              <Empty>
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <Folder />
-                  </EmptyMedia>
-                  <EmptyTitle>등록된 프로젝트가 없어요</EmptyTitle>
-                  <EmptyDescription>
-                    로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
-                  </EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button onClick={() => void handleAdd()}>프로젝트 등록</Button>
-                </EmptyContent>
-              </Empty>
-            </div>
+            <>
+              <div role="table" aria-label="Project 목록" className="flex flex-col">
+                <div role="row" className={cn(COLUMNS, "h-7.5 text-xs text-fg-tertiary")}>
+                  <span role="columnheader">이름</span>
+                  <span role="columnheader">경로</span>
+                  <span role="columnheader">기준 브랜치</span>
+                  <span role="columnheader" aria-hidden />
+                </div>
+                {shown.map((project) => (
+                  <ProjectRow
+                    key={project.slug}
+                    project={project}
+                    onOpen={() => open(project.slug)}
+                    onAct={(what) => act(project, what)}
+                    onRelocate={() => void relocate(project)}
+                  />
+                ))}
+                {/* 마지막 줄 아래 선 — 줄마다 위 선이라 끝에 한 줄 더 둔다(시안 `.pend`). */}
+                <div aria-hidden className="mx-2.5 h-[0.5px] bg-separator" />
+                {projects.length > 0 && shown.length === 0 && (
+                  <p className="px-3.5 py-4.5 text-chat-meta text-fg-tertiary">찾는 Project가 없어요</p>
+                )}
+              </div>
+              {/* 목록 아래 한 줄(스토리 100) — 폴더를 이 화면에 끌어다 놓으면 추가 창이 그 폴더로 열린다(`useFolderDrop`). */}
+              <p className="flex items-center gap-1.5 px-3.5 text-xs text-fg-tertiary">
+                <Download className="size-3.5 shrink-0" aria-hidden />
+                폴더를 이 창에 끌어다 놓아도 추가돼요
+              </p>
+            </>
           )}
         </div>
-      </Card>
-    </Frame>
+        {/* 「경로 복사」 · Finder를 못 연 문장이 여기 선다 — 본문 아래 가운데(시안 `.toast`). */}
+        <Toaster />
+      </div>
+    </PlainFrame>
   );
 }
 
-export default ProjectsPage;
+/** 빈 목록(스토리 97) — 처음 할 일을 가운데에 세운다. 찾기 · 「Project 추가」 머리 단추는 서지 않는다. */
+function EmptyProjects({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2.5 pb-30 text-center">
+      <span aria-hidden className="flex size-9 items-center justify-center rounded-lg bg-surface-tray text-fg-icon">
+        <Book className="size-4.5" />
+      </span>
+      <h2 className="text-heading-xs text-fg">아직 Project가 없어요</h2>
+      <p className="max-w-95 text-chat-meta text-fg-secondary">
+        이 컴퓨터의 git 레포 폴더를 추가하거나, 빈 레포를 새로 만들어요. 코드는 옮기지 않아요.
+      </p>
+      <Button size="top" className="mt-1 rounded-full" onClick={onAdd}>
+        <Plus aria-hidden />
+        Project 추가
+      </Button>
+      <span className="text-xs text-fg-tertiary">폴더를 이 창에 끌어다 놓아도 돼요</span>
+    </div>
+  );
+}
+
+/**
+ * 표의 줄 하나(스토리 95 · 101 · 시안 `.prow`) — 48 · 둥글기 12, 줄 위에 0.5 선(옆 10 들여), 지나면 옅은 면과 이름 끝 꺾쇠가 서고 그 줄의 위아래
+ * 선이 숨는다. 줄 어디를 눌러도 상세다 — 이름이 그 링크이고(키보드는 이름에 선다), 줄의 누름은 ⋯ · 「재설정」이 아닐 때만 상세로 간다.
+ *
+ * 폴더를 찾을 수 없는 Project는 이름이 흐리고, 경로 칸이 「⚠ Project를 찾을 수 없어요 · 경로」, 기준 브랜치 칸이 「재설정」이다. ⋯는 「제거…」만.
+ */
+function ProjectRow({
+  project,
+  onOpen,
+  onAct,
+  onRelocate,
+}: {
+  project: ProjectView;
+  onOpen: () => void;
+  onAct: (what: RowAct) => void;
+  onRelocate: () => void;
+}) {
+  const missing = project.missing;
+  // 줄의 누름 — 줄 안 단추 · 링크와 메뉴(포털로 떠도 React 나무로는 줄 안이라 누름이 올라온다)에서 온 것은 제 일만 한다.
+  const openFromRow = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as Element;
+    if (!event.currentTarget.contains(target) || target.closest("a, button")) return;
+    onOpen();
+  };
+  return (
+    <div
+      role="row"
+      onClick={openFromRow}
+      className={cn(
+        COLUMNS,
+        "group/row relative h-12 rounded-xl text-sm text-fg transition-colors hover:bg-fill-soft",
+        "before:absolute before:inset-x-2.5 before:top-0 before:h-[0.5px] before:bg-separator hover:before:opacity-0",
+        "[&:hover+[role=row]]:before:opacity-0 [&:hover+[aria-hidden]]:opacity-0",
+      )}
+    >
+      <span role="cell" className="flex min-w-0 items-center">
+        <Link
+          to="/projects/$slug"
+          params={{ slug: project.slug }}
+          className="-mx-1 flex min-w-0 items-center gap-2.5 rounded-md px-1 focus-ring"
+        >
+          <Book aria-hidden className={cn("size-4 shrink-0", missing ? "text-fg-faint" : "text-fg-icon")} />
+          <span className={cn("min-w-0 truncate", missing && "text-fg-tertiary")}>{project.name}</span>
+          <ChevronRight aria-hidden className="size-3 shrink-0 text-fg-titlebar opacity-0 group-hover/row:opacity-100" />
+        </Link>
+      </span>
+      <span role="cell" className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-tertiary">
+        {missing && (
+          <span className="flex shrink-0 items-center gap-1 text-fg-notice-warn-line">
+            <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
+            Project를 찾을 수 없어요
+          </span>
+        )}
+        <span className="min-w-0 truncate font-mono">{project.path}</span>
+      </span>
+      <span role="cell" className="flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
+        {missing ? (
+          <Button variant="outline" size="xs" className="rounded-full text-fg" onClick={onRelocate}>
+            재설정
+          </Button>
+        ) : (
+          <>
+            <GitBranch aria-hidden className="size-3 shrink-0" />
+            <span className="min-w-0 truncate font-mono">{project.baseBranch}</span>
+          </>
+        )}
+      </span>
+      <span role="cell" className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`${project.name} 메뉴`}
+            className="icon-button text-fg-titlebar transition-colors quiet-hover focus-ring"
+          >
+            <MoreHorizontal aria-hidden className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            {rowMenu(project).map((item) => {
+              const Icon = ROW_ICONS[item.act];
+              return (
+                <Fragment key={item.act}>
+                  {item.apart && <DropdownMenuSeparator />}
+                  <DropdownMenuItem variant={item.danger ? "destructive" : "default"} onClick={() => onAct(item.act)}>
+                    <Icon />
+                    <span>{item.label}</span>
+                  </DropdownMenuItem>
+                </Fragment>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </span>
+    </div>
+  );
+}
+
+/** ⋯ 항목의 글리프(시안 `row_menu` — 폴더 · 문서 · ×). */
+const ROW_ICONS: Record<RowAct, typeof Folder> = { "open-folder": Folder, "copy-path": Copy, remove: X };

@@ -253,6 +253,13 @@ pub fn new_project(root: &Path, parent: &Path, name: &str) -> Result<ProjectView
     add_project(root, &folder, AddProject { name: Some(name.to_string()), init_git: false })
 }
 
+/// Project 고치기(03 구현 스펙 §15 「고치기」) — 상세 화면의 제목 · 설명 · 기준 브랜치, 바깥 MCP `atelier_edit_project`가 이 하나를 부른다.
+///
+/// - 이름은 빈 값을 받지 않는다. slug(파일 이름) · 경로는 고치지 않는다 — 그 Project를 적은 Work · Space가 깨지지 않게(스토리 123).
+/// - **기준 브랜치는 그 저장소의 브랜치 목록에 있는 값만 받는다**(빈 값 없음) — 로컬 브랜치이거나 원격 브랜치(`origin/release/2.5` 그대로,
+///   S19)다. Work를 만들 때에야 없는 브랜치로 실패하지 않게 지금 거절한다. 폴더를 찾을 수 없거나 git으로 읽지 못하면 목록이 비어 아무 값도
+///   받지 않는다. 지금 값을 그대로 다시 주는 것은 바꾸는 것이 아니라 받는다 — 그새 지워진 브랜치가 이름 · 설명 고치기를 막지 않게.
+/// - 하나라도 거절하면 아무것도 쓰지 않는다.
 pub fn update_project(root: &Path, slug: &str, patch: ProjectPatch) -> Result<ProjectView> {
     let mut project = read_project(root, slug)?;
     if let Some(name) = patch.name {
@@ -266,8 +273,45 @@ pub fn update_project(root: &Path, slug: &str, patch: ProjectPatch) -> Result<Pr
         project.description = description;
     }
     if let Some(base_branch) = patch.base_branch {
-        project.base_branch = base_branch;
+        let base_branch = base_branch.trim();
+        if base_branch != project.base_branch {
+            let folder = expand_home(&project.path);
+            let listed = folder.is_dir() && git::detect(&folder).is_some_and(|git| git.lists(base_branch));
+            if !listed {
+                return Err(Error::BranchNotListed(base_branch.to_string()));
+            }
+            project.base_branch = base_branch.to_string();
+        }
     }
+    write_project(root, &project)?;
+    Ok(to_view(project))
+}
+
+/// Project 재설정(03 구현 스펙 §15 · 스토리 126 · 127) — 폴더를 옮긴 Project가 새 자리를 고른다. **경로만 바꾼다**: slug · 이름 · 설명 ·
+/// 기준 브랜치는 그대로다. 경로는 사람이 다시 고를 때만 바뀐다(이 함수 하나).
+///
+/// - 새 폴더는 git 저장소의 뿌리여야 한다 — git이 아니면 `NotGitRepo`, 저장소의 하위 폴더면 `NotRepoRoot`(그 뿌리를 싣는다). 재설정이
+///   Project를 망가뜨리지 않게.
+/// - 다른 Project로 이미 등록된 폴더는 `AlreadyRegistered`다. 지금 자기 경로를 다시 고르면 그대로다.
+/// - 경로는 `~`로 시작해도 된다. 심볼릭 링크를 푼 자리를 `~`로 줄여 적는다(추가와 같은 꼴).
+pub fn relocate_project(root: &Path, slug: &str, folder: &Path) -> Result<ProjectView> {
+    let mut project = read_project(root, slug)?;
+    let asked = expand(folder);
+    let folder = asked
+        .canonicalize()
+        .ok()
+        .filter(|folder| folder.is_dir())
+        .ok_or_else(|| Error::FolderMissing(collapse_home(&asked)))?;
+    let Some(top) = git::toplevel(&folder).and_then(|top| top.canonicalize().ok()) else {
+        return Err(Error::NotGitRepo(collapse_home(&folder)));
+    };
+    if top != folder {
+        return Err(Error::NotRepoRoot { path: collapse_home(&folder), root: collapse_home(&top) });
+    }
+    if let Some(other) = registered(root, &folder).filter(|other| other.slug != project.slug) {
+        return Err(Error::AlreadyRegistered { path: collapse_home(&folder), slug: other.slug });
+    }
+    project.path = collapse_home(&folder);
     write_project(root, &project)?;
     Ok(to_view(project))
 }
@@ -380,6 +424,17 @@ mod tests {
     fn update_patches_description_and_base_branch() {
         let (_tmp, root, folder) = setup();
         create_project(&root, &folder).unwrap();
+        // 기준 브랜치는 저장소에 있는 브랜치만 받는다 — 고를 `develop`을 세운다(커밋이 있어야 브랜치가 선다).
+        for args in [&["commit", "-q", "--allow-empty", "-m", "init"][..], &["branch", "develop"][..]] {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&folder)
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .status()
+                .unwrap();
+            assert!(ok.success(), "git {args:?}");
+        }
         let updated = update_project(&root, "my-app", ProjectPatch {
             name: None,
             description: Some("설명".into()),

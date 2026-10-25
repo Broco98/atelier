@@ -50,6 +50,10 @@ const HANDLERS: &[(&str, Handler)] = &[
             },
         ))
     }),
+    // 재설정(03 구현 스펙 §15) — 진짜 git이 「저장소의 뿌리인가」를 본다.
+    ("relocate_project", |a| {
+        ok(atelier_core::relocate_project(&projects_dir(), &text(a, "slug")?, &PathBuf::from(text(a, "folder")?)))
+    }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
     // Space(03 구현 스펙 §8)는 파일이라 코어를 진짜로 탄다 — `commands.rs`와 같은 입구다.

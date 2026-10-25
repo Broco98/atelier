@@ -52,9 +52,8 @@ interface ArchiveListProps {
 // 「Archive」 · DS `.at-listcol` · `.at-label` · `.at-row.two`). 행은 펼치지 않는다 — 고른 아카이브의 문서 트리는 오른쪽 spec 목록
 // 패널이 든다(`ArchivePage`). 목록이 문서에 파묻히지 않는다(스토리 55).
 //
-// 칸 · 세로 선 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`, codex-ds 결정 28). 폭은 `ProjectList`와 키를
-// 나눠 갖지 않는다(`ArchivePage`의 `archive-panel-width`) — 두 목록의 이름 길이가 달라 쓸모 있는 폭이 다르다. 찾기 칸 · 구르는
-// 상자 · 행의 자리는 Projects 목록과 같은 조각이다(`Frame`의 `ListSearch` · `ListScroll` · `TWO_LINE_ROW`).
+// 칸 · 세로 선 · 폭 손잡이는 공용 틀의 목록 칸이 든다(`Frame`의 `list`, codex-ds 결정 28). 폭은 이 목록만의 키다(`ArchivePage`의
+// `archive-panel-width`). 찾기 칸 · 구르는 상자 · 행의 자리는 공용 틀의 조각이다(`Frame`의 `ListSearch` · `ListScroll` · `TWO_LINE_ROW`).
 function ArchiveList({ entries, selectedSlug, loading, onSelect, rowMenu }: ArchiveListProps) {
   // 정렬·필터·검색은 **영속하지 않는다.** 화면이 백엔드 순서 위에 자기 순서를 얹으면
   // 진입 정규화(pickSlug의 "목록 첫 항목")가 고르는 것과 눈에 보이는 첫 항목이 갈린다 —
@@ -239,7 +238,7 @@ function SortFilterMenu({
 // 아카이브 한 줄 — 두 줄 행이다(`Frame`의 `TWO_LINE_ROW` — DS `.at-row.two`). 첫 줄은 제목(14 · 본문 색), 둘째
 // 줄은 치운 날과 치운 때의 상태(12 `fg-tertiary` — 행 메타, DS 「대비」)다. 날짜가 없는 폴더(손으로 옮긴 것)는 상태만 선다. 글자가 칸 +
 // 16에 서서 목록 머리의 제목 · 날짜 소제목과 한 세로줄이다. **펼치지 않는다** — 누르면 그 아카이브를 고른다. 고른 행과 hover는 카드
-// 안 목록의 두 단이다(`ProjectList`의 행과 같다). 표식(`data-archive-row`)은 행 메뉴가 대상을 가르는 표이고, 메뉴가 열린 동안 이
+// 안 목록의 두 단이다. 표식(`data-archive-row`)은 행 메뉴가 대상을 가르는 표이고, 메뉴가 열린 동안 이
 // 버튼이 대상 테두리를 입는다(`focus-ring`의 `[data-menu-target]`). 목록의 정류장 행(`stop`)만 Tab이 앉고 나머지 행은 ↑↓로 간다
 // (`ListScroll`) — Enter는 버튼의 누름이라 그 행을 고른다.
 function ArchiveRow({

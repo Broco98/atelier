@@ -8,7 +8,7 @@ import type { FolderLook, NewProjectPlace, ProjectView } from "./types";
 const folder = (name = "", picked: string | null = null): AddDraft => ({ mode: "folder", name, named: false, folder: picked });
 const fresh = (name: string): AddDraft => ({ mode: "new", name, named: true, folder: null });
 
-const git = (remoteSlug: string | null) => ({ remoteSlug, currentBranch: "develop", localBranches: ["develop", "main"] });
+const git = (remoteSlug: string | null) => ({ remoteSlug, currentBranch: "develop", localBranches: ["develop", "main"], remoteBranches: [] });
 
 const WEB: FolderLook = {
   kind: "repo",

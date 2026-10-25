@@ -14,6 +14,8 @@ export const projectsApi = {
   make: (parent: string, name: string) => invoke<ProjectView>("new_project", { parent, name }),
   update: (slug: string, patch: ProjectPatch) =>
     invoke<ProjectView>("update_project", { slug, ...patch }),
+  /** 재설정 — 폴더를 찾을 수 없는 Project의 새 자리. git 저장소의 뿌리만 받고 경로만 바꾼다(03 구현 스펙 §15). */
+  relocate: (slug: string, folder: string) => invoke<ProjectView>("relocate_project", { slug, folder }),
   remove: (slug: string) => invoke<void>("delete_project", { slug }),
   openFolder: (slug: string) => invoke<void>("open_project_folder", { slug }),
 };

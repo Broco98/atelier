@@ -2438,11 +2438,16 @@ fn add_project_refuses_relative_paths_instead_of_guessing() {
 
 /// 프로젝트 하나를 등록한 홈을 만들고 서버를 띄운다.
 /// 커밋 없는 저장소를 쓴다 — 02의 `fixture_with`에 기대지 않아 머지 순서와 무관하다 (§1.1). 추가는 git 저장소만 받는다(03 §15).
+///
+/// 브랜치는 `main` 하나와 `develop`이다 — 기준 브랜치는 저장소의 브랜치 목록에 있는 값만 받으므로(03 §15) 고칠 브랜치를 세운다. 커밋이 있어야
+/// 브랜치가 서서 빈 첫 커밋을 하나 둔다.
 fn server_with_one_project() -> (tempfile::TempDir, tempfile::TempDir, Server) {
     let home = tempfile::tempdir().unwrap();
     let code = tempfile::tempdir().unwrap();
     let folder = code.path().join("billing");
     git_folder(&folder);
+    run_git(&folder, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]);
+    run_git(&folder, &["branch", "develop"]);
     atelier_core::create_project(&home.path().join("projects"), &folder).unwrap();
     let server = Server::start(home.path());
     (home, code, server)
@@ -2497,6 +2502,26 @@ fn edit_project_leaves_omitted_fields_untouched() {
     let view: Value =
         serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(view["description"], "");
+}
+
+/// 기준 브랜치는 그 저장소의 브랜치 목록에 있는 값만 받는다(03 구현 스펙 §15 · 결정 「조정」 — 화면과 같은 core 고치기) — 빈 값도 받지
+/// 않는다. 거절은 도구 실행 오류이고, 목록을 읽을 자리를 다음 걸음으로 말한다.
+#[test]
+fn edit_project_refuses_a_base_branch_the_repository_does_not_have() {
+    let (_home, _code, mut server) = server_with_one_project();
+    for (id, wrong) in [(2, "release/9.9"), (3, "")] {
+        let res = server.request(id, "tools/call", json!({
+            "name": "atelier_edit_project",
+            "arguments": { "project_slug": "billing", "base_branch": wrong }
+        }));
+        assert_eq!(res["result"]["isError"], true, "{res}");
+        let text = res["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains(&format!("'{wrong}'")), "{text}");
+        assert!(text.contains("atelier_list_projects") && text.contains("remoteBranches"), "no next step: {text}");
+    }
+    let view = server.request(4, "tools/call", json!({ "name": "atelier_list_projects", "arguments": {} }));
+    let views: Value = serde_json::from_str(view["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(views[0]["baseBranch"], "main", "refused edit changed the base branch: {views}");
 }
 
 #[test]

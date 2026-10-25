@@ -2,6 +2,14 @@ export interface GitInfo {
   remoteSlug: string | null;
   currentBranch: string | null;
   localBranches: string[];
+  /** 원격 이름마다의 remote-tracking 브랜치(03 구현 스펙 §15) — fetch하지 않은, 저장소에 이미 있는 것이다. 정본은 core `git.rs`다. */
+  remoteBranches: RemoteBranches[];
+}
+
+/** 원격 하나의 브랜치들 — 이름은 원격을 단 그대로다(`origin/release/2.5`). 기준 브랜치로 고르면 그 이름 그대로 적힌다(S19). */
+export interface RemoteBranches {
+  remote: string;
+  branches: string[];
 }
 
 export interface ProjectView {

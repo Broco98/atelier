@@ -554,6 +554,7 @@ pub fn run() {
             commands::inspect_project_folder,
             commands::new_project_place,
             commands::new_project,
+            commands::relocate_project,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

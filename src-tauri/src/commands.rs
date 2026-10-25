@@ -72,6 +72,12 @@ pub async fn update_project(
     .map_err(err)
 }
 
+/// 재설정 — 폴더를 찾을 수 없는 Project가 새 자리를 고른다(03 구현 스펙 §15 · §16). git 저장소의 뿌리만 받고 경로만 바꾼다.
+#[tauri::command]
+pub async fn relocate_project(slug: String, folder: String) -> CmdResult<ProjectView> {
+    atelier_core::relocate_project(&projects_dir(), &slug, &PathBuf::from(folder)).map_err(err)
+}
+
 #[tauri::command]
 pub async fn delete_project(slug: String) -> CmdResult<()> {
     atelier_core::delete_project(&projects_dir(), &slug).map_err(err)

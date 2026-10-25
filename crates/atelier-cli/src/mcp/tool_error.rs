@@ -36,7 +36,17 @@ pub fn kernel_error(err: Error) -> CallToolResult {
              leaves untracked files behind and this will be refused again. Then call \
              this tool again."
         }
-        Error::Validation(_) | Error::EmptyName | Error::AlreadyExists(_) => "Fix the arguments and call this tool again.",
+        // 기준 브랜치는 그 저장소의 브랜치 목록에 있는 값만 받는다(03 구현 스펙 §15) — 목록을 읽는 자리를 알려 준다.
+        Error::BranchNotListed(_) => {
+            "Call atelier_list_projects and pass one of that project's branches: `git.localBranches`, or one of \
+             `git.remoteBranches[].branches` written as is (like `origin/release/2.5`). Atelier does not fetch — a \
+             branch that is only on the remote server has to be fetched by the user first."
+        }
+        Error::Validation(_)
+        | Error::EmptyName
+        | Error::AlreadyExists(_)
+        | Error::NotRepoRoot { .. }
+        | Error::AlreadyRegistered { .. } => "Fix the arguments and call this tool again.",
         Error::InvalidFile { .. } | Error::Git(_) | Error::Io(_) => {
             "This is a local data or git problem. Report it to the user instead of retrying."
         }

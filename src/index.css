@@ -104,7 +104,7 @@
 
     /* 카드 머리 높이 — DS 2판 `--size-toolbar`(46)를 읽는다. 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
        넓은 화면의 폭 상한 `--measure-wide`(1120 — Processes · 넓게 보는 문서)는 ui-refresh 때의 값을 잇는다(Codex가 말하지 않는다).
-       읽는 글의 폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(`SpecViewer`의 `bodyColumn`) · 프로젝트 상세(`ProjectDetail`) · 설정
+       읽는 글의 폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(`SpecViewer`의 `bodyColumn`) · 설정
        틀과 편집기의 폼(`SettingsBody`)이 모두 2판의 `--size-thread`(48rem)를 읽는다. 레일 폭도 여기 없다 — 레일 열이 2판의 줄 폭
        `--size-prail`을 읽는다. */
     --card-head: var(--size-toolbar);
@@ -293,6 +293,7 @@
     --color-fg-notice-warn-icon: var(--fg-notice-warn-icon);
     --color-notice-info: var(--notice-info);
     --color-fg-notice-info: var(--fg-notice-info);
+    --color-fg-notice-warn-line: var(--fg-notice-warn-line);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -684,7 +685,7 @@
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
        높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`, 분할 끌기 겹판의 위끝), 경로 줄과
        목록 머리의 높이(`--size-pathbar` — `PathBar` · `ListHead`), 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn` ·
-       `ProjectDetail` · 설정 틀의 `SettingsBody`와 그 열에 서는 편집기 배너 · spec 레이아웃 메시지), 사이드바 행의 높이
+       설정 틀의 `SettingsBody`와 그 열에 서는 편집기 배너 · spec 레이아웃 메시지), 사이드바 행의 높이
        (`--size-row-nav` — `SidebarItem` · work 행 — Codex 사이드바의 고른 줄을 재어 30이다, v1 티켓 46), 알림 띠 줄의 높이
        (`--size-row-band` — `AttentionBand`)와 레일의 줄 폭(`--size-prail` — `Rail`)뿐이고,
        나머지는 선언만 있다(스펙 S2 — 통째로 선언한다). 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
@@ -928,12 +929,15 @@
          fg-notice-warn         경고 상자의 글자
          fg-notice-warn-icon    경고 상자의 세모 아이콘
          notice-info            알림 상자의 면 — 강조 파랑(`accent-solid`) 7%
-         fg-notice-info         알림 상자의 글자 */
+         fg-notice-info         알림 상자의 글자
+         fg-notice-warn-line    상자 없이 줄 안에 서는 경고 글과 그 세모(F4-ProjMissing · F4-ProjDetailMissing의 `.warnt` — 목록 줄 ·
+                                상세 경로 칸의 「Project를 찾을 수 없어요」) */
     --notice-warn: #fff7e6;
     --fg-notice-warn: #6b4700;
     --fg-notice-warn-icon: #b26a00;
     --notice-info: rgba(58, 131, 247, 0.07);
     --fg-notice-info: #1d4f9a;
+    --fg-notice-warn-line: #9a5b00;
 
     /* 그림자 — 외곽선은 실선 대신 0.5px 링 `shadow-hairline`이다(DS 원칙 4). 떠 있는 것은 `shadow-prominent` */
     --shadow-hairline: 0 0 0 0.5px #0000001a;
