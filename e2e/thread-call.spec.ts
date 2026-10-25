@@ -80,12 +80,14 @@ test("Host가 리뷰어를 부르면 호출 줄이 하는 중에서 「리뷰어
   await expect(도구줄(page, "@reviewer에게 맡기는 중")).toHaveCount(0);
   await expect(흐름(page).locator('[data-system="joined"]')).toHaveText("리뷰어가 참여함");
 
-  // 끝 — 「리뷰어에게 맡김」 아래에 맡긴 말 · 걸린 시간이고, Host가 받은 답을 옮긴 뒤 턴이 접혀도 호출 줄은 남는다.
+  // 끝 — 「리뷰어에게 맡김」 아래에 맡긴 말 · 걸린 시간이고, Host가 받은 답을 옮겨 턴이 끝나도(끝난 답 아래 「답 복사」) 호출 줄은
+  // 남는다. 그 턴의 다른 도구(`ToolSearch`)는 줄로 서지 않아 펼칠 것이 없다 — 구분선 없이 호출 줄이 그 자리에 선다(02 §8).
   await streamLines(page, started.id, linesAfter(calling, REVIEWER_READ));
   const 맡김 = 호출줄(page, "리뷰어에게 맡김");
   await expect(맡김).toHaveAttribute("data-call", "answered");
   await expect(맡김).toContainText(`“${TASK}” · 7초 걸림`);
-  await expect(흐름(page).getByRole("button", { name: "21초 동안 작업함", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await expect(흐름(page).getByRole("button", { name: "답 복사", exact: true })).toBeVisible();
+  await expect(맡김).toBeVisible();
   await expect(흐름(page).getByText("@reviewer가 보낸 답을 그대로 옮깁니다.", { exact: true })).toBeVisible();
 
   // 펼침 — 맡긴 것 · 받은 것과 리뷰어의 도구 줄(과거형)이다.

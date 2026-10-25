@@ -54,44 +54,50 @@ const permission = record("thread-permission");
 const ASKED = lineOf(permission, "permission", "asked");
 const ANSWERED = lineOf(permission, "permission", "answered");
 
-test("승인 카드가 입력창 자리에 서서 무엇을 왜 묻는지 보이고, Esc가 「다르게 해 주세요」 칸을 열고 닫으며, ↓ · Enter로 고른 답이 가고, 답 줄이 오면 결정 줄이 선다", async ({
+test("승인 카드가 입력창 자리에 서서 누가 · 무엇을 · 왜 묻는지 보이고, esc가 「아니요, 다르게」 칸을 열고 닫으며, 숫자 · ↓는 고르지 않고 ↵가 「이번만 허용」을 보내며, 답 줄이 오면 결정 줄이 선다", async ({
   page,
 }) => {
   const view = await openThread(page, permission, ASKED);
 
-  // 물음 줄 — 입력창이 사라지고 그 자리에 카드가 선다. 얼굴 옆의 물음이 카드의 이름이고, 아래에 왜 묻는지(Policy 이름)와 바꿀 파일의
-  // 바뀐 줄이 선다. 선택지는 셋이다 — 이 물음은 「다시 묻지 않기」로 적을 허락(`grant`)을 실었다.
+  // 물음 줄 — 입력창이 사라지고 그 자리에 카드가 선다(02 §10 · 티켓 11). 카드의 이름은 누가 묻는 물음이고, 머리 한 줄이 누가 · 무슨
+  // 일 · 어떤 규칙 때문에(Policy 이름) 묻는지, 그 아래 바꿀 파일의 바뀐 줄이 선다. 단추 한 줄은 왼쪽에서 「아니요, 다르게」 · 늘
+  // 허용 · 맨 오른쪽 「이번만 허용」이다 — 이 물음은 「다시 묻지 않기」로 적을 허락(`grant` — 편집)을 실어 늘 허용이 「이 Thread에서
+  // 편집은 늘 허용」이다(Work 없는 Thread).
   await streamLines(page, view.id, [ASKED]);
   const card = page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true });
   await expect(card).toBeVisible();
   await expect(입력칸(page)).toHaveCount(0);
-  await expect(card).toContainText("Policy · 매번 묻기");
+  await expect(card).toContainText("Host · 파일 고치기 · 「매번 묻기」");
   await expect(card.getByRole("figure", { name: /allowed\.txt 변경$/ })).toContainText("+x");
   const 선택지 = card.getByRole("button");
-  const names = ["예", "예, 이 Thread에서는 편집을 다시 묻지 않기", "아니요, 다르게 해 주세요"];
+  const names = ["아니요, 다르게", "이 Thread에서 편집은 늘 허용", "이번만 허용"];
   await expect(선택지).toHaveCount(names.length);
   for (const [at, name] of names.entries()) await expect(선택지.nth(at)).toHaveAccessibleName(name);
-  // 켜진 줄(처음엔 첫째)에 ↵ 글쇠가, 마지막 줄에 Esc 글쇠가 선다.
-  await expect(선택지.first()).toHaveText(/↵$/);
-  await expect(선택지.last()).toHaveText(/Esc$/);
+  // 글쇠는 단추 끝에 옅게 선다 — 「아니요, 다르게」에 esc, 「이번만 허용」에 ↵. 켜진 줄이 옮겨 다니지 않으니 글쇠도 그 자리다.
+  await expect(선택지.first()).toHaveText(/Esc$/);
+  await expect(선택지.last()).toHaveText(/↵$/);
+  await expect(선택지.nth(1)).toHaveText(names[1]);
   await expect(흐름(page).getByText("승인을 기다립니다", { exact: true })).toBeVisible();
-  // 풀린 포커스는 카드가 받는다 — 숫자 · Enter · Esc · ↑↓가 카드의 키다.
+  // 풀린 포커스는 카드가 받는다 — Enter · Esc가 카드의 키다.
   await expect(card).toBeFocused();
   await page.waitForTimeout(ARMING_MS);
 
-  // Esc는 마지막 줄 「아니요, 다르게 해 주세요」 — 카드 안에 할 말 칸이 열린다. 칸의 Esc는 칸만 닫고 번호 줄로 돌아간다.
+  // Esc는 「아니요, 다르게」 — 카드 안에 할 말 칸이 열린다. 칸의 Esc는 칸만 닫고 카드로 돌아간다.
   const 할말 = card.getByRole("textbox", { name: "Host에게 다르게 할 방법 알려 주기", exact: true });
   await page.keyboard.press("Escape");
   await expect(할말).toBeFocused();
+  await expect(card.getByRole("button", { name: names[0], exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
   await expect(할말).toHaveCount(0);
   await expect(card).toBeFocused();
   expect(await ipcCallArgs(page, "thread_answer_permission", "thread")).toEqual([]);
 
-  // ↓는 켜진 줄을 옮긴다(끝에서 첫 줄로 돈다) — Enter가 켜진 「예」를 고른다. 답은 물은 참여자 · 요청 id와 함께 간다.
-  await expect(선택지.last()).toHaveText(/↵$/);
-  await page.keyboard.press("ArrowDown");
-  await expect(선택지.first()).toHaveText(/↵$/);
+  // 숫자 키와 ↑↓는 아무것도 고르지 않는다(S25 — 번호 줄이 단추 줄이 됐다). Enter는 「이번만 허용」이다 — 답은 물은 참여자 · 요청 id와
+  // 함께 가고, 다시 묻지 않기로 적지 않는다.
+  for (const key of ["1", "2", "3", "ArrowDown", "ArrowUp"]) await page.keyboard.press(key);
+  await expect(할말).toHaveCount(0);
+  await expect(card).toBeFocused();
+  expect(await ipcCallArgs(page, "thread_answer_permission", "thread")).toEqual([]);
   await page.keyboard.press("Enter");
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args))
@@ -118,7 +124,7 @@ type AskedQuestion = { question: string; multiSelect: boolean; options: { label:
 const [FEE, SCREEN] = (QUESTION_ASKED.payload as { questions: AskedQuestion[] }).questions;
 const { answers: ANSWERS } = QUESTION_ANSWERED.payload as { answers: { question: string; answer: string }[] };
 
-test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 선택지와 설명을 보이고, 숫자로 고른 답이 Enter로 가며, 답 줄이 오면 「답함: …」이 선다", async ({
+test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 선택지와 설명을 보이고, 숫자로 고른 답이 Enter로 가며, 답 줄이 오면 물음마다 한 줄로 물음과 고른 답이 선다", async ({
   page,
 }) => {
   const view = await openThread(page, question, QUESTION_ASKED);
@@ -155,11 +161,15 @@ test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 �
     .poll(async () => (await ipcCallArgs(page, "thread_answer_question", "thread")).map(({ args }) => args))
     .toEqual([{ thread: view.id, who: "host", request: "0", answers: ANSWERS, later: false }]);
 
-  // 답 줄이 오면 카드가 걷히고 그 자리에 「답함: …」이 선다. 턴은 이어 끝난다.
+  // 답 줄이 오면 카드가 걷히고 그 자리에 답한 질문이 선다 — 물음마다 한 줄(옅은 테두리 카드)에 물은 제목과 고른 답이다(02 티켓 11 ·
+  // Screen-Live). 턴은 이어 끝난다.
   await streamLines(page, view.id, [QUESTION_ANSWERED]);
   await expect(card).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
-  await expect(흐름(page).locator('[data-answered="answer"]')).toHaveText(`답함: ${ANSWERS.map((one) => one.answer).join(" · ")}`);
+  const 그대로 = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await expect(흐름(page).locator('[data-answered="answer"] p')).toHaveText(
+    ANSWERS.map((one) => new RegExp(`^${그대로(one.question)}\\s*${그대로(one.answer)}$`)),
+  );
   await streamLines(page, view.id, linesAfter(question, QUESTION_ANSWERED.seq));
   await expect(흐름(page).getByText("done", { exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);

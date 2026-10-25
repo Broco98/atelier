@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { ArrowDown, ArrowLeft } from "lucide-react";
 import { PANEL_MOTION } from "@/components/shell/panel-layout";
@@ -132,6 +132,7 @@ const policyPlace = (call: string, work: string | null) =>
  */
 export function NewThreadScreen({ seed = { kind: "no-work" } }: { seed?: ThreadLink }) {
   const navigate = useNavigate();
+  const router = useRouter();
   // 어디서 일할지(v1 티켓 31) — Work 칩이 고른다. 최근 Work면 그 제목도 쥔다(부제 · 입력창 안내 · 칩 글자).
   const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({ link: seed, title: null }));
   const work = place.link.kind === "work" ? place.link.slug : null;
@@ -158,13 +159,21 @@ export function NewThreadScreen({ seed = { kind: "no-work" } }: { seed?: ThreadL
 
   const start = async (text: string, attachments: readonly Attachment[]) => {
     setStarting({ text, attachments });
+    let id: string;
     try {
-      const id = await threadApi.start(text, attachments, place.link, picks);
-      void navigate({ to: "/threads/$id", params: { id }, replace: true });
+      id = await threadApi.start(text, attachments, place.link, picks);
     } catch (error) {
       setStarting(null);
       throw error;
     }
+    // 새 id의 주소로 갈아 선다. Thread 화면(나눠 받는 라우트 청크)이 서기 전에 「새 Thread」 · ⌘N으로 `/`에 다시 오면 이 화면이 그대로
+    // 남는다 — 같은 주소의 같은 화면이라 새로 서지 않고, 「시작하는 중」에 멈춘다(02 티켓 13b 「앱의 틈」). 그때는 막 선 화면처럼 비운다.
+    void navigate({ to: "/threads/$id", params: { id }, replace: true }).then(() => {
+      if (router.state.location.pathname !== "/") return;
+      setStarting(null);
+      setPlace({ link: seed, title: null });
+      setPicks({ mode: null, model: null, effort: null });
+    });
   };
 
   const composer = (

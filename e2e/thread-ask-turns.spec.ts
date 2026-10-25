@@ -7,7 +7,7 @@ import type { Participant, RecordLine, ThreadView } from "@/features/thread/type
 
 // v1 티켓 28(PR ③ e2e) 흐름 하나 — **두 Agent가 함께 물으면 먼저 온 물음 하나만 카드로 서서 「1 / 2」와 다음 차례를 말하고, 카드 안에
 // 남긴 말은 그 물음을 거부하며 그 Agent에게만 가고, 다음 카드가 「2 / 2」로 선다**(v1 티켓 25 · 구현 스펙 §9 카드 · 스토리 80 · 83 ·
-// 경계 ② 「입력창 자리」 — 다음 차례 줄 · 다르게 해 주세요 입력칸).
+// 경계 ② 「입력창 자리」 — 다음 차례 줄 · 「아니요, 다르게」 입력칸).
 //
 // 줄은 L1이 축복한 「두 Agent의 물음에 차례로 답한 Thread」(`thread-ask-turns.jsonl`)를 그대로 쏜다 — Host가 둘째 턴에서 파일 쓰기를
 // 묻는 사이 테스터가 들어와 명령을 묻는다. 사람은 Host의 카드에 말을 남겨 거부하고(Host는 그 말을 도구 결과로 받고 턴을 마친다), 그
@@ -65,13 +65,16 @@ test("두 Agent가 함께 물으면 먼저 온 Host의 카드가 「1 / 2」와 
   // 물음이 하나뿐이면 차례를 세지 않는다.
   await expect(host).not.toContainText("1 / 2");
 
-  // 테스터가 들어와 명령을 묻는다 — 참여자가 늘면 엔진이 목록 요약을 내고 화면이 Thread를 다시 읽는다. 먼저 온 Host의 카드가 그대로
-  // 서고, 머리 오른쪽에 「1 / 2」, 맨 아래에 다음 차례가 선다.
+  // 테스터가 들어와 명령을 묻는다 — 참여자가 늘면 엔진이 목록 요약을 내고 화면이 Thread를 다시 읽는다(머리 줄 참여자 얼굴은 걷었다 —
+  // 02 S14. 다시 읽은 참여자 줄이 테스터의 작업 폴더를 주고, 그것이 테스터 카드의 「Thread 폴더에서 실행」이 된다 — 아래). 먼저 온
+  // Host의 카드가 그대로 서고, 머리 오른쪽에 「1 / 2」, 맨 아래에 다음 차례가 선다.
+  const 읽기 = async () => (await ipcCallArgs(page, "thread_get", "thread")).length;
+  const 읽은수 = await 읽기();
   await replaceAnswer(page, "thread_get", answerByArg("thread", { [joined.id]: joined }));
   await replaceAnswer(page, "thread_mark_read", answerByArg("thread", { [joined.id]: summaryOf(joined) }));
   await streamLines(page, view.id, linesThrough(linesAfter(turns, HOST_ASKED.seq), TESTER_ASKED.seq));
   await fireSummary(page, joined);
-  await expect(page.getByRole("img", { name: "참여자 Host, 테스터", exact: true })).toBeVisible();
+  await expect.poll(읽기).toBeGreaterThan(읽은수);
   await expect(흐름(page).locator('[data-system="joined"]')).toHaveText("테스터가 참여함");
   await expect(host).toContainText("1 / 2");
   await expect(host).toContainText(/다음 · 테스터가 .+ 실행을 기다려요$/);
@@ -106,11 +109,11 @@ test("두 Agent가 함께 물으면 먼저 온 Host의 카드가 「1 / 2」와 
   await expect(tester).toContainText("2 / 2");
   await expect(입력칸(page)).toHaveCount(0);
 
-  // 다음 카드도 선 직후 잠깐은 키를 받지 않는다. 1은 「예」 — 답은 테스터의 요청으로 간다(요청 id는 Session마다 따로 세어 Host의
-  // 첫 물음과 같다).
+  // 다음 카드도 선 직후 잠깐은 키를 받지 않는다. ↵는 「이번만 허용」 — 답은 테스터의 요청으로 간다(요청 id는 Session마다 따로 세어
+  // Host의 첫 물음과 같다).
   await expect(tester).toBeFocused();
   await page.waitForTimeout(ARMING_MS);
-  await page.keyboard.press("1");
+  await page.keyboard.press("Enter");
   await expect
     .poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).map(({ args }) => args).slice(1))
     .toEqual([{ thread: view.id, who: "tester", request: requestOf(TESTER_ASKED), option: "allow_once", remember: false, words: null }]);

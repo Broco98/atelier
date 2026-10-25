@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_COMMANDS, FIXTURE_THREAD, WORKS, worktreeFile, worktreeFolder } from "./fixtures";
 import { callCount, fireEvent, fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } from "./harness";
@@ -8,9 +8,10 @@ import type { ThreadView, WorkWritingEvent } from "@/features/thread/types";
 import type { FileDiff, ProjectChanges } from "@/features/works/types";
 import type { Settings } from "@/features/settings/types";
 
-// v1 티켓 40(PR ④ e2e) 흐름 하나 — **Work 카드의 줄이나 대화 속 문서 카드를 누르면 카드가 넓어져 문서 · diff · 트리를 보고, 대화는 왼쪽
+// v1 티켓 40(PR ④ e2e) 흐름 하나 — **요약 카드의 줄이나 대화 속 문서 카드를 누르면 카드가 넓어져 문서 · diff · 트리를 보고, 대화는 왼쪽
 // 480에 남는다**(v1 티켓 34 · 35 · 43 · 구현 스펙 §15 배치 1 · S41 · 스토리 102 · 115–118). 문서는 쓰는 중 · 바뀐 줄 칠함 · 인용으로
-// 보내기까지, diff는 숨긴 줄 펼치기까지, 트리는 바뀐 파일이 그 diff를 여는 데까지 간다.
+// 보내기까지, diff는 숨긴 줄 펼치기까지, 트리는 바뀐 파일이 그 diff를 여는 데까지 간다. 요약 카드(02 구현 스펙 §7 · 티켓 07)는 v1 Work
+// 카드를 바꿨다 — 작은 카드의 변경은 「변경 사항」 한 줄이고, 파일마다의 줄은 넓힌 카드의 목록에만 선다. 넓힌 카드는 그대로다.
 //
 // Thread는 L1이 축복한 진짜 claude 2.1.309의 Work 만들기 턴(`thread-work`, v1 티켓 39)이 끝난 자리다 — 그 턴이 spec 폴더에 쓴 문서 둘의
 // 글이 문서 보기의 글이다. worktree의 변경 · diff · 트리는 코어의 답(`list_work_changes` · `read_work_diff` · `list_worktree_tree`)을 손으로
@@ -83,22 +84,35 @@ const CHANGES: ProjectChanges[] = [
   },
 ];
 
+// 작은 카드가 열린 동안 대화 열이 카드를 비켜날 자리가 있는 창(시안 1440) — 좁은 창에서는 열이 판 왼쪽에서 멈추고 카드가 덮는다(그 갈래는
+// 흐름 「Thread 화면」이 잰다).
+test.use({ viewport: { width: 1440, height: 900 } });
+
 const 흐름 = (page: Page) => page.getByRole("main");
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
-const 카드 = (page: Page) => page.getByRole("region", { name: `Work 카드: ${MADE.title}`, exact: true });
+/** 요약 카드 — 작은 카드든 넓힌 카드든 영역 이름이 같다(Work 이름은 머리 글자가 말한다). */
+const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact: true });
 const 넓힌카드 = (page: Page) => page.locator("section[data-expanded]");
 const 보기 = (page: Page, kind: "doc" | "change" | "project") => page.locator(`[data-viewer="${kind}"]`);
 
-/** 대화 칸의 오른쪽 끝 — 본문의 왼쪽 끝에서 잰다. 폭은 패널 박자로 옮겨 가므로(v1 티켓 43) 되풀이해 읽는다. */
+/**
+ * 입력창 둘레 카드의 오른쪽 끝에서 요약 카드 왼쪽 끝까지 — 작은 카드가 열린 동안 대화 열 · 입력창이 카드 왼쪽 16 앞에서 멈추는지(02 §7 ·
+ * `Beside`) 잰다. 대화 칸의 폭은 그대로이고 열만 옮겨 가므로 열(입력창)을 잰다. 열은 패널 박자로 옮겨 가므로 되풀이해 읽는다.
+ */
+const 카드앞틈 = async (page: Page) => {
+  const composer = await 입력칸(page).locator("xpath=ancestor::form[1]").evaluate((el) => el.getBoundingClientRect().right);
+  const card = await 카드(page).evaluate((el) => el.getBoundingClientRect().left);
+  return Math.round(card - composer);
+};
+/** 대화 칸의 오른쪽 끝 — 본문의 왼쪽 끝에서 잰다(넓힌 카드의 480). 폭은 패널 박자로 옮겨 가므로(v1 티켓 43) 되풀이해 읽는다. */
 const 대화끝 = (page: Page) =>
   흐름(page).evaluate((main) => {
     const column = main.firstElementChild?.firstElementChild;
     if (!(column instanceof HTMLElement)) throw new Error("대화 칸이 없다");
     return Math.round(column.getBoundingClientRect().right - main.getBoundingClientRect().left);
   });
-const 너비 = (target: Locator) => target.evaluate((el) => Math.round(el.getBoundingClientRect().width));
 
-test("Work 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓어져 문서 · diff · 트리를 보고, 대화는 왼쪽 480에 남으며, 「카드로 접기」가 작은 카드로 돌린다", async ({
+test("요약 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓어져 문서 · diff · 트리를 보고, 대화는 왼쪽 480에 남으며, 「카드로 접기」가 작은 카드로 돌린다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -131,13 +145,13 @@ test("Work 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓�
   await expect(사이드바).toBeVisible();
   await expect(입력칸(page)).toBeVisible();
 
-  // 작은 카드 — 문서 · 변경 · Project 칸. 대화는 카드 폭만큼 비켜 준다.
+  // 작은 카드 — 「변경 사항」 한 줄(Work의 바뀐 줄 합), 소스의 문서 · Project. 파일마다의 줄은 아직 없다. 대화 열 · 입력창은 카드 왼쪽
+  // 16 앞에서 멈추도록 비켜 준다.
+  await expect(카드(page).locator("[data-changes]")).toHaveText(/^변경 사항\s*\+18\s*−3$/);
+  await expect(카드(page).locator("[data-change]")).toHaveCount(0);
   await expect(카드(page).locator("[data-doc]")).toHaveText([OVERVIEW, PLAN]);
-  await expect(카드(page).locator("[data-change]")).toHaveText([/^service\.py\s*\+6\s*−3$/, /^test_refund\.py\s*\+12$/]);
   await expect(카드(page).locator(`[data-project="${PROJECT}"]`)).toHaveText(new RegExp(`^${PROJECT}\\s*고치는 중`));
-  const 본문폭 = await 너비(흐름(page));
-  const 카드폭 = await 너비(카드(page));
-  await expect.poll(() => 대화끝(page)).toBeLessThanOrEqual(본문폭 - 카드폭);
+  await expect.poll(() => 카드앞틈(page)).toBeGreaterThanOrEqual(16);
 
   // 대화 속 문서 카드 — 카드가 넓어져 그 문서를 연다. 대화는 왼쪽 480에 남고, 열려 있던 사이드바가 접힌다.
   await 흐름(page).locator(`[data-doc-card="${OVERVIEW}"]`).click();
@@ -184,7 +198,9 @@ test("Work 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓�
       },
     ]);
 
-  // 변경 줄 — 그 파일의 diff다. 숨긴 위 줄은 펴면 worktree의 지금 파일을 읽어 잇는다.
+  // 넓힌 카드의 목록에는 「변경 사항」 아래 바뀐 파일마다 줄이 선다. 파일 줄 — 그 파일의 diff다. 숨긴 위 줄은 펴면 worktree의 지금
+  // 파일을 읽어 잇는다.
+  await expect(카드(page).locator("[data-change]")).toHaveText([/^service\.py\s*\+6\s*−3$/, /^test_refund\.py\s*\+12$/]);
   await 카드(page).locator(`[data-change="${SERVICE}"]`).click();
   await expect(카드(page).locator(`[data-change="${SERVICE}"]`)).toHaveAttribute("aria-current", "true");
   const diff = 보기(page, "change").locator("[data-code-view]");
@@ -209,6 +225,6 @@ test("Work 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓�
   await expect(넓힌카드(page)).toHaveCount(0);
   await expect(카드(page)).toBeVisible();
   await expect(사이드바).toBeVisible();
-  await expect.poll(() => 대화끝(page)).toBeLessThanOrEqual(본문폭 - 카드폭);
+  await expect.poll(() => 카드앞틈(page)).toBeGreaterThanOrEqual(16);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

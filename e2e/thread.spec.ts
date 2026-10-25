@@ -5,8 +5,9 @@ import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 import { linesAfter, linesThrough, record, sentPayloads, seqOf, streamLines, summaryOf } from "./thread-records";
 import type { ThreadView } from "@/features/thread/types";
 
-// v1 티켓 10(PR ① e2e) 흐름 하나 — **앱을 열면 새 Thread가 뜨고, 보낸 말에 Host의 답이 흘러 턴 끝에 「N초 동안 작업함」으로 접히며,
-// 다시 켜도 같은 Thread가 기록으로 이어진다**(v1 티켓 05 · 구현 스펙 §13 · §14 · S26).
+// v1 티켓 10(PR ① e2e) 흐름 하나 — **앱을 열면 새 Thread가 뜨고, 보낸 말에 Host의 답이 흘러 턴 끝에 「N초 동안 작업」 구분선으로
+// 접히며, 다시 켜도 같은 Thread가 기록으로 이어진다**(v1 티켓 05 · 구현 스펙 §13 · §14 · S26). 펼칠 것 없이 답만 한 턴에는 구분선이
+// 서지 않는다(02 구현 스펙 §8 · 02 티켓 09 — 이 판의 「도구 없는 턴의 구분선 사라짐」은 여기서 한 번 잰다).
 //
 // 엔진은 목업 백엔드의 답과 이 검사가 쏘는 기록 줄 이벤트로 선다. 줄은 L1이 축복한 「새 Thread 두 턴」(`thread-two-turns.jsonl`)을
 // 그대로 쏜다(`thread-records.ts`) — 첫 턴은 답만 하고(「hello from turn」, 4초), 둘째 턴은 `Write` · `Read` · `Bash` 뒤에 「5」로 답한다
@@ -35,7 +36,7 @@ const 흐름 = (page: Page) => page.getByRole("main");
 const 접힌턴 = (page: Page, headline: string) => 흐름(page).getByRole("button", { name: headline, exact: true });
 const 도구줄 = (page: Page, phrase: string) => 흐름(page).getByRole("group", { name: phrase, exact: true });
 
-test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르다 턴 끝에 「N초 동안 작업함」으로 접히며, 도구 줄이 진행형에서 과거형이 된다", async ({
+test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르다 턴 끝에 「N초 동안 작업」으로 접히며(도구 없는 턴은 구분선 없이), 도구 줄이 진행형에서 과거형이 된다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -58,13 +59,15 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await expect(흐름(page).getByText(first.text, { exact: true })).toBeVisible();
   await expect(입력칸(page)).toHaveValue("");
 
-  // 흐르는 답 — 턴이 도는 동안은 머리줄이 「작업 중」이고, 답이 흐른다. 턴 끝에 「4초 동안 작업함」으로 접히고 끝 메시지만 남는다.
+  // 흐르는 답 — 턴이 도는 동안은 구분선 자리에 「N초 동안 작업 중입니다」가 서고, 답이 흐른다. 첫 턴은 도구 없이 답만 했다 — 턴이
+  // 끝나면 도는 줄이 걷히고 펼칠 것이 없어 구분선도 서지 않는다(02 §8). 끝난 마지막 답 아래에 「답 복사」가 선다.
   await streamLines(page, started.id, linesThrough(linesAfter(twoTurns, FIRST_SENT), FIRST_END - 1));
   await expect(흐름(page).getByText("hello from turn", { exact: true })).toBeVisible();
-  await expect(흐름(page).getByText(/동안 작업 중입니다$/)).toBeVisible();
+  await expect(흐름(page).locator("[data-work-divider]")).toHaveText([/동안 작업 중입니다$/]);
   await streamLines(page, started.id, linesThrough(linesAfter(twoTurns, FIRST_END - 1), FIRST_END));
-  await expect(접힌턴(page, "4초 동안 작업함")).toHaveAttribute("aria-expanded", "false");
+  await expect(흐름(page).getByRole("button", { name: "답 복사", exact: true })).toBeVisible();
   await expect(흐름(page).getByText(/동안 작업 중입니다$/)).toHaveCount(0);
+  await expect(흐름(page).locator("[data-work-divider]")).toHaveCount(0);
   await expect(흐름(page).getByText("hello from turn", { exact: true })).toBeVisible();
 
   // 이어 말하기 — 같은 Thread로 간다. 도구 줄은 하는 동안 진행형이고 끝나면 과거형이다.
@@ -78,16 +81,33 @@ test("첫 화면에서 보낸 말로 새 Thread가 서고, Host의 답이 흐르
   await expect(도구줄(page, "notes.txt 쓰는 중")).toBeVisible();
   await streamLines(page, started.id, linesAfter(twoTurns, WRITE_STARTED));
 
-  // 둘째 턴 끝 — 「10초 동안 작업함」으로 접혀 도구 줄이 숨고 답 「5」만 남는다. 머리줄을 누르면 세 도구가 과거형으로 펼쳐진다.
-  const 둘째 = 접힌턴(page, "10초 동안 작업함");
+  // 둘째 턴 끝 — 「10초 동안 작업」 구분선으로 접혀 도구 줄이 숨고 답 「5」만 남는다. 구분선을 누르면 세 도구가 과거형으로 펼쳐진다.
+  const 둘째 = 접힌턴(page, "10초 동안 작업");
   await expect(둘째).toHaveAttribute("aria-expanded", "false");
   await expect(흐름(page).getByText("5", { exact: true })).toBeVisible();
   await expect(도구줄(page, "notes.txt 작성함")).toHaveCount(0);
+  const 꺾쇠 = 둘째.locator("svg");
+  expect(await 꺾쇠.evaluate((el) => getComputedStyle(el).rotate)).toBe("none");
   await 둘째.click();
   await expect(둘째).toHaveAttribute("aria-expanded", "true");
   for (const phrase of ["notes.txt 작성함", "notes.txt 읽음", "wc -c notes.txt 실행함"]) {
     await expect(도구줄(page, phrase)).toBeVisible();
   }
+  // 구분선의 모양(02 §8 · 티켓 09 — Codex 결) — 글 아래 9에 1px `separator-soft` 선이 열 폭으로 그어지고, 선에서 펼친 첫 줄까지 14다. 끝의
+  // 꺾쇠 12는 펼치면 90° 돈다. 도구 줄 앞 글리프는 14다.
+  expect(
+    await 둘째.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return [style.paddingBottom, style.borderBottomWidth, style.borderBottomColor];
+    }),
+  ).toEqual(["9px", "1px", "rgb(237, 237, 237)"]);
+  await expect.poll(() => 꺾쇠.evaluate((el) => getComputedStyle(el).rotate)).toBe("90deg");
+  expect(await 꺾쇠.evaluate((el) => el.getBoundingClientRect().width)).toBe(12);
+  const 첫줄 = 도구줄(page, "notes.txt 작성함");
+  const 위 = (target: typeof 첫줄) => target.evaluate((el) => el.getBoundingClientRect().top);
+  const 아래 = (target: typeof 첫줄) => target.evaluate((el) => el.getBoundingClientRect().bottom);
+  await expect.poll(async () => Math.round((await 위(첫줄)) - (await 아래(둘째)))).toBe(14);
+  expect(await 첫줄.locator("[data-glyph]").evaluate((el) => el.getBoundingClientRect().width)).toBe(14);
   // 마지막 턴의 끝난 편집은 입력창 위 알약이 센다.
   await expect(page.getByRole("group", { name: "1개 파일 변경됨", exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -104,16 +124,16 @@ test("다시 켜면 앱은 새 Thread로 열리고, 사이드바의 그 Thread�
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
-  // 사이드바 Thread 줄 — 제목과 마지막 말(끝난 턴의 마지막 답)이 선다.
+  // 사이드바 Thread 줄 — 제목 한 줄이다(02 티켓 05 — 마지막 말 미리보기는 걷었다).
   const 줄 = page.getByRole("region", { name: "Thread", exact: true }).getByRole("button").filter({ hasText: first.text });
-  await expect(줄).toContainText("5");
+  await expect(줄).toHaveText(first.text);
   await 줄.click();
   await expect(page).toHaveURL(`/threads/${reopened.id}`);
   await expect(줄).toHaveAttribute("aria-current", "page");
 
-  // 두 턴이 접힌 채 선다 — 떠 있는 Session이 없으니 도는 턴도 「작업 중」도 없다.
-  await expect(접힌턴(page, "4초 동안 작업함")).toHaveAttribute("aria-expanded", "false");
-  await expect(접힌턴(page, "10초 동안 작업함")).toHaveAttribute("aria-expanded", "false");
+  // 두 턴이 접힌 채 선다 — 떠 있는 Session이 없으니 도는 턴도 「작업 중」도 없다. 구분선은 도구를 쓴 둘째 턴에만 있다.
+  await expect(흐름(page).locator("[data-work-divider]")).toHaveText(["10초 동안 작업"]);
+  await expect(접힌턴(page, "10초 동안 작업")).toHaveAttribute("aria-expanded", "false");
   for (const text of [first.text, "hello from turn", second.text, "5"]) {
     await expect(흐름(page).getByText(text, { exact: true })).toBeVisible();
   }

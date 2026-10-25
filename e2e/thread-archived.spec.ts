@@ -18,10 +18,10 @@ import type { Settings } from "@/features/settings/types";
 import type { ThreadView } from "@/features/thread/types";
 
 // v1 티켓 40(PR ④ e2e) 흐름 하나 — **Work를 보관하면 그 Work에 이은 Thread는 읽기만이 된다**(v1 티켓 38 · 구현 스펙 §4 · §5 · §11 「보관」 ·
-// §15 · S25 · S43 · 스토리 103). 입력창 자리가 안내로 바뀌고, Work 카드는 보관됨 모양이며, 사이드바에서 그 Work와 Thread가 빠지고, ⌘K로
-// 찾으면 「보관됨」이다.
+// §15 · S25 · S43 · 스토리 103). 입력창 자리가 안내로 바뀌고, 요약 카드는 보관됨 모양이며(02 구현 스펙 §7 · 티켓 07 — v1 Work 카드를
+// 바꿨다), 사이드바에서 그 Work와 Thread가 빠지고, ⌘K로 찾으면 「보관됨」이다.
 //
-// Thread는 L1이 축복한 진짜 claude 2.1.309의 Work 만들기 턴(`thread-work`, v1 티켓 39)이 끝난 자리다. 보관은 Work 카드 ⋯의 「보관」(지금의
+// Thread는 L1이 축복한 진짜 claude 2.1.309의 Work 만들기 턴(`thread-work`, v1 티켓 39)이 끝난 자리다. 보관은 요약 카드 머리 「…」(Work 메뉴)의 「보관」(지금의
 // 보관 흐름)으로 하고, 그 뒤의 일 — core가 Work를 `archive/`로 옮기고 감시가 엔진에 알려 그 Session을 끄고 요약에 읽기만을 싣는 것 —
 // 은 L1(`thread_archive.rs`)이 잰다. 이 층은 그 결과(목록 · 보관 목록 · 요약 이벤트)를 흘린다.
 
@@ -43,10 +43,11 @@ const FOUND: SearchResults = { hits: [{ kind: "thread", id: view.id, title: view
 
 const 흐름 = (page: Page) => page.getByRole("main");
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
-const 카드 = (page: Page) => page.getByRole("region", { name: `Work 카드: ${MADE.title}`, exact: true });
+/** 요약 카드 — 영역 이름에 Work 이름이 없다(머리 글자가 말한다). */
+const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact: true });
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 
-test("Work 카드 ⋯에서 보관하면 그 Thread는 읽기만이 되어 입력창 자리가 안내로 바뀌고, 카드는 보관됨 모양이며, 사이드바에서 빠지고 ⌘K로 찾으면 「보관됨」이다", async ({
+test("요약 카드 「…」에서 보관하면 그 Thread는 읽기만이 되어 입력창 자리가 안내로 바뀌고, 카드는 보관됨 모양이며, 사이드바에서 빠지고 ⌘K로 찾으면 「보관됨」이다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -69,7 +70,8 @@ test("Work 카드 ⋯에서 보관하면 그 Thread는 읽기만이 되어 입�
   await expect(입력칸(page)).toBeVisible();
   await expect(workRow(page, MADE.slug)).toBeVisible();
 
-  // Work 카드 ⋯ 「보관」 — 지금의 보관 흐름(확인 창)이 그 Work를 보관한다.
+  // 요약 카드 머리 「…」(Work 메뉴)의 「보관」 — 지금의 보관 흐름(확인 창)이 그 Work를 보관한다.
+  await expect(카드(page)).toContainText(MADE.title);
   await 카드(page).getByRole("button", { name: "Work 메뉴", exact: true }).click();
   await page.getByRole("menuitem", { name: "보관", exact: true }).click();
   const confirm = page.getByRole("alertdialog", { name: `'${MADE.title}' 아카이빙`, exact: true });
@@ -93,8 +95,8 @@ test("Work 카드 ⋯에서 보관하면 그 Thread는 읽기만이 되어 입�
   await expect(입력칸(page)).toHaveCount(0);
   await expect(notice.getByRole("button")).toHaveCount(0);
 
-  // Work 카드는 보관됨 모양이다 — 보관 목록의 이름과 「보관됨 · 날」, 문서는 보이기만 하고, 더하기 · ⋯가 없다.
-  await expect(카드(page)).toContainText("보관됨 · 10월 24일");
+  // 요약 카드는 보관됨 모양이다 — 머리에 보관 목록의 이름과 「보관됨」, 소스의 문서는 보이기만 하고, 더하기 · 「…」가 없다.
+  await expect(카드(page)).toContainText(`${MADE.title}보관됨`);
   await expect(카드(page).locator("[data-doc]")).toHaveText(DOCS);
   await expect(카드(page).locator("button[data-doc]")).toHaveCount(0);
   for (const name of ["문서 추가", "Project 붙이기", "Work 메뉴"]) {
