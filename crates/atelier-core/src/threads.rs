@@ -46,6 +46,10 @@ pub struct ThreadFile {
     /// 함께 여는 폴더로 더한다. 고치기는 판정이 계속 거절한다. 비었으면 칸째 빠진다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub read_only_projects: Vec<String>,
+    /// 입력창 Work 칩에서 「새 Work」로 시작했나(v1 티켓 31 · 03 구현 스펙 S3) — `work`가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린
+    /// 「새 Work」다(Work를 만드는 중). 아니면 칸째 빠진다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub new_work: bool,
     /// 모르는 칸은 다시 써도 남는다 — 다른 판의 앱이 더한 칸을 지우지 않게(`work.json` · `agents.json`과 같은 규약).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -97,6 +101,8 @@ pub struct NewThread {
     pub title: String,
     pub work: Option<String>,
     pub mode: Option<String>,
+    /// 「새 Work」로 시작했나 — [`ThreadFile::new_work`].
+    pub new_work: bool,
 }
 
 /// 첫 줄과 함께 선 Thread — 이어 적을 기록과, 방금 적은 첫 줄(엔진이 이벤트로 내보낸다).
@@ -136,6 +142,7 @@ pub(crate) fn create_thread_at(
         created_at: at.to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
         work: thread.work,
         mode: thread.mode,
+        new_work: thread.new_work,
         ..ThreadFile::default()
     };
     crate::atomic::write_json_into_existing_dir(&dir, THREAD_FILE, &file, "Thread를")?;
@@ -419,7 +426,7 @@ mod tests {
     }
 
     fn new_thread(title: &str) -> NewThread {
-        NewThread { title: title.to_owned(), work: None, mode: Some("ask".to_owned()) }
+        NewThread { title: title.to_owned(), work: None, mode: Some("ask".to_owned()), new_work: false }
     }
 
     /// 사람이 보낸 첫 말로 Thread를 세운다.
@@ -561,7 +568,7 @@ mod tests {
     }
 
     fn linked(title: &str, work: &str) -> NewThread {
-        NewThread { title: title.to_owned(), work: Some(work.to_owned()), mode: None }
+        NewThread { title: title.to_owned(), work: Some(work.to_owned()), mode: None, new_work: false }
     }
 
     fn ids<'a>(summaries: impl IntoIterator<Item = &'a ThreadSummary>) -> Vec<&'a str> {

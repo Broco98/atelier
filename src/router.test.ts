@@ -169,6 +169,19 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work" });
   });
 
+  // 03 구현 스펙 §5 · 티켓 02 — 「Work 없이 대화」 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「Host와 만들기」(S16)는 둘을 함께
+  // 싣는다 — Work 없는 새 대화의 입력창에 맡기는 말을 넣는다(보내지 않는다).
+  it("`/?new=thread&say=…`도 새 Thread다 — 「Work 없이 대화」와 입력 글이 함께 선다", async () => {
+    const { router } = setup(["/threads/20261010-100000"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "thread", say: "결제 서비스 Space를 만들고 싶어" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({
+      new: "thread",
+      say: "결제 서비스 Space를 만들고 싶어",
+    });
+  });
+
   it("시작 직후 뒤로갈 곳이 없다", async () => {
     const { router, history } = setup(["/"]);
     await router.load();
@@ -191,6 +204,8 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/")).toBe(true);
     expect(await blankAt("/?work=refund-api")).toBe(false);
     expect(await blankAt("/?new=work")).toBe(false);
+    expect(await blankAt("/?new=thread")).toBe(false);
+    expect(await blankAt("/?say=%EC%95%88%EB%85%95")).toBe(false);
     expect(await blankAt("/threads/20261010-100000")).toBe(false);
     expect(await blankAt("/library")).toBe(false);
   });
@@ -198,10 +213,11 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
   it("모르는 모양의 씨앗은 없는 것과 같다 — 화면이 씨앗 없는 새 Thread라 그 자리다", async () => {
     expect(await blankAt("/?work=")).toBe(true);
     expect(await blankAt("/?new=project")).toBe(true);
+    expect(await blankAt("/?say=")).toBe(true);
   });
 
   it("씨앗을 단 새 Thread에서 `/`로 가면 씨앗이 걷히고 그 자리가 된다 — 히스토리는 한 칸 는다", async () => {
-    for (const entry of ["/?new=work", "/?work=refund-api"]) {
+    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95"]) {
       const { router, history } = setup([entry]);
       await router.load();
       await router.navigate({ to: "/" });

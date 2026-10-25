@@ -216,6 +216,18 @@ describe("말의 사전", () => {
     expect(bodyOf("모드")).toContain("계획만");
   });
 
+  // 03 구현 스펙 §2 · §5 · 티켓 02. 입력창 상자에 붙은 회색 띠가 「트레이」이고, 그 첫 칩이 새 Thread가 어디서 시작하나를 고르는 「Work
+  // 칩」이다. 사전이 트레이의 두 자리(첫 화면은 상자 아래 · Thread 화면은 상자 위)를 모르면 다음 사람이 Thread 화면의 띠를 상자 아래로
+  // 되돌려 칩이 창 끝에 눌린다. Work 칩이 스위치 둘 · 기억 · 첫 말 뒤 잠김을 말하지 않으면 기본값을 「Work 없음」으로 되돌리거나 최근
+  // Work를 기억해 다음 새 Thread를 엉뚱한 Work에 붙인다.
+  it("「트레이」가 두 자리를 말하고, 「Work 칩」이 스위치 둘 · 기억 · 최근 Work · 첫 말 뒤 잠김을 말한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["트레이", "Work 칩"]));
+    for (const piece of ["회색 띠", "상자 아래", "상자 위"]) expect(bodyOf("트레이"), piece).toContain(piece);
+    for (const piece of ["「새 Work」", "「Work 없이 대화」", "최근 Work", "기억", "잠긴다"]) {
+      expect(bodyOf("Work 칩"), piece).toContain(piece);
+    }
+  });
+
   // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Agent가 고친 자리를 그
   // 말로 부르지 않는다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes가 턴 앞뒤로 spec 폴더를 견주어 세운 표시는
   // 대화창과 함께 걷혔다 — 본문이 그 표시의 지우는 때를 말하면 없는 화면을 말하는 것이다.

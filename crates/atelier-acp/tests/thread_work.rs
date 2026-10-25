@@ -337,7 +337,8 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
 }
 
 /// 입력창 Work 칩의 「새 Work로 시작」(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가
-/// Work부터 만든다. 「Work 없이」는 아무것도 하지 않는다.
+/// Work부터 만든다. `thread.json`에 그 표시(`newWork`)가 남아, Work가 서기 전까지 첫 말 뒤의 잠긴 Work 칩이 흐린 「새 Work」다(03 S3).
+/// 「Work 없이」는 아무것도 하지 않는다.
 #[test]
 fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안을_먼저_하라고_하고_work_없이는_그_줄이_없다() {
     let sandbox = Sandbox::new();
@@ -355,9 +356,11 @@ fn 새_work로_시작한_thread는_첫_말의_머리말이_work_만들기_제안
         "새 Work로 시작은 머리말에 표시가 선다:\n{marked}"
     );
     assert_eq!(sandbox.thread_json(&new_work)["work"], Value::Null, "Work는 Host의 제안 카드로 만든다 — 아직 없다");
+    assert_eq!(sandbox.thread_json(&new_work)["newWork"], json!(true), "「새 Work」로 시작한 것이 thread.json에 남는다");
 
     let plain = host.start_thread("안녕", ThreadLink::NoWork).expect("Work 없이");
     assert!(!preamble(&plain).contains("새 Work로 시작"), "Work 없이는 아무것도 하지 않는다");
+    assert!(sandbox.thread_json(&plain).get("newWork").is_none(), "Work 없이는 그 칸이 서지 않는다");
     host.shut_down();
 }
 

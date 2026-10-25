@@ -97,7 +97,7 @@ pub enum ThreadLink {
     /// Work 없음 — Thread 폴더에서 일하고, 등록된 Project 폴더는 읽기로 함께 연다(S11 · 끝 점검 39(a)).
     NoWork,
     /// 새 Work로 시작 — 아직 Work가 없으므로 Work 없음처럼 선다. 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서고(v1 티켓
-    /// 31 · §11), Work는 Host의 제안 카드로 만든다(v1 티켓 30).
+    /// 31 · §11), `thread.json`에 그 표시(`newWork`)가 남는다(03 S3). Work는 Host의 제안 카드로 만든다(v1 티켓 30).
     NewWork,
     /// 이 Work — 그 Work의 자리에서 일한다. `thread.json`의 `work`에 적는다.
     Work { slug: String },
@@ -426,7 +426,8 @@ impl ConversationHost {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
         let attachments = attachments_of(attachments)?;
-        let note = (link == ThreadLink::NewWork).then_some(NEW_WORK_NOTE);
+        let new_work = link == ThreadLink::NewWork;
+        let note = new_work.then_some(NEW_WORK_NOTE);
         let work = match link {
             ThreadLink::Work { slug } => {
                 self.open_work(&slug)?;
@@ -442,7 +443,7 @@ impl ConversationHost {
         let handle = found.definition.handle.clone();
         // 이은 Thread의 정도는 Work의 것이라(S18) `thread.json`에 적지 않는다.
         let mode = picks.mode.filter(|_| work.is_none()).map(|mode| mode.as_str().to_owned());
-        let new = NewThread { title: title_of(text), work: work.clone(), mode };
+        let new = NewThread { title: title_of(text), work: work.clone(), mode, new_work };
         let created = atelier_core::create_thread(&self.data_root, new, RecordKind::Joined, Some(&handle), joined(&found))
             .map_err(|error| HostError::Record(format!("Thread를 세우지 못했습니다: {error}")))?;
         let log = Arc::new(ThreadLog::new(&self.data_root, &created.id, created.log, Arc::clone(&self.emit)));

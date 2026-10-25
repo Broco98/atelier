@@ -37,11 +37,13 @@ function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
 
 // 카드 폭 — 쓰는 자리가 className으로 덮지 않고 여기서 고른다. ⋯ 메뉴 · 고르기 메뉴는 `size-menu`(260), 우클릭 메뉴는
 // `size-menu-ctx`(248)다(DS 「간격 · 반경 · 크기」). 하위 메뉴는 내용 폭을 따르되 168–220 안이다(DS `Menu` 보드 「판」) — 넘치는
-// 이름은 줄의 `truncate`가 줄임표로 접는다.
+// 이름은 줄의 `truncate`가 줄임표로 접는다. 두 줄 줄(이름 아래 설명)의 설명이 긴 고르기 메뉴는 `note`다 — 내용 폭을 따르되 300에서
+// 시작하고 창 안에서 멈춘다(03 시안 v52 `.pmenu{min-width:300px}` — 입력창 트레이의 Work 칩 메뉴).
 const CARD_WIDTH = {
   menu: "w-(--size-menu)",
   "menu-ctx": "w-(--size-menu-ctx)",
   sub: "w-max min-w-42 max-w-55",
+  note: "w-max min-w-75 max-w-(--available-width)",
 } as const
 
 type MenuCardProps = MenuPrimitive.Popup.Props &
@@ -93,7 +95,7 @@ function MenuCard({
 
 /**
  * ⋯ 메뉴 · 고르기 메뉴의 카드. `grows`는 모델 피커(`ComposerChips`의 `ModelChip`)만 준다 — Codex에서 열릴 때 움직이는 메뉴는 그것 하나다
- * (02 구현 스펙 §12 · Motion 보드 「팁 띠 · 모델 피커」).
+ * (02 구현 스펙 §12 · Motion 보드 「팁 띠 · 모델 피커」). 폭은 `size-menu`이고, 설명이 긴 두 줄 줄의 메뉴만 `note`다(`CARD_WIDTH`).
  */
 function DropdownMenuContent({
   align = "start",
@@ -101,11 +103,12 @@ function DropdownMenuContent({
   side = "bottom",
   sideOffset = 4,
   grows = false,
+  width = "menu",
   ...props
-}: MenuCardProps & { grows?: boolean }) {
+}: MenuCardProps & { grows?: boolean; width?: "menu" | "note" }) {
   return (
     <MenuCard
-      width="menu"
+      width={width}
       dataSlot="dropdown-menu-content"
       grows={grows}
       align={align}

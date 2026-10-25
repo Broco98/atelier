@@ -485,6 +485,11 @@ describe("눈금의 사분 단", () => {
       className: "gap-px",
       why: "검색 팔레트의 답 목록 — 줄 사이 1(DS `.at-palette .list`)",
     },
+    {
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "gap-1.25",
+      why: "입력창 트레이 칩 — 글리프와 글자 사이 5(03 시안 v52 `.tray .tc{gap:5px}`)",
+    },
     // 셈에서 나오는 홀수 px
     {
       file: "src/components/shell/Frame.tsx",

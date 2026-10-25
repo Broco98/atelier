@@ -102,6 +102,11 @@ export interface ThreadView {
   queues: Record<string, QueuedMessage[]>;
   /** 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 읽기만 된 Thread다(v1 티켓 38). 열린 화면은 목록 요약 이벤트가 고친다(`putSummary`). */
   readOnly: WorkGone | null;
+  /**
+   * 입력창 Work 칩에서 「새 Work」로 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. Work가 서기 전까지 잠긴 Work 칩이
+   * 흐린 「새 Work」다(`lockedWork`).
+   */
+  newWork?: boolean;
 }
 
 /**

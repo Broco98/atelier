@@ -1,5 +1,5 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { Ban, ChevronDown, ChevronRight, Folder, Plus, Shield } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderPlus, MessageSquare, Shield, type LucideIcon } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import {
   DropdownMenu,
@@ -16,18 +16,20 @@ import { cn } from "@/lib/utils";
 import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, EFFORTS, type ChoiceOption } from "./chips";
 import { useRecentWorks } from "./hooks";
 import type { AskLevel, ThreadLink } from "./types";
+import type { LockedWork } from "./work-chip";
 
-// 입력창의 칩(v1 티켓 05 · 23 · 31 · 02 티켓 10 · 02 구현 스펙 §9 · 캔버스 v35 Diff-Chat · F1-Home) — 입력칸 아래 줄에 `+` · `@` 다음으로
-// 물어보는 정도가, 보내기 원 앞에 모델 · 생각 깊이가 선다. Work 칩은 새 Thread에서만 입력창 **밖** 아래 트레이에 선다(02 티켓 10 — Thread
-// 안에서는 머리 줄이 이은 Work를 말한다, 시안 「채팅 안에서는 뺀다」). 받는 이 칩은 없다(결정.md 「사용자 결정: 입력창 다듬기」) — 받는 이는
-// 말의 첫 멘션이 정하고 입력칸의 멘션 칠이 보이며, Agent는 @ 메뉴 하나로 부른다.
+// 입력창의 칩(v1 티켓 05 · 23 · 31 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · v52 F4-KitComposer) — 입력칸
+// 아래 줄에 `+` 다음으로 물어보는 정도가, 보내기 원 앞에 모델 · 생각 깊이가 선다(입력창 안은 이 셋뿐이다 — `@` 단추는 숨겼다, 03 §6). Work
+// 칩은 입력창 **밖** 트레이에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5). 받는 이 칩은 없다(결정.md 「사용자 결정: 입력창
+// 다듬기」) — 받는 이는 말의 첫 멘션이 정하고 입력칸의 멘션 칠이 보인다.
 // - **칩은 Codex의 ghost 알약이다**(Diff-Chat 「칩」) — 테두리 · 면 없는 28 알약 · 좌우 6 · 13px `fg-subtle`. 모델 칩만 본문색 · 좌우 8이다
 //   (시안의 「Claude Code Default」 칩). 내용과 메뉴는 v1 그대로다.
 // - **모델 · 생각 깊이**(「Opus · 높음」)는 다음 말을 받을 참여자 Session의 값이다(스토리 33). 앞에 Runtime 표시(Claude 마크)가 선다.
 //   누르면 16 반경 메뉴에 「Claude Code」 모델 목록과 「생각 깊이」 칸 줄이 선다. 생각 깊이는 턴이 도는 동안 바꿀 수 없다(엔진이
 //   거절한다 — 그래서 그동안 잠근다). 목록이 없으면(앉지 않은 Agent를 멘션했다) 보이기만 한다.
-// - **Work**(v1 티켓 31 · 스토리 94–96 · F1-Home 트레이)는 첫 말 전의 메뉴다 — Work 없이 · 새 Work로 시작 · 최근 Work(Thread 수). 첫 말을
-//   보낸 뒤에는 칩이 없다(연결을 끊는 길은 없다 — v1 §11). 입력창의 `/work`도 이 메뉴를 연다.
+// - **Work 칩**(03 §5 · F4-KitComposer · F4-HomeWorkMenu)은 스위치다 — 첫 말 전의 메뉴에 「새 Work」 · 「Work 없이 대화」(설명 한 줄 · 지금
+//   것에 ✓)와 최근 Work 다섯이 선다. 입력창의 `/work`도 이 메뉴를 연다. 첫 말을 보낸 뒤에는 잠겨 보이기만 한다(연결을 끊는 길은 없다 —
+//   v1 §11). Work에 이은 칩만 누를 수 있고, 누르면 그 Work 화면으로 간다.
 // - **물어보는 정도**(v1 티켓 23 · 스토리 84)는 방패 · 지금 정도 이름의 칩이다(시안의 「매번 묻기」 — 셰브런 없이). 누르면 「언제
 //   물어볼까요」 아래 넷이 이름과 설명 한 줄로 서고 고른 것에만 체크가 붙는다. 끝의 「Policy 열기」는 다음 말을 받을 Agent의 파일을
 //   Library에서 연다 — 정도보다 먼저 드는 그 Agent의 `ask_before` · `forbid`가 거기 있다. 입력창의 `/policy`도 이 메뉴를 연다.
@@ -39,12 +41,19 @@ const CHIP =
 const MENU_CHIP = cn(CHIP, "quiet-hover data-[popup-open]:bg-fill-hover data-[popup-open]:text-fg");
 /** 모델 칩 — 본문색 · 좌우 8(시안 「Claude Code Default」 칩). */
 const MODEL_CHIP = "px-2 text-fg";
-/** 트레이의 Work 칩 — 2단계 글자 · 좌우 8(F1-Home 트레이 칩). */
-const TRAY_CHIP = "px-2 text-fg-secondary";
-/** 고른 것이 있는 칩(Work를 골랐다) — 옅은 면에 `fg`(Screen-Home 보드 `.chip.on`). */
-const PICKED = "bg-fill-soft text-fg";
-/** Work 칩의 접근성 이름 — 칩 글자(「Work 없음」 · 「새 Work」 · 제목)만으로는 무엇을 고르는 칩인지 말하지 않는다. */
+/**
+ * 트레이 칩(시안 v52 `.tray .tc`) — 26 · 알약 · 좌우 8 · 글리프와 글자 사이 5 · 13/18, 테두리 · 면 없음. 칩 줄이 좁으면 칩이 줄어 이름이
+ * 말줄임으로 끊긴다(`shrink`).
+ */
+const TRAY_CHIP = "flex h-6.5 min-w-0 shrink items-center gap-1.25 rounded-full px-2 text-chat-meta whitespace-nowrap outline-none focus-ring";
+/** 고르는 트레이 칩 — 본문색 글자 · `fg-icon` 글리프 · `fg-subtle` 셰브런. hover와 메뉴가 열린 동안 켜짐 면(시안 `.tc.open`). */
+const PICK_CHIP = cn(TRAY_CHIP, "text-fg transition-colors quiet-hover data-[popup-open]:bg-fill-hover");
+/** 트레이 칩 이름의 폭 — 긴 Work 제목이 범위 줄(03 티켓 06)의 자리를 다 먹지 않게. */
+const TRAY_NAME = "max-w-44 min-w-0 truncate";
+/** Work 칩의 접근성 이름 — 칩 글자(「새 Work」 · 「Work 없이 대화」 · 제목)만으로는 무엇을 고르는 칩인지 말하지 않는다. */
 const workName = (label: string) => `어디서 일할지 ${label}`;
+/** 고른 것의 글리프 — 새 Work는 폴더 더하기, Work 없이 대화는 말풍선, Work는 폴더다(시안 v52). */
+const WORK_GLYPH: Record<ThreadLink["kind"], LucideIcon> = { "new-work": FolderPlus, "no-work": MessageSquare, work: Folder };
 
 /** 모델 칩 앞의 Runtime 표시 — Claude Code의 마크. 단색이라 칩 글자색을 따른다(`agent-mark.tsx` — 브랜드 색을 박지 않는다). */
 const ClaudeMark = agentMarkOf("claude")?.Glyph;
@@ -137,21 +146,44 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
   );
 }
 
-/** Work 칩이 받는 것 — 칩 글자와 고르기(첫 말 전의 새 Thread에만 선다). */
+/** 고르는 Work 칩이 받는 것 — 칩 글자와 고르기(첫 말 전의 새 Thread). */
 export interface WorkChoice {
-  /** 칩 글자 — 「Work 없음」 · 「새 Work」 · Work 제목(`workHome`). */
+  /** 칩 글자 — 「새 Work」 · 「Work 없이 대화」 · Work 제목(`workHome`). */
   label: string;
   link: ThreadLink;
   /** 골랐다 — 최근 Work면 그 제목도 함께 온다(입력창 안내가 쓴다). */
   onPick: (link: ThreadLink, title: string | null) => void;
 }
 
-/** 메뉴 고르기의 값 — Work 없이 · 새 Work로 시작 · 그 Work. slug와 겹치지 않는 머리를 단다. */
-const valueOf = (link: ThreadLink): string => (link.kind === "work" ? `work:${link.slug}` : link.kind);
+/** 잠긴 Work 칩이 받는 것 — 첫 말 뒤의 칩 글(`lockedWork`)과, 이은 Work로 가는 길(그 Work의 slug를 받는다). */
+export interface LockedChoice {
+  locked: LockedWork;
+  onOpen: (slug: string) => void;
+}
 
 /**
- * Work 칩과 메뉴(Screen-Home 보드 「Work 칩 메뉴」 · F1-Home 트레이) — 고른 것에만 체크, 최근 Work는 그 Work에 이은 Thread 수를 단다. 메뉴의
- * 열림은 `/work`도 연다. 칩 줄이 좁으면 이 칩만 줄어 제목이 말줄임으로 끊긴다(`shrink`).
+ * 입력창 트레이(03 §5 · 시안 v52 `.tray`) — 입력창 상자에 붙은 회색 띠다. 자리는 입력창의 자리를 따른다: 입력창이 가운데인 첫 화면은 상자
+ * 아래(`below`), 화면 아래에 붙은 Thread 화면은 상자 위(`above` — 창 끝에 눌려 칩이 입력창 뒤로 숨지 않게)다. 첫 칩이 Work 칩이다 — 첫
+ * 말 전이면 고르는 스위치(`WorkChoice`), 뒤면 잠긴 칩(`LockedChoice`)이다. Space 칩 · 범위 줄은 그 곁에 선다(03 티켓 06).
+ */
+export interface ComposerTray {
+  at: "below" | "above";
+  work: WorkChoice | LockedChoice;
+}
+
+/** 메뉴 고르기의 값 — 새 Work · Work 없이 대화 · 그 Work. slug와 겹치지 않는 머리를 단다. */
+const valueOf = (link: ThreadLink): string => (link.kind === "work" ? `work:${link.slug}` : link.kind);
+
+/** 스위치 둘 — 차례 · 이름 · 설명 한 줄이 시안 v52 그대로다(03 §5 · 스토리 15–17). */
+const SWITCHES = [
+  { kind: "new-work", name: "새 Work", description: "첫 말로 Work를 만들고 그 안에서 시작해요" },
+  { kind: "no-work", name: "Work 없이 대화", description: "묻고 답하기 · 나중에 Host 제안으로 Work가 될 수 있어요" },
+] as const;
+
+/**
+ * 고르는 Work 칩과 메뉴(03 §5 · F4-HomeWorkMenu · F4-KitComposer 「Work 칩 메뉴」) — 칩 아래로 연다. 위에 스위치 둘(설명 한 줄 · 지금 것에 ✓),
+ * 구분선 아래 「최근 Work — 그 Work에 새 Thread로」와 진행 중인 Work 다섯이 선다. Work가 하나도 없으면 그 묶음 대신 「아직 Work가 없어요」
+ * 한 줄이다(시안 「Work 칩 메뉴 — Work가 없을 때」). 최근 Work를 아직 읽지 못했으면 스위치 둘만 선다. 메뉴의 열림은 `/work`도 연다.
  */
 export function WorkChip({
   label,
@@ -162,76 +194,106 @@ export function WorkChip({
 }: WorkChoice & { open: boolean; onOpenChange: (open: boolean) => void }) {
   const recent = useRecentWorks();
   const value = valueOf(link);
+  const Glyph = WORK_GLYPH[link.kind];
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger
-        aria-label={workName(label)}
-        className={cn(MENU_CHIP, TRAY_CHIP, "min-w-0 shrink", link.kind !== "no-work" && PICKED)}
-      >
-        <Folder className="size-3.5 shrink-0" aria-hidden />
-        <span className="max-w-44 min-w-0 truncate">{label}</span>
-        <ChevronDown className="size-3 shrink-0" aria-hidden />
+      <DropdownMenuTrigger aria-label={workName(label)} className={PICK_CHIP}>
+        <Glyph className="size-3.5 shrink-0 text-fg-icon" aria-hidden />
+        <span className={TRAY_NAME}>{label}</span>
+        <ChevronDown className="size-3 shrink-0 text-fg-subtle" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="start">
+      {/* 트레이 아래 6에 선다(시안 `.pmenu{top:calc(100% + 6px)}`) — 칩 아래끝에서 트레이 안쪽 6을 지나 6이다. */}
+      <DropdownMenuContent side="bottom" align="start" sideOffset={12} width="note">
         <DropdownMenuRadioGroup
           value={value}
           onValueChange={(next: string) => {
             if (next === value) return;
             if (next === "no-work" || next === "new-work") return onPick({ kind: next }, null);
-            const work = recent.find((one) => valueOf({ kind: "work", slug: one.slug }) === next);
+            const work = recent?.find((one) => valueOf({ kind: "work", slug: one.slug }) === next);
             if (work) onPick({ kind: "work", slug: work.slug }, work.title);
           }}
         >
-          <DropdownMenuRadioItem
-            value="no-work"
-            label="Work 없이"
-            aria-label="Work 없이"
-            aria-description="필요해지면 Host가 만들어요"
-            size="note"
-          >
-            <Ban className="mt-0.5" aria-hidden />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate">Work 없이</span>
-              <span className="truncate text-xs text-fg-tertiary">필요해지면 Host가 만들어요</span>
-            </span>
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem
-            value="new-work"
-            label="새 Work로 시작"
-            aria-label="새 Work로 시작"
-            aria-description="첫 메시지로 Host가 Work를 만들어요"
-            size="note"
-          >
-            <Plus className="mt-0.5" aria-hidden />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate">새 Work로 시작</span>
-              <span className="truncate text-xs text-fg-tertiary">첫 메시지로 Host가 Work를 만들어요</span>
-            </span>
-          </DropdownMenuRadioItem>
-          {recent.length > 0 && (
+          {SWITCHES.map((one) => {
+            const SwitchGlyph = WORK_GLYPH[one.kind];
+            return (
+              <DropdownMenuRadioItem
+                key={one.kind}
+                value={one.kind}
+                label={one.name}
+                aria-label={one.name}
+                aria-description={one.description}
+                size="note"
+              >
+                <SwitchGlyph className="mt-0.5" aria-hidden />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{one.name}</span>
+                  <span className="truncate text-xs text-fg-tertiary">{one.description}</span>
+                </span>
+              </DropdownMenuRadioItem>
+            );
+          })}
+          {recent && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>최근 Work</DropdownMenuLabel>
-                {recent.map((work) => (
-                  <DropdownMenuRadioItem
-                    key={work.slug}
-                    value={valueOf({ kind: "work", slug: work.slug })}
-                    label={work.title}
-                    aria-label={work.title}
-                    aria-description={`Thread ${work.threads}개`}
-                  >
-                    <Folder aria-hidden />
-                    <span className="min-w-0 flex-1 truncate">{work.title}</span>
-                    <span className="shrink-0 text-xs text-fg-tertiary">Thread {work.threads}개</span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuGroup>
+              {recent.length > 0 ? (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>최근 Work — 그 Work에 새 Thread로</DropdownMenuLabel>
+                  {recent.map((work) => (
+                    <DropdownMenuRadioItem
+                      key={work.slug}
+                      value={valueOf({ kind: "work", slug: work.slug })}
+                      label={work.title}
+                      aria-label={work.title}
+                    >
+                      <Folder aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{work.title}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuGroup>
+              ) : (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>아직 Work가 없어요</DropdownMenuLabel>
+                </DropdownMenuGroup>
+              )}
             </>
           )}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * 잠긴 Work 칩(03 §5 · S3 · F4-KitComposer 「첫 말 뒤」) — 메뉴 없이 보이기만 한다(시안 `.tc.lock` — 글자 60% · 글리프 40%, 셰브런 없음).
+ * Work에 이은 칩은 누르면 그 Work 화면으로 가는 단추다. 아직 Work가 서지 않은 「새 Work」는 더 흐리다(`.tc.ghost`) — 「Work를 만드는 중」이다.
+ */
+export function LockedWorkChip({ locked, onOpen }: LockedChoice) {
+  const Glyph = WORK_GLYPH[locked.kind];
+  const ghost = locked.kind === "new-work";
+  const face = (
+    <>
+      <Glyph className={cn("size-3.5 shrink-0", ghost ? "text-fg-tray-ghost-icon" : "text-fg-tray-locked-icon")} aria-hidden />
+      <span className={TRAY_NAME}>{locked.label}</span>
+    </>
+  );
+  if (locked.kind !== "work") {
+    return (
+      <span data-slot="work-chip" className={cn(TRAY_CHIP, ghost ? "text-fg-tray-ghost" : "text-fg-tray-locked")}>
+        {face}
+      </span>
+    );
+  }
+  const slug = locked.slug;
+  return (
+    <button
+      type="button"
+      data-slot="work-chip"
+      aria-label={`Work로 가기: ${locked.label}`}
+      onClick={() => onOpen(slug)}
+      className={cn(TRAY_CHIP, "text-fg-tray-locked transition-colors quiet-hover")}
+    >
+      {face}
+    </button>
   );
 }
 

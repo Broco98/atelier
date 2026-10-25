@@ -23,6 +23,8 @@ export interface CommandOption {
   description: string;
   aliases: string[];
   thread?: boolean;
+  /** 보류한 화면 명령 — 목록에 서지 않는다. 정의와 그 일(입력창의 `pickCommand`)은 남아 다시 켤 때 이 칸만 걷는다. */
+  held?: boolean;
 }
 
 export interface ChipLists {
@@ -44,14 +46,14 @@ export const EFFORTS: readonly { value: string; label: string }[] = [
 
 /**
  * 화면이 하는 명령 — Runtime 명령 앞에 보드의 차례로 선다(캔버스 Composer 보드 「/ · 명령」). `/work`는 Work 칩 메뉴를 연다(v1 티켓
- * 31 — 고를 수 있는 첫 말 전에만 선다). `/agent`는 Agent 부르기 메뉴를 연다(v1 티켓 14). `/plan`은 물어보는 정도를 「계획만」으로
- * 바꾸고, `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴(모델과 생각 깊이)를 연다(구현 스펙 §14, 코드 리뷰
- * 1차 B8).
+ * 31 — 고를 수 있는 첫 말 전에만 선다). `/agent`는 Agent 부르기 메뉴를 연다(v1 티켓 14) — 지금은 보류라 서지 않는다(03 구현 스펙 §6 ·
+ * S5 — Agent 여럿과 함께 채팅이 들어올 때까지. 글로 친 `@handle`과 그 메뉴는 남는다). `/plan`은 물어보는 정도를 「계획만」으로 바꾸고,
+ * `/policy`는 물어보는 정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴(모델과 생각 깊이)를 연다(구현 스펙 §14, 코드 리뷰 1차 B8).
  */
 export const THREAD_COMMANDS: readonly CommandOption[] = [
   { name: "new", description: "새 Thread", aliases: [], thread: true },
   { name: "work", description: "Work 만들기 · 붙이기", aliases: [], thread: true },
-  { name: "agent", description: "Agent 부르기", aliases: [], thread: true },
+  { name: "agent", description: "Agent 부르기", aliases: [], thread: true, held: true },
   { name: "plan", description: "계획만 세우고 멈추기", aliases: [], thread: true },
   { name: "model", description: "모델과 생각 깊이", aliases: [], thread: true },
   { name: "policy", description: "언제 물어볼지", aliases: [], thread: true },
@@ -59,11 +61,12 @@ export const THREAD_COMMANDS: readonly CommandOption[] = [
 
 /**
  * 「/」 메뉴의 명령 — 화면 명령 뒤에 Runtime 명령이다. 화면 명령과 이름이 같은 Runtime 명령은 가린다 — 같은 글이 다른 일을 하지 않게.
- * `/work`는 Work 칩을 고를 수 있을 때(`work` — 첫 말 전)만 선다. 첫 말 뒤의 칩은 이은 Work를 보이기만 한다.
+ * 보류한 명령(`held`)도 그 이름을 가린 채 서지 않는다. `/work`는 Work 칩을 고를 수 있을 때(`work` — 첫 말 전)만 선다. 첫 말 뒤의 칩은
+ * 잠겨 보이기만 한다.
  */
 export function slashCommands(runtime: readonly CommandOption[], { work = false }: { work?: boolean } = {}): CommandOption[] {
   const taken = new Set(THREAD_COMMANDS.map((command) => command.name));
-  const shown = THREAD_COMMANDS.filter((command) => work || command.name !== "work");
+  const shown = THREAD_COMMANDS.filter((command) => !command.held && (work || command.name !== "work"));
   return [...shown, ...runtime.filter((command) => !taken.has(command.name))];
 }
 

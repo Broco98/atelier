@@ -282,6 +282,10 @@
     --color-fill-toggle-on: var(--fill-toggle-on);
     --color-accent-solid-pending: var(--accent-solid-pending);
     --color-face-person: var(--face-person);
+    --color-fg-tray-locked: var(--fg-tray-locked);
+    --color-fg-tray-locked-icon: var(--fg-tray-locked-icon);
+    --color-fg-tray-ghost: var(--fg-tray-ghost);
+    --color-fg-tray-ghost-icon: var(--fg-tray-ghost-icon);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -874,7 +878,11 @@
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
          face-person           바닥 사람 줄의 얼굴 면(04 — 시안 F1-Home · Diff-Frame · Components의 `.ava`, 스펙 §4는 값을 적지 않았다). 글자는
                                `fg-on-solid`. Agent 얼굴(`fill-active` 면)과 갈려 「나」가 한눈에 갈린다
-         shimmer-band          「생각 중」 띠의 흰 75%(12) — 띠를 그리는 유틸리티만 읽어 유틸리티 이름을 잇지 않는다 */
+         shimmer-band          「생각 중」 띠의 흰 75%(12) — 띠를 그리는 유틸리티만 읽어 유틸리티 이름을 잇지 않는다
+       **03 시안 값**(캔버스 v52 F4-KitComposer — 괄호 안은 03 티켓). Codex를 잰 값이 아니라 03 시안이 트레이 칩에 적은 것이다.
+         fg-tray-locked        첫 말 뒤 잠긴 Work 칩의 글자(02 — `.tray .tc.lock` 60%). 글리프는 `fg-tray-locked-icon`(40%)
+         fg-tray-ghost         흐린 트레이 칩의 글자(02 — 아직 Work가 서지 않은 「새 Work」, 06 — 비어 있는 Space 칩 · `.tray .tc.ghost` 45%).
+                               글리프는 `fg-tray-ghost-icon`(35%) */
     --fg-bubble: #0c274a;
     --fg-placeholder: #c7c7c8;
     --fg-subtle: #8e8f90;
@@ -898,6 +906,10 @@
     --accent-solid-pending: #a9c9fb;
     --face-person: #303e4e;
     --shimmer-band: rgba(255, 255, 255, 0.75);
+    --fg-tray-locked: rgba(26, 28, 31, 0.6);
+    --fg-tray-locked-icon: rgba(26, 28, 31, 0.4);
+    --fg-tray-ghost: rgba(26, 28, 31, 0.45);
+    --fg-tray-ghost-icon: rgba(26, 28, 31, 0.35);
 
     /* 그림자 — 외곽선은 실선 대신 0.5px 링 `shadow-hairline`이다(DS 원칙 4). 떠 있는 것은 `shadow-prominent` */
     --shadow-hairline: 0 0 0 0.5px #0000001a;

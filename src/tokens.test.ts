@@ -226,6 +226,11 @@ describe("Codex 실측 색", () => {
     "accent-solid-pending": "#a9c9fb",
     // 스펙 밖 — 시안의 사람 얼굴(`.ava`). 04가 더했다(02 결정 「04」).
     "face-person": "#303e4e",
+    // 03 시안 v52의 트레이 칩(03 티켓 02) — 잠긴 Work 칩 · 흐린 칩의 글자와 글리프.
+    "fg-tray-locked": "rgba(26, 28, 31, 0.6)",
+    "fg-tray-locked-icon": "rgba(26, 28, 31, 0.4)",
+    "fg-tray-ghost": "rgba(26, 28, 31, 0.45)",
+    "fg-tray-ghost-icon": "rgba(26, 28, 31, 0.35)",
   };
 
   it("스펙의 값이 라이트에 선다", () => {

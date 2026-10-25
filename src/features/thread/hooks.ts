@@ -292,18 +292,17 @@ export function useAgentRoster(work: string | null): AgentRoster | null {
 }
 
 /**
- * Work 칩 메뉴의 최근 Work(v1 티켓 31) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)에 이은 Thread 수를 단다. 새 Thread
- * 화면에 설 때마다 다시 읽는다. Thread 수는 사이드바와 같은 목록 캐시에서 센다. 못 읽으면 최근 Work 없이 두 줄만 선다.
+ * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
+ * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다.
  */
-export function useRecentWorks(): RecentWork[] {
-  const { data: threads } = useThreads();
+export function useRecentWorks(): RecentWork[] | null {
   const { data } = useQuery({
     queryKey: ["recent-works"],
     queryFn: () => searchApi.run("", []),
     staleTime: 0,
     retry: false,
   });
-  return data ? recentWorks(data.hits, threads ?? []) : [];
+  return data ? recentWorks(data.hits) : null;
 }
 
 /**
