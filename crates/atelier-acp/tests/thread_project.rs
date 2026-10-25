@@ -6,6 +6,8 @@
 //! - Work에 없는 Project면 Work 밖 Project 카드가 `question` 줄(`card: project`)로 서고, 도구는 사람이 고를 때까지 기다린다 — 붙이고
 //!   고치기 · 읽기만 하기 · 아니요.
 //! - 작업 폴더가 바뀌면(worktree가 섰다 · 읽기만 폴더를 더했다) 다음 턴에 그 Session을 새 작업 폴더에서 이어 연다(S11 · 실측-작업폴더.md).
+//! - Work 없는 Thread는 등록된 Project 폴더를 모두 읽기로 함께 연다(끝 점검 39(a) 사용자 결정) — 고치기는 판정이 그대로 막고, Work에
+//!   이어지면 그 폴더들은 빠진다.
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 폴더(`thread.json` · `events.jsonl`) · works 폴더 · 등록한 저장소 · 가짜 claude의 영수증만 본다.
 
@@ -14,7 +16,7 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use atelier_acp::{ConversationHost, HostError, ProjectChoice, ThreadLink};
+use atelier_acp::{AskLevel, ConversationHost, HostError, ProjectChoice, ThreadLink};
 use common::{has_pair, of_kind, receipt_args, Sandbox, RECORDED_PLACE};
 use serde_json::{json, Value};
 
@@ -345,6 +347,107 @@ fn work가_없는_thread나_등록되지_않은_project는_카드를_세우지_�
     assert!(said(answer).contains("billing") && said(answer).contains("api-server"), "모르는 Project와 등록된 Project를 알린다: {answer}");
 }
 
+/// 그 Session의 claude가 마지막으로 뜰 때 함께 연 폴더들(`--add-dir`) — 받은 차례대로.
+fn added_dirs(args: &[String]) -> Vec<String> {
+    args.windows(2).filter(|pair| pair[0] == "--add-dir").map(|pair| pair[1].clone()).collect()
+}
+
+/// 끝 점검 39(a) 사용자 결정 — Work 없는 Thread의 Host는 Work를 제안하기 전에 어느 Project의 일인지 보려고 등록된 저장소를 읽는다.
+/// 그 폴더를 모두 「읽기만 하기」와 같은 길(`--add-dir`)로 함께 열어 읽기마다 카드가 서지 않게 한다. 고치기는 그대로 판정이 센다 —
+/// 「알아서」여도 Work 없이 Project를 고치지 못한다.
+#[test]
+fn work_없는_thread의_session은_등록된_project_폴더를_모두_읽기로_함께_열고_그_안의_편집은_알아서여도_work부터_만들라며_거절된다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let api = register(&sandbox, "api-server");
+    let web = register(&sandbox, "web-app");
+    // 녹음의 `Write`가 쓰는 폴더를 api-server 저장소로 옮긴다 — Host가 Work 없이 등록된 저장소를 고치려는 꼴.
+    let host = sandbox.host(sandbox.claude_login_shell(
+        "normal",
+        &[
+            ("FAKE_CLAUDE_FIXTURE", "2.1.309/permission-stdio"),
+            ("FAKE_CLAUDE_REROOT", &format!("{RECORDED_PLACE}={}", api.display())),
+        ],
+    ));
+    let thread = host
+        .start_thread_asking("환불 API 버그 고쳐줘", &[], ThreadLink::NoWork, Some(AskLevel::Auto))
+        .expect("알아서로 Work 없는 Thread");
+    let record = sandbox.wait_thread_record(&thread, |record| {
+        of_kind(record, "permission").iter().any(|line| line["payload"]["state"] == "decided")
+    });
+    host.shut_down();
+
+    let (args, cwd) = last_launch(&sandbox, &thread);
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "작업 폴더는 그대로 Thread 폴더다(S11)");
+    assert_eq!(
+        added_dirs(&args),
+        [api.display().to_string(), web.display().to_string()],
+        "등록된 Project 폴더를 모두 함께 연다: {args:?}"
+    );
+    assert_eq!(sandbox.participant(&thread, "host")["additionalDirectories"], json!([api, web]), "thread.json은 함께 연 폴더를 적는다");
+
+    let decided = of_kind(&record, "permission").into_iter().find(|line| line["payload"]["state"] == "decided").unwrap().clone();
+    let reason = decided["payload"]["reason"].as_str().expect("까닭").to_owned();
+    assert_eq!(decided["payload"]["optionId"], "reject", "함께 연 폴더여도 고칠 수 있는 자리가 아니다: {decided}");
+    assert!(reason.starts_with(&format!("Thread 폴더 밖의 파일이라 고칠 수 없어요: {}", api.display())), "{reason}");
+    assert!(
+        reason.ends_with(
+            "— `api-server` Project를 고치려면 먼저 Thread 도구 `propose_work`로 그 Project를 넣은 Work를 만든 뒤 `start_editing`을 부르세요"
+        ),
+        "{reason}"
+    );
+}
+
+#[test]
+fn work_없는_thread는_폴더가_사라진_project를_함께_열지_않는다() {
+    // 등록한 뒤 저장소를 옮기거나 지운 Project — 없는 폴더를 claude에게 넘기지 않는다.
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let api = register(&sandbox, "api-server");
+    let web = register(&sandbox, "web-app");
+    std::fs::remove_dir_all(&web).unwrap();
+    let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[]));
+    let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("Work 없는 Thread");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let (args, _) = last_launch(&sandbox, &thread);
+    assert_eq!(added_dirs(&args), [api.display().to_string()], "{args:?}");
+}
+
+#[test]
+fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다음_말에서_같은_session을_바뀐_폴더들로_이어_연다() {
+    // 함께 여는 폴더가 바뀌는 것은 「읽기만 하기」로 폴더를 더한 것과 같은 바뀜이다(S11 「바꿔 이어 열기」, v1 티켓 32).
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    let api = register(&sandbox, "api-server");
+    let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[]));
+    let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("Work 없는 Thread");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let session = sandbox.thread_session_id(&thread, "host");
+    assert_eq!(added_dirs(&last_launch(&sandbox, &thread).0), [api.display().to_string()]);
+
+    let web = register(&sandbox, "web-app");
+    host.send_to_thread(&thread, "web-app도 봐 줘").expect("둘째 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    let (args, cwd) = last_launch(&sandbox, &thread);
+    assert!(has_pair(&args, "--resume", &session), "같은 Session을 이어 연다 — 앞 맥락을 기억한다: {args:?}");
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "작업 폴더는 그대로다");
+    assert_eq!(added_dirs(&args), [api.display().to_string(), web.display().to_string()], "새로 등록한 Project도 함께 연다");
+
+    atelier_core::delete_project(&atelier_core::projects_in(&sandbox.data_root()), "api-server").expect("등록 해제");
+    host.send_to_thread(&thread, "이제 web-app만 봐 줘").expect("셋째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    host.shut_down();
+    let (args, _) = last_launch(&sandbox, &thread);
+    assert!(has_pair(&args, "--resume", &session), "{args:?}");
+    assert_eq!(added_dirs(&args), [web.display().to_string()], "등록을 푼 Project는 더 열지 않는다");
+    assert_eq!(sandbox.participant(&thread, "host")["additionalDirectories"], json!([web]));
+    let prompts: Vec<usize> =
+        of_kind(&record, "sent").iter().map(|line| line["payload"]["prompt"].as_array().unwrap().len()).collect();
+    assert_eq!(prompts, [2, 2, 2], "옮겨 연 Session의 첫 말에는 머리말이 다시 붙는다");
+}
+
 #[test]
 fn 사람이_thread를_멈추면_서_있는_work_밖_project_카드를_거두고_도구는_사람이_멈춤을_돌려준다() {
     let sandbox = Sandbox::new();
@@ -372,6 +475,7 @@ fn 사람이_thread를_멈추면_서_있는_work_밖_project_카드를_거두고
 fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴은_같은_session을_spec_폴더에서_이어_연다() {
     let sandbox = Sandbox::new();
     sandbox.library_agent("host", HOST_MD);
+    let api = register(&sandbox, "api-server");
     let propose = json!({"tool": "propose_work", "arguments": {"title": "환불 API 버그 수정", "slug": "refund-api", "reason": "문서부터"}});
     let host = sandbox.host(calling(&sandbox, "2.1.309/twoturn-tools", &[propose]));
     let thread = host.start_thread("환불 API 버그 고쳐줘", ThreadLink::NoWork).expect("Work 없는 Thread");
@@ -381,8 +485,9 @@ fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴
     let request = of_kind(&asked, "question")[0]["payload"]["requestId"].as_str().unwrap().to_owned();
     host.answer_work(&thread, &request, atelier_acp::WorkChoice::Create { projects: Vec::new(), branch: None }).expect("Work 만들기");
     sandbox.wait_thread_kind(&thread, "turn-end", 1);
-    let (_, cwd) = last_launch(&sandbox, &thread);
+    let (args, cwd) = last_launch(&sandbox, &thread);
     assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "이은 턴의 작업 폴더는 Thread 폴더 그대로다(v1 티켓 30)");
+    assert_eq!(added_dirs(&args), [api.display().to_string()], "Work 전에는 등록된 Project를 읽기로 함께 열었다(끝 점검 39(a))");
 
     let session = sandbox.thread_session_id(&thread, "host");
     host.send_to_thread(&thread, "설계 문서부터 써 줘").expect("다음 말");
@@ -391,6 +496,7 @@ fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴
     let (args, cwd) = last_launch(&sandbox, &thread);
     assert_eq!(cwd, real(&sandbox.work_dir("refund-api").join("spec")), "worktree 없는 Work의 작업 폴더는 spec 폴더다(S11)");
     assert!(has_pair(&args, "--resume", &session), "앞선 조사를 기억하게 같은 Session을 이어 연다(스토리 100): {args:?}");
+    assert_eq!(added_dirs(&args), Vec::<String>::new(), "Work에 이어지면 등록된 Project 폴더는 더 열지 않는다 — Work의 자리다: {args:?}");
     let prompt = of_kind(&record, "sent")[1]["payload"]["prompt"].to_string();
     assert!(prompt.contains("- Work: `refund-api`"), "옮겨 연 Session에 이은 Work를 알린다: {prompt}");
 }

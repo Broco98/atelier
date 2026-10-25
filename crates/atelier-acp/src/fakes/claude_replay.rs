@@ -65,7 +65,9 @@ const INITIALIZE: &str = include_str!("../../tests/fixtures/claude-2.1.309/initi
 ///   도구 다섯을 `ToolSearch`로 들여 `list_projects` · `get_work`를 보고, 등록한 저장소를 명령 셋(`can_use_tool`) · `Read` 다섯
 ///   (`can_use_tool`)으로 읽고, `rename_thread`로 이름을 바꾸고, `propose_work`로 Work(`refund-partial-amount`, api-server)를
 ///   제안한다. 만든 뒤 같은 턴에 spec 폴더에 `overview.md` · `01-fix/plan.md`를 `Write`(`can_use_tool`)하고 답한다. 녹음의 임시
-///   루트는 `/tmp/gate`(자료 자리 `home` · 저장소 `repos`), Thread 폴더는 `/tmp/gate/home/threads/20261024-013421`이다.
+///   루트는 `/tmp/gate`(자료 자리 `home` · 저장소 `repos`), Thread 폴더는 `/tmp/gate/home/threads/20261024-013421`이다. 엔진이 Work
+///   없는 Session에 등록된 Project 폴더를 함께 열기(끝 점검 39(a)) 전의 녹음이라 저장소 읽기가 묻는다 — 되감기는 받은 `--add-dir`을
+///   보지 않으므로 Work 만들기 카드 · 기록 꼴의 시험 자료로는 그대로다.
 /// - `2.1.309/thread-stop-host` — 「알아서」 Thread의 Host가 40초 도는 `python3` 명령을 앞에서 돌리는 동안 사람이 멈춘 한 턴(v1 티켓
 ///   44 끝 점검). 그 `Bash`가 `can_use_tool`로 묻고 판정이 허락하면 `task_started`, 도는 동안 interrupt가 오면 `task_notification` →
 ///   거부의 실패 `tool_result` → `result/error_during_execution`이다. 녹음의 Thread 폴더는 `/tmp/gate/home/threads/20261024-110553`이다.

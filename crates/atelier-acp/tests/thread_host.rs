@@ -66,7 +66,7 @@ fn 새_thread의_첫_말에_host가_답하고_thread_폴더에_thread_json과_�
     assert!(has_pair(&args, "--session-id", &session), "{args:?}");
     assert!(has_pair(&args, "--append-system-prompt-file", instructions.to_str().unwrap()), "영수증에 지시문: {args:?}");
     assert!(has_pair(&args, "--model", "sonnet") && has_pair(&args, "--effort", "high"), "영수증에 모델 · 생각 깊이: {args:?}");
-    assert!(!args.iter().any(|arg| arg == "--add-dir"), "Work 없는 Thread는 함께 여는 폴더가 없다: {args:?}");
+    assert!(!args.iter().any(|arg| arg == "--add-dir"), "등록된 Project가 없으면 Work 없는 Thread는 함께 여는 폴더가 없다: {args:?}");
     assert!(same_dir(Path::new(receipt["cwd"].as_str().expect("cwd")), &dir), "claude는 Thread 폴더에서 일한다");
 
     let kinds: Vec<(&str, Option<&str>)> =
