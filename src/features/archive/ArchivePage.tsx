@@ -49,14 +49,14 @@ interface ArchivePageProps {
 // 값을 받는다.
 const NO_DOCS: string[] = [];
 
-/** 이 화면의 nav 항목 — 고른 아카이브가 없을 때 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
+/** 이 화면의 nav 항목 — 고른 아카이브가 없을 때 머리 줄의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("archive");
 
 // 문서 | 목록 한 카드(codex-ds 결정 28)와 그 오른쪽의 spec 목록 패널 — 왼쪽부터 문서 · 목록 · 패널이다. Projects와 같은 2단 카드다 —
 // 아카이브 목록은 사이드바에 상주하지 않으므로(nav 항목 하나뿐) 목록 칸이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다. 고른 아카이브의 문서 트리는 따로 여닫는 패널에 선다 — 작업
 // 화면의 작업 패널과 같은 손이다(스토리 55 · 56, codex-ds 결정 32). 패널이 목록 칸 너머 맨 오른쪽인 것은 목록과 문서가 한 카드의 두
-// 칸이라 그 사이에 설 수 없고, ⌘Enter와 머리 카드 끝의 토글이 여닫는 것이 「그 화면의 오른쪽 패널」이라서다.
+// 칸이라 그 사이에 설 수 없고, ⌘Enter와 머리 줄 끝의 토글이 여닫는 것이 「그 화면의 오른쪽 패널」이라서다.
 function ArchivePage({
   sidebarOpen,
   selectedSlug,
@@ -100,18 +100,18 @@ function ArchivePage({
   // 끄는 방향을 뒤집는다. 목록 칸은 접지 않는다(codex-ds 결정 32) — ⌘Enter는 아래 spec 목록 패널의 것이다.
   const listSize = useResizableWidth("archive-panel-width", 264, 240, 560, "right");
 
-  // spec 목록 패널 — 오른쪽에 따로 여닫는 패널 카드다(codex-ds 결정 28 · 32). 머리 카드의 spec 목록 토글과 ⌘Enter가 이 값 하나를
+  // spec 목록 패널 — 오른쪽에 따로 여닫는 패널 카드다(codex-ds 결정 28 · 32). 머리 줄의 spec 목록 토글과 ⌘Enter가 이 값 하나를
   // 뒤집는다. 처음에는 열려 있다(DS 캔버스 Archive). 저장하지 않는다 — 작업 패널의 열림도 저장하지 않는다(`WorksPage`). 아카이브를 옮겨도
   // 같은 인스턴스라 이 값이 그대로 따라온다.
   const [panelOpen, setPanelOpen] = useState(true);
   // 패널 카드의 폭 — 작업 패널과 같은 규격(기본 DS `size-panel` 340 · 범위는 `panel-layout`의 한 벌, codex-ds 스펙 S4)이고 저장 키는 이 패널 전용이다.
   // 같은 키를 쓰면 두 화면의 패널이 서로의 폭을 덮는다. 화면 오른쪽에 놓인 패널이라 손잡이가 왼쪽 틈에 선다.
   const panelSize = useResizableWidth("archive-spec-panel-width", WORK_PANEL_WIDTH, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, "right");
-  // 패널이 서는가 — 고른 아카이브가 있을 때만이다(그 아카이브의 문서 트리를 든다). 없으면 패널도 머리 카드의 토글도 없다.
+  // 패널이 서는가 — 고른 아카이브가 있을 때만이다(그 아카이브의 문서 트리를 든다). 없으면 패널도 머리 줄의 토글도 없다.
   const hasPanel = selected !== null;
 
   // ⌘Enter — spec 목록 패널을 여닫는다(codex-ds 결정 32 「⌘Enter는 그 화면의 오른쪽 패널」). 판정은 작업 화면의 ⌘Enter와 한 벌이다
-  // (`togglesPanel` — 머리 카드의 패널 토글 곁에 산다) — 입력칸(찾기 칸)이나 편집 가능한 자리에 포커스가 있으면 그쪽 몫이다. 패널이
+  // (`togglesPanel` — 머리 줄의 패널 토글 곁에 산다) — 입력칸(찾기 칸)이나 편집 가능한 자리에 포커스가 있으면 그쪽 몫이다. 패널이
   // 없으면 듣지 않는다.
   useEffect(() => {
     if (!hasPanel) return;
@@ -140,7 +140,7 @@ function ArchivePage({
   const wide = !sidebarOpen && !panelOpen;
 
   const meta = selected && STATUS_META[selected.status];
-  // 머리 카드 이름 뒤의 옅은 글자 — 그 work가 걸쳤던 프로젝트와 치운 날이다(DS `.at-winhead .sub`). 문서 카드의 머리 자리를 경로 줄이
+  // 머리 줄 이름 뒤의 옅은 글자 — 그 work가 걸쳤던 프로젝트와 치운 날이다(DS `.at-winhead .sub`). 문서 카드의 머리 자리를 경로 줄이
   // 갖게 되어 옛 카드 머리의 꼬리표 · 날짜가 이리 왔다. 둘 다 없으면 서지 않는다. 날짜는 목록 행의 날짜와 같은 글자다(`archivedDayText`).
   const day = selected && archivedDayText(selected.archivedAt);
   const about = selected ? [...selected.projects, ...(day ? [`${day}에 치움`] : [])].join(" · ") : "";
@@ -208,10 +208,9 @@ function ArchivePage({
 
   return (
     // 공용 틀 위의 문서 | 목록 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다)와 오른쪽 spec 목록 패널 카드. 머리 줄에는
-    // 고른 아카이브의 머리 카드가 선다(codex-ds 스펙 §7).
+    // 고른 아카이브의 이름 · 할 일이 선다(codex-ds 스펙 §7).
     <Frame
-      sidebarOpen={sidebarOpen}
-      // 머리 카드 — 왼쪽은 ⚡(work 아이콘 — 아카이브한 것도 work다)와 그 제목 · 프로젝트 · 치운 날이고, 고른 것이 없으면 nav의 화면
+      // 머리 줄 — 왼쪽은 ⚡(work 아이콘 — 아카이브한 것도 work다)와 그 제목 · 프로젝트 · 치운 날이고, 고른 것이 없으면 nav의 화면
       // 이름 · 아이콘이다.
       // 오른쪽은 치운 때의 상태 배지와 ⋯ 아카이브 메뉴이고(스토리 57), 세로선 너머 맨 끝에 spec 목록 토글이 선다 — 토글은 틀이 패널
       // 칸에서 짓는다(`Frame`의 `PanelSlot`). 배지는 보이기만 한다 — 작업 화면의 배지와 달리 상태를 바꾸는 메뉴가 없다(아카이브는
@@ -232,7 +231,7 @@ function ArchivePage({
       list={{
         size: listSize,
         label: "아카이브 목록",
-        // 목록 행의 메뉴(codex-ds 티켓 30) — 머리 카드 ⋯과 같은 정의(`ArchiveMenuItems`)이고 같은 동작을 그 행의 아카이브로 부른다.
+        // 목록 행의 메뉴(codex-ds 티켓 30) — 머리 줄 ⋯과 같은 정의(`ArchiveMenuItems`)이고 같은 동작을 그 행의 아카이브로 부른다.
         // 행 목록 하나가 메뉴 하나를 맡는다(`TargetMenu`). 고른 행이 아니어도 그 행의 것이다(결정 7) — 고름 · 주소는 그대로다.
         children: (
           <TargetMenu
@@ -256,7 +255,7 @@ function ArchivePage({
         ),
       }}
       // spec 목록 패널(codex-ds 스펙 §7 「Archive」) — 고른 아카이브의 문서 트리다. 바깥 상자가 둘째 `aside`이고 220ms로 여닫힌다(공용 틀의
-      // 패널 칸 — 작업 패널과 같은 칸이다). 이름 「spec 목록」은 카드의 이름이자 머리 카드 토글의 앞말이다(「spec 목록 접기」).
+      // 패널 칸 — 작업 패널과 같은 칸이다). 이름 「spec 목록」은 카드의 이름이자 머리 줄 토글의 앞말이다(「spec 목록 접기」).
       panel={
         selected
           ? {
@@ -351,7 +350,7 @@ function ArchivePage({
 }
 
 /**
- * 아카이브된 work의 spec 폴더를 Finder에서 연다(codex-ds 스펙 S6) — 아카이브 메뉴(머리 카드 ⋯ · 목록 행)의 「Finder에서 열기」와 spec
+ * 아카이브된 work의 spec 폴더를 Finder에서 연다(codex-ds 스펙 S6) — 아카이브 메뉴(머리 줄 ⋯ · 목록 행)의 「Finder에서 열기」와 spec
  * 목록 패널 머리의 「spec 폴더 열기」가 부른다. 못 열면(폴더가 없는 아카이브 등) 백엔드가 돌려준 문장을 「못 한 일」 토스트로 알린다 —
  * 앱의 Finder 열기가 모두 그 한 길이다(`openInFinder`).
  */
@@ -359,7 +358,7 @@ function openArchivedSpecFolder(slug: string): void {
   openInFinder(() => archiveApi.openSpecFolder(slug));
 }
 
-/** 아카이브 메뉴가 그 아카이브로 부르는 동작 — 머리 카드 ⋯와 목록 행의 메뉴가 같은 한 벌을 쓴다. */
+/** 아카이브 메뉴가 그 아카이브로 부르는 동작 — 머리 줄 ⋯와 목록 행의 메뉴가 같은 한 벌을 쓴다. */
 function archiveMenuActions(slug: string, onCopy: (text: string) => void): ArchiveMenuActions {
   return {
     openFolder: () => openArchivedSpecFolder(slug),
@@ -368,9 +367,9 @@ function archiveMenuActions(slug: string, onCopy: (text: string) => void): Archi
   };
 }
 
-// 머리 카드의 ⋯ — 아카이브 메뉴(codex-ds 결정 16 「Archive 목록 행」 · 스펙 §7). 무엇을 어떤 차례로 보이는지는 메뉴 정의
+// 머리 줄의 ⋯ — 아카이브 메뉴(codex-ds 결정 16 「Archive 목록 행」 · 스펙 §7). 무엇을 어떤 차례로 보이는지는 메뉴 정의
 // (`ArchiveMenuItems`)가 들고, 여기는 그 항목이 부르는 동작을 잇는다: Finder 열기와 spec 폴더 경로 복사. 모양과 여닫이는 작업 화면의
-// ⋯(`WorksPage`의 `WorkMenu`)와 같다 — 위 줄의 24 아이콘 버튼이고 펼친 동안 켜진 면이다. 머리 카드 안이고 버튼이라 창 끌기 영역이 아니다.
+// ⋯(`WorksPage`의 `WorkMenu`)와 같다 — 위 줄의 24 아이콘 버튼이고 펼친 동안 켜진 면이다. 머리 줄 안이고 버튼이라 창 끌기 영역이 아니다.
 function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) => void }) {
   // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);

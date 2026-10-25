@@ -42,7 +42,7 @@ export function SettingsSection({ head, children }: { head?: string; children: R
 
 /**
  * 바닥 줄 — 폼 버튼(에이전트 훅의 설치 · 제거)이 마지막 묶음 아래 오른쪽 끝에 선다(DS 「저장은 마지막 묶음 아래 오른쪽 끝」 — 구획
- * 사이와 같은 28). 실패 글은 버튼의 왼쪽이다. 쪽의 저장은 여기가 아니라 머리 카드에 선다(codex-ds 스펙 §7 — `SettingsPage`의
+ * 사이와 같은 28). 실패 글은 버튼의 왼쪽이다. 쪽의 저장은 여기가 아니라 머리 줄에 선다(codex-ds 스펙 §7 — `SettingsPage`의
  * `SaveButton`).
  */
 export function SettingsFoot({ children }: { children: ReactNode }) {

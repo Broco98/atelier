@@ -67,7 +67,7 @@
        신호등은 y 24다 — tao가 신호등 그릇의 높이를 버튼(14) + y로 세우면 버튼 가운데가 위에서 y − 2에 서서다. macOS 27에서
        tao 0.35의 `inset_traffic_lights`를 그대로 따라 한 AppKit 창으로 버튼 상자를 잰 식이다(2026-10-11 — 48 줄 때 y 26으로 가운데
        24를 재었다). 진짜 앱에서 다시 재는 것은 끝 e2e 티켓(13)이다(02 결정 「02 · 신호등 자리」). 이 값을 고치면 y도 함께 고친다.
-       공용 틀(`Frame`)의 머리 카드 줄도 아직 이 높이를 읽는다 — 머리 카드를 걷고 이 줄로 옮기는 것이 03이다.
+       모든 화면의 이름 · 할 일이 이 줄 하나에 선다 — 공용 틀(`Frame`)의 화면들도 카드 없이 이 줄로 보낸다(02 구현 스펙 §3 S2).
        식(`calc`)으로 적지 않는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(e2e `frame.spec`)가 수로 못
        읽는다. 이름의 `titlebar`는 창의 제목 줄 자리라는 뜻이다. */
     --titlebar-height: 44px;
@@ -104,8 +104,8 @@
     /* 카드 머리 높이 — DS 2판 `--size-toolbar`(46)를 읽는다. 탭 줄(`ShellTabs`)이 그 토큰을 높이로 들고 카드 머리와 한 높이다.
        넓은 화면의 폭 상한 `--measure-wide`(1120 — Processes · 넓게 보는 문서)는 ui-refresh 때의 값을 잇는다(Codex가 말하지 않는다).
        읽는 글의 폭은 여기 없다 — 스펙 2절 「크기」대로 문서 글(`SpecViewer`의 `bodyColumn`) · 프로젝트 상세(`ProjectDetail`) · 설정
-       틀과 편집기의 폼(`SettingsBody`)이 모두 2판의 `--size-thread`(48rem)를 읽는다. 레일 폭도 여기 없다 — 레일 열과 (레일이 설 때)
-       머리 줄의 패널 토글 자리가 2판의 줄 폭 `--size-prail`을 읽는다. */
+       틀과 편집기의 폼(`SettingsBody`)이 모두 2판의 `--size-thread`(48rem)를 읽는다. 레일 폭도 여기 없다 — 레일 열이 2판의 줄 폭
+       `--size-prail`을 읽는다. */
     --card-head: var(--size-toolbar);
     --measure-wide: 1120px;
 }
@@ -116,7 +116,6 @@
    --titlebar-controls-width만큼 이어진다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    83px는 신호등 끝에서 16을 띄운 자리다 — tauri.conf.json의 trafficLightPosition(x:13)에 버튼 셋(14 · 사이 20 — macOS 표준 창 단추)이
    서서 신호등 끝이 67이다. 신호등 자리는 함께 고쳐야 하고, 진짜 앱에서 재어 맞추는 것은 13이다.
-   공용 틀(`Frame`)의 머리 카드 줄도 사이드바가 접혔을 때 아직 --titlebar-inset-head를 읽는다(03이 머리 카드를 걷는다).
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
    치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. 사이드바 폭(`--sidebar-width`)도
@@ -137,7 +136,7 @@
         4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
     /* **사이드바가 접혔을 때 이름 자리의 시작** — 셸 컨트롤 끝에서 틈 하나(`--space-2`)를 띄운다. 이름이 셸 컨트롤 바로 뒤에서
-       시작한다(02 구현 스펙 §3). 공용 틀의 머리 카드 줄은 사이드바가 접혔을 때 아직 이 값을 왼쪽 여백으로 읽는다(03까지). */
+       시작한다(02 구현 스펙 §3). */
     --titlebar-inset-head: calc(
         var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--space-2)
     );
@@ -395,7 +394,7 @@
      chat-body   14 / 22.75          spec 문서 본문 · 대화 본문 · 말풍선
      sm          14 / 20             work 행 · 목록 행 · 버튼 · 입력 · 설정 이름
      nav-row     14 / 20 · 500       main nav 행(Atelier)
-     chat-meta   13 / 18             탭 · 트리 · 메뉴 · 경로 캡슐 · 머리 카드 이름 · 소제목
+     chat-meta   13 / 18             탭 · 트리 · 메뉴 · 경로 캡슐 · 머리 줄의 화면 이름 · 소제목
      xs          12 / 18 · +0.025em  행 메타 · 배지 · 툴팁 · 시간 · 단축키
      2xs         10 / 14 · +0.025em  트리의 확장자 꼬리표
      code        13 / 20             코드 블록 · 명령 출력 · 경로 값
@@ -510,7 +509,7 @@
      sm         6     상태 배지 · 트리의 확장자 꼬리표 · Processes의 포트 칩
      md         8     입력칸 · 툴팁 · 작은 아이콘 버튼(24 · 26) · 작은 버튼(`Button` xs) · 세그먼트 칸 · kbd · 툴바 칸
      lg        10     버튼(32) · 아이콘 버튼(28) · 검색칸 · 탭 · 목록 행 · 메뉴 행 · Select
-     xl        12     머리 카드 · 문서의 콜아웃 · Processes의 요약 타일 · Projects 상세의 묶음(DS `List`) · 설명 상자 · 설정 묶음
+     xl        12     흰 판 · 문서의 콜아웃 · Processes의 합계 타일 · Projects 상세의 묶음(DS `List`) · 설명 상자 · 설정 묶음
                       (DS `SettingsGroup` — spec 레이아웃 편집기의 폼도)
      2xl       16     카드 · 카드 안 묶음(문서의 표) · 떠 있는 것(메뉴 · 팔레트 · 전체화면 뷰어 · 토스트)
      3xl       20     코드 블록(문서 · mermaid · 에이전트 훅 설정의 미리보기)
@@ -687,11 +686,11 @@
 
     /* 크기 — DS 2판 `tokens.json`의 `size-*` 그대로다(codex-ds 스펙 S2). 지금 읽는 것은 메뉴 폭 둘(`--size-menu` ·
        `--size-menu-ctx`), 아이콘 버튼(`icon-button`의 `--size-control`), 호버 카드 폭(`--size-peek`), 탭 줄과 카드 머리의
-       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`, 분할 끌기 겹판의 위끝), 머리 카드의 높이(`--size-head` — `Frame`의 머리 카드), 경로 줄과
+       높이(`--size-toolbar` — `ShellTabs` · 위 `--card-head`, 분할 끌기 겹판의 위끝), 경로 줄과
        목록 머리의 높이(`--size-pathbar` — `PathBar` · `ListHead`), 글 폭(`--size-thread` — `SpecViewer`의 `bodyColumn` ·
        `ProjectDetail` · 설정 틀의 `SettingsBody`와 그 열에 서는 편집기 배너 · spec 레이아웃 메시지), 사이드바 행의 높이
        (`--size-row-nav` — `SidebarItem` · work 행 — Codex 사이드바의 고른 줄을 재어 30이다, v1 티켓 46), 알림 띠 줄의 높이
-       (`--size-row-band` — `AttentionBand`)와 레일의 줄 폭(`--size-prail` — `Rail` · 레일이 설 때 `Frame`의 패널 토글 자리)뿐이고,
+       (`--size-row-band` — `AttentionBand`)와 레일의 줄 폭(`--size-prail` — `Rail`)뿐이고,
        나머지는 선언만 있다(스펙 S2 — 통째로 선언한다). 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
        `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다.
 
@@ -733,7 +732,7 @@
    여기 적힌 값이 앱 팔레트의 정본이고, 아래 별칭 묶음의 이름들(Atelier 낱말 · shadcn 이름)은 값을 들지 않고 이 토큰을 가리킨다.
    다크는 `.dark`가 같은 이름을 덮는다(codex-ds 결정 17 — 앱은 `.dark`를 켜지 않는다. e2e가 켜서 잰다). */
 :root {
-    /* 면 — 카드 · 머리 카드 · 글 면은 `surface`, 창 바탕은 `surface-shell`(사이드바가 그 위에 붙는다), 메뉴 · 호버 카드 · 토스트는 `surface-elevated` */
+    /* 면 — 흰 판 · 카드 · 글 면은 `surface`, 창 바탕(크롬)은 `surface-shell`, 메뉴 · 호버 카드 · 토스트는 `surface-elevated` */
     --surface: #ffffff;
     --surface-under: #f9f9f9;
     --surface-shell: #f6f6f6;
@@ -1344,7 +1343,7 @@
 }
 
 /* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 머리
-   카드(머리 카드의 작업 ⋯ · 분할 · 편집기의 「설정으로 돌아가기」)와 탭 줄의 `+`, 줄 **안**에
+   줄의 화면 것(작업 ⋯ · 분할 · 패널 토글 · 편집기의 「설정으로 돌아가기」)과 탭 줄의 `+`, 줄 **안**에
    서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec
    열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 머리 줄의 셸 컨트롤은 이 단이 아니라
    기본 28이다(Codex 머리 줄 — `[data-titlebar]`의 `--titlebar-control-size`). */
@@ -1698,7 +1697,7 @@ body.dragging-row * {
 
 /* **꼬리표** — 디자인 시스템의 `Tag`(`.at-tag`): 22px 알약 · 좌우 8 · 옅은 면(`fill-hover`) · `fg-secondary` 글자 · 줄바꿈 없음.
    줄에 사실 하나를 덧붙이는 칩이다 — Projects 목록의 브랜치 · 「누락」, 설정 spec 레이아웃 행의 「고침」이 이 한 정의를 부른다.
-   두 자리는 같은 문자열을 손으로 옮겨 적었다. Archive가 걸쳤던 프로젝트는 꼬리표가 아니다 — 머리 카드 이름 뒤의 옅은 글자다
+   두 자리는 같은 문자열을 손으로 옮겨 적었다. Archive가 걸쳤던 프로젝트는 꼬리표가 아니다 — 머리 줄 이름 뒤의 옅은 글자다
    (`Frame`의 `HeadSlot.sub`, DS `.at-winhead .sub`).
 
    **글자 크기는 안 정한다** — 자리가 정한다. 「누락」 · 「고침」은 `text-xs`(DS 12px)이고, 원격 줄의 브랜치는

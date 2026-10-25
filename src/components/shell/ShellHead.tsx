@@ -15,7 +15,8 @@ import { PANEL_MOTION } from "./panel-layout";
 // - **줄 전부가 창을 끄는 자리다**(`deep`) — 창 맨 위 줄이라 제목 막대의 관례를 따른다. 버튼 · 포커스를 받는 이름은 Tauri가 스스로
 //   비켜 둔다(셸 컨트롤의 버튼 사이 틈도 끈다).
 // - **화면은 제 이름과 할 일만 보낸다** — 그릇은 여기 하나이고 화면은 `ScreenHead`로 그 안에 그린다. 머리의 상태(이름 고치기 · 카드
-//   여닫기)는 화면에 산 채 자리만 머리 줄이다(설정 화면의 저장 버튼이 머리 카드로 가는 `HeadActionsSlot`과 같은 길).
+//   여닫기)는 화면에 산 채 자리만 머리 줄이다(설정 화면의 저장 버튼이 머리 줄의 할 일 묶음으로 가는 `HeadActionsSlot`과 같은 길).
+//   공용 틀(`Frame`)의 화면들은 `FrameHead`가, Thread 화면들은 `PlainFrame`이 이것으로 보낸다.
 
 /** 머리 줄의 화면 자리 — 앱 셸이 그 그릇을 내린다. 셸 밖(그릇이 아직 없거나 셸 없이 그린 화면)이면 `null`이다. */
 export const ShellHeadSlot = createContext<HTMLElement | null>(null);

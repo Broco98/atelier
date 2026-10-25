@@ -34,7 +34,7 @@ export interface WorkMenuActions {
 /**
  * **work 메뉴의 흐름 한 벌** — 메뉴를 다는 자리가 받는 값이다(`work-menu-actions.ts`의 `useWorkMenuFlows`가 짓는다). 대상 work마다
  * 동작을 꺼낸다 — 대상은 고른 work가 아닐 수 있다(codex-ds 결정 7). 이름 바꾸기만은 메뉴를 다는 자리가 넘긴다: 그 이름을 그 자리에서
- * 고치는 입력칸(머리 카드 이름 · 사이드바 행)을 세우는 것이 그쪽이라서다(codex-ds 스펙 §9).
+ * 고치는 입력칸(머리 줄 이름 · 사이드바 행)을 세우는 것이 그쪽이라서다(codex-ds 스펙 §9).
  */
 export interface WorkMenuFlows {
   /** 아카이브 · 삭제가 하나라도 도는 중이다 — 그동안 work 메뉴는 열리지 않는다. */
@@ -43,8 +43,8 @@ export interface WorkMenuFlows {
 }
 
 /**
- * **대상 메뉴 「work」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). 머리 카드의 ⋯(`DropdownMenu`)와 우클릭 메뉴(`ContextMenu`
- * — 사이드바 행 · 알림 띠 줄 · 머리 카드 이름, `WorkContextMenu`)가 이것을 편다. 항목 · 구분선 · 하위 메뉴는 두 메뉴가 함께 쓰는
+ * **대상 메뉴 「work」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). 머리 줄의 ⋯(`DropdownMenu`)와 우클릭 메뉴(`ContextMenu`
+ * — 사이드바 행 · 알림 띠 줄 · 머리 줄 이름, `WorkContextMenu`)가 이것을 편다. 항목 · 구분선 · 하위 메뉴는 두 메뉴가 함께 쓰는
  * 부품이라(`context-menu.tsx` 머리말) 이 조각이 어느 쪽 카드 안에서도 그대로 선다. 훅이 없다 — 상태를 쥘 수 없는 자리(사이드바 행 —
  * `SidebarWorkList.test.tsx`의 훅 금지)에서도 펼 수 있게.
  *
@@ -52,7 +52,7 @@ export interface WorkMenuFlows {
  * - **해당 없는 칸은 숨긴다.** 프로젝트가 없으면 Finder ▸에 worktree가, 브랜치가 아직 없으면(첫 프로젝트가 붙을 때 정해진다) 복사 ▸에
  *   브랜치 이름이 없다.
  * - **지금 못 하는 칸은 흐리다**(`disabled` — 눌리지 않고 `aria-disabled`). 폴더가 사라진 worktree가 그렇다.
- * - 단축키 칸은 「이름 바꾸기」의 F2 하나다 — 그 이름 자리(머리 카드 이름 · 사이드바 행)에 포커스를 두고 누르는 키다(실제로 있는
+ * - 단축키 칸은 「이름 바꾸기」의 F2 하나다 — 그 이름 자리(머리 줄 이름 · 사이드바 행)에 포커스를 두고 누르는 키다(실제로 있는
  *   단축키만 적는다, 결정 10).
  *
  * 줄의 글자 · 글리프는 부품의 것이다(DS `.at-mi` — 13px 400, 글리프 15px `fg-secondary`). 여기서 굵기나 크기를 덧칠하지 않는다 —
@@ -71,7 +71,7 @@ export function WorkMenuItems({ work, actions }: { work: WorkView; actions: Work
       </DropdownMenuItem>
       <CopySubmenu work={work} actions={actions} />
       <DropdownMenuSeparator />
-      {/* 머리 카드의 상태 배지와 같은 라디오다 — 줄 글리프는 지금 상태의 아이콘이다(DS `ContextMenu` 보드). */}
+      {/* 머리 줄의 상태 배지와 같은 라디오다 — 줄 글리프는 지금 상태의 아이콘이다(DS `ContextMenu` 보드). */}
       <DropdownMenuSub>
         <DropdownMenuSubTrigger>
           <StatusIcon status={work.status} className="size-3.75" />
@@ -178,7 +178,7 @@ function Named({ name, note }: { name: string; note: string }) {
 }
 
 /**
- * **상태 고르기 한 벌** — 머리 카드의 상태 배지 메뉴(`WorksPage`의 `StatusMenu`)와 work 메뉴의 상태 ▸가 이것을 편다. 줄은 진행
+ * **상태 고르기 한 벌** — 머리 줄의 상태 배지 메뉴(`WorksPage`의 `StatusMenu`)와 work 메뉴의 상태 ▸가 이것을 편다. 줄은 진행
  * 순서(`STATUS_META`의 키 순서)이고, 지금 상태가 `aria-checked`다. 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
  *
  * **값이 바뀔 때만 부른다**(지금 규칙). 부품은 지금 값을 다시 골라도 `onValueChange`를 부른다.

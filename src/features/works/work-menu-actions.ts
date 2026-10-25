@@ -10,10 +10,10 @@ import type { WorkMenuActions, WorkMenuFlows } from "./WorkMenuItems";
 import { ARCHIVE_CONFIRM_BODY, REMOVE_CONFIRM_BODY } from "./work-menu-copy";
 import type { WorkView } from "./types";
 
-// **work 메뉴가 부르는 흐름 — 한 자리다**(codex-ds 스펙 §6 · §9). 메뉴는 넷에서 선다 — 머리 카드의 ⋯(`WorksPage`의 `WorkMenu`)와
-// 우클릭 대상 셋(사이드바 행 · 알림 띠 줄 · 머리 카드 이름 — `WorkContextMenu`). 무엇을 어떤 차례로 보이는지는 메뉴 정의
+// **work 메뉴가 부르는 흐름 — 한 자리다**(codex-ds 스펙 §6 · §9). 메뉴는 넷에서 선다 — 머리 줄의 ⋯(`WorksPage`의 `WorkMenu`)와
+// 우클릭 대상 셋(사이드바 행 · 알림 띠 줄 · 머리 줄 이름 — `WorkContextMenu`). 무엇을 어떤 차례로 보이는지는 메뉴 정의
 // (`WorkMenuItems`)가 들고, 여기는 그 항목이 부르는 동작을 잇는다: Finder 열기 · 복사 · 상태 · 고정, 그리고 아카이브 · 삭제의
-// 흐름(아래 `run`). 이름 바꾸기는 메뉴를 다는 자리가 넘긴다 — 이름을 그 자리에서 고치는 입력칸이 서는 곳(머리 카드 이름 · 사이드바
+// 흐름(아래 `run`). 이름 바꾸기는 메뉴를 다는 자리가 넘긴다 — 이름을 그 자리에서 고치는 입력칸이 서는 곳(머리 줄 이름 · 사이드바
 // 행)과, 메뉴가 닫힐 때 포커스를 그 입력칸에 남기는 일(구현 노트 Q7)이 그쪽 몫이라서다.
 //
 // **흐름은 이 파일에 둔다** — 아카이브 · 삭제의 차례가 계약이라 검사가 이 파일의 소스 순서로 지킨다(`WorksPage.test.tsx`). 셸을

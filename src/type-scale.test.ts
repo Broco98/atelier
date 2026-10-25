@@ -31,18 +31,13 @@ import { blankComments, blankCssComments } from "./blank-comments";
 // 「앱 규격으로 고친 자리」가 registry의 옛 값(`text-sm` · `rounded-xl` 같은)을 적고, 그 기록은 남아야 한다.
 // 주석 밖은 전부 본다 — 문자열 · 템플릿 · CSS 선언(`@apply`)이다.
 //
-// 예외는 `EXCEPTIONS`에 자리와 까닭을 한 줄씩 적는다. 지금은 하나다 — 그림자 토큰을 안쪽으로 칠하는 카드 링.
+// 예외는 `EXCEPTIONS`에 자리와 까닭을 한 줄씩 적는다. 지금은 없다 — 하나 있던 것(그림자 토큰을 안쪽으로 칠하던 공용 틀 카드의 링)은 판
+// 안의 칸이 카드의 겉을 버리며 걷혔다(02 구현 스펙 §3 S2).
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 type Exception = { file: string; className: string; why: string };
-const EXCEPTIONS: Exception[] = [
-  {
-    file: "src/components/shell/Frame.tsx",
-    className: "shadow-[inset_var(--shadow-hairline)]",
-    why: "바탕 위 카드의 0.5px 링(`Frame`의 `Card`) — Codex `shadow-hairline`을 값 그대로 읽어 안쪽(`inset`)에 칠한다. 바깥에 칠하면 접히는 작업 패널의 넘침 숨김에 잘리고, Codex 그림자 단계에는 안쪽 판이 없다",
-  },
-];
+const EXCEPTIONS: Exception[] = [];
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {

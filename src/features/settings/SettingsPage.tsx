@@ -191,8 +191,8 @@ const THEME_LABELS: Record<TerminalTheme, string> = {
  * `Record`다** — 항목을 하나 더하고 본문을 잊으면 사이드바에 항목만 서고 본문이 비는데, 이 모양이면 그 자리에서 L0가
  * 빨개진다.
  *
- * `saves`면 머리 카드에 저장 자리(`HeadActionsSlot`)가 선다 — 조각의 `SaveButton`이 그리로 간다. 저장이 없는 쪽에는 그 자리를 안
- * 세운다: 빈 자리라도 머리 카드에 할 일 묶음이 서면 「할 일이 있다」는 표식(`data-head-actions`)이 거짓말을 한다. 저장이 있는 쪽을
+ * `saves`면 머리 줄에 저장 자리(`HeadActionsSlot`)가 선다 — 조각의 `SaveButton`이 그리로 간다. 저장이 없는 쪽에는 그 자리를 안
+ * 세운다: 빈 자리라도 머리 줄에 할 일 묶음이 서면 「할 일이 있다」는 표식(`data-head-actions`)이 거짓말을 한다. 저장이 있는 쪽을
  * `false`로 두면 저장 버튼이 갈 곳이 없어 안 선다(L3 `settings-save`가 잡는다).
  */
 const ITEM_PAGES: Record<SettingsItemKey, { body: () => ReactNode; saves: boolean }> = {
@@ -213,32 +213,31 @@ const ITEM_PAGES: Record<SettingsItemKey, { body: () => ReactNode; saves: boolea
 };
 
 /**
- * 머리 카드의 할 일 자리 — 쪽 조각이 제 저장 버튼을 그리로 보낸다(`SaveButton`, 포털). 저장은 쪽의 초안과 함께 살아야 해서
- * (`useSectionSave` — 결정 26) 버튼을 그리는 것은 조각이고, 서는 자리는 머리 카드다(codex-ds 스펙 §7 · 스토리 60). 조각을 머리 쪽으로
+ * 머리 줄의 할 일 자리 — 쪽 조각이 제 저장 버튼을 그리로 보낸다(`SaveButton`, 포털). 저장은 쪽의 초안과 함께 살아야 해서
+ * (`useSectionSave` — 결정 26) 버튼을 그리는 것은 조각이고, 서는 자리는 머리 줄이다(codex-ds 스펙 §7 · 스토리 60). 조각을 머리 쪽으로
  * 끌어올리면 초안이 항목 페이지 밖으로 나가 항목을 옮겨도 남는다 — 그래서 자리만 내려보낸다. 그 자리가 아직 그려지지 않았거나
  * 저장이 없는 쪽이면(`ITEM_PAGES`의 `saves`) `null`이다.
  */
 const HeadActionsSlot = createContext<HTMLElement | null>(null);
 
 /**
- * 설정 항목 하나의 화면(UI개선 결정 22). 머리 카드는 「Settings」 · 항목 이름과 그 쪽의 저장이고(codex-ds 스펙 §7), 본문은 그 항목 하나다.
+ * 설정 항목 하나의 화면(UI개선 결정 22). 머리 줄은 「Settings」 · 항목 이름과 그 쪽의 저장이고(codex-ds 스펙 §7), 본문은 그 항목 하나다.
  *
  * **초안은 항목 페이지 안에 산다**(결정 26) — 항목을 옮기면 주소가 바뀌어 페이지가 내려가고,
  * 저장 안 한 편집이 함께 버려진다. 경고하지 않는다: 설정 화면을 떠날 때 이미 그랬고, 같은 규칙이
  * 항목 경계에도 걸리는 것이다.
  */
-function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
-  // 머리 카드의 할 일 자리에 놓는 그릇 — 제 상자가 없어(`contents`) 보낸 버튼이 할 일 묶음의 자식처럼 선다. 저장이 있는 쪽에만
-  // 선다(`ITEM_PAGES`의 `saves`) — 저장이 없는 쪽(에이전트 훅 · spec 레이아웃)의 머리 카드에는 할 일 묶음이 없다.
+function SettingsPage({ item }: { item: SettingsItemKey }) {
+  // 머리 줄의 할 일 자리에 놓는 그릇 — 제 상자가 없어(`contents`) 보낸 버튼이 할 일 묶음의 자식처럼 선다. 저장이 있는 쪽에만
+  // 선다(`ITEM_PAGES`의 `saves`) — 저장이 없는 쪽(에이전트 훅 · spec 레이아웃)의 머리 줄에는 할 일 묶음이 없다.
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   const page = ITEM_PAGES[item];
   return (
-    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 위치(「Settings」 · 항목 이름)와 쪽의 저장은 머리 줄의 머리 카드에 서고 —
+    // 공용 틀 위의 본문 카드 하나(ui-refresh 결정 27). 위치(「Settings」 · 항목 이름)와 쪽의 저장은 머리 줄에 서고 —
     // 이름은 설정 nav와 같은 표(`SETTINGS_ITEMS`)에서 읽는다 — 카드 안에 고를 것이 없어 본문 카드에는 머리가 없다. 몸은 설정 틀
     // (`SettingsGroup.tsx`)이다 — 큰 제목 → 구획 → 묶음. 쪽 단위의 「기본값으로」는 지금 앱에 없어 머리에 서지 않는다(행 안의
     // 「기본값으로」는 그 행의 것이다 — 예외 목록).
     <Frame
-      sidebarOpen={sidebarOpen}
       head={{
         icon: SettingsIcon,
         name: "Settings",
@@ -253,7 +252,7 @@ function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: Setti
         <div className="min-h-0 flex-1 overflow-y-auto px-5 scroll-quiet">
           {/* 읽는 중 · 읽지 못한 갈래도 이 틀 안에 선다 — 큰 제목은 늘 있고, 그 아래만 갈래마다 다르다. */}
           <SettingsBody>
-            {/* **제목 역할은 이 큰 제목이 진다.** 머리 카드의 위치는 제목 역할이 없는 글자라, 이것이 없으면
+            {/* **제목 역할은 이 큰 제목이 진다.** 머리 줄의 위치는 제목 역할이 없는 글자라, 이것이 없으면
                 페이지에 제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. 한때 감춘 줄(`sr-only`)이었고
                 설정 틀이 서며 보이는 큰 제목이 됐다 — 요소와 레벨은 그대로다(판 06 티켓 06). */}
             <h2 className="text-heading-lg">{settingsItem(item).label}</h2>
@@ -598,9 +597,9 @@ function AgentHooksPage() {
 }
 
 /**
- * 구획 하나의 저장 버튼과 그 저장이 실패한 까닭. **버튼은 머리 카드의 할 일 자리에 선다**(`HeadActionsSlot` — codex-ds 스펙 §7) — 어느
+ * 구획 하나의 저장 버튼과 그 저장이 실패한 까닭. **버튼은 머리 줄의 할 일 자리에 선다**(`HeadActionsSlot` — codex-ds 스펙 §7) — 어느
  * 쪽이든 저장을 같은 자리에서 찾는다(스토리 60). 그리는 것은 이 조각이라 초안 · 저장 규칙(「쓰는 순간의 최신에 자기 칸만 덮는다」,
- * `save-section.ts`)은 그대로다. 실패 글은 몸에 남아 큰 제목 바로 아래(조각의 맨 위)에 선다 — 머리 카드는 24 한 줄이라 긴 까닭이
+ * `save-section.ts`)은 그대로다. 실패 글은 몸에 남아 큰 제목 바로 아래(조각의 맨 위)에 선다 — 머리 줄은 24 한 줄이라 긴 까닭이
  * 들어가지 않고, 몸의 맨 위가 누른 버튼에서 가장 가깝다.
  */
 function SaveButton({
@@ -620,7 +619,7 @@ function SaveButton({
       {error !== null && <p className="mt-2.5 text-chat-meta break-words text-danger">{error}</p>}
       {slot !== null &&
         createPortal(
-          // 주 버튼(Button의 기본 — DS `.at-btn.top.primary`)이고 머리 카드의 글자 버튼 단(`top` — 24)이다. 편집기의 [저장]과 같은 규격이다.
+          // 주 버튼(Button의 기본 — DS `.at-btn.top.primary`)이고 머리 줄의 글자 버튼 단(`top` — 24)이다. 편집기의 [저장]과 같은 규격이다.
           <Button size="top" onClick={onSave} disabled={!enabled}>
             {saving ? "저장 중…" : "저장"}
           </Button>,
@@ -1041,7 +1040,7 @@ export function HooksSection({
       <SettingsFoot>
         {error !== null && <span className="text-chat-meta text-danger">{error}</span>}
         {/* 폼 버튼이다(10px 모서리 — handoff 「머리 버튼과 폼 버튼」). 저장 버튼(주 버튼)은 터미널 설정 · 알림 설정에만 있고
-            (머리 카드), 이 둘은 그것을 안 지나는 별개의 쓰기라 미리보기 바로 아래 몸에 남는다. 오른쪽 끝이 하는 일(설치)이다 —
+            (머리 줄), 이 둘은 그것을 안 지나는 별개의 쓰기라 미리보기 바로 아래 몸에 남는다. 오른쪽 끝이 하는 일(설치)이다 —
             프로토타입의 차례. */}
         <Button variant="ghost" onClick={onUninstall} disabled={busy}>
           제거

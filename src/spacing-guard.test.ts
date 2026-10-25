@@ -139,16 +139,6 @@ describe("임의 간격", () => {
    */
   const EXCEPTIONS: { file: string; className: string; why: string }[] = [
     {
-      file: "src/components/shell/useResizableWidth.tsx",
-      className: "left-[calc((var(--space-2)-5px)/2)]",
-      why: "틈에 서는 폭 손잡이의 빛 — 5px 띠를 틈 8(`space-2`)의 가운데에 세운다. (8 − 5) / 2 = 1.5px라 눈금에 없고, 틈 토큰을 읽어 틈이 바뀌어도 가운데다",
-    },
-    {
-      file: "src/components/shell/useResizableWidth.tsx",
-      className: "right-[calc((var(--space-2)-5px)/2)]",
-      why: "위와 같다 — 왼쪽에서 끄는 손잡이(패널 칸 왼쪽 틈)의 갈래다",
-    },
-    {
       file: "src/components/ui/dialog.tsx",
       className: "top-[12vh]",
       why: "검색 팔레트의 자리 — 창 높이의 12%에 선다. 길이가 아니라 창 높이의 몫이라 눈금이 없다(DS `Palette`는 자리를 정하지 않는다)",
@@ -261,10 +251,6 @@ describe("임의 간격", () => {
       why: "셸 컨트롤 사이 — Codex 머리 줄 6(02 구현 스펙 §3). 컨트롤 묶음의 폭 셈(`--titlebar-controls-width`)이 같은 값을 읽는다",
     },
     {
-      name: "--titlebar-inset-head",
-      why: "사이드바를 접었을 때 공용 틀 머리 카드 줄의 왼쪽 여백 — 셸 컨트롤 끝 + 틈 8. 머리 줄의 이름 자리도 그때 이 끝에서 시작한다(03이 머리 카드를 걷는다)",
-    },
-    {
       name: "--size-toolbar",
       why: "분할 끌기 겹판의 위끝 — 탭 줄(카드 머리) 아래에서 시작한다. 간격이 아니라 그 줄의 높이 토큰(DS `size-toolbar` 46)을 읽는다",
     },
@@ -355,12 +341,12 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/components/shell/Frame.tsx",
       className: "mr-1.75",
-      why: "머리 카드의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
+      why: "머리 줄 화면 것의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "gap-1.25",
-      why: "머리 카드의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
+      why: "머리 줄 화면 것의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
     },
     {
       file: "src/features/works/WorkSectionList.tsx",
@@ -507,17 +493,17 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/components/shell/Frame.tsx",
       className: "pr-6.25",
-      why: "바꿀 수 있는 머리 카드 이름 상자의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 8",
+      why: "바꿀 수 있는 머리 줄 이름 상자의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 8",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "pr-5.25",
-      why: "고치는 동안의 머리 카드 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
+      why: "고치는 동안의 머리 줄 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "mt-1.25",
-      why: "머리 카드 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
+      why: "머리 줄 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",

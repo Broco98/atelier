@@ -2,8 +2,8 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 
 // 셸 틀의 **배치 규격** — 탭 줄의 바닥(`TAB_ROW_CARD` · `TAB_ROW_COLUMN`), 그 바닥을 위해 자리를 내주는 접히는
 // 패널(사이드바 · 오른쪽 패널 — 작업 패널 · spec 목록 패널)의 트랜지션(`PANEL_MOTION` · `foldingInnerClass` · `panelMotionMs`)과 접힐 때의
-// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 카드의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
-// 카드 사이 틈을 스크립트가 읽는 길(`cardGapPx`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
+// 포커스(`useFoldedFocus` · `SIDEBAR_ID`), 그리고 오른쪽 패널 칸의 기본 폭(`WORK_PANEL_WIDTH`)과 폭 범위(`PANEL_MIN_WIDTH` · `PANEL_MAX_WIDTH`),
+// 판 안 칸을 가르는 선(`PANE_RULE`). 바닥과 트랜지션이 한 파일인 것은 한쪽이 다른 쪽의 전제라서다: 열이
 // 바닥을 들면 패널이 좁게 서고, 좁게 선 패널의 안쪽 열이 잘리지 않게 하는 장치가 아래 `foldingInnerClass`다. 폭은 그 패널 칸의 값이고
 // 작업 화면 · spec 레이아웃 편집기 · Archive(spec 목록 패널) 세 기능이 함께 읽어 어느 한 기능의 폴더에 두지 않는다.
 //
@@ -33,7 +33,7 @@ export const TAB_ROW_CARD = "min-w-min [&>:not([data-tab-row])]:contain-inline-s
 
 /**
  * 공용 틀의 **본문 열**(`Frame`)의 바닥 — 탭 줄을 품은 카드 줄이 열의 min-content를 정한다. 머리 줄(`header`)은 이 열이 아니라
- * 틀 뿌리의 맨 위 줄이라(codex-ds 스펙 §4) 제 min-content를 뿌리에 따로 알린다(`Frame`의 `HeadRow`).
+ * 앱 셸의 크롬 맨 위 줄이라(02 구현 스펙 §3) 바닥에 들지 않는다 — 화면의 할 일 묶음은 그 줄 안에서 이름 칸이 먼저 준다(`Frame`의 `FrameHead`).
  *
  * 열의 min-width가 min-content이면 옆의 사이드바가 제 최소 폭까지 자리를 내준다. 카드 줄은 **탭 줄을 품었을 때만**
  * 제 min-content를 알린다 — 그 카드 줄 안의 것들이 저마다 제 몫만 알리도록 지어져 있어서다: 탭 줄을 이는 카드는 줄의
@@ -66,14 +66,14 @@ export const PANEL_MIN_WIDTH = 260;
 export const PANEL_MAX_WIDTH = 560;
 
 /**
- * 카드 사이 틈(px) — 토큰 `--space-2`를 그 요소에서 읽는다. 카드 줄의 패널 칸과 분할의 두 열이 이 틈을 두고 서서(`Frame`), 그려진
- * 상자의 폭에서 틈을 빼야 카드의 폭이 나오는 자리가 부른다 — 틈 자리 손잡이가 재는 칸의 폭(`useResizableWidth`의 `drawnWidth`)과
- * 분할의 두 열이 나눠 갖는 폭(`Frame`의 `sharedWidth`)이다. 숫자를 그 자리에 적으면 토큰이 바뀌는 날 그 자리만 낡는다.
- * 토큰이 안 풀리면(스타일시트 없이 그린 자리) 0이다.
+ * 판 안 칸을 가르는 0.5 세로 선(02 구현 스펙 §3 S2) — 흰 판 안의 칸들은 둘레 틈 없이 맞닿고 이 선 하나로 갈린다. **뒤(오른쪽)에 선 칸이
+ * 제 왼쪽 가장자리에 칠한다** — 공용 틀(`Frame`)의 목록 칸 · 오른쪽 패널 · 분할의 오른쪽 열 · 옆 칸과 레일 열(`Rail`)이다. 접힌 칸은 폭이
+ * 0이라 선도 함께 걷힌다(판 04 「지키는 것」 — 접힌 칸 옆에 틈 · 선이 남지 않는다). 색과 굵기는 사이드바 오른쪽 선과 같은 `border-heavy`
+ * 0.5다(Codex 오른쪽 패널의 왼쪽 선). 테두리가 아니라 칠한 면인 것은 0.5px 테두리가 엔진마다 굵기가 갈려서다. 칸 내용 위에 서서 내용이
+ * 가장자리까지 칠해도 안 가려지고, 누름은 지나보낸다. 칠하는 상자는 `relative`여야 한다.
  */
-export function cardGapPx(from: HTMLElement): number {
-  return parseFloat(getComputedStyle(from).getPropertyValue("--space-2")) || 0;
-}
+export const PANE_RULE =
+  "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-[0.5px] after:bg-border-heavy";
 
 /**
  * 접히는 패널 **바깥 상자**의 폭 트랜지션 길이와 곡선 — Atelier 토큰 `duration-panel`(220ms) · `ease-panel`이다(index.css의
@@ -83,9 +83,9 @@ export function cardGapPx(from: HTMLElement): number {
  * 안쪽 열이 폭이 다 오기 전에 잘리거나(지연이 짧다) 다 온 뒤에 한 번 더 되흐른다(길다). 둘이 같은 토큰(`--duration-panel`)을
  * 읽는 것으로 그 같음을 든다(`panel-layout.test.ts`).
  *
- * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 사이드바 폭을 따라오는 공용 틀의 여백(머리 줄 · 카드 줄)과 분할 열 폭이 훌쩍
- * 뛰는 순간(둘 다 `Frame`), 그리고 사이드바 끝을 따르고 전체화면에 들고 날 때 옮겨 가는 앱 머리 줄의 왼쪽 칸(`ShellHead`)이다.
- * 제 리터럴로 다시 적으면 한쪽만 고친 날 카드 모서리가 사이드바 경계를 지나쳤다 되돌아온다. 분할 열이 뛰는 순간을 끝내는 타이머는
+ * 패널과 **함께 움직이는** 것도 이 값을 읽는다 — 목록 칸의 폭과 분할 열 폭이 훌쩍 뛰는 순간(둘 다 `Frame`), 그리고 사이드바 끝을
+ * 따르고 전체화면에 들고 날 때 옮겨 가는 앱 머리 줄의 왼쪽 칸(`ShellHead`)이다.
+ * 제 리터럴로 다시 적으면 한쪽만 고친 날 머리 줄의 이름이 사이드바 경계를 지나쳤다 되돌아온다. 분할 열이 뛰는 순간을 끝내는 타이머는
  * CSS가 아니라서 같은 토큰을 `panelMotionMs`로 읽는다.
  */
 export const PANEL_MOTION = "duration-panel ease-panel";

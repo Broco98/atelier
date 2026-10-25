@@ -33,7 +33,7 @@ import table from "./hotkeys.json";
 // - F2(이름 바꾸기) · ⇧F10과 메뉴 키(대상 메뉴) — 무엇에 거는지가 포커스에 달려 있다(codex-ds 스펙 §8). ⇧F10 · 메뉴 키는 포커스된
 //   대상이 제 `onKeyDown`에서 받아 그 대상의 메뉴를 열고(`context-menu.tsx`의 `opensTargetMenu` · `openMenuByKey`), 포커스된
 //   입력칸에서는 편집 메뉴가 document에서 받아 연다(`EditMenu` — 이름을 고치는 칸도 입력칸이다). 셸에서는 셸로 간다(`keyRoute`).
-//   F2도 포커스된 이름 자리(머리 카드 이름 · 사이드바 work 행 · 프로젝트 목록 행 · 셸 탭 이름)가 제 `onKeyDown`에서 받아 그 이름을
+//   F2도 포커스된 이름 자리(머리 줄 이름 · 사이드바 work 행 · 프로젝트 목록 행 · 셸 탭 이름)가 제 `onKeyDown`에서 받아 그 이름을
 //   그 자리에서 고친다(`InlineRename`, codex-ds 스펙 §9).
 // - ⌥↑ ⌥↓ ⌥← ⌥→(spec 레이아웃 편집기 트리의 항목 옮기기) · Esc(떠 있는 창 닫기) — 한 화면 안의 키다.
 //

@@ -3,11 +3,17 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import TerminalPage from "./TerminalPage";
 import { NO_SHELLS, openShell, ownerOf, setTitle, topTerminal } from "./shell-registry";
 import type { ShellOwner, ShellsState } from "./shell-registry";
 import { terminalStore } from "./terminal-store";
+
+// 머리(이름 · 할 일)는 앱 셸의 머리 줄로 포털을 탄다 — 정적 렌더는 포털을 못 그려, 머리를 이 화면의 마크업 안 머리 줄에 곧장 세운다
+// (`screen-head-inline`).
+vi.mock("@/components/shell/ShellHead", async (actual) =>
+  (await import("@/components/shell/screen-head-inline")).inlineScreenHead(actual),
+);
 
 // 최상위 터미널의 탭 줄 — **터미널 카드의 머리다**(결정 8 · adr-03 · codex-ds 스펙 §4). work 화면과 **같은 컴포넌트**를
 // 쓰고, 갈리는 것은 맨 앞 한 칸뿐이다: 이 화면에는 문서가 없어 `spec` 칸이 없고 ⌘1부터가
@@ -22,8 +28,7 @@ describe("최상위 터미널의 탭 줄", () => {
 
   // 이 화면의 소유자는 **최상위 터미널의 키**(빈 글자 `""`)다 — 여는 자리(`topTerminal()`)와 같은 키를 싣는다.
   const TOP = topTerminal().owner;
-  const html = (sidebarOpen: boolean) => renderToStaticMarkup(<TerminalPage sidebarOpen={sidebarOpen} />);
-  const headerTag = (markup: string) => /<header[^>]*>/.exec(markup)?.[0] ?? null;
+  const html = () => renderToStaticMarkup(<TerminalPage />);
 
   /**
    * 칸 하나씩 잘라낸다. 경계는 **표식이지 모양이 아니다** — ShellTabs.test.tsx·
@@ -58,7 +63,7 @@ describe("최상위 터미널의 탭 줄", () => {
     // 결정 8. 이 화면에는 문서가 없다. `spec`이 서면 ⌘1이 가리키는 칸과 화면에 보이는
     // 첫 칸이 어긋나고, 그 순간 이 판이 한 일이 없어진다.
     terminalStore.setState(() => seed(2, TOP).state);
-    const markup = html(true);
+    const markup = html();
     expect(kindsOf(markup)).toEqual(["shell", "shell", "new"]);
     // 머리 줄이 **하나뿐이다** — 브레드크럼 머리가 남아 있으면 층이 둘이 되고,
     // 창을 끄는 자리와 신호등 회피 여백도 둘로 갈린다.
@@ -68,7 +73,7 @@ describe("최상위 터미널의 탭 줄", () => {
   it("탭 줄이 터미널 카드 안 맨 위에 선다 — 머리 줄에는 칸이 없다", () => {
     // codex-ds 스펙 §4 「탭 줄」. 줄이 그 탭이 보여 줄 카드의 머리다 — 카드의 첫 자식이 줄 상자(`data-tab-row`)다.
     terminalStore.setState(() => seed(1, TOP).state);
-    const markup = html(true);
+    const markup = html();
     const card = markup.indexOf("<main");
     expect(card, "터미널 카드가 없다").toBeGreaterThan(-1);
     expect(markup.slice(card, markup.indexOf(">", card))).toContain('data-tone="terminal"');
@@ -77,15 +82,16 @@ describe("최상위 터미널의 탭 줄", () => {
     expect(header).not.toContain("data-tab");
   });
 
-  it("머리 카드가 화면 이름 「Terminal」만 들고 버튼이 없다 — 패널 토글도 없다", () => {
-    // 이 화면에는 머리 카드에 걸 할 일이 없다(codex-ds 티켓 14 — 셸을 여는 `+`는 탭 줄의 것이다). 작업 패널이 없는 화면이라 패널
-    // 토글도 없다.
+  it("머리 줄에 화면 이름 「Terminal」만 서고 버튼이 없다 — 패널 토글도 없다", () => {
+    // 이 화면에는 머리 줄에 걸 할 일이 없다(codex-ds 티켓 14 — 셸을 여는 `+`는 탭 줄의 것이다). 작업 패널이 없는 화면이라 패널
+    // 토글도 없다. 이름은 카드 없이 머리 줄에 바로 선다(02 구현 스펙 §3 S2 — 머리 카드를 걷었다).
     terminalStore.setState(() => seed(1, TOP).state);
-    const markup = html(true);
+    const markup = html();
     const header = markup.slice(markup.indexOf("<header"), markup.indexOf("</header>"));
-    expect(header).toContain('data-slot="head-card"');
     expect(header).toContain(">Terminal<");
     expect(header).not.toContain("<button");
+    expect(header).not.toContain("rounded-xl");
+    expect(header).not.toContain("shadow-");
   });
 
   it("이 화면의 셸만 선다 — work의 셸은 안 온다", () => {
@@ -93,7 +99,7 @@ describe("최상위 터미널의 탭 줄", () => {
     // 자리가 갈린다. 이 화면의 소유자는 **최상위 터미널의 빈 키**다.
     const mine = seed(1, TOP);
     terminalStore.setState(() => seed(2, ownerOf("가"), mine.state).state);
-    expect(shellCellsOf(html(true))).toHaveLength(1);
+    expect(shellCellsOf(html())).toHaveLength(1);
   });
 
   it("칸이 `shellsOf` 순서 그대로 선다 — ⌘1이 첫 칸이다", () => {
@@ -102,7 +108,7 @@ describe("최상위 터미널의 탭 줄", () => {
     terminalStore.setState(() =>
       ids.reduce((acc, id, at) => setTitle(acc, id, `셸${at + 1}`), state),
     );
-    const cells = shellCellsOf(html(true));
+    const cells = shellCellsOf(html());
     expect(cells).toHaveLength(3);
     expect(cells[0]).toContain("셸1");
     expect(cells[1]).toContain("셸2");
@@ -115,7 +121,7 @@ describe("최상위 터미널의 탭 줄", () => {
     // 어느 칸이 지금인지가 화면 어디에도 안 남는다(사이드바 가지가 걷혔다 — 결정 6).
     const { state, ids } = seed(2, TOP);
     terminalStore.setState(() => state);
-    const cells = shellCellsOf(html(true));
+    const cells = shellCellsOf(html());
     // 마지막에 연 칸이 켜진 칸이다(`openShell`이 그렇게 앉힌다).
     expect(ids).toHaveLength(2);
     expect(cells[1]).toContain('aria-pressed="true"');
@@ -125,7 +131,7 @@ describe("최상위 터미널의 탭 줄", () => {
   it("셸이 0개여도 줄은 선다", () => {
     // 셸 0개인 화면이 실재한다(결정 102) — 마지막 칸을 `×`로 닫으면 그 자리다. 그때 이 줄이
     // 통째로 사라지면 셸을 다시 여는 `+`도 함께 사라진다.
-    const markup = html(true);
+    const markup = html();
     expect(kindsOf(markup)).toEqual(["new"]);
     // 칸이 없어도 줄은 터미널 카드 머리 자리(카드의 첫 자식)에 그대로 선다 — `+`가 늘 같은 자리다.
     const card = markup.indexOf("<main");
@@ -133,30 +139,14 @@ describe("최상위 터미널의 탭 줄", () => {
     expect(markup.slice(markup.indexOf(">", card) + 1)).toMatch(/^<div[^>]*\sdata-tab-row="/);
   });
 
-  it("창을 끌 수 있다", () => {
-    // 이 화면 맨 위가 머리 줄이다. 없으면 창이 아예 안 끌린다 — 옛 브레드크럼 머리가 지고 있던 몫을
-    // 머리 줄(`Frame`의 `HeadRow`)이 그대로 물려받는다. 탭 줄은 카드 안이라 창을 끌지 않는다.
+  it("머리 줄의 자리 · 끌기는 셸이 든다 — 화면은 이름만 건네고, 판 안은 창을 끄는 자리가 아니다", () => {
+    // 02 구현 스펙 §3. 머리 줄(높이 · 신호등 · 사이드바를 따라 옮겨 가는 이름 자리 · 창 끌기)은 앱 셸 하나가 그린다(`ShellHeadRow` —
+    // `ShellHead.test.tsx`). 화면이 제 머리 줄을 다시 세우면 줄이 둘이 되고 신호등 여백 · 끄는 자리도 둘로 갈린다. 칸은 흰 판 안이라
+    // 회색 틈이 없어 끄는 자리가 아니다.
     terminalStore.setState(() => seed(1, TOP).state);
-    expect(headerTag(html(true))).toContain("data-tauri-drag-region");
-  });
-
-  it("사이드바가 접히면 신호등을 피한다", () => {
-    // 왼쪽에 남은 것이 사이드바뿐이라, 접히면 머리 줄이 창 왼쪽 끝에 붙어 그 줄에 선 것이 신호등 · 창 컨트롤에 깔린다. 여백은
-    // 틀(`Frame`)의 규칙이라 이 화면의 머리 줄이 지금 비어 있어도 선다. 열렸으면 여백이 없다 — 신호등 · 창 컨트롤은 사이드바 위에
-    // 서고, 줄에 선 머리 카드는 본문 카드와 한 세로줄에서 시작한다.
-    expect(headerTag(html(false))).toContain("pl-(--titlebar-inset-head)");
-    expect(headerTag(html(true))).toContain("pl-0");
-  });
-
-  it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {
-    // `ease-panel`이 아니면 최종 자리를 지나쳤다 되돌아온다 — 머리 줄 첫 자리의 화면상 위치가 사이드바
-    // 폭과 이 여백의 합이라서다(index.css의 `--ease-panel` 주석). 한때 ShellTabs.test가 들었는데,
-    // 그 줄이 탭 줄의 것이 아니게 되어(`Frame`의 `HeadRow`) 줄을 실제로 세우는 이 화면이 든다.
-    const tag = headerTag(html(true)) ?? "";
-    expect(tag).toContain("ease-panel");
-    expect(tag).toContain("transition-[padding]");
-    // 층 높이도 그 줄의 것이다(`--titlebar-height`).
-    expect(tag).toContain("h-(--titlebar-height)");
+    const markup = html();
+    expect(markup).not.toContain("titlebar-");
+    expect(markup).not.toContain("data-tauri-drag-region");
   });
 });
 

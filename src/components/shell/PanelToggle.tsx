@@ -13,10 +13,10 @@ interface PanelToggleProps {
 
 /**
  * 패널 토글(ui-refresh 결정 9 · CONTEXT.md) — 그 화면의 오른쪽 패널(작업 화면은 작업 패널, Archive는 spec 목록 패널 — codex-ds 결정 32)을
- * 여닫는 버튼 하나. **머리 줄**의 오른쪽 끝에 선다(codex-ds 스펙 §4 · §10). 자리는 레일을 따라 갈리고 `Frame`의 머리 줄이 잡는다(DS
- * `.at-winctl-r`): 레일이 서면 머리 카드 밖, 레일 열 한가운데 위이고(DS `HeadCard` 「패널 토글은 카드 밖, 패널 칸 줄 한가운데 위」),
- * 서지 않으면 머리 카드 안 오른쪽 끝(작업 화면이면 보기 배치(분할) 뒤)이다 — 지금 작업 화면은 칸이 `spec` · `files` 둘이라 레일이
- * 서서 앞쪽이고, 레일이 없는 Archive가 뒤쪽이다(codex-ds 결정 25 · 32). 열림만 뒤집고 고른 레일 칸은 그대로 둔다 — ⌘Enter와 같은 일이다(판정은 아래 `togglesPanel`, 듣는 자리는 `WorksPage` ·
+ * 여닫는 버튼 하나. **머리 줄**의 오른쪽 맨 끝에 선다(codex-ds 스펙 §4 · §10 · 02 구현 스펙 §3 S2) — 작업 화면이면 보기 배치(분할) 뒤,
+ * Archive면 ⋯ 뒤다. 자리는 `Frame`의 `FrameHead`가 잡는다(DS `.at-winctl-r`). 한때 레일이 서면 머리 카드 밖 레일 열 위로 나갔다(DS
+ * `.at-railtop`) — 머리 카드를 걷어 화면 것이 머리 줄에 바로 서며 레일이 서든 안 서든 같은 자리가 됐다. 열림만 뒤집고 고른 레일 칸은
+ * 그대로 둔다 — ⌘Enter와 같은 일이다(판정은 아래 `togglesPanel`, 듣는 자리는 `WorksPage` ·
  * `ArchivePage`).
  *
  * 왼쪽 셸 컨트롤의 사이드바 토글(`PanelLeft`)을 뒤집은 그림이고 모양도 그것과 같다 — 위 줄의 작은 아이콘 버튼(`icon-button-xs`, 24 ·

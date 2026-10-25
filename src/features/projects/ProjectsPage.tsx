@@ -20,13 +20,12 @@ import { useCreateProject, useDeleteProject, useProjects, useUpdateProject } fro
 import type { ProjectView } from "./types";
 
 interface ProjectsPageProps {
-  sidebarOpen: boolean;
   selectedSlug: string | null;
   onSelect: (slug: string | null) => void;
   onOpenWork: (slug: string) => void;
 }
 
-function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
+function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
   // 목록 칸의 폭 — 이 목록만 쓰는 키다(사이드바는 `sidebar-width`, 아카이브 목록은 `archive-panel-width`를 따로 갖는다). 기본은 DS
   // `size-list`(264)이고 범위는 240–560이다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면 그대로 선다(`useResizableWidth`가
@@ -36,8 +35,8 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
   const updateProject = useUpdateProject();
-  // **이름을 그 자리에서 고치는 중인 프로젝트**(codex-ds 스펙 §9) — 자리가 둘이라(머리 카드 이름 · 목록 행) 따로 든다. 값이 slug인
-  // 것은 고친 대상이 고른 것과 다를 수 있어서다(목록 행은 고르지 않은 행에서도 F2로 고친다). 머리 카드 쪽은 고른 프로젝트가 바뀌면
+  // **이름을 그 자리에서 고치는 중인 프로젝트**(codex-ds 스펙 §9) — 자리가 둘이라(머리 줄 이름 · 목록 행) 따로 든다. 값이 slug인
+  // 것은 고친 대상이 고른 것과 다를 수 있어서다(목록 행은 고르지 않은 행에서도 F2로 고친다). 머리 줄 쪽은 고른 프로젝트가 바뀌면
   // 그 그림에서 곧바로 꺼진다(`editing`이 `selected.slug`와 견준다) — 입력칸이 blur 없이 내려가도 마지막 그림의 값으로 저장하고 끝을
   // 알려 이 값을 비운다(`InlineRename`). 저장은 지금 프로젝트 고치기 명령의 이름만 실은 patch다.
   const [renamingHead, setRenamingHead] = useState<string | null>(null);
@@ -60,7 +59,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
     }
   };
 
-  // **제거는 그 프로젝트의 것이다** — 머리 카드의 [제거]는 고른 프로젝트이고, 목록 행의 메뉴는 고르지 않은 행일 수 있다(codex-ds
+  // **제거는 그 프로젝트의 것이다** — 머리 줄의 [제거]는 고른 프로젝트이고, 목록 행의 메뉴는 고르지 않은 행일 수 있다(codex-ds
   // 결정 7). 확인 창을 거친 뒤에만 나가고, 고른 프로젝트를 뺐을 때만 고름을 비운다 — 다른 행을 빼도 보던 프로젝트는 그대로다.
   const handleRemove = async (project: ProjectView) => {
     const ok = await askDanger(
@@ -77,10 +76,10 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
     }
   };
 
-  // **프로젝트 메뉴**(codex-ds 스펙 §9 대상 메뉴 표 · 티켓 30) — 목록 행과 머리 카드 이름의 우클릭 · ⇧F10이 편다. 목록은 한 정의
+  // **프로젝트 메뉴**(codex-ds 스펙 §9 대상 메뉴 표 · 티켓 30) — 목록 행과 머리 줄 이름의 우클릭 · ⇧F10이 편다. 목록은 한 정의
   // (`ProjectMenuItems`)이고 부르는 길도 한 벌이다 — 자리마다 다른 것은 「이름 바꾸기」가 입력칸을 세우는 자리뿐이다(`startRename`).
   // 메뉴는 slug를 겨누고 펼 때마다 목록에서 찾는다 — 열어 둔 사이 그 프로젝트가 빠지면 항목도 사라진다.
-  // - Finder 열기는 머리 카드의 「폴더 열기」와 같은 명령이고, 못 열면 코어의 문장을 토스트로 알린다(`openInFinder`).
+  // - Finder 열기는 머리 줄의 「폴더 열기」와 같은 명령이고, 못 열면 코어의 문장을 토스트로 알린다(`openInFinder`).
   // - 경로 복사는 그 폴더의 참조(`projectDirRef` — 끝에 `/`)이고, Works · Archive의 복사와 한 길로 「… 복사됨」 토스트가 말한다
   //   (`copyText` · 아래 `Toaster`).
   const projectMenu = (slug: string, leaveFocus: () => void, startRename: (slug: string) => void) => {
@@ -103,14 +102,13 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
   };
 
   return (
-    // 공용 틀 위의 상세 | 목록 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 프로젝트의 머리 카드가
-    // 선다(codex-ds 스펙 §7).
+    // 공용 틀 위의 상세 | 목록 카드 하나(codex-ds 결정 28 — 0.5px 세로 선이 두 칸을 가른다). 머리 줄에는 고른 프로젝트의 이름 · 할
+    // 일이 선다(codex-ds 스펙 §7).
     <Frame
-      sidebarOpen={sidebarOpen}
-      // 머리 카드 — 왼쪽은 폴더 아이콘과 고른 프로젝트의 이름(고른 것이 없으면 nav의 화면 이름)이다. 오른쪽은 그 프로젝트에 거는 할 일인
+      // 머리 줄 — 왼쪽은 폴더 아이콘과 고른 프로젝트의 이름(고른 것이 없으면 nav의 화면 이름)이다. 오른쪽은 그 프로젝트에 거는 할 일인
       // 폴더 열기 | 제거다(스토리 52). 제거는 되돌릴 수 없는 할 일이라 세로선 너머에 떼어 둔다(DS 캔버스). 캔버스의 「LLM이 받는
       // 텍스트」는 지금 앱에 없는 조작이라 짓지 않는다(codex-ds 스펙 S13). **고른 프로젝트의 이름은 그 자리에서 바꾼다**(codex-ds 스펙
-      // §9 · S12 — 이름의 두 번 클릭 · F2, `rename`). 상세 칸에는 제목이 없다 — 이름은 머리 카드가 든다.
+      // §9 · S12 — 이름의 두 번 클릭 · F2, `rename`). 상세 칸에는 제목이 없다 — 이름은 머리 줄이 든다.
       //
       // **이름은 프로젝트 메뉴의 대상이다**(`nameMenu` — 위 `projectMenu`). 우클릭하거나 포커스해 ⇧F10 · 메뉴 키를 누르면 이름 곁에
       // 선다(키는 틀의 이름이 우클릭 사건으로 바꿔 낸다 — `openMenuByKey`). `key`가 프로젝트를 갈아 끼우면 메뉴를 새로 세운다 — 열어 둔
@@ -144,7 +142,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             }
           : undefined,
         actions: selected && (
-          // 머리 카드의 글자 버튼(`Button` top — 24, DS `.at-btn.top`). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
+          // 머리 줄의 글자 버튼(`Button` top — 24, DS `.at-btn.top`). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
           <Button
             variant="ghost"
             size="top"
@@ -202,7 +200,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
       // 연 문장이 여기 선다.
       overlay={<Toaster />}
     >
-      {/* 상세 칸 — 상세 | 목록 카드의 왼쪽 칸이다. 머리가 없다: 프로젝트의 이름과 할 일은 머리 카드가 들고, 칸 안에 고를 것이 없다. */}
+      {/* 상세 칸 — 상세 | 목록 카드의 왼쪽 칸이다. 머리가 없다: 프로젝트의 이름과 할 일은 머리 줄이 들고, 칸 안에 고를 것이 없다. */}
       <Card as="main" label="프로젝트" className="flex-1">
         {/* 옆은 글 거터 20이다 — 설정 본문과 같은 나눔이다(위 24 · 글 폭은 상세의 몸이 든다, `ProjectDetail`). */}
         <div className="flex-1 overflow-y-auto px-5 scroll-quiet">

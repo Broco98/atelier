@@ -7,7 +7,7 @@ import { ScreenHead } from "./ShellHead";
 
 // **Thread · 첫 화면 · Library가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07) — 틀은 앱 셸 하나다: 크롬 맨 위 머리 줄(44)과 그 아래 흰 판
 // (`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의
-// 화면들(Projects · Terminal · Processes · Archive · Settings · Work 화면)은 아직 제 머리 카드를 판 안에 그린다 — 머리 줄로 옮기는 것은 03이다.
+// 화면들(Projects · Terminal · Processes · Archive · Settings · Work 화면)도 같은 머리 줄에 제 이름 · 할 일을 보낸다(`FrameHead`).
 //
 //   머리 줄의 화면 자리(`ScreenHead`) ─ 이름 앞(`lead`) · 이름(있으면 · 그 자리에서 바꾼다) ··· 오른쪽 끝(`end`)
 //   판 안 ─ 본문 `<main>` — 화면이 건넨 것이 곧장 선다
@@ -18,7 +18,7 @@ import { ScreenHead } from "./ShellHead";
 // - **Codex 머리 줄 모양이다**(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽은 이름 앞 · 이름이 틈 8로 한 줄이고, 오른쪽 끝은 28 아이콘 버튼들이
 //   틈 2로 선다(왼쪽과 적어도 12 띄움). 오른쪽 끝 여백 8은 셸의 화면 자리가 든다.
 // - **머리 줄 아래 선은 없다** — 판의 위끝이 경계다. 본문은 제 카드 없이 흰 판에 곧장 선다.
-// - **이름은 그 자리에서 바꾼다**(두 번 클릭 · F2) — 공용 틀 머리 카드의 이름과 같은 길이다(`HeadRename` · `InlineRename`).
+// - **이름은 그 자리에서 바꾼다**(두 번 클릭 · F2) — 공용 틀 화면의 머리 줄 이름과 같은 길이다(`HeadRename` · `InlineRename`).
 
 interface PlainHeadProps {
   /** 이름 앞 — Thread가 이은 Work의 「폴더 · Work 이름 ›」(02 §6 · S13). */

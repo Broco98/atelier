@@ -108,7 +108,7 @@ import {
 // 따라가고, 있으면 폼 카드 맨 위의 배너로 한쪽을 고르게 한다(`outside.ts`).
 
 /** 편집기 주소를 연다 — 레이아웃을 읽어, 읽을 수 있으면 편집 UI를, 없으면 까닭과 돌아가는 길을 세운다. */
-function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
+function SpecLayoutEditor() {
   const read = useQuery(specLayoutReadQuery());
   const navigate = useNavigate();
   // 뒤로는 「spec 레이아웃」 설정 페이지다 — 편집기로 오는 문이 거기 한 곳(레이아웃 행의 [편집])이라, 히스토리를 되감지
@@ -119,10 +119,10 @@ function SpecLayoutEditor({ sidebarOpen }: { sidebarOpen: boolean }) {
   // 한 번 읽었으면 그 뒤로 다시 읽히는 것은 편집 화면이 받는다 — 밖에서 깨지거나 고쳐져도 화면이 내려가지 않아야
   // 초안이 산다(티켓 15).
   if (data !== undefined) {
-    return <EditorScreen read={data} sidebarOpen={sidebarOpen} onBack={back} />;
+    return <EditorScreen read={data} onBack={back} />;
   }
   return (
-    <EditorFrame sidebarOpen={sidebarOpen} onBack={back}>
+    <EditorFrame onBack={back}>
       {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 편집 화면의 「읽지 못함」이다. */}
       {read.error !== null && (
         <FormBody>
@@ -152,15 +152,7 @@ interface Outside {
  * 읽기를 다시 부르면 `read`가 바뀌어 온다 — 초안이 없으면 조용히 새것을 받고, 있으면 배너로 한쪽을 고르게 한다
  * (`judgeOutside`). 합치지는 않는다. 읽은 것이 깨졌으면 초안이 없는 동안 「읽지 못함」 화면이다.
  */
-function EditorScreen({
-  read,
-  sidebarOpen,
-  onBack,
-}: {
-  read: SpecLayoutRead;
-  sidebarOpen: boolean;
-  onBack: () => void;
-}) {
+function EditorScreen({ read, onBack }: { read: SpecLayoutRead; onBack: () => void }) {
   // 기준본 — 열 때 읽은 것, 밖 변경을 받거나 유지하며 새로 읽은 것, 또는 제가 저장한 것. 초안이 이것과 내용으로
   // 다르면 「저장하지 않은 것이 있다」(`unsaved`) — 저장이 열리고(`canSave`), 떠날 때 묻고, 밖 변경에 배너가 선다.
   const [baseline, setBaseline] = useState<SpecLayoutRead>(read);
@@ -239,7 +231,7 @@ function EditorScreen({
 
   if (view === null) {
     return (
-      <EditorFrame sidebarOpen={sidebarOpen} onBack={onBack}>
+      <EditorFrame onBack={onBack}>
         {"errors" in baseline && (
           <FormBody>
             <UnreadableLayout read={baseline} onBack={onBack} />
@@ -255,11 +247,10 @@ function EditorScreen({
 
   return (
     <EditorFrame
-      sidebarOpen={sidebarOpen}
       onBack={onBack}
       actions={
         <>
-          {/* 머리 카드의 글자 버튼이다(`Button` ghost · top — 24 · `radius-md`, DS `.at-btn.top`). 아이콘은 글자 앞에
+          {/* 머리 줄의 글자 버튼이다(`Button` ghost · top — 24 · `radius-md`, DS `.at-btn.top`). 아이콘은 글자 앞에
               선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
               `aria-expanded`)를 달지 않는다 — 앱의 다른 창 여는 버튼(전체화면 뷰어)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
@@ -387,8 +378,8 @@ export function OutsideBanner({
 }
 
 /**
- * 편집기의 틀 — 공용 틀 위의 본문 카드(ui-refresh 결정 27)와 머리 줄의 머리 카드(뒤로 · 위치 | 동작 — codex-ds 스펙 §7), 그리고 편집할
- * 때는 본문 카드 오른쪽의 트리 카드(`tree`). 위치는 설정 화면의 머리 카드에 한 칸을 더 이은 것이다: 「Settings」 · `spec 레이아웃 ›
+ * 편집기의 틀 — 공용 틀 위의 본문 카드(ui-refresh 결정 27)와 머리 줄(뒤로 · 위치 | 동작 — codex-ds 스펙 §7), 그리고 편집할
+ * 때는 본문 카드 오른쪽의 트리 카드(`tree`). 위치는 설정 화면의 머리 줄에 한 칸을 더 이은 것이다: 「Settings」 · `spec 레이아웃 ›
  * Atelier`. 가운데 칸은 설정 nav 항목 표에서 읽는다 — 머리와 nav가 각자 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다. 본문 카드 안에는
  * 고를 것이 없어 카드 머리가 없다.
  *
@@ -397,13 +388,11 @@ export function OutsideBanner({
  * 창에서 자리를 내주는 것은 그 칸이 든다(ui-refresh 결정 27) — 이 화면은 카드의 안과 폭만 건넨다.
  */
 function EditorFrame({
-  sidebarOpen,
   onBack,
   actions,
   tree,
   children,
 }: {
-  sidebarOpen: boolean;
   onBack: () => void;
   actions?: ReactNode;
   /** 오른쪽 트리 카드의 안(`TreeCard`) — 편집할 때만 선다. 읽는 중 · 읽지 못함 화면은 본문 카드 하나다. */
@@ -413,12 +402,11 @@ function EditorFrame({
   const name = LAYOUT_NAME;
   return (
     <Frame
-      sidebarOpen={sidebarOpen}
-      // 머리 카드 — 뒤로 · 「Settings」 · 위치 | 「LLM이 받는 텍스트」 · 저장(`actions`, 편집할 때만). **좁은 창의 바닥은 이 할 일이
-      // 든다** — 머리 카드의 할 일 묶음은 줄지 않고 그 폭을 머리 줄의 바닥으로 알린다(`Frame`의 `HeadCard`). 글자가 시스템 글꼴이라
-      // 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수는 한쪽 OS에서 「저장」을 자르는데, 이 바닥은 수가 아니라 그 조작들의 폭이다.
+      // 머리 줄 — 뒤로 · 「Settings」 · 위치 | 「LLM이 받는 텍스트」 · 저장(`actions`, 편집할 때만). 할 일 묶음은 줄지 않고 이름 칸이 먼저
+      // 준다(`Frame`의 `FrameHead`) — 글자가 시스템 글꼴이라 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수를 두지 않는다. 가장 좁은 창
+      // (900)에 사이드바를 가장 넓혀(400) 두어도 머리 줄의 화면 자리가 그 둘보다 넓다.
       head={{
-        // 머리 카드의 작은 아이콘 버튼(`icon-button-xs` — 24 · `radius-md`, 위 줄에 서는 것은 모두 24다 — DS `HeadCard`).
+        // 머리 줄의 작은 아이콘 버튼(`icon-button-xs` — 24 · `radius-md`, 머리 줄의 화면 것은 모두 24다 — DS `HeadCard`).
         lead: (
           <Button variant="ghost" size="icon-xs" onClick={onBack} aria-label="설정으로 돌아가기">
             <ArrowLeft aria-hidden className="size-3.75" />
@@ -442,7 +430,7 @@ function EditorFrame({
         // 사이드바 — 가 자리를 내준다(공용 틀의 옆 칸).
         className="min-w-min flex-1 [&>:not([data-floor])]:contain-inline-size"
       >
-        {/* 제목 역할은 이 줄이 진다 — 머리 카드의 위치는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
+        {/* 제목 역할은 이 줄이 진다 — 머리 줄의 위치는 제목 역할이 없는 글자다(설정 페이지와 같다). */}
         <h2 className="sr-only">{name} 레이아웃</h2>
         {children}
       </Card>
