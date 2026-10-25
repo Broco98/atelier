@@ -149,6 +149,7 @@ export const SPACES: Space[] = [
 export const SCOPE_ALL: ReadingScope = {
   space: null,
   projects: PROJECTS.map((project) => ({ slug: project.slug, name: project.name, why: "all" })),
+  worked: [],
   kind: "all",
   registered: PROJECTS.length,
 };

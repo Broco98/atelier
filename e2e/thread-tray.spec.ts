@@ -226,6 +226,7 @@ test("Space 칩 — 메뉴에서 고른 Space는 흰 칩 + ×가 되어 범위 �
   await expect(메뉴(page).getByRole("group", { name: "Space — 고르면 그 안의 Project만 읽어요", exact: true })).toBeVisible();
   await expect(갈래(page, PAYMENTS.name)).toHaveAccessibleDescription("web-app · api-server");
   await expect(메뉴(page).getByRole("menuitem")).toHaveText(["Space 관리메뉴 › Space"]);
+  await expect(메뉴(page).getByRole("menuitem", { name: "Space 관리", exact: true })).toHaveAccessibleDescription("메뉴 › Space");
 
   // Space를 고름(「Space를 고름」) — 흰 면 + 0.5 고리(14%)의 칩에 이름과 ×가 서고, 범위 줄이 그 Space의 Project를 말한다. 범위는 쥔 Space로
   // 센다 — 아직 Thread가 없다.

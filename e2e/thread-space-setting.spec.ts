@@ -7,6 +7,7 @@ import {
   PAYMENTS,
   RECENT_HITS,
   REFUND,
+  SCOPE_BY_SPACE,
   SCOPES,
   SETTLEMENT,
   TOOLS,
@@ -70,12 +71,16 @@ const WORLD = {
   search: answerByArg("query", { "": RECENT_HITS }, { otherwise: SEARCH_RESULTS }),
 };
 
-/** 그 Thread들을 열 수 있게 답한다 — Thread마다 제 기록이다. 더 덮어쓸 답은 함께 준다. */
+/** Work 없는 Thread의 읽는 범위 — 그 Thread의 Space로 센 것이다(core `reading_scope`의 규칙 1). 머리 줄의 흐린 Space가 이것을 읽는다. */
+const scopeOfThread = (view: ThreadView) => (view.space ? SCOPE_BY_SPACE[view.space] : undefined) ?? SCOPES.all;
+
+/** 그 Thread들을 열 수 있게 답한다 — Thread마다 제 기록 · 제 범위다. 더 덮어쓸 답은 함께 준다. */
 async function withThreads(page: Page, threads: readonly { view: ThreadView; lines: readonly RecordLine[] }[], more: Record<string, unknown> = {}) {
   const byId = <T>(of: (one: { view: ThreadView; lines: readonly RecordLine[] }) => T) =>
     Object.fromEntries(threads.map((one) => [one.view.id, of(one)]));
   await installFixtureBackend(page, {
     ...WORLD,
+    reading_scope: answerByArg("thread", byId(({ view }) => scopeOfThread(view)), { otherwise: SCOPES.all }),
     thread_list: threads.map(({ view }) => summaryOf(view)),
     thread_get: answerByArg("thread", byId(({ view }) => view)),
     thread_read_record: answerByArg("thread", byId(({ view, lines }) => linesThrough(lines, view.lastSeq))),
@@ -196,16 +201,18 @@ test("Space 줄 다섯 — 「알아서」 넣음 · 사람이 바꿈 · 뺌 · 
   expect(lineBox.x + lineBox.width / 2).toBeCloseTo(column.x + column.width / 2, 0);
   expect(lineBox.y).toBeGreaterThan((await 상자(흐름(page).getByText("hello from turn", { exact: true }))).bottom);
 
-  // 사람이 칩으로 바꿈 · 뺌 — 떠 있는 대화에 줄이 온다. 줄이 오면 그 Thread를 다시 읽어 머리 줄이 「흐린 Space / 이름」으로 따라오고, 빼면
-  // 이름만으로 돌아간다(07 — 칸을 고친 것은 엔진이라 화면의 고치기 응답이 없다).
+  // 사람이 칩으로 바꿈 · 뺌 — 떠 있는 대화에 줄이 온다. 줄이 오면 그 Thread와 범위를 다시 읽어 머리 줄이 「흐린 Space / 이름」으로 따라오고,
+  // 빼면 이름만으로 돌아간다(07 — 칸을 고친 것은 엔진이라 화면의 고치기 응답이 없다. 흐린 Space는 범위가 싣는 Space다 — 03 코드 리뷰 P14).
   await openThread(page, manual);
   await expect(머리줄(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
   await replaceAnswer(page, "thread_get", answerByArg("thread", { [manual.id]: { ...manual, space: PAYMENTS.slug } }));
+  await replaceAnswer(page, "reading_scope", answerByArg("thread", { [manual.id]: SCOPES.payments }, { otherwise: SCOPES.all }));
   await streamLines(page, manual.id, linesThrough(linesAfter(picked, manual.lastSeq), spaceLine(picked, 1)));
   await expect(Space줄(page)).toHaveText(["Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"]);
   await expect(Space줄(page).locator("b")).toHaveText(["결제 서비스"]);
   await expect(머리줄(page).getByRole("button", { name: `Space 열기: ${PAYMENTS.name}`, exact: true })).toBeVisible();
   await replaceAnswer(page, "thread_get", answerByArg("thread", { [manual.id]: manual }));
+  await replaceAnswer(page, "reading_scope", answerByArg("thread", { [manual.id]: SCOPES.all }, { otherwise: SCOPES.all }));
   await streamLines(page, manual.id, linesAfter(picked, spaceLine(picked, 1)));
   await expect(Space줄(page)).toHaveText([
     "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요",

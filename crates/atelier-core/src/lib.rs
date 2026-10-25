@@ -125,7 +125,9 @@ pub use space::{
 };
 // 읽는 범위(03 구현 스펙 §7) — Thread가 읽는 Project를 정하는 함수 하나. 엔진의 Session 자리 · 머리말과 앱 명령(범위 줄 · 요약 카드)이
 // 함께 부른다.
-pub use reading_scope::{reading_scope, reading_scope_of, ReadingScope, ScopeKind, ScopeOf, ScopeProject, ScopeSpace, ScopeWhy};
+pub use reading_scope::{
+    reading_scope, reading_scope_of, ReadingScope, ScopeKind, ScopeOf, ScopeProject, ScopeSpace, ScopeWhy, WorkedProject,
+};
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
     archive_work, archived_spec_folder, attach_project, get_work, list_archive, list_archived_docs, list_works,

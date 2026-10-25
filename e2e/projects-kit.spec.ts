@@ -117,7 +117,9 @@ async function 소스를바꾼다(page: Page, from: string, to: "이 컴퓨터�
   await 추가창(page).getByRole("button", { name: from, exact: true }).click();
   const 길 = page.getByRole("menuitemradio");
   await expect(길).toHaveText(["이 컴퓨터의 폴더 추가이미 있는 git 레포를 그대로 써요. 코드는 옮기지 않아요.", "새로 만들기빈 폴더를 만들고 git 레포로 시작해요."]);
-  await 길.filter({ hasText: new RegExp(`^${to}`) }).click();
+  // 접근 이름은 머리 글자만, 설명은 따로다(03 코드 리뷰 P13).
+  await expect(page.getByRole("menuitemradio", { name: "새로 만들기", exact: true })).toHaveAccessibleDescription("빈 폴더를 만들고 git 레포로 시작해요.");
+  await page.getByRole("menuitemradio", { name: to, exact: true }).click();
 }
 
 test.describe("목록 줄", () => {
@@ -422,7 +424,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("폴더를 Projects 창에 끌어다 놓으면 놓은 것 가운데 첫 폴더로 추가 창이 열리고, 떠 있는 창에 다시 놓으면 그 폴더로 바뀐다", async ({ page }) => {
+  test("폴더를 Projects 창에 끌어다 놓으면 놓은 것 가운데 첫 폴더로 추가 창이 열리고(파일만이면 아무 일도 없다), 떠 있는 창에 다시 놓으면 그 폴더로 바뀐다", async ({ page }) => {
     const 파일 = "/Users/tester/Desktop/메모.txt";
     await installFixtureBackend(page, {
       inspect_project_folder: answerByArg("folder", { ...살핀답, [파일]: { kind: "missing", path: "~/Desktop/메모.txt" } }),
@@ -430,12 +432,22 @@ test.describe("추가 창 — 소스 폴더", () => {
     await page.goto("/projects");
     await expect(목록(page)).toBeVisible();
 
+    // 파일만 놓으면 아무 일도 없다(03 결정 09 · 코드 리뷰 P7) — 폴더인지 묻고, 창은 열지 않는다.
+    await fireEvent(page, "tauri://drag-drop", { paths: [파일], position: { x: 700, y: 400 } });
+    await expect.poll(() => 인자(page, "inspect_project_folder", "folder")).toEqual([{ folder: 파일 }]);
+    await expect(추가창(page)).toHaveCount(0);
+
     // 파일은 건너뛴다 — 폴더인지는 core가 안다(첫 폴더 — S20).
     await fireEvent(page, "tauri://drag-drop", { paths: [파일, 고른곳.webApp, 고른곳.notes], position: { x: 700, y: 400 } });
     await expect(추가창(page)).toBeVisible();
     await expect(추가창(page).getByText("git 레포 · 원격 acme/web-app", { exact: true })).toBeVisible();
     await expect(이름칸(page)).toHaveValue("web-app");
-    expect(await 인자(page, "inspect_project_folder", "folder")).toEqual([{ folder: 파일 }, { folder: 고른곳.webApp }, { folder: 고른곳.webApp }]);
+    expect(await 인자(page, "inspect_project_folder", "folder")).toEqual([
+      { folder: 파일 },
+      { folder: 파일 },
+      { folder: 고른곳.webApp },
+      { folder: 고른곳.webApp },
+    ]);
 
     // 떠 있는 창에 놓으면 창을 하나 더 띄우지 않고 그 폴더로 바뀐다.
     await fireEvent(page, "tauri://drag-drop", { paths: [고른곳.notes], position: { x: 700, y: 400 } });

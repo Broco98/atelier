@@ -114,7 +114,7 @@ export function SpaceMenuItems({
             ))}
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => void navigate({ to: "/spaces" })}>
+          <DropdownMenuItem aria-label="Space 관리" aria-description="메뉴 › Space" onClick={() => void navigate({ to: "/spaces" })}>
             <Settings aria-hidden />
             Space 관리
             <span className="ml-auto pl-3 text-xs text-fg-tertiary">메뉴 › Space</span>

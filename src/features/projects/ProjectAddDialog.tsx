@@ -225,6 +225,7 @@ function ModeSwitch({ view, mode, onMode }: { view: AddView; mode: AddMode; onMo
           <DropdownMenuRadioItem
             value="folder"
             label="이 컴퓨터의 폴더 추가"
+            aria-label="이 컴퓨터의 폴더 추가"
             aria-description="이미 있는 git 레포를 그대로 써요. 코드는 옮기지 않아요."
             size="note"
           >
@@ -233,7 +234,13 @@ function ModeSwitch({ view, mode, onMode }: { view: AddView; mode: AddMode; onMo
               <span className="text-xs text-fg-tertiary">이미 있는 git 레포를 그대로 써요. 코드는 옮기지 않아요.</span>
             </span>
           </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="new" label="새로 만들기" aria-description="빈 폴더를 만들고 git 레포로 시작해요." size="note">
+          <DropdownMenuRadioItem
+            value="new"
+            label="새로 만들기"
+            aria-label="새로 만들기"
+            aria-description="빈 폴더를 만들고 git 레포로 시작해요."
+            size="note"
+          >
             <span className="flex min-w-0 flex-1 flex-col">
               <span>새로 만들기</span>
               <span className="text-xs text-fg-tertiary">빈 폴더를 만들고 git 레포로 시작해요.</span>

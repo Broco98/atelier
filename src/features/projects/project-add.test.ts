@@ -178,8 +178,9 @@ describe("끌어 놓은 폴더", () => {
     expect(await firstFolder(["/a/readme.md", "/a/notes", "/a/web"], inspect)).toBe("/a/notes");
   });
 
-  it("폴더가 하나도 없으면 첫 경로다 — 추가 창이 「찾을 수 없어요」를 말한다", async () => {
-    expect(await firstFolder(["/a/readme.md"], inspect)).toBe("/a/readme.md");
+  // 03 결정 09 「파일만 놓으면 아무 일도 없다」 · 코드 리뷰 P7.
+  it("폴더가 하나도 없으면(파일만) 아무 일도 없다 — 추가 창을 열지 않는다", async () => {
+    expect(await firstFolder(["/a/readme.md"], inspect)).toBeNull();
     expect(await firstFolder([], inspect)).toBeNull();
   });
 });

@@ -249,6 +249,22 @@ describe("시스템 줄", () => {
     ]);
   });
 
+  // 03 코드 리뷰 P3 — 엔진은 worktree에서 일하는 Project를 `worked`에 따로 싣는다(있을 때만). 그 Project도 읽는다 — 고치는 것이 먼저다.
+  it("Space 줄은 worktree에서 일하는 Project도 읽는 Project로 말한다 — worktree가 Space를 다 덮어도 「없어요」가 아니다", () => {
+    const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
+    const model = foldThread([
+      ...blessed,
+      space(25, { change: "changed", space: "결제-서비스", name: "결제 서비스", projects: [], worked: ["web-app", "api-server"], registered: 3 }),
+      space(26, { change: "attached", space: "결제-서비스", name: "결제 서비스", projects: ["web-app"], worked: ["api-server"], registered: 3 }),
+      space(27, { change: "restored", space: "결제-서비스", name: "결제 서비스", projects: [], worked: ["api-server"], registered: 3 }),
+    ]);
+    expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
+      "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요",
+      "결제 서비스 Space에 넣었어요 — api-server · web-app을 읽어요",
+      "결제 서비스 Space를 되돌렸어요 — 다시 api-server를 읽어요",
+    ]);
+  });
+
   it("Space 줄은 읽는 Project가 셋을 넘으면 둘과 「외 N개」, 빈 Space면 없다고, 등록된 Project가 없으면 그렇다고 말한다", () => {
     const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
     const model = foldThread([

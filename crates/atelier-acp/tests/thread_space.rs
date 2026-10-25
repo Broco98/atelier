@@ -213,7 +213,8 @@ fn work에_이은_thread는_spec_폴더와_읽는_범위를_함께_열고_worktr
     assert_eq!(
         space_lines(&sandbox, &thread),
         [json!({"change": "changed", "space": "결제-서비스", "name": "결제 서비스", "before": null, "work": "refund-api",
-                "projects": ["web-app", "backoffice", "docs"], "registered": 5})]
+                "projects": ["web-app", "backoffice", "docs"], "worked": ["api-server"], "registered": 5})],
+        "worktree에서 일하는 api-server는 `worked`로 실린다 — 화면이 「web-app · api-server …를 읽어요」를 둘로 짓는다(비면 키가 없다)"
     );
     let _ = api;
 }
@@ -288,6 +289,28 @@ fn 빈_space와_문제_있는_space는_읽을_수_있는_project만_함께_연�
         space_preamble(&record, 1),
         format!("- Space: 반쯤(`{}`) — 읽는 Project: api-server — 파일에 문제가 있어 읽을 수 있는 Project만 읽는다", file.display())
     );
+}
+
+/// Work 없는 Thread × 빈 Space — Thread 폴더에서 일하고 함께 여는 폴더가 없다. 머리말은 그 Space와 「읽는 Project: 없음」을 알린다.
+#[test]
+fn work_없는_thread가_빈_space를_고르면_함께_여는_폴더_없이_thread_폴더에서_일한다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    register(&sandbox, "web-app");
+    register(&sandbox, "api-server");
+    space(&sandbox, "빈-것", "---\nname: 빈 것\nprojects: []\n---\n");
+    let host = sandbox.host(two_turns(&sandbox));
+    let thread =
+        host.start_thread_picking("무엇부터 할까", &[], ThreadLink::NoWork, picked(Some("빈-것"))).expect("빈 Space를 고른 첫 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let (args, cwd) = last_launch(&sandbox, &thread);
+    assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "Work 없는 Thread는 Thread 폴더에서 일한다");
+    assert!(added_dirs(&args).is_empty(), "빈 Space는 읽는 Project가 없다 — 등록된 Project 전부로 넓히지 않는다: {args:?}");
+    let file = atelier_core::spaces_in(&sandbox.data_root()).join("빈-것.md");
+    assert_eq!(space_preamble(&record, 0), format!("- Space: 빈 것(`{}`) — 읽는 Project: 없음", file.display()));
+    assert_eq!(sandbox.thread_json(&thread)["space"], "빈-것");
 }
 
 /// 입력창 Space 칩에서 첫 말 전에 고른 것(03 티켓 06) — `None`이면 「Space 없음」을 고른 것이다.
@@ -382,6 +405,59 @@ fn 최근_work를_고르고_바꾼_space는_첫_말_때_그_work에_적히고_�
     assert_eq!(work_json(&sandbox).get("space"), None);
     assert_eq!(space_lines(&sandbox, &first).last().unwrap()["change"], "removed");
     assert!(space_lines(&sandbox, &cleared).is_empty());
+}
+
+/// `n`째 보낸 말이 머리말을 실었나 — 머리말은 늘 그 말의 첫 블록이다.
+fn carries_preamble(record: &[Value], n: usize) -> bool {
+    of_kind(record, "sent")[n]["payload"]["prompt"][0]["text"].as_str().is_some_and(|text| text.starts_with("Atelier Thread 안에서 열린 Session이다."))
+}
+
+/// Space만 바뀌고 함께 여는 폴더가 같으면(같은 Project의 다른 Space로 바꿈 · 이름만 고침) Session을 다시 열지 않는다 — 그래도 Host는
+/// 새 Space를 들어야 한다(스토리 89 · §11 머리말). 다음 말에 머리말이 다시 붙어 「- Space:」 줄이 간다. 앱을 끈 동안 고친 것도 이어 연
+/// Session이 기록에서 들은 줄과 견준다.
+#[test]
+fn space만_바뀌고_함께_여는_폴더가_같으면_다시_열지_않고_다음_말에_머리말이_다시_붙는다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    register(&sandbox, "web-app");
+    register(&sandbox, "api-server");
+    register(&sandbox, "backoffice");
+    space(&sandbox, "결제-서비스", PAYMENTS);
+    space(&sandbox, "환불", "---\nname: 환불\nprojects:\n  - web-app\n  - api-server\n---\n");
+    let host = sandbox.host(two_turns(&sandbox));
+    let thread = host
+        .start_thread_picking("환불 금액 확인해 줘", &[], ThreadLink::NoWork, picked(Some("결제-서비스")))
+        .expect("Space를 고른 첫 말");
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    let launched = last_launch(&sandbox, &thread);
+
+    // 같은 Project의 다른 Space로 바꾼다 — 함께 여는 폴더가 같다.
+    host.set_thread_space(&thread, Some("환불")).expect("바꾸기");
+    host.send_to_thread(&thread, "환불 쪽에서 봐 줘").expect("둘째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.shut_down();
+    let refund = atelier_core::spaces_in(&sandbox.data_root()).join("환불.md");
+    assert_eq!(space_preamble(&record, 1), format!("- Space: 환불(`{}`) — 읽는 Project: web-app, api-server", refund.display()));
+    let opened = of_kind(&record, "session").into_iter().filter(|line| line["payload"]["state"] == "opened").count();
+    assert_eq!((opened, last_launch(&sandbox, &thread)), (1, launched), "함께 여는 폴더가 같으니 Session을 다시 열지 않는다");
+
+    // 앱을 끈 동안 이름만 고친다(화면 · 바깥 편집기 — Space 줄이 없는 고침). 이어 연 Session의 다음 말이 새 이름을 듣는다.
+    atelier_core::update_space(
+        &sandbox.data_root(),
+        "환불",
+        atelier_core::SpacePatch { name: Some("환불 · 정산".into()), ..Default::default() },
+    )
+    .expect("이름 고치기");
+    let host = sandbox.host(two_turns(&sandbox));
+    host.send_to_thread(&thread, "이어서").expect("셋째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
+    assert!(has_pair(&last_launch(&sandbox, &thread).0, "--resume", &sandbox.thread_session_id(&thread, "host")), "같은 Session을 이어 연다");
+    assert_eq!(space_preamble(&record, 2), format!("- Space: 환불 · 정산(`{}`) — 읽는 Project: web-app, api-server", refund.display()));
+
+    host.send_to_thread(&thread, "마저").expect("넷째 말");
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 4);
+    host.shut_down();
+    assert!(!carries_preamble(&record, 3), "Space가 그대로면 머리말을 다시 붙이지 않는다");
 }
 
 /// 기록 축복(S26 꼴) — Work 없는 Thread에서 사람이 Space를 붙이고(다음 말이 같은 Session을 새 자리로 이어 연다) 다시 뺀 기록이 검사

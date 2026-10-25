@@ -32,7 +32,7 @@ import { SpaceActions } from "./SpaceActions";
 import { useSpaceDelete } from "./SpaceDeleteDialog";
 import { SpaceGraph } from "./SpaceGraph";
 import { addMenu, createdLine, spaceName, spaceStarts, spaceWorks } from "./space-view";
-import type { SpaceDetail as Detail, SpacePatch } from "./types";
+import type { SpaceDetail as Detail, SpacePatch, SpaceProblemKind } from "./types";
 
 // Space 상세(03 구현 스펙 §14 · 시안 F1-SpaceDetail · F4-SpaceEmpty). 머리 줄 「Space / 결제 서비스」, 판 안에 「← Space」 단추 · 제목과
 // 만든 이 줄 · 관계 그래프 · 설명 · Project 표, 오른쪽 칸에 「함께 쓰는 Space」. 고치는 일(이름 · 설명 · 넣기 · 빼기)은 모두 core의 글 단위
@@ -128,11 +128,14 @@ function SpaceCrumb({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+/** 칸 단위로 고칠 자리를 찾을 수 없는 문제 — 닫히지 않은 frontmatter · YAML이 아님 · 글로 읽을 수 없는 파일. */
+const UNEDITABLE: ReadonlySet<SpaceProblemKind> = new Set(["unclosedFrontmatter", "badYaml", "unreadable"]);
+
 function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: string) => void }) {
   const { data: registered = [] } = useProjects();
   const update = useUpdateSpace();
-  // frontmatter가 닫히지 않았거나 YAML로 읽을 수 없으면 고칠 자리를 모른다 — 고치는 단추를 끈다(고치는 길은 관계 편집 — 04).
-  const locked = space.problems.some((problem) => problem.kind === "unclosedFrontmatter" || problem.kind === "badYaml");
+  // frontmatter가 닫히지 않았거나 YAML · 글로 읽을 수 없으면 고칠 자리를 모른다 — 고치는 단추를 끈다(고치는 길은 관계 편집 — 04).
+  const locked = space.problems.some((problem) => UNEDITABLE.has(problem.kind));
 
   const patch = async (change: SpacePatch): Promise<boolean> => {
     try {
@@ -155,7 +158,7 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
     showUndoToast(`Space에서 뺐어요 — ${project}`, () => void patch({ add: [project], before: next }));
   };
   const menu = addMenu(space, registered);
-  const addItems = <AddMenuItems candidates={menu.candidates} allIn={menu.allIn} onAdd={add} onAddNew={() => void addNew()} />;
+  const addItems = <AddMenuItems candidates={menu.candidates} note={menu.note} onAdd={add} onAddNew={() => void addNew()} />;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_270px] items-start gap-12">
@@ -305,7 +308,7 @@ function Section({
 function Problems({ space }: { space: Detail }) {
   return (
     <section aria-label="문제" className="mb-6 rounded-xl border border-separator-soft px-4 py-3">
-      <p className="flex items-center gap-2 text-sm text-danger">
+      <p className="flex items-center gap-2 text-sm text-fg-problem">
         <TriangleAlert aria-hidden className="size-4 shrink-0" />이 Space 파일에 문제가 있어요
         <Link
           to="/spaces/$slug/edit"
@@ -316,7 +319,7 @@ function Problems({ space }: { space: Detail }) {
           관계 편집에서 고치기
         </Link>
       </p>
-      <ul className="mt-1.5 flex flex-col gap-1 pl-6 text-chat-meta text-danger">
+      <ul className="mt-1.5 flex flex-col gap-1 pl-6 text-chat-meta text-fg-problem">
         {space.problems.map((problem) => (
           <li key={`${problem.line}:${problem.kind}:${problem.project ?? ""}`}>
             <span className="font-mono">{problem.line}행</span> — {problem.message}
@@ -446,17 +449,17 @@ function Description({ space, locked, onSave }: { space: Detail; locked: boolean
 }
 
 /**
- * 「넣기」 메뉴의 줄들(스토리 152 · 153) — 「등록된 Project」 머리 아래 아직 묶이지 않은 Project(이름 · 경로), 다 넣었으면 「등록된 Project를
- * 모두 넣었어요」, 구분선 뒤 「새 Project 추가…」.
+ * 「넣기」 메뉴의 줄들(스토리 152 · 153) — 「등록된 Project」 머리 아래 아직 묶이지 않은 Project(이름 · 경로), 넣을 것이 없으면 그 까닭 한 줄
+ * (「등록된 Project를 모두 넣었어요」 · 「등록된 Project가 없어요」), 구분선 뒤 「새 Project 추가…」.
  */
 function AddMenuItems({
   candidates,
-  allIn,
+  note,
   onAdd,
   onAddNew,
 }: {
   candidates: readonly ProjectView[];
-  allIn: boolean;
+  note: string | null;
   onAdd: (slug: string) => void;
   onAddNew: () => void;
 }) {
@@ -465,13 +468,13 @@ function AddMenuItems({
       <DropdownMenuGroup>
         <DropdownMenuLabel>등록된 Project</DropdownMenuLabel>
         {candidates.map((project) => (
-          <DropdownMenuItem key={project.slug} onClick={() => onAdd(project.slug)}>
+          <DropdownMenuItem key={project.slug} aria-label={project.name} aria-description={project.path} onClick={() => onAdd(project.slug)}>
             <Book />
             <span className="shrink-0">{project.name}</span>
             <span className="ml-auto min-w-0 truncate font-mono text-xs text-fg-tertiary">{project.path}</span>
           </DropdownMenuItem>
         ))}
-        {allIn && <p className="px-2 py-1.5 text-xs text-fg-tertiary">등록된 Project를 모두 넣었어요</p>}
+        {note && <p className="px-2 py-1.5 text-xs text-fg-tertiary">{note}</p>}
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={onAddNew}>

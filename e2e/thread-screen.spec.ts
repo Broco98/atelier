@@ -217,6 +217,7 @@ const prView: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(prLines)[0].
 const PR_SCOPE: ReadingScope = {
   space: null,
   projects: [{ slug: "web-app", name: "web-app", why: "all" }],
+  worked: [{ slug: "api-server", name: "api-server" }],
   kind: "all",
   registered: 2,
 };
@@ -310,6 +311,7 @@ const looseB: ThreadView = { ...looseA, id: "20261011-090000", title: "둘째 Th
 const EMPTY_SCOPE: ReadingScope = {
   space: { slug: EMPTY_SPACE.slug, name: EMPTY_SPACE.name, troubled: false },
   projects: [],
+  worked: [],
   kind: "emptySpace",
   registered: PROJECTS.length,
 };

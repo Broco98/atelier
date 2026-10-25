@@ -297,11 +297,12 @@ describe("빨강", () => {
   });
 
   // **문제 빨강**(03 구현 스펙 Testing 「빨강은 문제 글 · 문제 알약에만」 · 티켓 04) — Space 파일 고치기 화면이 문제 줄의 끝 글 · 줄 번호 ·
-  // 값 밑 물결 · 문제 줄의 면 · 「⚠ 문제 N개」 알약에 쓰는 시안 빨강(`fg-problem` #b4302a · `problem-soft`)이다. 다른 화면이 이 이름을 빌리면
-  // 문제가 아닌 것이 문제처럼 보이고, 이 빨강을 보고 「저장이 왜 꺼졌나」를 읽는 길이 흐려진다.
-  it("문제 빨강은 Space 파일 고치기 화면에만 선다", () => {
+  // 값 밑 물결 · 문제 줄의 면 · 「⚠ 문제 N개」 알약에 쓰는 시안 빨강(`fg-problem` #b4302a · `problem-soft`)이다. 같은 Space의 문제는 목록의
+  // 「문제 있음」 · 상세의 문제 줄에서도 같은 빨강이다(03 코드 리뷰 P11). 다른 화면이 이 이름을 빌리면 문제가 아닌 것이 문제처럼 보이고, 이
+  // 빨강을 보고 「저장이 왜 꺼졌나」를 읽는 길이 흐려진다.
+  it("문제 빨강은 Space의 문제(고치기 화면 · 목록의 「문제 있음」 · 상세의 문제 줄)에만 선다", () => {
     const PROBLEM = [utilities(["fg-problem", "problem-soft"]), variables(["fg-problem", "problem-soft"])];
-    const PLACES = ["src/features/spaces/SpaceEditor.tsx"];
+    const PLACES = ["src/features/spaces/SpaceEditor.tsx", "src/features/spaces/SpaceList.tsx", "src/features/spaces/SpaceDetail.tsx"];
     // 앵커: 변형(`decoration-`)까지 잡는다.
     expect(PROBLEM.flatMap((pattern) => offenders(pattern, [{ file: "예", text: "decoration-fg-problem bg-problem-soft/50" }]))).toEqual([
       "예:1: decoration-fg-problem",
@@ -310,5 +311,20 @@ describe("빨강", () => {
     const found = PROBLEM.flatMap((pattern) => offenders(pattern, scripts));
     expect(found.length).toBeGreaterThan(0);
     expect(found.filter((place) => !PLACES.some((file) => place.startsWith(`${file}:`)))).toEqual([]);
+    expect(PLACES.filter((file) => !found.some((place) => place.startsWith(`${file}:`)))).toEqual([]);
+  });
+
+  // 같은 규칙의 다른 쪽(03 코드 리뷰 P11) — 03의 Projects · Space 화면은 danger 빨강을 위험 단추(DS의 `destructive` 갈래 — 이 글자를 쓰지 않는다)와
+  // 실패 글에만 쓴다. Space의 문제는 위의 문제 빨강이다 — 같은 「문제 있음」이 화면마다 다른 빨강이 아니게.
+  const PLACE_REDS: { file: string; literal: string; why: string }[] = [
+    { file: "src/features/projects/ProjectAddDialog.tsx", literal: "text-danger", why: "추가 창의 실패 글(「추가하지 못했어요 — …」)" },
+  ];
+  it("Projects · Space 화면은 실패 글 말고는 danger 빨강을 쓰지 않는다", () => {
+    const places = scripts.filter(({ file }) => file.startsWith("src/features/projects/") || file.startsWith("src/features/spaces/"));
+    expect(places.length).toBeGreaterThan(10);
+    const found = reds(places);
+    const listed = (place: string) => PLACE_REDS.some((one) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`));
+    expect(found.filter((place) => !listed(place))).toEqual([]);
+    expect(PLACE_REDS.filter((one) => !found.some((place) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`)))).toEqual([]);
   });
 });

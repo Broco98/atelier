@@ -49,6 +49,10 @@ pub struct ReadingScope {
     pub space: Option<ScopeSpace>,
     /// 읽는 Project — 함께 여는 폴더의 차례다(바탕 → Work → 읽기만).
     pub projects: Vec<ScopeProject>,
+    /// 이 Work의 worktree에서 일하는 Project(규칙 4로 뺀 것 — 등록된 것만) — 바탕 차례(Space 파일 · 등록부) 뒤 Work 차례. 범위 줄 ·
+    /// Space 줄이 「web-app · api-server를 읽어요」를 이것과 `projects`로 짓는다(worktree가 Space를 다 덮어도 빈 Space가 아니다).
+    /// Session의 함께 여는 폴더 · 머리말은 쓰지 않는다.
+    pub worked: Vec<WorkedProject>,
     /// 범위 줄의 갈래.
     pub kind: ScopeKind,
     /// 등록된 Project 수 — 「등록된 Project N개를 읽어요」의 N.
@@ -80,6 +84,14 @@ pub struct ScopeProject {
     pub folder: PathBuf,
 }
 
+/// worktree에서 일하는 Project 하나.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkedProject {
+    pub slug: String,
+    pub name: String,
+}
+
 /// 왜 읽나(§7 「읽는 Project(slug · 이름 · 왜 읽나)」).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +107,8 @@ pub enum ScopeWhy {
 }
 
 /// 범위 줄의 갈래(§5) — 「등록된 Project N개를 읽어요」 · 「web-app · api-server를 읽어요」 · 「읽는 Project가 없어요」 · 「등록된
-/// Project가 없어요 · Project 추가」.
+/// Project가 없어요 · Project 추가」. 「빈 Space」는 Space 파일에 Project가 하나도 적히지 않았을 때만이다 — 닫히지 않은 파일도 적힌
+/// 것을 읽지 못해 빈 것이다. 적힌 것을 worktree가 다 덮었거나 하나도 읽을 수 없어도 `Space`다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ScopeKind {
@@ -140,17 +153,31 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
     of.read_only.iter().for_each(|slug| read(slug, ScopeWhy::ReadOnly));
     let kind = match &space {
         _ if registered.is_empty() => ScopeKind::NoProjects,
-        Some(_) if projects.is_empty() => ScopeKind::EmptySpace,
+        Some(space) if space.projects.is_empty() => ScopeKind::EmptySpace,
         Some(_) => ScopeKind::Space,
         None => ScopeKind::All,
     };
+    // worktree에서 일하는 Project — 바탕 차례 뒤 Work 차례, 등록된 것만 한 번씩.
+    let base: Vec<&str> = match &space {
+        Some(space) => space.projects.iter().map(String::as_str).collect(),
+        None => registered.iter().map(|project| project.slug.as_str()).collect(),
+    };
+    let mut worked_in: Vec<WorkedProject> = Vec::new();
+    for slug in base.into_iter().chain(worked.iter().copied()).filter(|slug| worked.contains(slug)) {
+        if worked_in.iter().any(|one| one.slug == slug) {
+            continue;
+        }
+        if let Some(project) = registered.iter().find(|project| project.slug == slug) {
+            worked_in.push(WorkedProject { slug: project.slug.clone(), name: project.name.clone() });
+        }
+    }
     let space = space.map(|space| ScopeSpace {
         name: if space.name.trim().is_empty() { space.slug.clone() } else { space.name.clone() },
         troubled: !space.problems.is_empty(),
         file: crate::paths::spaces_in(data_root).join(format!("{}.md", space.slug)),
         slug: space.slug,
     });
-    ReadingScope { space, projects, kind, registered: registered.len() }
+    ReadingScope { space, projects, worked: worked_in, kind, registered: registered.len() }
 }
 
 /// 앱이 묻는 읽는 범위(명령 `reading_scope`) — `thread`가 있으면 그 Thread(`thread.json`과 이은 Work를 읽는다), 없으면 보내기 전의 새
@@ -296,8 +323,12 @@ mod tests {
 
     /// Work `refund` — `projects`를 적고, `trees`에 든 Project만 worktree 폴더가 선다.
     fn work(home: &Home, projects: &[&str], trees: &[&str], space: Option<&str>) -> Work {
+        work_named(home, "refund", projects, trees, space)
+    }
+
+    fn work_named(home: &Home, slug: &str, projects: &[&str], trees: &[&str], space: Option<&str>) -> Work {
         let work = Work {
-            slug: "refund".into(),
+            slug: slug.into(),
             title: "환불".into(),
             status: crate::WorkStatus::Active,
             branch: Some("fix/refund".into()),
@@ -308,9 +339,50 @@ mod tests {
             extra: Default::default(),
         };
         for tree in trees {
-            std::fs::create_dir_all(crate::paths::works_in(&home.root()).join("refund/trees").join(tree)).unwrap();
+            std::fs::create_dir_all(crate::paths::works_in(&home.root()).join(slug).join("trees").join(tree)).unwrap();
         }
         work
+    }
+
+    /// 범위 줄의 갈래와 worktree에서 일하는 Project(`worked`) — 「빈 Space」는 Space 파일에 Project가 하나도 적히지 않았을 때만이다
+    /// (03 §5 · 스토리 36). worktree가 Space의 Project를 다 덮거나 적힌 것을 하나도 읽을 수 없어도 Project가 있는 Space다 — 화면이 범위
+    /// 줄을 `worked`와 `projects`로 짓는다. `worked`는 등록된 것만, 바탕 차례(Space 파일 · 등록부) 뒤 Work 차례다.
+    #[test]
+    fn 빈_space는_파일에_project가_없을_때만이고_worktree에서_일하는_project는_worked로_선다() {
+        let home = Home::new();
+        home.register("web-app").register("api-server").register("backoffice").register_missing("gone");
+        home.space("결제-서비스", "---\nname: 결제 서비스\nprojects:\n  - web-app\n  - api-server\n---\n");
+        home.space("빈-것", "---\nname: 빈 것\nprojects: []\n---\n");
+        home.space("남의-것", "---\nname: 남의 것\nprojects:\n  - billing\n  - gone\n---\n");
+        let covered = work_named(&home, "covered", &["api-server", "web-app"], &["api-server", "web-app"], None);
+        let half = work_named(&home, "half", &["api-server"], &["api-server"], None);
+        let mixed = work_named(&home, "mixed", &["backoffice", "ghost", "web-app"], &["backoffice", "ghost", "web-app"], None);
+        fn of<'a>(space: Option<&'a str>, work: Option<&'a Work>) -> ScopeOf<'a> {
+            ScopeOf { work, space, read_only: &[] }
+        }
+
+        let rows: [(&str, ScopeOf, ScopeKind, &[&str], &[&str]); 6] = [
+            ("빈 Space", of(Some("빈-것"), None), ScopeKind::EmptySpace, &[], &[]),
+            ("worktree가 Space의 Project를 다 덮음", of(Some("결제-서비스"), Some(&covered)), ScopeKind::Space, &[], &["web-app", "api-server"]),
+            ("일부 덮음", of(Some("결제-서비스"), Some(&half)), ScopeKind::Space, &["web-app"], &["api-server"]),
+            ("적힌 것이 등록 안 됨 · 폴더 없음", of(Some("남의-것"), None), ScopeKind::Space, &[], &[]),
+            ("Space 없음 — 등록부 차례", of(None, Some(&covered)), ScopeKind::All, &["backoffice"], &["api-server", "web-app"]),
+            ("바탕 차례 뒤 Work 차례 · 등록된 것만", of(Some("결제-서비스"), Some(&mixed)), ScopeKind::Space, &["api-server"], &["web-app", "backoffice"]),
+        ];
+        for (name, of, kind, projects, worked) in rows {
+            let scope = reading_scope(&home.root(), &of);
+            let read: Vec<&str> = scope.projects.iter().map(|project| project.slug.as_str()).collect();
+            let shown: Vec<&str> = scope.worked.iter().map(|project| project.slug.as_str()).collect();
+            assert_eq!((scope.kind, read.as_slice(), shown.as_slice()), (kind, projects, worked), "{name}");
+        }
+        let scope = reading_scope(&home.root(), &of(Some("결제-서비스"), Some(&covered)));
+        assert_eq!(
+            serde_json::to_value(&scope.worked).unwrap(),
+            serde_json::json!([{"slug": "web-app", "name": "web-app"}, {"slug": "api-server", "name": "api-server"}]),
+            "앱 명령의 답에 slug · 이름으로 실린다"
+        );
+        let none = serde_json::to_value(reading_scope(&home.root(), &ScopeOf::default())).unwrap();
+        assert_eq!(none["worked"], serde_json::json!([]), "비어도 칸이 선다");
     }
 
     #[test]

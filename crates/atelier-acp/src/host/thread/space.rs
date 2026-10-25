@@ -204,9 +204,8 @@ impl ConversationHost {
         if current == ask.space.as_deref() {
             return thread_tools::said(&format!("{} — 바꾸지 않았다.", now_text(&asking.scope)), false);
         }
-        let only = matches!(asking.candidates.as_slice(), [one] if Some(one.slug.as_str()) == ask.space.as_deref());
         let auto = gate::asking(&self.data_root, &key.thread, asking.work.as_deref()).0 == AskLevel::Auto;
-        if let (true, None, true, Some(slug)) = (auto, current, only, ask.space.as_deref()) {
+        if let (true, None, true, Some(slug)) = (auto, current, asking.alone, ask.space.as_deref()) {
             return match self.put_thread_space(&key.thread, Some(slug), Change::Attached, false) {
                 Ok(()) => {
                     let scope = self.scope_now(&key.thread);
@@ -267,15 +266,20 @@ impl ConversationHost {
         if candidates.is_empty() {
             candidates = spaces.iter().filter(|space| holds(space, false)).cloned().collect();
         }
-        // 추천은 후보가 아니어도 맨 위에 선다 — Host가 고른 것이다.
+        // 묻지 않고 붙이는 「후보가 넘긴 것 하나」는 추천을 끼우기 전의 후보로 가린다 — 다루는 Project를 담은 Space가 없으면 넘긴
+        // Space가 하나 남아도 맞는 Space가 아니다.
+        let alone = matches!(candidates.as_slice(), [one] if Some(&one.slug) == ask.space.as_ref());
+        // 추천은 맨 위에 선다 — 후보 안에 있어도(이름 차례를 앞질러), 후보가 아니어도. Host가 고른 것이다(스토리 50).
         if let Some(slug) = &ask.space {
-            if !candidates.iter().any(|space| &space.slug == slug) {
-                candidates.insert(0, spaces.iter().find(|space| &space.slug == slug).cloned().expect("위에서 보았다"));
-            }
+            let recommended = match candidates.iter().position(|space| &space.slug == slug) {
+                Some(at) => candidates.remove(at),
+                None => spaces.iter().find(|space| &space.slug == slug).cloned().expect("위에서 보았다"),
+            };
+            candidates.insert(0, recommended);
         }
         let names = registered.iter().map(|view| (view.project.slug.clone(), view.project.name.clone())).collect();
         let scope = self.scope_of(&file, work.as_ref());
-        Ok(Asking { work: file.work, scope, candidates, names })
+        Ok(Asking { work: file.work, scope, candidates, alone, names })
     }
 
     /// Space 질문 카드의 답(§11) — 사람이 고른 것으로 그 카드를 닫는다. 고른 Space는 이 Thread(Work에 이었으면 그 Work)에 적고, 이 Thread에는
@@ -366,11 +370,14 @@ pub(super) struct SpaceCard {
     options: Vec<String>,
 }
 
-/// 「Space 붙이기」의 셈 — 이은 Work, 지금 범위, 후보(추천이 맨 앞 — 후보가 아니어도), 등록된 Project의 slug → 이름.
+/// 「Space 붙이기」의 셈 — 이은 Work, 지금 범위, 후보(추천이 맨 앞 — 후보가 아니어도), 맞는 Space가 넘긴 것 하나뿐인가, 등록된
+/// Project의 slug → 이름.
 struct Asking {
     work: Option<String>,
     scope: ReadingScope,
     candidates: Vec<atelier_core::Space>,
+    /// 추천을 끼우기 전의 후보가 넘긴 Space 하나뿐이다 — 「알아서」가 묻지 않고 붙이는 셋째 조건(§11).
+    alone: bool,
     names: std::collections::HashMap<String, String>,
 }
 
@@ -436,7 +443,8 @@ enum Change<'a> {
     Restored,
 }
 
-/// Space 줄의 payload — 갈래 · Space(slug · 이름) · 바꾸기 전 · 이은 Work · 읽는 Project의 이름 · 등록된 Project 수.
+/// Space 줄의 payload — 갈래 · Space(slug · 이름) · 바꾸기 전 · 이은 Work · 읽는 Project의 이름 · 등록된 Project 수, 그리고 이 Work의
+/// worktree에서 일하는 Project의 이름(`worked` — 있을 때만. 화면이 「web-app · api-server를 읽어요」를 이것과 읽는 Project로 짓는다).
 fn space_line(change: Change, scope: &ReadingScope, before: Option<&str>, work: Option<&str>) -> Value {
     let now = scope.space.as_ref().map(|space| (space.slug.as_str(), space.name.as_str()));
     let (kind, space) = match change {
@@ -446,7 +454,7 @@ fn space_line(change: Change, scope: &ReadingScope, before: Option<&str>, work: 
         Change::Deleted { slug, name } => ("deleted", Some((slug, name))),
         Change::Restored => ("restored", now),
     };
-    json!({
+    let mut line = json!({
         "change": kind,
         "space": space.map(|(slug, _)| slug),
         "name": space.map(|(_, name)| name),
@@ -454,7 +462,12 @@ fn space_line(change: Change, scope: &ReadingScope, before: Option<&str>, work: 
         "work": work,
         "projects": scope.projects.iter().map(|project| &project.name).collect::<Vec<_>>(),
         "registered": scope.registered,
-    })
+    });
+    // 비면 키를 두지 않는다 — worktree가 없는 Thread의 줄(축복한 기록)이 한 글자도 바뀌지 않는다.
+    if !scope.worked.is_empty() {
+        line["worked"] = json!(scope.worked.iter().map(|project| &project.name).collect::<Vec<_>>());
+    }
+    line
 }
 
 /// 그 slug의 Space 파일이 없다 — 지웠거나 손으로 지웠다(§7 규칙 1과 같은 셈).
@@ -468,6 +481,16 @@ fn space_error(error: atelier_core::Error) -> HostError {
         atelier_core::Error::SpaceNotFound(slug) => HostError::SpaceNotFound(slug),
         other => HostError::Record(other.to_string()),
     }
+}
+
+/// 그 참여자가 마지막으로 들은 머리말의 「- Space:」 줄 — 받은 말(`sent` · 맡긴 일) 가운데 머리말 블록을 실은 마지막 것에서 읽는다.
+/// 이어 연 Session이 그사이 바뀐 Space를 듣게 한다(앱을 끈 동안 고친 파일도). 못 찾으면 없다 — 견주지 않는다.
+pub(super) fn heard_space(lines: &[atelier_core::RecordLine], who: &str) -> Option<String> {
+    lines.iter().rev().filter(|line| crate::past::addressed_to(line, who)).find_map(|line| {
+        let blocks = line.payload["prompt"].as_array()?;
+        let preamble = blocks.iter().filter_map(|block| block["text"].as_str()).find(|text| text.starts_with(super::PREAMBLE_HEAD))?;
+        preamble.lines().find(|row| row.starts_with("- Space:")).map(|row| format!("{row}\n"))
+    })
 }
 
 /// 머리말의 「- Space:」 한 줄(§11) — Work 줄 뒤에 선다. 읽는 Project는 slug다(Thread 도구가 slug로 받는다).

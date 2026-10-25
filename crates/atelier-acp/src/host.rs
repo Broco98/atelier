@@ -31,7 +31,7 @@ pub use thread::{
     DocWriting, ProjectAddChoice, ProjectChoice, QuestionReply, Reply, SpaceChoice, SpacePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
 };
 use thread::VanishWatch;
-use turn_order::{Draft, Seat, TurnHands, TurnOrder};
+use turn_order::{Draft, Preamble, Seat, TurnHands, TurnOrder};
 
 /// Claude 세션 열기의 기본 한도 — 관문 G5. 변환기는 `session/new`를 받아 claude를 띄우고 stdin `initialize`의 답으로
 /// 세션을 여므로, 세션 열기가 그만큼 기다린다. 진짜 claude 2.1.296은 SessionStart 훅을 돈 뒤 0.9~3.5초에 답했다(판 02 실측

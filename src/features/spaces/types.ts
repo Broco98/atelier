@@ -1,7 +1,8 @@
 // Space(03 구현 스펙 §8) — core `space.rs`가 내는 모양 그대로다(serde camelCase). 문제의 말(`message`)도 core가 짓는다 — 화면은 따로
 // 검사하지 않는다(S7).
 
-export type SpaceProblemKind = "unclosedFrontmatter" | "badYaml" | "noName" | "unknownProject" | "duplicateProject";
+/** 문제의 갈래 — `unreadable`은 글로 읽을 수 없는 파일(UTF-8이 아님 · 권한 없음)이다. 그 Space는 slug와 이 문제 하나로 선다(§8). */
+export type SpaceProblemKind = "unclosedFrontmatter" | "badYaml" | "noName" | "unknownProject" | "duplicateProject" | "unreadable";
 
 export interface SpaceProblem {
   /** 파일의 줄 — 1부터. */

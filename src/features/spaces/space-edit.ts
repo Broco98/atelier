@@ -148,6 +148,19 @@ export function problemPill(problems: readonly SpaceProblem[]): { ok: boolean; t
 }
 
 /**
+ * 저장(새 Space면 「만들기」) 단추가 켜지나 — 고친 것이 있고, **지금 글의** 검사 답(`checked` — 앞 글의 답이 자리를 지키는 동안이 아니다)에
+ * 문제가 없으며, 저장하는 중이 아닐 때(스토리 179 · §13). 앞 글의 답으로 켜면 문제 줄을 적은 직후 누른 저장을 core가 거절한다.
+ */
+export function canSave(state: {
+  dirty: boolean;
+  draft: { space: { problems: readonly SpaceProblem[] } } | undefined;
+  checked: boolean;
+  saving: boolean;
+}): boolean {
+  return state.dirty && state.checked && !state.saving && state.draft !== undefined && problemPill(state.draft.space.problems).ok;
+}
+
+/**
  * 미리보기 카드가 그리는 것 — 그 글의 Space에서 **등록되지 않은 Project를 뺀** 것(그 줄은 편집기에 문제로 선다), 그 Project로 이어지는
  * 함께 쓰는 Space, 이름(비면 없다 — 카드는 「이름 없음」), 이름 아래 줄 「Project N · 함께 쓰는 Space N」.
  */

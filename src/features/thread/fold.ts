@@ -1178,7 +1178,10 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
       // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) · 지움 · 되돌림(07) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
       // 그때 엔진이 센 것이 줄에 실려 온다(기록은 덧붙이기만 해 지금 다시 세면 그때와 다르다). Work의 Space가 바뀌면 그 Work의 Thread마다 선다.
       case "space": {
-        const projects = Array.isArray(payload.projects) ? payload.projects.filter((one): one is string => typeof one === "string") : [];
+        // worktree에서 일하는 Project(`worked` — 엔진이 있을 때만 싣는다)가 먼저다 — 범위 줄과 같은 이름들(03 코드 리뷰 P3).
+        const projects = [payload.worked, payload.projects].flatMap((names) =>
+          Array.isArray(names) ? names.filter((one): one is string => typeof one === "string") : [],
+        );
         const name = nonEmpty(payload.name);
         if (payload.change === "changed" && name) {
           const reads = projects.length > 0 ? `${readingList(projects)}${particle(readingList(projects), "을", "를")} 읽어요` : "읽는 Project가 없어요";

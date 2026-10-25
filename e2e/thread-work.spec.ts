@@ -69,6 +69,7 @@ const LIBRARY: AgentRoster = {
 const scopeOf = (...slugs: string[]): ReadingScope => ({
   space: null,
   projects: slugs.map((slug) => ({ slug, name: slug, why: "all" })),
+  worked: [],
   kind: "all",
   registered: 2,
 });

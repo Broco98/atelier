@@ -10,6 +10,9 @@ import {
   칠한값,
   폴더를고른다,
   토큰색,
+  사람메뉴로간다,
+  떠날때확인,
+  떠날때확인버튼,
   화면머리,
 } from "./harness";
 import { blankSpaceText } from "@/features/spaces/space-edit";
@@ -113,10 +116,9 @@ test.describe("목록과 만들기", () => {
     await 새Space.last().click();
 
     await expect(메뉴(page).getByRole("menuitem")).toHaveText([/^Host와 만들기.*기본$/, /^직접 만들기/]);
-    await expect(항목(page, "Host와 만들기 Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요 기본")).toHaveAccessibleDescription(
-      "Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요",
-    );
-    await expect(메뉴(page).getByRole("menuitem").nth(1)).toHaveAccessibleDescription("Space 파일을 빈 틀로 열어요 — 이름과 Project를 적어요");
+    // 접근 이름은 머리 글자만, 설명은 따로다(03 코드 리뷰 P13).
+    await expect(항목(page, "Host와 만들기")).toHaveAccessibleDescription("Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요");
+    await expect(항목(page, "직접 만들기")).toHaveAccessibleDescription("Space 파일을 빈 틀로 열어요 — 이름과 Project를 적어요");
 
     // 「Host와 만들기」 — Work 없는 새 대화에 맡기는 말을 넣어 연다(S16). 보내기는 사람이 한다.
     await 메뉴(page).getByRole("menuitem").first().click();
@@ -226,7 +228,8 @@ test.describe("상세", () => {
     await page.goto(`/spaces/${원장도구.slug}`);
     await 묶음.getByRole("button", { name: "넣기", exact: true }).click();
     await expect(메뉴(page).getByRole("menuitem")).toHaveText([`${billing.name}${billing.path}`, "새 Project 추가…"]);
-    await 메뉴(page).getByRole("menuitem").first().click();
+    await expect(항목(page, billing.name)).toHaveAccessibleDescription(billing.path);
+    await 항목(page, billing.name).click();
     await expect.poll(() => 고치기(page)).toEqual([{ slug: 원장도구.slug, add: [billing.slug] }]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -636,31 +639,55 @@ test.describe("파일 고치기 화면", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("저장하지 않은 고침이 있으면 취소 · 뒤로가 「고친 것을 버릴까요?」를 묻고, 고친 것이 없으면 묻지 않고 상세로 간다", async ({ page }) => {
-    await installFixtureBackend(page);
+  // 스토리 178 · 03 코드 리뷰 P5 — 저장하지 않은 고침은 뒤로 · 취소만이 아니라 사이드바 · 사람 메뉴 · 히스토리로 떠날 때도 묻는다. 길마다 묻지
+  // 않고 Spec 레이아웃 편집기와 같은 라우터의 막기 하나가 받으므로, 창도 그 창(「저장하지 않은 변경이 있어요」) 하나다 — 두 번 묻지 않는다.
+  test("저장하지 않은 고침이 있으면 취소 · 뒤로 · 사람 메뉴 · 히스토리 뒤로가 떠날지 한 번 묻고, 고친 것이 없거나 저장했으면 묻지 않는다", async ({
+    page,
+  }) => {
+    await installFixtureBackend(page, { save_space_text: SPACES[0] });
     await page.goto(`/spaces/${결제.slug}/edit`);
     const 판 = 본문(page, `${결제.name} 관계 편집`);
-    const 묻기 = page.getByRole("alertdialog", { name: "고친 것을 버릴까요?", exact: true });
 
     // 고친 것이 없다 — 「취소」는 곧바로 상세다.
     await 판.getByRole("button", { name: "취소", exact: true }).click();
     await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}`);
-    await expect(묻기).toHaveCount(0);
+    await expect(떠날때확인(page)).toHaveCount(0);
 
-    // 고친 것이 있다 — 뒤로(왼쪽 머리 「← 결제」)가 묻는다. 그만두면 고치던 글 그대로 머문다.
+    // 고친 것이 있다 — 뒤로(왼쪽 머리 「← 결제」)가 묻는다. 「계속 편집」이면 고치던 글 그대로 머문다.
     await 본문(page, "Space 상세").getByRole("link", { name: "편집", exact: true }).click();
     await 편집기(page).fill(`${결제글}더한 줄\n`);
     await 판.getByRole("button", { name: 결제.name, exact: true }).click();
-    await expect(묻기).toBeVisible();
-    await 묻기.getByRole("button", { name: "취소", exact: true }).click();
-    await expect(묻기).toHaveCount(0);
+    await expect(떠날때확인(page)).toHaveCount(1);
+    await 떠날때확인버튼(page, "계속 편집").click();
+    await expect(떠날때확인(page)).toHaveCount(0);
     await expect(편집기(page)).toHaveValue(`${결제글}더한 줄\n`);
 
-    // 「취소」도 묻는다 — 「버리기」면 상세로 가고 저장은 나가지 않는다.
+    // 사람 메뉴로 다른 화면을 열어도 묻는다 — 머물면 이 화면이다.
+    await 사람메뉴로간다(page, "Projects");
+    await expect(떠날때확인(page)).toHaveCount(1);
+    await 떠날때확인버튼(page, "계속 편집").click();
+    await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}/edit`);
+    await expect(편집기(page)).toHaveValue(`${결제글}더한 줄\n`);
+
+    // 히스토리를 되감아도 묻는다 — 머물면 히스토리도 이 화면으로 돌아온다.
+    await page.goBack();
+    await expect(떠날때확인(page)).toHaveCount(1);
+    await 떠날때확인버튼(page, "계속 편집").click();
+    await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}/edit`);
+
+    // 「취소」도 묻는다 — 「버리고 나가기」면 상세로 가고 저장은 나가지 않는다.
     await 판.getByRole("button", { name: "취소", exact: true }).click();
-    await 묻기.getByRole("button", { name: "버리기", exact: true }).click();
+    await 떠날때확인버튼(page, "버리고 나가기").click();
     await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}`);
     expect(await ipcCallArgs(page, "save_space_text", "text")).toEqual([]);
+
+    // 저장하면 묻지 않고 상세로 간다 — 저장한 뒤의 이동은 막기를 지난다.
+    await 본문(page, "Space 상세").getByRole("link", { name: "편집", exact: true }).click();
+    await 편집기(page).fill(`${결제글}더한 줄\n`);
+    await 판.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}`);
+    await expect(떠날때확인(page)).toHaveCount(0);
+    expect(await ipcCallArgs(page, "save_space_text", "text")).toHaveLength(1);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 

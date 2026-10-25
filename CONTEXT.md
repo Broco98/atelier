@@ -307,7 +307,8 @@ _피할 말_: 컨텍스트 칩, 워크스페이스
 
 **범위 줄**:
 트레이에서 Space 칩 옆에 서는 한 줄 — 읽는 범위를 그대로 말한다. Space가 없으면 「등록된 Project 3개를 읽어요」, 있으면 「web-app ·
-api-server를 읽어요」(셋을 넘으면 「web-app · api-server 외 2개를 읽어요」)다. 빈 Space면 「읽는 Project가 없어요」, 등록된 Project가 없으면
+api-server를 읽어요」(셋을 넘으면 「web-app · api-server 외 2개를 읽어요」)다 — 그 Work의 worktree에서 일하는 Project도 든다(worktree에서
+읽는다). 빈 Space(Project가 하나도 적히지 않은 Space)면 「읽는 Project가 없어요」, 등록된 Project가 없으면
 「등록된 Project가 없어요 · Project 추가」가 경고 색으로 서고 「Project 추가」는 Project 추가 창을 연다 — 어느 쪽이든 대화는 막지 않는다.
 
 **읽는 범위**:

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useSpaces } from "./hooks";
 import { SpaceActions } from "./SpaceActions";
 import { useSpaceDelete } from "./SpaceDeleteDialog";
-import { HOST_MAKE, spaceName } from "./space-view";
+import { HOST_MAKE, listShows, spaceName } from "./space-view";
 import type { Space } from "./types";
 
 // Space 목록(03 구현 스펙 §14 · 시안 F1-Space) — 사람 메뉴 「Space」가 여는 화면이다. 머리 줄 「Space」, 판 안에 제목 · 찾기 칸과 표(이름 ·
@@ -25,7 +25,8 @@ import type { Space } from "./types";
 const COLUMNS = "grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.5fr)_28px] items-center gap-4 pr-2.5 pl-3.5";
 
 export default function SpaceList() {
-  const { data: spaces = [], isPending } = useSpaces();
+  const { data: spaces = [], isPending, isError, error } = useSpaces();
+  const shows = listShows({ isPending, isError, count: spaces.length });
   const [query, setQuery] = useState("");
   const shown = useMemo(() => spaces.filter((space) => matches(space, query)), [spaces, query]);
   const label = navItem("spaces").label;
@@ -51,7 +52,9 @@ export default function SpaceList() {
             </label>
             <NewSpaceButton />
           </div>
-          {!isPending && spaces.length === 0 ? (
+          {shows === "error" ? (
+            <p className="px-3.5 py-6 text-sm text-fg-tertiary">Space 목록을 읽지 못했어요 — {String(error)}</p>
+          ) : shows === "empty" ? (
             // S15 — 빈 목록은 안내 한 줄과 「새 Space」(머리 줄과 같은 길)다.
             <div className="flex flex-col items-start gap-3 px-3.5 py-6">
               <p className="text-sm text-fg-tertiary">아직 Space가 없어요</p>
@@ -98,6 +101,7 @@ function NewSpaceButton() {
       <DropdownMenuContent side="bottom" align="end" sideOffset={6} width="note" className="w-77">
         <DropdownMenuItem
           size="note"
+          aria-label="Host와 만들기"
           aria-description="Host가 Project를 읽고 초안을 내요 — 승인하면 만들어져요"
           onClick={() => void navigate({ to: "/", search: HOST_MAKE })}
         >
@@ -110,6 +114,7 @@ function NewSpaceButton() {
         </DropdownMenuItem>
         <DropdownMenuItem
           size="note"
+          aria-label="직접 만들기"
           aria-description="Space 파일을 빈 틀로 열어요 — 이름과 Project를 적어요"
           onClick={() => void navigate({ to: "/spaces/new" })}
         >
@@ -165,7 +170,7 @@ function SpaceRow({ space, onDelete }: { space: Space; onDelete: (space: Space) 
         >
           <Layers aria-hidden className="size-4 shrink-0 text-fg-icon" />
           <span className="min-w-0 truncate">{spaceName(space)}</span>
-          {problems && <span className="tag text-xs text-danger">문제 있음</span>}
+          {problems && <span className="tag text-xs text-fg-problem">문제 있음</span>}
           <ChevronRight aria-hidden className="size-3.5 shrink-0 text-fg-titlebar opacity-0 group-hover/row:opacity-100" />
         </Link>
       </span>

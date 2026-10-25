@@ -237,7 +237,16 @@ describe("말의 사전", () => {
     for (const piece of ["Work 칩 바로 뒤", "「Space 넣기」", "×", "▾", "첫 말과 함께", "Space 줄이 남는다", "그 Work의 Space"]) {
       expect(bodyOf("Space 칩"), piece).toContain(piece);
     }
-    for (const piece of ["읽는 범위", "등록된 Project 3개를 읽어요", "외 2개", "읽는 Project가 없어요", "「Project 추가」"]) {
+    // 빈 Space는 Project가 적히지 않은 Space다 — worktree가 다 덮은 Space가 아니다(03 코드 리뷰 P3).
+    for (const piece of [
+      "읽는 범위",
+      "등록된 Project 3개를 읽어요",
+      "외 2개",
+      "worktree에서 일하는 Project도 든다",
+      "Project가 하나도 적히지 않은 Space",
+      "읽는 Project가 없어요",
+      "「Project 추가」",
+    ]) {
       expect(bodyOf("범위 줄"), piece).toContain(piece);
     }
     expect(refused).toEqual(expect.arrayContaining(["워크스페이스", "컨텍스트 칩"]));

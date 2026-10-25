@@ -148,12 +148,27 @@ export function spaceGraph(space: Space, shared: readonly SharedSpace[], layout:
   return { layout, height: Math.max(layout.baseHeight, lowest + NODE_HEIGHT / 2 + layout.bottomRoom), nodes, edges };
 }
 
+// ── 목록 판 ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Space 목록 판이 그리는 것(§14 · S15 · §8) — 목록을 읽지 못했으면 그 까닭(`error`), 다 읽어 Space가 없으면 안내 한 줄과 「새 Space」
+ * (`empty`), 그 밖(읽는 중 포함)은 표다. 읽을 수 없는 파일 하나는 목록을 깨지 않고 그 줄만 「문제 있음」으로 선다(core).
+ */
+export function listShows(list: { isPending: boolean; isError: boolean; count: number }): "error" | "empty" | "table" {
+  if (list.isError) return "error";
+  return !list.isPending && list.count === 0 ? "empty" : "table";
+}
+
 // ── 넣기 메뉴 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** 「넣기」 메뉴의 줄 — 아직 묶이지 않은 등록된 Project(등록부 차례). 다 넣었으면 그렇다고 말한다(스토리 152 · 153). */
+/**
+ * 「넣기」 메뉴의 줄 — 아직 묶이지 않은 등록된 Project(등록부 차례). 넣을 것이 없으면 그 까닭 한 줄(`note`) — 다 넣었으면 「등록된 Project를
+ * 모두 넣었어요」(스토리 152 · 153), 등록된 Project가 하나도 없으면 「등록된 Project가 없어요」(Space 메뉴의 같은 갈래 글 — 03 결정 05).
+ */
 export function addMenu(space: Pick<Space, "projects">, registered: readonly ProjectView[]) {
   const candidates = registered.filter((project) => !space.projects.includes(project.slug));
-  return { candidates, allIn: candidates.length === 0 };
+  const note = candidates.length > 0 ? null : registered.length === 0 ? "등록된 Project가 없어요" : "등록된 Project를 모두 넣었어요";
+  return { candidates, note };
 }
 
 // ── 만든 이 · 만든 때 ────────────────────────────────────────────────────────────────────────────────────────────

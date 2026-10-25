@@ -14,7 +14,7 @@ import type { Page } from "./evidence";
 // 03 티켓 13 — 추가 창(03 구현 스펙 §15 · 티켓 09)의 세 길을 진짜 core · git으로 탄다. 「git init 하고 추가」와 「새로 만들기」는 진짜 git이
 // 폴더 · 브랜치 `main` · 빈 첫 커밋 「init」을 만들고 기준 브랜치가 `main`이다. git의 사람은 sandbox의 설정 파일이다(`l4.ts`의
 // `GIT_PERSON` · `bridge.ts`의 환경) — 첫 커밋의 사람이 그 값이면 다리가 검사 기계의 `~/.gitconfig`를 타지 않았다. 사람이 없으면 첫 커밋이
-// 실패하고, 창이 그 git의 글을 말하며 만들던 폴더는 남지 않는다.
+// 실패하고, 창이 그 git의 글을 말하며 만들던 폴더(「새로 만들기」) · 세우던 저장소(「git init 하고 추가」)는 남지 않는다.
 
 /** 추가 창 — 빈 목록 가운데의 「Project 추가」가 연다. 창 밖에도 같은 이름의 단추가 있어 창 안으로 좁혀 쓴다. */
 const addDialog = (page: Page) => page.getByRole("dialog", { name: "Project 추가", exact: true });
@@ -64,21 +64,32 @@ test("폴더를 고르면 진짜 파일이 생기고 그 Project의 상세가 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+/** git 저장소가 아닌 폴더 하나(`notes` — 사람의 파일 하나)를 sandbox 곁에 세운다. */
+function plainFolder(home: string) {
+  const plain = join(home, "..", "notes");
+  mkdirSync(plain);
+  writeFileSync(join(plain, "README.md"), "# 메모\n");
+  return plain;
+}
+
+/** 추가 창에서 그 폴더를 고르고 「git init 하고 추가」를 누른다 — 창이 살핀 답(git 저장소 아님)이 선 뒤에. */
+async function initAndAdd(page: Page, folder: string) {
+  const dialog = await openAddDialog(page);
+  await 폴더를고른다(page, folder);
+  await dialog.getByRole("button", { name: "추가", exact: true }).click();
+  await expect(dialog.getByText("폴더 · git 저장소 아님", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "git init 하고 추가", exact: true }).click();
+  return dialog;
+}
+
 test("git 저장소가 아닌 폴더는 「git init 하고 추가」로 진짜 git이 브랜치 main · 첫 커밋을 만들고 기준 브랜치가 main이다", async ({
   page,
   sandbox,
 }) => {
   const { home } = sandbox;
-  const plain = join(home, "..", "notes");
-  mkdirSync(plain);
-  writeFileSync(join(plain, "README.md"), "# 메모\n");
+  const plain = plainFolder(home);
   await installRealBackend(page, sandbox);
-  const dialog = await openAddDialog(page);
-
-  await 폴더를고른다(page, plain);
-  await dialog.getByRole("button", { name: "추가", exact: true }).click();
-  await expect(dialog.getByText("폴더 · git 저장소 아님", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "git init 하고 추가", exact: true }).click();
+  await initAndAdd(page, plain);
 
   await expect.poll(() => projectFiles(home)).toHaveLength(1);
   // 파일은 그대로이고 그 폴더가 저장소가 됐다 — 브랜치 main, 빈 첫 커밋 「init」 하나, 사람은 sandbox의 git 설정이다.
@@ -143,6 +154,27 @@ test("git에 사람(이름 · 이메일)이 없으면 「새로 만들기」가 
   await expect(failed).toHaveText(/^만들지 못했어요 — .*Author identity unknown/s);
   await expect(dialog).toBeVisible();
   expect(existsSync(join(newParent, "landing-page")), "만들던 폴더가 남았다").toBe(false);
+  expect(projectFiles(home)).toEqual([]);
+  await expect(page).toHaveURL("/projects");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("git에 사람(이름 · 이메일)이 없으면 「git init 하고 추가」가 git의 글로 실패하고 세우던 저장소가 남지 않는다", async ({
+  page,
+  sandbox,
+}) => {
+  const { home } = sandbox;
+  const plain = plainFolder(home);
+  forgetGitPerson(sandbox);
+  await installRealBackend(page, sandbox);
+  const dialog = await initAndAdd(page, plain);
+
+  // 창은 그대로 서고 실패 글이 선다 — 앞은 앱의 말, 뒤는 git이 적은 글(사람을 모른다)이다.
+  await expect(dialog.getByRole("alert")).toHaveText(/^추가하지 못했어요 — .*Author identity unknown/s);
+  await expect(dialog).toBeVisible();
+  // 사람의 파일은 그대로이고 반쯤 세운 저장소(`.git`)는 걷혔다 — 등록도 없다.
+  expect(readdirSync(plain)).toEqual(["README.md"]);
+  expect(readFileSync(join(plain, "README.md"), "utf8")).toBe("# 메모\n");
   expect(projectFiles(home)).toEqual([]);
   await expect(page).toHaveURL("/projects");
   expect(await unknownIpcCalls(page)).toEqual([]);

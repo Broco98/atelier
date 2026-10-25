@@ -6,7 +6,7 @@ use crate::paths::spaces_in;
 use crate::{Error, Result};
 
 /// Space 하나 — 파일을 읽은 값과 그 검사의 문제(03 구현 스펙 §8). 문제가 있어도 선다: 목록이 「문제 있음」으로 보이고 관계 편집에서
-/// 고친다(스토리 185). 읽을 수 없는 칸은 비어 있다 — 닫히지 않은 파일은 이름도 없어 화면이 slug로 부른다.
+/// 고친다(스토리 185). 읽을 수 없는 칸은 비어 있다 — 닫히지 않은 파일 · 읽을 수 없는 파일은 이름도 없어 화면이 slug로 부른다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Space {
@@ -51,6 +51,7 @@ impl SpaceProblem {
             SpaceProblemKind::NoName => "이름(name)이 비어 있어요",
             SpaceProblemKind::UnknownProject => "등록되지 않은 Project예요",
             SpaceProblemKind::DuplicateProject => "같은 Project가 두 번 있어요",
+            SpaceProblemKind::Unreadable => "파일을 읽을 수 없어요",
         };
         SpaceProblem { line, kind, project, message: message.to_string() }
     }
@@ -68,7 +69,7 @@ pub(crate) fn describe_problems(problems: &[SpaceProblem]) -> String {
     format!("Space 파일에 문제가 있어요 — {}", each.join(" · "))
 }
 
-/// 문제의 갈래 다섯(03 구현 스펙 §8 「검사」).
+/// 문제의 갈래 — 검사의 다섯(03 구현 스펙 §8 「검사」)과, 글을 읽지 못한 파일 하나(§8 「읽기」).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SpaceProblemKind {
@@ -79,6 +80,8 @@ pub enum SpaceProblemKind {
     NoName,
     UnknownProject,
     DuplicateProject,
+    /// 파일의 글을 읽지 못했다(UTF-8이 아님 · 권한 없음) — 목록 · 하나 읽기만 내고, 글을 받는 검사는 내지 않는다.
+    Unreadable,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -323,9 +326,32 @@ pub fn new_space_slug(data_root: &Path, name: &str) -> String {
 /// 새 Space 화면의 주소 끝(`/spaces/new`) — 앱이 짓는 slug가 비켜 간다.
 const NEW_SPACE_PAGE: &str = "new";
 
-/// Space 파일의 글 그대로 — 관계 편집이 연다(03 구현 스펙 §13).
+/// Space 파일의 글 그대로 — 관계 편집이 연다(03 구현 스펙 §13). 읽을 수 없는 파일은 그 IO 오류다(고칠 글이 없다).
 pub fn read_space_text(data_root: &Path, slug: &str) -> Result<String> {
-    std::fs::read_to_string(space_path(data_root, slug)?).map_err(|_| Error::SpaceNotFound(slug.to_string()))
+    space_text(data_root, slug)
+}
+
+/// 그 slug의 Space 파일 글 — 파일이 **없을** 때만 `SpaceNotFound`, 그 밖에 읽지 못하면(UTF-8이 아님 · 권한 없음) 그 IO 오류다.
+fn space_text(data_root: &Path, slug: &str) -> Result<String> {
+    match std::fs::read_to_string(space_path(data_root, slug)?) {
+        Ok(text) => Ok(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::SpaceNotFound(slug.to_string())),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// 글을 읽지 못한 Space 파일 — slug와 문제 하나로 선다(§8 「읽을 수 없는 파일도 slug와 「문제 있음」으로 선다」). 이름 · Project ·
+/// 설명은 비어 있다.
+fn unreadable(slug: &str) -> Space {
+    Space {
+        slug: slug.to_string(),
+        name: String::new(),
+        projects: Vec::new(),
+        created_at: String::new(),
+        created_by: None,
+        description: String::new(),
+        problems: vec![SpaceProblem::new(1, SpaceProblemKind::Unreadable, None)],
+    }
 }
 
 /// 고치기 화면(관계 편집 · 직접 만들기)이 고칠 때마다 부르는 한 번 읽기 — 그 글의 검사(문제 · 조각 자리)와 미리보기 카드가 그릴 것,
@@ -416,8 +442,7 @@ pub fn update_space(data_root: &Path, slug: &str, patch: SpacePatch) -> Result<S
     if patch.name.as_ref().is_some_and(|name| name.trim().is_empty()) {
         return Err(Error::EmptyName);
     }
-    let path = space_path(data_root, slug)?;
-    let text = std::fs::read_to_string(&path).map_err(|_| Error::SpaceNotFound(slug.to_string()))?;
+    let text = space_text(data_root, slug)?;
     let registered = registered_projects(data_root);
     let before = read_text(&text, &registered).check.problems;
     let edited = edit_space_text(&text, &patch)?;
@@ -473,7 +498,8 @@ fn overlapping(spaces: &[Space], this: &Space) -> Vec<SharedSpace> {
 }
 
 /// 데이터 루트의 Space 전부 — 이름 차례(이름이 없으면 slug). 점 파일(쓰기의 tmp · 지운 자리)과 `.md`가 아닌 것은 건너뛴다.
-/// 폴더가 없으면 빈 목록이다 — 만들지 않는다(`read_projects`와 같은 규칙).
+/// 폴더가 없으면 빈 목록이다 — 만들지 않는다(`read_projects`와 같은 규칙). 글을 읽지 못한 파일은 slug와 문제 하나로 선다 — 파일 하나가
+/// 목록을 깨지 않는다. 폴더 자체를 읽지 못하면 그 오류다.
 pub fn list_spaces(data_root: &Path) -> Result<Vec<Space>> {
     let dir = spaces_in(data_root);
     let entries = match std::fs::read_dir(&dir) {
@@ -488,17 +514,24 @@ pub fn list_spaces(data_root: &Path) -> Result<Vec<Space>> {
         let Some(slug) = file_name.strip_suffix(".md").filter(|_| !file_name.starts_with('.')) else {
             continue;
         };
-        let text = std::fs::read_to_string(dir.join(&file_name))?;
-        spaces.push(read_text(&text, &registered).into_space(slug));
+        match std::fs::read_to_string(dir.join(&file_name)) {
+            Ok(text) => spaces.push(read_text(&text, &registered).into_space(slug)),
+            // 훑는 사이 사라졌다 — 목록에 서지 않는다.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => spaces.push(unreadable(slug)),
+        }
     }
     spaces.sort_by_cached_key(|space| shown_name(space).to_lowercase());
     Ok(spaces)
 }
 
-/// Space 하나.
+/// Space 하나 — 파일이 없으면 `SpaceNotFound`, 글을 읽지 못하면 목록과 같이 slug와 문제 하나로 선다(파일은 있다 — 없는 Space가 아니다).
 pub fn get_space(data_root: &Path, slug: &str) -> Result<Space> {
-    let text = std::fs::read_to_string(space_path(data_root, slug)?).map_err(|_| Error::SpaceNotFound(slug.to_string()))?;
-    Ok(read_text(&text, &registered_projects(data_root)).into_space(slug))
+    match space_text(data_root, slug) {
+        Ok(text) => Ok(read_text(&text, &registered_projects(data_root)).into_space(slug)),
+        Err(Error::Io(_)) => Ok(unreadable(slug)),
+        Err(other) => Err(other),
+    }
 }
 
 /// 이 Space에 이은 곳 — `space`가 이 slug인 진행 중인 Work(`works/`)와 Work 없는 Thread(03 구현 스펙 §9). Work에 이은 Thread는 그 Work의
@@ -947,6 +980,27 @@ mod tests {
         assert_eq!(payments.created_by, None);
         assert_eq!(payments.description, "결제와 환불을 한 흐름으로 다뤄요.");
         assert_eq!(spaces[2].projects, vec!["api-server", "billing"], "등록되지 않은 Project도 적힌 대로 읽는다");
+    }
+
+    /// 읽을 수 없는 파일(UTF-8이 아님 · 권한 없음) 하나가 목록을 깨지 않는다 — 그 파일은 slug와 문제 하나로 선다(§8 · 스토리 185).
+    #[test]
+    fn 읽을_수_없는_space_파일은_slug와_문제_하나로_서고_목록을_깨지_않는다() {
+        let home = home();
+        put(&home, "결제-서비스", PAYMENTS);
+        std::fs::write(spaces_in(home.path()).join("깨진-글.md"), [b'-', b'-', b'-', b'\n', 0xff, 0xfe, b'\n']).unwrap();
+
+        let spaces = list_spaces(home.path()).expect("파일 하나가 목록을 깨지 않는다");
+        let rows: Vec<(&str, &str, usize)> =
+            spaces.iter().map(|space| (space.slug.as_str(), space.name.as_str(), space.projects.len())).collect();
+        assert_eq!(rows, vec![("결제-서비스", "결제 서비스", 2), ("깨진-글", "", 0)], "이름이 없어 slug 차례로 선다");
+        let unreadable = &spaces[1];
+        assert_eq!(
+            serde_json::to_value(&unreadable.problems).unwrap(),
+            serde_json::json!([{"line": 1, "kind": "unreadable", "message": "파일을 읽을 수 없어요"}])
+        );
+        assert_eq!((unreadable.description.as_str(), unreadable.created_by.as_ref()), ("", None));
+        assert_eq!(get_space(home.path(), "깨진-글").unwrap(), *unreadable, "하나 읽기도 같은 것이다 — 파일이 있으니 없는 Space가 아니다");
+        assert!(matches!(get_space(home.path(), "없음"), Err(crate::Error::SpaceNotFound(_))), "없을 때만 찾지 못한다");
     }
 
     #[test]

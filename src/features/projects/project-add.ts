@@ -173,12 +173,12 @@ export function typeName(draft: AddDraft, name: string): AddDraft {
 }
 
 /**
- * 끌어 놓은 경로들 가운데 추가 창이 열 것 — 첫 폴더다(03 S20). 폴더가 아닌 것(파일)은 건너뛰고, 폴더가 하나도 없으면 첫 경로다(창이 「폴더를
- * 찾을 수 없어요」를 말한다). 폴더인지는 core가 안다(`inspect`).
+ * 끌어 놓은 경로들 가운데 추가 창이 열 것 — 첫 폴더다(03 S20). 폴더가 아닌 것(파일)은 건너뛰고, 폴더가 하나도 없으면 `null` — 아무 일도
+ * 없다(03 결정 09 「파일만 놓으면 아무 일도 없다」). 폴더인지는 core가 안다(`inspect`).
  */
 export async function firstFolder(paths: readonly string[], inspect: (path: string) => Promise<FolderLook>): Promise<string | null> {
   for (const path of paths) {
     if ((await inspect(path)).kind !== "missing") return path;
   }
-  return paths[0] ?? null;
+  return null;
 }

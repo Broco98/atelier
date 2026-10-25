@@ -58,13 +58,14 @@ export const WORLD_SPACE_DETAILS: Record<string, SpaceDetail> = Object.fromEntri
 
 /** 범위 하나 — Space(없으면 `null`)와 그 Project. Project가 없으면 빈 Space다. */
 const scopeOf = (of: Space | null, registered = WORLD_PROJECTS.length): ReadingScope => {
-  if (registered === 0) return { space: null, projects: [], kind: "noProjects", registered };
+  if (registered === 0) return { space: null, projects: [], worked: [], kind: "noProjects", registered };
   if (of === null) {
-    return { space: null, projects: WORLD_PROJECTS.map(({ slug, name }) => ({ slug, name, why: "all" })), kind: "all", registered };
+    return { space: null, projects: WORLD_PROJECTS.map(({ slug, name }) => ({ slug, name, why: "all" })), worked: [], kind: "all", registered };
   }
   return {
     space: { slug: of.slug, name: of.name, troubled: false },
     projects: of.projects.map((slug) => ({ slug, name: slug, why: "space" })),
+    worked: [],
     kind: of.projects.length > 0 ? "space" : "emptySpace",
     registered,
   };

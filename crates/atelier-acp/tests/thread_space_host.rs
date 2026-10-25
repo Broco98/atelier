@@ -236,6 +236,61 @@ fn 알아서가_아니면_질문_카드가_추천_후보_space_없이로_서고_
     assert_eq!(added_dirs(&sandbox, &thread), [api, back]);
 }
 
+/// 그 Thread에 선 `n`번째 Space 질문 카드(1부터) — 서기까지 기다린다.
+fn wait_nth_card(sandbox: &Sandbox, thread: &str, n: usize) -> Value {
+    let asked = |record: &[Value]| -> Vec<Value> {
+        of_kind(record, "question")
+            .into_iter()
+            .filter(|line| line["payload"]["card"] == "space" && line["payload"]["state"] == "asked")
+            .cloned()
+            .collect()
+    };
+    let record = sandbox.wait_thread_record(thread, |record| asked(record).len() >= n);
+    asked(&record).swap_remove(n - 1)
+}
+
+/// 카드의 선택지 Space — 선 차례대로.
+fn card_spaces(card: &Value) -> Vec<&str> {
+    card["payload"]["spaces"].as_array().expect("후보").iter().map(|space| space["slug"].as_str().expect("slug")).collect()
+}
+
+#[test]
+fn 알아서여도_맞는_space가_넘긴_것_하나가_아니면_묻고_추천은_후보_안에_있어도_맨_위다() {
+    let sandbox = Sandbox::new();
+    payments_world(&sandbox);
+    register(&sandbox, "landing-page");
+    let calls = [
+        // 후보 둘 — api-server를 담은 결제 서비스 · 사내 도구. 추천(사내 도구)은 이름 차례와 달리 맨 위다(스토리 50).
+        tool("set_space", json!({"space": "사내-도구", "projects": ["api-server"], "reason": "백오피스 쪽 일"})),
+        // 다루는 Project(landing-page)를 담은 Space가 없다 — 넘긴 결제 서비스는 「맞는 Space 하나」가 아니다.
+        tool("set_space", json!({"space": "결제-서비스", "projects": ["landing-page"]})),
+        // 맞는 Space는 결제 서비스(web-app) 하나인데 후보가 아닌 사내 도구를 넘겼다.
+        tool("set_space", json!({"space": "사내-도구", "projects": ["web-app"]})),
+    ];
+    let (host, thread) = auto_thread(&sandbox, &calls, StartPicks::default());
+    let mut cards = Vec::new();
+    for n in 1..=calls.len() {
+        let asked = wait_nth_card(&sandbox, &thread, n);
+        host.answer_space(&thread, &request_of(&asked), SpaceChoice::Later).expect("나중에");
+        cards.push(asked);
+    }
+    let record = sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.shut_down();
+
+    let shown: Vec<(&Value, Vec<&str>)> = cards.iter().map(|card| (&card["payload"]["recommended"], card_spaces(card))).collect();
+    assert_eq!(
+        shown,
+        [
+            (&json!("사내-도구"), vec!["사내-도구", "결제-서비스"]),
+            (&json!("결제-서비스"), vec!["결제-서비스"]),
+            (&json!("사내-도구"), vec!["사내-도구", "결제-서비스"]),
+        ],
+        "「알아서」 · Space 없음이어도 묻는다 — 추천이 맨 위, 그 뒤 다른 후보"
+    );
+    assert!(of_kind(&record, "space").is_empty(), "붙이지 않았다: {}", common::lines_text(&record));
+    assert_eq!(sandbox.thread_json(&thread).get("space"), None, "「나중에」는 아무것도 바꾸지 않는다");
+}
+
 #[test]
 fn 이미_붙어_있으면_알아서에서도_묻고_나중에는_아무것도_바꾸지_않는다() {
     let sandbox = Sandbox::new();

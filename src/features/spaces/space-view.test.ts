@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, spaceGraph, spaceMenu, spaceStarts, spaceWorks } from "./space-view";
+import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, listShows, spaceGraph, spaceMenu, spaceStarts, spaceWorks } from "./space-view";
 import type { SharedSpace, Space } from "./types";
 
 const space = (over: Partial<Space> = {}): Space => ({
@@ -104,15 +104,34 @@ const project = (slug: string): ProjectView => ({
   missing: false,
 });
 
+// 03 코드 리뷰 P4 · §8 — 읽을 수 없는 파일 하나는 그 줄만 「문제 있음」으로 서고(core), 목록을 아예 읽지 못하면 그 까닭이 선다 — 「아직 Space가
+// 없어요」는 Space가 정말 없을 때만이다.
+describe("Space 목록 판", () => {
+  it("목록을 읽지 못하면 오류다 — 빈 목록 안내가 아니다", () => {
+    expect(listShows({ isPending: false, isError: true, count: 0 })).toBe("error");
+  });
+
+  it("다 읽어 Space가 없으면 빈 목록 안내, 있거나 읽는 중이면 표다", () => {
+    expect(listShows({ isPending: false, isError: false, count: 0 })).toBe("empty");
+    expect(listShows({ isPending: false, isError: false, count: 2 })).toBe("table");
+    expect(listShows({ isPending: true, isError: false, count: 0 })).toBe("table");
+  });
+});
+
 describe("넣기 메뉴", () => {
   it("아직 묶이지 않은 등록된 Project를 등록부 차례로 보인다", () => {
     const menu = addMenu(space(), [project("api-server"), project("backoffice"), project("web-app"), project("docs")]);
     expect(menu.candidates.map((one) => one.slug)).toEqual(["backoffice", "docs"]);
-    expect(menu.allIn).toBe(false);
+    expect(menu.note).toBeNull();
   });
 
   it("다 넣었으면 그렇다고 말한다", () => {
-    expect(addMenu(space(), [project("web-app"), project("api-server")])).toEqual({ candidates: [], allIn: true });
+    expect(addMenu(space(), [project("web-app"), project("api-server")])).toEqual({ candidates: [], note: "등록된 Project를 모두 넣었어요" });
+  });
+
+  // 03 코드 리뷰 P9 · 스토리 153 — 넣을 것이 없는 것은 같아도, 등록된 Project가 하나도 없으면 「모두 넣었어요」가 사실이 아니다.
+  it("등록된 Project가 없으면 「모두 넣었어요」가 아니라 없다고 말한다", () => {
+    expect(addMenu(space(), [])).toEqual({ candidates: [], note: "등록된 Project가 없어요" });
   });
 });
 

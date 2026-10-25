@@ -68,7 +68,7 @@ use serde_json::{json, Value};
 
 use super::{
     claude_launch, end_together, find_programs, mark_taken, record_opened, ClaudeChoice, Conv, ConversationHost, Draft,
-    HostError, HostEvent, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
+    HostError, HostEvent, Preamble, QueuedMessage, Revive, Setting, CLAUDE_OPEN_LIMIT, SETTING_LIMIT,
 };
 use crate::discovery::{Agent, FoundProgram};
 use crate::login::Waiter;
@@ -90,6 +90,8 @@ const RUNTIME: &str = "claude-code";
 const TITLE_LIMIT: usize = 40;
 /// claude `--effort`가 받는 생각 깊이(2.1.309 도움말) — 입력창 칩이 고르는 값이다.
 const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+/// 머리말의 첫 줄 — 기록에서 머리말 블록을 알아본다([`space::heard_space`]).
+const PREAMBLE_HEAD: &str = "Atelier Thread 안에서 열린 Session이다.";
 /// 입력창 Work 칩에서 「새 Work로 시작」을 고른 Thread의 첫 머리말 끝 줄(v1 티켓 31 · §11) — 받은 Agent가 Work부터 만든다.
 const NEW_WORK_NOTE: &str = "- 사람이 「새 Work로 시작」을 골랐다 — 먼저 `propose_work`로 Work 만들기를 제안하라. 고칠 Project가 \
                              보이지 않으면 `list_projects`로 보고 고르고, 기획만이면 Project 없이 제안한다.\n";
@@ -1180,7 +1182,8 @@ impl ConversationHost {
             opened.how.starts_session() || !heard_since_session_start(&heard, &key.handle) || moved(participant, &place);
         {
             let mut state = conv.lock_state();
-            state.order.opened(needs_preamble);
+            // 이어 연 Session이 앞서 들은 Space — 그사이 Space가 바뀌었으면(앱을 끈 동안 고친 파일도) 다음 말에 머리말이 다시 간다.
+            state.order.opened(needs_preamble, space::heard_space(&heard, &key.handle));
             state.turns = agent.turns();
         }
         // 기록의 자리를 알려고 cwd를 쓰지 않는다 — Runtime은 Session id만으로 이어 연다(S11). 그래서 지금 작업 폴더를 적는다.
@@ -1385,14 +1388,15 @@ impl ConversationHost {
     }
 
     /// 머리말(v1 구현 스펙 S10) — Thread id · 제목, 이 Agent의 handle, 참여자, 이어진 Work(slug · 제목 · spec 폴더 · Project마다
-    /// worktree 또는 「읽기만」), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로 연 뒤의 첫 말에 따로 된 텍스트
-    /// 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의 `prompt`에만 남는다. `note`는 끝에 붙는 한 줄이다(「새 Work로 시작」).
-    fn thread_preamble(&self, key: &SessionKey, note: Option<&str>) -> Result<Value, HostError> {
+    /// worktree 또는 「읽기만」), 읽는 범위의 「- Space:」 줄(03 §11), Thread 도구를 쓰는 법(S42 · v1 티켓 15). Session의 첫 말과 새로
+    /// 연 뒤의 첫 말, 그리고 Session이 들은 것과 Space 줄이 다른 말에 따로 된 텍스트 블록으로 붙는다. 화면은 그리지 않고 `sent` 줄의
+    /// `prompt`에만 남는다. `note`는 끝에 붙는 한 줄이다(「새 Work로 시작」).
+    fn thread_preamble(&self, key: &SessionKey, note: Option<&str>) -> Result<Preamble, HostError> {
         let file = self.read_thread_file(&key.thread)?;
         let participants: Vec<String> =
             file.participants.iter().map(|participant| format!("`@{}`", participant.handle)).collect();
         let mut text = format!(
-            "Atelier Thread 안에서 열린 Session이다.\n\n- Thread id: `{}`\n- 제목: {}\n- 너의 handle: `@{}`\n- 참여자: {}\n",
+            "{PREAMBLE_HEAD}\n\n- Thread id: `{}`\n- 제목: {}\n- 너의 handle: `@{}`\n- 참여자: {}\n",
             key.thread,
             file.title,
             key.handle,
@@ -1416,7 +1420,8 @@ impl ConversationHost {
             },
         };
         // 읽는 범위(03 §7 · §11) — Work 줄 뒤의 따로 선 한 줄이다. Work 줄의 꼴은 바꾸지 않는다(화면 L3가 그 줄을 읽는다).
-        text.push_str(&space::space_preamble(&self.scope_of(&file, work.as_ref())));
+        let space = space::space_preamble(&self.scope_of(&file, work.as_ref()));
+        text.push_str(&space);
         if self.thread_tools.is_some() {
             text.push_str(&format!(
                 "- Thread 도구: MCP 서버 `{}`의 도구로 이 Thread를 다룬다. Thread id는 넘기지 않는다 — 이 Session의 Thread다.\n  \
@@ -1466,7 +1471,7 @@ impl ConversationHost {
         if let Some(note) = note {
             text.push_str(note);
         }
-        Ok(json!({"type": "text", "text": text}))
+        Ok(Preamble { block: json!({"type": "text", "text": text}), space })
     }
 
     fn read_thread_file(&self, thread: &str) -> Result<ThreadFile, HostError> {

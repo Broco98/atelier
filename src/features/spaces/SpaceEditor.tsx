@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Check, Eye, FileText, Layers, SquarePen, TriangleAlert } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { Button } from "@/components/ui/button";
-import { askDanger, showProblem } from "@/components/ui/confirm-store";
+import { showProblem } from "@/components/ui/confirm-store";
+import { useConfirmLeave } from "@/features/spec-layout/leave";
 import { cn } from "@/lib/utils";
 import { useSaveSpaceText, useSpaceDraft, useSpaces, useSpaceText } from "./hooks";
 import { SpaceGraph } from "./SpaceGraph";
 import {
   blankSpaceText,
+  canSave,
   caretLineOf,
   editHint,
   fileNote,
@@ -41,7 +44,9 @@ import type { SpaceDraft } from "./types";
 //   그 답이고, 화면은 따로 검사하지 않는다. 저장(`save_space_text`)도 같은 검사로 거절한다.
 // - **커서 줄 ↔ 조각** — 커서가 선 줄의 조각(name · projects · 본문)만 양쪽에 같은 파란 막대 + 옅은 면이 서고, 카드 조각에 「3–6행」이
 //   붙는다. 처음 커서는 첫 문제 줄 → 새 Space는 name 줄 → 관계 편집은 projects 줄이다(S14).
-// - 저장은 문제가 있거나 고친 것이 없으면 꺼진다. 저장하면 그 Space 상세로 간다. 저장하지 않은 고침이 있으면 뒤로 · 취소가 버릴지 묻는다.
+// - 저장은 문제가 있거나 고친 것이 없거나 지금 글의 검사 답이 아직 오지 않았으면 꺼진다. 저장하면 그 Space 상세로 간다.
+// - **저장하지 않은 고침을 두고 떠나면 묻는다**(스토리 178) — 뒤로 · 취소만이 아니라 사이드바 · 사람 메뉴 · ⌘K · ⌘N · 히스토리도. 길마다
+//   묻지 않고 Spec 레이아웃 편집기와 같은 라우터의 막기 하나(`useConfirmLeave`)가 모든 이동을 받는다 — 뒤로 · 취소도 그 막기로 묻는다.
 // - 판 안의 뿌리는 `PlainFrame`이다 — 그 본문이 제 글 폭을 판 밖에 알리지 않는다(01 결정).
 
 export default function SpaceEditor({ slug }: { slug: string | null }) {
@@ -102,26 +107,34 @@ function EditorBody({
 }) {
   const [text, setText] = useState(base);
   const [caretLine, setCaretLine] = useState<number | null>(null);
-  const { data: draft } = useSpaceDraft(slug, text);
+  const { data: draft, isPlaceholderData } = useSpaceDraft(slug, text);
   const save = useSaveSpaceText();
   const navigate = useNavigate();
+  // 저장한 글 — 저장한 뒤 그 Space 상세로 가는 이동은 떠날 때 확인을 지난다(고친 것이 남지 않았다).
+  const [kept, setKept] = useState<string | null>(null);
   const changes = lineChanges(base, text);
-  const dirty = text !== base;
+  const dirty = text !== base && text !== kept;
   const problems = draft?.space.problems ?? [];
   const pill = problemPill(problems);
+  const savable = canSave({ dirty, draft, checked: !isPlaceholderData, saving: save.isPending });
   const piece = draft && caretLine !== null ? pieceOfLine(draft.pieces, caretLine) : null;
 
-  const leave = async () => {
-    if (dirty && !(await askDanger("고친 것을 버릴까요?", "저장하지 않은 고침이 사라져요.", "버리기"))) return;
-    onLeave();
-  };
-  const commit = async () => {
+  const write = async (): Promise<string | null> => {
     try {
       const space = await save.mutateAsync({ slug, text });
-      void navigate({ to: "/spaces/$slug", params: { slug: space.slug }, replace: true });
+      // 막기가 이 렌더의 값을 읽도록 곧바로 그린다 — 다음 줄의 이동이 「저장하지 않은 고침」으로 붙잡히지 않게.
+      flushSync(() => setKept(text));
+      return space.slug;
     } catch (e) {
       await showProblem(`Space를 저장하지 못했어요: ${e}`);
+      return null;
     }
+  };
+  useConfirmLeave({ unsaved: dirty, savable, save: async () => (await write()) !== null });
+  const leave = () => onLeave();
+  const commit = async () => {
+    const saved = await write();
+    if (saved !== null) void navigate({ to: "/spaces/$slug", params: { slug: saved }, replace: true });
   };
   const path = draft ? `${draft.folder}/${draft.space.slug || "이름"}.md` : "";
 
@@ -130,7 +143,7 @@ function EditorBody({
       <div className="flex h-13 min-w-0 items-center gap-2.5 border-b border-separator-soft pr-3.5 pl-4">
         <button
           type="button"
-          onClick={() => void leave()}
+          onClick={leave}
           className="inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border border-separator-soft pr-3 pl-2 text-chat-meta text-fg transition-colors hover:bg-fill-soft focus-ring"
         >
           <ArrowLeft aria-hidden className="size-3.5 text-fg-icon" />
@@ -167,10 +180,10 @@ function EditorBody({
               {pill.text}
             </span>
           )}
-          <Button variant="outline" size="top" className="rounded-full" onClick={() => void leave()}>
+          <Button variant="outline" size="top" className="rounded-full" onClick={leave}>
             취소
           </Button>
-          <Button size="top" className="rounded-full" disabled={!dirty || !pill.ok || !draft || save.isPending} onClick={() => void commit()}>
+          <Button size="top" className="rounded-full" disabled={!savable} onClick={() => void commit()}>
             {mode === "new" ? "만들기" : "저장"}
           </Button>
         </span>

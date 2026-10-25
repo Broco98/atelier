@@ -14,8 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { addProject } from "@/features/projects/add-store";
-import { useSpaces } from "@/features/spaces/hooks";
-import type { ReadingScope } from "@/features/spaces/scope";
+import type { ReadingScope, ScopeSpace } from "@/features/spaces/scope";
 import { SpaceMenuItems } from "@/features/spaces/SpaceMenu";
 import { ASK_LEVELS, askLevelOf, chipLabel, chipParts, EFFORTS, type ChoiceOption } from "./chips";
 import { useRecentWorks } from "./hooks";
@@ -173,7 +172,8 @@ export interface LockedChoice {
  * `undefined`). 첫 말을 보내 Session을 기다리는 동안은 고르지 못한다(`disabled`).
  */
 export interface SpaceChoice {
-  current: string | null;
+  /** 칩이 보이는 Space — 읽는 범위가 싣는 것이다(없거나 그 파일이 없으면 `null`). */
+  current: ScopeSpace | null;
   ofWork: boolean;
   onPick: (space: string | null) => void;
   scope: ReadingScope | undefined;
@@ -326,8 +326,7 @@ export function LockedWorkChip({ locked, onOpen }: LockedChoice) {
  * ×(빼기 — 이름 단추 옆의 따로 선 단추)다. 바꾸는 것이 Work의 Space면 × 대신 ▾다 — 빼기도 메뉴에서만 한다.
  */
 export function SpaceChip({ at, current, ofWork, onPick, disabled }: SpaceChoice & { at: ComposerTray["at"] }) {
-  const { data: spaces } = useSpaces();
-  const look = spaceChip(current, spaces, ofWork);
+  const look = spaceChip(current, ofWork);
   // 메뉴 카드는 트레이 바깥 6에 선다(Work 칩 메뉴와 같은 띄움 — 시안 `.pmenu{top:calc(100% + 6px)}`).
   const menu = (
     <DropdownMenuContent side={at === "below" ? "bottom" : "top"} align="start" sideOffset={12} width="note">

@@ -65,7 +65,7 @@ import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from ".
 import type { ComposerTray, SpaceChoice } from "./ComposerChips";
 import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
 import { HeadWork, SpaceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
-import { headSpace, heldSpace, holdOf, holdPick, startSpace } from "./space-chip";
+import { headSpace, heldSpace, holdOf, holdPick, shownSpace, startSpace } from "./space-chip";
 import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 import { decisionItems, decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
@@ -176,9 +176,11 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
   // 바꾸면 첫 말을 보낼 때 그 Work에 적는다(S4). 범위 줄은 쥔 것으로 센 범위다.
   const [hold, setHold] = useState(() => holdOf(seed));
   const held = heldSpace(place.link, hold, linked?.space ?? null);
-  const { data: scope } = useReadingScope({ work, space: held });
+  const { data: scope, isPlaceholderData } = useReadingScope({ work, space: held });
+  // 칩이 보이는 것은 쥔 것으로 센 범위의 Space다(03 코드 리뷰 P14) — 그 파일이 없으면 「Space 넣기」이고, 첫 말도 보이는 대로 간다(P6).
+  const shown = shownSpace(held, scope, !isPlaceholderData);
   const space: SpaceChoice = {
-    current: held,
+    current: shown,
     ofWork: work !== null,
     onPick: (next) => setHold((now) => holdPick(place.link, now, next)),
     scope,
@@ -205,7 +207,7 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
     setStarting({ text, attachments });
     let id: string;
     try {
-      id = await threadApi.start(text, attachments, place.link, { ...picks, space: startSpace(place.link, hold) });
+      id = await threadApi.start(text, attachments, place.link, { ...picks, space: startSpace(place.link, hold, shown) });
     } catch (error) {
       setStarting(null);
       throw error;
@@ -348,8 +350,8 @@ export function ThreadScreen({ thread }: { thread: string }) {
     [cardWork, queryClient, setCardOpen],
   );
   // 머리 줄 이름 앞 — 이은 Work(02 §6)거나, Work 없는 Thread에 Space가 있으면 「흐린 Space /」(03 §10 — 누르면 그 Space 상세).
-  const { data: spaces } = useSpaces();
-  const crumb = view ? headSpace(view.work, view.space, spaces) : null;
+  const { data: scope } = useReadingScope({ thread });
+  const crumb = view ? headSpace(view.work, scope) : null;
   // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
   const renameName =
     view && !gone
@@ -580,7 +582,7 @@ function ThreadBody({
     at: "above",
     work: { locked: lockedWork(view.work, linked?.title ?? null, view.newWork === true), onOpen: openWork },
     space: {
-      current: view.work ? (linked?.space ?? null) : (view.space ?? null),
+      current: scope?.space ?? null,
       ofWork: view.work !== null,
       onPick: (space) => setSpace.mutate({ target: { thread }, space }),
       scope,

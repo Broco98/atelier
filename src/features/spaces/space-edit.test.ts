@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   blankSpaceText,
+  canSave,
   caretLineOf,
   editHint,
   fileNote,
@@ -119,6 +120,28 @@ describe("상태 알약", () => {
   it("문제가 없으면 「문제 없어요」, 있으면 「문제 N개」", () => {
     expect(problemPill([])).toEqual({ ok: true, text: "문제 없어요" });
     expect(problemPill([problem(5), problem(6, "duplicateProject")])).toEqual({ ok: false, text: "문제 2개" });
+  });
+});
+
+// 스토리 179 · §13 「문제가 있으면 저장이 꺼진다」 · 03 코드 리뷰 P8 — 검사는 고칠 때마다 다시 불러, 답이 오기까지는 앞 글의 답(자리 표시)이 선다.
+// 그 답으로 켜면 문제 줄을 적은 직후 누른 저장을 core가 거절한다.
+describe("저장 단추", () => {
+  const ok = { space: { problems: [] as SpaceProblem[] } };
+  const bad = { space: { problems: [problem(5)] } };
+
+  it("고친 것이 있고, 지금 글의 검사 답에 문제가 없으며, 저장하는 중이 아니면 켜진다", () => {
+    expect(canSave({ dirty: true, draft: ok, checked: true, saving: false })).toBe(true);
+  });
+
+  it("검사 답이 아직 앞 글의 것(자리 표시)이면 꺼진다 — 문제가 없어 보여도", () => {
+    expect(canSave({ dirty: true, draft: ok, checked: false, saving: false })).toBe(false);
+  });
+
+  it("고친 것이 없거나 · 답이 없거나 · 문제가 있거나 · 저장하는 중이면 꺼진다", () => {
+    expect(canSave({ dirty: false, draft: ok, checked: true, saving: false })).toBe(false);
+    expect(canSave({ dirty: true, draft: undefined, checked: true, saving: false })).toBe(false);
+    expect(canSave({ dirty: true, draft: bad, checked: true, saving: false })).toBe(false);
+    expect(canSave({ dirty: true, draft: ok, checked: true, saving: true })).toBe(false);
   });
 });
 

@@ -96,6 +96,13 @@ fn space_lines(sandbox: &Sandbox, thread: &str) -> Vec<Value> {
     of_kind(&sandbox.thread_record(thread), "space").into_iter().map(|line| line["payload"].clone()).collect()
 }
 
+/// 마지막으로 보낸 말의 머리말 가운데 「- Space:」 줄 — 다시 연 Session의 첫 말이라 머리말이 붙어 있다.
+fn last_space_preamble(sandbox: &Sandbox, thread: &str) -> String {
+    let record = sandbox.thread_record(thread);
+    let text = of_kind(&record, "sent").last().expect("보낸 말")["payload"]["prompt"][0]["text"].as_str().expect("머리말").to_owned();
+    text.lines().find(|line| line.starts_with("- Space:")).unwrap_or_else(|| panic!("Space 줄이 없다:\n{text}")).to_owned()
+}
+
 /// 지워짐 줄 — 지운 Space(slug · 이름)와 지운 뒤의 범위(「Space 없음」 — 등록된 Project 전부).
 fn deleted_line(name: &str, work: Option<&str>) -> Value {
     json!({"change": "deleted", "space": "결제-서비스", "name": name, "before": "결제-서비스", "work": work,
@@ -154,6 +161,7 @@ fn space를_지우면_비운_곳마다_지워짐_줄이_서고_다음_말은_spa
     let args = last_args(&sandbox, &loose);
     assert!(has_pair(&args, "--resume", &session), "대화는 그대로 — 같은 Session을 이어 연다: {args:?}");
     assert_eq!(added_dirs(&args), [api.clone(), back.clone(), web.clone()], "「Space 없음」의 범위 — 등록된 Project 전부");
+    assert_eq!(last_space_preamble(&sandbox, &loose), "- Space: 없음 — 등록된 Project 3개를 모두 읽는다", "Host가 Space가 없어진 것을 듣는다");
 
     let restored = host.restore_space("결제-서비스").expect("되돌리기");
     assert_eq!(restored.space.name, "결제 서비스");
@@ -234,6 +242,7 @@ fn 손으로_지운_space_파일은_그_thread의_다음_말에서_칸을_비우
     let args = last_args(&sandbox, &loose);
     assert!(has_pair(&args, "--resume", &session), "같은 Session을 이어 연다: {args:?}");
     assert_eq!(added_dirs(&args), [api.clone(), back.clone(), web.clone()], "「Space 없음」의 범위로 넓어진다");
+    assert_eq!(last_space_preamble(&sandbox, &loose), "- Space: 없음 — 등록된 Project 3개를 모두 읽는다", "Host가 Space가 없어진 것을 듣는다");
     assert_eq!(space_lines(&sandbox, &first).len(), seen[1], "다른 Thread는 제 다음 말에서 닫힌다");
 
     host.send_to_thread(&first, "이어서").expect("Work에 이은 Thread의 다음 말");
