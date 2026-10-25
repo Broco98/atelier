@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
+import { autoAllowReason } from "./approval";
 import { useArrival, useChanged } from "./arrival";
 import type { ToolEntry } from "./fold";
 import { logRows, type LogGroup } from "./log";
@@ -37,8 +38,9 @@ import { elapsed, phraseText, shownPath, type DiffPiece, type ToolGlyph, type To
 //   줄이다(받은 값은 글이면 본문 글꼴, JSON이면 고정폭 — v1 티켓 17).
 //
 // - **방패 줄**(보드 「자동 허용 줄」, v1 티켓 23 · 구현 스펙 §9) — 판정이 묻지 않고 허용한 도구 줄 앞에 방패 · 「자동으로 허용함」 ·
-//   대상(고정폭 12) · 까닭 알약(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …)이 한 줄로 선다. 나중에 왜 묻지 않았는지 알 수
-//   있게다. 그 도구 줄은 제 줄 그대로 뒤에 선다(결과 · 펼친 안은 도구 줄의 것이다).
+//   대상(고정폭 12) · 까닭 알약(「편집은 허용」 · 「이 Work에서 늘 허용」 …)이 한 줄로 선다. 나중에 왜 묻지 않았는지 알 수 있게다. 까닭은
+//   화면의 말이다 — 엔진은 「늘 허용」 허락을 옛 이름(「이 Work에서는 다시 묻지 않기」)으로 적어 카드의 말로 읽는다(`autoAllowReason` — 02
+//   코드 리뷰 A1). 그 도구 줄은 제 줄 그대로 뒤에 선다(결과 · 펼친 안은 도구 줄의 것이다).
 //
 // 줄은 그 문구를 이름으로 단 묶음(`role="group"`)이다. 변경 머리의 「Work 패널에서 열기」는 Work 패널(31)이 서는 날 단다.
 
@@ -54,7 +56,7 @@ export function ToolRows({ tools }: { tools: readonly ToolEntry[] }) {
           <GroupLine key={row.key} group={row} />
         ) : (
           <Fragment key={row.key}>
-            {row.tool.allowed !== null && <AutoLine view={row.view} reason={row.tool.allowed} />}
+            {row.tool.allowed !== null && <AutoLine view={row.view} reason={autoAllowReason(row.tool.allowed)} />}
             <ToolLine tool={row.tool} view={row.view} />
           </Fragment>
         ),

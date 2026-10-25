@@ -702,7 +702,7 @@ function PersonMenu({
         </DropdownMenuTrigger>
         {/* 시안의 사람 메뉴(Components 「사람 메뉴」) — 흰 면 · 둥글기 12(superellipse 15 — 시안 `.r-xl`) · 그림자 `shadow-menu`(0.5 링이 첫
             겹에 든다) · 안쪽 4 · 줄 사이 1(사이드바 줄 리듬 `SIDEBAR_ROWS`). 폭은 사람 줄과 같고(시안이 바닥 줄과 같은 폭으로 그렸다) 줄 위 6에
-            선다. 열고 닫을 때의 움직임은 12가 정한다(02 스펙 §12). */}
+            선다. 열고 닫을 때 움직이지 않는다 — 메뉴 부품 한 벌이 곧바로 서고 걷힌다(02 스펙 §12 · 티켓 12). */}
         <DropdownMenuContent
           side="top"
           align="start"

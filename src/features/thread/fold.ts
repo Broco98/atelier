@@ -214,7 +214,10 @@ export interface ToolEntry {
   cut: boolean;
   /** 이 도구가 물은 권한을 사람이 거절했나(거절 갈래의 선택지로 답했다). */
   denied: boolean;
-  /** 판정이 묻지 않고 허용했으면 그 까닭(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …), 아니면 null이다. */
+  /**
+   * 판정이 묻지 않고 허용했으면 그 까닭 — 엔진이 적은 그대로다(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …). 아니면 null이다. 방패
+   * 줄은 화면의 말로 읽는다(`approval.ts`의 `autoAllowReason` — 「늘 허용」 허락은 카드의 말).
+   */
   allowed: string | null;
   /** 이 도구가 물은 권한이 아직 답을 기다리나 — 「승인을 기다리는 중」(v1 티켓 24). */
   asking: boolean;

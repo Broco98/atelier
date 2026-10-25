@@ -197,13 +197,12 @@ export function cardChoices(request: PendingPermission, scope: "work" | "thread"
   const allow = of("allow_once", "allow_always");
   const reject = of("reject_once", "reject_always");
   if (!allow || !reject) return { layout: "rows", choices: request.options.map((option) => pick(option, option.name)) };
-  const where = scope === "work" ? "이 Work에서" : "이 Thread에서";
-  const what = request.grant.includes("edit") ? "편집은 " : "";
+  const always = alwaysAllow(scope === "work", request.grant.includes("edit"));
   return {
     layout: "buttons",
     choices: [
       pick(reject, "아니요, 다르게", { opensField: true, key: "escape" }),
-      ...(request.grant.length > 0 ? [pick(allow, `${where} ${what}늘 허용`, { remember: true })] : []),
+      ...(request.grant.length > 0 ? [pick(allow, always, { remember: true })] : []),
       pick(allow, "이번만 허용", { key: "enter" }),
     ],
   };
@@ -294,7 +293,32 @@ export function decisionText(entry: DecisionEntry): string {
   const act = actOf(entry.toolCall);
   const decided = `${act}${particle(act, "을", "를")} ${entry.allowed ? "승인함" : "거부함"}`;
   if (!entry.granted) return decided;
-  const where = entry.granted.work ? "이 Work에서" : "이 Thread에서";
-  const edits = entry.granted.rules.includes("edit") ? "편집은 " : "";
-  return `${decided} · ${where} ${edits}늘 허용`;
+  return `${decided} · ${alwaysAllow(Boolean(entry.granted.work), entry.granted.rules.includes("edit"))}`;
+}
+
+/**
+ * **「늘 허용」의 말은 여기 하나다** — 승인 카드의 단추(`cardChoices`), 결정 줄의 꼬리(`decisionText`), 방패 줄의 까닭(`autoAllowReason`)이 같은
+ * 허락을 같은 말로 부른다(02 §10 · 02 코드 리뷰 A1 — 한때 둘이 따로 지었고, 방패 줄은 엔진의 옛 이름 「다시 묻지 않기」였다). 허락을 둔 자리
+ * (이은 Work, 없으면 그 Thread — S18)와 편집 허락인가로 네 갈래다: 「이 Work에서 늘 허용」 · 「이 Thread에서 편집은 늘 허용」 ….
+ */
+function alwaysAllow(inWork: boolean, edits: boolean): string {
+  return `${inWork ? "이 Work에서" : "이 Thread에서"} ${edits ? "편집은 " : ""}늘 허용`;
+}
+
+/**
+ * 엔진이 「늘 허용」 허락으로 넘긴 요청에 적는 까닭(판정 줄의 `reason` — `crates/atelier-acp/src/policy.rs`) → 화면의 말. 엔진 · 기록은 그 허락을
+ * 옛 이름으로 적고 이 판은 엔진을 바꾸지 않는다(02 구현 스펙 §13) — 지난 기록도 같은 이름이다. 엔진의 까닭은 허락이 편집인지 말하지 않아
+ * 「편집은」이 없다.
+ */
+const ENGINE_GRANT_REASONS: Readonly<Record<string, string>> = {
+  "이 Work에서는 다시 묻지 않기": alwaysAllow(true, false),
+  "이 Thread에서는 다시 묻지 않기": alwaysAllow(false, false),
+};
+
+/**
+ * 방패 줄의 까닭(v1 티켓 23 · `WorkLog`의 `AutoLine`) — 판정이 묻지 않고 허용한 까닭을 화면의 말로. 「늘 허용」으로 준 허락이면 카드의 말이고
+ * (`ENGINE_GRANT_REASONS`), 물어보는 정도(「편집은 허용」) · `tools.cli`(「「gh」 명령은 묻지 않기」)의 까닭은 엔진이 적은 그대로다.
+ */
+export function autoAllowReason(reason: string): string {
+  return ENGINE_GRANT_REASONS[reason] ?? reason;
 }

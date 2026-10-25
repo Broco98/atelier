@@ -608,7 +608,7 @@ impl fmt::Display for HostError {
                 write!(f, "이미 닫힌 권한 요청입니다. 답했거나 거둬진 요청에는 답할 수 없습니다")
             }
             HostError::PermissionOption { option, .. } => write!(f, "그 권한 요청에 없는 선택지입니다: {option}"),
-            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「다시 묻지 않기」로 허락할 수 없어요 — Policy가 매번 묻게 한 일이에요"),
+            HostError::PermissionNoGrant { .. } => write!(f, "이 요청은 「늘 허용」으로 허락할 수 없어요 — Policy가 매번 묻게 한 일이에요"),
             HostError::NotPermission { .. } => write!(f, "질문에는 답이나 「나중에」로 답해 주세요"),
             HostError::NotQuestion { .. } => write!(f, "질문이 아닌 요청이에요 — 승인 카드에서 골라 주세요"),
             HostError::LoginRequired { agent, .. } => {
