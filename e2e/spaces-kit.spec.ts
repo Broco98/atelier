@@ -569,8 +569,11 @@ test.describe("파일 고치기 화면", () => {
     await expect(켜진조각(page).getByRole("heading", { level: 2 })).toHaveText(결제.name);
     expect(await 짝지은줄(page, 결제줄수)).toEqual([2]);
 
-    // 글 끝(본문 아래 빈 줄)은 조각 밖이다 — 짝이 걷힌다. 한 줄 위가 본문이다.
-    await 편집기(page).press("Meta+ArrowDown");
+    // 글 끝(본문 아래 빈 줄)은 조각 밖이다 — 짝이 걷힌다. 한 줄 위가 본문이다. 끝 줄에는 ↓로 한 줄씩 내려가 선다 — 「글 끝으로」 키는
+    // 플랫폼마다 달라(macOS ⌘↓ · 리눅스 ⌃End), 한쪽 키는 다른 쪽 WebKit에서 커서를 그 자리에 둔다(리눅스 CI가 ⌘↓로 빨갰다). ↓는 두 쪽에서
+    // 한 줄 아래다. 줄 수만큼만 눌러 보고 끝 줄에 섰는지를 먼저 잰다.
+    for (let 남은 = 결제줄수; 남은 > 0 && (await 커서줄(page)) < 결제줄수; 남은 -= 1) await 편집기(page).press("ArrowDown");
+    expect(await 커서줄(page), "앵커: 커서가 글 끝 줄에 섰다").toBe(결제줄수);
     await expect(켜진조각(page)).toHaveCount(0);
     expect(await 짝지은줄(page, 결제줄수)).toEqual([]);
     await 편집기(page).press("ArrowUp");
