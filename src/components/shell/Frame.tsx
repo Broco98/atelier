@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { foldingInnerClass, PANE_RULE, PANEL_MOTION, TAB_ROW_CARD, TAB_ROW_COLUMN, useFoldedFocus } from "./panel-layout";
 import PanelToggle from "./PanelToggle";
 import Rail, { railStands, type RailProps } from "./Rail";
-import { ScreenHead } from "./ShellHead";
+import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import type { TargetRegion } from "./TargetMenu";
 import useSplitRatio from "./useSplitRatio";
@@ -451,15 +451,18 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 겉(면 · 둥글기 · 링)만 버리고 안은 그대로다 — 왼쪽 것은 머리 줄 가운데 왼쪽에, 오른쪽 것은 머리 줄 오른쪽 끝에 선다. 자리(사이드바
  * 끝의 세로선 뒤 · 접히면 셸 컨트롤 뒤 · 오른쪽 끝 여백)와 끌기는 셸의 머리 줄이 든다(`ShellHeadRow`).
  *
- * 왼쪽은 **이름 상자**(DS `.at-wtitle` — 아이콘 · 이름 · 연필을 품은 24 상자, 안쪽 0 8 · 사이 7 · `radius-md`, 이름 13/500 `fg`, 아이콘 14
- * `fg-secondary`)와 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다. 이름 상자의 안쪽 8은
+ * 왼쪽은 **이름 상자**(DS `.at-wtitle` — 아이콘 · 이름 · 연필을 품은 24 상자, 안쪽 0 8 · 사이 7 · `radius-md`, 아이콘 14 `fg-secondary`)와
+ * 그 뒤 브랜치(`branch`) · 옅은 위치(`sub`)다. 이름 글자는 Thread 이름과 같은 14/500 `fg`다(`HEAD_NAME` — 머리 줄은 한 결이다, 02 결정
+ * 「머리 줄은 한 결이다(03 뒤)」. 한때 머리 카드의 13/500이었다). 아이콘 14는 DS 부품 규칙(`.at-wtitle > .ic`)이다. 이름 상자의 안쪽 8은
  * hover 면 · 대상 테두리의 자리라, 묶음을 6 당겨(`-ml-1.5`) 사이드바가 열렸으면 아이콘이 판 안 본문 왼쪽 끝 + 16(세로선 뒤 14 − 6 + 8)
  * — 아래 탭 줄 첫 칸의 글리프와 한 세로줄 — 에 선다. 하위 화면은 그 앞에 돌아가는 길(`lead`)이 하나 선다. 브랜치 · 위치는 이름 상자 밖
  * 형제이고 상자 끝에서 6에 선다(DS `.at-winhead`의 사이 4 + `.sub`의 왼쪽 2 — 연필이 없는 이름이면 이름 끝에서 14다). 위치는 DS
  * `.at-winhead .sub`(12 `fg-tertiary`)이고, 브랜치는 프로젝트 화면 Works 행의 ⑂ 브랜치와 같은 말(⑂ 12 · 고정폭 12 `fg-secondary` · 사이
- * 5)이다. 오른쪽은 할 일 | 그 너머다(DS `.at-winctl-r` — 사이 6, 둘을 가르는 세로선 0.5 × 16 `border-heavy`). 오른쪽 패널을 든 화면은
- * 그 너머 맨 끝에 패널 토글이 든다(`toggle` — 레일이 서든 안 서든 같은 자리, DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive 「⋯ |
- * spec 목록 토글」). 서는 것은 모두 24다(글자 버튼은 `Button`의 `top`). 아이콘 버튼의 글리프는 셸 컨트롤처럼 15다(DS `HeadCard`의 `s15`).
+ * 5)이다. 오른쪽은 할 일 | 그 너머다 — 둘을 가르는 세로선 0.5 × 16 `border-heavy`(DS `.at-winctl-r`)가 양옆 8을 둔다. 오른쪽 패널을 든
+ * 화면은 그 너머 맨 끝에 패널 토글이 든다(`toggle` — 레일이 서든 안 서든 같은 자리, DS 「보기 배치(나눠 보기 · 패널 토글)」 · Archive
+ * 「⋯ | spec 목록 토글」). **오른쪽 끝 묶음과 단추는 Thread 머리 줄과 한 벌이다**(`ShellHead`의 `HeadEnd` — 단추 사이 2 · 이름 쪽과 12,
+ * `headButton` — 아이콘 단추 28 · 글리프 16 `fg-titlebar`, 글자 단추는 `Button`의 `top` 28). 한때 머리 카드의 값(24 · 사이 6 · 글리프
+ * 15)이었다.
  *
  * **이름 칸은 바닥을 알리지 않는다**(`contain-inline-size`) — 긴 work 이름이 좁은 창에서 할 일을 밀면 안 된다. 제 폭을 알리지 않는
  * 상자라 글자 폭으로는 서지 못해, 이름 칸(이름 상자 · 브랜치 · 위치의 줄)은 남는 폭을 먹는다(`flex-1`). 그 안에서 이름 상자는 DS
@@ -468,7 +471,7 @@ function BesideBox({ slot }: { slot: BesideSlot }) {
  * 통째로 걷힌다(`@container` — 반쯤 잘린 ⑂가 서지 않게). 위치는 이름 상자와 함께 준다(마지막 조각의 말줄임). 오른쪽 묶음은 화면 자리
  * 오른쪽 끝에 붙고(`ml-auto` — DS `.at-winctl-r`) 줄지 않는다(`shrink-0`) — 좁은 창에서도 할 일이 제 폭으로 선다(편집기의 「LLM이 받는
  * 텍스트」 · 「저장」도). 할 일이 없는 화면(Terminal · 빈 Works · 저장이 없는 설정 쪽)에는 묶음이 없다. 표식 `data-head-actions`는
- * 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ * 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf` — `HeadEnd`가 단다).
  *
  * **빈 자리는 창을 끈다** — 머리 줄이 `data-tauri-drag-region="deep"`이라 그 아래 어디를 눌러도 끌리고, Tauri는 누를 수 있는 요소(버튼 ·
  * `tabindex` · 입력칸 · 누르는 역할)를 만나면 끌지 않는다. 그래서 보이기만 하는 것(아이콘 · 이름 글자 · 위치 · 브랜치 · Archive의 배지
@@ -496,7 +499,7 @@ function FrameHead({
   // 바로 안이다 — 말줄임이 이 상자에서 끊기고, 글자로 이름을 찾는 쪽(`getByText`)이 이 상자(포커스 받는 그것)에 닿는다. 아이콘은 줄
   // 안의 글리프로 서서(`inline-block` · 위 5 — 24 줄에 14) 오른쪽 7을 둔다. 오른쪽 안쪽은 연필이 없으면 8, 있으면 연필 자리까지다(이름
   // 끝 5 · 연필 12 · 끝 8 — DS `.pen`의 왼쪽 -2가 사이 7에서 빠진다). 연필은 줄 밖에 떠(`absolute`) 말줄임이 그 앞에서 끊긴다.
-  const titleBox = "block h-6 max-w-[520px] min-w-0 truncate rounded-md pl-2 text-chat-meta leading-6 font-medium text-fg";
+  const titleBox = cn("block h-6 max-w-[520px] min-w-0 truncate rounded-md pl-2", HEAD_NAME, "leading-6");
   const titleEnd = rename ? "pr-6.25" : "pr-2";
   // 아이콘 한 벌 — 쉴 때(줄 안의 글리프)와 고칠 때(flex 줄의 칸)가 같은 크기 · 색 · 사이 7이다.
   const glyphClass = "mr-1.75 size-3.5 text-fg-secondary";
@@ -560,7 +563,7 @@ function FrameHead({
         onCommit={rename.onCommit}
         onDone={rename.onEnd}
         returnFocus={() => nameEl.current}
-        className="-ml-1 h-6 px-1 text-chat-meta font-medium text-fg"
+        className={cn("-ml-1 h-6 px-1", HEAD_NAME)}
       />
     </span>
   ) : nameMenu ? (
@@ -603,14 +606,15 @@ function FrameHead({
           )}
         </div>
         {(actions || end || toggle) && (
-          <div data-head-actions className="ml-auto flex shrink-0 items-center gap-1.5">
+          <HeadEnd>
             {actions}
+            {/* 세로선은 양옆 8을 둔다 — 묶음의 단추 사이 2에 제 6을 더한다. */}
             {actions && (end || toggle) && (
-              <div role="separator" aria-orientation="vertical" className="mx-0.5 h-4 w-[0.5px] shrink-0 bg-border-heavy" />
+              <div role="separator" aria-orientation="vertical" className="mx-1.5 h-4 w-[0.5px] shrink-0 bg-border-heavy" />
             )}
             {end}
             {toggle}
-          </div>
+          </HeadEnd>
         )}
       </div>
     </ScreenHead>

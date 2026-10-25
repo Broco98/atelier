@@ -7,6 +7,7 @@ import useResizableWidth from "@/components/shell/useResizableWidth";
 import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { togglesPanel } from "@/components/shell/PanelToggle";
+import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
 import { pickRail } from "@/components/shell/Rail";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
@@ -15,7 +16,6 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
-import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -932,24 +932,22 @@ function WorksPage({
         // 넘긴다.
         //
         // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다.
-        // 라벨이 대상을 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말한다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` ·
-        // 켜짐 toggle-on)은 부품의 icon-xs 크기다.
+        // 라벨이 대상을 이름하고 켜짐은 `aria-pressed`가 말한다. 모양은 머리 줄의 아이콘 단추 한 벌이다(`headButton` — 28 · 글리프 16
+        // `fg-titlebar`, 켜지면 크롬 위 켜진 면 — Thread의 요약 고정 토글과 같다, 02 결정 「머리 줄은 한 결이다(03 뒤)」). 그래서
+        // `Toggle` 부품(켜짐 `toggle-on`)이 아니라 요약 고정 토글과 같은 꼴(`aria-pressed`를 단 버튼)이다.
         //
         // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이 날지를 틀리게 말한다. 설명(`aria-description`)은
         // 안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28).
         end: (
           <Hint
             text={split !== null ? "분할 끄기" : "분할 켜기"}
-            render={
-              <Toggle
-                size="icon-xs"
-                aria-label="분할"
-                pressed={split !== null}
-                onPressedChange={(on) => changeSplit(on ? "lr" : null, columnOf(tab))}
-              />
-            }
+            type="button"
+            aria-label="분할"
+            aria-pressed={split !== null}
+            onClick={() => changeSplit(split === null ? "lr" : null, columnOf(tab))}
+            className={headButton(split !== null ? "on" : "rest")}
           >
-            <Columns2 className="size-3.75" />
+            <Columns2 className={HEAD_GLYPH} />
           </Hint>
         ),
       }
@@ -1334,21 +1332,16 @@ function WorkMenu({
           <DropdownMenuTrigger
             disabled={busy}
             aria-busy={processing}
-            // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 세로선 너머 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
-            // 위 줄에 서는 것은 모두 24다(DS `HeadCard`) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
-            // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-            className={cn(
-              "icon-button icon-button-xs transition-colors focus-ring",
-              "disabled:pointer-events-none disabled:opacity-50",
-              open ? "toggle-on" : "text-fg-tertiary quiet-hover",
-            )}
+            // **머리 줄의 아이콘 단추 한 벌이다**(`headButton` — 28 · 글리프 16, 펼친 동안 hover와 같은 면) — 세로선 너머 분할 토글 ·
+            // Thread의 「…」와 같은 상자다(02 결정 「머리 줄은 한 결이다(03 뒤)」) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
+            className={cn(headButton(open ? "open" : "rest"), "disabled:pointer-events-none disabled:opacity-50")}
           />
         }
       >
         {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
             깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
             disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-        <MoreHorizontal className="size-3.75" />
+        <MoreHorizontal className={HEAD_GLYPH} />
       </Hint>
       <DropdownMenuContent
         finalFocus={() => {

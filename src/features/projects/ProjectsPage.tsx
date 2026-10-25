@@ -142,7 +142,7 @@ function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps)
             }
           : undefined,
         actions: selected && (
-          // 머리 줄의 글자 버튼(`Button` top — 24, DS `.at-btn.top`). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
+          // 머리 줄의 글자 버튼(`Button` top — 28, 머리 줄의 단추는 모두 28이다). 폴더가 사라진 프로젝트는 열 것이 없어 잠근다.
           <Button
             variant="ghost"
             size="top"

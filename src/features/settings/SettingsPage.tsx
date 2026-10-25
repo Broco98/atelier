@@ -599,7 +599,7 @@ function AgentHooksPage() {
 /**
  * 구획 하나의 저장 버튼과 그 저장이 실패한 까닭. **버튼은 머리 줄의 할 일 자리에 선다**(`HeadActionsSlot` — codex-ds 스펙 §7) — 어느
  * 쪽이든 저장을 같은 자리에서 찾는다(스토리 60). 그리는 것은 이 조각이라 초안 · 저장 규칙(「쓰는 순간의 최신에 자기 칸만 덮는다」,
- * `save-section.ts`)은 그대로다. 실패 글은 몸에 남아 큰 제목 바로 아래(조각의 맨 위)에 선다 — 머리 줄은 24 한 줄이라 긴 까닭이
+ * `save-section.ts`)은 그대로다. 실패 글은 몸에 남아 큰 제목 바로 아래(조각의 맨 위)에 선다 — 머리 줄은 28 단추 한 줄이라 긴 까닭이
  * 들어가지 않고, 몸의 맨 위가 누른 버튼에서 가장 가깝다.
  */
 function SaveButton({
@@ -619,7 +619,7 @@ function SaveButton({
       {error !== null && <p className="mt-2.5 text-chat-meta break-words text-danger">{error}</p>}
       {slot !== null &&
         createPortal(
-          // 주 버튼(Button의 기본 — DS `.at-btn.top.primary`)이고 머리 줄의 글자 버튼 단(`top` — 24)이다. 편집기의 [저장]과 같은 규격이다.
+          // 주 버튼(Button의 기본 — DS `.at-btn.top.primary`)이고 머리 줄의 글자 버튼 단(`top` — 28)이다. 편집기의 [저장]과 같은 규격이다.
           <Button size="top" onClick={onSave} disabled={!enabled}>
             {saving ? "저장 중…" : "저장"}
           </Button>,

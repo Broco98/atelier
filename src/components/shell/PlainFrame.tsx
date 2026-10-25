@@ -3,7 +3,7 @@ import { InlineRename } from "@/components/ui/inline-rename";
 import { HOTKEYS, pressed } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { HeadRename } from "./Frame";
-import { ScreenHead } from "./ShellHead";
+import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 
 // **Thread · 첫 화면 · Library가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07) — 틀은 앱 셸 하나다: 크롬 맨 위 머리 줄(44)과 그 아래 흰 판
 // (`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의
@@ -16,7 +16,8 @@ import { ScreenHead } from "./ShellHead";
 //   이름은 포커스를 받는 요소라 Tauri가 끌기에서 스스로 비켜 둔다 — 끄는 자리의 두 번 클릭은 창 키우기라, 두 번 클릭이 이름 바꾸기인
 //   이름은 끌면 안 된다. 이름이 없는 새 Thread는 머리 줄 가운데가 빈다(F1-Home 보드).
 // - **Codex 머리 줄 모양이다**(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽은 이름 앞 · 이름이 틈 8로 한 줄이고, 오른쪽 끝은 28 아이콘 버튼들이
-//   틈 2로 선다(왼쪽과 적어도 12 띄움). 오른쪽 끝 여백 8은 셸의 화면 자리가 든다.
+//   틈 2로 선다(왼쪽과 적어도 12 띄움). 오른쪽 끝 여백 8은 셸의 화면 자리가 든다. 이름 글자 · 오른쪽 끝 묶음의 값은 머리 줄 부품 한
+//   곳(`ShellHead`의 `HEAD_NAME` · `HeadEnd`)이 들고, 공용 틀 화면의 머리(`FrameHead`)도 같은 것을 쓴다 — 머리 줄은 한 결이다.
 // - **머리 줄 아래 선은 없다** — 판의 위끝이 경계다. 본문은 제 카드 없이 흰 판에 곧장 선다.
 // - **이름은 그 자리에서 바꾼다**(두 번 클릭 · F2) — 공용 틀 화면의 머리 줄 이름과 같은 길이다(`HeadRename` · `InlineRename`).
 
@@ -61,7 +62,7 @@ export function PlainHead({ lead, title, end }: PlainHeadProps) {
           {title && <PlainTitle name={title.name} rename={title.rename} />}
         </div>
       )}
-      {end && <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-3">{end}</div>}
+      {end && <HeadEnd>{end}</HeadEnd>}
     </>
   );
 }
@@ -82,7 +83,7 @@ function PlainTitle({ name, rename }: { name: string; rename?: HeadRename }) {
         onCommit={rename.onCommit}
         onDone={rename.onEnd}
         returnFocus={() => nameEl.current}
-        className="-ml-1 h-6 px-1 text-sm font-medium text-fg"
+        className={cn("-ml-1 h-6 px-1", HEAD_NAME)}
       />
     );
   }
@@ -98,7 +99,7 @@ function PlainTitle({ name, rename }: { name: string; rename?: HeadRename }) {
         }
       }}
       onDoubleClick={rename?.onStart}
-      className={cn("min-w-0 truncate rounded-md text-sm font-medium text-fg", rename && "focus-ring")}
+      className={cn("min-w-0 truncate rounded-md", HEAD_NAME, rename && "focus-ring")}
     >
       {name}
     </span>

@@ -392,17 +392,23 @@ describe("WorksPage 머리 줄 배치", () => {
     expect(render()).not.toContain("작업 메타");
   });
 
-  it("⋯와 분할이 같은 상자를 쓴다", () => {
-    // 머리 줄의 한 묶음(세로선을 사이에 둔 ⋯와 분할)에 선 아이콘 버튼은 모두 24다 — 상자가 다르면 하나만 튀어 보인다.
+  it("⋯와 분할이 같은 상자를 쓴다 — Thread 머리 줄의 단추와 같은 28이다", () => {
+    // 머리 줄의 한 묶음(세로선을 사이에 둔 ⋯와 분할)에 선 아이콘 버튼은 모두 같은 상자다 — 상자가 다르면 하나만 튀어 보인다.
     // 눈으로는 "살짝 튄다"로만 보여서, 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에 안 드러난다.
     // ⋯가 22px·radius 7이었던 것은 옛 이웃인 상태 배지에 맞춘 값인데, 그 배지가 오른쪽
-    // actions로 가면서 맞출 상대가 24px 아이콘 버튼으로 바뀌었다.
+    // actions로 가면서 맞출 상대가 아이콘 버튼으로 바뀌었다. 그 상자는 머리 카드 때 24였고, 머리 줄이 한 결이 되며(02 결정 「머리 줄은
+    // 한 결이다(03 뒤)」) Thread의 「…」 · 요약 고정과 같은 28(아이콘 버튼 기본 — 작은 단 `icon-button-xs`가 없다) · 글리프 16이다.
     const tags = header(render()).match(/<button[^>]*>/g) ?? [];
     const box = (label: string) =>
       tags.find((tag) => tag.includes(`aria-label="${label}"`))?.match(/class="([^"]*)"/)?.[1] ?? "";
-    expect(box("작업 메뉴")).toMatch(/\bicon-button\b/);
-    expect(box("분할")).toMatch(/\bicon-button\b/);
-    // 크기 단까지 같은지(둘 다 24)는 L3가 칠해진 상자로 잰다(`e2e/primitives.spec.ts`)
+    for (const label of ["작업 메뉴", "분할"]) {
+      expect(box(label), label).toMatch(/\bicon-button\b/);
+      expect(box(label), label).not.toMatch(/\bicon-button-xs\b/);
+    }
+    const glyph = (icon: string) => header(render()).match(new RegExp(`<svg[^>]*class="[^"]*lucide-${icon}\\b[^"]*"`))?.[0] ?? "";
+    expect(glyph("ellipsis")).toMatch(/\bsize-4\b/);
+    expect(glyph("columns-2")).toMatch(/\bsize-4\b/);
+    // 크기 단까지 같은지는 L3가 칠해진 상자로 잰다(`e2e/primitives.spec.ts`)
     // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
+import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { Input } from "@/components/ui/input";
@@ -250,7 +251,7 @@ function EditorScreen({ read, onBack }: { read: SpecLayoutRead; onBack: () => vo
       onBack={onBack}
       actions={
         <>
-          {/* 머리 줄의 글자 버튼이다(`Button` ghost · top — 24 · `radius-md`, DS `.at-btn.top`). 아이콘은 글자 앞에
+          {/* 머리 줄의 글자 버튼이다(`Button` ghost · top — 28 · `radius-lg`, 머리 줄의 단추는 모두 28이다). 아이콘은 글자 앞에
               선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
               `aria-expanded`)를 달지 않는다 — 앱의 다른 창 여는 버튼(전체화면 뷰어)과 같다: 창이 뜨면 창이
               제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
@@ -406,11 +407,12 @@ function EditorFrame({
       // 준다(`Frame`의 `FrameHead`) — 글자가 시스템 글꼴이라 글자 폭이 OS마다 달라(codex-ds 결정 3) 손으로 잰 수를 두지 않는다. 가장 좁은 창
       // (900)에 사이드바를 가장 넓혀(400) 두어도 머리 줄의 화면 자리가 그 둘보다 넓다.
       head={{
-        // 머리 줄의 작은 아이콘 버튼(`icon-button-xs` — 24 · `radius-md`, 머리 줄의 화면 것은 모두 24다 — DS `HeadCard`).
+        // 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · `radius-lg` · 글리프 16, Thread 머리 줄의 「…」와 같다 — 02 결정 「머리 줄은 한
+        // 결이다(03 뒤)」).
         lead: (
-          <Button variant="ghost" size="icon-xs" onClick={onBack} aria-label="설정으로 돌아가기">
-            <ArrowLeft aria-hidden className="size-3.75" />
-          </Button>
+          <button type="button" className={headButton()} onClick={onBack} aria-label="설정으로 돌아가기">
+            <ArrowLeft aria-hidden className={HEAD_GLYPH} />
+          </button>
         ),
         icon: SettingsIcon,
         name: "Settings",

@@ -392,9 +392,9 @@
      heading-sm  18 / 26 · 600       문서 h2
      heading-xs  16 / 24 · 600       문서 h3 · 확인 창 제목
      chat-body   14 / 22.75          spec 문서 본문 · 대화 본문 · 말풍선
-     sm          14 / 20             work 행 · 목록 행 · 버튼 · 입력 · 설정 이름
+     sm          14 / 20             work 행 · 목록 행 · 버튼 · 입력 · 설정 이름 · 머리 줄의 화면 이름(500 — `ShellHead`의 `HEAD_NAME`)
      nav-row     14 / 20 · 500       main nav 행(Atelier)
-     chat-meta   13 / 18             탭 · 트리 · 메뉴 · 경로 캡슐 · 머리 줄의 화면 이름 · 소제목
+     chat-meta   13 / 18             탭 · 트리 · 메뉴 · 경로 캡슐 · 소제목
      xs          12 / 18 · +0.025em  행 메타 · 배지 · 툴팁 · 시간 · 단축키
      2xs         10 / 14 · +0.025em  트리의 확장자 꼬리표
      code        13 / 20             코드 블록 · 명령 출력 · 경로 값
@@ -1345,11 +1345,12 @@
   inherits: false;
 }
 
-/* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 머리
-   줄의 화면 것(작업 ⋯ · 분할 · 패널 토글 · 편집기의 「설정으로 돌아가기」)과 탭 줄의 `+`, 줄 **안**에
-   서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의 닫기 — spec
-   열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 머리 줄의 셸 컨트롤은 이 단이 아니라
-   기본 28이다(Codex 머리 줄 — `[data-titlebar]`의 `--titlebar-control-size`). */
+/* **작은 아이콘 버튼 — 24 · `radius-md`**(DS `.at-ib.xs`). `icon-button`(또는 그것을 부르는 `-quiet` · `-tint`)에 얹는다. 탭 줄의
+   `+`, 줄 **안**에 서는 단추(사이드바 행의 핀 · 트리 행의 복사 · 탭의 `×` · Processes 행의 ⋯ · 토스트 · 전체화면 창 · 분할 두 열의
+   닫기 — spec 열은 경로 줄 끝, terminal 열은 탭 줄 끝)가 쓴다 — 줄 높이(28 · 30 · 32) 안에 들어앉는다. 머리 줄의 단추는 이 단이
+   아니라 기본 28이다 — 셸 컨트롤(`[data-titlebar]`의 `--titlebar-control-size`)도 화면 것(작업 ⋯ · 분할 · 패널 토글 · 편집기의
+   「설정으로 돌아가기」 — `ShellHead`의 `headButton`)도 Codex 머리 줄 값이다(02 결정 「머리 줄은 한 결이다(03 뒤)」 — 한때 화면 것은 머리
+   카드의 24였다). */
 @utility icon-button-xs {
   --icon-button-size: 24px;
   --icon-button-radius: var(--radius-md);

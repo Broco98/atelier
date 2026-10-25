@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { createLucideIcon, Folder, MoreHorizontal, Pencil } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Hint } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
 import { useWorks } from "@/features/works/hooks";
 import { useArchivedWork } from "./SummaryCard";
 
@@ -71,7 +71,8 @@ export function ThreadMenuItems({ rename }: { rename: (() => void) | null }) {
 
 /**
  * 머리 줄 오른쪽의 「…」(02 §6 · 시안 Screen-Live — 28 · `radius-lg`, 글리프 16 `fg-titlebar`) — 이 Thread의 대상 메뉴(`ThreadMenuItems`)를
- * 연다. 열린 동안은 hover와 같은 면이다. 여닫이 · 줄 옮기기 · Esc · 바깥 누르기는 메뉴 부품이 한다(work 메뉴 ⋯와 같다).
+ * 연다. 열린 동안은 hover와 같은 면이다. 여닫이 · 줄 옮기기 · Esc · 바깥 누르기는 메뉴 부품이 한다(work 메뉴 ⋯와 같다). 모양은 머리 줄의
+ * 아이콘 단추 한 벌이다(`ShellHead`의 `headButton` — 공용 틀 화면의 ⋯ · 분할 · 패널 토글도 같은 것을 쓴다).
  *
  * **「이름 바꾸기」로 닫히면 포커스를 「…」로 돌리지 않는다**(`finalFocus`) — 머리 줄 이름 자리에 막 선 입력칸이 포커스를 받는데,
  * 「…」로 돌아가면 입력칸이 곧바로 blur되어 「다른 곳 = 저장」으로 닫힌다(work 메뉴 ⋯와 같은 까닭 — 구현 노트 Q7). 그 밖의 닫힘은
@@ -92,15 +93,10 @@ export function ThreadMenu({ rename }: { rename: (() => void) | null }) {
         text="Thread 메뉴"
         announce="name"
         render={
-          <DropdownMenuTrigger
-            className={cn(
-              "icon-button transition-colors focus-ring",
-              open ? "bg-fill-hover text-fg" : "text-fg-titlebar quiet-hover",
-            )}
-          />
+          <DropdownMenuTrigger className={headButton(open ? "open" : "rest")} />
         }
       >
-        <MoreHorizontal className="size-4" />
+        <MoreHorizontal className={HEAD_GLYPH} />
       </Hint>
       <DropdownMenuContent
         align="end"
@@ -144,12 +140,9 @@ export function SummaryToggle({ open, onToggle }: { open: boolean; onToggle: () 
       type="button"
       aria-pressed={open}
       onClick={onToggle}
-      className={cn(
-        "icon-button transition-colors focus-ring",
-        open ? "bg-fill-toggle-on text-fg" : "text-fg-titlebar quiet-hover",
-      )}
+      className={headButton(open ? "on" : "rest")}
     >
-      <SummaryGlyph className="size-4" />
+      <SummaryGlyph className={HEAD_GLYPH} />
     </Hint>
   );
 }

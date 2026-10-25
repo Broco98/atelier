@@ -11,6 +11,7 @@ import { navItem } from "@/components/shell/nav-items";
 import { openInFinder } from "@/components/shell/open-in-finder";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { togglesPanel } from "@/components/shell/PanelToggle";
+import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { TargetMenu } from "@/components/shell/TargetMenu";
 import useResizableWidth from "@/components/shell/useResizableWidth";
@@ -369,9 +370,10 @@ function archiveMenuActions(slug: string, onCopy: (text: string) => void): Archi
 
 // 머리 줄의 ⋯ — 아카이브 메뉴(codex-ds 결정 16 「Archive 목록 행」 · 스펙 §7). 무엇을 어떤 차례로 보이는지는 메뉴 정의
 // (`ArchiveMenuItems`)가 들고, 여기는 그 항목이 부르는 동작을 잇는다: Finder 열기와 spec 폴더 경로 복사. 모양과 여닫이는 작업 화면의
-// ⋯(`WorksPage`의 `WorkMenu`)와 같다 — 위 줄의 24 아이콘 버튼이고 펼친 동안 켜진 면이다. 머리 줄 안이고 버튼이라 창 끌기 영역이 아니다.
+// ⋯(`WorksPage`의 `WorkMenu`)와 같다 — 머리 줄의 아이콘 단추 한 벌(`headButton` — 28 · 글리프 16)이고 펼친 동안 hover와 같은 면이다.
+// 머리 줄 안이고 버튼이라 창 끌기 영역이 아니다.
 function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) => void }) {
-  // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
+  // 열림을 여기서 든다 — 펼친 동안의 면(`headButton`의 `open`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -380,14 +382,11 @@ function ArchiveMenu({ slug, onCopy }: { slug: string; onCopy: (text: string) =>
         announce="name"
         render={
           <DropdownMenuTrigger
-            className={cn(
-              "icon-button icon-button-xs transition-colors focus-ring",
-              open ? "toggle-on" : "text-fg-tertiary quiet-hover",
-            )}
+            className={headButton(open ? "open" : "rest")}
           />
         }
       >
-        <MoreHorizontal className="size-3.75" />
+        <MoreHorizontal className={HEAD_GLYPH} />
       </Hint>
       <DropdownMenuContent>
         <ArchiveMenuItems actions={archiveMenuActions(slug, onCopy)} />

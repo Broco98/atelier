@@ -17,6 +17,9 @@ import { PANEL_MOTION } from "./panel-layout";
 // - **화면은 제 이름과 할 일만 보낸다** — 그릇은 여기 하나이고 화면은 `ScreenHead`로 그 안에 그린다. 머리의 상태(이름 고치기 · 카드
 //   여닫기)는 화면에 산 채 자리만 머리 줄이다(설정 화면의 저장 버튼이 머리 줄의 할 일 묶음으로 가는 `HeadActionsSlot`과 같은 길).
 //   공용 틀(`Frame`)의 화면들은 `FrameHead`가, Thread 화면들은 `PlainFrame`이 이것으로 보낸다.
+// - **화면 것의 값도 여기 한 곳이다**(02 결정 「머리 줄은 한 결이다(03 뒤)」) — 이름(`HEAD_NAME`) · 아이콘 단추(`headButton` ·
+//   `HEAD_GLYPH`) · 오른쪽 끝 묶음(`HeadEnd`). 줄이 하나이니 그 위에 서는 것도 어느 화면이든 한 결이다. 값은 Codex 크롬 줄(시안
+//   Screen-Live `.tb-c` · `.tb-r` — Thread 머리 줄, 06)이다. 글자 단추는 `Button`의 `top`(28 — 아이콘 단추와 같은 높이)이다.
 
 /** 머리 줄의 화면 자리 — 앱 셸이 그 그릇을 내린다. 셸 밖(그릇이 아직 없거나 셸 없이 그린 화면)이면 `null`이다. */
 export const ShellHeadSlot = createContext<HTMLElement | null>(null);
@@ -68,4 +71,38 @@ export function ShellHeadRow({ open, dragging, onSlot, children }: ShellHeadRowP
 export function ScreenHead({ children }: { children: ReactNode }) {
   const slot = useContext(ShellHeadSlot);
   return slot ? createPortal(children, slot) : null;
+}
+
+/**
+ * 머리 줄의 이름 글자 — 14/500 `fg`(시안 `.bar .title` · 02 §6). Thread 이름(`PlainFrame`)과 공용 틀의 이름 상자(`FrameHead`)가 같은
+ * 글자다. 줄 높이는 부르는 자리가 든다(이름 상자는 24 줄 상자다).
+ */
+export const HEAD_NAME = "text-sm font-medium text-fg";
+
+/** 머리 줄 아이콘 단추의 글리프 — 16(시안 Screen-Live 「…」 · 요약 토글). 셸 컨트롤(15)은 왼쪽 칸의 것이라 따로다. */
+export const HEAD_GLYPH = "size-4";
+
+/**
+ * 머리 줄의 아이콘 단추 — 28 · `radius-lg`(아이콘 버튼 기본 — `--size-control`), 글리프 `fg-titlebar`(#898a8b — 크롬 위 글리프). 쉴 때
+ * hover는 버튼 hover(`quiet-hover`)이고, 펼친 메뉴의 트리거(`open` — 「…」 · ⋯)는 hover와 같은 면, 켜진 토글(`on` — 요약 고정 · 분할)은
+ * 크롬 위 켜진 면(`fill-toggle-on` #ebebec)이다. 둘 다 글리프가 `fg`로 진해진다. hover는 쉴 때의 가지에만 둔다(`quiet-hover` 머리말).
+ * Thread의 「…」 · 요약 고정과 공용 틀의 ⋯ · 분할 · 패널 토글 · 돌아가기가 이 한 벌이다.
+ */
+export function headButton(state: "rest" | "open" | "on" = "rest") {
+  return cn(
+    "icon-button transition-colors focus-ring",
+    state === "open" ? "bg-fill-hover text-fg" : state === "on" ? "bg-fill-toggle-on text-fg" : "text-fg-titlebar quiet-hover",
+  );
+}
+
+/**
+ * 머리 줄 오른쪽 끝 묶음 — 화면 자리 오른쪽 끝에 붙고(`ml-auto` — 끝 여백 8은 셸의 화면 자리가 든다) 줄지 않으며(`shrink-0`), 단추 사이
+ * 2 · 이름 쪽과 적어도 12다(시안 `.tb-r`). 표식 `data-head-actions`는 그것을 재는 검사가 집는다(e2e `tab-row.ts`의 `rowOf`).
+ */
+export function HeadEnd({ children }: { children: ReactNode }) {
+  return (
+    <div data-head-actions className="ml-auto flex shrink-0 items-center gap-0.5 pl-3">
+      {children}
+    </div>
+  );
 }

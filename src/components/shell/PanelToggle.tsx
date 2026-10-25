@@ -1,6 +1,7 @@
 import { PanelRight } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { pressed, type KeyChord } from "@/lib/hotkeys";
+import { HEAD_GLYPH, headButton } from "./ShellHead";
 
 interface PanelToggleProps {
   /** 여닫는 패널의 이름 — 토글의 이름 · 도움말이 그 뒤에 할 일을 붙인다(「작업 패널 접기」 · 「spec 목록 펼치기」). */
@@ -19,9 +20,10 @@ interface PanelToggleProps {
  * 그대로 둔다 — ⌘Enter와 같은 일이다(판정은 아래 `togglesPanel`, 듣는 자리는 `WorksPage` ·
  * `ArchivePage`).
  *
- * 왼쪽 셸 컨트롤의 사이드바 토글(`PanelLeft`)을 뒤집은 그림이고 모양도 그것과 같다 — 위 줄의 작은 아이콘 버튼(`icon-button-xs`, 24 ·
- * `radius-md`)에 hover는 `quiet-hover`다. 위 줄에 서는 것은 모두 24다(DS). 열림은 켜진 면으로 따로 칠하지 않는다 — 사이드바 토글과
- * 같이 `aria-expanded`와 이름이 말한다. 한때 레일 열 맨 위의 32 원이었고 열리면 흰 원이었다(그때는 머리 줄이 없었다).
+ * 왼쪽 셸 컨트롤의 사이드바 토글(`PanelLeft`)을 뒤집은 그림이다. 모양은 머리 줄의 아이콘 단추 한 벌이다(`headButton` — 28 ·
+ * `radius-lg` · 글리프 16 `fg-titlebar`, hover는 `quiet-hover` — Thread 머리 줄의 「…」 · 요약 고정과 같다, 02 결정 「머리 줄은 한
+ * 결이다(03 뒤)」). 열림은 켜진 면으로 따로 칠하지 않는다 — 사이드바 토글과 같이 `aria-expanded`와 이름이 말한다. 한때 머리 카드의 24
+ * 단추였고, 그 전에는 레일 열 맨 위의 32 원이었고 열리면 흰 원이었다(그때는 머리 줄이 없었다).
  *
  * 이름과 도움말은 상태를 탄다 — 누르면 무슨 일이 날지를 말한다(분할 토글과 같다). 앞말은 여닫는 패널의 이름이다(`name` — 공용 틀이 패널
  * 칸의 이름을 건넨다). 열림은 `aria-expanded`가 이미 말하므로 설명은 달지 않고, 키(⌘Enter — 단축키 표의 `panel`)만 도움말 옆 Kbd와
@@ -41,9 +43,9 @@ function PanelToggle({ name, open, onToggle, controls }: PanelToggleProps) {
       aria-expanded={open}
       aria-controls={controls}
       tabIndex={0}
-      className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
+      className={headButton()}
     >
-      <PanelRight className="size-3.75" />
+      <PanelRight className={HEAD_GLYPH} />
     </Hint>
   );
 }
