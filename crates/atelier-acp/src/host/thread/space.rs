@@ -2,8 +2,9 @@
 //!
 //! - **Work에 이은 Thread의 Space는 그 Work의 것이다**(§9) — Thread에서 바꾸면(Space 칩) 그 Work의 Space가 바뀐다(스토리 42). Work의
 //!   Space가 바뀌면 그 Work의 Thread마다 Space 줄이 선다(S9) — 그 Thread들의 범위가 모두 바뀐다.
-//! - **Space 줄**(`space`)은 사람의 줄이다(`who`가 없다). 갈래(`change` — 바꿈 `changed` · 뺌 `removed`)와 바뀐 뒤의 범위(읽는 Project의
-//!   이름 · 등록된 Project 수)를 싣는다 — 화면은 그때의 범위를 다시 셀 수 없다(기록은 덧붙이기만 한다).
+//! - **Space 줄**(`space`)은 시스템 줄이다(`who`가 없다 — S8). 갈래 다섯(`change` — 사람이 칩 · 메뉴로 한 바꿈 `changed` · 뺌 `removed`,
+//!   Host 「알아서」의 붙임 `attached`(08), 지워짐 `deleted` · 되돌림 `restored`(07))과 바뀐 뒤의 범위(읽는 Project의 이름 · 등록된
+//!   Project 수 · worktree에서 일하는 Project의 이름)를 싣는다 — 화면은 그때의 범위를 다시 셀 수 없다(기록은 덧붙이기만 한다).
 //! - 떠 있는 Session은 건드리지 않는다 — 다음 말을 보낼 때 새 자리로 이어 연다([`ConversationHost::move_if_needed`] — 범위가 바뀌면 함께
 //!   여는 폴더가 바뀐다). 돌고 있는 턴은 끊기지 않는다(스토리 41).
 //! - **Space를 지우면**(티켓 07 · §9) 그 Space에 이은 칸이 비고 그 Space로 읽던 Thread마다 「지워짐」 줄이, 되돌리면 다시 적은 곳마다

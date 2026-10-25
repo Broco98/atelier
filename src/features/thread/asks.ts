@@ -1,4 +1,5 @@
-import { particle, type PendingAsk, type ThreadModel, type ToolEntry } from "./fold";
+import { particle } from "@/lib/particle";
+import { type PendingAsk, type ThreadModel, type ToolEntry } from "./fold";
 import { text } from "./json";
 import { describeTool } from "./tool-view";
 

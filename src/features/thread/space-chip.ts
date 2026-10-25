@@ -1,5 +1,5 @@
 import { readingList, type ReadingScope, type ScopeSpace } from "@/features/spaces/scope";
-import { particle } from "./fold";
+import { particle } from "@/lib/particle";
 import type { SpacePick, ThreadLink } from "./types";
 
 // 트레이의 **Space 칩**과 **범위 줄**(03 구현 스펙 §5 · 티켓 06 · 캔버스 v52 F4-KitComposer · F4-HomeSpaceMenu · F4-HomeSpacePicked)의 순수

@@ -118,9 +118,9 @@ pub use store::{project_usage, remove_project, restore_project, ListingSpace, Pr
 // Space(03 구현 스펙 §8) — 파일 하나가 Space 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
 // 읽는 범위가 모두 이것을 부른다(S7).
 pub use space::{
-    check_space, create_space, delete_space, draft_space, edit_space_text, get_space, list_spaces, new_space_slug, read_space_text,
-    restore_space, save_space_text, shared_spaces, space_detail, space_usage, update_space,
-    DeletedSpace, Lines, NewSpace, RestoredSpace, SharedSpace, Space, SpaceCheck, SpaceDetail, SpaceDraft, SpaceLinks, SpacePatch,
+    create_space, delete_space, draft_space, edit_space_text, get_space, list_spaces, new_space_slug, read_space_text, restore_space,
+    save_space_text, shared_spaces, space_detail, space_usage, update_space,
+    DeletedSpace, Lines, NewSpace, RestoredSpace, SharedSpace, Space, SpaceDetail, SpaceDraft, SpaceLinks, SpacePatch,
     SpacePieces, SpaceProblem, SpaceProblemKind, SpaceUsage,
 };
 // 읽는 범위(03 구현 스펙 §7) — Thread가 읽는 Project를 정하는 함수 하나. 엔진의 Session 자리 · 머리말과 앱 명령(범위 줄 · 요약 카드)이

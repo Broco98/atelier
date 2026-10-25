@@ -98,10 +98,6 @@ pub struct Lines {
     pub last: usize,
 }
 
-pub fn check_space(text: &str, registered: &[String]) -> SpaceCheck {
-    read_text(text, registered).check
-}
-
 /// Space 파일을 고칠 것 — 상세 화면(설명 · 넣기 · 빼기)과 Host 도구가 쓴다. 비어 있는 칸은 그대로 둔다.
 #[derive(Debug, Clone, Default)]
 pub struct SpacePatch {
@@ -134,29 +130,29 @@ pub fn edit_space_text(text: &str, patch: &SpacePatch) -> Result<String> {
         .into_iter()
         .filter(|problem| matches!(problem.kind, SpaceProblemKind::UnclosedFrontmatter | SpaceProblemKind::BadYaml))
         .collect();
-    let Some(layout) = Layout::of(text).filter(|_| structural.is_empty()) else {
+    let Some(outline) = Outline::of(text).filter(|_| structural.is_empty()) else {
         return Err(Error::SpaceProblems(structural));
     };
-    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(layout.yaml).unwrap_or_default();
+    let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(outline.yaml).unwrap_or_default();
     // 고칠 자리마다 (원래 글의 줄 범위, 새 줄들) — 모두 원래 글의 줄 번호로 짓고 아래 자리부터 바꾼다. 한 칸을 고쳐 줄 수가 바뀌어도 다른
     // 칸의 자리가 밀리지 않는다.
     let mut edits: Vec<(std::ops::Range<usize>, Vec<String>)> = Vec::new();
     if let Some(description) = &patch.description {
         let description = description.trim();
         let body = if description.is_empty() { String::new() } else { format!("\n{description}\n") };
-        edits.push((layout.close + 1..layout.lines.len(), vec![body]));
+        edits.push((outline.close + 1..outline.lines.len(), vec![body]));
     }
     if !patch.add.is_empty() || !patch.remove.is_empty() {
-        edits.extend(projects_edit(&layout, &yaml, patch));
+        edits.extend(projects_edit(&outline, &yaml, patch));
     }
     if let Some(name) = &patch.name {
         let line = format!("name: {}", yaml_scalar(&name.split_whitespace().collect::<Vec<_>>().join(" ")));
-        let at = layout.key("name").map_or(1..1, |key| key.first..key.last + 1);
+        let at = outline.key("name").map_or(1..1, |key| key.first..key.last + 1);
         edits.push((at, vec![line]));
     }
     // 같은 자리에 끼우는 둘(칸이 없는 name · projects)은 나중에 바꾼 것이 위에 선다 — name이 projects 위다.
     edits.sort_by_key(|(at, _)| std::cmp::Reverse(at.start));
-    let mut lines: Vec<String> = layout.lines.iter().map(|line| line.to_string()).collect();
+    let mut lines: Vec<String> = outline.lines.iter().map(|line| line.to_string()).collect();
     for (at, new_lines) in edits {
         lines.splice(at, new_lines);
     }
@@ -165,11 +161,11 @@ pub fn edit_space_text(text: &str, patch: &SpacePatch) -> Result<String> {
 
 /// `projects` 칸에 넣고 빼는 자리와 새 줄 — [`edit_space_text`]의 Project 갈래. 바꿀 것이 없으면 없다.
 fn projects_edit(
-    layout: &Layout,
+    outline: &Outline,
     yaml: &serde_yaml_ng::Value,
     patch: &SpacePatch,
 ) -> Option<(std::ops::Range<usize>, Vec<String>)> {
-    let items = layout.projects(yaml);
+    let items = outline.projects(yaml);
     let kept: Vec<&String> = items.iter().map(|(slug, _)| slug).filter(|slug| !patch.remove.contains(slug)).collect();
     let mut adding: Vec<&String> = Vec::new();
     for slug in &patch.add {
@@ -177,8 +173,8 @@ fn projects_edit(
             adding.push(slug);
         }
     }
-    let key = layout.key("projects");
-    let item_lines = key.map(|key| layout.item_lines(key)).unwrap_or_default();
+    let key = outline.key("projects");
+    let item_lines = key.map(|key| outline.item_lines(key)).unwrap_or_default();
 
     if let Some(key) = key.filter(|_| !kept.is_empty() && !items.is_empty() && item_lines.len() == items.len()) {
         // 줄마다 항목 하나 — 칸 안의 줄을 차례로 옮겨 적으며 뺄 항목 줄은 거르고 넣을 줄을 끼운다. 주석 · 빈 줄은 그대로다.
@@ -190,7 +186,7 @@ fn projects_edit(
             .and_then(|before| items.iter().position(|(slug, _)| slug == before))
             .map(|index| item_lines[index]);
         let neighbor = anchor.unwrap_or(*item_lines.last()?);
-        let prefix = item_prefix(layout.lines[neighbor]);
+        let prefix = item_prefix(outline.lines[neighbor]);
         let added: Vec<String> = adding.iter().map(|slug| format!("{prefix}{}", yaml_scalar(slug))).collect();
         let mut block = Vec::new();
         for at in key.first..=key.last {
@@ -198,7 +194,7 @@ fn projects_edit(
                 block.extend(added.iter().cloned());
             }
             if !removed(at) {
-                block.push(layout.lines[at].to_string());
+                block.push(outline.lines[at].to_string());
             }
         }
         if anchor.is_none() {
@@ -217,7 +213,7 @@ fn projects_edit(
     let at = match key {
         Some(key) => key.first..key.last + 1,
         None => {
-            let at = layout.key("name").map_or(1, |name| name.last + 1);
+            let at = outline.key("name").map_or(1, |name| name.last + 1);
             at..at
         }
     };
@@ -590,7 +586,7 @@ pub fn space_usage(data_root: &Path, slug: &str) -> Result<SpaceUsage> {
 pub fn delete_space(data_root: &Path, slug: &str) -> Result<DeletedSpace> {
     let space = get_space(data_root, slug)?;
     let links = linked(data_root, slug)?;
-    let deleted = spaces_in(data_root).join(DELETED);
+    let deleted = crate::paths::deleted_in(&spaces_in(data_root));
     crate::atomic::write_json_atomically(&deleted, &format!("{slug}.json"), &links, "지운 Space의 연결을")?;
     std::fs::rename(space_path(data_root, slug)?, deleted.join(format!("{slug}.md")))?;
     let unlinked = SpaceLinks {
@@ -607,7 +603,7 @@ pub fn delete_space(data_root: &Path, slug: &str) -> Result<DeletedSpace> {
 /// - 그사이 같은 slug가 다시 쓰였으면(`SlugReused`) 되돌리지 않는다 — 새로 선 Space를 덮지 않는다. 지운 것이 없으면 `SpaceNotFound`다.
 pub fn restore_space(data_root: &Path, slug: &str) -> Result<RestoredSpace> {
     let file = space_path(data_root, slug)?;
-    let deleted = spaces_in(data_root).join(DELETED);
+    let deleted = crate::paths::deleted_in(&spaces_in(data_root));
     let kept = deleted.join(format!("{slug}.md"));
     if !kept.is_file() {
         return Err(Error::SpaceNotFound(slug.to_string()));
@@ -625,9 +621,6 @@ pub fn restore_space(data_root: &Path, slug: &str) -> Result<RestoredSpace> {
     let _ = std::fs::remove_file(record);
     Ok(RestoredSpace { space: get_space(data_root, slug)?, relinked })
 }
-
-/// 지운 Space 파일이 머무는 자리(`spaces/.deleted/`) — 점 폴더라 목록 · 감시 · 새 slug 짓기가 보지 않는다.
-const DELETED: &str = ".deleted";
 
 /// 이 Space에 이은 곳을 훑는다 — Space 파일엔 Work · Thread를 적지 않으므로(§9) 앱이 모은다.
 fn linked(data_root: &Path, slug: &str) -> Result<SpaceLinks> {
@@ -717,18 +710,18 @@ fn read_text(text: &str, registered: &[String]) -> Read {
         created_by: None,
         description: String::new(),
     };
-    let Some(layout) = Layout::of(text) else {
+    let Some(outline) = Outline::of(text) else {
         read.check.problems = vec![SpaceProblem::new(1, SpaceProblemKind::UnclosedFrontmatter, None)];
         return read;
     };
-    read.description = layout.body().trim().to_string();
+    read.description = outline.body().trim().to_string();
     let pieces = SpacePieces {
-        name: layout.key("name").map(|key| key.first + 1),
-        projects: layout.key("projects").map(|key| Lines { first: key.first + 1, last: key.last + 1 }),
-        body: layout.body_lines(),
+        name: outline.key("name").map(|key| key.first + 1),
+        projects: outline.key("projects").map(|key| Lines { first: key.first + 1, last: key.last + 1 }),
+        body: outline.body_lines(),
     };
     let mut problems = Vec::new();
-    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(layout.yaml) {
+    match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(outline.yaml) {
         Ok(yaml) => {
             let name = yaml.get("name").and_then(scalar).unwrap_or_default();
             read.name = name.trim().to_string();
@@ -744,7 +737,7 @@ fn read_text(text: &str, registered: &[String]) -> Read {
                 problems.push(SpaceProblem::new(line, SpaceProblemKind::BadYaml, None));
             }
             let mut seen: Vec<String> = Vec::new();
-            for (slug, line) in layout.projects(&yaml) {
+            for (slug, line) in outline.projects(&yaml) {
                 let kind = if seen.contains(&slug) {
                     Some(SpaceProblemKind::DuplicateProject)
                 } else if !registered.contains(&slug) {
@@ -784,7 +777,7 @@ fn scalar(value: &serde_yaml_ng::Value) -> Option<String> {
 }
 
 /// 파일 글을 줄로 본 것 — frontmatter의 자리와 그 안 맨 위 칸들의 줄. 줄 번호는 0부터다(밖으로 낼 때 1을 더한다).
-struct Layout<'a> {
+struct Outline<'a> {
     lines: Vec<&'a str>,
     /// frontmatter의 YAML 글.
     yaml: &'a str,
@@ -800,7 +793,7 @@ struct Key {
     last: usize,
 }
 
-impl<'a> Layout<'a> {
+impl<'a> Outline<'a> {
     /// frontmatter를 가르는 규칙은 Project · Agent 파일과 같은 하나다(`split_frontmatter`). 닫히지 않았으면 `None`이다.
     fn of(text: &'a str) -> Option<Self> {
         let (yaml, _) = crate::project::split_frontmatter(text).ok()?;
@@ -820,7 +813,7 @@ impl<'a> Layout<'a> {
             let name = line.split_once(':').map_or(*line, |(name, _)| name).trim().trim_matches(['"', '\'']);
             keys.push(Key { name: name.to_string(), first: at, last: at });
         }
-        Some(Layout { lines, yaml, close, keys })
+        Some(Outline { lines, yaml, close, keys })
     }
 
     /// `projects`의 항목마다 (slug, 1부터 센 줄). 줄마다 `- ` 항목 하나인 목록이면 그 항목 줄이고, 한 줄 목록(`[a, b]`)처럼 줄과 항목이
@@ -876,6 +869,11 @@ mod tests {
 
     fn registered() -> Vec<String> {
         ["web-app", "api-server", "backoffice"].map(String::from).to_vec()
+    }
+
+    /// 검사 하나 — 그 글의 문제와 조각 자리(목록 · 하나 읽기 · 고치기 화면 · 저장이 모두 이것을 탄다).
+    fn check_space(text: &str, registered: &[String]) -> SpaceCheck {
+        read_text(text, registered).check
     }
 
     #[test]

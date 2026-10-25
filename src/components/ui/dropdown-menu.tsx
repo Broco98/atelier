@@ -39,12 +39,31 @@ function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
 // `size-menu-ctx`(248)다(DS 「간격 · 반경 · 크기」). 하위 메뉴는 내용 폭을 따르되 168–220 안이다(DS `Menu` 보드 「판」) — 넘치는
 // 이름은 줄의 `truncate`가 줄임표로 접는다. 두 줄 줄(이름 아래 설명)의 설명이 긴 고르기 메뉴는 `note`다 — 내용 폭을 따르되 300에서
 // 시작하고 창 안에서 멈춘다(03 시안 v52 `.pmenu{min-width:300px}` — 입력창 트레이의 Work 칩 메뉴).
+//
+// **03 시안의 고정 폭 다섯**(03 코드 리뷰 A4 — 쓰는 자리가 `w-44` · `w-77` …로 덮던 것을 이 표로 옮겼다). 이름은 쓰는 자리가 아니라 그 폭이
+// 무엇을 품는가다.
+//   act        176 — 할 일 이름이 짧은 ⋯ 메뉴(글리프 · 한두 낱말 — 시안 `.pop{min-width:176px}`). 목록 줄 · 상세 머리의 ⋯
+//   act-wide   192 — 할 일 이름이 한 낱말 더 긴 ⋯ 메뉴(「Space에서 빼기」). 표 줄의 ⋯
+//   pair       280 — 이름 곁에 흐린 곁글(경로)이 한 줄로 서는 고르기 메뉴. 곁글이 말줄임으로 접힌다(시안 `.pop{min-width:280px}` — 03 시안-비교/03)
+//   note-fold  308 — `note`의 두 줄 줄을 고정 폭에 세워 설명을 낱말 단위로 접는다. 단추에 붙은 칸이라 내용 폭으로 넓어지지 않는다
+//              (시안 F4-SpaceNewMenu — 03 시안-비교/06)
+//   note-wide  340 — 두 줄 줄의 설명이 접히지 않고 한 줄에 서는 고정 폭(시안 `.pop{width:340px}`)
+// 이 표에 맞는 폭이 없으면 갈래를 더한다 — 쓰는 자리가 `className`으로 폭을 덮으면 `dropdown-menu.test.ts`가 빨갛다.
 const CARD_WIDTH = {
   menu: "w-(--size-menu)",
   "menu-ctx": "w-(--size-menu-ctx)",
   sub: "w-max min-w-42 max-w-55",
   note: "w-max min-w-75 max-w-(--available-width)",
+  act: "w-44",
+  "act-wide": "w-48",
+  pair: "w-70",
+  // `note`의 바닥(300) · 끝(창 안)은 그대로 두고 폭만 박는다.
+  "note-fold": "w-77 min-w-75 max-w-(--available-width)",
+  "note-wide": "w-85",
 } as const
+
+/** ⋯ 메뉴 · 고르기 메뉴가 고르는 폭 — 우클릭 메뉴(`menu-ctx`)와 하위 메뉴(`sub`)의 폭은 그 부품이 정한다. */
+type ContentWidth = Exclude<keyof typeof CARD_WIDTH, "menu-ctx" | "sub">;
 
 type MenuCardProps = MenuPrimitive.Popup.Props &
   Pick<MenuPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset">
@@ -95,7 +114,8 @@ function MenuCard({
 
 /**
  * ⋯ 메뉴 · 고르기 메뉴의 카드. `grows`는 모델 피커(`ComposerChips`의 `ModelChip`)만 준다 — Codex에서 열릴 때 움직이는 메뉴는 그것 하나다
- * (02 구현 스펙 §12 · Motion 보드 「팁 띠 · 모델 피커」). 폭은 `size-menu`이고, 설명이 긴 두 줄 줄의 메뉴만 `note`다(`CARD_WIDTH`).
+ * (02 구현 스펙 §12 · Motion 보드 「팁 띠 · 모델 피커」). 폭은 `size-menu`이고, 설명이 긴 두 줄 줄의 메뉴는 `note`, 03 시안의 고정 폭은 그
+ * 이름으로 고른다(`CARD_WIDTH`).
  */
 function DropdownMenuContent({
   align = "start",
@@ -105,7 +125,7 @@ function DropdownMenuContent({
   grows = false,
   width = "menu",
   ...props
-}: MenuCardProps & { grows?: boolean; width?: "menu" | "note" }) {
+}: MenuCardProps & { grows?: boolean; width?: ContentWidth }) {
   return (
     <MenuCard
       width={width}

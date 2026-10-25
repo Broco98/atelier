@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Book, Layers } from "lucide-react";
+import { particle } from "@/lib/particle";
 import { cn } from "@/lib/utils";
 import { DETAIL_GRAPH, NODE_HEIGHT, spaceGraph, type GraphLayout, type GraphNode } from "./space-view";
 import type { SharedSpace, Space } from "./types";
@@ -58,7 +59,7 @@ export function SpaceGraph({
                 d={`M${x1} ${from.y}C${middle} ${from.y} ${middle} ${to.y} ${x2} ${to.y}`}
                 fill="none"
                 strokeDasharray={edge.muted ? "4 4" : undefined}
-                className={cn("stroke-1", edge.muted ? "stroke-fg-placeholder" : "stroke-fg-faint")}
+                className={cn("stroke-1", edge.muted ? "stroke-graph-edge-muted" : "stroke-graph-edge")}
               />
             );
           })}
@@ -113,7 +114,7 @@ function Node({ node, width, onOpenSpace }: { node: GraphNode; width: number; on
   if (node.kind === "other" && node.to && onOpenSpace) {
     const to = node.to;
     return (
-      <button type="button" title={`${node.name}로 옮겨 가기`} onClick={() => onOpenSpace(to)} className={look} style={style}>
+      <button type="button" title={`${node.name}${particle(node.name, "으로", "로")} 옮겨 가기`} onClick={() => onOpenSpace(to)} className={look} style={style}>
         {glyph}
         {name}
       </button>

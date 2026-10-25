@@ -71,7 +71,10 @@ const scopeOf = (of: Space | null, registered = WORLD_PROJECTS.length): ReadingS
   };
 };
 
-/** 범위 넷(03 §5 · F4-KitComposer 「범위 줄」) — 전부 · Space · 빈 Space · 등록된 Project 없음. */
+/**
+ * 범위 다섯 — 갈래 넷(03 §5 · F4-KitComposer 「범위 줄」: 전부 · Space · 빈 Space · 등록된 Project 없음)에, Space 갈래가 이 세계의 Project 있는
+ * Space 둘(결제 서비스 · 사내 도구)이라 다섯이다.
+ */
 export const SCOPES = {
   all: scopeOf(null),
   payments: scopeOf(PAYMENTS),

@@ -1,4 +1,5 @@
-import { GONE_WITH_APP, particle, spoken, type CallEntry, type ToolEntry } from "./fold";
+import { particle } from "@/lib/particle";
+import { GONE_WITH_APP, spoken, type CallEntry, type ToolEntry } from "./fold";
 import { describeTool, phraseText } from "./tool-view";
 
 // 호출 줄의 화면 값(v1 티켓 17 · 구현 스펙 §8 · 캔버스 WorkLog 보드 「Agent 호출 줄」 · 화면 3) — 접은 부르기(`CallEntry`)를 넷 상태의

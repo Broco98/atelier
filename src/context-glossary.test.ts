@@ -289,6 +289,8 @@ describe("말의 사전", () => {
     expect(names).toContain("결과 카드");
     for (const piece of [
       "승인 없이",
+      // 03 결정 12 · 코드 리뷰 A3 — 카드는 그 턴 안 도구 줄 뒤다(턴 사이가 아니다).
+      "그 설정을 한 턴 안, 그 도구 줄 뒤",
       "「Project를 추가했어요 — landing-page」",
       "「관계 보기」",
       "Project 상세",

@@ -71,9 +71,43 @@ enum Added {
     Already(ProjectView),
 }
 
+/// 해낸 설정의 갈래 넷(§12) — 결과 카드 줄의 `action`과 그 카드의 단추가 여기 하나에서 갈린다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Action {
+    ProjectAdded,
+    ProjectEdited,
+    SpaceCreated,
+    SpaceEdited,
+}
+
+impl Action {
+    /// 결과 카드 줄의 `action` 값 — 화면(`result-card.ts`)이 이 글로 카드의 아이콘 · 단추를 고른다.
+    fn as_str(self) -> &'static str {
+        match self {
+            Action::ProjectAdded => "project-added",
+            Action::ProjectEdited => "project-edited",
+            Action::SpaceCreated => "space-created",
+            Action::SpaceEdited => "space-edited",
+        }
+    }
+
+    /// 그 카드의 단추 — Project · 새 Space는 「열기」, Space 고침은 「관계 보기」(§12).
+    fn button(self) -> &'static str {
+        match self {
+            Action::SpaceEdited => "관계 보기",
+            Action::ProjectAdded | Action::ProjectEdited | Action::SpaceCreated => "열기",
+        }
+    }
+
+    /// 해낸 설정의 도구 결과 끝 — 사람이 결과 카드의 단추로 그 화면에서 다시 고친다.
+    fn settled(self) -> String {
+        format!("흐름에 결과 카드가 섰다 — 사람이 「{}」로 그 화면에서 다시 고칠 수 있다.", self.button())
+    }
+}
+
 /// 결과 카드 줄 하나(§12) — 무엇을 했나 · 대상 · 카드의 두 줄.
 struct Setting {
-    action: &'static str,
+    action: Action,
     slug: String,
     name: String,
     title: String,
@@ -136,9 +170,10 @@ impl ConversationHost {
         };
         let Some(folder) = folder else {
             self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), answered(None)).map_err(HostError::Record)?;
+            let folder = atelier_core::collapse_home(&card.folder);
             let text = format!(
-                "사람이 추가하지 않기로 했다 — `{}`는 Project로 등록하지 않았다. 같은 부탁을 곧바로 다시 하지 않는다.",
-                atelier_core::collapse_home(&card.folder)
+                "사람이 추가하지 않기로 했다 — `{folder}`{} Project로 등록하지 않았다. 같은 부탁을 곧바로 다시 하지 않는다.",
+                particle(&folder, "은", "는")
             );
             asked.settle(Settled::Said { text, refused: false });
             return Ok(());
@@ -170,13 +205,18 @@ impl ConversationHost {
         if let FolderLook::Registered { project, .. } = atelier_core::inspect_folder(&registry, folder) {
             return Ok(Added::Already(project));
         }
-        let view = atelier_core::add_project(&registry, folder, AddProject { name, init_git })
-            .map_err(|error| format!("`{}`를 Project로 추가하지 못했다 — {error}", atelier_core::collapse_home(folder)))?;
+        let view = atelier_core::add_project(&registry, folder, AddProject { name, init_git }).map_err(|error| {
+            let folder = atelier_core::collapse_home(folder);
+            format!("`{folder}`{} Project로 추가하지 못했다 — {error}", particle(&folder, "을", "를"))
+        })?;
         let Some(description) = description else { return Ok(Added::New(view)) };
         let patch = ProjectPatch { name: None, description: Some(description), base_branch: None };
         atelier_core::update_project(&registry, &view.project.slug, patch)
             .map(Added::New)
-            .map_err(|error| format!("Project `{}`를 추가했지만 설명을 적지 못했다 — {error}", view.project.slug))
+            .map_err(|error| {
+                let slug = &view.project.slug;
+                format!("Project `{slug}`{} 추가했지만 설명을 적지 못했다 — {error}", particle(slug, "을", "를"))
+            })
     }
 
     /// 등록한 결과를 남기고 Agent에게 돌려줄 글을 짓는다 — 새로 등록했으면 결과 카드 줄 「Project를 추가했어요 — …」, 이미 등록된 폴더면
@@ -190,7 +230,7 @@ impl ConversationHost {
         self.note_setting(
             key,
             Setting {
-                action: "project-added",
+                action: Action::ProjectAdded,
                 slug: project.slug.clone(),
                 name: project.name.clone(),
                 title: format!("Project를 추가했어요 — {}", project.name),
@@ -198,12 +238,13 @@ impl ConversationHost {
             },
         )?;
         Ok(format!(
-            "Project `{}`({}){} 추가했다 — 폴더 `{}` · 기준 브랜치 `{}`. {SETTLED}",
+            "Project `{}`({}){} 추가했다 — 폴더 `{}` · 기준 브랜치 `{}`. {}",
             project.slug,
             project.name,
             particle(&project.name, "을", "를"),
             project.path,
-            project.base_branch
+            project.base_branch,
+            Action::ProjectAdded.settled()
         ))
     }
 
@@ -221,20 +262,25 @@ impl ConversationHost {
             Err(atelier_core::Error::EmptyName) => {
                 return thread_tools::said("name은 비울 수 없다 — 새 이름을 주거나 name을 빼고 다시 부른다.", true);
             }
-            Err(error) => return thread_tools::said(&format!("Project `{}`를 고치지 못했다 — {error}", edit.project), true),
+            Err(error) => {
+                let failed = format!("Project `{}`{} 고치지 못했다 — {error}", edit.project, particle(&edit.project, "을", "를"));
+                return thread_tools::said(&failed, true);
+            }
         };
         let Some((title, detail)) = project_edited(&before.project, &after.project) else {
-            return thread_tools::said(&format!("바뀐 것이 없다 — Project `{}`는 그대로다.", edit.project), false);
+            let unchanged = format!("바뀐 것이 없다 — Project `{}`{} 그대로다.", edit.project, particle(&edit.project, "은", "는"));
+            return thread_tools::said(&unchanged, false);
         };
-        let setting =
-            Setting { action: "project-edited", slug: after.project.slug.clone(), name: after.project.name.clone(), title, detail };
+        let action = Action::ProjectEdited;
+        let setting = Setting { action, slug: after.project.slug.clone(), name: after.project.name.clone(), title, detail };
         match self.note_setting(key, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
-                    "Project `{}`{} 고쳤다 — {}. {SETTLED}",
+                    "Project `{}`{} 고쳤다 — {}. {}",
                     edit.project,
                     particle(&edit.project, "을", "를"),
-                    project_now(&after.project)
+                    project_now(&after.project),
+                    action.settled()
                 ),
                 false,
             ),
@@ -260,7 +306,7 @@ impl ConversationHost {
         let file = atelier_core::collapse_home(&atelier_core::spaces_in(&self.data_root).join(format!("{}.md", space.slug)));
         let names = self.project_names(&space.projects);
         let setting = Setting {
-            action: "space-created",
+            action: Action::SpaceCreated,
             slug: space.slug.clone(),
             name: space.name.clone(),
             title: format!("Space를 만들었어요 — {}", space.name),
@@ -270,11 +316,12 @@ impl ConversationHost {
         match self.note_setting(key, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
-                    "Space `{}`({}){} 만들었다 — 파일 `{file}` · Project: {read}. {SETTLED} 이 Thread를 이 Space에 붙이려면 \
+                    "Space `{}`({}){} 만들었다 — 파일 `{file}` · Project: {read}. {} 이 Thread를 이 Space에 붙이려면 \
                      set_space를 부른다.",
                     space.slug,
                     space.name,
-                    particle(&space.name, "을", "를")
+                    particle(&space.name, "을", "를"),
+                    Action::SpaceCreated.settled()
                 ),
                 false,
             ),
@@ -298,7 +345,8 @@ impl ConversationHost {
         let renamed = before.name != after.name;
         let described = before.description.trim() != after.description.trim();
         if added.is_empty() && removed.is_empty() && !renamed && !described {
-            return thread_tools::said(&format!("바뀐 것이 없다 — Space `{}`는 그대로다.", edit.space), false);
+            let unchanged = format!("바뀐 것이 없다 — Space `{}`{} 그대로다.", edit.space, particle(&edit.space, "은", "는"));
+            return thread_tools::said(&unchanged, false);
         }
         let shared = atelier_core::shared_spaces(&self.data_root, &after.slug).map_or(0, |shared| shared.len());
         let title = space_edited(
@@ -309,7 +357,7 @@ impl ConversationHost {
             described,
         );
         let setting = Setting {
-            action: "space-edited",
+            action: Action::SpaceEdited,
             slug: after.slug.clone(),
             name: after.name.clone(),
             title,
@@ -319,10 +367,11 @@ impl ConversationHost {
         match self.note_setting(key, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
-                    "Space `{}`({}){} 고쳤다 — Project: {read}. {SETTLED} 이 Space로 읽는 Thread는 다음 말부터 바뀐 Project를 읽는다.",
+                    "Space `{}`({}){} 고쳤다 — Project: {read}. {} 이 Space로 읽는 Thread는 다음 말부터 바뀐 Project를 읽는다.",
                     after.slug,
                     after.name,
-                    particle(&after.name, "을", "를")
+                    particle(&after.name, "을", "를"),
+                    Action::SpaceEdited.settled()
                 ),
                 false,
             ),
@@ -333,7 +382,7 @@ impl ConversationHost {
     /// 결과 카드 줄을 남긴다 — 설정을 한 Agent가 줄의 `who`다.
     fn note_setting(&self, key: &SessionKey, setting: Setting) -> Result<(), String> {
         let payload = json!({
-            "action": setting.action, "slug": setting.slug, "name": setting.name, "title": setting.title, "detail": setting.detail,
+            "action": setting.action.as_str(), "slug": setting.slug, "name": setting.name, "title": setting.title, "detail": setting.detail,
         });
         let log = self.thread_log(&key.thread).map_err(|error| error.to_string())?;
         log.write(RecordKind::Setting, Some(&key.handle), payload)
@@ -392,9 +441,6 @@ impl ConversationHost {
 /// Space를 만든 이 — Host 도구로 만들면 `host`다(S6). 상세의 「만든 사람」이 읽는다.
 const MADE_BY: &str = "host";
 
-/// 해낸 설정의 도구 결과 끝 — 사람이 결과 카드로 그 화면에서 다시 고친다.
-const SETTLED: &str = "흐름에 결과 카드가 섰다 — 사람이 「열기」로 그 화면에서 다시 고칠 수 있다.";
-
 /// 이미 등록된 폴더의 글(스토리 61) — 아무것도 바꾸지 않았다.
 fn already_text(project: &Project) -> String {
     format!(
@@ -416,7 +462,7 @@ fn project_now(project: &Project) -> String {
 /// 없는 기준 브랜치의 거절(스토리 63) — 그 저장소에서 고를 수 있는 브랜치를 함께 준다. fetch하지 않는다.
 fn branch_refusal(view: &ProjectView, branch: &str) -> String {
     let project = &view.project;
-    let head = format!("기준 브랜치 `{branch}`는 {} 저장소에 없다 — 바꾸지 않았다.", project.slug);
+    let head = format!("기준 브랜치 `{branch}`{} {} 저장소에 없다 — 바꾸지 않았다.", particle(branch, "은", "는"), project.slug);
     let Some(git) = &view.git else {
         return format!("{head} 그 폴더(`{}`)를 git 저장소로 읽지 못해 고를 수 있는 브랜치가 없다.", project.path);
     };
@@ -485,7 +531,7 @@ fn shown(name: &str, slug: &str) -> String {
     if name.trim().is_empty() { slug.to_owned() } else { name.to_owned() }
 }
 
-/// 낱말 뒤의 조사 — 끝 글자가 받침 있는 한글이면 `with_final`, 아니면 `without`이다(화면 `fold.ts`의 `particle`과 같은 규칙). 「으로/로」는
+/// 낱말 뒤의 조사 — 끝 글자가 받침 있는 한글이면 `with_final`, 아니면 `without`이다(화면 `src/lib/particle.ts`의 `particle`과 같은 규칙). 「으로/로」는
 /// ㄹ 받침도 「로」다. 영어 · 숫자(slug · 브랜치)는 읽는 끝소리로 고른다 — 받침이 분명한 것만(main → 「메인」, develop → 「디벨롭」).
 fn particle(word: &str, with_final: &str, without: &'static str) -> String {
     let trimmed = word.trim().trim_end_matches(|c: char| ")]}」』\"'”’.,!?…".contains(c) || c.is_whitespace());

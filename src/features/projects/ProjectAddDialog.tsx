@@ -7,6 +7,7 @@ import { Book, ChevronDown, Folder, FolderPlus, GitBranch, Lightbulb, TriangleAl
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogOverlay, DialogPopup, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { dialogLook } from "@/components/ui/dialog-look";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,13 +44,12 @@ export default function ProjectAddDialog() {
     >
       <DialogPortal>
         <DialogOverlay />
-        {/* 창 상자(시안 `.dlg` — 위 120 · 폭 520 · 모서리 20 · 안쪽 20/18/18 · 칸 사이 18). 첫 포커스는 이름 칸이다. 가운데 창의
-            세로 가운데 맞춤(`-translate-y-1/2`)을 풀어 위에서 120에 선다 — 갈래가 바뀌어도 창 위 끝이 움직이지 않는다. */}
+        {/* 창 상자는 위에서 120에 서는 창이다(`dialogLook.top` — 시안 `.dlg`). 첫 포커스는 이름 칸이다. */}
         <DialogPopup
           showCloseButton={false}
           aria-label="Project 추가"
           initialFocus={() => document.getElementById(NAME_ID)}
-          className="top-30 flex w-130 max-w-[calc(100%-4rem)] translate-y-0 flex-col gap-4.5 rounded-3xl px-4.5 pt-5 pb-4.5 shadow-modal"
+          className={dialogLook.top}
         >
           {ask && <AddBody seq={ask.seq} folder={ask.folder} done={ask.done} />}
         </DialogPopup>
@@ -220,7 +220,7 @@ function ModeSwitch({ view, mode, onMode }: { view: AddView; mode: AddMode; onMo
         </span>
         <ChevronDown className="size-3 text-fg-icon" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="center" className="w-85">
+      <DropdownMenuContent side="bottom" align="center" width="note-wide">
         <DropdownMenuRadioGroup value={mode} onValueChange={(next: AddMode) => onMode(next)}>
           <DropdownMenuRadioItem
             value="folder"

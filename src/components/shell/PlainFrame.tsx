@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 import type { HeadRename } from "./Frame";
 import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 
-// **Thread · 첫 화면 · Library가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07) — 틀은 앱 셸 하나다: 크롬 맨 위 머리 줄(44)과 그 아래 흰 판
-// (`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의
-// 화면들(Projects · Terminal · Processes · Archive · Settings · Work 화면)도 같은 머리 줄에 제 이름 · 할 일을 보낸다(`FrameHead`).
+// **Thread · 첫 화면 · Library · Projects · Space가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07 · 03) — 틀은 앱 셸 하나다: 크롬 맨 위 머리
+// 줄(44)과 그 아래 흰 판(`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만
+// 건넨다. 공용 틀(`Frame`)의 화면들(Terminal · Processes · Archive · Settings · Work 화면)도 같은 머리 줄에 제 이름 · 할 일을 보낸다(`FrameHead`).
 //
 //   머리 줄의 화면 자리(`ScreenHead`) ─ 이름 앞(`lead`) · 이름(있으면 · 그 자리에서 바꾼다) ··· 오른쪽 끝(`end`)
 //   판 안 ─ 본문 `<main>` — 화면이 건넨 것이 곧장 선다

@@ -382,7 +382,7 @@ pub fn remove_project(data_root: &Path, slug: &str) -> Result<ProjectRemoval> {
         return Ok(ProjectRemoval::Blocked { works });
     }
     let listing = listing_spaces(data_root, slug)?;
-    let deleted = root.join(DELETED);
+    let deleted = crate::paths::deleted_in(&root);
     let record = Removed {
         spaces: listing.iter().map(|(space, before)| RemovedFrom { slug: space.slug.clone(), before: before.clone() }).collect(),
     };
@@ -407,7 +407,7 @@ pub fn remove_project(data_root: &Path, slug: &str) -> Result<ProjectRemoval> {
 pub fn restore_project(data_root: &Path, slug: &str) -> Result<ProjectView> {
     let root = crate::paths::projects_in(data_root);
     let file = project_path(&root, slug)?;
-    let deleted = root.join(DELETED);
+    let deleted = crate::paths::deleted_in(&root);
     let kept = deleted.join(format!("{slug}.md"));
     if !kept.is_file() {
         return Err(Error::NotFound(slug.to_string()));
@@ -433,8 +433,6 @@ pub fn restore_project(data_root: &Path, slug: &str) -> Result<ProjectView> {
     Ok(to_view(project))
 }
 
-/// 지운 Project 파일이 머무는 자리(`projects/.deleted/`) — 점 폴더라 등록부 목록 · 감시가 보지 않는다.
-const DELETED: &str = ".deleted";
 
 /// 제거가 지운 자리에 파일 곁에 적는 것(`<slug>.json`) — 어느 Space에서 지웠고 그 목록의 어디였는지. 되돌리기가 읽는다.
 #[derive(Debug, Default, Serialize, Deserialize)]

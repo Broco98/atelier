@@ -352,7 +352,7 @@ fn 없는_기준_브랜치는_쓰지_않고_고를_수_있는_브랜치를_돌�
     );
     assert!(said[1].0 && said[1].1.starts_with("등록되지 않은 Project다: billing — 등록된 Project(list_projects): web-app"), "{}", said[1].1);
     assert!(!said[2].0 && said[2].1.starts_with("Project `web-app`을 고쳤다"), "{}", said[2].1);
-    assert_eq!(said[3], (false, "바뀐 것이 없다 — Project `web-app`는 그대로다.".to_owned()), "같은 값이면 카드가 없다");
+    assert_eq!(said[3], (false, "바뀐 것이 없다 — Project `web-app`은 그대로다.".to_owned()), "같은 값이면 카드가 없다 — 조사는 끝소리를 따른다");
     let view = atelier_core::get_project(&projects(&sandbox), "web-app").unwrap();
     assert_eq!((view.project.name.as_str(), view.project.base_branch.as_str()), ("웹 앱", "develop"));
     assert_eq!(view.project.description, "환불 버튼 화면\n둘째 줄");
@@ -396,6 +396,7 @@ fn space를_만들면_만든_이가_host인_파일이_서고_문제가_있으면
     assert!(text.ends_with("\ncreatedBy: host\n---\n\n월말 정산을 다뤄요.\n"), "만든 이는 host다(S6): {text}");
     assert!(space_text(&sandbox, "정산-2").is_some(), "같은 이름이면 화면과 같이 -2(스토리 69)");
     assert!(!said[1].0 && said[1].1.starts_with("Space `정산`(정산)을 만들었다"), "{}", said[1].1);
+    assert!(said[1].1.contains("사람이 「열기」로 그 화면에서 다시 고칠 수 있다"), "Space 만듦 카드의 단추는 「열기」다: {}", said[1].1);
 
     let spaces = atelier_core::spaces_in(&sandbox.data_root());
     let cards: Vec<Value> = settings(&record).iter().map(|line| line["payload"].clone()).collect();
@@ -435,6 +436,7 @@ fn space를_고치면_고친_칸만_바뀌고_결과_카드가_project_수와_�
         "그 항목 줄만 끼운다 — 주석 · 나머지 글은 그대로(화면 상세의 넣기와 같은 core 고치기)"
     );
     assert!(!said[0].0 && said[0].1.starts_with("Space `결제-서비스`(결제 서비스)를 고쳤다 — Project: web-app, api-server, backoffice"), "{}", said[0].1);
+    assert!(said[0].1.contains("사람이 「관계 보기」로 그 화면에서 다시 고칠 수 있다"), "Space 고침 카드의 단추는 「관계 보기」다: {}", said[0].1);
     assert!(said[1].0 && said[1].1.contains("등록되지 않은 Project예요(billing)") && said[1].1.contains("고치지 않았다"), "{}", said[1].1);
     assert!(said[2].0 && said[2].1.starts_with("없는 Space다: 정산 — Space(list_spaces): 결제-서비스, 사내-도구"), "{}", said[2].1);
     assert_eq!(said[3], (false, "바뀐 것이 없다 — Space `결제-서비스`는 그대로다.".to_owned()));

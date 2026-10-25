@@ -10,7 +10,6 @@ import {
   foldThread,
   headline,
   keptFolded,
-  particle,
   workLine,
   type CallEntry,
   type PendingProject,
@@ -1160,24 +1159,6 @@ describe("Work 밖 Project 카드(v1 티켓 32)", () => {
     expect(model.system.map((line) => line.turn)).toEqual([model.turns[0].key, model.turns[0].key]);
     // 「결정은 내가 합니다」는 Work를 만든 Thread에서만 선다 — worktree가 생긴 것으로는 서지 않는다.
     expect(decisionsDue(model, false)).toBe(false);
-  });
-
-  it("영어 이름의 조사는 끝소리로 고른다 — web-app을 · api-server를 · Host가 · 숫자도 읽는 소리대로", () => {
-    expect(particle("web-app", "을", "를")).toBe("을");
-    expect(particle("api-server", "을", "를")).toBe("를");
-    expect(particle("Host", "이", "가")).toBe("가");
-    expect(particle("helm", "으로", "로")).toBe("으로");
-    expect(particle("tool", "으로", "로")).toBe("로");
-    expect(particle("v1", "을", "를")).toBe("을");
-    expect(particle("v2", "을", "를")).toBe("를");
-    expect(particle("환불 API 버그 수정", "을", "를")).toBe("을");
-  });
-
-  it("끝의 닫는 괄호 · 따옴표 · 문장 부호는 건너뛰고 그 앞 글자로 고른다 — 진짜 Host가 지은 이름 「… (#31)」(v1 티켓 39)", () => {
-    expect(particle("환불 API 부분 환불 버그 수정 (#31)", "을", "를")).toBe("을");
-    expect(particle("환불 API 부분 환불 버그 (#31)", "으로", "로")).toBe("로");
-    expect(particle("「결제 화면」", "을", "를")).toBe("을");
-    expect(particle("v2!", "을", "를")).toBe("를");
   });
 });
 

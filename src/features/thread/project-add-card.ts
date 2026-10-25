@@ -1,4 +1,5 @@
-import { particle, type PendingProjectAdd, type ProjectAddChoiceEntry } from "./fold";
+import { particle } from "@/lib/particle";
+import { type PendingProjectAdd, type ProjectAddChoiceEntry } from "./fold";
 import type { AnsweredCard } from "./question";
 import type { ToolQuestionOption, ToolQuestionView } from "./tool-question";
 import type { ProjectAddAnswer } from "./types";

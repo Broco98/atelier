@@ -16,7 +16,7 @@ import type { ProjectView } from "./types";
 
 // Project 상세(03 구현 스펙 §16 · 시안 F1-ProjectDetail · F4-ProjBranch · F4-ProjRename · F4-ProjDetailMissing · F4-KitProject 「상세 조각」). Space
 // 상세와 같은 짜임이다 — 머리 줄 「Projects / web-app」, 판 안에 「← Projects」 단추 · 제목 · 설명, 오른쪽 칸에 기준 브랜치와 경로. 설계 「상세는
-// 기준 브랜치 · 경로 · 설명이다」 — 이 Project를 쓰는 Work 묶음은 두지 않는다(S21, 쓰는 Work는 제거 확인 창이 말한다).
+// 기준 브랜치 · 경로 · 설명이다」 — 이 Project를 쓰는 Work 묶음은 두지 않는다(S21, 쓰는 Work는 제거 창이 말한다).
 //
 // 고치는 일(제목 · 설명 · 기준 브랜치)은 모두 core 고치기 하나다(`update_project`). 이름을 바꿔도 slug(파일 이름) · 경로는 그대로이고, 기준
 // 브랜치는 그 저장소의 로컬 · 원격 목록에서만 고른다(core가 목록에 없는 값을 거절한다). 경로는 폴더를 찾을 수 없을 때의 「재설정」으로만

@@ -31,6 +31,13 @@ export const dialogLook = {
   // 가운데의 작은 창 — 확인 창과 `dialog`의 기본 변형. 모서리 · 그림자는 떠 있는 카드의 것을 덮는다(코어 유틸리티가 커스텀
   // @utility 뒤에 서서 이긴다 — toggle.tsx 머리말).
   center: "top-1/2 grid w-100 max-w-[calc(100%-4rem)] -translate-y-1/2 gap-5 rounded-4xl p-5 shadow-modal",
+  // **위에서 120에 서는 창**(03 시안 `.dlg` — 위 120 · 모서리 20 · 안쪽 20/18/18) — 가운데 창(`center`) 위에 덮는다. 세로 가운데 맞춤을
+  // 풀어, 갈래가 바뀌어 창의 키가 달라져도 창 위 끝이 움직이지 않는다. 확인 창(`AppDialog`)은 글만 받아 카드 줄 · Work 줄을 품지 못해
+  // 이 창들은 따로 선다(03 결정 11). 폭과 칸 사이가 둘이다(03 코드 리뷰 A5 — 세 창이 옮겨 적던 것).
+  //   `top`       `.dlg` 520 · 칸 사이 18, 세로로 쌓는다 — Project 추가 창
+  //   `topSmall`  `.dlg.sm` 420 · 칸 사이 14 — Project 제거 창 · Space 삭제 창
+  top: "top-30 flex w-130 max-w-[calc(100%-4rem)] translate-y-0 flex-col gap-4.5 rounded-3xl px-4.5 pt-5 pb-4.5 shadow-modal",
+  topSmall: "top-30 w-105 translate-y-0 gap-3.5 rounded-3xl px-4.5 pt-5 pb-4.5",
   header: "grid gap-2",
   footer: "flex justify-end gap-2",
   title: "text-heading-xs",

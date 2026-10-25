@@ -173,7 +173,7 @@ export default function ProjectsPage() {
 function EmptyProjects({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2.5 pb-30 text-center">
-      <span aria-hidden className="flex size-9 items-center justify-center rounded-lg bg-surface-tray text-fg-icon">
+      <span aria-hidden className="flex size-9 items-center justify-center rounded-lg bg-surface-empty-mark text-fg-icon">
         <Book className="size-4.5" />
       </span>
       <h2 className="text-heading-xs text-fg">아직 Project가 없어요</h2>
@@ -235,7 +235,7 @@ function ProjectRow({
         >
           <Book aria-hidden className={cn("size-4 shrink-0", missing ? "text-fg-faint" : "text-fg-icon")} />
           <span className={cn("min-w-0 truncate", missing && "text-fg-tertiary")}>{project.name}</span>
-          <ChevronRight aria-hidden className="size-3 shrink-0 text-fg-titlebar opacity-0 group-hover/row:opacity-100" />
+          <ChevronRight aria-hidden className="size-3 shrink-0 text-fg-row-act opacity-0 group-hover/row:opacity-100" />
         </Link>
       </span>
       <span role="cell" className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-tertiary">
@@ -263,11 +263,11 @@ function ProjectRow({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={`${project.name} 메뉴`}
-            className="icon-button text-fg-titlebar transition-colors quiet-hover focus-ring"
+            className="icon-button text-fg-row-act transition-colors quiet-hover focus-ring"
           >
             <MoreHorizontal aria-hidden className="size-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" width="act">
             {rowMenu(project).map((item) => {
               const Icon = ROW_ICONS[item.act];
               return (

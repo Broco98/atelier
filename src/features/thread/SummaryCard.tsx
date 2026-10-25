@@ -78,7 +78,7 @@ import { Unfold } from "./WorkLog";
 //   없는 Thread는 범위의 Project뿐이다(`sourceProjects`). 범위는 core의 함수 하나가 세어 Session의 자리 · 머리말과 같은 값이다.
 // - 칸을 짓는 것은 순수 함수(`summary-card.ts`의 `summarySections`)이고, 그리는 조각(`SummaryBody`)은 훅을 부르지 않는다 — 정적 마크업으로
 //   잰다(`SummaryCard.test.tsx`).
-// - **자료는 v1 그대로 읽는다**(새 Tauri 명령이 없다) — 변경은 카드가 열릴 때와 `worktree:changed`마다(앱 루트의 감시 배선), PR은 열릴 때와
+// - **자료는 v1의 명령에 범위 명령 하나를 더해 읽는다**(`reading_scope` — 03) — 변경은 카드가 열릴 때와 `worktree:changed`마다(앱 루트의 감시 배선), PR은 열릴 때와
 //   열린 동안 60초마다(엔진이 턴 끝에 남긴 `pr` 줄이 그 칸을 고친다 — v1 티켓 36), 쓰는 중은 엔진의 `work:writing`(`workWritingStore`),
 //   소스의 Project는 범위 명령(`reading_scope` — Space · 등록부 · Work의 변화와 범위를 바꾼 기록 줄마다 다시 읽는다)이다.
 // - **줄을 누르면 넓힌 카드다**(v1 티켓 35 — 넓힌 카드는 그대로다) — 「변경 사항」은 바뀐 첫 파일의 diff를, 소스의 문서는 문서 보기를,

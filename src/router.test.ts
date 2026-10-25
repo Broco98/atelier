@@ -471,7 +471,7 @@ describe("Library의 주소", () => {
   });
 });
 
-// Space(03 구현 스펙 §14). 목록은 고른 것으로 넘기지 않는다 — Projects · Works와 달리 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
+// Space(03 구현 스펙 §14). 목록은 고른 것으로 넘기지 않는다 — Works와 달리(Projects처럼) 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
 describe("Space의 주소", () => {
   it("`/spaces`는 목록 그대로 서고 마지막 자리로 적힌다", async () => {
     const { router, history } = setup(["/spaces"]);

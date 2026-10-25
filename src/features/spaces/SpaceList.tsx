@@ -98,7 +98,7 @@ function NewSpaceButton() {
         <ChevronDown aria-hidden className="size-3 opacity-70" />
       </DropdownMenuTrigger>
       {/* 폭은 시안 그대로 308이고 설명은 낱말 단위로 두 줄에 접힌다(F4-SpaceNewMenu `.pop{min-width:300px}` — 단추에 붙은 칸이라 내용 폭으로 넓어지지 않는다). */}
-      <DropdownMenuContent side="bottom" align="end" sideOffset={6} width="note" className="w-77">
+      <DropdownMenuContent side="bottom" align="end" sideOffset={6} width="note-fold">
         <DropdownMenuItem
           size="note"
           aria-label="Host와 만들기"
@@ -171,7 +171,7 @@ function SpaceRow({ space, onDelete }: { space: Space; onDelete: (space: Space) 
           <Layers aria-hidden className="size-4 shrink-0 text-fg-icon" />
           <span className="min-w-0 truncate">{spaceName(space)}</span>
           {problems && <span className="tag text-xs text-fg-problem">문제 있음</span>}
-          <ChevronRight aria-hidden className="size-3.5 shrink-0 text-fg-titlebar opacity-0 group-hover/row:opacity-100" />
+          <ChevronRight aria-hidden className="size-3.5 shrink-0 text-fg-row-act opacity-0 group-hover/row:opacity-100" />
         </Link>
       </span>
       <span role="cell" className="flex min-w-0 items-center gap-1.5 overflow-hidden text-chat-meta whitespace-nowrap text-fg-secondary">

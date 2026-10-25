@@ -20,11 +20,11 @@ export function SpaceActions({ space, onDelete }: { space: Space; onDelete: (spa
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`${spaceName(space)} 메뉴`}
-        className="icon-button text-fg-titlebar transition-colors quiet-hover focus-ring"
+        className="icon-button text-fg-row-act transition-colors quiet-hover focus-ring"
       >
         <MoreHorizontal aria-hidden className="size-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
+      <DropdownMenuContent align="end" width="act">
         <DropdownMenuItem onClick={() => void navigate({ to: "/spaces/$slug/edit", params: { slug: space.slug } })}>
           <Pencil />
           <span>관계 편집</span>

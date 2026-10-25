@@ -5,6 +5,7 @@ import { readingList } from "@/features/spaces/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import { prLineOf, type PrLine } from "./pr";
 import type { Attachment, ProjectAddAnswer, QuestionAnswer, RecordLine } from "./types";
+import { particle } from "@/lib/particle";
 
 // Thread 접기(v1 티켓 05 · 구현 스펙 §14) — Thread 기록 줄을 받아 화면 모델(턴 · 말한 이 · 메시지 · 생각 · 도구 줄 · 시스템 줄 ·
 // 도는가)로 접는 **순수 함수**다. Thread 화면은 Thread를 이것 하나로 그린다: 처음 그릴 때 읽은 기록도, 흐르는 기록 줄 이벤트도 같은
@@ -1337,34 +1338,6 @@ function versionNotice(version: string | null, major: unknown): string {
   const supported = typeof major === "number" ? ` — 확인한 판은 ${major}.x` : "";
   return `확인하지 않은 Claude Code 판이에요(${version ?? "판 모름"}${supported}). 그대로 이어 가요`;
 }
-
-/**
- * 이름 뒤의 조사 — 마지막 글자가 받침 있는 한글이면 `withFinal`, 아니면 `without`이다. 「으로/로」는 ㄹ 받침도 「로」다. 한글이
- * 아닌 끝 글자(영문 · 숫자)는 읽는 끝소리로 고른다(아래). 끝의 닫는 괄호 · 따옴표 · 문장 부호는 읽지 않는다 — 「환불 버그 (#31)」은
- * 「31」로 끝난다(v1 티켓 39).
- */
-export function particle(word: string, withFinal: string, without: string): string {
-  const trimmed = word.trim().replace(CLOSING, "");
-  const code = trimmed.codePointAt(trimmed.length - 1) ?? 0;
-  if (code < 0xac00 || code > 0xd7a3) {
-    // 영어 · 숫자(Project slug · 「v1」)는 읽는 끝소리로 고른다 — 받침이 분명한 것만(web-app → 「웹앱」, helm → 「헬름」, 3 → 「삼」).
-    // 끝소리가 갈리는 글자(t · s · r …)는 받침 없음으로 둔다(Host → 「호스트가」).
-    const last = trimmed.slice(-1).toLowerCase();
-    if (!LATIN_FINALS.has(last)) return without;
-    return withFinal === "으로" && LATIN_RIEUL.has(last) ? without : withFinal;
-  }
-  const final = (code - 0xac00) % 28;
-  if (final === 0) return without;
-  if (withFinal === "으로" && final === 8) return without;
-  return withFinal;
-}
-
-/** 이름 끝에서 건너뛰는 닫는 괄호 · 따옴표 · 문장 부호. */
-const CLOSING = /[)\]}」』"'”’.,!?…\s]+$/u;
-/** 읽으면 받침이 있는 영어 · 숫자 끝 글자 — b · k · m · n · p · l(ㄹ), 0(영) · 1(일) · 3(삼) · 6(육) · 7(칠) · 8(팔). `ng`는 g로 끝난다. */
-const LATIN_FINALS = new Set(["b", "k", "l", "m", "n", "p", "0", "1", "3", "6", "7", "8"]);
-/** 그 가운데 받침이 ㄹ인 것 — 「으로」 대신 「로」다. */
-const LATIN_RIEUL = new Set(["l", "1", "7", "8"]);
 
 /**
  * 같은 기록 줄을 한 번만 접는다 — Thread 몸(흐름 · 입력창 · 알약)과 사이드바가 같은 줄을 읽는다. 기록 줄 배열은 바뀔 때마다 새

@@ -1,7 +1,7 @@
 import { readStored, writeStored } from "@/lib/stored";
 import type { ReadingScope } from "@/features/spaces/scope";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
-import { particle } from "./fold";
+import { particle } from "@/lib/particle";
 import type { Opened } from "./expanded";
 import { failNote, mergedWhen } from "./pr";
 import type { DocWriting } from "./types";

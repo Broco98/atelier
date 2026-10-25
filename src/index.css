@@ -301,6 +301,16 @@
     --color-fg-ok: var(--fg-ok);
     --color-ok-soft: var(--ok-soft);
     --color-piece-soft: var(--piece-soft);
+    --color-fg-yaml-key: var(--fg-yaml-key);
+    --color-fg-line-number: var(--fg-line-number);
+    --color-fg-piece-tag: var(--fg-piece-tag);
+    --color-piece-tag: var(--piece-tag);
+    --color-border-preview-card: var(--border-preview-card);
+    /* **03 시안 색 — Projects · Space 목록과 관계 그래프**(03 코드 리뷰 A6) — 쓰임은 아래 `:root`의 같은 머리말이 든다. */
+    --color-fg-row-act: var(--fg-row-act);
+    --color-surface-empty-mark: var(--surface-empty-mark);
+    --color-graph-edge: var(--graph-edge);
+    --color-graph-edge-muted: var(--graph-edge-muted);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -871,12 +881,13 @@
        Components · Screen-Live)이 적은 값을 그대로 든다. 이름은 자리를 말한다. **다크 값은 없다** — 02는 라이트만이고(v1 S34) `.dark`에서는
        이 값을 물려받는다. 쓰는 자리(괄호 안은 그 화면을 짓는 02 티켓):
          fg-bubble             사람 말풍선의 글자(08) — 바탕은 그대로 `bubble-user`
-         fg-placeholder        입력창 자리표시(10)
+         fg-placeholder        입력창 자리표시(10) · 03 Project 추가 창의 새 자리 줄 「이름」 · Space 미리보기 카드의 「이름 없음」(빈 칸의 자리표시)
          fg-subtle             입력창 칩의 글자(10) · 작업 구분선의 글자와 꺾쇠(09) · 응답 액션 글리프(08)
          fg-faint              바닥 사람 줄의 꺾쇠(04) · 요약 카드 결과물의 자리표시(07)
          fg-label              요약 카드의 라벨과 머리의 Work 이름(07)
          fg-icon               사람 메뉴의 글리프(04) — 시안은 요약 카드 소스 줄의 글리프에도 쓴다
-         fg-titlebar           머리 줄의 셸 컨트롤 글리프(02) · Thread 머리 줄의 Work 이름과 「…」(06)
+         fg-titlebar           머리 줄의 셸 컨트롤 글리프(02) · Thread 머리 줄의 Work 이름과 「…」(06) · 03 머리 줄 이름 앞의 흐린 자리
+                               (「Projects /」 · 「Space /」 · Work 화면의 Space)
          fg-titlebar-disabled  갈 수 없는 뒤 · 앞(02)
          fg-thinking           「생각 중」의 바랜 글자(12) — 띠(`shimmer-band`)가 그 위를 밝게 지나간다
          mine                  내 차례 알약의 글자(05) · 위 줄 「내 차례」 행의 기다리는 수(04). 알약의 바탕은 별칭 `mine-soft`(= `bubble-user`)
@@ -935,13 +946,39 @@
                           빨강은 이 화면의 문제 글 · 알약에만 선다(`color-guard.test.ts`)
          problem-soft     문제 줄의 바탕 · 문제 알약의 면(`.ln.err` · `.stp.bad`)
          fg-ok            「✓ 문제 없어요」 알약 글자(`.stp.ok`), 면은 `ok-soft`
-         piece-soft       커서가 있는 줄의 조각 — 편집기 줄과 카드 조각에 함께 까는 옅은 파랑(`.ln.cur` · `.lk.on`). 막대는 `accent-solid` */
+         piece-soft       커서가 있는 줄의 조각 — 편집기 줄과 카드 조각에 함께 까는 옅은 파랑(`.ln.cur` · `.lk.on`). 막대는 `accent-solid`
+         fg-yaml-key      편집기 글의 YAML 칸 이름(`.tk-k` #2c67c5)
+         fg-line-number   편집기 줄 머리의 줄 번호(`.ln .no` — 시안 28%, 앱은 이 회색)
+         fg-piece-tag     커서 조각의 오른쪽 위 줄 꼬리표(「2–4행」)의 글자(`.lkt` #2c67c5). 면은 `piece-tag`(시안 파랑 10% — 앱은 이 옅은 파랑)
+         border-preview-card  미리보기 칸의 흰 Space 카드를 두르는 1px 선(`.card` — 시안 #ededed, 앱은 이 회색)
+       다섯은 03 코드 리뷰 A6에서 들였다 — 그 전에는 다른 자리의 이름(`mine` · `mine-soft` · `fg-placeholder` · `border-panel`)을 값만 보고
+       빌려 썼다. 값은 그때 그대로다. */
     --surface-preview: #f5f5f6;
     --fg-problem: #b4302a;
     --problem-soft: rgba(207, 58, 51, 0.08);
     --fg-ok: #1f7a4d;
     --ok-soft: rgba(31, 122, 77, 0.08);
     --piece-soft: rgba(58, 131, 247, 0.055);
+    --fg-yaml-key: #2c67c5;
+    --fg-line-number: #c7c7c8;
+    --fg-piece-tag: #2c67c5;
+    --piece-tag: #e8f3fe;
+    --border-preview-card: #e8e8e8;
+
+    /* **03 시안 색 — Projects · Space 목록과 관계 그래프**(F1-Projects · F1-Space · F1-SpaceDetail — 03 코드 리뷰 A6). 그 전에는 다른 자리의
+       이름(`fg-titlebar` · `surface-tray` · `fg-placeholder` · `fg-faint` · `fill-hover`)을 값만 보고 빌려 썼다. 값은 그때 그대로이고 **다크
+       값이 없다**(위 묶음과 같다).
+         fg-row-act          표 줄 끝의 ⋯와 지날 때 이름 끝에 서는 꺾쇠(`.act` · `.chv` #898a8b) — Projects · Space 목록, Space 상세의 Project 표와
+                             머리 ⋯
+         surface-empty-mark  빈 목록 가운데 안내의 글리프 상자 면(`.dico` #f4f4f4)
+         graph-edge          관계 그래프의 실선 — Space와 그 Project를 잇는다(시안 #a3a4a5, 앱은 이 회색)
+         graph-edge-muted    관계 그래프의 점선 — 함께 쓰는 Space와 그 Project로 가는 선(시안 #c9cacb, 앱은 이 회색)
+         graph-dot           그래프 판의 16 간격 점(`.graph` 7% — 앱은 이 8%). 판을 그리는 유틸리티(`graph-dots`)만 읽어 유틸리티 이름을 잇지 않는다 */
+    --fg-row-act: #898a8b;
+    --surface-empty-mark: #f4f4f4;
+    --graph-edge: #a4a4a5;
+    --graph-edge-muted: #c7c7c8;
+    --graph-dot: rgba(26, 28, 31, 0.08);
 
     /* **03 시안 색 — 안내 상자**(03 구현 스펙 §16 · 캔버스 v52 F4-KitProject의 `.ntc`) — 창 안에서 고른 것을 두고 알리는 한 줄 상자다. Project
        추가 창이 폴더를 고르는 순간 「git 저장소가 아니에요」 · 「… 폴더가 이미 있어요」(경고)와 「… 저장소 안의 폴더예요」 · 「이미 추가된
@@ -1707,10 +1744,10 @@ body.dragging-row * {
   @apply rounded-2xl bg-surface-elevated shadow-prominent;
 }
 
-/* **관계 그래프의 판**(03 시안 F1-SpaceDetail `.graph`) — 옅은 면 위 16 간격의 점. 점의 색은 면 알파 `fill-hover`다(시안 7%). */
+/* **관계 그래프의 판**(03 시안 F1-SpaceDetail `.graph`) — 옅은 면 위 16 간격의 점. 점의 색은 `graph-dot`이다(시안 7%). */
 @utility graph-dots {
   background-color: var(--surface-under);
-  background-image: radial-gradient(var(--fill-hover) 1px, transparent 1px);
+  background-image: radial-gradient(var(--graph-dot) 1px, transparent 1px);
   background-size: 16px 16px;
 }
 

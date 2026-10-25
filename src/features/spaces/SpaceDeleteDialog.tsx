@@ -9,6 +9,7 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { dialogLook } from "@/components/ui/dialog-look";
 import { showProblem } from "@/components/ui/confirm-store";
 import { showUndoToast } from "@/components/ui/toast";
 import { spacesApi } from "./api";
@@ -18,8 +19,8 @@ import { spaceName } from "./space-view";
 import type { Space, SpaceUsage } from "./types";
 
 // Space 지우기 확인 창(03 구현 스펙 §14 「지우기」 · 캔버스 F4-SpaceDelete · F4-KitSpace 「확인 창」) — Space 목록 줄 ⋯과 상세 ⋯의 「삭제…」가
-// 연다. 글은 `deleteDialog`가 고르고 여기는 그린다. 창 상자는 Project 제거 창과 같은 시안 `.dlg.sm`(위에서 120 · 폭 420 · 모서리 20 · 안쪽
-// 20/18/18 · 칸 사이 14)이다 — 확인 창(`AppDialog`)은 글만 받아 Space 카드 줄을 품지 못한다.
+// 연다. 글은 `deleteDialog`가 고르고 여기는 그린다. 창 상자는 위에서 120에 서는 작은 창(`dialogLook.topSmall` — 시안 `.dlg.sm`)이다 — 확인
+// 창(`AppDialog`)은 글만 받아 Space 카드 줄을 품지 못한다.
 
 interface Deleting {
   space: Space;
@@ -60,7 +61,7 @@ function SpaceDeleteDialog({
         // 첫 포커스는 「삭제」 — 토스트에서 되돌릴 수 있는 일이다(Project 제거 창과 같다).
         initialFocus={() => deleteRef.current}
         onBackdropClick={onClose}
-        className="top-30 w-105 translate-y-0 gap-3.5 rounded-3xl px-4.5 pt-5 pb-4.5"
+        className={dialogLook.topSmall}
       >
         {now && dialog && (
           <>

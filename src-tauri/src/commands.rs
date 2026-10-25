@@ -20,14 +20,20 @@ fn err(e: atelier_core::Error) -> String {
     e.to_string()
 }
 
+// Project 읽기 · 추가 · 고치기는 git을 기다린다(Project마다 브랜치 · 원격 브랜치, `git init` · 첫 커밋, 기준 브랜치 검사) — work 목록처럼
+// blocking 풀에서 돌려 tokio 워커를 막지 않는다(v1 코드-지도 §2 · 아래 시험 `the_waiting_commands_wait_off_the_async_workers`).
 #[tauri::command]
 pub async fn list_projects() -> CmdResult<Vec<ProjectView>> {
-    atelier_core::list_projects(&projects_dir()).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || atelier_core::list_projects(&projects_dir()).map_err(err))
+        .await
+        .map_err(|e| format!("Project 목록을 읽지 못했습니다: {e}"))?
 }
 
 #[tauri::command]
 pub async fn get_project(slug: String) -> CmdResult<ProjectView> {
-    atelier_core::get_project(&projects_dir(), &slug).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || atelier_core::get_project(&projects_dir(), &slug).map_err(err))
+        .await
+        .map_err(|e| format!("Project를 읽지 못했습니다: {e}"))?
 }
 
 // Project 추가 창(03 구현 스펙 §15 · §16) — 살피기 · 추가 · 새로 만들 자리 · 새로 만들기. 모두 core 하나를 부른다(L4 다리도 같은
@@ -36,13 +42,19 @@ pub async fn get_project(slug: String) -> CmdResult<ProjectView> {
 /// 폴더 살피기 — 추가 창이 폴더를 고르는 순간 부른다. 실패하지 않는다(읽지 못한 폴더는 「폴더가 없음」 갈래다).
 #[tauri::command]
 pub async fn inspect_project_folder(folder: String) -> CmdResult<FolderLook> {
-    Ok(atelier_core::inspect_folder(&projects_dir(), &PathBuf::from(folder)))
+    tauri::async_runtime::spawn_blocking(move || atelier_core::inspect_folder(&projects_dir(), &PathBuf::from(folder)))
+        .await
+        .map_err(|e| format!("폴더를 살피지 못했습니다: {e}"))
 }
 
 /// 추가 — 이름 칸(비면 폴더 이름)과 「git init 하고 추가」를 함께 받는다. git이 아닌 폴더는 `init_git`일 때만 받는다.
 #[tauri::command]
 pub async fn create_project(folder: String, name: Option<String>, init_git: bool) -> CmdResult<ProjectView> {
-    atelier_core::add_project(&projects_dir(), &PathBuf::from(folder), AddProject { name, init_git }).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::add_project(&projects_dir(), &PathBuf::from(folder), AddProject { name, init_git }).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Project를 추가하지 못했습니다: {e}"))?
 }
 
 /// 새로 만들 자리 — 「새로 만들기」가 이름을 칠 때마다 부른다(그 자리에 무엇이 있으면 「이미 있어요」).
@@ -54,7 +66,11 @@ pub async fn new_project_place(parent: String, name: String) -> CmdResult<NewPro
 /// 새로 만들기 — 폴더 · `git init -b main` · 빈 첫 커밋 · 등록. git이 실패하면 만든 폴더를 걷고 git의 글로 실패한다.
 #[tauri::command]
 pub async fn new_project(parent: String, name: String) -> CmdResult<ProjectView> {
-    atelier_core::new_project(&projects_dir(), &PathBuf::from(parent), &name).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::new_project(&projects_dir(), &PathBuf::from(parent), &name).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Project를 만들지 못했습니다: {e}"))?
 }
 
 #[tauri::command]
@@ -64,18 +80,21 @@ pub async fn update_project(
     description: Option<String>,
     base_branch: Option<String>,
 ) -> CmdResult<ProjectView> {
-    atelier_core::update_project(
-        &projects_dir(),
-        &slug,
-        ProjectPatch { name, description, base_branch },
-    )
-    .map_err(err)
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::update_project(&projects_dir(), &slug, ProjectPatch { name, description, base_branch }).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Project를 고치지 못했습니다: {e}"))?
 }
 
 /// 재설정 — 폴더를 찾을 수 없는 Project가 새 자리를 고른다(03 구현 스펙 §15 · §16). git 저장소의 뿌리만 받고 경로만 바꾼다.
 #[tauri::command]
 pub async fn relocate_project(slug: String, folder: String) -> CmdResult<ProjectView> {
-    atelier_core::relocate_project(&projects_dir(), &slug, &PathBuf::from(folder)).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || {
+        atelier_core::relocate_project(&projects_dir(), &slug, &PathBuf::from(folder)).map_err(err)
+    })
+    .await
+    .map_err(|e| format!("Project를 재설정하지 못했습니다: {e}"))?
 }
 
 // Project 제거(03 구현 스펙 §15 · §16) — 확인 창이 읽는 것 · 제거 · 되돌리기. 셋 다 core를 부르기만 한다(L4 다리도 같은 입구다). Space
@@ -137,7 +156,9 @@ pub async fn read_space_text(slug: String) -> CmdResult<String> {
 /// 고치는 글 하나의 검사(문제 · 조각 자리)와 미리보기 · 안내 줄 · 새 Space의 파일 이름.
 #[tauri::command]
 pub async fn check_space(slug: Option<String>, text: String) -> CmdResult<SpaceDraft> {
-    atelier_core::draft_space(&data_root(), slug.as_deref(), &text).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || atelier_core::draft_space(&data_root(), slug.as_deref(), &text).map_err(err))
+        .await
+        .map_err(|e| format!("Space 파일을 검사하지 못했습니다: {e}"))?
 }
 
 /// 사람이 쓴 글을 그대로 쓴다 — 문제가 있으면 쓰지 않는다. 새 Space면 글의 이름에서 slug를 짓는다.
@@ -151,7 +172,9 @@ pub async fn save_space_text(slug: Option<String>, text: String) -> CmdResult<Sp
 /// `thread_restore_space`).
 #[tauri::command]
 pub async fn space_usage(slug: String) -> CmdResult<SpaceUsage> {
-    atelier_core::space_usage(&data_root(), &slug).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || atelier_core::space_usage(&data_root(), &slug).map_err(err))
+        .await
+        .map_err(|e| format!("Space의 쓰임을 읽지 못했습니다: {e}"))?
 }
 
 /// 읽는 범위(03 구현 스펙 §7) — Space(slug · 이름 · 문제 있음) · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Space · 빈 Space · 등록
@@ -1335,6 +1358,12 @@ mod tests {
     /// - `list_work_changes`(v1 티켓 33): Project마다 git을 세 번 기다린다(갈라진 커밋 · 증감 · 아직 모르는 파일). Work 카드가
     ///   worktree가 바뀔 때마다 부른다.
     /// - `read_work_diff`(v1 티켓 33): git을 두세 번 기다린다(diff · 아직 모르는 파일이면 그 diff).
+    /// - `list_projects` · `get_project`(03 티켓 10): Project마다 git을 기다린다(브랜치 · 원격 브랜치 `remoteBranches`).
+    /// - `inspect_project_folder`(03 티켓 09): 추가 창이 폴더를 고를 때마다 git을 여러 번 기다린다(저장소인가 · 뿌리 · 원격).
+    /// - `create_project` · `new_project`(03 티켓 09): `git init` · 빈 첫 커밋 · 기준 브랜치를 기다린다.
+    /// - `update_project` · `relocate_project`(03 티켓 10 · 09): 기준 브랜치 검사 · 새 자리의 뿌리를 git에게 묻는다.
+    /// - `check_space`(03 티켓 04): 고치기 화면이 칠 때마다 Space 파일 전부와 등록부를 읽는다.
+    /// - `space_usage`(03 티켓 07): Work 파일 전부와 Thread 파일 전부를 읽는다.
     ///
     /// Thread 명령(`thread_work_prs`도 — v1 티켓 36, `gh`를 기다리고 `pr` 줄을 남기는 것이 엔진이다)은 여기 없다 — 어느 엔진 부름이
     /// 막히는지는 엔진이 알고, 엔진으로 가는 한 길(`to_host`)이 모든 부름을 blocking 풀에서 기다린다. 길은
@@ -1357,6 +1386,15 @@ mod tests {
             ("describe_attachments", "atelier_core::describe_attachments(", "describe_attachments("),
             ("list_work_changes", "atelier_core::list_work_changes(", "list_work_changes("),
             ("read_work_diff", "atelier_core::read_work_diff(", "read_work_diff("),
+            ("list_projects", "atelier_core::list_projects(", "list_projects("),
+            ("get_project", "atelier_core::get_project(", "get_project("),
+            ("inspect_project_folder", "atelier_core::inspect_folder(", "inspect_folder("),
+            ("create_project", "atelier_core::add_project(", "add_project("),
+            ("new_project", "atelier_core::new_project(", "new_project("),
+            ("update_project", "atelier_core::update_project(", "update_project("),
+            ("relocate_project", "atelier_core::relocate_project(", "relocate_project("),
+            ("check_space", "atelier_core::draft_space(", "draft_space("),
+            ("space_usage", "atelier_core::space_usage(", "space_usage("),
         ] {
             let body = command_body(command);
             let blocking = body

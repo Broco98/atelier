@@ -2,6 +2,7 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useState, type
 import { useStore } from "@tanstack/react-store";
 import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, Layers, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { particle } from "@/lib/particle";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
 import { decisionText } from "./approval";
@@ -12,7 +13,6 @@ import {
   flowOf,
   headline,
   keptFolded,
-  particle,
   runningHeadline,
   shownEntry,
   workLine,

@@ -25,6 +25,7 @@ import { signalsOf } from "@/features/terminal/shell-attention";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { useWorkMarks } from "@/features/thread/hooks";
 import { useWorks } from "@/features/works/hooks";
+import { workDoor } from "@/routes/-work-search";
 import { workMark } from "@/features/works/work-mark";
 import { StatusMark } from "@/components/shell/status-mark";
 import { useSpace, useUpdateSpace } from "./hooks";
@@ -142,7 +143,7 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
       await update.mutateAsync({ slug: space.slug, patch: change });
       return true;
     } catch (e) {
-      await showProblem(`Space를 고치지 못했어요: ${e}`);
+      await showProblem(`Space를 고치지 못했어요 — ${e}`);
       return false;
     }
   };
@@ -185,7 +186,7 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
                   <Plus aria-hidden />
                   넣기
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-70">{addItems}</DropdownMenuContent>
+                <DropdownMenuContent width="pair">{addItems}</DropdownMenuContent>
               </DropdownMenu>
             }
           />
@@ -200,7 +201,7 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
                 <Plus aria-hidden />
                 넣기
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-70">{addItems}</DropdownMenuContent>
+              <DropdownMenuContent width="pair">{addItems}</DropdownMenuContent>
             </DropdownMenu>
           }
         >
@@ -255,9 +256,8 @@ function SpaceWorks({ slug }: { slug: string }) {
         linked.map((work) => (
           <Link
             key={work.slug}
-            to="/works/$slug"
-            params={{ slug: work.slug }}
-            search={{}}
+            // 그 Work의 마지막 화면으로 간다 — 다른 문(사이드바 · ⌘K)과 같은 주소다(`workDoor`, 03 코드 리뷰 A1).
+            {...workDoor(work.slug)}
             tabIndex={0}
             data-work={work.slug}
             className="-mx-1.5 flex min-h-8 w-[calc(100%+12px)] items-center gap-2.5 rounded-md px-1.5 text-left text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
@@ -548,11 +548,11 @@ function ProjectTable({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   aria-label={`${slug} 메뉴`}
-                  className="icon-button text-fg-titlebar transition-colors quiet-hover focus-ring"
+                  className="icon-button text-fg-row-act transition-colors quiet-hover focus-ring"
                 >
                   <MoreHorizontal aria-hidden className="size-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" width="act-wide">
                   {project && (
                     <>
                       <DropdownMenuItem onClick={() => void navigate({ to: "/projects/$slug", params: { slug } })}>

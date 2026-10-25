@@ -126,7 +126,7 @@ function EditorBody({
       flushSync(() => setKept(text));
       return space.slug;
     } catch (e) {
-      await showProblem(`Space를 저장하지 못했어요: ${e}`);
+      await showProblem(`Space를 저장하지 못했어요 — ${e}`);
       return null;
     }
   };
@@ -202,10 +202,10 @@ function EditorBody({
   );
 }
 
-/** 글자 갈래의 색(시안 `.tk-*`) — 칸 이름은 파랑(`mine` #2c67c5), 경계 · 기호 · 주석은 옅게, 값 · 본문은 글자색이다. */
+/** 글자 갈래의 색(시안 `.tk-*`) — 칸 이름은 파랑(`fg-yaml-key` #2c67c5), 경계 · 기호 · 주석은 옅게, 값 · 본문은 글자색이다. */
 const TONE: Record<Tone, string> = {
   mark: "text-fg-faint",
-  key: "text-mine",
+  key: "text-fg-yaml-key",
   punct: "text-fg-faint",
   value: "text-fg",
   comment: "text-fg-faint",
@@ -277,7 +277,7 @@ function SourceEditor({
                 {!wrong && added.includes(number) && (
                   <span className="absolute inset-y-1 left-10.5 w-0.5 rounded-2xs bg-diff-added" />
                 )}
-                <span className={cn("absolute left-0 w-9 text-right select-none", wrong ? "text-fg-problem" : "text-fg-placeholder")}>
+                <span className={cn("absolute left-0 w-9 text-right select-none", wrong ? "text-fg-problem" : "text-fg-line-number")}>
                   {number}
                 </span>
                 {line.tokens.map((token, at) => (
@@ -334,7 +334,7 @@ function Preview({ draft, piece }: { draft: SpaceDraft | undefined; piece: Piece
     <div className="min-h-0 overflow-y-auto border-l border-separator-soft bg-surface-preview px-7 pt-7 pb-11 scroll-quiet">
       {draft && preview && (
         <>
-          <article aria-label="Space 카드" className="mx-auto max-w-150 overflow-hidden rounded-2xl border border-border-panel bg-surface shadow-card">
+          <article aria-label="Space 카드" className="mx-auto max-w-150 overflow-hidden rounded-2xl border border-border-preview-card bg-surface shadow-card">
             <CardPiece on={piece === "name"} span={pieceSpan(draft.pieces, "name")}>
               <div className="mb-2 flex items-center gap-1.5 text-xs text-fg-tertiary">
                 <Layers aria-hidden className="size-3" />
@@ -378,7 +378,7 @@ function CardPiece({ on, span, flush = false, children }: { on: boolean; span: s
       )}
     >
       {on && span && (
-        <span className="absolute top-2.5 right-3 z-10 rounded-sm bg-mine-soft px-1.5 font-mono text-xs text-mine">{span}</span>
+        <span className="absolute top-2.5 right-3 z-10 rounded-sm bg-piece-tag px-1.5 font-mono text-xs text-fg-piece-tag">{span}</span>
       )}
       {children}
     </section>

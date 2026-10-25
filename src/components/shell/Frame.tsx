@@ -25,8 +25,8 @@ import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 import type { TargetRegion } from "./TargetMenu";
 import useSplitRatio from "./useSplitRatio";
 
-// 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 S2). Projects · Terminal · Processes · Archive · Settings · 작업 화면 · spec
-// 레이아웃 편집기가 이 틀에 칸을 건넨다. 틀 자체(크롬 · 머리 줄 44 · 흰 판)는 앱 셸 하나가 그리고(`AppShell` · `ShellHead`), 이 틀은 그
+// 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 S2). Terminal · Processes · Archive · Settings · 작업 화면 · spec 레이아웃
+// 편집기가 이 틀에 칸을 건넨다(Projects · Space는 03부터 `PlainFrame`이다). 틀 자체(크롬 · 머리 줄 44 · 흰 판)는 앱 셸 하나가 그리고(`AppShell` · `ShellHead`), 이 틀은 그
 // 위에서 두 자리만 든다 — 머리 줄의 화면 자리에 보낼 이름 · 할 일(`HeadSlot` — `ScreenHead`로 포털)과 흰 판 안의 칸들이다.
 // 목록은 따로 서지 않고 본문 칸 안 오른쪽 칸이다(codex-ds 결정 28 — 내용 | 목록 한 칸). 화면은 칸 내용만 건넨다 — 칸을 가르는 선 ·
 // 손잡이 · 머리 줄의 자리를 이 파일 한 곳이 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 선 하나를 빠뜨려도 화면으로는 어디가

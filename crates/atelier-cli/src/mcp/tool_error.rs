@@ -16,8 +16,8 @@ pub fn kernel_error(err: Error) -> CallToolResult {
             "Call atelier_list_projects to see the registered project slugs and their folders."
         }
         Error::WorkNotFound(_) => "Call atelier_list_works to see the existing work slugs.",
-        // Space(03 구현 스펙 §8)는 바깥 MCP에 도구가 없다 — Space를 건드리는 커널 함수(Project 제거가 Space 파일에서 빼는 것 등)가 이
-        // 오류를 낼 때의 안내다.
+        // Space(03 구현 스펙 §8)는 바깥 MCP에 도구가 없고 Project 제거도 없다 — 지금 이 두 오류를 내는 도구는 없다. 와일드카드 없는
+        // `match`라 갈래를 두고, Space 파일을 읽는 커널 함수를 바깥 도구가 부르게 되면 이 안내가 나간다.
         Error::SpaceNotFound(_) => "That Space no longer exists. Spaces are managed in the Atelier app — tell the user.",
         Error::SpaceProblems(_) => {
             "The Space file has the problems listed above. Ask the user to fix those lines in the Atelier app, then call \

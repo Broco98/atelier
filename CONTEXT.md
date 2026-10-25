@@ -331,7 +331,7 @@ Space 파일을 지웠으면 그 Thread의 다음 말을 보낼 때 같은 「�
 
 **Space 메뉴**:
 Space를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Space / Work 이름」에서 흐린 Space(없으면 흐린 「Space 없음」)를 누르면 열리고, 트레이의
-Space 칩도 같은 메뉴를 연다(칩에서는 맨 위가 늘 「Space 없음 — 등록된 Project 3개 읽기」다 — 빼기는 칩의 ×가 한다). Work 화면에서 맨 위는
+Space 칩도 같은 메뉴를 연다(칩에서는 맨 위가 늘 「Space 없음 — 등록된 Project 3개 읽기」다 — 고르면 뺀다. ×가 있는 칩은 ×로도 뺀다). Work 화면에서 맨 위는
 「Space 빼기」(Space가 없으면 ✓가 붙은 「Space 없음」)와 빼면 읽는 것(「등록된 Project 3개를 모두 읽어요」)이고, 그 아래 「Space — 고르면 그
 안의 Project만 읽어요」 묶음에 Space마다 이름과 적힌 Project가 서며 지금 것에 ✓가 붙는다. 파일에 문제가 있는 Space도 이름 뒤 「문제 있음」을
 달고 선다 — 고르면 읽을 수 있는 Project만 읽는다. 끝은 「Space 관리 · 메뉴 › Space」다. Space가 하나도 없으면 목록 자리에
@@ -412,8 +412,8 @@ GitHub CLI가 없거나 로그인돼 있지 않으면 둘 다 없다.
 _피할 말_: PR 위젯, PR 알림
 
 **결과 카드**:
-Host가 대화로 한 설정(Project 추가 · Project 고침 · Space 만듦 · Space 고침) 하나가 Thread 흐름의 턴 사이에 남기는 카드 한 장 — 사람이
-대화로 부탁한 일이라 승인 없이 하고, 한 것을 이 카드로 보인다. 아이콘 · 첫 줄 · 옅은 둘째 줄과 오른쪽 「열기」다
+Host가 대화로 한 설정(Project 추가 · Project 고침 · Space 만듦 · Space 고침) 하나가 그 설정을 한 턴 안, 그 도구 줄 뒤에 남기는 카드 한 장
+— 턴을 접어도 남고, PR 카드처럼 턴 사이에 서지 않는다. 사람이 대화로 부탁한 일이라 승인 없이 하고, 한 것을 이 카드로 보인다. 아이콘 · 첫 줄 · 옅은 둘째 줄과 오른쪽 「열기」다
 (「Project를 추가했어요 — landing-page」 · 「~/MyProjects/landing-page · git 레포 · 기준 브랜치 main」). Space를 고쳤으면
 「결제 서비스에 backoffice를 넣었어요」 · 「Project 3 · 함께 쓰는 Space 1」에 「관계 보기」다. 단추는 그 Project 상세 · Space 상세로 가서 사람이 거기서 다시 고치고, 대상이 그사이
 사라졌으면 꺼진다. 되돌리기 단추는 없다. Project 제거 · Space 삭제는 화면에서만 한다 — Host는 지우지 않고 그 화면을 안내한다.

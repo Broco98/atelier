@@ -51,7 +51,7 @@ pub struct ThreadFile {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub new_work: bool,
     /// 이은 Space의 slug(03 구현 스펙 §9) — Work 없는 Thread만 쓴다. Work에 이은 Thread는 Work의 `space`를 따르고 이 칸은 쓰지 않는다
-    /// (읽는 범위 규칙 1 — `scope.rs`). 없으면 칸째 빠진다.
+    /// (읽는 범위 규칙 1 — `reading_scope.rs`). 없으면 칸째 빠진다.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub space: Option<String>,
     /// 모르는 칸은 다시 써도 남는다 — 다른 판의 앱이 더한 칸을 지우지 않게(`work.json` · `agents.json`과 같은 규약).

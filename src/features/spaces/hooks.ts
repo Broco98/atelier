@@ -139,7 +139,7 @@ export function useSetSpace() {
         "thread" in target && queryClient.invalidateQueries({ queryKey: ["thread", target.thread] }),
       ]);
     },
-    onError: (error) => void showProblem(`Space를 바꾸지 못했습니다: ${error}`),
+    onError: (error) => void showProblem(`Space를 바꾸지 못했어요 — ${error}`),
   });
 }
 

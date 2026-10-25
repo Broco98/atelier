@@ -71,6 +71,12 @@ pub fn spaces_in(root: &Path) -> PathBuf {
     root.join("spaces")
 }
 
+/// 지운 파일이 머무는 자리 — 그 폴더(`projects/` · `spaces/`) 아래 `.deleted/`(03 구현 스펙 §9 · §15 · S10). 점 폴더라 목록 · 감시 ·
+/// 새 slug 짓기가 보지 않는다. 지운 Project · Space가 같은 자리 규칙을 쓴다.
+pub(crate) fn deleted_in(folder: &Path) -> PathBuf {
+    folder.join(".deleted")
+}
+
 /// 진행 중인 work의 루트를 **받은 데이터 루트에서** 짓는다. 데이터 루트를 인자로 받는 대화 호스트
 /// (`atelier-acp`)가 이것을 부른다 — 그쪽이 `root.join("works")`를 다시 적으면 배치가 두 벌이 된다.
 pub fn works_in(root: &Path) -> PathBuf {

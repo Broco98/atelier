@@ -82,9 +82,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("save_space_text", |a| {
         ok(atelier_core::save_space_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
     }),
-    // 읽는 범위(03 구현 스펙 §7) — 읽기만 하는 core 입구다(`commands.rs`와 같다).
     // Space 지우기 확인 창의 쓰임(03 티켓 07) — 읽기만 하는 core 입구다.
     ("space_usage", |a| ok(atelier_core::space_usage(&data_root(), &text(a, "slug")?))),
+    // 읽는 범위(03 구현 스펙 §7) — 읽기만 하는 core 입구다(`commands.rs`와 같다).
     ("reading_scope", |a| {
         ok(atelier_core::reading_scope_of(
             &data_root(),

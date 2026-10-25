@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD, SEARCH_RESULTS } from "./fixtures";
-import { fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, 주소로간다 } from "./harness";
+import { fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, 주소로간다, 화면머리 } from "./harness";
 import { lineOf, linesAfter, linesThrough, record, seqOf, streamLines, summaryOf, threadOf } from "./thread-records";
 import {
   PAYMENTS,
@@ -43,7 +43,6 @@ const ARMING_MS = 300;
 
 const 흐름 = (page: Page) => page.getByRole("main");
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });
-const 머리줄 = (page: Page) => page.locator('[data-slot="screen-head"]');
 const 사이드바 = (page: Page) => page.locator("aside[data-sidebar]");
 const Space줄 = (page: Page) => 흐름(page).locator('[data-system="space"]');
 const 메뉴 = (page: Page) => page.getByRole("menu");
@@ -203,14 +202,16 @@ test("Space 줄 다섯 — 「알아서」 넣음 · 사람이 바꿈 · 뺌 · 
 
   // 사람이 칩으로 바꿈 · 뺌 — 떠 있는 대화에 줄이 온다. 줄이 오면 그 Thread와 범위를 다시 읽어 머리 줄이 「흐린 Space / 이름」으로 따라오고,
   // 빼면 이름만으로 돌아간다(07 — 칸을 고친 것은 엔진이라 화면의 고치기 응답이 없다. 흐린 Space는 범위가 싣는 Space다 — 03 코드 리뷰 P14).
+  // 「없다」는 이름이 선 그 머리 줄에서 잰다 — 집는 길이 빗나가면 아무 단추도 없어 헛돈다.
   await openThread(page, manual);
-  await expect(머리줄(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
+  await expect(화면머리(page).getByText(manual.title, { exact: true })).toBeVisible();
+  await expect(화면머리(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
   await replaceAnswer(page, "thread_get", answerByArg("thread", { [manual.id]: { ...manual, space: PAYMENTS.slug } }));
   await replaceAnswer(page, "reading_scope", answerByArg("thread", { [manual.id]: SCOPES.payments }, { otherwise: SCOPES.all }));
   await streamLines(page, manual.id, linesThrough(linesAfter(picked, manual.lastSeq), spaceLine(picked, 1)));
   await expect(Space줄(page)).toHaveText(["Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"]);
   await expect(Space줄(page).locator("b")).toHaveText(["결제 서비스"]);
-  await expect(머리줄(page).getByRole("button", { name: `Space 열기: ${PAYMENTS.name}`, exact: true })).toBeVisible();
+  await expect(화면머리(page).getByRole("button", { name: `Space 열기: ${PAYMENTS.name}`, exact: true })).toBeVisible();
   await replaceAnswer(page, "thread_get", answerByArg("thread", { [manual.id]: manual }));
   await replaceAnswer(page, "reading_scope", answerByArg("thread", { [manual.id]: SCOPES.all }, { otherwise: SCOPES.all }));
   await streamLines(page, manual.id, linesAfter(picked, spaceLine(picked, 1)));
@@ -219,7 +220,8 @@ test("Space 줄 다섯 — 「알아서」 넣음 · 사람이 바꿈 · 뺌 · 
     "Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요",
   ]);
   await expect(Space줄(page).nth(1).locator("b")).toHaveCount(0);
-  await expect(머리줄(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
+  await expect(화면머리(page).getByText(manual.title, { exact: true })).toBeVisible();
+  await expect(화면머리(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
 
   // Space가 지워짐 · 되돌림 — Space 삭제로 「Space 없음」이 된 대화는 굵은 것 없는 한 줄이고, 되돌리면 이름이 굵은 줄이 다시 읽는 Project를 말한다.
   await openThread(page, gone);
@@ -310,7 +312,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
   await openThread(page, view);
 
   // 카드(F4-KitChat 「git이 아닌 폴더를 부탁받음」) — 「git init 하고 추가」(추천 · 빈 레포를 만들고 기준 브랜치 main) · 「추가하지 않기」, 바닥은
-  // 「고르기 ↵」 하나다(미루면 Host가 할 일이 없다 — 12 결정).
+  // 「고르기 ↵」 하나다(미루면 Host가 할 일이 없다 — 03 결정 「12」).
   const card = page.getByRole("group", { name: ADD_QUESTION, exact: true });
   await expect(card).toBeVisible();
   await expect(card).toContainText("Host · 질문");
@@ -372,15 +374,15 @@ test("머리 줄 — Work 없는 대화는 「흐린 Space / 이름」(누르면
 
   // Work 없음 · Space 없음 — 이름만이다. 빈 자리를 말하지 않는다(Work 화면의 흐린 「Space 없음」과 다르다).
   await openThread(page, bare);
-  await expect(머리줄(page).getByText(bare.title, { exact: true })).toBeVisible();
-  await expect(머리줄(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
-  await expect(머리줄(page).getByText("/", { exact: true })).toHaveCount(0);
+  await expect(화면머리(page).getByText(bare.title, { exact: true })).toBeVisible();
+  await expect(화면머리(page).getByRole("button", { name: /^Space 열기: / })).toHaveCount(0);
+  await expect(화면머리(page).getByText("/", { exact: true })).toHaveCount(0);
 
   // Work 없음 · Space 있음 — 흐린 Space(14 · #898a8b) 8 「/」(그림 — 이름에 들지 않는다) 8 이름. 흐린 Space를 누르면 Space 상세다.
   await openThread(page, spaced);
-  const crumb = 머리줄(page).getByRole("button", { name: `Space 열기: ${PAYMENTS.name}`, exact: true });
-  const slash = 머리줄(page).getByText("/", { exact: true });
-  const name = 머리줄(page).getByText(spaced.title, { exact: true });
+  const crumb = 화면머리(page).getByRole("button", { name: `Space 열기: ${PAYMENTS.name}`, exact: true });
+  const slash = 화면머리(page).getByText("/", { exact: true });
+  const name = 화면머리(page).getByText(spaced.title, { exact: true });
   await expect(crumb).toHaveText(PAYMENTS.name);
   await expect(slash).toHaveAttribute("aria-hidden", "true");
   expect(await 모양(crumb, ["font-size", "color"])).toEqual({ "font-size": "14px", color: "rgb(137, 138, 139)" });

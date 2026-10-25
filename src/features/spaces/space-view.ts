@@ -222,7 +222,7 @@ export interface SpaceMenu {
  * Project는 등록되지 않은 것도 적힌 그대로다(파일의 말).
  *
  * 맨 위 줄은 여는 자리(`place`)를 따른다 — Work 화면(`work`)은 Space가 있으면 「Space 빼기 · 등록된 Project 3개를 모두 읽어요」, Space 칩
- * (`chip` — F4-KitComposer 「Space 칩 메뉴」)은 늘 고르는 줄 「Space 없음 · 등록된 Project 3개 읽기」다(빼기는 칩의 ×가 한다).
+ * (`chip` — F4-KitComposer 「Space 칩 메뉴」)은 늘 고르는 줄 「Space 없음 · 등록된 Project 3개 읽기」다 — 고르면 뺀다(×가 있는 칩은 ×로도 뺀다).
  */
 export function spaceMenu(
   spaces: readonly Space[],

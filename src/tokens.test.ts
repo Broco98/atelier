@@ -242,6 +242,17 @@ describe("Codex 실측 색", () => {
     "fg-ok": "#1f7a4d",
     "ok-soft": "rgba(31, 122, 77, 0.08)",
     "piece-soft": "rgba(58, 131, 247, 0.055)",
+    // 03 코드 리뷰 A6 — 다른 자리의 이름을 빌려 쓰던 03 화면 자리에 제 이름을 준 것. 값은 빌린 이름의 값 그대로다(`fg-titlebar` ·
+    // `surface-tray` · `mine` · `bubble-user` · `fg-placeholder` · `border-panel` · `fg-faint`).
+    "fg-yaml-key": "#2c67c5",
+    "fg-line-number": "#c7c7c8",
+    "fg-piece-tag": "#2c67c5",
+    "piece-tag": "#e8f3fe",
+    "border-preview-card": "#e8e8e8",
+    "fg-row-act": "#898a8b",
+    "surface-empty-mark": "#f4f4f4",
+    "graph-edge": "#a4a4a5",
+    "graph-edge-muted": "#c7c7c8",
   };
 
   it("스펙의 값이 라이트에 선다", () => {
@@ -263,6 +274,14 @@ describe("Codex 실측 색", () => {
   // 「생각 중」의 띠는 글자를 밝게 바래게 한다(스펙 §12) — 흰 75%. 띠를 그리는 유틸리티(12)만 읽어 유틸리티 이름을 내지 않는다.
   it("생각 중의 띠 색이 선다", () => {
     expect(declared(blocks, "light", "shimmer-band")).toBe("rgba(255, 255, 255, 0.75)");
+  });
+
+  // 관계 그래프 판의 점(03 시안 `.graph`) — 판을 그리는 유틸리티(`graph-dots`)만 읽는다. 상태 농도 면(`fill-hover`)의 값을 빌려 쓰던 자리라
+  // (03 코드 리뷰 A6) 값은 그 라이트 값 그대로다.
+  it("관계 그래프 판의 점이 제 이름의 색을 읽는다", async () => {
+    expect(declared(blocks, "light", "graph-dot")).toBe("rgba(26, 28, 31, 0.08)");
+    const built = await utilities(["graph-dots"]);
+    expect(ruleOf(built, "graph-dots")).toContain("radial-gradient(var(--graph-dot) 1px, transparent 1px)");
   });
 });
 

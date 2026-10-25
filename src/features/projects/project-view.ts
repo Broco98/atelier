@@ -3,7 +3,7 @@ import type { GitInfo, ProjectView } from "./types";
 // Projects 목록 · 상세의 갈래(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjMissing · F4-ProjDetailMissing · F4-ProjBranch ·
 // F4-ProjRename · F4-KitProject). 화면(`ProjectsPage` · `ProjectDetail`)이 그리는 글 · 메뉴 · 묶음을 여기서 고른다 — 렌더 없이 L2가 잰다.
 
-/** 목록 줄 ⋯의 항목이 하는 일 — Finder에서 열기 · 경로 복사 · 제거…(확인 창). */
+/** 목록 줄 ⋯의 항목이 하는 일 — Finder에서 열기 · 경로 복사 · 제거…(제거 창 — 확인 창과 다른 따로 선 창이다, 03 결정 11). */
 export type RowAct = "open-folder" | "copy-path" | "remove";
 
 /** ⋯ 메뉴의 한 줄 — `apart`면 앞에 구분선이 선다, `danger`면 빨강이다(시안 `.pi.red`). */

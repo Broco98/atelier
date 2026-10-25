@@ -10,14 +10,16 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { dialogLook } from "@/components/ui/dialog-look";
+import { workDoor } from "@/routes/-work-search";
 import { removeDialog } from "./project-remove";
 import type { ProjectUsage, ProjectView } from "./types";
 
 // Project 제거 창(03 구현 스펙 §16 「제거 창」 · 캔버스 F4-ProjRemoveBlocked · F4-KitProject 「제거 창」) — Projects 목록 줄 ⋯의 「제거…」가 연다. 세
 // 갈래(보통 · Space에 들어 있음 · 진행 중인 Work가 고침)와 그 글은 `removeDialog`가 고르고, 여기는 그린다.
 //
-// 창 상자는 시안 `.dlg.sm`이다 — 위에서 120 · 폭 420 · 모서리 20 · 안쪽 20/18/18 · 칸 사이 14. 확인 창(`AppDialog`)은 글만 받아 Project 카드 줄과
-// Work 줄을 품지 못해 이 창을 따로 둔다. 바닥 단추는 머리 줄 알약과 같은 28 알약이다(시안 `.btn.gh` · `.btn.redf`).
+// 창 상자는 위에서 120에 서는 작은 창이다(`dialogLook.topSmall` — 시안 `.dlg.sm`). 확인 창(`AppDialog`)은 글만 받아 Project 카드 줄과 Work 줄을
+// 품지 못해 이 창을 따로 둔다. 바닥 단추는 머리 줄 알약과 같은 28 알약이다(시안 `.btn.gh` · `.btn.redf`).
 
 export interface Removing {
   project: ProjectView;
@@ -59,7 +61,7 @@ export default function ProjectRemoveDialog({
         // 첫 포커스 — 물으면 「제거」(되돌릴 수 있는 일이다), 막혔으면 「닫기」.
         initialFocus={() => (dialog?.canRemove ? removeRef.current : closeRef.current)}
         onBackdropClick={onClose}
-        className="top-30 w-105 translate-y-0 gap-3.5 rounded-3xl px-4.5 pt-5 pb-4.5"
+        className={dialogLook.topSmall}
       >
         {now && dialog && (
           <>
@@ -74,10 +76,9 @@ export default function ProjectRemoveDialog({
               <ul aria-label="이 Project를 고치는 Work" className="flex flex-col overflow-hidden rounded-xl border border-border">
                 {dialog.works.map((work) => (
                   <li key={work.slug} className="border-t-[0.5px] border-separator first:border-t-0">
-                    {/* 누르면 그 Work로 — 창을 닫고 간다(스토리 132). */}
+                    {/* 누르면 그 Work로 — 창을 닫고 간다(스토리 132). 그 Work의 마지막 화면이다(`workDoor`, 03 코드 리뷰 A1). */}
                     <Link
-                      to="/works/$slug"
-                      params={{ slug: work.slug }}
+                      {...workDoor(work.slug)}
                       // WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다).
                       tabIndex={0}
                       onClick={onClose}

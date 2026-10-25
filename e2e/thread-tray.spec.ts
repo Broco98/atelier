@@ -258,7 +258,7 @@ test("Space 칩 — 메뉴에서 고른 Space는 흰 칩 + ×가 되어 범위 �
   await expect(범위줄(page)).toHaveText("읽는 Project가 없어요 — Space에 Project를 넣어 주세요");
   expect(await 모양(범위줄(page), ["color"])).toEqual({ color: "rgb(154, 91, 0)" });
 
-  // Work 칩과 Space 칩은 따로 고른다 — 스위치를 「Work 없이 대화」로 바꿔도 쥔 Space는 남는다(06 결정 「입력창이 쥐는 Space는 둘이다」).
+  // Work 칩과 Space 칩은 따로 고른다 — 스위치를 「Work 없이 대화」로 바꿔도 쥔 Space는 남는다(03 결정 「06」 — 입력창이 쥐는 Space는 둘이다).
   await 워크칩(page, "새 Work").click();
   await 메뉴(page).getByRole("menuitemradio", { name: "Work 없이 대화", exact: true }).click();
   await expect(이름칩(page, SETTLEMENT.name)).toBeVisible();

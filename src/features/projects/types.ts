@@ -24,7 +24,7 @@ export interface ProjectView {
 }
 
 /**
- * 제거 확인 창이 읽는 것 — 이 Project를 적은 Space들과 이 Project를 고치는 진행 중인 Work들(03 구현 스펙 §15 「제거 확인에 쓰는 읽기」). 정본은
+ * 제거 창이 읽는 것 — 이 Project를 적은 Space들과 이 Project를 고치는 진행 중인 Work들(03 구현 스펙 §15 「제거 확인에 쓰는 읽기」). 정본은
  * core `store.rs`의 `ProjectUsage`다.
  */
 export interface ProjectUsage {
