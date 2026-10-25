@@ -2,7 +2,7 @@ import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
-import type { Space, SpaceDetail } from "@/features/spaces/types";
+import type { Space, SpaceDetail, SpaceDraft } from "@/features/spaces/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
@@ -93,6 +93,25 @@ export const SPACES: Space[] = [
 export const SPACE_DETAILS: Record<string, SpaceDetail> = {
   결제: { ...SPACES[0], shared: [{ slug: "원장-도구", name: "원장 도구", overlap: ["ledger"], projects: ["ledger"] }] },
   "원장-도구": { ...SPACES[1], shared: [{ slug: "결제", name: "결제", overlap: ["ledger"], projects: ["billing", "ledger"] }] },
+};
+
+/** Space 파일의 글 — 관계 편집이 그대로 연다(`read_space_text`). 위 `SPACES`를 적은 파일이다. */
+export const SPACE_TEXTS: Record<string, string> = {
+  결제: "---\nname: 결제\nprojects:\n  - billing\n  - ledger\ncreatedAt: 2026-10-24\ncreatedBy: host\n---\n\n결제와 정산을 한 흐름으로 다뤄요.\n",
+  "원장-도구": "---\nname: 원장 도구\nprojects:\n  - ledger\ncreatedAt: 2026-10-20\n---\n",
+};
+
+/**
+ * 고치기 화면의 검사 답(core `draft_space`가 짓는 모양) — 「결제」 파일 그대로를 읽은 것이다. 이 층에는 core가 없어 글을 고쳐도 답이
+ * 따라오지 않는다 — 고친 글의 검사를 재는 시험은 `answerByArg("text", …)`로 그 글의 답을 둔다.
+ */
+export const SPACE_DRAFT: SpaceDraft = {
+  space: SPACES[0],
+  pieces: { name: 2, projects: { first: 3, last: 5 }, body: { first: 10, last: 10 } },
+  shared: SPACE_DETAILS["결제"].shared,
+  registered: PROJECTS.map((project) => project.slug),
+  folder: "~/.atelier/spaces",
+  suffix: null,
 };
 
 /**
@@ -932,6 +951,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_spaces: SPACES,
   get_space: answerByArg("slug", SPACE_DETAILS),
   update_space: SPACES[0],
+  // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Space다(화면은 그 상세로 간다).
+  read_space_text: answerByArg("slug", SPACE_TEXTS),
+  check_space: SPACE_DRAFT,
+  save_space_text: SPACES[0],
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //

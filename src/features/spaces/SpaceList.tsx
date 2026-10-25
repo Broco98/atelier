@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Book, ChevronRight, Layers, Search } from "lucide-react";
+import { Book, ChevronRight, Layers, Plus, Search } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSpaces } from "./hooks";
 import { spaceName } from "./space-view";
@@ -12,7 +13,8 @@ import type { Space } from "./types";
 // Project · 설명), 표 아래 한 줄 안내. 줄을 누르면 상세다. 문제가 있는 Space도 이름 뒤 「문제 있음」으로 선다(스토리 185). 파일은 바깥에서도
 // 고치므로 `spaces:changed`를 듣는다(`useSpaces`).
 //
-// 「새 Space ⌄」(04 · 06)와 줄 ⋯(관계 편집 04 · 삭제 07)는 그 티켓이 단다.
+// 머리 줄 「새 Space」는 빈 틀의 Space 파일을 고치기 화면에 연다(직접 만들기 — `/spaces/new`, 04). 06이 이 단추를 「Host와 만들기 ·
+// 직접 만들기」 메뉴로 바꾼다. 줄 ⋯(관계 편집 · 삭제)는 07이 단다.
 
 /** 표의 칸 — 이름 · Project · 설명 · 끝 칸(⋯ 자리). 머리 줄과 몸 줄이 같은 격자다(시안 `.th` · `.srow`). */
 const COLUMNS = "grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.5fr)_28px] items-center gap-4 pr-2.5 pl-3.5";
@@ -39,9 +41,14 @@ export default function SpaceList() {
               className="min-w-0 flex-1 bg-transparent text-chat-meta text-fg outline-none placeholder:text-fg-tertiary"
             />
           </label>
+          <NewSpaceButton />
         </header>
         {!isPending && spaces.length === 0 ? (
-          <p className="px-3.5 py-6 text-sm text-fg-tertiary">아직 Space가 없어요</p>
+          // S15 — 빈 목록은 안내 한 줄과 「새 Space」(머리 줄과 같은 길)다.
+          <div className="flex flex-col items-start gap-3 px-3.5 py-6">
+            <p className="text-sm text-fg-tertiary">아직 Space가 없어요</p>
+            <NewSpaceButton />
+          </div>
         ) : (
           <div role="table" aria-label="Space 목록" className="flex flex-col">
             <div role="row" className={cn(COLUMNS, "h-7.5 text-xs text-fg-tertiary")}>
@@ -60,6 +67,15 @@ export default function SpaceList() {
         <p className="px-3.5 text-xs text-fg-tertiary">Space는 Project를 묶어요. Agent는 Space 안의 Project를 함께 읽어요.</p>
       </div>
     </PlainFrame>
+  );
+}
+
+/** 「새 Space」 — 짙은 알약(시안 F1-Space `.btn.pri`). 직접 만들기 화면으로 간다. */
+function NewSpaceButton() {
+  return (
+    <Link to="/spaces/new" className={buttonVariants({ size: "top", className: "shrink-0 rounded-full" })}>
+      <Plus aria-hidden />새 Space
+    </Link>
   );
 }
 

@@ -12,24 +12,38 @@ export function spaceName(space: Pick<Space, "slug" | "name">): string {
 // ── 관계 그래프 ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // 시안 F1-SpaceDetail의 배치 그대로다(보드 스크립트 `layout`): 너비 720의 판에 네 열 — Space(82) · Project(262) · 다른 Space(442) ·
-// 그 Space의 다른 Project(628). 노드는 너비 124 · 높이 36이다. Project는 가운데 줄(y 104)을 두고 50 간격으로 퍼지고, 다른 Space는
+// 그 Space의 다른 Project(628). 노드는 너비 124 · 높이 36이다. 고치기 화면의 미리보기 카드는 같은 규칙을 좁은 판에 세 열로 그린다
+// (`CARD_GRAPH`). Project는 가운데 줄(y 104)을 두고 50 간격으로 퍼지고, 다른 Space는
 // 겹치는 Project들의 가운데에 서되 앞 Space와 50보다 가까우면 아래로 밀린다.
 //
 // 시안이 그리지 않은 많을 때(스펙 「위험 — 관계 그래프의 배치」): 한 열이 일곱을 넘으면 여섯과 「외 N개」로 접고, 판은 노드만큼 길어진다.
 // 다른 Space의 겹치지 않는 Project는 그 Space 곁 한 노드다 — 여럿이면 「backoffice 외 1개」로 접어 이웃 Space의 노드와 겹치지 않는다.
 
-export const GRAPH_WIDTH = 720;
-export const NODE_WIDTH = 124;
 export const NODE_HEIGHT = 36;
-const COLUMNS = [82, 262, 442, 628] as const;
-/** 판의 기본 키 · 가운데 줄 — 시안 그대로. */
-const BASE_HEIGHT = 236;
+
+/**
+ * 그래프 판 하나의 배치 — 층의 폭 · 열의 가운데 x · 노드 폭 · 판의 기본 키 · 마지막 노드 아래로 남기는 자리(범례 줄과 그 위 여백). 넷째
+ * 열이 없으면 다른 Space의 다른 Project를 그리지 않는다.
+ */
+export interface GraphLayout {
+  width: number;
+  columns: readonly [number, number, number] | readonly [number, number, number, number];
+  nodeWidth: number;
+  baseHeight: number;
+  bottomRoom: number;
+}
+
+/** 상세의 「관계」 판 — 시안 F1-SpaceDetail. */
+export const DETAIL_GRAPH: GraphLayout = { width: 720, columns: [82, 262, 442, 628], nodeWidth: 124, baseHeight: 236, bottomRoom: 64 };
+
+/** 고치기 화면의 미리보기 카드 — 시안 F1-SpaceEdit(`graph_box(520)` · 열 72 · 260 · 448 · 노드 112 · 판 224). 좁은 카드라 셋째 열까지다. */
+export const CARD_GRAPH: GraphLayout = { width: 520, columns: [72, 260, 448], nodeWidth: 112, baseHeight: 224, bottomRoom: 52 };
+
+/** 가운데 줄 — 시안 그대로. */
 const MIDDLE = 104;
 const GAP = 50;
 /** 첫 노드의 가운데가 판 위에서 떨어지는 가장 작은 값 — 노드 반 높이 18 + 여백 18. */
 const TOP = 36;
-/** 마지막 노드 아래로 남기는 자리 — 범례 줄(아래 10 · 글 16)과 그 위 여백. */
-const BOTTOM_ROOM = 64;
 /** 한 열에 서는 노드의 끝 — 넘으면 앞 여섯과 「외 N개」다. */
 const COLUMN_LIMIT = 7;
 
@@ -54,6 +68,7 @@ export interface GraphEdge {
 }
 
 export interface SpaceGraph {
+  layout: GraphLayout;
   height: number;
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -68,7 +83,8 @@ function fold<T>(items: readonly T[]): { shown: T[]; folded: T[] } {
   return { shown: items.slice(0, COLUMN_LIMIT - 1), folded: items.slice(COLUMN_LIMIT - 1) };
 }
 
-export function spaceGraph(space: Space, shared: readonly SharedSpace[]): SpaceGraph {
+export function spaceGraph(space: Space, shared: readonly SharedSpace[], layout: GraphLayout = DETAIL_GRAPH): SpaceGraph {
+  const COLUMNS = layout.columns;
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
   const projects = fold(space.projects);
@@ -116,7 +132,7 @@ export function spaceGraph(space: Space, shared: readonly SharedSpace[]): SpaceG
     nodes.push(node);
     for (const from of linked) edges.push({ from: from.key, to: node.key, muted: true });
     const extra = other.projects.filter((slug) => !space.projects.includes(slug));
-    if (extra.length > 0) {
+    if (COLUMNS.length === 4 && extra.length > 0) {
       const name = extra.length === 1 ? extra[0] : `${extra[0]} 외 ${extra.length - 1}개`;
       nodes.push({ key: `e:${other.slug}`, kind: "extra", name, x: COLUMNS[3], y });
       edges.push({ from: node.key, to: `e:${other.slug}`, muted: true });
@@ -128,7 +144,7 @@ export function spaceGraph(space: Space, shared: readonly SharedSpace[]): SpaceG
   }
 
   const lowest = Math.max(...nodes.map((node) => node.y));
-  return { height: Math.max(BASE_HEIGHT, lowest + NODE_HEIGHT / 2 + BOTTOM_ROOM), nodes, edges };
+  return { layout, height: Math.max(layout.baseHeight, lowest + NODE_HEIGHT / 2 + layout.bottomRoom), nodes, edges };
 }
 
 // ── 넣기 메뉴 ────────────────────────────────────────────────────────────────────────────────────────────────────

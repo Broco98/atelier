@@ -295,4 +295,20 @@ describe("빨강", () => {
     expect(found.filter((place) => !placed(place))).toEqual([]);
     expect(RED_PLACES.filter((one) => !found.some((place) => place.startsWith(`${one.file}:`) && place.endsWith(`: ${one.literal}`)))).toEqual([]);
   });
+
+  // **문제 빨강**(03 구현 스펙 Testing 「빨강은 문제 글 · 문제 알약에만」 · 티켓 04) — Space 파일 고치기 화면이 문제 줄의 끝 글 · 줄 번호 ·
+  // 값 밑 물결 · 문제 줄의 면 · 「⚠ 문제 N개」 알약에 쓰는 시안 빨강(`fg-problem` #b4302a · `problem-soft`)이다. 다른 화면이 이 이름을 빌리면
+  // 문제가 아닌 것이 문제처럼 보이고, 이 빨강을 보고 「저장이 왜 꺼졌나」를 읽는 길이 흐려진다.
+  it("문제 빨강은 Space 파일 고치기 화면에만 선다", () => {
+    const PROBLEM = [utilities(["fg-problem", "problem-soft"]), variables(["fg-problem", "problem-soft"])];
+    const PLACES = ["src/features/spaces/SpaceEditor.tsx"];
+    // 앵커: 변형(`decoration-`)까지 잡는다.
+    expect(PROBLEM.flatMap((pattern) => offenders(pattern, [{ file: "예", text: "decoration-fg-problem bg-problem-soft/50" }]))).toEqual([
+      "예:1: decoration-fg-problem",
+      "예:1: bg-problem-soft/50",
+    ]);
+    const found = PROBLEM.flatMap((pattern) => offenders(pattern, scripts));
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.filter((place) => !PLACES.some((file) => place.startsWith(`${file}:`)))).toEqual([]);
+  });
 });

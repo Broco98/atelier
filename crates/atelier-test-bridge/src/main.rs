@@ -72,6 +72,13 @@ const HANDLERS: &[(&str, Handler)] = &[
             },
         ))
     }),
+    ("read_space_text", |a| ok(atelier_core::read_space_text(&data_root(), &text(a, "slug")?))),
+    ("check_space", |a| {
+        ok(atelier_core::draft_space(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
+    }),
+    ("save_space_text", |a| {
+        ok(atelier_core::save_space_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
+    }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
     // **진짜로** 탄다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
     ("list_works", |_| {

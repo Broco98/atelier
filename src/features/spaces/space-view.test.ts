@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { addMenu, createdLine, spaceGraph } from "./space-view";
+import { addMenu, CARD_GRAPH, createdLine, spaceGraph } from "./space-view";
 import type { SharedSpace, Space } from "./types";
 
 const space = (over: Partial<Space> = {}): Space => ({
@@ -42,6 +42,23 @@ describe("관계 그래프", () => {
     ]);
     expect(graph.nodes.find((node) => node.kind === "other")?.to).toBe("사내-도구");
     expect(graph.height).toBe(236);
+  });
+
+  it("고치기 화면의 카드는 좁은 판(520)에 세 열(72 · 260 · 448)이고, 다른 Space의 다른 Project는 그리지 않는다", () => {
+    // 시안 F1-SpaceEdit의 미리보기 카드(`graph_box(520)` · `layout(… { X: [72, 260, 448], NW: 112 })`)
+    const graph = spaceGraph(
+      space({ projects: ["web-app", "api-server", "backoffice"] }),
+      [shared("사내-도구", "사내 도구", ["api-server", "backoffice"], ["api-server", "backoffice", "admin"])],
+      CARD_GRAPH,
+    );
+    expect(placed(graph)).toEqual([
+      ["space", "결제 서비스", 72, 104],
+      ["project", "web-app", 260, 54],
+      ["project", "api-server", 260, 104],
+      ["project", "backoffice", 260, 154],
+      ["other", "사내 도구", 448, 129],
+    ]);
+    expect(graph.height).toBe(224);
   });
 
   it("빈 Space는 Space 노드 하나다", () => {

@@ -111,8 +111,9 @@ pub use store::{
 // Space(03 구현 스펙 §8) — 파일 하나가 Space 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
 // 읽는 범위가 모두 이것을 부른다(S7).
 pub use space::{
-    check_space, create_space, edit_space_text, get_space, list_spaces, new_space_slug, shared_spaces, space_detail, update_space,
-    Lines, NewSpace, SharedSpace, Space, SpaceCheck, SpaceDetail, SpacePatch, SpacePieces, SpaceProblem, SpaceProblemKind,
+    check_space, create_space, draft_space, edit_space_text, get_space, list_spaces, new_space_slug, read_space_text, save_space_text,
+    shared_spaces, space_detail, update_space,
+    Lines, NewSpace, SharedSpace, Space, SpaceCheck, SpaceDetail, SpaceDraft, SpacePatch, SpacePieces, SpaceProblem, SpaceProblemKind,
 };
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{

@@ -294,6 +294,12 @@
     --color-notice-info: var(--notice-info);
     --color-fg-notice-info: var(--fg-notice-info);
     --color-fg-notice-warn-line: var(--fg-notice-warn-line);
+    --color-surface-preview: var(--surface-preview);
+    --color-fg-problem: var(--fg-problem);
+    --color-problem-soft: var(--problem-soft);
+    --color-fg-ok: var(--fg-ok);
+    --color-ok-soft: var(--ok-soft);
+    --color-piece-soft: var(--piece-soft);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -920,6 +926,19 @@
     --fg-tray-ghost-icon: rgba(26, 28, 31, 0.35);
     /* 03 시안의 「되돌리기」 토스트(F1-SpaceDetail `.toast .btn`) — 짙은 면(`fg`) 위의 글자 단추. 다크 값이 없다(위 묶음과 같다). */
     --link-on-solid: #8fb8fb;
+    /* 03 시안의 Space 파일 고치기 화면(F1-SpaceEdit · F4-SpaceEditErr — 04). 다크 값이 없다(위 묶음과 같다).
+         surface-preview  오른쪽 미리보기 칸의 회색 바탕(`.exp` #f5f5f6) — 그 위에 흰 Space 카드 하나가 선다
+         fg-problem       문제의 말 — 편집기 줄 끝 붉은 글 · 문제 줄의 줄 번호 · 값 밑 물결 · 「⚠ 문제 N개」 알약 글자(`.lens` · `.stp.bad`).
+                          빨강은 이 화면의 문제 글 · 알약에만 선다(`color-guard.test.ts`)
+         problem-soft     문제 줄의 바탕 · 문제 알약의 면(`.ln.err` · `.stp.bad`)
+         fg-ok            「✓ 문제 없어요」 알약 글자(`.stp.ok`), 면은 `ok-soft`
+         piece-soft       커서가 있는 줄의 조각 — 편집기 줄과 카드 조각에 함께 까는 옅은 파랑(`.ln.cur` · `.lk.on`). 막대는 `accent-solid` */
+    --surface-preview: #f5f5f6;
+    --fg-problem: #b4302a;
+    --problem-soft: rgba(207, 58, 51, 0.08);
+    --fg-ok: #1f7a4d;
+    --ok-soft: rgba(31, 122, 77, 0.08);
+    --piece-soft: rgba(58, 131, 247, 0.055);
 
     /* **03 시안 색 — 안내 상자**(03 구현 스펙 §16 · 캔버스 v52 F4-KitProject의 `.ntc`) — 창 안에서 고른 것을 두고 알리는 한 줄 상자다. Project
        추가 창이 폴더를 고르는 순간 「git 저장소가 아니에요」 · 「… 폴더가 이미 있어요」(경고)와 「… 저장소 안의 폴더예요」 · 「이미 추가된

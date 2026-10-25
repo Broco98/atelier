@@ -233,6 +233,13 @@ describe("Codex 실측 색", () => {
     "fg-tray-ghost-icon": "rgba(26, 28, 31, 0.35)",
     // 03 시안의 「되돌리기」 토스트 — 짙은 면 위 글자 단추(F1-SpaceDetail `.toast .btn`).
     "link-on-solid": "#8fb8fb",
+    // 03 시안의 Space 파일 고치기 화면(04) — 미리보기 칸 바탕 · 문제 글과 면 · 괜찮음 알약 · 커서 줄의 조각 면.
+    "surface-preview": "#f5f5f6",
+    "fg-problem": "#b4302a",
+    "problem-soft": "rgba(207, 58, 51, 0.08)",
+    "fg-ok": "#1f7a4d",
+    "ok-soft": "rgba(31, 122, 77, 0.08)",
+    "piece-soft": "rgba(58, 131, 247, 0.055)",
   };
 
   it("스펙의 값이 라이트에 선다", () => {

@@ -29,8 +29,9 @@ import type { SpaceDetail as Detail, SpacePatch } from "./types";
 // 만든 이 줄 · 관계 그래프 · 설명 · Project 표, 오른쪽 칸에 「함께 쓰는 Space」. 고치는 일(이름 · 설명 · 넣기 · 빼기)은 모두 core의 글 단위
 // 고치기 하나로 그 칸만 바꾼다(`update_space`). 빼면 「되돌리기」 토스트가 잠깐 서고, 누르면 뺀 Project를 제자리에 다시 넣는다.
 //
-// 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06), ⋯ 「관계 편집 · 삭제…」(04 · 07), 그래프의 「편집」(04),
-// 오른쪽 칸의 「Work」 묶음(05).
+// 관계 그래프의 「편집」과 문제 상자의 「관계 편집에서 고치기」는 그 Space 파일을 글 그대로 고치는 화면(`/spaces/$slug/edit` — 04)으로 간다.
+//
+// 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06), ⋯ 「관계 편집 · 삭제…」(07), 오른쪽 칸의 「Work」 묶음(05).
 
 export default function SpaceDetail({ slug }: { slug: string }) {
   const { data: space, isError, error } = useSpace(slug);
@@ -122,6 +123,12 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
         <Section
           label="관계"
           aside={space.shared.length > 0 ? `함께 쓰는 Space ${space.shared.length}` : "다른 Space와 겹치지 않아요"}
+          end={
+            <Link to="/spaces/$slug/edit" params={{ slug: space.slug }} className={buttonVariants({ variant: "ghost", size: "top" })}>
+              <Pencil aria-hidden />
+              편집
+            </Link>
+          }
         >
           <SpaceGraph
             space={space}
@@ -210,12 +217,19 @@ function Section({
   );
 }
 
-/** 문제가 있는 Space — 상세 위에 문제 줄들(줄 번호 · 말)이 선다. 고치는 길은 관계 편집이다(04). */
+/** 문제가 있는 Space — 상세 위에 문제 줄들(줄 번호 · 말)이 선다. 고치는 길은 관계 편집이다 — 그 줄들이 편집기의 줄 끝에 그대로 선다. */
 function Problems({ space }: { space: Detail }) {
   return (
     <section aria-label="문제" className="mb-6 rounded-xl border border-separator-soft px-4 py-3">
       <p className="flex items-center gap-2 text-sm text-danger">
         <TriangleAlert aria-hidden className="size-4 shrink-0" />이 Space 파일에 문제가 있어요
+        <Link
+          to="/spaces/$slug/edit"
+          params={{ slug: space.slug }}
+          className="ml-auto rounded-sm text-chat-meta text-link underline-offset-3 hover:underline focus-ring"
+        >
+          관계 편집에서 고치기
+        </Link>
       </p>
       <ul className="mt-1.5 flex flex-col gap-1 pl-6 text-chat-meta text-danger">
         {space.problems.map((problem) => (

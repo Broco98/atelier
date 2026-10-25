@@ -306,16 +306,107 @@ pub fn create_space(data_root: &Path, new: NewSpace) -> Result<Space> {
 
 /// 이 이름으로 만들 때의 slug — Project와 같은 `slugify`(한글 유지)이고 이미 있으면 `-2` · `-3`이다. 새 Space 화면의 파일 경로가 이것을
 /// 미리 보인다.
+///
+/// `new`는 쓰지 않는다(`new-2`) — `/spaces/new`가 새 Space 화면의 주소라, 그 slug의 상세가 가려진다(04 결정).
 pub fn new_space_slug(data_root: &Path, name: &str) -> String {
     let dir = spaces_in(data_root);
     let base = crate::slugify(name);
     let mut slug = base.clone();
     let mut n = 2;
-    while dir.join(format!("{slug}.md")).exists() {
+    while slug == NEW_SPACE_PAGE || dir.join(format!("{slug}.md")).exists() {
         slug = format!("{base}-{n}");
         n += 1;
     }
     slug
+}
+
+/// 새 Space 화면의 주소 끝(`/spaces/new`) — 앱이 짓는 slug가 비켜 간다.
+const NEW_SPACE_PAGE: &str = "new";
+
+/// Space 파일의 글 그대로 — 관계 편집이 연다(03 구현 스펙 §13).
+pub fn read_space_text(data_root: &Path, slug: &str) -> Result<String> {
+    std::fs::read_to_string(space_path(data_root, slug)?).map_err(|_| Error::SpaceNotFound(slug.to_string()))
+}
+
+/// 고치기 화면(관계 편집 · 직접 만들기)이 고칠 때마다 부르는 한 번 읽기 — 그 글의 검사(문제 · 조각 자리)와 미리보기 카드가 그릴 것,
+/// 안내 줄의 등록된 Project, 파일 자리다(03 구현 스펙 §13 · S7). 화면은 따로 검사하지 않는다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceDraft {
+    /// 그 글을 읽은 Space — 문제는 `problems`에 든다. slug는 관계 편집이면 그 Space의 것, 새 Space면 이름에서 지을 것이다(이름이 비면 빈
+    /// 글 — 아직 파일 이름이 없다).
+    pub space: Space,
+    pub pieces: SpacePieces,
+    /// 그 글의 Project를 적은 다른 Space — 카드의 「함께 쓰는 Space」와 그래프의 점선 노드. 고치는 Space 자신은 빠진다.
+    pub shared: Vec<SharedSpace>,
+    /// 등록된 Project — 안내 줄 「Project는 … 중에서」.
+    pub registered: Vec<String>,
+    /// Space 파일들의 폴더 — 홈은 `~`로 접는다. 파일 칸 머리의 경로가 이 아래 `<slug>.md`다.
+    pub folder: String,
+    /// 새 Space에서 같은 이름의 Space가 있어 slug 끝에 붙인 것(`-2`). 겹치지 않으면 없다.
+    pub suffix: Option<String>,
+}
+
+/// `slug`가 있으면 그 Space를 고치는 글이고, 없으면 새 Space의 글이다. 파일은 읽지도 쓰지도 않는다(다른 Space · 등록부만 읽는다).
+pub fn draft_space(data_root: &Path, slug: Option<&str>, text: &str) -> Result<SpaceDraft> {
+    let registered = registered_projects(data_root);
+    let read = read_text(text, &registered);
+    let pieces = read.check.pieces.clone();
+    let (slug, suffix) = match slug {
+        Some(slug) => {
+            space_path(data_root, slug)?;
+            (slug.to_string(), None)
+        }
+        None => {
+            let name = folded(&read.name);
+            if name.is_empty() {
+                (String::new(), None)
+            } else {
+                let slug = new_space_slug(data_root, &name);
+                let suffix = slug.strip_prefix(&crate::slugify(&name)).filter(|rest| !rest.is_empty()).map(str::to_string);
+                (slug, suffix)
+            }
+        }
+    };
+    let space = read.into_space(&slug);
+    let others = list_spaces(data_root)?;
+    let shared = overlapping(&others, &space);
+    Ok(SpaceDraft {
+        space,
+        pieces,
+        shared,
+        registered,
+        folder: crate::paths::collapse_home(&spaces_in(data_root)),
+        suffix,
+    })
+}
+
+/// **글로 저장**(03 구현 스펙 §8) — 사람이 쓴 글을 검사하고, 문제가 없으면 **그 글 그대로** 쓴다(줄 차례 · 주석 · 모르는 칸 · 끝의 줄바꿈까지).
+/// 문제가 하나라도 있으면 쓰지 않고 그 문제로 실패한다 — 고치기 화면이 저장을 끈 것과 같은 검사다(S7).
+///
+/// `slug`가 있으면 그 Space 파일을 바꾼다(없으면 `SpaceNotFound` — 지운 Space를 몰래 다시 세우지 않는다). 없으면 새 파일이고, 그 글의
+/// `name`에서 slug를 짓는다(겹치면 `-2` — [`new_space_slug`]). 이름을 고쳐도 있던 파일 이름은 그대로다.
+pub fn save_space_text(data_root: &Path, slug: Option<&str>, text: &str) -> Result<Space> {
+    let read = read_text(text, &registered_projects(data_root));
+    if !read.check.problems.is_empty() {
+        return Err(Error::SpaceProblems(read.check.problems));
+    }
+    let slug = match slug {
+        Some(slug) => {
+            if !space_path(data_root, slug)?.is_file() {
+                return Err(Error::SpaceNotFound(slug.to_string()));
+            }
+            slug.to_string()
+        }
+        None => new_space_slug(data_root, &folded(&read.name)),
+    };
+    crate::atomic::write_atomically(&spaces_in(data_root), &format!("{slug}.md"), text)?;
+    Ok(read.into_space(&slug))
+}
+
+/// 이름의 빈칸을 하나로 접는다 — 만들기([`create_space`])와 같은 이름에서 같은 slug가 나온다.
+fn folded(name: &str) -> String {
+    name.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Space를 고쳐 쓴다 — 고친 칸만 바꾼다([`edit_space_text`]). 고친 글이 **새 문제**를 만들면(등록되지 않은 Project를 넣었다 · 이름을
@@ -361,9 +452,14 @@ pub fn shared_spaces(data_root: &Path, slug: &str) -> Result<Vec<SharedSpace>> {
     let Some(this) = spaces.iter().find(|space| space.slug == slug) else {
         return Err(Error::SpaceNotFound(slug.to_string()));
     };
-    Ok(spaces
+    Ok(overlapping(&spaces, this))
+}
+
+/// `spaces` 가운데 `this`와 같은 Project를 하나라도 적은 다른 Space — `this` 자신(같은 slug)은 빠진다.
+fn overlapping(spaces: &[Space], this: &Space) -> Vec<SharedSpace> {
+    spaces
         .iter()
-        .filter(|other| other.slug != slug)
+        .filter(|other| other.slug != this.slug)
         .filter_map(|other| {
             let overlap: Vec<String> = this.projects.iter().filter(|project| other.projects.contains(project)).cloned().collect();
             (!overlap.is_empty()).then(|| SharedSpace {
@@ -373,7 +469,7 @@ pub fn shared_spaces(data_root: &Path, slug: &str) -> Result<Vec<SharedSpace>> {
                 projects: other.projects.clone(),
             })
         })
-        .collect())
+        .collect()
 }
 
 /// 데이터 루트의 Space 전부 — 이름 차례(이름이 없으면 slug). 점 파일(쓰기의 tmp · 지운 자리)과 `.md`가 아닌 것은 건너뛴다.
@@ -919,5 +1015,114 @@ mod tests {
     #[test]
     fn 목록이_아닌_projects는_읽을_수_없는_꼴이다() {
         assert_eq!(problems("---\nname: 결제\nprojects: web-app\n---\n"), vec![(3, SpaceProblemKind::BadYaml)]);
+    }
+
+    #[test]
+    fn 관계_편집은_파일_글을_그대로_읽는다() {
+        let home = home();
+        put(&home, "결제-서비스", HAND);
+        assert_eq!(read_space_text(home.path(), "결제-서비스").unwrap(), HAND);
+        assert!(matches!(read_space_text(home.path(), "없음"), Err(crate::Error::SpaceNotFound(_))));
+        assert!(matches!(read_space_text(home.path(), "../projects/web-app"), Err(crate::Error::SpaceNotFound(_))));
+    }
+
+    #[test]
+    fn 글로_저장은_사람이_쓴_글을_한_글자도_바꾸지_않고_쓴다() {
+        let home = home();
+        put(&home, "결제-서비스", HAND);
+        // 차례를 바꾸고 · 주석을 더하고 · 따옴표 없는 이름 · 모르는 칸 — 앱이 다시 적지 않는다
+        let text = HAND
+            .replace("name: \"결제 서비스\"", "name: 결제 · 환불 # 고침")
+            .replace("    - api-server\n", "    - backoffice\n    - api-server\n")
+            .replace("둘째 문단.\n", "둘째 문단.");
+        let space = save_space_text(home.path(), Some("결제-서비스"), &text).unwrap();
+        assert_eq!(file(&home, "결제-서비스"), text);
+        assert_eq!((space.slug.as_str(), space.name.as_str()), ("결제-서비스", "결제 · 환불"), "이름을 고쳐도 파일 이름은 그대로다");
+        assert_eq!(space.projects, vec!["web-app", "backoffice", "api-server"]);
+    }
+
+    #[test]
+    fn 글로_저장은_문제가_있으면_쓰지_않는다() {
+        let home = home();
+        put(&home, "결제-서비스", PAYMENTS);
+        let broken = PAYMENTS.replace("  - api-server\n", "  - api-server\n  - billing\n  - web-app\n");
+        let Err(crate::Error::SpaceProblems(problems)) = save_space_text(home.path(), Some("결제-서비스"), &broken) else {
+            panic!("등록되지 않은 Project · 같은 Project 두 번")
+        };
+        let kinds: Vec<_> = problems.iter().map(|problem| (problem.line, problem.kind)).collect();
+        assert_eq!(kinds, vec![(6, SpaceProblemKind::UnknownProject), (7, SpaceProblemKind::DuplicateProject)]);
+        assert_eq!(file(&home, "결제-서비스"), PAYMENTS, "거절하면 파일을 건드리지 않는다");
+
+        assert!(matches!(
+            save_space_text(home.path(), None, "---\nname: \nprojects: []\ncreatedAt: 2026-10-26\n---\n"),
+            Err(crate::Error::SpaceProblems(_))
+        ));
+        assert!(matches!(save_space_text(home.path(), None, "---\nname: 정산\n"), Err(crate::Error::SpaceProblems(_))));
+        assert_eq!(list_spaces(home.path()).unwrap().len(), 1, "새 파일도 서지 않는다");
+    }
+
+    #[test]
+    fn 관계_편집의_저장은_없는_space를_새로_만들지_않는다() {
+        let home = home();
+        assert!(matches!(save_space_text(home.path(), Some("결제-서비스"), PAYMENTS), Err(crate::Error::SpaceNotFound(_))));
+        assert!(matches!(save_space_text(home.path(), Some("../x"), PAYMENTS), Err(crate::Error::SpaceNotFound(_))));
+        assert_eq!(list_spaces(home.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn 새_파일은_글의_이름에서_slug를_짓고_겹치면_뒤에_수를_붙인다() {
+        let home = home();
+        let text = "---\nname:  결제   서비스 \nprojects: []\ncreatedAt: 2026-10-26\n---\n";
+        let made = save_space_text(home.path(), None, text).unwrap();
+        assert_eq!(made.slug, "결제-서비스", "이름의 빈칸은 하나로 접어 slug를 짓는다");
+        assert_eq!(file(&home, "결제-서비스"), text, "글은 적은 그대로다");
+        assert_eq!(save_space_text(home.path(), None, text).unwrap().slug, "결제-서비스-2");
+        assert_eq!(file(&home, "결제-서비스-2"), text);
+    }
+
+    #[test]
+    fn 새_space의_slug는_new가_아니다() {
+        // `/spaces/new`는 새 Space 화면의 주소다 — 그 slug의 상세가 가려지지 않게 앱이 그 이름의 파일을 만들지 않는다
+        let home = home();
+        assert_eq!(new_space_slug(home.path(), "New"), "new-2");
+        assert_eq!(new_space_slug(home.path(), "news"), "news");
+    }
+
+    #[test]
+    fn 고치기_화면의_검사는_문제와_조각과_그_글의_미리보기를_돌려준다() {
+        let home = home();
+        put(&home, "결제-서비스", PAYMENTS);
+        put(&home, "사내-도구", "---\nname: 사내 도구\nprojects:\n  - backoffice\n  - api-server\n---\n");
+        let text = PAYMENTS.replace("  - api-server\n", "  - api-server\n  - billing\n");
+        let draft = draft_space(home.path(), Some("결제-서비스"), &text).unwrap();
+        assert_eq!(draft.space.slug, "결제-서비스");
+        assert_eq!(draft.space.name, "결제 서비스");
+        assert_eq!(
+            draft.space.problems.iter().map(|problem| (problem.line, problem.kind)).collect::<Vec<_>>(),
+            vec![(6, SpaceProblemKind::UnknownProject)]
+        );
+        assert_eq!(draft.pieces, check_space(&text, &registered()).pieces, "조각 자리는 검사 하나의 것이다");
+        assert_eq!(draft.registered, vec!["api-server", "backoffice", "web-app"], "안내 줄의 넣을 수 있는 Project — 등록부 차례");
+        let shared: Vec<(&str, Vec<&str>)> =
+            draft.shared.iter().map(|one| (one.slug.as_str(), one.overlap.iter().map(String::as_str).collect())).collect();
+        assert_eq!(shared, vec![("사내-도구", vec!["api-server"])], "고치는 Space 자신은 함께 쓰는 Space가 아니다");
+        assert_eq!(draft.suffix, None);
+        assert!(draft.folder.ends_with("spaces"), "{}", draft.folder);
+    }
+
+    #[test]
+    fn 새_space의_검사는_이름을_따라_파일_이름을_미리_보인다() {
+        let home = home();
+        put(&home, "사내-도구", "---\nname: 사내 도구\nprojects:\n  - api-server\n---\n");
+        let draft = draft_space(home.path(), None, "---\nname: 정산\nprojects:\n  - api-server\n---\n").unwrap();
+        assert_eq!((draft.space.slug.as_str(), draft.suffix.as_deref()), ("정산", None));
+        assert_eq!(draft.shared.len(), 1, "새 Space도 같은 Project를 쓰는 Space를 본다");
+
+        let taken = draft_space(home.path(), None, "---\nname: 사내 도구\nprojects: []\n---\n").unwrap();
+        assert_eq!((taken.space.slug.as_str(), taken.suffix.as_deref()), ("사내-도구-2", Some("-2")));
+
+        let blank = draft_space(home.path(), None, "---\nname: \nprojects: []\ncreatedAt: 2026-10-26\n---\n").unwrap();
+        assert_eq!((blank.space.slug.as_str(), blank.suffix.as_deref()), ("", None), "이름이 비면 파일 이름도 없다");
+        assert_eq!(blank.space.problems[0].kind, SpaceProblemKind::NoName);
     }
 }

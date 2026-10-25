@@ -478,6 +478,24 @@ describe("Space의 주소", () => {
     expect(matches[matches.length - 1].params).toEqual({ slug: "결제-서비스" });
   });
 
+  // 고치기 화면 둘(03 구현 스펙 §13) — 관계 편집은 그 Space 아래, 새 Space는 목록 아래 고정 주소다. 둘 다 상세의 자식이 아닌 따로 선 화면이다.
+  it("`/spaces/<slug>/edit`는 그 Space의 관계 편집이다 — 상세 위에 겹쳐 서지 않는다", async () => {
+    const { router } = setup(["/spaces/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4/edit"]);
+    await router.load();
+    const ids = router.state.matches.map((match) => match.routeId);
+    expect(ids).toContain("/spaces/$slug_/edit");
+    expect(ids).not.toContain("/spaces/$slug");
+    expect(router.state.matches[router.state.matches.length - 1].params).toEqual({ slug: "결제-서비스" });
+  });
+
+  it("`/spaces/new`는 새 Space다 — slug가 new인 Space의 상세가 아니다", async () => {
+    const { router } = setup(["/spaces/new"]);
+    await router.load();
+    const ids = router.state.matches.map((match) => match.routeId);
+    expect(ids).toContain("/spaces/new");
+    expect(ids).not.toContain("/spaces/$slug");
+  });
+
   it("상세에서 점선 Space로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Space로 간다", async () => {
     const { router, history } = setup(["/spaces/a"]);
     await router.load();

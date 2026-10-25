@@ -25,12 +25,14 @@ import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-l
 import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
 import { Route as SpacesIndexRouteImport } from './routes/spaces.index'
 import { Route as SpacesSlugRouteImport } from './routes/spaces.$slug'
+import { Route as SpacesNewRouteImport } from './routes/spaces.new'
 import { Route as ThreadsIdRouteImport } from './routes/threads.$id'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
 import { Route as SettingsSpecLayoutIndexRouteImport } from './routes/settings.spec-layout.index'
 import { Route as SettingsSpecLayoutSplatRouteImport } from './routes/settings.spec-layout.$'
 import { Route as SettingsSpecLayoutEditRouteImport } from './routes/settings.spec-layout.edit'
+import { Route as SpacesSlugEditRouteImport } from './routes/spaces.$slug_.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -112,6 +114,11 @@ const SpacesSlugRoute = SpacesSlugRouteImport.update({
   path: '/spaces/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SpacesNewRoute = SpacesNewRouteImport.update({
+  id: '/spaces/new',
+  path: '/spaces/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ThreadsIdRoute = ThreadsIdRouteImport.update({
   id: '/threads/$id',
   path: '/threads/$id',
@@ -142,6 +149,11 @@ const SettingsSpecLayoutEditRoute = SettingsSpecLayoutEditRouteImport.update({
   path: '/edit',
   getParentRoute: () => SettingsSpecLayoutRoute,
 } as any)
+const SpacesSlugEditRoute = SpacesSlugEditRouteImport.update({
+  id: '/spaces/$slug_/edit',
+  path: '/spaces/$slug/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -156,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
   '/spaces/$slug': typeof SpacesSlugRoute
+  '/spaces/new': typeof SpacesNewRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
@@ -165,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/works/': typeof WorksIndexRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
+  '/spaces/$slug/edit': typeof SpacesSlugEditRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -178,6 +192,7 @@ export interface FileRoutesByTo {
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/settings/terminal': typeof SettingsTerminalRoute
   '/spaces/$slug': typeof SpacesSlugRoute
+  '/spaces/new': typeof SpacesNewRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive': typeof ArchiveIndexRoute
@@ -187,6 +202,7 @@ export interface FileRoutesByTo {
   '/works': typeof WorksIndexRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
+  '/spaces/$slug/edit': typeof SpacesSlugEditRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -203,6 +219,7 @@ export interface FileRoutesById {
   '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
   '/spaces/$slug': typeof SpacesSlugRoute
+  '/spaces/new': typeof SpacesNewRoute
   '/threads/$id': typeof ThreadsIdRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
@@ -212,6 +229,7 @@ export interface FileRoutesById {
   '/works/': typeof WorksIndexRoute
   '/settings/spec-layout/$': typeof SettingsSpecLayoutSplatRoute
   '/settings/spec-layout/edit': typeof SettingsSpecLayoutEditRoute
+  '/spaces/$slug_/edit': typeof SpacesSlugEditRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -229,6 +247,7 @@ export interface FileRouteTypes {
     | '/settings/spec-layout'
     | '/settings/terminal'
     | '/spaces/$slug'
+    | '/spaces/new'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
@@ -238,6 +257,7 @@ export interface FileRouteTypes {
     | '/works/'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
+    | '/spaces/$slug/edit'
     | '/settings/spec-layout/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -251,6 +271,7 @@ export interface FileRouteTypes {
     | '/settings/notifications'
     | '/settings/terminal'
     | '/spaces/$slug'
+    | '/spaces/new'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive'
@@ -260,6 +281,7 @@ export interface FileRouteTypes {
     | '/works'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
+    | '/spaces/$slug/edit'
     | '/settings/spec-layout'
   id:
     | '__root__'
@@ -275,6 +297,7 @@ export interface FileRouteTypes {
     | '/settings/spec-layout'
     | '/settings/terminal'
     | '/spaces/$slug'
+    | '/spaces/new'
     | '/threads/$id'
     | '/works/$slug'
     | '/archive/'
@@ -284,6 +307,7 @@ export interface FileRouteTypes {
     | '/works/'
     | '/settings/spec-layout/$'
     | '/settings/spec-layout/edit'
+    | '/spaces/$slug_/edit'
     | '/settings/spec-layout/'
   fileRoutesById: FileRoutesById
 }
@@ -296,12 +320,14 @@ export interface RootRouteChildren {
   ArchiveSlugRoute: typeof ArchiveSlugRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   SpacesSlugRoute: typeof SpacesSlugRoute
+  SpacesNewRoute: typeof SpacesNewRoute
   ThreadsIdRoute: typeof ThreadsIdRoute
   WorksSlugRoute: typeof WorksSlugRoute
   ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   SpacesIndexRoute: typeof SpacesIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
+  SpacesSlugEditRoute: typeof SpacesSlugEditRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -418,6 +444,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SpacesSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/spaces/new': {
+      id: '/spaces/new'
+      path: '/spaces/new'
+      fullPath: '/spaces/new'
+      preLoaderRoute: typeof SpacesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/threads/$id': {
       id: '/threads/$id'
       path: '/threads/$id'
@@ -459,6 +492,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/spec-layout/edit'
       preLoaderRoute: typeof SettingsSpecLayoutEditRouteImport
       parentRoute: typeof SettingsSpecLayoutRoute
+    }
+    '/spaces/$slug_/edit': {
+      id: '/spaces/$slug_/edit'
+      path: '/spaces/$slug/edit'
+      fullPath: '/spaces/$slug/edit'
+      preLoaderRoute: typeof SpacesSlugEditRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -507,12 +547,14 @@ const rootRouteChildren: RootRouteChildren = {
   ArchiveSlugRoute: ArchiveSlugRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
   SpacesSlugRoute: SpacesSlugRoute,
+  SpacesNewRoute: SpacesNewRoute,
   ThreadsIdRoute: ThreadsIdRoute,
   WorksSlugRoute: WorksSlugRoute,
   ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   SpacesIndexRoute: SpacesIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
+  SpacesSlugEditRoute: SpacesSlugEditRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

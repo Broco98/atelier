@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { spacesApi } from "./api";
 import type { SpacePatch } from "./types";
 
@@ -50,6 +50,46 @@ export function useUpdateSpace() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ slug, patch }: { slug: string; patch: SpacePatch }) => spacesApi.update(slug, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SPACES_KEY }),
+  });
+}
+
+// ── 고치기 화면(관계 편집 · 직접 만들기 — 03 구현 스펙 §13) ──────────────────────────────────────────────────────────────
+
+/**
+ * 관계 편집이 여는 파일 글 — 화면이 한 번 받아 편집기에 옮긴다. 열 때마다 새로 읽고(남긴 값을 쓰지 않는다), 연 뒤에 파일이 바뀌어도
+ * 고치는 글을 덮지 않는다(종을 듣지 않는다). 새 Space(`null`)는 읽지 않는다.
+ */
+export function useSpaceText(slug: string | null) {
+  return useQuery({
+    queryKey: ["space-text", slug],
+    queryFn: () => spacesApi.readText(slug!),
+    enabled: slug !== null,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+/**
+ * 고치는 글의 검사 — 글이 바뀔 때마다 core가 다시 읽는다(S7 — 화면은 따로 검사하지 않는다). 다음 답이 오기까지 앞 답을 그대로 그려 카드가
+ * 깜빡이지 않는다. 등록부 · 다른 Space 파일이 바뀌어도 다시 읽는다(머리 열쇠 아래라 그 종이 함께 무효화한다).
+ */
+export function useSpaceDraft(slug: string | null, text: string) {
+  useSpacesFeed();
+  return useQuery({
+    queryKey: [...SPACES_KEY, { draft: slug }, text],
+    queryFn: () => spacesApi.check(slug, text),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** 글로 저장 — 사람이 쓴 글 그대로. 쓴 뒤 목록 · 상세를 다시 읽는다. */
+export function useSaveSpaceText() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, text }: { slug: string | null; text: string }) => spacesApi.saveText(slug, text),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SPACES_KEY }),
   });
 }

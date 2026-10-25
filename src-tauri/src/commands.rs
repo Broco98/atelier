@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, AddProject, ArchiveEntry, ArchivedDocs, Destination,
-    FolderLook, NewProjectPlace, ProjectPatch, ProjectView, SearchResults, Space, SpaceDetail, SpacePatch, WorkView,
+    FolderLook, NewProjectPlace, ProjectPatch, ProjectView, SearchResults, Space, SpaceDetail, SpaceDraft, SpacePatch, WorkView,
     WorkWithSpecTree, WorktreeTree,
 };
 
@@ -109,6 +109,25 @@ pub async fn update_space(
     let patch =
         SpacePatch { name, description, add: add.unwrap_or_default(), before, remove: remove.unwrap_or_default() };
     atelier_core::update_space(&data_root(), &slug, patch).map_err(err)
+}
+
+// **Space 파일 고치기 화면**(03 구현 스펙 §13 · 관계 편집 · 직접 만들기) — 파일 글 그대로 읽기 · 고칠 때마다 검사 · 글로 저장. `slug`가 없으면
+// 새 Space다. 검사는 core 하나이고 화면은 따로 검사하지 않는다(S7) — 저장도 같은 검사로 거절한다.
+#[tauri::command]
+pub async fn read_space_text(slug: String) -> CmdResult<String> {
+    atelier_core::read_space_text(&data_root(), &slug).map_err(err)
+}
+
+/// 고치는 글 하나의 검사(문제 · 조각 자리)와 미리보기 · 안내 줄 · 새 Space의 파일 이름.
+#[tauri::command]
+pub async fn check_space(slug: Option<String>, text: String) -> CmdResult<SpaceDraft> {
+    atelier_core::draft_space(&data_root(), slug.as_deref(), &text).map_err(err)
+}
+
+/// 사람이 쓴 글을 그대로 쓴다 — 문제가 있으면 쓰지 않는다. 새 Space면 글의 이름에서 slug를 짓는다.
+#[tauri::command]
+pub async fn save_space_text(slug: Option<String>, text: String) -> CmdResult<Space> {
+    atelier_core::save_space_text(&data_root(), slug.as_deref(), &text).map_err(err)
 }
 
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
