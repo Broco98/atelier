@@ -478,6 +478,28 @@ test.describe("제거 창", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
+  // 진짜 앱의 긴 경로(임시 폴더)에서 카드가 창의 격자 칸을 창 밖까지 밀어 「취소 · 제거」가 창 밖으로 나갔다(03 티켓 13d). 카드는 칸의
+  // 폭 안에 서고 경로 줄은 말줄임으로 잘린다.
+  test("경로가 길어도 창은 제 폭(420)이고 경로 줄이 말줄임으로 잘리며, 「취소 · 제거」가 창 안에 선다", async ({ page }) => {
+    const 깊은: ProjectView = { ...billing, path: `/private/tmp/${"아주-깊은-폴더/".repeat(12)}billing` };
+    await installFixtureBackend(page, { list_projects: [깊은, ledger] });
+    await page.goto("/projects");
+    await 제거를묻는다(page, 깊은);
+
+    const 창 = 제거창(page, "목록에서 제거할까요?");
+    await expect(창).toBeVisible();
+    const 창상자 = (await 창.boundingBox())!;
+    expect(창상자.width).toBe(420);
+    const 경로 = 창.getByText(깊은.path, { exact: true });
+    await expect(경로).toBeVisible();
+    expect(await 경로.evaluate((el) => el.scrollWidth > el.clientWidth), "경로 줄이 말줄임으로 잘린다").toBe(true);
+    for (const name of ["취소", "제거"]) {
+      const 단추 = (await 창.getByRole("button", { name, exact: true }).boundingBox())!;
+      expect(단추.x + 단추.width, `「${name}」의 오른끝이 창 안`).toBeLessThanOrEqual(창상자.x + 창상자.width);
+    }
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
   test("Space에 들어 있으면 「… Space에서도 빠져요」가 더해지고, 「취소」면 빼지 않으며, 그사이 같은 slug가 다시 쓰였으면 되돌리기가 그 까닭을 말한다", async ({
     page,
   }) => {

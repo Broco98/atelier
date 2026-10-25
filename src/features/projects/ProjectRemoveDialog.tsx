@@ -114,10 +114,13 @@ export default function ProjectRemoveDialog({
   );
 }
 
-/** 지울 Project 한 줄(시안 `.gcard` · `.grow`) — 이름과 경로. */
+/**
+ * 지울 Project 한 줄(시안 `.gcard` · `.grow`) — 이름과 경로. **`min-w-0`이 창의 격자 칸을 창 폭에 묶는다** — 없으면 말줄임하는 경로의
+ * 한 줄 폭이 칸의 바닥이 되어, 긴 경로가 창 밖까지 칸을 밀고 바닥 단추가 창 밖으로 나갔다(03 티켓 13d — 진짜 앱에서 봤다).
+ */
 function ProjectCard({ project }: { project: ProjectView }) {
   return (
-    <div className="flex min-h-12 items-center gap-2.5 rounded-xl border border-border px-3 py-2">
+    <div className="flex min-h-12 min-w-0 items-center gap-2.5 rounded-xl border border-border px-3 py-2">
       <Book aria-hidden className="size-4 shrink-0 text-fg-icon" />
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-sm text-fg">{project.name}</span>

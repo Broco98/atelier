@@ -255,6 +255,10 @@ function AppShell() {
   //
   // ⇧⇧가 딛던 둘이 함께 사라졌다: 직전 ⇧의 시각을 드는 `useRef`와, ⇧+클릭 두 번을 막던
   // mousedown 무장 해제(옛 결정 30). 몸짓이 아니라 화음이라 무장이라는 상태 자체가 없다.
+  //
+  // **앱 확인 창 밖에 따로 선 모달 창(Project 추가 · 제거 같은)도 그 창이다**(`dialogOpen` — 아래 ⌘J · ⌘N과 같은 게이트). 한때
+  // 확인 창 스토어만 봐서, 추가 창 위에 팔레트가 떠 고른 곳으로 화면을 옮겼고 추가 창은 새 화면 위에 남았다(03 티켓 13d). 팔레트
+  // 자신도 같은 창 부품이라, 떠 있는 팔레트 위의 ⌘K는 그대로 아래 「여는 갈래」를 지난다.
   const [searchOpen, setSearchOpen] = useState(false);
   // **여는 길은 이 함수 하나다** — ⌘K(메뉴의 합성 keydown도 이리 온다)와 검색 버튼이 함께 부른다.
   // 여는 **그 순간** 팔레트의 첫 프레임 가드를 켠다(S24): 팔레트가 그려지고 포커스가 들어오기를
@@ -270,13 +274,13 @@ function AppShell() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!searchHotkey(e)) return;
-      if (dialogStore.state !== null) return;
+      if (dialogStore.state !== null || (dialogOpen() && !searchOpen)) return;
       e.preventDefault();
       openSearch();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openSearch]);
+  }, [openSearch, searchOpen]);
 
   // ⌘J는 **다음 내 차례로** 간다(v1 구현 스펙 S28 · v1 티켓 42) — 나를 기다리는 Thread로 기다린 순서대로 건너뛰고, 기다리는 Thread가
   // 없으면 그 전처럼 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23 — 가장 최근에 부르는 상태(기다림 ·

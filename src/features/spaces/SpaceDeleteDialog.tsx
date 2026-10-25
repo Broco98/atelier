@@ -65,8 +65,8 @@ function SpaceDeleteDialog({
         {now && dialog && (
           <>
             <AlertDialogTitle>{dialog.title}</AlertDialogTitle>
-            {/* 지울 Space 한 줄(시안 `.gcard` · `.grow`) — 이름과 그 Project. */}
-            <div className="flex min-h-12 items-center gap-2.5 rounded-xl border border-border px-3 py-2">
+            {/* 지울 Space 한 줄(시안 `.gcard` · `.grow`) — 이름과 그 Project. `min-w-0`은 Project 제거 창의 카드와 같은 까닭이다. */}
+            <div className="flex min-h-12 min-w-0 items-center gap-2.5 rounded-xl border border-border px-3 py-2">
               <Layers aria-hidden className="size-4 shrink-0 text-fg-icon" />
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-sm text-fg">{dialog.name}</span>

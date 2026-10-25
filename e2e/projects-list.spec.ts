@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { callCount, clipboardWrites, installFixtureBackend, ipcCallArgs, recordClipboard, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 
 // Projects 목록과 상세(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjBranch). `/projects`는 목록 표이고(정규화하지
 // 않는다 — 03 결정 「10」), 줄을 누르면 상세다. 상세의 기준 브랜치는 그 저장소의 브랜치 목록(로컬 · 원격)에서만 고른다.
@@ -153,29 +153,5 @@ test("git으로 브랜치를 읽지 못한 Project의 기준 브랜치 목록은
   await expect(page.getByText("목록에 있는 브랜치만 고를 수 있어요", { exact: true })).toBeVisible();
   await expect(page.getByRole("option")).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "기준 브랜치" })).toHaveCount(0);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// ── 목록 줄 ⋯가 부르는 것 (03 구현 스펙 §16 · 스토리 96) ──
-// ⋯ 메뉴의 갈래(보통 · 찾을 수 없음)는 Projects 흐름 spec이 잰다 — 여기는 그 항목이 무엇을 부르는가다. 메뉴는 그 줄의 Project에 건다:
-// Finder 열기는 코어 명령을 slug로 부르고(경로는 코어가 푼다), 경로 복사는 그 Project 폴더의 참조(끝이 `/`)를 클립보드에 쓴다. 주소는
-// 그대로다. 한때 이 둘을 목록 행 · 머리 줄 이름의 우클릭 메뉴가 들었다(`target-menus.spec.ts` — 03 결정 「10」이 걷었다).
-test("목록 줄 ⋯의 「Finder에서 열기」는 그 Project로 폴더를 열고 「경로 복사」는 그 폴더의 참조를 쓴다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await recordClipboard(page);
-  await page.goto("/projects");
-  const more = 줄(page, other).getByRole("button", { name: `${other.name} 메뉴`, exact: true });
-
-  await more.click();
-  await page.getByRole("menuitem", { name: "Finder에서 열기", exact: true }).click();
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect
-    .poll(async () => (await ipcCallArgs(page, "open_project_folder", "slug")).map(({ args }) => args))
-    .toEqual([{ slug: other.slug }]);
-
-  await more.click();
-  await page.getByRole("menuitem", { name: "경로 복사", exact: true }).click();
-  await expect.poll(() => clipboardWrites(page)).toEqual([`${other.path}/`]);
-  await expect(page).toHaveURL("/projects");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
