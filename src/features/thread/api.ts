@@ -13,6 +13,7 @@ import type {
   QuestionAnswer,
   QuitCounts,
   RecordLine,
+  SpaceAnswer,
   StartPicks,
   ThreadLink,
   ThreadQueueEvent,
@@ -94,6 +95,17 @@ export const threadApi = {
    */
   answerProject: (thread: string, request: string, choice: ProjectAnswer) =>
     invoke<void>("thread_answer_project", { thread, request, choice }),
+  /**
+   * Space 질문 카드의 답(03 티켓 08 · S12) — 고른 Space(`space`)의 slug · 「Space 없이」(`none`) · 「나중에」(`later`, esc). 붙이지 못하면
+   * 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 오고, 붙이거나 뺀 것은 그 뒤의 범위로 든다(Work에 이었으면 그 Work의 Space다).
+   */
+  answerSpace: (thread: string, request: string, answer: SpaceAnswer) =>
+    invoke<void>("thread_answer_space", {
+      thread,
+      request,
+      choice: answer.kind,
+      space: answer.kind === "space" ? answer.slug : null,
+    }),
   /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
   setModel: (thread: string, who: string, model: string) =>
     invoke<Participant>("thread_set_model", { thread, who, model }),

@@ -21,6 +21,7 @@ import { isObject, nonEmpty, type Json } from "./json";
 // - **Work와 이어지는 Thread 도구 셋도 사람의 말이다**(v1 티켓 30) — 「Project 3개 목록 확인함」 · 「Work 읽음」 · 「Work 만들기를 묻는 중」.
 //   「Project 고치기 시작」(v1 티켓 32)은 「api-server 고치기 시작함」이다 — Work 밖 Project 카드가 서면 그동안 「web-app 고치기 시작하는
 //   중」이고, 사람이 고르면 결정 줄이 이 줄의 자리를 대신한다.
+// - **Space를 붙이는 Thread 도구 둘**(03 티켓 08) — 「Space 목록 확인함」 · 「Space 고름」(질문 카드가 선 동안은 「Space 고르는 중」).
 
 /** 도구 줄 앞의 종류 글리프 — 읽기 · 편집(쓰기 · 지우기 · 옮기기) · 명령 · 검색 · 웹(검색 · 가져오기) · MCP · 그 밖. */
 export type ToolGlyph = "read" | "edit" | "execute" | "search" | "web" | "mcp" | "other";
@@ -131,6 +132,10 @@ const GET_WORK = "atelier-thread.get_work";
 const PROPOSE_WORK = "atelier-thread.propose_work";
 /** 「Project 고치기 시작」 Thread 도구(v1 티켓 32)의 `서버.도구` 이름. */
 const START_EDITING = "atelier-thread.start_editing";
+/** Space를 붙이는 Thread 도구 둘(03 티켓 08)의 `서버.도구` 이름 — 「Space 목록 확인함」 · 「Space 고름」. */
+const LIST_SPACES = "atelier-thread.list_spaces";
+const SET_SPACE = "atelier-thread.set_space";
+const PICK: Verbs = { running: "고르는 중", done: "고름", failed: "고르지 못함", refused: "고르지 않음" };
 const START: Verbs = {
   running: "고치기 시작하는 중",
   done: "고치기 시작함",
@@ -185,6 +190,9 @@ export function describeTool(tool: ToolEntry): ToolView {
     if (name === START_EDITING) {
       return { ...base, glyph: "edit", phrase: say(START, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
     }
+    if (name === LIST_SPACES) return { ...base, glyph: "read", phrase: say(CHECK, "Space 목록", false), mcp: box };
+    // 묻지 않고 붙이면 곧 「Space 고름」이고, 질문 카드가 서면 그동안 「Space 고르는 중」이다 — 사람이 고르면 접힌 줄이 이 줄의 자리를 대신한다.
+    if (name === SET_SPACE) return { ...base, glyph: "other", phrase: say(PICK, "Space", false), mcp: box };
     return { ...base, glyph: "mcp", phrase: say(MCP, name, true), mcp: box };
   }
 

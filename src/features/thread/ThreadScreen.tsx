@@ -52,6 +52,7 @@ import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
+import SpaceCard from "./SpaceCard";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
@@ -796,6 +797,15 @@ function ThreadBody({
                       />
                     ) : asking.card === "project" ? (
                       <ProjectCard
+                        thread={thread}
+                        name={model.cast[asking.who]?.name ?? asking.who}
+                        avatar={model.cast[asking.who]?.avatar ?? null}
+                        card={asking}
+                        count={turn?.count}
+                        next={askNext}
+                      />
+                    ) : asking.card === "space" ? (
+                      <SpaceCard
                         thread={thread}
                         name={model.cast[asking.who]?.name ?? asking.who}
                         avatar={model.cast[asking.who]?.avatar ?? null}

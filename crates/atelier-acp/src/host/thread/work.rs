@@ -24,6 +24,7 @@ use atelier_core::{PolicyPlace, ProjectView, RecordKind};
 use serde_json::{json, Value};
 
 use super::project::Outside;
+use super::space::SpaceCard;
 use super::{ConversationHost, SessionKey};
 use crate::host::WorkAt;
 use crate::thread_tools::{self, Proposal};
@@ -38,7 +39,8 @@ pub enum WorkChoice {
     Continue,
 }
 
-/// 서 있는 카드들 — 요청 id → 카드. 호스트에 하나다. 잠금은 짧게만 쥔다. Work 만들기 카드와 Work 밖 Project 카드(v1 티켓 32)가 함께 선다.
+/// 서 있는 카드들 — 요청 id → 카드. 호스트에 하나다. 잠금은 짧게만 쥔다. Work 만들기 카드와 Work 밖 Project 카드(v1 티켓 32) · Space 질문
+/// 카드(03 티켓 08)가 함께 선다.
 #[derive(Default)]
 pub(super) struct Proposals(Mutex<HashMap<String, Asked>>);
 
@@ -55,6 +57,8 @@ pub(super) enum Card {
     Work(Proposal),
     /// Work 밖 Project(v1 티켓 32) — 고치려는 Project와 이은 Work.
     Project(Outside),
+    /// 어느 Space에서 할까(03 티켓 08) — 고를 수 있는 Space.
+    Space(SpaceCard),
 }
 
 impl Card {
@@ -63,6 +67,7 @@ impl Card {
         match self {
             Card::Work(_) => "work",
             Card::Project(_) => "project",
+            Card::Space(_) => "space",
         }
     }
 
@@ -71,6 +76,7 @@ impl Card {
         match self {
             Card::Work(_) => "Work 만들기 카드",
             Card::Project(_) => "Work 밖 Project 카드",
+            Card::Space(_) => "Space 질문 카드",
         }
     }
 }
@@ -267,7 +273,8 @@ impl ConversationHost {
     }
 
     /// 카드를 세우고 사람이 고를 때까지 기다린다 — 카드의 값(`fields`)을 `question` 줄(`asked`)로 적고, 답 · 멈춤 · 닫힘 가운데 먼저
-    /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30)와 Work 밖 Project(v1 티켓 32)가 이 길 하나를 쓴다.
+    /// 온 것을 도구의 결과로 돌려준다. **막히는 호출이다.** Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Space 질문(03 티켓 08)이
+    /// 이 길 하나를 쓴다.
     pub(super) fn ask_card(&self, key: &SessionKey, card: Card, fields: Value) -> Value {
         let request = uuid::Uuid::new_v4().to_string();
         let (kind, label) = (card.kind(), card.label());

@@ -23,6 +23,7 @@ import {
   type Notice,
   type ProjectChoiceEntry,
   type QuestionEntry,
+  type SpaceChoiceEntry,
   type SystemLine,
   type ThreadModel,
   type ToolEntry,
@@ -36,8 +37,9 @@ import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
 import { projectChoiceText } from "./project-card";
-import { answeredCards } from "./question";
+import { answeredCards, type AnsweredCard } from "./question";
 import { SentQuoteChip } from "./QuoteChip";
+import { spaceChoiceCard } from "./space-card";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Quote } from "@/features/works/QuotePick";
 import type { Attachment } from "./types";
@@ -230,6 +232,7 @@ function waitingFor(model: ThreadModel, who: string): string | null {
   if (!ask) return null;
   if (ask.card === "work") return "Work 만들기 답을 기다려요";
   if (ask.card === "project") return "Work 밖 Project 답을 기다려요";
+  if (ask.card === "space") return "Space 답을 기다려요";
   return ask.card === "question" ? "질문의 답을 기다려요" : "승인을 기다립니다";
 }
 
@@ -299,7 +302,8 @@ function TurnView({
   // 글이 빈 생각은 그리지 않는다(`shownEntry`) — 지금 생각하는 중이면 「생각 중」으로만 선다.
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(shownEntry);
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
-  const choice = (entry: Entry) => entry.kind === "work-choice" || entry.kind === "project-choice";
+  const choice = (entry: Entry) =>
+    entry.kind === "work-choice" || entry.kind === "project-choice" || entry.kind === "space-choice";
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || choice(entry)) : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
   const waitingFirst = !turn.end && turn.entries.length === 0;
@@ -479,6 +483,8 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <AnsweredRow entry={entry} />;
     case "project-choice":
       return <ProjectChoiceRow entry={entry} />;
+    case "space-choice":
+      return <SpaceChoiceRow entry={entry} />;
   }
 }
 
@@ -531,11 +537,33 @@ function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
  * 입력창 자리의 질문 카드가 말한다.
  */
 export function AnsweredRow({ entry }: { entry: QuestionEntry }) {
-  const motion = useArrival("chip-in", entry.key);
-  const cards = answeredCards(entry);
+  return <AnsweredCards cards={answeredCards(entry)} answered={entry.choice ?? ""} arrival={entry.key} />;
+}
+
+/**
+ * Space 질문 카드에 답한 줄(03 티켓 08 · 캔버스 F4-WorkSpaced · F4-KitChat 「답한 뒤」) — 질문 카드에 답한 카드와 같은 한 줄이다: ✓ ·
+ * 「어느 Space에서 할까요?」 · 고른 Space(「Space 없이」), 나중에면 시계와 「Space는 나중에 정하기로 함」. Space 줄은 따로 서지 않는다 — 이
+ * 줄이 그 결정이다(`spaceChoiceCard`).
+ */
+function SpaceChoiceRow({ entry }: { entry: SpaceChoiceEntry }) {
+  return <AnsweredCards cards={[spaceChoiceCard(entry)]} answered="space" choice={entry.choice} arrival={entry.key} />;
+}
+
+function AnsweredCards({
+  cards,
+  answered,
+  choice,
+  arrival,
+}: {
+  cards: AnsweredCard[];
+  answered: string;
+  choice?: string;
+  arrival: string;
+}) {
+  const motion = useArrival("chip-in", arrival);
   if (cards.length === 0) return null;
   return (
-    <div data-answered={entry.choice} className={cn("flex flex-col gap-1.5 self-stretch", motion)}>
+    <div data-answered={answered} data-choice={choice} className={cn("flex flex-col gap-1.5 self-stretch", motion)}>
       {cards.map((card, at) => (
         <p
           key={`${at}-${card.asked}`}

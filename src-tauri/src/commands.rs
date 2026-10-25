@@ -1047,6 +1047,26 @@ pub async fn thread_answer_project(
     to_host(&engine, "Work 밖 Project 카드에 답하지 못했습니다", move |host| host.answer_project(&thread, &request, choice)).await
 }
 
+/// Space 질문 카드의 답(03 §11 · 티켓 08) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 그 Space(`space` + `space`의 slug) ·
+/// 「Space 없이」(`none`) · 「나중에」(`later` — esc)로 답한다. 고른 Space는 그 Thread(Work에 이었으면 그 Work)에 적힌다. 적지 못하면 그
+/// 까닭으로 실패하고 카드는 그대로 서 있다.
+#[tauri::command]
+pub async fn thread_answer_space(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    request: String,
+    choice: String,
+    space: Option<String>,
+) -> CmdResult<()> {
+    let choice = match (choice.as_str(), space) {
+        ("space", Some(slug)) => atelier_acp::SpaceChoice::Space(slug),
+        ("none", _) => atelier_acp::SpaceChoice::Without,
+        ("later", _) => atelier_acp::SpaceChoice::Later,
+        (other, _) => return Err(format!("Space 질문 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
+    };
+    to_host(&engine, "Space 질문 카드에 답하지 못했습니다", move |host| host.answer_space(&thread, &request, choice)).await
+}
+
 /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
 #[tauri::command]
 pub async fn thread_set_model(

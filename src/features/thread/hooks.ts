@@ -194,7 +194,9 @@ export function followRecordLine(queryClient: QueryClient, thread: string, line:
   }
   // Space 줄은 그 Thread 파일의 `space`가 바뀐 뒤에 선다 — 지우기 · 되돌리기 · 손으로 지운 파일 닫기(03 티켓 07)는 엔진이 칸을 고쳐 화면의
   // 고치기 응답이 없다. 연 Thread의 칸(머리 줄의 흐린 Space)을 다시 읽는다.
-  if (line.kind === "space") void queryClient.invalidateQueries({ queryKey: threadKey(thread) });
+  // Space 질문 카드의 답(03 티켓 08)도 그 칸을 고치지만 묻던 Thread에는 Space 줄이 서지 않는다 — 답 줄이 그 결정이다.
+  const spaceAnswer = line.kind === "question" && isObject(line.payload) && line.payload.card === "space";
+  if (line.kind === "space" || spaceAnswer) void queryClient.invalidateQueries({ queryKey: threadKey(thread) });
   if (line.kind === "library") {
     void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
     void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });

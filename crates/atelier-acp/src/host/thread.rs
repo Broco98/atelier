@@ -48,6 +48,7 @@ mod writing;
 
 pub(super) use call::Assignment;
 pub use project::ProjectChoice;
+pub use space::SpaceChoice;
 pub(super) use read_only::VanishWatch;
 pub use work::WorkChoice;
 pub use writing::DocWriting;
@@ -918,6 +919,8 @@ impl ConversationHost {
             Ok(Call::GetWork) => self.get_work_tool(key),
             Ok(Call::ProposeWork(proposal)) => self.propose_work(key, proposal),
             Ok(Call::StartEditing { project, reason }) => self.start_editing(key, &project, reason.as_deref()),
+            Ok(Call::ListSpaces) => self.list_spaces_tool(key),
+            Ok(Call::SetSpace(ask)) => self.set_space_tool(key, ask),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -1422,14 +1425,23 @@ impl ConversationHost {
                  때까지 기다린다. Work는 사람의 `atelier` MCP(`atelier_start_work`)가 아니라 이 도구로 만든다 — 그래야 이 Thread가 \
                  그 Work에 이어진다.\n  \
                  - `{}`(project, reason) — Work의 Project를 처음 고치기 전에 부른다. 그 Project에만 worktree를 만들어 경로를 \
-                 돌려준다. Work에 없는 Project면 사람에게 카드로 묻는다.\n",
+                 돌려준다. Work에 없는 Project면 사람에게 카드로 묻는다.\n  \
+                 - `{}`() — Space(함께 다루는 Project의 묶음)마다 slug · 이름 · Project · 설명 첫 줄과, 이 Thread의 지금 Space.\n  \
+                 - `{}`(space, projects, reason) — 이 Thread의 Space(Work에 이었으면 그 Work의 Space)를 붙이고 · 바꾸고 · 뺀다. \
+                 Atelier가 묻지 않고 붙이거나 사람에게 카드로 묻고 고를 때까지 기다린다. 바뀐 범위는 다음 말부터 읽는다.\n  \
+                 - 다루는 Project가 정해지면 `{}`로 그 Project를 담은 Space를 보고 `{}`로 붙인다. 이미 붙어 있으면 바꿀 까닭이 \
+                 있을 때만 부른다.\n",
                 thread_tools::SERVER_NAME,
                 thread_tools::CALL_AGENT,
                 thread_tools::SAVE_AGENT,
                 thread_tools::LIST_PROJECTS,
                 thread_tools::GET_WORK,
                 thread_tools::PROPOSE_WORK,
-                thread_tools::START_EDITING
+                thread_tools::START_EDITING,
+                thread_tools::LIST_SPACES,
+                thread_tools::SET_SPACE,
+                thread_tools::LIST_SPACES,
+                thread_tools::SET_SPACE
             ));
         }
         if let Some(note) = note {

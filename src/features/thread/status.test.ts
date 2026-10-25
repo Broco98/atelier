@@ -132,6 +132,17 @@ describe("내 차례", () => {
     expect(statusOf(through(working, 57), live(0))?.kind).toBe("working");
   });
 
+  // Space 질문 카드(03 티켓 08)는 Host가 Thread 도구로 묻는 질문이다 — 같은 물음 차례에 서고, 미리보기는 그 물음이다.
+  it("Space 질문 카드가 서 있으면 내 차례이고, 미리보기는 「질문 · 어느 Space에서 할까요?」다", () => {
+    const spacing = record("thread-space-ask");
+    expect(statusOf(through(spacing, 8), live(0))).toEqual({
+      kind: "mine",
+      since: "2026-10-10T10:00:08.000+09:00",
+      text: "질문 · 어느 Space에서 할까요?",
+    });
+    expect(statusOf(through(spacing, 9), live(0))?.kind).toBe("working");
+  });
+
   // 앱을 다시 켜면 물은 프로세스가 없다 — 답할 곳이 없는 물음은 기다리는 것이 아니다(`goneThrough`).
   it("앱을 다시 켠 뒤 남은 물음은 내 차례가 아니다", () => {
     expect(statusOf(through(asking, 9), { goneThrough: 9, lastRead: 0 })?.kind).not.toBe("mine");

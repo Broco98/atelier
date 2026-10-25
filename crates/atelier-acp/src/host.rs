@@ -27,7 +27,9 @@ use crate::runtime::{self, AgentProcess, Answer, AnswerError, Launch, OpenTerms,
 mod thread;
 mod turn_order;
 
-pub use thread::{DocWriting, ProjectChoice, QuestionReply, Reply, SpacePick, StartPicks, ThreadLink, ThreadView, WorkChoice};
+pub use thread::{
+    DocWriting, ProjectChoice, QuestionReply, Reply, SpaceChoice, SpacePick, StartPicks, ThreadLink, ThreadView, WorkChoice,
+};
 use thread::VanishWatch;
 use turn_order::{Draft, Seat, TurnHands, TurnOrder};
 

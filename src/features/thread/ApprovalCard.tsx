@@ -267,8 +267,9 @@ const CODE_BOX =
  * 단추 줄의 단추 하나(Screen-Live 단계 4) — 28 알약 · 1px `border-slot` · 13. 「이번만 허용」은 맨 오른쪽에 검게 서고(`ml-auto`), 나머지는
  * 옅은 면(`fill-soft`의 반)이다. 글쇠가 있으면 끝에 옅게 적는다 — 「아니요, 다르게」의 `esc`(단축키 표의 글리프를 작은 글자로) ·
  * 「이번만 허용」의 `↵`. 글쇠는 그림이라 숨는다 — esc는 단추가 단축키 표의 그 키를 `aria-keyshortcuts`로 말한다(↵는 표 밖의 카드 안 키다).
+ * Thread 도구 질문 카드(`ToolQuestionCard` — 03 티켓 08)의 「나중에」 · 「고르기 ↵」도 이것이다.
  */
-function ChoiceButton({
+export function ChoiceButton({
   choice,
   at,
   pressed,
