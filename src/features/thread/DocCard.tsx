@@ -4,7 +4,7 @@ import type { CreatedDoc } from "./expanded";
 
 /**
  * 대화 속 문서 카드(v1 티켓 35 · 스토리 102 · 캔버스 Messages 보드 「파일과 첨부 — Agent가 만든 파일」 `.fcard`) — Agent가 이은 Work의 spec
- * 폴더에 새로 쓴 문서가 그 턴의 답 아래에 카드로 놓인다(`createdDocs`). 누르면 Work 카드가 넓어져 그 문서를 연다.
+ * 폴더에 새로 쓴 문서가 그 턴의 답 아래에 카드로 놓인다(`createdDocs`). 누르면 요약 카드가 넓어져 그 문서를 연다.
  *
  * 모양은 보드 값이다 — 폭 420까지 · 안쪽 10/12/10/10 · 반경 16 · 얇은 그림자 · 흰 면(가리키면 `fill-soft`), 왼쪽에 40 상자(반경 10 ·
  * `fill-soft`)의 문서 글리프, 이름 14/20 500 · 메타 12/18 `fg-tertiary`, 오른쪽 끝 「열기 ›」 13 `fg-secondary`. 보드의 그림 카드

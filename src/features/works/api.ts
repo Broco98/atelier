@@ -33,7 +33,7 @@ export const worksApi = {
   touchRecent: (slug: string) => invoke<void>("touch_recent_work", { slug }),
   remove: (slug: string) => invoke<void>("remove_work", { slug }),
   /**
-   * Work의 변경(v1 티켓 33 · S23) — Project마다 base 대비 바뀐 파일과 +/−, `projects` 순서다. Work 카드의 변경 칸이 열릴 때와
+   * Work의 변경(v1 티켓 33 · S23) — Project마다 base 대비 바뀐 파일과 +/−, `projects` 순서다. 요약 카드가 열릴 때와
    * `worktree:changed`마다 읽는다(v1 티켓 34).
    */
   changes: (slug: string) => invoke<ProjectChanges[]>("list_work_changes", { slug }),
@@ -41,6 +41,6 @@ export const worksApi = {
    * 바뀐 파일 하나의 diff(v1 티켓 33) — 변경 칸의 Project · 경로 그대로다. 넓힌 카드의 diff 보기가 읽는다(v1 티켓 35).
    */
   diff: (slug: string, project: string, path: string) => invoke<FileDiff>("read_work_diff", { slug, project, path }),
-  /** Work의 PR(v1 티켓 33 · S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. Work 카드가 열릴 때 읽는다(v1 티켓 34). */
+  /** Work의 PR(v1 티켓 33 · S24) — Project마다 Work 브랜치의 PR을 `gh`로 읽는다. 요약 카드가 열릴 때 읽는다(v1 티켓 34 · 02 §7). */
   prs: (slug: string) => invoke<ProjectPr[]>("thread_work_prs", { slug }),
 };

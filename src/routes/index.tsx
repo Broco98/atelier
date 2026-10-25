@@ -10,7 +10,7 @@ export const Route = createFileRoute("/")({
 });
 
 /**
- * `?work=<slug>`는 **처음 고를 Work다**(v1 티켓 34) — Work 카드의 「이 Work에서 새 Thread」가 그 Work를 고른 채 새 Thread를 연다.
+ * `?work=<slug>`는 **처음 고를 Work다**(v1 티켓 34) — 요약 카드 「…」의 「이 Work에서 새 Thread」가 그 Work를 고른 채 새 Thread를 연다.
  * 씨앗일 뿐이라 칩에서 다른 것을 고르면 그것이 간다(주소는 그대로다). 모르는 모양은 없는 것과 같다.
  */
 interface NewThreadSearch {

@@ -99,6 +99,7 @@ describe("말의 사전", () => {
         "위 줄",
         "사람 메뉴",
         "알림 띠",
+        "요약 카드",
         "고르는 것의 라벨은 소문자 영어",
       ]),
     );
@@ -222,7 +223,7 @@ describe("말의 사전", () => {
     expect(bodyOf("고친 곳")).toContain("_피할 말_: 바뀐 곳");
     expect(refused).toContain("바뀐 곳");
     expect(bodyOf("고친 곳")).not.toContain("지워진다");
-    expect(bodyOf("고친 곳")).toContain("Work 카드가 git으로 본다");
+    expect(bodyOf("고친 곳")).toContain("요약 카드가 git으로 본다");
   });
 
   // codex-ds 결정 25 · 스펙 §10. info 칸을 걷어 레일 칸이 `spec` 하나가 됐다가 `files`가 더해져(git-integration 결정 29) 둘이 됐고,
@@ -286,6 +287,19 @@ describe("말의 사전", () => {
     expect(bodyOf("사람 메뉴")).toContain("위로 열리는 메뉴");
     expect(bodyOf("사람 메뉴")).toContain("메모리 합계");
     expect(bodyOf("알림 띠")).toContain("위 줄 아래");
+  });
+
+  // 02 구현 스펙 §2 · §7. v1 Work 카드를 Codex 요약 카드로 바꿨다 — Work 없는 Thread에도 서고, 열림은 Work가 아니라 Thread마다 기억한다.
+  // 사전이 옛 말을 그대로 두면 다음 사람이 「Work의 자리」로 읽어 Work 없는 Thread에서 카드를 걷거나 기억을 Work로 되돌린다. Processes의
+  // 「맨 위 요약 카드」는 합계 카드라 불러 두 말이 겹치지 않는다.
+  it("「요약 카드」가 등재돼 있고 「Work 카드」를 거부하며, Work 없는 Thread · Thread마다 기억을 말한다", () => {
+    expect(names).not.toContain("Work 카드");
+    expect(refused).toEqual(expect.arrayContaining(["Work 카드", "Work 패널"]));
+    for (const piece of ["Work 없는 Thread면 결과물 · 소스만", "Thread마다 기억한다", "「모두 보기」", "보관됨"]) {
+      expect(bodyOf("요약 카드"), piece).toContain(piece);
+    }
+    expect(bodyOf("Processes")).toContain("합계 카드");
+    expect(doc).not.toMatch(/Work 카드(?!, Work 패널)/);
   });
 
   it("문서 어디에도 「패널 탭」이 _피할 말_ 줄 밖에 남지 않는다", () => {

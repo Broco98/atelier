@@ -8,7 +8,7 @@
  * - 대기 줄 바뀜: 참여자 하나의 Session의 대기 줄 전체(Thread id · 참여자 handle과 함께).
  * - 목록 요약: Thread 하나의 요약이 바뀜(새 Thread · 참여자가 늘었다). Thread 폴더는 감시하지 않는다(S7).
  * - 엔진 상태: 찾음 여부 · 로그인 여부 · 로그인 진행. 안내 카드가 이것으로 「로그인 중 · 끝남」을 그린다.
- * - 문서 쓰는 중: Work 하나의 「누가 어느 문서를 쓰는 중」 목록 전체(v1 티켓 34). Work 카드의 문서 줄이 파란 점을 세운다.
+ * - 문서 쓰는 중: Work 하나의 「누가 어느 문서를 쓰는 중」 목록 전체(v1 티켓 34). 요약 카드 소스의 문서 줄이 파란 점을 세운다.
  */
 export const THREAD_RECORD_EVENT = "thread:record";
 export const THREAD_QUEUE_EVENT = "thread:queue";

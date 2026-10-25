@@ -54,7 +54,7 @@ describe("Thread 메뉴(S15)", () => {
 
 describe("요약 고정 토글", () => {
   // 시안 Screen-Live의 머리 줄 오른쪽 끝 토글(`aria-label="요약 고정"`). 이름은 할 일이고 켬/끔은 `aria-pressed`가 말한다 — 눌러도 이름이
-  // 바뀌지 않는다. 이 판의 06에서는 지금 Work 카드를 여닫는다(요약 카드로 바꾸는 것은 07).
+  // 바뀌지 않는다. 요약 카드를 여닫고 Work 없는 Thread에도 선다(07).
   it("이름은 「요약 고정」 하나이고, 열림을 aria-pressed로 말한다", () => {
     const on = renderToStaticMarkup(<SummaryToggle open onToggle={none} />);
     const off = renderToStaticMarkup(<SummaryToggle open={false} onToggle={none} />);

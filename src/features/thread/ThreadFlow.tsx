@@ -80,7 +80,7 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   일」을 세우고, 끝난 턴의 작업 로그는 처음부터 펼쳐 둔다 — 그 Agent가 한 일을 보러 온 보기다.
 //
 // - **대화 속 문서 카드**(v1 티켓 35 · Messages 보드 「Agent가 만든 파일」) — 끝난 턴에서 Agent가 이은 Work의 spec 폴더에 새로 쓴 문서는 답
-//   아래에 카드로 놓이고(`createdDocs`), 누르면 Work 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
+//   아래에 카드로 놓이고(`createdDocs`), 누르면 요약 카드가 넓어져 그 문서를 연다(`DocPlace`). 접힌 턴에도 남는다.
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글을 붙인 말은 말풍선 위에 인용 칩이 선다(`SentQuoteChip`).
 //
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 움직인다(`arrival.tsx`). 결정 줄은 칩으로 나타나고(칩 나타남 — 보드

@@ -264,7 +264,7 @@ export interface AgentRoster {
 }
 
 /**
- * 문서 하나를 쓰는 중(`atelier_acp::DocWriting`, v1 티켓 34) — Work의 spec 폴더 안 파일에 편집 도구가 도는 동안이다. Work 카드의 문서 줄이
+ * 문서 하나를 쓰는 중(`atelier_acp::DocWriting`, v1 티켓 34) — Work의 spec 폴더 안 파일에 편집 도구가 도는 동안이다. 요약 카드 소스의 문서 줄이
  * 파란 점과 「Host가 쓰는 중」을 세운다.
  */
 export interface DocWriting {

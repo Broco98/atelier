@@ -694,17 +694,19 @@
        나머지는 선언만 있다(스펙 S2 — 통째로 선언한다). 폭 셋(사이드바 · 목록 칸 · 작업 패널)은 이 토큰을 읽지 않고 기본값을 S4가 같은 수로 옮겼다 — 화면의 폭은 인라인 값이다(위
        `:root`의 길이 머리말). 간격(`--space-*`)은 위 `:root`에 있다.
 
-       Work 카드 폭(`--size-work-card` 300)은 v1이 더했다(v1 티켓 34 · 캔버스 WorkPanel · Screen-Review 보드 `.wc`) — Thread 화면 오른쪽
-       위에 뜨는 카드의 폭이고, 카드가 열린 동안 대화가 이 폭 + 틈 12만큼 왼쪽으로 비켜 준다(`ThreadScreen`). DS에 이 폭이 없다.
-       넓힌 카드 곁의 대화 폭(`--size-thread-beside` 480)도 v1이 더했다(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.p-open .chat`) — 카드가
-       넓은 동안 대화가 왼쪽에 이 폭으로 남고 카드가 그 오른쪽을 채운다(`ThreadScreen`). 넓힌 카드의 목록 칸은 `--size-list`(264)를 읽는다
-       (보드 `.p-open .wlist` — `WorkCard`).
+       요약 카드 폭(`--size-summary` 300)은 v1 Work 카드의 폭이다(v1 티켓 34 → 02 §7 · 캔버스 v35 Screen-Live `aside[aria-label=요약]`) — Thread
+       화면 판의 오른쪽 위(위 · 오른쪽 8)에 뜨는 카드의 폭이다. DS에 이 폭이 없다. 카드가 열린 동안 대화 열 · 입력창은 오른쪽 몫
+       `--size-summary-room`(308 = 카드 300 + 판 끝 띄움 8 + 카드 앞 틈 16 − 판 안쪽 여백 16 — 시안 `padding-right: 324px`의 16 바깥)을 비워
+       두고 그 남은 자리 가운데로 비켜난다(`ThreadScreen`의 `Beside`). 넓힌 카드 곁의 대화 폭(`--size-thread-beside` 480)은 v1이
+       더했다(v1 티켓 35 · 캔버스 Layout-Expand 보드 `.p-open .chat`) — 카드가 넓은 동안 대화가 왼쪽에 이 폭으로 남고 카드가 그 오른쪽을
+       채운다(`ThreadScreen`). 넓힌 카드의 목록 칸은 `--size-list`(264)를 읽는다(보드 `.p-open .wlist` — `SummaryCard`).
 
        **Codex 실측 크기**(02 구현 스펙 §9 · §12 · 티켓 01) — 둘은 아직 쓰는 자리가 없다.
          column       737   Thread의 대화 열과 입력창의 폭(10 — Codex 열 x 402–1139). DS `size-thread`(48rem)는 문서 · 설정 글 폭으로 남는다
          stream-fade  240   답이 흐르는 동안 끝을 옅게 지우는 그라데이션의 길이(12 「답 글자 도착」)
        02의 다른 크기는 지금 토큰이다 — 셸 컨트롤 · 보내기 · 칩 · + · @ · 「…」 · 요약 고정 토글의 28은 `--size-control`, 요약 카드 폭 300은
-       `--size-work-card`, 사이드바 줄 30은 `--size-row-nav`, 입력창 글 칸 최소 44는 `--space-11`(눈금 11)이다. */
+       `--size-summary`(v1 `--size-work-card`의 이름을 고쳤다 — 07), 사이드바 줄 30은 `--size-row-nav`, 입력창 글 칸 최소 44는
+       `--space-11`(눈금 11)이다. */
     --size-rail: 52px;
     --size-sidebar: 290px;
     --size-toolbar: 46px;
@@ -722,7 +724,8 @@
     --size-peek: 288px;
     --size-menu: 260px;
     --size-menu-ctx: 248px;
-    --size-work-card: 300px;
+    --size-summary: 300px;
+    --size-summary-room: 308px;
     --size-thread-beside: 480px;
     --size-column: 737px;
     --size-stream-fade: 240px;
@@ -1791,7 +1794,7 @@ body[data-palette-open] [data-scrollbar] {
                                                                                  목록 줄의 상태 칸
      보내기 모핑   morph-in · morph-out           morph · default · .6배         보내기 원의 글리프 ↑ · 스피너 · ■(면 색 · 옅음은 `duration-morph ease-default`)
      아래로 버튼   jump-in                        jump · settle · 아래 6에서     「맨 아래로」
-     문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    Work 카드의 새로 바뀐 줄 · 넓힌 카드 문서의 바뀐 줄
+     문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    요약 카드의 새로 바뀐 줄 · 막 쓴 문서 줄 · 넓힌 카드 문서의 바뀐 줄
      반짝임        chat-shimmer                   shimmer · 일정                 「생각 중」 · 도는 도구 줄 · 「N초 동안 작업 중입니다」
      세 점         typing-dots                    pulse · default · 점마다 150   「답하는 중」
      회전          spin-thread                    spin · 일정                    Thread 줄의 「작업 중」 `Spinner`
@@ -1802,7 +1805,7 @@ body[data-palette-open] [data-scrollbar] {
      `menu-enter` 머리말). 불투명도 · 자리 · 크기만 움직인다.
    - **동작 줄이기에서는 모두 멈춘 모양이다** — 들고 서는 것은 곧바로 서고, 반짝임은 흐린 글자, 세 점은 멎은 옅은 점, 회전은 원이다(보드
      「모션 토큰」 머리말). 그 갈래는 유틸리티마다 파일 맨 끝의 동작 줄이기 블록 한 곳에 적는다.
-   - Work 카드의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — 기다리는 동안의 반복인 세 점의 박자를 쓴다.
+   - 요약 카드 소스의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — 기다리는 동안의 반복인 세 점의 박자를 쓴다.
    - 넓힌 카드(v1 티켓 35)의 보기는 모션 보드가 아니라 패널 박자다(`view-in` — `duration-panel` · `ease-panel`). 카드가 넓어지는 그
      때 사이드바가 같은 박자로 접힌다. */
 
@@ -2028,8 +2031,8 @@ body[data-palette-open] [data-scrollbar] {
 
 /* **문서 강조**(보드 「문서 실시간 편집」 1.6s · 가감속 · 30%까지 유지 — 「Host가 문서를 고치면 바뀐 줄만 잠깐 칠해집니다」). 옅은
    파랑(`accent-soft`)이 처음 30%를 머물다 걷힌다. 두 자리가 같은 박자다.
-   - Work 카드의 새로 바뀐 파일 줄(`row-flash`, v1 티켓 34 · 스토리 109 「잠깐 빛나기를」) — 줄은 **한 번만** 빛난다. WorkPanel 보드는
-     그 순간을 보이려고 2.4초 되풀이로 그렸다.
+   - 요약 카드의 새로 바뀐 줄(`row-flash`, v1 티켓 34 · 스토리 84 · 109 「잠깐 빛나기를」 — 「변경 사항」 · 넓힌 카드의 파일 줄 · 막 쓴
+     소스의 문서 줄) — 줄은 **한 번만** 빛난다. WorkPanel 보드는 그 순간을 보이려고 2.4초 되풀이로 그렸다.
    - 넓힌 카드 문서의 바뀐 줄(`[data-doc-flash]`, v1 티켓 35 · 스토리 118). 칠할 블록 · 줄은 넓힌 카드의 보기가 고른다
      (`ExpandedViewer`의 `flashLines` — 다시 읽은 글에서 더하거나 고친 줄이 걸친 렌더 블록 · 원문 줄). 그 상자는 문서 보기의 것이라
      클래스가 아니라 표식을 단다.
@@ -2050,7 +2053,7 @@ body[data-palette-open] [data-scrollbar] {
     animation: doc-flash var(--duration-flash) var(--ease-default);
 }
 
-/* **Work 카드의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 세 점의
+/* **요약 카드 소스의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 세 점의
    것이다(섹션 머리말). 동작을 줄여 둔 사람에게는 멎은 점이다. */
 @keyframes writing-pulse {
     50% {

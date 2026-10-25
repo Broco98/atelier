@@ -13,7 +13,7 @@ import { prLineOf } from "./pr";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
 import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
-import { workPrsKey } from "./work-card";
+import { workPrsKey } from "./summary-card";
 import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
@@ -120,7 +120,7 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
 /**
  * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
  * 가 있어도 돌아오면 그사이 흐른 줄이 보인다), 요약은 사이드바의 목록을 고치고, 엔진 상태는 안내 카드의 바탕이 된다. 문서 쓰는 중은
- * Work마다 쌓는다 — Work 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
+ * Work마다 쌓는다 — 요약 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
  */
 export function useThreadFeeds(): void {
   const queryClient = useQueryClient();
@@ -149,7 +149,7 @@ export function useThreadFeeds(): void {
  *   이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
  * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
  *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획만에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
- * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — Work 카드가 읽어 둔 PR의 그 Project 칸을 줄의 PR로 갈아 끼운다.
+ * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — 요약 카드가 읽어 둔 PR의 그 Project 줄을 줄의 PR로 갈아 끼운다.
  *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {

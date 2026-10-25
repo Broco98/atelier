@@ -102,7 +102,7 @@ export function WorkMenuItems({ work, actions }: { work: WorkView; actions: Work
 }
 
 /**
- * **「Finder에서 열기 ▸」 하위 메뉴** — spec 폴더와 Project마다의 worktree. work 메뉴와 Work 카드의 ⋯ 메뉴(v1 티켓 34 · 구현 스펙 §15
+ * **「Finder에서 열기 ▸」 하위 메뉴** — spec 폴더와 Project마다의 worktree. work 메뉴와 요약 카드 머리의 「…」 메뉴(v1 티켓 34 · 구현 스펙 §15
  * 「뒤의 둘은 지금 Work 메뉴의 것이다」)가 같은 조각을 편다.
  */
 export function FinderSubmenu({ work, actions }: { work: WorkView; actions: Pick<WorkMenuActions, "openFolder"> }) {
@@ -134,7 +134,7 @@ export function FinderSubmenu({ work, actions }: { work: WorkView; actions: Pick
   );
 }
 
-/** **「복사 ▸」 하위 메뉴** — slug · 브랜치 이름(정해졌으면) · spec 경로. work 메뉴와 Work 카드의 ⋯ 메뉴가 같은 조각을 편다. */
+/** **「복사 ▸」 하위 메뉴** — slug · 브랜치 이름(정해졌으면) · spec 경로. work 메뉴와 요약 카드 머리의 「…」 메뉴가 같은 조각을 편다. */
 export function CopySubmenu({ work, actions }: { work: WorkView; actions: Pick<WorkMenuActions, "copy"> }) {
   const branch = work.branch;
   return (

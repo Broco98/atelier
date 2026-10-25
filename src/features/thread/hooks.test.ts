@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { PrChecks, ProjectPr } from "@/features/works/types";
 import { followRecordLine, putSummary, threadQuery } from "./hooks";
 import type { RecordLine, ThreadSummary, ThreadView } from "./types";
-import { workPrsKey } from "./work-card";
+import { workPrsKey } from "./summary-card";
 
 // 기록 줄 하나가 연 Thread의 캐시를 고치는 것 — 훅을 렌더하지 않는다(이 저장소의 L2에는 DOM이 없다). 키는 쿼리가 짓는 것을 그대로 쓴다.
 
@@ -101,7 +101,7 @@ describe("엔진이 남긴 PR 줄(v1 티켓 36)", () => {
   });
   const prLine = (payload: Record<string, unknown>): RecordLine => ({ seq: 11, at: "2026-10-23T15:00:11.000+09:00", kind: "pr", payload });
 
-  it("턴 끝에 엔진이 읽어 남긴 줄이 Work 카드의 그 Project 칸을 고친다 — 카드가 다시 `gh`를 부르지 않는다", () => {
+  it("턴 끝에 엔진이 읽어 남긴 줄이 요약 카드의 그 Project PR 줄을 고친다 — 카드가 다시 `gh`를 부르지 않는다", () => {
     const client = new QueryClient();
     client.setQueryData(workPrsKey("refund-api"), [found("api-server", { kind: "pending" }), { project: "web", kind: "absent" }]);
     const { kind: _, ...pr } = found("api-server", { kind: "failing", failed: ["e2e"] });

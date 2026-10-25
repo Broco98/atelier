@@ -4,20 +4,20 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
-import { useArchivedWork } from "./WorkCard";
+import { useArchivedWork } from "./SummaryCard";
 
 // **Thread 화면의 머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · Diff-Frame 「머리 줄」 줄) — 화면은 이 조각들을 머리 줄
 // 화면 자리로 보낸다(`PlainFrame`의 `lead` · `end` — 포털, `ShellHead`). Codex 크롬 줄 그대로다.
 //
 //   [폴더 · Work 이름 ›](이은 Work만)  Thread 이름(14/500 · 그 자리에서 바꾼다) ············  […] [요약 고정]
 //
-// - **걷은 것**: 옛 Work 알약(브랜치) · 참여자 얼굴(S14 — 참여자는 본문 이름 줄 · @ 메뉴가 말한다) · Work 카드 토글(요약 고정 토글이 그
+// - **걷은 것**: 옛 Work 알약(브랜치) · 참여자 얼굴(S14 — 참여자는 본문 이름 줄 · @ 메뉴가 말한다) · v1 카드 토글(요약 고정 토글이 그
 //   자리를 잇는다).
 // - **시안의 머리 줄 Work 탭은 짓지 않는다** — Work 화면 몫이다(스펙 §6). 머리 줄에는 이름만 선다.
 
 /**
  * 머리 줄 Thread 이름 앞의 Work(02 §6 · S13) — 폴더 14 · Work 이름 14/400 `fg-titlebar`(#898a8b), 그 뒤 「›」. Work 이름이 누르는 자리이고
- * 누르면 카드가 열린다(옛 Work 알약의 일 — 브랜치 · 알약 면은 걷었다). 「›」는 그림이라 이름에 들지 않는다. 틈은 시안 `.tb-c`의 8이다.
+ * 누르면 요약 카드가 열린다(옛 Work 알약의 일 — 브랜치 · 알약 면은 걷었다). 「›」는 그림이라 이름에 들지 않는다. 틈은 시안 `.tb-c`의 8이다.
  * 이름이 길면 Thread 이름과 함께 줄어 말줄임이 된다.
  */
 export function WorkCrumb({ title, onOpen }: { title: string; onOpen: () => void }) {
@@ -133,8 +133,8 @@ export const SummaryGlyph = createLucideIcon("summary", [
  * 바탕이 #ebebec(`fill-toggle-on`)이고 글리프가 `fg`로 진해지며, 켜진 채 hover해도 면이 그대로다(시안 `sumBg` · `sumColor`). 이름은 할 일
  * 하나이고 켬/끔은 `aria-pressed`가 말한다.
  *
- * **06에서는 지금 Work 카드를 여닫는다** — Work에 이은 Thread에만 서고(부르는 쪽이 가린다), 카드를 요약 카드로 바꾸고 Work 없는
- * Thread에도 세우는 것은 07이다.
+ * 요약 카드(02 §7 · `SummaryCard`)를 여닫는다 — Work 없는 Thread에도 선다. 첫 말 전의 새 Thread와 지워진 Work의 Thread에는 카드가
+ * 없어 서지 않는다(부르는 쪽이 가린다 — S23).
  */
 export function SummaryToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
