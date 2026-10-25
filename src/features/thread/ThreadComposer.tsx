@@ -147,7 +147,7 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const picking = tray !== undefined && "onPick" in tray.work;
+  const picking = tray?.work.kind === "pick";
   const all = useMemo(() => slashCommands(commands, { work: picking }), [commands, picking]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
@@ -328,7 +328,7 @@ function ThreadComposer({
   const shown = outside ?? problem;
   const trayed = tray && !card && (
     <Tray at={tray.at}>
-      {"onPick" in tray.work ? (
+      {tray.work.kind === "pick" ? (
         <WorkChip {...tray.work} open={placing} onOpenChange={setPlacing} />
       ) : (
         <LockedWorkChip {...tray.work} />

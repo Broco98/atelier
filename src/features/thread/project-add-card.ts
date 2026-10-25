@@ -1,3 +1,4 @@
+import { folderName } from "@/features/projects/project-add";
 import { particle } from "@/lib/particle";
 import { type PendingProjectAdd, type ProjectAddChoiceEntry } from "./fold";
 import type { AnsweredCard } from "./question";
@@ -33,8 +34,7 @@ const LABELS: Record<ProjectAddAnswer, string> = {
 function asked(card: Pick<PendingProjectAdd, "look" | "folder" | "root">): string {
   const topic = `${card.folder}${particle(card.folder, "은", "는")}`;
   if (card.look === "notGit") return `${topic} git 저장소가 아니에요. 어떻게 할까요?`;
-  const root = (card.root ?? "").split("/").filter(Boolean).pop() ?? "";
-  return `${topic} ${root} 저장소 안의 폴더예요. 어떻게 할까요?`;
+  return `${topic} ${folderName(card.root ?? "")} 저장소 안의 폴더예요. 어떻게 할까요?`;
 }
 
 /** 카드의 값. `asker`는 물은 참여자의 화면 이름이다. */

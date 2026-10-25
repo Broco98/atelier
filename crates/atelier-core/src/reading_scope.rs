@@ -172,9 +172,9 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
         }
     }
     let space = space.map(|space| ScopeSpace {
-        name: if space.name.trim().is_empty() { space.slug.clone() } else { space.name.clone() },
+        name: space.shown_name().to_owned(),
         troubled: !space.problems.is_empty(),
-        file: crate::paths::spaces_in(data_root).join(format!("{}.md", space.slug)),
+        file: space.file_in(data_root),
         slug: space.slug,
     });
     ReadingScope { space, projects, worked: worked_in, kind, registered: registered.len() }
@@ -182,9 +182,13 @@ pub fn reading_scope(data_root: &Path, of: &ScopeOf) -> ReadingScope {
 
 /// 앱이 묻는 읽는 범위(명령 `reading_scope`) — `thread`가 있으면 그 Thread(`thread.json`과 이은 Work를 읽는다), 없으면 보내기 전의 새
 /// Thread(입력창이 쥔 Work · Space)다. 새 Thread의 Space는 입력창이 쥔 것 그대로다 — 최근 Work를 고르면 입력창이 그 Work의 Space를
-/// 쥐고, 바꾼 Space는 첫 말 때 그 Work에 적는다(03 S4). 없는 Thread · 없는 Work는 그 까닭으로 실패한다.
+/// 쥐고, 바꾼 Space는 첫 말 때 그 Work에 적는다(03 S4). 없는 Thread · 없는 Work는 그 까닭으로 실패한다. Thread와 입력창의 Work · Space를
+/// 함께 주면 거절한다 — Thread의 범위는 그 파일이 정해, 함께 준 것을 말없이 버리게 된다.
 pub fn reading_scope_of(data_root: &Path, thread: Option<&str>, work: Option<&str>, space: Option<&str>) -> Result<ReadingScope> {
     let works = crate::paths::works_in(data_root);
+    if thread.is_some() && (work.is_some() || space.is_some()) {
+        return Err(crate::Error::Validation("읽는 범위는 Thread 하나이거나 입력창의 Work · Space다 — 둘을 함께 주지 않는다".to_owned()));
+    }
     if let Some(thread) = thread {
         let file = crate::threads::read_thread(data_root, thread)?;
         let work = file.work.as_deref().and_then(|slug| crate::works::read_work(&works, slug).ok());
@@ -459,5 +463,9 @@ mod tests {
         assert_eq!(read(&picked), [("web-app", ScopeWhy::Space)]);
         assert!(matches!(reading_scope_of(&home.root(), None, Some("nope"), None), Err(crate::Error::WorkNotFound(_))));
         assert!(reading_scope_of(&home.root(), Some("20990101-000000"), None, None).is_err(), "없는 Thread");
+        assert!(
+            matches!(reading_scope_of(&home.root(), Some(&thread), Some("refund"), None), Err(crate::Error::Validation(_))),
+            "Thread의 범위는 그 파일이 정한다 — 입력창의 Work · Space를 함께 주면 말없이 버리지 않고 거절한다"
+        );
     }
 }

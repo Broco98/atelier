@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { shallow, useStore } from "@tanstack/react-store";
-import { ArrowLeft, Book, Check, Folder, Layers, MoreHorizontal, Pencil, Plus, SquarePen, TriangleAlert, X } from "lucide-react";
+import { Book, Folder, Layers, MoreHorizontal, Pencil, Plus, SquarePen, TriangleAlert, X } from "lucide-react";
+import { DescriptionSection, DetailPanel, HeadCrumb, Section } from "@/components/catalog/DetailParts";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InlineRename } from "@/components/ui/inline-rename";
-import { showUndoToast, Toaster } from "@/components/ui/toast";
+import { showUndoToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { addProject } from "@/features/projects/add-store";
 import { useProjects } from "@/features/projects/hooks";
@@ -57,36 +58,26 @@ export default function SpaceDetail({ slug }: { slug: string }) {
   return (
     <PlainFrame
       label={`${label} 상세`}
-      lead={<SpaceCrumb onOpen={goList} />}
+      lead={<HeadCrumb label={label} onOpen={goList} />}
       title={space ? { name: spaceName(space) } : undefined}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-10 pt-5.5 pb-20 scroll-quiet">
-          <div className="mb-5.5 flex items-center gap-2">
-            {/* WebKit의 Tab은 맨 링크에 서지 않는다 — 이 화면의 링크는 모두 `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다). */}
-            <Link
-              to="/spaces"
-              tabIndex={0}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-separator-soft bg-surface pr-3.5 pl-2.5 text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
-            >
-              <ArrowLeft aria-hidden className="size-3.5 text-fg-icon" />
-              {label}
-            </Link>
-            <span className="ml-auto flex items-center gap-1.5">
-              {space && <SpaceActions space={space} onDelete={(one) => void removing.ask(one)} />}
-              {space && <SpaceStarts space={space} />}
-            </span>
-          </div>
-          {space ? (
-            <SpaceBody key={space.slug} space={space} onOpenSpace={(to) => void navigate({ to: "/spaces/$slug", params: { slug: to } })} />
-          ) : (
-            isError && <p className="text-sm text-fg-tertiary">Space를 읽지 못했어요 — {String(error)}</p>
-          )}
-        </div>
-        {/* 되돌리기 토스트의 자리 — 본문 왼쪽 아래(시안 `.toast` — 왼 40 · 아래 24). */}
-        <Toaster className="bottom-6 left-10 translate-x-0" />
-        {removing.dialog}
-      </div>
+      {/* 되돌리기 토스트는 본문 왼쪽 아래다(`DetailPanel`). ⋯ · 시작 단추는 「← Space」 줄 오른쪽 끝이다. */}
+      <DetailPanel
+        back={{ to: "/spaces", label }}
+        end={
+          <>
+            {space && <SpaceActions space={space} onDelete={(one) => void removing.ask(one)} />}
+            {space && <SpaceStarts space={space} />}
+          </>
+        }
+        after={removing.dialog}
+      >
+        {space ? (
+          <SpaceBody key={space.slug} space={space} onOpenSpace={(to) => void navigate({ to: "/spaces/$slug", params: { slug: to } })} />
+        ) : (
+          isError && <p className="text-sm text-fg-tertiary">Space를 읽지 못했어요 — {String(error)}</p>
+        )}
+      </DetailPanel>
     </PlainFrame>
   );
 }
@@ -107,24 +98,6 @@ function SpaceStarts({ space }: { space: Detail }) {
       <Button size="lg" className="h-8.5" onClick={() => void navigate({ to: "/", search: starts.newWork })}>
         <Plus aria-hidden className="size-3.5" />새 Work
       </Button>
-    </>
-  );
-}
-
-/** 머리 줄 이름 앞 「Space /」 — 누르면 목록이다(시안 `.tb-c .muted`). */
-function SpaceCrumb({ onOpen }: { onOpen: () => void }) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring"
-      >
-        {navItem("spaces").label}
-      </button>
-      <span aria-hidden className="shrink-0 text-sm text-fg-titlebar">
-        /
-      </span>
     </>
   );
 }
@@ -191,7 +164,13 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
             }
           />
         </Section>
-        <Description space={space} locked={locked} onSave={(description) => patch({ description })} />
+        <DescriptionSection
+          text={space.description}
+          aside="Agent가 이 Space에서 일할 때 처음 읽어요"
+          placeholder="이 Space에서 다루는 일과 Project들이 어떻게 이어지는지 적어 두세요"
+          locked={locked}
+          onSave={(description) => patch({ description })}
+        />
         <Section
           label="Project"
           aside={String(space.projects.length)}
@@ -274,36 +253,6 @@ function SpaceWorks({ slug }: { slug: string }) {
   );
 }
 
-/** 묶음 하나 — 머리(18/26 이름 · 옅은 곁말 · 끝 칸)와 몸. 묶음 사이는 34다(시안 `.sec2` · `.h2r`). */
-function Section({
-  label,
-  aside,
-  before,
-  after,
-  end,
-  children,
-}: {
-  label: string;
-  aside?: string;
-  before?: ReactNode;
-  after?: ReactNode;
-  end?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section aria-label={label} className="mt-8.5">
-      <div className="mb-3 flex min-h-7 items-center gap-2">
-        <h2 className="text-heading-sm text-fg">{label}</h2>
-        {before}
-        {aside !== undefined && <span className="text-chat-meta text-fg-tertiary">{aside}</span>}
-        {after}
-        {end && <span className="ml-auto flex items-center gap-1.5">{end}</span>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** 문제가 있는 Space — 상세 위에 문제 줄들(줄 번호 · 말)이 선다. 고치는 길은 관계 편집이다 — 그 줄들이 편집기의 줄 끝에 그대로 선다. */
 function Problems({ space }: { space: Detail }) {
   return (
@@ -375,76 +324,6 @@ function Title({ space, locked, onRename }: { space: Detail; locked: boolean; on
         <span>Project {space.projects.length}</span>
       </div>
     </div>
-  );
-}
-
-/** 설명 — 「Agent가 이 Space에서 일할 때 처음 읽어요」, 연필 → 저장 · 취소 → 「저장했어요」(스토리 150). */
-function Description({ space, locked, onSave }: { space: Detail; locked: boolean; onSave: (text: string) => Promise<boolean> }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const save = async () => {
-    if (draft === null) return;
-    if (await onSave(draft)) {
-      setDraft(null);
-      setSaved(true);
-    }
-  };
-  return (
-    <Section
-      label="설명"
-      before={
-        draft === null && (
-          <button
-            type="button"
-            aria-label="설명 고치기"
-            disabled={locked}
-            onClick={() => {
-              setDraft(space.description);
-              setSaved(false);
-            }}
-            className="rounded-sm p-0.5 text-fg-faint transition-colors hover:text-fg-secondary focus-ring disabled:opacity-40"
-          >
-            <Pencil aria-hidden className="size-3.5" />
-          </button>
-        )
-      }
-      aside="Agent가 이 Space에서 일할 때 처음 읽어요"
-    >
-      {draft === null ? (
-        <>
-          <p className={cn("text-chat-body whitespace-pre-wrap", space.description ? "text-fg" : "text-fg-tertiary")}>
-            {space.description || "아직 설명이 없어요. 연필을 눌러 적어 두세요."}
-          </p>
-          {saved && (
-            <p role="status" className="mt-2.5 flex items-center gap-1 text-xs text-fg-tertiary">
-              <Check aria-hidden className="size-3" />
-              저장했어요
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <textarea
-            // 열자마자 쓴다 — 연필을 누른 손이 곧바로 적는다.
-            autoFocus
-            rows={4}
-            aria-label="설명"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="이 Space에서 다루는 일과 Project들이 어떻게 이어지는지 적어 두세요"
-            className="block w-full resize-none rounded-xl border border-border-heavy bg-surface px-3 py-2.5 text-chat-body text-fg outline-none placeholder:text-fg-placeholder focus-ring"
-          />
-          <div className="mt-2.5 flex items-center justify-end gap-1.5">
-            <Button variant="ghost" size="top" onClick={() => setDraft(null)}>
-              취소
-            </Button>
-            <Button size="top" onClick={() => void save()}>
-              저장
-            </Button>
-          </div>
-        </>
-      )}
-    </Section>
   );
 }
 

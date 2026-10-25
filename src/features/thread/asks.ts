@@ -1,6 +1,7 @@
 import { particle } from "@/lib/particle";
 import { type PendingAsk, type ThreadModel, type ToolEntry } from "./fold";
 import { text } from "./json";
+import { isToolCardAsk, toolCardRow } from "./tool-cards";
 import { describeTool } from "./tool-view";
 
 // 물음 차례(v1 티켓 25 · 구현 스펙 §9 카드 · 스토리 80 · 캔버스 Approval 보드 A안 「두 Agent가 함께 물을 때」) — 한 Thread에 걸린 물음이
@@ -13,9 +14,9 @@ import { describeTool } from "./tool-view";
 // - **「1 / 2」는 묶음 안의 자리다** — 묶음은 걸린 물음이 하나라도 있는 동안 이어진다. 앞의 것에 답하면 다음 것이 「2 / 2」로 서고, 다
 //   닫히면 묶음이 끝난다. 묶음에 물음이 하나뿐이면 세지 않는다(보드 「기다리는 순간」).
 // - **카드 종류가 늘어도 같은 차례다**(§9 「Agent가 고를 답을 내미는 질문도 같은 자리, 같은 차례」) — 새 카드는 그 물음을 같은
-//   `pending`(같은 열쇠 · 같은 닫힘)에 넣고, 이 함수와 다음 줄의 글(`nextOf`)에 갈래를 더한다. 걸린 물음 모두(`ThreadModel.asks`)가
-//   차례이고, 다음 줄은 Work 만들기 카드(v1 티켓 30)면 「다음 · Host가 Work 만들기 답을 기다려요」, Agent의 질문(v1 티켓 26)이면 대상
-//   없이 「다음 · Host가 질문의 답을 기다려요」다.
+//   `pending`(같은 열쇠 · 같은 닫힘)에 넣는다. 걸린 물음 모두(`ThreadModel.asks`)가 차례이고, 다음 줄은 Work 만들기 카드(v1 티켓 30)면
+//   「다음 · Host가 Work 만들기 답을 기다려요」, Agent의 질문(v1 티켓 26)이면 대상 없이 「다음 · Host가 질문의 답을 기다려요」다. Thread 도구
+//   카드의 대상은 그 카드의 표 줄(`tool-cards.ts`의 `next`)이 말한다.
 
 /** 입력창 자리의 차례 — 지금 서는 물음, 묶음 안의 자리, 그다음 물음. */
 export interface AskTurn {
@@ -61,11 +62,8 @@ const WAITING: Readonly<Record<string, string>> = {
 /** 다음 줄. `name`은 물은 참여자의 화면 이름이다. */
 export function nextOf(request: PendingAsk, name: string): NextLine {
   const head = { name, particle: particle(name, "이", "가") };
-  if (request.card === "work") return { ...head, subject: "Work 만들기", mono: false, what: "답을 기다려요" };
+  if (isToolCardAsk(request)) return { ...head, subject: toolCardRow(request.card).next(request), mono: false, what: "답을 기다려요" };
   if (request.card === "question") return { ...head, subject: null, mono: false, what: "질문의 답을 기다려요" };
-  if (request.card === "project") return { ...head, subject: `${request.name} 고치기`, mono: false, what: "답을 기다려요" };
-  if (request.card === "space") return { ...head, subject: "Space", mono: false, what: "답을 기다려요" };
-  if (request.card === "project-add") return { ...head, subject: `${request.folder} 추가`, mono: false, what: "답을 기다려요" };
   // 흐름의 도구 줄이 이긴다(`describeApproval`과 같다) — 없으면 요청이 실은 요지로 같은 문구를 짓는다.
   const call = { ...request.toolCall, ...(request.tool?.call ?? {}) };
   const tool: ToolEntry = request.tool

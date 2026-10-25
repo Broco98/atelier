@@ -1,21 +1,9 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
-import { answerByArg, FIXTURE_THREAD, SEARCH_RESULTS } from "./fixtures";
-import { fireEventToAll, installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls, 주소로간다, 화면머리 } from "./harness";
+import { answerByArg, FIXTURE_THREAD } from "./fixtures";
+import { fireEventToAll, installFixtureBackend, ipcArgs, replaceAnswer, unknownIpcCalls, 주소로간다, 화면머리 } from "./harness";
 import { lineOf, linesAfter, linesThrough, record, seqOf, streamLines, summaryOf, threadOf } from "./thread-records";
-import {
-  PAYMENTS,
-  RECENT_HITS,
-  REFUND,
-  SCOPE_BY_SPACE,
-  SCOPES,
-  SETTLEMENT,
-  TOOLS,
-  WORLD_PROJECTS,
-  WORLD_SPACE_DETAILS,
-  WORLD_SPACES,
-  WORLD_WORKS,
-} from "./thread-space-world";
+import { PAYMENTS, REFUND, SCOPE_BY_SPACE, SCOPES, SETTLEMENT, TOOLS, WORLD, WORLD_PROJECTS, WORLD_SPACE_DETAILS } from "./thread-space-world";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
 // 03 티켓 13 흐름 「대화 속 Space와 설정」(캔버스 v52 F4-KitChat) — **Host가 다루는 Project로 Space를 붙일 때 물을 땐 지금의 질문 카드로
@@ -38,7 +26,7 @@ import type { RecordLine, ThreadView } from "@/features/thread/types";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-/** 카드는 선 직후 잠깐 키를 받지 않는다(`ToolQuestionCard`의 `ARMING_MS`). */
+/** 카드는 선 직후 잠깐 키를 받지 않는다(입력창 자리 카드의 `useSlotCard` · `ARMING_MS`). */
 const ARMING_MS = 300;
 
 const 흐름 = (page: Page) => page.getByRole("main");
@@ -61,13 +49,10 @@ const 모양 = (target: Locator, props: readonly string[]) =>
 /** 지금 주소의 경로 — 한글 slug는 퍼센트로 적히므로 풀어서 읽는다. */
 const 경로 = (page: Page) => decodeURIComponent(new URL(page.url()).pathname);
 
-/** 시안의 세계 — 기록의 Project 셋 · Space 셋 · Work 넷. 「열기」 · 흐린 Space가 가는 Space 상세도 그 세계다. */
-const WORLD = {
-  list_projects: WORLD_PROJECTS,
-  list_spaces: WORLD_SPACES,
+/** 시안의 세계(`WORLD` — 기록의 Project 셋 · Space 셋 · Work 넷)에 Space 상세를 더한다 — 「열기」 · 흐린 Space가 가는 Space 상세도 그 세계다. */
+const SETTING_WORLD = {
+  ...WORLD,
   get_space: answerByArg("slug", WORLD_SPACE_DETAILS),
-  list_works: WORLD_WORKS,
-  search: answerByArg("query", { "": RECENT_HITS }, { otherwise: SEARCH_RESULTS }),
 };
 
 /** Work 없는 Thread의 읽는 범위 — 그 Thread의 Space로 센 것이다(core `reading_scope`의 규칙 1). 머리 줄의 흐린 Space가 이것을 읽는다. */
@@ -78,7 +63,7 @@ async function withThreads(page: Page, threads: readonly { view: ThreadView; lin
   const byId = <T>(of: (one: { view: ThreadView; lines: readonly RecordLine[] }) => T) =>
     Object.fromEntries(threads.map((one) => [one.view.id, of(one)]));
   await installFixtureBackend(page, {
-    ...WORLD,
+    ...SETTING_WORLD,
     reading_scope: answerByArg("thread", byId(({ view }) => scopeOfThread(view)), { otherwise: SCOPES.all }),
     thread_list: threads.map(({ view }) => summaryOf(view)),
     thread_get: answerByArg("thread", byId(({ view }) => view)),
@@ -146,7 +131,7 @@ test("Space 질문 카드 — Host가 물으면 입력창 자리에 「Host · �
     await page.waitForTimeout(ARMING_MS);
     for (const key of press) await page.keyboard.press(key);
     await expect
-      .poll(async () => (await ipcCallArgs(page, "thread_answer_space", "thread")).map(({ args }) => args))
+      .poll(() => ipcArgs(page, "thread_answer_space", "thread"))
       .toEqual([{ thread: view.id, request: SPACE_REQUEST, ...answer }]);
   }
 
@@ -338,7 +323,7 @@ test("Project 추가 카드 — git이 아닌 폴더를 부탁받으면 화면 �
     await page.waitForTimeout(ARMING_MS);
     await page.keyboard.press(press);
     await expect
-      .poll(async () => (await ipcCallArgs(page, "thread_answer_project_add", "thread")).map(({ args }) => args))
+      .poll(() => ipcArgs(page, "thread_answer_project_add", "thread"))
       .toEqual([{ thread: view.id, request: ADD_REQUEST, choice }]);
   }
 
@@ -416,12 +401,12 @@ test("머리 줄 — Work 없는 대화는 「흐린 Space / 이름」(누르면
   await expect(메뉴(page).getByRole("menuitem", { name: /^Space 관리/ })).toBeVisible();
   await 메뉴(page).getByRole("menuitemradio", { name: TOOLS.name, exact: true }).click();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "thread_set_work_space", "work")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "thread_set_work_space", "work"))
     .toEqual([{ work: REFUND.slug, space: TOOLS.slug }]);
   await workSpace.click();
   await 메뉴(page).getByRole("menuitem", { name: "Space 빼기", exact: true }).click();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "thread_set_work_space", "work")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "thread_set_work_space", "work"))
     .toEqual([
       { work: REFUND.slug, space: TOOLS.slug },
       { work: REFUND.slug, space: null },

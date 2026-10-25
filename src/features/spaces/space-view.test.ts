@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, listShows, spaceGraph, spaceMenu, spaceStarts, spaceWorks } from "./space-view";
+import { addMenu, CARD_GRAPH, createdLine, HOST_MAKE, listShows, shownSpaces, spaceGraph, spaceMenu, spaceStarts, spaceWorks } from "./space-view";
 import type { SharedSpace, Space } from "./types";
 
 const space = (over: Partial<Space> = {}): Space => ({
@@ -116,6 +116,24 @@ describe("Space 목록 판", () => {
     expect(listShows({ isPending: false, isError: false, count: 2 })).toBe("table");
     expect(listShows({ isPending: true, isError: false, count: 0 })).toBe("table");
   });
+
+  // 찾기(시안 「Space 찾기」 — 03 코드 리뷰 D1에서 목록 부품 밖으로 꺼냈다). Projects 목록의 찾기(`shownProjects`)와 같은 규칙이다.
+  const all = [
+    space(),
+    space({ slug: "사내-도구", name: "사내 도구", projects: ["backoffice"], description: "운영팀이 쓰는 Admin" }),
+    space({ slug: "원장", name: "", projects: ["ledger"] }),
+  ];
+  it("찾기는 이름 · slug · 설명 · 적힌 Project 가운데 하나라도 그 글을 품으면 남긴다 — 대소문자 · 앞뒤 빈칸은 보지 않는다", () => {
+    expect(shownSpaces(all, "결제").map((one) => one.slug)).toEqual(["결제-서비스"]);
+    expect(shownSpaces(all, "원장").map((one) => one.slug)).toEqual(["원장"]);
+    expect(shownSpaces(all, "  admin ").map((one) => one.slug)).toEqual(["사내-도구"]);
+    expect(shownSpaces(all, "API").map((one) => one.slug)).toEqual(["결제-서비스"]);
+  });
+
+  it("빈 찾기는 모두 · 맞는 것이 없으면 빈 목록이다", () => {
+    expect(shownSpaces(all, " ")).toHaveLength(3);
+    expect(shownSpaces(all, "없는 글")).toEqual([]);
+  });
 });
 
 describe("넣기 메뉴", () => {
@@ -155,7 +173,7 @@ describe("Space 메뉴(03 §5 · §10)", () => {
 
   it("Space가 있으면 맨 위가 「Space 빼기」이고, Space마다 이름 · 적힌 Project가 서며 지금 것에 ✓, 문제 있는 Space에 「문제 있음」이 붙는다", () => {
     expect(spaceMenu(spaces, "결제-서비스", 3)).toEqual({
-      top: { label: "Space 빼기", note: "등록된 Project 3개를 모두 읽어요", current: false },
+      top: { kind: "remove", label: "Space 빼기", note: "등록된 Project 3개를 모두 읽어요", current: false },
       rows: [
         { slug: "결제-서비스", name: "결제 서비스", projects: "web-app · api-server", troubled: false, current: true },
         { slug: "사내-도구", name: "사내 도구", projects: "api-server · backoffice", troubled: false, current: false },
@@ -167,14 +185,14 @@ describe("Space 메뉴(03 §5 · §10)", () => {
   it("Space가 없으면 맨 위 「Space 없음」이 지금 것이다 — 적힌 Space의 파일이 없어도 Space 없음이다(§7 규칙 1)", () => {
     for (const current of [null, "지운-것"]) {
       const menu = spaceMenu(spaces, current, 3);
-      expect(menu.top).toEqual({ label: "Space 없음", note: "등록된 Project 3개를 모두 읽어요", current: true });
+      expect(menu.top).toEqual({ kind: "none", label: "Space 없음", note: "등록된 Project 3개를 모두 읽어요", current: true });
       expect(menu.rows?.some((row) => row.current)).toBe(false);
     }
   });
 
   it("Space가 하나도 없으면 줄 목록이 없고(「Host와 Space 만들기」 자리), 등록된 Project가 없으면 그렇다고 말한다", () => {
     expect(spaceMenu([], null, 0)).toEqual({
-      top: { label: "Space 없음", note: "등록된 Project가 없어요", current: true },
+      top: { kind: "none", label: "Space 없음", note: "등록된 Project가 없어요", current: true },
       rows: null,
     });
   });
@@ -185,11 +203,11 @@ describe("Space 메뉴(03 §5 · §10)", () => {
 
   // 트레이의 Space 칩이 여는 메뉴(06 · F4-KitComposer 「Space 칩 메뉴」) — 맨 위가 늘 「Space 없음」이고 곁말이 「… 읽기」다. 빼기는 칩의 ×가 한다.
   it("Space 칩의 메뉴는 맨 위가 늘 「Space 없음 — 등록된 Project N개 읽기」이고 지금이면 ✓다", () => {
-    expect(spaceMenu(spaces, null, 3, "chip").top).toEqual({ label: "Space 없음", note: "등록된 Project 3개 읽기", current: true });
+    expect(spaceMenu(spaces, null, 3, "chip").top).toEqual({ kind: "none", label: "Space 없음", note: "등록된 Project 3개 읽기", current: true });
     const picked = spaceMenu(spaces, "결제-서비스", 3, "chip");
-    expect(picked.top).toEqual({ label: "Space 없음", note: "등록된 Project 3개 읽기", current: false });
+    expect(picked.top).toEqual({ kind: "none", label: "Space 없음", note: "등록된 Project 3개 읽기", current: false });
     expect(picked.rows?.find((row) => row.current)?.slug).toBe("결제-서비스");
-    expect(spaceMenu([], null, 0, "chip").top).toEqual({ label: "Space 없음", note: "등록된 Project가 없어요", current: true });
+    expect(spaceMenu([], null, 0, "chip").top).toEqual({ kind: "none", label: "Space 없음", note: "등록된 Project가 없어요", current: true });
   });
 });
 

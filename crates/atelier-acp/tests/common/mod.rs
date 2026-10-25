@@ -668,6 +668,26 @@ pub fn commands_after_opened(record: &[Value]) -> Vec<Value> {
     lines
 }
 
+/// 명령 목록 줄(`available_commands_update`)마다 그 앞의 가장 가까운 열림 줄 바로 뒤로 옮기고 seq를 다시 센다 — 다시 연 Session도 명령
+/// 목록을 한 번 더 낸다([`commands_after_opened`]는 그 참여자의 첫 열림 뒤로만 옮긴다). 03의 기록 축복(Space · 설정)이 쓴다.
+pub fn commands_after_each_opened(record: &[Value]) -> Vec<Value> {
+    let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
+    let mut lines: Vec<Value> = Vec::new();
+    for line in record {
+        if !is_commands(line) {
+            lines.push(line.clone());
+            continue;
+        }
+        let opened = lines.iter().rposition(|one| one["payload"]["state"] == "opened").expect("앞선 열림 줄");
+        let at = lines[opened + 1..].iter().position(|one| !is_commands(one)).map_or(lines.len(), |n| opened + 1 + n);
+        lines.insert(at, line.clone());
+    }
+    for (n, line) in lines.iter_mut().enumerate() {
+        line["seq"] = serde_json::json!(n + 1);
+    }
+    lines
+}
+
 /// JSON 안의 글마다 `from`을 `to`로 바꾼다.
 fn replace(value: &mut Value, from: &str, to: &str) {
     match value {

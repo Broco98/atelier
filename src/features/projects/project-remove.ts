@@ -1,3 +1,4 @@
+import { coreError } from "./core-errors";
 import type { ProjectUsage, UsingWork } from "./types";
 
 // Project 제거 창이 무엇을 말할지(03 구현 스펙 §16 「제거 창」 · 스토리 128 · 129 · 131 · 134 · 캔버스 F4-ProjRemoveBlocked · F4-KitProject 「제거 창」).
@@ -42,12 +43,19 @@ export function removedToast(name: string): string {
   return `목록에서 뺐어요 — ${name}`;
 }
 
-/** 되돌리기가 거절된 까닭(core 오류 글)을 사람의 말로 — 그사이 같은 slug나 같은 폴더가 다시 등록됐다(03 구현 스펙 §15 「되돌리기」). */
+/**
+ * 되돌리기가 거절된 까닭(core 오류 글)을 사람의 말로 — 그사이 같은 slug나 같은 폴더가 다시 등록됐다(03 구현 스펙 §15 「되돌리기」). 갈래는 core
+ * 글을 읽는 한 곳(`coreError`)이 가른다.
+ */
 export function restoreProblem(error: string): string {
-  let hit: RegExpMatchArray | null;
-  let why = error;
-  if ((hit = error.match(/^slug is in use again: (.*)$/))) why = `그사이 같은 이름의 Project(${hit[1]})가 다시 추가됐어요.`;
-  else if ((hit = error.match(/^already registered as project '(.*)': .*$/))) why = `그 폴더가 다른 Project(${hit[1]})로 다시 추가됐어요.`;
-  else if (/^project not found: /.test(error)) why = "되돌릴 Project가 없어요.";
+  const hit = coreError(error);
+  const why =
+    hit?.kind === "slugReused"
+      ? `그사이 같은 이름의 Project(${hit.fields[0]})가 다시 추가됐어요.`
+      : hit?.kind === "alreadyRegistered"
+        ? `그 폴더가 다른 Project(${hit.fields[0]})로 다시 추가됐어요.`
+        : hit?.kind === "projectNotFound"
+          ? "되돌릴 Project가 없어요."
+          : error;
   return `되돌리지 못했어요 — ${why}`;
 }

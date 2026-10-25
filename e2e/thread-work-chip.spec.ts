@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD, SEARCH_RESULTS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, ipcArgs, ipcCallArgs, unknownIpcCalls } from "./harness";
 import { summaryOf } from "./thread-records";
-import { RECENT_HITS, REFUND, WORLD_PROJECTS, WORLD_SPACES, WORLD_WORKS } from "./thread-space-world";
+import { REFUND, WORLD, WORLD_SPACES, WORLD_WORKS } from "./thread-space-world";
 import type { ThreadView } from "@/features/thread/types";
 
 // 03 흐름 「트레이」(F4-KitComposer)의 Work 칩 조각 — **Work 칩이 스위치 둘(「새 Work」 · 「Work 없이 대화」)과 최근 Work를 고르고, 고른 것이
@@ -45,13 +45,6 @@ async function sendAndReturn(page: Page, text: string) {
   await expect(첫화면(page)).toBeVisible();
 }
 
-/** 시안의 세계 — Work 넷(셋은 Space가 있다) · Space 셋 · Project 셋. 최근 Work는 빈 질의 검색의 Work 줄이다. */
-const WORLD = {
-  list_projects: WORLD_PROJECTS,
-  list_spaces: WORLD_SPACES,
-  list_works: WORLD_WORKS,
-  search: answerByArg("query", { "": RECENT_HITS }, { otherwise: SEARCH_RESULTS }),
-};
 /** 그 Work의 Space 이름 — 최근 Work 줄 끝의 흐린 곁말이다(없으면 빈 글). */
 const spaceNameOf = (slug: string | undefined) => WORLD_SPACES.find((one) => one.slug === slug)?.name ?? "";
 
@@ -108,7 +101,7 @@ test("새 Thread의 Work 칩이 새 Work · Work 없이 대화 · 최근 Work를
   await expect(워크칩(page, picked.title)).toBeVisible();
   await shows(page, `${picked.title}에서 무엇을 할까요?`);
   await expect
-    .poll(async () => (await ipcCallArgs(page, "thread_work_mode", "work")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "thread_work_mode", "work"))
     .toEqual([{ work: picked.slug }]);
   await expect(page.getByRole("button", { name: "물어보는 정도 편집은 허용", exact: true })).toBeVisible();
   await sendAndReturn(page, "환불 버튼 문구를 고쳐 줘");
@@ -126,7 +119,7 @@ test("새 Thread의 Work 칩이 새 Work · Work 없이 대화 · 최근 Work를
 
   // 고른 것이 첫 말과 함께 갔다 — 최근 Work는 그 slug로, 정도는 고르지 않았으니 `null`(엔진이 그 Work의 정도를 쓴다)이다. Space 칩에서 고르지
   // 않았으니 `space`도 `null`이다(이은 Work의 Space를 건드리지 않는다 — Space 칩은 `thread-tray`가 잰다).
-  expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
+  expect(await ipcArgs(page, "thread_start", "text")).toEqual([
     { text: "환불 버튼 문구를 고쳐 줘", attachments: [], link: { kind: "work", slug: picked.slug }, mode: null, model: null, effort: null, space: null },
     { text: "결제 내역 내보내기를 만들어 줘", attachments: [], link: { kind: "new-work" }, mode: null, model: null, effort: null, space: null },
     { text: "오늘 할 일을 정리해 줘", attachments: [], link: { kind: "no-work" }, mode: null, model: null, effort: null, space: null },

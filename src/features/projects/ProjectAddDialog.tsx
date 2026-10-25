@@ -3,7 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
-import { Book, ChevronDown, Folder, FolderPlus, GitBranch, Lightbulb, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, Folder, FolderPlus, GitBranch, Lightbulb, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogOverlay, DialogPopup, DialogPortal, DialogTitle } from "@/components/ui/dialog";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { projectAddStore } from "./add-store";
+import { NoticeBox } from "./NoticeBox";
 import { projectsApi } from "./api";
 import { useCreateProject, useMakeProject, useNewProjectParent, useSaveNewProjectParent } from "./hooks";
 import { addView, pickFolder, typeName, unpickFolder, type AddDraft, type AddMode, type AddNotice, type AddView, type NoticeAct } from "./project-add";
@@ -300,33 +301,16 @@ function PlaceRow({ place, onRelocate }: { place: NonNullable<AddView["place"]>;
   );
 }
 
-/** 안내 상자(시안 `.ntc`) — 경고는 노랑 · 세모, 알림은 파랑 · 저장소 글리프. 단추가 있으면 오른쪽에 선다. */
+/** 소스 폴더 칸 아래의 안내 상자 — 갈래의 글과 단추(`addView`)를 그린다. 칸 폭을 꽉 채운다. */
 function Notice({ notice, onAct }: { notice: AddNotice; onAct: (act: NoticeAct) => void }) {
-  const warn = notice.tone === "warn";
-  const Icon = warn ? TriangleAlert : Book;
+  const action = notice.action;
   return (
-    <div
-      role="status"
-      className={cn(
-        "flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left text-chat-meta break-keep",
-        warn ? "bg-notice-warn text-fg-notice-warn" : "bg-notice-info text-fg-notice-info",
-      )}
-    >
-      <Icon className={cn("mt-0.5 size-3.5 shrink-0", warn ? "text-fg-notice-warn-icon" : "text-accent-solid")} aria-hidden />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span>{notice.title}</span>
-        <span className="text-fg-secondary">{notice.body}</span>
-      </span>
-      {notice.action && (
-        <Button
-          variant="outline"
-          size="xs"
-          className="shrink-0 self-center rounded-full bg-surface text-chat-meta text-fg"
-          onClick={() => onAct(notice.action!.act)}
-        >
-          {notice.action.label}
-        </Button>
-      )}
-    </div>
+    <NoticeBox
+      tone={notice.tone}
+      title={notice.title}
+      body={notice.body}
+      action={action ? { label: action.label, onClick: () => onAct(action.act) } : undefined}
+      className="w-full text-left"
+    />
   );
 }

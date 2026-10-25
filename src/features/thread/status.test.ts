@@ -132,6 +132,17 @@ describe("내 차례", () => {
     expect(statusOf(through(working, 57), live(0))?.kind).toBe("working");
   });
 
+  // Work 밖 Project 카드(v1 티켓 32)도 같은 물음 차례다 — 미리보기는 고치려는 Project다.
+  it("Work 밖 Project 카드가 서 있으면 내 차례이고, 미리보기는 「Work 밖 Project · web-app」이다", () => {
+    const outside = record("thread-project");
+    expect(statusOf(through(outside, 8), live(0))).toEqual({
+      kind: "mine",
+      since: "2026-10-10T10:00:08.000+09:00",
+      text: "Work 밖 Project · web-app",
+    });
+    expect(statusOf(through(outside, 9), live(0))?.kind).toBe("working");
+  });
+
   // Space 질문 카드(03 티켓 08)는 Host가 Thread 도구로 묻는 질문이다 — 같은 물음 차례에 서고, 미리보기는 그 물음이다.
   it("Space 질문 카드가 서 있으면 내 차례이고, 미리보기는 「질문 · 어느 Space에서 할까요?」다", () => {
     const spacing = record("thread-space-ask");

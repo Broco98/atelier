@@ -9,6 +9,7 @@ import {
   heldCalls,
   holdCommand,
   installFixtureBackend,
+  ipcArgs,
   ipcCalls,
   liveSubscriptions,
   readIpcRecord,
@@ -29,7 +30,8 @@ import {
 // 구독으로 세지 않는 것도 그래서다: `works:changed`의 구독 수는 앱이 정하는 값이라(14가 작업 화면의
 // 넷을 하나로 모았다 — `works-changed.spec.ts`), 그것을 여기 기대값으로 적으면 앱의 변경이 이 파일을 깬다.
 //
-// (6)은 03 판의 폴더 선택창 답(`폴더를고른다`)이다 — Project 추가 창 · 재설정이 딛는다.
+// (6)은 03 판의 폴더 선택창 답(`폴더를고른다`)이다 — Project 추가 창 · 재설정이 딛는다. (7)은 03 판 spec들이 인자를 통째로 견주는 나간
+// 인자(`ipcArgs`)다.
 //
 // (5)는 뒤에 하네스로 올라온 도구다 — `works-changed.spec.ts`가 딛는 멎은 호출 수(`steadyCount`)가 멎지 않는 커맨드에서 끝없이
 // 기다리지 않고 센 수를 싣고 던지는지를 잰다. 증거 문(`evidence.ts`)이 워커의 브라우저를 갈아 띄우는지는 `browser-recycle.spec.ts`가
@@ -407,3 +409,29 @@ test("(6) 폴더를 정하지 않고 고르면 물고, 정하면 그 경로가 �
   expect(await unknownIpcCalls(page)).toEqual(["plugin:dialog|open"]);
 });
 
+// ─── (7) 나간 인자 ───
+//
+// `ipcArgs`는 그 커맨드로 나간 인자만 나간 차례로 준다 — 「안 나갔다」(`toEqual([])`)와 「이 인자로 나갔다」(`toEqual([{ … }])`)가 이것을 딛는다.
+// **헛돌면**(그 커맨드를 못 거르거나, 이름 앞머리가 같은 다른 커맨드를 섞거나, 모양이 낯선 줄을 조용히 넘기면) 「안 나갔다」가 늘 초록이고
+// 견줌이 엉뚱한 줄을 잰다. 물음은 앱을 거치지 않고 IPC 입구로 곧바로 한다(`askBackendSettled`) — 재는 것이 기록을 읽는 길이라서다.
+
+test("(7) 나간 인자는 그 커맨드의 것만 나간 차례로 오고, 이름 앞머리가 같은 커맨드는 섞이지 않으며, 늘 실리는 키가 없으면 던진다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openProject(page);
+  expect(await ipcArgs(page, "new_project", "name"), "앵커: 아직 안 나갔다").toEqual([]);
+
+  await askBackendSettled(page, "new_project", { parent: "/Users/tester/a", name: "첫째" });
+  await askBackendSettled(page, "new_project_place", { name: "둘째" });
+  await askBackendSettled(page, "new_project", { parent: "/Users/tester/b", name: "셋째" });
+  expect(await ipcArgs(page, "new_project", "name")).toEqual([
+    { parent: "/Users/tester/a", name: "첫째" },
+    { parent: "/Users/tester/b", name: "셋째" },
+  ]);
+  expect(await ipcArgs(page, "new_project_place", "name")).toEqual([{ name: "둘째" }]);
+
+  // 늘 실리는 키가 안 보이면 던진다 — 인자 이름이 바뀐 것을 「안 나갔다」로 읽지 않는다.
+  await expect(ipcArgs(page, "new_project", "slug")).rejects.toThrow("new_project 호출의 모양이 낯설다");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

@@ -1,25 +1,25 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Book, ChevronDown, ChevronRight, Layers, Plus, Search, SquareM, SquarePen } from "lucide-react";
+import { Book, ChevronDown, ChevronRight, Layers, Plus, SquareM, SquarePen } from "lucide-react";
+import { ListPanel, ListRow, ListTable, SearchPill } from "@/components/catalog/ListParts";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Toaster } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
 import { useSpaces } from "./hooks";
 import { SpaceActions } from "./SpaceActions";
 import { useSpaceDelete } from "./SpaceDeleteDialog";
-import { HOST_MAKE, listShows, spaceName } from "./space-view";
+import { HOST_MAKE, listShows, shownSpaces, spaceName } from "./space-view";
 import type { Space } from "./types";
 
 // Space 목록(03 구현 스펙 §14 · 시안 F1-Space) — 사람 메뉴 「Space」가 여는 화면이다. 머리 줄 「Space」, 판 안에 제목 · 찾기 칸과 표(이름 ·
 // Project · 설명), 표 아래 한 줄 안내. 줄을 누르면 상세다. 문제가 있는 Space도 이름 뒤 「문제 있음」으로 선다(스토리 185). 파일은 바깥에서도
-// 고치므로 `spaces:changed`를 듣는다(`useSpaces`).
+// 고치므로 `spaces:changed`를 듣는다(`useSpaces`). 판 · 찾기 칸 · 표 · 줄의 꼴은 Projects 목록과 같은 것이다(`@/components/catalog` — 03 코드
+// 리뷰 D1), 찾기의 규칙은 `shownSpaces`다.
 //
 // 머리 줄 「새 Space ⌄」는 두 길의 메뉴다(§14 · F4-SpaceNewMenu) — 「Host와 만들기」(기본 — Work 없는 새 대화에 맡기는 말을 넣어 연다, S16)와
 // 「직접 만들기」(빈 틀의 Space 파일을 고치기 화면에 연다 — `/spaces/new`, 04). 줄 끝 ⋯는 「관계 편집 · 삭제…」다(07) — 지우면 확인 창을
-// 거쳐 「… Space를 지웠어요 · 되돌리기」 토스트가 본문 아래 가운데 선다.
+// 거쳐 「… Space를 지웠어요 · 되돌리기」 토스트가 본문 아래 가운데 선다(상세에서 지우고 목록으로 와도 같은 자리다).
 
 /** 표의 칸 — 이름 · Project · 설명 · 끝 칸(⋯ 자리). 머리 줄과 몸 줄이 같은 격자다(시안 `.th` · `.srow`). */
 const COLUMNS = "grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.5fr)_28px] items-center gap-4 pr-2.5 pl-3.5";
@@ -28,59 +28,39 @@ export default function SpaceList() {
   const { data: spaces = [], isPending, isError, error } = useSpaces();
   const shows = listShows({ isPending, isError, count: spaces.length });
   const [query, setQuery] = useState("");
-  const shown = useMemo(() => spaces.filter((space) => matches(space, query)), [spaces, query]);
+  const shown = useMemo(() => shownSpaces(spaces, query), [spaces, query]);
   const label = navItem("spaces").label;
   const removing = useSpaceDelete();
 
   return (
     <PlainFrame label={label} title={{ name: label }}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col gap-4.5 overflow-y-auto px-10 pt-7.5 pb-10 scroll-quiet">
-          {/* 본문 맨 위 줄(제목 · 찾기 · 추가) — `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead`). */}
-          <div className="flex min-h-8 items-center gap-2.5">
-            <h1 className="text-heading-md text-fg">{label}</h1>
-            <label className="ml-auto flex h-7.5 w-60 items-center gap-1.5 rounded-full border border-border-heavy px-3 text-fg-tertiary focus-ring">
-              <Search aria-hidden className="size-3.5 shrink-0" />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Space 찾기"
-                aria-label="Space 찾기"
-                className="min-w-0 flex-1 bg-transparent text-chat-meta text-fg outline-none placeholder:text-fg-tertiary"
-              />
-            </label>
+      <ListPanel
+        title={label}
+        tools={
+          <>
+            <SearchPill label="Space 찾기" value={query} onChange={setQuery} />
+            <NewSpaceButton />
+          </>
+        }
+        after={removing.dialog}
+      >
+        {shows === "error" ? (
+          <p className="px-3.5 py-6 text-sm text-fg-tertiary">Space 목록을 읽지 못했어요 — {String(error)}</p>
+        ) : shows === "empty" ? (
+          // S15 — 빈 목록은 안내 한 줄과 「새 Space」(머리 줄과 같은 길)다.
+          <div className="flex flex-col items-start gap-3 px-3.5 py-6">
+            <p className="text-sm text-fg-tertiary">아직 Space가 없어요</p>
             <NewSpaceButton />
           </div>
-          {shows === "error" ? (
-            <p className="px-3.5 py-6 text-sm text-fg-tertiary">Space 목록을 읽지 못했어요 — {String(error)}</p>
-          ) : shows === "empty" ? (
-            // S15 — 빈 목록은 안내 한 줄과 「새 Space」(머리 줄과 같은 길)다.
-            <div className="flex flex-col items-start gap-3 px-3.5 py-6">
-              <p className="text-sm text-fg-tertiary">아직 Space가 없어요</p>
-              <NewSpaceButton />
-            </div>
-          ) : (
-            <div role="table" aria-label="Space 목록" className="flex flex-col">
-              <div role="row" className={cn(COLUMNS, "h-7.5 text-xs text-fg-tertiary")}>
-                <span role="columnheader">이름</span>
-                <span role="columnheader">Project</span>
-                <span role="columnheader">설명</span>
-                <span role="columnheader" aria-hidden />
-              </div>
-              {shown.map((space) => (
-                <SpaceRow key={space.slug} space={space} onDelete={(one) => void removing.ask(one)} />
-              ))}
-              {/* 마지막 줄 아래 선 — 줄마다 위 선이라 끝에 한 줄 더 둔다(시안 `.pend`). */}
-              <div aria-hidden className="mx-2.5 h-[0.5px] bg-separator" />
-            </div>
-          )}
-          <p className="px-3.5 text-xs text-fg-tertiary">Space는 Project를 묶어요. Agent는 Space 안의 Project를 함께 읽어요.</p>
-        </div>
-        {/* 지운 뒤의 「되돌리기」가 여기 선다 — 본문 아래 가운데(시안 `.toast`). 상세에서 지우고 목록으로 와도 같은 자리다. */}
-        <Toaster />
-        {removing.dialog}
-      </div>
+        ) : (
+          <ListTable label="Space 목록" columns={COLUMNS} heads={["이름", "Project", "설명"]}>
+            {shown.map((space) => (
+              <SpaceRow key={space.slug} space={space} onDelete={(one) => void removing.ask(one)} />
+            ))}
+          </ListTable>
+        )}
+        <p className="px-3.5 text-xs text-fg-tertiary">Space는 Project를 묶어요. Agent는 Space 안의 Project를 함께 읽어요.</p>
+      </ListPanel>
     </PlainFrame>
   );
 }
@@ -129,37 +109,15 @@ function NewSpaceButton() {
   );
 }
 
-/** 찾기 — 이름 · slug · Project · 설명 가운데 하나라도 그 글을 품으면 남는다(대소문자 무시). */
-function matches(space: Space, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") return true;
-  return [space.name, space.slug, space.description, ...space.projects].some((one) => one.toLowerCase().includes(needle));
-}
-
 /**
- * 표의 줄 하나 — 48 · 둥글기 12, 줄 위에 0.5 선(옆 10 들여), 지나면 옅은 면과 이름 끝 꺾쇠가 서고 위아래 선이 숨는다(시안 `.srow`). 줄
- * 어디를 눌러도 상세다 — 이름이 그 링크이고(키보드는 이름에 선다), 줄의 누름은 끝의 ⋯가 아닐 때만 상세로 간다(Projects 목록과 같은 꼴 —
- * 링크 안에 단추를 둘 수 없다).
+ * 표의 줄 하나(시안 `.srow`) — 줄의 꼴 · 누름은 `ListRow`다(지나면 옅은 면과 이름 끝 꺾쇠가 서고 그 줄의 위 선과 다음 줄의 위 선이 숨는다). 줄
+ * 어디를 눌러도 상세다 — 이름이 그 링크이고(키보드는 이름에 선다), 끝의 ⋯는 제 일만 한다.
  */
 function SpaceRow({ space, onDelete }: { space: Space; onDelete: (space: Space) => void }) {
   const problems = space.problems.length > 0;
   const navigate = useNavigate();
-  // 줄의 누름 — 줄 안 단추 · 링크와 메뉴(포털로 떠도 React 나무로는 줄 안이라 누름이 올라온다)에서 온 것은 제 일만 한다.
-  const openFromRow = (event: MouseEvent<HTMLDivElement>) => {
-    const target = event.target as Element;
-    if (!event.currentTarget.contains(target) || target.closest("a, button")) return;
-    void navigate({ to: "/spaces/$slug", params: { slug: space.slug } });
-  };
   return (
-    <div
-      role="row"
-      onClick={openFromRow}
-      className={cn(
-        COLUMNS,
-        "group/row relative h-12 rounded-xl text-sm text-fg transition-colors hover:bg-fill-soft",
-        "before:absolute before:inset-x-2.5 before:top-0 before:h-[0.5px] before:bg-separator hover:before:opacity-0",
-      )}
-    >
+    <ListRow columns={COLUMNS} onOpen={() => void navigate({ to: "/spaces/$slug", params: { slug: space.slug } })}>
       <span role="cell" className="flex min-w-0 items-center">
         {/* WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다). */}
         <Link
@@ -188,6 +146,6 @@ function SpaceRow({ space, onDelete }: { space: Space; onDelete: (space: Space) 
       <span role="cell" className="flex justify-end">
         <SpaceActions space={space} onDelete={onDelete} />
       </span>
-    </div>
+    </ListRow>
   );
 }

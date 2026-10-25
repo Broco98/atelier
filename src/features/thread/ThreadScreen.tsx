@@ -48,17 +48,16 @@ import {
 import { changedFiles } from "./log";
 import { reducedMotion } from "./motion";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
-import ProjectAddCard from "./ProjectAddCard";
-import ProjectCard from "./ProjectCard";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { ResultPlace, type ResultActions } from "./ResultCard";
-import SpaceCard from "./SpaceCard";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
 import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
+import { isToolCardAsk } from "./tool-cards";
+import { ToolCardSlot } from "./ToolCards";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
@@ -68,7 +67,6 @@ import { HeadWork, SpaceCrumb, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { headSpace, heldSpace, holdOf, holdPick, shownSpace, startSpace } from "./space-chip";
 import { lockedWork, rememberSwitch, startLink, workHome } from "./work-chip";
 import { decisionItems, decisionsDue } from "./work-proposal";
-import WorkProposalCard from "./WorkProposalCard";
 
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
@@ -101,7 +99,8 @@ import WorkProposalCard from "./WorkProposalCard";
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
 //   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
-// - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`).
+// - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`). Thread 도구가 세운 카드(Work 만들기 · Work 밖
+//   Project · Space 질문 · Project 추가)도 같은 자리 · 같은 차례에 그 갈래의 카드로 선다(`ToolCardSlot` — 갈래마다의 표는 `ToolCards.tsx`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
 // - **여럿이 한 Thread에**(v1 티켓 14) — 누가 있는지는 본문의 이름 줄과 @ 메뉴가 말한다(머리 줄 얼굴은 걷었다 — 02 S14).
 //   입력창의 @ 메뉴는 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의 Session
@@ -246,10 +245,10 @@ export function NewThreadScreen({ seed = { link: null, say: null, space: null } 
       // 잠긴다(Space는 Session이 열릴 때까지 고르지 못한다).
       tray={
         starting === null
-          ? { at: "below", work: { label: home.chip, link: place.link, onPick: pick }, space }
+          ? { at: "below", work: { kind: "pick", label: home.chip, link: place.link, onPick: pick }, space }
           : {
               at: "above",
-              work: { locked: lockedWork(work, title, place.link.kind === "new-work"), onOpen: openWork },
+              work: { kind: "locked", locked: lockedWork(work, title, place.link.kind === "new-work"), onOpen: openWork },
               space: { ...space, disabled: true },
             }
       }
@@ -580,7 +579,7 @@ function ThreadBody({
   const { data: scope } = useReadingScope({ thread });
   const tray: ComposerTray = {
     at: "above",
-    work: { locked: lockedWork(view.work, linked?.title ?? null, view.newWork === true), onOpen: openWork },
+    work: { kind: "locked", locked: lockedWork(view.work, linked?.title ?? null, view.newWork === true), onOpen: openWork },
     space: {
       current: scope?.space ?? null,
       ofWork: view.work !== null,
@@ -697,6 +696,14 @@ function ThreadBody({
       line={nextOf(turn.next, model.cast[turn.next.who]?.name ?? turn.next.who)}
     />
   );
+  // 입력창 자리 카드가 함께 받는 것 — 답할 Thread, 물은 참여자의 이름 · 얼굴(들어옴 줄), 물음 차례의 표시.
+  const slot = asking && {
+    thread,
+    name: model.cast[asking.who]?.name ?? asking.who,
+    avatar: model.cast[asking.who]?.avatar ?? null,
+    count: turn?.count,
+    next: askNext,
+  };
 
   const pickLevel = (mode: AskLevel) => {
     setChipProblem(null);
@@ -794,61 +801,22 @@ function ThreadBody({
               card={
                 // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
                 // 새 카드가 올라온다 — 자리의 열쇠가 그 물음이다.
-                asking ? (
+                asking && slot ? (
                   <Arriving key={`${asking.who}\u0000${asking.requestId}`} motion="card-rise">
-                    {asking.card === "work" ? (
-                      <WorkProposalCard
-                        thread={thread}
-                        card={asking}
-                        count={turn?.count}
-                        next={askNext}
-                      />
-                    ) : asking.card === "question" ? (
-                      <QuestionCard
-                        thread={thread}
-                        name={model.cast[asking.who]?.name ?? asking.who}
-                        avatar={model.cast[asking.who]?.avatar ?? null}
-                        request={asking}
-                        count={turn?.count}
-                        next={askNext}
-                      />
-                    ) : asking.card === "project" ? (
-                      <ProjectCard
-                        thread={thread}
-                        name={model.cast[asking.who]?.name ?? asking.who}
-                        avatar={model.cast[asking.who]?.avatar ?? null}
-                        card={asking}
-                        count={turn?.count}
-                        next={askNext}
-                      />
-                    ) : asking.card === "space" ? (
-                      <SpaceCard
-                        thread={thread}
-                        name={model.cast[asking.who]?.name ?? asking.who}
-                        avatar={model.cast[asking.who]?.avatar ?? null}
-                        card={asking}
-                        count={turn?.count}
-                        next={askNext}
-                      />
-                    ) : asking.card === "project-add" ? (
-                      <ProjectAddCard
-                        thread={thread}
-                        name={model.cast[asking.who]?.name ?? asking.who}
-                        avatar={model.cast[asking.who]?.avatar ?? null}
-                        card={asking}
-                        count={turn?.count}
-                        next={askNext}
-                      />
+                    {asking.card === "question" ? (
+                      <QuestionCard {...slot} request={asking} />
+                    ) : isToolCardAsk(asking) ? (
+                      <ToolCardSlot {...slot} card={asking} />
                     ) : (
                       <ApprovalCard
                         thread={thread}
-                        name={model.cast[asking.who]?.name ?? asking.who}
+                        name={slot.name}
                         request={asking}
                         scope={view.work ? "work" : "thread"}
                         cwd={askingCwd}
                         place={placeOf(askingCwd, linked)}
-                        count={turn?.count}
-                        next={askNext}
+                        count={slot.count}
+                        next={slot.next}
                       />
                     )}
                   </Arriving>

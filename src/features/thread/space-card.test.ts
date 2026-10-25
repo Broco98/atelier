@@ -15,8 +15,6 @@ const card = (over: Partial<PendingSpace> = {}): PendingSpace => ({
     { slug: "사내-도구", name: "사내 도구", projects: ["api-server", "backoffice"] },
   ],
   registered: 3,
-  current: null,
-  reason: "환불은 결제 서비스 쪽 일이에요",
   ...over,
 });
 

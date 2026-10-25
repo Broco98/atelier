@@ -84,26 +84,26 @@ pub enum FolderLook {
 
 /// 폴더 살피기(`FolderLook`). 경로는 `~`로 시작해도 된다. 실패하지 않는다 — 읽지 못한 폴더는 「폴더가 없음」이다.
 pub fn inspect_folder(root: &Path, folder: &Path) -> FolderLook {
-    let asked = expand(folder);
-    let Some(folder) = asked.canonicalize().ok().filter(|folder| folder.is_dir()) else {
-        return FolderLook::Missing { path: collapse_home(&asked) };
+    let folder = match resolve_folder(folder) {
+        Ok(folder) => folder,
+        Err(asked) => return FolderLook::Missing { path: collapse_home(&asked) },
     };
     if let Some(project) = registered(root, &folder) {
         return FolderLook::Registered { path: collapse_home(&folder), project: to_view(project) };
     }
-    let (Some(top), Some(git)) = (git::toplevel(&folder).and_then(|top| top.canonicalize().ok()), git::detect(&folder)) else {
+    let (Some(top), Some(git)) = (repo_root(&folder), git::detect(&folder)) else {
         return FolderLook::NotGit { path: collapse_home(&folder) };
     };
     if top != folder {
         return FolderLook::Subfolder {
             path: collapse_home(&folder),
             root: collapse_home(&top),
-            base_branch: default_base(&folder, Some(&git)),
+            base_branch: default_base(&folder, &git),
         };
     }
     FolderLook::Repo {
         path: collapse_home(&folder),
-        base_branch: default_base(&folder, Some(&git)),
+        base_branch: default_base(&folder, &git),
         remotes: git::remotes(&folder),
         git,
     }
@@ -130,16 +130,27 @@ fn registered(root: &Path, folder: &Path) -> Option<Project> {
     read_projects(root).unwrap_or_default().into_iter().find(|project| expand_home(&project.path) == folder)
 }
 
+/// 받은 폴더 — `~`를 풀고(화면 · 바깥 MCP가 주는 경로는 `~`로 줄인 꼴일 수 있다 — `FolderLook`의 `path`) 심볼릭 링크를 푼 자리다. 폴더가
+/// 아니면(없다 · 파일이다 · 읽지 못한다) `~`만 푼 받은 자리를 돌려준다 — 「폴더가 없음」의 글이 그것을 말한다. 살피기 · 추가 · 재설정이
+/// 같은 자리를 본다.
+fn resolve_folder(path: &Path) -> std::result::Result<PathBuf, PathBuf> {
+    let asked = expand(path);
+    asked.canonicalize().ok().filter(|folder| folder.is_dir()).ok_or(asked)
+}
+
 /// 받은 경로의 `~`를 푼다 — 화면 · 바깥 MCP가 주는 경로는 `~`로 줄인 꼴일 수 있다(`FolderLook`의 `path`).
 fn expand(path: &Path) -> PathBuf {
     expand_home(&path.to_string_lossy())
 }
 
+/// 그 폴더가 든 git 저장소의 뿌리(심볼릭 링크를 푼 자리) — git이 아니면 없다. 받은 폴더(이미 푼 자리)와 견주어 하위 폴더를 가른다.
+fn repo_root(folder: &Path) -> Option<PathBuf> {
+    git::toplevel(folder).and_then(|top| top.canonicalize().ok())
+}
+
 /// 등록할 때의 기준 브랜치 — `origin/HEAD`가 가리키는 것, 없으면 지금 브랜치, 그것도 없으면 `main`이다.
-fn default_base(folder: &Path, git: Option<&GitInfo>) -> String {
-    git::origin_head(folder)
-        .or_else(|| git.and_then(|g| g.current_branch.clone()))
-        .unwrap_or_else(|| "main".to_string())
+fn default_base(folder: &Path, git: &GitInfo) -> String {
+    git::origin_head(folder).or_else(|| git.current_branch.clone()).unwrap_or_else(|| "main".to_string())
 }
 
 /// 추가할 때 사람이 고른 것(03 구현 스펙 §15 「추가」). 기본값은 「이름은 폴더 이름 · git 저장소만」이다.
@@ -165,12 +176,7 @@ pub fn create_project(root: &Path, folder: &Path) -> Result<ProjectView> {
 /// - 이미 등록된 폴더는 그 Project를 그대로 돌려준다(멱등) — 이름 · 설명을 덮지 않는다.
 /// - 경로는 `~`로 시작해도 된다. 심볼릭 링크를 푼 자리를 `~`로 줄여 적는다.
 pub fn add_project(root: &Path, folder: &Path, add: AddProject) -> Result<ProjectView> {
-    let asked = expand(folder);
-    let folder = asked
-        .canonicalize()
-        .ok()
-        .filter(|folder| folder.is_dir())
-        .ok_or_else(|| Error::FolderMissing(collapse_home(&asked)))?;
+    let folder = resolve_folder(folder).map_err(|asked| Error::FolderMissing(collapse_home(&asked)))?;
     std::fs::create_dir_all(root)?;
 
     if let Some(project) = registered(root, &folder) {
@@ -188,7 +194,7 @@ pub fn add_project(root: &Path, folder: &Path, add: AddProject) -> Result<Projec
         .unwrap_or_else(|| "project".to_string());
     let slug = unique_slug(root, &slugify(&name));
     let name = add.name.map(|name| name.trim().to_string()).filter(|name| !name.is_empty()).unwrap_or(name);
-    let base_branch = default_base(&folder, Some(&git));
+    let base_branch = default_base(&folder, &git);
 
     let project = Project {
         slug,
@@ -296,13 +302,8 @@ pub fn update_project(root: &Path, slug: &str, patch: ProjectPatch) -> Result<Pr
 /// - 경로는 `~`로 시작해도 된다. 심볼릭 링크를 푼 자리를 `~`로 줄여 적는다(추가와 같은 꼴).
 pub fn relocate_project(root: &Path, slug: &str, folder: &Path) -> Result<ProjectView> {
     let mut project = read_project(root, slug)?;
-    let asked = expand(folder);
-    let folder = asked
-        .canonicalize()
-        .ok()
-        .filter(|folder| folder.is_dir())
-        .ok_or_else(|| Error::FolderMissing(collapse_home(&asked)))?;
-    let Some(top) = git::toplevel(&folder).and_then(|top| top.canonicalize().ok()) else {
+    let folder = resolve_folder(folder).map_err(|asked| Error::FolderMissing(collapse_home(&asked)))?;
+    let Some(top) = repo_root(&folder) else {
         return Err(Error::NotGitRepo(collapse_home(&folder)));
     };
     if top != folder {
@@ -375,19 +376,17 @@ pub fn project_usage(data_root: &Path, slug: &str) -> Result<ProjectUsage> {
 /// - 지운 자리는 slug마다 마지막 하나다(S10) — 같은 slug를 다시 지우면 앞의 파일 · 기록을 덮는다.
 pub fn remove_project(data_root: &Path, slug: &str) -> Result<ProjectRemoval> {
     let root = crate::paths::projects_in(data_root);
-    let file = project_path(&root, slug)?;
+    project_path(&root, slug)?;
     read_project(&root, slug)?;
     let works = using_works(data_root, slug)?;
     if !works.is_empty() {
         return Ok(ProjectRemoval::Blocked { works });
     }
     let listing = listing_spaces(data_root, slug)?;
-    let deleted = crate::paths::deleted_in(&root);
     let record = Removed {
         spaces: listing.iter().map(|(space, before)| RemovedFrom { slug: space.slug.clone(), before: before.clone() }).collect(),
     };
-    crate::atomic::write_json_atomically(&deleted, &format!("{slug}.json"), &record, "제거 기록을")?;
-    std::fs::rename(&file, deleted.join(format!("{slug}.md")))?;
+    crate::aside::Aside::of(&root, slug).put(&record, "제거 기록을")?;
     let mut spaces = Vec::new();
     for (space, _) in listing {
         let patch = crate::SpacePatch { remove: vec![slug.to_string()], ..Default::default() };
@@ -406,22 +405,14 @@ pub fn remove_project(data_root: &Path, slug: &str) -> Result<ProjectRemoval> {
 ///   새로 선 것을 덮거나 한 폴더를 두 Project로 만들지 않는다. 지운 것이 없으면 `NotFound`다.
 pub fn restore_project(data_root: &Path, slug: &str) -> Result<ProjectView> {
     let root = crate::paths::projects_in(data_root);
-    let file = project_path(&root, slug)?;
-    let deleted = crate::paths::deleted_in(&root);
-    let kept = deleted.join(format!("{slug}.md"));
-    if !kept.is_file() {
-        return Err(Error::NotFound(slug.to_string()));
-    }
-    if file.exists() {
-        return Err(Error::SlugReused(slug.to_string()));
-    }
-    let project = parse_project(slug, &std::fs::read_to_string(&kept)?)?;
+    project_path(&root, slug)?;
+    let aside = crate::aside::Aside::of(&root, slug);
+    aside.ready(Error::NotFound(slug.to_string()))?;
+    let project = parse_project(slug, &std::fs::read_to_string(aside.kept())?)?;
     if let Some(other) = registered(&root, &expand_home(&project.path)) {
         return Err(Error::AlreadyRegistered { path: project.path, slug: other.slug });
     }
-    std::fs::rename(&kept, &file)?;
-    let record_file = deleted.join(format!("{slug}.json"));
-    let record: Removed = crate::atomic::read_json_or_default(&record_file, "Project 제거 기록");
+    let record: Removed = aside.take_back("Project 제거 기록")?;
     for from in record.spaces {
         let listed = crate::get_space(data_root, &from.slug).map(|space| space.projects.iter().any(|project| project == slug));
         if listed.is_ok_and(|listed| !listed) {
@@ -429,7 +420,7 @@ pub fn restore_project(data_root: &Path, slug: &str) -> Result<ProjectView> {
             let _ = crate::update_space(data_root, &from.slug, patch);
         }
     }
-    let _ = std::fs::remove_file(record_file);
+    aside.forget();
     Ok(to_view(project))
 }
 
@@ -456,8 +447,8 @@ fn listing_spaces(data_root: &Path, slug: &str) -> Result<Vec<(ListingSpace, Opt
         .into_iter()
         .filter_map(|space| {
             let at = space.projects.iter().position(|project| project == slug)?;
-            let name = if space.name.trim().is_empty() { space.slug.clone() } else { space.name.clone() };
-            Some((ListingSpace { slug: space.slug, name }, space.projects.get(at + 1).cloned()))
+            let listing = ListingSpace { name: space.shown_name().to_owned(), slug: space.slug.clone() };
+            Some((listing, space.projects.get(at + 1).cloned()))
         })
         .collect())
 }

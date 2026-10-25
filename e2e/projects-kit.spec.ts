@@ -4,13 +4,18 @@ import {
   clipboardWrites,
   fireEvent,
   installFixtureBackend,
-  ipcCallArgs,
+  ipcArgs,
   ipcFailure,
   recordClipboard,
   replaceAnswer,
   unknownIpcCalls,
+  몸줄,
+  본문,
+  오류창,
   칠한값,
+  표줄,
   폴더를고른다,
+  화면토스트,
 } from "./harness";
 import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projects/types";
 
@@ -79,17 +84,10 @@ const 살핀답: Record<string, FolderLook> = {
 };
 const 살피기 = answerByArg("folder", 살핀답);
 
-const 본문 = (page: Page, name: string) => page.getByRole("main", { name, exact: true });
 const 목록 = (page: Page) => page.getByRole("table", { name: "Project 목록", exact: true });
-const 몸줄 = (page: Page) => 목록(page).getByRole("row").filter({ hasNot: page.getByRole("columnheader") });
-const 줄 = (page: Page, name: string) => 몸줄(page).filter({ has: page.getByRole("link", { name, exact: true }) });
+const 줄 = (page: Page, name: string) => 표줄(목록(page), name);
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 항목 = (page: Page, name: string) => 메뉴(page).getByRole("menuitem", { name, exact: true });
-const 토스트 = (page: Page, title: string) =>
-  page.getByRole("region", { name: "메시지", exact: true }).getByRole("dialog", { name: title, exact: true });
-const 오류창 = (page: Page) => page.getByRole("alertdialog", { name: "오류", exact: true });
-const 인자 = async (page: Page, command: string, key: string) =>
-  (await ipcCallArgs(page, command, key)).map(({ args }) => args);
 
 // ── 추가 창 ──
 const 추가창 = (page: Page) => page.getByRole("dialog", { name: "Project 추가", exact: true });
@@ -147,14 +145,14 @@ test.describe("목록 줄", () => {
     // 찾기 — 이름 · 경로에 걸린다. 맞는 것이 없으면 「찾는 Project가 없어요」(스토리 98).
     const 찾기 = page.getByRole("searchbox", { name: "Project 찾기", exact: true });
     await 찾기.fill(ledger.name);
-    await expect(몸줄(page).getByRole("link")).toHaveText([ledger.name]);
+    await expect(몸줄(목록(page)).getByRole("link")).toHaveText([ledger.name]);
     await 찾기.fill("MyProjects");
-    await expect(몸줄(page).getByRole("link")).toHaveText([playground.name]);
+    await expect(몸줄(목록(page)).getByRole("link")).toHaveText([playground.name]);
     await 찾기.fill("없는 이름");
-    await expect(몸줄(page)).toHaveCount(0);
+    await expect(몸줄(목록(page))).toHaveCount(0);
     await expect(목록(page).getByText("찾는 Project가 없어요", { exact: true })).toBeVisible();
     await 찾기.fill("");
-    await expect(몸줄(page)).toHaveCount(3);
+    await expect(몸줄(목록(page))).toHaveCount(3);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -167,12 +165,12 @@ test.describe("목록 줄", () => {
     await 단추(billing.name).click();
     await expect(메뉴(page).getByRole("menuitem")).toHaveText(["Finder에서 열기", "경로 복사", "제거…"]);
     await 항목(page, "Finder에서 열기").click();
-    await expect.poll(() => 인자(page, "open_project_folder", "slug")).toEqual([{ slug: billing.slug }]);
+    await expect.poll(() => ipcArgs(page, "open_project_folder", "slug")).toEqual([{ slug: billing.slug }]);
 
     await 단추(billing.name).click();
     await 항목(page, "경로 복사").click();
     await expect.poll(() => clipboardWrites(page)).toEqual([`${billing.path}/`]);
-    await expect(토스트(page, `${billing.path}/ 복사됨`)).toBeVisible();
+    await expect(화면토스트(page, `${billing.path}/ 복사됨`)).toBeVisible();
 
     await 단추(playground.name).click();
     await expect(메뉴(page).getByRole("menuitem")).toHaveText(["제거…"]);
@@ -190,13 +188,13 @@ test.describe("목록 줄", () => {
     // 고르다 그만두면 아무것도 바뀌지 않는다.
     await 폴더를고른다(page, null);
     await 재설정.click();
-    await expect.poll(() => 인자(page, "plugin:dialog|open", "options")).toHaveLength(1);
-    expect(await 인자(page, "relocate_project", "slug")).toEqual([]);
+    await expect.poll(() => ipcArgs(page, "plugin:dialog|open", "options")).toHaveLength(1);
+    expect(await ipcArgs(page, "relocate_project", "slug")).toEqual([]);
 
     await 폴더를고른다(page, "/Users/tester/MyProjects/playground-moved");
     await 재설정.click();
     await expect
-      .poll(() => 인자(page, "relocate_project", "slug"))
+      .poll(() => ipcArgs(page, "relocate_project", "slug"))
       .toEqual([{ slug: playground.slug, folder: "/Users/tester/MyProjects/playground-moved" }]);
 
     // 재설정은 git 저장소의 뿌리만 받는다 — core의 거절을 사람의 말로(스토리 127).
@@ -254,7 +252,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(추가창(page).getByLabel("기준 브랜치 develop", { exact: true })).toBeVisible();
     await expect(이름칸(page)).toHaveValue("web-app");
     await expect(안내상자(page)).toHaveCount(0);
-    expect(await 인자(page, "inspect_project_folder", "folder")).toEqual([{ folder: 고른곳.webApp }]);
+    expect(await ipcArgs(page, "inspect_project_folder", "folder")).toEqual([{ folder: 고른곳.webApp }]);
 
     // 폴더를 빼면 따라온 이름도 빠진다. 사람이 친 이름은 다시 골라도 그대로다.
     await 추가창(page).getByRole("button", { name: "폴더 빼기", exact: true }).click();
@@ -269,7 +267,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await replaceAnswer(page, "list_projects", [...PROJECTS, webApp]);
     await 아래단추(page, "Project 추가").click();
     await expect(추가창(page)).toHaveCount(0);
-    expect(await 인자(page, "create_project", "folder")).toEqual([{ folder: webApp.path, name: "웹 앱", initGit: false }]);
+    expect(await ipcArgs(page, "create_project", "folder")).toEqual([{ folder: webApp.path, name: "웹 앱", initGit: false }]);
     await expect(page).toHaveURL(`/projects/${webApp.slug}`);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -291,7 +289,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(아래단추(page, "Project 추가")).toHaveCount(0);
 
     await 아래단추(page, "git init 하고 추가").click();
-    await expect.poll(() => 인자(page, "create_project", "folder")).toEqual([{ folder: "~/Documents/notes", name: "notes", initGit: true }]);
+    await expect.poll(() => ipcArgs(page, "create_project", "folder")).toEqual([{ folder: "~/Documents/notes", name: "notes", initGit: true }]);
     // git의 글 그대로 창 안에 — 창은 닫히지 않고 고쳐 다시 누른다.
     await expect(추가창(page).getByRole("alert")).toHaveText("추가하지 못했어요 — git commit failed: Author identity unknown");
     await expect(추가창(page)).toBeVisible();
@@ -317,7 +315,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(안내상자(page)).toHaveCount(0);
     await 아래단추(page, "Project 추가").click();
     await expect
-      .poll(() => 인자(page, "create_project", "folder"))
+      .poll(() => ipcArgs(page, "create_project", "folder"))
       .toEqual([{ folder: "~/Developer/atelier", name: "atelier", initGit: false }]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -342,7 +340,7 @@ test.describe("추가 창 — 소스 폴더", () => {
 
     await expect(추가창(page)).toHaveCount(0);
     await expect(page).toHaveURL(`/projects/${billing.slug}`);
-    expect(await 인자(page, "create_project", "folder")).toEqual([]);
+    expect(await ipcArgs(page, "create_project", "folder")).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -383,15 +381,15 @@ test.describe("추가 창 — 소스 폴더", () => {
     );
     await 추가창(page).getByRole("button", { name: "위치 바꾸기", exact: true }).click();
     await expect(추가창(page).getByText("~/Code/landing-page", { exact: true })).toBeVisible();
-    const 설정 = async () => (await 인자(page, "write_settings", "settings")).map((args) => (args.settings as { projects?: unknown }).projects);
+    const 설정 = async () => (await ipcArgs(page, "write_settings", "settings")).map((args) => (args.settings as { projects?: unknown }).projects);
     await expect.poll(설정).toEqual([{ newParent: "/Users/tester/Code" }]);
-    const 물은자리 = await 인자(page, "new_project_place", "name");
+    const 물은자리 = await ipcArgs(page, "new_project_place", "name");
     expect(물은자리[물은자리.length - 1]).toEqual({ parent: "/Users/tester/Code", name: "Landing Page" });
 
     await replaceAnswer(page, "list_projects", [...PROJECTS, landing]);
     await 아래단추(page, "Project 만들기").click();
     await expect(추가창(page)).toHaveCount(0);
-    expect(await 인자(page, "new_project", "name")).toEqual([{ parent: "/Users/tester/Code", name: "Landing Page" }]);
+    expect(await ipcArgs(page, "new_project", "name")).toEqual([{ parent: "/Users/tester/Code", name: "Landing Page" }]);
     await expect(page).toHaveURL(`/projects/${landing.slug}`);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -419,8 +417,8 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(추가창(page).getByRole("button", { name: "이 컴퓨터의 폴더 추가", exact: true })).toBeVisible();
     await expect(추가창(page).getByText("git 레포 · 원격 acme/web-app", { exact: true })).toBeVisible();
     await expect(아래단추(page, "Project 추가")).toBeEnabled();
-    expect(await 인자(page, "inspect_project_folder", "folder")).toEqual([{ folder: webApp.path }]);
-    expect(await 인자(page, "new_project", "name")).toEqual([]);
+    expect(await ipcArgs(page, "inspect_project_folder", "folder")).toEqual([{ folder: webApp.path }]);
+    expect(await ipcArgs(page, "new_project", "name")).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -434,7 +432,7 @@ test.describe("추가 창 — 소스 폴더", () => {
 
     // 파일만 놓으면 아무 일도 없다(03 결정 09 · 코드 리뷰 P7) — 폴더인지 묻고, 창은 열지 않는다.
     await fireEvent(page, "tauri://drag-drop", { paths: [파일], position: { x: 700, y: 400 } });
-    await expect.poll(() => 인자(page, "inspect_project_folder", "folder")).toEqual([{ folder: 파일 }]);
+    await expect.poll(() => ipcArgs(page, "inspect_project_folder", "folder")).toEqual([{ folder: 파일 }]);
     await expect(추가창(page)).toHaveCount(0);
 
     // 파일은 건너뛴다 — 폴더인지는 core가 안다(첫 폴더 — S20).
@@ -442,7 +440,7 @@ test.describe("추가 창 — 소스 폴더", () => {
     await expect(추가창(page)).toBeVisible();
     await expect(추가창(page).getByText("git 레포 · 원격 acme/web-app", { exact: true })).toBeVisible();
     await expect(이름칸(page)).toHaveValue("web-app");
-    expect(await 인자(page, "inspect_project_folder", "folder")).toEqual([
+    expect(await ipcArgs(page, "inspect_project_folder", "folder")).toEqual([
       { folder: 파일 },
       { folder: 파일 },
       { folder: 고른곳.webApp },
@@ -473,7 +471,7 @@ test.describe("제거 창", () => {
 
     const 창 = 제거창(page, "목록에서 제거할까요?");
     await expect(창).toBeVisible();
-    expect(await 인자(page, "project_usage", "slug")).toEqual([{ slug: billing.slug }]);
+    expect(await ipcArgs(page, "project_usage", "slug")).toEqual([{ slug: billing.slug }]);
     await expect(창.getByText(billing.name, { exact: true })).toBeVisible();
     await expect(창.getByText(billing.path, { exact: true })).toBeVisible();
     await expect(창).toHaveAccessibleDescription("폴더와 파일, git 기록은 그대로예요. 언제든 다시 추가할 수 있어요.");
@@ -482,10 +480,10 @@ test.describe("제거 창", () => {
     await 창.getByRole("button", { name: "제거", exact: true }).click();
 
     await expect(창).toHaveCount(0);
-    expect(await 인자(page, "remove_project", "slug")).toEqual([{ slug: billing.slug }]);
-    const 지운뒤 = 토스트(page, `목록에서 뺐어요 — ${billing.name}`);
+    expect(await ipcArgs(page, "remove_project", "slug")).toEqual([{ slug: billing.slug }]);
+    const 지운뒤 = 화면토스트(page, `목록에서 뺐어요 — ${billing.name}`);
     await 지운뒤.getByRole("button", { name: "되돌리기", exact: true }).click();
-    await expect.poll(() => 인자(page, "restore_project", "slug")).toEqual([{ slug: billing.slug }]);
+    await expect.poll(() => ipcArgs(page, "restore_project", "slug")).toEqual([{ slug: billing.slug }]);
     await expect(지운뒤).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -529,11 +527,11 @@ test.describe("제거 창", () => {
     );
     await 창.getByRole("button", { name: "취소", exact: true }).click();
     await expect(창).toHaveCount(0);
-    expect(await 인자(page, "remove_project", "slug")).toEqual([]);
+    expect(await ipcArgs(page, "remove_project", "slug")).toEqual([]);
 
     await 제거를묻는다(page, ledger);
     await 창.getByRole("button", { name: "제거", exact: true }).click();
-    await 토스트(page, `목록에서 뺐어요 — ${ledger.name}`).getByRole("button", { name: "되돌리기", exact: true }).click();
+    await 화면토스트(page, `목록에서 뺐어요 — ${ledger.name}`).getByRole("button", { name: "되돌리기", exact: true }).click();
     await expect(오류창(page)).toHaveAccessibleDescription(`되돌리지 못했어요 — 그사이 같은 이름의 Project(${ledger.slug})가 다시 추가됐어요.`);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -557,7 +555,7 @@ test.describe("제거 창", () => {
     await 줄들.first().click();
     await expect(창).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`/works/${고치는[0].slug}`));
-    expect(await 인자(page, "remove_project", "slug")).toEqual([]);
+    expect(await ipcArgs(page, "remove_project", "slug")).toEqual([]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -571,7 +569,7 @@ test.describe("제거 창", () => {
     const 막힘 = 제거창(page, "아직 제거할 수 없어요");
     await expect(막힘).toHaveAccessibleDescription("진행 중인 Work 1개가 이 Project를 고치고 있어요. Work를 끝내 보관하면 제거할 수 있어요.");
     await expect(막힘.getByRole("link")).toHaveText([붙인.title]);
-    await expect(토스트(page, `목록에서 뺐어요 — ${ledger.name}`)).toHaveCount(0);
+    await expect(화면토스트(page, `목록에서 뺐어요 — ${ledger.name}`)).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });
@@ -628,7 +626,7 @@ test.describe("상세 조각", () => {
     await 폴더를고른다(page, "/Users/tester/MyProjects/playground-moved");
     await 안내.getByRole("button", { name: "재설정", exact: true }).click();
     await expect
-      .poll(() => 인자(page, "relocate_project", "slug"))
+      .poll(() => ipcArgs(page, "relocate_project", "slug"))
       .toEqual([{ slug: playground.slug, folder: "/Users/tester/MyProjects/playground-moved" }]);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });

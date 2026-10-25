@@ -159,6 +159,16 @@ export function listShows(list: { isPending: boolean; isError: boolean; count: n
   return !list.isPending && list.count === 0 ? "empty" : "table";
 }
 
+/**
+ * 찾기(시안 「Space 찾기」) — 이름 · slug · 설명 · 적힌 Project 가운데 하나라도 그 글을 품으면 남는다(대소문자 무시). 빈 찾기는 모두다.
+ * Projects 목록의 찾기(`shownProjects`)와 같은 규칙이다.
+ */
+export function shownSpaces<S extends Pick<Space, "name" | "slug" | "description" | "projects">>(spaces: readonly S[], query: string): S[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return [...spaces];
+  return spaces.filter((space) => [space.name, space.slug, space.description, ...space.projects].some((one) => one.toLowerCase().includes(needle)));
+}
+
 // ── 넣기 메뉴 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -208,10 +218,10 @@ export interface SpaceMenuRow {
 
 export interface SpaceMenu {
   /**
-   * 맨 위 줄 — Space가 있으면 「Space 빼기」, 없으면 지금 것인 「Space 없음」(✓)이다. 곁말은 빼면 읽는 것(「등록된 Project 3개를 모두
-   * 읽어요」)이다.
+   * 맨 위 줄 — Space가 있으면 「Space 빼기」(`remove` — 누르면 뺀다), 없으면 지금 것인 「Space 없음」(`none` — 고르는 줄, ✓)이다. 곁말은 빼면
+   * 읽는 것(「등록된 Project 3개를 모두 읽어요」)이다. 그리는 쪽은 갈래(`kind`)로 줄의 꼴을 고른다 — 화면 글을 열쇠로 삼지 않는다.
    */
-  top: { label: "Space 빼기" | "Space 없음"; note: string; current: boolean };
+  top: { kind: "remove"; label: "Space 빼기"; note: string; current: false } | { kind: "none"; label: "Space 없음"; note: string; current: boolean };
   /** 「Space — 고르면 그 안의 Project만 읽어요」 아래의 줄들 — Space가 하나도 없으면 `null`이고 그 자리에 「Host와 Space 만들기」가 선다. */
   rows: SpaceMenuRow[] | null;
 }
@@ -234,7 +244,10 @@ export function spaceMenu(
   const reads = place === "chip" ? "개 읽기" : "개를 모두 읽어요";
   const note = registered > 0 ? `등록된 Project ${registered}${reads}` : "등록된 Project가 없어요";
   return {
-    top: on && place === "work" ? { label: "Space 빼기", note, current: false } : { label: "Space 없음", note, current: on === null },
+    top:
+      on && place === "work"
+        ? { kind: "remove", label: "Space 빼기", note, current: false }
+        : { kind: "none", label: "Space 없음", note, current: on === null },
     rows:
       spaces.length === 0
         ? null

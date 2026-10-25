@@ -3,12 +3,14 @@ import type { SearchResults } from "@/features/search/types";
 import type { ReadingScope } from "@/features/spaces/scope";
 import type { Space, SpaceDetail } from "@/features/spaces/types";
 import type { WorkView } from "@/features/works/types";
+import { answerByArg, SEARCH_RESULTS } from "./fixtures";
 import { workView } from "./thread-records";
 
-// 03 흐름 「트레이」(`thread-tray`) · 「대화 속 Space와 설정」(`thread-space-setting`)의 **세계** — 캔버스 v52 F4-KitComposer · F4-KitChat이
-// 그린 Project 셋 · Space 셋 · Work 넷이고, L1이 축복한 Space 기록(`thread-space*` · `thread-setting` · `thread-project-add`)의 세계와 이름이
-// 같다(L1 sandbox가 web-app · api-server · backoffice를 등록하고 「결제 서비스」 · 「사내 도구」를 적었다). fixture 기본(billing · ledger,
-// 「결제」 · 「원장 도구」)은 다른 흐름이 딛고 있어 그대로 두고, 두 흐름이 이 세계로 덮어쓴다(`installFixtureBackend`의 덮어쓰기).
+// 03 흐름 「트레이」(`thread-tray` · `thread-work-chip`) · 「대화 속 Space와 설정」(`thread-space-setting`)의 **세계** — 캔버스 v52
+// F4-KitComposer · F4-KitChat이 그린 Project 셋 · Space 셋 · Work 넷이고, L1이 축복한 Space 기록(`thread-space*` · `thread-setting` ·
+// `thread-project-add`)의 세계와 이름이 같다(L1 sandbox가 web-app · api-server · backoffice를 등록하고 「결제 서비스」 · 「사내 도구」를
+// 적었다). fixture 기본(billing · ledger, 「결제」 · 「원장 도구」)은 다른 흐름이 딛고 있어 그대로 두고, 두 흐름이 이 세계로 덮어쓴다
+// (`installFixtureBackend`의 덮어쓰기 — 아래 `WORLD`).
 //
 // 읽는 범위는 core `reading_scope`가 짓는 모양 그대로 손으로 적는다 — 이 층에는 core가 없다. 범위 줄 · Space 줄의 글은 그 답에서 나온다.
 
@@ -106,4 +108,16 @@ export const WORLD_WORKS: WorkView[] = [
 /** 빈 질의 검색의 Work 줄 — 최근 Work 메뉴가 이 차례로 선다(`recentWorks`). */
 export const RECENT_HITS: SearchResults = {
   hits: WORLD_WORKS.map(({ slug, title }) => ({ kind: "work" as const, slug, title, archived: false })),
+};
+
+/**
+ * 이 세계의 답 — 세 spec이 `installFixtureBackend`의 덮어쓰기로 깐다. Project · Space · Work 목록이 이 세계이고, 빈 질의 검색(최근 Work
+ * 메뉴)이 이 세계의 Work를 싣는다(질의가 있으면 fixture의 검색 답). 흐름 하나만 쓰는 답(입력창이 쥔 Space로 센 범위 · Space 상세)은 그
+ * spec이 이 위에 더 덮는다.
+ */
+export const WORLD = {
+  list_projects: WORLD_PROJECTS,
+  list_spaces: WORLD_SPACES,
+  list_works: WORLD_WORKS,
+  search: answerByArg("query", { "": RECENT_HITS }, { otherwise: SEARCH_RESULTS }),
 };

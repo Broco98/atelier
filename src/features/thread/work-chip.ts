@@ -13,11 +13,14 @@ import type { ThreadLink } from "./types";
 // 마지막에 고른 스위치 쪽만 적고, 최근 Work를 고른 것은 적지 않는다(다음 새 Thread가 엉뚱한 Work에 붙지 않게). 지워지거나 읽지 못하면
 // 기본값 「새 Work」로 돌아갈 뿐이다.
 
-/** 최근 Work 한 줄 — 메뉴의 이름과, 줄 끝에 흐리게 서는 그 Work의 Space 이름(03 §5 · F4-HomeWorkMenu — 없으면 `null`). */
+/**
+ * 최근 Work 한 줄 — 메뉴의 이름과, 줄 끝에 흐리게 서는 그 Work의 Space 이름(03 §5 · F4-HomeWorkMenu — 없으면 `null`). Work 목록의 `space`는
+ * slug라 이름이 다르다.
+ */
 export interface RecentWork {
   slug: string;
   title: string;
-  space: string | null;
+  spaceName: string | null;
 }
 
 /** 메뉴가 세우는 최근 Work의 수 — 다섯이 넘으면 ⌘K로 찾는다. */
@@ -41,7 +44,7 @@ export function recentWorks(
   return hits
     .flatMap((hit) => (hit.kind === "work" && !hit.archived ? [hit] : []))
     .slice(0, RECENT_LIMIT)
-    .map((hit) => ({ slug: hit.slug, title: hit.title, space: spaceOf(hit.slug) }));
+    .map((hit) => ({ slug: hit.slug, title: hit.title, spaceName: spaceOf(hit.slug) }));
 }
 
 /** 스위치 쪽을 적는 열쇠 — 값은 `new-work` · `no-work` 둘이다. */

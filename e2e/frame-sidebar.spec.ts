@@ -22,6 +22,7 @@ import {
   검색팔레트를연다,
   그림자,
   화면머리,
+  흰판,
   흰판안,
 } from "./harness";
 import { lineOf, linesThrough, record, seqOf, summaryOf, threadOf } from "./thread-records";
@@ -141,7 +142,7 @@ for (const address of ADDRESSES) {
     ).toEqual(["rgba(0, 0, 0, 0)", "none"]);
 
     // 흰 판 — 하나이고, 사이드바 오른쪽 끝에서 머리 줄 아래 크롬 오 · 아래 끝 5까지다.
-    const panel = page.locator('[data-slot="panel"]');
+    const panel = 흰판(page);
     await expect(panel).toHaveCount(1);
     const outer = await boxOf(panel);
     expect([outer.x, outer.y, outer.right, outer.bottom], "흰 판").toEqual([side.right, row, viewport.width - 5, viewport.height - 5]);
@@ -186,9 +187,8 @@ for (const address of ADDRESSES) {
 }
 
 // **화면 자리의 왼쪽 끝은 사이드바를 따른다**(02 구현 스펙 §3 「머리 줄 가운데」 · 03 스토리 6) — 열렸으면 판 안 왼쪽 끝(사이드바 오른쪽 끝 +
-// 판 테두리 0.5), 접혔으면 셸 컨트롤 바로
-// 뒤(끝 + 8)이고 그때는 세로선이 없다. 사이드바를 끄는 동안은 둘 다 트랜지션 없이 커서를 곧장 따른다(`ShellHeadRow`의 `dragging`). Work
-// 화면의 ⌘B는 `frame.spec.ts`가 잰다 — 여기는 Thread 화면(한때 `PlainFrame`)에서 끌기와 ⌘B 둘이다.
+// 판 테두리), 접혔으면 셸 컨트롤 바로 뒤(끝 + 8)이고 그때는 세로선이 없다. 사이드바를 끄는 동안은 둘 다 트랜지션 없이 커서를 곧장 따른다
+// (`ShellHeadRow`의 `dragging`). Work 화면의 ⌘B는 `frame.spec.ts`가 잰다 — 여기는 Thread 화면(한때 `PlainFrame`)에서 끌기와 ⌘B 둘이다.
 test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따르고, ⌘B로 접으면 셸 컨트롤 끝 + 8에서 세로선 없이 선다", async ({ page }) => {
   await installFixtureBackend(page, THREAD_ANSWERS);
   await page.goto(`/threads/${thread.id}`);
@@ -203,8 +203,10 @@ test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따�
   const 자리 = async () => (await boxOf(slot)).x;
   const 끝 = async () => (await boxOf(사이드바(page))).right;
   const before = await 끝();
-  expect(await 자리(), "앵커: 화면 자리가 판 안 왼쪽 끝에서 시작한다").toBe((await 흰판안(page)).x);
-  expect(await 자리(), "판 안 왼쪽 끝 = 사이드바 끝 + 판 테두리 0.5").toBe(before + 0.5);
+  // 판 안 왼쪽 끝 = 사이드바 끝 + 판 테두리 — 판이 사이드바 끝에서 서고(겉 상자), 테두리를 덜어 내는 셈은 `흰판안` 한 곳이다.
+  const 판안 = (await 흰판안(page)).x;
+  expect(await 자리(), "앵커: 화면 자리가 판 안 왼쪽 끝에서 시작한다").toBe(판안);
+  expect((await boxOf(흰판(page))).x, "흰 판은 사이드바 끝에서 선다").toBe(before);
 
   // 사이드바 오른쪽 끝의 폭 손잡이를 40 오른쪽으로 끈다 — 사이드바가 넓어지고 화면 자리 · 본문이 그 끝을 따른다.
   const handle = await boxOf(사이드바(page).locator('[title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]'));
@@ -214,8 +216,8 @@ test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따�
   await page.mouse.move(x + 40, y, { steps: 5 });
   await page.mouse.up();
   await expect.poll(끝).toBe(before + 40);
-  await expect.poll(자리).toBe(before + 40.5);
-  expect((await boxOf(page.locator("main"))).x, "본문도 따른다").toBe(before + 40.5);
+  await expect.poll(자리).toBe(판안 + 40);
+  expect((await boxOf(page.locator("main"))).x, "본문도 따른다").toBe(판안 + 40);
   expect(await 선(), "열린 동안 세로선").toBe(true);
 
   // ⌘B — 접으면 화면 자리가 셸 컨트롤 끝 + 8에서 시작하고 세로선이 걷힌다. 다시 펴면 끈 폭의 끝으로 돌아온다.
@@ -224,7 +226,7 @@ test("Thread: 사이드바를 끌면 머리 줄 화면 자리가 그 끝을 따�
   await expect.poll(자리).toBe(search.right + 8);
   expect(await 선(), "접힌 동안 세로선").toBe(false);
   await page.keyboard.press("Meta+b");
-  await expect.poll(자리).toBe(before + 40.5);
+  await expect.poll(자리).toBe(판안 + 40);
   expect(await 선()).toBe(true);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -1,3 +1,4 @@
+import { coreError } from "./core-errors";
 import type { GitInfo, ProjectView } from "./types";
 
 // Projects 목록 · 상세의 갈래(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjMissing · F4-ProjDetailMissing · F4-ProjBranch ·
@@ -78,17 +79,13 @@ export function missingNotice(project: ProjectView): { title: string; body: stri
 
 /**
  * 재설정이 거절된 까닭(스토리 127) — core의 거절 글(`relocate_project`)을 사람의 말로 옮긴다. 모르는 글(입출력 오류 등)은 그대로 보인다.
- * 거절 글의 꼴은 core `Error`의 표시 글이다(`FolderMissing` · `NotGitRepo` · `NotRepoRoot` · `AlreadyRegistered`).
+ * 거절의 갈래(`FolderMissing` · `NotGitRepo` · `NotRepoRoot` · `AlreadyRegistered`)는 core 글을 읽는 한 곳(`coreError`)이 가른다.
  */
 export function relocateProblem(error: string): string {
-  let hit: RegExpMatchArray | null;
-  if ((hit = error.match(/^not the root of a git repository: .* \(its root is (.*)\)$/))) {
-    return `${hit[1]} 저장소 안의 폴더예요 — 뿌리 폴더를 골라 주세요.`;
-  }
-  if ((hit = error.match(/^not a git repository: (.*)$/))) return `git 저장소가 아니에요 — ${hit[1]}. git 저장소의 뿌리 폴더를 골라 주세요.`;
-  if ((hit = error.match(/^already registered as project '(.*)': (.*)$/))) {
-    return `이미 다른 Project(${hit[1]})로 추가된 폴더예요 — ${hit[2]}`;
-  }
-  if ((hit = error.match(/^folder does not exist: (.*)$/))) return `폴더를 찾을 수 없어요 — ${hit[1]}`;
+  const hit = coreError(error);
+  if (hit?.kind === "notRepoRoot") return `${hit.fields[1]} 저장소 안의 폴더예요 — 뿌리 폴더를 골라 주세요.`;
+  if (hit?.kind === "notGitRepo") return `git 저장소가 아니에요 — ${hit.fields[0]}. git 저장소의 뿌리 폴더를 골라 주세요.`;
+  if (hit?.kind === "alreadyRegistered") return `이미 다른 Project(${hit.fields[0]})로 추가된 폴더예요 — ${hit.fields[1]}`;
+  if (hit?.kind === "folderMissing") return `폴더를 찾을 수 없어요 — ${hit.fields[0]}`;
   return error;
 }

@@ -721,13 +721,13 @@ pub(crate) fn read_call(params: &Value) -> Result<Call, Unread> {
     }
 }
 
-/// 글 칸 하나 — 앞뒤 빈칸을 걷고, 비었으면 없다.
-fn field(arguments: &Value, name: &str) -> Option<String> {
+/// 글 칸 하나 — 앞뒤 빈칸을 걷고, 비었으면 없다(빈 글을 받지 않는 칸).
+fn filled_text(arguments: &Value, name: &str) -> Option<String> {
     arguments[name].as_str().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
-/// 바꿀 글 칸 하나 — 빈 글도 받는다(설명을 비운다). 글이 아니면 없다.
-fn edited(arguments: &Value, name: &str) -> Option<String> {
+/// 바꿀 글 칸 하나 — 빈 글도 받는다(설명을 비운다 · 빈 이름은 core가 거절한다). 글이 아니면 없다.
+fn text_or_empty(arguments: &Value, name: &str) -> Option<String> {
     arguments[name].as_str().map(|value| value.trim().to_owned())
 }
 
@@ -752,18 +752,22 @@ fn slug_list(arguments: &Value, name: &str) -> Result<Vec<String>, String> {
 
 /// 「Project 추가」의 인자 — 폴더는 절대 경로이거나 `~`로 시작해야 한다(도구 서버의 작업 폴더에 기대지 않는다).
 fn read_project_add(arguments: &Value) -> Result<ProjectAdd, String> {
-    let path = field(arguments, "path").ok_or("path(등록할 폴더)를 글로 주세요")?;
+    let path = filled_text(arguments, "path").ok_or("path(등록할 폴더)를 글로 주세요")?;
     if !(path.starts_with('/') || path == "~" || path.starts_with("~/")) {
         return Err(format!("path `{path}`는 절대 경로나 ~로 시작하는 경로로 주세요(예: ~/MyProjects/landing-page)"));
     }
-    Ok(ProjectAdd { path, name: field(arguments, "name"), description: field(arguments, "description") })
+    Ok(ProjectAdd { path, name: filled_text(arguments, "name"), description: filled_text(arguments, "description") })
 }
 
 /// 「Project 고치기」의 인자 — 바꿀 칸이 하나도 없으면 고칠 것이 없다.
 fn read_project_edit(arguments: &Value) -> Result<ProjectEdit, String> {
-    let project = field(arguments, "project").ok_or("project(고칠 Project의 slug)를 글로 주세요")?;
-    let base_branch = edited(arguments, "baseBranch").or_else(|| edited(arguments, "base_branch"));
-    let edit = ProjectEdit { project, name: edited(arguments, "name"), description: edited(arguments, "description"), base_branch };
+    let project = filled_text(arguments, "project").ok_or("project(고칠 Project의 slug)를 글로 주세요")?;
+    let edit = ProjectEdit {
+        project,
+        name: text_or_empty(arguments, "name"),
+        description: text_or_empty(arguments, "description"),
+        base_branch: text_or_empty(arguments, "baseBranch"),
+    };
     if edit.name.is_none() && edit.description.is_none() && edit.base_branch.is_none() {
         return Err("바꿀 칸(name · description · baseBranch)을 하나 이상 주세요".to_owned());
     }
@@ -772,17 +776,17 @@ fn read_project_edit(arguments: &Value) -> Result<ProjectEdit, String> {
 
 /// 「Space 만들기」의 인자.
 fn read_space_new(arguments: &Value) -> Result<SpaceNew, String> {
-    let name = field(arguments, "name").ok_or("name(Space 이름)을 글로 주세요")?;
-    Ok(SpaceNew { name, projects: slug_list(arguments, "projects")?, description: field(arguments, "description") })
+    let name = filled_text(arguments, "name").ok_or("name(Space 이름)을 글로 주세요")?;
+    Ok(SpaceNew { name, projects: slug_list(arguments, "projects")?, description: filled_text(arguments, "description") })
 }
 
 /// 「Space 고치기」의 인자 — 바꿀 칸이 하나도 없으면 고칠 것이 없다.
 fn read_space_edit(arguments: &Value) -> Result<SpaceEdit, String> {
-    let space = field(arguments, "space").ok_or("space(고칠 Space의 slug)를 글로 주세요")?;
+    let space = filled_text(arguments, "space").ok_or("space(고칠 Space의 slug)를 글로 주세요")?;
     let edit = SpaceEdit {
         space,
-        name: edited(arguments, "name"),
-        description: edited(arguments, "description"),
+        name: text_or_empty(arguments, "name"),
+        description: text_or_empty(arguments, "description"),
         add: slug_list(arguments, "add")?,
         remove: slug_list(arguments, "remove")?,
     };

@@ -1,5 +1,11 @@
-import { readingList, type ReadingScope, type ScopeSpace } from "@/features/spaces/scope";
-import { particle } from "@/lib/particle";
+import {
+  NOTHING_READ,
+  NOTHING_REGISTERED,
+  readingText,
+  registeredText,
+  type ReadingScope,
+  type ScopeSpace,
+} from "@/features/spaces/scope";
 import type { SpacePick, ThreadLink } from "./types";
 
 // 트레이의 **Space 칩**과 **범위 줄**(03 구현 스펙 §5 · 티켓 06 · 캔버스 v52 F4-KitComposer · F4-HomeSpaceMenu · F4-HomeSpacePicked)의 순수
@@ -25,17 +31,15 @@ export interface ScopeLine {
 export function scopeLine(scope: ReadingScope): ScopeLine {
   switch (scope.kind) {
     case "all":
-      return { text: `등록된 Project ${scope.registered}개를 읽어요`, warn: false, addProject: false };
+      return { text: registeredText(scope.registered), warn: false, addProject: false };
     case "space": {
       const read = [...scope.worked, ...scope.projects].map((project) => project.name);
-      if (read.length === 0) return { text: "읽는 Project가 없어요", warn: true, addProject: false };
-      const names = readingList(read);
-      return { text: `${names}${particle(names, "을", "를")} 읽어요`, warn: false, addProject: false };
+      return { text: readingText(read), warn: read.length === 0, addProject: false };
     }
     case "emptySpace":
-      return { text: "읽는 Project가 없어요 — Space에 Project를 넣어 주세요", warn: true, addProject: false };
+      return { text: `${NOTHING_READ} — Space에 Project를 넣어 주세요`, warn: true, addProject: false };
     case "noProjects":
-      return { text: "등록된 Project가 없어요", warn: true, addProject: true };
+      return { text: NOTHING_REGISTERED, warn: true, addProject: true };
   }
 }
 

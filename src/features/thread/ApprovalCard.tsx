@@ -33,8 +33,37 @@ import { shownPath, type DiffPiece } from "./tool-view";
 //   `askTurn`으로 읽어 준다.
 // - 카드에 멈추기가 없다 — 서 있는 동안 멈추는 길은 거부다.
 
-/** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). 질문 카드 · Work 밖 Project 카드도 이 값을 쓴다. */
+/** 카드가 선 뒤 키를 받기 시작할 때까지(머리말). 입력창 자리의 다른 카드도 이 값을 쓴다(`useSlotCard`). */
 export const ARMING_MS = 300;
+
+/**
+ * 입력창 자리 카드의 같은 몸(승인 · 질문 · Work 만들기 · Work 밖 Project · Thread 도구 질문 카드) — 카드 상자(`box`)는 서면 풀린 포커스만
+ * 받는다(입력창이 자리를 내주며 풀린 것 — 다른 칸의 포커스는 빼앗지 않는다). 선 직후 잠깐(`ARMING_MS`)은 키를 받지 않는다(`armed`). 답은
+ * 하나만 보낸다(`send` — 보내는 동안 `sent`). 답하지 못하면(엔진이 거절) 다시 고를 수 있게 풀고 까닭(`problem`)을 보인다 — 이미 닫힌
+ * 물음이면 곧 그 줄이 와서 카드가 걷힌다.
+ */
+export function useSlotCard() {
+  const box = useRef<HTMLDivElement>(null);
+  const shownAt = useRef(0);
+  const [sent, setSent] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    shownAt.current = performance.now();
+    const holder = document.activeElement;
+    if (holder === null || holder === document.body) box.current?.focus({ preventScroll: true });
+  }, []);
+  const armed = () => performance.now() - shownAt.current >= ARMING_MS;
+  const send = (answer: () => Promise<unknown>) => {
+    if (sent) return;
+    setSent(true);
+    setProblem(null);
+    answer().catch((error: unknown) => {
+      setSent(false);
+      setProblem(String(error));
+    });
+  };
+  return { box, armed, sent, problem, send };
+}
 /**
  * 입력창 자리 카드의 한 겉(02 §10 · 스토리 68) — 승인 · 계획 · 질문 · Work 만들기 · Project 붙이기 카드가 모두 이것이다. 둥글기 25
  * (superellipse — WebKit은 20의 둥근 네모) · 1px `border-slot` · 흰 면, 그림자 없음. 폭은 입력창 자리 그대로(열 737)다.
@@ -63,38 +92,21 @@ interface ApprovalCardProps {
 
 function ApprovalCard({ thread, name, request, scope, cwd, place, count = null, next }: ApprovalCardProps) {
   const hintId = useId();
-  const card = useRef<HTMLDivElement>(null);
+  const { box: card, armed, sent, problem, send } = useSlotCard();
   const field = useRef<HTMLInputElement>(null);
-  const shownAt = useRef(0);
   const view = describeApproval(request, name, place);
   const { layout, choices } = cardChoices(request, scope);
   const [active, setActive] = useState(0);
   const [writing, setWriting] = useState(false);
   const [words, setWords] = useState("");
-  const [sent, setSent] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   const hinted = writing && words.trim() !== "";
 
-  useEffect(() => {
-    shownAt.current = performance.now();
-    const holder = document.activeElement;
-    if (holder === null || holder === document.body) card.current?.focus({ preventScroll: true });
-  }, []);
   useLayoutEffect(() => {
     if (writing) field.current?.focus();
   }, [writing]);
 
-  const answer = (choice: CardChoice, said: string | null = null) => {
-    setSent(true);
-    setProblem(null);
-    threadApi
-      .answerPermission(thread, request.who, request.requestId, choice.option, choice.remember, said)
-      .catch((error: unknown) => {
-        // 답하지 못했다 — 다시 고를 수 있게 풀고 까닭을 보인다(이미 닫힌 요청이면 곧 그 줄이 와서 카드가 걷힌다).
-        setSent(false);
-        setProblem(String(error));
-      });
-  };
+  const answer = (choice: CardChoice, said: string | null = null) =>
+    send(() => threadApi.answerPermission(thread, request.who, request.requestId, choice.option, choice.remember, said));
   const choose = (at: number) => {
     const choice = choices[at];
     if (!choice || sent) return;
@@ -120,7 +132,7 @@ function ApprovalCard({ thread, name, request, scope, cwd, place, count = null, 
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.target === field.current || event.nativeEvent.isComposing || event.repeat) return;
-        if (performance.now() - shownAt.current < ARMING_MS) return;
+        if (!armed()) return;
         if (layout === "buttons") {
           const at = buttonKey(event, choices, focusedChoice(event.target));
           if (at === null) return;
@@ -263,13 +275,8 @@ function ApprovalCard({ thread, name, request, scope, cwd, place, count = null, 
 const CODE_BOX =
   "rounded-row corner-superellipse bg-fill-soft px-2.5 py-2 font-mono text-code whitespace-pre-wrap break-all text-fg";
 
-/**
- * 단추 줄의 단추 하나(Screen-Live 단계 4) — 28 알약 · 1px `border-slot` · 13. 「이번만 허용」은 맨 오른쪽에 검게 서고(`ml-auto`), 나머지는
- * 옅은 면(`fill-soft`의 반)이다. 글쇠가 있으면 끝에 옅게 적는다 — 「아니요, 다르게」의 `esc`(단축키 표의 글리프를 작은 글자로) ·
- * 「이번만 허용」의 `↵`. 글쇠는 그림이라 숨는다 — esc는 단추가 단축키 표의 그 키를 `aria-keyshortcuts`로 말한다(↵는 표 밖의 카드 안 키다).
- * Thread 도구 질문 카드(`ToolQuestionCard` — 03 티켓 08)의 「나중에」 · 「고르기 ↵」도 이것이다.
- */
-export function ChoiceButton({
+/** 단추 줄의 단추 하나 — 승인 카드의 선택지(`CardChoice`)를 카드 단추 겉(`SlotButton`)에 얹는다. */
+function ChoiceButton({
   choice,
   at,
   pressed,
@@ -283,24 +290,64 @@ export function ChoiceButton({
   disabled: boolean;
   onPick: () => void;
 }) {
-  const primary = choice.key === "enter";
-  const dismiss = choice.key === "escape";
+  return (
+    <SlotButton
+      label={choice.label}
+      keycap={choice.key}
+      at={at}
+      pressed={choice.opensField ? pressed : undefined}
+      disabled={disabled}
+      onClick={onPick}
+    />
+  );
+}
+
+/**
+ * 입력창 자리 카드의 바닥 단추(Screen-Live 단계 4) — 28 알약 · 1px `border-slot` · 13. ↵ 단추(「이번만 허용」 · 「고르기」)는 맨 오른쪽에 검게
+ * 서고(`ml-auto`), 나머지는 옅은 면(`fill-soft`의 반)이다. 글쇠가 있으면 끝에 옅게 적는다 — `esc`(단축키 표의 글리프를 작은 글자로) · `↵`.
+ * 글쇠는 그림이라 숨는다 — esc가 고르는 단추는 단축키 표의 그 키를 `aria-keyshortcuts`로 말한다(↵는 표 밖의 카드 안 키다). 글쇠를 그리지 않아도
+ * esc가 고르는 단추(`dismisses` — Thread 도구 질문 카드의 「나중에」)도 그렇다. 승인 카드의 단추 줄 · Thread 도구 질문 카드(`ToolQuestionCard`
+ * — 03 티켓 08)의 「나중에」 · 「고르기 ↵」가 이것이다.
+ */
+export function SlotButton({
+  label,
+  keycap,
+  dismisses = false,
+  at,
+  pressed,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  /** 끝에 옅게 적는 글쇠 — 없으면 null이다. */
+  keycap: "enter" | "escape" | null;
+  /** 글쇠를 그리지 않아도 esc가 이 단추다. */
+  dismisses?: boolean;
+  /** `data-choice` — 단추 줄의 ↵는 포커스가 선 단추다(`buttonKey`). */
+  at: number;
+  /** 칸을 여는 단추가 눌렸나(`aria-pressed`) — 칸을 열지 않는 단추는 `undefined`다. */
+  pressed?: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const primary = keycap === "enter";
+  const dismiss = keycap === "escape" || dismisses;
   return (
     <button
       type="button"
       data-choice={at}
       disabled={disabled}
-      onClick={onPick}
+      onClick={onClick}
       aria-keyshortcuts={dismiss ? HOTKEYS.dismiss.aria : undefined}
-      aria-pressed={choice.opensField ? pressed : undefined}
+      aria-pressed={pressed}
       className={cn(
         "flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-border-slot text-chat-meta transition-colors focus-ring disabled:opacity-60",
-        choice.key ? "pr-2 pl-2.5" : "px-2.5",
+        keycap ? "pr-2 pl-2.5" : "px-2.5",
         primary ? "ml-auto bg-fg text-fg-inverse" : "bg-fill-soft/50 text-fg hover:bg-fill-soft aria-pressed:bg-fill-hover",
       )}
     >
-      {choice.label}
-      {choice.key && (
+      {label}
+      {keycap && (
         <span
           aria-hidden
           className={cn(

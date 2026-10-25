@@ -49,6 +49,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 mod paths;
+mod aside;
 mod agents;
 mod slug;
 mod project;

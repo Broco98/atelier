@@ -490,7 +490,7 @@ fn kit_world(sandbox: &Sandbox) -> PathBuf {
 /// 축복 자료로 굳힌다 — 사람의 저장소 자리(`repos/`)는 `~/MyProjects`로, 데이터 루트는 `~/.atelier`로, 카드의 요청 id는 `fake-request`로.
 fn fixed_record(sandbox: &Sandbox, thread: &str, record: &[Value], request: Option<&str>) -> Vec<Value> {
     let repos = repos(sandbox).display().to_string();
-    let homed: Vec<Value> = settled(record)
+    let homed: Vec<Value> = common::commands_after_each_opened(record)
         .iter()
         .map(|line| {
             let mut text = line.to_string().replace(&repos, "~/MyProjects");
@@ -546,24 +546,4 @@ fn host가_git이_아닌_폴더를_묻고_사람이_git_init_하고_추가를_�
     let record = first_turn(&sandbox, host, &thread);
 
     common::assert_record("thread-project-add", &fixed_record(&sandbox, &thread, &record, Some(&request_of(&asked))));
-}
-
-/// 축복 자료의 차례를 하나로 둔다 — 명령 목록 줄(`available_commands_update`)은 Session을 연 답 뒤에 따로 와 그 뒤의 `sent`와 엇갈린다.
-/// 그 줄 앞의 가장 가까운 열림 줄 바로 뒤로 옮기고 seq를 다시 센다(`thread_space_host.rs`와 같은 꼴).
-fn settled(record: &[Value]) -> Vec<Value> {
-    let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
-    let mut lines: Vec<Value> = Vec::new();
-    for line in record {
-        if !is_commands(line) {
-            lines.push(line.clone());
-            continue;
-        }
-        let opened = lines.iter().rposition(|one| one["payload"]["state"] == "opened").expect("앞선 열림 줄");
-        let at = lines[opened + 1..].iter().position(|one| !is_commands(one)).map_or(lines.len(), |n| opened + 1 + n);
-        lines.insert(at, line.clone());
-    }
-    for (n, line) in lines.iter_mut().enumerate() {
-        line["seq"] = json!(n + 1);
-    }
-    lines
 }

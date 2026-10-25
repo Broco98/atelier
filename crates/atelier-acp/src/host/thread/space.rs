@@ -31,6 +31,17 @@ pub enum SpaceChoice {
     Later,
 }
 
+impl SpaceChoice {
+    /// 답 줄의 `choice` 값 — 화면의 접힌 카드가 이 글로 「Space 없이」 · 「나중에」를 가른다.
+    fn as_str(&self) -> &'static str {
+        match self {
+            SpaceChoice::Space(_) => "space",
+            SpaceChoice::Without => "none",
+            SpaceChoice::Later => "later",
+        }
+    }
+}
+
 impl ConversationHost {
     /// Thread의 Space 붙이기 · 바꾸기 · 빼기(`None`) — `thread.json`의 `space`만 고치고 Space 줄을 남긴다. Work에 이은 Thread면 그 Work의
     /// Space를 바꾼다([`Self::set_work_space`]). 같은 Space면 아무것도 하지 않는다. 없는 Space는 아무것도 적지 않고 거절한다.
@@ -51,7 +62,7 @@ impl ConversationHost {
         if let Some(work) = &file.work {
             return self.put_work_space(work, space, change, folded.then_some(thread));
         }
-        self.check_space(space)?;
+        self.require_space(space)?;
         if file.space.as_deref() == space {
             return Ok(());
         }
@@ -67,7 +78,7 @@ impl ConversationHost {
     /// 줄이 선다(S9).
     fn put_work_space(&self, work: &str, space: Option<&str>, change: Change, folded: Option<&str>) -> Result<(), HostError> {
         let before = self.open_work(work)?.meta.space;
-        self.check_space(space)?;
+        self.require_space(space)?;
         if before.as_deref() == space {
             return Ok(());
         }
@@ -90,8 +101,7 @@ impl ConversationHost {
             let _files = self.threads.lock_files();
             atelier_core::delete_space(&self.data_root, slug).map_err(space_error)?
         };
-        let name = if deleted.space.name.trim().is_empty() { slug } else { deleted.space.name.as_str() };
-        self.note_links(&deleted.unlinked, Some(slug), Change::Deleted { slug, name });
+        self.note_links(&deleted.unlinked, Some(slug), Change::Deleted { slug, name: deleted.space.shown_name() });
         Ok(deleted)
     }
 
@@ -238,12 +248,8 @@ impl ConversationHost {
             None => None,
         };
         let spaces = atelier_core::list_spaces(&self.data_root).map_err(|error| format!("Space 목록을 읽지 못했다 — {error}"))?;
-        if let Some(slug) = &ask.space {
-            if !spaces.iter().any(|space| &space.slug == slug) {
-                let known: Vec<&str> = spaces.iter().map(|space| space.slug.as_str()).collect();
-                let known = if known.is_empty() { "없음".to_owned() } else { known.join(", ") };
-                return Err(format!("없는 Space다: {slug} — Space(list_spaces): {known}"));
-            }
+        if let Some(slug) = ask.space.as_deref().filter(|slug| !spaces.iter().any(|space| space.slug == *slug)) {
+            return Err(no_such_space(slug, &spaces));
         }
         let registered = atelier_core::list_projects(&atelier_core::projects_in(&self.data_root))
             .map_err(|error| format!("Project 목록을 읽지 못했다 — {error}"))?;
@@ -254,9 +260,7 @@ impl ConversationHost {
             .map(String::as_str)
             .collect();
         if !unknown.is_empty() {
-            let known: Vec<&str> = registered.iter().map(|view| view.project.slug.as_str()).collect();
-            let known = if known.is_empty() { "없음".to_owned() } else { known.join(", ") };
-            return Err(format!("등록되지 않은 Project다: {} — 등록된 Project(list_projects): {known}", unknown.join(", ")));
+            return Err(not_registered(&unknown, &registered));
         }
         // 후보 — 다루는 Project를 모두 담은 Space들, 없으면 하나라도 담은 Space들(§11).
         let holds = |space: &atelier_core::Space, all: bool| {
@@ -311,13 +315,9 @@ impl ConversationHost {
             }
         }
         let scope = self.scope_now(thread);
-        let (kind, space) = match (&choice, &scope.space) {
-            (SpaceChoice::Later, _) => ("later", None),
-            (SpaceChoice::Without, _) => ("none", None),
-            (SpaceChoice::Space(_), space) => ("space", space.as_ref()),
-        };
+        let space = matches!(choice, SpaceChoice::Space(_)).then_some(scope.space.as_ref()).flatten();
         let line = json!({
-            "state": "answered", "requestId": request, "card": "space", "choice": kind,
+            "state": "answered", "requestId": request, "card": "space", "choice": choice.as_str(),
             "space": space.map(|space| &space.slug), "name": space.map(|space| &space.name),
         });
         self.thread_log(thread)?.write(RecordKind::Question, Some(&asked.key.handle), line).map_err(HostError::Record)?;
@@ -351,7 +351,8 @@ impl ConversationHost {
         atelier_core::reading_scope(&self.data_root, &ScopeOf::thread(file, work))
     }
 
-    pub(super) fn check_space(&self, space: Option<&str>) -> Result<(), HostError> {
+    /// 붙일 Space가 있는지 — 그 slug의 파일이 없으면 `SpaceNotFound`로 거절한다(없음은 늘 된다). 칩 · 메뉴 · Host · 첫 말이 적기 전에 본다.
+    pub(super) fn require_space(&self, space: Option<&str>) -> Result<(), HostError> {
         match space {
             Some(slug) if space_gone(&self.data_root, slug) => Err(HostError::SpaceNotFound(slug.to_owned())),
             _ => Ok(()),
@@ -414,13 +415,37 @@ fn space_name(slug: &str, name: &str) -> String {
     format!("Space `{slug}`({name})")
 }
 
-/// 읽는 Project — slug(Thread 도구가 받는 것)를 잇는다. Space가 없으면 「등록된 Project N개를 모두 읽는다」다.
+// **Agent에게 가는 범위 · 거절의 글은 여기 하나에서 짓는다** — 머리말 · Thread 도구의 결과(Space 붙이기 · 설정 넷)가 같은 말을 한다.
+
+/// slug 목록을 잇는다(「web-app, api-server」) — 비면 「없음」.
+pub(super) fn listed<'a>(slugs: impl IntoIterator<Item = &'a str>) -> String {
+    let slugs: Vec<&str> = slugs.into_iter().collect();
+    if slugs.is_empty() { "없음".to_owned() } else { slugs.join(", ") }
+}
+
+/// 읽는 Project — slug(Thread 도구가 받는 것)를 잇는다. Space가 없으면 「등록된 Project N개를 모두 읽는다」(등록이 없으면 「등록된
+/// Project가 없다」)다.
 fn reads(scope: &ReadingScope) -> String {
-    if scope.space.is_none() {
-        return format!("등록된 Project {}개를 모두 읽는다", scope.registered);
+    match &scope.space {
+        Some(_) => listed(scope.projects.iter().map(|project| project.slug.as_str())),
+        None if scope.registered == 0 => "등록된 Project가 없다".to_owned(),
+        None => format!("등록된 Project {}개를 모두 읽는다", scope.registered),
     }
-    let read: Vec<&str> = scope.projects.iter().map(|project| project.slug.as_str()).collect();
-    if read.is_empty() { "없음".to_owned() } else { read.join(", ") }
+}
+
+/// 없는 Space의 거절 — 있는 Space를 함께 알린다(Agent가 고쳐 부른다). 「Space 붙이기」 · 「Space 고치기」가 같은 말을 한다.
+pub(super) fn no_such_space(slug: &str, spaces: &[atelier_core::Space]) -> String {
+    format!("없는 Space다: {slug} — Space(list_spaces): {}", listed(spaces.iter().map(|space| space.slug.as_str())))
+}
+
+/// 등록되지 않은 Project의 거절 — 등록된 Project를 함께 알린다. 「Space 붙이기」 · 「Project 고치기」가 같은 말을 한다.
+pub(super) fn not_registered(slugs: &[&str], registered: &[atelier_core::ProjectView]) -> String {
+    format!("등록되지 않은 Project다: {} — {}", slugs.join(", "), registered_list(registered))
+}
+
+/// 「등록된 Project(list_projects): web-app, api-server」.
+pub(super) fn registered_list(registered: &[atelier_core::ProjectView]) -> String {
+    format!("등록된 Project(list_projects): {}", listed(registered.iter().map(|view| view.project.slug.as_str())))
 }
 
 /// 지금 Space를 말하는 글 — 「지금 Space `…`(…)다」 · 「지금 Space 없이 등록된 Project N개를 모두 읽는다」.
@@ -498,12 +523,10 @@ pub(super) fn heard_space(lines: &[atelier_core::RecordLine], who: &str) -> Opti
 pub(super) fn space_preamble(scope: &ReadingScope) -> String {
     match &scope.space {
         Some(space) => {
-            let read: Vec<&str> = scope.projects.iter().map(|project| project.slug.as_str()).collect();
-            let read = if read.is_empty() { "없음".to_owned() } else { read.join(", ") };
             let troubled = if space.troubled { " — 파일에 문제가 있어 읽을 수 있는 Project만 읽는다" } else { "" };
-            format!("- Space: {}(`{}`) — 읽는 Project: {read}{troubled}\n", space.name, atelier_core::collapse_home(&space.file))
+            let file = atelier_core::collapse_home(&space.file);
+            format!("- Space: {}(`{file}`) — 읽는 Project: {}{troubled}\n", space.name, reads(scope))
         }
-        None if scope.registered == 0 => "- Space: 없음 — 등록된 Project가 없다\n".to_owned(),
-        None => format!("- Space: 없음 — 등록된 Project {}개를 모두 읽는다\n", scope.registered),
+        None => format!("- Space: 없음 — {}\n", reads(scope)),
     }
 }

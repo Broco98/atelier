@@ -1,59 +1,20 @@
 //! Project 추가 창의 core(03 구현 스펙 §15) — 폴더 살피기 다섯 갈래, 추가(git init 하고 추가 · 하위 폴더 그대로), 새로 만들기.
 //!
-//! **git의 이름 · 이메일은 이 실행이 정한다.** 추가와 새로 만들기는 빈 첫 커밋을 하고, 그 커밋은 git 설정의 이름 · 이메일을 읽는다 — 그
-//! 값은 기계의 것이라 개발 기계(있음)와 CI 러너(없음)가 갈린다. 이 파일의 시험은 모두 이름이 있는 전역 설정 한 장(`GIT_CONFIG_GLOBAL`)으로
-//! 돈다. 이름이 없어 git이 실패하는 길은 따로 한 파일이다(`project_new_without_git_name.rs`) — 같은 실행 안에서 환경을 바꾸면 나란히 도는
-//! 시험이 서로의 설정을 읽는다.
+//! **git의 이름 · 이메일은 이 실행이 정한다**(`common` — 이름이 있는 전역 설정 한 장). 이름이 없어 git이 실패하는 길은 따로 한 파일이다
+//! (`project_new_without_git_name.rs`).
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::OnceLock;
+mod common;
+
+use std::path::Path;
 
 use atelier_core::{collapse_home, AddProject, FolderLook};
-
-/// 이 실행의 git 전역 설정 — 이름 · 이메일만 든 한 장. 시스템 설정도 끈다(기계마다 다른 `init.defaultBranch` · 훅이 끼지 않게).
-fn git_env() {
-    static ONCE: OnceLock<PathBuf> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        let file = std::env::temp_dir().join(format!("atelier-project-add-{}.gitconfig", std::process::id()));
-        std::fs::write(&file, "[user]\n\tname = t\n\temail = t@t\n").unwrap();
-        std::env::set_var("GIT_CONFIG_GLOBAL", &file);
-        std::env::set_var("GIT_CONFIG_NOSYSTEM", "1");
-        file
-    });
-}
-
-fn git(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output().expect("git");
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-    String::from_utf8_lossy(&out.stdout).trim().to_owned()
-}
-
-/// 빈 첫 커밋 하나가 있는 저장소(브랜치 `main`).
-fn repo(dir: &Path) -> PathBuf {
-    std::fs::create_dir_all(dir).unwrap();
-    git(dir, &["init", "-q", "-b", "main"]);
-    git(dir, &["commit", "-q", "--allow-empty", "-m", "first"]);
-    dir.to_path_buf()
-}
+use common::{git, place, repo};
 
 /// 화면에 서는 경로 — core가 돌려주는 꼴(심볼릭 링크를 푼 자리를 `~`로 줄인 것)이다.
 fn shown(path: &Path) -> String {
     collapse_home(&path.canonicalize().unwrap())
 }
 
-struct Place {
-    _tmp: tempfile::TempDir,
-    at: PathBuf,
-    projects: PathBuf,
-}
-
-fn place() -> Place {
-    git_env();
-    let tmp = tempfile::tempdir().unwrap();
-    let at = tmp.path().to_path_buf();
-    Place { projects: at.join("projects"), at, _tmp: tmp }
-}
 
 #[test]
 fn 저장소의_뿌리를_고르면_원격과_기준_브랜치를_찾아_둔다() {

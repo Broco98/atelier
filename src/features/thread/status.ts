@@ -15,6 +15,7 @@ import {
   type Turn,
 } from "./fold";
 import { isObject, text } from "./json";
+import { isToolCardAsk, toolCardRow } from "./tool-cards";
 import { baseName, describeTool, phraseText } from "./tool-view";
 import type { RecordLine, ThreadView } from "./types";
 
@@ -68,18 +69,11 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
   const model = foldOf(lines, seen.goneThrough);
   const waiting = model.asks[0];
   if (waiting) {
-    const text =
-      waiting.card === "work"
-        ? `Work 만들기 · ${waiting.title}`
-        : waiting.card === "question"
-          ? `질문 · ${waiting.questions[0]?.question ?? ""}`
-          : waiting.card === "project"
-            ? `Work 밖 Project · ${waiting.name}`
-            : waiting.card === "space"
-              ? "질문 · 어느 Space에서 할까요?"
-              : waiting.card === "project-add"
-                ? `질문 · ${waiting.folder} 추가`
-                : `승인 · ${waitingFor(waiting)}`;
+    const text = isToolCardAsk(waiting)
+      ? toolCardRow(waiting.card).status(waiting)
+      : waiting.card === "question"
+        ? `질문 · ${waiting.questions[0]?.question ?? ""}`
+        : `승인 · ${waitingFor(waiting)}`;
     return { kind: "mine", since: askedAt(lines, waiting), text };
   }
   const login = loginLine(lines);

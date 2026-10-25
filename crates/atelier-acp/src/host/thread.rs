@@ -444,7 +444,7 @@ impl ConversationHost {
             return Err(HostError::Setting(format!("모르는 생각 깊이예요: {effort}")));
         }
         let space = picks.space.as_ref().map(|pick| pick.slug.as_deref());
-        self.check_space(space.flatten())?;
+        self.require_space(space.flatten())?;
         let attachments = attachments_of(attachments)?;
         let new_work = link == ThreadLink::NewWork;
         let note = new_work.then_some(NEW_WORK_NOTE);

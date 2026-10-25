@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { askTurn, nextOf } from "./asks";
-import { answeringLine, foldThread, type PendingPermission, type PendingProjectAdd, type PendingQuestion, type PendingSpace } from "./fold";
+import {
+  answeringLine,
+  foldThread,
+  type PendingPermission,
+  type PendingProject,
+  type PendingProjectAdd,
+  type PendingQuestion,
+  type PendingSpace,
+} from "./fold";
 import type { RecordLine } from "./types";
 
 // 물음 차례(v1 티켓 25 · 구현 스펙 §9 카드 · 캔버스 Approval 보드 A안 「두 Agent가 함께 물을 때」) — 한 Thread에 걸린 물음이 여럿이면
@@ -225,6 +233,20 @@ describe("카드 아래 다음 줄", () => {
     expect(nextOf(question, "Host")).toEqual({ name: "Host", particle: "가", subject: null, mono: false, what: "질문의 답을 기다려요" });
   });
 
+  it("Work 밖 Project 카드는 「Host가 web-app 고치기 답을 기다려요」다(v1 티켓 32)", () => {
+    const outside: PendingProject = {
+      card: "project",
+      requestId: "o-1",
+      who: "host",
+      project: "web-app",
+      name: "web-app",
+      reason: null,
+      work: "refund-api",
+      workProjects: ["api-server"],
+    };
+    expect(nextOf(outside, "Host")).toEqual({ name: "Host", particle: "가", subject: "web-app 고치기", mono: false, what: "답을 기다려요" });
+  });
+
   it("Space 질문 카드는 「Host가 Space 답을 기다려요」다(03 티켓 08)", () => {
     const space: PendingSpace = {
       card: "space",
@@ -233,8 +255,6 @@ describe("카드 아래 다음 줄", () => {
       recommended: null,
       spaces: [],
       registered: 0,
-      current: null,
-      reason: null,
     };
     expect(nextOf(space, "Host")).toEqual({ name: "Host", particle: "가", subject: "Space", mono: false, what: "답을 기다려요" });
   });

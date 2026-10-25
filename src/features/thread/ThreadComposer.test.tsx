@@ -56,7 +56,7 @@ describe("트레이의 자리", () => {
 
   it("첫 화면(입력창이 가운데)에서는 상자 아래에 서고, 고르는 Work 칩이 든다 — 입력창 안에는 없다", () => {
     const markup = composer({
-      tray: { at: "below", work: { label: "새 Work", link: { kind: "new-work" }, onPick: none } },
+      tray: { at: "below", work: { kind: "pick", label: "새 Work", link: { kind: "new-work" }, onPick: none } },
     });
     expect(trayOf(markup)).toContain('aria-label="어디서 일할지 새 Work"');
     expect(formOf(markup)).not.toContain("어디서 일할지");
@@ -65,7 +65,7 @@ describe("트레이의 자리", () => {
 
   it("Thread 화면(입력창이 아래에 붙음)에서는 상자 위에 선다 — 첫 말 뒤의 칩은 잠겨 메뉴가 없다", () => {
     const markup = composer({
-      tray: { at: "above", work: { locked: lockedWork(null, null, false), onOpen: none } },
+      tray: { at: "above", work: { kind: "locked", locked: lockedWork(null, null, false), onOpen: none } },
     });
     expect(sideOf(markup)).toBe("above");
     expect(trayOf(markup)).toContain("Work 없이 대화");
@@ -76,7 +76,7 @@ describe("트레이의 자리", () => {
   it("입력창 자리에 카드가 서면 트레이도 걷힌다", () => {
     const markup = composer({
       card: <section aria-label="승인" />,
-      tray: { at: "above", work: { locked: lockedWork(null, null, false), onOpen: none } },
+      tray: { at: "above", work: { kind: "locked", locked: lockedWork(null, null, false), onOpen: none } },
     });
     expect(trayOf(markup)).toBeNull();
   });
@@ -85,7 +85,7 @@ describe("트레이의 자리", () => {
 describe("잠긴 Work 칩(03 §5 · S3)", () => {
   it("Work에 이은 Thread는 그 Work 이름이고, 누르면 그 Work로 가는 단추다", () => {
     const tray = trayOf(
-      composer({ tray: { at: "above", work: { locked: lockedWork("refund-api", "환불 API 버그 수정", false), onOpen: none } } }),
+      composer({ tray: { at: "above", work: { kind: "locked", locked: lockedWork("refund-api", "환불 API 버그 수정", false), onOpen: none } } }),
     );
     expect(tray).toContain('aria-label="Work로 가기: 환불 API 버그 수정"');
     expect(tray).toContain("환불 API 버그 수정");
@@ -96,7 +96,7 @@ describe("잠긴 Work 칩(03 §5 · S3)", () => {
       [lockedWork(null, null, false), "Work 없이 대화"],
       [lockedWork(null, null, true), "새 Work"],
     ] as const) {
-      const tray = trayOf(composer({ tray: { at: "above", work: { locked, onOpen: none } } })) ?? "";
+      const tray = trayOf(composer({ tray: { at: "above", work: { kind: "locked", locked, onOpen: none } } })) ?? "";
       expect(tray, text).toContain(text);
       expect(tray, text).not.toContain("<button");
     }

@@ -1,20 +1,9 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 
 import { answerByArg, FIXTURE_THREAD, SEARCH_RESULTS } from "./fixtures";
-import { heldCalls, holdCommand, installFixtureBackend, ipcCallArgs, releaseCommand, unknownIpcCalls, 칠한링 } from "./harness";
+import { heldCalls, holdCommand, installFixtureBackend, ipcArgs, ipcCallArgs, releaseCommand, unknownIpcCalls, 칠한링 } from "./harness";
 import { linesThrough, record, sentPayloads, seqOf, summaryOf } from "./thread-records";
-import {
-  PAYMENTS,
-  RECENT_HITS,
-  REFUND,
-  SCOPE_BY_SPACE,
-  SCOPES,
-  SETTLEMENT,
-  TOOLS,
-  WORLD_PROJECTS,
-  WORLD_SPACES,
-  WORLD_WORKS,
-} from "./thread-space-world";
+import { PAYMENTS, REFUND, SCOPE_BY_SPACE, SCOPES, SETTLEMENT, TOOLS, WORLD } from "./thread-space-world";
 import { HOST_MAKE } from "@/features/spaces/space-view";
 import type { RecordLine, ThreadView } from "@/features/thread/types";
 
@@ -80,12 +69,9 @@ const BAND = [
   "border-bottom-right-radius",
 ] as const;
 
-/** 시안의 세계 — 입력창이 쥔 Space로 범위를 세면(`reading_scope`의 `space`) 그 Space의 범위, 쥔 것이 없으면 전부다. */
-const WORLD = {
-  list_projects: WORLD_PROJECTS,
-  list_spaces: WORLD_SPACES,
-  list_works: WORLD_WORKS,
-  search: answerByArg("query", { "": RECENT_HITS }, { otherwise: SEARCH_RESULTS }),
+/** 시안의 세계(`WORLD`)에 범위를 더한다 — 입력창이 쥔 Space로 범위를 세면(`reading_scope`의 `space`) 그 Space의 범위, 쥔 것이 없으면 전부다. */
+const TRAY_WORLD = {
+  ...WORLD,
   reading_scope: answerByArg("space", SCOPE_BY_SPACE, { otherwise: SCOPES.all }),
 };
 
@@ -98,7 +84,7 @@ const FIRST_SENT = seqOf(twoTurns, "sent");
 async function withThreads(page: Page, views: readonly ThreadView[], lines: readonly RecordLine[], more: Record<string, unknown> = {}) {
   const byId = <T>(of: (view: ThreadView) => T) => Object.fromEntries(views.map((view) => [view.id, of(view)]));
   await installFixtureBackend(page, {
-    ...WORLD,
+    ...TRAY_WORLD,
     thread_list: views.map(summaryOf),
     thread_get: answerByArg("thread", byId((view) => view)),
     thread_read_record: answerByArg("thread", byId(() => lines)),
@@ -114,7 +100,7 @@ async function openHome(page: Page, url = "/") {
 }
 
 /** 범위를 센 자리 — 입력창이 쥔 Work · Space(또는 연 Thread)로 부른 `reading_scope`의 인자들. */
-const scopeAsks = async (page: Page) => (await ipcCallArgs(page, "reading_scope", "space")).map(({ args }) => args);
+const scopeAsks = (page: Page) => ipcArgs(page, "reading_scope", "space");
 
 test("두 자리 — 첫 화면의 트레이는 입력창 상자 아래에, 첫 말을 보내면 상자 위에 서서 잠기고, 칩은 Work · Space · 범위 줄 차례다", async ({
   page,
@@ -267,7 +253,7 @@ test("Space 칩 — 메뉴에서 고른 Space는 흰 칩 + ×가 되어 범위 �
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   await expect(page).toHaveURL(`/threads/${FIXTURE_THREAD.id}`);
-  expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
+  expect(await ipcArgs(page, "thread_start", "text")).toEqual([
     { text: first.text, attachments: [], link: { kind: "no-work" }, mode: null, model: null, effort: null, space: { slug: SETTLEMENT.slug } },
   ]);
   expect(await ipcCallArgs(page, "thread_set_space", "thread")).toEqual([]);
@@ -352,7 +338,7 @@ test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 
   expect((await 상자(트레이(page))).y - (await 상자(메뉴(page))).bottom).toBeCloseTo(6, 0);
   await 갈래(page, TOOLS.name).click();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "thread_set_space", "thread")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "thread_set_space", "thread"))
     .toEqual([{ thread: inWork.id, space: TOOLS.slug }]);
 
   // Work 없이 · Space 없음(「Work 없이 · Space 없음」) — 잠긴 칩 「Work 없이 대화」는 글일 뿐이다. 흐린 「Space 넣기」는 그대로 누를 수 있다.
@@ -366,7 +352,7 @@ test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 
   await 빈칩(page).click();
   await 갈래(page, PAYMENTS.name).click();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "thread_set_space", "thread")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "thread_set_space", "thread"))
     .toEqual([{ thread: loose.id, space: PAYMENTS.slug }]);
 
   // Work 없이 한 대화에 Space가 있으면(「Work 없이 한 대화」) 칩은 ×다 — 빼면 곧바로 적힌다. 메뉴의 「Space 관리」는 Space 목록으로 간다.
@@ -375,7 +361,7 @@ test("첫 말 뒤 — Work 칩은 잠겨 보이기만 하고(이은 Work만 그 
   await expect(이름칩(page, PAYMENTS.name)).toBeVisible();
   await 빼기(page).click();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "thread_set_space", "thread")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "thread_set_space", "thread"))
     .toEqual([{ thread: spaced.id, space: null }]);
   await 이름칩(page, PAYMENTS.name).click();
   await 메뉴(page).getByRole("menuitem", { name: /^Space 관리/ }).click();
@@ -394,7 +380,7 @@ test("등록된 Project가 없으면 범위 줄이 경고 색 「등록된 Proje
   page,
 }) => {
   await installFixtureBackend(page, {
-    ...WORLD,
+    ...TRAY_WORLD,
     list_projects: [],
     list_spaces: [],
     list_works: [],
@@ -479,7 +465,7 @@ test("씨앗 — 주소의 `?new=` · `?work=` · `?space=` · `?say=`가 처음
 test("입력창 안은 + · 물어보는 정도 · 모델 칩 · 보내기뿐이다 — `@` 단추도 `/agent` 명령도 없고, 입력이 있으면 보내기가 짙어진다", async ({
   page,
 }) => {
-  await installFixtureBackend(page, WORLD);
+  await installFixtureBackend(page, TRAY_WORLD);
   await openHome(page);
 
   // 입력창 상자 안의 단추(F4-KitComposer 머리말 — 「입력창 안은 + · 물어보는 정도 · 모델 칩뿐」). `@` 단추(Agent 부르기)는 Agent 여럿과

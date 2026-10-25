@@ -1,3 +1,4 @@
+import { coreError } from "@/features/projects/core-errors";
 import { spaceName } from "./space-view";
 import type { Space, SpaceUsage } from "./types";
 
@@ -32,11 +33,17 @@ export function deletedToast(name: string): string {
   return `${name} Space를 지웠어요`;
 }
 
-/** 되돌리기가 거절된 까닭(엔진 · core 오류 글)을 사람의 말로 — 그사이 같은 slug의 Space가 새로 생겼다(03 구현 스펙 §9 「되돌리기」). */
+/**
+ * 되돌리기가 거절된 까닭(엔진 · core 오류 글)을 사람의 말로 — 그사이 같은 slug의 Space가 새로 생겼다(03 구현 스펙 §9 「되돌리기」). 갈래는 core
+ * 글을 읽는 한 곳(`coreError`)이 가른다 — Project 되돌리기와 같은 `slugReused`다.
+ */
 export function restoreSpaceProblem(error: string): string {
-  let hit: RegExpMatchArray | null;
-  let why = error;
-  if ((hit = error.match(/^slug is in use again: (.*)$/))) why = `그사이 같은 파일 이름(${hit[1]})의 Space가 새로 생겼어요.`;
-  else if (/^Space를 찾지 못했어요: /.test(error)) why = "되돌릴 Space가 없어요.";
+  const hit = coreError(error);
+  const why =
+    hit?.kind === "slugReused"
+      ? `그사이 같은 파일 이름(${hit.fields[0]})의 Space가 새로 생겼어요.`
+      : hit?.kind === "spaceNotFound"
+        ? "되돌릴 Space가 없어요."
+        : error;
   return `되돌리지 못했어요 — ${why}`;
 }

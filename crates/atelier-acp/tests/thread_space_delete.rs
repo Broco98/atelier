@@ -282,26 +282,6 @@ fn space를_지우고_되돌린_대화의_기록이_검사_자료와_같다() {
     host.shut_down();
 
     let session = sandbox.thread_session_id(&thread, "host");
-    let fixed = common::fix_thread_record(&settled(&record), &sandbox.data_root(), &thread, &[&session]);
+    let fixed = common::fix_thread_record(&common::commands_after_each_opened(&record), &sandbox.data_root(), &thread, &[&session]);
     common::assert_record("thread-space-deleted", &fixed);
-}
-
-/// 축복 자료의 차례를 하나로 둔다 — 명령 목록 줄(`available_commands_update`)은 Session을 연 답 뒤에 따로 와 그 뒤의 `sent`와 엇갈린다.
-/// 다시 연 Session도 한 번 더 낸다 — 그 줄 앞의 가장 가까운 열림 줄 바로 뒤로 옮기고 seq를 다시 센다(`thread_space.rs`와 같다).
-fn settled(record: &[Value]) -> Vec<Value> {
-    let is_commands = |line: &Value| line["payload"]["update"]["sessionUpdate"] == "available_commands_update";
-    let mut lines: Vec<Value> = Vec::new();
-    for line in record {
-        if !is_commands(line) {
-            lines.push(line.clone());
-            continue;
-        }
-        let opened = lines.iter().rposition(|one| one["payload"]["state"] == "opened").expect("앞선 열림 줄");
-        let at = lines[opened + 1..].iter().position(|one| !is_commands(one)).map_or(lines.len(), |n| opened + 1 + n);
-        lines.insert(at, line.clone());
-    }
-    for (n, line) in lines.iter_mut().enumerate() {
-        line["seq"] = json!(n + 1);
-    }
-    lines
 }

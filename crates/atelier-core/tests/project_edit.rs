@@ -4,36 +4,13 @@
 //! **원격 브랜치는 fetch 없이 세운다** — `refs/remotes/<원격>/<이름>`을 손으로 적는다. core는 fetch하지 않고 저장소에 있는 remote-tracking
 //! 브랜치만 읽으므로, 시험도 네트워크 없이 그 자리만 채운다. git 이름 · 이메일은 `project_add.rs`처럼 이 실행이 정한다.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 
 use atelier_core::{collapse_home, ProjectPatch, RemoteBranches};
-
-fn git_env() {
-    static ONCE: OnceLock<PathBuf> = OnceLock::new();
-    ONCE.get_or_init(|| {
-        let file = std::env::temp_dir().join(format!("atelier-project-edit-{}.gitconfig", std::process::id()));
-        std::fs::write(&file, "[user]\n\tname = t\n\temail = t@t\n").unwrap();
-        std::env::set_var("GIT_CONFIG_GLOBAL", &file);
-        std::env::set_var("GIT_CONFIG_NOSYSTEM", "1");
-        file
-    });
-}
-
-fn git(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output().expect("git");
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-    String::from_utf8_lossy(&out.stdout).trim().to_owned()
-}
-
-/// 빈 첫 커밋 하나가 있는 저장소(브랜치 `main`).
-fn repo(dir: &Path) -> PathBuf {
-    std::fs::create_dir_all(dir).unwrap();
-    git(dir, &["init", "-q", "-b", "main"]);
-    git(dir, &["commit", "-q", "--allow-empty", "-m", "first"]);
-    dir.to_path_buf()
-}
+use common::{git, place, repo, Place};
 
 /// 원격 하나와 그 remote-tracking 브랜치들 — fetch한 뒤의 모양을 손으로 적는다. `origin/HEAD`도 fetch(clone)처럼 세운다.
 fn remote(dir: &Path, name: &str, branches: &[&str]) {
@@ -44,18 +21,6 @@ fn remote(dir: &Path, name: &str, branches: &[&str]) {
     git(dir, &["symbolic-ref", &format!("refs/remotes/{name}/HEAD"), &format!("refs/remotes/{name}/{}", branches[0])]);
 }
 
-struct Place {
-    _tmp: tempfile::TempDir,
-    at: PathBuf,
-    projects: PathBuf,
-}
-
-fn place() -> Place {
-    git_env();
-    let tmp = tempfile::tempdir().unwrap();
-    let at = tmp.path().to_path_buf();
-    Place { projects: at.join("projects"), at, _tmp: tmp }
-}
 
 /// web-app — 로컬 `develop` · `main`, 원격 origin(`main` · `develop` · `release/2.5`)과 upstream(`main`)이 있는 저장소를 등록한다.
 fn web_app(p: &Place) -> PathBuf {

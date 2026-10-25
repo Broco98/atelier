@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
 import { threadApi } from "./api";
-import { ARMING_MS, KeyCap, SLOT_CARD } from "./ApprovalCard";
+import { KeyCap, SLOT_CARD, useSlotCard } from "./ApprovalCard";
 import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
 import type { Avatar } from "./faces";
@@ -44,30 +44,15 @@ interface QuestionCardProps {
 
 function QuestionCard({ thread, name, avatar, request, count = null, next }: QuestionCardProps) {
   const cardId = useId();
-  const card = useRef<HTMLDivElement>(null);
-  const shownAt = useRef(0);
+  const { box: card, armed, sent, problem, send } = useSlotCard();
   const { questions } = request;
   const [picks, setPicks] = useState<QuestionPick[]>(() => questions.map(() => NO_PICK));
   const [active, setActive] = useState(0);
-  const [sent, setSent] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   const answers = answersOf(questions, picks);
 
-  useEffect(() => {
-    shownAt.current = performance.now();
-    const holder = document.activeElement;
-    if (holder === null || holder === document.body) card.current?.focus({ preventScroll: true });
-  }, []);
-
   const reply = (later: boolean) => {
-    if (sent || (!later && answers === null)) return;
-    setSent(true);
-    setProblem(null);
-    threadApi.answerQuestion(thread, request.who, request.requestId, later ? [] : (answers ?? []), later).catch((error: unknown) => {
-      // 답하지 못했다 — 다시 고를 수 있게 풀고 까닭을 보인다(이미 닫힌 질문이면 곧 그 줄이 와서 카드가 걷힌다).
-      setSent(false);
-      setProblem(String(error));
-    });
+    if (!later && answers === null) return;
+    send(() => threadApi.answerQuestion(thread, request.who, request.requestId, later ? [] : (answers ?? []), later));
   };
   const change = (at: number, pick: QuestionPick) => setPicks((all) => all.map((one, index) => (index === at ? pick : one)));
   const choose = (at: number, option: number) => {
@@ -90,7 +75,7 @@ function QuestionCard({ thread, name, avatar, request, count = null, next }: Que
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.target instanceof HTMLInputElement || event.nativeEvent.isComposing || event.repeat) return;
-        if (performance.now() - shownAt.current < ARMING_MS) return;
+        if (!armed()) return;
         const key = questionKey(event, questions[active]?.options.length ?? 0);
         if (!key) return;
         event.preventDefault();

@@ -76,7 +76,7 @@ const WEB_APP_GIT = {
   localBranches: ["main"],
   remoteBranches: [{ remote: "origin", branches: ["origin/main"] }],
 };
-export const FOLDER_LOOKS: Record<string, FolderLook> = {
+const FOLDER_LOOKS: Record<string, FolderLook> = {
   "/Users/tester/dev/web-app": { kind: "repo", path: "~/dev/web-app", baseBranch: "main", remotes: ["origin"], git: WEB_APP_GIT },
   "~/dev/web-app": { kind: "repo", path: "~/dev/web-app", baseBranch: "main", remotes: ["origin"], git: WEB_APP_GIT },
   "/Users/tester/dev/web-app/packages/ui": {
@@ -91,7 +91,7 @@ export const FOLDER_LOOKS: Record<string, FolderLook> = {
 };
 
 /** 추가 창으로 추가한 Project — `create_project`의 답(위 `FOLDER_LOOKS`의 web-app 저장소). 목록은 이것을 기억하지 않는다. */
-export const ADDED_PROJECT: ProjectView = {
+const ADDED_PROJECT: ProjectView = {
   slug: "web-app",
   name: "web-app",
   path: "~/dev/web-app",
@@ -103,10 +103,10 @@ export const ADDED_PROJECT: ProjectView = {
 };
 
 /** 「새로 만들기」의 자리 — 기본 부모(`~/MyProjects`) 아래 「Landing Page」의 폴더다. 자리가 차 있는 갈래는 검사가 `taken`을 갈아 끼운다. */
-export const NEW_PLACE: NewProjectPlace = { parent: "~/MyProjects", path: "~/MyProjects/landing-page", taken: false };
+const NEW_PLACE: NewProjectPlace = { parent: "~/MyProjects", path: "~/MyProjects/landing-page", taken: false };
 
 /** 「새로 만들기」로 만든 Project — `new_project`의 답(빈 첫 커밋 · 기준 브랜치 `main`). */
-export const MADE_PROJECT: ProjectView = {
+const MADE_PROJECT: ProjectView = {
   slug: "landing-page",
   name: "Landing Page",
   path: "~/MyProjects/landing-page",

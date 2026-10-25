@@ -23,6 +23,23 @@ pub struct Space {
     pub problems: Vec<SpaceProblem>,
 }
 
+impl Space {
+    /// 보이는 이름 — 파일의 `name`, 비었으면(닫히지 않은 · 읽을 수 없는 파일) slug다. 목록 차례 · 함께 쓰는 Space · 읽는 범위 · 제거
+    /// 확인 창 · 엔진의 Space 줄과 결과 카드가 이것 하나로 부른다.
+    pub fn shown_name(&self) -> &str {
+        if self.name.trim().is_empty() {
+            &self.slug
+        } else {
+            &self.name
+        }
+    }
+
+    /// 그 Space 파일의 자리(`<데이터 루트>/spaces/<slug>.md`) — 머리말 · 결과 카드가 Agent에게 알린다.
+    pub fn file_in(&self, data_root: &Path) -> PathBuf {
+        spaces_in(data_root).join(format!("{}.md", self.slug))
+    }
+}
+
 /// 검사가 돌려주는 것 — 문제와 조각 자리.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -485,7 +502,7 @@ fn overlapping(spaces: &[Space], this: &Space) -> Vec<SharedSpace> {
             let overlap: Vec<String> = this.projects.iter().filter(|project| other.projects.contains(project)).cloned().collect();
             (!overlap.is_empty()).then(|| SharedSpace {
                 slug: other.slug.clone(),
-                name: shown_name(other).to_string(),
+                name: other.shown_name().to_string(),
                 overlap,
                 projects: other.projects.clone(),
             })
@@ -517,7 +534,7 @@ pub fn list_spaces(data_root: &Path) -> Result<Vec<Space>> {
             Err(_) => spaces.push(unreadable(slug)),
         }
     }
-    spaces.sort_by_cached_key(|space| shown_name(space).to_lowercase());
+    spaces.sort_by_cached_key(|space| space.shown_name().to_lowercase());
     Ok(spaces)
 }
 
@@ -586,9 +603,7 @@ pub fn space_usage(data_root: &Path, slug: &str) -> Result<SpaceUsage> {
 pub fn delete_space(data_root: &Path, slug: &str) -> Result<DeletedSpace> {
     let space = get_space(data_root, slug)?;
     let links = linked(data_root, slug)?;
-    let deleted = crate::paths::deleted_in(&spaces_in(data_root));
-    crate::atomic::write_json_atomically(&deleted, &format!("{slug}.json"), &links, "지운 Space의 연결을")?;
-    std::fs::rename(space_path(data_root, slug)?, deleted.join(format!("{slug}.md")))?;
+    crate::aside::Aside::of(&spaces_in(data_root), slug).put(&links, "지운 Space의 연결을")?;
     let unlinked = SpaceLinks {
         works: links.works.into_iter().filter(|work| swap_work_space(data_root, work, Some(slug), None)).collect(),
         threads: links.threads.into_iter().filter(|thread| swap_thread_space(data_root, thread, Some(slug), None)).collect(),
@@ -602,23 +617,15 @@ pub fn delete_space(data_root: &Path, slug: &str) -> Result<DeletedSpace> {
 ///   Thread(이제 Work의 칸을 따른다), 보관 · 지운 Work와 Thread는 건드리지 않는다.
 /// - 그사이 같은 slug가 다시 쓰였으면(`SlugReused`) 되돌리지 않는다 — 새로 선 Space를 덮지 않는다. 지운 것이 없으면 `SpaceNotFound`다.
 pub fn restore_space(data_root: &Path, slug: &str) -> Result<RestoredSpace> {
-    let file = space_path(data_root, slug)?;
-    let deleted = crate::paths::deleted_in(&spaces_in(data_root));
-    let kept = deleted.join(format!("{slug}.md"));
-    if !kept.is_file() {
-        return Err(Error::SpaceNotFound(slug.to_string()));
-    }
-    if file.exists() {
-        return Err(Error::SlugReused(slug.to_string()));
-    }
-    std::fs::rename(&kept, &file)?;
-    let record = deleted.join(format!("{slug}.json"));
-    let links: SpaceLinks = crate::atomic::read_json_or_default(&record, "지운 Space의 연결");
+    space_path(data_root, slug)?;
+    let aside = crate::aside::Aside::of(&spaces_in(data_root), slug);
+    aside.ready(Error::SpaceNotFound(slug.to_string()))?;
+    let links: SpaceLinks = aside.take_back("지운 Space의 연결")?;
     let relinked = SpaceLinks {
         works: links.works.into_iter().filter(|work| swap_work_space(data_root, work, None, Some(slug))).collect(),
         threads: links.threads.into_iter().filter(|thread| swap_thread_space(data_root, thread, None, Some(slug))).collect(),
     };
-    let _ = std::fs::remove_file(record);
+    aside.forget();
     Ok(RestoredSpace { space: get_space(data_root, slug)?, relinked })
 }
 
@@ -653,14 +660,6 @@ fn swap_thread_space(data_root: &Path, thread: &str, from: Option<&str>, to: Opt
         && crate::threads::update_thread(data_root, thread, |file| file.space = to.map(str::to_owned)).is_ok()
 }
 
-fn shown_name(space: &Space) -> &str {
-    if space.name.trim().is_empty() {
-        &space.slug
-    } else {
-        &space.name
-    }
-}
-
 /// 등록된 Project의 slug들 — 검사가 Space 파일의 `projects`와 맞댄다.
 fn registered_projects(data_root: &Path) -> Vec<String> {
     crate::store::read_projects(&crate::paths::projects_in(data_root))
@@ -670,6 +669,7 @@ fn registered_projects(data_root: &Path) -> Vec<String> {
         .collect()
 }
 
+/// 그 slug의 Space 파일 자리 — 뿌리 밖을 가리키는 slug는 없는 Space다.
 fn space_path(data_root: &Path, slug: &str) -> Result<PathBuf> {
     if !crate::slug::is_safe_slug(slug) {
         return Err(Error::SpaceNotFound(slug.to_string()));

@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CrumbSlash } from "@/components/catalog/DetailParts";
 import { useProjects } from "@/features/projects/hooks";
 import type { WorkView } from "@/features/works/types";
 import { useSetSpace, useSpaces } from "./hooks";
@@ -60,7 +61,7 @@ export function SpaceMenuItems({
       }}
     >
       {/* 줄 이름은 머리 글자만이다 — 곁말은 설명으로 따로 읽힌다(아래 Space 줄 · Work 칩의 스위치와 같다). */}
-      {menu.top.label === "Space 없음" ? (
+      {menu.top.kind === "none" ? (
         <DropdownMenuRadioItem
           value={NONE}
           label={menu.top.label}
@@ -169,9 +170,7 @@ export function WorkSpaceCrumb({ work }: { work: Pick<WorkView, "slug" | "space"
           />
         </DropdownMenuContent>
       </DropdownMenu>
-      <span aria-hidden className="shrink-0 text-sm text-fg-titlebar">
-        /
-      </span>
+      <CrumbSlash />
     </span>
   );
 }

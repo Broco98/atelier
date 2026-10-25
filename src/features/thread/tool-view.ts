@@ -1,4 +1,5 @@
 import { spoken, type ToolEntry } from "./fold";
+import { folderName } from "@/features/projects/project-add";
 import { isObject, nonEmpty, type Json } from "./json";
 
 // 도구 줄의 화면 값(v1 티켓 05 · 캔버스 WorkLog 보드) — 접은 도구 호출(`ToolEntry`)을 문구 · 안의 것(명령 출력 · diff · MCP 보낸 값과
@@ -205,8 +206,9 @@ export function describeTool(tool: ToolEntry): ToolView {
     // 묻지 않고 붙이면 곧 「Space 고름」이고, 질문 카드가 서면 그동안 「Space 고르는 중」이다 — 사람이 고르면 접힌 줄이 이 줄의 자리를 대신한다.
     if (name === SET_SPACE) return { ...base, glyph: "other", phrase: say(PICK, "Space", false), mcp: box };
     if (name === ADD_PROJECT) {
-      const folder = nonEmpty(rawInput.path)?.replace(/\/+$/, "").split("/").pop();
-      return { ...base, glyph: "other", phrase: say(ADD, nonEmpty(rawInput.name) ?? nonEmpty(folder) ?? "Project", false), mcp: box };
+      const path = nonEmpty(rawInput.path);
+      const folder = path === null ? null : nonEmpty(folderName(path));
+      return { ...base, glyph: "other", phrase: say(ADD, nonEmpty(rawInput.name) ?? folder ?? "Project", false), mcp: box };
     }
     if (name === EDIT_PROJECT) return { ...base, glyph: "other", phrase: say(FIX, nonEmpty(rawInput.project) ?? "Project", false), mcp: box };
     if (name === CREATE_SPACE) return { ...base, glyph: "other", phrase: say(MAKE, spaceSubject(rawInput.name), false), mcp: box };

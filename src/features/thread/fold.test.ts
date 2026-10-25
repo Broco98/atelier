@@ -271,11 +271,13 @@ describe("시스템 줄", () => {
       space(25, { change: "changed", space: "사내-도구", name: "사내 도구", projects: ["a", "b", "c", "d"], registered: 4 }),
       space(26, { change: "changed", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
       space(27, { change: "removed", space: null, name: null, projects: [], registered: 0 }),
+      space(28, { change: "attached", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
     ]);
     expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
       "Space를 사내 도구로 바꿨어요 — 다음 차례부터 a · b 외 2개를 읽어요",
       "Space를 빈 곳으로 바꿨어요 — 다음 차례부터 읽는 Project가 없어요",
       "Space를 뺐어요 — 다음 차례부터 등록된 Project가 없어요",
+      "빈 곳 Space에 넣었어요 — 읽는 Project가 없어요",
     ]);
   });
 });
@@ -1225,7 +1227,7 @@ describe("Space 질문 카드(03 티켓 08)", () => {
     payload: { state: "answered", requestId: "fake-request", card: "space", ...payload },
   });
 
-  it("카드 줄이 오면 물음 차례에 카드가 서고 — 추천 · 후보 · 등록된 Project 수 · 지금 Space — 그 도구 줄은 「Space 고르는 중」이다", () => {
+  it("카드 줄이 오면 물음 차례에 카드가 서고 — 추천 · 후보 · 등록된 Project 수 — 그 도구 줄은 「Space 고르는 중」이다", () => {
     const model = foldThread(through(asking, 8));
     expect(cards(model)).toEqual([
       {
@@ -1238,8 +1240,6 @@ describe("Space 질문 카드(03 티켓 08)", () => {
           { slug: "사내-도구", name: "사내 도구", projects: ["api-server", "backoffice"] },
         ],
         registered: 3,
-        current: null,
-        reason: "환불은 결제 서비스 쪽 일이에요",
       },
     ]);
     expect(model.pending).toEqual([]);

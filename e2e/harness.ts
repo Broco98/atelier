@@ -1002,16 +1002,23 @@ export const SCREEN_HEAD = 'header [data-slot="screen-head"]';
 export const 화면머리 = (scope: Page | Locator) => scope.locator(SCREEN_HEAD);
 
 /**
- * **흰 판**의 안쪽 상자 — 머리 줄 아래 크롬 위에 뜬 흰 면 하나(02 구현 스펙 §3 · CONTEXT 「흰 판」)의 테두리(0.5) 안이다. 화면의 칸들이 그
- * 안에 들어 판 끝까지 선다 — 칸의 끝을 재는 자리가 창 끝 대신 이것과 견준다. 판은 창 오 · 아래 끝에서 5 띄워 서서 안쪽 끝이 창 끝에서
- * 5.5이고, 왼쪽은 사이드바 오른쪽 끝에서 선다(사이드바는 판 밖 크롬 위다 — 03 구현 스펙 §3). 사이드바를 접으면 창 왼쪽 끝에서 5다. 한때
- * 사이드바가 판 안이라 판 안 왼쪽 끝이 곧 사이드바 왼쪽 끝이었다.
+ * **흰 판** — 머리 줄 아래 크롬 위에 뜬 흰 면 하나(02 구현 스펙 §3 · CONTEXT 「흰 판」)다. 판의 겉(둥글기 · 테두리 · 그림자)과 판이 서는
+ * 자리(사이드바 오른쪽 끝에서)를 잴 때 집는다. 칸의 끝은 판의 겉이 아니라 그 안쪽(`흰판안`)과 견준다.
+ */
+export const 흰판 = (page: Page) => page.locator('[data-slot="panel"]');
+
+/**
+ * **흰 판**의 안쪽 상자 — 흰 판(`흰판`)의 테두리(0.5) 안이다. 화면의 칸들이 그 안에 들어 판 끝까지 선다 — 칸의 끝을 재는 자리가 창 끝
+ * 대신 이것과 견준다. 판은 창 오 · 아래 끝에서 5 띄워 서서 안쪽 끝이 창 끝에서 5.5이고, 왼쪽은 사이드바 오른쪽 끝에서 선다(사이드바는 판
+ * 밖 크롬 위다 — 03 구현 스펙 §3). 사이드바를 접으면 창 왼쪽 끝에서 5다. 한때 사이드바가 판 안이라 판 안 왼쪽 끝이 곧 사이드바 왼쪽
+ * 끝이었다.
  *
  * **여기 사는 이유는 판을 집는 길과 그 테두리를 덜어 내는 셈을 한 벌로 두려는 것이다** — 판 끝을 재는 spec이 여럿이다(`frame-sidebar` ·
- * `archive-docs` · `frame`).
+ * `archive-docs` · `frame`). 사이드바 끝에서 판 안까지를 「끝 + 0.5」로 spec에 다시 적지 않는다 — 판이 사이드바 끝에서 서는지는 `흰판`의
+ * 겉 상자로 재고, 칸은 이 안쪽과 견준다.
  */
 export const 흰판안 = (page: Page) =>
-  page.locator('[data-slot="panel"]').evaluate((el) => {
+  흰판(page).evaluate((el) => {
     const box = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     return {
@@ -1021,6 +1028,20 @@ export const 흰판안 = (page: Page) =>
       bottom: box.bottom - parseFloat(style.borderBottomWidth),
     };
   });
+
+/**
+ * 흰 판 안의 **본문**(`main` 하나)을 그 이름으로 — 화면마다 제 이름이다(「Projects」 · 「Projects 상세」 · 「Space」 · 「Space 상세」 …). 이름으로
+ * 집으면 그 화면이 섰다는 닻이 된다.
+ *
+ * **여기 사는 이유는 03의 두 흐름 spec(`projects-kit` · `spaces-kit`)이 같은 위치자를 저마다 적었기 때문이다** — 아래 `몸줄` · `표줄`도 같다.
+ */
+export const 본문 = (page: Page, name: string) => page.getByRole("main", { name, exact: true });
+
+/** 표의 **몸 줄** — 머리 줄(칸 이름 `columnheader`)을 뺀 줄들이다. 「없다」(`toHaveCount(0)`)를 몸 줄로 재야 머리 줄이 셈에 안 든다. */
+export const 몸줄 = (table: Locator) => table.getByRole("row").filter({ hasNot: table.page().getByRole("columnheader") });
+
+/** 표의 그 이름 줄 — 몸 줄 가운데 이름 칸의 링크가 그 이름인 줄이다(Projects · Space 목록은 줄마다 이름 칸이 링크다). */
+export const 표줄 = (table: Locator, name: string) => 몸줄(table).filter({ has: table.page().getByRole("link", { name, exact: true }) });
 
 /**
  * 그 점을 누르면 **창이 끌리는가** — 그 점의 맨 위 요소에서 조상으로 올라가며 Tauri의 판정(`tauri` 2.11 `window/scripts/drag.js`의
@@ -1548,6 +1569,19 @@ export const toastOf = (page: Page, text: string) => toastRegion(page).getByRole
  * 화면이 받은 것을 다 그렸는지 먼저 본다.
  */
 export const toastsNow = (page: Page) => toastRegion(page).getByRole("dialog").count();
+
+/**
+ * **화면의 토스트** 한 장 — 화면마다 하나 서는 DS 토스트 자리(`components/ui/toast.tsx`의 `Toaster` — 「메시지」)의 그것이고, 제목이 그 문구다
+ * (되돌리기 토스트는 제목이 한 일 · 이름이다). 앱 셸의 동작 토스트(`toastRegion` — 「앱 메시지」)와는 자리도 관리자도 다르다.
+ *
+ * **여기 사는 이유는 `toastRegion`과 같다** — 03의 두 흐름 spec(`projects-kit` · `spaces-kit`)이 이 자리를 저마다 집었다. 자리가 바뀌는 날 한
+ * 파일만 고쳐지면 고쳐지지 않은 쪽의 「안 섰다」(`toHaveCount(0)`)가 헛돈다.
+ */
+export const 화면토스트 = (page: Page, title: string) =>
+  page.getByRole("region", { name: "메시지", exact: true }).getByRole("dialog", { name: title, exact: true });
+
+/** 못 한 일을 알리는 앱 확인 창(`showProblem` — 제목 「오류」). 까닭은 그 설명(`toHaveAccessibleDescription`)이다. 여기 사는 이유는 `화면토스트`와 같다. */
+export const 오류창 = (page: Page) => page.getByRole("alertdialog", { name: "오류", exact: true });
 
 /** 시작 정리 토스트의 문구 — 지난 실행에서 남은 프로세스 `count`개를 끝냈다(프로세스 스펙 S11). [보기]를 들어 누를 때까지 남는다. */
 export const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`;
@@ -2141,6 +2175,14 @@ export async function ipcCallArgs(
       }
       return { call, args: args as Record<string, unknown> };
     });
+}
+
+/**
+ * 그 커맨드로 나간 **인자만**, 나간 순서대로 — `ipcCallArgs`의 `args` 칸이다. 늘 실리는 키(`requiredKey`)가 안 보이면 던지는 것도 그대로다.
+ * 인자를 통째로 견주는 자리(`toEqual([{ slug, … }])`)가 이것을 쓴다 — 03의 spec들이 저마다 `.map(({ args }) => args)`를 붙였다.
+ */
+export async function ipcArgs(page: Page, command: string, requiredKey: string): Promise<Record<string, unknown>[]> {
+  return (await ipcCallArgs(page, command, requiredKey)).map(({ args }) => args);
 }
 
 /**

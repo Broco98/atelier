@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, ipcArgs, unknownIpcCalls } from "./harness";
 
 // Projects 목록과 상세(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjBranch). `/projects`는 목록 표이고(정규화하지
 // 않는다 — 03 결정 「10」), 줄을 누르면 상세다. 상세의 기준 브랜치는 그 저장소의 브랜치 목록(로컬 · 원격)에서만 고른다.
@@ -102,7 +102,7 @@ test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서
   await expect(list).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "update_project", "slug")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "update_project", "slug"))
     .toEqual([{ slug: project.slug, baseBranch: "release" }]);
   // 바꾼 뒤에는 단추 아래 한 줄이 그 뒤의 일을 말한다(F1-ProjectDetail — 픽스처가 값을 기억하지 않아 이름은 옛 값이다).
   await expect(page.getByText(/^바꿨어요 — 새 Work부터 .+에서 갈라져요$/)).toBeVisible();
@@ -116,7 +116,7 @@ test("원격 브랜치를 고르면 원격 이름을 단 그대로 설정 IPC에
   await page.getByRole("listbox").getByRole("option", { name: "origin/main", exact: true }).click();
   await expect(page.getByRole("listbox")).toHaveCount(0);
   await expect
-    .poll(async () => (await ipcCallArgs(page, "update_project", "slug")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "update_project", "slug"))
     .toEqual([{ slug: project.slug, baseBranch: "origin/main" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

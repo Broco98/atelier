@@ -12,6 +12,7 @@ import {
   unknownIpcCalls,
   첫글자,
   화면머리,
+  흰판,
   흰판안,
   workRow,
   호버카드,
@@ -84,7 +85,6 @@ for (const screen of SCREENS) {
     // 칸 줄이 판 안을 채운다 — 판 안 왼쪽 끝(사이드바 끝 + 판 테두리)에서 판 오른쪽 끝까지, 판 위끝에서 아래끝까지. 한때 칸은 회색 바탕 위에 둘레 틈 8을
     // 두고 떴다(그 틈이 창을 끌었다).
     expect([card.x, card.y, card.bottom], "본문 칸 — 사이드바 뒤 · 판 위끝 · 판 아래끝").toEqual([edge, 판.y, 판.bottom]);
-    expect(판.x, "판 안 왼쪽 끝 = 사이드바 끝 + 판 테두리").toBe(edge);
     expect(last.right, "칸 줄 오른쪽 끝 = 판 안 오른쪽 끝").toBe(판.right);
     // 칸은 판의 면이라 제 둥글기 · 그림자 · 고리를 버린다(02 구현 스펙 §3 S2 — 「본문 카드는 흰 판이 되고, 제 테두리 · 둥글기를 버린다」).
     const 겉 = await page.locator('[data-slot="card"]').evaluateAll((cards) =>
@@ -446,9 +446,14 @@ const sidebarRight = (page: Page) => page.locator("aside").first().evaluate((el)
 
 /**
  * 사이드바가 열렸을 때 칸 줄이 서는 왼쪽 끝 — 흰 판이 사이드바 오른쪽 끝에서 서고(사이드바는 판 밖 크롬 위 — 03 구현 스펙 §3), 칸은 판의
- * 테두리 0.5 안에서 선다. 한때 사이드바가 판 안이라 칸이 사이드바 끝에 곧장 붙었다.
+ * 테두리 안에서 선다. 판이 사이드바 끝에서 서는지는 판의 겉 상자로 여기서 함께 잰다 — 판 안 왼쪽 끝만으로는 사이드바가 접혀도 끝이 있다.
+ * 테두리를 덜어 내는 셈은 `흰판안` 한 곳이다(테두리의 굵기 0.5는 `frame-sidebar.spec.ts`가 잰다). 한때 사이드바가 판 안이라 칸이 사이드바
+ * 끝에 곧장 붙었다.
  */
-const besideSidebar = async (page: Page) => (await sidebarRight(page)) + 0.5;
+const besideSidebar = async (page: Page) => {
+  expect((await boxOf(흰판(page))).x, "흰 판은 사이드바 오른쪽 끝에서 선다").toBe(await sidebarRight(page));
+  return (await 흰판안(page)).x;
+};
 
 /** 사이드바를 접은 뒤 칸 줄이 서는 왼쪽 끝 — 판이 창 왼쪽 띄움 5까지 넓어지고, 칸은 그 테두리 0.5 안이다(03 구현 스펙 §3 · 스토리 5). */
 const FOLDED_LEFT = 5.5;
@@ -1363,7 +1368,7 @@ async function 테두리가칠해진변(page: Page, card: Locator) {
 // 위 카드마다 0.5 링을 둘렀다 — 그때는 이 검사가 카드의 네 변을 쟀다.
 test("흰 판의 0.5px 테두리가 네 변에 다 칠해진다 — 판 안 칸 · 사이드바가 덮지 않는다", async ({ page }) => {
   const 네변 = { 위: true, 아래: true, 왼쪽: true, 오른쪽: true };
-  const 판 = page.locator('[data-slot="panel"]');
+  const 판 = 흰판(page);
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await expect(작업패널(page)).toBeVisible();

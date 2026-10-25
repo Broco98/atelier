@@ -558,9 +558,10 @@ mod tests {
 
     /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
     /// core 쪽에 서면 이 표를 읽는다. Thread · Agent의 파일 모양(`threads.rs` · `agents.rs` …)이 여기 산다.
-    const CORE_SOURCES: [(&str, &str); 36] = [
+    const CORE_SOURCES: [(&str, &str); 37] = [
         ("agents.rs", include_str!("../../atelier-core/src/agents.rs")),
         ("agents/scope.rs", include_str!("../../atelier-core/src/agents/scope.rs")),
+        ("aside.rs", include_str!("../../atelier-core/src/aside.rs")),
         ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
         ("attachments.rs", include_str!("../../atelier-core/src/attachments.rs")),
         ("changes.rs", include_str!("../../atelier-core/src/changes.rs")),

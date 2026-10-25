@@ -1,3 +1,5 @@
+import { particle } from "@/lib/particle";
+
 // 읽는 범위(03 구현 스펙 §7) — core `reading_scope.rs`가 내는 모양 그대로다(serde camelCase). Thread가 읽는 Project는 core의 함수 하나에서
 // 나온다 — Session의 자리 · 머리말 · 요약 카드 「소스」 · Space 메뉴가 같은 값을 읽는다(화면은 다시 세지 않는다).
 
@@ -53,4 +55,28 @@ const NAMED = 3;
 export function readingList(names: readonly string[]): string {
   if (names.length <= NAMED) return names.join(" · ");
   return `${names.slice(0, 2).join(" · ")} 외 ${names.length - 2}개`;
+}
+
+// 범위 글 — 범위 줄(`space-chip.ts`의 `scopeLine`) · Space 줄(`fold.ts`) · Space 질문 카드가 읽는 Project를 말하는 글은 화면에서 여기 하나가 짓는다
+// (03 코드 리뷰 D4). 머리말 · 도구 결과의 글은 엔진이 짓는다.
+
+/** 읽을 Project가 하나도 없다 — 빈 Space · 적힌 것을 하나도 읽을 수 없는 Space · 그런 Space로 바꾼 줄. */
+export const NOTHING_READ = "읽는 Project가 없어요";
+
+/** 등록된 Project가 하나도 없다 — Space 없이 읽을 것도 없다. */
+export const NOTHING_REGISTERED = "등록된 Project가 없어요";
+
+/**
+ * 읽는 Project를 말하는 글 — 「web-app · api-server를 읽어요」(셋을 넘으면 「… 외 2개를 읽어요」), `again`이면 「다시 …를 읽어요」(되돌린
+ * Space). 조사는 이름 조각의 끝소리로 고른다. 하나도 없으면 「읽는 Project가 없어요」다.
+ */
+export function readingText(names: readonly string[], { again = false }: { again?: boolean } = {}): string {
+  if (names.length === 0) return NOTHING_READ;
+  const list = readingList(names);
+  return `${again ? "다시 " : ""}${list}${particle(list, "을", "를")} 읽어요`;
+}
+
+/** Space 없이 읽는 글 — 「등록된 Project 3개를 읽어요」(`all`이면 「… 모두 읽어요」). 하나도 없으면 「등록된 Project가 없어요」다. */
+export function registeredText(count: number, { all = false }: { all?: boolean } = {}): string {
+  return count > 0 ? `등록된 Project ${count}개를 ${all ? "모두 " : ""}읽어요` : NOTHING_REGISTERED;
 }

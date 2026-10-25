@@ -30,7 +30,7 @@ import type { WorkView } from "@/features/works/types";
 // 줄은 L1이 축복한 기록을 그대로 쏜다 — 진짜 claude 2.1.309가 Work 없는 Thread에서 「백엔드 환불 API 버그 고쳐줘」를 받은 첫 턴(`thread-work`,
 // v1 티켓 39)과 Work 밖 web-app을 붙이고 고친 턴(`thread-project`). 카드의 글 · 답 · Work 이름은 그 기록에서 읽는다(스토리 137).
 
-/** 카드는 선 직후 잠깐 키를 받지 않는다(`ProjectCard`의 `ARMING_MS`). */
+/** 카드는 선 직후 잠깐 키를 받지 않는다(입력창 자리 카드의 `useSlotCard` · `ARMING_MS`). */
 const ARMING_MS = 300;
 
 const 입력칸 = (page: Page) => page.getByRole("textbox", { name: "보낼 말", exact: true });

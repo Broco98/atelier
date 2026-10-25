@@ -1,7 +1,7 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
-import { ARMING_MS, ChoiceButton, SLOT_CARD } from "./ApprovalCard";
+import { SLOT_CARD, SlotButton, useSlotCard } from "./ApprovalCard";
 import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
 import type { Avatar } from "./faces";
@@ -38,28 +38,9 @@ interface ToolQuestionCardProps {
 
 function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, next }: ToolQuestionCardProps) {
   const titleId = useId();
-  const box = useRef<HTMLDivElement>(null);
-  const shownAt = useRef(0);
+  const { box, armed, sent, problem, send } = useSlotCard();
   const [active, setActive] = useState(view.start);
-  const [sent, setSent] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
 
-  useEffect(() => {
-    shownAt.current = performance.now();
-    const holder = document.activeElement;
-    if (holder === null || holder === document.body) box.current?.focus({ preventScroll: true });
-  }, []);
-
-  const send = (answer: () => Promise<unknown>) => {
-    if (sent) return;
-    setSent(true);
-    setProblem(null);
-    answer().catch((error: unknown) => {
-      // 답하지 못했다 — 다시 고를 수 있게 풀고 까닭을 보인다(이미 닫힌 카드면 곧 그 줄이 와서 카드가 걷힌다).
-      setSent(false);
-      setProblem(String(error));
-    });
-  };
   const choose = (at: number) => {
     if (!view.options[at]) return;
     setActive(at);
@@ -74,7 +55,7 @@ function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, ne
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing || event.repeat) return;
-        if (performance.now() - shownAt.current < ARMING_MS) return;
+        if (!armed()) return;
         const key = toolQuestionKey(event, view.options.length, active);
         if (!key) return;
         event.preventDefault();
@@ -136,21 +117,9 @@ function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, ne
         </span>
         <div className="ml-auto flex items-center gap-2">
           {onLater && (
-            <ChoiceButton
-              choice={{ option: "later", label: "나중에", remember: false, opensField: false, key: null }}
-              at={view.options.length}
-              pressed={false}
-              disabled={sent}
-              onPick={() => send(onLater)}
-            />
+            <SlotButton label="나중에" keycap={null} dismisses at={view.options.length} disabled={sent} onClick={() => send(onLater)} />
           )}
-          <ChoiceButton
-            choice={{ option: "pick", label: "고르기", remember: false, opensField: false, key: "enter" }}
-            at={active}
-            pressed={false}
-            disabled={sent}
-            onPick={() => choose(active)}
-          />
+          <SlotButton label="고르기" keycap="enter" at={active} disabled={sent} onClick={() => choose(active)} />
         </div>
       </div>
       {problem && (

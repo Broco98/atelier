@@ -154,6 +154,7 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
 
 /** 고르는 Work 칩이 받는 것 — 칩 글자와 고르기(첫 말 전의 새 Thread). */
 export interface WorkChoice {
+  kind: "pick";
   /** 칩 글자 — 「새 Work」 · 「Work 없이 대화」 · Work 제목(`workHome`). */
   label: string;
   link: ThreadLink;
@@ -163,6 +164,7 @@ export interface WorkChoice {
 
 /** 잠긴 Work 칩이 받는 것 — 첫 말 뒤의 칩 글(`lockedWork`)과, 이은 Work로 가는 길(그 Work의 slug를 받는다). */
 export interface LockedChoice {
+  kind: "locked";
   locked: LockedWork;
   onOpen: (slug: string) => void;
 }
@@ -264,12 +266,12 @@ export function WorkChip({
                       value={valueOf({ kind: "work", slug: work.slug })}
                       label={work.title}
                       aria-label={work.title}
-                      aria-description={work.space ?? undefined}
+                      aria-description={work.spaceName ?? undefined}
                     >
                       <Folder aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{work.title}</span>
                       {/* 그 Work의 Space — 흐린 곁말(시안 F4-HomeWorkMenu 줄 끝 「결제 서비스」). ✓는 부품이 이 뒤에 붙인다. */}
-                      {work.space && <span className="shrink-0 pl-3 text-xs text-fg-tertiary">{work.space}</span>}
+                      {work.spaceName && <span className="shrink-0 pl-3 text-xs text-fg-tertiary">{work.spaceName}</span>}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuGroup>

@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use atelier_core::{AddProject, FolderLook, NewSpace, Project, ProjectPatch, ProjectView, RecordKind, SpacePatch, SpaceProblemKind};
 use serde_json::{json, Value};
 
+use super::space::{listed, no_such_space, not_registered, registered_list};
 use super::work::{Card, Settled};
 use super::{ConversationHost, SessionKey};
 use crate::thread_tools::{self, ProjectAdd, ProjectEdit, SpaceEdit, SpaceNew};
@@ -125,7 +126,10 @@ impl ConversationHost {
             name: ask.name.clone(),
             description: ask.description.clone(),
         };
-        match atelier_core::inspect_folder(&registry, Path::new(&ask.path)) {
+        let look = atelier_core::inspect_folder(&registry, Path::new(&ask.path));
+        // 카드의 갈래는 core가 짓는 그 이름이다(`FolderLook`의 `kind` — 화면 추가 창이 읽는 것과 같은 글).
+        let kind = serde_json::to_value(&look).map(|value| value["kind"].clone()).unwrap_or_default();
+        match look {
             FolderLook::Missing { path } => thread_tools::said(&format!("폴더가 없다: `{path}` — 경로를 확인하고 다시 부른다."), true),
             FolderLook::Registered { project, .. } => thread_tools::said(&already_text(&project.project), false),
             FolderLook::Repo { path, .. } => {
@@ -136,11 +140,11 @@ impl ConversationHost {
                 }
             }
             FolderLook::NotGit { path } => {
-                let fields = json!({"look": "notGit", "path": path, "folder": folder_name(&path), "root": null});
+                let fields = json!({"look": kind, "path": path, "folder": folder_name(&path), "root": null});
                 self.ask_card(key, Card::ProjectAdd(card(&path, None)), fields)
             }
             FolderLook::Subfolder { path, root, .. } => {
-                let fields = json!({"look": "subfolder", "path": path, "folder": folder_name(&path), "root": root});
+                let fields = json!({"look": kind, "path": path, "folder": folder_name(&path), "root": root});
                 self.ask_card(key, Card::ProjectAdd(card(&path, Some(root))), fields)
             }
         }
@@ -303,7 +307,7 @@ impl ConversationHost {
             Ok(space) => space,
             Err(error) => return thread_tools::said(&self.space_refusal(error, "만들지 않았다"), true),
         };
-        let file = atelier_core::collapse_home(&atelier_core::spaces_in(&self.data_root).join(format!("{}.md", space.slug)));
+        let file = atelier_core::collapse_home(&space.file_in(&self.data_root));
         let names = self.project_names(&space.projects);
         let setting = Setting {
             action: Action::SpaceCreated,
@@ -312,7 +316,7 @@ impl ConversationHost {
             title: format!("Space를 만들었어요 — {}", space.name),
             detail: format!("{} · {file}", if names.is_empty() { "Project 없음".to_owned() } else { names.join(" · ") }),
         };
-        let read = if space.projects.is_empty() { "없음".to_owned() } else { space.projects.join(", ") };
+        let read = listed(space.projects.iter().map(String::as_str));
         match self.note_setting(key, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
@@ -350,8 +354,8 @@ impl ConversationHost {
         }
         let shared = atelier_core::shared_spaces(&self.data_root, &after.slug).map_or(0, |shared| shared.len());
         let title = space_edited(
-            &shown(&before.name, &before.slug),
-            &shown(&after.name, &after.slug),
+            before.shown_name(),
+            after.shown_name(),
             &self.project_names(&added),
             &self.project_names(&removed),
             described,
@@ -363,7 +367,7 @@ impl ConversationHost {
             title,
             detail: format!("Project {} · 함께 쓰는 Space {shared}", after.projects.len()),
         };
-        let read = if after.projects.is_empty() { "없음".to_owned() } else { after.projects.join(", ") };
+        let read = listed(after.projects.iter().map(String::as_str));
         match self.note_setting(key, setting) {
             Ok(()) => thread_tools::said(
                 &format!(
@@ -392,31 +396,26 @@ impl ConversationHost {
 
     /// 등록된 Project의 이름들 — slug의 차례 그대로, 등록되지 않은 것은 slug다.
     fn project_names(&self, slugs: &[String]) -> Vec<String> {
-        let registered = atelier_core::list_projects(&atelier_core::projects_in(&self.data_root)).unwrap_or_default();
+        let registered = self.registered();
         slugs
             .iter()
             .map(|slug| registered.iter().find(|view| &view.project.slug == slug).map_or(slug.clone(), |view| view.project.name.clone()))
             .collect()
     }
 
-    /// 등록되지 않은 Project — 등록된 것을 함께 알린다(`set_space`와 같은 말).
+    /// 등록된 Project — 거절 글이 함께 알린다(못 읽으면 없다).
+    fn registered(&self) -> Vec<ProjectView> {
+        atelier_core::list_projects(&atelier_core::projects_in(&self.data_root)).unwrap_or_default()
+    }
+
+    /// 등록되지 않은 Project — 등록된 것을 함께 알린다(`set_space`와 같은 말 — [`not_registered`]).
     fn unknown_project(&self, slug: &str) -> String {
-        format!("등록되지 않은 Project다: {slug} — {}", self.registered_list())
+        not_registered(&[slug], &self.registered())
     }
 
-    /// 「등록된 Project(list_projects): web-app, api-server」.
-    fn registered_list(&self) -> String {
-        let registered = atelier_core::list_projects(&atelier_core::projects_in(&self.data_root)).unwrap_or_default();
-        let known: Vec<&str> = registered.iter().map(|view| view.project.slug.as_str()).collect();
-        format!("등록된 Project(list_projects): {}", if known.is_empty() { "없음".to_owned() } else { known.join(", ") })
-    }
-
-    /// 없는 Space — 있는 것을 함께 알린다(`set_space`와 같은 말).
+    /// 없는 Space — 있는 것을 함께 알린다(`set_space`와 같은 말 — [`no_such_space`]).
     fn unknown_space(&self, slug: &str) -> String {
-        let spaces = atelier_core::list_spaces(&self.data_root).unwrap_or_default();
-        let known: Vec<&str> = spaces.iter().map(|space| space.slug.as_str()).collect();
-        let known = if known.is_empty() { "없음".to_owned() } else { known.join(", ") };
-        format!("없는 Space다: {slug} — Space(list_spaces): {known}")
+        no_such_space(slug, &atelier_core::list_spaces(&self.data_root).unwrap_or_default())
     }
 
     /// Space 만들기 · 고치기의 거절 — core의 문제 글 그대로(화면 · 저장과 같은 말, §8), 등록되지 않은 Project면 등록된 것을 덧붙인다.
@@ -428,7 +427,7 @@ impl ConversationHost {
                 let unknown = problems.iter().any(|problem| problem.kind == SpaceProblemKind::UnknownProject);
                 let said = atelier_core::Error::SpaceProblems(problems).to_string();
                 if unknown {
-                    format!("{said} — {undone}. {}", self.registered_list())
+                    format!("{said} — {undone}. {}", registered_list(&self.registered()))
                 } else {
                     format!("{said} — {undone}.")
                 }
@@ -466,13 +465,13 @@ fn branch_refusal(view: &ProjectView, branch: &str) -> String {
     let Some(git) = &view.git else {
         return format!("{head} 그 폴더(`{}`)를 git 저장소로 읽지 못해 고를 수 있는 브랜치가 없다.", project.path);
     };
-    let mut listed = vec![format!("로컬 {}", if git.local_branches.is_empty() { "없음".to_owned() } else { git.local_branches.join(", ") })];
+    let mut branches = vec![format!("로컬 {}", listed(git.local_branches.iter().map(String::as_str)))];
     for remote in git.remote_branches.iter().filter(|remote| !remote.branches.is_empty()) {
-        listed.push(format!("원격 {} {}", remote.remote, remote.branches.join(", ")));
+        branches.push(format!("원격 {} {}", remote.remote, remote.branches.join(", ")));
     }
     format!(
         "{head} 고를 수 있는 브랜치: {}. Atelier는 fetch하지 않는다 — 원격 브랜치는 origin/<이름> 그대로 준다.",
-        listed.join(" · ")
+        branches.join(" · ")
     )
 }
 
@@ -524,11 +523,6 @@ fn space_edited(before: &str, after: &str, added: &[String], removed: &[String],
         (true, true) if before != after => format!("{before} Space의 이름을 {after}{} 바꿨어요", particle(after, "으로", "로")),
         (true, true) => format!("{after}의 설명을 고쳤어요"),
     }
-}
-
-/// 보이는 이름 — 이름이 없으면(문제 있는 파일) slug다.
-fn shown(name: &str, slug: &str) -> String {
-    if name.trim().is_empty() { slug.to_owned() } else { name.to_owned() }
 }
 
 /// 낱말 뒤의 조사 — 끝 글자가 받침 있는 한글이면 `with_final`, 아니면 `without`이다(화면 `src/lib/particle.ts`의 `particle`과 같은 규칙). 「으로/로」는

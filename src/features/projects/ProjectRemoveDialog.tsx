@@ -1,32 +1,50 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { Book, ChevronRight, Folder } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { dialogLook } from "@/components/ui/dialog-look";
+import { RemovalCard, RemovalDialog, RemovalFooter } from "@/components/catalog/RemovalDialog";
+import { type Asking, useUndoableRemoval } from "@/components/catalog/undoable-removal";
+import { AlertDialogDescription, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { workDoor } from "@/routes/-work-search";
-import { removeDialog } from "./project-remove";
-import type { ProjectUsage, ProjectView } from "./types";
+import { projectsApi } from "./api";
+import { useRemoveProject, useRestoreProject } from "./hooks";
+import { removeDialog, removedToast, restoreProblem } from "./project-remove";
+import type { ProjectRemoval, ProjectUsage, ProjectView } from "./types";
 
 // Project 제거 창(03 구현 스펙 §16 「제거 창」 · 캔버스 F4-ProjRemoveBlocked · F4-KitProject 「제거 창」) — Projects 목록 줄 ⋯의 「제거…」가 연다. 세
-// 갈래(보통 · Space에 들어 있음 · 진행 중인 Work가 고침)와 그 글은 `removeDialog`가 고르고, 여기는 그린다.
-//
-// 창 상자는 위에서 120에 서는 작은 창이다(`dialogLook.topSmall` — 시안 `.dlg.sm`). 확인 창(`AppDialog`)은 글만 받아 Project 카드 줄과 Work 줄을
-// 품지 못해 이 창을 따로 둔다. 바닥 단추는 머리 줄 알약과 같은 28 알약이다(시안 `.btn.gh` · `.btn.redf`).
+// 갈래(보통 · Space에 들어 있음 · 진행 중인 Work가 고침)와 그 글은 `removeDialog`가 고르고, 여기는 그린다. 창 · 카드 줄 · 바닥 단추와 열고 닫는
+// 흐름은 Space 삭제 창과 같은 것이다(`@/components/catalog` — 03 코드 리뷰 D1).
 
-export interface Removing {
-  project: ProjectView;
-  usage: ProjectUsage;
+type Removing = Asking<ProjectView, ProjectUsage>;
+
+/**
+ * 제거의 길 — 목록이 부른다. `ask`가 쓰임을 읽어 창을 열고, 「제거」면 core가 빼고 창을 닫은 뒤 「목록에서 뺐어요 — 이름 · 되돌리기」
+ * 토스트를 낸다. 그사이 진행 중인 Work가 이 Project를 붙였으면 core가 막고(`blocked`) 창이 그 자리에서 막힌 갈래로 바뀐다. 폴더 · 파일 · git
+ * 기록은 그대로다. 토스트는 목록의 `<Toaster>`에 선다.
+ */
+export function useProjectRemoval() {
+  const remove = useRemoveProject();
+  const restore = useRestoreProject();
+  const removal = useUndoableRemoval<ProjectView, ProjectUsage, ProjectRemoval>({
+    usage: (project) => projectsApi.usage(project.slug),
+    remove: (project) => remove.mutateAsync(project.slug),
+    blocked: (done) => (done.kind === "blocked" ? { spaces: [], works: done.works } : null),
+    restore: (project) => restore.mutateAsync(project.slug),
+    failed: "제거하지 못했어요",
+    toast: (project) => removedToast(project.name),
+    restoreProblem,
+  });
+  const dialog = (
+    <ProjectRemoveDialog
+      removing={removal.asking}
+      busy={remove.isPending}
+      onClose={removal.close}
+      onRemove={(project) => void removal.confirm(project)}
+    />
+  );
+  return { ask: removal.ask, dialog };
 }
 
-export default function ProjectRemoveDialog({
+function ProjectRemoveDialog({
   removing,
   busy,
   onClose,
@@ -39,34 +57,21 @@ export default function ProjectRemoveDialog({
   onClose: () => void;
   onRemove: (project: ProjectView) => void;
 }) {
-  // 닫히는 동안에도 마지막 물음을 그린다 — 글이 빈 창이 비치지 않게(`AppDialog`와 같은 까닭). 다 닫히면 비운다.
-  const [shown, setShown] = useState(removing);
-  if (removing !== null && removing !== shown) setShown(removing);
-  const now = removing ?? shown;
-  const dialog = now ? removeDialog(now.usage) : null;
   const removeRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-
   return (
-    <AlertDialog
-      open={removing !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      onOpenChangeComplete={(open) => {
-        if (!open) setShown(null);
-      }}
+    <RemovalDialog
+      asking={removing}
+      onClose={onClose}
+      // 첫 포커스 — 물으면 「제거」(되돌릴 수 있는 일이다), 막혔으면 「닫기」.
+      initialFocus={() => (removing && removeDialog(removing.usage).canRemove ? removeRef.current : closeRef.current)}
     >
-      <AlertDialogContent
-        // 첫 포커스 — 물으면 「제거」(되돌릴 수 있는 일이다), 막혔으면 「닫기」.
-        initialFocus={() => (dialog?.canRemove ? removeRef.current : closeRef.current)}
-        onBackdropClick={onClose}
-        className={dialogLook.topSmall}
-      >
-        {now && dialog && (
+      {(now) => {
+        const dialog = removeDialog(now.usage);
+        return (
           <>
             <AlertDialogTitle>{dialog.title}</AlertDialogTitle>
-            <ProjectCard project={now.project} />
+            <RemovalCard icon={Book} name={now.item.name} sub={now.item.path} mono />
             <AlertDialogDescription render={<div />} className="flex flex-col gap-2 text-chat-meta break-keep text-fg-secondary">
               {dialog.lines.map((line) => (
                 <p key={line}>{line}</p>
@@ -79,7 +84,7 @@ export default function ProjectRemoveDialog({
                     {/* 누르면 그 Work로 — 창을 닫고 간다(스토리 132). 그 Work의 마지막 화면이다(`workDoor`, 03 코드 리뷰 A1). */}
                     <Link
                       {...workDoor(work.slug)}
-                      // WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다).
+                      // WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(목록 줄의 이름과 같다).
                       tabIndex={0}
                       onClick={onClose}
                       className="flex min-h-10.5 items-center gap-2.5 px-3 py-2 text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
@@ -93,40 +98,17 @@ export default function ProjectRemoveDialog({
                 ))}
               </ul>
             )}
-            <AlertDialogFooter className="pt-0.5">
-              <AlertDialogCancel ref={closeRef} variant="ghost" size="top" className="rounded-full">
-                {dialog.cancel}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                ref={removeRef}
-                variant="destructive"
-                size="top"
-                className="rounded-full"
-                disabled={!dialog.canRemove || busy}
-                onClick={() => onRemove(now.project)}
-              >
-                제거
-              </AlertDialogAction>
-            </AlertDialogFooter>
+            <RemovalFooter
+              cancel={dialog.cancel}
+              cancelRef={closeRef}
+              action="제거"
+              actionRef={removeRef}
+              disabled={!dialog.canRemove || busy}
+              onAction={() => onRemove(now.item)}
+            />
           </>
-        )}
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-/**
- * 지울 Project 한 줄(시안 `.gcard` · `.grow`) — 이름과 경로. **`min-w-0`이 창의 격자 칸을 창 폭에 묶는다** — 없으면 말줄임하는 경로의
- * 한 줄 폭이 칸의 바닥이 되어, 긴 경로가 창 밖까지 칸을 밀고 바닥 단추가 창 밖으로 나갔다(03 티켓 13d — 진짜 앱에서 봤다).
- */
-function ProjectCard({ project }: { project: ProjectView }) {
-  return (
-    <div className="flex min-h-12 min-w-0 items-center gap-2.5 rounded-xl border border-border px-3 py-2">
-      <Book aria-hidden className="size-4 shrink-0 text-fg-icon" />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm text-fg">{project.name}</span>
-        <span className="truncate font-mono text-xs text-fg-tertiary">{project.path}</span>
-      </span>
-    </div>
+        );
+      }}
+    </RemovalDialog>
   );
 }

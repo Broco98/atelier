@@ -1,15 +1,16 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Check, GitBranch, Pencil, TriangleAlert } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { GitBranch, Pencil, TriangleAlert } from "lucide-react";
+import { DescriptionSection, DetailPanel, HeadCrumb } from "@/components/catalog/DetailParts";
 import { navItem } from "@/components/shell/nav-items";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { InlineRename } from "@/components/ui/inline-rename";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger } from "@/components/ui/select";
-import { Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useProjects, useUpdateProject } from "./hooks";
+import { NoticeBox } from "./NoticeBox";
 import { baseNote, branchGroups, missingNotice, renameHint } from "./project-view";
 import { useRelocate } from "./relocate";
 import type { ProjectView } from "./types";
@@ -38,44 +39,10 @@ export default function ProjectDetail({ slug }: { slug: string }) {
   }, [gone]);
 
   return (
-    <PlainFrame label={`${label} 상세`} lead={<ProjectsCrumb onOpen={() => goList()} />} title={project ? { name: project.name } : undefined}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-10 pt-5.5 pb-20 scroll-quiet">
-          <div className="mb-5.5 flex items-center gap-2">
-            {/* WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다). */}
-            <Link
-              to="/projects"
-              tabIndex={0}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-separator-soft bg-surface pr-3.5 pl-2.5 text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
-            >
-              <ArrowLeft aria-hidden className="size-3.5 text-fg-icon" />
-              {label}
-            </Link>
-          </div>
-          {project && <ProjectBody key={project.slug} project={project} />}
-        </div>
-        {/* 토스트의 자리 — 본문 왼쪽 아래(시안 `.toast` — 왼 40 · 아래 24, Space 상세와 같다). */}
-        <Toaster className="bottom-6 left-10 translate-x-0" />
-      </div>
+    <PlainFrame label={`${label} 상세`} lead={<HeadCrumb label={label} onOpen={() => goList()} />} title={project ? { name: project.name } : undefined}>
+      {/* 토스트는 본문 왼쪽 아래다(`DetailPanel` — Space 상세와 같다). */}
+      <DetailPanel back={{ to: "/projects", label }}>{project && <ProjectBody key={project.slug} project={project} />}</DetailPanel>
     </PlainFrame>
-  );
-}
-
-/** 머리 줄 이름 앞 「Projects /」 — 누르면 목록이다(Space 상세의 「Space /」와 같은 자리). */
-function ProjectsCrumb({ onOpen }: { onOpen: () => void }) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="rounded-md text-sm whitespace-nowrap text-fg-titlebar transition-colors hover:text-fg focus-ring"
-      >
-        {navItem("projects").label}
-      </button>
-      <span aria-hidden className="shrink-0 text-sm text-fg-titlebar">
-        /
-      </span>
-    </>
   );
 }
 
@@ -97,7 +64,12 @@ function ProjectBody({ project }: { project: ProjectView }) {
       <div className="min-w-0">
         <Title project={project} onRename={(name) => void patch({ name }, "이름을 바꾸지 못했어요")} />
         {project.missing && <MissingNotice project={project} onRelocate={() => void relocate(project)} />}
-        <Description project={project} onSave={(description) => patch({ description }, "설명을 저장하지 못했어요")} />
+        <DescriptionSection
+          text={project.description}
+          aside="Agent가 이 Project를 이해할 때 읽어요"
+          placeholder="이 Project가 무엇인지 한두 줄로 적어 두세요"
+          onSave={(description) => patch({ description }, "설명을 저장하지 못했어요")}
+        />
       </div>
       <aside aria-label="Project 정보" className="flex flex-col">
         <RailSection label="기준 브랜치" first>
@@ -187,104 +159,7 @@ function Title({ project, onRename }: { project: ProjectView; onRename: (name: s
 /** 폴더를 찾을 수 없음(스토리 124 · 시안 F4-ProjDetailMissing) — 제목 아래 노란 안내 상자와 「재설정」. */
 function MissingNotice({ project, onRelocate }: { project: ProjectView; onRelocate: () => void }) {
   const notice = missingNotice(project);
-  return (
-    <div role="status" className="mt-4 flex items-start gap-2 rounded-lg bg-notice-warn px-3 py-2.5 text-chat-meta break-keep text-fg-notice-warn">
-      <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-fg-notice-warn-icon" />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span>{notice.title}</span>
-        <span className="text-fg-secondary">{notice.body}</span>
-      </span>
-      <Button variant="outline" size="xs" className="shrink-0 self-center rounded-full bg-surface text-chat-meta text-fg" onClick={onRelocate}>
-        재설정
-      </Button>
-    </div>
-  );
-}
-
-/** 묶음 하나 — 머리(18/26 이름 · 연필 · 옅은 곁말)와 몸. 묶음 사이는 34다(시안 `.sec2` · `.h2r`). */
-function Section({ label, before, aside, children }: { label: string; before?: ReactNode; aside: string; children: ReactNode }) {
-  return (
-    <section aria-label={label} className="mt-8.5">
-      <div className="mb-3 flex min-h-7 items-center gap-2">
-        <h2 className="text-heading-sm text-fg">{label}</h2>
-        {before}
-        <span className="text-chat-meta text-fg-tertiary">{aside}</span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** 설명 — 「Agent가 이 Project를 이해할 때 읽어요」, 연필 → 저장 · 취소 → 「저장했어요」(스토리 118). */
-function Description({ project, onSave }: { project: ProjectView; onSave: (text: string) => Promise<boolean> }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const save = async () => {
-    if (draft === null) return;
-    if (await onSave(draft)) {
-      setDraft(null);
-      setSaved(true);
-    }
-  };
-  return (
-    <Section
-      label="설명"
-      before={
-        draft === null && (
-          <button
-            type="button"
-            aria-label="설명 고치기"
-            onClick={() => {
-              setDraft(project.description);
-              setSaved(false);
-            }}
-            className="rounded-sm p-0.5 text-fg-faint transition-colors hover:text-fg-secondary focus-ring"
-          >
-            <Pencil aria-hidden className="size-3.5" />
-          </button>
-        )
-      }
-      aside="Agent가 이 Project를 이해할 때 읽어요"
-    >
-      {draft === null ? (
-        <>
-          <p className={cn("text-chat-body whitespace-pre-wrap", project.description ? "text-fg" : "text-fg-tertiary")}>
-            {project.description || "아직 설명이 없어요. 연필을 눌러 적어 두세요."}
-          </p>
-          {saved && (
-            <p role="status" className="mt-2.5 flex items-center gap-1 text-xs text-fg-tertiary">
-              <Check aria-hidden className="size-3" />
-              저장했어요
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <textarea
-            // 열자마자 쓴다 — 연필을 누른 손이 곧바로 적는다.
-            autoFocus
-            rows={4}
-            aria-label="설명"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setDraft(null);
-            }}
-            placeholder="이 Project가 무엇인지 한두 줄로 적어 두세요"
-            className="block w-full resize-none rounded-xl border border-border-heavy bg-surface px-3 py-2.5 text-chat-body text-fg outline-none placeholder:text-fg-placeholder focus-ring"
-          />
-          <div className="mt-2.5 flex items-center justify-end gap-1.5">
-            <Button variant="ghost" size="top" onClick={() => setDraft(null)}>
-              취소
-            </Button>
-            <Button size="top" onClick={() => void save()}>
-              저장
-            </Button>
-          </div>
-        </>
-      )}
-    </Section>
-  );
+  return <NoticeBox tone="warn" title={notice.title} body={notice.body} action={{ label: "재설정", onClick: onRelocate }} className="mt-4" />;
 }
 
 /**

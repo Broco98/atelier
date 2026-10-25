@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Check, Eye, FileText, Layers, SquarePen, TriangleAlert } from "lucide-react";
+import { HeadCrumb } from "@/components/catalog/DetailParts";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export default function SpaceEditor({ slug }: { slug: string | null }) {
   return (
     <PlainFrame
       label={mode === "new" ? "새 Space" : `${crumb} 관계 편집`}
-      lead={<Crumb label={crumb} />}
+      lead={<HeadCrumb label={crumb} />}
       title={{ name: mode === "new" ? "새 Space" : "관계 편집" }}
     >
       {base !== undefined ? (
@@ -77,18 +78,6 @@ export default function SpaceEditor({ slug }: { slug: string | null }) {
         opened.isError && <p className="px-10 pt-5.5 text-sm text-fg-tertiary">Space 파일을 읽지 못했어요 — {String(opened.error)}</p>
       )}
     </PlainFrame>
-  );
-}
-
-/** 머리 줄 이름 앞 흐린 「결제 서비스 /」 · 「Space /」(시안 `.tb-c .muted`). 누르는 길은 칸 머리의 뒤로 하나다. */
-function Crumb({ label }: { label: string }) {
-  return (
-    <>
-      <span className="min-w-0 truncate text-sm text-fg-titlebar">{label}</span>
-      <span aria-hidden className="shrink-0 text-sm text-fg-titlebar">
-        /
-      </span>
-    </>
   );
 }
 

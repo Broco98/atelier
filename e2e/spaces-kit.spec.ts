@@ -1,19 +1,25 @@
-import { expect, test, type Locator, type Page } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { answerByArg, PROJECTS, SPACE_DETAILS, SPACE_DRAFT, SPACE_TEXTS, SPACES, WORKS } from "./fixtures";
 import {
   fireEvent,
   installFixtureBackend,
+  ipcArgs,
   ipcCallArgs,
   ipcFailure,
   replaceAnswer,
   unknownIpcCalls,
+  몸줄,
+  본문,
+  오류창,
   칠한값,
+  표줄,
   폴더를고른다,
   토큰색,
   사람메뉴로간다,
   떠날때확인,
   떠날때확인버튼,
   화면머리,
+  화면토스트,
 } from "./harness";
 import { blankSpaceText } from "@/features/spaces/space-edit";
 import type { ProjectView } from "@/features/projects/types";
@@ -33,24 +39,17 @@ import type { Space, SpaceDetail, SpaceDraft } from "@/features/spaces/types";
 const [결제, 원장도구] = SPACES;
 const [billing, ledger] = PROJECTS;
 
-const 본문 = (page: Page, name: string) => page.getByRole("main", { name, exact: true });
 const 목록 = (page: Page) => page.getByRole("table", { name: "Space 목록", exact: true });
-/** 표의 몸 줄 — 머리 줄(칸 이름)은 뺀다. */
-const 몸줄 = (table: Locator) => table.getByRole("row").filter({ hasNot: table.page().getByRole("columnheader") });
-const 줄 = (page: Page, name: string) => 몸줄(목록(page)).filter({ has: page.getByRole("link", { name, exact: true }) });
+const 줄 = (page: Page, name: string) => 표줄(목록(page), name);
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 항목 = (page: Page, name: string) => 메뉴(page).getByRole("menuitem", { name, exact: true });
-/** 화면마다 하나 서는 토스트 자리(`Toaster` — 「메시지」)의 한 장. 되돌리기 토스트는 제목이 그 이름이다. */
-const 토스트 = (page: Page, title: string) =>
-  page.getByRole("region", { name: "메시지", exact: true }).getByRole("dialog", { name: title, exact: true });
-const 오류창 = (page: Page) => page.getByRole("alertdialog", { name: "오류", exact: true });
 /** 첫 화면이 섰다 — 시작 단추가 연 주소를 읽기 전의 닻. */
 const 첫화면 = (page: Page) => page.getByRole("heading", { name: "무엇을 만들까요?", exact: true });
 /** 지금 주소의 search — 한글 씨앗을 풀어 읽는다. */
 const 씨앗 = (page: Page) => Object.fromEntries(new URL(page.url()).searchParams);
 
 /** `update_space`로 나간 인자들, 나간 차례대로. */
-const 고치기 = async (page: Page) => (await ipcCallArgs(page, "update_space", "slug")).map(({ args }) => args);
+const 고치기 = (page: Page) => ipcArgs(page, "update_space", "slug");
 
 /** 파일 문제 하나 — core 검사가 짓는 모양 그대로다(말까지 core가 짓는다). */
 const 등록안됨 = (line: number, project: string) =>
@@ -262,7 +261,7 @@ test.describe("상세", () => {
 
     // 등록하고, 이 Space에도 넣는다(스토리 154). 화면은 이 Space 상세에 머문다.
     await expect(추가창).toHaveCount(0);
-    expect((await ipcCallArgs(page, "create_project", "folder")).map(({ args }) => args)).toEqual([
+    expect(await ipcArgs(page, "create_project", "folder")).toEqual([
       { folder: webApp.path, name: webApp.name, initGit: false },
     ]);
     await expect.poll(() => 고치기(page)).toEqual([{ slug: 원장도구.slug, add: [webApp.slug] }]);
@@ -284,7 +283,7 @@ test.describe("상세", () => {
     await expect(메뉴(page).getByRole("menuitem")).toHaveText(["Project 보기", "Space에서 빼기"]);
     await 항목(page, "Space에서 빼기").click();
     await expect.poll(() => 고치기(page)).toEqual([{ slug: 결제.slug, remove: [billing.slug] }]);
-    const 뺀뒤 = 토스트(page, `Space에서 뺐어요 — ${billing.slug}`);
+    const 뺀뒤 = 화면토스트(page, `Space에서 뺐어요 — ${billing.slug}`);
     await 뺀뒤.getByRole("button", { name: "되돌리기", exact: true }).click();
     await expect
       .poll(() => 고치기(page))
@@ -301,13 +300,20 @@ test.describe("상세", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("설명은 연필 → 저장이면 「저장했어요」가 서고, 제목은 연필로 그 자리에서 바꾼다 — 둘 다 그 칸만 고친다", async ({ page }) => {
+  test("설명은 연필 → 저장이면 「저장했어요」가 서고(Esc는 그만두기), 제목은 연필로 그 자리에서 바꾼다 — 둘 다 그 칸만 고친다", async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(`/spaces/${결제.slug}`);
     const 본문칸 = 본문(page, "Space 상세");
 
     const 설명 = 본문칸.getByRole("region", { name: "설명", exact: true });
     await expect(설명.getByText("Agent가 이 Space에서 일할 때 처음 읽어요", { exact: true })).toBeVisible();
+    // Esc는 그만두기다 — 친 글을 버리고 아무것도 고치지 않는다(Project 상세의 설명 칸과 같은 칸 — 03 코드 리뷰 D1). 아래 「그 칸만 고친다」가
+    // 나간 고치기를 모두 센다.
+    await 설명.getByRole("button", { name: "설명 고치기", exact: true }).click();
+    await 설명.getByRole("textbox", { name: "설명", exact: true }).fill("버릴 글");
+    await 설명.getByRole("textbox", { name: "설명", exact: true }).press("Escape");
+    await expect(설명.getByRole("textbox", { name: "설명", exact: true })).toHaveCount(0);
+    await expect(설명.getByText("버릴 글", { exact: true })).toHaveCount(0);
     await 설명.getByRole("button", { name: "설명 고치기", exact: true }).click();
     await expect(설명.getByRole("textbox", { name: "설명", exact: true })).toBeFocused();
     await 설명.getByRole("textbox", { name: "설명", exact: true }).fill("결제 · 정산 · 환불");
@@ -417,7 +423,7 @@ test.describe("지우기", () => {
     // 창 — Space 카드 줄(이름 · Project)과 무엇이 바뀌고 무엇이 그대로인지. 첫 포커스는 「삭제」(되돌릴 수 있다).
     const 창 = 삭제창(page);
     await expect(창).toBeVisible();
-    expect((await ipcCallArgs(page, "space_usage", "slug")).map(({ args }) => args)).toEqual([{ slug: 결제.slug }]);
+    expect(await ipcArgs(page, "space_usage", "slug")).toEqual([{ slug: 결제.slug }]);
     await expect(창.getByText("billing · ledger", { exact: true })).toBeVisible();
     await expect(창).toHaveAccessibleDescription(
       "Thread 3개 · Work 1개가 이 Space에서 빠져 「Space 없음」이 돼요. Project와 파일, 대화 · 문서 · worktree는 그대로예요.",
@@ -426,10 +432,10 @@ test.describe("지우기", () => {
     await 창.getByRole("button", { name: "삭제", exact: true }).click();
 
     await expect(창).toHaveCount(0);
-    expect((await ipcCallArgs(page, "thread_delete_space", "slug")).map(({ args }) => args)).toEqual([{ slug: 결제.slug }]);
-    const 지운뒤 = 토스트(page, `${결제.name} Space를 지웠어요`);
+    expect(await ipcArgs(page, "thread_delete_space", "slug")).toEqual([{ slug: 결제.slug }]);
+    const 지운뒤 = 화면토스트(page, `${결제.name} Space를 지웠어요`);
     await 지운뒤.getByRole("button", { name: "되돌리기", exact: true }).click();
-    await expect.poll(async () => (await ipcCallArgs(page, "thread_restore_space", "slug")).map(({ args }) => args)).toEqual([{ slug: 결제.slug }]);
+    await expect.poll(() => ipcArgs(page, "thread_restore_space", "slug")).toEqual([{ slug: 결제.slug }]);
     await expect(지운뒤).toHaveCount(0);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -464,7 +470,7 @@ test.describe("지우기", () => {
 
     await expect(page).toHaveURL("/spaces");
     await expect(목록(page)).toBeVisible();
-    await 토스트(page, `${결제.name} Space를 지웠어요`).getByRole("button", { name: "되돌리기", exact: true }).click();
+    await 화면토스트(page, `${결제.name} Space를 지웠어요`).getByRole("button", { name: "되돌리기", exact: true }).click();
     await expect(오류창(page)).toHaveAccessibleDescription(`되돌리지 못했어요 — 그사이 같은 파일 이름(${결제.slug})의 Space가 새로 생겼어요.`);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -611,7 +617,7 @@ test.describe("파일 고치기 화면", () => {
     await 판.getByRole("button", { name: "저장", exact: true }).click();
 
     await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}`);
-    expect((await ipcCallArgs(page, "save_space_text", "text")).map(({ args }) => args)).toEqual([{ slug: 결제.slug, text: 고친글 }]);
+    expect(await ipcArgs(page, "save_space_text", "text")).toEqual([{ slug: 결제.slug, text: 고친글 }]);
     // 저장은 고치기 화면을 히스토리에서 갈음한다 — 뒤로가기가 고치기 화면으로 돌아오지 않는다.
     await page.goBack();
     await expect(page).toHaveURL(`/spaces/${encodeURIComponent(결제.slug)}`);
@@ -746,7 +752,7 @@ test.describe("파일 고치기 화면", () => {
 
     await 판.getByRole("button", { name: "만들기", exact: true }).click();
     await expect(page).toHaveURL(`/spaces/${encodeURIComponent(만든것.slug)}`);
-    expect((await ipcCallArgs(page, "save_space_text", "text")).map(({ args }) => args)).toEqual([{ slug: null, text: 이름("원장 도구") }]);
+    expect(await ipcArgs(page, "save_space_text", "text")).toEqual([{ slug: null, text: 이름("원장 도구") }]);
     await expect(본문(page, "Space 상세").getByRole("heading", { level: 1 })).toHaveText("원장 도구");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });

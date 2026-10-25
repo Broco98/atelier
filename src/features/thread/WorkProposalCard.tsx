@@ -1,11 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Check, Folder, Info, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { threadApi } from "./api";
 import type { AskTurn } from "./asks";
-import { SLOT_CARD } from "./ApprovalCard";
+import { SLOT_CARD, useSlotCard } from "./ApprovalCard";
 import { AskCount } from "./AskTurnMarks";
 import type { PendingWork } from "./fold";
 import { branchHint, firstPicked } from "./work-proposal";
@@ -42,31 +42,20 @@ function WorkProposalCard({ thread, card, count = null, next }: WorkProposalCard
   const projectsId = useId();
   const branchId = useId();
   const hintId = useId();
-  const box = useRef<HTMLDivElement>(null);
+  // 카드 전체의 글쇠가 없어 선 직후의 잠금(`armed`)은 읽지 않는다 — 브랜치 칸의 Enter는 칸의 글쇠다(머리말).
+  const { box, sent, problem, send } = useSlotCard();
   const [checked, setChecked] = useState(() => firstPicked(card.projects));
   const [branch, setBranch] = useState(card.branch ?? card.slug);
-  const [sent, setSent] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   const hint = branchHint(branch, card.projects, checked);
   const picked = card.projects.filter((one) => checked.has(one.slug)).map((one) => one.slug);
 
-  useEffect(() => {
-    const holder = document.activeElement;
-    if (holder === null || holder === document.body) box.current?.focus({ preventScroll: true });
-  }, []);
-
   const answer = (create: boolean) => {
-    if (sent || (create && hint.problem)) return;
-    setSent(true);
-    setProblem(null);
-    const ask = create
-      ? threadApi.answerWork(thread, card.requestId, true, picked, picked.length > 0 ? branch.trim() : null)
-      : threadApi.answerWork(thread, card.requestId, false);
-    ask.catch((error: unknown) => {
-      // 만들지 못했다 — 다시 고를 수 있게 풀고 까닭을 보인다(이미 닫힌 카드면 곧 그 줄이 와서 카드가 걷힌다).
-      setSent(false);
-      setProblem(String(error));
-    });
+    if (create && hint.problem) return;
+    send(() =>
+      create
+        ? threadApi.answerWork(thread, card.requestId, true, picked, picked.length > 0 ? branch.trim() : null)
+        : threadApi.answerWork(thread, card.requestId, false),
+    );
   };
   const toggle = (slug: string) =>
     setChecked((now) => {
