@@ -59,9 +59,10 @@ describe("설정의 문", () => {
   });
 });
 
-// 틀이 하나다(02 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고, 그 아래 흰 판 하나에 사이드바와 화면
-// 본문(라우트가 그리는 것)이 든다. 화면마다 제 틀을 그리면 화면을 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를
-// 소스로 잰다 — 판의 띄움 · 높이 · 이름 자리는 L3(`frame.spec`)가 상자로 잰다.
+// 틀이 하나다(02 구현 스펙 §3 · 03 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고, 그 아래 크롬 위에
+// 사이드바가 머리 줄 왼쪽 칸과 한 기둥으로 서며, 그 오른쪽 흰 판 하나에 화면 본문(라우트가 그리는 것)만 든다. 화면마다 제 틀을 그리면 화면을
+// 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를 소스로 잰다 — 판의 띄움 · 높이 · 이름 자리 · 사이드바 기둥은
+// L3(`frame.spec` · `frame-sidebar.spec`)가 상자로 잰다.
 describe("틀 하나 — 머리 줄과 흰 판", () => {
   const at = (literal: string) => source.indexOf(literal);
 
@@ -74,15 +75,30 @@ describe("틀 하나 — 머리 줄과 흰 판", () => {
     expect(source).toContain("bg-surface-shell");
   });
 
-  it("흰 판 하나가 사이드바와 화면 본문을 품는다", () => {
+  it("흰 판은 본문만 품고 사이드바는 판 밖에 선다", () => {
     const panel = at('data-slot="panel"');
+    const tagAt = source.lastIndexOf("<div", panel);
     const [sidebar, outlet] = ["<Sidebar", "<Outlet />"].map(at);
+    // **다 있는지부터 센다** — 없으면 indexOf가 -1이라 아래 차례 비교가 읽은 것 없이 통과한다.
+    expect([panel, sidebar, outlet].every((one) => one > -1)).toBe(true);
     expect(countOf(source, 'data-slot="panel"')).toBe(1);
-    expect(sidebar).toBeGreaterThan(panel);
-    expect(outlet).toBeGreaterThan(sidebar);
-    // 판의 겉은 01이 넣은 토큰이다 — 손으로 적은 색 · 그림자가 아니다.
-    const tag = source.slice(source.lastIndexOf("<div", panel), source.indexOf(">", panel));
+    expect(countOf(source, "<Sidebar")).toBe(1);
+    // 사이드바는 판을 열기 전에 선다(판 밖 크롬 위). 본문은 판 안이다.
+    expect(sidebar).toBeLessThan(tagAt);
+    expect(outlet).toBeGreaterThan(panel);
+    // 사이드바와 판은 한 줄의 형제다 — 사이드바에서 판을 여는 자리까지 주석을 걷으면 사이드바 말고 다른 요소가 없다(다른 상자가 끼면 기둥이
+    // 판과 갈린다).
+    const between = source
+      .slice(sidebar, tagAt)
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(between.match(/<[A-Za-z]\w*/g)).toEqual(["<Sidebar"]);
+    // 판의 겉은 토큰이다 — 손으로 적은 색 · 그림자가 아니다.
+    const tag = source.slice(tagAt, source.indexOf(">", panel));
     for (const token of ["rounded-xl", "border-border-panel", "shadow-panel", "bg-surface"]) expect(tag, token).toContain(token);
+    // **판이 본문의 바닥을 사이드바에게 알린다**(`min-w-min`) — 판이 사이드바의 형제라, 본문 뿌리가 드는 바닥(탭 줄 — `TAB_ROW_COLUMN`)은 판의
+    // min-content로만 사이드바에 닿는다. 판은 모서리를 자르느라 `overflow-hidden`이어서 적지 않으면 그 바닥이 0이다(넘침 상자의 자동 최소 폭).
+    expect(tag).toContain("min-w-min");
     // 화면은 머리 줄의 자리를 셸에게서 받는다 — 본문(라우트)이 그 자리 안에 선다.
     expect(source.slice(panel, outlet)).toContain("<ShellHeadSlot.Provider");
   });

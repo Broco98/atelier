@@ -44,8 +44,10 @@ export function PlainFrame({ lead, title, end, label, children }: PlainFrameProp
           <PlainHead lead={lead} title={title} end={end} />
         </ScreenHead>
       )}
-      {/* 판 안 사이드바 오른쪽의 남는 자리를 다 쓴다(판이 가로 줄이다). */}
-      <main aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* 판 안을 다 쓴다(판이 가로 줄이다). **제 내용 폭을 판 밖에 알리지 않는다**(`contain-inline-size`) — 사이드바가 판 밖 형제라 판은 본문의
+          min-content를 바닥으로 들고 사이드바와 자리를 나눈다(`AppShell`의 판 `min-w-min`). 긴 코드 줄 · 주소가 그 바닥을 부풀리면 사이드바가
+          좁아지고 판이 창 밖으로 밀린다 — 그려지는 폭은 판이 늘여 준다. */}
+      <main aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col contain-inline-size">
         {children}
       </main>
     </>

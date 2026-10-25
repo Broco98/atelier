@@ -326,11 +326,13 @@ function SidebarFrame({
           같은 장치). 접힐 때 안에 있던 포커스는 사이드바 토글로 간다(바깥 상자의 `useFoldedFocus`). */}
       <div
         inert={!open}
-        // 위 12 · 아래 8은 시안 `.sb`의 안쪽이다 — 사이드바가 흰 판 안에 들어 판의 위끝에서 바로 시작한다(02 구현 스펙 §3). 한때 맨 위에 머리
-        // 줄과 같은 높이의 빈 끌기 띠가 있었다 — 신호등 · 셸 컨트롤이 그 띠 가운데에 겹쳐 떴고, 그것들은 이제 판 위 머리 줄에 선다. 아래 8은
-        // 바닥 사람 줄(36)이 판 아래끝에서 떨어지는 값이다(시안 F1-Home `.sb-foot`).
+        // 위 2 · 아래 8 — 사이드바는 판 밖 크롬 위에서 머리 줄 바로 밑부터 창 아래 끝까지 선다(03 구현 스펙 §3 · 시안 v49 `.sb`의 위 2). 「새
+        // Thread」가 머리 줄 바로 밑에서 시작해 신호등 줄과 위 줄 사이에 빈 띠가 없다. 한때 위 12였다 — 사이드바가 흰 판 안에 들어 판의
+        // 위끝에서 띄운 값이었다(02). 그보다 앞에는 맨 위에 머리 줄과 같은 높이의 빈 끌기 띠가 있었다 — 신호등 · 셸 컨트롤이 그 띠 가운데에
+        // 겹쳐 떴고, 그것들은 이제 머리 줄에 선다. 아래 8은 바닥 사람 줄(36)이 창 아래끝에서 떨어지는 값이다(시안 `.sb-foot` — 판 아래 띄움
+        // 5 + `.sb` 아래 3).
         className={cn(
-          "flex h-full w-(--sidebar-width) flex-col pt-3 pb-2",
+          "flex h-full w-(--sidebar-width) flex-col pt-0.5 pb-2",
           foldingInnerClass(open, "sidebar"),
         )}
       >
@@ -352,12 +354,11 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 다른 화면의 본문도 자리를 요구하지 않는다.
     // 최소 폭을 **펼 때만** 트랜지션하는 이유는 작업 패널 칸(`Frame`의 `PanelBox`) 주석과 같다.
     //
-    // **바탕은 Codex 대화 사이드바의 `surface-sidebar`이고, 오른쪽에 0.5px 선이 선다**(v1 티켓 46 — Codex 그림에서 #fbfbfb 바탕과
-    // 흰 본문 사이 한 픽셀 #e2e2e3을 재었다, `border-heavy`). 한때 사이드바는 창 바탕(`surface-shell`)에 붙어 선이 없었다(ui-refresh
-    // 결정 4) — 경계는 옆 카드의 모서리가 말했다. Thread 화면은 본문이 흰 면이라 옅은 바탕만으로는 경계가 서지 않는다. 선은 칸
-    // 위에 겹쳐 칠한 면(`::after`)이다 — 0.5px 테두리는 엔진마다 굵기가 갈린다(사람 줄의 윗선과 같다). 접히면 폭 0에 잘린다.
-    // 바탕을 칠하는 까닭은 하나 더 있다: 투명이면 대비를 재는 e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts`).
-    "relative overflow-hidden bg-surface-sidebar after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-[0.5px] after:bg-border-heavy",
+    // **바탕도 오른쪽 선도 없다** — 사이드바는 판 밖 크롬(`surface-shell`) 위에 서서 머리 줄 왼쪽 칸과 한 기둥이다(03 구현 스펙 §3 · 02 결정
+    // 「시안 — 사이드바는 크롬 위에」). 경계는 옆 흰 판의 테두리가 말한다. 한때(v1 티켓 46 – 02) 흰 판 안에서 Codex 대화 사이드바의 바탕
+    // `surface-sidebar`에 오른쪽 0.5 선(`border-heavy`)을 칠했다 — 머리 줄 왼쪽 칸과 사이드바가 판 테두리로 갈려 길잡이가 두 덩어리로
+    // 읽혔다. 대비를 재는 e2e는 처음 만나는 불투명한 바탕(앱 셸 뿌리의 크롬)에서 잰다(하네스 `글자대비`).
+    "relative overflow-hidden",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 박자는 Codex 사이드바의 spring(.3s · `ease-spring` — 02 구현 스펙 §12)이다 — 내용은 그대로 둔 채(안쪽 고정 폭) 잘리며 옅어진다.
     // 머리 줄의 왼쪽 칸(`ShellHead`)이 같은 박자로 사이드바 끝을 따른다(`panel-layout`의 `SIDEBAR_MOTION`).

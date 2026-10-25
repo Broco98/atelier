@@ -360,9 +360,10 @@ function AppShell() {
       }
       className="relative flex h-screen flex-col bg-surface-shell text-fg"
     >
-      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」) — 크롬(`surface-shell`) 맨 위 머리 줄(44)에 신호등 · 셸 컨트롤과
-          지금 화면의 자리가 서고, 그 아래 흰 판 하나에 사이드바와 화면 본문이 든다. 화면은 머리 줄에 놓을 것(이름 · 할 일 — `ScreenHead`)과
-          판 안에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도, 공용 틀(`Frame`)의 화면들도 같다.
+      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · 03 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」) — 크롬(`surface-shell`) 맨 위 머리 줄(44)에
+          신호등 · 셸 컨트롤과 지금 화면의 자리가 서고, 그 아래 크롬 위에 사이드바가, 그 오른쪽 흰 판 하나에 화면 본문이 든다. 화면은 머리 줄에
+          놓을 것(이름 · 할 일 — `ScreenHead`)과 판 안에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도, 공용 틀(`Frame`)의 화면들도
+          같다.
 
           검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을 둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로
           연 팔레트를 다른 쪽이 모른다. 이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 머리 줄을 덮어 애초에 눌리지
@@ -377,12 +378,12 @@ function AppShell() {
           onOpenSearch={openSearch}
         />
       </ShellHeadRow>
-      {/* 흰 판 — 크롬 왼 · 오 · 아래 끝에서 5 띄우고(눈금의 사분 단 1.25) 0.5 `border-panel` · 둥글기 12 · 위 그림자(`shadow-panel`)다. 안쪽
-          왼쪽에 사이드바(제 바탕 · 오른쪽 0.5 선 그대로), 그 오른쪽에 화면 본문이 든다. 모서리 밖으로 사이드바 바탕이 새지 않게 잘라 낸다. */}
-      <div
-        data-slot="panel"
-        className="mx-1.25 mb-1.25 flex min-h-0 flex-1 overflow-hidden rounded-xl border-[0.5px] border-border-panel bg-surface shadow-panel"
-      >
+      {/* 머리 줄 아래 가로 줄 하나 — **사이드바는 판 밖 크롬 위에 서고**(바탕 · 오른쪽 선이 없다), 머리 줄 왼쪽 칸(신호등 · 셸 컨트롤)과 한
+          기둥이다(03 구현 스펙 §3 · 02 결정 「시안 — 사이드바는 크롬 위에」). 흰 판은 그 오른쪽에서 본문만 담는다. 크롬 왼 · 오 끝에서 5(눈금의
+          사분 단 1.25 — 시안 `.body`의 `0 5px 5px`)를 이 줄이 띄워, 사이드바는 창 왼쪽 끝 + 5에서 서고 판은 사이드바 오른쪽 끝에서 선다 —
+          접으면(폭 0) 판이 왼쪽 띄움 5까지 넓어진다. 아래 5는 판의 것이다 — 사이드바는 창 아래 끝까지 서서 사람 줄이 창 아래 끝에서 8(안쪽
+          열의 아래 8)에 선다. 머리 줄의 이름 자리(`--titlebar-inset-sidebar` = 5 + 0.5 + 사이드바 폭)는 그대로 판 안 왼쪽 끝을 가리킨다. */}
+      <div className="flex min-h-0 flex-1 px-1.25">
         <Sidebar
           open={sidebarOpen}
           size={sidebarSize}
@@ -425,9 +426,19 @@ function AppShell() {
             void navigate(appReturnTarget());
           }}
         />
-        <ShellHeadSlot.Provider value={headSlot}>
-          <Outlet />
-        </ShellHeadSlot.Provider>
+        {/* 흰 판 — 크롬 아래 끝에서 5 띄우고(왼 · 오는 위 줄이 띄운다) 0.5 `border-panel` · 둥글기 12 · 위 그림자(`shadow-panel`)다. 안에는
+            화면 본문만 든다. 모서리 밖으로 본문 면이 새지 않게 잘라 낸다 — 그래서 넘침 상자라 자동 최소 폭이 0이므로, 본문 뿌리가 드는 바닥(탭
+            줄 — `panel-layout`의 `TAB_ROW_COLUMN`)을 사이드바에게 알리는 것은 판의 `min-w-min`이다. 사이드바가 판 안에 들던 때 그 바닥은 본문
+            열이 사이드바와 한 줄에서 곧장 들었다 — 이제 판이 그 줄의 형제다. 본문의 글 폭은 바닥에 들지 않는다(`PlainFrame`의 본문 · 공용 틀의
+            본문 열이 격리한다). */}
+        <div
+          data-slot="panel"
+          className="mb-1.25 flex min-h-0 min-w-min flex-1 overflow-hidden rounded-xl border-[0.5px] border-border-panel bg-surface shadow-panel"
+        >
+          <ShellHeadSlot.Provider value={headSlot}>
+            <Outlet />
+          </ShellHeadSlot.Provider>
+        </div>
       </div>
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야

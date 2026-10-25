@@ -27,7 +27,7 @@ import useSplitRatio from "./useSplitRatio";
 
 // 화면의 **공용 틀**(ui-refresh 결정 27 · 02 구현 스펙 §3 S2). Projects · Terminal · Processes · Archive · Settings · 작업 화면 · spec
 // 레이아웃 편집기가 이 틀에 칸을 건넨다. 틀 자체(크롬 · 머리 줄 44 · 흰 판)는 앱 셸 하나가 그리고(`AppShell` · `ShellHead`), 이 틀은 그
-// 위에서 두 자리만 든다 — 머리 줄의 화면 자리에 보낼 이름 · 할 일(`HeadSlot` — `ScreenHead`로 포털)과 흰 판 안 사이드바 오른쪽의 칸들이다.
+// 위에서 두 자리만 든다 — 머리 줄의 화면 자리에 보낼 이름 · 할 일(`HeadSlot` — `ScreenHead`로 포털)과 흰 판 안의 칸들이다.
 // 목록은 따로 서지 않고 본문 칸 안 오른쪽 칸이다(codex-ds 결정 28 — 내용 | 목록 한 칸). 화면은 칸 내용만 건넨다 — 칸을 가르는 선 ·
 // 손잡이 · 머리 줄의 자리를 이 파일 한 곳이 지킨다. 일곱 화면이 저마다 그 규칙을 적으면 한 화면만 선 하나를 빠뜨려도 화면으로는 어디가
 // 샜는지 안 보인다. 분할의 두 열과 편집기의 트리 칸도 이 틀의 칸이다(`split` · `beside`). 탭 줄(`ShellTabs`)은 이 틀의 줄이 아니라
@@ -38,8 +38,8 @@ import useSplitRatio from "./useSplitRatio";
 //            └ 레일 열(rail의 칸이 둘 이상일 때만) ─ 칸 묶음
 //
 // **카드가 아니라 흰 판의 칸이다**(02 구현 스펙 §3 S2). 한때 이 틀은 회색 바탕 위에 머리 카드와 둥근 흰 카드들을 8 틈으로 띄웠다. 이제 흰 판
-// 하나가 사이드바와 본문을 품어(CONTEXT 「흰 판」) 판 안의 칸은 제 면 · 둥글기 · 링 · 둘레 틈을 버리고, 칸 사이는 0.5 선 하나로
-// 갈린다(사이드바 오른쪽 선 · 목록 칸의 선과 같은 `border-heavy` — Codex 오른쪽 패널의 왼쪽 선). **안쪽 배치는 그대로다** — 레일 · 분할 ·
+// 하나가 본문을 품어(CONTEXT 「흰 판」 — 사이드바는 판 밖 크롬 위다, 03 구현 스펙 §3) 판 안의 칸은 제 면 · 둥글기 · 링 · 둘레 틈을
+// 버리고, 칸 사이는 0.5 선 하나로 갈린다(목록 칸의 선과 같은 `border-heavy` — Codex 오른쪽 패널의 왼쪽 선). **안쪽 배치는 그대로다** — 레일 · 분할 ·
 // 탭 줄 · 경로 줄 · 목록 칸 · 옆 칸 · 패널이 같은 차례 · 같은 폭 규칙으로 선다. 그 화면들의 새 모양은 다음 판이다.
 //
 // **판 안은 창을 끄는 자리가 아니다** — 회색 틈이 없어졌다. 창은 머리 줄(빈 곳 · 이름 글자 · 할 일 사이)로 끈다(`ShellHeadRow`의 `deep`).
@@ -217,11 +217,11 @@ function Frame<Id extends string>({ head, list, panel, rail, split, beside, over
       />
       {/* **뿌리가 제 min-content를 바깥에 알린다**(`min-w-min`) — 그것이 탭 줄의 바닥(`TAB_ROW_COLUMN`)이 사이드바에게 자리를 요구하는
           길이다. 칸 줄은 탭 줄을 품었을 때만 제 min-content를 알리고, 그때도 탭 줄을 이는 칸이 제 몸을 격리해(`TAB_ROW_CARD`) 넓은
-          문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선 줄은 본문 칸의 바닥과 옆 칸의 머리를 알린다(`BesideBox`). 판 안 사이드바
-          오른쪽 남는 자리를 다 쓴다(판이 가로 줄이다). */}
+          문서 · xterm이 그 바닥을 부풀리지 않는다 — 옆 칸이 선 줄은 본문 칸의 바닥과 옆 칸의 머리를 알린다(`BesideBox`). 그 값이 흰 판의
+          바닥이 되어 판 밖 사이드바에 닿는다(`AppShell`의 판 `min-w-min`). 판 안을 다 쓴다(판이 가로 줄이다). */}
       <div className="flex min-h-0 min-w-min flex-1">
         <div className={cn("flex flex-1 flex-col", TAB_ROW_COLUMN)}>
-          {/* 칸 줄. 판의 끝(왼쪽은 사이드바의 선, 위 · 오른쪽 · 아래는 판의 테두리)까지 칸이 선다 — 둘레 틈이 없다. `relative`는
+          {/* 칸 줄. 판의 끝(판의 테두리)까지 칸이 선다 — 둘레 틈이 없다. `relative`는
               `overlay`의 기준이다. 탭 줄을 품었거나 옆 칸이 서면 이 줄은 본문 열의 격리(`TAB_ROW_COLUMN`)를 벗는다 — 탭 줄을 이는
               칸의 바닥 · 옆 칸의 머리가 모자라면 사이드바가 자리를 내준다. */}
           <div style={beside ? { contain: "none" } : undefined} className="relative flex min-h-0 flex-1">

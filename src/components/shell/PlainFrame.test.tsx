@@ -27,6 +27,13 @@ describe("Thread 화면의 틀", () => {
     expect(html).not.toContain("border-");
     expect(html).not.toContain("shadow-");
   });
+
+  // **본문은 제 글 폭을 판 밖에 알리지 않는다**(03 구현 스펙 §3) — 사이드바가 판 밖 형제라, 판은 본문의 min-content를 바닥으로 들고 사이드바와
+  // 자리를 나눈다(`AppShell`의 판 `min-w-min`). 긴 코드 줄 · 주소가 그 바닥을 부풀리면 사이드바가 좁아지고 판이 창 밖으로 밀린다. 그래서
+  // 본문 상자가 제 내용 폭을 격리한다 — 그려지는 폭은 판이 늘여 준다(공용 틀 화면들은 탭 줄의 바닥만 알린다 — `TAB_ROW_COLUMN`).
+  it("본문은 제 내용 폭을 판의 바닥으로 알리지 않는다", () => {
+    expect(render({ name: "Thread" })).toMatch(/^<main [^>]*class="[^"]*\bcontain-inline-size\b/);
+  });
 });
 
 describe("머리 줄에 보내는 것", () => {

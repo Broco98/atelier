@@ -326,11 +326,12 @@ describe("눈금의 사분 단", () => {
    * 더 선 자리도 다음 사분 단의 뒷문이 되어 정확히 한 번인지 함께 센다(`notOnce`).
    */
   const QUARTERS: { file: string; className: string; why: string }[] = [
-    // 흰 판의 띄움 5 — Codex 판이 크롬 왼 · 오 · 아래 끝에서 띄운 값(02 구현 스펙 §3 · 시안 `.body`의 `0 5px 5px`)
+    // 크롬 위 띄움 5 — Codex 판이 크롬 왼 · 오 · 아래 끝에서 띄운 값(02 구현 스펙 §3 · 시안 `.body`의 `0 5px 5px`). 사이드바가 판 밖 크롬 위에
+    // 서면서(03 구현 스펙 §3) 왼 · 오는 사이드바와 판을 함께 담는 줄이, 아래는 판이 띄운다 — 사이드바는 창 아래 끝까지 선다.
     {
       file: "src/components/shell/AppShell.tsx",
-      className: "mx-1.25",
-      why: "흰 판 — 크롬 왼 · 오 끝에서 5. 머리 줄 이름 자리의 셈(`--titlebar-inset-sidebar`)이 같은 1.25 칸을 더한다",
+      className: "px-1.25",
+      why: "사이드바 · 흰 판의 줄 — 크롬 왼 · 오 끝에서 5. 사이드바가 창 왼쪽 끝 + 5에서 서고, 접으면 판이 그 5까지 넓어진다. 머리 줄 이름 자리의 셈(`--titlebar-inset-sidebar`)이 같은 1.25 칸을 더한다",
     },
     {
       file: "src/components/shell/AppShell.tsx",
