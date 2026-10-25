@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "@/features/projects/types";
-import { addMenu, CARD_GRAPH, createdLine, spaceGraph } from "./space-view";
+import { addMenu, CARD_GRAPH, createdLine, spaceGraph, spaceMenu, spaceWorks } from "./space-view";
 import type { SharedSpace, Space } from "./types";
 
 const space = (over: Partial<Space> = {}): Space => ({
@@ -124,5 +124,56 @@ describe("만든 이 · 만든 때", () => {
     expect(createdLine(space({ createdAt: "2026-10-25" }), today).when).toBe("어제");
     expect(createdLine(space({ createdAt: "2025-12-01" }), today).when).toBe("2025. 12. 1.");
     expect(createdLine(space({ createdAt: "" }), today).when).toBe("");
+  });
+});
+
+describe("Space 메뉴(03 §5 · §10)", () => {
+  const spaces = [
+    space(),
+    space({ slug: "사내-도구", name: "사내 도구", projects: ["api-server", "backoffice"] }),
+    space({ slug: "깨진", name: "", projects: ["web-app"], problems: [{ line: 3, kind: "unknownProject", project: "x", message: "등록되지 않은 Project예요" }] }),
+  ];
+
+  it("Space가 있으면 맨 위가 「Space 빼기」이고, Space마다 이름 · 적힌 Project가 서며 지금 것에 ✓, 문제 있는 Space에 「문제 있음」이 붙는다", () => {
+    expect(spaceMenu(spaces, "결제-서비스", 3)).toEqual({
+      top: { label: "Space 빼기", note: "등록된 Project 3개를 모두 읽어요", current: false },
+      rows: [
+        { slug: "결제-서비스", name: "결제 서비스", projects: "web-app · api-server", troubled: false, current: true },
+        { slug: "사내-도구", name: "사내 도구", projects: "api-server · backoffice", troubled: false, current: false },
+        { slug: "깨진", name: "깨진", projects: "web-app", troubled: true, current: false },
+      ],
+    });
+  });
+
+  it("Space가 없으면 맨 위 「Space 없음」이 지금 것이다 — 적힌 Space의 파일이 없어도 Space 없음이다(§7 규칙 1)", () => {
+    for (const current of [null, "지운-것"]) {
+      const menu = spaceMenu(spaces, current, 3);
+      expect(menu.top).toEqual({ label: "Space 없음", note: "등록된 Project 3개를 모두 읽어요", current: true });
+      expect(menu.rows?.some((row) => row.current)).toBe(false);
+    }
+  });
+
+  it("Space가 하나도 없으면 줄 목록이 없고(「Host와 Space 만들기」 자리), 등록된 Project가 없으면 그렇다고 말한다", () => {
+    expect(spaceMenu([], null, 0)).toEqual({
+      top: { label: "Space 없음", note: "등록된 Project가 없어요", current: true },
+      rows: null,
+    });
+  });
+
+  it("빈 Space는 Project 자리에 없다고 말한다", () => {
+    expect(spaceMenu([space({ projects: [] })], null, 2).rows?.[0].projects).toBe("Project 없음");
+  });
+});
+
+describe("Space 상세의 Work 묶음", () => {
+  it("이 Space에 이은 Work만 목록 차례로 선다", () => {
+    const works = [
+      { slug: "a", space: "결제-서비스" },
+      { slug: "b" },
+      { slug: "c", space: "사내-도구" },
+      { slug: "d", space: "결제-서비스" },
+    ];
+    expect(spaceWorks(works, "결제-서비스").map((work) => work.slug)).toEqual(["a", "d"]);
+    expect(spaceWorks(works, "없는-것")).toEqual([]);
   });
 });

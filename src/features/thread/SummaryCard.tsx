@@ -30,14 +30,14 @@ import { cn } from "@/lib/utils";
 import { archiveQuery, useArchivedDocs } from "@/features/archive/hooks";
 import type { ArchiveEntry } from "@/features/archive/types";
 import { workChangesKey } from "@/features/files/hooks";
-import { useProjects } from "@/features/projects/hooks";
+import { useReadingScope } from "@/features/spaces/hooks";
 import { worksApi } from "@/features/works/api";
-import { useHomeDir, useWorks } from "@/features/works/hooks";
+import { useWorks } from "@/features/works/hooks";
 import { CopySubmenu, FinderSubmenu } from "@/features/works/WorkMenuItems";
 import { useWorkMenuFlows } from "@/features/works/work-menu-actions";
 import type { ProjectChanges, WorkView } from "@/features/works/types";
 import { workWritingStore, writingOf } from "./thread-store";
-import type { DocWriting, Participant } from "./types";
+import type { DocWriting } from "./types";
 import {
   changesTarget,
   changeSummary,
@@ -46,9 +46,8 @@ import {
   finishedDocs,
   freshFiles,
   prRows,
-  projectRows,
-  readingProjects,
   readSummaryOpen,
+  sourceProjects,
   summarySections,
   workPrsKey,
   writerLine,
@@ -74,13 +73,14 @@ import { Unfold } from "./WorkLog";
 //   소스 / spec 문서 · Project(고치는 중 · 읽기만) — 셋을 넘으면 「모두 보기」(S21)
 //
 // - **세 갈래다** — Work에 이은 Thread(`WorkSummaryCard`), 보관된 Work의 Thread(`ArchivedSummaryCard` — 머리에 「보관됨」, 「…」 없이
-//   보이기만), Work 없는 Thread(`LooseSummaryCard` — 결과물 · 소스만, 소스는 Session이 읽기로 함께 여는 등록된 Project — S20). 지워진
-//   Work의 Thread에는 카드가 없다(v1 그대로).
+//   보이기만), Work 없는 Thread(`LooseSummaryCard` — 결과물 · 소스만). 지워진 Work의 Thread에는 카드가 없다(v1 그대로).
+// - **소스의 Project는 읽는 범위다**(03 §7 · §2) — Work에 이은 Thread는 worktree가 선 Project(고치는 중) 뒤에 범위의 Project(읽기만), Work
+//   없는 Thread는 범위의 Project뿐이다(`sourceProjects`). 범위는 core의 함수 하나가 세어 Session의 자리 · 머리말과 같은 값이다.
 // - 칸을 짓는 것은 순수 함수(`summary-card.ts`의 `summarySections`)이고, 그리는 조각(`SummaryBody`)은 훅을 부르지 않는다 — 정적 마크업으로
 //   잰다(`SummaryCard.test.tsx`).
 // - **자료는 v1 그대로 읽는다**(새 Tauri 명령이 없다) — 변경은 카드가 열릴 때와 `worktree:changed`마다(앱 루트의 감시 배선), PR은 열릴 때와
 //   열린 동안 60초마다(엔진이 턴 끝에 남긴 `pr` 줄이 그 칸을 고친다 — v1 티켓 36), 쓰는 중은 엔진의 `work:writing`(`workWritingStore`),
-//   Work 없는 Thread의 소스는 참여자의 `additionalDirectories`와 등록된 Project 목록이다.
+//   소스의 Project는 범위 명령(`reading_scope` — Space · 등록부 · Work의 변화와 범위를 바꾼 기록 줄마다 다시 읽는다)이다.
 // - **줄을 누르면 넓힌 카드다**(v1 티켓 35 — 넓힌 카드는 그대로다) — 「변경 사항」은 바뀐 첫 파일의 diff를, 소스의 문서는 문서 보기를,
 //   Project는 그 파일 트리를 연다. 넓힌 카드는 왼쪽에 이 몸(목록 — 「변경 사항」 아래에 바뀐 파일마다 줄이 서고 소스가 모두 선다), 오른쪽에
 //   그 파일의 보기(`ExpandedViewer`)이고 보기의 ×가 요약 카드로 돌린다. 넓어지고 접히는 자리(대화 폭 · 사이드바 접기)는 `ThreadScreen`이
@@ -157,6 +157,7 @@ export function WorkSummaryCard({ thread, slug, onNewThread, opened, onOpen, onC
   });
   const writing = useStore(workWritingStore, (state) => writingOf(state, slug));
   const written = useWritten(writing, slug);
+  const { data: scope } = useReadingScope({ thread });
   const [unfolded, setUnfolded] = useState(false);
   if (!work) return null;
   const target = changesTarget(changes.summary, work.projects);
@@ -168,7 +169,7 @@ export function WorkSummaryCard({ thread, slug, onNewThread, opened, onOpen, onC
         changes: changes.summary,
         prs: prRows(prs ?? [], Date.now()),
         docs: docRows(work.specTree, writing),
-        projects: projectRows(work),
+        projects: sourceProjects(scope, work),
       })}
       menu={<WorkMenu work={work} onNewThread={onNewThread} />}
       changes={changes.summary}
@@ -239,13 +240,11 @@ export function ArchivedSummaryCard({ slug }: { slug: string }) {
 }
 
 /**
- * Work 없는 Thread의 요약 카드(02 §7 · S20) — 머리 · 변경 사항 없이 결과물 · 소스만이다(Codex의 프로젝트 없는 채팅). 소스는 이 Thread의
- * Session이 읽기로 함께 여는 등록된 Project(v1 #540)이고 끝은 「읽기만」이다. 넓힌 카드(파일 트리)는 Work의 worktree를 읽어 여기서는
- * 줄이 보이기만 한다.
+ * Work 없는 Thread의 요약 카드(02 §7 · S20) — 머리 · 변경 사항 없이 결과물 · 소스만이다(Codex의 프로젝트 없는 채팅). 소스는 이 Thread의 읽는
+ * 범위(03 §7)이고 끝은 「읽기만」이다. 넓힌 카드(파일 트리)는 Work의 worktree를 읽어 여기서는 줄이 보이기만 한다.
  */
-export function LooseSummaryCard({ participants }: { participants: readonly Participant[] }) {
-  const { data: projects } = useProjects();
-  const { data: home } = useHomeDir();
+export function LooseSummaryCard({ thread }: { thread: string }) {
+  const { data: scope } = useReadingScope({ thread });
   const [unfolded, setUnfolded] = useState(false);
   return (
     <SmallCard>
@@ -255,7 +254,7 @@ export function LooseSummaryCard({ participants }: { participants: readonly Part
           changes: null,
           prs: [],
           docs: [],
-          projects: projects && home ? readingProjects(participants, projects, home) : [],
+          projects: sourceProjects(scope, null),
         })}
         {...STILL}
         unfolded={unfolded}

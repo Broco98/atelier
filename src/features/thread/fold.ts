@@ -1,6 +1,7 @@
 import { askLevelOf } from "./chips";
 import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
+import { readingList } from "@/features/spaces/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import { prLineOf, type PrLine } from "./pr";
 import type { Attachment, QuestionAnswer, RecordLine } from "./types";
@@ -276,7 +277,7 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "joined" | "left" | "library" | "mode" | "work" | "worktree";
+  kind: "title" | "joined" | "left" | "library" | "mode" | "work" | "worktree" | "space";
   /** 들고 난 참여자 · Library에 저장한 Agent의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기 · 정도 바꿈)은 `null`이다. */
   handle: string | null;
   /**
@@ -380,6 +381,11 @@ export interface PendingWork {
   /** Host가 고른 브랜치 — Project가 없는 제안이면 null이다. */
   branch: string | null;
   projects: WorkProjectChoice[];
+  /**
+   * 받아들이면 새 Work로 옮겨 갈 이 Thread의 Space(03 §9 · S8) — 카드에 「◇ 결제 서비스 · Space」 한 줄로 선다. 카드에서 바꾸지 않는다. Space가
+   * 없으면 `null`이다.
+   */
+  space: { slug: string; name: string } | null;
 }
 
 /**
@@ -1020,6 +1026,22 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         say(line.seq, "library", handle, "Library에 ", name, `${particle(name, "을", "를")} 저장함`, avatarOf(payload.avatar));
         break;
       }
+      // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
+      // 그때 엔진이 센 것이 줄에 실려 온다(기록은 덧붙이기만 해 지금 다시 세면 그때와 다르다). Work의 Space가 바뀌면 그 Work의 Thread마다 선다.
+      case "space": {
+        const projects = Array.isArray(payload.projects) ? payload.projects.filter((one): one is string => typeof one === "string") : [];
+        const name = nonEmpty(payload.name);
+        if (payload.change === "changed" && name) {
+          const reads = projects.length > 0 ? `${readingList(projects)}${particle(readingList(projects), "을", "를")} 읽어요` : "읽는 Project가 없어요";
+          say(line.seq, "space", null, "Space를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${reads}`);
+        }
+        if (payload.change === "removed") {
+          const registered = typeof payload.registered === "number" ? payload.registered : 0;
+          const reads = registered > 0 ? `등록된 Project ${registered}개를 읽어요` : "등록된 Project가 없어요";
+          say(line.seq, "space", null, `Space를 뺐어요 — 다음 차례부터 ${reads}`, "", "");
+        }
+        break;
+      }
       default:
         break;
     }
@@ -1275,7 +1297,15 @@ function proposalOf(requestId: string, who: string, payload: Json): PendingWork 
     reason: text(payload.reason) ?? "",
     branch: nonEmpty(payload.branch),
     projects,
+    space: spaceOf(payload.space),
   };
+}
+
+/** 카드가 싣는 Space(`{slug, name}`) — 꼴이 틀리면 없는 것이다. */
+function spaceOf(value: unknown): PendingWork["space"] {
+  if (!isObject(value)) return null;
+  const slug = nonEmpty(value.slug);
+  return slug ? { slug, name: nonEmpty(value.name) ?? slug } : null;
 }
 
 /** 그 도구 줄이 낸 부르기인가 — 맡긴 말이 도구의 `task`와 같다(엔진이 받은 그대로 적는다). */

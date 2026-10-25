@@ -1,11 +1,22 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { keepPreviousData, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { showProblem } from "@/components/ui/confirm-store";
+import { invalidateWorks } from "@/features/works/hooks";
+import { threadApi } from "@/features/thread/api";
 import { spacesApi } from "./api";
+import type { ScopeOf } from "./scope";
 import type { SpacePatch } from "./types";
 
 /** Space 읽기의 머리 열쇠 — 목록은 이것 하나, 상세는 뒤에 slug를 단다. 무효화는 이 머리로 둘을 함께 한다. */
 const SPACES_KEY = ["spaces"] as const;
+
+/**
+ * 읽는 범위(§7)의 머리 열쇠 — **`["works"]` 아래에 둔다.** 범위는 Work 파일(`space` · Project)과 worktree에 달려 있어 `works:changed`의 무효화
+ * 문(`invalidateWorks`)이 함께 지운다(core가 git을 부르지 않아 자주 다시 읽어도 싸다). Space 파일 · 등록부의 변화는 `useSpacesFeed`가, Thread의
+ * 칸(`space` · 읽기만 하기)과 worktree가 바뀐 기록 줄은 `followRecordLine`이 지운다.
+ */
+export const SCOPE_KEY = ["works", "reading-scope"] as const;
 
 // 신선도는 `spaces:changed` 무효화가 책임진다(projects 쪽과 같다). **`projects:changed`도 듣는다** — Space의 문제(등록되지 않은
 // Project)는 등록부에 달려 있어, Project를 더하거나 빼면 같은 Space 파일의 문제가 바뀐다.
@@ -21,7 +32,10 @@ function useSpacesFeed() {
   const queryClient = useQueryClient();
   useEffect(() => {
     const unlisten = ["spaces:changed", "projects:changed"].map((event) =>
-      listen(event, () => queryClient.invalidateQueries({ queryKey: SPACES_KEY })),
+      listen(event, () => {
+        void queryClient.invalidateQueries({ queryKey: SPACES_KEY });
+        void queryClient.invalidateQueries({ queryKey: SCOPE_KEY });
+      }),
     );
     return () => {
       for (const one of unlisten) void one.then((fn) => fn());
@@ -91,5 +105,36 @@ export function useSaveSpaceText() {
   return useMutation({
     mutationFn: ({ slug, text }: { slug: string | null; text: string }) => spacesApi.saveText(slug, text),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SPACES_KEY }),
+  });
+}
+
+/** 읽는 범위(§7) — 연 Thread의 것, 또는 보내기 전의 새 Thread가 쥔 Work · Space의 것. 요약 카드 「소스」 · Space 메뉴가 읽는다. */
+export function useReadingScope(of: ScopeOf, enabled = true) {
+  useSpacesFeed();
+  return useQuery({
+    queryKey: [...SCOPE_KEY, of.thread ?? null, of.work ?? null, of.space ?? null],
+    queryFn: () => spacesApi.scope(of),
+    staleTime: 30_000,
+    enabled,
+  });
+}
+
+/**
+ * Space 붙이기 · 바꾸기 · 빼기(`space: null`) — Work(Work 화면 머리의 Space 메뉴) 또는 Thread(06의 Space 칩). 엔진이 그 파일의 `space`만 고치고
+ * Space 줄을 남긴다. 쓴 뒤 Work 목록 · 범위 · Thread를 다시 읽는다 — 감시의 종보다 먼저 화면이 따라온다. 못 바꾸면 그 까닭을 띄운다.
+ */
+export function useSetSpace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ target, space }: { target: { work: string } | { thread: string }; space: string | null }) =>
+      "work" in target ? threadApi.setWorkSpace(target.work, space) : threadApi.setSpace(target.thread, space),
+    onSuccess: async (_, { target }) => {
+      await Promise.all([
+        invalidateWorks(queryClient),
+        queryClient.invalidateQueries({ queryKey: SCOPE_KEY }),
+        "thread" in target && queryClient.invalidateQueries({ queryKey: ["thread", target.thread] }),
+      ]);
+    },
+    onError: (error) => void showProblem(`Space를 바꾸지 못했습니다: ${error}`),
   });
 }

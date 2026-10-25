@@ -1,15 +1,14 @@
 import { readStored, writeStored } from "@/lib/stored";
-import type { ProjectView } from "@/features/projects/types";
-import { expandHome } from "@/features/works/doc-refs";
+import type { ReadingScope } from "@/features/spaces/scope";
 import type { ChangedFile, ProjectChanges, ProjectPr, SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import { particle } from "./fold";
 import type { Opened } from "./expanded";
 import { failNote, mergedWhen } from "./pr";
-import type { DocWriting, Participant } from "./types";
+import type { DocWriting } from "./types";
 
 // **요약 카드의 칸을 짓는 순수 함수**(02 구현 스펙 §7 · 캔버스 v35 Screen-Live · Components 「요약 카드」 — v1 Work 카드를 바꿨다). 카드
 // (`SummaryCard.tsx`)는 이것이 지은 칸을 그리기만 한다. 칸은 머리 · 변경 사항(PR 줄) · 결과물 · 소스 차례이고(`summarySections`), Work
-// 없는 Thread는 결과물 · 소스만이다. 변경 · 문서 · Project · PR의 자료는 v1 그대로 읽는다(새 Tauri 명령이 없다).
+// 없는 Thread는 결과물 · 소스만이다. 변경 · 문서 · PR의 자료는 v1 그대로 읽고, 소스의 Project는 읽는 범위(03 §7 — `reading_scope`)다.
 
 /** 변경 칸의 Project 하나 — 그 Project의 +/− 합계와 바뀐 파일들(코어 차례 — 늦게 고친 것이 앞). */
 export interface ChangeGroup {
@@ -139,20 +138,20 @@ export function projectRows(work: Pick<WorkView, "projects" | "worktrees">): Pro
 }
 
 /**
- * Work 없는 Thread의 소스(S20 · v1 #540) — 그 Thread의 Session이 읽기로 함께 여는 폴더(`additionalDirectories` — 엔진이 Session을 열 때
- * 적는다) 가운데 **등록된 Project의 폴더**다. 등록 차례로 서고 모두 「읽기만」이다(Work 없는 Thread가 고칠 수 있는 곳은 Thread 폴더뿐이다).
- * Project 목록의 자리는 `~`로 적혀 있을 수 있어 홈을 펴서 견준다. Session이 아직 열리지 않았으면 읽는 것이 없다.
+ * 소스의 Project(03 §7 · §2 「요약 카드」 — 소스는 읽는 범위다) — Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저(Work의
+ * 차례) 서고, 그 뒤에 읽는 범위의 Project가 「읽기만」으로 선다(범위의 차례 — 바탕 Space · 전부, 그 뒤 Work · 읽기만). 범위는 worktree에서
+ * 일하는 Project를 이미 뺐다(§7 규칙 4). Work 없는 Thread(`work`가 `null`)는 범위의 Project뿐이다. 범위를 아직 못 읽었으면(`undefined`)
+ * 고치는 중인 것만 선다.
  */
-export function readingProjects(
-  participants: readonly Pick<Participant, "additionalDirectories">[],
-  projects: readonly Pick<ProjectView, "slug" | "path">[],
-  home: string,
+export function sourceProjects(
+  scope: Pick<ReadingScope, "projects"> | undefined,
+  work: Pick<WorkView, "projects" | "worktrees"> | null,
 ): ProjectRow[] {
-  const bare = (path: string) => path.replace(/\/+$/, "");
-  const read = new Set(participants.flatMap((one) => one.additionalDirectories.map(bare)));
-  return projects
-    .filter((project) => read.has(bare(expandHome(project.path, home))))
+  const editing = work ? projectRows(work).filter((row) => row.editing) : [];
+  const reading = (scope?.projects ?? [])
+    .filter((project) => !editing.some((row) => row.project === project.slug))
     .map((project) => ({ project: project.slug, editing: false }));
+  return [...editing, ...reading];
 }
 
 /** PR 줄 하나. `checking`이면 문장이 천천히 빛난다(보드 「확인하는 동안 글자만 천천히 빛납니다」). */

@@ -71,6 +71,7 @@ mod attachments;
 mod changes;
 mod pr;
 mod space;
+mod reading_scope;
 
 // 원자 쓰기 둘을 낸다 — 폴더를 만드는 쪽 · 만들지 않는 쪽. 읽기(`read_json_or_default`)는 안 낸다: 기록은 「깨졌으면 기록
 // 없음」이라 기본값으로 눕는 그 읽기와 뜻이 다르다.
@@ -121,11 +122,14 @@ pub use space::{
     shared_spaces, space_detail, update_space,
     Lines, NewSpace, SharedSpace, Space, SpaceCheck, SpaceDetail, SpaceDraft, SpacePatch, SpacePieces, SpaceProblem, SpaceProblemKind,
 };
+// 읽는 범위(03 구현 스펙 §7) — Thread가 읽는 Project를 정하는 함수 하나. 엔진의 Session 자리 · 머리말과 앱 명령(범위 줄 · 요약 카드)이
+// 함께 부른다.
+pub use reading_scope::{reading_scope, reading_scope_of, ReadingScope, ScopeKind, ScopeOf, ScopeProject, ScopeSpace, ScopeWhy};
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
     archive_work, archived_spec_folder, attach_project, get_work, list_archive, list_archived_docs, list_works,
     move_work, read_spec_file, read_work_file, remove_work, render_record, start_work, start_work_deferred,
-    update_work_pinned, update_work_status, update_work_title, work_folder, ArchiveEntry, WorkReport, WorktreeError,
+    update_work_pinned, update_work_space, update_work_status, update_work_title, work_folder, ArchiveEntry, WorkReport, WorktreeError,
 };
 // 대화 호스트(`atelier-acp`)가 데이터 루트를 받아 work의 제목 · 프로젝트와 자리를 읽는다. `get_work`는 워크트리마다
 // `git status`를 돌고 `~` 축약 문자열을 주므로 그 자리에 맞지 않는다.

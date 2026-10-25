@@ -146,6 +146,18 @@ pub async fn save_space_text(slug: Option<String>, text: String) -> CmdResult<Sp
     atelier_core::save_space_text(&data_root(), slug.as_deref(), &text).map_err(err)
 }
 
+/// 읽는 범위(03 구현 스펙 §7) — Space(slug · 이름 · 문제 있음) · 읽는 Project(slug · 이름 · 왜) · 갈래(전부 · Space · 빈 Space · 등록
+/// 없음). `thread`가 있으면 그 Thread의 범위, 없으면 보내기 전의 새 Thread — 입력창이 고른 Work · Space로 센다. 요약 카드 「소스」와
+/// Space 메뉴가 이것을 그린다. 읽기만 하고 core를 부르기만 한다(L4 다리로도 탄다).
+#[tauri::command]
+pub async fn reading_scope(
+    thread: Option<String>,
+    work: Option<String>,
+    space: Option<String>,
+) -> CmdResult<atelier_core::ReadingScope> {
+    atelier_core::reading_scope_of(&data_root(), thread.as_deref(), work.as_deref(), space.as_deref()).map_err(err)
+}
+
 // **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
 // 규칙은 코어의 `with_spec_trees` 한 자리에 있고 여기는 그것을 부르기만 한다 — L4 다리도 같은
 // 입구를 부른다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
@@ -1057,6 +1069,27 @@ pub async fn thread_set_mode(
     mode: atelier_acp::AskLevel,
 ) -> CmdResult<()> {
     to_host(&engine, "물어보는 정도를 바꾸지 못했습니다", move |host| host.set_thread_mode(&thread, mode)).await
+}
+
+/// Thread의 Space 붙이기 · 바꾸기 · 빼기(`space` 없음, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Space가 바뀐다(§9). 떠 있는 Session은
+/// 그대로 두고 다음 말부터 새 범위로 이어 연다. 바꾼 것은 Space 줄(`space`)로 남는다. 없는 Space는 그 까닭으로 거절된다.
+#[tauri::command]
+pub async fn thread_set_space(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    space: Option<String>,
+) -> CmdResult<()> {
+    to_host(&engine, "Space를 바꾸지 못했습니다", move |host| host.set_thread_space(&thread, space.as_deref())).await
+}
+
+/// Work의 Space 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Space 메뉴(03 티켓 05). 그 Work의 Thread마다 Space 줄이 선다(S9).
+#[tauri::command]
+pub async fn thread_set_work_space(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    work: String,
+    space: Option<String>,
+) -> CmdResult<()> {
+    to_host(&engine, "Work의 Space를 바꾸지 못했습니다", move |host| host.set_work_space(&work, space.as_deref())).await
 }
 
 /// 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 「최근 Work」를 고르면 물어보는 정도 칩이 이것을 보인다.

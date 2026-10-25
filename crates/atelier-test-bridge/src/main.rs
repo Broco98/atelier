@@ -82,6 +82,15 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("save_space_text", |a| {
         ok(atelier_core::save_space_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
     }),
+    // 읽는 범위(03 구현 스펙 §7) — 읽기만 하는 core 입구다(`commands.rs`와 같다).
+    ("reading_scope", |a| {
+        ok(atelier_core::reading_scope_of(
+            &data_root(),
+            maybe_text(a, "thread").as_deref(),
+            maybe_text(a, "work").as_deref(),
+            maybe_text(a, "space").as_deref(),
+        ))
+    }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
     // **진짜로** 탄다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
     ("list_works", |_| {
@@ -292,6 +301,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_work_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_work_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     // Work의 PR(v1 티켓 36)은 엔진이 읽고 `pr` 줄을 남긴다 — 읽기 · 셈은 L1(`atelier-core` `pr` · `atelier-acp` `thread_pr`)이 잰다.
     ("thread_work_prs", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
@@ -539,7 +550,7 @@ mod tests {
 
     /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
     /// core 쪽에 서면 이 표를 읽는다. Thread · Agent의 파일 모양(`threads.rs` · `agents.rs` …)이 여기 산다.
-    const CORE_SOURCES: [(&str, &str); 35] = [
+    const CORE_SOURCES: [(&str, &str); 36] = [
         ("agents.rs", include_str!("../../atelier-core/src/agents.rs")),
         ("agents/scope.rs", include_str!("../../atelier-core/src/agents/scope.rs")),
         ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
@@ -564,6 +575,7 @@ mod tests {
         ("pr.rs", include_str!("../../atelier-core/src/pr.rs")),
         ("project.rs", include_str!("../../atelier-core/src/project.rs")),
         ("recent.rs", include_str!("../../atelier-core/src/recent.rs")),
+        ("reading_scope.rs", include_str!("../../atelier-core/src/reading_scope.rs")),
         ("records.rs", include_str!("../../atelier-core/src/records.rs")),
         ("search.rs", include_str!("../../atelier-core/src/search.rs")),
         ("slug.rs", include_str!("../../atelier-core/src/slug.rs")),

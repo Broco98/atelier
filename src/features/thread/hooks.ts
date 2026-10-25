@@ -3,6 +3,7 @@ import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type Q
 import { useStore } from "@tanstack/react-store";
 import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
+import { SCOPE_KEY } from "@/features/spaces/hooks";
 import { saveSettingsSection } from "@/features/settings/save-section";
 import type { ProjectPr } from "@/features/works/types";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
@@ -185,6 +186,11 @@ export function useThreadFeeds(): void {
  *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
+  // 읽는 범위가 바뀐 줄(03 §7) — Space 줄 · Work 연결과 worktree 생성(`work`) · Work 밖 Project 카드의 「읽기만 하기」(`question`). 범위는 Thread
+  // 파일과 Work의 worktree로 세므로 다음에 그릴 때 다시 읽는다.
+  if (line.kind === "space" || line.kind === "work" || line.kind === "question") {
+    void queryClient.invalidateQueries({ queryKey: SCOPE_KEY });
+  }
   if (line.kind === "library") {
     void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
     void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });

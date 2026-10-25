@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Book, Check, Layers, MoreHorizontal, Pencil, Plus, TriangleAlert, X } from "lucide-react";
+import { shallow, useStore } from "@tanstack/react-store";
+import { ArrowLeft, Book, Check, Folder, Layers, MoreHorizontal, Pencil, Plus, TriangleAlert, X } from "lucide-react";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { navItem } from "@/components/shell/nav-items";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -20,9 +21,15 @@ import { cn } from "@/lib/utils";
 import { addProject } from "@/features/projects/add-store";
 import { useProjects } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
+import { signalsOf } from "@/features/terminal/shell-attention";
+import { terminalStore } from "@/features/terminal/terminal-store";
+import { useWorkMarks } from "@/features/thread/hooks";
+import { useWorks } from "@/features/works/hooks";
+import { workMark } from "@/features/works/work-mark";
+import { StatusMark } from "@/components/shell/status-mark";
 import { useSpace, useUpdateSpace } from "./hooks";
 import { SpaceGraph } from "./SpaceGraph";
-import { addMenu, createdLine, spaceName } from "./space-view";
+import { addMenu, createdLine, spaceName, spaceWorks } from "./space-view";
 import type { SpaceDetail as Detail, SpacePatch } from "./types";
 
 // Space 상세(03 구현 스펙 §14 · 시안 F1-SpaceDetail · F4-SpaceEmpty). 머리 줄 「Space / 결제 서비스」, 판 안에 「← Space」 단추 · 제목과
@@ -30,8 +37,9 @@ import type { SpaceDetail as Detail, SpacePatch } from "./types";
 // 고치기 하나로 그 칸만 바꾼다(`update_space`). 빼면 「되돌리기」 토스트가 잠깐 서고, 누르면 뺀 Project를 제자리에 다시 넣는다.
 //
 // 관계 그래프의 「편집」과 문제 상자의 「관계 편집에서 고치기」는 그 Space 파일을 글 그대로 고치는 화면(`/spaces/$slug/edit` — 04)으로 간다.
+// 오른쪽 칸 「Work」 묶음은 이 Space에 이은 진행 중인 Work 줄이다(05 — 사이드바 Work 줄과 같은 상태 표시, 누르면 그 Work로).
 //
-// 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06), ⋯ 「관계 편집 · 삭제…」(07), 오른쪽 칸의 「Work」 묶음(05).
+// 이 판의 다른 티켓이 더할 자리: 머리 「Host와 고치기」 · 「새 Work」(06), ⋯ 「관계 편집 · 삭제…」(07).
 
 export default function SpaceDetail({ slug }: { slug: string }) {
   const { data: space, isError, error } = useSpace(slug);
@@ -182,8 +190,49 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
             ))
           )}
         </section>
+        <SpaceWorks slug={space.slug} />
       </aside>
     </div>
+  );
+}
+
+/**
+ * 오른쪽 칸의 「Work」 묶음(§14 · 시안 F1-SpaceDetail `.rs`) — 머리 끝에 수, 이 Space에 이은 Work마다 📁 이름과 끝의 상태 표시 하나(사이드바 Work
+ * 줄과 같은 것 — 그 Work의 Thread들 가운데 가장 센 것, 조용하면 셸 신호 · `workMark`). 누르면 그 Work 화면이다. 없으면 「아직 없음」.
+ */
+function SpaceWorks({ slug }: { slug: string }) {
+  const { data: works = [] } = useWorks();
+  const marks = useWorkMarks();
+  const signals = useStore(terminalStore, (state) => signalsOf(state), shallow);
+  const linked = spaceWorks(works, slug);
+  return (
+    // 앞 묶음과 1px 선으로 가르고 위아래 16이다(시안 `.rs` — 첫 묶음만 선 없이 위 4). 머리 끝의 수는 머리와 같은 글자다(`.rl .end`).
+    <section aria-label="Work" className="border-t border-separator-soft py-4">
+      <h2 className="mb-2 flex items-center text-sm text-fg-secondary">
+        Work
+        {linked.length > 0 && <span className="ml-auto">{linked.length}</span>}
+      </h2>
+      {linked.length === 0 ? (
+        <p className="text-sm text-fg-secondary">아직 없음</p>
+      ) : (
+        linked.map((work) => (
+          <Link
+            key={work.slug}
+            to="/works/$slug"
+            params={{ slug: work.slug }}
+            search={{}}
+            data-work={work.slug}
+            className="-mx-1.5 flex min-h-8 w-[calc(100%+12px)] items-center gap-2.5 rounded-md px-1.5 text-left text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
+          >
+            <Folder aria-hidden className="size-4 shrink-0 text-fg-icon" />
+            <span className="min-w-0 truncate">{work.title || work.slug}</span>
+            <span className="ml-auto flex shrink-0 items-center">
+              <StatusMark kind={workMark(marks[work.slug] ?? [], signals[work.slug] ?? null)} />
+            </span>
+          </Link>
+        ))
+      )}
+    </section>
   );
 }
 

@@ -228,6 +228,25 @@ describe("말의 사전", () => {
     }
   });
 
+  // 03 구현 스펙 §2 · §7 · §9 · 티켓 05. Thread가 읽는 Project는 함수 하나에서 나온다 — 사전이 그 하나를 모르면 다음 사람이 화면마다 범위를
+  // 다시 센다(요약 카드가 Session이 연 폴더를 훑던 v1 #540의 길). 「스코프」는 거부어다. Space 줄은 그때 센 범위를 싣고, Space 메뉴는 Work 화면
+  // 머리가 연다. 요약 카드의 소스와 Work 만들기 카드의 Space 줄도 이 판이 고쳤다.
+  it("「읽는 범위」 · 「Space 줄」 · 「Space 메뉴」가 등재돼 있고, 읽는 범위가 「스코프」를 거부하며, 요약 카드의 소스가 그 범위다", () => {
+    expect(names).toEqual(expect.arrayContaining(["읽는 범위", "Space 줄", "Space 메뉴"]));
+    expect(bodyOf("읽는 범위")).toContain("_피할 말_: 스코프");
+    expect(refused).toContain("스코프");
+    for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때"]) {
+      expect(bodyOf("읽는 범위"), piece).toContain(piece);
+    }
+    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
+    for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「Host와 Space 만들기」", "메뉴 › Space"]) {
+      expect(bodyOf("Space 메뉴"), piece).toContain(piece);
+    }
+    expect(bodyOf("요약 카드")).toContain("소스는 그 Thread의 읽는 범위다");
+    expect(bodyOf("요약 카드")).not.toContain("함께 여는 등록된 Project");
+    expect(bodyOf("Work 만들기 카드")).toContain("「◇ 결제 서비스 · Space」");
+  });
+
   // 03 구현 스펙 §2 · §13 · 티켓 04. Space 파일을 고치는 한 화면의 두 길이다. 사전이 「글 그대로」 · 「같은 검사」를 말하지 않으면 다음 사람이
   // 저장을 serde 왕복으로 되돌려 사람이 적은 주석 · 차례를 지우거나, 화면에 따로 검사를 세워 화면이 괜찮다고 한 파일을 저장이 거절한다.
   // 직접 만들기가 같은 화면 · 빈 틀 · 따라오는 파일 이름을 말하지 않으면 새 Space를 다른 창(이름 · Project 칸)으로 짓는다.

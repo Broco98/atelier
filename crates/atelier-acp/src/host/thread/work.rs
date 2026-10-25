@@ -192,7 +192,21 @@ impl ConversationHost {
                 eprintln!("물어보는 정도를 Work로 옮기지 못했습니다: {error}");
             }
         }
-        self.change_thread(thread, |file| file.work = Some(slug.clone()))?;
+        // Thread의 Space를 Work로 옮기고 Thread의 칸은 비운다(03 §9) — 이은 뒤로는 Work의 Space를 따르므로(§7 규칙 1) 범위가 그대로다.
+        // 옮기지 못했으면 칸은 남긴다 — 읽히지는 않지만(규칙 1) 사람이 고른 것을 잃지 않게.
+        let moved = file.space.as_deref().is_none_or(|space| match atelier_core::update_work_space(&works, &slug, Some(space)) {
+            Ok(_) => true,
+            Err(error) => {
+                eprintln!("Space를 Work로 옮기지 못했습니다: {error}");
+                false
+            }
+        });
+        self.change_thread(thread, |file| {
+            file.work = Some(slug.clone());
+            if moved {
+                file.space = None;
+            }
+        })?;
         self.threads.link_sessions(thread, &slug);
         let work_at = self.open_work(&slug)?;
         let log = self.thread_log(thread)?;
@@ -348,13 +362,19 @@ impl ConversationHost {
                 .filter(|view| !proposal.projects.iter().any(|pick| pick.slug == view.project.slug))
                 .map(|view| row(view, None)),
         );
-        Ok(json!({
+        let mut card = json!({
             "title": proposal.title,
             "slug": proposal.slug,
             "reason": proposal.reason,
             "branch": proposal.branch,
             "projects": projects,
-        }))
+        });
+        // 붙을 Space(03 §9) — 받아들이면 이 Thread의 Space가 새 Work로 옮겨 간다. 카드에서 바꾸지 않는다(S8). 파일이 없는 Space는 Space가
+        // 없는 것이다(§7 규칙 1) — 줄이 서지 않는다.
+        if let Some(space) = self.scope_of(&file, None).space {
+            card["space"] = json!({"slug": space.slug, "name": space.name});
+        }
+        Ok(card)
     }
 
     /// Work를 Agent에게 보이는 글 — 머리말의 Work 칸(S10)과 같은 줄에 브랜치와, spec 폴더 안 문서의 배치(spec 레이아웃 — MCP

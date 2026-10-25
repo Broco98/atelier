@@ -10,8 +10,8 @@
 //!   frontmatter(v1 티켓 12), 모델 · 생각 깊이는 `thread.json`의 참여자 줄(들어올 때 스냅숏에서 옮겨 적고, 입력창 칩이
 //!   바꾼다)이다.
 //! - Agent에게 가는 말은 머리말(Session의 첫 말) + 지난 말 + 본문이다(S10). 지난 말은 보내는 그때 기록에서 짓는다(`past`).
-//! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더(등록된 Project 폴더를 읽기로 함께 연다 — 끝 점검 39(a)), Work면 three-axes
-//!   결정 17 표(worktree가 선 Project만 센다).
+//! - 작업 폴더는 S11 표다 — Work 없음이면 Thread 폴더, Work면 three-axes 결정 17 표(worktree가 선 Project만 센다). 함께 여는 폴더는
+//!   읽는 범위다(03 구현 스펙 §7 — Space가 있으면 그 Project, 없으면 등록된 Project 전부, [`space`]).
 //! - Thread의 Session은 spec 폴더를 찍지 않는다 — `changes` 줄이 없다. 바뀐 것은 Work 카드가 git으로 본다(v1 티켓 33 · 34).
 //! - 되살리기(resume → load → 새로) · 큐 · 멈춤 · 지금 전하기 · 권한 답 · 모델 바꾸기 · 로그인 · 죽음 · 끌 때 셈은 three-axes
 //!   대화 호스트의 길 그대로다.
@@ -41,6 +41,7 @@ mod pr;
 mod project;
 mod read_only;
 mod seat;
+mod space;
 mod tool_lines;
 mod work;
 mod writing;
@@ -94,7 +95,7 @@ const NEW_WORK_NOTE: &str = "- 사람이 「새 Work로 시작」을 골랐다 �
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ThreadLink {
-    /// Work 없음 — Thread 폴더에서 일하고, 등록된 Project 폴더는 읽기로 함께 연다(S11 · 끝 점검 39(a)).
+    /// Work 없음 — Thread 폴더에서 일하고, 읽는 범위의 Project 폴더를 읽기로 함께 연다(S11 · 03 §7).
     NoWork,
     /// 새 Work로 시작 — 아직 Work가 없으므로 Work 없음처럼 선다. 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서고(v1 티켓
     /// 31 · §11), `thread.json`에 그 표시(`newWork`)가 남는다(03 S3). Work는 Host의 제안 카드로 만든다(v1 티켓 30).
@@ -1312,48 +1313,41 @@ impl ConversationHost {
         Ok(atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?.join(atelier_core::THREAD_SNAPSHOTS))
     }
 
-    /// Thread의 작업 폴더(v1 구현 스펙 S11).
+    /// Thread의 작업 폴더(v1 구현 스펙 S11)와 함께 여는 폴더(03 구현 스펙 §7).
     ///
     /// | 이어진 곳 | cwd | 함께 여는 폴더 |
     /// |---|---|---|
-    /// | Work 없음 | Thread 폴더 | 등록된 Project 폴더 모두 |
-    /// | worktree가 선 Project가 없는 Work | spec 폴더 | — |
-    /// | worktree 하나 | 그 worktree | spec 폴더 |
-    /// | worktree 여럿 | `trees/` | spec 폴더 |
+    /// | Work 없음 | Thread 폴더 | 읽는 범위 |
+    /// | worktree가 선 Project가 없는 Work | spec 폴더 | 읽는 범위 |
+    /// | worktree 하나 | 그 worktree | spec 폴더 + 읽는 범위 |
+    /// | worktree 여럿 | `trees/` | spec 폴더 + 읽는 범위 |
     ///
-    /// - **Work 없는 Thread는 등록된 Project 폴더를 모두 함께 연다**(끝 점검 39(a) 사용자 결정) — Host가 Work를 제안하기 전에 어느
-    ///   Project의 일인지 보려고 저장소를 읽는다. 열지 않으면 읽기마다 claude가 묻고, 그 물음이 Work 만들기 카드 앞에 줄줄이 선다. 읽을
-    ///   수 있게만 한다 — Work 없는 Thread가 고칠 수 있는 자리는 Thread 폴더뿐이고, 판정이 따로 센다(`gate.rs`). Work에 이어지면 이
-    ///   폴더들은 빠지고, Project를 등록하거나 지우면 함께 바뀐다 — 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]). 폴더가
-    ///   사라진 Project(등록 뒤 옮기거나 지운 저장소)는 넘기지 않는다.
-    /// - Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project 폴더(`readOnlyProjects`)는 함께 여는 폴더 끝에 더한다(S22 · v1 티켓 32) —
-    ///   읽을 수 있게만 한다.
+    /// - **읽는 범위는 함수 하나다**([`atelier_core::reading_scope`] — §7 규칙 1–4). Space가 있으면 그 Space의 Project, 없으면 등록된 Project
+    ///   전부, 그리고 worktree가 아직 없는 Work의 Project와 Work 밖 Project 카드에서 「읽기만 하기」를 고른 Project(S22)다. worktree가 선
+    ///   Project와 폴더가 사라진 Project는 빠진다. Work 없는 Thread가 Work를 제안하기 전에 어느 Project의 일인지 보려고 저장소를 읽던 것(끝
+    ///   점검 39(a))이 Work 안에서도 같다 — 옆 저장소를 카드 없이 읽는다(`F4-WorkNoSpace`).
+    /// - **읽을 수 있게만 한다** — 고칠 수 있는 자리는 판정이 따로 센다(`gate.rs` — Work의 선 worktree · spec 폴더 · Thread 폴더). 범위가
+    ///   바뀌면(Space · 등록 · worktree) 다음 말에서 바뀐 자리로 이어 연다([`Self::move_if_needed`]).
     fn thread_place(&self, thread: &str, file: &ThreadFile) -> Result<SessionPlace, HostError> {
-        let mut place = match &file.work {
+        let (mut place, work) = match &file.work {
             None => {
                 let cwd = atelier_core::thread_dir(&self.data_root, thread).map_err(|error| thread_error(thread, error))?;
-                let projects = atelier_core::project_folders(&self.data_root)
-                    .into_iter()
-                    .map(|(_, folder)| folder)
-                    .filter(|folder| folder.is_dir())
-                    .collect();
-                SessionPlace { cwd, additional_directories: projects }
+                (SessionPlace { cwd, additional_directories: Vec::new() }, None)
             }
             Some(slug) => {
                 let work_at = self.open_work(slug)?;
                 let trees: Vec<&PathBuf> = work_at.places.worktrees.iter().filter(|tree| tree.is_dir()).collect();
-                match trees.as_slice() {
+                let place = match trees.as_slice() {
                     [] => SessionPlace { cwd: work_at.places.spec.clone(), additional_directories: Vec::new() },
                     [tree] => SessionPlace { cwd: (*tree).clone(), additional_directories: vec![work_at.places.spec.clone()] },
                     _ => SessionPlace { cwd: work_at.places.trees.clone(), additional_directories: vec![work_at.places.spec.clone()] },
-                }
+                };
+                (place, Some(work_at.meta))
             }
         };
-        if !file.read_only_projects.is_empty() {
-            for (slug, folder) in atelier_core::project_folders(&self.data_root) {
-                if file.read_only_projects.contains(&slug) && !place.additional_directories.contains(&folder) {
-                    place.additional_directories.push(folder);
-                }
+        for project in self.scope_of(file, work.as_ref()).projects {
+            if !place.additional_directories.contains(&project.folder) {
+                place.additional_directories.push(project.folder);
             }
         }
         Ok(place)
@@ -1373,16 +1367,25 @@ impl ConversationHost {
             key.handle,
             participants.join(", ")
         );
-        match &file.work {
+        let work = match &file.work {
             None => {
                 let dir = atelier_core::thread_dir(&self.data_root, &key.thread).map_err(|error| thread_error(&key.thread, error))?;
                 text.push_str(&format!("- Work: 없음 — 이 Thread 폴더에서 일한다: `{}`\n", dir.display()));
+                None
             }
             Some(slug) => match self.open_work(slug) {
-                Ok(work_at) => text.push_str(&work::work_lines(slug, &work_at)),
-                Err(_) => text.push_str(&format!("- Work: `{slug}` — 찾을 수 없다\n")),
+                Ok(work_at) => {
+                    text.push_str(&work::work_lines(slug, &work_at));
+                    Some(work_at.meta)
+                }
+                Err(_) => {
+                    text.push_str(&format!("- Work: `{slug}` — 찾을 수 없다\n"));
+                    None
+                }
             },
-        }
+        };
+        // 읽는 범위(03 §7 · §11) — Work 줄 뒤의 따로 선 한 줄이다. Work 줄의 꼴은 바꾸지 않는다(화면 L3가 그 줄을 읽는다).
+        text.push_str(&space::space_preamble(&self.scope_of(&file, work.as_ref())));
         if self.thread_tools.is_some() {
             text.push_str(&format!(
                 "- Thread 도구: MCP 서버 `{}`의 도구로 이 Thread를 다룬다. Thread id는 넘기지 않는다 — 이 Session의 Thread다.\n  \

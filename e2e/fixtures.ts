@@ -2,6 +2,7 @@ import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
+import type { ReadingScope } from "@/features/spaces/scope";
 import type { Space, SpaceDetail, SpaceDraft } from "@/features/spaces/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
@@ -88,6 +89,17 @@ export const SPACES: Space[] = [
     problems: [],
   },
 ];
+
+/**
+ * 읽는 범위의 답(03 §7 — core `reading_scope_of`가 짓는 모양) — Space 없는 Thread가 등록된 Project 둘을 모두 읽는다. 요약 카드 「소스」가 Thread를
+ * 열 때마다 읽는다. Space를 붙인 범위를 재는 검사는 이 답을 갈아 끼운다.
+ */
+export const SCOPE_ALL: ReadingScope = {
+  space: null,
+  projects: PROJECTS.map((project) => ({ slug: project.slug, name: project.name, why: "all" })),
+  kind: "all",
+  registered: PROJECTS.length,
+};
 
 /** Space 상세의 답 — 그 Space와 함께 쓰는 Space(core `space_detail`이 짓는 모양). */
 export const SPACE_DETAILS: Record<string, SpaceDetail> = {
@@ -955,6 +967,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_space_text: answerByArg("slug", SPACE_TEXTS),
   check_space: SPACE_DRAFT,
   save_space_text: SPACES[0],
+  // 읽는 범위(03 §7) — 요약 카드 「소스」가 Thread를 열 때마다 읽는다.
+  reading_scope: SCOPE_ALL,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //
@@ -1202,6 +1216,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   thread_set_effort: FIXTURE_HOST,
   // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
   thread_set_mode: null,
+  // Space 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `space` 줄과 Work 목록 다시 읽기로 온다.
+  thread_set_space: null,
+  thread_set_work_space: null,
   // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
   thread_work_mode: "always",
   // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).

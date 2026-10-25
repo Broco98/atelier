@@ -296,6 +296,28 @@ Agent를 돌리는 Runtime의 권한 · 일하는 방식(계획 모드 같은 �
 하고, Work에 이은 Thread면 그 Work 이름(누르면 그 Work 화면), Work 없는 Thread면 「Work 없이 대화」, 「새 Work」로 시작해 아직 Work가 없으면
 흐린 「새 Work」다. 새 Work는 칩이 아니라 첫 말과 Host의 Work 만들기 카드로 생긴다.
 
+**읽는 범위**:
+Thread가 읽는 Project들 — 함수 하나가 정하고, Session이 읽기로 함께 여는 폴더 · Host가 받는 머리말의 「- Space:」 줄 · 요약 카드
+「소스」 · 범위 줄이 모두 그 값을 쓴다. Work에 이은 Thread는 그 Work의 Space를, Work 없는 Thread는 그 Thread의 Space를 따른다(그 Space 파일이
+없으면 Space가 없는 것이다). 바탕은 Space가 있으면 그 Space의 등록된 Project, 없으면 등록된 Project 전부다. 여기에 Work의 아직 worktree가 없는
+Project와 「읽기만 하기」로 허락한 Project를 더하고, 폴더를 찾을 수 없는 Project와 그 Work에 worktree가 있는 Project(그 Project는 worktree에서
+일한다)를 뺀다. 고칠 수 있는 곳은 바뀌지 않는다 — 읽는 범위의 폴더에 쓰려 하면 Work 밖 Project 카드가 선다. 범위가 바뀌면 떠 있는 Session은
+다음 말을 보낼 때 새 폴더로 다시 열린다. 돌고 있는 턴은 끊기지 않는다.
+_피할 말_: 스코프
+
+**Space 줄**:
+대화 흐름 가운데의 회색 한 줄 — 사람이 Space를 바꾸거나 빼면 그 뒤로 읽는 Project를 말한다(「Space를 사내 도구로 바꿨어요 — 다음 차례부터
+api-server · backoffice를 읽어요」 · 「Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요」). 굵은 것은 Space 이름뿐이다. Work의 Space가
+바뀌면 그 Work의 Thread마다 선다. 읽는 Project는 그때 센 것이 줄에 남는다 — 지금 다시 세지 않는다. 첫 말 전에 고른 Space는 줄을 남기지
+않는다 — 첫 말이 그 범위로 시작한다.
+
+**Space 메뉴**:
+Space를 고르는 메뉴 — Work 화면 머리 줄의 「흐린 Space / Work 이름」에서 흐린 Space(없으면 흐린 「Space 없음」)를 누르면 열린다. 맨 위는
+「Space 빼기」(Space가 없으면 ✓가 붙은 「Space 없음」)와 빼면 읽는 것(「등록된 Project 3개를 모두 읽어요」)이고, 그 아래 「Space — 고르면 그
+안의 Project만 읽어요」 묶음에 Space마다 이름과 적힌 Project가 서며 지금 것에 ✓가 붙는다. 파일에 문제가 있는 Space도 이름 뒤 「문제 있음」을
+달고 선다 — 고르면 읽을 수 있는 Project만 읽는다. 끝은 「Space 관리 · 메뉴 › Space」다. Space가 하나도 없으면 목록 자리에
+「Host와 Space 만들기」가 선다. Work 화면에서 고르면 그 Work의 Space가 바뀌어, 그 Work의 Thread가 모두 다음 차례부터 새 범위를 읽는다.
+
 **물어보는 정도**:
 Agent가 언제 사람에게 묻는지 — 매번 묻기 · 편집은 허용 · 계획만 · 알아서 넷 가운데 하나다. 입력창 안 칩(`/policy` · `/plan`)에서
 고른다. Work에 이은 Thread면 그 Work의 것이라 같은 Work의 Thread들이 함께 쓴다. 그 Agent의 Policy(`ask_before` · `forbid`)가 이것보다
@@ -330,8 +352,9 @@ _피할 말_: 승인 큐, 권한 대기열
 **Work 만들기 카드**:
 Host가 대화 중에 「이 일을 Work로 묶을까요?」를 묻는 카드 — 입력창 자리 · 물음 차례에 승인 카드와 함께 선다. 제목 · 까닭과 등록된
 Project(Host 추천이 먼저 골라져 있다), 브랜치 이름을 보이고 사람이 넣고 빼고 고친다. 「Work 만들기」는 worktree 없이 Work를 만들고 그
-Thread를 잇는다(흐름에 「Work … 을 만들고 이 Thread에 연결함」). 「Work 없이 계속」은 아무것도 만들지 않는다. 처음 Work를 만들면 한 번
-「결정은 내가 합니다」 카드가 Host가 먼저 묻는 일을 알린다.
+Thread를 잇는다(흐름에 「Work … 을 만들고 이 Thread에 연결함」). 그 Thread가 Space에 이어져 있으면 카드에 「◇ 결제 서비스 · Space」 한 줄이
+서고, 만들면 그 Space가 새 Work로 옮겨 간다 — 카드에서 바꾸지 않는다(받아들인 뒤 Space 메뉴로 바꾼다). 「Work 없이 계속」은 아무것도 만들지
+않는다. 처음 Work를 만들면 한 번 「결정은 내가 합니다」 카드가 Host가 먼저 묻는 일을 알린다.
 _피할 말_: Work 생성 모달, Work 마법사
 
 **Work 밖 Project 카드**:
@@ -345,8 +368,8 @@ _피할 말_: Project 추가 팝업
 **요약 카드**:
 Thread 화면 판의 오른쪽 위에 떠 있는 카드 — 그 Thread가 무엇을 바꾸고 무엇을 읽는지를 대화 곁에서 보인다. 높이는 내용만큼이다.
 Work에 이은 Thread면 머리(Work 이름 · 「…」 — Work 메뉴) 아래로 「변경 사항」(Work 합계 +/−, 그 아래 PR 줄) · 「결과물」(아직 자리표시뿐이다)
-· 「소스」(그 Work의 spec 문서와 Project — worktree가 있으면 「고치는 중」, 없으면 「읽기만」)가 선다. Work 없는 Thread면 결과물 · 소스만이고,
-소스는 그 Thread의 Session이 읽기로 함께 여는 등록된 Project다. 보관된 Work의 Thread는 같은 카드의 머리에 「보관됨」이 붙고 보이기만 한다.
+· 「소스」(그 Work의 spec 문서, worktree가 있어 「고치는 중」인 Project, 그 뒤 그 Thread의 읽는 범위 — 「읽기만」)가 선다.
+Work 없는 Thread면 결과물 · 소스만이고, 소스는 그 Thread의 읽는 범위다. 보관된 Work의 Thread는 같은 카드의 머리에 「보관됨」이 붙고 보이기만 한다.
 소스가 셋을 넘으면 「모두 보기」가 나머지를 그 자리에 편다. 누가 문서를 쓰는 중이면 소스의 그 문서 줄에 파란 점과 그 Agent 이름이 선다.
 「변경 사항」 · 소스의 줄을 누르면 카드가 넓어져(넓힌 카드) 그 diff · 문서 · 파일 트리를 보이고, ×가 요약 카드로 돌린다. 머리 줄의 요약
 고정 토글이 켜고 끄고(열고 닫은 것은 Thread마다 기억한다), 켜져 있으면 대화 열과 입력창이 카드를 비켜난다. 첫 말을 보내기 전의 새

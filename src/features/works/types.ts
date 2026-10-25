@@ -66,6 +66,8 @@ export interface KernelWorkView {
   // 「지금 이게 중요하다」 — 화면 설정이 아니라 그 작업에 대한 사실이라 work.json에 산다
   // (결정 81). 목록에서 고정된 것이 먼저 오는 것도 코어가 정한다 (결정 100).
   pinned: boolean;
+  /** 이 Work가 이은 Space의 slug(`work.json`의 `space`, 03 §9) — 없으면 칸째 빠진다. 이 Work의 Thread가 모두 이 Space를 읽는다. */
+  space?: string;
   worktrees: WorktreeView[];
   specDir: string;
   specFiles: string[];

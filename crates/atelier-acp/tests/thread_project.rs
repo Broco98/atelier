@@ -6,8 +6,8 @@
 //! - Work에 없는 Project면 Work 밖 Project 카드가 `question` 줄(`card: project`)로 서고, 도구는 사람이 고를 때까지 기다린다 — 붙이고
 //!   고치기 · 읽기만 하기 · 아니요.
 //! - 작업 폴더가 바뀌면(worktree가 섰다 · 읽기만 폴더를 더했다) 다음 턴에 그 Session을 새 작업 폴더에서 이어 연다(S11 · 실측-작업폴더.md).
-//! - Work 없는 Thread는 등록된 Project 폴더를 모두 읽기로 함께 연다(끝 점검 39(a) 사용자 결정) — 고치기는 판정이 그대로 막고, Work에
-//!   이어지면 그 폴더들은 빠진다.
+//! - Work 없는 Thread는 등록된 Project 폴더를 모두 읽기로 함께 연다(끝 점검 39(a) 사용자 결정) — 고치기는 판정이 그대로 막는다. Work에
+//!   이어져도 읽는 범위는 같은 규칙이다(03 §7 — `thread_space.rs`).
 //!
 //! 시험은 호스트의 Thread 명령과 Thread 폴더(`thread.json` · `events.jsonl`) · works 폴더 · 등록한 저장소 · 가짜 claude의 영수증만 본다.
 
@@ -497,7 +497,11 @@ fn work_없이_시작한_thread가_턴_가운데_work에_이어지면_다음_턴
     let (args, cwd) = last_launch(&sandbox, &thread);
     assert_eq!(cwd, real(&sandbox.work_dir("refund-api").join("spec")), "worktree 없는 Work의 작업 폴더는 spec 폴더다(S11)");
     assert!(has_pair(&args, "--resume", &session), "앞선 조사를 기억하게 같은 Session을 이어 연다(스토리 100): {args:?}");
-    assert_eq!(added_dirs(&args), Vec::<String>::new(), "Work에 이어지면 등록된 Project 폴더는 더 열지 않는다 — Work의 자리다: {args:?}");
+    assert_eq!(
+        added_dirs(&args),
+        [api.display().to_string()],
+        "Work에 이어져도 Space가 없으면 등록된 Project를 읽기로 함께 연다(03 §7) — spec 폴더는 작업 폴더라 다시 열지 않는다: {args:?}"
+    );
     let prompt = of_kind(&record, "sent")[1]["payload"]["prompt"].to_string();
     assert!(prompt.contains("- Work: `refund-api`"), "옮겨 연 Session에 이은 Work를 알린다: {prompt}");
 }

@@ -383,7 +383,7 @@ export function ThreadScreen({ thread }: { thread: string }) {
               style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
             >
               {cardWork === null ? (
-                <LooseSummaryCard key={thread} participants={view.participants} />
+                <LooseSummaryCard key={thread} thread={thread} />
               ) : gone === "archived" ? (
                 <ArchivedSummaryCard key={thread} slug={cardWork} />
               ) : (

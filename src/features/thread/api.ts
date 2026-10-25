@@ -107,6 +107,13 @@ export const threadApi = {
   /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. */
   workMode: (work: string) => invoke<AskLevel>("thread_work_mode", { work }),
   /**
+   * Thread의 Space 붙이기 · 바꾸기 · 빼기(`null`, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Space가 바뀐다. 떠 있는 Session은 다음 말부터 새
+   * 범위로 이어 연다. 바꾼 것은 기록의 Space 줄(`space`)로 온다. 없는 Space는 그 까닭으로 거절된다.
+   */
+  setSpace: (thread: string, space: string | null) => invoke<void>("thread_set_space", { thread, space }),
+  /** Work의 Space 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Space 메뉴. 그 Work의 Thread마다 Space 줄이 선다(S9). */
+  setWorkSpace: (work: string, space: string | null) => invoke<void>("thread_set_work_space", { work, space }),
+  /**
    * 다시 맡기기(v1 티켓 17) — 호출 줄에서 `from`의 부르기를 같은 글로 `to`에게 다시 한다. 기다리지 않는다: 부르기와 그 결과(부른
    * Agent의 다음 말)는 기록 줄 이벤트로 온다. 부를 수 없으면 그 까닭으로 거절된다.
    */

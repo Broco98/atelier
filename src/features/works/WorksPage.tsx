@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
+import { WorkSpaceCrumb } from "@/features/spaces/SpaceMenu";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
@@ -893,6 +894,8 @@ function WorksPage({
   // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
   const head: HeadSlot = selected
     ? {
+        // 이름 앞의 흐린 Space(03 §10) — 누르면 Space 메뉴가 열리고 고르면 이 Work의 Space가 바뀐다. 없으면 흐린 「Space 없음」이다.
+        lead: <WorkSpaceCrumb work={selected} />,
         icon: Zap,
         name: selected.title,
         nameMenu: (renderName) => (

@@ -590,6 +590,8 @@ pub enum HostError {
     /// 「붙이고 고치기」로 Project를 Work에 붙이지 못했다(v1 티켓 32) — 까닭은 core의 글(등록 · git · baseBranch)이다. 아무것도 적지
     /// 않았고 Work 밖 Project 카드는 그대로 서 있다.
     ProjectNotAttached(String),
+    /// 붙이려는 Space의 파일이 없다(03 구현 스펙 §9) — 지웠거나 slug가 틀렸다. 아무것도 적지 않았다.
+    SpaceNotFound(String),
 }
 
 impl fmt::Display for HostError {
@@ -643,6 +645,7 @@ impl fmt::Display for HostError {
             HostError::ReadOnly { gone: atelier_core::WorkGone::Archived, .. } => write!(f, "보관된 Work의 Thread는 읽기만 돼요"),
             HostError::ReadOnly { gone: atelier_core::WorkGone::Removed, .. } => write!(f, "지워진 Work의 Thread는 읽기만 돼요"),
             HostError::ProjectNotAttached(reason) => write!(f, "Project를 붙이지 못했어요 — {reason}"),
+            HostError::SpaceNotFound(slug) => write!(f, "Space를 찾지 못했어요: {slug}"),
         }
     }
 }

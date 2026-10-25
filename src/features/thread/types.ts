@@ -107,6 +107,11 @@ export interface ThreadView {
    * 흐린 「새 Work」다(`lockedWork`).
    */
   newWork?: boolean;
+  /**
+   * 이 Thread가 이은 Space의 slug(`thread.json`의 `space`, 03 §9) — Work 없는 Thread만 적고 없으면 칸째 빠진다. Work에 이은 Thread는 그 Work의
+   * Space를 따른다(`WorkView.space`). 읽는 범위는 이 칸으로 세지 않고 범위 명령이 준다(`reading_scope`).
+   */
+  space?: string;
 }
 
 /**
@@ -176,7 +181,7 @@ export type ProjectAnswer = "attach" | "read" | "decline";
 
 /**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·
- * `title` · `mode` · `call` · `pr` · `library`). Thread Session에는 `changes`가 서지 않는다.
+ * `title` · `mode` · `call` · `pr` · `library`)에 03이 `space`(Space 줄)를 더했다. Thread Session에는 `changes`가 서지 않는다.
  */
 export type RecordKind =
   | "sent"
@@ -195,7 +200,8 @@ export type RecordKind =
   | "mode"
   | "call"
   | "pr"
-  | "library";
+  | "library"
+  | "space";
 
 /**
  * 기록 줄 하나 — `threads/<id>/events.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. `who`는 그 줄을 낸 참여자의 handle이고,

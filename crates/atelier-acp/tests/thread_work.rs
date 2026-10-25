@@ -123,6 +123,7 @@ fn host가_work_만들기를_제안하면_카드가_서고_사람이_만들면_w
         ]),
         "카드는 등록된 Project를 모두 싣는다 — Host 추천이 먼저 그 까닭과 함께, 나머지는 넣을 수 있게(스토리 90)"
     );
+    assert_eq!(card.get("space"), None, "Space가 없는 대화의 카드에는 Space 줄이 서지 않는다(03 §9)");
     assert!(of_kind(&sandbox.thread_record(&thread), "turn-end").is_empty(), "도구는 사람이 고를 때까지 기다린다 — 턴이 돈다");
 
     // 사람이 web-app을 넣고 만든다.
@@ -334,6 +335,36 @@ fn thread에서_고른_물어보는_정도는_이은_work로_옮겨_간다() {
     let work: Value = serde_json::from_str(&std::fs::read_to_string(sandbox.work_dir("refund-api").join("work.json")).unwrap()).unwrap();
     assert_eq!(work["projects"], json!([]), "Project 없이 기획만으로 Work가 선다(스토리 97)");
     assert!(work.get("branch").is_none_or(Value::is_null), "Project가 없으면 브랜치를 정하지 않는다");
+}
+
+/// 03 구현 스펙 §9 · S8 — Work 없이 한 대화의 Space는 Work 만들기 카드에 한 줄(「◇ 결제 서비스 · Space」)로 서고, 「Work 만들기」가 그
+/// Space를 새 Work로 옮기고 Thread의 칸은 비운다 — 이은 뒤로는 Work의 Space를 따른다(스토리 72 · 73).
+#[test]
+fn thread의_space는_work_만들기_카드에_서고_만든_work로_옮겨_가며_thread의_칸은_비운다() {
+    let sandbox = Sandbox::new();
+    sandbox.library_agent("host", HOST_MD);
+    register(&sandbox, "api-server", "");
+    let spaces = atelier_core::spaces_in(&sandbox.data_root());
+    std::fs::create_dir_all(&spaces).unwrap();
+    std::fs::write(spaces.join("결제-서비스.md"), "---\nname: 결제 서비스\nprojects:\n  - api-server\n---\n").unwrap();
+    let (host, thread) = started(&sandbox, &[]);
+    sandbox.wait_thread_kind(&thread, "turn-end", 1);
+    host.set_thread_space(&thread, Some("결제-서비스")).expect("Space 붙이기");
+    host.shut_down();
+
+    let host = sandbox.host(calling(&sandbox, &[refund_proposal()]));
+    host.send_to_thread(&thread, "Work로 만들어 줘").expect("둘째 말");
+    let asked = wait_card(&sandbox, &thread, "asked");
+    assert_eq!(asked["payload"]["space"], json!({"slug": "결제-서비스", "name": "결제 서비스"}), "카드가 붙을 Space를 싣는다");
+    host.answer_work(&thread, &request_of(&asked), create(&["api-server"], "fix/refund-api")).expect("Work 만들기");
+    sandbox.wait_thread_kind(&thread, "turn-end", 2);
+    host.shut_down();
+
+    let work: Value = serde_json::from_str(&std::fs::read_to_string(sandbox.work_dir("refund-api").join("work.json")).unwrap()).unwrap();
+    assert_eq!(work["space"], "결제-서비스", "Thread의 Space가 새 Work로 옮겨 간다");
+    let file = sandbox.thread_json(&thread);
+    assert_eq!((file["work"].clone(), file.get("space")), (json!("refund-api"), None), "Thread의 칸은 비운다 — Space는 Work 한 곳에 적힌다");
+    assert!(of_kind(&sandbox.thread_record(&thread), "space").len() == 1, "옮김은 Space 줄을 더 남기지 않는다 — 범위가 그대로다");
 }
 
 /// 입력창 Work 칩의 「새 Work로 시작」(v1 티켓 31 · §11 · 스토리 95) — 첫 말의 머리말에 「먼저 Work 만들기를 제안하라」가 서서 Host가

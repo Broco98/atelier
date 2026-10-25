@@ -212,6 +212,30 @@ describe("시스템 줄", () => {
     expect(model.system.map((line) => line.avatar)).toEqual([{ shape: "triangle", color: "purple" }, null]);
     expect(Object.keys(model.cast)).toEqual(["host"]);
   });
+
+  // 바탕은 엔진이 축복한 기록이다(`thread-space.jsonl`) — Work 없는 Thread에 「결제 서비스」(web-app · api-server)를 붙이고 한 턴 뒤 뺐다.
+  it("Space를 바꾸거나 빼면 다음 차례부터 읽는 Project를 말하는 한 줄이 서고, 굵은 것은 Space 이름뿐이다(03 티켓 05)", () => {
+    const model = foldThread(record("thread-space"));
+    expect(model.system.map((line) => [line.kind, line.handle, line.name, `${line.before}${line.name}${line.after}`])).toEqual([
+      ["space", null, "결제 서비스", "Space를 결제 서비스로 바꿨어요 — 다음 차례부터 web-app · api-server를 읽어요"],
+      ["space", null, "", "Space를 뺐어요 — 다음 차례부터 등록된 Project 3개를 읽어요"],
+    ]);
+  });
+
+  it("Space 줄은 읽는 Project가 셋을 넘으면 둘과 「외 N개」, 빈 Space면 없다고, 등록된 Project가 없으면 그렇다고 말한다", () => {
+    const space = (seq: number, payload: Record<string, unknown>): RecordLine => ({ seq, at: at(5), kind: "space", payload });
+    const model = foldThread([
+      ...blessed,
+      space(25, { change: "changed", space: "사내-도구", name: "사내 도구", projects: ["a", "b", "c", "d"], registered: 4 }),
+      space(26, { change: "changed", space: "빈-곳", name: "빈 곳", projects: [], registered: 4 }),
+      space(27, { change: "removed", space: null, name: null, projects: [], registered: 0 }),
+    ]);
+    expect(model.system.map((line) => `${line.before}${line.name}${line.after}`)).toEqual([
+      "Space를 사내 도구로 바꿨어요 — 다음 차례부터 a · b 외 2개를 읽어요",
+      "Space를 빈 곳으로 바꿨어요 — 다음 차례부터 읽는 Project가 없어요",
+      "Space를 뺐어요 — 다음 차례부터 등록된 Project가 없어요",
+    ]);
+  });
 });
 
 describe("도구 줄의 끝", () => {
@@ -830,6 +854,14 @@ describe("Work 만들기 카드(v1 티켓 30)", () => {
     ]);
     const tool = model.turns[0].entries.find((entry) => entry.kind === "tool" && entry.call.title === PROPOSE);
     expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Work 만들기를 묻는 중");
+  });
+
+  it("Space에 이은 Thread의 카드는 새 Work로 옮겨 갈 Space를 싣고, Space가 없으면 그 칸이 비었다(03 S8)", () => {
+    expect(cards(foldThread(through(working, 56)))[0].space).toBeNull();
+    const spaced = through(working, 56).map((line) =>
+      line.seq === 56 ? { ...line, payload: { ...(line.payload as object), space: { slug: "결제-서비스", name: "결제 서비스" } } } : line,
+    );
+    expect(cards(foldThread(spaced))[0].space).toEqual({ slug: "결제-서비스", name: "결제 서비스" });
   });
 
   it("만들면 카드가 걷히고, 그 도구 줄 자리에 「Work 만들기」 결정 줄이, 턴 뒤에 「Work … 을 만들고 이 Thread에 연결함」 시스템 줄이 선다", () => {

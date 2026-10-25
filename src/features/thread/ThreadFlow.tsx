@@ -1,6 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, Layers, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
@@ -249,6 +249,7 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
     >
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
+      {line.kind === "space" && <Layers className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 「Library에」와 얼굴이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
       {line.handle && (
@@ -258,7 +259,8 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
           className="mr-1.5 size-4"
         />
       )}
-      <b className="font-medium text-fg">{line.name}</b>
+      {/* 이름이 없는 줄도 있다 — 「Space를 뺐어요 — …」는 앞말만이다. */}
+      {line.name && <b className="font-medium text-fg">{line.name}</b>}
       {line.after}
       {line.code && <span className="whitespace-pre font-mono text-xs">{` ${line.code}`}</span>}
     </p>

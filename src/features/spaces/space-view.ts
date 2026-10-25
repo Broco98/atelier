@@ -1,8 +1,8 @@
 import type { ProjectView } from "@/features/projects/types";
 import type { SharedSpace, Space } from "./types";
 
-// Space 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14) — 그래프 배치 · 넣기 메뉴 · 만든 이 줄. 화면 부품은 이 값을 그리기만
-// 한다(L2가 잰다).
+// Space 화면이 그리는 것을 값으로 짓는 순수 함수들(03 구현 스펙 §14) — 그래프 배치 · 넣기 메뉴 · 만든 이 줄 · Work 묶음, 그리고 Work 화면
+// 머리 · Space 칩이 여는 Space 메뉴(§5 · §10). 화면 부품은 이 값을 그리기만 한다(L2가 잰다).
 
 /** 화면이 부르는 이름 — 읽을 수 없는 파일은 이름이 없어 slug다. */
 export function spaceName(space: Pick<Space, "slug" | "name">): string {
@@ -177,4 +177,63 @@ function daysAgo(createdAt: string, now: Date): string {
   if (days === 1) return "어제";
   if (days < 30) return `${days}일 전`;
   return `${year}. ${month}. ${day}.`;
+}
+
+// ── Space 메뉴 ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Space 메뉴의 Space 한 줄 — 이름 · 적힌 Project(「web-app · api-server」) · 문제 있음 · 지금 것(✓). */
+export interface SpaceMenuRow {
+  slug: string;
+  name: string;
+  projects: string;
+  troubled: boolean;
+  current: boolean;
+}
+
+export interface SpaceMenu {
+  /**
+   * 맨 위 줄 — Space가 있으면 「Space 빼기」, 없으면 지금 것인 「Space 없음」(✓)이다. 곁말은 빼면 읽는 것(「등록된 Project 3개를 모두
+   * 읽어요」)이다.
+   */
+  top: { label: "Space 빼기" | "Space 없음"; note: string; current: boolean };
+  /** 「Space — 고르면 그 안의 Project만 읽어요」 아래의 줄들 — Space가 하나도 없으면 `null`이고 그 자리에 「Host와 Space 만들기」가 선다. */
+  rows: SpaceMenuRow[] | null;
+}
+
+/**
+ * Space 메뉴(시안 F4-WorkSpaced · F4-WorkNoSpace — Work 화면 머리 줄이 열고, 06의 Space 칩이 같은 부품을 쓴다). `current`는 지금 이은 Space의
+ * slug다 — 그 파일이 없으면 Space가 없는 것이다(§7 규칙 1). 문제 있는 Space도 선다 — 고르면 읽을 수 있는 Project만 읽는다(§5). 적힌 Project는
+ * 등록되지 않은 것도 적힌 그대로다(파일의 말).
+ */
+export function spaceMenu(spaces: readonly Space[], current: string | null, registered: number): SpaceMenu {
+  const on = spaces.some((one) => one.slug === current) ? current : null;
+  const note = registered > 0 ? `등록된 Project ${registered}개를 모두 읽어요` : "등록된 Project가 없어요";
+  return {
+    top: on ? { label: "Space 빼기", note, current: false } : { label: "Space 없음", note, current: true },
+    rows:
+      spaces.length === 0
+        ? null
+        : spaces.map((one) => ({
+            slug: one.slug,
+            name: spaceName(one),
+            projects: one.projects.length > 0 ? one.projects.join(" · ") : "Project 없음",
+            troubled: one.problems.length > 0,
+            current: one.slug === on,
+          })),
+  };
+}
+
+/**
+ * 「Host와 Space 만들기」(§14 S16 · Space 메뉴에 Space가 하나도 없을 때) — 첫 화면을 Work 칩 「Work 없이 대화」와 이 입력 글로 연다. 보내기는
+ * 사람이 한다.
+ */
+export const HOST_MAKE_SAY = "Space를 만들고 싶어요. 등록된 Project를 읽고 초안(이름 · Project · 설명)을 보여 주세요.";
+
+// ── Work 묶음 ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Space 상세의 「Work」 묶음(§14) — 이 Space에 이은 진행 중인 Work(`work.json`의 `space`), Work 목록의 차례 그대로다. 보관한 Work는 목록에 없다.
+ */
+export function spaceWorks<W extends { space?: string }>(works: readonly W[], slug: string): W[] {
+  return works.filter((work) => work.space === slug);
 }
