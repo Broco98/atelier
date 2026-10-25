@@ -4,6 +4,7 @@ import { FileText, Files, Zap } from "lucide-react";
 import { Card, CardHead, Frame } from "@/components/shell/Frame";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
 import { PanelBody, pickRail, type RailItem } from "@/components/shell/Rail";
+import { ShellHeadSlot } from "@/components/shell/ShellHead";
 import useResizableWidth from "@/components/shell/useResizableWidth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -17,10 +18,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 // 칠한다. 들이는 것은 앱이 이미 들이는 묶음(`react-dom` · `lucide-react` · Base UI 툴팁)과 앱의 소스뿐이라 Vite가 의존성을 다시 묶지
 // 않는다.
 //
-// 진열대는 **작업 화면의 짜임 그대로**다 — 공용 틀에 머리 카드 · 본문 카드 · 작업 패널 칸 · 레일을 건네고, 열림과 고른 칸은
+// 진열대는 **작업 화면의 짜임 그대로**다 — 공용 틀에 머리(머리 줄의 화면 것) · 본문 칸 · 작업 패널 칸 · 레일을 건네고, 열림과 고른 칸은
 // 진열대가 들며 칸을 고른 뒤의 둘은 작업 화면과 같은 규칙(`pickRail`)이 정한다. 패널의 몸도 작업 화면과 같은 상자(`PanelBody`)로
-// 칸마다 하나씩 서고, 기본 폭도 작업 패널의 것(`WORK_PANEL_WIDTH`)이다. 그래서 레일의 자리(카드 위끝 · 틈) · 모양 · 누름과 패널 토글의
-// 자리 · 몸의 숨김이 앱과 같은 코드로 선다.
+// 칸마다 하나씩 서고, 기본 폭도 작업 패널의 것(`WORK_PANEL_WIDTH`)이다. 그래서 레일의 자리 · 모양 · 누름과 패널 토글의 자리 · 몸의
+// 숨김이 앱과 같은 코드로 선다. 머리는 앱 셸의 머리 줄로 포털을 타므로(`ScreenHead`) 진열대가 제 `header`에 그 자리를 내린다
+// (`ShellHeadSlot`) — 셸 밖이면 머리(와 그 끝의 패널 토글)가 아무 데도 서지 않는다.
 
 type RailView = "spec" | "files";
 
@@ -46,44 +48,52 @@ function Fold({ name }: { name: string }) {
 function RailShowcase() {
   const [state, setState] = useState<{ open: boolean; active: RailView }>({ open: true, active: "spec" });
   const size = useResizableWidth("rail-fixture-panel-width", WORK_PANEL_WIDTH, PANEL_MIN_WIDTH, PANEL_MAX_WIDTH, "right");
+  const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
   return (
-    <Frame
-      sidebarOpen
-      head={{ icon: Zap, name: "진열대" }}
-      rail={{
-        items: TWO_VIEWS,
-        active: state.active,
-        onPick: (id) => setState((now) => pickRail(now, id)),
-      }}
-      panel={{
-        open: state.open,
-        onToggle: () => setState((now) => ({ ...now, open: !now.open })),
-        size,
-        label: "진열대 패널",
-        children: (
-          <>
-            <CardHead>
-              <span>{state.active}</span>
-            </CardHead>
-            {TWO_VIEWS.map(({ id }) => (
-              <PanelBody key={id} view={id} shown={state.active === id}>
-                <Fold name={id} />
-              </PanelBody>
-            ))}
-          </>
-        ),
-      }}
-    >
-      <Card label="진열대 본문" className="flex-1">
-        <span />
-      </Card>
-    </Frame>
+    <div className="flex min-w-0 flex-1 flex-col bg-surface">
+      {/* 앱 셸의 머리 줄(`ShellHeadRow`) 화면 자리와 같은 안쪽이다 — 이름 쪽 14 · 오른쪽 끝 8. 할 일 묶음(패널 토글이 맨 끝)이 그 끝에 붙는다. */}
+      <header className="flex h-(--titlebar-height) shrink-0 items-center">
+        <div ref={setHeadSlot} data-slot="screen-head" className="flex h-full min-w-0 flex-1 items-center pr-2 pl-3.5" />
+      </header>
+      <ShellHeadSlot.Provider value={headSlot}>
+        <Frame
+          head={{ icon: Zap, name: "진열대" }}
+          rail={{
+            items: TWO_VIEWS,
+            active: state.active,
+            onPick: (id) => setState((now) => pickRail(now, id)),
+          }}
+          panel={{
+            open: state.open,
+            onToggle: () => setState((now) => ({ ...now, open: !now.open })),
+            size,
+            label: "진열대 패널",
+            children: (
+              <>
+                <CardHead>
+                  <span>{state.active}</span>
+                </CardHead>
+                {TWO_VIEWS.map(({ id }) => (
+                  <PanelBody key={id} view={id} shown={state.active === id}>
+                    <Fold name={id} />
+                  </PanelBody>
+                ))}
+              </>
+            ),
+          }}
+        >
+          <Card label="진열대 본문" className="flex-1">
+            <span />
+          </Card>
+        </Frame>
+      </ShellHeadSlot.Provider>
+    </div>
   );
 }
 
 /**
- * 진열대를 `body` 끝에 세운다 — 창 전체를 덮는다(`position: fixed` · `inset: 0`). 앱 화면 위라 `index.css`가 이미 서 있고, 진열대의
- * 틀은 사이드바가 열린 갈래라(`sidebarOpen`) 왼쪽 여백이 없다. 검사는 이 상자(`data-rail-fixture`) 안에서만 집는다 — 그 아래 앱
+ * 진열대를 `body` 끝에 세운다 — 창 전체를 덮는다(`position: fixed` · `inset: 0`). 앱 화면 위라 `index.css`가 이미 서 있고, 진열대는
+ * 사이드바 없이 제 머리 줄과 칸들만 세운다. 검사는 이 상자(`data-rail-fixture`) 안에서만 집는다 — 그 아래 앱
  * 화면에도 `header` · `aside`가 있다.
  */
 export function 레일진열대를세운다(): void {

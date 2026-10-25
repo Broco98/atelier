@@ -14,7 +14,7 @@ import { AgentFace } from "./AgentFace";
 import { freshLines, viewerPath, type Opened } from "./expanded";
 import { setQuote } from "./thread-store";
 import type { DocWriting } from "./types";
-import { writerLine, type ChangeSummary } from "./work-card";
+import { writerLine, type ChangeSummary } from "./summary-card";
 
 // 강조 라이브러리(`@pierre/diffs`)는 코드 보기 모듈 아래에서만 들어온다(git-integration 결정 35 · `code-view-chunk.test.ts`) — 넓힌 카드도 그
 // 모듈을 `lazy`로 부른다. diff 보기는 그 모듈의 이름 붙은 내보내기다.
@@ -22,11 +22,12 @@ const CodeView = lazy(() => import("@/features/code/CodeView"));
 const DiffView = lazy(() => import("@/features/code/CodeView").then((module) => ({ default: module.DiffView })));
 
 /**
- * **넓힌 카드의 보기**(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand 보드 `.viewer`) — Work 카드가 넓어지면 목록 오른쪽에 선다.
- * 한 번에 파일 하나다.
+ * **넓힌 카드의 보기**(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand 보드 `.viewer`) — 요약 카드가 넓어지면 목록 오른쪽에
+ * 선다(02 §7 — 넓힌 카드는 그대로다). 한 번에 파일 하나다.
  *
  * - 머리는 경로 줄(`PathBar` — 보드 `.vh`의 「문서 / design.md」 · 「api-server / src / refund.service.ts」 · 「Project / api-server」)이다. 끝
- *   칸에 변경의 +/−, 쓰는 중인 문서의 「Host가 쓰는 중」, 그리고 「카드로 접기」 ×가 선다(스토리 117).
+ *   칸에 변경의 Work 브랜치와 +/−(브랜치는 요약 카드 머리에서 옮겨 왔다 — 02 §7 표), 쓰는 중인 문서의 「Host가 쓰는 중」, 그리고 「카드로
+ *   접기」 ×가 선다(스토리 117).
  * - **문서**는 작업 화면의 문서 보기 그대로다(`SpecViewer` — 렌더 · 원문 보기 묶음, 링크 따라가기, 문서 글 메뉴). 다시 읽은 글에서 바뀐
  *   줄만 잠깐 칠하고(스토리 118 · Motion 보드 — `freshLines` · `doc-flash`), 구르는 자리는 그대로다(같은 쿼리의 새 값이 같은 상자에
  *   들어간다). 글을 고르면 「❝ 이 자리를 두고 말하기」가 떠 그 자리를 지금 Thread의 입력창에 인용으로 붙인다(S41 · `setQuote`).
@@ -72,7 +73,7 @@ export function ExpandedViewer({
         onCopy={copy}
         end={
           <>
-            <ViewerNote opened={opened} changes={changes} writing={writing} />
+            <ViewerNote opened={opened} branch={work.branch} changes={changes} writing={writing} />
             {close}
           </>
         }
@@ -127,15 +128,17 @@ function copyPathOf(work: WorkView, opened: Opened): (() => void) | undefined {
 }
 
 /**
- * 경로 줄 끝의 옅은 메타(보드 `.vh .st` · `.vlive` — 12/18) — 변경은 그 파일의 +/−(0인 쪽은 적지 않는다 — 카드의 줄과 같다), 쓰는 중인
- * 문서는 그 Agent의 얼굴과 「Host가 쓰는 중」이다.
+ * 경로 줄 끝의 옅은 메타(보드 `.vh .st` · `.vlive` — 12/18) — 변경은 Work 브랜치(고정폭)와 그 파일의 +/−(0인 쪽은 적지 않는다 — 카드의
+ * 줄과 같다), 쓰는 중인 문서는 그 Agent의 얼굴과 「Host가 쓰는 중」이다.
  */
 function ViewerNote({
   opened,
+  branch,
   changes,
   writing,
 }: {
   opened: Opened;
+  branch: string | null;
   changes: ChangeSummary | null;
   writing: readonly DocWriting[];
 }) {
@@ -153,11 +156,13 @@ function ViewerNote({
   const file = changes?.groups
     .find((group) => group.project === opened.project)
     ?.files.find((one) => one.path === opened.path);
-  if (!file || (!file.additions && !file.deletions)) return null;
+  const counted = file && (!!file.additions || !!file.deletions);
+  if (!branch && !counted) return null;
   return (
     <span className="flex shrink-0 items-center gap-1 px-1 text-xs">
-      {!!file.additions && <span className="text-diff-added">+{file.additions}</span>}
-      {!!file.deletions && <span className="text-diff-deleted">−{file.deletions}</span>}
+      {branch && <span className="mr-1 min-w-0 truncate font-mono text-2xs text-fg-tertiary">{branch}</span>}
+      {!!file?.additions && <span className="text-diff-added">+{file.additions}</span>}
+      {!!file?.deletions && <span className="text-diff-deleted">−{file.deletions}</span>}
     </span>
   );
 }

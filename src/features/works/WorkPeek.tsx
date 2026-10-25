@@ -43,6 +43,8 @@ export function WorkPeek({
   work,
   note,
   projects,
+  threads,
+  shells,
 }: {
   work: WorkView;
   /**
@@ -56,6 +58,12 @@ export function WorkPeek({
    * 아직 못 읽었으면 `null`이고, 그동안 「프로젝트」 칸은 work 목록에서 아는 이름들을 한 줄로 잇는다.
    */
   projects: ProjectLine[] | null;
+  /**
+   * 그 Work에 이은 Thread 수(`threadCounts`)와 열린 셸 수(`shellCountsOf`). **사이드바 줄을 떠난 수다**(02 구현 스펙 S9 · 티켓 05) — 줄
+   * 오른쪽 끝이 상태 표시 하나의 자리가 되면서 줄의 Thread 수와 `⌨ N`이 이리로 왔다. 이것도 값으로 받는다(목록이 이미 센 값이다).
+   */
+  threads: number;
+  shells: number;
 }) {
   const meta = STATUS_META[work.status];
   return (
@@ -90,6 +98,11 @@ export function WorkPeek({
           </CardField>
         )}
         <CardField label="spec">{`${work.specFiles.length}개`}</CardField>
+        <CardField label="Thread" muted={threads === 0}>
+          {threads === 0 ? "아직 없어요" : `${threads}개`}
+        </CardField>
+        {/* 셸이 없으면 칸이 없다 — 「없음」을 숫자로 말하지 않는다(`ShellMeta`의 규칙 그대로). */}
+        {shells > 0 && <CardField label="셸">{`${shells}개`}</CardField>}
       </div>
     </div>
   );

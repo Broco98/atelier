@@ -6,10 +6,10 @@ import { summaryOf } from "./thread-records";
 import type { SearchResults } from "@/features/search/types";
 import type { ThreadView } from "@/features/thread/types";
 
-// v1 티켓 40(PR ④ e2e) 흐름 하나 — **새 Thread의 입력창 Work 칩이 어디서 일할지 세 갈래(Work 없이 · 새 Work로 시작 · 최근 Work)를 고르고,
+// v1 티켓 40(PR ④ e2e) 흐름 하나 — **새 Thread의 Work 칩이 어디서 일할지 세 갈래(Work 없이 · 새 Work로 시작 · 최근 Work)를 고르고,
 // 고른 것이 칩 이름 · 입력창 안내를 바꾸며 첫 말과 함께 간다**(v1 티켓 31 · 구현 스펙 §11 「Work 칩」 · §14 · 스토리 94–96). 최근 Work를
 // 고르면 물어보는 정도 칩이 그 Work의 지금 정도를 보인다(S18). 첫 화면의 부제(「Host가 답합니다. …」 · 갈래마다의 부제)는 v1 티켓 46이
-// 걷었다 — 칩과 안내가 고른 것을 이미 말한다.
+// 걷었다 — 칩과 안내가 고른 것을 이미 말한다. 칩은 02 티켓 10으로 입력창 밑 트레이에 선다 — 그 자리는 흐름 「Thread 화면」이 잰다.
 //
 // 첫 말 뒤의 일(새 Work 제안 · 그 Work의 자리에서 뜨는 Session)은 엔진의 몫이다 — L1(`thread_work.rs` 머리말 · `thread_host.rs` ·
 // `thread_policy.rs`)이 잰다. 여기서는 고른 것이 그 인자로 나가는 데까지다.
@@ -32,11 +32,15 @@ async function shows(page: Page, placeholder: string) {
   await expect(입력칸(page)).toHaveAttribute("placeholder", placeholder);
 }
 
-/** 첫 말을 보낸다 — 새 Thread가 서고 그 주소로 간다. 사이드바의 「새 Thread」로 첫 화면에 돌아온다. */
+/**
+ * 첫 말을 보낸다 — 새 Thread가 그 주소에 서고(본문이 그 Thread다), 사이드바의 「새 Thread」로 첫 화면에 돌아온다. 주소만 바뀐 채 Thread
+ * 화면이 아직 서지 않았을 때 누르면 첫 화면이 「시작하는 중」으로 남는다 — 사람은 선 Thread를 보고 누른다(구현 노트 티켓-13b 「앱의 틈」).
+ */
 async function sendAndReturn(page: Page, text: string) {
   await 입력칸(page).fill(text);
   await 입력칸(page).press("Enter");
   await expect(page).toHaveURL(`/threads/${FIXTURE_THREAD.id}`);
+  await expect(page.getByRole("main", { name: linked.title, exact: true })).toBeVisible();
   await 사이드바(page).getByRole("button", { name: "새 Thread", exact: true }).click();
   await expect(첫화면(page)).toBeVisible();
 }

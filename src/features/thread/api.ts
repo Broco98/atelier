@@ -67,11 +67,11 @@ export const threadApi = {
   editQueued: (thread: string, queued: string, text: string) =>
     invoke<void>("thread_edit_queued", { thread, queued, text }),
   deleteQueued: (thread: string, queued: string) => invoke<void>("thread_delete_queued", { thread, queued }),
-  /** 지금 전하기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. */
+  /** 지금 보내기 — 그 말을 맨 앞에 세우고 도는 턴을 멈춘다. */
   sendNow: (thread: string, queued: string) => invoke<void>("thread_send_now", { thread, queued }),
   /**
-   * 권한 답 — 그 참여자(`who`)가 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24)의 「다시 묻지 않기」면 `remember`, 「아니요,
-   * 다르게 해 주세요」의 입력칸에 쓴 말이 있으면 `words`다.
+   * 권한 답 — 그 참여자(`who`)가 물은 요청에 고른 선택지로 답한다. 승인 카드(v1 티켓 24 · 02 §10)의 「… 늘 허용」이면 `remember`, 「아니요,
+   * 다르게」의 입력칸에 쓴 말이 있으면 `words`다.
    */
   answerPermission: (thread: string, who: string, request: string, option: string, remember = false, words: string | null = null) =>
     invoke<void>("thread_answer_permission", { thread, who, request, option, remember, words }),

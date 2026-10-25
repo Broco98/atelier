@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { PANE_RULE } from "./panel-layout";
 
 /**
  * 레일의 칸 하나 — 소문자 영어 이름(`spec`, CONTEXT.md 「표기」)이다. 칸은 목록으로 받아 뒤에 더해진다(DS `PanelRail` — 대화는
@@ -17,8 +18,8 @@ export interface RailItem<Id extends string = string> {
  * 작업 화면의 레일(ui-refresh 결정 9 · 10)이 받는 것 — 칸 묶음 · 고른 칸. 칸을 고르면 `onPick`이 그 칸을 받는다 — 열림과 고른 칸의
  * 주인은 부르는 쪽이고, 고른 뒤의 둘은 `pickRail`이 정한다. 열림과 그것을 뒤집는 패널 토글은 레일이 아니라 패널 칸의 것이다(`Frame`의
  * `PanelSlot` — 레일이 없는 화면(Archive)의 오른쪽 패널도 같은 토글로 여닫는다, codex-ds 결정 32). 토글은 머리 줄에 선다(`PanelToggle`
- * — 둘을 `Frame`이 함께 그린다). 레일은 칸이 둘 이상일 때만 서지만(`railStands`) 토글은 칸 수와 상관없이 선다(codex-ds 결정 25) —
- * 레일이 서는지에 따라 머리 줄 안의 자리만 바뀐다.
+ * — 둘을 `Frame`이 함께 그린다). 레일은 칸이 둘 이상일 때만 서지만(`railStands`) 토글은 칸 수와 상관없이 머리 줄 오른쪽 맨 끝
+ * 같은 자리에 선다(codex-ds 결정 25 · 02 구현 스펙 §3 S2).
  */
 export interface RailProps<Id extends string = string> {
   items: readonly RailItem<Id>[];
@@ -64,12 +65,12 @@ export function PanelBody<Id extends string>({ view, shown, children }: { view: 
 }
 
 /**
- * 레일 열(ui-refresh 결정 9 · 10 · DS `PanelRail`) — 작업 화면 바탕의 오른쪽 끝, 본문 열의 **형제**다. 카드 위끝(머리 줄 바로 아래)부터
- * 칸 묶음이 선다(codex-ds 결정 29). 패널이 닫혀도 남는다 — 닫힌 패널을 칸으로 다시 여는 길이 여기다. 패널 토글은 이 열이 아니라 그
- * 위 머리 줄에 선다(codex-ds 스펙 §4).
+ * 레일 열(ui-refresh 결정 9 · 10 · DS `PanelRail`) — 작업 화면 흰 판 안의 오른쪽 끝, 본문 열의 **형제**다. 판 위끝에서 8 내려 칸 묶음이
+ * 선다(codex-ds 결정 29). 패널이 닫혀도 남는다 — 닫힌 패널을 칸으로 다시 여는 길이 여기다. 패널 토글은 이 열이 아니라 머리 줄
+ * 오른쪽 끝에 선다(codex-ds 스펙 §4 · 02 구현 스펙 §3 S2).
  *
  * **칸이 둘 이상일 때만 선다**(codex-ds 결정 25 · 스펙 §4 — `railStands`). 서지 않을 때는 공용 틀(`Frame`)이 이 열을 통째로 그리지
- * 않아 본문 열이 창 오른쪽 틈 끝까지 넓어지고, 패널을 여닫는 길은 머리 카드 오른쪽 끝의 패널 토글 · ⌘Enter다. 작업 화면의 칸이
+ * 않아 본문 열이 판 오른쪽 끝까지 넓어지고, 패널을 여닫는 길은 머리 줄 오른쪽 끝의 패널 토글 · ⌘Enter다. 작업 화면의 칸이
  * `spec` 하나이던 동안은 서지 않았고, `files`가 더해져 다시 선다.
  *
  * **`aside`도 `nav`도 아니다**(판 04 「지키는 것」 · DS `PanelRail` 「구현 고리」). `aside`는 사이드바와 오른쪽 패널(작업 패널 · spec 목록
@@ -79,8 +80,9 @@ export function PanelBody<Id extends string>({ view, shown, children }: { view: 
  * 적지만 라디오는 고른 것을 끌 수 없다 — 탭 줄이 `role="tab"`을 안 쓰는 것과 같은 가족이다, `ShellTabs`). 그래서 칸 사이 ←/→ 이동이
  * 없고 Tab으로 옮겨 간다 — 칸마다 `tabIndex`를 명시한다(WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다, `@/lib/roving` 머리말). 켜짐은 「패널이 열렸고 그 칸이 골라졌다」이다 — 닫힌 패널의 고른 칸은 기억만 하고 켜 보이지 않는다.
  *
- * **빈 자리는 창을 끄는 자리다** — 레일 열은 회색 바탕이 드러나는 상자라 `data-tauri-drag-region`을 단다(`Frame` 머리말). 폭은 DS
- * 줄 폭 `size-prail`(32)이고, 왼쪽 틈은 본문 열의 오른쪽 틈이라 오른쪽 틈 하나만 든다(DS `.at-rail`의 `margin-right: 8px`).
+ * **흰 판 안의 칸이다**(02 구현 스펙 §3 S2) — 한때 회색 바탕에 서서 창을 끄는 자리였고, 이제 판 안이라 끌기 영역이 아니다. 왼쪽 이웃
+ * 칸(본문 · 작업 패널)과는 제 왼쪽 가장자리의 선 하나로 갈린다(`PANE_RULE`). 폭은 DS 줄 폭 `size-prail`(32)에 좌우 8이다 — 한때 두 틈
+ * (본문 열의 오른쪽 틈 · DS `.at-rail`의 `margin-right: 8px`)이던 자리가 안쪽 여백이 됐다.
  */
 function Rail<Id extends string>({
   open,
@@ -95,7 +97,7 @@ function Rail<Id extends string>({
   controls?: string;
 }) {
   return (
-    <div data-tauri-drag-region className="box-content flex w-(--size-prail) shrink-0 flex-col items-center pr-2">
+    <div className={cn("relative box-content flex w-(--size-prail) shrink-0 flex-col items-center px-2 pt-2", PANE_RULE)}>
       {/* 칸 묶음 — 세그먼트를 세우고 색을 뒤집은 것이다(DS `.at-seg.vert` · codex-ds 결정 29). 홈은 옆 패널 카드와 같은 흰 면
           (`surface` · `shadow-hairline` · `radius-lg`, 안쪽 2 · 칸 사이 2)이고 칸은 28 · `radius-md`라 홈 폭이 줄 폭(32)이다. 켜진 칸은
           패널 트리의 고른 행과 같은 `fill-selected`이고, 꺼진 칸의 hover는 `fill-soft`다 — 켜진 칸은 hover해도 그 면 그대로다(DS

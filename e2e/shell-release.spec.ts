@@ -2,25 +2,34 @@ import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import {
   awaitSpawned,
+  callCount,
   fireAttention,
   fireEvent,
   installFixtureBackend,
   markAttention,
   markRunning,
+  typeIntoShell,
   unknownIpcCalls,
   writeShell,
   둘째가말할자리,
   띠,
-  레인,
   셸입력,
+  셸이앉은스냅샷,
   시계를세운다,
   이름표,
+  줄표시,
+  프로세스셸상태,
 } from "./harness";
 
 // 프로세스 티켓 22 — **끊거나 에이전트가 사라지면 「도는 중」이 풀린다**(프로세스 결정 12). 판단은 L2가 표로 잰다
 // (`shell-attention.test.ts`의 「중단 추론」 · 「에이전트 사라짐」 · 권위 줄, `shell-input.test.ts`의 「중단 키」). 여기서 보는 것은
-// 그 판단이 **진짜 키 핸들러 · 진짜 타이머 · 진짜 `pty:running` 구독**에 붙어 레인과 띠까지 가는가다 — 스토어는 xterm을 들여
-// 노드 seam에 없다.
+// 그 판단이 **진짜 키 핸들러 · 진짜 타이머 · 진짜 `pty:running` 구독**에 붙어 화면까지 가는가다 — 스토어는 xterm을 들여 노드 seam에
+// 없다.
+//
+// **「도는 중」은 Processes의 셸 줄에서 읽는다**(`프로세스셸상태`). 한때 Work 줄 레인의 스피너가 말했는데 02 티켓 05가 레인의 셸 신호를
+// 걷었다 — 도는 셸은 줄에도 탭에도 표시가 없다(S8). 들르는 동안 시계는 안 간다(`세운시계`) — 500ms의 앞뒤를 그대로 잰다. 풀리면 그
+// 줄은 신호 없이 「조용함」이다. **들르기 전에 셸마다 사람 입력이 있어야 한다** — 저절로 뜬 셸은 입력 없이 화면을 떠나면 닫혀(프로세스
+// 결정 7) 돌아오면 다른 셸이 선다. 끊는 키(Esc · Ctrl-C)가 그 입력이고, 칸 둘의 장면은 보는 첫 칸에 한 글자 친다(`typeIntoShell`).
 //
 // **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts`의 1.6초 검사 머리말)이 여기도 걸린다:
 // - `install()`은 **페이지를 열기 전에** 부른다. 연 뒤에 깔면 이미 걸린 타이머는 진짜 시계로 돈다.
@@ -33,21 +42,40 @@ const [, plainWork] = WORKS;
 const ESC = "\x1b";
 const BEL = "\x07";
 
-const 스피너 = (page: Page) => 레인(page, plainWork.slug).locator('[data-signal="working"]');
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
 
 const 새턴 = () => ({ agent: "claude", event: "UserPromptSubmit", at: Date.now(), payload: { prompt: "고쳐 줘" } });
 
-/** 셸 하나가 뜨고 포커스가 그 xterm에 있다 — 누른 키가 셸의 키 핸들러에 닿는다. 그 셸을 도는 중으로 세운다. */
+/** 그 셸(pty)이 Processes에서 도는 중이다 — 글은 서브에이전트가 돌면 그 수를 단다(`subagentLabel`). */
+async function 돈다(page: Page, pty: number, 글 = "도는 중", 세운시계 = true): Promise<void> {
+  expect(await 프로세스셸상태(page, pty, { 세운시계 }), `pty ${pty}이 도는 중이 아니다`).toEqual({ 신호: "working", 글 });
+}
+
+/** 그 셸(pty)이 Processes에서 풀렸다 — 신호가 없고 조용하다. */
+async function 풀렸다(page: Page, pty: number): Promise<void> {
+  const 상태 = await 프로세스셸상태(page, pty, { 세운시계: true });
+  expect(상태.신호, `pty ${pty}이 아직 ${상태.글}`).toBeNull();
+  expect(상태.글).toMatch(/^조용함 /);
+}
+
+/**
+ * 셸 하나가 뜨고 포커스가 그 xterm에 있다 — 누른 키가 셸의 키 핸들러에 닿는다. 그 셸을 도는 중으로 세운다. 도는 중인지는 키를 누른
+ * 뒤에 Processes에서 읽는다 — 들르기 전에 사람 입력(끊는 키)이 있어야 셸이 남는다(머리말).
+ */
 async function 도는셸에포커스(page: Page): Promise<void> {
   await page.clock.install();
-  await installFixtureBackend(page);
+  await installFixtureBackend(page, { processes_snapshot: 셸이앉은스냅샷(1) });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await expect(셸입력(page), "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다").toBeFocused();
   await markAttention(page, 새턴());
-  await expect(스피너(page)).toHaveCount(1);
   await 시계를세운다(page);
+}
+
+/** 끊는 키를 누른다 — 사람 입력으로 적힌 것(`pty_first_input`)까지 본다. 들렀다 와도 그 셸이 남는 근거다. */
+async function 누른다(page: Page, 키: string): Promise<void> {
+  await page.keyboard.press(키);
+  await expect.poll(() => callCount(page, "pty_first_input"), { message: `${키}가 사람 입력으로 안 적혔다` }).toBe(1);
 }
 
 // claude는 생각하는 중에 끊으면 그 순간 오는 훅이 없다(판 03 선행 시험) — 옛 코드에서는 이 스피너가 다음 턴까지 돌았다.
@@ -59,11 +87,11 @@ for (const [이름, 키] of [
   test(`도는 중인 셸에서 ${이름}를 누르고 500ms가 지나면 도는 중이 없다`, async ({ page }) => {
     await 도는셸에포커스(page);
 
-    await page.keyboard.press(키);
+    await 누른다(page, 키);
     await page.clock.runFor(400);
-    await expect(스피너(page)).toHaveCount(1);
+    await 돈다(page, 1);
     await page.clock.runFor(200);
-    await expect(스피너(page)).toHaveCount(0);
+    await 풀렸다(page, 1);
 
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -74,7 +102,7 @@ for (const [이름, 키] of [
 test("Esc 뒤 500ms 안에 훅이 오면 도는 중이 남는다 — 시각을 안 바꾸는 서브에이전트 사건이어도", async ({ page }) => {
   await 도는셸에포커스(page);
 
-  await page.keyboard.press("Escape");
+  await 누른다(page, "Escape");
   await page.clock.runFor(200);
   await fireAttention(page, {
     agent: "claude",
@@ -86,27 +114,31 @@ test("Esc 뒤 500ms 안에 훅이 오면 도는 중이 남는다 — 시각을 �
   // 앵커: 사건이 닿았다.
   await expect(이름표(page, 0)).toHaveAccessibleDescription("도는 중 · 서브에이전트 1");
   await page.clock.runFor(400);
-  await expect(스피너(page)).toHaveCount(1);
+  await 돈다(page, 1, "도는 중 · 서브에이전트 1");
 
   // 앵커: **같은 시계로** 훅 없이 한 번 더 누르면 풀린다 — 위에서 남은 것이 시계가 안 돌아서가 아니다.
+  await expect(셸입력(page)).toBeFocused();
   await page.keyboard.press("Escape");
   await page.clock.runFor(600);
-  await expect(스피너(page)).toHaveCount(0);
+  await 풀렸다(page, 1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // **에이전트 사라짐**(S31). kill · 크래시 · `/exit` 어느 것이든 1초마다 오는 `pty:running`이 그 셸의 도는 명령을 바꿔 말한다.
-// 풀린 셸에서는 그 뒤의 OSC가 다시 말한다. 사라짐은 한 박자(300ms — 아래 `claude -p` 검사) 뒤에 앉아서, 스피너가 걷히기를
-// 기다린 뒤에 쏜다.
+// 풀린 셸에서는 그 뒤의 OSC가 다시 말한다. 사라짐은 한 박자(300ms — 아래 `claude -p` 검사) 뒤에 앉아서, Processes에서 도는 중이
+// 걷히기를 기다린 뒤에 쏜다(이 검사는 시계를 안 세워 한 번 읽기로는 그 박자를 앞지를 수 있다 — 되물어 기다린다).
 test("pty:running이 claude에서 zsh로 바뀌면 도는 중이 풀리고, 그 뒤 OSC를 쏘면 상태가 선다", async ({ page }) => {
-  await 둘째가말할자리(page);
+  await 둘째가말할자리(page, { processes_snapshot: 셸이앉은스냅샷(1, 2) });
+  await typeIntoShell(page);
   await markRunning(page, "claude", 2);
   await markAttention(page, 새턴(), 2);
-  await expect(스피너(page)).toHaveCount(1);
+  await 돈다(page, 2, "도는 중", false);
 
   await fireEvent(page, "pty:running", [{ id: 2, running: "zsh" }]);
-  await expect(스피너(page)).toHaveCount(0);
+  await expect.poll(async () => (await 프로세스셸상태(page, 2)).신호, { message: "도는 중이 안 풀렸다" }).toBeNull();
+  // 들렀다 와도 보는 칸은 첫째다 — 아래 확인할 것이 「봤다」로 꺼지지 않는다.
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
 
   await writeShell(page, `${ESC}]9;PR #174 열었다${BEL}`, 2);
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
@@ -155,10 +187,13 @@ test("에이전트가 사라져도 안 본 확인할 것은 남고, 그 뒤 OSC 
 // 쏜다 — 폴링이 끝난 직후에 떨어진 가장 나쁜 틈이다. 박자가 디바운스보다 짧으면 여기가 빨갛다.
 test("사라짐 바로 뒤에 멈춘 세션 끝이 닿아도 확인할 것이 선다 — `claude -p`의 끝", async ({ page }) => {
   await page.clock.install();
-  await 둘째가말할자리(page);
+  await 둘째가말할자리(page, { processes_snapshot: 셸이앉은스냅샷(1, 2) });
+  await typeIntoShell(page);
   await markRunning(page, "claude", 2);
   await markAttention(page, 새턴(), 2);
-  await expect(스피너(page)).toHaveCount(1);
+  await 돈다(page, 2, "도는 중", false);
+  // 들렀다 와도 보는 칸은 첫째다 — 아래 확인할 것이 「봤다」로 꺼지지 않는다.
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
   await 시계를세운다(page);
 
   await fireEvent(page, "pty:running", [{ id: 2, running: null }]);
@@ -170,7 +205,8 @@ test("사라짐 바로 뒤에 멈춘 세션 끝이 닿아도 확인할 것이 �
   );
   await page.clock.runFor(1_000);
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  // 줄은 「새 결과」다 — 끝났는데 안 본 셸이지 도는 셸이 아니다(셸 신호는 하나다).
+  await expect(줄표시(page, plainWork.slug)).toHaveAttribute("data-mark", "new");
 
   // 남은 확인할 것은 사라짐이 앉힌 뒤라 권위가 풀려 있다 — 그 셸에서 띄운 다음 도구의 승인 요청이 선다. 이 줄이 없으면
   // 사라짐을 아예 안 보는 코드(확인할 것은 멈춘 세션 끝이 세운다)도 이 검사를 지난다.

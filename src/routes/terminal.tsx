@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useStore } from "@tanstack/react-store";
-import { shellStore } from "@/components/shell/shell-store";
 import TerminalPage from "@/features/terminal/TerminalPage";
 
 // `.index` 파일이 아니라 평평한 파일이다 — 결정 16이 「셸 목록은 주소에 넣지 않는다」이므로
@@ -9,10 +7,8 @@ export const Route = createFileRoute("/terminal")({
   component: TerminalRoute,
 });
 
-// 셸 상태를 읽는 것은 라우트 층의 일이고 feature 화면은 prop으로 받는다 —
-// ProjectsPage·WorksPage·ArchivePage가 전부 그 모양이다(`-works-view.tsx` 등).
-// 이 라우트는 넘길 것이 하나뿐이라 별도 `-terminal-view.tsx`를 두지 않는다.
+// 이 화면은 셸 상태에서 넘겨받을 것이 없다 — 머리 줄의 자리(사이드바를 따라 옮겨 가는 것)는 앱 셸이 든다(02 구현 스펙 §3).
+// 넘길 것이 없어 별도 `-terminal-view.tsx`를 두지 않는다.
 function TerminalRoute() {
-  const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  return <TerminalPage sidebarOpen={sidebarOpen} />;
+  return <TerminalPage />;
 }

@@ -20,7 +20,8 @@ import {
 } from "./harness";
 
 // codex-ds 티켓 32 — **목록은 ↑↓, 영역은 Tab으로 다닌다**(codex-ds 스펙 §9 「키보드」 · S10). 창의 Tab은 영역 차례로 간다 — 창
-// 컨트롤 → 사이드바 → 머리 카드 → 머리 줄 → 본문 카드 → 패널 → 레일이고, 영역 안은 DOM 차례다. 목록 다섯(사이드바 work 목록 · main nav ·
+// 컨트롤 → 머리 줄 → 사이드바 → 본문 → 패널 → 레일이고, 영역 안은 DOM 차례다(02 결정 「03」 — 머리 줄이 판 위 크롬에 한 줄이라
+// DOM이 보이는 차례를 따른다. 한때 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄이었다). 목록 다섯(사이드바 work 목록 · main nav ·
 // 프로젝트 목록 · Archive 목록 · spec 트리)은 저마다 **Tab 정류장 하나**이고(roving tabindex — `@/lib/roving`), 목록 안은 ↑↓로 옮기고
 // Enter로 연다. 트리는 →가 펴고 ←가 접는다. 행 안 버튼(고정 · 경로 복사)은 Tab에서 빠지고, 그 동작은 행의 대상 메뉴(⇧F10 · 메뉴 키)에
 // 있다 — 고정은 work 메뉴의 「고정」, 경로 복사는 spec 트리 파일 행 메뉴의 「경로 복사」다(구현 노트 Q16).
@@ -28,7 +29,7 @@ import {
 // **Tab은 진짜 키로 누른다.** `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
 // 차례는 포커스를 내려놓고 Tab을 누르며 선 자리를 적어(`탭차례`) 그 자리를 품은 상자로 영역을 가른다(`포커스자리`).
 //
-// 작업 화면은 칸이 `spec` · `files` 둘이라 레일이 선다(git-integration 결정 29) — 패널 토글이 머리 카드 밖 머리 줄로 나가고 레일의 칸이
+// 작업 화면은 칸이 `spec` · `files` 둘이라 레일이 선다(git-integration 결정 29) — 패널 토글은 머리 줄 할 일 묶음의 끝이고 레일의 칸이
 // 차례 끝에 선다. 레일의 모양은 진열대(`rail.spec.ts`)가 잰다.
 
 const [billing, ledger] = PROJECTS;
@@ -75,7 +76,7 @@ async function 항목으로(page: Page, name: string): Promise<Locator> {
 
 // ── 영역 차례 ──
 
-test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄 → 본문 → 패널 → 레일 차례이고, 목록마다 한 번 앉으며 행 안 버튼에는 안 앉는다", async ({
+test("작업 화면의 Tab은 창 컨트롤 → 머리 줄 → 사이드바 → 본문 → 패널 → 레일 차례이고, 목록마다 한 번 앉으며 행 안 버튼에는 안 앉는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -83,15 +84,22 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
   await expect(트리행(page, "overview.md")).toBeVisible();
 
   const 자리들 = await 탭차례(page);
-  expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "머리 줄", "본문", "패널", "레일"]);
-  // 머리 줄(머리 카드 밖)의 정류장은 패널 토글 하나이고, 레일은 칸마다 앉는다.
-  expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual(["작업 패널 접기"]);
+  expect(영역차례(자리들)).toEqual(["창 컨트롤", "머리 줄", "사이드바", "본문", "패널", "레일"]);
+  // 머리 줄의 정류장은 화면 자리의 것이다 — 이름 · 상태 · 작업 메뉴 · 세로선 너머 분할, 그리고 묶음 끝의 패널 토글(02 티켓 03). 레일은 칸마다
+  // 앉는다. **분할도 앉는다**(02 코드 리뷰 C1) — 맨 버튼이라 `tabindex`를 명시해야 macOS WebKit의 Tab이 선다(`@/lib/roving` 머리말). 한때
+  // 그것을 잃어 macOS에서는 빠지고 맨 버튼에도 서는 리눅스 WebKit에서만 섰다 — 이제 두 플랫폼이 같은 차례다.
+  expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual([
+    pinnedWork.title,
+    pinnedWork.status,
+    "작업 메뉴",
+    "분할",
+    "작업 패널 접기",
+  ]);
   expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
-  // 사이드바는 「전체 | 내 차례」 마디 · nav 하나 · work 목록 하나 · 바닥 사람 줄이다(v1 티켓 07 · 42 — 맨 위의 검색 칸은 46이 걷었다,
-  // 검색은 창 컨트롤의 🔍다) — 마디의 정류장은 고른 칸(「전체」)이고 칸 사이는 ←→다. nav의 정류장은 첫 항목(켜진 것이 없다), 목록의
-  // 정류장은 고른 행이다. 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
+  // 사이드바는 위 줄 nav 하나 · work 목록 하나 · 바닥 사람 줄이다(v1 티켓 07 · 42 — 맨 위의 검색 칸은 46이 걷었다, 검색은 창
+  // 컨트롤의 🔍다. 「전체 | 내 차례」 마디는 02 티켓 04가 걷어 「내 차례」가 nav의 한 줄이 됐다). nav의 정류장은 첫 항목(켜진 것이
+  // 없다), 목록의 정류장은 고른 행이다. 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
   expect(자리들.filter(({ 영역 }) => 영역 === "사이드바").map(({ 이름, 행 }) => [이름, 행])).toEqual([
-    ["전체", null],
     ["새 Thread", "new-thread"],
     [pinnedWork.title, pinnedWork.slug],
     ["홍길동 — 사람 메뉴", null],
@@ -123,7 +131,7 @@ test("프로젝트 목록 · Archive 목록 · Archive의 spec 트리도 Tab이 
   // 트리의 정류장은 연 문서(기록)의 행이다.
   const 트리키 = ["record.md", "spec", "spec/tickets", "spec/tickets/할일.md", "spec/목업", "spec/목업/조각.html", "spec/증거", "spec/증거/샷.png"];
   expect(정류장(자리들, 트리키)).toEqual(["record.md"]);
-  expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "본문", "패널"]);
+  expect(영역차례(자리들)).toEqual(["창 컨트롤", "머리 줄", "사이드바", "본문", "패널"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -178,7 +186,7 @@ test("레일이 서면 Tab은 패널 다음에 레일로 간다 — 칸마다 �
   await expect(showcase.getByRole("group", { name: "레일", exact: true })).toBeVisible();
 
   const 자리들 = await 탭차례(page, { 범위: "[data-rail-fixture]", 최대: 160 });
-  // 레일이 서면 패널 토글은 머리 카드 밖 머리 줄에 선다(`rail.spec`).
+  // 레일이 서도 패널 토글은 머리 줄 할 일 묶음의 끝이다(`rail.spec`).
   expect(영역차례(자리들)).toEqual(["머리 줄", "패널", "레일"]);
   expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -234,7 +242,9 @@ test("알림 띠의 줄과 ⌄에도 Tab이 앉고, 줄의 ⇧F10 · 메뉴 키�
     await 다떴다(menu);
     const spot = (await 줄들.nth(0).boundingBox())!;
     const card = (await menu.boundingBox())!;
-    expect([Math.round(card.x), Math.round(card.y)], key).toEqual([Math.round(spot.x), Math.round(spot.y + spot.height)]);
+    // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
+    // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+    expect([Math.round(card.x), Math.round(card.y)], key).toEqual([Math.floor(spot.x), Math.floor(spot.y + spot.height)]);
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(줄들.nth(0), key).toBeFocused();
@@ -285,14 +295,17 @@ test("사이드바 work 목록은 ↑↓로 구획 머리와 행을 지나고, �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// nav는 「새 Thread」 · 「Library」 둘이다(v1 티켓 07 · 19) — 지금 화면들로 가는 옛 main nav 넷은 사람 메뉴로 갔다(S27).
+// nav는 「새 Thread」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19, 02 티켓 04 — 「내 차례」가 마디에서 nav로 왔다). 지금
+// 화면들로 가는 옛 main nav 넷은 사람 메뉴로 갔다(S27).
 test("nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
   await 탭으로(page, page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }));
   await 간다(page, "ArrowUp", "new-thread");
+  await 간다(page, "ArrowDown", "mine");
   await 간다(page, "ArrowDown", "library");
   await 간다(page, "ArrowDown", "library");
+  await 간다(page, "ArrowUp", "mine");
   await 간다(page, "ArrowUp", "new-thread");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/");

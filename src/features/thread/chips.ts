@@ -138,10 +138,20 @@ export const currentModel = (lists: ChipLists, participant: Participant | null):
  * 생각 깊이를 고르지 않았으면 모델만이다. 둘 다 모르면 「기본 모델」이다.
  */
 export function chipLabel(models: readonly ChoiceOption[] | null, model: string | null, effort: string | null): string {
+  const parts = chipParts(models, model, effort);
+  return [parts.model, parts.depth].filter(Boolean).join(" · ");
+}
+
+/** 칩 글자의 두 조각(`chipLabel`과 같은 글) — 칩은 모델을 본문색, 생각 깊이를 옅은 글자로 가른다(02 티켓 10 · 캔버스 v35 Diff-Chat). */
+export function chipParts(
+  models: readonly ChoiceOption[] | null,
+  model: string | null,
+  effort: string | null,
+): { model: string; depth: string | null } {
   const named = model === null ? null : (models?.find((option) => option.value === model)?.name ?? alias(model));
   const short = named?.replace(/\s*\(.*\)\s*$/, "").trim() || null;
   const depth = effort === null ? null : (EFFORTS.find((one) => one.value === effort)?.label ?? effort);
-  return [short ?? "기본 모델", depth].filter(Boolean).join(" · ");
+  return { model: short ?? "기본 모델", depth: depth || null };
 }
 
 const alias = (model: string): string => (/^[a-z]+$/.test(model) ? model[0].toUpperCase() + model.slice(1) : model);

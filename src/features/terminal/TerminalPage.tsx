@@ -41,10 +41,10 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 것 — 결정 44). 셸을 고르는 자리가 사이드바 가지로 가면서 그 줄이 없어지자 창을 끌 영역도
 // 신호등을 피할 여백도 남지 않아, 자리를 화면의 브레드크럼 머리에 돌려줬다(결정 72). 이번 판이 셸을
 // 고르는 자리를 화면 안으로 되돌리므로(adr-03) 그 층을 다시 탭 줄이 가져간다 — 브레드크럼은
-// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 머리 줄(`Frame`의 `HeadRow`)의
+// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 머리 줄(앱 셸의 `ShellHeadRow`)의
 // 성질이다. 탭 줄은 한동안 그 줄에 칸들을 세우다가, 그 탭이 보여 줄 카드의 머리로 내려왔다(codex-ds 스펙 §4 · ShellTabs 머리말).
 //
-// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 머리 줄 아래 터미널 카드 하나가 뜨고 그 카드의 머리가 탭 줄이다 —
+// **이 화면은 공용 틀(`Frame`) 위에 선다**(ui-refresh 결정 27). 흰 판 안에 터미널 칸 하나가 서고 그 칸의 머리가 탭 줄이다 —
 // 위치 글자 줄은 없다(ui-refresh 결정 5: 카드는 제게 필요한 머리만 인다). 카드의 바탕은 터미널 테마를 따르고 안쪽 여백
 // 16(DS `Terminal`)은 셸의 집이 든다(`TerminalPane`의 그 주석).
 //
@@ -53,10 +53,10 @@ import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 // 하나여서 이 판이 그 줄을 되살리며 사라졌다. 본문에 남은 것은 조작이 아니라 **비었다는
 // 표시와 여는 법**이고, 상한에 닿았을 때의 문장도 거기서 읽힌다 — `TerminalPane`의 주석이
 // 사정을 든다.
-/** 이 화면의 nav 항목 — 머리 카드의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
+/** 이 화면의 nav 항목 — 머리 줄의 이름 · 아이콘이 여기서 읽는다(nav와 한 글자 · 한 얼굴). */
 const PLACE = navItem("terminal");
 
-function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
+function TerminalPage() {
   /**
    * 이 화면의 소유자 — **최상위 터미널**이다(빈 글자 `""` — ui-refresh 결정 23).
    *
@@ -175,9 +175,9 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
 
   return (
     // 탭 줄이 터미널 카드의 머리다(codex-ds 스펙 §4 「탭 줄」 — work 화면과 같은 규칙). 카드가 그 줄의 바닥을 든다(`TAB_ROW_CARD`).
-    // 머리 줄의 머리 카드는 화면 이름 「Terminal」 하나다(codex-ds 스펙 §6) — 이 화면에는 머리에 둘 할 일이 없다(셸을 여는 `+`는
+    // 머리 줄에는 화면 이름 「Terminal」 하나가 선다(codex-ds 스펙 §6) — 이 화면에는 머리에 둘 할 일이 없다(셸을 여는 `+`는
     // 탭 줄의 것이다). 이름 · 아이콘은 nav 항목에서 읽는다(`navItem`).
-    <Frame sidebarOpen={sidebarOpen} head={{ icon: PLACE.icon, name: PLACE.label }}>
+    <Frame head={{ icon: PLACE.icon, name: PLACE.label }}>
       <Card
         as="main"
         label="터미널"

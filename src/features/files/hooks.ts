@@ -46,7 +46,7 @@ export const worktreeFolderQuery = (slug: string, project: string, path: string,
   });
 
 /**
- * Work 카드의 변경 칸(v1 티켓 33 · 34) — Work 전체의 변경을 한 번에 읽는 쿼리다. **워크트리 데이터 머리 아래다** — 턴 끝 · 창 포커스 ·
+ * 요약 카드의 「변경 사항」(v1 티켓 33 · 34 · 02 §7) — Work 전체의 변경을 한 번에 읽는 쿼리다. **워크트리 데이터 머리 아래다** — 턴 끝 · 창 포커스 ·
  * 새로고침이 다른 워크트리 쿼리와 함께 다시 읽는다. 감시의 신호는 워크트리 하나의 것이라(`invalidateWorktree`의 머리는 Project까지다)
  * 앱 루트가 `invalidateWorkChanges`를 따로 부른다.
  */

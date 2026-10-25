@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_COMMANDS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, 머리카드 } from "./harness";
+import { installFixtureBackend, ipcCallArgs, unknownIpcCalls, 화면머리 } from "./harness";
 
 // 설정의 **구획별 저장**(#225 · 결정 21). 터미널 설정과 알림 설정이 각자 저장 버튼을 갖고,
 // 에이전트 훅은 누르면 바로 적용된다. 항목마다 페이지가 따로다(#226 · UI개선 결정 22). 저장 버튼은 그 쪽의
-// 머리 카드에 선다(codex-ds 스펙 §7 · 스토리 60) — 쪽 조각이 그리지만 서는 자리는 창 맨 위다.
+// 머리 줄에 선다(codex-ds 스펙 §7 · 스토리 60) — 쪽 조각이 그리지만 서는 자리는 창 맨 위다.
 //
 // 「최신 설정에 자기 칸만 덮는다」는 L2가 잰다(`save-section.test.ts`) — 여기 고정 백엔드는
 // 쓰기를 기억하지 않아 「그사이 저장된 값」을 못 세운다. **이 층이 재는 것은 초안이 항목 페이지
@@ -22,17 +22,17 @@ const 항목 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =
 const 저장 = { name: "저장", exact: true } as const;
 
 /**
- * 지금 쪽의 저장 버튼 — 머리 카드의 할 일이다. 한 화면에 쪽이 하나라(항목 하나 = 페이지 하나) 머리 카드의 저장이 곧 그 쪽의
+ * 지금 쪽의 저장 버튼 — 머리 줄의 할 일이다. 한 화면에 쪽이 하나라(항목 하나 = 페이지 하나) 머리 줄의 저장이 곧 그 쪽의
  * 것이고, 어느 쪽인지는 그 쪽 조각이 서 있는지로 함께 센다.
  */
-const 저장버튼 = (page: Page) => 머리카드(page).getByRole("button", 저장);
+const 저장버튼 = (page: Page) => 화면머리(page).getByRole("button", 저장);
 
 /** 나간 `write_settings`들의 인자. 기록 형식이 낯설면 던진다 — 조용한 빈 목록은 fail-open이다. */
 async function writtenSettings(page: Page): Promise<unknown[]> {
   return (await ipcCallArgs(page, "write_settings", "settings")).map(({ args }) => args.settings);
 }
 
-test("터미널 설정과 알림 설정은 머리 카드에 저장 버튼이 각자 서고, 에이전트 훅에는 없다", async ({ page }) => {
+test("터미널 설정과 알림 설정은 머리 줄에 저장 버튼이 각자 서고, 에이전트 훅에는 없다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
 

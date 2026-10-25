@@ -7,9 +7,12 @@ import {
   ipcCallArgs,
   markAttention,
   unknownIpcCalls,
+  workRow,
   띠,
-  레인,
   셸입력,
+  셸이앉은스냅샷,
+  줄표시,
+  프로세스셸상태,
   행버튼,
 } from "./harness";
 
@@ -19,22 +22,39 @@ import {
 // 들어오면 곧바로 도는 중이다. 물음 창(`AskUserQuestion` · Elicitation)은 안 읽는다(리뷰 반영 — 마지막 검사).
 //
 // 어느 키가 확정인지는 L2가 표로 잰다(`shell-attention.test.ts`의 「승인 추론」 · `shell-input.test.ts`의 「권한 창의 키」). 여기서
-// 보는 것은 그 판단이 **진짜 키 핸들러**에 붙어 띠와 레인까지 가는가다 — 스토어는 xterm을 들여 노드 seam에 없다. 시계는 안
-// 쓴다: 키 하나로 곧바로 간다.
+// 보는 것은 그 판단이 **진짜 키 핸들러**에 붙어 띠 · 줄 표시 · Processes의 셸 줄까지 가는가다 — 스토어는 xterm을 들여 노드 seam에
+// 없다. 시계는 안 쓴다: 키 하나로 곧바로 간다.
+//
+// **「도는 중」은 Processes에서 읽는다**(`프로세스셸상태`). 한때 Work 줄 레인의 스피너가 말했는데 02 티켓 05가 레인의 셸 신호를 걷었다 —
+// 기다림은 줄의 「내 차례」로 옮겨 갔고 도는 셸은 줄에 표시가 없다(S8). 그래서 「곧바로 도는 중」은 띠 · 줄 표시가 걷히고 Processes의
+// 그 셸 줄이 「도는 중」인 것으로 잰다 — 앞의 둘만이면 기다림을 그냥 지운 코드도 초록이다.
 //
 // 보는 셸 하나로 잰다. 기다림은 「봤다」로 안 꺼지므로(terminal-activity-signal 결정 7) 켜진 셸의 승인 요청도 띠에 선다 — 그리고 키가 닿으려면 그
 // 셸에 포커스가 있어야 한다.
 
 const [, plainWork] = WORKS;
 
-const 스피너 = (page: Page) => 레인(page, plainWork.slug).locator('[data-signal="working"]');
 const 기다림줄 = (page: Page) =>
   띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true });
 /**
  * 셸이 마지막으로 한 말 — 부르는 행 버튼의 설명(`aria-description`)이 든다(`sidebar-active-band` 결정 14 — 행이 한 줄이 되며
- * 둘째 줄이 걷혔다). 새 승인 요청이 닿았는지를 이 글로 본다.
+ * 둘째 줄이 걷혔다). 새 승인 요청이 닿았는지를 이 글로 본다. 기다리는 셸의 줄 이름 꼬리는 「내 차례」다(02 티켓 05).
  */
-const 행의말 = (page: Page) => 행버튼(page, `${plainWork.title} — 나를 기다림`);
+const 행의말 = (page: Page) => 행버튼(page, `${plainWork.title} — 내 차례`);
+
+/** 기다림이 남는다 — 띠의 「나를 기다림」 줄과 Work 줄의 「내 차례」. 셸 신호는 하나라 그동안 도는 중일 수 없다. */
+async function 기다림이남는다(page: Page): Promise<void> {
+  await expect(기다림줄(page)).toHaveCount(1);
+  await expect(줄표시(page, plainWork.slug)).toHaveAttribute("data-mark", "mine");
+}
+
+/** 곧바로 도는 중이다 — 띠와 줄 표시가 걷히고(도는 셸은 줄에 표시가 없다), Processes의 그 셸 줄이 「도는 중」이다. */
+async function 도는중이다(page: Page): Promise<void> {
+  await expect(띠(page)).toHaveCount(0);
+  await expect(workRow(page, plainWork.slug)).toBeVisible();
+  await expect(줄표시(page, plainWork.slug)).toHaveCount(0);
+  expect(await 프로세스셸상태(page, 1)).toEqual({ 신호: "working", 글: "도는 중" });
+}
 
 /** 승인 요청 한 장 — `tool_input`은 훅 문서 · 18 실측의 모양이다. 시각이 다르면 새 요청이다. */
 const 승인요청 = (at: number, command = "sleep 30") => ({
@@ -69,13 +89,12 @@ const 나간바이트 = async (page: Page): Promise<string> =>
 
 /** 셸 하나가 뜨고 포커스가 그 xterm에 있다 — 누른 키가 셸의 키 핸들러에 닿는다. 그 셸에 승인 요청(주면 그 한 장)을 세운다. */
 async function 승인창앞(page: Page, 한장: Parameters<typeof markAttention>[1] = 승인요청(Date.now())): Promise<void> {
-  await installFixtureBackend(page);
+  await installFixtureBackend(page, { processes_snapshot: 셸이앉은스냅샷(1) });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await expect(셸입력(page), "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다").toBeFocused();
   await markAttention(page, 한장);
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 }
 
 // `1`은 Enter 없이 곧바로 승인하고, 처음 자리(`1. Yes`)의 Enter도 승인이다(18 r4 #2 · r6).
@@ -87,8 +106,7 @@ for (const [이름, 키] of [
     await 승인창앞(page);
 
     await page.keyboard.press(키);
-    await expect(스피너(page)).toHaveCount(1);
-    await expect(띠(page)).toHaveCount(0);
+    await 도는중이다(page);
 
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -104,20 +122,17 @@ test("승인 요청에서 Esc를 누르면 「나를 기다림」이 남고, 그
 
   await page.keyboard.press("Escape");
   await expect.poll(() => 나간바이트(page), { message: "Esc가 셸에 안 닿았다" }).toContain("\x1b");
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   await page.keyboard.press("1");
   await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toContain("\x1b1");
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   // 새 승인 요청 — 행의 말이 새 명령으로 바뀐 것이 그 요청이 닿았다는 앵커다.
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
   await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("Enter");
-  await expect(스피너(page)).toHaveCount(1);
-  await expect(띠(page)).toHaveCount(0);
+  await 도는중이다(page);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -133,22 +148,19 @@ test("↓ 뒤의 Enter도, ↓ 뒤의 1도 「나를 기다림」을 남긴다",
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect.poll(() => 나간바이트(page), { message: "Enter가 셸에 안 닿았다" }).toContain("\r");
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
   await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("1");
   await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toMatch(/\r.*1$/s);
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   await fireAttention(page, 승인요청(Date.now() + 2, "sleep 90"));
   await expect(행의말(page)).toHaveAccessibleDescription(/sleep 90/);
   await page.keyboard.press("1");
-  await expect(스피너(page)).toHaveCount(1);
-  await expect(띠(page)).toHaveCount(0);
+  await 도는중이다(page);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -163,14 +175,12 @@ test("승인 요청에서 2를 누르면 「나를 기다림」이 남는다", a
 
   await page.keyboard.press("2");
   await expect.poll(() => 나간바이트(page), { message: "2가 셸에 안 닿았다" }).toContain("2");
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
   await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("Enter");
-  await expect(스피너(page)).toHaveCount(1);
-  await expect(띠(page)).toHaveCount(0);
+  await 도는중이다(page);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -186,19 +196,16 @@ test("물음(AskUserQuestion)에서 1 · Enter를 눌러도 「나를 기다림�
 
   await page.keyboard.press("1");
   await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toContain("1");
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   await page.keyboard.press("Enter");
   await expect.poll(() => 나간바이트(page), { message: "Enter가 셸에 안 닿았다" }).toContain("1\r");
-  await expect(기다림줄(page)).toHaveCount(1);
-  await expect(스피너(page)).toHaveCount(0);
+  await 기다림이남는다(page);
 
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
   await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("1");
-  await expect(스피너(page)).toHaveCount(1);
-  await expect(띠(page)).toHaveCount(0);
+  await 도는중이다(page);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

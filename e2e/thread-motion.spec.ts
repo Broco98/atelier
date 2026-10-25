@@ -21,8 +21,11 @@ const ANSWERED = lineOf(permission, "permission", "answered");
 /** 첫 말로 막 선 Thread — Host의 Session이 이 앱에 떠 있고 기록은 물음 바로 앞까지다. */
 const view: ThreadView = { ...FIXTURE_THREAD, title: sentPayloads(permission)[0].text, live: true, lastSeq: ASKED.seq - 1 };
 
-/** 들어서는 움직임의 이름들(`index.css` 「Thread의 움직임」) — 이미 있던 것이 다시 서면 이 가운데 하나가 걸린다. */
-const 들어섬 = ["word-in", "chip-in", "card-rise", "pop-in", "row-in", "button-in", "jump-in"];
+/**
+ * 들어서는 움직임의 이름들(`index.css` 「Thread의 움직임」) — 이미 있던 것이 다시 서면 이 가운데 하나가 걸린다. 보내기 원의 글리프
+ * 모핑(`morph-in` · `morph-out`, 02 티켓 10)은 글리프가 바뀔 때만 걸린다.
+ */
+const 들어섬 = ["word-in", "chip-in", "card-rise", "row-in", "morph-in", "morph-out", "jump-in"];
 
 const 카드 = (page: Page) => page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true });
 const 결정줄 = (page: Page) => page.getByRole("main").locator("[data-decision]");
@@ -75,9 +78,9 @@ async function openThread(page: Page): Promise<void> {
   await expect(page.getByRole("main").getByText(view.title, { exact: true })).toBeVisible({ timeout: 20_000 });
 }
 
-/** 카드의 「예」를 누르고 그 답이 나간 뒤 답 줄을 흘린다 — 카드가 걷히고 결정 줄이 선다. */
+/** 카드의 「이번만 허용」을 누르고 그 답이 나간 뒤 답 줄을 흘린다 — 카드가 걷히고 결정 줄이 선다. */
 async function 고른다(page: Page): Promise<void> {
-  await 카드(page).getByRole("button", { name: "예", exact: true }).click();
+  await 카드(page).getByRole("button", { name: "이번만 허용", exact: true }).click();
   await expect.poll(async () => (await ipcCallArgs(page, "thread_answer_permission", "thread")).length).toBe(1);
   await streamLines(page, view.id, [ANSWERED]);
   await expect(결정줄(page)).toHaveText(["파일 고치기를 승인함"]);

@@ -1,9 +1,9 @@
 import type { Entry, ToolEntry, Turn } from "./fold";
 import { describeTool, lineDiff, splitLines } from "./tool-view";
 
-// **넓힌 카드**(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand · Messages · Motion 보드)의 순수 함수 — Work 카드에서 문서 · 변경 ·
+// **넓힌 카드**(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand · Messages · Motion 보드)의 순수 함수 — 요약 카드에서 문서 · 변경 ·
 // Project 줄을 누르면 카드가 넓어져 왼쪽에 카드의 칸들(목록), 오른쪽에 그 파일의 보기가 선다. **한 번에 파일 하나만 본다**(§15 —
-// 배치 2 · 3은 짓지 않는다). 그리는 쪽은 `WorkCard.tsx`(목록 · 고른 줄) · `ExpandedViewer.tsx`(보기) · `ThreadFlow.tsx`(대화 속 문서
+// 배치 2 · 3은 짓지 않는다). 그리는 쪽은 `SummaryCard.tsx`(목록 · 고른 줄) · `ExpandedViewer.tsx`(보기) · `ThreadFlow.tsx`(대화 속 문서
 // 카드)다.
 
 /**
@@ -52,7 +52,7 @@ export function viewerPath(opened: Opened): string[] {
 /**
  * 다시 읽은 문서에서 칠할 줄(스토리 118 · Motion 보드 「문서 실시간 편집」 — 「Host가 문서를 고치면 바뀐 줄만 잠깐 칠해집니다」) — 새 글에서
  * 더하거나 고친 줄의 번호(1부터)다. 지우기만 한 자리는 칠할 줄이 없다. **처음 읽은 글(`before`가 없다)은 칠하지 않는다** — 문서를 열
- * 때마다 온 글이 빛나면 무엇이 바뀌었는지가 사라진다(Work 카드의 새로 바뀐 파일과 같은 규칙 — `work-card.ts`의 `freshFiles`).
+ * 때마다 온 글이 빛나면 무엇이 바뀌었는지가 사라진다(요약 카드의 새로 바뀐 파일과 같은 규칙 — `summary-card.ts`의 `freshFiles`).
  */
 export function freshLines(before: string | undefined, after: string): number[] {
   if (before === undefined || before === after) return [];
@@ -76,7 +76,7 @@ export interface CreatedDoc {
 /**
  * 대화 속 문서 카드(스토리 102 · Messages 보드 「파일과 첨부 — Agent가 만든 파일」 · 「Host가 만듦 · 32줄」) — 그 턴의 **끝난** 편집 가운데
  * 이은 Work의 spec 폴더(`specRoot` — 절대 경로)에 **새로 쓴** 문서다. 새로 썼는지는 옛 글이 없는 diff로 안다(Claude `Write` — `tool-view.ts`의
- * `written`). 옛 글이 있는 고치기는 카드가 아니다 — 바뀐 파일 알약 · Work 카드의 변경이 든다. 같은 문서를 두 번 쓰면 한 장이고 줄 수는
+ * `written`). 옛 글이 있는 고치기는 카드가 아니다 — 바뀐 파일 알약 · 요약 카드의 「변경 사항」이 든다. 같은 문서를 두 번 쓰면 한 장이고 줄 수는
  * 마지막 글의 것이다. spec 폴더를 모르면(Work 없는 Thread) 카드가 없다.
  */
 export function createdDocs(turn: Pick<Turn, "entries" | "who">, specRoot: string | null): CreatedDoc[] {

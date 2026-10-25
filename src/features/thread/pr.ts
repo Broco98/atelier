@@ -3,7 +3,7 @@ import type { Opened } from "./expanded";
 import { isObject, nonEmpty, text } from "./json";
 
 // **PR 카드와 PR 줄의 문장**(v1 티켓 36 · 구현 스펙 §12 S24 · 스토리 124 · 125 · 127 · 캔버스 Cards · WorkPanel · Screen-Review 보드) —
-// Thread의 PR 카드(`PrCard.tsx`)와 Work 카드의 PR 줄(`work-card.ts`의 `prRows`)이 함께 쓰는 순수 함수다.
+// Thread의 PR 카드(`PrCard.tsx`)와 요약 카드의 PR 줄(`summary-card.ts`의 `prRows`)이 함께 쓰는 순수 함수다.
 //
 // - **CI는 색 없이 문장이다**(스토리 125) — 「CI 확인 중」 · 「CI 통과」 · 「CI 실패」. 실패는 무엇이 실패했는지까지 말한다. 빨강은 사이드바
 //   목록의 「실패」만 쓴다(v1 티켓 41).
@@ -85,14 +85,14 @@ export function failedChecks(failed: readonly string[]): string {
   return `${failed[0]} 외 ${failed.length - 1}개`;
 }
 
-/** Work 카드 PR 줄 아래의 실패 문장(보드 `.wnote` 「빨간색 대신 문장으로 알립니다」). */
+/** 요약 카드 PR 줄 아래의 실패 문장(보드 `.wnote` 「빨간색 대신 문장으로 알립니다」). */
 export function failNote(failed: readonly string[]): string {
   const names = failedChecks(failed);
   return names === "" ? "검사가 실패했어요." : `${names} 검사가 실패했어요.`;
 }
 
 /**
- * 「Host에게 고쳐 달라고 하기」가 그 Thread의 입력창에 채우는 말 — 실패한 검사를 모두 싣는다. 보내는 것은 사람이다(Work 카드의 더하기와
+ * 「Host에게 고쳐 달라고 하기」가 그 Thread의 입력창에 채우는 말 — 실패한 검사를 모두 싣는다. 보내는 것은 사람이다(v1 Work 카드의 더하기와
  * 같은 길, 결정.md 34).
  */
 export function fixAsk(pr: Pick<PrLine, "number" | "ci">): string {

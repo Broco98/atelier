@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { readMark, statusOf } from "./status";
+import { markOf, readMark, statusOf, type ThreadStatus } from "./status";
 import type { RecordLine } from "./types";
 
 // Thread 목록 상태(v1 티켓 41 · 구현 스펙 §17 · S38) — seam은 순수 함수 `statusOf` 하나다: 기록 줄과 엔진이 준 두 값(떠 있는 Session이
@@ -224,5 +224,20 @@ describe("읽은 자리", () => {
     expect(readMark(twoTurns, 20)).toBeNull();
     expect(readMark(through(twoTurns, 16), 9)).toBeNull();
     expect(readMark([], 0)).toBeNull();
+  });
+});
+
+// **상태 표시가 그리는 것**(02 구현 스펙 §4 · S11). 상태를 고르는 함수와 그 차례는 그대로이고, 그리는 법만 바뀌었다 — 줄 오른쪽 끝에 표시 하나다.
+// 넷은 저마다 표시가 있고, 멈춤은 표시가 없다(사람이 멈춘 것은 일거리가 아니다).
+describe("상태 표시", () => {
+  it.each([
+    [{ kind: "mine", since: "2026-10-10T10:00:00.000+09:00", text: "승인 · pnpm test" }, "mine"],
+    [{ kind: "working", text: null }, "working"],
+    [{ kind: "failed", at: "2026-10-10T10:00:00.000+09:00", text: "Claude Code와 연결이 끊겼어요" }, "failed"],
+    [{ kind: "new" }, "new"],
+    [{ kind: "stopped", at: "2026-10-10T10:00:00.000+09:00", text: "중단했습니다" }, null],
+    [null, null],
+  ] satisfies [ThreadStatus | null, string | null][])("%o → %s", (status, mark) => {
+    expect(markOf(status)).toBe(mark);
   });
 });

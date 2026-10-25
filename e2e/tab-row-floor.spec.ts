@@ -55,7 +55,7 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    // 패널 토글은 머리 줄 오른쪽 끝(레일이 서는 지금은 머리 카드 밖 레일 열 위, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    // 패널 토글은 머리 줄 오른쪽 끝 묶음의 맨 끝(`aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
       .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
       ?.getBoundingClientRect();
@@ -192,12 +192,14 @@ test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라
   // 창 폭을 지금 줄의 바닥에서 냈으므로 사이드바는 정해 둔 폭에 선다 — 저장값(400)보다 좁고, 20px을 끌 자리가 최소 폭(240) 위에 있다.
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeGreaterThanOrEqual(SQUEEZED_SIDEBAR);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThanOrEqual(SQUEEZED_SIDEBAR + 1);
+  // 손잡이는 사이드바 오른쪽 가장자리의 띠다 — 그 가운데를 누른다. 사이드바는 흰 판 안이라 창 왼쪽 끝이 아니라 판의 띄움(5.5) 뒤에서
+  // 시작한다(02 티켓 02). 한때 사이드바가 창 끝에 붙어 「폭 − 2」가 곧 손잡이였다.
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
-  const sy = sideHandle.y + sideHandle.height / 2;
-  await page.mouse.move(narrow.sidebar - 2, sy);
+  const [sx, sy] = [sideHandle.x + sideHandle.width / 2, sideHandle.y + sideHandle.height / 2];
+  await page.mouse.move(sx, sy);
   await page.mouse.down();
-  await page.mouse.move(narrow.sidebar - 12, sy, { steps: 3 });
-  await page.mouse.move(narrow.sidebar - 22, sy, { steps: 3 });
+  await page.mouse.move(sx - 10, sy, { steps: 3 });
+  await page.mouse.move(sx - 20, sy, { steps: 3 });
   await expect.poll(async () => (await layoutOf(page)).sidebar).toBeLessThanOrEqual(narrow.sidebar - 19);
   const dragged = await layoutOf(page);
   await page.mouse.up();
@@ -245,11 +247,15 @@ test("좁게 선 패널·사이드바를 바깥으로 끌어도 고른 폭이 �
   await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400 - 40);
+  // 손잡이 띠의 가운데를 누른다(위 검사와 같은 까닭 — 사이드바는 판 안에서 시작한다). 그 끌기가 실제로 손잡이를 잡았다는 앵커로 끄는
+  // 동안의 표식(문서의 `resizing` — `setResizing`)을 본다 — 못 잡았으면 아래 「저장값 그대로」가 헛돈다(한때 「폭 − 2」를 눌러 판 안
+  // 사이드바에서 손잡이를 비껴가 그렇게 초록이었다).
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
-  const sy = sideHandle.y + sideHandle.height / 2;
-  await page.mouse.move(narrow.sidebar - 2, sy);
+  const [sx, sy] = [sideHandle.x + sideHandle.width / 2, sideHandle.y + sideHandle.height / 2];
+  await page.mouse.move(sx, sy);
   await page.mouse.down();
-  await page.mouse.move(narrow.sidebar + 38, sy, { steps: 8 });
+  await page.mouse.move(sx + 40, sy, { steps: 8 });
+  expect(await page.evaluate(() => document.body.classList.contains("resizing")), "손잡이를 잡았다").toBe(true);
   await page.mouse.up();
   expect(await page.evaluate(() => localStorage.getItem("sidebar-width"))).toBe("400");
 

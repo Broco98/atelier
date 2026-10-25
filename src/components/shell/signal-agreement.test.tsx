@@ -1,26 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import ShellTabs from "@/features/terminal/ShellTabs";
-import {
-  bandRows,
-  callingNotesOf,
-  signalsOf,
-  topSignalView,
-} from "@/features/terminal/shell-attention";
+import { bandRows, callingNotesOf, signalsOf } from "@/features/terminal/shell-attention";
 import type { Attention } from "@/features/terminal/shell-attention";
-import {
-  NO_SHELLS,
-  openShell,
-  ownerOf,
-  setAttention,
-  shellsOf,
-} from "@/features/terminal/shell-registry";
+import { NO_SHELLS, openShell, ownerOf, setAttention } from "@/features/terminal/shell-registry";
 import type { ShellsState } from "@/features/terminal/shell-registry";
 import { WorkSectionList } from "@/features/works/WorkSectionList";
 import { splitWorkSections } from "@/features/works/work-sections";
 import type { WorkView } from "@/features/works/types";
 import { AttentionBand } from "./attention-band";
-import { SIGNAL_LABEL, SignalMeta } from "./shell-signal";
+import { SIGNAL_LABEL } from "./shell-signal";
+import { STATUS_MARK_LABEL } from "./status-mark";
 
 // **세 자리가 한 사실을 말한다**(스토리 79). 사이드바 행(#203) · 알림 띠(#204) ·
 // 셸 탭(#205)은 어휘가 셋이다 — 점 · 줄 · 채움. 결정 6이 그것을 허락했다(「표면이 다르면
@@ -33,6 +23,11 @@ import { SIGNAL_LABEL, SignalMeta } from "./shell-signal";
 // 갈리는 순간을 아무도 안 본다. 이 파일은 **상태 하나**에서 셋을 그려 견준다 — 값을 고르는
 // 길도 셋이 다르므로(`signalsByOwner` · `bandRows` · `signalOf`) 그 길이 갈리는 것까지
 // 함께 잡힌다.
+//
+// **사이드바 행은 02 티켓 05부터 상태 표시의 말로 말한다**(02 구현 스펙 S8). Work 줄 오른쪽 끝은 상태 표시 하나이고 셸 신호는 그 차례로
+// 접힌다 — 답을 기다리는 셸은 「내 차례」 알약(`mine`), 끝났는데 안 본 셸은 새 결과 점(`accent-solid`)이다. 그래서 행은 띠 · 탭과 같은
+// 낱말을 쓰지 않고 **정해진 짝**을 쓴다(`행의말`): 기다림 → 내 차례, 안 본 완료 → 새 결과. 띠와 탭은 셸의 말 그대로 서로 같다. 짝이
+// 어긋나는 것(기다리는 셸에 새 결과 점)과, 본 완료가 어느 한 자리에 남는 것을 여기서 잡는다.
 
 const WORK: WorkView = {
   slug: "가",
@@ -80,11 +75,19 @@ function 셸하나(kind: "waiting" | "done"): ShellsState {
  * **`success`는 따로 한 가족이다.** 안 본 완료가 한때 그 색(초록)이었다 — 한 자리만 옛 색으로 남는 회귀가 「안 본 완료의
  * 가족」으로 섞여 들어가면 세 자리가 다른 색을 말해도 초록이다.
  */
-const 가족낱말: Readonly<Record<"wait" | "new" | "success", readonly string[]>> = {
+const 가족낱말: Readonly<Record<"wait" | "new" | "mine" | "success", readonly string[]>> = {
   wait: ["warning", "wait"],
   new: ["new", "accent-solid"],
+  // 사이드바 상태 표시의 「내 차례」 알약(`text-mine` on `bg-mine-soft`) — 행이 기다리는 셸을 말하는 색이다(02 S8).
+  mine: ["mine"],
   success: ["success"],
 };
+
+/** 셸의 상태마다 사이드바 행이 서는 상태 표시의 색 가족과 말(02 S8 — `work-mark.ts`의 셸 자리). */
+const 행의말 = {
+  waiting: { family: "mine", label: STATUS_MARK_LABEL.mine },
+  done: { family: "new", label: STATUS_MARK_LABEL.new },
+} as const;
 
 function 색가족(markup: string): Set<string> {
   const out = new Set<string>();
@@ -98,10 +101,19 @@ function 색가족(markup: string): Set<string> {
   return out;
 }
 
-/** 이 마크업이 접근성 이름으로 말한 상태들. */
+/** 이 마크업이 접근성 이름으로 말한 셸의 상태들(띠 · 탭의 말). */
 function 말가족(markup: string): Set<string> {
   const out = new Set<string>();
   for (const [kind, label] of Object.entries(SIGNAL_LABEL)) {
+    if (markup.includes(`— ${label}`)) out.add(kind);
+  }
+  return out;
+}
+
+/** 이 마크업이 접근성 이름으로 말한 상태 표시들(행의 말 — 이름 버튼의 꼬리 「제목 — 내 차례」). */
+function 표시말(markup: string): Set<string> {
+  const out = new Set<string>();
+  for (const [kind, label] of Object.entries(STATUS_MARK_LABEL)) {
     if (markup.includes(`— ${label}`)) out.add(kind);
   }
   return out;
@@ -115,22 +127,11 @@ function 행(state: ShellsState): string {
       open={{ pinned: true, works: true }}
       selectedSlug={null}
       stop={null}
-      shells={{
-        shellCounts: { [WORK.slug]: 1 },
-        signals,
-        notes: callingNotesOf(state),
-        renderRowMeta: (work) => {
-          // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`의 `RowMetaFor`) — 값을 고르는 길이
-          // 행마다 따로다.
-          const view = topSignalView(shellsOf(state, ownerOf(work.slug)));
-          return view === null ? null : (
-            <SignalMeta kind={view.kind} since={view.since} now={view.since} />
-          );
-        },
-      }}
-      // 이 행의 Thread는 이 검사의 관심 밖이다(v1 티켓 37) — 셸 신호가 레인 · 메타 · 이름에서 같은 말을 하는가만 본다.
-      threads={{ counts: {}, expanded: [], onToggle: () => {}, renderThreads: () => null }}
+      shells={{ shellCounts: { [WORK.slug]: 1 }, signals, notes: callingNotesOf(state) }}
+      // 이 행의 Thread는 이 검사의 관심 밖이다(v1 티켓 37) — 셸 신호가 상태 표시 · 이름에서 같은 말을 하는가만 본다.
+      threads={{ counts: {}, marks: {}, expanded: [], onToggle: () => {}, renderThreads: () => null }}
       onToggleSection={() => {}}
+      onNewWork={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
       onLeave={() => {}}
@@ -193,23 +194,27 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
 }
 
 describe("행·띠·탭이 같은 셸에 같은 것을 말한다", () => {
-  it.each(["waiting", "done"] as const)("%s — 세 자리가 같은 색 가족을 쓴다", (kind) => {
+  it.each(["waiting", "done"] as const)("%s — 띠와 탭은 같은 색 가족 · 같은 말이고, 행은 그 짝의 상태 표시다", (kind) => {
     const state = 셸하나(kind);
     // 탭이 둘인 것은 켜짐이 색을 다시 고를 수 있는 유일한 갈래이기 때문이다(`탭` 머리말).
-    const 셋 = {
-      행: 행(state),
+    const 둘 = {
       띠: 띠(state),
       "탭(안 켜진 칸)": 탭(state, { 켜짐: false }),
       "탭(켜진 칸)": 탭(state, { 켜짐: true }),
     };
 
-    for (const [자리, markup] of Object.entries(셋)) {
+    for (const [자리, markup] of Object.entries(둘)) {
       // **정확히 그 가족 하나다.** 「그 색이 있다」만 보면 둘 다 쓰는 그림이 통과한다.
       expect([...색가족(markup)].sort(), `${자리} — 색`).toEqual([
         kind === "waiting" ? "wait" : "new",
       ]);
       expect([...말가족(markup)], `${자리} — 말`).toEqual([kind]);
     }
+    // 행 — 셸의 말(「나를 기다림」 · 「확인할 것」)은 쓰지 않고 짝의 상태 표시 하나다(02 S8).
+    const row = 행(state);
+    expect([...색가족(row)], "행 — 색").toEqual([행의말[kind].family]);
+    expect([...말가족(row)], "행 — 셸의 말").toEqual([]);
+    expect(row).toContain(`— ${행의말[kind].label}`);
   });
 
   // 「봤다」로 지워진 완료는 **세 자리 모두에서** 사라진다 — 한 자리만 남으면 그 자리는
@@ -226,6 +231,7 @@ describe("행·띠·탭이 같은 셸에 같은 것을 말한다", () => {
     })) {
       expect([...색가족(markup)], `${자리} — 색`).toEqual([]);
       expect([...말가족(markup)], `${자리} — 말`).toEqual([]);
+      expect([...표시말(markup)], `${자리} — 상태 표시`).toEqual([]);
     }
   });
 });

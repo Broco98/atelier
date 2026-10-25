@@ -60,7 +60,7 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   // 첫 턴 — 판정이 파일 쓰기를 묻지 않고 허용한다. 카드는 서지 않고, 펼친 턴의 그 도구 줄 앞에 방패 줄이 까닭(정도 이름)과 선다.
   await streamLines(page, started.id, linesThrough(linesAfter(level, FIRST_SENT), FIRST_END));
   await expect(page.getByRole("group", { name: /될까요\?$/ })).toHaveCount(0);
-  const 첫턴 = 흐름(page).getByRole("button", { name: /초 동안 작업함$/ });
+  const 첫턴 = 흐름(page).getByRole("button", { name: /초 동안 작업$/ });
   await 첫턴.click();
   await expect(첫턴).toHaveAttribute("aria-expanded", "true");
   const 방패 = 흐름(page).locator("[data-auto-allowed]");
@@ -81,7 +81,7 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   await expect(흐름(page).locator('[data-system="mode"]')).toHaveText("Policy를 매번 묻기로 바꿈");
   await expect(정도칩(page, "매번 묻기")).toBeVisible();
 
-  // 다음 편집부터 그 정도다 — 둘째 턴의 파일 쓰기는 카드로 묻고, 카드가 왜 묻는지 「매번 묻기」를 말한다.
+  // 다음 편집부터 그 정도다 — 둘째 턴의 파일 쓰기는 카드로 묻고, 카드 머리 한 줄이 왜 묻는지 「매번 묻기」를 말한다(02 티켓 11).
   await 입력칸(page).fill(second.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_send", "text")).map(({ args }) => args)).toEqual([
@@ -90,7 +90,7 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   await streamLines(page, started.id, linesThrough(linesAfter(level, MODE), ASKED));
   await expect(흐름(page).getByText(second.text, { exact: true })).toBeVisible();
   const card = page.getByRole("group", { name: "Host가 이 파일을 고쳐도 될까요?", exact: true });
-  await expect(card).toContainText("Policy · 매번 묻기");
+  await expect(card).toContainText("Host · 파일 고치기 · 「매번 묻기」");
   await expect(card.getByRole("figure", { name: /denied\.txt 변경$/ })).toBeVisible();
   await expect(흐름(page).locator("[data-auto-allowed]")).toHaveCount(1);
   expect(await unknownIpcCalls(page)).toEqual([]);

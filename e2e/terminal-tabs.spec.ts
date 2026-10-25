@@ -235,12 +235,12 @@ test("문서 ↔ 터미널을 오가도 본문 카드와 탭 줄이 새로 서�
 //
 // **이 층이 아니면 아무것도 안 보인다.** 마크업 seam이 드는 것은 클래스 문자열뿐이고
 // (`ShellTabs.test.tsx`), 이 판의 물음은 전부 실측이다: 한 줄로 남았나 · 넘쳤나 · 칸이
-// 고르게 줄었나 · 로고가 남았나 · `+`가 줄 안에 남았나 · 머리 카드의 조작이 안 밀리고 안 눌렸나.
+// 고르게 줄었나 · 로고가 남았나 · `+`가 줄 안에 남았나 · 머리 줄의 할 일이 안 밀리고 안 눌렸나.
 //
 // **work 화면에서 잰다.** `/terminal`에는 `spec` 칸이 없어(결정 8) 거기서는 이 줄이 가장 붐비는
 // 모습을 못 만든다 — 줄 자체는 두 화면이 같은 것을 쓰므로 붐비는 쪽에서 재는 것이 둘 다를 잰다.
 // 줄 끝 조작(`data-tab-actions`)은 분할의 터미널 열에만 서고(그 열을 닫는 `×`), 그 줄은
-// `tab-row-floor.spec.ts`의 분할 검사가 잰다. 상태 · ⋯ · 분할은 머리 카드 오른쪽(`data-head-actions`)에
+// `tab-row-floor.spec.ts`의 분할 검사가 잰다. 상태 · ⋯ · 분할은 머리 줄 오른쪽 끝(`data-head-actions`)에
 // 서고, 줄과 같은 순간에 잰다(`rowOf`의 `workActions`) — 줄이 바닥에 닿는 폭이 곧 그 조작이 밀릴 수 있는 폭이다.
 
 /** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
@@ -334,9 +334,9 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     // 남아 있기만 하면 안 된다 — 제 칸을 넘어 옆 칸 위에 그려지면 그것도 잘린 것이다.
     expect(row.mark!.over, at).toBeLessThanOrEqual(0);
 
-    // 단일 뷰의 줄에는 줄 끝 조작이 없다 — 상태 · ⋯ · 분할은 머리 카드에 선다(`WorksPage`).
+    // 단일 뷰의 줄에는 줄 끝 조작이 없다 — 상태 · ⋯ · 분할은 머리 줄에 선다(`WorksPage`).
     expect(row.actions, at).toBeNull();
-    // **그 머리 카드 조작은 고정된 채다**(결정 10) — 밀려나지도 좁아지지도 않는다. 탭 줄이 바닥에 닿는 폭이 곧 본문 열이 넓어지는
+    // **그 머리 줄 할 일은 고정된 채다**(결정 10) — 밀려나지도 좁아지지도 않는다. 탭 줄이 바닥에 닿는 폭이 곧 본문 열이 넓어지는
     // 폭이라, 줄을 지키다 조작을 창 밖으로 밀면 여기서 잡힌다(조작이 탭 줄 끝에 서던 때 900px에서 380 밀렸다).
     expect(row.workActions, at).not.toBeNull();
     expect(row.workActions!.over, at).toBeLessThanOrEqual(0);
@@ -353,7 +353,7 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     expect(plus.edgeHit, `${at} — \`+\`의 왼쪽 끝`).toBe(true);
   }
 
-  // 머리 카드 조작의 폭이 세 폭에서 모두 같다 — 좁아진다고 눌리지 않는다.
+  // 머리 줄 할 일의 폭이 세 폭에서 모두 같다 — 좁아진다고 눌리지 않는다.
   expect(workActionsWidth[900]).toBe(workActionsWidth[1280]);
   expect(workActionsWidth[1120]).toBe(workActionsWidth[1280]);
 
@@ -511,7 +511,8 @@ for (const screen of SCREENS) {
         if (layout === "패널 접힘") await page.getByRole("button", { name: /패널 접기$/ }).click();
         if (layout === "사이드바 접힘") {
           await page.keyboard.press("Meta+b");
-          await expect(page.locator("header")).toHaveClass(/pl-\(--titlebar-inset-head\)/);
+          await expect(page.getByRole("button", { name: "사이드바 토글", exact: true })).toHaveAttribute("aria-expanded", "false");
+          await expect.poll(() => page.locator("aside[data-sidebar]").evaluate((el) => el.getBoundingClientRect().width)).toBe(0);
         }
         await settleStrip(page);
 
@@ -530,9 +531,9 @@ for (const screen of SCREENS) {
         expect(plus.edgeHit, `${at} — \`+\`의 왼쪽 끝`).toBe(true);
         expect(row.pageSpill, at).toBeLessThanOrEqual(0);
 
-        // 머리 카드 조작(상태 · ⋯ · 분할)도 카드 안 · 창 안이고 제 폭 그대로다(결정 10) — 칸을 보이게 하려고 조작을 밀거나 누르면
-        // 안 된다. 사이드바를 접은 배치에서는 머리 줄의 왼쪽 여백이 신호등 · 셸 컨트롤 자리만큼 넓어져 머리 카드가 가장 좁다.
-        // `/terminal`의 머리 카드는 이름만 들고 할 일 묶음이 없다.
+        // 머리 줄의 할 일(상태 · ⋯ · 분할 · 패널 토글)도 화면 자리 안 · 창 안이고 제 폭 그대로다(결정 10) — 칸을 보이게 하려고 조작을
+        // 밀거나 누르면 안 된다. 머리 줄은 판 위 창 전폭의 줄이라 탭 줄과 자리를 다투지 않는다(02 티켓 02). `/terminal`의 머리 줄은
+        // 이름만 들고 할 일 묶음이 없다.
         if (screen.panel) {
           expect(row.workActions, at).not.toBeNull();
           expect(row.workActions!.over, at).toBeLessThanOrEqual(0);

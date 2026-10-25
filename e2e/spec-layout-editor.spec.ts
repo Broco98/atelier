@@ -18,7 +18,7 @@ import {
   SPEC_LAYOUT_EDITOR,
   unknownIpcCalls,
   그림자,
-  머리카드,
+  화면머리,
   칠한값,
   토큰값,
   토큰색,
@@ -35,7 +35,7 @@ import {
 // 빠졌을 때 빨개진다(구현 스펙 3절).
 
 const aside = (page: Page) => page.locator("aside");
-// 위치와 머리의 동작은 머리 카드가 든다(codex-ds 스펙 §7 — 뒤로 · 위치 | 「LLM이 받는 텍스트」 · 저장). 위치 조각 사이의 꺾쇠는
+// 위치와 머리의 동작은 머리 줄이 든다(codex-ds 스펙 §7 — 뒤로 · 위치 | 「LLM이 받는 텍스트」 · 저장). 위치 조각 사이의 꺾쇠는
 // 글자가 아니라 아이콘이고 뒤로는 그림 버튼이라, 글자로 읽으면 조각이 바로 잇닿는다(아래 정규식의 `\s*`).
 const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exact: true });
 const 편집 = (page: Page) => page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true });
@@ -69,7 +69,7 @@ test("레이아웃 행의 [편집]을 누르면 편집기 주소가 열리고 �
   expect(await ipcCalls(page, "read_spec_layout")).toEqual(["read_spec_layout"]);
 
   // 위치는 세 칸이다 — `Settings` · `spec 레이아웃 › Atelier`. 머리의 동작은 「LLM이 받는 텍스트」와 저장이다(티켓 14).
-  await expect(머리카드(page)).toHaveText(/^Settings\s*spec 레이아웃\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
+  await expect(화면머리(page)).toHaveText(/^Settings\s*spec 레이아웃\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
   // 트리는 최상위 항목부터다 — 맨 위 항목의 행이 없다(결정 26)
   await expect(page.getByRole("treeitem")).toHaveText([
     "overview.md",
@@ -92,7 +92,7 @@ test("편집기 주소를 바로 열어도 편집기가 서고, id를 실은 옛
   await installFixtureBackend(page);
   await page.goto(SPEC_LAYOUT_EDITOR);
   await expect(행(page, "overview.md")).toBeVisible();
-  await expect(머리카드(page)).toHaveText(/^Settings\s*spec 레이아웃\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
+  await expect(화면머리(page)).toHaveText(/^Settings\s*spec 레이아웃\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
   await expect(aside(page).getByRole("button", { name: "spec 레이아웃", exact: true }).locator("xpath=..")).toHaveClass(
     /selected-row/,
   );
@@ -275,7 +275,7 @@ test("편집기 주소에서 설정 nav의 「spec 레이아웃」이 켜져 있
 
   await page.getByRole("button", { name: "설정으로 돌아가기", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(머리카드(page)).toHaveText(/^Settings\s*spec 레이아웃$/);
+  await expect(화면머리(page)).toHaveText(/^Settings\s*spec 레이아웃$/);
   await expect(page.locator("main li")).toHaveCount(1);
   await expect(nav항목.locator("xpath=..")).toHaveClass(/selected-row/);
 

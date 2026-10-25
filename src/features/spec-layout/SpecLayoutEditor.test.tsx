@@ -1,3 +1,7 @@
+/// <reference types="node" />
+// 소스 스캔 한 건(머리 줄의 돌아가기)이 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { EntryForm, OutsideBanner, TreeCard, UnreadableLayout } from "./SpecLayoutEditor";
@@ -405,5 +409,19 @@ describe("밖 변경 배너", () => {
       "새로 불러오기",
       "내 초안 유지",
     ]);
+  });
+});
+
+// 02 코드 리뷰 C1 — **머리 줄의 「설정으로 돌아가기」는 Tab 정류장이다.** 03b가 `Button`(Base UI — `tabindex` 0을 스스로 단다)을 머리 줄 아이콘
+// 단추 한 벌(`headButton`)의 맨 `<button>`으로 바꾸며 0을 잃었다 — macOS WebKit(앱의 WKWebView)의 Tab은 `tabindex` 없는 맨 버튼에 서지 않는다
+// (`@/lib/roving` 머리말). 편집기 머리는 앱 셸의 포털로 가서 정적 마크업이 닿지 않아 그 자리를 소스로 잰다.
+describe("머리 줄의 돌아가기", () => {
+  it("Tab 정류장임을 tabindex로 명시한다", () => {
+    const source = readFileSync(fileURLToPath(new URL("./SpecLayoutEditor.tsx", import.meta.url)), "utf8");
+    const at = source.indexOf('aria-label="설정으로 돌아가기"');
+    expect(at).toBeGreaterThan(-1);
+    const tag = source.slice(source.lastIndexOf("<button", at), source.indexOf(">", at));
+    expect(tag).toContain("className={headButton()}");
+    expect(tag).toContain("tabIndex={0}");
   });
 });

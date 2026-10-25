@@ -1,5 +1,5 @@
 import type { Entry, ToolEntry, Turn } from "./fold";
-import { describeTool, type ToolView } from "./tool-view";
+import { describeTool, type ToolGlyph, type ToolView } from "./tool-view";
 
 export { elapsed } from "./tool-view";
 
@@ -20,6 +20,8 @@ export interface LogGroup {
   key: string;
   /** 「파일 N개 살펴봄 · 검색 M번」. */
   label: string;
+  /** 줄 앞의 종류 글리프 — 파일을 읽었으면 읽기, 찾기만이면 검색이다. */
+  glyph: Extract<ToolGlyph, "read" | "search">;
   tools: { tool: ToolEntry; view: ToolView }[];
 }
 
@@ -28,7 +30,10 @@ export function logRows(tools: readonly ToolEntry[]): LogRow[] {
   const rows: LogRow[] = [];
   let run: { tool: ToolEntry; view: ToolView }[] = [];
   const flush = () => {
-    if (run.length >= 2) rows.push({ kind: "group", key: `g${run[0].tool.key}`, label: groupLabel(run), tools: run });
+    if (run.length >= 2) {
+      const glyph = run.some(({ view }) => view.group === "read") ? "read" : "search";
+      rows.push({ kind: "group", key: `g${run[0].tool.key}`, label: groupLabel(run), glyph, tools: run });
+    }
     else for (const one of run) rows.push({ kind: "tool", key: one.tool.key, ...one });
     run = [];
   };

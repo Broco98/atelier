@@ -3,7 +3,7 @@ import type { ToolEntry, Turn } from "./fold";
 import { createdDocs, freshLines, isOpened, viewerPath, type Opened } from "./expanded";
 
 // 넓힌 카드(v1 티켓 35 · 구현 스펙 §15 배치 1 · 캔버스 Layout-Expand · Messages · Motion 보드) — 카드가 무엇을 열었나(`Opened`)와 그 보기의
-// 경로 줄, 다시 읽은 문서에서 칠할 줄, 대화 속 문서 카드를 짓는 순수 함수다. 그리는 쪽(`WorkCard.tsx` · `ExpandedViewer.tsx` ·
+// 경로 줄, 다시 읽은 문서에서 칠할 줄, 대화 속 문서 카드를 짓는 순수 함수다. 그리는 쪽(`SummaryCard.tsx` · `ExpandedViewer.tsx` ·
 // `ThreadFlow.tsx`)은 여기 나온 값만 그린다.
 
 describe("넓힌 카드가 연 것", () => {

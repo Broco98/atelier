@@ -1,7 +1,9 @@
+import type { StatusMarkKind } from "@/components/shell/status-mark";
 import type { ThreadSummary } from "./types";
 
-// 사이드바 Work 묶음이 품는 Thread(v1 티켓 37 · 구현 스펙 §13 · 스토리 104 · 캔버스 「Thread 목록과 아바타」 보드)의 **순수 함수**다. Work 줄
-// 오른쪽에 그 Work에 이은 Thread 수가 서고, ▸로 펼치면 그 Thread들이 Work 아래에 두 줄로 선다. Work 줄을 누르면 그 Work에서 가장 최근의
+// 사이드바 Work 묶음이 품는 Thread(v1 티켓 37 · 구현 스펙 §13 · 스토리 104 · 캔버스 「Thread 목록과 아바타」 보드)의 **순수 함수**다. ▸로
+// 펼치면 그 Work에 이은 Thread들이 Work 아래에 한 줄씩 선다(02 티켓 05). Work 줄 오른쪽 끝의 상태 표시는 그 Thread들의 표시를 모아 고른다
+// (`workMarks` → `features/works/work-mark.ts`) — Thread 수는 줄을 떠나 호버 카드에 선다(02 S9). Work 줄을 누르면 그 Work에서 가장 최근의
 // Thread로 가고, 없으면 그 Work에 이은 새 Thread로 간다. 자료는 사이드바 Thread 묶음과 같은 목록 요약(`work`)이다 — Thread 묶음은 Work
 // 없는 Thread만 세우므로 두 묶음이 겹치지 않는다.
 // **읽기만 된 Thread(보관되거나 지워진 Work의 것 — v1 티켓 38)는 어디에도 들지 않는다** — 사이드바에서 빠지고 ⌘K로 연다(S43). 그 Work는
@@ -18,6 +20,25 @@ export function threadCounts(threads: readonly ThreadSummary[]): Record<string, 
     if (nestable(thread)) counts[thread.work] = (counts[thread.work] ?? 0) + 1;
   }
   return counts;
+}
+
+/**
+ * Work마다 그 Work에 이은 Thread들의 상태 표시(slug → 목록의 차례대로 Thread마다 하나) — Work 줄 끝 표시 하나가 이것에서 선다(`workMark`).
+ * 표시가 없는 Thread(멈춤 · 조용함 · 아직 못 읽음)는 `null` 칸이다. 이은 Thread가 없는 Work는 칸이 없다.
+ */
+export type WorkMarks = Record<string, (StatusMarkKind | null)[]>;
+
+/**
+ * Work마다 그 Work에 이은 Thread들의 상태 표시 — 목록의 차례 그대로다. 표시는 부르는 쪽이 Thread마다 지어 건넨다(`markFor` — 멈춤 · 조용함 ·
+ * 아직 못 읽은 Thread는 `null`). 이은 Thread가 없는 Work는 칸이 없다. 가장 센 하나를 고르는 것은 `workMark`다. 건네는 함수는 Thread 하나를
+ * 받는다 — 상태 하나를 받는 `status.ts`의 `markOf`와 다른 꼴이다.
+ */
+export function workMarks(threads: readonly ThreadSummary[], markFor: (thread: ThreadSummary) => StatusMarkKind | null): WorkMarks {
+  const marks: WorkMarks = {};
+  for (const thread of threads) {
+    if (nestable(thread)) (marks[thread.work] ??= []).push(markFor(thread));
+  }
+  return marks;
 }
 
 /**

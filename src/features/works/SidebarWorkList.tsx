@@ -10,7 +10,7 @@ import { threadIdOf, workSlugOf } from "@/lib/path-prefix";
 import { cn } from "@/lib/utils";
 import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
-import { useThreads } from "@/features/thread/hooks";
+import { useThreads, useWorkMarks } from "@/features/thread/hooks";
 import { lastSaid } from "@/features/thread/preview";
 import { WorkThreads } from "@/features/thread/SidebarThreads";
 import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
@@ -48,8 +48,9 @@ const WORKS_EXPANDED_KEY = "sidebar-works-expanded";
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 //
-// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드). 줄 오른쪽에 이은 Thread 수가
-// 서고, ▸로 펴면 그 Thread들이 줄 아래에 두 줄로 선다(펼침은 기억한다). 줄을 누르면 그 Work에서 가장 최근의 Thread로 가고, 없으면 그
+// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드). 줄 오른쪽 끝에 그 Thread들
+// 가운데 가장 센 상태 표시 하나가 서고(02 티켓 05 · S8 — Thread 수는 호버 카드로, S9), ▸로 펴면 그 Thread들이 줄 아래에 한 줄씩 들여 선다
+// (펼침은 기억한다). 줄을 누르면 그 Work에서 가장 최근의 Thread로 가고, 없으면 그
 // Work를 고른 새 Thread로 간다 — 옛 작업 화면(`/works/<slug>`)은 ⌘K에서 연다. 지금 보는 Thread가 접힌 Work 안에 있으면 그 Work 줄이
 // 켜진다 — 어느 Work 안에 있는지가 접혀 있어도 보인다.
 function SidebarWorkList({
@@ -62,9 +63,9 @@ function SidebarWorkList({
 }: {
   open: boolean;
   /**
-   * 행이 셸에서 받는 값 넷 — 개수 · 화면값 · 부르는 셸의 말 · 오른쪽 메타 슬롯(`WorkRowShells`).
-   * **이 파일은 터미널 스토어를 모른다** — 넷 다 위(Sidebar)에서 읽어 내려오고, 여기서는 행까지
-   * 나를 뿐이다. 이 목록이 스스로 쓰는 것은 호버 카드에 건넬 말(`notes`) 하나다.
+   * 행이 셸에서 받는 값 셋 — 개수 · 화면값 · 부르는 셸의 말(`WorkRowShells`).
+   * **이 파일은 터미널 스토어를 모른다** — 셋 다 위(Sidebar)에서 읽어 내려오고, 여기서는 행까지
+   * 나를 뿐이다. 이 목록이 스스로 쓰는 것은 호버 카드에 건넬 말(`notes`)과 셸 수(`shellCounts`)다.
    */
   shells: WorkRowShells;
   /**
@@ -107,6 +108,8 @@ function SidebarWorkList({
     writeStored(WORKS_EXPANDED_KEY, JSON.stringify(next));
   };
   const counts = useMemo(() => threadCounts(threads), [threads]);
+  // Work마다 그 Thread들의 상태 표시 — 줄의 표시 하나가 이것과 그 Work의 셸 신호에서 선다(`WorkSectionList`의 `workMark`).
+  const marks = useWorkMarks();
   // 펼친 Work 아래에 지금 선 Thread — 그 Work에 이은 것이 없으면 펼친 것으로 적혀 있어도 비어 있다(`WorkSectionList`의 같은 가름).
   const nestedOf = (slug: string) => (expanded.includes(slug) ? threadsOf(threads, slug) : []);
   // **고칠 행이 접힌 구획에 있으면 그 구획을 편다** — 알림 띠에서 들어오면 그 work의 행이 접혀 있을 수 있다. 접힌 구획의 속은
@@ -500,11 +503,13 @@ function SidebarWorkList({
                 shells={shells}
                 threads={{
                   counts,
+                  marks,
                   expanded,
                   onToggle: toggleThreads,
                   renderThreads: (work) => <WorkThreads threads={nestedOf(work.slug)} stop={roving.stop} />,
                 }}
                 onToggleSection={toggleSection}
+                onNewWork={() => void navigate({ to: "/", search: { new: "work" } })}
                 onOpen={goTo}
                 onHover={aimCard}
                 onLeave={leaveCard}
@@ -547,7 +552,12 @@ function SidebarWorkList({
         >
           {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
               말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}
-          <PeekCard work={hovered} note={shells.notes[hovered.slug] ?? null} />
+          <PeekCard
+            work={hovered}
+            note={shells.notes[hovered.slug] ?? null}
+            threads={counts[hovered.slug] ?? 0}
+            shells={shells.shellCounts[hovered.slug] ?? 0}
+          />
         </PopoverPortal>
       )}
     </>
@@ -574,9 +584,27 @@ function rowTarget(from: Element): MenuTarget | null {
  * 질의를 여기서 부르는 것은 카드(`WorkPeek`)가 훅을 안 부르는 조각이라서다. 카드가 떠 있을 때만 마운트되므로, 프로젝트 목록을
  * 아직 안 읽은 화면에서는 카드가 처음 열리는 순간이 읽는 때다. 읽는 동안은 `null`을 넘겨 work 목록에서 아는 것만 선다.
  */
-function PeekCard({ work, note }: { work: WorkView; note: CallingNote | null }) {
+function PeekCard({
+  work,
+  note,
+  threads,
+  shells,
+}: {
+  work: WorkView;
+  note: CallingNote | null;
+  threads: number;
+  shells: number;
+}) {
   const { data: projects } = useProjects();
-  return <WorkPeek work={work} note={note} projects={projects ? projectLines(work, projects) : null} />;
+  return (
+    <WorkPeek
+      work={work}
+      note={note}
+      projects={projects ? projectLines(work, projects) : null}
+      threads={threads}
+      shells={shells}
+    />
+  );
 }
 
 export default SidebarWorkList;

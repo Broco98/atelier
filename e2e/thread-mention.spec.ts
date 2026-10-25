@@ -5,8 +5,10 @@ import { installFixtureBackend, ipcCallArgs, replaceAnswer, unknownIpcCalls } fr
 import { fireSummary, linesAfter, linesThrough, record, sentPayloads, seqOf, streamLines, summaryOf } from "./thread-records";
 import type { AgentRoster, Participant, ThreadView } from "@/features/thread/types";
 
-// v1 티켓 21(PR ② e2e) 흐름 하나 — **입력창의 @ 메뉴로 Agent를 부르면 그 Agent가 Thread에 들어와 답하고, 얼굴 · 이름 줄로 누가
-// 말하는지 보인다**(v1 티켓 13 · 14 · 19 · 구현 스펙 §5 · §14 · 경계 ② 「@ 메뉴」 · 「Thread」).
+// v1 티켓 21(PR ② e2e) 흐름 하나 — **입력창의 @ 메뉴로 Agent를 부르면 그 Agent가 Thread에 들어와 답하고, 이름 줄로 누가 말하는지
+// 보인다**(v1 티켓 13 · 14 · 19 · 구현 스펙 §5 · §14 · 경계 ② 「@ 메뉴」 · 「Thread」). Host의 답에는 머리가 없고, 다른 Agent의 턴만
+// 맨 위에 「이름 · @handle」 한 줄이 선다(02 구현 스펙 §8 · 티켓 08 — 이 판의 「Host 답에 머리 없음 · 다른 Agent 이름 줄」은 여기서
+// 잰다). 누가 이 Thread에 있는지는 머리 줄이 아니라 이름 줄과 @ 메뉴가 말한다(02 S14 — 머리 줄 참여자 얼굴은 걷었다).
 //
 // 줄은 L1이 축복한 「@멘션한 리뷰어가 들어와 답한다」(`thread-mention.jsonl`)를 그대로 쏜다 — Host가 한 턴 답한 뒤 사람이
 // `@reviewer`에게 말하면, 리뷰어가 들어오고(`joined`, 얼굴 · 이름 실음) 새 Session으로 한 턴 답한다. 보낼 글도 그 기록의 `sent`
@@ -80,7 +82,7 @@ const 흐름 = (page: Page) => page.getByRole("main");
 const 메뉴 = (page: Page) => page.getByRole("listbox", { name: "Agent 부르기", exact: true });
 const 묶음 = (page: Page, section: string) => 메뉴(page).getByRole("group", { name: section, exact: true });
 
-test("@ 메뉴가 이 Thread의 Agent를 먼저 · 깨진 Agent는 흐리게 까닭과 보이고, 고른 리뷰어에게 보내면 들어와 얼굴 · 이름 줄로 답하며, 「새 Agent 만들기」가 새 Thread를 채운다", async ({
+test("@ 메뉴가 이 Thread의 Agent를 먼저 · 깨진 Agent는 흐리게 까닭과 보이고, 고른 리뷰어에게 보내면 들어와 이름 줄로 답하며(Host의 답은 머리 없이), 「새 Agent 만들기」가 새 Thread를 채운다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -93,7 +95,8 @@ test("@ 메뉴가 이 Thread의 Agent를 먼저 · 깨진 Agent는 흐리게 까
   await page.goto(`/threads/${answered.id}`);
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
   await expect(흐름(page).getByText("hello from turn", { exact: true })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("img", { name: "참여자 Host", exact: true })).toBeVisible();
+  // 머리 줄에 참여자 얼굴이 없다(S14) — 누가 있는지는 아래 @ 메뉴의 「이 Thread에 있음」이 말한다.
+  await expect(page.getByRole("img", { name: /^참여자 / })).toHaveCount(0);
 
   // @ 메뉴 — 이 Thread에 있는 Agent(Host)가 먼저, 그 아래 Library다. 깨진 테스터는 고를 수 없고 그 까닭이 설명 자리에 선다.
   await 입력칸(page).pressSequentially("@");
@@ -117,29 +120,35 @@ test("@ 메뉴가 이 Thread의 Agent를 먼저 · 깨진 Agent는 흐리게 까
     { thread: answered.id, text: toReviewer.text, attachments: [], quote: null },
   ]);
 
-  // 엔진이 리뷰어를 앉혔다 — 참여자가 둘인 요약이 오면 머리 줄의 얼굴이 둘이 된다. 들어옴 줄과 보낸 말이 서고, 아직 답이 없으니
-  // 「리뷰어가 답하는 중」이다.
+  // 엔진이 리뷰어를 앉혔다 — 참여자가 둘인 요약이 오면 화면이 Thread를 다시 읽는다(앉은 리뷰어는 아래 다시 연 @ 메뉴가 말한다). 들어옴
+  // 줄과 보낸 말이 서고, 아직 답이 없으니 「리뷰어가 답하는 중」이다.
+  const 읽기 = async () => (await ipcCallArgs(page, "thread_get", "thread")).length;
+  const 읽은수 = await 읽기();
   await replaceAnswer(page, "thread_get", answerByArg("thread", { [joined.id]: joined }));
   await replaceAnswer(page, "thread_mark_read", answerByArg("thread", { [joined.id]: summaryOf(joined) }));
   await streamLines(page, answered.id, linesThrough(linesAfter(mention, HOST_END), REVIEWER_SENT));
   await fireSummary(page, joined);
-  await expect(page.getByRole("img", { name: "참여자 Host, 리뷰어", exact: true })).toBeVisible();
+  await expect.poll(읽기).toBeGreaterThan(읽은수);
   await expect(흐름(page).locator('[data-system="joined"]')).toHaveText("리뷰어가 참여함");
   await expect(흐름(page).getByText(toReviewer.text, { exact: true })).toBeVisible();
   await expect(흐름(page).locator("[data-answering]")).toHaveText("리뷰어가 답하는 중");
 
-  // 리뷰어의 답 — 이름 줄(얼굴 · 「리뷰어」 · `@reviewer` · 시각)이 서고 그 아래 답이다. 턴이 끝나면 「답하는 중」이 걷힌다. 말풍선의
-  // 멘션도 `@reviewer` 글이라 이름 줄은 시각이 있는 턴으로 가른다.
+  // 리뷰어의 답 — 턴 맨 위에 이름 줄(「리뷰어 · @reviewer」 한 줄, 얼굴 · 시각 없음)이 서고 그 아래 답이다. 턴이 끝나면 「답하는 중」이
+  // 걷힌다. Host의 답에는 머리가 없다 — 이름 줄은 리뷰어의 턴 하나뿐이다.
   await streamLines(page, answered.id, linesAfter(mention, REVIEWER_SENT));
   await expect(흐름(page).locator("[data-answering]")).toHaveCount(0);
-  const 답한턴 = 흐름(page).locator("[data-turn]").filter({ has: page.locator("time") });
-  await expect(답한턴).toHaveCount(2);
-  await expect(답한턴.nth(1).getByText("@reviewer", { exact: true })).toBeVisible();
-  await expect(답한턴.nth(1).getByText("리뷰어", { exact: true })).toBeVisible();
-  await expect(답한턴.nth(1).getByText("hello from turn", { exact: true })).toBeVisible();
-  // Host의 이름 줄에는 `@handle`이 없다.
-  await expect(답한턴.nth(0).getByText("Host", { exact: true })).toBeVisible();
-  await expect(답한턴.nth(0).getByText("@host", { exact: true })).toHaveCount(0);
+  const 이름줄 = 흐름(page).locator("[data-who]");
+  await expect(이름줄).toHaveCount(1);
+  await expect(이름줄).toHaveAttribute("data-who", "reviewer");
+  await expect(이름줄).toHaveText("리뷰어 · @reviewer");
+  await expect(이름줄.getByText("리뷰어", { exact: true })).toBeVisible();
+  await expect(이름줄.getByText("@reviewer", { exact: true })).toBeVisible();
+  await expect(이름줄.locator("img, time")).toHaveCount(0);
+  const 리뷰어턴 = 흐름(page).locator("[data-turn]").filter({ has: page.locator("[data-who]") });
+  await expect(리뷰어턴.getByText("hello from turn", { exact: true })).toBeVisible();
+  // Host의 턴(첫 답)은 머리 없이 답이 곧장 선다 — 「Host」 · 「@host」 글이 흐름에 없다.
+  await expect(흐름(page).getByText("Host", { exact: true })).toHaveCount(0);
+  await expect(흐름(page).getByText("@host", { exact: true })).toHaveCount(0);
 
   // 다시 연 @ 메뉴 — 앉은 리뷰어가 「이 Thread에 있음」으로 올라오고 Library 묶음에는 남은 깨진 줄만 선다.
   await 입력칸(page).pressSequentially("@");

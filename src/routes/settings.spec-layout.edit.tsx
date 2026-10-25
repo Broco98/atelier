@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useStore } from "@tanstack/react-store";
-import { shellStore } from "@/components/shell/shell-store";
 import SpecLayoutEditor from "@/features/spec-layout/SpecLayoutEditor";
 
 // 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11). 설정 한 열(설정 틀의 본문)이 아니라 이 하위 주소의
@@ -10,8 +8,6 @@ export const Route = createFileRoute("/settings/spec-layout/edit")({
   component: EditorRoute,
 });
 
-// 셸 상태를 읽는 것은 라우트 층의 일이다(`-settings-view.tsx`와 같다).
 function EditorRoute() {
-  const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  return <SpecLayoutEditor sidebarOpen={sidebarOpen} />;
+  return <SpecLayoutEditor />;
 }

@@ -54,7 +54,7 @@ describe("CI 문장(스토리 125)", () => {
     expect(failedChecks([])).toBe("");
   });
 
-  it("Work 카드의 실패 문장은 무엇이 실패했는지 한 문장이다(보드 「빨간색 대신 문장으로」)", () => {
+  it("요약 카드의 실패 문장은 무엇이 실패했는지 한 문장이다(보드 「빨간색 대신 문장으로」)", () => {
     expect(failNote(["e2e"])).toBe("e2e 검사가 실패했어요.");
     expect(failNote(["e2e", "lint", "build"])).toBe("e2e 외 2개 검사가 실패했어요.");
     expect(failNote([])).toBe("검사가 실패했어요.");

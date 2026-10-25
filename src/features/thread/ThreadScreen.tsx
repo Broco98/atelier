@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { ArrowDown, ArrowLeft, Folder } from "lucide-react";
+import { ArrowDown, ArrowLeft } from "lucide-react";
 import { PANEL_MOTION } from "@/components/shell/panel-layout";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
@@ -11,7 +11,7 @@ import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useHomeDir, useWorks } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
-import { AgentFace, FaceStack } from "./AgentFace";
+import { AgentFace } from "./AgentFace";
 import ApprovalCard from "./ApprovalCard";
 import { ArrivalScope, Arriving } from "./arrival";
 import QuestionCard from "./QuestionCard";
@@ -27,7 +27,6 @@ import { awaitingLogin, checkEngineOnce, guideKind, threadEngineStore } from "./
 import { flowOf, foldOf, type CallEntry, type CastMember, type ThreadModel } from "./fold";
 import type { Opened } from "./expanded";
 import GuideCard from "./GuideCard";
-import HostFace from "./HostFace";
 import {
   useAgentRoster,
   useChangeChip,
@@ -52,11 +51,12 @@ import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, UserMessage } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
-import { ArchivedWorkCard, WorkCard, WorkCardToggle, useArchivedWork, useCardOpen } from "./WorkCard";
+import { ArchivedSummaryCard, LooseSummaryCard, useSummaryOpen, WorkSummaryCard } from "./SummaryCard";
+import { HeadWork, SummaryToggle, ThreadMenu } from "./ThreadHead";
 import { workHome } from "./work-chip";
 import { decisionItems, decisionsDue } from "./work-proposal";
 import WorkProposalCard from "./WorkProposalCard";
@@ -64,24 +64,31 @@ import WorkProposalCard from "./WorkProposalCard";
 // Thread 화면(v1 티켓 05 · 구현 스펙 §13 · §14 · 캔버스 Screen-Home · Messages · WorkLog · Composer 보드) — `/`는 새 Thread, `/threads/<id>`는
 // 그 Thread다. 앱은 늘 새 Thread로 열린다(S26).
 //
-// - **틀은 카드 없는 흰 면이다**(`PlainFrame` — v1 티켓 07) — 머리 줄에 Thread 이름이 서고 그 자리에서 바꾼다(두 번 클릭 · F2). 새
-//   Thread의 머리 줄은 비어 있다(Screen-Home 보드).
-// - **빈 Thread**(Screen-Home 보드) — 가운데에 Host 얼굴 44 · 「무엇을 만들까요?」 · 입력창. 보드의 상자 밖 아래 줄과 도움 줄
-//   (「@ Agent 부르기 · / 명령 · + 파일 · 이미지」)은 걷었다 — 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 Work ·
-//   물어보는 정도 · 모델과 생각 깊이를 고른다. 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을 이미 말한다).
+// - **틀은 앱 셸 하나다**(크롬 맨 위 머리 줄 · 그 아래 흰 판 — 02 구현 스펙 §3) — 이 화면은 머리 줄에 놓을 것과 판 안의 본문만 건넨다
+//   (`PlainFrame`). 새 Thread의 머리 줄은 비어 있다.
+// - **머리 줄**(02 구현 스펙 §6 · 캔버스 v35 Screen-Live 머리 줄 · `ThreadHead`) — 왼쪽에 Thread 이름(14/500)이 서고 그 자리에서 바꾼다
+//   (두 번 클릭 · F2). Work에 이은 Thread면 이름 앞에 흐린 「폴더 · Work 이름 ›」이 서고, Work 이름을 누르면 카드가 열린다(S13). 오른쪽
+//   끝에 「…」(이 Thread의 대상 메뉴 — 「이름 바꾸기」, S15)와 요약 고정 토글이 선다(Work 없는 Thread에도 — 첫 말 전의 새 Thread에는 둘
+//   다 없다, S23). 옛 Work 알약(브랜치)과 참여자 얼굴은 걷었다(S14 — 참여자는 본문의 이름 줄과 @ 메뉴가 말한다). 시안의 머리 줄 Work
+//   탭은 짓지 않는다 — Work 화면 몫이다.
+// - **빈 Thread**(02 티켓 10 · 02 구현 스펙 §11 · 캔버스 v35 F1-Home) — 가운데에 「무엇을 만들까요?」(28 · 보통 굵기 · 자간 −0.2) 한 줄, 그
+//   아래 28에 입력창과 트레이뿐이다. Host 얼굴은 걷었다(02 S26 — 시안과 Codex 첫 화면에 없다). 시안의 Space 제안 줄 · 「Space 없음」
+//   칩은 짓지 않는다 — 트레이에는 Work 칩이 선다. 칩은 입력창 안에 서고(v1 티켓 31 · 사용자 결정), 첫 말 전에 물어보는 정도 · 모델과
+//   생각 깊이를, 트레이에서 Work를 고른다. 보드의 부제(「Host가 답합니다. …」)도 걷었다(v1 티켓 46 — 칩이 고른 것을 이미 말한다).
 //   Work 칩이 고른 것(Work 없이 · 새 Work로 시작 · 최근 Work)을 입력창 안내가 따른다(`workHome`). 첫 말을 보내면 엔진이 고른 것대로
 //   Thread를 세우고 받는 Agent의 Session이 열릴 때까지 기다린다(`thread_start`) — 그동안 보낸 말이 말풍선으로 서고 「생각 중」이
 //   반짝인다. 새 id가 오면 그 주소로 갈아 선다(`replace` — 새 Thread의 자리가 곧 그 Thread가 됐다).
-// - **Thread** — 흐름(`ThreadFlow`)이 읽기 좋은 폭(`size-thread`)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
-//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이,
-//   입력창 자리에는 승인 카드가 선다(v1 티켓 24 — 실행할 자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘
-//   읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가 「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
+// - **Thread** — 흐름(`ThreadFlow`)이 대화 열 폭(`size-column` 737 — Codex, 02 §9)에 가운데로 모이고, 바닥에 붙어 있다가 사람이 위로 굴리면 그 자리에
+//   선다(그때 「맨 아래로」가 입력창 위 가운데에 선다 — Motion 보드, v1 티켓 46). Agent가 일하는 동안은 그 자리의 원 안에 점 셋이 선다(02
+//   §10). 입력창 위에는 바뀐 파일 알약 · 기다리는 말이, 입력창 자리에는 승인 카드 등 한 겉의 카드가 선다(v1 티켓 24 · 02 §10 — 실행할
+//   자리는 물은 참여자의 Session 작업 폴더를 이은 Work의 자리 · 브랜치와 견줘 읽는다). 여럿이 물으면 먼저 온 것 하나만 서고 카드가
+//   「1 / 2」 · 「다음 · …」 줄로 차례를 말한다(v1 티켓 25 · `askTurn`).
 // - **Work와 이어짐**(v1 티켓 30 · §11) — Host의 Work 만들기 제안은 같은 자리 · 같은 차례에 Work 만들기 카드로 선다. 만들어 이어지면
-//   머리 줄 이름 뒤에 그 Work의 알약(제목 · 브랜치 — 누르면 Work 카드가 열린다, v1 티켓 34)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
+//   머리 줄 이름 앞에 그 Work의 이름(누르면 요약 카드가 열린다 — 02 S13)이 서고, 처음 한 번 「결정은 내가 합니다」 카드가 입력창
 //   자리에 선다(S31 — 걸린 물음이 없을 때. 본 것은 앱 설정에 적는다).
 // - **Agent의 질문**(v1 티켓 26) — 같은 자리 · 같은 차례에 질문 카드로 선다(`QuestionCard`).
 // - **로그인 · 설치 안내**(`GuideCard`)는 Thread 본문을 대신한다.
-// - **여럿이 한 Thread에**(v1 티켓 14) — 머리 줄 오른쪽에 참여자 얼굴이 겹쳐 서고 셋이 넘으면 「+n」이다(`ThreadParticipants`).
+// - **여럿이 한 Thread에**(v1 티켓 14) — 누가 있는지는 본문의 이름 줄과 @ 메뉴가 말한다(머리 줄 얼굴은 걷었다 — 02 S14).
 //   입력창의 @ 메뉴는 이 Thread의 범위(`list_agents(work)`)와 앉은 참여자로 서고, 모델 칩은 **다음 말을 받을 참여자**의 Session
 //   값이다(§14) — 아직 앉지 않은 Agent를 멘션하면 그 정의 파일의 값을 보이기만 한다. @ 메뉴 끝의
 //   「새 Agent 만들기」는 새 Thread의 입력창에 Agent 만들기를 맡기는 말을 채운다(v1 티켓 19 · `useCreateAgent`).
@@ -92,39 +99,42 @@ import WorkProposalCard from "./WorkProposalCard";
 // - **Session 보기**(v1 티켓 17 · 구현 스펙 §8 · S37) — 호출 줄의 「Session 열기」는 새 창 없이 같은 흐름에서 그 Agent의 줄만 거른다.
 //   흐름 위에 붙은 머리 줄(얼굴 · 「리뷰어의 Session」 · 「Thread로 돌아가기」)이 돌아가는 길이고, 돌아가면 열기 전에 보던 자리로
 //   굴러 간다. 열 때는 그 부르기의 맡은 턴으로 굴러 간다. 입력창 · 승인 카드는 그대로다.
-// - **Work 카드**(v1 티켓 34 · §15) — Work에 이은 Thread의 오른쪽 위, 위 막대의 카드 버튼 바로 아래에 Work 카드가 떠 있고 대화는 카드
-//   폭 + 틈만큼 왼쪽으로 비켜 준다(보드 `.chat{margin-right:312px}`). 버튼 · 머리 줄 Work 알약이 여닫고, 열림은 Work마다 기억한다(S32).
-//   Work 없는 Thread에는 카드도 버튼도 없다(스토리 114). 카드 머리의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
-// - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드) — 카드의 줄 · 대화 속 문서 카드를 누르면 카드가 넓어진다. 대화는 왼쪽
-//   480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그 오른쪽을 틈 12까지 채운다(보드 `.p-open
-//   .wpane`). 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면 되돌린다. 넓힌 것은 이 화면의 상태라
-//   다른 Thread로 옮기면 작은 카드다. 카드를 닫으면 넓힌 것도 걷힌다.
+// - **요약 카드**(02 구현 스펙 §7 · Screen-Live — v1 Work 카드를 바꿨다, `SummaryCard`) — 판 오른쪽 위에 위 · 오른쪽 8 띄워 떠 있고 높이는
+//   내용만큼이다. Work에 이은 Thread는 머리 · 변경 사항 · 결과물 · 소스, 보관된 Work의 Thread는 같은 카드에 「보관됨」, Work 없는 Thread는
+//   결과물 · 소스만이다(지워진 Work의 Thread에는 카드도 토글도 없다). 머리 줄의 요약 고정 토글이 여닫고 머리 줄 Work 이름이 열며, 열림은
+//   **Thread마다** 기억한다(S22). 카드가 열린 동안 대화 열과 입력창은 카드 왼쪽 끝 16 앞에서 멈추도록 왼쪽으로 비켜나고, 열고 닫을 때
+//   패널 박자(220ms 감속)로 미끄러진다(`Beside`). 카드 머리 「…」의 「이 Work에서 새 Thread」는 그 Work를 고른 새 Thread(`/?work=`)다.
+// - **넓힌 카드**(v1 티켓 35 · §15 배치 1 · Layout-Expand 보드 — 02 §7 「넓힌 카드는 그대로다」) — 요약 카드의 줄 · 대화 속 문서 카드를
+//   누르면 카드가 넓어진다. 대화는 왼쪽 480(`size-thread-beside` — 보드 `.p-open .chat{right:calc(100% - 480px)}`)에 남고, 카드가 그
+//   오른쪽을 작은 카드와 같은 띄움 8까지 채운다. 넓어지는 동안 사이드바를 접고(적지 않는다 — `showSidebar`) 작은 카드로 돌아오면
+//   되돌린다. 넓힌 것은 이 화면의 상태라 다른 Thread로 옮기면 작은 카드다. 카드를 닫으면 넓힌 것도 걷힌다.
 // - **움직임**(v1 티켓 43 · Motion 보드) — 화면이 선 뒤에 새로 선 것만 들어서며 움직인다(`ArrivalScope` — Thread를 열 때 이미 있던 줄은
-//   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오르며, 머리 줄의 새 참여자 얼굴은 튄다.
+//   그대로다). 입력창 자리의 카드는 아래에서 올라오고(승인 카드), 「맨 아래로」는 아래에서 떠오른다.
 //   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리는 사이드바와 같은 패널 박자로 옮겨 간다(`duration-panel` · `ease-panel`).
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
-//   결과」(굵은 제목)가 그것으로 걷힌다.
+//   결과」(줄 오른쪽 끝 파란 점 — 02 티켓 05)가 그것으로 걷힌다.
 
-/** 흐름 · 입력창을 모으는 열 — 읽기 좋은 폭(DS `size-thread` 48rem)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은 폭이다. */
-const COLUMN = "mx-auto flex w-full max-w-(--size-thread) flex-col";
-
-interface ThreadScreenProps {
-  sidebarOpen: boolean;
-}
+/**
+ * 흐름 · 입력창을 모으는 열 — Codex 대화 열 폭(`size-column` 737, 02 §9)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은
+ * 폭이다. 문서 · 설정이 읽는 `size-thread`(768)는 그대로다(02 결정 「01 · 공유 토큰은 새 이름으로」).
+ */
+const COLUMN = "mx-auto flex w-full max-w-(--size-column) flex-col";
 
 /** 「Policy 열기」의 자리 — Library 화면의 그 Agent 파일. Work에 이었으면 그 Work의 Project 안 Agent도 서는 범위다. */
 const policyPlace = (call: string, work: string | null) =>
   ({ to: "/library", search: { agent: call, ...(work !== null && { work }) } }) as const;
 
-/** 새 Thread(`/`). `work`는 처음 고른 Work다 — Work 카드의 「이 Work에서 새 Thread」(v1 티켓 34 · `/?work=`). */
-export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreenProps & { work?: string | null }) {
+/**
+ * 새 Thread(`/`). `seed`는 Work 칩이 처음 고른 곳이다 — 요약 카드 「…」의 「이 Work에서 새 Thread」(v1 티켓 34 · `/?work=`)는 그 Work,
+ * 사이드바 Work 묶음 머리의 +(02 S5 · `/?new=work`)는 「새 Work」다. 첫 말 전의 이 화면에는 요약 카드도 토글도 없다(02 S23) — 첫 말을
+ * 보내 Thread가 서면(`/threads/<id>`) 나타난다.
+ */
+export function NewThreadScreen({ seed = { kind: "no-work" } }: { seed?: ThreadLink }) {
   const navigate = useNavigate();
+  const router = useRouter();
   // 어디서 일할지(v1 티켓 31) — Work 칩이 고른다. 최근 Work면 그 제목도 쥔다(부제 · 입력창 안내 · 칩 글자).
-  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({
-    link: seed === null ? { kind: "no-work" } : { kind: "work", slug: seed },
-    title: null,
-  }));
+  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({ link: seed, title: null }));
   const work = place.link.kind === "work" ? place.link.slug : null;
   // 주소로 받은 Work는 제목을 쥐지 않고 왔다 — 목록에서 읽는다(없으면 slug).
   const { data: works } = useWorks();
@@ -149,13 +159,21 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
 
   const start = async (text: string, attachments: readonly Attachment[]) => {
     setStarting({ text, attachments });
+    let id: string;
     try {
-      const id = await threadApi.start(text, attachments, place.link, picks);
-      void navigate({ to: "/threads/$id", params: { id }, replace: true });
+      id = await threadApi.start(text, attachments, place.link, picks);
     } catch (error) {
       setStarting(null);
       throw error;
     }
+    // 새 id의 주소로 갈아 선다. Thread 화면(나눠 받는 라우트 청크)이 서기 전에 「새 Thread」 · ⌘N으로 `/`에 다시 오면 이 화면이 그대로
+    // 남는다 — 같은 주소의 같은 화면이라 새로 서지 않고, 「시작하는 중」에 멈춘다(02 티켓 13b 「앱의 틈」). 그때는 막 선 화면처럼 비운다.
+    void navigate({ to: "/threads/$id", params: { id }, replace: true }).then(() => {
+      if (router.state.location.pathname !== "/") return;
+      setStarting(null);
+      setPlace({ link: seed, title: null });
+      setPicks({ mode: null, model: null, effort: null });
+    });
   };
 
   const composer = (
@@ -168,7 +186,6 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
       onEffort={(effort) => setPicks((now) => ({ ...now, effort }))}
       commands={[]}
       running={false}
-      roomy={starting === null}
       busy={starting !== null}
       onSend={start}
       onNewThread={() => {}}
@@ -178,40 +195,43 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
       level={level}
       onLevel={(mode) => setPicks((now) => ({ ...now, mode }))}
       onOpenPolicy={() => void navigate(policyPlace(first?.call ?? "host", work))}
-      work={{ label: home.chip, picking: { link: place.link, onPick: (link, title) => setPlace({ link, title }) } }}
+      // 트레이의 Work 칩은 첫 말 전에만 선다 — 보낸 뒤 입력창이 바닥으로 내려가면 Thread 안의 입력창처럼 칩이 없다.
+      work={starting === null ? { label: home.chip, link: place.link, onPick: (link, title) => setPlace({ link, title }) } : undefined}
       placeholder={home.placeholder}
     />
   );
   return (
-    <PlainFrame sidebarOpen={sidebarOpen} label="새 Thread">
+    <PlainFrame label="새 Thread">
       <ArrivalScope>
         {guide ? (
           <GuidePlace>
             <GuideCard kind={guide} view={engine} />
           </GuidePlace>
-        ) : starting !== null ? (
-          // 첫 말을 보냈다 — Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 선다.
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-              <div className={`${COLUMN} gap-6 text-chat-body`}>
-                <UserMessage text={starting.text} attachments={starting.attachments} />
-                <p className="chat-shimmer text-sm">생각 중</p>
-              </div>
-            </div>
-            <div className="px-5 pb-4">
-              <div className={COLUMN}>{composer}</div>
-            </div>
-          </div>
         ) : (
-          // 가운데 묶음은 아래 168을 비우고 가운데에 선다 — 1440×900 창에서 입력창 위끝이 Screen-Home 보드의 388에 온다(v1 티켓 46 — 31이
-          // 칩을 상자 안에 넣고 도움 줄을 걷어 묶음이 짧아진 뒤로 42 아래에 섰다, 시안-비교/31 · 46).
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-5 pb-42 scroll-quiet">
-            <div className="flex w-full max-w-(--size-thread) flex-col gap-7">
-              <div className="flex flex-col items-center gap-3.5 text-center">
-                <HostFace className="size-11" />
-                <h1 className="text-heading-lg">무엇을 만들까요?</h1>
+          // 첫 화면과 첫 말을 보낸 뒤가 한 틀이다 — 입력창은 같은 자리(둘째 칸)에 남아 갈아 서지 않는다. 그래야 보내기 원이 ↑에서 스피너로
+          // 모핑하고(02 §9 · Screen-Live 단계 1) 입력칸이 포커스를 지킨다. 첫 칸만 물음 ↔ 보낸 말로 바뀐다.
+          // - 첫 화면: 가운데 묶음 — 물음 아래 28에 입력창 · 트레이다. 아래 210을 비우고 가운데에 선다: F1-Home의 아래 88(`main{padding:0
+          //   16px 88px}`)에 짓지 않은 Space 제안 줄의 자리 122(위 22 + 줄 32 × 3 + 사이 2 × 2)를 더한 것이다 — 물음과 입력창이 시안의 그
+          //   자리에 선다.
+          // - 첫 말을 보낸 뒤: Session이 열려 새 주소로 갈아 서기까지 보낸 말과 「생각 중」이 서고, 입력창은 바닥으로 내려간다.
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col",
+              starting === null && "items-center justify-center overflow-y-auto px-4 pb-52.5 scroll-quiet",
+            )}
+          >
+            {starting === null ? (
+              <h1 className="mb-7 text-center text-home">무엇을 만들까요?</h1>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
+                <div className={`${COLUMN} ${TURN_GAP} text-chat-body`}>
+                  <UserMessage text={starting.text} attachments={starting.attachments} />
+                  <p className="think-shimmer text-sm">생각 중</p>
+                </div>
               </div>
-              {composer}
+            )}
+            <div className={starting === null ? "w-full" : "px-5 pb-4"}>
+              <div className={COLUMN}>{composer}</div>
             </div>
           </div>
         )}
@@ -221,7 +241,7 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
 }
 
 /** Thread 하나(`/threads/<id>`). */
-export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thread: string }) {
+export function ThreadScreen({ thread }: { thread: string }) {
   const navigate = useNavigate();
   const { data: view, error, isPending } = useThread(thread);
   const rename = useRenameThread();
@@ -230,11 +250,13 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
   useEffect(() => checkEngineOnce(), []);
   const name = view?.title || "Thread";
   const work = view?.work ?? null;
-  // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 보관됨 모양이며, 지워진 Work에는 카드가 없다.
+  // 읽기만 된 Thread(v1 티켓 38) — 이름을 바꾸지 못하고, 보관된 Work의 카드는 「보관됨」이며, 지워진 Work에는 카드가 없다.
   const gone = view?.readOnly ?? null;
   const cardWork = gone === "removed" ? null : work;
-  const [cardOpen, setCardOpen] = useCardOpen(cardWork);
-  // 넓힌 카드가 연 것(v1 티켓 35) — 없으면 작은 카드다. 보관된 Work의 카드는 넓어지지 않는다.
+  // 요약 카드가 서는 Thread(02 §7) — 읽은 Thread면 Work가 없어도 서고, 지워진 Work의 Thread에만 없다. 열림은 Thread마다다(S22).
+  const hasCard = view !== undefined && gone !== "removed";
+  const [cardOpen, setCardOpen] = useSummaryOpen(hasCard ? thread : null);
+  // 넓힌 카드가 연 것(v1 티켓 35) — 없으면 작은 카드다. 보관된 Work · Work 없는 Thread의 카드는 넓어지지 않는다.
   const [opened, setOpened] = useState<Opened | null>(null);
   const expanded = cardWork !== null && gone !== "archived" && cardOpen && opened !== null;
   useFoldSidebar(expanded);
@@ -257,7 +279,7 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
           },
     [specRoot, setCardOpen, setOpened],
   );
-  // PR 카드의 「변경 사항 보기」(v1 티켓 36) — 카드를 열고, 그 PR의 Project에서 바뀐 첫 파일을 넓힌 카드에 연다. 변경은 카드의 변경 칸과
+  // PR 카드의 「변경 사항 보기」(v1 티켓 36) — 카드를 열고, 그 PR의 Project에서 바뀐 첫 파일을 넓힌 카드에 연다. 변경은 카드의 「변경 사항」과
   // 같은 쿼리에서 읽는다(읽은 답이 있으면 다시 읽지 않는다). 보관된 Work는 카드가 넓어지지 않아 카드만 열린다.
   const queryClient = useQueryClient();
   const showChanges = useCallback(
@@ -271,33 +293,31 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
     },
     [cardWork, queryClient, setCardOpen],
   );
+  // 머리 줄 이름의 제자리 바꾸기(두 번 클릭 · F2 · 「…」의 「이름 바꾸기」) — 읽기만 된 Thread는 바꾸지 못한다.
+  const renameName =
+    view && !gone
+      ? {
+          editing: renaming,
+          onStart: () => setRenaming(true),
+          onEnd: () => setRenaming(false),
+          onCommit: (title: string) => {
+            setProblem(null);
+            rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
+          },
+          label: "Thread 이름",
+        }
+      : undefined;
   return (
     <PlainFrame
-      sidebarOpen={sidebarOpen}
       label={name}
-      title={{
-        name,
-        rename:
-          view && !gone
-            ? {
-                editing: renaming,
-                onStart: () => setRenaming(true),
-                onEnd: () => setRenaming(false),
-                onCommit: (title) => {
-                  setProblem(null);
-                  rename.mutate({ thread, title }, { onError: (failure) => setProblem(String(failure)) });
-                },
-                label: "Thread 이름",
-              }
-            : undefined,
-      }}
-      after={cardWork ? <WorkPill slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} /> : undefined}
+      lead={cardWork ? <HeadWork slug={cardWork} archived={gone === "archived"} onOpen={() => setCardOpen(true)} /> : undefined}
+      title={{ name, rename: renameName }}
       end={
-        view && (view.participants.length > 0 || cardWork) ? (
+        view ? (
           <>
-            {view.participants.length > 0 && <ThreadParticipants view={view} />}
-            {cardWork && (
-              <WorkCardToggle
+            <ThreadMenu key={thread} rename={renameName?.onStart ?? null} />
+            {hasCard && (
+              <SummaryToggle
                 open={cardOpen}
                 onToggle={() => {
                   if (cardOpen) setOpened(null);
@@ -311,31 +331,35 @@ export function ThreadScreen({ thread, sidebarOpen }: ThreadScreenProps & { thre
     >
       {view ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
-          {/* 대화는 카드가 열린 동안 카드 폭 + 틈 12만큼 비켜 준다 — 흐름 · 입력창이 그 남은 폭의 가운데에 모인다. 카드가 넓으면 왼쪽
-              480에 남는다. 폭은 세 갈래 모두 적어 둔다 — 폭이 늘 길이라야 비켜 주고 넓어지는 동안 패널 박자로 옮겨 간다. */}
+          {/* 대화는 판 폭 그대로이고 열 · 입력창이 카드를 비켜난다(`Beside`). 카드가 넓으면 대화는 왼쪽 480에 남는다 — 폭은 두 갈래 모두
+              적어 둔다. 폭이 늘 길이라야 넓어지고 접히는 동안 패널 박자로 옮겨 간다. */}
           <div
             className={cn("flex min-h-0 flex-1 flex-col", PANEL_MOTION, "transition-[width] motion-reduce:transition-none")}
-            style={{ width: expanded ? THREAD_BESIDE : cardWork && cardOpen ? `calc(100% - ${CARD_ROOM})` : "100%" }}
+            style={{ width: expanded ? THREAD_BESIDE : "100%" }}
           >
             <DocPlace.Provider value={docPlace}>
-              <ThreadBody key={thread} view={view} problem={problem} onShowChanges={showChanges} />
+              <ThreadBody key={thread} view={view} problem={problem} beside={hasCard && cardOpen} onShowChanges={showChanges} />
             </DocPlace.Provider>
           </div>
-          {/* 카드 자리는 왼쪽 끝으로 넓어진다 — 넓어질 때는 카드가 왼쪽으로 자라고, 접힐 때는 작은 카드가 오른쪽에 붙은 채 자리가
-              줄어든다(`items-end`). 쉴 때 자리는 카드 폭 그대로다. */}
-          {cardWork && cardOpen && (
+          {/* 카드 자리 — 위 · 오른쪽 · 아래 8(Screen-Live `top: 8px; right: 8px`). 작은 카드는 그 오른쪽 위에 내용만큼 서고(`items-end`),
+              넓어지면 자리가 왼쪽 480까지 자라 카드가 그것을 채운다. 자리 자체는 누름을 받지 않는다 — 카드 밑으로 보이는 흐름이 굴러야
+              한다. 카드는 흐름 · 입력창 위에 선다(좁은 창에서 열의 끝을 덮는다). */}
+          {hasCard && cardOpen && (
             <div
               className={cn(
-                "absolute top-3 right-3 bottom-3 flex flex-col items-end",
+                "pointer-events-none absolute top-2 right-2 bottom-2 z-10 flex flex-col items-end",
                 PANEL_MOTION,
                 "transition-[left] motion-reduce:transition-none",
               )}
               style={{ left: expanded ? THREAD_BESIDE : `calc(100% - ${CARD_ROOM})` }}
             >
-              {gone === "archived" ? (
-                <ArchivedWorkCard slug={cardWork} />
+              {cardWork === null ? (
+                <LooseSummaryCard key={thread} participants={view.participants} />
+              ) : gone === "archived" ? (
+                <ArchivedSummaryCard key={thread} slug={cardWork} />
               ) : (
-                <WorkCard
+                <WorkSummaryCard
+                  key={thread}
                   thread={thread}
                   slug={cardWork}
                   onNewThread={() => void navigate({ to: "/", search: { work: cardWork } })}
@@ -367,11 +391,59 @@ function GuidePlace({ children }: { children: ReactNode }) {
   );
 }
 
-/** 카드가 열린 동안 대화가 비켜 주는 폭 — 카드 폭 + 오른쪽 틈 12(보드 `.chat{margin-right:312px}` · `.wpos{right:12px}`). */
-const CARD_ROOM = "calc(var(--size-work-card) + 12px)";
+/**
+ * 입력창 위 가운데의 원(02 §10 · Screen-Live · Motion 보드 `.cx-dots`) — 32 · 흰 면 · 1px `border-faint`. 「맨 아래로」와 작업 중 점이 같은
+ * 원이다.
+ */
+const SLOT_CIRCLE =
+  "col-start-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border-faint bg-surface text-fg-secondary";
 
-/** 카드가 넓은 동안 대화의 폭이자 넓힌 카드의 왼쪽 끝(보드 `.p-open .chat{right:calc(100% - 480px)}` · `.p-open .wpane{width:calc(100% - 492px)}`). */
+/**
+ * 작업 중 점 셋 — 그림이라 숨고, 원이 말한다(「작업 중」 · 「맨 아래로」). 움직임은 `typing-dots`다 — Codex 파도(1s `steps(3)` · +1.2 / −2px ·
+ * 점마다 .1s, 02 티켓 12). 점 색은 원의 글자색 2단계(70% — Codex `bg-text/70`)다.
+ */
+function WorkingDots({ className }: { className?: string }) {
+  return (
+    <span className={cn("typing-dots", className)} aria-hidden>
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
+/** 작은 카드 자리의 폭 — 카드 폭 + 오른쪽 띄움 8(Screen-Live `aside{right:8px; width:300px}`). 자리의 왼쪽 끝이 판 오른쪽 끝에서 이만큼이다. */
+const CARD_ROOM = "calc(var(--size-summary) + 8px)";
+
+/** 카드가 넓은 동안 대화의 폭이자 넓힌 카드 자리의 왼쪽 끝(보드 `.p-open .chat{right:calc(100% - 480px)}`). */
 const THREAD_BESIDE = "var(--size-thread-beside)";
+
+/**
+ * 대화 열이 요약 카드를 비켜나는 칸(02 §7 · Screen-Live `.chat{padding-right:324px; transition: padding-right .22s cubic-bezier(.2,0,0,1)}`)
+ * — 열(737)은 폭을 그대로 두고, 카드가 열려 있으면 오른쪽 몫(`--size-summary-room` 308)을 비운 남은 자리 가운데로 옮겨 간다. 그래서 열 ·
+ * 입력창의 오른쪽 끝이 카드 왼쪽 끝 16 앞에서 멈춘다. 남은 자리가 열보다 좁으면(좁은 창) 열은 판 왼쪽 안쪽 여백(16)까지만 가고 카드가
+ * 열의 끝을 덮는다 — 열이 줄지 않는다.
+ *
+ * 셈은 빈 칸 둘이 든다: 왼쪽 빈 칸(자람 1 · 기본 0)과 오른쪽 빈 칸(자람 1 · 기본 = 몫 · 줄어듦 1) 사이에 열(줄지 않음)이 선다. 남는 자리는
+ * 두 빈 칸이 반씩 나눠 열이 남은 자리 가운데에 서고, 모자라면 오른쪽 빈 칸만 줄어 열이 왼쪽 끝에 붙는다. 몫은 오른쪽 빈 칸의 기본
+ * 길이(`flex-basis`)라 열고 닫을 때 패널 박자(220ms 감속 — `duration-panel` · `ease-panel`, 02 §12)로 미끄러지고, 동작 줄이기에서는
+ * 곧바로 바뀐다.
+ */
+function Beside({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div className="flex">
+      <span aria-hidden className="min-w-0 flex-1" />
+      <div className="flex w-full max-w-(--size-column) shrink-0 flex-col">{children}</div>
+      <span
+        aria-hidden
+        className={cn(
+          "min-w-0 grow transition-[flex-basis] duration-panel ease-panel motion-reduce:transition-none",
+          open ? "basis-(--size-summary-room)" : "basis-0",
+        )}
+      />
+    </div>
+  );
+}
 
 /**
  * 카드가 넓은 동안 사이드바를 접는다(§15 배치 1) — 열려 있었을 때만 접고, 작은 카드로 돌아오거나 화면을 떠나면 되돌린다. 넓은 동안 사람이
@@ -385,37 +457,6 @@ function useFoldSidebar(expanded: boolean) {
   }, [expanded]);
 }
 
-/**
- * 머리 줄의 Work 알약(화면 2 보드 `.wchip`) — 높이 26 · 알약 · `fill-soft` · 12/18 `fg-secondary`, 폴더 14 · 제목 · 「·」 · 고정폭 브랜치.
- * 누르면 Work 카드를 연다(v1 티켓 34 — 보드의 뜻). 목록에 아직 없으면(방금 만든 Work) slug가 제목 자리에 선다. 보관된 Work는 보관
- * 목록의 제목이다(v1 티켓 38).
- */
-function WorkPill({ slug, archived, onOpen }: { slug: string; archived: boolean; onOpen: () => void }) {
-  const { data: works } = useWorks();
-  const work = works?.find((one) => one.slug === slug) ?? null;
-  const shelved = useArchivedWork(archived ? slug : null);
-  const title = work?.title || shelved?.title || slug;
-  return (
-    <button
-      type="button"
-      aria-label={`Work 열기: ${title}`}
-      onClick={onOpen}
-      className="inline-flex h-6.5 min-w-0 items-center gap-1.5 rounded-full bg-fill-soft px-2.5 text-xs whitespace-nowrap text-fg-secondary transition-colors quiet-hover focus-ring"
-    >
-      <Folder className="size-3.5 shrink-0" aria-hidden />
-      <span className="min-w-0 truncate">{title}</span>
-      {work?.branch && (
-        <>
-          <span aria-hidden className="text-fg-tertiary">
-            ·
-          </span>
-          <span className="shrink-0 font-mono text-2xs">{work.branch}</span>
-        </>
-      )}
-    </button>
-  );
-}
-
 /** 참여자의 이름 · 얼굴은 기록의 들어옴 줄(`fold.ts`의 `cast`), 누가 앉았는지는 `thread.json`의 참여자 줄이 정본이다. */
 function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
   return view.participants.map((one) => ({
@@ -427,38 +468,18 @@ function seatedOf(view: ThreadView, model: ThreadModel): SeatedAgent[] {
 }
 
 /**
- * 머리 줄의 참여자 얼굴(스토리 45 · 캔버스 화면 2 · Sidebar 「셋 넘으면 숫자」) — 들어온 차례로 셋까지, 넘으면 「+n」이다. Thread를 연 뒤에
- * 새로 앉은 얼굴은 튀어 들어온다(v1 티켓 43 · Motion 보드 「Agent 참여」) — 자리는 Thread마다 새로 선다(다른 Thread로 옮겨 온 얼굴은 튀지
- * 않는다).
- */
-function ThreadParticipants({ view }: { view: ThreadView }) {
-  const lines = useStore(threadRecordStore, (state) => linesOf(state, view.id));
-  const model = foldOf(lines, view.live ? null : view.lastSeq);
-  return (
-    <ArrivalScope key={view.id}>
-      <FaceStack
-        people={seatedOf(view, model)}
-        max={3}
-        label="참여자"
-        faceClass="size-6"
-        moreClass="h-6 min-w-6"
-        className="-space-x-2 pr-1"
-        joining
-      />
-    </ArrivalScope>
-  );
-}
-
-/**
  * Thread 본문 — 흐름과 입력창. `onShowChanges`는 PR 카드의 「변경 사항 보기」다(v1 티켓 36) — 넓힌 카드(v1 티켓 35)의 변경으로 간다.
  */
 function ThreadBody({
   view,
   problem,
+  beside,
   onShowChanges,
 }: {
   view: ThreadView;
   problem: string | null;
+  /** 요약 카드가 열려 있나 — 흐름 · 입력창의 열이 카드를 비켜난다(`Beside`). */
+  beside: boolean;
   onShowChanges: (pr: PrLine) => void;
 }) {
   const navigate = useNavigate();
@@ -501,6 +522,9 @@ function ThreadBody({
   // 「결정은 내가 합니다」(S31) — 걸린 물음이 먼저다. 이 카드는 기다리는 이가 없는 안내다. 줄은 Library Host 정의에서 선다 — Host는
   // Library에만 있고, Library 목록은 사이드바가 이미 읽어 둔다.
   const decisions = asking === null && decisionsDue(model, seen);
+  // 작업 중 점(02 §10 · 스토리 71) — Agent가 일하는 동안 「맨 아래로」 자리의 원 안에 선다. 입력창 자리에 카드가 서서 사람을 기다리면 서지
+  // 않는다(Screen-Live 단계 4 — 일은 사람의 답을 기다리며 멎어 있다).
+  const working = model.running && asking === null;
   const library = useAgentRoster(null);
   const stopped = last?.end?.stopReason === "cancelled" && last.end.cancelledByUs;
 
@@ -620,9 +644,9 @@ function ThreadBody({
             setAway(!atBottom);
             if (atBottom) read();
           }}
-          className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-4 scroll-quiet"
+          className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-4 scroll-quiet"
         >
-          <div className={COLUMN}>
+          <Beside open={beside}>
             {session && (
               <SessionHead
                 handle={session.handle}
@@ -645,10 +669,10 @@ function ThreadBody({
                 />
               </PrPlace.Provider>
             </LogPlace.Provider>
-          </div>
+          </Beside>
         </div>
-        <div className="px-5 pb-4">
-          <div className={COLUMN}>
+        <div className="px-4 pb-4">
+          <Beside open={beside}>
             <ThreadComposer
               draftKey={thread}
               // Session을 연 적 없는 참여자(로그인을 기다린다)도 고른다 — 그때의 목록은 claude가 받는 별칭이다(v1 티켓 31).
@@ -674,7 +698,6 @@ function ThreadBody({
               level={view.askLevel}
               onLevel={pickLevel}
               onOpenPolicy={() => void navigate(policyPlace(policyOwner, view.work))}
-              work={{ label: view.work ? linked?.title || view.work : "Work 없음" }}
               card={
                 // 입력창 자리를 잠시 빌리는 카드는 아래에서 올라온다(v1 티켓 43 · Motion 보드 「승인 카드 올라옴」). 다음 물음으로 갈아 서면
                 // 새 카드가 올라온다 — 자리의 열쇠가 그 물음이다.
@@ -709,7 +732,6 @@ function ThreadBody({
                       <ApprovalCard
                         thread={thread}
                         name={model.cast[asking.who]?.name ?? asking.who}
-                        avatar={model.cast[asking.who]?.avatar ?? null}
                         request={asking}
                         scope={view.work ? "work" : "thread"}
                         cwd={askingCwd}
@@ -739,10 +761,11 @@ function ThreadBody({
                 ) : null
               }
               above={
-                (changes || away || queue.length > 0) && (
+                (changes || away || working || queue.length > 0) && (
                   <>
-                    {(changes || away) && (
-                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」는 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽 끝이었다).
+                    {(changes || away || working) && (
+                      // 세 칸 — 바뀐 파일 알약은 왼쪽, 「맨 아래로」 · 작업 중 점은 가운데다(Motion 보드 「아래로 버튼」 — v1 티켓 46, 한때 오른쪽
+                      // 끝이었다. 작업 중 점은 Codex처럼 그 원 안에 선다 — 02 §10).
                       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                         {changes && last ? (
                           <ChangesPill
@@ -755,16 +778,27 @@ function ThreadBody({
                         ) : (
                           <span />
                         )}
-                        {away && (
-                          // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼).
+                        {away ? (
+                          // 위로 굴린 뒤에만 선다 — 화면이 처음 설 때는 바닥이라 늘 움직이며 선다(아래로 버튼). 일하는 동안은 원 안에 점 셋이
+                          // 서고, 올려 두거나 포커스가 오면 ↓로 바뀐다(Motion 보드 「작업 중 점」 — Codex).
                           <button
                             type="button"
                             aria-label="맨 아래로"
                             onClick={toBottom}
-                            className="col-start-2 flex size-8.5 shrink-0 items-center justify-center rounded-full bg-surface text-fg-secondary shadow-lifted transition-colors jump-in hover:text-fg focus-ring"
+                            className={cn(SLOT_CIRCLE, "group text-fg-secondary transition-colors jump-in hover:text-fg focus-ring")}
                           >
-                            <ArrowDown className="size-4" aria-hidden />
+                            {working && <WorkingDots className="group-hover:hidden group-focus-visible:hidden" />}
+                            <ArrowDown
+                              className={cn("size-4", working && "hidden group-hover:block group-focus-visible:block")}
+                              aria-hidden
+                            />
                           </button>
+                        ) : (
+                          working && (
+                            <span role="img" aria-label="작업 중" className={SLOT_CIRCLE}>
+                              <WorkingDots />
+                            </span>
+                          )
                         )}
                       </div>
                     )}
@@ -773,7 +807,7 @@ function ThreadBody({
                 )
               }
             />
-          </div>
+          </Beside>
         </div>
       </div>
     </ArrivalScope>

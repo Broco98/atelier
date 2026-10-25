@@ -8,7 +8,7 @@ import {
   recordClipboard,
   unknownIpcCalls,
   다떴다,
-  머리카드,
+  화면머리,
   적힌주소,
   주소적기,
   줄차례,
@@ -23,8 +23,8 @@ import {
 // 같은 목록이다. 나머지 두 대상(Processes 행 · spec 레이아웃 행)은 ⋯ 검사가 사는 파일에 우클릭 판을 더했다(`processes-strays` ·
 // `spec-layout-page`).
 //
-// - 프로젝트(목록 행 · 머리 카드 이름): Finder에서 열기 · 경로 복사 — 이름 바꾸기 F2 — 제거(확인 창). 「LLM이 받는 텍스트」는 없다(S13).
-// - Archive 목록 행: 머리 카드 ⋯(아카이브 메뉴)와 같은 목록 — Finder에서 열기 · 경로 복사.
+// - 프로젝트(목록 행 · 머리 줄 이름): Finder에서 열기 · 경로 복사 — 이름 바꾸기 F2 — 제거(확인 창). 「LLM이 받는 텍스트」는 없다(S13).
+// - Archive 목록 행: 머리 줄 ⋯(아카이브 메뉴)와 같은 목록 — Finder에서 열기 · 경로 복사.
 // - spec 트리 파일 행(작업 · Archive 패널, 티켓 32 — 구현 노트 Q16): 경로 복사 하나다. 행의 복사 버튼이 Tab 정류장이 아니어서 키보드의
 //   복사 길이 이 메뉴다. 폴더 행은 대상이 아니다.
 // - 문서 글(Works · Archive 문서): 고른 글자가 있으면 복사, 없으면 원문으로 보기 · 경로 복사.
@@ -96,11 +96,11 @@ const 대상들: 대상[] = [
     },
   },
   {
-    name: "프로젝트 머리 카드 이름",
+    name: "프로젝트 머리 줄 이름",
     setUp: async (page) => {
       await page.goto(`/projects/${billing.slug}`);
       return {
-        target: 머리카드(page).getByText(billing.name, { exact: true }),
+        target: 화면머리(page).getByText(billing.name, { exact: true }),
         order: 프로젝트메뉴차례,
         mark: "data-project-row",
         selected: billing.slug,
@@ -111,13 +111,13 @@ const 대상들: 대상[] = [
     name: "Archive 목록 행",
     setUp: async (page) => {
       await page.goto(`/archive/${shipped.slug}`);
-      // ⋯과 같은 목록이다(결정 6) — 머리 카드 ⋯를 먼저 열어 그 차례를 읽는다. 대상은 고르지 않은 행이다.
-      const more = 버튼(머리카드(page), "아카이브 메뉴");
+      // ⋯과 같은 목록이다(결정 6) — 머리 줄 ⋯를 먼저 열어 그 차례를 읽는다. 대상은 고르지 않은 행이다.
+      const more = 버튼(화면머리(page), "아카이브 메뉴");
       await more.click();
       const order = await 줄차례(메뉴(page));
       await page.keyboard.press("Escape");
       await expect(메뉴(page)).toHaveCount(0);
-      expect(order, "머리 카드 ⋯의 아카이브 메뉴").toEqual(["Finder에서 열기", "경로 복사"]);
+      expect(order, "머리 줄 ⋯의 아카이브 메뉴").toEqual(["Finder에서 열기", "경로 복사"]);
       return { target: page.locator(`[data-archive-row="${bare.slug}"]`), order, mark: "data-archive-row", selected: shipped.slug };
     },
   },
@@ -151,7 +151,9 @@ for (const { name, setUp } of 대상들) {
     const menu = await 우클릭한다(page, target);
     await expect.poll(() => 줄차례(menu)).toEqual(order);
     const spot = (await target.boundingBox())!;
-    expect(await 카드자리(menu)).toEqual([Math.round(spot.x + 6), Math.round(spot.y + 6)]);
+    // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 흰 판의 테두리(0.5) 뒤로 대상이 반 픽셀에 서서 카드는 그 아래
+    // 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+    expect(await 카드자리(menu)).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
     // 고름 · 주소는 그대로다(결정 7) — 우클릭은 그 대상으로 가지 않는다.
     expect(page.url()).toBe(url);
     expect(await 고른행(page, mark)).toEqual([selected]);
@@ -188,7 +190,9 @@ for (const { name, setUp } of 대상들) {
       await expect.poll(() => 줄차례(menu)).toEqual(order);
       // 커서가 없으니 대상의 왼쪽 아래에 선다.
       const spot = (await target.boundingBox())!;
-      expect(await 카드자리(menu)).toEqual([Math.round(spot.x), Math.round(spot.y + spot.height)]);
+      // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
+      // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+      expect(await 카드자리(menu)).toEqual([Math.floor(spot.x), Math.floor(spot.y + spot.height)]);
       await expect.poll(() => 테두리(target)).toBe(링);
 
       // 카드 자신이 포커스를 쥐고, 그 뒤의 ↓가 첫 항목이다 — ⋯를 눌러 연 것과 같다.
@@ -209,9 +213,9 @@ for (const { name, setUp } of 대상들) {
 // macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 연다 — 그 손이 그 행을 골라 버리면 「메뉴는 고름을 안 바꾼다」가 깨진다. 누르면 그 대상을
 // 고르는 행(프로젝트 · Archive 목록 행 · spec 트리 파일 행)은 그 클릭에서 ⌃를 거른다 — work 행 · 띠 줄과 같은 거름이고, 재는 길도 그
 // 검사(`work-context-menu.spec.ts`)와 같다: ⌃가 실린 `click` 사건을 내고, 주소를 바꾸는 부름을 적어(`주소적기`) ⌃클릭 뒤에 꽂은 표보다
-// 먼저 적힌 것이 없음을 잰다. 머리 카드 이름은 누르면 고르는 자리가 아니라 뺀다. 키보드 Enter의 고름은 `keyboard.spec.ts`가 잰다.
+// 먼저 적힌 것이 없음을 잰다. 머리 줄 이름은 누르면 고르는 자리가 아니라 뺀다. 키보드 Enter의 고름은 `keyboard.spec.ts`가 잰다.
 
-for (const { name, setUp } of 대상들.filter((one) => one.name !== "프로젝트 머리 카드 이름")) {
+for (const { name, setUp } of 대상들.filter((one) => one.name !== "프로젝트 머리 줄 이름")) {
   test(`${name}을 ⌃클릭하면 고름 · 주소가 그대로다 — ⌃ 없는 클릭은 그 행을 고른다`, async ({ page }) => {
     await installFixtureBackend(page);
     const { target, mark, selected } = await setUp(page);
@@ -234,7 +238,7 @@ for (const { name, setUp } of 대상들.filter((one) => one.name !== "프로젝�
 }
 
 // ── 프로젝트 메뉴가 부르는 것 ──
-// 메뉴는 대상의 프로젝트에 건다 — 목록 행은 고르지 않은 프로젝트(원장)이고, 머리 카드 이름은 고른 프로젝트(빌링)다. Finder 열기는 코어
+// 메뉴는 대상의 프로젝트에 건다 — 목록 행은 고르지 않은 프로젝트(원장)이고, 머리 줄 이름은 고른 프로젝트(빌링)다. Finder 열기는 코어
 // 명령을 slug로 부르고(경로는 코어가 푼다), 경로 복사는 그 프로젝트 폴더의 참조(끝이 `/`)를 클립보드에 쓴다.
 
 const 프로젝트대상들 = [
@@ -246,10 +250,10 @@ const 프로젝트대상들 = [
     input: (page: Page) => page.getByRole("region", { name: "프로젝트 목록", exact: true }).getByRole("textbox", { name: "프로젝트 이름" }),
   },
   {
-    name: "프로젝트 머리 카드 이름",
+    name: "프로젝트 머리 줄 이름",
     project: billing,
-    target: (page: Page) => 머리카드(page).getByText(billing.name, { exact: true }),
-    input: (page: Page) => 머리카드(page).getByRole("textbox", { name: "프로젝트 이름" }),
+    target: (page: Page) => 화면머리(page).getByText(billing.name, { exact: true }),
+    input: (page: Page) => 화면머리(page).getByRole("textbox", { name: "프로젝트 이름" }),
   },
 ];
 
@@ -335,7 +339,7 @@ test("고르지 않은 프로젝트를 목록 행의 메뉴로 제거하면 보�
   await expect.poll(() => callCount(page, "delete_project")).toBe(1);
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(`/projects/${billing.slug}`);
-  await expect(머리카드(page).getByText(billing.name, { exact: true })).toBeVisible();
+  await expect(화면머리(page).getByText(billing.name, { exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -353,7 +357,7 @@ test("폴더를 못 찾은 프로젝트의 메뉴에서는 「Finder에서 열�
 });
 
 // ── Archive 목록 행이 부르는 것 ──
-// 머리 카드 ⋯과 같은 정의라 같은 명령 · 같은 참조다 — 다만 그 행의 아카이브로 나간다.
+// 머리 줄 ⋯과 같은 정의라 같은 명령 · 같은 참조다 — 다만 그 행의 아카이브로 나간다.
 
 test("Archive 목록 행의 메뉴는 그 행의 아카이브로 Finder 열기 · 경로 복사를 부르고, 고른 아카이브는 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -459,7 +463,9 @@ for (const { name, open, line, heading, path } of 문서자리들) {
     const menu = 메뉴(page);
     await expect(menu).toBeVisible();
     await expect.poll(() => 줄차례(menu)).toEqual(["복사⌘C"]);
-    expect(await 카드자리(menu)).toEqual([Math.round(at.x), Math.round(at.y)]);
+    // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 흰 판의 테두리(0.5) 뒤로 대상이 반 픽셀에 서서 카드는 그 아래
+    // 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+    expect(await 카드자리(menu)).toEqual([Math.floor(at.x), Math.floor(at.y)]);
     await expect.poll(() => 테두리(문서글(page))).toBe(링);
     expect(await 고른글자(page)).toBe(line);
 
@@ -531,7 +537,9 @@ for (const { name, open, line, heading, path } of 문서자리들) {
       await expect(menu).toBeVisible();
       await expect.poll(() => 줄차례(menu)).toEqual(["원문으로 보기", "경로 복사"]);
       const spot = (await box.boundingBox())!;
-      expect(await 카드자리(menu)).toEqual([Math.round(spot.x), Math.round(spot.y)]);
+      // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
+      // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+      expect(await 카드자리(menu)).toEqual([Math.floor(spot.x), Math.floor(spot.y)]);
       await expect.poll(() => 테두리(box)).toBe(링);
       await expect(menu).toBeFocused();
       await page.keyboard.press("ArrowDown");

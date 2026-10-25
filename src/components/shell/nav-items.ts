@@ -42,8 +42,8 @@ export const navItems = [
 export type NavKey = (typeof navItems)[number]["key"];
 
 /**
- * 그 nav 항목의 규격. **화면의 머리 카드가 제 이름 · 아이콘을 여기서 읽는다**(`Frame`의 `HeadSlot` — 고른 것이 없으면 화면
- * 이름이고 아이콘은 nav의 그것이다). nav와 머리 카드가 각자 글자를 들면 이름을 고치는 날 한쪽만 바뀌어 「같은 곳」이 화면에서
+ * 그 nav 항목의 규격. **화면의 머리 줄이 제 이름 · 아이콘을 여기서 읽는다**(`Frame`의 `HeadSlot` — 고른 것이 없으면 화면
+ * 이름이고 아이콘은 nav의 그것이다). nav와 머리 줄이 각자 글자를 들면 이름을 고치는 날 한쪽만 바뀌어 「같은 곳」이 화면에서
  * 두 이름을 갖는다(위 `TERMINAL_LABEL`과 같은 까닭). 배열에 없는 key는 타입이 막는다.
  */
 export function navItem(key: NavKey): (typeof navItems)[number] {

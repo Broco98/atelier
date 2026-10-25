@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useStore } from "@tanstack/react-store";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import { useProjects } from "@/features/projects/hooks";
 import { pickSlug, selectProject, shellStore } from "@/components/shell/shell-store";
@@ -9,7 +8,6 @@ import { recallSearch } from "./-work-search";
 // /projects와 /projects/$slug가 그리는 화면은 같다 — works 쪽과 같은 구조다 (-works-view.tsx 참조)
 function ProjectsView({ slug }: { slug: string | null }) {
   const navigate = useNavigate();
-  const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   const { data: projects = [], isPending, isFetching } = useProjects();
 
   const exists = slug !== null && projects.some((project) => project.slug === slug);
@@ -34,7 +32,6 @@ function ProjectsView({ slug }: { slug: string | null }) {
 
   return (
     <ProjectsPage
-      sidebarOpen={sidebarOpen}
       selectedSlug={exists ? slug : null}
       // 목록 클릭(next=slug)은 이동이라 push, 선택 해제(next=null, 보던 프로젝트를 제거함)는
       // "보던 대상이 사라짐"이라 replace다 — push하면 지운 프로젝트를 가리키는 죽은 칸이 남아

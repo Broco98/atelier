@@ -5,7 +5,7 @@ import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
 import { threadApi } from "./api";
-import { ARMING_MS, KeyCap } from "./ApprovalCard";
+import { ARMING_MS, KeyCap, SLOT_CARD } from "./ApprovalCard";
 import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
 import type { Avatar } from "./faces";
@@ -16,8 +16,8 @@ import { answerOf, answersOf, NO_PICK, pickOption, questionKey, typeAnswer, type
 // **입력창 자리에** 선다(같은 자리 · 같은 물음 차례). 번호로 고르거나 직접 답하고, 「답하기」 · 「나중에」로 닫는다. 값은 순수 함수가
 // 짓는다(`question.ts`).
 //
-// 모양은 보드의 `.qcard`다 — r20 · 면 카드와 그림자(머리카락 선 + 카드) · 위 16 · 옆 8 · 아래 8, 칸 사이 10. 머리는 얼굴 22와 물음
-// (14/20 600) · 물음 아래 한 줄(12/18 `fg-tertiary`)이다. 선택지 줄은 승인 카드의 번호 줄과 같은 높이 36 · 반경 12에 라디오(여럿
+// 겉은 입력창 자리 카드의 한 겉이다(`SLOT_CARD` — 02 §10 · 스토리 68: 25 · 1px 옅은 테두리 · 흰 면). 안은 v1 보드의 `.qcard`다 — 위 16 ·
+// 옆 8 · 아래 8, 칸 사이 10. 머리는 얼굴 22와 물음(14/20 600) · 물음 아래 한 줄(12/18 `fg-tertiary`)이다. 선택지 줄은 승인 카드의 번호 줄과 같은 높이 36 · 반경 12에 라디오(여럿
 // 고르기면 체크) 16과 글, 오른쪽 끝에 번호 글쇠이고, 고른 줄은 `fill-soft` 면이다. 「직접 답하기」 칸은 높이 38 · 머리카락 선,
 // 맨 아래 줄은 「나중에」(흐린 버튼) · 「답하기」(주 버튼)다.
 //
@@ -25,7 +25,8 @@ import { answerOf, answersOf, NO_PICK, pickOption, questionKey, typeAnswer, type
 //   손댄 물음, 처음엔 첫째)의 선택지를 고르고, 하나만 고르는 물음을 고르면 답하지 않은 다음 물음으로 넘어간다.
 // - **Enter는 「답하기」다** — 모든 물음에 답했을 때만 간다. Esc는 고르지 않는다: 「나중에」는 그 질문을 답 없이 닫는 일이다.
 // - 카드가 서면 포커스를 받는다 — 풀린 포커스만 받는다. 선 직후 잠깐(`ARMING_MS`)은 키를 받지 않는다(승인 카드와 같다).
-// - 이 카드는 질문 답 명령을 부르기만 한다. 답 줄(`question` `answered`)이 오면 카드가 걷히고 그 자리에 「답함: …」 줄이 선다.
+// - 이 카드는 질문 답 명령을 부르기만 한다. 답 줄(`question` `answered`)이 오면 카드가 걷히고 그 자리에 답한 카드(✓ · 물은 것 · 고른 답
+//   한 줄, 02 §10)가 선다.
 // - 여럿이 물으면 머리 오른쪽의 「1 / 2」와 맨 아래 「다음 · …」 줄이 차례를 말한다(`AskTurnMarks`, v1 티켓 25).
 
 interface QuestionCardProps {
@@ -96,7 +97,7 @@ function QuestionCard({ thread, name, avatar, request, count = null, next }: Que
         if ("submit" in key) reply(false);
         else choose(active, key.pick);
       }}
-      className="flex shrink-0 flex-col gap-2.5 rounded-3xl bg-surface px-2 pt-4 pb-2 shadow-lifted outline-none"
+      className={cn("flex shrink-0 flex-col gap-2.5 px-2 pt-4 pb-2", SLOT_CARD)}
     >
       {questions.map((question, at) => (
         <Fragment key={`${at}-${question.question}`}>

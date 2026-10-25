@@ -4,7 +4,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/component
 import { useWorks } from "./hooks";
 import { WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
 
-// **work의 우클릭 메뉴**(codex-ds 스펙 §9 · 결정 6 · 7 · 11). 대상은 셋이다 — 사이드바 work 행 · 알림 띠 줄 · 머리 카드 이름. 펴는
+// **work의 우클릭 메뉴**(codex-ds 스펙 §9 · 결정 6 · 7 · 11). 대상은 셋이다 — 사이드바 work 행 · 알림 띠 줄 · 머리 줄 이름. 펴는
 // 목록은 ⋯ 메뉴와 같은 정의(`WorkMenuItems`)이고 부르는 흐름도 같다(`flows` — `work-menu-actions.ts`).
 //
 // **메뉴 하나가 여러 대상을 맡는다.** 목록 하나 · 띠 하나에 메뉴가 하나씩 서고, 우클릭이 난 자리에서 대상을 찾는다(`targetOf`). 행마다
@@ -15,7 +15,7 @@ import { WorkMenuItems, type WorkMenuFlows } from "./WorkMenuItems";
 // **감싼 자리 안의 입력칸은 이 메뉴의 자리가 아니다.** 사이드바 행의 이름을 고치는 칸(`InlineRename`)은 목록 안에 서는데, 그
 // 칸의 우클릭은 편집 메뉴다(`EditMenu`, 티켓 31). 그 자리에서는 Trigger가 물러선다(`opensEditMenu` — 제 처리를 건너뛰어 사건을
 // 멈추지 않는다) — 사건이 document까지 올라가 편집 메뉴가 연다. ⇧F10 · 메뉴 키는 물러설 것이 없다: 이 키를 받는 것은 대상
-// 요소 자신의 `onKeyDown`(`openMenuByKey`)인데, 이름을 고치는 칸은 그 요소(행의 이름 버튼 · 머리 카드 이름)를 갈아 끼우고 서서
+// 요소 자신의 `onKeyDown`(`openMenuByKey`)인데, 이름을 고치는 칸은 그 요소(행의 이름 버튼 · 머리 줄 이름)를 갈아 끼우고 서서
 // 그 칸의 키가 거기 안 간다.
 //
 // **고름도 주소도 안 바뀐다**(결정 7). 대상이 고른 work가 아니어도 그 줄의 work에 대한 메뉴이고, 열고 닫는 동안 목록의 고름과 주소는
@@ -29,7 +29,7 @@ export interface MenuTarget {
   /** 메뉴가 펼 work. */
   slug: string;
   /**
-   * 테두리가 설 자리의 이름 — 메뉴를 다는 요소를 그리는 함수(`children`)가 받는 값이다. 행 · 머리 카드 이름은 slug이고, 띠는 셸 줄의
+   * 테두리가 설 자리의 이름 — 메뉴를 다는 요소를 그리는 함수(`children`)가 받는 값이다. 행 · 머리 줄 이름은 slug이고, 띠는 셸 줄의
    * 칸 번호다(한 work에서 둘이 부르면 줄이 둘이다).
    */
   id: string;
@@ -47,10 +47,10 @@ export function WorkContextMenu({
   flows: WorkMenuFlows;
   /**
    * 우클릭이 난 요소(`from`)에서 대상을 찾는다 — 대상이 아닌 자리면 `null`이고 메뉴가 안 선다. `trigger`는 메뉴를 다는 요소 자신이다
-   * (머리 카드 이름은 그것이 곧 대상이다).
+   * (머리 줄 이름은 그것이 곧 대상이다).
    */
   targetOf: (from: Element, trigger: HTMLElement) => MenuTarget | null;
-  /** 「이름 바꾸기」 — 그 work의 이름을 대상 자리에서 고치기 시작한다(머리 카드 이름 · 사이드바 행). */
+  /** 「이름 바꾸기」 — 그 work의 이름을 대상 자리에서 고치기 시작한다(머리 줄 이름 · 사이드바 행). */
   onRename: (slug: string) => void;
   /**
    * 메뉴를 다는 요소를 그린다 — 받는 값은 **지금 열린 메뉴의 대상 이름**(`MenuTarget.id`)이고(닫혔으면 `null`) 그 대상이 테두리를 그린다. 그린 요소가

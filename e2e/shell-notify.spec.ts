@@ -6,7 +6,7 @@ import {
   fireAttention,
   installFixtureBackend,
   markAttention,
-  머리카드,
+  화면머리,
   sentNotifications,
   setWindowFocused,
   stubNotifications,
@@ -103,8 +103,9 @@ test("그 셸을 보고 있으면 안 울린다", async ({ page }) => {
   // 화면은 이미 그 사실을 그렸는데(부르는 행 버튼이 그 말을 설명으로 든다) 알림만 안 울렸다 —
   // **그 두 줄이 함께 있어야** 「배선이 끊겨서 조용한 것」과 갈린다. 한때 이 앵커는 행의
   // 둘째 줄에 선 그 말이었다 — 행이 한 줄로 돌아오면서(`sidebar-active-band` 결정 14) 말은
-  // 호버 카드의 말 칸과 행 설명으로 갔고, 올리지 않고 닿는 쪽이 설명이다.
-  await expect(행버튼(page, `${work.title} — 나를 기다림`)).toHaveAccessibleDescription(
+  // 호버 카드의 말 칸과 행 설명으로 갔고, 올리지 않고 닿는 쪽이 설명이다. 행 이름의 꼬리는 상태 표시의 말이다 — 답을 기다리는 셸이
+  // 세운 알약도 「내 차례」다(02 티켓 05 — 띠 줄 · 셸 탭은 그대로 「나를 기다림」).
+  await expect(행버튼(page, `${work.title} — 내 차례`)).toHaveAccessibleDescription(
     "테스트 셋 통과",
   );
   expect(await sentNotifications(page)).toEqual([]);
@@ -162,7 +163,7 @@ test("설정에서 껐으면 부를 때 아무것도 안 나간다", async ({ pa
   // **이 두 줄이 함께 있어야 한다.** 화면은 그 사실을 그렸는데(부르는 행 버튼이 셸이 한 말을
   // 설명으로 든다) 밖으로는 아무것도 안 나갔다 — 위 첫 검사가 같은 길로 **울리는 것**을 이미
   // 세워 뒀으므로, 여기의 조용함은 「배선이 끊겼다」가 아니라 「껐다」다.
-  await expect(행버튼(page, `${work.title} — 나를 기다림`)).toHaveAccessibleDescription(
+  await expect(행버튼(page, `${work.title} — 내 차례`)).toHaveAccessibleDescription(
     "테스트 셋 통과",
   );
   expect(await sentNotifications(page), "껐는데 알림이 울렸다").toEqual([]);
@@ -233,8 +234,8 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
   await 소리.click();
   await expect(소리, "스위치가 안 꺼졌다").toHaveAttribute("aria-checked", "false");
 
-  // 저장 버튼은 쪽마다 하나이고(#225) 머리 카드에 선다(codex-ds 티켓 14) — 이 쪽에서 누르는 것이 알림 설정의 저장이다.
-  const 저장 = 머리카드(page).getByRole("button", { name: "저장", exact: true });
+  // 저장 버튼은 쪽마다 하나이고(#225) 머리 줄에 선다(codex-ds 티켓 14) — 이 쪽에서 누르는 것이 알림 설정의 저장이다.
+  const 저장 = 화면머리(page).getByRole("button", { name: "저장", exact: true });
   await expect(저장, "고친 것이 없다고 읽혔다").toBeEnabled();
   await 저장.click();
   // **쓰기가 실제로 돌아온 순간을 기다린다.** 저장이 끝나면 고칠 것이 없어져 버튼이 잠긴다 —

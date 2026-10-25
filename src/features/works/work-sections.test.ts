@@ -111,7 +111,7 @@ describe("빈 작업 구획이 하는 말", () => {
   });
 
   it("아무것도 없을 때만 어디서 시작하는지 말한다", () => {
-    expect(notice()).toBe("작업은 Claude Code에서 시작돼요.");
+    expect(notice()).toBe("아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.");
   });
 
   // `작업`이 비는 모양(아무것도 없음·고정만·고정된 초안만)을 다 돌려 **나온 말을
@@ -124,7 +124,7 @@ describe("빈 작업 구획이 하는 말", () => {
       expect(sections.main, shape.join(",")).toEqual([]);
       return emptyMainNotice(sections);
     });
-    expect([...new Set(said)]).toEqual(["작업은 Claude Code에서 시작돼요.", "전부 고정돼 있어요."]);
+    expect([...new Set(said)]).toEqual(["아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.", "전부 고정돼 있어요."]);
   });
 });
 
@@ -140,7 +140,7 @@ describe("상주 목록이 자기 어휘로 말한다", () => {
 
   it("문구 둘은 한 글자도 안 바뀐다", () => {
     expect([notice(), notice("pin:고정")]).toEqual([
-      "작업은 Claude Code에서 시작돼요.",
+      "아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.",
       "전부 고정돼 있어요.",
     ]);
   });

@@ -64,9 +64,9 @@ test("끌어다 놓은 파일 · 폴더가 입력창에 칩으로 서고 뺄 수
   await expect(칩들(page)).toHaveCount(1);
   await expect(칩들(page).getByRole("listitem")).toHaveText([new RegExp(`^${logName}`), folderName]);
 
-  // Host의 답이 그 아래로 흐르고 턴이 접혀도 칩은 말풍선 위에 남는다.
+  // Host의 답이 그 아래로 흐르고 턴이 끝나도(끝난 답 아래 「답 복사」) 칩은 말풍선 위에 남는다.
   await streamLines(page, started.id, linesAfter(attach, SENT));
-  await expect(흐름.getByRole("button", { name: "4초 동안 작업함", exact: true })).toBeVisible();
+  await expect(흐름.getByRole("button", { name: "답 복사", exact: true })).toBeVisible();
   await expect(흐름.getByText("hello from turn", { exact: true })).toBeVisible();
   await expect(칩들(page).getByRole("listitem")).toHaveText([new RegExp(`^${logName}`), folderName]);
   expect(await unknownIpcCalls(page)).toEqual([]);

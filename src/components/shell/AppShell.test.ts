@@ -58,3 +58,58 @@ describe("설정의 문", () => {
     expect(source).not.toMatch(/["']\/settings["']/);
   });
 });
+
+// 틀이 하나다(02 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고, 그 아래 흰 판 하나에 사이드바와 화면
+// 본문(라우트가 그리는 것)이 든다. 화면마다 제 틀을 그리면 화면을 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를
+// 소스로 잰다 — 판의 띄움 · 높이 · 이름 자리는 L3(`frame.spec`)가 상자로 잰다.
+describe("틀 하나 — 머리 줄과 흰 판", () => {
+  const at = (literal: string) => source.indexOf(literal);
+
+  it("머리 줄이 크롬 맨 위에 서고 셸 컨트롤을 품는다", () => {
+    const [head, controls, headEnd, panel] = ["<ShellHeadRow", "<ShellControls", "</ShellHeadRow>", 'data-slot="panel"'].map(at);
+    expect([head, controls, headEnd, panel].every((one) => one > -1)).toBe(true);
+    expect(head).toBeLessThan(controls);
+    expect(controls).toBeLessThan(headEnd);
+    expect(headEnd).toBeLessThan(panel);
+    expect(source).toContain("bg-surface-shell");
+  });
+
+  it("흰 판 하나가 사이드바와 화면 본문을 품는다", () => {
+    const panel = at('data-slot="panel"');
+    const [sidebar, outlet] = ["<Sidebar", "<Outlet />"].map(at);
+    expect(countOf(source, 'data-slot="panel"')).toBe(1);
+    expect(sidebar).toBeGreaterThan(panel);
+    expect(outlet).toBeGreaterThan(sidebar);
+    // 판의 겉은 01이 넣은 토큰이다 — 손으로 적은 색 · 그림자가 아니다.
+    const tag = source.slice(source.lastIndexOf("<div", panel), source.indexOf(">", panel));
+    for (const token of ["rounded-xl", "border-border-panel", "shadow-panel", "bg-surface"]) expect(tag, token).toContain(token);
+    // 화면은 머리 줄의 자리를 셸에게서 받는다 — 본문(라우트)이 그 자리 안에 선다.
+    expect(source.slice(panel, outlet)).toContain("<ShellHeadSlot.Provider");
+  });
+});
+
+// 02 구현 스펙 §4 · 스토리 10 · 11. **⌘N이 새 Thread를 연다 — 사이드바 위 줄 「새 Thread」와 같은 함수다.** 둘이 따로 `navigate`하면 한쪽의
+// 가드(이미 `/`면 칸을 안 쌓는다)만 고쳐지는 날 같은 일이 두 모양이 된다. 키는 단축키 표의 `newThread`이고(글자 · 메뉴 바는
+// `hotkeys.test.ts`), 확인 창 · 팔레트가 떠 있으면 안 먹는다(⌘J와 같은 게이트 — 답을 기다리는 동안 화면을 옮기지 않는다). 키가 실제로
+// 새 Thread를 여는지는 L3(13)가 본다.
+describe("⌘N", () => {
+  it("단축키 표의 키로 사이드바의 새 Thread와 같은 함수를 부른다", () => {
+    expect(countOf(source, 'pressed(e, "newThread")')).toBe(1);
+    expect(source).toContain("onNewThread={openNewThread}");
+    // 새 Thread로 가는 길은 그 함수 하나다 — 이 파일에서 `/`로 가는 `navigate`가 그 몸 하나에만 선다.
+    expect(countOf(source, 'navigate({ to: "/" })')).toBe(1);
+    const at = source.indexOf('pressed(e, "newThread")');
+    const handler = source.slice(at, source.indexOf("};", at));
+    expect(handler).toContain("dialogStore.state !== null || searchOpen");
+    expect(handler).toContain("openNewThread()");
+  });
+
+  // 02 코드 리뷰 S1 — 가드는 **씨앗 없는 새 Thread인가**를 묻는다(`isBlankNewThread` — 값은 `router.test.ts`가 진짜 라우터의 주소로 잰다).
+  // 경로(`/`)만 보면 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서 ⌘N과 「새 Thread」가 먹지 않는다 — 「새 Work」 칩이 그대로 남는다.
+  it("가드가 경로가 아니라 씨앗 없는 새 Thread인가를 묻는다", () => {
+    const at = source.indexOf("const openNewThread = useCallback(");
+    const body = source.slice(at, source.indexOf("}, [", at));
+    expect(body).toContain('if (!isBlankNewThread(router.state.location)) void navigate({ to: "/" });');
+    expect(body).not.toContain("pathname");
+  });
+});

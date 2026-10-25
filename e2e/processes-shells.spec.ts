@@ -18,7 +18,7 @@ import {
   toastsNow,
   typeIntoShell,
   unknownIpcCalls,
-  머리카드,
+  화면머리,
   셸셋을띄운다,
   시계를세운다,
 } from "./harness";
@@ -333,7 +333,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(셸줄(offscreen, 99)).toBeVisible();
 
   // ── [조용한 셸 모두 닫기] ── 살아 있는 셸 1 · 3 중 조용한 3만 닫는다.
-  await 버튼(머리카드(page), "조용한 셸 모두 닫기").click();
+  await 버튼(화면머리(page), "조용한 셸 모두 닫기").click();
   const quiet = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(quiet).toBeVisible();
   await 버튼(quiet, "모두 닫기").click();
@@ -507,7 +507,7 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   await openShell(page);
   await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
-  const quietAll = 버튼(머리카드(page), "조용한 셸 모두 닫기");
+  const quietAll = 버튼(화면머리(page), "조용한 셸 모두 닫기");
 
   // ── 취소 ──
   await quietAll.click();
@@ -548,7 +548,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
 
-  await 버튼(머리카드(page), "조용한 셸 모두 닫기").click();
+  await 버튼(화면머리(page), "조용한 셸 모두 닫기").click();
   const toast = toastOf(page, "닫을 조용한 셸이 없어요");
   await expect(toast).toBeVisible();
   // 앵커: 물었다 — 안 물어서 없다고 한 것이 아니다.

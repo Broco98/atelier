@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useStore } from "@tanstack/react-store";
-import { shellStore } from "@/components/shell/shell-store";
 import LibraryScreen from "@/features/library/LibraryScreen";
 import { readLibrarySearch, validateLibrarySearch } from "./-library-search";
 
@@ -13,14 +11,12 @@ export const Route = createFileRoute("/library")({
   component: LibraryRoute,
 });
 
-// 셸 상태를 읽는 것은 라우트 층의 일이고 feature 화면은 prop으로 받는다(`threads.$id.tsx`와 같다).
+// 틀(머리 줄 · 흰 판)은 앱 셸이 그려 화면이 사이드바 상태를 읽지 않는다(02 구현 스펙 §3).
 function LibraryRoute() {
   const { work, agent } = readLibrarySearch(Route.useSearch());
   const navigate = Route.useNavigate();
-  const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   return (
     <LibraryScreen
-      sidebarOpen={sidebarOpen}
       work={work}
       agent={agent}
       // 다른 Agent를 고르면 칸이 하나 는다 — 뒤로가기가 앞 Agent로 간다(목록 화면들의 항목 고르기와 같다).

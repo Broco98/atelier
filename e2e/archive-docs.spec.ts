@@ -9,9 +9,10 @@ import {
   recordClipboard,
   replaceAnswer,
   unknownIpcCalls,
-  머리카드,
+  화면머리,
   시계를세운다,
   토큰색,
+  흰판안,
 } from "./harness";
 
 const [shipped, bare] = ARCHIVE;
@@ -402,21 +403,21 @@ test("보고 있는 아카이브의 행을 다시 눌러도 보던 문서가 그
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **⌘Enter와 머리 카드의 spec 목록 토글이 패널을 여닫는다**(codex-ds 결정 32 — 「⌘Enter는 그 화면의 오른쪽 패널」, 스토리 56 · 57). 토글은
-// 머리 카드 오른쪽 끝, 세로선 너머다(⋯ | spec 목록 토글). 이름이 누르면 일어날 일을 말하고 `aria-expanded` · `aria-controls`가 패널을
-// 가리킨다. 닫힌 패널은 폭이 0으로 접혀(220ms — 작업 패널과 같은 칸) 문서 카드가 창 오른쪽 틈 끝까지 넓어진다. 찾기 칸에서의 ⌘Enter는
-// 입력칸의 몫이라 패널을 안 건드린다(작업 화면과 한 판정).
-test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 문서 | 목록 카드가 창 오른쪽 틈까지 넓어진다", async ({
+// **⌘Enter와 머리 줄의 spec 목록 토글이 패널을 여닫는다**(codex-ds 결정 32 — 「⌘Enter는 그 화면의 오른쪽 패널」, 스토리 56 · 57). 토글은
+// 머리 줄 오른쪽 끝, 세로선 너머다(⋯ | spec 목록 토글). 이름이 누르면 일어날 일을 말하고 `aria-expanded` · `aria-controls`가 패널을
+// 가리킨다. 닫힌 패널은 폭이 0으로 접혀(작업 패널과 같은 칸) 문서 | 목록 칸이 흰 판 오른쪽 끝까지 넓어진다(02 티켓 03 — 한때 창 오른쪽
+// 틈 앞까지였다). 찾기 칸에서의 ⌘Enter는 입력칸의 몫이라 패널을 안 건드린다(작업 화면과 한 판정).
+test("⌘Enter와 머리 줄의 spec 목록 토글이 spec 목록 패널을 여닫는다 — 닫히면 문서 | 목록 칸이 흰 판 오른쪽 끝까지 넓어진다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/archive/${shipped.slug}`);
-  const head = 머리카드(page);
+  const head = 화면머리(page);
   const card = page.locator('[data-slot="card"]', { has: 목록(page) });
   const aside = page.locator("aside").nth(1);
   await expect(패널(page)).toBeVisible();
 
-  // 토글 — 머리 카드 안, 세로선 너머 맨 끝이다. 열려 있으면 「spec 목록 접기」다.
+  // 토글 — 머리 줄 화면 자리 안, 세로선 너머 맨 끝이다. 열려 있으면 「spec 목록 접기」다.
   const close = head.getByRole("button", { name: "spec 목록 접기", exact: true });
   await expect(close).toHaveAttribute("aria-expanded", "true");
   await expect(close).toHaveAttribute("aria-controls", (await aside.getAttribute("id"))!);
@@ -424,16 +425,16 @@ test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 �
   const line = await head.getByRole("separator").boundingBox();
   expect((await close.boundingBox())!.x, "토글은 세로선 너머").toBeGreaterThan(line!.x);
 
-  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")));
-  const viewport = page.viewportSize()!;
+  // 칸이 넓어지는 끝은 흰 판의 안쪽 오른쪽 끝이다(창 끝에서 5.5 — 판의 띄움 5와 테두리 0.5).
+  const 판끝 = (await 흰판안(page)).right;
   const cardRight = async () => (await card.boundingBox())!.x + (await card.boundingBox())!.width;
   const asideWidth = async () => (await aside.boundingBox())!.width;
-  expect(await cardRight(), "열린 동안은 패널이 곁에 선다").toBeLessThan(viewport.width - gap - 200);
+  expect(await cardRight(), "열린 동안은 패널이 곁에 선다").toBeLessThan(판끝 - 200);
 
   // ⌘Enter로 접는다.
   await page.keyboard.press("Meta+Enter");
   await expect.poll(asideWidth).toBe(0);
-  await expect.poll(cardRight).toBe(viewport.width - gap);
+  await expect.poll(cardRight).toBe(판끝);
   const open = head.getByRole("button", { name: "spec 목록 펼치기", exact: true });
   await expect(open).toHaveAttribute("aria-expanded", "false");
 
@@ -447,7 +448,7 @@ test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 �
   await open.click();
   await expect(close).toHaveAttribute("aria-expanded", "true");
   await expect(패널(page).getByRole("button", { name: "MD record.md", exact: true })).toBeVisible();
-  await expect.poll(cardRight).toBeLessThan(viewport.width - gap - 200);
+  await expect.poll(cardRight).toBeLessThan(판끝 - 200);
   await page.locator("main").click();
   await page.keyboard.press("Meta+Enter");
   await expect(open).toHaveAttribute("aria-expanded", "false");
@@ -456,19 +457,19 @@ test("⌘Enter와 머리 카드의 spec 목록 토글이 spec 목록 패널을 �
   // 거꾸로도 그렇다 — ⌘Enter로 펴고 토글로 접는다. 두 길이 저마다 여닫기를 다 한다(한쪽만 뒤집으면 위 흐름이 그대로 초록이다).
   await page.keyboard.press("Meta+Enter");
   await expect(close).toHaveAttribute("aria-expanded", "true");
-  await expect.poll(cardRight).toBeLessThan(viewport.width - gap - 200);
+  await expect.poll(cardRight).toBeLessThan(판끝 - 200);
   await close.click();
   await expect(open).toHaveAttribute("aria-expanded", "false");
   await expect.poll(asideWidth).toBe(0);
-  await expect.poll(cardRight).toBe(viewport.width - gap);
+  await expect.poll(cardRight).toBe(판끝);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **머리 카드의 ⋯는 아카이브 메뉴다**(codex-ds 결정 16 「Archive 목록 행」 · 결정 31). 줄은 Finder에서 열기 · 경로 복사 둘이고 되살리기는
+// **머리 줄의 ⋯는 아카이브 메뉴다**(codex-ds 결정 16 「Archive 목록 행」 · 결정 31). 줄은 Finder에서 열기 · 경로 복사 둘이고 되살리기는
 // 없다 — 지금 앱에 그 동작이 없어 숨긴다. Finder 열기는 work 메뉴와 한 가족인 명령(`open_archived_spec_folder`)을 slug로 부르고(경로는
 // 백엔드가 푼다 — S6), 경로 복사는 그 폴더의 참조를 클립보드에 쓴다. spec 목록 패널 머리의 「spec 폴더 열기」도 같은 명령이다. 못 열면
 // 백엔드의 문장이 「못 한 일」 토스트로 선다(work 메뉴의 Finder 열기와 같은 말).
-test("머리 카드의 ⋯ 아카이브 메뉴는 Finder에서 열기 · 경로 복사뿐이고, 각각 명령 · 클립보드를 부른다 — 패널 머리의 spec 폴더 열기도 같은 명령이다", async ({
+test("머리 줄의 ⋯ 아카이브 메뉴는 Finder에서 열기 · 경로 복사뿐이고, 각각 명령 · 클립보드를 부른다 — 패널 머리의 spec 폴더 열기도 같은 명령이다", async ({
   page,
 }) => {
   const reason = `~/.atelier/archive/${shipped.slug}/spec 폴더가 없어요`;
@@ -477,7 +478,7 @@ test("머리 카드의 ⋯ 아카이브 메뉴는 Finder에서 열기 · 경로 
   // 토스트(1.6초)를 느린 기계에서도 놓치지 않게 시계를 건다 — 마지막 누르기 직전에 세운다(위 토스트 절).
   await page.clock.install();
   await page.goto(`/archive/${shipped.slug}`);
-  const trigger = 머리카드(page).getByRole("button", { name: "아카이브 메뉴", exact: true });
+  const trigger = 화면머리(page).getByRole("button", { name: "아카이브 메뉴", exact: true });
   const menu = page.getByRole("menu");
   const messages = page.getByRole("region", { name: "메시지", exact: true });
   const 부른slug = async () =>

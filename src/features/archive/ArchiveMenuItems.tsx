@@ -13,7 +13,7 @@ export interface ArchiveMenuActions {
 }
 
 /**
- * **대상 메뉴 「Archive 목록 행」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). Archive 머리 카드의 ⋯와 목록 행의 우클릭 ·
+ * **대상 메뉴 「Archive 목록 행」의 정의 — 한 자리다**(codex-ds 결정 6 · 16 · 스펙 §9). Archive 머리 줄의 ⋯와 목록 행의 우클릭 ·
  * ⇧F10(`TargetMenu`)이 같은 이것을 편다. 항목은 메뉴 부품이라 ⋯(`DropdownMenu`)과 우클릭(`ContextMenu`) 어느 카드 안에서도 그대로
  * 선다(`context-menu.tsx` 머리말). 훅이 없다 — 행 목록처럼 상태를 쥐지 않는 자리에서도 펼 수 있게.
  *

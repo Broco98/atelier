@@ -12,7 +12,7 @@ import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 // three-axes 대화 접기(`chat/fold.ts`)를 옮겨 왔다 — 턴 · 멈춘 뒤의 도구 줄 · 스스로 이어 간 턴 · 계획 카드 · 상태 줄의 규칙은 그대로이고
 // (그쪽 머리말이 근거를 든다), Thread에서 달라진 것은 셋이다.
 // - **줄의 `who`로 말한 이를 가른다.** 턴은 그 턴에 답한 참여자의 handle을 들고, 같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시
-//   쓰지 않는다(`namesWho`). 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다.
+//   쓰지 않는다(`namesWho`). Host의 턴은 이름 줄이 아예 없다(02 구현 스펙 §8). 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다.
 //   **열린 턴은 참여자마다 하나다**(v1 티켓 14) — 참여자마다 Session이 따로라(§5) Host가 도는 동안 리뷰어에게 보낸 말은 리뷰어의 턴으로
 //   함께 돈다. 줄은 그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 참여자의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은
 //   모두의 끝이다. 참여자의 이름 · 얼굴은 들어옴 줄(`joined`)이 정본이다(`cast`) — 처음 불린 정의 그대로다(S4).
@@ -39,7 +39,7 @@ import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 //   기다린다.
 // - **Agent의 질문은 질문 줄이다**(v1 티켓 26 · 캔버스 Cards 보드 「Agent의 질문」) — `question` 줄(`card: question`)이 오면 승인 ·
 //   Work 만들기 카드와 같은 물음 차례(`asks`)에 질문으로 서고, 그 질문을 낸 도구 줄 자리를 질문 줄이 대신한다. 답하면 그 자리에
-//   「답함: …」이 남고, 거둬지면 아무것도 남지 않는다.
+//   답한 카드가 남고, 거둬지면 아무것도 남지 않는다.
 // Thread Session에는 고친 곳(`changes`) 줄이 없다 — 바뀐 파일 알약은 마지막 턴의 편집 도구가 낸 diff에서 센다(`log.ts`).
 //
 // 모르는 줄은 버리지 않고 지나간다 — 기록은 원문 그대로라 스키마에 없는 갈래도 오고, 그것이 화면을 멈추면 안 된다.
@@ -89,7 +89,7 @@ export interface WorkChoiceEntry {
 
 /**
  * 질문 줄(v1 티켓 26) — Agent가 낸 질문 하나. 답을 기다리는 동안은 흐름에 그리지 않고(입력창 자리의 질문 카드가 말한다), 답하면
- * 「답함: …」, 나중에 답하기로 하면 「나중에 답하기로 함」이다(`question.ts`의 `answeredText`).
+ * 답한 카드(물은 것 · 고른 답), 나중에 답하기로 하면 「나중에 답하기로 함」이다(`question.ts`의 `answeredCards`).
  */
 export interface QuestionEntry {
   kind: "question";
@@ -214,7 +214,10 @@ export interface ToolEntry {
   cut: boolean;
   /** 이 도구가 물은 권한을 사람이 거절했나(거절 갈래의 선택지로 답했다). */
   denied: boolean;
-  /** 판정이 묻지 않고 허용했으면 그 까닭(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …), 아니면 null이다. */
+  /**
+   * 판정이 묻지 않고 허용했으면 그 까닭 — 엔진이 적은 그대로다(「편집은 허용」 · 「이 Work에서는 다시 묻지 않기」 …). 아니면 null이다. 방패
+   * 줄은 화면의 말로 읽는다(`approval.ts`의 `autoAllowReason` — 「늘 허용」 허락은 카드의 말).
+   */
   allowed: string | null;
   /** 이 도구가 물은 권한이 아직 답을 기다리나 — 「승인을 기다리는 중」(v1 티켓 24). */
   asking: boolean;
@@ -230,8 +233,8 @@ export interface Turn {
   /** 그 턴에 답한 참여자의 handle — 보낸 말의 받는 이(`to`), 그 뒤 답한 줄의 `who`. 모르면 null이다. */
   who: string | null;
   /**
-   * 이름 줄(얼굴 · 이름 · 시각)을 쓰나 — 같은 Agent가 사람 말 없이 이어 말하면 쓰지 않는다(구현 스펙 §14). 사람이 말한 턴과 말한 이가
-   * 바뀐 턴은 쓴다.
+   * 이름 줄(「이름 · @handle」)을 쓰나 — Host의 턴은 쓰지 않는다(02 구현 스펙 §8 — Host의 답은 본문으로 바로 시작한다). 다른 Agent도
+   * 사람 말 없이 이어 말하면 쓰지 않는다(구현 스펙 §14). 그 밖의 턴(사람이 말한 턴 · 말한 이가 바뀐 턴)은 쓴다.
    */
   namesWho: boolean;
   /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말은 기록의 `prompt`에만 있다. 스스로 이어 간 턴은 null이다. */
@@ -244,7 +247,7 @@ export interface Turn {
   selfContinued: boolean;
   /** 턴이 선 시각(보낸 말 · 처음 온 줄). */
   startedAt: string;
-  /** 답한 이의 첫 줄 시각 — 이름 줄의 시각이다. 아직 답이 없으면 null이다. */
+  /** 답한 이의 첫 줄 시각. 아직 답이 없으면 null이다(이름 줄은 02 티켓 08부터 시각을 그리지 않는다). */
   answeredAt: string | null;
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
@@ -1026,6 +1029,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     const same = (one: PrCardEntry) => one.pr.project === card.pr.project && one.pr.number === card.pr.number;
     card.latest = !prs.slice(at + 1).some(same);
   }
+  // Host의 답에는 이름 줄이 없다(02 구현 스펙 §8) — 다 접은 뒤에 본다. 말한 이는 답한 줄이 정하므로(`answer`) 턴이 설 때는 아직
+  // 모를 수 있다(받는 이를 모르는 옛 `sent`).
+  for (const turn of turns) if (turn.who === HOST) turn.namesWho = false;
   const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   const asks = [...pending.values()].map((one): PendingAsk => {
     if (one.card === "work" || one.card === "question" || one.card === "project") return one;
@@ -1501,15 +1507,45 @@ const STOPPED: Record<string, string> = {
 };
 
 /**
- * 작업 머리줄(캔버스 WorkLog 보드). `end_turn`이면 「N초 동안 작업함」, 우리가 멈춘 `cancelled`면 「N초 후에 중단했습니다」, 그 밖은
- * 까닭을 보인다.
+ * 작업 구분선의 글(02 구현 스펙 §8 · Diff-Chat 「작업 구분선」). `end_turn`이면 「N초 동안 작업」(Codex 결 — v1은 「작업함」), 우리가 멈춘
+ * `cancelled`면 「N초 후에 중단했습니다」, 그 밖은 까닭을 보인다.
  */
 export function headline(end: TurnEnd): string {
   const took = spoken(end.durationMs);
-  if (end.stopReason === "end_turn") return `${took} 동안 작업함`;
+  if (end.stopReason === "end_turn") return `${took} 동안 작업`;
   if (end.stopReason === "cancelled") return end.cancelledByUs ? `${took} 후에 중단했습니다` : "거부해서 멈췄어요";
   if (end.stopReason !== null) return STOPPED[end.stopReason] ?? `멈췄어요 — ${end.stopReason}`;
   return end.error ? `멈췄어요 — ${end.error}` : "멈췄어요";
+}
+
+/** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 호출 줄 · 질문에 답한 줄 · 카드의 결정 줄은 다시 보는 것이라 접어도 선다. */
+export function keptFolded(entry: Entry): boolean {
+  return (
+    entry.kind === "plan" ||
+    entry.kind === "checklist" ||
+    entry.kind === "call" ||
+    entry.kind === "question" ||
+    entry.kind === "work-choice" ||
+    entry.kind === "project-choice"
+  );
+}
+
+/** 그리는 줄인가 — 글이 빈 생각은 그리지 않는다(Claude Code는 생각의 글을 빈 문자열로 준다). */
+export const shownEntry = (entry: Entry): boolean => entry.kind !== "thought" || entry.text.trim() !== "";
+
+/**
+ * 끝난 턴의 작업 구분선(02 구현 스펙 §8 · 스토리 48 · 49) — 글(`headline`)과 펼칠 것이 있나(`unfolds`). 펼칠 것은 턴 끝 메시지 앞의 줄
+ * 가운데 접으면 숨는 것(도구 줄 · 생각 · 앞선 답 · 승인 결정 줄)이다.
+ * - **펼칠 것 없이 끝난 턴(`end_turn`)에는 구분선이 없다** — 말만 한 턴에 빈 머리가 서지 않는다(Codex). 호출 줄 · 계획처럼 접힌 턴에도
+ *   남는 줄만 있는 턴도 그렇다.
+ * - 끝 까닭이 있는 턴(길이 한도 · 거절 …)은 펼칠 것이 없어도 그 까닭이 선다 — 오류와 중단은 문장으로 말한다.
+ * - 도는 턴은 null이다(「N초 동안 작업 중입니다」가 따로 선다 — `runningHeadline`).
+ */
+export function workLine(turn: Turn): { text: string; unfolds: boolean } | null {
+  if (turn.end === null) return null;
+  const unfolds = turn.entries.slice(0, finalFrom(turn)).some((entry) => shownEntry(entry) && !keptFolded(entry));
+  if (!unfolds && turn.end.stopReason === "end_turn") return null;
+  return { text: headline(turn.end), unfolds };
 }
 
 /** 도는 턴의 머리줄 — 보낸 때부터 지금까지. */

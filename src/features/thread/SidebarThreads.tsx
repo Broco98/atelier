@@ -1,58 +1,40 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Toggle } from "@base-ui/react/toggle";
-import { ToggleGroup } from "@base-ui/react/toggle-group";
-import { keepOnePressed } from "@/components/ui/toggle-group";
-import { Spinner } from "@/components/ui/spinner";
 import { threadIdOf } from "@/lib/path-prefix";
-import { SIDEBAR_AFTER_SECTION, SIDEBAR_HEADING, SIDEBAR_ROWS, sidebarRowTone } from "@/components/shell/sidebar-look";
+import { SIDEBAR_AFTER_SECTION, SIDEBAR_HEADING, SIDEBAR_ROW_SHAPE, SIDEBAR_ROWS, sidebarRowTone } from "@/components/shell/sidebar-look";
+import { StatusMark } from "@/components/shell/status-mark";
 import { cn } from "@/lib/utils";
 import { threadRowKey } from "@/features/works/work-sections";
-import { ThreadFaces } from "./AgentFace";
 import { useChanged } from "./arrival";
-import type { Avatar } from "./faces";
-import HostFace from "./HostFace";
-import { threadQuery, useAgentRoster, useThreads, useWaiting } from "./hooks";
-import { lastSaid } from "./preview";
-import { since } from "./since";
-import { seenOf, statusOf, type ThreadStatus } from "./status";
+import { threadQuery, useThreads, useWaiting } from "./hooks";
+import { markOf, seenOf, statusOf } from "./status";
 import { linesOf, threadRecordStore } from "./thread-store";
 import type { ThreadSummary } from "./types";
 import type { Waiting } from "./waiting";
 
-// 사이드바의 Thread 묶음(v1 티켓 05 · 07 · 캔버스 「Thread 목록과 아바타」 보드) — Work 없는 Thread들이 새것부터 두 줄씩 선다: 얼굴 ·
-// 제목 · 시각, 그 아래 마지막 말(`lastSaid`). 받은편지함처럼 열지 않아도 누가 무엇을 말했는지 보인다. 목록은 엔진의 요약 이벤트가
-// 고친다(`useThreadFeeds`) — 다시 읽지 않는다.
-// - **마지막 말은 기록에서 센다.** 줄마다 그 Thread의 기록을 한 번 읽어 기록 줄 스토어에 합치고(Thread를 열 때와 같은 자리 — seq로
-//   합치니 겹쳐도 한 줄이다), 그 뒤는 앱 층이 받는 기록 줄 이벤트가 잇는다. 엔진이 요약에 말을 싣지 않는 까닭은 결정.md 07에 있다.
-// - 얼굴(v1 티켓 14)은 참여자의 것이다(`ThreadFaces` — 32, 둘 이상이면 처음 · 마지막에 들어온 이를 겹친다). 요약에는 handle만 있어
-//   `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다.
-// - **상태는 하나만 보인다**(v1 티켓 41 · 구현 스펙 §17 · 캔버스 Sidebar 보드 「상태는 다섯 가지」, 계산은 `status.ts`의 `statusOf`) — 내
-//   차례는 얼굴에 파란 점 · 진한 미리보기(기다리는 것), 작업 중은 시각 자리의 스피너, 새 결과는 굵은 제목, 실패는 미리보기 앞의 빨간
-//   「실패」, 중단은 「중단했습니다」다. 색은 내 차례의 파랑과 「실패」의 빨강 두 곳뿐이고(빨강은 여기와 diff만 — `color-guard`) 나머지는
-//   모양과 굵기다. **줄은 자리를 지키고 상태 칸만 바뀐다**(Motion 보드 「목록 상태 바뀜」) — 둘째 줄은 비어도 자리를 지키고, 바뀐 칸만
-//   떠오르고, 내 차례가 되면 점이 한 번 튄다.
+// 사이드바의 Thread 묶음(v1 티켓 05 · 07 · 02 티켓 05 · 캔버스 Diff-Frame 「제안」) — Work 없는 Thread들이 새것부터 **제목 한 줄씩** 선다(Codex
+// 「최근」). 목록은 엔진의 요약 이벤트가 고친다(`useThreadFeeds`) — 다시 읽지 않는다.
+// - **얼굴 · 시각 · 미리보기 · 둘째 줄을 걷었다**(02 구현 스펙 §4). v1은 받은편지함처럼 두 줄(얼굴 · 제목 · 시각 / 마지막 말)이었다 — 누가
+//   무엇을 말했는지는 Thread 화면이 말하고, 목록은 촘촘하고 조용하다. 다른 Agent의 이름 앞붙이도 미리보기와 함께 걷혔다.
+// - **상태는 줄 오른쪽 끝의 표시 하나다**(v1 티켓 41 · 02 구현 스펙 §4 · S11, 계산은 `status.ts`의 `statusOf` · `markOf`, 그림은
+//   `components/shell/status-mark`의 `StatusMark`) — 내 차례 알약 · 도는 중 스피너 · 「실패」 글자 · 새 결과 파란 점이고, 멈춤은 표시가
+//   없다. 상태를 고르는 차례는 그대로이고 그리는 법만 바뀌었다 — v1의 얼굴 옆 점 · 시각 자리의 스피너 · 미리보기 앞 「실패」 · 굵은 제목이
+//   모두 이 하나로 모였다. **줄은 자리를 지키고 상태 칸만 바뀐다**(Motion 보드 「목록 상태 바뀜」) — 바뀐 표시만 떠오른다.
 // - 상태의 바탕은 Thread를 열 때와 같은 읽기다(`threadQuery` — `get`의 살아 있음 · 기록 끝, 그리고 기록) — 열린 캐시를 Thread 화면과
 //   함께 쓴다. 읽은 자리(`lastRead`)는 요약의 것이다: Thread 화면이 맨 아래를 보면 적고(S38), 요약 이벤트가 이 줄을 고친다.
-// - 깨진 Thread도 줄이 선다(무엇이 깨졌는지는 둘째 줄이 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
-// - **「전체 | 내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」) — 「내 차례」를 고르면 Work 묶음과 이 묶음
-//   대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가 세고, 마디는 검색 칸
-//   아래(`ThreadFilter`), 고른 칸은 사이드바가 쥔다.
-// - **Work에 이은 Thread는 Work 묶음이 품는다**(v1 티켓 37 · 구현 스펙 §13) — 그 Work 줄을 펴면 그 아래에 같은 `ThreadRow`가 얼굴 28로
+// - 깨진 Thread도 줄이 선다(「열 수 없는 Thread」 — 무엇이 깨졌는지는 열면 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에
+//   답할 자리가 없다.
+// - **「내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」 · 02 구현 스펙 §4) — 사이드바 위 줄의 「내 차례」 행을
+//   켜면 Work 묶음과 이 묶음 대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가
+//   세고, 행은 `components/shell/sidebar-item.tsx`의 `MineRow`, 켠 상태는 사이드바가 쥔다. 한때 사이드바 맨 위의 「전체 | 내 차례」 마디였다
+//   (02 티켓 04가 걷었다 — Codex 사이드바 위에는 머리가 없다).
+// - **Work에 이은 Thread는 Work 묶음이 품는다**(v1 티켓 37 · 구현 스펙 §13 · 02 S10) — 그 Work 줄을 펴면 그 아래에 같은 `ThreadRow`가 들여
 //   선다(`WorkThreads`). 이 묶음에는 Work 없는 Thread만 남아 두 묶음이 겹치지 않는다.
-
-/** 시각을 다시 세는 간격 — 「방금 · N분」이 한 자리에 멎지 않게 1분마다다. */
-const TICK = 60_000;
 
 /** Thread 묶음이 무엇을 세우나 — 전체(Work 묶음 · Thread 묶음) 또는 나를 기다리는 Thread만. */
 export type ThreadListFilter = "all" | "mine";
-
-const FILTERS = ["all", "mine"] as const satisfies readonly ThreadListFilter[];
-
-/** 줄 하나의 얼굴들 — 요약에는 handle만 있어 `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다(`ThreadFaces`). */
-type PeopleOf = (thread: ThreadSummary) => { handle: string; avatar: Avatar | null }[];
 
 // 소제목과 줄 목록의 꼴 — 「Thread」와 「기다리는 순서」가 한 벌이고, 리듬은 사이드바 줄 한 벌(`sidebar-look` — Work 묶음과 같다)이다.
 // 위 사이는 놓인 자리가 고른다.
@@ -61,8 +43,8 @@ const ROWS = cn(SIDEBAR_ROWS, "min-h-0 overflow-y-auto scroll-quiet");
 
 function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
   const { data: threads = [] } = useThreads();
-  const { peopleOf, current, now, open } = useRowKit();
-  if (filter === "mine") return <WaitingThreads peopleOf={peopleOf} current={current} now={now} onOpen={open} />;
+  const { current, open } = useRowKit();
+  if (filter === "mine") return <WaitingThreads current={current} onOpen={open} />;
   const loose = threads.filter((thread) => thread.work === null);
   if (loose.length === 0) return null;
   return (
@@ -72,7 +54,7 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
       <ul className={ROWS}>
         {loose.map((thread) => (
           <li key={thread.id}>
-            <ThreadRow thread={thread} people={peopleOf(thread)} on={thread.id === current} now={now} onOpen={() => open(thread)} />
+            <ThreadRow thread={thread} on={thread.id === current} onOpen={() => open(thread)} />
           </li>
         ))}
       </ul>
@@ -81,23 +63,13 @@ function SidebarThreads({ filter }: { filter: ThreadListFilter }) {
 }
 
 /**
- * Thread 줄들이 함께 읽는 것 — 얼굴(Library 정의의 `avatar`), 지금 보는 Thread(주소), 시각을 다시 셀 지금(1분마다), 누르면 그 Thread로
- * 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
+ * Thread 줄들이 함께 읽는 것 — 지금 보는 Thread(주소)와 누르면 그 Thread로 가기. Thread 묶음 · 「내 차례만」 · Work 아래 줄이 같은 것을 읽는다.
  */
-function useRowKit(): { peopleOf: PeopleOf; current: string | null; now: number; open: (thread: ThreadSummary) => void } {
-  const roster = useAgentRoster(null);
-  const avatarOf = (handle: string) =>
-    roster?.agents.find((agent) => agent.from === "library" && agent.definition.handle === handle)?.definition.avatar ?? null;
-  const peopleOf: PeopleOf = (thread) => thread.handles.map((handle) => ({ handle, avatar: avatarOf(handle) }));
+function useRowKit(): { current: string | null; open: (thread: ThreadSummary) => void } {
   const navigate = useNavigate();
   const current = useRouterState({ select: (state) => threadIdOf(state.location.pathname) });
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), TICK);
-    return () => window.clearInterval(timer);
-  }, []);
   const open = (thread: ThreadSummary) => void navigate({ to: "/threads/$id", params: { id: thread.id } });
-  return { peopleOf, current, now, open };
+  return { current, open };
 }
 
 /**
@@ -105,26 +77,21 @@ function useRowKit(): { peopleOf: PeopleOf; current: string | null; now: number;
  * `stop`은 Work 목록 상자의 Tab 정류장 키다 — 이 줄들도 그 목록의 ↑↓ 안에 든다.
  */
 export function WorkThreads({ threads, stop }: { threads: readonly ThreadSummary[]; stop: string | null }) {
-  const { peopleOf, current, now, open } = useRowKit();
-  return <WorkThreadList threads={threads} peopleOf={peopleOf} current={current} now={now} stop={stop} onOpen={open} />;
+  const { current, open } = useRowKit();
+  return <WorkThreadList threads={threads} current={current} stop={stop} onOpen={open} />;
 }
 
 /**
- * Work 아래 Thread 줄의 그림(보드 `.nest .r2`) — 훅을 부르지 않는다. 줄은 Thread 묶음과 같은 `ThreadRow`라 상태 칸(내 차례 점 · 스피너 ·
- * 굵은 제목 · 「실패」)이 따라오고, 얼굴만 28로 작다. 들여쓰기는 부르는 쪽(Work 목록)이 든다.
+ * Work 아래 Thread 줄들(02 S10) — 줄은 Thread 묶음과 같은 `ThreadRow`라 상태 표시가 따라오고, 제목만 들여 선다(`nested`).
  */
 export function WorkThreadList({
   threads,
-  peopleOf,
   current,
-  now,
   stop,
   onOpen,
 }: {
   threads: readonly ThreadSummary[];
-  peopleOf: PeopleOf;
   current: string | null;
-  now: number;
   stop: string | null;
   onOpen: (thread: ThreadSummary) => void;
 }) {
@@ -134,72 +101,13 @@ export function WorkThreadList({
       <ThreadRow
         key={thread.id}
         thread={thread}
-        people={peopleOf(thread)}
         on={thread.id === current}
-        now={now}
         onOpen={() => onOpen(thread)}
-        compact
+        nested
         roving={{ key, stop: key === stop }}
       />
     );
   });
-}
-
-/**
- * 「전체 | 내 차례」 마디(보드 `.seg`) — 사이드바 맨 위에 선다. 「내 차례」 칸에 기다리는 Thread 수가 파란 글자로 선다(보드 `.cnt` — DS `link`).
- * 수는 고른 칸과 상관없이 늘 센다 — 「전체」를 보는 동안에도 몇이 기다리는지가 보여야 거르기를 누를 까닭이 생긴다.
- */
-export function ThreadFilter({ filter, onChange }: { filter: ThreadListFilter; onChange: (filter: ThreadListFilter) => void }) {
-  const count = useWaiting().length;
-  return <FilterSegment filter={filter} count={count} onChange={onChange} />;
-}
-
-/**
- * 마디의 그림 — 훅을 부르지 않는다. **글자 칸 둘이다**(v1 티켓 46 — Codex 결). 한때 사이드바 폭의 두 칸 토글(DS `SegmentGroup` sm — 바닥
- * 회색 · 떠 있는 흰 칩)이었고, 그 위의 검색 칸과 함께 맨 위를 두 겹의 회색 상자로 만들었다 — 사용자가 짚은 「겹이 많다」다. 이제 칸은 제
- * 글자 폭이고, 고른 칸은 사이드바의 고른 줄과 같은 면(`selected-row`)이며 고르지 않은 칸은 옅은 글자다. 수는 채운 배지가 아니라 파란
- * 글자다. 역할 · 이름은 그대로다(「Thread 거르기」 묶음의 누르는 칸 둘 — `aria-pressed`). 수가 있으면 칸의 이름에 수가 함께 든다(「내
- * 차례 2」) — 수가 글자에 붙어 읽혀 이름을 따로 적는다.
- */
-export function FilterSegment({
-  filter,
-  count,
-  onChange,
-}: {
-  filter: ThreadListFilter;
-  count: number;
-  onChange: (filter: ThreadListFilter) => void;
-}) {
-  return (
-    // 거터 8 · 칸 안쪽 10이라 「전체」 글자가 창 끝 + 18에 선다 — 아래 nav 글자(+ 40)보다 앞이고 아이콘(+ 16)과 거의 한 세로줄이다.
-    <div className="shrink-0 px-2 pb-2">
-      <ToggleGroup
-        aria-label="Thread 거르기"
-        value={[filter]}
-        onValueChange={keepOnePressed<ThreadListFilter>((value) => {
-          if (value[0]) onChange(value[0]);
-        }, false)}
-        className="flex items-center gap-0.5"
-      >
-        {FILTERS.map((value) => (
-          <Toggle
-            key={value}
-            value={value}
-            aria-label={value === "mine" && count > 0 ? `내 차례 ${count}` : undefined}
-            className={(state) =>
-              cn(
-                "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors outline-none focus-ring",
-                state.pressed ? "selected-row" : "text-fg-tertiary hover:bg-fill-soft",
-              )
-            }
-          >
-            {value === "all" ? "전체" : "내 차례"}
-            {value === "mine" && count > 0 && <span className="text-xs font-medium tabular-nums text-link">{count}</span>}
-          </Toggle>
-        ))}
-      </ToggleGroup>
-    </div>
-  );
 }
 
 /** 「내 차례만」 — 기다리는 Thread를 기다린 순서로 읽어 그린다. */
@@ -209,19 +117,15 @@ function WaitingThreads(props: Omit<Parameters<typeof WaitingList>[0], "waiting"
 
 /**
  * 「내 차례만」의 그림(보드 「내 차례만」 · 「내 차례만 · 비었을 때」) — 「기다리는 순서」 아래에 받은 차례 그대로 Thread 줄이 서고(줄은
- * 「전체」와 같은 `ThreadRow`라 파란 점 · 「승인 · …」 · 기다리기 시작한 때가 따라온다), 비었으면 그렇다는 한 줄이다.
+ * 「전체」와 같은 `ThreadRow`라 「내 차례」 알약이 따라온다), 비었으면 그렇다는 한 줄이다.
  */
 export function WaitingList({
   waiting,
-  peopleOf,
   current,
-  now,
   onOpen,
 }: {
   waiting: readonly Waiting[];
-  peopleOf: PeopleOf;
   current: string | null;
-  now: number;
   onOpen: (thread: ThreadSummary) => void;
 }) {
   return (
@@ -236,13 +140,7 @@ export function WaitingList({
           <ul className={ROWS}>
             {waiting.map(({ thread }) => (
               <li key={thread.id}>
-                <ThreadRow
-                  thread={thread}
-                  people={peopleOf(thread)}
-                  on={thread.id === current}
-                  now={now}
-                  onOpen={() => onOpen(thread)}
-                />
+                <ThreadRow thread={thread} on={thread.id === current} onOpen={() => onOpen(thread)} />
               </li>
             ))}
           </ul>
@@ -253,47 +151,37 @@ export function WaitingList({
 }
 
 /**
- * Thread 줄 하나 — 얼굴 · 제목 · 시각, 그 아래 마지막 말. 시각은 마지막 말의 때이고, 말이 아직 없으면 Thread가 선 때다. 상태가 있으면
- * 그 상태의 때(기다리기 시작한 때 · 끝난 때)다.
+ * Thread 줄 하나 — 제목 한 줄과 오른쪽 끝의 상태 표시(02 구현 스펙 §4 · Components 「사이드바 줄」). 줄은 사이드바의 다른 줄과 같은 모양이다 —
+ * 30 · 14/400 · 둥글기 `row`, 고른 줄은 투명 면(`selected-row` — 사이드바 갈래). 아이콘이 없어 제목이 줄 안쪽 8에서 시작한다(Codex 「최근」).
  */
 export function ThreadRow({
   thread,
-  people,
   on,
-  now,
   onOpen,
-  compact = false,
+  nested = false,
   roving,
 }: {
   thread: ThreadSummary;
-  people: readonly { handle: string; avatar: Avatar | null }[];
   on: boolean;
-  now: number;
   onOpen: () => void;
   /**
-   * Work 아래 줄이다 — 얼굴이 32가 아니라 28이고(보드 `.nest` · 겹친 얼굴은 그대로 20 둘), 면은 줄 폭 그대로 두고 속만 들어가 얼굴이 Work
-   * 제목과 한 세로줄(창 끝 + 40)에 선다(Codex 프로젝트 아래 줄 — v1 티켓 46).
+   * 펼친 Work 아래 줄이다(02 S10) — 면은 줄 폭 그대로 두고 제목만 줄 안쪽 46에서 시작한다(시안 `.row.sub` · 구현 스펙 「글자 x 46」).
+   * Work 줄의 제목(안쪽 32)보다 한 단 들어가 그 Work의 Thread로 읽힌다.
    */
-  compact?: boolean;
+  nested?: boolean;
   /**
    * 목록 상자의 Tab 정류장 안의 줄이면 그 키와 정류장인가(roving — `@/lib/roving`). Work 아래 줄이 Work 목록의 ↑↓에 든다. 없으면 줄마다
    * Tab이 앉는다(Thread 묶음).
    */
   roving?: { key: string; stop: boolean };
 }) {
-  const { said, status, ready } = useRowState(thread);
+  const { status, ready } = useRowState(thread);
+  const mark = markOf(status);
   // 상태가 바뀌었나 — 처음 그린 상태(앱을 켜고 줄을 그릴 때)는 움직이지 않고, 읽기가 끝난 뒤 상태가 바뀐 줄부터 움직인다(Motion 보드
-  // 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 칸이 상태를 열쇠로 새로 서므로. `ready`는
+  // 「움직임은 상태가 바뀐 그 자리에서만」). 한 번 바뀐 줄은 그 뒤로도 바뀔 때마다 움직인다 — 표시가 상태를 열쇠로 새로 서므로. `ready`는
   // 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
-  const moved = useChanged(status?.kind ?? null, ready);
+  const moved = useChanged(mark, ready);
   const title = thread.broken ? "열 수 없는 Thread" : thread.title || "새 Thread";
-  // 다른 Agent의 말은 이름을 앞에 단다(보드 「리뷰어 · 수정 요청 2건」). Host와 사람의 말은 그대로다.
-  const lastWords = said ? (said.name && said.who !== "host" ? `${said.name} · ${said.text}` : said.text) : "";
-  const preview = thread.broken ?? (status && "text" in status && status.text !== null ? status.text : lastWords);
-  const at = status?.kind === "mine" ? status.since : status && "at" in status ? status.at : (said?.at ?? thread.createdAt);
-  // 바뀐 상태 칸만 떠오른다 — 열쇠가 상태라 바뀔 때마다 그 칸이 새로 선다.
-  const slot = status?.kind ?? "quiet";
-  const face = compact ? "size-7" : "size-8";
   return (
     <button
       type="button"
@@ -305,86 +193,36 @@ export function ThreadRow({
         if (!on) onOpen();
       }}
       className={cn(
-        "flex w-full min-w-0 items-center gap-2.5 rounded-xl py-2 pr-2 text-left transition-colors focus-ring",
-        compact ? "pl-8" : "pl-2",
+        "flex h-(--size-row-nav) w-full min-w-0 shrink-0 items-center gap-2 pr-2 text-left text-sm transition-colors focus-ring",
+        SIDEBAR_ROW_SHAPE,
+        nested ? "pl-11.5" : "pl-2",
         sidebarRowTone(on),
       )}
     >
-      {thread.broken || people.length === 0 ? (
-        // 깨진 Thread는 참여자를 모른다 — 같은 자리에 옅은 Host 얼굴이 서서 제목이 줄마다 같은 x에서 시작한다.
-        <HostFace className={cn(face, thread.broken && "opacity-40")} />
-      ) : (
-        <span className="relative flex shrink-0">
-          <ThreadFaces people={people} faceClass={face} pairClass={face} pairFaceClass="size-5" ringClass="ring-surface-sidebar" />
-          {status?.kind === "mine" && (
-            <span
-              role="img"
-              aria-label="내 차례"
-              className={cn(
-                "absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent-solid ring-2 ring-surface-sidebar",
-                moved && "pop-in",
-              )}
-            />
-          )}
+      <span className={cn("min-w-0 flex-1 truncate", thread.broken && "text-fg-tertiary")}>{title}</span>
+      {/* 바뀐 표시만 떠오른다 — 열쇠가 표시라 바뀔 때마다 그 칸이 새로 선다. 표시가 없으면 칸도 없다. */}
+      {mark !== null && (
+        <span key={mark} className={cn("flex shrink-0 items-center", moved && "row-in")}>
+          <StatusMark kind={mark} />
         </span>
       )}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              // 제목은 14/20 400이다(Codex 사이드바의 줄 글자) — 새 결과만 굵어 굵기 하나가 상태를 말한다.
-              "min-w-0 flex-1 truncate text-sm",
-              thread.broken && "text-fg-tertiary",
-              status?.kind === "new" && "font-semibold",
-            )}
-          >
-            {title}
-            {status?.kind === "new" && <span className="sr-only"> · 새 결과</span>}
-          </span>
-          <span key={slot} className={cn("flex h-4.5 shrink-0 items-center text-xs text-fg-tertiary", moved && "row-in")}>
-            {status?.kind === "working" ? (
-              <Spinner role="img" aria-label="작업 중" className="size-3 text-fg-secondary spin-thread" />
-            ) : (
-              since(at, now)
-            )}
-          </span>
-        </span>
-        {/* 둘째 줄은 비어도 자리를 지킨다 — 상태가 글을 더해도 아래 줄들이 움직이지 않는다. */}
-        <span
-          key={slot}
-          className={cn(
-            "h-4.5 truncate text-chat-meta",
-            status?.kind === "mine" ? "text-fg-sidebar" : "text-fg-tertiary",
-            moved && "row-in",
-          )}
-        >
-          {status?.kind === "failed" && (
-            <>
-              <span className="text-danger">실패</span>
-              {" · "}
-            </>
-          )}
-          {preview}
-        </span>
-      </span>
     </button>
   );
 }
 
 /**
- * 줄의 마지막 말과 상태 — Thread를 열 때와 같은 읽기(`threadQuery` — 살아 있음 · 기록 끝을 읽고 기록을 스토어에 합친다)로 서고, 그
- * 뒤는 기록 줄 이벤트가 잇는다. 깨진 Thread는 읽지 않는다. 읽기가 실패하면 말도 상태도 없이 제목과 시각만 선다 — 줄은 열어서 고칠 수
- * 있다. `ready`는 그 읽기가 끝났나다(그 전의 빈 상태는 상태가 바뀐 것이 아니다).
+ * 줄의 상태 — Thread를 열 때와 같은 읽기(`threadQuery` — 살아 있음 · 기록 끝을 읽고 기록을 스토어에 합친다)로 서고, 그 뒤는 기록 줄 이벤트가
+ * 잇는다. 깨진 Thread는 읽지 않는다. 읽기가 실패하면 상태 없이 제목만 선다 — 줄은 열어서 고칠 수 있다. `ready`는 그 읽기가 끝났나다(그
+ * 전의 빈 상태는 상태가 바뀐 것이 아니다).
  */
-function useRowState(thread: ThreadSummary): { said: ReturnType<typeof lastSaid>; status: ThreadStatus | null; ready: boolean } {
+function useRowState(thread: ThreadSummary) {
   const { data: view } = useQuery({ ...threadQuery(thread.id), enabled: thread.broken === null });
   const lines = useStore(threadRecordStore, (state) => linesOf(state, thread.id));
-  const said = useMemo(() => lastSaid(lines), [lines]);
   const status = useMemo(
     () => (view ? statusOf(lines, seenOf(view, thread.lastRead)) : null),
     [lines, view, thread.lastRead],
   );
-  return { said, status, ready: view !== undefined };
+  return { status, ready: view !== undefined };
 }
 
 export default SidebarThreads;

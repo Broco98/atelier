@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Arriving } from "./arrival";
 import { faceOf, type Avatar, type FaceColor, type FaceShape } from "./faces";
 import HostFace from "./HostFace";
 
@@ -10,7 +9,7 @@ import HostFace from "./HostFace";
 // - **면은 DS `chat-accent-*`, 눈은 바탕색(`surface`)이다.** 캔버스는 밝은 면에 짙은 눈을 그렸지만 DS의 라이트 `chat-accent-*`는 짙은
 //   글자색이라(#055f51 …) 토큰을 쓰고 눈을 Host처럼 밝게 둔다 — 값이 DS 토큰과 다르면 토큰을 쓴다(디자인-참고 README).
 // - **Host는 `HostFace`다**(무채색 둥근 사각형 — 05가 세운 그림 그대로).
-// - 크기는 자리마다 16~48이다(캔버스 「아바타」 — 메뉴 · 이름 줄 20, 칩 16, 목록 32, 빈 Thread 44). 부르는 쪽이 `size-*`로 준다.
+// - 크기는 자리마다 16~48이다(캔버스 「아바타」 — 메뉴 · 「답하는 중」 20, 칩 16, 목록 32, 빈 Thread 44). 부르는 쪽이 `size-*`로 준다.
 // - 그림일 뿐이라 숨는다 — 이름은 곁의 글자가 말한다. 겹친 얼굴 묶음(`FaceStack`)만 제 이름(참여자 이름들)을 든다.
 
 /** 면 · 눈의 도형 — 캔버스 보드의 SVG 그대로(24 격자). 눈은 모양마다 자리가 다르다. */
@@ -88,8 +87,9 @@ export interface FacePerson {
 
 /**
  * 겹친 얼굴(캔버스 「둘이 함께」 · 「셋 넘으면 숫자」 · Messages 「답하는 중 · 여럿」) — 얼굴마다 바탕색 고리 2를 둘러 앞 얼굴에 겹친다.
- * `max`를 넘으면 앞의 `max`명 뒤에 「+n」 알약이 선다. 묶음 하나가 그림 하나라 이름은 참여자 이름들을 잇는다(`label`). `joining`이면 화면이
- * 선 뒤에 새로 앉은 얼굴이 튀어 들어온다(머리 줄의 참여자 — v1 티켓 43 · Motion 보드 「Agent 참여」).
+ * `max`를 넘으면 앞의 `max`명 뒤에 「+n」 알약이 선다. 묶음 하나가 그림 하나라 이름은 참여자 이름들을 잇는다(`label`). 새로 앉은 얼굴이
+ * 튀어 들던 갈래(`joining` — 머리 줄의 참여자, v1 「Agent 참여」)는 머리 줄 얼굴이 걷혀(02 S14) 부르는 자리가 없어 02 티켓 12가 걷었다 —
+ * Codex에는 그 움직임이 없다.
  */
 export function FaceStack({
   people,
@@ -98,7 +98,6 @@ export function FaceStack({
   faceClass,
   moreClass = "h-5 min-w-5",
   ringClass = "ring-surface",
-  joining = false,
   className,
 }: {
   people: readonly FacePerson[];
@@ -111,25 +110,17 @@ export function FaceStack({
   moreClass?: string;
   /** 고리 색 — 얼굴이 선 바탕(`ring-surface` · `ring-surface-sidebar`). */
   ringClass?: string;
-  /** 새로 앉은 얼굴이 튀어 들어오나 — 「답하는 중」처럼 줄과 함께 서는 얼굴은 줄이 움직인다. */
-  joining?: boolean;
   className?: string;
 }) {
   const shown = people.slice(0, max);
   const more = people.length - shown.length;
   return (
     <span role="img" aria-label={`${label} ${people.map((one) => one.name).join(", ")}`} className={cn("flex shrink-0 items-center", className)}>
-      {shown.map((one) =>
-        joining ? (
-          <Arriving as="span" key={one.handle} motion="pop-in" className={cn("flex rounded-full ring-2", ringClass)}>
-            <AgentFace handle={one.handle} avatar={one.avatar} className={faceClass} />
-          </Arriving>
-        ) : (
-          <span key={one.handle} className={cn("flex rounded-full ring-2", ringClass)}>
-            <AgentFace handle={one.handle} avatar={one.avatar} className={faceClass} />
-          </span>
-        ),
-      )}
+      {shown.map((one) => (
+        <span key={one.handle} className={cn("flex rounded-full ring-2", ringClass)}>
+          <AgentFace handle={one.handle} avatar={one.avatar} className={faceClass} />
+        </span>
+      ))}
       {more > 0 && (
         <span
           className={cn(
@@ -141,48 +132,6 @@ export function FaceStack({
           +{more}
         </span>
       )}
-    </span>
-  );
-}
-
-/**
- * Thread 목록 줄의 얼굴(캔버스 Sidebar 보드 「목록 · 두 줄」 · 「둘이 함께」) — 참여자가 하나면 그 얼굴, 둘 이상이면 처음 들어온 이(대개
- * Host)와 마지막에 들어온 이를 대각선으로 겹친다(뒤의 얼굴이 오른쪽 아래, 바탕 고리 2). 이름은 줄의 제목이 말하므로 숨는다.
- */
-export function ThreadFaces({
-  people,
-  faceClass = "size-5",
-  pairClass = "size-6",
-  pairFaceClass = "size-4",
-  ringClass = "ring-surface-sidebar",
-}: {
-  /** 참여자 — 들어온 차례다(`ThreadSummary.handles`). */
-  people: readonly { handle: string; avatar: Avatar | null }[];
-  faceClass?: string;
-  /** 얼굴 상자의 크기(하나여도 같다)와 둘을 겹칠 때의 얼굴 크기 — 뒤 얼굴은 상자 끝에 붙는다. */
-  pairClass?: string;
-  pairFaceClass?: string;
-  ringClass?: string;
-}) {
-  if (people.length === 0) return null;
-  const first = people[0];
-  if (people.length === 1) {
-    // 하나여도 겹친 상자와 같은 자리를 차지한다 — 줄마다 제목이 같은 자리에서 시작한다.
-    return (
-      <span aria-hidden className={cn("relative flex shrink-0 items-center justify-center", pairClass)}>
-        <AgentFace handle={first.handle} avatar={first.avatar} className={faceClass} />
-      </span>
-    );
-  }
-  const last = people[people.length - 1];
-  return (
-    <span aria-hidden className={cn("relative shrink-0", pairClass)}>
-      <span className={cn("absolute top-0 left-0 flex rounded-full ring-2", ringClass)}>
-        <AgentFace handle={first.handle} avatar={first.avatar} className={pairFaceClass} />
-      </span>
-      <span className={cn("absolute right-0 bottom-0 flex rounded-full ring-2", ringClass)}>
-        <AgentFace handle={last.handle} avatar={last.avatar} className={pairFaceClass} />
-      </span>
     </span>
   );
 }

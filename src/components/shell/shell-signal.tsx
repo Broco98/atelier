@@ -196,8 +196,9 @@ export function showsElapsed(kind: ShellSignal): kind is CallingKind {
 }
 
 /**
- * 레인에 서는 글리프(결정 5). **행 왼쪽 14px 한 칸**에 들어가고, 화면값이 없으면 이것이
- * 아니라 work 상태 아이콘이 그 자리에 선다 — 그 갈림은 행이 한다(`WorkSectionList.tsx`).
+ * 레인에 서는 글리프(결정 5). **줄 왼쪽 14px 한 칸**에 들어간다 — 알림 띠 줄 · Processes 셸 행이 부른다. 한때 사이드바 work 행의
+ * 레인에도 섰다(화면값이 없으면 work 상태 아이콘) — 02 티켓 05가 그 레인을 폴더 하나로 두고 셸 신호를 줄 오른쪽 끝 상태 표시의
+ * 차례로 접었다(`features/works/work-mark.ts`).
  *
  * **점은 8px이고 후광은 3px인데 자리를 안 먹는다.** 후광을 `ring`(그림자)으로 그리는 것이
  * 목업의 `box-shadow: 0 0 0 3px`와 같은 모양이고, 테두리로 그리면 점이 14px 칸을 꽉 채워
@@ -266,7 +267,8 @@ export function SignalElapsed({ ms }: { ms: number }) {
 }
 
 /**
- * 행의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4 · ui-refresh 결정 13).
+ * 줄의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4 · ui-refresh 결정 13). 알림 띠 줄과 사람 메뉴의
+ * `Terminal` 줄(`Sidebar.tsx`의 `RowMetaFor`)이 부른다 — 사이드바 work 행의 오른쪽 메타는 02 티켓 05가 걷었다(그 끝은 상태 표시 하나다).
  * 행이 한 줄(32px)이 되면서 두 줄 행의 둘째 줄(마크 · 말 · 경과)이 하던 일 가운데 「얼마나」만
  * 이 칸이 든다 — 띠 줄과 같은 어휘다. 「누가」(에이전트 마크)는 사이드바에서 빠졌고(ui-refresh
  * 결정 13 — 무엇이 도는지는 호버 카드와 셸 탭이 말한다), 「무슨 말을 하나」는 올려 볼 때만
@@ -282,8 +284,7 @@ export function SignalElapsed({ ms }: { ms: number }) {
  * 숫자의 오른쪽 끝이 튄다 — 그 끝이 구획 머리의 개수와 같은 x에 서는 것(`SidebarItem` 주석의
  * 계약)도 둘 다 지켜야 한다. 그래서 문자열을 옮겨 적지 않고 한 정의를 부른다.
  *
- * **도는 중에는 `null`이다.** 빈 상자를 세우면 칸이 오른쪽 여백만큼의 폭을 쥔다. work 행의 칸
- * 상자도 그때 함께 빠진다(`WorkSectionList.tsx`의 `empty:hidden`) — 제목과 떼던 9px 틈까지 안 남는다.
+ * **도는 중에는 `null`이다.** 빈 상자를 세우면 칸이 오른쪽 여백만큼의 폭을 쥔다.
  */
 export function SignalMeta({
   kind,

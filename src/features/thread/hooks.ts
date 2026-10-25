@@ -12,8 +12,9 @@ import { isObject } from "./json";
 import { prLineOf } from "./pr";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
-import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
-import { workPrsKey } from "./work-card";
+import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
+import { workPrsKey } from "./summary-card";
+import { workMarks, type WorkMarks } from "./work-threads";
 import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
@@ -53,24 +54,55 @@ export const useThread = (thread: string) => useQuery(threadQuery(thread));
 const viewsOnly = (results: readonly { data?: ThreadView }[]) => results.map((result) => result.data);
 
 /**
- * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 「전체 | 내 차례」 마디의 수와 「내 차례만」
- * 목록이 읽는다.
+ * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 사이드바 위 줄 「내 차례」 행의 수와
+ * 「내 차례만」 목록이 읽는다.
  *
- * **모든 Thread를 Thread를 열 때와 같은 읽기로 읽는다**(`threadQuery` — 사이드바 줄 · Thread 화면과 같은 캐시) — Work에 이은 Thread도
- * 기다리는 Thread이고(보드 「내 차례만」), 그 기록은 Work 묶음이 접혀 있어도 있어야 수가 맞는다. 기록 줄 스토어 전체를 구독하므로 어느
+ * **모든 Thread를 Thread를 열 때와 같은 읽기로 읽는다**(`useEveryThread`) — Work에 이은 Thread도 기다리는 Thread이고(보드 「내
+ * 차례만」), 그 기록은 Work 묶음이 접혀 있어도 있어야 수가 맞는다. 기록 줄 스토어 전체를 구독하므로 어느
  * Thread든 줄이 흐르면 다시 센다 — 바뀌지 않은 Thread는 다시 접지 않는다(`waitingOrder`).
  */
 export function useWaiting(): Waiting[] {
+  const { threads, viewOf } = useEveryThread();
+  const records = useStore(threadRecordStore, (state) => state);
+  return useMemo(() => waitingOrder(threads, (id) => readingOf(records, viewOf.get(id), id)), [threads, viewOf, records]);
+}
+
+/**
+ * **모든 Thread를 Thread를 열 때와 같은 읽기로 읽는다**(`threadQuery` — 사이드바 줄 · Thread 화면과 같은 캐시) — 목록 요약과 Thread마다 읽은
+ * 답(`viewOf` — 아직 못 읽었거나 깨진 Thread는 `undefined`). 「내 차례」(`useWaiting`)와 Work 줄 표시(`useWorkMarks`)가 같은 읽기를 쓴다 — 둘이
+ * 따로 적으면 한쪽만 깨진 Thread를 거르는 날 수와 표시가 갈린다(02 코드 리뷰 냄새). 깨진 Thread는 읽지 않는다.
+ */
+function useEveryThread(): { threads: ThreadSummary[]; viewOf: ReadonlyMap<string, ThreadView | undefined> } {
   const { data: threads = [] } = useThreads();
   const views = useQueries({
     queries: threads.map((thread) => ({ ...threadQuery(thread.id), enabled: thread.broken === null })),
     combine: viewsOnly,
   });
-  const records = useStore(threadRecordStore, (state) => state);
-  return useMemo(() => {
-    const viewOf = new Map(threads.map((thread, at) => [thread.id, views[at]]));
-    return waitingOrder(threads, (id) => readingOf(records, viewOf.get(id), id));
-  }, [threads, views, records]);
+  const viewOf = useMemo(() => new Map(threads.map((thread, at) => [thread.id, views[at]])), [threads, views]);
+  return { threads, viewOf };
+}
+
+/** 표시가 하나도 바뀌지 않았나 — 바뀌지 않았으면 Work 묶음을 다시 그리지 않는다. */
+function sameMarks(a: WorkMarks, b: WorkMarks): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((work) => b[work]?.length === a[work].length && a[work].every((mark, at) => b[work][at] === mark))
+  );
+}
+
+/**
+ * Work마다 그 Work에 이은 Thread들의 상태 표시(02 티켓 05 · S8) — Work 줄 오른쪽 끝의 표시 하나가 이것과 그 Work의 셸 신호에서 선다
+ * (`workMark`). Work 묶음이 접혀 있어도 줄이 그 Thread들의 상태를 말해야 하므로 `useWaiting`과 같은 읽기로 모든 Thread를 읽는다(`useEveryThread`). 기록
+ * 줄은 어느 Thread든 흐를 때마다 다시 세지만, 표시가 그대로면 같은 값을 돌려 Work 묶음이 다시 그려지지 않는다(`sameMarks`).
+ */
+export function useWorkMarks(): WorkMarks {
+  const { threads, viewOf } = useEveryThread();
+  return useStore(
+    threadRecordStore,
+    (records) => workMarks(threads, (thread) => threadMark(thread, readingOf(records, viewOf.get(thread.id), thread.id))),
+    sameMarks,
+  );
 }
 
 /**
@@ -120,7 +152,7 @@ export function putSummary(queryClient: QueryClient, summary: ThreadSummary): vo
 /**
  * **Thread 엔진의 이벤트를 받는 자리 — 앱에 하나다**(`AppShell`이 부른다). 기록 줄 · 대기 줄은 어느 Thread든 스토어에 쌓고(다른 화면에
  * 가 있어도 돌아오면 그사이 흐른 줄이 보인다), 요약은 사이드바의 목록을 고치고, 엔진 상태는 안내 카드의 바탕이 된다. 문서 쓰는 중은
- * Work마다 쌓는다 — Work 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
+ * Work마다 쌓는다 — 요약 카드가 떠 있지 않아도 열면 지금 쓰는 문서가 보인다(v1 티켓 34).
  */
 export function useThreadFeeds(): void {
   const queryClient = useQueryClient();
@@ -149,7 +181,7 @@ export function useThreadFeeds(): void {
  *   이벤트를 따로 내지 않는다 — 이 줄이 그 알림이다.
  * - 물어보는 정도가 바뀌었다(`mode` 줄) — 칩이 읽는 연 Thread의 정도를 고친다(`putAskLevel`). 사람이 칩으로 바꾼 것은 바꾸기의 답이
  *   이미 고쳤고, 엔진이 스스로 바꾼 것(v1 티켓 26 — 계획만에서 「계획대로 구현」을 고르면 매번 묻기로 나간다)은 이 줄이 유일한 알림이다.
- * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — Work 카드가 읽어 둔 PR의 그 Project 칸을 줄의 PR로 갈아 끼운다.
+ * - 그 Work의 PR이 처음 보였거나 상태가 바뀌었다(`pr` 줄, v1 티켓 36) — 요약 카드가 읽어 둔 PR의 그 Project 줄을 줄의 PR로 갈아 끼운다.
  *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {

@@ -27,11 +27,10 @@ function SidebarToggle({ open, onToggle }: SidebarToggleProps) {
       aria-expanded={open}
       aria-controls={SIDEBAR_ID}
       tabIndex={0}
-      // 창 위 줄의 작은 아이콘 버튼 규격(`icon-button-xs` — 24 · `radius-md`)을 쓴다 — 셸 컨트롤과 같은 48 머리 줄에 나란히 서
-      // 있어서, 이 버튼만 크기가 다르면 그 자리에서 바로 어긋나 보인다.
-      // 기본 아이콘 색은 다른 아이콘 버튼(text-fg-tertiary)보다 진한 채로 둔다:
-      // 사이드바가 닫혔을 때 이걸 못 찾으면 되돌릴 방법이 없다
-      className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
+      // 셸 컨트롤의 규격(아이콘 버튼 기본 28 · `radius-lg` · 글리프 `fg-titlebar` — Codex 머리 줄 값)을 쓴다 — 같은 44 머리 줄에 나란히
+      // 서 있어서, 이 버튼만 크기 · 색이 다르면 그 자리에서 바로 어긋나 보인다. 사이드바가 닫혔을 때 이걸 못 찾으면 되돌릴 방법이 없어
+      // 옅은 크롬 위에서도 읽히는 #898a8b다
+      className="icon-button-quiet text-fg-titlebar focus-ring"
     >
       <PanelLeft className="size-3.75" />
     </Hint>

@@ -240,7 +240,9 @@ test("spec 탭을 우클릭하면 spec 탭 메뉴가 커서 자리에 서고, �
   await 다떴다(menu);
   const spot = (await target.boundingBox())!;
   const card = (await menu.boundingBox())!;
-  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x + 6), Math.round(spot.y + 6)]);
+  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 흰 판의 테두리(0.5) 뒤로 대상이 반 픽셀에 서서 카드는 그 아래
+  // 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
   expect(page.url()).toBe(url);
   await expect(target).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => 테두리(target)).toBe(링);
@@ -280,7 +282,9 @@ for (const key of ["Shift+F10", "ContextMenu"]) {
     await 다떴다(menu);
     const spot = (await target.boundingBox())!;
     const card = (await menu.boundingBox())!;
-    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x), Math.round(spot.y + spot.height)]);
+    // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
+    // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+    expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x), Math.floor(spot.y + spot.height)]);
     await expect.poll(() => 테두리(target)).toBe(링);
     // 메뉴를 열었을 뿐 문서로 가지 않았다.
     await expect(target).toHaveAttribute("aria-pressed", "false");

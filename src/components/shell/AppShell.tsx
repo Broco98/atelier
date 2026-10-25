@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
@@ -9,6 +9,7 @@ import { threadsQuery, useThreadFeeds, waitingNow } from "@/features/thread/hook
 import { jumpTarget } from "@/features/thread/waiting";
 import { workOfPlace } from "@/features/library/library";
 import { readLibrarySearch } from "@/routes/-library-search";
+import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { countThreadsForQuit } from "@/features/thread/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
@@ -25,6 +26,7 @@ import { pressed } from "@/lib/hotkeys";
 import EditMenu from "./EditMenu";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
+import { ShellHeadRow, ShellHeadSlot } from "./ShellHead";
 import AppToasts from "./AppToasts";
 import ShellReclaim from "./ShellReclaim";
 import ShellOwners from "./ShellOwners";
@@ -34,6 +36,7 @@ import { onViewProcesses } from "./processes-view";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
+import useResizableWidth from "./useResizableWidth";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit, type QuitTally } from "./quit-request";
 import { appReturnTarget, shellStore, toggleSidebar } from "./shell-store";
@@ -52,6 +55,13 @@ function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   // 타이틀바 왼쪽 여백은 index.css의 [data-titlebar]가 계산한다 — 전체화면 여부만 여기서 알려준다
   const fullscreen = useIsFullscreen();
+  // 사이드바 폭(끌어서 바꾸고 기억한다) — 사이드바와 머리 줄의 이름 자리가 함께 읽어 여기서 쥔다(뿌리의 `--sidebar-width`). 기본 폭은 DS
+  // `size-sidebar`(290)이고 범위(240–400)는 지금 것을 잇는다(codex-ds 스펙 S4). 사람이 바꿔 둔 폭은 범위 안이면 그대로 선다
+  // (`useResizableWidth`가 저장값을 읽는 규칙) — 기본값이 바뀌어도 고른 폭을 버리지 않는다. 끄는 동안 다시 그려지는 것은 셸의 얕은
+  // 층이다 — 본문(`Outlet`)은 memo라 따라 그려지지 않는다.
+  const sidebarSize = useResizableWidth("sidebar-width", 290, 240, 400);
+  // 머리 줄의 화면 자리 — 그려지면 받아 본문에 내린다(`ShellHeadSlot`). 설정 화면이 저장 버튼 자리를 내리는 그 길이다.
+  const [headSlot, setHeadSlot] = useState<HTMLElement | null>(null);
   const navigate = useNavigate();
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
@@ -128,7 +138,7 @@ function AppShell() {
   }, []);
 
   // **웹뷰의 기본 메뉴(새로고침 · 검사 …)는 앱 어디서도 서지 않는다**(codex-ds 결정 8 · 스펙 §9). 우클릭은 메뉴가 있는 자리만
-  // 제 메뉴를 연다 — work 대상(work 행 · 띠 줄 · 머리 카드 이름)과 셸 탭 · spec 탭은 제 `ContextMenuTrigger`가, 그 밖의 대상(프로젝트 ·
+  // 제 메뉴를 연다 — work 대상(work 행 · 띠 줄 · 머리 줄 이름)과 셸 탭 · spec 탭은 제 `ContextMenuTrigger`가, 그 밖의 대상(프로젝트 ·
   // Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행 · 문서 글)은 그 자리의 `TargetMenu`가, 입력칸 · 터미널은 편집
   // 메뉴(`EditMenu`)가 연다. 빈 자리 · 카드 빈 곳 · 창 테두리는 아무것도 안 띄운다.
   // - **document에서 듣는다** — 메뉴 카드 · 창은 body에 서는 포털이라 `#root` 밖이다. 거기의 우클릭도 막아야 한다.
@@ -312,32 +322,72 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goToShell, searchOpen, queryClient, router, navigate]);
 
+  // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 줄 「새 Thread」와 ⌘N(아래)이 함께 부른다. 가는 곳은
+  // **씨앗 없는 새 Thread**(`/`)다 — 이미 거기면 아무것도 하지 않는다(같은 주소가 히스토리에 한 칸 더 쌓이지 않게 — 사람 메뉴 `onSelect`와 같은
+  // 가드). 씨앗을 단 새 Thread(`/?work=<slug>` · `/?new=work`)에서는 씨앗이 걷힌 첫 화면으로 간다 — 한때 가드가 경로만 봐서 거기서 키가 먹지
+  // 않았다(02 코드 리뷰 S1). 그 물음은 그 행의 고른 모양과 같은 하나다(`isBlankNewThread`). 주소는 **누를 때** 읽는다 — 셸이 그것을
+  // 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
+  const openNewThread = useCallback(() => {
+    if (!isBlankNewThread(router.state.location)) void navigate({ to: "/" });
+  }, [router, navigate]);
+
+  // ⌘N(단축키 표의 `newThread`)은 **어느 화면에서나 새 Thread를 연다**(02 구현 스펙 §4 · 스토리 10). 셸에 포커스가 있어도 먹는다 — xterm은
+  // ⌘가 붙은 글자 키를 앱으로 올리고(`keyRoute`), spec 문서의 프레임에 포커스가 있으면 메뉴의 `View ▸ New Thread`가 먼저 받아 합성 keydown으로
+  // 이 리스너에 온다(`menu-hotkey.ts`). 앱 포커스에서는 여기서 `preventDefault`해 메뉴가 같은 키를 다시 받지 않는다.
+  //
+  // **확인 창이나 팔레트가 떠 있으면 안 먹는다** — ⌘J와 같은 게이트다(위 그 주석): 답을 기다리는 동안 화면을 옮기지 않고, 팔레트가 빌린
+  // 포커스와 다투지 않는다. 떠날 때 확인이 걸린 편집기에서는 이동이 그 물음을 지난다(라우터의 막음).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!pressed(e, "newThread")) return;
+      if (dialogStore.state !== null || searchOpen) return;
+      e.preventDefault();
+      openNewThread();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openNewThread, searchOpen]);
+
   return (
     <div
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
-      className="relative flex h-screen flex-col bg-surface text-fg"
+      // 사이드바 폭은 뿌리에 싣는다 — 사이드바(`Sidebar`)와 머리 줄 이름 자리(`ShellHeadRow` — 사이드바 오른쪽 끝을 따른다)가 한 값을 읽는다.
+      style={
+        {
+          "--sidebar-width": `${sidebarSize.width}px`,
+          "--sidebar-min": `${sidebarSize.min}px`,
+        } as CSSProperties
+      }
+      className="relative flex h-screen flex-col bg-surface-shell text-fg"
     >
-      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을
-          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
-          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
-          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석).
+      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」) — 크롬(`surface-shell`) 맨 위 머리 줄(44)에 신호등 · 셸 컨트롤과
+          지금 화면의 자리가 서고, 그 아래 흰 판 하나에 사이드바와 화면 본문이 든다. 화면은 머리 줄에 놓을 것(이름 · 할 일 — `ScreenHead`)과
+          판 안에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도, 공용 틀(`Frame`)의 화면들도 같다.
 
-          **DOM에서 사이드바보다 앞이다** — 창의 Tab이 창 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)에서 시작해 사이드바 →
-          머리 카드 → 본문 → 패널 → 레일로 간다(codex-ds 스펙 §9). 그림은 `absolute`라 자리와 겹침(z-20)이 DOM 차례를 타지
-          않는다 — 사이드바를 접어도 첫 조작이 화면 왼쪽 위의 그것이다. */}
-      <ShellControls
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={toggleSidebar}
-        onOpenSearch={openSearch}
-      />
-      <div className="flex min-h-0 flex-1">
+          검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을 둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로
+          연 팔레트를 다른 쪽이 모른다. 이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 머리 줄을 덮어 애초에 눌리지
+          않는다(ShellControls의 그 버튼 주석).
+
+          **DOM 차례가 보이는 차례다** — 창의 Tab이 창 컨트롤(사이드바 토글 · 뒤로 · 앞으로 · 검색)에서 시작해 머리 줄의 화면 것(이름 ·
+          할 일) → 사이드바 → 본문으로 간다. 머리 줄이 판 위 크롬에 한 줄로 서서, 읽는 차례(왼쪽 위 → 오른쪽 → 아래)를 따른다. */}
+      <ShellHeadRow open={sidebarOpen} dragging={sidebarSize.dragging} onSlot={setHeadSlot}>
+        <ShellControls
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={toggleSidebar}
+          onOpenSearch={openSearch}
+        />
+      </ShellHeadRow>
+      {/* 흰 판 — 크롬 왼 · 오 · 아래 끝에서 5 띄우고(눈금의 사분 단 1.25) 0.5 `border-panel` · 둥글기 12 · 위 그림자(`shadow-panel`)다. 안쪽
+          왼쪽에 사이드바(제 바탕 · 오른쪽 0.5 선 그대로), 그 오른쪽에 화면 본문이 든다. 모서리 밖으로 사이드바 바탕이 새지 않게 잘라 낸다. */}
+      <div
+        data-slot="panel"
+        className="mx-1.25 mb-1.25 flex min-h-0 flex-1 overflow-hidden rounded-xl border-[0.5px] border-border-panel bg-surface shadow-panel"
+      >
         <Sidebar
           open={sidebarOpen}
-          // 이미 새 Thread면 아무것도 하지 않는다 — 같은 주소가 히스토리에 한 칸 더 쌓이지 않게(아래 nav와 같은 가드). 주소는 **누를 때**
-          // 읽는다 — 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
-          onNewThread={() => {
-            if (router.state.location.pathname !== "/") void navigate({ to: "/" });
-          }}
+          size={sidebarSize}
+          // ⌘N과 같은 함수다(위 `openNewThread` — 가드도 거기 하나다).
+          onNewThread={openNewThread}
           // Library(v1 티켓 19)는 **지금 선 자리의 Work**를 싣고 간다 — 그 Work의 Project 안 Agent가 따로 묶인다(S35, `workOfPlace`).
           // 이미 같은 Work의 Library면 아무것도 하지 않는다(위와 같은 가드 — 고른 Agent도 그대로다). 주소 · Thread 목록은 누를 때 읽는다.
           onOpenLibrary={() => {
@@ -375,7 +425,9 @@ function AppShell() {
             void navigate(appReturnTarget());
           }}
         />
-        <Outlet />
+        <ShellHeadSlot.Provider value={headSlot}>
+          <Outlet />
+        </ShellHeadSlot.Provider>
       </div>
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야

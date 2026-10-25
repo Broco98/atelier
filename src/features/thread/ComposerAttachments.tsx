@@ -65,12 +65,12 @@ export function useAttachmentDrop(enabled: boolean, onDrop: (paths: string[]) =>
   return enabled && dragging;
 }
 
-/** 끌어다 놓는 동안 입력창 자리(보드 `.drop` — 28 반경 · 옅은 파랑 · 1.5 안쪽 테두리 · 104 높이). */
+/** 끌어다 놓는 동안 입력창 자리(보드 `.drop` — 옅은 파랑 · 1.5 안쪽 테두리 · 104 높이). 둥글기는 그 자리의 입력창과 같은 22다(02 티켓 10 · `rounded-prompt`). */
 export function DropZone() {
   return (
     <div
       role="status"
-      className="flex h-26 flex-col items-center justify-center gap-1 rounded-composer bg-accent-soft text-sm font-medium text-link inset-ring-[1.5px] inset-ring-accent-solid"
+      className="flex h-26 flex-col items-center justify-center gap-1 rounded-prompt bg-accent-soft text-sm font-medium text-link inset-ring-[1.5px] inset-ring-accent-solid"
     >
       놓으면 첨부합니다
       <span className="text-xs font-normal text-fg-secondary">파일 · 이미지 · 폴더</span>

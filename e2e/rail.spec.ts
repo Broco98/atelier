@@ -1,28 +1,27 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import {
-  HEAD_CARD,
+  SCREEN_HEAD,
   installFixtureBackend,
   processesTitle,
   unknownIpcCalls,
   그림자,
   끄는자리,
-  머리카드,
+  화면머리,
   칠한값,
   토큰값,
   토큰색,
 } from "./harness";
 
-// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 서고, 서면 DS `PanelRail` 모양이다**(codex-ds 결정 25 · 29 · 스펙 §4). 바탕 오른쪽
-// 끝의 세로 묶음이고, 홈은 옆 패널 카드와 같은 흰 면(`surface` · `shadow-hairline` · `radius-lg`, 안쪽 2), 칸은 28 · `radius-md`, 켜진
-// 칸은 패널 트리의 고른 행과 같은 `fill-selected`, 꺼진 칸의 hover는 `fill-soft`다. 위끝은 카드 위끝이고 `aside`가 아니다. 칸마다
-// 패널 칸을 가리키고(`aria-controls`), 빈 자리는 창을 끄는 자리다. 레일이 서면 패널 토글은 머리 카드 밖, 레일 바로 위로 나가고
-// 머리 카드는 레일 앞에서 끝난다(DS `.with-rail` · `.at-railtop`). 켜진 칸을 다시 누르면 패널이 닫히고 레일은 남으며, 칸을 다녀와도
-// 안 보이는 몸은 마운트된 채라 접어 둔 것이 그대로다(ui-refresh 결정 9 · 10).
+// codex-ds 티켓 18 — **레일은 칸이 둘 이상일 때만 서고, 서면 DS `PanelRail` 모양이다**(codex-ds 결정 25 · 29 · 스펙 §4). 판 안 오른쪽
+// 끝의 세로 칸이고(왼쪽은 칸 사이 선 하나 — 02 티켓 03), 홈은 흰 면(`surface` · `shadow-hairline` · `radius-lg`, 안쪽 2), 칸은 28 ·
+// `radius-md`, 켜진 칸은 패널 트리의 고른 행과 같은 `fill-selected`, 꺼진 칸의 hover는 `fill-soft`다. 위끝은 칸 줄 위끝 + 8이고 `aside`가
+// 아니다. 칸마다 패널 칸을 가리킨다(`aria-controls`). 패널 토글은 레일 위가 아니라 머리 줄 할 일 묶음의 맨 끝이다 — 한때 머리 카드 밖
+// 레일 바로 위에 섰다(DS `.at-railtop` — 02 티켓 03이 걷었다). 켜진 칸을 다시 누르면 패널이 닫히고 레일은 남으며, 칸을 다녀와도 안
+// 보이는 몸은 마운트된 채라 접어 둔 것이 그대로다(ui-refresh 결정 9 · 10).
 //
-// **진열대(`e2e/rail-fixture.tsx`)에서 잰다.** 앱의 작업 화면도 이제 칸이 `spec` · `files` 둘이라 레일이 선다 — 그 자리(레일 열 ·
-// 머리 카드 밖 토글)는 `frame.spec.ts`가 앱 화면에서 잰다. 진열대는 앱의 데이터 없이 레일의 모양 · 규칙만 재는 자리다 — 같은 공용
-// 틀에 시험용 둘째 칸 `files`를 건네고, 칸을 고른 뒤의 열림 · 고른 칸을 작업 화면과 같은 규칙(`pickRail`)으로, 몸을 같은
-// 상자(`PanelBody`)로 그린다.
+// **진열대(`e2e/rail-fixture.tsx`)에서 잰다.** 앱의 작업 화면도 이제 칸이 `spec` · `files` 둘이라 레일이 선다 — 그 자리는
+// `frame.spec.ts`가 앱 화면에서 잰다. 진열대는 앱의 데이터 없이 레일의 모양 · 규칙만 재는 자리다 — 같은 공용 틀에 시험용 둘째 칸
+// `files`를 건네고, 칸을 고른 뒤의 열림 · 고른 칸을 작업 화면과 같은 규칙(`pickRail`)으로, 몸을 같은 상자(`PanelBody`)로 그린다.
 
 /** 진열대를 Processes 화면 위에 세운다. 앱 화면 위라 `index.css`가 이미 서 있다. */
 async function 진열대를세운다(page: Page): Promise<Locator> {
@@ -49,7 +48,7 @@ const 상자 = async (target: Locator) => {
 const 길이 = (page: Page, name: string) =>
   page.evaluate((one) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(one)), name);
 
-test("칸이 둘이면 레일이 바탕 오른쪽 끝에 DS 모양으로 선다 — 흰 홈 · 28 칸 · 켜진 칸 fill-selected · hover fill-soft · 위끝 = 카드 위끝 · 칸이 패널을 가리킨다", async ({
+test("칸이 둘이면 레일이 판 오른쪽 끝에 DS 모양으로 선다 — 흰 홈 · 28 칸 · 켜진 칸 fill-selected · hover fill-soft · 위끝 = 칸 줄 위끝 + 8 · 칸이 패널을 가리킨다", async ({
   page,
 }) => {
   const showcase = await 진열대를세운다(page);
@@ -94,62 +93,54 @@ test("칸이 둘이면 레일이 바탕 오른쪽 끝에 DS 모양으로 선다 
   await spec.hover();
   await expect.poll(() => 칠한값(spec, "background-color"), "켜진 칸 hover").toEqual([await 토큰색(page, "--fill-selected")]);
 
-  // 자리 — 위끝이 카드 위끝(머리 줄 아래)이고, 패널 카드와 틈 · 창 끝과 틈을 둔다. 패널 토글은 그 위 머리 줄, 줄의 가운데다.
+  // 자리 — 레일 열은 칸 줄(머리 줄 아래)의 오른쪽 끝 칸이고 왼쪽에 칸 사이 선이 선다. 홈은 그 열 안 위 · 옆 8에 선다(`Rail`의 `px-2 pt-2`
+  // — 한때 위끝이 카드 위끝과 같았다, 틈의 카드였을 때다). 패널 칸은 레일 열 바로 앞에서 끝난다.
   const gap = await 길이(page, "--space-2");
   const card = await 상자(showcase.getByRole("region", { name: "진열대 본문", exact: true }));
   const panel = await 상자(showcase.getByRole("region", { name: "진열대 패널", exact: true }));
-  const toggle = await 상자(showcase.getByRole("button", { name: "진열대 패널 접기", exact: true }));
   const viewport = page.viewportSize()!;
-  expect(home.y, "레일 위끝 = 카드 위끝").toBe(card.y);
-  expect(card.y, "카드 위끝 = 머리 줄 아래").toBe(await 길이(page, "--titlebar-height"));
-  expect(home.x - panel.right, "패널 카드와 레일 사이 틈").toBe(gap);
-  expect(viewport.width - home.right, "레일 오른쪽 틈").toBe(gap);
-  expect(toggle.x + toggle.width / 2, "패널 토글 가로 가운데 = 레일 가운데").toBe(home.x + home.width / 2);
-  expect(toggle.bottom, "패널 토글은 레일 위 머리 줄").toBeLessThanOrEqual(home.y);
+  expect(card.y, "칸 줄 위끝 = 머리 줄 아래").toBe(await 길이(page, "--titlebar-height"));
+  expect(home.y - card.y, "레일 위끝 = 칸 줄 위끝 + 8").toBe(gap);
+  expect(home.x - panel.right, "패널 칸 끝 → 레일 홈 8").toBe(gap);
+  expect(viewport.width - home.right, "레일 홈 → 오른쪽 끝 8").toBe(gap);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 레일이 서면 머리 줄이 갈린다(DS `.at-winhead.with-rail` · `.at-railtop`) — 패널 토글은 머리 카드 밖, 레일 열 바로 위의 자리(틈 +
-// `size-prail`)로 나가고, 머리 카드는 그 자리 앞에서 끝나 아래 본문 열(패널 카드 오른쪽까지)과 같은 폭이다. 레일 열과 토글 자리의
-// 회색은 창을 끄는 자리이고, 칸 · 토글은 눌리는 버튼이다(`Frame` 머리말 「틈도 창을 끄는 자리다」).
-test("레일이 서면 패널 토글은 머리 카드 밖 레일 위에 서고 머리 카드는 레일 앞에서 끝나며 — 레일 열과 토글 둘레의 빈 자리가 창을 끄는 자리다", async ({
-  page,
-}) => {
+// 레일이 서도 머리 줄은 갈리지 않는다(02 티켓 03 — 옛 DS `.at-winhead.with-rail` · `.at-railtop`을 걷었다). 패널 토글은 머리 줄 할 일
+// 묶음(`[data-head-actions]`)의 맨 끝이고 그 묶음은 화면 자리 오른쪽 끝(− 8)에 붙는다 — 레일이 서든 안 서든 같은 자리다. 레일 열은 판
+// 안의 칸이라 창을 끄는 자리가 아니다(판 안에는 끄는 자리가 없다 — 머리 줄의 빈 자리만 끈다, `frame.spec`).
+test("레일이 서도 패널 토글은 머리 줄 할 일 묶음의 맨 끝이고, 레일 열과 그 둘레는 창을 끄는 자리가 아니다", async ({ page }) => {
   const showcase = await 진열대를세운다(page);
   const rail = showcase.getByRole("group", { name: "레일", exact: true });
   const toggleButton = showcase.getByRole("button", { name: "진열대 패널 접기", exact: true });
   const gap = await 길이(page, "--space-2");
-  const prail = await 길이(page, "--size-prail");
   const viewport = page.viewportSize()!;
-  const [home, head, panel, toggle] = [
+  const [home, slot, panel, toggle] = [
     await 상자(rail),
-    await 상자(머리카드(showcase)),
+    await 상자(화면머리(showcase)),
     await 상자(showcase.getByRole("region", { name: "진열대 패널", exact: true })),
     await 상자(toggleButton),
   ];
 
-  // 머리 카드 — 오른쪽 끝이 본문 열의 끝(패널 카드 오른쪽)이고, 그 뒤가 레일 열(틈 + 줄 폭)과 창 오른쪽 틈이다.
-  expect(head.right, "머리 카드 오른쪽 = 패널 카드 오른쪽").toBe(panel.right);
-  expect(viewport.width - head.right, "머리 카드 뒤 = 틈 · 레일 · 틈").toBe(gap + prail + gap);
-  // 패널 토글 — 머리 줄 안, 머리 카드 밖이다.
+  // 패널 토글 — 머리 줄 화면 자리 안, 할 일 묶음의 마지막 단추이고 화면 자리 오른쪽 끝에서 8에 선다. 레일 열 위의 칸이 아니다.
   expect(
-    await toggleButton.evaluate((el, card) => [el.closest("header") !== null, el.closest(card) === null], HEAD_CARD),
+    await toggleButton.evaluate(
+      (el, head) => [el.closest(head) !== null, el.closest("[data-head-actions]")?.lastElementChild === el],
+      SCREEN_HEAD,
+    ),
+    "토글 — 머리 줄 화면 자리 · 할 일 묶음의 맨 끝",
   ).toEqual([true, true]);
-  expect(toggle.x, "패널 토글은 머리 카드 오른쪽 너머").toBeGreaterThan(head.right);
+  expect(slot.right - toggle.right, "토글 → 화면 자리 오른쪽 끝 8").toBe(gap);
+  expect(toggle.bottom, "토글은 레일 위 머리 줄").toBeLessThanOrEqual(home.y);
 
-  // 빈 자리는 창을 끄는 자리다 — 칸 묶음 아래, 레일 오른쪽 틈, 패널 카드와 레일 사이 틈, 머리 카드와 토글 사이, 토글 오른쪽 틈.
-  // 진열대는 앱 화면 위를 덮어(`position: fixed` · `z-index`) 그 점의 맨 위 요소가 진열대의 것이다(`끄는자리`는 맨 위 요소에서 잰다).
+  // 레일 열과 그 둘레는 끌지 않는다 — 칸 묶음 아래, 레일 오른쪽 여백, 패널 칸과 레일 사이. 진열대는 앱 화면 위를 덮어(`position: fixed`
+  // · `z-index`) 그 점의 맨 위 요소가 진열대의 것이다(`끄는자리`는 맨 위 요소에서 잰다). 앵커: 칸 줄의 그 점은 진열대 안이다.
   const railMiddle = home.x + home.width / 2;
   const below = home.bottom + 40;
-  const middle = toggle.y + toggle.height / 2;
-  expect(await 끄는자리(page, railMiddle, below), "칸 묶음 아래").toBe(true);
-  expect(await 끄는자리(page, viewport.width - gap / 2, below), "레일 오른쪽 틈").toBe(true);
-  expect(await 끄는자리(page, panel.right + gap / 2, below), "패널 카드와 레일 사이 틈").toBe(true);
-  expect(await 끄는자리(page, head.right + gap / 2, middle), "머리 카드와 토글 사이").toBe(true);
-  expect(await 끄는자리(page, viewport.width - gap / 2, middle), "토글 오른쪽 틈").toBe(true);
-  // 대조: 칸과 토글 자체는 눌리는 버튼이다.
-  expect(await 끄는자리(page, railMiddle, home.y + home.height / 4), "칸").toBe(false);
-  expect(await 끄는자리(page, toggle.x + toggle.width / 2, middle), "토글").toBe(false);
+  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-rail-fixture]") !== null, [railMiddle, below])).toBe(true);
+  expect(await 끄는자리(page, railMiddle, below), "칸 묶음 아래").toBe(false);
+  expect(await 끄는자리(page, viewport.width - gap / 2, below), "레일 오른쪽 여백").toBe(false);
+  expect(await 끄는자리(page, panel.right + gap / 2, below), "패널 칸과 레일 사이").toBe(false);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

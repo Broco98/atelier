@@ -13,14 +13,14 @@ import {
   unknownIpcCalls,
   workRow,
   띠,
-  머리카드,
+  화면머리,
   행버튼,
   작업화면으로,
   Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 28 — **work · 프로젝트 이름을 그 자리에서 바꾼다**(codex-ds 스펙 §9 · 결정 18 · S12). 이름이 쓰인 자리가 그대로
-// 입력칸이 된다 — 창이 뜨지 않는다. 들어가는 길은 F2 · 메뉴 「이름 바꾸기」 · 두 번 클릭이고, 두 번 클릭은 머리 카드 이름만이다
+// 입력칸이 된다 — 창이 뜨지 않는다. 들어가는 길은 F2 · 메뉴 「이름 바꾸기」 · 두 번 클릭이고, 두 번 클릭은 머리 줄 이름만이다
 // (사이드바 행의 두 번 클릭은 열기다). Enter · 다른 곳 누르기는 저장, Esc는 취소, 비우면 원래 이름, 그대로면 아무것도 부르지 않는다.
 //
 // 픽스처의 고정 답(`set_work_title` · `update_project`)은 바뀐 이름을 기억하지 않는다 — 저장은 화면 글자가 아니라 나간 IPC로 잰다.
@@ -41,8 +41,8 @@ const 프로젝트저장 = async (page: Page) =>
 const 고른자리 = (input: Locator) =>
   input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]);
 
-/** 머리 카드의 이름 글자 — 역할이 없는 포커스 자리다(대상 메뉴 · F2를 듣는다). */
-const 머리이름 = (page: Page, name: string) => 머리카드(page).getByText(name, { exact: true });
+/** 머리 줄의 이름 글자 — 역할이 없는 포커스 자리다(대상 메뉴 · F2를 듣는다). */
+const 머리이름 = (page: Page, name: string) => 화면머리(page).getByText(name, { exact: true });
 
 /**
  * **바깥이 work 이름을 바꿨다** — 에이전트의 MCP `atelier_edit_work`나 다른 인스턴스. 앱은 감시자의 `works:changed` 뒤의 목록 재조회로만
@@ -70,7 +70,7 @@ const 입력기가문키 = (input: Locator, key: "Enter" | "Escape") =>
   }, key);
 
 /**
- * 「다른 곳」 — 본문 카드 안의 한 점. 머리 카드 · 사이드바 · 목록 칸 밖이고 누르는 자리가 없는 곳이라, 누르면 입력칸이 포커스를
+ * 「다른 곳」 — 본문 카드 안의 한 점. 머리 줄 · 사이드바 · 목록 칸 밖이고 누르는 자리가 없는 곳이라, 누르면 입력칸이 포커스를
  * 잃을 뿐 다른 일이 안 일어난다.
  */
 const 다른곳을누른다 = async (page: Page) => {
@@ -79,10 +79,10 @@ const 다른곳을누른다 = async (page: Page) => {
   await page.mouse.click(box.x + box.width - 12, box.y + box.height - 12);
 };
 
-// ── work 머리 카드 이름 ──
+// ── work 머리 줄 이름 ──
 // 이름 글자가 그대로 입력칸이 된다. 지금 이름을 전부 고른 채 포커스를 받고, 닫히면(Enter · Esc) 포커스가 이름 글자로 돌아온다.
 
-test("머리 카드 이름을 두 번 누르면 그 자리가 지금 이름을 전부 고른 입력칸이 되고, Enter면 앞뒤 공백을 뗀 이름으로 저장한다", async ({
+test("머리 줄 이름을 두 번 누르면 그 자리가 지금 이름을 전부 고른 입력칸이 되고, Enter면 앞뒤 공백을 뗀 이름으로 저장한다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -90,7 +90,7 @@ test("머리 카드 이름을 두 번 누르면 그 자리가 지금 이름을 �
 
   await 머리이름(page, plainWork.title).dblclick();
 
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await expect(input).toBeFocused();
   await expect(input).toHaveValue(plainWork.title);
   await expect.poll(() => 고른자리(input)).toEqual([0, plainWork.title.length]);
@@ -106,7 +106,7 @@ test("머리 카드 이름을 두 번 누르면 그 자리가 지금 이름을 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("머리 카드 이름에서 F2를 누르면 입력칸이 되고, Esc는 고친 이름이 있어도 부르지 않고 원래 이름으로 돌아간다", async ({
+test("머리 줄 이름에서 F2를 누르면 입력칸이 되고, Esc는 고친 이름이 있어도 부르지 않고 원래 이름으로 돌아간다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -117,7 +117,7 @@ test("머리 카드 이름에서 F2를 누르면 입력칸이 되고, Esc는 고
   await name.focus();
   await page.keyboard.press("F2");
 
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await expect(input).toBeFocused();
   await input.fill("고치다 만 이름");
   await input.press("Escape");
@@ -134,7 +134,7 @@ test("한글 조합 중의 Enter는 저장하지 않고 입력칸이 남으며, 
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await input.fill("조합 중인 이름");
 
   await input.evaluate((el) =>
@@ -156,7 +156,7 @@ test("입력기가 문 Enter · Esc(keyCode 229)는 끝내지 않고 입력칸�
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await input.fill("입력기가 쥔 이름");
 
   for (const key of ["Enter", "Escape"] as const) {
@@ -172,7 +172,7 @@ test("입력기가 문 Enter · Esc(keyCode 229)는 끝내지 않고 입력칸�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("⋯ 메뉴의 「이름 바꾸기」는 머리 카드 이름을 입력칸으로 바꾸고, 다른 곳을 누르면 저장한다", async ({ page }) => {
+test("⋯ 메뉴의 「이름 바꾸기」는 머리 줄 이름을 입력칸으로 바꾸고, 다른 곳을 누르면 저장한다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
 
@@ -180,7 +180,7 @@ test("⋯ 메뉴의 「이름 바꾸기」는 머리 카드 이름을 입력칸�
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
   // 메뉴가 닫히며 포커스를 ⋯로 되돌려 막 선 입력칸을 빼앗지 않는다 — 빼앗으면 「다른 곳 = 저장」으로 곧바로 닫힌다.
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(input).toBeFocused();
   await input.fill("메뉴로 바꾼 이름");
@@ -191,14 +191,14 @@ test("⋯ 메뉴의 「이름 바꾸기」는 머리 카드 이름을 입력칸�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("머리 카드 이름의 우클릭 메뉴 「이름 바꾸기」도 그 자리를 입력칸으로 바꾼다", async ({ page }) => {
+test("머리 줄 이름의 우클릭 메뉴 「이름 바꾸기」도 그 자리를 입력칸으로 바꾼다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
 
   await 머리이름(page, plainWork.title).click({ button: "right" });
   await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
 
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(input).toBeFocused();
   await input.fill("우클릭으로 바꾼 이름");
@@ -214,12 +214,12 @@ for (const [what, value] of [
   ["앞뒤 공백만 붙인 지금 이름", ` ${plainWork.title} `],
   ["빈 이름", "   "],
 ] as const) {
-  test(`머리 카드 이름을 ${what}으로 두고 Enter를 누르면 부르지 않고 원래 이름이 선다`, async ({ page }) => {
+  test(`머리 줄 이름을 ${what}으로 두고 Enter를 누르면 부르지 않고 원래 이름이 선다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(`/works/${plainWork.slug}`);
 
     await 머리이름(page, plainWork.title).dblclick();
-    const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+    const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
     await input.fill(value);
     await input.press("Enter");
 
@@ -235,7 +235,7 @@ test("빈 이름으로 다른 곳을 눌러도 부르지 않고 원래 이름이
   await page.goto(`/works/${plainWork.slug}`);
 
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await input.fill("");
   await 다른곳을누른다(page);
 
@@ -247,13 +247,13 @@ test("빈 이름으로 다른 곳을 눌러도 부르지 않고 원래 이름이
 
 // **고치는 동안 바깥이 이름을 바꾸면** 손대지 않은 입력칸은 새 이름을 따른다 — 손대지 않은 칸이 옛 이름을 쥔 채 「다른 곳 = 저장」으로
 // 닫히면 바깥이 바꾼 이름을 말없이 되돌린다. 손댄 칸은 사람이 친 글자가 앞선다.
-test("머리 카드 이름을 고치는 동안 바깥이 이름을 바꾸면, 손대지 않은 입력칸은 새 이름을 전부 고른 채 따르고 다른 곳을 눌러도 부르지 않는다", async ({
+test("머리 줄 이름을 고치는 동안 바깥이 이름을 바꾸면, 손대지 않은 입력칸은 새 이름을 전부 고른 채 따르고 다른 곳을 눌러도 부르지 않는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await expect(input).toBeFocused();
 
   await 바깥이이름을바꾼다(page, plainWork.slug, "바깥에서 바꾼 이름");
@@ -273,11 +273,11 @@ test("손댄 입력칸은 바깥이 바꾼 이름이 덮지 않고, Enter는 친
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await input.fill("내가 친 이름");
 
   await 바깥이이름을바꾼다(page, plainWork.slug, "바깥에서 바꾼 이름");
-  // 앵커 — 새 목록이 앉았다(머리 카드의 이름 자리는 입력칸이라 사이드바 행이 그 이름을 든다).
+  // 앵커 — 새 목록이 앉았다(머리 줄의 이름 자리는 입력칸이라 사이드바 행이 그 이름을 든다).
   await expect(행버튼(page, "바깥에서 바꾼 이름")).toBeVisible();
 
   await expect(input).toHaveValue("내가 친 이름");
@@ -289,11 +289,11 @@ test("손댄 입력칸은 바깥이 바꾼 이름이 덮지 않고, Enter는 친
 
 // **입력칸이 blur 없이 걷혀도 끝은 온다** — 키로 화면이 바뀌면(⌘, · ⌘J) 입력칸이 포커스를 쥔 채 내려가고, 그 내려감에는 blur가 없다.
 // 그때도 「다른 곳으로 갔다」라 저장하고 고치기를 접는다 — 누르는 쪽으로 옮긴 때와 같다.
-test("머리 카드 이름을 고치는 중에 ⌘,로 설정에 가면 친 이름을 저장한다", async ({ page }) => {
+test("머리 줄 이름을 고치는 중에 ⌘,로 설정에 가면 친 이름을 저장한다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   await 머리이름(page, plainWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await input.fill("설정에 가기 전에 친 이름");
   await expect(input).toBeFocused();
 
@@ -305,7 +305,7 @@ test("머리 카드 이름을 고치는 중에 ⌘,로 설정에 가면 친 이�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("머리 카드 이름을 고치는 중에 ⌘J로 다른 work에 가면 친 이름을 고치던 work에 저장하고, 돌아와도 입력칸이 다시 서지 않는다", async ({
+test("머리 줄 이름을 고치는 중에 ⌘J로 다른 work에 가면 친 이름을 고치던 work에 저장하고, 돌아와도 입력칸이 다시 서지 않는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -317,7 +317,7 @@ test("머리 카드 이름을 고치는 중에 ⌘J로 다른 work에 가면 친
   await 작업화면으로(page, pinnedWork);
 
   await 머리이름(page, pinnedWork.title).dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await input.fill("옮기기 전에 친 이름");
   await expect(input).toBeFocused();
   await page.keyboard.press("Meta+j");
@@ -331,9 +331,9 @@ test("머리 카드 이름을 고치는 중에 ⌘J로 다른 work에 가면 친
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **머리 카드의 입력칸은 이름 글자만큼이다**(DS `.at-wtitle.is-edit` — 고치는 꼴도 `.at-wtitle`의 글자 폭 `flex: 0 1 auto`를 그대로
+// **머리 줄의 입력칸은 이름 글자만큼이다**(DS `.at-wtitle.is-edit` — 고치는 꼴도 `.at-wtitle`의 글자 폭 `flex: 0 1 auto`를 그대로
 // 둔다). 이름 칸은 짧은 이름에도 520까지 넓어, 그 폭을 다 먹는 입력칸은 고치기에 들 때 테두리가 글자 폭에서 520으로 튄다.
-test("머리 카드의 입력칸은 이름 글자만큼이고, 친 글자를 따라 는다", async ({ page }) => {
+test("머리 줄의 입력칸은 이름 글자만큼이고, 친 글자를 따라 는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
   const name = 머리이름(page, plainWork.title);
@@ -345,7 +345,7 @@ test("머리 카드의 입력칸은 이름 글자만큼이고, 친 글자를 따
   });
 
   await name.dblclick();
-  const input = 머리카드(page).getByRole("textbox", { name: "작업 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "작업 이름", exact: true });
   await expect(input).toBeFocused();
   const 폭 = async () => (await input.boundingBox())!.width;
   const 처음 = await 폭();
@@ -558,10 +558,10 @@ test("알림 띠에서 「이름 바꾸기」를 고른 work의 행이 접힌 �
 });
 
 // ── 프로젝트 ──
-// 머리 카드 이름(두 번 클릭 · F2)과 목록 행(F2). 저장은 프로젝트 고치기의 부분 patch — 이름만 실린다. 상세 칸에는 제목이 없다(S12 —
-// 이름은 머리 카드가 든다).
+// 머리 줄 이름(두 번 클릭 · F2)과 목록 행(F2). 저장은 프로젝트 고치기의 부분 patch — 이름만 실린다. 상세 칸에는 제목이 없다(S12 —
+// 이름은 머리 줄이 든다).
 
-test("프로젝트 머리 카드 이름을 두 번 누르면 입력칸이 되고, Enter면 이름만 실어 고친다", async ({ page }) => {
+test("프로젝트 머리 줄 이름을 두 번 누르면 입력칸이 되고, Enter면 이름만 실어 고친다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
   // 상세 칸의 제목(「클릭해서 편집」)은 걷혔다.
@@ -569,7 +569,7 @@ test("프로젝트 머리 카드 이름을 두 번 누르면 입력칸이 되고
 
   await 머리이름(page, project.name).dblclick();
 
-  const input = 머리카드(page).getByRole("textbox", { name: "프로젝트 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "프로젝트 이름", exact: true });
   await expect(input).toBeFocused();
   await expect(input).toHaveValue(project.name);
   await input.fill("새 프로젝트 이름");
@@ -581,7 +581,7 @@ test("프로젝트 머리 카드 이름을 두 번 누르면 입력칸이 되고
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("프로젝트 머리 카드 이름에서 F2를 누르면 입력칸이 되고, Esc는 부르지 않는다", async ({ page }) => {
+test("프로젝트 머리 줄 이름에서 F2를 누르면 입력칸이 되고, Esc는 부르지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
   const name = 머리이름(page, project.name);
@@ -589,7 +589,7 @@ test("프로젝트 머리 카드 이름에서 F2를 누르면 입력칸이 되�
   await name.focus();
   await page.keyboard.press("F2");
 
-  const input = 머리카드(page).getByRole("textbox", { name: "프로젝트 이름", exact: true });
+  const input = 화면머리(page).getByRole("textbox", { name: "프로젝트 이름", exact: true });
   await expect(input).toBeFocused();
   await input.fill("고치다 만 이름");
   await input.press("Escape");
@@ -643,11 +643,11 @@ test("프로젝트 목록 행을 비우고 Enter를 누르면 부르지 않고 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 「그대로면 아무것도 부르지 않는다」는 프로젝트 쪽에서도 잰다 — 저장 길이 둘이라(머리 카드의 `rename` · 목록 행의 `onRenameCommit`)
+// 「그대로면 아무것도 부르지 않는다」는 프로젝트 쪽에서도 잰다 — 저장 길이 둘이라(머리 줄의 `rename` · 목록 행의 `onRenameCommit`)
 // 따로 잇는다. 손대지 않은 채 끝내는 갈래와, 앞뒤 공백만 붙여 지금 이름과 같아진 갈래를 자리마다 하나씩 둔다.
 for (const [where, how, what] of [
-  ["머리 카드", "Enter", "손대지 않은 이름"],
-  ["머리 카드", "다른 곳", "앞뒤 공백만 붙인 지금 이름"],
+  ["머리 줄", "Enter", "손대지 않은 이름"],
+  ["머리 줄", "다른 곳", "앞뒤 공백만 붙인 지금 이름"],
   ["목록 행", "Enter", "앞뒤 공백만 붙인 지금 이름"],
   ["목록 행", "다른 곳", "손대지 않은 이름"],
 ] as const) {
@@ -657,13 +657,13 @@ for (const [where, how, what] of [
     await installFixtureBackend(page);
     await page.goto(`/projects/${project.slug}`);
     const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
-    const target = where === "머리 카드" ? project : otherProject;
-    const input = (where === "머리 카드" ? 머리카드(page) : list).getByRole("textbox", {
+    const target = where === "머리 줄" ? project : otherProject;
+    const input = (where === "머리 줄" ? 화면머리(page) : list).getByRole("textbox", {
       name: "프로젝트 이름",
       exact: true,
     });
 
-    if (where === "머리 카드") await 머리이름(page, project.name).dblclick();
+    if (where === "머리 줄") await 머리이름(page, project.name).dblclick();
     else {
       await list.getByRole("button", { name: `${otherProject.name} ${otherProject.path}`, exact: true }).focus();
       await page.keyboard.press("F2");

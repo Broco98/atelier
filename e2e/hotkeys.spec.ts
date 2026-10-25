@@ -123,8 +123,9 @@ test("메뉴 바 흉내 — 표의 메뉴 바 항목마다 되돌린 keydown이 
     );
   });
   const 메뉴바 = Object.values(표).filter((row) => row.menu !== null);
-  // 앵커: 메뉴 바 항목이 열넷이다(⌘K · ⌘B · ⌘Enter · ⌘T · ⌘J · ⌘1–9) — 표를 못 읽어 빈 목록이면 아래 견줌이 초록이다.
-  expect(메뉴바).toHaveLength(14);
+  // 앵커: 메뉴 바 항목이 열다섯이다(⌘K · ⌘N · ⌘B · ⌘Enter · ⌘T · ⌘J · ⌘1–9 — ⌘N은 02 티켓 04의 View ▸ New Thread) — 표를 못 읽어 빈
+  // 목록이면 아래 견줌이 초록이다.
+  expect(메뉴바).toHaveLength(15);
   for (const row of 메뉴바) await fireEvent(page, "hotkey:menu", row.code);
 
   const 받은것 = await page.evaluate(() => (window as unknown as { __키: string[] }).__키);

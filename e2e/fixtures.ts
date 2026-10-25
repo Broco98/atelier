@@ -1015,7 +1015,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
   // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
   update_project: null,
-  // 프로젝트 메뉴(목록 행 · 머리 카드 이름의 우클릭)의 「Finder에서 열기」와 머리 카드 「폴더 열기」가 나간다(codex-ds 티켓 30 —
+  // 프로젝트 메뉴(목록 행 · 머리 줄 이름의 우클릭)의 「Finder에서 열기」와 머리 줄 「폴더 열기」가 나간다(codex-ds 티켓 30 —
   // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_project_folder: null,
   // 같은 메뉴의 「제거」 — 확인 창을 거친 뒤에 나간다. 답은 비어 있고(코어가 돌려주는 것이 없다), 목록은 그대로 그 프로젝트를
@@ -1056,7 +1056,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // work 메뉴의 「Finder에서 열기」가 나간다(codex-ds 티켓 16 — `works-floating.spec.ts`의 work 메뉴 절). 값은 안 쓰인다 — 탐색기를
   // 여는 것이 일의 전부다. 검사가 보는 것은 나갔는가와 그 인자(slug · 프로젝트)이고, 못 여는 길은 `ipcFailure`로 덮어 잰다.
   open_work_folder: null,
-  // Archive의 「Finder에서 열기」(머리 카드 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
+  // Archive의 「Finder에서 열기」(머리 줄 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
   // `archive-docs.spec.ts`). 위 줄과 한 가족이고 같은 까닭으로 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_archived_spec_folder: null,
   // 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와 무관하다(`WORKS_MOVED`

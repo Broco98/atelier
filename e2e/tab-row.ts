@@ -1,6 +1,6 @@
 import { expect } from "./evidence";
 import type { Page } from "./evidence";
-import { HEAD_CARD, openShell } from "./harness";
+import { SCREEN_HEAD, openShell } from "./harness";
 
 // 탭 줄을 재는 손잡이 — `terminal-tabs.spec.ts`(좁은 창의 줄)와 `tab-order.spec.ts`(끄는 동안의
 // 줄)가 **같은 측정**으로 `spill ≤ 0`을 든다. 스펙 파일끼리는 import할 수 없어(Playwright가
@@ -24,21 +24,22 @@ export const SQUEEZED_SIDEBAR = 300;
  * 바닥까지 눌린 상자를 지키는 장치(카드 · 열의 `min-w-min` · 상자의 `min-w-[44px]` · 끄는 동안 가장자리 구르기)는 그대로라, 그
  * 상자를 재는 검사는 사이드바를 넓혀 두고 이 폭에서 잰다.
  *
- * **수가 아니라 상자로 잰다.** 줄의 바닥에는 글자가 든다 — `spec` 탭과 머리 카드 할 일(상태 배지)의 글자가 시스템 글꼴이라
+ * **수가 아니라 상자로 잰다.** 줄의 바닥에는 글자가 든다 — `spec` 탭의 글자가 시스템 글꼴이라
  * OS마다 폭이 다르다(codex-ds 결정 3). 한때 여기는 660이라는 수였는데(그때의 번들 글꼴로 잰 바닥 약 345), 바닥이 그 수와 갈리면
  * 사이드바가 안 눌리거나 최소 폭까지 눌려 이 폭을 딛는 검사가 다른 것을 잰다. 그래서 지금 화면의 바닥을 재서 창 폭을 낸다 — 틀의
- * 뿌리를 한 번 제 min-content 폭으로 세워 읽고 되돌린다. 그 폭이 뿌리의 `min-w-min`이 사이드바에게 요구하는 바로 그 값이다(머리 줄과
- * 아래 줄 — 본문 열의 바닥, 레일 열이 서면 그 폭까지 — 가운데 큰 쪽).
+ * 뿌리를 한 번 제 min-content 폭으로 세워 읽고 되돌린다. 그 폭이 뿌리의 `min-w-min`이 사이드바에게 요구하는 바로 그 값이다(본문 열의
+ * 바닥, 레일 열이 서면 그 폭까지).
  *
  * 화면을 연 **뒤에**, 창이 넉넉한 채로 부른다 — 바닥은 그 화면의 줄이 정하고, 사이드바 · 틀 뿌리 말고 줄에 선 것의 폭(지금은 없다)은
  * 넘침 없는 배치에서 읽는다.
  */
 export async function squeezedWidth(page: Page): Promise<number> {
   const { floor, rest } = await page.evaluate(() => {
-    // 틀의 뿌리 — 머리 줄(문서의 `header`)과 그 아래 줄(본문 열 · 레일 열)을 이는 세로 상자다(`Frame`). 그 min-content가 탭 줄의
-    // 바닥이다 — 탭 줄을 이는 카드의 바닥과 카드 줄의 다른 칸(열린 작업 패널의 최소 폭)을 더한 본문 열의 바닥이다(레일 열이 서면 그
-    // 폭도 더한다 — `panel-layout`의 `TAB_ROW_COLUMN`). 머리 줄의 바닥(머리 카드의 할 일 — 패널 토글까지)은 그보다 좁다.
-    const column = document.querySelector("header")!.parentElement!;
+    // 틀의 뿌리 — 흰 판 안 사이드바 오른쪽의 상자(`Frame`의 칸 줄 · 레일 열을 이는 가로 상자)다. 그 min-content가 탭 줄의 바닥이다 — 탭
+    // 줄을 이는 칸의 바닥과 칸 줄의 다른 칸(열린 작업 패널의 최소 폭)을 더한 본문 열의 바닥이다(레일 열이 서면 그 폭도 더한다 —
+    // `panel-layout`의 `TAB_ROW_COLUMN`). 머리 줄은 판 위 크롬의 창 전폭 줄이라(02 구현 스펙 §3) 이 바닥에 들지 않는다 — 머리 줄의 할 일
+    // 묶음이 눌리지 않는지는 `rowOf`의 `workActions`가 따로 잰다. 판의 띄움(양옆 5)과 테두리는 `rest`에 든다.
+    const column = document.querySelector('[data-slot="panel"]')!.lastElementChild as HTMLElement;
     const now = column.getBoundingClientRect().width;
     const sidebar = document.querySelector("aside")!.getBoundingClientRect().width;
     const style = column.getAttribute("style");
@@ -77,16 +78,16 @@ export interface Row {
   mark: { width: number; over: number } | null;
   /**
    * 오른쪽 끝 조작 묶음(`data-tab-actions`) — 폭과, 줄 밖으로 밀려난 양. 조작이 있는 줄은 분할의 터미널 열(그 열을 닫는 `×`)뿐이고,
-   * 그 밖의 줄에는 묶음이 없어 `null`이다(상태 · ⋯ · 분할은 머리 카드에 선다).
+   * 그 밖의 줄에는 묶음이 없어 `null`이다(상태 · ⋯ · 분할은 머리 줄에 선다).
    */
   actions: { width: number; over: number } | null;
   /**
-   * 작업 화면 머리 카드 오른쪽의 할 일 | 보기 배치 묶음 — 상태 배지 · ⋯ | 분할(`data-head-actions` — `Frame`의 `HeadCard`, 패널
-   * 토글은 레일이 서서 이 묶음이 아니라 카드 밖 레일 열 위다). 탭 줄을 재는 같은 순간에 잰다 — 줄이 바닥에 닿아 틀이 넓어지는
-   * 바로 그 폭에서 이 묶음이 밀려나거나 눌릴 수 있어서다. 그 묶음이 없는 화면(`/terminal` — 머리 카드가 이름만 든다)은 `null`이다.
+   * 작업 화면 머리 줄 오른쪽 끝의 할 일 | 보기 배치 묶음 — 상태 배지 · ⋯ | 분할 · 패널 토글(`data-head-actions` — `ShellHead`의 `HeadEnd`).
+   * 탭 줄을 재는 같은 순간에 잰다 — 줄이 바닥에 닿아 틀이 넓어지는 바로 그 폭에서 창이 좁아 이 묶음이 밀려나거나 눌릴 수 있어서다. 그
+   * 묶음이 없는 화면(`/terminal` — 머리 줄에 이름만 선다)은 `null`이다.
    * - `width` — 그려진 폭. `natural` — 제 max-content 폭(그 순간 한 번 세워 읽고 되돌린다). 둘이 같아야 「안 눌렸다」다.
-   * - `over` — 머리 카드의 안쪽 오른쪽 끝(오른쪽 안쪽 여백 앞)을 넘은 양. `outside` — 창 오른쪽 끝을 넘은 양. 둘 다 **0 이하여야
-   *   한다**. 뿌리가 스크롤하지 않아(`pageSpill`이 0이어도) 창 밖으로 밀린 조작은 이 값으로만 드러난다.
+   * - `over` — 머리 줄 화면 자리의 안쪽 오른쪽 끝(오른쪽 안쪽 여백 앞)을 넘은 양. `outside` — 창 오른쪽 끝을 넘은 양. 둘 다 **0
+   *   이하여야 한다**. 뿌리가 스크롤하지 않아(`pageSpill`이 0이어도) 창 밖으로 밀린 조작은 이 값으로만 드러난다.
    */
   workActions: { width: number; natural: number; over: number; outside: number } | null;
 }
@@ -146,7 +147,7 @@ export async function rowOf(page: Page): Promise<Row> {
         outside: workBox.right - document.documentElement.clientWidth,
       },
     };
-  }, HEAD_CARD);
+  }, SCREEN_HEAD);
 }
 
 /**
