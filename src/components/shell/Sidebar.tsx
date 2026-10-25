@@ -37,7 +37,7 @@ import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-sto
 import ProcessesNavMeta, { useProcessesNavMeta } from "@/features/processes/ProcessesNavMeta";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
 import { AttentionBand, type BandItem } from "./attention-band";
-import { foldingInnerClass, PANEL_MOTION, SIDEBAR_ID, useFoldedFocus } from "./panel-layout";
+import { foldingInnerClass, SIDEBAR_ID, SIDEBAR_MOTION, useFoldedFocus } from "./panel-layout";
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { initialOf, usePersonName } from "./person";
 import { ShellMeta } from "./shell-meta";
@@ -330,7 +330,7 @@ function SidebarFrame({
         // 바닥 사람 줄(36)이 판 아래끝에서 떨어지는 값이다(시안 F1-Home `.sb-foot`).
         className={cn(
           "flex h-full w-(--sidebar-width) flex-col pt-3 pb-2",
-          foldingInnerClass(open),
+          foldingInnerClass(open, "sidebar"),
         )}
       >
         {children}
@@ -358,8 +358,9 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 바탕을 칠하는 까닭은 하나 더 있다: 투명이면 대비를 재는 e2e가 `aside`의 바탕을 `rgba(0,0,0,0)`으로 읽는다(`works-sidebar.spec.ts`).
     "relative overflow-hidden bg-surface-sidebar after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-[0.5px] after:bg-border-heavy",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-    // 곡선은 --ease-panel — 폭이 움직이는 칸(사이드바 · 작업 패널 · 목록 칸)이 같은 값을 읽는다 (index.css)
-    !dragging && PANEL_MOTION,
+    // 박자는 Codex 사이드바의 spring(.3s · `ease-spring` — 02 구현 스펙 §12)이다 — 내용은 그대로 둔 채(안쪽 고정 폭) 잘리며 옅어진다.
+    // 머리 줄의 왼쪽 칸(`ShellHead`)이 같은 박자로 사이드바 끝을 따른다(`panel-layout`의 `SIDEBAR_MOTION`).
+    !dragging && SIDEBAR_MOTION,
     !dragging && (open ? "transition-[width,min-width]" : "transition-[width]"),
     open ? "w-(--sidebar-width) min-w-(--sidebar-min)" : "w-0 min-w-0",
   );

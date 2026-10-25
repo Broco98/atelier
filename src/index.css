@@ -343,16 +343,12 @@
     --transition-duration-relaxed: var(--duration-relaxed);
     --transition-duration-chip: var(--duration-chip);
     --transition-duration-dropdown: var(--duration-dropdown);
-    --transition-duration-word: var(--duration-word);
     --transition-duration-pulse: var(--duration-pulse);
     --transition-duration-tip: var(--duration-tip);
     --transition-duration-peek-close: var(--duration-peek-close);
     --transition-duration-panel: var(--duration-panel);
     --transition-duration-card: var(--duration-card);
-    --transition-duration-join: var(--duration-join);
-    --transition-duration-log: var(--duration-log);
     --transition-duration-swap: var(--duration-swap);
-    --transition-duration-button: var(--duration-button);
     --transition-duration-jump: var(--duration-jump);
     --transition-duration-flash: var(--duration-flash);
     --transition-duration-shimmer: var(--duration-shimmer);
@@ -362,23 +358,16 @@
     --transition-duration-arrive: var(--duration-arrive);
     --transition-duration-wave: var(--duration-wave);
     --transition-duration-morph: var(--duration-morph);
-    /* **메뉴 카드의 들고남**(`animate-menu-enter` · `animate-menu-exit`, DS 「움직임」의 메뉴 값). tw-animate의 `animate-in` ·
-       `animate-out`을 쓰지 않는다 — 그 키프레임(`enter` · `exit`)은 늘 `filter: blur(…)`도 움직이고, 그것이 `ease-enter-snappy`
-       곡선과 만나면 리눅스 WebKit(CI의 L3 WebKitGTK)의 웹 프로세스가 죽는다. 그래서 불투명도 · 크기만 움직이는 키프레임을 따로
-       둔다. 뜰 때는 30ms 지연 동안 첫 장면(투명 · 0.98)에 머물고(`backwards`), 닫힐 때는 사라진 장면을 붙들지 않는다. */
+    /* **모델 피커가 커지며 뜬다**(`animate-menu-enter` — 02 구현 스펙 §12 · Codex 모델 피커 .32s · cubic-bezier(.23,1,.32,1) · 30ms ·
+       .98 → 1). 앱의 다른 메뉴 · 팝오버 · 툴팁 · 다이얼로그는 움직이지 않는다 — 한 프레임에 서고 곧바로 걷힌다(Codex, 02 티켓 12가 그
+       움직임과 닫힘의 `animate-menu-exit`를 걷었다). tw-animate의 `animate-in`을 쓰지 않는다 — 그 키프레임(`enter`)은 늘
+       `filter: blur(…)`도 움직이고, 그것이 `ease-enter-snappy` 곡선과 만나면 리눅스 WebKit(CI의 L3 WebKitGTK)의 웹 프로세스가 죽는다.
+       그래서 불투명도 · 크기만 움직이는 키프레임을 따로 둔다. 30ms 늦는 동안 첫 장면(투명 · 0.98)에 머문다(`backwards`). */
     --animate-menu-enter: menu-enter var(--duration-dropdown) var(--ease-enter-snappy) 30ms backwards;
-    --animate-menu-exit: menu-exit var(--duration-basic) var(--ease-exit);
 }
 
 @keyframes menu-enter {
     from {
-        opacity: 0;
-        transform: scale(0.98);
-    }
-}
-
-@keyframes menu-exit {
-    to {
         opacity: 0;
         transform: scale(0.98);
     }
@@ -591,21 +580,21 @@
    - **크기 `--size-*`** — 역시 Tailwind 이름공간이라 `size-control`(28 정사각)처럼 너비 · 높이를 함께 정하는 유틸리티가 된다.
      한 축만 정하는 자리는 `h-(--size-head)` · `w-(--size-menu)`로 읽는다. `head`부터 아래는 Atelier가 더한 것이다(DS 「간격 ·
      반경 · 크기」).
-   - **모션 보드의 토큰**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 「모션 토큰」 표). 표의 열두 줄이 시간 하나 ·
-     곡선 하나로 선다. DS에 같은 이름 · 같은 값이 이미 있는 셋(단어 도착 `word` · 칩 나타남 `chip` · 세 점 `pulse`)은 그 토큰이고,
-     보드의 가감속(.4,0,.2,1)은 DS `ease-default`와 같은 값이다. 나머지는 보드가 더한 것이다 — 시간 아홉(`card` 승인 카드 ·
-     `join` Agent 참여 · `log` 로그 펼침 · `swap` 줄 바뀜 · `button` 버튼 바뀜 · `jump` 아래로 버튼 · `flash` 문서 강조 ·
-     `shimmer` 반짝임 · `spin` 회전)과 보드의 감속 곡선 `ease-settle`(.2,.8,.2,1 — 제자리에 내려앉는다), 표의 「사이」 셋
-     (`--stagger-*` — 단어 사이 70 · 로그 줄마다 40 · 점마다 150). 이 이름들을 읽는 움직임은 파일 끝 「Thread의 움직임」에 모여
-     있다.
+   - **모션 보드의 토큰**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 「모션 토큰」 표). 표의 줄이 시간 하나 ·
+     곡선 하나로 선다. DS에 같은 이름 · 같은 값이 이미 있는 둘(칩 나타남 `chip` · 세 점 `pulse` — 지금은 Work 카드의 쓰는 중 점)은 그
+     토큰이고, 보드의 가감속(.4,0,.2,1)은 DS `ease-default`와 같은 값이다. 나머지는 보드가 더한 것이다 — 시간 여섯(`card` 승인 카드 ·
+     `swap` 줄 바뀜 · `jump` 아래로 버튼 · `flash` 문서 강조 · `shimmer` 반짝임 · `spin` 회전)과 보드의 감속 곡선
+     `ease-settle`(.2,.8,.2,1 — 제자리에 내려앉는다). 02가 Codex 값으로 바꾼 줄(단어 도착 `word` · 로그 펼침 `log` · 버튼 바뀜
+     `button`, 「사이」 셋 `--stagger-word` · `-log` · `-dot`)은 읽는 곳이 없어 02 티켓 12가 걷었다 — 아래 「Codex 움직임」이 대신한다.
+     Agent 참여(`join` · `pop-in`)도 부르던 자리(머리 줄의 참여자 얼굴 · 목록 줄의 내 차례 점)가 02에서 걷혀(S14 · 티켓 05) 함께 걷었다.
+     이 이름들을 읽는 움직임은 파일 끝 「Thread의 움직임」에 모여 있다.
    - **Codex 움직임**(02 구현 스펙 §12 · 캔버스 v35 Diff-Tokens 「움직임」 · Motion 보드 · 티켓 01). Codex 번들의 값이다. 스펙 §12의 줄과
      토큰은 아래와 같고, 지금 토큰과 같은 값인 줄은 그 토큰을 쓴다(새 이름을 세우지 않는다). 움직임 자체 — 키프레임 · 유틸리티 · 파일 끝
-     동작 줄이기 블록의 갈래 — 는 그것을 그리는 티켓이 짓는다(괄호 안).
-       메뉴 · 팝오버          움직이지 않는다. 모델 피커만 `duration-dropdown` · `ease-enter-snappy` · 30ms · .98배에서(= 지금 `animate-menu-enter`)(12)
-       툴팁                    `delay-tip`(200) · 움직임 없음. 지금 툴팁이 읽는 `--duration-tip`(150)은 호버 카드(`hover-group.ts`)도 읽어
-                               그대로 둔다 — 툴팁이 새 이름으로 옮긴다(12)
+     동작 줄이기 블록의 갈래 — 는 그것을 그리는 티켓이 지었다(괄호 안).
+       메뉴 · 팝오버 · 다이얼로그  움직이지 않는다. 모델 피커만 `duration-dropdown` · `ease-enter-snappy` · 30ms · .98배에서(`animate-menu-enter`)(12)
+       툴팁                    `delay-tip`(200) · 움직임 없음. 같은 무리의 호버 카드(`hover-group.ts`)는 `--duration-tip`(150) 그대로다(12)
        사이드바 열고 닫기      `duration-sidebar`(.3s) · `ease-spring` — spring {duration .3, bounce .1}을 옮긴 `linear()`(Motion 보드 `--cx-spring`).
-                               지금 사이드바가 읽는 `PANEL_MOTION`(`duration-panel` · `ease-panel`)은 작업 패널 · 셸 컨트롤도 읽어 그대로 둔다(12)
+                               사이드바 · 머리 줄 왼쪽 칸이 `SIDEBAR_MOTION`으로 읽는다. 작업 패널은 `PANEL_MOTION` 그대로다(12)
        요약 카드 비켜나기      `duration-panel` · `ease-panel`(07)
        펼침 · 접힘             `duration-relaxed` · `ease-enter` — 높이 0 → auto + 투명도. 꺾쇠 회전도 .3s(09)
        생각 중                 `duration-think`(4s 한 바퀴 — 띠는 첫 25%인 1s에 지나가고 쉰다) · `delay-think`(보인 뒤 600ms) · `ease-shimmer`
@@ -623,16 +612,12 @@
     --duration-relaxed: 300ms;
     --duration-chip: 280ms;
     --duration-dropdown: 320ms;
-    --duration-word: 500ms;
     --duration-pulse: 1250ms;
     --duration-tip: 150ms;
     --duration-peek-close: 200ms;
     --duration-panel: 220ms;
     --duration-card: 320ms;
-    --duration-join: 360ms;
-    --duration-log: 240ms;
     --duration-swap: 200ms;
-    --duration-button: 160ms;
     --duration-jump: 180ms;
     --duration-flash: 1600ms;
     --duration-shimmer: 2000ms;
@@ -643,9 +628,6 @@
     --duration-wave: 1000ms;
     --duration-morph: 520ms;
 
-    --stagger-word: 70ms;
-    --stagger-log: 40ms;
-    --stagger-dot: 150ms;
     --stagger-wave: 100ms;
     --delay-think: 600ms;
     --delay-tip: 200ms;
@@ -1787,37 +1769,41 @@ body[data-palette-open] [data-scrollbar] {
    색 · 반경 `bubble` · `composer` · 그림자 `composer` · 크기 `size-thread`) 그 범위를 걷고 같은 값의 전역 이름으로 옮겼다 — 다크도
    따라온다.
 
-   **Thread의 움직임**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드). 보드의 열두 움직임이 여기 모인다. 시간 · 곡선은 위
-   `@theme static`의 모션 보드 토큰이고, 유틸리티마다 그 이름을 읽는다 — 글자로 적은 시간이 없다(`tokens.test.ts`가 잰다).
+   **Thread의 움직임**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 · 02 구현 스펙 §12 · 캔버스 v35 Motion 보드). 보드의
+   움직임이 여기 모인다 — 02가 Codex 값으로 바꾼 줄은 「02 §12」다. 시간 · 곡선은 위 `@theme static`의 모션 보드 · Codex 토큰이고, 유틸리티마다 그 이름을 읽는다 — 글자로 적은 시간이 없다(`tokens.test.ts`가 잰다).
 
      보드 이름     유틸리티                       토큰 · 모양                    거는 자리
-     단어 도착     word-in                        word · settle · 사이 70        흐르는 답의 새 낱말(`ThreadMarkdown`)
+     답 글자 도착  word-in                        arrive · arrive · 늦음 없음    흐르는 답의 새 낱말(`ThreadMarkdown`, 02 §12)
+     흐르는 끝     stream-tail                    stream-fade 240 · 가림         흐르는 답의 마지막 글덩이(02 §12)
      칩 나타남     chip-in                        chip · enter-snappy · 튐       입력창의 멘션 칠 · 첨부 · 인용 · 기다리는 말, 흐름의 결정 줄
      승인 카드     card-rise                      card · settle · 아래 12에서    입력창 자리의 카드(승인 · 질문 · Work 만들기 · Project · 결정은 내가)
-     Agent 참여    pop-in                         join · settle · 1.1배까지 튐   머리 줄의 새 참여자 얼굴, 목록 줄의 내 차례 점
      펼침 · 접힘   unfold                         relaxed · enter · 높이와 옅음  작업 구분선을 펼친 줄들 · 도구 줄의 안 · 묶음 줄의 줄들(02 §12)
      줄 바뀜       row-in                         swap · settle · 아래 4에서     끝난 도구 줄 · 작업 머리줄 · 시스템 줄 · 답하는 중 · 돌아온 입력창 ·
                                                                                  목록 줄의 상태 칸
      보내기 모핑   morph-in · morph-out           morph · default · .6배         보내기 원의 글리프 ↑ · 스피너 · ■(면 색 · 옅음은 `duration-morph ease-default`)
      아래로 버튼   jump-in                        jump · settle · 아래 6에서     「맨 아래로」
      문서 강조     row-flash · `[data-doc-flash]`  flash · default · 30% 머묾    요약 카드의 새로 바뀐 줄 · 막 쓴 문서 줄 · 넓힌 카드 문서의 바뀐 줄
-     반짝임        chat-shimmer                   shimmer · 일정                 「생각 중」 · 도는 도구 줄 · 「N초 동안 작업 중입니다」
-     세 점         typing-dots                    pulse · default · 점마다 150   「답하는 중」
+     반짝임        chat-shimmer                   shimmer · shimmer · 흰 띠      도는 도구 줄 · 「N초 동안 작업 중입니다」 · 호출 줄 · 「CI 확인 중」(02 §12)
+     생각 중       think-shimmer                  think · shimmer · 600ms 뒤     「생각 중」(02 §12)
+     작업 중 점    typing-dots                    wave · wave · 점마다 .1s       입력창 위 원 · 「답하는 중」(02 §12)
      회전          spin-thread                    spin · 일정                    Thread 줄의 「작업 중」 `Spinner`
 
    - **움직임은 상태가 바뀐 그 자리에서만 일어난다**(보드 머리말). 들고 서는 움직임은 화면이 선 뒤에 새로 선 것에만 단다 — Thread를 열
      때 이미 있던 줄 · 카드는 움직이지 않는다(`features/thread/arrival.tsx`). 들 때만 움직이고 날 때는 곧바로 걷힌다.
    - **흐림(`blur`)은 쓰지 않는다.** 보드의 단어 도착은 흐림 3px에서 또렷해지지만 그 길은 리눅스 WebKit의 웹 프로세스를 죽인다(위
      `menu-enter` 머리말). 불투명도 · 자리 · 크기만 움직인다.
-   - **동작 줄이기에서는 모두 멈춘 모양이다** — 들고 서는 것은 곧바로 서고, 반짝임은 흐린 글자, 세 점은 멎은 옅은 점, 회전은 원이다(보드
-     「모션 토큰」 머리말). 그 갈래는 유틸리티마다 파일 맨 끝의 동작 줄이기 블록 한 곳에 적는다.
-   - 요약 카드 소스의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — 기다리는 동안의 반복인 세 점의 박자를 쓴다.
+   - **동작 줄이기에서는 모두 멈춘 모양이다** — 들고 서는 것은 곧바로 서고, 반짝임 · 생각 중은 띠 없는 글자, 작업 중 점은 멎은 점,
+     흐르는 답은 끝이 옅지 않고, 회전은 원이다(보드 「모션 토큰」 머리말 · 02 §12 「띠 · 점 · 페이드 없이」). 그 갈래는 유틸리티마다 파일 맨 끝의 동작 줄이기 블록 한 곳에 적는다.
+   - 요약 카드 소스의 쓰는 중 점(`writing-pulse`, v1 티켓 34)은 보드에 없는 반복이다 — v1 세 점의 박자(`duration-pulse`)를 그대로 쓴다.
    - 넓힌 카드(v1 티켓 35)의 보기는 모션 보드가 아니라 패널 박자다(`view-in` — `duration-panel` · `ease-panel`). 카드가 넓어지는 그
      때 사이드바가 같은 박자로 접힌다. */
 
-/* **반짝임**(보드 「반짝임」 2s · 일정 · 반복 — 캔버스 `.cx-shimmer`) — 옅은 글자 위로 진한 띠가 지나간다. WebKit은 `-webkit-background-clip`과
+/* **반짝임**(02 구현 스펙 §12 「작업 중」 · Motion 보드 「도는 도구 줄 반짝임」 · Screen-Live `.working` — Codex `.loading-shimmer`) — 옅은
+   글자 위로 흰 띠(`shimmer-band`, 흰 75%)가 지나가며 글자를 **밝게 바래게** 한다. 2s(`duration-shimmer`) `steps(48)`(`ease-shimmer`)로
+   쉬지 않고 되풀이한다 — 「N초 동안 작업 중입니다」 · 도는 도구 줄 · 호출 줄 · 요약 카드의 「CI 확인 중」이다. v1의 진한 띠(`fg`) · 2s linear를
+   바꿨다(02 티켓 12). 띠는 글자 폭의 절반 그림이고 −100%(왼쪽 밖)에서 250%(오른쪽 밖)로 지나간다. WebKit은 `-webkit-background-clip`과
    `-webkit-text-fill-color`가 함께 있어야 글자 모양으로 잘린다. 동작을 줄여 둔 사람에게는 띠 없는 옅은 글자다 — 애니메이션만 끄면 띠가
-   글자 한 자리에 굳어 진한 얼룩으로 남는다. */
+   글자 한 자리에 굳어 얼룩으로 남는다. */
 @keyframes chat-shimmer {
     0% {
         background-position: -100% 0;
@@ -1828,68 +1814,107 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility chat-shimmer {
     width: fit-content;
-    /* 바탕의 옅은 글자 — 「생각 중」은 `fg-tertiary`, 도는 도구 줄은 `fg-tool-running`(부르는 자리가 `--chat-shimmer-dim`으로 준다 —
-       DS `.at-shimmer` · `.at-shimmer.tool`) */
+    /* 바탕의 옅은 글자 — 기본은 `fg-tertiary`이고, 부르는 자리가 `--chat-shimmer-dim`으로 바꿀 수 있다(DS `.at-shimmer` · `.at-shimmer.tool`) */
     background: var(--chat-shimmer-dim, var(--fg-tertiary))
-        linear-gradient(
-            to left,
-            var(--chat-shimmer-dim, var(--fg-tertiary)),
-            var(--fg) 50%,
-            var(--chat-shimmer-dim, var(--fg-tertiary))
-        )
-        no-repeat;
+        linear-gradient(90deg, transparent, var(--shimmer-band) 50%, transparent) no-repeat;
     background-size: 50% 200%;
+    background-position: -100% 0;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: chat-shimmer var(--duration-shimmer) linear infinite;
+    animation: chat-shimmer var(--duration-shimmer) var(--ease-shimmer) infinite;
 }
 
-/* **단어 도착**(보드 「단어 도착」 500ms · 감속 · 단어 사이 70ms, v1 티켓 05 · 캔버스 Messages 보드 「스트리밍」). 도착한 낱말은 옅었다가
-   선명해진다(흐림은 쓰지 않는다 — 섹션 머리말). 한 번에 온 낱말들은 앞 낱말보다 `stagger-word`씩 늦게 선다 — 그 늦음은 낱말마다
-   `--word-delay`로 받는다(`ThreadMarkdown`이 `motion.ts`의 `wordClock`으로 센다). 「답하는 중」의 세 점은 아래 `typing-dots`다. */
+/* **생각 중**(02 구현 스펙 §12 · 스토리 98 · Motion 보드 「생각 중 반짝임」 · Screen-Live 단계 2 — Codex cadenced shimmer). 글자는
+   `fg-thinking`(#aeaeae)이고, 흰 띠(`shimmer-band`)가 글자를 밝게 바래게 하며 **한 번** 지나간다 — 보인 뒤 600ms(`delay-think`)에 첫 띠,
+   그 뒤 4s(`duration-think`)마다. 한 바퀴의 첫 25%(1s)에만 지나가고 나머지는 쉰다 — `steps(48)`(`ease-shimmer`)은 키프레임 구간마다
+   걸리므로 지나가는 1s가 48칸이고 쉬는 구간은 값이 같아 멎어 있다. Codex는 띠를 마스크 낀 겹 글자로 그리지만 여기서는 반짝임과 같은
+   글자 모양 바탕으로 그린다(띠 폭은 근사 — Motion 보드 「띠 폭은 근사」). v1의 쉬지 않는 2s linear · 진한 띠를 바꿨다(02 티켓 12). 동작을
+   줄여 둔 사람에게는 띠 없는 `fg-thinking` 글자다. */
+@keyframes think-sweep {
+    0% {
+        background-position: -100% 0;
+    }
+    25%,
+    to {
+        background-position: 250% 0;
+    }
+}
+@utility think-shimmer {
+    width: fit-content;
+    background: var(--fg-thinking) linear-gradient(90deg, transparent, var(--shimmer-band) 50%, transparent) no-repeat;
+    background-size: 50% 200%;
+    background-position: -100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: think-sweep var(--duration-think) var(--ease-shimmer) var(--delay-think) infinite;
+}
+
+/* **답 글자 도착**(02 구현 스펙 §12 · 스토리 99 · Motion 보드 「답 글자 등장」 · Screen-Live `.seg` — Codex `_fade-in`의 흐르는 동안 값).
+   흐르는 답에 새로 온 조각은 옅음에서 .7s(`duration-arrive`) `ease-arrive`로 또렷해진다. **조각 사이 늦음은 없다** — 한 번에 온 낱말들은
+   함께 선다(`ThreadMarkdown`이 새 낱말을 감싼다). v1의 낱말마다 500ms · 70ms씩 늦던 도착을 바꿨다(02 티켓 12). 흐림은 쓰지 않는다(섹션
+   머리말). 흐르는 동안 끝 240px이 옅은 것은 아래 `stream-tail`이다. */
 @keyframes word-in {
     from {
         opacity: 0;
     }
 }
 @utility word-in {
-    animation: word-in var(--duration-word) var(--ease-settle) var(--word-delay, 0s) both;
+    animation: word-in var(--duration-arrive) var(--ease-arrive) both;
 }
 
-/* **「답하는 중」의 세 점**(보드 「세 점」 1.25s · 가감속 · 점마다 150ms · 반복, v1 티켓 14 · 캔버스 Messages 보드). 4 점 셋이 3 사이로 서고,
-   차례로 옅은 자리(35%)에서 떠올라 2 올라섰다 내려온다. 동작을 줄여 둔 사람에게는 멎은 옅은 점 셋이다. 점은 `<i>` 셋이다 — 그림이라
-   숨고, 곁의 문장이 말한다. */
-@keyframes typing-dot {
-    0%,
-    60%,
-    to {
-        opacity: 0.35;
+/* **흐르는 답의 끝**(02 구현 스펙 §12 · Screen-Live 단계 5 `.tail` · research `codex-ui/gui.md` 「끝 약 240pt 구간이 … 아주 옅은 회색으로
+   그라데이션 페이드」). 흐르는 동안 마지막 글덩이의 줄 상자(`ThreadMarkdown`이 단다)에 가로 가림을 건다 — 줄 상자의 그림은 여러 줄을
+   한 줄로 이은 띠에 놓이므로(`box-decoration-break: slice`, 기본) 「끝 `--size-stream-fade`(240)」는 글이 흐르는 끝, 곧 마지막 줄의 꼬리다.
+   가림의 끝은 18% — 본문 글자(#1a1c1f)가 시안의 옅은 회색 #d6d6d6이 되는 값이다. 다 흐르면 감싸지 않는다. 동작을 줄여 둔 사람에게는
+   페이드가 없다. */
+@utility stream-tail {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--size-stream-fade)), rgb(0 0 0 / 0.18));
+    mask-image: linear-gradient(90deg, #000 calc(100% - var(--size-stream-fade)), rgb(0 0 0 / 0.18));
+}
+
+/* **작업 중 점**(02 구현 스펙 §12 · Motion 보드 「작업 중 점」 · Screen-Live `.dot` — Codex `_typing-dot-wave`). 4 점 셋이 4 사이로 서서
+   파도친다 — 1s(`duration-wave`) `steps(3)`(`ease-wave`)로 +1.2px 내려갔다 −2px 오르고 제자리에 서며, 점마다 .1s(`stagger-wave`) 늦다.
+   +1.2로 내려가는 구간만 Codex 그대로 `steps(6)`이다. 점 색은 놓인 자리의 글자색이다 — 입력창 위 원 안은 2단계(70% — Codex `bg-text/70`),
+   「답하는 중」 줄은 그 줄의 3단계 글자다. v1의 1.25s 가감속 · 옅음 .35 → 1 · 점마다 150ms를 바꿨다(02 티켓 12). 점은 `<i>` 셋이다 —
+   그림이라 숨고, 곁의 문장 · 원의 이름이 말한다. 동작을 줄여 둔 사람에게는 멎은 점 셋이다. */
+@keyframes typing-wave {
+    0% {
         transform: none;
     }
-    30% {
-        opacity: 1;
+    10% {
+        transform: none;
+        animation-timing-function: steps(6, end);
+    }
+    25% {
+        transform: translateY(1.2px);
+    }
+    55% {
         transform: translateY(-2px);
+    }
+    70%,
+    to {
+        transform: none;
     }
 }
 @utility typing-dots {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
     height: 20px;
     & > i {
         width: 4px;
         height: 4px;
-        border-radius: 2px;
-        background: var(--fg-tertiary);
-        opacity: 0.35;
-        animation: typing-dot var(--duration-pulse) var(--ease-default) infinite;
+        border-radius: 50%;
+        background: currentColor;
+        animation: typing-wave var(--duration-wave) var(--ease-wave) infinite;
     }
     & > i:nth-child(2) {
-        animation-delay: var(--stagger-dot);
+        animation-delay: var(--stagger-wave);
     }
     & > i:nth-child(3) {
-        animation-delay: calc(var(--stagger-dot) * 2);
+        animation-delay: calc(var(--stagger-wave) * 2);
     }
 }
 
@@ -1925,26 +1950,6 @@ body[data-palette-open] [data-scrollbar] {
 }
 @utility card-rise {
     animation: card-rise var(--duration-card) var(--ease-settle) both;
-}
-
-/* **Agent 참여**(보드 「Agent 참여」 360ms · 감속 · 1.1배까지 튐) — 새 얼굴이 0.4배에서 1.1배까지 커졌다 제자리다. 목록 줄의 내 차례 점도
-   같은 튐이다(보드 「목록 상태 바뀜」 · 점 360ms, v1 티켓 41). */
-@keyframes pop-in {
-    0% {
-        opacity: 0;
-        transform: scale(0.4);
-    }
-    60% {
-        opacity: 1;
-        transform: scale(1.1);
-    }
-    to {
-        opacity: 1;
-        transform: none;
-    }
-}
-@utility pop-in {
-    animation: pop-in var(--duration-join) var(--ease-settle) both;
 }
 
 /* **펼침 · 접힘**(02 구현 스펙 §12 · Motion 보드 「작업 묶음 펼침」 — Codex 높이 0 → auto와 투명도를 함께 .3s cubic-bezier(.19,1,.22,1)).
@@ -2059,8 +2064,8 @@ body[data-palette-open] [data-scrollbar] {
     animation: doc-flash var(--duration-flash) var(--ease-default);
 }
 
-/* **요약 카드 소스의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 세 점의
-   것이다(섹션 머리말). 동작을 줄여 둔 사람에게는 멎은 점이다. */
+/* **요약 카드 소스의 쓰는 중 점**(v1 티켓 34 · 캔버스 WorkPanel 보드 `.pulse`) — 쓰는 중인 문서 옆의 파란 점이 옅어졌다 돌아온다. 박자는 v1 세 점의
+   것(`duration-pulse`)이다(섹션 머리말). 동작을 줄여 둔 사람에게는 멎은 점이다. */
 @keyframes writing-pulse {
     50% {
         opacity: 0.3;
@@ -2135,9 +2140,9 @@ body[data-palette-open] [data-scrollbar] {
     }
 
     /* **shadcn 부품의 움직임도 여기 한 곳에서 끈다**(결정 7) — 부품 파일마다 적으면 부품이 늘
-       때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 모두 `data-open`·
-       `data-closed`에서 `animate-in`·`animate-out`(메뉴 카드는 `animate-menu-*`) 키프레임으로 움직이고, 그 요소에는 늘
-       `data-slot`이 있다. 이 블록은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
+       때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 이제 움직이지 않고(02 티켓 12 — Codex), 남은 것은
+       모델 피커의 `data-open:animate-menu-enter`다. 그 요소에는 늘 `data-slot`이 있다 — 다음에 들고나는 부품이 `animate-*`로
+       움직여도 여기서 멎는다. 이 블록은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
        상관없이 이긴다. 애니메이션이 없으면 Base UI는 곧바로 언마운트한다 — 닫힘이 멈추지 않는다.
        Spinner의 호(`animate-spin`)도 걸리지만 동작 줄이기면 호가 숨으므로 해가 없다. */
     [data-slot][class*="animate-"] {
@@ -2157,18 +2162,28 @@ body[data-palette-open] [data-scrollbar] {
         transition: none;
     }
 
-    /* **Thread의 움직임**(v1 티켓 43 — 위 「Thread의 움직임」 머리말)은 모두 멈춘 모양이다. 들고 서는 것은 곧바로 서고, 반짝임은 띠 없는
-       흐린 글자다 — 애니메이션만 끄면 띠가 글자 한 자리에 굳어 진한 얼룩으로 남는다. 세 점은 멎은 옅은 점, 쓰는 중 점은 멎은 점이고,
-       문서 강조는 칠하지 않는다. 회전은 `Spinner`가 호 대신 원을 세운다(`components/ui/spinner.tsx`). */
+    /* **Thread의 움직임**(v1 티켓 43 · 02 구현 스펙 §12 — 위 「Thread의 움직임」 머리말)은 모두 멈춘 모양이다. 들고 서는 것은 곧바로 서고,
+       반짝임 · 생각 중은 띠 없는 흐린 글자다 — 애니메이션만 끄면 띠가 글자 한 자리에 굳어 얼룩으로 남는다. 작업 중 점은 멎은 점, 쓰는 중
+       점은 멎은 점이고, 흐르는 답은 끝이 옅지 않으며, 문서 강조는 칠하지 않는다. 회전은 `Spinner`가 호 대신 원을 세운다
+       (`components/ui/spinner.tsx`). */
     .chat-shimmer {
         animation: none;
         background: none;
         -webkit-text-fill-color: var(--chat-shimmer-dim, var(--fg-tertiary));
     }
+    .think-shimmer {
+        animation: none;
+        background: none;
+        -webkit-text-fill-color: var(--fg-thinking);
+    }
+    /* 흐르는 답의 끝은 옅어지지 않는다(02 구현 스펙 §12 「띠 · 점 · 페이드 없이」). */
+    .stream-tail {
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
     .word-in,
     .chip-in,
     .card-rise,
-    .pop-in,
     .row-in,
     .morph-in,
     .morph-out,

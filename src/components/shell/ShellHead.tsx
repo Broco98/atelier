@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { PANEL_MOTION } from "./panel-layout";
+import { SIDEBAR_MOTION } from "./panel-layout";
 
 // **머리 줄**(02 구현 스펙 §3 · CONTEXT 「머리 줄」) — 크롬 맨 위 44 줄 하나다. 앱 셸이 그리고, 어느 화면에서나 같은 줄이다.
 //
@@ -10,7 +10,7 @@ import { PANEL_MOTION } from "./panel-layout";
 //
 // - **화면 자리의 왼쪽 끝은 사이드바를 따른다** — 열렸으면 사이드바 오른쪽 끝(판 안 본문 왼쪽 끝)과 같은 x이고 그 앞에 세로선 하나가
 //   선다(Codex). 접혔으면 셸 컨트롤 끝 + 틈(`--titlebar-inset-head`)이다. 왼쪽 칸의 폭이 그 끝이고, 폭은 사이드바 폭과 같은 박자
-//   (`PANEL_MOTION`)로 옮겨 간다 — 사이드바를 끄는 동안은 둘 다 트랜지션을 끄고 커서를 곧장 따른다(`Sidebar`의 `asideClass`). 사이드바
+//   (`SIDEBAR_MOTION` — Codex spring .3s, 02 티켓 12)로 옮겨 간다 — 사이드바를 끄는 동안은 둘 다 트랜지션을 끄고 커서를 곧장 따른다(`Sidebar`의 `asideClass`). 사이드바
 //   폭(`--sidebar-width`)은 앱 셸 뿌리가 싣는다 — 사이드바와 이 줄이 한 값을 읽는다.
 // - **줄 전부가 창을 끄는 자리다**(`deep`) — 창 맨 위 줄이라 제목 막대의 관례를 따른다. 버튼 · 포커스를 받는 이름은 Tauri가 스스로
 //   비켜 둔다(셸 컨트롤의 버튼 사이 틈도 끈다).
@@ -43,7 +43,7 @@ export function ShellHeadRow({ open, dragging, onSlot, children }: ShellHeadRowP
       <div
         className={cn(
           "flex h-full shrink-0 items-center pl-(--titlebar-controls-left)",
-          !dragging && cn("transition-[width,padding]", PANEL_MOTION),
+          !dragging && cn("transition-[width,padding]", SIDEBAR_MOTION),
           open ? "w-(--titlebar-inset-sidebar)" : "w-(--titlebar-inset-head)",
         )}
       >

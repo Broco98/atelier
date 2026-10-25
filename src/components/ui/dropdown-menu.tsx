@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-prominent·bg-surface-elevated, DS `.at-menu`), 폭 w-(--anchor-width)·min-w-32→size-menu 260(DS `.at-menu`), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 6px·항목 사이 2px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 열림 animate-in·duration-100·zoom-in-95·slide-in→animate-menu-enter(index.css — duration-dropdown·ease-enter-snappy·30ms 지연·scale 0.98, DS 「움직임」 — 메뉴는 scale 0.98 → 1, 지연 동안은 첫 장면에 머문다)·닫힘 animate-out→animate-menu-exit(duration-basic·ease-exit·scale 0.98, DS 「움직임」 — 사라질 때 ease-exit. 둘 다 불투명도 · 크기만 움직인다 — tw-animate 키프레임의 블러가 이 곡선과 만나면 리눅스 WebKit이 죽는다), 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 30px·10px 모서리·좌우 8px·gap 10px·text-chat-meta·글리프 15px fg-secondary·shrink-0, Select 항목과 같은 것, DS `.at-mi`), 항목의 켜짐 — registry의 옅은 면(유틸리티 `accent` · 글자 `accent-foreground`)→focus:bg-fill-hover·focus:text-fg(같은 면을 Codex 이름으로 — 유틸리티 `accent`는 Codex 파랑과 이름이 겹친다, `state-scale.test.ts`), 지우기 줄의 빨강 destructive→danger 글자(켜짐은 다른 줄과 같은 면이다 — DS `.at-mi.danger`), 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-fg-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1·h-px·bg-border→mx-1 my-1·0.5px·bg-border-heavy(DS `.at-msep`), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 라디오 항목은 보통 항목과 같은 줄이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3.5·fg·앱 기본 굵기, DS `.at-mi .chk`, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 묶음(Group · RadioGroup)은 registry의 맨 div→menu-list와 같은 세로 flex · 항목 사이 2px(묶음 안의 줄은 목록의 flex 사이를 받지 못한다). 하위 메뉴(Sub·SubTrigger·SubContent)는 registry 카드 덮기(rounded-lg·bg-popover·ring-1·p-1)를 걷고 앱 카드와 같은 카드 · 같은 줄로 되살렸다(codex-ds 결정 10 · 15 — 한 단계까지, 트리거 끝에 14px 셰브런 fg-tertiary, 연 줄은 켜진 줄의 면, DS `.at-mi .sub` · `.is-open`). 단축키 칸 text-caption·tracking-widest·muted-foreground→줄 오른쪽 끝의 text-xs·fg-tertiary(DS `.at-mi .k`) — 켜진 줄에서도 같은 색이고 접근성 이름에서 빠진다(글자는 항목의 `shortcut`이 단축키 표에서 받는다). 체크 항목은 라디오 항목과 같은 줄이다 — registry의 py-1·pr-8·pl-1.5·gap-1.5·글리프 size-4·absolute right-2 체크→ROW·menu-row·MenuCheck(우클릭 메뉴가 함께 쓰는 부품이라 다른 줄과 갈리지 않게). 끈 줄 opacity-50→55%·글자 · 글리프 fg-tertiary(DS `.at-mi.is-off`). 라벨 px-1.5·py-1·font-medium·fg-secondary→위 4·좌우 8·아래 6·text-xs·fg-tertiary(DS `.at-mhead`). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px, DS `.at-mi.tall`)를 더했다.
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 16px·테두리 없이 shadow-prominent·bg-surface-elevated, DS `.at-menu`), 폭 w-(--anchor-width)·min-w-32→size-menu 260(DS `.at-menu`), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 6px·항목 사이 2px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 열림 · 닫힘의 움직임(animate-in·duration-100·zoom-in-95·slide-in · animate-out)을 걷었다 — Codex 메뉴는 한 프레임에 서고 곧바로 걷힌다(02 티켓 12). 모델 피커만 `grows`로 animate-menu-enter(index.css — duration-dropdown·ease-enter-snappy·30ms 지연·scale 0.98 → 1, 불투명도 · 크기만 움직인다 — tw-animate 키프레임의 블러가 이 곡선과 만나면 리눅스 WebKit이 죽는다), 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 30px·10px 모서리·좌우 8px·gap 10px·text-chat-meta·글리프 15px fg-secondary·shrink-0, Select 항목과 같은 것, DS `.at-mi`), 항목의 켜짐 — registry의 옅은 면(유틸리티 `accent` · 글자 `accent-foreground`)→focus:bg-fill-hover·focus:text-fg(같은 면을 Codex 이름으로 — 유틸리티 `accent`는 Codex 파랑과 이름이 겹친다, `state-scale.test.ts`), 지우기 줄의 빨강 destructive→danger 글자(켜짐은 다른 줄과 같은 면이다 — DS `.at-mi.danger`), 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-fg-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1·h-px·bg-border→mx-1 my-1·0.5px·bg-border-heavy(DS `.at-msep`), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 라디오 항목은 보통 항목과 같은 줄이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3.5·fg·앱 기본 굵기, DS `.at-mi .chk`, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 묶음(Group · RadioGroup)은 registry의 맨 div→menu-list와 같은 세로 flex · 항목 사이 2px(묶음 안의 줄은 목록의 flex 사이를 받지 못한다). 하위 메뉴(Sub·SubTrigger·SubContent)는 registry 카드 덮기(rounded-lg·bg-popover·ring-1·p-1)를 걷고 앱 카드와 같은 카드 · 같은 줄로 되살렸다(codex-ds 결정 10 · 15 — 한 단계까지, 트리거 끝에 14px 셰브런 fg-tertiary, 연 줄은 켜진 줄의 면, DS `.at-mi .sub` · `.is-open`). 단축키 칸 text-caption·tracking-widest·muted-foreground→줄 오른쪽 끝의 text-xs·fg-tertiary(DS `.at-mi .k`) — 켜진 줄에서도 같은 색이고 접근성 이름에서 빠진다(글자는 항목의 `shortcut`이 단축키 표에서 받는다). 체크 항목은 라디오 항목과 같은 줄이다 — registry의 py-1·pr-8·pl-1.5·gap-1.5·글리프 size-4·absolute right-2 체크→ROW·menu-row·MenuCheck(우클릭 메뉴가 함께 쓰는 부품이라 다른 줄과 갈리지 않게). 끈 줄 opacity-50→55%·글자 · 글리프 fg-tertiary(DS `.at-mi.is-off`). 라벨 px-1.5·py-1·font-medium·fg-secondary→위 4·좌우 8·아래 6·text-xs·fg-tertiary(DS `.at-mhead`). registry의 다크 덧칠(`dark:` 색 변형)을 걷었다 — Codex 토큰이 `.dark`에서 다크 값을 든다. 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px, DS `.at-mi.tall`)를 더했다.
 //
 // **우클릭 메뉴(`context-menu.tsx`)가 이 파일의 부품을 그대로 쓴다**(codex-ds 결정 15 — 정의 하나). 항목 · 구분선 · 하위 메뉴는
 // 같은 함수이고(단축키 칸은 항목의 `shortcut`이다), 카드는 같은 `MenuCard`에 폭만 다르게 준다. Base UI의 `ContextMenu`도 Root · Trigger 말고는 Menu 부품을 다시 내보낸
@@ -58,9 +58,10 @@ function MenuCard({
   alignOffset,
   side,
   sideOffset,
+  grows = false,
   className,
   ...props
-}: MenuCardProps & { width: keyof typeof CARD_WIDTH; dataSlot: string }) {
+}: MenuCardProps & { width: keyof typeof CARD_WIDTH; dataSlot: string; grows?: boolean }) {
   return (
     // 메뉴가 열린 동안 화면을 덮는 부품의 가림막(바깥 누르기는 닫기만 한다, S9)은 Positioner의 **형제**라
     // 그쪽의 z-50을 못 받는다. 포털 상자째 z-50에 올려야 쌓임 순서를 가진 조작(셸 컨트롤 줄 z-20 등)까지
@@ -77,11 +78,12 @@ function MenuCard({
           data-slot={dataSlot}
           // 떠 있는 **카드**의 표식이다 — 검사가 이것으로 카드를 하나로 센다(툴팁에는 안 단다).
           data-popover=""
-          // 뜰 때는 DS 「움직임」의 메뉴 값이다 — `duration-dropdown` · `ease-enter-snappy` · 30ms 지연 · scale 0.98 → 1. 지연 동안은
-          // 첫 장면(투명 · 0.98)에 머문다(`backwards` — 안 주면 30ms 동안 다 그려진 카드가 먼저 비쳤다가 사라진다).
-          // 닫힐 때는 DS의 기본 전환(`duration-basic`)에 사라지는 곡선(`ease-exit`)이다. 둘 다 index.css의 `animate-menu-*`이다 —
-          // tw-animate의 `animate-in`은 블러까지 움직여 이 곡선과 만나면 리눅스 WebKit이 죽는다.
-          className={cn("z-50 menu-list max-h-(--available-height) origin-(--transform-origin) overflow-x-hidden overflow-y-auto scroll-quiet floating-card text-fg outline-none data-open:animate-menu-enter data-closed:animate-menu-exit data-closed:overflow-hidden", CARD_WIDTH[width], className)}
+          // **움직이지 않는다** — 한 프레임에 서고 곧바로 걷힌다(02 구현 스펙 §12 · Diff-Tokens 「메뉴 · 팝오버 열림」 — Codex). 움직이며 뜨는
+          // 메뉴는 모델 피커 하나다(`grows`): .32s(`duration-dropdown`) · `ease-enter-snappy` · 30ms 늦게 · scale 0.98 → 1. 늦는 동안은 첫
+          // 장면(투명 · 0.98)에 머문다(`backwards` — 안 주면 30ms 동안 다 그려진 카드가 먼저 비쳤다가 사라진다). 닫힐 때는 그것도 곧바로
+          // 걷힌다 — 걸린 움직임이 없으면 Base UI가 곧바로 내린다. 움직임은 index.css의 `animate-menu-enter`다(tw-animate의 `animate-in`은
+          // 블러까지 움직여 이 곡선과 만나면 리눅스 WebKit이 죽는다).
+          className={cn("z-50 menu-list max-h-(--available-height) origin-(--transform-origin) overflow-x-hidden overflow-y-auto scroll-quiet floating-card text-fg outline-none", grows && "data-open:animate-menu-enter", CARD_WIDTH[width], className)}
           {...props}
         />
       </MenuPrimitive.Positioner>
@@ -89,17 +91,23 @@ function MenuCard({
   )
 }
 
+/**
+ * ⋯ 메뉴 · 고르기 메뉴의 카드. `grows`는 모델 피커(`ComposerChips`의 `ModelChip`)만 준다 — Codex에서 열릴 때 움직이는 메뉴는 그것 하나다
+ * (02 구현 스펙 §12 · Motion 보드 「팁 띠 · 모델 피커」).
+ */
 function DropdownMenuContent({
   align = "start",
   alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
+  grows = false,
   ...props
-}: MenuCardProps) {
+}: MenuCardProps & { grows?: boolean }) {
   return (
     <MenuCard
       width="menu"
       dataSlot="dropdown-menu-content"
+      grows={grows}
       align={align}
       alignOffset={alignOffset}
       side={side}

@@ -11,11 +11,11 @@ import {
 import { cn } from "@/lib/utils";
 
 // **움직임은 상태가 바뀐 그 자리에서만 일어난다**(v1 티켓 43 · 캔버스 Motion 보드 머리말 「움직임은 상태가 바뀐 그 자리에서만 짧게
-// 일어납니다」). 들어서는 움직임(`index.css` 「Thread의 움직임」의 `chip-in` · `card-rise` · `pop-in` · `row-in` …)은 마운트에 걸리는데,
+// 일어납니다」). 들어서는 움직임(`index.css` 「Thread의 움직임」의 `chip-in` · `card-rise` · `row-in` …)은 마운트에 걸리는데,
 // 그대로 두면 Thread를 열 때 이미 있던 줄 · 칩 · 얼굴이 한꺼번에 들어선다. 그래서 「화면이 선 뒤에 새로 섰나」를 여기서 가린다.
-// - 화면(Thread 본문 · 머리 줄의 참여자 · 새 Thread)은 `ArrivalScope`로 감싼다. 처음 그린 한 번이 지나면 그 자리가 「섰다」가 된다.
+// - 화면(Thread 본문 · 새 Thread)은 `ArrivalScope`로 감싼다. 처음 그린 한 번이 지나면 그 자리가 「섰다」가 된다.
 // - 부품은 처음 설 때 그 답을 붙든다(`useArrival`) — 처음 그림에 선 부품은 끝까지 움직이지 않고, 선 뒤에 새로 선 부품(새 결정 줄 · 다음
-//   승인 카드 · 새 참여자 얼굴)만 그 움직임으로 선다. 자리를 주지 않은 곳(사이드바 · 정적 렌더)은 늘 「처음」이다.
+//   승인 카드)만 그 움직임으로 선다. 자리를 주지 않은 곳(사이드바 · 정적 렌더)은 늘 「처음」이다.
 // - **같은 것이 자리를 옮겨 다시 서면 움직이지 않는다** — 턴이 끝나 결정 줄이 접힌 턴으로 옮겨 서거나, Session 보기가 같은 턴을 다시
 //   그리거나, 카드가 걷혀 입력창의 칩이 다시 설 때다. 이름(`id` — 기록 줄의 열쇠 같은)을 준 부품은 그 자리에서 한 번 선 이름이면 다시
 //   움직이지 않는다.
@@ -46,7 +46,7 @@ export function ArrivalScope({ children }: { children: ReactNode }) {
 }
 
 /** 들어서는 움직임의 유틸리티 이름(`index.css` 「Thread의 움직임」). */
-export type Motion = "word-in" | "chip-in" | "card-rise" | "pop-in" | "row-in" | "jump-in" | "view-in";
+export type Motion = "word-in" | "chip-in" | "card-rise" | "row-in" | "jump-in" | "view-in";
 
 /**
  * 이 부품이 화면이 선 뒤에 새로 섰으면 그 움직임, 아니면 `undefined` — 처음 설 때의 답을 붙든다(다시 그려도 바뀌지 않는다). `id`를 주면

@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { FaceStack } from "./AgentFace";
 import { Arrival, ArrivalScope, Arriving, settledPlace } from "./arrival";
 import { DraftQuoteChip } from "./QuoteChip";
 
@@ -33,13 +32,6 @@ describe("들어서는 움직임", () => {
 
   it("화면 밖(자리를 주지 않은 곳)에서는 움직이지 않는다", () => {
     expect(renderToStaticMarkup(<Arriving motion="row-in">줄</Arriving>)).toBe("<div>줄</div>");
-  });
-
-  it("새로 앉은 참여자의 얼굴은 튀어 들어온다(Agent 참여)", () => {
-    const people = [{ handle: "reviewer", name: "리뷰어", avatar: null }];
-    const face = (html: string) => html.match(/<span class="[^"]*ring-2[^"]*">/)?.[0] ?? "";
-    expect(face(settled(<FaceStack people={people} label="참여자" faceClass="size-6" joining />))).toContain("pop-in");
-    expect(face(firstPaint(<FaceStack people={people} label="참여자" faceClass="size-6" joining />))).not.toContain("pop-in");
   });
 
   it("입력창에 붙은 인용은 칩으로 나타난다(칩 나타남)", () => {

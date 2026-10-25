@@ -319,10 +319,10 @@ describe("cn이 DS 단계를 안다", () => {
     const [durations, eases] = [/--transition-duration-([a-z0-9-]+):/g, /--ease-([a-z0-9-]+):/g].map((name) =>
       [...css.matchAll(/@theme\b[^{]*\{([^}]*)\}/g)].flatMap((block) => [...block[1].matchAll(name)].map((m) => m[1])),
     );
-    // 둘째 줄 아홉 · `settle`은 모션 보드의 토큰이다(v1 티켓 43). 끝의 다섯 · 넷은 02가 더한 Codex 움직임이다(02 구현 스펙 §12).
+    // 둘째 줄 여섯 · `settle`은 모션 보드의 토큰이다(v1 티켓 43 — 02 티켓 12가 Codex 값으로 바꾼 단어 · 로그 · 버튼과 부르는 자리가 걷힌 Agent 참여를 걷었다). 끝의 다섯 · 넷은 02가 더한 Codex 움직임이다(02 구현 스펙 §12).
     expect(durations).toEqual([
-      ...["basic", "relaxed", "chip", "dropdown", "word", "pulse", "tip", "peek-close", "panel"],
-      ...["card", "join", "log", "swap", "button", "jump", "flash", "shimmer", "spin"],
+      ...["basic", "relaxed", "chip", "dropdown", "pulse", "tip", "peek-close", "panel"],
+      ...["card", "swap", "jump", "flash", "shimmer", "spin"],
       ...["sidebar", "think", "arrive", "wave", "morph"],
     ]);
     expect(eases).toEqual([

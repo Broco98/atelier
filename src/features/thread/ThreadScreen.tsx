@@ -217,7 +217,7 @@ export function NewThreadScreen({ seed = { kind: "no-work" } }: { seed?: ThreadL
               <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
                 <div className={`${COLUMN} ${TURN_GAP} text-chat-body`}>
                   <UserMessage text={starting.text} attachments={starting.attachments} />
-                  <p className="chat-shimmer text-sm">생각 중</p>
+                  <p className="think-shimmer text-sm">생각 중</p>
                 </div>
               </div>
             )}
@@ -386,9 +386,13 @@ function GuidePlace({ children }: { children: ReactNode }) {
  * 입력창 위 가운데의 원(02 §10 · Screen-Live · Motion 보드 `.cx-dots`) — 32 · 흰 면 · 1px `border-faint`. 「맨 아래로」와 작업 중 점이 같은
  * 원이다.
  */
-const SLOT_CIRCLE = "col-start-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border-faint bg-surface";
+const SLOT_CIRCLE =
+  "col-start-2 flex size-8 shrink-0 items-center justify-center rounded-full border border-border-faint bg-surface text-fg-secondary";
 
-/** 작업 중 점 셋 — 그림이라 숨고, 원이 말한다(「작업 중」 · 「맨 아래로」). 움직임은 `typing-dots`다(값은 02 티켓 12). */
+/**
+ * 작업 중 점 셋 — 그림이라 숨고, 원이 말한다(「작업 중」 · 「맨 아래로」). 움직임은 `typing-dots`다 — Codex 파도(1s `steps(3)` · +1.2 / −2px ·
+ * 점마다 .1s, 02 티켓 12). 점 색은 원의 글자색 2단계(70% — Codex `bg-text/70`)다.
+ */
 function WorkingDots({ className }: { className?: string }) {
   return (
     <span className={cn("typing-dots", className)} aria-hidden>

@@ -90,7 +90,8 @@ export function ModelChip({ models, model, effort, running, onModel, onEffort, o
         <span className="min-w-0 truncate">{text}</span>
         <ChevronDown className="size-3 shrink-0" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end">
+      {/* 열릴 때 움직이는 메뉴는 이것 하나다 — .32s · 30ms 늦게 · 0.98에서 커진다(02 구현 스펙 §12 · Codex 모델 피커). */}
+      <DropdownMenuContent side="top" align="end" grows>
         <DropdownMenuGroup>
           <DropdownMenuLabel>Claude Code</DropdownMenuLabel>
           <DropdownMenuRadioGroup

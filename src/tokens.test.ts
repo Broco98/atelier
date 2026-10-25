@@ -403,8 +403,10 @@ describe("Codex 움직임 토큰", () => {
   });
 });
 
-// **움직임은 모션 보드의 토큰이다**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 「모션 토큰」 표). 표의 열두 줄이 시간 토큰
-// 하나와 곡선 하나로 서고, Thread 화면의 움직임 유틸리티가 그 이름을 읽는다. 값을 유틸리티에 글자로 적으면 토큰을 고친 날 그 움직임만
+// **움직임은 모션 보드의 토큰이다**(v1 티켓 43 · 구현 스펙 §14 「모션」 · 캔버스 v31 Motion 보드 「모션 토큰」 표). 표의 줄이 시간 토큰
+// 하나와 곡선 하나로 서고, Thread 화면의 움직임 유틸리티가 그 이름을 읽는다. 02가 Codex 값으로 바꾼 줄(단어 도착 → 답 글자 도착 · 로그
+// 펼침 → 펼침 · 버튼 바뀜 → 보내기 모핑 · 반짝임 · 세 점 → 작업 중 점)은 표에서 걷고 Codex 토큰으로 잰다(02 구현 스펙 §12 · 위
+// 「Codex 움직임 토큰」) — 읽는 곳이 없는 옛 토큰은 남기지 않는다(02 티켓 12). 값을 유틸리티에 글자로 적으면 토큰을 고친 날 그 움직임만
 // 옛 박자로 남는다 — 빌드도 타입 검사도 조용하고 화면에서는 「조금 느리다」로만 남는다. 동작 줄이기에서는 모두 멈춘 모양이다(보드
 // 「동작 줄이기를 켜면 움직임은 모두 멈추고, 반짝임은 흐린 글자로, 점과 회전은 멈춘 모양으로 남습니다」).
 describe("모션 토큰", () => {
@@ -412,21 +414,16 @@ describe("모션 토큰", () => {
   const 감속 = "cubic-bezier(0.2, 0.8, 0.2, 1)";
   const 가감속 = "cubic-bezier(0.4, 0, 0.2, 1)";
   const BOARD: [보드이름: string, 토큰: string, 시간: string, 곡선: string][] = [
-    ["단어 도착", "word", "500ms", 감속],
     ["칩 나타남", "chip", "280ms", 감속],
     ["승인 카드", "card", "320ms", 감속],
-    ["Agent 참여", "join", "360ms", 감속],
-    ["로그 펼침", "log", "240ms", 가감속],
     ["줄 바뀜", "swap", "200ms", 감속],
-    ["버튼 바뀜", "button", "160ms", 감속],
     ["아래로 버튼", "jump", "180ms", 감속],
     ["문서 강조", "flash", "1600ms", 가감속],
-    ["반짝임", "shimmer", "2000ms", "linear"],
     ["세 점", "pulse", "1250ms", 가감속],
     ["회전", "spin", "900ms", "linear"],
   ];
 
-  it("보드 표의 열두 시간이 --duration-* 토큰으로 선다", () => {
+  it("보드 표의 시간이 --duration-* 토큰으로 선다", () => {
     for (const [보드이름, 토큰, 시간] of BOARD) expect(themed(`duration-${토큰}`), 보드이름).toBe(시간);
   });
 
@@ -435,10 +432,13 @@ describe("모션 토큰", () => {
     expect(themed("ease-default")).toBe(가감속);
   });
 
-  it("보드 표의 「사이」 값(단어 · 로그 줄 · 점)이 --stagger-* 토큰으로 선다", () => {
-    expect(themed("stagger-word")).toBe("70ms");
-    expect(themed("stagger-log")).toBe("40ms");
-    expect(themed("stagger-dot")).toBe("150ms");
+  // v1 보드의 「사이」 셋(단어 70 · 로그 줄 40 · 점 150)은 걷었다 — 답 조각은 사이 늦음 없이 선다(02 구현 스펙 §12 「조각 사이 지연 0」).
+  // 사이를 두고 움직이는 것은 작업 중 점 하나다(점마다 .1s).
+  it("사이(--stagger-*)를 두는 움직임은 작업 중 점 하나다", () => {
+    const staggers = blocks
+      .filter((block) => block.head.some((one) => one.startsWith("@theme")))
+      .flatMap((block) => [...block.decls.keys()].filter((name) => name.startsWith("--stagger-")));
+    expect(staggers).toEqual(["--stagger-wave"]);
   });
 
   // 유틸리티 이름 → 그 움직임이 읽는 시간 · 곡선(보드 표의 줄). 넓힌 카드의 보기는 모션 보드가 아니라 패널 박자다 — 같은 때 접히는
@@ -446,11 +446,11 @@ describe("모션 토큰", () => {
   const ease = (curve: string) => (curve === 감속 ? "var(--ease-settle)" : curve === 가감속 ? "var(--ease-default)" : curve);
   const byName = Object.fromEntries(BOARD.map(([보드이름, 토큰, , 곡선]) => [보드이름, { 토큰, 곡선: ease(곡선) }]));
   const MOTIONS: Record<string, { 토큰: string; 곡선: string }> = {
-    "word-in": byName["단어 도착"],
+    // 답 글자 도착(02 구현 스펙 §12) — 조각마다 투명도 .7s cubic-bezier(.37,.55,.86,.88), 늦음 없음.
+    "word-in": { 토큰: "arrive", 곡선: "var(--ease-arrive)" },
     // 칩 등장은 02가 Codex 값으로 바꿨다 — 시간은 보드 그대로, 곡선은 Codex의 cubic-bezier(.23,1,.32,1)(02 구현 스펙 §12).
     "chip-in": { 토큰: "chip", 곡선: "var(--ease-enter-snappy)" },
     "card-rise": byName["승인 카드"],
-    "pop-in": byName["Agent 참여"],
     // 작업 구분선 · 도구 줄의 펼침은 v1의 로그 펼침(줄마다 떠오름) 대신 Codex 펼침이다 — 높이와 투명도를 함께 .3s
     // cubic-bezier(.19,1,.22,1)(02 구현 스펙 §12 「펼침 · 접힘」).
     unfold: { 토큰: "relaxed", 곡선: "var(--ease-enter)" },
@@ -460,8 +460,12 @@ describe("모션 토큰", () => {
     "morph-out": { 토큰: "morph", 곡선: "var(--ease-default)" },
     "jump-in": byName["아래로 버튼"],
     "row-flash": byName["문서 강조"],
-    "chat-shimmer": byName["반짝임"],
-    "typing-dots": byName["세 점"],
+    // 작업 중 · 도는 도구 줄(02 구현 스펙 §12 · Codex `.loading-shimmer`) — 2s `steps(48)`로 되풀이한다.
+    "chat-shimmer": { 토큰: "shimmer", 곡선: "var(--ease-shimmer)" },
+    // 생각 중(Codex cadenced shimmer) — 4s 한 바퀴의 첫 1s에 띠가 `steps(48)`로 지나간다.
+    "think-shimmer": { 토큰: "think", 곡선: "var(--ease-shimmer)" },
+    // 작업 중 점(Codex `_typing-dot-wave`) — 1s `steps(3)` 파도.
+    "typing-dots": { 토큰: "wave", 곡선: "var(--ease-wave)" },
     "writing-pulse": byName["세 점"],
     "spin-thread": byName["회전"],
     "view-in": { 토큰: "panel", 곡선: "var(--ease-panel)" },
@@ -505,6 +509,58 @@ describe("모션 토큰", () => {
     const reduced = reducedOf(await utilities(["chat-shimmer"]), ".chat-shimmer") ?? "";
     expect(reduced).toContain("background: none");
     expect(reduced).toContain("-webkit-text-fill-color: var(--chat-shimmer-dim, var(--fg-tertiary))");
+  });
+
+  // **생각 중 · 작업 중의 띠는 글자를 밝게 바래게 한다**(02 구현 스펙 §12 · Codex 라이트 — 빛 #ffffffbf). 지금까지의 진한 띠(`fg`)를
+  // 걷었다. 띠는 글자 폭의 절반 그림이 −100%에서 250%로 지나간다(Codex `.loading-shimmer`와 같은 길).
+  it("생각 중 · 작업 중의 띠가 흰 띠(shimmer-band)로 글자를 바래게 한다", async () => {
+    const built = await utilities(["chat-shimmer", "think-shimmer"]);
+    for (const name of ["chat-shimmer", "think-shimmer"]) {
+      const rule = utilityCss(built, name) ?? "";
+      expect(rule, name).toContain("var(--shimmer-band)");
+      expect(rule, name).not.toMatch(/var\(--fg\)/);
+      expect(rule, name).toContain("-webkit-background-clip: text");
+    }
+  });
+
+  // **생각 중은 박자를 둔 띠다**(Codex cadenced shimmer · 스토리 98) — 보인 뒤 600ms(`delay-think`)에 첫 띠가 지나가고, 4s(`duration-think`)
+  // 한 바퀴의 첫 25%(1s) 동안만 지나간 뒤 쉰다. 바탕 글자는 `fg-thinking`(#aeaeae)이다. `steps(48)`은 키프레임 구간마다 걸리므로 지나가는
+  // 1s가 48칸이다.
+  it("생각 중은 보인 뒤 600ms에 시작해 4s 한 바퀴의 첫 1s에만 띠가 지나간다", async () => {
+    const built = await utilities(["think-shimmer"]);
+    const rule = utilityCss(built, "think-shimmer") ?? "";
+    expect(rule).toContain("var(--fg-thinking)");
+    expect(rule).toMatch(/animation: think-sweep var\(--duration-think\) var\(--ease-shimmer\) var\(--delay-think\) infinite/);
+    const keyframes = built.match(/@keyframes think-sweep \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(keyframes).toMatch(/0% \{\s*background-position: -100% 0;/);
+    expect(keyframes).toMatch(/25%, to \{\s*background-position: 250% 0;/);
+    const reduced = reducedOf(built, ".think-shimmer") ?? "";
+    expect(reduced).toContain("background: none");
+    expect(reduced).toContain("-webkit-text-fill-color: var(--fg-thinking)");
+  });
+
+  // **작업 중 점은 파도다**(Codex `_typing-dot-wave` · 스펙 §12) — 4 점 셋이 4 사이로 서서, 1s `steps(3)`로 +1.2px 내려갔다 −2px 오르고,
+  // 점마다 .1s(`stagger-wave`) 늦다. 점 색은 놓인 자리의 글자색이다(입력창 위 원 안은 2단계 70% — Codex `bg-text/70`).
+  it("작업 중 점은 점마다 .1s씩 늦는 +1.2 / −2px 파도다", async () => {
+    const built = await utilities(["typing-dots"]);
+    const rule = utilityCss(built, "typing-dots") ?? "";
+    expect(rule).toContain("gap: 4px");
+    expect(rule).toContain("background: currentColor");
+    expect(rule).toContain("animation-delay: var(--stagger-wave)");
+    expect(rule).toContain("animation-delay: calc(var(--stagger-wave) * 2)");
+    const keyframes = built.match(/@keyframes typing-wave \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(keyframes).toContain("translateY(1.2px)");
+    expect(keyframes).toContain("translateY(-2px)");
+  });
+
+  // **흐르는 답의 끝 240px이 옅다**(스펙 §12 · Screen-Live 단계 5 `.tail`). 흐르는 글의 마지막 글덩이를 감싼 줄 상자에 가로 그라데이션
+  // 가림(mask)을 건다 — 줄 상자의 그림은 여러 줄을 한 줄로 이은 띠에 그려지므로(`box-decoration-break: slice`) 「끝 240px」은 글이 흐르는
+  // 끝, 곧 마지막 줄의 꼬리다. 가림의 끝은 옅은 회색(본문 글자가 시안 #d6d6d6이 되는 18%)이다. 동작 줄이기면 페이드가 없다.
+  it("흐르는 답의 끝 240px을 옅게 가리고, 동작 줄이기면 가리지 않는다", async () => {
+    const built = await utilities(["stream-tail"]);
+    const rule = utilityCss(built, "stream-tail") ?? "";
+    expect(rule).toMatch(/mask-image: linear-gradient\(90deg, #000 calc\(100% - var\(--size-stream-fade\)\)/);
+    expect(reducedOf(built, ".stream-tail")).toMatch(/mask-image: none/);
   });
 
   // 회전은 DS `Spinner`의 호다 — Thread 줄의 스피너만 보드 박자로 돌고(`spin-thread`), 앱의 다른 스피너는 Tailwind `animate-spin`의 1초

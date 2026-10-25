@@ -66,7 +66,8 @@ import { ToolRows, Unfold, WorkDivider } from "./WorkLog";
 //   실행을 승인함 · 이 Work에서 늘 허용」, 거부는 ✕와 남긴 말). Work 만들기 카드에서 고른 것도 결정 줄이고(v1 티켓 30 —
 //   「✓ Work 만들기 · api-server · fix/refund-api」 · 「→ Work 없이 계속함」), 접힌 턴에도 남는다(화면 2 보드). 만든 Work는 턴 뒤의
 //   시스템 줄 「📁 Work … 을 만들고 이 Thread에 연결함」이다.
-// - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming`). 답을 기다리는 동안은 「생각 중」이 반짝인다.
+// - **흐르는 답은 조각이 도착하는 방식으로 선다**(`ThreadMarkdown`의 `streaming` — 끝 240px이 옅다). 답을 기다리는 동안은 「생각 중」에
+//   띠가 지나간다(`think-shimmer` — 보인 뒤 600ms, 4s마다 한 번, 02 티켓 12).
 // - **오류와 중단은 색 대신 문장이다** — 답 없이 끊긴 턴은 「답하지 못했습니다. …」와 테두리 버튼 「다시 시도」(같은 말을 다시 보낸다),
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
 // - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 들고 난 줄은 이름 앞에 그 얼굴이 선다(「● 리뷰어가
@@ -184,7 +185,7 @@ function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCall
 
 /**
  * 「답하는 중」(Messages 보드 `.typing`) — 얼굴 20을 겹치고(`-5` · 바탕 고리 2) 「리뷰어와 테스터가 답하는 중」 13/20 `fg-tertiary`,
- * 그 뒤에 세 점이 차례로 떠오른다(`typing-dots` · `duration-pulse`). 점은 그림이라 숨고 문장이 말한다.
+ * 그 뒤에 점 셋이 파도친다(`typing-dots` — 입력창 위 작업 중 점과 같은 Codex 파도, 점 색은 이 줄의 글자색). 점은 그림이라 숨고 문장이 말한다.
  */
 function AnsweringRow({ people }: { people: readonly { handle: string; name: string; avatar: CastMember["avatar"] }[] }) {
   const names = people.map((one) => one.name);
@@ -355,7 +356,7 @@ function TurnView({
             <>
               {turn.entries.length > 0 && <RunningHead turn={turn} waiting={waiting} />}
               <Entries entries={before} streaming />
-              {thinking && <p className="chat-shimmer text-sm">생각 중</p>}
+              {thinking && <p className="think-shimmer text-sm">생각 중</p>}
             </>
           )}
           {kept.map((entry) => (

@@ -1,20 +1,19 @@
-import { memo, useRef, useState, type RefObject } from "react";
+import { memo, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Copy } from "lucide-react";
 import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
-import { arrive, motionMs, NO_WORDS, type WordClock } from "./motion";
 
 // Agent 답의 본문(v1 티켓 05 · 캔버스 Messages 보드 「Agent 답변」 · 「스트리밍」) — 말풍선 없이 본문 그대로다(14/22.75 · 블록 사이 12).
 // three-axes 답(`chat/ChatMarkdown.tsx`)을 옮겨 왔고, 달라진 것은 둘이다.
 // - **코드 블록**은 보드의 `.cb`다 — `radius-3xl`(20) · `surface-code` 면 하나, 머리 34에 언어와 복사. 테두리가 없다.
-// - **흐르는 답은 낱말이 도착하는 방식으로 선다**(`streaming`). 새로 온 낱말만 `duration-word` 동안 옅었다가 선명해진다(`word-in`,
-//   index.css) — 깜빡이는 커서는 쓰지 않는다. 낱말을 감싸는 것은 hast 단계의 작은 플러그인이다(`rehypeWords`): 렌더러는 같은 자리의
-//   요소를 다시 쓰므로 이미 선 낱말은 다시 움직이지 않고, 끝에 붙은 낱말만 새로 선다. 한 조각에 온 낱말들은 앞 낱말보다 단어 사이
-//   (`stagger-word`)만큼 늦게 선다(v1 티켓 43 · Motion 보드 「단어 도착」 — 차례는 `motion.ts`의 `arrive`). 턴이 끝나면 감싸지 않는다
-//   (낱말마다 요소를 두지 않게).
+// - **흐르는 답은 조각이 도착하는 방식으로 선다**(`streaming` — 02 구현 스펙 §12 「답 글자 도착」 · 스토리 99). 새로 온 낱말만
+//   .7s(`duration-arrive`) 동안 옅었다가 또렷해진다(`word-in`, index.css) — 깜빡이는 커서는 쓰지 않는다. 낱말을 감싸는 것은 hast 단계의
+//   작은 플러그인이다(`rehypeStream`): 렌더러는 같은 자리의 요소를 다시 쓰므로 이미 선 낱말은 다시 움직이지 않고, 끝에 붙은 낱말만 새로
+//   선다. **조각 사이 늦음은 없다** — 한 번에 온 낱말들이 함께 선다(Codex `fadeSegmentDelayMs` 0 — v1의 낱말마다 70ms 늦음을 걷었다).
+//   흐르는 동안은 마지막 글덩이의 끝 240px이 옅다(`stream-tail`). 턴이 끝나면 감싸지 않는다(낱말마다 요소를 두지 않게).
 //
 // 링크는 바깥 URL만 연다 — Tauri 웹뷰에서 `<a>`가 그대로 주소를 바꾸면 앱이 그 페이지로 간다.
 
@@ -107,60 +106,63 @@ interface HastNode {
 /** 낱말을 감싸지 않는 요소 — 코드는 글자 그대로 선다. */
 const WHOLE = new Set(["pre", "code"]);
 
-/**
- * 글 마디를 낱말마다 `word-in` 요소로 감싼다(머리말). 빈칸은 그대로 글이다 — 줄바꿈 자리가 바뀌지 않는다. 낱말은 글의 차례대로 세고,
- * 늦게 설 낱말은 그 늦음을 `--word-delay`로 받는다(`delayAt`).
- */
-function rehypeWords({ delayAt }: { delayAt: (at: number) => number }) {
-  let count = 0;
-  const word = (value: string): HastNode => {
-    const delay = delayAt(count++);
-    return {
-      type: "element",
-      tagName: "span",
-      properties: delay > 0 ? { className: ["word-in"], style: `--word-delay: ${delay}ms` } : { className: ["word-in"] },
-      children: [{ type: "text", value }],
-    };
-  };
-  const walk = (node: HastNode) => {
-    if (!node.children || (node.tagName && WHOLE.has(node.tagName))) return;
-    node.children = node.children.flatMap((child): HastNode[] => {
-      if (child.type !== "text" || !child.value) {
-        walk(child);
-        return [child];
-      }
-      return child.value
-        .split(/(\s+)/)
-        .filter((part) => part !== "")
-        .map((part) => (/^\s+$/.test(part) ? { type: "text", value: part } : word(part)));
-    });
-  };
-  return (tree: HastNode) => walk(tree);
-}
+/** 끝이 옅어질 글덩이 — 글줄을 담는 블록. 표 칸은 넣지 않는다(표는 줄 상자 하나로 이어 흐르지 않는다). */
+const TEXT_BLOCKS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "li"]);
+
+/** 블록 요소 — 이것을 품은 목록 줄은 그 안의 글덩이가 끝을 든다. */
+const BLOCKS = new Set([...TEXT_BLOCKS, "ul", "ol", "pre", "blockquote", "table", "hr", "div"]);
+
+/** 글이 아닌 것으로 끝나는 블록 — 답이 이것으로 끝나면 가릴 꼬리가 없다. */
+const NOT_TEXT = new Set(["pre", "table", "hr"]);
 
 /**
- * 이 그림에서 낱말마다의 늦음 — 아직 세지 않은 낱말은 지금 처음 그려지므로 지금을 기준으로 차례를 잇는다(`arrive`). 사이는 단어 사이
- * 토큰, 밀린 늦음의 끝은 단어 도착 한 번의 길이다 — 보이는 글이 온 글보다 그 이상 처지지 않는다.
+ * **흐르는 답을 감싼다**(머리말). 글 마디를 낱말마다 `word-in` 요소로 감싼다 — 빈칸은 그대로 글이라 줄바꿈 자리가 바뀌지 않는다. 늦음은
+ * 없다. 글줄을 담는 블록(문단 · 제목 · 목록 줄)의 안은 줄 상자(`span`) 하나로 다시 감싸고, 답의 맨 끝 글덩이의 줄 상자에만
+ * `stream-tail`을 단다 — 줄 상자는 모든 글덩이에 서 있어 마지막이 다음 글덩이로 넘어가도 같은 요소가 이름표만 바뀐다(낱말이 다시
+ * 서지 않는다). 답이 코드 블록 · 표 · 가름선으로 끝나면 가릴 꼬리가 없다.
  */
-function delaysNow(clock: RefObject<WordClock>): (at: number) => number {
-  const now = performance.now();
-  const gap = motionMs("--stagger-word");
-  const cap = motionMs("--duration-word");
-  return (at) => {
-    clock.current = arrive(clock.current, at + 1, now, gap, cap);
-    return clock.current.delays[at];
+function rehypeStream() {
+  const word = (value: string): HastNode => ({
+    type: "element",
+    tagName: "span",
+    properties: { className: ["word-in"] },
+    children: [{ type: "text", value }],
+  });
+  return (tree: HastNode) => {
+    let tail: HastNode | null = null;
+    const walk = (node: HastNode) => {
+      if (node.tagName && NOT_TEXT.has(node.tagName)) tail = null;
+      if (!node.children || (node.tagName && WHOLE.has(node.tagName))) return;
+      node.children = node.children.flatMap((child): HastNode[] => {
+        if (child.type !== "text" || !child.value) {
+          walk(child);
+          return [child];
+        }
+        return child.value
+          .split(/(\s+)/)
+          .filter((part) => part !== "")
+          .map((part) => (/^\s+$/.test(part) ? { type: "text", value: part } : word(part)));
+      });
+      const inline = !node.children.some((child) => child.tagName !== undefined && BLOCKS.has(child.tagName));
+      const said = node.children.some((child) => child.type !== "text" || /\S/.test(child.value ?? ""));
+      if (node.tagName && TEXT_BLOCKS.has(node.tagName) && inline && said) {
+        const run: HastNode = { type: "element", tagName: "span", properties: {}, children: node.children };
+        node.children = [run];
+        tail = run;
+      }
+    };
+    walk(tree);
+    if (tail !== null) (tail as HastNode).properties = { className: ["stream-tail"] };
   };
 }
 
 /** 답 한 덩어리. 흐르는 동안 글이 늘 때마다 다시 그리므로 같은 글이면 건너뛴다. */
 function ThreadMarkdown({ text, streaming = false, className }: { text: string; streaming?: boolean; className?: string }) {
-  // 낱말 차례는 이 답 하나의 것이다 — 다시 그려도 이어지고, 다른 답은 제 차례를 쓴다.
-  const clock = useRef<WordClock>(NO_WORDS);
   return (
     <div className={cn("flex min-w-0 flex-col gap-3 wrap-anywhere", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={streaming ? [[rehypeWords, { delayAt: delaysNow(clock) }]] : undefined}
+        rehypePlugins={streaming ? [rehypeStream] : undefined}
         components={components}
       >
         {text}
