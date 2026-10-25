@@ -112,7 +112,27 @@ impl SeenSettings {
     }
 }
 
-/// 파일 전체. 구획이 `terminal`·`notifications`·`seen` 셋이다 — 다른 구획이 생기면 여기 한 줄이다.
+/// Project 구획(03 구현 스펙 S18) — Project 추가 창의 「새로 만들기」가 폴더를 만들 부모. **고른 것만 적는다** — 「위치 바꾸기」로 고르기
+/// 전에는 칸이 없고 구획째 안 적힌다. 기본(`~/MyProjects`)은 화면이 든다(`terminal` 글꼴과 같은 규칙: 값을 정하는 자리를 하나로).
+/// 경로는 기계의 설정이라 Project 파일이 아니라 여기 둔다 — 다음 Project도 같은 곳에 만든다.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettings {
+    /// 「위치 바꾸기」로 고른 폴더 — 고르기 창이 준 경로 그대로다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_parent: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl ProjectSettings {
+    /// 고른 것이 하나도 없나 — 모르는 칸까지 센다(알림 구획의 `is_empty`와 같은 까닭).
+    fn is_empty(&self) -> bool {
+        self.new_parent.is_none() && self.extra.is_empty()
+    }
+}
+
+/// 파일 전체. 구획이 `terminal`·`notifications`·`seen`·`projects` 넷이다 — 다른 구획이 생기면 여기 한 줄이다.
 ///
 /// three-axes의 대화 구획(`chat` — 새 대화의 기본 에이전트 · 모델 · 모드)은 설정의 「대화」 묶음과 함께 걷혔다(v1 티켓 08 ·
 /// S3). 앞서 쓰던 파일에 남은 그 구획은 앱이 읽지 않는 구획이라 `extra`로 글자 그대로 왕복한다 — 사람이 손으로 지운다.
@@ -129,6 +149,9 @@ pub struct Settings {
     /// 한 번만 보이는 안내를 본 것(v1 티켓 30). 설정 화면에 칸이 없다 — Thread 화면이 「알겠어요」에서 적는다.
     #[serde(default, skip_serializing_if = "SeenSettings::is_empty")]
     pub seen: SeenSettings,
+    /// 「새로 만들기」의 부모 폴더(03 S18). 설정 화면에 칸이 없다 — Project 추가 창의 「위치 바꾸기」가 적는다.
+    #[serde(default, skip_serializing_if = "ProjectSettings::is_empty")]
+    pub projects: ProjectSettings,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -270,6 +293,7 @@ mod tests {
                 extra: Default::default(),
             },
             seen: SeenSettings { decisions: true, extra: Default::default() },
+            projects: ProjectSettings { new_parent: Some("/Users/me/Code".to_string()), extra: Default::default() },
             extra: Default::default(),
         };
         write(&root, &s).unwrap();
@@ -447,6 +471,25 @@ mod tests {
         write(&root, &s).unwrap();
         let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
         assert_eq!(back["seen"], serde_json::json!({"decisions": true, "later": 1}), "구획 안의 모르는 칸도 남는다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **「새로 만들기」의 부모 폴더는 고른 것만 남는다**(03 구현 스펙 S18) — 「위치 바꾸기」로 고르면 다음 Project도 거기에 만든다. 고르지
+    /// 않았으면 구획째 안 적힌다(기본 `~/MyProjects`는 화면이 든다). 구획 안의 모르는 칸은 왕복한다.
+    #[test]
+    fn the_new_project_parent_is_kept_once_chosen_and_not_written_before() {
+        let root = temp_root("projects");
+        write(&root, &Settings::default()).unwrap();
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(!out.contains("\"projects\""), "고르지 않았는데 구획이 적혔다: {out}");
+        assert_eq!(read(&root).unwrap().projects.new_parent, None);
+
+        std::fs::write(settings_path(&root), r#"{"projects":{"newParent":"/Users/me/Code","later":1}}"#).unwrap();
+        let s = read(&root).unwrap();
+        assert_eq!(s.projects.new_parent.as_deref(), Some("/Users/me/Code"));
+        write(&root, &s).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(back["projects"], serde_json::json!({"newParent": "/Users/me/Code", "later": 1}), "구획 안의 모르는 칸도 남는다");
         let _ = std::fs::remove_dir_all(&root);
     }
 

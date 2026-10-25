@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, data_root, projects_dir, works_dir, ArchiveEntry, ArchivedDocs, Destination,
-    ProjectPatch, ProjectView, SearchResults, Space, SpaceDetail, SpacePatch, WorkView, WorkWithSpecTree, WorktreeTree,
+    archive_dir, data_root, projects_dir, works_dir, AddProject, ArchiveEntry, ArchivedDocs, Destination,
+    FolderLook, NewProjectPlace, ProjectPatch, ProjectView, SearchResults, Space, SpaceDetail, SpacePatch, WorkView,
+    WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -29,9 +30,31 @@ pub async fn get_project(slug: String) -> CmdResult<ProjectView> {
     atelier_core::get_project(&projects_dir(), &slug).map_err(err)
 }
 
+// Project 추가 창(03 구현 스펙 §15 · §16) — 살피기 · 추가 · 새로 만들 자리 · 새로 만들기. 모두 core 하나를 부른다(L4 다리도 같은
+// 입구다). 경로는 `~`로 시작해도 된다 — 창은 살피기가 돌려준 꼴(`~/…`)을 그대로 되돌려 넘긴다.
+
+/// 폴더 살피기 — 추가 창이 폴더를 고르는 순간 부른다. 실패하지 않는다(읽지 못한 폴더는 「폴더가 없음」 갈래다).
 #[tauri::command]
-pub async fn create_project(folder: String) -> CmdResult<ProjectView> {
-    atelier_core::create_project(&projects_dir(), &PathBuf::from(folder)).map_err(err)
+pub async fn inspect_project_folder(folder: String) -> CmdResult<FolderLook> {
+    Ok(atelier_core::inspect_folder(&projects_dir(), &PathBuf::from(folder)))
+}
+
+/// 추가 — 이름 칸(비면 폴더 이름)과 「git init 하고 추가」를 함께 받는다. git이 아닌 폴더는 `init_git`일 때만 받는다.
+#[tauri::command]
+pub async fn create_project(folder: String, name: Option<String>, init_git: bool) -> CmdResult<ProjectView> {
+    atelier_core::add_project(&projects_dir(), &PathBuf::from(folder), AddProject { name, init_git }).map_err(err)
+}
+
+/// 새로 만들 자리 — 「새로 만들기」가 이름을 칠 때마다 부른다(그 자리에 무엇이 있으면 「이미 있어요」).
+#[tauri::command]
+pub async fn new_project_place(parent: String, name: String) -> CmdResult<NewProjectPlace> {
+    Ok(atelier_core::new_project_place(&PathBuf::from(parent), &name))
+}
+
+/// 새로 만들기 — 폴더 · `git init -b main` · 빈 첫 커밋 · 등록. git이 실패하면 만든 폴더를 걷고 git의 글로 실패한다.
+#[tauri::command]
+pub async fn new_project(parent: String, name: String) -> CmdResult<ProjectView> {
+    atelier_core::new_project(&projects_dir(), &PathBuf::from(parent), &name).map_err(err)
 }
 
 #[tauri::command]

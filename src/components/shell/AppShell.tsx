@@ -13,6 +13,7 @@ import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { countThreadsForQuit } from "@/features/thread/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
+import ProjectAddDialog from "@/features/projects/ProjectAddDialog";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
 import { useFollowWorktreeChanges } from "@/features/files/follow-worktrees";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
@@ -454,6 +455,9 @@ function AppShell() {
       {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
           찾는다. 쿼리 구독은 제 파일에 있다. */}
       <ShellOwners />
+      {/* Project 추가 창도 앱에 하나다(03 구현 스펙 §16) — Projects · Space 상세 · 범위 줄이 모두 `addProject`로 연다. 포털이라 뜰 때
+          `body` 끝에 붙는다 — 이 창 위에서 뜬 확인 창이 늘 위다(위 검색과 같은 규칙). */}
+      <ProjectAddDialog />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />

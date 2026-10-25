@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Folder, Plus } from "lucide-react";
+import { Download, Folder, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ListHead, ListScroll, ListSearch, TWO_LINE_ROW } from "@/components/shell/Frame";
 import { navItem } from "@/components/shell/nav-items";
@@ -182,6 +182,11 @@ function ProjectList({
               </button>
             );
           })}
+          {/* 목록 아래 한 줄(03 구현 스펙 §16 · 스토리 100) — 폴더를 이 화면에 끌어다 놓으면 추가 창이 그 폴더로 열린다(`ProjectsPage`). */}
+          <p className="flex items-center gap-1.5 px-3.5 pt-1.5 text-xs text-fg-tertiary">
+            <Download className="size-3.5 shrink-0" aria-hidden />
+            폴더를 이 창에 끌어다 놓아도 추가돼요
+          </p>
         </ListScroll>
       )}
     </>

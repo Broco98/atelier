@@ -24,8 +24,20 @@ type Handler = fn(&Args) -> Handled;
 const HANDLERS: &[(&str, Handler)] = &[
     ("list_projects", |_| ok(atelier_core::list_projects(&projects_dir()))),
     ("get_project", |a| ok(atelier_core::get_project(&projects_dir(), &text(a, "slug")?))),
+    // 추가 창(03 구현 스펙 §15) — 살피기 · 추가 · 새로 만들 자리 · 새로 만들기가 모두 core 하나라 다리로 진짜를 탄다(L4가 진짜 git으로
+    // 「git init 하고 추가」 · 「새로 만들기」를 잰다).
+    ("inspect_project_folder", |a| {
+        ok(Ok(atelier_core::inspect_folder(&projects_dir(), &PathBuf::from(text(a, "folder")?))))
+    }),
     ("create_project", |a| {
-        ok(atelier_core::create_project(&projects_dir(), &PathBuf::from(text(a, "folder")?)))
+        let add = atelier_core::AddProject { name: maybe_text(a, "name"), init_git: flag(a, "init_git")? };
+        ok(atelier_core::add_project(&projects_dir(), &PathBuf::from(text(a, "folder")?), add))
+    }),
+    ("new_project_place", |a| {
+        ok(Ok(atelier_core::new_project_place(&PathBuf::from(text(a, "parent")?), &text(a, "name")?)))
+    }),
+    ("new_project", |a| {
+        ok(atelier_core::new_project(&projects_dir(), &PathBuf::from(text(a, "parent")?), &text(a, "name")?))
     }),
     ("update_project", |a| {
         ok(atelier_core::update_project(

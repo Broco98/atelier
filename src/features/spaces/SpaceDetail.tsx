@@ -17,7 +17,7 @@ import {
 import { InlineRename } from "@/components/ui/inline-rename";
 import { showUndoToast, Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import { useAddProject } from "@/features/projects/add-project";
+import { addProject } from "@/features/projects/add-store";
 import { useProjects } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
 import { useSpace, useUpdateSpace } from "./hooks";
@@ -88,7 +88,6 @@ function SpaceCrumb({ onOpen }: { onOpen: () => void }) {
 function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: string) => void }) {
   const { data: registered = [] } = useProjects();
   const update = useUpdateSpace();
-  const addProject = useAddProject();
   // frontmatter가 닫히지 않았거나 YAML로 읽을 수 없으면 고칠 자리를 모른다 — 고치는 단추를 끈다(고치는 길은 관계 편집 — 04).
   const locked = space.problems.some((problem) => problem.kind === "unclosedFrontmatter" || problem.kind === "badYaml");
 

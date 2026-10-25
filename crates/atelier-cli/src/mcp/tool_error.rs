@@ -23,6 +23,12 @@ pub fn kernel_error(err: Error) -> CallToolResult {
             "The Space file has the problems listed above. Ask the user to fix those lines in the Atelier app, then call \
              this tool again."
         }
+        // 폴더를 git 저장소로 만드는 것은 사람의 폴더를 바꾸는 일이라 묻고 한다 — 화면의 「git init 하고 추가」와 같은 물음이다.
+        Error::NotGitRepo(_) => {
+            "Ask the user whether to turn this folder into a git repository. If they agree, \
+             call atelier_add_project again with init_git: true — it runs `git init -b main` \
+             and an empty first commit, and leaves the files as they are."
+        }
         // `git stash`만 시키면 **안 듣는 처방**이다: `-u` 없이는 추적 안 된 파일이 그대로
         // 남아 다시 거부당하고, 읽는 쪽은 왜 막혔는지 알 수 없다. 실제로 그렇게 막혔다.
         Error::DirtyWorktrees(_) => {
@@ -30,7 +36,7 @@ pub fn kernel_error(err: Error) -> CallToolResult {
              leaves untracked files behind and this will be refused again. Then call \
              this tool again."
         }
-        Error::Validation(_) | Error::EmptyName => "Fix the arguments and call this tool again.",
+        Error::Validation(_) | Error::EmptyName | Error::AlreadyExists(_) => "Fix the arguments and call this tool again.",
         Error::InvalidFile { .. } | Error::Git(_) | Error::Io(_) => {
             "This is a local data or git problem. Report it to the user instead of retrying."
         }

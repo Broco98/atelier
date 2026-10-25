@@ -39,6 +39,38 @@ pub fn origin_head(dir: &Path) -> Option<String> {
         .and_then(|s| s.split_once('/').map(|(_, b)| b.to_string()))
 }
 
+/// 그 폴더가 든 작업 트리의 뿌리(심볼릭 링크를 git이 푼 자리). git 저장소 밖이면 `None`이다 — `.git` 폴더 안 · bare 저장소도
+/// 작업 트리가 없어 `None`이다.
+pub(crate) fn toplevel(dir: &Path) -> Option<std::path::PathBuf> {
+    git(dir, &["rev-parse", "--show-toplevel"]).map(std::path::PathBuf::from)
+}
+
+/// 원격 이름들(`origin` · `upstream` …) — git이 내는 차례 그대로다. fetch하지 않는다.
+pub(crate) fn remotes(dir: &Path) -> Vec<String> {
+    git(dir, &["remote"]).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// 폴더를 빈 저장소로 세운다 — `git init -b main`과 빈 첫 커밋(「init」)이다(03 구현 스펙 §15). 파일은 담지 않는다. 실패하면 git의
+/// 글이다 — 사람의 git 이름 · 이메일이 없으면 커밋이 거기서 실패한다. 세운 것을 걷는 일은 부르는 쪽이 한다(무엇을 새로 만들었는지
+/// 아는 쪽이다).
+///
+/// **커밋은 훅을 돌지 않는다**(`--no-verify`). 앱이 적는 고정된 빈 커밋이라 훅이 볼 내용이 없고, 사람의 전역 훅(커밋 글 꼴 검사 같은 것)이
+/// 「init」을 거절하면 추가가 까닭 없이 실패한다.
+pub(crate) fn init_main(dir: &Path) -> std::result::Result<(), String> {
+    run(dir, &["init", "-q", "-b", "main"])?;
+    run(dir, &["commit", "-q", "--allow-empty", "--no-verify", "-m", "init"])
+}
+
+/// git 한 번 — 실패하면 git이 적은 글(stderr, 없으면 stdout)이다. 읽기 도우미 `git`과 달리 왜 실패했는지를 사람에게 보인다.
+fn run(dir: &Path, args: &[&str]) -> std::result::Result<(), String> {
+    let out = Command::new("git").arg("-C").arg(dir).args(args).output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(if out.stderr.is_empty() { &out.stdout } else { &out.stderr }).trim().to_string();
+    Err(said)
+}
+
 pub(crate) fn branch_exists(repo: &Path, name: &str) -> bool {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")]).is_some()
 }

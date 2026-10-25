@@ -6,6 +6,12 @@ pub enum Error {
     InvalidFile { slug: String, message: String },
     #[error("folder does not exist: {0}")]
     FolderMissing(String),
+    // Project 추가가 git 저장소가 아닌 폴더를 받지 않았다(03 구현 스펙 §15) — 「git init 하고 추가」를 골라야 받는다.
+    #[error("not a git repository: {0}")]
+    NotGitRepo(String),
+    // 새로 만들 자리에 무엇이 이미 있다(03 구현 스펙 §15 「새로 만들기」) — 덮지 않는다.
+    #[error("already exists: {0}")]
+    AlreadyExists(String),
     #[error("name must not be empty")]
     EmptyName,
     #[error("Space를 찾지 못했어요: {0}")]
@@ -90,7 +96,8 @@ pub use layout::{
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
 pub use store::{
-    create_project, delete_project, get_project, list_projects, project_folders, update_project, ProjectPatch,
+    add_project, create_project, delete_project, get_project, inspect_folder, list_projects, new_project, new_project_place,
+    project_folders, update_project, AddProject, FolderLook, NewProjectPlace, ProjectPatch,
 };
 // Space(03 구현 스펙 §8) — 파일 하나가 Space 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
 // 읽는 범위가 모두 이것을 부른다(S7).

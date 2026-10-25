@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -13,7 +14,8 @@ export interface Sandbox {
   home: string;
   /**
    * 폴더 선택창 스텁이 돌려줄 절대경로. 코어가 canonicalize하므로 **실재해야** 한다.
-   * git 저장소일 필요는 없다 — 없으면 기준 브랜치가 폴백될 뿐이다.
+   * **git 저장소다**(`main`, 커밋 없음) — core 추가가 git 아닌 폴더를 거절한다(03 결정 「조정」 09). 커밋이 없어도
+   * 저장소이고 지금 브랜치가 `main`이라 기준 브랜치도 `main`이다. 커밋을 안 만들어 검사 기계의 git 이름에 기대지 않는다.
    */
   pickedFolder: string;
 }
@@ -26,6 +28,7 @@ export const test = base.extend<{ sandbox: Sandbox }>({
     const sandbox = { home: join(root, "home"), pickedFolder: join(root, PICKED_FOLDER_NAME) };
     mkdirSync(sandbox.home);
     mkdirSync(sandbox.pickedFolder);
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: sandbox.pickedFolder });
 
     await use(sandbox);
 

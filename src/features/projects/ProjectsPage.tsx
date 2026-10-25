@@ -14,9 +14,11 @@ import { projectDirRef } from "@/features/works/refs";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { ProjectMenuItems } from "./ProjectMenuItems";
-import { useAddProject } from "./add-project";
+import { addProject } from "./add-store";
 import { projectsApi } from "./api";
+import { useFolderDrop } from "./folder-drop";
 import { useDeleteProject, useProjects, useUpdateProject } from "./hooks";
+import { firstFolder } from "./project-add";
 import type { ProjectView } from "./types";
 
 interface ProjectsPageProps {
@@ -32,7 +34,6 @@ function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps)
   // 저장값을 읽는 규칙). 목록 칸은 카드의 오른쪽 칸이라(`Frame`의 `ListCard`) 손잡이가 칸의 왼쪽 끝이다 — `"right"`가 끄는 방향을
   // 뒤집는다. 목록 칸은 접지 않는다(codex-ds 결정 32) — 이 화면에는 오른쪽 패널이 없어 ⌘Enter를 듣는 자리도 없다.
   const listSize = useResizableWidth("panel-width", 264, 240, 560, "right");
-  const addProject = useAddProject();
   const deleteProject = useDeleteProject();
   const updateProject = useUpdateProject();
   // **이름을 그 자리에서 고치는 중인 프로젝트**(codex-ds 스펙 §9) — 자리가 둘이라(머리 줄 이름 · 목록 행) 따로 든다. 값이 slug인
@@ -46,11 +47,17 @@ function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps)
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
   const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
 
-  // 추가의 길은 하나다(`useAddProject` — Space 상세의 「새 Project 추가…」와 같다). 등록하면 그 Project를 고른다.
-  const handleAdd = async () => {
-    const view = await addProject();
-    if (view) onSelect(view.slug);
+  // **추가는 추가 창 하나다**(03 구현 스펙 §16) — 창이 폴더를 고르는 순간 git을 보고, 「새로 만들기」도 같은 창이다. 추가한 Project로
+  // 간다. 폴더를 이 화면에 끌어다 놓으면 창이 그 폴더로 열린다(여럿이면 첫 폴더 — S20).
+  const handleAdd = async (folder: string | null = null) => {
+    const added = await addProject(folder);
+    if (added) onSelect(added.slug);
   };
+  useFolderDrop((paths) => {
+    void firstFolder(paths, projectsApi.inspect).then((folder) => {
+      if (folder) void handleAdd(folder);
+    });
+  });
 
   // **제거는 그 프로젝트의 것이다** — 머리 줄의 [제거]는 고른 프로젝트이고, 목록 행의 메뉴는 고르지 않은 행일 수 있다(codex-ds
   // 결정 7). 확인 창을 거친 뒤에만 나가고, 고른 프로젝트를 뺐을 때만 고름을 비운다 — 다른 행을 빼도 보던 프로젝트는 그대로다.
@@ -178,7 +185,7 @@ function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps)
                 projects={projects}
                 selectedSlug={selected?.slug ?? null}
                 onSelect={onSelect}
-                onAdd={handleAdd}
+                onAdd={() => void handleAdd()}
                 renaming={renamingRow}
                 onRename={setRenamingRow}
                 onRenameCommit={rename}
@@ -212,7 +219,7 @@ function ProjectsPage({ selectedSlug, onSelect, onOpenWork }: ProjectsPageProps)
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Button onClick={handleAdd}>프로젝트 등록</Button>
+                  <Button onClick={() => void handleAdd()}>프로젝트 등록</Button>
                 </EmptyContent>
               </Empty>
             </div>

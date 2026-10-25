@@ -15,6 +15,13 @@ pub struct AddProjectParams {
     /// `~/dev/billing`. Relative paths are refused — this server's working directory
     /// is not something you can know.
     pub folder_path: String,
+    /// Only for a folder that is not a git repository yet, and only after the user agreed:
+    /// run `git init -b main` and an empty first commit (`init`) in it, then register it
+    /// with base branch `main`. The files in the folder are left as they are. Ignored for a
+    /// folder that already is a git repository. Defaults to false.
+    // 화면의 「git init 하고 추가」와 같은 core 인자다(03 구현 스펙 §15). 이 표면의 인자는 snake_case라 스펙이 적은 `initGit`은 별칭으로 받는다.
+    #[serde(default, alias = "initGit")]
+    pub init_git: bool,
 }
 
 /// `atelier_edit_project`의 인자. 주지 않은 필드는 그대로 둔다.
@@ -36,9 +43,11 @@ pub struct EditProjectParams {
 impl AtelierServer {
     #[tool(
         description = "Register a code folder as an Atelier project, so that works can create \
-                       git worktrees in it. Idempotent: registering a folder that is already \
-                       registered returns the existing project unchanged — it never creates a \
-                       duplicate and never overwrites an existing description. The code folder \
+                       git worktrees in it. The folder must be a git repository: a folder that \
+                       is not is refused, unless init_git is true (ask the user first). \
+                       Idempotent: registering a folder that is already registered returns the \
+                       existing project unchanged — it never creates a duplicate and never \
+                       overwrites an existing description. Apart from init_git, the code folder \
                        itself is never modified; only Atelier's own metadata file is written. \
                        A new project's description starts empty — fill it in right away with \
                        atelier_edit_project. Local files only.",
@@ -51,7 +60,7 @@ impl AtelierServer {
     )]
     async fn atelier_add_project(
         &self,
-        Parameters(AddProjectParams { folder_path }): Parameters<AddProjectParams>,
+        Parameters(AddProjectParams { folder_path, init_git }): Parameters<AddProjectParams>,
     ) -> Result<CallToolResult, ErrorData> {
         // 이 표면이 내보내는 경로는 전부 `~` 축약형이다. 그대로 되돌려 받아도 동작해야 한다.
         let folder = atelier_core::expand_home(&folder_path);
@@ -64,7 +73,9 @@ impl AtelierServer {
                  `~/dev/billing`) and call this tool again."
             ))]));
         }
-        match atelier_core::create_project(&self.projects_root, &folder) {
+        // 화면의 추가 창과 같은 core 추가다 — git 저장소가 아니면 `init_git`일 때만 받는다(03 구현 스펙 §15).
+        let add = atelier_core::AddProject { name: None, init_git };
+        match atelier_core::add_project(&self.projects_root, &folder, add) {
             Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
             Err(e) => Ok(kernel_error(e)),
         }

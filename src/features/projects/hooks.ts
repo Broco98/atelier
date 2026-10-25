@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { settingsApi } from "@/features/settings/api";
+import { saveSettingsSection } from "@/features/settings/save-section";
 import { projectsApi } from "./api";
+import { DEFAULT_NEW_PARENT } from "./project-add";
 import type { ProjectPatch } from "./types";
 
 const PROJECTS_KEY = ["projects"] as const;
@@ -40,8 +43,48 @@ function useInvalidatingMutation<TArgs, TResult>(
   });
 }
 
+/** 추가 — 추가 창의 「Project 추가」 · 「git init 하고 추가」(03 구현 스펙 §15). */
 export function useCreateProject() {
-  return useInvalidatingMutation((folder: string) => projectsApi.create(folder));
+  return useInvalidatingMutation(
+    ({ folder, name, initGit }: { folder: string; name: string | null; initGit: boolean }) =>
+      projectsApi.create(folder, name, initGit),
+  );
+}
+
+/** 새로 만들기 — 추가 창의 「Project 만들기」(03 구현 스펙 §15). */
+export function useMakeProject() {
+  return useInvalidatingMutation(({ parent, name }: { parent: string; name: string }) => projectsApi.make(parent, name));
+}
+
+const NEW_PARENT_KEY = ["settings", "projects", "newParent"] as const;
+
+/**
+ * 「새로 만들기」의 부모 폴더(03 S18) — 「위치 바꾸기」로 고른 것, 고르기 전이면 `~/MyProjects`다. 설정 파일을 못 읽으면(깨진 파일 · L4 다리는
+ * 설정을 읽지 못한다) 기본이다 — 고칠 자리는 설정 화면이 말한다.
+ */
+export function useNewProjectParent(): string {
+  const { data } = useQuery({
+    queryKey: NEW_PARENT_KEY,
+    queryFn: async () => {
+      try {
+        return (await settingsApi.read()).projects?.newParent ?? DEFAULT_NEW_PARENT;
+      } catch {
+        return DEFAULT_NEW_PARENT;
+      }
+    },
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+  return data ?? DEFAULT_NEW_PARENT;
+}
+
+/** 「위치 바꾸기」로 고른 부모를 앱 설정에 적는다 — 다음 Project도 거기에 만든다. 설정의 다른 구획 · 모르는 칸은 그대로다(`saveSettingsSection`). */
+export function useSaveNewProjectParent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (parent: string) => saveSettingsSection("projects", (latest) => ({ ...latest, newParent: parent })),
+    onMutate: (parent) => queryClient.setQueryData(NEW_PARENT_KEY, parent),
+  });
 }
 
 export function useUpdateProject() {

@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use crate::project::{parse_project, render_project, Project, ProjectView};
-use crate::{collapse_home, expand_home, git, slugify, Error, Result};
+use crate::{collapse_home, expand_home, git, slugify, Error, GitInfo, Result};
 
 pub struct ProjectPatch {
     pub name: Option<String>,
@@ -57,30 +59,136 @@ pub fn get_project(root: &Path, slug: &str) -> Result<ProjectView> {
     Ok(to_view(read_project(root, slug)?))
 }
 
-pub fn create_project(root: &Path, folder: &Path) -> Result<ProjectView> {
-    let folder = folder
-        .canonicalize()
-        .map_err(|_| Error::FolderMissing(folder.display().to_string()))?;
-    if !folder.is_dir() {
-        return Err(Error::FolderMissing(folder.display().to_string()));
+/// 고른 폴더가 무엇인가 — 갈래 하나다(03 구현 스펙 §15 「폴더 살피기」). Project 추가 창이 폴더를 고르는 순간 묻고, 그 갈래로 글과
+/// 단추를 바꾼다(§16) — 추가를 누르기 전에, worktree를 만들 때가 아니라 지금 안다(스토리 105 · 107).
+///
+/// `path`는 모두 화면에 서는 꼴이다 — 심볼릭 링크를 푼 자리를 `~`로 줄였다(Project 파일의 `path`와 같은 꼴). 그 값을 그대로 추가에
+/// 넘겨도 된다(`add_project`가 `~`를 푼다).
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum FolderLook {
+    /// git 저장소의 뿌리 — 추가하면 기준 브랜치가 `base_branch`다(`origin/HEAD` → 지금 브랜치 → `main`). 원격은 이름들(`remotes`)과
+    /// `origin`의 owner/repo(`git.remote_slug`)다.
+    Repo { path: String, base_branch: String, remotes: Vec<String>, git: GitInfo },
+    /// git 저장소 안의 하위 폴더 — 뿌리(`root`)로 바꿀지 사람이 고른다. 그대로 추가하면 이 폴더가 Project가 되고, 기준 브랜치는 그
+    /// 저장소의 것(`base_branch`)이다(스토리 109 · 110).
+    Subfolder { path: String, root: String, base_branch: String },
+    /// git 저장소가 아니다 — 「git init 하고 추가」로만 추가된다(스토리 107 · 108).
+    NotGit { path: String },
+    /// 이미 등록된 폴더 — 그 Project다. 추가 대신 「열기」가 선다(스토리 111). 다른 갈래보다 먼저 본다: git을 보기 전 판에서 등록된
+    /// git 아닌 폴더도 이 갈래다.
+    Registered { path: String, project: ProjectView },
+    /// 폴더가 없다 — 지웠거나 옮겼거나, 폴더가 아닌 파일이다. `path`는 받은 경로 그대로다(풀 링크가 없다).
+    Missing { path: String },
+}
+
+/// 폴더 살피기(`FolderLook`). 경로는 `~`로 시작해도 된다. 실패하지 않는다 — 읽지 못한 폴더는 「폴더가 없음」이다.
+pub fn inspect_folder(root: &Path, folder: &Path) -> FolderLook {
+    let asked = expand(folder);
+    let Some(folder) = asked.canonicalize().ok().filter(|folder| folder.is_dir()) else {
+        return FolderLook::Missing { path: collapse_home(&asked) };
+    };
+    if let Some(project) = registered(root, &folder) {
+        return FolderLook::Registered { path: collapse_home(&folder), project: to_view(project) };
     }
+    let (Some(top), Some(git)) = (git::toplevel(&folder).and_then(|top| top.canonicalize().ok()), git::detect(&folder)) else {
+        return FolderLook::NotGit { path: collapse_home(&folder) };
+    };
+    if top != folder {
+        return FolderLook::Subfolder {
+            path: collapse_home(&folder),
+            root: collapse_home(&top),
+            base_branch: default_base(&folder, Some(&git)),
+        };
+    }
+    FolderLook::Repo {
+        path: collapse_home(&folder),
+        base_branch: default_base(&folder, Some(&git)),
+        remotes: git::remotes(&folder),
+        git,
+    }
+}
+
+/// 「git init 하고 추가」 — git이 아닌 폴더를 빈 저장소로 세운다(`git::init_main`). 실패하면 이번에 세운 `.git`을 걷고 git의 글로
+/// 실패한다 — 반쯤 세운 저장소(커밋 없는 `main`)가 남으면 그 폴더는 다음에 「저장소」로 보이지만 Work의 브랜치가 갈라질 커밋이 없다.
+///
+/// `.git`이 이미 있는데 git이 저장소로 읽지 못하는 폴더(깨진 저장소)는 세우지 않는다 — 다시 세우면 사람의 저장소를 고친다.
+fn init_git(folder: &Path) -> Result<GitInfo> {
+    let dot_git = folder.join(".git");
+    if dot_git.symlink_metadata().is_ok() {
+        return Err(Error::Git(format!("{} has a .git that git cannot read", collapse_home(folder))));
+    }
+    if let Err(said) = git::init_main(folder) {
+        let _ = std::fs::remove_dir_all(&dot_git);
+        return Err(Error::Git(said));
+    }
+    git::detect(folder).ok_or_else(|| Error::Git(format!("could not read {} as a git repository", collapse_home(folder))))
+}
+
+/// 그 폴더(심볼릭 링크를 푼 자리)를 이미 등록한 Project. 못 읽는 등록부는 빈 것으로 본다.
+fn registered(root: &Path, folder: &Path) -> Option<Project> {
+    read_projects(root).unwrap_or_default().into_iter().find(|project| expand_home(&project.path) == folder)
+}
+
+/// 받은 경로의 `~`를 푼다 — 화면 · 바깥 MCP가 주는 경로는 `~`로 줄인 꼴일 수 있다(`FolderLook`의 `path`).
+fn expand(path: &Path) -> PathBuf {
+    expand_home(&path.to_string_lossy())
+}
+
+/// 등록할 때의 기준 브랜치 — `origin/HEAD`가 가리키는 것, 없으면 지금 브랜치, 그것도 없으면 `main`이다.
+fn default_base(folder: &Path, git: Option<&GitInfo>) -> String {
+    git::origin_head(folder)
+        .or_else(|| git.and_then(|g| g.current_branch.clone()))
+        .unwrap_or_else(|| "main".to_string())
+}
+
+/// 추가할 때 사람이 고른 것(03 구현 스펙 §15 「추가」). 기본값은 「이름은 폴더 이름 · git 저장소만」이다.
+#[derive(Debug, Clone, Default)]
+pub struct AddProject {
+    /// 「Project 이름」 칸 — 비었거나 없으면 폴더 이름이다. 이름만 정한다: slug(파일 이름)는 늘 폴더 이름에서 짓는다.
+    pub name: Option<String>,
+    /// 「git init 하고 추가」 — git 저장소가 아닌 폴더는 이것이 참일 때만 받는다. 그때 `git init -b main`과 빈 첫 커밋(「init」)을
+    /// 하고 기준 브랜치 `main`으로 등록한다. 이미 저장소면 아무것도 하지 않는다.
+    pub init_git: bool,
+}
+
+/// 있는 git 저장소를 이름 없이 등록한다 — `add_project`의 기본 갈래(`AddProject::default()`).
+pub fn create_project(root: &Path, folder: &Path) -> Result<ProjectView> {
+    add_project(root, folder, AddProject::default())
+}
+
+/// Project 추가(03 구현 스펙 §15). 화면의 추가 창 · 바깥 MCP `atelier_add_project` · Host가 이 하나를 부른다.
+///
+/// - **git 저장소가 아닌 폴더는 「git init 할까」가 참일 때만 받는다** — 아니면 `NotGitRepo`다. 등록한 뒤 Work를 만들 때에야 실패하지
+///   않게 지금 거절한다.
+/// - 저장소의 하위 폴더는 그대로 받는다 — 사람이 「그대로 추가」를 골랐다(뿌리로 바꾸는 것은 추가 창이 묻는다).
+/// - 이미 등록된 폴더는 그 Project를 그대로 돌려준다(멱등) — 이름 · 설명을 덮지 않는다.
+/// - 경로는 `~`로 시작해도 된다. 심볼릭 링크를 푼 자리를 `~`로 줄여 적는다.
+pub fn add_project(root: &Path, folder: &Path, add: AddProject) -> Result<ProjectView> {
+    let asked = expand(folder);
+    let folder = asked
+        .canonicalize()
+        .ok()
+        .filter(|folder| folder.is_dir())
+        .ok_or_else(|| Error::FolderMissing(collapse_home(&asked)))?;
     std::fs::create_dir_all(root)?;
 
-    // 멱등: 같은 폴더가 이미 등록돼 있으면 기존 프로젝트 반환
-    for view in list_projects(root)? {
-        if expand_home(&view.project.path) == folder {
-            return Ok(view);
-        }
+    if let Some(project) = registered(root, &folder) {
+        return Ok(to_view(project));
     }
+    let git = match git::detect(&folder) {
+        Some(git) => git,
+        None if add.init_git => init_git(&folder)?,
+        None => return Err(Error::NotGitRepo(collapse_home(&folder))),
+    };
 
     let name = folder
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "project".to_string());
     let slug = unique_slug(root, &slugify(&name));
-    let base_branch = git::origin_head(&folder)
-        .or_else(|| git::detect(&folder).and_then(|g| g.current_branch))
-        .unwrap_or_else(|| "main".to_string());
+    let name = add.name.map(|name| name.trim().to_string()).filter(|name| !name.is_empty()).unwrap_or(name);
+    let base_branch = default_base(&folder, Some(&git));
 
     let project = Project {
         slug,
@@ -93,6 +201,56 @@ pub fn create_project(root: &Path, folder: &Path) -> Result<ProjectView> {
     };
     write_project(root, &project)?;
     Ok(to_view(project))
+}
+
+/// 새로 만들 자리 — 추가 창의 「새로 만들기」가 이름을 칠 때마다 묻는다(03 구현 스펙 §16 · 스토리 112 · 114). 경로는 모두 화면에 서는
+/// 꼴(`~`로 줄인 것)이다.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewProjectPlace {
+    /// 부모 폴더 — 「위치 바꾸기」로 고른 것을 화면의 꼴로 다시 적는다.
+    pub parent: String,
+    /// 만들 폴더(`<부모>/<폴더 이름>`). 이름이 비었으면 없다.
+    pub path: Option<String>,
+    /// 그 자리에 무엇이 이미 있다 — 그러면 「새로 만들기」는 만들지 않는다(`new_project`의 `AlreadyExists`).
+    pub taken: bool,
+}
+
+/// 새로 만들 자리(`NewProjectPlace`). 폴더 이름을 짓는 규칙은 `new_project`와 하나다.
+pub fn new_project_place(parent: &Path, name: &str) -> NewProjectPlace {
+    let parent = expand(parent);
+    let folder = (!name.trim().is_empty()).then(|| parent.join(slugify(name)));
+    NewProjectPlace {
+        parent: collapse_home(&parent),
+        taken: folder.as_ref().is_some_and(|folder| folder.symlink_metadata().is_ok()),
+        path: folder.as_deref().map(collapse_home),
+    }
+}
+
+/// 새로 만들기(03 구현 스펙 §15) — `<부모>/<폴더>`를 만들고 `git init -b main` · 빈 첫 커밋(「init」)을 한 뒤 등록한다(기준 브랜치
+/// `main`). 폴더 이름은 이름에서 짓는다(`slugify` — 「Landing Page」는 `landing-page`). 부모는 `~`로 시작해도 되고, 없으면 만든다.
+///
+/// - 그 자리에 무엇이 있으면(폴더든 파일이든) 만들지 않고 `AlreadyExists`다 — 있는 폴더를 덮지 않는다. 추가 창은 그때 「그 폴더를
+///   추가할까요?」로 간다.
+/// - git이 실패하면(사람의 git 이름 · 이메일이 없으면 첫 커밋이 실패한다) **이번에 만든 폴더를 모두 지우고** git의 글로 실패한다 — 빈
+///   폴더가 남지 않는다. 없던 부모를 함께 만들었으면 그것도 지운다.
+pub fn new_project(root: &Path, parent: &Path, name: &str) -> Result<ProjectView> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::EmptyName);
+    }
+    let folder = expand(parent).join(slugify(name));
+    if folder.symlink_metadata().is_ok() {
+        return Err(Error::AlreadyExists(collapse_home(&folder)));
+    }
+    // 이번에 새로 서는 가장 위 폴더 — 실패하면 여기부터 걷는다.
+    let made = folder.ancestors().take_while(|one| one.symlink_metadata().is_err()).last().unwrap_or(&folder).to_path_buf();
+    std::fs::create_dir_all(&folder)?;
+    if let Err(said) = git::init_main(&folder) {
+        let _ = std::fs::remove_dir_all(&made);
+        return Err(Error::Git(said));
+    }
+    add_project(root, &folder, AddProject { name: Some(name.to_string()), init_git: false })
 }
 
 pub fn update_project(root: &Path, slug: &str, patch: ProjectPatch) -> Result<ProjectView> {
@@ -168,11 +326,19 @@ fn unique_slug(root: &Path, base: &str) -> String {
 mod tests {
     use super::*;
 
+    /// 커밋 없는 저장소(브랜치 `main`) — 추가는 git 저장소만 받는다(03 구현 스펙 §15). 살피기 · 추가의 갈래는 `tests/project_add.rs`가
+    /// 잰다. 여기는 등록부 파일의 읽기 · 쓰기다.
+    fn git_repo(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        let ok = std::process::Command::new("git").arg("-C").arg(dir).args(["init", "-q", "-b", "main"]).status().unwrap();
+        assert!(ok.success(), "git init");
+    }
+
     fn setup() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("projects");
         let folder = tmp.path().join("my-app");
-        std::fs::create_dir_all(&folder).unwrap();
+        git_repo(&folder);
         (tmp, root, folder)
     }
 
@@ -182,9 +348,9 @@ mod tests {
         let created = create_project(&root, &folder).unwrap();
         assert_eq!(created.project.slug, "my-app");
         assert_eq!(created.project.name, "my-app");
-        assert_eq!(created.project.base_branch, "main"); // git 없는 폴더 → 폴백
+        assert_eq!(created.project.base_branch, "main"); // origin/HEAD가 없으면 지금 브랜치
         assert!(!created.missing);
-        assert!(created.git.is_none());
+        assert_eq!(created.git.and_then(|git| git.current_branch).as_deref(), Some("main"));
 
         let listed = list_projects(&root).unwrap();
         assert_eq!(listed.len(), 1);
@@ -205,7 +371,7 @@ mod tests {
         let (_tmp, root, folder) = setup();
         create_project(&root, &folder).unwrap();
         let other = folder.parent().unwrap().join("nested");
-        std::fs::create_dir_all(other.join("my-app")).unwrap();
+        git_repo(&other.join("my-app"));
         let b = create_project(&root, &other.join("my-app")).unwrap();
         assert_eq!(b.project.slug, "my-app-2");
     }
