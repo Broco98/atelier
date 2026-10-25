@@ -766,14 +766,16 @@
        버튼의 hover가 켜짐과 같은 면이다.
        이 부등식은 깨지면 안 된다:
          행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록 · 트리
-         행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 사이드바(`surface-sidebar` 위, v1 티켓 46)
+         줄 hover = 줄 선택 = 선택된 줄 hover(`fill-nav-selected`)             — 사이드바 줄(위 줄 · Work · Thread, 02 티켓 05 — Codex .053)
          줄 hover = 메뉴 열림 = 켜진 줄(`fill-nav-selected`)                    — 사이드바 사람 줄 · 사람 메뉴(02 티켓 04 — Codex .053)
          탭 hover(`fill-soft`)    < 켜진 탭(`fill-hover`, `tab-on`) = 켜진 탭 hover — 카드 머리의 탭 줄
          버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
        **행 선택의 면은 면 알파 밖의 불투명한 `fill-selected`다**(`selected-row` — #eff0f0, DS `.at-tree-row.is-on`). 흰 카드 안 목록 ·
-       트리는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택으로 갈리고, 사이드바(`surface-sidebar` #fcfcfc 위 5% ≈ #f1f1f1)도 그렇다(v1 티켓
-       46). 한때 사이드바가 창 바탕(`surface-shell`) 회색에 붙어 `fill-hover`였다 — 회색 위에서는 불투명한 면이 hover보다 옅어
-       부등식이 뒤집혔다. 선택된 행은 어디서나 hover해도 그 면 그대로다.
+       트리는 hover(흰 면 위 5% ≈ #f4f4f4) < 선택으로 갈린다. 선택된 행은 어디서나 hover해도 그 면 그대로다. **사이드바는 갈래가
+       다르다**(02 티켓 05) — Codex 사이드바는 줄의 hover와 고른 면이 같은 투명 .053이라 둘을 가르지 않는다. 고른 줄은 hover가 떠나도
+       남는 면으로, 지나는 줄은 포인터가 있는 동안의 면으로 갈린다. 한때(v1 티켓 46) 사이드바도 hover(`fill-soft`) < 선택(`fill-selected`)
+       이었고, 그 전에는 창 바탕(`surface-shell`) 회색에 붙어 `fill-hover`였다 — 회색 위에서는 불투명한 면이 hover보다 옅어 부등식이
+       뒤집혔다.
        **유틸리티 `accent`로 상태 배경을 칠하지 않는다** — shadcn은 그 이름에 옅은 면을 걸었지만 Codex에서는 같은 이름이
        파랑이고(`@theme inline`의 Codex 색 머리말), 그 이름은 행 hover인지 버튼 hover인지도 말하지 않는다. 메뉴 · Select의 켜진
        줄도 `focus:bg-fill-hover`다 — 버튼 hover와 같은 면이다. `state-scale.test.ts`가 변형(`hover:` · `focus:` · `data-*:` …)
@@ -782,9 +784,9 @@
          `fill-selected`     흰 카드 안의 행 선택(`selected-row`, 위) · 레일의 켜진 칸(`Rail`, codex-ds 결정 29)이 패널
                              트리의 고른 행과 같은 면이다
          `fill-nav-selected` 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). 면 알파이지만
-                             셋과 단이 다르다 — Codex는 사이드바 줄의 hover와 고른 면이 같은 .053이라, 이 면을 쓰는 화면(04 · 05)이
-                             위 사이드바 부등식을 그 값에 맞춰 고친다. 04가 사람 줄 · 사람 메뉴를 옮겼고(위 부등식의 셋째 줄),
-                             사이드바 줄은 05가 옮긴다
+                             셋과 단이 다르다 — Codex는 사이드바 줄의 hover와 고른 면이 같은 .053이다. 04가 사람 줄 · 사람 메뉴를,
+                             05가 사이드바 줄(`selected-row`의 사이드바 갈래 · `sidebarRowTone`의 hover)을 옮겼다(위 부등식의 둘째 ·
+                             셋째 줄)
          `fill-toggle-on`    Thread 머리 줄 요약 고정 토글의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
        이 목록은 **열거**다(`state-scale.test.ts`가 `:root`의 `--fill-*` 이름을 맞댄다): 여기 없는 새 상태 배경은 유예된 것이 아니라
        면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널 토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
@@ -1207,14 +1209,14 @@
     --input: var(--border-heavy);
     --ring: var(--accent);
     /* 사이드바는 Codex 대화 사이드바의 바탕이다(v1 티켓 46) — `--sidebar`의 짝은 `surface-sidebar`(#fcfcfc)이고 글자는 `fg-sidebar`다.
-       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-selected`다(아래 `selected-row`). 사이드바
+       고른 행의 `--sidebar-accent`는 사이드바에 실제로 서는 고른 면과 같은 `fill-nav-selected`다(아래 `selected-row`). 사이드바
        자신(`Sidebar.tsx`)과 nav 행(`SidebarItem`) · work 행(`WorkSectionList.tsx`) · `selected-row`는 이 이름들이 아니라
        Codex 이름을 읽는다 — 앱 호출부에 `sidebar-*`를 읽는 자리는 없다. */
     --sidebar: var(--surface-sidebar);
     --sidebar-foreground: var(--fg-sidebar);
     --sidebar-primary: var(--accent);
     --sidebar-primary-foreground: var(--fg-inverse);
-    --sidebar-accent: var(--fill-selected);
+    --sidebar-accent: var(--fill-nav-selected);
     --sidebar-accent-foreground: var(--fg-sidebar);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--accent);
@@ -1264,9 +1266,12 @@
   &:hover {
     background: var(--fill-selected);
     }
+  /* 사이드바 안의 고른 줄은 투명한 `fill-nav-selected`(.053)다 — Codex 사이드바 줄의 hover와 같은 면이다(02 티켓 05 · 위 상태 농도).
+     글자는 위의 `fg`(#1a1c1f) 그대로다 — 안 고른 줄의 `fg-sidebar`(85%)보다 한 단 짙어, 면이 hover와 같아도 고른 줄이 갈린다(캔버스
+     Components 「사이드바 줄」의 고른 줄 · 사람 메뉴의 켜진 줄과 같다). 한때(v1 티켓 46) 여기서 글자를 `fg-sidebar`로 되돌렸다. */
   [data-sidebar] &,
   [data-sidebar] &:hover {
-    color: var(--fg-sidebar);
+    background: var(--fill-nav-selected);
     }
 }
 

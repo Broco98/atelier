@@ -1,4 +1,5 @@
-import { seenOf, statusOf, type Seen, type ThreadStatus } from "./status";
+import type { StatusMarkKind } from "@/components/shell/status-mark";
+import { markOf, seenOf, statusOf, type Seen, type ThreadStatus } from "./status";
 import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 
 // 「내 차례」 거르기와 ⌘J(v1 티켓 42 · 구현 스펙 §13 S28 · §17 · 스토리 131 · 132 · 캔버스 Sidebar 보드 「내 차례만」) — 나를 기다리는
@@ -10,6 +11,8 @@ import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 //   (v1 티켓 37), 「내 차례」에서는 한 줄에 섞여 기다린 순서로 선다.
 // - 깨진 Thread와 아직 읽지 않은 Thread(기록 · 살아 있음을 모른다)는 들지 않는다 — 모르는 것을 기다린다고 하지 않는다.
 // - 보관되거나 지워진 Work의 Thread(읽기만, v1 티켓 38)도 들지 않는다 — 그 Thread는 사이드바에서 빠지고 ⌘K로 연다(S43).
+//
+// Work 줄의 상태 표시(02 티켓 05)도 같은 읽기로 Thread 하나의 표시를 짓는다(`threadMark`) — 접기를 함께 아끼려 여기 둔다.
 
 /** Thread 하나를 읽은 것 — 기록 줄과 엔진이 준 살아 있음 · 기록 끝(`thread_get`). */
 export interface ThreadReading {
@@ -38,6 +41,16 @@ export function waitingOrder(
     if (status?.kind === "mine") waiting.push({ thread, since: status.since, text: status.text });
   }
   return waiting.sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
+}
+
+/**
+ * Thread 하나의 상태 표시(02 티켓 05 · S8) — 사이드바 Thread 줄과 같은 판정이다(`statusOf` → `markOf`). Work 줄이 접혀 있어도 그 Work의
+ * Thread들을 이것으로 읽는다(`workMarks`). 깨진 Thread와 아직 읽지 않은 Thread는 표시가 없다 — 모르는 것을 말하지 않는다. 기록 줄이 흐를
+ * 때마다 모든 Thread를 다시 읽으므로, 바뀌지 않은 Thread는 다시 접지 않는다(`statusFor`).
+ */
+export function threadMark(thread: ThreadSummary, reading: ThreadReading | null): StatusMarkKind | null {
+  if (thread.broken !== null || reading === null) return null;
+  return markOf(statusFor(reading.lines, seenOf(reading.view, thread.lastRead)));
 }
 
 /** 기록 줄 배열마다 마지막으로 센 상태 — 기록 줄 스토어는 바뀐 Thread의 배열만 새로 짓는다(`mergeLines`). */

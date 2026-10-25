@@ -111,7 +111,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 이쪽은 위와 반대다(#203) — 값이 문자열이라 Record 하나로 읽는 것이 맞다. 행마다
     // 구독하면 열여덟 개가 같은 셀렉터를 각자 돌면서 얻는 것이 없다. 값을 고르는 자리가
     // 여기 하나라는 것을 리터럴로 못박는다.
-    expect(sidebar).toContain("shells={{ shellCounts, signals, notes, renderRowMeta }}");
+    expect(sidebar).toContain("shells={{ shellCounts, signals, notes }}");
     // **부르는 자리를 센다 — 이름이 아니다.** 이름만 세면 import 줄과 주석의 산문까지
     // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다(위 검사와 같은 근거).
     expect(countOf(sidebar, "(state) => signalsOf(state)")).toBe(1);
@@ -144,21 +144,14 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(sidebar).not.toContain("BAND_LIMIT");
   });
 
-  it("그 값이 work 행 오른쪽 메타로 내려간다", () => {
-    // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
-    // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.
-    //
-    // **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8). 조용한 행의
-    // 메타가 곧 그 수이고(`⌨ 셸 수` — ui-refresh 결정 13), 그것을 그리는 자리가 `ShellMeta` 하나다.
-    // **두 조각으로 잡는다.** 조각마다 지키는 것이 다르다: 앞은 소유자를 `ownerOf`가 짓는가(조회하는 쪽과 같은
-    // 함수여야 한다 — ui-refresh 결정 23), 뒤는 개수의 키가 slug인가(그 Record를 받는 목록이 터미널을 모른다 —
-    // `shellCountsOf` 머리말). 두 어휘가 한 자리에 함께 서는 것이 그 사정 때문이다.
-    expect(sidebar).toContain("owner={ownerOf(work.slug)}");
-    expect(sidebar).toContain("shellCount={shellCounts[work.slug] ?? 0}");
-    // **조각이 같은 컴포넌트에 붙어 있는지는 자리 수로 든다** — 이 파일에 `RowMetaFor`가
-    // 서는 곳은 둘뿐이다(nav `Terminal` 하나, work 행 하나). 늘어나면 위 두 조각이 어느
-    // 것의 것인지가 갈리지 않는다.
-    expect(countOf(sidebar, "<RowMetaFor")).toBe(2);
+  it("work 행에는 오른쪽 메타가 없다 — 줄 오른쪽 끝은 상태 표시 하나다", () => {
+    // 02 구현 스펙 S8 · S9 · 티켓 05. 한때 work 행 오른쪽에 셸 수(`⌨ N`)와 부른 셸의 경과가 섰다(`renderRowMeta` 슬롯 →
+    // `RowMetaFor`). 이제 그 끝은 상태 표시 하나이고 셸 신호는 그 표시의 차례로 접힌다(`WorkSectionList`의 `workMark`) — 셸 수는
+    // 호버 카드가, 경과는 알림 띠가 말한다. 그래서 `RowMetaFor`가 서는 곳은 사람 메뉴의 `Terminal` 줄 하나다 — 늘어나면 work 행에
+    // 메타가 되살아난 것이다.
+    expect(sidebar).not.toContain("renderRowMeta");
+    expect(sidebar).not.toContain("owner={ownerOf(work.slug)}");
+    expect(countOf(sidebar, "<RowMetaFor")).toBe(1);
   });
 });
 
@@ -211,11 +204,11 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     expect(countOf(sidebar, "return TERMINAL_LABEL;")).toBe(1);
   });
 
-  it("`Terminal`이 안고 있는 셸 수는 남되, work 행과 **같은 어휘**로 선다", () => {
+  it("`Terminal`이 안고 있는 셸 수는 남는다", () => {
     // 걷은 것은 펼침이지 이 숫자가 아니다 — 여기서 빠지면 최상위 셸이 몇 개 도는지가
-    // 사이드바 어디에도 안 남는다(work 행은 오른쪽 메타가 그 몫을 한다 — 결정 2·3).
+    // 사이드바 어디에도 안 남는다(work의 셸 수는 그 work의 호버 카드가 말한다 — 02 S9).
     //
-    // **개수 prop이 메타 슬롯이다**(결정 4·13). 최상위 셸 수가 work 행과 같은 `⌨ 셸 수`로
+    // **개수 prop이 메타 슬롯이다**(결정 4·13). 최상위 셸 수가 `⌨ 셸 수`로
     // 이 행에 서고, 그 셸에서 claude가 돌아도 로고는 안 뜬다(ui-refresh 결정 13).
     expect(sidebar).toContain("<RowMetaFor owner={ownerOf()} shellCount={topShells} />");
   });

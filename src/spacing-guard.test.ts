@@ -349,11 +349,6 @@ describe("눈금의 사분 단", () => {
       why: "머리 줄 화면 것의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
     },
     {
-      file: "src/features/works/WorkSectionList.tsx",
-      className: "pl-2.25",
-      why: "work 행의 메타 칸 — 제목과 메타 사이 9(DS `.at-row`의 칸 사이). 메타가 있을 때만 난다",
-    },
-    {
       file: "src/components/ui/button.tsx",
       className: "gap-1.25",
       why: "머리 줄 버튼(`top`) — 아이콘과 글자 사이 5(DS `.at-btn.top`)",

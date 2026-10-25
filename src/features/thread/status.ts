@@ -1,3 +1,4 @@
+import type { StatusMarkKind } from "@/components/shell/status-mark";
 import { describeApproval } from "./approval";
 import { describeCall } from "./call-view";
 import { awaitingLogin, isLoginRequired } from "./engine-store";
@@ -19,7 +20,7 @@ import type { RecordLine, ThreadView } from "./types";
 
 // Thread 목록 상태(v1 티켓 41 · 구현 스펙 §17 · S38 · 캔버스 Sidebar 보드 「상태는 다섯 가지」) — Thread 하나의 기록 줄과 엔진이 준 두 값
 // (떠 있는 Session이 없을 때의 마지막 seq · 사람이 마지막으로 본 seq)에서 사이드바 줄의 상태 **하나**를 고르는 **순수 함수**다. 그리는
-// 것은 `SidebarThreads`의 `ThreadRow`다. 기록은 Thread 화면과 같은 접기(`foldOf`)로 읽어, 사이드바와 Thread가 다른 말을 하지 않는다.
+// 것은 `SidebarThreads`의 `ThreadRow` — 줄 오른쪽 끝의 상태 표시 하나다(02 티켓 05 · `markOf` · `components/shell/status-mark`). 기록은 Thread 화면과 같은 접기(`foldOf`)로 읽어, 사이드바와 Thread가 다른 말을 하지 않는다.
 //
 // | 우선 | 상태 | 언제 |
 // |---|---|---|
@@ -97,6 +98,15 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
   }
   if (lastEnd(lines) > seen.lastRead) return { kind: "new" };
   return null;
+}
+
+/**
+ * 그 상태가 줄 오른쪽 끝에 그리는 표시(02 구현 스펙 §4 · S11) — 넷은 저마다 표시가 있고, **멈춤은 표시가 없다**(사람이 멈춘 것은 일거리가
+ * 아니다). 상태를 고르는 차례는 위 표 그대로이고 그리는 법만 이것이다 — 멈춘 Thread는 그 뒤의 새 결과도 보이지 않는다(멈춤이 앞이다).
+ * Work 줄은 그 Work의 Thread들의 이 값을 모아 가장 센 하나를 든다(`features/works/work-mark.ts`).
+ */
+export function markOf(status: ThreadStatus | null): StatusMarkKind | null {
+  return status === null || status.kind === "stopped" ? null : status.kind;
 }
 
 /**

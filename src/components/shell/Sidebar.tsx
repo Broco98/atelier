@@ -184,14 +184,6 @@ function Sidebar({
     );
   }
 
-  // 행의 오른쪽 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미 쓰는 그
-  // 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지 않는다. **셸 수는
-  // 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8) — 행마다 구독하는 것은
-  // 신호 하나다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
-  const renderRowMeta = (work: WorkView) => (
-    <RowMetaFor owner={ownerOf(work.slug)} shellCount={shellCounts[work.slug] ?? 0} />
-  );
-
   return (
     <SidebarFrame open={open} size={size}>
       {/* **위 줄이 맨 위다**(02 구현 스펙 §4 · 스토리 9 — 시안 F1-Home · Diff-Frame 「제안」). 거르기 머리(옛 「전체 | 내 차례」 마디 — v1
@@ -276,9 +268,10 @@ function Sidebar({
         {threadFilter === "all" && (
           <SidebarWorkList
             open={open}
-            // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
-            // 나를 뿐 터미널을 한 번도 참조하지 않는다.
-            shells={{ shellCounts, signals, notes, renderRowMeta }}
+            // 셸에서 오는 값 셋은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
+            // 나를 뿐 터미널을 한 번도 참조하지 않는다. 한때 넷째로 행의 오른쪽 메타(`⌨ N` · 부른 셸의 경과 — `RowMetaFor`)가 함께
+            // 내려갔다 — 02 티켓 05가 Work 줄 오른쪽 끝을 상태 표시 하나로 모으며 걷었다(셸 수는 호버 카드로, 경과는 알림 띠에 남는다).
+            shells={{ shellCounts, signals, notes }}
             menu={menu}
             renaming={renaming}
             onRename={setRenaming}
@@ -286,7 +279,7 @@ function Sidebar({
           />
         )}
 
-        {/* **Work 묶음 바로 아래 Thread 묶음**(v1 구현 스펙 §13) — Work 없는 Thread들이 두 줄(얼굴 · 제목 · 시각 / 마지막 말)로 선다.
+        {/* **Work 묶음 바로 아래 Thread 묶음**(v1 구현 스펙 §13) — Work 없는 Thread들이 제목 한 줄씩 선다(02 티켓 05).
             두 묶음은 제 높이로 서고 넘치면 저마다 구른다 — 남는 자리는 사람 줄 위의 빈 자리다(캔버스 화면 1). */}
         <SidebarThreads filter={threadFilter} />
       </div>
@@ -318,8 +311,8 @@ function SidebarFrame({
 }) {
   const box = useFoldedFocus<HTMLElement>(open);
   return (
-    // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 바탕에 붙은 이 안에서는 `selected-row`가 `fill-hover`다(index.css의 그
-    // 유틸리티 · codex-ds 스펙 §5). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
+    // 표식(`data-sidebar`)이 고른 행의 면을 가른다 — 이 안에서는 `selected-row`가 투명한 `fill-nav-selected`(.053)다(index.css의 그
+    // 유틸리티 · 02 티켓 05 — Codex 사이드바). 흰 카드 안 목록 · 트리의 고른 행은 그대로 불투명한 `fill-selected`다.
     // 폭 변수(`--sidebar-width` · `--sidebar-min`)는 앱 셸 뿌리가 싣는다 — 머리 줄의 이름 자리가 같은 값으로 사이드바 끝을 따른다.
     <aside ref={box} id={SIDEBAR_ID} data-sidebar="" className={asideClass(open, size.dragging)}>
       {/* fixed inner width so text doesn't reflow while the width animates.
@@ -532,9 +525,10 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
  * **개수는 반대로 위에서 한 번에 읽어 prop으로 내려온다**(`shellCounts`) — 그 값은 셸이
  * 열리고 닫힐 때만 바뀌어 얕은 비교가 실제로 걸린다(결정 8). 둘이 갈리는 자리가 여기다.
  *
- * **소유자의 slug가 비어 있으면 최상위, 곧 nav `Terminal`이다**(결정 10). work 행과 nav가
- * 이 컴포넌트 **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가
- * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
+ * **소유자의 slug가 비어 있으면 최상위, 곧 사람 메뉴의 `Terminal`이다**(결정 10). 한때 work 행과 nav가
+ * 이 컴포넌트 **하나**를 함께 썼다 — **02 티켓 05가 work 행에서 걷었다**: Work 줄 오른쪽 끝은 상태 표시 하나의 자리라
+ * (`WorkSectionList`의 `workMark` — 셸이 부르면 「내 차례」 알약, 안 본 끝은 새 결과 점), 셸 수는 호버 카드로, 부른 셸의
+ * 경과는 알림 띠로 갔다. 그래서 지금 이 자리를 부르는 곳은 사람 메뉴의 `Terminal` 줄 하나다(Sidebar.test.tsx가 센다).
  */
 function RowMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
   // **신호의 셋**(종류·말·시각, #203). 위 Record에 못 태우는 것은 문자열 하나로 안 접히기

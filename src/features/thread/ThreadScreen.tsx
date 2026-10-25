@@ -113,7 +113,7 @@ import WorkProposalCard from "./WorkProposalCard";
 //   카드가 넓어지고 접힐 때 대화 폭 · 카드 자리는 사이드바와 같은 패널 박자로 옮겨 간다(`duration-panel` · `ease-panel`).
 // - **읽은 자리는 맨 아래가 보일 때 적는다**(v1 티켓 41 · 구현 스펙 §17 · S38) — 열기만 하고 위를 보고 있으면 읽은 것이 아니다. 바닥에
 //   붙어 있는 동안 턴이 끝나거나 사람이 바닥까지 굴리면, 읽지 않은 턴 끝이 있을 때만 끝 줄의 seq를 적는다(`readMark`). 사이드바의 「새
-//   결과」(굵은 제목)가 그것으로 걷힌다.
+//   결과」(줄 오른쪽 끝 파란 점 — 02 티켓 05)가 그것으로 걷힌다.
 
 /**
  * 흐름 · 입력창을 모으는 열 — Codex 대화 열 폭(`size-column` 737, 02 §9)에 가운데로 모인다. 좌우 여백은 바깥 칸이 들어 흐름과 입력창이 같은
@@ -126,16 +126,14 @@ const policyPlace = (call: string, work: string | null) =>
   ({ to: "/library", search: { agent: call, ...(work !== null && { work }) } }) as const;
 
 /**
- * 새 Thread(`/`). `work`는 처음 고른 Work다 — 요약 카드 「…」의 「이 Work에서 새 Thread」(v1 티켓 34 · `/?work=`). 첫 말 전의 이 화면에는
- * 요약 카드도 토글도 없다(02 S23) — 첫 말을 보내 Thread가 서면(`/threads/<id>`) 나타난다.
+ * 새 Thread(`/`). `seed`는 Work 칩이 처음 고른 곳이다 — 요약 카드 「…」의 「이 Work에서 새 Thread」(v1 티켓 34 · `/?work=`)는 그 Work,
+ * 사이드바 Work 묶음 머리의 +(02 S5 · `/?new=work`)는 「새 Work」다. 첫 말 전의 이 화면에는 요약 카드도 토글도 없다(02 S23) — 첫 말을
+ * 보내 Thread가 서면(`/threads/<id>`) 나타난다.
  */
-export function NewThreadScreen({ work: seed = null }: { work?: string | null }) {
+export function NewThreadScreen({ seed = { kind: "no-work" } }: { seed?: ThreadLink }) {
   const navigate = useNavigate();
   // 어디서 일할지(v1 티켓 31) — Work 칩이 고른다. 최근 Work면 그 제목도 쥔다(부제 · 입력창 안내 · 칩 글자).
-  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({
-    link: seed === null ? { kind: "no-work" } : { kind: "work", slug: seed },
-    title: null,
-  }));
+  const [place, setPlace] = useState<{ link: ThreadLink; title: string | null }>(() => ({ link: seed, title: null }));
   const work = place.link.kind === "work" ? place.link.slug : null;
   // 주소로 받은 Work는 제목을 쥐지 않고 왔다 — 목록에서 읽는다(없으면 slug).
   const { data: works } = useWorks();

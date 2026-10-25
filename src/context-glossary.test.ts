@@ -98,6 +98,7 @@ describe("말의 사전", () => {
         "흰 판",
         "위 줄",
         "사람 메뉴",
+        "상태 표시",
         "알림 띠",
         "요약 카드",
         "고르는 것의 라벨은 소문자 영어",
@@ -300,6 +301,19 @@ describe("말의 사전", () => {
     }
     expect(bodyOf("Processes")).toContain("합계 카드");
     expect(doc).not.toMatch(/Work 카드(?!, Work 패널)/);
+  });
+
+  // 02 구현 스펙 §2 · §4(S8 · S11) · 티켓 05. 사이드바 줄의 상태가 오른쪽 끝 하나로 모였다 — 사전이 그 하나를 모르면 다음 사람이 줄에 점 ·
+  // 수 · 굵은 제목을 되세운다. Work 줄의 표시가 셸 신호를 같은 차례로 접는 것과, Work 상태(draft …)가 이 표시가 아닌 것을 든다.
+  it("「상태 표시」가 줄마다 오른쪽 끝 하나이고, 넷과 그 차례 · 셸 신호 · 멈춤 · 빨강을 말하며 Work 상태와 갈린다", () => {
+    for (const piece of ["오른쪽 끝의 표시 하나", "「내 차례」 알약", "스피너", "「실패」 글자", "파란 점"]) {
+      expect(bodyOf("상태 표시"), piece).toContain(piece);
+    }
+    expect(bodyOf("상태 표시")).toContain("내 차례 › 도는 중 › 실패 › 새 결과");
+    expect(bodyOf("상태 표시")).toContain("셸 신호");
+    expect(bodyOf("상태 표시")).toContain("멈춘 Thread에는 서지 않는다");
+    expect(bodyOf("상태 표시")).toContain("빨강은 「실패」 글자에만");
+    expect(bodyOf("상태 표시")).toContain("_Work 상태와 가른다._");
   });
 
   it("문서 어디에도 「패널 탭」이 _피할 말_ 줄 밖에 남지 않는다", () => {

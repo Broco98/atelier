@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import type { RecordLine, ThreadSummary } from "./types";
-import { jumpTarget, waitingOrder } from "./waiting";
+import { jumpTarget, threadMark, waitingOrder } from "./waiting";
 
 // 「내 차례」 거르기와 ⌘J(v1 티켓 42 · 구현 스펙 §13 S28 · §17 · 스토리 131 · 132) — seam은 순수 함수 둘이다. 「내 차례만」 목록과 그
 // 수 · ⌘J가 함께 읽는 차례(`waitingOrder` — 목록 요약 · 기록 줄 · 엔진의 살아 있음에서 기다리는 Thread를 기다린 순서로)와, ⌘J가 어디로
@@ -107,6 +107,24 @@ describe("내 차례만 — 기다린 순서", () => {
     ];
     const readings = live({ 보관됨: asking(at, "rm -rf dist"), 지워짐: asking(at, "pnpm test"), "지금 일": asking(at, "pnpm prisma migrate dev") });
     expect(waitingOrder(threads, readings).map((one) => one.thread.id)).toEqual(["지금 일"]);
+  });
+});
+
+// **Work 줄의 상태 표시가 읽는 Thread 하나의 표시**(02 티켓 05 · S8) — 사이드바 Thread 줄과 같은 판정이다(`statusOf` → `markOf`). Work 줄은
+// 접혀 있어도 그 Work의 Thread들을 이것으로 읽어 가장 센 하나를 세운다(`workMarks` → `workMark`).
+describe("Thread 하나의 상태 표시", () => {
+  const at = "2026-10-10T10:00:30.000+09:00";
+
+  it("나를 기다리면 내 차례, 돌면 도는 중, 끝났는데 안 봤으면 새 결과다", () => {
+    const readings = live({ 묻는: asking(at, "pnpm test"), 도는: through(twoTurns, 16), 끝난: twoTurns });
+    expect(["묻는", "도는", "끝난"].map((id) => threadMark(summary(id), readings(id)))).toEqual(["mine", "working", "new"]);
+  });
+
+  it("본 Thread · 아직 읽지 않은 Thread · 깨진 Thread는 표시가 없다", () => {
+    const readings = live({ 본: twoTurns, 깨진: twoTurns });
+    expect(threadMark(summary("본", { lastRead: 20 }), readings("본"))).toBeNull();
+    expect(threadMark(summary("안 읽은"), null)).toBeNull();
+    expect(threadMark(summary("깨진", { broken: "thread.json을 읽지 못했어요" }), readings("깨진"))).toBeNull();
   });
 });
 

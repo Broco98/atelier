@@ -158,6 +158,16 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ work: "refund-api" });
   });
 
+  // 02 구현 스펙 S5 · 티켓 05 — 사이드바 Work 묶음 머리의 +가 「새 Work」 칩을 고른 새 Thread를 연다(결정.md 조정자 「05 · 「새 Work」+」).
+  // 주소의 모양은 검증기의 타입이 든다 — +가 부르는 것과 같은 `navigate`라, 그 갈래가 없으면 타입 검사(L0)가 이 줄에서 빨개진다.
+  it("`/?new=work`도 새 Thread다 — 사이드바 Work 묶음 머리의 +가 Work 칩을 「새 Work」로 둔 채 연다", async () => {
+    const { router } = setup(["/threads/20261010-100000"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "work" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work" });
+  });
+
   it("시작 직후 뒤로갈 곳이 없다", async () => {
     const { router, history } = setup(["/"]);
     await router.load();

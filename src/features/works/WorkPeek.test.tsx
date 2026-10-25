@@ -25,7 +25,12 @@ const work: WorkView = workFixture({
 
 // 셸의 말 칸(결정 14)은 이 파일이 재는 것과 무관하다 — 칸이 서는지는 L3가 잰다. 프로젝트 줄은
 // 아직 안 읽은 판(`null`)이 기본이다.
-const card = () => renderToStaticMarkup(<WorkPeek work={work} note={null} projects={null} />);
+const card = (counts: { threads?: number; shells?: number } = {}) =>
+  renderToStaticMarkup(
+    <WorkPeek work={work} note={null} projects={null} threads={counts.threads ?? 0} shells={counts.shells ?? 0} />,
+  );
+/** 태그를 걷은 보이는 글. */
+const textOf = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 const project = (slug: string, baseBranch: string): ProjectView => ({
   slug,
@@ -55,6 +60,8 @@ describe("hover 카드", () => {
       <WorkPeek
         work={work}
         note={null}
+        threads={0}
+        shells={0}
         projects={[
           { project: "atelier", base: "develop", dirty: true },
           { project: "notes", base: null, dirty: false },
@@ -67,6 +74,22 @@ describe("hover 카드", () => {
     expect(markup.split("프로젝트").length - 1).toBe(1);
     expect(markup.split("←").length - 1).toBe(1);
     expect(markup).toContain("← develop");
+  });
+});
+
+// **사이드바 줄을 떠난 수가 카드에 선다**(02 구현 스펙 S9 · 티켓 05) — Work 줄 오른쪽 끝은 상태 표시 하나의 자리라, 그 Work에 이은 Thread
+// 수와 열린 셸 수(한때 줄 오른쪽의 `⌨ N`)가 이 카드로 왔다.
+describe("hover 카드의 Thread 수 · 셸 수", () => {
+  it("그 Work에 이은 Thread 수와 열린 셸 수가 선다", () => {
+    const text = textOf(card({ threads: 3, shells: 2 }));
+    expect(text).toContain("Thread 3개");
+    expect(text).toContain("셸 2개");
+  });
+
+  it("Thread가 없으면 「아직 없어요」이고, 셸이 없으면 셸 칸이 없다 — 「없음」을 숫자로 말하지 않는다", () => {
+    const text = textOf(card());
+    expect(text).toContain("Thread 아직 없어요");
+    expect(text).not.toContain("셸");
   });
 });
 

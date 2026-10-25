@@ -113,8 +113,9 @@ export const WORKS_COPY = {
   // 라벨은 소문자 영어」의 대문자 층). 한 칸으로 접으면 둘 중 하나가 제 층을 잃는다.
   page: "Works",
   allPinned: "전부 고정돼 있어요.",
-  // 앱에 만드는 화면이 없어서 **어디서 시작하는지**를 말한다(아래 `screen`과 같은 몫).
-  empty: "작업은 Claude Code에서 시작돼요.",
+  // **어디서 시작하는지**를 말한다 — 말로 시작하면 Host가 Work로 묶는다(02 구현 스펙 §4 · S6 · 시안 F1-Home의 빈 Work 안내에서 Space 말을 뺐다).
+  // 한때 「작업은 Claude Code에서 시작돼요.」였다 — v1의 Work 만들기 카드(Host가 Work를 제안)가 앱 안의 길을 열었다.
+  empty: "아직 Work가 없어요. 말로 시작하면 Host가 Work로 묶어 줘요.",
   // 고른 항목이 없을 때 **본문 한가운데**가 하는 말(US 22).
   screen: {
     title: "아직 작업이 없어요",

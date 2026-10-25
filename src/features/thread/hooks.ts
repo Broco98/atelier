@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
+import type { StatusMarkKind } from "@/components/shell/status-mark";
 import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
 import { saveSettingsSection } from "@/features/settings/save-section";
@@ -12,8 +13,9 @@ import { isObject } from "./json";
 import { prLineOf } from "./pr";
 import { linesOf, mergeLines, threadQueueStore, threadRecordStore, setQueue, setWriting } from "./thread-store";
 import type { AgentRoster, AskLevel, Participant, QueuedMessage, RecordLine, ThreadSummary, ThreadView } from "./types";
-import { waitingOrder, type ThreadReading, type Waiting } from "./waiting";
+import { threadMark, waitingOrder, type ThreadReading, type Waiting } from "./waiting";
 import { workPrsKey } from "./summary-card";
+import { workMarks } from "./work-threads";
 import { recentWorks, type RecentWork } from "./work-chip";
 
 // Thread 화면이 엔진에서 읽는 것(v1 티켓 05). 명령은 `api.ts`이고, 여기는 그것을 화면의 수명과 쿼리 캐시에 잇는다.
@@ -71,6 +73,37 @@ export function useWaiting(): Waiting[] {
     const viewOf = new Map(threads.map((thread, at) => [thread.id, views[at]]));
     return waitingOrder(threads, (id) => readingOf(records, viewOf.get(id), id));
   }, [threads, views, records]);
+}
+
+/** Work마다 그 Work에 이은 Thread들의 상태 표시. */
+type WorkMarks = Record<string, (StatusMarkKind | null)[]>;
+
+/** 표시가 하나도 바뀌지 않았나 — 바뀌지 않았으면 Work 묶음을 다시 그리지 않는다. */
+function sameMarks(a: WorkMarks, b: WorkMarks): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((work) => b[work]?.length === a[work].length && a[work].every((mark, at) => b[work][at] === mark))
+  );
+}
+
+/**
+ * Work마다 그 Work에 이은 Thread들의 상태 표시(02 티켓 05 · S8) — Work 줄 오른쪽 끝의 표시 하나가 이것과 그 Work의 셸 신호에서 선다
+ * (`workMark`). Work 묶음이 접혀 있어도 줄이 그 Thread들의 상태를 말해야 하므로 `useWaiting`처럼 모든 Thread를 같은 캐시로 읽는다. 기록
+ * 줄은 어느 Thread든 흐를 때마다 다시 세지만, 표시가 그대로면 같은 값을 돌려 Work 묶음이 다시 그려지지 않는다(`sameMarks`).
+ */
+export function useWorkMarks(): WorkMarks {
+  const { data: threads = [] } = useThreads();
+  const views = useQueries({
+    queries: threads.map((thread) => ({ ...threadQuery(thread.id), enabled: thread.broken === null })),
+    combine: viewsOnly,
+  });
+  const viewOf = useMemo(() => new Map(threads.map((thread, at) => [thread.id, views[at]])), [threads, views]);
+  return useStore(
+    threadRecordStore,
+    (records) => workMarks(threads, (thread) => threadMark(thread, readingOf(records, viewOf.get(thread.id), thread.id))),
+    sameMarks,
+  );
 }
 
 /**

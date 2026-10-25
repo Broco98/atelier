@@ -9,8 +9,9 @@ import { SquareTerminal } from "lucide-react";
  * 결정 13) 무리가 하나가 됐고, 불변조건은 그 무리의 수가 곧 셸 수라는 것으로 저절로 선다.
  * 무엇이 도는지는 호버 카드와 셸 탭이 말한다.
  *
- * **`components/shell`에 사는 이유는 쓰는 자리가 둘이어서다**(결정 13) — nav `Terminal`과
- * work 행의 오른쪽 끝(`sidebar-active-band` 결정 14로 한 줄 행이 돌아오면서 다시 그 자리다).
+ * **`components/shell`에 사는 이유는 쓰는 자리가 둘이었어서다**(결정 13) — nav `Terminal`과
+ * work 행의 오른쪽 끝. work 행의 자리는 02 티켓 05가 걷었다(그 끝은 상태 표시 하나이고 셸 수는 호버 카드가 말한다) — 지금은
+ * 사람 메뉴의 `Terminal` 줄 하나다.
  * 이 저장소의 규칙은 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」이고, 세는 규칙과
  * 색이 여기 하나에 있어야 그 둘이 앞으로도 안 갈린다. 규격(글꼴·간격·오른쪽 여백)은 index.css의
  * `row-meta` 하나다 — work 행에서 같은 칸에 번갈아 서는 신호의 경과(`shell-signal.tsx`의
@@ -28,9 +29,7 @@ export function ShellMeta({
   shellCount: number;
 }) {
   // 셸이 0개면 아무것도 안 선다 — 「없음」은 숫자로 말하지 않는다(결정 13). nav `Terminal`이
-  // 최상위 셸 없이 설 때 기대는 규칙이 이것이다. work 행은 여기 안 기댄다: 셸이 0개면 오른쪽
-  // 메타의 **칸 자체**가 없어야 해서(칸이 제목과 떼는 여백을 든다) 같은 조건을 한 번 더 쓴다
-  // (`WorkSectionList.tsx`) — **문턱을 고치면 두 자리다.**
+  // 최상위 셸 없이 설 때 기대는 규칙이 이것이다. 호버 카드의 「셸」 칸도 같은 규칙이다(`WorkPeek`) — **문턱을 고치면 두 자리다.**
   if (shellCount <= 0) return null;
 
   return (
