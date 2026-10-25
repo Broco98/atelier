@@ -130,6 +130,10 @@ struct MenuHotkey {
 /// 첫 번호 앞에 그어지므로 뒤에 두면 번호들 사이에 끼고, 그 자리는 `다음_내_차례로가_번호_항목들_앞에_선다`가 못 박는다. 이름은
 /// 「나를 기다리는 다음 것」(Thread든 셸이든)을 영어로 옮긴 것이다 — View 메뉴의 다른 항목처럼 영어다.
 ///
+/// **⌘N은 「새 Thread」다**(02 구현 스펙 §4 · 스토리 10) — 어느 화면에서나 새 Thread를 연다. 화면을 안 타는 항목이라 검색 바로 뒤에 선다.
+/// 앱 메뉴 · Edit · Window의 기본 항목에 ⌘N을 든 것이 없어(`build_menu` — New 항목을 세우지 않는다) 겹칠 항목이 없다. macOS 관습의 File
+/// 메뉴가 아니라 View 메뉴인 것은 이 목록이 되살림 항목 한 벌이라서다 — 프레임에 포커스가 있어도 키가 산다(`menu-hotkey.ts`).
+///
 /// **이름이 `MENU_HOTKEYS`인 것은 프런트의 `HOTKEYS`와 가르려는 것이다** — 그쪽은 표 전부이고(`src/lib/hotkeys.ts`), 이것은 그
 /// 가운데 View 메뉴 줄뿐이다.
 static MENU_HOTKEYS: std::sync::LazyLock<Vec<MenuHotkey>> = std::sync::LazyLock::new(|| menu_hotkeys(HOTKEY_TABLE));
@@ -656,13 +660,13 @@ mod tests {
         assert!(!body.contains(".accelerator(\""), "build_menu가 가속키를 문자열로 적는다");
     }
 
-    /// **표에서 만든 메뉴의 가속키가 지금 단축키 그대로다** — ⌘K · ⌘B · ⌘↩ · ⌘T · ⌘J · ⌘1~9. 표를 옮기며 수식키 하나가 빠지면
+    /// **표에서 만든 메뉴의 가속키가 지금 단축키 그대로다** — ⌘K · ⌘N · ⌘B · ⌘↩ · ⌘T · ⌘J · ⌘1~9. 표를 옮기며 수식키 하나가 빠지면
     /// (⌘ 없는 K) 메뉴가 그 키를 먹어 글자를 못 치게 되는데, 빌드도 다른 검사도 그것을 말하지 않는다.
     #[test]
     fn 메뉴의_가속키가_지금_단축키다() {
         let accelerators: Vec<String> = view_items().into_iter().map(|(_, _, accelerator)| accelerator).collect();
         let mut want: Vec<String> =
-            ["K", "B", "Enter", "T", "J"].iter().map(|key| format!("CmdOrCtrl+{key}")).collect();
+            ["K", "N", "B", "Enter", "T", "J"].iter().map(|key| format!("CmdOrCtrl+{key}")).collect();
         want.extend((1..=9).map(|n| format!("CmdOrCtrl+{n}")));
         assert_eq!(accelerators, want);
     }
@@ -1152,7 +1156,7 @@ mod tests {
     #[test]
     fn 살리기로_한_키가_다_있다() {
         let codes: Vec<String> = view_items().into_iter().map(|(code, _, _)| code).collect();
-        for want in ["KeyK", "KeyB", "KeyT", "KeyJ", "Enter"] {
+        for want in ["KeyK", "KeyN", "KeyB", "KeyT", "KeyJ", "Enter"] {
             assert!(codes.iter().any(|one| one == want), "{want}가 메뉴 바에 없다");
         }
         for n in 1..=9 {

@@ -87,3 +87,20 @@ describe("틀 하나 — 머리 줄과 흰 판", () => {
     expect(source.slice(panel, outlet)).toContain("<ShellHeadSlot.Provider");
   });
 });
+
+// 02 구현 스펙 §4 · 스토리 10 · 11. **⌘N이 새 Thread를 연다 — 사이드바 위 줄 「새 Thread」와 같은 함수다.** 둘이 따로 `navigate`하면 한쪽의
+// 가드(이미 `/`면 칸을 안 쌓는다)만 고쳐지는 날 같은 일이 두 모양이 된다. 키는 단축키 표의 `newThread`이고(글자 · 메뉴 바는
+// `hotkeys.test.ts`), 확인 창 · 팔레트가 떠 있으면 안 먹는다(⌘J와 같은 게이트 — 답을 기다리는 동안 화면을 옮기지 않는다). 키가 실제로
+// 새 Thread를 여는지는 L3(13)가 본다.
+describe("⌘N", () => {
+  it("단축키 표의 키로 사이드바의 새 Thread와 같은 함수를 부른다", () => {
+    expect(countOf(source, 'pressed(e, "newThread")')).toBe(1);
+    expect(source).toContain("onNewThread={openNewThread}");
+    // 새 Thread로 가는 길은 그 함수 하나다 — 이 파일에서 `/`로 가는 `navigate`가 그 몸 하나에만 선다.
+    expect(countOf(source, 'navigate({ to: "/" })')).toBe(1);
+    const at = source.indexOf('pressed(e, "newThread")');
+    const handler = source.slice(at, source.indexOf("};", at));
+    expect(handler).toContain("dialogStore.state !== null || searchOpen");
+    expect(handler).toContain("openNewThread()");
+  });
+});

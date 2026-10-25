@@ -242,39 +242,39 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
 });
 
 // 사이드바 최상단의 짜임 — 자리는 렌더가 아니라 소스에서만 보인다.
-describe("사이드바 최상단이 「전체 | 내 차례」 마디다", () => {
+describe("사이드바 최상단이 위 줄이다", () => {
   const sidebar = read("Sidebar.tsx");
+  // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
+  const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
+  const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
 
-  it("신호등 띠가 없고, 앱 갈래의 첫 것이 「전체 | 내 차례」 마디다", () => {
+  it("신호등 띠도 거르기 머리도 없고, 앱 갈래의 첫 것이 위 줄(nav)이다", () => {
     // **신호등 · 셸 컨트롤은 머리 줄의 것이다**(02 구현 스펙 §3) — 사이드바는 흰 판 안에 들어, 머리 줄과 같은 높이의 빈 끌기 띠를
     // 제 맨 위에 둘 까닭이 없다(한때 48 띠 가운데에 신호등과 셸 컨트롤이 겹쳐 떴다). 띠가 남으면 판 안에 빈 줄 하나가 선다.
     expect(countOf(sidebar, "data-tauri-drag-region")).toBe(0);
-    // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
-    const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
-    const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
-    const filter = app.indexOf("<ThreadFilter");
+    const nav = app.indexOf("<nav");
     // **다 있는지부터 센다** — 없으면 indexOf가 -1이고, 그러면 아래 줄이 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect(filter).toBeGreaterThan(-1);
-    // 겉 상자를 연 줄 바로 뒤의 첫 요소가 「전체 | 내 차례」 마디다(그 사이에는 주석만 선다). 한때 그 앞에 검색 칸이 섰다(v1 구현
-    // 스펙 §13 「검색 · 새 Thread · Library」) — 검색은 제목 줄의 🔍와 ⌘K가 들어 v1 티켓 46이 사이드바의 칸을 걷었다(결정.md 「46」).
-    expect(app.slice(0, filter)).not.toMatch(/\n\s*<(?!SidebarFrame|ThreadFilter)[A-Za-z]/);
+    expect(nav).toBeGreaterThan(-1);
+    // 겉 상자를 연 줄 바로 뒤의 첫 요소가 위 줄이다(그 사이에는 주석만 선다). 한때 그 앞에 검색 칸(v1 티켓 46이 걷었다)과 「전체 | 내
+    // 차례」 마디(v1 티켓 42 — 02 티켓 04가 걷고 위 줄의 「내 차례」 행으로 옮겼다)가 섰다 — Codex 사이드바 위에는 머리가 없다(02 스펙 §4).
+    expect(app.slice(0, nav)).not.toMatch(/\n\s*<(?!SidebarFrame|nav)[A-Za-z]/);
     expect(sidebar).not.toContain("<SearchField");
+    expect(sidebar).not.toContain("<ThreadFilter");
   });
 });
 
-// v1 구현 스펙 §13 · S27 · 티켓 07 · 19 · 42. **사이드바의 차례가 캔버스 「Thread 목록과 아바타」 보드의 차례다** — 「전체 | 내 차례」
-// 마디 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴(보드 맨 위의 검색 칸은 제목 줄의 🔍 · ⌘K가 든다 — v1
-// 티켓 46). 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람 메뉴로 갔다. 이 파일은 렌더로 못
-// 들이므로(머리말) 앱 갈래 안의 자리를 소스로 잰다 — 무엇이 그려지는지는 시안 비교 캡처와 L3가 본다.
+// v1 구현 스펙 §13 · S27 · 02 구현 스펙 §4. **사이드바의 차례가 시안의 차례다**(캔버스 F1-Home · Diff-Frame 「제안」) — 위 줄 세 행(새 Thread ·
+// 내 차례 · Library) · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄(누르면 사람 메뉴). 지금 화면들(옛 main nav 넷 · 바닥의 설정)은 사람
+// 메뉴로 갔다. 이 파일은 렌더로 못 들이므로(머리말) 앱 갈래 안의 자리를 소스로 잰다 — 무엇이 그려지는지는 시안 비교 캡처와 L3가 본다.
 describe("사이드바의 차례가 시안의 차례다", () => {
   const sidebar = read("Sidebar.tsx");
   const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
   const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
 
-  it("「전체 | 내 차례」 마디 · 새 Thread · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
+  it("새 Thread · 내 차례 · Library · 알림 띠 · Work 묶음 · Thread 묶음 · 사람 메뉴 차례로 선다", () => {
     const order = [
-      "<ThreadFilter",
       "<NewThreadItem",
+      "<MineItem",
       "<LibraryItem",
       "<AttentionBand",
       "<SidebarWorkList",
@@ -286,10 +286,10 @@ describe("사이드바의 차례가 시안의 차례다", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it("nav에는 「새 Thread」 · 「Library」만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
+  it("위 줄(nav)에는 새 Thread · 내 차례 · Library만 서고, 지금 화면들은 사람 메뉴가 `navItems`를 돌아 세운다", () => {
     const nav = app.slice(app.indexOf("<nav"), app.indexOf("</nav>"));
-    expect(nav).toContain("<NewThreadItem");
-    expect(nav).toContain("<LibraryItem");
+    for (const row of ["<NewThreadItem", "<MineItem", "<LibraryItem"]) expect(nav).toContain(row);
+    expect(countOf(nav, "Item")).toBe(3);
     expect(nav).not.toContain("navItems");
     expect(countOf(sidebar, "navItems.map(")).toBe(1);
     const menuAt = sidebar.indexOf("function PersonMenu(");
@@ -301,6 +301,34 @@ describe("사이드바의 차례가 시안의 차례다", () => {
     expect(app).not.toContain('label="Settings"');
     const menu = sidebar.slice(sidebar.indexOf("function PersonMenu("));
     expect(menu).toContain("onClick={onOpenSettings}");
+  });
+});
+
+// 02 구현 스펙 §4 · §5 · S12 · 스토리 31 · 32. **바닥 사람 줄은 얼굴 · 이름 · 위아래 꺾쇠뿐이고, 메모리 합계는 사람 메뉴 Processes 줄 끝으로
+// 갔다.** 다만 요약을 묻는 10초 폴러와 「봤다」를 앉히는 일은 **늘 서 있는 사람 줄**에 남는다(결정.md 「04 · 메모리 합계 폴러」) — 메뉴 안으로
+// 옮기면 메뉴가 닫힌 동안 아무도 묻지 않아 `Processes`의 합계 카드(`useSummaryCache`)가 빈다. 메뉴의 줄은 그 값을 받아 그리기만 한다.
+describe("바닥 사람 줄과 사람 메뉴", () => {
+  const sidebar = read("Sidebar.tsx");
+  const menuAt = sidebar.indexOf("function PersonMenu(");
+  const person = menuAt > -1 ? sidebar.slice(menuAt, sidebar.indexOf("\n}\n", menuAt)) : "";
+  const contentAt = person.indexOf("<DropdownMenuContent");
+  const content = contentAt > -1 ? person.slice(contentAt, person.indexOf("</DropdownMenuContent>", contentAt)) : "";
+
+  it("요약 폴러는 사람 줄 몸에서 돌고, 합계는 메뉴의 Processes 줄 끝에 선다", () => {
+    // **다 있는지부터 센다.**
+    expect([person, content].every((part) => part.length > 0)).toBe(true);
+    const pollAt = person.indexOf("useProcessesNavMeta()");
+    expect(pollAt).toBeGreaterThan(-1);
+    expect(pollAt).toBeLessThan(contentAt);
+    expect(countOf(sidebar, "useProcessesNavMeta(")).toBe(1);
+    // 그리는 자리는 메뉴 안 하나다 — 사람 줄 오른쪽(메뉴 밖)에 남으면 바닥 줄이 얼굴 · 이름 · 꺾쇠뿐이 아니다.
+    expect(countOf(sidebar, "<ProcessesNavMeta")).toBe(1);
+    expect(content).toContain('item.key === "processes" && <ProcessesNavMeta');
+  });
+
+  it("사람 줄 위에 선이 없다", () => {
+    // 한때 줄 윗변에 0.5 선이 섰다(UI개선 결정 25) — 02 스펙 §4가 걷었다. Codex 사이드바 바닥에는 선이 없다.
+    expect(person).not.toContain("before:bg-border-heavy");
   });
 });
 

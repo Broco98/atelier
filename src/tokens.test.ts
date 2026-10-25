@@ -224,6 +224,8 @@ describe("Codex 실측 색", () => {
     "fill-nav-selected": "rgba(26, 28, 31, 0.053)",
     "fill-toggle-on": "#ebebec",
     "accent-solid-pending": "#a9c9fb",
+    // 스펙 밖 — 시안의 사람 얼굴(`.ava`). 04가 더했다(02 결정 「04」).
+    "face-person": "#303e4e",
   };
 
   it("스펙의 값이 라이트에 선다", () => {

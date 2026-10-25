@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, Library, Settings, SquarePen, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ChevronsUpDown, LayoutGrid, Settings } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { useRouterState } from "@tanstack/react-router";
 import {
@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useRoving, type RovingBox } from "@/lib/roving";
-import SidebarThreads, { ThreadFilter, type ThreadListFilter } from "@/features/thread/SidebarThreads";
+import SidebarThreads, { type ThreadListFilter } from "@/features/thread/SidebarThreads";
+import { useWaiting } from "@/features/thread/hooks";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import type { WorkView } from "@/features/works/types";
 import { useWorks } from "@/features/works/hooks";
@@ -33,14 +34,15 @@ import {
 } from "@/features/terminal/shell-attention";
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
-import ProcessesNavMeta from "@/features/processes/ProcessesNavMeta";
+import ProcessesNavMeta, { useProcessesNavMeta } from "@/features/processes/ProcessesNavMeta";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { foldingInnerClass, PANEL_MOTION, SIDEBAR_ID, useFoldedFocus } from "./panel-layout";
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { initialOf, usePersonName } from "./person";
 import { ShellMeta } from "./shell-meta";
-import { SIDEBAR_ROWS, sidebarRowTone } from "./sidebar-look";
+import { SIDEBAR_ROWS } from "./sidebar-look";
+import { LIBRARY_KEY, MINE_KEY, MineRow, NEW_THREAD_KEY, NewThreadRow, SidebarItem } from "./sidebar-item";
 import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useGoToShell from "./useGoToShell";
 import { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
@@ -76,11 +78,12 @@ interface SidebarProps {
 // **바닥의 사람 줄도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다(그때는 바닥의 설정이었다).
 const GUTTER = "pl-2 pr-2";
 
-// nav 목록(앱 갈래의 새 Thread · Library, 설정 갈래의 항목) — 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 두 갈래가 한 벌이다.
+// nav 목록(앱 갈래의 위 줄 — 새 Thread · 내 차례 · Library, 설정 갈래의 항목) — 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 두 갈래가 한 벌이다.
 const NAV = cn(SIDEBAR_ROWS, "shrink-0", GUTTER);
 
-// 사이드바는 캔버스 「Thread 목록과 아바타」 보드의 차례다(v1 구현 스펙 §13 · 티켓 07 · 42) — 「전체 | 내 차례」 · 새 Thread · 알림 띠 ·
-// Work 묶음 · Thread 묶음 · 맨 아래 사람 메뉴. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와 ⌘K로 간다(S27).
+// 사이드바는 캔버스 「Atelier 공간 시안」의 차례다(02 구현 스펙 §4 · F1-Home · Diff-Frame 「제안」 — v1 구현 스펙 §13 · 티켓 07 · 42를 이었다) —
+// 위 줄(새 Thread · 내 차례 · Library) · 알림 띠 · Work 묶음 · Thread 묶음 · 맨 아래 사람 줄. 위에 머리(옛 「전체 | 내 차례」 마디)가 없다 —
+// Codex 사이드바처럼 조용하다. 지금 화면들(Projects · Terminal · Processes · Archive · Settings)은 사람 메뉴와 ⌘K로 간다(S27).
 // **결은 Codex 사이드바다**(v1 티켓 46 · 결정.md 「46」) — 사용자가 준 Codex 그림을 재어 줄 30 · 줄 사이 1 · 글자 14/400 · 소제목 14
 // `fg-tertiary` · 고른 줄 `fill-selected`를 맞췄다. 맨 위의 검색 칸은 걷었다 — 검색은 창 위 줄의 돋보기(`ShellControls`)와 ⌘K가 연다.
 // 앱의 어느 화면에 있든 이 사이드바는 바뀌지 않고, 설정에서만 설정 nav로 갈아 선다(UI개선 결정 21).
@@ -101,7 +104,6 @@ function Sidebar({
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 `WorkRowShells`(`WorkSectionList.tsx`) 머리말에 있다.
   // 키가 slug인 것은 목록이 터미널을 모르기 때문이다 — `shellCountsOf` 머리말이 그 사정을 든다.
-  // nav `Processes`의 메타는 앱 전체의 메모리 합계와 손볼 것을 세운다(`ProcessesNavMeta` · 프로세스 결정 9).
   const shellCounts = useStore(terminalStore, (state) => shellCountsOf(state), shallow);
   // 최상위 셸은 어느 work의 것도 아니라 nav 항목이 그 수를 안는다 — 세는 자리도 따로다.
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
@@ -146,12 +148,13 @@ function Sidebar({
   // 띠에서 들어가도 목록의 그 행이 고친다(접힌 구획이면 목록이 연다 — `SidebarWorkList`). 고치던 행이 바깥에서 사라져도(MCP 아카이브 ·
   // 지우기) 이 값은 비워진다 — 입력칸이 blur 없이 내려가도 끝을 알린다(`InlineRename`의 `onDone`).
   const [renaming, setRenaming] = useState<string | null>(null);
-  // **「전체 | 내 차례」에서 고른 칸**(v1 티켓 42) — 펼친 띠처럼 앱이 떠 있는 동안만 기억한다(위 `bandOpen`). 설정에 다녀와도 그대로다.
+  // **위 줄 「내 차례」 행이 켠 거르기**(v1 티켓 42 · 02 구현 스펙 §4 · S3) — 펼친 띠처럼 앱이 떠 있는 동안만 기억한다(위 `bandOpen`). 설정에
+  // 다녀와도 그대로다. 그 행을 다시 누르거나 위 줄의 다른 행(새 Thread · Library)을 고르면 「전체」로 돌아온다.
   const [threadFilter, setThreadFilter] = useState<ThreadListFilter>("all");
   // **nav 하나가 Tab 정류장 하나다**(roving, codex-ds 스펙 S10 — `@/lib/roving`). 정류장은 켜진 항목, 없으면(Works 화면) 첫 항목이고
   // 목록 안은 ↑↓로 옮긴다. 설정 nav도 같은 규칙이다 — 같은 `SidebarItem`이 같은 자리에 갈아 선다. 둘 다 아래 갈림보다 먼저 부른다.
-  // nav에는 「새 Thread」 · 「Library」 둘이 선다(v1 티켓 07 · 19 — 지금 화면들은 사람 메뉴로 갔다).
-  const navRoving = useRoving([NEW_THREAD_KEY, LIBRARY_KEY], null);
+  // nav에는 위 줄 셋 — 「새 Thread」 · 「내 차례」 · 「Library」가 선다(v1 티켓 07 · 19 · 02 스펙 §4 — 지금 화면들은 사람 메뉴로 갔다).
+  const navRoving = useRoving([NEW_THREAD_KEY, MINE_KEY, LIBRARY_KEY], null);
   const settingsRoving = useRoving(
     SETTINGS_ITEMS.map((item) => item.key),
     currentSettingsItem,
@@ -191,17 +194,35 @@ function Sidebar({
 
   return (
     <SidebarFrame open={open} size={size}>
-      {/* **「전체 | 내 차례」가 맨 위다**(v1 티켓 42 · 캔버스 Sidebar 보드 「내 차례만」 — 보드는 검색 칸 바로 아래, 그 칸은 46이 걷었다). 「내
-          차례」면 Work 묶음과 Thread 묶음 대신 나를 기다리는 Thread만 기다린 순서로 선다 — 새 Thread · Library · 알림 띠는 그대로다(셸의
-          띠와 Thread 목록은 섞지 않는다 — 구현 스펙 §17). */}
-      <ThreadFilter filter={threadFilter} onChange={setThreadFilter} />
-      {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
+      {/* **위 줄이 맨 위다**(02 구현 스펙 §4 · 스토리 9 — 시안 F1-Home · Diff-Frame 「제안」). 거르기 머리(옛 「전체 | 내 차례」 마디 — v1
+          티켓 42)를 걷고 「내 차례」가 위 줄의 행이 됐다. 그 행을 켜면 Work 묶음과 Thread 묶음 대신 나를 기다리는 Thread만 기다린 순서로
+          선다 — 위 줄 · 알림 띠는 그대로다(셸의 띠와 Thread 목록은 섞지 않는다 — v1 구현 스펙 §17). 켜진 동안은 그 행 하나가 고른 줄이다
+          — 「새 Thread」 · 「Library」는 주소가 그쪽이어도 고른 모양을 내려놓는다(위 줄 셋이 「지금 무엇을 보나」 하나를 답한다).
+
+          거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다. 지금 화면들로 가는 줄(옛 main nav 넷)은 사람
+          메뉴로 갔다(S27). */}
       <nav className={NAV} {...navRoving.box}>
-        {/* **「새 Thread」 아래 Library다**(v1 구현 스펙 §13 — 검색 · 새 Thread · Library). 새 Thread는 앱이 늘
-            열리는 자리이고, Library는 Agent 목록과 파일 읽기다(§16 · 티켓 19). 지금 화면들로 가는 줄(옛 main nav 넷)은 사람 메뉴로
-            갔다(S27). */}
-        <NewThreadItem stop={navRoving.stop === NEW_THREAD_KEY} onClick={onNewThread} />
-        <LibraryItem stop={navRoving.stop === LIBRARY_KEY} onClick={onOpenLibrary} />
+        <NewThreadItem
+          stop={navRoving.stop === NEW_THREAD_KEY}
+          yielded={threadFilter === "mine"}
+          onClick={() => {
+            setThreadFilter("all");
+            onNewThread();
+          }}
+        />
+        <MineItem
+          stop={navRoving.stop === MINE_KEY}
+          on={threadFilter === "mine"}
+          onToggle={() => setThreadFilter((filter) => (filter === "mine" ? "all" : "mine"))}
+        />
+        <LibraryItem
+          stop={navRoving.stop === LIBRARY_KEY}
+          yielded={threadFilter === "mine"}
+          onClick={() => {
+            setThreadFilter("all");
+            onOpenLibrary();
+          }}
+        />
       </nav>
 
       {/* **목록 위, nav 아래**(결정 5). 부르는 셸이 없으면 이 자리에 아무것도 없다 —
@@ -224,7 +245,7 @@ function Sidebar({
       {/* **띠 줄의 우클릭은 그 work의 메뉴다**(codex-ds 결정 6 · 7) — 띠 하나에 메뉴 하나이고, 난 자리의 줄이 대상이다(`bandTarget`).
           누르면 셸로 가는 줄이지만 우클릭은 아무 데도 안 간다 — 고름도 주소도 그대로다. 「이름 바꾸기」는 아래 목록의 그 work 행을
           고친다(위 `renaming`). */}
-      {/* 띠에서 이름 바꾸기를 고르면 「전체」로 돌아간다 — 고치는 자리는 Work 묶음의 그 행이고, 「내 차례」에서는 그 묶음이 서지 않는다. */}
+      {/* 띠에서 이름 바꾸기를 고르면 「전체」로 돌아간다 — 고치는 자리는 Work 묶음의 그 행이고, 「내 차례」를 켠 동안은 그 묶음이 서지 않는다. */}
       <WorkContextMenu
         flows={menu}
         targetOf={bandTarget}
@@ -311,10 +332,11 @@ function SidebarFrame({
           같은 장치). 접힐 때 안에 있던 포커스는 사이드바 토글로 간다(바깥 상자의 `useFoldedFocus`). */}
       <div
         inert={!open}
-        // 위 12는 시안 `.sb`의 위 안쪽이다 — 사이드바가 흰 판 안에 들어 판의 위끝에서 바로 시작한다(02 구현 스펙 §3). 한때 맨 위에 머리
-        // 줄과 같은 높이의 빈 끌기 띠가 있었다 — 신호등 · 셸 컨트롤이 그 띠 가운데에 겹쳐 떴고, 그것들은 이제 판 위 머리 줄에 선다.
+        // 위 12 · 아래 8은 시안 `.sb`의 안쪽이다 — 사이드바가 흰 판 안에 들어 판의 위끝에서 바로 시작한다(02 구현 스펙 §3). 한때 맨 위에 머리
+        // 줄과 같은 높이의 빈 끌기 띠가 있었다 — 신호등 · 셸 컨트롤이 그 띠 가운데에 겹쳐 떴고, 그것들은 이제 판 위 머리 줄에 선다. 아래 8은
+        // 바닥 사람 줄(36)이 판 아래끝에서 떨어지는 값이다(시안 F1-Home `.sb-foot`).
         className={cn(
-          "flex h-full w-(--sidebar-width) flex-col pt-3 pb-2.5",
+          "flex h-full w-(--sidebar-width) flex-col pt-3 pb-2",
           foldingInnerClass(open),
         )}
       >
@@ -580,93 +602,65 @@ function useNow(ticking: boolean): number {
   return now;
 }
 
-// nav 항목(「새 Thread」)과 설정 nav의 항목이 **같은 컴포넌트**를 쓴다. 둘은 같은 사이드바 자리에 갈아 서서 규격이 갈리면 들어가는 순간
-// 행이 튀는데(위 GUTTER 주석과 같은 계약), 같은 문자열을 두 곳에 적어 두면 다음에 규격을 한 번 조정할 때 한쪽만 남는다 — index.css의
-// quiet-hover 주석이 같은 이유로 열 자리를 하나로 묶었다.
-//
-// **누르면 바로 간다**(결정 6) — 더 갈라지지 않는 줄이다. 배경(선택·hover)은 바깥 상자가 갖고 가로 여백은 이름 버튼이 품는다 —
-// 바깥이 가진 padding은 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다.
+// 위 줄의 항목들 — 그림(이름 · 끝 글자 · 누름)은 `sidebar-item.tsx`가 들고(정적 마크업 seam — 이 파일은 렌더로 못 들인다), 여기 항목은 켜짐을
+// 무엇이 정하는지(주소 · 거르기 · 기다리는 수)만 읽어 넘긴다. 설정 nav의 항목도 같은 `SidebarItem`이다(같은 자리에 갈아 선다).
 //
 // 한때 nav `Terminal` · `Processes`가 오른쪽 메타(셸 수 · 메모리)를 이 줄에 이었다. 그 줄들이 사람 메뉴로 가며(v1 구현 스펙 S27) 셸 수는
-// 메뉴의 `Terminal` 줄로, Processes 메타는 사람 줄로 옮겼다(`PersonMenu`).
-/** nav 정류장 목록에서 「새 Thread」의 열쇠 — nav 항목의 key와 겹치지 않는다. */
-const NEW_THREAD_KEY = "new-thread";
+// 메뉴의 `Terminal` 줄로, Processes 메타는 사람 줄 오른쪽으로 옮겼다가 메뉴의 `Processes` 줄 끝으로 갔다(02 스펙 S12 · `PersonMenu`).
 
 /**
  * 「새 Thread」 항목(v1 티켓 05) — `/`에 서 있으면 켜진다. **켜짐을 이 항목이 스스로 구독한다**: 셸이 구독하면 라우터 구독이 늘고
  * (`AppShell.test.ts`), 사이드바 몸이 구독하면 Thread를 오갈 때마다 목록 전체가 다시 그려진다. 값이 원시값 하나라 `/`를 드나들 때만
- * 이 항목이 다시 그려진다.
+ * 이 항목이 다시 그려진다. 「내 차례」가 켜진 동안(`yielded`)은 고른 모양을 내려놓는다 — 고른 줄은 위 줄에 하나다. 끝의 ⌘N은 앱 셸의
+ * 키와 같은 길로 간다(`AppShell`의 ⌘N — 단축키 표 `newThread`).
  */
-function NewThreadItem({ stop, onClick }: { stop: boolean; onClick: () => void }) {
-  const active = useRouterState({ select: (state) => state.location.pathname === "/" });
-  return (
-    <SidebarItem icon={SquarePen} label="새 Thread" active={active} roving={{ key: NEW_THREAD_KEY, stop }} onClick={onClick} />
-  );
+function NewThreadItem({ stop, yielded, onClick }: { stop: boolean; yielded: boolean; onClick: () => void }) {
+  const here = useRouterState({ select: (state) => state.location.pathname === "/" });
+  return <NewThreadRow active={here && !yielded} stop={stop} onClick={onClick} />;
 }
 
-/** nav 정류장 목록에서 「Library」의 열쇠. */
-const LIBRARY_KEY = "library";
+/**
+ * 「내 차례」 항목(02 구현 스펙 §4 · 스토리 12~15) — 끝의 수는 나를 기다리는 Thread 수다(`useWaiting` — 거르기가 세우는 목록과 ⌘J가 읽는 그
+ * 차례). **이 항목이 늘 서 있어 그 읽기가 살아 있다** — ⌘J가 누른 순간 읽는 캐시(`waitingNow`)가 이 구독 덕에 따뜻하다(옛 마디가 하던 일).
+ */
+function MineItem({ stop, on, onToggle }: { stop: boolean; on: boolean; onToggle: () => void }) {
+  const count = useWaiting().length;
+  return <MineRow count={count} on={on} stop={stop} onToggle={onToggle} />;
+}
 
 /**
  * 「Library」 항목(v1 티켓 19) — `/library`에 서 있으면 켜진다. 「새 Thread」와 같은 까닭으로 켜짐을 이 항목이 스스로 구독한다(원시값
- * 하나 — `/library`를 드나들 때만 다시 그려진다).
+ * 하나 — `/library`를 드나들 때만 다시 그려진다). 「내 차례」가 켜진 동안은 고른 모양을 내려놓는다(위와 같다). 글리프는 시안의 네 칸이다
+ * (F1-Home · Diff-Frame 「제안」 — 한때 책꽂이 `Library`였다).
  */
-function LibraryItem({ stop, onClick }: { stop: boolean; onClick: () => void }) {
-  const active = useRouterState({ select: (state) => state.location.pathname === "/library" });
-  return <SidebarItem icon={Library} label="Library" active={active} roving={{ key: LIBRARY_KEY, stop }} onClick={onClick} />;
-}
-
-function SidebarItem({
-  icon: Icon,
-  label,
-  active,
-  roving,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  active: boolean;
-  /**
-   * 목록(nav) 안의 항목이면 그 키와 정류장인가(roving — `@/lib/roving`). 정류장만 `tabIndex={0}`이고 나머지는 `-1`이다. 없으면
-   * 혼자 선 정류장이다(앱으로 돌아가기) — 그래도 `0`을 적는다: WebKit의 Tab은 맨 `<button>`에 서지 않는다.
-   */
-  roving?: { key: string; stop: boolean };
-  onClick: () => void;
-}) {
+function LibraryItem({ stop, yielded, onClick }: { stop: boolean; yielded: boolean; onClick: () => void }) {
+  const here = useRouterState({ select: (state) => state.location.pathname === "/library" });
   return (
-    <div
-      className={cn(
-        // Codex 사이드바의 줄(v1 티켓 46 — 그림을 재었다) — 30(`size-row-nav`) · `radius-lg`, 글자 14/20 400(「새 채팅」은 보통 굵기다) · 아이콘
-        // 16. 아이콘은 행 안쪽 8에 서서 거터 8과 합쳐 창 끝 + 16이고, 글자는 아이콘 뒤 8에 서서 창 끝 + 40이다(Codex 「새 채팅」 · 폴더 줄).
-        "flex h-(--size-row-nav) shrink-0 items-center rounded-lg pr-1 transition-colors",
-        // 면 · 글자색은 사이드바 줄 한 벌이다(`sidebar-look` — Work 줄 · Thread 줄과 같다).
-        sidebarRowTone(active),
-      )}
-    >
-      <button
-        type="button"
-        onClick={onClick}
-        tabIndex={roving === undefined || roving.stop ? 0 : -1}
-        data-roving={roving?.key}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1.5 text-left text-sm focus-ring"
-      >
-        <Icon className="size-4 shrink-0" />
-        <span className="min-w-0 truncate">{label}</span>
-      </button>
-    </div>
+    <SidebarItem icon={LayoutGrid} label="Library" active={here && !yielded} roving={{ key: LIBRARY_KEY, stop }} onClick={onClick} />
   );
 }
 
+// 사람 메뉴의 줄 — Components 보드 「사람 메뉴」(02 구현 스펙 §5 · 스토리 35 — 사이드바 줄과 같은 결): 30 · 둥글기 8 · 14px · 줄 글자색
+// `fg-sidebar`, 켜진 줄(포인터 · 키보드)은 사이드바 · 사람 메뉴의 고른 면 `fill-nav-selected`(.053)에 글자 `fg`다(시안 `.mi` · `.mi.on`).
+// 높이 · 좌우 8은 메뉴 줄 한 벌(`menu-row`)을 그대로 두고 나머지를 덮는다 — 덮는 코어 유틸리티는 `menu-row` 뒤에 선다(dropdown-menu.tsx
+// `ITEM_SIZE` 주석). 앱의 다른 메뉴(⋯ · 우클릭)는 그대로다 — 이 메뉴만 사이드바에서 열리는 사이드바의 일부다.
+const PERSON_ROW = "gap-2 rounded-md text-sm text-fg-sidebar focus:bg-fill-nav-selected focus:text-fg";
+// 줄 글리프 — 16 · `fg-icon`(시안 `.mi .ico` #5d5f61). 크기와 색을 그림에 바로 건다 — `menu-row`의 15 · `fg-secondary`를 이긴다(index.css).
+const PERSON_GLYPH = "size-4 text-fg-icon";
+
 /**
- * 사람 메뉴(v1 구현 스펙 S27 · 스토리 35) — 사이드바 맨 아래 줄. 얼굴 글자와 이름이 서고, 누르면 지금 화면들로 가는 메뉴가 위로 뜬다:
- * `navItems`의 넷(옛 main nav)과, 구분선 뒤에 설정. ⌘K의 행선지는 그대로다(`destinations.ts`가 같은 배열을 읽는다).
+ * 사람 메뉴(v1 구현 스펙 S27 · 02 구현 스펙 §4 · §5) — 사이드바 맨 아래 **사람 줄**과 그것이 여는 메뉴. 줄은 얼굴 · 이름 · 위아래 꺾쇠뿐이고
+ * (스토리 31 — 시안 F1-Home `.sb-foot`), 누르면 지금 화면들로 가는 메뉴가 위로 뜬다: `navItems`의 넷(옛 main nav)과, 구분선 뒤에 설정.
+ * ⌘K의 행선지는 그대로다(`destinations.ts`가 같은 배열을 읽는다). Space 항목은 없다(02 경계 — Projects를 둔다).
  *
- * - **줄의 윗변에 늘 선이 있다**(UI개선 결정 25) — 위 목록과 「여기부터 목록이 아니다」를 가른다. 선은 0.5px `border-heavy`이고 칸
- *   윗변에 겹쳐 칠한 면(`::before`)이다 — 0.5px 테두리는 엔진마다 굵기가 갈린다. 표식(`data-sidebar-foot`)은 검사가 이 칸을 집는다.
- * - **오른쪽에 Processes 메타가 남는다**(프로세스 결정 11) — 메모리 합계와 손볼 것의 `●`는 늘 보여야 그 값이 있다(「느려지고 나서야
- *   알았다」). 메뉴 안에 두면 열 때만 보이고 요약 폴러도 그동안만 돈다. 이름 버튼 **밖**에 둔다 — 안에 두면 숫자가 버튼의 이름에 섞인다.
+ * - **줄 위에 선이 없다**(02 스펙 §4) — 한때 윗변에 0.5 선이 섰다(UI개선 결정 25). Codex 사이드바 바닥에는 선이 없다. 표식
+ *   (`data-sidebar-foot`)은 검사가 이 칸을 집는다.
+ * - **Processes 메타는 메뉴의 `Processes` 줄 끝이다**(02 스펙 S12 · 스토리 32) — 한때 사람 줄 오른쪽에 늘 섰다(프로세스 결정 11). 요약
+ *   폴러와 「봤다」 앉히기는 **이 줄의 몸에서 돈다**(`useProcessesNavMeta`) — 줄은 늘 서고 메뉴는 열 때만 그려져, 메뉴 안에서 세면 닫힌 동안
+ *   아무도 묻지 않는다(02 결정 「04 · 메모리 합계 폴러」). 메뉴의 줄은 받은 값을 그리기만 한다.
  * - 최상위 셸의 수는 메뉴의 `Terminal` 줄이 든다(옛 nav 줄의 메타 — 결정 13).
- * - 지금 선 화면의 줄은 `aria-current`로 말한다 — 메뉴의 켜짐(`fill-hover`)은 키보드가 가리키는 줄의 것이라 겹치지 않게 면을 칠하지 않는다.
+ * - 지금 선 화면의 줄은 `aria-current`로 말한다 — 메뉴의 켜짐(`fill-nav-selected`)은 포인터 · 키보드가 가리키는 줄의 것이라 겹치지 않게 면을
+ *   칠하지 않는다.
  */
 function PersonMenu({
   activeKey,
@@ -680,50 +674,63 @@ function PersonMenu({
   topShells: number;
 }) {
   const name = usePersonName();
+  const processes = useProcessesNavMeta();
   return (
-    <div
-      data-sidebar-foot=""
-      className={cn(
-        "relative mt-auto flex shrink-0 items-center pt-1.5 before:absolute before:inset-x-0 before:top-0 before:h-[0.5px] before:bg-border-heavy",
-        GUTTER,
-      )}
-    >
+    <div data-sidebar-foot="" className={cn("mt-auto flex shrink-0 items-center", GUTTER)}>
       <DropdownMenu>
-        {/* 보드의 사람 줄 — 얼굴 28(`fill-active` 원 · 글자 12 굵게) · 사이 10 · 이름 14. 줄은 nav 줄과 같은 거터 · 안쪽 8이라 얼굴이 창 끝
-            + 16에 선다(DS 「행 글자 16」). 높이 40은 얼굴 28에 위아래 6이다. */}
+        {/* 시안의 사람 줄(F1-Home `.sb-foot` · Components 「바닥 사람 줄」) — 36 · 둥글기 10 · 안쪽 왼 8 · 오른 4, 얼굴 24 · 사이 8 · 이름 14
+            `fg-sidebar` · 오른쪽 끝 위아래 꺾쇠 14 `fg-faint`(꺾쇠 뒤 6). 줄은 nav 줄과 같은 거터라 얼굴이 창 끝 + 16에 선다(DS 「행 글자
+            16」). hover와 메뉴가 열린 동안은 사이드바 · 사람 메뉴의 고른 면이다(Codex — hover와 고른 면이 같은 .053, 시안 `.sb-foot.on`). */}
         <DropdownMenuTrigger
           aria-label={`${name} — 사람 메뉴`}
-          className="flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left text-sm text-fg-sidebar transition-colors hover:bg-fill-soft focus-ring data-[popup-open]:bg-fill-hover"
+          className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg pr-1 pl-2 text-left text-sm text-fg-sidebar transition-colors hover:bg-fill-nav-selected focus-ring data-popup-open:bg-fill-nav-selected"
         >
+          {/* 얼굴은 글자다(캔버스 「사람은 글자」) — 24 · 짙은 면 `face-person`에 흰 글자(시안 `.ava`). 글자는 12다(시안 11 — 글자 단계에
+              11이 없다). */}
           <span
             aria-hidden
-            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-fill-active text-xs font-semibold"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-face-person text-xs text-fg-on-solid"
           >
             {initialOf(name)}
           </span>
           <span className="min-w-0 truncate">{name}</span>
+          <ChevronsUpDown aria-hidden className="mr-1.5 ml-auto size-3.5 shrink-0 text-fg-faint" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start">
+        {/* 시안의 사람 메뉴(Components 「사람 메뉴」) — 흰 면 · 둥글기 12(superellipse 15 — 시안 `.r-xl`) · 그림자 `shadow-menu`(0.5 링이 첫
+            겹에 든다) · 안쪽 4 · 줄 사이 1(사이드바 줄 리듬 `SIDEBAR_ROWS`). 폭은 사람 줄과 같고(시안이 바닥 줄과 같은 폭으로 그렸다) 줄 위 6에
+            선다. 열고 닫을 때의 움직임은 12가 정한다(02 스펙 §12). */}
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          sideOffset={6}
+          className={cn(SIDEBAR_ROWS, "w-(--anchor-width) rounded-summary corner-superellipse p-1 shadow-menu")}
+        >
           {navItems.map((item) => (
             <DropdownMenuItem
               key={item.key}
               aria-current={item.key === activeKey ? "page" : undefined}
               onClick={() => onSelect(item.key)}
+              className={PERSON_ROW}
             >
-              <item.icon aria-hidden />
+              <item.icon aria-hidden className={PERSON_GLYPH} />
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {item.key === "terminal" && <RowMetaFor owner={ownerOf()} shellCount={topShells} />}
+              {/* 끝 글자는 줄 안쪽 8에 선다(시안 `.mi .end`) — 메타 한 벌(`row-meta`)의 오른쪽 여백 4를 이 자리에서 되돌려, 아래 설정의 ⌘,와
+                  같은 세로줄에 끝이 선다. */}
+              <span className="-mr-1 flex shrink-0">
+                {item.key === "terminal" && <RowMetaFor owner={ownerOf()} shellCount={topShells} />}
+                {item.key === "processes" && <ProcessesNavMeta meta={processes} />}
+              </span>
             </DropdownMenuItem>
           ))}
-          <DropdownMenuSeparator />
+          {/* 구분선 — .5 `separator` · 위아래 4 · 좌우 6(시안 `.msep`). */}
+          <DropdownMenuSeparator className="mx-1.5 bg-separator" />
           {/* 설정은 목적지 넷과 성질이 다르다(결정 51) — 구분선 뒤 끝에 서고, 키(⌘,)를 단다. */}
-          <DropdownMenuItem shortcut="settings" onClick={onOpenSettings}>
-            <Settings aria-hidden />
+          <DropdownMenuItem shortcut="settings" onClick={onOpenSettings} className={PERSON_ROW}>
+            <Settings aria-hidden className={PERSON_GLYPH} />
             <span className="min-w-0 flex-1 truncate">Settings</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ProcessesNavMeta />
     </div>
   );
 }

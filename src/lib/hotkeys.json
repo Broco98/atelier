@@ -1,5 +1,6 @@
 {
   "search": { "code": "KeyK", "mods": ["meta"], "glyph": "⌘K", "aria": "Meta+K", "menu": "Search" },
+  "newThread": { "code": "KeyN", "mods": ["meta"], "glyph": "⌘N", "aria": "Meta+N", "menu": "New Thread" },
   "sidebar": { "code": "KeyB", "mods": ["meta"], "glyph": "⌘B", "aria": "Meta+B", "menu": "Sidebar" },
   "panel": { "code": "Enter", "mods": ["meta"], "glyph": "⌘Enter", "aria": "Meta+Enter", "menu": "Panel" },
   "newShell": { "code": "KeyT", "mods": ["meta"], "glyph": "⌘T", "aria": "Meta+T", "menu": "New Shell" },

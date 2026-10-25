@@ -2,9 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Toggle } from "@base-ui/react/toggle";
-import { ToggleGroup } from "@base-ui/react/toggle-group";
-import { keepOnePressed } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { threadIdOf } from "@/lib/path-prefix";
 import { SIDEBAR_AFTER_SECTION, SIDEBAR_HEADING, SIDEBAR_ROWS, sidebarRowTone } from "@/components/shell/sidebar-look";
@@ -37,9 +34,10 @@ import type { Waiting } from "./waiting";
 // - 상태의 바탕은 Thread를 열 때와 같은 읽기다(`threadQuery` — `get`의 살아 있음 · 기록 끝, 그리고 기록) — 열린 캐시를 Thread 화면과
 //   함께 쓴다. 읽은 자리(`lastRead`)는 요약의 것이다: Thread 화면이 맨 아래를 보면 적고(S38), 요약 이벤트가 이 줄을 고친다.
 // - 깨진 Thread도 줄이 선다(무엇이 깨졌는지는 둘째 줄이 말한다) — 목록에서 조용히 빠지면 「내 Thread가 어디 갔지」에 답할 자리가 없다.
-// - **「전체 | 내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」) — 「내 차례」를 고르면 Work 묶음과 이 묶음
-//   대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가 세고, 마디는 검색 칸
-//   아래(`ThreadFilter`), 고른 칸은 사이드바가 쥔다.
+// - **「내 차례」 거르기**(v1 티켓 42 · 구현 스펙 §17 · 스토리 131 · 보드 「내 차례만」 · 02 구현 스펙 §4) — 사이드바 위 줄의 「내 차례」 행을
+//   켜면 Work 묶음과 이 묶음 대신 나를 기다리는 Thread만 「기다리는 순서」로 선다(Work에 이은 Thread도 섞인다). 차례 · 수는 `waiting.ts`가
+//   세고, 행은 `components/shell/sidebar-item.tsx`의 `MineRow`, 켠 상태는 사이드바가 쥔다. 한때 사이드바 맨 위의 「전체 | 내 차례」 마디였다
+//   (02 티켓 04가 걷었다 — Codex 사이드바 위에는 머리가 없다).
 // - **Work에 이은 Thread는 Work 묶음이 품는다**(v1 티켓 37 · 구현 스펙 §13) — 그 Work 줄을 펴면 그 아래에 같은 `ThreadRow`가 얼굴 28로
 //   선다(`WorkThreads`). 이 묶음에는 Work 없는 Thread만 남아 두 묶음이 겹치지 않는다.
 
@@ -48,8 +46,6 @@ const TICK = 60_000;
 
 /** Thread 묶음이 무엇을 세우나 — 전체(Work 묶음 · Thread 묶음) 또는 나를 기다리는 Thread만. */
 export type ThreadListFilter = "all" | "mine";
-
-const FILTERS = ["all", "mine"] as const satisfies readonly ThreadListFilter[];
 
 /** 줄 하나의 얼굴들 — 요약에는 handle만 있어 `avatar`는 Library 정의에서 찾고, 없으면 handle에서 정한다(`ThreadFaces`). */
 type PeopleOf = (thread: ThreadSummary) => { handle: string; avatar: Avatar | null }[];
@@ -143,63 +139,6 @@ export function WorkThreadList({
       />
     );
   });
-}
-
-/**
- * 「전체 | 내 차례」 마디(보드 `.seg`) — 사이드바 맨 위에 선다. 「내 차례」 칸에 기다리는 Thread 수가 파란 글자로 선다(보드 `.cnt` — DS `link`).
- * 수는 고른 칸과 상관없이 늘 센다 — 「전체」를 보는 동안에도 몇이 기다리는지가 보여야 거르기를 누를 까닭이 생긴다.
- */
-export function ThreadFilter({ filter, onChange }: { filter: ThreadListFilter; onChange: (filter: ThreadListFilter) => void }) {
-  const count = useWaiting().length;
-  return <FilterSegment filter={filter} count={count} onChange={onChange} />;
-}
-
-/**
- * 마디의 그림 — 훅을 부르지 않는다. **글자 칸 둘이다**(v1 티켓 46 — Codex 결). 한때 사이드바 폭의 두 칸 토글(DS `SegmentGroup` sm — 바닥
- * 회색 · 떠 있는 흰 칩)이었고, 그 위의 검색 칸과 함께 맨 위를 두 겹의 회색 상자로 만들었다 — 사용자가 짚은 「겹이 많다」다. 이제 칸은 제
- * 글자 폭이고, 고른 칸은 사이드바의 고른 줄과 같은 면(`selected-row`)이며 고르지 않은 칸은 옅은 글자다. 수는 채운 배지가 아니라 파란
- * 글자다. 역할 · 이름은 그대로다(「Thread 거르기」 묶음의 누르는 칸 둘 — `aria-pressed`). 수가 있으면 칸의 이름에 수가 함께 든다(「내
- * 차례 2」) — 수가 글자에 붙어 읽혀 이름을 따로 적는다.
- */
-export function FilterSegment({
-  filter,
-  count,
-  onChange,
-}: {
-  filter: ThreadListFilter;
-  count: number;
-  onChange: (filter: ThreadListFilter) => void;
-}) {
-  return (
-    // 거터 8 · 칸 안쪽 10이라 「전체」 글자가 창 끝 + 18에 선다 — 아래 nav 글자(+ 40)보다 앞이고 아이콘(+ 16)과 거의 한 세로줄이다.
-    <div className="shrink-0 px-2 pb-2">
-      <ToggleGroup
-        aria-label="Thread 거르기"
-        value={[filter]}
-        onValueChange={keepOnePressed<ThreadListFilter>((value) => {
-          if (value[0]) onChange(value[0]);
-        }, false)}
-        className="flex items-center gap-0.5"
-      >
-        {FILTERS.map((value) => (
-          <Toggle
-            key={value}
-            value={value}
-            aria-label={value === "mine" && count > 0 ? `내 차례 ${count}` : undefined}
-            className={(state) =>
-              cn(
-                "flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors outline-none focus-ring",
-                state.pressed ? "selected-row" : "text-fg-tertiary hover:bg-fill-soft",
-              )
-            }
-          >
-            {value === "all" ? "전체" : "내 차례"}
-            {value === "mine" && count > 0 && <span className="text-xs font-medium tabular-nums text-link">{count}</span>}
-          </Toggle>
-        ))}
-      </ToggleGroup>
-    </div>
-  );
 }
 
 /** 「내 차례만」 — 기다리는 Thread를 기다린 순서로 읽어 그린다. */

@@ -3,7 +3,7 @@ import type { RecordLine, ThreadSummary, ThreadView } from "./types";
 
 // 「내 차례」 거르기와 ⌘J(v1 티켓 42 · 구현 스펙 §13 S28 · §17 · 스토리 131 · 132 · 캔버스 Sidebar 보드 「내 차례만」) — 나를 기다리는
 // Thread를 **기다리기 시작한 순서로** 세우고(`waitingOrder`), ⌘J가 그 차례에서 어디로 갈지 고르는(`jumpTarget`) **순수 함수**들이다.
-// 사이드바의 마디 수 · 「내 차례만」 목록 · ⌘J가 모두 이 한 차례를 읽어, 셋이 다른 말을 하지 않는다.
+// 사이드바 위 줄 「내 차례」 행의 수 · 「내 차례만」 목록 · ⌘J가 모두 이 한 차례를 읽어, 셋이 다른 말을 하지 않는다.
 //
 // - **내 차례인가는 사이드바 줄의 상태와 같은 판정이다**(`statusOf`의 첫 갈래 — v1 티켓 41). 기다린 때는 그 물음 줄의 시각이다.
 // - **Work에 이은 Thread도 든다** — 보드 「내 차례만」의 「환불 API 버그 고쳐줘」는 Work 아래 Thread다. 「전체」에서는 Work 아래에 서고
@@ -44,7 +44,7 @@ export function waitingOrder(
 const counted = new WeakMap<readonly RecordLine[], { seen: Seen; status: ThreadStatus | null }>();
 
 /**
- * `statusOf`와 같은 답을, 기록 줄도 엔진의 두 값도 그대로인 Thread는 다시 접지 않고 낸다. 마디의 수와 「내 차례만」 목록은 **어느 Thread든**
+ * `statusOf`와 같은 답을, 기록 줄도 엔진의 두 값도 그대로인 Thread는 다시 접지 않고 낸다. 「내 차례」 행의 수와 「내 차례만」 목록은 **어느 Thread든**
  * 기록 줄이 하나 흐를 때마다 다시 세는데, 그때 바뀐 것은 그 한 Thread다 — 나머지를 줄마다 다시 접으면 Thread 수만큼 접기가 돈다.
  */
 function statusFor(lines: readonly RecordLine[], seen: Seen): ThreadStatus | null {

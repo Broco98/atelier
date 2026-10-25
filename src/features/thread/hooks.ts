@@ -53,8 +53,8 @@ export const useThread = (thread: string) => useQuery(threadQuery(thread));
 const viewsOnly = (results: readonly { data?: ThreadView }[]) => results.map((result) => result.data);
 
 /**
- * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 「전체 | 내 차례」 마디의 수와 「내 차례만」
- * 목록이 읽는다.
+ * 나를 기다리는 Thread들 — 기다린 순서(v1 티켓 42, 차례는 `waiting.ts`의 `waitingOrder`). 사이드바 위 줄 「내 차례」 행의 수와
+ * 「내 차례만」 목록이 읽는다.
  *
  * **모든 Thread를 Thread를 열 때와 같은 읽기로 읽는다**(`threadQuery` — 사이드바 줄 · Thread 화면과 같은 캐시) — Work에 이은 Thread도
  * 기다리는 Thread이고(보드 「내 차례만」), 그 기록은 Work 묶음이 접혀 있어도 있어야 수가 맞는다. 기록 줄 스토어 전체를 구독하므로 어느

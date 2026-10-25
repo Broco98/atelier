@@ -321,6 +321,30 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goToShell, searchOpen, queryClient, router, navigate]);
 
+  // **새 Thread로 가는 길은 이 함수 하나다**(v1 티켓 05 · 02 구현 스펙 §4) — 사이드바 위 줄 「새 Thread」와 ⌘N(아래)이 함께 부른다. 이미 새
+  // Thread면 아무것도 하지 않는다 — 같은 주소가 히스토리에 한 칸 더 쌓이지 않게(사람 메뉴 `onSelect`와 같은 가드). 주소는 **누를 때** 읽는다 —
+  // 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
+  const openNewThread = useCallback(() => {
+    if (router.state.location.pathname !== "/") void navigate({ to: "/" });
+  }, [router, navigate]);
+
+  // ⌘N(단축키 표의 `newThread`)은 **어느 화면에서나 새 Thread를 연다**(02 구현 스펙 §4 · 스토리 10). 셸에 포커스가 있어도 먹는다 — xterm은
+  // ⌘가 붙은 글자 키를 앱으로 올리고(`keyRoute`), spec 문서의 프레임에 포커스가 있으면 메뉴의 `View ▸ New Thread`가 먼저 받아 합성 keydown으로
+  // 이 리스너에 온다(`menu-hotkey.ts`). 앱 포커스에서는 여기서 `preventDefault`해 메뉴가 같은 키를 다시 받지 않는다.
+  //
+  // **확인 창이나 팔레트가 떠 있으면 안 먹는다** — ⌘J와 같은 게이트다(위 그 주석): 답을 기다리는 동안 화면을 옮기지 않고, 팔레트가 빌린
+  // 포커스와 다투지 않는다. 떠날 때 확인이 걸린 편집기에서는 이동이 그 물음을 지난다(라우터의 막음).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!pressed(e, "newThread")) return;
+      if (dialogStore.state !== null || searchOpen) return;
+      e.preventDefault();
+      openNewThread();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openNewThread, searchOpen]);
+
   return (
     <div
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
@@ -359,11 +383,8 @@ function AppShell() {
         <Sidebar
           open={sidebarOpen}
           size={sidebarSize}
-          // 이미 새 Thread면 아무것도 하지 않는다 — 같은 주소가 히스토리에 한 칸 더 쌓이지 않게(아래 nav와 같은 가드). 주소는 **누를 때**
-          // 읽는다 — 셸이 「`/`인가」를 구독하면 라우터 구독이 셋이 된다(`AppShell.test.ts`). 켜짐은 사이드바의 그 항목이 스스로 구독한다.
-          onNewThread={() => {
-            if (router.state.location.pathname !== "/") void navigate({ to: "/" });
-          }}
+          // ⌘N과 같은 함수다(위 `openNewThread` — 가드도 거기 하나다).
+          onNewThread={openNewThread}
           // Library(v1 티켓 19)는 **지금 선 자리의 Work**를 싣고 간다 — 그 Work의 Project 안 Agent가 따로 묶인다(S35, `workOfPlace`).
           // 이미 같은 Work의 Library면 아무것도 하지 않는다(위와 같은 가드 — 고른 Agent도 그대로다). 주소 · Thread 목록은 누를 때 읽는다.
           onOpenLibrary={() => {

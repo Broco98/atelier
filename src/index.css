@@ -279,6 +279,7 @@
     --color-fill-nav-selected: var(--fill-nav-selected);
     --color-fill-toggle-on: var(--fill-toggle-on);
     --color-accent-solid-pending: var(--accent-solid-pending);
+    --color-face-person: var(--face-person);
 
     /* **shadcn 이름의 유틸리티** — 값은 별칭 묶음(`:root, .dark`)이 Codex 토큰으로 넘긴다(codex-ds 스펙 S1). 지금 이 유틸리티를
        읽는 자리는 아래 `@layer base`(shadcn 바탕 CSS — `bg-background` · `text-foreground`) 하나다. 나머지는
@@ -764,6 +765,7 @@
        이 부등식은 깨지면 안 된다:
          행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 흰 카드 안 목록 · 트리
          행 hover(`fill-soft`)    < 행 선택(`fill-selected`) = 선택된 행 hover   — 사이드바(`surface-sidebar` 위, v1 티켓 46)
+         줄 hover = 메뉴 열림 = 켜진 줄(`fill-nav-selected`)                    — 사이드바 사람 줄 · 사람 메뉴(02 티켓 04 — Codex .053)
          탭 hover(`fill-soft`)    < 켜진 탭(`fill-hover`, `tab-on`) = 켜진 탭 hover — 카드 머리의 탭 줄
          버튼 hover(`fill-hover`) < 버튼 켜짐(`fill-active`) = 켜진 버튼 hover
        **행 선택의 면은 면 알파 밖의 불투명한 `fill-selected`다**(`selected-row` — #eff0f0, DS `.at-tree-row.is-on`). 흰 카드 안 목록 ·
@@ -779,7 +781,8 @@
                              트리의 고른 행과 같은 면이다
          `fill-nav-selected` 사이드바 · 사람 메뉴의 고른 줄(02 스펙 §4 — Codex 투명 .053, 아래 「Codex 실측 색」). 면 알파이지만
                              셋과 단이 다르다 — Codex는 사이드바 줄의 hover와 고른 면이 같은 .053이라, 이 면을 쓰는 화면(04 · 05)이
-                             위 사이드바 부등식을 그 값에 맞춰 고친다
+                             위 사이드바 부등식을 그 값에 맞춰 고친다. 04가 사람 줄 · 사람 메뉴를 옮겼고(위 부등식의 셋째 줄),
+                             사이드바 줄은 05가 옮긴다
          `fill-toggle-on`    Thread 머리 줄 요약 고정 토글의 켜진 면(02 스펙 §6 — Codex #ebebec). 크롬 위의 불투명 면이다
        이 목록은 **열거**다(`state-scale.test.ts`가 `:root`의 `--fill-*` 이름을 맞댄다): 여기 없는 새 상태 배경은 유예된 것이 아니라
        면 알파를 써야 한다. 탭 줄의 `+`와 바탕 위 패널 토글의 hover도 면 알파의 `fill-hover`다 — DS `IconButton`의 hover(`.at-ib:hover`)다. */
@@ -880,6 +883,8 @@
          fill-nav-selected     사이드바 · 사람 메뉴의 고른 줄(04 · 05) — 투명 면이다(위 상태 농도 머리말)
          fill-toggle-on        Thread 머리 줄 요약 고정 토글의 켜진 면(06) — 크롬(`surface-shell`) 위 불투명 면
          accent-solid-pending  보내는 중인 보내기 원(10) — 보내기 원은 `accent-solid`
+         face-person           바닥 사람 줄의 얼굴 면(04 — 시안 F1-Home · Diff-Frame · Components의 `.ava`, 스펙 §4는 값을 적지 않았다). 글자는
+                               `fg-on-solid`. Agent 얼굴(`fill-active` 면)과 갈려 「나」가 한눈에 갈린다
          shimmer-band          「생각 중」 띠의 흰 75%(12) — 띠를 그리는 유틸리티만 읽어 유틸리티 이름을 잇지 않는다 */
     --fg-bubble: #0c274a;
     --fg-placeholder: #c7c7c8;
@@ -902,6 +907,7 @@
     --fill-nav-selected: rgba(26, 28, 31, 0.053);
     --fill-toggle-on: #ebebec;
     --accent-solid-pending: #a9c9fb;
+    --face-person: #303e4e;
     --shimmer-band: rgba(255, 255, 255, 0.75);
 
     /* 그림자 — 외곽선은 실선 대신 0.5px 링 `shadow-hairline`이다(DS 원칙 4). 떠 있는 것은 `shadow-prominent` */
@@ -1675,12 +1681,13 @@ body.dragging-row * {
 
 /* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 `text-xs`(12px) · 글리프 사이 6px · 오른쪽 여백 4px.
    조용한 갈래(`ShellMeta` — 셸 수)와 신호 갈래(`SignalMeta` — 경과)가 이 한 정의를 부른다.
-   두 파일이 같은 문자열을 옮겨 적던 자리다. nav `Processes`의 메모리 합계(`ProcessesNavMeta`)도 nav `Terminal`과 같은
-   오른쪽 끝에 서야 해서 이것을 부른다.
+   두 파일이 같은 문자열을 옮겨 적던 자리다. 사람 메뉴 `Processes`의 메모리 합계(`ProcessesNavMeta`)도 같은 메뉴 `Terminal`의
+   셸 수와 같은 오른쪽 끝에 서야 해서 이것을 부른다.
 
    두 갈래가 work 행의 **같은 칸에 번갈아** 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
    숫자의 오른쪽 끝이 튄다. 오른쪽 여백 4px은 행의 `pr-1`(4px)과 합쳐 행 안쪽 8(DS `.at-row`)이 되어, 그 끝이 구획
-   헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
+   헤더의 개수와 같은 x에 선다(work 행의 계약). 사람 메뉴의 줄은 끝 글자를 줄 안쪽 8에 세워(시안 `.mi .end`) 이 4를 그 자리에서
+   되돌린다(`Sidebar.tsx`의 `PersonMenu`).
 
    **색은 안 정한다** — 칸에 서는 조각이 저마다 든다. 조용한 갈래는 바깥에 `text-fg-tertiary`를 그물로 두고 무리가 한 단
    올린 `fg-secondary`를 들며(`shell-meta.tsx`), 신호 갈래의 경과도 그 조각이 제 `fg-secondary`를 든다(`SignalElapsed` —
