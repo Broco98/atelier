@@ -21,6 +21,7 @@ import {
   type DecisionEntry,
   type Entry,
   type Notice,
+  type ProjectAddChoiceEntry,
   type ProjectChoiceEntry,
   type QuestionEntry,
   type SpaceChoiceEntry,
@@ -36,9 +37,11 @@ import { createdDocs } from "./expanded";
 import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
+import { projectAddChoiceCard } from "./project-add-card";
 import { projectChoiceText } from "./project-card";
 import { answeredCards, type AnsweredCard } from "./question";
 import { SentQuoteChip } from "./QuoteChip";
+import { ResultCard } from "./ResultCard";
 import { spaceChoiceCard } from "./space-card";
 import ThreadMarkdown from "./ThreadMarkdown";
 import type { Quote } from "@/features/works/QuotePick";
@@ -233,6 +236,7 @@ function waitingFor(model: ThreadModel, who: string): string | null {
   if (ask.card === "work") return "Work 만들기 답을 기다려요";
   if (ask.card === "project") return "Work 밖 Project 답을 기다려요";
   if (ask.card === "space") return "Space 답을 기다려요";
+  if (ask.card === "project-add") return "Project 추가 답을 기다려요";
   return ask.card === "question" ? "질문의 답을 기다려요" : "승인을 기다립니다";
 }
 
@@ -303,7 +307,10 @@ function TurnView({
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(shownEntry);
   // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
   const choice = (entry: Entry) =>
-    entry.kind === "work-choice" || entry.kind === "project-choice" || entry.kind === "space-choice";
+    entry.kind === "work-choice" ||
+    entry.kind === "project-choice" ||
+    entry.kind === "space-choice" ||
+    entry.kind === "project-add-choice";
   const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || choice(entry)) : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
   const waitingFirst = !turn.end && turn.entries.length === 0;
@@ -315,8 +322,9 @@ function TurnView({
   // 처음부터 펼쳐 두는 턴도 — 그래야 접힌 턴에 남는 줄이 사라지지 않는다).
   const line = turn.end && !failed && !stopped ? workLine(turn) : null;
   const unfolded = open && (stopped || failed || line?.unfolds === true);
-  // 계획 카드 · 체크리스트 · 호출 줄 · 카드의 결정 줄 · 질문에 답한 줄은 접힌 턴에도 남는다(`keptFolded`) — 계획과 누가 무엇을 맡았는지 ·
-  // Work를 만들었는지 · 어느 Project를 붙였는지 · 무엇으로 답했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
+  // 계획 카드 · 체크리스트 · 호출 줄 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 누가 무엇을
+  // 맡았는지 · Work를 만들었는지 · 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의
+  // 결정 줄은 위의 `final`이 든다.
   const kept = turn.end && !unfolded ? turn.entries.filter((entry, at) => keptFolded(entry) && (!choice(entry) || at < from)) : [];
   return (
     <>
@@ -485,6 +493,10 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       return <ProjectChoiceRow entry={entry} />;
     case "space-choice":
       return <SpaceChoiceRow entry={entry} />;
+    case "project-add-choice":
+      return <ProjectAddChoiceRow entry={entry} />;
+    case "result":
+      return <ResultCard card={entry} />;
   }
 }
 
@@ -547,6 +559,14 @@ export function AnsweredRow({ entry }: { entry: QuestionEntry }) {
  */
 function SpaceChoiceRow({ entry }: { entry: SpaceChoiceEntry }) {
   return <AnsweredCards cards={[spaceChoiceCard(entry)]} answered="space" choice={entry.choice} arrival={entry.key} />;
+}
+
+/**
+ * Project 추가 카드에 답한 줄(03 티켓 12) — Space 질문 카드에 답한 줄과 같은 한 줄이다: ✓ · 「notes는 git 저장소가 아니에요. 어떻게 할까요?」 ·
+ * 고른 답(「git init 하고 추가」). 추가했으면 바로 뒤에 결과 카드가 따로 선다(`projectAddChoiceCard`).
+ */
+function ProjectAddChoiceRow({ entry }: { entry: ProjectAddChoiceEntry }) {
+  return <AnsweredCards cards={[projectAddChoiceCard(entry)]} answered="project-add" choice={entry.choice} arrival={entry.key} />;
 }
 
 function AnsweredCards({

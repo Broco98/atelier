@@ -77,7 +77,9 @@ export function statusOf(lines: readonly RecordLine[], seen: Seen): ThreadStatus
             ? `Work 밖 Project · ${waiting.name}`
             : waiting.card === "space"
               ? "질문 · 어느 Space에서 할까요?"
-              : `승인 · ${waitingFor(waiting)}`;
+              : waiting.card === "project-add"
+                ? `질문 · ${waiting.folder} 추가`
+                : `승인 · ${waitingFor(waiting)}`;
     return { kind: "mine", since: askedAt(lines, waiting), text };
   }
   const login = loginLine(lines);

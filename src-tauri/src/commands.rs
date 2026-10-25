@@ -1067,6 +1067,26 @@ pub async fn thread_answer_space(
     to_host(&engine, "Space 질문 카드에 답하지 못했습니다", move |host| host.answer_space(&thread, &request, choice)).await
 }
 
+/// Project 추가 카드의 답(03 §12 · 티켓 12) — 서 있는 카드(`request` — `question` 줄의 `requestId`)에 「git init 하고 추가」(`init`) ·
+/// 「뿌리 폴더로 추가」(`root`) · 「그대로 추가」(`as-is`) · 「추가하지 않기」(`decline` — esc)로 답한다. 등록하지 못하면(git이 실패했다)
+/// 그 까닭으로 실패하고 카드는 그대로 서 있다.
+#[tauri::command]
+pub async fn thread_answer_project_add(
+    engine: tauri::State<'_, Arc<atelier_acp::ConversationHost>>,
+    thread: String,
+    request: String,
+    choice: String,
+) -> CmdResult<()> {
+    let choice = match choice.as_str() {
+        "init" => atelier_acp::ProjectAddChoice::Init,
+        "root" => atelier_acp::ProjectAddChoice::Root,
+        "as-is" => atelier_acp::ProjectAddChoice::AsIs,
+        "decline" => atelier_acp::ProjectAddChoice::Decline,
+        other => return Err(format!("Project 추가 카드에 답하지 못했습니다: 모르는 선택입니다 — {other}")),
+    };
+    to_host(&engine, "Project 추가 카드에 답하지 못했습니다", move |host| host.answer_project_add(&thread, &request, choice)).await
+}
+
 /// 모델 바꾸기 — 그 참여자의 모델을 바꾼다. 떠 있으면 곧바로 넣고, 아니면 띄울 때 든다. 답은 바뀐 참여자 줄이다.
 #[tauri::command]
 pub async fn thread_set_model(

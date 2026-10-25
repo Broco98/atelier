@@ -4,16 +4,20 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
   answeringLine,
+  finalFrom,
   finalMessages,
   flowOf,
   foldThread,
   headline,
+  keptFolded,
   particle,
   workLine,
   type CallEntry,
   type PendingProject,
+  type PendingProjectAdd,
   type PendingSpace,
   type PendingWork,
+  type ResultEntry,
   type ThreadModel,
 } from "./fold";
 import { createdDocs } from "./expanded";
@@ -1273,5 +1277,84 @@ describe("Space 질문 카드(03 티켓 08)", () => {
     ]);
     const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
     expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("Space 고름");
+  });
+});
+
+// 대화로 하는 설정(03 티켓 12 · 구현 스펙 §12) — 바탕은 엔진이 축복한 기록이다. `thread-setting`은 한 턴에 Host가 Project를 추가하고 · 기준 브랜치를
+// 고치고 · Space에 Project를 넣고 · Space를 만든 것, `thread-project-add`는 git이 아닌 폴더를 묻고 사람이 「git init 하고 추가」를 고른 것이다.
+describe("대화로 하는 설정 — 결과 카드와 Project 추가 카드", () => {
+  const results = (model: ThreadModel) =>
+    model.turns.flatMap((turn) => turn.entries.filter((entry): entry is ResultEntry => entry.kind === "result"));
+  it("결과 카드 줄마다 카드 한 장이 그 턴 안 도구 줄 뒤에 서고 — 무엇을 했나 · 대상 · 두 줄 — 접힌 턴에도 남는다", () => {
+    const model = foldThread(record("thread-setting"));
+    const entries = model.turns[0].entries;
+    expect(entries.map((entry) => entry.kind)).toEqual(["tool", "result", "tool", "result", "tool", "result", "tool", "result", "message"]);
+    expect(results(model)).toEqual([
+      {
+        kind: "result",
+        key: "r8",
+        action: "project-added",
+        slug: "landing-page",
+        name: "landing-page",
+        title: "Project를 추가했어요 — landing-page",
+        detail: "~/MyProjects/landing-page · git 레포 · 기준 브랜치 main",
+      },
+      expect.objectContaining({ action: "project-edited", slug: "web-app", title: "web-app의 기준 브랜치를 main으로 바꿨어요" }),
+      expect.objectContaining({ action: "space-edited", slug: "결제-서비스", detail: "Project 3 · 함께 쓰는 Space 1" }),
+      expect.objectContaining({ action: "space-created", slug: "정산", detail: "api-server · ~/.atelier/spaces/정산.md" }),
+    ]);
+    expect(entries.filter(keptFolded).map((entry) => entry.kind)).toEqual(["result", "result", "result", "result"]);
+    expect(model.system).toEqual([]);
+    const phrases = entries.flatMap((entry) => (entry.kind === "tool" ? [phraseText(describeTool(entry).phrase)] : []));
+    expect(phrases).toEqual(["landing-page 추가함", "web-app 고침", "결제-서비스 Space 고침", "정산 Space 만듦"]);
+    expect(flowOf(model, "reviewer").turns).toEqual([]);
+  });
+
+  it("모르는 갈래 · 글이 빈 결과 카드 줄은 서지 않는다", () => {
+    const line = (payload: Record<string, unknown>): RecordLine => ({ seq: 99, at: at(59), kind: "setting", who: "host", payload });
+    const model = foldThread([
+      ...blessed,
+      line({ action: "project-removed", slug: "web-app", name: "web-app", title: "t", detail: "d" }),
+      line({ action: "space-edited", slug: "결제-서비스", name: "결제 서비스", title: "", detail: "d" }),
+    ]);
+    expect(results(model)).toEqual([]);
+  });
+
+  const adding = record("thread-project-add");
+  const cards = (model: ThreadModel) => model.asks.filter((one): one is PendingProjectAdd => one.card === "project-add");
+
+  it("git이 아닌 폴더의 카드 줄이 오면 물음 차례에 카드가 서고 그 도구 줄은 「notes 추가하는 중」이다", () => {
+    const model = foldThread(through(adding, 8));
+    expect(cards(model)).toEqual([
+      { card: "project-add", requestId: "fake-request", who: "host", look: "notGit", path: "~/MyProjects/notes", folder: "notes", root: null },
+    ]);
+    expect(model.pending).toEqual([]);
+    const tool = model.turns[0].entries.find((entry) => entry.kind === "tool");
+    expect(tool?.kind === "tool" && phraseText(describeTool(tool).phrase)).toBe("notes 추가하는 중");
+  });
+
+  it("고르면 카드가 걷히고 그 도구 줄 자리에 접힌 줄이 서며, 결과 카드가 그 뒤에 선다", () => {
+    const model = foldThread(adding);
+    expect(cards(model)).toEqual([]);
+    const entries = model.turns[0].entries;
+    expect(entries.map((entry) => entry.kind)).toEqual(["project-add-choice", "result", "message"]);
+    expect(entries[0]).toMatchObject({ choice: "init", look: "notGit", folder: "notes", root: null });
+    expect(results(model).map((card) => card.title)).toEqual(["Project를 추가했어요 — notes"]);
+    // 결과 카드는 그 일의 자리다 — 접힌 턴에서 답한 줄 · 결과 카드 · 턴 끝 답 차례로 선다(턴 끝 답이 결과 카드 뒤에서 시작한다).
+    expect(finalFrom(model.turns[0])).toBe(2);
+    expect(workLine(model.turns[0])).toBeNull();
+  });
+
+  it("하위 폴더 카드는 뿌리를 싣고, 거둔 카드는 줄 없이 걷힌다", () => {
+    const asked = through(adding, 8).map((line) =>
+      line.seq === 8 ? { ...line, payload: { ...(line.payload as object), look: "subfolder", folder: "docs", root: "~/MyProjects/api-server" } } : line,
+    );
+    expect(cards(foldThread(asked))[0]).toMatchObject({ look: "subfolder", folder: "docs", root: "~/MyProjects/api-server" });
+    const withdrawn = foldThread([
+      ...asked,
+      { seq: 9, at: at(9), kind: "question", who: "host", payload: { state: "withdrawn", requestId: "fake-request", card: "project-add", reason: "stopped" } },
+    ]);
+    expect(cards(withdrawn)).toEqual([]);
+    expect(withdrawn.turns[0].entries.map((entry) => entry.kind)).toEqual(["tool"]);
   });
 });

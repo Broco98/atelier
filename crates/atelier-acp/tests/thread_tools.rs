@@ -95,6 +95,10 @@ fn host가_thread_도구로_이름을_바꾸면_thread_json과_title_줄과_목�
     let listed: Vec<&str> = mcp[0]["tools"].as_array().unwrap().iter().filter_map(|tool| tool["name"].as_str()).collect();
     assert!(listed.contains(&"rename_thread"), "도구 목록에 이름 바꾸기가 있다: {listed:?}");
     assert!(listed.contains(&"list_spaces") && listed.contains(&"set_space"), "도구 목록에 Space 목록 · 붙이기가 있다(03 §11): {listed:?}");
+    for setting in ["add_project", "edit_project", "create_space", "edit_space"] {
+        assert!(listed.contains(&setting), "도구 목록에 대화로 하는 설정 넷이 있다(03 §12): {listed:?}");
+    }
+    assert!(!listed.iter().any(|name| name.starts_with("remove_") || name.starts_with("delete_")), "지우는 도구는 없다(03 §17): {listed:?}");
     let answer = &mcp[0]["call"];
     assert_ne!(answer["isError"], true, "{answer}");
     assert_eq!(answer["content"][0]["text"], "Thread 이름을 바꿨다 — 환불 API 버그", "도구의 답이 claude에게 돌아간다");

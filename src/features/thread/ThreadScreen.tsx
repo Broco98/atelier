@@ -7,6 +7,7 @@ import { PANEL_MOTION } from "@/components/shell/panel-layout";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { shellStore, showSidebar } from "@/components/shell/shell-store";
 import { workChangesKey } from "@/features/files/hooks";
+import { useProjects } from "@/features/projects/hooks";
 import { worksApi } from "@/features/works/api";
 import { expandHome } from "@/features/works/doc-refs";
 import { useReadingScope, useSetSpace, useSpaces } from "@/features/spaces/hooks";
@@ -47,11 +48,13 @@ import {
 import { changedFiles } from "./log";
 import { reducedMotion } from "./motion";
 import { agentChoices, recipientOf, type SeatedAgent } from "./mentions";
+import ProjectAddCard from "./ProjectAddCard";
 import ProjectCard from "./ProjectCard";
 import QueuedMessages from "./QueuedMessages";
 import ReadOnlyNotice from "./ReadOnlyNotice";
 import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
+import { ResultPlace, type ResultActions } from "./ResultCard";
 import SpaceCard from "./SpaceCard";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
@@ -673,6 +676,16 @@ function ThreadBody({
     () => ({ showChanges: onShowChanges, askFix: view.readOnly ? undefined : (pr) => fillDraft(thread, fixAsk(pr)) }),
     [onShowChanges, thread, view.readOnly],
   );
+  // 결과 카드(03 티켓 12)의 「열기」 — 대상이 그사이 사라졌는지는 지금 목록으로 본다(바깥에서 지운 것도 `projects:changed` · `spaces:changed`가 따라온다).
+  const { data: projects } = useProjects();
+  const { data: spaces } = useSpaces();
+  const resultActions = useMemo<ResultActions>(
+    () => ({
+      listed: (target) => (target === "project" ? projects : spaces)?.map((one) => one.slug) ?? null,
+      open: (to) => void navigate(to),
+    }),
+    [projects, spaces, navigate],
+  );
 
   // 카드 맨 아래 「다음 · …」 줄 — 다음 차례가 없으면 비운다(승인 카드 · Work 만들기 카드가 같은 줄을 쓴다).
   const askNext = turn?.next && (
@@ -732,16 +745,18 @@ function ThreadBody({
             )}
             <LogPlace.Provider value={host?.cwd ?? null}>
               <PrPlace.Provider value={prActions}>
-                <ThreadFlow
-                  thread={thread}
-                  model={model}
-                  only={session?.handle ?? null}
-                  onRetry={(text, attachments) =>
-                    void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
-                  }
-                  onOpenSession={openSession}
-                  onCallAgain={callAgain}
-                />
+                <ResultPlace.Provider value={resultActions}>
+                  <ThreadFlow
+                    thread={thread}
+                    model={model}
+                    only={session?.handle ?? null}
+                    onRetry={(text, attachments) =>
+                      void threadApi.send(thread, text, attachments).catch((failure: unknown) => setChipProblem(String(failure)))
+                    }
+                    onOpenSession={openSession}
+                    onCallAgain={callAgain}
+                  />
+                </ResultPlace.Provider>
               </PrPlace.Provider>
             </LogPlace.Provider>
           </Beside>
@@ -806,6 +821,15 @@ function ThreadBody({
                       />
                     ) : asking.card === "space" ? (
                       <SpaceCard
+                        thread={thread}
+                        name={model.cast[asking.who]?.name ?? asking.who}
+                        avatar={model.cast[asking.who]?.avatar ?? null}
+                        card={asking}
+                        count={turn?.count}
+                        next={askNext}
+                      />
+                    ) : asking.card === "project-add" ? (
+                      <ProjectAddCard
                         thread={thread}
                         name={model.cast[asking.who]?.name ?? asking.who}
                         avatar={model.cast[asking.who]?.avatar ?? null}

@@ -9,6 +9,7 @@ import type {
   EngineCheck,
   EngineState,
   Participant,
+  ProjectAddAnswer,
   ProjectAnswer,
   QuestionAnswer,
   QuitCounts,
@@ -106,6 +107,12 @@ export const threadApi = {
       choice: answer.kind,
       space: answer.kind === "space" ? answer.slug : null,
     }),
+  /**
+   * Project 추가 카드의 답(03 티켓 12 · §12) — 「git init 하고 추가」(`init`) · 「뿌리 폴더로 추가」(`root`) · 「그대로 추가」(`as-is`) · 「추가하지
+   * 않기」(`decline`, esc). 추가하지 못하면 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로, 추가한 것은 그 뒤의 결과 카드로 온다.
+   */
+  answerProjectAdd: (thread: string, request: string, choice: ProjectAddAnswer) =>
+    invoke<void>("thread_answer_project_add", { thread, request, choice }),
   /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
   setModel: (thread: string, who: string, model: string) =>
     invoke<Participant>("thread_set_model", { thread, who, model }),

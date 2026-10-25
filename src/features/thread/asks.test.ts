@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { askTurn, nextOf } from "./asks";
-import { answeringLine, foldThread, type PendingPermission, type PendingQuestion, type PendingSpace } from "./fold";
+import { answeringLine, foldThread, type PendingPermission, type PendingProjectAdd, type PendingQuestion, type PendingSpace } from "./fold";
 import type { RecordLine } from "./types";
 
 // 물음 차례(v1 티켓 25 · 구현 스펙 §9 카드 · 캔버스 Approval 보드 A안 「두 Agent가 함께 물을 때」) — 한 Thread에 걸린 물음이 여럿이면
@@ -237,5 +237,18 @@ describe("카드 아래 다음 줄", () => {
       reason: null,
     };
     expect(nextOf(space, "Host")).toEqual({ name: "Host", particle: "가", subject: "Space", mono: false, what: "답을 기다려요" });
+  });
+
+  it("Project 추가 카드는 「Host가 notes 추가 답을 기다려요」다(03 티켓 12)", () => {
+    const adding: PendingProjectAdd = {
+      card: "project-add",
+      requestId: "p-1",
+      who: "host",
+      look: "notGit",
+      path: "~/MyProjects/notes",
+      folder: "notes",
+      root: null,
+    };
+    expect(nextOf(adding, "Host")).toEqual({ name: "Host", particle: "가", subject: "notes 추가", mono: false, what: "답을 기다려요" });
   });
 });

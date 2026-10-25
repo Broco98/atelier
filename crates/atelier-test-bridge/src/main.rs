@@ -301,6 +301,7 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_answer_question", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_project", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_project_add", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),

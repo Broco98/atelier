@@ -64,6 +64,7 @@ export function nextOf(request: PendingAsk, name: string): NextLine {
   if (request.card === "question") return { ...head, subject: null, mono: false, what: "질문의 답을 기다려요" };
   if (request.card === "project") return { ...head, subject: `${request.name} 고치기`, mono: false, what: "답을 기다려요" };
   if (request.card === "space") return { ...head, subject: "Space", mono: false, what: "답을 기다려요" };
+  if (request.card === "project-add") return { ...head, subject: `${request.folder} 추가`, mono: false, what: "답을 기다려요" };
   // 흐름의 도구 줄이 이긴다(`describeApproval`과 같다) — 없으면 요청이 실은 요지로 같은 문구를 짓는다.
   const call = { ...request.toolCall, ...(request.tool?.call ?? {}) };
   const tool: ToolEntry = request.tool

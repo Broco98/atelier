@@ -193,8 +193,15 @@ export type ProjectAnswer = "attach" | "read" | "decline";
 export type SpaceAnswer = { kind: "space"; slug: string } | { kind: "none" } | { kind: "later" };
 
 /**
+ * Project 추가 카드의 답(03 티켓 12 · `atelier_acp::ProjectAddChoice`) — git init 하고 추가 · 뿌리 폴더로 추가 · 그대로 추가 · 추가하지
+ * 않기(esc). 「나중에」는 없다.
+ */
+export type ProjectAddAnswer = "init" | "root" | "as-is" | "decline";
+
+/**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·
- * `title` · `mode` · `call` · `pr` · `library`)에 03이 `space`(Space 줄)를 더했다. Thread Session에는 `changes`가 서지 않는다.
+ * `title` · `mode` · `call` · `pr` · `library`)에 03이 `space`(Space 줄) · `setting`(결과 카드)을 더했다. Thread Session에는 `changes`가
+ * 서지 않는다.
  */
 export type RecordKind =
   | "sent"
@@ -214,7 +221,8 @@ export type RecordKind =
   | "call"
   | "pr"
   | "library"
-  | "space";
+  | "space"
+  | "setting";
 
 /**
  * 기록 줄 하나 — `threads/<id>/events.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. `who`는 그 줄을 낸 참여자의 handle이고,

@@ -16,6 +16,8 @@ import { toolQuestionKey, type ToolQuestionView } from "./tool-question";
 //
 // - **키보드로 고른다** — 숫자는 그 줄을 고르고, ↵는 켜진 줄(처음엔 추천)을, ↑↓는 켜진 줄을 옮기며, esc는 「나중에」다
 //   (`toolQuestionKey`). 줄을 누르면 그 줄을 고른다. 선 직후 잠깐은 키를 받지 않는다. 서면 풀린 포커스만 받는다(승인 카드와 같다).
+// - **「나중에」가 없는 카드도 있다** — Project 추가 카드(03 티켓 12)는 미룰 것이 없어 바닥에 「고르기 ↵」만 서고(캔버스 F4-KitChat 「git이 아닌
+//   폴더를 부탁받음」), esc는 마지막 줄(「추가하지 않기」)을 고른다.
 // - 이 카드는 답을 넘기기만 한다(`onPick` · `onLater`). 고른 것은 기록의 답 줄로 오고, 그 줄이 오면 접기가 이 카드를 빼서 카드가 걷히고 그
 //   도구 줄 자리에 접힌 줄이 선다. 해내지 못하면(엔진이 거절) 까닭을 보이고 다시 고를 수 있게 푼다 — 엔진도 카드를 그대로 세워 둔다.
 
@@ -26,8 +28,8 @@ interface ToolQuestionCardProps {
   view: ToolQuestionView;
   /** 그 번호 줄을 골랐다 — 실패하면 그 까닭으로 거절한다. */
   onPick: (at: number) => Promise<unknown>;
-  /** 「나중에」(esc). */
-  onLater: () => Promise<unknown>;
+  /** 「나중에」(esc). 없으면 「나중에」 단추가 서지 않고 esc가 마지막 줄을 고른다. */
+  onLater?: () => Promise<unknown>;
   /** 물음 차례의 「1 / 2」(`askTurn`) — 묶음에 물음이 하나뿐이면 null. */
   count?: AskTurn["count"];
   /** 카드 맨 아래 「다음 · …」 줄(`AskNext`) — 다음 차례가 없으면 비운다. */
@@ -77,8 +79,10 @@ function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, ne
         if (!key) return;
         event.preventDefault();
         if ("point" in key) setActive(key.point);
-        else if ("later" in key) send(onLater);
-        else choose(key.pick);
+        else if ("later" in key) {
+          if (onLater) send(onLater);
+          else choose(view.options.length - 1);
+        } else choose(key.pick);
       }}
       className={cn("flex shrink-0 flex-col gap-2.5 px-4 pt-4 pb-3", SLOT_CARD)}
     >
@@ -131,13 +135,15 @@ function ToolQuestionCard({ who, avatar, view, onPick, onLater, count = null, ne
           ↑↓ 고르기 · esc 닫기
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <ChoiceButton
-            choice={{ option: "later", label: "나중에", remember: false, opensField: false, key: null }}
-            at={view.options.length}
-            pressed={false}
-            disabled={sent}
-            onPick={() => send(onLater)}
-          />
+          {onLater && (
+            <ChoiceButton
+              choice={{ option: "later", label: "나중에", remember: false, opensField: false, key: null }}
+              at={view.options.length}
+              pressed={false}
+              disabled={sent}
+              onPick={() => send(onLater)}
+            />
+          )}
           <ChoiceButton
             choice={{ option: "pick", label: "고르기", remember: false, opensField: false, key: "enter" }}
             at={active}

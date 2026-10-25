@@ -41,6 +41,7 @@ mod pr;
 mod project;
 mod read_only;
 mod seat;
+mod setting;
 mod space;
 mod tool_lines;
 mod work;
@@ -48,6 +49,7 @@ mod writing;
 
 pub(super) use call::Assignment;
 pub use project::ProjectChoice;
+pub use setting::ProjectAddChoice;
 pub use space::SpaceChoice;
 pub(super) use read_only::VanishWatch;
 pub use work::WorkChoice;
@@ -921,6 +923,10 @@ impl ConversationHost {
             Ok(Call::StartEditing { project, reason }) => self.start_editing(key, &project, reason.as_deref()),
             Ok(Call::ListSpaces) => self.list_spaces_tool(key),
             Ok(Call::SetSpace(ask)) => self.set_space_tool(key, ask),
+            Ok(Call::AddProject(ask)) => self.add_project_tool(key, ask),
+            Ok(Call::EditProject(edit)) => self.edit_project_tool(key, edit),
+            Ok(Call::CreateSpace(new)) => self.create_space_tool(key, new),
+            Ok(Call::EditSpace(edit)) => self.edit_space_tool(key, edit),
             Err(Unread::Bad(why)) => thread_tools::said(&why, true),
             Err(Unread::Unknown(fault)) => return Err(fault),
         })
@@ -1430,7 +1436,16 @@ impl ConversationHost {
                  - `{}`(space, projects, reason) — 이 Thread의 Space(Work에 이었으면 그 Work의 Space)를 붙이고 · 바꾸고 · 뺀다. \
                  Atelier가 묻지 않고 붙이거나 사람에게 카드로 묻고 고를 때까지 기다린다. 바뀐 범위는 다음 말부터 읽는다.\n  \
                  - 다루는 Project가 정해지면 `{}`로 그 Project를 담은 Space를 보고 `{}`로 붙인다. 이미 붙어 있으면 바꿀 까닭이 \
-                 있을 때만 부른다.\n",
+                 있을 때만 부른다.\n  \
+                 - `{}`(path, name, description) — 사람의 폴더를 Project로 등록한다. git 저장소가 아니거나 저장소 안의 하위 폴더면 \
+                 사람에게 카드로 묻는다.\n  \
+                 - `{}`(project, name, description, baseBranch) — Project의 이름 · 설명 · 기준 브랜치를 고친다. 기준 브랜치는 그 \
+                 저장소에 있는 브랜치만 받는다.\n  \
+                 - `{}`(name, projects, description) — Space를 만든다. Space를 만들기 전에 초안을 보이고 사람이 좋다고 하면 만든다.\n  \
+                 - `{}`(space, name, description, add, remove) — Space의 이름 · 설명을 고치고 Project를 넣고 뺀다.\n  \
+                 - 이 넷은 사람이 대화로 부탁한 설정이라 승인 카드 없이 하고, 흐름에 결과 카드가 선다. Project 제거 · Space 삭제를 \
+                 부탁받으면 지우지 않고 그 화면을 안내한다 — 예: 「Project 제거는 화면에서만 할 수 있어요. 메뉴 › Projects에서 \
+                 api-server의 ⋯ › 제거를 눌러 주세요.」 Space 삭제는 메뉴 › Space에서 그 Space의 ⋯ › 삭제다.\n",
                 thread_tools::SERVER_NAME,
                 thread_tools::CALL_AGENT,
                 thread_tools::SAVE_AGENT,
@@ -1441,7 +1456,11 @@ impl ConversationHost {
                 thread_tools::LIST_SPACES,
                 thread_tools::SET_SPACE,
                 thread_tools::LIST_SPACES,
-                thread_tools::SET_SPACE
+                thread_tools::SET_SPACE,
+                thread_tools::ADD_PROJECT,
+                thread_tools::EDIT_PROJECT,
+                thread_tools::CREATE_SPACE,
+                thread_tools::EDIT_SPACE
             ));
         }
         if let Some(note) = note {
