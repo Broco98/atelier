@@ -9,6 +9,12 @@ import { test as base } from "./evidence";
 /** 등록 대상이 될 폴더의 이름. 프로젝트 이름과 slug가 여기서 나온다. */
 const PICKED_FOLDER_NAME = "tracer-project";
 
+/**
+ * 다리가 타는 git의 사람 — sandbox의 전역 설정 파일(`GIT_CONFIG_GLOBAL`)에 적는다. 검사 기계의 `~/.gitconfig`에 기대지 않고, 진짜 git이
+ * 만든 첫 커밋이 이 손을 탔는지로 「그 설정을 탔다」를 잰다(03 티켓 13 — 「git init 하고 추가」 · 「새로 만들기」).
+ */
+export const GIT_PERSON = { name: "Atelier L4", email: "l4@atelier.test" };
+
 export interface Sandbox {
   /** 임시 데이터 루트. 다리가 `ATELIER_HOME`으로 여기를 가리킨다. */
   home: string;
@@ -18,6 +24,16 @@ export interface Sandbox {
    * 저장소이고 지금 브랜치가 `main`이라 기준 브랜치도 `main`이다. 커밋을 안 만들어 검사 기계의 git 이름에 기대지 않는다.
    */
   pickedFolder: string;
+  /**
+   * 다리가 탈 git의 전역 설정 파일(`GIT_CONFIG_GLOBAL` — `bridge.ts`). 처음에는 `GIT_PERSON`이 적혀 있다. 사람이 없는 git을 재려면
+   * `forgetGitPerson`으로 갈아 쓴다.
+   */
+  gitConfig: string;
+  /**
+   * 「새로 만들기」의 부모로 고를 빈 폴더 — sandbox 안이다. 추가 창의 기본 부모(`~/MyProjects`)는 진짜 집이라, 새로 만드는 검사는
+   * 「위치 바꾸기」로 먼저 여기를 고른다.
+   */
+  newParent: string;
 }
 
 export const test = base.extend<{ sandbox: Sandbox }>({
@@ -25,9 +41,16 @@ export const test = base.extend<{ sandbox: Sandbox }>({
   // 앞쪽의 내부 배치를 되짚어야 하고, 그러면 배치를 바꿀 때 조용히 어긋난다.
   sandbox: async ({}, use, testInfo) => {
     const root = mkdtempSync(join(tmpdir(), "atelier-l4-"));
-    const sandbox = { home: join(root, "home"), pickedFolder: join(root, PICKED_FOLDER_NAME) };
+    const sandbox = {
+      home: join(root, "home"),
+      pickedFolder: join(root, PICKED_FOLDER_NAME),
+      gitConfig: join(root, "gitconfig"),
+      newParent: join(root, "made"),
+    };
     mkdirSync(sandbox.home);
     mkdirSync(sandbox.pickedFolder);
+    mkdirSync(sandbox.newParent);
+    writeFileSync(sandbox.gitConfig, `[user]\n\tname = ${GIT_PERSON.name}\n\temail = ${GIT_PERSON.email}\n`);
     execFileSync("git", ["init", "-q", "-b", "main"], { cwd: sandbox.pickedFolder });
 
     await use(sandbox);
@@ -40,6 +63,14 @@ export const test = base.extend<{ sandbox: Sandbox }>({
     rmSync(root, { recursive: true, force: true });
   },
 });
+
+/**
+ * sandbox의 git에서 사람을 지운다 — 이름 · 이메일이 없고 짐작도 하지 않는다(`user.useConfigOnly`). 그러면 첫 커밋이 「Author identity
+ * unknown」으로 실패한다 — 사람의 git 이름 · 이메일이 없는 기계와 같다(03 티켓 13 — 실패 글 한 번).
+ */
+export function forgetGitPerson(sandbox: Sandbox) {
+  writeFileSync(sandbox.gitConfig, "[user]\n\tuseConfigOnly = true\n");
+}
 
 /**
  * work 폴더 하나의 `work.json`을 쓴다 — 코어가 읽는 모양이 **여기 한 곳에만** 선다. 살아 있는

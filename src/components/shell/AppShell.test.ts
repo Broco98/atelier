@@ -116,7 +116,7 @@ describe("⌘N", () => {
     expect(countOf(source, 'navigate({ to: "/" })')).toBe(1);
     const at = source.indexOf('pressed(e, "newThread")');
     const handler = source.slice(at, source.indexOf("};", at));
-    expect(handler).toContain("dialogStore.state !== null || searchOpen");
+    expect(handler).toContain("dialogOpen() || searchOpen");
     expect(handler).toContain("openNewThread()");
   });
 

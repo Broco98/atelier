@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "./evidence";
-import { PROJECTS } from "./fixtures";
 import {
   callCount,
   installFixtureBackend,
@@ -23,8 +22,6 @@ import type { ProcessSnapshot } from "@/features/processes/types";
 // 부르고, 깐 뒤로 시간은 저절로 흐르므로 세기 전에 멈춘다(`시계를세운다`). 그 뒤로는 `runFor`만큼만 간다 — 2초 박자가 러너
 // 속도에 안 흐려진다.
 
-const [project] = PROJECTS;
-
 /**
  * 요약 카드의 셸 수 — 「셸」 타일의 큰 수(`data-figure="shells"`)다. **카드 안에서 찾는다** — 스토어가 모르는 풀의 셸은 두 박자 뒤
  * 「화면 밖 셸」 묶음에 서고(티켓 32) 그 머리도 셸 수를 말해, 화면 전체에서 찾으면 같은 수가 둘이다.
@@ -45,13 +42,14 @@ test("Processes가 사람 메뉴에서 Terminal 다음, Archive 앞에 서고, �
   page,
 }) => {
   await installFixtureBackend(page, { processes_snapshot: withPool("P-1", "P-2", "P-3") });
+  // `/projects`는 목록 그 자리다 — 한때 첫 프로젝트 상세로 넘겼다(03 결정 「10」의 표 목록 앞).
   await page.goto("/projects");
-  await expect(page).toHaveURL(`/projects/${project.slug}`);
+  await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
 
   // **순서까지 본다**(프로세스 스펙 S43) — 「있다」만 재면 끝에 붙여도 초록이다. 옛 nav의 넷이 사람 메뉴로 왔다(v1 티켓 07 · S27). 항목
   // 이름은 라벨로 시작한다 — `Processes` 끝에는 앱 메모리 합계가 붙는다(02 티켓 04 — 그 글은 `frame-sidebar.spec`이 잰다).
   await 사람줄(page).click();
-  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Terminal/, /^Processes/, /^Archive$/, /^Settings/]);
+  await expect(사람메뉴항목(page)).toHaveText([/^Projects/, /^Space/, /^Terminal/, /^Processes/, /^Archive$/, /^Settings/]);
   await page.keyboard.press("Escape");
   await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");

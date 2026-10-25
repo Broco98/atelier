@@ -78,6 +78,8 @@ export default function ProjectRemoveDialog({
                     <Link
                       to="/works/$slug"
                       params={{ slug: work.slug }}
+                      // WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다).
+                      tabIndex={0}
                       onClick={onClose}
                       className="flex min-h-10.5 items-center gap-2.5 px-3 py-2 text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
                     >

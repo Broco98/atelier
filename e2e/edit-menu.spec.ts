@@ -25,7 +25,7 @@ import {
 import { PROJECTS, WORKS } from "./fixtures";
 
 const [pinnedWork, plainWork] = WORKS;
-const [billing, ledger] = PROJECTS;
+const [billing] = PROJECTS;
 
 // codex-ds 티켓 31 — **입력칸 · 터미널에서 우리 편집 메뉴가 뜬다**(codex-ds 스펙 §9 · S9 · 구현 노트 Q12 · Q17). 우클릭하면 웹뷰의 기본
 // 메뉴 대신 앱의 편집 메뉴가 커서 자리에 선다.
@@ -371,16 +371,16 @@ test("검색 팔레트의 검색어 칸에서 메뉴로 복사 · 붙여넣기�
 // 포커스가 고름째 그 칸으로 돌아와 이어 고친다. 픽스처의 이름 저장은 바뀐 이름을 기억하지 않아 저장은 나간 IPC로 잰다
 // (`inline-rename.spec.ts`).
 //
-// 프로젝트의 두 칸은 대상 메뉴 `TargetMenu`의 자리다(work의 두 칸은 `WorkContextMenu`). 지금은 그 자리의 가름(`targetOf`)도 이 칸을 대상으로
-// 치지 않는다 — 목록에서 고치는 행은 행 버튼이 아니고, 머리 줄은 메뉴를 단 이름을 갈아 끼운다. 그 가름이 넓어지는 날 이 칸을 지키는
-// 것이 자리의 물러섬(`opensEditMenu`)이고, 이 검사가 그날 빨개진다.
+// work의 두 칸은 대상 메뉴(`WorkContextMenu`)의 자리다 — 그 자리의 가름도 이 칸을 대상으로 치지 않는다. 그 가름이 넓어지는 날 이 칸을
+// 지키는 것이 자리의 물러섬(`opensEditMenu`)이고, 이 검사가 그날 빨개진다. Project 상세 제목(03 구현 스펙 §16)은 대상 메뉴가 없는 자리다 —
+// 한때 프로젝트 목록 행 · 머리 줄 이름이 대상 메뉴(`TargetMenu`)를 단 이름 칸이었다(03 결정 「10」이 걷었다).
 
 const 이름칸들: Array<{
   name: string;
   /** 그 칸이 서는 화면. */
   url: string;
-  /** 칸 밖의 그 자리에서 서는 대상 메뉴 — 이 칸에서는 안 선다. */
-  menu: "work" | "프로젝트";
+  /** 칸 밖의 그 자리에서 서는 대상 메뉴 — 이 칸에서는 안 선다. 그 자리에 대상 메뉴가 없으면 `null`이다. */
+  menu: "work" | null;
   /** 고치는 이름의 work · 프로젝트. */
   slug: string;
   /** 이름 저장 — 나가는 IPC와 이름이 실리는 인자(`slug` 옆). */
@@ -416,32 +416,16 @@ const 이름칸들: Array<{
     },
   },
   {
-    name: "프로젝트 목록 행",
+    name: "Project 상세 제목",
     url: `/projects/${billing.slug}`,
-    menu: "프로젝트",
-    // 고르지 않은 행이다 — 그래도 그 행의 이름이다.
-    slug: ledger.slug,
-    save: { command: "update_project", key: "name" },
-    // 행 폭을 채우는 칸은 입력칸 자신이 링을 입는다(`InlineRename`의 `fill`).
-    ring: (field) => field,
-    setUp: async (page) => {
-      await page.locator(`button[data-project-row="${ledger.slug}"]`).focus();
-      await page.keyboard.press("F2");
-      return page
-        .getByRole("region", { name: "프로젝트 목록", exact: true, includeHidden: true })
-        .getByRole("textbox", { name: "프로젝트 이름", exact: true, includeHidden: true });
-    },
-  },
-  {
-    name: "프로젝트 머리 줄 이름",
-    url: `/projects/${billing.slug}`,
-    menu: "프로젝트",
+    menu: null,
     slug: billing.slug,
     save: { command: "update_project", key: "name" },
+    // 글자 폭 칸이다(`InlineRename`의 `text`) — 짝을 든 상자가 링을 입는다.
     ring: (field) => field.locator(".."),
     setUp: async (page) => {
-      await 화면머리(page).getByText(billing.name, { exact: true }).dblclick();
-      return 화면머리(page).getByRole("textbox", { name: "프로젝트 이름", exact: true, includeHidden: true });
+      await page.getByRole("button", { name: `${billing.name} — 이름 바꾸기`, exact: true }).click();
+      return page.getByRole("main").getByRole("textbox", { name: "Project 이름", exact: true, includeHidden: true });
     },
   },
 ];
@@ -460,7 +444,7 @@ const 여는길: Array<{ how: string; open: (page: Page, field: Locator) => Prom
 
 for (const { name, url, menu: 대상메뉴, slug, save, setUp, ring } of 이름칸들) {
   for (const { how, open } of 여는길) {
-    test(`${name}을 고치는 칸에서 ${how}면 ${대상메뉴} 메뉴가 아니라 편집 메뉴가 서고 고치기가 이어진다 — 메뉴로 붙인 이름을 Enter가 저장한다`, async ({
+    test(`${name}을 고치는 칸에서 ${how}면 ${대상메뉴 ? `${대상메뉴} 메뉴가 아니라 ` : ""}편집 메뉴가 서고 고치기가 이어진다 — 메뉴로 붙인 이름을 Enter가 저장한다`, async ({
       page,
     }) => {
       await installFixtureBackend(page);

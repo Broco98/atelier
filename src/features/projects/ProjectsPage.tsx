@@ -98,7 +98,8 @@ export default function ProjectsPage() {
     <PlainFrame label={label} title={{ name: label }}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-4.5 overflow-y-auto px-10 pt-7.5 pb-10 scroll-quiet">
-          <header className="flex min-h-8 items-center gap-2.5">
+          {/* 본문 맨 위 줄(제목 · 찾기 · 추가) — `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead`). */}
+          <div className="flex min-h-8 items-center gap-2.5">
             <h1 className="text-heading-md text-fg">{label}</h1>
             {/* 찾기 · 추가는 목록이 있을 때만 — 빈 목록은 가운데 안내가 「Project 추가」를 든다(시안 `notEmpty`). */}
             {!empty && (
@@ -120,7 +121,7 @@ export default function ProjectsPage() {
                 </Button>
               </>
             )}
-          </header>
+          </div>
           {empty ? (
             <EmptyProjects onAdd={() => void handleAdd()} />
           ) : (
@@ -224,9 +225,12 @@ function ProjectRow({
       )}
     >
       <span role="cell" className="flex min-w-0 items-center">
+        {/* `tabIndex`를 명시한다 — WebKit의 Tab은 맨 링크에 서지 않는다(`@/lib/roving` 머리말의 맨 `<button>`과 같다). 줄의 Tab 자리가
+            이 링크다(03 결정 「10」). */}
         <Link
           to="/projects/$slug"
           params={{ slug: project.slug }}
+          tabIndex={0}
           className="-mx-1 flex min-w-0 items-center gap-2.5 rounded-md px-1 focus-ring"
         >
           <Book aria-hidden className={cn("size-4 shrink-0", missing ? "text-fg-faint" : "text-fg-icon")} />

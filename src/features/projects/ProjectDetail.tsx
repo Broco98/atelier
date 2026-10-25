@@ -42,8 +42,10 @@ export default function ProjectDetail({ slug }: { slug: string }) {
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-10 pt-5.5 pb-20 scroll-quiet">
           <div className="mb-5.5 flex items-center gap-2">
+            {/* WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다). */}
             <Link
               to="/projects"
+              tabIndex={0}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-separator-soft bg-surface pr-3.5 pl-2.5 text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
             >
               <ArrowLeft aria-hidden className="size-3.5 text-fg-icon" />

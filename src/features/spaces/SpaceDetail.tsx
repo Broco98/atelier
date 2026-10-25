@@ -62,8 +62,10 @@ export default function SpaceDetail({ slug }: { slug: string }) {
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-10 pt-5.5 pb-20 scroll-quiet">
           <div className="mb-5.5 flex items-center gap-2">
+            {/* WebKit의 Tab은 맨 링크에 서지 않는다 — 이 화면의 링크는 모두 `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다). */}
             <Link
               to="/spaces"
+              tabIndex={0}
               className="inline-flex h-8 items-center gap-1.5 rounded-full border border-separator-soft bg-surface pr-3.5 pl-2.5 text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
             >
               <ArrowLeft aria-hidden className="size-3.5 text-fg-icon" />
@@ -164,7 +166,7 @@ function SpaceBody({ space, onOpenSpace }: { space: Detail; onOpenSpace: (slug: 
           label="관계"
           aside={space.shared.length > 0 ? `함께 쓰는 Space ${space.shared.length}` : "다른 Space와 겹치지 않아요"}
           end={
-            <Link to="/spaces/$slug/edit" params={{ slug: space.slug }} className={buttonVariants({ variant: "ghost", size: "top" })}>
+            <Link to="/spaces/$slug/edit" params={{ slug: space.slug }} tabIndex={0} className={buttonVariants({ variant: "ghost", size: "top" })}>
               <Pencil aria-hidden />
               편집
             </Link>
@@ -253,6 +255,7 @@ function SpaceWorks({ slug }: { slug: string }) {
             to="/works/$slug"
             params={{ slug: work.slug }}
             search={{}}
+            tabIndex={0}
             data-work={work.slug}
             className="-mx-1.5 flex min-h-8 w-[calc(100%+12px)] items-center gap-2.5 rounded-md px-1.5 text-left text-sm text-fg transition-colors hover:bg-fill-soft focus-ring"
           >
@@ -307,6 +310,7 @@ function Problems({ space }: { space: Detail }) {
         <Link
           to="/spaces/$slug/edit"
           params={{ slug: space.slug }}
+          tabIndex={0}
           className="ml-auto rounded-sm text-chat-meta text-link underline-offset-3 hover:underline focus-ring"
         >
           관계 편집에서 고치기
@@ -518,6 +522,7 @@ function ProjectTable({
                 <Link
                   to="/projects/$slug"
                   params={{ slug }}
+                  tabIndex={0}
                   className="min-w-0 truncate rounded-sm text-fg underline-offset-3 hover:underline focus-ring"
                 >
                   {project.name}

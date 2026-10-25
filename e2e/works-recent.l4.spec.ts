@@ -37,7 +37,7 @@ test("work 화면을 열면 이력 파일에 그 work이 적힌다", async ({ pa
   // **아직 아무것도 없다.** 읽기가 파일을 만들지 않는다는 것이 이 한 줄이다 — 앱을 켜고
   // 사이드바가 목록을 읽는 것만으로는 이력이 안 생긴다.
   await page.goto("/projects");
-  await expect(page.getByText("등록된 프로젝트가 없어요")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
   expect(recentSlugs(home)).toEqual([]);
 
   await page.goto("/works/먼저것");
@@ -71,7 +71,7 @@ test("마지막으로 연 work이 빈 팔레트의 첫 작업 줄이다", async 
 
   // 이력이 비어 있을 때의 기본 순서 — 만든 순이다.
   await page.goto("/projects");
-  await expect(page.getByText("등록된 프로젝트가 없어요")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "아직 Project가 없어요", exact: true })).toBeVisible();
   await 검색팔레트를연다(page);
   await expect.poll(() => workRows(page)).toEqual(["나중에 만든 작업", "먼저 만든 작업"]);
   await page.keyboard.press("Escape");

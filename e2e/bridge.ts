@@ -11,11 +11,32 @@ export const BRIDGE_FN = "__atelierBridge__";
 
 const BINARY = join(REPO_ROOT, "target/debug/atelier-test-bridge");
 
+/** 다리가 서는 세상 — 데이터 루트와 git 전역 설정 파일(`l4.ts`의 `Sandbox`에서 이 둘만 본다). */
+export interface BridgeWorld {
+  home: string;
+  gitConfig: string;
+}
+
+/**
+ * 다리의 환경 — 검사를 돈 셸의 환경에서 git을 가리키는 것을 모두 걷고 sandbox의 것만 세운다.
+ *
+ * - `GIT_*`(사람 `GIT_AUTHOR_*` · `GIT_COMMITTER_*`, 그리고 훅 안에서 돌 때의 `GIT_DIR` · `GIT_INDEX_FILE` 같은 것)와 `EMAIL`(git이
+ *   사람을 짐작하는 값)을 걷는다 — 남으면 진짜 git이 sandbox가 아닌 저장소 · 사람을 탄다.
+ * - 전역 설정은 sandbox의 파일이고(`GIT_CONFIG_GLOBAL`), 시스템 설정은 읽지 않는다(`GIT_CONFIG_NOSYSTEM`). 첫 커밋의 사람이 검사가
+ *   정한 값이다.
+ */
+function bridgeEnv({ home, gitConfig }: BridgeWorld): NodeJS.ProcessEnv {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_") && key !== "EMAIL"),
+  );
+  return { ...env, ATELIER_HOME: home, GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: "1" };
+}
+
 /**
  * 커맨드 하나를 다리에 넘긴다. 실패하면 **던진다** — Playwright가 그 오류를 브라우저의
  * `invoke()` 거절로 옮겨 주므로, 화면은 진짜 백엔드가 거절한 것과 똑같이 반응한다.
  */
-export function callBridge(home: string, cmd: string, args: Record<string, unknown>): unknown {
+export function callBridge(world: BridgeWorld, cmd: string, args: Record<string, unknown>): unknown {
   if (!existsSync(BINARY)) {
     throw new Error(
       `다리 바이너리가 없습니다: ${BINARY}\n` +
@@ -28,8 +49,8 @@ export function callBridge(home: string, cmd: string, args: Record<string, unkno
   const result = spawnSync(BINARY, [cmd, JSON.stringify(args)], {
     encoding: "utf8",
     // ATELIER_HOME이 데이터 루트를 임시 폴더로 돌린다 (atelier-core의 paths.rs).
-    // 이 한 줄이 개발자의 실제 ~/.atelier를 지키는 전부다.
-    env: { ...process.env, ATELIER_HOME: home },
+    // 이 한 줄이 개발자의 실제 ~/.atelier를 지키는 전부다. git은 sandbox의 설정만 탄다(`bridgeEnv`).
+    env: bridgeEnv(world),
   });
 
   if (result.error) throw new Error(`다리를 실행하지 못했습니다: ${result.error.message}`);

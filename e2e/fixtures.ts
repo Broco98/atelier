@@ -1,6 +1,6 @@
 import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
-import type { ProjectView } from "@/features/projects/types";
+import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { ReadingScope } from "@/features/spaces/scope";
 import type { DeletedSpace, RestoredSpace, Space, SpaceDetail, SpaceDraft, SpaceUsage } from "@/features/spaces/types";
@@ -64,6 +64,58 @@ export const PROJECTS: ProjectView[] = [
     missing: false,
   },
 ];
+
+/**
+ * Project 추가 창(03 구현 스펙 §15 · §16)이 폴더를 고르는 순간 묻는 살피기의 답 — 갈래 다섯마다 한 폴더다. 키는 폴더 선택창이 돌려주는
+ * 절대 경로이고(`폴더를고른다`), 답의 `path`는 화면의 꼴(`~`로 줄인 것)이다. **기본 답이 없다** — 모르는 폴더를 살피면 그 자리에서 물려,
+ * 고른 폴더와 살핀 폴더가 어긋난 것이 신호로 잡힌다. 하위 폴더의 「뿌리 폴더로 바꾸기」는 뿌리의 화면 꼴(`~/dev/web-app`)로 다시 살핀다.
+ */
+const WEB_APP_GIT = {
+  remoteSlug: "acme/web-app",
+  currentBranch: "main",
+  localBranches: ["main"],
+  remoteBranches: [{ remote: "origin", branches: ["origin/main"] }],
+};
+export const FOLDER_LOOKS: Record<string, FolderLook> = {
+  "/Users/tester/dev/web-app": { kind: "repo", path: "~/dev/web-app", baseBranch: "main", remotes: ["origin"], git: WEB_APP_GIT },
+  "~/dev/web-app": { kind: "repo", path: "~/dev/web-app", baseBranch: "main", remotes: ["origin"], git: WEB_APP_GIT },
+  "/Users/tester/dev/web-app/packages/ui": {
+    kind: "subfolder",
+    path: "~/dev/web-app/packages/ui",
+    root: "~/dev/web-app",
+    baseBranch: "main",
+  },
+  "/Users/tester/dev/notes": { kind: "notGit", path: "~/dev/notes" },
+  "/Users/tester/dev/billing": { kind: "registered", path: "~/dev/billing", project: PROJECTS[0] },
+  "/Users/tester/dev/gone": { kind: "missing", path: "~/dev/gone" },
+};
+
+/** 추가 창으로 추가한 Project — `create_project`의 답(위 `FOLDER_LOOKS`의 web-app 저장소). 목록은 이것을 기억하지 않는다. */
+export const ADDED_PROJECT: ProjectView = {
+  slug: "web-app",
+  name: "web-app",
+  path: "~/dev/web-app",
+  baseBranch: "main",
+  createdAt: "2026-10-26",
+  description: "",
+  git: WEB_APP_GIT,
+  missing: false,
+};
+
+/** 「새로 만들기」의 자리 — 기본 부모(`~/MyProjects`) 아래 「Landing Page」의 폴더다. 자리가 차 있는 갈래는 검사가 `taken`을 갈아 끼운다. */
+export const NEW_PLACE: NewProjectPlace = { parent: "~/MyProjects", path: "~/MyProjects/landing-page", taken: false };
+
+/** 「새로 만들기」로 만든 Project — `new_project`의 답(빈 첫 커밋 · 기준 브랜치 `main`). */
+export const MADE_PROJECT: ProjectView = {
+  slug: "landing-page",
+  name: "Landing Page",
+  path: "~/MyProjects/landing-page",
+  baseBranch: "main",
+  createdAt: "2026-10-26",
+  description: "",
+  git: { remoteSlug: null, currentBranch: "main", localBranches: ["main"], remoteBranches: [] },
+  missing: false,
+};
 
 /**
  * Space(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(Host가 만들었다)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
@@ -1105,6 +1157,16 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   project_usage: { spaces: [], works: [] },
   remove_project: { kind: "removed", spaces: [] },
   restore_project: PROJECTS[0],
+  // Project 추가 창(03 구현 스펙 §15 · §16 — 03 티켓 13) — 폴더를 고르는 순간의 살피기(고른 폴더로 갈린다 — `FOLDER_LOOKS`), 「Project 추가」 ·
+  // 「git init 하고 추가」의 추가, 「새로 만들기」의 자리(이름을 칠 때마다)와 만들기. 추가 · 만들기의 답은 그 Project이고 목록은 그것을
+  // 기억하지 않는다 — 검사가 재는 것은 「무엇이 나갔나」와 창의 갈래다. 실패(「git이 이름 · 이메일이 없다」 같은)의 글은 진짜 git만 내므로
+  // L4(`projects-create.l4.spec.ts`)가 잰다.
+  inspect_project_folder: answerByArg("folder", FOLDER_LOOKS),
+  create_project: ADDED_PROJECT,
+  new_project_place: NEW_PLACE,
+  new_project: MADE_PROJECT,
+  // 찾을 수 없는 Project의 「재설정」(03 구현 스펙 §15) — 고른 폴더로 경로만 바꾼 Project다. 거절 갈래는 검사가 `ipcFailure`로 준다.
+  relocate_project: PROJECTS[0],
   // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
   // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
   // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.

@@ -1,7 +1,6 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { ARCHIVE, ARCHIVED_DOCS, PROJECTS, WORKS } from "./fixtures";
+import { ARCHIVE, ARCHIVED_DOCS, WORKS } from "./fixtures";
 import {
-  callCount,
   clipboardWrites,
   installFixtureBackend,
   ipcCallArgs,
@@ -17,13 +16,14 @@ import {
   표를꽂는다,
 } from "./harness";
 
-// codex-ds 티켓 30 — **프로젝트 · Archive · 문서 글을 우클릭한다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 10 · 11, 스토리 70 · 73
+// codex-ds 티켓 30 — **Archive · 문서 글을 우클릭한다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 10 · 11, 스토리 70 · 73
 // · 75 · 76). work 대상(`work-context-menu.spec.ts`)과 같은 규칙이다 — 그 대상의 메뉴가 커서 자리에 서고, 고름 · 주소는 그대로이며, 열린
 // 동안만 대상에 대상 테두리(포커스 링)가 선다. ⇧F10 · 메뉴 키는 포커스된 대상의 같은 메뉴를 그 대상 곁에 연다. ⋯이 있는 대상은 ⋯과
 // 같은 목록이다. 나머지 두 대상(Processes 행 · spec 레이아웃 행)은 ⋯ 검사가 사는 파일에 우클릭 판을 더했다(`processes-strays` ·
 // `spec-layout-page`).
 //
-// - 프로젝트(목록 행 · 머리 줄 이름): Finder에서 열기 · 경로 복사 — 이름 바꾸기 F2 — 제거(확인 창). 「LLM이 받는 텍스트」는 없다(S13).
+// - 프로젝트(목록 행 · 머리 줄 이름)는 03 판에서 대상이 아니다(03 결정 「10」) — 목록 줄은 이름 링크 하나와 ⋯이고, 이름 바꾸기는 상세
+//   제목이다. ⋯ 항목이 부르는 것은 `projects-list.spec.ts`가, 메뉴 갈래는 Projects 흐름 spec이 잰다.
 // - Archive 목록 행: 머리 줄 ⋯(아카이브 메뉴)와 같은 목록 — Finder에서 열기 · 경로 복사.
 // - spec 트리 파일 행(작업 · Archive 패널, 티켓 32 — 구현 노트 Q16): 경로 복사 하나다. 행의 복사 버튼이 Tab 정류장이 아니어서 키보드의
 //   복사 길이 이 메뉴다. 폴더 행은 대상이 아니다.
@@ -33,13 +33,9 @@ import {
 // 같은 사정). 그래서 고름을 먼저 만들고 **그 고름 안을** 우클릭하거나, 고름 없이 글자를 우클릭해 「낱말을 골라도 고른 것 없음의 메뉴」를
 // 잰다 — 앱은 오른쪽 누름의 순간(`pointerdown`)에 고름을 쥐므로 두 기계에서 같은 메뉴다.
 
-const [billing, ledger] = PROJECTS;
 const [shipped, bare] = ARCHIVE;
 const [pinnedWork] = WORKS;
 const [RECORD] = ARCHIVED_DOCS[shipped.slug].docs;
-
-/** 열기 — 고치기 — 되돌릴 수 없는 것(codex-ds 결정 10). 「LLM이 받는 텍스트」는 없다(S13). */
-const 프로젝트메뉴차례 = ["Finder에서 열기", "경로 복사", "—", "이름 바꾸기F2", "—", "제거"];
 
 const 메뉴 = (page: Page) => page.getByRole("menu");
 const 항목 = (page: Page, name: string) => 메뉴(page).getByRole("menuitem", { name, exact: true });
@@ -87,26 +83,6 @@ interface 대상 {
 }
 
 const 대상들: 대상[] = [
-  {
-    name: "프로젝트 목록 행",
-    setUp: async (page) => {
-      await page.goto(`/projects/${billing.slug}`);
-      const list = page.getByRole("region", { name: "프로젝트 목록", exact: true, includeHidden: true });
-      return { target: 버튼(list, `${ledger.name} ${ledger.path}`), order: 프로젝트메뉴차례, mark: "data-project-row", selected: billing.slug };
-    },
-  },
-  {
-    name: "프로젝트 머리 줄 이름",
-    setUp: async (page) => {
-      await page.goto(`/projects/${billing.slug}`);
-      return {
-        target: 화면머리(page).getByText(billing.name, { exact: true }),
-        order: 프로젝트메뉴차례,
-        mark: "data-project-row",
-        selected: billing.slug,
-      };
-    },
-  },
   {
     name: "Archive 목록 행",
     setUp: async (page) => {
@@ -211,11 +187,11 @@ for (const { name, setUp } of 대상들) {
 
 // ── ⌃클릭은 우클릭이다 (결정 7) ──
 // macOS에서 ⌃클릭은 우클릭이라 같은 메뉴를 연다 — 그 손이 그 행을 골라 버리면 「메뉴는 고름을 안 바꾼다」가 깨진다. 누르면 그 대상을
-// 고르는 행(프로젝트 · Archive 목록 행 · spec 트리 파일 행)은 그 클릭에서 ⌃를 거른다 — work 행 · 띠 줄과 같은 거름이고, 재는 길도 그
+// 고르는 행(Archive 목록 행 · spec 트리 파일 행)은 그 클릭에서 ⌃를 거른다 — work 행 · 띠 줄과 같은 거름이고, 재는 길도 그
 // 검사(`work-context-menu.spec.ts`)와 같다: ⌃가 실린 `click` 사건을 내고, 주소를 바꾸는 부름을 적어(`주소적기`) ⌃클릭 뒤에 꽂은 표보다
-// 먼저 적힌 것이 없음을 잰다. 머리 줄 이름은 누르면 고르는 자리가 아니라 뺀다. 키보드 Enter의 고름은 `keyboard.spec.ts`가 잰다.
+// 먼저 적힌 것이 없음을 잰다. 키보드 Enter의 고름은 `keyboard.spec.ts`가 잰다.
 
-for (const { name, setUp } of 대상들.filter((one) => one.name !== "프로젝트 머리 줄 이름")) {
+for (const { name, setUp } of 대상들) {
   test(`${name}을 ⌃클릭하면 고름 · 주소가 그대로다 — ⌃ 없는 클릭은 그 행을 고른다`, async ({ page }) => {
     await installFixtureBackend(page);
     const { target, mark, selected } = await setUp(page);
@@ -236,125 +212,6 @@ for (const { name, setUp } of 대상들.filter((one) => one.name !== "프로젝�
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
-
-// ── 프로젝트 메뉴가 부르는 것 ──
-// 메뉴는 대상의 프로젝트에 건다 — 목록 행은 고르지 않은 프로젝트(원장)이고, 머리 줄 이름은 고른 프로젝트(빌링)다. Finder 열기는 코어
-// 명령을 slug로 부르고(경로는 코어가 푼다), 경로 복사는 그 프로젝트 폴더의 참조(끝이 `/`)를 클립보드에 쓴다.
-
-const 프로젝트대상들 = [
-  {
-    name: "프로젝트 목록 행",
-    project: ledger,
-    target: (page: Page) =>
-      버튼(page.getByRole("region", { name: "프로젝트 목록", exact: true, includeHidden: true }), `${ledger.name} ${ledger.path}`),
-    input: (page: Page) => page.getByRole("region", { name: "프로젝트 목록", exact: true }).getByRole("textbox", { name: "프로젝트 이름" }),
-  },
-  {
-    name: "프로젝트 머리 줄 이름",
-    project: billing,
-    target: (page: Page) => 화면머리(page).getByText(billing.name, { exact: true }),
-    input: (page: Page) => 화면머리(page).getByRole("textbox", { name: "프로젝트 이름" }),
-  },
-];
-
-for (const { name, project, target, input } of 프로젝트대상들) {
-  test(`${name}의 메뉴에서 「Finder에서 열기」는 그 프로젝트로 폴더를 열고 「경로 복사」는 그 폴더의 참조를 쓴다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await recordClipboard(page);
-    await page.goto(`/projects/${billing.slug}`);
-
-    await 우클릭한다(page, target(page));
-    await 항목(page, "Finder에서 열기").click();
-    await expect(메뉴(page)).toHaveCount(0);
-    await expect
-      .poll(async () => (await ipcCallArgs(page, "open_project_folder", "slug")).map(({ args }) => args))
-      .toEqual([{ slug: project.slug }]);
-
-    await 우클릭한다(page, target(page));
-    await 항목(page, "경로 복사").click();
-    await expect.poll(() => clipboardWrites(page)).toEqual([`${project.path}/`]);
-    // 복사는 토스트가 말한다 — Projects 화면에도 토스트 자리가 선다.
-    await expect(page.getByRole("region", { name: "메시지", exact: true })).toHaveText(`${project.path}/ 복사됨`);
-    await expect(page).toHaveURL(`/projects/${billing.slug}`);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test(`${name}의 메뉴에서 「이름 바꾸기」는 그 자리를 입력칸으로 바꾸고, Enter면 그 프로젝트의 이름을 고친다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/projects/${billing.slug}`);
-
-    await 우클릭한다(page, target(page));
-    await 항목(page, "이름 바꾸기").click();
-    const field = input(page);
-    // 메뉴가 닫히며 포커스를 대상으로 돌리지 않는다 — 막 선 입력칸이 포커스를 쥔다.
-    await expect(field).toBeFocused();
-    await expect(field).toHaveValue(project.name);
-    await field.fill("메뉴로 바꾼 이름");
-    await field.press("Enter");
-    await expect(field).toHaveCount(0);
-    await expect
-      .poll(async () => (await ipcCallArgs(page, "update_project", "slug")).map(({ args }) => args))
-      .toEqual([{ slug: project.slug, name: "메뉴로 바꾼 이름" }]);
-    await expect(page).toHaveURL(`/projects/${billing.slug}`);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
-  test(`${name}의 메뉴에서 「제거」는 그 프로젝트로 확인 창을 거친다 — 「취소」면 아무것도 안 나가고 「제거」면 그 프로젝트로 나간다`, async ({
-    page,
-  }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/projects/${billing.slug}`);
-    const dialog = page.getByRole("alertdialog", { name: `'${project.name}' 제거` });
-    const 고른다 = async () => {
-      await 우클릭한다(page, target(page));
-      await 항목(page, "제거").click();
-      await expect(dialog).toBeVisible();
-      await expect(dialog).toContainText("코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.");
-    };
-
-    await 고른다();
-    await dialog.getByRole("button", { name: "취소", exact: true }).click();
-    // 앵커: 창이 닫혔다. 그다음에 「안 나갔다」와 고름 · 주소를 잰다.
-    await expect(dialog).toHaveCount(0);
-    expect(await callCount(page, "delete_project")).toBe(0);
-    await expect(page).toHaveURL(`/projects/${billing.slug}`);
-
-    await 고른다();
-    await dialog.getByRole("button", { name: "제거", exact: true }).click();
-    await expect
-      .poll(async () => (await ipcCallArgs(page, "delete_project", "slug")).map(({ args }) => args))
-      .toEqual([{ slug: project.slug }]);
-    await expect(dialog).toHaveCount(0);
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
-
-test("고르지 않은 프로젝트를 목록 행의 메뉴로 제거하면 보던 프로젝트는 그대로다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/projects/${billing.slug}`);
-  await 우클릭한다(page, 프로젝트대상들[0].target(page));
-  await 항목(page, "제거").click();
-  const dialog = page.getByRole("alertdialog", { name: `'${ledger.name}' 제거` });
-  await dialog.getByRole("button", { name: "제거", exact: true }).click();
-  await expect.poll(() => callCount(page, "delete_project")).toBe(1);
-  await expect(dialog).toHaveCount(0);
-  await expect(page).toHaveURL(`/projects/${billing.slug}`);
-  await expect(화면머리(page).getByText(billing.name, { exact: true })).toBeVisible();
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("폴더를 못 찾은 프로젝트의 메뉴에서는 「Finder에서 열기」가 흐리고, 나머지는 선다", async ({ page }) => {
-  await installFixtureBackend(page, {
-    list_projects: PROJECTS.map((one) => (one.slug === ledger.slug ? { ...one, missing: true } : one)),
-  });
-  await page.goto(`/projects/${billing.slug}`);
-  // 못 찾은 행은 이름 뒤에 「누락」 꼬리표가 서서 행 이름이 달라진다 — 표식으로 집는다.
-  await 우클릭한다(page, page.locator(`[data-project-row="${ledger.slug}"]`));
-  await expect.poll(() => 줄차례(메뉴(page))).toEqual(프로젝트메뉴차례);
-  await expect(항목(page, "Finder에서 열기")).toBeDisabled();
-  for (const one of ["경로 복사", "이름 바꾸기", "제거"]) await expect(항목(page, one)).toBeEnabled();
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
 
 // ── Archive 목록 행이 부르는 것 ──
 // 머리 줄 ⋯과 같은 정의라 같은 명령 · 같은 참조다 — 다만 그 행의 아카이브로 나간다.

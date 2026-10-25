@@ -58,6 +58,16 @@ type Pending = ChoiceAsk & { answer: (answer: DialogAnswer) => void };
 export const dialogStore = new Store<Pending | null>(null);
 
 /**
+ * **사람의 답을 기다리는 창이 떠 있나** — 이 스토어의 창(`AppDialog`)과, 글만으로 못 묻는 것을 품어 따로 선 모달 창(Project 제거 · 추가,
+ * Space 지우기 — 03 결정 「11」)을 함께 본다. 따로 선 창은 창 부품이 `aria-modal`을 단 채 떠 있는 것으로 안다(`dialog.tsx` ·
+ * `alert-dialog.tsx` — 검색 팔레트 · 뷰어도 같은 부품이다). 화면을 옮기는 단축키(⌘N · ⌘J)는 이것이 참이면 먹지 않는다 — 답을 기다리는
+ * 동안 화면을 옮기지 않는다(02 구현 스펙 §4). 한때 이 스토어만 봐서, 따로 선 창이 떠 있는 동안 ⌘N이 화면을 옮겼다(03 티켓 13a).
+ */
+export function dialogOpen(): boolean {
+  return dialogStore.state !== null || (typeof document !== "undefined" && document.querySelector('[aria-modal="true"]') !== null);
+}
+
+/**
  * 창을 띄우고 답(참 · 거짓 · 셋째)을 기다린다.
  *
  * **앞의 물음이 아직 떠 있으면 그것을 취소로 접는다.** 겹쳐 띄우면 어느 것에 답했는지가

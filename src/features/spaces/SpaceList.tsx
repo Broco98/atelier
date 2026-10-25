@@ -35,7 +35,8 @@ export default function SpaceList() {
     <PlainFrame label={label} title={{ name: label }}>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-4.5 overflow-y-auto px-10 pt-7.5 pb-10 scroll-quiet">
-          <header className="flex min-h-8 items-center gap-2.5">
+          {/* 본문 맨 위 줄(제목 · 찾기 · 추가) — `<header>`가 아니다: 창의 머리는 머리 줄 하나다(ui-refresh 결정 5 · `ShellHead`). */}
+          <div className="flex min-h-8 items-center gap-2.5">
             <h1 className="text-heading-md text-fg">{label}</h1>
             <label className="ml-auto flex h-7.5 w-60 items-center gap-1.5 rounded-full border border-border-heavy px-3 text-fg-tertiary focus-ring">
               <Search aria-hidden className="size-3.5 shrink-0" />
@@ -49,7 +50,7 @@ export default function SpaceList() {
               />
             </label>
             <NewSpaceButton />
-          </header>
+          </div>
           {!isPending && spaces.length === 0 ? (
             // S15 — 빈 목록은 안내 한 줄과 「새 Space」(머리 줄과 같은 길)다.
             <div className="flex flex-col items-start gap-3 px-3.5 py-6">
@@ -155,9 +156,11 @@ function SpaceRow({ space, onDelete }: { space: Space; onDelete: (space: Space) 
       )}
     >
       <span role="cell" className="flex min-w-0 items-center">
+        {/* WebKit의 Tab은 맨 링크에 서지 않는다 — `tabIndex`를 명시한다(`ProjectsPage`의 줄 이름과 같다). */}
         <Link
           to="/spaces/$slug"
           params={{ slug: space.slug }}
+          tabIndex={0}
           className="-mx-1 flex min-w-0 items-center gap-2.5 rounded-md px-1 focus-ring"
         >
           <Layers aria-hidden className="size-4 shrink-0 text-fg-icon" />

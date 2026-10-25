@@ -43,8 +43,8 @@ const sectioned = (list: typeof WORKS) => [
   ...list.filter((work) => !work.pinned).map((work) => work.slug),
 ];
 
-/** 목록 화면(`/projects`)이 첫 프로젝트로 정규화된 주소. 「아무 데도 안 갔다」의 기준이다. */
-const HOME = /\/projects\/[^/]+$/;
+/** 목록 화면(`/projects` — 03 판부터 정규화하지 않는다). 「아무 데도 안 갔다」의 기준이다. */
+const HOME = /\/projects$/;
 
 async function openList(page: Page) {
   await installFixtureBackend(page);

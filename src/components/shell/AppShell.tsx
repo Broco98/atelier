@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
-import { dialogStore } from "@/components/ui/confirm-store";
+import { dialogOpen, dialogStore } from "@/components/ui/confirm-store";
 import { threadsQuery, useThreadFeeds, waitingNow } from "@/features/thread/hooks";
 import { jumpTarget } from "@/features/thread/waiting";
 import { workOfPlace } from "@/features/library/library";
@@ -288,7 +288,8 @@ function AppShell() {
   // **셸에 포커스가 있어도 먹는다.** xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라오고, 메뉴의
   // `View ▸ Next Waiting`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
   //
-  // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다).
+  // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다) — 앱 확인 창
+  // 밖에 따로 선 모달 창(Project 제거 · 추가 같은)도 그 창이다(`dialogOpen`).
   // 팔레트는 제 입력칸에 포커스를 빌렸다가 닫힐 때 돌려주는데(`SearchPalette`), 그 사이에 셸로 가면 두 자리가 포커스를 다툰다 —
   // 셸에 준 포커스를 팔레트가 닫히며 옛 자리로 되돌린다. Esc로 닫고 누르면 된다.
   //
@@ -303,7 +304,7 @@ function AppShell() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!recallHotkey(e)) return;
-      if (dialogStore.state !== null || searchOpen) return;
+      if (dialogOpen() || searchOpen) return;
       e.preventDefault();
       const target = recalledShell();
       const order = waitingNow(queryClient).map((one) => one.thread.id);
@@ -341,7 +342,7 @@ function AppShell() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!pressed(e, "newThread")) return;
-      if (dialogStore.state !== null || searchOpen) return;
+      if (dialogOpen() || searchOpen) return;
       e.preventDefault();
       openNewThread();
     };

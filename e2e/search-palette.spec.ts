@@ -733,9 +733,10 @@ test("⌘K의 물음이 가는 곳 목록을 nav 순서대로 싣는다", async 
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   // **순서까지 본다.** 코어가 건넨 순서로 「가는 곳」 줄이 서므로(`search.rs`의
   // `destination_hits`) 이 배열이 곧 팔레트에 서는 순서이고, `Settings`가 맨 뒤인 것도
-  // 그 계약이다(결정 51).
+  // 그 계약이다(결정 51). `Space`는 사람 메뉴와 같은 자리 — Projects 다음이다(03 구현 스펙 §3).
   await expect.poll(() => destinationsAsked(page)).toEqual([
     "projects",
+    "spaces",
     "terminal",
     "processes",
     "archive",

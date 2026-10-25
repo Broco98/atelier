@@ -229,7 +229,7 @@ function Sidebar({
 
           **이 래퍼는 형제들과 달리 `shrink-0`이 아니라 `min-h-0`이다.** nav도 사람 줄도
           `shrink-0`을 다는데 여기서 따라 달면 낮은 창에서 띠가 자기 높이를 끝까지 우겨
-          바닥의 사람 줄이 `aside`의 `overflow-hidden` 밖으로 잘린다. `min-h-0`이
+          바닥의 사람 줄이 창 아래끝 밖으로 잘린다. `min-h-0`이
           **명시**여야 하는 것은 자동 최소 크기 때문이다: 안쪽 띠가 스크롤 상자라 자기
           최소는 0이지만, 그 사실이 이 래퍼의 `min-height: auto`까지 눕히지는 않아
           래퍼가 안 줄어든다(실측 — 창 300px에서 그때의 바닥 줄이 16px 잘렸다).
@@ -359,7 +359,11 @@ function asideClass(open: boolean, dragging: boolean): string {
     // 「시안 — 사이드바는 크롬 위에」). 경계는 옆 흰 판의 테두리가 말한다. 한때(v1 티켓 46 – 02) 흰 판 안에서 Codex 대화 사이드바의 바탕
     // `surface-sidebar`에 오른쪽 0.5 선(`border-heavy`)을 칠했다 — 머리 줄 왼쪽 칸과 사이드바가 판 테두리로 갈려 길잡이가 두 덩어리로
     // 읽혔다. 대비를 재는 e2e는 처음 만나는 불투명한 바탕(앱 셸 뿌리의 크롬)에서 잰다(하네스 `글자대비`).
-    "relative overflow-hidden",
+    //
+    // **가로만 자른다**(`overflow-x-clip`) — 폭이 줄며 내용이 잘리는 것은 가로다. 세로까지 자르면(한때 `overflow-hidden`) 위 2에 선
+    // 「새 Thread」의 링(바깥 4)이 사이드바 위끝에서 잘린다(03 티켓 13a — e2e `primitives`의 링 잘림 검사). `clip`은 한 축만 잘라도
+    // 다른 축이 `visible`로 남는다(`hidden`은 다른 축도 구르는 상자로 만든다).
+    "relative overflow-x-clip",
     // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
     // 박자는 Codex 사이드바의 spring(.3s · `ease-spring` — 02 구현 스펙 §12)이다 — 내용은 그대로 둔 채(안쪽 고정 폭) 잘리며 옅어진다.
     // 머리 줄의 왼쪽 칸(`ShellHead`)이 같은 박자로 사이드바 끝을 따른다(`panel-layout`의 `SIDEBAR_MOTION`).

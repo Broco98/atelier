@@ -67,7 +67,8 @@ const PLUGINS: Record<string, unknown> = {
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
-// 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다.
+// 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다. 시나리오가 고를 폴더를 바꾸는 길은
+// `폴더를고른다`다(L3에서는 그것을 부른 페이지에만 이 답이 선다).
 //
 // **`plugin:dialog|message`를 뺐다.** 확인·알림 창이 앱의 것으로 바뀌면서(`AppDialog`)
 // 앱이 그 커맨드로 나가는 길이 없어졌다 — 남겨 두면 아무도 안 태우는 스텁이 되고, 그러면
@@ -208,13 +209,13 @@ export async function installFixtureBackend(
  */
 export async function installRealBackend(
   page: Page,
-  { home, pickedFolder }: Sandbox,
+  { home, pickedFolder, gitConfig }: Sandbox,
 ): Promise<void> {
   await page.exposeFunction(BRIDGE_FN, (cmd: string, args: Record<string, unknown>) =>
-    callBridge(home, cmd, args),
+    callBridge({ home, gitConfig }, cmd, args),
   );
   await install(page, {
-    byName: entriesOf({ ...PLUGINS, "plugin:dialog|open": pickedFolder }),
+    byName: entriesOf({ ...PLUGINS, [FOLDER_PICK]: pickedFolder }),
     bridgeName: BRIDGE_FN,
     incrementing: {},
   });
@@ -427,6 +428,30 @@ export async function 클립보드를심는다(page: Page, answer: string | Retu
       tables.byName[command] = entry;
     },
     { tablesKey: TABLES_KEY, command: CLIPBOARD_READ, entry: entryOf(answer) },
+  );
+}
+
+/** 폴더 선택창의 와이어 이름 — `@tauri-apps/plugin-dialog`의 `open`이 이것으로 나간다. */
+const FOLDER_PICK = "plugin:dialog|open";
+
+/**
+ * **폴더 선택창이 다음에 돌려줄 경로를 정한다**(03 티켓 13a) — 앱이 폴더를 고르게 할 때(Project 추가 창의 「추가」 · 「위치 바꾸기」, 상세의
+ * 「재설정」) 받을 답이다. `null`이면 사람이 창을 닫은 것이다(플러그인이 그때 `null`을 돌려준다). 페이지가 뜬 뒤에 부르고, 다시 부를 때까지
+ * 그 답이다 — 바꾼 답은 `클립보드를심는다`처럼 같은 표를 지나 처음 답과 같은 문(기록)으로 나간다.
+ *
+ * - **L3**: 고정 표에 이 줄이 없다(위 `PLUGINS` 아래 주석) — 이것을 부른 페이지에만 선다. 부르지 않은 시나리오가 폴더를 고르면 화이트리스트
+ *   탐지기가 문다.
+ * - **L4**: sandbox의 `pickedFolder`가 처음 답이고(`installRealBackend`), 이것이 갈아 끼운다 — 「git 저장소가 아닌 폴더」 · 「새로 만들 부모」처럼
+ *   한 시나리오가 둘째 폴더를 고를 때 쓴다.
+ */
+export async function 폴더를고른다(page: Page, folder: string | null): Promise<void> {
+  await page.evaluate(
+    ({ tablesKey, command, entry }) => {
+      const tables = (window as unknown as Record<string, FixtureTables | undefined>)[tablesKey];
+      if (!tables) throw new Error("installFixtureBackend나 installRealBackend를 먼저 깔아야 한다");
+      tables.byName[command] = entry;
+    },
+    { tablesKey: TABLES_KEY, command: FOLDER_PICK, entry: entryOf(folder) },
   );
 }
 
@@ -977,9 +1002,10 @@ export const SCREEN_HEAD = 'header [data-slot="screen-head"]';
 export const 화면머리 = (scope: Page | Locator) => scope.locator(SCREEN_HEAD);
 
 /**
- * **흰 판**의 안쪽 상자 — 머리 줄 아래 크롬 위에 뜬 흰 면 하나(02 구현 스펙 §3 · CONTEXT 「흰 판」)의 테두리(0.5) 안이다. 사이드바와 화면의
- * 칸들이 그 안에 들어 판 끝까지 선다 — 칸의 끝을 재는 자리가 창 끝 대신 이것과 견준다. 판은 창 왼 · 오 · 아래 끝에서 5 띄워 서서,
- * 안쪽 끝은 창 끝에서 5.5다.
+ * **흰 판**의 안쪽 상자 — 머리 줄 아래 크롬 위에 뜬 흰 면 하나(02 구현 스펙 §3 · CONTEXT 「흰 판」)의 테두리(0.5) 안이다. 화면의 칸들이 그
+ * 안에 들어 판 끝까지 선다 — 칸의 끝을 재는 자리가 창 끝 대신 이것과 견준다. 판은 창 오 · 아래 끝에서 5 띄워 서서 안쪽 끝이 창 끝에서
+ * 5.5이고, 왼쪽은 사이드바 오른쪽 끝에서 선다(사이드바는 판 밖 크롬 위다 — 03 구현 스펙 §3). 사이드바를 접으면 창 왼쪽 끝에서 5다. 한때
+ * 사이드바가 판 안이라 판 안 왼쪽 끝이 곧 사이드바 왼쪽 끝이었다.
  *
  * **여기 사는 이유는 판을 집는 길과 그 테두리를 덜어 내는 셈을 한 벌로 두려는 것이다** — 판 끝을 재는 spec이 여럿이다(`frame-sidebar` ·
  * `archive-docs` · `frame`).
@@ -1480,11 +1506,14 @@ export async function 글자대비(element: Locator): Promise<number> {
  */
 export const 사람줄 = (page: Page) => page.getByRole("button", { name: /— 사람 메뉴$/ });
 
-/** 열린 사람 메뉴의 항목들, 위에서부터. 이름은 라벨로 시작한다 — `Terminal`에는 셸 수가, `Settings`에는 단축키가 뒤에 붙는다. */
+/**
+ * 열린 사람 메뉴의 항목들, 위에서부터. 이름은 라벨로 시작한다 — `Projects` · `Space`에는 그 수가, `Terminal`에는 셸 수가, `Settings`에는
+ * 단축키가 뒤에 붙는다.
+ */
 export const 사람메뉴항목 = (page: Page) => page.getByRole("menu").getByRole("menuitem");
 
-/** 지금 화면의 이름 — 사람 메뉴의 항목이자 ⌘K의 「가는 곳」이다. */
-export type 지금화면 = "Projects" | "Terminal" | "Processes" | "Archive" | "Settings";
+/** 지금 화면의 이름 — 사람 메뉴의 항목이자 ⌘K의 「가는 곳」이다(`Space`는 03 판 — 03 구현 스펙 §4). */
+export type 지금화면 = "Projects" | "Space" | "Terminal" | "Processes" | "Archive" | "Settings";
 
 /**
  * 사람 메뉴를 열고 그 항목을 고른다 — 옛 nav 항목을 누르던 길이다(`navButton(page, "Processes").click()`). 메뉴가 닫힐 때까지 기다리고,
