@@ -528,7 +528,7 @@ mod tests {
         let answer = |place: &Place| list_work_changes(&place.works, &place.projects, "w").unwrap().remove(0).changes;
         assert_eq!(answer(&place), Changes::BaseUnknown { base: Some("develop".to_string()) });
 
-        crate::delete_project(&place.projects, "fe").unwrap();
+        std::fs::remove_file(place.projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
         assert_eq!(answer(&place), Changes::BaseUnknown { base: None });
     }
 

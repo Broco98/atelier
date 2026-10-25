@@ -45,6 +45,7 @@ pub fn kernel_error(err: Error) -> CallToolResult {
         Error::Validation(_)
         | Error::EmptyName
         | Error::AlreadyExists(_)
+        | Error::SlugReused(_)
         | Error::NotRepoRoot { .. }
         | Error::AlreadyRegistered { .. } => "Fix the arguments and call this tool again.",
         Error::InvalidFile { .. } | Error::Git(_) | Error::Io(_) => {

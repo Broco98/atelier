@@ -1083,9 +1083,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 프로젝트 메뉴(목록 행 · 머리 줄 이름의 우클릭)의 「Finder에서 열기」와 머리 줄 「폴더 열기」가 나간다(codex-ds 티켓 30 —
   // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_project_folder: null,
-  // 같은 메뉴의 「제거」 — 확인 창을 거친 뒤에 나간다. 답은 비어 있고(코어가 돌려주는 것이 없다), 목록은 그대로 그 프로젝트를
-  // 답한다. 검사가 재는 것은 「무엇이 나갔나」다.
-  delete_project: null,
+  // 목록 줄 ⋯의 「제거…」(03 구현 스펙 §16) — 창을 열기 전에 쓰임을 읽고(`project_usage`), 창의 「제거」가 `remove_project`, 지운 뒤
+  // 토스트의 「되돌리기」가 `restore_project`다. 기본은 「쓰는 곳 없음 · 뺐음」이다 — 막힌 갈래 · Space 갈래는 검사가 쓰임 답을 갈아 끼운다.
+  // 목록은 다시 읽어도 그대로 `PROJECTS`다(뺀 것을 기억하지 않는다). 검사가 재는 것은 「무엇이 나갔나」다.
+  project_usage: { spaces: [], works: [] },
+  remove_project: { kind: "removed", spaces: [] },
+  restore_project: PROJECTS[0],
   // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
   // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
   // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.

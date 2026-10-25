@@ -2599,7 +2599,7 @@ fn edit_blank_name_is_rejected_and_keeps_the_old_one() {
 #[test]
 fn the_tool_surface_has_no_way_to_delete_a_project() {
     // 프로젝트 삭제는 앱이 유일한 경로다 (graph-plan D7 · Δ16).
-    // atelier_core::delete_project는 존재하지만 도구로 노출하지 않는다.
+    // atelier_core::remove_project는 존재하지만 도구로 노출하지 않는다.
     let home = tempfile::tempdir().unwrap();
     let mut server = Server::start(home.path());
     for name in server.tool_names(2) {

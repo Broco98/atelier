@@ -99,6 +99,12 @@ export function useRelocateProject() {
   return useInvalidatingMutation(({ slug, folder }: { slug: string; folder: string }) => projectsApi.relocate(slug, folder));
 }
 
-export function useDeleteProject() {
+/** 제거 — 막혔으면 아무것도 바뀌지 않았다(답이 그 Work들이다). Space 파일이 바뀐 것은 `spaces:changed`가 알린다. */
+export function useRemoveProject() {
   return useInvalidatingMutation((slug: string) => projectsApi.remove(slug));
+}
+
+/** 되돌리기 — Project 파일과 빠졌던 Space의 slug를 다시 세운다. */
+export function useRestoreProject() {
+  return useInvalidatingMutation((slug: string) => projectsApi.restore(slug));
 }

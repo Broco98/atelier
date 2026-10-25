@@ -1,7 +1,7 @@
 //! 프로젝트 쓰기 도구 — 등록(멱등)과 부분 수정. 커널에 위임만 한다.
 //!
 //! **프로젝트 삭제 도구는 여기에 없다.** 삭제는 앱이 유일한 경로다 (graph-plan D7 · Δ16).
-//! `atelier_core::delete_project`는 존재하지만 이 표면에 노출하지 않는다.
+//! `atelier_core::remove_project`(제거 · 되돌리기)는 존재하지만 이 표면에 노출하지 않는다(03 구현 스펙 §15).
 
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData};
 

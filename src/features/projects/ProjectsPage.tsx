@@ -6,7 +6,7 @@ import { navItem } from "@/components/shell/nav-items";
 import { openInFinder } from "@/components/shell/open-in-finder";
 import { PlainFrame } from "@/components/shell/PlainFrame";
 import { Button } from "@/components/ui/button";
-import { askDanger, showProblem } from "@/components/ui/confirm-store";
+import { showProblem } from "@/components/ui/confirm-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,21 +14,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Toaster } from "@/components/ui/toast";
+import { showUndoToast, Toaster } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { projectDirRef } from "@/features/works/refs";
 import { addProject } from "./add-store";
 import { projectsApi } from "./api";
 import { useFolderDrop } from "./folder-drop";
-import { useDeleteProject, useProjects } from "./hooks";
+import { useProjects, useRemoveProject, useRestoreProject } from "./hooks";
 import { firstFolder } from "./project-add";
+import { removedToast, restoreProblem } from "./project-remove";
 import { rowMenu, shownProjects, type RowAct } from "./project-view";
+import ProjectRemoveDialog, { type Removing } from "./ProjectRemoveDialog";
 import { useRelocate } from "./relocate";
 import type { ProjectView } from "./types";
 
 // Projects 목록(03 구현 스펙 §16 · 시안 F1-Projects · F4-ProjMissing · F4-KitProject 「목록 줄」) — 사람 메뉴 「Projects」가 여는 화면이다. 머리 줄
 // 「Projects」, 판 안에 제목 · 찾기 칸 · 「Project 추가」와 표(이름 · 경로 · 기준 브랜치), 표 아래 끌어 놓기 한 줄. 줄을 누르면 상세
-// (`/projects/$slug`)이고, 고치는 일(이름 · 설명 · 기준 브랜치)은 상세가 든다. 제거는 줄 ⋯ 안에만 있다(확인 창 — 세 갈래 창과 되돌리기는 11).
+// (`/projects/$slug`)이고, 고치는 일(이름 · 설명 · 기준 브랜치)은 상세가 든다. 제거는 줄 ⋯ 안에만 있다 — 세 갈래 창(`ProjectRemoveDialog`)을 거치고,
+// 지운 뒤 「되돌리기」 토스트가 잠깐 선다.
 //
 // 추가는 추가 창 하나다(09 — `addProject`). 폴더를 이 화면에 끌어다 놓으면 창이 그 폴더로 열린다(여럿이면 첫 폴더 — S20).
 
@@ -38,7 +41,9 @@ const COLUMNS = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_156px_28px] items
 export default function ProjectsPage() {
   const { data: projects = [], isPending } = useProjects();
   const navigate = useNavigate();
-  const deleteProject = useDeleteProject();
+  const removeProject = useRemoveProject();
+  const restoreProject = useRestoreProject();
+  const [removing, setRemoving] = useState<Removing | null>(null);
   const relocate = useRelocate();
   const [query, setQuery] = useState("");
   const shown = useMemo(() => shownProjects(projects, query), [projects, query]);
@@ -56,14 +61,30 @@ export default function ProjectsPage() {
     });
   });
 
-  // 제거는 확인 창을 거친다 — 폴더 · 파일은 그대로다. 막힘 · Space에서 빠짐 · 되돌리기는 11이 이 자리를 바꾼다.
+  // 제거는 창을 거친다(03 구현 스펙 §16) — 창의 갈래는 core가 읽은 쓰임(이 Project를 적은 Space · 고치는 진행 중인 Work)이 정한다. 폴더 ·
+  // 파일 · git 기록은 그대로다.
   const handleRemove = async (project: ProjectView) => {
-    const ok = await askDanger(`'${project.name}' 제거`, "코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.", "제거");
-    if (!ok) return;
     try {
-      await deleteProject.mutateAsync(project.slug);
+      setRemoving({ project, usage: await projectsApi.usage(project.slug) });
     } catch (e) {
-      await showProblem(`제거하지 못했습니다: ${e}`);
+      await showProblem(`제거하지 못했어요 — ${e}`);
+    }
+  };
+  // 창의 「제거」 — 그사이 진행 중인 Work가 이 Project를 붙였으면 core가 막고 창이 막힌 갈래로 바뀐다. 뺐으면 창을 닫고 되돌리기 토스트를 낸다.
+  const confirmRemove = async (project: ProjectView) => {
+    try {
+      const removal = await removeProject.mutateAsync(project.slug);
+      if (removal.kind === "blocked") {
+        setRemoving({ project, usage: { spaces: [], works: removal.works } });
+        return;
+      }
+      setRemoving(null);
+      showUndoToast(removedToast(project.name), () => {
+        restoreProject.mutateAsync(project.slug).catch((e) => void showProblem(restoreProblem(String(e))));
+      });
+    } catch (e) {
+      setRemoving(null);
+      await showProblem(`제거하지 못했어요 — ${e}`);
     }
   };
   const act = (project: ProjectView, what: RowAct) => {
@@ -134,8 +155,14 @@ export default function ProjectsPage() {
             </>
           )}
         </div>
-        {/* 「경로 복사」 · Finder를 못 연 문장이 여기 선다 — 본문 아래 가운데(시안 `.toast`). */}
+        {/* 「경로 복사」 · Finder를 못 연 문장과 지운 뒤의 「되돌리기」가 여기 선다 — 본문 아래 가운데(시안 `.toast`). */}
         <Toaster />
+        <ProjectRemoveDialog
+          removing={removing}
+          busy={removeProject.isPending}
+          onClose={() => setRemoving(null)}
+          onRemove={(project) => void confirmRemove(project)}
+        />
       </div>
     </PlainFrame>
   );

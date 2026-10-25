@@ -3316,7 +3316,7 @@ mod tests {
 
         // 재실행 전에 등록이 사라진다 — base를 못 읽어 커밋 범위를 특정할 수 없게 된다
         run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
         archive_work(&works, &archive, &projects, &slug).unwrap();
 
         let sealed = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
@@ -3605,7 +3605,7 @@ mod tests {
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "o.txt", "o\n", "고아 커밋");
         let head = run_git(&worktree, &["rev-parse", "HEAD"]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
 
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "등록이 사라지자 좌표를 버렸다: {doc}");
@@ -3652,7 +3652,7 @@ mod tests {
         run_git(&worktree, &["remote", "add", "origin", "."]);
         run_git(&worktree, &["update-ref", "refs/remotes/origin/main", &main]);
         run_git(&worktree, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
 
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains("- base: main"), "origin/HEAD를 안 봤다: {doc}");

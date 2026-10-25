@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, data_root, projects_dir, works_dir, AddProject, ArchiveEntry, ArchivedDocs, Destination,
-    FolderLook, NewProjectPlace, ProjectPatch, ProjectView, SearchResults, Space, SpaceDetail, SpaceDraft, SpacePatch, WorkView,
-    WorkWithSpecTree, WorktreeTree,
+    FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView, SearchResults, Space, SpaceDetail,
+    SpaceDraft, SpacePatch, WorkView, WorkWithSpecTree, WorktreeTree,
 };
 
 use std::convert::Infallible;
@@ -78,9 +78,25 @@ pub async fn relocate_project(slug: String, folder: String) -> CmdResult<Project
     atelier_core::relocate_project(&projects_dir(), &slug, &PathBuf::from(folder)).map_err(err)
 }
 
+// Project 제거(03 구현 스펙 §15 · §16) — 확인 창이 읽는 것 · 제거 · 되돌리기. 셋 다 core를 부르기만 한다(L4 다리도 같은 입구다). Space
+// 파일 · Work 파일을 함께 읽고 고쳐 데이터 루트를 넘긴다.
+
+/// 제거 확인 창이 읽는 것 — 이 Project를 적은 Space들, 이 Project를 고치는 진행 중인 Work들. 창의 세 갈래가 이것으로 갈린다.
 #[tauri::command]
-pub async fn delete_project(slug: String) -> CmdResult<()> {
-    atelier_core::delete_project(&projects_dir(), &slug).map_err(err)
+pub async fn project_usage(slug: String) -> CmdResult<ProjectUsage> {
+    atelier_core::project_usage(&data_root(), &slug).map_err(err)
+}
+
+/// 제거 — 진행 중인 Work가 고치면 제거하지 않고 그 Work들을 돌려준다(창이 막힌 갈래로 바뀐다). 폴더 · 파일 · git 기록은 그대로다.
+#[tauri::command]
+pub async fn remove_project(slug: String) -> CmdResult<ProjectRemoval> {
+    atelier_core::remove_project(&data_root(), &slug).map_err(err)
+}
+
+/// 되돌리기 — 제거한 뒤의 토스트 「되돌리기」만 부른다(S10). 그사이 같은 slug · 같은 폴더가 다시 등록됐으면 실패한다.
+#[tauri::command]
+pub async fn restore_project(slug: String) -> CmdResult<ProjectView> {
+    atelier_core::restore_project(&data_root(), &slug).map_err(err)
 }
 
 // **Space는 파일이다**(03 구현 스펙 §8 · §17) — 셋 다 core를 부르기만 한다. 검사 · 글 단위 고치기는 core 하나이고(S7), 기록 줄을 남기지

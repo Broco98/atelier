@@ -23,6 +23,9 @@ pub enum Error {
     // 기준 브랜치는 그 저장소의 브랜치 목록(로컬 · 원격)에 있는 값만 받는다(03 구현 스펙 §15 「고치기」) — 빈 값도 여기다.
     #[error("base branch is not one of the project's branches: '{0}'")]
     BranchNotListed(String),
+    // 지운 것을 되돌리려는데 그사이 같은 slug가 다시 쓰였다(03 구현 스펙 §15 「되돌리기」) — 새로 선 것을 덮지 않는다.
+    #[error("slug is in use again: {0}")]
+    SlugReused(String),
     #[error("Space를 찾지 못했어요: {0}")]
     SpaceNotFound(String),
     /// Space 파일에 문제가 있어 쓰지 않았다 — 검사가 낸 문제들(03 구현 스펙 §8).
@@ -105,9 +108,12 @@ pub use layout::{
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo, RemoteBranches};
 pub use store::{
-    add_project, create_project, delete_project, get_project, inspect_folder, list_projects, new_project, new_project_place,
-    project_folders, relocate_project, update_project, AddProject, FolderLook, NewProjectPlace, ProjectPatch,
+    add_project, create_project, get_project, inspect_folder, list_projects, new_project, new_project_place, project_folders,
+    relocate_project, update_project, AddProject, FolderLook, NewProjectPlace, ProjectPatch,
 };
+// Project 제거(03 구현 스펙 §15) — 진행 중인 Work가 막고, 등록부의 지운 자리로 옮기며 그 slug를 적은 Space 파일에서도 뺀다. 되돌리기는
+// 화면의 토스트에서만 부른다(S10). 바깥 MCP에는 없다.
+pub use store::{project_usage, remove_project, restore_project, ListingSpace, ProjectRemoval, ProjectUsage, UsingWork};
 // Space(03 구현 스펙 §8) — 파일 하나가 Space 하나다. 검사 · 읽기 · 만들기 · 고치기(글 단위)가 여기 하나이고, 앱 명령 · Host 도구 ·
 // 읽는 범위가 모두 이것을 부른다(S7).
 pub use space::{

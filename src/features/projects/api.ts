@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { FolderLook, NewProjectPlace, ProjectPatch, ProjectView } from "./types";
+import type { FolderLook, NewProjectPlace, ProjectPatch, ProjectRemoval, ProjectUsage, ProjectView } from "./types";
 
 export const projectsApi = {
   list: () => invoke<ProjectView[]>("list_projects"),
@@ -16,6 +16,10 @@ export const projectsApi = {
     invoke<ProjectView>("update_project", { slug, ...patch }),
   /** 재설정 — 폴더를 찾을 수 없는 Project의 새 자리. git 저장소의 뿌리만 받고 경로만 바꾼다(03 구현 스펙 §15). */
   relocate: (slug: string, folder: string) => invoke<ProjectView>("relocate_project", { slug, folder }),
-  remove: (slug: string) => invoke<void>("delete_project", { slug }),
+  // 제거(03 구현 스펙 §15) — 확인 창이 읽는 것 · 제거 · 되돌리기. 진행 중인 Work가 고치면 제거는 그 Work들로 끝난다(막힘).
+  usage: (slug: string) => invoke<ProjectUsage>("project_usage", { slug }),
+  remove: (slug: string) => invoke<ProjectRemoval>("remove_project", { slug }),
+  /** 되돌리기 — 지운 뒤 토스트의 「되돌리기」만 부른다. 그사이 같은 slug · 같은 폴더가 다시 등록됐으면 거절한다. */
+  restore: (slug: string) => invoke<ProjectView>("restore_project", { slug }),
   openFolder: (slug: string) => invoke<void>("open_project_folder", { slug }),
 };

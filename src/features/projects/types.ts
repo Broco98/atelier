@@ -23,6 +23,31 @@ export interface ProjectView {
   missing: boolean;
 }
 
+/**
+ * 제거 확인 창이 읽는 것 — 이 Project를 적은 Space들과 이 Project를 고치는 진행 중인 Work들(03 구현 스펙 §15 「제거 확인에 쓰는 읽기」). 정본은
+ * core `store.rs`의 `ProjectUsage`다.
+ */
+export interface ProjectUsage {
+  spaces: ListingSpace[];
+  works: UsingWork[];
+}
+
+/** 이 Project를 적은 Space — 이름은 보이는 이름(비었으면 slug)이다. */
+export interface ListingSpace {
+  slug: string;
+  name: string;
+}
+
+/** 이 Project를 고치는 진행 중인 Work(`works/`의 Work — 보관된 것은 들지 않는다). */
+export interface UsingWork {
+  slug: string;
+  title: string;
+  branch: string | null;
+}
+
+/** 제거의 끝 — 뺐거나(그 slug를 지운 Space들), 진행 중인 Work가 막았다(그 Work들). 정본은 core `store.rs`의 `ProjectRemoval`이다. */
+export type ProjectRemoval = { kind: "removed"; spaces: ListingSpace[] } | { kind: "blocked"; works: UsingWork[] };
+
 export interface ProjectPatch {
   name?: string;
   description?: string;

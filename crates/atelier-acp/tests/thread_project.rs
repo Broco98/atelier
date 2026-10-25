@@ -435,7 +435,8 @@ fn work_없는_thread가_쉬는_동안_project를_등록하거나_지우면_다�
     assert_eq!(cwd, real(&sandbox.thread_dir(&thread)), "작업 폴더는 그대로다");
     assert_eq!(added_dirs(&args), [api.display().to_string(), web.display().to_string()], "새로 등록한 Project도 함께 연다");
 
-    atelier_core::delete_project(&atelier_core::projects_in(&sandbox.data_root()), "api-server").expect("등록 해제");
+    let removal = atelier_core::remove_project(&sandbox.data_root(), "api-server").expect("등록 해제");
+    assert!(matches!(removal, atelier_core::ProjectRemoval::Removed { .. }), "{removal:?}");
     host.send_to_thread(&thread, "이제 web-app만 봐 줘").expect("셋째 말");
     let record = sandbox.wait_thread_kind(&thread, "turn-end", 3);
     host.shut_down();
