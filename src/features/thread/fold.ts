@@ -12,7 +12,7 @@ import type { Attachment, QuestionAnswer, RecordLine } from "./types";
 // three-axes 대화 접기(`chat/fold.ts`)를 옮겨 왔다 — 턴 · 멈춘 뒤의 도구 줄 · 스스로 이어 간 턴 · 계획 카드 · 상태 줄의 규칙은 그대로이고
 // (그쪽 머리말이 근거를 든다), Thread에서 달라진 것은 셋이다.
 // - **줄의 `who`로 말한 이를 가른다.** 턴은 그 턴에 답한 참여자의 handle을 들고, 같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시
-//   쓰지 않는다(`namesWho`). 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다.
+//   쓰지 않는다(`namesWho`). Host의 턴은 이름 줄이 아예 없다(02 구현 스펙 §8). 사람의 말(`sent`)은 `who`가 없고 받는 이를 `to`에 싣는다.
 //   **열린 턴은 참여자마다 하나다**(v1 티켓 14) — 참여자마다 Session이 따로라(§5) Host가 도는 동안 리뷰어에게 보낸 말은 리뷰어의 턴으로
 //   함께 돈다. 줄은 그 `who`의 열린 턴에 들고, 한 Session이 죽거나 닫히면 그 참여자의 턴 · 물음만 끝난다. 앱을 다시 켠 것(`goneThrough`)은
 //   모두의 끝이다. 참여자의 이름 · 얼굴은 들어옴 줄(`joined`)이 정본이다(`cast`) — 처음 불린 정의 그대로다(S4).
@@ -230,8 +230,8 @@ export interface Turn {
   /** 그 턴에 답한 참여자의 handle — 보낸 말의 받는 이(`to`), 그 뒤 답한 줄의 `who`. 모르면 null이다. */
   who: string | null;
   /**
-   * 이름 줄(얼굴 · 이름 · 시각)을 쓰나 — 같은 Agent가 사람 말 없이 이어 말하면 쓰지 않는다(구현 스펙 §14). 사람이 말한 턴과 말한 이가
-   * 바뀐 턴은 쓴다.
+   * 이름 줄(「이름 · @handle」)을 쓰나 — Host의 턴은 쓰지 않는다(02 구현 스펙 §8 — Host의 답은 본문으로 바로 시작한다). 다른 Agent도
+   * 사람 말 없이 이어 말하면 쓰지 않는다(구현 스펙 §14). 그 밖의 턴(사람이 말한 턴 · 말한 이가 바뀐 턴)은 쓴다.
    */
   namesWho: boolean;
   /** 사람이 보낸 말의 화면 글(기록의 `sent`). 머리말은 기록의 `prompt`에만 있다. 스스로 이어 간 턴은 null이다. */
@@ -244,7 +244,7 @@ export interface Turn {
   selfContinued: boolean;
   /** 턴이 선 시각(보낸 말 · 처음 온 줄). */
   startedAt: string;
-  /** 답한 이의 첫 줄 시각 — 이름 줄의 시각이다. 아직 답이 없으면 null이다. */
+  /** 답한 이의 첫 줄 시각. 아직 답이 없으면 null이다(이름 줄은 02 티켓 08부터 시각을 그리지 않는다). */
   answeredAt: string | null;
   entries: Entry[];
   /** 끝났으면 그 모양, 도는 중이면 null. */
@@ -1026,6 +1026,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
     const same = (one: PrCardEntry) => one.pr.project === card.pr.project && one.pr.number === card.pr.number;
     card.latest = !prs.slice(at + 1).some(same);
   }
+  // Host의 답에는 이름 줄이 없다(02 구현 스펙 §8) — 다 접은 뒤에 본다. 말한 이는 답한 줄이 정하므로(`answer`) 턴이 설 때는 아직
+  // 모를 수 있다(받는 이를 모르는 옛 `sent`).
+  for (const turn of turns) if (turn.who === HOST) turn.namesWho = false;
   const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   const asks = [...pending.values()].map((one): PendingAsk => {
     if (one.card === "work" || one.card === "question" || one.card === "project") return one;

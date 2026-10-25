@@ -422,14 +422,9 @@ describe("눈금의 사분 단", () => {
       why: "기다리는 말의 「지금 전하기」 — 좌우 안쪽 9(캔버스 Messages 보드 `.qrow .gbtn`)",
     },
     {
-      file: "src/features/thread/ThreadFlow.tsx",
-      className: "py-2.25",
-      why: "내 말풍선 — 위아래 안쪽 9(캔버스 Messages 보드 `.ubub`의 `9px 16px`)",
-    },
-    {
       file: "src/features/thread/ThreadMarkdown.tsx",
       className: "py-px",
-      why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(캔버스 Messages 보드 `.code`의 `1px 5px`)",
+      why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(02 구현 스펙 §8 · Diff-Chat 「인라인 코드」의 `1px 6px`, 높이 17)",
     },
     {
       file: "src/features/thread/SlashMenu.tsx",

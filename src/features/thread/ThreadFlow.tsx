@@ -44,9 +44,13 @@ import { LogHead, ToolRows } from "./WorkLog";
 // Thread의 흐름(v1 티켓 05 · 캔버스 Messages · WorkLog 보드) — 기록 줄을 접은 모델(`fold.ts`)을 그린다. three-axes 흐름
 // (`chat/ChatThread.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 //
-// - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 22 반경 · 옅은 파랑(`bubble-user`), 폭은 줄의 78%까지다. Agent의 답은 얼굴 · 이름 ·
-//   `@handle` · 시각 아래에 본문 그대로 선다(Messages 보드 「다른 Agent의 말」 — Host는 handle 없이). 같은 Agent가 사람 말 없이 이어
-//   말하면 이름 줄을 다시 쓰지 않는다(`Turn.namesWho`). 얼굴 · 이름은 들어옴 줄이 정본이다(`ThreadModel.cast`, v1 티켓 14).
+// - **말풍선은 내 말에만 쓴다** — 오른쪽 정렬 · 옅은 파랑(`bubble-user`)에 짙은 남색 글자, 폭은 줄의 70%까지다(02 구현 스펙 §8 —
+//   `UserMessage`). Agent의 답은 머리 없이 본문 그대로 선다(Codex 결). Host가 아닌 Agent의 턴만 맨 위에 「이름 · @handle」 한 줄이
+//   서고, 같은 Agent가 사람 말 없이 이어 말하면 그 줄도 다시 쓰지 않는다(`Turn.namesWho`). 이름은 들어옴 줄이 정본이다
+//   (`ThreadModel.cast`, v1 티켓 14).
+// - **턴 사이는 Codex의 대화 간격이다**(02 구현 스펙 §8) — 말풍선 → 답 첫 글자 51.5, 답 끝 → 다음 말풍선 52(글자 잉크에서 상자 끝까지,
+//   `index.css`의 `--space-reply` · `--space-turn`). 흐름의 줄 사이(`TURN_GAP`)가 그 값에서 글줄의 위아래 여백을 뺀 상자 사이다. 턴
+//   사이에 서는 시스템 줄 · 상태 줄 · 호출 줄 · PR 카드 · 「답하는 중」도 같은 줄 사이를 따른다. 턴 안의 줄 사이는 그대로다(8).
 // - **「답하는 중」**(Messages 보드 · Motion 보드 「Agent 참여」) — 답이 아직 안 보이는 도는 턴(보낸 말에 아직 아무 줄도 오지 않았거나,
 //   흐름 끝이 아닌 자리에서 돈다)이 있으면 흐름 맨 아래에 얼굴(여럿이면 겹친 얼굴)과 「리뷰어와 테스터가 답하는 중」, 차례로 떠오르는
 //   세 점이 한 줄로 선다(`answeringLine`). 그래서 아직 아무 줄도 오지 않은 턴은 이름 줄 없이 보낸 말만 서고, 첫 줄이 오면 그 자리에
@@ -62,7 +66,7 @@ import { LogHead, ToolRows } from "./WorkLog";
 //   우리가 멈춘 턴은 ■ 「N초 후에 중단했습니다」다.
 // - **시스템 줄**(이름 바꾸기 · 들고 남)은 가운데 회색 한 줄이고 이름만 굵다. 들고 난 줄은 이름 앞에 그 얼굴이 선다(「● 리뷰어가
 //   참여함」). 상태 줄(새로 시작함 · 죽음 · 판 경고)은 턴 사이의 옅은 줄이다.
-// - 마지막 답 아래에는 동작 버튼(복사)이 늘 선다. 「다시 답하기」 · 「여기서 새 Thread」는 그 일을 하는 장이 단다.
+// - 마지막으로 끝난 답 아래에만 응답 액션(복사)이 선다(`AnswerActions`). 「…」는 무엇을 둘지 정해지면(02 P1) 단다.
 // - **PR 카드**(v1 티켓 36 · `PrCard`) — 엔진이 그 Work의 PR이 처음 보였을 때와 상태가 바뀔 때 남긴 `pr` 줄이다. 시스템 줄처럼 턴 사이에
 //   서고, 온 흐름에만 선다(그 Agent의 일이 아니라 Work의 일이다).
 // - **호출 줄**(v1 티켓 17 · `CallRow`) — Agent가 다른 Agent에게 맡긴 부르기는 부른 턴 안의 카드 한 줄이고, 접힌 턴에도 남는다(계획
@@ -87,6 +91,15 @@ import { LogHead, ToolRows } from "./WorkLog";
  * 띄운 화면 밖에서는 `null`이고 카드가 서지 않는다. 흐름의 모든 턴이 같은 값을 쓰므로 Context로 건넨다(`LogPlace` · `CallPlace`와 같다).
  */
 export const DocPlace = createContext<{ specRoot: string; open: (path: string) => void } | null>(null);
+
+/**
+ * 흐름의 줄 사이(02 구현 스펙 §8) — Codex의 대화 간격 말풍선 → 답 첫 글자 51.5 · 답 끝 → 다음 말풍선 52(`--space-reply` · `--space-turn`,
+ * 글자 잉크에서 상자 끝까지)에서 글줄의 여백을 뺀 상자 사이다.
+ * - 말풍선 → 답은 46이다. 답의 첫 줄(작업 머리줄 14 / 20 · 본문 14 / 22.75)은 잉크 위에 약 6의 여백이 있다.
+ * - 답 끝 → 다음 말풍선은 48이다. 본문 끝 줄의 잉크 아래 여백은 약 4라, 말풍선 앞에 2를 더 띄운다(`TurnView`의 말풍선 칸).
+ * 첫 말을 보낸 새 Thread(`NewThreadScreen`)의 말풍선 → 「생각 중」도 이 줄 사이다. WebKit에서 잰 값은 시안-비교/08이다.
+ */
+export const TURN_GAP = "gap-11.5";
 
 interface ThreadFlowProps {
   thread: string;
@@ -133,7 +146,7 @@ function ThreadFlow({ thread, model, only = null, onRetry, onOpenSession, onCall
   const isOpen = (turn: Turn) => (only === null ? expanded[keyOf(turn)] === true : expanded[keyOf(turn)] !== true);
   return (
     <CallPlace.Provider value={actions}>
-      <div className="flex flex-col gap-6 text-chat-body">
+      <div className={cn("flex flex-col text-chat-body", TURN_GAP)}>
         {between(0)}
         {flow.turns.map((turn, at) => (
           <Fragment key={turn.key}>
@@ -309,7 +322,8 @@ function TurnView({
   return (
     <>
       {turn.sent !== null && (
-        <div data-turn={turn.key} className="flex scroll-mt-16 flex-col">
+        // 말풍선 앞은 흐름의 줄 사이(`TURN_GAP`)보다 2를 더 띄운다 — 답 끝 → 다음 말풍선 52(`TURN_GAP` 머리말).
+        <div data-turn={turn.key} className="flex scroll-mt-16 flex-col not-first:mt-0.5">
           <UserMessage text={turn.sent} to={turn.who} attachments={turn.attachments} quote={turn.quote} />
         </div>
       )}
@@ -317,9 +331,7 @@ function TurnView({
       {lead}
       {!waitingFirst && (
         <div data-turn={turn.key} className="flex scroll-mt-16 flex-col items-start gap-2">
-          {turn.namesWho && turn.who && member && (
-            <WhoRow handle={turn.who} member={member} at={turn.answeredAt ?? turn.startedAt} />
-          )}
+          {turn.namesWho && turn.who && member && <WhoRow handle={turn.who} member={member} />}
           {turn.end ? (
             failed ? (
               <ErrorLine
@@ -365,25 +377,16 @@ function TurnView({
   );
 }
 
-/** 이름 줄(보드 `.who`) — 얼굴 20 · 이름 600 13/20 · `@handle`(Host는 없다) · 시각 12 `fg-tertiary`. */
-function WhoRow({ handle, member, at }: { handle: string; member: CastMember; at: string }) {
+/**
+ * 이름 줄(02 구현 스펙 §8 · Diff-Chat 「답 머리」) — Host가 아닌 Agent의 턴 맨 위에 「리뷰어 · @reviewer」 13 · 2단계 색 한 줄이다. 얼굴 ·
+ * 시각은 없다(Codex 답에는 머리가 없다). 낼지는 접기가 정한다(`Turn.namesWho` — Host의 턴 · 같은 Agent가 이어 말한 턴은 없다).
+ */
+function WhoRow({ handle, member }: { handle: string; member: CastMember }) {
   return (
-    <div className="flex items-center gap-2 text-chat-meta leading-5">
-      <AgentFace handle={handle} avatar={member.avatar} className="size-5" />
-      <b className="font-semibold">{member.name}</b>
-      {handle !== "host" && <span className="text-xs text-fg-tertiary">@{handle}</span>}
-      <time dateTime={at} className="text-xs text-fg-tertiary">
-        {clock(at)}
-      </time>
-    </div>
+    <p data-who={handle} className="text-chat-meta text-fg-secondary">
+      <span>{member.name}</span> · <span>@{handle}</span>
+    </p>
   );
-}
-
-/** 「오후 2:31」 — 이름 줄의 시각. */
-function clock(at: string): string {
-  const date = new Date(at);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
 }
 
 /** 도는 턴의 머리줄 — 1초마다 걸린 시간을 다시 센다. 사람의 답을 기다리면 그 말이 링크 색으로 붙는다. */
@@ -561,8 +564,10 @@ function DecisionRow({ entry }: { entry: DecisionEntry }) {
 }
 
 /**
- * 사람이 보낸 말(보드 `.ubub`) — 오른쪽 정렬, 22 반경, 옅은 파랑, 줄 폭의 78%까지. 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로
- * 선다. 받는 이를 고른 멘션은 링크 색 500이다(보드 「길게 · 멘션」, v1 티켓 14 — `mentionOf`).
+ * 사람이 보낸 말(02 구현 스펙 §8 · Diff-Chat 「말풍선」) — 오른쪽 정렬, 줄 폭의 70%까지, 안쪽 10 / 16, 옅은 파랑 바탕(`bubble-user`)에
+ * 짙은 남색 글자(`fg-bubble`). 둥글기는 superellipse 22이고 `corner-shape`가 없는 WebKit(앱 · L3)에서는 16의 둥근 네모다(S24 —
+ * `speech`). 머리말은 기록에만 있다. 붙인 첨부는 위에 칩으로 선다. 받는 이를 고른 멘션은 링크 색 500이다(보드 「길게 · 멘션」, v1 티켓
+ * 14 — `mentionOf`).
  */
 export function UserMessage({
   text,
@@ -577,7 +582,7 @@ export function UserMessage({
 }) {
   const mention = to === null ? null : mentionOf(text, to);
   const bubble = (
-    <p className="max-w-[78%] self-end rounded-bubble bg-bubble-user px-4 py-2.25 whitespace-pre-wrap wrap-anywhere">
+    <p className="max-w-[70%] self-end rounded-speech corner-superellipse bg-bubble-user px-4 py-2.5 text-fg-bubble whitespace-pre-wrap wrap-anywhere">
       {mention ? (
         <>
           {text.slice(0, mention.start)}
@@ -650,20 +655,24 @@ function StopLine({ text, open, onToggle }: { text: string; open: boolean; onTog
   );
 }
 
-/** 마지막 답 아래의 동작 버튼(보드 `.aact`) — 지금은 복사 하나다. */
+/**
+ * 응답 액션(02 구현 스펙 §8 · Diff-Chat 「응답 액션」) — 마지막으로 끝난 답에만 선다(`TurnView`). 글리프 15 `fg-subtle`이고, 버튼(24)은
+ * 글리프가 열 왼쪽 끝에 서도록 그 안쪽만큼 왼쪽으로 낸다. 위로 2를 당겨 답 글자 잉크 → 글리프가 Codex의 15.5다(턴 안 줄 사이 8 + 버튼
+ * 안쪽이 그보다 2 길다). 「…」는 무엇을 둘지 정해지기 전이라(P1) 그리지 않고 복사 하나다.
+ */
 function AnswerActions({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="-ml-1.5 flex gap-0.5">
+    <div className="-mt-0.5 -ml-1 flex">
       <button
         type="button"
         aria-label="답 복사"
         onClick={() => {
           void navigator.clipboard?.writeText(text).then(() => setCopied(true));
         }}
-        className={cn("icon-button-quiet text-fg-secondary focus-ring")}
+        className="icon-button-quiet icon-button-xs text-fg-subtle focus-ring"
       >
-        {copied ? <Check className="size-4" aria-hidden /> : <Copy className="size-4" aria-hidden />}
+        {copied ? <Check className="size-3.75" aria-hidden /> : <Copy className="size-3.75" aria-hidden />}
       </button>
     </div>
   );

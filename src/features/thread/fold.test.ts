@@ -91,7 +91,7 @@ describe("Thread 기록을 턴으로 접는다", () => {
     ]);
   });
 
-  it("같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시 쓰지 않는다", () => {
+  it("Host의 답에는 이름 줄이 없다 — 사람이 말한 턴도, 스스로 이어 간 턴도 본문으로 바로 시작한다(02 구현 스펙 §8)", () => {
     const lines: RecordLine[] = [
       ...blessed,
       update(25, 1, { sessionUpdate: "agent_message_chunk", messageId: "m9", content: { type: "text", text: "더 볼게요" } }),
@@ -99,8 +99,8 @@ describe("Thread 기록을 턴으로 접는다", () => {
     ];
     const model = foldThread(lines);
     expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.selfContinued])).toEqual([
-      ["host", true, false],
-      ["host", true, false],
+      ["host", false, false],
+      ["host", false, false],
       ["host", false, true],
     ]);
   });
@@ -422,14 +422,51 @@ describe("여럿이 한 Thread에(v1 티켓 14)", () => {
 
   it("멘션으로 들어온 리뷰어의 턴은 리뷰어가 답하고, 「리뷰어가 참여함」이 그 턴 앞에 선다", () => {
     const model = foldThread(mention);
+    // 이름 줄은 Host가 아닌 리뷰어의 턴에만 선다(02 구현 스펙 §8).
     expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.sent])).toEqual([
-      ["host", true, "세 낱말로 답해 줘: hello from turn"],
+      ["host", false, "세 낱말로 답해 줘: hello from turn"],
       ["reviewer", true, "@reviewer 방금 답을 봐 줘"],
     ]);
     expect(model.system.map((line) => [line.handle, `${line.before}${line.name}${line.after}`, line.turnsBefore])).toEqual([
       ["reviewer", "리뷰어가 참여함", 1],
     ]);
     expect(model.cast.reviewer).toEqual({ name: "리뷰어", avatar: { shape: "circle", color: "green" } });
+  });
+
+  it("같은 Agent가 사람 말 없이 이어 말하면 이름 줄을 다시 쓰지 않고, 사이에 다른 이가 말했으면 다시 쓴다", () => {
+    const goesOn = (seq: number, second: number, who: string): RecordLine => ({
+      ...ended(seq, second, who),
+      payload: { stopReason: "end_turn", durationMs: 1000, cancelledByUs: false, outOfTurn: true },
+    });
+    const model = foldThread([
+      joined(1, 1, "host", "Host"),
+      joined(2, 2, "reviewer", "리뷰어"),
+      sent(3, 3, "reviewer", "@reviewer 봐 줘"),
+      said(4, 4, "reviewer", "보는 중"),
+      ended(5, 5, "reviewer"),
+      said(6, 6, "reviewer", "하나 더 봤어요"),
+      goesOn(7, 7, "reviewer"),
+      said(8, 8, "host", "받아서 고칠게요"),
+      goesOn(9, 9, "host"),
+      said(10, 10, "reviewer", "고친 것도 봤어요"),
+      goesOn(11, 11, "reviewer"),
+    ]);
+    expect(model.turns.map((turn) => [turn.who, turn.namesWho, turn.selfContinued])).toEqual([
+      ["reviewer", true, false],
+      ["reviewer", false, true],
+      ["host", false, true],
+      ["reviewer", true, true],
+    ]);
+  });
+
+  it("받는 이를 모르는 옛 말에 Host가 답해도 이름 줄이 없다 — 말한 이는 답한 줄이 정한다", () => {
+    const model = foldThread([
+      joined(1, 1, "host", "Host"),
+      { seq: 2, at: at(2), kind: "sent", payload: { text: "고쳐 줘" } },
+      said(3, 3, "host", "고칠게요"),
+      ended(4, 4, "host"),
+    ]);
+    expect(model.turns.map((turn) => [turn.who, turn.namesWho])).toEqual([["host", false]]);
   });
 
   it("참여자의 이름 · 얼굴은 기록의 들어옴 줄이 정본이다 — Host는 늘 「Host」다", () => {

@@ -61,8 +61,12 @@ const components: Components = {
     const code = node?.children?.[0];
     return <CodeBlock lang={codeLang(code)} code={hastText(code).replace(/\n$/, "")} />;
   },
+  // 인라인 코드(02 구현 스펙 §8 · Diff-Chat 「인라인 코드」) — 둘레 글자의 .92(고정 13px가 아니다) · 바탕 `surface-codespan` · 안쪽
+  // 1 / 6 · 둥글기 7.5 superellipse(WebKit은 6의 둥근 네모)라 높이가 17이다. 코드 블록은 그대로다(`CodeBlock`).
   code: ({ children }) => (
-    <code className="rounded-sm bg-surface-code px-1 py-px font-mono text-code wrap-anywhere">{children}</code>
+    <code className="rounded-codespan corner-superellipse bg-surface-codespan px-1.5 py-px font-mono text-codespan wrap-anywhere">
+      {children}
+    </code>
   ),
 };
 

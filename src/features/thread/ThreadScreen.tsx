@@ -51,7 +51,7 @@ import { changesOf, fixAsk, type PrLine } from "./pr";
 import { PrPlace, type PrActions } from "./PrCard";
 import { readMark } from "./status";
 import ThreadComposer from "./ThreadComposer";
-import ThreadFlow, { DocPlace, UserMessage } from "./ThreadFlow";
+import ThreadFlow, { DocPlace, TURN_GAP, UserMessage } from "./ThreadFlow";
 import { LogPlace } from "./WorkLog";
 import { fillDraft, linesOf, NEW_THREAD, threadRecordStore, threadUiStore, toggleTurn, turnKey } from "./thread-store";
 import type { AskLevel, Attachment, StartPicks, ThreadLink, ThreadView } from "./types";
@@ -209,7 +209,7 @@ export function NewThreadScreen({ sidebarOpen, work: seed = null }: ThreadScreen
               <h1 className="mb-7 text-center text-home">무엇을 만들까요?</h1>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 scroll-quiet">
-                <div className={`${COLUMN} gap-6 text-chat-body`}>
+                <div className={`${COLUMN} ${TURN_GAP} text-chat-body`}>
                   <UserMessage text={starting.text} attachments={starting.attachments} />
                   <p className="chat-shimmer text-sm">생각 중</p>
                 </div>
