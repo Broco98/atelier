@@ -102,6 +102,16 @@ export interface ThreadView {
   queues: Record<string, QueuedMessage[]>;
   /** 이은 Work가 보관됐거나 지워졌으면 그 까닭 — 읽기만 된 Thread다(v1 티켓 38). 열린 화면은 목록 요약 이벤트가 고친다(`putSummary`). */
   readOnly: WorkGone | null;
+  /**
+   * 입력창 Work 칩에서 「새 Work」로 시작했나(`thread.json`의 `newWork`, 03 S3) — 아니면 칸째 빠진다. Work가 서기 전까지 잠긴 Work 칩이
+   * 흐린 「새 Work」다(`lockedWork`).
+   */
+  newWork?: boolean;
+  /**
+   * 이 Thread가 이은 Space의 slug(`thread.json`의 `space`, 03 §9) — Work 없는 Thread만 적고 없으면 칸째 빠진다. Work에 이은 Thread는 그 Work의
+   * Space를 따른다(`WorkView.space`). 읽는 범위는 이 칸으로 세지 않고 범위 명령이 준다(`reading_scope`).
+   */
+  space?: string;
 }
 
 /**
@@ -164,14 +174,34 @@ export interface StartPicks {
   model: string | null;
   /** 첫 Session의 생각 깊이 — claude `--effort`가 받는 값. */
   effort: string | null;
+  /**
+   * 트레이 Space 칩에서 고른 Space(03 §5) — 첫 말의 범위다. Work 없는 Thread면 그 Thread의 Space로 서고, 이은 Work면 그 Work의 Space가 된다
+   * (S4). `null`은 고르지 않음(이은 Work의 Space를 건드리지 않는다)이다.
+   */
+  space: SpacePick | null;
+}
+
+/** Space 칩에서 고른 것(`atelier_acp::SpacePick`) — `slug`가 `null`이면 「Space 없음」을 고른 것이다(고르지 않음과 가른다). */
+export interface SpacePick {
+  slug: string | null;
 }
 
 /** Work 밖 Project 카드의 답(v1 티켓 32 · S22) — 붙이고 고치기 · 읽기만 하기 · 아니요. */
 export type ProjectAnswer = "attach" | "read" | "decline";
 
+/** Space 질문 카드의 답(03 티켓 08) — 그 Space · Space 없이 · 나중에(esc — 아무것도 바꾸지 않는다). */
+export type SpaceAnswer = { kind: "space"; slug: string } | { kind: "none" } | { kind: "later" };
+
+/**
+ * Project 추가 카드의 답(03 티켓 12 · `atelier_acp::ProjectAddChoice`) — git init 하고 추가 · 뿌리 폴더로 추가 · 그대로 추가 · 추가하지
+ * 않기(esc). 「나중에」는 없다.
+ */
+export type ProjectAddAnswer = "init" | "root" | "as-is" | "decline";
+
 /**
  * 기록 줄의 종류(`atelier_core::RecordKind`) — three-axes 대화 기록의 갈래에 v1이 더한 것(`question` · `joined` · `left` · `work` ·
- * `title` · `mode` · `call` · `pr` · `library`). Thread Session에는 `changes`가 서지 않는다.
+ * `title` · `mode` · `call` · `pr` · `library`)에 03이 `space`(Space 줄) · `setting`(결과 카드)을 더했다. Thread Session에는 `changes`가
+ * 서지 않는다.
  */
 export type RecordKind =
   | "sent"
@@ -190,7 +220,9 @@ export type RecordKind =
   | "mode"
   | "call"
   | "pr"
-  | "library";
+  | "library"
+  | "space"
+  | "setting";
 
 /**
  * 기록 줄 하나 — `threads/<id>/events.jsonl`의 한 줄과 기록 줄 이벤트가 같은 값이다. `who`는 그 줄을 낸 참여자의 handle이고,

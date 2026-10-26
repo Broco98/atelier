@@ -167,7 +167,7 @@ test("Agent의 질문은 같은 자리에 질문 카드로 서서 물음마다 �
   await expect(card).toHaveCount(0);
   await expect(입력칸(page)).toBeVisible();
   const 그대로 = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  await expect(흐름(page).locator('[data-answered="answer"] p')).toHaveText(
+  await expect(흐름(page).locator('[data-answered="question"][data-choice="answer"] p')).toHaveText(
     ANSWERS.map((one) => new RegExp(`^${그대로(one.question)}\\s*${그대로(one.answer)}$`)),
   );
   await streamLines(page, view.id, linesAfter(question, QUESTION_ANSWERED.seq));

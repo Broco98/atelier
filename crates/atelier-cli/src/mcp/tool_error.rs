@@ -16,6 +16,19 @@ pub fn kernel_error(err: Error) -> CallToolResult {
             "Call atelier_list_projects to see the registered project slugs and their folders."
         }
         Error::WorkNotFound(_) => "Call atelier_list_works to see the existing work slugs.",
+        // Space(03 구현 스펙 §8)는 바깥 MCP에 도구가 없고 Project 제거도 없다 — 지금 이 두 오류를 내는 도구는 없다. 와일드카드 없는
+        // `match`라 갈래를 두고, Space 파일을 읽는 커널 함수를 바깥 도구가 부르게 되면 이 안내가 나간다.
+        Error::SpaceNotFound(_) => "That Space no longer exists. Spaces are managed in the Atelier app — tell the user.",
+        Error::SpaceProblems(_) => {
+            "The Space file has the problems listed above. Ask the user to fix those lines in the Atelier app, then call \
+             this tool again."
+        }
+        // 폴더를 git 저장소로 만드는 것은 사람의 폴더를 바꾸는 일이라 묻고 한다 — 화면의 「git init 하고 추가」와 같은 물음이다.
+        Error::NotGitRepo(_) => {
+            "Ask the user whether to turn this folder into a git repository. If they agree, \
+             call atelier_add_project again with init_git: true — it runs `git init -b main` \
+             and an empty first commit, and leaves the files as they are."
+        }
         // `git stash`만 시키면 **안 듣는 처방**이다: `-u` 없이는 추적 안 된 파일이 그대로
         // 남아 다시 거부당하고, 읽는 쪽은 왜 막혔는지 알 수 없다. 실제로 그렇게 막혔다.
         Error::DirtyWorktrees(_) => {
@@ -23,7 +36,18 @@ pub fn kernel_error(err: Error) -> CallToolResult {
              leaves untracked files behind and this will be refused again. Then call \
              this tool again."
         }
-        Error::Validation(_) | Error::EmptyName => "Fix the arguments and call this tool again.",
+        // 기준 브랜치는 그 저장소의 브랜치 목록에 있는 값만 받는다(03 구현 스펙 §15) — 목록을 읽는 자리를 알려 준다.
+        Error::BranchNotListed(_) => {
+            "Call atelier_list_projects and pass one of that project's branches: `git.localBranches`, or one of \
+             `git.remoteBranches[].branches` written as is (like `origin/release/2.5`). Atelier does not fetch — a \
+             branch that is only on the remote server has to be fetched by the user first."
+        }
+        Error::Validation(_)
+        | Error::EmptyName
+        | Error::AlreadyExists(_)
+        | Error::SlugReused(_)
+        | Error::NotRepoRoot { .. }
+        | Error::AlreadyRegistered { .. } => "Fix the arguments and call this tool again.",
         Error::InvalidFile { .. } | Error::Git(_) | Error::Io(_) => {
             "This is a local data or git problem. Report it to the user instead of retrying."
         }

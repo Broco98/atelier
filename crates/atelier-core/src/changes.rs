@@ -512,19 +512,23 @@ mod tests {
 
     /// base를 모르면 견줄 수 없다 — 모든 파일을 변경이라 하지 않고 「base를 모름」이라 답한다. Project 등록이 사라졌고
     /// `origin/HEAD`도 없으면 이름부터 없고, 적힌 base가 저장소에 없으면 그 이름을 싣는다.
+    ///
+    /// 적힌 base가 없는 자리는 기준 브랜치로 고른 뒤 그 브랜치를 지운 것이다 — 고치기는 저장소에 있는 브랜치만 받는다(03 구현 스펙 §15).
     #[test]
     fn base를_찾지_못하면_base를_모름이다() {
         let place = setup();
+        run_git(&place.repo, &["branch", "develop"]);
         crate::update_project(
             &place.projects,
             "fe",
             crate::ProjectPatch { name: None, description: None, base_branch: Some("develop".to_string()) },
         )
         .unwrap();
+        run_git(&place.repo, &["branch", "-D", "develop"]);
         let answer = |place: &Place| list_work_changes(&place.works, &place.projects, "w").unwrap().remove(0).changes;
         assert_eq!(answer(&place), Changes::BaseUnknown { base: Some("develop".to_string()) });
 
-        crate::delete_project(&place.projects, "fe").unwrap();
+        std::fs::remove_file(place.projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
         assert_eq!(answer(&place), Changes::BaseUnknown { base: None });
     }
 

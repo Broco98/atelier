@@ -3,7 +3,9 @@ import { queryOptions, useMutation, useQueries, useQuery, useQueryClient, type Q
 import { useStore } from "@tanstack/react-store";
 import { searchApi } from "@/features/search/api";
 import { settingsApi } from "@/features/settings/api";
+import { SCOPE_KEY, useSpaces } from "@/features/spaces/hooks";
 import { saveSettingsSection } from "@/features/settings/save-section";
+import { useWorks } from "@/features/works/hooks";
 import type { ProjectPr } from "@/features/works/types";
 import { onThreadEngine, onThreadList, onThreadQueue, onThreadRecord, onWorkWriting, threadApi } from "./api";
 import { askLevelOf } from "./chips";
@@ -185,6 +187,16 @@ export function useThreadFeeds(): void {
  *   턴 끝의 읽기는 엔진이 하므로 카드가 `gh`를 다시 부르지 않는다. 카드가 아직 읽지 않은 Work는 그대로 둔다 — 열 때 읽는다.
  */
 export function followRecordLine(queryClient: QueryClient, thread: string, line: RecordLine): void {
+  // 읽는 범위가 바뀐 줄(03 §7) — Space 줄 · Work 연결과 worktree 생성(`work`) · Work 밖 Project 카드의 「읽기만 하기」(`question`). 범위는 Thread
+  // 파일과 Work의 worktree로 세므로 다음에 그릴 때 다시 읽는다.
+  if (line.kind === "space" || line.kind === "work" || line.kind === "question") {
+    void queryClient.invalidateQueries({ queryKey: SCOPE_KEY });
+  }
+  // Space 줄은 그 Thread 파일의 `space`가 바뀐 뒤에 선다 — 지우기 · 되돌리기 · 손으로 지운 파일 닫기(03 티켓 07)는 엔진이 칸을 고쳐 화면의
+  // 고치기 응답이 없다. 연 Thread의 칸(머리 줄의 흐린 Space)을 다시 읽는다.
+  // Space 질문 카드의 답(03 티켓 08)도 그 칸을 고치지만 묻던 Thread에는 Space 줄이 서지 않는다 — 답 줄이 그 결정이다.
+  const spaceAnswer = line.kind === "question" && isObject(line.payload) && line.payload.card === "space";
+  if (line.kind === "space" || spaceAnswer) void queryClient.invalidateQueries({ queryKey: threadKey(thread) });
   if (line.kind === "library") {
     void queryClient.invalidateQueries({ queryKey: AGENTS_KEY });
     void queryClient.invalidateQueries({ queryKey: AGENT_FILE_KEY });
@@ -292,18 +304,20 @@ export function useAgentRoster(work: string | null): AgentRoster | null {
 }
 
 /**
- * Work 칩 메뉴의 최근 Work(v1 티켓 31) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)에 이은 Thread 수를 단다. 새 Thread
- * 화면에 설 때마다 다시 읽는다. Thread 수는 사이드바와 같은 목록 캐시에서 센다. 못 읽으면 최근 Work 없이 두 줄만 선다.
+ * Work 칩 메뉴의 최근 Work(v1 티켓 31 · 03 §5) — 빈 질의 검색의 Work 줄 차례(고정 먼저 → 마지막으로 연 차례)다. 새 Thread 화면에 설 때마다
+ * 다시 읽는다. 읽기 전 · 못 읽으면 `null`이다 — 메뉴는 「아직 Work가 없어요」라고 말하지 않고 스위치 둘만 세운다. 줄 끝의 Space 이름은 Work
+ * 목록 · Space 목록에서 읽는다(아직 못 읽었으면 비어 선다).
  */
-export function useRecentWorks(): RecentWork[] {
-  const { data: threads } = useThreads();
+export function useRecentWorks(): RecentWork[] | null {
   const { data } = useQuery({
     queryKey: ["recent-works"],
     queryFn: () => searchApi.run("", []),
     staleTime: 0,
     retry: false,
   });
-  return data ? recentWorks(data.hits, threads ?? []) : [];
+  const { data: works } = useWorks();
+  const { data: spaces } = useSpaces();
+  return data ? recentWorks(data.hits, works, spaces) : null;
 }
 
 /**

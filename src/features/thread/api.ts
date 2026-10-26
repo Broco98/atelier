@@ -9,10 +9,12 @@ import type {
   EngineCheck,
   EngineState,
   Participant,
+  ProjectAddAnswer,
   ProjectAnswer,
   QuestionAnswer,
   QuitCounts,
   RecordLine,
+  SpaceAnswer,
   StartPicks,
   ThreadLink,
   ThreadQueueEvent,
@@ -43,14 +45,15 @@ export const threadApi = {
   readRecord: (thread: string, after: number) => invoke<RecordLine[]>("thread_read_record", { thread, after }),
   /**
    * 새 Thread — 첫 말과 함께 세운다. Host의 Session이 열릴 때까지 기다리고 새 id를 돌려준다. 첫 말의 답은 기록 줄 이벤트로 흐른다.
-   * 이어 갈 곳(`link`)은 Work 칩에서 고른 것이다(v1 티켓 31 — Work 없이 · 새 Work로 시작 · 최근 Work). 첨부는 경로만 간다(v1 티켓
+   * 이어 갈 곳(`link`)은 Work 칩에서 고른 것이다(v1 티켓 31 · 03 §5 — 새 Work · Work 없이 대화 · 최근 Work). 첨부는 경로만 간다(v1 티켓
    * 06 · S30). 나머지는 입력창 칩에서 첫 말 전에 고른 것이고 고르지 않은 칸은 `null`이다 — 물어보는 정도(v1 티켓 23 — 이은 Work면
-   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 받는 Agent 정의의 값).
+   * 그 Work의 정도가 된다), 첫 Session의 모델 · 생각 깊이(v1 티켓 31 · 스토리 33 — 고르지 않으면 받는 Agent 정의의 값), 트레이 Space 칩의
+   * Space(03 §5 — 이은 Work면 그 Work의 Space가 된다, S4).
    */
   start: (text: string, attached: readonly Attachment[], link: ThreadLink, picks: StartPicks) => {
     const attachments = pathsOf(attached);
-    const { mode, model, effort } = picks;
-    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort });
+    const { mode, model, effort, space } = picks;
+    return invoke<string>("thread_start", { text, attachments, link, mode, model, effort, space });
   },
   /**
    * 말을 보낸다 — 기다리지 않는다. 턴이 도는 동안의 말은 대기 줄 끝에 든다(대기 줄 바뀜 이벤트). 첨부는 경로만 간다. 인용(v1 티켓 35 ·
@@ -93,6 +96,23 @@ export const threadApi = {
    */
   answerProject: (thread: string, request: string, choice: ProjectAnswer) =>
     invoke<void>("thread_answer_project", { thread, request, choice }),
+  /**
+   * Space 질문 카드의 답(03 티켓 08 · S12) — 고른 Space(`space`)의 slug · 「Space 없이」(`none`) · 「나중에」(`later`, esc). 붙이지 못하면
+   * 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로 오고, 붙이거나 뺀 것은 그 뒤의 범위로 든다(Work에 이었으면 그 Work의 Space다).
+   */
+  answerSpace: (thread: string, request: string, answer: SpaceAnswer) =>
+    invoke<void>("thread_answer_space", {
+      thread,
+      request,
+      choice: answer.kind,
+      space: answer.kind === "space" ? answer.slug : null,
+    }),
+  /**
+   * Project 추가 카드의 답(03 티켓 12 · §12) — 「git init 하고 추가」(`init`) · 「뿌리 폴더로 추가」(`root`) · 「그대로 추가」(`as-is`) · 「추가하지
+   * 않기」(`decline`, esc). 추가하지 못하면 실패로 오고 카드는 그대로 선다. 고른 것은 기록의 답 줄로, 추가한 것은 그 뒤의 결과 카드로 온다.
+   */
+  answerProjectAdd: (thread: string, request: string, choice: ProjectAddAnswer) =>
+    invoke<void>("thread_answer_project_add", { thread, request, choice }),
   /** 모델 바꾸기 — 그 참여자 Session의 값이다. 떠 있으면 다음 턴부터 든다. 답은 바뀐 참여자 줄이다. */
   setModel: (thread: string, who: string, model: string) =>
     invoke<Participant>("thread_set_model", { thread, who, model }),
@@ -106,6 +126,13 @@ export const threadApi = {
   setMode: (thread: string, mode: AskLevel) => invoke<void>("thread_set_mode", { thread, mode }),
   /** 그 Work의 지금 물어보는 정도(v1 티켓 31 · S18) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 이것을 보인다. */
   workMode: (work: string) => invoke<AskLevel>("thread_work_mode", { work }),
+  /**
+   * Thread의 Space 붙이기 · 바꾸기 · 빼기(`null`, 03 티켓 05) — Work에 이은 Thread면 그 Work의 Space가 바뀐다. 떠 있는 Session은 다음 말부터 새
+   * 범위로 이어 연다. 바꾼 것은 기록의 Space 줄(`space`)로 온다. 없는 Space는 그 까닭으로 거절된다.
+   */
+  setSpace: (thread: string, space: string | null) => invoke<void>("thread_set_space", { thread, space }),
+  /** Work의 Space 붙이기 · 바꾸기 · 빼기 — Work 화면 머리의 Space 메뉴. 그 Work의 Thread마다 Space 줄이 선다(S9). */
+  setWorkSpace: (work: string, space: string | null) => invoke<void>("thread_set_work_space", { work, space }),
   /**
    * 다시 맡기기(v1 티켓 17) — 호출 줄에서 `from`의 부르기를 같은 글로 `to`에게 다시 한다. 기다리지 않는다: 부르기와 그 결과(부른
    * Agent의 다음 말)는 기록 줄 이벤트로 온다. 부를 수 없으면 그 까닭으로 거절된다.

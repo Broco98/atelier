@@ -72,6 +72,12 @@ pub enum RecordKind {
     /// Library에 Agent를 저장함 — Agent가 Thread 도구 「Agent 저장」으로 둔 정의의 handle · 이름 · 얼굴 · 자리(v1 티켓 19). 시스템 줄
     /// 「Library에 리뷰어를 저장함」이 이것이다.
     Library,
+    /// Space가 붙음 · 바뀜 · 빠짐(03 구현 스펙 §9) — 갈래(`change`)와 Space, 그 뒤로 읽는 Project. 흐름의 회색 한 줄 「Space를 사내 도구로
+    /// 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」가 이것이다. Work의 Space가 바뀌면 그 Work의 Thread마다 선다(S9).
+    Space,
+    /// Agent가 대화로 한 설정(03 구현 스펙 §12) — 무엇을 했나(Project 추가 · Project 고침 · Space 만듦 · Space 고침) · 대상 slug · 이름과
+    /// 카드의 첫 줄 · 둘째 줄 글. 흐름의 결과 카드 「Project를 추가했어요 — landing-page · 열기」가 이것이다.
+    Setting,
 }
 
 /// 기록 파일 하나를 덧붙이기로 연 것. 열려 있는 동안 파일을 쥐고 있다 — 폴더가 같은 볼륨 안에서 옮겨져도(아카이브의

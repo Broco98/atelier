@@ -1,16 +1,15 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState } from "react";
 import { Folder } from "lucide-react";
 import { HOTKEYS } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { AgentFace } from "./AgentFace";
-import { ARMING_MS, KeyCap, SLOT_CARD } from "./ApprovalCard";
+import { KeyCap, SLOT_CARD, useSlotCard } from "./ApprovalCard";
 import { threadApi } from "./api";
 import { cardKey } from "./approval";
-import type { AskTurn } from "./asks";
 import { AskCount } from "./AskTurnMarks";
-import type { Avatar } from "./faces";
 import type { PendingProject } from "./fold";
 import { describeProjectCard } from "./project-card";
+import type { ToolCardProps } from "./ToolCards";
 
 // Work 밖 Project 카드(v1 티켓 32 · 구현 스펙 §11 S22 · 스토리 99 · 캔버스 Cards 보드 「Work 밖 Project」) — Agent가 이 Work에 없는
 // Project를 고치려고 Thread 도구 「Project 고치기 시작」을 부르면 **입력창 자리에** 선다(승인 카드와 같은 자리 · 같은 물음 차례 —
@@ -28,45 +27,17 @@ import { describeProjectCard } from "./project-card";
 //   결정 줄(「web-app을 이 Work에 붙임」)이 선다. 붙이지 못하면(core가 거절) 까닭을 보이고 다시 고를 수 있게 푼다 — 엔진도 카드를 그대로
 //   세워 둔다. 까닭은 빨강이 아니라 `fg-secondary` 글이다.
 
-interface ProjectCardProps {
-  thread: string;
-  /** 물은 참여자의 화면 이름 · 얼굴(들어옴 줄, `ThreadModel.cast`). */
-  name: string;
-  avatar: Avatar | null;
-  /** 맨 앞의 답하지 않은 카드. 부르는 쪽이 요청 id를 key로 건다 — 다음 카드가 오면 새로 선다. */
-  card: PendingProject;
-  /** 물음 차례의 「1 / 2」(`askTurn`) — 묶음에 물음이 하나뿐이면 null. */
-  count?: AskTurn["count"];
-  /** 카드 맨 아래 「다음 · …」 줄(`AskNext`) — 다음 차례가 없으면 비운다. */
-  next?: ReactNode;
-}
-
-function ProjectCard({ thread, name, avatar, card, count = null, next }: ProjectCardProps) {
+function ProjectCard({ thread, name, avatar, card, count = null, next }: ToolCardProps<PendingProject>) {
   const titleId = useId();
-  const box = useRef<HTMLDivElement>(null);
-  const shownAt = useRef(0);
+  const { box, armed, sent, problem, send } = useSlotCard();
   const view = describeProjectCard(card, name);
   const [active, setActive] = useState(0);
-  const [sent, setSent] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  useEffect(() => {
-    shownAt.current = performance.now();
-    const holder = document.activeElement;
-    if (holder === null || holder === document.body) box.current?.focus({ preventScroll: true });
-  }, []);
 
   const choose = (at: number) => {
     const choice = view.choices[at];
     if (!choice || sent) return;
     setActive(at);
-    setSent(true);
-    setProblem(null);
-    threadApi.answerProject(thread, card.requestId, choice.answer).catch((error: unknown) => {
-      // 답하지 못했다 — 다시 고를 수 있게 풀고 까닭을 보인다(이미 닫힌 카드면 곧 그 줄이 와서 카드가 걷힌다).
-      setSent(false);
-      setProblem(String(error));
-    });
+    send(() => threadApi.answerProject(thread, card.requestId, choice.answer));
   };
 
   return (
@@ -77,7 +48,7 @@ function ProjectCard({ thread, name, avatar, card, count = null, next }: Project
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing || event.repeat) return;
-        if (performance.now() - shownAt.current < ARMING_MS) return;
+        if (!armed()) return;
         const key = cardKey(event, view.choices.length, active);
         if (!key) return;
         event.preventDefault();

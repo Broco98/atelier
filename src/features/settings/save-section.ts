@@ -14,10 +14,10 @@ import type { Settings } from "./types";
  * 항목(훅, spec 레이아웃)만 뺀다. 손으로 적으면 저장할 항목을 표에 더한 날 이 목록만 조용히 낡는다.
  * 빼는 쪽으로 적어서, 더한 항목이 `Settings`에 칸이 없으면 `Settings[K]`가 타입에서 빨개진다.
  *
- * 화면 없는 구획 하나를 더한다 — 본 표(`seen`, v1 티켓 30)는 설정 화면에 항목이 없지만 같은 파일 · 같은 줄로 쓴다(Thread 화면의
- * 「결정은 내가 합니다」 카드가 닫힐 때).
+ * 화면 없는 구획 둘을 더한다 — 본 표(`seen`, v1 티켓 30)와 Project 구획(`projects`, 03 S18)은 설정 화면에 항목이 없지만 같은 파일 ·
+ * 같은 줄로 쓴다(Thread 화면의 「결정은 내가 합니다」 카드가 닫힐 때 · Project 추가 창의 「위치 바꾸기」).
  */
-export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks" | "spec-layout"> | "seen";
+export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks" | "spec-layout"> | "seen" | "projects";
 
 /** 구획 하나를 고치는 함수 — 쓰는 순간의 최신 구획을 받아 쓸 구획을 돌려준다(`sectionSaver`). */
 export type SectionUpdate<K extends SettingsSectionKey> = (latest: Settings[K]) => Settings[K];

@@ -1,5 +1,5 @@
 import { ChevronRight, FileText } from "lucide-react";
-import { particle } from "./fold";
+import { particle } from "@/lib/particle";
 import type { CreatedDoc } from "./expanded";
 
 /**

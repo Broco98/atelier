@@ -23,13 +23,13 @@ const 글꼴 = async (target: Locator) => fontList(await target.evaluate((el) =>
 test("본문 글자는 시스템 글꼴 줄이고, 코드 · 경로 값은 시스템 mono 줄이다", async ({ page }) => {
   await installFixtureBackend(page);
 
-  // 프로젝트 화면 — 제목과 속성 이름은 본문, 경로 값은 mono다(DS 「글자」 표의 `code` — 경로 값).
+  // Project 상세 — 오른쪽 칸의 묶음 이름은 본문, 경로 값은 mono다(DS 「글자」 표의 `code` — 경로 값 · 03 시안 `.rl` 아래 mono 값).
   await page.goto(`/projects/${project.slug}`);
-  const 상세 = page.getByLabel("프로젝트", { exact: true });
-  const 경로 = 상세.getByText(project.path, { exact: true });
+  const 칸 = page.getByRole("region", { name: "경로", exact: true });
+  const 경로 = 칸.getByText(project.path, { exact: true });
   await expect(경로).toBeVisible();
   expect(await 글꼴(page.locator("body"))).toBe(fontList(SYSTEM_SANS));
-  expect(await 글꼴(상세.getByText("경로", { exact: true }))).toBe(fontList(SYSTEM_SANS));
+  expect(await 글꼴(칸.getByRole("heading", { name: "경로", exact: true }))).toBe(fontList(SYSTEM_SANS));
   expect(await 글꼴(경로)).toBe(fontList(SYSTEM_MONO));
 
   // 문서 — 제목은 본문 줄, 코드 블록은 mono다.

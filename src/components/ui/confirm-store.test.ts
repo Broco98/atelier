@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { askChoice, askDialog, dialogStore } from "./confirm-store";
+import { askChoice, askDialog, dialogOpen, dialogStore } from "./confirm-store";
 
 // 앱이 묻고 알리는 창의 **스토어**. 답이 어떻게 오가는가를 본다 — 약속이 풀리고, 창이 비고, 앞의
 // 물음이 접힌다.
@@ -29,6 +29,19 @@ describe("답이 오가는 길", () => {
     expect(dialogStore.state?.title).toBe("나중");
     dialogStore.state!.answer(true);
     expect(await second).toBe(true);
+  });
+});
+
+// **답을 기다리는 창이 떠 있나**(03 티켓 13a) — 이 스토어의 창이면 참이다. 따로 선 모달 창(`aria-modal`)은 DOM으로 보므로 L3가 잰다
+// (`e2e/frame-sidebar.spec.ts`의 ⌘N — Project 제거 창이 떠 있는 동안 화면을 옮기지 않는다). 이 층은 DOM이 없어 그 갈래가 거짓이다.
+describe("dialogOpen", () => {
+  it("스토어에 창이 서 있으면 참, 닫히면 거짓이다", async () => {
+    expect(dialogOpen()).toBe(false);
+    const asked = askDialog({ title: "가", confirm: "닫기" });
+    expect(dialogOpen()).toBe(true);
+    dialogStore.state!.answer(false);
+    await asked;
+    expect(dialogOpen()).toBe(false);
   });
 });
 

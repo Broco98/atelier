@@ -722,6 +722,24 @@ test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 앱 확인 창 밖에 **따로 선 모달 창**(Project 추가 — 03 결정 「09」 · 「11」)도 그 창이다(`dialogOpen`). 한때 확인 창 스토어만 봐서
+// 추가 창 위에 팔레트가 떴고, 고른 곳으로 화면을 옮겨 추가 창이 새 화면 위에 남았다(03 티켓 13d — 진짜 앱에서 봤다).
+test("따로 선 모달 창(Project 추가)이 떠 있는 동안에도 안 열린다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await page.getByRole("main").getByRole("button", { name: "Project 추가", exact: true }).click();
+  const add = page.getByRole("dialog", { name: "Project 추가", exact: true });
+  // 포커스가 창에 들어온 뒤에 누른다 — 위 검사와 같은 까닭(첫 프레임 가드).
+  await expect(add.getByRole("textbox", { name: "Project 이름", exact: true })).toBeFocused();
+
+  await pressSearchKey(page);
+
+  await expect(page.locator("body[data-palette-open]")).toHaveCount(0);
+  await expect(add).toBeVisible();
+  await expect(page).toHaveURL("/projects");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 결정 21 — **⌘K의 물음이 「무엇이 있는가」를 싣는다.** 픽스처의 답은 심어 둔 것이라, 목록이
 // 틀린 채로 나가도 화면에는 그 답이 그대로 선다 — 그래서 기록에서 함께 읽는다.
 test("⌘K의 물음이 가는 곳 목록을 nav 순서대로 싣는다", async ({ page }) => {
@@ -733,9 +751,10 @@ test("⌘K의 물음이 가는 곳 목록을 nav 순서대로 싣는다", async 
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   // **순서까지 본다.** 코어가 건넨 순서로 「가는 곳」 줄이 서므로(`search.rs`의
   // `destination_hits`) 이 배열이 곧 팔레트에 서는 순서이고, `Settings`가 맨 뒤인 것도
-  // 그 계약이다(결정 51).
+  // 그 계약이다(결정 51). `Space`는 사람 메뉴와 같은 자리 — Projects 다음이다(03 구현 스펙 §3).
   await expect.poll(() => destinationsAsked(page)).toEqual([
     "projects",
+    "spaces",
     "terminal",
     "processes",
     "archive",

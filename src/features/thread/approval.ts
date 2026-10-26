@@ -1,4 +1,5 @@
-import { particle, type DecisionEntry, type PendingPermission, type PermissionOption } from "./fold";
+import { particle } from "@/lib/particle";
+import { type DecisionEntry, type PendingPermission, type PermissionOption } from "./fold";
 import { nonEmpty, type Json } from "./json";
 import { baseName, commandOf, diffPathsOf, diffsOf, locationsOf, mcpOf, toolFields, type DiffPiece } from "./tool-view";
 

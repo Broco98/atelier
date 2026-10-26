@@ -1,9 +1,11 @@
 import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "@tanstack/react-store";
-import { ArrowRight, Check, CircleAlert, Clock, Copy, Folder, GitBranch, Info, TriangleAlert, X } from "lucide-react";
+import { Check, CircleAlert, Copy, Folder, GitBranch, Info, Layers, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { particle } from "@/lib/particle";
 import { cn } from "@/lib/utils";
 import { AgentFace, FaceStack } from "./AgentFace";
+import { AnsweredCards } from "./AnsweredCards";
 import { decisionText } from "./approval";
 import { useArrival } from "./arrival";
 import { CallPlace, CallRow, type CallActions } from "./CallRow";
@@ -12,7 +14,6 @@ import {
   flowOf,
   headline,
   keptFolded,
-  particle,
   runningHeadline,
   shownEntry,
   workLine,
@@ -21,13 +22,11 @@ import {
   type DecisionEntry,
   type Entry,
   type Notice,
-  type ProjectChoiceEntry,
   type QuestionEntry,
   type SystemLine,
   type ThreadModel,
   type ToolEntry,
   type Turn,
-  type WorkChoiceEntry,
 } from "./fold";
 import { SentAttachments } from "./ComposerAttachments";
 import { DocCard } from "./DocCard";
@@ -35,10 +34,12 @@ import { createdDocs } from "./expanded";
 import { mentionOf } from "./mentions";
 import { Checklist, PlanCard } from "./PlanCard";
 import { PrCard } from "./PrCard";
-import { projectChoiceText } from "./project-card";
 import { answeredCards } from "./question";
 import { SentQuoteChip } from "./QuoteChip";
+import { ResultCard } from "./ResultCard";
 import ThreadMarkdown from "./ThreadMarkdown";
+import { isToolCardAsk, isToolChoice, toolCardRow } from "./tool-cards";
+import { ToolChoiceRow } from "./ToolCards";
 import type { Quote } from "@/features/works/QuotePick";
 import type { Attachment } from "./types";
 import { threadUiStore, toggleTurn, turnKey } from "./thread-store";
@@ -228,8 +229,7 @@ function NoticeLine({ notice }: { notice: Notice }) {
 function waitingFor(model: ThreadModel, who: string): string | null {
   const ask = model.asks.find((one) => one.who === who);
   if (!ask) return null;
-  if (ask.card === "work") return "Work 만들기 답을 기다려요";
-  if (ask.card === "project") return "Work 밖 Project 답을 기다려요";
+  if (isToolCardAsk(ask)) return toolCardRow(ask.card).waiting;
   return ask.card === "question" ? "질문의 답을 기다려요" : "승인을 기다립니다";
 }
 
@@ -249,6 +249,7 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
     >
       {line.kind === "work" && <Folder className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {line.kind === "worktree" && <GitBranch className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
+      {line.kind === "space" && <Layers className="mr-1.5 size-3.5 shrink-0" aria-hidden />}
       {/* 앞말의 끝 빈칸을 지킨다 — 줄 상자가 flex라 글 조각 끝의 빈칸이 접혀 「Library에」와 얼굴이 붙는다. */}
       {line.before && <span className="whitespace-pre">{line.before}</span>}
       {line.handle && (
@@ -258,8 +259,10 @@ function SystemRow({ line, cast }: { line: SystemLine; cast: Readonly<Record<str
           className="mr-1.5 size-4"
         />
       )}
-      <b className="font-medium text-fg">{line.name}</b>
-      {line.after}
+      {/* 이름이 없는 줄도 있다 — 「Space를 뺐어요 — …」는 앞말만이다. */}
+      {line.name && <b className="font-medium text-fg">{line.name}</b>}
+      {/* 뒷말의 앞 빈칸도 지킨다 — 「결제 서비스 Space를 되돌렸어요」처럼 이름 뒤에 빈칸으로 잇는 줄이 있다. */}
+      {line.after && <span className="whitespace-pre-wrap">{line.after}</span>}
       {line.code && <span className="whitespace-pre font-mono text-xs">{` ${line.code}`}</span>}
     </p>
   );
@@ -295,9 +298,8 @@ function TurnView({
   const lastEntry = turn.entries[turn.entries.length - 1];
   // 글이 빈 생각은 그리지 않는다(`shownEntry`) — 지금 생각하는 중이면 「생각 중」으로만 선다.
   const before = turn.entries.slice(0, turn.end ? from : turn.entries.length).filter(shownEntry);
-  // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
-  const choice = (entry: Entry) => entry.kind === "work-choice" || entry.kind === "project-choice";
-  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || choice(entry)) : [];
+  // 턴 끝의 답 사이에 선 카드의 결정 줄(Work 만들기 · Work 밖 Project …)은 그 자리에 함께 선다(화면 2 보드 — 물은 말 · 결정 · 답).
+  const final = turn.end ? turn.entries.slice(from).filter((entry) => entry.kind === "message" || isToolChoice(entry)) : [];
   // 아직 아무 줄도 오지 않은 도는 턴은 「답하는 중」 줄이 말한다(`answeringLine`) — 이름 줄도 「생각 중」도 아직 서지 않는다.
   const waitingFirst = !turn.end && turn.entries.length === 0;
   const thinking = !turn.end && lastEntry?.kind === "thought";
@@ -308,9 +310,10 @@ function TurnView({
   // 처음부터 펼쳐 두는 턴도 — 그래야 접힌 턴에 남는 줄이 사라지지 않는다).
   const line = turn.end && !failed && !stopped ? workLine(turn) : null;
   const unfolded = open && (stopped || failed || line?.unfolds === true);
-  // 계획 카드 · 체크리스트 · 호출 줄 · 카드의 결정 줄 · 질문에 답한 줄은 접힌 턴에도 남는다(`keptFolded`) — 계획과 누가 무엇을 맡았는지 ·
-  // Work를 만들었는지 · 어느 Project를 붙였는지 · 무엇으로 답했는지는 다시 보는 것이다. 턴 끝 자리의 결정 줄은 위의 `final`이 든다.
-  const kept = turn.end && !unfolded ? turn.entries.filter((entry, at) => keptFolded(entry) && (!choice(entry) || at < from)) : [];
+  // 계획 카드 · 체크리스트 · 호출 줄 · 카드의 결정 줄 · 질문에 답한 줄 · 결과 카드는 접힌 턴에도 남는다(`keptFolded`) — 계획과 누가 무엇을
+  // 맡았는지 · Work를 만들었는지 · 어느 Project를 붙였는지 · 무엇으로 답했는지 · 대화로 무엇을 설정했는지는 다시 보는 것이다. 턴 끝 자리의
+  // 결정 줄은 위의 `final`이 든다.
+  const kept = turn.end && !unfolded ? turn.entries.filter((entry, at) => keptFolded(entry) && (!isToolChoice(entry) || at < from)) : [];
   return (
     <>
       {turn.sent !== null && (
@@ -470,85 +473,22 @@ function EntryView({ entry, streaming }: { entry: Entry; streaming: boolean }) {
       );
     case "decision":
       return <DecisionRow entry={entry} />;
-    case "work-choice":
-      return <WorkChoiceRow entry={entry} />;
     case "question":
       return <AnsweredRow entry={entry} />;
-    case "project-choice":
-      return <ProjectChoiceRow entry={entry} />;
+    case "result":
+      return <ResultCard card={entry} />;
+    // Thread 도구 카드의 결정 줄(Work 만들기 · Work 밖 Project · Space 질문 · Project 추가) — 갈래마다의 줄은 그 표다(`ToolCards.tsx`).
+    default:
+      return <ToolChoiceRow entry={entry} />;
   }
 }
 
 /**
- * Work 밖 Project 결정 줄(v1 티켓 32 · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양에 폴더 글리프, Project 이름은
- * `fg-secondary`(보드 `.o`)다. 「web-app을 이 Work에 붙임」 · 「web-app을 읽기만 하기로 함」 · 「web-app을 고치지 않기로 함」.
- */
-function ProjectChoiceRow({ entry }: { entry: ProjectChoiceEntry }) {
-  const { name, after } = projectChoiceText(entry.choice, entry.project);
-  return (
-    <p
-      data-decision={`project-${entry.choice}`}
-      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
-    >
-      <Folder className="size-4 shrink-0" aria-hidden />
-      <span className="min-w-0 wrap-anywhere">
-        <span className="text-fg-secondary">{name}</span>
-        {after}
-      </span>
-    </p>
-  );
-}
-
-/**
- * Work 만들기 결정 줄(화면 2 보드 `.done-line` · Cards 보드 「결정한 뒤」 `.done`) — 승인 결정 줄과 같은 모양이다. 만들었으면 ✓와 「Work
- * 만들기 · api-server · fix/refund-api」, 아니면 →와 「Work 없이 계속함」.
- */
-function WorkChoiceRow({ entry }: { entry: WorkChoiceEntry }) {
-  const Icon = entry.created ? Check : ArrowRight;
-  const text = entry.created
-    ? ["Work 만들기", ...entry.projects, ...(entry.branch ? [entry.branch] : [])].join(" · ")
-    : "Work 없이 계속함";
-  return (
-    <p
-      data-decision={entry.created ? "work-created" : "work-skipped"}
-      className={cn("flex min-h-7 flex-wrap items-center gap-2 text-chat-meta leading-5 text-fg-tertiary", useArrival("chip-in", entry.key))}
-    >
-      <Icon className="size-4 shrink-0" aria-hidden />
-      <span className="min-w-0 wrap-anywhere">{text}</span>
-    </p>
-  );
-}
-
-/**
- * 답한 카드(02 §10 · 캔버스 v35 Components 「답한 카드」) — 물음마다 한 줄 카드다: 초록 ✓ 13 · 물은 제목(13 2단계) · 오른쪽 끝 고른 답(13
- * 1단계). 겉은 1px `separator-soft` · 둥글기 12 · 안쪽 8 / 12. 나중에로 닫은 질문은 답한 표지 대신 미룬 표지(시계 `fg-tertiary`)와 「나중에
- * 답하기로 함」이다(`answeredCards`). 시계도 같은 표지 자리라 13이다 — 두 카드의 글이 같은 세로줄에 선다. ✓의 선은 앱 기본(24칸 2.25 —
- * 13에서 1.22px)이다. 시안의 ✓는 16칸 1.6(24칸 2.4 — DS `.ic-check`, 13에서 1.3px)이지만 그 굵기(`SMALL_GLYPH_STROKE`)는 DS가 12 이하에만
- * 주고 `icon-stroke` 검사가 그 자리를 지킨다 — 0.08px 차이는 남긴다(02 결정 「코드 리뷰 고침」). 답을 기다리는 동안은 서지 않는다 —
- * 입력창 자리의 질문 카드가 말한다.
+ * Agent의 질문에 답한 줄(02 §10 「답한 카드」 — 겉은 `AnsweredCards`) — 물음마다 한 줄 카드다. 나중에로 닫은 질문은 미룬 표지(시계)와 「나중에
+ * 답하기로 함」이다(`answeredCards`). 답을 기다리는 동안은 서지 않는다 — 입력창 자리의 질문 카드가 말한다.
  */
 export function AnsweredRow({ entry }: { entry: QuestionEntry }) {
-  const motion = useArrival("chip-in", entry.key);
-  const cards = answeredCards(entry);
-  if (cards.length === 0) return null;
-  return (
-    <div data-answered={entry.choice} className={cn("flex flex-col gap-1.5 self-stretch", motion)}>
-      {cards.map((card, at) => (
-        <p
-          key={`${at}-${card.asked}`}
-          className="flex items-center gap-2 rounded-xl border border-separator-soft px-3 py-2 text-chat-meta text-fg-secondary"
-        >
-          {card.said === null ? (
-            <Clock className="size-3.25 shrink-0 text-fg-tertiary" aria-hidden />
-          ) : (
-            <Check className="size-3.25 shrink-0 text-diff-added" aria-hidden />
-          )}
-          <span className="min-w-0 wrap-anywhere">{card.asked}</span>
-          {card.said !== null && <span className="ml-auto min-w-0 text-right text-fg wrap-anywhere">{card.said}</span>}
-        </p>
-      ))}
-    </div>
-  );
+  return <AnsweredCards cards={answeredCards(entry)} card="question" choice={entry.choice ?? ""} arrival={entry.key} />;
 }
 
 /** 결정 줄(Screen-Thread · Approval 보드 `.done-line`) — 아이콘 16과 13/20 `fg-tertiary` 한 줄. 남긴 말은 뒤에 따옴표로 진하게 선다. */

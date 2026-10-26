@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 import type { HeadRename } from "./Frame";
 import { HEAD_NAME, HeadEnd, ScreenHead } from "./ShellHead";
 
-// **Thread · 첫 화면 · Library가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07) — 틀은 앱 셸 하나다: 크롬 맨 위 머리 줄(44)과 그 아래 흰 판
-// (`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만 건넨다. 공용 틀(`Frame`)의
-// 화면들(Projects · Terminal · Processes · Archive · Settings · Work 화면)도 같은 머리 줄에 제 이름 · 할 일을 보낸다(`FrameHead`).
+// **Thread · 첫 화면 · Library · Projects · Space가 틀에 건네는 것**(02 구현 스펙 §3 · v1 티켓 07 · 03) — 틀은 앱 셸 하나다: 크롬 맨 위 머리
+// 줄(44)과 그 아래 흰 판(`AppShell` · `ShellHead`). 이 화면들은 머리 줄에 놓을 것(이름 앞 · 이름 · 오른쪽 끝)과 판 안에 놓을 것(본문)만
+// 건넨다. 공용 틀(`Frame`)의 화면들(Terminal · Processes · Archive · Settings · Work 화면)도 같은 머리 줄에 제 이름 · 할 일을 보낸다(`FrameHead`).
 //
 //   머리 줄의 화면 자리(`ScreenHead`) ─ 이름 앞(`lead`) · 이름(있으면 · 그 자리에서 바꾼다) ··· 오른쪽 끝(`end`)
 //   판 안 ─ 본문 `<main>` — 화면이 건넨 것이 곧장 선다
@@ -44,8 +44,10 @@ export function PlainFrame({ lead, title, end, label, children }: PlainFrameProp
           <PlainHead lead={lead} title={title} end={end} />
         </ScreenHead>
       )}
-      {/* 판 안 사이드바 오른쪽의 남는 자리를 다 쓴다(판이 가로 줄이다). */}
-      <main aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* 판 안을 다 쓴다(판이 가로 줄이다). **제 내용 폭을 판 밖에 알리지 않는다**(`contain-inline-size`) — 사이드바가 판 밖 형제라 판은 본문의
+          min-content를 바닥으로 들고 사이드바와 자리를 나눈다(`AppShell`의 판 `min-w-min`). 긴 코드 줄 · 주소가 그 바닥을 부풀리면 사이드바가
+          좁아지고 판이 창 밖으로 밀린다 — 그려지는 폭은 판이 늘여 준다. */}
+      <main aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col contain-inline-size">
         {children}
       </main>
     </>

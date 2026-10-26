@@ -1,18 +1,6 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { projectsQuery } from "@/features/projects/hooks";
-import { pickSlug, shellStore } from "@/components/shell/shell-store";
-import ProjectsView from "./-projects-view";
+import { createFileRoute } from "@tanstack/react-router";
+import ProjectsPage from "@/features/projects/ProjectsPage";
 
-// works.index.tsx와 같은 규칙 — 근거는 그쪽 주석에 적었다
-export const Route = createFileRoute("/projects/")({
-  beforeLoad: async ({ context }) => {
-    const projects = await context.queryClient.ensureQueryData(projectsQuery()).catch(() => []);
-    const slug = pickSlug(shellStore.state.projectSlug, projects);
-    if (slug) throw redirect({ to: "/projects/$slug", params: { slug } });
-  },
-  component: ProjectsIndexRoute,
-});
-
-function ProjectsIndexRoute() {
-  return <ProjectsView slug={null} />;
-}
+// `/projects`는 Projects 목록이다(03 구현 스펙 §16) — 사람 메뉴 「Projects」가 여기로 온다. 목록과 상세가 같은 자리를 번갈아 쓰므로 마지막
+// Project로 넘기지 않는다(넘기면 목록을 볼 길이 없다): 줄을 눌러야 상세(`/projects/$slug`)다. 틀(머리 줄 · 흰 판)은 앱 셸이 그린다.
+export const Route = createFileRoute("/projects/")({ component: ProjectsPage });

@@ -257,7 +257,7 @@ export function WorkSectionList({
       {/* **머리 끝의 +는 「새 Work」다**(02 구현 스펙 §4 · S5 · 캔버스 F2-Work `.sec .ib`) — 새 Thread를 열고 Work 칩을 「새 Work」로 둔다.
           머리는 그 자체가 접기 단추라 + 를 그 안에 두면 단추 안의 단추가 된다 — 머리와 같은 상자 안 **형제로** 머리 줄 오른쪽 끝에
           겹쳐 선다(뒤에 그려져 위에 선다). 목록의 Tab 정류장이 아니다(핀과 같다 — 목록은 Tab 한 번이다). 키보드의 길은 ⌘N 뒤 입력창의
-          Work 칩 「새 Work로 시작」이다. */}
+          Work 칩 「새 Work」다(03 S2 — 처음 쓰는 사람에겐 기본값이고, 그 뒤는 마지막에 고른 스위치 쪽이다). */}
       <div className={cn("relative flex shrink-0 flex-col", pinned.length > 0 ? SIDEBAR_AFTER_SECTION : "mt-3")}>
         <SectionHeader
           section="works"

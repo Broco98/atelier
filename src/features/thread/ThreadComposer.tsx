@@ -8,7 +8,7 @@ import { useArrival, useChanged } from "./arrival";
 import { attachmentStore, attachmentsOf, setAttachments } from "./attachments";
 import { slashCommands, type ChoiceOption, type CommandOption } from "./chips";
 import { attachPaths, ComposerAttachmentChips, DropZone, pickFiles, useAttachmentDrop } from "./ComposerAttachments";
-import { AskChip, ModelChip, WorkChip, type WorkChoice } from "./ComposerChips";
+import { AskChip, LockedWorkChip, ModelChip, ScopeLineText, SpaceChip, WorkChip, type ComposerTray } from "./ComposerChips";
 import { insertMention, matchAgents, mentionAt, type AgentChoice, type Recipient } from "./mentions";
 import SlashMenu, { commandText, matchCommands, optionId, slashQuery } from "./SlashMenu";
 import { DraftQuoteChip } from "./QuoteChip";
@@ -16,16 +16,17 @@ import { setDraft, setQuote, takeFill, threadUiStore } from "./thread-store";
 import type { Quote } from "@/features/works/QuotePick";
 import type { AskLevel, Attachment } from "./types";
 
-// 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 캔버스 v35 Diff-Chat · F1-Home · Screen-Live) — Codex 입력창이다: 대화 열과 같은 737 폭에
-// 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소 44 · 자리표시 `fg-placeholder`.
-// 칩(물어보는 정도 · 모델과 생각 깊이)은 상자 안 아래 줄에 선다(v1 티켓 31 · 사용자 결정 — 받는 이 칩은 걷었다, `ComposerChips.tsx`).
-// Work 칩은 새 Thread에서만 상자 **밖** 아래 트레이에 선다(02 티켓 10 — Thread 안에서는 머리 줄이 말한다).
+// 입력창(v1 티켓 05 · 02 티켓 10 · 02 구현 스펙 §9 · 03 구현 스펙 §5 · §6 · 캔버스 v35 Diff-Chat · Screen-Live · v52 F4-KitComposer) — Codex
+// 입력창이다: 대화 열과 같은 737 폭에 둥글기 22(`rounded-prompt`) · 1px 4% 고리와 흐림 80의 그림자(`shadow-prompt`) · 안쪽 14/8/8 · 글 칸 최소
+// 44 · 자리표시 `fg-placeholder`. 상자 안은 `+` · 물어보는 정도 · 모델과 생각 깊이 칩뿐이다(03 §6 — 받는 이 칩은 걷었고, `@` 단추는 숨겼다).
+// Work 칩 · Space 칩 · 범위 줄은 상자 **밖** 트레이에 선다 — 첫 화면은 상자 아래, Thread 화면은 상자 위다(03 §5 · `ComposerTray`).
 // three-axes 입력창(`chat/Composer.tsx`)을 옮겨 보드의 모양으로 고쳤다.
 // - **보내기 원 하나가 지금 할 수 있는 일을 말한다**(02 §9 · Screen-Live) — 28 파란 원(`accent-solid`)에 흰 글리프 14. 비면 옅은 ↑(40%,
 //   꺼짐), 쓰면 ↑, 새 Thread의 첫 말을 보내는 중이면 옅은 파랑(`accent-solid-pending`)에 스피너, 턴이 도는 동안 비어 있으면 멈추기(■)다.
 //   도는 동안 쓰면 원은 ↑다 — 쓴 말도 보낸다(엔진이 대기 줄 끝에 넣고 입력창 위 상자에 선다). 그동안 멈추기는 Esc가 맡는다.
-// - **@ 단추 · `@` · `/agent`는 Agent 부르기 메뉴**를 연다(v1 티켓 14 · `AgentMenu`) — 커서가 멘션 이름 안에 서면 입력창 위에 서고,
-//   고르면 그 자리가 `@<call> `이 된다.
+// - **글로 친 `@`는 Agent 부르기 메뉴**를 연다(v1 티켓 14 · `AgentMenu`) — 커서가 멘션 이름 안에 서면 입력창 위에 서고, 고르면 그
+//   자리가 `@<call> `이 된다. 같은 메뉴를 여는 `@` 단추와 `/agent`는 Agent 여럿과 함께 채팅이 들어올 때까지 숨겼다(03 §6 · S5 —
+//   `AGENT_BUTTON` · `chips.ts`의 `held`). 코드는 지우지 않는다 — Agent를 이미 쓰는 사람의 길(글로 친 멘션)이 그대로다.
 // - **받는 이의 멘션은 칩으로 칠한다**(Composer 보드 「입력 중 · 멘션 칩」) — 입력칸 뒤에 같은 글을 투명하게 깐 층(`MentionPaint`)이
 //   받는 이로 고른 `@이름` 자리에만 옅은 파랑 면을 깐다. 글자는 입력칸의 것 그대로라 커서 · 고르기 · 붙여 넣기가 여느 입력칸과 같다.
 //   받는 이를 고르는 칩은 따로 없다 — 이 칠이 받는 이를 말한다.
@@ -34,7 +35,7 @@ import type { AskLevel, Attachment } from "./types";
 // - **인용**(v1 티켓 35 · S41) — 넓힌 카드의 문서에서 고른 글(「❝ 이 자리를 두고 말하기」)이 입력칸 위에 인용 칩으로 붙는다(×로 뗀다). 보내면
 //   말과 함께 가고, 엔진이 그 Work의 spec 폴더를 가리키는 인용 블록으로 본문 앞에 둔다.
 // - **「/」로 시작하면 명령 메뉴**가 입력창 위에 선다(`SlashMenu`) — `/new`는 새 Thread로 가고, `/work`는 Work 칩 메뉴를 열고(첫 말
-//   전에만, v1 티켓 31), `/agent`는 Agent 부르기 메뉴를 열고, `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는
+//   전에만, v1 티켓 31), `/plan`은 물어보는 정도를 「계획만」으로 바꾸고, `/policy`는 물어보는
 //   정도 메뉴를 연다(v1 티켓 23). `/model`은 모델 칩 메뉴를 연다(코드 리뷰 1차 B8). Runtime 명령은 입력칸이 `/이름 `이 된다.
 // - **Esc는 멈추기**다(보드 「단축키」) — 메뉴가 서 있으면 메뉴만 걷는다.
 //
@@ -48,6 +49,9 @@ import type { AskLevel, Attachment } from "./types";
 
 /** 입력칸이 자라는 끝 — 넘으면 칸 안에서 구른다. */
 const FIELD_MAX = 200;
+
+/** `@` 단추(Agent 부르기)를 세우나 — Agent 여럿과 함께 채팅을 보류하는 동안 숨긴다(03 §6 · S5). 다시 켤 때 이 값만 바꾼다. */
+const AGENT_BUTTON = false;
 
 /** 비어 있을 때의 말(보드) — 첫 말을 보내는 중(Screen-Live 단계 1 — 시안의 「채팅」은 이 앱의 Thread다) · 도는 동안 · 우리가 멈춘 뒤 · 그 밖. */
 const PLACEHOLDER = {
@@ -96,10 +100,10 @@ export interface ThreadComposerProps {
   /** 물어보는 정도 메뉴 끝의 「Policy 열기」 — 다음 말을 받을 Agent의 파일로 간다. */
   onOpenPolicy?: () => void;
   /**
-   * Work 칩(v1 티켓 30 · 31 · 02 티켓 10) — 새 Thread의 첫 말 전에만 준다. 주면 입력창 아래 트레이에 칩이 서고 `/work`가 선다. Thread
-   * 안에서는 주지 않는다 — 머리 줄이 이은 Work를 말한다.
+   * 트레이(03 §5) — 첫 화면은 상자 아래, Thread 화면은 상자 위에 서는 회색 띠다. 그 Work 칩이 고르는 칩(첫 말 전)이면 `/work`가 선다.
+   * 입력창 자리에 카드가 서면 함께 걷힌다.
    */
-  work?: WorkChoice;
+  tray?: ComposerTray;
   /** 비어 있을 때의 말 — Work 칩이 고른 것을 따른다(빈 Thread, v1 티켓 31). 없으면 「무엇이든 요청하세요」다. 도는 동안 · 멈춘 뒤의 말이 이긴다. */
   placeholder?: string;
 }
@@ -128,7 +132,7 @@ function ThreadComposer({
   level,
   onLevel,
   onOpenPolicy,
-  work,
+  tray,
   placeholder,
 }: ThreadComposerProps) {
   const draft = useStore(threadUiStore, (state) => state.drafts[draftKey] ?? "");
@@ -143,7 +147,7 @@ function ThreadComposer({
   const menuId = useId();
   const query = slashQuery(draft);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const picking = work !== undefined;
+  const picking = tray?.work.kind === "pick";
   const all = useMemo(() => slashCommands(commands, { work: picking }), [commands, picking]);
   const items = useMemo(() => (query === null ? [] : matchCommands(all, query)), [all, query]);
   const [pointer, setPointer] = useState<{ query: string | null; at: number }>({ query: null, at: 0 });
@@ -322,14 +326,30 @@ function ThreadComposer({
   const paint = useRef<HTMLDivElement>(null);
 
   const shown = outside ?? problem;
+  const trayed = tray && !card && (
+    <Tray at={tray.at}>
+      {tray.work.kind === "pick" ? (
+        <WorkChip {...tray.work} open={placing} onOpenChange={setPlacing} />
+      ) : (
+        <LockedWorkChip {...tray.work} />
+      )}
+      {tray.space && (
+        <>
+          <SpaceChip at={tray.at} {...tray.space} />
+          <ScopeLineText scope={tray.space.scope} />
+        </>
+      )}
+    </Tray>
+  );
   return (
     <div className="flex shrink-0 flex-col">
       {above && <div className="flex flex-col gap-2 pb-2.5">{above}</div>}
+      {tray?.at === "above" && trayed}
       {card ?? (dragging ? (
         <DropZone />
       ) : (
         <form
-          // 위에 선다(`z-1`) — 새 Thread의 트레이가 입력창 밑에 2 겹쳐 들어간다(F1-Home `.composer{z-index:1}`).
+          // 위에 선다(`z-1`) — 트레이가 상자 밑으로 2 겹쳐 들어간다(F1-Home `.composer{z-index:1}`).
           className={cn(
             "relative z-1 flex flex-col gap-1.5 rounded-prompt bg-surface-composer px-2 pt-3.5 pb-2 shadow-prompt",
             returned && "row-in",
@@ -444,9 +464,11 @@ function ThreadComposer({
             <button type="button" aria-label="파일 첨부" onClick={pick} disabled={busy} className={ROUND_BUTTON}>
               <Plus className="size-3.5" aria-hidden />
             </button>
-            <button type="button" aria-label="Agent 부르기" onClick={callAgent} className={ROUND_BUTTON}>
-              <AtSign className="size-3.5" aria-hidden />
-            </button>
+            {AGENT_BUTTON && (
+              <button type="button" aria-label="Agent 부르기" onClick={callAgent} className={ROUND_BUTTON}>
+                <AtSign className="size-3.5" aria-hidden />
+              </button>
+            )}
             {/* 첫 말을 보내는 중(Screen-Live 단계 1)에는 칩이 옅게 쉰다 — 고른 것은 이미 첫 말과 함께 떠났다. */}
             <span className={cn("flex min-w-0 flex-1 items-center gap-1", busy && "pointer-events-none opacity-50")}>
               <AskChip level={level} onLevel={onLevel} onOpenPolicy={onOpenPolicy} open={asking} onOpenChange={setAsking} />
@@ -466,17 +488,31 @@ function ThreadComposer({
           </div>
         </form>
       ))}
-      {work && !card && (
-        // 트레이(F1-Home `.tray`) — 입력창 밑에 2 겹쳐 들어가고 좌우 14 안으로 들어선 아래 둥근 줄이다. 입력창이 위에 서야 겹친 2를 덮는다.
-        <div data-slot="composer-tray" className="mx-3.5 -mt-0.5 flex items-center gap-1 rounded-b-tray bg-surface-tray px-2 pt-2.5 pb-1.5">
-          <WorkChip {...work} open={placing} onOpenChange={setPlacing} />
-        </div>
-      )}
+      {tray?.at === "below" && trayed}
       {shown && (
         <p role="alert" className="px-3 pt-1.5 text-xs text-fg-secondary">
           {shown}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * 트레이(03 §5 · 시안 v52 `.tray` · `.tray.up`) — 회색 띠(`surface-tray`)가 좌우 14 안으로 들어서 상자에 2 겹쳐 붙는다. 상자 아래(첫 화면)면
+ * 아래만 둥글고 안쪽이 위 10 · 아래 6이며, 상자 위(Thread 화면)면 위만 둥글고 위 6 · 아래 10이다 — 겹친 2는 늘 상자 쪽이고 상자가 덮는다.
+ * 띠 안의 칩 모양은 두 자리에서 같다.
+ */
+function Tray({ at, children }: { at: ComposerTray["at"]; children: ReactNode }) {
+  return (
+    <div
+      data-slot="composer-tray"
+      className={cn(
+        "mx-3.5 flex min-w-0 items-center gap-1 bg-surface-tray px-2",
+        at === "below" ? "-mt-0.5 rounded-b-tray pt-2.5 pb-1.5" : "-mb-0.5 rounded-t-tray pt-1.5 pb-2.5",
+      )}
+    >
+      {children}
     </div>
   );
 }

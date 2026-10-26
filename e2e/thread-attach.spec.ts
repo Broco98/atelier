@@ -56,7 +56,7 @@ test("끌어다 놓은 파일 · 폴더가 입력창에 칩으로 서고 뺄 수
   await 입력칸(page).fill(sent.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: sent.text, attachments: paths, link: { kind: "no-work" }, mode: null, model: null, effort: null },
+    { text: sent.text, attachments: paths, link: { kind: "new-work" }, mode: null, model: null, effort: null, space: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   const 흐름 = page.getByRole("main");

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
-import { dialogStore } from "@/components/ui/confirm-store";
+import { dialogOpen, dialogStore } from "@/components/ui/confirm-store";
 import { threadsQuery, useThreadFeeds, waitingNow } from "@/features/thread/hooks";
 import { jumpTarget } from "@/features/thread/waiting";
 import { workOfPlace } from "@/features/library/library";
@@ -13,6 +13,7 @@ import { isBlankNewThread } from "@/routes/-new-thread-search";
 import { countThreadsForQuit } from "@/features/thread/quit";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
+import ProjectAddDialog from "@/features/projects/ProjectAddDialog";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
 import { useFollowWorktreeChanges } from "@/features/files/follow-worktrees";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
@@ -254,6 +255,10 @@ function AppShell() {
   //
   // ⇧⇧가 딛던 둘이 함께 사라졌다: 직전 ⇧의 시각을 드는 `useRef`와, ⇧+클릭 두 번을 막던
   // mousedown 무장 해제(옛 결정 30). 몸짓이 아니라 화음이라 무장이라는 상태 자체가 없다.
+  //
+  // **앱 확인 창 밖에 따로 선 모달 창(Project 추가 · 제거 같은)도 그 창이다**(`dialogOpen` — 아래 ⌘J · ⌘N과 같은 게이트). 한때
+  // 확인 창 스토어만 봐서, 추가 창 위에 팔레트가 떠 고른 곳으로 화면을 옮겼고 추가 창은 새 화면 위에 남았다(03 티켓 13d). 팔레트
+  // 자신도 같은 창 부품이라, 떠 있는 팔레트 위의 ⌘K는 그대로 아래 「여는 갈래」를 지난다.
   const [searchOpen, setSearchOpen] = useState(false);
   // **여는 길은 이 함수 하나다** — ⌘K(메뉴의 합성 keydown도 이리 온다)와 검색 버튼이 함께 부른다.
   // 여는 **그 순간** 팔레트의 첫 프레임 가드를 켠다(S24): 팔레트가 그려지고 포커스가 들어오기를
@@ -269,13 +274,13 @@ function AppShell() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!searchHotkey(e)) return;
-      if (dialogStore.state !== null) return;
+      if (dialogStore.state !== null || (dialogOpen() && !searchOpen)) return;
       e.preventDefault();
       openSearch();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openSearch]);
+  }, [openSearch, searchOpen]);
 
   // ⌘J는 **다음 내 차례로** 간다(v1 구현 스펙 S28 · v1 티켓 42) — 나를 기다리는 Thread로 기다린 순서대로 건너뛰고, 기다리는 Thread가
   // 없으면 그 전처럼 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23 — 가장 최근에 부르는 상태(기다림 ·
@@ -287,7 +292,8 @@ function AppShell() {
   // **셸에 포커스가 있어도 먹는다.** xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라오고, 메뉴의
   // `View ▸ Next Waiting`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
   //
-  // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다).
+  // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다) — 앱 확인 창
+  // 밖에 따로 선 모달 창(Project 제거 · 추가 같은)도 그 창이다(`dialogOpen`).
   // 팔레트는 제 입력칸에 포커스를 빌렸다가 닫힐 때 돌려주는데(`SearchPalette`), 그 사이에 셸로 가면 두 자리가 포커스를 다툰다 —
   // 셸에 준 포커스를 팔레트가 닫히며 옛 자리로 되돌린다. Esc로 닫고 누르면 된다.
   //
@@ -302,7 +308,7 @@ function AppShell() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!recallHotkey(e)) return;
-      if (dialogStore.state !== null || searchOpen) return;
+      if (dialogOpen() || searchOpen) return;
       e.preventDefault();
       const target = recalledShell();
       const order = waitingNow(queryClient).map((one) => one.thread.id);
@@ -340,7 +346,7 @@ function AppShell() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!pressed(e, "newThread")) return;
-      if (dialogStore.state !== null || searchOpen) return;
+      if (dialogOpen() || searchOpen) return;
       e.preventDefault();
       openNewThread();
     };
@@ -360,9 +366,10 @@ function AppShell() {
       }
       className="relative flex h-screen flex-col bg-surface-shell text-fg"
     >
-      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」) — 크롬(`surface-shell`) 맨 위 머리 줄(44)에 신호등 · 셸 컨트롤과
-          지금 화면의 자리가 서고, 그 아래 흰 판 하나에 사이드바와 화면 본문이 든다. 화면은 머리 줄에 놓을 것(이름 · 할 일 — `ScreenHead`)과
-          판 안에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도, 공용 틀(`Frame`)의 화면들도 같다.
+      {/* **틀은 여기 하나다**(02 구현 스펙 §3 · 03 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」) — 크롬(`surface-shell`) 맨 위 머리 줄(44)에
+          신호등 · 셸 컨트롤과 지금 화면의 자리가 서고, 그 아래 크롬 위에 사이드바가, 그 오른쪽 흰 판 하나에 화면 본문이 든다. 화면은 머리 줄에
+          놓을 것(이름 · 할 일 — `ScreenHead`)과 판 안에 놓을 것(본문)만 건넨다 — Thread 화면들(`PlainFrame`)도, 공용 틀(`Frame`)의 화면들도
+          같다.
 
           검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을 둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로
           연 팔레트를 다른 쪽이 모른다. 이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 머리 줄을 덮어 애초에 눌리지
@@ -377,12 +384,12 @@ function AppShell() {
           onOpenSearch={openSearch}
         />
       </ShellHeadRow>
-      {/* 흰 판 — 크롬 왼 · 오 · 아래 끝에서 5 띄우고(눈금의 사분 단 1.25) 0.5 `border-panel` · 둥글기 12 · 위 그림자(`shadow-panel`)다. 안쪽
-          왼쪽에 사이드바(제 바탕 · 오른쪽 0.5 선 그대로), 그 오른쪽에 화면 본문이 든다. 모서리 밖으로 사이드바 바탕이 새지 않게 잘라 낸다. */}
-      <div
-        data-slot="panel"
-        className="mx-1.25 mb-1.25 flex min-h-0 flex-1 overflow-hidden rounded-xl border-[0.5px] border-border-panel bg-surface shadow-panel"
-      >
+      {/* 머리 줄 아래 가로 줄 하나 — **사이드바는 판 밖 크롬 위에 서고**(바탕 · 오른쪽 선이 없다), 머리 줄 왼쪽 칸(신호등 · 셸 컨트롤)과 한
+          기둥이다(03 구현 스펙 §3 · 02 결정 「시안 — 사이드바는 크롬 위에」). 흰 판은 그 오른쪽에서 본문만 담는다. 크롬 왼 · 오 끝에서 5(눈금의
+          사분 단 1.25 — 시안 `.body`의 `0 5px 5px`)를 이 줄이 띄워, 사이드바는 창 왼쪽 끝 + 5에서 서고 판은 사이드바 오른쪽 끝에서 선다 —
+          접으면(폭 0) 판이 왼쪽 띄움 5까지 넓어진다. 아래 5는 판의 것이다 — 사이드바는 창 아래 끝까지 서서 사람 줄이 창 아래 끝에서 8(안쪽
+          열의 아래 8)에 선다. 머리 줄의 이름 자리(`--titlebar-inset-sidebar` = 5 + 0.5 + 사이드바 폭)는 그대로 판 안 왼쪽 끝을 가리킨다. */}
+      <div className="flex min-h-0 flex-1 px-1.25">
         <Sidebar
           open={sidebarOpen}
           size={sidebarSize}
@@ -425,9 +432,19 @@ function AppShell() {
             void navigate(appReturnTarget());
           }}
         />
-        <ShellHeadSlot.Provider value={headSlot}>
-          <Outlet />
-        </ShellHeadSlot.Provider>
+        {/* 흰 판 — 크롬 아래 끝에서 5 띄우고(왼 · 오는 위 줄이 띄운다) 0.5 `border-panel` · 둥글기 12 · 위 그림자(`shadow-panel`)다. 안에는
+            화면 본문만 든다. 모서리 밖으로 본문 면이 새지 않게 잘라 낸다 — 그래서 넘침 상자라 자동 최소 폭이 0이므로, 본문 뿌리가 드는 바닥(탭
+            줄 — `panel-layout`의 `TAB_ROW_COLUMN`)을 사이드바에게 알리는 것은 판의 `min-w-min`이다. 사이드바가 판 안에 들던 때 그 바닥은 본문
+            열이 사이드바와 한 줄에서 곧장 들었다 — 이제 판이 그 줄의 형제다. 본문의 글 폭은 바닥에 들지 않는다(`PlainFrame`의 본문 · 공용 틀의
+            본문 열이 격리한다). */}
+        <div
+          data-slot="panel"
+          className="mb-1.25 flex min-h-0 min-w-min flex-1 overflow-hidden rounded-xl border-[0.5px] border-border-panel bg-surface shadow-panel"
+        >
+          <ShellHeadSlot.Provider value={headSlot}>
+            <Outlet />
+          </ShellHeadSlot.Provider>
+        </div>
       </div>
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
           안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야
@@ -443,6 +460,9 @@ function AppShell() {
       {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
           찾는다. 쿼리 구독은 제 파일에 있다. */}
       <ShellOwners />
+      {/* Project 추가 창도 앱에 하나다(03 구현 스펙 §16) — Projects · Space 상세 · 범위 줄이 모두 `addProject`로 연다. 포털이라 뜰 때
+          `body` 끝에 붙는다 — 이 창 위에서 뜬 확인 창이 늘 위다(위 검색과 같은 규칙). */}
+      <ProjectAddDialog />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />

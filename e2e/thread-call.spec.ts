@@ -12,6 +12,11 @@ import type { Participant, RecordLine, ThreadView } from "@/features/thread/type
 // 줄은 L1이 진짜 claude 2.1.309의 녹음(v1 티켓 20)을 되감아 축복한 「Host가 리뷰어를 불러 결과를 받은」 기록(`thread-call.jsonl`)을
 // 그대로 쏜다 — Host는 `ToolSearch`로 `call_agent`를 들이고 부른다. 리뷰어가 들어와 `thread.json`을 읽고 제목을 한 줄로 답하면 Host가 그
 // 답을 옮긴다. 맡긴 말 · 받은 말 · seq는 모두 그 기록에서 읽는다(스토리 137).
+//
+// 시안 창(1440 × 900)에서 연다. Work 없는 Thread에도 요약 카드가 열려 있고 그 소스 칸이 읽는 범위의 Project를 세운다(03 §7 — Space 없음이면
+// 등록된 전부). 기본 창(1280)에서는 열이 카드를 다 비켜나지 못해 카드가 열의 오른쪽 끝을 덮는다(02 §7 — 열은 줄지 않는다, `thread-screen`이
+// 잰다) — 호출 줄 끝의 「Session 열기」를 사람이 누를 수 있는 창에서 잰다.
+test.use({ viewport: { width: 1440, height: 900 } });
 
 const calling = record("thread-call");
 const [first] = sentPayloads(calling);

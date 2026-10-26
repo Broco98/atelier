@@ -26,6 +26,11 @@ pub fn projects_dir() -> PathBuf {
     projects_in(&data_root())
 }
 
+/// Space 파일들의 자리(03 구현 스펙 §8). 앱의 감시자가 이 폴더를 본다.
+pub fn spaces_dir() -> PathBuf {
+    spaces_in(&data_root())
+}
+
 /// 진행 중인 work의 루트.
 pub fn works_dir() -> PathBuf {
     works_in(&data_root())
@@ -58,6 +63,18 @@ pub fn threads_dir() -> PathBuf {
 /// 제안」이 부른다(v1 티켓 30).
 pub fn projects_in(root: &Path) -> PathBuf {
     root.join("projects")
+}
+
+/// Space 파일들의 루트를 **받은 데이터 루트에서** 짓는다 — Space 하나가 `<slug>.md` 하나다(03 구현 스펙 §8). Space 파일이 적은
+/// Project를 등록부와 맞대야 해서 Space를 읽는 함수들은 데이터 루트를 받고, 두 폴더를 여기와 `projects_in`에서 짓는다.
+pub fn spaces_in(root: &Path) -> PathBuf {
+    root.join("spaces")
+}
+
+/// 지운 파일이 머무는 자리 — 그 폴더(`projects/` · `spaces/`) 아래 `.deleted/`(03 구현 스펙 §9 · §15 · S10). 점 폴더라 목록 · 감시 ·
+/// 새 slug 짓기가 보지 않는다. 지운 Project · Space가 같은 자리 규칙을 쓴다.
+pub(crate) fn deleted_in(folder: &Path) -> PathBuf {
+    folder.join(".deleted")
 }
 
 /// 진행 중인 work의 루트를 **받은 데이터 루트에서** 짓는다. 데이터 루트를 인자로 받는 대화 호스트
@@ -141,5 +158,6 @@ mod tests {
         assert_eq!(works_dir(), data_root().join("works"));
         assert_eq!(archive_dir(), data_root().join("archive"));
         assert_eq!(projects_dir(), data_root().join("projects"));
+        assert_eq!(spaces_dir(), data_root().join("spaces"));
     }
 }

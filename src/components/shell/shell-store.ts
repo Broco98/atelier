@@ -15,10 +15,10 @@ const SIDEBAR_OPEN_KEY = "sidebar-open";
 //
 // 위치 기억은 더 이상 선택의 정본이 아니다 — 정본은 URL이다. 여기 남은 것은
 // "이번 세션에서 그 탭에서 마지막으로 보던 항목"이라는 기억이고, 항목이 지정되지 않은
-// 주소(/works, /projects, /archive)를 어디로 정규화할지 정할 때만 읽힌다.
+// 주소(/works, /archive)를 어디로 정규화할지 정할 때만 읽힌다. `/projects`는 목록 화면이라 정규화하지
+// 않는다(03 구현 스펙 §16) — 그래서 Projects의 기억은 없다.
 export interface ShellState {
   sidebarOpen: boolean;
-  projectSlug: string | null;
   workSlug: string | null;
   archiveSlug: string | null;
   /**
@@ -36,7 +36,6 @@ export interface ShellState {
 
 export const shellStore = new Store<ShellState>({
   sidebarOpen: readStored(SIDEBAR_OPEN_KEY) !== "0",
-  projectSlug: null,
   workSlug: null,
   archiveSlug: null,
   lastPlace: null,
@@ -98,12 +97,6 @@ export function appReturnTarget(): { to: string; search?: WorkSearch } {
 }
 
 // 화면에 실제로 띄운 항목을 기억한다. 목록이 갱신될 때마다 불리므로 값이 같으면 그대로 둔다.
-export function selectProject(slug: string | null) {
-  shellStore.setState((state) =>
-    state.projectSlug === slug ? state : { ...state, projectSlug: slug },
-  );
-}
-
 export function selectWork(slug: string | null) {
   shellStore.setState((state) => (state.workSlug === slug ? state : { ...state, workSlug: slug }));
 }

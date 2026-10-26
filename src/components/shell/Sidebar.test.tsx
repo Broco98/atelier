@@ -232,6 +232,17 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
     expect(read("AppShell.tsx")).toContain('"--sidebar-min": `${sidebarSize.min}px`');
     expect(sidebar).not.toContain("useResizableWidth(");
   });
+
+  // 03 구현 스펙 §3 · 스토리 3 — **사이드바는 판 밖 크롬 위에 선다**(`AppShell`). 바탕을 칠하거나 오른쪽에 선을 두면 크롬과 사이드바가 갈려
+  // 보이고, 머리 줄 왼쪽 칸과 한 기둥으로 읽히지 않는다. 경계는 옆 흰 판의 테두리가 말한다. 바깥 상자의 문자열 리터럴만 센다(주석은 옛 바탕을 적는다).
+  it("바깥 상자는 바탕도 오른쪽 선도 칠하지 않는다", () => {
+    const sidebar = read("Sidebar.tsx");
+    const at = sidebar.indexOf("function asideClass(");
+    if (at < 0) throw new Error("asideClass를 못 찾았다");
+    const classes = [...sidebar.slice(at, sidebar.indexOf("\n}\n", at)).matchAll(/"([^"\n]*)"/g)].map((m) => m[1]).join(" ");
+    expect(classes).not.toMatch(/(?:^|\s)bg-/);
+    expect(classes).not.toMatch(/(?:^|\s)after:/);
+  });
 });
 
 // 사이드바 최상단의 짜임 — 자리는 렌더가 아니라 소스에서만 보인다.

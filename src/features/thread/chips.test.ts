@@ -85,7 +85,6 @@ describe("「/」 명령(v1 티켓 23)", () => {
     ];
     expect(slashCommands(runtime).map((command) => [command.name, command.description])).toEqual([
       ["new", "새 Thread"],
-      ["agent", "Agent 부르기"],
       ["plan", "계획만 세우고 멈추기"],
       ["model", "모델과 생각 깊이"],
       ["policy", "언제 물어볼지"],
@@ -97,7 +96,6 @@ describe("「/」 명령(v1 티켓 23)", () => {
     expect(slashCommands([], { work: true }).map((command) => [command.name, command.description])).toEqual([
       ["new", "새 Thread"],
       ["work", "Work 만들기 · 붙이기"],
-      ["agent", "Agent 부르기"],
       ["plan", "계획만 세우고 멈추기"],
       ["model", "모델과 생각 깊이"],
       ["policy", "언제 물어볼지"],
@@ -105,6 +103,14 @@ describe("「/」 명령(v1 티켓 23)", () => {
     expect(slashCommands([{ name: "work", description: "Runtime의 work", aliases: [] }]).map((command) => command.name)).not.toContain(
       "work",
     );
+  });
+
+  // 03 구현 스펙 §6 · S5 — Agent(여럿과 함께 채팅)를 보류하는 동안 `/agent`는 목록에 서지 않는다. 글로 친 `@handle`과 그 메뉴는 남는다.
+  // 같은 이름의 Runtime 명령도 가린 채 둔다 — 보류한 기능이 다른 일을 하는 같은 글로 새지 않게.
+  it("`/agent`는 서지 않는다 — Work 칩을 고를 수 있어도, 같은 이름의 Runtime 명령이 와도", () => {
+    const runtime = [{ name: "agent", description: "Runtime의 agent", aliases: [] }];
+    expect(slashCommands(runtime).map((command) => command.name)).not.toContain("agent");
+    expect(slashCommands(runtime, { work: true }).map((command) => command.name)).not.toContain("agent");
   });
 });
 

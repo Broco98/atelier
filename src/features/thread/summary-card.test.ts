@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ReadingScope, ScopeWhy } from "@/features/spaces/scope";
 import type { ProjectChanges, ProjectPr, SpecTree } from "@/features/works/types";
 import type { DocWriting } from "./types";
 import {
@@ -10,8 +11,8 @@ import {
   freshFiles,
   prRows,
   projectRows,
-  readingProjects,
   readSummaryOpen,
+  sourceProjects,
   summarySections,
   writeSummaryOpen,
   writerLine,
@@ -292,33 +293,35 @@ describe("막 쓴 문서(소스의 문서 줄이 잠깐 빛난다)", () => {
   });
 });
 
-describe("Work 없는 Thread의 소스(S20)", () => {
-  const project = (slug: string, path: string) => ({
-    slug,
-    name: slug,
-    path,
-    baseBranch: "main",
-    createdAt: "2026-10-01T00:00:00Z",
-    description: "",
-    git: null,
-    missing: false,
+describe("소스의 Project — 읽는 범위(03 §7)", () => {
+  const scope = (...rows: [string, ScopeWhy][]): Pick<ReadingScope, "projects"> => ({
+    projects: rows.map(([slug, why]) => ({ slug, name: slug, why })),
   });
-  const registered = [project("web-app", "~/code/web-app"), project("api-server", "/Users/me/code/api-server/"), project("cli", "~/code/cli")];
+  const work = (worktrees: string[]) => ({
+    projects: ["api-server", "web-app"],
+    worktrees: worktrees.map((project) => ({ project, path: `/w/trees/${project}`, exists: true, dirty: false })),
+  });
 
-  it("Session이 읽기로 함께 여는 폴더가 등록된 Project면 소스다 — 등록 차례이고 모두 「읽기만」이다", () => {
-    const participants = [
-      { additionalDirectories: ["/Users/me/code/api-server", "/Users/me/code/web-app"] },
-      { additionalDirectories: ["/Users/me/code/web-app/"] },
-    ];
-    expect(readingProjects(participants, registered, "/Users/me")).toEqual([
+  it("Work 없는 Thread는 읽는 범위의 Project가 범위의 차례로 서고 모두 「읽기만」이다", () => {
+    expect(sourceProjects(scope(["web-app", "space"], ["api-server", "space"], ["cli", "readOnly"]), null)).toEqual([
       { project: "web-app", editing: false },
       { project: "api-server", editing: false },
+      { project: "cli", editing: false },
     ]);
   });
 
-  it("Project가 아닌 폴더(spec 폴더 · Thread 폴더)는 소스가 아니고, Session이 아직 없으면 소스도 없다", () => {
-    expect(readingProjects([{ additionalDirectories: ["/Users/me/.atelier/works/refund/spec"] }], registered, "/Users/me")).toEqual([]);
-    expect(readingProjects([{ additionalDirectories: [] }], registered, "/Users/me")).toEqual([]);
+  it("Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저 서고, 그 뒤에 범위의 Project가 「읽기만」으로 선다", () => {
+    // 범위는 worktree에서 일하는 Project를 이미 뺐다(§7 규칙 4) — worktree가 없는 Work의 Project(web-app)는 범위가 「Work」로 싣는다.
+    expect(sourceProjects(scope(["backoffice", "all"], ["web-app", "work"]), work(["api-server"]))).toEqual([
+      { project: "api-server", editing: true },
+      { project: "backoffice", editing: false },
+      { project: "web-app", editing: false },
+    ]);
+  });
+
+  it("범위를 아직 읽지 못했으면 worktree가 선 Project만 서고, Work 없는 Thread는 소스가 없다", () => {
+    expect(sourceProjects(undefined, work(["api-server"]))).toEqual([{ project: "api-server", editing: true }]);
+    expect(sourceProjects(undefined, null)).toEqual([]);
   });
 });
 

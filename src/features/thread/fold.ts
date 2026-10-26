@@ -1,9 +1,22 @@
 import { askLevelOf } from "./chips";
 import type { Avatar } from "./faces";
 import { isObject, nonEmpty, text, type Json } from "./json";
+import { readingText, registeredText } from "@/features/spaces/scope";
 import type { Quote } from "@/features/works/QuotePick";
 import { prLineOf, type PrLine } from "./pr";
-import type { Attachment, QuestionAnswer, RecordLine } from "./types";
+import {
+  cardOfChoice,
+  cardOfToolName,
+  isToolCard,
+  isToolCardAsk,
+  isToolChoice,
+  toolCardRow,
+  type ToolCard,
+  type ToolCardAsk,
+  type ToolChoiceEntry,
+} from "./tool-cards";
+import type { Attachment, ProjectAddAnswer, QuestionAnswer, RecordLine } from "./types";
+import { particle } from "@/lib/particle";
 
 // Thread 접기(v1 티켓 05 · 구현 스펙 §14) — Thread 기록 줄을 받아 화면 모델(턴 · 말한 이 · 메시지 · 생각 · 도구 줄 · 시스템 줄 ·
 // 도는가)로 접는 **순수 함수**다. Thread 화면은 Thread를 이것 하나로 그린다: 처음 그릴 때 읽은 기록도, 흐르는 기록 줄 이벤트도 같은
@@ -67,9 +80,9 @@ export type Entry =
   | PlanEntry
   | ChecklistEntry
   | DecisionEntry
-  | WorkChoiceEntry
   | QuestionEntry
-  | ProjectChoiceEntry;
+  | ToolChoiceEntry
+  | ResultEntry;
 
 /**
  * Work 만들기 카드에서 사람이 고른 것(v1 티켓 30) — 「Work 만들기 · api-server · fix/refund-api」 또는 「Work 없이 계속함」. 그 제안을 낸
@@ -122,6 +135,39 @@ export interface ProjectChoiceEntry {
   choice: "attach" | "read" | "decline";
   /** 고르게 한 Project의 slug. */
   project: string;
+  /** 이 결정의 카드를 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
+  toolCallId: string | null;
+}
+
+/**
+ * Space 질문 카드에서 사람이 고른 것(03 티켓 08 · §11) — 질문 카드처럼 「✓ 어느 Space에서 할까요? · 결제 서비스」 한 줄로 접힌다(`space-card.ts`의
+ * `spaceChoiceCard`). 그 카드를 낸 Thread 도구(「Space 붙이기」) 줄의 자리를 대신한다. 고른 Space는 Space 줄을 따로 남기지 않는다(§9).
+ */
+export interface SpaceChoiceEntry {
+  kind: "space-choice";
+  key: string;
+  /** 그 Space · Space 없이 · 나중에(esc). */
+  choice: "space" | "none" | "later";
+  /** 고른 Space의 이름 — 그 Space를 골랐을 때만. */
+  name: string | null;
+  /** 이 결정의 카드를 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
+  toolCallId: string | null;
+}
+
+/**
+ * Project 추가 카드에서 사람이 고른 것(03 티켓 12 · §12) — 질문 카드처럼 「✓ notes는 git 저장소가 아니에요. 어떻게 할까요? · git init 하고 추가」
+ * 한 줄로 접힌다(`project-add-card.ts`의 `projectAddChoiceCard`). 그 카드를 낸 Thread 도구(「Project 추가」) 줄의 자리를 대신한다. 추가했으면
+ * 바로 뒤에 결과 카드가 따로 선다.
+ */
+export interface ProjectAddChoiceEntry {
+  kind: "project-add-choice";
+  key: string;
+  /** git init 하고 추가 · 뿌리 폴더로 추가 · 그대로 추가 · 추가하지 않기(esc). */
+  choice: ProjectAddAnswer;
+  /** 물은 카드의 갈래와 폴더 — 접힌 줄이 물음을 다시 짓는다. */
+  look: PendingProjectAdd["look"];
+  folder: string;
+  root: string | null;
   /** 이 결정의 카드를 낸 Thread 도구 줄의 id — 아직 짝을 찾지 못했으면 null이다. */
   toolCallId: string | null;
 }
@@ -276,7 +322,7 @@ export interface Notice {
  */
 export interface SystemLine {
   key: string;
-  kind: "title" | "joined" | "left" | "library" | "mode" | "work" | "worktree";
+  kind: "title" | "joined" | "left" | "library" | "mode" | "work" | "worktree" | "space";
   /** 들고 난 참여자 · Library에 저장한 Agent의 handle — 그 얼굴이 이름 앞에 선다. Thread의 일(이름 바꾸기 · 정도 바꿈)은 `null`이다. */
   handle: string | null;
   /**
@@ -307,6 +353,27 @@ export interface PrCardEntry {
   latest: boolean;
   turnsBefore: number;
 }
+
+/**
+ * 결과 카드 하나(03 티켓 12 · 구현 스펙 §12) — Agent가 대화로 한 설정(Project 추가 · 고침, Space 만듦 · 고침)이 남긴 `setting` 줄이다. 그 설정을 한
+ * 턴 안, 그 도구 줄 뒤에 서고 턴이 접혀도 남는다(`keptFolded` — 캔버스 F4-ThreadNoWork는 「6초 동안 작업」 아래, 답 앞이다). 두 줄의 글은 엔진이
+ * 그때 지어 줄에 실었다 — 화면은 다시 짓지 않는다. 「열기」가 갈 곳은 `result-card.ts`가 고른다.
+ */
+export interface ResultEntry {
+  kind: "result";
+  key: string;
+  action: ResultAction;
+  /** 대상 — Project · Space의 slug와 그때의 이름. */
+  slug: string;
+  name: string;
+  title: string;
+  detail: string;
+}
+
+/** 결과 카드의 갈래 — 무엇을 했나. */
+export type ResultAction = "project-added" | "project-edited" | "space-created" | "space-edited";
+
+const RESULT_ACTIONS: readonly ResultAction[] = ["project-added", "project-edited", "space-created", "space-edited"];
 
 /** 턴 밖의 호출 줄 하나 — 이 줄보다 먼저 선 턴의 수(`turnsBefore`) 뒤에 선다. */
 export interface LooseCall {
@@ -380,6 +447,11 @@ export interface PendingWork {
   /** Host가 고른 브랜치 — Project가 없는 제안이면 null이다. */
   branch: string | null;
   projects: WorkProjectChoice[];
+  /**
+   * 받아들이면 새 Work로 옮겨 갈 이 Thread의 Space(03 §9 · S8) — 카드에 「◇ 결제 서비스 · Space」 한 줄로 선다. 카드에서 바꾸지 않는다. Space가
+   * 없으면 `null`이다.
+   */
+  space: { slug: string; name: string } | null;
 }
 
 /**
@@ -402,12 +474,57 @@ export interface PendingProject {
   workProjects: string[];
 }
 
-/** 입력창 자리에 서는 물음 하나 — 권한 요청이거나 Work 만들기 카드 · Agent의 질문 · Work 밖 Project 카드다(`card`로 가른다). */
-export type PendingAsk = PendingPermission | PendingWork | PendingQuestion | PendingProject;
+/** Space 질문 카드의 후보 하나 — slug · 이름 · 담은 Project의 이름(적힌 차례). */
+export interface SpaceOption {
+  slug: string;
+  name: string;
+  projects: string[];
+}
 
-/** `question` 줄로 선 카드(Work 만들기 · Agent의 질문 · Work 밖 Project)인가 — 아니면 권한 요청이다. */
-export function isCardAsk(ask: Pick<PendingAsk, "card">): ask is PendingWork | PendingQuestion | PendingProject {
-  return ask.card === "work" || ask.card === "question" || ask.card === "project";
+/**
+ * 답하지 않은 Space 질문 카드 하나(기록의 `question` `asked`, `card: space` — 03 티켓 08 · §11 · S12). Host가 다루는 Project로 Space를 붙이려
+ * 하고, Atelier가 사람에게 묻기로 했다(「알아서」가 아니다 · 이미 붙어 있다 · 후보가 여럿).
+ */
+export interface PendingSpace {
+  card: "space";
+  /** 카드의 답 명령이 싣는 요청 id. */
+  requestId: string;
+  /** 물은 참여자의 handle. */
+  who: string;
+  /** Host가 넘긴 Space의 slug — 「추천」이 선다. `null`이면 「Space 없이」가 추천이다. */
+  recommended: string | null;
+  /** 추천이 맨 앞, 그 뒤 다른 후보. */
+  spaces: SpaceOption[];
+  /** 등록된 Project 수 — 「Space 없이 · 등록된 Project N개를 모두 읽어요」. */
+  registered: number;
+}
+
+/**
+ * 답하지 않은 Project 추가 카드 하나(기록의 `question` `asked`, `card: project-add` — 03 티켓 12 · §12). Host가 「Project 추가」 Thread 도구로
+ * 등록하려는 폴더가 git 저장소가 아니거나(`notGit`) 저장소 안의 하위 폴더다(`subfolder` — 그 뿌리 `root`). 화면 추가 창과 같은 물음이다.
+ */
+export interface PendingProjectAdd {
+  card: "project-add";
+  requestId: string;
+  who: string;
+  look: "notGit" | "subfolder";
+  /** 물은 폴더(`~`로 줄인 꼴)와 그 이름 — 「notes는 git 저장소가 아니에요」. */
+  path: string;
+  folder: string;
+  /** 하위 폴더면 그 저장소의 뿌리 — git이 아닌 폴더면 null이다. */
+  root: string | null;
+}
+
+/** `question` 줄로 선 카드 — 권한 요청이 아닌 물음. Agent의 질문과 Thread 도구 카드(`tool-cards.ts`의 표)다. */
+type CardAsk = PendingQuestion | ToolCardAsk;
+
+/** 입력창 자리에 서는 물음 하나 — 권한 요청이거나 Work 만들기 카드 · Agent의 질문 · Work 밖 Project 카드 · Space 질문 카드 · Project 추가
+ * 카드다(`card`로 가른다). */
+export type PendingAsk = PendingPermission | CardAsk;
+
+/** `question` 줄로 선 카드(Work 만들기 · Agent의 질문 · Work 밖 Project · Space 질문 · Project 추가)인가 — 아니면 권한 요청이다. */
+export function isCardAsk(ask: Pick<PendingAsk, "card">): ask is CardAsk {
+  return ask.card === "question" || isToolCard(ask.card);
 }
 
 /** 권한 요청의 선택지 하나 — Runtime이 준 그대로(ACP `PermissionOption`). */
@@ -462,15 +579,6 @@ const HOST = "host";
 const CALL_TOOL = "mcp__atelier-thread__call_agent";
 
 /**
- * 사람에게 카드로 묻는 Thread 도구의 이름 — 카드 종류(`question` 줄의 `card`)마다 하나다. 답한 뒤 이 도구 줄은 결정 줄이 대신한다. Work
- * 만들기 제안(v1 티켓 30) · Project 고치기 시작(v1 티켓 32 — Work에 없는 Project면 묻는다).
- */
-const CARD_TOOLS: Readonly<Record<"work" | "project", string>> = {
-  work: "mcp__atelier-thread__propose_work",
-  project: "mcp__atelier-thread__start_editing",
-};
-
-/**
  * 미뤄 실린 도구(Thread 도구 · 사용자 MCP)를 들이는 Claude Code 도구(v1 티켓 20) — 일이 아니라 도구 싣기라 작업 로그에 세우지 않는다.
  * 진짜 claude 2.1.309는 Thread 도구를 부르기 전에 늘 이것(`select:mcp__atelier-thread__…`)을 먼저 부른다.
  */
@@ -501,7 +609,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   const allowedTools = new Map<string, string>();
   // 답하지 않은 물음 — 온 차례다(`askKey`, v1 티켓 25). 닫히면 지금 묶음의 닫힌 수가 오르고, 다 닫히면 묶음이 끝난다. Work 만들기
   // 카드(v1 티켓 30 · 32) · 질문(v1 티켓 26)도 같은 차례에 선다.
-  const pending = new Map<string, Omit<PendingPermission, "tool"> | PendingWork | PendingQuestion | PendingProject>();
+  const pending = new Map<string, Omit<PendingPermission, "tool"> | CardAsk>();
   // 질문(`askKey`) → 그 질문 줄, 그리고 질문 줄이 대신한 도구 줄 id들.
   const questions = new Map<string, QuestionEntry>();
   const questionTools = new Set<string>();
@@ -719,8 +827,10 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
               ([key, one]) => one.card === asking && one.who === (turn.who ?? HOST) && proposedBy.get(key) === null,
             );
             if (waiting) proposedBy.set(waiting[0], tool.toolCallId);
-            const choice = turn.entries.find((entry) => choiceCard(entry) === asking && "toolCallId" in entry && entry.toolCallId === null);
-            if (!waiting && choice && (choice.kind === "work-choice" || choice.kind === "project-choice")) {
+            const choice = turn.entries.find(
+              (entry): entry is ToolChoiceEntry => isToolChoice(entry) && cardOfChoice(entry) === asking && entry.toolCallId === null,
+            );
+            if (!waiting && choice) {
               choice.toolCallId = tool.toolCallId;
               absorbed.add(tool.toolCallId);
               break;
@@ -854,11 +964,12 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
           }
           break;
         }
-        // Thread 도구가 세운 카드 — 제안 · 답 · 거둠. Work 만들기(v1 티켓 30)와 Work 밖 Project(v1 티켓 32)가 같은 길이다.
-        const card = payload.card === "work" || payload.card === "project" ? payload.card : null;
+        // Thread 도구가 세운 카드 — 제안 · 답 · 거둠. Work 만들기(v1 티켓 30) · Work 밖 Project(v1 티켓 32) · Space 질문(03 티켓 08) · Project
+        // 추가(03 티켓 12)가 같은 길이다.
+        const card = isToolCard(payload.card) ? payload.card : null;
         if (!card) break;
         if (payload.state === "asked") {
-          pending.set(key, card === "work" ? proposalOf(requestId, who, payload) : outsideOf(requestId, who, payload));
+          pending.set(key, toolCardRow(card).ask(requestId, who, payload));
           const turn = openFor(who);
           const tool = [...(turn?.entries ?? [])]
             .reverse()
@@ -871,22 +982,9 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         }
         const asked = pending.get(key);
         dropAsk(key);
-        if (payload.state !== "answered" || asked?.card !== card) break;
+        if (payload.state !== "answered" || asked === undefined || !isToolCardAsk(asked) || asked.card !== card) break;
         const toolCallId = proposedBy.get(key) ?? null;
-        const created = payload.choice === "create";
-        const picked = payload.choice === "attach" || payload.choice === "read" ? payload.choice : "decline";
-        const choice: WorkChoiceEntry | ProjectChoiceEntry =
-          card === "work"
-            ? {
-                kind: "work-choice",
-                key: `w${line.seq}`,
-                created,
-                projects:
-                  created && Array.isArray(payload.projects) ? payload.projects.filter((one): one is string => typeof one === "string") : [],
-                branch: created ? text(payload.branch) : null,
-                toolCallId,
-              }
-            : { kind: "project-choice", key: `w${line.seq}`, choice: picked, project: text(payload.project) ?? "", toolCallId };
+        const choice = toolCardRow(asked.card).answer(asked, payload, { key: `w${line.seq}`, toolCallId });
         const home = toolCallId ? toolHome(turns, toolCallId) : null;
         if (home && toolCallId) {
           home.turn.entries.splice(home.turn.entries.indexOf(home.tool), 1, choice);
@@ -1020,6 +1118,55 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
         say(line.seq, "library", handle, "Library에 ", name, `${particle(name, "을", "를")} 저장함`, avatarOf(payload.avatar));
         break;
       }
+      // 사람이 Space를 바꿈 · 뺌(03 티켓 05 · §9) · 지움 · 되돌림(07) — 「Space를 사내 도구로 바꿨어요 — 다음 차례부터 api-server · backoffice를 읽어요」. 범위는
+      // 그때 엔진이 센 것이 줄에 실려 온다(기록은 덧붙이기만 해 지금 다시 세면 그때와 다르다). Work의 Space가 바뀌면 그 Work의 Thread마다 선다.
+      case "space": {
+        // worktree에서 일하는 Project(`worked` — 엔진이 있을 때만 싣는다)가 먼저다 — 범위 줄과 같은 이름들(03 코드 리뷰 P3).
+        const projects = [payload.worked, payload.projects].flatMap((names) =>
+          Array.isArray(names) ? names.filter((one): one is string => typeof one === "string") : [],
+        );
+        const name = nonEmpty(payload.name);
+        if (payload.change === "changed" && name) {
+          say(line.seq, "space", null, "Space를 ", name, `${particle(name, "으로", "로")} 바꿨어요 — 다음 차례부터 ${readingText(projects)}`);
+        }
+        // Host가 묻지 않고 붙임(03 티켓 08 — 「알아서」) — 「결제 서비스 Space에 넣었어요 — web-app · api-server를 읽어요」.
+        if (payload.change === "attached" && name) {
+          say(line.seq, "space", null, "", name, ` Space에 넣었어요 — ${readingText(projects)}`);
+        }
+        if (payload.change === "removed") {
+          const registered = typeof payload.registered === "number" ? payload.registered : 0;
+          say(line.seq, "space", null, `Space를 뺐어요 — 다음 차례부터 ${registeredText(registered)}`, "", "");
+        }
+        // 지움 · 되돌림(03 티켓 07) — 이은 Space가 지워진 대화는 굵은 것 없이 한 줄이다(시안 F4-KitChat 「Space가 지워짐」). 손으로 지운
+        // 파일은 이름을 읽을 수 없어 엔진이 slug를 싣는다.
+        if (payload.change === "deleted" && name) {
+          say(line.seq, "space", null, `${name} Space가 지워져 Space 없이 이어가요 — 대화는 그대로예요`, "", "");
+        }
+        if (payload.change === "restored" && name) {
+          say(line.seq, "space", null, "", name, ` Space를 되돌렸어요 — ${readingText(projects, { again: true })}`);
+        }
+        break;
+      }
+      // Agent가 대화로 한 설정(03 티켓 12) — 결과 카드 「Project를 추가했어요 — landing-page · 열기」. 글은 엔진이 지어 실은 그대로다. 그 설정을 한
+      // 이의 턴 안, 그 도구 줄 뒤에 선다.
+      case "setting": {
+        const action = RESULT_ACTIONS.find((one) => one === payload.action);
+        const slug = nonEmpty(payload.slug);
+        const title = nonEmpty(payload.title);
+        if (!action || !slug || !title) break;
+        const entry: ResultEntry = {
+          kind: "result",
+          key: `r${line.seq}`,
+          action,
+          slug,
+          name: nonEmpty(payload.name) ?? slug,
+          title,
+          detail: text(payload.detail) ?? "",
+        };
+        const who = line.who ?? HOST;
+        (openFor(who) ?? start(`o${line.seq}`, null, line.at, who)).entries.push(entry);
+        break;
+      }
       default:
         break;
     }
@@ -1034,7 +1181,7 @@ export function foldThread(lines: readonly RecordLine[], goneThrough: number | n
   for (const turn of turns) if (turn.who === HOST) turn.namesWho = false;
   const answering = turns.filter((turn) => [...open.values()].includes(turn)).map((turn) => turn.who ?? HOST);
   const asks = [...pending.values()].map((one): PendingAsk => {
-    if (one.card === "work" || one.card === "question" || one.card === "project") return one;
+    if (isCardAsk(one)) return one;
     const id = text(one.toolCall.toolCallId);
     const tool = id ? findTool(turns, id) : null;
     if (tool) tool.asking = true;
@@ -1131,34 +1278,6 @@ function versionNotice(version: string | null, major: unknown): string {
 }
 
 /**
- * 이름 뒤의 조사 — 마지막 글자가 받침 있는 한글이면 `withFinal`, 아니면 `without`이다. 「으로/로」는 ㄹ 받침도 「로」다. 한글이
- * 아닌 끝 글자(영문 · 숫자)는 읽는 끝소리로 고른다(아래). 끝의 닫는 괄호 · 따옴표 · 문장 부호는 읽지 않는다 — 「환불 버그 (#31)」은
- * 「31」로 끝난다(v1 티켓 39).
- */
-export function particle(word: string, withFinal: string, without: string): string {
-  const trimmed = word.trim().replace(CLOSING, "");
-  const code = trimmed.codePointAt(trimmed.length - 1) ?? 0;
-  if (code < 0xac00 || code > 0xd7a3) {
-    // 영어 · 숫자(Project slug · 「v1」)는 읽는 끝소리로 고른다 — 받침이 분명한 것만(web-app → 「웹앱」, helm → 「헬름」, 3 → 「삼」).
-    // 끝소리가 갈리는 글자(t · s · r …)는 받침 없음으로 둔다(Host → 「호스트가」).
-    const last = trimmed.slice(-1).toLowerCase();
-    if (!LATIN_FINALS.has(last)) return without;
-    return withFinal === "으로" && LATIN_RIEUL.has(last) ? without : withFinal;
-  }
-  const final = (code - 0xac00) % 28;
-  if (final === 0) return without;
-  if (withFinal === "으로" && final === 8) return without;
-  return withFinal;
-}
-
-/** 이름 끝에서 건너뛰는 닫는 괄호 · 따옴표 · 문장 부호. */
-const CLOSING = /[)\]}」』"'”’.,!?…\s]+$/u;
-/** 읽으면 받침이 있는 영어 · 숫자 끝 글자 — b · k · m · n · p · l(ㄹ), 0(영) · 1(일) · 3(삼) · 6(육) · 7(칠) · 8(팔). `ng`는 g로 끝난다. */
-const LATIN_FINALS = new Set(["b", "k", "l", "m", "n", "p", "0", "1", "3", "6", "7", "8"]);
-/** 그 가운데 받침이 ㄹ인 것 — 「으로」 대신 「로」다. */
-const LATIN_RIEUL = new Set(["l", "1", "7", "8"]);
-
-/**
  * 같은 기록 줄을 한 번만 접는다 — Thread 몸(흐름 · 입력창 · 알약)과 사이드바가 같은 줄을 읽는다. 기록 줄 배열은 바뀔 때마다 새
  * 배열이라(`thread-store.ts`) 그 정체가 열쇠다. 접은 값은 읽기만 한다.
  */
@@ -1214,68 +1333,14 @@ function isCallTool(tool: ToolEntry): boolean {
 }
 
 /** 사람에게 카드로 묻는 Thread 도구의 줄이면 그 카드 종류(v1 티켓 30 · 32) — 부르기 도구 줄과 같은 규칙으로 가린다. */
-function cardOfTool(tool: ToolEntry): "work" | "project" | null {
-  const name = toolNameOf(tool.call);
-  if (name === CARD_TOOLS.work) return "work";
-  if (name === CARD_TOOLS.project) return "project";
-  return null;
+function cardOfTool(tool: ToolEntry): ToolCard | null {
+  return cardOfToolName(toolNameOf(tool.call));
 }
 
 /** 이 줄이 그 Project를 고치기 시작한 자리인가 — 「Project 고치기 시작」 도구 줄이거나 그 카드의 결정 줄. */
 function startedHere(entry: Entry, project: string): boolean {
   if (entry.kind === "project-choice") return entry.project === project;
   return entry.kind === "tool" && cardOfTool(entry) === "project" && isObject(entry.call.rawInput) && entry.call.rawInput.project === project;
-}
-
-/** 카드의 결정 줄이면 그 카드 종류. */
-function choiceCard(entry: Entry): "work" | "project" | null {
-  if (entry.kind === "work-choice") return "work";
-  if (entry.kind === "project-choice") return "project";
-  return null;
-}
-
-/** Work 밖 Project 카드 줄(`question` `asked`, `card: project`) → 카드. */
-function outsideOf(requestId: string, who: string, payload: Json): PendingProject {
-  const project = text(payload.project) ?? "";
-  return {
-    card: "project",
-    requestId,
-    who,
-    project,
-    name: nonEmpty(payload.name) ?? project,
-    reason: nonEmpty(payload.reason),
-    work: text(payload.work) ?? "",
-    workProjects: Array.isArray(payload.workProjects) ? payload.workProjects.filter((one): one is string => typeof one === "string") : [],
-  };
-}
-
-/** 제안 줄(`question` `asked`, `card: work`) → 카드. 꼴이 틀린 Project 줄은 버린다. */
-function proposalOf(requestId: string, who: string, payload: Json): PendingWork {
-  const projects = (Array.isArray(payload.projects) ? payload.projects : []).filter(isObject).flatMap((row): WorkProjectChoice[] => {
-    const slug = text(row.slug);
-    if (slug === null) return [];
-    const branches = Array.isArray(row.branches) ? row.branches.filter((one): one is string => typeof one === "string") : [];
-    return [
-      {
-        slug,
-        name: nonEmpty(row.name) ?? slug,
-        description: nonEmpty(row.description),
-        recommended: row.recommended === true,
-        reason: nonEmpty(row.reason),
-        branches,
-      },
-    ];
-  });
-  return {
-    card: "work",
-    requestId,
-    who,
-    title: text(payload.title) ?? "",
-    slug: text(payload.slug) ?? "",
-    reason: text(payload.reason) ?? "",
-    branch: nonEmpty(payload.branch),
-    projects,
-  };
 }
 
 /** 그 도구 줄이 낸 부르기인가 — 맡긴 말이 도구의 `task`와 같다(엔진이 받은 그대로 적는다). */
@@ -1479,8 +1544,9 @@ function appendChunk(turn: Turn, kind: "message" | "thought", messageId: string 
 export function finalFrom(turn: Turn): number {
   let lastTool = -1;
   turn.entries.forEach((entry, index) => {
-    // 질문 줄은 그 질문을 낸 도구 줄 자리다(v1 티켓 26).
-    if (entry.kind === "tool" || entry.kind === "call" || entry.kind === "question") lastTool = index;
+    // 질문 줄은 그 질문을 낸 도구 줄 자리다(v1 티켓 26). 결과 카드는 그 설정을 한 도구가 남긴 것이라 도구 줄과 같이 센다(03 티켓 12) — 카드를 낸
+    // 도구 줄이 답한 줄로 바뀌었어도 답한 줄 · 결과 카드 · 턴 끝 답 차례가 선다.
+    if (entry.kind === "tool" || entry.kind === "call" || entry.kind === "question" || entry.kind === "result") lastTool = index;
   });
   return lastTool + 1;
 }
@@ -1518,15 +1584,15 @@ export function headline(end: TurnEnd): string {
   return end.error ? `멈췄어요 — ${end.error}` : "멈췄어요";
 }
 
-/** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 호출 줄 · 질문에 답한 줄 · 카드의 결정 줄은 다시 보는 것이라 접어도 선다. */
+/** 접힌 턴에도 남는 줄인가 — 계획 · 체크리스트 · 호출 줄 · 질문에 답한 줄 · 카드의 결정 줄 · 결과 카드는 다시 보는 것이라 접어도 선다. */
 export function keptFolded(entry: Entry): boolean {
   return (
     entry.kind === "plan" ||
     entry.kind === "checklist" ||
     entry.kind === "call" ||
     entry.kind === "question" ||
-    entry.kind === "work-choice" ||
-    entry.kind === "project-choice"
+    isToolChoice(entry) ||
+    entry.kind === "result"
   );
 }
 

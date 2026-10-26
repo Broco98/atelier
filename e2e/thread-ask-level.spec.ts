@@ -39,7 +39,7 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   // **기본 5초가 아니다** — 워커의 첫 페이지면 dev 서버가 첫 화면을 처음 변환하는 것을 기다린다.
   await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible({ timeout: 20_000 });
 
-  // 빈 Thread의 칩은 「매번 묻기」다(Work 없이). 메뉴는 넷을 설명과 함께 보이고, 고르면 칩만 바뀐다 — 아직 Thread가 없다.
+  // 빈 Thread의 칩은 「매번 묻기」다(최근 Work를 고르지 않았다 — 기본 「새 Work」). 메뉴는 넷을 설명과 함께 보이고, 고르면 칩만 바뀐다 — 아직 Thread가 없다.
   await 정도칩(page, "매번 묻기").click();
   await expect(page.getByRole("menuitemradio")).toHaveText([/^매번 묻기/, /^편집은 허용/, /^계획만/, /^알아서/]);
   await expect(정도(page, "매번 묻기")).toHaveAttribute("aria-checked", "true");
@@ -48,11 +48,11 @@ test("새 Thread에서 칩으로 고른 「편집은 허용」이 첫 말과 함
   await expect(정도칩(page, "편집은 허용")).toBeVisible();
   expect(await ipcCallArgs(page, "thread_set_mode", "thread")).toEqual([]);
 
-  // 첫 말 — 고른 정도가 함께 간다. 고르지 않은 모델 · 생각 깊이는 `null`이다.
+  // 첫 말 — 고른 정도가 함께 간다. 고르지 않은 모델 · 생각 깊이 · Space는 `null`이다.
   await 입력칸(page).fill(first.text);
   await 입력칸(page).press("Enter");
   expect((await ipcCallArgs(page, "thread_start", "text")).map(({ args }) => args)).toEqual([
-    { text: first.text, attachments: [], link: { kind: "no-work" }, mode: "edits", model: null, effort: null },
+    { text: first.text, attachments: [], link: { kind: "new-work" }, mode: "edits", model: null, effort: null, space: null },
   ]);
   await expect(page).toHaveURL(`/threads/${started.id}`);
   await expect(정도칩(page, "편집은 허용")).toBeVisible();

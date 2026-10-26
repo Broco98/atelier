@@ -7,14 +7,14 @@ import { cn } from "@/lib/utils";
 // 쓴다.
 //
 // **묶음은 DS의 흰 묶음이다** — 카드 안의 흰 면(`surface`) · `radius-xl` · 0.5px `border-heavy` 링이고, 행 사이는 0.5px 선이
-// 가른다(DS `.at-set-group`). 프로젝트 상세의 흰 목록 묶음(`ProjectDetail`의 `LIST`, DS `.at-list`)과 같은 얼굴이다. 한때는
+// 가른다(DS `.at-set-group`). 한때는
 // ui-refresh 결정 16의 옅은 면 묶음이었다(행마다 `surface-under`, 행 사이 2px 틈).
 
 /**
  * 몸의 틀(`.at-set`) — 글 폭(`size-thread`) 가운데에 서고 위 24 · 아래 48이다(DS 「글 거터 20 · 위 24」). 글 거터(옆 20)는 이 상자
  * 밖(스크롤하는 쪽)이 들어 글자가 서는 폭이 48rem 그대로다 — 문서 글(`bodyColumn`)과 같은 나눔이고, 스펙 2절 「글 폭은 `size-thread`」를
- * 글자의 폭으로 읽은 것이다(DS `tokens.json`의 `size-thread` 「문서 · 설정 글 폭 상한」). 프로젝트 상세(`ProjectDetail`)도 같은 나눔이라
- * 넓은 창에서 세 화면의 글 폭이 같다. DS 미리보기 `.at-set`은 거터를 이 폭 **안**에 두어(border-box) 글자가 48rem − 40이다 — 앱은 글
+ * 글자의 폭으로 읽은 것이다(DS `tokens.json`의 `size-thread` 「문서 · 설정 글 폭 상한」). 넓은 창에서 두
+ * 화면의 글 폭이 같다. DS 미리보기 `.at-set`은 거터를 이 폭 **안**에 두어(border-box) 글자가 48rem − 40이다 — 앱은 글
  * 폭 상한을 글자에 거는 쪽을 골랐다(codex-ds 티켓 25).
  */
 export function SettingsBody({ children }: { children: ReactNode }) {

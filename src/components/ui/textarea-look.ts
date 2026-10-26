@@ -5,7 +5,7 @@
 //
 // 규격은 설정 화면의 한 줄 칸(`Input`의 `field`)과 같은 가족이다 — 모서리 `radius-md` · border-heavy · 흰 바탕 · `text-sm`, 포커스는
 // 앱의 한 링(`focus-ring` — 디자인 시스템의 `.at-input.area`). 폭은 쓰는 자리가 `className`으로 정한다(`Input`과 같은 규칙 — 기본은
-// w-full). 프로젝트 설명의 여러 줄 칸(`ProjectDetail`)은 이것을 쓰지 않는다 — 누르기 전의 설명 상자와 같은 자리 · 반경(12) ·
-// 글자(`text-sm`)에 서는 인라인 편집기다. 포커스만 이 가족의 것(앱의 한 링)이다.
+// w-full). Space · Project 상세의 설명 칸(`SpaceDetail` · `ProjectDetail`)은 이것을 쓰지 않는다 — 읽는 글과 같은 글자(`text-chat-body`) ·
+// 반경(12)에 서는 시안의 칸이다(03 시안 `.ta`). 포커스만 이 가족의 것(앱의 한 링)이다.
 export const textareaLook =
   "w-full resize-y rounded-md border border-border-heavy bg-surface px-2.5 py-2 text-sm outline-none focus-ring";

@@ -24,8 +24,20 @@ type Handler = fn(&Args) -> Handled;
 const HANDLERS: &[(&str, Handler)] = &[
     ("list_projects", |_| ok(atelier_core::list_projects(&projects_dir()))),
     ("get_project", |a| ok(atelier_core::get_project(&projects_dir(), &text(a, "slug")?))),
+    // 추가 창(03 구현 스펙 §15) — 살피기 · 추가 · 새로 만들 자리 · 새로 만들기가 모두 core 하나라 다리로 진짜를 탄다(L4가 진짜 git으로
+    // 「git init 하고 추가」 · 「새로 만들기」를 잰다).
+    ("inspect_project_folder", |a| {
+        ok(Ok(atelier_core::inspect_folder(&projects_dir(), &PathBuf::from(text(a, "folder")?))))
+    }),
     ("create_project", |a| {
-        ok(atelier_core::create_project(&projects_dir(), &PathBuf::from(text(a, "folder")?)))
+        let add = atelier_core::AddProject { name: maybe_text(a, "name"), init_git: flag(a, "init_git")? };
+        ok(atelier_core::add_project(&projects_dir(), &PathBuf::from(text(a, "folder")?), add))
+    }),
+    ("new_project_place", |a| {
+        ok(Ok(atelier_core::new_project_place(&PathBuf::from(text(a, "parent")?), &text(a, "name")?)))
+    }),
+    ("new_project", |a| {
+        ok(atelier_core::new_project(&projects_dir(), &PathBuf::from(text(a, "parent")?), &text(a, "name")?))
     }),
     ("update_project", |a| {
         ok(atelier_core::update_project(
@@ -38,8 +50,49 @@ const HANDLERS: &[(&str, Handler)] = &[
             },
         ))
     }),
-    ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
+    // 재설정(03 구현 스펙 §15) — 진짜 git이 「저장소의 뿌리인가」를 본다.
+    ("relocate_project", |a| {
+        ok(atelier_core::relocate_project(&projects_dir(), &text(a, "slug")?, &PathBuf::from(text(a, "folder")?)))
+    }),
+    // 제거 · 되돌리기(03 구현 스펙 §15) — 등록부 · Space · Work 파일을 함께 보니 데이터 루트를 넘긴다.
+    ("project_usage", |a| ok(atelier_core::project_usage(&data_root(), &text(a, "slug")?))),
+    ("remove_project", |a| ok(atelier_core::remove_project(&data_root(), &text(a, "slug")?))),
+    ("restore_project", |a| ok(atelier_core::restore_project(&data_root(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
+    // Space(03 구현 스펙 §8)는 파일이라 코어를 진짜로 탄다 — `commands.rs`와 같은 입구다.
+    ("list_spaces", |_| ok(atelier_core::list_spaces(&data_root()))),
+    ("get_space", |a| ok(atelier_core::space_detail(&data_root(), &text(a, "slug")?))),
+    ("update_space", |a| {
+        ok(atelier_core::update_space(
+            &data_root(),
+            &text(a, "slug")?,
+            atelier_core::SpacePatch {
+                name: maybe_text(a, "name"),
+                description: maybe_text(a, "description"),
+                add: maybe_texts(a, "add")?,
+                before: maybe_text(a, "before"),
+                remove: maybe_texts(a, "remove")?,
+            },
+        ))
+    }),
+    ("read_space_text", |a| ok(atelier_core::read_space_text(&data_root(), &text(a, "slug")?))),
+    ("check_space", |a| {
+        ok(atelier_core::draft_space(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
+    }),
+    ("save_space_text", |a| {
+        ok(atelier_core::save_space_text(&data_root(), maybe_text(a, "slug").as_deref(), &text(a, "text")?))
+    }),
+    // Space 지우기 확인 창의 쓰임(03 티켓 07) — 읽기만 하는 core 입구다.
+    ("space_usage", |a| ok(atelier_core::space_usage(&data_root(), &text(a, "slug")?))),
+    // 읽는 범위(03 구현 스펙 §7) — 읽기만 하는 core 입구다(`commands.rs`와 같다).
+    ("reading_scope", |a| {
+        ok(atelier_core::reading_scope_of(
+            &data_root(),
+            maybe_text(a, "thread").as_deref(),
+            maybe_text(a, "work").as_deref(),
+            maybe_text(a, "space").as_deref(),
+        ))
+    }),
     // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
     // **진짜로** 탄다. 레이아웃은 데이터 루트 아래에 산다(`layouts/atelier/`).
     ("list_works", |_| {
@@ -247,9 +300,17 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("thread_answer_work", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_question", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_answer_project", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_answer_project_add", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_model", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_effort", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_set_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_set_work_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    // Space 지우기 · 되돌리기(03 티켓 07)는 비운 곳마다 엔진이 「지워짐」 · 「되돌림」 줄을 남긴다 — 파일은 core L1(`space_delete`), 줄은
+    // 기록 테스트(`thread_space_delete`)가 잰다.
+    ("thread_delete_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
+    ("thread_restore_space", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     ("thread_work_mode", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
     // Work의 PR(v1 티켓 36)은 엔진이 읽고 `pr` 줄을 남긴다 — 읽기 · 셈은 L1(`atelier-core` `pr` · `atelier-acp` `thread_pr`)이 잰다.
     ("thread_work_prs", |_| in_app_only("Thread 엔진이 앱 프로세스의 상태입니다")),
@@ -302,6 +363,14 @@ fn destinations(args: &Args) -> Result<Vec<atelier_core::Destination>, String> {
 fn texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
     let value = args.get(key).ok_or_else(|| format!("인자 '{key}'(문자열 배열)가 필요합니다"))?;
     serde_json::from_value(value.clone()).map_err(err)
+}
+
+/// 없어도 되는 문자열 배열 인자 — 없거나 `null`이면 빈 목록이다.
+fn maybe_texts(args: &Args, key: &str) -> Result<Vec<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(value) => serde_json::from_value(value.clone()).map_err(err),
+    }
 }
 
 fn flag(args: &Args, key: &str) -> Result<bool, String> {
@@ -489,9 +558,10 @@ mod tests {
 
     /// core 크레이트 `src/` 아래의 소스 전부(v1 티켓 02 인수 기준 · 코드 리뷰 1차 B13). 위 표와 같은 관례다 — 원본을 읽는 검사가
     /// core 쪽에 서면 이 표를 읽는다. Thread · Agent의 파일 모양(`threads.rs` · `agents.rs` …)이 여기 산다.
-    const CORE_SOURCES: [(&str, &str); 34] = [
+    const CORE_SOURCES: [(&str, &str); 37] = [
         ("agents.rs", include_str!("../../atelier-core/src/agents.rs")),
         ("agents/scope.rs", include_str!("../../atelier-core/src/agents/scope.rs")),
+        ("aside.rs", include_str!("../../atelier-core/src/aside.rs")),
         ("atomic.rs", include_str!("../../atelier-core/src/atomic.rs")),
         ("attachments.rs", include_str!("../../atelier-core/src/attachments.rs")),
         ("changes.rs", include_str!("../../atelier-core/src/changes.rs")),
@@ -514,9 +584,11 @@ mod tests {
         ("pr.rs", include_str!("../../atelier-core/src/pr.rs")),
         ("project.rs", include_str!("../../atelier-core/src/project.rs")),
         ("recent.rs", include_str!("../../atelier-core/src/recent.rs")),
+        ("reading_scope.rs", include_str!("../../atelier-core/src/reading_scope.rs")),
         ("records.rs", include_str!("../../atelier-core/src/records.rs")),
         ("search.rs", include_str!("../../atelier-core/src/search.rs")),
         ("slug.rs", include_str!("../../atelier-core/src/slug.rs")),
+        ("space.rs", include_str!("../../atelier-core/src/space.rs")),
         ("store.rs", include_str!("../../atelier-core/src/store.rs")),
         ("threads.rs", include_str!("../../atelier-core/src/threads.rs")),
         ("work.rs", include_str!("../../atelier-core/src/work.rs")),

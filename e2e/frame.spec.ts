@@ -1,7 +1,7 @@
 import type { Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import { expect, test, type Locator, type Page } from "./evidence";
-import { ARCHIVE, PROJECTS, WORKS } from "./fixtures";
+import { ARCHIVE, WORKS } from "./fixtures";
 import {
   clipboardWrites,
   SCREEN_HEAD,
@@ -12,6 +12,7 @@ import {
   unknownIpcCalls,
   첫글자,
   화면머리,
+  흰판,
   흰판안,
   workRow,
   호버카드,
@@ -28,7 +29,8 @@ import {
 import { settle } from "./tab-row";
 
 // 판 04 티켓 01 · 02 티켓 02 · 03 — 공용 틀(`Frame`, ui-refresh 결정 4 · 5 · 27 · 02 구현 스펙 §3). 창 맨 위는 머리 줄(`<header>` 44)이고,
-// 그 아래 흰 판 하나(크롬 왼 · 오 · 아래 끝에서 5)에 사이드바와 화면의 칸들이 든다. 칸은 판에 붙어 제 면 · 둥글기 · 고리 · 둘레 틈을
+// 그 아래 크롬 위에 사이드바가, 그 오른쪽 끝에서 흰 판 하나(크롬 오 · 아래 끝에서 5)가 서서 화면의 칸들이 든다(03 구현 스펙 §3 — 사이드바는
+// 판 밖이다). 칸은 판에 붙어 제 면 · 둥글기 · 고리 · 둘레 틈을
 // 버리고, 칸 사이는 0.5 선 하나로 갈린다(`PANE_RULE`). 화면의 이름과 할 일은 머리 줄의 화면 자리에 선다(한때 그 자리에 머리 카드가 떴다).
 //
 // **이 층에서만 보이는 것이다**: 칸 상자의 실제 자리와, 창의 어디를 누르면 **창이 끌리는가**. 맨값 `data-tauri-drag-region`은 Tauri가
@@ -76,11 +78,11 @@ for (const screen of SCREENS) {
     await expect(화면머리(page)).toHaveCount(1);
 
     const 판 = await 흰판안(page);
-    const edge = await sidebarRight(page);
+    const edge = await besideSidebar(page);
     const card = await cardOf(page);
     // 칸 줄의 오른쪽 끝 칸 — 편집기는 본문 칸 오른쪽에 트리 칸이 서고(판 06 티켓 07), 다른 세 화면은 본문 칸이다.
     const last = await boxOf(page.locator('[data-slot="card"]').last());
-    // 칸 줄이 판 안을 채운다 — 사이드바 오른쪽 끝에서 판 오른쪽 끝까지, 판 위끝에서 아래끝까지. 한때 칸은 회색 바탕 위에 둘레 틈 8을
+    // 칸 줄이 판 안을 채운다 — 판 안 왼쪽 끝(사이드바 끝 + 판 테두리)에서 판 오른쪽 끝까지, 판 위끝에서 아래끝까지. 한때 칸은 회색 바탕 위에 둘레 틈 8을
     // 두고 떴다(그 틈이 창을 끌었다).
     expect([card.x, card.y, card.bottom], "본문 칸 — 사이드바 뒤 · 판 위끝 · 판 아래끝").toEqual([edge, 판.y, 판.bottom]);
     expect(last.right, "칸 줄 오른쪽 끝 = 판 안 오른쪽 끝").toBe(판.right);
@@ -103,10 +105,10 @@ for (const screen of SCREENS) {
     // 아래 「머리 줄의 빈 자리 · 셸 컨트롤 사이 · 브랜치가 창을 끄는 자리」).
     expect(await 끄는자리(page, card.x + card.width / 2, 판.y / 2), "머리 줄").toBe(true);
 
-    // ⌘B로 사이드바를 접으면 본문 칸이 판 왼쪽 끝까지 넓어진다 — 드러난 자리도 판 안이라 끌지 않는다.
+    // ⌘B로 사이드바를 접으면 판이 창 왼쪽 띄움까지 넓어지고 본문 칸이 그 왼쪽 끝까지 따라간다 — 드러난 자리도 판 안이라 끌지 않는다.
     await page.keyboard.press("Meta+b");
-    await expect.poll(async () => (await cardOf(page)).x).toBe(판.x);
-    expect(await 끄는자리(page, 판.x + 1, middleY), "사이드바를 접은 뒤의 판 왼쪽 가장자리").toBe(false);
+    await expect.poll(async () => [(await cardOf(page)).x, (await 흰판안(page)).x]).toEqual([FOLDED_LEFT, FOLDED_LEFT]);
+    expect(await 끄는자리(page, FOLDED_LEFT + 1, middleY), "사이드바를 접은 뒤의 판 왼쪽 가장자리").toBe(false);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
@@ -153,7 +155,7 @@ test("레이아웃 편집기: 트리가 본문 칸 오른쪽의 340 칸이고 �
 
   // ⌘B로 사이드바를 접어도 트리 칸은 340 그대로이고, 넓어지는 것은 본문 칸이다.
   await page.keyboard.press("Meta+b");
-  await expect.poll(async () => (await boxOf(main)).x).toBe(판.x);
+  await expect.poll(async () => (await boxOf(main)).x).toBe(FOLDED_LEFT);
   expect((await boxOf(tree)).width, "사이드바를 접은 뒤의 트리 칸 폭").toBe(340);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -174,7 +176,7 @@ test("레이아웃 편집기: 최소 창에서 사이드바를 연 채로도 머
   const head = 화면머리(page);
   await expect(tree.getByRole("treeitem", { name: "overview.md", exact: true })).toBeVisible();
   // 앵커: 사이드바가 열려 있다 — 접혀 있으면 칸이 넉넉해 아래 셈이 아무것도 재지 않는다.
-  expect((await boxOf(page.locator("main"))).x, "본문 칸이 사이드바 옆에 선다").toBe(await sidebarRight(page));
+  expect((await boxOf(page.locator("main"))).x, "본문 칸이 사이드바 옆에 선다").toBe(await besideSidebar(page));
 
   const inside = async (control: Locator, card: Locator) => {
     const [box, edge] = [await boxOf(control), await boxOf(card)];
@@ -210,8 +212,7 @@ test("Terminal: 사이드바를 ⌘B로 접어도 탭 줄의 첫 칸이 칸 안 
   expect(before.x).toBe(8);
 
   await page.keyboard.press("Meta+b");
-  const 판 = await 흰판안(page);
-  await expect.poll(async () => (await boxOf(card)).x).toBe(판.x);
+  await expect.poll(async () => (await boxOf(card)).x).toBe(FOLDED_LEFT);
   await expect.poll(offset).toEqual(before);
   // 셸 컨트롤의 마지막 칸(검색)은 머리 줄에 서고, 탭 줄은 그 아래 판 안이다.
   const search = await boxOf(창검색버튼(page));
@@ -404,27 +405,12 @@ for (const status of ["draft", "active", "review", "done"] as const) {
   });
 }
 
-// 판 04 티켓 02 · codex-ds 티켓 20 — **목록이 있는 두 화면**(codex-ds 결정 28 · 32). 목록 칸과 그 내용(프로젝트 상세 · 문서)은 **한
-// 칸**이고, 내용이 왼쪽 · 목록 칸이 오른쪽이다 — 가운데 0.5px `border-heavy` 세로 선이 가른다. 그 선이 폭 손잡이다 — 왼쪽으로 끌면
+// 판 04 티켓 02 · codex-ds 티켓 20 — **목록 칸이 있는 화면**(codex-ds 결정 28 · 32 — 이제 Archive 하나다. Projects는 03 판에서 본문 하나의 표
+// 화면이 됐다 — 03 구현 스펙 §16 · `projects-list.spec.ts`). 목록 칸과 그 내용(문서)은 **한 칸**이고, 내용이 왼쪽 · 목록 칸이 오른쪽이다 — 가운데 0.5px `border-heavy` 세로 선이 가른다. 그 선이 폭 손잡이다 — 왼쪽으로 끌면
 // 목록이 넓어져 저장되고, 두 번 누르면 기본 폭(`size-list` 264)이다. 목록 칸은 접지 않는다 — 접는 토글도, 그것을 받던 ⌘Enter도 없다. 목록 머리는 내용의 경로 줄과 같은
 // 48(`size-pathbar`)이라 두 머리가 한 줄에 선다. 따로 여닫는 패널만 제 칸이다(작업 패널 — 아래 「작업 화면」, Archive의 spec 목록 패널 —
 // 여닫기는 `archive-docs.spec.ts`). 판 안 칸끼리는 둘레 틈 없이 맞닿아 선 하나로 갈린다(02 구현 스펙 §3 S2).
 const LIST_SCREENS = [
-  {
-    name: "Projects",
-    url: `/projects/${PROJECTS[0].slug}`,
-    list: "프로젝트 목록",
-    widthKey: "panel-width",
-    // 목록 머리 — 제목 · 개수(그리고 끝의 `+`).
-    head: ["Projects", String(PROJECTS.length)],
-    // 목록 칸 위쪽에 서는 조작 — 그 아래 찾기 칸과 머리의 `+`(이름 「프로젝트 등록」).
-    headControls: (page: Page) => [
-      page.getByRole("textbox", { name: "프로젝트 검색", exact: true }),
-      page.getByRole("button", { name: "프로젝트 등록", exact: true }),
-    ],
-    // 오른쪽 패널이 없는 화면이다.
-    panel: null,
-  },
   {
     name: "Archive",
     url: `/archive/${ARCHIVE[0].slug}`,
@@ -457,6 +443,20 @@ async function boxOf(target: Locator) {
 
 /** 사이드바 오른쪽 끝 — 사이드바는 첫 `aside`다(둘째는 오른쪽 패널). */
 const sidebarRight = (page: Page) => page.locator("aside").first().evaluate((el) => el.getBoundingClientRect().right);
+
+/**
+ * 사이드바가 열렸을 때 칸 줄이 서는 왼쪽 끝 — 흰 판이 사이드바 오른쪽 끝에서 서고(사이드바는 판 밖 크롬 위 — 03 구현 스펙 §3), 칸은 판의
+ * 테두리 안에서 선다. 판이 사이드바 끝에서 서는지는 판의 겉 상자로 여기서 함께 잰다 — 판 안 왼쪽 끝만으로는 사이드바가 접혀도 끝이 있다.
+ * 테두리를 덜어 내는 셈은 `흰판안` 한 곳이다(테두리의 굵기 0.5는 `frame-sidebar.spec.ts`가 잰다). 한때 사이드바가 판 안이라 칸이 사이드바
+ * 끝에 곧장 붙었다.
+ */
+const besideSidebar = async (page: Page) => {
+  expect((await boxOf(흰판(page))).x, "흰 판은 사이드바 오른쪽 끝에서 선다").toBe(await sidebarRight(page));
+  return (await 흰판안(page)).x;
+};
+
+/** 사이드바를 접은 뒤 칸 줄이 서는 왼쪽 끝 — 판이 창 왼쪽 띄움 5까지 넓어지고, 칸은 그 테두리 0.5 안이다(03 구현 스펙 §3 · 스토리 5). */
+const FOLDED_LEFT = 5.5;
 
 /**
  * 판 안 칸 사이 선(`PANE_RULE`) — 뒤(오른쪽)에 선 칸의 상자가 제 왼쪽 가장자리에 칠한 `::after`의 폭 · 자리 · 색이다. 칠하는 상자는 칸마다
@@ -493,7 +493,7 @@ for (const screen of LIST_SCREENS) {
     if (screen.panel) await expect(panelCard).toHaveAttribute("aria-label", screen.panel);
 
     const 판 = await 흰판안(page);
-    const edge = await sidebarRight(page);
+    const edge = await besideSidebar(page);
     const [whole, column, content] = [await boxOf(card), await boxOf(list), await boxOf(main)];
     // 칸이 판 위끝에서 사이드바에 붙어 시작하고 판 아래끝까지다. 그 오른쪽은 판 끝이거나 패널의 칸이고, 패널이 서면 그 칸이 판 끝까지다 —
     // 둘레 틈이 없다.
@@ -570,8 +570,7 @@ for (const screen of LIST_SCREENS) {
     // 신호등을 피할 일은 머리 줄 하나의 몫이다 — 목록 칸에는 그것을 피하는 여백 갈래가 없다. 칸은 판 왼쪽 끝까지 넓어지고,
     // 그 안의 조작은 칸 안에서 같은 자리다.
     await page.keyboard.press("Meta+b");
-    const 판 = await 흰판안(page);
-    await expect.poll(async () => (await boxOf(joinedCard(page, list))).x).toBe(판.x);
+    await expect.poll(async () => (await boxOf(joinedCard(page, list))).x).toBe(FOLDED_LEFT);
     await expect.poll(offsets).toEqual(before);
     for (const control of screen.headControls(page)) await expect(control).toBeVisible();
     expect(await unknownIpcCalls(page)).toEqual([]);
@@ -630,22 +629,18 @@ for (const screen of LIST_SCREENS) {
   });
 }
 
-// **Projects의 ⌘Enter는 아무것도 하지 않는다**(codex-ds 결정 32) — 오른쪽 패널이 없는 화면이고, 목록 칸은 접지 않는다. 한때 이 키가
-// 목록 칸을 접었고 그 접힘을 화면마다 로컬 저장에 적었다(`projects-panel-open` · `archive-panel-open`). 접어 둔 값이 남아 있어도
-// 목록 칸이 서고, 앱은 그 값을 읽지 않고 지운다. 「아무 일도 안 한다」는 둘로 잰다: 화면(내용 칸 · 목록 폭 · `aside` 수)이 그대로이고,
-// 그 키를 받아 막은(`preventDefault`) 리스너가 없다 — 화면만 재면 「받아서 다른 일을 했다」가 초록으로 지나간다.
+// **Projects의 ⌘Enter는 아무것도 하지 않는다**(codex-ds 결정 32) — 오른쪽 패널도 목록 칸도 없는 화면이다(03 판부터 본문 하나의 표 — 03 구현
+// 스펙 §16). 한때 이 키가 목록 칸을 접었고 그 접힘을 화면마다 로컬 저장에 적었다(`projects-panel-open` · `archive-panel-open`). 앱은 그
+// 값을 읽지 않고 지운다. 「아무 일도 안 한다」는 둘로 잰다: 화면(본문 칸 · `aside` 수)이 그대로이고, 그 키를 받아 막은(`preventDefault`)
+// 리스너가 없다 — 화면만 재면 「받아서 다른 일을 했다」가 초록으로 지나간다.
 test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 칸의 저장값은 지워진다", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("projects-panel-open", "0");
     localStorage.setItem("archive-panel-open", "0");
   });
   await installFixtureBackend(page);
-  await page.goto(`/projects/${PROJECTS[0].slug}`);
-  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
-  await expect(list).toBeVisible();
-  expect((await boxOf(list)).width, "접어 둔 값이 있어도 목록 칸이 선다").toBe(
-    parseFloat(await 토큰값(page, "width", "--size-list")),
-  );
+  await page.goto("/projects");
+  await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() => [localStorage.getItem("projects-panel-open"), localStorage.getItem("archive-panel-open")]),
     "접힘 값은 지워진다",
@@ -653,7 +648,6 @@ test("Projects: ⌘Enter가 화면을 바꾸지 않고, 접어 두었던 목록 
 
   const 화면 = async () => ({
     main: await boxOf(page.locator("main")),
-    list: (await boxOf(list)).width,
     asides: await page.locator("aside").count(),
   });
   const before = await settle(page, 화면);
@@ -695,7 +689,7 @@ test("Works: 판 안에 문서 칸과 작업 패널 칸이 선 하나로 맞닿�
   const gap = await token(page, "--space-2");
   const prail = await token(page, "--size-prail");
   const 판 = await 흰판안(page);
-  const edge = await sidebarRight(page);
+  const edge = await besideSidebar(page);
   const [card, side, rail] = [await boxOf(doc), await boxOf(panel), await boxOf(레일열(page))];
   expect([card.x, card.y, card.bottom], "문서 칸").toEqual([edge, 판.y, 판.bottom]);
   expect([side.x, side.y, side.bottom], "패널 칸 — 문서 칸에 맞닿는다").toEqual([card.right, 판.y, 판.bottom]);
@@ -795,10 +789,11 @@ test("Works: 작업 패널 머리 제목이 DS 패널 머리 제목(14/20 · 500
 // codex-ds 티켓 13 · 02 티켓 03 — **머리 줄에 작업 화면의 이름과 할 일이 선다**(codex-ds 스펙 §4 · §6 · 02 구현 스펙 §3 S2). 창 맨 위는
 // 44 머리 줄이고, 화면 자리(`ScreenHead`)는 사이드바 오른쪽 끝(판 안 본문 칸 왼쪽 끝)에서 창 오른쪽 끝까지다. 한때 그 자리에 흰 카드(머리
 // 카드 — `size-head` 32 · `radius-xl` · 링)가 떴다 — 카드의 겉만 버리고 안은 그대로다. 왼쪽에 ⚡ · work 이름이 서서 사이드바를 보지 않아도
-// 지금 어느 work인지 안다(스토리 23). 오른쪽 끝 묶음은 할 일(상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리
+// 지금 어느 work인지 안다(스토리 23). 그 앞에는 이 Work가 이은 Space가 흐린 「Space 이름 /」로 선다 — 누르면 Space 메뉴다(03 구현 스펙 §10 ·
+// 스토리 78 · 79 · 80 — 메뉴 안은 대화 속 Space 흐름 spec이 잰다). 픽스처 Work는 Space가 없어 「Space 없음」이다. 오른쪽 끝 묶음은 할 일(상태 배지 · ⋯) | 보기 배치(분할 · 패널 토글)이고 얇은 세로선이 가른다(스토리
 // 24 · DS `.at-winctl-r`). 묶음의 크기 · 사이는 아래 「창 컨트롤 넷이 …」가 잰다. 이름은 버튼이 아니다 — 우클릭 · ⇧F10으로 work 메뉴를 여는
 // 대상이고(티켓 27 — `work-context-menu.spec.ts`), 두 번 클릭 · F2로 그 자리에서 이름을 바꾼다(티켓 28 — `inline-rename.spec.ts`).
-test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 ⚡ · work 이름, 오른쪽 끝에 상태 배지 · ⋯ | 분할 · 패널 토글이 선다", async ({ page }) => {
+test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 Space / ⚡ · work 이름, 오른쪽 끝에 상태 배지 · ⋯ | 분할 · 패널 토글이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   const head = 화면머리(page);
@@ -821,15 +816,18 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 ⚡ · work 이름,
     "0px",
   ]);
 
-  // 왼쪽 — ⚡(work 아이콘이지 상태 글리프가 아니다)와 work 이름. 아이콘은 본문 칸 왼쪽 끝 + 16이다(세로선 뒤 14 − 당김 6 + 이름 상자
-  // 안쪽 8 — 아래 탭 줄의 첫 칸 글리프와 한 세로줄).
+  // 왼쪽 — 이은 Space 「Space 없음 /」, 그 뒤 ⚡(work 아이콘이지 상태 글리프가 아니다)와 work 이름. Space는 본문 칸 왼쪽 끝 + 8에서 시작하고
+  // (세로선 뒤 14 − 당김 6), 아이콘은 이름 상자 안쪽 8이다(아래 「머리 줄 이름의 hover 면」).
+  const crumb = head.getByRole("button", { name: "Space: 없음", exact: true });
   const zap = head.locator("svg.lucide-zap");
   const name = head.getByText(pinnedWork.title, { exact: true });
+  await expect(crumb).toHaveText("Space 없음");
   await expect(zap).toHaveCount(1);
   await expect(name).toBeVisible();
   // 이름을 글자로 집으면 이름 상자(DS `.at-wtitle` — ⚡ · 이름을 품는다)가 잡혀, 이름 글자의 자리는 그 안 글자 마디로 잰다(`첫글자`).
-  const [icon, title] = [await boxOf(zap), await boxOf(name)];
-  expect(icon.x - doc.x, "⚡ — 본문 칸 + 16").toBe(16);
+  const [space, icon, title] = [await boxOf(crumb), await boxOf(zap), await boxOf(name)];
+  expect(space.x - doc.x, "Space — 본문 칸 + 8").toBe(8);
+  expect(icon.x, "⚡는 Space 뒤").toBeGreaterThan(space.right);
   expect((await 첫글자(name)).x, "이름은 ⚡ 뒤").toBeGreaterThan(icon.right);
   // 이름은 버튼이 아니다(메뉴의 대상이자 이름 바꾸기의 자리라 포커스만 받는다). 역할이 없으니 듣는 키를 말한다 — F2(이름 바꾸기 —
   // `inline-rename.spec.ts`)와 ⇧F10 · 메뉴 키(`work-context-menu.spec.ts`가 그 키로 메뉴가 서는 것을 잰다).
@@ -837,7 +835,7 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 ⚡ · work 이름,
   await expect(name).toHaveAttribute("tabindex", "0");
   await expect(name).toHaveAttribute("aria-keyshortcuts", "F2 Shift+F10 ContextMenu");
 
-  // 오른쪽 끝 — 상태 배지 · ⋯ | 분할 · 패널 토글. 버튼은 이것뿐이고 차례가 이렇다. ⋯와 분할 사이를 세로선이 가르고, 모두 머리 줄 가운데
+  // 오른쪽 끝 — 상태 배지 · ⋯ | 분할 · 패널 토글. 버튼은 이것과 왼쪽의 Space뿐이고 차례가 이렇다. ⋯와 분할 사이를 세로선이 가르고, 모두 머리 줄 가운데
   // 줄에 선다. 이름은 그 앞에서 끝난다. 패널 토글은 레일이 서도 레일 위가 아니라 이 묶음의 맨 끝이다(한때 DS `.at-railtop`).
   const parts = [
     head.getByRole("button", { name: pinnedWork.status, exact: true }),
@@ -846,7 +844,7 @@ test("Works: 머리 줄 44의 화면 자리에 — 왼쪽에 ⚡ · work 이름,
     head.getByRole("button", { name: "분할", exact: true }),
     head.getByRole("button", { name: "작업 패널 접기", exact: true }),
   ];
-  await expect(head.getByRole("button")).toHaveCount(4);
+  await expect(head.getByRole("button")).toHaveCount(5);
   const boxes = await Promise.all(parts.map(boxOf));
   expect(title.right, "이름이 배지 앞에서 끝난다").toBeLessThanOrEqual(boxes[0].x);
   for (let at = 1; at < boxes.length; at += 1) {
@@ -897,8 +895,8 @@ test("Works: 머리 줄의 이름 칸은 520까지이고 긴 이름은 그 안�
 });
 
 // **바꿀 수 있는 이름의 hover 면은 아이콘 · 이름 · 연필을 함께 덮는다**(DS `.at-wtitle` — 24 · 안쪽 0 8 · 사이 7 · `radius-md`, hover
-// `fill-hover`, 연필 12 `fg-tertiary`의 왼쪽 -2). 면의 안쪽은 양쪽 8로 같다 — 아이콘 앞 8, 연필 뒤 8. 아이콘은 그대로 화면 자리 + 16이고
-// (세로선 뒤 14 − 당김 6 + 면 안쪽 8), 글리프(아이콘 · 이름 글자)는 쉴 때 · hover · 고칠 때 한 자리다 — 고치기의 입력칸도 이름 글자가 선 자리에서
+// `fill-hover`, 연필 12 `fg-tertiary`의 왼쪽 -2). 면의 안쪽은 양쪽 8로 같다 — 아이콘 앞 8, 연필 뒤 8. 면은 이은 Space(「Space 없음 /」) 뒤에
+// 서고(03 구현 스펙 §10 — 한때 아이콘이 화면 자리 + 16이었다), 글리프(아이콘 · 이름 글자)는 쉴 때 · hover · 고칠 때 한 자리다 — 고치기의 입력칸도 이름 글자가 선 자리에서
 // 시작한다(`InlineRename`의 `fit="text"`). 면은 포커스 받는 그 이름 요소 자신이라, 포커스 링 · 대상 테두리도 이 면을 두른다.
 test("Works: 머리 줄 이름의 hover 면이 ⚡ · 이름 · 연필을 함께 덮고 안쪽이 양쪽 8이며 — 글리프는 쉴 때 · hover · 고칠 때 한 자리다", async ({
   page,
@@ -914,7 +912,8 @@ test("Works: 머리 줄 이름의 hover 면이 ⚡ · 이름 · 연필을 함께
   const card = await boxOf(head);
   const 자리 = async () => ({ 아이콘: (await boxOf(zap)).x, 글자: (await 첫글자(name)).x });
   const 쉴때 = await 자리();
-  expect(쉴때.아이콘 - card.x, "⚡ — 화면 자리 + 16").toBe(16);
+  // 이름 상자는 이은 Space(「Space 없음 /」) 뒤에 선다(03 구현 스펙 §10) — 한때 ⚡가 화면 자리 + 16이었다.
+  expect(쉴때.아이콘, "⚡ — 이은 Space 뒤").toBeGreaterThan((await boxOf(head.getByRole("button", { name: "Space: 없음", exact: true }))).right);
 
   await name.hover();
   await expect.poll(async () => (await 칠한값(name, "background-color"))[0], "hover 면").toBe(await 토큰색(page, "--fill-hover"));
@@ -1251,7 +1250,7 @@ test("Works: 분할이면 두 열이 각자 칸이고 둘 사이는 선 하나�
   const 판 = await 흰판안(page);
   const rail = await boxOf(레일열(page));
   const [left, right] = [await boxOf(cards.first()), await boxOf(cards.last())];
-  expect([left.x, left.y, left.bottom], "왼쪽 열").toEqual([await sidebarRight(page), 판.y, 판.bottom]);
+  expect([left.x, left.y, left.bottom], "왼쪽 열").toEqual([await besideSidebar(page), 판.y, 판.bottom]);
   // 오른쪽 열은 왼쪽 열에 맞닿고, 접힌 작업 패널을 지나 레일 열 앞까지다.
   expect([right.x, right.y, right.right, right.bottom], "오른쪽 열").toEqual([left.right, 판.y, rail.x, 판.bottom]);
   expect(await 칸선(cards.last().locator("..")), "두 열 사이 선").toEqual(await 선값(page));
@@ -1365,18 +1364,18 @@ async function 테두리가칠해진변(page: Page, card: Locator) {
 
 // 흰 판의 0.5 테두리는 **칠해져야** 한다(02 구현 스펙 §3 「흰 판」 — 0.5 `border-panel`). 판은 모서리 밖으로 사이드바 바탕이 새지 않게
 // 넘침을 잘라 내고(`AppShell`), 판 안 칸은 판 끝까지 칠한다 — 칸이 테두리 안쪽에서 멈추지 않으면 그 변의 테두리가 칸 면에 덮인다. 판 안
-// 칸의 짜임이 서로 다른 세 화면(작업 화면 — 문서 · 패널 · 레일 열, Projects — 내용 | 목록, Terminal — 셸 칸)에서 잰다. 한때 판이 없고 바탕
+// 칸의 짜임이 서로 다른 세 화면(작업 화면 — 문서 · 패널 · 레일 열, Projects — 표 하나의 본문, Terminal — 셸 칸)에서 잰다. 한때 판이 없고 바탕
 // 위 카드마다 0.5 링을 둘렀다 — 그때는 이 검사가 카드의 네 변을 쟀다.
 test("흰 판의 0.5px 테두리가 네 변에 다 칠해진다 — 판 안 칸 · 사이드바가 덮지 않는다", async ({ page }) => {
   const 네변 = { 위: true, 아래: true, 왼쪽: true, 오른쪽: true };
-  const 판 = page.locator('[data-slot="panel"]');
+  const 판 = 흰판(page);
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}`);
   await expect(작업패널(page)).toBeVisible();
   expect(await 테두리가칠해진변(page, 판), "작업 화면").toEqual(네변);
 
-  await page.goto(`/projects/${PROJECTS[0].slug}`);
-  await expect(page.getByRole("region", { name: "프로젝트 목록", exact: true })).toBeVisible();
+  await page.goto("/projects");
+  await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
   expect(await 테두리가칠해진변(page, 판), "Projects").toEqual(네변);
 
   await page.goto("/terminal");
@@ -1745,7 +1744,7 @@ test("Works: 셸 칸을 끄는 동안 겹판이 탭 줄 아래 칸 줄을 덮고
   await expect(작업패널(page)).toBeVisible();
 
   const 판 = await 흰판안(page);
-  const edge = await sidebarRight(page);
+  const edge = await besideSidebar(page);
   // 칸 줄의 오른쪽 끝 — 그 뒤는 레일 열이다. 레일은 칸 줄 밖이라 겹판도 토스트의 가운데도 그것을 안 센다.
   const rowRight = (await boxOf(레일열(page))).x;
   const toolbar = await token(page, "--size-toolbar");

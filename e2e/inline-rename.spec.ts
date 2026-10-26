@@ -20,8 +20,8 @@ import {
 } from "./harness";
 
 // codex-ds 티켓 28 — **work · 프로젝트 이름을 그 자리에서 바꾼다**(codex-ds 스펙 §9 · 결정 18 · S12). 이름이 쓰인 자리가 그대로
-// 입력칸이 된다 — 창이 뜨지 않는다. 들어가는 길은 F2 · 메뉴 「이름 바꾸기」 · 두 번 클릭이고, 두 번 클릭은 머리 줄 이름만이다
-// (사이드바 행의 두 번 클릭은 열기다). Enter · 다른 곳 누르기는 저장, Esc는 취소, 비우면 원래 이름, 그대로면 아무것도 부르지 않는다.
+// 입력칸이 된다 — 창이 뜨지 않는다. work는 들어가는 길이 F2 · 메뉴 「이름 바꾸기」 · 두 번 클릭이고, 두 번 클릭은 머리 줄 이름만이다
+// (사이드바 행의 두 번 클릭은 열기다). Project는 상세 제목을 누르는 것이 그 길이다(03 구현 스펙 §16). Enter · 다른 곳 누르기는 저장, Esc는 취소, 비우면 원래 이름, 그대로면 아무것도 부르지 않는다.
 //
 // 픽스처의 고정 답(`set_work_title` · `update_project`)은 바뀐 이름을 기억하지 않는다 — 저장은 화면 글자가 아니라 나간 IPC로 잰다.
 // 「안 나갔다」(IPC 0)는 늘 **입력칸이 닫힌 것을 본 뒤에** 잰다 — 닫는 일이 아예 안 일어나도 0이다.
@@ -557,120 +557,96 @@ test("알림 띠에서 「이름 바꾸기」를 고른 work의 행이 접힌 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 프로젝트 ──
-// 머리 줄 이름(두 번 클릭 · F2)과 목록 행(F2). 저장은 프로젝트 고치기의 부분 patch — 이름만 실린다. 상세 칸에는 제목이 없다(S12 —
-// 이름은 머리 줄이 든다).
+// ── Project ──
+// 상세 제목(이름을 누르거나 연필 — 03 구현 스펙 §16 · 스토리 122). 한때 머리 줄 이름(두 번 클릭 · F2)과 목록 행(F2)이 그 자리였다 — 03
+// 결정 「10」이 상세 제목 하나로 옮겼다. 저장은 Project 고치기의 부분 patch — 이름만 실린다. 고치는 동안 아래 한 줄 · 모양은 Projects 흐름
+// spec이 잰다.
 
-test("프로젝트 머리 줄 이름을 두 번 누르면 입력칸이 되고, Enter면 이름만 실어 고친다", async ({ page }) => {
+/** 상세 제목의 이름 — 누르면 그 자리가 입력칸이 된다. 연필(「이름 바꾸기」)도 같은 길이다. */
+const 제목이름 = (page: Page, name: string) => page.getByRole("button", { name: `${name} — 이름 바꾸기`, exact: true });
+const 제목칸 = (page: Page) => page.getByRole("main").getByRole("textbox", { name: "Project 이름", exact: true });
+
+test("Project 상세 제목을 누르면 지금 이름의 입력칸이 되고, Enter면 이름만 실어 고친다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
-  // 상세 칸의 제목(「클릭해서 편집」)은 걷혔다.
-  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
 
-  await 머리이름(page, project.name).dblclick();
-
-  const input = 화면머리(page).getByRole("textbox", { name: "프로젝트 이름", exact: true });
+  await 제목이름(page, project.name).click();
+  const input = 제목칸(page);
   await expect(input).toBeFocused();
   await expect(input).toHaveValue(project.name);
-  await input.fill("새 프로젝트 이름");
+  await input.fill("새 Project 이름");
   await input.press("Enter");
 
   await expect(input).toHaveCount(0);
-  await expect.poll(() => 프로젝트저장(page)).toEqual([{ slug: project.slug, name: "새 프로젝트 이름" }]);
-  await expect(머리이름(page, project.name)).toBeFocused();
+  await expect.poll(() => 프로젝트저장(page)).toEqual([{ slug: project.slug, name: "새 Project 이름" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("프로젝트 머리 줄 이름에서 F2를 누르면 입력칸이 되고, Esc는 부르지 않는다", async ({ page }) => {
+test("Project 상세 제목의 연필로 들어가 Esc면 부르지 않고 지금 이름이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
-  const name = 머리이름(page, project.name);
 
-  await name.focus();
-  await page.keyboard.press("F2");
-
-  const input = 화면머리(page).getByRole("textbox", { name: "프로젝트 이름", exact: true });
+  await page.getByRole("main").getByRole("button", { name: "이름 바꾸기", exact: true }).click();
+  const input = 제목칸(page);
   await expect(input).toBeFocused();
   await input.fill("고치다 만 이름");
   await input.press("Escape");
 
   await expect(input).toHaveCount(0);
-  await expect(name).toBeFocused();
+  await expect(제목이름(page, project.name)).toHaveText(project.name);
   expect(await callCount(page, "update_project")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("프로젝트 목록 행에서 F2를 누르면 그 행의 이름이 입력칸이 되고, 다른 곳을 누르면 그 프로젝트를 고친다", async ({ page }) => {
+test("Project 상세 제목에서 다른 곳을 누르면 그 Project를 고친다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${project.slug}`);
-  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
-  const row = list.getByRole("button", { name: `${otherProject.name} ${otherProject.path}`, exact: true });
+  await page.goto(`/projects/${otherProject.slug}`);
 
-  await row.focus();
-  await page.keyboard.press("F2");
-
-  const input = list.getByRole("textbox", { name: "프로젝트 이름", exact: true });
-  await expect(input).toBeFocused();
+  await 제목이름(page, otherProject.name).click();
+  const input = 제목칸(page);
   await expect(input).toHaveValue(otherProject.name);
-  // 입력칸을 눌러도 그 행이 골라지지 않는다.
-  await input.click();
-  await expect(page).toHaveURL(`/projects/${project.slug}`);
-
-  await input.fill("목록에서 바꾼 이름");
+  await input.fill("다른 곳에서 바꾼 이름");
   await 다른곳을누른다(page);
 
   await expect(input).toHaveCount(0);
-  await expect.poll(() => 프로젝트저장(page)).toEqual([{ slug: otherProject.slug, name: "목록에서 바꾼 이름" }]);
-  await expect(page).toHaveURL(`/projects/${project.slug}`);
+  await expect.poll(() => 프로젝트저장(page)).toEqual([{ slug: otherProject.slug, name: "다른 곳에서 바꾼 이름" }]);
+  await expect(page).toHaveURL(`/projects/${otherProject.slug}`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("프로젝트 목록 행을 비우고 Enter를 누르면 부르지 않고 원래 이름이 서며, 포커스가 그 행으로 돌아간다", async ({ page }) => {
+test("Project 상세 제목을 비우고 Enter를 누르면 부르지 않고 원래 이름이 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
-  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
-  const row = () => list.getByRole("button", { name: `${otherProject.name} ${otherProject.path}`, exact: true });
 
-  await row().focus();
-  await page.keyboard.press("F2");
-  const input = list.getByRole("textbox", { name: "프로젝트 이름", exact: true });
+  await 제목이름(page, project.name).click();
+  const input = 제목칸(page);
   await input.fill("");
   await input.press("Enter");
 
   await expect(input).toHaveCount(0);
-  await expect(row()).toBeFocused();
+  await expect(제목이름(page, project.name)).toHaveText(project.name);
   expect(await callCount(page, "update_project")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 「그대로면 아무것도 부르지 않는다」는 프로젝트 쪽에서도 잰다 — 저장 길이 둘이라(머리 줄의 `rename` · 목록 행의 `onRenameCommit`)
-// 따로 잇는다. 손대지 않은 채 끝내는 갈래와, 앞뒤 공백만 붙여 지금 이름과 같아진 갈래를 자리마다 하나씩 둔다.
-for (const [where, how, what] of [
-  ["머리 줄", "Enter", "손대지 않은 이름"],
-  ["머리 줄", "다른 곳", "앞뒤 공백만 붙인 지금 이름"],
-  ["목록 행", "Enter", "앞뒤 공백만 붙인 지금 이름"],
-  ["목록 행", "다른 곳", "손대지 않은 이름"],
+// 「그대로면 아무것도 부르지 않는다」는 Project 쪽에서도 잰다 — 손대지 않은 채 끝내는 갈래와, 앞뒤 공백만 붙여 지금 이름과 같아진 갈래를
+// 끝내는 길(Enter · 다른 곳)마다 다 둔다. 한때 머리 줄 이름 · 목록 행 두 자리가 넷을 나눠 가졌다 — 03이 이름 바꾸기를 상세 제목 하나로
+// 모아(03 결정 「10」) 넷이 다 그 자리다.
+for (const [how, what] of [
+  ["Enter", "손대지 않은 이름"],
+  ["Enter", "앞뒤 공백만 붙인 지금 이름"],
+  ["다른 곳", "손대지 않은 이름"],
+  ["다른 곳", "앞뒤 공백만 붙인 지금 이름"],
 ] as const) {
-  test(`프로젝트 ${where} 이름을 ${what}으로 두고 ${how}${how === "Enter" ? "를" : "을"} 누르면 프로젝트를 고치지 않는다`, async ({
-    page,
-  }) => {
+  test(`Project 상세 제목을 ${what}으로 두고 ${how}${how === "Enter" ? "를" : "을"} 누르면 Project를 고치지 않는다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(`/projects/${project.slug}`);
-    const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
-    const target = where === "머리 줄" ? project : otherProject;
-    const input = (where === "머리 줄" ? 화면머리(page) : list).getByRole("textbox", {
-      name: "프로젝트 이름",
-      exact: true,
-    });
 
-    if (where === "머리 줄") await 머리이름(page, project.name).dblclick();
-    else {
-      await list.getByRole("button", { name: `${otherProject.name} ${otherProject.path}`, exact: true }).focus();
-      await page.keyboard.press("F2");
-    }
+    await 제목이름(page, project.name).click();
+    const input = 제목칸(page);
     await expect(input).toBeFocused();
-    await expect(input).toHaveValue(target.name);
-    if (what !== "손대지 않은 이름") await input.fill(` ${target.name} `);
+    await expect(input).toHaveValue(project.name);
+    if (what !== "손대지 않은 이름") await input.fill(` ${project.name} `);
     if (how === "Enter") await input.press("Enter");
     else await 다른곳을누른다(page);
 

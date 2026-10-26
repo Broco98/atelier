@@ -65,6 +65,65 @@ pub(crate) const PROPOSE_WORK: &str = "propose_work";
 /// 「Project 고치기 시작」(S13 · §11 S21 · S22, v1 티켓 32). 판정의 Work 밖 편집 거절 글이 이 이름을 가리킨다(`policy.rs`).
 pub(crate) const START_EDITING: &str = "start_editing";
 
+/// 「Space 목록」(03 구현 스펙 §11 · 티켓 08).
+pub(crate) const LIST_SPACES: &str = "list_spaces";
+
+/// 「Space 붙이기」(03 구현 스펙 §11 · S11 · S12 · 티켓 08).
+pub(crate) const SET_SPACE: &str = "set_space";
+
+/// 「Project 추가」(03 구현 스펙 §12 · 티켓 12).
+pub(crate) const ADD_PROJECT: &str = "add_project";
+
+/// 「Project 고치기」(03 구현 스펙 §12 · 티켓 12).
+pub(crate) const EDIT_PROJECT: &str = "edit_project";
+
+/// 「Space 만들기」(03 구현 스펙 §12 · S6 · 티켓 12).
+pub(crate) const CREATE_SPACE: &str = "create_space";
+
+/// 「Space 고치기」(03 구현 스펙 §12 · 티켓 12).
+pub(crate) const EDIT_SPACE: &str = "edit_space";
+
+/// 대화로 하는 설정 넷이 함께 지키는 것(§12 · S13) — 묻지 않고 하는 일, 결과 카드, 지우는 도구가 없다는 것.
+const SETTING_NOTE: &str = "사람이 대화로 부탁한 설정이다 — 승인 카드 없이 곧바로 하고, 흐름에 결과 카드가 서서 사람이 그 카드의 단추(Project \
+추가 · 고치기와 Space 만들기는 「열기」, Space 고치기는 「관계 보기」)로 그 화면에서 다시 고친다. 화면에서 하는 것과 같은 파일을 같은 꼴로 \
+쓴다. Project 제거 · Space 삭제는 도구가 없다 — 화면에서만 한다.";
+
+/// 「Project 추가」의 쓰는 법 — 폴더의 갈래마다 무엇이 일어나는지(§12 · §15).
+const ADD_PROJECT_GUIDE: &str = "사람의 폴더(git 저장소 하나)를 Atelier의 Project로 등록한다. 사람이 폴더를 등록해 달라고 할 때 부른다.\n\n\
+- git 저장소의 뿌리면 곧바로 등록한다 — 기준 브랜치는 origin/HEAD → 지금 브랜치 → main 차례로 정한다.\n\
+- 이미 등록된 폴더면 아무것도 바꾸지 않고 그 Project를 돌려준다.\n\
+- git 저장소가 아니면 사람에게 질문 카드(「git init 하고 추가」 · 「추가하지 않기」)로 묻고, 저장소 안의 하위 폴더면 「뿌리 폴더로 추가」 · \
+「그대로 추가」 · 「추가하지 않기」를 묻는다 — 사람이 고를 때까지 기다리고, 고른 대로 한다.\n\n";
+
+/// 「Project 고치기」의 쓰는 법 — 기준 브랜치의 규칙(§15 「고치기」 · S19).
+const EDIT_PROJECT_GUIDE: &str = "등록된 Project의 이름 · 설명 · 기준 브랜치를 고친다. 준 칸만 바꾼다. slug(파일 이름)와 폴더는 바꾸지 않는다.\n\n\
+- 기준 브랜치는 그 저장소에 이미 있는 브랜치만 받는다 — list_projects의 git.localBranches · git.remoteBranches[].branches에서 고른다(원격 \
+브랜치는 origin/release/2.5처럼 그 이름 그대로). Atelier는 fetch하지 않는다. 없는 브랜치면 실패하고 고를 수 있는 브랜치를 돌려준다.\n\
+- 새 기준 브랜치는 새 Work부터 든다.\n\n";
+
+/// 「Space 만들기」의 쓰는 법 — 초안을 먼저 보이는 지시(§12 · 티켓 06 「Host와 만들기」).
+const CREATE_SPACE_GUIDE: &str = "Space(함께 다루는 Project의 묶음)를 새로 만든다 — `~/.atelier/spaces/<slug>.md` 파일 하나다. slug는 이름에서 \
+화면과 같은 규칙으로 짓는다(한글 유지 · 겹치면 -2). 만들기 전에 이름 · Project · 설명의 초안을 사람에게 보이고, 사람이 좋다고 하면 부른다.\n\n\
+- projects는 등록된 Project의 slug(list_projects)다 — 비워도 된다(빈 Space).\n\
+- 파일에 문제가 생기면(등록되지 않은 Project · 같은 Project 두 번 · 빈 이름) 만들지 않고 그 문제를 돌려준다.\n\n";
+
+/// 「Space 고치기」의 쓰는 법(§12 · §8 「고치기」).
+const EDIT_SPACE_GUIDE: &str = "Space의 이름 · 설명을 고치고 Project를 넣고 뺀다. 준 칸만 바꾸고 파일의 나머지 글(주석 · 차례 · 모르는 칸)은 \
+그대로 둔다. 이름을 고쳐도 파일 이름(slug)은 그대로다. 그 Space로 읽는 Thread는 다음 말부터 바뀐 Project를 읽는다.\n\n\
+- add · remove는 Project의 slug(list_projects) 목록이다. 이미 든 것을 넣거나 없는 것을 빼면 그대로다.\n\
+- 고친 글에 새 문제가 생기면(등록되지 않은 Project · 빈 이름) 쓰지 않고 그 문제를 돌려준다.\n\n";
+
+/// 「Space 붙이기」의 쓰는 법 — 언제 부르고, Atelier가 언제 묻지 않고 붙이며 언제 사람에게 묻는지, 답이 무엇인지(S42). 묻지 않고 붙이는
+/// 때(「알아서」 · 지금 Space 없음 · 맞는 Space가 넘긴 것 하나)는 Atelier가 지킨다 — Agent가 고르지 않는다(S12).
+const SET_SPACE_GUIDE: &str = "이 Thread의 Space를 붙이고 · 바꾸고 · 뺀다(space를 비우면 Space 없이). Space는 함께 다루는 Project의 묶음이고, \
+붙으면 이 Thread는 그 Space의 Project만 읽는다. 다루는 Project가 정해지면 list_spaces로 그 Project를 담은 Space를 보고 부른다. 이미 \
+붙어 있으면 바꿀 까닭이 있을 때만 부른다. Work에 이은 Thread면 그 Work의 Space가 바뀐다 — 그 Work의 다른 Thread도 함께 바뀐다.\n\n\
+- Atelier가 projects를 모두 담은 Space들(없으면 하나라도 담은 Space들)을 후보로 세우고, 넘긴 space를 추천으로 맨 위에 둔다.\n\
+- 물어보는 정도가 「알아서」이고 지금 Space가 없으며 후보가 넘긴 Space 하나뿐이면 묻지 않고 붙인다(projects를 담은 Space가 없으면 묻는다). 그 밖에는 사람의 입력창 자리에 \
+질문 카드(「어느 Space에서 할까요?」)가 서고 사람이 고를 때까지 기다린다 — 결과로 사람이 고른 Space가 온다. 「나중에」면 아무것도 \
+바꾸지 않는다 — 같은 물음을 곧바로 다시 하지 않는다.\n\
+- 바뀐 범위는 다음 말부터다 — 이번 턴에는 지금 함께 연 폴더를 그대로 읽는다.";
+
 /// 「Work 만들기 제안」의 쓰는 법 — 언제 부르고, 카드에서 사람이 무엇을 고치고, 답이 무엇인지(S42). 사람이 설치한 `atelier` MCP로 Work를
 /// 만들면 Thread가 이어지지 않으므로 그 길을 막는 말도 여기 둔다(§7).
 const PROPOSE_WORK_GUIDE: &str = "이 Thread의 일을 Work로 묶자고 사람에게 묻는다. 일이 커지면 부른다 — 여러 파일을 고치거나 \
@@ -311,6 +370,62 @@ pub(crate) enum Call {
     ProposeWork(Proposal),
     /// Project 고치기 시작 — 고칠 Project의 slug와, Work 밖 Project 카드에 설 까닭(v1 티켓 32).
     StartEditing { project: String, reason: Option<String> },
+    /// Space 목록 — Space마다 slug · 이름 · Project · 설명 첫 줄과, 이 Thread의 지금 Space(03 티켓 08).
+    ListSpaces,
+    /// Space 붙이기 — Host가 고른 Space와 다루려는 Project(03 티켓 08). 묻지 않고 붙이거나 질문 카드로 묻는다.
+    SetSpace(SpaceAsk),
+    /// Project 추가 — 등록할 폴더와 이름 · 설명(03 티켓 12). git이 아니거나 하위 폴더면 질문 카드로 묻는다.
+    AddProject(ProjectAdd),
+    /// Project 고치기 — 고칠 Project와 바꿀 칸(03 티켓 12).
+    EditProject(ProjectEdit),
+    /// Space 만들기 — 이름 · Project · 설명(03 티켓 12). 만든 이는 `host`다(S6).
+    CreateSpace(SpaceNew),
+    /// Space 고치기 — 고칠 Space와 바꿀 칸 · 넣고 뺄 Project(03 티켓 12).
+    EditSpace(SpaceEdit),
+}
+
+/// Project 추가의 인자(03 §12) — 폴더(절대 경로 또는 `~`로 시작), 이름(없으면 폴더 이름), 설명.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProjectAdd {
+    pub(crate) path: String,
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+}
+
+/// Project 고치기의 인자(03 §12) — 준 칸만 바꾼다. 설명은 빈 글이면 비운다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProjectEdit {
+    pub(crate) project: String,
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) base_branch: Option<String>,
+}
+
+/// Space 만들기의 인자(03 §12) — Project는 차례 그대로, 겹치지 않는다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpaceNew {
+    pub(crate) name: String,
+    pub(crate) projects: Vec<String>,
+    pub(crate) description: Option<String>,
+}
+
+/// Space 고치기의 인자(03 §12) — 준 칸만 바꾼다. 설명은 빈 글이면 비운다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpaceEdit {
+    pub(crate) space: String,
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) add: Vec<String>,
+    pub(crate) remove: Vec<String>,
+}
+
+/// Space 붙이기의 인자(03 §11) — 추천할 Space(없으면 Space 없이), Host가 다루려는 Project(후보를 가른다), 까닭.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpaceAsk {
+    pub(crate) space: Option<String>,
+    /// 차례 그대로, 겹치지 않는다.
+    pub(crate) projects: Vec<String>,
+    pub(crate) reason: Option<String>,
 }
 
 /// Work 만들기 제안(S13) — Host가 골라 둔 제목 · slug · 까닭 · 브랜치 · Project들. 카드가 이것으로 서고, 사람이 Project와 브랜치를
@@ -468,6 +583,99 @@ pub(crate) fn list() -> Value {
                 "additionalProperties": false,
             },
         },
+        {
+            "name": LIST_SPACES,
+            "title": "Space 목록",
+            "description": "사람이 만든 Space들 — Space마다 slug · 이름 · 담은 Project의 slug · 설명 첫 줄과, 이 Thread의 지금 Space(Work에 \
+                            이었으면 그 Work의 Space). Space는 함께 다루는 Project의 묶음이다 — 붙은 Thread는 그 Project만 읽는다. \
+                            set_space 전에 부른다. 읽기만 한다.",
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+        },
+        {
+            "name": SET_SPACE,
+            "title": "Space 붙이기",
+            "description": SET_SPACE_GUIDE,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "space": {
+                        "type": ["string", "null"],
+                        "description": "붙일 Space의 slug(list_spaces의 slug) — 사람에게 물으면 「추천」으로 선다. 비우면 Space 없이",
+                    },
+                    "projects": {
+                        "type": "array",
+                        "description": "이 Thread에서 다루려는 Project의 slug(list_projects의 slug) — 후보 Space를 가른다",
+                        "items": {"type": "string"},
+                    },
+                    "reason": {"type": "string", "description": "왜 이 Space인지 한 줄(예: 환불은 web-app과 api-server에 걸쳐 있어요)"},
+                },
+                "required": ["projects"],
+                "additionalProperties": false,
+            },
+        },
+        {
+            "name": ADD_PROJECT,
+            "title": "Project 추가",
+            "description": format!("{ADD_PROJECT_GUIDE}{SETTING_NOTE}"),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "등록할 폴더 — 절대 경로나 ~로 시작하는 경로(예: ~/MyProjects/landing-page)"},
+                    "name": {"type": "string", "description": "Project 이름 — 사람이 화면에서 보는 이름. 없으면 폴더 이름이다"},
+                    "description": {"type": "string", "description": "이 Project가 무엇인지 — Agent가 이 Project를 이해할 때 읽는다"},
+                },
+                "required": ["path"],
+                "additionalProperties": false,
+            },
+        },
+        {
+            "name": EDIT_PROJECT,
+            "title": "Project 고치기",
+            "description": format!("{EDIT_PROJECT_GUIDE}{SETTING_NOTE}"),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string", "description": "고칠 Project의 slug(list_projects의 slug)"},
+                    "name": {"type": "string", "description": "새 이름 — 비울 수 없다"},
+                    "description": {"type": "string", "description": "새 설명 — 빈 글이면 설명을 비운다"},
+                    "baseBranch": {"type": "string", "description": "새 기준 브랜치 — 그 저장소에 있는 브랜치(로컬 또는 origin/<이름>)"},
+                },
+                "required": ["project"],
+                "additionalProperties": false,
+            },
+        },
+        {
+            "name": CREATE_SPACE,
+            "title": "Space 만들기",
+            "description": format!("{CREATE_SPACE_GUIDE}{SETTING_NOTE}"),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Space 이름 — 파일 이름(slug)이 여기서 나온다(예: 정산)"},
+                    "projects": {"type": "array", "description": "담을 Project의 slug(list_projects의 slug)", "items": {"type": "string"}},
+                    "description": {"type": "string", "description": "이 Space가 무엇인지 — Agent가 이 Space에서 일할 때 처음 읽는다"},
+                },
+                "required": ["name", "projects"],
+                "additionalProperties": false,
+            },
+        },
+        {
+            "name": EDIT_SPACE,
+            "title": "Space 고치기",
+            "description": format!("{EDIT_SPACE_GUIDE}{SETTING_NOTE}"),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "space": {"type": "string", "description": "고칠 Space의 slug(list_spaces의 slug)"},
+                    "name": {"type": "string", "description": "새 이름 — 비울 수 없다. 파일 이름은 그대로다"},
+                    "description": {"type": "string", "description": "새 설명 — 빈 글이면 설명을 비운다"},
+                    "add": {"type": "array", "description": "넣을 Project의 slug", "items": {"type": "string"}},
+                    "remove": {"type": "array", "description": "뺄 Project의 slug", "items": {"type": "string"}},
+                },
+                "required": ["space"],
+                "additionalProperties": false,
+            },
+        },
     ]})
 }
 
@@ -503,8 +711,114 @@ pub(crate) fn read_call(params: &Value) -> Result<Call, Unread> {
                 None => Err(Unread::Bad("project(고칠 Project의 slug)를 글로 주세요".to_owned())),
             }
         }
+        LIST_SPACES => Ok(Call::ListSpaces),
+        SET_SPACE => read_space_ask(arguments).map(Call::SetSpace).map_err(Unread::Bad),
+        ADD_PROJECT => read_project_add(arguments).map(Call::AddProject).map_err(Unread::Bad),
+        EDIT_PROJECT => read_project_edit(arguments).map(Call::EditProject).map_err(Unread::Bad),
+        CREATE_SPACE => read_space_new(arguments).map(Call::CreateSpace).map_err(Unread::Bad),
+        EDIT_SPACE => read_space_edit(arguments).map(Call::EditSpace).map_err(Unread::Bad),
         _ => Err(Unread::Unknown(Fault::new(-32602, format!("모르는 도구입니다: {name}")))),
     }
+}
+
+/// 글 칸 하나 — 앞뒤 빈칸을 걷고, 비었으면 없다(빈 글을 받지 않는 칸).
+fn filled_text(arguments: &Value, name: &str) -> Option<String> {
+    arguments[name].as_str().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
+}
+
+/// 바꿀 글 칸 하나 — 빈 글도 받는다(설명을 비운다 · 빈 이름은 core가 거절한다). 글이 아니면 없다.
+fn text_or_empty(arguments: &Value, name: &str) -> Option<String> {
+    arguments[name].as_str().map(|value| value.trim().to_owned())
+}
+
+/// Project slug 목록 칸 — 없으면 빈 목록, 같은 것은 한 번만 든다.
+fn slug_list(arguments: &Value, name: &str) -> Result<Vec<String>, String> {
+    let listed = match &arguments[name] {
+        Value::Null => Vec::new(),
+        Value::Array(items) => items.clone(),
+        _ => return Err(format!("{name}는 Project slug의 목록으로 주세요(예: [\"api-server\"])")),
+    };
+    let mut slugs: Vec<String> = Vec::new();
+    for item in &listed {
+        let Some(slug) = item.as_str().map(str::trim).filter(|slug| !slug.is_empty()) else {
+            return Err(format!("{name}의 칸마다 Project의 slug(list_projects의 slug)를 글로 주세요"));
+        };
+        if !slugs.iter().any(|one| one == slug) {
+            slugs.push(slug.to_owned());
+        }
+    }
+    Ok(slugs)
+}
+
+/// 「Project 추가」의 인자 — 폴더는 절대 경로이거나 `~`로 시작해야 한다(도구 서버의 작업 폴더에 기대지 않는다).
+fn read_project_add(arguments: &Value) -> Result<ProjectAdd, String> {
+    let path = filled_text(arguments, "path").ok_or("path(등록할 폴더)를 글로 주세요")?;
+    if !(path.starts_with('/') || path == "~" || path.starts_with("~/")) {
+        return Err(format!("path `{path}`는 절대 경로나 ~로 시작하는 경로로 주세요(예: ~/MyProjects/landing-page)"));
+    }
+    Ok(ProjectAdd { path, name: filled_text(arguments, "name"), description: filled_text(arguments, "description") })
+}
+
+/// 「Project 고치기」의 인자 — 바꿀 칸이 하나도 없으면 고칠 것이 없다.
+fn read_project_edit(arguments: &Value) -> Result<ProjectEdit, String> {
+    let project = filled_text(arguments, "project").ok_or("project(고칠 Project의 slug)를 글로 주세요")?;
+    let edit = ProjectEdit {
+        project,
+        name: text_or_empty(arguments, "name"),
+        description: text_or_empty(arguments, "description"),
+        base_branch: text_or_empty(arguments, "baseBranch"),
+    };
+    if edit.name.is_none() && edit.description.is_none() && edit.base_branch.is_none() {
+        return Err("바꿀 칸(name · description · baseBranch)을 하나 이상 주세요".to_owned());
+    }
+    Ok(edit)
+}
+
+/// 「Space 만들기」의 인자.
+fn read_space_new(arguments: &Value) -> Result<SpaceNew, String> {
+    let name = filled_text(arguments, "name").ok_or("name(Space 이름)을 글로 주세요")?;
+    Ok(SpaceNew { name, projects: slug_list(arguments, "projects")?, description: filled_text(arguments, "description") })
+}
+
+/// 「Space 고치기」의 인자 — 바꿀 칸이 하나도 없으면 고칠 것이 없다.
+fn read_space_edit(arguments: &Value) -> Result<SpaceEdit, String> {
+    let space = filled_text(arguments, "space").ok_or("space(고칠 Space의 slug)를 글로 주세요")?;
+    let edit = SpaceEdit {
+        space,
+        name: text_or_empty(arguments, "name"),
+        description: text_or_empty(arguments, "description"),
+        add: slug_list(arguments, "add")?,
+        remove: slug_list(arguments, "remove")?,
+    };
+    if edit.name.is_none() && edit.description.is_none() && edit.add.is_empty() && edit.remove.is_empty() {
+        return Err("바꿀 칸(name · description · add · remove)을 하나 이상 주세요".to_owned());
+    }
+    Ok(edit)
+}
+
+/// 「Space 붙이기」의 인자 — 글 칸은 앞뒤 빈칸을 걷고, 빈 space는 Space 없이다. Project는 slug 글자 목록이고 같은 것은 한 번만 든다.
+fn read_space_ask(arguments: &Value) -> Result<SpaceAsk, String> {
+    let space = match &arguments["space"] {
+        Value::Null => None,
+        Value::String(slug) => Some(slug.trim()).filter(|slug| !slug.is_empty()).map(str::to_owned),
+        _ => return Err("space는 Space의 slug(list_spaces의 slug) 글자로 주세요 — Space 없이면 비운다".to_owned()),
+    };
+    let listed = match &arguments["projects"] {
+        Value::Null => Vec::new(),
+        Value::Array(items) => items.clone(),
+        _ => return Err("projects는 Project slug의 목록으로 주세요(예: [\"web-app\", \"api-server\"])".to_owned()),
+    };
+    let mut projects: Vec<String> = Vec::new();
+    for item in &listed {
+        let Some(slug) = item.as_str().map(str::trim).filter(|slug| !slug.is_empty()) else {
+            return Err("projects의 칸마다 Project의 slug(list_projects의 slug)를 글로 주세요".to_owned());
+        };
+        if !projects.iter().any(|one| one == slug) {
+            projects.push(slug.to_owned());
+        }
+    }
+    let reason = arguments["reason"].as_str().map(str::trim).filter(|reason| !reason.is_empty()).map(str::to_owned);
+    Ok(SpaceAsk { space, projects, reason })
 }
 
 /// 「Work 만들기 제안」의 인자 — 틀리면 Agent가 고쳐 부를 까닭의 글이다. 글 칸은 앞뒤 빈칸을 걷는다. Project는 `{slug, reason}`
@@ -603,10 +917,81 @@ mod tests {
                 json!("list_projects"),
                 json!("get_work"),
                 json!("propose_work"),
-                json!("start_editing")
+                json!("start_editing"),
+                json!("list_spaces"),
+                json!("set_space"),
+                json!("add_project"),
+                json!("edit_project"),
+                json!("create_space"),
+                json!("edit_space")
             ],
-            "목록과 읽는 도구가 같다"
+            "목록과 읽는 도구가 같다 — 지우는 도구는 없다(03 §12 · §17)"
         );
+    }
+
+    #[test]
+    fn 대화로_하는_설정_넷은_준_칸만_읽고_폴더는_절대_경로이며_바꿀_칸이_없으면_도구의_실패다() {
+        let call = |name: &str, arguments: Value| read_call(&json!({"name": name, "arguments": arguments}));
+        assert_eq!(
+            call("add_project", json!({"path": " ~/MyProjects/landing-page ", "name": " ", "description": "랜딩"})),
+            Ok(Call::AddProject(ProjectAdd { path: "~/MyProjects/landing-page".into(), name: None, description: Some("랜딩".into()) }))
+        );
+        for path in ["MyProjects/landing-page", "./notes", "~notes", ""] {
+            assert!(matches!(call("add_project", json!({"path": path})), Err(Unread::Bad(_))), "{path}");
+        }
+        assert_eq!(
+            call("edit_project", json!({"project": "web-app", "baseBranch": " main ", "description": ""})),
+            Ok(Call::EditProject(ProjectEdit {
+                project: "web-app".into(),
+                name: None,
+                description: Some(String::new()),
+                base_branch: Some("main".into()),
+            })),
+            "빈 설명은 설명을 비운다"
+        );
+        assert!(matches!(call("edit_project", json!({"project": "web-app"})), Err(Unread::Bad(_))), "바꿀 칸이 없다");
+        assert_eq!(
+            call("create_space", json!({"name": " 정산 ", "projects": ["api-server", "api-server"]})),
+            Ok(Call::CreateSpace(SpaceNew { name: "정산".into(), projects: vec!["api-server".into()], description: None }))
+        );
+        assert!(matches!(call("create_space", json!({"projects": []})), Err(Unread::Bad(_))));
+        assert!(matches!(call("create_space", json!({"name": "정산", "projects": "api-server"})), Err(Unread::Bad(_))));
+        assert_eq!(
+            call("edit_space", json!({"space": "결제-서비스", "add": ["backoffice"]})),
+            Ok(Call::EditSpace(SpaceEdit {
+                space: "결제-서비스".into(),
+                name: None,
+                description: None,
+                add: vec!["backoffice".into()],
+                remove: Vec::new(),
+            }))
+        );
+        assert!(matches!(call("edit_space", json!({"space": "결제-서비스"})), Err(Unread::Bad(_))), "바꿀 칸이 없다");
+        assert!(matches!(call("edit_space", json!({"space": "결제-서비스", "remove": [3]})), Err(Unread::Bad(_))));
+    }
+
+    #[test]
+    fn space_붙이기는_space_slug나_없음과_다루는_project와_까닭을_받고_틀린_인자는_도구의_실패다() {
+        let call = |arguments: Value| read_call(&json!({"name": "set_space", "arguments": arguments}));
+        assert_eq!(
+            call(json!({"space": " 결제-서비스 ", "projects": ["web-app", " api-server ", "web-app"], "reason": "환불은 둘에 걸쳐 있어요"})),
+            Ok(Call::SetSpace(SpaceAsk {
+                space: Some("결제-서비스".into()),
+                projects: vec!["web-app".into(), "api-server".into()],
+                reason: Some("환불은 둘에 걸쳐 있어요".into()),
+            })),
+            "Project는 겹치지 않게 차례대로 받는다"
+        );
+        assert_eq!(
+            call(json!({"space": null, "projects": []})),
+            Ok(Call::SetSpace(SpaceAsk { space: None, projects: Vec::new(), reason: None })),
+            "space가 없으면 Space 없이(빼기)다"
+        );
+        assert_eq!(call(json!({"space": "", "reason": " "})), Ok(Call::SetSpace(SpaceAsk { space: None, projects: Vec::new(), reason: None })));
+        assert!(matches!(call(json!({"space": 3})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"space": "a", "projects": "web-app"})), Err(Unread::Bad(_))));
+        assert!(matches!(call(json!({"space": "a", "projects": [""]})), Err(Unread::Bad(_))));
+        assert_eq!(read_call(&json!({"name": "list_spaces", "arguments": {}})), Ok(Call::ListSpaces));
     }
 
     #[test]

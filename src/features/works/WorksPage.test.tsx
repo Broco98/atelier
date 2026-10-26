@@ -477,11 +477,19 @@ describe("WorksPage 머리 줄 배치", () => {
     // 제목은 버튼도 입력칸도 아니다 — 평소에는 포커스만 받는 글자다(`tabIndex`). 우클릭 · ⇧F10으로 work 메뉴를 여는 대상이고
     // (codex-ds 결정 6), 두 번 클릭 · F2로 그 자리가 입력칸이 된다 — 입력칸은 고치는 동안에만 선다(codex-ds 스펙 §9 ·
     // `e2e/inline-rename.spec.ts`). 누르면 고친다는 도움말(「클릭해서 편집」)도 없다.
-    const lead = card.slice(0, card.indexOf("data-head-actions"));
-    expect(lead).not.toMatch(/<button|<input|contenteditable/);
-    expect(lead).not.toContain('title="클릭해서 편집"');
+    // 제목 앞의 흐린 Space(03 §10)만 단추다 — Space 메뉴를 연다. 그 뒤(⚡부터)가 제목의 자리다.
+    const title = card.slice(zap, card.indexOf("data-head-actions"));
+    expect(title).not.toMatch(/<button|<input|contenteditable/);
+    expect(title).not.toContain('title="클릭해서 편집"');
     // 브레드크럼이 아니다. `Works /`가 남아 있으면 제목 앞에 이유 없는 글자가 선다.
     expect(header(render())).not.toContain("Works");
+  });
+
+  it("제목 앞에 흐린 Space와 「/」가 선다 — Space가 없으면 「Space 없음」, Space 목록을 아직 못 읽었으면 slug다(03 §10)", () => {
+    const crumb = (card: string) => card.slice(0, card.lastIndexOf("<svg", card.indexOf("lucide-zap"))).replace(/<[^>]+>/g, "");
+    expect(crumb(headRowOf(render()))).toBe("Space 없음/");
+    expect(crumb(headRowOf(render({ space: "결제" })))).toBe("결제/");
+    expect(headRowOf(render())).toMatch(/<button[^>]*aria-haspopup="menu"[^>]*data-slot="work-space"/);
   });
 });
 
@@ -783,7 +791,7 @@ describe("WorksPage 작업 패널 칸", () => {
 
   // 두 번 **뒤집혔다** — 처음엔 「떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼」이었고(창 끝에서 끝까지 가는 surface), ui-refresh
   // 결정 4로 머리 줄 아래 뜬 둥근 흰 카드가 되어 문서와의 구분을 틈이 맡았다. 이제 흰 판 하나가 본문을 품어(02 구현 스펙 §3 S2) 패널은
-  // 다시 판 안의 칸이고, 문서와의 구분은 왼쪽 선 하나다(Codex 오른쪽 패널의 왼쪽 선 — 사이드바 오른쪽 선과 같은 `border-heavy`).
+  // 다시 판 안의 칸이고, 문서와의 구분은 왼쪽 선 하나다(Codex 오른쪽 패널의 왼쪽 선 — `border-heavy`).
   it("패널은 둥근 카드가 아니라 판 안의 칸이고, 왼쪽 선 하나로 문서와 갈린다", () => {
     const box = panelBox(render());
     const card = box.match(/<section[^>]*aria-label="작업 패널"[^>]*>/)?.[0] ?? "";

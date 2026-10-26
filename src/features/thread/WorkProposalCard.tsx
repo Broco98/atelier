@@ -1,11 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Check, Folder, Info } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { Check, Folder, Info, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { cn } from "@/lib/utils";
 import { threadApi } from "./api";
 import type { AskTurn } from "./asks";
-import { SLOT_CARD } from "./ApprovalCard";
+import { SLOT_CARD, useSlotCard } from "./ApprovalCard";
 import { AskCount } from "./AskTurnMarks";
 import type { PendingWork } from "./fold";
 import { branchHint, firstPicked } from "./work-proposal";
@@ -13,7 +13,8 @@ import { branchHint, firstPicked } from "./work-proposal";
 // Work 만들기 카드(v1 티켓 30 · 구현 스펙 §11 · 스토리 89 · 90 · 91 · 캔버스 Cards 보드 「Work 만들기 · 묻는 중」) — Host가 Thread 도구
 // `propose_work`로 Work 만들기를 제안하면 **입력창 자리에** 선다(승인 카드와 같은 자리 · 같은 물음 차례 — `askTurn`). 제목 · 까닭,
 // 등록된 Project(Host 추천과 그 까닭이 먼저 · 처음부터 골라 둠), 규칙 설명과 함께 고치는 브랜치, 「worktree는 처음 고칠 때 만듭니다」
-// 안내, 「Work 없이 계속」 · 「Work 만들기」다. 값은 순수 함수가 짓는다(`work-proposal.ts`).
+// 안내, 「Work 없이 계속」 · 「Work 만들기」다. 값은 순수 함수가 짓는다(`work-proposal.ts`). Space에 이은 Thread면 머리 아래에 새 Work로
+// 옮겨 갈 Space 한 줄 「◇ 결제 서비스 · Space」가 선다(03 §9 · S8 — 카드에서 바꾸지 않는다, 바꾸려면 받아들인 뒤 Work 화면 머리의 Space 메뉴로).
 //
 // 겉은 입력창 자리 카드의 한 겉이다(`SLOT_CARD` — 02 §10 · 스토리 68). 안은 v1 보드의 `.wc`다 — 위 16 · 옆 16 · 아래 14, 칸 사이 12.
 // 머리는 폴더 아이콘 상자(32 · r10 · `fill-soft`)와 물음 · 「제목 · 까닭」(12/18 `fg-tertiary`). Project 줄은 높이 38 · r12에 체크(16)와 이름, 추천이면 「Host 추천」 꼬리표와 까닭, 아니면
@@ -41,31 +42,20 @@ function WorkProposalCard({ thread, card, count = null, next }: WorkProposalCard
   const projectsId = useId();
   const branchId = useId();
   const hintId = useId();
-  const box = useRef<HTMLDivElement>(null);
+  // 카드 전체의 글쇠가 없어 선 직후의 잠금(`armed`)은 읽지 않는다 — 브랜치 칸의 Enter는 칸의 글쇠다(머리말).
+  const { box, sent, problem, send } = useSlotCard();
   const [checked, setChecked] = useState(() => firstPicked(card.projects));
   const [branch, setBranch] = useState(card.branch ?? card.slug);
-  const [sent, setSent] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   const hint = branchHint(branch, card.projects, checked);
   const picked = card.projects.filter((one) => checked.has(one.slug)).map((one) => one.slug);
 
-  useEffect(() => {
-    const holder = document.activeElement;
-    if (holder === null || holder === document.body) box.current?.focus({ preventScroll: true });
-  }, []);
-
   const answer = (create: boolean) => {
-    if (sent || (create && hint.problem)) return;
-    setSent(true);
-    setProblem(null);
-    const ask = create
-      ? threadApi.answerWork(thread, card.requestId, true, picked, picked.length > 0 ? branch.trim() : null)
-      : threadApi.answerWork(thread, card.requestId, false);
-    ask.catch((error: unknown) => {
-      // 만들지 못했다 — 다시 고를 수 있게 풀고 까닭을 보인다(이미 닫힌 카드면 곧 그 줄이 와서 카드가 걷힌다).
-      setSent(false);
-      setProblem(String(error));
-    });
+    if (create && hint.problem) return;
+    send(() =>
+      create
+        ? threadApi.answerWork(thread, card.requestId, true, picked, picked.length > 0 ? branch.trim() : null)
+        : threadApi.answerWork(thread, card.requestId, false),
+    );
   };
   const toggle = (slug: string) =>
     setChecked((now) => {
@@ -97,6 +87,14 @@ function WorkProposalCard({ thread, card, count = null, next }: WorkProposalCard
         </div>
         <AskCount count={count} />
       </div>
+      {card.space && (
+        <p data-slot="proposal-space" className="flex items-center gap-2 text-xs text-fg-tertiary">
+          <Layers className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">
+            <span className="font-medium text-fg-secondary">{card.space.name}</span> · Space
+          </span>
+        </p>
+      )}
       {card.projects.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <p id={projectsId} className="text-xs text-fg-tertiary">

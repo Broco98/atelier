@@ -216,6 +216,108 @@ describe("말의 사전", () => {
     expect(bodyOf("모드")).toContain("계획만");
   });
 
+  // 03 구현 스펙 §2 · §5 · 티켓 02. 입력창 상자에 붙은 회색 띠가 「트레이」이고, 그 첫 칩이 새 Thread가 어디서 시작하나를 고르는 「Work
+  // 칩」이다. 사전이 트레이의 두 자리(첫 화면은 상자 아래 · Thread 화면은 상자 위)를 모르면 다음 사람이 Thread 화면의 띠를 상자 아래로
+  // 되돌려 칩이 창 끝에 눌린다. Work 칩이 스위치 둘 · 기억 · 첫 말 뒤 잠김을 말하지 않으면 기본값을 「Work 없음」으로 되돌리거나 최근
+  // Work를 기억해 다음 새 Thread를 엉뚱한 Work에 붙인다.
+  it("「트레이」가 두 자리를 말하고, 「Work 칩」이 스위치 둘 · 기억 · 최근 Work · 첫 말 뒤 잠김을 말한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["트레이", "Work 칩"]));
+    for (const piece of ["회색 띠", "상자 아래", "상자 위"]) expect(bodyOf("트레이"), piece).toContain(piece);
+    for (const piece of ["「새 Work」", "「Work 없이 대화」", "최근 Work", "기억", "잠긴다"]) {
+      expect(bodyOf("Work 칩"), piece).toContain(piece);
+    }
+  });
+
+  // 03 구현 스펙 §2 · §5 · 티켓 06. 트레이의 Work 칩 뒤에 「Space 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「Space 넣기」 ·
+  // ×로 빼기 · Work의 Space면 ▾)와 「고른 것이 가는 때」(첫 말 전에는 입력창이 쥐고 첫 말과 함께 · 첫 말 뒤엔 곧바로 · Work면 그 Work에)를
+  // 말하지 않으면 다음 사람이 첫 말 전의 고르기마다 Space 줄을 남기거나 Work 파일을 메뉴만 훑어도 바꾼다. 범위 줄이 범위의 넷을 말하지 않으면
+  // 화면이 범위를 따로 센다. 「워크스페이스」 · 「컨텍스트 칩」은 거부어다.
+  it("「Space 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Space 칩", "범위 줄"]));
+    for (const piece of ["Work 칩 바로 뒤", "「Space 넣기」", "×", "▾", "첫 말과 함께", "Space 줄이 남는다", "그 Work의 Space"]) {
+      expect(bodyOf("Space 칩"), piece).toContain(piece);
+    }
+    // 빈 Space는 Project가 적히지 않은 Space다 — worktree가 다 덮은 Space가 아니다(03 코드 리뷰 P3).
+    for (const piece of [
+      "읽는 범위",
+      "등록된 Project 3개를 읽어요",
+      "외 2개",
+      "worktree에서 일하는 Project도 든다",
+      "Project가 하나도 적히지 않은 Space",
+      "읽는 Project가 없어요",
+      "「Project 추가」",
+    ]) {
+      expect(bodyOf("범위 줄"), piece).toContain(piece);
+    }
+    expect(refused).toEqual(expect.arrayContaining(["워크스페이스", "컨텍스트 칩"]));
+    expect(bodyOf("트레이")).toContain("범위 줄");
+  });
+
+  // 03 구현 스펙 §2 · §7 · §9 · 티켓 05. Thread가 읽는 Project는 함수 하나에서 나온다 — 사전이 그 하나를 모르면 다음 사람이 화면마다 범위를
+  // 다시 센다(요약 카드가 Session이 연 폴더를 훑던 v1 #540의 길). 「스코프」는 거부어다. Space 줄은 그때 센 범위를 싣고, Space 메뉴는 Work 화면
+  // 머리가 연다. 요약 카드의 소스와 Work 만들기 카드의 Space 줄도 이 판이 고쳤다.
+  it("「읽는 범위」 · 「Space 줄」 · 「Space 메뉴」가 등재돼 있고, 읽는 범위가 「스코프」를 거부하며, 요약 카드의 소스가 그 범위다", () => {
+    expect(names).toEqual(expect.arrayContaining(["읽는 범위", "Space 줄", "Space 메뉴"]));
+    expect(bodyOf("읽는 범위")).toContain("_피할 말_: 스코프");
+    expect(refused).toContain("스코프");
+    for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때"]) {
+      expect(bodyOf("읽는 범위"), piece).toContain(piece);
+    }
+    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Space 없이", "되돌렸어요"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
+    for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「Host와 Space 만들기」", "메뉴 › Space"]) {
+      expect(bodyOf("Space 메뉴"), piece).toContain(piece);
+    }
+    expect(bodyOf("요약 카드")).toContain("소스는 그 Thread의 읽는 범위다");
+    expect(bodyOf("요약 카드")).not.toContain("함께 여는 등록된 Project");
+    expect(bodyOf("Work 만들기 카드")).toContain("「◇ 결제 서비스 · Space」");
+  });
+
+  // 03 구현 스펙 §2 · §11 · 티켓 08. Host가 Space를 묻는 카드는 질문 카드의 겉이다 — 사전이 그것을 말하지 않으면 다음 사람이 따로 그린
+  // 카드를 세우거나, 답한 뒤 Space 줄을 한 번 더 남긴다. 묻지 않고 붙이는 때(「알아서」)의 줄을 모르면 그 줄을 「바꿨어요」로 쓴다.
+  it("「질문 카드」가 Host의 Space 카드와 그 답한 줄을 말하고, 「Space 줄」이 묻지 않고 넣은 줄을 말한다", () => {
+    for (const piece of ["Thread 도구가 같은 겉의 카드", "「어느 Space에서 할까요?」", "「Space 없이」", "따로 서지 않는다", "「Space는 나중에 정하기로 함」"]) {
+      expect(bodyOf("질문 카드"), piece).toContain(piece);
+    }
+    expect(bodyOf("Space 줄")).toContain("Space에 넣었어요 — web-app · api-server를 읽어요");
+  });
+
+  // 03 구현 스펙 §2 · §12 · S13 · 티켓 12. Host가 대화로 한 설정은 승인 없이 하고 결과 카드 한 장을 남긴다 — 사전이 그 카드를 「변경 사항」
+  // 아래 PR 줄이나 리뷰의 결과물과 가르지 않으면 다음 사람이 그 자리에 설정을 섞거나 PR 줄을 결과 카드로 부른다. 「열기」가 그 화면으로 가고
+  // 지우기는 화면에서만이라는 것을 모르면 카드에 되돌리기 · 지우기 단추를 세운다. Host의 git 물음이 질문 카드의 겉이라는 것을 모르면 따로
+  // 그린 창을 세운다. 「설정 알림」 · 「변경 카드」는 거부어다.
+  it("「결과 카드」가 넷 · 「열기」 · 가름을 말하고, 「질문 카드」가 Host의 git 물음을 말한다", () => {
+    expect(names).toContain("결과 카드");
+    for (const piece of [
+      "승인 없이",
+      // 03 결정 12 · 코드 리뷰 A3 — 카드는 그 턴 안 도구 줄 뒤다(턴 사이가 아니다).
+      "그 설정을 한 턴 안, 그 도구 줄 뒤",
+      "「Project를 추가했어요 — landing-page」",
+      "「관계 보기」",
+      "Project 상세",
+      "꺼진다",
+      "화면에서만",
+      "PR 줄",
+      "결과물",
+    ]) {
+      expect(bodyOf("결과 카드"), piece).toContain(piece);
+    }
+    expect(refused).toEqual(expect.arrayContaining(["설정 알림", "변경 카드"]));
+    for (const piece of ["「notes는 git 저장소가 아니에요. 어떻게 할까요?」", "「git init 하고 추가」", "「뿌리 폴더로 추가」", "「추가하지 않기」"]) {
+      expect(bodyOf("질문 카드"), piece).toContain(piece);
+    }
+  });
+
+  // 03 구현 스펙 §2 · §13 · 티켓 04. Space 파일을 고치는 한 화면의 두 길이다. 사전이 「글 그대로」 · 「같은 검사」를 말하지 않으면 다음 사람이
+  // 저장을 serde 왕복으로 되돌려 사람이 적은 주석 · 차례를 지우거나, 화면에 따로 검사를 세워 화면이 괜찮다고 한 파일을 저장이 거절한다.
+  // 직접 만들기가 같은 화면 · 빈 틀 · 따라오는 파일 이름을 말하지 않으면 새 Space를 다른 창(이름 · Project 칸)으로 짓는다.
+  it("「관계 편집」이 파일 칸 | 미리보기 카드 · 같은 검사 · 글 그대로를 말하고, 「직접 만들기」가 같은 화면의 빈 틀을 말한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["관계 편집", "직접 만들기"]));
+    for (const piece of ["「파일 칸 | 미리보기 카드」", "같은 하나", "한 글자도 바꾸지 않고", "파일 이름은 그대로"]) {
+      expect(bodyOf("관계 편집"), piece).toContain(piece);
+    }
+    for (const piece of ["관계 편집과 같은 화면", "빈 틀", "`-2`", "「Host와 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
+  });
+
   // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Agent가 고친 자리를 그
   // 말로 부르지 않는다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes가 턴 앞뒤로 spec 폴더를 견주어 세운 표시는
   // 대화창과 함께 걷혔다 — 본문이 그 표시의 지우는 때를 말하면 없는 화면을 말하는 것이다.
@@ -264,17 +366,23 @@ describe("말의 사전", () => {
     expect(bodyOf("Processes")).not.toContain("요약 카드");
   });
 
-  // 02 구현 스펙 §2 · §3. 틀이 하나다 — 크롬 맨 위 44 줄(머리 줄)에 신호등 · 셸 컨트롤 · 지금 화면의 이름 · 할 일이 서고, 그 아래 크롬 위에
-  // 뜬 흰 면 하나(흰 판)에 사이드바와 화면 본문이 든다. 사전이 머리 줄을 본문 위의 흰 막대로 부르면 다음 사람이 이름을 판 안 본문 위에
-  // 되세우고, 판에 사이드바가 든다는 것을 모르면 사이드바를 창 꼭대기까지 되올린다. Thread 화면의 「위 막대」도 이 줄이다.
-  it("「머리 줄」이 크롬 맨 위 줄이고 「흰 판」이 사이드바와 본문을 품는다", () => {
+  // 02 구현 스펙 §2 · §3 · 03 구현 스펙 §2 · §3. 틀이 하나다 — 크롬 맨 위 44 줄(머리 줄)에 신호등 · 셸 컨트롤 · 지금 화면의 이름 · 할 일이
+  // 서고, 그 아래 크롬 위에 뜬 흰 면 하나(흰 판)에 화면 본문만 든다. 사이드바는 판 밖 크롬 위에 머리 줄 왼쪽 칸과 한 기둥으로 선다. 사전이 머리
+  // 줄을 본문 위의 흰 막대로 부르면 다음 사람이 이름을 판 안 본문 위에 되세우고, 판이 사이드바를 품는다고 말하면 사이드바를 판 안에 되들여
+  // 길잡이가 판 테두리로 두 덩어리가 된다(02 결정 「시안 — 사이드바는 크롬 위에」). Thread 화면의 「위 막대」도 이 줄이다.
+  it("「머리 줄」이 크롬 맨 위 줄이고 「흰 판」이 본문만 품으며 사이드바는 판 밖 크롬 위에 선다", () => {
     expect(bodyOf("머리 줄")).toContain("크롬 맨 위 44 줄");
     for (const piece of ["신호등", "셸 컨트롤", "지금 화면의 이름", "그 화면의 할 일"]) {
       expect(bodyOf("머리 줄"), piece).toContain(piece);
     }
     expect(bodyOf("머리 줄")).toContain("_피할 말_: 위 막대");
+    // 이름의 자리 — 사이드바가 열려 있으면 흰 판 왼쪽 끝과 같은 자리다(사이드바가 판 밖으로 나가 그 끝이 판의 끝이다).
+    expect(bodyOf("머리 줄")).toContain("흰 판 왼쪽 끝과 같은 자리");
     expect(bodyOf("흰 판")).toContain("머리 줄 아래 크롬 위에 뜬 흰 면 하나");
-    expect(bodyOf("흰 판")).toContain("사이드바와 화면 본문이 그 안에 든다");
+    expect(bodyOf("흰 판")).toContain("화면 본문이 그 안에 든다");
+    expect(bodyOf("흰 판")).toContain("사이드바는 판 밖 크롬 위에, 머리 줄 왼쪽 칸과 한 기둥으로 선다");
+    expect(bodyOf("흰 판")).toContain("판이 창 왼쪽 끝 가까이까지 넓어진다");
+    expect(bodyOf("흰 판")).not.toContain("사이드바와 화면 본문이 그 안에 든다");
   });
 
   // 02 구현 스펙 §2 · §4 · §5. 사이드바 맨 위가 거르기 머리 없이 세 행(위 줄)이고, 「내 차례」 행이 옛 「전체 | 내 차례」 거르기를 한다. 사전이
@@ -287,6 +395,8 @@ describe("말의 사전", () => {
     expect(bodyOf("위 줄")).toContain("거르기 머리는 없다");
     expect(bodyOf("사람 메뉴")).toContain("위로 열리는 메뉴");
     expect(bodyOf("사람 메뉴")).toContain("메모리 합계");
+    // 가는 곳에 `Space`가 `Projects` 다음으로 선다(03 구현 스펙 §2 · §4).
+    expect(bodyOf("사람 메뉴")).toContain("`Projects`·`Space`·`Terminal`·`Processes`·`Archive`");
     expect(bodyOf("알림 띠")).toContain("위 줄 아래");
   });
 
@@ -509,11 +619,12 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Archive`");
   });
 
-  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔다. **한 문장에서 넷을 함께 본다**:
-  // 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
-  it("대문자 층이 사람 메뉴 넷을 한 문장으로 든다", () => {
+  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Space`를 `Projects` 다음에 더해
+  // 다섯이다(03 구현 스펙 §4). **한 문장에서 다섯을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다.
+  // 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 사람 메뉴 다섯을 한 문장으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(
-      "사람 메뉴의 가는 곳은 `Projects`·`Terminal`·`Processes`·`Archive` 넷이다",
+      "사람 메뉴의 가는 곳은 `Projects`·`Space`·`Terminal`·`Processes`·`Archive` 다섯이다",
     );
   });
 

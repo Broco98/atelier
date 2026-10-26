@@ -9,6 +9,26 @@ pub struct GitInfo {
     pub remote_slug: Option<String>,
     pub current_branch: Option<String>,
     pub local_branches: Vec<String>,
+    /// 원격 이름마다의 remote-tracking 브랜치(03 구현 스펙 §15 「브랜치 목록」) — `git remote`가 내는 차례다. fetch하지 않는다: 저장소에
+    /// 이미 있는 것만 읽는다. 기준 브랜치는 로컬과 이것 가운데서만 고른다(`update_project`).
+    pub remote_branches: Vec<RemoteBranches>,
+}
+
+/// 원격 하나의 remote-tracking 브랜치들. 이름은 원격을 단 그대로다(`origin/release/2.5`) — 기준 브랜치로 고르면 그 이름 그대로 적는다
+/// (S19). 원격의 `HEAD`(다른 브랜치를 가리키는 이름)는 고를 브랜치가 아니라 빠진다.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteBranches {
+    pub remote: String,
+    pub branches: Vec<String>,
+}
+
+impl GitInfo {
+    /// 기준 브랜치로 고를 수 있는 이름인가 — 로컬 브랜치이거나 어느 원격의 remote-tracking 브랜치다.
+    pub(crate) fn lists(&self, branch: &str) -> bool {
+        self.local_branches.iter().any(|one| one == branch)
+            || self.remote_branches.iter().any(|remote| remote.branches.iter().any(|one| one == branch))
+    }
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
@@ -30,13 +50,67 @@ pub fn detect(dir: &Path) -> Option<GitInfo> {
         remote_slug: remote_url.as_deref().and_then(parse_remote_slug),
         current_branch,
         local_branches,
+        remote_branches: remote_branches(dir),
     })
+}
+
+/// 원격 이름마다의 remote-tracking 브랜치. 원격 이름에 `/`가 들 수 있어(`team/x`) 긴 이름부터 맞춘다 — 짧은 이름이 남의 브랜치를 가져가지
+/// 않게. 가리키기만 하는 이름(`origin/HEAD` — symref)은 뺀다.
+fn remote_branches(dir: &Path) -> Vec<RemoteBranches> {
+    let mut grouped: Vec<RemoteBranches> =
+        remotes(dir).into_iter().map(|remote| RemoteBranches { remote, branches: Vec::new() }).collect();
+    let refs = git(dir, &["for-each-ref", "--format=%(refname)%09%(symref)", "refs/remotes"]).unwrap_or_default();
+    let mut longest_first: Vec<usize> = (0..grouped.len()).collect();
+    longest_first.sort_by_key(|&i| std::cmp::Reverse(grouped[i].remote.len()));
+    for line in refs.lines() {
+        let (name, symref) = line.split_once('\t').unwrap_or((line, ""));
+        let Some(short) = name.strip_prefix("refs/remotes/") else { continue };
+        if !symref.is_empty() {
+            continue;
+        }
+        if let Some(&i) = longest_first.iter().find(|&&i| short.starts_with(&format!("{}/", grouped[i].remote))) {
+            grouped[i].branches.push(short.to_string());
+        }
+    }
+    grouped
 }
 
 /// `origin/HEAD`가 가리키는 기본 브랜치 이름 (예: "main")
 pub fn origin_head(dir: &Path) -> Option<String> {
     git(dir, &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
         .and_then(|s| s.split_once('/').map(|(_, b)| b.to_string()))
+}
+
+/// 그 폴더가 든 작업 트리의 뿌리(심볼릭 링크를 git이 푼 자리). git 저장소 밖이면 `None`이다 — `.git` 폴더 안 · bare 저장소도
+/// 작업 트리가 없어 `None`이다.
+pub(crate) fn toplevel(dir: &Path) -> Option<std::path::PathBuf> {
+    git(dir, &["rev-parse", "--show-toplevel"]).map(std::path::PathBuf::from)
+}
+
+/// 원격 이름들(`origin` · `upstream` …) — git이 내는 차례 그대로다. fetch하지 않는다.
+pub(crate) fn remotes(dir: &Path) -> Vec<String> {
+    git(dir, &["remote"]).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
+}
+
+/// 폴더를 빈 저장소로 세운다 — `git init -b main`과 빈 첫 커밋(「init」)이다(03 구현 스펙 §15). 파일은 담지 않는다. 실패하면 git의
+/// 글이다 — 사람의 git 이름 · 이메일이 없으면 커밋이 거기서 실패한다. 세운 것을 걷는 일은 부르는 쪽이 한다(무엇을 새로 만들었는지
+/// 아는 쪽이다).
+///
+/// **커밋은 훅을 돌지 않는다**(`--no-verify`). 앱이 적는 고정된 빈 커밋이라 훅이 볼 내용이 없고, 사람의 전역 훅(커밋 글 꼴 검사 같은 것)이
+/// 「init」을 거절하면 추가가 까닭 없이 실패한다.
+pub(crate) fn init_main(dir: &Path) -> std::result::Result<(), String> {
+    run(dir, &["init", "-q", "-b", "main"])?;
+    run(dir, &["commit", "-q", "--allow-empty", "--no-verify", "-m", "init"])
+}
+
+/// git 한 번 — 실패하면 git이 적은 글(stderr, 없으면 stdout)이다. 읽기 도우미 `git`과 달리 왜 실패했는지를 사람에게 보인다.
+fn run(dir: &Path, args: &[&str]) -> std::result::Result<(), String> {
+    let out = Command::new("git").arg("-C").arg(dir).args(args).output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(if out.stderr.is_empty() { &out.stdout } else { &out.stderr }).trim().to_string();
+    Err(said)
 }
 
 pub(crate) fn branch_exists(repo: &Path, name: &str) -> bool {
@@ -64,6 +138,10 @@ pub(crate) fn rev_exists(repo: &Path, rev: &str) -> bool {
 
 /// `path`에 `branch` 워크트리 생성. 브랜치가 없으면 `base`에서 분기해 만들고,
 /// 이미 있으면(부분 실패 잔재 등) 그 브랜치를 채택한다.
+///
+/// **새 브랜치는 `base`를 따라가지 않는다**(`--no-track`). 기준 브랜치가 원격 브랜치(`origin/release/2.5` — 03 S19)면 git은 기본으로
+/// 그것을 upstream으로 삼는데, 그러면 Work 브랜치의 `git push`가 남의 브랜치로 가려 하고 상태 줄이 그 브랜치와 견준다. 로컬 기준
+/// 브랜치에서 갈라진 Work(git 기본이 따라가지 않는다)와 같은 모양으로 둔다.
 pub(crate) fn worktree_add(
     repo: &Path,
     path: &Path,
@@ -75,7 +153,7 @@ pub(crate) fn worktree_add(
     if branch_exists(repo, branch) {
         cmd.arg(path).arg(branch);
     } else {
-        cmd.args(["-b", branch]).arg(path).arg(base);
+        cmd.args(["--no-track", "-b", branch]).arg(path).arg(base);
     }
     let out = cmd.output().map_err(|e| e.to_string())?;
     if out.status.success() {

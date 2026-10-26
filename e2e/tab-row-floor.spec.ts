@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { WORKS } from "./fixtures";
+import { PROJECTS, WORKS } from "./fixtures";
 import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
 import { rowOf, settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
 
@@ -370,13 +370,28 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
 // — 목록 칸은 접지 않아(codex-ds 결정 32) 접어서 치울 길도 없다.
 //
 // Archive는 그 카드 곁에 고른 아카이브의 spec 목록 패널이 열린 채 선다(codex-ds 티켓 21). 그 패널은 카드에 두 칸의 최소를 남기고,
-// 모자라면 제 최소 폭 아래로도 내준다(`Frame`의 `PanelBox` — 걷을 수 있는 칸이 진다). 그래서 두 화면의 셈이 같다.
+// 모자라면 제 최소 폭 아래로도 내준다(`Frame`의 `PanelBox` — 걷을 수 있는 칸이 진다). 한때 Projects도 이 짜임이었다 — 03이 판 하나의
+// 표로 바꿔(03 결정 「10」) 목록 칸이 있는 화면은 Archive 하나다(Projects는 아래 따로 잰다).
 const LIST_RANGE = { min: 240, max: 560 };
 
-for (const screen of [
-  { url: "/projects", list: "프로젝트 목록", key: "panel-width" },
-  { url: "/archive", list: "아카이브 목록", key: "archive-panel-width" },
-] as const) {
+// Projects 표(03)는 목록 칸이 없는 판 하나라 바닥도 없다 — 앱 창의 최소 폭(900)에 사이드바를 400으로 넓혀 둬도 사이드바가 저장한 폭으로
+// 서고, 표는 판 안에서 줄어 창을 밀지 않는다(경로 · 이름 칸은 `minmax(0, …)`이라 줄고, 기준 브랜치 156 · ⋯ 28만 고정이다).
+test("Projects 표(/projects)는 900 창에 사이드바를 400으로 넓혀 둬도 사이드바가 저장한 폭으로 서고, 표가 판 안에 든다", async ({ page }) => {
+  await openWith(page, "/projects", 900, { sidebar: 400, panel: 330 });
+  const table = page.getByRole("table", { name: "Project 목록", exact: true });
+  await expect(table).toBeVisible();
+  const layout = await settled(page);
+  expect(layout.sidebar).toBe(400);
+  expect(layout.pageSpill).toBeLessThanOrEqual(0);
+  const [tableBox, mainBox] = [await table.boundingBox(), await page.locator("main").boundingBox()];
+  expect(tableBox!.x + tableBox!.width, "표 오른쪽 끝 ≤ 판 오른쪽 끝").toBeLessThanOrEqual(mainBox!.x + mainBox!.width);
+  // 줄의 ⋯도 판 안이다 — 표가 넘쳐 잘리면 ⋯가 먼저 사라진다.
+  const more = await table.getByRole("button", { name: `${PROJECTS[0].name} 메뉴`, exact: true }).boundingBox();
+  expect(more!.x + more!.width, "⋯ 오른쪽 끝 ≤ 표 오른쪽 끝").toBeLessThanOrEqual(tableBox!.x + tableBox!.width);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+for (const screen of [{ url: "/archive", list: "아카이브 목록", key: "archive-panel-width" }] as const) {
   test(`목록 칸이 있는 화면(${screen.url})은 목록 칸을 560까지 넓혀 둬도 사이드바가 저장한 폭으로 서고, 내용 칸에 240을 남긴다`, async ({
     page,
   }) => {

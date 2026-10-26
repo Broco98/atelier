@@ -10,7 +10,6 @@ import {
   띠,
   사람줄,
   줄표시,
-  흰판안,
   첫글자,
   토큰값,
 } from "./harness";
@@ -22,7 +21,8 @@ import {
 // 18, Processes 몸이 24이던 것이 그렇게 남았다.
 //
 // 틈 8은 `frame.spec`이 화면마다 잰다. 문서 글의 거터는 `path-bar.spec`이, 설정 글과 편집기 폼의 거터는 `settings-group.spec`이 잰다.
-// 여기는 행 글자 16이 서는 자리들과, 그 밖의 거터 자리(프로젝트 상세 · Processes)를 잰다.
+// 여기는 행 글자 16이 서는 자리들과, 그 밖의 거터 자리(Projects 목록 · 상세 · Processes)를 잰다. Projects는 03 시안의 값이다(옆 40 —
+// DS 눈금 밖의 판 값이라 수로 적는다).
 //
 // 글자 · 아이콘의 x는 **그것이 그려진 자리**로 잰다 — 글자는 `Range`의 상자, 아이콘은 svg의 상자다(요소의 상자는 안쪽 여백을 품는다).
 // 길이는 토큰에서 읽는다(`index.css`의 `--space-*` — Tailwind 눈금 `--spacing`의 그 칸과 같은 값이다, `spacing-guard.test.ts`).
@@ -71,8 +71,9 @@ test("사이드바: nav · 알림 띠 · 구획 소제목 · work 행 · 바닥 
   // 앵커: 두 토큰을 실제로 읽었고 DS 값이다 — 틈 8 + 행 안쪽 8이 행 글자 16이다.
   expect([틈, 행글자]).toEqual([8, 16]);
   const sidebar = await 상자(page.locator("aside").first());
-  // 사이드바는 흰 판 안 왼끝에 붙는다(02 티켓 02 — 한때 바탕에 붙어 창 끝이 곧 사이드바 끝이었다). 행 글자 16은 그 끝에서 잰다.
-  expect(sidebar.x, "사이드바가 흰 판 안 왼끝에 붙는다").toBe((await 흰판안(page)).x);
+  // 사이드바는 판 밖 크롬 위, 창 왼쪽 끝 + 5에 선다(03 구현 스펙 §3 · 시안 `.body`의 왼 5 — 상자는 `frame-sidebar.spec`이 잰다). 한때 흰
+  // 판 안 왼끝에 붙었고(02 티켓 02), 그보다 앞에는 바탕에 붙어 창 끝이 곧 사이드바 끝이었다. 행 글자 16은 그 끝에서 잰다.
+  expect(sidebar.x, "사이드바가 창 왼쪽 끝 + 5에 선다").toBe(5);
 
   const 자리: [string, Promise<number>][] = [
     // nav의 첫 항목은 「새 Thread」다 — 지금 화면들(옛 main nav)은 사람 메뉴로 갔다(v1 티켓 07 · S27).
@@ -202,63 +203,79 @@ test("문서 표: 칸의 위아래가 8이다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Projects: 목록 머리 제목 · 찾기 돋보기 · 목록 행 글리프가 목록 칸 왼쪽 끝에서 16이고, 상세 글은 내용 칸의 거터 20 · 위 24에서 시작한다", async ({
+// 03 시안 F1-Projects `.pl`(위 30 · 옆 40 · 줄 사이 18) · `.prow-h`(왼 14) · `.nm`(아이콘과 이름 사이 10), F1-ProjectDetail `.scroll`(위 22 ·
+// 옆 40) · `.cols`(본문 | 오른쪽 칸 270, 사이 48). 한때 목록 | 내용이 한 카드의 두 칸이었다(codex-ds 결정 28 — 목록 칸 왼끝 + 16, 상세 글은
+// 거터 20 · 위 24에 `size-thread` 폭) — 03이 목록을 판 하나의 표로, 상세를 두 칸 글로 바꿨다(03 결정 「10」).
+test("Projects: 목록은 판 안 옆 40 · 위 30에서 서고 표 줄의 아이콘이 표 끝 + 14이며, 상세는 옆 40 · 위 22에서 서고 두 칸 사이가 48이다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${billing.slug}`);
-  const content = page.getByRole("main", { name: "프로젝트", exact: true });
-  // 상세의 첫 글은 속성 묶음이다 — 상세 칸에는 제목이 없고 이름은 머리 줄이 든다(codex-ds 스펙 S12 · 티켓 28).
-  const 속성 = content.locator("dl");
-  await expect(속성).toContainText(billing.path);
-  const [행글자, 거터, 위] = [await 간격(page, 4), await 간격(page, 5), await 간격(page, 6)];
+  await page.goto("/projects");
+  const list = page.getByRole("main", { name: "Projects", exact: true });
+  const 제목 = list.getByRole("heading", { level: 1, name: "Projects", exact: true });
+  const table = list.getByRole("table", { name: "Project 목록", exact: true });
+  const 줄 = table.getByRole("link", { name: billing.name, exact: true });
+  // 앵커: 표가 목록을 그렸다.
+  await expect(줄).toBeVisible();
+  const [판, 머리, 표] = [await 상자(list), await 상자(제목.locator("..")), await 상자(table)];
+  expect((await 첫글자(제목)).x - 판.x, "제목 — 판 + 40").toBe(40);
+  expect(머리.y - 판.y, "맨 위 줄 — 판 위 30").toBe(30);
+  expect(표.x - 판.x, "표 — 판 + 40").toBe(40);
+  expect(표.y - 머리.bottom, "맨 위 줄 → 표 18").toBe(18);
+  expect((await 첫글자(table.getByRole("columnheader", { name: "이름", exact: true }))).x - 표.x, "열 머리 「이름」 — 표 + 14").toBe(14);
+  const 아이콘상자 = await 아이콘(줄);
+  expect(아이콘상자.x - 표.x, "줄 아이콘 — 표 + 14").toBe(14);
+  expect((await 첫글자(줄)).x - 아이콘상자.right, "이름 — 아이콘 끝 + 10").toBe(10);
 
-  // 내용 | 목록은 한 카드다(codex-ds 결정 28) — 목록 칸의 것은 그 칸 왼쪽 끝(두 칸을 가르는 세로 선)에서, 상세는 내용 칸 끝에서 잰다.
-  const list = page.getByRole("region", { name: "프로젝트 목록", exact: true });
-  const column = await 상자(list);
-  const 자리: [string, Promise<number>][] = [
-    ["목록 머리 제목", 첫글자(list.locator('[data-slot="list-head"]')).then((box) => box.x)],
-    ["찾기 돋보기", 아이콘(list.getByRole("group").first()).then((box) => box.x)],
-    ["목록 행 글리프", 아이콘(list.getByRole("button", { name: new RegExp(billing.name) }).first()).then((box) => box.x)],
-  ];
-  for (const [이름, x] of 자리) expect((await x) - column.x, `${이름} — 목록 칸 + 16`).toBe(행글자);
-
-  const contentBox = await 상자(content);
-  const first = await 상자(속성);
-  const thread = parseFloat(await 토큰값(page, "max-width", "--size-thread"));
-  // 앵커: 기본 창에서는 내용 칸이 글 폭 + 거터 둘보다 좁다 — 글이 거터에 붙어 서서 아래 셈이 거터를 잰다.
-  expect(contentBox.width, "내용 칸이 글 폭 + 거터 둘보다 좁다").toBeLessThan(thread + 2 * 거터);
-  expect(first.x - contentBox.x, "상세 글 — 내용 칸 + 20").toBe(거터);
-  expect(first.y - contentBox.y, "상세 글 — 위 24").toBe(위);
-
-  // 넓은 창 — 글이 서는 폭이 `size-thread` 그대로이고 내용 칸 가운데에 선다. 거터 20은 그 폭 밖(구르는 칸)이 든다 — 설정 틀 · 문서
-  // 글과 같은 나눔이다(`settings-group.spec` · `path-bar.spec`). 거터를 몸 안에 두면 글 폭이 48rem − 40으로 준다.
-  await page.setViewportSize({ width: 1600, height: 900 });
-  await expect.poll(async () => (await 상자(속성)).width, "속성 묶음 폭 = size-thread").toBe(thread);
-  const [wide, wideList] = [await 상자(content), await 상자(속성)];
-  expect(wideList.x - wide.x, "가운데").toBeCloseTo(wide.right - wideList.right, 0);
+  for (const width of [1280, 1600]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`/projects/${billing.slug}`);
+    const detail = page.getByRole("main", { name: "Projects 상세", exact: true });
+    const 돌아가기 = detail.getByRole("link", { name: "Projects", exact: true });
+    const rail = detail.getByRole("complementary", { name: "Project 정보", exact: true });
+    await expect(rail).toBeVisible();
+    const [상세판, 단추, 칸, 본문칸] = [
+      await 상자(detail),
+      await 상자(돌아가기),
+      await 상자(rail),
+      await 상자(rail.locator("xpath=preceding-sibling::*[1]")),
+    ];
+    expect([단추.x - 상세판.x, 단추.y - 상세판.y], `「← Projects」 — 판 + 40 · 위 22 (${width})`).toEqual([40, 22]);
+    expect(본문칸.x - 상세판.x, `본문 칸 — 판 + 40 (${width})`).toBe(40);
+    // 넓은 창에서도 가운데로 모이지 않는다 — 본문 칸이 늘고 오른쪽 칸은 270 그대로 판 오른쪽 끝 − 40에 붙는다.
+    expect([칸.x - 본문칸.right, 칸.width, 상세판.right - 칸.right], `오른쪽 칸 — 사이 48 · 폭 270 · 판 끝 − 40 (${width})`).toEqual([
+      48, 270, 40,
+    ]);
+  }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Projects: 기준 브랜치를 누르면 선 칸의 글자가 누르기 전 그 자리에 그대로 선다", async ({ page }) => {
-  // 로컬 브랜치가 없는 프로젝트의 기준 브랜치는 누르면 그 자리가 칸이 되는 버튼이다(`ProjectDetail`의 `InlineBranchEditor`).
-  // 칸은 폭을 먹는 투명 테두리 1px을 가져, 안쪽을 그만큼 덜어야 글자가 버튼일 때의 자리(칩 끝 + 7)에 선다.
-  const bare = PROJECTS.find((p) => p.git === null)!;
+// 03 시안 F1-ProjectDetail `.rl` · `.brsel` — 오른쪽 칸의 묶음 이름 아래 단추가 같은 왼끝에 서고, 안쪽 10 + 테두리 1 뒤에 가지 아이콘, 사이
+// 6 뒤에 이름이다. 누르면 목록이 단추 아래에 뜨고 단추 글자는 그 자리 그대로다 — 한때 로컬 브랜치가 없는 프로젝트의 기준 브랜치는 누르면
+// 그 자리가 입력 칸이 되는 버튼이었고(`InlineBranchEditor`) 칸의 투명 테두리만큼 글자가 밀리지 않는지를 쟀다. 03은 목록 밖 값을 적는 칸을
+// 걷었다(스토리 119–121).
+test("Projects: 기준 브랜치 단추는 묶음 이름과 한 왼끝에 서고, 누르면 목록이 떠도 단추 글자는 그 자리에 그대로 선다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${bare.slug}`);
-  const 글자자리 = (target: Locator) =>
-    target.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return el.getBoundingClientRect().left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
-    });
-  const button = page.getByRole("button", { name: bare.baseBranch, exact: true });
-  const 전 = await 첫글자(button);
-  // 앵커: 버튼의 글자는 제 안쪽 끝에서 시작한다 — 아래가 칸의 안쪽 끝을 글자 자리로 읽는 셈이 이 버튼에도 맞는다.
-  expect(전.x, "버튼 글자 = 안쪽 끝").toBeCloseTo(await 글자자리(button), 0);
-  await button.click();
-  const input = page.getByRole("textbox", { name: "기준 브랜치" });
-  await expect(input).toBeFocused();
-  expect(await 글자자리(input), "칸의 글자 = 누르기 전 버튼의 글자").toBeCloseTo(전.x, 0);
+  await page.goto(`/projects/${billing.slug}`);
+  const 묶음 = page.getByRole("region", { name: "기준 브랜치", exact: true });
+  const 단추 = 묶음.getByRole("combobox", { name: "기준 브랜치", exact: true });
+  await expect(단추).toContainText(billing.baseBranch);
+  const [이름, 상자전, 가지, 글자전] = [
+    await 첫글자(묶음.getByRole("heading", { name: "기준 브랜치", exact: true })),
+    await 상자(단추),
+    await 아이콘(단추),
+    await 첫글자(단추),
+  ];
+  expect(상자전.x, "단추 = 묶음 이름의 왼끝").toBe(이름.x);
+  expect(가지.x - 상자전.x, "가지 아이콘 — 단추 + 11(안쪽 10 + 테두리 1)").toBe(11);
+  // 이름은 mono 글자라 그려진 글자의 앞 여백이 소수 픽셀 남는다(`글자 — Range` 상자) — 소수 첫째 자리까지 본다.
+  expect(글자전.x - 가지.right, "이름 — 아이콘 끝 + 6").toBeCloseTo(6, 1);
+  await 단추.click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  const 글자뒤 = await 첫글자(단추);
+  expect([글자뒤.x, 글자뒤.y], "목록이 떠도 단추 글자는 그 자리").toEqual([글자전.x, 글자전.y]);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -48,7 +48,6 @@ interface SetupOptions {
   projects?: Array<ProjectView>;
   archives?: Array<ArchiveEntry>;
   lastWork?: string | null;
-  lastProject?: string | null;
   lastArchive?: string | null;
 }
 
@@ -102,7 +101,6 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   shellStore.setState((state) => ({
     ...state,
     workSlug: options.lastWork ?? null,
-    projectSlug: options.lastProject ?? null,
     archiveSlug: options.lastArchive ?? null,
     lastPlace: null,
   }));
@@ -169,6 +167,29 @@ describe("진입은 새 Thread다", () => {
     expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work" });
   });
 
+  // 03 구현 스펙 §5 · 티켓 02 — 「Work 없이 대화」 씨앗(`?new=thread`)과 입력 글 씨앗(`?say=`)을 더했다. 「Host와 만들기」(S16)는 둘을 함께
+  // 싣는다 — Work 없는 새 대화의 입력창에 맡기는 말을 넣는다(보내지 않는다).
+  it("`/?new=thread&say=…`도 새 Thread다 — 「Work 없이 대화」와 입력 글이 함께 선다", async () => {
+    const { router } = setup(["/threads/20261010-100000"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "thread", say: "결제 서비스 Space를 만들고 싶어" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({
+      new: "thread",
+      say: "결제 서비스 Space를 만들고 싶어",
+    });
+  });
+
+  // 03 구현 스펙 §5 · §14 · 티켓 06 — Space 씨앗(`?space=<slug>`)을 더했다. Space 상세의 「새 Work」(`?new=work&space=`)와 「Host와 고치기」
+  // (`?new=thread&space=&say=`)가 그 Space를 Space 칩에 고른 채 연다.
+  it("`/?new=work&space=…`도 새 Thread다 — Space 칩이 그 Space를 고른 채 선다", async () => {
+    const { router } = setup(["/spaces/결제-서비스"]);
+    await router.load();
+    await router.navigate({ to: "/", search: { new: "work", space: "결제-서비스" } });
+    expect(router.state.location.pathname).toBe("/");
+    expect(router.state.matches.find((match) => match.routeId === "/")?.search).toEqual({ new: "work", space: "결제-서비스" });
+  });
+
   it("시작 직후 뒤로갈 곳이 없다", async () => {
     const { router, history } = setup(["/"]);
     await router.load();
@@ -191,6 +212,9 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
     expect(await blankAt("/")).toBe(true);
     expect(await blankAt("/?work=refund-api")).toBe(false);
     expect(await blankAt("/?new=work")).toBe(false);
+    expect(await blankAt("/?new=thread")).toBe(false);
+    expect(await blankAt("/?say=%EC%95%88%EB%85%95")).toBe(false);
+    expect(await blankAt("/?space=pay")).toBe(false);
     expect(await blankAt("/threads/20261010-100000")).toBe(false);
     expect(await blankAt("/library")).toBe(false);
   });
@@ -198,10 +222,12 @@ describe("새 Thread로 가는 길은 씨앗 없는 새 Thread다", () => {
   it("모르는 모양의 씨앗은 없는 것과 같다 — 화면이 씨앗 없는 새 Thread라 그 자리다", async () => {
     expect(await blankAt("/?work=")).toBe(true);
     expect(await blankAt("/?new=project")).toBe(true);
+    expect(await blankAt("/?say=")).toBe(true);
+    expect(await blankAt("/?space=")).toBe(true);
   });
 
   it("씨앗을 단 새 Thread에서 `/`로 가면 씨앗이 걷히고 그 자리가 된다 — 히스토리는 한 칸 는다", async () => {
-    for (const entry of ["/?new=work", "/?work=refund-api"]) {
+    for (const entry of ["/?new=work", "/?work=refund-api", "/?new=thread", "/?say=%EC%95%88%EB%85%95", "/?space=pay"]) {
       const { router, history } = setup([entry]);
       await router.load();
       await router.navigate({ to: "/" });
@@ -309,10 +335,13 @@ describe("무선택 주소의 정규화", () => {
     expect(history.canGoBack()).toBe(false);
   });
 
-  it("프로젝트에도 같은 규칙이 적용된다", async () => {
-    const { router } = setup(["/projects"], { lastProject: "proj-b" });
+  // **Projects는 이 규칙 밖이다**(03 구현 스펙 §16) — `/projects`가 목록 화면이고 상세는 그 자리를 번갈아 쓴다. 곁에 선 목록이 없으니
+  // 정규화하면 목록을 볼 길이 통째로 없어진다(아래 아카이브 머리말이 적은 옛 사정과 같다). Project가 있어도 목록에 머문다.
+  it("프로젝트는 목록 화면이라 정규화하지 않는다", async () => {
+    const { router, history } = setup(["/projects"]);
     await router.load();
-    expect(router.state.location.pathname).toBe("/projects/proj-b");
+    expect(router.state.location.pathname).toBe("/projects");
+    expect(history.length).toBe(1);
   });
 
   // 아카이브도 같은 규칙이다. **목록 칸이 곁에 상주하기 때문에** 그래도 된다 —
@@ -442,6 +471,53 @@ describe("Library의 주소", () => {
   });
 });
 
+// Space(03 구현 스펙 §14). 목록은 고른 것으로 넘기지 않는다 — Works와 달리(Projects처럼) 줄을 눌러야 상세다. 상세의 slug는 파일 이름이다.
+describe("Space의 주소", () => {
+  it("`/spaces`는 목록 그대로 서고 마지막 자리로 적힌다", async () => {
+    const { router, history } = setup(["/spaces"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/spaces");
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/spaces/");
+    expect(history.length).toBe(1);
+    expect(shellStore.state.lastPlace).toBe("/spaces");
+  });
+
+  it("`/spaces/<slug>`는 그 Space의 상세다 — 한글 slug도 그대로다", async () => {
+    const { router } = setup(["/spaces/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4"]);
+    await router.load();
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/spaces/$slug");
+    const matches = router.state.matches;
+    expect(matches[matches.length - 1].params).toEqual({ slug: "결제-서비스" });
+  });
+
+  // 고치기 화면 둘(03 구현 스펙 §13) — 관계 편집은 그 Space 아래, 새 Space는 목록 아래 고정 주소다. 둘 다 상세의 자식이 아닌 따로 선 화면이다.
+  it("`/spaces/<slug>/edit`는 그 Space의 관계 편집이다 — 상세 위에 겹쳐 서지 않는다", async () => {
+    const { router } = setup(["/spaces/%EA%B2%B0%EC%A0%9C-%EC%84%9C%EB%B9%84%EC%8A%A4/edit"]);
+    await router.load();
+    const ids = router.state.matches.map((match) => match.routeId);
+    expect(ids).toContain("/spaces/$slug_/edit");
+    expect(ids).not.toContain("/spaces/$slug");
+    expect(router.state.matches[router.state.matches.length - 1].params).toEqual({ slug: "결제-서비스" });
+  });
+
+  it("`/spaces/new`는 새 Space다 — slug가 new인 Space의 상세가 아니다", async () => {
+    const { router } = setup(["/spaces/new"]);
+    await router.load();
+    const ids = router.state.matches.map((match) => match.routeId);
+    expect(ids).toContain("/spaces/new");
+    expect(ids).not.toContain("/spaces/$slug");
+  });
+
+  it("상세에서 점선 Space로 옮기면 칸이 하나 늘고, 뒤로가기가 앞 Space로 간다", async () => {
+    const { router, history } = setup(["/spaces/a"]);
+    await router.load();
+    await router.navigate({ to: "/spaces/$slug", params: { slug: "b" } });
+    expect(history.length).toBe(2);
+    await goBack(router, history);
+    expect(router.state.location.pathname).toBe("/spaces/a");
+  });
+});
+
 // 설정 nav의 「앱으로 돌아가기」(UI개선 결정 27). 마지막 자리, 없으면 목록 주소, work 주소면 기억한
 // 보기·탭을 되붙인다.
 //
@@ -549,11 +625,11 @@ describe("선택한 항목의 히스토리 의미론", () => {
   // 탭 전환은 무선택 주소로 가고 거기서 정규화가 한 번 더 일어난다.
   // 정규화가 push였다면 여기서 뒤로가기를 두 번 눌러야 한다 — 그 회귀를 이 테스트가 잡는다.
   it("탭을 전환한 뒤 뒤로가기 한 번이면 이전 탭에서 보던 항목으로 간다", async () => {
-    const { router, history } = setup(["/works/work-a"], { lastProject: "proj-b" });
+    const { router, history } = setup(["/works/work-a"], { lastArchive: "치운-b" });
     await router.load();
 
-    await router.navigate({ to: "/projects" });
-    expect(router.state.location.pathname).toBe("/projects/proj-b");
+    await router.navigate({ to: "/archive" });
+    expect(router.state.location.pathname).toBe("/archive/치운-b");
     expect(history.length).toBe(2);
 
     await goBack(router, history);

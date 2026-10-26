@@ -1,4 +1,5 @@
-import { particle, type PendingProject } from "./fold";
+import { particle } from "@/lib/particle";
+import { type PendingProject } from "./fold";
 import type { ProjectAnswer } from "./types";
 
 // Work 밖 Project 카드의 값(v1 티켓 32 · 구현 스펙 §11 S22 · 스토리 99 · 캔버스 Cards 보드 「Work 밖 Project」) — Agent가 이 Work에 없는

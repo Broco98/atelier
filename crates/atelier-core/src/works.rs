@@ -140,6 +140,7 @@ fn start(
                 created_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 projects: project_slugs.to_vec(),
                 pinned: false,
+                space: None,
                 extra: Default::default(),
             }
         }
@@ -673,6 +674,18 @@ pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<W
     work.title = title.to_string();
     write_work(works_root, &work)?;
     Ok(to_view(works_root, work))
+}
+
+/// 이은 Space를 바꾼다(03 구현 스펙 §9) — `work.json`의 `space` 한 칸만 고친다(`None`이면 뺀다). 같은 값이면 아무것도 쓰지 않는다 —
+/// 감시자를 깨우지 않게(`update_work_pinned`와 같은 규칙). Space 파일이 있는지는 보지 않는다 — 부르는 쪽(엔진)이 본다. 그 Work의
+/// Thread마다 남는 Space 줄도 엔진의 일이다(기록은 엔진의 쓰는 손 하나로 쓴다). 화면 응답이 아니라 `git status`를 돌지 않는다.
+pub fn update_work_space(works_root: &Path, slug: &str, space: Option<&str>) -> Result<Work> {
+    let mut work = read_work(works_root, slug)?;
+    if work.space.as_deref() != space {
+        work.space = space.map(str::to_owned);
+        write_work(works_root, &work)?;
+    }
+    Ok(work)
 }
 
 pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> Result<WorkView> {
@@ -2178,6 +2191,35 @@ mod tests {
         assert!(!same_value.unwrap().work.pinned);
     }
 
+    /// Space 바꾸기(03 구현 스펙 §9) — `work.json`의 `space` 한 칸만 고친다. 다른 칸과 모르는 칸은 그대로고, 같은 값이면 쓰지 않으며, 빼면
+    /// 키째 사라진다.
+    #[test]
+    fn space를_바꾸면_그_칸만_고치고_같은_값이면_쓰지_않고_빼면_키가_사라진다() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", true);
+        let path = works.join("가").join("work.json");
+        let mut raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        raw["laterField"] = serde_json::json!("다음 판");
+        std::fs::write(&path, raw.to_string()).unwrap();
+        let file = || -> serde_json::Value { serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap() };
+
+        let work = update_work_space(&works, "가", Some("결제-서비스")).unwrap();
+        assert_eq!(work.space.as_deref(), Some("결제-서비스"));
+        let mut expected = raw.clone();
+        expected["space"] = serde_json::json!("결제-서비스");
+        assert_eq!(file(), expected, "space 한 칸만 더해진다");
+
+        let written = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        update_work_space(&works, "가", Some("결제-서비스")).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), written, "같은 값이면 쓰지 않는다");
+
+        assert_eq!(update_work_space(&works, "가", None).unwrap().space, None);
+        assert_eq!(file(), raw, "빼면 키째 사라진다");
+        assert!(matches!(update_work_space(&works, "없음", None), Err(Error::WorkNotFound(_))));
+    }
+
     /// 검증 실패는 **아무것도 안 쓴다** — 순서 파일도 `work.json`도 생기거나 바뀌지 않는다.
     #[test]
     fn a_refused_move_writes_neither_file() {
@@ -3316,7 +3358,7 @@ mod tests {
 
         // 재실행 전에 등록이 사라진다 — base를 못 읽어 커밋 범위를 특정할 수 없게 된다
         run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
         archive_work(&works, &archive, &projects, &slug).unwrap();
 
         let sealed = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
@@ -3605,7 +3647,7 @@ mod tests {
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "o.txt", "o\n", "고아 커밋");
         let head = run_git(&worktree, &["rev-parse", "HEAD"]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
 
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "등록이 사라지자 좌표를 버렸다: {doc}");
@@ -3652,7 +3694,7 @@ mod tests {
         run_git(&worktree, &["remote", "add", "origin", "."]);
         run_git(&worktree, &["update-ref", "refs/remotes/origin/main", &main]);
         run_git(&worktree, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
 
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains("- base: main"), "origin/HEAD를 안 봤다: {doc}");

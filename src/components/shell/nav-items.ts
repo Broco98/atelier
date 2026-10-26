@@ -1,7 +1,8 @@
-import { Activity, Archive, Folder, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Activity, Archive, Folder, Layers, SquareTerminal, type LucideIcon } from "lucide-react";
 
-// **이 넷은 사람 메뉴의 항목이다**(v1 구현 스펙 S27 · 티켓 07). 한때 사이드바 위의 main nav였고, v1에서 사이드바는 검색 ·
-// 새 Thread · Work · Thread가 차지하고 지금 화면들은 바닥 사람 줄의 메뉴로 갔다(`Sidebar.tsx`의 `PersonMenu`). 차례는 그대로다.
+// **이 다섯은 사람 메뉴의 항목이다**(v1 구현 스펙 S27 · 티켓 07 · 03 구현 스펙 §4). 한때 사이드바 위의 main nav 넷이었고, v1에서 사이드바는
+// 검색 · 새 Thread · Work · Thread가 차지하고 지금 화면들은 바닥 사람 줄의 메뉴로 갔다(`Sidebar.tsx`의 `PersonMenu`). 차례는 그대로이고,
+// 03이 `Projects` 다음에 `Space`를 넣었다.
 //
 // Works 항목은 없다. 사이드바에 작업 목록이 통째로 상주하고 그 섹션 헤더('작업')가
 // Works 화면으로 가는 링크를 겸하므로, Works는 같은 곳으로 가는 두 번째 버튼이었다.
@@ -28,6 +29,9 @@ export const TERMINAL_LABEL = "Terminal";
 
 export const navItems = [
   { key: "projects", label: "Projects", icon: Folder, to: "/projects" },
+  // **`Projects` 다음**(03 구현 스펙 §4 · 스토리 7) — Project를 등록하고 그 위에 Space로 묶는 차례가 메뉴에서 읽힌다. 주소는 다른 항목과
+  // 앞이 겹치지 않는다(`to`가 켜짐 판정의 접두사다 — 아래 머리말). 목록 · 상세가 모두 `/spaces` 아래라 그 화면들에서 이 항목이 골라진다.
+  { key: "spaces", label: "Space", icon: Layers, to: "/spaces" },
   { key: "terminal", label: TERMINAL_LABEL, icon: SquareTerminal, to: "/terminal" },
   // **`Terminal` 다음, `Archive` 앞**(프로세스 스펙 S43) — 셸과 가까운 곳에 두고, 차가운 보관물(위 Archive 주석)은 끝에 둔다.
   { key: "processes", label: "Processes", icon: Activity, to: "/processes" },
