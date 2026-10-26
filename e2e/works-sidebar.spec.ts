@@ -52,8 +52,8 @@ const TITLE_FADE = 12;
 
 // 흐르는 **속도**(px/s) — `WorkSectionList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
 // 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
-// 한다. 실측이 들어야 하는 밴드는 ±12%다 — `speedOf`가 잰 시각으로 나누므로 이만큼 좁힐 수
-// 있고, 좁아야 고정 지속시간이 두 자리를 다 통과하지 못한다.
+// 한다. 실측이 들어야 하는 밴드는 ±12%다 — `speedOf`가 트랜지션의 제 시계로 재므로 이만큼
+// 좁힐 수 있고, 좁아야 고정 지속시간이 두 자리를 다 통과하지 못한다.
 const MARQUEE_SPEED = 50;
 const 속도밴드 = [MARQUEE_SPEED * 0.88, MARQUEE_SPEED * 1.12];
 
@@ -69,33 +69,44 @@ const PIN_WIDTH = 24;
 const titleBoxOf = (page: Page, title: string) =>
   page.getByRole("button", { name: title, exact: true }).locator("[data-title]");
 
-/** 흐른 거리와 **그것을 읽은 시각**. 속도를 실제 시간으로 재려면 둘이 한 번에 나와야 한다. */
-const sampleOf = (box: Locator) =>
+/** 흐른 거리. `transform`이 문자열이라 행렬에서 x만 꺼낸다 — 안 흐르면 `none`이라 0이다. */
+const shiftOf = (box: Locator) =>
   box.locator("span").evaluate((el) => {
     const transform = getComputedStyle(el).transform;
-    return {
-      shift: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41,
-      at: performance.now(),
-    };
+    return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
   });
 
-/** 흐른 거리. `transform`이 문자열이라 행렬에서 x만 꺼낸다 — 안 흐르면 `none`이라 0이다. */
-const shiftOf = async (box: Locator) => (await sampleOf(box)).shift;
-
-/** 흐르는 **속도**(px/s) — 0.4초를 사이에 두고 찍은 두 점의 기울기다.
+/** 흐르는 **속도**(px/s) — 도는 트랜지션을 **그 제 시계로** 진행 25% · 75% 자리에 세워 짚은 두 점의 기울기다.
  *
- * 나누는 것은 재운 시간이 아니라 **잰 시각의 차**다. `waitForTimeout`은 명목값이라 실제로는
- * 늘 그보다 길게 자고, 그 명목값으로 나누면 속도가 실제보다 빠르게 읽혀 밴드를 넓게 열
- * 수밖에 없다. 그런데 「속도가 제목 길이와 무관하게 일정하다」를 재는 방법은 **넘침이 다른 두
- * 자리에서 이 값이 같은 밴드에 드는가**뿐이라, 밴드가 넓으면 고정 지속시간(기각안 「마퀴 —
- * 완전 CSS」)이 그 사이로 빠져나간다: ±40%면 1.5~3.5초짜리 고정 지속시간이 두 자리를 다
- * 통과한다. 트랜지션이 `linear`라(index.css) 기울기가 곧 속도다. */
-const speedOf = async (box: Locator) => {
-  const 앞 = await sampleOf(box);
-  await box.page().waitForTimeout(400);
-  const 뒤 = await sampleOf(box);
-  return ((앞.shift - 뒤.shift) / (뒤.at - 앞.at)) * 1000;
-};
+ * 한때 실제 시간으로 0.4초를 사이에 두고 두 점을 찍었다. 그 창이 흐르는 도중이어야 하는데 마퀴는 1~1.5초면
+ * 끝나고, hover · 넘침 재기 · 기다림 · 짚기가 부하에 늘어나면 창이 도착 뒤로 밀려 0이 났다(2026-10-26 —
+ * 전체 L3에서 두 번 같은 -0.006, 혼자 돌리면 초록). 위 지연 검사(첫 마퀴 검사)가 밟은 길과 같다: 타이밍은
+ * 엔진의 트랜지션이 든다. 그래서 그 트랜지션을 잠깐 세워 두 자리에 놓고 **그려진** 위치를 읽은 뒤, 원래 자리에서
+ * 다시 돌린다. 그린 값을 읽으므로 「툭 튀어 끝으로 간다」(0ms)와 고정 지속시간은 여전히 밴드를 못 지난다.
+ *
+ * 「속도가 제목 길이와 무관하게 일정하다」를 재는 방법은 **넘침이 다른 두 자리에서 이 값이 같은 밴드에 드는가**
+ * 뿐이라, 밴드가 넓으면 고정 지속시간(기각안 「마퀴 — 완전 CSS」)이 그 사이로 빠져나간다: ±40%면 1.5~3.5초짜리
+ * 고정 지속시간이 두 자리를 다 통과한다. 트랜지션이 `linear`라(index.css) 기울기가 곧 속도다. 흐르는 트랜지션이
+ * 없으면(도착 뒤) 터진다 — hover 바로 뒤에 잰다. */
+const speedOf = (box: Locator) =>
+  box.locator("span").evaluate((el) => {
+    const [transition] = el.getAnimations();
+    if (!transition?.effect) throw new Error("흐르는 트랜지션이 없다 — 이미 다 흘렀다");
+    const { delay, duration } = transition.effect.getComputedTiming();
+    const 길이 = Number(duration);
+    const shiftAt = (진행: number) => {
+      transition.currentTime = Number(delay) + 길이 * 진행;
+      const transform = getComputedStyle(el).transform;
+      return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
+    };
+    const 그때 = transition.currentTime;
+    transition.pause();
+    const 앞 = shiftAt(0.25);
+    const 뒤 = shiftAt(0.75);
+    transition.currentTime = 그때;
+    transition.play();
+    return ((앞 - 뒤) / (길이 * 0.5)) * 1000;
+  });
 
 /** 넘친 폭. 0보다 커야 흐를 것이 있다. */
 const overflowOf = (box: Locator) => box.evaluate((el) => el.scrollWidth - el.clientWidth);
@@ -1470,8 +1481,8 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // 재는 것은 **엔진이 돌리는 그 트랜지션의 지연**이다. 한때 명목 80ms를 자고 한 번 짚어 「아직 제자리」를
   // 봤는데, 부하가 큰 러너에서는 hover · 넘침 재기 · 짚기 사이에 200ms가 넘게 흘러 이미 흐르기 시작한 글자를
   // 짚고 빨갰다(2026-10-11 — 여러 워크트리의 `pnpm verify`에서 매번 이 자리였다). 「아직 안 흐른다」는 늦게 짚으면
-  // 잴 수 없는 단언이라, 그 시각을 정하는 값을 읽는다. 타이밍은 트랜지션만이 든다(결정 12). 흐름 · 속도 · 멈춤은
-  // 아래에서 그대로 실제 시간으로 잰다.
+  // 잴 수 없는 단언이라, 그 시각을 정하는 값을 읽는다. 타이밍은 트랜지션만이 든다(결정 12). 흐름 · 멈춤은
+  // 아래에서 그대로 실제 시간으로 잰다. 속도는 같은 까닭으로 그 트랜지션의 제 시계로 잰다(`speedOf`).
   await expect
     .poll(() =>
       긴제목.locator("span").evaluate((el) => el.getAnimations().map((animation) => animation.effect?.getTiming().delay)),
@@ -1483,14 +1494,13 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // **처음** 가리킬 때 트랜지션이 지속시간 없이 만들어져 0ms로 굳는다(index.css의 표식 주석).
   //
   // **같은 밴드를 다른 넘침에서 한 번 더 건다**(아래 드래그 검사) — 한 길이에서만 재면
-  // 「길이와 무관하게 일정」은 아무것도 안 잰 것이 된다.
-  await page.waitForTimeout(370);
-  // 두 점이 **다 흐르는 도중**이어야 기울기가 속도다 — 출발 전이나 도착 뒤를 짚으면 0이 난다.
-  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
+  // 「길이와 무관하게 일정」은 아무것도 안 잰 것이 된다. 트랜지션이 아직 도는 hover 바로 뒤에 잰다.
   const 속도 = await speedOf(긴제목);
-  expect(-(await shiftOf(긴제목))).toBeLessThan(거리 - 4);
   expect(속도).toBeGreaterThan(속도밴드[0]);
   expect(속도).toBeLessThan(속도밴드[1]);
+  // 실제 시간에서도 흐른다 — 370ms면 지연 200ms를 지나 4px은 넘게 갔다.
+  await page.waitForTimeout(370);
+  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
 
   await expect
     .poll(async () => Math.abs((await shiftOf(긴제목)) + 거리) <= 2, {
@@ -1556,11 +1566,12 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
   // 재는 자리가 여기다. 위 검사가 첫 넘침에서 건 밴드를 좁힌 뒤의 넘침에서도 걸어야 그 말이
   // 처음으로 실측된다: 고정 지속시간(기각안 「마퀴 — 완전 CSS」)은 거리가 늘면 속도가 함께
   // 늘어서 두 자리가 같은 값을 못 낸다. 이 줄들이 없으면 그 기각안이 전부 초록으로 들어온다.
-  await page.waitForTimeout(450);
-  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
+  // 트랜지션이 아직 도는 hover 바로 뒤에 잰다(`speedOf`).
   const 속도 = await speedOf(긴제목);
   expect(속도).toBeGreaterThan(속도밴드[0]);
   expect(속도).toBeLessThan(속도밴드[1]);
+  await page.waitForTimeout(450);
+  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
 
   await expect
     .poll(async () => Math.abs((await shiftOf(긴제목)) + (hover넘침 + TITLE_FADE)) <= 2, {
