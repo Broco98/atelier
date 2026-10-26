@@ -608,6 +608,10 @@ pub fn records_dir() -> PathBuf {
 /// 시각은 `기준 + seq초`로 다시 찍는다. 그래서 화면에서 「N초 동안 작업함」이 0이 아닌 값으로 선다. 세션 id는 첫째를
 /// `fake-session`, 그 뒤는 `fake-session-2` …로 바꾼다. 가짜의 세션 id는 `fake-<pid>`라 한 id가 다른 id의 앞부분일 수 있어,
 /// 긴 것부터 바꾼다.
+///
+/// 릴리스마다 달라지는 것도 하나 있다 — Session 줄의 `agentVersion`은 변환기의 판이고 그것은 앱의 판이다. 판을 올리자
+/// 검사 자료 스물하나가 한꺼번에 낡았다(v0.21.0-beta). `APP_VERSION`으로 바꾼다. 판이 앱의 판과 같은지는
+/// `translator::machine`의 단위 시험이 잰다.
 pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&str]) -> Vec<Value> {
     fn at(seq: u64) -> String {
         format!("2026-10-10T10:{:02}:{:02}.000+09:00", seq / 60, seq % 60)
@@ -626,6 +630,9 @@ pub fn fix_record_sessions(record: &[Value], data_root: &Path, session_ids: &[&s
             match line["kind"].as_str() {
                 Some("sent") => last_sent = seq,
                 Some("turn-end") => line["payload"]["durationMs"] = Value::from((seq - last_sent) * 1000),
+                Some("session") if line["payload"]["agentVersion"] == env!("CARGO_PKG_VERSION") => {
+                    line["payload"]["agentVersion"] = Value::from("APP_VERSION");
+                }
                 _ => {}
             }
             replace(&mut line, &real, "~/.atelier");
