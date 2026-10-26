@@ -316,7 +316,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-acp"
-version = "0.20.0"
+version = "0.21.0-beta"
 dependencies = [
  "agent-client-protocol",
  "atelier-core",
@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-app"
-version = "0.20.0"
+version = "0.21.0-beta"
 dependencies = [
  "atelier-acp",
  "atelier-core",
@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-cli"
-version = "0.20.0"
+version = "0.21.0-beta"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-core"
-version = "0.20.0"
+version = "0.21.0-beta"
 dependencies = [
  "chrono",
  "dirs",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-test-bridge"
-version = "0.20.0"
+version = "0.21.0-beta"
 dependencies = [
  "atelier-core",
  "serde",
