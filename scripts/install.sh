@@ -32,7 +32,7 @@ STEP="최신 버전 확인"
 LATEST_URL="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")"
 TAG="${LATEST_URL##*/}"
 VERSION="${TAG#v}"
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
   echo "최신 릴리스 태그를 확인하지 못했습니다: $LATEST_URL" >&2
   exit 1
 fi
