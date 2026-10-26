@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 사용법: scripts/bump-version.sh 0.2.0
+# 사용법: scripts/bump-version.sh 0.2.0  (pre-release면 0.2.0-beta)
 # package.json, tauri.conf.json, 워크스페이스 크레이트 전부의 Cargo.toml, Cargo.lock을
 # 갱신하고 "release: v<버전>" 커밋과 v<버전> 태그를 만든다. push는 하지 않는다.
 set -euo pipefail
 
-if [[ $# -ne 1 || ! $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "사용법: $0 <major.minor.patch>  예) $0 0.2.0" >&2
+if [[ $# -ne 1 || ! $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+  echo "사용법: $0 <major.minor.patch[-pre]>  예) $0 0.2.0 · $0 0.2.0-beta" >&2
   exit 1
 fi
 NEW="$1"
@@ -34,10 +34,10 @@ if [[ -z "$MANIFESTS" ]]; then
 fi
 
 for f in package.json src-tauri/tauri.conf.json; do
-  sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW\"/" "$f"
+  sed -i '' "s/\"version\": \"[0-9A-Za-z.-]*\"/\"version\": \"$NEW\"/" "$f"
 done
 while IFS= read -r f; do
-  sed -i '' "s/^version = \"[0-9.]*\"/version = \"$NEW\"/" "$f"
+  sed -i '' "s/^version = \"[0-9A-Za-z.-]*\"/version = \"$NEW\"/" "$f"
 done <<< "$MANIFESTS"
 cargo update --workspace --quiet
 

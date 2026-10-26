@@ -166,7 +166,7 @@ fn list_projects_returns_registered_projects() {
     let home = tempfile::tempdir().unwrap();
     let code = tempfile::tempdir().unwrap();
     let folder = code.path().join("billing");
-    std::fs::create_dir(&folder).unwrap();
+    git_folder(&folder);
     atelier_core::create_project(&home.path().join("projects"), &folder).unwrap();
 
     let mut server = Server::start(home.path());
@@ -2266,7 +2266,7 @@ fn add_project_registers_a_folder_and_is_idempotent() {
     let home = tempfile::tempdir().unwrap();
     let code = tempfile::tempdir().unwrap();
     let folder = code.path().join("billing");
-    std::fs::create_dir(&folder).unwrap();
+    git_folder(&folder);
 
     let mut server = Server::start(home.path());
     assert!(server.tool_names(2).contains(&"atelier_add_project".to_string()));
@@ -2281,7 +2281,7 @@ fn add_project_registers_a_folder_and_is_idempotent() {
     let view: Value =
         serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(view["slug"], "billing");
-    assert_eq!(view["baseBranch"], "main");       // git 없는 폴더 → 폴백
+    assert_eq!(view["baseBranch"], "main");       // origin/HEAD가 없으면 지금 브랜치
     assert_eq!(view["missing"], false);
     // 등록 직후 설명은 비어 있다 — 도구 설명이 edit로 이어 부르라고 지시하는 이유
     assert_eq!(view["description"], "");
@@ -2300,6 +2300,62 @@ fn add_project_registers_a_folder_and_is_idempotent() {
     let listed: Value =
         serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(listed.as_array().unwrap().len(), 1, "duplicate registration: {listed}");
+}
+
+/// 커밋 없는 git 저장소(브랜치 `main`) — 바깥 MCP의 추가는 git 저장소만 받는다(03 구현 스펙 §15).
+fn git_folder(folder: &std::path::Path) {
+    std::fs::create_dir_all(folder).unwrap();
+    run_git(folder, &["init", "-q", "-b", "main"]);
+}
+
+/// git 저장소가 아닌 폴더는 거절한다(03 구현 스펙 §15) — 등록한 뒤 Work를 만들 때에야 실패하지 않게 지금 말하고, 무엇을 물어
+/// `init_git`으로 다시 부를지 안내한다. 폴더는 건드리지 않는다.
+#[test]
+fn add_project_refuses_a_folder_that_is_not_a_git_repository() {
+    let home = tempfile::tempdir().unwrap();
+    let code = tempfile::tempdir().unwrap();
+    let folder = code.path().join("notes");
+    std::fs::create_dir(&folder).unwrap();
+
+    let mut server = Server::start(home.path());
+    let res = call_tool(&mut server, 2, "atelier_add_project", json!({ "folder_path": folder.to_str().unwrap() }));
+
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = block_text(&res, 0);
+    assert!(text.contains("not a git repository"), "{text}");
+    assert!(text.contains("init_git"), "no next step: {text}");
+    assert!(!folder.join(".git").exists(), "refusing must not touch the folder");
+    let listed = first_json(&call_tool(&mut server, 3, "atelier_list_projects", json!({})));
+    assert!(listed.as_array().unwrap().is_empty(), "{listed}");
+}
+
+/// `init_git: true`면 그 폴더에 `git init -b main`과 빈 첫 커밋(「init」)을 하고 기준 브랜치 `main`으로 등록한다 — 화면의 「git init
+/// 하고 추가」와 같은 core다. 첫 커밋이 git 이름을 읽으므로 서버에 이름 있는 git 설정 한 장을 준다(러너에는 이름이 없다).
+#[test]
+fn add_project_with_init_git_makes_the_folder_a_repository_on_main() {
+    let home = tempfile::tempdir().unwrap();
+    let code = tempfile::tempdir().unwrap();
+    let folder = code.path().join("notes");
+    std::fs::create_dir(&folder).unwrap();
+    let config = code.path().join("gitconfig");
+    std::fs::write(&config, "[user]\n\tname = t\n\temail = t@t\n").unwrap();
+    let mut command = spawn_command(home.path());
+    command.env("GIT_CONFIG_GLOBAL", &config).env("GIT_CONFIG_NOSYSTEM", "1");
+
+    let mut server = Server::start_from(command);
+    let res = call_tool(
+        &mut server,
+        2,
+        "atelier_add_project",
+        json!({ "folder_path": folder.to_str().unwrap(), "init_git": true }),
+    );
+
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view = first_json(&res);
+    assert_eq!(view["slug"], "notes");
+    assert_eq!(view["baseBranch"], "main");
+    assert_eq!(run_git_out(&folder, &["branch", "--show-current"]), "main");
+    assert_eq!(run_git_out(&folder, &["log", "--format=%s"]), "init");
 }
 
 #[test]
@@ -2342,7 +2398,7 @@ fn add_project_accepts_the_tilde_paths_it_hands_out() {
     let home_dir = dirs::home_dir().unwrap();
     let code = tempfile::TempDir::new_in(&home_dir).unwrap();
     let folder = code.path().join("billing");
-    std::fs::create_dir(&folder).unwrap();
+    git_folder(&folder);
     let tilde = format!("~/{}", folder.strip_prefix(&home_dir).unwrap().display());
 
     let atelier_home = tempfile::tempdir().unwrap();
@@ -2381,12 +2437,17 @@ fn add_project_refuses_relative_paths_instead_of_guessing() {
 }
 
 /// 프로젝트 하나를 등록한 홈을 만들고 서버를 띄운다.
-/// git 없는 폴더를 쓴다 — 02의 `fixture_with`에 기대지 않아 머지 순서와 무관하다 (§1.1).
+/// 커밋 없는 저장소를 쓴다 — 02의 `fixture_with`에 기대지 않아 머지 순서와 무관하다 (§1.1). 추가는 git 저장소만 받는다(03 §15).
+///
+/// 브랜치는 `main` 하나와 `develop`이다 — 기준 브랜치는 저장소의 브랜치 목록에 있는 값만 받으므로(03 §15) 고칠 브랜치를 세운다. 커밋이 있어야
+/// 브랜치가 서서 빈 첫 커밋을 하나 둔다.
 fn server_with_one_project() -> (tempfile::TempDir, tempfile::TempDir, Server) {
     let home = tempfile::tempdir().unwrap();
     let code = tempfile::tempdir().unwrap();
     let folder = code.path().join("billing");
-    std::fs::create_dir(&folder).unwrap();
+    git_folder(&folder);
+    run_git(&folder, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]);
+    run_git(&folder, &["branch", "develop"]);
     atelier_core::create_project(&home.path().join("projects"), &folder).unwrap();
     let server = Server::start(home.path());
     (home, code, server)
@@ -2441,6 +2502,26 @@ fn edit_project_leaves_omitted_fields_untouched() {
     let view: Value =
         serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(view["description"], "");
+}
+
+/// 기준 브랜치는 그 저장소의 브랜치 목록에 있는 값만 받는다(03 구현 스펙 §15 · 결정 「조정」 — 화면과 같은 core 고치기) — 빈 값도 받지
+/// 않는다. 거절은 도구 실행 오류이고, 목록을 읽을 자리를 다음 걸음으로 말한다.
+#[test]
+fn edit_project_refuses_a_base_branch_the_repository_does_not_have() {
+    let (_home, _code, mut server) = server_with_one_project();
+    for (id, wrong) in [(2, "release/9.9"), (3, "")] {
+        let res = server.request(id, "tools/call", json!({
+            "name": "atelier_edit_project",
+            "arguments": { "project_slug": "billing", "base_branch": wrong }
+        }));
+        assert_eq!(res["result"]["isError"], true, "{res}");
+        let text = res["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains(&format!("'{wrong}'")), "{text}");
+        assert!(text.contains("atelier_list_projects") && text.contains("remoteBranches"), "no next step: {text}");
+    }
+    let view = server.request(4, "tools/call", json!({ "name": "atelier_list_projects", "arguments": {} }));
+    let views: Value = serde_json::from_str(view["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(views[0]["baseBranch"], "main", "refused edit changed the base branch: {views}");
 }
 
 #[test]
@@ -2518,7 +2599,7 @@ fn edit_blank_name_is_rejected_and_keeps_the_old_one() {
 #[test]
 fn the_tool_surface_has_no_way_to_delete_a_project() {
     // 프로젝트 삭제는 앱이 유일한 경로다 (graph-plan D7 · Δ16).
-    // atelier_core::delete_project는 존재하지만 도구로 노출하지 않는다.
+    // atelier_core::remove_project는 존재하지만 도구로 노출하지 않는다.
     let home = tempfile::tempdir().unwrap();
     let mut server = Server::start(home.path());
     for name in server.tool_names(2) {

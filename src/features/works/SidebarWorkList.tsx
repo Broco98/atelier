@@ -1,15 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { durationMs, hoverGroup, instantNow, menuOpen, useInHoverGroup } from "@/components/ui/hover-group";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { SIDEBAR_ROWS } from "@/components/shell/sidebar-look";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
-import { recallSearch } from "@/routes/-work-search";
-import { workSlugOf } from "@/lib/path-prefix";
+import { readStored, writeStored } from "@/lib/stored";
+import { threadIdOf, workSlugOf } from "@/lib/path-prefix";
+import { cn } from "@/lib/utils";
 import type { CallingNote } from "@/components/shell/shell-signal";
 import { useProjects } from "@/features/projects/hooks";
+import { useThreads, useWorkMarks } from "@/features/thread/hooks";
+import { lastSaid } from "@/features/thread/preview";
+import { WorkThreads } from "@/features/thread/SidebarThreads";
+import { linesOf, threadRecordStore } from "@/features/thread/thread-store";
+import { landingOf, threadCounts, threadsOf } from "@/features/thread/work-threads";
 import { useMoveWork, useSetWorkPinned, useSetWorkTitle, useWorks } from "./hooks";
-import { projectLines, WorkCard } from "./WorkCard";
+import { projectLines, WorkPeek } from "./WorkPeek";
 import { WorkContextMenu, type MenuTarget } from "./WorkContextMenu";
 import type { WorkMenuFlows } from "./WorkMenuItems";
 import { WorkSectionList, type WorkRowShells } from "./WorkSectionList";
@@ -23,7 +30,7 @@ import {
   type SectionGeometry,
 } from "./row-drop";
 import { useRoving } from "@/lib/roving";
-import { rovingKeys, splitWorkSections } from "./work-sections";
+import { readExpanded, rovingKeys, splitWorkSections, threadRowKey, toggleExpanded } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
@@ -32,12 +39,20 @@ import type { WorkView } from "./types";
 // 걷었다. 남은 값은 읽지 않고 버려 둔다: 지울 이유가 없고, 지우는 코드는 영영 남는다.
 const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
+// **Work 줄의 펼침도 설정이다**(v1 티켓 37 — 「펼침을 기억한다」) — 펼친 Work의 slug 목록(`readExpanded`).
+const WORKS_EXPANDED_KEY = "sidebar-works-expanded";
 
 // 사이드바에 상주하는 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 그 항목의 화면으로
 // 간다.
 //
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
+//
+// **Work 줄이 그 Work의 Thread를 품는다**(v1 티켓 37 · 구현 스펙 §13 · 캔버스 「Thread 목록과 아바타」 보드). 줄 오른쪽 끝에 그 Thread들
+// 가운데 가장 센 상태 표시 하나가 서고(02 티켓 05 · S8 — Thread 수는 호버 카드로, S9), ▸로 펴면 그 Thread들이 줄 아래에 한 줄씩 들여 선다
+// (펼침은 기억한다). 줄을 누르면 그 Work에서 가장 최근의 Thread로 가고, 없으면 그
+// Work를 고른 새 Thread로 간다 — 옛 작업 화면(`/works/<slug>`)은 ⌘K에서 연다. 지금 보는 Thread가 접힌 Work 안에 있으면 그 Work 줄이
+// 켜진다 — 어느 Work 안에 있는지가 접혀 있어도 보인다.
 function SidebarWorkList({
   open,
   shells,
@@ -48,9 +63,9 @@ function SidebarWorkList({
 }: {
   open: boolean;
   /**
-   * 행이 셸에서 받는 값 넷 — 개수 · 화면값 · 부르는 셸의 말 · 오른쪽 메타 슬롯(`WorkRowShells`).
-   * **이 파일은 터미널 스토어를 모른다** — 넷 다 위(Sidebar)에서 읽어 내려오고, 여기서는 행까지
-   * 나를 뿐이다. 이 목록이 스스로 쓰는 것은 호버 카드에 건넬 말(`notes`) 하나다.
+   * 행이 셸에서 받는 값 셋 — 개수 · 화면값 · 부르는 셸의 말(`WorkRowShells`).
+   * **이 파일은 터미널 스토어를 모른다** — 셋 다 위(Sidebar)에서 읽어 내려오고, 여기서는 행까지
+   * 나를 뿐이다. 이 목록이 스스로 쓰는 것은 호버 카드에 건넬 말(`notes`)과 셸 수(`shellCounts`)다.
    */
   shells: WorkRowShells;
   /**
@@ -69,6 +84,7 @@ function SidebarWorkList({
   onRenameEnd: () => void;
 }) {
   const { data: works = [] } = useWorks();
+  const { data: threads = [] } = useThreads();
   const navigate = useNavigate();
   const setPinned = useSetWorkPinned();
   const setTitle = useSetWorkTitle();
@@ -85,6 +101,17 @@ function SidebarWorkList({
   useEffect(() => {
     localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
   }, [worksOpen]);
+  const [expanded, setExpanded] = useState(() => readExpanded(readStored(WORKS_EXPANDED_KEY)));
+  const toggleThreads = (slug: string) => {
+    const next = toggleExpanded(expanded, slug);
+    setExpanded(next);
+    writeStored(WORKS_EXPANDED_KEY, JSON.stringify(next));
+  };
+  const counts = useMemo(() => threadCounts(threads), [threads]);
+  // Work마다 그 Thread들의 상태 표시 — 줄의 표시 하나가 이것과 그 Work의 셸 신호에서 선다(`WorkSectionList`의 `workMark`).
+  const marks = useWorkMarks();
+  // 펼친 Work 아래에 지금 선 Thread — 그 Work에 이은 것이 없으면 펼친 것으로 적혀 있어도 비어 있다(`WorkSectionList`의 같은 가름).
+  const nestedOf = (slug: string) => (expanded.includes(slug) ? threadsOf(threads, slug) : []);
   // **고칠 행이 접힌 구획에 있으면 그 구획을 편다** — 알림 띠에서 들어오면 그 work의 행이 접혀 있을 수 있다. 접힌 구획의 속은
   // `inert`라 그 안에 선 입력칸은 포커스를 못 받고, 포커스가 없으면 blur도 없어 「다른 곳 = 저장」으로 닫히지 않는다. 그래서 펼침은
   // 두 겹이다 — 고치는 동안은 그린 순간부터 펴 있고(아래 `sectionsOpen`, 입력칸이 마운트되며 포커스를 받는다), 이 효과가 그 펼침을
@@ -107,6 +134,11 @@ function SidebarWorkList({
   const openSlug = useRouterState({
     select: (state) => workSlugOf(state.location.pathname),
   });
+  // 지금 보는 Thread(v1 티켓 37) — 펼친 Work 아래 그 줄이 켜지고(줄이 스스로 단다), 접힌 Work 안이면 그 Work 줄이 켜진다.
+  const openThread = useRouterState({
+    select: (state) => threadIdOf(state.location.pathname),
+  });
+  const threadWork = openThread === null ? null : (threads.find((thread) => thread.id === openThread)?.work ?? null);
 
   const sectionsOpen: SectionsOpen = {
     pinned: pinnedOpen || renamingWork?.pinned === true,
@@ -119,10 +151,15 @@ function SidebarWorkList({
     ({ pinned: setPinnedOpen, works: setWorksOpen })[section]((v) => !v);
   };
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
-  const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
-  // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행, 고른 것이 없거나 접힌 구획에 있으면 첫 머리다. ↑↓는 목록
-  // 상자가 받는다(아래 `data-worklist`).
-  const roving = useRoving(rovingKeys(sections, sectionsOpen), selectedSlug);
+  const listed = (slug: string | null) => slug !== null && works.some((work) => work.slug === slug);
+  const threadShown = threadWork !== null && nestedOf(threadWork).length > 0;
+  const selectedSlug = listed(openSlug) ? openSlug : listed(threadWork) && !threadShown ? threadWork : null;
+  // 목록 하나가 Tab 정류장 하나다(`@/lib/roving`) — 정류장은 고른 행(펼친 Work 아래 지금 보는 Thread의 줄도), 고른 것이 없거나 접힌
+  // 구획에 있으면 첫 머리다. ↑↓는 목록 상자가 받는다(아래 `data-worklist`).
+  const roving = useRoving(
+    rovingKeys(sections, sectionsOpen, (slug) => nestedOf(slug).map((thread) => thread.id)),
+    selectedSlug ?? (threadShown && openThread !== null ? threadRowKey(openThread) : null),
+  );
 
   // 호버 정보 카드 — 한 줄로 줄이며 행에서 빠진 것(프로젝트·생성일)을 돌려주고,
   // 지금은 작업을 선택해야만 보이던 브랜치와 spec 파일 수까지 마우스만 올리면 보인다.
@@ -214,18 +251,16 @@ function SidebarWorkList({
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
-  // 작업을 옮긴다. **보던 화면을 기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
-  // 터미널을 보다 옆 작업을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이
-  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `recallSearch`가 빈 객체 위에 얹으므로
-  // 실리는 것은 **이 작업의 기억**뿐이고, 그 `file`도 이 작업 안의 문서다.
+  // 그 Work의 대화로 간다(v1 티켓 37 · 구현 스펙 §13) — 가장 최근의 Thread, 없으면 그 Work를 고른 새 Thread(`/?work=` — v1 티켓 34의
+  // 씨앗)다. 최근은 마지막 말의 때이고(`landingOf`), 그 말은 사이드바가 이미 읽어 둔 기록에서 **누른 순간에** 센다(`useWaiting`이 모든
+  // Thread를 읽는다) — 목록이 기록 줄마다 다시 그려지지 않게 구독하지 않는다. 아직 못 읽은 Thread는 선 때로 견준다.
   const goTo = (slug: string, pointer: boolean) => {
     closeCard();
     if (pointer) quiet.current = slug;
-    void navigate({
-      to: "/works/$slug",
-      params: { slug },
-      search: recallSearch(slug),
-    });
+    const records = threadRecordStore.state;
+    const landing = landingOf(threads, slug, (id) => lastSaid(linesOf(records, id))?.at ?? null);
+    if (landing.kind === "thread") void navigate({ to: "/threads/$id", params: { id: landing.id } });
+    else void navigate({ to: "/", search: { work: landing.work } });
   };
 
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
@@ -299,10 +334,13 @@ function SidebarWorkList({
       // 빈 `고정`의 받침은 몸통 밖이라 접힘과 무관하다.
       const reachable = sectionsOpen[key] || head === null;
       const emptySlot = slotEl && reachable ? span(slotEl) : undefined;
+      // 펼친 Work는 그 아래 Thread 줄까지가 한 행이다(v1 티켓 37) — 틈은 Work 줄과 그 Thread들을 한 덩이로 가른다. 줄만 재면 아래 행과의
+      // 틈 선이 Thread 줄들 한가운데에 선다.
       const rows = sectionsOpen[key]
         ? list.flatMap((work) => {
             const el = rowEls.get(work.slug);
-            return el ? [{ slug: work.slug, ...span(el) }] : [];
+            const nest = box.querySelector(`[data-work-threads="${CSS.escape(work.slug)}"]`);
+            return el ? [{ slug: work.slug, top: span(el).top, bottom: span(nest ?? el).bottom }] : [];
           })
         : [];
       const rest = { pinned: key === "pinned", rows, slugs: list.map((work) => work.slug) };
@@ -392,8 +430,9 @@ function SidebarWorkList({
 
   return (
     <>
-      {/* 두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
-      <div className="relative flex min-h-0 flex-1 flex-col px-2">
+      {/* 두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. 영역은 제 높이로 서고(남는 자리를 채우지 않는다) 창이
+          낮으면 줄어 구른다 — 바로 아래에 Thread 묶음이 붙는다(v1 티켓 07 · 구현 스펙 §13). */}
+      <div className="relative flex min-h-0 flex-col px-2">
         {/* **목록이 스크롤됐을 때만 윗 가장자리에 선이 선다**(UI개선 결정 24). 선은 굴러가는 상자
             **밖**, 스크롤하지 않는 이 부모에 절대 위치로 선다 — 상자 안에서 그리는 길 셋이 다 막혔다:
             - 상자에 `border-top`: 오버레이 막대가 `clientTop`만큼 밀리고(`lib/scroll-quiet.ts`의
@@ -402,7 +441,7 @@ function SidebarWorkList({
             - inset 그림자: 행의 배경(선택·hover)이 그 위를 덮는다.
             - 상자 안 `::before`: 내용과 함께 굴러 올라가 버린다.
             부모의 윗변이 곧 상자의 윗변이라 띠가 있으면 띠 아래, 없으면 nav 아래가 저절로 된다.
-            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 Settings 칸의 윗선과
+            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 사람 줄의 윗선과
             같은 폭이고 같은 선이다(0.5px `border-heavy` 면 — DS의 선, codex-ds 티켓 19). 누를 것이 아니라
             `pointer-events-none`이다: 첫 행 윗변을 가리면 안 된다. */}
         {scrolled && (
@@ -452,8 +491,9 @@ function SidebarWorkList({
               {...roving.box}
               onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
               // `relative`는 틈 선의 기준이다 — 선이 내용 좌표로 서서 목록과 함께 구른다(구획 목록의 선 주석).
-              // 위 2는 DS 기둥(`.at-sidebar`)의 줄 사이 2다 — 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이에 그것이 든다(`SectionHeader`).
-              className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-0.5 pb-1 scroll-quiet"
+              // 줄 사이는 사이드바 줄 목록의 리듬(`sidebar-look`)이다. 앞 것(nav · 알림 띠)과 첫 구획 소제목 사이는 머리가 든다
+              // (`SectionHeader`의 `mt-3`).
+              className={cn(SIDEBAR_ROWS, "relative -mx-2 min-h-0 flex-1 overflow-y-auto px-2 pb-1 scroll-quiet")}
             >
               <WorkSectionList
                 sections={sections}
@@ -461,7 +501,15 @@ function SidebarWorkList({
                 selectedSlug={selectedSlug}
                 stop={roving.stop}
                 shells={shells}
+                threads={{
+                  counts,
+                  marks,
+                  expanded,
+                  onToggle: toggleThreads,
+                  renderThreads: (work) => <WorkThreads threads={nestedOf(work.slug)} stop={roving.stop} />,
+                }}
                 onToggleSection={toggleSection}
+                onNewWork={() => void navigate({ to: "/", search: { new: "work" } })}
                 onOpen={goTo}
                 onHover={aimCard}
                 onLeave={leaveCard}
@@ -504,7 +552,12 @@ function SidebarWorkList({
         >
           {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
               말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}
-          <PeekCard work={hovered} note={shells.notes[hovered.slug] ?? null} />
+          <PeekCard
+            work={hovered}
+            note={shells.notes[hovered.slug] ?? null}
+            threads={counts[hovered.slug] ?? 0}
+            shells={shells.shellCounts[hovered.slug] ?? 0}
+          />
         </PopoverPortal>
       )}
     </>
@@ -528,12 +581,30 @@ function rowTarget(from: Element): MenuTarget | null {
  * 호버 카드의 몸 — **카드가 열릴 때 프로젝트 목록을 읽는다**(codex-ds 스펙 S15). 프로젝트마다 base는 work 목록에 없고 프로젝트
  * 목록에 있다. 작업 화면이 쓰는 질의(`useProjects`)와 같은 것이라 캐시를 함께 쓴다 — 다시 열면 읽어 둔 것이 곧바로 선다.
  *
- * 질의를 여기서 부르는 것은 카드(`WorkCard`)가 훅을 안 부르는 조각이라서다. 카드가 떠 있을 때만 마운트되므로, 프로젝트 목록을
+ * 질의를 여기서 부르는 것은 카드(`WorkPeek`)가 훅을 안 부르는 조각이라서다. 카드가 떠 있을 때만 마운트되므로, 프로젝트 목록을
  * 아직 안 읽은 화면에서는 카드가 처음 열리는 순간이 읽는 때다. 읽는 동안은 `null`을 넘겨 work 목록에서 아는 것만 선다.
  */
-function PeekCard({ work, note }: { work: WorkView; note: CallingNote | null }) {
+function PeekCard({
+  work,
+  note,
+  threads,
+  shells,
+}: {
+  work: WorkView;
+  note: CallingNote | null;
+  threads: number;
+  shells: number;
+}) {
   const { data: projects } = useProjects();
-  return <WorkCard work={work} note={note} projects={projects ? projectLines(work, projects) : null} />;
+  return (
+    <WorkPeek
+      work={work}
+      note={note}
+      projects={projects ? projectLines(work, projects) : null}
+      threads={threads}
+      shells={shells}
+    />
+  );
 }
 
 export default SidebarWorkList;

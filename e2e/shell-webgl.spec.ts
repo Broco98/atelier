@@ -1,7 +1,17 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, navButton, openShell, typeIntoShell, unknownIpcCalls, 이름표, 칸들 } from "./harness";
+import {
+  awaitSpawned,
+  installFixtureBackend,
+  openShell,
+  typeIntoShell,
+  unknownIpcCalls,
+  사람메뉴로간다,
+  이름표,
+  작업화면으로,
+  칸들,
+} from "./harness";
 
 // 티켓 17 — **셸을 스무 개 오가도 화면이 비지 않는다**(프로세스 결정 18 ③ · 프로세스 스펙 S23 · 스토리 49~51).
 //
@@ -49,15 +59,15 @@ async function fillShells(page: Page, count: number): Promise<void> {
   for (let at = 1; at < count; at += 1) await openShell(page);
 }
 
-/** 사이드바에서 그 work을 누른다 — SPA 이동이라 스토어가 산다(주소를 치면 페이지가 새로 뜬다). */
-async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
-  await page.getByRole("button", { name: work.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
-}
+/**
+ * 그 work의 작업 화면으로 간다 — ⌘K의 Work 줄이라 SPA 이동이고 스토어가 산다(주소를 치면 페이지가 새로 뜬다). 사이드바 Work 줄은 이제 그
+ * Work의 Thread로 간다(v1 티켓 37 · 하네스 `작업화면으로`).
+ */
+const toWork = (page: Page, work: (typeof WORKS)[number]) => 작업화면으로(page, work);
 
 /** nav의 `Terminal` — 최상위 터미널도 셸 화면이다. 들어가면 셸이 저절로 하나 뜬다. */
 async function toTerminal(page: Page): Promise<void> {
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
 }
 

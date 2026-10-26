@@ -46,6 +46,18 @@ export const worktreeFolderQuery = (slug: string, project: string, path: string,
   });
 
 /**
+ * 요약 카드의 「변경 사항」(v1 티켓 33 · 34 · 02 §7) — Work 전체의 변경을 한 번에 읽는 쿼리다. **워크트리 데이터 머리 아래다** — 턴 끝 · 창 포커스 ·
+ * 새로고침이 다른 워크트리 쿼리와 함께 다시 읽는다. 감시의 신호는 워크트리 하나의 것이라(`invalidateWorktree`의 머리는 Project까지다)
+ * 앱 루트가 `invalidateWorkChanges`를 따로 부른다.
+ */
+export const workChangesKey = (slug: string) => [...worktreeKey(slug), "changes"] as const;
+
+/** 감시가 그 Work의 워크트리 하나가 바뀌었다고 알렸다 — 그 Work의 변경 칸을 낡았다고 표시한다(보일 때만 다시 읽는다). */
+export function invalidateWorkChanges(queryClient: QueryClient, slug: string): Promise<void> {
+  return invalidateMerging(queryClient, { queryKey: workChangesKey(slug), exact: true });
+}
+
+/**
  * 새로고침 버튼(스토리 16) — 그 work의 워크트리 데이터를 모두 다시 읽는다. 펼쳐 둔 걸린 폴더의 한 겹까지다. 버튼은 files 칸이
  * 보일 때만 서서, 다시 읽는 것은 보이는(켜진) 쿼리뿐이다 — 숨은 것은 낡음 표시만 남아 보이는 순간 읽힌다.
  */

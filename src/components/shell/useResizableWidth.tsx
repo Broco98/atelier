@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { cardGapPx } from "./panel-layout";
 
 // 패널이 **놓인 쪽**이다 — 핸들이 붙는 가장자리가 아니다. 핸들은 늘 그 반대쪽 가장자리,
 // 즉 패널의 바깥 경계선 위에 얹히고 끄는 방향의 부호도 거기서 따라온다.
@@ -58,15 +57,11 @@ export function nextWidth({
 }
 
 /**
- * 손잡이가 얹힌 칸이 지금 그려진 폭 — 손잡이의 부모 상자의 폭이다. **틈 자리(`seat="gap"`)면 그 상자가 「카드 + 틈」이라 틈을
- * 뺀다** — 저장하는 폭이 카드의 폭이고(틈은 더하지 않는다), 좁게 선 칸에서 틈만큼 넓게 읽으면 첫 움직임에 손잡이가 그만큼 튄다.
- * 틈의 값은 토큰(`--space-2`)에서 읽는다(`cardGapPx`). 가장자리 · 세로 선 자리(`edge` · `rule`)의 부모는 칸 그 자체라 뺄 것이
- * 없다.
+ * 손잡이가 얹힌 칸이 지금 그려진 폭 — 손잡이의 부모 상자의 폭이다. 손잡이는 칸의 가장자리나 칸을 가르는 선 위에 서서(`edge` ·
+ * `rule`) 그 부모가 칸 그 자체라 뺄 것이 없다 — 저장하는 폭이 칸의 폭이다.
  */
 function drawnWidth(handle: HTMLElement): number | undefined {
-  const box = handle.parentElement?.getBoundingClientRect().width;
-  if (box === undefined || handle.dataset.seat !== "gap") return box;
-  return box - cardGapPx(handle);
+  return handle.parentElement?.getBoundingClientRect().width;
 }
 
 /** 끌기로 치는 최소 이동(px). 이보다 덜 움직인 눌림은 폭을 안 바꾸고 저장도 안 바꾼다. */
@@ -164,14 +159,12 @@ function useResizableWidth(
 // 시작할 때 그 부모의 그려진 폭을 출발 폭으로 잰다(좁게 선 패널에서 안 튀게). 한 겹 감싸면 감싼 상자의 폭을 잰다.
 // 호버 시 세로 중앙이 가장 밝고 위아래로 갈수록 옅어지는 은은한 글로우 라인.
 //
-// **`seat="gap"`이면 카드 옆 틈의 가운데에 선다**(판 04 「손잡이는 틈 안에 선다」 — 공용 틀의 작업 패널 칸 · 분할의 두 열).
-// 그 부모는 「카드 + 틈」 상자라, 출발 폭을 잴 때 틈을 뺀다(`drawnWidth` — 자리를 `data-seat`로 싣는다). 글로우 선도 틈의
-// 가운데다 — 카드 모서리에 붙이면 선이 둥근 모서리를 따라 잘린 것처럼 보인다.
+// **`seat="rule"`이면 두 칸이 맞닿은 가장자리의 세로 선 위에 걸쳐 선다**(codex-ds 결정 28 — 내용 | 목록 칸에서 두 칸을 가르는 0.5px 선이
+// 손잡이다, `Frame`의 `ListCard` · 분할의 두 열). 어느 가장자리인지는 control.side가 정한다 — 오른쪽 칸(`"right"`)이면 왼쪽 끝이다.
+// 손잡이의 가운데가 그 가장자리라 선을 짚으면 손잡이를 잡는다. 글로우 선도 그 가운데 — 선 위다. 넘침을 숨기는 상자(접히는 패널 칸)에서는
+// 반이 잘려 `edge`로 둔다. 부모는 칸 그 자체라 출발 폭에서 뺄 것이 없다.
 //
-// **`seat="rule"`이면 두 칸이 맞닿은 가장자리의 세로 선 위에 걸쳐 선다**(codex-ds 결정 28 — 내용 | 목록 카드에서 두 칸을 가르는 0.5px 선이
-// 손잡이다, `Frame`의 `ListCard`). 어느 가장자리인지는 control.side가 정한다 — 오른쪽 칸(`"right"`)이면 왼쪽 끝이다. 손잡이의
-// 가운데가 그 가장자리라 선을 짚으면 손잡이를 잡는다. 글로우 선도 그 가운데 — 선 위다.
-// 부모는 칸 그 자체라 출발 폭에서 뺄 것이 없다.
+// 한때 `seat="gap"`(카드 옆 8 틈의 가운데)이 있었다 — 판 안의 칸이 틈 없이 선으로 갈리며(02 구현 스펙 §3 S2) 걷었다.
 export function ResizeHandle({
   control,
   seat = "edge",
@@ -180,8 +173,8 @@ export function ResizeHandle({
   // (`useSplitRatio`)이 같은 핸들을 쓴다 — 잡는 자리와 글로우가 갈리면 같은 제스처가
   // 화면마다 다르게 보인다.
   control: Pick<ResizableWidth, "dragging" | "side" | "handleProps">;
-  /** 얹히는 자리 — 패널의 바깥 경계선 위(`edge`), 카드 옆 틈(`--space-2`)의 가운데(`gap`), 또는 칸을 가르는 세로 선 위(`rule`). */
-  seat?: "edge" | "gap" | "rule";
+  /** 얹히는 자리 — 패널의 바깥 경계선 위(`edge`) 또는 칸을 가르는 세로 선 위(`rule`). */
+  seat?: "edge" | "rule";
 }) {
   // 드래그 도중 핸들이 사라지면(Cmd+B·Cmd+Enter로 패널 접기) pointerup도 pointercancel도 오지 않는다.
   // 억제가 영구히 남는 유일한 경로라 언마운트에서 무조건 푼다
@@ -189,22 +182,17 @@ export function ResizeHandle({
 
   const visible = control.dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100";
   const edge =
-    seat === "gap"
+    seat === "rule"
       ? control.side === "right"
-        ? "left-[calc((var(--space-2)-5px)/2)]"
-        : "right-[calc((var(--space-2)-5px)/2)]"
-      : seat === "rule"
-        ? control.side === "right"
-          ? "left-0 -translate-x-1/2"
-          : "right-0 translate-x-1/2"
-        : control.side === "right"
-          ? "left-0"
-          : "right-0";
+        ? "left-0 -translate-x-1/2"
+        : "right-0 translate-x-1/2"
+      : control.side === "right"
+        ? "left-0"
+        : "right-0";
   const line = seat === "edge" ? edge : "inset-x-0 mx-auto";
   return (
     <div
       {...control.handleProps}
-      data-seat={seat}
       // **앱 툴팁이 아니라 `title`로 남는다**(S29). 이름이 따로 없는 손잡이라 이것이 유일한 설명이고, 버튼이 아니라
       // 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다. 사이드바 폭 조절은 결정 3의 「그대로」 쪽이기도 하다.
       title="드래그로 폭 조절 · 더블클릭으로 기본 폭"
@@ -214,8 +202,7 @@ export function ResizeHandle({
       )}
     >
       {/* 심 라인 — blur 층은 WebKit에서 잔상(스미어)을 남겨 그라데이션 단일 층만 쓴다. 색은 Codex 파랑 55%다(`via-accent/55`).
-          패널 가장자리에 딱 붙인다 — 왼쪽 패널(사이드바)이면 자기 오른쪽 끝, 오른쪽 패널이면 왼쪽 끝. 틈 자리면 틈의 가운데, 세로 선
-          자리면 선 위다. */}
+          패널 가장자리에 딱 붙인다 — 왼쪽 패널(사이드바)이면 자기 오른쪽 끝, 오른쪽 패널이면 왼쪽 끝. 세로 선 자리면 선 위다. */}
       <div
         className={cn(
           "absolute inset-y-0 w-[2px] bg-linear-to-b from-transparent via-accent/55 to-transparent transition-opacity duration-basic",

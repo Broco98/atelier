@@ -9,10 +9,12 @@ import {
   stubWindowFocus,
   typeIntoShell,
   unknownIpcCalls,
+  사람메뉴로간다,
+  사람줄,
   검색어칸,
   검색팔레트를연다,
   띠,
-  머리카드,
+  화면머리,
   칠한값,
   토큰값,
   토큰색,
@@ -38,13 +40,13 @@ const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "터미널" |
  */
 const 켜짐 = (page: Page, name: "터미널" | "알림" | "에이전트 훅") =>
   설정항목(page, name).locator("xpath=..");
-// 위치는 머리 카드가 말한다(codex-ds 스펙 §7 — 「Settings」 · 항목 이름 | 그 쪽의 저장). 글자로 읽으면 이름 · 위치 · 버튼 글자가
+// 위치는 머리 줄이 말한다(codex-ds 스펙 §7 — 「Settings」 · 항목 이름 | 그 쪽의 저장). 글자로 읽으면 이름 · 위치 · 버튼 글자가
 // 바로 잇닿는다(아래 정규식의 `\s*`).
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);
 
-/** 사이드바 바닥의 `Settings`로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것. */
+/** 사람 메뉴의 `Settings`로 들어간다 — 문 셋 중 사람이 가장 자주 누르는 것. 한때 사이드바 바닥의 줄이었다(v1 티켓 07 · S27). */
 async function 설정에들어간다(page: Page) {
-  await aside(page).getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   await expect(page).toHaveURL("/settings/terminal");
 }
 
@@ -60,10 +62,10 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   await expect(page).not.toHaveURL(/tab=terminal/);
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop" });
-  const nav = aside(page).getByRole("button", { name: "Terminal", exact: true });
+  const nav = aside(page).getByRole("button", { name: "새 Thread", exact: true });
   const 작업행 = aside(page).getByRole("button", { name: pinned.title, exact: true });
-  const 바닥설정 = aside(page).getByRole("button", { name: "Settings", exact: true });
-  for (const one of [nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(1);
+  const 사람 = 사람줄(page);
+  for (const one of [nav, 띠(page), 작업행, 사람]) await expect(one).toHaveCount(1);
 
   await 설정에들어간다(page);
 
@@ -71,38 +73,49 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   for (const name of ["터미널", "알림", "에이전트 훅"] as const) {
     await expect(설정항목(page, name)).toBeVisible();
   }
-  for (const one of [nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(0);
+  for (const one of [nav, 띠(page), 작업행, 사람]) await expect(one).toHaveCount(0);
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
-  await expect(머리카드(page)).toHaveText(/^Settings\s*터미널\s*저장$/);
+  await expect(화면머리(page)).toHaveText(/^Settings\s*터미널\s*저장$/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// codex-ds 티켓 19 — **설정 nav 행은 main nav와 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 32 · `radius-lg` · `nav-row`(14/20
-// 500), 켜진 항목은 바탕에 붙은 사이드바의 고른 면 `fill-hover`, 지나는 항목은 `fill-soft`다. 같은 사이드바 자리에 갈아 서는 nav라
-// 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서 읽어 맞댄다.
-test("설정 nav 행은 32 · radius-lg · 500이고, 켜진 항목은 fill-hover · 지나는 항목은 fill-soft다", async ({ page }) => {
+// codex-ds 티켓 19 — **설정 nav 행은 위 줄 행과 같은 행이다**(`SidebarItem` · DS `SidebarRow`): 30 · `radius-lg` · `text-sm`(14/20 400).
+// 면과 글자는 사이드바 줄 한 벌이다(02 티켓 05 · `sidebarRowTone`) — Codex 사이드바 줄은 hover와 고른 면이 같은 투명 `fill-nav-selected`(.053)라,
+// 켜진 항목은 떠나도 남는 그 면과 한 단 짙은 글자(`fg` — 안 켜진 줄은 `fg-sidebar`)로 갈린다. 한때(v1 티켓 46) 켜진 면은 불투명한
+// `fill-selected`, 지나는 면은 `fill-soft`였다. 같은 사이드바 자리에 갈아 서는 nav라 규격이 갈리면 들어가는 순간 행이 튄다. 값은 토큰에서
+// 읽어 맞댄다.
+test("설정 nav 행은 30 · radius-lg · 400이고, 켜진 항목은 fill-nav-selected 면에 fg 글자 · 지나는 항목도 같은 면이다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/terminal");
 
-  const [고른면, 지나는면] = [await 토큰색(page, "--fill-hover"), await 토큰색(page, "--fill-soft")];
+  const [줄면, 짙은글자, 줄글자] = [
+    await 토큰색(page, "--fill-nav-selected"),
+    await 토큰색(page, "--fg"),
+    await 토큰색(page, "--fg-sidebar"),
+  ];
+  expect(짙은글자, "fg와 fg-sidebar가 같은 색이다 — 켜진 항목을 가를 것이 없다").not.toBe(줄글자);
   const 행높이 = await 토큰값(page, "height", "--size-row-nav");
   const 반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   const 면 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "background-color"))[0];
+  const 글자색 = async (name: "터미널" | "알림") => (await 칠한값(켜짐(page, name), "color"))[0];
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
-  await expect.poll(() => 면("터미널")).toBe(고른면);
+  await expect.poll(() => 면("터미널")).toBe(줄면);
+  expect([await 글자색("터미널"), await 글자색("알림")], "켜진 항목 fg · 안 켜진 항목 fg-sidebar").toEqual([짙은글자, 줄글자]);
   for (const name of ["터미널", "알림"] as const) {
     expect(await 칠한값(켜짐(page, name), "height", "border-top-left-radius"), `${name} 행`).toEqual([행높이, 반경]);
-    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "500"]);
+    expect(await 칠한값(설정항목(page, name), "font-size", "font-weight"), `${name} 글자`).toEqual(["14px", "400"]);
   }
 
+  // 앵커: 쉴 때 안 켜진 항목에는 면이 없다 — 아래 「지나는 면」이 늘 칠해진 면을 잰 것이 아니다.
+  expect(await 면("알림"), "쉬는 안 켜진 항목").toBe("rgba(0, 0, 0, 0)");
   await 설정항목(page, "알림").hover();
-  await expect.poll(() => 면("알림")).toBe(지나는면);
-  // 켜진 항목은 옆을 지나도 그 면이다.
-  expect(await 면("터미널")).toBe(고른면);
+  await expect.poll(() => 면("알림")).toBe(줄면);
+  // 켜진 항목은 옆을 지나도 그 면 · 그 글자다.
+  expect([await 면("터미널"), await 글자색("터미널")]).toEqual([줄면, 짙은글자]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -112,7 +125,7 @@ test("`/settings`로 곧장 오면 `/settings/terminal`로 치환된다", async 
   await installFixtureBackend(page);
   await page.goto("/settings");
   await expect(page).toHaveURL("/settings/terminal");
-  await expect(머리카드(page)).toHaveText(/^Settings\s*터미널\s*저장$/);
+  await expect(화면머리(page)).toHaveText(/^Settings\s*터미널\s*저장$/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -125,7 +138,7 @@ test("항목을 누르면 주소와 본문이 그 항목으로 바뀌고, 뒤로
 
   await 설정항목(page, "알림").click();
   await expect(page).toHaveURL("/settings/notifications");
-  await expect(머리카드(page)).toHaveText(/^Settings\s*알림\s*저장$/);
+  await expect(화면머리(page)).toHaveText(/^Settings\s*알림\s*저장$/);
   // 본문은 **그 항목 하나**다 — 앞 항목의 구획이 함께 서 있으면 한 화면 그대로다.
   await expect(page.getByRole("group", { name: "알림 설정", exact: true })).toBeVisible();
   await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toHaveCount(0);
@@ -190,17 +203,17 @@ test("설정 밖에서 ⌘,는 설정을 연다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 앱을 켜면 늘 작업 화면이다(판 02 「묻지 않고 기본값으로 둔 것」). 앞 판이 남긴 `last-mode`는 읽지도 다시 적지도 않는다
-// (ui-refresh 결정 23) — 키 이름을 글자로 적는 것은 그것이 앱이 더는 모르는 옛 키이기 때문이다. 정규화가 어느 work을 고르는지는
-// 라우터 seam이 잰다.
-test("앱을 켜면 작업 화면이고, 앞 판이 남긴 `last-mode`를 다시 적지 않는다", async ({ page }) => {
+// 앱을 켜면 늘 새 Thread다(v1 구현 스펙 S26 — 한때는 작업 화면이었다). 앞 판이 남긴 `last-mode`는 읽지도 다시 적지도 않는다
+// (ui-refresh 결정 23) — 키 이름을 글자로 적는 것은 그것이 앱이 더는 모르는 옛 키이기 때문이다.
+test("앱을 켜면 새 Thread이고, 앞 판이 남긴 `last-mode`를 다시 적지 않는다", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("last-mode", "maison"));
   await installFixtureBackend(page);
   await page.goto("/");
-  await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/works\/[^/]+$/);
+  await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible();
+  await expect(page).toHaveURL("/");
 
   // 다른 화면을 지나도 그대로다 — 마지막 자리는 세션 기억이다.
-  await aside(page).getByRole("button", { name: "Terminal", exact: true }).click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   expect(await page.evaluate(() => localStorage.getItem("last-mode"))).toBe("maison");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -223,7 +236,7 @@ test.describe("앱으로 돌아가기", () => {
     await expect(page).toHaveURL(`/works/${plain.slug}?tab=terminal`);
     // 주소만 보면 화면이 안 서도 초록이다 — 탭 줄과 사이드바가 앱의 것으로 되돌아왔다.
     await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
-    await expect(aside(page).getByRole("button", { name: "Terminal", exact: true })).toBeVisible();
+    await expect(사람줄(page)).toBeVisible();
 
     // **push다** — 뒤로가기는 설정의 마지막 항목으로 간다(뒤로가기로 나갔다면 앞 항목에 선다).
     await page.goBack();
@@ -279,15 +292,15 @@ test.describe("앱으로 돌아가기", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // 앱을 켜자마자 설정 — 기억할 자리가 없다. 목록 주소로 가고, 거기서 정규화가 고르는 항목은
-  // 이 검사가 재지 않는다(그 규칙의 몫은 라우터 seam이다).
-  test("기억이 없으면 작업 목록 주소로 간다", async ({ page }) => {
+  // 앱을 켜자마자 설정 — 기억할 자리가 없다. 앱이 늘 열리는 자리(새 Thread, v1 구현 스펙 S26)로 간다.
+  test("기억이 없으면 새 Thread로 간다", async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto("/settings");
     await expect(page).toHaveURL("/settings/terminal");
 
     await 설정항목(page, "앱으로 돌아가기").click();
-    await expect.poll(() => new URL(page.url()).pathname).toMatch(/^\/works(\/|$)/);
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: "무엇을 만들까요?", exact: true })).toBeVisible();
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });

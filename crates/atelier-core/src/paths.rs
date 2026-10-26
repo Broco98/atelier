@@ -26,6 +26,11 @@ pub fn projects_dir() -> PathBuf {
     projects_in(&data_root())
 }
 
+/// Space 파일들의 자리(03 구현 스펙 §8). 앱의 감시자가 이 폴더를 본다.
+pub fn spaces_dir() -> PathBuf {
+    spaces_in(&data_root())
+}
+
 /// 진행 중인 work의 루트.
 pub fn works_dir() -> PathBuf {
     works_in(&data_root())
@@ -44,20 +49,42 @@ pub fn layouts_dir() -> PathBuf {
     layouts_in(&data_root())
 }
 
+/// Thread들의 자리. 앱의 감시자가 이 폴더를 한 겹 본다 — Thread 폴더가 사라지면 그 Thread의 Session을 끈다(v1 구현 스펙 §5).
+pub fn threads_dir() -> PathBuf {
+    threads_in(&data_root())
+}
+
 // 아래 넷이 **배치의 정본이다** — 루트 아래 어느 폴더가 무엇인지를 아는 자리가 여기
 // 하나다. 위의 넷은 `data_root()`를 먹인 것뿐이고, 루트를 인자로 받는 코어 함수들
 // (`search`)은 이쪽을 먹인다. **가르면 두 벌이 생긴다**: 한쪽만 고친 날 앱이 보는 폴더와
 // 검색이 보는 폴더가 갈리는데, 화면에는 「왜 안 뜨지」로만 나타난다.
 
-pub(crate) fn projects_in(root: &Path) -> PathBuf {
+/// 등록한 Project의 루트를 **받은 데이터 루트에서** 짓는다 — 대화 호스트(`atelier-acp`)의 Thread 도구 「Project 목록」 · 「Work 만들기
+/// 제안」이 부른다(v1 티켓 30).
+pub fn projects_in(root: &Path) -> PathBuf {
     root.join("projects")
 }
 
-pub(crate) fn works_in(root: &Path) -> PathBuf {
+/// Space 파일들의 루트를 **받은 데이터 루트에서** 짓는다 — Space 하나가 `<slug>.md` 하나다(03 구현 스펙 §8). Space 파일이 적은
+/// Project를 등록부와 맞대야 해서 Space를 읽는 함수들은 데이터 루트를 받고, 두 폴더를 여기와 `projects_in`에서 짓는다.
+pub fn spaces_in(root: &Path) -> PathBuf {
+    root.join("spaces")
+}
+
+/// 지운 파일이 머무는 자리 — 그 폴더(`projects/` · `spaces/`) 아래 `.deleted/`(03 구현 스펙 §9 · §15 · S10). 점 폴더라 목록 · 감시 ·
+/// 새 slug 짓기가 보지 않는다. 지운 Project · Space가 같은 자리 규칙을 쓴다.
+pub(crate) fn deleted_in(folder: &Path) -> PathBuf {
+    folder.join(".deleted")
+}
+
+/// 진행 중인 work의 루트를 **받은 데이터 루트에서** 짓는다. 데이터 루트를 인자로 받는 대화 호스트
+/// (`atelier-acp`)가 이것을 부른다 — 그쪽이 `root.join("works")`를 다시 적으면 배치가 두 벌이 된다.
+pub fn works_in(root: &Path) -> PathBuf {
     root.join("works")
 }
 
-pub(crate) fn archive_in(root: &Path) -> PathBuf {
+/// 보관한 work의 루트를 **받은 데이터 루트에서** 짓는다 — Thread 도구 「Work 만들기 제안」이 core의 Work 만들기에 넘긴다(v1 티켓 30).
+pub fn archive_in(root: &Path) -> PathBuf {
     root.join("archive")
 }
 
@@ -65,6 +92,24 @@ pub(crate) fn archive_in(root: &Path) -> PathBuf {
 /// (ui-refresh 결정 23, `layout::resolve`의 `layout_folder`).
 pub(crate) fn layouts_in(root: &Path) -> PathBuf {
     root.join("layouts")
+}
+
+/// Library의 Agent 자리 — 어디서나 쓰는 내 Agent 정의(v1 구현 스펙 §6 · agent-definition.md 「파일 위치」). Project 안의 Agent는
+/// 여기가 아니라 그 Project의 `.atelier/agents/`다. Thread 엔진(`atelier-acp`)이 Host를 여기서 읽는다.
+pub fn library_agents_in(root: &Path) -> PathBuf {
+    root.join("library").join("agents")
+}
+
+/// 레포 안의 Agent 자리 — Project 폴더 또는 그 worktree 아래 `.atelier/agents/`(agent-definition.md 「파일 위치」). 데이터 뿌리가
+/// 아니라 레포를 받는다. `.claude/agents/`가 아니다 — 거기 두면 Claude Code가 자기 subagent로 읽는다(스토리 70).
+pub(crate) fn repo_agents_in(folder: &Path) -> PathBuf {
+    folder.join(".atelier").join("agents")
+}
+
+/// Thread들의 자리(v1 구현 스펙 §4). Thread 하나가 이 아래 `<id>/` 폴더 하나다. Work 폴더 밖이라 Work가 보관되어도
+/// 옮겨지지 않는다 — 보관된 Work의 Thread는 제자리에서 읽기만 된다.
+pub(crate) fn threads_in(root: &Path) -> PathBuf {
+    root.join("threads")
 }
 
 pub fn expand_home(path: &str) -> PathBuf {
@@ -113,5 +158,6 @@ mod tests {
         assert_eq!(works_dir(), data_root().join("works"));
         assert_eq!(archive_dir(), data_root().join("archive"));
         assert_eq!(projects_dir(), data_root().join("projects"));
+        assert_eq!(spaces_dir(), data_root().join("spaces"));
     }
 }

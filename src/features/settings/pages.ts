@@ -15,8 +15,11 @@ export const SETTINGS_ENTRY = "/settings";
  * 아니다(`CONTEXT.md` 표기 절). `터미널`은 설정 항목의 이름이고, 문장에서는 「터미널 설정」으로
  * 써서 화면 「터미널」과 가른다. `spec 레이아웃`의 소문자 `spec`은 「spec 폴더」와 같은 쓰임이다.
  *
- * **`spec 레이아웃`은 맨 뒤다**(spec 레이아웃 티켓 08). `/settings`는 첫 항목으로 넘기므로
- * (`settings.index.tsx`), 앞에 서면 설정을 여는 문 셋이 모두 이 페이지에 선다.
+ * **새 항목은 뒤에 붙는다**(spec 레이아웃 티켓 08). `/settings`는 첫 항목으로 넘기므로(`settings.index.tsx`), 앞에 서면 설정을
+ * 여는 문 셋이 모두 그 페이지에 선다. `spec 레이아웃`이 그래서 뒤다. three-axes의 `대화`는 v1 티켓 08이 걷었다(S3).
+ *
+ * **항목 key는 설정 파일의 구획 이름과 글자까지 같다**(`알림` ↔ `notifications`) — 저장이 `Settings[key]`로 그 구획을 고른다
+ * (`save-section.ts`의 `SettingsSectionKey`).
  *
  * 사이드바의 설정 nav와 본문 머리(`Settings › 터미널`)가 **이 표 하나**를 읽는다 — 둘이 각자
  * 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.

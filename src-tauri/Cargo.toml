@@ -1,6 +1,6 @@
 [package]
 name = "atelier-app"
-version = "0.20.0"
+version = "0.21.0-beta"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -34,6 +34,9 @@ serde = { version = "1", features = ["derive"] }
 # 잴 수 있게 되는 것도 여기서 온다.
 serde_json = { version = "1", features = ["preserve_order"] }
 atelier-core = { path = "../crates/atelier-core" }
+# 대화 호스트(three-axes 결정 12 · 티켓 05) — 앱이 하나를 쥐고 대화 명령을 위임한다. 에이전트 프로세스 · 기록 · 찾기는
+# 그 크레이트가 감춘다.
+atelier-acp = { path = "../crates/atelier-acp" }
 tauri-plugin-dialog = "2"
 # 클립보드 읽기(codex-ds 스펙 S9). 입력칸 · 터미널 메뉴의 붙여넣기가 이것으로 읽는다 — 웹뷰의
 # `navigator.clipboard.readText`는 WKWebView에서 시스템 붙여넣기 확인을 띄운다. 쓰기(복사 · 잘라내기)는

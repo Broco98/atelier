@@ -75,9 +75,10 @@ describe("릴리스 버전", () => {
   });
 
   // 위 검사는 "전부 같다"만 본다. 전부 같은 쓰레기 값이어도 통과하므로 모양도 함께 못 박는다
-  // — bump-version.sh가 major.minor.patch만 받고 태그를 `v<버전>`으로 만든다.
-  it("그 버전은 major.minor.patch 모양이다", () => {
+  // — bump-version.sh가 major.minor.patch(와 `-beta` 같은 pre-release 꼬리)만 받고 태그를
+  // `v<버전>`으로 만든다.
+  it("그 버전은 major.minor.patch 모양이다(pre-release 꼬리는 붙어도 된다)", () => {
     const [version] = [...new Set(Object.values(everyVersion()))];
-    expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(version).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/);
   });
 });

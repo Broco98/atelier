@@ -9,6 +9,7 @@ import {
   shownWorkOrder,
   unknownIpcCalls,
   workRow,
+  주소로간다,
 } from "./harness";
 import { expect, seedLayout, seedWork, test } from "./l4";
 
@@ -55,9 +56,10 @@ test("작업 행을 끌어 놓은 뒤에도 work을 열면 기본 문서가 열�
   await dragRowOnto(page, "셋째", workRow(page, "첫째"), "upper");
   await expect.poll(() => shownWorkOrder(page)).toEqual(["셋째", "첫째", "둘째"]);
 
-  // 보고 있던 work도, 새로 여는 work도 기본 문서로 선다.
+  // 보고 있던 work도, 새로 여는 work도 기본 문서로 선다. 앱 안에서 주소로 연다 — 사이드바 Work 줄은 이제 그 Work의 Thread로 간다
+  // (v1 티켓 37).
   await expect(page.getByText(overviewOf("첫째 작업"))).toBeVisible();
-  await workRow(page, "둘째").click();
+  await 주소로간다(page, `/works/${encodeURIComponent("둘째")}`);
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/works/${encodeURIComponent("둘째")}`);
   await expect(page.getByText(overviewOf("둘째 작업"))).toBeVisible();
 

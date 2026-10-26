@@ -10,7 +10,7 @@ import {
   탭으로,
   띠,
   그림자,
-  머리카드,
+  화면머리,
   색대비,
   이름표,
   칠한값,
@@ -79,8 +79,11 @@ const 링폭 = 4;
  *
  * 페이지 안에서 도는 함수다(`evaluateAll`) — 자르는 변을 `<상자> 변`으로 돌려준다. `굴러나간것은뺀다`면 자르는 상자 안에
  * 다 들어와 있지 않은 요소(굴러서 반쯤 · 통째로 나간 것, 접힌 구획 안의 것)는 세지 않는다 — 그 링이 안 보이는 것은 그 요소가
- * 안 보이기 때문이다. 크기가 없는 요소도 같다. **링을 안쪽에 입는 것**(`data-ring-inset` — 카드 끝까지 차는 문서 글)은 테두리
- * 바깥으로 차지하는 것이 없어 요소 상자 그대로 잰다.
+ * 안 보이기 때문이다. 크기가 없는 요소도 같다. 구르는 상자의 **보이는 끝에 맞닿은 것도 그 너머로 더 구를 자리가 남았으면** 세지 않는다
+ * — 굴러서 반쯤 나가기 직전의 자리일 뿐 배치가 링을 자르는 것이 아니다(창 높이가 바뀌면 다른 행이 그 끝에 걸린다 — 02 티켓 13에서
+ * 흰 판이 본문을 5.5 줄이자 설정의 마지막 글상자가 720 창의 보이는 끝에 0px로 맞닿았다). 더 구를 자리가 없는 끝(목록의 마지막 행이
+ * 상자 바닥에 붙은 것)은 그대로 센다 — 그것은 어디로 굴러도 잘린다. **링을 안쪽에 입는 것**(`data-ring-inset` — 카드 끝까지 차는 문서
+ * 글)은 테두리 바깥으로 차지하는 것이 없어 요소 상자 그대로 잰다.
  */
 function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }: { 폭: number; 굴러나간것은뺀다: boolean }): string[] {
   const cut: string[] = [];
@@ -90,6 +93,8 @@ function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }:
     if (굴러나간것은뺀다 && (box.width === 0 || box.height === 0)) continue;
     const 이름 = `<${el.tagName.toLowerCase()}> 「${(el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 24)}」`;
     const 변: string[] = [];
+    // 안쪽의 구르는 상자가 「굴러 나가는 중」이라 친 변 — 그 바깥의 자르는 상자(구르지 않는 칸 · 판)가 같은 끝에서 자르는 것도 세지 않는다.
+    const 구르는변 = new Set<string>();
     for (let at = el.parentElement; at; at = at.parentElement) {
       const style = getComputedStyle(at);
       const [가로, 세로] = [style.overflowX !== "visible", style.overflowY !== "visible"];
@@ -108,10 +113,21 @@ function 잘린링(els: Element[], { 폭: 바깥폭, 굴러나간것은뺀다 }:
         break;
       }
       const 상자 = `<${at.tagName.toLowerCase()} class="${at.getAttribute("class") ?? ""}">`;
-      if (가로 && box.left - 폭 < 안.left - 0.5) 변.push(`${상자} 왼쪽 ${(box.left - 안.left).toFixed(1)}px`);
-      if (가로 && box.right + 폭 > 안.right + 0.5) 변.push(`${상자} 오른쪽 ${(안.right - box.right).toFixed(1)}px`);
-      if (세로 && box.top - 폭 < 안.top - 0.5) 변.push(`${상자} 위 ${(box.top - 안.top).toFixed(1)}px`);
-      if (세로 && box.bottom + 폭 > 안.bottom + 0.5) 변.push(`${상자} 아래 ${(안.bottom - box.bottom).toFixed(1)}px`);
+      // 그 변 너머로 더 구를 자리가 남았나 — 남았으면 그 끝에 맞닿은 것은 굴러 나가는 중이다(위 머리말).
+      const 더구른다 = {
+        left: at.scrollLeft > 0.5,
+        right: at.scrollLeft + at.clientWidth < at.scrollWidth - 0.5,
+        top: at.scrollTop > 0.5,
+        bottom: at.scrollTop + at.clientHeight < at.scrollHeight - 0.5,
+      };
+      const 센다 = (변이름: keyof typeof 더구른다) => {
+        if (굴러나간것은뺀다 && 더구른다[변이름]) 구르는변.add(변이름);
+        return !구르는변.has(변이름);
+      };
+      if (가로 && box.left - 폭 < 안.left - 0.5 && 센다("left")) 변.push(`${상자} 왼쪽 ${(box.left - 안.left).toFixed(1)}px`);
+      if (가로 && box.right + 폭 > 안.right + 0.5 && 센다("right")) 변.push(`${상자} 오른쪽 ${(안.right - box.right).toFixed(1)}px`);
+      if (세로 && box.top - 폭 < 안.top - 0.5 && 센다("top")) 변.push(`${상자} 위 ${(box.top - 안.top).toFixed(1)}px`);
+      if (세로 && box.bottom + 폭 > 안.bottom + 0.5 && 센다("bottom")) 변.push(`${상자} 아래 ${(안.bottom - box.bottom).toFixed(1)}px`);
     }
     cut.push(...변.map((one) => `${이름} — ${one}`));
   }
@@ -126,15 +142,16 @@ async function 링이다보인다(target: Locator, 이름: string): Promise<void
 test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · 사이드바 행 · 탭 · 행 안 버튼에서 같은 링이다", async ({ page }) => {
   await installFixtureBackend(page);
 
-  // Projects — 글자 버튼 · 아이콘 버튼과, 상자가 링을 입는 검색칸(포커스는 안의 입력칸에 있다).
-  await page.goto(`/projects/${project.slug}`);
-  const 검색 = page.getByRole("textbox", { name: "프로젝트 검색", exact: true });
+  // Projects 목록 — 글자 버튼(「Project 추가」) · 아이콘 버튼(행의 ⋯)과, 상자가 링을 입는 찾기 칸(포커스는 안의 입력칸에 있다 — 03
+  // 시안의 알약 칸도 링은 같은 `focus-ring`이다).
+  await page.goto("/projects");
+  const 검색 = page.getByRole("searchbox", { name: "Project 찾기", exact: true });
   await 탭으로(page, 검색);
-  await 링이선다(page, page.locator("[data-slot=input-group]"), "검색칸");
-  const 아이콘버튼 = page.getByRole("button", { name: "프로젝트 등록", exact: true });
+  await 링이선다(page, 검색.locator(".."), "찾기 칸");
+  const 아이콘버튼 = page.getByRole("button", { name: `${project.name} 메뉴`, exact: true });
   await 탭으로(page, 아이콘버튼);
   await 링이선다(page, 아이콘버튼, "아이콘 버튼");
-  const 글자버튼 = page.getByRole("button", { name: "폴더 열기", exact: true });
+  const 글자버튼 = page.getByRole("button", { name: "Project 추가", exact: true });
   await 탭으로(page, 글자버튼);
   await 링이선다(page, 글자버튼, "글자 버튼");
   // 링은 포커스가 있는 동안만이다 — 떠난 자리에는 선도 무리도 없다.
@@ -197,11 +214,14 @@ test("키보드 포커스는 버튼 · 아이콘 버튼 · 입력 · 토글 · �
 // 것(`focus-ring`) 전부로 넓힌다. 링은 포커스가 있어야 칠해지지만 자르는 상자의 기하는 포커스와 상관없다 — 그래서 포커스 없이
 // 상자만 잰다. 넘침을 자르는 상자(구르는 목록 · 접히는 구획 · 가로로 구르는 탭 줄)의 끝에 붙어 선 것은 그 변의 링이 통째로
 // 사라진다 — 한 자리를 고쳐도 옆 화면의 같은 모양이 남았다(셸 탭 줄 · 사이드바 구획 · 프로젝트 · 아카이브 목록의 첫 행 ·
-// 아카이브 문서 트리 · 편집기 트리). 굴러서 상자 밖으로 나간 것과 접힌 구획 안의 것은 세지 않는다(`잘린링`).
+// 아카이브 문서 트리 · 편집기 트리). 굴러서 상자 밖으로 나간 것과 접힌 구획 안의 것은 세지 않는다(`잘린링`). 03이 세운 Projects ·
+// Space의 목록 · 상세도 같은 상자 안에 선다(표의 이름 · ⋯, 레일의 칸).
 test("링을 다는 것은 어느 화면에서도 넘침을 자르는 상자에 링이 잘리지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
   const 화면들: [string, Locator][] = [
-    [`/projects/${project.slug}`, page.getByRole("textbox", { name: "프로젝트 검색", exact: true })],
+    ["/projects", page.getByRole("table", { name: "Project 목록", exact: true })],
+    [`/projects/${project.slug}`, page.getByRole("complementary", { name: "Project 정보", exact: true })],
+    ["/spaces", page.getByRole("table", { name: "Space 목록", exact: true })],
     [`/archive/${ARCHIVE[0].slug}`, page.getByRole("heading", { name: "기록 — 치운 일" })],
     ["/processes", processesTitle(page)],
     ["/settings/terminal", page.getByRole("textbox", { name: "터미널 글꼴", exact: true })],
@@ -247,37 +267,23 @@ test("알림 띠의 줄과 ⌄도 링이 잘리지 않는다", async ({ page }) 
 
 test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 DS 값이다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${project.slug}`);
+  // 03이 Projects를 시안의 표로 바꿔(알약 찾기 칸 · 둥근 「Project 추가」) DS 부품의 자리는 설정 머리 줄 · Archive 목록 머리로 옮겼다.
+  await page.goto("/settings/terminal");
 
-  // 머리 카드의 글자 버튼 — DS `.at-btn.top`(24 · `radius-md`). 머리 줄에 서는 것은 모두 24다(창 컨트롤 · 작업 ⋯와 같다).
+  // 머리 줄의 글자 버튼 — `Button`의 `top`(28 · `radius-lg` — 머리 줄의 아이콘 단추와 같은 높이, 02 결정 「머리 줄은 한 결이다(03 뒤)」).
+  // 머리 줄에 서는 단추는 모두 28이다(창 컨트롤 · 작업 ⋯ · 분할과 같다). 한때 머리 카드의 24 · `radius-md`였다. 설정의 「저장」이 그 단이다.
   const 버튼반경 = await 토큰값(page, "border-top-left-radius", "--radius-lg");
   expect(버튼반경, "radius-lg").toBe("10px");
   const 작은반경 = await 토큰값(page, "border-top-left-radius", "--radius-md");
   expect(작은반경, "radius-md").toBe("8px");
-  expect(
-    await 칠한값(머리카드(page).getByRole("button", { name: "폴더 열기", exact: true }), "height", "border-top-left-radius"),
-    "머리 카드의 글자 버튼",
-  ).toEqual(["24px", 작은반경]);
-  // 아이콘 버튼 — Codex `IconButton`(`size-control` 정사각 · `radius-lg`). 동그란 아이콘 버튼은 걷혔다.
   const 컨트롤 = await 토큰값(page, "width", "--size-control");
   expect(컨트롤, "size-control").toBe("28px");
   expect(
-    await 칠한값(
-      page.getByRole("button", { name: "프로젝트 등록", exact: true }),
-      "width",
-      "height",
-      "border-top-left-radius",
-    ),
-    "아이콘 버튼",
-  ).toEqual([컨트롤, 컨트롤, 버튼반경]);
-  // 검색칸 — DS `.at-search`(32 · `radius-lg` · `fill-soft` 면). 알약이 아니다.
-  expect(
-    await 칠한값(page.locator("[data-slot=input-group]"), "height", "border-top-left-radius", "background-color"),
-    "검색칸",
-  ).toEqual(["32px", 버튼반경, await 토큰색(page, "--fill-soft")]);
+    await 칠한값(화면머리(page).getByRole("button", { name: "저장", exact: true }), "height", "border-top-left-radius"),
+    "머리 줄의 글자 버튼",
+  ).toEqual([컨트롤, 버튼반경]);
 
   // 입력칸 — DS `.at-input`(32 · `radius-md`).
-  await page.goto("/settings/terminal");
   expect(
     await 칠한값(page.getByRole("textbox", { name: "터미널 글꼴", exact: true }), "height", "border-top-left-radius"),
     "입력칸",
@@ -290,26 +296,53 @@ test("버튼 · 아이콘 버튼 · 검색칸 · 입력의 높이와 반경이 D
     "카드 안의 글자 버튼",
   ).toEqual(["32px", 버튼반경]);
 
-  // 작은 아이콘 버튼 — 머리 카드의 작업 ⋯와 분할(DS `.at-ib.xs` 24 · `radius-md`). 둘은 세로선을 사이에 두고 한 줄에 서고,
-  // 머리 줄에 서는 것은 모두 24다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
+  // Archive 목록 머리 — 아이콘 버튼(정렬 · 거르기)은 Codex `IconButton`(`size-control` 정사각 · `radius-lg`)이다. 동그란 아이콘 버튼은
+  // 걷혔다. 검색칸은 DS `.at-search`(32 · `radius-lg` · `fill-soft` 면) — 알약이 아니다.
+  await page.goto("/archive");
+  expect(
+    await 칠한값(
+      page.getByRole("button", { name: "정렬 · 거르기", exact: true }),
+      "width",
+      "height",
+      "border-top-left-radius",
+    ),
+    "아이콘 버튼",
+  ).toEqual([컨트롤, 컨트롤, 버튼반경]);
+  expect(
+    await 칠한값(page.locator("[data-slot=input-group]"), "height", "border-top-left-radius", "background-color"),
+    "검색칸",
+  ).toEqual(["32px", 버튼반경, await 토큰색(page, "--fill-soft")]);
+
+  // 머리 줄의 아이콘 버튼 — 작업 ⋯와 분할도 아이콘 버튼 기본(`size-control` 28 · `radius-lg` — `ShellHead`의 `headButton`)이다. 둘은
+  // 세로선을 사이에 두고 한 줄에 서고, 머리 줄에 서는 것은 모두 28이다 — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다. 한때 머리
+  // 카드의 DS `.at-ib.xs`(24 · `radius-md`)였다.
   await page.goto(`/works/${plainWork.slug}`);
   for (const name of ["작업 메뉴", "분할"]) {
     expect(
-      await 칠한값(page.getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
+      await 칠한값(화면머리(page).getByRole("button", { name, exact: true }), "width", "height", "border-top-left-radius"),
       name,
-    ).toEqual(["24px", "24px", 작은반경]);
+    ).toEqual([컨트롤, 컨트롤, 버튼반경]);
   }
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+/**
+ * 앱의 확인 창(`AppDialog` — `askDanger`)을 연다 — work 머리 줄 ⋯의 「삭제」가 묻는 창이다. 한때 프로젝트 머리의 「제거」가 같은
+ * 창이었다 — 03이 Project 제거를 제 창(`ProjectRemoveDialog`, 03 결정 「11」)으로 옮겨 DS 확인 창의 자리는 work 삭제다.
+ */
+async function 삭제를묻는다(page: Page): Promise<Locator> {
+  await page.goto(`/works/${plainWork.slug}`);
+  await 화면머리(page).getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  await page.getByRole("menuitem", { name: "삭제", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: `'${plainWork.title}' 삭제` });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 test("확인 창은 반경 24 · 짙은 그림자 · 옅은 막이고, 제목은 heading-xs다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${project.slug}`);
-
-  await page.getByRole("button", { name: "제거", exact: true }).click();
-  const dialog = page.getByRole("alertdialog", { name: `'${project.name}' 제거` });
-  await expect(dialog).toBeVisible();
+  const dialog = await 삭제를묻는다(page);
   // 열림 애니메이션(크기 95% → 100%)이 끝난 뒤에 잰다 — 도는 동안의 폭은 400이 아니다.
   await expect.poll(() => dialog.evaluate((el) => el.getAnimations().length)).toBe(0);
 
@@ -325,7 +358,7 @@ test("확인 창은 반경 24 · 짙은 그림자 · 옅은 막이고, 제목은
     "24px",
     "600",
   ]);
-  for (const name of ["취소", "제거"]) {
+  for (const name of ["취소", "삭제"]) {
     expect(await 칠한값(dialog.getByRole("button", { name, exact: true }), "height"), `${name} 버튼`).toEqual(["32px"]);
   }
   // 막은 Codex `scrim`이다.
@@ -348,11 +381,8 @@ test("위험 버튼의 글자와 스위치 손잡이는 다크에서도 희다",
   // 테마는 하네스 `팔레트`로 갈아 끼운다 — 전환이 끝날 때까지 기다리고, 켤 때마다 팔레트가 정말 바뀌었는지(`surface`)를 먼저 센다.
   // 두 자리의 기대값(흰 글자 · `danger-solid`)은 두 테마에서 같은 값이라, 팔레트가 안 바뀌어도 이 검사만으로는 초록이 된다.
 
-  await page.goto(`/projects/${project.slug}`);
-  await page.getByRole("button", { name: "제거", exact: true }).click();
-  const dialog = page.getByRole("alertdialog", { name: `'${project.name}' 제거` });
-  await expect(dialog).toBeVisible();
-  const 위험 = dialog.getByRole("button", { name: "제거", exact: true });
+  const dialog = await 삭제를묻는다(page);
+  const 위험 = dialog.getByRole("button", { name: "삭제", exact: true });
   for (const 다크 of [false, true]) {
     await 팔레트(page, 다크);
     const 자리 = 다크 ? "다크" : "라이트";

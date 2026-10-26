@@ -34,6 +34,46 @@ pub fn start_work(
     project_slugs: &[String],
     branch: Option<&str>,
 ) -> Result<WorkReport> {
+    start(works_root, archive_root, projects_root, title, slug, project_slugs, branch, Worktrees::Now)
+}
+
+/// `start_work`와 같되 **워크트리는 나중이다**(v1 구현 스펙 §11 · S21). 프로젝트를 `work.json`에 적고 브랜치 이름도
+/// 정하지만, 워크트리도 저장소의 브랜치도 만들지 않는다. 보기의 `exists`가 거짓인 프로젝트가 「읽기만」이고, 처음
+/// 고칠 때 `attach_project`가 그 프로젝트의 워크트리를 만든다 — 이미 적힌 프로젝트라 목록은 그대로다.
+///
+/// **사전검증은 `start_work`와 같다.** 등록 · git 저장소 · baseBranch · 새 work의 브랜치 충돌을 지금 본다 — 나중에
+/// 붙일 때 처음 알면 Work는 이미 서 있고 그 프로젝트만 영영 못 고친다. 브랜치는 Work에 하나다(`decide_branch`).
+///
+/// MCP `atelier_start_work`는 이것을 부르지 않는다 — 그쪽의 기본 동작(워크트리를 지금 만든다)은 그대로다.
+pub fn start_work_deferred(
+    works_root: &Path,
+    archive_root: &Path,
+    projects_root: &Path,
+    title: &str,
+    slug: Option<&str>,
+    project_slugs: &[String],
+    branch: Option<&str>,
+) -> Result<WorkReport> {
+    start(works_root, archive_root, projects_root, title, slug, project_slugs, branch, Worktrees::Later)
+}
+
+/// Work를 시작할 때 워크트리를 언제 만드나 — `start_work` · `start_work_deferred`가 가르는 한 가지다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Worktrees {
+    Now,
+    Later,
+}
+
+fn start(
+    works_root: &Path,
+    archive_root: &Path,
+    projects_root: &Path,
+    title: &str,
+    slug: Option<&str>,
+    project_slugs: &[String],
+    branch: Option<&str>,
+    worktrees: Worktrees,
+) -> Result<WorkReport> {
     let title = title.trim();
     if title.is_empty() {
         return Err(Error::Validation("title must not be empty".into()));
@@ -100,6 +140,7 @@ pub fn start_work(
                 created_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 projects: project_slugs.to_vec(),
                 pinned: false,
+                space: None,
                 extra: Default::default(),
             }
         }
@@ -128,6 +169,12 @@ pub fn start_work(
     if !reasons.is_empty() {
         return Err(Error::Validation(reasons.join("; ")));
     }
+
+    // 검증까지는 같고 여기서 갈린다 — 나중이면 지금 만들 워크트리가 없다. 프로젝트와 브랜치 이름만 적힌다.
+    let pending = match worktrees {
+        Worktrees::Now => pending,
+        Worktrees::Later => Vec::new(),
+    };
 
     std::fs::create_dir_all(spec_dir(&dir))?;
     // 빈 trees/는 "망가진 워크트리"로 읽힌다 — 만들 것이 있을 때만 만든다
@@ -251,7 +298,9 @@ pub(crate) fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
     Ok(works_root.join(slug))
 }
 
-pub(crate) fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
+/// work 하나의 `work.json`을 읽는다. slug가 경로 요소를 품었거나 `work.json`이 없으면 `WorkNotFound`다 —
+/// 「work가 있나」의 판정이 이것이다(`work.json`이 파일인가).
+pub fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
     let path = work_dir(works_root, slug)?.join("work.json");
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::WorkNotFound(slug.to_string()))?;
@@ -405,6 +454,32 @@ pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
+/// work 하나의 자리들 — 절대 경로다. 호스트가 Work에 이은 Thread의 Session 자리(three-axes 결정 17)를 여기서 짓는다.
+/// 경로를 아는 곳이 코어 하나로 남게, 호스트는 폴더 이름을 다시 적지 않는다. three-axes의 work 대화 기록 폴더
+/// `agents/`는 v1 티켓 08이 걷었다 — 디스크에 남은 것은 읽지도 옮기지도 않는다(v1 구현 스펙 §4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkPlaces {
+    /// `works/<slug>`.
+    pub dir: PathBuf,
+    /// spec 폴더.
+    pub spec: PathBuf,
+    /// 워크트리들을 담는 폴더 `trees/`.
+    pub trees: PathBuf,
+    /// 프로젝트마다의 워크트리 `trees/<project>` — `projects`에 적힌 순서다.
+    pub worktrees: Vec<PathBuf>,
+}
+
+/// 읽은 work의 자리들. 파일을 읽거나 폴더를 만들지 않는다.
+pub fn work_places(works_root: &Path, work: &Work) -> WorkPlaces {
+    let dir = works_root.join(&work.slug);
+    WorkPlaces {
+        spec: spec_dir(&dir),
+        trees: worktrees_dir(&dir),
+        worktrees: worktree_paths(works_root, work),
+        dir,
+    }
+}
+
 /// 아카이브 기록의 파일 이름. **spec/ 밖, work 디렉터리 루트다** — spec은 사람과
 /// 에이전트가 쓴 것이고 기록은 기계가 뽑은 것이라, 섞으면 장래의 증류가 "의도"와
 /// "증거"를 대조할 두 항을 잃는다. spec 안의 파일명은 자유롭게 쓰기로 한 관습이 있어
@@ -421,7 +496,7 @@ const HEAD_LABEL: &str = "- 워크트리 HEAD:";
 const COMMITS_HEADING: &str = "### 커밋";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
-pub(crate) fn spec_files(work_dir: &Path) -> Vec<String> {
+pub fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
@@ -599,6 +674,18 @@ pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<W
     work.title = title.to_string();
     write_work(works_root, &work)?;
     Ok(to_view(works_root, work))
+}
+
+/// 이은 Space를 바꾼다(03 구현 스펙 §9) — `work.json`의 `space` 한 칸만 고친다(`None`이면 뺀다). 같은 값이면 아무것도 쓰지 않는다 —
+/// 감시자를 깨우지 않게(`update_work_pinned`와 같은 규칙). Space 파일이 있는지는 보지 않는다 — 부르는 쪽(엔진)이 본다. 그 Work의
+/// Thread마다 남는 Space 줄도 엔진의 일이다(기록은 엔진의 쓰는 손 하나로 쓴다). 화면 응답이 아니라 `git status`를 돌지 않는다.
+pub fn update_work_space(works_root: &Path, slug: &str, space: Option<&str>) -> Result<Work> {
+    let mut work = read_work(works_root, slug)?;
+    if work.space.as_deref() != space {
+        work.space = space.map(str::to_owned);
+        write_work(works_root, &work)?;
+    }
+    Ok(work)
 }
 
 pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> Result<WorkView> {
@@ -1248,6 +1335,29 @@ mod tests {
             assert!(t.exists);
             assert!(!t.dirty);
         }
+    }
+
+    /// **work의 자리가 시작이 만든 폴더와 같다** — 호스트가 Session의 작업 자리를 여기서 짓는다(three-axes 결정 17).
+    /// 자리를 옮기는 날 이것이 빨개진다.
+    #[test]
+    fn work_places_are_the_folders_start_made() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", Some("cart"), &slugs(&["fe", "be"]), Some("feat/cart"))
+            .unwrap();
+
+        let work = read_work(&works, "cart").unwrap();
+        let places = work_places(&works, &work);
+        let dir = works.join("cart");
+        assert_eq!(
+            places,
+            WorkPlaces {
+                dir: dir.clone(),
+                spec: dir.join("spec"),
+                trees: dir.join("trees"),
+                worktrees: vec![dir.join("trees/fe"), dir.join("trees/be")],
+            }
+        );
+        assert!(places.spec.is_dir() && places.worktrees.iter().all(|tree| tree.is_dir()));
     }
 
     #[test]
@@ -2081,6 +2191,35 @@ mod tests {
         assert!(!same_value.unwrap().work.pinned);
     }
 
+    /// Space 바꾸기(03 구현 스펙 §9) — `work.json`의 `space` 한 칸만 고친다. 다른 칸과 모르는 칸은 그대로고, 같은 값이면 쓰지 않으며, 빼면
+    /// 키째 사라진다.
+    #[test]
+    fn space를_바꾸면_그_칸만_고치고_같은_값이면_쓰지_않고_빼면_키가_사라진다() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", true);
+        let path = works.join("가").join("work.json");
+        let mut raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        raw["laterField"] = serde_json::json!("다음 판");
+        std::fs::write(&path, raw.to_string()).unwrap();
+        let file = || -> serde_json::Value { serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap() };
+
+        let work = update_work_space(&works, "가", Some("결제-서비스")).unwrap();
+        assert_eq!(work.space.as_deref(), Some("결제-서비스"));
+        let mut expected = raw.clone();
+        expected["space"] = serde_json::json!("결제-서비스");
+        assert_eq!(file(), expected, "space 한 칸만 더해진다");
+
+        let written = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        update_work_space(&works, "가", Some("결제-서비스")).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), written, "같은 값이면 쓰지 않는다");
+
+        assert_eq!(update_work_space(&works, "가", None).unwrap().space, None);
+        assert_eq!(file(), raw, "빼면 키째 사라진다");
+        assert!(matches!(update_work_space(&works, "없음", None), Err(Error::WorkNotFound(_))));
+    }
+
     /// 검증 실패는 **아무것도 안 쓴다** — 순서 파일도 `work.json`도 생기거나 바뀌지 않는다.
     #[test]
     fn a_refused_move_writes_neither_file() {
@@ -2391,6 +2530,89 @@ mod tests {
             attach_project(&works, &projects, "draft-work", "fe", Some("feat/draft")).unwrap();
         assert_eq!(report.view.work.status, WorkStatus::Draft);
         assert_eq!(get_work(&works, "draft-work").unwrap().work.status, WorkStatus::Draft);
+    }
+
+    /// **worktree는 나중**(v1 구현 스펙 §11 · S21) — 프로젝트를 적고 브랜치 이름도 정하지만 워크트리는 만들지 않는다.
+    /// 보기의 `exists`가 거짓인 것이 「읽기만」이다. 저장소에도 브랜치가 생기지 않는다 — 브랜치는 워크트리가 설 때
+    /// `git worktree add -b`가 판다.
+    #[test]
+    fn a_deferred_start_records_the_projects_and_the_branch_but_makes_no_worktree() {
+        let (tmp, works, projects) = setup();
+        let report = start_work_deferred(&works, &archive_root(&works), &projects, "카트", Some("cart"), &slugs(&["fe", "be"]), Some("feat/cart"))
+            .unwrap();
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.view.work.projects, vec!["fe", "be"]);
+        assert_eq!(report.view.work.branch.as_deref(), Some("feat/cart"));
+        let trees: Vec<_> =
+            report.view.worktrees.iter().map(|tree| (tree.project.as_str(), tree.exists, tree.dirty)).collect();
+        assert_eq!(trees, [("fe", false, false), ("be", false, false)]);
+
+        let dir = works.join("cart");
+        assert!(dir.join("spec").is_dir());
+        assert!(!dir.join("trees").exists(), "an empty trees/ reads as a broken worktree");
+        for repo in ["fe", "be"] {
+            assert!(!git::branch_exists(&tmp.path().join(repo), "feat/cart"), "{repo}에 쓰지 않은 브랜치가 남았다");
+        }
+
+        // 파일에 적힌 것이다 — 다시 읽어도 같다
+        let view = get_work(&works, "cart").unwrap();
+        assert_eq!(view.work.projects, vec!["fe", "be"]);
+        assert_eq!(view.work.branch.as_deref(), Some("feat/cart"));
+        assert!(view.worktrees.iter().all(|tree| !tree.exists));
+    }
+
+    /// 처음 고칠 때 붙이면(S21 「Project 고치기 시작」 → `attach_project`) **그 프로젝트에만** 워크트리가 Work의 브랜치로
+    /// 선다. 이미 적힌 프로젝트라 목록은 늘지 않고, 나머지는 읽기만으로 남는다.
+    #[test]
+    fn attaching_a_deferred_project_later_makes_only_its_worktree_on_the_works_branch() {
+        let (tmp, works, projects) = setup();
+        start_work_deferred(&works, &archive_root(&works), &projects, "카트", Some("cart"), &slugs(&["fe", "be"]), Some("feat/cart"))
+            .unwrap();
+
+        let report = attach_project(&works, &projects, "cart", "be", None).unwrap();
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.view.work.projects, vec!["fe", "be"]);
+        let trees: Vec<_> = report.view.worktrees.iter().map(|tree| (tree.project.as_str(), tree.exists)).collect();
+        assert_eq!(trees, [("fe", false), ("be", true)]);
+        assert_eq!(run_git(&works.join("cart/trees/be"), &["branch", "--show-current"]), "feat/cart");
+        assert!(!works.join("cart/trees/fe").exists());
+        assert!(!git::branch_exists(&tmp.path().join("fe"), "feat/cart"), "읽기만인 저장소에는 브랜치도 없다");
+    }
+
+    /// 나중이어도 **브랜치는 Work에 하나다**(S21 「core 규칙 그대로」). 이름은 시작할 때 정해지고(안 주면 slug),
+    /// 나중에 붙이며 다른 이름을 넘기면 거부된다 — 프로젝트마다 다른 브랜치에 선 Work가 생기지 않는다.
+    #[test]
+    fn a_deferred_work_still_shares_one_branch() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work_deferred(&works, &archive_root(&works), &projects, "Cart Add", None, &slugs(&["fe", "be"]), None)
+            .unwrap();
+        assert_eq!(report.view.work.branch.as_deref(), Some("cart-add"));
+
+        assert!(matches!(
+            attach_project(&works, &projects, "cart-add", "fe", Some("feat/other")),
+            Err(Error::Validation(_))
+        ));
+        assert!(!works.join("cart-add/trees/fe").exists(), "a refused attach must make nothing");
+
+        attach_project(&works, &projects, "cart-add", "fe", None).unwrap();
+        attach_project(&works, &projects, "cart-add", "be", Some("cart-add")).unwrap();
+        for repo in ["fe", "be"] {
+            assert_eq!(run_git(&works.join("cart-add/trees").join(repo), &["branch", "--show-current"]), "cart-add");
+        }
+    }
+
+    /// 사전검증은 지금 만들 때와 같다 — 나중에 붙일 때 처음 알면 Work는 이미 서 있고 그 프로젝트만 영영 못 고친다.
+    #[test]
+    fn a_deferred_start_refuses_what_could_never_get_a_worktree() {
+        let (tmp, works, projects) = setup();
+        let unknown = start_work_deferred(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "nope"]), None);
+        assert!(matches!(unknown, Err(Error::Validation(_))), "{unknown:?}");
+
+        run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
+        let taken = start_work_deferred(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["be"]), Some("feat/cart"));
+        assert!(matches!(taken, Err(Error::Validation(_))), "{taken:?}");
+
+        assert!(!works.join("카트").exists(), "거부됐으면 아무것도 남지 않는다");
     }
 
     #[test]
@@ -3136,7 +3358,7 @@ mod tests {
 
         // 재실행 전에 등록이 사라진다 — base를 못 읽어 커밋 범위를 특정할 수 없게 된다
         run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
         archive_work(&works, &archive, &projects, &slug).unwrap();
 
         let sealed = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
@@ -3425,7 +3647,7 @@ mod tests {
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "o.txt", "o\n", "고아 커밋");
         let head = run_git(&worktree, &["rev-parse", "HEAD"]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
 
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "등록이 사라지자 좌표를 버렸다: {doc}");
@@ -3472,7 +3694,7 @@ mod tests {
         run_git(&worktree, &["remote", "add", "origin", "."]);
         run_git(&worktree, &["update-ref", "refs/remotes/origin/main", &main]);
         run_git(&worktree, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
-        crate::delete_project(&projects, "fe").unwrap();
+        std::fs::remove_file(projects.join("fe.md")).unwrap(); // 등록부에서 사라진다
 
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains("- base: main"), "origin/HEAD를 안 봤다: {doc}");

@@ -44,6 +44,23 @@ export interface Settings {
   // `is_empty`) 백엔드는 읽은 그대로 실어 보낸다 — 「있다」고 적으면 지금까지 쓰던 설정
   // 파일 전부에서 이 타입이 거짓말이 된다.
   notifications?: NotificationSettings;
+  /** 한 번만 보이는 안내를 봤다는 표(v1 티켓 30 · S31) — 본 것이 없으면 구획이 통째로 없다(`settings.rs`의 `SeenSettings`). */
+  seen?: SeenSettings;
+  /** Project 구획(03 S18) — 「새로 만들기」의 부모 폴더. 고르기 전에는 구획이 통째로 없다(`settings.rs`의 `ProjectSettings`). */
+  projects?: ProjectSettings;
+}
+
+/**
+ * Project 구획 — Project 추가 창의 「위치 바꾸기」가 적는 부모 폴더(고르기 창이 준 경로 그대로). 화면 없는 구획이다. 기본(`~/MyProjects`)은
+ * 화면이 든다(`project-add.ts`의 `DEFAULT_NEW_PARENT`).
+ */
+export interface ProjectSettings {
+  newParent?: string;
+}
+
+/** 본 표 — 「결정은 내가 합니다」 카드(`decisions`). 화면 없는 구획이다(Thread 화면이 카드를 닫을 때 적는다). */
+export interface SeenSettings {
+  decisions?: boolean;
 }
 
 // 에이전트 훅이 지금 어디에 어떻게 깔려 있나 (#207 · 구현 결정 8). **정본은

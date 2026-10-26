@@ -66,7 +66,73 @@ export interface KernelWorkView {
   // 「지금 이게 중요하다」 — 화면 설정이 아니라 그 작업에 대한 사실이라 work.json에 산다
   // (결정 81). 목록에서 고정된 것이 먼저 오는 것도 코어가 정한다 (결정 100).
   pinned: boolean;
+  /** 이 Work가 이은 Space의 slug(`work.json`의 `space`, 03 §9) — 없으면 칸째 빠진다. 이 Work의 Thread가 모두 이 Space를 읽는다. */
+  space?: string;
   worktrees: WorktreeView[];
   specDir: string;
   specFiles: string[];
 }
+
+/**
+ * Project 하나의 변경(v1 티켓 33 · S23 — 코어 `ProjectChanges`, `list_work_changes`의 한 칸) — worktree의 base 대비 바뀐 파일과 +/−.
+ * 커밋한 것과 아직 커밋하지 않은 것을 합친다. 파일은 늦게 고친 것이 앞이다(코어가 정한다). `additions` · `deletions`가 `null`이면
+ * 바이너리이거나 너무 큰 새 파일이다 — 0으로 그리지 않는다. worktree가 없는 Project(읽기만)는 `worktreeMissing`이다.
+ */
+export type ProjectChanges = { project: string } & (
+  | { kind: "listed"; base: string; files: ChangedFile[] }
+  | { kind: "worktreeMissing" }
+  | { kind: "baseUnknown"; base: string | null }
+  | { kind: "unreadable"; reason: string }
+);
+
+/** 바뀐 파일 하나 — worktree 기준 경로와 +/− 줄 수. */
+export interface ChangedFile {
+  path: string;
+  additions: number | null;
+  deletions: number | null;
+}
+
+/** PR의 CI 상태(코어 `PrChecks`). */
+export type PrChecks =
+  | { kind: "noChecks" }
+  | { kind: "pending" }
+  | { kind: "passing" }
+  | { kind: "failing"; failed: string[] };
+
+/**
+ * 바뀐 파일 하나의 diff(v1 티켓 33 · 코어 `FileDiff`, `read_work_diff`의 답) — 변경 칸과 같은 기준(base 대비, 커밋한 것과 아직 커밋하지 않은
+ * 것을 합침)이다. `patch`는 git이 낸 그 파일의 unified diff 그대로라 넓힌 카드의 diff 보기(`@pierre/diffs`)에 곧장 들어간다(v1 티켓 35).
+ */
+export type FileDiff =
+  | { kind: "patch"; patch: string }
+  | { kind: "binary" }
+  | { kind: "tooLarge" }
+  | { kind: "unchanged" }
+  | { kind: "worktreeMissing" }
+  | { kind: "baseUnknown"; base: string | null }
+  | { kind: "unreadable"; reason: string };
+
+/**
+ * Project 하나의 PR(v1 티켓 33 · S24 — 코어 `ProjectPr`, `thread_work_prs`의 한 칸). `absent`는 PR이 없거나 `gh`가 없거나 로그인이 안 된
+ * 것이고, `unreadable`은 네트워크 등으로 못 읽은 것이다 — 둘 다 PR 줄을 그리지 않는다.
+ */
+export type ProjectPr = { project: string } & (
+  | {
+      kind: "found";
+      number: number;
+      title: string;
+      url: string;
+      state: "open" | "closed" | "merged";
+      headBranch: string;
+      baseBranch: string;
+      additions: number;
+      deletions: number;
+      changedFiles: number;
+      ci: PrChecks;
+      approvals: number;
+      changesRequested: number;
+      mergedAt: string | null;
+    }
+  | { kind: "absent" }
+  | { kind: "unreadable"; reason: string }
+);

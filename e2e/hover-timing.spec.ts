@@ -10,32 +10,40 @@ import {
   툴팁,
   행버튼,
   호버카드,
+  창검색버튼,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 33 — **툴팁과 호버 카드가 멈추면 바로 뜬다**(codex-ds 스펙 §8 「뜨는 시간」 · 결정 20 · 스토리 99–103).
-// 툴팁과 사이드바 작업 행의 호버 카드가 한 무리로 움직인다: 첫 번째는 포인터가 멈춘 지 `duration-tip`에 서고, 하나가 떠 있는
-// 동안(그리고 닫힌 직후 잠깐) 옆 대상으로 옮기면 곧바로 선다. 카드는 떠난 지 `duration-peek-close`에 닫히고 카드 안으로 들어오면
+// 툴팁과 사이드바 작업 행의 호버 카드가 한 무리로 움직인다: 첫 번째는 포인터가 멈춘 지 선다 — 툴팁은 `delay-tip`(200 — Codex, 02 티켓 12),
+// 호버 카드는 `duration-tip`(150 — 02가 바꾸지 않았다)이다. 하나가 떠 있는 동안(그리고 닫힌 직후 잠깐) 옆 대상으로 옮기면 곧바로 선다. 카드는 떠난 지 `duration-peek-close`에 닫히고 카드 안으로 들어오면
 // 남는다. 메뉴(⋯ · 우클릭 · 상태)가 열린 동안은 둘 다 서지 않는다. 무리는 포인터의 것이다 — 키보드 포커스로 선 툴팁은 무리 밖에
 // 서고, 키로 누른 행은 카드를 잠재우지 않는다.
 //
 // **시간은 페이지의 시계로 잰다** — goto 전에 `page.clock.install()`, 올리기 전에 `시계를세운다`. 세운 시계에서는 `runFor`로만 시간이
 // 흐르므로 「안 섰다」는 그 바로 뒤의 「섰다」를 앵커로 잰다(지연이 0이 아님). 「곧바로」는 시계를 한 칸도 안 돌리고 잰다. 길이는
-// 토큰에서 읽는다 — 리터럴로 적으면 토큰을 고친 날 이 파일만 옛 길이를 잰다. 닫히는 툴팁은 세운 시계에서 나가는 애니메이션을 끝내지
-// 못해 잠깐 남으므로, 툴팁은 글자로 좁혀 센다.
+// 토큰에서 읽는다 — 리터럴로 적으면 토큰을 고친 날 이 파일만 옛 길이를 잰다. 툴팁은 글자로 좁혀 센다 — 옆 트리거로 옮겨 갈 때 새것과
+// 옛것이 한 순간 함께 설 수 있다(툴팁은 움직이지 않아 닫히면 곧바로 걷힌다 — 02 티켓 12).
 
 const [pinnedWork, plainWork, multiWork] = WORKS;
 
-/** 뜨는 · 닫는 길이 둘 — 스펙이 박은 값(결정 20)인지 먼저 본다. 토큰을 다른 수로 고치면 이 파일이 아니라 스펙을 고칠 일이다. */
-async function 길이들(page: Page): Promise<{ tip: number; peekClose: number }> {
-  const tip = await 토큰시간(page, "--duration-tip");
+/**
+ * 뜨는 · 닫는 길이 셋 — 스펙이 박은 값(codex-ds 결정 20 · 02 티켓 12)인지 먼저 본다. 토큰을 다른 수로 고치면 이 파일이 아니라 스펙을 고칠
+ * 일이다. `tip`은 툴팁이 멈춘 지 서는 길이(`delay-tip` — Codex 200), `peek`은 호버 카드가 멈춘 지 서는 길이(`duration-tip` 150), `peekClose`는
+ * 카드가 떠난 지 닫히는 길이다. 툴팁과 카드를 한 길이로 재면 둘 가운데 짧은 쪽이 「아직 안 섰다」를 거짓으로 잰다.
+ */
+async function 길이들(page: Page): Promise<{ tip: number; peek: number; peekClose: number }> {
+  const tip = await 토큰시간(page, "--delay-tip");
+  const peek = await 토큰시간(page, "--duration-tip");
   const peekClose = await 토큰시간(page, "--duration-peek-close");
-  expect(tip, "duration-tip").toBe(150);
+  expect(tip, "delay-tip").toBe(200);
+  expect(peek, "duration-tip").toBe(150);
   expect(peekClose, "duration-peek-close").toBe(200);
-  return { tip, peekClose };
+  return { tip, peek, peekClose };
 }
 
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼과 그 옆 사이드바 토글 — 둘 다 툴팁을 단 이웃이다. */
-const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
+const 검색 = (page: Page) => 창검색버튼(page);
 const 사이드바토글 = (page: Page) => page.getByRole("button", { name: "사이드바 토글", exact: true });
 
 /** 그 글자의 툴팁 — 닫히는 툴팁이 잠깐 남아도 섞이지 않게 글자로 좁힌다. */
@@ -53,14 +61,14 @@ async function 가운데(target: Locator): Promise<{ x: number; y: number }> {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-/** 열린 메뉴를 Esc로 닫는다 — 닫히는 메뉴는 세운 시계에서 나가는 움직임을 끝내지 못해 남으므로 시계를 돌려 걷는다. */
+/** 열린 메뉴를 Esc로 닫는다 — 닫힌 뒤 무리의 「닫힌 직후 잠깐」까지 시계를 돌려 다음 장면이 깨끗한 무리에서 시작한다. */
 async function 메뉴를닫는다(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
   await page.clock.runFor(1000);
   await expect(page.getByRole("menu")).toHaveCount(0);
 }
 
-async function 연다(page: Page, path = `/works/${pinnedWork.slug}`): Promise<{ tip: number; peekClose: number }> {
+async function 연다(page: Page, path = `/works/${pinnedWork.slug}`): Promise<{ tip: number; peek: number; peekClose: number }> {
   await installFixtureBackend(page);
   await page.clock.install();
   await page.goto(path);
@@ -70,11 +78,11 @@ async function 연다(page: Page, path = `/works/${pinnedWork.slug}`): Promise<{
   return times;
 }
 
-// ── 첫 번째는 멈춘 지 duration-tip (스토리 99 · 101) ──
+// ── 첫 번째는 멈춘 지 — 툴팁 delay-tip · 카드 duration-tip (스토리 99 · 101) ──
 // 멈춤을 기다린다 — 들어선 때가 아니다. 움직이는 동안은 서지 않아, 사이드바를 지나 본문으로 가는 포인터가 스치는 행마다 카드를
 // 세우지 않는다. 움직임 사이에 시계를 돌려 「행 위에 머문 시간」이 지연을 넘게 두고, 그래도 안 서는 것을 잰다.
 
-test("툴팁은 멈춘 지 duration-tip에 서고, 움직이는 동안은 서지 않는다", async ({ page }) => {
+test("툴팁은 멈춘 지 delay-tip에 서고, 움직이는 동안은 서지 않는다", async ({ page }) => {
   const { tip } = await 연다(page);
   const search = await 가운데(검색(page));
 
@@ -94,7 +102,7 @@ test("툴팁은 멈춘 지 duration-tip에 서고, 움직이는 동안은 서지
 });
 
 test("호버 카드는 멈춘 지 duration-tip에 서고, 스치는 행에는 서지 않는다", async ({ page }) => {
-  const { tip } = await 연다(page);
+  const { peek } = await 연다(page);
   const card = 호버카드(page);
   const rows = [pinnedWork, plainWork, multiWork].map((work) => workRow(page, work.slug));
   const spots = await Promise.all(rows.map(가운데));
@@ -102,14 +110,14 @@ test("호버 카드는 멈춘 지 duration-tip에 서고, 스치는 행에는 �
   // 행을 차례로 스친다 — 행마다 지연보다 짧게 머문다.
   for (const spot of spots) {
     await page.mouse.move(spot.x, spot.y);
-    await page.clock.runFor(tip - 50);
+    await page.clock.runFor(peek - 50);
     await expect(card).toHaveCount(0);
   }
   // 한 행 위에서 움직이기만 하면 머문 시간이 지연을 넘어도 서지 않는다.
   const last = spots[spots.length - 1];
   for (const dx of [4, 8, 12]) {
     await page.mouse.move(last.x + dx, last.y);
-    await page.clock.runFor(tip - 50);
+    await page.clock.runFor(peek - 50);
   }
   await expect(card).toHaveCount(0);
 
@@ -154,12 +162,12 @@ test("툴팁이 떠 있는 동안 옆 버튼으로 옮기면 곧바로 바뀌고
 });
 
 test("호버 카드가 떠 있는 동안 옆 행으로 옮기면 곧바로 그 행의 카드로 바뀌고, 카드는 그 행 옆에 선다", async ({ page }) => {
-  const { tip } = await 연다(page);
+  const { peek } = await 연다(page);
   const card = 호버카드(page);
   const next = workRow(page, multiWork.slug);
 
   await workRow(page, plainWork.slug).hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toContainText(plainWork.title);
 
   await next.hover();
@@ -172,11 +180,11 @@ test("호버 카드가 떠 있는 동안 옆 행으로 옮기면 곧바로 그 �
 });
 
 test("호버 카드가 떠 있으면 툴팁이 곧바로 서고, 툴팁이 떠 있으면 카드가 곧바로 선다", async ({ page }) => {
-  const { tip } = await 연다(page);
+  const { tip, peek } = await 연다(page);
   const card = 호버카드(page);
 
   await workRow(page, plainWork.slug).hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toContainText(plainWork.title);
   await 검색(page).hover();
   await expect(툴팁글(page, "검색")).toBeVisible();
@@ -197,17 +205,17 @@ test("호버 카드가 떠 있으면 툴팁이 곧바로 서고, 툴팁이 떠 �
 // 닫힌 직후 잠깐은 앱 무리가 든다 — 공급자의 무리는 툴팁끼리만 잰다(위 툴팁 검사). 카드가 닫힌 직후의 행 · 툴팁, 툴팁이 닫힌 직후의
 // 행이 이 무리의 몫이다. 비킨 뒤 지연보다 짧게 쉬고 옮긴다 — 그래도 곧바로 서는 것은 그 잠깐 덕이다.
 test("호버 카드가 닫힌 직후 잠깐은 옆 행의 카드도 툴팁도 곧바로 서고, 툴팁이 닫힌 직후 잠깐은 카드가 곧바로 선다", async ({ page }) => {
-  const { tip, peekClose } = await 연다(page);
+  const { tip, peek, peekClose } = await 연다(page);
   const card = 호버카드(page);
 
-  // 카드가 닫힌 직후 → 옆 행의 카드.
+  // 카드가 닫힌 직후 → 옆 행의 카드. 쉬는 길이는 그 대상의 지연보다 짧다 — 카드는 `peek`, 툴팁은 `tip`.
   await workRow(page, plainWork.slug).hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toContainText(plainWork.title);
   await 비킨다(page);
   await page.clock.runFor(peekClose);
   await expect(card).toHaveCount(0);
-  await page.clock.runFor(tip - 50);
+  await page.clock.runFor(peek - 50);
   await workRow(page, multiWork.slug).hover();
   await expect(card).toContainText(multiWork.title);
 
@@ -221,7 +229,7 @@ test("호버 카드가 닫힌 직후 잠깐은 옆 행의 카드도 툴팁도 �
 
   // 툴팁이 닫힌 직후 → 카드.
   await 비킨다(page);
-  await page.clock.runFor(tip - 50);
+  await page.clock.runFor(peek - 50);
   await workRow(page, plainWork.slug).hover();
   await expect(card).toContainText(plainWork.title);
 
@@ -232,7 +240,7 @@ test("호버 카드가 닫힌 직후 잠깐은 옆 행의 카드도 툴팁도 �
   await expect(card).toHaveCount(0);
   await page.clock.runFor(1000);
   await workRow(page, multiWork.slug).hover();
-  await page.clock.runFor(tip - 1);
+  await page.clock.runFor(peek - 1);
   await expect(card).toHaveCount(0);
   await page.clock.runFor(1);
   await expect(card).toContainText(multiWork.title);
@@ -246,7 +254,7 @@ test("호버 카드가 닫힌 직후 잠깐은 옆 행의 카드도 툴팁도 �
 test("키보드 포커스로 선 툴팁은 무리를 열어 두지 않는다 — 스치는 행에 카드가 안 서고, 멈춰 선 카드 옆에 남지 않는다", async ({
   page,
 }) => {
-  const { tip } = await 연다(page);
+  const { peek } = await 연다(page);
   const card = 호버카드(page);
   const spots = await Promise.all([pinnedWork, plainWork, multiWork].map((work) => 가운데(workRow(page, work.slug))));
 
@@ -256,7 +264,7 @@ test("키보드 포커스로 선 툴팁은 무리를 열어 두지 않는다 —
   // 행을 차례로 스친다 — 행마다 지연보다 짧게 머문다.
   for (const spot of spots) {
     await page.mouse.move(spot.x, spot.y);
-    await page.clock.runFor(tip - 50);
+    await page.clock.runFor(peek - 50);
     await expect(card).toHaveCount(0);
   }
   // 마지막 행에 멈춘 지 지연이 차면 카드가 서고, 포커스의 툴팁은 비킨다.
@@ -273,12 +281,12 @@ test("키보드 포커스로 선 툴팁은 무리를 열어 두지 않는다 —
 // 행과 카드 사이에는 틈(4px)이 있다 — 그 틈을 건너는 동안 닫히지 않는 것도 이 길이 덕이다.
 
 test("호버 카드는 행을 떠난 지 duration-peek-close에 닫히고, 카드 안으로 들어오면 남는다", async ({ page }) => {
-  const { tip, peekClose } = await 연다(page);
+  const { peek, peekClose } = await 연다(page);
   const card = 호버카드(page);
   const row = workRow(page, plainWork.slug);
 
   await row.hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toBeVisible();
   await 비킨다(page);
   await page.clock.runFor(peekClose - 1);
@@ -289,7 +297,7 @@ test("호버 카드는 행을 떠난 지 duration-peek-close에 닫히고, 카�
   // 잠깐이 지난 뒤 다시 세우고, 이번에는 카드 안으로.
   await page.clock.runFor(1000);
   await row.hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toBeVisible();
   await card.hover();
   await page.clock.runFor(1000);
@@ -311,16 +319,16 @@ test("호버 카드는 행을 떠난 지 duration-peek-close에 닫히고, 카�
 // 포인터로 누른 행(옮겨 가기 · 고정)은 포인터가 떠날 때까지 카드가 다시 서지 않는다 — 누른 손이 조금만 움직여도 카드가 되살아나지
 // 않게. **키로 누른 것은 그렇지 않다** — 포인터가 그 행에 없으니 떠날 일도 없어, 잠재우면 나중에 처음 올린 포인터에 카드가 안 선다.
 test("포인터로 누른 행은 떠날 때까지 카드가 안 서고, 키로 누른 행 · 핀은 카드를 잠재우지 않는다", async ({ page }) => {
-  const { tip } = await 연다(page);
+  const { peek } = await 연다(page);
   const card = 호버카드(page);
   const row = workRow(page, plainWork.slug);
 
   // 포인터로 누른 행 — 그 위에서 움직여도 카드가 다시 서지 않는다.
   await row.hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toBeVisible();
   await 행버튼(page, plainWork.title).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   await expect(card).toHaveCount(0);
   const spot = await 가운데(row);
   for (const dx of [4, 8]) {
@@ -334,9 +342,9 @@ test("포인터로 누른 행은 떠날 때까지 카드가 안 서고, 키로 �
   await page.clock.runFor(1000);
   await 행버튼(page, multiWork.title).focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(new RegExp(`/works/${multiWork.slug}`));
+  await expect(page).toHaveURL(Work줄이가는곳(multiWork.slug));
   await workRow(page, multiWork.slug).hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toContainText(multiWork.title);
 
   // 키로 누른 핀 — 같다.
@@ -347,7 +355,7 @@ test("포인터로 누른 행은 떠날 때까지 카드가 안 서고, 키로 �
   await page.keyboard.press("Space");
   await expect.poll(() => callCount(page, "set_work_pinned")).toBe(1);
   await row.hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toContainText(plainWork.title);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -363,7 +371,7 @@ for (const { name, trigger, text } of [
   { name: "⋯ 메뉴", trigger: (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true }), text: "작업 메뉴" },
 ]) {
   test(`${name}가 열린 동안은 그 버튼에 다시 올려도 툴팁이 없고, 행에 걸어 둔 카드도 서지 않는다`, async ({ page }) => {
-    const { tip } = await 연다(page);
+    const { tip, peek } = await 연다(page);
     const button = trigger(page);
     const spot = await 가운데(button);
     const row = await 가운데(workRow(page, plainWork.slug));
@@ -389,7 +397,7 @@ for (const { name, trigger, text } of [
     await 비킨다(page);
     await page.clock.runFor(1000);
     await page.mouse.move(row.x, row.y);
-    await page.clock.runFor(tip);
+    await page.clock.runFor(peek);
     await expect(호버카드(page)).toContainText(plainWork.title);
     await 비킨다(page);
     await page.clock.runFor(1000);
@@ -408,12 +416,12 @@ for (const { name, trigger, text } of [
 }
 
 test("우클릭 메뉴가 열리면 떠 있던 카드가 닫히고, 열린 동안은 카드가 다시 서지 않는다", async ({ page }) => {
-  const { tip } = await 연다(page);
+  const { peek } = await 연다(page);
   const card = 호버카드(page);
   const row = workRow(page, plainWork.slug);
 
   await row.hover();
-  await page.clock.runFor(tip);
+  await page.clock.runFor(peek);
   await expect(card).toBeVisible();
 
   await row.click({ button: "right" });

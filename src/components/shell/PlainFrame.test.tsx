@@ -1,0 +1,50 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { PlainFrame, PlainHead } from "./PlainFrame";
+
+// Thread · 첫 화면 · Library의 틀(02 구현 스펙 §3) — 틀은 앱 셸 하나다(머리 줄 · 흰 판). 이 화면들은 머리 줄에 놓을 것(이름 · 할 일)과
+// 판 안에 놓을 것(본문)만 건넨다. seam은 그린 꼴(markup)이다: 제자리에 서는 것은 본문 하나이고 머리는 셸의 머리 줄로 간다(그 길은
+// `ShellHead.test.tsx` — 셸 밖이면 머리가 아무 데도 안 선다).
+const render = (title?: { name: string }) =>
+  renderToStaticMarkup(
+    <PlainFrame title={title} label="Thread">
+      <p>본문</p>
+    </PlainFrame>,
+  );
+
+describe("Thread 화면의 틀", () => {
+  it("제자리에는 본문 하나만 서고, 이름은 셸의 머리 줄로 간다", () => {
+    const html = render({ name: "환불 API 버그 고쳐줘" });
+    expect(html).toMatch(/^<main aria-label="Thread"[^>]*><p>본문<\/p><\/main>$/);
+    expect(html).not.toContain("<header");
+    expect(html).not.toContain("환불 API 버그 고쳐줘");
+  });
+
+  // 판이 흰 면이다 — 본문이 제 카드(`rounded-2xl` · 링)나 머리 줄 아래 선을 다시 그리지 않는다.
+  it("본문은 카드 · 선 없이 판에 곧장 선다", () => {
+    const html = render({ name: "Thread" });
+    expect(html).not.toContain("rounded-");
+    expect(html).not.toContain("border-");
+    expect(html).not.toContain("shadow-");
+  });
+
+  // **본문은 제 글 폭을 판 밖에 알리지 않는다**(03 구현 스펙 §3) — 사이드바가 판 밖 형제라, 판은 본문의 min-content를 바닥으로 들고 사이드바와
+  // 자리를 나눈다(`AppShell`의 판 `min-w-min`). 긴 코드 줄 · 주소가 그 바닥을 부풀리면 사이드바가 좁아지고 판이 창 밖으로 밀린다. 그래서
+  // 본문 상자가 제 내용 폭을 격리한다 — 그려지는 폭은 판이 늘여 준다(공용 틀 화면들은 탭 줄의 바닥만 알린다 — `TAB_ROW_COLUMN`).
+  it("본문은 제 내용 폭을 판의 바닥으로 알리지 않는다", () => {
+    expect(render({ name: "Thread" })).toMatch(/^<main [^>]*class="[^"]*\bcontain-inline-size\b/);
+  });
+});
+
+describe("머리 줄에 보내는 것", () => {
+  // Codex 머리 줄(02 §6 · 시안 `.tb-c` · `.tb-r`) — 왼쪽에 (이은 Work면 흐린 「폴더 · Work 이름 ›」 뒤에) 이름이, 오른쪽 끝에 할 일이 선다.
+  // 그릇은 셸의 화면 자리이고(포털 — `ShellHead.test.tsx`), 여기서는 보내는 차례를 잰다.
+  it("이름 앞(lead) → 이름 → 오른쪽 끝(end) 차례다", () => {
+    const html = renderToStaticMarkup(
+      <PlainHead lead={<button type="button">Work 열기</button>} title={{ name: "구현" }} end={<button type="button">요약 고정</button>} />,
+    );
+    const at = ["Work 열기", "구현", "요약 고정"].map((text) => html.indexOf(text));
+    expect(at.every((one) => one > -1)).toBe(true);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+  });
+});

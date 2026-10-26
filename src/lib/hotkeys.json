@@ -1,9 +1,10 @@
 {
   "search": { "code": "KeyK", "mods": ["meta"], "glyph": "⌘K", "aria": "Meta+K", "menu": "Search" },
+  "newThread": { "code": "KeyN", "mods": ["meta"], "glyph": "⌘N", "aria": "Meta+N", "menu": "New Thread" },
   "sidebar": { "code": "KeyB", "mods": ["meta"], "glyph": "⌘B", "aria": "Meta+B", "menu": "Sidebar" },
   "panel": { "code": "Enter", "mods": ["meta"], "glyph": "⌘Enter", "aria": "Meta+Enter", "menu": "Panel" },
   "newShell": { "code": "KeyT", "mods": ["meta"], "glyph": "⌘T", "aria": "Meta+T", "menu": "New Shell" },
-  "recall": { "code": "KeyJ", "mods": ["meta"], "glyph": "⌘J", "aria": "Meta+J", "menu": "Last Calling Shell" },
+  "recall": { "code": "KeyJ", "mods": ["meta"], "glyph": "⌘J", "aria": "Meta+J", "menu": "Next Waiting" },
   "tab1": { "code": "Digit1", "mods": ["meta"], "glyph": "⌘1", "aria": "Meta+1", "menu": "Tab 1" },
   "tab2": { "code": "Digit2", "mods": ["meta"], "glyph": "⌘2", "aria": "Meta+2", "menu": "Tab 2" },
   "tab3": { "code": "Digit3", "mods": ["meta"], "glyph": "⌘3", "aria": "Meta+3", "menu": "Tab 3" },

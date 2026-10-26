@@ -15,7 +15,7 @@
 //
 // **Root(와 그 안의 Trigger)가 감싸는 자리에 다른 메뉴를 두지 않는다.** Base UI는 우클릭 메뉴 Root의 밑에 선 메뉴 줄을 모두 「우클릭
 // 메뉴의 줄」로 쳐서 오른쪽 버튼의 놓음으로만 고른다 — 그 밑의 ⋯ 메뉴(`DropdownMenu`)를 누른 채 끌어 줄 위에서 놓으면 아무것도 안
-// 돈다. 그래서 편집 메뉴는 앱을 감싸지 않고, work · 탭 대상 메뉴의 Trigger는 그 대상(행 목록 · 띠 · 머리 카드 이름 · 탭 칸 하나)만
+// 돈다. 그래서 편집 메뉴는 앱을 감싸지 않고, work · 탭 대상 메뉴의 Trigger는 그 대상(행 목록 · 띠 · 머리 줄 이름 · 탭 칸 하나)만
 // 감싼다. 안에 ⋯을 품은 자리(Processes 행 · spec 레이아웃 행)는 Root를 자리 곁의 형제로 둔다(`TargetMenu`).
 import type * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -84,7 +84,7 @@ export function opensTargetMenu(event: KeyChord): boolean {
 
 /**
  * 그 두 키의 `aria-keyshortcuts` 값 — 표의 `aria`를 띄어 잇는다(ARIA는 여럿을 빈칸으로 가른다). 역할이 없어 스스로는 아무것도 말하지
- * 않는 대상(머리 카드 이름 — `Frame`)이 「여기서 이 키가 듣는다」를 말하는 자리다. 글자를 여기 적지 않는다 — 키의 이름은 표 한 자리다
+ * 않는 대상(머리 줄 이름 — `Frame`)이 「여기서 이 키가 듣는다」를 말하는 자리다. 글자를 여기 적지 않는다 — 키의 이름은 표 한 자리다
  * (`hotkey-glyphs.test.ts`).
  */
 export const TARGET_MENU_ARIA = [HOTKEYS.openMenu.aria, HOTKEYS.menuKey.aria].join(" ")

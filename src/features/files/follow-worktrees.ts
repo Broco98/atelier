@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { attentionOn } from "@/features/terminal/shell-attention";
 import { slugOfOwner, type ShellsState } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
-import { invalidateAfterTurn, invalidateWorktree, refreshAllWorktrees } from "./hooks";
+import { invalidateAfterTurn, invalidateWorkChanges, invalidateWorktree, refreshAllWorktrees } from "./hooks";
 
 /** 감시자가 워크트리 안의 걸리지 않은 변경마다 쏘는 이름(`watcher.rs`의 워크트리 갈래). */
 const WORKTREE_CHANGED = "worktree:changed";
@@ -23,7 +23,7 @@ interface WorktreeChange {
  * 여기서 거는 신호는 셋이다. 모두 **낡았다고 표시할 뿐이고 다시 읽는 것은 보이는 쿼리뿐이다**(S9) — 숨은 것은 보이는 순간
  * 읽힌다.
  * - `worktree:changed { slug, project }` — 감시가 본 걸리지 않은 변경. 그 워크트리의 트리와 열린 파일 내용(걸린 폴더의 한 겹은
- *   빼고 — 결정 37).
+ *   빼고 — 결정 37), 그리고 그 Work의 요약 카드 「변경 사항」(v1 티켓 34 — Work 전체를 한 번에 읽는다).
  * - 창 `focus`(window 이벤트) — 모든 워크트리, 걸린 폴더의 한 겹까지. 감시가 못 보는 것(커밋 — 워크트리가 아니라 본 저장소의
  *   `.git`에서 일어난다)을 메운다. Tauri `onFocusChanged`는 쓰지 않는다 — L3 픽스처가 모르는 IPC다(`lib/window-focus.ts`
  *   머리말). 분할의 spec 프레임에서 돌아올 때도 오지만, 보이는 것 몇 개를 한 번 더 읽을 뿐이다.
@@ -39,6 +39,7 @@ export function useFollowWorktreeChanges(): void {
     // 이벤트에는 기다릴 사람이 없다 — works 쪽 리스너와 같다.
     const unlisten = listen<WorktreeChange>(WORKTREE_CHANGED, ({ payload }) => {
       void invalidateWorktree(queryClient, payload.slug, payload.project);
+      void invalidateWorkChanges(queryClient, payload.slug);
     });
     const onFocus = () => void refreshAllWorktrees(queryClient);
     window.addEventListener("focus", onFocus);

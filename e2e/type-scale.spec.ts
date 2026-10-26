@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "./evidence";
-import { MAIN_HEADER, PROJECTS, WORKS } from "./fixtures";
+import { WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls, 툴팁 } from "./harness";
 
 // codex-ds 티켓 03 — **글자는 DS 단계에서만 나온다**(codex-ds 결정 27 · 스펙 「토큰」의 글자 단계). 단계가 크기와 함께
@@ -48,28 +48,31 @@ test("문서 h1 · h2 · 본문이 DS heading-lg · heading-sm · chat-body다",
 });
 
 test("12px 글자는 줄 18에 자간 +0.025em이다", async ({ page }) => {
+  // 사이드바 위 줄 「새 Thread」 끝의 단축키 「⌘N」 — DS 「글자」 표의 `text-xs`(행 끝 글자)다(02 티켓 04). 늘 서는 12px 글자라 이 단계를
+  // 잰다. 한때 Work 줄의 이은 Thread 수를 쟀는데 02 티켓 05가 그 수를 호버 카드로 옮겼다(S9).
   await installFixtureBackend(page);
   await page.goto("/projects");
-  // 사이드바 구획 머리의 옅은 수 — DS 「글자」 표의 `text-xs`(행 메타)다.
-  const 개수 = page.getByRole("button", { name: MAIN_HEADER, exact: true }).locator("span.tabular-nums");
-  await expect(개수).toBeVisible();
+  const 단축키 = page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).getByText("⌘N", { exact: true });
+  await expect(단축키).toBeVisible();
 
-  expect(await 글자(개수)).toEqual({ size: "12px", line: "18px", weight: "400", tracking: "0.3px" });
+  expect(await 글자(단축키)).toEqual({ size: "12px", line: "18px", weight: "400", tracking: "0.3px" });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 툴팁 상자는 한 줄 26px이다(Codex 툴팁 `.at-tip`, codex-ds 티켓 09) — 글자가 12/18(`text-xs`)이라 위아래 안쪽 4가 그 높이를 채운다.
-// 높이는 `offsetHeight`로 잰다 — 열림 애니메이션(zoom-in-95)의 scale은 레이아웃 높이를 바꾸지 않는다.
-test("한 줄 툴팁은 12/18 글자에 높이 26px이다", async ({ page }) => {
+// 툴팁 상자는 한 줄 26px이다(Codex 툴팁 `.at-tip`, codex-ds 티켓 09) — 글자가 13/18(`text-chat-meta` — Codex 툴팁의 13px, 02 티켓 12. 한때
+// 12/18 `text-xs` 500)이라 위아래 안쪽 4가 그 높이를 채운다. 높이는 `offsetHeight`로 잰다.
+test("한 줄 툴팁은 13/18 글자에 높이 26px이다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${PROJECTS[0].slug}`);
-  // 기준 브랜치 셀렉트 칩의 도움말 「브랜치 목록에서 변경」 — 포커스로 띄운다.
-  await page.getByRole("combobox", { name: "기준 브랜치" }).focus();
+  await page.goto("/archive");
+  // Archive 목록 머리의 「정렬 · 거르기」 도움말 — 포커스로 띄운다. 한때 Projects 상세의 기준 브랜치 칩 「브랜치 목록에서 변경」이었다
+  // — 03이 그 칩을 레일의 셀렉트로 바꿔(03 구현 스펙 · 시안 `.rs`) 도움말이 없다.
+  await page.getByRole("button", { name: "정렬 · 거르기", exact: true }).focus();
   const tooltip = 툴팁(page);
-  await expect(tooltip).toHaveText("브랜치 목록에서 변경");
+  await expect(tooltip).toHaveText("정렬 · 거르기");
 
-  expect(await 글자(tooltip)).toEqual({ size: "12px", line: "18px", weight: "500", tracking: "0.3px" });
+  // 굵기는 보통 400이다 — Codex 툴팁의 430은 글자 단계에 없어 가까운 400이다(`tooltip.tsx` 머리말). 자간은 13px 단계의 것(없음)이다.
+  expect(await 글자(tooltip)).toEqual({ size: "13px", line: "18px", weight: "400", tracking: "normal" });
   expect(await tooltip.evaluate((el) => (el as HTMLElement).offsetHeight)).toBe(26);
 
   expect(await unknownIpcCalls(page)).toEqual([]);

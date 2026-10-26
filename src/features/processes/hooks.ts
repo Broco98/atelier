@@ -43,7 +43,8 @@ export const SUMMARY_EVERY_MS = 10_000;
 
 /**
  * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 모든 화면에
- * 서므로 늘 돈다** — 화면 스냅샷(`snapshotQuery`)과 반대다. 부르는 자리는 nav 메타 하나다(`ProcessesNavMeta`): 보는 쪽이 둘이면
+ * 서므로 늘 돈다** — 화면 스냅샷(`snapshotQuery`)과 반대다. 부르는 자리는 nav 메타 하나다(`useProcessesNavMeta` — 늘 서 있는 사이드바 사람
+ * 줄이 부르고, 그리는 자리는 사람 메뉴 `Processes` 줄 끝이다): 보는 쪽이 둘이면
  * 박자도 둘이다(react-query는 보는 쪽마다 `refetchInterval`을 건다). 요약 카드(티켓 30)는 새 박자를 걸지 않고 이 캐시를 읽는다
  * (`useSummaryCache`).
  *
@@ -64,7 +65,7 @@ export function useProcessSummary() {
 /**
  * **요약의 캐시를 읽기만 한다**(티켓 30) — 요약 카드가 nav 메타와 같은 장을 본다. 묻지 않는 쪽이다(`enabled: false`): 보는 쪽이 하나
  * 더 박자를 걸면 요약을 10초에 두 번 묻고, 화면을 열 때마다 한 번 더 묻는다. 새 장은 nav 메타의 박자가 가져와 캐시에 앉히면 이
- * 쪽에도 그대로 선다. 사이드바가 늘 서 있으니(`ProcessesNavMeta`) `Processes` 화면이 열린 동안 박자가 비는 일은 없다.
+ * 쪽에도 그대로 선다. 사이드바 사람 줄이 늘 서 있으니(`useProcessesNavMeta`) `Processes` 화면이 열린 동안 박자가 비는 일은 없다.
  */
 export function useSummaryCache() {
   return useQuery({ ...summaryQuery, enabled: false });

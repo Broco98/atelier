@@ -9,6 +9,8 @@ import {
   heldCalls,
   holdCommand,
   installFixtureBackend,
+  ipcArgs,
+  ipcCalls,
   liveSubscriptions,
   readIpcRecord,
   releaseCommand,
@@ -16,6 +18,7 @@ import {
   steadyCount,
   unknownIpcCalls,
   workRow,
+  폴더를고른다,
 } from "./harness";
 
 // **하네스의 도구 넷이 스스로를 잰다**(프로세스 관리 티켓 01). 이 도구들은 뒤 장의 L3가 딛는다 —
@@ -27,15 +30,18 @@ import {
 // 구독으로 세지 않는 것도 그래서다: `works:changed`의 구독 수는 앱이 정하는 값이라(14가 작업 화면의
 // 넷을 하나로 모았다 — `works-changed.spec.ts`), 그것을 여기 기대값으로 적으면 앱의 변경이 이 파일을 깬다.
 //
+// (6)은 03 판의 폴더 선택창 답(`폴더를고른다`)이다 — Project 추가 창 · 재설정이 딛는다. (7)은 03 판 spec들이 인자를 통째로 견주는 나간
+// 인자(`ipcArgs`)다.
+//
 // (5)는 뒤에 하네스로 올라온 도구다 — `works-changed.spec.ts`가 딛는 멎은 호출 수(`steadyCount`)가 멎지 않는 커맨드에서 끝없이
 // 기다리지 않고 센 수를 싣고 던지는지를 잰다. 증거 문(`evidence.ts`)이 워커의 브라우저를 갈아 띄우는지는 `browser-recycle.spec.ts`가
 // 잰다.
 
 const [pinnedWork, plainWork] = WORKS;
 const [project] = PROJECTS;
-/** 목록의 그 프로젝트 행. 이름과 경로를 함께 든다(`projects-list.spec.ts`와 같은 이유). */
+/** Projects 목록(`/projects`) 표의 그 Project 줄 — 줄의 이름 칸 링크로 집는다(03 구현 스펙 §16 · `projects-list.spec.ts`). */
 const projectRow = (page: Page) =>
-  page.getByRole("button", { name: `${project.name} ${project.path}` });
+  page.getByRole("table", { name: "Project 목록", exact: true }).getByRole("link", { name: project.name, exact: true });
 
 // ─── (1) 살아 있는 모든 구독에 쏘기 ───
 //
@@ -105,7 +111,7 @@ async function hits(page: Page): Promise<Record<string, number>> {
 
 /** 앱이 부팅을 마친 화면 — 부팅 중의 구독 · 호출이 아래 수에 섞이지 않게 먼저 본다. */
 async function openProject(page: Page): Promise<void> {
-  await page.goto(`/projects/${project.slug}`);
+  await page.goto("/projects");
   await expect(projectRow(page)).toBeVisible();
 }
 
@@ -198,7 +204,7 @@ test("(2) 셸 띄우기가 아닌 커맨드를 붙잡으면 답이 안 오고 �
   await installFixtureBackend(page);
   // 페이지를 열기 **전에** 붙잡는다 — 부팅 때 나가는 첫 부름부터 붙잡힌다.
   await holdCommand(page, "list_projects");
-  await page.goto(`/projects/${project.slug}`);
+  await page.goto("/projects");
 
   // 앵커: 부름이 **나갔고** 붙잡혔다. 붙잡힌 부름은 기록에 없다 — 픽스처까지 안 갔다.
   await expect.poll(() => heldCalls(page, "list_projects")).toBeGreaterThan(0);
@@ -263,7 +269,7 @@ test("(2) 놓기 전에 같은 커맨드를 다시 붙잡으면 던지고 앞 �
   await expect(holdCommand(page, "list_projects")).rejects.toThrow(/list_projects.*페이지를 연 뒤/);
   // 다른 커맨드는 따로 붙잡는다.
   await holdCommand(page, "list_works");
-  await page.goto(`/projects/${project.slug}`);
+  await page.goto("/projects");
   await expect.poll(() => heldCalls(page, "list_projects")).toBeGreaterThan(0);
   const held = await heldCalls(page, "list_projects");
 
@@ -371,5 +377,61 @@ test("(5) 호출 수가 멎으면 그 수를 주고, 멎지 않으면 상한에�
   await expect(steadyCount(page, "list_projects", { limitMs: 1_000 })).rejects.toThrow(
     /list_projects의 호출 수가 1000ms 안에 멎지 않았다 — 0\.3초마다 센 수: \d+( → \d+)+/,
   );
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── (6) 폴더 선택창의 답 ───
+//
+// `폴더를고른다`는 그 페이지의 다음 폴더 선택창 답을 간다. **부르지 않으면 L3 표에 그 줄이 없어** 앱이 폴더를 고르는 순간 화이트리스트
+// 탐지기가 문다 — 고를 폴더를 정하지 않은 시나리오가 아무 경로나 받아 초록으로 지나가지 않는다. 고른 경로가 앱에 닿았는지는 그 경로로 나간
+// 살피기(`inspect_project_folder`)와 창의 갈래 글로 본다. `null`은 사람이 창을 닫은 것이라 창이 그대로다.
+
+test("(6) 폴더를 정하지 않고 고르면 물고, 정하면 그 경로가 살피기로 나가며, null이면 고르지 않은 채다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await page.getByRole("button", { name: "Project 추가", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Project 추가", exact: true });
+  const 추가 = dialog.getByRole("button", { name: "추가", exact: true });
+  await 추가.click();
+  await expect.poll(() => unknownIpcCalls(page)).toEqual(["plugin:dialog|open"]);
+  await expect(추가, "고르지 못했으니 「추가」가 그대로다").toBeVisible();
+
+  await 폴더를고른다(page, null);
+  await 추가.click();
+  await expect.poll(() => callCount(page, "plugin:dialog|open")).toBe(2);
+  await expect(추가, "닫은 창 — 고르지 않은 채다").toBeVisible();
+  expect(await callCount(page, "inspect_project_folder")).toBe(0);
+
+  await 폴더를고른다(page, "/Users/tester/dev/notes");
+  await 추가.click();
+  await expect(dialog.getByText("폴더 · git 저장소 아님", { exact: true })).toBeVisible();
+  expect(await ipcCalls(page, "inspect_project_folder")).toEqual(['inspect_project_folder {"folder":"/Users/tester/dev/notes"}']);
+  expect(await unknownIpcCalls(page)).toEqual(["plugin:dialog|open"]);
+});
+
+// ─── (7) 나간 인자 ───
+//
+// `ipcArgs`는 그 커맨드로 나간 인자만 나간 차례로 준다 — 「안 나갔다」(`toEqual([])`)와 「이 인자로 나갔다」(`toEqual([{ … }])`)가 이것을 딛는다.
+// **헛돌면**(그 커맨드를 못 거르거나, 이름 앞머리가 같은 다른 커맨드를 섞거나, 모양이 낯선 줄을 조용히 넘기면) 「안 나갔다」가 늘 초록이고
+// 견줌이 엉뚱한 줄을 잰다. 물음은 앱을 거치지 않고 IPC 입구로 곧바로 한다(`askBackendSettled`) — 재는 것이 기록을 읽는 길이라서다.
+
+test("(7) 나간 인자는 그 커맨드의 것만 나간 차례로 오고, 이름 앞머리가 같은 커맨드는 섞이지 않으며, 늘 실리는 키가 없으면 던진다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openProject(page);
+  expect(await ipcArgs(page, "new_project", "name"), "앵커: 아직 안 나갔다").toEqual([]);
+
+  await askBackendSettled(page, "new_project", { parent: "/Users/tester/a", name: "첫째" });
+  await askBackendSettled(page, "new_project_place", { name: "둘째" });
+  await askBackendSettled(page, "new_project", { parent: "/Users/tester/b", name: "셋째" });
+  expect(await ipcArgs(page, "new_project", "name")).toEqual([
+    { parent: "/Users/tester/a", name: "첫째" },
+    { parent: "/Users/tester/b", name: "셋째" },
+  ]);
+  expect(await ipcArgs(page, "new_project_place", "name")).toEqual([{ name: "둘째" }]);
+
+  // 늘 실리는 키가 안 보이면 던진다 — 인자 이름이 바뀐 것을 「안 나갔다」로 읽지 않는다.
+  await expect(ipcArgs(page, "new_project", "slug")).rejects.toThrow("new_project 호출의 모양이 낯설다");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

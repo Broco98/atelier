@@ -92,7 +92,15 @@ fn plant_fake_host(bin: &Path, name: &str, log: &Path, code: i32) {
         code
     );
     let path = bin.join(name);
-    std::fs::write(&path, script).unwrap();
+    // 쓰기는 자식 `sh`가 한다 — 이 프로세스가 쓰기 fd를 연 동안 다른 시험 스레드가 fork하면 그 자식이 exec할 때까지 fd를 쥐어,
+    // 막 쓴 가짜를 부르면 Linux가 「Text file busy」로 막는다(`atelier-acp` `tests/common`의 `write_script`).
+    let mut writer = Command::new("/bin/sh")
+        .args(["-c", "cat > \"$0\"", &path.display().to_string()])
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut writer.stdin.take().unwrap(), script.as_bytes()).unwrap();
+    assert!(writer.wait().unwrap().success(), "가짜 {name}를 쓰지 못했다");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 

@@ -139,16 +139,6 @@ describe("임의 간격", () => {
    */
   const EXCEPTIONS: { file: string; className: string; why: string }[] = [
     {
-      file: "src/components/shell/useResizableWidth.tsx",
-      className: "left-[calc((var(--space-2)-5px)/2)]",
-      why: "틈에 서는 폭 손잡이의 빛 — 5px 띠를 틈 8(`space-2`)의 가운데에 세운다. (8 − 5) / 2 = 1.5px라 눈금에 없고, 틈 토큰을 읽어 틈이 바뀌어도 가운데다",
-    },
-    {
-      file: "src/components/shell/useResizableWidth.tsx",
-      className: "right-[calc((var(--space-2)-5px)/2)]",
-      why: "위와 같다 — 왼쪽에서 끄는 손잡이(패널 칸 왼쪽 틈)의 갈래다",
-    },
-    {
       file: "src/components/ui/dialog.tsx",
       className: "top-[12vh]",
       why: "검색 팔레트의 자리 — 창 높이의 12%에 선다. 길이가 아니라 창 높이의 몫이라 눈금이 없다(DS `Palette`는 자리를 정하지 않는다)",
@@ -254,19 +244,11 @@ describe("임의 간격", () => {
   const VARIABLES: { name: string; why: string }[] = [
     {
       name: "--titlebar-controls-left",
-      why: "셸 컨트롤의 왼쪽 끝 — 신호등이 차지한 폭 88(전체화면이면 신호등이 숨어 16)이다",
-    },
-    {
-      name: "--titlebar-controls-top",
-      why: "셸 컨트롤의 위 — 머리 줄(48)의 가운데에 컨트롤(24)을 세우는 셈이다. 두 길이가 바뀌어도 가운데다",
+      why: "셸 컨트롤의 왼쪽 끝 — 신호등 끝(73 — 진짜 앱에서 잰 값)에서 16 띄운 89(전체화면이면 신호등이 숨어 16)이다. 머리 줄의 왼쪽 칸이 안쪽 여백으로 읽는다",
     },
     {
       name: "--titlebar-control-gap",
-      why: "셸 컨트롤 사이 — Codex 2(DS `.at-winctl`). 컨트롤 묶음의 폭 셈(`--titlebar-controls-width`)이 같은 값을 읽는다",
-    },
-    {
-      name: "--titlebar-inset-head",
-      why: "사이드바를 접었을 때 머리 줄의 왼쪽 여백 — 셸 컨트롤 끝 + 틈 8. 머리 카드가 신호등 · 셸 컨트롤 밑으로 들어가지 않는 경계다",
+      why: "셸 컨트롤 사이 — Codex 머리 줄 6(02 구현 스펙 §3). 컨트롤 묶음의 폭 셈(`--titlebar-controls-width`)이 같은 값을 읽는다",
     },
     {
       name: "--size-toolbar",
@@ -344,31 +326,28 @@ describe("눈금의 사분 단", () => {
    * 더 선 자리도 다음 사분 단의 뒷문이 되어 정확히 한 번인지 함께 센다(`notOnce`).
    */
   const QUARTERS: { file: string; className: string; why: string }[] = [
+    // 크롬 위 띄움 5 — Codex 판이 크롬 왼 · 오 · 아래 끝에서 띄운 값(02 구현 스펙 §3 · 시안 `.body`의 `0 5px 5px`). 사이드바가 판 밖 크롬 위에
+    // 서면서(03 구현 스펙 §3) 왼 · 오는 사이드바와 판을 함께 담는 줄이, 아래는 판이 띄운다 — 사이드바는 창 아래 끝까지 선다.
+    {
+      file: "src/components/shell/AppShell.tsx",
+      className: "px-1.25",
+      why: "사이드바 · 흰 판의 줄 — 크롬 왼 · 오 끝에서 5. 사이드바가 창 왼쪽 끝 + 5에서 서고, 접으면 판이 그 5까지 넓어진다. 머리 줄 이름 자리의 셈(`--titlebar-inset-sidebar`)이 같은 1.25 칸을 더한다",
+    },
+    {
+      file: "src/components/shell/AppShell.tsx",
+      className: "mb-1.25",
+      why: "흰 판 — 크롬 아래 끝에서 5",
+    },
     // 틈 9 · 7 · 5 — DS 부품의 글리프와 글자 사이
     {
       file: "src/components/shell/Frame.tsx",
       className: "mr-1.75",
-      why: "머리 카드의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
+      why: "머리 줄 화면 것의 이름 상자 — 아이콘과 이름 사이 7(DS `.at-wtitle`). 쉴 때와 고칠 때가 한 벌(`glyphClass`)이다",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "gap-1.25",
-      why: "머리 카드의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. 프로젝트 상세 Works 행의 브랜치와 같은 말이다",
-    },
-    {
-      file: "src/components/shell/Sidebar.tsx",
-      className: "gap-2.25",
-      why: "사이드바 nav 행 — 아이콘과 이름 사이 9(DS `.at-row`)",
-    },
-    {
-      file: "src/features/works/WorkSectionList.tsx",
-      className: "gap-2.25",
-      why: "work 행 — 레인과 제목 사이 9(DS `.at-row`)",
-    },
-    {
-      file: "src/features/works/WorkSectionList.tsx",
-      className: "pl-2.25",
-      why: "work 행의 메타 칸 — 제목과 메타 사이 9(DS `.at-row`의 칸 사이). 메타가 있을 때만 난다",
+      why: "머리 줄 화면 것의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5",
     },
     {
       file: "src/components/ui/button.tsx",
@@ -376,14 +355,9 @@ describe("눈금의 사분 단", () => {
       why: "머리 줄 버튼(`top`) — 아이콘과 글자 사이 5(DS `.at-btn.top`)",
     },
     {
-      file: "src/features/works/WorkCard.tsx",
+      file: "src/features/works/WorkPeek.tsx",
       className: "gap-1.25",
       why: "호버 카드의 고친 표시 — 점과 글자 사이 5(DS `.at-peek .chg`)",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "gap-1.25",
-      why: "상세 work 줄의 브랜치 — 12 글리프(`GitFork`)와 글자 사이 5. DS에 그 부품이 없어 작은 글리프의 사이 5(DS `.at-btn.top` · `.at-peek .chg`)를 따른다",
     },
     // 안쪽 9 · 7 — DS 부품의 안쪽
     {
@@ -399,22 +373,12 @@ describe("눈금의 사분 단", () => {
     {
       file: "src/components/shell/Frame.tsx",
       className: "py-1.75",
-      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Projects · Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
+      why: "목록 칸의 두 줄 행(`TWO_LINE_ROW` — Archive 목록) — 위아래 안쪽 7(DS `.at-row.two`)",
     },
     {
       file: "src/components/ui/input.tsx",
       className: "px-2.25",
       why: "설정의 글자칸(`field`) — 글자까지 DS `.at-input`의 10. DS의 테두리는 폭을 안 먹는 안쪽 고리이고 이 칸의 테두리는 1px이라 그만큼 던다",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "px-3.75",
-      why: "설명을 고치는 칸 — 설명 상자의 옆 16에서 칸의 1px 테두리를 던다(상자의 고리는 폭을 안 먹는다). 글자가 상자일 때의 자리에 그대로 선다",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "py-2.75",
-      why: "위와 같다 — 설명 상자의 위아래 12에서 1px",
     },
     {
       file: "src/features/works/SpecViewer.tsx",
@@ -426,21 +390,49 @@ describe("눈금의 사분 단", () => {
       className: "py-px",
       why: "위와 같다 — 위아래 안쪽 1",
     },
+    {
+      file: "src/features/thread/ThreadMarkdown.tsx",
+      className: "py-px",
+      why: "Thread 본문의 인라인 코드 — 위아래 안쪽 1(02 구현 스펙 §8 · Diff-Chat 「인라인 코드」의 `1px 6px`, 높이 17)",
+    },
+    {
+      file: "src/features/thread/WorkLog.tsx",
+      className: "pb-2.25",
+      why: "작업 구분선 — 글자 아래 9에 1px 선(02 구현 스펙 §8 · Diff-Chat · Screen-Live 「작업 구분선」의 `gap: 9px`)",
+    },
+    {
+      file: "src/features/thread/SlashMenu.tsx",
+      className: "gap-y-px",
+      why: "「/」 메뉴 — 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`). 줄들이 한 격자의 칸을 나눠 써 세로 틈만 1이다",
+    },
+    {
+      file: "src/features/thread/AgentMenu.tsx",
+      className: "gap-px",
+      why: "@ 메뉴 — 묶음 안 줄 사이 1(캔버스 Composer 보드 `.pop`의 `gap: 1px`)",
+    },
+    // 사이드바의 줄 사이 1 · 소제목 사이 — Codex 사이드바를 잰 값(v1 티켓 46 · 시안-비교/46 `참고/codex-사이드바.png`). 줄 30이 31마다
+    // 서고, 소제목(30) 가운데 → 첫 줄 가운데가 34, 마지막 줄 가운데 → 다음 소제목 가운데가 54다. nav 줄 · Work 줄 · Thread 줄이 한 벌이라
+    // 한 파일(`sidebar-look`)의 이름 붙은 값이다(코드 리뷰 2차 C).
+    {
+      file: "src/components/shell/sidebar-look.ts",
+      className: "gap-px",
+      why: "사이드바 줄 목록(`SIDEBAR_ROWS` — nav · Work 구획 · 펼친 Thread · Thread 묶음) — 줄 사이 1(Codex 사이드바의 줄 30 · 간격 31)",
+    },
+    {
+      file: "src/components/shell/sidebar-look.ts",
+      className: "mb-0.75",
+      why: "묶음 소제목(`SIDEBAR_HEADING` — Work 구획 머리 · 「Thread」 · 「기다리는 순서」) — 아래 3. 소제목 가운데 → 첫 줄 가운데 34(15 + 3 + 1 + 15, Codex 「프로젝트」 · 「최근」)",
+    },
+    {
+      file: "src/components/shell/sidebar-look.ts",
+      className: "mt-5.75",
+      why: "앞 묶음 뒤의 소제목(`SIDEBAR_AFTER_SECTION` — `고정` 뒤 `Work` · Work 묶음 뒤 「Thread」) — 위 23. 마지막 줄 가운데 → 다음 소제목 가운데 54(15 + 1 + 23 + 15, Codex 「프로젝트」 → 「최근」)",
+    },
     // 앱의 조용한 칩 — 좌우 7
     {
       file: "src/components/ui/select.tsx",
       className: "px-1.75",
       why: "조용한 셀렉트 칩 — 좌우 7은 옛 기준 브랜치 버튼의 값을 잇는다(높이 · 모서리 · 글자는 DS `.at-chip`, 안쪽은 DS에 짝이 없다 — DS 칩은 고리를 두른 12)",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "px-1.75",
-      why: "기준 브랜치 버튼 — 위 셀렉트 칩과 같은 모양이다(목록이 서는 프로젝트는 셀렉트 칩, 없는 프로젝트는 이 버튼)",
-    },
-    {
-      file: "src/features/projects/ProjectDetail.tsx",
-      className: "-ml-1.75",
-      why: "그 칩을 속성 열에 앉히는 자리 맞춤 — 칩의 안쪽 7만큼 당겨 칩의 글자가 위 줄의 값들과 한 세로선에 선다",
     },
     // 줄 사이 1 — DS 트리 · 팔레트 목록
     {
@@ -468,21 +460,26 @@ describe("눈금의 사분 단", () => {
       className: "gap-px",
       why: "검색 팔레트의 답 목록 — 줄 사이 1(DS `.at-palette .list`)",
     },
+    {
+      file: "src/features/thread/ComposerChips.tsx",
+      className: "gap-1.25",
+      why: "입력창 트레이 칩 — 글리프와 글자 사이 5(03 시안 v52 `.tray .tc{gap:5px}`)",
+    },
     // 셈에서 나오는 홀수 px
     {
       file: "src/components/shell/Frame.tsx",
       className: "pr-6.25",
-      why: "바꿀 수 있는 머리 카드 이름 상자의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 8",
+      why: "바꿀 수 있는 머리 줄 이름 상자의 오른쪽 — 글자 뒤 5(DS `.at-wtitle .pen`의 왼쪽 -2가 사이 7에서 빠진다) + 연필 12 + 끝 8",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "pr-5.25",
-      why: "고치는 동안의 머리 카드 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
+      why: "고치는 동안의 머리 줄 이름 상자 오른쪽 — 쉴 때의 25(`pr-6.25`)에서 입력칸 둘레 4를 던다",
     },
     {
       file: "src/components/shell/Frame.tsx",
       className: "mt-1.25",
-      why: "머리 카드 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
+      why: "머리 줄 이름 상자의 아이콘 — 24 줄 안 14 글리프의 위 5((24 − 14) / 2, DS `.at-wtitle`의 가운데 맞춤)",
     },
     {
       file: "src/features/spec-layout/SpecLayoutEditor.tsx",
@@ -534,5 +531,14 @@ describe("간격 토큰", () => {
     // 값은 식이 아니라 수로 적는다 — 등록하지 않은 변수의 계산값은 식 그대로라 이 값을 읽는 스크립트(`useResizableWidth`의 그린 폭 ·
     // e2e)가 수로 못 읽는다(`index.css`의 `--titlebar-height`와 같은 까닭).
     expect(tokens.filter((one) => one.value !== `${one.step * px}px`)).toEqual([]);
+  });
+
+  // **턴 사이는 Codex가 잰 두 길이다**(02 구현 스펙 §8) — 말풍선 → 답 첫 글자 51.5, 답 끝 → 다음 말풍선 52. 글자 잉크에서 상자 끝까지 잰
+  // 거리라 상자 사이의 간격(눈금)이 아니다 — 화면(08)은 글줄의 위아래 여백을 빼서 눈금으로 적고, L3(13)가 이 이름을 읽어 잉크 사이를 맞댄다.
+  // 그래서 눈금의 칸 이름(`--space-<수>`)이 아니라 자리 이름이고, 값은 식이 아니라 수다(위와 같은 까닭).
+  it("턴 사이 두 길이가 Codex 값 그대로 수로 선다", () => {
+    const turn = (name: string) => new RegExp(`--space-${name}:\\s*([^;]+);`).exec(stylesheet.text)?.[1].trim();
+    expect(turn("reply")).toBe("51.5px");
+    expect(turn("turn")).toBe("52px");
   });
 });

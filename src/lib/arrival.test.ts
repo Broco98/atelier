@@ -2,7 +2,7 @@
 // 소스 스캔 몇 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
 import { readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { routeTree } from "@/routeTree.gen";
@@ -29,6 +29,13 @@ function setup() {
     context: { queryClient: new QueryClient() },
   });
 }
+
+// 오가는 두 화면의 청크를 파일 앞에서 한 번 불러 둔다 — 첫 변환(터미널 · 프로세스 화면이 끄는 모듈 전부)이 첫 시험의 5초를 떠안지
+// 않게(`router.test.ts`의 같은 자리, 코드 리뷰 1차 D).
+beforeAll(async () => {
+  const router = setup();
+  await Promise.all(["/terminal", "/processes"].map((id) => router.loadRouteChunk(router.routesById[id as keyof typeof router.routesById])));
+}, 120_000);
 
 afterEach(() => {
   // 모듈 값이라 검사끼리 새지 않게 비운다 — 기다리는 것이 없으면 아무 일도 안 한다.

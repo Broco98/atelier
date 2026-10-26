@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { ASK_LEVELS } from "./features/thread/chips";
 
 // `CONTEXT.md`는 **말의 정본**이다 — 코드가 아니라 그 문서가 앱의 낱말을 정한다. 그래서
 // 화면이 바뀌면 그 문서가 **거짓말을 하는 상태**가 될 수 있고, 그 거짓말은 아무 층에도
@@ -85,7 +86,7 @@ describe("말의 사전", () => {
         "조용한 셸",
         "화면 밖 셸",
         "정리 기록",
-        "머리 카드",
+        "Processes",
         "탭",
         "열",
         "분할",
@@ -93,6 +94,13 @@ describe("말의 사전", () => {
         "레일",
         "패널 토글",
         "터미널",
+        "머리 줄",
+        "흰 판",
+        "위 줄",
+        "사람 메뉴",
+        "상태 표시",
+        "알림 띠",
+        "요약 카드",
         "고르는 것의 라벨은 소문자 영어",
       ]),
     );
@@ -155,30 +163,267 @@ describe("말의 사전", () => {
     expect(bodyOf("패널 토글")).toContain("⌘Enter");
   });
 
+  // v1 티켓 05 · 08 · 구현 스펙 S2. 앱을 열면 새 Thread가 뜨고 Host가 답한다 — 화면의 도메인 낱말은 영어다(Thread · Agent · Host ·
+  // Session · Runtime · Library). 사전이 그 말들을 모르면 다음 사람이 Thread를 「채팅」·「채널」로, Agent를 「봇」·「어시스턴트」로,
+  // Runtime을 「엔진」으로 부른다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes의 대화 탭 이름도 Thread의 거부어다
+  // (S2 「피할 말은 채팅 · 채널 · 대화 탭」). 마지막 줄은 그 그물이 Thread 화면을 실제로 보는지다(입력창의 Agent 부르기 단추).
+  it("「Thread」·「Agent」·「Host」·「Session」·「Runtime」·「Library」가 등재돼 있고, Thread가 「채팅」·「채널」·「대화 탭」을, Agent가 「봇」·「어시스턴트」를 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Thread", "Agent", "Host", "Session", "Runtime", "Library"]));
+    expect(bodyOf("Thread")).toContain("_피할 말_: 채팅, 채널, 스레드, 대화 탭");
+    expect(bodyOf("Thread")).toContain("「Thread 3개」");
+    expect(bodyOf("Agent")).toContain("Markdown 파일 하나로 된 정의");
+    expect(bodyOf("Agent")).toContain("_피할 말_: 봇, 어시스턴트");
+    expect(refused).toEqual(expect.arrayContaining(["채팅", "채널", "스레드", "대화 탭", "봇", "어시스턴트"]));
+    expect(bodyOf("Runtime")).toContain("_피할 말_: 하네스, 엔진");
+    expect(ariaLabels).toContain("Agent 부르기");
+  });
+
+  // v1 티켓 08 · 구현 스펙 S2. three-axes 대화창의 말 「대화창」 · 「대화」 · 「에이전트」(엔진이라는 뜻)를 걷었다 — 대화는 Thread가,
+  // 에이전트는 Agent와 Runtime이 넘겨받았다. 항목이 남으면 다음 사람이 걷힌 화면의 말로 새 화면을 부른다. 「턴」 · 「모드」 · 「고친 곳」은
+  // 남는다 — Thread의 말로 옮겨 적었다.
+  it("「대화창」·「대화」·「에이전트」가 없고, 「턴」·「모드」·「고친 곳」은 Agent의 말로 남는다", () => {
+    expect(names).not.toContain("대화창");
+    expect(names).not.toContain("대화");
+    expect(names).not.toContain("에이전트");
+    expect(names).toEqual(expect.arrayContaining(["턴", "모드", "고친 곳"]));
+    for (const word of ["턴", "모드", "고친 곳"]) {
+      expect(bodyOf(word)).toContain("Agent");
+      expect(bodyOf(word)).not.toContain("에이전트");
+      expect(bodyOf(word)).not.toContain("엔진");
+    }
+    expect(bodyOf("모드")).toContain("Runtime");
+  });
+
+  // 구현 스펙 S2. Session은 이제 **앱의 개념**이다 — develop의 「세션은 앱의 개념이 아니다」를 걷는다. 한글 「세션」 항목이 남으면
+  // 두 뜻이 나란히 서서 다음 사람이 어느 쪽을 쓸지 고른다. 「셸을 세션이라 부르지 않는다」는 남는다 — 그 막음이 Session 항목으로 왔다.
+  // 「세션」은 이제 제 항목이 없고 「셸」의 _피할 말_이라 거부어다: 접근성 이름에도 영어 Session으로 선다.
+  it("「세션」 항목이 없고, Session이 앱의 개념이라 말하며 셸을 그 말로 부르지 않는다", () => {
+    expect(names).not.toContain("세션");
+    expect(bodyOf("Session")).toContain("**앱의 개념이다**");
+    expect(bodyOf("Session")).toContain("_셸을 이 말로 부르지 않는다._");
+    expect(bodyOf("셸")).toContain("세션");
+    expect(refused).toContain("세션");
+    expect(doc).not.toContain("앱의 개념이 아니다");
+  });
+
+  // v1 티켓 23 · 스토리 84 · 86. 입력창 칩이 고르는 것은 「물어보는 정도」이고 그 넷의 이름은 칩 · 판정의 까닭 · 시스템 줄이 같은
+  // 글을 쓴다 — 사전이 다른 이름을 들면 다음 사람이 그 이름으로 칩을 고친다. Runtime의 「모드」는 화면에서 고르지 않는다(「계획만」이
+  // 계획 모드를 고른다).
+  it("「물어보는 정도」가 칩의 넷을 그 이름 그대로 들고, 「방패 줄」이 있으며, 「모드」는 화면에서 고르지 않는다", () => {
+    expect(names).toEqual(expect.arrayContaining(["물어보는 정도", "방패 줄"]));
+    for (const level of ASK_LEVELS) expect(bodyOf("물어보는 정도")).toContain(level.name);
+    expect(bodyOf("방패 줄")).toContain("자동으로 허용함");
+    expect(bodyOf("모드")).toContain("계획만");
+  });
+
+  // 03 구현 스펙 §2 · §5 · 티켓 02. 입력창 상자에 붙은 회색 띠가 「트레이」이고, 그 첫 칩이 새 Thread가 어디서 시작하나를 고르는 「Work
+  // 칩」이다. 사전이 트레이의 두 자리(첫 화면은 상자 아래 · Thread 화면은 상자 위)를 모르면 다음 사람이 Thread 화면의 띠를 상자 아래로
+  // 되돌려 칩이 창 끝에 눌린다. Work 칩이 스위치 둘 · 기억 · 첫 말 뒤 잠김을 말하지 않으면 기본값을 「Work 없음」으로 되돌리거나 최근
+  // Work를 기억해 다음 새 Thread를 엉뚱한 Work에 붙인다.
+  it("「트레이」가 두 자리를 말하고, 「Work 칩」이 스위치 둘 · 기억 · 최근 Work · 첫 말 뒤 잠김을 말한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["트레이", "Work 칩"]));
+    for (const piece of ["회색 띠", "상자 아래", "상자 위"]) expect(bodyOf("트레이"), piece).toContain(piece);
+    for (const piece of ["「새 Work」", "「Work 없이 대화」", "최근 Work", "기억", "잠긴다"]) {
+      expect(bodyOf("Work 칩"), piece).toContain(piece);
+    }
+  });
+
+  // 03 구현 스펙 §2 · §5 · 티켓 06. 트레이의 Work 칩 뒤에 「Space 칩」이, 그 곁에 「범위 줄」이 선다. 사전이 칩의 갈래(흐린 「Space 넣기」 ·
+  // ×로 빼기 · Work의 Space면 ▾)와 「고른 것이 가는 때」(첫 말 전에는 입력창이 쥐고 첫 말과 함께 · 첫 말 뒤엔 곧바로 · Work면 그 Work에)를
+  // 말하지 않으면 다음 사람이 첫 말 전의 고르기마다 Space 줄을 남기거나 Work 파일을 메뉴만 훑어도 바꾼다. 범위 줄이 범위의 넷을 말하지 않으면
+  // 화면이 범위를 따로 센다. 「워크스페이스」 · 「컨텍스트 칩」은 거부어다.
+  it("「Space 칩」이 갈래 · 고른 것이 가는 때를 말하고, 「범위 줄」이 범위의 넷을 말하며, 「워크스페이스」 · 「컨텍스트 칩」을 거부한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["Space 칩", "범위 줄"]));
+    for (const piece of ["Work 칩 바로 뒤", "「Space 넣기」", "×", "▾", "첫 말과 함께", "Space 줄이 남는다", "그 Work의 Space"]) {
+      expect(bodyOf("Space 칩"), piece).toContain(piece);
+    }
+    // 빈 Space는 Project가 적히지 않은 Space다 — worktree가 다 덮은 Space가 아니다(03 코드 리뷰 P3).
+    for (const piece of [
+      "읽는 범위",
+      "등록된 Project 3개를 읽어요",
+      "외 2개",
+      "worktree에서 일하는 Project도 든다",
+      "Project가 하나도 적히지 않은 Space",
+      "읽는 Project가 없어요",
+      "「Project 추가」",
+    ]) {
+      expect(bodyOf("범위 줄"), piece).toContain(piece);
+    }
+    expect(refused).toEqual(expect.arrayContaining(["워크스페이스", "컨텍스트 칩"]));
+    expect(bodyOf("트레이")).toContain("범위 줄");
+  });
+
+  // 03 구현 스펙 §2 · §7 · §9 · 티켓 05. Thread가 읽는 Project는 함수 하나에서 나온다 — 사전이 그 하나를 모르면 다음 사람이 화면마다 범위를
+  // 다시 센다(요약 카드가 Session이 연 폴더를 훑던 v1 #540의 길). 「스코프」는 거부어다. Space 줄은 그때 센 범위를 싣고, Space 메뉴는 Work 화면
+  // 머리가 연다. 요약 카드의 소스와 Work 만들기 카드의 Space 줄도 이 판이 고쳤다.
+  it("「읽는 범위」 · 「Space 줄」 · 「Space 메뉴」가 등재돼 있고, 읽는 범위가 「스코프」를 거부하며, 요약 카드의 소스가 그 범위다", () => {
+    expect(names).toEqual(expect.arrayContaining(["읽는 범위", "Space 줄", "Space 메뉴"]));
+    expect(bodyOf("읽는 범위")).toContain("_피할 말_: 스코프");
+    expect(refused).toContain("스코프");
+    for (const piece of ["함수 하나", "머리말", "요약 카드", "worktree에서", "다음 말을 보낼 때"]) {
+      expect(bodyOf("읽는 범위"), piece).toContain(piece);
+    }
+    for (const piece of ["다음 차례부터", "Thread마다", "그때 센 것", "지워져 Space 없이", "되돌렸어요"]) expect(bodyOf("Space 줄"), piece).toContain(piece);
+    for (const piece of ["「Space 빼기」", "「Space 없음」", "「문제 있음」", "「Host와 Space 만들기」", "메뉴 › Space"]) {
+      expect(bodyOf("Space 메뉴"), piece).toContain(piece);
+    }
+    expect(bodyOf("요약 카드")).toContain("소스는 그 Thread의 읽는 범위다");
+    expect(bodyOf("요약 카드")).not.toContain("함께 여는 등록된 Project");
+    expect(bodyOf("Work 만들기 카드")).toContain("「◇ 결제 서비스 · Space」");
+  });
+
+  // 03 구현 스펙 §2 · §11 · 티켓 08. Host가 Space를 묻는 카드는 질문 카드의 겉이다 — 사전이 그것을 말하지 않으면 다음 사람이 따로 그린
+  // 카드를 세우거나, 답한 뒤 Space 줄을 한 번 더 남긴다. 묻지 않고 붙이는 때(「알아서」)의 줄을 모르면 그 줄을 「바꿨어요」로 쓴다.
+  it("「질문 카드」가 Host의 Space 카드와 그 답한 줄을 말하고, 「Space 줄」이 묻지 않고 넣은 줄을 말한다", () => {
+    for (const piece of ["Thread 도구가 같은 겉의 카드", "「어느 Space에서 할까요?」", "「Space 없이」", "따로 서지 않는다", "「Space는 나중에 정하기로 함」"]) {
+      expect(bodyOf("질문 카드"), piece).toContain(piece);
+    }
+    expect(bodyOf("Space 줄")).toContain("Space에 넣었어요 — web-app · api-server를 읽어요");
+  });
+
+  // 03 구현 스펙 §2 · §12 · S13 · 티켓 12. Host가 대화로 한 설정은 승인 없이 하고 결과 카드 한 장을 남긴다 — 사전이 그 카드를 「변경 사항」
+  // 아래 PR 줄이나 리뷰의 결과물과 가르지 않으면 다음 사람이 그 자리에 설정을 섞거나 PR 줄을 결과 카드로 부른다. 「열기」가 그 화면으로 가고
+  // 지우기는 화면에서만이라는 것을 모르면 카드에 되돌리기 · 지우기 단추를 세운다. Host의 git 물음이 질문 카드의 겉이라는 것을 모르면 따로
+  // 그린 창을 세운다. 「설정 알림」 · 「변경 카드」는 거부어다.
+  it("「결과 카드」가 넷 · 「열기」 · 가름을 말하고, 「질문 카드」가 Host의 git 물음을 말한다", () => {
+    expect(names).toContain("결과 카드");
+    for (const piece of [
+      "승인 없이",
+      // 03 결정 12 · 코드 리뷰 A3 — 카드는 그 턴 안 도구 줄 뒤다(턴 사이가 아니다).
+      "그 설정을 한 턴 안, 그 도구 줄 뒤",
+      "「Project를 추가했어요 — landing-page」",
+      "「관계 보기」",
+      "Project 상세",
+      "꺼진다",
+      "화면에서만",
+      "PR 줄",
+      "결과물",
+    ]) {
+      expect(bodyOf("결과 카드"), piece).toContain(piece);
+    }
+    expect(refused).toEqual(expect.arrayContaining(["설정 알림", "변경 카드"]));
+    for (const piece of ["「notes는 git 저장소가 아니에요. 어떻게 할까요?」", "「git init 하고 추가」", "「뿌리 폴더로 추가」", "「추가하지 않기」"]) {
+      expect(bodyOf("질문 카드"), piece).toContain(piece);
+    }
+  });
+
+  // 03 구현 스펙 §2 · §13 · 티켓 04. Space 파일을 고치는 한 화면의 두 길이다. 사전이 「글 그대로」 · 「같은 검사」를 말하지 않으면 다음 사람이
+  // 저장을 serde 왕복으로 되돌려 사람이 적은 주석 · 차례를 지우거나, 화면에 따로 검사를 세워 화면이 괜찮다고 한 파일을 저장이 거절한다.
+  // 직접 만들기가 같은 화면 · 빈 틀 · 따라오는 파일 이름을 말하지 않으면 새 Space를 다른 창(이름 · Project 칸)으로 짓는다.
+  it("「관계 편집」이 파일 칸 | 미리보기 카드 · 같은 검사 · 글 그대로를 말하고, 「직접 만들기」가 같은 화면의 빈 틀을 말한다", () => {
+    expect(names).toEqual(expect.arrayContaining(["관계 편집", "직접 만들기"]));
+    for (const piece of ["「파일 칸 | 미리보기 카드」", "같은 하나", "한 글자도 바꾸지 않고", "파일 이름은 그대로"]) {
+      expect(bodyOf("관계 편집"), piece).toContain(piece);
+    }
+    for (const piece of ["관계 편집과 같은 화면", "빈 틀", "`-2`", "「Host와 만들기」"]) expect(bodyOf("직접 만들기"), piece).toContain(piece);
+  });
+
+  // three-axes 티켓 26 · v1 티켓 08. 프로토타입의 말 「바뀐 곳」은 감시가 본 변경(워처)을 가리키던 말이라, Agent가 고친 자리를 그
+  // 말로 부르지 않는다. 거부어에 들어야 위 접근성 이름 검사가 그 낱말을 문다. three-axes가 턴 앞뒤로 spec 폴더를 견주어 세운 표시는
+  // 대화창과 함께 걷혔다 — 본문이 그 표시의 지우는 때를 말하면 없는 화면을 말하는 것이다.
+  it("「고친 곳」이 등재돼 있고, 「바뀐 곳」을 거부하며, 걷힌 표시를 지금 화면처럼 말하지 않는다", () => {
+    expect(names).toContain("고친 곳");
+    expect(bodyOf("고친 곳")).toContain("_피할 말_: 바뀐 곳");
+    expect(refused).toContain("바뀐 곳");
+    expect(bodyOf("고친 곳")).not.toContain("지워진다");
+    expect(bodyOf("고친 곳")).toContain("요약 카드가 git으로 본다");
+  });
+
   // codex-ds 결정 25 · 스펙 §10. info 칸을 걷어 레일 칸이 `spec` 하나가 됐다가 `files`가 더해져(git-integration 결정 29) 둘이 됐고,
-  // 레일은 칸이 둘 이상일 때만 선다. 사전이 옛 칸(`info`)을 들거나 「늘 선다」고 말하면 다음 사람이 칸 하나짜리 레일을 되세우거나
-  // info를 되살린다. 토글이 레일 위가 아니라 머리 줄에 선다는 것도 레일 항목이 말한다 — 레일이 서는지에 따라 토글이 어디 있는지를
-  // 레일을 찾아온 사람이 안다.
-  it("「레일」이 칸이 둘 이상일 때만 서고 레일 칸이 `spec` · `files`라 말하며, `info`를 어디서도 들지 않는다", () => {
+  // 레일은 칸이 둘 이상일 때만 선다. three-axes가 그 사이에 `chat`을 더했다가 v1 티켓 08이 걷었다. 사전이 옛 칸(`info` · `chat`)을 들거나
+  // 「늘 선다」고 말하면 다음 사람이 칸 하나짜리 레일을 되세우거나 걷힌 칸을 되살린다. 토글이 레일 위가 아니라 머리 줄에 선다는 것도
+  // 레일 항목이 말한다 — 레일이 서는지에 따라 토글이 어디 있는지를 레일을 찾아온 사람이 안다.
+  it("「레일」이 칸이 둘 이상일 때만 서고 레일 칸이 `spec` · `files`라 말하며, `info` · `chat`을 어디서도 들지 않는다", () => {
     expect(bodyOf("레일")).toContain("**칸이 둘 이상일 때만");
     expect(bodyOf("레일")).toContain("레일 칸(`spec` · `files`)");
+    expect(doc).not.toContain("`chat`");
     expect(bodyOf("레일")).toContain("`files`가 더해져 다시 선다");
     expect(bodyOf("레일")).toContain("패널 토글은 레일 위가 아니라 머리 줄에 선다");
     expect(doc).not.toContain("`info`");
   });
 
-  // codex-ds 스펙 §4 · §10. 창 맨 위 48 줄에 머리 카드가 서고, 패널 토글은 레일 위 그 줄로 올라왔다. 사전이 「카드 머리」(카드 안
-  // 맨 위 줄)와 그것을 가르지 않으면 두 말이 한 자리를 부르고, 토글을 옛 자리(레일 맨 위)로 부르면 다음 사람이 레일 안에 되돌린다.
-  // 토글이 레일을 따라 카드 안팎을 오가는 것(DS `.at-winctl-r` · `.at-railtop`)도 두 항목이 함께 말한다 — 한쪽만 「밖」이라 하면
-  // 머리 카드가 본문 열보다 좁게 토글 자리를 비우던 때로 되돌아간다.
-  it("「머리 카드」가 등재돼 있고 카드 머리와 갈리며, 패널 토글이 머리 줄에 선다", () => {
-    expect(bodyOf("머리 카드")).toContain("_카드 머리와 가른다._");
-    expect(bodyOf("머리 카드")).toContain("폭은 아래 본문 열과 같다.");
-    expect(bodyOf("머리 카드")).toContain("패널 토글은 레일이 서지 않는 동안만 머리 카드 안이고");
-    expect(bodyOf("패널 토글")).toContain("머리 줄 오른쪽 끝");
-    expect(bodyOf("패널 토글")).toContain("머리 카드 밖 레일 바로 위");
+  // codex-ds 스펙 §4 · §10 · 02 구현 스펙 §2 · §3 S2. 한때 창 맨 위 줄에 흰 카드(머리 카드)가 떠 화면의 이름 · 할 일을 들었고, 패널 토글은
+  // 레일을 따라 그 카드 안팎을 오갔다. 이제 화면의 이름 · 할 일은 카드 없이 머리 줄에 바로 서고 토글은 늘 그 오른쪽 맨 끝이다. 사전이
+  // 「머리 카드」를 항목으로 두면 다음 사람이 그 카드를 되세우고, 「카드 머리」(판 안 본문 맨 위 줄)와 머리 줄을 가르지 않으면 두 말이
+  // 한 자리를 부른다. 토글을 옛 자리(레일 맨 위 · 머리 카드 밖)로 부르면 다음 사람이 레일 위에 되돌린다.
+  it("「머리 카드」를 걷어 머리 줄의 피할 말로 두고, 머리 줄이 카드 머리와 갈리며, 패널 토글이 머리 줄 오른쪽 맨 끝에 선다", () => {
+    expect(names).not.toContain("머리 카드");
+    expect(bodyOf("머리 줄")).toContain("_피할 말_: 위 막대, 머리 카드");
+    expect(refused).toContain("머리 카드");
+    expect(bodyOf("머리 줄")).toContain("카드 없이 이 줄에 바로 선다");
+    expect(bodyOf("머리 줄")).toContain("_카드 머리와 가른다._");
+    expect(bodyOf("패널 토글")).toContain("머리 줄 오른쪽 맨 끝");
     expect(bodyOf("패널 토글")).not.toContain("레일 맨 위");
     expect(bodyOf("레일")).not.toContain("맨 위에 패널 토글");
+    // 피할 말은 그 말을 쓰는 줄 하나에만 남는다 — 다른 항목이 아직 「머리 카드」로 부르면 사전이 거부한 말을 사전이 쓴다.
+    expect(doc.split("\n").filter((line) => line.includes("머리 카드"))).toEqual(["_피할 말_: 위 막대, 머리 카드"]);
+  });
+
+  // 02 구현 스펙 §2. Processes 화면 맨 위의 합계 추이 타일은 「합계 카드」다 — Thread 화면의 「요약 카드」(Work 카드를 바꾼 것)와 말이 겹치지
+  // 않게 했다. 사전이 둘을 같은 말로 부르면 다음 사람이 한쪽을 고칠 때 다른 쪽을 건드린다.
+  it("Processes 맨 위의 타일은 「합계 카드」이고 「요약 카드」라 부르지 않는다", () => {
+    expect(bodyOf("Processes")).toContain("화면 맨 위 합계 카드");
+    expect(bodyOf("Processes")).not.toContain("요약 카드");
+  });
+
+  // 02 구현 스펙 §2 · §3 · 03 구현 스펙 §2 · §3. 틀이 하나다 — 크롬 맨 위 44 줄(머리 줄)에 신호등 · 셸 컨트롤 · 지금 화면의 이름 · 할 일이
+  // 서고, 그 아래 크롬 위에 뜬 흰 면 하나(흰 판)에 화면 본문만 든다. 사이드바는 판 밖 크롬 위에 머리 줄 왼쪽 칸과 한 기둥으로 선다. 사전이 머리
+  // 줄을 본문 위의 흰 막대로 부르면 다음 사람이 이름을 판 안 본문 위에 되세우고, 판이 사이드바를 품는다고 말하면 사이드바를 판 안에 되들여
+  // 길잡이가 판 테두리로 두 덩어리가 된다(02 결정 「시안 — 사이드바는 크롬 위에」). Thread 화면의 「위 막대」도 이 줄이다.
+  it("「머리 줄」이 크롬 맨 위 줄이고 「흰 판」이 본문만 품으며 사이드바는 판 밖 크롬 위에 선다", () => {
+    expect(bodyOf("머리 줄")).toContain("크롬 맨 위 44 줄");
+    for (const piece of ["신호등", "셸 컨트롤", "지금 화면의 이름", "그 화면의 할 일"]) {
+      expect(bodyOf("머리 줄"), piece).toContain(piece);
+    }
+    expect(bodyOf("머리 줄")).toContain("_피할 말_: 위 막대");
+    // 이름의 자리 — 사이드바가 열려 있으면 흰 판 왼쪽 끝과 같은 자리다(사이드바가 판 밖으로 나가 그 끝이 판의 끝이다).
+    expect(bodyOf("머리 줄")).toContain("흰 판 왼쪽 끝과 같은 자리");
+    expect(bodyOf("흰 판")).toContain("머리 줄 아래 크롬 위에 뜬 흰 면 하나");
+    expect(bodyOf("흰 판")).toContain("화면 본문이 그 안에 든다");
+    expect(bodyOf("흰 판")).toContain("사이드바는 판 밖 크롬 위에, 머리 줄 왼쪽 칸과 한 기둥으로 선다");
+    expect(bodyOf("흰 판")).toContain("판이 창 왼쪽 끝 가까이까지 넓어진다");
+    expect(bodyOf("흰 판")).not.toContain("사이드바와 화면 본문이 그 안에 든다");
+  });
+
+  // 02 구현 스펙 §2 · §4 · §5. 사이드바 맨 위가 거르기 머리 없이 세 행(위 줄)이고, 「내 차례」 행이 옛 「전체 | 내 차례」 거르기를 한다. 사전이
+  // 위 줄을 모르면 다음 사람이 그 자리에 머리를 되세우거나 「내 차례」 행을 모아 보기 화면으로 부른다. 사람 메뉴는 사람 줄(얼굴 · 이름 ·
+  // 꺾쇠)에서 위로 열리고 메모리 합계가 그 안 Processes 끝에 선다 — 사전이 옛 자리(사람 줄 오른쪽의 메모리)를 말하면 다음 사람이 그것을
+  // 바닥 줄에 되돌린다. 알림 띠는 위 줄 아래에 선다.
+  it("「위 줄」이 사이드바 맨 위 세 행이고, 「사람 메뉴」가 사람 줄에서 위로 열리며 Processes 끝에 메모리 합계를 든다", () => {
+    for (const row of ["새 Thread", "내 차례", "Library"]) expect(bodyOf("위 줄"), row).toContain(row);
+    expect(bodyOf("위 줄")).toContain("사이드바 맨 위 세 행");
+    expect(bodyOf("위 줄")).toContain("거르기 머리는 없다");
+    expect(bodyOf("사람 메뉴")).toContain("위로 열리는 메뉴");
+    expect(bodyOf("사람 메뉴")).toContain("메모리 합계");
+    // 가는 곳에 `Space`가 `Projects` 다음으로 선다(03 구현 스펙 §2 · §4).
+    expect(bodyOf("사람 메뉴")).toContain("`Projects`·`Space`·`Terminal`·`Processes`·`Archive`");
+    expect(bodyOf("알림 띠")).toContain("위 줄 아래");
+  });
+
+  // 02 구현 스펙 §2 · §7. v1 Work 카드를 Codex 요약 카드로 바꿨다 — Work 없는 Thread에도 서고, 열림은 Work가 아니라 Thread마다 기억한다.
+  // 사전이 옛 말을 그대로 두면 다음 사람이 「Work의 자리」로 읽어 Work 없는 Thread에서 카드를 걷거나 기억을 Work로 되돌린다. Processes의
+  // 「맨 위 요약 카드」는 합계 카드라 불러 두 말이 겹치지 않는다.
+  it("「요약 카드」가 등재돼 있고 「Work 카드」를 거부하며, Work 없는 Thread · Thread마다 기억을 말한다", () => {
+    expect(names).not.toContain("Work 카드");
+    expect(refused).toEqual(expect.arrayContaining(["Work 카드", "Work 패널"]));
+    for (const piece of ["Work 없는 Thread면 결과물 · 소스만", "Thread마다 기억한다", "「모두 보기」", "보관됨"]) {
+      expect(bodyOf("요약 카드"), piece).toContain(piece);
+    }
+    expect(bodyOf("Processes")).toContain("합계 카드");
+    expect(doc).not.toMatch(/Work 카드(?!, Work 패널)/);
+  });
+
+  // 02 구현 스펙 §2 · §4(S8 · S11) · 티켓 05. 사이드바 줄의 상태가 오른쪽 끝 하나로 모였다 — 사전이 그 하나를 모르면 다음 사람이 줄에 점 ·
+  // 수 · 굵은 제목을 되세운다. Work 줄의 표시가 셸 신호를 같은 차례로 접는 것과, Work 상태(draft …)가 이 표시가 아닌 것을 든다.
+  it("「상태 표시」가 줄마다 오른쪽 끝 하나이고, 넷과 그 차례 · 셸 신호 · 멈춤 · 빨강을 말하며 Work 상태와 갈린다", () => {
+    for (const piece of ["오른쪽 끝의 표시 하나", "「내 차례」 알약", "스피너", "「실패」 글자", "파란 점"]) {
+      expect(bodyOf("상태 표시"), piece).toContain(piece);
+    }
+    expect(bodyOf("상태 표시")).toContain("내 차례 › 도는 중 › 실패 › 새 결과");
+    expect(bodyOf("상태 표시")).toContain("셸 신호");
+    expect(bodyOf("상태 표시")).toContain("멈춘 Thread에는 서지 않는다");
+    expect(bodyOf("상태 표시")).toContain("빨강은 「실패」 글자에만");
+    expect(bodyOf("상태 표시")).toContain("_Work 상태와 가른다._");
   });
 
   it("문서 어디에도 「패널 탭」이 _피할 말_ 줄 밖에 남지 않는다", () => {
@@ -360,19 +605,26 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(notation).toContain("탭 줄");
   });
 
-  it("대문자 층이 main nav를 든다", () => {
-    // main nav 항목은 사이드바에서 **가는 곳**의 이름이라 대문자다(US 59). 예시가 그것을 들지
-    // 않으면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다 — 한 화면에 대문자
+  it("소문자 가족이 탭 줄과 레일 칸의 `spec` · `files`를 든다", () => {
+    // three-axes 티켓 17이 탭 줄과 레일 칸에 `chat`을 세웠고 v1 티켓 08이 걷었다. 예시가 걷힌 칸을 들면 「한 가족」을 지금
+    // 화면에서 확인할 수 없다.
+    expect(uppercase).toContain("탭 줄과 레일 칸 — `spec` · `files`");
+  });
+
+  it("대문자 층이 사람 메뉴를 든다", () => {
+    // 사람 메뉴 항목은 **가는 곳**의 이름이라 대문자다(US 59 — 한때 사이드바 위 main nav였고 v1 티켓 07이 사람 메뉴로 옮겼다).
+    // 예시가 그것을 들지 않으면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다 — 한 화면에 대문자
     // `Terminal`과 소문자 `spec`이 함께 서는 자리가 그 층의 갈림이다.
     expect(uppercase).toContain("`Projects`");
     expect(uppercase).toContain("`Archive`");
   });
 
-  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). **한 문장에서 넷을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가
-  // 빠지거나 다른 것이 끼어도) 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
-  it("대문자 층이 main nav 넷을 한 문장으로 든다", () => {
+  // `Processes`가 main nav에 서며 넷이 됐다(티켓 26). 넷은 v1 티켓 07에서 그대로 사람 메뉴로 갔고, 03이 `Space`를 `Projects` 다음에 더해
+  // 다섯이다(03 구현 스펙 §4). **한 문장에서 다섯을 함께 본다**: 낱말마다 재면 나열이 낡아도(하나가 빠지거나 다른 것이 끼어도) 초록이다.
+  // 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 사람 메뉴 다섯을 한 문장으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(
-      "main nav는 `Projects`·`Terminal`·`Processes`·`Archive` 넷이다",
+      "사람 메뉴의 가는 곳은 `Projects`·`Space`·`Terminal`·`Processes`·`Archive` 다섯이다",
     );
   });
 
@@ -407,5 +659,12 @@ describe("사전이 설정의 사실과 맞는다", () => {
   // 같은 쓰임이라 대문자 층도 탭 가족도 아니다.
   it("표기 절의 설정 nav 라벨 나열에 `spec 레이아웃`이 있다", () => {
     expect(notation).toMatch(/설정 nav[^\n]*`에이전트 훅`·`spec 레이아웃`/);
+  });
+
+  // three-axes 티켓 25가 다섯째 줄 「대화」를 더했고 v1 티켓 08이 걷었다(S3). 나열의 끝이 다시 `spec 레이아웃`이다(화면의 차례와 같다 —
+  // `features/settings/pages.ts`).
+  it("표기 절의 설정 nav 라벨 나열 끝이 `spec 레이아웃`이다", () => {
+    expect(notation).toMatch(/설정 nav[^\n]*`spec 레이아웃`\)/);
+    expect(notation).not.toContain("`대화`");
   });
 });

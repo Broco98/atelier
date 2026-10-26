@@ -93,9 +93,9 @@ describe("본문 줄이 가는 곳", () => {
 describe("work 줄이 가는 곳", () => {
   // 결정 14·77 · #156 수용 기준 2(「문서·탭·분할이 살아 있다」). **문서 줄과 다른 일이다** —
   // 여기서는 문서를 안 골랐으므로 spec으로 떨어지지 않고, 그 work을 마지막으로 보던 화면이
-  // **셋 다** 그대로 선다. 주소를 짓는 모양이 사이드바의 work 행과 **같아야 한다**
-  // (`SidebarWorkList`의 `goTo`): work을 고르는 길이 둘인데 도착지가 갈리면 어긋나도
-  // 화면에 티가 안 난다.
+  // **셋 다** 그대로 선다. 주소를 짓는 모양이 work을 여는 다른 문들과 **같아야 한다**
+  // (`recallSearch`): work을 여는 길이 여럿인데 도착지가 갈리면 어긋나도 화면에 티가 안 난다.
+  // 사이드바의 Work 줄은 이제 그 Work의 대화로 간다(v1 티켓 37) — 옛 작업 화면은 이 줄로 연다.
   it("그 work을 마지막으로 보던 화면으로 간다 — 문서·탭·분할 셋 다", () => {
     rememberView("터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md", code: null });
     expect(hitTarget(workHit({ slug: "터미널보던것" }))).toEqual({
@@ -121,6 +121,16 @@ describe("work 줄이 가는 곳", () => {
       to: "/archive/$slug",
       params: { slug: "옛일" },
       search: {},
+    });
+  });
+});
+
+describe("Thread 줄이 가는 곳", () => {
+  // v1 구현 스펙 S29 · 티켓 07. **그 Thread로 간다** — 사이드바의 Thread 줄을 누른 것과 같은 주소다(`SidebarThreads`).
+  it("Thread 줄은 그 Thread 화면으로 간다", () => {
+    expect(hitTarget({ kind: "thread", id: "20261023-100000", title: "환불 API 버그 고쳐줘", archived: false })).toEqual({
+      to: "/threads/$id",
+      params: { id: "20261023-100000" },
     });
   });
 });

@@ -1,11 +1,22 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { File as FileView, Virtualizer, WorkerPoolContext, type FileOptions } from "@pierre/diffs/react";
+import {
+  File as FileView,
+  PatchDiff,
+  Virtualizer,
+  WorkerPoolContext,
+  type FileDiffOptions,
+  type FileOptions,
+} from "@pierre/diffs/react";
+import type { FileDiffMetadata } from "@pierre/diffs";
 import { getOrCreateWorkerPoolSingleton, type WorkerPoolManager } from "@pierre/diffs/worker";
 // Vite가 워커를 따로 묶어 그 주소를 준다 — 모듈 워커라 `vite.config.ts`의 `worker.format`이 `es`다.
 import highlightWorkerUrl from "@pierre/diffs/worker/worker.js?worker&url";
 import { cn } from "@/lib/utils";
 import { bodyColumn } from "@/features/works/SpecViewer";
+import { codeApi } from "./api";
 import { CODE_THEME, registerCodeTheme } from "./code-theme";
+import { baseContentsOf } from "./diff-files";
+import { koreanSeparators } from "./diff-separators";
 
 /**
  * **강조 상한** — 이보다 줄이 많은 파일은 평문이다(결정 35 — 2만 줄). 라이브러리가 줄 수로 견준다(`tokenizeMaxLength`). 한 줄이
@@ -108,9 +119,80 @@ export function HighlightedCode({ path, content, wide }: { path: string; content
         contentClassName={cn(bodyColumn(wide), "py-4")}
       >
         {/* 범위 토큰(`--diffs-*`)이 이 상자에서 서고, 강조 결과가 서는 shadow DOM 안으로 상속된다(`index.css`).
-            -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 줄 번호의 자리다(`SourceView`와 같다). */}
-        <div data-code-view="" className="-ml-12">
+            줄 번호 열은 글 거터 20 안쪽, 글이 서는 줄에서 시작한다(`SourceView`와 같다 — codex-ds 결정 27). 한때 -ml-12로 옛 좌측
+            여백(48)만큼 되돌렸는데, 거터가 20이 된 뒤로는 그 열이 스크롤 상자 밖으로 나가 줄 번호가 잘렸다(v1 티켓 35에서 고침). */}
+        <div data-code-view="">
           {phase === "starting" ? <PlainCode content={content} /> : <FileView file={file} options={options} />}
+        </div>
+      </Virtualizer>
+    </WorkerPoolContext.Provider>
+  );
+}
+
+/**
+ * diff 보기의 옵션(v1 티켓 35 · 캔버스 Layout-Expand 보드) — 파일 보기와 같은 엔진 · 색 · 강조 상한이고, 한 열(unified)에 줄 번호 두 칸과
+ * −/+ 표(`classic` — 보드 `.dl .sg`)다. 접힌 줄은 덩어리 사이의 「변경 없는 N줄」 줄이 펼친다(`line-info`) — 라이브러리는 그 글을
+ * 영어로 그리고 바꾸는 길이 걷힌 `custom`뿐이라, 그린 뒤에 그 글자만 옮긴다(`onPostRender` · `diff-separators.ts` — v1 티켓 46).
+ */
+const DIFF_OPTIONS: FileDiffOptions<undefined, undefined> = {
+  theme: CODE_THEME,
+  themeType: "light",
+  preferredHighlighter: ENGINE,
+  tokenizeMaxLength: HIGHLIGHT_MAX_LINES,
+  overflow: "scroll",
+  disableFileHeader: true,
+  enableGutterUtility: false,
+  diffStyle: "unified",
+  diffIndicators: "classic",
+  hunkSeparators: "line-info",
+  onPostRender: (node) => koreanSeparators(node),
+};
+
+/**
+ * **바뀐 파일 하나의 diff**(v1 티켓 35 · 구현 스펙 §15 「변경」 — 넓힌 카드의 변경 보기). `read_work_diff`의 patch를 `@pierre/diffs`의
+ * patch 보기에 넣고, 파일 보기(`HighlightedCode`)와 같은 워커 풀 · 가상화 틀 · 열 규격이다.
+ *
+ * **숨긴 줄 펼치기** — patch는 덩어리 둘레만 싣는다. 사람이 덩어리 사이의 접힌 줄을 펼치면 라이브러리가 양쪽 파일 전체를 달라고
+ * 하고(`loadDiffFiles`), 그때 worktree의 파일을 읽어 새 쪽으로, 거기서 patch를 거꾸로 되돌린 글을 옛 쪽으로 건넨다(`baseContentsOf`).
+ * 읽은 파일이 patch와 어긋나면(그사이 다시 바뀌었다) 펼치지 않는다 — 감시가 곧 새 patch를 가져온다.
+ */
+export function HighlightedDiff({
+  slug,
+  project,
+  path,
+  patch,
+  wide,
+}: {
+  slug: string;
+  project: string;
+  path: string;
+  patch: string;
+  wide: boolean;
+}) {
+  const [workers] = useState(highlightPool);
+  const phase = usePoolPhase(workers);
+  const onMainThread = phase === "mainThread";
+  const options = useMemo<FileDiffOptions<undefined, undefined>>(
+    () => ({
+      ...DIFF_OPTIONS,
+      ...(onMainThread && { tokenizeMaxLength: HIGHLIGHT_MAX_LINES_MAIN_THREAD }),
+      loadDiffFiles: async (diff: FileDiffMetadata) => {
+        const file = await codeApi.readFile(slug, project, path);
+        if (file.kind !== "text") throw new Error(`worktree의 파일을 글로 읽지 못했어요: ${file.kind}`);
+        return {
+          oldFile: { name: diff.prevName ?? path, contents: baseContentsOf(file.content, diff) },
+          newFile: { name: path, contents: file.content },
+        };
+      },
+    }),
+    [onMainThread, slug, project, path],
+  );
+  return (
+    <WorkerPoolContext.Provider value={workers}>
+      <Virtualizer className="min-h-0 flex-1 overflow-y-auto scroll-quiet" contentClassName={cn(bodyColumn(wide), "py-4")}>
+        {/* 범위 토큰(`--diffs-*`)은 파일 보기와 같은 상자에서 선다(`index.css`의 `[data-code-view]`). 줄 번호 열의 자리도 같다. */}
+        <div data-code-view="">
+          {phase === "starting" ? <PlainCode content={patch} /> : <PatchDiff patch={patch} options={options} />}
         </div>
       </Virtualizer>
     </WorkerPoolContext.Provider>

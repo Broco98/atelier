@@ -8,7 +8,6 @@ import {
   processesTitle,
   recordClipboard,
   unknownIpcCalls,
-  navButton,
   다떴다,
   띠,
   줄차례,
@@ -17,21 +16,23 @@ import {
   포커스자리,
   행버튼,
   type 포커스자리 as 자리,
+  Work줄이가는곳,
 } from "./harness";
 
 // codex-ds 티켓 32 — **목록은 ↑↓, 영역은 Tab으로 다닌다**(codex-ds 스펙 §9 「키보드」 · S10). 창의 Tab은 영역 차례로 간다 — 창
-// 컨트롤 → 사이드바 → 머리 카드 → 머리 줄 → 본문 카드 → 패널 → 레일이고, 영역 안은 DOM 차례다. 목록 다섯(사이드바 work 목록 · main nav ·
-// 프로젝트 목록 · Archive 목록 · spec 트리)은 저마다 **Tab 정류장 하나**이고(roving tabindex — `@/lib/roving`), 목록 안은 ↑↓로 옮기고
-// Enter로 연다. 트리는 →가 펴고 ←가 접는다. 행 안 버튼(고정 · 경로 복사)은 Tab에서 빠지고, 그 동작은 행의 대상 메뉴(⇧F10 · 메뉴 키)에
+// 컨트롤 → 머리 줄 → 사이드바 → 본문 → 패널 → 레일이고, 영역 안은 DOM 차례다(02 결정 「03」 — 머리 줄이 판 위 크롬에 한 줄이라
+// DOM이 보이는 차례를 따른다. 한때 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄이었다). 목록 넷(사이드바 work 목록 · main nav ·
+// Archive 목록 · spec 트리)은 저마다 **Tab 정류장 하나**이고(roving tabindex — `@/lib/roving`), 목록 안은 ↑↓로 옮기고 Enter로 연다.
+// Projects 목록은 03 판에서 표가 됐다 — 줄마다 이름 링크와 ⋯가 정류장이다(03 결정 「10」 — Space 목록과 같다). 트리는 →가 펴고 ←가 접는다. 행 안 버튼(고정 · 경로 복사)은 Tab에서 빠지고, 그 동작은 행의 대상 메뉴(⇧F10 · 메뉴 키)에
 // 있다 — 고정은 work 메뉴의 「고정」, 경로 복사는 spec 트리 파일 행 메뉴의 「경로 복사」다(구현 노트 Q16).
 //
 // **Tab은 진짜 키로 누른다.** `.focus()`로 주면 Tab이 지나치는 자리(WebKit의 맨 `<button>` — `@/lib/roving` 머리말)도 초록이 된다.
 // 차례는 포커스를 내려놓고 Tab을 누르며 선 자리를 적어(`탭차례`) 그 자리를 품은 상자로 영역을 가른다(`포커스자리`).
 //
-// 작업 화면은 칸이 `spec` · `files` 둘이라 레일이 선다(git-integration 결정 29) — 패널 토글이 머리 카드 밖 머리 줄로 나가고 레일의 칸이
+// 작업 화면은 칸이 `spec` · `files` 둘이라 레일이 선다(git-integration 결정 29) — 패널 토글은 머리 줄 할 일 묶음의 끝이고 레일의 칸이
 // 차례 끝에 선다. 레일의 모양은 진열대(`rail.spec.ts`)가 잰다.
 
-const [billing, ledger] = PROJECTS;
+const [billing] = PROJECTS;
 const [shipped, bare] = ARCHIVE;
 const [pinnedWork, plainWork, multiWork] = WORKS;
 
@@ -75,7 +76,7 @@ async function 항목으로(page: Page, name: string): Promise<Locator> {
 
 // ── 영역 차례 ──
 
-test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 → 머리 줄 → 본문 → 패널 → 레일 차례이고, 목록마다 한 번 앉으며 행 안 버튼에는 안 앉는다", async ({
+test("작업 화면의 Tab은 창 컨트롤 → 머리 줄 → 사이드바 → 본문 → 패널 → 레일 차례이고, 목록마다 한 번 앉으며 행 안 버튼에는 안 앉는다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
@@ -83,16 +84,27 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
   await expect(트리행(page, "overview.md")).toBeVisible();
 
   const 자리들 = await 탭차례(page);
-  expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "머리 줄", "본문", "패널", "레일"]);
-  // 머리 줄(머리 카드 밖)의 정류장은 패널 토글 하나이고, 레일은 칸마다 앉는다.
-  expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual(["작업 패널 접기"]);
+  expect(영역차례(자리들)).toEqual(["창 컨트롤", "머리 줄", "사이드바", "본문", "패널", "레일"]);
+  // 머리 줄의 정류장은 화면 자리의 것이다 — 이은 Space(03 구현 스펙 §10 — 「Space 없음」도 누르는 자리다) · 이름 · 상태 · 작업 메뉴 · 세로선
+  // 너머 분할, 그리고 묶음 끝의 패널 토글(02 티켓 03). 레일은 칸마다
+  // 앉는다. **분할도 앉는다**(02 코드 리뷰 C1) — 맨 버튼이라 `tabindex`를 명시해야 macOS WebKit의 Tab이 선다(`@/lib/roving` 머리말). 한때
+  // 그것을 잃어 macOS에서는 빠지고 맨 버튼에도 서는 리눅스 WebKit에서만 섰다 — 이제 두 플랫폼이 같은 차례다.
+  expect(자리들.filter(({ 영역 }) => 영역 === "머리 줄").map(({ 이름 }) => 이름)).toEqual([
+    "Space: 없음",
+    pinnedWork.title,
+    pinnedWork.status,
+    "작업 메뉴",
+    "분할",
+    "작업 패널 접기",
+  ]);
   expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
-  // 사이드바는 nav 하나 · work 목록 하나 · 바닥 Settings다 — nav의 정류장은 첫 항목(켜진 것이 없다), 목록의 정류장은 고른 행이다.
-  // 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
+  // 사이드바는 위 줄 nav 하나 · work 목록 하나 · 바닥 사람 줄이다(v1 티켓 07 · 42 — 맨 위의 검색 칸은 46이 걷었다, 검색은 창
+  // 컨트롤의 🔍다. 「전체 | 내 차례」 마디는 02 티켓 04가 걷어 「내 차례」가 nav의 한 줄이 됐다). nav의 정류장은 첫 항목(켜진 것이
+  // 없다), 목록의 정류장은 고른 행이다. 구획 머리 · 다른 행 · nav의 나머지는 ↑↓로 간다(아래 검사들).
   expect(자리들.filter(({ 영역 }) => 영역 === "사이드바").map(({ 이름, 행 }) => [이름, 행])).toEqual([
-    ["Projects", "projects"],
+    ["새 Thread", "new-thread"],
     [pinnedWork.title, pinnedWork.slug],
-    ["Settings", null],
+    ["홍길동 — 사람 메뉴", null],
   ]);
   // 패널은 머리의 버튼 하나와 트리 하나다 — 트리의 정류장은 연 문서의 행이다.
   expect(자리들.filter(({ 영역 }) => 영역 === "패널").map(({ 이름, 행 }) => [이름, 행])).toEqual([
@@ -107,12 +119,14 @@ test("작업 화면의 Tab은 창 컨트롤 → 사이드바 → 머리 카드 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("프로젝트 목록 · Archive 목록 · Archive의 spec 트리도 Tab이 한 번 앉는다 — 고른 행에", async ({ page }) => {
+test("Archive 목록 · Archive의 spec 트리는 Tab이 한 번 앉고 — 고른 행에 — Projects 표는 줄마다 이름 링크 · ⋯에 앉는다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${billing.slug}`);
-  const 프로젝트행 = page.locator(`button[data-project-row="${billing.slug}"]`);
-  await expect(프로젝트행).toBeVisible();
-  expect(정류장(await 탭차례(page), [billing.slug, ledger.slug])).toEqual([billing.slug]);
+  await page.goto("/projects");
+  await expect(page.getByRole("table", { name: "Project 목록", exact: true })).toBeVisible();
+  // 본문의 정류장 — 찾기 · 「Project 추가」 뒤에 줄마다 이름 링크와 그 줄의 ⋯다(roving 목록이 아니다).
+  expect(
+    (await 탭차례(page)).filter(({ 영역 }) => 영역 === "본문").map(({ 이름 }) => 이름),
+  ).toEqual(["Project 찾기", "Project 추가", ...PROJECTS.flatMap((one) => [one.name, `${one.name} 메뉴`])]);
 
   await page.goto(`/archive/${shipped.slug}`);
   await expect(트리행(page, "record.md")).toBeVisible();
@@ -121,7 +135,7 @@ test("프로젝트 목록 · Archive 목록 · Archive의 spec 트리도 Tab이 
   // 트리의 정류장은 연 문서(기록)의 행이다.
   const 트리키 = ["record.md", "spec", "spec/tickets", "spec/tickets/할일.md", "spec/목업", "spec/목업/조각.html", "spec/증거", "spec/증거/샷.png"];
   expect(정류장(자리들, 트리키)).toEqual(["record.md"]);
-  expect(영역차례(자리들)).toEqual(["창 컨트롤", "사이드바", "머리 카드", "본문", "패널"]);
+  expect(영역차례(자리들)).toEqual(["창 컨트롤", "머리 줄", "사이드바", "본문", "패널"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -150,13 +164,9 @@ async function 칸차례(page: Page, 목록: string): Promise<string[]> {
 }
 
 // 내용 | 목록 카드(codex-ds 결정 28)의 두 칸은 DOM 차례가 보이는 차례다 — 왼쪽 내용 칸을 다 지나고 오른쪽 목록 칸으로 간다. 목록
-// 칸을 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다.
-test("프로젝트 · Archive의 본문 카드 안 Tab은 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다", async ({ page }) => {
+// 칸을 CSS로 오른쪽에 옮겨 세우면 Tab이 오른쪽에서 왼쪽으로 거슬러 간다. 그 카드는 이제 Archive 하나다(Projects는 03 판에서 표 하나).
+test("Archive의 본문 카드 안 Tab은 왼쪽 내용 칸을 지나 오른쪽 목록 칸으로 간다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/projects/${billing.slug}`);
-  await expect(page.locator(`button[data-project-row="${billing.slug}"]`)).toBeVisible();
-  expect(await 칸차례(page, "프로젝트 목록")).toEqual(["내용", "목록"]);
-
   await page.goto(`/archive/${shipped.slug}`);
   await expect(트리행(page, "record.md")).toBeVisible();
   expect(await 칸차례(page, "아카이브 목록")).toEqual(["내용", "목록"]);
@@ -176,7 +186,7 @@ test("레일이 서면 Tab은 패널 다음에 레일로 간다 — 칸마다 �
   await expect(showcase.getByRole("group", { name: "레일", exact: true })).toBeVisible();
 
   const 자리들 = await 탭차례(page, { 범위: "[data-rail-fixture]", 최대: 160 });
-  // 레일이 서면 패널 토글은 머리 카드 밖 머리 줄에 선다(`rail.spec`).
+  // 레일이 서도 패널 토글은 머리 줄 할 일 묶음의 끝이다(`rail.spec`).
   expect(영역차례(자리들)).toEqual(["머리 줄", "패널", "레일"]);
   expect(자리들.filter(({ 영역 }) => 영역 === "레일").map(({ 이름 }) => 이름)).toEqual(["spec", "files"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -232,7 +242,9 @@ test("알림 띠의 줄과 ⌄에도 Tab이 앉고, 줄의 ⇧F10 · 메뉴 키�
     await 다떴다(menu);
     const spot = (await 줄들.nth(0).boundingBox())!;
     const card = (await menu.boundingBox())!;
-    expect([Math.round(card.x), Math.round(card.y)], key).toEqual([Math.round(spot.x), Math.round(spot.y + spot.height)]);
+    // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리) — 흰 판의 테두리(0.5) 뒤로
+    // 대상이 반 픽셀에 서서 카드는 그 아래 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+    expect([Math.round(card.x), Math.round(card.y)], key).toEqual([Math.floor(spot.x), Math.floor(spot.y + spot.height)]);
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(줄들.nth(0), key).toBeFocused();
@@ -277,27 +289,30 @@ test("사이드바 work 목록은 ↑↓로 구획 머리와 행을 지나고, �
   await 간다(page, "ArrowDown", pinnedWork.slug);
   await 간다(page, "ArrowDown", 작업머리);
   await 간다(page, "ArrowDown", plainWork.slug);
+  // 행의 Enter는 그 Work의 Thread로 간다 — 이은 Thread가 없으면 그 Work를 고른 새 Thread다(v1 티켓 37).
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}(\\?|$)`));
+  await expect(page).toHaveURL(Work줄이가는곳(plainWork.slug));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("main nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
+// nav는 「새 Thread」 · 「내 차례」 · 「Library」 셋이다(v1 티켓 07 · 19, 02 티켓 04 — 「내 차례」가 마디에서 nav로 왔다). 지금
+// 화면들로 가는 옛 main nav 넷은 사람 메뉴로 갔다(S27).
+test("nav는 ↑↓로 항목을 지나고 Enter가 그 화면으로 간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=spec`);
-  await 탭으로(page, navButton(page, "Projects"));
-  await 간다(page, "ArrowUp", "projects");
-  await 간다(page, "ArrowDown", "terminal");
-  await 간다(page, "ArrowDown", "processes");
-  await 간다(page, "ArrowDown", "archive");
-  await 간다(page, "ArrowDown", "archive");
-  // Archive 화면은 들어서면 첫 아카이브를 고른다 — 주소가 그 아래로 간다.
+  await 탭으로(page, page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }));
+  await 간다(page, "ArrowUp", "new-thread");
+  await 간다(page, "ArrowDown", "mine");
+  await 간다(page, "ArrowDown", "library");
+  await 간다(page, "ArrowDown", "library");
+  await 간다(page, "ArrowUp", "mine");
+  await 간다(page, "ArrowUp", "new-thread");
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/archive(\/|\?|$)/);
+  await expect(page).toHaveURL("/");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 설정 nav는 목록 다섯 밖이지만 main nav와 같은 `SidebarItem`이 같은 자리에 갈아 서서 같은 규칙이다(`Sidebar`의 `settingsRoving`).
+// 설정 nav는 목록 다섯 밖이지만 nav와 같은 `SidebarItem`이 같은 자리에 갈아 서서 같은 규칙이다(`Sidebar`의 `settingsRoving`).
 test("설정 nav도 Tab이 켜진 항목에 한 번 앉고, ↑↓로 항목을 지나며 Enter가 그 항목을 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/notifications");
@@ -319,18 +334,6 @@ test("설정 nav도 Tab이 켜진 항목에 한 번 앉고, ↑↓로 항목을 
   await 간다(page, "ArrowDown", "spec-layout");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/settings/spec-layout");
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("프로젝트 목록은 ↑↓로 행을 지나고 Enter가 그 프로젝트를 연다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/projects/${billing.slug}`);
-  await 탭으로(page, page.locator(`button[data-project-row="${billing.slug}"]`));
-  await 간다(page, "ArrowUp", billing.slug);
-  await 간다(page, "ArrowDown", ledger.slug);
-  await 간다(page, "ArrowDown", ledger.slug);
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(`/projects/${ledger.slug}`);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -459,18 +462,10 @@ test("spec 트리 파일 행에서 ⇧F10을 누르면 「경로 복사」 메�
 
 // ── F2는 그대로 ──
 
-test("↓로 옮겨 간 프로젝트 행 · work 행에서도 F2가 그 행의 이름을 고치고, Esc면 포커스가 그 행으로 돌아온다", async ({ page }) => {
+// Project 목록 행의 F2는 03 판에서 걷혔다 — 이름 바꾸기는 상세 제목이다(03 결정 「10」 · `inline-rename.spec.ts`).
+test("↓로 옮겨 간 work 행에서도 F2가 그 행의 이름을 고치고, Esc면 포커스가 그 행으로 돌아온다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${billing.slug}`);
-  await 탭으로(page, page.locator(`button[data-project-row="${billing.slug}"]`));
-  await 간다(page, "ArrowDown", ledger.slug);
-  await page.keyboard.press("F2");
-  const 프로젝트이름 = page.getByRole("textbox", { name: "프로젝트 이름", exact: true });
-  await expect(프로젝트이름).toBeFocused();
-  await expect(프로젝트이름).toHaveValue(ledger.name);
-  await page.keyboard.press("Escape");
-  await expect(page.locator(`button[data-project-row="${ledger.slug}"]`)).toBeFocused();
-
   await 탭으로(page, 목록행(page, 고정머리));
   await 간다(page, "ArrowDown", pinnedWork.slug);
   await page.keyboard.press("F2");

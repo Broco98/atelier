@@ -1,10 +1,8 @@
 import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import { useCanGoBack, useRouter } from "@tanstack/react-router";
-import { PANEL_MOTION } from "./panel-layout";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
 import { Hint } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 
 interface HistoryButtonProps {
   label: string;
@@ -13,7 +11,7 @@ interface HistoryButtonProps {
   children: React.ReactNode;
 }
 
-// 갈 수 없으면 흐려지고 눌러도 반응하지 않는다 — 눌러도 아무 일이 없는 버튼을
+// 갈 수 없으면 옅어지고(`fg-titlebar-disabled` #cbcbcb — Codex) 눌러도 반응하지 않는다 — 눌러도 아무 일이 없는 버튼을
 // 활성처럼 보여주지 않는다 (disabled:pointer-events-none은 hover 배경까지 함께 막는다)
 function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProps) {
   return (
@@ -23,7 +21,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       disabled={disabled}
       aria-label={label}
       tabIndex={0}
-      className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring disabled:pointer-events-none disabled:opacity-40"
+      className="icon-button-quiet text-fg-titlebar focus-ring disabled:pointer-events-none disabled:text-fg-titlebar-disabled"
     >
       {children}
     </button>
@@ -41,35 +39,26 @@ interface ShellControlsProps {
   onOpenSearch: () => void;
 }
 
-// 신호등 오른쪽에 붙는 셸 컨트롤 행 — 사이드바 토글 → 뒤로 → 앞으로 → 검색.
-// 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
+// 신호등 오른쪽에 붙는 셸 컨트롤 행 — 사이드바 토글 → 뒤로 → 앞으로 → 검색(02 구현 스펙 §3 — 순서는 지금 Atelier 그대로, 모양은
+// Codex 값: 버튼 28 · 사이 6 · 글리프 `fg-titlebar` #898a8b). 사이드바를 접든 펴든 화면상 자리가 변하지 않는다 (macOS 관행, Codex 배치).
 //
-// **창의 첫 Tab 영역이다** — 그림은 `absolute`로 사이드바 위에 뜨지만 DOM은 사이드바 앞이다(`AppShell`). 칸마다 `tabIndex`를
-// 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 흐려진 뒤로 · 앞으로는 `disabled`라 지난다.
+// **머리 줄 안에 선다**(`ShellHeadRow`의 왼쪽 칸) — 한때 `absolute`로 사이드바 맨 위 띠에 겹쳐 떴다. 자리(신호등 끝에서 16 —
+// `--titlebar-controls-left`)와 전체화면에 들고 날 때 옮겨 가는 박자는 그 칸이 든다. **창의 첫 Tab 영역이다** — 머리 줄이 DOM의 맨
+// 앞이다(`AppShell`). 칸마다 `tabIndex`를 명시한다 — WebKit의 Tab은 `tabindex` 없는 버튼에 서지 않는다(`@/lib/roving` 머리말). 옅어진
+// 뒤로 · 앞으로는 `disabled`라 지난다.
 //
-// 폭을 --titlebar-controls-width에 딱 맞추고 세로도 컨트롤 높이만큼만 차지한다.
-// **칸이 늘면 그 값의 칸 수도 함께 고쳐야 한다**(index.css) — 안 고치면 넘친다.
+// 칸의 수와 크기 · 사이는 index.css의 `[data-titlebar]`가 든다(`--titlebar-controls-width` — 접힌 사이드바의 머리 줄 이름 자리가 그 끝을
+// 읽는다). **칸이 늘면 그 값의 칸 수도 함께 고쳐야 한다** — 안 고치면 이름이 컨트롤 밑으로 든다.
 //
-// 이 상자에도 data-tauri-drag-region이 붙어야 한다. 아래 사이드바의 드래그 띠를 z-20으로
-// 가리기 때문에, 없으면 흐려진 화살표와 버튼 사이 틈이 클릭도 드래그도 안 되는 죽은 구역이 된다
-// (앱을 막 켜면 화살표 둘 다 흐려 신호등 오른쪽 52px가 통째로 그렇게 된다).
-// 값을 주지 않은 형태라 "직접 맞은 곳만" 드래그다 — 활성 버튼은 tauri의 판정이 클릭 요소에서
-// 먼저 끊어 주므로(drag.js의 isClickableElement) 눌림이 그대로 산다.
+// 버튼 사이 틈도 창을 끄는 자리다 — 머리 줄 전체가 `deep`이라(`ShellHeadRow`) 버튼만 tauri의 판정이 클릭 요소에서 먼저 끊어 주고
+// (drag.js의 isClickableElement) 나머지는 끈다. 옅어진 화살표 둘 사이도 그렇다(앱을 막 켜면 둘 다 옅다).
 function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellControlsProps) {
   const router = useRouter();
   const canGoBack = useCanGoBack();
   const canGoForward = useCanGoForward();
 
   return (
-    <div
-      data-tauri-drag-region
-      // 전체화면에 들고 날 때 왼쪽 끝(`--titlebar-controls-left`)이 옮겨 간다 — 같은 값에서 나오는 머리 줄의 왼쪽 여백(`Frame`의
-      // `HeadRow`)과 같은 박자(`PANEL_MOTION`)로 움직여야 둘 사이가 도는 동안 벌어지지 않는다.
-      className={cn(
-        "absolute left-(--titlebar-controls-left) top-(--titlebar-controls-top) z-20 flex w-(--titlebar-controls-width) items-center gap-(--titlebar-control-gap) transition-[left]",
-        PANEL_MOTION,
-      )}
-    >
+    <div className="flex items-center gap-(--titlebar-control-gap)">
       <SidebarToggle open={sidebarOpen} onToggle={onToggleSidebar} />
       {/* 마우스 사이드 버튼이 부르는 window.history.back()과 같은 길로 보낸다 */}
       <HistoryButton label="뒤로" disabled={!canGoBack} onClick={() => router.history.back()}>
@@ -85,7 +74,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
       {/* **뒤로·앞으로와 같은 간격으로 이어 붙는다 — 무리를 가르지 않는다.** 「지나온 길」과
           검색이 다른 성질인 것은 맞지만, 그것으로 간격을 가르는 규칙은 이 행에 없다: 첫 칸의
           사이드바 토글이 이미 히스토리가 아닌데 같은 --titlebar-control-gap으로 서 있다.
-          **가르면 검색 하나가 떨어져 보인다.** 24px 넷뿐인 줄에서 무리를 가르는 틈은
+          **가르면 검색 하나가 떨어져 보인다.** 28px 넷뿐인 줄에서 무리를 가르는 틈은
           「묶였다」가 아니라 「하나가 떨어졌다」로 보인다. (한때 탭 줄의 첫 칸이 이 행 바로 뒤
           같은 거리에서 이어 붙어, 검색 앞만 넓히면 검색이 그 줄의 첫 칸으로 읽혔다 — 탭 줄은
           지금 본문 카드 머리다.)
@@ -95,8 +84,8 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           안 켜진다 — disabled={false}로 부르면 화면에 절대 안 서는 상태를 계약으로만 들고
           있게 된다.
 
-          **떠 있을 때 눌리는 일은 없다.** 팔레트는 `modal-scrim`(z-50)을 깔고 이 행은
-          z-20이라, 그동안 이 자리를 누르면 그 배경이 먼저 받아 팔레트가 닫힌다(바깥 클릭
+          **떠 있을 때 눌리는 일은 없다.** 팔레트는 `modal-scrim`(z-50)을 깔아 머리 줄을
+          덮으므로, 그동안 이 자리를 누르면 그 배경이 먼저 받아 팔레트가 닫힌다(바깥 클릭
           규칙). 그래서 토글로 만들 것이 없다 — 여는 갈래 하나면 된다. 여는 함수 자체도
           같은 setter라 두 번 열려도 한 번 연 것과 같다.
 
@@ -119,7 +108,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
         type="button"
         onClick={onOpenSearch}
         tabIndex={0}
-        className="icon-button-quiet icon-button-xs text-fg-secondary focus-ring"
+        className="icon-button-quiet text-fg-titlebar focus-ring"
       >
         <Search className="size-3.75" />
       </Hint>

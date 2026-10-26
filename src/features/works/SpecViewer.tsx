@@ -29,6 +29,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { HOTKEYS } from "@/lib/hotkeys";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { Hint } from "@/components/ui/tooltip";
+import { codeLang, hastText } from "@/lib/hast";
 import { cn } from "@/lib/utils";
 import { DocTextBox, type DocMenu } from "./DocText";
 import { useHomeDir, useSpecFile } from "./hooks";
@@ -36,6 +37,7 @@ import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "
 import type { CalloutKind, DocBody } from "./doc-refs";
 import { specDirRef, specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
+import { QuotePick, type Quote } from "./QuotePick";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import type { WorkView } from "./types";
 
@@ -60,6 +62,9 @@ interface SpecViewerProps {
   onCopy: (text: string) => void;
   // 문서 글의 우클릭 메뉴가 받는 것 — 경로 줄의 보기 묶음 · 경로 복사와 같은 값이다(`DocText`, codex-ds 티켓 30).
   docMenu: DocMenu;
+  // 고른 글의 「❝ 이 자리를 두고 말하기」를 눌렀다(three-axes 티켓 27) — 그 자리(파일 · 원문 줄 범위 · 글)를 넘긴다. 없으면 단추가
+  // 서지 않는다. 작업 화면은 넘기지 않는다 — Work 안 대화창과 함께 그 연결을 걷었고(v1 티켓 08), 35가 Thread 입력창으로 다시 잇는다(S41).
+  onQuote?: (quote: Quote) => void;
 }
 
 function SpecViewer({
@@ -71,6 +76,7 @@ function SpecViewer({
   onNavigate,
   onCopy,
   docMenu,
+  onQuote,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
@@ -85,6 +91,11 @@ function SpecViewer({
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
+
+  // 스크롤 상자 — 인용 단추가 고른 글을 이 안에서 찾는다(three-axes 티켓 27).
+  const scroller = useRef<HTMLDivElement>(null);
+  // 스크롤 상자 안의 내용 층 — 인용 단추가 이 층 기준으로 서서 글과 함께 구른다(three-axes 티켓 27).
+  const layer = useRef<HTMLDivElement>(null);
 
   const copyRef = useCallback(
     (start: number, end: number) => {
@@ -166,8 +177,16 @@ function SpecViewer({
         </div>
       </div>
     ) : (
-      <DocTextBox menu={docMenu} className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-        <div className="flex min-h-full min-w-0 flex-col">{bodyView(body)}</div>
+      // 구르는 상자(`scroller`)와 그 안의 내용 층(`layer`)은 인용 단추가 고른 글을 찾고 서는 기준이다.
+      <DocTextBox ref={scroller} menu={docMenu} className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+        <div ref={layer} className="relative flex min-h-full min-w-0 flex-col">
+          {bodyView(body)}
+          {/* 글을 고르면 그 곁에 「❝ 이 자리를 두고 말하기」 — 원문 줄 위치를 아는 두 보기(렌더 · 원문)에서만, 받는 쪽이 있을 때만
+              선다(three-axes 티켓 27). */}
+          {onQuote && file && (body === "pretty" || body === "source") && (
+            <QuotePick box={scroller} layer={layer} file={file} mode={body} onQuote={onQuote} />
+          )}
+        </div>
       </DocTextBox>
     )
   );
@@ -421,7 +440,8 @@ export function SourceView({ content, wide = false }: { content: string; wide?: 
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
-            <div key={i} className="flex">
+            // 원문 줄 번호를 표식으로 단다(three-axes 티켓 26 · 27) — 그 줄에서 열기가 이 행으로 굴러가고, 인용이 고른 줄을 이것으로 안다.
+            <div key={i} data-line={i + 1} className="flex">
               {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
                   폭 48px · 우측 여백 16px — 남는 32px이 네 자리 줄번호(`text-code` 13px에서 31.2px)의 자리다 */}
               <span className="sticky left-0 z-10 w-12 shrink-0 select-none bg-surface pr-4 text-right text-fg-tertiary">
@@ -504,7 +524,9 @@ function BlockWrapper({
   return (
     // 첫 블록은 제 위 간격(`spacing`)을 안 든다 — 글이 경로 줄 아래 24(본문 열의 위 20 + 이 상자의 위 4)에서 시작한다(DS `Prose`
     // 「글은 거터 20 · 위 24」).
-    <div className={cn("group relative py-1 first:mt-0", spacing)}>
+    //
+    // 원문 줄 범위를 표식으로 단다(three-axes 티켓 26 · 27) — 인용이 고른 글의 블록을 이것으로 찾는다.
+    <div data-src-start={start} data-src-end={end} className={cn("group relative py-1 first:mt-0", spacing)}>
       {/* 거터는 본문 좌측 여백(bodyColumn의 px — 글 거터 20)이다 — 버튼(16)이 그 안에 오른쪽 정렬로 얹혀 오른쪽 끝이 글의 첫
           x에 닿고, 왼쪽에 4가 남는다. 그 4는 포커스 링(바깥 4 — `focus-halo`)의 자리다: 카드 · 스크롤 상자가 넘침을 잘라
           거터를 꽉 채우면 왼쪽 링이 카드 끝에서 잘린다(`e2e/primitives.spec.ts`). 거터가 20이라 한때의 24 버튼 · 글과 16
@@ -772,9 +794,7 @@ export const PrettyView = memo(function PrettyView({
       ),
       pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
-        const lang: string | undefined = code?.properties?.className
-          ?.find?.((c: string) => c.startsWith("language-"))
-          ?.slice("language-".length);
+        const lang = codeLang(code);
         const inner =
           lang === "mermaid" ? (
             <MermaidBlock code={hastText(code)} />
@@ -903,14 +923,6 @@ function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNod
   // 마커 한 줄뿐인 문단은 통째로 뺀다 — 빈 문단이 남으면 머리글 아래가 벌어진다
   if (next.length === 0) return items.filter((_, i) => i !== index);
   return items.map((item, i) => (i === index ? cloneElement(paragraph, undefined, ...next) : item));
-}
-
-// hast 노드에서 텍스트만 추출 (mermaid 코드 등)
-function hastText(node: unknown): string {
-  if (!node || typeof node !== "object") return "";
-  const n = node as { type?: string; value?: string; children?: unknown[] };
-  if (n.type === "text") return n.value ?? "";
-  return (n.children ?? []).map(hastText).join("");
 }
 
 export default SpecViewer;

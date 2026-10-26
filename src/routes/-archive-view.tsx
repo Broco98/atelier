@@ -57,7 +57,7 @@ function ArchiveView({ slug, file = null }: { slug: string | null; file?: string
       sidebarOpen={sidebarOpen}
       selectedSlug={exists ? slug : null}
       currentFile={file}
-      // 목록 행을 누르면 그 아카이브로 간다 — 이동이라 push다(프로젝트 목록과 같은 규칙, `-projects-view.tsx`). 문서는 딸려 보내지
+      // 목록 행을 누르면 그 아카이브로 간다 — 이동이라 push다. 문서는 딸려 보내지
       // 않아 그 아카이브의 기본 문서가 선다(위 `goTo`). 보고 있는 아카이브의 행은 아무 일도 하지 않는다 — 옮겨 가면 보던 문서를
       // 버리고 같은 아카이브가 히스토리에 한 칸 더 쌓인다.
       onSelect={(next) => {

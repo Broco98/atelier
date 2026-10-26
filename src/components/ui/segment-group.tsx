@@ -1,4 +1,4 @@
-// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿, 결정 1): 바닥 위를 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 fg, 안 선 칸은 fg-tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기는 둘이고 쓰는 자리가 고른다(기본값이 없다): pill(경로 줄의 보기 묶음 문서 | 원문 — DS `.at-viewseg`, codex-ds 결정 12 · 14: 알약 32 · 안쪽 1px border-heavy 링 · 안쪽 2px · 칸 사이 없음, 칸 28px 원형, 칩도 원이고 fill-hover · 그림자 없음), sm(spec 레이아웃 편집기의 종류 파일|폴더 · 템플릿 없음|있음 — Codex 세그먼트 `.at-seg`: 눌린 바닥 fill-soft · `radius-lg` · 안쪽 2px · 글자 폭의 두 칸 격자, 칸 24px · `radius-md` · 좌우 8px · 13px 400, 칩은 떠 있는 면 + Codex 그림자 두 겹 · `radius-md`). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다. 포커스는 칸이 앱의 한 링(`focus-ring` — codex-ds 결정 11)을 입는다.
+// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 문서/원문 · spec 레이아웃 편집기의 종류 · 템플릿, 결정 1): 바닥 위를 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 fg, 안 선 칸은 fg-tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기는 둘이고 쓰는 자리가 고른다(기본값이 없다): pill(경로 줄의 보기 묶음 문서 | 원문 — DS `.at-viewseg`, codex-ds 결정 12 · 14: 알약 32 · 링 없음(v1 티켓 46) · 안쪽 2px · 칸 사이 없음, 칸 28px 원형, 칩도 원이고 fill-hover · 그림자 없음), sm(spec 레이아웃 편집기의 종류 파일|폴더 · 템플릿 없음|있음 — Codex 세그먼트 `.at-seg`: 눌린 바닥 fill-soft · `radius-lg` · 안쪽 2px · 글자 폭의 두 칸 격자, 칸 24px · `radius-md` · 좌우 8px · 13px 400, 칩은 떠 있는 면 + Codex 그림자 두 겹 · `radius-md`). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다. 포커스는 칸이 앱의 한 링(`focus-ring` — codex-ds 결정 11)을 입는다.
 "use client"
 
 import * as React from "react"
@@ -24,7 +24,7 @@ const segmentGroupVariants = cva("relative", {
     size: {
       // 경로 줄의 보기 묶음(DS `.at-viewseg` — codex-ds 결정 12 · 14: 알약 · 원은 경로 줄에만). 바탕 없는 알약에 안쪽 1px
       // `border-heavy` 링이고 높이는 32px다(안쪽 2px + 칸 28px). 칸 사이 틈이 없다.
-      pill: "flex shrink-0 items-center rounded-full p-0.5 inset-ring inset-ring-border-heavy",
+      pill: "flex shrink-0 items-center rounded-full p-0.5",
       // 폼 안의 두 칸 — 한 단계 **눌린 바닥**이어야 그 위의 흰 칩이 떠오른 것으로 읽힌다. 글자 두 칸이 한 줄의 다른
       // 칸들 곁에 선다(편집기의 제목 줄 · 템플릿 줄). 폭은 긴 글자의 칸에 맞춰 두 칸이 같고(격자), 줄에 눌려 줄지
       // 않는다. 바닥이 이미 눌린 회색이라 테두리는 없다.

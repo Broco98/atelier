@@ -3,7 +3,7 @@ import { ContextMenu, ContextMenuContent, opensTargetMenu, useHiddenContextMenu 
 import { opensEditMenu } from "./EditMenu";
 
 // **대상 메뉴 — 자리 하나가 그 안의 대상들의 메뉴를 맡고, 그 자리를 감싸지 않는다**(codex-ds 스펙 §9 대상 메뉴 표 · 결정 6 · 7 · 11).
-// 프로젝트(목록 행 · 머리 카드 이름) · Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행(작업 · Archive 패널의
+// 프로젝트(목록 행 · 머리 줄 이름) · Archive 목록 행 · Processes 행 · spec 레이아웃 행 · spec 트리 파일 행(작업 · Archive 패널의
 // 「경로 복사」) · 문서 글이 이것을 쓴다. 메뉴의 목록은 그 대상의 ⋯과 같은 정의이고(`items` — ⋯이 없는 트리 파일 행은 행의 복사
 // 버튼과 같은 일이다), 대상을 가르는 것은 메뉴를 다는 화면이다(`targetOf`).
 //

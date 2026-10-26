@@ -1,0 +1,363 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ReadingScope, ScopeWhy } from "@/features/spaces/scope";
+import type { ProjectChanges, ProjectPr, SpecTree } from "@/features/works/types";
+import type { DocWriting } from "./types";
+import {
+  changeSummary,
+  changesTarget,
+  finishedDocs,
+  docRows,
+  fileKey,
+  freshFiles,
+  prRows,
+  projectRows,
+  readSummaryOpen,
+  sourceProjects,
+  summarySections,
+  writeSummaryOpen,
+  writerLine,
+  type PrRow,
+  type SummaryInput,
+} from "./summary-card";
+
+const listed = (project: string, files: [string, number | null, number | null][]): ProjectChanges => ({
+  project,
+  kind: "listed",
+  base: "main",
+  files: files.map(([path, additions, deletions]) => ({ path, additions, deletions })),
+});
+
+describe("변경 칸", () => {
+  it("Project마다 묶고 Project · Work 합계를 더하며, 셀 수 없는 파일(null)은 합계에서 뺀다", () => {
+    const summary = changeSummary([
+      listed("web-client", [
+        ["src/CheckoutPage.tsx", 120, 64],
+        ["src/PaymentSummary.tsx", 38, 12],
+        ["public/logo.png", null, null],
+      ]),
+      { project: "admin-console", kind: "worktreeMissing" },
+      listed("api-server", [["src/checkout.controller.ts", 9, 2]]),
+    ]);
+    expect(summary).toEqual({
+      additions: 167,
+      deletions: 78,
+      groups: [
+        {
+          project: "web-client",
+          additions: 158,
+          deletions: 76,
+          files: [
+            { path: "src/CheckoutPage.tsx", additions: 120, deletions: 64 },
+            { path: "src/PaymentSummary.tsx", additions: 38, deletions: 12 },
+            { path: "public/logo.png", additions: null, deletions: null },
+          ],
+        },
+        { project: "api-server", additions: 9, deletions: 2, files: [{ path: "src/checkout.controller.ts", additions: 9, deletions: 2 }] },
+      ],
+    });
+  });
+
+  it("바뀐 파일이 하나도 없으면 칸이 없다 — 읽기만 하는 Project · 못 읽은 Project · 빈 목록", () => {
+    expect(changeSummary([])).toBeNull();
+    expect(
+      changeSummary([
+        { project: "api-server", kind: "worktreeMissing" },
+        { project: "web", kind: "baseUnknown", base: "main" },
+        { project: "cli", kind: "unreadable", reason: "git 실패" },
+        listed("docs", []),
+      ]),
+    ).toBeNull();
+  });
+
+  it("새로 바뀐 파일 — 앞 답에 없던 파일과 +/−가 바뀐 파일만 빛나고, 처음 읽은 답은 빛나지 않는다", () => {
+    const before = [listed("api-server", [["refund.service.ts", 14, 6], ["schema.prisma", 4, 0]])];
+    const after = [
+      listed("api-server", [
+        ["refund.controller.ts", 3, 0],
+        ["refund.service.ts", 14, 6],
+        ["schema.prisma", 5, 0],
+      ]),
+    ];
+    expect(freshFiles(before, after)).toEqual(
+      new Set([fileKey("api-server", "refund.controller.ts"), fileKey("api-server", "schema.prisma")]),
+    );
+    expect(freshFiles(undefined, after)).toEqual(new Set());
+    expect(freshFiles(after, after)).toEqual(new Set());
+  });
+});
+
+describe("문서 칸", () => {
+  const tree: SpecTree = {
+    fallback: null,
+    defaultDoc: "overview.md",
+    items: [
+      { name: "overview.md", path: "overview.md", kind: "file", icon: null, group: null, children: [] },
+      {
+        name: "design",
+        path: "design",
+        kind: "folder",
+        icon: null,
+        group: null,
+        children: [{ name: "api.md", path: "design/api.md", kind: "file", icon: null, group: null, children: [] }],
+      },
+      { name: "review-notes.md", path: "review-notes.md", kind: "file", icon: null, group: null, children: [] },
+    ],
+  };
+  const host: DocWriting = { path: "design/api.md", who: "host", name: "Host", thread: "20261023-100000" };
+
+  it("spec 트리의 파일을 트리 차례로 펴고, 쓰는 중인 문서에 그 Agent를 단다", () => {
+    expect(docRows(tree, [host])).toEqual([
+      { path: "overview.md", writer: null },
+      { path: "design/api.md", writer: host },
+      { path: "review-notes.md", writer: null },
+    ]);
+  });
+
+  it("아직 트리에 없는 새 문서도 쓰는 중이면 끝에 선다 — 쓰기 시작한 순간 보인다", () => {
+    const fresh: DocWriting = { ...host, path: "plan.md" };
+    expect(docRows(tree, [fresh]).map((row) => row.path)).toEqual(["overview.md", "design/api.md", "review-notes.md", "plan.md"]);
+  });
+
+  it("쓰는 중 문구는 이름의 받침에 맞는 조사를 단다", () => {
+    expect(writerLine("Host")).toBe("Host가 쓰는 중");
+    expect(writerLine("리뷰어")).toBe("리뷰어가 쓰는 중");
+    expect(writerLine("검토관")).toBe("검토관이 쓰는 중");
+  });
+});
+
+describe("Project 칸", () => {
+  it("worktree가 선 Project는 고치는 중, 없는 Project는 읽기만이다 — Work의 Project 차례대로", () => {
+    expect(
+      projectRows({
+        projects: ["web-client", "api-server", "admin-console"],
+        worktrees: [
+          { project: "web-client", path: "/w/trees/web-client", exists: true, dirty: true },
+          { project: "api-server", path: "/w/trees/api-server", exists: true, dirty: false },
+          { project: "admin-console", path: "/w/trees/admin-console", exists: false, dirty: false },
+        ],
+      }),
+    ).toEqual([
+      { project: "web-client", editing: true },
+      { project: "api-server", editing: true },
+      { project: "admin-console", editing: false },
+    ]);
+  });
+});
+
+describe("PR 줄", () => {
+  const found = (over: Partial<Extract<ProjectPr, { kind: "found" }>> = {}): ProjectPr => ({
+    project: "api-server",
+    kind: "found",
+    number: 142,
+    title: "부분 환불 이중 차감 수정",
+    url: "https://github.com/acme/api/pull/142",
+    state: "open",
+    headBranch: "fix/refund-api",
+    baseBranch: "main",
+    additions: 48,
+    deletions: 12,
+    changedFiles: 3,
+    ci: { kind: "pending" },
+    approvals: 0,
+    changesRequested: 0,
+    mergedAt: null,
+    ...over,
+  });
+
+  const now = new Date(2026, 9, 23, 16, 30).getTime();
+
+  it("찾은 PR마다 한 줄이고, 없거나 못 읽은 Project는 줄이 없다", () => {
+    expect(
+      prRows([found(), { project: "web", kind: "absent" }, { project: "cli", kind: "unreadable", reason: "network" }], now),
+    ).toEqual([
+      {
+        project: "api-server",
+        number: 142,
+        url: "https://github.com/acme/api/pull/142",
+        icon: "open",
+        status: "CI 확인 중",
+        checking: true,
+        note: null,
+      },
+    ]);
+  });
+
+  it("상태는 색 없이 문장이다 — 확인 중(빛남) · 통과와 승인 수 · 실패 · 병합됨과 그 때 · 닫힘 · 검사 없는 열림(보드 「PR」)", () => {
+    const status = (pr: ProjectPr) => prRows([pr], now).map((row) => [row.icon, row.status, row.checking]);
+    expect(status(found({ ci: { kind: "passing" }, approvals: 1 }))).toEqual([["open", "CI 통과 · 승인 1개", false]]);
+    expect(status(found({ ci: { kind: "passing" } }))).toEqual([["open", "CI 통과", false]]);
+    expect(status(found({ ci: { kind: "failing", failed: ["e2e"] } }))).toEqual([["failed", "CI 실패", false]]);
+    const mergedAt = new Date(2026, 9, 23, 15, 2).toISOString();
+    expect(status(found({ state: "merged", ci: { kind: "passing" }, mergedAt }))).toEqual([["merged", "병합됨 · 오후 3:02", false]]);
+    expect(status(found({ state: "merged", mergedAt: null }))).toEqual([["merged", "병합됨", false]]);
+    expect(status(found({ state: "closed" }))).toEqual([["closed", "닫힘", false]]);
+    expect(status(found({ ci: { kind: "noChecks" }, approvals: 2 }))).toEqual([["open", "열림 · 승인 2개", false]]);
+  });
+
+  it("CI가 실패하면 무엇이 실패했는지 한 문장이 줄 아래에 붙는다(보드 「빨간색 대신 문장으로」)", () => {
+    expect(prRows([found({ ci: { kind: "failing", failed: ["e2e"] } })], now)[0].note).toBe("e2e 검사가 실패했어요.");
+    expect(prRows([found({ state: "merged", ci: { kind: "failing", failed: ["e2e"] } })], now)[0].note).toBeNull();
+  });
+});
+
+describe("요약 카드의 칸(02 §7 · Screen-Live · Components 「요약 카드」)", () => {
+  const pr: PrRow = {
+    project: "api-server",
+    number: 142,
+    url: "https://github.com/acme/api/pull/142",
+    icon: "open",
+    status: "CI 통과",
+    checking: false,
+    note: null,
+  };
+  const live: SummaryInput = {
+    work: { title: "환불 API 버그 수정", archived: false },
+    changes: changeSummary([listed("api-server", [["refund.service.ts", 14, 6], ["schema.prisma", 4, 0]])]),
+    prs: [pr],
+    docs: [{ path: "설계.md", writer: null }],
+    projects: [{ project: "web-app", editing: false }],
+  };
+  const kinds = (input: SummaryInput) => summarySections(input).map((one) => one.kind);
+
+  it("Work에 이은 Thread는 머리 → 변경 사항(+/− · PR 줄) → 결과물 → 소스 차례다", () => {
+    expect(kinds(live)).toEqual(["head", "changes", "outputs", "sources"]);
+    const [head, changes] = summarySections(live);
+    expect(head).toEqual({ kind: "head", title: "환불 API 버그 수정", archived: false });
+    expect(changes).toEqual({ kind: "changes", additions: 18, deletions: 6, prs: [pr] });
+  });
+
+  it("바뀐 것이 없어도 「변경 사항」 줄은 선다 — 수가 없을 뿐이다", () => {
+    expect(summarySections({ ...live, changes: null, prs: [] })[1]).toEqual({ kind: "changes", additions: 0, deletions: 0, prs: [] });
+  });
+
+  it("Work 없는 Thread는 결과물 · 소스만이고, 소스가 없으면 결과물 하나다(S20)", () => {
+    const loose: SummaryInput = { work: null, changes: null, prs: [], docs: [], projects: [{ project: "api-server", editing: false }] };
+    expect(kinds(loose)).toEqual(["outputs", "sources"]);
+    expect(kinds({ ...loose, projects: [] })).toEqual(["outputs"]);
+  });
+
+  it("소스는 spec 문서가 먼저, 그 뒤에 Project다 — 셋을 넘으면 셋만 보이고 나머지는 접힌다(S21)", () => {
+    const many: SummaryInput = {
+      ...live,
+      docs: [
+        { path: "overview.md", writer: null },
+        { path: "설계.md", writer: null },
+      ],
+      projects: [
+        { project: "api-server", editing: true },
+        { project: "web-app", editing: false },
+      ],
+    };
+    const sources = summarySections(many)[3];
+    expect(sources).toEqual({
+      kind: "sources",
+      shown: [
+        { kind: "doc", path: "overview.md", writer: null },
+        { kind: "doc", path: "설계.md", writer: null },
+        { kind: "project", project: "api-server", editing: true },
+      ],
+      hidden: [{ kind: "project", project: "web-app", editing: false }],
+    });
+    const three = summarySections({ ...many, projects: many.projects.slice(0, 1) })[3];
+    expect(three).toMatchObject({ hidden: [] });
+    expect(three.kind === "sources" && three.shown).toHaveLength(3);
+  });
+
+  it("보관된 Work의 Thread도 같은 칸 차례이고 머리가 보관됐음을 든다", () => {
+    const shelved = summarySections({ ...live, work: { title: "결제 웹훅 재시도", archived: true }, changes: null, prs: [] });
+    expect(shelved.map((one) => one.kind)).toEqual(["head", "changes", "outputs", "sources"]);
+    expect(shelved[0]).toEqual({ kind: "head", title: "결제 웹훅 재시도", archived: true });
+  });
+});
+
+
+describe("「변경 사항」이 여는 것", () => {
+  it("바뀐 첫 파일의 diff다 — 그 Project의 차례 · 코어의 차례 그대로", () => {
+    const summary = changeSummary([listed("web", [["a.tsx", 1, 0]]), listed("api", [["b.ts", 2, 0]])]);
+    expect(changesTarget(summary, ["api", "web"])).toEqual({ kind: "change", project: "web", path: "a.tsx" });
+  });
+
+  it("바뀐 것이 없으면 첫 Project의 트리이고, Project도 없으면 열 것이 없다", () => {
+    expect(changesTarget(null, ["api", "web"])).toEqual({ kind: "project", project: "api", file: null });
+    expect(changesTarget(null, [])).toBeNull();
+  });
+});
+
+describe("막 쓴 문서(소스의 문서 줄이 잠깐 빛난다)", () => {
+  const writing = (path: string): DocWriting => ({ path, who: "host", name: "Host", thread: "20261025-100000" });
+
+  it("쓰는 중이던 문서가 쓰기를 마치면 막 쓴 문서다 — 아직 쓰는 중인 문서 · 처음 본 목록은 빛나지 않는다", () => {
+    expect(finishedDocs([writing("설계.md"), writing("plan.md")], [writing("plan.md")])).toEqual(new Set(["설계.md"]));
+    expect(finishedDocs(undefined, [])).toEqual(new Set());
+    expect(finishedDocs([writing("plan.md")], [writing("plan.md")])).toEqual(new Set());
+  });
+});
+
+describe("소스의 Project — 읽는 범위(03 §7)", () => {
+  const scope = (...rows: [string, ScopeWhy][]): Pick<ReadingScope, "projects"> => ({
+    projects: rows.map(([slug, why]) => ({ slug, name: slug, why })),
+  });
+  const work = (worktrees: string[]) => ({
+    projects: ["api-server", "web-app"],
+    worktrees: worktrees.map((project) => ({ project, path: `/w/trees/${project}`, exists: true, dirty: false })),
+  });
+
+  it("Work 없는 Thread는 읽는 범위의 Project가 범위의 차례로 서고 모두 「읽기만」이다", () => {
+    expect(sourceProjects(scope(["web-app", "space"], ["api-server", "space"], ["cli", "readOnly"]), null)).toEqual([
+      { project: "web-app", editing: false },
+      { project: "api-server", editing: false },
+      { project: "cli", editing: false },
+    ]);
+  });
+
+  it("Work에 이은 Thread는 worktree가 선 Project가 「고치는 중」으로 먼저 서고, 그 뒤에 범위의 Project가 「읽기만」으로 선다", () => {
+    // 범위는 worktree에서 일하는 Project를 이미 뺐다(§7 규칙 4) — worktree가 없는 Work의 Project(web-app)는 범위가 「Work」로 싣는다.
+    expect(sourceProjects(scope(["backoffice", "all"], ["web-app", "work"]), work(["api-server"]))).toEqual([
+      { project: "api-server", editing: true },
+      { project: "backoffice", editing: false },
+      { project: "web-app", editing: false },
+    ]);
+  });
+
+  it("범위를 아직 읽지 못했으면 worktree가 선 Project만 서고, Work 없는 Thread는 소스가 없다", () => {
+    expect(sourceProjects(undefined, work(["api-server"]))).toEqual([{ project: "api-server", editing: true }]);
+    expect(sourceProjects(undefined, null)).toEqual([]);
+  });
+});
+
+describe("요약 카드 열림 기억(S22)", () => {
+  const stored = new Map<string, string>();
+  beforeEach(() => {
+    stored.clear();
+    globalThis.localStorage = {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+    } as Storage;
+  });
+  afterEach(() => {
+    // @ts-expect-error — 시험이 심은 저장소를 걷는다.
+    delete globalThis.localStorage;
+  });
+
+  it("Thread마다 기억하고, 적은 적이 없으면 열려 있다 — 같은 Work의 다른 Thread는 따로다", () => {
+    expect(readSummaryOpen("20261025-100000")).toBe(true);
+    writeSummaryOpen("20261025-100000", false);
+    expect(readSummaryOpen("20261025-100000")).toBe(false);
+    expect(readSummaryOpen("20261025-110000"), "다른 Thread는 따로다").toBe(true);
+    writeSummaryOpen("20261025-100000", true);
+    expect(readSummaryOpen("20261025-100000")).toBe(true);
+  });
+
+  it("저장소를 읽지 못하면 열린 것으로 본다", () => {
+    globalThis.localStorage = {
+      getItem: () => {
+        throw new Error("막힘");
+      },
+      setItem: () => {
+        throw new Error("막힘");
+      },
+    } as unknown as Storage;
+    writeSummaryOpen("20261025-100000", false);
+    expect(readSummaryOpen("20261025-100000")).toBe(true);
+  });
+});

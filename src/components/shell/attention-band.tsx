@@ -117,7 +117,7 @@ export function AttentionBand({
     <div
       data-band=""
       className={cn(
-        "flex shrink-0 flex-col gap-0.5",
+        "flex flex-col gap-0.5",
         // **한 덩어리 상자다** — 바탕 위의 흰 카드(DS `.at-band` — `surface` · `radius-2xl` · `shadow-hairline` + `shadow-200`, 합친
         // 이름 `shadow-raised`). 바탕에 붙은 사이드바에서 흰 것은 이 상자 하나다(codex-ds 스펙 §5 · 스토리 38). 안쪽 위아래 4 ·
         // 줄 사이 2는 DS `.at-band` 값이다. 바깥은 위 8 · 아래 0이다 — DS `.at-band`의 위 바깥 6에 기둥(`.at-sidebar`)의 줄 사이
@@ -140,7 +140,9 @@ export function AttentionBand({
         //
         // 한도가 둘인 것은 재는 것이 둘이라서다 — `max-h`는 **넉넉한 창에서** 띠가 사이드바
         // 절반을 먹는 것을 막고, `min-h-0`은 **낮은 창에서** 래퍼가 줄어들 때 이 상자가
-        // 따라 줄게 한다(그 래퍼의 주석에 왜 그 자리가 줄어야 하는지가 있다).
+        // 따라 줄게 한다(그 래퍼의 주석에 왜 그 자리가 줄어야 하는지가 있다). 그래서 이 상자에는 `shrink-0`이 없다 — 있으면
+        // 래퍼만 줄고 상자는 제 높이(`max-h`)로 남아 래퍼 밖으로 넘쳐 바닥의 사람 줄 밑에 깔린다(v1 티켓 10 — 창 300에서 ⌃가
+        // 사람 줄 아래 40px에 깔린 것을 `works-sidebar`의 띠 검사가 잡았다).
         "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
       )}
     >

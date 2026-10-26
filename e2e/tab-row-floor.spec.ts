@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { WORKS } from "./fixtures";
+import { PROJECTS, WORKS } from "./fixtures";
 import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
 import { rowOf, settle, SQUEEZED_SIDEBAR, squeezedWidth } from "./tab-row";
 
@@ -55,7 +55,7 @@ async function layoutOf(page: Page) {
     const panel = document.querySelectorAll("aside")[1]?.querySelector('[data-slot="card"]')?.getBoundingClientRect();
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
-    // 패널 토글은 머리 줄 오른쪽 끝(레일이 서는 지금은 머리 카드 밖 레일 열 위, `aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
+    // 패널 토글은 머리 줄 오른쪽 끝 묶음의 맨 끝(`aside` 밖)에 선다 — 이름이 상태를 타므로 두 이름으로 집는다(ui-refresh 결정 9).
     const toggle = document
       .querySelector('button[aria-label="작업 패널 접기"], button[aria-label="작업 패널 펼치기"]')
       ?.getBoundingClientRect();
@@ -192,12 +192,14 @@ test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라
   // 창 폭을 지금 줄의 바닥에서 냈으므로 사이드바는 정해 둔 폭에 선다 — 저장값(400)보다 좁고, 20px을 끌 자리가 최소 폭(240) 위에 있다.
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeGreaterThanOrEqual(SQUEEZED_SIDEBAR);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThanOrEqual(SQUEEZED_SIDEBAR + 1);
+  // 손잡이는 사이드바 오른쪽 가장자리의 띠다 — 그 가운데를 누른다. 사이드바는 흰 판 안이라 창 왼쪽 끝이 아니라 판의 띄움(5.5) 뒤에서
+  // 시작한다(02 티켓 02). 한때 사이드바가 창 끝에 붙어 「폭 − 2」가 곧 손잡이였다.
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
-  const sy = sideHandle.y + sideHandle.height / 2;
-  await page.mouse.move(narrow.sidebar - 2, sy);
+  const [sx, sy] = [sideHandle.x + sideHandle.width / 2, sideHandle.y + sideHandle.height / 2];
+  await page.mouse.move(sx, sy);
   await page.mouse.down();
-  await page.mouse.move(narrow.sidebar - 12, sy, { steps: 3 });
-  await page.mouse.move(narrow.sidebar - 22, sy, { steps: 3 });
+  await page.mouse.move(sx - 10, sy, { steps: 3 });
+  await page.mouse.move(sx - 20, sy, { steps: 3 });
   await expect.poll(async () => (await layoutOf(page)).sidebar).toBeLessThanOrEqual(narrow.sidebar - 19);
   const dragged = await layoutOf(page);
   await page.mouse.up();
@@ -245,11 +247,15 @@ test("좁게 선 패널·사이드바를 바깥으로 끌어도 고른 폭이 �
   await page.setViewportSize({ width: await squeezedWidth(page), height: 800 });
   const narrow = await settled(page);
   expect(narrow.sidebar, JSON.stringify(narrow)).toBeLessThan(400 - 40);
+  // 손잡이 띠의 가운데를 누른다(위 검사와 같은 까닭 — 사이드바는 판 안에서 시작한다). 그 끌기가 실제로 손잡이를 잡았다는 앵커로 끄는
+  // 동안의 표식(문서의 `resizing` — `setResizing`)을 본다 — 못 잡았으면 아래 「저장값 그대로」가 헛돈다(한때 「폭 − 2」를 눌러 판 안
+  // 사이드바에서 손잡이를 비껴가 그렇게 초록이었다).
   const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
-  const sy = sideHandle.y + sideHandle.height / 2;
-  await page.mouse.move(narrow.sidebar - 2, sy);
+  const [sx, sy] = [sideHandle.x + sideHandle.width / 2, sideHandle.y + sideHandle.height / 2];
+  await page.mouse.move(sx, sy);
   await page.mouse.down();
-  await page.mouse.move(narrow.sidebar + 38, sy, { steps: 8 });
+  await page.mouse.move(sx + 40, sy, { steps: 8 });
+  expect(await page.evaluate(() => document.body.classList.contains("resizing")), "손잡이를 잡았다").toBe(true);
   await page.mouse.up();
   expect(await page.evaluate(() => localStorage.getItem("sidebar-width"))).toBe("400");
 
@@ -364,13 +370,28 @@ test("본문 문서가 창보다 넓어도 탭 줄의 바닥이 부풀지 않는
 // — 목록 칸은 접지 않아(codex-ds 결정 32) 접어서 치울 길도 없다.
 //
 // Archive는 그 카드 곁에 고른 아카이브의 spec 목록 패널이 열린 채 선다(codex-ds 티켓 21). 그 패널은 카드에 두 칸의 최소를 남기고,
-// 모자라면 제 최소 폭 아래로도 내준다(`Frame`의 `PanelBox` — 걷을 수 있는 칸이 진다). 그래서 두 화면의 셈이 같다.
+// 모자라면 제 최소 폭 아래로도 내준다(`Frame`의 `PanelBox` — 걷을 수 있는 칸이 진다). 한때 Projects도 이 짜임이었다 — 03이 판 하나의
+// 표로 바꿔(03 결정 「10」) 목록 칸이 있는 화면은 Archive 하나다(Projects는 아래 따로 잰다).
 const LIST_RANGE = { min: 240, max: 560 };
 
-for (const screen of [
-  { url: "/projects", list: "프로젝트 목록", key: "panel-width" },
-  { url: "/archive", list: "아카이브 목록", key: "archive-panel-width" },
-] as const) {
+// Projects 표(03)는 목록 칸이 없는 판 하나라 바닥도 없다 — 앱 창의 최소 폭(900)에 사이드바를 400으로 넓혀 둬도 사이드바가 저장한 폭으로
+// 서고, 표는 판 안에서 줄어 창을 밀지 않는다(경로 · 이름 칸은 `minmax(0, …)`이라 줄고, 기준 브랜치 156 · ⋯ 28만 고정이다).
+test("Projects 표(/projects)는 900 창에 사이드바를 400으로 넓혀 둬도 사이드바가 저장한 폭으로 서고, 표가 판 안에 든다", async ({ page }) => {
+  await openWith(page, "/projects", 900, { sidebar: 400, panel: 330 });
+  const table = page.getByRole("table", { name: "Project 목록", exact: true });
+  await expect(table).toBeVisible();
+  const layout = await settled(page);
+  expect(layout.sidebar).toBe(400);
+  expect(layout.pageSpill).toBeLessThanOrEqual(0);
+  const [tableBox, mainBox] = [await table.boundingBox(), await page.locator("main").boundingBox()];
+  expect(tableBox!.x + tableBox!.width, "표 오른쪽 끝 ≤ 판 오른쪽 끝").toBeLessThanOrEqual(mainBox!.x + mainBox!.width);
+  // 줄의 ⋯도 판 안이다 — 표가 넘쳐 잘리면 ⋯가 먼저 사라진다.
+  const more = await table.getByRole("button", { name: `${PROJECTS[0].name} 메뉴`, exact: true }).boundingBox();
+  expect(more!.x + more!.width, "⋯ 오른쪽 끝 ≤ 표 오른쪽 끝").toBeLessThanOrEqual(tableBox!.x + tableBox!.width);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+for (const screen of [{ url: "/archive", list: "아카이브 목록", key: "archive-panel-width" }] as const) {
   test(`목록 칸이 있는 화면(${screen.url})은 목록 칸을 560까지 넓혀 둬도 사이드바가 저장한 폭으로 서고, 내용 칸에 240을 남긴다`, async ({
     page,
   }) => {

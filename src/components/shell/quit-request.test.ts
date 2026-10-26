@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it } from "vitest";
 import { askDialog, dialogStore } from "@/components/ui/confirm-store";
 import type { QuitCounts } from "@/features/terminal/shell-registry";
-import { QUIT_REQUESTED_EVENT, QUIT_TITLE, requestQuit } from "./quit-request";
+import { QUIT_REQUESTED_EVENT, QUIT_TITLE, requestQuit, type QuitTally } from "./quit-request";
 
 // 종료 확인(결정 14·15 · #223). 브라우저를 거쳐 창이 뜨고 키가 먹는 것은 L3가
 // (`e2e/quit-confirm.spec.ts`), 무엇을 세는지는 `shell-registry.test.ts`가, 여기는 **「묻는 중」
@@ -25,13 +25,14 @@ afterEach(async () => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("묻는 중 표시", () => {
-  const counter = (counts: QuitCounts = { live: 1, running: 0, spawned: 0 }) => {
+  // 셈은 셸과 Thread 둘이다(S40). 여기서 재는 것은 표시가 내려가는 길이라 Thread는 늘 잃을 것이 없다.
+  const counter = (shells: QuitCounts = { live: 1, running: 0, spawned: 0 }) => {
     let calls = 0;
     return {
       calls: () => calls,
-      fn: async () => {
+      fn: async (): Promise<QuitTally> => {
         calls += 1;
-        return counts;
+        return { shells, threads: { running: 0, queued: 0, approvals: 0 } };
       },
     };
   };

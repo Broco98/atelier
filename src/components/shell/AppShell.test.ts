@@ -58,3 +58,74 @@ describe("설정의 문", () => {
     expect(source).not.toMatch(/["']\/settings["']/);
   });
 });
+
+// 틀이 하나다(02 구현 스펙 §3 · 03 구현 스펙 §3 · CONTEXT 「머리 줄」 · 「흰 판」). 크롬 맨 위 머리 줄에 셸 컨트롤이 서고, 그 아래 크롬 위에
+// 사이드바가 머리 줄 왼쪽 칸과 한 기둥으로 서며, 그 오른쪽 흰 판 하나에 화면 본문(라우트가 그리는 것)만 든다. 화면마다 제 틀을 그리면 화면을
+// 옮길 때 틀이 바뀐다. 이 파일은 렌더로 못 들이므로(무거운 사슬) 자리를 소스로 잰다 — 판의 띄움 · 높이 · 이름 자리 · 사이드바 기둥은
+// L3(`frame.spec` · `frame-sidebar.spec`)가 상자로 잰다.
+describe("틀 하나 — 머리 줄과 흰 판", () => {
+  const at = (literal: string) => source.indexOf(literal);
+
+  it("머리 줄이 크롬 맨 위에 서고 셸 컨트롤을 품는다", () => {
+    const [head, controls, headEnd, panel] = ["<ShellHeadRow", "<ShellControls", "</ShellHeadRow>", 'data-slot="panel"'].map(at);
+    expect([head, controls, headEnd, panel].every((one) => one > -1)).toBe(true);
+    expect(head).toBeLessThan(controls);
+    expect(controls).toBeLessThan(headEnd);
+    expect(headEnd).toBeLessThan(panel);
+    expect(source).toContain("bg-surface-shell");
+  });
+
+  it("흰 판은 본문만 품고 사이드바는 판 밖에 선다", () => {
+    const panel = at('data-slot="panel"');
+    const tagAt = source.lastIndexOf("<div", panel);
+    const [sidebar, outlet] = ["<Sidebar", "<Outlet />"].map(at);
+    // **다 있는지부터 센다** — 없으면 indexOf가 -1이라 아래 차례 비교가 읽은 것 없이 통과한다.
+    expect([panel, sidebar, outlet].every((one) => one > -1)).toBe(true);
+    expect(countOf(source, 'data-slot="panel"')).toBe(1);
+    expect(countOf(source, "<Sidebar")).toBe(1);
+    // 사이드바는 판을 열기 전에 선다(판 밖 크롬 위). 본문은 판 안이다.
+    expect(sidebar).toBeLessThan(tagAt);
+    expect(outlet).toBeGreaterThan(panel);
+    // 사이드바와 판은 한 줄의 형제다 — 사이드바에서 판을 여는 자리까지 주석을 걷으면 사이드바 말고 다른 요소가 없다(다른 상자가 끼면 기둥이
+    // 판과 갈린다).
+    const between = source
+      .slice(sidebar, tagAt)
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(between.match(/<[A-Za-z]\w*/g)).toEqual(["<Sidebar"]);
+    // 판의 겉은 토큰이다 — 손으로 적은 색 · 그림자가 아니다.
+    const tag = source.slice(tagAt, source.indexOf(">", panel));
+    for (const token of ["rounded-xl", "border-border-panel", "shadow-panel", "bg-surface"]) expect(tag, token).toContain(token);
+    // **판이 본문의 바닥을 사이드바에게 알린다**(`min-w-min`) — 판이 사이드바의 형제라, 본문 뿌리가 드는 바닥(탭 줄 — `TAB_ROW_COLUMN`)은 판의
+    // min-content로만 사이드바에 닿는다. 판은 모서리를 자르느라 `overflow-hidden`이어서 적지 않으면 그 바닥이 0이다(넘침 상자의 자동 최소 폭).
+    expect(tag).toContain("min-w-min");
+    // 화면은 머리 줄의 자리를 셸에게서 받는다 — 본문(라우트)이 그 자리 안에 선다.
+    expect(source.slice(panel, outlet)).toContain("<ShellHeadSlot.Provider");
+  });
+});
+
+// 02 구현 스펙 §4 · 스토리 10 · 11. **⌘N이 새 Thread를 연다 — 사이드바 위 줄 「새 Thread」와 같은 함수다.** 둘이 따로 `navigate`하면 한쪽의
+// 가드(이미 `/`면 칸을 안 쌓는다)만 고쳐지는 날 같은 일이 두 모양이 된다. 키는 단축키 표의 `newThread`이고(글자 · 메뉴 바는
+// `hotkeys.test.ts`), 확인 창 · 팔레트가 떠 있으면 안 먹는다(⌘J와 같은 게이트 — 답을 기다리는 동안 화면을 옮기지 않는다). 키가 실제로
+// 새 Thread를 여는지는 L3(13)가 본다.
+describe("⌘N", () => {
+  it("단축키 표의 키로 사이드바의 새 Thread와 같은 함수를 부른다", () => {
+    expect(countOf(source, 'pressed(e, "newThread")')).toBe(1);
+    expect(source).toContain("onNewThread={openNewThread}");
+    // 새 Thread로 가는 길은 그 함수 하나다 — 이 파일에서 `/`로 가는 `navigate`가 그 몸 하나에만 선다.
+    expect(countOf(source, 'navigate({ to: "/" })')).toBe(1);
+    const at = source.indexOf('pressed(e, "newThread")');
+    const handler = source.slice(at, source.indexOf("};", at));
+    expect(handler).toContain("dialogOpen() || searchOpen");
+    expect(handler).toContain("openNewThread()");
+  });
+
+  // 02 코드 리뷰 S1 — 가드는 **씨앗 없는 새 Thread인가**를 묻는다(`isBlankNewThread` — 값은 `router.test.ts`가 진짜 라우터의 주소로 잰다).
+  // 경로(`/`)만 보면 씨앗을 단 새 Thread(`/?work=` · `/?new=work`)에서 ⌘N과 「새 Thread」가 먹지 않는다 — 「새 Work」 칩이 그대로 남는다.
+  it("가드가 경로가 아니라 씨앗 없는 새 Thread인가를 묻는다", () => {
+    const at = source.indexOf("const openNewThread = useCallback(");
+    const body = source.slice(at, source.indexOf("}, [", at));
+    expect(body).toContain('if (!isBlankNewThread(router.state.location)) void navigate({ to: "/" });');
+    expect(body).not.toContain("pathname");
+  });
+});

@@ -4,7 +4,8 @@ import { useEffect, useId, useState } from "react";
 /**
  * **툴팁과 호버 카드의 무리**(codex-ds 스펙 §8 「뜨는 시간」 · 결정 20). 둘은 한 무리로 움직인다:
  *
- * - 첫 번째는 포인터가 멈춘 지 `duration-tip`에 선다.
+ * - 첫 번째는 포인터가 멈춘 지 선다 — 툴팁은 `delay-tip`(200 — Codex), 호버 카드는 `duration-tip`(150)이다(02 티켓 12 · 01 결정 「공유 토큰은
+ *   새 이름으로」 — 카드의 길이는 바꾸지 않았다).
  * - 하나가 떠 있는 동안, 그리고 닫힌 직후 잠깐(`GROUP_WINDOW_MS`) 옆 대상으로 옮기면 곧바로 선다(`instantNow`).
  * - 메뉴가 열려 있는 동안은 둘 다 서지 않는다(`menuOpen`).
  *
@@ -133,7 +134,7 @@ export function useOpenInHoverGroup<Details extends { isCanceled: boolean }>(
  * 도는 동안 안 바뀐다). 안 풀리면(스타일시트 없이 그린 자리) 0이다.
  */
 const tokenCache = new Map<string, number>();
-export function durationMs(name: "--duration-tip" | "--duration-peek-close"): number {
+export function durationMs(name: "--duration-tip" | "--delay-tip" | "--duration-peek-close"): number {
   const known = tokenCache.get(name);
   if (known !== undefined) return known;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

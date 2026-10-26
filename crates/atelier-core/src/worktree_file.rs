@@ -136,12 +136,14 @@ fn is_image(rel: &Path) -> bool {
         .is_some_and(|ext| IMAGE_EXTENSIONS.iter().any(|one| one.eq_ignore_ascii_case(ext)))
 }
 
-/// 읽기 상한(결정 35) — 이것을 넘는 파일은 열지 않는다. 그림은 내용을 싣지 않아 이 상한 앞에서 갈린다.
-const READ_LIMIT: u64 = 5 * 1024 * 1024;
+/// 읽기 상한(결정 35) — 이것을 넘는 파일은 열지 않는다. 그림은 내용을 싣지 않아 이 상한 앞에서 갈린다. Work의 변경 · diff
+/// (`changes.rs`)도 같은 상한으로 새 파일을 열지 않고 큰 patch를 싣지 않는다 — 파일 탭에서 못 여는 것을 diff 보기가 열지 않게.
+pub(crate) const READ_LIMIT: u64 = 5 * 1024 * 1024;
 
 /// 바이너리를 가르는 창 — 앞의 이만큼에 NUL이 있으면 바이너리다. git이 diff · grep에서 쓰는 창(`FIRST_FEW_BYTES`)과 같은
-/// 8000바이트라, 같은 파일을 git과 다르게 부르지 않는다(결정 36 「git과 같은 판정」).
-const BINARY_SNIFF_LEN: usize = 8000;
+/// 8000바이트라, 같은 파일을 git과 다르게 부르지 않는다(결정 36 「git과 같은 판정」). Work의 변경(`changes.rs`)이 git이 아직
+/// 모르는 새 파일을 가를 때도 이것이다.
+pub(crate) const BINARY_SNIFF_LEN: usize = 8000;
 
 #[cfg(test)]
 mod tests {

@@ -15,7 +15,7 @@ const [pinnedWork, plainWork] = WORKS;
 const list = (page: Page) => page.locator("[data-worklist]");
 /** 목록 윗 가장자리의 구분선. 목록 **밖**(스크롤하지 않는 부모)에 산다. */
 const edge = (page: Page) => page.locator("[data-worklist-edge]");
-/** 사이드바 바닥의 Settings 칸. */
+/** 사이드바 바닥의 사람 줄 칸(v1 티켓 07 — 옛 Settings 칸의 자리). */
 const foot = (page: Page) => page.locator("[data-sidebar-foot]");
 
 /** 목록을 굴려 내리는 거리. 넘침을 기다리는 문턱도 이 값이다 — 덜 넘치면 이만큼 못 구른다. */
@@ -63,13 +63,14 @@ const 넘칠때까지 = async (page: Page) => {
 };
 
 /**
- * hover하면 배경이 지나는 면으로 칠해진다 — Codex 면 알파 `fill-soft`(전경 5%, DS `.at-row:hover`)다. 트랜지션이 끝난 뒤에 잰다.
- * 면 알파라 알파가 0보다 크고 1보다 작다 — 불투명한 면이 서면 바탕에 붙은 사이드바 위에 판이 하나 더 얹힌다.
+ * hover하면 배경이 지나는 면으로 칠해진다 — 사이드바 줄의 hover는 고른 줄과 같은 투명 면 `fill-nav-selected`(Codex .053, 02 티켓 05 ·
+ * `index.css` 「상태 농도」. 한때 `fill-soft` 5%)다. 트랜지션이 끝난 뒤에 잰다. 면 알파라 알파가 0보다 크고 1보다 작다 — 불투명한 면이
+ * 서면 흰 판 위의 사이드바에 판이 하나 더 얹힌다.
  */
 const hover배경이칠해진다 = async (target: Locator) => {
-  const 지나는면 = await 토큰색(target.page(), "--fill-soft");
-  expect(alphaOf(지나는면), `fill-soft가 면 알파가 아니다: ${지나는면}`).toBeGreaterThan(0);
-  expect(alphaOf(지나는면), `fill-soft가 면 알파가 아니다: ${지나는면}`).toBeLessThan(1);
+  const 지나는면 = await 토큰색(target.page(), "--fill-nav-selected");
+  expect(alphaOf(지나는면), `fill-nav-selected가 면 알파가 아니다: ${지나는면}`).toBeGreaterThan(0);
+  expect(alphaOf(지나는면), `fill-nav-selected가 면 알파가 아니다: ${지나는면}`).toBeLessThan(1);
   await target.hover();
   await expect.poll(async () => (await styleOf(target)).background).toBe(지나는면);
   await 멎을때까지(target);
@@ -95,7 +96,7 @@ test("구획 머리에 hover해도 배경이 안 칠해지고 글자만 진해�
 
   for (const [name, word] of [
     [PINNED_HEADER, "고정"],
-    [MAIN_HEADER, "작업"],
+    [MAIN_HEADER, "Work"],
   ] as const) {
     const header = page.getByRole("button", { name, exact: true });
     const label = header.getByText(word, { exact: true });
@@ -113,8 +114,8 @@ test("구획 머리에 hover해도 배경이 안 칠해지고 글자만 진해�
   for (const work of [plainWork, pinnedWork]) {
     await hover배경이칠해진다(page.getByRole("button", { name: work.title, exact: true }).locator("xpath=.."));
   }
-  // **nav도 그대로다**(티켓 본문). 지금 화면(Projects)이 아닌 항목이라야 선택 배경과 안 섞인다.
-  await hover배경이칠해진다(page.locator("aside nav").getByRole("button", { name: "Archive", exact: true }).locator("xpath=.."));
+  // **nav도 그대로다**(티켓 본문). 지금 화면이 아닌 항목이라야 선택 배경과 안 섞인다 — Projects에서는 「새 Thread」가 그렇다.
+  await hover배경이칠해진다(page.locator("aside nav").getByRole("button", { name: "새 Thread", exact: true }).locator("xpath=.."));
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -148,9 +149,11 @@ test("목록이 스크롤됐을 때만 윗 가장자리에 선이 서고, 맨 �
 test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   // **창 높이가 좁은 창문 안에 있어야 한다** — 처음엔 `SCROLL`만큼 넘치고, `작업`을 접으면 안
-  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 182px → 접으면 116px).
-  // 목록 상자 = 창 높이 − 230px라(머리 줄 48 · 바닥 Settings 위 선은 자리를 안 먹는 0.5px 면) 창문은 346~372px다. 그 안의 값을 고른다.
-  await page.setViewportSize({ width: 1280, height: 362 });
+  // 넘쳐야 한다. 행이 한 줄이 되고(32px) 다시 Codex 사이드바의 줄 30 · 묶음 사이가 되면서(v1 티켓 46) 그 창문이 옮겨 갔다(목록
+  // 내용 199px → 접으면 138px). 목록 상자 = 창 높이 − 182px라(머리 줄 밑에서 시작하는 사이드바의 위 줄 셋 · 바닥 사람 줄 — 03 구현
+  // 스펙 §3, 사람 줄 위 선은 자리를 안 먹는 0.5px 면) 창문은 320~341px다. 그 안의 값을 고른다. 한때 목록 상자 = 창 높이 − 201px(창문
+  // 339~360)였다 — 사이드바가 흰 판 안에서 판 위끝 + 12부터 섰다(02).
+  await page.setViewportSize({ width: 1280, height: 330 });
   await page.goto("/projects");
   await 넘칠때까지(page);
 
@@ -255,40 +258,36 @@ test("선이 서도 스크롤 상자와 막대와 내용이 안 밀린다", asyn
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **선은 0.5px `border-heavy` 면이다**(codex-ds 티켓 19 · DS `.at-side-foot` — 「바닥 Settings 위 0.5px」). 테두리가 아니라 칸 윗변에
-// 겹쳐 칠한 면이다 — 0.5px 테두리는 엔진마다 굵기가 갈린다(카드 머리 탭 줄의 아랫선 · 호버 카드의 가름선과 같은 손버릇). 그래서 칸에는
-// 테두리가 없고, 선은 칸의 `::before`가 칸 폭 그대로 든다.
-test("바닥 Settings 위에는 늘 0.5px 선이 있다 — 목록을 굴려도 그대로이고, 목록 윗선과 같은 폭이다", async ({
-  page,
-}) => {
+// **바닥 사람 줄 위에는 선이 없다**(02 티켓 04 · 결정 「04」 — Codex 사이드바의 바닥 칸엔 가름선이 없다). 한때(codex-ds 티켓 19 · DS
+// `.at-side-foot`) 칸 윗변에 0.5px `border-heavy` 면을 `::before`로 겹쳐 칠했다. 목록 윗선은 그대로 산다 — 그것이 선다는 것이 이
+// 화면에서 선이 서는 길이 살아 있다는 앵커다.
+test("바닥 사람 줄 위에는 선이 없다 — 목록을 굴려 목록 윗선이 서도 바닥에는 안 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 300 });
   await page.goto("/projects");
   await 넘칠때까지(page);
   await expect(foot(page)).toHaveCount(1);
+  await expect(foot(page).getByRole("button", { name: "홍길동 — 사람 메뉴", exact: true })).toBeVisible();
 
-  const 짙은선 = await 토큰색(page, "--border-heavy");
+  /** 칸과 그 안 사람 줄의 윗 테두리 굵기, 칸 `::before`의 자리 · 배경 — 선을 칠할 수 있는 자리 셋이다. */
   const 윗선 = () =>
     foot(page).evaluate((el) => {
       const line = getComputedStyle(el, "::before");
-      return [getComputedStyle(el).borderTopWidth, line.position, line.top, line.left, line.right, line.height, line.backgroundColor];
+      const row = el.querySelector("button")!;
+      return [getComputedStyle(el).borderTopWidth, getComputedStyle(row).borderTopWidth, line.position, line.backgroundColor];
     });
-  const 칠해졌다 = async () => {
-    expect(await 윗선(), "Settings 윗선").toEqual(["0px", "absolute", "0px", "0px", "0px", "0.5px", 짙은선]);
+  const 없다 = async () => {
+    expect(await 윗선(), "사람 줄 윗선").toEqual(["0px", "0px", "static", "rgba(0, 0, 0, 0)"]);
   };
 
-  // 맨 위 — 목록 윗선은 없어도 바닥 선은 선다.
+  // 맨 위 — 목록 윗선도 바닥 선도 없다.
   await expect(edge(page)).toBeHidden();
-  await 칠해졌다();
+  await 없다();
 
-  // 굴린 뒤 — 여전히 선다. 목록 윗선과 같은 폭이다.
+  // 굴린 뒤 — 목록 윗선은 서고(앵커), 바닥은 여전히 없다.
   await list(page).evaluate((el, top) => el.scrollTo(0, top), SCROLL);
   await expect(edge(page)).toBeVisible();
-  await 칠해졌다();
-  const 칸 = (await foot(page).boundingBox())!;
-  const 선 = (await edge(page).boundingBox())!;
-  expect(선.x).toBe(칸.x);
-  expect(선.width).toBe(칸.width);
+  await 없다();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { LayoutPreview } from "@/features/spec-layout/types";
 import type { WorkView } from "@/features/works/types";
 import type { Page } from "./evidence";
-import { askBackend, callCount, installRealBackend, unknownIpcCalls } from "./harness";
+import { askBackend, callCount, installRealBackend, unknownIpcCalls, 사람메뉴로간다 } from "./harness";
 import { expect, seedLayout, seedWork, test } from "./l4";
 
 // spec 레이아웃 티켓 11 — **편집기가 다리로 레이아웃을 진짜로 쓰고, 다시 부른 work 목록의 spec 트리가 그
@@ -39,7 +39,7 @@ test("편집기가 저장한 레이아웃이 다리의 데이터 루트에 서�
 
   // 앱 안에서 설정으로 간다 — 새로 읽으면 캐시가 사라져 무효화를 잴 수 없다.
   const aside = page.locator("aside");
-  await aside.getByRole("button", { name: "Settings", exact: true }).click();
+  await 사람메뉴로간다(page, "Settings");
   await aside.getByRole("button", { name: "spec 레이아웃", exact: true }).click();
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout/edit");

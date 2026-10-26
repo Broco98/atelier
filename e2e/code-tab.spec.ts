@@ -17,6 +17,7 @@ import {
   workRow,
   writeShell,
   파일탭주소 as codeUrl,
+  작업화면으로,
   주소로간다,
 } from "./harness";
 
@@ -187,13 +188,12 @@ test("work을 옮겼다 돌아와도 파일 탭과 그 차례가 남는다", asy
   await 주소로간다(page, codeUrl("billing/README.md"));
   await expect.poll(() => 파일탭차례(page)).toEqual(["billing/src/main.ts", "billing/README.md"]);
 
-  // 사이드바로 옆 work에 갔다 온다 — 앱 안의 이동이라 묶음(메모리)이 산다(결정 33).
-  const rows = page.locator("[data-worklist]");
-  await rows.getByRole("button", { name: plainWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  // ⌘K의 Work 줄로 옆 work에 갔다 온다(사이드바 Work 줄은 그 Work의 Thread로 간다 — v1 티켓 37) — 앱 안의 이동이라 묶음(메모리)이
+  // 산다(결정 33).
+  await 작업화면으로(page, plainWork);
   await expect(파일탭들(page)).toHaveCount(0);
 
-  await rows.getByRole("button", { name: work.title, exact: true }).click();
+  await 작업화면으로(page, work);
   // work 기억이 보던 파일 탭으로 되돌린다 — 주소가 그 파일을 가리키고 그 탭이 켜져 있다.
   await expect(page).toHaveURL(/tab=code&code=billing%2FREADME\.md/);
   await expect(코드카드(page, "billing/README.md")).toBeVisible();
@@ -335,8 +335,7 @@ test("목록에서 사라진 work의 slug로 새 work이 서면 지운 work이 �
   await installFixtureBackend(page);
   await page.goto(codeUrl("billing/README.md"));
   await expect(코드카드(page, "billing/README.md")).toBeVisible();
-  await workRow(page, plainWork.slug).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await 작업화면으로(page, plainWork);
   await expect(문서카드(page)).toBeVisible();
 
   await archiveByMcp(page, WORKS, work.slug);
@@ -344,9 +343,8 @@ test("목록에서 사라진 work의 slug로 새 work이 서면 지운 work이 �
   // 같은 slug로 새 work이 선다.
   await replaceAnswer(page, "list_works", WORKS);
   await fireEvent(page, "works:changed", null);
-  await workRow(page, work.slug).click();
+  await 작업화면으로(page, work);
 
-  await expect(page).toHaveURL(new RegExp(`/works/${work.slug}`));
   await expect(문서카드(page)).toBeVisible();
   await expect(page).not.toHaveURL(/code=/);
   await expect(파일탭들(page)).toHaveCount(0);

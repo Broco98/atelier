@@ -1,0 +1,5 @@
+{"type": "control_request", "request_id": "req_bc5fa52c", "request": {"subtype": "initialize"}}
+{"type": "user", "message": {"role": "user", "content": "Run this exact Bash command in the foreground (not in background): python3 -c \"import time; time.sleep(40); print('slept')\" . After it finishes say FINISHED."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "control_request", "request_id": "req_64122279", "request": {"subtype": "interrupt"}}
+{"type": "user", "message": {"role": "user", "content": "In one short sentence: what command did you try to run just now, and did it complete?"}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "Run this exact Bash command in the foreground again: python3 -c \"import time; time.sleep(40); print('slept')\" . After it finishes say FINISHED2."}, "parent_tool_use_id": null, "session_id": ""}

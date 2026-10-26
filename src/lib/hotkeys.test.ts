@@ -78,6 +78,15 @@ describe("표가 제 말과 맞는다", () => {
     expect(aria).toBe([...lead, keyAriaOf(code)].join("+"));
   });
 
+  // 02 구현 스펙 §4 · §13 · 스토리 10. **새 단축키는 ⌘N 하나다** — 새 Thread를 연다. 메뉴 바 항목이라(View ▸ New Thread) spec 문서의
+  // 프레임에 포커스가 있어도 메뉴가 대신 받아 되살린다(`menu-hotkey.ts`) — 「어느 화면에서나」가 그 길에 기댄다. 앱 메뉴에 ⌘N을 든 다른
+  // 항목은 없다(`lib.rs`의 `build_menu` — 기본 항목에 New가 없다).
+  it("⌘N이 새 Thread이고 메뉴 바에 선다", () => {
+    expect(HOTKEYS.newThread.glyph).toBe("⌘N");
+    expect(HOTKEYS.newThread.menu).toBe("New Thread");
+    expect(menuHotkeyOf("KeyN")).toBe(HOTKEYS.newThread);
+  });
+
   // 같은 화음이 두 항목이면 판정은 앞의 것만 보고, 툴팁은 두 이름으로 같은 키를 가르친다.
   it("같은 화음이 두 번 없다", () => {
     const chords = ids.map((id) => `${HOTKEYS[id].mods.join("+")} ${HOTKEYS[id].code}`);

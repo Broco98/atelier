@@ -1,13 +1,25 @@
 import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { WorktreeEntry, WorktreeTree } from "@/features/files/types";
-import type { ProjectView } from "@/features/projects/types";
+import type { FolderLook, NewProjectPlace, ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
+import type { ReadingScope } from "@/features/spaces/scope";
+import type { DeletedSpace, RestoredSpace, Space, SpaceDetail, SpaceDraft, SpaceUsage } from "@/features/spaces/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
+import type {
+  AgentRoster,
+  Attachment,
+  EngineCheck,
+  Participant,
+  QuitCounts as ThreadQuitCounts,
+  RecordLine as ThreadRecordLine,
+  ThreadSummary,
+  ThreadView,
+} from "@/features/thread/types";
 import type { WorktreeFile } from "@/features/code/types";
 import { snapshotFixture } from "@/features/processes/process-fixture";
 import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
@@ -29,10 +41,15 @@ export const PROJECTS: ProjectView[] = [
     baseBranch: "main",
     createdAt: "2026-01-02T03:04:05Z",
     description: "결제 도메인",
-    // **로컬 브랜치가 둘이다** — 기준 브랜치 목록(프로젝트 화면의 Select)에서 「지금 값이 아닌 가지를 고르면」을
-    // 재려면 고를 다른 가지가 있어야 한다(`projects-list.spec.ts`). 지금 값(`main`)이 목록에 들어 있어, 앞에
-    // 붙이는 규칙(지금 값이 목록에 없을 때)은 이 프로젝트에서 안 탄다.
-    git: { remoteSlug: "acme/billing", currentBranch: "main", localBranches: ["main", "release"] },
+    // **로컬 브랜치가 둘이다** — 기준 브랜치 목록(Project 상세의 Select)에서 「지금 값이 아닌 가지를 고르면」을
+    // 재려면 고를 다른 가지가 있어야 한다(`projects-list.spec.ts`). 원격 묶음(「원격 — origin」, 03 구현 스펙 §16)도
+    // 하나 선다 — 원격 브랜치는 원격 이름을 단 그대로다(S19).
+    git: {
+      remoteSlug: "acme/billing",
+      currentBranch: "main",
+      localBranches: ["main", "release"],
+      remoteBranches: [{ remote: "origin", branches: ["origin/main"] }],
+    },
     missing: false,
   },
   {
@@ -47,6 +64,120 @@ export const PROJECTS: ProjectView[] = [
     missing: false,
   },
 ];
+
+/**
+ * Project 추가 창(03 구현 스펙 §15 · §16)이 폴더를 고르는 순간 묻는 살피기의 답 — 갈래 다섯마다 한 폴더다. 키는 폴더 선택창이 돌려주는
+ * 절대 경로이고(`폴더를고른다`), 답의 `path`는 화면의 꼴(`~`로 줄인 것)이다. **기본 답이 없다** — 모르는 폴더를 살피면 그 자리에서 물려,
+ * 고른 폴더와 살핀 폴더가 어긋난 것이 신호로 잡힌다. 하위 폴더의 「뿌리 폴더로 바꾸기」는 뿌리의 화면 꼴(`~/dev/web-app`)로 다시 살핀다.
+ */
+const WEB_APP_GIT = {
+  remoteSlug: "acme/web-app",
+  currentBranch: "main",
+  localBranches: ["main"],
+  remoteBranches: [{ remote: "origin", branches: ["origin/main"] }],
+};
+const FOLDER_LOOKS: Record<string, FolderLook> = {
+  "/Users/tester/dev/web-app": { kind: "repo", path: "~/dev/web-app", baseBranch: "main", remotes: ["origin"], git: WEB_APP_GIT },
+  "~/dev/web-app": { kind: "repo", path: "~/dev/web-app", baseBranch: "main", remotes: ["origin"], git: WEB_APP_GIT },
+  "/Users/tester/dev/web-app/packages/ui": {
+    kind: "subfolder",
+    path: "~/dev/web-app/packages/ui",
+    root: "~/dev/web-app",
+    baseBranch: "main",
+  },
+  "/Users/tester/dev/notes": { kind: "notGit", path: "~/dev/notes" },
+  "/Users/tester/dev/billing": { kind: "registered", path: "~/dev/billing", project: PROJECTS[0] },
+  "/Users/tester/dev/gone": { kind: "missing", path: "~/dev/gone" },
+};
+
+/** 추가 창으로 추가한 Project — `create_project`의 답(위 `FOLDER_LOOKS`의 web-app 저장소). 목록은 이것을 기억하지 않는다. */
+const ADDED_PROJECT: ProjectView = {
+  slug: "web-app",
+  name: "web-app",
+  path: "~/dev/web-app",
+  baseBranch: "main",
+  createdAt: "2026-10-26",
+  description: "",
+  git: WEB_APP_GIT,
+  missing: false,
+};
+
+/** 「새로 만들기」의 자리 — 기본 부모(`~/MyProjects`) 아래 「Landing Page」의 폴더다. 자리가 차 있는 갈래는 검사가 `taken`을 갈아 끼운다. */
+const NEW_PLACE: NewProjectPlace = { parent: "~/MyProjects", path: "~/MyProjects/landing-page", taken: false };
+
+/** 「새로 만들기」로 만든 Project — `new_project`의 답(빈 첫 커밋 · 기준 브랜치 `main`). */
+const MADE_PROJECT: ProjectView = {
+  slug: "landing-page",
+  name: "Landing Page",
+  path: "~/MyProjects/landing-page",
+  baseBranch: "main",
+  createdAt: "2026-10-26",
+  description: "",
+  git: { remoteSlug: null, currentBranch: "main", localBranches: ["main"], remoteBranches: [] },
+  missing: false,
+};
+
+/**
+ * Space(03 구현 스펙 §8) — 위 Project 둘을 묶는다. 둘 다 적은 「결제」(Host가 만들었다)와, 원장 하나를 함께 쓰는 「원장 도구」다. 상세의
+ * 「함께 쓰는 Space」 · 그래프의 점선 노드가 서는 갈래가 이 한 쌍이다.
+ */
+export const SPACES: Space[] = [
+  {
+    slug: "결제",
+    name: "결제",
+    projects: ["billing", "ledger"],
+    createdAt: "2026-10-24",
+    createdBy: "host",
+    description: "결제와 정산을 한 흐름으로 다뤄요.",
+    problems: [],
+  },
+  {
+    slug: "원장-도구",
+    name: "원장 도구",
+    projects: ["ledger"],
+    createdAt: "2026-10-20",
+    createdBy: null,
+    description: "",
+    problems: [],
+  },
+];
+
+/**
+ * 읽는 범위의 답(03 §7 — core `reading_scope_of`가 짓는 모양) — Space 없는 Thread가 등록된 Project 둘을 모두 읽는다. 요약 카드 「소스」가 Thread를
+ * 열 때마다 읽는다. Space를 붙인 범위를 재는 검사는 이 답을 갈아 끼운다.
+ */
+export const SCOPE_ALL: ReadingScope = {
+  space: null,
+  projects: PROJECTS.map((project) => ({ slug: project.slug, name: project.name, why: "all" })),
+  worked: [],
+  kind: "all",
+  registered: PROJECTS.length,
+};
+
+/** Space 상세의 답 — 그 Space와 함께 쓰는 Space(core `space_detail`이 짓는 모양). */
+export const SPACE_DETAILS: Record<string, SpaceDetail> = {
+  결제: { ...SPACES[0], shared: [{ slug: "원장-도구", name: "원장 도구", overlap: ["ledger"], projects: ["ledger"] }] },
+  "원장-도구": { ...SPACES[1], shared: [{ slug: "결제", name: "결제", overlap: ["ledger"], projects: ["billing", "ledger"] }] },
+};
+
+/** Space 파일의 글 — 관계 편집이 그대로 연다(`read_space_text`). 위 `SPACES`를 적은 파일이다. */
+export const SPACE_TEXTS: Record<string, string> = {
+  결제: "---\nname: 결제\nprojects:\n  - billing\n  - ledger\ncreatedAt: 2026-10-24\ncreatedBy: host\n---\n\n결제와 정산을 한 흐름으로 다뤄요.\n",
+  "원장-도구": "---\nname: 원장 도구\nprojects:\n  - ledger\ncreatedAt: 2026-10-20\n---\n",
+};
+
+/**
+ * 고치기 화면의 검사 답(core `draft_space`가 짓는 모양) — 「결제」 파일 그대로를 읽은 것이다. 이 층에는 core가 없어 글을 고쳐도 답이
+ * 따라오지 않는다 — 고친 글의 검사를 재는 시험은 `answerByArg("text", …)`로 그 글의 답을 둔다.
+ */
+export const SPACE_DRAFT: SpaceDraft = {
+  space: SPACES[0],
+  pieces: { name: 2, projects: { first: 3, last: 5 }, body: { first: 10, last: 10 } },
+  shared: SPACE_DETAILS["결제"].shared,
+  registered: PROJECTS.map((project) => project.slug),
+  folder: "~/.atelier/spaces",
+  suffix: null,
+};
 
 /**
  * spec 트리를 **손으로 적는** 조각들(spec 레이아웃 구현 스펙 Testing 「앱」). 이 층의 백엔드는 이 표라
@@ -265,7 +396,7 @@ export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
 // 손으로 고치지 않게, 그리고 이 이름을 드는 spec(`works-sidebar`·`sidebar-quiet`)이 따로 고치지
 // 않게 여기 한 벌만 둔다.
 export const PINNED_HEADER = `고정 ${WORKS.filter((work) => work.pinned).length}`;
-export const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
+export const MAIN_HEADER = `Work ${WORKS.filter((work) => !work.pinned).length}`;
 
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
@@ -353,6 +484,15 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
     },
   ],
 };
+
+/**
+ * **work 제목 그대로의 질의에는 그 Work 줄 하나를 답한다**(v1 티켓 21). 사이드바 Work 줄이 그 Work의 Thread로 가게 된 뒤(v1 티켓 37)
+ * 작업 화면으로 가는 앱 안의 길은 ⌘K의 Work 줄이다 — 하네스의 `작업화면으로`가 제목을 넣고 이 줄을 고른다. 위 머리말과 같은
+ * 까닭으로 좁혀지는 규칙은 흉내내지 않고 제목 그대로의 질의만 심는다(앞 검사들이 치는 「고정」 · 「Set」은 그대로 떨어진다).
+ */
+export const WORK_TITLE_RESULTS: Readonly<Record<string, SearchResults>> = Object.fromEntries(
+  WORKS.map((work) => [work.title, { hits: [{ kind: "work", slug: work.slug, title: work.title, archived: false }] }]),
+);
 
 /**
  * 레이아웃 상태(spec 레이아웃 티켓 08) — 고친 폴더(템플릿 1개)다. 모양은 엔진의 `layout_state`가 내는
@@ -831,6 +971,34 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
   },
 };
 
+// Thread 기본 자료(v1 티켓 05) — L1이 축복한 두 턴짜리 Thread(`thread-two-turns.jsonl`)의 Thread 줄. Host 하나가 참여했고 앱에 떠 있지 않다.
+// Thread spec(v1 티켓 10)이 이것을 바탕으로 제 Thread를 짓는다 — `lastSeq`는 그 기록의 마지막 줄이다.
+export const FIXTURE_HOST: Participant = {
+  handle: "host",
+  from: "library",
+  joinedAt: "2026-10-10T10:00:01.000+09:00",
+  runtime: "claude-code",
+  sessionId: "fake-session",
+  cwd: "~/.atelier/threads/20261010-100000",
+  additionalDirectories: [],
+  model: null,
+  effort: null,
+};
+export const FIXTURE_THREAD: ThreadView = {
+  id: "20261010-100000",
+  title: "세 낱말로 답해 줘: hello from turn",
+  createdAt: "2026-10-10T10:00:00.000+09:00",
+  work: null,
+  mode: null,
+  participants: [FIXTURE_HOST],
+  lastRead: 0,
+  lastSeq: 20,
+  askLevel: "always",
+  live: false,
+  queues: {},
+  readOnly: null,
+};
+
 /**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
@@ -843,6 +1011,19 @@ export const WORKTREE_FILES: Record<string, WorktreeFile> = {
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
+  // Space 화면 셋(03 구현 스펙 §14) — 목록 · 상세 · 고치기. 고치기의 답은 고친 Space이고, 화면은 그 뒤 목록 · 상세를 다시 읽는다
+  // (`useUpdateSpace`) — 이 답은 쓰기를 기억하지 않는다.
+  list_spaces: SPACES,
+  get_space: answerByArg("slug", SPACE_DETAILS),
+  update_space: SPACES[0],
+  // 고치기 화면(관계 편집 · 직접 만들기) — 파일 글 · 검사 · 글로 저장. 저장의 답은 저장한 Space다(화면은 그 상세로 간다).
+  read_space_text: answerByArg("slug", SPACE_TEXTS),
+  check_space: SPACE_DRAFT,
+  save_space_text: SPACES[0],
+  // 읽는 범위(03 §7) — 요약 카드 「소스」가 Thread를 열 때마다 읽는다.
+  reading_scope: SCOPE_ALL,
+  // Space 지우기 확인 창의 쓰임(03 티켓 07) — 쓰는 곳이 없는 갈래(「Project와 파일은 그대로예요.」)다. 수를 재는 시험은 이 답을 갈아 끼운다.
+  space_usage: { works: 0, threads: 0 } satisfies SpaceUsage,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //
@@ -858,6 +1039,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `DEFAULTS`), 그것이 프로세스 결정 5의 이름을 다 드는지는 그쪽 L1이 잰다. 이 층이 재는 것은 「백엔드가 준 목록을 칸에
   // 보이고, 고친 것을 저장에 싣는다」라 짧은 합성으로 족하다 — 진짜처럼 적어 두면 그쪽이 바뀔 때 조용히 낡는다.
   default_process_exceptions: ["tmux", "docker*"],
+  // 사람 메뉴의 이름(v1 티켓 07) — 사이드바 맨 아래 줄이 앱이 뜰 때 한 번 읽는다. 캔버스 보드의 사람과 같은 이름이다.
+  person_name: "홍길동" as string | null,
   // 시작 보고(프로세스 스펙 S11). 위 설정 읽기처럼 **앱이 뜰 때 한 번** 부른다(`main.tsx` →
   // `loadStartupReport`) — 그래서 이 줄이 없으면 모든 spec이 화이트리스트 탐지기에 물린다.
   //
@@ -966,12 +1149,25 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
   // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
   update_project: null,
-  // 프로젝트 메뉴(목록 행 · 머리 카드 이름의 우클릭)의 「Finder에서 열기」와 머리 카드 「폴더 열기」가 나간다(codex-ds 티켓 30 —
+  // 프로젝트 메뉴(목록 행 · 머리 줄 이름의 우클릭)의 「Finder에서 열기」와 머리 줄 「폴더 열기」가 나간다(codex-ds 티켓 30 —
   // `target-menus.spec.ts`). 아래 work · 아카이브의 Finder 열기와 한 가족이라 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_project_folder: null,
-  // 같은 메뉴의 「제거」 — 확인 창을 거친 뒤에 나간다. 답은 비어 있고(코어가 돌려주는 것이 없다), 목록은 그대로 그 프로젝트를
-  // 답한다. 검사가 재는 것은 「무엇이 나갔나」다.
-  delete_project: null,
+  // 목록 줄 ⋯의 「제거…」(03 구현 스펙 §16) — 창을 열기 전에 쓰임을 읽고(`project_usage`), 창의 「제거」가 `remove_project`, 지운 뒤
+  // 토스트의 「되돌리기」가 `restore_project`다. 기본은 「쓰는 곳 없음 · 뺐음」이다 — 막힌 갈래 · Space 갈래는 검사가 쓰임 답을 갈아 끼운다.
+  // 목록은 다시 읽어도 그대로 `PROJECTS`다(뺀 것을 기억하지 않는다). 검사가 재는 것은 「무엇이 나갔나」다.
+  project_usage: { spaces: [], works: [] },
+  remove_project: { kind: "removed", spaces: [] },
+  restore_project: PROJECTS[0],
+  // Project 추가 창(03 구현 스펙 §15 · §16 — 03 티켓 13) — 폴더를 고르는 순간의 살피기(고른 폴더로 갈린다 — `FOLDER_LOOKS`), 「Project 추가」 ·
+  // 「git init 하고 추가」의 추가, 「새로 만들기」의 자리(이름을 칠 때마다)와 만들기. 추가 · 만들기의 답은 그 Project이고 목록은 그것을
+  // 기억하지 않는다 — 검사가 재는 것은 「무엇이 나갔나」와 창의 갈래다. 실패(「git이 이름 · 이메일이 없다」 같은)의 글은 진짜 git만 내므로
+  // L4(`projects-create.l4.spec.ts`)가 잰다.
+  inspect_project_folder: answerByArg("folder", FOLDER_LOOKS),
+  create_project: ADDED_PROJECT,
+  new_project_place: NEW_PLACE,
+  new_project: MADE_PROJECT,
+  // 찾을 수 없는 Project의 「재설정」(03 구현 스펙 §15) — 고른 폴더로 경로만 바꾼 Project다. 거절 갈래는 검사가 `ipcFailure`로 준다.
+  relocate_project: PROJECTS[0],
   // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
   // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
   // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.
@@ -1007,7 +1203,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // work 메뉴의 「Finder에서 열기」가 나간다(codex-ds 티켓 16 — `works-floating.spec.ts`의 work 메뉴 절). 값은 안 쓰인다 — 탐색기를
   // 여는 것이 일의 전부다. 검사가 보는 것은 나갔는가와 그 인자(slug · 프로젝트)이고, 못 여는 길은 `ipcFailure`로 덮어 잰다.
   open_work_folder: null,
-  // Archive의 「Finder에서 열기」(머리 카드 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
+  // Archive의 「Finder에서 열기」(머리 줄 ⋯)와 spec 목록 패널 머리의 「spec 폴더 열기」가 나간다(codex-ds 티켓 21 —
   // `archive-docs.spec.ts`). 위 줄과 한 가족이고 같은 까닭으로 값이 없다 — 검사가 보는 것은 나갔는가와 그 slug다.
   open_archived_spec_folder: null,
   // 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와 무관하다(`WORKS_MOVED`
@@ -1036,13 +1232,97 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_worktree_file: answerByArg("path", WORKTREE_FILES, { otherwise: { kind: "missing" } satisfies WorktreeFile }),
   // 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
   //
-  // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` 머리말이
-  // 들고, 나머지 질의는 전부 기본 답으로 떨어진다 — 좁혀지는 규칙은 여기서 흉내내지 않는다.
+  // **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위 `SEARCH_DESTINATION_QUERY` · `WORK_TITLE_RESULTS`
+  // 머리말이 들고, 나머지 질의는 전부 기본 답으로 떨어진다 — 좁혀지는 규칙은 여기서 흉내내지 않는다.
   search: answerByArg(
     "query",
-    { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
+    { ...WORK_TITLE_RESULTS, [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
     { otherwise: SEARCH_RESULTS },
   ),
+  // ── Thread(v1 티켓 05) ── 앱은 새 Thread(`/`)로 열린다. 새 Thread 화면은 설 때 엔진을 한 번 확인하고(`thread_check_engine`) Host 정의의
+  // 모델 · 생각 깊이를 읽으며(`list_agents`), 사이드바는 Thread 목록을 읽는다(`thread_list`). **기본은 Thread가 없고 엔진은 「찾음 ·
+  // 로그인 됨」이다** — 안내 카드가 서지 않는 길이라 `/`로 여는 다른 spec들이 그대로 돈다. Thread를 여는 검사는 `thread_get` ·
+  // `thread_read_record`를 그 시나리오의 Thread와 기록으로 덮어쓴다(기록 줄은 `thread:record` 이벤트로 흘린다).
+  thread_list: [] satisfies ThreadSummary[],
+  thread_get: FIXTURE_THREAD,
+  thread_read_record: [] satisfies ThreadRecordLine[],
+  thread_check_engine: {
+    state: "found",
+    programs: [{ name: "claude", path: "/opt/fixture/bin/claude" }],
+    loggedIn: true,
+  } satisfies EngineCheck,
+  thread_start_login: null,
+  thread_cancel_login: null,
+  thread_quit_counts: { running: 0, queued: 0, approvals: 0 } satisfies ThreadQuitCounts,
+  // 새 Thread — 첫 말과 함께 세운 Thread의 id. 답(첫 턴)은 기록 줄 이벤트로 오므로 검사가 그 인자를 본 뒤 줄을 쏜다.
+  thread_start: FIXTURE_THREAD.id,
+  // 보내기 · 멈추기 · 대기 줄 · 권한 답 — 값은 안 쓰인다. 결과는 기록 줄 · 대기 줄 이벤트로 온다.
+  thread_send: null,
+  thread_stop: null,
+  thread_edit_queued: null,
+  thread_delete_queued: null,
+  thread_send_now: null,
+  thread_answer_permission: null,
+  // Work 만들기 카드의 답(v1 티켓 30) — 값은 안 쓰인다. 고른 것과 만든 Work는 기록의 `question` · `work` 줄로 온다.
+  thread_answer_work: null,
+  // 질문 카드의 답(v1 티켓 26) — 값은 안 쓰인다. 고른 답은 기록의 `question` 답 줄로 온다.
+  thread_answer_question: null,
+  // Work 카드의 변경 · PR(v1 티켓 33 · 34) — Work에 이은 Thread를 열면 카드가 읽는다. 기본은 바뀐 것도 PR도 없다(그 칸이 서지 않는다).
+  list_work_changes: [] as unknown[],
+  thread_work_prs: [] as unknown[],
+  // Work 밖 Project 카드의 답(v1 티켓 32) — 값은 안 쓰인다. 고른 것과 붙인 Project · 만든 worktree는 기록의 `question` · `work` 줄로 온다.
+  thread_answer_project: null,
+  thread_answer_space: null,
+  // Project 추가 카드의 답(03 티켓 12) — 값은 안 쓰인다. 고른 것과 추가한 Project는 기록의 `question` · `setting` 줄로 온다.
+  thread_answer_project_add: null,
+  // 넓힌 카드의 diff(v1 티켓 35) — 변경 줄을 누르면 읽는다. 기본은 바뀐 것이 없다는 답이다.
+  read_work_diff: { kind: "unchanged" },
+  // 다시 맡기기(v1 티켓 17) — 값은 안 쓰인다. 부르기와 그 결과는 기록 줄 이벤트로 온다.
+  thread_call_again: null,
+  // 칩(스토리 33) — 답은 바뀐 참여자 줄이다. 기본은 처음 Host 그대로다.
+  thread_set_model: FIXTURE_HOST,
+  thread_set_effort: FIXTURE_HOST,
+  // 물어보는 정도(v1 티켓 23) — 값은 안 쓰인다. 바꾼 것은 기록의 `mode` 줄로 온다.
+  thread_set_mode: null,
+  // Space 붙이기 · 바꾸기 · 빼기(03 티켓 05) — 값은 안 쓰인다. 바꾼 것은 기록의 `space` 줄과 Work 목록 다시 읽기로 온다.
+  thread_set_space: null,
+  thread_set_work_space: null,
+  // Space 지우기 · 되돌리기(03 티켓 07) — 답은 지운 · 되돌린 Space와 고친 곳이다. 지운 것을 기억하지 않는다 — 지운 뒤의 목록을 재는 시험은
+  // `list_spaces`를 갈아 끼운다. 비운 곳마다의 「지워짐」 · 「되돌림」 줄은 기록(`thread-space-deleted`)으로 온다.
+  thread_delete_space: { space: SPACES[0], unlinked: { works: [], threads: [] } } satisfies DeletedSpace,
+  thread_restore_space: { space: SPACES[0], relinked: { works: [], threads: [] } } satisfies RestoredSpace,
+  // 그 Work의 지금 물어보는 정도(v1 티켓 31) — 새 Thread의 Work 칩에서 최근 Work를 고르면 물어보는 정도 칩이 읽는다.
+  thread_work_mode: "always",
+  // 이름 바꾸기 — 답은 바뀐 목록 요약이다. 기본은 처음 Thread의 요약이다(바꾼 이름을 재는 검사가 갈아 끼운다).
+  thread_rename: {
+    id: FIXTURE_THREAD.id,
+    title: FIXTURE_THREAD.title,
+    createdAt: FIXTURE_THREAD.createdAt,
+    work: null,
+    handles: ["host"],
+    lastRead: 0,
+    readOnly: null,
+    broken: null,
+  } satisfies ThreadSummary,
+  // 읽은 자리(v1 티켓 41 · S38) — 맨 아래가 보이면 Thread 화면이 부른다. 답은 바뀐 목록 요약이다(기본은 처음 Thread의 요약에 그 자리).
+  thread_mark_read: {
+    id: FIXTURE_THREAD.id,
+    title: FIXTURE_THREAD.title,
+    createdAt: FIXTURE_THREAD.createdAt,
+    work: null,
+    handles: ["host"],
+    lastRead: FIXTURE_THREAD.lastSeq,
+    readOnly: null,
+    broken: null,
+  } satisfies ThreadSummary,
+  // 부를 수 있는 Agent(v1 티켓 03 · 11 · 14) — 새 Thread의 칩이 Host 정의의 모델 · 생각 깊이를, @ 메뉴 · 받는 이 칩 · 사이드바 얼굴이
+  // 목록과 얼굴을 읽는다. 기본은 비었다(칩은 「기본 모델」, @ 메뉴는 앉은 참여자만).
+  list_agents: { agents: [], broken: [] } satisfies AgentRoster,
+  // Library 화면(v1 티켓 19) — 고른 Agent 파일의 원문과 「Finder에서 열기」. 기본은 빈 글이다(파일을 재는 검사가 그 Agent의 글로 덮어쓴다).
+  read_agent_file: "",
+  reveal_agent_file: null,
+  // 입력창의 첨부 칩(v1 티켓 06) — 고르거나 끌어다 놓은 경로를 잰 답. 기본은 빈 목록이다(첨부를 재는 검사가 그 경로의 답으로 덮어쓴다).
+  describe_attachments: [] satisfies Attachment[],
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열

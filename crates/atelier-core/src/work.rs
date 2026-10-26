@@ -60,6 +60,10 @@ pub struct Work {
     /// 「지금 이게 중요하다」 — 화면 설정이 아니라 **그 작업에 대한 사실**이라 여기 산다
     /// (결정 81). work를 지우면 함께 사라지고, 에이전트도 켤 수 있다.
     pub pinned: bool,
+    /// 이 Work가 이은 Space의 slug(03 구현 스펙 §9) — 그 Work의 Thread들이 읽는 범위가 이 Space를 따른다(§7). 없으면 응답에도 파일에도
+    /// 키가 없다 — 바깥 MCP(`atelier_get_work` · `atelier_list_works`)의 답이 Space를 쓰지 않는 사람에게 바뀌지 않게.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -80,6 +84,9 @@ struct FileWork {
     /// 마이그레이션 없이 그대로 읽혀야 한다 (결정 81).
     #[serde(default)]
     pinned: bool,
+    /// 없으면 키를 쓰지 않는다 — 이 칸보다 먼저 만들어진 work.json이 그대로 읽힌다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    space: Option<String>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -90,6 +97,8 @@ struct FileWork {
 pub struct WorktreeView {
     pub project: String,
     pub path: String,
+    /// 거짓이면 그 프로젝트는 **읽기만**이다 — 워크트리를 나중으로 미룬 Work(`start_work_deferred`, v1 구현 스펙
+    /// §11 · S21)이거나 폴더가 사라졌다. 처음 고칠 때 `attach_project`가 만든다.
     pub exists: bool,
     pub dirty: bool,
 }
@@ -120,6 +129,7 @@ pub fn parse_work(slug: &str, content: &str) -> Result<Work> {
         created_at: file.created_at,
         projects: file.projects,
         pinned: file.pinned,
+        space: file.space,
         extra: file.extra,
     })
 }
@@ -132,6 +142,7 @@ pub fn render_work(work: &Work) -> String {
         created_at: work.created_at.clone(),
         projects: work.projects.clone(),
         pinned: work.pinned,
+        space: work.space.clone(),
         extra: work.extra.clone(),
     };
     let mut json = serde_json::to_string_pretty(&file).expect("work serializes");

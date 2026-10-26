@@ -7,7 +7,7 @@ import {
   holdTerminalFonts,
   installFixtureBackend,
   markAttention,
-  navButton,
+  사람메뉴로간다,
   typeIntoShell,
   unknownIpcCalls,
   검색어칸,
@@ -83,7 +83,7 @@ test("띠에서 다른 work의 셸을 누르면 화면이 옮겨진 뒤 포커�
   await typeIntoShell(page);
   await callFromShell(page);
 
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   // 최상위 터미널의 첫 셸(pty 2)이 떴으면 떠나온 work 화면은 내려갔다.
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);

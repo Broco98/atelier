@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: Provider 지연 기본값 0→`duration-tip`(150ms)이고 닫힌 직후 잠깐(`timeout`)은 앱 무리의 길이를 넘긴다(S3, 앱 루트에 하나 — codex-ds 결정 20, 아래 `TooltipProvider`), Root가 포인터로 선 열림 · 닫힘을 앱 무리(`hover-group.ts`)에 알리고 키보드 포커스로 선 것은 무리 밖에 세워 무리가 서면 비키게 한다(`actionsRef`), 글자는 registry의 text-xs 그대로이고 값은 DS `text-xs`(12/18 · +0.025em)다(P5), 열림·닫힘 길이 duration-100 추가(결정 7의 100ms — registry 툴팁만 길이가 없어 tw-animate 기본 150ms였다). 열림 애니메이션 클래스는 registry 그대로다. Root가 Esc를 멈추지 않고 아래 층에 보낸다(allowPropagation — 툴팁은 사람이 연 층이 아니다. 첫 쓰는 자리는 전체화면 창의 닫기 버튼이다). 앱이 더한 조각 `Hint` 하나: 트리거와 툴팁과 그 글자가 스크린리더로 가는 길(S28)을 한 곳에서 잇는다. 상자는 Codex 툴팁이다(DS `.at-tip`, codex-ds 스펙 §3): 한 줄 26px(줄 18에 위아래 4 — 넘치면 줄을 바꿔 자란다) · `radius-md` · 좌우 8px · fg 바탕에 fg-inverse(흰) 글자 · 12px 500 · 글자와 키 사이 6px, 키(Kbd)는 칩 없이 흰 글자 60%다. 화살표는 걷었다 — Codex 툴팁에는 없고, 트리거와 6px 떨어져 선다(DS 「자리 — 아래 6」).
+// 앱 규격으로 고친 자리: Provider 지연 기본값 0→`delay-tip`(200ms — Codex `delayDuration`, 02 티켓 12. 같은 무리의 호버 카드는 `duration-tip` 150 그대로다)이고 닫힌 직후 잠깐(`timeout`)은 앱 무리의 길이를 넘긴다(S3, 앱 루트에 하나 — codex-ds 결정 20, 아래 `TooltipProvider`), Root가 포인터로 선 열림 · 닫힘을 앱 무리(`hover-group.ts`)에 알리고 키보드 포커스로 선 것은 무리 밖에 세워 무리가 서면 비키게 한다(`actionsRef`), 글자는 registry의 text-xs(12 · 500)→Codex 툴팁의 13px `text-chat-meta`(13/18 — Codex 굵기 430은 단계가 없어 가까운 보통 400, 02 티켓 12), 열림·닫힘 애니메이션(duration-100 · animate-in · fade-in-0 · zoom-in-95 · slide-in-from-* · 그 닫힘 짝)을 걷었다 — Codex 툴팁은 움직이지 않는다(02 티켓 12). Root가 Esc를 멈추지 않고 아래 층에 보낸다(allowPropagation — 툴팁은 사람이 연 층이 아니다. 첫 쓰는 자리는 전체화면 창의 닫기 버튼이다). 앱이 더한 조각 `Hint` 하나: 트리거와 툴팁과 그 글자가 스크린리더로 가는 길(S28)을 한 곳에서 잇는다. 상자는 Codex 툴팁이다(DS `.at-tip`, codex-ds 스펙 §3): 한 줄 26px(줄 18에 위아래 4 — 넘치면 줄을 바꿔 자란다) · `radius-md` · 좌우 8px · fg(#1a1c1f) 바탕에 fg-inverse(흰) 글자 · 13px · 글자와 키 사이 6px, 키(Kbd)는 칩 없이 흰 글자 60%다. 화살표는 걷었다 — Codex 툴팁에는 없고, 트리거와 6px 떨어져 선다(DS 「자리 — 아래 6」).
 import { useEffect, useRef, useState } from "react"
 import { useStore } from "@tanstack/react-store"
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { durationMs, GROUP_WINDOW_MS, hoverGroup, instantNow, menuOpen, useOpenInHoverGroup, whenJoined } from "./hover-group"
 import { Kbd } from "./kbd"
 
-// **뜨는 시간은 공급자가 든다**(codex-ds 스펙 §8 · 결정 20). 첫 툴팁은 멈춘 지 `duration-tip`에 서고, 하나가 떠 있는 동안과 닫힌 직후
+// **뜨는 시간은 공급자가 든다**(codex-ds 스펙 §8 · 결정 20). 첫 툴팁은 멈춘 지 `delay-tip`(200 — Codex, 02 티켓 12)에 서고, 하나가 떠 있는 동안과 닫힌 직후
 // 잠깐(`timeout` — 앱 무리의 `GROUP_WINDOW_MS`)은 옆 트리거가 곧바로 선다. 닫힘은 기다리지 않는다(`closeDelay` 0) — 떠난 뒤 기다리는
 // 것은 안으로 들어가 읽는 호버 카드뿐이다(`duration-peek-close`, `SidebarWorkList`). 지연은 토큰을 문서 뿌리에서 한 번 읽는다 — 앱 뿌리에
 // 하나만 서므로 그때는 스타일시트가 있다.
@@ -16,7 +16,7 @@ function TooltipProvider({
   timeout = GROUP_WINDOW_MS,
   ...props
 }: TooltipPrimitive.Provider.Props) {
-  const [tip] = useState(() => durationMs("--duration-tip"))
+  const [tip] = useState(() => durationMs("--delay-tip"))
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
@@ -92,7 +92,7 @@ function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(
-            "z-50 inline-flex min-h-6.5 w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-fg px-2 py-1 text-xs font-medium text-fg-inverse duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-md data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "z-50 inline-flex min-h-6.5 w-fit max-w-xs items-center gap-1.5 rounded-md bg-fg px-2 py-1 text-chat-meta text-fg-inverse **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-md",
             className
           )}
           {...props}

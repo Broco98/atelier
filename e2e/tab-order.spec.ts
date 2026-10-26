@@ -10,6 +10,7 @@ import {
   writeShell,
   셸입력,
   파일탭주소,
+  작업화면으로,
   주소로간다,
 } from "./harness";
 import { fillToCap, MAX_SHELLS, rowOf, settle as settleLayout, squeezedWidth, widenSidebar } from "./tab-row";
@@ -759,12 +760,11 @@ test.describe("셸과 파일 탭이 섞인 묶음", () => {
     expect(await litName(page)).toBe("gone.ts");
     await expect(page).toHaveURL(/tab=code&code=billing%2Fgone\.ts/);
 
-    // 사이드바로 옆 work에 갔다 온다 — 앱 안의 이동이라 묶음(메모리)이 산다.
-    const rows = page.locator("[data-worklist]");
-    await rows.getByRole("button", { name: plainWork.title, exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+    // ⌘K의 Work 줄로 옆 work에 갔다 온다(사이드바 Work 줄은 그 Work의 Thread로 간다 — v1 티켓 37) — 앱 안의 이동이라 묶음(메모리)이
+    // 산다.
+    await 작업화면으로(page, plainWork);
     await expect(bundleTabs(page)).toHaveCount(0);
-    await rows.getByRole("button", { name: fileWork.title, exact: true }).click();
+    await 작업화면으로(page, fileWork);
     await expect(page).toHaveURL(/tab=code&code=billing%2Fgone\.ts/);
     await expect.poll(() => namesOf(page)).toEqual(["main.ts", "둘", "README.md", "하나", "gone.ts"]);
     expect(await litName(page)).toBe("gone.ts");

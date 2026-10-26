@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { askDialog, showProblem } from "@/components/ui/confirm-store";
 import { quitNotice } from "@/features/terminal/shell-registry";
 import type { QuitCounts } from "@/features/terminal/shell-registry";
+import { threadQuitNotice } from "@/features/thread/quit";
+import type { QuitCounts as ThreadQuitCounts } from "@/features/thread/types";
 
 /**
  * 백엔드가 「앱을 끄려 한다」고 알리는 이벤트(결정 14 · #223). 빨간 버튼이 `CloseRequested`에서
@@ -19,6 +21,24 @@ export const QUIT_TITLE = "Atelier 종료";
 export const quitApp = (): Promise<void> => invoke<void>("quit_app");
 
 /**
+ * 종료 확인이 적을 수 — 셸(`countQuitShells`)과 Thread(S40 · `countThreadsForQuit`). 둘 다 종료하면 함께 끝나는 것이고, 각자의
+ * 셈과 줄의 말은 그 기능 폴더가 든다.
+ */
+export interface QuitTally {
+  shells: QuitCounts;
+  threads: ThreadQuitCounts;
+}
+
+/**
+ * 종료 확인의 본문 — 셸 줄(`quitNotice`) 아래 Thread 줄(`threadQuitNotice`). 줄마다 없을 수 있고(셸 0개 · 잃을 것 없는 Thread),
+ * **둘 다 없으면 본문이 없다**(`undefined`) — 그래도 창은 뜬다(UI개선 결정 14).
+ */
+export function quitBody({ shells, threads }: QuitTally): string | undefined {
+  const lines = [quitNotice(shells), threadQuitNotice(threads)].filter((line) => line !== undefined);
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
+/**
  * 「종료를 묻는 중」. **모듈 수준에 동기로** 선다 — 이벤트가 와서 세기를 시작하는 그 틱에.
  *
  * 확인 창 스토어는 새 물음이 앞 물음을 「아니오」로 접으므로, 이 표시 없이 종료 요청이 연달아
@@ -28,7 +48,7 @@ let asking = false;
 
 /**
  * 종료 요청 하나를 받는다 — 세고, 묻고, 「종료」면 끈다. 무엇을 세는지는 `countQuitShells`
- * (`shell-registry.ts`)가 들고, 이 자리는 표시와 확인 창과 끄기만 든다.
+ * (`shell-registry.ts`)와 `countThreadsForQuit`(`features/thread/quit.ts`)가 들고, 이 자리는 표시와 확인 창과 끄기만 든다.
  *
  * **표시는 확인 창의 답이 풀리는 자리에서 내린다** — 버튼 핸들러가 아니다. 「취소」 · Esc · 바깥
  * 클릭 · 다른 물음에 밀려남이 전부 그 약속을 「아니오」로 푸는 같은 길이라, 그 자리 하나에서
@@ -48,7 +68,7 @@ let asking = false;
  * 목록을 쥔 스토어는 xterm을 끌고 와 그 seam에서 못 읽는다.
  */
 export async function requestQuit(
-  count: () => Promise<QuitCounts>,
+  count: () => Promise<QuitTally>,
   quit: () => Promise<unknown>,
 ): Promise<void> {
   if (asking) return;
@@ -58,7 +78,7 @@ export async function requestQuit(
     const counts = await count();
     confirmed = await askDialog({
       title: QUIT_TITLE,
-      body: quitNotice(counts),
+      body: quitBody(counts),
       confirm: "종료",
       danger: true,
       focus: "cancel",

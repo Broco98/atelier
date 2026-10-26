@@ -231,7 +231,7 @@ test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) =
 // 수용 기준 「분할 상태에서 터미널 열이 실제로 리사이즈된다 (PTY `cols`/`rows`가 따라간다)」.
 // 배선은 열 폭 → ResizeObserver → `fit()` → `term.onResize` → `pty_resize`인데, **이 사슬을
 // 태우는 층이 여기뿐이다** — 마크업 seam에는 관찰자도 이벤트도 없다.
-test("틈의 손잡이를 끌면 터미널 격자가 따라가고 비율이 저장된다", async ({ page }) => {
+test("두 열 사이 선의 손잡이를 끌면 터미널 격자가 따라가고 비율이 저장된다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
   // 셸이 떴다 — 격자를 내려보낼 상대가 있다는 뜻이다. **칸이 선 것만으로는 모자란다**: spawn은
@@ -241,14 +241,14 @@ test("틈의 손잡이를 끌면 터미널 격자가 따라가고 비율이 저�
   await expect.poll(() => callCount(page, "pty_spawn")).toBeGreaterThan(0);
   const before = await callCount(page, "pty_resize");
 
-  // 두 열은 각자 카드이고(ui-refresh 결정 15) 사이에 틈(`--space-2`)이 있다. 폭 핸들은 그 **틈의 가운데**에 얹힌 5px 띠다.
-  // 열 머리가 그 카드의 폭을 그대로 쓰므로 두 머리의 마주 보는 끝에서 틈을 읽는다 — 좌표를 손으로 적지 않는다.
+  // 두 열은 판 안의 두 칸이고 틈 없이 선 하나로 갈린다(02 티켓 03 — 한때 틈 `--space-2`를 둔 두 카드였다). 폭 핸들은 그 **선 위에**
+  // 걸친 5px 띠다(`seat="rule"`). 열 머리가 그 칸의 폭을 그대로 쓰므로 두 머리의 맞닿은 끝에서 선의 자리를 읽는다 — 좌표를 손으로
+  // 적지 않는다.
   const head = await page.locator('[data-column="spec"]').boundingBox();
   const other = await page.locator('[data-column="terminal"]').boundingBox();
   if (!head || !other) throw new Error("열 머리의 상자를 못 읽었다");
-  const gap = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-2")));
-  expect(other.x - (head.x + head.width), "두 열 카드 사이 틈").toBe(gap);
-  const edge = (head.x + head.width + other.x) / 2;
+  expect(other.x - (head.x + head.width), "두 열 칸이 맞닿는다").toBe(0);
+  const edge = other.x;
   const y = head.y + head.height + 120;
 
   await page.mouse.move(edge, y);

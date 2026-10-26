@@ -116,7 +116,7 @@ describe("오른쪽 메타 — 부름은 경과만, 도는 중은 비움", () =>
 
   it("도는 중은 아무것도 안 그린다 — 칸이 빈다", () => {
     // 경과가 없고(`showsElapsed`) 마크도 없으니 빈 상자를 세우지 않는다. 빈 상자가 서면 칸이
-    // 오른쪽 여백만큼의 폭을 쥔다 — work 행의 칸은 그때 통째로 빠진다(`WorkSectionList.tsx`의 `empty:hidden`).
+    // 오른쪽 여백만큼의 폭을 쥔다.
     expect(signalMeta("working", 125_000)).toBe("");
   });
 });

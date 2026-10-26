@@ -39,17 +39,18 @@ fn invalid(slug: &str, message: impl Into<String>) -> Error {
     Error::InvalidFile { slug: slug.to_string(), message: message.into() }
 }
 
+/// frontmatter와 본문을 가른다. **Markdown 파일의 frontmatter 규칙은 이것 하나다** — Project 파일과 Agent 파일(`agents.rs`)이
+/// 같이 쓴다. 둘이 따로 가르면 한쪽에서 읽히는 파일이 다른 쪽에서 깨진다.
+pub(crate) fn split_frontmatter(content: &str) -> std::result::Result<(&str, &str), &'static str> {
+    let rest = content.strip_prefix("---\n").ok_or("missing frontmatter")?;
+    match rest.split_once("\n---\n") {
+        Some(x) => Ok(x),
+        None => rest.strip_suffix("\n---").map(|fm_str| (fm_str, "")).ok_or("unterminated frontmatter"),
+    }
+}
+
 pub fn parse_project(slug: &str, content: &str) -> Result<Project> {
-    let rest = content
-        .strip_prefix("---\n")
-        .ok_or_else(|| invalid(slug, "missing frontmatter"))?;
-    let (fm_str, body) = match rest.split_once("\n---\n") {
-        Some(x) => x,
-        None => match rest.strip_suffix("\n---") {
-            Some(fm_str) => (fm_str, ""),
-            None => return Err(invalid(slug, "unterminated frontmatter")),
-        },
-    };
+    let (fm_str, body) = split_frontmatter(content).map_err(|message| invalid(slug, message))?;
     let fm: Frontmatter =
         serde_yaml_ng::from_str(fm_str).map_err(|e| invalid(slug, e.to_string()))?;
     Ok(Project {

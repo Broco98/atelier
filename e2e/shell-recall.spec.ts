@@ -8,7 +8,7 @@ import {
   fireEvent,
   installFixtureBackend,
   markAttention,
-  navButton,
+  사람메뉴로간다,
   openShell,
   sentNotifications,
   stubNotifications,
@@ -19,12 +19,13 @@ import {
   떠날때확인버튼,
   떠날때확인에머문다,
   띠,
-  레인,
+  셸이앉은스냅샷,
   셸입력,
   이름표,
   칸들,
   편집기에서앱으로,
   편집기에초안,
+  프로세스셸상태,
 } from "./harness";
 
 // 프로세스 티켓 23 — **단축키 하나로 방금 부른 셸로 간다**(프로세스 결정 16 · 프로세스 스펙 S34 · S59 · P3 ⌘J).
@@ -82,7 +83,7 @@ async function settle(page: Page): Promise<void> {
 
 /** 떠 있는 work 화면을 떠나 최상위 터미널로 간다 — 그 첫 셸(pty `n`)이 spawn 답을 받고 포커스를 쥘 때까지. */
 async function 터미널로(page: Page, n: number): Promise<void> {
-  await navButton(page, "Terminal").click();
+  await 사람메뉴로간다(page, "Terminal");
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(n);
   await awaitSpawned(page, 1);
@@ -138,18 +139,23 @@ test("두 셸이 차례로 부르면 ⌘J가 나중에 부른 셸로 가고 포�
 // 탭에 안 선다 — 그래도 사람을 부른 것이라 ⌘J가 기억한다. 한때 기억의 재료가 「봤다」로 걸러진 화면값이라 여기서 ⌘J가 아무것도
 // 안 했다(바꾸기 전 코드에서 빨간 것을 봤다).
 test("보고 있던 셸이 턴을 마친 뒤 다른 셸로 옮기면 ⌘J가 그 셸로 돌아간다 — 확인할 것이 곧바로 꺼졌어도", async ({ page }) => {
-  await installFixtureBackend(page);
+  await installFixtureBackend(page, { processes_snapshot: 셸이앉은스냅샷(1, 2) });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+  // 도는 중은 Processes에서 읽는다(`프로세스셸상태` — Work 줄 레인의 스피너는 02 티켓 05가 걷었다). 들렀다 와도 첫 칸이 남게 한 글자
+  // 친다 — 저절로 뜬 셸은 입력 없이 화면을 떠나면 닫힌다(프로세스 결정 7).
+  await typeIntoShell(page);
   await openShell(page);
   await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "true");
 
   // 보고 있는 둘째 칸이 턴을 돌다 마친다.
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit", at: 1000, payload: { prompt: "고쳐 줘" } }, 2);
-  await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(1);
+  expect(await 프로세스셸상태(page, 2)).toEqual({ 신호: "working", 글: "도는 중" });
+  // 들렀다 와도 보는 칸은 둘째다 — 아래 턴끝이 「봤다」로 곧바로 꺼지는 장면이 그대로다.
+  await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "true");
   await fireAttention(page, 턴끝(2000), 2);
   // **앵커** — 턴끝이 닿았다(도는 중이 걷혔다). 보고 있었으니 확인할 것은 곧바로 본 것이다: 띠에 안 선다.
-  await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(0);
+  await expect.poll(async () => (await 프로세스셸상태(page, 2)).신호, { message: "턴끝이 안 닿았다" }).toBeNull();
   await settle(page);
   await expect(띠(page)).toHaveCount(0);
 
@@ -237,12 +243,14 @@ test("⌘J로 옮겨 간 뒤 그 셸의 확인할 것이 꺼진다", async ({ pa
 // **부른 셸이 없으면 아무것도 안 한다.** 「없다」만 재면 사건이 아예 안 닿아도 초록이라, 셸이 떠 있고 단축키 사건이 창의 키
 // 리스너까지 닿았다는 것을 먼저 센다. 도는 중으로 들어선 셸은 부른 셸이 아니다(S59).
 test("부른 셸이 없으면 ⌘J가 아무것도 안 한다 — 도는 중인 셸이 있어도", async ({ page }) => {
-  await installFixtureBackend(page);
+  await installFixtureBackend(page, { processes_snapshot: 셸이앉은스냅샷(1, 2) });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+  // 들렀다 와도 첫 칸이 남게 한 글자 친다(위 검사와 같다).
+  await typeIntoShell(page);
   await openShell(page);
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit", at: 1000, payload: { prompt: "고쳐 줘" } }, 2);
-  await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(1);
+  expect(await 프로세스셸상태(page, 2)).toEqual({ 신호: "working", 글: "도는 중" });
   await 이름표(page, 0).click();
   await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
 

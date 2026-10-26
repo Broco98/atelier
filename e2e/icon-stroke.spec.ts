@@ -11,8 +11,9 @@ import { installFixtureBackend, unknownIpcCalls } from "./harness";
 test("16px 아이콘의 그려진 선이 1.5px다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${WORKS[0].slug}`);
-  // 경로 줄의 경로 복사와 작업 패널 머리의 spec 폴더 열기(둘 다 카드 안 16px)가 섰으면 경로 줄의 원문 전환도 함께 서 있다. 머리 줄의
-  // 창 컨트롤 · 머리 카드 아이콘 버튼은 15라(codex-ds 스펙 §3 — `frame.spec.ts`가 잰다) 아래 고르기에 들지 않는다.
+  // 경로 줄의 경로 복사와 작업 패널 머리의 spec 폴더 열기(둘 다 칸 안 16px)가 섰으면 경로 줄의 원문 전환도 함께 서 있다. 머리 줄의
+  // 창 컨트롤은 15라(02 구현 스펙 §3 — `frame.spec.ts`가 잰다) 아래 고르기에 들지 않고, 머리 줄의 아이콘 단추(⋯ · 분할 · 패널 토글)는
+  // 16이라 든다(02 티켓 03b).
   await expect(page.getByRole("button", { name: "경로 복사", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "spec 폴더 열기", exact: true })).toBeVisible();
 

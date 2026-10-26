@@ -91,3 +91,10 @@ export function archiveRef(slug: string, path: string, start?: number, end?: num
   const base = `${archiveDirRef(slug)}${path}`;
   return withLines(base, start, end);
 }
+
+/** Agent 파일(+줄범위): 코어가 내려준 파일 경로(Agent 목록의 `path`)에 줄범위 꼬리표 — Library 화면의 블록 복사(v1 티켓 19).
+ *  **뿌리를 여기서 짓지 않는다** — Library는 데이터 뿌리 아래, Project의 Agent는 그 레포 안이라 뿌리가 하나가 아니다(워크트리
+ *  참조와 같은 까닭). */
+export function agentFileRef(path: string, start?: number, end?: number): string {
+  return withLines(path, start, end);
+}

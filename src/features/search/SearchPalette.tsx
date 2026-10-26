@@ -40,7 +40,7 @@ import type { SearchHit } from "./types";
  * 같은 이유로 셸 개수를 슬롯으로 받는 그 자리와 같다.
  *
  * 치면 좁혀진다. **맞추는 규칙은 코어에 있다**(결정 15) — 여기는 친 것을 그대로 넘기고 받은
- * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → 프로젝트 → 문서 → 본문으로
+ * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → Thread → 프로젝트 → 문서 → 본문으로
  * 와서 갈래가 안 흩어지므로, 구획 머리는 갈래가 바뀌는 자리에서 한 줄 내면 된다.
  *
  * **프리뷰 패널은 없다**(결정 6). 노션의 오른쪽 프리뷰는 **제목**을 찾는 검색이라 「이 페이지가
@@ -51,7 +51,7 @@ import type { SearchHit } from "./types";
  */
 
 /**
- * 구획 머리. **사이드바 목록과 같은 계통의 한국어다**(결정 17) — 이 팔레트가 나열하는 것이
+ * 구획 머리. **사이드바 목록과 같은 말이다**(결정 17) — 이 팔레트가 나열하는 것이
  * 사이드바가 나열하는 것과 같은 것들이라, spec 트리에 있던 대문자 영어 구획 머리
  * (`Iterations`·`Documents` — spec 레이아웃 결정 24로 사라졌다)를 따르지 않았다. 부수 효과가
  * 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
@@ -59,7 +59,9 @@ import type { SearchHit } from "./types";
  */
 const GROUP_NAMES: Record<SearchHit["kind"], string> = {
   destination: "가는 곳",
-  work: "작업",
+  // 둘은 사이드바의 Work · Thread 묶음 머리와 같은 말이다 — 화면에서도 영어로 쓰는 도메인 낱말이다(v1 구현 스펙 S2).
+  work: "Work",
+  thread: "Thread",
   project: "프로젝트",
   doc: "문서",
   text: "본문",
@@ -74,6 +76,8 @@ function rowText(hit: SearchHit): { name: string; detail?: string; snippet?: str
     case "destination":
       return { name: destinationLabel(hit.key) };
     case "work":
+      return { name: hit.title };
+    case "thread":
       return { name: hit.title };
     case "project":
       return { name: hit.name };
@@ -99,6 +103,8 @@ function rowKey(hit: SearchHit): string {
       return `destination/${hit.key}`;
     case "work":
       return `work/${hit.archived}/${hit.slug}`;
+    case "thread":
+      return `thread/${hit.id}`;
     case "project":
       return `project/${hit.slug}`;
     case "doc":
@@ -287,6 +293,12 @@ export function SearchList({
                 {isArchived(hit) && (
                   <span className="ml-auto shrink-0 text-xs text-fg-tertiary">
                     아카이브
+                  </span>
+                )}
+                {/* 보관된 Work의 Thread(v1 티켓 38 · S43)도 같은 칸이다 — 가는 화면은 같고 열면 읽기만이라 「보관됨」이다. */}
+                {hit.kind === "thread" && hit.archived && (
+                  <span className="ml-auto shrink-0 text-xs text-fg-tertiary">
+                    보관됨
                   </span>
                 )}
               </div>

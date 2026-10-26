@@ -1,133 +1,123 @@
 import { expect, test, type Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls, 툴팁 } from "./harness";
+import { callCount, installFixtureBackend, ipcArgs, unknownIpcCalls } from "./harness";
 
-// 이 프로젝트에서 시작된 work이 하나 있는 짝 — 픽스처가 그렇게 묶어 뒀다(`projects: ["billing"]`).
-const project = PROJECTS[0];
-const work = WORKS.find((w) => w.projects.includes(project.slug))!;
+// Projects 목록과 상세(03 구현 스펙 §16 · 캔버스 F1-Projects · F1-ProjectDetail · F4-ProjBranch). `/projects`는 목록 표이고(정규화하지
+// 않는다 — 03 결정 「10」), 줄을 누르면 상세다. 상세의 기준 브랜치는 그 저장소의 브랜치 목록(로컬 · 원격)에서만 고른다.
+//
+// 같은 것을 두 번 재지 않는다 — 다른 spec이 재는 것:
+//   ⋯ 두 갈래 · 추가 창 · 제거 창과 되돌리기 · 제목 고치기 · 찾을 수 없음 · 끌어 놓기   Projects 흐름 spec(`F4-KitProject` — 03 티켓 13c)
+//   머리 줄 「Projects」 · 「Projects / 이름」                                         `frame-sidebar.spec.ts`
+//   진짜 core로 추가 · git init · 새로 만들기                                          `projects-create.l4.spec.ts`
+
+const [project, other] = PROJECTS;
+const 목록 = (page: Page) => page.getByRole("table", { name: "Project 목록", exact: true });
+/** 표의 그 Project 줄 — 머리 줄(이름 · 경로 · 기준 브랜치)을 뺀 몸의 줄이다. */
+const 줄 = (page: Page, one: (typeof PROJECTS)[number]) =>
+  목록(page).getByRole("row").filter({ has: page.getByRole("link", { name: one.name, exact: true }) });
 
 // 컴포넌트를 격리 마운트하지 않고 실제 엔트리부터 태운다. 라우터가 브라우저 히스토리
 // 위에서 돌고 엔트리가 렌더 전에 전역 초기화를 하므로, 부트를 건너뛰면 "브라우저에서
 // 실제로 동작한다"가 증명되지 않는다.
-test("고정 데이터가 주어지면 목록 화면이 그 데이터를 그린다", async ({ page }) => {
+test("고정 데이터가 주어지면 목록 표가 그 데이터를 그리고, 줄을 누르면 그 Project의 상세다", async ({ page }) => {
   await installFixtureBackend(page);
 
   await page.goto("/projects");
+  await expect(목록(page)).toBeVisible({ timeout: 20_000 });
+  // 목록 화면이다 — 한때 무선택 주소가 첫 항목으로 정규화됐다(03 결정 「10」).
+  await expect(page).toHaveURL("/projects");
 
-  // 행의 접근성 이름은 이름과 경로를 함께 담는다 — 경로까지 넣어 목록의 행 하나를 정확히 가리킨다(머리 카드의 이름 글자도
-  // 같은 이름이지만 버튼이 아니다).
-  for (const project of PROJECTS) {
-    await expect(
-      page.getByRole("button", { name: `${project.name} ${project.path}` }),
-    ).toBeVisible();
+  // 머리 줄 하나 뒤에 Project마다 한 줄 — 이름(링크) · 경로 · 기준 브랜치 · ⋯.
+  await expect(목록(page).getByRole("row").first().getByRole("columnheader")).toHaveText(["이름", "경로", "기준 브랜치"]);
+  await expect(목록(page).getByRole("row")).toHaveCount(PROJECTS.length + 1);
+  for (const one of PROJECTS) {
+    await expect(줄(page, one).getByRole("cell")).toHaveText([one.name, one.path, one.baseBranch, ""]);
+    await expect(줄(page, one).getByRole("button", { name: `${one.name} 메뉴`, exact: true })).toBeVisible();
   }
 
-  // 무선택 주소가 첫 항목 주소로 정규화된다 — 라우팅이 브라우저에서 실제로 돌았다는 증거다.
-  await expect(page).toHaveURL(`/projects/${PROJECTS[0].slug}`);
+  // 줄의 빈 자리를 눌러도 이름 링크와 같은 상세로 간다.
+  await 줄(page, other).getByRole("cell").nth(1).click();
+  await expect(page).toHaveURL(`/projects/${other.slug}`);
+  await page.goBack();
+  await 목록(page).getByRole("link", { name: project.name, exact: true }).click();
+  await expect(page).toHaveURL(`/projects/${project.slug}`);
+  await expect(page.getByRole("complementary", { name: "Project 정보", exact: true })).toBeVisible();
 
   // 화이트리스트 밖 호출이 하나라도 있으면 하네스가 낡은 것이다.
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **여기서 work을 열어도 그 work의 마지막 자리가 선다**(결정 77·97 — `recallSearch`).
-// 이 문만 오래 그 계약 밖에 있었다: `search` 없이 이동해 spec 기본 문서로 떨어졌고, 도착한
-// 주소를 적어 두는 effect(`-works-view.tsx`)가 그 기본값으로 **그 work의 기억을 덮어써**
-// 다음에 사이드바나 팔레트로 돌아와도 마지막 화면이 안 섰다. 잃는 것이 이 문 하나가 아니라
-// **모든 문**이라는 것이 이 검사가 세우는 것이다.
-//
-// 기억은 모듈 스코프 지도라 **새로고침 한 번이면 통째로 날아간다** — 그래서 여기서 화면을
-// 옮기는 길은 전부 앱 안의 클릭이고, `goto`는 맨 처음 한 번뿐이다. 그 왕복이 진짜인 층은
-// 여기뿐이라 L2에는 이 검사가 설 자리가 없다.
-test("이 프로젝트의 work을 열면 그 work의 마지막 자리가 열린다", async ({ page }) => {
-  await installFixtureBackend(page);
-
-  // 터미널을 보다 떠난다 — 결정 77이 없애려는 것이 바로 이 사람이 문서로 떨어지는 것이다.
-  await page.goto(`/works/${work.slug}?tab=terminal`);
-  await expect(page.locator('[data-tab="shell"]')).toBeVisible();
-
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page).toHaveURL(`/projects/${project.slug}`);
-
-  // 「이 프로젝트에서 시작된 작업」 행. 사이드바 행도 같은 제목을 들고 있어 `main`으로 좁힌다 —
-  // 사이드바 쪽은 이미 다른 검사가 든다(works-sidebar.spec.ts).
-  await page.locator("main").getByRole("button", { name: work.title }).click();
-
-  await expect(page).toHaveURL(new RegExp(`/works/${work.slug}`));
-  await expect(page).toHaveURL(/tab=terminal/);
-
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// **Works 구획에서 작업으로 가는 문은 작업 행뿐이다** — Works 화면은 언제나 work 하나를 연다(`/works`는 마지막에 띄운 work으로
-// 옮겨 간다 — `-works-view.tsx`). 작업을 모아 보는 자리는 사이드바와 팔레트라, 구획 머리에 「모두 보기」로 갈 곳이 없다. 머리는
-// 이름 · 곁글뿐이다.
-test("프로젝트 상세의 Works 구획 머리는 이름과 곁글뿐이고 구획 안의 버튼은 이 프로젝트의 작업 행이다", async ({ page }) => {
+// **상세는 기준 브랜치 · 경로 · 설명이다**(03 구현 스펙 §16 · S21) — 한때 그 Project에서 시작된 Work 묶음(「이 프로젝트에서 시작된 작업」)이
+// 섰다. 그 Project를 쓰는 진행 중인 Work는 제거 창이 말한다. Work로 가는 문은 사이드바 · 팔레트다.
+test("Project 상세에는 Work 묶음이 없고, 오른쪽 칸에 기준 브랜치와 경로가 선다", async ({ page }) => {
+  const work = WORKS.find((one) => one.projects.includes(project.slug))!;
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
-
-  const 구획 = page.locator("main section", { has: page.getByRole("heading", { name: "Works", exact: true }) });
-  await expect(구획).toHaveCount(1);
-  await expect(구획.getByText("이 프로젝트에서 시작된 작업", { exact: true })).toBeVisible();
-  await expect(page.getByText("모두 보기")).toHaveCount(0);
-  const 작업들 = WORKS.filter((w) => w.projects.includes(project.slug));
-  expect(작업들.length, "픽스처에 이 프로젝트의 작업이 있다").toBeGreaterThan(0);
-  await expect(구획.getByRole("button")).toHaveCount(작업들.length);
-  for (const [i, w] of 작업들.entries()) await expect(구획.getByRole("button").nth(i)).toContainText(w.title);
-
+  const rail = page.getByRole("complementary", { name: "Project 정보", exact: true });
+  await expect(rail.getByRole("region")).toHaveText([/^기준 브랜치/, /^경로/]);
+  await expect(rail.getByRole("region", { name: "경로", exact: true })).toContainText(project.path);
+  // 앵커(상세가 섰다) 뒤에 — 본문에 그 Project의 Work가 서지 않는다(사이드바의 같은 이름은 본문 밖이다).
+  await expect(page.locator("main").getByText(work.title)).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { name: "Works", exact: true })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 기준 브랜치 (스토리 67~69, S28 · S32 · S37) ──
-// 프로젝트 화면의 기준 브랜치는 로컬 브랜치 목록(Select)에서 고른다. 여는 버튼이 `combobox`이고 목록이
-// `listbox`라, 지금 값이 「선택됨」으로 읽힌다. 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔
-// 때만**이다(지금 규칙). 목록은 지금처럼 버튼 **아래로** 뜬다 — registry의 트리거 맞춤(고른 값을 트리거 자리에
-// 겹쳐 올린다)을 껐다(S32). 로컬 브랜치가 없는 프로젝트(git 정보가 없다)는 지금처럼 직접 적는 입력칸이다.
+// ── 기준 브랜치 (03 구현 스펙 §15 · §16 · 스토리 119–121 · S19) ──
+// 상세 오른쪽 칸의 기준 브랜치는 단추(`combobox`)이고, 누르면 그 저장소의 브랜치 목록(`listbox`)이 「로컬」 · 「원격 — origin」 묶음으로 선다.
+// 지금 값이 「선택됨」으로 읽히고, 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔 때만**이다. 원격 브랜치는 원격 이름을 단
+// 그대로 적힌다(S19). 목록 밖 값을 적는 칸은 없다 — 한때 git 정보가 없는 Project는 직접 적는 입력칸이었다.
 //
-// 픽스처의 billing은 로컬 브랜치가 `main`(지금 값) · `release` 둘이다. 설정을 바꾸는 IPC(`update_project`)의 답은
-// 값을 기억하지 않아, 고른 뒤에도 트리거는 `main`으로 남는다 — 재는 것은 「무엇이 나갔나」다.
+// 픽스처의 billing은 로컬 `main`(지금 값) · `release`와 원격 `origin/main`이다. 설정을 바꾸는 IPC(`update_project`)의 답은 값을 기억하지
+// 않아, 고른 뒤에도 단추는 `main`으로 남는다 — 재는 것은 「무엇이 나갔나」다.
 
 const 기준브랜치 = (page: Page) => page.getByRole("combobox", { name: "기준 브랜치" });
 
-test("기준 브랜치를 키로 열면 목록이 버튼 아래에 서고 지금 값이 선택됨이다 — 글자로 다른 가지를 골라 Enter면 설정 IPC가 나가고 닫힌다", async ({
+test("기준 브랜치를 키로 열면 로컬 · 원격 묶음의 목록이 서고 지금 값이 선택됨이다 — 글자로 다른 가지를 골라 Enter면 설정 IPC가 나가고 닫힌다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await page.goto(`/projects/${project.slug}`);
   const trigger = 기준브랜치(page);
   const list = page.getByRole("listbox");
-  // 도움말(툴팁) 「브랜치 목록에서 변경」은 이름보다 더 말하는 하는 일이라 설명으로도 남는다(S28).
-  await expect(trigger).toHaveAccessibleDescription("브랜치 목록에서 변경");
+  await expect(trigger).toContainText(project.baseBranch);
+  await expect(page.getByText("새 Work의 브랜치가 여기서 갈라져요", { exact: true })).toBeVisible();
 
   await trigger.focus();
   await page.keyboard.press("ArrowDown");
   await expect(list).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
-  // 지금 값 **하나만** 선택됨이다 — 지금 것만 재면 「전부 선택됨」도 초록이다.
-  await expect(list.getByRole("option")).toHaveText(["main", "release"]);
+  // 묶음 둘 — 로컬 브랜치와 원격 이름을 단 원격 브랜치. 지금 값 **하나만** 선택됨이다 — 지금 것만 재면 「전부 선택됨」도 초록이다.
+  await expect(list.getByRole("group", { name: "로컬", exact: true }).getByRole("option")).toHaveText(["main", "release"]);
+  await expect(list.getByRole("group", { name: "원격 — origin", exact: true }).getByRole("option")).toHaveText(["origin/main"]);
   await expect(list.getByRole("option", { selected: true })).toHaveCount(1);
-  await expect(list.getByRole("option", { name: project.baseBranch })).toHaveAttribute("aria-selected", "true");
-
-  // 머리(「브랜치 N개」)와 바닥 안내는 떠 있는 카드 안에 그대로다. 카드는 버튼 **아래에서** 시작한다(S32) —
-  // 열림 애니메이션(앵커 쪽 확대)이 끝난 뒤에 잰다.
-  const card = page.locator("[data-popover]");
-  await expect(card).toHaveCount(1);
-  await expect(card).toContainText("2개");
-  await expect(card).toContainText("baseBranch 설정만 바꿔요 — checkout은 하지 않아요");
-  await card.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
-  const [triggerBox, cardBox] = [await trigger.boundingBox(), await card.boundingBox()];
-  expect(cardBox!.y).toBeGreaterThanOrEqual(triggerBox!.y + triggerBox!.height);
+  await expect(list.getByRole("option", { name: project.baseBranch, exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("목록에 있는 브랜치만 고를 수 있어요", { exact: true })).toBeVisible();
 
   // 글자 치기 — 「r」로 시작하는 가지로 간다.
   await page.keyboard.press("r");
-  await expect(list.getByRole("option", { name: "release" })).toBeFocused();
+  await expect(list.getByRole("option", { name: "release", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
 
   await expect(list).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "update_project", "slug")).map(({ args }) => args))
+    .poll(() => ipcArgs(page, "update_project", "slug"))
     .toEqual([{ slug: project.slug, baseBranch: "release" }]);
+  // 바꾼 뒤에는 단추 아래 한 줄이 그 뒤의 일을 말한다(F1-ProjectDetail — 픽스처가 값을 기억하지 않아 이름은 옛 값이다).
+  await expect(page.getByText(/^바꿨어요 — 새 Work부터 .+에서 갈라져요$/)).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("원격 브랜치를 고르면 원격 이름을 단 그대로 설정 IPC에 실린다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/projects/${project.slug}`);
+  await 기준브랜치(page).click();
+  await page.getByRole("listbox").getByRole("option", { name: "origin/main", exact: true }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect
+    .poll(() => ipcArgs(page, "update_project", "slug"))
+    .toEqual([{ slug: project.slug, baseBranch: "origin/main" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -141,7 +131,7 @@ test("기준 브랜치 목록에서 지금 값을 다시 고르면 닫히기만 
   await page.keyboard.press("ArrowDown");
   await expect(list).toBeVisible();
   // 키로 열면 지금 값이 켜진 채로 선다 — 그대로 Enter가 지금 값을 다시 고른다.
-  await expect(list.getByRole("option", { name: project.baseBranch })).toBeFocused();
+  await expect(list.getByRole("option", { name: project.baseBranch, exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
 
   // 앵커: 골라서 닫혔다. 그다음에야 「안 나갔다」가 뜻을 갖는다 — 고르는 일이 아예 안 일어나도 0이다.
@@ -151,24 +141,17 @@ test("기준 브랜치 목록에서 지금 값을 다시 고르면 닫히기만 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("로컬 브랜치가 없는 프로젝트의 기준 브랜치는 목록 대신 이름표 「기준 브랜치」가 붙은 입력칸이다", async ({
-  page,
-}) => {
-  const bare = PROJECTS.find((p) => p.git === null)!;
+test("git으로 브랜치를 읽지 못한 Project의 기준 브랜치 목록은 비어 있고, 이름을 적는 칸이 없다", async ({ page }) => {
+  const bare = PROJECTS.find((one) => one.git === null)!;
   await installFixtureBackend(page);
   await page.goto(`/projects/${bare.slug}`);
-
-  // 누르기 전에는 지금 값을 적은 버튼이다(지금 규칙) — 누르면 그 자리가 입력칸이 된다. 도움말 「클릭해서 편집」은
-  // 툴팁이고 이름(값)보다 더 말하는 하는 일이라 설명으로도 남는다(S28 · S29 — 버튼이라 `title` 예외가 아니다).
-  const editSpot = page.getByRole("button", { name: bare.baseBranch, exact: true });
-  await expect(editSpot).toHaveAccessibleDescription("클릭해서 편집");
-  await editSpot.focus();
-  await expect(툴팁(page)).toHaveText("클릭해서 편집");
-  await editSpot.click();
-  const input = page.getByRole("textbox", { name: "기준 브랜치" });
-  await expect(input).toBeFocused();
-  await expect(input).toHaveValue(bare.baseBranch);
-  // 앵커(입력칸이 섰다) 뒤에 — 목록을 여는 버튼은 이 프로젝트에 없다.
-  await expect(기준브랜치(page)).toHaveCount(0);
+  const trigger = 기준브랜치(page);
+  await expect(trigger).toContainText(bare.baseBranch);
+  await trigger.click();
+  // 앵커: 목록이 열렸다 — 그 안에 고를 것이 없고, 목록 밖 값을 적는 칸도 없다(스토리 119).
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("목록에 있는 브랜치만 고를 수 있어요", { exact: true })).toBeVisible();
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "기준 브랜치" })).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

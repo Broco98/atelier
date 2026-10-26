@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { fireEvent, installFixtureBackend, processesTitle, unknownIpcCalls, 다떴다, 칠한값, 토큰색, 툴팁 } from "./harness";
+import { fireEvent, installFixtureBackend, processesTitle, unknownIpcCalls, 다떴다, 창검색버튼, 칠한값, 토큰색, 툴팁 } from "./harness";
 
 // codex-ds 티켓 26 — **단축키가 한 표에서 나온다**(결정 19 · 스펙 §8 · S16). 단축키는 `src/lib/hotkeys.json` 한 장에만 적고, macOS
 // 메뉴 바 · 메뉴 오른쪽 단축키 칸 · 툴팁 · 키 판정이 그 표를 읽는다. 여기서 재는 것은 사람이 보고 누르는 쪽이다.
@@ -53,7 +53,7 @@ test("단축키가 있는 머리 줄 버튼은 표의 글자를 설명으로, �
   await page.goto(`/works/${specWork.slug}`);
   const 버튼들 = [
     { 버튼: 사이드바토글(page), 글자: "⌘B", 값: "Meta+B" },
-    { 버튼: page.getByRole("button", { name: "검색", exact: true }), 글자: "⌘K", 값: "Meta+K" },
+    { 버튼: 창검색버튼(page), 글자: "⌘K", 값: "Meta+K" },
     { 버튼: page.getByRole("button", { name: "작업 패널 접기", exact: true }), 글자: "⌘Enter", 값: "Meta+Enter" },
   ];
   for (const { 버튼, 글자, 값 } of 버튼들) {
@@ -123,8 +123,9 @@ test("메뉴 바 흉내 — 표의 메뉴 바 항목마다 되돌린 keydown이 
     );
   });
   const 메뉴바 = Object.values(표).filter((row) => row.menu !== null);
-  // 앵커: 메뉴 바 항목이 열넷이다(⌘K · ⌘B · ⌘Enter · ⌘T · ⌘J · ⌘1–9) — 표를 못 읽어 빈 목록이면 아래 견줌이 초록이다.
-  expect(메뉴바).toHaveLength(14);
+  // 앵커: 메뉴 바 항목이 열다섯이다(⌘K · ⌘N · ⌘B · ⌘Enter · ⌘T · ⌘J · ⌘1–9 — ⌘N은 02 티켓 04의 View ▸ New Thread) — 표를 못 읽어 빈
+  // 목록이면 아래 견줌이 초록이다.
+  expect(메뉴바).toHaveLength(15);
   for (const row of 메뉴바) await fireEvent(page, "hotkey:menu", row.code);
 
   const 받은것 = await page.evaluate(() => (window as unknown as { __키: string[] }).__키);

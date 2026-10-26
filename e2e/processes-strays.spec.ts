@@ -5,7 +5,7 @@ import {
   callCount,
   installFixtureBackend,
   ipcCallArgs,
-  navButton,
+  사람메뉴로간다,
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
@@ -113,7 +113,7 @@ async function 셸을띄우고연다(page: Page): Promise<void> {
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(page).toHaveURL("/processes");
   await expect(줄(page.getByRole("tree", { name: "셸", exact: true }), `node, ${formatMemory(vite.metrics.memory)}`)).toBeVisible();
 }
@@ -240,9 +240,9 @@ test("구획이 ui-refresh 결정 28의 표대로 열리고 머리를 눌러 여
   await expect(tmux줄).toHaveAttribute("aria-expanded", "false");
 
   // ── 화면을 떠났다 오면 표다 ── 줄의 접힘도 잊는다.
-  await navButton(page, "Projects").click();
+  await 사람메뉴로간다(page, "Projects");
   await expect(묶음(page, "예외")).toHaveCount(0);
-  await navButton(page, "Processes").click();
+  await 사람메뉴로간다(page, "Processes");
   await expect(머리(page, "확정 고아")).toHaveAttribute("aria-expanded", "true");
   for (const name of ["출처 불명", "다른 인스턴스", "예외"]) {
     await expect(머리(page, name)).toHaveAttribute("aria-expanded", "false");
@@ -474,7 +474,9 @@ test("메뉴가 있는 행을 우클릭하면 ⋯과 같은 메뉴가 커서 자
   await 다떴다(menu);
   const spot = (await row.boundingBox())!;
   const card = (await menu.boundingBox())!;
-  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.round(spot.x + 6), Math.round(spot.y + 6)]);
+  // 커서 자리는 정수 픽셀이다(`MouseEvent`의 `clientX` · `clientY`) — 흰 판의 테두리(0.5) 뒤로 대상이 반 픽셀에 서서 카드는 그 아래
+  // 정수에 선다(`shell-tab-menu.spec.ts`와 같은 잣대).
+  expect([Math.round(card.x), Math.round(card.y)]).toEqual([Math.floor(spot.x + 6), Math.floor(spot.y + 6)]);
   await expect.poll(() => 테두리(row)).toBe(링);
   await expect(page).toHaveURL("/processes");
 
@@ -491,7 +493,8 @@ test("메뉴가 있는 행을 우클릭하면 ⋯과 같은 메뉴가 커서 자
     await 다떴다(menu);
     const below = (await row.boundingBox())!;
     const keyed = (await menu.boundingBox())!;
-    expect([Math.round(keyed.x), Math.round(keyed.y)]).toEqual([Math.round(below.x), Math.round(below.y + below.height)]);
+    // 키로 연 메뉴도 대상의 왼쪽 아래를 정수 픽셀로 받는다(`openMenuByKey`가 쏘는 `MouseEvent`의 자리, 위와 같은 잣대).
+    expect([Math.round(keyed.x), Math.round(keyed.y)]).toEqual([Math.floor(below.x), Math.floor(below.y + below.height)]);
     await expect.poll(() => 테두리(row)).toBe(링);
     await expect(menu).toBeFocused();
     await page.keyboard.press("ArrowDown");
@@ -505,7 +508,7 @@ test("메뉴가 있는 행을 우클릭하면 ⋯과 같은 메뉴가 커서 자
 });
 
 // 행 메뉴의 뿌리는 행 · 몸을 감싸지 않는다(`TargetMenu`) — 감싸면 그 밑의 ⋯이 「우클릭 메뉴의 줄」로 쳐져, 누른 채 끌어 놓는 고름이 안
-// 돈다. 이 몸짓이 그 자리를 잠근다(`끌어놓는다` — Works 머리 카드의 ⋯과 같은 잣대).
+// 돈다. 이 몸짓이 그 자리를 잠근다(`끌어놓는다` — Works 머리 줄의 ⋯과 같은 잣대).
 test("행의 ⋯을 누른 채 끌어 「예외로 두기」 위에서 놓으면 그 줄이 돈다 — 행 메뉴가 ⋯을 감싸지 않는다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷() });
   await 셸을띄우고연다(page);

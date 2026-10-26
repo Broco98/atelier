@@ -1,0 +1,29 @@
+[package]
+name = "atelier-acp"
+# 판은 워크스페이스와 같은 값을 글자로 적는다 — 판 하나 검사(`src/release-version.test.ts`)가
+# `[package]`의 `version = "…"` 리터럴만 읽는다. `version.workspace = true`로 쓰면 빨개진다.
+version = "0.21.0-beta"
+edition = "2021"
+
+# ACP 런타임 · Claude 변환기 · 에이전트 찾기 · 대화 호스트(three-axes 결정 12). 앱 실행 파일 안으로
+# 들어가므로 시험 다리에 의존하지 않는다 — 다리의 「배포되는 크레이트」 표가 잰다(그 표는 다리의 크레이트
+# 이름 글자를 찾으므로, 이 파일의 주석에도 그 이름을 적지 않는다).
+#
+# tokio를 직접 넣지 않는다. `std::thread`와 채널로 짓는다(워크플로 §7). ACP 2.0.0도 async-io ·
+# blocking 위에 서서 tokio를 끌어오지 않는다.
+[dependencies]
+# `~2.0`: `"2"`로 적으면 온라인 잠금에서 2.2.0(schema 1.9.1)이 잡힌다. 8월 크레이트가 2.0.0 API로
+# 섰고, 우리는 initialize 같은 요청을 날 JSON으로 보내므로 2.1 · 2.2의 빌더가 필요 없다.
+agent-client-protocol = "~2.0"
+futures = "0.3"
+# 자식을 새 세션에 두는 `setsid`(std의 것은 불안정 기능이다)와 그룹째 끄는 `killpg`.
+libc = "0.2"
+# work의 자리(three-axes 결정 17)와 `agents.json`의 원자 쓰기 — 배치를 아는 곳은 코어 하나다.
+atelier-core = { path = "../atelier-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# 대화 id. `v4`는 ACP 크레이트를 거쳐 이미 켜져 있다.
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

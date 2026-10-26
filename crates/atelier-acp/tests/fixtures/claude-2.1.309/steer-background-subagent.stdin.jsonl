@@ -1,0 +1,7 @@
+{"type": "control_request", "request_id": "req_d171b795", "request": {"subtype": "initialize"}}
+{"type": "user", "message": {"role": "user", "content": "Run this exact Bash command in the foreground: python3 -c \"import time; time.sleep(15); print('A-done')\" . Then say TURN-A-END."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "Extra instruction: also include the word BANANA in your final reply."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "Start this Bash command IN THE BACKGROUND (run_in_background: true): python3 -c \"import time; time.sleep(20); print('BG-done')\" . Do not wait for it. Immediately end your turn by saying STARTED."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "user", "message": {"role": "user", "content": "Use the Task tool with subagent_type 'sleeper' and ask it to run: python3 -c \"import time; time.sleep(40); print('SUB-done')\" . Wait for it, then say TURN-C-END."}, "parent_tool_use_id": null, "session_id": ""}
+{"type": "control_request", "request_id": "req_3fb3d4c9", "request": {"subtype": "interrupt"}}
+{"type": "user", "message": {"role": "user", "content": "Reply with one word: alive"}, "parent_tool_use_id": null, "session_id": ""}

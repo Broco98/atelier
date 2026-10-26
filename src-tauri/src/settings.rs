@@ -93,7 +93,49 @@ impl NotificationSettings {
     }
 }
 
-/// 파일 전체. 구획이 `terminal`·`notifications` 둘이다 — 다른 구획이 생기면 여기 한 줄이다.
+/// 한 번만 보이는 안내를 사람이 본 것(v1 구현 스펙 S31 · v1 티켓 30). **본 것만 적는다** — 보지 않았으면 칸이 없고, 아무것도 보지 않았으면
+/// 구획째 안 적힌다(알림 구획과 같은 규칙: 「안 봄」을 `false` 줄로 적으면 손으로 여는 파일에 뜻 없는 줄이 는다).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeenSettings {
+    /// 「결정은 내가 합니다」 카드 — 처음 Work를 만들 때 한 번 뜬다. 「알겠어요」를 누르면 참이 되고 그 뒤로 뜨지 않는다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub decisions: bool,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl SeenSettings {
+    /// 본 것이 하나도 없나 — 모르는 칸까지 센다(알림 구획의 `is_empty`와 같은 까닭).
+    fn is_empty(&self) -> bool {
+        !self.decisions && self.extra.is_empty()
+    }
+}
+
+/// Project 구획(03 구현 스펙 S18) — Project 추가 창의 「새로 만들기」가 폴더를 만들 부모. **고른 것만 적는다** — 「위치 바꾸기」로 고르기
+/// 전에는 칸이 없고 구획째 안 적힌다. 기본(`~/MyProjects`)은 화면이 든다(`terminal` 글꼴과 같은 규칙: 값을 정하는 자리를 하나로).
+/// 경로는 기계의 설정이라 Project 파일이 아니라 여기 둔다 — 다음 Project도 같은 곳에 만든다.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettings {
+    /// 「위치 바꾸기」로 고른 폴더 — 고르기 창이 준 경로 그대로다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_parent: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl ProjectSettings {
+    /// 고른 것이 하나도 없나 — 모르는 칸까지 센다(알림 구획의 `is_empty`와 같은 까닭).
+    fn is_empty(&self) -> bool {
+        self.new_parent.is_none() && self.extra.is_empty()
+    }
+}
+
+/// 파일 전체. 구획이 `terminal`·`notifications`·`seen`·`projects` 넷이다 — 다른 구획이 생기면 여기 한 줄이다.
+///
+/// three-axes의 대화 구획(`chat` — 새 대화의 기본 에이전트 · 모델 · 모드)은 설정의 「대화」 묶음과 함께 걷혔다(v1 티켓 08 ·
+/// S3). 앞서 쓰던 파일에 남은 그 구획은 앱이 읽지 않는 구획이라 `extra`로 글자 그대로 왕복한다 — 사람이 손으로 지운다.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -104,6 +146,12 @@ pub struct Settings {
     /// 자리가 그대로 남는 편이 낫다.
     #[serde(default, skip_serializing_if = "NotificationSettings::is_empty")]
     pub notifications: NotificationSettings,
+    /// 한 번만 보이는 안내를 본 것(v1 티켓 30). 설정 화면에 칸이 없다 — Thread 화면이 「알겠어요」에서 적는다.
+    #[serde(default, skip_serializing_if = "SeenSettings::is_empty")]
+    pub seen: SeenSettings,
+    /// 「새로 만들기」의 부모 폴더(03 S18). 설정 화면에 칸이 없다 — Project 추가 창의 「위치 바꾸기」가 적는다.
+    #[serde(default, skip_serializing_if = "ProjectSettings::is_empty")]
+    pub projects: ProjectSettings,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -244,6 +292,8 @@ mod tests {
                 sound: Some(true),
                 extra: Default::default(),
             },
+            seen: SeenSettings { decisions: true, extra: Default::default() },
+            projects: ProjectSettings { new_parent: Some("/Users/me/Code".to_string()), extra: Default::default() },
             extra: Default::default(),
         };
         write(&root, &s).unwrap();
@@ -334,6 +384,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// 걷힌 구획(three-axes의 대화 구획, v1 티켓 08)이 남은 파일도 그 구획을 글자 그대로 돌려준다 — 앱은 읽지 않을 뿐 지우지 않는다.
+    #[test]
+    fn a_section_the_app_no_longer_reads_survives_a_roundtrip() {
+        let root = temp_root("chat");
+        let chat = serde_json::json!({
+            "defaultAgent": "codex",
+            "claude": {"model": "sonnet", "effort": "high"},
+            "codex": {"mode": "workspace-write"},
+            "rolePresets": []
+        });
+        std::fs::write(settings_path(&root), serde_json::json!({"chat": chat}).to_string()).unwrap();
+
+        let s = read(&root).unwrap();
+        write(&root, &s).unwrap();
+
+        let out: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(out["chat"], chat, "걷힌 구획이 글자 그대로가 아니다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// **새 구획이 늘어도 모르는 키가 산다**(#206). 위 왕복 검사가 최상위와 `terminal`만
     /// 보는 사이에 구획이 하나 늘었고, 그 안쪽은 그때 아무도 안 보고 있었다 — 「손으로 고칠
     /// 수 있다」가 구획마다 따로 무너질 수 있는 자리다.
@@ -381,6 +452,44 @@ mod tests {
         assert!(out.contains("\"sound\": false"), "고른 값이 안 적혔다: {out}");
         assert!(!out.contains("\"enabled\""), "안 고른 켬/끔이 함께 적혔다: {out}");
         assert_eq!(read(&root).unwrap(), s);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **「결정은 내가 합니다」 카드를 본 것은 설정 파일에 남는다**(v1 티켓 30 · S31) — 한 번 보면 다음 Work를 만들 때도, 앱을 다시 켜도
+    /// 뜨지 않는다. 보지 않았으면 구획째 안 적힌다(알림 구획과 같은 규칙). 구획 안의 모르는 칸은 왕복한다.
+    #[test]
+    fn the_seen_decisions_card_is_kept_and_an_unseen_one_is_not_written() {
+        let root = temp_root("seen");
+        write(&root, &Settings::default()).unwrap();
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(!out.contains("\"seen\""), "아직 아무것도 보지 않았는데 구획이 적혔다: {out}");
+        assert!(!read(&root).unwrap().seen.decisions, "처음에는 보지 않았다 — 카드가 뜬다");
+
+        std::fs::write(settings_path(&root), r#"{"seen":{"decisions":true,"later":1}}"#).unwrap();
+        let s = read(&root).unwrap();
+        assert!(s.seen.decisions, "본 것을 읽는다 — 카드가 다시 뜨지 않는다");
+        write(&root, &s).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(back["seen"], serde_json::json!({"decisions": true, "later": 1}), "구획 안의 모르는 칸도 남는다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **「새로 만들기」의 부모 폴더는 고른 것만 남는다**(03 구현 스펙 S18) — 「위치 바꾸기」로 고르면 다음 Project도 거기에 만든다. 고르지
+    /// 않았으면 구획째 안 적힌다(기본 `~/MyProjects`는 화면이 든다). 구획 안의 모르는 칸은 왕복한다.
+    #[test]
+    fn the_new_project_parent_is_kept_once_chosen_and_not_written_before() {
+        let root = temp_root("projects");
+        write(&root, &Settings::default()).unwrap();
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(!out.contains("\"projects\""), "고르지 않았는데 구획이 적혔다: {out}");
+        assert_eq!(read(&root).unwrap().projects.new_parent, None);
+
+        std::fs::write(settings_path(&root), r#"{"projects":{"newParent":"/Users/me/Code","later":1}}"#).unwrap();
+        let s = read(&root).unwrap();
+        assert_eq!(s.projects.new_parent.as_deref(), Some("/Users/me/Code"));
+        write(&root, &s).unwrap();
+        let back: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(settings_path(&root)).unwrap()).unwrap();
+        assert_eq!(back["projects"], serde_json::json!({"newParent": "/Users/me/Code", "later": 1}), "구획 안의 모르는 칸도 남는다");
         let _ = std::fs::remove_dir_all(&root);
     }
 

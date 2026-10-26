@@ -11,6 +11,7 @@ import {
   replaceAnswer,
   steadyCount,
   unknownIpcCalls,
+  작업화면으로,
 } from "./harness";
 
 // git-integration 판 01 티켓 01 — **files 칸에 워크트리 트리가 선다.**
@@ -42,7 +43,6 @@ const 패널행 = (page: Page, name: string) => 행(작업패널(page), name);
 const 구획 = (page: Page, name: string) => 작업패널(page).getByRole("group", { name, exact: true });
 /** 작업 패널 칸(두 번째 `aside`)의 그려진 폭 — 접히면 0이다. */
 const 패널폭 = (page: Page) => page.locator("aside").nth(1).evaluate((el) => Math.round(el.getBoundingClientRect().width));
-const 사이드바work = (page: Page, title: string) => page.locator("aside").getByRole("button", { name: title, exact: true });
 
 /** files 칸을 열고 트리가 선 것을 본다. */
 async function openFiles(page: Page): Promise<void> {
@@ -355,10 +355,10 @@ test("펼친 폴더는 칸을 껐다 켜도, 패널을 접었다 펴도, 다른 
   await expect(토글(page)).toHaveAttribute("aria-expanded", "true");
   await expect(src).toHaveAttribute("aria-expanded", "true");
 
-  // 다른 work에 갔다 온다 — 기억은 work마다 따로다: 같은 프로젝트(빌링)라도 그 work에서는 접힌 채 선다
-  await 사이드바work(page, multiWork.title).click();
+  // 다른 work에 갔다 온다(⌘K의 Work 줄 — v1 티켓 37) — 기억은 work마다 따로다: 같은 프로젝트(빌링)라도 그 work에서는 접힌 채 선다
+  await 작업화면으로(page, multiWork);
   await expect(행(구획(page, "빌링"), "src")).toHaveAttribute("aria-expanded", "false");
-  await 사이드바work(page, pinnedWork.title).click();
+  await 작업화면으로(page, pinnedWork);
   await expect(작업패널(page).getByRole("heading")).toHaveCount(0);
   await expect(src).toHaveAttribute("aria-expanded", "true");
   await expect(패널행(page, "TS index.ts")).toBeVisible();

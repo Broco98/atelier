@@ -7,6 +7,7 @@ import useResizableWidth from "@/components/shell/useResizableWidth";
 import { copyText } from "@/components/shell/copy-text";
 import { Card, Frame, type HeadSlot, type SplitColumn, type SplitSlot } from "@/components/shell/Frame";
 import { togglesPanel } from "@/components/shell/PanelToggle";
+import { HEAD_GLYPH, headButton } from "@/components/shell/ShellHead";
 import { pickRail } from "@/components/shell/Rail";
 import { PathBar, type PathView } from "@/components/shell/PathBar";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, TAB_ROW_CARD, WORK_PANEL_WIDTH } from "@/components/shell/panel-layout";
@@ -15,9 +16,9 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "
 import { SMALL_GLYPH_STROKE } from "@/components/ui/icon-stroke";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
-import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
+import { WorkSpaceCrumb } from "@/features/spaces/SpaceMenu";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
@@ -197,9 +198,9 @@ function WorksPage({
   // 아무것도 안 골랐을 때 본문이 하는 말(US 22) — 사이드바의 빈 구획과 한 표에서 나온다(`work-sections.ts`).
   const emptyScreen = WORKS_COPY.screen;
 
-  // work 메뉴의 흐름 — 머리 카드의 ⋯와 이름의 우클릭 메뉴가 함께 쓴다(`work-menu-actions.ts`).
+  // work 메뉴의 흐름 — 머리 줄의 ⋯와 이름의 우클릭 메뉴가 함께 쓴다(`work-menu-actions.ts`).
   const menuFlows = useWorkMenuFlows();
-  // **머리 카드 이름을 고치는 중인 work**(codex-ds 스펙 §9) — 들어가는 길이 셋이라(이름의 두 번 클릭 · F2, ⋯와 이름 우클릭 메뉴의
+  // **머리 줄 이름을 고치는 중인 work**(codex-ds 스펙 §9) — 들어가는 길이 셋이라(이름의 두 번 클릭 · F2, ⋯와 이름 우클릭 메뉴의
   // 「이름 바꾸기」) 그 셋을 다 가진 이 화면이 쥔다. 값이 slug인 것은 고른 work가 바뀌면 그 그림에서 곧바로 꺼지게 하려는 것이다
   // (`editing`이 `selected.slug`와 견준다) — 다른 work의 이름 자리에 고치던 입력칸이 남지 않는다. 키로 옮겨(⌘J) 입력칸이 blur 없이
   // 내려가도 입력칸이 마지막 그림의 값(고치던 work)으로 저장하고 끝을 알려 이 값을 비운다(`InlineRename`).
@@ -298,7 +299,7 @@ function WorksPage({
   const selected = works.find((w) => w.slug === selectedSlug) ?? null;
 
   // **도는 아카이브 · 삭제를 캐시에서 읽는다** — 진행 표시가 메뉴 하나가 아니라 카드 줄 전체를 덮기 때문이다(`LifecycleOverlay`).
-  // 그 조작을 부르는 메뉴는 넷이라(⋯ · 사이드바 행 · 띠 줄 · 머리 카드 이름 — codex-ds 결정 6) 어느 하나가 상태를 쥘 수 없고, 뮤테이션
+  // 그 조작을 부르는 메뉴는 넷이라(⋯ · 사이드바 행 · 띠 줄 · 머리 줄 이름 — codex-ds 결정 6) 어느 하나가 상태를 쥘 수 없고, 뮤테이션
   // 열쇠(`WORK_LIFECYCLE_KEY`)가 그 넷을 한 캐시에서 묶는다. **덮는 것은 이 화면이 보여 주는 work의 조작일 때다** — 사이드바에서 다른
   // work을 아카이브하는 동안 이 work의 본문을 덮으면 엉뚱한 것을 「정리하고 있어요」라 말한다. 그 사이 모든 work 메뉴가 닫혀 있는
   // 것은 흐름의 바쁨이 한다(`useWorkMenuFlows`의 `busy`).
@@ -758,7 +759,7 @@ function WorksPage({
   const splitting = split !== null && Boolean(specBody) && Boolean(codeBody || terminalBody);
 
   // 탭 줄(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면 안으로 되돌아왔다(adr-03). 브레드크럼
-  // (`Works / 제목`)은 그때 사라졌고, work 제목은 지금 머리 카드가 말한다(아래 `head`).
+  // (`Works / 제목`)은 그때 사라졌고, work 제목은 지금 머리 줄이 말한다(아래 `head`).
   //
   // **그 줄이 본문 카드의 머리다**(codex-ds 스펙 §4 「탭 줄」) — 탭이 그 탭이 보여 줄 카드에 붙는다. 단일 뷰면 본문 카드(문서 ·
   // 터미널 · 코드 어느 쪽이든 같은 자리)의 머리이고, 분할이면 묶음 열의 머리다 — 그때 그 열을 닫는 `×`가 줄 끝에 서고(codex-ds 스펙
@@ -855,7 +856,7 @@ function WorksPage({
       onDropSlot={dropShellOnSlot}
       dragging={drag.source !== null}
       // 오른쪽 끝 고정(결정 10) — 분할이면 묶음 열을 닫는 `×`다. 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧
-      // `tab`이다. 단일 뷰의 줄 끝에는 아무것도 안 선다 — 상태 배지 · ⋯ · 분할은 머리 카드에 선다(아래 `head`).
+      // `tab`이다. 단일 뷰의 줄 끝에는 아무것도 안 선다 — 상태 배지 · ⋯ · 분할은 머리 줄에 선다(아래 `head`).
       //
       // 이름은 그 열에 선 것이다 — 셸이면 `terminal`, 파일 탭이면 그 파일 이름이다(탭 줄의 파일 탭 칸이 파일 이름으로 서는 것과
       // 같다 — 그 칸의 `×`는 「<이름> 닫기」, 이것은 「<이름> 열 닫기」). 열을 닫을 뿐 탭을 닫지 않는다 — 탭은 묶음에 그대로 남는다.
@@ -876,7 +877,7 @@ function WorksPage({
     />
   ) : undefined;
 
-  // 머리 카드(codex-ds 스펙 §6 · 스토리 23 · 24) — 왼쪽은 ⚡(work 아이콘 — 상태 글리프가 아니다)와 work 이름이다. 사이드바를 보지
+  // 머리 줄의 화면 것(codex-ds 스펙 §6 · 스토리 23 · 24 · 02 구현 스펙 §3 S2) — 왼쪽은 ⚡(work 아이콘 — 상태 글리프가 아니다)와 work 이름이다. 사이드바를 보지
   // 않아도 지금 어느 work인지 안다(⌘B로 사이드바를 접어도). **이름은 그 자리에서 바꾼다**(codex-ds 스펙 §9 · `rename`) — 이름의 두 번
   // 클릭 · F2, 또는 ⋯ · 이름 우클릭 메뉴의 「이름 바꾸기」로 들어가고, 지금 work 이름 명령(`set_work_title`)으로 저장한다.
   //
@@ -886,13 +887,15 @@ function WorksPage({
   //
   // 오른쪽은 **할 일 | 보기 배치**다. 할 일은 상태 배지와 ⋯ — work에 대한 조작이 한 자리에 모인다(ui-refresh 결정 14 · codex-ds
   // 결정 25). 상태 배지가 앞인 것은 자주 누르는 조작이라서다 — 메뉴 뒤에 숨기면 상태를 바꾸는 데 클릭이 두 번 든다. 보기 배치는
-  // 분할 토글 하나다. 사이의 세로선과 간격은 틀의 머리 카드가 그린다(`Frame`의 `HeadCard`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위
-  // 줄의 오른쪽 끝 묶음에 섰다. 패널 토글은 화면이 건네지 않는다 — 레일이 서는 지금은 틀이 머리 카드 밖 레일 위에 세운다(`Frame`의 머리 줄).
+  // 분할 토글 하나다. 사이의 세로선과 간격은 틀이 그린다(`Frame`의 `FrameHead`). 한때 이 셋은 탭 줄 끝에, 그다음 창 맨 위 줄의 오른쪽
+  // 끝 묶음에, 그다음 머리 카드에 섰다. 패널 토글은 화면이 건네지 않는다 — 틀이 분할 뒤 오른쪽 맨 끝에 세운다(레일이 서도 같다).
   //
-  // 지금 선 work(`selected`)가 없으면 머리 카드는 화면 이름 「Works」 하나다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
+  // 지금 선 work(`selected`)가 없으면 머리 줄에는 화면 이름 「Works」 하나가 선다(codex-ds 스펙 §7) — ⚡는 work 아이콘이라 work들의 화면도
   // 같은 아이콘이다. 걸 대상이 없어 할 일도 없다.
   const head: HeadSlot = selected
     ? {
+        // 이름 앞의 흐린 Space(03 §10) — 누르면 Space 메뉴가 열리고 고르면 이 Work의 Space가 바뀐다. 없으면 흐린 「Space 없음」이다.
+        lead: <WorkSpaceCrumb work={selected} />,
         icon: Zap,
         name: selected.title,
         nameMenu: (renderName) => (
@@ -932,24 +935,26 @@ function WorksPage({
         // 넘긴다.
         //
         // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다.
-        // 라벨이 대상을 이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말한다. 모양(24px 아이콘 버튼, 꺼짐 `fg-tertiary` ·
-        // 켜짐 toggle-on)은 부품의 icon-xs 크기다.
+        // 라벨이 대상을 이름하고 켜짐은 `aria-pressed`가 말한다. 모양은 머리 줄의 아이콘 단추 한 벌이다(`headButton` — 28 · 글리프 16
+        // `fg-titlebar`, 켜지면 크롬 위 켜진 면 — Thread의 요약 고정 토글과 같다, 02 결정 「머리 줄은 한 결이다(03 뒤)」). 그래서
+        // `Toggle` 부품(켜짐 `toggle-on`)이 아니라 요약 고정 토글과 같은 꼴(`aria-pressed`를 단 버튼)이다.
         //
         // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이 날지를 틀리게 말한다. 설명(`aria-description`)은
         // 안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28).
+        //
+        // **Tab 정류장임을 `tabIndex`로 명시한다**(02 코드 리뷰 C1) — macOS WebKit의 Tab은 `tabindex` 없는 맨 버튼에 서지 않는다(`@/lib/roving`
+        // 머리말). `Toggle`을 떠나며 그 0을 잃어 앱에서 키보드로 닿지 않았고, 맨 버튼에도 서는 리눅스 WebKit의 L3만 그것을 셌다.
         end: (
           <Hint
             text={split !== null ? "분할 끄기" : "분할 켜기"}
-            render={
-              <Toggle
-                size="icon-xs"
-                aria-label="분할"
-                pressed={split !== null}
-                onPressedChange={(on) => changeSplit(on ? "lr" : null, columnOf(tab))}
-              />
-            }
+            type="button"
+            aria-label="분할"
+            aria-pressed={split !== null}
+            onClick={() => changeSplit(split === null ? "lr" : null, columnOf(tab))}
+            tabIndex={0}
+            className={headButton(split !== null ? "on" : "rest")}
           >
-            <Columns2 className="size-3.75" />
+            <Columns2 className={HEAD_GLYPH} />
           </Hint>
         ),
       }
@@ -1034,7 +1039,7 @@ function WorksPage({
       {specBody}
     </Card>
   ) : (
-    // 고른 작업이 없으면 패널도 탭 줄도 없다 — 화면 이름은 머리 카드가 말하고, 카드 안에 고를 것이 없어 카드 머리도 없다.
+    // 고른 작업이 없으면 패널도 탭 줄도 없다 — 화면 이름은 머리 줄이 말하고, 카드 안에 고를 것이 없어 카드 머리도 없다.
     <Card as="main" label={WORKS_COPY.page} className="flex-1">
       {/* DS 빈 화면 물음(codex-ds 스펙 §6 · 스토리 64) — 물음 · 설명 · 할 일이 카드 한가운데에 서고 글리프 칸은 없다(`Empty`의
           `question`). 프로젝트 갈래의 문구는 여기 리터럴이고, 작업이 없을 때의 셋은 표에서 온다. */}
@@ -1060,14 +1065,13 @@ function WorksPage({
   );
 
   return (
-    // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27). 머리 줄에 머리 카드(⚡ · 이름 | 상태 · ⋯ | 분할 · 패널 토글)가 서고, 그
-    // 아래 본문 카드(머리가 탭 줄)와 작업 패널 카드가 뜬다.
+    // 공용 틀 위의 작업 화면(ui-refresh 결정 4 · 5 · 27 · 02 구현 스펙 §3 S2). 머리 줄에 ⚡ · 이름 | 상태 · ⋯ | 분할 · 패널 토글이
+    // 서고, 흰 판 안에 본문 칸(머리가 탭 줄)과 작업 패널 칸 · 레일이 선 하나씩으로 갈려 선다.
     //
     // 탭 줄의 바닥은 그 줄을 이는 카드가 들고(`TAB_ROW_CARD`), 모자라면 틀의 본문 열이 사이드바에게 자리를 요구한다
     // (`TAB_ROW_COLUMN`) — 카드가 제 몸을 격리하므로 넓은 문서 · xterm이 그 바닥을 부풀리지 않고, 작업 패널은 카드 줄 안에서 제
     // 최소 폭까지 문서 카드에 자리를 내준다(`Frame`의 패널 칸).
     <Frame
-      sidebarOpen={sidebarOpen}
       head={head}
       // 레일(ui-refresh 결정 9 · 10)의 칸 — `spec` · `files`. 패널과 같은 조건으로 건넨다: 고른 작업이 없으면 열 패널이 없어 레일도
       // 머리 줄의 패널 토글(틀이 패널 칸에서 짓는다)도 없다. 칸이 둘이라 레일 열이 서고(codex-ds 결정 25 — `railStands`) 토글은 그
@@ -1212,7 +1216,7 @@ function ColumnInside({
 // 더 그렇다. 덮는 것 자체도 목적이다 — 진행 중에 같은 작업을 다시 겨누지 못하게 한다.
 //
 // 공용 틀의 `overlay` 칸이라 카드 줄(본문 카드와 그 머리의 탭 줄 + 패널)을 덮고 머리 줄은 덮지 않는다(판 04 「덮는 것의 기준
-// 상자」) — 치워지는 작업에 셸을 새로 열 길도 함께 막힌다. 머리 카드의 ⋯는
+// 상자」) — 치워지는 작업에 셸을 새로 열 길도 함께 막힌다. 머리 줄의 ⋯는
 // 진행 중 `disabled`이고 우클릭 메뉴도 안 열려(`useWorkMenuFlows`의 `busy`) 다시 같은 조작을 겨눌 수 없다. 사이드바는 덮지 않는다 —
 // 막이 서는 것은 본문이 보여 주는 work의 조작일 때뿐이다(위 `lifecycle`).
 function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
@@ -1234,7 +1238,7 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
   );
 }
 
-// 머리 카드의 상태 배지 + 바꾸는 라디오 메뉴(판 3, 스토리 46~48 · 51 · 52 · codex-ds 스토리 25).
+// 머리 줄의 상태 배지 + 바꾸는 라디오 메뉴(판 3, 스토리 46~48 · 51 · 52 · codex-ds 스토리 25).
 //
 // **메뉴 부품(`DropdownMenu`)이 다 한다** — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 · Home/End · 글자 치기),
 // Esc 닫기와 배지로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9). 배지가 「메뉴를 연다」와
@@ -1242,8 +1246,8 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 // `aria-checked`로 읽힌다. 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
 //
 // 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 상태 모듈의
-// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 창을 끌지 않는다 — 머리 카드의 빈 자리는
-// 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `HeadCard`).
+// 배지 한 벌(`STATUS_BADGE`)을 부른다 — 아카이브 머리 · 호버 카드의 배지와 같은 모양이다. 창을 끌지 않는다 — 머리 줄의 빈 자리는
+// 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `FrameHead`).
 function StatusMenu({ work }: { work: WorkView }) {
   const setStatus = useSetWorkStatus();
   const meta = STATUS_META[work.status];
@@ -1272,15 +1276,15 @@ function StatusMenu({ work }: { work: WorkView }) {
   );
 }
 
-// 머리 카드의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 그 항목이
-// 부르는 동작과 아카이브 · 삭제의 흐름은 `work-menu-actions.ts` 한 자리다 — 우클릭 메뉴 셋(사이드바 행 · 띠 줄 · 머리 카드 이름)이 같은
-// 흐름을 받는다(codex-ds 결정 6). 여기 남는 것은 ⋯의 몫이다: 열림과 닫힌 뒤 포커스가 갈 자리. 「이름 바꾸기」는 머리 카드 이름의
+// 머리 줄의 ⋯ — work 메뉴(codex-ds 결정 16 · 스펙 §6). 무엇을 어떤 차례로 보이는지는 메뉴 정의(`WorkMenuItems`)가 들고, 그 항목이
+// 부르는 동작과 아카이브 · 삭제의 흐름은 `work-menu-actions.ts` 한 자리다 — 우클릭 메뉴 셋(사이드바 행 · 띠 줄 · 머리 줄 이름)이 같은
+// 흐름을 받는다(codex-ds 결정 6). 여기 남는 것은 ⋯의 몫이다: 열림과 닫힌 뒤 포커스가 갈 자리. 「이름 바꾸기」는 머리 줄 이름의
 // 제자리 고치기를 켠다(`onRename` — 고치는 중인지는 화면이 쥔다).
 //
 // **메뉴 부품(`DropdownMenu`)이 다 한다**(판 3, 스토리 46~48) — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 ·
 // Home/End · 글자 치기), 하위 메뉴 열고 닫기(→ · ←), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9).
 // 항목은 `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
-// 창을 끌지 않는다 — 머리 카드의 빈 자리는 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `HeadCard`).
+// 창을 끌지 않는다 — 머리 줄의 빈 자리는 끌지만 버튼이라 Tauri가 끌기에서 뺀다(`Frame`의 `FrameHead`).
 function WorkMenu({
   work,
   flows,
@@ -1291,12 +1295,12 @@ function WorkMenu({
   flows: WorkMenuFlows;
   /** 도는 아카이브 · 삭제가 **이 work의 것이다** — 그때만 ⋯가 `aria-busy`다(아래 `busy`와 다르다). */
   processing: boolean;
-  /** 「이름 바꾸기」 — 머리 카드 이름을 그 자리에서 고치기 시작한다. */
+  /** 「이름 바꾸기」 — 머리 줄 이름을 그 자리에서 고치기 시작한다. */
   onRename: () => void;
 }) {
   // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
-  // **「이름 바꾸기」로 닫혔나** — 그때는 메뉴가 닫히며 포커스를 ⋯로 돌리지 않는다(`finalFocus`). 머리 카드 이름 자리에 막 선 입력칸이
+  // **「이름 바꾸기」로 닫혔나** — 그때는 메뉴가 닫히며 포커스를 ⋯로 돌리지 않는다(`finalFocus`). 머리 줄 이름 자리에 막 선 입력칸이
   // 포커스를 받는데, ⋯로 돌아가면 입력칸이 곧바로 blur되어 「다른 곳 = 저장」으로 닫힌다(구현 노트 Q7). 그 밖의 닫힘은 부품의
   // 기본값이 ⋯로 돌린다. 확인 창(`askDanger`)은 앱 루트의 한 자리가 그려 ⋯를 모르지만, 그 창이 닫히면 부품의 기본값이 여기로 온다 —
   // 열기 전 자리(메뉴 항목)가 사라졌으면 그 앞에 포커스가 있던 자리로 간다(Base UI의 포커스 기록). L3가 잰다.
@@ -1309,7 +1313,7 @@ function WorkMenu({
   // 다른 작업으로 옮겨가면 닫는다 — 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는
   // 것과 다른 작업**을 겨눈다.
   //
-  // **이 이펙트가 그 일을 한다** — 이 메뉴는 공용 틀의 머리 카드에 서서(codex-ds 스펙 §6) 작업을 옮겨도 다시 세워지지 않는다.
+  // **이 이펙트가 그 일을 한다** — 이 메뉴는 공용 틀의 머리 줄에 서서(codex-ds 스펙 §6) 작업을 옮겨도 다시 세워지지 않는다.
   // 한때 머리행이 key={slug}인 SpecViewer 안에 있어 문서 탭에서는 리마운트가 먼저 닫았고, 이 줄은 터미널 탭에서만 일했다.
   useEffect(() => {
     setOpen(false);
@@ -1335,21 +1339,16 @@ function WorkMenu({
           <DropdownMenuTrigger
             disabled={busy}
             aria-busy={processing}
-            // **작은 아이콘 버튼 규격이다**(`icon-button-xs` — 24) — 세로선 너머 분할 토글(`Toggle`의 icon-xs 크기)과 같은 상자다.
-            // 위 줄에 서는 것은 모두 24다(DS `HeadCard`) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
-            // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-            className={cn(
-              "icon-button icon-button-xs transition-colors focus-ring",
-              "disabled:pointer-events-none disabled:opacity-50",
-              open ? "toggle-on" : "text-fg-tertiary quiet-hover",
-            )}
+            // **머리 줄의 아이콘 단추 한 벌이다**(`headButton` — 28 · 글리프 16, 펼친 동안 hover와 같은 면) — 세로선 너머 분할 토글 ·
+            // Thread의 「…」와 같은 상자다(02 결정 「머리 줄은 한 결이다(03 뒤)」) — 한 줄의 아이콘 버튼 상자가 다르면 하나만 튀어 보인다.
+            className={cn(headButton(open ? "open" : "rest"), "disabled:pointer-events-none disabled:opacity-50")}
           />
         }
       >
         {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
             깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
             disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-        <MoreHorizontal className="size-3.75" />
+        <MoreHorizontal className={HEAD_GLYPH} />
       </Hint>
       <DropdownMenuContent
         finalFocus={() => {

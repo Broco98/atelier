@@ -8,6 +8,8 @@ import {
   spawnedCwds,
   unknownIpcCalls,
   행버튼,
+  창검색버튼,
+  Work줄이가는곳,
 } from "./harness";
 
 // 티켓 09(#222) — **`+` 메뉴에 「모든 프로젝트」와 키보드**(UI개선 결정 18·20, UI개선 스펙 §7 · S13).
@@ -190,8 +192,8 @@ test("`+` → End·Home은 끝줄로 가고, 글자를 치면 그 글자로 시�
 });
 
 // 스토리 50 — **바깥 누르기는 닫기만 한다**(S9). 위 「바깥 클릭」은 빈자리를 눌러 이것을 못 잰다 — 거기엔
-// 눌릴 것이 없다. 여기서는 **누를 수 있는 것**을 누른다. 사이드바의 다른 work 행(누르면 그 work으로
-// 간다)과 셸 컨트롤 줄의 검색 버튼(누르면 팔레트가 뜬다)이다. 검색 버튼 줄은 `z-20`이라 쌓임 순서가
+// 눌릴 것이 없다. 여기서는 **누를 수 있는 것**을 누른다. 사이드바의 다른 work 행(누르면 그 work의
+// Thread로 간다 — v1 티켓 37)과 셸 컨트롤 줄의 검색 버튼(누르면 팔레트가 뜬다)이다. 검색 버튼 줄은 `z-20`이라 쌓임 순서가
 // 다르다 — 메뉴의 가림막이 그 위에 서는지를 따로 잰다.
 //
 // **자리는 메뉴를 열기 전에 잰다.** 열린 동안에는 메뉴의 가림막이 화면을 덮어 `locator.click()`이
@@ -201,11 +203,11 @@ for (const [what, target, pressed] of [
   [
     "사이드바의 다른 work 행",
     (page: Page) => 행버튼(page, plainWork.title),
-    (page: Page) => expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}(\\?|$)`)),
+    (page: Page) => expect(page).toHaveURL(Work줄이가는곳(plainWork.slug)),
   ],
   [
     "셸 컨트롤 줄의 검색 버튼",
-    (page: Page) => page.getByRole("button", { name: "검색", exact: true }),
+    (page: Page) => 창검색버튼(page),
     (page: Page) => expect(page.getByRole("dialog", { name: "검색" })).toBeVisible(),
   ],
 ] as const) {

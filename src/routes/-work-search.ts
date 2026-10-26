@@ -321,17 +321,25 @@ export function viewSearch<T extends object>(
 /**
  * **work을 여는 주소.** 그 work의 마지막 화면을 씨앗으로 삼는다(결정 77·97).
  *
- * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 여섯이기 때문이다** — 주소
- * 정규화(`-works-view`), 사이드바의 work 행, 셸로 가는 길(`useGoToShell` — 알림 띠의
- * 줄과 ⌘J 방금 부른 셸로), 팔레트의 work 줄과 문서·본문 줄(`hit-target`), 그리고 Projects의
- * 「이 프로젝트에서 시작된 작업」 행(`-projects-view`).
+ * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 여럿이기 때문이다** — 주소
+ * 정규화(`-works-view`), 「앱으로 돌아가기」(`appReturnTarget`), 셸로 가는 길(`useGoToShell` — 알림 띠의
+ * 줄과 ⌘J 방금 부른 셸로), 팔레트의 work 줄과 문서·본문 줄(`hit-target`), 잠긴 Work 칩(`ThreadScreen`의 `useOpenWork`), 그리고
+ * `<Link>`로 여는 문(아래 `workDoor` — Space 상세의 「Work」 묶음 줄 · Project 제거 창의 Work 줄). 사이드바의 Work 행은 한때 여기 들었는데
+ * 이제 그 Work의 대화(가장 최근 Thread)로 간다(v1 티켓 37). Projects 상세의 「이 프로젝트에서 시작된 작업」 행도 한때 여기 들었는데, 상세가
+ * 기준 브랜치 · 경로 · 설명만 들게 되며 걷혔다(03 S21).
  * 합성을 자리마다 손으로 다시 적으면 **빠뜨린 문 하나가 조용하다**: 그 문으로 들어온 work은
  * 기본 화면으로 열리고, 도착한 주소를 적어 두는 effect(`-works-view`의 `rememberView`)가
  * 그 기본값으로 **기억을 덮어써** 다음에 다른 문으로 돌아와도 마지막 화면이 안 선다.
- * Projects 문이 실제로 그랬다.
+ * Projects 문이 실제로 그랬고, 03의 Space 상세 · 제거 창의 Work 줄이 다시 그랬다(03 코드 리뷰 A1).
  *
  * 그래서 세는 것도 이름 하나다 — 검사는 이 함수의 **값**을 재고 문마다 원문을 대조하지
  * 않는다(`-work-search.test.ts`). 원문 대조는 문이 늘 때마다 함께 늘어야 하는데, 늘지
  * 않은 것이 위 「둘」이다.
  */
 export const recallSearch = (slug: string) => viewSearch({}, recallView(slug));
+
+/**
+ * **`<Link>`로 work을 여는 자리** — `to` · `params` · `search`(`recallSearch`)를 한 덩이로 준다. 부르는 쪽은 펼치기만 한다
+ * (`<Link {...workDoor(slug)}>`) — 주소와 씨앗을 자리마다 다시 적으면 위 「빠뜨린 문 하나」가 또 난다.
+ */
+export const workDoor = (slug: string) => ({ to: "/works/$slug" as const, params: { slug }, search: recallSearch(slug) });
